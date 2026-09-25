@@ -41,8 +41,7 @@ int prng_mask31():
 # deterministic.
 prng* prng_new(int seed):
 	prng* p = new prng(seed & prng_mask32())
-	if (p.state == 0):
-		p.state = 305419896   # 0x12345678
+	if (p.state == 0): p.state = 305419896   # 0x12345678
 	return p
 
 

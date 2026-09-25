@@ -112,65 +112,44 @@ int crash_frames_max():
 
 char* crash_signal_name(int sig):
 	if (st_macho):
-		if (sig == 5):
-			return c"SIGTRAP (trace/breakpoint trap)"
-		if (sig == 10):
-			return c"SIGBUS (bus error)"
-		if (sig == 7):
-			return c"unknown"
-	if (sig == 4):
-		return c"SIGILL (illegal instruction)"
-	if (sig == 7):
-		return c"SIGBUS (bus error)"
-	if (sig == 8):
-		return c"SIGFPE (arithmetic exception)"
-	if (sig == 11):
-		return c"SIGSEGV (invalid memory reference)"
+		if (sig == 5): return c"SIGTRAP (trace/breakpoint trap)"
+		if (sig == 10): return c"SIGBUS (bus error)"
+		if (sig == 7): return c"unknown"
+	if (sig == 4): return c"SIGILL (illegal instruction)"
+	if (sig == 7): return c"SIGBUS (bus error)"
+	if (sig == 8): return c"SIGFPE (arithmetic exception)"
+	if (sig == 11): return c"SIGSEGV (invalid memory reference)"
 	return c"unknown"
 
 
 # Register display order (same as wcore and wdbg attach mode):
 # eax ebx ecx edx esi edi ebp esp [r8..r15] eip eflags.
 int crash_reg_count():
-	if (__word_size__ == 8):
-		return 18
+	if (__word_size__ == 8): return 18
 	return 10
 
 
 char* crash_reg_name(int k):
 	char* names = c"eaxebxecxedxesiediebpesp"
-	if (__word_size__ == 8):
-		names = c"raxrbxrcxrdxrsirdirbprspr8 r9 r10r11r12r13r14r15"
+	if (__word_size__ == 8): names = c"raxrbxrcxrdxrsirdirbprspr8 r9 r10r11r12r13r14r15"
 	if (k == crash_reg_count() - 2):
-		if (__word_size__ == 8):
-			return c"rip"
+		if (__word_size__ == 8): return c"rip"
 		return c"eip"
-	if (k == crash_reg_count() - 1):
-		return c"eflags"
+	if (k == crash_reg_count() - 1): return c"eflags"
 	return &names[k * 3]
 
 
 int crash_reg_offset(int k):
-	if (k == crash_reg_count() - 2):
-		return sigcontext_eip()
-	if (k == crash_reg_count() - 1):
-		return sigcontext_eflags()
-	if (k == 0):
-		return sigcontext_eax()
-	if (k == 1):
-		return sigcontext_ebx()
-	if (k == 2):
-		return sigcontext_ecx()
-	if (k == 3):
-		return sigcontext_edx()
-	if (k == 4):
-		return sigcontext_esi()
-	if (k == 5):
-		return sigcontext_edi()
-	if (k == 6):
-		return sigcontext_ebp()
-	if (k == 7):
-		return sigcontext_esp()
+	if (k == crash_reg_count() - 2): return sigcontext_eip()
+	if (k == crash_reg_count() - 1): return sigcontext_eflags()
+	if (k == 0): return sigcontext_eax()
+	if (k == 1): return sigcontext_ebx()
+	if (k == 2): return sigcontext_ecx()
+	if (k == 3): return sigcontext_edx()
+	if (k == 4): return sigcontext_esi()
+	if (k == 5): return sigcontext_edi()
+	if (k == 6): return sigcontext_ebp()
+	if (k == 7): return sigcontext_esp()
 	return (k - 8) * 8 /* r8..r15 at the start of the 64-bit sigcontext */
 
 
@@ -179,16 +158,13 @@ void crash_write_registers(int context):
 	st_write_cstr(c"registers:")
 	int k = 0
 	while (k < crash_reg_count()):
-		if ((k & 3) == 0):
-			st_write_cstr(c"\n ")
+		if ((k & 3) == 0): st_write_cstr(c"\n ")
 		st_write_cstr(c" ")
 		# Names are 3 letters (r8/r9 padded with a space) or "eflags".
 		char* name = crash_reg_name(k)
 		int n = 3
-		if (name[2] == 'l'):
-			n = 6
-		if (name[2] == ' '):
-			n = 2
+		if (name[2] == 'l'): n = 6
+		if (name[2] == ' '): n = 2
 		write(2, name, n)
 		st_write_cstr(c"=")
 		st_write_hex(ctx_reg(context, crash_reg_offset(k)))
@@ -204,8 +180,7 @@ void crash_report(int sig, int context):
 	# handler (or after it returns) now takes the ordinary signal death,
 	# so the report can never loop.
 	rt_sigaction(sig, crash_dfl_act, 0)
-	if (crash_active):
-		return;
+	if (crash_active): return;
 	crash_active = 1
 	int pc = ctx_eip(context)
 	st_write_cstr(c"fatal signal: ")
@@ -226,10 +201,8 @@ void crash_report(int sig, int context):
 	# from the frame-pointer chain (heuristic scan where it breaks).
 	st_write_frame(pc)
 	int n = st_unwind(pc, ctx_esp(context), ctx_reg(context, sigcontext_ebp()), crash_pcs, crash_frames_max())
-	for k in range(n):
-		st_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
-	if (n >= crash_frames_max()):
-		st_write_cstr(c"  ... trace truncated\n")
+	for k in range(n): st_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
+	if (n >= crash_frames_max()): st_write_cstr(c"  ... trace truncated\n")
 	if (st_unwind_exact == 0):
 		st_write_cstr(c"note: part of the trace is heuristic (return-address scan): frames can be missing or stale\n")
 	if (crash_dump_enabled()):
@@ -254,8 +227,7 @@ void crash_report(int sig, int context):
 void crash_dfl_act_ensure():
 	if (crash_dfl_act == 0):
 		crash_dfl_act = malloc(5 * __word_size__)
-		for i in range(5):
-			crash_dfl_act[i] = 0
+		for i in range(5): crash_dfl_act[i] = 0
 
 
 # --- darwin (arm64_darwin) ---
@@ -270,29 +242,20 @@ void crash_write_darwin_registers(int mcontext):
 	st_write_cstr(c"registers:")
 	char* digits = c"0123456789"
 	for k in range(34):
-		if ((k & 3) == 0):
-			st_write_cstr(c"\n ")
+		if ((k & 3) == 0): st_write_cstr(c"\n ")
 		st_write_cstr(c" ")
 		if (k < 29):
 			st_write_cstr(c"x")
-			if (k >= 10):
-				write(2, &digits[k / 10], 1)
+			if (k >= 10): write(2, &digits[k / 10], 1)
 			write(2, &digits[k % 10], 1)
-		else if (k == 29):
-			st_write_cstr(c"fp")
-		else if (k == 30):
-			st_write_cstr(c"lr")
-		else if (k == 31):
-			st_write_cstr(c"sp")
-		else if (k == 32):
-			st_write_cstr(c"pc")
-		else:
-			st_write_cstr(c"cpsr")
+		else if (k == 29): st_write_cstr(c"fp")
+		else if (k == 30): st_write_cstr(c"lr")
+		else if (k == 31): st_write_cstr(c"sp")
+		else if (k == 32): st_write_cstr(c"pc")
+		else: st_write_cstr(c"cpsr")
 		st_write_cstr(c"=")
-		if (k == 33):
-			st_write_hex(st_int32(mcontext + 16 + 33 * 8))
-		else:
-			st_write_hex(crash_darwin_reg(mcontext, k))
+		if (k == 33): st_write_hex(st_int32(mcontext + 16 + 33 * 8))
+		else: st_write_hex(crash_darwin_reg(mcontext, k))
 	st_write_cstr(c"\n")
 
 
@@ -301,8 +264,7 @@ void crash_write_darwin_uuid():
 	char* digits = c"0123456789ABCDEF"
 	int i = 0
 	while (i < cd_id_size):
-		if ((i == 4) || (i == 6) || (i == 8) || (i == 10)):
-			st_write_cstr(c"-")
+		if ((i == 4) || (i == 6) || (i == 8) || (i == 10)): st_write_cstr(c"-")
 		int b = st_byte(cd_id_addr + i)
 		write(2, &digits[b >> 4], 1)
 		write(2, &digits[b & 15], 1)
@@ -313,8 +275,7 @@ void crash_write_darwin_uuid():
 # ucontext. Mirrors crash_report.
 void crash_report_darwin(int sig, int ucontext):
 	rt_sigaction(sig, crash_dfl_act, 0)
-	if (crash_active):
-		return;
+	if (crash_active): return;
 	crash_active = 1
 	int mcontext = st_word(ucontext + 48)
 	int pc = st_code_address(crash_darwin_reg(mcontext, 32))
@@ -341,12 +302,9 @@ void crash_report_darwin(int sig, int ucontext):
 	int n = st_unwind(pc, w_sp, crash_darwin_reg(mcontext, 29), crash_pcs, crash_frames_max())
 	int lr = st_code_address(crash_darwin_reg(mcontext, 30))
 	if (st_is_return(lr) && (st_func_entry(pc) != st_func_entry(lr - 1))):
-		if ((n == 0) || (st_word(cast(int, crash_pcs)) != lr - 1)):
-			st_write_frame(lr - 1)
-	for k in range(n):
-		st_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
-	if (n >= crash_frames_max()):
-		st_write_cstr(c"  ... trace truncated\n")
+		if ((n == 0) || (st_word(cast(int, crash_pcs)) != lr - 1)): st_write_frame(lr - 1)
+	for k in range(n): st_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
+	if (n >= crash_frames_max()): st_write_cstr(c"  ... trace truncated\n")
 	if (st_unwind_exact == 0):
 		st_write_cstr(c"note: part of the trace is heuristic (return-address scan): frames can be missing or stale\n")
 	st_write_cstr(c"terminating with the default action for signal ")
@@ -385,10 +343,8 @@ char* crash_win_exception_name(int code):
 
 
 int crash_win_is_fatal(int code):
-	if ((code == -1073741819) || (code == -1073741676) || (code == -1073741675)):
-		return 1
-	if ((code == -1073741795) || (code == -1073741674) || (code == -1073741571)):
-		return 1
+	if ((code == -1073741819) || (code == -1073741676) || (code == -1073741675)): return 1
+	if ((code == -1073741795) || (code == -1073741674) || (code == -1073741571)): return 1
 	if ((code == -2147483646) || (code == -1073741818)):  /* misaligned, 0xC0000006 in-page error */
 		return 1
 	return 0
@@ -406,47 +362,33 @@ void crash_write_hex32(int v):
 # CONTEXT offset of display register k (crash_reg_name order: rax rbx
 # rcx rdx rsi rdi rbp rsp r8..r15 rip eflags).
 int crash_win_reg_offset(int k):
-	if (k == 16):
-		return 248
-	if (k >= 8):
-		return 184 + (k - 8) * 8
+	if (k == 16): return 248
+	if (k >= 8): return 184 + (k - 8) * 8
 	# rax rbx rcx rdx rsi rdi rbp rsp -> CONTEXT slots 0 3 1 2 6 7 5 4
 	int slot = k
-	if (k == 1):
-		slot = 3
-	else if (k == 2):
-		slot = 1
-	else if (k == 3):
-		slot = 2
-	else if (k == 4):
-		slot = 6
-	else if (k == 5):
-		slot = 7
-	else if (k == 6):
-		slot = 5
-	else if (k == 7):
-		slot = 4
+	if (k == 1): slot = 3
+	else if (k == 2): slot = 1
+	else if (k == 3): slot = 2
+	else if (k == 4): slot = 6
+	else if (k == 5): slot = 7
+	else if (k == 6): slot = 5
+	else if (k == 7): slot = 4
 	return 120 + slot * 8
 
 
 void crash_write_win_registers(int context):
 	st_write_cstr(c"registers:")
 	for k in range(18):
-		if ((k & 3) == 0):
-			st_write_cstr(c"\n ")
+		if ((k & 3) == 0): st_write_cstr(c"\n ")
 		st_write_cstr(c" ")
 		char* name = crash_reg_name(k)
 		int n = 3
-		if (name[2] == 'l'):
-			n = 6
-		if (name[2] == ' '):
-			n = 2
+		if (name[2] == 'l'): n = 6
+		if (name[2] == ' '): n = 2
 		write(2, name, n)
 		st_write_cstr(c"=")
-		if (k == 17):
-			crash_write_hex32(st_int32(context + 68))
-		else:
-			st_write_hex(st_word(context + crash_win_reg_offset(k)))
+		if (k == 17): crash_write_hex32(st_int32(context + 68))
+		else: st_write_hex(st_word(context + crash_win_reg_offset(k)))
 	st_write_cstr(c"\n")
 
 
@@ -455,16 +397,14 @@ void crash_write_win_registers(int context):
 # process with the original exception code, exactly as without the
 # filter -- the report is purely additive on stderr.
 int crash_report_win(int pointers):
-	if (crash_active):
-		return 0
+	if (crash_active): return 0
 	int record = st_word(pointers)
 	int context = st_word(pointers + 8)
 	int code = load_int32(cast(char*, record)) /* sign-extended: NTSTATUS codes are negative */
 	# A vectored handler sees every first-chance exception, including
 	# benign ones (OutputDebugString, thread naming, C++ throws inside
 	# system DLLs): report only the fatal hardware faults.
-	if (crash_win_is_fatal(code) == 0):
-		return 0
+	if (crash_win_is_fatal(code) == 0): return 0
 	crash_active = 1
 	int pc = st_word(context + 248)
 	st_write_cstr(c"fatal exception: ")
@@ -474,22 +414,17 @@ int crash_report_win(int pointers):
 	st_write_cstr(c"), pc=")
 	st_write_hex(pc)
 	if ((code == -1073741819) && (st_int32(record + 24) >= 2)):
-		if (st_word(record + 32) == 1):
-			st_write_cstr(c", writing address ")
-		else if (st_word(record + 32) == 8):
-			st_write_cstr(c", executing address ")
-		else:
-			st_write_cstr(c", reading address ")
+		if (st_word(record + 32) == 1): st_write_cstr(c", writing address ")
+		else if (st_word(record + 32) == 8): st_write_cstr(c", executing address ")
+		else: st_write_cstr(c", reading address ")
 		st_write_hex(st_word(record + 40))
 	st_write_cstr(c"\n")
 	crash_write_win_registers(context)
 	st_write_cstr(c"stack trace (most recent call first):\n")
 	st_write_frame(pc)
 	int n = st_unwind(pc, st_word(context + 152), st_word(context + 160), crash_pcs, crash_frames_max())
-	for k in range(n):
-		st_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
-	if (n >= crash_frames_max()):
-		st_write_cstr(c"  ... trace truncated\n")
+	for k in range(n): st_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
+	if (n >= crash_frames_max()): st_write_cstr(c"  ... trace truncated\n")
 	if (st_unwind_exact == 0):
 		st_write_cstr(c"note: part of the trace is heuristic (return-address scan): frames can be missing or stale\n")
 	st_write_cstr(c"terminating with exception ")
@@ -508,8 +443,7 @@ void crash_install_darwin():
 	if ((st_int32(st_base + 8) & 255) == 2):  /* CPU_SUBTYPE_ARM64E */
 		return;
 	int tramp = st_symbol_address(c"signal_trampoline")
-	if (tramp == 0):
-		return;
+	if (tramp == 0): return;
 	crash_dfl_act_ensure()
 	# Deliver on an alternate stack. The entry stub starts the W stack
 	# (x28) at the initial sp and grows it down while sp stays put, so a
@@ -524,10 +458,8 @@ void crash_install_darwin():
 		ss[0] = alt
 		ss[1] = alt_size
 		ss[2] = 0
-		if (sys_sigaltstack(cast(int, &ss[0]), 0) != 0):
-			return;
-	else:
-		return;
+		if (sys_sigaltstack(cast(int, &ss[0]), 0) != 0): return;
+	else: return;
 	int* act = malloc(5 * __word_size__)
 	act[0] = cast(int, crash_report_darwin)
 	act[1] = 0x08000000 /* SA_ONSTACK */
@@ -552,38 +484,31 @@ void crash_entry(int sig):
 # no-op off Linux x86/x64, when the binary carries no readable symbol
 # sections, or with W_CRASH_TRACE=0 in the environment.
 void crash_handler_install():
-	if (crash_installed):
-		return;
+	if (crash_installed): return;
 	char* mode = env_get(c"W_CRASH_TRACE")
 	if (mode != 0):
-		if (strcmp(mode, c"0") == 0):
-			return;
-	if (crash_pcs == 0):
-		crash_pcs = malloc(crash_frames_max() * __word_size__)
+		if (strcmp(mode, c"0") == 0): return;
+	if (crash_pcs == 0): crash_pcs = malloc(crash_frames_max() * __word_size__)
 	# Parse the image and warm every allocation the handler path needs
 	# (the mincore vector and the number-print scratch): the handler
 	# itself must not allocate, the heap may be corrupt by then.
 	stack_trace_collect(crash_pcs, 1)
 	st_scratch_ensure()
-	if (st_state != 1):
-		return;
+	if (st_state != 1): return;
 	if (os_windows()):
-		if (win_crash_filter_install(cast(int, crash_report_win))):
-			crash_installed = 1
+		if (win_crash_filter_install(cast(int, crash_report_win))): crash_installed = 1
 		return;
 	if (st_macho):
 		if (st_machine == 183):
 			crash_build_id()
 			crash_install_darwin()
 		return;
-	if ((st_machine != 3) && (st_machine != 62)):
-		return;
+	if ((st_machine != 3) && (st_machine != 62)): return;
 	crash_build_id()
 	crash_dump_prepare(env_get(c"W_CRASH_DUMP"))
 	crash_dfl_act_ensure()
 	int handler = cast(int, crash_entry)
-	if (__word_size__ == 8):
-		handler = cast(int, crash_report)
+	if (__word_size__ == 8): handler = cast(int, crash_report)
 	signal_install_handler(4, handler, 0) /* SIGILL */
 	signal_install_handler(7, handler, 0) /* SIGBUS */
 	signal_install_handler(8, handler, 0) /* SIGFPE */

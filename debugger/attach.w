@@ -156,8 +156,7 @@ int at_mem_readable(int addr, int n):
 	int a = addr
 	while (a < end):
 		at_read_word(a)
-		if (attach_read_ok == 0):
-			return 0
+		if (attach_read_ok == 0): return 0
 		a = a + __word_size__
 	return 1
 
@@ -180,8 +179,7 @@ int at_mem_read(int addr, int width):
 # way dbg_set_command does in-process.
 int at_mem_write(int addr, int value):
 	int r = at_write_word(addr, value)
-	if ((r < 0) && (r >= -4095)):
-		return 0
+	if ((r < 0) && (r >= -4095)): return 0
 	return 1
 
 
@@ -264,13 +262,10 @@ int at_bp_find(int addr):
 # Write the int3 for slot i (remembering the original low byte).
 void at_bp_arm(int i):
 	int addr = at_bp_addr(i)
-	if (addr == 0):
-		return;
-	if (load_int(cast(char*, attach_bp_armed + i * 4))):
-		return;
+	if (addr == 0): return;
+	if (load_int(cast(char*, attach_bp_armed + i * 4))): return;
 	int word = at_read_word(addr)
-	if (attach_read_ok == 0):
-		return;
+	if (attach_read_ok == 0): return;
 	save_int(cast(char*, attach_bp_orig + i * 4), word & 255)
 	at_write_word(addr, word - (word & 255) + 204) /* int3 = 0xcc */
 	save_int(cast(char*, attach_bp_armed + i * 4), 1)
@@ -279,13 +274,10 @@ void at_bp_arm(int i):
 # Restore the original byte for slot i.
 void at_bp_disarm(int i):
 	int addr = at_bp_addr(i)
-	if (addr == 0):
-		return;
-	if (load_int(cast(char*, attach_bp_armed + i * 4)) == 0):
-		return;
+	if (addr == 0): return;
+	if (load_int(cast(char*, attach_bp_armed + i * 4)) == 0): return;
 	int word = at_read_word(addr)
-	if (attach_read_ok == 0):
-		return;
+	if (attach_read_ok == 0): return;
 	int orig = load_int(cast(char*, attach_bp_orig + i * 4))
 	at_write_word(addr, word - (word & 255) + orig)
 	save_int(cast(char*, attach_bp_armed + i * 4), 0)
@@ -328,8 +320,7 @@ int at_disas_read(int addr):
 		if (load_int(cast(char*, attach_bp_armed + bp * 4))):
 			return load_int(cast(char*, attach_bp_orig + bp * 4))
 	int v = at_read_byte(addr)
-	if (attach_read_ok == 0):
-		return -1
+	if (attach_read_ok == 0): return -1
 	return v
 
 
@@ -353,8 +344,7 @@ int attach_hw_texts /* what the user typed (word slots, owned copies) */
 # Byte offset of u_debugreg[i] in struct user: i386 252 + 4*i, x86-64
 # 848 + 8*i (the docs/projects/debugger_attach.md scoping).
 int at_hw_dr_off(int i):
-	if (__word_size__ == 8):
-		return 848 + 8 * i
+	if (__word_size__ == 8): return 848 + 8 * i
 	return 252 + 4 * i
 
 
@@ -386,13 +376,11 @@ char* at_hw_text(int i):
 
 
 int at_hw_live():
-	if (attach_hw_addrs == 0):
-		return 0
+	if (attach_hw_addrs == 0): return 0
 	int n = 0
 	int i = 0
 	while (i < at_hw_max):
-		if (at_hw_addr(i) != 0):
-			n = n + 1
+		if (at_hw_addr(i) != 0): n = n + 1
 		i = i + 1
 	return n
 
@@ -402,8 +390,7 @@ int at_hw_live():
 # (11 = 4 bytes on x86, 10 = 8 bytes in long mode).
 int at_hw_dr7():
 	int len = 3
-	if (__word_size__ == 8):
-		len = 2
+	if (__word_size__ == 8): len = 2
 	int dr7 = 0
 	int i = 0
 	while (i < at_hw_max):
@@ -436,11 +423,9 @@ int at_hw_sync():
 	int i = 0
 	while (i < at_hw_max):
 		if (at_hw_addr(i) != 0):
-			if (at_hw_poke(i, at_hw_aligned(at_hw_addr(i))) < 0):
-				return 0
+			if (at_hw_poke(i, at_hw_aligned(at_hw_addr(i))) < 0): return 0
 		i = i + 1
-	if (at_hw_poke(7, at_hw_dr7()) < 0):
-		return 0
+	if (at_hw_poke(7, at_hw_dr7()) < 0): return 0
 	return 1
 
 
@@ -459,13 +444,10 @@ void at_hw_describe(int i):
 # bits, or -1 for an int3/single-step trap. Clears DR6 so a consumed hit
 # can never be re-reported at the next stop.
 int at_hw_check():
-	if (at_hw_live() == 0):
-		return -1
+	if (at_hw_live() == 0): return -1
 	int dr6 = at_hw_peek(6)
-	if (attach_read_ok == 0):
-		return -1
-	if ((dr6 & 15) == 0):
-		return -1
+	if (attach_read_ok == 0): return -1
+	if ((dr6 & 15) == 0): return -1
 	at_hw_poke(6, 0)
 	int i = 0
 	while (i < at_hw_max):
@@ -505,8 +487,7 @@ void at_hw_delete(int i):
 
 
 void at_hw_delete_all():
-	if (attach_hw_addrs == 0):
-		return;
+	if (attach_hw_addrs == 0): return;
 	int any = 0
 	int i = 0
 	while (i < at_hw_max):
@@ -515,8 +496,7 @@ void at_hw_delete_all():
 			save_word(cast(char*, attach_hw_addrs + i * __word_size__), 0)
 			any = 1
 		i = i + 1
-	if (any):
-		at_hw_sync()
+	if (any): at_hw_sync()
 
 
 void at_hw_list():
@@ -531,8 +511,7 @@ void at_hw_list():
 			put_char(10)
 			shown = shown + 1
 		i = i + 1
-	if (shown == 0):
-		println(c"no watchpoints set")
+	if (shown == 0): println(c"no watchpoints set")
 
 
 # --- address mapping and symbolization ---
@@ -544,8 +523,7 @@ int at_to_v(int target):
 
 # 1 when a target address lands inside the debuggee's recompiled code.
 int at_in_code(int target):
-	if (attach_symbolized == 0):
-		return 0
+	if (attach_symbolized == 0): return 0
 	return dbg_in_debuggee(at_to_v(target))
 
 
@@ -569,11 +547,9 @@ void at_print_location(int target):
 # Source file index at a target address, or -1: what a bare line number in
 # a break target resolves against.
 int at_current_file(int target):
-	if (at_in_code(target) == 0):
-		return -1
+	if (at_in_code(target) == 0): return -1
 	int entry = dbg_find_line(at_to_v(target) - code_offset)
-	if (entry < 0):
-		return -1
+	if (entry < 0): return -1
 	return dbg_line_file(entry)
 
 
@@ -605,11 +581,9 @@ int at_current_file(int target):
 # pointer deref, so it works against ptrace-attached memory.
 int at_looks_like_return(int v):
 	if (at_in_code(v - 2)):
-		if ((dbg_disas_read_byte(v - 2) == 255) && (dbg_disas_read_byte(v - 1) == 208)):
-			return 1
+		if ((dbg_disas_read_byte(v - 2) == 255) && (dbg_disas_read_byte(v - 1) == 208)): return 1
 	if (at_in_code(v - 5)):
-		if (dbg_disas_read_byte(v - 5) == 232):
-			return 1
+		if (dbg_disas_read_byte(v - 5) == 232): return 1
 	return 0
 
 
@@ -626,32 +600,27 @@ void at_frames_compute(int stop_addr):
 	int i = 0
 	while ((i < 2048) && (dbg_fr_count < dbg_fr_max) && (done == 0)):
 		int slot = esp + i * __word_size__
-		if (dbg_mem_readable(slot, __word_size__) == 0):
-			return;
+		if (dbg_mem_readable(slot, __word_size__) == 0): return;
 		int v = dbg_mem_read_word(slot)
 		if (at_in_code(v)):
 			if (at_looks_like_return(v)):
 				dbg_fr_set_last_base(slot)
-				if (dbg_function_at(at_to_v(v) - 1) == main_at):
-					done = 1
-				else:
-					dbg_fr_store(v - 1, 0)
+				if (dbg_function_at(at_to_v(v) - 1) == main_at): done = 1
+				else: dbg_fr_store(v - 1, 0)
 		i = i + 1
 
 
 # The selected frame's pc: the current stop for frame 0 (via the register
 # seam), the return-site address for an older frame.
 int at_sel_pc():
-	if ((dbg_fr_sel <= 0) || (dbg_fr_sel >= dbg_fr_count)):
-		return dbg_reg_pc()
+	if ((dbg_fr_sel <= 0) || (dbg_fr_sel >= dbg_fr_count)): return dbg_reg_pc()
 	return dbg_fr_pc_at(dbg_fr_sel)
 
 
 # sp at the selected frame's statement boundary, or 0 when the frame's base
 # or line info is unknown (locals cannot be addressed then).
 int at_sel_esp():
-	if ((dbg_fr_sel <= 0) || (dbg_fr_sel >= dbg_fr_count)):
-		return dbg_reg_sp()
+	if ((dbg_fr_sel <= 0) || (dbg_fr_sel >= dbg_fr_count)): return dbg_reg_sp()
 	int pc = dbg_fr_pc_at(dbg_fr_sel)
 	return dbg_fr_statement_esp(dbg_fr_base_at(dbg_fr_sel), at_in_code(pc), at_to_v(pc))
 
@@ -665,8 +634,7 @@ void at_frame_select(int n):
 	dbg_fr_sel = n
 	at_frame_announce(n)
 	if (n > 0):
-		if (at_sel_esp() == 0):
-			println(c"(frame base unknown: locals are not addressable here)")
+		if (at_sel_esp() == 0): println(c"(frame base unknown: locals are not addressable here)")
 
 
 # frame [n]: select a frame (no argument: show the selected frame).
@@ -679,8 +647,7 @@ void at_frame_command(char* arg):
 		# atoi returns 0 for junk, which used to silently select frame 0;
 		# require an all-digit argument instead.
 		int i = 0
-		while ((arg[i] >= '0') && (arg[i] <= '9')):
-			i = i + 1
+		while ((arg[i] >= '0') && (arg[i] <= '9')): i = i + 1
 		if (arg[i] != 0):
 			print(c"frame: not a number: ")
 			println(arg)
@@ -715,8 +682,7 @@ int at_read_exe_image(int pid, char* buf, int n):
 	free(p1)
 	int f = open(path, 0, 0)
 	free(path)
-	if (f < 0):
-		return 0
+	if (f < 0): return 0
 	int got = 0
 	while (got < n):
 		int r = read(f, buf + got, n - got)
@@ -842,20 +808,16 @@ void at_where():
 
 void at_info(char* arg):
 	if ((strcmp(arg, c"f") == 0) | (strcmp(arg, c"functions") == 0)):
-		if (attach_symbolized):
-			dbg_print_functions()
-		else:
-			println(c"no source: function list unavailable")
+		if (attach_symbolized): dbg_print_functions()
+		else: println(c"no source: function list unavailable")
 	else if (strcmp(arg, c"files") == 0):
 		if (attach_symbolized):
 			int i = 0
 			while (i < debug_file_count):
 				println(dbg_file_name(i))
 				i = i + 1
-		else:
-			println(c"no source: file list unavailable")
-	else if ((strcmp(arg, c"r") == 0) | (strcmp(arg, c"registers") == 0)):
-		at_print_registers()
+		else: println(c"no source: file list unavailable")
+	else if ((strcmp(arg, c"r") == 0) | (strcmp(arg, c"registers") == 0)): at_print_registers()
 	else if ((strcmp(arg, c"b") == 0) | (strcmp(arg, c"breakpoints") == 0)):
 		int shown = 0
 		int i = 0
@@ -867,22 +829,15 @@ void at_info(char* arg):
 				at_print_location(at_bp_addr(i))
 				shown = shown + 1
 			i = i + 1
-		if (shown == 0):
-			println(c"no breakpoints set")
+		if (shown == 0): println(c"no breakpoints set")
 	else if ((strcmp(arg, c"l") == 0) | (strcmp(arg, c"locals") == 0)):
-		if (attach_symbolized):
-			dbg_print_frame_vars(at_to_v(at_sel_pc()), at_sel_esp(), 'L')
-		else:
-			println(c"no source: locals unavailable")
+		if (attach_symbolized): dbg_print_frame_vars(at_to_v(at_sel_pc()), at_sel_esp(), 'L')
+		else: println(c"no source: locals unavailable")
 	else if ((strcmp(arg, c"a") == 0) | (strcmp(arg, c"args") == 0)):
-		if (attach_symbolized):
-			dbg_print_frame_vars(at_to_v(at_sel_pc()), at_sel_esp(), 'A')
-		else:
-			println(c"no source: args unavailable")
-	else if ((strcmp(arg, c"w") == 0) | (strcmp(arg, c"watchpoints") == 0)):
-		at_hw_list()
-	else:
-		println(c"info topics: registers breakpoints watchpoints functions files locals args")
+		if (attach_symbolized): dbg_print_frame_vars(at_to_v(at_sel_pc()), at_sel_esp(), 'A')
+		else: println(c"no source: args unavailable")
+	else if ((strcmp(arg, c"w") == 0) | (strcmp(arg, c"watchpoints") == 0)): at_hw_list()
+	else: println(c"info topics: registers breakpoints watchpoints functions files locals args")
 
 
 void at_help():
@@ -910,8 +865,7 @@ void at_print_command(char* arg):
 		println(c"usage: print <expression>")
 		return;
 	at_val v = at_eval_text(arg, at_to_v(at_sel_pc()), at_sel_esp())
-	if (v.ok == 0):
-		return;
+	if (v.ok == 0): return;
 	print(arg)
 	print(c" = ")
 	aev_print_result(v)
@@ -932,8 +886,7 @@ void at_set_command(char* arg):
 		return;
 	int newv = dbg_number(value_text)
 	at_val v = at_eval_text(arg, at_to_v(at_sel_pc()), at_sel_esp())
-	if (v.ok == 0):
-		return;
+	if (v.ok == 0): return;
 	if (v.is_lval == 0):
 		println(c"set needs a variable or memory location, not a computed value")
 		return;
@@ -963,15 +916,13 @@ void at_watch_command(char* arg):
 		println(c"usage: watch <expression | 0xADDR>")
 		return;
 	int addr = 0
-	if ((arg[0] >= '0') && (arg[0] <= '9')):
-		addr = dbg_number(arg)
+	if ((arg[0] >= '0') && (arg[0] <= '9')): addr = dbg_number(arg)
 	else:
 		if (attach_symbolized == 0):
 			println(c"no source: watch by address (0xADDR)")
 			return;
 		at_val v = at_eval_text(arg, at_to_v(at_sel_pc()), at_sel_esp())
-		if (v.ok == 0):
-			return;
+		if (v.ok == 0): return;
 		if (v.is_lval == 0):
 			println(c"watch needs a variable or memory location, not a computed value")
 			return;
@@ -982,8 +933,7 @@ void at_watch_command(char* arg):
 	int slot = -1
 	int i = 0
 	while (i < at_hw_max):
-		if ((slot < 0) && (at_hw_addr(i) == 0)):
-			slot = i
+		if ((slot < 0) && (at_hw_addr(i) == 0)): slot = i
 		i = i + 1
 	if (slot < 0):
 		println(c"no free debug register (4 hardware watchpoints max)")
@@ -1020,8 +970,7 @@ void at_list_command(char* arg):
 		return;
 	int current = dbg_line_line(entry)
 	int center = current
-	if (arg[0] != 0):
-		center = dbg_number(arg)
+	if (arg[0] != 0): center = dbg_number(arg)
 	dbg_print_source_range(dbg_file_name(dbg_line_file(entry)), center - 5, center + 5, current)
 
 
@@ -1031,8 +980,7 @@ void at_break_command(char* arg):
 		println(c"usage: break <function | line | file:line | 0xADDR>")
 		return;
 	int target = 0
-	if (arg[0] == '*'):
-		target = dbg_number(arg + 1)
+	if (arg[0] == '*'): target = dbg_number(arg + 1)
 	else if (((arg[0] >= '0') && (arg[0] <= '9')) && (attach_symbolized == 0)):
 		target = dbg_number(arg)
 	else:
@@ -1042,8 +990,7 @@ void at_break_command(char* arg):
 		# A bare line number resolves against the actual stop, not the
 		# selected frame -- matches wdbg.w's dbg_current_file(stop_addr).
 		int v = bp_resolve_target(arg, at_current_file(dbg_reg_pc()))
-		if (v == 0):
-			return;
+		if (v == 0): return;
 		target = v + attach_delta
 	int slot = at_bp_add(target)
 	if (slot >= 0):
@@ -1070,8 +1017,7 @@ void at_delete_command(char* arg):
 		if (wnum[0] == 0):
 			at_hw_delete_all()
 			println(c"all watchpoints deleted")
-		else:
-			at_hw_delete(atoi(wnum) - 1)
+		else: at_hw_delete(atoi(wnum) - 1)
 		return;
 	int n = atoi(arg) - 1
 	if (((n < 0) || (n >= attach_bp_count)) | (at_bp_addr(n) == 0)):
@@ -1096,8 +1042,7 @@ void at_resume(int request):
 # exactly during the disarm/step/re-arm dance was silently dropped.
 void at_hold_signal(int status):
 	int sig = at_status_stopsig(status)
-	if ((sig != 5) && (sig != 19)):
-		attach_pending_sig = sig
+	if ((sig != 5) && (sig != 19)): attach_pending_sig = sig
 
 
 # Decode and announce the stop the tracee just took; update attach_alive.
@@ -1127,35 +1072,29 @@ void at_report_stop(int status):
 		int hw = at_hw_check()
 		if (hw >= 0):
 			at_hw_report(hw)
-			if (attach_symbolized):
-				at_frames_compute(ip)
+			if (attach_symbolized): at_frames_compute(ip)
 			at_print_location(ip)
-			if (dbg_disas_auto):
-				dbg_disas_show_context(ip)
+			if (dbg_disas_auto): dbg_disas_show_context(ip)
 			return;
 		int bp = at_bp_find(ip - 1)
 		if (bp >= 0):
 			at_set_ip(ip - 1) /* rewind over the executed int3 */
 			# Keep the frame list (and so locals/frame selection) fresh at
 			# every stop, like wdbg.w's wdbg_command_loop does in-process.
-			if (attach_symbolized):
-				at_frames_compute(ip - 1)
+			if (attach_symbolized): at_frames_compute(ip - 1)
 			print(c"hit breakpoint ")
 			dbg_print_dec(bp + 1)
 			print(c" ")
 			at_print_location(ip - 1)
-			if (dbg_disas_auto):
-				dbg_disas_show_context(ip - 1)
+			if (dbg_disas_auto): dbg_disas_show_context(ip - 1)
 			return;
-		if (attach_symbolized):
-			at_frames_compute(ip)
+		if (attach_symbolized): at_frames_compute(ip)
 		at_print_location(ip)
 		return;
 	# Any other signal is held pending and redelivered on the next resume.
 	if (sig != 19): /* not the initial/ordinary SIGSTOP */
 		attach_pending_sig = sig
-	if (attach_symbolized):
-		at_frames_compute(ip)
+	if (attach_symbolized): at_frames_compute(ip)
 	print(c"stopped by signal ")
 	char* d = itoa(sig)
 	println(d)
@@ -1185,8 +1124,7 @@ void at_continue():
 		int hw = at_hw_check()
 		if (hw >= 0):
 			at_hw_report(hw)
-			if (attach_symbolized):
-				at_frames_compute(dbg_reg_pc())
+			if (attach_symbolized): at_frames_compute(dbg_reg_pc())
 			at_print_location(dbg_reg_pc())
 			return;
 	at_resume(at_CONT)
@@ -1198,20 +1136,17 @@ void at_step():
 		println(c"process is not running")
 		return;
 	int bp = at_bp_find(dbg_reg_pc())
-	if (bp >= 0):
-		at_bp_disarm(bp)
+	if (bp >= 0): at_bp_disarm(bp)
 	at_resume(at_SINGLESTEP)
 	int st = at_wait()
 	if (at_status_exited(st) | at_status_signalled(st)):
 		at_report_stop(st)
 		return;
-	if (bp >= 0):
-		at_bp_arm(bp)
+	if (bp >= 0): at_bp_arm(bp)
 	at_report_stop(st)
 	# Single-stepping is instruction-level work: always show the
 	# surrounding instructions, like the in-process debugger's 'si'.
-	if (attach_alive):
-		dbg_disas_show_context(dbg_reg_pc())
+	if (attach_alive): dbg_disas_show_context(dbg_reg_pc())
 
 
 # --- source-line stepping (#123 phase 4 remainder: s/n, run to a statement
@@ -1256,20 +1191,16 @@ void at_step_prepare():
 
 
 int at_step_should_stop(int mode, int ip):
-	if (at_in_code(ip) == 0):
-		return 0
+	if (at_in_code(ip) == 0): return 0
 	int entry = dbg_find_line(at_to_v(ip) - code_offset)
-	if (entry < 0):
-		return 0
+	if (entry < 0): return 0
 	int esp = dbg_reg_sp()
 	int frame_base = attach_step_esp
-	if (attach_step_stack >= 0):
-		frame_base = attach_step_esp + attach_step_stack * __word_size__
+	if (attach_step_stack >= 0): frame_base = attach_step_esp + attach_step_stack * __word_size__
 	# step/next only stop at exact statement starts (local addressing is
 	# only accurate there); a jump target or a call's continuation is
 	# always one.
-	if (ip != code_offset + dbg_line_addr(entry)):
-		return 0
+	if (ip != code_offset + dbg_line_addr(entry)): return 0
 	if ((dbg_line_line(entry) == attach_step_line) && (dbg_line_file(entry) == attach_step_file)):
 		return 0
 	if (mode == AT_STEP_OVER):
@@ -1301,13 +1232,11 @@ void at_step_line_mode(int mode):
 	int count = 0
 	while (1):
 		int bp = at_bp_find(dbg_reg_pc())
-		if (bp >= 0):
-			at_bp_disarm(bp)
+		if (bp >= 0): at_bp_disarm(bp)
 		at_resume(at_SINGLESTEP)
 		int st = at_wait()
 		if ((at_status_exited(st) == 0) && (at_status_signalled(st) == 0)):
-			if (bp >= 0):
-				at_bp_arm(bp)
+			if (bp >= 0): at_bp_arm(bp)
 		if (at_status_exited(st) | at_status_signalled(st)):
 			at_report_stop(st)
 			return;
@@ -1320,22 +1249,19 @@ void at_step_line_mode(int mode):
 		int hitbp = at_bp_find(ip - 1)
 		if (hitbp >= 0):
 			at_set_ip(ip - 1)
-			if (attach_symbolized):
-				at_frames_compute(ip - 1)
+			if (attach_symbolized): at_frames_compute(ip - 1)
 			print(c"hit breakpoint ")
 			dbg_print_dec(hitbp + 1)
 			print(c" ")
 			at_print_location(ip - 1)
-			if (dbg_disas_auto):
-				dbg_disas_show_context(ip - 1)
+			if (dbg_disas_auto): dbg_disas_show_context(ip - 1)
 			return;
 		# A stepped instruction that wrote a watched word stops the step
 		# and reports the watchpoint, like a breakpoint hit mid-step.
 		int hwhit = at_hw_check()
 		if (hwhit >= 0):
 			at_hw_report(hwhit)
-			if (attach_symbolized):
-				at_frames_compute(ip)
+			if (attach_symbolized): at_frames_compute(ip)
 			at_print_location(ip)
 			return;
 		count = count + 1
@@ -1344,33 +1270,28 @@ void at_step_line_mode(int mode):
 		# does resume at full speed on these paths -- so say "stopped"
 		# and report where, rather than claiming to continue.
 		if (count > 500000):
-			if (attach_symbolized):
-				at_frames_compute(ip)
+			if (attach_symbolized): at_frames_compute(ip)
 			println(c"step: no source boundary found; stopped")
 			at_print_location(ip)
 			return;
 		if (at_in_code(ip) == 0):
 			if (dbg_reg_sp() > attach_step_esp):
-				if (attach_symbolized):
-					at_frames_compute(ip)
+				if (attach_symbolized): at_frames_compute(ip)
 				println(c"(step left the debuggee; stopped)")
 				at_print_location(ip)
 				return;
 			continue
 		if (at_step_should_stop(mode, ip)):
-			if (attach_symbolized):
-				at_frames_compute(ip)
+			if (attach_symbolized): at_frames_compute(ip)
 			at_print_location(ip)
-			if (dbg_disas_auto):
-				dbg_disas_show_context(ip)
+			if (dbg_disas_auto): dbg_disas_show_context(ip)
 			return;
 
 
 # The current word_size-correct return-value register (eax/rax), read from
 # the register buffer at_getregs() already refreshed this stop.
 int at_reg_ret():
-	if (__word_size__ == 8):
-		return at_reg(80)
+	if (__word_size__ == 8): return at_reg(80)
 	return at_reg(24)
 
 
@@ -1397,8 +1318,7 @@ void at_finish():
 	int temp_slot = -1
 	if (at_bp_find(target) < 0):
 		temp_slot = at_bp_add(target)
-		if (temp_slot < 0):
-			return;
+		if (temp_slot < 0): return;
 	while (1):
 		int bp = at_bp_find(dbg_reg_pc())
 		if (bp >= 0):
@@ -1418,8 +1338,7 @@ void at_finish():
 					at_bp_disarm(temp_slot)
 					save_word(cast(char*, attach_bp_addrs + temp_slot * __word_size__), 0)
 				at_hw_report(hwfin)
-				if (attach_symbolized):
-					at_frames_compute(dbg_reg_pc())
+				if (attach_symbolized): at_frames_compute(dbg_reg_pc())
 				at_print_location(dbg_reg_pc())
 				return;
 		at_resume(at_CONT)
@@ -1474,12 +1393,10 @@ void at_finish():
 
 
 void at_detach():
-	if (attach_alive == 0):
-		return;
+	if (attach_alive == 0): return;
 	int i = 0
 	while (i < attach_bp_count):
-		if (at_bp_addr(i) != 0):
-			at_bp_disarm(i)
+		if (at_bp_addr(i) != 0): at_bp_disarm(i)
 		i = i + 1
 	# Disable any hardware watchpoints (DR7 = 0 via at_hw_sync) so the
 	# target runs on without stray debug traps after we let it go.
@@ -1494,43 +1411,33 @@ void at_command_loop():
 	char* command = malloc(256)
 	while (1):
 		int n = line_edit_read(c"wdbg(attach)> ", command, 256, 0)
-		if (n == -2):
-			continue
+		if (n == -2): continue
 		if (n < 0):
 			println(c"(end of input)")
 			at_detach()
 			free(command)
 			return;
-		if (n == 0):
-			continue
+		if (n == 0): continue
 		char* arg = dbg_split_word(command)
-		if ((strcmp(command, c"c") == 0) | (strcmp(command, c"continue") == 0)):
-			at_continue()
-		else if ((strcmp(command, c"si") == 0) | (strcmp(command, c"stepi") == 0)):
-			at_step()
+		if ((strcmp(command, c"c") == 0) | (strcmp(command, c"continue") == 0)): at_continue()
+		else if ((strcmp(command, c"si") == 0) | (strcmp(command, c"stepi") == 0)): at_step()
 		else if ((strcmp(command, c"s") == 0) | (strcmp(command, c"step") == 0)):
 			at_step_line_mode(AT_STEP_LINE)
 		else if ((strcmp(command, c"n") == 0) | (strcmp(command, c"next") == 0)):
 			at_step_line_mode(AT_STEP_OVER)
-		else if ((strcmp(command, c"fin") == 0) | (strcmp(command, c"finish") == 0)):
-			at_finish()
+		else if ((strcmp(command, c"fin") == 0) | (strcmp(command, c"finish") == 0)): at_finish()
 		else if ((strcmp(command, c"r") == 0) | (strcmp(command, c"registers") == 0)):
 			at_print_registers()
-		else if ((strcmp(command, c"st") == 0) | (strcmp(command, c"stack") == 0)):
-			at_print_stack()
+		else if ((strcmp(command, c"st") == 0) | (strcmp(command, c"stack") == 0)): at_print_stack()
 		else if (strcmp(command, c"x") == 0):
-			if (arg[0] == 0):
-				println(c"usage: x <0xADDR> [count]")
+			if (arg[0] == 0): println(c"usage: x <0xADDR> [count]")
 			else:
 				char* count_text = dbg_split_word(arg)
 				int addr = dbg_number(arg)
 				int count = 8
-				if (count_text[0] != 0):
-					count = dbg_number(count_text)
-				if (count < 1):
-					count = 1
-				if (count > 1024):
-					count = 1024
+				if (count_text[0] != 0): count = dbg_number(count_text)
+				if (count < 1): count = 1
+				if (count > 1024): count = 1024
 				at_examine(addr, count)
 		else if ((strcmp(command, c"b") == 0) | (strcmp(command, c"break") == 0)):
 			at_break_command(arg)
@@ -1541,26 +1448,20 @@ void at_command_loop():
 		else if ((strcmp(command, c"f") == 0) | (strcmp(command, c"frame") == 0)):
 			at_frame_command(arg)
 		else if ((strcmp(command, c"up") == 0) | (strcmp(command, c"down") == 0)):
-			if (attach_symbolized == 0):
-				println(c"no source: frame selection unavailable")
+			if (attach_symbolized == 0): println(c"no source: frame selection unavailable")
 			else:
 				int frame = dbg_fr_step(1 - 2 * (command[0] == 'd'))
-				if (frame >= 0):
-					at_frame_select(frame)
+				if (frame >= 0): at_frame_select(frame)
 		else if ((strcmp(command, c"p") == 0) | (strcmp(command, c"print") == 0)):
 			at_print_command(arg)
-		else if (strcmp(command, c"set") == 0):
-			at_set_command(arg)
-		else if (strcmp(command, c"watch") == 0):
-			at_watch_command(arg)
+		else if (strcmp(command, c"set") == 0): at_set_command(arg)
+		else if (strcmp(command, c"watch") == 0): at_watch_command(arg)
 		else if ((strcmp(command, c"disas") == 0) | (strcmp(command, c"disassemble") == 0)):
 			dbg_disas_command(at_sel_pc(), arg)
 		else if ((strcmp(command, c"l") == 0) | (strcmp(command, c"line") == 0) | (strcmp(command, c"where") == 0)):
 			at_where()
-		else if (strcmp(command, c"list") == 0):
-			at_list_command(arg)
-		else if ((strcmp(command, c"i") == 0) | (strcmp(command, c"info") == 0)):
-			at_info(arg)
+		else if (strcmp(command, c"list") == 0): at_list_command(arg)
+		else if ((strcmp(command, c"i") == 0) | (strcmp(command, c"info") == 0)): at_info(arg)
 		else if (strcmp(command, c"detach") == 0):
 			at_detach()
 			free(command)
@@ -1577,8 +1478,7 @@ void at_command_loop():
 			return;
 		else if ((strcmp(command, c"h") == 0) | (strcmp(command, c"help") == 0) | (strcmp(command, c"?") == 0)):
 			at_help()
-		else:
-			println(c"unknown command; type 'help' for the command list")
+		else: println(c"unknown command; type 'help' for the command list")
 
 
 # Entry point: attach to pid, optionally symbolizing against the source that
@@ -1626,10 +1526,8 @@ int wdbg_attach_run(int pid, int have_symbols):
 		free(d)
 		if (r == -1):
 			println2(c" (operation not permitted: check ptrace_scope or run as the process owner)")
-		else if (r == -3):
-			println2(c" (no such process)")
-		else:
-			println2(c"")
+		else if (r == -3): println2(c" (no such process)")
+		else: println2(c"")
 		return 1
 
 	int st = at_wait()
@@ -1638,8 +1536,7 @@ int wdbg_attach_run(int pid, int have_symbols):
 		return 1
 	attach_alive = 1
 
-	if (have_symbols):
-		at_calibrate()
+	if (have_symbols): at_calibrate()
 
 	# Disassembly reads the target through ptrace; symbol annotation is
 	# available exactly when the source validated against the process.
@@ -1649,13 +1546,10 @@ int wdbg_attach_run(int pid, int have_symbols):
 
 	print(c"attached to pid ")
 	dbg_print_dec(pid)
-	if (attach_symbolized):
-		println(c" (symbols loaded)")
-	else:
-		println(c" (raw mode: no symbols)")
+	if (attach_symbolized): println(c" (symbols loaded)")
+	else: println(c" (raw mode: no symbols)")
 	int start_ip = dbg_reg_pc()
-	if (attach_symbolized):
-		at_frames_compute(start_ip)
+	if (attach_symbolized): at_frames_compute(start_ip)
 	at_print_location(start_ip)
 
 	at_command_loop()

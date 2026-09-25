@@ -96,17 +96,13 @@ void test_unix_echo_roundtrip():
 		# Client: connect, send "ping", expect "pong" back. Failures
 		# surface as distinct nonzero exit codes through wait4.
 		int client = socket_connect_unix_path(path)
-		if (client < 0):
-			exit(2)
-		if (write(client, c"ping", 4) != 4):
-			exit(3)
+		if (client < 0): exit(2)
+		if (write(client, c"ping", 4) != 4): exit(3)
 		char* reply = malloc(8)
 		int got = read(client, reply, 8)
-		if (got != 4):
-			exit(4)
+		if (got != 4): exit(4)
 		reply[got] = 0
-		if (strcmp(reply, c"pong") != 0):
-			exit(5)
+		if (strcmp(reply, c"pong") != 0): exit(5)
 		close(client)
 		exit(0)
 	asserts(c"fork failed", child > 0)

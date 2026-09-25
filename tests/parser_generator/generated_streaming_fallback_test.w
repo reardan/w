@@ -101,14 +101,11 @@ void on_exit_pair(pg_token_stream* stream, void* context):
 
 void on_token_event(pg_token* token, void* context):
 	token_total_count = token_total_count + 1
-	if (token.kind == streaming_fallback_token_IDENT):
-		token_ident_count = token_ident_count + 1
+	if (token.kind == streaming_fallback_token_IDENT): token_ident_count = token_ident_count + 1
 	else if (token.kind == streaming_fallback_token_NUMBER):
 		token_number_count = token_number_count + 1
-	else if (token.kind == streaming_fallback_token_WS):
-		token_ws_count = token_ws_count + 1
-	else if (token.kind == streaming_fallback_token_SEMI):
-		token_semi_count = token_semi_count + 1
+	else if (token.kind == streaming_fallback_token_WS): token_ws_count = token_ws_count + 1
+	else if (token.kind == streaming_fallback_token_SEMI): token_semi_count = token_semi_count + 1
 	else if (token.kind == streaming_fallback_token_COMMA):
 		token_comma_count = token_comma_count + 1
 

@@ -32,8 +32,7 @@ void assert_w_lex_round_trip(char* source, char* filename):
 void assert_w_parse_text(char* source, char* filename):
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_ast_node* root = wlang_parse(source, filename, diagnostics)
-	if ((root == 0) | (pg_diagnostics_count(diagnostics) != 0)):
-		pg_diagnostics_print(diagnostics)
+	if ((root == 0) | (pg_diagnostics_count(diagnostics) != 0)): pg_diagnostics_print(diagnostics)
 	assert1(root != 0)
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	assert_equal(wlang_ast_program, root.kind)
@@ -48,8 +47,7 @@ void assert_w_parse_file(char* path):
 
 
 void parse_manifest_path(string_builder* path):
-	if (path.length == 0):
-		return
+	if (path.length == 0): return
 	assert_w_parse_file(path.data)
 
 
@@ -63,8 +61,7 @@ void assert_w_parse_manifest(char* manifest_path):
 		if (c == 10):
 			parse_manifest_path(path)
 			string_clear(path)
-		else:
-			string_append_char(path, c)
+		else: string_append_char(path, c)
 		c = getchar(file)
 	parse_manifest_path(path)
 	close(file)
@@ -205,10 +202,8 @@ void test_w_lexer_keeps_comments_and_whitespace_hidden():
 	int whitespace_runs = 0
 	while (i < pg_token_stream_all_count(stream)):
 		pg_token* token = pg_token_stream_all_get(stream, i)
-		if (token.kind == wlang_token_BLOCK_COMMENT):
-			block_comments = block_comments + 1
-		if (token.kind == pg_token_whitespace_kind()):
-			whitespace_runs = whitespace_runs + 1
+		if (token.kind == wlang_token_BLOCK_COMMENT): block_comments = block_comments + 1
+		if (token.kind == pg_token_whitespace_kind()): whitespace_runs = whitespace_runs + 1
 		i = i + 1
 	assert_equal(1, block_comments)
 	assert_equal(4, whitespace_runs)
@@ -247,10 +242,8 @@ void test_w_parser_recovers_with_multiple_errors():
 	int top_items = 0
 	while (i < pg_ast_child_count(root)):
 		pg_ast_node* child = pg_ast_child(root, i)
-		if (child.kind == pg_ast_error_kind()):
-			error_nodes = error_nodes + 1
-		if (child.kind == wlang_ast_top_item):
-			top_items = top_items + 1
+		if (child.kind == pg_ast_error_kind()): error_nodes = error_nodes + 1
+		if (child.kind == wlang_ast_top_item): top_items = top_items + 1
 		i = i + 1
 	assert_equal(2, error_nodes)
 	assert_equal(2, top_items)
@@ -276,8 +269,7 @@ void test_parse_all_tracked_w_files():
 	# full list is read.
 	parsed_manifest_count = 0
 	char* manifest = env_get(c"PARSER_GENERATOR_W_FILES")
-	if ((manifest == 0) || (manifest[0] == 0)):
-		manifest = c"bin/parser_generator_w_files.txt"
+	if ((manifest == 0) || (manifest[0] == 0)): manifest = c"bin/parser_generator_w_files.txt"
 	assert_w_parse_manifest(manifest)
 	assert1(parsed_manifest_count > 0)
 # wbuild: target=parser_generator_w_test tag=tests dep=parser_generator_test

@@ -86,8 +86,7 @@ int template_process_chunk(int j):
 		# standard escapes: \n \t \r \0 (anything else is taken literally)
 		else if (token[j] == 92):
 			k = escape_char_value(token[j + 1])
-			if (k < 0):
-				k = token[j + 1]
+			if (k < 0): k = token[j + 1]
 			token[i] = k
 			j = j + 2
 
@@ -148,8 +147,7 @@ void template_parse_spec():
 	template_spec_type = 0
 	int i = 0
 	if ((token[0] != 0) && template_spec_is_align(token[1])):
-		if (token[0] < 32):
-			template_spec_error(c"the fill must be a printable ASCII character")
+		if (token[0] < 32): template_spec_error(c"the fill must be a printable ASCII character")
 		template_spec_fill = token[0]
 		template_spec_align = token[1]
 		i = 2
@@ -158,15 +156,12 @@ void template_parse_spec():
 		i = 1
 	if (token[i] == '0'):
 		# zero padding: '0' fill (unless one was given), sign-aware
-		if (i < 2):
-			template_spec_fill = '0'
-		if (template_spec_align == 0):
-			template_spec_align = '='
+		if (i < 2): template_spec_fill = '0'
+		if (template_spec_align == 0): template_spec_align = '='
 		i = i + 1
 	while (('0' <= token[i]) && (token[i] <= '9')):
 		template_spec_width = template_spec_width * 10 + token[i] - '0'
-		if (template_spec_width > 4096):
-			template_spec_error(c"width is limited to 4096")
+		if (template_spec_width > 4096): template_spec_error(c"width is limited to 4096")
 		i = i + 1
 	if (token[i] == '.'):
 		i = i + 1
@@ -175,8 +170,7 @@ void template_parse_spec():
 		template_spec_precision = 0
 		while (('0' <= token[i]) && (token[i] <= '9')):
 			template_spec_precision = template_spec_precision * 10 + token[i] - '0'
-			if (template_spec_precision > 60):
-				template_spec_error(c"precision is limited to 60")
+			if (template_spec_precision > 60): template_spec_error(c"precision is limited to 60")
 			i = i + 1
 	int c = token[i]
 	if ((c == 'd') || (c == 'x') || (c == 'X') || (c == 'o') || (c == 'b') || (c == 'c') || (c == 's') || (c == 'f')):
@@ -198,29 +192,19 @@ int template_spec_kind(int vc):
 	if ((template_spec_precision >= 0) && (vc != VC_F32) && (vc != VC_F64)):
 		template_spec_error(c"precision needs a float value")
 	if (value_class_is_int_like(vc)):
-		if ((c == 0) || (c == 'd')):
-			return 0
-		if (c == 'x'):
-			return 1
-		if (c == 'X'):
-			return 2
-		if (c == 'o'):
-			return 3
-		if (c == 'b'):
-			return 4
-		if (c == 'c'):
-			return 5
+		if ((c == 0) || (c == 'd')): return 0
+		if (c == 'x'): return 1
+		if (c == 'X'): return 2
+		if (c == 'o'): return 3
+		if (c == 'b'): return 4
+		if (c == 'c'): return 5
 		template_spec_error(c"an int-like value takes type d, x, X, o, b or c")
 	if ((vc == VC_CSTR) || (vc == VC_VAR) || (vc == VC_STRING)):
-		if ((c != 0) && (c != 's')):
-			template_spec_error(c"a text value takes type s")
-		if (vc == VC_STRING):
-			return 7
+		if ((c != 0) && (c != 's')): template_spec_error(c"a text value takes type s")
+		if (vc == VC_STRING): return 7
 		return 6
-	if ((c != 0) && (c != 'f')):
-		template_spec_error(c"a float value takes type f")
-	if (vc == VC_F64):
-		return 9
+	if ((c != 0) && (c != 'f')): template_spec_error(c"a float value takes type f")
+	if (vc == VC_F64): return 9
 	return 8
 
 
@@ -262,51 +246,39 @@ void template_emit_float64_helper_address():
 # helpers with (value, kind, width, precision, fill << 8 | align).
 void template_emit_value_append(int got, int builder_slot):
 	int vc = value_class(got)
-	if ((vc == VC_NONE) || (vc == VC_LIST)):
-		template_unsupported(got)
+	if ((vc == VC_NONE) || (vc == VC_LIST)): template_unsupported(got)
 	int kind = 0
-	if (template_spec_present):
-		kind = template_spec_kind(vc)
+	if (template_spec_present): kind = template_spec_kind(vc)
 	else:
 		template_spec_fill = ' '
 		template_spec_align = 0
 		template_spec_width = 0
 		template_spec_precision = -1
-		if (vc == VC_F32):
-			kind = 8
-		else if (vc == VC_F64):
-			kind = 9
-	if (vc == VC_VAR):
-		var_emit_to_cstr()
+		if (vc == VC_F32): kind = 8
+		else if (vc == VC_F64): kind = 9
+	if (vc == VC_VAR): var_emit_to_cstr()
 	int base_stack = stack_pos
 	int value_slot = push_slot()
 	if ((template_spec_present == 0) && (kind < 8)):
 		# plain helper: 2 char*, 3 int-like, 4 string
 		int helper = 3
-		if ((vc == VC_CSTR) || (vc == VC_VAR)):
-			helper = 2
-		if (vc == VC_STRING):
-			helper = 4
+		if ((vc == VC_CSTR) || (vc == VC_VAR)): helper = 2
+		if (vc == VC_STRING): helper = 4
 		template_emit_helper_address(helper)
-	else if (kind == 9):
-		template_emit_float64_helper_address()
-	else if (kind == 8):
-		template_emit_helper_address(7)
-	else:
-		template_emit_helper_address(6)
+	else if (kind == 9): template_emit_float64_helper_address()
+	else if (kind == 8): template_emit_helper_address(7)
+	else: template_emit_helper_address(6)
 	int s = stack_pos
 	push_slot()
 	push_slot_copy(builder_slot)
 	push_slot_copy(value_slot)
 	if (template_spec_present || (kind >= 8)):
-		if (kind < 8):
-			push_slot_int(kind)
+		if (kind < 8): push_slot_int(kind)
 		# numbers align right by default, text left (Python's rule)
 		int align = template_spec_align
 		if (align == 0):
 			align = '>'
-			if ((kind == 6) || (kind == 7)):
-				align = '<'
+			if ((kind == 6) || (kind == 7)): align = '<'
 		push_slot_int(template_spec_width)
 		push_slot_int(template_spec_precision)
 		push_slot_int((template_spec_fill << 8) | align)
@@ -321,8 +293,7 @@ void template_emit_value_append(int got, int builder_slot):
 # the final chunk as the current token for primary_expr's trailing
 # get_token().
 int template_string_literal():
-	if ((token[0] != 'f') || (token[1] != '"')):
-		return 0
+	if ((token[0] != 'f') || (token[1] != '"')): return 0
 	int base_stack = stack_pos
 
 	# builder = __w_template_new()
@@ -339,8 +310,7 @@ int template_string_literal():
 		if (length > 0):
 			validate_utf8_literal(length)
 			template_emit_chunk_append(length, builder_slot)
-		if (template_chunk_final):
-			done = 1
+		if (template_chunk_final): done = 1
 		else:
 			get_token()
 			int got = promote(expression())
@@ -349,10 +319,8 @@ int template_string_literal():
 			if (peek(c":")):
 				template_take_spec()
 				template_spec_present = token[0] != 0
-				if (template_spec_present):
-					template_parse_spec()
-			else if (peek(c"}") == 0):
-				error(c"'}' expected in template string expression")
+				if (template_spec_present): template_parse_spec()
+			else if (peek(c"}") == 0): error(c"'}' expected in template string expression")
 			template_emit_value_append(got, builder_slot)
 			get_token_template_chunk()
 			start = 0

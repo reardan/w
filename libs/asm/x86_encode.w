@@ -33,20 +33,17 @@ int asm_enc_is64(asm_insn* insn):
 
 
 int asm_enc_w(int size):
-	if (size == 8):
-		return 1
+	if (size == 8): return 1
 	return 0
 
 
 # Emit a little-endian immediate of the given width (1/2/4 bytes).
 void asm_enc_imm(asm_buffer* b, int value, int size):
-	if (size == 1):
-		asm_buffer_byte(b, value & 255)
+	if (size == 1): asm_buffer_byte(b, value & 255)
 	else if (size == 2):
 		asm_buffer_byte(b, value & 255)
 		asm_buffer_byte(b, (value >> 8) & 255)
-	else:
-		asm_buffer_int32(b, value)
+	else: asm_buffer_int32(b, value)
 
 
 ############################### REX prefixes #################################
@@ -57,38 +54,27 @@ void asm_enc_imm(asm_buffer* b, int value, int size):
 # (8-15) sets REX.B, extended SIB index sets REX.X, and — for a register
 # r/m — an extended register sets REX.B. rm may be 0 for forms with none.
 void asm_enc_rex(asm_buffer* b, int is64, int w, int reg_field, asm_operand* rm):
-	if (is64 == 0):
-		return
+	if (is64 == 0): return
 	int rex = 0
-	if (w):
-		rex = rex | 8
-	if (reg_field >= 8):
-		rex = rex | 4
+	if (w): rex = rex | 8
+	if (reg_field >= 8): rex = rex | 4
 	if (cast(int, rm) != 0):
 		if (rm.kind == ASM_OP_REG):
-			if (rm.reg >= 8):
-				rex = rex | 1
+			if (rm.reg >= 8): rex = rex | 1
 		else:
-			if (rm.index >= 8):
-				rex = rex | 2
-			if (rm.base >= 8 && rm.base <= 15):
-				rex = rex | 1
-	if (rex != 0):
-		asm_buffer_byte(b, 0x40 | rex)
+			if (rm.index >= 8): rex = rex | 2
+			if (rm.base >= 8 && rm.base <= 15): rex = rex | 1
+	if (rex != 0): asm_buffer_byte(b, 0x40 | rex)
 
 
 # REX for a form whose register is embedded in the opcode (push/pop,
 # mov r,imm, bswap, xchg): REX.B extends that register.
 void asm_enc_rex_reg(asm_buffer* b, int is64, int w, int reg):
-	if (is64 == 0):
-		return
+	if (is64 == 0): return
 	int rex = 0
-	if (w):
-		rex = rex | 8
-	if (reg >= 8):
-		rex = rex | 1
-	if (rex != 0):
-		asm_buffer_byte(b, 0x40 | rex)
+	if (w): rex = rex | 8
+	if (reg >= 8): rex = rex | 1
+	if (rex != 0): asm_buffer_byte(b, 0x40 | rex)
 
 
 # Choose the displacement width for a memory operand: honor a recorded
@@ -96,14 +82,10 @@ void asm_enc_rex_reg(asm_buffer* b, int is64, int w, int reg):
 # with no displacement still needs a disp8 (mod!=0), and an absolute
 # [disp] (no base/index) is always disp32.
 int asm_enc_disp_size(asm_operand* mem):
-	if (mem.disp_size == 1 || mem.disp_size == 4):
-		return mem.disp_size
-	if (mem.base < 0):
-		return 4
-	if (mem.disp == 0 && (mem.base & 7) != 5):
-		return 0
-	if (asm_enc_fits_int8(mem.disp)):
-		return 1
+	if (mem.disp_size == 1 || mem.disp_size == 4): return mem.disp_size
+	if (mem.base < 0): return 4
+	if (mem.disp == 0 && (mem.base & 7) != 5): return 0
+	if (asm_enc_fits_int8(mem.disp)): return 1
 	return 4
 
 
@@ -127,46 +109,33 @@ void asm_enc_modrm(asm_buffer* b, int reg_field, asm_operand* rm, int is64):
 		if (is64):
 			asm_buffer_byte(b, ((reg_field & 7) << 3) | 4)
 			asm_buffer_byte(b, 0x25)
-		else:
-			asm_buffer_byte(b, ((reg_field & 7) << 3) | 5)
+		else: asm_buffer_byte(b, ((reg_field & 7) << 3) | 5)
 		asm_buffer_int32(b, rm.disp)
 		return
 	int disp_size = asm_enc_disp_size(rm)
 	int mod = 0
-	if (disp_size == 1):
-		mod = 1
-	else if (disp_size == 4):
-		mod = 2
+	if (disp_size == 1): mod = 1
+	else if (disp_size == 4): mod = 2
 	int needs_sib = 0
-	if (rm.index >= 0):
-		needs_sib = 1
-	if ((rm.base & 7) == 4):
-		needs_sib = 1
+	if (rm.index >= 0): needs_sib = 1
+	if ((rm.base & 7) == 4): needs_sib = 1
 	if (needs_sib):
 		asm_buffer_byte(b, (mod << 6) | ((reg_field & 7) << 3) | 4)
 		int scale_bits = 0
-		if (rm.scale == 2):
-			scale_bits = 1
-		else if (rm.scale == 4):
-			scale_bits = 2
-		else if (rm.scale == 8):
-			scale_bits = 3
+		if (rm.scale == 2): scale_bits = 1
+		else if (rm.scale == 4): scale_bits = 2
+		else if (rm.scale == 8): scale_bits = 3
 		int index_field = 4
-		if (rm.index >= 0):
-			index_field = rm.index
+		if (rm.index >= 0): index_field = rm.index
 		asm_buffer_byte(b, (scale_bits << 6) | ((index_field & 7) << 3) | (rm.base & 7))
-	else:
-		asm_buffer_byte(b, (mod << 6) | ((reg_field & 7) << 3) | (rm.base & 7))
-	if (disp_size == 1):
-		asm_buffer_byte(b, rm.disp & 255)
-	else if (disp_size == 4):
-		asm_buffer_int32(b, rm.disp)
+	else: asm_buffer_byte(b, (mod << 6) | ((reg_field & 7) << 3) | (rm.base & 7))
+	if (disp_size == 1): asm_buffer_byte(b, rm.disp & 255)
+	else if (disp_size == 4): asm_buffer_int32(b, rm.disp)
 
 
 # 0x66 operand-size prefix when the operand size is 16-bit.
 void asm_enc_opsize_prefix(asm_buffer* b, int size):
-	if (size == 2):
-		asm_buffer_byte(b, 0x66)
+	if (size == 2): asm_buffer_byte(b, 0x66)
 
 
 ############################### mnemonic tables ##############################
@@ -174,8 +143,7 @@ void asm_enc_opsize_prefix(asm_buffer* b, int size):
 # ALU family base opcode for the r/m,r form (op /r), or -1.
 int asm_enc_alu_base(char* m):
 	int ext = asm_x86_group_ext(1, m)
-	if (ext < 0):
-		return -1
+	if (ext < 0): return -1
 	return ext << 3
 
 
@@ -187,8 +155,7 @@ int asm_enc_cc(char* suffix):
 # Shift-group /ext of m, or -1. sal (/6) decodes but is never emitted:
 # shl (/4) is its canonical encoding.
 int asm_enc_grp2_ext(char* m):
-	if (strcmp(m, c"sal") == 0):
-		return -1
+	if (strcmp(m, c"sal") == 0): return -1
 	return asm_x86_group_ext(2, m)
 
 
@@ -203,8 +170,7 @@ int asm_enc_sse(asm_buffer* b, asm_insn* insn):
 		rep = 0xf2
 		index = asm_name_slot_find(asm_x86_sse_table(rep), 9, 7, insn.mnemonic)
 	int op = 0x58 + index
-	if (index < 0):
-		return 0
+	if (index < 0): return 0
 	int is64 = asm_enc_is64(insn)
 	asm_buffer_byte(b, rep)
 	asm_enc_rex(b, is64, 0, insn.op1.reg, &insn.op2)
@@ -233,17 +199,14 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 	int is64 = asm_enc_is64(insn)
 
 	# SSE scalar float
-	if (asm_enc_sse(b, insn)):
-		return b.length - start
+	if (asm_enc_sse(b, insn)): return b.length - start
 
 	# Two-byte-opcode instructions delegated together.
-	if (asm_x86_encode_0f(b, insn)):
-		return b.length - start
+	if (asm_x86_encode_0f(b, insn)): return b.length - start
 
 	# ALU add/or/.../cmp in all forms.
 	if (asm_enc_alu_base(m) >= 0):
-		if (asm_x86_encode_alu(b, insn)):
-			return b.length - start
+		if (asm_x86_encode_alu(b, insn)): return b.length - start
 		return 0 - 1
 
 	int count = asm_insn_operand_count(insn)
@@ -308,8 +271,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 		# explicit size 1 or parsed text (size 0) with a small value picks
 		# the imm8 form, like the ALU imm8/imm32 rule
 		int pushw_imm8 = insn.op1.size == 1
-		if (insn.op1.size == 0 & asm_enc_fits_int8(insn.op1.imm)):
-			pushw_imm8 = 1
+		if (insn.op1.size == 0 & asm_enc_fits_int8(insn.op1.imm)): pushw_imm8 = 1
 		if (pushw_imm8):
 			asm_buffer_byte(b, 0x6a)
 			asm_buffer_byte(b, insn.op1.imm & 255)
@@ -327,8 +289,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 	# reuses those bytes for REX, so it must use the grp5 (0xff /0 /1) form.
 	if ((strcmp(m, c"inc") == 0 | strcmp(m, c"dec") == 0) & insn.op1.kind == ASM_OP_REG):
 		int ext = 0
-		if (strcmp(m, c"dec") == 0):
-			ext = 1
+		if (strcmp(m, c"dec") == 0): ext = 1
 		if (is64):
 			asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), ext, &insn.op1)
 			asm_buffer_byte(b, 0xff)
@@ -336,8 +297,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 			return b.length - start
 		asm_enc_opsize_prefix(b, insn.op1.size)
 		int reg_base = 0x40
-		if (ext == 1):
-			reg_base = 0x48
+		if (ext == 1): reg_base = 0x48
 		asm_buffer_byte(b, reg_base + (insn.op1.reg & 7))
 		return b.length - start
 
@@ -352,8 +312,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 	int g5 = asm_x86_group_ext(5, m)
 	if (((g5 >= 0) && (count == 1)) && insn.op1.kind == ASM_OP_MEM):
 		int w5 = 0
-		if ((g5 == 0 || g5 == 1) && insn.op1.size == 8):
-			w5 = 1
+		if ((g5 == 0 || g5 == 1) && insn.op1.size == 8): w5 = 1
 		asm_enc_rex(b, is64, w5, g5, &insn.op1)
 		asm_buffer_byte(b, 0xff)
 		asm_enc_modrm(b, g5, &insn.op1, is64)
@@ -391,8 +350,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 			return b.length - start
 
 	# mov
-	if (strcmp(m, c"mov") == 0):
-		return asm_x86_encode_mov(b, insn, start)
+	if (strcmp(m, c"mov") == 0): return asm_x86_encode_mov(b, insn, start)
 
 	# lea
 	if (strcmp(m, c"lea") == 0):
@@ -404,8 +362,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 	# xchg eax, r32
 	if (strcmp(m, c"xchg") == 0):
 		int r = insn.op1.reg
-		if (insn.op1.reg == 0):
-			r = insn.op2.reg
+		if (insn.op1.reg == 0): r = insn.op2.reg
 		asm_enc_rex_reg(b, is64, asm_enc_w(insn.op1.size), r)
 		asm_buffer_byte(b, 0x90 + (r & 7))
 		return b.length - start
@@ -413,8 +370,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 	# test r/m, r
 	if (strcmp(m, c"test") == 0 & count == 2 & insn.op2.kind == ASM_OP_REG):
 		int opcode = 0x85
-		if (insn.op2.size == 1):
-			opcode = 0x84
+		if (insn.op2.size == 1): opcode = 0x84
 		asm_enc_opsize_prefix(b, insn.op2.size)
 		asm_enc_rex(b, is64, asm_enc_w(insn.op2.size), insn.op2.reg, &insn.op1)
 		asm_buffer_byte(b, opcode)
@@ -425,10 +381,8 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 	int g2 = asm_enc_grp2_ext(m)
 	if (g2 >= 0):
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), g2, &insn.op1)
-		if (insn.op2.kind == ASM_OP_REG):
-			asm_buffer_byte(b, 0xd3)
-		else if (insn.op2.imm == 1):
-			asm_buffer_byte(b, 0xd1)
+		if (insn.op2.kind == ASM_OP_REG): asm_buffer_byte(b, 0xd3)
+		else if (insn.op2.imm == 1): asm_buffer_byte(b, 0xd1)
 		else:
 			# r/m, imm8 (0xc1); a count of 1 takes the shorter 0xd1 form
 			asm_buffer_byte(b, 0xc1)
@@ -479,10 +433,8 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), insn.op1.reg, &insn.op2)
 		asm_buffer_byte(b, 0x0f)
 		int opcode = 0xb6
-		if (strcmp(m, c"movsx") == 0):
-			opcode = 0xbe
-		if (insn.op2.size == 2):
-			opcode = opcode + 1
+		if (strcmp(m, c"movsx") == 0): opcode = 0xbe
+		if (insn.op2.size == 2): opcode = opcode + 1
 		asm_buffer_byte(b, opcode)
 		asm_enc_modrm(b, insn.op1.reg, &insn.op2, is64)
 		return b.length - start
@@ -536,31 +488,25 @@ int asm_x86_encode_mov(asm_buffer* b, asm_insn* insn, int start):
 			asm_enc_opsize_prefix(b, insn.op1.size)
 			asm_enc_rex_reg(b, is64, 0, insn.op1.reg)
 			asm_buffer_byte(b, 0xb8 + (insn.op1.reg & 7))
-			if (insn.op1.size == 2):
-				asm_enc_imm(b, insn.op2.imm, 2)
-			else:
-				asm_buffer_int32(b, insn.op2.imm)
+			if (insn.op1.size == 2): asm_enc_imm(b, insn.op2.imm, 2)
+			else: asm_buffer_int32(b, insn.op2.imm)
 		return b.length - start
 	# mov r/m, r  (store) and mov r, r/m (load)
 	int size = 4
-	if (insn.op1.kind == ASM_OP_REG):
-		size = insn.op1.size
-	else if (insn.op2.kind == ASM_OP_REG):
-		size = insn.op2.size
+	if (insn.op1.kind == ASM_OP_REG): size = insn.op1.size
+	else if (insn.op2.kind == ASM_OP_REG): size = insn.op2.size
 	asm_enc_opsize_prefix(b, size)
 	if (insn.op2.kind == ASM_OP_REG && insn.op1.kind != ASM_OP_IMM):
 		# store: op1 is r/m, op2 is reg
 		int opcode = 0x89
-		if (size == 1):
-			opcode = 0x88
+		if (size == 1): opcode = 0x88
 		asm_enc_rex(b, is64, asm_enc_w(size), insn.op2.reg, &insn.op1)
 		asm_buffer_byte(b, opcode)
 		asm_enc_modrm(b, insn.op2.reg, &insn.op1, is64)
 		return b.length - start
 	# load: op1 is reg, op2 is r/m
 	int opcode = 0x8b
-	if (size == 1):
-		opcode = 0x8a
+	if (size == 1): opcode = 0x8a
 	asm_enc_rex(b, is64, asm_enc_w(size), insn.op1.reg, &insn.op2)
 	asm_buffer_byte(b, opcode)
 	asm_enc_modrm(b, insn.op1.reg, &insn.op2, is64)
@@ -576,17 +522,14 @@ int asm_x86_encode_alu(asm_buffer* b, asm_insn* insn):
 	# imm form
 	if (insn.op2.kind == ASM_OP_IMM):
 		int size = insn.op1.size
-		if (insn.op1.kind == ASM_OP_MEM):
-			size = insn.op1.size
+		if (insn.op1.kind == ASM_OP_MEM): size = insn.op1.size
 		# eax, imm32 short form
 		if (insn.op1.kind == ASM_OP_REG && insn.op1.reg == 0 && insn.op2.size != 1):
 			asm_enc_opsize_prefix(b, insn.op1.size)
 			asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), 0, cast(asm_operand*, 0))
 			asm_buffer_byte(b, base + 5)
-			if (insn.op1.size == 2):
-				asm_enc_imm(b, insn.op2.imm, 2)
-			else:
-				asm_buffer_int32(b, insn.op2.imm)
+			if (insn.op1.size == 2): asm_enc_imm(b, insn.op2.imm, 2)
+			else: asm_buffer_int32(b, insn.op2.imm)
 			return 1
 		asm_enc_opsize_prefix(b, size)
 		asm_enc_rex(b, is64, asm_enc_w(size), ext, &insn.op1)
@@ -594,8 +537,7 @@ int asm_x86_encode_alu(asm_buffer* b, asm_insn* insn):
 		# text) forces imm8; parsed text leaves size 0, which picks the
 		# minimal form — mirroring the disp_size == 0 displacement rule
 		int imm8 = insn.op2.size == 1
-		if (insn.op2.size == 0 & asm_enc_fits_int8(insn.op2.imm)):
-			imm8 = 1
+		if (insn.op2.size == 0 & asm_enc_fits_int8(insn.op2.imm)): imm8 = 1
 		if (imm8):
 			asm_buffer_byte(b, 0x83)
 			asm_enc_modrm(b, ext, &insn.op1, is64)
@@ -603,10 +545,8 @@ int asm_x86_encode_alu(asm_buffer* b, asm_insn* insn):
 		else:
 			asm_buffer_byte(b, 0x81)
 			asm_enc_modrm(b, ext, &insn.op1, is64)
-			if (size == 2):
-				asm_enc_imm(b, insn.op2.imm, 2)
-			else:
-				asm_buffer_int32(b, insn.op2.imm)
+			if (size == 2): asm_enc_imm(b, insn.op2.imm, 2)
+			else: asm_buffer_int32(b, insn.op2.imm)
 		return 1
 	# register forms
 	if (insn.op2.kind == ASM_OP_REG):
@@ -614,8 +554,7 @@ int asm_x86_encode_alu(asm_buffer* b, asm_insn* insn):
 		asm_enc_opsize_prefix(b, size)
 		asm_enc_rex(b, is64, asm_enc_w(size), insn.op2.reg, &insn.op1)
 		int opcode = base + 1
-		if (size == 1):
-			opcode = base
+		if (size == 1): opcode = base
 		asm_buffer_byte(b, opcode)
 		asm_enc_modrm(b, insn.op2.reg, &insn.op1, is64)
 		return 1
@@ -637,8 +576,7 @@ int asm_x86_encode_0f(asm_buffer* b, asm_insn* insn):
 	int is64 = asm_enc_is64(insn)
 	if (strcmp(m, c"movd") == 0 | strcmp(m, c"movq") == 0):
 		int w = 0
-		if (strcmp(m, c"movq") == 0):
-			w = 1
+		if (strcmp(m, c"movq") == 0): w = 1
 		asm_buffer_byte(b, 0x66)
 		if (insn.op1.rclass == ASM_RCLASS_XMM):
 			asm_enc_rex(b, is64, w, insn.op1.reg, &insn.op2)
@@ -653,8 +591,7 @@ int asm_x86_encode_0f(asm_buffer* b, asm_insn* insn):
 		return 1
 	if (strcmp(m, c"movss") == 0 | strcmp(m, c"movsd") == 0):
 		int rep = 0xf2
-		if (strcmp(m, c"movss") == 0):
-			rep = 0xf3
+		if (strcmp(m, c"movss") == 0): rep = 0xf3
 		asm_buffer_byte(b, rep)
 		if (insn.op1.rclass == ASM_RCLASS_XMM):
 			# load: xmm <- r/m  (0f 10)
@@ -671,8 +608,7 @@ int asm_x86_encode_0f(asm_buffer* b, asm_insn* insn):
 		return 1
 	if (strcmp(m, c"cvtsi2ss") == 0 | strcmp(m, c"cvtsi2sd") == 0):
 		int rep = 0xf3
-		if (strcmp(m, c"cvtsi2sd") == 0):
-			rep = 0xf2
+		if (strcmp(m, c"cvtsi2sd") == 0): rep = 0xf2
 		asm_buffer_byte(b, rep)
 		asm_enc_rex(b, is64, asm_enc_w(insn.op2.size), insn.op1.reg, &insn.op2)
 		asm_buffer_byte(b, 0x0f)
@@ -681,8 +617,7 @@ int asm_x86_encode_0f(asm_buffer* b, asm_insn* insn):
 		return 1
 	if (strcmp(m, c"cvttss2si") == 0 | strcmp(m, c"cvttsd2si") == 0):
 		int rep = 0xf3
-		if (strcmp(m, c"cvttsd2si") == 0):
-			rep = 0xf2
+		if (strcmp(m, c"cvttsd2si") == 0): rep = 0xf2
 		asm_buffer_byte(b, rep)
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), insn.op1.reg, &insn.op2)
 		asm_buffer_byte(b, 0x0f)
@@ -690,8 +625,7 @@ int asm_x86_encode_0f(asm_buffer* b, asm_insn* insn):
 		asm_enc_modrm(b, insn.op1.reg, &insn.op2, is64)
 		return 1
 	if (strcmp(m, c"ucomiss") == 0 | strcmp(m, c"ucomisd") == 0):
-		if (strcmp(m, c"ucomisd") == 0):
-			asm_buffer_byte(b, 0x66)
+		if (strcmp(m, c"ucomisd") == 0): asm_buffer_byte(b, 0x66)
 		asm_enc_rex(b, is64, 0, insn.op1.reg, &insn.op2)
 		asm_buffer_byte(b, 0x0f)
 		asm_buffer_byte(b, 0x2e)
@@ -726,6 +660,5 @@ void asm_enc_jcc(asm_buffer* b, asm_insn* insn, int cc):
 # its signed N.
 int asm_enc_dot_target(char* label):
 	int value = asm_parse_number(label + 2)
-	if (label[1] == '-'):
-		return 0 - value
+	if (label[1] == '-'): return 0 - value
 	return value

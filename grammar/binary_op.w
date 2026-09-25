@@ -4,8 +4,7 @@
 # joins two of these inside an if/while condition: such guards read as
 # logical and do not short-circuit.
 int operand_is_bool_lvalue(int type):
-	if (type_is_value(type)):
-		return 0
+	if (type_is_value(type)): return 0
 	return type_unqualified(type) == bool_type
 
 
@@ -32,10 +31,8 @@ int check_bool_ops_mode
 # is what gates the DEFAULT warning down to the semantics-preserving
 # subset.
 int operand_is_bool_condition(int type):
-	if (operand_is_bool_lvalue(type)):
-		return 1
-	if (type_is_value(type) == 0):
-		return 0
+	if (operand_is_bool_lvalue(type)): return 1
+	if (type_is_value(type) == 0): return 0
 	return type_unqualified(type) == bool_type
 
 
@@ -124,24 +121,19 @@ int float_binary_result_type(int kind):
 void float_load_xmm(int xmm, int reg, int type, int kind):
 	int operand_kind = type_float_kind(type)
 	if (kind == 2):
-		if (operand_kind == 2):
-			movq_xmm(xmm, reg)
+		if (operand_kind == 2): movq_xmm(xmm, reg)
 		else if (operand_kind == 1):
 			movd_xmm(xmm, reg)
 			cvtss2sd_xmm(xmm)
-		else:
-			cvtsi2sd_xmm(xmm, reg)
+		else: cvtsi2sd_xmm(xmm, reg)
 	else:
-		if (operand_kind == 1):
-			movd_xmm(xmm, reg)
-		else:
-			cvtsi2ss_xmm(xmm, reg)
+		if (operand_kind == 1): movd_xmm(xmm, reg)
+		else: cvtsi2ss_xmm(xmm, reg)
 
 
 int float_binary_arithmetic(int left_type, int right_type, int op):
 	int kind = binary_float_kind(left_type, right_type)
-	if (kind == 0):
-		return 0
+	if (kind == 0): return 0
 	float_load_xmm(0, 1, left_type, kind)
 	float_load_xmm(1, 0, right_type, kind)
 	float_arith(op, kind == 2)
@@ -152,17 +144,14 @@ int float_binary_arithmetic(int left_type, int right_type, int op):
 
 int float_binary_compare(int left_type, int right_type, int setcc_opcode, int swap):
 	int kind = binary_float_kind(left_type, right_type)
-	if (kind == 0):
-		return 0
+	if (kind == 0): return 0
 	if (swap):
 		float_load_xmm(0, 0, right_type, kind)
 		float_load_xmm(1, 1, left_type, kind)
 	else:
 		float_load_xmm(0, 1, left_type, kind)
 		float_load_xmm(1, 0, right_type, kind)
-	if (kind == 2):
-		ucomisd()
-	else:
-		ucomiss()
+	if (kind == 2): ucomisd()
+	else: ucomiss()
 	setcc_movzx_eax(setcc_opcode)
 	return type_value(bool_type)

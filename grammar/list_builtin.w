@@ -25,8 +25,7 @@ int list_literal_type
 # Bytes per element slot. Struct slots round up to a word multiple so W's
 # word-granular struct copies stay inside the element's storage.
 int list_element_slot_size(int element_type):
-	if (type_num_args(element_type) > 0):
-		return type_stack_words(element_type) << word_size_log2
+	if (type_num_args(element_type) > 0): return type_stack_words(element_type) << word_size_log2
 	return type_get_size(element_type)
 
 
@@ -81,8 +80,7 @@ int list_index_suffix(int type):
 		return list_slice_suffix(element_type, base_stack, list_slot, stack_pos)
 	promote(expression())
 	int index_slot = push_slot()
-	if (accept(c":")):
-		return list_slice_suffix(element_type, base_stack, list_slot, index_slot)
+	if (accept(c":")): return list_slice_suffix(element_type, base_stack, list_slot, index_slot)
 	expect(c"]")
 	int s = rt_call_begin(c"__w_list_addr")
 	push_slot_copy(list_slot)
@@ -120,10 +118,8 @@ void list_require_scalar_elements(int element_type, char* what):
 # Callback arguments must be a named function (type 4) or a value
 # holding a function address (fn alias pointers included).
 void list_check_callback(int got, char* what):
-	if (got == 4):
-		return;
-	if (type_get_pointer_level(type_real(got)) > 0):
-		return;
+	if (got == 4): return;
+	if (type_get_pointer_level(type_real(got)) > 0): return;
 	diag_part(c"list ")
 	diag_part(what)
 	error_type(c" expects a function, got '", got, c"'")
@@ -138,12 +134,10 @@ int list_callback_return_type(int got):
 		int callee = sym_lookup(last_identifier)
 		if (callee >= 0):
 			int declared = load_int(table + callee + 6)
-			if ((declared >= 0) && (declared != 4)):
-				return type_unqualified(declared)
+			if ((declared >= 0) && (declared != 4)): return type_unqualified(declared)
 		return type_lookup(c"int")
 	int sig = type_function_pointer_signature(type_real(got))
-	if (sig >= 0):
-		return type_unqualified(type_function_return(sig))
+	if (sig >= 0): return type_unqualified(type_function_return(sig))
 	return type_lookup(c"int")
 
 
@@ -184,34 +178,27 @@ int cm_arg(int kind, int want, char* ctx):
 	if (kind == 1):
 		coerce_checked(want, got, ctx)
 		cm_out_extra = type_num_args(type_real(got)) > 0
-	else if (kind == 3):
-		list_check_callback(got, ctx)
+	else if (kind == 3): list_check_callback(got, ctx)
 	else if (kind == 4):
 		list_check_callback(got, ctx)
 		int result_element = list_callback_return_type(got)
 		list_require_scalar_elements(result_element, c"map result")
-		if (type_get_size(result_element) == 0):
-			error(c"list map callback must return a value")
+		if (type_get_size(result_element) == 0): error(c"list map callback must return a value")
 		cm_out_extra = list_element_slot_size(result_element)
 		cm_out_result = type_value(type_get_list(type_canonical(result_element)))
 	else if (kind == 5):
 		int result_type = inferred_storage_type(c"reduce init", got)
-		if (type_num_args(result_type) > 0):
-			error(c"list reduce init must be a scalar value")
+		if (type_num_args(result_type) > 0): error(c"list reduce init must be a scalar value")
 		cm_out_result = type_value(result_type)
 	push_slot()
 	return stack_pos
 
 
 int cm_result_type(int result, int element_type):
-	if (result == 1):
-		return type_value(element_type)
-	if (result == 2):
-		return type_value(type_get_list(type_canonical(element_type)))
-	if (result == 3):
-		return type_value(type_lookup(c"int"))
-	if (result == 4):
-		return type_value(bool_type)
+	if (result == 1): return type_value(element_type)
+	if (result == 2): return type_value(type_get_list(type_canonical(element_type)))
+	if (result == 3): return type_value(type_lookup(c"int"))
+	if (result == 4): return type_value(bool_type)
 	return type_value(type_lookup(c"void"))
 
 
@@ -248,12 +235,9 @@ int cm_call(int type, char* helper, char* bytes_helper, int want, char* ctx, int
 	expect(c")")
 	int s = rt_call_begin(helper)
 	push_slot_copy(container_slot)
-	if (slot1 != 0):
-		push_slot_copy(slot1)
-	if (slot2 != 0):
-		push_slot_copy(slot2)
-	if (extra >= 0):
-		push_slot_int(extra)
+	if (slot1 != 0): push_slot_copy(slot1)
+	if (slot2 != 0): push_slot_copy(slot2)
+	if (extra >= 0): push_slot_int(extra)
 	rt_call_end(s)
 	pop_to(base_stack)
 	if (has_result_type):
@@ -294,12 +278,10 @@ int list_it_mode(char* name):
 	int i = 0
 	while (names[i] != 0):
 		int j = 0
-		while ((name[j] != 0) && (names[i + j] == name[j])):
-			j = j + 1
+		while ((name[j] != 0) && (names[i + j] == name[j])): j = j + 1
 		if ((name[j] == 0) && (names[i + j] == ' ')):
 			return mode
-		while (names[i] != ' '):
-			i = i + 1
+		while (names[i] != ' '): i = i + 1
 		i = i + 1
 		mode = mode + 1
 	return 0 - 1
@@ -310,11 +292,9 @@ int list_it_mode(char* name):
 # ':=' lookahead trick. Member names ('x.it') do not count; f-string
 # embedded expressions do.
 int list_it_argument():
-	if ((nextc != '(') || (list_it_mode(token) < 0)):
-		return 0
+	if ((nextc != '(') || (list_it_mode(token) < 0)): return 0
 	int sym = sym_lookup(c"it")
-	if ((sym >= 0) && (sym != list_it_active)):
-		return 0
+	if ((sym >= 0) && (sym != list_it_active)): return 0
 	int serial = token_serial
 	char* save = generic_reparse_save()
 	char* open = malloc(64)
@@ -326,8 +306,7 @@ int list_it_argument():
 		get_token()
 		int n = strlen(token)
 		if (peek(c")") | peek(c"]") | peek(c"}")):
-			if (depth == 0):
-				break
+			if (depth == 0): break
 			depth = depth - 1
 			if (open[depth] == 'T'):
 				get_token_template_chunk()
@@ -338,8 +317,7 @@ int list_it_argument():
 		else if (peek(c"(") | peek(c"[") | peek(c"{")):
 			open[depth] = token[0]
 			depth = depth + 1
-		else if (peek(c"it") && (after_dot == 0)):
-			found = 1
+		else if (peek(c"it") && (after_dot == 0)): found = 1
 		else if ((token[0] == 'f') && (token[1] == '"') && (token[n - 1] == '{')):
 			open[depth] = 'T'
 			depth = depth + 1
@@ -356,10 +334,8 @@ int list_it_argument():
 void list_it_call(char* helper, int slot_a, int slot_b, int constant):
 	int s = rt_call_begin(helper)
 	push_slot_copy(slot_a)
-	if (slot_b != 0):
-		push_slot_copy(slot_b)
-	if (constant >= 0):
-		push_slot_int(constant)
+	if (slot_b != 0): push_slot_copy(slot_b)
+	if (constant >= 0): push_slot_int(constant)
 	rt_call_end(s)
 
 
@@ -437,8 +413,7 @@ int list_it_method(int type):
 		else:
 			list_it_call(c"__w_list_truth", keys_slot, 0, mode - 2)
 			result = type_value(type_lookup(c"int"))
-			if ((mode == 3) || (mode == 4)):
-				result = type_value(bool_type)
+			if ((mode == 3) || (mode == 4)): result = type_value(bool_type)
 	else if (mode >= 6):
 		char* what = strclone(method)
 		if (mode >= 9):
@@ -446,15 +421,13 @@ int list_it_method(int type):
 			what = strjoin(method, c" key")
 		int kind = list_scalar_kind(key_type, what)
 		free(what)
-		if ((mode <= 8) && (kind != 1)):
-			error3(c"list ", method, c" requires int-like elements")
+		if ((mode <= 8) && (kind != 1)): error3(c"list ", method, c" requires int-like elements")
 		if (mode <= 8):
 			char* helper = strjoin(c"__w_list_", method)
 			list_it_call(helper, keys_slot, 0, -1)
 			free(helper)
 			result = type_value(type_lookup(c"int"))
-			if (mode != 6):
-				result = type_value(key_type)
+			if (mode != 6): result = type_value(key_type)
 		else if (mode == 9):
 			list_it_call(c"__w_list_sort_keys", list_slot, keys_slot, kind)
 			result = type_value(type_lookup(c"void"))
@@ -484,10 +457,8 @@ the method sugar's &p).
 */
 int ufcs_callee(char* name):
 	int callee = sym_lookup(name)
-	if (callee < 0):
-		return 0 - 1
-	if ((table[callee + 1] == 'L') || (table[callee + 1] == 'A')):
-		return 0 - 1
+	if (callee < 0): return 0 - 1
+	if ((table[callee + 1] == 'L') || (table[callee + 1] == 'A')): return 0 - 1
 	if ((sym_num_args(callee) < 1) || sym_is_generator(callee) || (sym_variadic_fixed_args(callee) >= 0)):
 		return 0 - 1
 	return callee
@@ -495,11 +466,9 @@ int ufcs_callee(char* name):
 
 int ufcs_struct_receiver(char* name, int struct_type):
 	int callee = ufcs_callee(name)
-	if (callee < 0):
-		return 0
+	if (callee < 0): return 0
 	int param = sym_param_type(callee, 0)
-	if ((param < 0) || (type_get_pointer_level(param) != 1)):
-		return 0
+	if ((param < 0) || (type_get_pointer_level(param) != 1)): return 0
 	return type_canonical(type_lookup_previous_pointer(param)) == type_canonical(struct_type)
 
 
@@ -517,8 +486,7 @@ int ufcs_call(int type):
 	if (declared_return >= 0):
 		if (type_num_args(declared_return) > 0):
 			int words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
-			for j in range(words):
-				push_eax()
+			for j in range(words): push_eax()
 			stack_pos = stack_pos + words
 			has_return_buffer = 1
 	push_slot()
@@ -527,12 +495,10 @@ int ufcs_call(int type):
 		lea_eax_esp_plus(2 << word_size_log2)
 		push_slot()
 		mov_eax_esp_plus(2 << word_size_log2)
-	else:
-		mov_eax_esp_plus(1 << word_size_log2)
+	else: mov_eax_esp_plus(1 << word_size_log2)
 	check_call_argument(callee, 0 - 1, name, 0, type)
 	int param_type = sym_param_type(callee, 0)
-	if (param_type >= 0):
-		coerce(param_type, type)
+	if (param_type >= 0): coerce(param_type, type)
 	push_call_argument(type)
 	expect(c"(")
 	int result = parse_call_suffix(4, s, expected_args, callee, 0 - 1, name, declared_return, 1, has_return_buffer, sym_w_variadic_fixed_args(callee))
@@ -558,8 +524,7 @@ int ufcs_call(int type):
 int list_method(int type):
 	int element_type = type_list_element_type(type_unqualified(type))
 	int aggregate = type_num_args(type_unqualified(element_type)) > 0
-	if (list_it_argument()):
-		return list_it_method(type)
+	if (list_it_argument()): return list_it_method(type)
 	if (accept(c"push")):
 		return cm_call(type, c"__w_list_push", c"__w_list_push_bytes", element_type, c"list push", 1, 0, -1, 0)
 	if (accept(c"pop")):
@@ -570,8 +535,7 @@ int list_method(int type):
 		return cm_call(type, c"__w_list_insert", c"__w_list_insert_bytes", element_type, c"list insert", 2, 1, -1, 0)
 	if (accept(c"remove")):
 		return cm_call(type, c"__w_list_remove", 0, element_type, 0, 2, 0, -1, 0)
-	if (accept(c"clear")):
-		return cm_call(type, c"__w_list_clear", 0, element_type, 0, 0, 0, -1, 0)
+	if (accept(c"clear")): return cm_call(type, c"__w_list_clear", 0, element_type, 0, 0, 0, -1, 0)
 	if (accept(c"free")):
 		# Element POINTERS are not chased (lib/container.w's list_free[T]
 		# contract); use after free is caller error
@@ -604,8 +568,7 @@ int list_method(int type):
 			error3(c"list ", what, c" requires int-like elements")
 		char* helper = strjoin(c"__w_list_", what)
 		int result = 1
-		if (what[1] == 'u'):
-			result = 3
+		if (what[1] == 'u'): result = 3
 		int got = cm_call(type, helper, 0, element_type, 0, 0, 0, -1, result)
 		free(helper)
 		free(what)
@@ -618,8 +581,7 @@ int list_method(int type):
 		return cm_call(type, c"__w_list_count", 0, element_type, c"list count", 1, 0, list_scalar_kind(element_type, c"list count"), 3)
 	if (accept(c"index")):
 		return cm_call(type, c"__w_list_index", 0, element_type, c"list index", 1, 0, list_scalar_kind(element_type, c"list index"), 3)
-	if ((nextc == '(') && (ufcs_callee(token) >= 0)):
-		return ufcs_call(type)
+	if ((nextc == '(') && (ufcs_callee(token) >= 0)): return ufcs_call(type)
 	error3(c"list field '", token, c"' not found")
 	return 0
 
@@ -631,8 +593,7 @@ void list_literal_parse_entry(int container_type, int container_slot):
 	int value_slot = push_slot()
 	if ((type_num_args(element_type) > 0) & (type_num_args(type_real(got_type)) > 0)):
 		sym_get_value(c"__w_list_push_bytes")
-	else:
-		sym_get_value(c"__w_list_push")
+	else: sym_get_value(c"__w_list_push")
 	int s = stack_pos
 	push_slot()
 	push_slot_copy(container_slot)
@@ -642,8 +603,7 @@ void list_literal_parse_entry(int container_type, int container_slot):
 
 
 int list_typed_literal():
-	if ((peek(c"list") & (nextc == '[')) == 0):
-		return 0
+	if ((peek(c"list") & (nextc == '[')) == 0): return 0
 	int container_type = type_name()
 	expect(c"{")
 	list_emit_new_container(container_type)
@@ -651,11 +611,9 @@ int list_typed_literal():
 	if (peek(c"}") == 0):
 		list_literal_parse_entry(container_type, container_slot)
 		while (accept(c",")):
-			if (peek(c"}")):
-				break
+			if (peek(c"}")): break
 			list_literal_parse_entry(container_type, container_slot)
-	if (peek(c"}") == 0):
-		error(c"'}' expected in list literal")
+	if (peek(c"}") == 0): error(c"'}' expected in list literal")
 	pop_eax_slot()
 	list_literal_type = type_value(container_type)
 	return 1

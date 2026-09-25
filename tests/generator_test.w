@@ -21,8 +21,7 @@ generator int empty():
 
 generator int stops_early(int n):
 	for i in range(n):
-		if (i == 3):
-			return
+		if (i == 3): return
 		yield i
 
 
@@ -30,8 +29,7 @@ generator int stops_early(int n):
 # inner counter.
 generator int doubled(int n):
 	generator* inner = counter(n)
-	while (gen_next(inner)):
-		yield gen_value(inner) * 2
+	while (gen_next(inner)): yield gen_value(inner) * 2
 	gen_free(inner)
 
 
@@ -39,8 +37,7 @@ generator int doubled(int n):
 generator int nested_flow(int n):
 	for i in range(n):
 		if (i % 2 == 0):
-			for j in range(2):
-				yield i * 10 + j
+			for j in range(2): yield i * 10 + j
 
 
 void test_basic_counter_while_loop():
@@ -59,8 +56,7 @@ void test_basic_counter_while_loop():
 void test_generator_with_arguments():
 	generator* g = from_to(10, 14)
 	int sum = 0
-	while (gen_next(g)):
-		sum = sum + gen_value(g)
+	while (gen_next(g)): sum = sum + gen_value(g)
 	assert_equal(46, sum) /* 10+11+12+13 */
 	gen_free(g)
 
@@ -91,8 +87,7 @@ void test_empty_generator_immediately_done():
 void test_return_stops_generator():
 	generator* g = stops_early(10)
 	int count = 0
-	while (gen_next(g)):
-		count = count + 1
+	while (gen_next(g)): count = count + 1
 	assert_equal(3, count) /* 0, 1, 2 then return */
 	gen_free(g)
 
@@ -100,16 +95,14 @@ void test_return_stops_generator():
 void test_nested_generators():
 	generator* g = doubled(4)
 	int sum = 0
-	while (gen_next(g)):
-		sum = sum + gen_value(g)
+	while (gen_next(g)): sum = sum + gen_value(g)
 	assert_equal(12, sum) /* 0+2+4+6 */
 	gen_free(g)
 
 
 void test_for_loop_over_generator():
 	int sum = 0
-	for int x in counter(5):
-		sum = sum + x
+	for int x in counter(5): sum = sum + x
 	assert_equal(10, sum)
 
 
@@ -118,8 +111,7 @@ void test_for_loop_break():
 	# generator on the break edge
 	int sum = 0
 	for int x in counter(100):
-		if (x == 4):
-			break
+		if (x == 4): break
 		sum = sum + x
 	assert_equal(6, sum) /* 0+1+2+3 */
 
@@ -127,8 +119,7 @@ void test_for_loop_break():
 void test_for_loop_continue():
 	int sum = 0
 	for int x in counter(6):
-		if (x % 2 == 1):
-			continue
+		if (x % 2 == 1): continue
 		sum = sum + x
 	assert_equal(6, sum) /* 0+2+4 */
 
@@ -136,8 +127,7 @@ void test_for_loop_continue():
 void test_nested_for_loops_over_generators():
 	int sum = 0
 	for int x in counter(3):
-		for int y in counter(2):
-			sum = sum + x * 10 + y
+		for int y in counter(2): sum = sum + x * 10 + y
 	assert_equal(63, sum) /* (0+1)+(10+11)+(20+21) */
 
 
@@ -179,8 +169,7 @@ void test_many_generators():
 	for round in range(50):
 		generator* g = counter(4)
 		int sum = 0
-		while (gen_next(g)):
-			sum = sum + gen_value(g)
+		while (gen_next(g)): sum = sum + gen_value(g)
 		assert_equal(6, sum)
 		gen_free(g)
 

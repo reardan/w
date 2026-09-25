@@ -53,8 +53,7 @@ we_server* we_start(list[char*] extra):
 	args.push(c"e2ecode")
 	args.push(c"--port")
 	args.push(c"0")
-	for char* a in extra:
-		args.push(a)
+	for char* a in extra: args.push(a)
 	char** argv = strv_new(args.length + 1)
 	int i = 0
 	while (i < args.length):
@@ -78,15 +77,12 @@ we_server* we_start(list[char*] extra):
 		if (wait <= 0):
 			println2(c"FAIL: wdbg_web printed no URL")
 			exit(1)
-		if (poll_single(p.stdout_fd, poll_in, wait) <= 0):
-			continue
+		if (poll_single(p.stdout_fd, poll_in, wait) <= 0): continue
 		if (read(p.stdout_fd, ch, 1) != 1):
 			println2(c"FAIL: wdbg_web exited before printing its URL")
 			exit(1)
-		if (ch[0] == 10):
-			done = 1
-		else:
-			string_append_char(line, ch[0])
+		if (ch[0] == 10): done = 1
+		else: string_append_char(line, ch[0])
 	free(ch)
 	print(c"url: ")
 	println(line.data)
@@ -111,10 +107,8 @@ http_response* we_request(we_server* s, char* method, char* path, char* body, in
 	req.timeout_ms = 120000
 	req.tls_handshake_timeout_ms = 120000
 	req.tls_insecure_skip_verify = 1
-	if (code_mode == 1):
-		http_req_add_header(req, c"X-Wdbg-Code", c"e2ecode")
-	if (code_mode == 2):
-		http_req_add_header(req, c"Cookie", c"other=1; wdbg_code=e2ecode")
+	if (code_mode == 1): http_req_add_header(req, c"X-Wdbg-Code", c"e2ecode")
+	if (code_mode == 2): http_req_add_header(req, c"Cookie", c"other=1; wdbg_code=e2ecode")
 	if (body != 0):
 		req.body = body
 		req.body_len = strlen(body)

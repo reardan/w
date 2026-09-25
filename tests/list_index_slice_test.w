@@ -190,6 +190,5 @@ void test_slice_struct_elements():
 void test_slice_iteration():
 	list[int] l = list[int]{1, 2, 3, 4, 5}
 	int sum = 0
-	for int v in l[1:4]:
-		sum = sum + v
+	for int v in l[1:4]: sum = sum + v
 	assert_equal(9, sum)

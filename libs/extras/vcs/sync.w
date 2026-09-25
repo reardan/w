@@ -199,8 +199,7 @@ struct wvc_serve_ctx:
 # object that doesn't parse as a commit).
 wresult[list[char*]]* vcs_sync_ancestry(wcas* store, char* tip_hex, int* out_truncated):
 	*out_truncated = 0
-	if (cas_valid_id(tip_hex) == 0):
-		return result_new_error[list[char*]](-22)
+	if (cas_valid_id(tip_hex) == 0): return result_new_error[list[char*]](-22)
 
 	list[char*] order = new list[char*]
 	map[char*, int] seen = new map[char*, int]
@@ -245,8 +244,7 @@ wresult[list[char*]]* vcs_sync_ancestry(wcas* store, char* tip_hex, int* out_tru
 	map_free[char*, int](seen)
 
 	if (err != 0):
-		for char* o in order:
-			free(o)
+		for char* o in order: free(o)
 		list_free[char*](order)
 		return result_new_error[list[char*]](err)
 	return result_new_ok[list[char*]](order)
@@ -263,19 +261,14 @@ wresult[list[char*]]* vcs_sync_ancestry(wcas* store, char* tip_hex, int* out_tru
 char* vcs_sync_extract_object_id(char* path):
 	char* prefix = c"/objects/"
 	int plen = strlen(prefix)
-	if (starts_with(path, prefix) == 0):
-		return 0
+	if (starts_with(path, prefix) == 0): return 0
 	char* rest = path + plen
 	int i = 0
-	while ((rest[i] != 0) && (rest[i] != '/')):
-		i = i + 1
-	if (i != 2):
-		return 0
-	if (rest[i] != '/'):
-		return 0
+	while ((rest[i] != 0) && (rest[i] != '/')): i = i + 1
+	if (i != 2): return 0
+	if (rest[i] != '/'): return 0
 	char* tail = rest + i + 1
-	if (strlen(tail) != 62):
-		return 0
+	if (strlen(tail) != 62): return 0
 	string_builder* s = string_new()
 	string_append_char(s, rest[0])
 	string_append_char(s, rest[1])
@@ -334,10 +327,8 @@ void vcs_sync_serve_objects_get(RequestContext* rc, void* user_data):
 	if (result_is_error[wcas_object*](got)):
 		int code = result_code[wcas_object*](got)
 		result_free[wcas_object*](got)
-		if (code == -2):
-			request_context_text(rc, 404, c"Not Found")
-		else:
-			request_context_text(rc, 500, c"cannot read object")
+		if (code == -2): request_context_text(rc, 404, c"Not Found")
+		else: request_context_text(rc, 500, c"cannot read object")
 		return
 	wcas_object* obj = result_value[wcas_object*](got)
 	result_free[wcas_object*](got)
@@ -374,8 +365,7 @@ void vcs_sync_serve_objects_post(RequestContext* rc, void* user_data):
 	# payload).
 	char* recomputed = cas_id_hex(obj.object_type, obj.data, obj.length)
 	int match = (recomputed != 0) && (strcmp(recomputed, id) == 0)
-	if (recomputed != 0):
-		free(recomputed)
+	if (recomputed != 0): free(recomputed)
 	if (match == 0):
 		cas_object_free(obj)
 		free(id)
@@ -412,10 +402,8 @@ void vcs_sync_serve_ancestry_get(RequestContext* rc, void* user_data):
 	if (result_is_error[list[char*]](r)):
 		int code = result_code[list[char*]](r)
 		result_free[list[char*]](r)
-		if (code == -2):
-			request_context_text(rc, 404, c"unknown commit")
-		else:
-			request_context_text(rc, 500, c"ancestry walk failed")
+		if (code == -2): request_context_text(rc, 404, c"unknown commit")
+		else: request_context_text(rc, 500, c"ancestry walk failed")
 		return
 	list[char*] ids = result_value[list[char*]](r)
 	result_free[list[char*]](r)
@@ -427,8 +415,7 @@ void vcs_sync_serve_ancestry_get(RequestContext* rc, void* user_data):
 		free(aid)
 	list_free[char*](ids)
 
-	if (truncated != 0):
-		request_context_set_header(rc, VCS_SYNC_TRUNCATED_HEADER(), c"1")
+	if (truncated != 0): request_context_set_header(rc, VCS_SYNC_TRUNCATED_HEADER(), c"1")
 	request_context_set_status(rc, 200)
 	request_context_set_header(rc, c"Content-Type", c"text/plain")
 	request_context_write_body(rc, body.data, body.length)
@@ -441,10 +428,8 @@ void vcs_sync_serve_ancestry_get(RequestContext* rc, void* user_data):
 # valid cas id), never partially-parsed data.
 char* vcs_sync_trim_id(char* body, int body_len):
 	int n = body_len
-	while ((n > 0) && ((body[n - 1] == 10) || (body[n - 1] == 13))):
-		n = n - 1
-	if (n != 64):
-		return 0
+	while ((n > 0) && ((body[n - 1] == 10) || (body[n - 1] == 13))): n = n - 1
+	if (n != 64): return 0
 	char* out = path_clone_range(body, n)
 	if (cas_valid_id(out) == 0):
 		free(out)
@@ -474,10 +459,8 @@ void vcs_sync_serve_refs_post(RequestContext* rc, void* user_data):
 		int ok = result_is_ok[int](created)
 		result_free[int](created)
 		free(new_id)
-		if (ok == 0):
-			request_context_text(rc, 500, c"cannot create ref")
-		else:
-			request_context_text(rc, 200, c"created")
+		if (ok == 0): request_context_text(rc, 500, c"cannot create ref")
+		else: request_context_text(rc, 200, c"created")
 		return
 
 	wresult[char*]* cur_r = ref_read(ctx.refs, name)
@@ -502,18 +485,15 @@ void vcs_sync_serve_refs_post(RequestContext* rc, void* user_data):
 		result_free[list[char*]](anc_r)
 		free(current_id)
 		free(new_id)
-		if (code == -2):
-			request_context_text(rc, 400, c"unknown commit id")
-		else:
-			request_context_text(rc, 500, c"ancestry walk failed")
+		if (code == -2): request_context_text(rc, 400, c"unknown commit id")
+		else: request_context_text(rc, 500, c"ancestry walk failed")
 		return
 	list[char*] ids = result_value[list[char*]](anc_r)
 	result_free[list[char*]](anc_r)
 
 	int is_ff = 0
 	for char* aid in ids:
-		if (strcmp(aid, current_id) == 0):
-			is_ff = 1
+		if (strcmp(aid, current_id) == 0): is_ff = 1
 		free(aid)
 	list_free[char*](ids)
 
@@ -534,10 +514,8 @@ void vcs_sync_serve_refs_post(RequestContext* rc, void* user_data):
 	result_free[int](updated)
 	free(current_id)
 	free(new_id)
-	if (ok == 0):
-		request_context_text(rc, 500, c"cannot update ref")
-	else:
-		request_context_text(rc, 200, c"updated")
+	if (ok == 0): request_context_text(rc, 500, c"cannot update ref")
+	else: request_context_text(rc, 200, c"updated")
 
 
 # Registers every endpoint documented in the header comment on `s`
@@ -645,15 +623,12 @@ map[char*, char*] vcs_sync_parse_refs(char* body, int body_len):
 	int pos = 0
 	while (pos < body_len):
 		int line_end = pos
-		while ((line_end < body_len) && (body[line_end] != 10)):
-			line_end = line_end + 1
+		while ((line_end < body_len) && (body[line_end] != 10)): line_end = line_end + 1
 		int ok = (line_end - pos) > 65
-		if (ok):
-			ok = body[pos + 64] == ' '
+		if (ok): ok = body[pos + 64] == ' '
 		if (ok):
 			char* id = path_clone_range(body + pos, 64)
-			if (cas_valid_id(id) == 0):
-				free(id)
+			if (cas_valid_id(id) == 0): free(id)
 			else:
 				char* name = path_clone_range(body + (pos + 65), line_end - (pos + 65))
 				if (ref_valid_name(name) == 0):
@@ -683,14 +658,11 @@ list[char*] vcs_sync_parse_id_lines(char* body, int body_len):
 	int pos = 0
 	while (pos < body_len):
 		int line_end = pos
-		while ((line_end < body_len) && (body[line_end] != 10)):
-			line_end = line_end + 1
+		while ((line_end < body_len) && (body[line_end] != 10)): line_end = line_end + 1
 		if ((line_end - pos) == 64):
 			char* id = path_clone_range(body + pos, 64)
-			if (cas_valid_id(id)):
-				out.push(id)
-			else:
-				free(id)
+			if (cas_valid_id(id)): out.push(id)
+			else: free(id)
 		pos = line_end + 1
 	return out
 
@@ -711,14 +683,12 @@ list[char*] vcs_sync_parse_id_lines(char* body, int body_len):
 # store write failures are NOT clean failures -- see the header
 # comment -- and exit the process via translate_syscall_failure.
 int vcs_sync_fetch_object_closure(wcas* store, char* url, char* id, wstream* out):
-	if (cas_has(store, id) != 0):
-		return 0
+	if (cas_has(store, id) != 0): return 0
 
 	char* obj_url = vcs_sync_object_url(url, id)
 	http_response* resp = vcs_sync_get(obj_url, out)
 	free(obj_url)
-	if (resp == 0):
-		return 1
+	if (resp == 0): return 1
 	if (resp.status != 200):
 		stream_write_cstr(out, c"wvc: missing remote object ")
 		stream_write_line(out, id)
@@ -739,8 +709,7 @@ int vcs_sync_fetch_object_closure(wcas* store, char* url, char* id, wstream* out
 
 	char* recomputed = cas_id_hex(obj.object_type, obj.data, obj.length)
 	int match = (recomputed != 0) && (strcmp(recomputed, id) == 0)
-	if (recomputed != 0):
-		free(recomputed)
+	if (recomputed != 0): free(recomputed)
 	if (match == 0):
 		cas_object_free(obj)
 		stream_write_cstr(out, c"wvc: remote object failed to verify: ")
@@ -763,8 +732,7 @@ int vcs_sync_fetch_object_closure(wcas* store, char* url, char* id, wstream* out
 		if (result_is_ok[wtree*](t_r)):
 			wtree* t = result_value[wtree*](t_r)
 			for tree_entry* e in t.entries:
-				if (err == 0):
-					err = vcs_sync_fetch_object_closure(store, url, e.id, out)
+				if (err == 0): err = vcs_sync_fetch_object_closure(store, url, e.id, out)
 			tree_free(t)
 		result_free[wtree*](t_r)
 	else if (strcmp(obj.object_type, c"commit") == 0):
@@ -788,8 +756,7 @@ int vcs_sync_pull(wcas* store, wrefs* refs, char* url, char* ref_name, wstream* 
 	char* refs_url = vcs_sync_refs_url(url)
 	http_response* refs_resp = vcs_sync_get(refs_url, out)
 	free(refs_url)
-	if (refs_resp == 0):
-		return 1
+	if (refs_resp == 0): return 1
 	if (refs_resp.status != 200):
 		stream_write_cstr(out, c"wvc: pull failed: remote /refs returned HTTP ")
 		stream_write_line(out, itoa(refs_resp.status))
@@ -834,8 +801,7 @@ int vcs_sync_pull(wcas* store, wrefs* refs, char* url, char* ref_name, wstream* 
 	free(ancestry_url)
 	if (anc_resp == 0):
 		free(remote_tip)
-		if (local_tip != 0):
-			free(local_tip)
+		if (local_tip != 0): free(local_tip)
 		return 1
 	if (anc_resp.status != 200):
 		stream_write_cstr(out, c"wvc: pull failed: remote /ancestry returned HTTP ")
@@ -843,16 +809,14 @@ int vcs_sync_pull(wcas* store, wrefs* refs, char* url, char* ref_name, wstream* 
 		stream_flush(out)
 		http_response_free(anc_resp)
 		free(remote_tip)
-		if (local_tip != 0):
-			free(local_tip)
+		if (local_tip != 0): free(local_tip)
 		return 1
 	if (http_response_header(anc_resp, VCS_SYNC_TRUNCATED_HEADER()) != 0):
 		stream_write_line(out, c"wvc: remote history exceeds the sync ancestry cap; refusing to pull an incomplete history")
 		stream_flush(out)
 		http_response_free(anc_resp)
 		free(remote_tip)
-		if (local_tip != 0):
-			free(local_tip)
+		if (local_tip != 0): free(local_tip)
 		return 1
 	list[char*] remote_commits = vcs_sync_parse_id_lines(anc_resp.body, anc_resp.body_len)
 	http_response_free(anc_resp)
@@ -862,33 +826,28 @@ int vcs_sync_pull(wcas* store, wrefs* refs, char* url, char* ref_name, wstream* 
 		if ((err == 0) && (cas_has(store, cid) == 0)):
 			err = vcs_sync_fetch_object_closure(store, url, cid, out)
 	if (err != 0):
-		for char* cid in remote_commits:
-			free(cid)
+		for char* cid in remote_commits: free(cid)
 		list_free[char*](remote_commits)
 		free(remote_tip)
-		if (local_tip != 0):
-			free(local_tip)
+		if (local_tip != 0): free(local_tip)
 		return 1
 
 	if (have_local != 0):
 		int is_ancestor = 0
 		for char* cid in remote_commits:
-			if (strcmp(cid, local_tip) == 0):
-				is_ancestor = 1
+			if (strcmp(cid, local_tip) == 0): is_ancestor = 1
 		if (is_ancestor == 0):
 			stream_write_cstr(out, c"wvc: local and remote have diverged; run 'wvc merge ")
 			stream_write_cstr(out, remote_tip)
 			stream_write_line(out, c"' to reconcile")
 			stream_flush(out)
-			for char* cid in remote_commits:
-				free(cid)
+			for char* cid in remote_commits: free(cid)
 			list_free[char*](remote_commits)
 			free(remote_tip)
 			free(local_tip)
 			return 1
 
-	for char* cid in remote_commits:
-		free(cid)
+	for char* cid in remote_commits: free(cid)
 	list_free[char*](remote_commits)
 
 	if (have_local == 0):
@@ -916,8 +875,7 @@ int vcs_sync_pull(wcas* store, wrefs* refs, char* url, char* ref_name, wstream* 
 	stream_flush(out)
 
 	free(remote_tip)
-	if (local_tip != 0):
-		free(local_tip)
+	if (local_tip != 0): free(local_tip)
 	return 0
 
 
@@ -982,8 +940,7 @@ int vcs_sync_push_object_closure(wcas* store, char* url, char* id, wstream* out)
 		if (result_is_ok[wtree*](t_r)):
 			wtree* t = result_value[wtree*](t_r)
 			for tree_entry* e in t.entries:
-				if (err == 0):
-					err = vcs_sync_push_object_closure(store, url, e.id, out)
+				if (err == 0): err = vcs_sync_push_object_closure(store, url, e.id, out)
 			tree_free(t)
 		result_free[wtree*](t_r)
 	else if (strcmp(obj.object_type, c"commit") == 0):
@@ -1030,16 +987,14 @@ int vcs_sync_push(wcas* store, wrefs* refs, char* url, char* ref_name, wstream* 
 	if (truncated != 0):
 		stream_write_line(out, c"wvc: local history exceeds the sync ancestry cap; refusing to push an incomplete history")
 		stream_flush(out)
-		for char* cid in local_commits:
-			free(cid)
+		for char* cid in local_commits: free(cid)
 		list_free[char*](local_commits)
 		free(local_tip)
 		return 1
 
 	int err = 0
 	for char* cid in local_commits:
-		if (err == 0):
-			err = vcs_sync_push_object_closure(store, url, cid, out)
+		if (err == 0): err = vcs_sync_push_object_closure(store, url, cid, out)
 		free(cid)
 	list_free[char*](local_commits)
 	if (err != 0):

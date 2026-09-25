@@ -28,26 +28,20 @@ int expression();
 # Intrinsic index for the current token: 1 gpu_exp, 2 gpu_log; 0 when
 # the token is not an intrinsic name.
 int gpu_math_builtin_kind():
-	if (peek(c"gpu_exp")):
-		return 1
-	if (peek(c"gpu_log")):
-		return 2
+	if (peek(c"gpu_exp")): return 1
+	if (peek(c"gpu_log")): return 2
 	return 0
 
 
 char* gpu_math_builtin_name(int kind):
-	if (kind == 1):
-		return c"gpu_exp"
+	if (kind == 1): return c"gpu_exp"
 	return c"gpu_log"
 
 
 int gpu_math_builtin_ready():
-	if (nextc != '('):
-		return 0
-	if (gpu_math_builtin_kind() == 0):
-		return 0
-	if (sym_lookup(token) >= 0):
-		return 0
+	if (nextc != '('): return 0
+	if (gpu_math_builtin_kind() == 0): return 0
+	if (sym_lookup(token) >= 0): return 0
 	return 1
 
 
@@ -57,17 +51,13 @@ int gpu_math_builtin_ready():
 int gpu_math_builtin_expr():
 	int kind = gpu_math_builtin_kind()
 	char* name = gpu_math_builtin_name(kind)
-	if (target_isa != 3):
-		error(c"gpu_exp/gpu_log are only available in gpu code")
+	if (target_isa != 3): error(c"gpu_exp/gpu_log are only available in gpu code")
 	get_token()
 	expect(c"(")
 	int got = expression()
 	got = promote(got)
 	coerce(float32_type, got)
-	if (kind == 1):
-		ptx_gpu_exp()
-	else:
-		ptx_gpu_log()
-	if (peek(c")") == 0):
-		error2(c"')' expected in ", name)
+	if (kind == 1): ptx_gpu_exp()
+	else: ptx_gpu_log()
+	if (peek(c")") == 0): error2(c"')' expected in ", name)
 	return float32_value_type

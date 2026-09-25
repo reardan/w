@@ -27,8 +27,7 @@ void dbg_fr_reset():
 
 
 void dbg_fr_store(int pc, int base):
-	if (dbg_fr_count >= dbg_fr_max):
-		return;
+	if (dbg_fr_count >= dbg_fr_max): return;
 	save_word(dbg_fr_pc + dbg_fr_count * __word_size__, pc)
 	save_word(dbg_fr_base + dbg_fr_count * __word_size__, base)
 	dbg_fr_count = dbg_fr_count + 1
@@ -52,14 +51,11 @@ int dbg_fr_base_at(int n):
 # indexes the line table) and whether the pc lies in the debuggee's code
 # at all; 0 when any of it is unknown (locals are not addressable then).
 int dbg_fr_statement_esp(int base, int in_code, int vpc):
-	if ((base == 0) || (in_code == 0)):
-		return 0
+	if ((base == 0) || (in_code == 0)): return 0
 	int entry = dbg_find_line(vpc - code_offset)
-	if (entry < 0):
-		return 0
+	if (entry < 0): return 0
 	int depth = dbg_line_stack(entry)
-	if (depth < 0):
-		return 0
+	if (depth < 0): return 0
 	return base - depth * __word_size__
 
 
@@ -69,8 +65,7 @@ int dbg_fr_stop_base(int esp, int in_code, int vpc):
 	if (in_code):
 		int entry = dbg_find_line(vpc - code_offset)
 		if (entry >= 0):
-			if (dbg_line_stack(entry) >= 0):
-				return esp + dbg_line_stack(entry) * __word_size__
+			if (dbg_line_stack(entry) >= 0): return esp + dbg_line_stack(entry) * __word_size__
 	return 0
 
 

@@ -108,16 +108,12 @@ int PB_ERR_DEPTH_EXCEEDED():
 
 
 char* pb_error_string(int code):
-	if (code == PB_ERR_TRUNCATED):
-		return c"protobuf: input ended mid-field"
-	if (code == PB_ERR_BAD_WIRE_TYPE):
-		return c"protobuf: unsupported wire type"
-	if (code == PB_ERR_BAD_VARINT):
-		return c"protobuf: varint exceeds 10 bytes"
+	if (code == PB_ERR_TRUNCATED): return c"protobuf: input ended mid-field"
+	if (code == PB_ERR_BAD_WIRE_TYPE): return c"protobuf: unsupported wire type"
+	if (code == PB_ERR_BAD_VARINT): return c"protobuf: varint exceeds 10 bytes"
 	if (code == PB_ERR_LENGTH_OVERRUN):
 		return c"protobuf: length-delimited field overruns the buffer"
-	if (code == PB_ERR_DEPTH_EXCEEDED()):
-		return c"protobuf: message nesting exceeds depth limit"
+	if (code == PB_ERR_DEPTH_EXCEEDED()): return c"protobuf: message nesting exceeds depth limit"
 	return c"protobuf: unknown error"
 
 
@@ -195,14 +191,10 @@ int pb_kind_is_packable(int kind):
 # from a merely truncated buffer is PB_ERR_BAD_WIRE_TYPE's whole reason
 # to exist as its own code.
 int pb_wire_type_valid(int wire_type):
-	if (wire_type == PB_WIRE_VARINT):
-		return 1
-	if (wire_type == PB_WIRE_FIXED64):
-		return 1
-	if (wire_type == PB_WIRE_LENGTH_DELIMITED):
-		return 1
-	if (wire_type == PB_WIRE_FIXED32):
-		return 1
+	if (wire_type == PB_WIRE_VARINT): return 1
+	if (wire_type == PB_WIRE_FIXED64): return 1
+	if (wire_type == PB_WIRE_LENGTH_DELIMITED): return 1
+	if (wire_type == PB_WIRE_FIXED32): return 1
 	return 0
 
 
@@ -267,20 +259,17 @@ int pb_element_size(pb_value_desc* elem):
 	# A scalar element's aux, when set, is its explicit storage width:
 	# compiler-emitted descriptors (grammar/protobuf_builtin.w) store
 	# `repeated bool` as list[bool], one byte per element.
-	if (elem.aux != 0):
-		return elem.aux
+	if (elem.aux != 0): return elem.aux
 	return 4
 
 
 int pb_is_zero_scalar(int kind, char* addr):
-	if (kind == PB_KIND_BOOL):
-		return (addr[0] & 1) == 0
+	if (kind == PB_KIND_BOOL): return (addr[0] & 1) == 0
 	int width = 4
 	if ((kind == PB_KIND_FIXED64) || (kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT64) || (kind == PB_KIND_SINT64)):
 		width = 8
 	for i in range(width):
-		if ((addr[i] & 255) != 0):
-			return 0
+		if ((addr[i] & 255) != 0): return 0
 	return 1
 
 
@@ -304,10 +293,8 @@ void pb_encode_scalar(int kind, char* addr, string_builder* out):
 		int v = addr[0] & 1
 		int n = varint_encode_u32(v, buf)
 		string_append_bytes(out, buf, n)
-	else if (kind == PB_KIND_FIXED32):
-		string_append_bytes(out, addr, 4)
-	else if (kind == PB_KIND_FIXED64):
-		string_append_bytes(out, addr, 8)
+	else if (kind == PB_KIND_FIXED32): string_append_bytes(out, addr, 4)
+	else if (kind == PB_KIND_FIXED64): string_append_bytes(out, addr, 8)
 	else if ((kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT64)):
 		int32* lo_p = cast(int32*, addr)
 		int32* hi_p = cast(int32*, addr + 4)
@@ -355,11 +342,9 @@ void pb_encode_bytes_value(pb_bytes* b, int number, string_builder* out):
 
 void pb_encode_repeated(pb_field_desc* f, char* addr, string_builder* out):
 	int raw = pb_load_ptr(addr)
-	if (raw == 0):
-		return
+	if (raw == 0): return
 	__w_list* list = cast(__w_list*, raw)
-	if (list.length == 0):
-		return
+	if (list.length == 0): return
 	pb_value_desc* elem = cast(pb_value_desc*, f.aux)
 	int ekind = elem.kind
 	if (pb_kind_is_packable(ekind)):
@@ -393,18 +378,15 @@ void pb_encode_field(pb_field_desc* f, char* addr, string_builder* out):
 		return
 	if (kind == PB_KIND_MESSAGE):
 		int raw = pb_load_ptr(addr)
-		if (raw == 0):
-			return
+		if (raw == 0): return
 		pb_encode_message_value(cast(pb_message_desc*, f.aux), cast(char*, raw), f.number, out)
 		return
 	if ((kind == PB_KIND_STRING) || (kind == PB_KIND_BYTES)):
 		pb_bytes* b = cast(pb_bytes*, addr)
-		if (b.length == 0):
-			return
+		if (b.length == 0): return
 		pb_encode_bytes_value(b, f.number, out)
 		return
-	if (pb_is_zero_scalar(kind, addr)):
-		return
+	if (pb_is_zero_scalar(kind, addr)): return
 	pb_append_tag(f.number, pb_kind_wire_type(kind), out)
 	pb_encode_scalar(kind, addr, out)
 
@@ -549,8 +531,7 @@ int pb_decode_bytes_field(char* data, int length, char* out_addr, int* consumed_
 	# a zeroed struct, or the zeroed staging slot pb_decode_repeated
 	# passes) or a previous pb_decode_bytes_field allocation.
 	pb_bytes* b = cast(pb_bytes*, out_addr)
-	if (cast(int, b.data) != 0):
-		free(b.data)
+	if (cast(int, b.data) != 0): free(b.data)
 	b.data = copy
 	b.length = blen
 	consumed_out[0] = n + blen
@@ -573,8 +554,7 @@ int pb_decode_message_field(pb_message_desc* nested, char* data, int length, cha
 		return PB_ERR_LENGTH_OVERRUN
 	if ((length - n) < mlen):
 		return PB_ERR_LENGTH_OVERRUN
-	if (depth >= PB_MAX_DECODE_DEPTH):
-		return PB_ERR_DEPTH_EXCEEDED()
+	if (depth >= PB_MAX_DECODE_DEPTH): return PB_ERR_DEPTH_EXCEEDED()
 	# proto3 duplicate-message semantics: a later occurrence of the same
 	# singular message field MERGES into the earlier one, not replaces
 	# it -- scalars last-one-wins, strings/bytes freed and replaced,
@@ -585,8 +565,7 @@ int pb_decode_message_field(pb_message_desc* nested, char* data, int length, cha
 	# overwrites, replaces, or appends in place.
 	int existing = pb_load_ptr(out_addr)
 	char* buf
-	if (existing != 0):
-		buf = cast(char*, existing)
+	if (existing != 0): buf = cast(char*, existing)
 	else:
 		buf = malloc(nested.struct_size)
 		mem_fill(buf, 0, nested.struct_size)
@@ -606,8 +585,7 @@ int pb_decode_message_field(pb_message_desc* nested, char* data, int length, cha
 pb_field_desc* pb_find_field(pb_message_desc* desc, int number):
 	int i = 0
 	while (i < desc.field_count):
-		if (desc.fields[i].number == number):
-			return &desc.fields[i]
+		if (desc.fields[i].number == number): return &desc.fields[i]
 		i = i + 1
 	return cast(pb_field_desc*, 0)
 
@@ -629,8 +607,7 @@ void pb_free_decoded(pb_message_desc* desc, char* out):
 		int kind = f.kind
 		if ((kind == PB_KIND_STRING) || (kind == PB_KIND_BYTES)):
 			pb_bytes* b = cast(pb_bytes*, addr)
-			if (cast(int, b.data) != 0):
-				free(b.data)
+			if (cast(int, b.data) != 0): free(b.data)
 			b.data = cast(char*, 0)
 			b.length = 0
 		else if (kind == PB_KIND_MESSAGE):
@@ -649,8 +626,7 @@ void pb_free_decoded(pb_message_desc* desc, char* out):
 					char* eaddr = list.items + j * list.element_size
 					if ((ekind == PB_KIND_STRING) || (ekind == PB_KIND_BYTES)):
 						pb_bytes* eb = cast(pb_bytes*, eaddr)
-						if (cast(int, eb.data) != 0):
-							free(eb.data)
+						if (cast(int, eb.data) != 0): free(eb.data)
 					else if (ekind == PB_KIND_MESSAGE):
 						# Message elements are stored by value inside
 						# list.items -- free their internals only, not
@@ -678,11 +654,9 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 	if (packable && (wire_type == PB_WIRE_LENGTH_DELIMITED) && (natural_wire != PB_WIRE_LENGTH_DELIMITED)):
 		is_packed_form = 1
 	int is_unpacked_scalar = 0
-	if (packable && (wire_type == natural_wire)):
-		is_unpacked_scalar = 1
+	if (packable && (wire_type == natural_wire)): is_unpacked_scalar = 1
 	int is_delimited_element = 0
-	if ((packable == 0) && (wire_type == PB_WIRE_LENGTH_DELIMITED)):
-		is_delimited_element = 1
+	if ((packable == 0) && (wire_type == PB_WIRE_LENGTH_DELIMITED)): is_delimited_element = 1
 
 	if ((is_packed_form == 0) && (is_unpacked_scalar == 0) && (is_delimited_element == 0)):
 		return pb_skip_or_error(data, length, wire_type, consumed_out)
@@ -692,8 +666,7 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 	if (raw == 0):
 		list = __w_list_new(pb_element_size(elem))
 		pb_store_ptr(out_addr, cast(int, list))
-	else:
-		list = cast(__w_list*, raw)
+	else: list = cast(__w_list*, raw)
 
 	if (is_packed_form):
 		int blen = 0
@@ -730,8 +703,7 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 			return PB_ERR_LENGTH_OVERRUN
 		if ((length - n) < mlen):
 			return PB_ERR_LENGTH_OVERRUN
-		if (depth >= PB_MAX_DECODE_DEPTH):
-			return PB_ERR_DEPTH_EXCEEDED()
+		if (depth >= PB_MAX_DECODE_DEPTH): return PB_ERR_DEPTH_EXCEEDED()
 		char* buf = malloc(nested.struct_size)
 		mem_fill(buf, 0, nested.struct_size)
 		int code = pb_decode_into_depth(nested, data + n, mlen, buf, depth + 1)
@@ -850,8 +822,7 @@ int pb_decode_into_depth(pb_message_desc* desc, char* data, int length, char* ou
 # back as clean as the caller handed it in.
 int pb_decode_into(pb_message_desc* desc, char* data, int length, char* out):
 	int code = pb_decode_into_depth(desc, data, length, out, 0)
-	if (code != 0):
-		pb_free_decoded(desc, out)
+	if (code != 0): pb_free_decoded(desc, out)
 	return code
 
 
@@ -863,8 +834,7 @@ int pb_decode_into(pb_message_desc* desc, char* data, int length, char* out):
 # wire type).
 wresult[char*]* pb_decode(pb_message_desc* desc, char* data, int length, char* out):
 	int code = pb_decode_into(desc, data, length, out)
-	if (code != 0):
-		return result_new_error[char*](code)
+	if (code != 0): return result_new_error[char*](code)
 	return result_new_ok[char*](out)
 
 
@@ -882,8 +852,7 @@ pb_bytes* pb_to_bytes(pb_message_desc* desc, char* addr):
 
 
 void pb_bytes_free(pb_bytes* b):
-	if (cast(int, b) == 0):
-		return
+	if (cast(int, b) == 0): return
 	free(b.data)
 	free(cast(char*, b))
 
@@ -911,15 +880,13 @@ char* pb_from_data(pb_message_desc* desc, char* data, int length):
 
 # from_proto(T, bytes) lowers to this; a null pb_bytes* decodes to 0.
 char* pb_from_bytes(pb_message_desc* desc, pb_bytes* b):
-	if (cast(int, b) == 0):
-		return cast(char*, 0)
+	if (cast(int, b) == 0): return cast(char*, 0)
 	return pb_from_data(desc, b.data, b.length)
 
 
 # Frees a message returned by pb_from_data/pb_from_bytes (from_proto):
 # everything it owns, then the struct itself.
 void pb_free_message(pb_message_desc* desc, char* msg):
-	if (cast(int, msg) == 0):
-		return
+	if (cast(int, msg) == 0): return
 	pb_free_decoded(desc, msg)
 	free(msg)

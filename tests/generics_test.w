@@ -37,8 +37,7 @@ int twice(int x):
 T doubled_larger[T](T a, T b):
 	T bigger = a
 	T* p = &bigger
-	if (b > a):
-		*p = b
+	if (b > a): *p = b
 	return twice(*p)
 
 

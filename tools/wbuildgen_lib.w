@@ -347,8 +347,7 @@ void wbg_usage():
 # dir_walk_files, as wexec_collect_dir does for directory inputs), or
 # nothing when this run does not scan the tree (wbg_scan_tree).
 void wbg_collect_dir(char* path, list[char*] files):
-	if (wbg_scan_tree == 0):
-		return
+	if (wbg_scan_tree == 0): return
 	dir_walk_files(path, files)
 
 
@@ -370,8 +369,7 @@ char* wbg_basename(char* path):
 	int i = 0
 	int last = 0
 	while (path[i] != 0):
-		if (path[i] == '/'):
-			last = i + 1
+		if (path[i] == '/'): last = i + 1
 		i = i + 1
 	return path + last
 
@@ -380,8 +378,7 @@ char* wbg_basename(char* path):
 char* wbg_strip_suffix(char* text, int n):
 	int keep = strlen(text) - n
 	string_builder* s = string_new()
-	for i in range(keep):
-		string_append_char(s, text[i])
+	for i in range(keep): string_append_char(s, text[i])
 	char* out = s.data
 	free(s)
 	return out
@@ -710,14 +707,10 @@ void wbg_reset_directives():
 # Directives that decorate the generated run step (as opposed to the
 # x64 flag, which chooses what to generate).
 int wbg_dir_has_run_fields():
-	if (wbg_dir_expect_fail | (wbg_dir_timeout_ms > 0)):
-		return 1
-	if (wbg_dir_stdin != 0):
-		return 1
-	if ((wbg_dir_expect_stdout.length > 0) || (wbg_dir_expect_stderr.length > 0)):
-		return 1
-	if (wbg_dir_argv_decorates_primary):
-		return 1
+	if (wbg_dir_expect_fail | (wbg_dir_timeout_ms > 0)): return 1
+	if (wbg_dir_stdin != 0): return 1
+	if ((wbg_dir_expect_stdout.length > 0) || (wbg_dir_expect_stderr.length > 0)): return 1
+	if (wbg_dir_argv_decorates_primary): return 1
 	return 0
 
 
@@ -734,21 +727,18 @@ void wbg_token_error(char* path, char* message, char* token):
 
 # Strictly-digits millisecond count; -1 on anything else.
 int wbg_parse_ms(char* text):
-	if (text[0] == 0):
-		return -1
+	if (text[0] == 0): return -1
 	int value = 0
 	int i = 0
 	while (text[i] != 0):
-		if ((text[i] < '0') || (text[i] > '9')):
-			return -1
+		if ((text[i] < '0') || (text[i] > '9')): return -1
 		value = value * 10 + (text[i] - '0')
 		i = i + 1
 	return value
 
 
 int wbg_need_value(char* path, char* key, int has_value):
-	if (has_value):
-		return 0
+	if (has_value): return 0
 	wbg_token_error(path, c"missing value for '# wbuild:' directive ", key)
 	return 1
 
@@ -756,22 +746,16 @@ int wbg_need_value(char* path, char* key, int has_value):
 # The arch code for a non-default target selector word, or -1 when the
 # word is not one — shared by the arch_only= and group= value parsers.
 int wbg_arch_word(char* word):
-	if (strcmp(word, c"x64") == 0):
-		return wbg_arch_x64()
-	if (strcmp(word, c"arm64") == 0):
-		return wbg_arch_arm64()
-	if (strcmp(word, c"win64") == 0):
-		return wbg_arch_win64()
-	if (strcmp(word, c"arm64_darwin") == 0):
-		return wbg_arch_arm64_darwin()
-	if (strcmp(word, c"wasm") == 0):
-		return wbg_arch_wasm()
+	if (strcmp(word, c"x64") == 0): return wbg_arch_x64()
+	if (strcmp(word, c"arm64") == 0): return wbg_arch_arm64()
+	if (strcmp(word, c"win64") == 0): return wbg_arch_win64()
+	if (strcmp(word, c"arm64_darwin") == 0): return wbg_arch_arm64_darwin()
+	if (strcmp(word, c"wasm") == 0): return wbg_arch_wasm()
 	return -1
 
 
 int wbg_no_value(char* path, char* key, int has_value):
-	if (has_value == 0):
-		return 0
+	if (has_value == 0): return 0
 	wbg_token_error(path, c"'# wbuild:' flag takes no value: ", key)
 	return 1
 
@@ -795,15 +779,13 @@ char* wbg_target_binary_path(json_value* target):
 		return 0
 	json_value* first = json_array_get(steps, 0)
 	json_value* cmd = jfield_array(first, c"cmd")
-	if (cmd == 0):
-		return 0
+	if (cmd == 0): return 0
 	int i = 0
 	while (i < json_array_length(cmd)):
 		json_value* element = json_array_get(cmd, i)
 		if ((element.type == json_type_string()) && (strcmp(element.string_value, c"-o") == 0) && (i + 1 < json_array_length(cmd))):
 			json_value* out = json_array_get(cmd, i + 1)
-			if (out.type == json_type_string()):
-				return out.string_value
+			if (out.type == json_type_string()): return out.string_value
 		i = i + 1
 	return 0
 
@@ -820,8 +802,7 @@ json_value* wbg_find_target_by_source(char* src_path):
 			continue
 		json_value* first = json_array_get(steps, 0)
 		json_value* cmd = json_object_get(first, c"cmd")
-		if ((cmd == 0) || (cmd.type != json_type_array()) || (json_array_length(cmd) < 1)):
-			continue
+		if ((cmd == 0) || (cmd.type != json_type_array()) || (json_array_length(cmd) < 1)): continue
 		json_value* head = json_array_get(cmd, 0)
 		if ((head.type != json_type_string()) || (strcmp(head.string_value, c"bin/wv2") != 0)):
 			continue
@@ -847,8 +828,7 @@ json_value* wbg_find_target_by_output(char* binary):
 	for char* name in wbg_base_names:
 		json_value* target = wbg_base_targets[name]
 		json_value* outputs = jfield_array(target, c"outputs")
-		if (outputs == 0):
-			continue
+		if (outputs == 0): continue
 		int i = 0
 		while (i < json_array_length(outputs)):
 			json_value* element = json_array_get(outputs, i)
@@ -863,8 +843,7 @@ json_value* wbg_find_target_by_output(char* binary):
 # 0 if no base target compiles src_path.
 char* wbg_resolve_tool_name(char* src_path):
 	json_value* target = wbg_find_target_by_source(src_path)
-	if (target == 0):
-		return 0
+	if (target == 0): return 0
 	return jfield_string(target, c"name")
 
 
@@ -872,8 +851,7 @@ char* wbg_resolve_tool_name(char* src_path):
 int wbg_apply_step_field(char* path, char* key, int has_value, char* value):
 	wbg_step_dir* sd = wbg_dir_cur_step
 	if (strcmp(key, c"expect_fail") == 0):
-		if (wbg_no_value(path, key, has_value)):
-			return 1
+		if (wbg_no_value(path, key, has_value)): return 1
 		json_object_set(sd.step, c"expect_fail", json_bool(1))
 		return 0
 	int is_expect_out = strcmp(key, c"expect_stdout") == 0
@@ -881,31 +859,23 @@ int wbg_apply_step_field(char* path, char* key, int has_value, char* value):
 	int is_reject_out = strcmp(key, c"reject_stdout") == 0
 	int is_reject_err = strcmp(key, c"reject_stderr") == 0
 	if (is_expect_out | is_expect_err | is_reject_out | is_reject_err):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if (value[0] == 0):
 			wbg_token_error(path, c"empty '# wbuild:' expectation ", key)
 			return 1
-		if (is_expect_out):
-			sd.expect_stdout.push(strclone(value))
-		else if (is_expect_err):
-			sd.expect_stderr.push(strclone(value))
-		else if (is_reject_out):
-			sd.reject_stdout.push(strclone(value))
-		else:
-			sd.reject_stderr.push(strclone(value))
+		if (is_expect_out): sd.expect_stdout.push(strclone(value))
+		else if (is_expect_err): sd.expect_stderr.push(strclone(value))
+		else if (is_reject_out): sd.reject_stdout.push(strclone(value))
+		else: sd.reject_stderr.push(strclone(value))
 		return 0
 	if (strcmp(key, c"expect_signal") == 0):
-		if (wbg_no_value(path, key, has_value)):
-			return 1
+		if (wbg_no_value(path, key, has_value)): return 1
 		json_object_set(sd.step, c"expect_signal", json_bool(1))
 		return 0
 	if (strcmp(key, c"env") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		int eq = 0
-		while ((value[eq] != 0) && (value[eq] != '=')):
-			eq = eq + 1
+		while ((value[eq] != 0) && (value[eq] != '=')): eq = eq + 1
 		if ((eq == 0) || (value[eq] == 0)):
 			wbg_token_error(path, c"'# wbuild:' env needs NAME=value, got ", value)
 			return 1
@@ -916,8 +886,7 @@ int wbg_apply_step_field(char* path, char* key, int has_value, char* value):
 		json_array_push(env, json_string(value))
 		return 0
 	if (strcmp(key, c"timeout") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		int ms = wbg_parse_ms(value)
 		if (ms <= 0):
 			wbg_token_error(path, c"'# wbuild:' timeout needs a positive millisecond count, got ", value)
@@ -925,8 +894,7 @@ int wbg_apply_step_field(char* path, char* key, int has_value, char* value):
 		json_object_set(sd.step, c"timeout_ms", json_int(ms))
 		return 0
 	if (strcmp(key, c"expect_status") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		int status = wbg_parse_ms(value)
 		if (status < 0):
 			wbg_token_error(path, c"'# wbuild:' expect_status needs a non-negative exit code, got ", value)
@@ -934,8 +902,7 @@ int wbg_apply_step_field(char* path, char* key, int has_value, char* value):
 		json_object_set(sd.step, c"expect_status", json_int(status))
 		return 0
 	if ((strcmp(key, c"stdin") == 0) | (strcmp(key, c"stdout_file") == 0) | (strcmp(key, c"stderr_file") == 0) | (strcmp(key, c"cwd") == 0)):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if ((value[0] == 0) && (strcmp(key, c"stdin") != 0)):
 			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
 			return 1
@@ -976,8 +943,7 @@ void wbg_push_step_args(json_value* cmd, char* args):
 			while ((args[i] != 0) && (args[i] != 39)):
 				string_append_char(token, args[i])
 				i = i + 1
-			if (args[i] == 39):
-				i = i + 1
+			if (args[i] == 39): i = i + 1
 			in_word = 1
 		else if ((c == ' ') || (c == '\t')):
 			if (in_word):
@@ -989,8 +955,7 @@ void wbg_push_step_args(json_value* cmd, char* args):
 			string_append_char(token, c)
 			in_word = 1
 			i = i + 1
-	if (in_word):
-		json_array_push(cmd, json_string(token.data))
+	if (in_word): json_array_push(cmd, json_string(token.data))
 	string_free(token)
 
 
@@ -1022,8 +987,7 @@ before the conventional scan, and join the hand-written base targets:
 they render right after them, "base wins" and tool=/fixture lookups see
 them, and a name defined both here and in build.base.json is an error. */
 int wbg_open_custom(char* path, char* key, int has_value, char* value):
-	if (wbg_need_value(path, key, has_value)):
-		return 1
+	if (wbg_need_value(path, key, has_value)): return 1
 	if (value[0] == 0):
 		wbg_token_error(path, c"empty '# wbuild:' directive ", key)
 		return 1
@@ -1053,15 +1017,13 @@ int wbg_open_custom(char* path, char* key, int has_value, char* value):
 int wbg_apply_custom_field(char* path, char* key, int has_value, char* value):
 	wbg_custom* c = wbg_cur_custom
 	if (strcmp(key, c"staged") == 0):
-		if (wbg_no_value(path, key, has_value)):
-			return 1
+		if (wbg_no_value(path, key, has_value)): return 1
 		if (c.is_binary == 0):
 			wbg_token_error(path, c"'staged' only applies to 'binary=': ", c.name)
 			return 1
 		c.staged = 1
 		return 0
-	if (wbg_need_value(path, key, has_value)):
-		return 1
+	if (wbg_need_value(path, key, has_value)): return 1
 	if (value[0] == 0):
 		wbg_token_error(path, c"empty '# wbuild:' directive ", key)
 		return 1
@@ -1099,8 +1061,7 @@ int wbg_apply_custom_field(char* path, char* key, int has_value, char* value):
 
 json_value* wbg_string_array(list[char*] values):
 	json_value* out = json_array()
-	for char* value in values:
-		json_array_push(out, json_string(value))
+	for char* value in values: json_array_push(out, json_string(value))
 	return out
 
 
@@ -1115,40 +1076,28 @@ json_value* wbg_custom_json(wbg_custom* c):
 	char* out = c.out
 	if (c.is_binary):
 		deps.push(c"wv2")
-		if (out == 0):
-			out = wbg_concat(c"bin/", c.name)
-	for char* dep in c.deps:
-		deps.push(dep)
-	if (deps.length > 0):
-		json_object_set(target, c"deps", wbg_string_array(deps))
-	if (c.tags.length > 0):
-		json_object_set(target, c"tags", wbg_string_array(c.tags))
-	if (c.data.length > 0):
-		json_object_set(target, c"data", wbg_string_array(c.data))
+		if (out == 0): out = wbg_concat(c"bin/", c.name)
+	for char* dep in c.deps: deps.push(dep)
+	if (deps.length > 0): json_object_set(target, c"deps", wbg_string_array(deps))
+	if (c.tags.length > 0): json_object_set(target, c"tags", wbg_string_array(c.tags))
+	if (c.data.length > 0): json_object_set(target, c"data", wbg_string_array(c.data))
 	list[char*] inputs = new list[char*]
 	list[char*] outputs = new list[char*]
 	if (c.is_binary):
 		inputs.push(c.src)
 		outputs.push(out)
-	for char* input in c.inputs:
-		inputs.push(input)
-	for char* output in c.outputs:
-		outputs.push(output)
-	if (inputs.length > 0):
-		json_object_set(target, c"inputs", wbg_string_array(inputs))
-	if (outputs.length > 0):
-		json_object_set(target, c"outputs", wbg_string_array(outputs))
+	for char* input in c.inputs: inputs.push(input)
+	for char* output in c.outputs: outputs.push(output)
+	if (inputs.length > 0): json_object_set(target, c"inputs", wbg_string_array(inputs))
+	if (outputs.length > 0): json_object_set(target, c"outputs", wbg_string_array(outputs))
 	json_value* steps = json_array()
 	if (c.is_binary):
 		char* compiled = out
-		if (c.staged):
-			compiled = wbg_concat(out, c".stage")
+		if (c.staged): compiled = wbg_concat(out, c".stage")
 		json_value* cmd = json_array()
 		json_array_push(cmd, json_string(c"bin/wv2"))
-		if (c.arch != 0):
-			json_array_push(cmd, json_string(c.arch))
-		for char* args in c.flags:
-			wbg_push_split_args(cmd, args)
+		if (c.arch != 0): json_array_push(cmd, json_string(c.arch))
+		for char* args in c.flags: wbg_push_split_args(cmd, args)
 		json_array_push(cmd, json_string(c.src))
 		json_array_push(cmd, json_string(c"-o"))
 		json_array_push(cmd, json_string(compiled))
@@ -1163,8 +1112,7 @@ json_value* wbg_custom_json(wbg_custom* c):
 			json_value* mv_step = json_object()
 			json_object_set(mv_step, c"cmd", mv)
 			json_array_push(steps, mv_step)
-	for wbg_step_dir* sd in c.steps:
-		json_array_push(steps, wbg_step_json(sd))
+	for wbg_step_dir* sd in c.steps: json_array_push(steps, wbg_step_json(sd))
 	if (json_array_length(steps) == 0):
 		wbg_error2(c"source-owned target has no steps (add step= lines after it): ", c.name)
 		return 0
@@ -1175,22 +1123,18 @@ json_value* wbg_custom_json(wbg_custom* c):
 # Applies one parsed key[=value] token to the wbg_dir_* state.
 # Returns 0 on success, 1 after reporting an error.
 int wbg_apply_directive(char* path, char* key, int has_value, char* value):
-	if (wbg_line_skip):
-		return 0
+	if (wbg_line_skip): return 0
 	wbg_line_tokens = wbg_line_tokens + 1
 	int opens_custom = (strcmp(key, c"target") == 0) | (strcmp(key, c"binary") == 0)
 	if (wbg_custom_pass):
 		# Pass 1 (wbg_load_customs): only source-owned targets and their
 		# steps; every other directive belongs to pass 2.
-		if (opens_custom):
-			return wbg_open_custom(path, key, has_value, value)
-		if (wbg_line_custom):
-			return wbg_apply_custom_field(path, key, has_value, value)
+		if (opens_custom): return wbg_open_custom(path, key, has_value, value)
+		if (wbg_line_custom): return wbg_apply_custom_field(path, key, has_value, value)
 		if ((strcmp(key, c"step") == 0) && (wbg_cur_custom == 0)):
 			wbg_line_skip = 1
 			return 0
-		if ((strcmp(key, c"step") != 0) && (wbg_dir_cur_step == 0)):
-			return 0
+		if ((strcmp(key, c"step") != 0) && (wbg_dir_cur_step == 0)): return 0
 	else if (opens_custom):
 		# Pass 2 skips what pass 1 already turned into targets: the
 		# target= line itself and every step= line after it.
@@ -1201,8 +1145,7 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 		wbg_line_skip = 1
 		return 0
 	if (strcmp(key, c"step") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if (value[0] == 0):
 			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
 			return 1
@@ -1218,32 +1161,25 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 		sd.expect_stderr = new list[char*]
 		sd.reject_stdout = new list[char*]
 		sd.reject_stderr = new list[char*]
-		if (wbg_custom_pass):
-			wbg_cur_custom.steps.push(sd)
-		else:
-			wbg_dir_steps.push(sd)
+		if (wbg_custom_pass): wbg_cur_custom.steps.push(sd)
+		else: wbg_dir_steps.push(sd)
 		wbg_dir_cur_step = sd
 		return 0
-	if (wbg_dir_cur_step != 0):
-		return wbg_apply_step_field(path, key, has_value, value)
+	if (wbg_dir_cur_step != 0): return wbg_apply_step_field(path, key, has_value, value)
 	if (strcmp(key, c"x64") == 0):
-		if (wbg_no_value(path, key, has_value)):
-			return 1
+		if (wbg_no_value(path, key, has_value)): return 1
 		wbg_dir_x64 = 1
 		return 0
 	if (strcmp(key, c"expect_fail") == 0):
-		if (wbg_no_value(path, key, has_value)):
-			return 1
+		if (wbg_no_value(path, key, has_value)): return 1
 		wbg_dir_expect_fail = 1
 		return 0
 	if (strcmp(key, c"compile_fail") == 0):
-		if (wbg_no_value(path, key, has_value)):
-			return 1
+		if (wbg_no_value(path, key, has_value)): return 1
 		wbg_dir_compile_fail = 1
 		return 0
 	if (strcmp(key, c"arch") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if (strcmp(value, c"x64") == 0):
 			wbg_dir_x64 = 1
 			return 0
@@ -1262,8 +1198,7 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 		wbg_token_error(path, c"unsupported '# wbuild:' arch (x64, arm64, win64, arm64_darwin, wasm) ", value)
 		return 1
 	if (strcmp(key, c"arch_only") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if (wbg_dir_arch_only != 0):
 			wbg_token_error(path, c"duplicate '# wbuild:' directive ", key)
 			return 1
@@ -1274,8 +1209,7 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 		wbg_dir_arch_only = only_arch
 		return 0
 	if (strcmp(key, c"timeout") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if (wbg_dir_timeout_ms != 0):
 			wbg_token_error(path, c"duplicate '# wbuild:' directive ", key)
 			return 1
@@ -1286,27 +1220,22 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 		wbg_dir_timeout_ms = ms
 		return 0
 	if (strcmp(key, c"stdin") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if (wbg_dir_stdin != 0):
 			wbg_token_error(path, c"duplicate '# wbuild:' directive ", key)
 			return 1
 		wbg_dir_stdin = strclone(value)
 		return 0
 	if ((strcmp(key, c"expect_stdout") == 0) | (strcmp(key, c"expect_stderr") == 0)):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if (value[0] == 0):
 			wbg_token_error(path, c"empty '# wbuild:' expectation ", key)
 			return 1
-		if (strcmp(key, c"expect_stdout") == 0):
-			wbg_dir_expect_stdout.push(strclone(value))
-		else:
-			wbg_dir_expect_stderr.push(strclone(value))
+		if (strcmp(key, c"expect_stdout") == 0): wbg_dir_expect_stdout.push(strclone(value))
+		else: wbg_dir_expect_stderr.push(strclone(value))
 		return 0
 	if (strcmp(key, c"deps") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		# A .w value is allowed: it declares a W file the test consumes
 		# as run-time text rather than importing (asm_stubs_test.w reads
 		# code_generator/*_asm.w via asm_stub_check), which the import
@@ -1321,30 +1250,25 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 		wbg_dir_data.push(strclone(value))
 		return 0
 	if (strcmp(key, c"extra_compile") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if (value[0] == 0):
 			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
 			return 1
 		wbg_dir_extra_compile.push(strclone(value))
 		return 0
 	if ((strcmp(key, c"name") == 0) | (strcmp(key, c"argv") == 0)):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if (value[0] == 0):
 			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
 			return 1
 		# Repeatable; the pairing rule (name= alone, argv= alone, or an
 		# equal, nonzero count of both as variants) is resolved once the
 		# whole source has been parsed — see wbg_scan.
-		if (strcmp(key, c"name") == 0):
-			wbg_dir_names.push(strclone(value))
-		else:
-			wbg_dir_argvs.push(strclone(value))
+		if (strcmp(key, c"name") == 0): wbg_dir_names.push(strclone(value))
+		else: wbg_dir_argvs.push(strclone(value))
 		return 0
 	if (strcmp(key, c"tool") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if (ends_with(value, c".w") == 0):
 			wbg_token_error(path, c"'tool=' expects a tool's '.w' source path, got ", value)
 			return 1
@@ -1361,16 +1285,14 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 		wbg_dir_tool.push(strclone(tool_name))
 		return 0
 	if (strcmp(key, c"flags") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if (value[0] == 0):
 			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
 			return 1
 		wbg_dir_flags.push(strclone(value))
 		return 0
 	if (strcmp(key, c"group") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		# '<target>@<arch>': the aggregate's name plus the arch every
 		# member compiles with. The arch rides in the value because one
 		# source can belong to several groups at different arches
@@ -1381,8 +1303,7 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 		int at = -1
 		int gi = 0
 		while (value[gi] != 0):
-			if (value[gi] == '@'):
-				at = gi
+			if (value[gi] == '@'): at = gi
 			gi = gi + 1
 		if ((at <= 0) || (value[at + 1] == 0)):
 			wbg_token_error(path, c"'group=' needs '<target>@<arch>' (arch one of x64, arm64, win64, arm64_darwin, wasm), got ", value)
@@ -1392,20 +1313,17 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 			wbg_token_error(path, c"unsupported '# wbuild:' group arch (x64, arm64, win64, arm64_darwin, wasm) ", value + at + 1)
 			return 1
 		string_builder* group_name = string_new()
-		for ni in range(at):
-			string_append_char(group_name, value[ni])
+		for ni in range(at): string_append_char(group_name, value[ni])
 		wbg_dir_group_names.push(group_name.data)
 		wbg_dir_group_archs.push(group_arch)
 		free(group_name)
 		return 0
 	if (strcmp(key, c"group_only") == 0):
-		if (wbg_no_value(path, key, has_value)):
-			return 1
+		if (wbg_no_value(path, key, has_value)): return 1
 		wbg_dir_group_only = 1
 		return 0
 	if (strcmp(key, c"fixture_group") == 0):
-		if (wbg_need_value(path, key, has_value)):
-			return 1
+		if (wbg_need_value(path, key, has_value)): return 1
 		if (wbg_dir_fixture_group != 0):
 			wbg_token_error(path, c"duplicate '# wbuild:' directive ", key)
 			return 1
@@ -1429,22 +1347,15 @@ int wbg_parse_value(char* text, int j, string_builder* out):
 		return j
 	j = j + 1
 	while (text[j] != '"'):
-		if ((text[j] == 0) || (text[j] == '\n')):
-			return -1
+		if ((text[j] == 0) || (text[j] == '\n')): return -1
 		if (text[j] == 92):
 			j = j + 1
-			if (text[j] == 'n'):
-				string_append_char(out, '\n')
-			else if (text[j] == 't'):
-				string_append_char(out, '\t')
-			else if (text[j] == '"'):
-				string_append_char(out, '"')
-			else if (text[j] == 92):
-				string_append_char(out, 92)
-			else:
-				return -1
-		else:
-			string_append_char(out, text[j])
+			if (text[j] == 'n'): string_append_char(out, '\n')
+			else if (text[j] == 't'): string_append_char(out, '\t')
+			else if (text[j] == '"'): string_append_char(out, '"')
+			else if (text[j] == 92): string_append_char(out, 92)
+			else: return -1
+		else: string_append_char(out, text[j])
 		j = j + 1
 	return j + 1
 
@@ -1469,8 +1380,7 @@ int wbg_parse_directive_token(char* text, int j, char* path):
 	int failed = wbg_apply_directive(path, key.data, has_value, value.data)
 	string_free(key)
 	string_free(value)
-	if (failed):
-		return -1
+	if (failed): return -1
 	return j
 
 
@@ -1480,8 +1390,7 @@ int wbg_has_inline_directive(char* text):
 	int at_line_start = 1
 	int i = 0
 	while (text[i] != 0):
-		if (at_line_start && starts_with(text + i, c"# wbuild:")):
-			return 1
+		if (at_line_start && starts_with(text + i, c"# wbuild:")): return 1
 		at_line_start = text[i] == '\n'
 		i = i + 1
 	return 0
@@ -1513,13 +1422,11 @@ char* wbg_directive_lines(char* text):
 	while (text[i] != 0):
 		# i is at a line start here.
 		int start = i
-		while ((text[i] != '\n') && (text[i] != 0)):
-			i = i + 1
+		while ((text[i] != '\n') && (text[i] != 0)): i = i + 1
 		if ((text[start] == '#') && starts_with(text + start, c"# wbuild:")):
 			stream_append_bytes(out, text + start, i - start)
 			string_append_char(out, '\n')
-		if (text[i] == '\n'):
-			i = i + 1
+		if (text[i] == '\n'): i = i + 1
 	char* lines = out.data
 	free(out)
 	return lines
@@ -1531,18 +1438,15 @@ int wbg_parse_directive_text(char* path, char* text);
 
 int wbg_parse_directives(char* path):
 	wbg_reset_directives()
-	if (wbg_directive_cache == 0):
-		wbg_directive_cache = new map[char*, char*]
+	if (wbg_directive_cache == 0): wbg_directive_cache = new map[char*, char*]
 	char* cached = wbg_directive_cache.get(path, 0)
-	if (cached != 0):
-		return wbg_parse_directive_text(path, strclone(cached))
+	if (cached != 0): return wbg_parse_directive_text(path, strclone(cached))
 	string_builder* sidecar_path = string_new()
 	string_append(sidecar_path, path)
 	string_append(sidecar_path, c".wbuild")
 	char* text = file_read_text(sidecar_path.data)
 	string_free(sidecar_path)
-	if (text == 0):
-		text = file_read_text(path)
+	if (text == 0): text = file_read_text(path)
 	else:
 		char* source_text = file_read_text(path)
 		if (source_text != 0):
@@ -1577,10 +1481,8 @@ int wbg_parse_directive_text(char* path, char* text):
 			wbg_line_skip = 0
 			wbg_line_tokens = 0
 			while (at_end == 0):
-				while ((text[j] == ' ') || (text[j] == '\t')):
-					j = j + 1
-				if ((text[j] == 0) || (text[j] == '\n')):
-					at_end = 1
+				while ((text[j] == ' ') || (text[j] == '\t')): j = j + 1
+				if ((text[j] == 0) || (text[j] == '\n')): at_end = 1
 				else:
 					j = wbg_parse_directive_token(text, j, path)
 					if (j < 0):
@@ -1589,8 +1491,7 @@ int wbg_parse_directive_text(char* path, char* text):
 		at_line_start = text[i] == '\n'
 		i = i + 1
 	free(text)
-	if (failed):
-		return -1
+	if (failed): return -1
 	return 0
 
 
@@ -1613,8 +1514,7 @@ int wbg_load_base(char* path):
 	wbg_pinned = new map[char*, int]
 	for char* name in wbg_base_names:
 		json_value* target = wbg_base_targets[name]
-		if (wbg_collect_tags(name, target)):
-			return 1
+		if (wbg_collect_tags(name, target)): return 1
 		# Deps of step-less (umbrella) targets pin their members: a
 		# generated name listed there keeps that hand-chosen placement
 		# instead of being auto-appended to its conventional umbrella.
@@ -1624,8 +1524,7 @@ int wbg_load_base(char* path):
 				int d = 0
 				while (d < json_array_length(deps)):
 					json_value* dep = json_array_get(deps, d)
-					if (dep.type == json_type_string()):
-						wbg_pinned[dep.string_value] = 1
+					if (dep.type == json_type_string()): wbg_pinned[dep.string_value] = 1
 					d = d + 1
 
 	wbg_exclude = new map[char*, int]
@@ -1667,11 +1566,9 @@ int wbg_load_base(char* path):
 # The manifest form of repeated expect_* directives: a bare string
 # for one value, the array form for several (both accepted by wexec).
 json_value* wbg_expectation(list[char*] values):
-	if (values.length == 1):
-		return json_string(values[0])
+	if (values.length == 1): return json_string(values[0])
 	json_value* out = json_array()
-	for char* value in values:
-		json_array_push(out, json_string(value))
+	for char* value in values: json_array_push(out, json_string(value))
 	return out
 
 
@@ -1687,10 +1584,8 @@ void wbg_push_split_args(json_value* cmd, char* args):
 			if (token.length > 0):
 				json_array_push(cmd, json_string(token.data))
 				string_clear(token)
-			if (c == 0):
-				at_end = 1
-		else:
-			string_append_char(token, c)
+			if (c == 0): at_end = 1
+		else: string_append_char(token, c)
 		i = i + 1
 	string_free(token)
 
@@ -1709,16 +1604,11 @@ json_value* wbg_extra_compile_step(char* args):
 # The arch flag token passed to bin/wv2 for a non-default arch, or 0
 # for the default (32-bit x86) arch.
 char* wbg_arch_flag(int arch):
-	if (arch == wbg_arch_x64()):
-		return c"x64"
-	if (arch == wbg_arch_arm64()):
-		return c"arm64"
-	if (arch == wbg_arch_win64()):
-		return c"win64"
-	if (arch == wbg_arch_arm64_darwin()):
-		return c"arm64_darwin"
-	if (arch == wbg_arch_wasm()):
-		return c"wasm"
+	if (arch == wbg_arch_x64()): return c"x64"
+	if (arch == wbg_arch_arm64()): return c"arm64"
+	if (arch == wbg_arch_win64()): return c"win64"
+	if (arch == wbg_arch_arm64_darwin()): return c"arm64_darwin"
+	if (arch == wbg_arch_wasm()): return c"wasm"
 	return 0
 
 
@@ -1730,10 +1620,8 @@ json_value* wbg_compile_cmd(char* src, int arch, char* binary):
 	json_value* cmd = json_array()
 	json_array_push(cmd, json_string(c"bin/wv2"))
 	char* flag = wbg_arch_flag(arch)
-	if (flag != 0):
-		json_array_push(cmd, json_string(flag))
-	for char* args in wbg_dir_flags:
-		wbg_push_split_args(cmd, args)
+	if (flag != 0): json_array_push(cmd, json_string(flag))
+	for char* args in wbg_dir_flags: wbg_push_split_args(cmd, args)
 	json_array_push(cmd, json_string(src))
 	json_array_push(cmd, json_string(c"-o"))
 	json_array_push(cmd, json_string(binary))
@@ -1750,8 +1638,7 @@ void wbg_run_wrapper(json_value* run_cmd, int arch):
 	else if (arch == wbg_arch_wasm()):
 		json_array_push(run_cmd, json_string(c"bin/wrun"))
 		json_array_push(run_cmd, json_string(c"wasm"))
-	else if (arch == wbg_arch_win64()):
-		json_array_push(run_cmd, json_string(c"wine"))
+	else if (arch == wbg_arch_win64()): json_array_push(run_cmd, json_string(c"wine"))
 
 
 # True when arch's run steps go through bin/wrun (wbg_run_wrapper), so
@@ -1763,10 +1650,8 @@ int wbg_arch_uses_wrun(int arch):
 # stdin/expect/timeout decoration from the current directive state,
 # shared by single-target run steps and group-member run steps alike.
 void wbg_decorate_run_step(json_value* run_step):
-	if (wbg_dir_stdin != 0):
-		json_object_set(run_step, c"stdin", json_string(wbg_dir_stdin))
-	if (wbg_dir_expect_fail):
-		json_object_set(run_step, c"expect_fail", json_bool(1))
+	if (wbg_dir_stdin != 0): json_object_set(run_step, c"stdin", json_string(wbg_dir_stdin))
+	if (wbg_dir_expect_fail): json_object_set(run_step, c"expect_fail", json_bool(1))
 	if (wbg_dir_expect_stdout.length > 0):
 		json_object_set(run_step, c"expect_stdout", wbg_expectation(wbg_dir_expect_stdout))
 	if (wbg_dir_expect_stderr.length > 0):
@@ -1790,18 +1675,14 @@ int wbg_steps_cacheable(char* binary, list[char*] roots):
 	list[char*] produced = new list[char*]
 	produced.push(binary)
 	for wbg_step_dir* sd in wbg_dir_steps:
-		if (json_object_get(sd.step, c"stdout_file") != 0):
-			return 0
-		if (json_object_get(sd.step, c"stderr_file") != 0):
-			return 0
+		if (json_object_get(sd.step, c"stdout_file") != 0): return 0
+		if (json_object_get(sd.step, c"stderr_file") != 0): return 0
 		if ((json_object_get(sd.step, c"env") != 0) || (json_object_get(sd.step, c"cwd") != 0)):
 			return 0
 		json_value* cmd = json_object_get(sd.step, c"cmd")
-		if (cmd == 0):
-			return 0
+		if (cmd == 0): return 0
 		int n = json_array_length(cmd)
-		if (n < 1):
-			return 0
+		if (n < 1): return 0
 		char* program = json_array_get(cmd, 0).string_value
 		if (strcmp(program, c"bin/wv2") == 0):
 			char* out = 0
@@ -1809,31 +1690,25 @@ int wbg_steps_cacheable(char* binary, list[char*] roots):
 			while (i < n):
 				char* piece = json_array_get(cmd, i).string_value
 				if (strcmp(piece, c"-o") == 0):
-					if (i + 1 >= n):
-						return 0
+					if (i + 1 >= n): return 0
 					out = json_array_get(cmd, i + 1).string_value
 					i = i + 2
 					continue
-				if (ends_with(piece, c".w")):
-					roots.push(piece)
+				if (ends_with(piece, c".w")): roots.push(piece)
 				i = i + 1
-			if (out == 0):
-				return 0
+			if (out == 0): return 0
 			produced.push(out)
 		else:
 			int known = 0
 			for char* made in produced:
-				if (strcmp(made, program) == 0):
-					known = 1
-			if (known == 0):
-				return 0
+				if (strcmp(made, program) == 0): known = 1
+			if (known == 0): return 0
 	return 1
 
 
 json_value* wbg_make_target(char* name, char* src, int arch):
 	char* ext = c""
-	if (arch == wbg_arch_win64()):
-		ext = c".exe"
+	if (arch == wbg_arch_win64()): ext = c".exe"
 	char* stem = wbg_concat(c"bin/", name)
 	char* binary = wbg_concat(stem, ext)
 	free(stem)
@@ -1844,13 +1719,11 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 	# compile_fail generates no run step, so no runner dependency.
 	if (wbg_arch_uses_wrun(arch) && (wbg_dir_compile_fail == 0)):
 		json_array_push(deps, json_string(c"wrun"))
-	for char* tool_name in wbg_dir_tool:
-		json_array_push(deps, json_string(tool_name))
+	for char* tool_name in wbg_dir_tool: json_array_push(deps, json_string(tool_name))
 	json_object_set(target, c"deps", deps)
 	if (wbg_dir_data.length > 0):
 		json_value* data = json_array()
-		for char* entry in wbg_dir_data:
-			json_array_push(data, json_string(entry))
+		for char* entry in wbg_dir_data: json_array_push(data, json_string(entry))
 		json_object_set(target, c"data", data)
 	# Cache "inputs" (tools/wexec.w's wexec_cache_key): the source file
 	# plus the declared run-time data — the shape wexec's direct-file
@@ -1872,10 +1745,8 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 		json_value* inputs = json_array()
 		json_array_push(inputs, json_string(src))
 		for char* root in step_roots:
-			if (strcmp(root, src) != 0):
-				json_array_push(inputs, json_string(root))
-		for char* input_entry in wbg_dir_data:
-			json_array_push(inputs, json_string(input_entry))
+			if (strcmp(root, src) != 0): json_array_push(inputs, json_string(root))
+		for char* input_entry in wbg_dir_data: json_array_push(inputs, json_string(input_entry))
 		json_object_set(target, c"inputs", inputs)
 	if ((wbg_dir_compile_fail == 0) && (force == 0)):
 		json_value* outputs = json_array()
@@ -1890,8 +1761,7 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 	# is generated at all.
 	if (wbg_dir_compile_fail):
 		json_object_set(compile_step, c"expect_fail", json_bool(1))
-		if (wbg_dir_stdin != 0):
-			json_object_set(compile_step, c"stdin", json_string(wbg_dir_stdin))
+		if (wbg_dir_stdin != 0): json_object_set(compile_step, c"stdin", json_string(wbg_dir_stdin))
 		if (wbg_dir_expect_stdout.length > 0):
 			json_object_set(compile_step, c"expect_stdout", wbg_expectation(wbg_dir_expect_stdout))
 		if (wbg_dir_expect_stderr.length > 0):
@@ -1907,15 +1777,13 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 		wbg_run_wrapper(run_cmd, arch)
 		json_array_push(run_cmd, json_string(binary))
 		if (wbg_dir_argv_decorates_primary):
-			for char* value in wbg_dir_argvs:
-				wbg_push_split_args(run_cmd, value)
+			for char* value in wbg_dir_argvs: wbg_push_split_args(run_cmd, value)
 		json_value* run_step = json_object()
 		json_object_set(run_step, c"cmd", run_cmd)
 		wbg_decorate_run_step(run_step)
 		json_array_push(steps, run_step)
 		if (arch == wbg_arch_default):
-			for wbg_step_dir* sd in wbg_dir_steps:
-				json_array_push(steps, wbg_step_json(sd))
+			for wbg_step_dir* sd in wbg_dir_steps: json_array_push(steps, wbg_step_json(sd))
 			for char* args in wbg_dir_extra_compile:
 				json_array_push(steps, wbg_extra_compile_step(args))
 	json_object_set(target, c"steps", steps)
@@ -1936,18 +1804,12 @@ int wbg_add_generated(char* name, char* src, int arch):
 		return 1
 	wbg_gen_seen[name] = 1
 	wbg_generated.push(wbg_make_target(name, src, arch))
-	if (arch == wbg_arch_x64()):
-		wbg_gen64_names.push(name)
-	else if (arch == wbg_arch_arm64()):
-		wbg_gen_arm64_names.push(name)
-	else if (arch == wbg_arch_win64()):
-		wbg_gen_win64_names.push(name)
-	else if (arch == wbg_arch_arm64_darwin()):
-		wbg_gen_darwin_names.push(name)
-	else if (arch == wbg_arch_wasm()):
-		wbg_gen_wasm_names.push(name)
-	else:
-		wbg_gen32_names.push(name)
+	if (arch == wbg_arch_x64()): wbg_gen64_names.push(name)
+	else if (arch == wbg_arch_arm64()): wbg_gen_arm64_names.push(name)
+	else if (arch == wbg_arch_win64()): wbg_gen_win64_names.push(name)
+	else if (arch == wbg_arch_arm64_darwin()): wbg_gen_darwin_names.push(name)
+	else if (arch == wbg_arch_wasm()): wbg_gen_wasm_names.push(name)
+	else: wbg_gen32_names.push(name)
 	return 0
 
 
@@ -1992,8 +1854,7 @@ json_value* wbg_make_variant_target(char* name, char* src, char* argv):
 # generated name), and a variant joins wbg_gen32_names since it is a
 # plain default-arch run-capable target for umbrella purposes.
 int wbg_add_variant(char* name, char* src, char* argv):
-	if (name in wbg_base_targets):
-		return 0
+	if (name in wbg_base_targets): return 0
 	if (name in wbg_gen_seen):
 		string_builder* s = string_new()
 		string_append(s, c"generated target '")
@@ -2041,8 +1902,7 @@ json_value* wbg_make_fixture_group_target(char* name, list[char*] members, char*
 	json_value* cmd = json_array()
 	json_array_push(cmd, json_string(wfixture_bin))
 	json_array_push(cmd, json_string(c"bin/wv2"))
-	for char* member in members:
-		json_array_push(cmd, json_string(member))
+	for char* member in members: json_array_push(cmd, json_string(member))
 	json_value* step = json_object()
 	json_object_set(step, c"cmd", cmd)
 	json_value* steps = json_array()
@@ -2096,14 +1956,10 @@ struct wbg_group:
 # which appends its suffix instead (bin/lib_test_wasm).
 char* wbg_group_member_binary(char* src, int arch):
 	char* tag = c"x64"
-	if (arch == wbg_arch_arm64()):
-		tag = c"arm64"
-	else if (arch == wbg_arch_win64()):
-		tag = c"win64"
-	else if (arch == wbg_arch_arm64_darwin()):
-		tag = c"darwin"
-	else if (arch == wbg_arch_wasm()):
-		tag = c"wasm"
+	if (arch == wbg_arch_arm64()): tag = c"arm64"
+	else if (arch == wbg_arch_win64()): tag = c"win64"
+	else if (arch == wbg_arch_arm64_darwin()): tag = c"darwin"
+	else if (arch == wbg_arch_wasm()): tag = c"wasm"
 	char* stem = wbg_strip_suffix(wbg_basename(src), 2)
 	int is_test = ends_with(stem, c"_test")
 	string_builder* s = string_new()
@@ -2112,14 +1968,11 @@ char* wbg_group_member_binary(char* src, int arch):
 		char* base = wbg_strip_suffix(stem, 5)
 		string_append(s, base)
 		free(base)
-	else:
-		string_append(s, stem)
+	else: string_append(s, stem)
 	string_append(s, c"_")
 	string_append(s, tag)
-	if (is_test):
-		string_append(s, c"_test")
-	if (arch == wbg_arch_win64()):
-		string_append(s, c".exe")
+	if (is_test): string_append(s, c"_test")
+	if (arch == wbg_arch_win64()): string_append(s, c".exe")
 	free(stem)
 	char* out = s.data
 	free(s)
@@ -2144,8 +1997,7 @@ int wbg_group_add_member(wbg_group* g, char* src):
 		wbg_run_wrapper(run_cmd, g.arch)
 		json_array_push(run_cmd, json_string(binary))
 		if (wbg_dir_argv_decorates_primary):
-			for char* value in wbg_dir_argvs:
-				wbg_push_split_args(run_cmd, value)
+			for char* value in wbg_dir_argvs: wbg_push_split_args(run_cmd, value)
 		json_value* run_step = json_object()
 		json_object_set(run_step, c"cmd", run_cmd)
 		wbg_decorate_run_step(run_step)
@@ -2172,23 +2024,18 @@ json_value* wbg_make_group_target(wbg_group* g):
 	json_object_set(target, c"name", json_string(g.name))
 	json_value* deps = json_array()
 	json_array_push(deps, json_string(c"wv2"))
-	if (wbg_arch_uses_wrun(g.arch)):
-		json_array_push(deps, json_string(c"wrun"))
-	for char* tool_name in g.tools:
-		json_array_push(deps, json_string(tool_name))
+	if (wbg_arch_uses_wrun(g.arch)): json_array_push(deps, json_string(c"wrun"))
+	for char* tool_name in g.tools: json_array_push(deps, json_string(tool_name))
 	json_object_set(target, c"deps", deps)
 	if (g.data.length > 0):
 		json_value* data = json_array()
-		for char* data_entry in g.data:
-			json_array_push(data, json_string(data_entry))
+		for char* data_entry in g.data: json_array_push(data, json_string(data_entry))
 		json_object_set(target, c"data", data)
 	json_value* inputs = json_array()
-	for char* input_entry in g.inputs:
-		json_array_push(inputs, json_string(input_entry))
+	for char* input_entry in g.inputs: json_array_push(inputs, json_string(input_entry))
 	json_object_set(target, c"inputs", inputs)
 	json_value* outputs = json_array()
-	for char* output_entry in g.outputs:
-		json_array_push(outputs, json_string(output_entry))
+	for char* output_entry in g.outputs: json_array_push(outputs, json_string(output_entry))
 	json_object_set(target, c"outputs", outputs)
 	# The shared epilogue: a long multi-program target ends with one
 	# visible line saying the whole bundle passed.
@@ -2221,16 +2068,11 @@ int wbg_add_group_target(wbg_group* g):
 	# Umbrella membership follows the group's arch, like arch_only=:
 	# x64 joins "tests_x64", win64 "tests_win64", compile-only darwin
 	# "tests"; arm64 and wasm join none (qemu / wasm-runtime hosts).
-	if (g.arch == wbg_arch_x64()):
-		wbg_gen64_names.push(g.name)
-	else if (g.arch == wbg_arch_arm64()):
-		wbg_gen_arm64_names.push(g.name)
-	else if (g.arch == wbg_arch_win64()):
-		wbg_gen_win64_names.push(g.name)
-	else if (g.arch == wbg_arch_arm64_darwin()):
-		wbg_gen_darwin_names.push(g.name)
-	else if (g.arch == wbg_arch_wasm()):
-		wbg_gen_wasm_names.push(g.name)
+	if (g.arch == wbg_arch_x64()): wbg_gen64_names.push(g.name)
+	else if (g.arch == wbg_arch_arm64()): wbg_gen_arm64_names.push(g.name)
+	else if (g.arch == wbg_arch_win64()): wbg_gen_win64_names.push(g.name)
+	else if (g.arch == wbg_arch_arm64_darwin()): wbg_gen_darwin_names.push(g.name)
+	else if (g.arch == wbg_arch_wasm()): wbg_gen_wasm_names.push(g.name)
 	return 0
 
 
@@ -2245,18 +2087,12 @@ commands, so it can never drift from them. */
 # out by the caller (derived, never declared); anything else unknown
 # is a typo and fails the manifest run.
 int wbg_tool_entry_key_ok(char* key):
-	if (strcmp(key, c"name") == 0):
-		return 1
-	if (strcmp(key, c"steps") == 0):
-		return 1
-	if (strcmp(key, c"inputs") == 0):
-		return 1
-	if (strcmp(key, c"outputs") == 0):
-		return 1
-	if (strcmp(key, c"data") == 0):
-		return 1
-	if (strcmp(key, c"tags") == 0):
-		return 1
+	if (strcmp(key, c"name") == 0): return 1
+	if (strcmp(key, c"steps") == 0): return 1
+	if (strcmp(key, c"inputs") == 0): return 1
+	if (strcmp(key, c"outputs") == 0): return 1
+	if (strcmp(key, c"data") == 0): return 1
+	if (strcmp(key, c"tags") == 0): return 1
 	return 0
 
 
@@ -2299,8 +2135,7 @@ void wbg_tool_self_outputs(json_value* entry, map[char*, int] produced):
 		int i = 0
 		while (i < json_array_length(outputs)):
 			json_value* element = json_array_get(outputs, i)
-			if (element.type == json_type_string()):
-				produced[element.string_value] = 1
+			if (element.type == json_type_string()): produced[element.string_value] = 1
 			i = i + 1
 	json_value* steps = json_object_get(entry, c"steps")
 	int s = 0
@@ -2311,8 +2146,7 @@ void wbg_tool_self_outputs(json_value* entry, map[char*, int] produced):
 			json_value* element = json_array_get(cmd, j)
 			if ((element.type == json_type_string()) && (strcmp(element.string_value, c"-o") == 0)):
 				json_value* out = json_array_get(cmd, j + 1)
-				if (out.type == json_type_string()):
-					produced[out.string_value] = 1
+				if (out.type == json_type_string()): produced[out.string_value] = 1
 			j = j + 1
 		s = s + 1
 
@@ -2373,8 +2207,7 @@ int wbg_expand_tool_target(json_value* entry):
 			wbg_token_error(name, c"unknown \"tool_targets\" entry key ", key)
 			return 1
 	json_value* steps = json_object_get(entry, c"steps")
-	if (wbg_tool_check_steps(name, steps)):
-		return 1
+	if (wbg_tool_check_steps(name, steps)): return 1
 	if (name in wbg_base_targets):
 		wbg_error2(c"\"tool_targets\" entry is still hand-written in build.base.json's \"targets\" (delete the hand-written entry): ", name)
 		return 1
@@ -2384,8 +2217,7 @@ int wbg_expand_tool_target(json_value* entry):
 	map[char*, int] produced = new map[char*, int]
 	wbg_tool_self_outputs(entry, produced)
 	list[char*] dep_names = new list[char*]
-	if (wbg_tool_derive_deps(name, steps, produced, dep_names)):
-		return 1
+	if (wbg_tool_derive_deps(name, steps, produced, dep_names)): return 1
 	# The generated target keeps the entry's own field order, with the
 	# derived "deps" inserted right after "name" (the field order every
 	# hand-written original had), so the migration diffs cleanly. Tool
@@ -2395,26 +2227,22 @@ int wbg_expand_tool_target(json_value* entry):
 	json_object_set(target, c"name", json_string(name))
 	if (dep_names.length > 0):
 		json_value* deps = json_array()
-		for char* dep in dep_names:
-			json_array_push(deps, json_string(dep))
+		for char* dep in dep_names: json_array_push(deps, json_string(dep))
 		json_object_set(target, c"deps", deps)
 	for char* key, json_value* member in entry.object_values:
 		if ((strcmp(key, c"name") != 0) && (strcmp(key, c"tags") != 0)):
 			json_object_set(target, key, member)
-	if (wbg_collect_tags(name, entry)):
-		return 1
+	if (wbg_collect_tags(name, entry)): return 1
 	wbg_gen_seen[name] = 1
 	wbg_generated.push(target)
 	return 0
 
 
 int wbg_expand_tool_targets():
-	if (wbg_tool_targets_json == 0):
-		return 0
+	if (wbg_tool_targets_json == 0): return 0
 	int i = 0
 	while (i < json_array_length(wbg_tool_targets_json)):
-		if (wbg_expand_tool_target(json_array_get(wbg_tool_targets_json, i))):
-			return 1
+		if (wbg_expand_tool_target(json_array_get(wbg_tool_targets_json, i))): return 1
 		i = i + 1
 	return 0
 
@@ -2441,13 +2269,10 @@ int wbg_load_customs():
 	wbg_custom_pass = 1
 	int failed = 0
 	for char* src in files:
-		if (ends_with(src, c".w") == 0):
-			continue
-		if (wbg_parse_directives(src)):
-			failed = 1
+		if (ends_with(src, c".w") == 0): continue
+		if (wbg_parse_directives(src)): failed = 1
 	wbg_custom_pass = 0
-	if (failed):
-		return 1
+	if (failed): return 1
 	json_value* targets = json_object_get(wbg_base, c"targets")
 	for wbg_custom* c in wbg_customs:
 		if (c.name in wbg_base_targets):
@@ -2461,13 +2286,11 @@ int wbg_load_customs():
 			string_free(s)
 			return 1
 		json_value* target = wbg_custom_json(c)
-		if (target == 0):
-			return 1
+		if (target == 0): return 1
 		json_array_push(targets, target)
 		wbg_base_targets[c.name] = target
 		wbg_base_names.push(c.name)
-		if (wbg_collect_tags(c.name, target)):
-			return 1
+		if (wbg_collect_tags(c.name, target)): return 1
 	return 0
 
 
@@ -2506,12 +2329,9 @@ int wbg_scan():
 	for char* src in files:
 		int is_test = ends_with(src, c"_test.w")
 		int is_fixture = ends_with(src, c"_fixture.w")
-		if ((is_test == 0) && (is_fixture == 0)):
-			continue
-		if (src in wbg_exclude):
-			continue
-		if (wbg_parse_directives(src)):
-			return 1
+		if ((is_test == 0) && (is_fixture == 0)): continue
+		if (src in wbg_exclude): continue
+		if (wbg_parse_directives(src)): return 1
 		if (wbg_dir_fixture_group != 0):
 			# A fixture-group member has no compile-and-run shape of its
 			# own — it is one line in its group's single wfixture
@@ -2550,10 +2370,8 @@ int wbg_scan():
 		int n_names = wbg_dir_names.length
 		int n_argv = wbg_dir_argvs.length
 		char* name_override = 0
-		if ((n_names == 1) && (n_argv == 0)):
-			name_override = wbg_dir_names[0]
-		else if ((n_names == 0) && (n_argv > 0)):
-			wbg_dir_argv_decorates_primary = 1
+		if ((n_names == 1) && (n_argv == 0)): name_override = wbg_dir_names[0]
+		else if ((n_names == 0) && (n_argv > 0)): wbg_dir_argv_decorates_primary = 1
 		else if ((n_names > 0) && (n_argv > 0) && (n_names != n_argv)):
 			wbg_token_error(src, c"'name=' and 'argv=' directive counts must match to pair as variants (or use exactly one 'name=' alone to rename, or 'argv=' alone to decorate): ", src)
 			return 1
@@ -2593,8 +2411,7 @@ int wbg_scan():
 				return 1
 			primary_arch = wbg_dir_arch_only
 		char* name32 = wbg_strip_suffix(wbg_basename(src), 2)
-		if (name_override != 0):
-			name32 = name_override
+		if (name_override != 0): name32 = name_override
 		int gen32 = 0
 		int gen64 = 0
 		int gen_arm64 = 0
@@ -2605,43 +2422,33 @@ int wbg_scan():
 		# blocks below cannot fire either, since every directive that
 		# would feed them was rejected above.
 		if ((wbg_dir_group_only == 0) && ((name32 in wbg_base_targets) == 0)):
-			if (wbg_add_generated(name32, strclone(src), primary_arch)):
-				return 1
+			if (wbg_add_generated(name32, strclone(src), primary_arch)): return 1
 			# The gen* flag mirrors the arch actually compiled, so the
 			# no-target-honors-this-directive checks below stay exact
 			# under arch_only= (e.g. run-step directives on an
 			# arch_only=arm64_darwin source still error).
-			if (primary_arch == wbg_arch_x64()):
-				gen64 = 1
-			else if (primary_arch == wbg_arch_arm64()):
-				gen_arm64 = 1
-			else if (primary_arch == wbg_arch_win64()):
-				gen_win64 = 1
-			else if (primary_arch == wbg_arch_arm64_darwin()):
-				gen_darwin = 1
-			else if (primary_arch == wbg_arch_wasm()):
-				gen_wasm = 1
-			else:
-				gen32 = 1
+			if (primary_arch == wbg_arch_x64()): gen64 = 1
+			else if (primary_arch == wbg_arch_arm64()): gen_arm64 = 1
+			else if (primary_arch == wbg_arch_win64()): gen_win64 = 1
+			else if (primary_arch == wbg_arch_arm64_darwin()): gen_darwin = 1
+			else if (primary_arch == wbg_arch_wasm()): gen_wasm = 1
+			else: gen32 = 1
 		if (wbg_dir_x64):
 			char* stem = wbg_strip_suffix(name32, 5)
 			char* name64 = wbg_concat(stem, c"_64_test")
 			free(stem)
 			if ((name64 in wbg_base_targets) == 0):
-				if (wbg_add_generated(name64, strclone(src), wbg_arch_x64())):
-					return 1
+				if (wbg_add_generated(name64, strclone(src), wbg_arch_x64())): return 1
 				gen64 = 1
 		if (wbg_dir_arm64):
 			char* name_arm64 = wbg_concat(name32, c"_arm64")
 			if ((name_arm64 in wbg_base_targets) == 0):
-				if (wbg_add_generated(name_arm64, strclone(src), wbg_arch_arm64())):
-					return 1
+				if (wbg_add_generated(name_arm64, strclone(src), wbg_arch_arm64())): return 1
 				gen_arm64 = 1
 		if (wbg_dir_win64):
 			char* name_win64 = wbg_concat(name32, c"_win64")
 			if ((name_win64 in wbg_base_targets) == 0):
-				if (wbg_add_generated(name_win64, strclone(src), wbg_arch_win64())):
-					return 1
+				if (wbg_add_generated(name_win64, strclone(src), wbg_arch_win64())): return 1
 				gen_win64 = 1
 		if (wbg_dir_arm64_darwin):
 			char* name_darwin = wbg_concat(name32, c"_darwin")
@@ -2652,13 +2459,11 @@ int wbg_scan():
 		if (wbg_dir_wasm):
 			char* name_wasm = wbg_concat(name32, c"_wasm")
 			if ((name_wasm in wbg_base_targets) == 0):
-				if (wbg_add_generated(name_wasm, strclone(src), wbg_arch_wasm())):
-					return 1
+				if (wbg_add_generated(name_wasm, strclone(src), wbg_arch_wasm())): return 1
 				gen_wasm = 1
 		if ((n_names > 0) && (n_argv > 0) && (n_names == n_argv)):
 			for vi in range(n_names):
-				if (wbg_add_variant(wbg_dir_names[vi], strclone(src), wbg_dir_argvs[vi])):
-					return 1
+				if (wbg_add_variant(wbg_dir_names[vi], strclone(src), wbg_dir_argvs[vi])): return 1
 		# Group memberships: each group= token contributes this source's
 		# compile(+run) steps to its aggregate, with the member's own
 		# run-field directives decorating its run step (built here,
@@ -2686,11 +2491,9 @@ int wbg_scan():
 			else if (g.arch != member_arch):
 				wbg_error2(c"'group=' members disagree on the group's arch: ", src)
 				return 1
-			if (wbg_group_add_member(g, src)):
-				return 1
+			if (wbg_group_add_member(g, src)): return 1
 			member_any = 1
-			if (member_arch != wbg_arch_arm64_darwin()):
-				member_run_capable = 1
+			if (member_arch != wbg_arch_arm64_darwin()): member_run_capable = 1
 			mi = mi + 1
 		# Directives that nothing generated can honor are as fatal as
 		# typos: they mean the target moved to build.base.json without
@@ -2739,8 +2542,7 @@ int wbg_scan():
 	# One aggregate target per 'group=' name, members in the order the
 	# (sorted) scan encountered them.
 	for char* group_name in group_order:
-		if (wbg_add_group_target(groups[group_name])):
-			return 1
+		if (wbg_add_group_target(groups[group_name])): return 1
 
 	# One wfixture invocation per fixture-group name, resolved via the
 	# same wbg_find_target_by_source path-based lookup 'tool=' uses —
@@ -2762,8 +2564,7 @@ int wbg_scan():
 
 	# Tool targets ride the same generated list (and the same sorted
 	# output position) as scan-derived targets.
-	if (wbg_expand_tool_targets()):
-		return 1
+	if (wbg_expand_tool_targets()): return 1
 
 	wbg_sort_generated()
 	wbg_sort_strings(wbg_gen32_names)
@@ -2787,8 +2588,7 @@ members come first in the generated deps, in build.base.json order,
 then the generated ones sorted by name. */
 int wbg_collect_tags(char* name, json_value* target):
 	json_value* tags = json_object_get(target, c"tags")
-	if (tags == 0):
-		return 0
+	if (tags == 0): return 0
 	if (tags.type != json_type_array()):
 		wbg_error2(c"\"tags\" must be an array of umbrella names: ", name)
 		return 1
@@ -2833,10 +2633,8 @@ int wbg_apply_tags():
 int wbg_extend_umbrella(char* umbrella, list[char*] names):
 	list[char*] wanted = new list[char*]
 	for char* name in names:
-		if ((name in wbg_pinned) == 0):
-			wanted.push(name)
-	if (wanted.length == 0):
-		return 0
+		if ((name in wbg_pinned) == 0): wanted.push(name)
+	if (wanted.length == 0): return 0
 	json_value* target = wbg_base_targets.get(umbrella, 0)
 	if (target == 0):
 		wbg_error2(c"missing umbrella target ", umbrella)
@@ -2848,8 +2646,7 @@ int wbg_extend_umbrella(char* umbrella, list[char*] names):
 	if (deps.type != json_type_array()):
 		wbg_error2(c"umbrella \"deps\" is not an array: ", umbrella)
 		return 1
-	for char* name in wanted:
-		json_array_push(deps, json_string(name))
+	for char* name in wanted: json_array_push(deps, json_string(name))
 	return 0
 
 
@@ -2863,21 +2660,16 @@ The manifest layout is fixed so regeneration is reproducible:
 - base targets keep their parse order, field order included. */
 
 void wbg_append_compact(string_builder* out, json_value* value):
-	if (value.type == json_type_string()):
-		json_append_escaped_string(out, value.string_value)
-	else if (value.type == json_type_int()):
-		string_append_int(out, value.int_value)
+	if (value.type == json_type_string()): json_append_escaped_string(out, value.string_value)
+	else if (value.type == json_type_int()): string_append_int(out, value.int_value)
 	else if (value.type == json_type_bool()):
-		if (value.int_value):
-			string_append(out, c"true")
-		else:
-			string_append(out, c"false")
+		if (value.int_value): string_append(out, c"true")
+		else: string_append(out, c"false")
 	else if (value.type == json_type_array()):
 		string_append_char(out, '[')
 		int i = 0
 		while (i < json_array_length(value)):
-			if (i > 0):
-				string_append(out, c", ")
+			if (i > 0): string_append(out, c", ")
 			wbg_append_compact(out, json_array_get(value, i))
 			i = i + 1
 		string_append_char(out, ']')
@@ -2885,15 +2677,13 @@ void wbg_append_compact(string_builder* out, json_value* value):
 		string_append_char(out, '{')
 		int first = 1
 		for char* key, json_value* member in value.object_values:
-			if (first == 0):
-				string_append(out, c", ")
+			if (first == 0): string_append(out, c", ")
 			first = 0
 			json_append_escaped_string(out, key)
 			string_append(out, c": ")
 			wbg_append_compact(out, member)
 		string_append_char(out, '}')
-	else:
-		string_append(out, c"null")
+	else: string_append(out, c"null")
 
 
 # One array element per line, indented with four tabs.
@@ -2902,8 +2692,7 @@ void wbg_append_element_lines(string_builder* out, json_value* array):
 	while (i < json_array_length(array)):
 		string_append(out, c"\t\t\t\t")
 		wbg_append_compact(out, json_array_get(array, i))
-		if (i + 1 < json_array_length(array)):
-			string_append_char(out, ',')
+		if (i + 1 < json_array_length(array)): string_append_char(out, ',')
 		string_append_char(out, '\n')
 		i = i + 1
 
@@ -2915,17 +2704,13 @@ void wbg_append_target(string_builder* out, json_value* target):
 	for char* key, json_value* member in target.object_values:
 		# "tags" is generator input (umbrella membership, applied by
 		# wbg_apply_tags), not a wexec field.
-		if (strcmp(key, c"tags") == 0):
-			continue
-		if (first == 0):
-			string_append(out, c",\n")
+		if (strcmp(key, c"tags") == 0): continue
+		if (first == 0): string_append(out, c",\n")
 		first = 0
 		int multiline = 0
 		if (member.type == json_type_array()):
-			if (strcmp(key, c"steps") == 0):
-				multiline = 1
-			if ((strcmp(key, c"deps") == 0) && (has_steps == 0)):
-				multiline = 1
+			if (strcmp(key, c"steps") == 0): multiline = 1
+			if ((strcmp(key, c"deps") == 0) && (has_steps == 0)): multiline = 1
 		if (multiline):
 			string_append(out, c"\t\t\t")
 			json_append_escaped_string(out, key)
@@ -2947,17 +2732,14 @@ char* wbg_render():
 	string_append(out, c"{\n")
 	int first = 1
 	for char* key, json_value* member in wbg_base.object_values:
-		if (strcmp(key, c"generate") == 0):
-			continue
-		if (first == 0):
-			string_append(out, c",\n")
+		if (strcmp(key, c"generate") == 0): continue
+		if (first == 0): string_append(out, c",\n")
 		first = 0
 		if (strcmp(key, c"targets") == 0):
 			string_append(out, c"\t\"targets\": [\n")
 			int i = 0
 			while (i < json_array_length(member)):
-				if (i > 0):
-					string_append(out, c",\n")
+				if (i > 0): string_append(out, c",\n")
 				wbg_append_target(out, json_array_get(member, i))
 				i = i + 1
 			string_append(out, c"\n\t]")
@@ -2994,8 +2776,7 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 		while (i < json_array_length(old_targets)):
 			json_value* target = json_array_get(old_targets, i)
 			char* name = jfield_string(target, c"name")
-			if (name != 0):
-				old_defs[name] = json_stringify(target)
+			if (name != 0): old_defs[name] = json_stringify(target)
 			i = i + 1
 		map[char*, int] new_names = new map[char*, int]
 		i = 0
@@ -3019,8 +2800,7 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 			if ((name in new_names) == 0):
 				wbg_error2(c"committed target no longer generated: ", name)
 				reported = 1
-	if (reported == 0):
-		wbg_error(c"manifests differ in formatting only")
+	if (reported == 0): wbg_error(c"manifests differ in formatting only")
 	wbg_error2(c"stale manifest: ", out_path)
 
 
@@ -3035,31 +2815,22 @@ toolchain targets. Call it once
 per process: the wbg_* tables are global. */
 char* wbg_generate(char* base_path, int scan_tree):
 	wbg_scan_tree = scan_tree
-	if (wbg_load_base(base_path)):
-		return 0
-	if (wbg_load_customs()):
-		return 0
-	if (wbg_scan()):
-		return 0
-	if (wbg_apply_tags()):
-		return 0
-	if (wbg_extend_umbrella(c"tests", wbg_gen32_names)):
-		return 0
+	if (wbg_load_base(base_path)): return 0
+	if (wbg_load_customs()): return 0
+	if (wbg_scan()): return 0
+	if (wbg_apply_tags()): return 0
+	if (wbg_extend_umbrella(c"tests", wbg_gen32_names)): return 0
 	# Compile-only darwin twins are cheap to verify on Linux (no qemu,
 	# no wine), so they join "tests" the way graphics_darwin/pac_darwin
 	# already do. Generated arm64 and wasm twins join no umbrella (see
 	# the module doc comment); win64 twins join "tests_win64" like
 	# their hand-written counterparts.
-	if (wbg_extend_umbrella(c"tests", wbg_gen_darwin_names)):
-		return 0
-	if (wbg_extend_umbrella(c"tests_x64", wbg_gen64_names)):
-		return 0
-	if (wbg_extend_umbrella(c"tests_win64", wbg_gen_win64_names)):
-		return 0
+	if (wbg_extend_umbrella(c"tests", wbg_gen_darwin_names)): return 0
+	if (wbg_extend_umbrella(c"tests_x64", wbg_gen64_names)): return 0
+	if (wbg_extend_umbrella(c"tests_win64", wbg_gen_win64_names)): return 0
 
 	json_value* targets = json_object_get(wbg_base, c"targets")
-	for json_value* target in wbg_generated:
-		json_array_push(targets, target)
+	for json_value* target in wbg_generated: json_array_push(targets, target)
 
 	string_builder* summary = string_new()
 	string_append_int(summary, json_array_length(targets))

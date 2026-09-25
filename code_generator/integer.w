@@ -72,14 +72,10 @@ void save_int(char *p, int v):
 
 
 int load_i(char* p, int n):
-	if (n == __word_size__):
-		return *cast(int*, p)
-	if (n == 4):
-		return *cast(uint32*, p)
-	if (n == 2):
-		return *cast(uint16*, p)
-	if (n == 1):
-		return *cast(uint8*, p)
+	if (n == __word_size__): return *cast(int*, p)
+	if (n == 4): return *cast(uint32*, p)
+	if (n == 2): return *cast(uint16*, p)
+	if (n == 1): return *cast(uint8*, p)
 	int result = 0
 	while (n > 0):
 		result = (result << 8) + (p[n - 1] & 255)

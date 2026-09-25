@@ -57,8 +57,7 @@ wtest_out* run_wtest(char** envp, char* flag, list[char*] paths):
 	process_result* r = process_run(c"bin/wtest", argv, opts, 0, 0)
 	free(opts)
 	free(cast(void*, argv))
-	if (r == 0):
-		fail(c"could not spawn bin/wtest")
+	if (r == 0): fail(c"could not spawn bin/wtest")
 	wtest_out* o = new wtest_out()
 	o.out = r.stdout_text
 	o.err = r.stderr_text
@@ -106,8 +105,7 @@ int main(int argc, char** argv):
 	list[char*] keep = split(c"rn_dyn32 rn_dyn64 rn_gpu rn_static rn_compile_only rn_dyn_imp rn_gpu_imp rn_plain_imp rn_broken_imp rn_dyn_missing rn_cuda_clib", ' ')
 	int k = 0
 	while (k < keep.length):
-		if (has_line(o.out, keep[k]) == 0):
-			fail(strjoin(c"--available dropped ", keep[k]))
+		if (has_line(o.out, keep[k]) == 0): fail(strjoin(c"--available dropped ", keep[k]))
 		k = k + 1
 
 	o = run_wtest(0, c"--runnable-here", marker())
@@ -116,8 +114,7 @@ int main(int argc, char** argv):
 
 	# A statically linked run target and a compile-only target are
 	# runnable on every host.
-	if (has_line(out, c"rn_static") == 0):
-		fail(c"--runnable-here dropped the static target")
+	if (has_line(out, c"rn_static") == 0): fail(c"--runnable-here dropped the static target")
 	if (has_line(out, c"rn_compile_only") == 0):
 		fail(c"--runnable-here dropped the compile-only target")
 
@@ -144,13 +141,10 @@ int main(int argc, char** argv):
 
 	# GPU run target (root imports lib.cuda): needs the NVIDIA driver.
 	if (gpu):
-		if (has_line(out, c"rn_gpu") == 0):
-			fail(c"host has an NVIDIA GPU but rn_gpu was dropped")
+		if (has_line(out, c"rn_gpu") == 0): fail(c"host has an NVIDIA GPU but rn_gpu was dropped")
 	else:
-		if (has_line(out, c"rn_gpu")):
-			fail(c"no NVIDIA GPU on this host but rn_gpu was kept")
-		if (contains(err, c"no NVIDIA GPU") == 0):
-			fail(c"drop reason did not name the missing GPU")
+		if (has_line(out, c"rn_gpu")): fail(c"no NVIDIA GPU on this host but rn_gpu was kept")
+		if (contains(err, c"no NVIDIA GPU") == 0): fail(c"drop reason did not name the missing GPU")
 
 	# The soname probe (ai_tooling_next_steps.md 2026-08-04):
 	# dyn_missing.w names a library NO host has, so rn_dyn_missing is

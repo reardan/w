@@ -28,10 +28,8 @@ void stat_usage():
 int stat_print_one(char* path, int nofollow):
 	file_stat st
 	int err = 0
-	if (nofollow):
-		err = file_lstat_path(path, &st)
-	else:
-		err = file_stat_path(path, &st)
+	if (nofollow): err = file_lstat_path(path, &st)
+	else: err = file_stat_path(path, &st)
 	if (err != 0):
 		wstream* err_out = stderr_writer()
 		stream_write_cstr(err_out, c"stat: cannot stat '")
@@ -85,14 +83,10 @@ int stat_print_one(char* path, int nofollow):
 
 # 1 when body is one of stat's own recognized flag names.
 int stat_flag_recognized(char* body):
-	if (args_name_matches(body, c"h")):
-		return 1
-	if (args_name_matches(body, c"help")):
-		return 1
-	if (args_name_matches(body, c"f")):
-		return 1
-	if (args_name_matches(body, c"nofollow")):
-		return 1
+	if (args_name_matches(body, c"h")): return 1
+	if (args_name_matches(body, c"help")): return 1
+	if (args_name_matches(body, c"f")): return 1
+	if (args_name_matches(body, c"nofollow")): return 1
 	return 0
 
 

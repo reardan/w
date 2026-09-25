@@ -52,10 +52,8 @@ void test_ternary_cstr_arms():
 
 void test_ternary_in_condition_position():
 	int hits = 0
-	if (1 ? 1 : 0):
-		hits = hits + 1
-	while (hits < 3 ? 1 : 0):
-		hits = hits + 1
+	if (1 ? 1 : 0): hits = hits + 1
+	while (hits < 3 ? 1 : 0): hits = hits + 1
 	assert_equal(3, hits)
 
 
@@ -68,10 +66,8 @@ void test_ternary_in_call_and_index():
 
 int tern_pick(int n, int flag):
 	switch (n):
-		case flag ? 1 : 2:
-			return 100
-		default:
-			return 200
+		case flag ? 1 : 2: return 100
+		default: return 200
 
 
 void test_ternary_in_case_values():
@@ -93,8 +89,7 @@ void test_ternary_float_arms():
 
 
 wresult[int]* tern_lookup(int key):
-	if (key < 0):
-		return result_new_error[int](7)
+	if (key < 0): return result_new_error[int](7)
 	return result_new_ok[int](key * 2)
 
 

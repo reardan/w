@@ -1,6 +1,5 @@
 void emit_x64_opcode():
-	if (word_size == 8):
-		emit(1, c"\x48")
+	if (word_size == 8): emit(1, c"\x48")
 
 
 # Local-slot load fusion (docs/projects/optimization.md, the v0 window).
@@ -96,10 +95,8 @@ void promote_eax():
 	elif (target_isa == 1): a64(op(0xf9, 0x400000))   # ldr x0,[x0]
 	else:
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
-			if (word_size == 8):
-				lea_load_fold(2, c"\x48\x8b")
-			else:
-				lea_load_fold(1, c"\x8b")
+			if (word_size == 8): lea_load_fold(2, c"\x48\x8b")
+			else: lea_load_fold(1, c"\x8b")
 			return
 		emit_x64_opcode()
 		emit(2, c"\x8b\x00")
@@ -122,10 +119,8 @@ void promote_int8_eax():
 	elif (target_isa == 1): a64(op(0x39, 0x800000))   # ldrsb x0,[x0]
 	else:
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
-			if (word_size == 8):
-				lea_load_fold(3, c"\x48\x0f\xbe")
-			else:
-				lea_load_fold(2, c"\x0f\xbe")
+			if (word_size == 8): lea_load_fold(3, c"\x48\x0f\xbe")
+			else: lea_load_fold(2, c"\x0f\xbe")
 			return
 		emit_x64_opcode() /* needed ?? */
 		emit(3, c"\x0f\xbe\x00")
@@ -138,10 +133,8 @@ void promote_int16_eax():
 	elif (target_isa == 1): a64(op(0x79, 0x800000))   # ldrsh x0,[x0]
 	else:
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
-			if (word_size == 8):
-				lea_load_fold(3, c"\x48\x0f\xbf")
-			else:
-				lea_load_fold(2, c"\x0f\xbf")
+			if (word_size == 8): lea_load_fold(3, c"\x48\x0f\xbf")
+			else: lea_load_fold(2, c"\x0f\xbf")
 			return
 		emit_x64_opcode() /* needed ?? */
 		emit(3, c"\x0f\xbf\x00")
@@ -154,15 +147,11 @@ void promote_int32_eax():
 	elif (target_isa == 1): a64(op(0xb9, 0x800000))   # ldrsw x0,[x0]
 	else:
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
-			if (word_size == 8):
-				lea_load_fold(2, c"\x48\x63")
-			else:
-				lea_load_fold(1, c"\x8b")
+			if (word_size == 8): lea_load_fold(2, c"\x48\x63")
+			else: lea_load_fold(1, c"\x8b")
 			return
-		if (word_size == 8):
-			emit(3, c"\x48\x63\x00")
-		else:
-			emit(2, c"\x8b\x00")
+		if (word_size == 8): emit(3, c"\x48\x63\x00")
+		else: emit(2, c"\x8b\x00")
 
 
 /* mov %eax,(%ebx) */
@@ -258,31 +247,24 @@ void be_imm_note_reset():
 # -1 is rejected rather than checked: the division probe would have to
 # evaluate INT_MIN / -1, which traps on x86 rather than wrapping.
 int fold_mul_fits(int a, int b):
-	if ((a == 0) || (b == 0)):
-		return 1
-	if ((a == -1) || (b == -1)):
-		return 0
+	if ((a == 0) || (b == 0)): return 1
+	if ((a == -1) || (b == -1)): return 0
 	int p = a * b
-	if (p / b != a):
-		return 0
+	if (p / b != a): return 0
 	return p / a == b
 
 # True when a + b does not overflow the compiler's own word, same reason.
 int fold_add_fits(int a, int b):
 	int sum = a + b
-	if ((b > 0) && (sum < a)):
-		return 0
-	if ((b < 0) && (sum > a)):
-		return 0
+	if ((b > 0) && (sum < a)): return 0
+	if ((b < 0) && (sum > a)): return 0
 	return 1
 
 # True when a - b does not overflow the compiler's own word, same reason.
 int fold_sub_fits(int a, int b):
 	int diff = a - b
-	if ((b < 0) && (diff < a)):
-		return 0
-	if ((b > 0) && (diff > a)):
-		return 0
+	if ((b < 0) && (diff < a)): return 0
+	if ((b > 0) && (diff > a)): return 0
 	return 1
 
 void mov_eax_int(int v);
@@ -340,8 +322,7 @@ void xor_eax_int32(int v):
 		# the sign-extended-32 form both hosts can represent.
 		int high = (v >> 31) & 1
 		v = v & 2147483647
-		if (high):
-			v = v - 2147483647 - 1
+		if (high): v = v - 2147483647 - 1
 		arm64_load_scratch(9, v)
 		a64(op(0x4a, 0x090000))   # eor w0,w0,w9 (zero-extends upper half)
 	else:
@@ -394,10 +375,8 @@ void mov_eax_int(int v):
 	elif (target_isa == 1): arm64_mov_rax_int64(v)
 	else:
 		int start = codepos
-		if (word_size == 8):
-			mov_rax_int64(v)
-		else:
-			mov_eax_int32(v)
+		if (word_size == 8): mov_rax_int64(v)
+		else: mov_eax_int32(v)
 		# PTX also reaches here (it has no early return above) but does not
 		# advance codepos, so note it only for the x86 family. Every consumer
 		# already early-returns on the other ISAs; this keeps the invariant
@@ -421,8 +400,7 @@ void add_eax_int32(int v):
 				return
 		# Adding zero is a no-op; emitting nothing also keeps a current lea
 		# or constant note current for the load that usually follows.
-		if (v == 0):
-			return
+		if (v == 0): return
 		# A constant offset from a local's address: fold it into the lea.
 		if ((lea_note_end != 0) && (lea_note_end == codepos)):
 			if (fold_add_fits(lea_note_disp, v)):
@@ -509,8 +487,7 @@ void push_eax():
 		# this is one of the hottest emitters in the compiler. target_isa == 0
 		# is already established by the early returns above.
 		int carried = 0
-		if ((imm_note_end != 0) && (imm_note_end == codepos)):
-			carried = 1
+		if ((imm_note_end != 0) && (imm_note_end == codepos)): carried = 1
 		int start = imm_note_start
 		int value = imm_note_value
 		push_note_start = codepos
@@ -541,8 +518,7 @@ void pop_ebx():
 		# else can be hiding in it.
 		int armed = 0
 		if ((imm_note_end != 0) && (imm_note_end == codepos)):
-			if ((push_imm_end != 0) && (push_imm_end == imm_note_start)):
-				armed = 1
+			if ((push_imm_end != 0) && (push_imm_end == imm_note_start)): armed = 1
 		int left = push_imm_value
 		int right = imm_note_value
 		int start = push_imm_start
@@ -805,8 +781,7 @@ int be_ctrl_block():
 		# The region's value is a PTX label id; its "Ln:" line lands at
 		# the merge point in be_ctrl_end.
 		ctrl_val_stack[ctrl_stack_pos - 1] = ptx_new_label()
-	if (target_isa == 2):
-		wasm_ctrl_block()
+	if (target_isa == 2): wasm_ctrl_block()
 	return ctrl_stack_pos - 1
 
 int be_ctrl_loop():
@@ -820,8 +795,7 @@ int be_ctrl_loop():
 		int ptx_loop_label = ptx_new_label()
 		ctrl_val_stack[ctrl_stack_pos - 1] = ptx_loop_label
 		ptx_place_label(ptx_loop_label)
-	if (target_isa == 2):
-		wasm_ctrl_loop()
+	if (target_isa == 2): wasm_ctrl_loop()
 	return ctrl_stack_pos - 1
 
 # A branch site just emitted with region h's chain head in its displacement
@@ -829,8 +803,7 @@ int be_ctrl_loop():
 # immediately). The bounds-check helpers below use this to thread their
 # condition-coded branches through the same protocol.
 void be_ctrl_link(int h):
-	if (ctrl_kind_stack[h] == 0):
-		ctrl_val_stack[h] = codepos
+	if (ctrl_kind_stack[h] == 0): ctrl_val_stack[h] = codepos
 
 # The displacement field a new branch into region h starts with, and
 # the bookkeeping once it is emitted: a loop region patches the branch to
@@ -890,20 +863,13 @@ void be_cmp_note_reset():
 # codepos. Every fold's rollback goes through here.
 void peep_rollback(int pos):
 	codepos = pos
-	if (imm_note_end > pos):
-		imm_note_end = 0
-	if (push_imm_end > pos):
-		push_imm_end = 0
-	if (binfold_end > pos):
-		binfold_end = 0
-	if (cmp_fuse_end > pos):
-		cmp_fuse_end = 0
-	if (lea_note_end > pos):
-		lea_note_end = 0
-	if (load_note_end > pos):
-		load_note_end = 0
-	if (push_note_end > pos):
-		push_note_end = 0
+	if (imm_note_end > pos): imm_note_end = 0
+	if (push_imm_end > pos): push_imm_end = 0
+	if (binfold_end > pos): binfold_end = 0
+	if (cmp_fuse_end > pos): cmp_fuse_end = 0
+	if (lea_note_end > pos): lea_note_end = 0
+	if (load_note_end > pos): load_note_end = 0
+	if (push_note_end > pos): push_note_end = 0
 
 # A jump target is about to be placed at codepos: no fold may reach back
 # across it (a branch patched to land here would then point into, or
@@ -922,8 +888,7 @@ void be_br_cc(int jcc_opcode, int h):
 
 # jCC condition codes pair via the low bit (0x84 je <-> 0x85 jne, ...)
 int jcc_invert(int jcc_opcode):
-	if (jcc_opcode & 1):
-		return jcc_opcode - 1
+	if (jcc_opcode & 1): return jcc_opcode - 1
 	return jcc_opcode + 1
 
 # Discard-context twins of be_br_zero/be_br_nonzero for callers that
@@ -960,12 +925,10 @@ void be_ctrl_end(int h):
 	if (target_isa == 3):
 		# Forward regions place their merge label here; backward regions
 		# placed theirs at the loop start.
-		if (ctrl_kind_stack[h] == 0):
-			ptx_place_label(ctrl_val_stack[h])
+		if (ctrl_kind_stack[h] == 0): ptx_place_label(ctrl_val_stack[h])
 	elif (target_isa == 2): wasm_ctrl_end()
 	else:
-		if (ctrl_kind_stack[h]):
-			return
+		if (ctrl_kind_stack[h]): return
 		int chain = ctrl_val_stack[h]
 		while (chain):
 			int next_site = be_branch_link_get(chain)
@@ -1101,10 +1064,8 @@ void alu_imod():
 # modrm_ext is the ModRM byte selecting the operation on eax (0xe0 shl,
 # 0xf8 sar).
 int shift_imm_fold(int modrm_ext):
-	if ((imm_note_end == 0) || (imm_note_end != codepos)):
-		return 0
-	if ((push_note_end == 0) || (push_note_end != imm_note_start)):
-		return 0
+	if ((imm_note_end == 0) || (imm_note_end != codepos)): return 0
+	if ((push_note_end == 0) || (push_note_end != imm_note_start)): return 0
 	int count = imm_note_value & 255
 	peep_rollback(push_note_start)
 	emit_x64_opcode()
@@ -1128,8 +1089,7 @@ void alu_shl():
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8
 		a64(op(0x9a, 0xc02120))   # lslv x0,x9,x0
 	else:
-		if (shift_imm_fold(0xe0)):
-			return
+		if (shift_imm_fold(0xe0)): return
 		emit(2, c"\x89\xc1")
 		emit(1, c"\x58")
 		emit_x64_opcode()
@@ -1144,8 +1104,7 @@ void alu_sar():
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8
 		a64(op(0x9a, 0xc02920))   # asrv x0,x9,x0
 	else:
-		if (shift_imm_fold(0xf8)):
-			return
+		if (shift_imm_fold(0xf8)): return
 		emit(2, c"\x89\xc1")
 		emit(1, c"\x58")
 		emit_x64_opcode()
@@ -1502,8 +1461,7 @@ void be_bounds_branch(int kind, int limit, int h):
 	be_ctrl_link(h)
 
 void nop():
-	if (target_isa == 3):
-		return
+	if (target_isa == 3): return
 	if (target_isa == 2): wasm_nop()
 	elif (target_isa == 1): a64(op(0xd5, 0x03201f))   # nop
 	else: emit(1, c"\x90") /* nop */
@@ -1514,8 +1472,7 @@ void ret():
 	elif (target_isa == 2): wasm_ret()
 	elif (target_isa == 1):
 		a64(op(0xf8, 0x40879e))   # ldr x30,[x28],#8  (pop the return-address slot)
-		if (arm64_pac):
-			a64(op(0xda, 0xc1139e))   # autia x30, x28
+		if (arm64_pac): a64(op(0xda, 0xc1139e))   # autia x30, x28
 		a64(op(0xd6, 0x5f03c0))   # ret
 	else: emit(1, c"\xc3") /* ret */
 
@@ -1525,8 +1482,7 @@ void ret():
 void be_arm64_frame_return():
 	a64(op(0xaa, 0x1d03fc))   # mov x28, x29
 	a64(op(0xa8, 0xc17b9d))   # ldp x29, x30, [x28], #16
-	if (arm64_pac):
-		a64(op(0xda, 0xc1139e))   # autia x30, x28
+	if (arm64_pac): a64(op(0xda, 0xc1139e))   # autia x30, x28
 	a64(op(0xd6, 0x5f03c0))   # ret
 
 
@@ -1541,8 +1497,7 @@ void be_return(int stack_words):
 		return
 	if ((target_isa == 0) && be_frame_active):
 		emit(1, c"\xc9") /* leave */
-	else:
-		be_pop(stack_words)
+	else: be_pop(stack_words)
 	ret()
 
 

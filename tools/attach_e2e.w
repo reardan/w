@@ -109,10 +109,8 @@ void out_indented(char* text):
 			out(c"    ")
 			out_bytes(text + start, i - start)
 			out(c"\n")
-			if (text[i] == 0):
-				return
-			if (text[i + 1] == 0):
-				return
+			if (text[i] == 0): return
+			if (text[i + 1] == 0): return
 			start = i + 1
 		i = i + 1
 
@@ -124,8 +122,7 @@ void fail_banner(int timed_out, char* desc):
 		out(c"FAIL (wdbg timed out after ")
 		out(itoa(timeout_secs))
 		out(c"s): ")
-	else:
-		out(c"FAIL: ")
+	else: out(c"FAIL: ")
 	outln(desc)
 	failed = 1
 
@@ -136,8 +133,7 @@ char** wdbg_argv(char* dbg, int pid, char* src):
 	strv_set(argv, 0, dbg)
 	strv_set(argv, 1, c"--attach")
 	strv_set(argv, 2, itoa(pid))
-	if (src != 0):
-		strv_set(argv, 3, src)
+	if (src != 0): strv_set(argv, 3, src)
 	return argv
 
 
@@ -162,20 +158,15 @@ int wait_ready(process* target, int timeout_ms):
 	int ready = 0
 	while (1):
 		int left = deadline - process_monotonic_ms()
-		if ((timeout_ms > 0) && (left <= 0)):
-			break
-		if (timeout_ms <= 0):
-			left = 0 - 1
+		if ((timeout_ms > 0) && (left <= 0)): break
+		if (timeout_ms <= 0): left = 0 - 1
 		process_pollfd_set(fds, 0, target.stdout_fd, 1)
 		int n = poll(cast(int*, fds), 1, left)
 		if (n < 0):
-			if (n == 0 - 4):
-				continue
+			if (n == 0 - 4): continue
 			break
-		if (n == 0):
-			continue
-		if (read(target.stdout_fd, ch, 1) != 1):
-			break
+		if (n == 0): continue
+		if (read(target.stdout_fd, ch, 1) != 1): break
 		if (ch[0] == 10):
 			ready = 1
 			break
@@ -227,10 +218,8 @@ attach_run* run_attach(char* dbg, char* fixture, char* src, char* commands, int 
 		r.text = c"(could not spawn wdbg)"
 		return r
 	r.timed_out = (res.status == process_status_timeout)
-	if (want_stderr):
-		r.text = strjoin(res.stdout_text, res.stderr_text)
-	else:
-		r.text = res.stdout_text
+	if (want_stderr): r.text = strjoin(res.stdout_text, res.stderr_text)
+	else: r.text = res.stdout_text
 	return r
 
 
@@ -252,8 +241,7 @@ int count_lines_with(char* text, char* needle):
 	list[char*] lines = split(text, 10)
 	int count = 0
 	for char* line in lines:
-		if (contains(line, needle)):
-			count = count + 1
+		if (contains(line, needle)): count = count + 1
 	return count
 
 
@@ -287,10 +275,8 @@ char* print_n_value(char* line):
 	while (i >= 0):
 		if (starts_with(line + i, c"n = ")):
 			int j = i + 4
-			while (isdigit(line[j])):
-				j = j + 1
-			if ((j > i + 4) && starts_with(line + j, c" (0x")):
-				return substring(line, i + 4, j)
+			while (isdigit(line[j])): j = j + 1
+			if ((j > i + 4) && starts_with(line + j, c" (0x")): return substring(line, i + 4, j)
 		i = i - 1
 	return 0
 
@@ -309,19 +295,15 @@ void exec_frame_delta_case(char* desc, char* dbg, char* fixture):
 	for char* line in lines:
 		char* v = print_n_value(line)
 		if (v != 0):
-			if (n0 == 0):
-				n0 = v
+			if (n0 == 0): n0 = v
 			else:
-				if (n1 == 0):
-					n1 = v
+				if (n1 == 0): n1 = v
 	if ((n0 != 0) && (n1 != 0) && ((atoi(n0) - atoi(n1)) == 7000000)):
 		out(c"ok: ")
 		outln(desc)
 		return
-	if (n0 == 0):
-		n0 = c""
-	if (n1 == 0):
-		n1 = c""
+	if (n0 == 0): n0 = c""
+	if (n1 == 0): n1 = c""
 	fail_banner(r.timed_out, desc)
 	out(c"  frame 0 n='")
 	out(n0)
@@ -348,8 +330,7 @@ void exec_detach_case(char* prefix, char* dbg, char* fixture):
 		string_append(report, c"\n")
 	else:
 		process_result* res = process_run(dbg, wdbg_argv(dbg, target.pid, FINITE_SRC), 0, c"b bump\nc\ndetach\n", timeout_secs * 1000)
-		if (res != 0):
-			timed_out = (res.status == process_status_timeout)
+		if (res != 0): timed_out = (res.status == process_status_timeout)
 		# The script's bare `wait` had no ceiling; bound it by the same
 		# timeout so a target left stopped by a detach regression fails
 		# instead of hanging.
@@ -358,22 +339,16 @@ void exec_detach_case(char* prefix, char* dbg, char* fixture):
 		process_capture captured
 		process_capture_init(&captured)
 		int got = process_capture_read(&captured, target.stdout_fd)
-		while (got > 0):
-			got = process_capture_read(&captured, target.stdout_fd)
+		while (got > 0): got = process_capture_read(&captured, target.stdout_fd)
 		string_append(report, process_capture_take(&captured))
 		string_append(report, c"wdbg_status=")
-		if (timed_out):
-			string_append(report, c"timeout")
+		if (timed_out): string_append(report, c"timeout")
 		else:
-			if (res == 0):
-				string_append(report, c"spawn-failed")
-			else:
-				string_append_int(report, res.status)
+			if (res == 0): string_append(report, c"spawn-failed")
+			else: string_append_int(report, res.status)
 		string_append(report, c"\nexit_code=")
-		if (code == process_status_timeout):
-			string_append(report, c"timeout")
-		else:
-			string_append_int(report, code)
+		if (code == process_status_timeout): string_append(report, c"timeout")
+		else: string_append_int(report, code)
 		string_append(report, c"\n")
 		process_free(target)
 	char* text = report.data
@@ -465,33 +440,27 @@ void exec_case(attach_case* c):
 	if (c.kind == 0):
 		check_contains(c.desc, run_attach(c.dbg, c.fixture, c.src, c.commands, c.want_stderr), c.expect)
 	else:
-		if (c.kind == 1):
-			exec_count_case(c.desc, c.dbg, c.fixture, c.commands, c.expect, c.min)
+		if (c.kind == 1): exec_count_case(c.desc, c.dbg, c.fixture, c.commands, c.expect, c.min)
 		else:
-			if (c.kind == 2):
-				exec_frame_delta_case(c.desc, c.dbg, c.fixture)
-			else:
-				exec_detach_case(c.desc, c.dbg, c.fixture)
+			if (c.kind == 2): exec_frame_delta_case(c.desc, c.dbg, c.fixture)
+			else: exec_detach_case(c.desc, c.dbg, c.fixture)
 
 
 # Online CPU count from /proc/cpuinfo (tools/wexec.w's
 # wexec_default_jobs); 1 when it cannot be read.
 int cpu_count():
 	char* text = file_read_text(c"/proc/cpuinfo")
-	if (text == 0):
-		return 1
+	if (text == 0): return 1
 	int count = 0
 	int line_start = 1
 	int i = 0
 	while (text[i] != 0):
 		if (line_start):
-			if (starts_with(text + i, c"processor")):
-				count = count + 1
+			if (starts_with(text + i, c"processor")): count = count + 1
 		line_start = text[i] == 10
 		i = i + 1
 	free(text)
-	if (count < 1):
-		return 1
+	if (count < 1): return 1
 	return count
 
 
@@ -516,8 +485,7 @@ char* exec_case_buffered(int i):
 
 void run_all_cases(int jobs):
 	if (jobs <= 1):
-		for attach_case* c in cases:
-			exec_case(c)
+		for attach_case* c in cases: exec_case(c)
 		return
 	runner_pid = getpid()
 	int total = cases.length
@@ -539,8 +507,7 @@ void run_all_cases(int jobs):
 				# its verdict.
 				failed = 0
 				char* report = exec_case_buffered(next)
-				if (file_write_text(case_report_path(next), report) == 0):
-					exit(2)
+				if (file_write_text(case_report_path(next), report) == 0): exit(2)
 				exit(failed)
 			if (pid < 0):
 				# No worker: run it here instead.
@@ -575,8 +542,7 @@ void run_all_cases(int jobs):
 			char* path = case_report_path(c)
 			char* text = file_read_text(path)
 			unlink(path)
-			if (status != 0):
-				failed = 1
+			if (status != 0): failed = 1
 			if (text == 0):
 				failed = 1
 				string_builder* s = string_new()
@@ -593,12 +559,10 @@ void run_all_cases(int jobs):
 int main(int argc, char** argv):
 	init_paths()
 	char* override = env_get(c"ATTACH_TEST_TIMEOUT")
-	if ((override != 0) && (override[0] != 0)):
-		timeout_secs = atoi(override)
+	if ((override != 0) && (override[0] != 0)): timeout_secs = atoi(override)
 	int jobs = cpu_count()
 	char* jobs_override = env_get(c"ATTACH_TEST_JOBS")
-	if ((jobs_override != 0) && (jobs_override[0] != 0)):
-		jobs = atoi(jobs_override)
+	if ((jobs_override != 0) && (jobs_override[0] != 0)): jobs = atoi(jobs_override)
 	cases = new list[attach_case*]
 
 	# Symbolized mode: the current location resolves to the fixture's source.

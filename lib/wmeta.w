@@ -55,16 +55,14 @@ struct wmeta_check:
 
 # Trim leading and trailing whitespace in place; returns the trimmed start.
 char* wmeta_trim(char* s):
-	while ((s[0] == ' ') || (s[0] == 9) || (s[0] == 13)):
-		s = s + 1
+	while ((s[0] == ' ') || (s[0] == 9) || (s[0] == 13)): s = s + 1
 	int n = strlen(s)
 	while (n > 0):
 		char last = s[n - 1]
 		if ((last == ' ') || (last == 9) || (last == 13)):
 			s[n - 1] = 0
 			n = n - 1
-		else:
-			break
+		else: break
 	return s
 
 
@@ -72,13 +70,10 @@ list[char*] wmeta_split_words(char* line):
 	list[char*] words = new list[char*]
 	int i = 0
 	while (line[i] != 0):
-		while ((line[i] == ' ') || (line[i] == 9)):
-			i = i + 1
-		if (line[i] == 0):
-			break
+		while ((line[i] == ' ') || (line[i] == 9)): i = i + 1
+		if (line[i] == 0): break
 		int start = i
-		while ((line[i] != 0) && (line[i] != ' ') && (line[i] != 9)):
-			i = i + 1
+		while ((line[i] != 0) && (line[i] != ' ') && (line[i] != 9)): i = i + 1
 		int n = i - start
 		char* word = mem_dup(line + start, n)
 		words.push(word)
@@ -87,8 +82,7 @@ list[char*] wmeta_split_words(char* line):
 
 int wmeta_file_exists(char* path):
 	int fd = open(path, 0, 0)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	close(fd)
 	return 1
 
@@ -120,19 +114,13 @@ int wmeta_valid_dotted_name(char* s):
 	while (s[i] != 0):
 		char ch = s[i]
 		if (segment_start):
-			if ((('a' <= ch) && (ch <= 'z')) || (ch == '_')):
-				segment_start = 0
-			else:
-				return 0
-		else if (ch == '.'):
-			segment_start = 1
-		else if ((('a' <= ch) && (ch <= 'z')) || (('0' <= ch) && (ch <= '9')) || (ch == '_')):
-			pass
-		else:
-			return 0
+			if ((('a' <= ch) && (ch <= 'z')) || (ch == '_')): segment_start = 0
+			else: return 0
+		else if (ch == '.'): segment_start = 1
+		else if ((('a' <= ch) && (ch <= 'z')) || (('0' <= ch) && (ch <= '9')) || (ch == '_')): pass
+		else: return 0
 		i = i + 1
-	if (segment_start):
-		return 0
+	if (segment_start): return 0
 	return 1
 
 
@@ -140,8 +128,7 @@ int wmeta_valid_dotted_name(char* s):
 # wmeta_scan_pos. Returns -1 when s[i] is not a digit.
 int wmeta_scan_pos
 int wmeta_scan_number(char* s, int i):
-	if ((s[i] < '0') || (s[i] > '9')):
-		return -1
+	if ((s[i] < '0') || (s[i] > '9')): return -1
 	int value = 0
 	while (('0' <= s[i]) && (s[i] <= '9')):
 		value = value * 10 + (s[i] - '0')
@@ -154,20 +141,14 @@ int wmeta_scan_number(char* s, int i):
 # Returns 0 on any deviation, so tooling stays strict and comparable.
 wmeta_version* wmeta_parse_version(char* s):
 	int major = wmeta_scan_number(s, 0)
-	if (major < 0):
-		return 0
-	if (s[wmeta_scan_pos] != '.'):
-		return 0
+	if (major < 0): return 0
+	if (s[wmeta_scan_pos] != '.'): return 0
 	int minor = wmeta_scan_number(s, wmeta_scan_pos + 1)
-	if (minor < 0):
-		return 0
-	if (s[wmeta_scan_pos] != '.'):
-		return 0
+	if (minor < 0): return 0
+	if (s[wmeta_scan_pos] != '.'): return 0
 	int patch = wmeta_scan_number(s, wmeta_scan_pos + 1)
-	if (patch < 0):
-		return 0
-	if (s[wmeta_scan_pos] != 0):
-		return 0
+	if (patch < 0): return 0
+	if (s[wmeta_scan_pos] != 0): return 0
 	wmeta_version* v = new wmeta_version(major, minor, patch)
 	return v
 
@@ -185,20 +166,16 @@ wmeta_constraint* wmeta_parse_constraint(char* s):
 	else if (s[0] == '^'):
 		kind = '^'
 		rest = s + 1
-	else:
-		return 0
+	else: return 0
 	wmeta_version* v = wmeta_parse_version(rest)
-	if (v == 0):
-		return 0
+	if (v == 0): return 0
 	wmeta_constraint* c = new wmeta_constraint(kind, v)
 	return c
 
 
 int wmeta_version_compare(wmeta_version* a, wmeta_version* b):
-	if (a.major != b.major):
-		return a.major - b.major
-	if (a.minor != b.minor):
-		return a.minor - b.minor
+	if (a.major != b.major): return a.major - b.major
+	if (a.minor != b.minor): return a.minor - b.minor
 	return a.patch - b.patch
 
 
@@ -206,13 +183,10 @@ int wmeta_constraint_satisfied(wmeta_constraint* c, wmeta_version* v):
 	int cmp = wmeta_version_compare(v, c.version)
 	if (c.kind == '='):
 		return cmp == 0
-	if (c.kind == '>'):
-		return cmp >= 0
+	if (c.kind == '>'): return cmp >= 0
 	# '^': ^1.2.3 allows <2.0.0, ^0.2.3 allows <0.3.0, ^0.0.3 is exact
-	if (c.version.major > 0):
-		return (cmp >= 0) & (v.major == c.version.major)
-	if (c.version.minor > 0):
-		return (cmp >= 0) & (v.major == 0) & (v.minor == c.version.minor)
+	if (c.version.major > 0): return (cmp >= 0) & (v.major == c.version.major)
+	if (c.version.minor > 0): return (cmp >= 0) & (v.major == 0) & (v.minor == c.version.minor)
 	return cmp == 0
 
 
@@ -240,8 +214,7 @@ int wmeta_arch_segment(char* path):
 # "lib/__arch__/syscalls" + "x86" -> "lib/__arch__/x86/syscalls"
 char* wmeta_insert_arch(char* path, int pos, char* arch):
 	string_builder* s = string_new()
-	for i in range(pos + 8):
-		string_append_char(s, path[i])
+	for i in range(pos + 8): string_append_char(s, path[i])
 	string_append_char(s, '/')
 	string_append(s, arch)
 	string_append(s, path + pos + 8)
@@ -273,29 +246,22 @@ void wmeta_set_field(wmeta_check* check, wmeta_package* pkg, char* key, char* va
 	if (words.length != 2):
 		wmeta_error2(check, pkg.meta_path, c"field '", key, c"' expects exactly one value")
 		return
-	if (strcmp(key, c"package") == 0):
-		pkg.name = value
-	else if (strcmp(key, c"version") == 0):
-		pkg.version = value
-	else if (strcmp(key, c"w_language") == 0):
-		pkg.w_language = value
-	else if (strcmp(key, c"root") == 0):
-		pkg.root = value
-	else:
-		wmeta_error2(check, pkg.meta_path, c"unknown field '", key, c"'")
+	if (strcmp(key, c"package") == 0): pkg.name = value
+	else if (strcmp(key, c"version") == 0): pkg.version = value
+	else if (strcmp(key, c"w_language") == 0): pkg.w_language = value
+	else if (strcmp(key, c"root") == 0): pkg.root = value
+	else: wmeta_error2(check, pkg.meta_path, c"unknown field '", key, c"'")
 
 
 void wmeta_parse_dep_entry(wmeta_check* check, wmeta_package* pkg, list[char*] words):
 	int valid = (words.length == 2) | (words.length == 4)
 	if (words.length == 4):
-		if (strcmp(words[2], c"path") != 0):
-			valid = 0
+		if (strcmp(words[2], c"path") != 0): valid = 0
 	if (valid == 0):
 		wmeta_error2(check, pkg.meta_path, c"invalid dependency entry: expected '", c"<package> <constraint> [path <relative-path>]", c"'")
 		return
 	wmeta_dep* dep = new wmeta_dep(words[0], words[1], 0)
-	if (words.length == 4):
-		dep.path = words[3]
+	if (words.length == 4): dep.path = words[3]
 	pkg.deps.push(dep)
 
 
@@ -304,8 +270,7 @@ void wmeta_parse_dep_entry(wmeta_check* check, wmeta_package* pkg, list[char*] w
 # returns 0 only when the file cannot be read.
 wmeta_package* wmeta_parse(wmeta_check* check, char* meta_path):
 	list[char*] lines = file_read_lines(meta_path)
-	if (lines == 0):
-		return 0
+	if (lines == 0): return 0
 	wmeta_package* pkg = new wmeta_package
 	pkg.meta_path = strclone(meta_path)
 	pkg.dir = wmeta_dirname(meta_path)
@@ -320,26 +285,19 @@ wmeta_package* wmeta_parse(wmeta_check* check, char* meta_path):
 	for char* raw in lines:
 		int indented = (raw[0] == 9) | (raw[0] == ' ')
 		char* line = wmeta_trim(raw)
-		if ((line[0] == 0) || (line[0] == '#')):
-			pass
+		if ((line[0] == 0) || (line[0] == '#')): pass
 		else if (indented == 0):
 			section = 0
-			if (strcmp(line, c"modules:") == 0):
-				section = 1
-			else if (strcmp(line, c"dependencies:") == 0):
-				section = 2
+			if (strcmp(line, c"modules:") == 0): section = 1
+			else if (strcmp(line, c"dependencies:") == 0): section = 2
 			else:
 				list[char*] words = wmeta_split_words(line)
 				char* value = c""
-				if (words.length >= 2):
-					value = words[1]
+				if (words.length >= 2): value = words[1]
 				wmeta_set_field(check, pkg, words[0], value, words)
-		else if (section == 1):
-			pkg.modules.push(strclone(line))
-		else if (section == 2):
-			wmeta_parse_dep_entry(check, pkg, wmeta_split_words(line))
-		else:
-			wmeta_error2(check, pkg.meta_path, c"indented entry '", line, c"' outside a section")
+		else if (section == 1): pkg.modules.push(strclone(line))
+		else if (section == 2): wmeta_parse_dep_entry(check, pkg, wmeta_split_words(line))
+		else: wmeta_error2(check, pkg.meta_path, c"indented entry '", line, c"' outside a section")
 	return pkg
 
 
@@ -384,19 +342,16 @@ void wmeta_validate_module(wmeta_check* check, wmeta_package* pkg, char* module,
 		free(arm64_path)
 		free(arm64_darwin_path)
 		free(wasm_path)
-	else:
-		wmeta_require_module_file(check, pkg, module, path)
+	else: wmeta_require_module_file(check, pkg, module, path)
 	free(path)
 
 
 # Field-level validation for one parsed package.
 void wmeta_validate(wmeta_check* check, wmeta_package* pkg):
-	if (pkg.name == 0):
-		wmeta_check_error(check, pkg.meta_path, c"missing 'package' field")
+	if (pkg.name == 0): wmeta_check_error(check, pkg.meta_path, c"missing 'package' field")
 	else if (wmeta_valid_dotted_name(pkg.name) == 0):
 		wmeta_error2(check, pkg.meta_path, c"invalid package name '", pkg.name, c"'")
-	if (pkg.version == 0):
-		wmeta_check_error(check, pkg.meta_path, c"missing 'version' field")
+	if (pkg.version == 0): wmeta_check_error(check, pkg.meta_path, c"missing 'version' field")
 	else if (wmeta_parse_version(pkg.version) == 0):
 		wmeta_error2(check, pkg.meta_path, c"invalid version '", pkg.version, c"': expected three numeric components")
 	if (pkg.w_language != 0):
@@ -444,8 +399,7 @@ void wmeta_check_dep(wmeta_check* check, wmeta_package* pkg, wmeta_dep* dep, int
 		string_free(missing)
 		return
 	wmeta_package* dep_pkg = wmeta_load(check, dep_meta)
-	if (dep_pkg == 0):
-		return
+	if (dep_pkg == 0): return
 	if (dep_pkg.name != 0):
 		if (strcmp(dep_pkg.name, dep.name) != 0):
 			string_builder* s = string_new()

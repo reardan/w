@@ -64,15 +64,12 @@ char* web_read_all(int file, int capacity):
 	int done = 0
 	while (done == 0):
 		int remaining = capacity - total
-		if (remaining <= 0):
-			done = 1
+		if (remaining <= 0): done = 1
 		else:
 			int count = read(file, buf + total, remaining)
 			web_check_syscall(c"read", count)
-			if (count == 0):
-				done = 1
-			else:
-				total = total + count
+			if (count == 0): done = 1
+			else: total = total + count
 	buf[total] = 0
 	return buf
 
@@ -100,8 +97,7 @@ int web_stream_until_close(int from_file, int to_file, int capacity):
 	while (done == 0):
 		int count = read(from_file, buf, capacity)
 		web_check_syscall(c"read", count)
-		if (count == 0):
-			done = 1
+		if (count == 0): done = 1
 		else:
 			web_check_syscall(c"write", write(to_file, buf, count))
 			total = total + count

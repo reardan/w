@@ -99,8 +99,7 @@ int* sha256_k():
 	if (sha256_k_words == 0):
 		char* k = sha256_k_table()
 		sha256_k_words = cast(int*, malloc(64 * __word_size__))
-		for i in range(64):
-			sha256_k_words[i] = sha256_be32(k + i * 4)
+		for i in range(64): sha256_k_words[i] = sha256_be32(k + i * 4)
 	return sha256_k_words
 
 
@@ -206,16 +205,14 @@ void sha256(char* data, int len, char* out):
 	tail[rem] = 128 /* 0x80 */
 
 	int blocks = 1
-	if (rem >= 56):
-		blocks = 2
+	if (rem >= 56): blocks = 2
 	int bitlen_pos = blocks * 64 - 8
 	# bit length = len * 8, as a 64-bit big-endian value.
 	sha256_put_be32(tail + bitlen_pos, (len >> 29) & sha256_mask32())
 	sha256_put_be32(tail + bitlen_pos + 4, (len << 3) & sha256_mask32())
 
 	sha256_block_w(h, tail, w)
-	if (blocks == 2):
-		sha256_block_w(h, tail + 64, w)
+	if (blocks == 2): sha256_block_w(h, tail + 64, w)
 	free(tail)
 	free(w)
 

@@ -32,8 +32,7 @@ import libs.extras.vcs.cas
 
 char* vcst_pid_suffix_cache
 char* vcst_pid_suffix():
-	if (vcst_pid_suffix_cache == 0):
-		vcst_pid_suffix_cache = itoa(getpid())
+	if (vcst_pid_suffix_cache == 0): vcst_pid_suffix_cache = itoa(getpid())
 	return vcst_pid_suffix_cache
 
 
@@ -50,22 +49,19 @@ char* vcst_named_root(char* label):
 
 char* vcst_cas_root_cache
 char* vcst_cas_root():
-	if (vcst_cas_root_cache == 0):
-		vcst_cas_root_cache = vcst_named_root(c"cas")
+	if (vcst_cas_root_cache == 0): vcst_cas_root_cache = vcst_named_root(c"cas")
 	return vcst_cas_root_cache
 
 
 char* vcst_refs_root_cache
 char* vcst_refs_root():
-	if (vcst_refs_root_cache == 0):
-		vcst_refs_root_cache = vcst_named_root(c"refs")
+	if (vcst_refs_root_cache == 0): vcst_refs_root_cache = vcst_named_root(c"refs")
 	return vcst_refs_root_cache
 
 
 char* vcst_reflist_root_cache
 char* vcst_reflist_root():
-	if (vcst_reflist_root_cache == 0):
-		vcst_reflist_root_cache = vcst_named_root(c"reflist")
+	if (vcst_reflist_root_cache == 0): vcst_reflist_root_cache = vcst_named_root(c"reflist")
 	return vcst_reflist_root_cache
 
 
@@ -88,16 +84,14 @@ wrefs* vcst_open_reflist():
 # cleanup test can remove exactly what was created.
 list[char*] vcst_commit_ids
 void vcst_track_commit(char* id):
-	if (vcst_commit_ids == 0):
-		vcst_commit_ids = new list[char*]
+	if (vcst_commit_ids == 0): vcst_commit_ids = new list[char*]
 	vcst_commit_ids.push(strclone(id))
 
 
 # Every ref name created under vcst_refs_root() during the run.
 list[char*] vcst_ref_names
 void vcst_track_ref(char* name):
-	if (vcst_ref_names == 0):
-		vcst_ref_names = new list[char*]
+	if (vcst_ref_names == 0): vcst_ref_names = new list[char*]
 	vcst_ref_names.push(strclone(name))
 
 
@@ -580,8 +574,7 @@ void test_reflog_append_ordering():
 	assert1(entries[0].timestamp <= entries[1].timestamp)
 	assert1(entries[1].timestamp <= entries[2].timestamp)
 
-	for reflog_entry* e in entries:
-		reflog_entry_free(e)
+	for reflog_entry* e in entries: reflog_entry_free(e)
 	list_free[reflog_entry*](entries)
 	result_free[list[reflog_entry*]](after)
 
@@ -646,8 +639,7 @@ void test_ref_list_returns_sorted_names():
 	assert_strings_equal(c"main", names[1])
 	assert_strings_equal(c"release-1.0", names[2])
 
-	for char* n in names:
-		free(n)
+	for char* n in names: free(n)
 	list_free[char*](names)
 	result_free[list[char*]](listed)
 

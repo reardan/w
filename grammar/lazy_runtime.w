@@ -44,8 +44,7 @@ lazy_runtime* lazy_runtime_new(char* module, char* names):
 	int count = 1
 	int i = 0
 	while (names[i]):
-		if (names[i] == ' '):
-			count = count + 1
+		if (names[i] == ' '): count = count + 1
 		i = i + 1
 	rt.count = count
 	char** split = cast(char**, malloc(count * __word_size__))
@@ -91,10 +90,8 @@ void lazy_emit_helper(lazy_runtime* rt, int i):
 # Import the runtime module when any call site used it and resolve the
 # call sites emitted before the import. rt may be 0 (never used).
 void lazy_finish_import(lazy_runtime* rt):
-	if (cast(int, rt) == 0):
-		return;
-	if (rt.needed == 0):
-		return;
+	if (cast(int, rt) == 0): return;
+	if (rt.needed == 0): return;
 	import_module(rt.module)
 	int* chains = rt.chains
 	int i = 0

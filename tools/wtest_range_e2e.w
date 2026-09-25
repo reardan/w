@@ -166,8 +166,7 @@ int main():
 
 	# ===== Invalid revision: a hard error, not a silent fallback ======
 	process_result* r = wtest_run(av(c"changed", cat3(c"not_a_real_rev", c"..", c3)), 0)
-	if (r.status == 0):
-		fail(c"invalid range: wtest exited 0")
+	if (r.status == 0): fail(c"invalid range: wtest exited 0")
 	if (contains(r.stderr_text, c"invalid revision in range") == 0):
 		fail(c"invalid range: wrong/missing error message")
 	process_result_free(r)
@@ -176,8 +175,7 @@ int main():
 	# ignored changed-file path (it used to fall to the tests-umbrella
 	# catch-all with no diagnostic).
 	r = wtest_run(av(c"changed", r01, r12), 0)
-	if (r.status == 0):
-		fail(c"second range argument: wtest exited 0")
+	if (r.status == 0): fail(c"second range argument: wtest exited 0")
 	if (contains(r.stderr_text, c"only one revision range argument") == 0):
 		fail(c"second range argument: wrong/missing error message")
 	process_result_free(r)

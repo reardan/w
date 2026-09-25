@@ -59,8 +59,7 @@ cpp_hideset* cpp_hideset_new(char* name, cpp_hideset* next):
 
 int cpp_hideset_contains(cpp_hideset* set, char* name):
 	while (set != 0):
-		if (strcmp(set.name, name) == 0):
-			return 1
+		if (strcmp(set.name, name) == 0): return 1
 		set = set.next
 	return 0
 
@@ -82,8 +81,7 @@ cpp_hideset* cpp_hideset_union(cpp_hideset* left, cpp_hideset* right):
 cpp_hideset* cpp_hideset_intersection(cpp_hideset* left, cpp_hideset* right):
 	cpp_hideset* result = 0
 	while (left != 0):
-		if (cpp_hideset_contains(right, left.name)):
-			result = cpp_hideset_add(result, left.name)
+		if (cpp_hideset_contains(right, left.name)): result = cpp_hideset_add(result, left.name)
 		left = left.next
 	return result
 
@@ -112,8 +110,7 @@ cpp_token* cpp_token_clone_list(cpp_token* token):
 	head.next = 0
 	cpp_token* tail = &head
 	while (token != 0):
-		if ((token.kind == cpp_token_eof()) & (token.next == 0)):
-			break
+		if ((token.kind == cpp_token_eof()) & (token.next == 0)): break
 		tail.next = cpp_token_clone_one(token)
 		tail = tail.next
 		token = token.next
@@ -128,34 +125,28 @@ void cpp_token_add_hideset(cpp_token* token, cpp_hideset* set):
 
 
 void cpp_token_append(cpp_token* head, cpp_token* token):
-	while (head.next != 0):
-		head = head.next
+	while (head.next != 0): head = head.next
 	head.next = token
 
 
 cpp_token* cpp_token_last(cpp_token* token):
-	if (token == 0):
-		return 0
-	while (token.next != 0):
-		token = token.next
+	if (token == 0): return 0
+	while (token.next != 0): token = token.next
 	return token
 
 
 int cpp_token_text_equals(cpp_token* token, char* text):
-	if (token == 0):
-		return 0
+	if (token == 0): return 0
 	return strcmp(token.text, text) == 0
 
 
 int cpp_token_is_ident(cpp_token* token, char* text):
-	if (token == 0):
-		return 0
+	if (token == 0): return 0
 	return (token.kind == cpp_token_ident()) & (strcmp(token.text, text) == 0)
 
 
 int cpp_token_is_punct(cpp_token* token, char* text):
-	if (token == 0):
-		return 0
+	if (token == 0): return 0
 	return (token.kind == cpp_token_punct()) & (strcmp(token.text, text) == 0)
 
 

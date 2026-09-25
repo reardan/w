@@ -46,8 +46,7 @@ void test_adler32_wraps_mod_65521():
 	# past 65521 (70000 + 1 > 65521) if the implementation forgot to mod.
 	int n = 70000
 	char* buf = malloc(n)
-	for i in range(n):
-		buf[i] = 1
+	for i in range(n): buf[i] = 1
 	int a = adler32_of(buf, n)
 	# s1 = (1 + n) mod 65521, s2 = sum_{k=1..n} s1_k mod 65521 -- just
 	# assert it is a plausible masked 32-bit value and reproducible,

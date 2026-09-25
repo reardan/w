@@ -34,15 +34,13 @@ int ui_demo_max_frames
 
 
 int ui_demo_frame():
-	if (gfx_window_poll(ui_demo_win) == 0):
-		return 0
+	if (gfx_window_poll(ui_demo_win) == 0): return 0
 	ui_begin_window(ui_demo_ctx, ui_demo_win)
 	ui_demo_body(ui_demo_ctx, ui_demo_st)
 	ui_end(ui_demo_ctx)
 	gfx_window_swap(ui_demo_win)
 	ui_demo_frame_count = ui_demo_frame_count + 1
-	if ((ui_demo_max_frames > 0) && (ui_demo_frame_count >= ui_demo_max_frames)):
-		return 0
+	if ((ui_demo_max_frames > 0) && (ui_demo_frame_count >= ui_demo_max_frames)): return 0
 	return 1
 
 
@@ -50,15 +48,12 @@ int main(int argc, int argv):
 	args_init(argc, argv)
 	ui_demo_max_frames = 0
 	char* frames_value = args_value(c"frames")
-	if (frames_value != 0):
-		ui_demo_max_frames = atoi(frames_value)
+	if (frames_value != 0): ui_demo_max_frames = atoi(frames_value)
 
 	ui_demo_win = gfx_window_open(c"W ui demo", 320, 680)
-	if (ui_demo_win == 0):
-		return 1
+	if (ui_demo_win == 0): return 1
 	ui_demo_rndr = new ui_renderer()
-	if (ui_render_init(ui_demo_rndr) == 0):
-		return 1
+	if (ui_render_init(ui_demo_rndr) == 0): return 1
 	ui_demo_st = new ui_demo_state()
 	ui_demo_init(ui_demo_st)
 	ui_demo_ctx = new ui_context()

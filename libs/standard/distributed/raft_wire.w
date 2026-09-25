@@ -67,18 +67,15 @@ import lib.mem
 # Encoded size of m in bytes.
 int raft_wire_size(raft_msg* m):
 	int n = 1 + 4 + 4 + 8
-	if (m.type == raft_msg_vote_req):
-		return n + 8 + 8 + 1
-	if (m.type == raft_msg_vote_reply):
-		return n + 1 + 1
+	if (m.type == raft_msg_vote_req): return n + 8 + 8 + 1
+	if (m.type == raft_msg_vote_reply): return n + 1 + 1
 	if (m.type == raft_msg_append):
 		n = n + 8 + 8 + 8 + 4
 		for i in range(m.entries.length):
 			raft_entry* e = m.entries[i]
 			n = n + 1 + 8 + 4 + e.command_len
 		return n
-	if (m.type == raft_msg_append_reply):
-		return n + 1 + 8
+	if (m.type == raft_msg_append_reply): return n + 1 + 8
 	if (m.type == raft_msg_install_snapshot):
 		return n + 8 + 8 + 8 + 4 + 4 * m.snap_config.length + 4 + m.snap_len
 	assert1(0)
@@ -114,8 +111,7 @@ void raft_wire_encode(raft_msg* m, char* buf):
 			buf[off] = e.kind
 			u64_save_le(buf + off + 1, e.term)
 			store_le32(buf + off + 9, cmd_len)
-			for j in range(cmd_len):
-				buf[off + 13 + j] = e.command[j]
+			for j in range(cmd_len): buf[off + 13 + j] = e.command[j]
 			off = off + 13 + cmd_len
 		return
 	if (m.type == raft_msg_append_reply):
@@ -134,8 +130,7 @@ void raft_wire_encode(raft_msg* m, char* buf):
 			coff = coff + 4
 			ci = ci + 1
 		store_le32(buf + coff, m.snap_len)
-		for sb in range(m.snap_len):
-			buf[coff + 4 + sb] = m.snap_data[sb]
+		for sb in range(m.snap_len): buf[coff + 4 + sb] = m.snap_data[sb]
 		return
 	assert1(0)
 
@@ -144,15 +139,13 @@ void raft_wire_encode(raft_msg* m, char* buf):
 # raft_msg_free). Returns 0 on any malformed input: unknown type,
 # short buffer, negative or overrunning lengths, trailing bytes.
 raft_msg* raft_wire_decode(char* buf, int len):
-	if (len < 17):
-		return 0
+	if (len < 17): return 0
 	int type = buf[0] & 255
 	if (type != raft_msg_vote_req && type != raft_msg_vote_reply && type != raft_msg_append && type != raft_msg_append_reply && type != raft_msg_install_snapshot):
 		return 0
 	int from = load_le32(buf + 1)
 	int to = load_le32(buf + 5)
-	if (from < 0 || to < 0):
-		return 0
+	if (from < 0 || to < 0): return 0
 	u64* term = u64_new()
 	u64_load_le(term, buf + 9)
 	raft_msg* m = raft_msg_new(type, from, to, term)

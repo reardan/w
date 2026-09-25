@@ -140,19 +140,16 @@ generator int htt_client(int port, char* path, list[int] ok):
 	char* buf = malloc(1024)
 	while (1):
 		int n = task_read(fd, buf, 1024)
-		if (n <= 0):
-			break
+		if (n <= 0): break
 		string_append_bytes(resp, buf, n)
 	free(buf)
 	close(fd)
-	if (net_test_contains(resp.data, path) && net_test_contains(resp.data, c"200 OK")):
-		ok.push(1)
+	if (net_test_contains(resp.data, path) && net_test_contains(resp.data, c"200 OK")): ok.push(1)
 	string_free(resp)
 
 
 generator int htt_stop_when_done(task* server, list[int] ok, int want):
-	while (ok.length < want):
-		task_sleep_ms(1)
+	while (ok.length < want): task_sleep_ms(1)
 	task_cancel(server)
 
 
@@ -163,8 +160,7 @@ void test_server_and_clients_share_a_scheduler():
 	list[int] ok = new list[int]
 	task_scheduler* sched = task_scheduler_new()
 	task* server = task_spawn(sched, server_accept_task(s, 0))
-	for i in range(8):
-		task_spawn(sched, htt_client(port, c"/in-process", ok))
+	for i in range(8): task_spawn(sched, htt_client(port, c"/in-process", ok))
 	task_spawn(sched, htt_stop_when_done(server, ok, 8))
 	assert_equal(0, task_run(sched))
 	assert_equal(8, ok.length)
@@ -186,8 +182,7 @@ generator int htt_http_request_task(char* url, list[int] ok):
 	req.timeout_ms = 60000
 	http_response* resp = http_request(req)
 	if ((resp.error == 0) && (resp.status == 200)):
-		if (net_test_contains(resp.body, c"/client")):
-			ok.push(1)
+		if (net_test_contains(resp.body, c"/client")): ok.push(1)
 	http_response_free(resp)
 	http_req_free(req)
 

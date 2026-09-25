@@ -7,8 +7,7 @@ int utf8_validate_bytes(char* data, int length):
 	int cp = 0
 	while (i < length):
 		int n = utf8_scan(data + i, length - i, &cp)
-		if (n == 0):
-			return 0
+		if (n == 0): return 0
 		i = i + n
 	return 1
 
@@ -21,12 +20,9 @@ int utf8_next(string s, int byte_index):
 	assert1(byte_index >= 0)
 	assert1(byte_index < s.length)
 	int c = s.data[byte_index] & 255
-	if (c < 128):
-		return byte_index + 1
-	if (c < 224):
-		return byte_index + 2
-	if (c < 240):
-		return byte_index + 3
+	if (c < 128): return byte_index + 1
+	if (c < 224): return byte_index + 2
+	if (c < 240): return byte_index + 3
 	return byte_index + 4
 
 
@@ -36,8 +32,7 @@ int utf8_decode(string s, int byte_index):
 	assert1(byte_index >= 0)
 	assert1(byte_index < s.length)
 	int cp = 0
-	if (utf8_scan(s.data + byte_index, s.length - byte_index, &cp) == 0):
-		return 65533
+	if (utf8_scan(s.data + byte_index, s.length - byte_index, &cp) == 0): return 65533
 	return cp
 
 
@@ -65,10 +60,8 @@ int utf8_encode(char* out, int codepoint):
 
 
 int utf8_is_boundary(string s, int byte_index):
-	if ((byte_index < 0) || (byte_index > s.length)):
-		return 0
-	if ((byte_index == 0) || (byte_index == s.length)):
-		return 1
+	if ((byte_index < 0) || (byte_index > s.length)): return 0
+	if ((byte_index == 0) || (byte_index == s.length)): return 1
 	int c = s.data[byte_index] & 255
 	return (c < 128) | (c > 191)
 
@@ -83,35 +76,29 @@ int utf8_codepoint_count(string s):
 
 
 int utf8_equals(string a, string b):
-	if (a.length != b.length):
-		return 0
+	if (a.length != b.length): return 0
 	int i = 0
 	while (i < a.length):
-		if (a.data[i] != b.data[i]):
-			return 0
+		if (a.data[i] != b.data[i]): return 0
 		i = i + 1
 	return 1
 
 
 int string_starts_with(string s, string prefix):
-	if (prefix.length > s.length):
-		return 0
+	if (prefix.length > s.length): return 0
 	int i = 0
 	while (i < prefix.length):
-		if (s.data[i] != prefix.data[i]):
-			return 0
+		if (s.data[i] != prefix.data[i]): return 0
 		i = i + 1
 	return 1
 
 
 int string_ends_with(string s, string suffix):
-	if (suffix.length > s.length):
-		return 0
+	if (suffix.length > s.length): return 0
 	int offset = s.length - suffix.length
 	int i = 0
 	while (i < suffix.length):
-		if (s.data[offset + i] != suffix.data[i]):
-			return 0
+		if (s.data[offset + i] != suffix.data[i]): return 0
 		i = i + 1
 	return 1
 
@@ -122,8 +109,7 @@ string string_from_bytes(char* data, int length):
 	char* out = descriptor + 2 * __word_size__
 	save_word(descriptor, cast(int, out))
 	save_word(descriptor + __word_size__, length)
-	for i in range(length):
-		out[i] = data[i]
+	for i in range(length): out[i] = data[i]
 	out[length] = 0
 	return cast(string, cast(int, descriptor))
 
@@ -153,8 +139,7 @@ char* cstr(string s):
 # first interior NUL.
 char* cstr_clone(string s):
 	char* out = malloc(s.length + 1)
-	for i in range(s.length):
-		out[i] = s.data[i]
+	for i in range(s.length): out[i] = s.data[i]
 	out[s.length] = 0
 	return out
 

@@ -13,8 +13,7 @@ import lib.hex
 
 
 void dns_test_assert_bytes_equal(char* want, char* got, int length):
-	for i in range(length):
-		assert_equal(want[i] & 255, got[i] & 255)
+	for i in range(length): assert_equal(want[i] & 255, got[i] & 255)
 
 
 int dns_test_put_u16(char* msg, int pos, int value):
@@ -365,8 +364,7 @@ int dns_test_read_exact(int file, char* buf, int want):
 	int got = 0
 	while (got < want):
 		int count = read(file, buf + got, want - got)
-		if (count <= 0):
-			return 0
+		if (count <= 0): return 0
 		got = got + count
 	return 1
 
@@ -413,8 +411,7 @@ void test_dns_query_server_mock_udp():
 		char* buf = malloc(512)
 		sockaddr_in from
 		int received = socket_recv_from_ipv4(server, buf, 512 - 16, 0, &from)
-		if (received < 12):
-			exit(1)
+		if (received < 12): exit(1)
 		int response_len = dns_test_mock_answer(buf, received)
 		socket_send_to_ipv4(server, buf, response_len, 0, net_htonl(from.ip_address), net_htons(from.port))
 		exit(0)
@@ -451,30 +448,24 @@ void test_dns_query_server_mock_tcp_fallback():
 		char* buf = malloc(512)
 		sockaddr_in from
 		int received = socket_recv_from_ipv4(udp_server, buf, 512 - 16, 0, &from)
-		if (received < 12):
-			exit(1)
+		if (received < 12): exit(1)
 		# Truncated UDP reply: echo the id, set QR|TC|RD|RA.
 		char* truncated = malloc(12)
 		truncated[0] = buf[0]
 		truncated[1] = buf[1]
 		truncated[2] = 0x83
 		truncated[3] = 0x80
-		for z in range(4, 12):
-			truncated[z] = 0
+		for z in range(4, 12): truncated[z] = 0
 		socket_send_to_ipv4(udp_server, truncated, 12, 0, net_htonl(from.ip_address), net_htons(from.port))
 
 		# Full answer over TCP, RFC 1035 4.2.2 length-prefixed.
 		int conn = socket_accept_connection(tcp_server)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		char* prefix = malloc(2)
-		if (dns_test_read_exact(conn, prefix, 2) == 0):
-			exit(1)
+		if (dns_test_read_exact(conn, prefix, 2) == 0): exit(1)
 		int query_len = ((prefix[0] & 255) << 8) | (prefix[1] & 255)
-		if ((query_len < 12) || (query_len > 512 - 16)):
-			exit(1)
-		if (dns_test_read_exact(conn, buf, query_len) == 0):
-			exit(1)
+		if ((query_len < 12) || (query_len > 512 - 16)): exit(1)
+		if (dns_test_read_exact(conn, buf, query_len) == 0): exit(1)
 		int response_len = dns_test_mock_answer(buf, query_len)
 		prefix[0] = (response_len >> 8) & 255
 		prefix[1] = response_len & 255

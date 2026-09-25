@@ -12,10 +12,8 @@ int enum_declaration():
 		int defhash_line = diag_token_line
 		int defhash_column = diag_token_column
 		int type_index = type_lookup(token)
-		if (type_index < 0):
-			type_index = type_push_size(strclone(token), 4)
-		else:
-			type_reset_for_redefinition(type_index, 4)
+		if (type_index < 0): type_index = type_push_size(strclone(token), 4)
+		else: type_reset_for_redefinition(type_index, 4)
 		# a redefinition (or a type index a REPL rollback freed and
 		# reused) must not keep older constants in enum_name's registry
 		enum_forget_constants(type_index)

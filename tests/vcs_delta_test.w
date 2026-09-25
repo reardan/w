@@ -36,8 +36,7 @@ import libs.extras.vcs.delta
 
 char* vcdt_repeat(int ch, int n):
 	char* out = malloc(n + 1)
-	for i in range(n):
-		out[i] = ch
+	for i in range(n): out[i] = ch
 	out[n] = 0
 	return out
 
@@ -45,29 +44,23 @@ char* vcdt_repeat(int ch, int n):
 int vcdt_count_kind(delta_ops* ops, int kind):
 	int n = 0
 	for delta_op* op in ops.items:
-		if (op.kind == kind):
-			n = n + 1
+		if (op.kind == kind): n = n + 1
 	return n
 
 
 int vcdt_ops_equal(delta_ops* a, delta_ops* b):
-	if (a.items.length != b.items.length):
-		return 0
+	if (a.items.length != b.items.length): return 0
 	for i in range(a.items.length):
 		delta_op* x = a.items[i]
 		delta_op* y = b.items[i]
-		if (x.kind != y.kind):
-			return 0
-		if (x.length != y.length):
-			return 0
+		if (x.kind != y.kind): return 0
+		if (x.length != y.length): return 0
 		if (x.kind == DELTA_OP_COPY):
-			if (x.offset != y.offset):
-				return 0
+			if (x.offset != y.offset): return 0
 		else:
 			int j = 0
 			while (j < x.length):
-				if (x.literal[j] != y.literal[j]):
-					return 0
+				if (x.literal[j] != y.literal[j]): return 0
 				j = j + 1
 	return 1
 
@@ -373,8 +366,7 @@ wcas* vcdt_open():
 
 list[char*] vcdt_ids
 void vcdt_track(char* id):
-	if (vcdt_ids == 0):
-		vcdt_ids = new list[char*]
+	if (vcdt_ids == 0): vcdt_ids = new list[char*]
 	vcdt_ids.push(strclone(id))
 
 
@@ -383,8 +375,7 @@ void vcdt_track(char* id):
 # it, built from a single repeated character.
 char* vcdt_fake_id(int ch):
 	char* id = malloc(65)
-	for i in range(64):
-		id[i] = ch
+	for i in range(64): id[i] = ch
 	id[64] = 0
 	return id
 
@@ -505,8 +496,7 @@ void test_delta_chain_depth_bound():
 			assert_equal(0, is_delta)
 			assert_strings_equal(c"blob", raw_obj.object_type)
 			reset_seen = 1
-		else:
-			assert_equal(1, is_delta)
+		else: assert_equal(1, is_delta)
 		cas_object_free(raw_obj)
 
 		wcas_object* robj = result_expect[wcas_object*](cas_get_resolved(s, next_id))

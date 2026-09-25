@@ -77,12 +77,9 @@ void test_three_nodes_coverage_and_order_independence():
 	for i in range(30):
 		char* key = ring_test_key(i)
 		char* owner = ring_lookup(a, key)
-		if (strcmp(owner, c"alpha") == 0):
-			alpha_keys = alpha_keys + 1
-		if (strcmp(owner, c"bravo") == 0):
-			bravo_keys = bravo_keys + 1
-		if (strcmp(owner, c"charlie") == 0):
-			charlie_keys = charlie_keys + 1
+		if (strcmp(owner, c"alpha") == 0): alpha_keys = alpha_keys + 1
+		if (strcmp(owner, c"bravo") == 0): bravo_keys = bravo_keys + 1
+		if (strcmp(owner, c"charlie") == 0): charlie_keys = charlie_keys + 1
 		assert_strings_equal(owner, ring_lookup(b, key))
 		free(key)
 	assert_equal(30, alpha_keys + bravo_keys + charlie_keys)

@@ -75,8 +75,7 @@ void deps_hash_init(deps_hash* h, int sha):
 		return
 	h.state = cast(int*, malloc(8 * __word_size__))
 	char* h0 = sha256_h0_table()
-	for i in range(8):
-		h.state[i] = sha256_be32(h0 + i * 4)
+	for i in range(8): h.state[i] = sha256_be32(h0 + i * 4)
 	h.block = malloc(64)
 	h.block_len = 0
 	h.total_len = 0
@@ -118,10 +117,8 @@ void deps_append_hex(string_builder* s, int value, int digits):
 	int shift = (digits - 1) * 4
 	while (shift >= 0):
 		int nibble = (value >> shift) & 15
-		if (nibble < 10):
-			string_append_char(s, '0' + nibble)
-		else:
-			string_append_char(s, 'a' + nibble - 10)
+		if (nibble < 10): string_append_char(s, '0' + nibble)
+		else: string_append_char(s, 'a' + nibble - 10)
 		shift = shift - 4
 
 
@@ -147,14 +144,12 @@ char* deps_hash_hex(deps_hash* h):
 		j = j + 1
 	tail[h.block_len] = 128 /* 0x80 */
 	int blocks = 1
-	if (h.block_len >= 56):
-		blocks = 2
+	if (h.block_len >= 56): blocks = 2
 	int bitlen_pos = blocks * 64 - 8
 	sha256_put_be32(tail + bitlen_pos, (h.total_len >> 29) & sha256_mask32())
 	sha256_put_be32(tail + bitlen_pos + 4, (h.total_len << 3) & sha256_mask32())
 	sha256_block(h.state, tail)
-	if (blocks == 2):
-		sha256_block(h.state, tail + 64)
+	if (blocks == 2): sha256_block(h.state, tail + 64)
 	free(tail)
 	char* digest = malloc(32)
 	int i = 0
@@ -201,8 +196,7 @@ int deps_dirty                           # a record changed since the load
 # Content hash of one file, memoized. A missing file hashes to a
 # sentinel no digest matches, so a deletion invalidates its records.
 char* deps_file_hash(char* path):
-	if (deps_file_hashes == 0):
-		deps_file_hashes = new map[char*, char*]
+	if (deps_file_hashes == 0): deps_file_hashes = new map[char*, char*]
 	char* cached = deps_file_hashes.get(path, 0)
 	if (cached != 0):
 		return cached
@@ -237,10 +231,8 @@ char* deps_digest(char* blob):
 				deps_hash_cstr(&h, line.data)
 				deps_hash_cstr(&h, deps_file_hash(line.data))
 				string_clear(line)
-			if (blob[i] == 0):
-				break
-		else:
-			string_append_char(line, blob[i])
+			if (blob[i] == 0): break
+		else: string_append_char(line, blob[i])
 		i = i + 1
 	string_free(line)
 	return deps_hash_hex(&h)
@@ -261,8 +253,7 @@ char* deps_id(char* arch, char* root):
 char* deps_id_root(char* id):
 	int i = 0
 	while (id[i] != 0):
-		if (id[i] == ' '):
-			return id + i + 1
+		if (id[i] == ' '): return id + i + 1
 		i = i + 1
 	return 0
 
@@ -304,46 +295,35 @@ list[deps_entry*] deps_cache_parse(char* text):
 			while ((text[i] != 0) && (text[i] != 10)):
 				string_append_char(current, text[i])
 				i = i + 1
-			if (text[i] == 0):
-				at_end = 1
-			else:
-				i = i + 1
+			if (text[i] == 0): at_end = 1
+			else: i = i + 1
 			line = current.data
-			if (at_end && (line[0] == 0)):
-				line = 0
+			if (at_end && (line[0] == 0)): line = 0
 		int header = 0
-		if (line != 0):
-			header = (starts_with(line, c"R ") || starts_with(line, c"X "))
+		if (line != 0): header = (starts_with(line, c"R ") || starts_with(line, c"X "))
 		if ((line == 0) || header):
 			# Close the previous record.
 			if ((e != 0) && (e.digest != 0) && (e.root != 0) && ((e.id in seen) == 0)):
 				if (e.failed == 0):
 					e.blob = blob.data
 					free(blob)
-				else:
-					string_free(blob)
+				else: string_free(blob)
 				e.chunk = chunk.data
 				free(chunk)
 				seen[e.id] = 1
 				out.push(e)
-			if (line == 0):
-				break
+			if (line == 0): break
 			e = deps_entry_new(line + 2, line[0] == 'X')
 			blob = string_new()
 			string_append_char(blob, 10)
 			chunk = string_new()
-		if (e == 0):
-			continue
+		if (e == 0): continue
 		string_append(chunk, line)
 		string_append_char(chunk, 10)
-		if (starts_with(line, c"H ")):
-			e.digest = strclone(line + 2)
-		else if (starts_with(line, c"V ")):
-			e.vhash = strclone(line + 2)
-		else if (starts_with(line, c"M ")):
-			e.missing = strclone(line + 2)
-		else if (starts_with(line, c"E ")):
-			e.detail = strclone(line + 2)
+		if (starts_with(line, c"H ")): e.digest = strclone(line + 2)
+		else if (starts_with(line, c"V ")): e.vhash = strclone(line + 2)
+		else if (starts_with(line, c"M ")): e.missing = strclone(line + 2)
+		else if (starts_with(line, c"E ")): e.detail = strclone(line + 2)
 		else if (starts_with(line, c"F ")):
 			string_append(blob, line + 2)
 			string_append_char(blob, 10)
@@ -353,14 +333,12 @@ list[deps_entry*] deps_cache_parse(char* text):
 # Reads deps_cache_path once (a missing file is an empty cache).
 # Records are not validated here: deps_entry_valid does that.
 void deps_cache_load():
-	if (deps_entries != 0):
-		return
+	if (deps_entries != 0): return
 	deps_entries = new list[deps_entry*]
 	deps_index = new map[char*, deps_entry*]
 	deps_loaded_chunks = new map[char*, char*]
 	char* text = file_read_text(deps_cache_path)
-	if (text == 0):
-		return
+	if (text == 0): return
 	for deps_entry* e in deps_cache_parse(text):
 		e.keep = 1
 		deps_entries.push(e)
@@ -381,23 +359,16 @@ deps_entry* deps_cache_find(char* id):
 # required) and a recorded missing import is still absent. Marks e
 # checked when valid.
 int deps_entry_valid(deps_entry* e, int check_compiler):
-	if (e.checked):
-		return 1
+	if (e.checked): return 1
 	if (e.failed == 0):
-		if (e.blob == 0):
-			return 0
-		if (strcmp(deps_digest(e.blob), e.digest) != 0):
-			return 0
+		if (e.blob == 0): return 0
+		if (strcmp(deps_digest(e.blob), e.digest) != 0): return 0
 	else:
-		if (strcmp(deps_file_hash(e.root), e.digest) != 0):
-			return 0
+		if (strcmp(deps_file_hash(e.root), e.digest) != 0): return 0
 		if (check_compiler):
-			if (e.vhash == 0):
-				return 0
-			if (strcmp(deps_file_hash(c"bin/wv2"), e.vhash) != 0):
-				return 0
-			if ((e.missing != 0) && path_exists(e.missing)):
-				return 0
+			if (e.vhash == 0): return 0
+			if (strcmp(deps_file_hash(c"bin/wv2"), e.vhash) != 0): return 0
+			if ((e.missing != 0) && path_exists(e.missing)): return 0
 	e.checked = 1
 	return 1
 
@@ -408,10 +379,8 @@ void deps_cache_validate_all(int check_compiler):
 	deps_cache_load()
 	list[deps_entry*] valid = new list[deps_entry*]
 	for deps_entry* e in deps_entries:
-		if (deps_entry_valid(e, check_compiler)):
-			valid.push(e)
-		else:
-			deps_index.remove(e.id)
+		if (deps_entry_valid(e, check_compiler)): valid.push(e)
+		else: deps_index.remove(e.id)
 	deps_entries = valid
 
 
@@ -433,10 +402,8 @@ deps_entry* deps_cache_record(char* id, char* blob):
 	e.missing = 0
 	e.detail = 0
 	e.chunk = 0
-	if (blob == 0):
-		e.digest = deps_file_hash(e.root)
-	else:
-		e.digest = deps_digest(blob)
+	if (blob == 0): e.digest = deps_file_hash(e.root)
+	else: e.digest = deps_digest(blob)
 	deps_dirty = 1
 	return e
 
@@ -444,14 +411,12 @@ deps_entry* deps_cache_record(char* id, char* blob):
 # Runs 'bin/wv2 deps [arch] <root>' for id; 0 when it could not spawn.
 process_result* deps_run(char* id, int timeout_ms):
 	char* root = deps_id_root(id)
-	if (root == 0):
-		return 0
+	if (root == 0): return 0
 	char* arch = substring(id, 0, strlen(id) - strlen(root) - 1)
 	char** argv = strv_new(4)
 	strv_set(argv, 0, c"bin/wv2")
 	strv_set(argv, 1, c"deps")
-	if (strcmp(arch, c"x86") == 0):
-		strv_set(argv, 2, root)
+	if (strcmp(arch, c"x86") == 0): strv_set(argv, 2, root)
 	else:
 		strv_set(argv, 2, arch)
 		strv_set(argv, 3, root)
@@ -467,8 +432,7 @@ char* deps_blob(char* stdout_text):
 	string_builder* blob = string_new()
 	string_append_char(blob, 10)
 	string_append(blob, stdout_text)
-	if (blob.data[blob.length - 1] != 10):
-		string_append_char(blob, 10)
+	if (blob.data[blob.length - 1] != 10): string_append_char(blob, 10)
 	char* text = blob.data
 	free(blob)
 	return text
@@ -490,37 +454,27 @@ void deps_cache_save():
 	deps_cache_load()
 	string_builder* out = string_new()
 	for deps_entry* e in deps_entries:
-		if (e.keep == 0):
-			continue
-		if (e.failed):
-			deps_append_line(out, c"X ", e.id)
-		else:
-			deps_append_line(out, c"R ", e.id)
+		if (e.keep == 0): continue
+		if (e.failed): deps_append_line(out, c"X ", e.id)
+		else: deps_append_line(out, c"R ", e.id)
 		deps_append_line(out, c"H ", e.digest)
-		if (e.vhash != 0):
-			deps_append_line(out, c"V ", e.vhash)
-		if (e.missing != 0):
-			deps_append_line(out, c"M ", e.missing)
-		if (e.detail != 0):
-			deps_append_line(out, c"E ", e.detail)
+		if (e.vhash != 0): deps_append_line(out, c"V ", e.vhash)
+		if (e.missing != 0): deps_append_line(out, c"M ", e.missing)
+		if (e.detail != 0): deps_append_line(out, c"E ", e.detail)
 		if (e.blob != 0):
 			# "F <path>" for each non-empty blob line.
 			int j = 0
 			while (e.blob[j] != 0):
 				int line_start = (j == 0) || (e.blob[j - 1] == 10)
-				if (line_start && (e.blob[j] != 10)):
-					string_append(out, c"F ")
-				if ((line_start == 0) || (e.blob[j] != 10)):
-					string_append_char(out, e.blob[j])
+				if (line_start && (e.blob[j] != 10)): string_append(out, c"F ")
+				if ((line_start == 0) || (e.blob[j] != 10)): string_append_char(out, e.blob[j])
 				j = j + 1
 	char* disk = file_read_text(deps_cache_path)
 	if (disk != 0):
 		for deps_entry* other in deps_cache_parse(disk):
-			if (other.id in deps_index):
-				continue
+			if (other.id in deps_index): continue
 			char* seen = deps_loaded_chunks.get(other.id, 0)
-			if ((seen != 0) && (strcmp(seen, other.chunk) == 0)):
-				continue
+			if ((seen != 0) && (strcmp(seen, other.chunk) == 0)): continue
 			string_append(out, other.chunk)
 		free(disk)
 	mkdir(c"bin", 493)
@@ -530,8 +484,7 @@ void deps_cache_save():
 	string_append_int(tmp, getpid())
 	string_append(tmp, c".tmp")
 	if (file_write_text(tmp.data, out.data)):
-		if (rename(tmp.data, deps_cache_path) < 0):
-			unlink(tmp.data)
+		if (rename(tmp.data, deps_cache_path) < 0): unlink(tmp.data)
 	string_free(tmp)
 	string_free(out)
 	deps_dirty = 0

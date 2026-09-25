@@ -99,8 +99,7 @@ void test_word_wise_operations():
 
 void test_count_full_words():
 	bitset* b = bitset_new(96)
-	for i in range(96):
-		bitset_set(b, i)
+	for i in range(96): bitset_set(b, i)
 	assert_equal(96, bitset_count(b))
 	bitset_clear(b, 32)
 	assert_equal(95, bitset_count(b))

@@ -23,12 +23,9 @@ void readlink_usage():
 
 # 1 when body is one of readlink's own recognized flag names.
 int readlink_flag_recognized(char* body):
-	if (args_name_matches(body, c"h")):
-		return 1
-	if (args_name_matches(body, c"help")):
-		return 1
-	if (args_name_matches(body, c"n")):
-		return 1
+	if (args_name_matches(body, c"h")): return 1
+	if (args_name_matches(body, c"help")): return 1
+	if (args_name_matches(body, c"n")): return 1
 	return 0
 
 
@@ -70,8 +67,7 @@ int main(int argc, int argv):
 		return 1
 	wstream* out = stdout_writer()
 	stream_write_cstr(out, buf)
-	if (no_newline == 0):
-		stream_write_line(out, c"")
+	if (no_newline == 0): stream_write_line(out, c"")
 	stream_flush(out)
 	free(buf)
 	return 0

@@ -184,14 +184,10 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 # Command 1<<20. Command maps to SUPER, matching the JS host's metaKey.
 int gfx_cocoa_mods(int flags):
 	int mods = 0
-	if (flags & 0x20000):
-		mods = mods | GFX_MOD_SHIFT
-	if (flags & 0x40000):
-		mods = mods | GFX_MOD_CTRL
-	if (flags & 0x80000):
-		mods = mods | GFX_MOD_ALT
-	if (flags & 0x100000):
-		mods = mods | GFX_MOD_SUPER
+	if (flags & 0x20000): mods = mods | GFX_MOD_SHIFT
+	if (flags & 0x40000): mods = mods | GFX_MOD_CTRL
+	if (flags & 0x80000): mods = mods | GFX_MOD_ALT
+	if (flags & 0x100000): mods = mods | GFX_MOD_SUPER
 	return mods
 
 
@@ -217,18 +213,13 @@ int gfx_cocoa_nav(int cp):
 # arrives as BACKTAB (25). The function-key block and other control
 # characters are not text.
 int gfx_cocoa_char(int cp):
-	if (cp == 127):
-		return 8
-	if (cp == 3):
-		return 13
-	if (cp == 25):
-		return 9
+	if (cp == 127): return 8
+	if (cp == 3): return 13
+	if (cp == 25): return 9
 	if ((cp == 8) || (cp == 9) || (cp == 13) || (cp == 27)):
 		return cp
-	if (cp < 32):
-		return 0
-	if ((cp >= 0xf700) && (cp <= 0xf8ff)):
-		return 0
+	if (cp < 32): return 0
+	if ((cp >= 0xf700) && (cp <= 0xf8ff)): return 0
 	return cp
 
 
@@ -249,10 +240,8 @@ int gfx_cocoa_utf8_next(char* s, int i, int* cp):
 # drops the leftover so reversing responds at once.
 int gfx_cocoa_scroll_notches(int* accum, int delta, int precise):
 	int unit = 100
-	if (precise):
-		unit = 2400
-	if (((accum[0] > 0) && (delta < 0)) || ((accum[0] < 0) && (delta > 0))):
-		accum[0] = 0
+	if (precise): unit = 2400
+	if (((accum[0] > 0) && (delta < 0)) || ((accum[0] < 0) && (delta > 0))): accum[0] = 0
 	accum[0] = accum[0] + delta
 	int notches = accum[0] / unit
 	accum[0] = accum[0] - notches * unit
@@ -263,8 +252,7 @@ int gfx_cocoa_scroll_notches(int* accum, int delta, int precise):
 # the top-left origin every backend reports.
 void gfx_cocoa_track_mouse(gfx_window* win, int event):
 	int boxed = objc_msg1(event, win.sel_value_for_key, win.key_location)
-	if (boxed == 0):
-		return
+	if (boxed == 0): return
 	float64[2] pt
 	objc_msg2(boxed, win.sel_get_value_size, cast(int, &pt[0]), 16)
 	win.mouse_x = cast(int, pt[0])
@@ -282,25 +270,20 @@ void gfx_cocoa_push(gfx_window* win, int kind, int code, int mods):
 int gfx_cocoa_key_down(gfx_window* win, int event, int mods):
 	win.last_keycode = objc_msg0(event, win.sel_key_code) & 0xffff
 	gfx_cocoa_push(win, GFX_EVENT_KEY_DOWN, win.last_keycode, mods)
-	if (mods & GFX_MOD_SUPER):
-		return 1
+	if (mods & GFX_MOD_SUPER): return 1
 	int text = objc_msg0(event, win.sel_characters)
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	char* s = cast(char*, objc_msg0(text, win.sel_utf8_string))
-	if (s == 0):
-		return 0
+	if (s == 0): return 0
 	int i = 0
 	while (s[i] != 0):
 		int cp = 0
 		i = gfx_cocoa_utf8_next(s, i, &cp)
 		int nav = gfx_cocoa_nav(cp)
-		if (nav != 0):
-			gfx_cocoa_push(win, GFX_EVENT_NAV, nav, mods)
+		if (nav != 0): gfx_cocoa_push(win, GFX_EVENT_NAV, nav, mods)
 		else:
 			int ch = gfx_cocoa_char(cp)
-			if (ch != 0):
-				gfx_cocoa_push(win, GFX_EVENT_CHAR, ch, mods)
+			if (ch != 0): gfx_cocoa_push(win, GFX_EVENT_CHAR, ch, mods)
 	return 0
 
 
@@ -311,8 +294,7 @@ int gfx_cocoa_translate(gfx_window* win, int event):
 	# scancode, not a character).
 	int event_type = objc_msg0(event, win.sel_type) & 0xffff
 	int mods = gfx_cocoa_mods(objc_msg0(event, win.sel_modifier_flags))
-	if (event_type == 10):
-		return gfx_cocoa_key_down(win, event, mods)
+	if (event_type == 10): return gfx_cocoa_key_down(win, event, mods)
 	if (event_type == 11):
 		gfx_cocoa_push(win, GFX_EVENT_KEY_UP, objc_msg0(event, win.sel_key_code) & 0xffff, mods)
 		return mods & GFX_MOD_SUPER
@@ -327,8 +309,7 @@ int gfx_cocoa_translate(gfx_window* win, int event):
 		button = 3
 		down = event_type == 3
 	else if ((event_type == 25) || (event_type == 26)):
-		if (objc_msg0(event, win.sel_button_number) == 2):
-			button = 2
+		if (objc_msg0(event, win.sel_button_number) == 2): button = 2
 		down = event_type == 25
 	if ((event_type == 5) || (event_type == 6) || (event_type == 7) || (event_type == 27)):
 		gfx_cocoa_track_mouse(win, event)
@@ -361,24 +342,19 @@ int gfx_cocoa_translate(gfx_window* win, int event):
 # Drain pending AppKit events. Returns 1 while the window should stay
 # open (0 once the red button closed it).
 int gfx_window_poll(gfx_window* win):
-	if (win.should_close):
-		return 0
+	if (win.should_close): return 0
 	int pool = objc_autoreleasePoolPush()
 	while (1):
 		# mask -1 = NSEventMaskAny; distantPast = poll without blocking.
 		int event = objc_msg4(win.app, win.sel_next_event, 0 - 1, win.distant_past, win.run_mode, 1)
-		if (event == 0):
-			break
-		if (gfx_cocoa_translate(win, event)):
-			objc_msg1(win.app, win.sel_send_event, event)
+		if (event == 0): break
+		if (gfx_cocoa_translate(win, event)): objc_msg1(win.app, win.sel_send_event, event)
 	# Track window moves (the GL surface follows the view).
 	objc_msg0(win.glctx, win.sel_update)
 	# isVisible is a BOOL: only the low byte is defined.
-	if ((objc_msg0(win.window, win.sel_is_visible) & 0xff) == 0):
-		win.should_close = 1
+	if ((objc_msg0(win.window, win.sel_is_visible) & 0xff) == 0): win.should_close = 1
 	objc_autoreleasePoolPop(pool)
-	if (win.should_close):
-		return 0
+	if (win.should_close): return 0
 	return 1
 
 

@@ -73,8 +73,7 @@ const int malloc_bin_count = 41
 # 39 holds 32769..65536; bin 40 holds everything larger. A block in any
 # higher bin is therefore always large enough for a request binned lower.
 int malloc_size_bin(int size):
-	if (size <= 256):
-		return (size >> 3) - 1
+	if (size <= 256): return (size >> 3) - 1
 	int limit = 512
 	int b = 32
 	while ((size > limit) && (b < 40)):
@@ -91,10 +90,8 @@ void malloc_bin_push(int block, int size):
 	w[0] = size
 	w[1] = heads[b]
 	heads[b] = block
-	if (b < 21):
-		malloc_bin_map_lo = malloc_bin_map_lo | (1 << b)
-	else:
-		malloc_bin_map_hi = malloc_bin_map_hi | (1 << (b - 21))
+	if (b < 21): malloc_bin_map_lo = malloc_bin_map_lo | (1 << b)
+	else: malloc_bin_map_hi = malloc_bin_map_hi | (1 << (b - 21))
 
 
 # Written directly with write(2), not lib.lib's print2/println2: this
@@ -104,8 +101,7 @@ void malloc_bin_push(int block, int size):
 void malloc_oom_notice():
 	char* msg = c"malloc: out of memory (heap growth failed)\x0a"
 	int n = 0
-	while (msg[n] != 0):
-		n = n + 1
+	while (msg[n] != 0): n = n + 1
 	write(2, msg, n)
 
 
@@ -118,12 +114,9 @@ void malloc_oom_notice():
 # first). Returns 0 when the OS refuses more memory.
 int malloc_heap_extend(int needed):
 	int chunk = malloc_heap_total >> 2
-	if (chunk > 4194304):
-		chunk = 4194304
-	if (chunk < 65536):
-		chunk = 65536
-	if (needed > chunk):
-		chunk = ((needed + 65535) >> 16) << 16
+	if (chunk > 4194304): chunk = 4194304
+	if (chunk < 65536): chunk = 65536
+	if (needed > chunk): chunk = ((needed + 65535) >> 16) << 16
 	# brk reports failure by returning the old break, never a negative
 	# errno. Growth can fail when a mapping sits right above the heap
 	# (e.g. the repl/wdbg MAP_32BIT code buffer next to a
@@ -139,22 +132,18 @@ int malloc_heap_extend(int needed):
 		# growth, extending from the stale end would shrink the break
 		# and unmap the other allocator's live heap. Hand the break
 		# over and use mmap chunks from now on.
-		if (brk(0) != malloc_heap_end):
-			malloc_mmap_mode = 1
+		if (brk(0) != malloc_heap_end): malloc_mmap_mode = 1
 		else:
 			int target = malloc_heap_end + chunk
-			if (brk(cast(char*, target)) == target):
-				grew = 1
-	if (grew):
-		malloc_heap_end = malloc_heap_end + chunk
+			if (brk(cast(char*, target)) == target): grew = 1
+	if (grew): malloc_heap_end = malloc_heap_end + chunk
 	else:
 		malloc_mmap_mode = 1
 		# MAP_32BIT on x64 keeps malloc'd memory addressable by
 		# 32-bit immediates, which the in-process repl/wdbg
 		# expression eval relies on
 		int flags = 34 /* PRIVATE|ANONYMOUS */
-		if (__word_size__ == 8):
-			flags = flags + 64
+		if (__word_size__ == 8): flags = flags + 64
 		int fresh = mmap(0, chunk, 3, flags)
 		if ((fresh < 0) && (fresh > -4096)):
 			malloc_oom_notice()
@@ -179,8 +168,7 @@ int malloc_grow(int needed):
 		malloc_heap_ptr = brk(0)
 		malloc_heap_end = malloc_heap_ptr
 	if (malloc_heap_ptr + needed > malloc_heap_end):
-		if (malloc_heap_extend(needed) == 0):
-			return 0
+		if (malloc_heap_extend(needed) == 0): return 0
 	int block = malloc_heap_ptr
 	malloc_heap_ptr = malloc_heap_ptr + needed
 	return block
@@ -193,13 +181,11 @@ int malloc_grow(int needed):
 # the same way, since malloc_bin_count() * __word_size__ is not itself
 # a multiple of 8 on 32-bit targets (41 * 4 = 164).
 void malloc_bins_init():
-	if (malloc_bins != 0):
-		return
+	if (malloc_bins != 0): return
 	int bytes = malloc_bin_count * __word_size__
 	bytes = ((bytes + 7) >> 3) << 3
 	int base = malloc_grow(bytes)
-	if (base == 0):
-		return
+	if (base == 0): return
 	int* heads = cast(int*, base)
 	int i = 0
 	while (i < malloc_bin_count):
@@ -230,28 +216,22 @@ int malloc_next_bin(int b):
 	int k = b + 1
 	if (k < 21):
 		int lo = malloc_bin_map_lo >> k
-		if (lo != 0):
-			return k + malloc_low_bit(lo)
+		if (lo != 0): return k + malloc_low_bit(lo)
 		k = 21
-	if (k > 40):
-		return -1
+	if (k > 40): return -1
 	int hi = malloc_bin_map_hi >> (k - 21)
-	if (hi == 0):
-		return -1
+	if (hi == 0): return -1
 	return k + malloc_low_bit(hi)
 
 
 # Clear bin b's bit once its list has become empty.
 void malloc_bin_clear(int b):
-	if (b < 21):
-		malloc_bin_map_lo = malloc_bin_map_lo ^ (1 << b)
-	else:
-		malloc_bin_map_hi = malloc_bin_map_hi ^ (1 << (b - 21))
+	if (b < 21): malloc_bin_map_lo = malloc_bin_map_lo ^ (1 << b)
+	else: malloc_bin_map_hi = malloc_bin_map_hi ^ (1 << (b - 21))
 
 
 void* freelist_malloc(int size):
-	if (size < 1):
-		size = 1
+	if (size < 1): size = 1
 	# Round up to 8 bytes so blocks stay aligned
 	size = ((size + 7) >> 3) << 3
 
@@ -259,8 +239,7 @@ void* freelist_malloc(int size):
 
 	if (malloc_bins == 0):
 		malloc_bins_init()
-		if (malloc_bins == 0):
-			return cast(void*, 0)
+		if (malloc_bins == 0): return cast(void*, 0)
 	int* heads = cast(int*, malloc_bins)
 
 	# First fit within the request's own bin. Exact bins always fit on
@@ -279,18 +258,15 @@ void* freelist_malloc(int size):
 			malloc_scan_steps = malloc_scan_steps + 1
 			int* cw = cast(int*, cur)
 			if (cw[0] >= size):
-				if (prev == 0):
-					heads[b] = cw[1]
-				else:
-					prev[1] = cw[1]
+				if (prev == 0): heads[b] = cw[1]
+				else: prev[1] = cw[1]
 				block = cur
 				cur = 0
 			else:
 				misses = misses + 1
 				prev = cw
 				cur = cw[1]
-		if ((block != 0) && (heads[b] == 0)):
-			malloc_bin_clear(b)
+		if ((block != 0) && (heads[b] == 0)): malloc_bin_clear(b)
 
 	# Any block in a higher bin fits by construction: pop the head of
 	# the lowest non-empty one.
@@ -301,8 +277,7 @@ void* freelist_malloc(int size):
 			block = heads[k]
 			int* kw = cast(int*, block)
 			heads[k] = kw[1]
-			if (kw[1] == 0):
-				malloc_bin_clear(k)
+			if (kw[1] == 0): malloc_bin_clear(k)
 
 	int* bw = cast(int*, block)
 	if (block == 0):
@@ -313,8 +288,7 @@ void* freelist_malloc(int size):
 			block = top
 		else:
 			block = malloc_grow(size + header)
-			if (block == 0):
-				return cast(void*, 0)
+			if (block == 0): return cast(void*, 0)
 		bw = cast(int*, block)
 		bw[0] = size
 		return block + header
@@ -330,10 +304,8 @@ void* freelist_malloc(int size):
 
 # Push the block back onto its size bin.
 int freelist_free(void* mem_address):
-	if (mem_address == 0):
-		return 0
-	if (malloc_bins == 0):
-		return 0
+	if (mem_address == 0): return 0
+	if (malloc_bins == 0): return 0
 	int block = cast(int, mem_address) - 2 * __word_size__
 	int* bw = cast(int*, block)
 	malloc_bin_push(block, bw[0])
@@ -347,29 +319,25 @@ int freelist_free(void* mem_address):
 # else moves, copying min(oldlen, newlen) bytes a word at a time
 # (payloads are 8-aligned).
 char *freelist_realloc(void* old, int oldlen, int newlen):
-	if (old == 0):
-		return freelist_malloc(newlen)
+	if (old == 0): return freelist_malloc(newlen)
 	int header = 2 * __word_size__
 	int mem = cast(int, old)
 	int* bw = cast(int*, mem - header)
 	int have = bw[0]
 	int want = newlen
-	if (want < 1):
-		want = 1
+	if (want < 1): want = 1
 	want = ((want + 7) >> 3) << 3
 	if (want <= have):
 		return old
 	if (mem + have == malloc_heap_ptr):
 		int extra = want - have
 		int fits = 0
-		if (malloc_heap_ptr + extra <= malloc_heap_end):
-			fits = 1
+		if (malloc_heap_ptr + extra <= malloc_heap_end): fits = 1
 		else:
 			# brk growth keeps the top contiguous; an mmap chunk switch
 			# moves malloc_heap_ptr and we fall through to a copy.
 			if (malloc_heap_extend(extra)):
-				if (mem + have == malloc_heap_ptr):
-					fits = 1
+				if (mem + have == malloc_heap_ptr): fits = 1
 		if (fits):
 			malloc_heap_ptr = malloc_heap_ptr + extra
 			bw[0] = want
@@ -378,8 +346,7 @@ char *freelist_realloc(void* old, int oldlen, int newlen):
 	if (grown == 0):
 		return grown
 	int n = oldlen
-	if (n > newlen):
-		n = newlen
+	if (n > newlen): n = newlen
 	int* dw = cast(int*, grown)
 	int* sw = cast(int*, old)
 	int words = n / __word_size__

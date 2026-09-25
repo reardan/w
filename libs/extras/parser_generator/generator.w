@@ -74,16 +74,13 @@ char* pg_term_call(pg_grammar* grammar, pg_term* term):
 # grammar that declares none (every grammar before milestone 4) emits
 # nothing extra here, so its generated output is unaffected.
 void pg_emit_grammar_imports(pg_source_writer* writer, pg_grammar* grammar):
-	for char* path in grammar.imports:
-		pg_line(writer, f"import {path}")
-	if (grammar.imports.length > 0):
-		pg_source_blank(writer)
+	for char* path in grammar.imports: pg_line(writer, f"import {path}")
+	if (grammar.imports.length > 0): pg_source_blank(writer)
 
 
 int pg_matcher_reference_is_expression(pg_grammar* grammar, char* name):
 	pg_token_def* token = pg_grammar_find_token(grammar, name)
-	if (token != 0):
-		return token.expression != 0
+	if (token != 0): return token.expression != 0
 	return pg_grammar_find_fragment(grammar, name) != 0
 
 
@@ -106,22 +103,17 @@ char* pg_matcher_charset_condition(pg_match_expr* expression, int temp):
 	int first_condition = 1
 	int start = 1
 	while (start < 128):
-		if (expression.charset[start] == 0):
-			start = start + 1
+		if (expression.charset[start] == 0): start = start + 1
 		else:
 			int end = start
-			while ((end + 1 < 128) && (expression.charset[end + 1] != 0)):
-				end = end + 1
-			if (first_condition == 0):
-				pg_source_append(out, c" || ")
-			if (start == end):
-				pg_add(out, f"(matcher_char_{temp} == {start})")
+			while ((end + 1 < 128) && (expression.charset[end + 1] != 0)): end = end + 1
+			if (first_condition == 0): pg_source_append(out, c" || ")
+			if (start == end): pg_add(out, f"(matcher_char_{temp} == {start})")
 			else:
 				pg_add(out, f"((matcher_char_{temp} >= {start}) && (matcher_char_{temp} <= {end}))")
 			first_condition = 0
 			start = end + 1
-	if (first_condition):
-		pg_source_append_char(out, '0')
+	if (first_condition): pg_source_append_char(out, '0')
 	return pg_source_take(out)
 
 
@@ -167,8 +159,7 @@ void pg_emit_matcher_reference(pg_source_writer* writer, pg_grammar* grammar, pg
 	pg_line(writer, f"int matcher_length_{temp} = {call}")
 	free(call)
 	char* bound = c" > 0"
-	if (pg_matcher_reference_is_expression(grammar, expression.text)):
-		bound = c" >= 0"
+	if (pg_matcher_reference_is_expression(grammar, expression.text)): bound = c" >= 0"
 	pg_open(writer, f"if (matcher_length_{temp}{bound}):")
 	pg_line(writer, f"position = position + matcher_length_{temp}")
 	pg_emit_matcher_step_end(writer)
@@ -236,14 +227,12 @@ void pg_emit_matcher_repetition(pg_source_writer* writer, pg_grammar* grammar, p
 		pg_open_c(writer, c"if (matched):")
 		pg_emit_matcher_repeat_tail(writer, grammar, expression.children[0], next_temp)
 		pg_source_dedent(writer)
-	else:
-		pg_emit_matcher_repeat_tail(writer, grammar, expression.children[0], next_temp)
+	else: pg_emit_matcher_repeat_tail(writer, grammar, expression.children[0], next_temp)
 	pg_source_dedent(writer)
 
 
 void pg_emit_match_expression(pg_source_writer* writer, pg_grammar* grammar, pg_match_expr* expression, int* next_temp):
-	if (expression.kind == pg_match_expr_string_kind()):
-		pg_emit_matcher_string(writer, expression)
+	if (expression.kind == pg_match_expr_string_kind()): pg_emit_matcher_string(writer, expression)
 	else if (expression.kind == pg_match_expr_charset_kind()):
 		pg_emit_matcher_charset(writer, expression, next_temp)
 	else if (expression.kind == pg_match_expr_reference_kind()):
@@ -255,8 +244,7 @@ void pg_emit_match_expression(pg_source_writer* writer, pg_grammar* grammar, pg_
 		pg_emit_matcher_alternation(writer, grammar, expression, next_temp)
 	else if (expression.kind == pg_match_expr_optional_kind()):
 		pg_emit_matcher_optional(writer, grammar, expression, next_temp)
-	else:
-		pg_emit_matcher_repetition(writer, grammar, expression, next_temp)
+	else: pg_emit_matcher_repetition(writer, grammar, expression, next_temp)
 
 
 void pg_emit_expression_matcher(pg_source_writer* writer, pg_grammar* grammar, char* name, pg_match_expr* expression):
@@ -286,8 +274,7 @@ void pg_emit_expression_matchers(pg_source_writer* writer, pg_grammar* grammar):
 
 # The lexer's call of a token or skip matcher at `index`. Caller frees.
 char* pg_lexer_matcher_call(pg_grammar* grammar, pg_token_def* token):
-	if (token.expression != 0):
-		return pg_take(f"{grammar.name}_matcher_{token.name}(input, index)")
+	if (token.expression != 0): return pg_take(f"{grammar.name}_matcher_{token.name}(input, index)")
 	return pg_take(f"pg_lexer_matcher_{token.matcher}(input, index)")
 
 
@@ -312,8 +299,7 @@ void pg_emit_token_constants(pg_source_writer* writer, pg_grammar* grammar):
 
 void pg_emit_ast_constants(pg_source_writer* writer, pg_grammar* grammar):
 	char* prefix = pg_take(f"{grammar.name}_ast_")
-	for pg_rule* rule in grammar.rules:
-		pg_emit_kind_constant(writer, prefix, rule.name, rule.kind)
+	for pg_rule* rule in grammar.rules: pg_emit_kind_constant(writer, prefix, rule.name, rule.kind)
 	pg_source_blank(writer)
 	free(prefix)
 
@@ -326,12 +312,10 @@ void pg_emit_token_name(pg_source_writer* writer, pg_grammar* grammar):
 	pg_open(writer, f"char* {grammar.name}_token_name(int kind):")
 	pg_open_c(writer, c"switch (kind):")
 	pg_emit_token_name_case(writer, grammar, c"EOF")
-	for pg_token_def* token in grammar.tokens:
-		pg_emit_token_name_case(writer, grammar, token.name)
+	for pg_token_def* token in grammar.tokens: pg_emit_token_name_case(writer, grammar, token.name)
 	for pg_literal_def* literal in grammar.literals:
 		pg_emit_token_name_case(writer, grammar, literal.name)
-	for pg_token_def* skip in grammar.skips:
-		pg_emit_token_name_case(writer, grammar, skip.name)
+	for pg_token_def* skip in grammar.skips: pg_emit_token_name_case(writer, grammar, skip.name)
 	pg_source_line(writer, c"case pg_token_whitespace_kind(): return c\"WHITESPACE\"")
 	pg_source_dedent(writer)
 	pg_source_line(writer, c"return c\"<invalid>\"")
@@ -419,8 +403,7 @@ struct pg_lexgen_span:
 
 
 void pg_lexgen_bytes_add(char* bytes, int lo, int hi):
-	for i in range(lo, hi + 1):
-		bytes[i] = 1
+	for i in range(lo, hi + 1): bytes[i] = 1
 
 
 # First bytes at which a built-in pg_lexer_matcher_* helper can match.
@@ -439,8 +422,7 @@ void pg_lexgen_builtin_first_bytes(char* bytes, char* matcher):
 	else if (strcmp(matcher, c"c_number") == 0):
 		pg_lexgen_bytes_add(bytes, '0', '9')
 		pg_lexgen_bytes_add(bytes, '.', '.')
-	else if (strcmp(matcher, c"newline") == 0):
-		pg_lexgen_bytes_add(bytes, 10, 10)
+	else if (strcmp(matcher, c"newline") == 0): pg_lexgen_bytes_add(bytes, 10, 10)
 	else if ((strcmp(matcher, c"tabs") == 0) || (strcmp(matcher, c"inline_tabs") == 0)):
 		pg_lexgen_bytes_add(bytes, 9, 9)
 	else if (strcmp(matcher, c"c_control") == 0):
@@ -451,13 +433,10 @@ void pg_lexgen_builtin_first_bytes(char* bytes, char* matcher):
 		pg_lexgen_bytes_add(bytes, '#', '#')
 	else if ((strcmp(matcher, c"block_comment") == 0) || (strcmp(matcher, c"c_line_comment") == 0)):
 		pg_lexgen_bytes_add(bytes, '/', '/')
-	else if (strcmp(matcher, c"sql_line_comment") == 0):
-		pg_lexgen_bytes_add(bytes, '-', '-')
+	else if (strcmp(matcher, c"sql_line_comment") == 0): pg_lexgen_bytes_add(bytes, '-', '-')
 	else if ((strcmp(matcher, c"c_string") == 0) || (strcmp(matcher, c"c_char_literal") == 0)):
-		if (strcmp(matcher, c"c_string") == 0):
-			pg_lexgen_bytes_add(bytes, '"', '"')
-		else:
-			pg_lexgen_bytes_add(bytes, 39, 39)
+		if (strcmp(matcher, c"c_string") == 0): pg_lexgen_bytes_add(bytes, '"', '"')
+		else: pg_lexgen_bytes_add(bytes, 39, 39)
 		pg_lexgen_bytes_add(bytes, 'u', 'u')
 		pg_lexgen_bytes_add(bytes, 'U', 'U')
 		pg_lexgen_bytes_add(bytes, 'L', 'L')
@@ -475,14 +454,12 @@ void pg_lexgen_builtin_first_bytes(char* bytes, char* matcher):
 		pg_lexgen_bytes_add(bytes, '|', '|')
 		pg_lexgen_bytes_add(bytes, '&', '&')
 		pg_lexgen_bytes_add(bytes, '!', '!')
-	else:
-		pg_lexgen_bytes_add(bytes, 1, 255)
+	else: pg_lexgen_bytes_add(bytes, 1, 255)
 
 
 int pg_lexgen_path_contains(list[char*] path, char* name):
 	for char* entry in path:
-		if (strcmp(entry, name) == 0):
-			return 1
+		if (strcmp(entry, name) == 0): return 1
 	return 0
 
 
@@ -492,14 +469,12 @@ int pg_lexgen_path_contains(list[char*] path, char* name):
 # unknown references, so those paths conservatively stop pruning.
 int pg_lexgen_expr_first_bytes(pg_grammar* grammar, pg_match_expr* expression, char* bytes, list[char*] path):
 	if (expression.kind == pg_match_expr_string_kind()):
-		if (strlen(expression.text) == 0):
-			return 1
+		if (strlen(expression.text) == 0): return 1
 		bytes[expression.text[0] & 255] = 1
 		return 0
 	if (expression.kind == pg_match_expr_charset_kind()):
 		for i in range(1, 128):
-			if (expression.charset[i] != 0):
-				bytes[i] = 1
+			if (expression.charset[i] != 0): bytes[i] = 1
 		return 0
 	if (expression.kind == pg_match_expr_reference_kind()):
 		if (pg_lexgen_path_contains(path, expression.text)):
@@ -527,8 +502,7 @@ int pg_lexgen_expr_first_bytes(pg_grammar* grammar, pg_match_expr* expression, c
 		return nullable
 	if (expression.kind == pg_match_expr_sequence_kind()):
 		for pg_match_expr* child in expression.children:
-			if (pg_lexgen_expr_first_bytes(grammar, child, bytes, path) == 0):
-				return 0
+			if (pg_lexgen_expr_first_bytes(grammar, child, bytes, path) == 0): return 0
 		return 1
 	if (expression.kind == pg_match_expr_alternation_kind()):
 		int any_nullable = 0
@@ -546,15 +520,13 @@ pg_lexgen_matcher* pg_lexgen_matcher_new(pg_grammar* grammar, pg_token_def* toke
 	candidate.token = token
 	candidate.is_skip = is_skip
 	char* bytes = malloc(256)
-	for i in range(256):
-		bytes[i] = 0
+	for i in range(256): bytes[i] = 0
 	if (token.expression != 0):
 		list[char*] path = new list[char*]
 		path.push(token.name)
 		pg_lexgen_expr_first_bytes(grammar, token.expression, bytes, path)
 		list_free[char*](path)
-	else:
-		pg_lexgen_builtin_first_bytes(bytes, token.matcher)
+	else: pg_lexgen_builtin_first_bytes(bytes, token.matcher)
 	candidate.first_bytes = bytes
 	return candidate
 
@@ -568,21 +540,17 @@ int pg_lexgen_is_identifier_matcher(pg_token_def* token):
 # identifier run when the keyword probes execute.
 int pg_lexgen_keyword_mode(pg_grammar* grammar):
 	for pg_token_def* token in grammar.tokens:
-		if (pg_lexgen_is_identifier_matcher(token)):
-			return 1
+		if (pg_lexgen_is_identifier_matcher(token)): return 1
 	for pg_token_def* skip in grammar.skips:
-		if (pg_lexgen_is_identifier_matcher(skip)):
-			return 1
+		if (pg_lexgen_is_identifier_matcher(skip)): return 1
 	return 0
 
 
 int pg_lexgen_literal_is_ident_shaped(char* text):
-	if (pg_lexer_is_ident_start(text[0] & 255) == 0):
-		return 0
+	if (pg_lexer_is_ident_start(text[0] & 255) == 0): return 0
 	int i = 1
 	while (text[i] != 0):
-		if (pg_lexer_is_ident_part(text[i] & 255) == 0):
-			return 0
+		if (pg_lexer_is_ident_part(text[i] & 255) == 0): return 0
 		i = i + 1
 	return 1
 
@@ -604,30 +572,25 @@ void pg_lexgen_collect_literals(pg_grammar* grammar, list[pg_lexgen_literal*] li
 				entry.text_length = text_length
 				entry.first_byte = literal.text[0] & 255
 				entry.keyword = 0
-				if (keyword_mode):
-					entry.keyword = pg_lexgen_literal_is_ident_shaped(literal.text)
+				if (keyword_mode): entry.keyword = pg_lexgen_literal_is_ident_shaped(literal.text)
 				literals.push(entry)
 
 
 int pg_lexgen_byte_has_candidates(list[pg_lexgen_matcher*] matchers, list[pg_lexgen_literal*] literals, int b):
 	for pg_lexgen_matcher* candidate in matchers:
-		if (candidate.first_bytes[b] != 0):
-			return 1
+		if (candidate.first_bytes[b] != 0): return 1
 	for pg_lexgen_literal* entry in literals:
-		if (entry.first_byte == b):
-			return 1
+		if (entry.first_byte == b): return 1
 	return 0
 
 
 int pg_lexgen_same_candidates(list[pg_lexgen_matcher*] matchers, list[pg_lexgen_literal*] literals, int a, int b):
 	for pg_lexgen_matcher* candidate in matchers:
-		if (candidate.first_bytes[a] != candidate.first_bytes[b]):
-			return 0
+		if (candidate.first_bytes[a] != candidate.first_bytes[b]): return 0
 	# A literal belongs to exactly one first byte, so two bytes can only
 	# share a candidate set when neither has literals.
 	for pg_lexgen_literal* entry in literals:
-		if ((entry.first_byte == a) || (entry.first_byte == b)):
-			return 0
+		if ((entry.first_byte == a) || (entry.first_byte == b)): return 0
 	return 1
 
 
@@ -682,10 +645,8 @@ void pg_emit_lexer_literal_trie(pg_source_writer* writer, pg_grammar* grammar, l
 				if ((earlier.text_length > depth) && ((earlier.literal.text[depth] & 255) == next)):
 					seen = 1
 			if (seen == 0):
-				if (next < 128):
-					pg_open(writer, f"{keyword} (input[index + {depth}] == {next}):")
-				else:
-					pg_open(writer, f"{keyword} ((input[index + {depth}] & 255) == {next}):")
+				if (next < 128): pg_open(writer, f"{keyword} (input[index + {depth}] == {next}):")
+				else: pg_open(writer, f"{keyword} ((input[index + {depth}] & 255) == {next}):")
 				list[pg_lexgen_literal*] subgroup = new list[pg_lexgen_literal*]
 				for pg_lexgen_literal* member in group:
 					if ((member.text_length > depth) && ((member.literal.text[depth] & 255) == next)):
@@ -699,10 +660,8 @@ void pg_emit_lexer_literal_trie(pg_source_writer* writer, pg_grammar* grammar, l
 void pg_emit_lexer_literal_group(pg_source_writer* writer, pg_grammar* grammar, list[pg_lexgen_literal*] group):
 	int has_root_accept = 0
 	for pg_lexgen_literal* entry in group:
-		if (entry.text_length == 1):
-			has_root_accept = 1
-	if (has_root_accept == 0):
-		pg_source_line(writer, c"length = 0")
+		if (entry.text_length == 1): has_root_accept = 1
+	if (has_root_accept == 0): pg_source_line(writer, c"length = 0")
 	pg_emit_lexer_literal_trie(writer, grammar, group, 1)
 	pg_emit_lexer_take_best(writer, c"if ((length > 0) && (length >= best_length))", c"literal_kind", 0)
 
@@ -719,8 +678,7 @@ void pg_emit_lexer_keyword_buckets(pg_source_writer* writer, pg_grammar* grammar
 		pg_source_line(writer, c"length = pg_lexer_matcher_identifier(input, index)")
 	int max_length = 0
 	for pg_lexgen_literal* entry in group:
-		if (entry.text_length > max_length):
-			max_length = entry.text_length
+		if (entry.text_length > max_length): max_length = entry.text_length
 	char* bucket_keyword = c"if"
 	for n in range(1, max_length + 1):
 		char* keyword = c"if"
@@ -735,8 +693,7 @@ void pg_emit_lexer_keyword_buckets(pg_source_writer* writer, pg_grammar* grammar
 				free(condition)
 				free(kind)
 				keyword = c"else if"
-		if (strcmp(keyword, c"if") != 0):
-			pg_source_dedent(writer)
+		if (strcmp(keyword, c"if") != 0): pg_source_dedent(writer)
 
 
 void pg_emit_lexer_byte_body(pg_source_writer* writer, pg_grammar* grammar, list[pg_lexgen_matcher*] matchers, list[pg_lexgen_literal*] literals, int b):
@@ -748,10 +705,8 @@ void pg_emit_lexer_byte_body(pg_source_writer* writer, pg_grammar* grammar, list
 	list[pg_lexgen_literal*] group = new list[pg_lexgen_literal*]
 	list[pg_lexgen_literal*] keywords = new list[pg_lexgen_literal*]
 	for pg_lexgen_literal* entry in literals:
-		if ((entry.first_byte == b) && (entry.keyword == 0)):
-			group.push(entry)
-		else if (entry.first_byte == b):
-			keywords.push(entry)
+		if ((entry.first_byte == b) && (entry.keyword == 0)): group.push(entry)
+		else if (entry.first_byte == b): keywords.push(entry)
 	if (group.length > 0):
 		pg_emit_lexer_literal_group(writer, grammar, group)
 		last_is_identifier = 0
@@ -785,12 +740,9 @@ void pg_emit_lexer_dispatch(pg_source_writer* writer, pg_grammar* grammar, list[
 		pg_open(writer, f"{keyword} (first_byte == {span.lo}):")
 	else if (need_lo && need_hi):
 		pg_open(writer, f"{keyword} ((first_byte >= {span.lo}) && (first_byte <= {span.hi})):")
-	else if (need_lo):
-		pg_open(writer, f"{keyword} (first_byte >= {span.lo}):")
-	else if (need_hi):
-		pg_open(writer, f"{keyword} (first_byte <= {span.hi}):")
-	else if (strcmp(keyword, c"if") != 0):
-		pg_open_c(writer, c"else:")
+	else if (need_lo): pg_open(writer, f"{keyword} (first_byte >= {span.lo}):")
+	else if (need_hi): pg_open(writer, f"{keyword} (first_byte <= {span.hi}):")
+	else if (strcmp(keyword, c"if") != 0): pg_open_c(writer, c"else:")
 	else:
 		# The whole block is this range: no test, no nesting.
 		pg_emit_lexer_byte_body(writer, grammar, matchers, literals, span.lo)
@@ -801,8 +753,7 @@ void pg_emit_lexer_dispatch(pg_source_writer* writer, pg_grammar* grammar, list[
 
 void pg_emit_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	list[pg_lexgen_matcher*] matchers = new list[pg_lexgen_matcher*]
-	for pg_token_def* skip in grammar.skips:
-		matchers.push(pg_lexgen_matcher_new(grammar, skip, 1))
+	for pg_token_def* skip in grammar.skips: matchers.push(pg_lexgen_matcher_new(grammar, skip, 1))
 	for pg_token_def* token in grammar.tokens:
 		matchers.push(pg_lexgen_matcher_new(grammar, token, 0))
 	list[pg_lexgen_literal*] literals = new list[pg_lexgen_literal*]
@@ -811,8 +762,7 @@ void pg_emit_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	pg_lexgen_collect_spans(matchers, literals, spans)
 	int has_trie_literals = 0
 	for pg_lexgen_literal* entry in literals:
-		if (entry.keyword == 0):
-			has_trie_literals = 1
+		if (entry.keyword == 0): has_trie_literals = 1
 	char* g = grammar.name
 	pg_open(writer, f"pg_token_stream* {g}_lex(char* input, char* filename, pg_diagnostics* diagnostics):")
 	pg_source_line(writer, c"pg_token_stream* stream = pg_token_stream_new()")
@@ -827,8 +777,7 @@ void pg_emit_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	pg_source_line(writer, c"int best_kind = 0")
 	pg_source_line(writer, c"int best_length = 0")
 	pg_source_line(writer, c"int best_skip = 0")
-	if (has_trie_literals):
-		pg_source_line(writer, c"int literal_kind = 0")
+	if (has_trie_literals): pg_source_line(writer, c"int literal_kind = 0")
 	if (spans.length > 0):
 		pg_source_line(writer, c"int first_byte = input[index] & 255")
 		# first_byte is never 0: the loop stops at the terminating NUL.
@@ -837,11 +786,9 @@ void pg_emit_lexer(pg_source_writer* writer, pg_grammar* grammar):
 		free(candidate.first_bytes)
 		free(candidate)
 	list_free[pg_lexgen_matcher*](matchers)
-	for pg_lexgen_literal* entry in literals:
-		free(entry)
+	for pg_lexgen_literal* entry in literals: free(entry)
 	list_free[pg_lexgen_literal*](literals)
-	for pg_lexgen_span* span in spans:
-		free(span)
+	for pg_lexgen_span* span in spans: free(span)
 	list_free[pg_lexgen_span*](spans)
 	pg_open_c(writer, c"if (best_length > 0):")
 	pg_open_c(writer, c"if (best_skip == 0):")
@@ -921,23 +868,18 @@ char* pg_kind_set_test(pg_grammar* grammar, pg_analysis* analysis, char* kinds, 
 	int first_range = 1
 	int kind = 0
 	while (kind < analysis.kind_count):
-		if (kinds[kind] == 0):
-			kind = kind + 1
+		if (kinds[kind] == 0): kind = kind + 1
 		else:
 			int end = kind
-			while ((end + 1 < analysis.kind_count) && (kinds[end + 1] != 0)):
-				end = end + 1
-			if (first_range == 0):
-				pg_source_append(out, c" || ")
+			while ((end + 1 < analysis.kind_count) && (kinds[end + 1] != 0)): end = end + 1
+			if (first_range == 0): pg_source_append(out, c" || ")
 			char* low = pg_report_kind_name(grammar, kind)
-			if (kind == end):
-				pg_add(out, f"({var_name} == {g}_token_{low})")
+			if (kind == end): pg_add(out, f"({var_name} == {g}_token_{low})")
 			else:
 				pg_add(out, f"(({var_name} >= {g}_token_{low}) && ({var_name} <= {g}_token_{pg_report_kind_name(grammar, end)}))")
 			first_range = 0
 			kind = end + 1
-	if (first_range):
-		pg_source_append_char(out, '0')
+	if (first_range): pg_source_append_char(out, '0')
 	return pg_source_take(out)
 
 
@@ -1038,8 +980,7 @@ void pg_emit_repeat_term(pg_source_writer* writer, pg_grammar* grammar, pg_analy
 	int is_token = pg_grammar_is_token_term(grammar, term.name)
 	int guardable = pg_analysis_term_enter_guardable(analysis, term)
 	char* count = pg_guard_var_name(c"repeat_count_", alt_index, term_index)
-	if (term.modifier == '+'):
-		pg_line(writer, f"int {count} = 0")
+	if (term.modifier == '+'): pg_line(writer, f"int {count} = 0")
 	pg_open_c(writer, c"while (failed == 0):")
 	if (guardable):
 		char* kinds = pg_kind_set_new(analysis)
@@ -1058,20 +999,16 @@ void pg_emit_repeat_term(pg_source_writer* writer, pg_grammar* grammar, pg_analy
 	else:
 		char* attach = pg_attempt_call(writer, grammar, term, c"repeat_mark_", alt_index, term_index)
 		pg_recover_def* recover = 0
-		if (is_token == 0):
-			recover = pg_grammar_find_recover(grammar, term.name)
-		if (recover == 0):
-			pg_line(writer, f"if ({attach} == 0): break")
+		if (is_token == 0): recover = pg_grammar_find_recover(grammar, term.name)
+		if (recover == 0): pg_line(writer, f"if ({attach} == 0): break")
 		else:
 			pg_open(writer, f"if ({attach} == 0):")
 			pg_emit_recovery(writer, grammar, recover, term.name, alt_index, term_index)
 			pg_source_dedent(writer)
 		free(attach)
-	if (term.modifier == '+'):
-		pg_line(writer, f"{count}++")
+	if (term.modifier == '+'): pg_line(writer, f"{count}++")
 	pg_source_dedent(writer)
-	if (term.modifier == '+'):
-		pg_line(writer, f"if ({count} == 0): failed = 1")
+	if (term.modifier == '+'): pg_line(writer, f"if ({count} == 0): failed = 1")
 	free(count)
 
 
@@ -1082,14 +1019,12 @@ void pg_emit_term(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* an
 		pg_emit_repeat_term(writer, grammar, analysis, term, alt_index, term_index)
 		return
 	char* guard = c"if (failed == 0): "
-	if (first):
-		guard = c""
+	if (first): guard = c""
 	if (term.modifier == 0):
 		char* call = pg_term_call(grammar, term)
 		pg_line(writer, f"{guard}failed = pg_ast_add_required(node, {call})")
 		free(call)
-	else if (first):
-		pg_emit_optional_term(writer, grammar, analysis, term, alt_index, term_index)
+	else if (first): pg_emit_optional_term(writer, grammar, analysis, term, alt_index, term_index)
 	else:
 		pg_open_c(writer, c"if (failed == 0):")
 		pg_emit_optional_term(writer, grammar, analysis, term, alt_index, term_index)
@@ -1100,8 +1035,7 @@ void pg_emit_term(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* an
 # already-parsed left-factored prefix children in order.
 void pg_emit_node_alloc(pg_source_writer* writer, pg_grammar* grammar, pg_rule* rule, list[char*] prefix_children):
 	pg_line(writer, f"node = pg_ast_new({grammar.name}_ast_{rule.name}, 0, c\"{rule.name}\")")
-	for char* child in prefix_children:
-		pg_line(writer, f"pg_ast_add(node, {child})")
+	for char* child in prefix_children: pg_line(writer, f"pg_ast_add(node, {child})")
 
 
 # One alternative's terms from offset on: today's attempt body. With an
@@ -1115,8 +1049,7 @@ void pg_emit_alternative_body(pg_source_writer* writer, pg_grammar* grammar, pg_
 		return
 	# A plain first term assigns failed itself; anything else needs it
 	# reset from an earlier alternative's attempt first.
-	if (alternative.terms[offset].modifier != 0):
-		pg_source_line(writer, c"failed = 0")
+	if (alternative.terms[offset].modifier != 0): pg_source_line(writer, c"failed = 0")
 	for term_index in range(offset, alternative.terms.length):
 		pg_emit_term(writer, grammar, analysis, alternative.terms[term_index], alt_index, term_index, term_index == offset)
 	pg_source_line(writer, c"if (failed == 0): return node")
@@ -1136,8 +1069,7 @@ void pg_emit_factored_unit(pg_source_writer* writer, pg_grammar* grammar, pg_ana
 	int prefix_end = offset + unit.prefix_length
 	pg_source_line(writer, c"failed = 0")
 	list[char*] inner_children = new list[char*]
-	for char* child in prefix_children:
-		inner_children.push(child)
+	for char* child in prefix_children: inner_children.push(child)
 	# The prefix children are declared at unit level so the suffix
 	# alternatives (nested blocks) can attach them to their nodes; the
 	# first one is parsed right in its declaration (failed is still 0).
@@ -1160,8 +1092,7 @@ void pg_emit_factored_unit(pg_source_writer* writer, pg_grammar* grammar, pg_ana
 	pg_emit_choice(writer, grammar, analysis, rule, alt, unit.member_count, prefix_end, inner_children, factored_mark, factored_kind)
 	pg_source_dedent(writer)
 	pg_line(writer, f"pg_token_stream_rewind(stream, {mark_name})")
-	for i in range(prefix_children.length, inner_children.length):
-		free(inner_children[i])
+	for i in range(prefix_children.length, inner_children.length): free(inner_children[i])
 	list_free[char*](inner_children)
 	free(factored_mark)
 	free(factored_kind)
@@ -1184,8 +1115,7 @@ void pg_emit_choice(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* 
 			pg_emit_alternative_body(writer, grammar, analysis, rule, unit.alt_start, offset, prefix_children, mark_name)
 		else:
 			pg_emit_factored_unit(writer, grammar, analysis, rule, unit, offset, prefix_children, mark_name)
-		if (unit.guarded):
-			pg_source_dedent(writer)
+		if (unit.guarded): pg_source_dedent(writer)
 	pg_choice_units_free(units)
 
 
@@ -1318,8 +1248,7 @@ char* pg_streaming_syntax_error(char* expected):
 
 
 int pg_action_matches_text_call(char* code, int i, int length):
-	if ((i > 0) && pg_lexer_is_ident_part(code[i - 1] & 255)):
-		return 0
+	if ((i > 0) && pg_lexer_is_ident_part(code[i - 1] & 255)): return 0
 	return starts_with(code + i, c"text(")
 
 
@@ -1328,8 +1257,7 @@ int pg_action_matches_text_call(char* code, int i, int length):
 int pg_action_ref_digits(char* code, int j, int length, int* endp):
 	int n = -1
 	while ((j < length) && (code[j] >= '0') && (code[j] <= '9')):
-		if (n < 0):
-			n = 0
+		if (n < 0): n = 0
 		n = n * 10 + (code[j] - '0')
 		j = j + 1
 	endp[0] = j
@@ -1356,40 +1284,30 @@ void pg_action_scan(char* code, int alt_index, list[int] refs, list[int] pasted,
 		int ref = -1
 		int end = 0
 		if (c == '#'):
-			while ((i < length) && (code[i] != 10)):
-				i = i + 1
+			while ((i < length) && (code[i] != 10)): i = i + 1
 		else if ((c == '"') || (c == 39)):
 			i = i + 1
 			while ((i < length) && (code[i] != c)):
-				if ((code[i] == 92) && (i + 1 < length)):
-					i = i + 2
-				else:
-					i = i + 1
-			if (i < length):
-				i = i + 1
+				if ((code[i] == 92) && (i + 1 < length)): i = i + 2
+				else: i = i + 1
+			if (i < length): i = i + 1
 		else if (c == '$'):
 			ref = pg_action_ref_digits(code, i + 1, length, &end)
 			i = i + 1
 			if (ref >= 0):
-				if ((end < length) && pg_lexer_is_ident_part(code[end] & 255)):
-					pasted.push(ref)
+				if ((end < length) && pg_lexer_is_ident_part(code[end] & 255)): pasted.push(ref)
 				i = end
 		else if ((c == 't') && pg_action_matches_text_call(code, i, length)):
 			ref = pg_action_ref_digits(code, i + 5, length, &end)
 			i = i + 1
-			if ((ref >= 0) && (end < length) && (code[end] == ')')):
-				i = end + 1
-			else:
-				ref = -1
-		else:
-			i = i + 1
+			if ((ref >= 0) && (end < length) && (code[end] == ')')): i = end + 1
+			else: ref = -1
+		else: i = i + 1
 		if (ref >= 0):
 			refs.push(ref)
-			if (out != 0):
-				pg_add(out, f"action_arg_{alt_index}_{ref - 1}.text")
+			if (out != 0): pg_add(out, f"action_arg_{alt_index}_{ref - 1}.text")
 		else if (out != 0):
-			for k in range(start, i):
-				pg_source_append_char(out, code[k])
+			for k in range(start, i): pg_source_append_char(out, code[k])
 
 
 # The referenced n values of an action's code (capture planning, the
@@ -1416,11 +1334,9 @@ char* pg_action_substitute(char* code, int alt_index):
 
 char* pg_action_trim(char* text):
 	int start = 0
-	while (pg_lexer_is_space(text[start])):
-		start = start + 1
+	while (pg_lexer_is_space(text[start])): start = start + 1
 	int end = strlen(text)
-	while ((end > start) && pg_lexer_is_space(text[end - 1])):
-		end = end - 1
+	while ((end > start) && pg_lexer_is_space(text[end - 1])): end = end - 1
 	return pg_substr(text, start, end - start)
 
 
@@ -1437,10 +1353,8 @@ list[char*] pg_action_split_lines(char* code):
 			char* raw = pg_substr(code, start, i - start)
 			char* trimmed = pg_action_trim(raw)
 			free(raw)
-			if (strlen(trimmed) > 0):
-				lines.push(trimmed)
-			else:
-				free(trimmed)
+			if (strlen(trimmed) > 0): lines.push(trimmed)
+			else: free(trimmed)
 			start = i + 1
 	return lines
 
@@ -1463,14 +1377,12 @@ void pg_emit_streaming_action(pg_source_writer* writer, pg_term* term, int alt_i
 char* pg_alt_capture_set(pg_alternative* alternative):
 	int count = alternative.terms.length
 	char* captures = malloc(count + 1)
-	for i in range(count + 1):
-		captures[i] = 0
+	for i in range(count + 1): captures[i] = 0
 	for pg_term* term in alternative.terms:
 		if (term.kind == pg_term_kind_action()):
 			list[int] refs = pg_action_scan_refs(term.code)
 			for int n in refs:
-				if ((n >= 1) && (n <= count)):
-					captures[n] = 1
+				if ((n >= 1) && (n <= count)): captures[n] = 1
 			list_free[int](refs)
 	return captures
 
@@ -1495,10 +1407,8 @@ void pg_emit_streaming_term(pg_source_writer* writer, pg_grammar* grammar, char*
 			if ((captures != 0) && (captures[term_index + 1] != 0)):
 				pg_line(writer, f"pg_token* action_arg_{alt_index}_{term_index} = pg_token_stream_peek(stream)")
 			pg_line(writer, f"if ({match} == 0): {error}")
-	else if (term.modifier == '?'):
-		pg_line(writer, f"{match}")
-	else if (term.modifier == '*'):
-		pg_line(writer, f"while ({match}): pass")
+	else if (term.modifier == '?'): pg_line(writer, f"{match}")
+	else if (term.modifier == '*'): pg_line(writer, f"while ({match}): pass")
 	else:
 		pg_line(writer, f"int repeat_count_{alt_index}_{term_index} = 0")
 		pg_line(writer, f"while ({match}): repeat_count_{alt_index}_{term_index}++")
@@ -1571,8 +1481,7 @@ void pg_emit_streaming_choice(pg_source_writer* writer, pg_grammar* grammar, pg_
 		pg_choice_unit* unit = units[0]
 		if (unit.member_count == 1):
 			pg_emit_streaming_alternative_body(writer, grammar, rule, unit.alt_start, offset)
-		else:
-			pg_emit_streaming_factored_unit(writer, grammar, analysis, rule, unit, offset)
+		else: pg_emit_streaming_factored_unit(writer, grammar, analysis, rule, unit, offset)
 		pg_choice_units_free(units)
 		return
 	int has_fallback = (units[live_length - 1].guarded == 0) && (units[live_length - 1].predicate_code == 0)
@@ -1584,21 +1493,16 @@ void pg_emit_streaming_choice(pg_source_writer* writer, pg_grammar* grammar, pg_
 	for i in range(live_length):
 		pg_choice_unit* unit = units[i]
 		char* keyword = c"else if ("
-		if (i == 0):
-			keyword = c"if ("
-		if (has_fallback && (i == live_length - 1)):
-			pg_open_c(writer, c"else:")
-		else if (unit.predicate_code != 0):
-			pg_open(writer, f"{keyword}{unit.predicate_code}):")
+		if (i == 0): keyword = c"if ("
+		if (has_fallback && (i == live_length - 1)): pg_open_c(writer, c"else:")
+		else if (unit.predicate_code != 0): pg_open(writer, f"{keyword}{unit.predicate_code}):")
 		else:
 			pg_emit_kind_set_open(writer, grammar, analysis, unit.guard_set, kind_name, keyword, c"):")
 		int body_offset = offset
-		if (unit.predicate_code != 0):
-			body_offset = offset + 1
+		if (unit.predicate_code != 0): body_offset = offset + 1
 		if (unit.member_count == 1):
 			pg_emit_streaming_alternative_body(writer, grammar, rule, unit.alt_start, body_offset)
-		else:
-			pg_emit_streaming_factored_unit(writer, grammar, analysis, rule, unit, offset)
+		else: pg_emit_streaming_factored_unit(writer, grammar, analysis, rule, unit, offset)
 		pg_source_dedent(writer)
 	if (has_fallback == 0):
 		char* error = pg_streaming_syntax_error(rule.name)
@@ -1648,11 +1552,9 @@ void pg_emit_streaming_parse_entry(pg_source_writer* writer, pg_grammar* grammar
 
 int pg_alt_shares_leading_term(pg_rule* rule, int alt_index):
 	pg_alternative* alternative = rule.alternatives[alt_index]
-	if (alternative.terms.length == 0):
-		return 0
+	if (alternative.terms.length == 0): return 0
 	pg_term* first = alternative.terms[0]
-	if (first.kind != pg_term_kind_normal()):
-		return 0
+	if (first.kind != pg_term_kind_normal()): return 0
 	for i, other in rule.alternatives:
 		if ((i != alt_index) && (other.terms.length > 0)):
 			pg_term* other_first = other.terms[0]
@@ -1750,16 +1652,14 @@ char* pg_generate_streaming_parser(pg_grammar* grammar):
 	pg_emit_advance_position(writer, grammar)
 	pg_emit_lexer(writer, grammar)
 	pg_emit_streaming_match_token(writer, grammar)
-	for pg_rule* rule in grammar.rules:
-		pg_emit_streaming_rule(writer, grammar, analysis, rule)
+	for pg_rule* rule in grammar.rules: pg_emit_streaming_rule(writer, grammar, analysis, rule)
 	pg_emit_streaming_parse_entry(writer, grammar)
 	pg_analysis_free(analysis)
 	return pg_source_take(writer)
 
 
 char* pg_generate_ast_parser(pg_grammar* grammar):
-	if (pg_action_safety_check(grammar) > 0):
-		return 0
+	if (pg_action_safety_check(grammar) > 0): return 0
 	pg_analysis* analysis = pg_analyze_grammar(grammar)
 	pg_source_writer* writer = pg_generated_module_new(grammar, c"/* generated by ParserGenerator */")
 	pg_emit_ast_constants(writer, grammar)
@@ -1769,14 +1669,12 @@ char* pg_generate_ast_parser(pg_grammar* grammar):
 	pg_emit_advance_position(writer, grammar)
 	pg_emit_lexer(writer, grammar)
 	pg_emit_match_token(writer, grammar)
-	for pg_rule* rule in grammar.rules:
-		pg_emit_rule(writer, grammar, analysis, rule)
+	for pg_rule* rule in grammar.rules: pg_emit_rule(writer, grammar, analysis, rule)
 	pg_emit_parse_entry(writer, grammar)
 	pg_analysis_free(analysis)
 	return pg_source_take(writer)
 
 
 char* pg_generate_parser(pg_grammar* grammar):
-	if (grammar.mode == pg_grammar_mode_streaming()):
-		return pg_generate_streaming_parser(grammar)
+	if (grammar.mode == pg_grammar_mode_streaming()): return pg_generate_streaming_parser(grammar)
 	return pg_generate_ast_parser(grammar)

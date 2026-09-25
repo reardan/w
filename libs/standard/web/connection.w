@@ -98,14 +98,10 @@ const int connection_error_timeout = 3
 
 
 char* connection_error_string(int code):
-	if (code == connection_error_none):
-		return c""
-	if (code == connection_error_recv):
-		return c"receive failed"
-	if (code == connection_error_send):
-		return c"send failed"
-	if (code == connection_error_timeout):
-		return c"timed out"
+	if (code == connection_error_none): return c""
+	if (code == connection_error_recv): return c"receive failed"
+	if (code == connection_error_send): return c"send failed"
+	if (code == connection_error_timeout): return c"timed out"
 	return c"unknown error"
 
 
@@ -141,8 +137,7 @@ ConnectionContext* connection_context_new(int fd, int timeout_ms, tls_conn* tls)
 	c.error_recv = connection_error_recv
 	c.error_send = connection_error_send
 	c.error_timeout = connection_error_timeout
-	if (tls != 0):
-		tls.io_timeout_ms = timeout_ms
+	if (tls != 0): tls.io_timeout_ms = timeout_ms
 	return c
 
 
@@ -167,12 +162,9 @@ void connection_context_set_peer(ConnectionContext* c, int ip, int port):
 # tls_close, before the fd closes; the owned config, which the tls_conn
 # only borrows, goes after it) and releases the reader.
 void connection_context_destroy(ConnectionContext* c):
-	if (c == 0):
-		return
-	if (c.tls != 0):
-		tls_close(c.tls)
-	if (c.tls_cfg != 0):
-		tls_config_free(c.tls_cfg)
+	if (c == 0): return
+	if (c.tls != 0): tls_close(c.tls)
+	if (c.tls_cfg != 0): tls_config_free(c.tls_cfg)
 	close(c.fd)
 	stream_free(c.reader)
 	free(c)
@@ -187,18 +179,15 @@ void connection_context_destroy(ConnectionContext* c):
 int connection_context_wait(ConnectionContext* c, int rc, int events, int io_error):
 	int eagain = rc == (0 - net_eagain())
 	if (c.client_waits == 0):
-		if (rc == (0 - 4)):
-			return 0
+		if (rc == (0 - 4)): return 0
 		if (eagain == 0):
 			return io_error
-		if (io_wait(c.fd, events, c.timeout_ms) < 0):
-			return c.error_timeout
+		if (io_wait(c.fd, events, c.timeout_ms) < 0): return c.error_timeout
 		return 0
 	if ((eagain == 0) && (rc != (0 - 4))):
 		return io_error
 	int ready = io_poll(c.fd, events, c.timeout_ms)
-	if (ready == 0):
-		return c.error_timeout
+	if (ready == 0): return c.error_timeout
 	if ((ready < 0) && (ready != (0 - 4))):
 		return io_error
 	return 0
@@ -210,10 +199,8 @@ int connection_context_wait(ConnectionContext* c, int rc, int events, int io_err
 # (c.error set).
 int connection_context_fill(ConnectionContext* c):
 	wstream* r = c.reader
-	if (r.position < r.limit):
-		return 1
-	if (r.eof != 0):
-		return 0
+	if (r.position < r.limit): return 1
+	if (r.eof != 0): return 0
 	r.position = 0
 	r.limit = 0
 	if (c.tls != 0):
@@ -225,10 +212,8 @@ int connection_context_fill(ConnectionContext* c):
 		if (tcount == 0):
 			r.eof = 1
 			return 0
-		if (c.tls.broken != 0):
-			c.error = c.error_recv
-		else:
-			c.error = c.error_timeout
+		if (c.tls.broken != 0): c.error = c.error_recv
+		else: c.error = c.error_timeout
 		return (-1)
 	while (1):
 		int count = socket_recv(c.fd, r.buffer, r.capacity, 0)
@@ -248,8 +233,7 @@ int connection_context_fill(ConnectionContext* c):
 # Next byte, or -1 on EOF/error (EOF leaves c.error at 0).
 int connection_context_read_byte(ConnectionContext* c):
 	int state = connection_context_fill(c)
-	if (state <= 0):
-		return (-1)
+	if (state <= 0): return (-1)
 	wstream* r = c.reader
 	int b = r.buffer[r.position] & 255
 	r.position = r.position + 1
@@ -264,8 +248,7 @@ int connection_context_read(ConnectionContext* c, char* out, int want):
 		return state
 	wstream* r = c.reader
 	int n = r.limit - r.position
-	if (n > want):
-		n = want
+	if (n > want): n = want
 	mem_copy(out, r.buffer + r.position, n)
 	r.position = r.position + n
 	return n
@@ -277,8 +260,7 @@ int connection_context_read_exact(ConnectionContext* c, char* out, int n):
 	int total = 0
 	while (total < n):
 		int got = connection_context_read(c, out + total, n - total)
-		if (got <= 0):
-			return 0
+		if (got <= 0): return 0
 		total = total + got
 	return 1
 
@@ -293,10 +275,8 @@ int connection_context_read_line(ConnectionContext* c, string_builder* line, int
 	while (1):
 		int b = connection_context_read_byte(c)
 		if (b < 0):
-			if (c.error != 0):
-				return (-1)
-			if (line.length == 0):
-				return 0
+			if (c.error != 0): return (-1)
+			if (line.length == 0): return 0
 			return (-1)
 		if (b == 10):
 			if (line.length > 0):
@@ -314,10 +294,8 @@ int connection_context_read_line(ConnectionContext* c, string_builder* line, int
 # tolerated).
 int connection_context_expect_crlf(ConnectionContext* c):
 	int b = connection_context_read_byte(c)
-	if (b == 13):
-		b = connection_context_read_byte(c)
-	if (b != 10):
-		return 0
+	if (b == 13): b = connection_context_read_byte(c)
+	if (b != 10): return 0
 	return 1
 
 
@@ -325,18 +303,15 @@ int connection_context_expect_crlf(ConnectionContext* c):
 # with c.error set.
 int connection_context_write_all(ConnectionContext* c, char* data, int n):
 	if (c.tls != 0):
-		if (n <= 0):
-			return 1
+		if (n <= 0): return 1
 		int wrote = tls_write(c.tls, data, n)
-		if (wrote == n):
-			return 1
+		if (wrote == n): return 1
 		c.error = c.error_send
 		return 0
 	int total = 0
 	while (total < n):
 		int count = socket_send(c.fd, data + total, n - total, msg_nosignal())
-		if (count > 0):
-			total = total + count
+		if (count > 0): total = total + count
 		else if (count == 0):
 			c.error = c.error_send
 			return 0

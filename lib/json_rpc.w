@@ -59,10 +59,8 @@ const int jsonrpc_error_internal = -32603
 json_value* jsonrpc_response_base(json_value* id):
 	json_value* response = json_object()
 	json_object_set(response, c"jsonrpc", json_string(c"2.0"))
-	if (id == 0):
-		json_object_set(response, c"id", json_null())
-	else:
-		json_object_set(response, c"id", json_clone(id))
+	if (id == 0): json_object_set(response, c"id", json_null())
+	else: json_object_set(response, c"id", json_clone(id))
 	return response
 
 
@@ -88,8 +86,7 @@ json_value* jsonrpc_request_new(int id, char* method, json_value* params):
 	json_object_set(request, c"jsonrpc", json_string(c"2.0"))
 	json_object_set(request, c"id", json_int(id))
 	json_object_set(request, c"method", json_string(method))
-	if (params != 0):
-		json_object_set(request, c"params", params)
+	if (params != 0): json_object_set(request, c"params", params)
 	return request
 
 
@@ -97,8 +94,7 @@ json_value* jsonrpc_notification_new(char* method, json_value* params):
 	json_value* request = json_object()
 	json_object_set(request, c"jsonrpc", json_string(c"2.0"))
 	json_object_set(request, c"method", json_string(method))
-	if (params != 0):
-		json_object_set(request, c"params", params)
+	if (params != 0): json_object_set(request, c"params", params)
 	return request
 
 
@@ -133,8 +129,7 @@ int jsonrpc_write_notification(int fd, char* method, json_value* params):
 json_value* jsonrpc_read_message(frame_reader* r):
 	int length = 0
 	char* body = frame_read_message(r, &length)
-	if (body == 0):
-		return 0
+	if (body == 0): return 0
 	json_value* message = json_parse(body)
 	free(body)
 	return message
@@ -184,13 +179,11 @@ void jsonrpc_handle_body(jsonrpc_server* s, char* body, int out_fd):
 	int version_ok = 0
 	if (version != 0):
 		if (version.type == json_type_string()):
-			if (strcmp(version.string_value, c"2.0") == 0):
-				version_ok = 1
+			if (strcmp(version.string_value, c"2.0") == 0): version_ok = 1
 	json_value* method = json_object_get(message, c"method")
 	int method_ok = 0
 	if (method != 0):
-		if (method.type == json_type_string()):
-			method_ok = 1
+		if (method.type == json_type_string()): method_ok = 1
 	if ((version_ok == 0) || (method_ok == 0)):
 		jsonrpc_respond_error(out_fd, id, jsonrpc_error_invalid_request, c"invalid request")
 		json_free(message)
@@ -228,8 +221,7 @@ int jsonrpc_serve_blocking(jsonrpc_server* s, int in_fd, int out_fd):
 		int length = 0
 		char* body = frame_read_message(r, &length)
 		if (body == 0):
-			if (r.error):
-				status = -1
+			if (r.error): status = -1
 			break
 		jsonrpc_handle_body(s, body, out_fd)
 		free(body)
@@ -241,15 +233,13 @@ int jsonrpc_serve_blocking(jsonrpc_server* s, int in_fd, int out_fd):
    any number of client connections alongside timers. */
 
 void jsonrpc_connection_close(jsonrpc_connection* conn):
-	if (conn.open == 0):
-		return
+	if (conn.open == 0): return
 	conn.open = 0
 	event_loop_remove_fd(conn.loop, conn.in_fd)
 	frame_reader_free(conn.reader)
 	conn.reader = 0
 	close(conn.in_fd)
-	if (conn.out_fd != conn.in_fd):
-		close(conn.out_fd)
+	if (conn.out_fd != conn.in_fd): close(conn.out_fd)
 
 
 void jsonrpc_connection_on_readable(int fd, int revents, void* ctx):
@@ -257,8 +247,7 @@ void jsonrpc_connection_on_readable(int fd, int revents, void* ctx):
 	jsonrpc_server* srv = jsonrpc_connection_server(conn)
 	int count = frame_reader_fill(conn.reader)
 	# EAGAIN (-11): spurious wakeup on a non-blocking descriptor.
-	if (count == -11):
-		return
+	if (count == -11): return
 
 	# Handle every message that is now fully buffered before looking at
 	# EOF/errors, so a final burst before close is not lost.
@@ -266,16 +255,13 @@ void jsonrpc_connection_on_readable(int fd, int revents, void* ctx):
 	while (drained == 0):
 		int length = 0
 		char* body = frame_take_buffered_message(conn.reader, &length)
-		if (body == 0):
-			drained = 1
+		if (body == 0): drained = 1
 		else:
 			jsonrpc_handle_body(srv, body, conn.out_fd)
 			free(body)
 
-	if (conn.reader.error | (count <= 0)):
-		jsonrpc_connection_close(conn)
-	if (srv.running == 0):
-		event_loop_stop(conn.loop)
+	if (conn.reader.error | (count <= 0)): jsonrpc_connection_close(conn)
+	if (srv.running == 0): event_loop_stop(conn.loop)
 
 
 # Watches an already-connected descriptor pair on the loop. The
@@ -304,8 +290,7 @@ struct jsonrpc_listener:
 void jsonrpc_listener_on_readable(int fd, int revents, void* ctx):
 	jsonrpc_listener* listener = cast(jsonrpc_listener*, ctx)
 	int client = socket_accept_connection(fd)
-	if (client < 0):
-		return
+	if (client < 0): return
 	socket_set_nonblocking(client)
 	jsonrpc_attach_connection(listener.server, listener.loop, client, client)
 
@@ -323,8 +308,7 @@ void jsonrpc_server_free(jsonrpc_server* s):
 	for i in range(s.connections.length):
 		jsonrpc_connection* conn = s.connections[i]
 		if (conn.open):
-			if (conn.reader != 0):
-				frame_reader_free(conn.reader)
+			if (conn.reader != 0): frame_reader_free(conn.reader)
 		free(cast(char*, conn))
 	list_free[jsonrpc_connection*](s.connections)
 	map_free[char*, jsonrpc_handler*](s.handlers)

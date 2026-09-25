@@ -109,8 +109,7 @@ int var_unbox_add(var a, int b):
 
 
 var var_pick(int which):
-	if (which):
-		return 42
+	if (which): return 42
 	return c"forty-two"
 
 

@@ -136,8 +136,7 @@ int linux_time(int* out):
 	ts.tv_sec = 0
 	ts.tv_nsec = 0
 	syscall(113, 0, cast(int, &ts), 0)
-	if (out != 0):
-		*out = ts.tv_sec
+	if (out != 0): *out = ts.tv_sec
 	return ts.tv_sec
 
 /* memory and threading */
@@ -167,8 +166,7 @@ int sys_clone(int flags, int child_stack):
 # ppoll (73): fds points at an array of 8-byte pollfd records. timeout_ms
 # < 0 blocks forever; otherwise it is converted to a timespec.
 int arm64_ppoll(int fds, int nfds, int timeout_ms):
-	if (timeout_ms < 0):
-		return syscall7(73, fds, nfds, 0, 0, 8, 0)
+	if (timeout_ms < 0): return syscall7(73, fds, nfds, 0, 0, 8, 0)
 	arm64_timespec ts
 	ts.tv_sec = timeout_ms / 1000
 	ts.tv_nsec = (timeout_ms % 1000) * 1000000

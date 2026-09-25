@@ -21,8 +21,7 @@ import libs.standard.net.testing
 # Deterministic binary payload containing NUL, CR and LF bytes.
 char* ftp_test_big_payload(int n):
 	char* data = malloc(n + 1)
-	for i in range(n):
-		data[i] = (i * 7 + i / 251) & 255
+	for i in range(n): data[i] = (i * 7 + i / 251) & 255
 	data[n] = 0
 	return data
 
@@ -61,8 +60,7 @@ char* ftp_srv_read_line(int fd):
 			string_free(line)
 			free(one)
 			return 0
-		if (one[0] == 10):
-			break
+		if (one[0] == 10): break
 		string_append_char(line, one[0] & 255)
 	free(one)
 	if ((line.length > 0) && (line.data[line.length - 1] == 13)):
@@ -75,8 +73,7 @@ char* ftp_srv_read_line(int fd):
 
 # Opens a loopback data listener for the next transfer; returns its port.
 int ftp_srv_open_data(ftp_srv* s):
-	if (s.data_listener >= 0):
-		close(s.data_listener)
+	if (s.data_listener >= 0): close(s.data_listener)
 	int port = 0
 	s.data_listener = net_test_listen(&port)
 	return port
@@ -84,8 +81,7 @@ int ftp_srv_open_data(ftp_srv* s):
 
 # Accepts the pending passive data connection (-1 when none was set up).
 int ftp_srv_accept_data(ftp_srv* s):
-	if (s.data_listener < 0):
-		return (-1)
+	if (s.data_listener < 0): return (-1)
 	int conn = socket_accept_connection(s.data_listener)
 	close(s.data_listener)
 	s.data_listener = (-1)
@@ -117,10 +113,8 @@ void ftp_srv_send_download(ftp_srv* s, char* data, int n):
 			break
 		sent = sent + got
 	close(conn)
-	if (ok != 0):
-		ftp_srv_reply(s, c"226 Transfer complete")
-	else:
-		ftp_srv_reply(s, c"426 Connection closed; transfer aborted")
+	if (ok != 0): ftp_srv_reply(s, c"226 Transfer complete")
+	else: ftp_srv_reply(s, c"426 Connection closed; transfer aborted")
 
 
 char* ftp_srv_file(ftp_srv* s, char* name, int* out_len):
@@ -141,25 +135,20 @@ void ftp_srv_handle(ftp_srv* s, char* verb, char* arg):
 	if ((net_test_contains(verb, c"EVIL") != 0) || (net_test_contains(arg, c"EVIL") != 0)):
 		s.bad = 3
 	if (strcmp(verb, c"USER") == 0):
-		if (s.user != 0):
-			free(s.user)
+		if (s.user != 0): free(s.user)
 		s.user = strclone(arg)
-		if (strcmp(arg, c"root") == 0):
-			ftp_srv_reply(s, c"530 Not allowed")
-		else:
-			ftp_srv_reply(s, c"331 Password required")
+		if (strcmp(arg, c"root") == 0): ftp_srv_reply(s, c"530 Not allowed")
+		else: ftp_srv_reply(s, c"331 Password required")
 		return
 	if (strcmp(verb, c"PASS") == 0):
-		if (s.user == 0):
-			ftp_srv_reply(s, c"503 Login with USER first")
+		if (s.user == 0): ftp_srv_reply(s, c"503 Login with USER first")
 		else if (strcmp(s.user, c"anonymous") == 0):
 			s.logged_in = 1
 			ftp_srv_reply(s, c"230-Welcome, anonymous.\x0d\x0a230-Be nice.\x0d\x0a230 Logged in.")
 		else if ((strcmp(s.user, c"alice") == 0) && (strcmp(arg, c"secret") == 0)):
 			s.logged_in = 1
 			ftp_srv_reply(s, c"230 User alice logged in")
-		else:
-			ftp_srv_reply(s, c"530 Login incorrect")
+		else: ftp_srv_reply(s, c"530 Login incorrect")
 		return
 	if (strcmp(verb, c"QUIT") == 0):
 		ftp_srv_reply(s, c"221 Goodbye")
@@ -168,57 +157,41 @@ void ftp_srv_handle(ftp_srv* s, char* verb, char* arg):
 		ftp_srv_reply(s, c"530 Please login with USER and PASS")
 		return
 	if (strcmp(verb, c"TYPE") == 0):
-		if ((strcmp(arg, c"I") == 0) || (strcmp(arg, c"A") == 0)):
-			ftp_srv_reply(s, c"200 Type set")
-		else:
-			ftp_srv_reply(s, c"504 Type not supported")
+		if ((strcmp(arg, c"I") == 0) || (strcmp(arg, c"A") == 0)): ftp_srv_reply(s, c"200 Type set")
+		else: ftp_srv_reply(s, c"504 Type not supported")
 	else if (strcmp(verb, c"PWD") == 0):
 		ftp_srv_reply(s, c"257 \"/home/a \"\"quoted\"\" dir\" is the current directory")
 	else if (strcmp(verb, c"CWD") == 0):
-		if (strcmp(arg, c"pub") == 0):
-			ftp_srv_reply(s, c"250 Directory changed")
-		else:
-			ftp_srv_reply(s, c"550 No such directory")
-	else if (strcmp(verb, c"CDUP") == 0):
-		ftp_srv_reply(s, c"200 OK")
-	else if (strcmp(verb, c"MKD") == 0):
-		ftp_srv_reply(s, c"257 \"/newdir\" created")
-	else if (strcmp(verb, c"RMD") == 0):
-		ftp_srv_reply(s, c"250 Directory removed")
+		if (strcmp(arg, c"pub") == 0): ftp_srv_reply(s, c"250 Directory changed")
+		else: ftp_srv_reply(s, c"550 No such directory")
+	else if (strcmp(verb, c"CDUP") == 0): ftp_srv_reply(s, c"200 OK")
+	else if (strcmp(verb, c"MKD") == 0): ftp_srv_reply(s, c"257 \"/newdir\" created")
+	else if (strcmp(verb, c"RMD") == 0): ftp_srv_reply(s, c"250 Directory removed")
 	else if (strcmp(verb, c"DELE") == 0):
-		if (strcmp(arg, c"hello.txt") == 0):
-			ftp_srv_reply(s, c"250 Deleted")
-		else:
-			ftp_srv_reply(s, c"550 No such file")
+		if (strcmp(arg, c"hello.txt") == 0): ftp_srv_reply(s, c"250 Deleted")
+		else: ftp_srv_reply(s, c"550 No such file")
 	else if (strcmp(verb, c"RNFR") == 0):
-		if (s.rename_from != 0):
-			free(s.rename_from)
+		if (s.rename_from != 0): free(s.rename_from)
 		s.rename_from = strclone(arg)
 		ftp_srv_reply(s, c"350 Ready for RNTO")
 	else if (strcmp(verb, c"RNTO") == 0):
 		if ((s.rename_from != 0) && (strcmp(s.rename_from, c"old.txt") == 0) && (strcmp(arg, c"new.txt") == 0)):
 			ftp_srv_reply(s, c"250 Renamed")
-		else:
-			ftp_srv_reply(s, c"503 Bad sequence")
-		if (s.rename_from != 0):
-			free(s.rename_from)
+		else: ftp_srv_reply(s, c"503 Bad sequence")
+		if (s.rename_from != 0): free(s.rename_from)
 		s.rename_from = 0
 	else if (strcmp(verb, c"SIZE") == 0):
 		int n = 0
 		char* body = ftp_srv_file(s, arg, &n)
-		if (body == 0):
-			ftp_srv_reply(s, c"550 No such file")
+		if (body == 0): ftp_srv_reply(s, c"550 No such file")
 		else:
 			char* text = strjoin(c"213 ", itoa(n))
 			ftp_srv_reply(s, text)
-	else if (strcmp(verb, c"MDTM") == 0):
-		ftp_srv_reply(s, c"213 20260925120304")
-	else if (strcmp(verb, c"NOOP") == 0):
-		ftp_srv_reply(s, c"200 NOOP ok")
+	else if (strcmp(verb, c"MDTM") == 0): ftp_srv_reply(s, c"213 20260925120304")
+	else if (strcmp(verb, c"NOOP") == 0): ftp_srv_reply(s, c"200 NOOP ok")
 	else if (strcmp(verb, c"EPSV") == 0):
 		s.epsv_count = s.epsv_count + 1
-		if (s.epsv_ok == 0):
-			ftp_srv_reply(s, c"500 EPSV not understood")
+		if (s.epsv_ok == 0): ftp_srv_reply(s, c"500 EPSV not understood")
 		else:
 			int port = ftp_srv_open_data(s)
 			char* text = strjoin(strjoin(c"229 Entering Extended Passive Mode (|||", itoa(port)), c"|)")
@@ -245,16 +218,14 @@ void ftp_srv_handle(ftp_srv* s, char* verb, char* arg):
 		if ((arg != 0) && (arg[0] != 0) && (strcmp(arg, c"pub") != 0)):
 			ftp_srv_drop_data(s)
 			ftp_srv_reply(s, c"550 No such directory")
-		else:
-			ftp_srv_send_download(s, listing, strlen(listing))
+		else: ftp_srv_send_download(s, listing, strlen(listing))
 	else if (strcmp(verb, c"RETR") == 0):
 		int rn = 0
 		char* rbody = ftp_srv_file(s, arg, &rn)
 		if (rbody == 0):
 			ftp_srv_drop_data(s)
 			ftp_srv_reply(s, c"550 Failed to open file")
-		else:
-			ftp_srv_send_download(s, rbody, rn)
+		else: ftp_srv_send_download(s, rbody, rn)
 	else if ((strcmp(verb, c"STOR") == 0) || (strcmp(verb, c"APPE") == 0)):
 		if (strcmp(arg, c"upload.bin") != 0):
 			ftp_srv_drop_data(s)
@@ -279,8 +250,7 @@ void ftp_srv_handle(ftp_srv* s, char* verb, char* arg):
 		s.stored_len = got.length
 		free(got)
 		ftp_srv_reply(s, c"226 Transfer complete")
-	else:
-		ftp_srv_reply(s, c"502 Command not implemented")
+	else: ftp_srv_reply(s, c"502 Command not implemented")
 
 
 # Serves one control connection until QUIT or EOF, then exits the
@@ -298,27 +268,22 @@ void ftp_srv_run(int listener, int epsv_ok):
 	s.stored_len = 0
 	s.epsv_ok = epsv_ok
 	s.ctrl = socket_accept_connection(listener)
-	if (s.ctrl < 0):
-		exit(1)
+	if (s.ctrl < 0): exit(1)
 	# Multi-line greeting whose middle lines look like replies.
 	ftp_srv_reply(s, c"220-W test FTP server\x0d\x0a220-still greeting\x0d\x0a 220 indented, not the end\x0d\x0a123 other code, not the end\x0d\x0a220 Ready")
 	while (1):
 		char* line = ftp_srv_read_line(s.ctrl)
-		if (line == 0):
-			break
+		if (line == 0): break
 		int sp = 0
-		while ((line[sp] != 0) && (line[sp] != ' ')):
-			sp = sp + 1
+		while ((line[sp] != 0) && (line[sp] != ' ')): sp = sp + 1
 		char* verb = substring(line, 0, sp)
 		char* arg = c""
-		if (line[sp] == ' '):
-			arg = line + sp + 1
+		if (line[sp] == ' '): arg = line + sp + 1
 		ftp_srv_handle(s, verb, arg)
 		int quit = strcmp(verb, c"QUIT") == 0
 		free(verb)
 		free(line)
-		if (quit != 0):
-			break
+		if (quit != 0): break
 	if ((s.epsv_ok == 0) && (s.epsv_count > 1)):
 		# The client must stop trying EPSV after the first rejection.
 		s.bad = 4

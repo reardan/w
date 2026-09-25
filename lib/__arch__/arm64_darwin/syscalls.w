@@ -157,8 +157,7 @@ int getcwd(char* buf, int size):
 # Try the full flush first and fall back to plain fsync where the
 # filesystem rejects it (e.g. ENOTSUP on SMB/NFS mounts).
 int fsync(int file):
-	if (sys_fcntl(file, 51, 0) >= 0):
-		return 0
+	if (sys_fcntl(file, 51, 0) >= 0): return 0
 	return syscall(95, file, 0, 0)
 
 # No fdatasync in the BSD table; fsync's guarantee is a superset.
@@ -172,8 +171,7 @@ int linux_time(int* out):
 	tv.tv_sec = 0
 	tv.tv_usec = 0
 	syscall(116, cast(int, &tv), 0, 0)
-	if (out != 0):
-		*out = tv.tv_sec
+	if (out != 0): *out = tv.tv_sec
 	return tv.tv_sec
 
 /* memory and threading */
@@ -266,8 +264,7 @@ int sys_clock_gettime(int clock_id, int ts):
 # ucontext on. oldact is not reported. Allocation-free: lib/crash.w
 # calls this from inside its handler.
 int rt_sigaction(int signum, int* act, int* oldact):
-	if ((act[0] != 0) && (act[2] == 0)):
-		return 0 - 38
+	if ((act[0] != 0) && (act[2] == 0)): return 0 - 38
 	int[3] nsa
 	nsa[0] = act[0]
 	nsa[1] = act[2]

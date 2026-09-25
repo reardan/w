@@ -44,8 +44,7 @@ char* gs_msg(char* prefix, int n):
 
 char* gs_fill(int size, int ch):
 	char* buf = malloc(size + 1)
-	for i in range(size):
-		buf[i] = ch
+	for i in range(size): buf[i] = ch
 	buf[size] = 0
 	return buf
 
@@ -53,12 +52,10 @@ char* gs_fill(int size, int ch):
 # Parses "a,b,c" into three ints.
 void gs_parse3(char* s, int* a, int* b, int* c):
 	*a = atoi(s)
-	while (*s != ','):
-		s = s + 1
+	while (*s != ','): s = s + 1
 	s = s + 1
 	*b = atoi(s)
-	while (*s != ','):
-		s = s + 1
+	while (*s != ','): s = s + 1
 	s = s + 1
 	*c = atoi(s)
 
@@ -85,12 +82,10 @@ void gs_unary(grpc_call* call, void* user_data):
 void gs_count(grpc_call* call, void* user_data):
 	char* req = 0
 	int len = 0
-	if (grpc_call_recv(call, &req, &len) != 1):
-		return
+	if (grpc_call_recv(call, &req, &len) != 1): return
 	int n = atoi(req)
 	int i = 0
-	while ((req[i] != ' ') && (req[i] != 0)):
-		i = i + 1
+	while ((req[i] != ' ') && (req[i] != 0)): i = i + 1
 	int size = atoi(req + i + 1)
 	free(req)
 	grpc_call_add_header(call, c"x-kind", c"server-streaming")
@@ -98,8 +93,7 @@ void gs_count(grpc_call* call, void* user_data):
 		char* buf = gs_fill(size, 'a' + (k % 26))
 		int rc = grpc_call_send(call, buf, size)
 		free(buf)
-		if (rc != 0):
-			return
+		if (rc != 0): return
 	grpc_call_add_trailer(call, c"x-sent", c"done")
 
 
@@ -114,14 +108,12 @@ void gs_sum(grpc_call* call, void* user_data):
 		char* m = 0
 		int len = 0
 		rc = grpc_call_recv(call, &m, &len)
-		if (rc != 1):
-			break
+		if (rc != 1): break
 		sum = sum + atoi(m)
 		bytes = bytes + len
 		count = count + 1
 		free(m)
-	if (rc < 0):
-		return
+	if (rc < 0): return
 	string_builder* sb = string_new()
 	string_append_int(sb, sum)
 	string_append(sb, c",")
@@ -138,16 +130,14 @@ void gs_echo(grpc_call* call, void* user_data):
 	while (1):
 		char* m = 0
 		int len = 0
-		if (grpc_call_recv(call, &m, &len) != 1):
-			break
+		if (grpc_call_recv(call, &m, &len) != 1): break
 		string_builder* sb = string_new()
 		string_append(sb, c"pong:")
 		string_append_bytes(sb, m, len)
 		free(m)
 		int rc = grpc_call_send(call, sb.data, sb.length)
 		string_free(sb)
-		if (rc != 0):
-			return
+		if (rc != 0): return
 		count = count + 1
 	char* n = itoa(count)
 	grpc_call_add_trailer(call, c"x-count", n)
@@ -158,8 +148,7 @@ void gs_echo(grpc_call* call, void* user_data):
 void gs_fail_mid(grpc_call* call, void* user_data):
 	char* m = 0
 	int len = 0
-	if (grpc_call_recv(call, &m, &len) != 1):
-		return
+	if (grpc_call_recv(call, &m, &len) != 1): return
 	free(m)
 	grpc_call_send(call, c"one", 3)
 	grpc_call_send(call, c"two", 3)
@@ -171,8 +160,7 @@ void gs_fail_mid(grpc_call* call, void* user_data):
 void gs_ticker(grpc_call* call, void* user_data):
 	char* m = 0
 	int len = 0
-	if (grpc_call_recv(call, &m, &len) != 1):
-		return
+	if (grpc_call_recv(call, &m, &len) != 1): return
 	free(m)
 	for i in range(500):
 		char* t = gs_msg(c"tick ", i)
@@ -202,8 +190,7 @@ void gs_bomb(grpc_call* call, void* user_data):
 
 void gs_server_child(int listener):
 	int fd = socket_accept_connection(listener)
-	if (fd < 0):
-		exit(70)
+	if (fd < 0): exit(70)
 	grpc_server* srv = grpc_server_new()
 	srv.max_message = 262144
 	grpc_server_register(srv, c"/t.S/Unary", gs_unary, 0)
@@ -224,8 +211,7 @@ int gs_fork_server(int* out_port, int* out_listener):
 	*out_listener = listener
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
-	if (pid == 0):
-		gs_server_child(listener)
+	if (pid == 0): gs_server_child(listener)
 	return pid
 
 
@@ -262,8 +248,7 @@ void gs_check_count(grpc_channel* ch, int n, int size):
 		# Nothing was sent: a trailers-only response.
 		asserts(c"trailers-only expected", r.trailers == 0)
 		assert_strings_equal(c"done", grpc_result_header(r, c"x-sent"))
-	else:
-		assert_strings_equal(c"done", grpc_result_trailer(r, c"x-sent"))
+	else: assert_strings_equal(c"done", grpc_result_trailer(r, c"x-sent"))
 	grpc_result_free(r)
 
 
@@ -330,8 +315,7 @@ void gs_ping_pong(grpc_channel* ch, int rounds, char* want_encoding):
 		free(ping)
 	if (want_encoding != 0):
 		assert_strings_equal(want_encoding, grpc_stream_header(cs, c"grpc-encoding"))
-	else:
-		asserts(c"unexpected grpc-encoding", grpc_stream_header(cs, c"grpc-encoding") == 0)
+	else: asserts(c"unexpected grpc-encoding", grpc_stream_header(cs, c"grpc-encoding") == 0)
 	assert_equal(0, grpc_stream_close_send(cs))
 	char* m = 0
 	int len = 0
@@ -641,12 +625,10 @@ void test_grpc_encoding_mismatch():
 void gs_raw_wait_headers(int fd, int stream):
 	h2_frame f
 	while (1):
-		if (h2_raw_read_frame(fd, &f) == 0):
-			exit(92)
+		if (h2_raw_read_frame(fd, &f) == 0): exit(92)
 		int done = (f.type == h2_frame_headers) && (f.stream_id == stream)
 		free(f.payload)
-		if (done != 0):
-			return
+		if (done != 0): return
 
 
 void gs_raw_headers(int fd, hpack_encoder* e, int stream, char* encoding, int end):
@@ -654,15 +636,12 @@ void gs_raw_headers(int fd, hpack_encoder* e, int stream, char* encoding, int en
 	if (end == 0):
 		hpack_headers_add(l, c":status", c"200")
 		hpack_headers_add(l, c"content-type", c"application/grpc")
-		if (encoding != 0):
-			hpack_headers_add(l, c"grpc-encoding", encoding)
-	else:
-		hpack_headers_add(l, c"grpc-status", c"0")
+		if (encoding != 0): hpack_headers_add(l, c"grpc-encoding", encoding)
+	else: hpack_headers_add(l, c"grpc-status", c"0")
 	string_builder* sb = string_new()
 	hpack_encode(e, l, sb)
 	int flags = h2_flag_end_headers
-	if (end != 0):
-		flags = flags | h2_flag_end_stream
+	if (end != 0): flags = flags | h2_flag_end_stream
 	h2_raw_write_frame(fd, h2_frame_headers, flags, stream, sb.data, sb.length)
 	string_free(sb)
 	hpack_headers_free(l)
@@ -693,8 +672,7 @@ void test_grpc_client_coding_errors():
 		gs_raw_response(fd, e, 3, 0, c"abc", 3)
 		gs_raw_response(fd, e, 5, c"gzip", c"not gzip at all", 15)
 		char* scratch = malloc(256)
-		while (read(fd, scratch, 256) > 0):
-			scratch[0] = 0
+		while (read(fd, scratch, 256) > 0): scratch[0] = 0
 		exit(0)
 	grpc_channel* ch = grpc_channel_open(c"127.0.0.1", port, 10000)
 	asserts(c"channel open failed", ch != 0)

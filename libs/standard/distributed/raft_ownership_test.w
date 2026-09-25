@@ -90,8 +90,7 @@ int main():
 	buf[2] = 'p'
 	buf[3] = 9
 	asserts(c"propose accepted", raft_propose(r, buf, 4, 10, out) == 1)
-	while (out.length > 0):
-		raft_msg_free(out.pop())
+	while (out.length > 0): raft_msg_free(out.pop())
 
 	# mutate the caller's buffer immediately: the log entry must be
 	# unaffected, because raft_entry_new copied command_len bytes out

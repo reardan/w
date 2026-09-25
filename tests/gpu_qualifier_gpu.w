@@ -21,16 +21,14 @@ struct gq_cell:
 
 kernel gq_scale(gpu float32* y, gpu float32* x, float32 a, int n):
 	int i = block_idx() * block_dim() + thread_idx()
-	if i < n:
-		y[i] = a * x[i] + y[i]
+	if i < n: y[i] = a * x[i] + y[i]
 
 
 # Plain pointer parameters accept gpu pointers at the launch site: a
 # kernel's plain pointer means "any device-accessible memory".
 kernel gq_plain_inc(int* v, int n):
 	int i = block_idx() * block_dim() + thread_idx()
-	if i < n:
-		v[i] = v[i] + 1
+	if i < n: v[i] = v[i] + 1
 
 
 # Device-only float32 saxpy; returns 1 when the copy-back matches.
@@ -54,8 +52,7 @@ int check_float_kernel(int n):
 	i = 0
 	while (i < n):
 		float32 want = 2.0 * i + 1.0
-		if (hy[i] != want):
-			ok = 0
+		if (hy[i] != want): ok = 0
 		i = i + 1
 	gpu_free(cast(char*, dx))
 	gpu_free(cast(char*, dy))
@@ -97,14 +94,10 @@ int check_gpu_for(int n):
 	int ok = 1
 	i = 0
 	while (i < n):
-		if (hi[i] != 3 * i + (i & 127) + 1):
-			ok = 0
-		if (hb[i] != (i & 127) + 1):
-			ok = 0
-		if (hc[i].count != 2 * i):
-			ok = 0
-		if (hc[i].total != 1.5):
-			ok = 0
+		if (hi[i] != 3 * i + (i & 127) + 1): ok = 0
+		if (hb[i] != (i & 127) + 1): ok = 0
+		if (hc[i].count != 2 * i): ok = 0
+		if (hc[i].total != 1.5): ok = 0
 		i = i + 1
 	gpu_free(cast(char*, di))
 	gpu_free(cast(char*, db))

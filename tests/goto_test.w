@@ -185,10 +185,8 @@ int switch_goto(int v):
 		case 1:
 			out = 10
 			goto tail
-		case 2:
-			out = 20
-		default:
-			out = 30
+		case 2: out = 20
+		default: out = 30
 	out = out + 1
 	tail:
 	return out

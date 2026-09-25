@@ -66,8 +66,7 @@ wcas* vtt_open():
 # entries whose children never need to exist in the store.
 char* vtt_fake_id(int digit):
 	char* id = malloc(65)
-	for i in range(64):
-		id[i] = digit
+	for i in range(64): id[i] = digit
 	id[64] = 0
 	return id
 

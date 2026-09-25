@@ -12,8 +12,7 @@ int core_test_wsize():
 
 
 void core_test_put(char* buf, int off, int v, int n):
-	for i in range(n):
-		buf[off + i] = (v >> (i * 8)) & 255
+	for i in range(n): buf[off + i] = (v >> (i * 8)) & 255
 
 
 void core_test_putw(char* buf, int off, int v):
@@ -99,8 +98,7 @@ char* core_test_image():
 
 
 char* core_test_path():
-	if (core_test_wsize() == 8):
-		return c"bin/core_file_test_64.core"
+	if (core_test_wsize() == 8): return c"bin/core_file_test_64.core"
 	return c"bin/core_file_test_32.core"
 
 
@@ -131,8 +129,7 @@ void test_core_file_reads_synthetic_core():
 
 void test_core_file_rejects_non_elf():
 	char* path = c"bin/core_file_test_text.core"
-	if (core_test_wsize() == 8):
-		path = c"bin/core_file_test_text_64.core"
+	if (core_test_wsize() == 8): path = c"bin/core_file_test_text_64.core"
 	core_test_write(path, c"not a core file, just some text padding it out to size", 52)
 	assert_strings_equal(c"not an ELF file:", cf_load_core(path))
 	assert_strings_equal(path, cf_error_path)

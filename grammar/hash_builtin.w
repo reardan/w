@@ -25,13 +25,11 @@ int hash_index_map_type
 
 int hash_key_kind_for_type(int type):
 	type = type_unqualified(type)
-	if (type_is_string(type)):
-		return 3
+	if (type_is_string(type)): return 3
 	if (type_get_pointer_level(type) == 1):
 		int base = type_lookup_previous_pointer(type)
 		if (base >= 0):
-			if (strcmp(type_get_name(base), c"char") == 0):
-				return 2
+			if (strcmp(type_get_name(base), c"char") == 0): return 2
 	return 1
 
 
@@ -43,8 +41,7 @@ void hash_emit_new_container(int type):
 		fn_name = c"__w_map_new"
 	int s = rt_call_begin(fn_name)
 	push_slot_int(hash_key_kind_for_type(key_type))
-	if (type_is_map(type)):
-		push_slot_int(type_get_size(type_map_value_type(type)))
+	if (type_is_map(type)): push_slot_int(type_get_size(type_map_value_type(type)))
 	rt_call_end(s)
 
 
@@ -52,8 +49,7 @@ void hash_emit_new_container(int type):
 # function (type 4) or a value of fn-signature pointer type. Anything
 # else is a stored default value.
 int hash_default_is_factory(int got):
-	if (got == 4):
-		return 1
+	if (got == 4): return 1
 	return type_function_pointer_signature(type_real(got)) >= 0
 
 
@@ -63,16 +59,11 @@ int hash_default_is_factory(int got):
 # (a zero word is not a usable default for any of them).
 int hash_default_inner_zero(int value_type):
 	int t = type_unqualified(value_type)
-	if (type_is_map(t) | type_is_set(t) | type_is_list(t)):
-		return 0
-	if (type_num_args(t) > 0):
-		return 0
-	if (type_is_string(t)):
-		return 0
-	if (type_is_var(t)):
-		return 0
-	if (type_get_pointer_level(t) > 0):
-		return 0
+	if (type_is_map(t) | type_is_set(t) | type_is_list(t)): return 0
+	if (type_num_args(t) > 0): return 0
+	if (type_is_string(t)): return 0
+	if (type_is_var(t)): return 0
+	if (type_get_pointer_level(t) > 0): return 0
 	return 1
 
 
@@ -82,14 +73,11 @@ int hash_default_inner_zero(int value_type):
 # constants mirror hash_emit_new_container/list_emit_new_container.
 int hash_default_container_descriptor(int value_type):
 	int t = type_unqualified(value_type)
-	if (type_is_list(t)):
-		return 3 | (list_element_slot_size(type_list_element_type(t)) << 5)
-	if (type_is_set(t)):
-		return 2 | (hash_key_kind_for_type(type_set_key_type(t)) << 2)
+	if (type_is_list(t)): return 3 | (list_element_slot_size(type_list_element_type(t)) << 5)
+	if (type_is_set(t)): return 2 | (hash_key_kind_for_type(type_set_key_type(t)) << 2)
 	int desc = 1 | (hash_key_kind_for_type(type_map_key_type(t)) << 2)
 	desc = desc | (type_get_size(type_map_value_type(t)) << 5)
-	if (hash_default_inner_zero(type_map_value_type(t))):
-		desc = desc | 16
+	if (hash_default_inner_zero(type_map_value_type(t))): desc = desc | 16
 	return desc
 
 
@@ -107,12 +95,10 @@ int hash_default_container_descriptor(int value_type):
 #                            Deeper nesting needs explicit factories.
 # The expression's value stays the map itself either way.
 void hash_map_default_suffix(int type):
-	if (accept(c"(") == 0):
-		return;
+	if (accept(c"(") == 0): return;
 	int container_type = type_unqualified(type)
 	int value_type = type_map_value_type(container_type)
-	if (type_num_args(value_type) > 0):
-		error(c"map default does not support struct value types")
+	if (type_num_args(value_type) > 0): error(c"map default does not support struct value types")
 	int value_canonical = type_unqualified(value_type)
 	int value_is_container = type_is_map(value_canonical) | type_is_set(value_canonical) | type_is_list(value_canonical)
 	int base_stack = stack_pos
@@ -198,14 +184,12 @@ int hash_finish_pending_compound(int op):
 
 
 int hash_finalize_pending_read_if_needed(int type):
-	if (hash_index_pending):
-		return hash_finish_pending_read()
+	if (hash_index_pending): return hash_finish_pending_read()
 	return type
 
 
 int hash_container_key_type(int container_type):
-	if (type_is_map(container_type)):
-		return type_map_key_type(container_type)
+	if (type_is_map(container_type)): return type_map_key_type(container_type)
 	return type_set_key_type(container_type)
 
 
@@ -227,8 +211,7 @@ int hash_map_add_suffix(int type):
 	int container_type = type_unqualified(type)
 	int value_type = type_map_value_type(container_type)
 	int key_type = type_map_key_type(container_type)
-	if (type_num_args(value_type) > 0):
-		error(c"map add requires an integer or float value type")
+	if (type_num_args(value_type) > 0): error(c"map add requires an integer or float value type")
 	if (type_canonical(value_type) == float16_type):
 		error(c"map add does not support float16 values")
 	int value_kind = type_float_kind(type_value(value_type))
@@ -242,8 +225,7 @@ int hash_map_add_suffix(int type):
 		int delta_got = parse_coerced(value_type, c"map add delta")
 	else:
 		mov_eax_int(1)
-		if (value_kind):
-			coerce(value_type, 3)
+		if (value_kind): coerce(value_type, 3)
 	expect(c")")
 	int delta_slot = push_slot()
 	int s = 0
@@ -303,20 +285,16 @@ int hash_get_suffix(int type):
 	char* fn_name = c"__w_map_get"
 	if (has_default):
 		fn_name = c"__w_map_get_or"
-		if (value_is_struct):
-			fn_name = c"__w_map_get_or_addr"
-	else if (value_is_struct):
-		fn_name = c"__w_map_get_addr"
+		if (value_is_struct): fn_name = c"__w_map_get_or_addr"
+	else if (value_is_struct): fn_name = c"__w_map_get_addr"
 	int s = rt_call_begin(fn_name)
 	push_slot_copy(container_slot)
 	push_slot_copy(key_slot)
-	if (has_default):
-		push_slot_copy(default_slot)
+	if (has_default): push_slot_copy(default_slot)
 	rt_call_end(s)
 
 	pop_to(base_stack)
-	if (value_is_struct):
-		return type_canonical(value_type)
+	if (value_is_struct): return type_canonical(value_type)
 	return type_value(value_type)
 
 
@@ -339,8 +317,7 @@ int hash_method(int type):
 	if (peek(c"add") & type_is_set(type)):
 		get_token()
 		return cm_call(type, c"__w_set_add", 0, key_type, c"set add key", 1, 0, -1, 0)
-	if (accept(c"add")):
-		return hash_map_add_suffix(type)
+	if (accept(c"add")): return hash_map_add_suffix(type)
 	if (accept(c"keys")):
 		return cm_call(type, c"__w_map_keys", 0, key_type, 0, 0, 0, list_element_slot_size(type_canonical(key_type)), 2)
 	if (peek(c"values") & type_is_map(type)):
@@ -350,9 +327,7 @@ int hash_method(int type):
 	if (peek(c"get") & type_is_map(type)):
 		get_token()
 		return hash_get_suffix(type)
-	if (accept(c"free")):
-		return cm_call(type, c"__w_map_free", 0, key_type, 0, 0, 0, -1, 0)
-	if ((nextc == '(') && (ufcs_callee(token) >= 0)):
-		return ufcs_call(type)
+	if (accept(c"free")): return cm_call(type, c"__w_map_free", 0, key_type, 0, 0, 0, -1, 0)
+	if ((nextc == '(') && (ufcs_callee(token) >= 0)): return ufcs_call(type)
 	error3(c"hash container field '", token, c"' not found")
 	return 0

@@ -80,8 +80,7 @@ void gt_say_hello(grpc_call* call, void* user_data):
 	grpc_call_add_header(call, c"x-handler", c"hello")
 	grpc_call_add_trailer(call, c"x-trailer", c"t")
 	char* echo = grpc_call_metadata(call, c"x-client")
-	if (echo != 0):
-		grpc_call_add_trailer(call, c"x-client-echo", echo)
+	if (echo != 0): grpc_call_add_trailer(call, c"x-client-echo", echo)
 	free(out)
 	string_free(sb)
 	free(req.text.data)
@@ -118,8 +117,7 @@ void gt_slow(grpc_call* call, void* user_data):
 void gt_server_child(int listener):
 	gt_desc_init()
 	int fd = socket_accept_connection(listener)
-	if (fd < 0):
-		exit(70)
+	if (fd < 0): exit(70)
 	grpc_server* srv = grpc_server_new()
 	grpc_server_register(srv, c"/test.Greeter/SayHello", gt_say_hello, 0)
 	grpc_server_register(srv, c"/test.Greeter/Fail", gt_fail, 0)
@@ -255,8 +253,7 @@ void test_grpc_unary_end_to_end():
 	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
-	if (pid == 0):
-		gt_server_child(listener)
+	if (pid == 0): gt_server_child(listener)
 	grpc_channel* ch = grpc_channel_open(c"127.0.0.1", port, 10000)
 	asserts(c"channel open failed", ch != 0)
 
@@ -342,12 +339,10 @@ void test_grpc_unary_end_to_end():
 void gt_raw_wait_headers(int fd, int stream):
 	h2_frame f
 	while (1):
-		if (h2_raw_read_frame(fd, &f) == 0):
-			exit(92)
+		if (h2_raw_read_frame(fd, &f) == 0): exit(92)
 		int done = (f.type == h2_frame_headers) && (f.stream_id == stream)
 		free(f.payload)
-		if (done != 0):
-			return
+		if (done != 0): return
 
 
 void gt_raw_send_headers(int fd, hpack_encoder* e, int stream, list[hpack_header*] l, int flags):
@@ -389,8 +384,7 @@ void test_grpc_client_status_mapping():
 		gt_raw_send_headers(fd, e, 7, l, h2_flag_end_stream)
 		hpack_headers_free(l)
 		char* scratch = malloc(256)
-		while (read(fd, scratch, 256) > 0):
-			scratch[0] = 0
+		while (read(fd, scratch, 256) > 0): scratch[0] = 0
 		exit(0)
 	grpc_channel* ch = grpc_channel_open(c"127.0.0.1", port, 10000)
 	asserts(c"channel open failed", ch != 0)

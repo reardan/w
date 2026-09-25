@@ -61,10 +61,8 @@ void test_rasterize_a():
 	int partial = 0
 	for i in range(bm.w * bm.h):
 		int v = bm.pixels[i] & 255
-		if (v == 255):
-			solid = solid + 1
-		else if ((v > 0) && (v < 255)):
-			partial = partial + 1
+		if (v == 255): solid = solid + 1
+		else if ((v > 0) && (v < 255)): partial = partial + 1
 	asserts(c"A has solid ink", solid > 0)
 	asserts(c"A has antialiased edges", partial > 0)
 	free(bm.pixels)
@@ -135,8 +133,7 @@ void test_composite_glyph_rasterizes():
 		if ((code != 215) && (code != 247)):
 			ttf_bitmap bm
 			asserts(c"latin-1 rasterizes", ttf_rasterize(f, ttf_glyph_id(f, code), 16, &bm))
-			if (bm.pixels != 0):
-				free(bm.pixels)
+			if (bm.pixels != 0): free(bm.pixels)
 
 
 # An oblique rasterization leans the ink right: the tall 'l' gets
@@ -176,8 +173,7 @@ void test_bad_input_is_rejected():
 	asserts(c"header-only font rejected", ttf_load_bytes(&cut, data, 200) == 0)
 	asserts(c"tiny blob rejected", ttf_load_bytes(&cut, data, 8) == 0)
 	char* junk = malloc(64)
-	for i in range(64):
-		junk[i] = 'x'
+	for i in range(64): junk[i] = 'x'
 	asserts(c"non-font rejected", ttf_load_bytes(&cut, junk, 64) == 0)
 	free(junk)
 	free(data)
@@ -279,15 +275,12 @@ void test_subset():
 		int i = 0
 		int same = 1
 		while (i < a.w * a.h):
-			if (a.pixels[i] != b.pixels[i]):
-				same = 0
+			if (a.pixels[i] != b.pixels[i]): same = 0
 			i = i + 1
 		asserts(c"same coverage", same)
 		free(a.pixels)
 		free(b.pixels)
-		if (code == 'Q'):
-			code = 193
-		else:
-			code = 0
+		if (code == 'Q'): code = 193
+		else: code = 0
 	free(data)
 	free(cast(char*, ranges))

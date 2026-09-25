@@ -83,10 +83,8 @@ void json_codec_unsupported(int t):
 # targets).
 int json_codec_kind(int t):
 	t = type_unqualified(t)
-	if (type_is_string(t)):
-		return 4
-	if (type_is_char_pointer(t)):
-		return 3
+	if (type_is_string(t)): return 4
+	if (type_is_char_pointer(t)): return 3
 	if (type_is_list(t)):
 		json_codec_kind(type_list_element_type(t))
 		return 6
@@ -97,31 +95,22 @@ int json_codec_kind(int t):
 			error3(c"to_json/from_json map fields need char* or string keys: '", type_get_name(t), c"'")
 		json_codec_kind(type_map_value_type(t))
 		return 8
-	if (type_is_set(t)):
-		json_codec_unsupported(t)
-	if (type_is_array(t) | type_is_slice(t)):
-		json_codec_unsupported(t)
-	if (type_get_pointer_level(t) > 0):
-		json_codec_unsupported(t)
+	if (type_is_set(t)): json_codec_unsupported(t)
+	if (type_is_array(t) | type_is_slice(t)): json_codec_unsupported(t)
+	if (type_get_pointer_level(t) > 0): json_codec_unsupported(t)
 	if (type_float_kind(t)):
 		# float32 everywhere; float64 where the word is 8 bytes, so
 		# structures/json.w numbers carry full float64 precision
 		# (elsewhere the type is already a compile error). float16
 		# stays rejected: it is storage-only (docs/projects/float.md).
-		if ((type_float_kind(t) == 1) && (type_get_size(t) == 4)):
-			return 7
-		if ((type_float_kind(t) == 2) && (word_size == 8)):
-			return 9
+		if ((type_float_kind(t) == 1) && (type_get_size(t) == 4)): return 7
+		if ((type_float_kind(t) == 2) && (word_size == 8)): return 9
 		json_codec_unsupported(t)
-	if (type_get_kind(t) == type_kind_union):
-		json_codec_unsupported(t)
-	if (type_num_args(t) > 0):
-		return 5
-	if (t == type_unqualified(bool_type)):
-		return 2
+	if (type_get_kind(t) == type_kind_union): json_codec_unsupported(t)
+	if (type_num_args(t) > 0): return 5
+	if (t == type_unqualified(bool_type)): return 2
 	int size = type_get_size(t)
-	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
-		return 1
+	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)): return 1
 	json_codec_unsupported(t)
 	return 0
 
@@ -132,10 +121,8 @@ int json_codec_kind(int t):
 # decode can rebuild maps).
 int json_codec_size(int t, int kind):
 	t = type_unqualified(t)
-	if (kind == 6):
-		return list_element_slot_size(type_list_element_type(t))
-	if (kind == 8):
-		return type_get_size(type_map_value_type(t))
+	if (kind == 6): return list_element_slot_size(type_list_element_type(t))
+	if (kind == 8): return type_get_size(type_map_value_type(t))
 	if ((kind == 3) || (kind == 4)):
 		return word_size
 	return type_get_size(t)
@@ -146,24 +133,18 @@ int json_codec_size(int t, int kind):
 void json_codec_ensure_nested(int t):
 	t = type_unqualified(t)
 	int kind = json_codec_kind(t)
-	if (kind == 5):
-		json_codec_descriptor(t)
-	if (kind == 6):
-		json_codec_ensure_nested(type_list_element_type(t))
-	if (kind == 8):
-		json_codec_ensure_nested(type_map_value_type(t))
+	if (kind == 5): json_codec_descriptor(t)
+	if (kind == 6): json_codec_ensure_nested(type_list_element_type(t))
+	if (kind == 8): json_codec_ensure_nested(type_map_value_type(t))
 
 
 # Descriptor 'aux' word for a field or element of type t: nested struct
 # descriptor address, list element value-descriptor address, or map
 # descriptor address (emitted into the current blob as needed).
 int json_codec_emit_aux(int t, int kind):
-	if (kind == 5):
-		return json_codec_cache_lookup(type_canonical(t))
-	if (kind == 6):
-		return json_codec_emit_value_desc(type_list_element_type(t))
-	if (kind == 8):
-		return json_codec_emit_map_desc(t)
+	if (kind == 5): return json_codec_cache_lookup(type_canonical(t))
+	if (kind == 6): return json_codec_emit_value_desc(type_list_element_type(t))
+	if (kind == 8): return json_codec_emit_map_desc(t)
 	return 0
 
 
@@ -259,8 +240,7 @@ int json_codec_descriptor(int struct_type):
 
 
 void json_codec_require_json_import(char* builtin_name):
-	if (type_lookup(c"json_value") < 0):
-		error2(builtin_name, c" requires 'import structures.json'")
+	if (type_lookup(c"json_value") < 0): error2(builtin_name, c" requires 'import structures.json'")
 
 
 # Call helper i (0 encode, 1 decode) with (descriptor, arg), the
@@ -283,8 +263,7 @@ int json_to_json_expr():
 	get_token()
 	expect(c"(")
 	int got = expression()
-	if (peek(c")") == 0):
-		error(c"')' expected in to_json")
+	if (peek(c")") == 0): error(c"')' expected in to_json")
 	json_codec_require_json_import(c"to_json")
 	got = promote(got)
 	int t = type_unqualified(got)
@@ -292,12 +271,9 @@ int json_to_json_expr():
 	if (type_get_pointer_level(t) == 1):
 		int base = type_lookup_previous_pointer(t)
 		if (base >= 0):
-			if (type_num_args(base) > 0):
-				t = type_unqualified(base)
-	if (type_num_args(t) == 0):
-		error(c"to_json argument must be a struct value or struct pointer")
-	if (type_get_kind(t) == type_kind_union):
-		error(c"to_json does not support unions")
+			if (type_num_args(base) > 0): t = type_unqualified(base)
+	if (type_num_args(t) == 0): error(c"to_json argument must be a struct value or struct pointer")
+	if (type_get_kind(t) == type_kind_union): error(c"to_json does not support unions")
 	int base_stack = stack_pos
 	int arg_slot = push_slot()
 	int desc_address = json_codec_descriptor(t)
@@ -317,13 +293,11 @@ int json_from_json_expr():
 	int t = type_unqualified(target_type)
 	if ((type_num_args(t) == 0) | (type_get_pointer_level(t) > 0)):
 		error(c"from_json target must be a struct type")
-	if (type_get_kind(t) == type_kind_union):
-		error(c"from_json does not support unions")
+	if (type_get_kind(t) == type_kind_union): error(c"from_json does not support unions")
 	expect(c",")
 	int desc_address = json_codec_descriptor(t)
 	int got = expression()
-	if (peek(c")") == 0):
-		error(c"')' expected in from_json")
+	if (peek(c")") == 0): error(c"')' expected in from_json")
 	got = promote(got)
 	int want = type_get_next_pointer(type_lookup(c"json_value"))
 	if (types_compatible_with_expression(want, got) == 0):

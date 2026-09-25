@@ -55,8 +55,7 @@ void out_indented(char* text):
 			out(c"    | ")
 			write(1, text + start, i - start)
 			out(c"\n")
-			if ((text[i] == 0) || (text[i + 1] == 0)):
-				return
+			if ((text[i] == 0) || (text[i + 1] == 0)): return
 			start = i + 1
 		i = i + 1
 
@@ -95,11 +94,9 @@ run_out* run(char* path, char* a1, char* a2, char* a3, char* dump, int want):
 	if (a2 != 0):
 		strv_set(argv, n, a2)
 		n = n + 1
-	if (a3 != 0):
-		strv_set(argv, n, a3)
+	if (a3 != 0): strv_set(argv, n, a3)
 	spawn_options* opts = spawn_options_new()
-	if (dump != 0):
-		opts.env = env_copy_with(env_current(), c"W_CRASH_DUMP", dump)
+	if (dump != 0): opts.env = env_copy_with(env_current(), c"W_CRASH_DUMP", dump)
 	process_result* r = process_run(path, argv, opts, 0, 120000)
 	free(opts)
 	free(cast(void*, argv))
@@ -109,10 +106,8 @@ run_out* run(char* path, char* a1, char* a2, char* a3, char* dump, int want):
 		o.text = c"(could not spawn the child)"
 		return o
 	o.status = r.status
-	if (want == 2):
-		o.text = strclone(r.stderr_text)
-	else:
-		o.text = strjoin(r.stdout_text, r.stderr_text)
+	if (want == 2): o.text = strclone(r.stderr_text)
+	else: o.text = strjoin(r.stdout_text, r.stderr_text)
 	process_result_free(r)
 	return o
 
@@ -121,8 +116,7 @@ run_out* run(char* path, char* a1, char* a2, char* a3, char* dump, int want):
 # or 0 when there is none.
 char* find_dump(char* dir):
 	list[char*] names = dir_names(dir)
-	if (names == 0):
-		return 0
+	if (names == 0): return 0
 	for char* name in names:
 		if ((name[0] == 'w') && (name[1] == '.') && (strlen(name) > 7) && ends_with(name, c".core")):
 			return path_join(dir, name)
@@ -155,8 +149,7 @@ void run_case(char* desc, char* fixture, char* divfix, char* ipreg, char* other)
 		fail_line(desc, strjoin(c"no dump file appeared in ", dir))
 		dir_remove_all(dir)
 		return
-	if (ends_with(core, c"w.%p.core")):
-		fail_line(desc, c"%p was not expanded")
+	if (ends_with(core, c"w.%p.core")): fail_line(desc, c"%p was not expanded")
 
 	r = run(WCORE, core, 0, 0, 0, 1)
 	expect(desc, r.text, c"source: W crash handler dump")
@@ -179,8 +172,7 @@ void run_case(char* desc, char* fixture, char* divfix, char* ipreg, char* other)
 	expect(jdesc, r.text, c"\"trace_exact\":true")
 
 	r = run(WCORE, core, other, 0, 0, 1)
-	if (r.status == 0):
-		fail_line(desc, c"wcore accepted a binary with a different build-id")
+	if (r.status == 0): fail_line(desc, c"wcore accepted a binary with a different build-id")
 	expect(strjoin(desc, c" (wrong binary)"), r.text, c"build-id mismatch")
 
 	# SIGFPE: the faulting address is the pc.
@@ -197,8 +189,7 @@ void run_case(char* desc, char* fixture, char* divfix, char* ipreg, char* other)
 	r = run(fixture, 0, 0, 0, missing, 2)
 	expect(udesc, r.text, strjoin(c"crash dump: cannot write ", missing))
 	expect(udesc, r.text, c"at crash_deep (")
-	if (r.status != 139):
-		fail_line(udesc, strjoin(c"expected status 139, got ", itoa(r.status)))
+	if (r.status != 139): fail_line(udesc, strjoin(c"expected status 139, got ", itoa(r.status)))
 
 	dir_remove_all(dir)
 
@@ -213,7 +204,6 @@ int main(int argc, char** argv):
 	run_case(c"32-bit dump", c"bin/crash_dump_fixture32", c"bin/crash_dump_div32", c"eip", c"bin/crash_dump_div32")
 	run_case(c"64-bit dump", c"bin/crash_dump_fixture64", c"bin/crash_dump_div64", c"rip", c"bin/crash_dump_div64")
 
-	if (FAILED != 0):
-		return 1
+	if (FAILED != 0): return 1
 	out(c"crash dump test OK\n")
 	return 0

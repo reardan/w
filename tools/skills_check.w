@@ -46,16 +46,11 @@ int skills_failures
 
 # Token characters for flags, selector words and subcommand words.
 int skills_is_token_char(int ch):
-	if (('a' <= ch) && (ch <= 'z')):
-		return 1
-	if (('A' <= ch) && (ch <= 'Z')):
-		return 1
-	if (('0' <= ch) && (ch <= '9')):
-		return 1
-	if (ch == '_'):
-		return 1
-	if (ch == '-'):
-		return 1
+	if (('a' <= ch) && (ch <= 'z')): return 1
+	if (('A' <= ch) && (ch <= 'Z')): return 1
+	if (('0' <= ch) && (ch <= '9')): return 1
+	if (ch == '_'): return 1
+	if (ch == '-'): return 1
 	return 0
 
 
@@ -66,18 +61,15 @@ int skills_help_has_token(char* token):
 	int i = 0
 	while (skills_help_text[i] != 0):
 		int j = 0
-		while ((j < n) && (skills_help_text[i + j] == token[j])):
-			j = j + 1
+		while ((j < n) && (skills_help_text[i + j] == token[j])): j = j + 1
 		if (j == n):
 			int before_ok = 1
 			if (i > 0):
-				if (skills_is_token_char(skills_help_text[i - 1] & 255)):
-					before_ok = 0
+				if (skills_is_token_char(skills_help_text[i - 1] & 255)): before_ok = 0
 			int after = skills_help_text[i + n] & 255
 			# '=' after a flag stem is a boundary ('--bounds=on');
 			# a token char is not ('arm64' vs 'arm64_darwin').
-			if (before_ok && (skills_is_token_char(after) == 0)):
-				return 1
+			if (before_ok && (skills_is_token_char(after) == 0)): return 1
 		i = i + 1
 	return 0
 
@@ -96,35 +88,25 @@ void skills_missing(char* where, int line_no, char* token):
 
 # One line's worth of doc text (NUL-terminated scratch copy).
 int skills_line_is_compiler(char* line):
-	if (index_of(line, c"wv2") >= 0):
-		return 1
-	if (index_of(line, c"w check") >= 0):
-		return 1
-	if (index_of(line, c"w deps") >= 0):
-		return 1
-	if (index_of(line, c"w symbols") >= 0):
-		return 1
-	if (index_of(line, c"w defhash") >= 0):
-		return 1
-	if (index_of(line, c"w --debug") >= 0):
-		return 1
-	if (index_of(line, c"w --version") >= 0):
-		return 1
-	if (index_of(line, c"w --help") >= 0):
-		return 1
+	if (index_of(line, c"wv2") >= 0): return 1
+	if (index_of(line, c"w check") >= 0): return 1
+	if (index_of(line, c"w deps") >= 0): return 1
+	if (index_of(line, c"w symbols") >= 0): return 1
+	if (index_of(line, c"w defhash") >= 0): return 1
+	if (index_of(line, c"w --debug") >= 0): return 1
+	if (index_of(line, c"w --version") >= 0): return 1
+	if (index_of(line, c"w --help") >= 0): return 1
 	return 0
 
 
 void skills_scan_line(char* doc, int line_no, char* line):
-	if (skills_line_is_compiler(line) == 0):
-		return
+	if (skills_line_is_compiler(line) == 0): return
 	int i = 0
 	while (line[i] != 0):
 		int ch = line[i] & 255
 		int at_boundary = 1
 		if (i > 0):
-			if (skills_is_token_char(line[i - 1] & 255)):
-				at_boundary = 0
+			if (skills_is_token_char(line[i - 1] & 255)): at_boundary = 0
 		if ((ch == '-') && at_boundary):
 			# Collect the dashes, then the stem up to '=' or a
 			# non-token character.
@@ -132,20 +114,16 @@ void skills_scan_line(char* doc, int line_no, char* line):
 			int has_letter = 0
 			while (skills_is_token_char(line[i] & 255)):
 				int tc = line[i] & 255
-				if ((('a' <= tc) && (tc <= 'z')) || (('A' <= tc) && (tc <= 'Z'))):
-					has_letter = 1
+				if ((('a' <= tc) && (tc <= 'z')) || (('A' <= tc) && (tc <= 'Z'))): has_letter = 1
 				i = i + 1
 			if (has_letter):
 				int len = i - start
 				char* token = malloc(len + 1)
-				for k in range(len):
-					token[k] = line[start + k]
+				for k in range(len): token[k] = line[start + k]
 				token[len] = 0
-				if (skills_help_has_token(token) == 0):
-					skills_missing(doc, line_no, token)
+				if (skills_help_has_token(token) == 0): skills_missing(doc, line_no, token)
 				free(token)
-		else:
-			i = i + 1
+		else: i = i + 1
 
 
 void skills_scan_doc(char* doc):
@@ -165,15 +143,13 @@ void skills_scan_doc(char* doc):
 		if ((ch == 10) || (ch == 0)):
 			int len = i - start
 			char* line = malloc(len + 1)
-			for k in range(len):
-				line[k] = text[start + k]
+			for k in range(len): line[k] = text[start + k]
 			line[len] = 0
 			skills_scan_line(doc, line_no, line)
 			free(line)
 			line_no = line_no + 1
 			start = i + 1
-			if (ch == 0):
-				scanning = 0
+			if (ch == 0): scanning = 0
 		i = i + 1
 	free(text)
 
@@ -187,18 +163,14 @@ void skills_check_core():
 	int i = 0
 	while (core[i] != 0):
 		int start = i
-		while ((core[i] != 0) && (core[i] != ' ')):
-			i = i + 1
+		while ((core[i] != 0) && (core[i] != ' ')): i = i + 1
 		int len = i - start
 		char* token = malloc(len + 1)
-		for k in range(len):
-			token[k] = core[start + k]
+		for k in range(len): token[k] = core[start + k]
 		token[len] = 0
-		if (skills_help_has_token(token) == 0):
-			skills_missing(c"<core flag list>", 0, token)
+		if (skills_help_has_token(token) == 0): skills_missing(c"<core flag list>", 0, token)
 		free(token)
-		while (core[i] == ' '):
-			i = i + 1
+		while (core[i] == ' '): i = i + 1
 
 
 int main(int argc, int argv):

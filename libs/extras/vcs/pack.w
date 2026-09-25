@@ -253,14 +253,12 @@ struct pack_stats:
 
 
 void pack_entry_free(wpack_entry* e):
-	if (e.base_id != 0):
-		free(e.base_id)
+	if (e.base_id != 0): free(e.base_id)
 	free(e)
 
 
 void pack_entries_free(map[char*, wpack_entry*] entries):
-	for char* id in entries:
-		pack_entry_free(entries[id])
+	for char* id in entries: pack_entry_free(entries[id])
 	map_free[char*, wpack_entry*](entries)
 
 
@@ -272,16 +270,14 @@ void pack_file_free(wpack_file* p):
 
 
 void pack_set_free(wpack_set* ps):
-	for wpack_file* p in ps.packs:
-		pack_file_free(p)
+	for wpack_file* p in ps.packs: pack_file_free(p)
 	list_free[wpack_file*](ps.packs)
 	free(ps.dir)
 	free(ps)
 
 
 void pack_stats_free(pack_stats* st):
-	if (st.pack_path != 0):
-		free(st.pack_path)
+	if (st.pack_path != 0): free(st.pack_path)
 	free(st)
 
 
@@ -299,15 +295,12 @@ int pack_parse_uint(char* data, int length, int* pos):
 	int digits = 0
 	while (i < length):
 		int c = data[i] & 255
-		if ((c < '0') || (c > '9')):
-			break
-		if (value > 100000000):
-			return -1
+		if ((c < '0') || (c > '9')): break
+		if (value > 100000000): return -1
 		value = value * 10 + (c - '0')
 		digits = digits + 1
 		i = i + 1
-	if (digits == 0):
-		return -1
+	if (digits == 0): return -1
 	*pos = i
 	return value
 
@@ -315,8 +308,7 @@ int pack_parse_uint(char* data, int length, int* pos):
 # Expects exactly `ch` at data[*pos] and advances past it.
 int pack_expect_char(char* data, int length, int* pos, int ch):
 	int i = *pos
-	if ((i >= length) || ((data[i] & 255) != ch)):
-		return 0
+	if ((i >= length) || ((data[i] & 255) != ch)): return 0
 	*pos = i + 1
 	return 1
 
@@ -339,17 +331,14 @@ wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 		version = 2
 		pos = pos + strlen(PACK_MAGIC_V2())
 	int valid = version != 0
-	if (valid):
-		valid = pack_expect_char(data, length, &pos, 10)
-	if (valid):
-		valid = mem_starts_with(data, length, pos, c"count ")
+	if (valid): valid = pack_expect_char(data, length, &pos, 10)
+	if (valid): valid = mem_starts_with(data, length, pos, c"count ")
 	int count = 0
 	if (valid):
 		pos = pos + strlen(c"count ")
 		count = pack_parse_uint(data, length, &pos)
 		valid = (count >= 0) && pack_expect_char(data, length, &pos, 10)
-	if (valid == 0):
-		return result_new_error[wpack_file*](PACK_ERR_MALFORMED())
+	if (valid == 0): return result_new_error[wpack_file*](PACK_ERR_MALFORMED())
 
 	map[char*, wpack_entry*] entries = new map[char*, wpack_entry*]
 	int i = 0
@@ -367,8 +356,7 @@ wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 				kind = data[pos] & 255
 				valid = (kind == PACK_ENTRY_FULL) || (kind == PACK_ENTRY_DELTA)
 				pos = pos + 1
-			else:
-				valid = 0
+			else: valid = 0
 		int offset = -1
 		int clen = -1
 		int ulen = -1
@@ -398,10 +386,8 @@ wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 		if (valid):
 			wpack_entry* e = new wpack_entry(kind, offset, clen, ulen, rlen, base_id)
 			entries[id] = e
-		else if (base_id != 0):
-			free(base_id)
-		if (id != 0):
-			free(id)
+		else if (base_id != 0): free(base_id)
+		if (id != 0): free(id)
 		i = i + 1
 	valid = valid && pack_expect_char(data, length, &pos, 10)
 
@@ -409,13 +395,11 @@ wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 	if (valid):
 		for char* id in entries:
 			wpack_entry* e = entries[id]
-			if ((e.offset > body_len) || (e.clen > (body_len - e.offset))):
-				valid = 0
+			if ((e.offset > body_len) || (e.clen > (body_len - e.offset))): valid = 0
 			# Delta resolution never leaves the file: a base id that is
 			# not itself an entry of THIS pack is malformed by definition
 			# (the writer only ever pairs same-pack objects).
-			if ((e.base_id != 0) && ((e.base_id in entries) == 0)):
-				valid = 0
+			if ((e.base_id != 0) && ((e.base_id in entries) == 0)): valid = 0
 	if (valid == 0):
 		pack_entries_free(entries)
 		return result_new_error[wpack_file*](PACK_ERR_MALFORMED())
@@ -428,11 +412,9 @@ wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 # pack_parse's PACK_ERR_MALFORMED.
 wresult[wpack_file*]* pack_load(char* path):
 	string_builder* contents = cas_read_file(path)
-	if (contents == 0):
-		return result_new_error[wpack_file*](cas_read_errno)
+	if (contents == 0): return result_new_error[wpack_file*](cas_read_errno)
 	wresult[wpack_file*]* parsed = pack_parse(path, contents.data, contents.length)
-	if (result_is_error[wpack_file*](parsed)):
-		string_free(contents)
+	if (result_is_error[wpack_file*](parsed)): string_free(contents)
 	else:
 		# The wpack_file took ownership of the byte buffer; only the
 		# string_builder shell itself is released here.
@@ -473,12 +455,10 @@ string_builder* pack_entry_inflate(wpack_file* p, wpack_entry* e):
 # steps instead of recursing forever (the same discipline as delta.w's
 # delta_resolve).
 string_builder* pack_file_get_hops(wpack_file* p, char* id, int hops_remaining):
-	if ((id in p.entries) == 0):
-		return 0
+	if ((id in p.entries) == 0): return 0
 	wpack_entry* e = p.entries[id]
 	string_builder* stream = pack_entry_inflate(p, e)
-	if (stream == 0):
-		return 0
+	if (stream == 0): return 0
 	if (e.kind != PACK_ENTRY_DELTA):
 		return stream
 	if (hops_remaining <= 0):
@@ -548,8 +528,7 @@ int pack_list_names(char* dir_path, int want_kind, list[char*] out):
 			int kind = record[reclen - 1] & 255
 			off = off + reclen
 			int skip = (strcmp(entry_name, c".") == 0) || (strcmp(entry_name, c"..") == 0)
-			if ((skip == 0) && (kind == want_kind)):
-				out.push(strclone(entry_name))
+			if ((skip == 0) && (kind == want_kind)): out.push(strclone(entry_name))
 		n = getdents(fd, buffer, buffer_size)
 	free(buffer)
 	close(fd)
@@ -559,8 +538,7 @@ int pack_list_names(char* dir_path, int want_kind, list[char*] out):
 
 
 void pack_free_names(list[char*] names):
-	for char* name in names:
-		free(name)
+	for char* name in names: free(name)
 	list_free[char*](names)
 
 
@@ -577,8 +555,7 @@ wpack_set* pack_set_new(char* root):
 # file that fails to read or parse is skipped (the fallback seam has no
 # error channel -- see the header comment).
 void pack_set_scan(wpack_set* ps):
-	if (ps.scanned):
-		return
+	if (ps.scanned): return
 	ps.scanned = 1
 	list[char*] names = new list[char*]
 	int err = pack_list_names(ps.dir, 8, names)
@@ -593,8 +570,7 @@ void pack_set_scan(wpack_set* ps):
 		if (is_pack):
 			char* path = path_join(ps.dir, name)
 			wresult[wpack_file*]* loaded = pack_load(path)
-			if (result_is_ok[wpack_file*](loaded)):
-				ps.packs.push(result_value[wpack_file*](loaded))
+			if (result_is_ok[wpack_file*](loaded)): ps.packs.push(result_value[wpack_file*](loaded))
 			result_free[wpack_file*](loaded)
 			free(path)
 	pack_free_names(names)
@@ -603,8 +579,7 @@ void pack_set_scan(wpack_set* ps):
 # Drops every loaded pack and re-arms the lazy scan, so the next lookup
 # sees pack files created or removed since the last scan.
 void pack_set_reset(wpack_set* ps):
-	for wpack_file* p in ps.packs:
-		pack_file_free(p)
+	for wpack_file* p in ps.packs: pack_file_free(p)
 	ps.packs.clear()
 	ps.scanned = 0
 
@@ -612,8 +587,7 @@ void pack_set_reset(wpack_set* ps):
 int pack_set_has(wpack_set* ps, char* id):
 	pack_set_scan(ps)
 	for wpack_file* p in ps.packs:
-		if (pack_file_has(p, id)):
-			return 1
+		if (pack_file_has(p, id)): return 1
 	return 0
 
 
@@ -661,8 +635,7 @@ void pack_attach(wcas* s):
 # change. s.fallback_state is this module's own wpack_set* whenever any
 # layer is attached at all (pack.w is the tree's only registrar).
 void pack_reset_attached(wcas* s):
-	if (s.fallback_state != 0):
-		pack_set_reset(cast(wpack_set*, s.fallback_state))
+	if (s.fallback_state != 0): pack_set_reset(cast(wpack_set*, s.fallback_state))
 
 
 /* Loose-object enumeration */
@@ -695,8 +668,7 @@ wresult[list[char*]]* pack_loose_ids(wcas* s):
 					if (cas_valid_id(id_sb.data)):
 						ids.push(id_sb.data)
 						free(id_sb)
-					else:
-						string_free(id_sb)
+					else: string_free(id_sb)
 			pack_free_names(names)
 			free(fan_dir)
 	pack_free_names(fanouts)
@@ -742,12 +714,9 @@ int pack_write_file_atomic(char* dir, char* final_path, char* data, int length):
 		return fd
 	int err = cas_write_all(fd, data, length)
 	int closed = close(fd)
-	if ((err == 0) && (closed < 0)):
-		err = closed
-	if (err == 0):
-		err = vcs_rename(temp, final_path)
-	if (err < 0):
-		vcs_unlink(temp)
+	if ((err == 0) && (closed < 0)): err = closed
+	if (err == 0): err = vcs_rename(temp, final_path)
+	if (err < 0): vcs_unlink(temp)
 	free(temp)
 	return err
 
@@ -761,12 +730,10 @@ wresult[string_builder*]* pack_read_loose_logical(wcas* s, char* id):
 	char* path = cas_object_path(s, id)
 	string_builder* contents = cas_read_file(path)
 	free(path)
-	if (contents == 0):
-		return result_new_error[string_builder*](cas_read_errno)
+	if (contents == 0): return result_new_error[string_builder*](cas_read_errno)
 	string_builder* logical = cas_inflate_stored(contents.data, contents.length)
 	string_free(contents)
-	if (logical == 0):
-		return result_new_error[string_builder*](PACK_ERR_MALFORMED())
+	if (logical == 0): return result_new_error[string_builder*](PACK_ERR_MALFORMED())
 	wresult[wcas_object*]* framed = cas_parse_framed(logical.data, logical.length)
 	if (result_is_error[wcas_object*](framed)):
 		int code = result_code[wcas_object*](framed)
@@ -806,8 +773,7 @@ void pack_plan_list_free(list[pack_plan*] plans):
 # header's ' '). Owned by the caller.
 char* pack_logical_tag(string_builder* logical):
 	int i = 0
-	while ((i < logical.length) && cas_valid_tag_char(logical.data[i] & 255)):
-		i = i + 1
+	while ((i < logical.length) && cas_valid_tag_char(logical.data[i] & 255)): i = i + 1
 	return path_clone_range(logical.data, i)
 
 
@@ -820,10 +786,8 @@ int pack_plan_compare(pack_plan* a, pack_plan* b):
 	int t = strcmp(a.type_tag, b.type_tag)
 	if (t != 0):
 		return t
-	if (a.logical.length > b.logical.length):
-		return -1
-	if (a.logical.length < b.logical.length):
-		return 1
+	if (a.logical.length > b.logical.length): return -1
+	if (a.logical.length < b.logical.length): return 1
 	return strcmp(a.id, b.id)
 
 
@@ -841,8 +805,7 @@ string_builder* pack_pick_delta(list[pack_plan*] plans, int i, int* best_index):
 	pack_plan* target = plans[i]
 	string_builder* best = 0
 	int j = i - PACK_DELTA_WINDOW
-	if (j < 0):
-		j = 0
+	if (j < 0): j = 0
 	while (j < i):
 		pack_plan* cand = plans[j]
 		if ((cand.depth + 1) <= DELTA_MAX_CHAIN_DEPTH()):
@@ -852,12 +815,10 @@ string_builder* pack_pick_delta(list[pack_plan*] plans, int i, int* best_index):
 			int better = payload.length < target.logical.length
 			better = better && ((best == 0) || (payload.length < best.length))
 			if (better):
-				if (best != 0):
-					string_free(best)
+				if (best != 0): string_free(best)
 				best = payload
 				*best_index = j
-			else:
-				string_free(payload)
+			else: string_free(payload)
 		j = j + 1
 	return best
 
@@ -931,10 +892,8 @@ wresult[pack_stats*]* pack_store_loose(wcas* s, int prune):
 				delta_z = 0
 		string_append(index_lines, pl.id)
 		string_append_char(index_lines, ' ')
-		if (delta_z != 0):
-			string_append_char(index_lines, PACK_ENTRY_DELTA)
-		else:
-			string_append_char(index_lines, PACK_ENTRY_FULL)
+		if (delta_z != 0): string_append_char(index_lines, PACK_ENTRY_DELTA)
+		else: string_append_char(index_lines, PACK_ENTRY_FULL)
 		string_append_char(index_lines, ' ')
 		string_append_int(index_lines, body.length)
 		string_append_char(index_lines, ' ')
@@ -956,8 +915,7 @@ wresult[pack_stats*]* pack_store_loose(wcas* s, int prune):
 			string_append_bytes(body, full_z.data, full_z.length)
 			pl.depth = 0
 		string_append_char(index_lines, 10)
-		if (payload != 0):
-			string_free(payload)
+		if (payload != 0): string_free(payload)
 		zlib_result_free(full_z)
 		i = i + 1
 	pack_plan_list_free(plans)
@@ -1062,16 +1020,14 @@ wresult[pack_stats*]* pack_unpack_all(wcas* s):
 		if (is_pack && (err == 0)):
 			char* path = path_join(dir, name)
 			wresult[wpack_file*]* loaded = pack_load(path)
-			if (result_is_error[wpack_file*](loaded)):
-				err = result_code[wpack_file*](loaded)
+			if (result_is_error[wpack_file*](loaded)): err = result_code[wpack_file*](loaded)
 			else:
 				wpack_file* p = result_value[wpack_file*](loaded)
 				int restored = 0
 				for char* id in p.entries:
 					if (err == 0):
 						string_builder* logical = pack_file_get(p, id)
-						if (logical == 0):
-							err = PACK_ERR_MALFORMED()
+						if (logical == 0): err = PACK_ERR_MALFORMED()
 						else:
 							wresult[wcas_object*]* framed = cas_parse_framed(logical.data, logical.length)
 							string_free(logical)
@@ -1080,8 +1036,7 @@ wresult[pack_stats*]* pack_unpack_all(wcas* s):
 							else:
 								wcas_object* obj = result_value[wcas_object*](framed)
 								wresult[char*]* put = cas_put_raw(s, id, obj.object_type, obj.data, obj.length)
-								if (result_is_error[char*](put)):
-									err = result_code[char*](put)
+								if (result_is_error[char*](put)): err = result_code[char*](put)
 								else:
 									free(result_value[char*](put))
 									restored = restored + 1

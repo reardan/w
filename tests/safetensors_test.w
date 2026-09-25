@@ -38,10 +38,8 @@ void write_raw_file(char* path, int header_len_claim, char* header_text, int hea
 	char[8] len_bytes
 	st_write_u64_header_len(len_bytes, header_len_claim)
 	stream_write(out, len_bytes, 8)
-	if (header_actual_len > 0):
-		stream_write(out, header_text, header_actual_len)
-	if (data_len > 0):
-		stream_write(out, data, data_len)
+	if (header_actual_len > 0): stream_write(out, header_text, header_actual_len)
+	if (data_len > 0): stream_write(out, data, data_len)
 	stream_close(out)
 
 
@@ -134,13 +132,11 @@ void test_golden_file_matches_spec():
 	int n = strlen(header)
 	int rem = (8 + n) % 8
 	int pad = 0
-	if (rem != 0):
-		pad = 8 - rem
+	if (rem != 0): pad = 8 - rem
 
 	string_builder* padded = string_new()
 	string_append(padded, header)
-	for i in range(pad):
-		string_append_char(padded, ' ')
+	for i in range(pad): string_append_char(padded, ' ')
 
 	char[8] data
 	char* data_p = data
@@ -290,8 +286,7 @@ void test_rejects_overlapping_offsets():
 	char* header = c"{\"a\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[0,4]},\"b\":{\"dtype\":\"F32\",\"shape\":[1],\"data_offsets\":[2,6]}}"
 	int n = strlen(header)
 	char[6] data
-	for i in range(6):
-		data[i] = 0
+	for i in range(6): data[i] = 0
 	write_raw_file(c"bin/safetensors_overlap.safetensors", n, header, n, data, 6)
 	st_file* loaded = st_load(c"bin/safetensors_overlap.safetensors")
 	assert1(loaded == 0)

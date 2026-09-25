@@ -52,8 +52,7 @@ int mc_add_node(rsim* c, int seed):
 int mc_has_peer(raft* r, int id):
 	int i = 0
 	while (i < raft_peer_count(r)):
-		if (raft_peer_at(r, i) == id):
-			return 1
+		if (raft_peer_at(r, i) == id): return 1
 		i = i + 1
 	return 0
 
@@ -105,16 +104,14 @@ void test_grow_3_to_5_new_nodes_participate_in_quorum():
 	# only the leader + one original peer are old members -- committing
 	# needs the two grown nodes to actually count
 	int victim = 1
-	if (victim == lid):
-		victim = 2
+	if (victim == lid): victim = 2
 	rsim_partition_from_all(c, victim)
 	rsim_propose(c, lid, c"grown-quorum")
 	int k = 0
 	int committed = 0
 	while (k < 200 && committed == 0):
 		rsim_step(c)
-		if (raft_commit_int(c.nodes[lid - 1]) >= 3):
-			committed = 1
+		if (raft_commit_int(c.nodes[lid - 1]) >= 3): committed = 1
 		k = k + 1
 	assert_equal(1, committed)
 	# extra settle rounds: the leader reaching commit 3 doesn't mean
@@ -147,8 +144,7 @@ void test_shrink_5_to_4():
 	assert1(steps >= 0)
 	int lid = rsim_leader(c)
 	int victim = 1
-	if (victim == lid):
-		victim = 2
+	if (victim == lid): victim = 2
 	rsim_remove_server(c, lid, victim)
 	rsim_run(c, 40)
 	assert_equal(lid, rsim_leader(c))
@@ -196,8 +192,7 @@ void test_remove_the_leader_steps_down_and_successor_elected():
 	while (k < 300 && new_lid < 0):
 		rsim_step(c)
 		int cand = rsim_leader(c)
-		if (cand != (0 - 1) && cand != old_lid):
-			new_lid = cand
+		if (cand != (0 - 1) && cand != old_lid): new_lid = cand
 		k = k + 1
 	assert1(new_lid >= 1)
 	assert1(new_lid != old_lid)
@@ -207,8 +202,7 @@ void test_remove_the_leader_steps_down_and_successor_elected():
 	int committed = 0
 	while (k < 200 && committed == 0):
 		rsim_step(c)
-		if (raft_commit_int(c.nodes[new_lid - 1]) >= 2):
-			committed = 1
+		if (raft_commit_int(c.nodes[new_lid - 1]) >= 2): committed = 1
 		k = k + 1
 	assert_equal(1, committed)
 	rsim_free(c)
@@ -288,8 +282,7 @@ void test_uncommitted_config_rollback_on_leader_change():
 	while (k < 300 && new_lid < 0):
 		rsim_step(c)
 		int cand = rsim_leader(c)
-		if (cand != (0 - 1) && cand != old_lid):
-			new_lid = cand
+		if (cand != (0 - 1) && cand != old_lid): new_lid = cand
 		k = k + 1
 	assert1(new_lid >= 1)
 	rsim_propose(c, new_lid, c"real-entry")

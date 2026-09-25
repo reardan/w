@@ -165,8 +165,7 @@ const int thread_futex_wake_op = 129
 # makes the syscall return immediately (EAGAIN); spurious wakeups
 # re-loop.
 void thread_wait_word(int* word):
-	while (*word == 0):
-		sys_futex(cast(int, word), thread_futex_wait_op, 0, 0)
+	while (*word == 0): sys_futex(cast(int, word), thread_futex_wait_op, 0, 0)
 
 
 # Wake one waiter blocked on word (a no-op when nobody waits yet; the
@@ -217,8 +216,7 @@ void thread_entry():
 	# zero-fills it; the compiler caps the block at 1MB of the 4MB), so
 	# it needs no allocation and thread_join's munmap reclaims it. Done
 	# before anything that could touch a thread_local.
-	if (__w_tls_size() > 0):
-		__w_tls_set(t.stack_base)
+	if (__w_tls_size() > 0): __w_tls_set(t.stack_base)
 	# This thread's own heap (lib/thread_heap.w): its mallocs never
 	# touch another thread's allocator state.
 	thread_heap_attach()
@@ -280,12 +278,10 @@ wthread* thread_spawn(thread_fn* func, void* arg):
 # provably off its stack first. t is dangling after a 0 return: join
 # each handle exactly once. Returns 0, or -1 for a null handle.
 int thread_join(wthread* t):
-	if (t == 0):
-		return 0 - 1
+	if (t == 0): return 0 - 1
 	thread_wait_word(&t.done)
 	thread_wait_word_clear(&t.exited)
-	if (t.stack_base != 0):
-		munmap(t.stack_base, thread_stack_size)
+	if (t.stack_base != 0): munmap(t.stack_base, thread_stack_size)
 	free(cast(void*, t))
 	return 0
 
@@ -308,8 +304,7 @@ void thread_chunk_main(void* p):
 # (it is bounded by len), unlike the k * len / n formulation.
 int thread_chunk_offset(int len, int n, int k):
 	int extra = k
-	if (extra > len % n):
-		extra = len % n
+	if (extra > len % n): extra = len % n
 	return k * (len / n) + extra
 
 
@@ -323,10 +318,8 @@ int thread_chunk_offset(int len, int n, int k):
 # calling thread are identical to the pooled path.
 void parallel_for_spawn(int start, int end, int nthreads, parallel_for_fn* func, void* arg):
 	int len = end - start
-	if (len <= 0):
-		return
-	if (nthreads > len):
-		nthreads = len
+	if (len <= 0): return
+	if (nthreads > len): nthreads = len
 	if (nthreads <= 1):
 		func(start, end, arg)
 		return
@@ -349,11 +342,9 @@ void parallel_for_spawn(int start, int end, int nthreads, parallel_for_fn* func,
 			tasks.push(chunk)
 		k = k + 1
 	func(start, start + thread_chunk_offset(len, nthreads, 1), arg)
-	for wthread* t in workers:
-		thread_join(t)
+	for wthread* t in workers: thread_join(t)
 	# joined workers are done reading their task boxes
-	for thread_chunk_task* task in tasks:
-		free(cast(void*, task))
+	for thread_chunk_task* task in tasks: free(cast(void*, task))
 	__w_list_free(cast(__w_list*, workers))
 	__w_list_free(cast(__w_list*, tasks))
 
@@ -410,12 +401,10 @@ void thread_pool_worker(void* p):
 		# The kernel re-checks the word atomically, so a bump between
 		# the load and the syscall returns immediately (EAGAIN) - the
 		# wake cannot be lost; a spurious wake just re-loops.
-		while (slot.go == seen):
-			sys_futex(cast(int, &slot.go), thread_futex_wait_op, seen, 0)
+		while (slot.go == seen): sys_futex(cast(int, &slot.go), thread_futex_wait_op, seen, 0)
 		seen = slot.go
 		parallel_for_fn* func = slot.func
-		if (cast(int, func) == 0):
-			return
+		if (cast(int, func) == 0): return
 		void* arg = slot.arg
 		int job_start = slot.job_start
 		int job_len = slot.job_len
@@ -488,8 +477,7 @@ int thread_pool_on_worker():
 	int w = 0
 	while (w < thread_pool_size):
 		int off = here - thread_pool_slots[w].stack_lo
-		if (off >= 0 && off < thread_stack_size):
-			return 1
+		if (off >= 0 && off < thread_stack_size): return 1
 		w = w + 1
 	return 0
 
@@ -530,10 +518,8 @@ void thread_pool_shutdown():
 # place.
 void parallel_for(int start, int end, int nthreads, parallel_for_fn* func, void* arg):
 	int len = end - start
-	if (len <= 0):
-		return
-	if (nthreads > len):
-		nthreads = len
+	if (len <= 0): return
+	if (nthreads > len): nthreads = len
 	if (nthreads <= 1):
 		func(start, end, arg)
 		return
@@ -554,16 +540,14 @@ void parallel_for(int start, int end, int nthreads, parallel_for_fn* func, void*
 		parallel_for_spawn(start, end, nthreads, func, arg)
 		return
 	int want = nthreads - 1
-	if (thread_pool_cap != 0 && want > thread_pool_cap):
-		want = thread_pool_cap
+	if (thread_pool_cap != 0 && want > thread_pool_cap): want = thread_pool_cap
 	int nworkers = thread_pool_ensure(want)
 	if (nworkers == 0):
 		# No pool at all (first clone failed): the spawn path, which
 		# itself degrades to inline chunks when clones keep failing.
 		parallel_for_spawn(start, end, nthreads, func, arg)
 		return
-	if (nworkers > nthreads - 1):
-		nworkers = nthreads - 1
+	if (nworkers > nthreads - 1): nworkers = nthreads - 1
 	thread_pool_busy = 1
 	# Post chunks 1..nthreads-1 as balanced contiguous spans: worker w
 	# takes span w of the same deterministic split over chunk indices

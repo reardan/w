@@ -34,8 +34,7 @@ generator int server_threads_accept_task(ServerContext* s, task_runtime* rt, int
 		sockaddr_in peer
 		int conn = task_accept_from(s.listener_fd, &peer)
 		if (conn < 0):
-			if ((conn == task_err_cancelled()) || (conn == task_err_timed_out())):
-				break
+			if ((conn == task_err_cancelled()) || (conn == task_err_timed_out())): break
 			if ((conn == -4) || (conn == -103) || (conn == -24) || (conn == -23)):
 				task_sleep_ms(1)
 				continue
@@ -52,8 +51,7 @@ generator int server_threads_accept_task(ServerContext* s, task_runtime* rt, int
 # on nthreads worker threads. Returns the number of connections
 # accepted, or -1 for a TLS server (see the module doc).
 int server_context_serve_threads(ServerContext* s, int nthreads, int max_connections):
-	if (s.is_tls != 0):
-		return -1
+	if (s.is_tls != 0): return -1
 	task_runtime* rt = task_runtime_new(nthreads)
 	int* served = cast(int*, malloc(__word_size__))
 	served[0] = 0

@@ -31,13 +31,11 @@ int[40] nested_buffer
 
 void pool_fill_cb(int chunk_start, int chunk_end, void* arg):
 	int base = cast(int, arg)
-	for i in range(chunk_start, chunk_end):
-		pool_buffer[i] = i * 7 + base
+	for i in range(chunk_start, chunk_end): pool_buffer[i] = i * 7 + base
 
 
 void pool_check_range(int start, int end, int base):
-	for i in range(start, end):
-		assert_equal(i * 7 + base, pool_buffer[i])
+	for i in range(start, end): assert_equal(i * 7 + base, pool_buffer[i])
 
 
 # The spawn-cost case: 1000 parallel_for calls in a loop reuse the
@@ -95,8 +93,7 @@ void test_pool_init_shutdown_cycles():
 
 
 void nested_inner_cb(int chunk_start, int chunk_end, void* arg):
-	for i in range(chunk_start, chunk_end):
-		nested_buffer[i] = i * 3 + 1
+	for i in range(chunk_start, chunk_end): nested_buffer[i] = i * 3 + 1
 
 
 # Runs on the main thread for outer chunk 0 (its nested call takes
@@ -137,8 +134,7 @@ void test_pool_mutex_interplay():
 	pool_mutex = new wmutex()
 	mutex_init(pool_mutex)
 	pool_locked_count = 0
-	for it in range(25):
-		parallel_for(0, 4000, 4, pool_mutex_cb, cast(void*, 0))
+	for it in range(25): parallel_for(0, 4000, 4, pool_mutex_cb, cast(void*, 0))
 	assert_equal(25 * 4000, pool_locked_count)
 	free(cast(void*, pool_mutex))
 	thread_pool_shutdown()

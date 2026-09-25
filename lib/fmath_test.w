@@ -74,8 +74,7 @@ void test_fsqrt():
 # is a plain integer subtraction of their ordered bits.
 int ulp_order_bits(float f):
 	int b = float_bits(f)
-	if (b < 0):
-		return cast(int, 0x80000000) - b
+	if (b < 0): return cast(int, 0x80000000) - b
 	return b
 
 
@@ -87,8 +86,7 @@ int ulp_order_bits(float f):
 void assert_fulp(int want_bits, float got, int tol):
 	float want = float_from_bits(want_bits)
 	int d = ulp_order_bits(want) - ulp_order_bits(got)
-	if (d < 0):
-		d = 0 - d
+	if (d < 0): d = 0 - d
 	if (d > tol):
 		print2(c"Assertion failed: wanted float bits ")
 		print2(hex(want_bits))

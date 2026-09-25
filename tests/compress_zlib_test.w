@@ -35,8 +35,7 @@ void test_zlib_roundtrip():
 void test_zlib_roundtrip_fast_and_best():
 	int n = 4096
 	char* src = malloc(n)
-	for i in range(n):
-		src[i] = 'a' + (i % 7)
+	for i in range(n): src[i] = 'a' + (i % 7)
 	zlib_result* fast = zlib_compress(src, n, DEFLATE_LEVEL_FAST())
 	zlib_result* fout = result_expect[zlib_result*](zlib_decompress(fast.data, fast.length, 0))
 	assert_equal(n, fout.length)

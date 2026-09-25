@@ -352,8 +352,7 @@ void test_axpy_into():
 
 void test_sum():
 	ndf a = ndf_new2(2, 3)
-	for i in range(6):
-		a.data[i] = cast(float, i + 1)              # 1..6
+	for i in range(6): a.data[i] = cast(float, i + 1)              # 1..6
 	assert_feq(21.0, ndf_sum(&a))
 	ndf zero = ndf_new1(3)
 	assert_feq(0.0, ndf_sum(&zero))

@@ -11,8 +11,7 @@ void zero_runtime_object(int bytes):
 void init_array_field_descriptor(int array_type, int offset):
 	push_slot()
 	mov_ebx_esp()
-	if (offset > 0):
-		add_ebx_int32(offset)
+	if (offset > 0): add_ebx_int32(offset)
 	mov_eax_ebx()
 	add_eax_int32(2 * word_size)
 	store_ebx_word()
@@ -34,5 +33,4 @@ void init_array_field_descriptors_at(int type, int offset):
 
 
 void init_array_field_descriptors(int type):
-	if (type_has_array_field(type)):
-		init_array_field_descriptors_at(type, 0)
+	if (type_has_array_field(type)): init_array_field_descriptors_at(type, 0)

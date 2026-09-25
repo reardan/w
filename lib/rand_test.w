@@ -31,8 +31,7 @@ void test_seed_zero_folds_to_documented_constant():
 	rand_init(&a, 0)
 	rand_state b
 	rand_init(&b, 305419896)   # 0x12345678
-	for i in range(8):
-		assert_equal(rand_next31(&b), rand_next31(&a))
+	for i in range(8): assert_equal(rand_next31(&b), rand_next31(&a))
 
 
 void test_below_bounds():
@@ -53,8 +52,7 @@ void test_below_bounds():
 void test_below_n_one():
 	rand_state r
 	rand_init(&r, 17)
-	for i in range(200):
-		assert_equal(0, rand_below(&r, 1))
+	for i in range(200): assert_equal(0, rand_below(&r, 1))
 
 
 # Crude, deterministic uniformity sanity check: every bucket of a small
@@ -145,10 +143,8 @@ void test_gaussian_statistics():
 		float v = rand_gaussian(&r)
 		assert1(v > -6.0)
 		assert1(v < 6.0)
-		if (v > 0.0):
-			pos = pos + 1
-		else if (v < 0.0):
-			neg = neg + 1
+		if (v > 0.0): pos = pos + 1
+		else if (v < 0.0): neg = neg + 1
 		sum = sum + v
 		sumsq = sumsq + v * v
 	float nf = n

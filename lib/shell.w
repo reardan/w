@@ -87,8 +87,7 @@ shell_result* sh(char* cmd):
 	process_result* pr = process_run(c"/bin/sh", argv, opts, 0, 0)
 	free(opts)
 	free(cast(void*, argv))
-	if (pr == 0):
-		return 0
+	if (pr == 0): return 0
 	return shell_result_from_process(pr)
 
 
@@ -96,8 +95,7 @@ shell_result* sh(char* cmd):
 # (resolved exactly like execve -- no $PATH search) and argv's own
 # program name. Returns 0 when argv is empty or the spawn itself failed.
 shell_result* run_argv(list[char*] argv):
-	if (argv.length == 0):
-		return 0
+	if (argv.length == 0): return 0
 	char** vec = strv_new(argv.length)
 	int i = 0
 	while (i < argv.length):
@@ -107,8 +105,7 @@ shell_result* run_argv(list[char*] argv):
 	process_result* pr = process_run(argv[0], vec, opts, 0, 0)
 	free(opts)
 	free(cast(void*, vec))
-	if (pr == 0):
-		return 0
+	if (pr == 0): return 0
 	return shell_result_from_process(pr)
 
 
@@ -125,8 +122,7 @@ int sh_interactive(char* cmd):
 	process* p = process_spawn(c"/bin/sh", argv, opts)
 	free(opts)
 	free(cast(void*, argv))
-	if (p == 0):
-		return -1
+	if (p == 0): return -1
 	int status = process_wait(p)
 	process_free(p)
 	return status
@@ -144,14 +140,12 @@ int cd(char* path):
 # setenv() when there is one, otherwise the real process environment
 # (same lookup as lib/env.w's env_get). Returns 0 when unset.
 char* getenv(char* name):
-	if (shell_env == 0):
-		return env_get(name)
+	if (shell_env == 0): return env_get(name)
 	int i = 0
 	char* entry = env_entry_at(shell_env, i)
 	while (entry != 0):
 		int value_index = env_match_name(entry, name)
-		if (value_index >= 0):
-			return entry + value_index
+		if (value_index >= 0): return entry + value_index
 		i = i + 1
 		entry = env_entry_at(shell_env, i)
 	return 0
@@ -163,6 +157,5 @@ char* getenv(char* name):
 # reports the unmodified value.
 void setenv(char* name, char* value):
 	char** base = shell_env
-	if (base == 0):
-		base = env_current()
+	if (base == 0): base = env_current()
 	shell_env = env_copy_with(base, name, value)

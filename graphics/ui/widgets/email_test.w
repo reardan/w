@@ -212,13 +212,11 @@ void form_frame_run(ui_context* ctx, ui_form_state* form, ui_textbox_state* emai
 	ui_begin(ctx, 320, 240)
 	ui_form_begin(ctx, form, ui_rect_new(10.0, 10.0, 300.0, 220.0), 96.0)
 	ui_form_row(ctx, form, c"Email")
-	if (ui_email(ctx, ui_form_field_width(ctx, form), email)):
-		ui_form_request_submit(form)
+	if (ui_email(ctx, ui_form_field_width(ctx, form), email)): ui_form_request_submit(form)
 	char* err = ui_email_check(email, c"Not an email address")
 	if (required):
 		char* missing = ui_form_required(email, c"Email is required")
-		if (missing != 0):
-			err = missing
+		if (missing != 0): err = missing
 	out.email_valid = ui_form_error(ctx, form, err)
 	out.submitted = ui_form_submit(ctx, form, c"Save")
 	ui_form_end(ctx, form)

@@ -31,19 +31,15 @@ import libs.standard.web.testing
 
 void h2s_server_child(int listener):
 	int fd = socket_accept_connection(listener)
-	if (fd < 0):
-		exit(80)
+	if (fd < 0): exit(80)
 	socket_set_recv_timeout(fd, 20000)
 	socket_set_send_timeout(fd, 20000)
 	h2_conn* c = h2_accept_tls(fd, web_test_server_config())
-	if (c == 0):
-		exit(81)
-	if (c.tls == 0):
-		exit(82)
+	if (c == 0): exit(81)
+	if (c.tls == 0): exit(82)
 	while (1):
 		h2_stream* s = h2_server_next_request(c)
-		if (s == 0):
-			break
+		if (s == 0): break
 		char* method = h2_stream_header(s, c":method")
 		char* path = h2_stream_header(s, c":path")
 		list[hpack_header*] extra = hpack_headers_new()
@@ -78,8 +74,7 @@ void test_h2_tls_client_and_server():
 	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
-	if (pid == 0):
-		h2s_server_child(listener)
+	if (pid == 0): h2s_server_child(listener)
 	char* auth = net_test_authority(c"test.w.example", port)
 	tls_config* cfg = web_test_client_config()
 	h2_conn* c = h2_connect_tls(c"127.0.0.1", port, 10000, c"test.w.example", cfg)
@@ -166,19 +161,15 @@ void test_h2_tls_client_refuses_server_without_h2():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int fd = socket_accept_connection(listener)
-		if (fd < 0):
-			exit(80)
+		if (fd < 0): exit(80)
 		socket_set_recv_timeout(fd, 20000)
 		tls_server_config* scfg = web_test_server_config()
 		tls_server_config_set_alpn(scfg, c"http/1.1", 0)
 		tls_conn* t = tls_accept(fd, scfg)
-		if (t == 0):
-			exit(81)
-		if (tls_alpn_selected(t) != 0):
-			exit(82)
+		if (t == 0): exit(81)
+		if (tls_alpn_selected(t) != 0): exit(82)
 		char* buf = malloc(64)
-		if (tls_read(t, buf, 64) != 0):
-			exit(83)
+		if (tls_read(t, buf, 64) != 0): exit(83)
 		tls_close(t)
 		close(fd)
 		exit(0)
@@ -199,15 +190,12 @@ void test_h2_tls_server_requires_h2():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int fd = socket_accept_connection(listener)
-		if (fd < 0):
-			exit(80)
+		if (fd < 0): exit(80)
 		socket_set_recv_timeout(fd, 20000)
 		tls_server_config* scfg = web_test_server_config()
 		h2_conn* c = h2_accept_tls(fd, scfg)
-		if (c != 0):
-			exit(81)
-		if (strcmp(tls_server_last_error(scfg), c"tls: no common ALPN protocol") != 0):
-			exit(82)
+		if (c != 0): exit(81)
+		if (strcmp(tls_server_last_error(scfg), c"tls: no common ALPN protocol") != 0): exit(82)
 		exit(0)
 	int fd = socket_tcp_ipv4()
 	asserts(c"socket", fd >= 0)

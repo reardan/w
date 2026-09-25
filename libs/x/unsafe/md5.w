@@ -55,8 +55,7 @@ int* md5_iv_cache
 
 # Initial state A, B, C, D (RFC 1321 section 3.3), as word values.
 int* md5_iv_table():
-	if (md5_iv_cache == 0):
-		md5_iv_cache = sha2_parse_words(c"67452301efcdab8998badcfe10325476", 4)
+	if (md5_iv_cache == 0): md5_iv_cache = sha2_parse_words(c"67452301efcdab8998badcfe10325476", 4)
 	return md5_iv_cache
 
 
@@ -75,12 +74,9 @@ int md5_rotl(int x, int n):
 # are choose functions, so lib/sha256.w's ch applies; H is parity; I is
 # c xor (b or not d).
 int md5_round_f(int i, int b, int c, int d):
-	if (i < 16):
-		return sha256_ch(b, c, d)
-	if (i < 32):
-		return sha256_ch(d, b, c)
-	if (i < 48):
-		return (b ^ c ^ d) & sha256_mask32()
+	if (i < 16): return sha256_ch(b, c, d)
+	if (i < 32): return sha256_ch(d, b, c)
+	if (i < 48): return (b ^ c ^ d) & sha256_mask32()
 	int mask = sha256_mask32()
 	int not_d = mask - (d & mask)
 	return (c ^ (b | not_d)) & mask
@@ -90,10 +86,8 @@ int md5_round_f(int i, int b, int c, int d):
 int md5_round_g(int i):
 	if (i < 16):
 		return i
-	if (i < 32):
-		return (i * 5 + 1) & 15
-	if (i < 48):
-		return (i * 3 + 5) & 15
+	if (i < 32): return (i * 5 + 1) & 15
+	if (i < 48): return (i * 3 + 5) & 15
 	return (i * 7) & 15
 
 

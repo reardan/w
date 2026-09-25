@@ -17,8 +17,7 @@ void test_der_lengths():
 	assert_equal(3, t.data[1] & 255)
 	string_free(t)
 	string_builder* big = string_new_sized(300)
-	for i in range(300):
-		string_append_char(big, i)
+	for i in range(300): string_append_char(big, i)
 	t = der_tlv(0x30, big)
 	assert_equal(304, t.length)
 	assert_equal(0x82, t.data[1] & 255)

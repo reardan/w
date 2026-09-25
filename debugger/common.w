@@ -41,19 +41,15 @@ void dbg_fault_banner(char* lead, int sig, int context):
 # returns the rest with leading spaces skipped ("" when there is none).
 char* dbg_split_word(char* s):
 	int i = 0
-	while ((s[i] != 0) && (s[i] != ' ')):
-		i = i + 1
-	if (s[i] == 0):
-		return s + i
+	while ((s[i] != 0) && (s[i] != ' ')): i = i + 1
+	if (s[i] == 0): return s + i
 	s[i] = 0
 	i = i + 1
-	while (s[i] == ' '):
-		i = i + 1
+	while (s[i] == ' '): i = i + 1
 	return s + i
 
 
 # Parse "123", "-4" or "0x1f".
 int dbg_number(char* s):
-	if (starts_with(s, c"0x")):
-		return from_hex(s)
+	if (starts_with(s, c"0x")): return from_hex(s)
 	return atoi(s)

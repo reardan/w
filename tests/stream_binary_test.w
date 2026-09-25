@@ -24,8 +24,7 @@ void write_all_256_byte_values(char* path):
 	asserts(c"fixture open failed", fd >= 0)
 	# Small capacity forces refill/flush boundaries across the byte range.
 	wstream* out = stream_writer_sized(fd, 7)
-	for i in range(256):
-		stream_write_byte(out, i)
+	for i in range(256): stream_write_byte(out, i)
 	stream_close(out)
 
 
@@ -106,5 +105,4 @@ void test_file_read_lines_does_not_truncate_at_0xff():
 	assert_strings_equal(c"AB\xffCD", lines[1])
 	assert_equal(5, strlen(lines[1]))
 	assert_strings_equal(c"third line", lines[2])
-	for char* line in lines:
-		free(line)
+	for char* line in lines: free(line)

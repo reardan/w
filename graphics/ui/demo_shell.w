@@ -50,16 +50,14 @@ const int ui_shell_folder_count = 2
 
 
 char* ui_shell_folder_name(int folder):
-	if (folder == 0):
-		return c"src"
+	if (folder == 0): return c"src"
 	return c"docs"
 
 
 # Files per folder: src has three, docs has two, and their document ids
 # run 0..4 in that order.
 int ui_shell_folder_files(int folder):
-	if (folder == 0):
-		return 3
+	if (folder == 0): return 3
 	return 2
 
 
@@ -134,25 +132,21 @@ void ui_shell_open_doc(ui_shell_state* st, int doc):
 			st.active_tab = i
 			return
 		i = i + 1
-	if (st.open_count >= ui_shell_doc_count):
-		return
+	if (st.open_count >= ui_shell_doc_count): return
 	st.open_docs[st.open_count] = doc
 	st.active_tab = st.open_count
 	st.open_count = st.open_count + 1
 
 
 void ui_shell_close_tab(ui_shell_state* st, int index):
-	if ((index < 0) || (index >= st.open_count)):
-		return
+	if ((index < 0) || (index >= st.open_count)): return
 	int i = index
 	while (i + 1 < st.open_count):
 		st.open_docs[i] = st.open_docs[i + 1]
 		i = i + 1
 	st.open_count = st.open_count - 1
-	if (st.active_tab >= st.open_count):
-		st.active_tab = st.open_count - 1
-	if (st.active_tab < 0):
-		st.active_tab = 0
+	if (st.active_tab >= st.open_count): st.active_tab = st.open_count - 1
+	if (st.active_tab < 0): st.active_tab = 0
 	# The editor is showing a document that may no longer be the active
 	# one; force a reload on the next frame.
 	st.loaded_doc = 0 - 1
@@ -186,8 +180,7 @@ void ui_shell_body(ui_context* ctx, ui_shell_state* st, int now_ms):
 			int f = 0
 			while (f < ui_shell_folder_files(folder)):
 				int doc = ui_shell_doc_id(folder, f)
-				if (ui_tree_leaf(ctx, &st.tree, ui_shell_doc_name(doc))):
-					ui_shell_open_doc(st, doc)
+				if (ui_tree_leaf(ctx, &st.tree, ui_shell_doc_name(doc))): ui_shell_open_doc(st, doc)
 				f = f + 1
 			ui_tree_node_end(ctx, &st.tree)
 		folder = folder + 1
@@ -202,8 +195,7 @@ void ui_shell_body(ui_context* ctx, ui_shell_state* st, int now_ms):
 		ui_tab(ctx, &st.tabs, ui_shell_doc_name(st.open_docs[t]), 1)
 		t = t + 1
 	int closed = ui_tabs_end(ctx, &st.tabs)
-	if (closed >= 0):
-		ui_shell_close_tab(st, closed)
+	if (closed >= 0): ui_shell_close_tab(st, closed)
 
 	if (st.open_count > 0):
 		int doc = st.open_docs[st.active_tab]

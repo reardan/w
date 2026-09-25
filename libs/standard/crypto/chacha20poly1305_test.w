@@ -100,8 +100,7 @@ void cp_check_open_fails(char* key, char* nonce, char* aad, int aad_len, char* c
 	char* pt = malloc(n + 1)
 	mem_fill(pt, 0x5a, n)
 	assert_equal(0, chacha20poly1305_open(key, nonce, aad, aad_len, ct, n, tag, pt))
-	for i in range(n):
-		assert_equal(0x5a, pt[i] & 255)
+	for i in range(n): assert_equal(0x5a, pt[i] & 255)
 	free(pt)
 
 
@@ -183,8 +182,7 @@ void test_wycheproof_vectors():
 			assert_strings_equal(v.msg, got)
 			free(got)
 			free(back)
-		else:
-			cp_check_open_fails(key, nonce, aad, aad_len, ct, msg_len, tag)
+		else: cp_check_open_fails(key, nonce, aad, aad_len, ct, msg_len, tag)
 		free(tag)
 		free(ct)
 		free(msg)

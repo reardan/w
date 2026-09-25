@@ -60,8 +60,7 @@ int main():
 	m.g = -2
 	w = to_proto(m)
 	char* tail = c"\x31\x00\x00\x00\x00\x00\x00\xf0\x3f\x39\xfe\xff\xff\xff\xff\xff\xff\xff"
-	for i in range(18):
-		assert_equal(tail[i] & 255, w.data[32 + i] & 255)
+	for i in range(18): assert_equal(tail[i] & 255, w.data[32 + i] & 255)
 	assert_equal(50, w.length)
 	pbw_wide* q = from_proto(pbw_wide, w)
 	assert1(q.a == -2)

@@ -117,18 +117,14 @@ int czi_level_count():
 
 
 int czi_level(int idx):
-	if (idx == 0):
-		return DEFLATE_LEVEL_STORED()
-	if (idx == 1):
-		return DEFLATE_LEVEL_FAST()
+	if (idx == 0): return DEFLATE_LEVEL_STORED()
+	if (idx == 1): return DEFLATE_LEVEL_FAST()
 	return DEFLATE_LEVEL_BEST()
 
 
 char* czi_level_tag(int idx):
-	if (idx == 0):
-		return c"s"
-	if (idx == 1):
-		return c"f"
+	if (idx == 0): return c"s"
+	if (idx == 1): return c"f"
 	return c"b"
 
 
@@ -359,8 +355,7 @@ int main():
 	int ok = czi_decompress(dir, count, names, datas, lens)
 	dir_remove_all(dir)
 	free(dir)
-	if (ok == 0):
-		return 1
+	if (ok == 0): return 1
 
 	println(c"zlib interop OK")
 	return 0

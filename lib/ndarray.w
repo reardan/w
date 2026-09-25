@@ -78,8 +78,7 @@ import lib.array
 # precedent).
 int ndarray_int_max():
 	int low = 1
-	while (low > 0):
-		low = low << 1
+	while (low > 0): low = low << 1
 	return 0 - (low + 1)
 
 
@@ -87,8 +86,7 @@ int ndarray_int_max():
 # operands (extents, or products of extents already checked positive),
 # so the standard a > max/b overflow test applies directly.
 int ndarray_mul_checked(int a, int b):
-	if (a == 0 || b == 0):
-		return 0
+	if (a == 0 || b == 0): return 0
 	asserts(c"ndarray: extent product overflow", a <= ndarray_int_max() / b)
 	return a * b
 

@@ -69,23 +69,19 @@ int dyn_emit_import_slot():
 	# the next import's slot is emitted right behind it.
 	if (data_split):
 		int pad = datapos & (word_size - 1)
-		if (pad != 0):
-			emit_data_zeros(word_size - pad)
+		if (pad != 0): emit_data_zeros(word_size - pad)
 		int data_slot_vaddr = emit_data_zeros(word_size)
-		if (target_os == 2):
-			emit_data_zeros(8)
+		if (target_os == 2): emit_data_zeros(8)
 		return data_slot_vaddr
 	int slot_vaddr = code_offset + codepos
 	emit_zeros(word_size)
-	if (target_os == 2):
-		emit_zeros(8)
+	if (target_os == 2): emit_zeros(8)
 	return slot_vaddr
 
 
 void dyn_add_lib(char* soname):
 	dyn_init()
-	if (dyn_lib_count >= dyn_max_libs):
-		error(c"too many c_lib entries")
+	if (dyn_lib_count >= dyn_max_libs): error(c"too many c_lib entries")
 	save_i(dyn_lib_names + dyn_lib_count * word_size, cast(int, strclone(soname)), word_size)
 	dyn_lib_count = dyn_lib_count + 1
 
@@ -97,8 +93,7 @@ char* dyn_lib_name(int i):
 # Returns the import's index, which is also its .dynsym index minus one.
 int dyn_add_import(char* name, int got_vaddr):
 	dyn_init()
-	if (dyn_import_count >= dyn_max_imports):
-		error(c"too many extern imports")
+	if (dyn_import_count >= dyn_max_imports): error(c"too many extern imports")
 	save_i(dyn_import_names + dyn_import_count * word_size, cast(int, strclone(name)), word_size)
 	save_i(dyn_import_got + dyn_import_count * word_size, got_vaddr, word_size)
 	save_i(dyn_import_binding + dyn_import_count * 4, 1, 4)
@@ -128,11 +123,9 @@ int dyn_add_import_weak(char* name, int got_vaddr):
 int dyn_add_import_data(char* name, int copy_vaddr, int size, int weak):
 	# The PE loader has no COPY-relocation equivalent; imported data would
 	# need __imp_-style indirection, which is not implemented yet.
-	if (target_os == 2):
-		error(c"imported data objects are not supported on the win64 target")
+	if (target_os == 2): error(c"imported data objects are not supported on the win64 target")
 	int index = dyn_add_import(name, copy_vaddr)
-	if (weak):
-		save_i(dyn_import_binding + index * 4, 2, 4)
+	if (weak): save_i(dyn_import_binding + index * 4, 2, 4)
 	save_i(dyn_import_symtype + index * 4, 1, 4)
 	save_i(dyn_import_size + index * 4, size, 4)
 	return index

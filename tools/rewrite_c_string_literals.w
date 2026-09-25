@@ -15,12 +15,9 @@ import structures.string
 
 
 int rw_is_ident_char(int c):
-	if ((c >= 'a') && (c <= 'z')):
-		return 1
-	if ((c >= 'A') && (c <= 'Z')):
-		return 1
-	if ((c >= '0') && (c <= '9')):
-		return 1
+	if ((c >= 'a') && (c <= 'z')): return 1
+	if ((c >= 'A') && (c <= 'Z')): return 1
+	if ((c >= '0') && (c <= '9')): return 1
 	return c == '_'
 
 
@@ -32,11 +29,9 @@ int rw_is_space(int c):
 # Returns a malloc'd string (empty when none).
 char* rw_previous_identifier(char* text, int quote_index):
 	int i = quote_index - 1
-	while ((i >= 0) && rw_is_space(text[i])):
-		i = i - 1
+	while ((i >= 0) && rw_is_space(text[i])): i = i - 1
 	int end = i + 1
-	while ((i >= 0) && rw_is_ident_char(text[i])):
-		i = i - 1
+	while ((i >= 0) && rw_is_ident_char(text[i])): i = i - 1
 	int start = i + 1
 	char* result = malloc(end - start + 1)
 	int j = 0
@@ -51,10 +46,8 @@ char* rw_previous_identifier(char* text, int quote_index):
 # already has a c/s prefix, or it names a c_lib / c_import path.
 int rw_keep_bare(char* text, int i):
 	int prev = 0
-	if (i > 0):
-		prev = text[i - 1]
-	if ((prev == 'c') || (prev == 's')):
-		return 1
+	if (i > 0): prev = text[i - 1]
+	if ((prev == 'c') || (prev == 's')): return 1
 	char* keyword = rw_previous_identifier(text, i)
 	int keep = (strcmp(keyword, c"c_lib") == 0) | (strcmp(keyword, c"c_import") == 0)
 	free(keyword)
@@ -77,8 +70,7 @@ string_builder* rw_rewrite(char* text):
 		int n = text[i + 1]
 		if (state == rw_state_line_comment):
 			string_append_char(out, c)
-			if (c == '\n'):
-				state = rw_state_code
+			if (c == '\n'): state = rw_state_code
 			i = i + 1
 		else if (state == rw_state_block_comment):
 			string_append_char(out, c)
@@ -86,16 +78,14 @@ string_builder* rw_rewrite(char* text):
 				string_append_char(out, n)
 				i = i + 2
 				state = rw_state_code
-			else:
-				i = i + 1
+			else: i = i + 1
 		else if (state == rw_state_char):
 			string_append_char(out, c)
 			if ((c == '\\') && (n != 0)):
 				string_append_char(out, n)
 				i = i + 2
 			else:
-				if (c == 39):
-					state = rw_state_code
+				if (c == 39): state = rw_state_code
 				i = i + 1
 		else if (c == '#'):
 			string_append_char(out, c)
@@ -111,8 +101,7 @@ string_builder* rw_rewrite(char* text):
 			state = rw_state_char
 			i = i + 1
 		else if (c == '"'):
-			if (rw_keep_bare(text, i) == 0):
-				string_append_char(out, 'c')
+			if (rw_keep_bare(text, i) == 0): string_append_char(out, 'c')
 			string_append_char(out, c)
 			i = i + 1
 			while (text[i]):
@@ -124,8 +113,7 @@ string_builder* rw_rewrite(char* text):
 				else if (text[i] == '"'):
 					i = i + 1
 					break
-				else:
-					i = i + 1
+				else: i = i + 1
 		else:
 			string_append_char(out, c)
 			i = i + 1
@@ -141,8 +129,7 @@ list[char*] rw_tracked_w_files():
 	strv_set(argv, 3, c"*.w")
 	process_result* r = process_run(c"/usr/bin/env", argv, 0, 0, 60000)
 	free(cast(void*, argv))
-	if (r == 0):
-		return 0
+	if (r == 0): return 0
 	if (r.status != 0):
 		process_result_free(r)
 		return 0
@@ -153,13 +140,10 @@ list[char*] rw_tracked_w_files():
 	while (1):
 		int c = text[i]
 		if ((c == '\n') || (c == 0)):
-			if (line.length > 0):
-				paths.push(strclone(line.data))
+			if (line.length > 0): paths.push(strclone(line.data))
 			string_clear(line)
-			if (c == 0):
-				break
-		else:
-			string_append_char(line, c)
+			if (c == 0): break
+		else: string_append_char(line, c)
 		i = i + 1
 	string_free(line)
 	process_result_free(r)
@@ -178,19 +162,15 @@ int main(int argc, int argv):
 	list[char*] changed = new list[char*]
 	for char* path in paths:
 		char* original = file_read_text(path)
-		if (original == 0):
-			continue
+		if (original == 0): continue
 		string_builder* updated = rw_rewrite(original)
 		if (strcmp(updated.data, original) != 0):
 			changed.push(path)
-			if (check == 0):
-				file_write_text(path, updated.data)
+			if (check == 0): file_write_text(path, updated.data)
 		string_free(updated)
 		free(original)
 	wstream* out = stdout_writer()
-	for char* path in changed:
-		stream_write_line(out, path)
+	for char* path in changed: stream_write_line(out, path)
 	stream_flush(out)
-	if (check && (changed.length > 0)):
-		return 1
+	if (check && (changed.length > 0)): return 1
 	return 0

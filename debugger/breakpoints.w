@@ -89,10 +89,8 @@ void bp_set_condition(int i, char* expr):
 	if (old != 0):
 		free(old)
 		save_word(bp_cond_exprs + i * __word_size__, 0)
-	if (expr == 0):
-		return;
-	if (expr[0] == 0):
-		return;
+	if (expr == 0): return;
+	if (expr[0] == 0): return;
 	char* copy = malloc(strlen(expr) + 1)
 	strcpy(copy, expr)
 	save_word(bp_cond_exprs + i * __word_size__, cast(int, copy))
@@ -134,20 +132,16 @@ int bp_read_byte(int addr):
 
 
 void bp_arm(int i):
-	if (bp_addr(i) == 0):
-		return;
-	if (load_int(bp_armeds + i * 4)):
-		return;
+	if (bp_addr(i) == 0): return;
+	if (load_int(bp_armeds + i * 4)): return;
 	save_int(bp_bytes + i * 4, bp_read_byte(bp_addr(i)))
 	bp_write_byte(bp_addr(i), 204) /* int3 */
 	save_int(bp_armeds + i * 4, 1)
 
 
 void bp_disarm(int i):
-	if (bp_addr(i) == 0):
-		return;
-	if (load_int(bp_armeds + i * 4) == 0):
-		return;
+	if (bp_addr(i) == 0): return;
+	if (load_int(bp_armeds + i * 4) == 0): return;
 	bp_write_byte(bp_addr(i), load_int(bp_bytes + i * 4))
 	save_int(bp_armeds + i * 4, 0)
 
@@ -205,13 +199,10 @@ void bp_delete_all():
 
 
 void bp_describe(int i):
-	if (bp_is_log(i)):
-		print(c"logpoint ")
-	else:
-		print(c"breakpoint ")
+	if (bp_is_log(i)): print(c"logpoint ")
+	else: print(c"breakpoint ")
 	dbg_print_dec(i + 1)
-	if (bp_is_temp(i)):
-		print(c" (temporary)")
+	if (bp_is_temp(i)): print(c" (temporary)")
 	print(c" at ")
 	print(dbg_function_name(bp_addr(i)))
 	print(c" (")
@@ -240,8 +231,7 @@ void bp_list():
 			put_char(10)
 			shown = shown + 1
 		i = i + 1
-	if (shown == 0):
-		println(c"no breakpoints set")
+	if (shown == 0): println(c"no breakpoints set")
 
 
 # Resolve a breakpoint target the user typed into an absolute address:
@@ -258,8 +248,7 @@ int bp_resolve_target(char* arg, int current_file):
 	int colon = -1
 	int i = 0
 	while (arg[i]):
-		if (arg[i] == ':'):
-			colon = i
+		if (arg[i] == ':'): colon = i
 		i = i + 1
 
 	int file_index = current_file

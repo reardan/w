@@ -115,8 +115,7 @@ void test_begin_resets_and_batch_grows():
 	ui_renderer r
 	ui_render_init_headless(&r)
 	ui_render_begin(&r, 320, 240)
-	for i in range(1600):
-		ui_render_rect(&r, ui_rect_new(0.0, 0.0, 1.0, 1.0), ui_gray(1.0))
+	for i in range(1600): ui_render_rect(&r, ui_rect_new(0.0, 0.0, 1.0, 1.0), ui_gray(1.0))
 	# 1600 rects want 9600 vertices, past the 8192 the batch starts
 	# with: it doubles instead of dropping the tail, so every vertex
 	# pushed is a vertex kept.

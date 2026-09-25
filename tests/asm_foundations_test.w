@@ -36,8 +36,7 @@ void test_buffer_and_labels():
 	asm_assert_bytes_equal(c"label fixup", want, 7, b.data, b.length)
 
 	# Growth: push enough bytes to force several reallocations.
-	for i in range(1000):
-		asm_buffer_byte(b, i & 255)
+	for i in range(1000): asm_buffer_byte(b, i & 255)
 	assert_equal(1007, b.length)
 	assert_equal(999 & 255, b.data[b.length - 1] & 255)
 

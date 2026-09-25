@@ -38,34 +38,24 @@ int expression();
 # Intrinsic index for the current token: 1 atomic_add, 2 atomic_min,
 # 3 atomic_max, 4 atomic_cas; 0 when the token is not an intrinsic name.
 int atomic_builtin_kind():
-	if (peek(c"atomic_add")):
-		return 1
-	if (peek(c"atomic_min")):
-		return 2
-	if (peek(c"atomic_max")):
-		return 3
-	if (peek(c"atomic_cas")):
-		return 4
+	if (peek(c"atomic_add")): return 1
+	if (peek(c"atomic_min")): return 2
+	if (peek(c"atomic_max")): return 3
+	if (peek(c"atomic_cas")): return 4
 	return 0
 
 
 char* atomic_builtin_name(int kind):
-	if (kind == 1):
-		return c"atomic_add"
-	if (kind == 2):
-		return c"atomic_min"
-	if (kind == 3):
-		return c"atomic_max"
+	if (kind == 1): return c"atomic_add"
+	if (kind == 2): return c"atomic_min"
+	if (kind == 3): return c"atomic_max"
 	return c"atomic_cas"
 
 
 int atomic_builtin_ready():
-	if (nextc != '('):
-		return 0
-	if (atomic_builtin_kind() == 0):
-		return 0
-	if (sym_lookup(token) >= 0):
-		return 0
+	if (nextc != '('): return 0
+	if (atomic_builtin_kind() == 0): return 0
+	if (sym_lookup(token) >= 0): return 0
 	return 1
 
 
@@ -76,15 +66,12 @@ int atomic_builtin_expr():
 	int kind = atomic_builtin_kind()
 	char* name = atomic_builtin_name(kind)
 	int on_gpu = 0
-	if (target_isa == 3):
-		on_gpu = 1
-	if (on_gpu && (kind == 4)):
-		error(c"atomic_cas is not available in gpu code yet")
+	if (target_isa == 3): on_gpu = 1
+	if (on_gpu && (kind == 4)): error(c"atomic_cas is not available in gpu code yet")
 	if (on_gpu == 0):
 		if ((kind == 2) || (kind == 3)):
 			error(c"atomic_min/atomic_max are only available in gpu code")
-		if (target_isa != 0):
-			error(c"host atomics are not available on this target yet")
+		if (target_isa != 0): error(c"host atomics are not available on this target yet")
 	int int_type = type_lookup(c"int")
 	get_token()
 	expect(c"(")
@@ -107,12 +94,9 @@ int atomic_builtin_expr():
 			int pointee = type_lookup_previous_pointer(pointer_type)
 			if (pointee >= 0):
 				int unqual = type_unqualified(pointee)
-				if (unqual == int_type):
-					flavor = 1
-				if (unqual == float32_type):
-					flavor = 2
-		if (flavor == 0):
-			error(c"gpu atomics require an int* or float32* first argument")
+				if (unqual == int_type): flavor = 1
+				if (unqual == float32_type): flavor = 2
+		if (flavor == 0): error(c"gpu atomics require an int* or float32* first argument")
 		if ((flavor == 2) && (kind != 1)):
 			error(c"atomic_min/atomic_max require an int* first argument")
 	else:
@@ -139,20 +123,14 @@ int atomic_builtin_expr():
 	else:
 		int value_type = expression()
 		value_type = promote(value_type)
-		if (flavor == 2):
-			coerce(float32_type, value_type)
-		else:
-			coerce(int_type, value_type)
+		if (flavor == 2): coerce(float32_type, value_type)
+		else: coerce(int_type, value_type)
 		pop_ebx_slot()
-		if (flavor == 2):
-			ptx_atomic_add_f32()
+		if (flavor == 2): ptx_atomic_add_f32()
 		else:
-			if (on_gpu):
-				ptx_atomic_int(kind)
-			else:
-				alu_atomic_add()
-	if (peek(c")") == 0):
-		error2(c"')' expected in ", name)
+			if (on_gpu): ptx_atomic_int(kind)
+			else: alu_atomic_add()
+	if (peek(c")") == 0): error2(c"')' expected in ", name)
 	if (flavor == 2):
 		return float32_value_type
 	return type_value(int_type)

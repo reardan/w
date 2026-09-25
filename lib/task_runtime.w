@@ -7,8 +7,7 @@ on different threads. Linux x86/x64 only: it builds on lib/thread.w
 task), neither of which exists on the other targets yet.
 
 	task_runtime* rt = task_runtime_new(4)
-	for i in range(100):
-		task_runtime_spawn(rt, handle_job(i))   # round-robin over workers
+	for i in range(100): task_runtime_spawn(rt, handle_job(i))   # round-robin over workers
 	task_runtime_run(rt)                        # until every task is done
 	task_runtime_free(rt)
 
@@ -61,8 +60,7 @@ void task_runtime_set_current(void* t):
 # storage. Idempotent; happens before any second thread runs tasks
 # (task_runtime_new, or the first cross-thread primitive used).
 void task_runtime_install():
-	if (cast(int, task_active_get_hook) != 0):
-		return
+	if (cast(int, task_active_get_hook) != 0): return
 	# Installing from inside a task (first task_spawn_blocking on a lone
 	# scheduler): no other thread runs tasks yet, so carry the running
 	# task over into this thread's slot.
@@ -121,8 +119,7 @@ void task_remote_post(task_remote* r, task_remote_msg* m):
 void task_remote_on_readable(int fd, int revents, void* context):
 	task_remote* r = cast(task_remote*, context)
 	char* sink = malloc(64)
-	while (read(r.read_fd, sink, 64) > 0):
-		pass
+	while (read(r.read_fd, sink, 64) > 0): pass
 	free(sink)
 	mutex_lock(&r.lock)
 	list[task_remote_msg*] batch = r.pending
@@ -139,8 +136,7 @@ void task_remote_on_readable(int fd, int revents, void* context):
 				atomic_add(r.counter, -1)
 		else if (m.kind == task_remote_msg_wake):
 			task* t = m.target
-			if ((t.park_seq == m.seq) && task_is_parked(t)):
-				task_wake(t, m.value)
+			if ((t.park_seq == m.seq) && task_is_parked(t)): task_wake(t, m.value)
 		free(cast(void*, m))
 		i = i + 1
 	list_free[task_remote_msg*](batch)
@@ -149,8 +145,7 @@ void task_remote_on_readable(int fd, int revents, void* context):
 # The scheduler's inbox, created (and watched by its loop) on first use.
 # Call it on the scheduler's own thread.
 task_remote* task_remote_attach(task_scheduler* s):
-	if (cast(int, s.remote) != 0):
-		return cast(task_remote*, s.remote)
+	if (cast(int, s.remote) != 0): return cast(task_remote*, s.remote)
 	task_runtime_install()
 	task_remote* r = new task_remote()
 	mutex_init(&r.lock)
@@ -181,8 +176,7 @@ void task_remote_free(task_remote* r):
 		i = i + 1
 	list_free[task_remote_msg*](r.pending)
 	close(r.read_fd)
-	if (r.write_fd != r.read_fd):
-		close(r.write_fd)
+	if (r.write_fd != r.read_fd): close(r.write_fd)
 	free(cast(void*, r))
 
 
@@ -195,8 +189,7 @@ void task_remote_wake(task_remote* r, task* target, int seq, int value):
 # Spawn g on r's scheduler from any thread.
 void task_remote_spawn(task_remote* r, generator* g):
 	task_remote_msg* m = new task_remote_msg(task_remote_msg_spawn, g, 0, 0, 0)
-	if (cast(int, r.counter) != 0):
-		atomic_add(r.counter, 1)
+	if (cast(int, r.counter) != 0): atomic_add(r.counter, 1)
 	task_remote_post(r, m)
 
 
@@ -271,8 +264,7 @@ task_xchan* task_xchan_new(int capacity):
 	task_xchan* ch = new task_xchan()
 	mutex_init(&ch.lock)
 	ch.buffer = deque_new[int]()
-	if (capacity < 0):
-		capacity = 0
+	if (capacity < 0): capacity = 0
 	ch.capacity = capacity
 	ch.closed = 0
 	ch.senders = new list[task_xwaiter*]
@@ -293,15 +285,13 @@ void task_xwaiter_fire(task_xwaiter* w, int status):
 	w.status = status
 	task* me = task_active_get()
 	if ((cast(int, me) != 0) && (task_sched(me) == task_sched(w.owner))):
-		if ((w.owner.park_seq == w.seq) && task_is_parked(w.owner)):
-			task_wake(w.owner, 0)
+		if ((w.owner.park_seq == w.seq) && task_is_parked(w.owner)): task_wake(w.owner, 0)
 		return
 	task_remote_wake(w.remote, w.owner, w.seq, 0)
 
 
 task_xwaiter* task_xchan_take_first(list[task_xwaiter*] waiters):
-	if (waiters.length == 0):
-		return 0
+	if (waiters.length == 0): return 0
 	task_xwaiter* w = waiters[0]
 	list_remove_at[task_xwaiter*](waiters, 0)
 	return w
@@ -328,8 +318,7 @@ void task_xchan_close(task_xchan* ch):
 
 # Lock held. 0 sent, task_err_would_block(), task_err_closed().
 int task_xchan_try_send_locked(task_xchan* ch, int value):
-	if (ch.closed):
-		return task_err_closed()
+	if (ch.closed): return task_err_closed()
 	task_xwaiter* r = task_xchan_take_first(ch.receivers)
 	if (cast(int, r) != 0):
 		r.value = value
@@ -355,8 +344,7 @@ int task_xchan_try_recv_locked(task_xchan* ch, int* out):
 		*out = w.value
 		task_xwaiter_fire(w, task_waiter_completed)
 		return 1
-	if (ch.closed):
-		return 0
+	if (ch.closed): return 0
 	return task_err_would_block()
 
 
@@ -391,8 +379,7 @@ int task_xchan_park(task_xchan* ch, list[task_xwaiter*] queue, task_xwaiter* w, 
 	mutex_unlock(&ch.lock)
 	int r = task_park(t, task_state_waiting_external, timeout_ms, task_err_timed_out())
 	mutex_lock(&ch.lock)
-	if (w.status == task_waiter_pending):
-		task_xchan_forget(queue, w)
+	if (w.status == task_waiter_pending): task_xchan_forget(queue, w)
 	mutex_unlock(&ch.lock)
 	return r
 
@@ -415,10 +402,8 @@ int task_xchan_send_timeout(task_xchan* ch, int value, int timeout_ms):
 	task_xwaiter_init(&w, t)
 	w.value = value
 	r = task_xchan_park(ch, ch.senders, &w, timeout_ms)
-	if (w.status == task_waiter_completed):
-		return 0
-	if (w.status == task_waiter_closed):
-		return task_err_closed()
+	if (w.status == task_waiter_completed): return 0
+	if (w.status == task_waiter_closed): return task_err_closed()
 	return r
 
 
@@ -445,8 +430,7 @@ int task_xchan_recv_timeout(task_xchan* ch, int* out, int timeout_ms):
 	if (w.status == task_waiter_completed):
 		*out = w.value
 		return 1
-	if (w.status == task_waiter_closed):
-		return 0
+	if (w.status == task_waiter_closed): return 0
 	return r
 
 
@@ -478,8 +462,7 @@ int task_runtime_stop(task_runtime* rt);
 # Scheduler hooks: count every task that starts or finishes on a worker.
 void task_runtime_on_done(task* t, void* context):
 	task_runtime* rt = cast(task_runtime*, context)
-	if (atomic_add(&rt.outstanding, -1) == 1):
-		task_runtime_stop(rt)
+	if (atomic_add(&rt.outstanding, -1) == 1): task_runtime_stop(rt)
 
 
 void task_runtime_on_spawn(task* t, void* context):
@@ -491,8 +474,7 @@ void task_runtime_on_spawn(task* t, void* context):
 # task_runtime_run.
 task_runtime* task_runtime_new(int nthreads):
 	task_runtime_install()
-	if (nthreads <= 0):
-		nthreads = 4
+	if (nthreads <= 0): nthreads = 4
 	task_runtime* rt = new task_runtime(nthreads, new list[task_runtime_worker*], 0, 0, 0)
 	for i in range(nthreads):
 		task_runtime_worker* w = new task_runtime_worker()
@@ -523,16 +505,14 @@ void task_runtime_spawn_on(task_runtime* rt, int index, generator* g):
 # Spawn g on the next worker in round-robin order, from any thread.
 void task_runtime_spawn(task_runtime* rt, generator* g):
 	int index = atomic_add(&rt.next, 1)
-	if (index < 0):
-		index = 0 - index
+	if (index < 0): index = 0 - index
 	task_runtime_spawn_on(rt, index, g)
 
 
 # The worker the calling task runs on, or -1 outside the runtime.
 int task_runtime_worker_index(task_runtime* rt):
 	task* t = task_active_get()
-	if (cast(int, t) == 0):
-		return -1
+	if (cast(int, t) == 0): return -1
 	int i = 0
 	while (i < rt.nthreads):
 		if (rt.workers[i].sched == task_sched(t)):
@@ -545,8 +525,7 @@ int task_runtime_worker_index(task_runtime* rt):
 # parked are abandoned). Called automatically when the last task is
 # done.
 int task_runtime_stop(task_runtime* rt):
-	if (atomic_cas(&rt.stopping, 0, 1) != 0):
-		return 0
+	if (atomic_cas(&rt.stopping, 0, 1) != 0): return 0
 	int i = 0
 	while (i < rt.nthreads):
 		task_remote_msg* m = new task_remote_msg(task_remote_msg_nop, 0, 0, 0, 0)
@@ -560,15 +539,13 @@ void task_runtime_worker_main(void* p):
 	task_runtime* rt = cast(task_runtime*, w.rt)
 	while (rt.stopping == 0):
 		int err = task_run_pass(w.sched, -1, 1)
-		if ((err < 0) && (err != task_err_deadlock())):
-			break
+		if ((err < 0) && (err != task_err_deadlock())): break
 
 
 # Start the workers and wait until every spawned task (including those
 # spawned later, from any worker) has finished. Returns 0.
 int task_runtime_run(task_runtime* rt):
-	if (rt.outstanding == 0):
-		return 0
+	if (rt.outstanding == 0): return 0
 	int i = 0
 	while (i < rt.nthreads):
 		task_runtime_worker* w = rt.workers[i]

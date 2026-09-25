@@ -185,38 +185,22 @@ const int http_error_tls = 15
 
 # Static description of an http_error_* code. Never freed.
 char* http_error_string(int code):
-	if (code == http_error_none):
-		return c""
-	if (code == http_error_bad_url):
-		return c"invalid URL"
-	if (code == http_error_unsupported_scheme):
-		return c"unsupported URL scheme"
-	if (code == http_error_dns):
-		return c"DNS resolution failed"
-	if (code == http_error_connect):
-		return c"connect failed"
-	if (code == http_error_timeout):
-		return c"timed out"
-	if (code == http_error_send):
-		return c"send failed"
-	if (code == http_error_recv):
-		return c"receive failed"
-	if (code == http_error_bad_response):
-		return c"malformed response"
-	if (code == http_error_headers_too_large):
-		return c"response headers too large"
-	if (code == http_error_body_too_large):
-		return c"response body too large"
-	if (code == http_error_bad_chunk):
-		return c"malformed chunked body"
-	if (code == http_error_truncated_body):
-		return c"connection closed mid-body"
-	if (code == http_error_too_many_redirects):
-		return c"too many redirects"
-	if (code == http_error_bad_header):
-		return c"invalid request header"
-	if (code == http_error_tls):
-		return c"TLS handshake failed"
+	if (code == http_error_none): return c""
+	if (code == http_error_bad_url): return c"invalid URL"
+	if (code == http_error_unsupported_scheme): return c"unsupported URL scheme"
+	if (code == http_error_dns): return c"DNS resolution failed"
+	if (code == http_error_connect): return c"connect failed"
+	if (code == http_error_timeout): return c"timed out"
+	if (code == http_error_send): return c"send failed"
+	if (code == http_error_recv): return c"receive failed"
+	if (code == http_error_bad_response): return c"malformed response"
+	if (code == http_error_headers_too_large): return c"response headers too large"
+	if (code == http_error_body_too_large): return c"response body too large"
+	if (code == http_error_bad_chunk): return c"malformed chunked body"
+	if (code == http_error_truncated_body): return c"connection closed mid-body"
+	if (code == http_error_too_many_redirects): return c"too many redirects"
+	if (code == http_error_bad_header): return c"invalid request header"
+	if (code == http_error_tls): return c"TLS handshake failed"
 	return c"unknown error"
 
 
@@ -231,46 +215,35 @@ const int http_body_close = 3
 /* Small text helpers */
 
 int http_lower_char(int c):
-	if ((c >= 'A') && (c <= 'Z')):
-		return c + 32
+	if ((c >= 'A') && (c <= 'Z')): return c + 32
 	return c
 
 
 int http_str_ieq(char* a, char* b):
 	int i = 0
 	while ((a[i] != 0) && (b[i] != 0)):
-		if (http_lower_char(a[i] & 255) != http_lower_char(b[i] & 255)):
-			return 0
+		if (http_lower_char(a[i] & 255) != http_lower_char(b[i] & 255)): return 0
 		i = i + 1
 	return (a[i] == 0) & (b[i] == 0)
 
 
 # RFC 9110 token characters, legal in methods and header names.
 int http_is_token_char(int c):
-	if ((c >= 'a') && (c <= 'z')):
-		return 1
-	if ((c >= 'A') && (c <= 'Z')):
-		return 1
-	if ((c >= '0') && (c <= '9')):
-		return 1
-	if ((c == '!') || (c == '#') || (c == '$') || (c == '%') || (c == '&')):
-		return 1
-	if ((c == 39) || (c == '*') || (c == '+') || (c == '-') || (c == '.')):
-		return 1
-	if ((c == '^') || (c == '_') || (c == 96) || (c == '|') || (c == '~')):
-		return 1
+	if ((c >= 'a') && (c <= 'z')): return 1
+	if ((c >= 'A') && (c <= 'Z')): return 1
+	if ((c >= '0') && (c <= '9')): return 1
+	if ((c == '!') || (c == '#') || (c == '$') || (c == '%') || (c == '&')): return 1
+	if ((c == 39) || (c == '*') || (c == '+') || (c == '-') || (c == '.')): return 1
+	if ((c == '^') || (c == '_') || (c == 96) || (c == '|') || (c == '~')): return 1
 	return 0
 
 
 int http_is_token(char* text):
-	if (text == 0):
-		return 0
-	if (text[0] == 0):
-		return 0
+	if (text == 0): return 0
+	if (text[0] == 0): return 0
 	int i = 0
 	while (text[i] != 0):
-		if (http_is_token_char(text[i] & 255) == 0):
-			return 0
+		if (http_is_token_char(text[i] & 255) == 0): return 0
 		i = i + 1
 	return 1
 
@@ -278,15 +251,12 @@ int http_is_token(char* text):
 # Header values: visible bytes, spaces, and tabs only. CR, LF, NUL,
 # and other control bytes are rejected (header injection hardening).
 int http_valid_header_value(char* value):
-	if (value == 0):
-		return 0
+	if (value == 0): return 0
 	int i = 0
 	while (value[i] != 0):
 		int c = value[i] & 255
-		if ((c < 32) && (c != 9)):
-			return 0
-		if (c == 127):
-			return 0
+		if ((c < 32) && (c != 9)): return 0
+		if (c == 127): return 0
 		i = i + 1
 	return 1
 
@@ -297,10 +267,8 @@ int http_url_part_clean(char* text):
 	int i = 0
 	while (text[i] != 0):
 		int c = text[i] & 255
-		if (c < 33):
-			return 0
-		if (c == 127):
-			return 0
+		if (c < 33): return 0
+		if (c == 127): return 0
 		i = i + 1
 	return 1
 
@@ -312,17 +280,14 @@ int http_value_has_token(char* value, char* token):
 	int i = 0
 	while (value[i] != 0):
 		int c = value[i] & 255
-		if ((c == ',') || (c == ' ') || (c == 9) || (c == ';')):
-			i = i + 1
+		if ((c == ',') || (c == ' ') || (c == 9) || (c == ';')): i = i + 1
 		else:
 			int start = i
 			int elem_done = 0
 			while ((value[i] != 0) && (elem_done == 0)):
 				c = value[i] & 255
-				if ((c == ',') || (c == ' ') || (c == 9) || (c == ';')):
-					elem_done = 1
-				else:
-					i = i + 1
+				if ((c == ',') || (c == ' ') || (c == 9) || (c == ';')): elem_done = 1
+				else: i = i + 1
 			if (i - start == token_length):
 				int j = 0
 				int match = 1
@@ -330,10 +295,8 @@ int http_value_has_token(char* value, char* token):
 					if (http_lower_char(value[start + j] & 255) != http_lower_char(token[j] & 255)):
 						match = 0
 						j = token_length
-					else:
-						j = j + 1
-				if (match != 0):
-					return 1
+					else: j = j + 1
+				if (match != 0): return 1
 	return 0
 
 
@@ -366,8 +329,7 @@ void http_req_add_header(http_req* req, char* name, char* value):
 
 
 void http_req_free(http_req* req):
-	if (req == 0):
-		return
+	if (req == 0): return
 	for http_header* h in req.headers:
 		free(h.name)
 		free(h.value)
@@ -391,10 +353,8 @@ void http_response_set_error(http_response* resp, int code):
 # Case-insensitive header lookup. Returns the stored value (owned by
 # the response; do not free) or 0 when absent.
 char* http_response_header(http_response* resp, char* name):
-	if (resp == 0):
-		return 0
-	if (name == 0):
-		return 0
+	if (resp == 0): return 0
+	if (name == 0): return 0
 	char* lower = strclone(name)
 	int i = 0
 	while (lower[i] != 0):
@@ -406,16 +366,14 @@ char* http_response_header(http_response* resp, char* name):
 
 
 void http_response_free(http_response* resp):
-	if (resp == 0):
-		return
+	if (resp == 0): return
 	list[char*] keys = resp.headers.keys()
 	for char* key in keys:
 		char* value = resp.headers[key]
 		free(value)
 	list_free[char*](keys)
 	map_free[char*, char*](resp.headers)
-	if (resp.body != 0):
-		free(resp.body)
+	if (resp.body != 0): free(resp.body)
 	free(resp)
 
 
@@ -461,17 +419,12 @@ void http_client_close_idle():
 int http_cache_take(char* host, int port, int is_tls, int insecure):
 	http_cache_last_tls = 0
 	http_cache_last_tls_cfg = 0
-	if (http_idle_host == 0):
-		return (-1)
-	if (strcmp(http_idle_host, host) != 0):
-		return (-1)
-	if (http_idle_port != port):
-		return (-1)
-	if (http_idle_is_tls != is_tls):
-		return (-1)
+	if (http_idle_host == 0): return (-1)
+	if (strcmp(http_idle_host, host) != 0): return (-1)
+	if (http_idle_port != port): return (-1)
+	if (http_idle_is_tls != is_tls): return (-1)
 	if (is_tls != 0):
-		if (http_idle_insecure != insecure):
-			return (-1)
+		if (http_idle_insecure != insecure): return (-1)
 	int fd = http_idle_fd
 	http_cache_last_tls = http_idle_tls
 	http_cache_last_tls_cfg = http_idle_tls_cfg
@@ -552,10 +505,8 @@ int http_url_is_tls(URL* u):
 # unsupported (url_parse already rejects non-http(s) schemes upstream).
 int http_validate_url(URL* u):
 	int ok_scheme = 0
-	if (strcmp(u.scheme, c"http") == 0):
-		ok_scheme = 1
-	if (strcmp(u.scheme, c"https") == 0):
-		ok_scheme = 1
+	if (strcmp(u.scheme, c"http") == 0): ok_scheme = 1
+	if (strcmp(u.scheme, c"https") == 0): ok_scheme = 1
 	if (ok_scheme == 0):
 		return http_error_unsupported_scheme
 	if (http_url_part_clean(u.host) == 0):
@@ -572,8 +523,7 @@ int http_validate_url(URL* u):
 int http_req_allows_reuse(http_req* req):
 	for http_header* h in req.headers:
 		if (http_str_ieq(h.name, c"connection") != 0):
-			if (http_value_has_token(h.value, c"close") != 0):
-				return 0
+			if (http_value_has_token(h.value, c"close") != 0): return 0
 	return 1
 
 
@@ -602,10 +552,8 @@ int http_send_request(ConnectionContext* c, http_req* req, URL* u, char* method,
 		string_append(out, c": ")
 		string_append(out, h.value)
 		string_append(out, c"\x0d\x0a")
-		if (http_str_ieq(h.name, c"accept-encoding") != 0):
-			user_accept_encoding = 1
-		if (http_str_ieq(h.name, c"connection") != 0):
-			user_connection = 1
+		if (http_str_ieq(h.name, c"accept-encoding") != 0): user_accept_encoding = 1
+		if (http_str_ieq(h.name, c"connection") != 0): user_connection = 1
 	int with_body = 0
 	if ((include_body != 0) && (req.body != 0)):
 		with_body = 1
@@ -614,13 +562,10 @@ int http_send_request(ConnectionContext* c, http_req* req, URL* u, char* method,
 		string_append(out, length_text)
 		free(length_text)
 		string_append(out, c"\x0d\x0a")
-	if (user_accept_encoding == 0):
-		string_append(out, c"Accept-Encoding: identity\x0d\x0a")
-	if (user_connection == 0):
-		string_append(out, c"Connection: keep-alive\x0d\x0a")
+	if (user_accept_encoding == 0): string_append(out, c"Accept-Encoding: identity\x0d\x0a")
+	if (user_connection == 0): string_append(out, c"Connection: keep-alive\x0d\x0a")
 	string_append(out, c"\x0d\x0a")
-	if (with_body != 0):
-		string_append_bytes(out, req.body, req.body_len)
+	if (with_body != 0): string_append_bytes(out, req.body, req.body_len)
 	int ok = connection_context_write_all(c, out.data, out.length)
 	string_free(out)
 	return ok
@@ -630,13 +575,10 @@ int http_send_request(ConnectionContext* c, http_req* req, URL* u, char* method,
 
 # "HTTP/1.<d> <3 digits>[ reason]". Returns 1/0.
 int http_parse_status_line(char* line, int* out_status, int* out_minor):
-	if (starts_with(line, c"HTTP/1.") == 0):
-		return 0
+	if (starts_with(line, c"HTTP/1.") == 0): return 0
 	int d = line[7] & 255
-	if ((d < '0') || (d > '9')):
-		return 0
-	if (line[8] != ' '):
-		return 0
+	if ((d < '0') || (d > '9')): return 0
+	if (line[8] != ' '): return 0
 	int status = 0
 	int digits = 0
 	int i = 9
@@ -644,12 +586,9 @@ int http_parse_status_line(char* line, int* out_status, int* out_minor):
 		status = status * 10 + (line[i] - '0')
 		digits = digits + 1
 		i = i + 1
-	if (digits != 3):
-		return 0
-	if ((line[i] != 0) && (line[i] != ' ')):
-		return 0
-	if (status < 100):
-		return 0
+	if (digits != 3): return 0
+	if ((line[i] != 0) && (line[i] != ' ')): return 0
+	if (status < 100): return 0
 	*out_status = status
 	*out_minor = d - '0'
 	return 1
@@ -658,10 +597,8 @@ int http_parse_status_line(char* line, int* out_status, int* out_minor):
 # Value bytes of a header line with surrounding spaces/tabs trimmed,
 # as a fresh allocation.
 char* http_trimmed_value(char* line, int start, int end):
-	while ((start < end) && ((line[start] == ' ') || (line[start] == 9))):
-		start = start + 1
-	while ((end > start) && ((line[end - 1] == ' ') || (line[end - 1] == 9))):
-		end = end - 1
+	while ((start < end) && ((line[start] == ' ') || (line[start] == 9))): start = start + 1
+	while ((end > start) && ((line[end - 1] == ' ') || (line[end - 1] == 9))): end = end - 1
 	return substring(line, start, end)
 
 
@@ -675,14 +612,11 @@ int http_store_header_into(map[char*, char*] headers, char* line, int length):
 		# Obsolete line folding: fail closed.
 		return 0
 	int colon = 0
-	while ((line[colon] != 0) && (line[colon] != ':')):
-		colon = colon + 1
-	if ((line[colon] != ':') || (colon == 0)):
-		return 0
+	while ((line[colon] != 0) && (line[colon] != ':')): colon = colon + 1
+	if ((line[colon] != ':') || (colon == 0)): return 0
 	int i = 0
 	while (i < colon):
-		if (http_is_token_char(line[i] & 255) == 0):
-			return 0
+		if (http_is_token_char(line[i] & 255) == 0): return 0
 		i = i + 1
 	char* name = substring(line, 0, colon)
 	i = 0
@@ -698,8 +632,7 @@ int http_store_header_into(map[char*, char*] headers, char* line, int length):
 		free(old)
 		free(value)
 		headers[name] = joined
-	else:
-		headers[name] = value
+	else: headers[name] = value
 	free(name)
 	return 1
 
@@ -720,17 +653,12 @@ int http_read_head(ConnectionContext* c, http_response* resp, int* out_minor):
 		if (got <= 0):
 			int no_bytes = 0
 			if (c.received_any == 0):
-				if (got == 0):
-					no_bytes = 1
-				else if (c.error == http_error_recv):
-					no_bytes = 1
+				if (got == 0): no_bytes = 1
+				else if (c.error == http_error_recv): no_bytes = 1
 			string_free(line)
-			if (no_bytes != 0):
-				return (-1)
-			if (c.error != 0):
-				http_response_set_error(resp, c.error)
-			else:
-				http_response_set_error(resp, http_error_bad_response)
+			if (no_bytes != 0): return (-1)
+			if (c.error != 0): http_response_set_error(resp, c.error)
+			else: http_response_set_error(resp, http_error_bad_response)
 			return 0
 		int status = 0
 		int minor = 1
@@ -739,21 +667,17 @@ int http_read_head(ConnectionContext* c, http_response* resp, int* out_minor):
 			http_response_set_error(resp, http_error_bad_response)
 			return 0
 		int interim = 0
-		if ((status >= 100) && (status <= 199)):
-			interim = 1
+		if ((status >= 100) && (status <= 199)): interim = 1
 		int total = 0
 		int in_block = 1
 		while (in_block != 0):
 			got = connection_context_read_line(c, line, http_error_headers_too_large)
 			if (got <= 0):
-				if (c.error != 0):
-					http_response_set_error(resp, c.error)
-				else:
-					http_response_set_error(resp, http_error_bad_response)
+				if (c.error != 0): http_response_set_error(resp, c.error)
+				else: http_response_set_error(resp, http_error_bad_response)
 				string_free(line)
 				return 0
-			if (line.length == 0):
-				in_block = 0
+			if (line.length == 0): in_block = 0
 			else:
 				total = total + line.length + 2
 				if (total > http_max_header_bytes):
@@ -780,20 +704,16 @@ int http_read_head(ConnectionContext* c, http_response* resp, int* out_minor):
 
 # Content-Length value: digits only, capped. Returns the length or -1.
 int http_parse_content_length(char* value):
-	if (value[0] == 0):
-		return (-1)
+	if (value[0] == 0): return (-1)
 	int result = 0
 	int i = 0
 	while (value[i] != 0):
 		int d = value[i] & 255
-		if ((d < '0') || (d > '9')):
-			return (-1)
-		if (result > 107374182):
-			return (-1)
+		if ((d < '0') || (d > '9')): return (-1)
+		if (result > 107374182): return (-1)
 		result = result * 10 + (d - '0')
 		i = i + 1
-	if (result > http_max_body_bytes):
-		return (-1)
+	if (result > http_max_body_bytes): return (-1)
 	return result
 
 
@@ -801,13 +721,10 @@ int http_parse_content_length(char* value):
 int http_response_keep_alive(http_response* resp, int minor):
 	char* connection = http_response_header(resp, c"connection")
 	if (minor >= 1):
-		if (connection == 0):
-			return 1
-		if (http_value_has_token(connection, c"close") != 0):
-			return 0
+		if (connection == 0): return 1
+		if (http_value_has_token(connection, c"close") != 0): return 0
 		return 1
-	if (connection == 0):
-		return 0
+	if (connection == 0): return 0
 	return http_value_has_token(connection, c"keep-alive")
 
 
@@ -830,8 +747,7 @@ http_stream* http_stream_new():
 
 void http_stream_fail(http_stream* s, int code):
 	s.error = code
-	if (s.resp != 0):
-		http_response_set_error(s.resp, code)
+	if (s.resp != 0): http_response_set_error(s.resp, code)
 
 
 # Status and headers of the opened response. Owned by the stream and
@@ -845,8 +761,7 @@ http_response* http_stream_headers(http_stream* s):
 # otherwise.
 void http_stream_release_conn(http_stream* s):
 	ConnectionContext* c = s.conn
-	if (c == 0):
-		return
+	if (c == 0): return
 	s.conn = 0
 	int can_cache = 0
 	if ((s.reuse_ok != 0) && (s.body_complete != 0)):
@@ -857,19 +772,16 @@ void http_stream_release_conn(http_stream* s):
 				# A TLS conn may still hold decrypted plaintext buffered
 				# inside tls_read; caching then would strand those bytes.
 				if (c.tls != 0):
-					if (c.tls.app_pos < c.tls.app_len):
-						can_cache = 0
+					if (c.tls.app_pos < c.tls.app_len): can_cache = 0
 	if (can_cache != 0):
 		int is_tls = 0
-		if (c.tls != 0):
-			is_tls = 1
+		if (c.tls != 0): is_tls = 1
 		# Ownership of the tls_conn + its config transfers to the cache,
 		# so do NOT tls_close / tls_config_free here (only free the wrapper).
 		http_cache_put(s.cache_host, s.cache_port, is_tls, c.tls_insecure, c.fd, c.tls, c.tls_cfg)
 		stream_free(c.reader)
 		free(c)
-	else:
-		connection_context_destroy(c)
+	else: connection_context_destroy(c)
 
 
 # Decides body framing from the response (RFC 9112 6.3). Returns 1, or
@@ -878,10 +790,8 @@ int http_stream_set_framing(http_stream* s, char* method):
 	http_response* resp = s.resp
 	int status = resp.status
 	int no_body = 0
-	if (strcmp(method, c"HEAD") == 0):
-		no_body = 1
-	if ((status == 204) || (status == 304)):
-		no_body = 1
+	if (strcmp(method, c"HEAD") == 0): no_body = 1
+	if ((status == 204) || (status == 304)): no_body = 1
 	if (no_body != 0):
 		s.body_mode = http_body_none
 		s.body_remaining = 0
@@ -915,8 +825,7 @@ int http_stream_set_framing(http_stream* s, char* method):
 
 int http_stream_read_length(http_stream* s, char* out, int cap):
 	int want = cap
-	if (want > s.body_remaining):
-		want = s.body_remaining
+	if (want > s.body_remaining): want = s.body_remaining
 	int got = connection_context_read(s.conn, out, want)
 	if (got < 0):
 		http_stream_fail(s, s.conn.error)
@@ -953,15 +862,11 @@ int http_parse_chunk_size(char* line):
 	while (hex_decode_char(line[i] & 255) >= 0):
 		value = value * 16 + hex_decode_char(line[i] & 255)
 		digits = digits + 1
-		if (value > http_max_chunk_size):
-			return (-1)
+		if (value > http_max_chunk_size): return (-1)
 		i = i + 1
-	if (digits == 0):
-		return (-1)
-	while ((line[i] == ' ') || (line[i] == 9)):
-		i = i + 1
-	if ((line[i] != 0) && (line[i] != ';')):
-		return (-1)
+	if (digits == 0): return (-1)
+	while ((line[i] == ' ') || (line[i] == 9)): i = i + 1
+	if ((line[i] != 0) && (line[i] != ';')): return (-1)
 	return value
 
 
@@ -973,10 +878,8 @@ int http_stream_consume_trailers(http_stream* s):
 	while (1):
 		int got = connection_context_read_line(s.conn, line, http_error_headers_too_large)
 		if (got <= 0):
-			if (s.conn.error != 0):
-				http_stream_fail(s, s.conn.error)
-			else:
-				http_stream_fail(s, http_error_truncated_body)
+			if (s.conn.error != 0): http_stream_fail(s, s.conn.error)
+			else: http_stream_fail(s, http_error_truncated_body)
 			string_free(line)
 			return 0
 		if (line.length == 0):
@@ -994,8 +897,7 @@ int http_stream_read_chunked(http_stream* s, char* out, int cap):
 	while (1):
 		if (s.body_remaining > 0):
 			int want = cap
-			if (want > s.body_remaining):
-				want = s.body_remaining
+			if (want > s.body_remaining): want = s.body_remaining
 			int got = connection_context_read(s.conn, out, want)
 			if (got < 0):
 				http_stream_fail(s, s.conn.error)
@@ -1008,18 +910,14 @@ int http_stream_read_chunked(http_stream* s, char* out, int cap):
 		# At a chunk boundary: read the next chunk-size line.
 		if (s.chunk_first == 0):
 			if (connection_context_expect_crlf(s.conn) == 0):
-				if (s.conn.error != 0):
-					http_stream_fail(s, s.conn.error)
-				else:
-					http_stream_fail(s, http_error_bad_chunk)
+				if (s.conn.error != 0): http_stream_fail(s, s.conn.error)
+				else: http_stream_fail(s, http_error_bad_chunk)
 				return (-1)
 		string_builder* line = string_new()
 		int got_line = connection_context_read_line(s.conn, line, http_error_bad_chunk)
 		if (got_line <= 0):
-			if (s.conn.error != 0):
-				http_stream_fail(s, s.conn.error)
-			else:
-				http_stream_fail(s, http_error_truncated_body)
+			if (s.conn.error != 0): http_stream_fail(s, s.conn.error)
+			else: http_stream_fail(s, http_error_truncated_body)
 			string_free(line)
 			return (-1)
 		int size = http_parse_chunk_size(line.data)
@@ -1029,8 +927,7 @@ int http_stream_read_chunked(http_stream* s, char* out, int cap):
 			return (-1)
 		s.chunk_first = 0
 		if (size == 0):
-			if (http_stream_consume_trailers(s) == 0):
-				return (-1)
+			if (http_stream_consume_trailers(s) == 0): return (-1)
 			s.body_complete = 1
 			http_stream_release_conn(s)
 			return 0
@@ -1041,33 +938,22 @@ int http_stream_read_chunked(http_stream* s, char* out, int cap):
 # Next body bytes into buf. Returns the count (>= 1), 0 at the end of
 # the body, or -1 on error (s.error and the response error are set).
 int http_stream_read(http_stream* s, char* buf, int cap):
-	if (s == 0):
-		return (-1)
-	if (s.error != 0):
-		return (-1)
-	if (s.body_complete != 0):
-		return 0
-	if (s.conn == 0):
-		return 0
-	if (cap <= 0):
-		return 0
-	if (s.body_mode == http_body_length):
-		return http_stream_read_length(s, buf, cap)
-	if (s.body_mode == http_body_chunked):
-		return http_stream_read_chunked(s, buf, cap)
-	if (s.body_mode == http_body_close):
-		return http_stream_read_close(s, buf, cap)
+	if (s == 0): return (-1)
+	if (s.error != 0): return (-1)
+	if (s.body_complete != 0): return 0
+	if (s.conn == 0): return 0
+	if (cap <= 0): return 0
+	if (s.body_mode == http_body_length): return http_stream_read_length(s, buf, cap)
+	if (s.body_mode == http_body_chunked): return http_stream_read_chunked(s, buf, cap)
+	if (s.body_mode == http_body_close): return http_stream_read_close(s, buf, cap)
 	return 0
 
 
 void http_stream_close(http_stream* s):
-	if (s == 0):
-		return
+	if (s == 0): return
 	http_stream_release_conn(s)
-	if (s.resp != 0):
-		http_response_free(s.resp)
-	if (s.cache_host != 0):
-		free(s.cache_host)
+	if (s.resp != 0): http_response_free(s.resp)
+	if (s.cache_host != 0): free(s.cache_host)
 	free(s)
 
 
@@ -1079,12 +965,10 @@ void http_stream_close(http_stream* s):
 int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int include_body, int use_cache, int* out_stale):
 	*out_stale = 0
 	int timeout = req.timeout_ms
-	if (timeout <= 0):
-		timeout = http_default_timeout_ms
+	if (timeout <= 0): timeout = http_default_timeout_ms
 	int is_tls = http_url_is_tls(u)
 	int insecure = 0
-	if (is_tls != 0):
-		insecure = req.tls_insecure_skip_verify
+	if (is_tls != 0): insecure = req.tls_insecure_skip_verify
 	int from_cache = 0
 	int fd = (-1)
 	tls_conn* tls = 0
@@ -1098,10 +982,8 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 			if (tls != 0):
 				# The connection may have been cached from the other
 				# context (task vs plain); match its mode to this caller.
-				if (io_wait_available()):
-					socket_set_nonblocking(fd)
-				else:
-					socket_set_blocking(fd)
+				if (io_wait_available()): socket_set_nonblocking(fd)
+				else: socket_set_blocking(fd)
 	if (fd < 0):
 		int ip = 0
 		if (dns_resolve_ipv4(u.host, &ip) == 0):
@@ -1126,8 +1008,7 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 					http_stream_fail(s, http_error_connect)
 					return 0
 			int hs_timeout = timeout
-			if (req.tls_handshake_timeout_ms > 0):
-				hs_timeout = req.tls_handshake_timeout_ms
+			if (req.tls_handshake_timeout_ms > 0): hs_timeout = req.tls_handshake_timeout_ms
 			socket_set_recv_timeout(fd, hs_timeout)
 			socket_set_send_timeout(fd, hs_timeout)
 			tls_cfg = http_build_tls_config(req)
@@ -1161,10 +1042,8 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 		if (from_cache != 0):
 			*out_stale = 1
 			return 0
-		if (head_error != 0):
-			http_stream_fail(s, head_error)
-		else:
-			http_stream_fail(s, http_error_bad_response)
+		if (head_error != 0): http_stream_fail(s, head_error)
+		else: http_stream_fail(s, http_error_bad_response)
 		return 0
 	if (head == 0):
 		s.error = s.resp.error
@@ -1173,13 +1052,11 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 	s.conn = c
 	s.cache_host = strclone(u.host)
 	s.cache_port = u.port
-	if (http_stream_set_framing(s, method) == 0):
-		return 0
+	if (http_stream_set_framing(s, method) == 0): return 0
 	s.reuse_ok = 0
 	if (s.body_mode != http_body_close):
 		if (http_response_keep_alive(s.resp, minor) != 0):
-			if (http_req_allows_reuse(req) != 0):
-				s.reuse_ok = 1
+			if (http_req_allows_reuse(req) != 0): s.reuse_ok = 1
 	if (s.body_mode == http_body_none):
 		s.body_complete = 1
 		http_stream_release_conn(s)
@@ -1193,10 +1070,8 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 # keep-alive connection turns out to be dead.
 int http_open_single(http_stream* s, http_req* req, URL* u, char* method, int include_body):
 	int stale = 0
-	if (http_open_attempt(s, req, u, method, include_body, 1, &stale) != 0):
-		return 1
-	if (stale == 0):
-		return 0
+	if (http_open_attempt(s, req, u, method, include_body, 1, &stale) != 0): return 1
+	if (stale == 0): return 0
 	http_response_free(s.resp)
 	s.resp = http_response_new()
 	s.error = 0
@@ -1207,10 +1082,8 @@ int http_open_single(http_stream* s, http_req* req, URL* u, char* method, int in
 # scheme-relative "//host/...", absolute paths "/...", and relative
 # paths. Returns a parsed URL or 0.
 URL* http_redirect_target(URL* base, char* location):
-	if (location == 0):
-		return 0
-	if (location[0] == 0):
-		return 0
+	if (location == 0): return 0
+	if (location[0] == 0): return 0
 	URL* direct = url_parse(location)
 	if (direct != 0):
 		return direct
@@ -1228,15 +1101,13 @@ URL* http_redirect_target(URL* base, char* location):
 			char* port_text = itoa(base.port)
 			string_append(text, port_text)
 			free(port_text)
-		if (location[0] == '/'):
-			string_append(text, location)
+		if (location[0] == '/'): string_append(text, location)
 		else:
 			# Merge with the directory of the current path.
 			int last_slash = 0
 			int i = 0
 			while (base.path[i] != 0):
-				if (base.path[i] == '/'):
-					last_slash = i
+				if (base.path[i] == '/'): last_slash = i
 				i = i + 1
 			string_append_bytes(text, base.path, last_slash + 1)
 			string_append(text, location)
@@ -1255,8 +1126,7 @@ void http_stream_redirect_reset(http_stream* s):
 		int more = 1
 		while (more != 0):
 			int got = http_stream_read(s, scratch, 4096)
-			if (got <= 0):
-				more = 0
+			if (got <= 0): more = 0
 			else:
 				drained = drained + got
 				if (drained > http_max_redirect_drain):
@@ -1278,10 +1148,8 @@ void http_stream_redirect_reset(http_stream* s):
 
 
 int http_status_is_redirect(int status):
-	if ((status == 301) || (status == 302) || (status == 303)):
-		return 1
-	if ((status == 307) || (status == 308)):
-		return 1
+	if ((status == 301) || (status == 302) || (status == 303)): return 1
+	if ((status == 307) || (status == 308)): return 1
 	return 0
 
 
@@ -1312,16 +1180,12 @@ http_stream* http_open(http_req* req):
 	int redirects = 0
 	int done = 0
 	while (done == 0):
-		if (http_open_single(s, req, u, method, include_body) == 0):
-			done = 1
-		else if (http_status_is_redirect(s.resp.status) == 0):
-			done = 1
-		else if (req.max_redirects <= 0):
-			done = 1
+		if (http_open_single(s, req, u, method, include_body) == 0): done = 1
+		else if (http_status_is_redirect(s.resp.status) == 0): done = 1
+		else if (req.max_redirects <= 0): done = 1
 		else:
 			char* location = http_response_header(s.resp, c"location")
-			if (location == 0):
-				done = 1
+			if (location == 0): done = 1
 			else:
 				redirects = redirects + 1
 				if (redirects > req.max_redirects):
@@ -1365,13 +1229,11 @@ http_response* http_request(http_req* req):
 		int more = 1
 		while (more != 0):
 			int got = http_stream_read(s, scratch, 8192)
-			if (got <= 0):
-				more = 0
+			if (got <= 0): more = 0
 			else if (body.length + got > http_max_body_bytes):
 				http_stream_fail(s, http_error_body_too_large)
 				more = 0
-			else:
-				string_append_bytes(body, scratch, got)
+			else: string_append_bytes(body, scratch, got)
 		free(scratch)
 		resp.body = body.data
 		resp.body_len = body.length

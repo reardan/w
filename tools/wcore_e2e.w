@@ -85,8 +85,7 @@ int raise_core_limit():
 	save_word(rl, -1)
 	save_word(rl + __word_size__, -1)
 	int nr = 75
-	if (__word_size__ == 8):
-		nr = 160
+	if (__word_size__ == 8): nr = 160
 	int r = syscall(nr, 4, rl, 0)
 	free(rl)
 	return r == 0
@@ -96,11 +95,9 @@ int raise_core_limit():
 # as a dir-relative path, or 0 when there is none.
 char* find_core(char* dir):
 	list[char*] names = dir_names(dir)
-	if (names == 0):
-		return 0
+	if (names == 0): return 0
 	for char* name in names:
-		if (starts_with(name, c"core")):
-			return path_join(dir, name)
+		if (starts_with(name, c"core")): return path_join(dir, name)
 	return 0
 
 
@@ -123,8 +120,7 @@ void crash_fixture(char* fixture, char* dir):
 	opts.cwd = dir
 	opts.env = env_copy_with(env_current(), c"W_CRASH_TRACE", c"0")
 	process_result* r = process_run(path, argv, opts, 0, 120000)
-	if (r != 0):
-		process_result_free(r)
+	if (r != 0): process_result_free(r)
 	free(opts)
 
 
@@ -140,8 +136,7 @@ char* run_wcore(char* a, char* b, char* c, int* status):
 	if (b != 0):
 		strv_set(argv, n, b)
 		n = n + 1
-	if (c != 0):
-		strv_set(argv, n, c)
+	if (c != 0): strv_set(argv, n, c)
 	process_result* r = process_run(WCORE, argv, 0, 0, 120000)
 	free(cast(void*, argv))
 	if (r == 0):
@@ -167,8 +162,7 @@ void run_case(char* desc, char* fixture, char* ipreg, char* other):
 	shell_commands_mkdir_one(dir, 1)
 	# Crash the fixture with cores enabled, in its own directory so the
 	# "core" file cannot collide with another case.
-	if (RLIMIT_OK):
-		crash_fixture(fixture, dir)
+	if (RLIMIT_OK): crash_fixture(fixture, dir)
 	char* core = find_core(dir)
 	if (core == 0):
 		dir_remove_all(dir)
@@ -234,8 +228,7 @@ int main(int argc, char** argv):
 		return 1
 
 	PATTERN = file_read_text(c"/proc/sys/kernel/core_pattern")
-	if (PATTERN == 0):
-		PATTERN = c""
+	if (PATTERN == 0): PATTERN = c""
 	int i = strlen(PATTERN)
 	while ((i > 0) && (PATTERN[i - 1] == 10)):
 		PATTERN[i - 1] = 0
@@ -248,7 +241,6 @@ int main(int argc, char** argv):
 	run_case(c"32-bit core", c"bin/wcore_fixture32", c"eip", c"bin/wv2")
 	run_case(c"64-bit core", c"bin/wcore_fixture64", c"rip", c"bin/wcore")
 
-	if (FAILED != 0):
-		return 1
+	if (FAILED != 0): return 1
 	out(c"wcore test OK\n")
 	return 0

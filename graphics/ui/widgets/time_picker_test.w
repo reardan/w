@@ -41,12 +41,9 @@ void click_rect(ui_context* ctx, ui_rect b):
 void click_spin(ui_context* ctx, int row, int minutes, int dir):
 	ui_rect rr = row_rect(ctx, row)
 	float32 x = ui_time_hour_x(ctx, rr)
-	if (minutes):
-		x = ui_time_minute_x(ctx, rr)
-	if (dir < 0):
-		click_rect(ctx, ui_spinner_minus_rect(ctx, rr, x))
-	else:
-		click_rect(ctx, ui_spinner_plus_rect(ctx, rr, x))
+	if (minutes): x = ui_time_minute_x(ctx, rr)
+	if (dir < 0): click_rect(ctx, ui_spinner_minus_rect(ctx, rr, x))
+	else: click_rect(ctx, ui_spinner_plus_rect(ctx, rr, x))
 
 
 # One frame: the picker with a 5-minute step, then a button below it;
@@ -54,8 +51,7 @@ void click_spin(ui_context* ctx, int row, int minutes, int dir):
 int time_frame(ui_context* ctx, ui_time_range_state* st, int32* start, int32* end, int32* bg):
 	ui_begin(ctx, 400, 400)
 	int changed = ui_time_range_picker(ctx, 200.0, st, start, end, 5)
-	if (ui_button(ctx, c"behind")):
-		bg[0] = bg[0] + 1
+	if (ui_button(ctx, c"behind")): bg[0] = bg[0] + 1
 	ui_end(ctx)
 	return changed
 

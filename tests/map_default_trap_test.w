@@ -15,8 +15,7 @@ int main():
 	# a defaulted map vivifies fine in the same program...
 	map[char*, int] defaulted = new map[char*, int](0)
 	defaulted[c"a"] += 1
-	if (defaulted[c"a"] != 1):
-		exit(2)
+	if (defaulted[c"a"] != 1): exit(2)
 	# ...but a plain map's compound assignment still traps on a
 	# missing key, exactly as before the opt-in existed
 	map[char*, int] plain = new map[char*, int]

@@ -74,8 +74,7 @@ struct swim:
 # ---- internal helpers -------------------------------------------------------
 
 swim_member* swim_lookup(swim* s, int id):
-	if ((id in s.members) == 0):
-		return 0
+	if ((id in s.members) == 0): return 0
 	return s.members[id]
 
 
@@ -100,8 +99,7 @@ void swim_apply_alive(swim* s, int id, int incarnation, int now_ms):
 		m = swim_add_member(s, id, swim_alive, incarnation)
 		swim_mark_pending(s, m)
 		return
-	if (m.state == swim_dead):
-		return
+	if (m.state == swim_dead): return
 	if (incarnation > m.incarnation):
 		m.state = swim_alive
 		m.incarnation = incarnation
@@ -117,13 +115,10 @@ void swim_apply_suspect(swim* s, int id, int incarnation, int now_ms):
 		m.suspect_deadline = mono_deadline(now_ms, s.suspect_timeout_ms)
 		swim_mark_pending(s, m)
 		return
-	if (m.state == swim_dead):
-		return
+	if (m.state == swim_dead): return
 	int overrides = 0
-	if (m.state == swim_alive && incarnation >= m.incarnation):
-		overrides = 1
-	if (m.state == swim_suspect && incarnation > m.incarnation):
-		overrides = 1
+	if (m.state == swim_alive && incarnation >= m.incarnation): overrides = 1
+	if (m.state == swim_suspect && incarnation > m.incarnation): overrides = 1
 	if (overrides == 1):
 		m.state = swim_suspect
 		m.incarnation = incarnation
@@ -139,8 +134,7 @@ void swim_apply_dead(swim* s, int id, int now_ms):
 		m = swim_add_member(s, id, swim_dead, 0)
 		swim_mark_pending(s, m)
 		return
-	if (m.state == swim_dead):
-		return
+	if (m.state == swim_dead): return
 	m.state = swim_dead
 	swim_mark_pending(s, m)
 
@@ -176,8 +170,7 @@ void swim_free(swim* s):
 # Locally learn about a peer (bootstrap/join): added as alive inc 0 and
 # pending. Returns 1 when added, 0 when the id was already known.
 int swim_join(swim* s, int id, int now_ms):
-	if (id in s.members):
-		return 0
+	if (id in s.members): return 0
 	swim_member* m = swim_add_member(s, id, swim_alive, 0)
 	swim_mark_pending(s, m)
 	return 1
@@ -191,8 +184,7 @@ int swim_probe_target(swim* s):
 	int n = s.member_ids.length
 	int scanned = 0
 	while (scanned < n):
-		if (s.probe_cursor >= n):
-			s.probe_cursor = 0
+		if (s.probe_cursor >= n): s.probe_cursor = 0
 		int id = s.member_ids[s.probe_cursor]
 		s.probe_cursor = s.probe_cursor + 1
 		scanned = scanned + 1
@@ -206,11 +198,9 @@ int swim_probe_target(swim* s):
 # The direct probe of target got no ack in time: suspect it at its
 # current incarnation (a no-op when it is already suspect or dead).
 void swim_on_probe_timeout(swim* s, int target, int now_ms):
-	if (target == s.self_id):
-		return
+	if (target == s.self_id): return
 	swim_member* m = swim_lookup(s, target)
-	if (m == 0):
-		return
+	if (m == 0): return
 	swim_apply_suspect(s, target, m.incarnation, now_ms)
 
 
@@ -224,8 +214,7 @@ int swim_indirect_candidates(swim* s, int target, int k, int* out):
 	int scanned = 0
 	int pos = s.probe_cursor
 	while (scanned < n && count < k):
-		if (pos >= n):
-			pos = 0
+		if (pos >= n): pos = 0
 		int id = s.member_ids[pos]
 		pos = pos + 1
 		scanned = scanned + 1
@@ -244,8 +233,7 @@ int swim_indirect_candidates(swim* s, int target, int k, int* out):
 # an ack alone does not clear suspicion — see the v1 notes up top.
 void swim_on_ack(swim* s, int from, int now_ms):
 	swim_member* m = swim_lookup(s, from)
-	if (m == 0):
-		return
+	if (m == 0): return
 	swim_apply_alive(s, from, m.incarnation, now_ms)
 
 
@@ -272,15 +260,13 @@ int swim_on_suspect_msg(swim* s, int id, int incarnation, int now_ms):
 # Alive gossip. Self is authoritative for its own state, so gossip
 # naming self is ignored; unknown ids join the table (see apply_alive).
 void swim_on_alive_msg(swim* s, int id, int incarnation, int now_ms):
-	if (id == s.self_id):
-		return
+	if (id == s.self_id): return
 	swim_apply_alive(s, id, incarnation, now_ms)
 
 
 # Dead gossip. A node never marks itself dead in v1.
 void swim_on_dead_msg(swim* s, int id, int now_ms):
-	if (id == s.self_id):
-		return
+	if (id == s.self_id): return
 	swim_apply_dead(s, id, now_ms)
 
 
@@ -319,8 +305,7 @@ int swim_next_piggyback(swim* s, int max, int* out_ids):
 			if (m.pending == 1 && m.transmits_left > best_left):
 				int emitted = 0
 				for j in range(count):
-					if (out_ids[j] == id):
-						emitted = 1
+					if (out_ids[j] == id): emitted = 1
 				if (emitted == 0):
 					best_id = id
 					best_left = m.transmits_left
@@ -329,8 +314,7 @@ int swim_next_piggyback(swim* s, int max, int* out_ids):
 			return count
 		swim_member* chosen = s.members[best_id]
 		chosen.transmits_left = chosen.transmits_left - 1
-		if (chosen.transmits_left <= 0):
-			chosen.pending = 0
+		if (chosen.transmits_left <= 0): chosen.pending = 0
 		out_ids[count] = best_id
 		count = count + 1
 	return count
@@ -341,16 +325,14 @@ int swim_next_piggyback(swim* s, int max, int* out_ids):
 # Member state, or 0 - 1 for an unknown id.
 int swim_state(swim* s, int id):
 	swim_member* m = swim_lookup(s, id)
-	if (m == 0):
-		return 0 - 1
+	if (m == 0): return 0 - 1
 	return m.state
 
 
 # Member incarnation, or 0 - 1 for an unknown id.
 int swim_incarnation(swim* s, int id):
 	swim_member* m = swim_lookup(s, id)
-	if (m == 0):
-		return 0 - 1
+	if (m == 0): return 0 - 1
 	return m.incarnation
 
 
@@ -364,8 +346,7 @@ int swim_alive_count(swim* s):
 	for i in range(s.member_ids.length):
 		int id = s.member_ids[i]
 		swim_member* m = s.members[id]
-		if (m.state == swim_alive):
-			count = count + 1
+		if (m.state == swim_alive): count = count + 1
 	return count
 
 

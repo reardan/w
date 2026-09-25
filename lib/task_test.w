@@ -143,8 +143,7 @@ generator int ponger(int fd, int rounds):
 	for i in range(rounds):
 		int revents = task_await_fd(fd, poll_in)
 		asserts(c"ponger expected POLLIN", (revents & poll_in) != 0)
-		if (read(fd, buf, 1) == 1):
-			received = received + 1
+		if (read(fd, buf, 1) == 1): received = received + 1
 		assert_equal(1, write(fd, c"o", 1))
 	free(buf)
 	task_finish(received)
@@ -157,8 +156,7 @@ generator int pinger(int fd, int rounds):
 		assert_equal(1, write(fd, c"i", 1))
 		int revents = task_await_fd(fd, poll_in)
 		asserts(c"pinger expected POLLIN", (revents & poll_in) != 0)
-		if (read(fd, buf, 1) == 1):
-			received = received + 1
+		if (read(fd, buf, 1) == 1): received = received + 1
 	free(buf)
 	task_finish(received)
 
@@ -344,10 +342,8 @@ struct deadlock_pair:
 
 
 generator int join_peer(deadlock_pair* pair, int which):
-	if (which == 0):
-		task_join(pair.b)
-	else:
-		task_join(pair.a)
+	if (which == 0): task_join(pair.b)
+	else: task_join(pair.a)
 
 
 void test_join_cycle_reports_deadlock():
@@ -602,12 +598,9 @@ generator int read_n(int fd, int n):
 	int got = 0
 	while (got < n):
 		int r = read(fd, buf + got, n - got)
-		if (r == -11):
-			task_await_fd(fd, poll_in)
-		else if (r <= 0):
-			break
-		else:
-			got = got + r
+		if (r == -11): task_await_fd(fd, poll_in)
+		else if (r <= 0): break
+		else: got = got + r
 	free(buf)
 	task_finish(got)
 
@@ -617,12 +610,9 @@ generator int write_n(int fd, int n):
 	int sent = 0
 	while (sent < n):
 		int r = write(fd, buf + sent, n - sent)
-		if (r == -11):
-			task_await_fd(fd, poll_out)
-		else if (r < 0):
-			break
-		else:
-			sent = sent + r
+		if (r == -11): task_await_fd(fd, poll_out)
+		else if (r < 0): break
+		else: sent = sent + r
 	free(buf)
 	task_finish(sent)
 
@@ -632,18 +622,14 @@ generator int echo_n(int fd, int n):
 	int moved = 0
 	while (moved < n):
 		int r = read(fd, buf, 4096)
-		if (r == -11):
-			task_await_fd(fd, poll_in)
-		else if (r <= 0):
-			break
+		if (r == -11): task_await_fd(fd, poll_in)
+		else if (r <= 0): break
 		else:
 			int off = 0
 			while (off < r):
 				int w = write(fd, buf + off, r - off)
-				if (w == -11):
-					task_await_fd(fd, poll_out)
-				else:
-					off = off + w
+				if (w == -11): task_await_fd(fd, poll_out)
+				else: off = off + w
 			moved = moved + r
 	free(buf)
 

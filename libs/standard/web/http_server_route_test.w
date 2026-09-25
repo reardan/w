@@ -62,8 +62,7 @@ void hrt_handler_echo(RequestContext* rc, void* user_data):
 	string_append(out, request_context_path(rc))
 	string_append_char(out, ' ')
 	char* ua = request_context_header(rc, c"x-echo")
-	if (ua != 0):
-		string_append(out, ua)
+	if (ua != 0): string_append(out, ua)
 	string_append_char(out, ' ')
 	string_append_bytes(out, request_context_body(rc), request_context_body_len(rc))
 	request_context_set_status(rc, 200)
@@ -80,8 +79,7 @@ void hrt_handler_search(RequestContext* rc, void* user_data):
 	char* q = request_query_param(rc, c"q")
 	char* missing = request_query_param(rc, c"missing")
 	asserts(c"missing query param is 0", missing == 0)
-	if (q == 0):
-		request_context_text(rc, 200, c"<absent>")
+	if (q == 0): request_context_text(rc, 200, c"<absent>")
 	else:
 		request_context_text(rc, 200, q)
 		free(q)

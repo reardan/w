@@ -15,12 +15,9 @@ int dir_platform_read(char* path, list[char*] names, list[int] kinds):
 		return -1
 	while (1):
 		names.push(strclone(find_data + 44))
-		if (load_int32(find_data) & 16):
-			kinds.push(4)
-		else:
-			kinds.push(8)
-		if (FindNextFileA(handle, find_data) == 0):
-			break
+		if (load_int32(find_data) & 16): kinds.push(4)
+		else: kinds.push(8)
+		if (FindNextFileA(handle, find_data) == 0): break
 	FindClose(handle)
 	free(find_data)
 	return 0

@@ -36,8 +36,7 @@ void sc_err(char* s):
 
 
 void sc_cleanup():
-	if (sc_dir != 0):
-		dir_remove_all(sc_dir)
+	if (sc_dir != 0): dir_remove_all(sc_dir)
 
 
 void fail(char* msg):
@@ -76,8 +75,7 @@ void sc_require(char* rel):
 void sc_init(char* name, char* prefix):
 	sc_name = name
 	char* buf = malloc(4096)
-	if (getcwd(buf, 4096) <= 0):
-		fail(c"getcwd failed")
+	if (getcwd(buf, 4096) <= 0): fail(c"getcwd failed")
 	sc_root = buf
 	char* rel = strjoin(c"bin/", prefix)
 	sc_dir = path_join(sc_root, strjoin(rel, itoa(getpid())))
@@ -102,14 +100,12 @@ char* sc_read(char* rel):
 
 
 void sc_write(char* rel, char* text):
-	if (file_write_text(sc_path(rel), text) == 0):
-		fail(strjoin(c"could not write ", rel))
+	if (file_write_text(sc_path(rel), text) == 0): fail(strjoin(c"could not write ", rel))
 
 
 void sc_append(char* rel, char* text):
 	char* old = sc_read(rel)
-	if (old == 0):
-		fail(c"could not read a scratch file")
+	if (old == 0): fail(c"could not read a scratch file")
 	sc_write(rel, strjoin(old, text))
 	free(old)
 
@@ -118,8 +114,7 @@ void sc_append(char* rel, char* text):
 void sc_link(char* repo_rel, char* scratch_rel):
 	char* target = path_join(sc_root, repo_rel)
 	char* link = sc_path(scratch_rel)
-	if (symlink(target, link) < 0):
-		fail(c"could not create a scratch symlink")
+	if (symlink(target, link) < 0): fail(c"could not create a scratch symlink")
 	free(target)
 	free(link)
 
@@ -127,8 +122,7 @@ void sc_link(char* repo_rel, char* scratch_rel):
 # An argv tail for sc_exec.
 list[char*] av(char*... words):
 	list[char*] v = new list[char*]
-	for char* w in words:
-		v.push(w)
+	for char* w in words: v.push(w)
 	return v
 
 
@@ -149,8 +143,7 @@ process_result* sc_exec(char* prog, char* argv0, list[char*] args, char* stdin_t
 	free(opts)
 	free(cast(void*, argv))
 	list_free[char*](args)
-	if (r == 0):
-		fail(strjoin(c"could not spawn ", prog))
+	if (r == 0): fail(strjoin(c"could not spawn ", prog))
 	return r
 
 
@@ -180,8 +173,7 @@ char* wtest_capture(list[char*] args, char* stdin_text, int want_err):
 		sc_err(r.stderr_text)
 		fail(c"bin/wtest exited nonzero")
 	char* text = r.stdout_text
-	if (want_err):
-		text = r.stderr_text
+	if (want_err): text = r.stderr_text
 	text = strclone(text)
 	process_result_free(r)
 	return text
@@ -198,18 +190,15 @@ char* wtest_err(list[char*] args, char* stdin_text):
 # grep -q '^prefix': some line of text starts with prefix (0 for a
 # null text).
 int has_line_prefix(char* text, char* prefix):
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	for char* line in split(text, 10):
-		if (starts_with(line, prefix)):
-			return 1
+		if (starts_with(line, prefix)): return 1
 	return 0
 
 
 # One line of generated W source, indented by tabs.
 void sc_src(string_builder* sb, int tabs, char* line):
-	for i in range(tabs):
-		string_append(sb, c"\t")
+	for i in range(tabs): string_append(sb, c"\t")
 	string_append(sb, line)
 	string_append(sb, c"\n")
 
@@ -227,8 +216,7 @@ void sc_install_fake_wv2(char* source):
 	spawn_options* opts = spawn_options_new()
 	opts.cwd = sc_root
 	process_result* r = process_run(compiler, argv, opts, 0, 600000)
-	if (r == 0):
-		fail(c"could not spawn bin/wv2 for the fake compiler")
+	if (r == 0): fail(c"could not spawn bin/wv2 for the fake compiler")
 	if (r.status != 0):
 		sc_err(r.stderr_text)
 		fail(c"fake bin/wv2 did not compile")

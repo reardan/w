@@ -15,12 +15,9 @@ import lib.file
 
 
 int asm_hex_digit(int c):
-	if (c >= '0' && c <= '9'):
-		return c - '0'
-	if (c >= 'a' && c <= 'f'):
-		return c - 'a' + 10
-	if (c >= 'A' && c <= 'F'):
-		return c - 'A' + 10
+	if (c >= '0' && c <= '9'): return c - '0'
+	if (c >= 'a' && c <= 'f'): return c - 'a' + 10
+	if (c >= 'A' && c <= 'F'): return c - 'A' + 10
 	return -1
 
 
@@ -53,10 +50,8 @@ int asm_hex_decode(char* hex, char* out, int max):
 	while (asm_hex_digit(hex[i]) >= 0):
 		int hi = asm_hex_digit(hex[i])
 		int lo = asm_hex_digit(hex[i + 1])
-		if (lo < 0):
-			return -1
-		if (count >= max):
-			return -1
+		if (lo < 0): return -1
+		if (count >= max): return -1
 		out[count] = (hi << 4) | lo
 		count = count + 1
 		i = i + 2
@@ -83,14 +78,11 @@ void asm_assert_bytes_equal(char* context, char* want, int want_length, char* go
 	int i = 0
 	while (i < want_length && i < got_length):
 		if ((want[i] & 255) != (got[i] & 255)):
-			if (diff < 0):
-				diff = i
+			if (diff < 0): diff = i
 			equal = 0
 		i = i + 1
-	if (equal):
-		return
-	if (diff < 0):
-		diff = i
+	if (equal): return
+	if (diff < 0): diff = i
 	print2(c"byte mismatch: ")
 	println2(context)
 	print2(c"  want [")
@@ -127,25 +119,19 @@ list[asm_corpus_entry] asm_corpus_load(char* path):
 	while (index < lines.length):
 		char* line = lines[index]
 		index = index + 1
-		if (line[0] == 0):
-			continue
-		if (line[0] == '#'):
-			continue
+		if (line[0] == 0): continue
+		if (line[0] == '#'): continue
 		int bar = 0
-		while (line[bar] != 0 && line[bar] != '|'):
-			bar = bar + 1
+		while (line[bar] != 0 && line[bar] != '|'): bar = bar + 1
 		int ok = 1
-		if (line[bar] != '|'):
-			ok = 0
+		if (line[bar] != '|'): ok = 0
 		char* bytes = 0
 		int length = -1
 		if (ok):
 			bytes = malloc(bar / 2 + 1)
 			length = asm_hex_decode(line, bytes, bar / 2 + 1)
-			if (length <= 0):
-				ok = 0
-			if (length * 2 != bar):
-				ok = 0
+			if (length <= 0): ok = 0
+			if (length * 2 != bar): ok = 0
 		if (ok == 0):
 			print2(c"bad corpus line ")
 			print2(itoa(index))

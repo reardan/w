@@ -35,8 +35,7 @@ void test_long_form_minimal():
 	b[0] = 48
 	b[1] = 129    # 0x81
 	b[2] = 128    # length 128
-	for i in range(128):
-		b[3 + i] = 0
+	for i in range(128): b[3 + i] = 0
 	asn1 r
 	ta_init(&r, b, 131)
 	int tag = 0
@@ -55,8 +54,7 @@ void test_long_form_non_minimal_rejected():
 	b[0] = 48
 	b[1] = 129
 	b[2] = 127
-	for i in range(127):
-		b[3 + i] = 0
+	for i in range(127): b[3 + i] = 0
 	asn1 r
 	ta_init(&r, b, 130)
 	int tag = 0

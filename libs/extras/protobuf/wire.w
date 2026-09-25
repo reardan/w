@@ -30,8 +30,7 @@ int wire_tag_encode(int field_number, int wire_type, char* out):
 int wire_tag_decode(char* data, int length, int* field_number, int* wire_type):
 	int tag = 0
 	int n = varint_decode_u32(data, length, &tag)
-	if (n <= 0):
-		return 0
+	if (n <= 0): return 0
 	field_number[0] = shr(tag, 3)
 	wire_type[0] = tag & 7
 	return n
@@ -48,25 +47,19 @@ int wire_skip_field(char* data, int length, int wire_type):
 		int lo = 0
 		int hi = 0
 		int n = varint_decode_parts(data, length, &lo, &hi)
-		if (n <= 0):
-			return 0
+		if (n <= 0): return 0
 		return n
 	if (wire_type == PB_WIRE_FIXED64):
-		if (length < 8):
-			return 0
+		if (length < 8): return 0
 		return 8
 	if (wire_type == PB_WIRE_FIXED32):
-		if (length < 4):
-			return 0
+		if (length < 4): return 0
 		return 4
 	if (wire_type == PB_WIRE_LENGTH_DELIMITED):
 		int len = 0
 		int n = varint_decode_u32(data, length, &len)
-		if (n <= 0):
-			return 0
-		if (len < 0):
-			return 0
-		if ((length - n) < len):
-			return 0
+		if (n <= 0): return 0
+		if (len < 0): return 0
+		if ((length - n) < len): return 0
 		return n + len
 	return 0

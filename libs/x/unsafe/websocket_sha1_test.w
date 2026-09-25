@@ -74,16 +74,13 @@ ServerResponse* wsh_unused_handler(ServerRequest* req, void* context):
 # message, and ends when the client closes.
 void wsh_echo_route(RequestContext* rc, void* user_data):
 	char* proto = 0
-	if (ws_request_offers_protocol(rc.request, c"chat") != 0):
-		proto = c"chat"
+	if (ws_request_offers_protocol(rc.request, c"chat") != 0): proto = c"chat"
 	ws_conn* c = ws_accept(rc, proto)
 	if (ws_conn_error(c) == ws_error_none):
 		ws_message* m = ws_recv(c)
 		while (m != 0):
-			if (m.opcode == ws_op_text):
-				ws_send_text(c, m.data, m.len)
-			else:
-				ws_send_binary(c, m.data, m.len)
+			if (m.opcode == ws_op_text): ws_send_text(c, m.data, m.len)
+			else: ws_send_binary(c, m.data, m.len)
 			ws_message_free(m)
 			m = ws_recv(c)
 	ws_conn_free(c)
@@ -96,10 +93,8 @@ void wsh_deflate_route(RequestContext* rc, void* user_data):
 	if (ws_conn_error(c) == ws_error_none):
 		ws_message* m = ws_recv(c)
 		while (m != 0):
-			if (m.opcode == ws_op_text):
-				ws_send_text(c, m.data, m.len)
-			else:
-				ws_send_binary(c, m.data, m.len)
+			if (m.opcode == ws_op_text): ws_send_text(c, m.data, m.len)
+			else: ws_send_binary(c, m.data, m.len)
 			ws_message_free(m)
 			m = ws_recv(c)
 	ws_conn_free(c)
@@ -140,10 +135,8 @@ int wsh_start_server(int tls, int connections, int* out_pid):
 
 
 void wsh_expect_echo(ws_conn* c, int opcode, char* data, int len):
-	if (opcode == ws_op_text):
-		assert_equal(1, ws_send_text(c, data, len))
-	else:
-		assert_equal(1, ws_send_binary(c, data, len))
+	if (opcode == ws_op_text): assert_equal(1, ws_send_text(c, data, len))
+	else: assert_equal(1, ws_send_binary(c, data, len))
 	ws_message* m = ws_recv(c)
 	if (m == 0):
 		print_string(c"ws_recv failed: ", ws_error_string(ws_conn_error(c)))
@@ -151,8 +144,7 @@ void wsh_expect_echo(ws_conn* c, int opcode, char* data, int len):
 	assert_equal(opcode, m.opcode)
 	assert_equal(len, m.len)
 	for i in range(len):
-		if ((m.data[i] & 255) != (data[i] & 255)):
-			assert_equal(data[i] & 255, m.data[i] & 255)
+		if ((m.data[i] & 255) != (data[i] & 255)): assert_equal(data[i] & 255, m.data[i] & 255)
 	ws_message_free(m)
 
 
@@ -162,15 +154,13 @@ void test_ws_loopback_handshake_and_echo():
 	char* url = net_test_url(c"ws", port, c"/echo")
 
 	ws_conn* c = ws_connect(url)
-	if (ws_conn_error(c) != 0):
-		print_string(c"ws_connect: ", ws_error_string(ws_conn_error(c)))
+	if (ws_conn_error(c) != 0): print_string(c"ws_connect: ", ws_error_string(ws_conn_error(c)))
 	assert_equal(ws_error_none, ws_conn_error(c))
 	assert_equal(101, c.http_status)
 	asserts(c"no subprotocol unless offered", c.subprotocol == 0)
 	wsh_expect_echo(c, ws_op_text, c"hello over ws://", 16)
 	char* big = malloc(70000)
-	for i in range(70000):
-		big[i] = (i * 13) & 255
+	for i in range(70000): big[i] = (i * 13) & 255
 	wsh_expect_echo(c, ws_op_binary, big, 70000)
 	free(big)
 	assert_equal(1, ws_close(c, 1000, c"done"))
@@ -219,8 +209,7 @@ void test_wss_loopback_handshake_and_echo():
 	req.tls_handshake_timeout_ms = 60000
 	req.timeout_ms = 60000
 	ws_conn* c = ws_open(req)
-	if (ws_conn_error(c) != 0):
-		print_string(c"ws_open wss: ", ws_error_string(ws_conn_error(c)))
+	if (ws_conn_error(c) != 0): print_string(c"ws_open wss: ", ws_error_string(ws_conn_error(c)))
 	assert_equal(ws_error_none, ws_conn_error(c))
 	wsh_expect_echo(c, ws_op_text, c"hello over wss://", 17)
 	assert_equal(1, ws_close(c, 1000, 0))
@@ -237,21 +226,18 @@ char* wsh_read_key(int conn):
 	string_builder* head = string_new()
 	char* one = malloc(1)
 	while ((head.length < 4) || (strcmp(head.data + head.length - 4, c"\x0d\x0a\x0d\x0a") != 0)):
-		if (read(conn, one, 1) != 1):
-			return 0
+		if (read(conn, one, 1) != 1): return 0
 		string_append_char(head, one[0])
 	free(one)
 	char* needle = c"Sec-WebSocket-Key: "
 	int i = 0
 	while (head.data[i] != 0):
 		int j = 0
-		while ((needle[j] != 0) && (head.data[i + j] == needle[j])):
-			j = j + 1
+		while ((needle[j] != 0) && (head.data[i + j] == needle[j])): j = j + 1
 		if (needle[j] == 0):
 			int start = i + j
 			int end = start
-			while ((head.data[end] != 13) && (head.data[end] != 0)):
-				end = end + 1
+			while ((head.data[end] != 13) && (head.data[end] != 0)): end = end + 1
 			char* key = substring(head.data, start, end)
 			string_free(head)
 			return key
@@ -282,28 +268,20 @@ void wsh_raw_server(int listener):
 	int scenario = 0
 	while (scenario < wsh_scenarios):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		char* key = wsh_read_key(conn)
-		if (key == 0):
-			exit(2)
+		if (key == 0): exit(2)
 		char* accept = ws_accept_key(key)
 		string_builder* out = string_new()
-		if (scenario == wsh_status_200):
-			string_append(out, c"HTTP/1.1 200 OK\x0d\x0a")
-		else:
-			string_append(out, c"HTTP/1.1 101 Switching Protocols\x0d\x0a")
-		if (scenario != wsh_no_upgrade):
-			string_append(out, c"Upgrade: WebSocket\x0d\x0a")
+		if (scenario == wsh_status_200): string_append(out, c"HTTP/1.1 200 OK\x0d\x0a")
+		else: string_append(out, c"HTTP/1.1 101 Switching Protocols\x0d\x0a")
+		if (scenario != wsh_no_upgrade): string_append(out, c"Upgrade: WebSocket\x0d\x0a")
 		if (scenario == wsh_connection_no_upgrade):
 			string_append(out, c"Connection: keep-alive\x0d\x0a")
-		else:
-			string_append(out, c"Connection: Upgrade\x0d\x0a")
+		else: string_append(out, c"Connection: Upgrade\x0d\x0a")
 		string_append(out, c"Sec-WebSocket-Accept: ")
-		if (scenario == wsh_wrong_accept):
-			string_append(out, c"s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
-		else:
-			string_append(out, accept)
+		if (scenario == wsh_wrong_accept): string_append(out, c"s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
+		else: string_append(out, accept)
 		string_append(out, c"\x0d\x0a")
 		if (scenario == wsh_unrequested_protocol):
 			string_append(out, c"Sec-WebSocket-Protocol: chat\x0d\x0a")
@@ -353,8 +331,7 @@ void test_ws_client_validates_handshake_response():
 	int port = net_htons(bound.port)
 	int pid = fork()
 	asserts(c"fork", pid >= 0)
-	if (pid == 0):
-		wsh_raw_server(listener)
+	if (pid == 0): wsh_raw_server(listener)
 	char* url = net_test_url(c"ws", port, c"/")
 
 	ws_conn* c = ws_connect(url)
@@ -415,11 +392,9 @@ void wsh_deflate_session(int port, char* path, ws_deflate_config* cfg, int expec
 		print_string(c"ws_open_deflate: ", ws_error_string(ws_conn_error(c)))
 	assert_equal(ws_error_none, ws_conn_error(c))
 	assert_equal(expect_active, ws_compression_active(c))
-	for k in range(3):
-		wsh_expect_echo(c, ws_op_text, c"compress me, compress me, compress me", 37)
+	for k in range(3): wsh_expect_echo(c, ws_op_text, c"compress me, compress me, compress me", 37)
 	char* big = malloc(70000)
-	for i in range(70000):
-		big[i] = ((i / 5) * 13 + (i >> 11)) & 255
+	for i in range(70000): big[i] = ((i / 5) * 13 + (i >> 11)) & 255
 	wsh_expect_echo(c, ws_op_binary, big, 70000)
 	wsh_expect_echo(c, ws_op_binary, big, 70000)
 	free(big)

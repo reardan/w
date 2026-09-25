@@ -21,8 +21,7 @@ import graphics.ui.testing
 # One scripted frame around a single button; feeds an optional event
 # before the frame like ui_begin_window would. Returns the click.
 int frame_with_button(ui_context* ctx, gfx_event* e):
-	if (e != 0):
-		ui_feed_event(ctx, e)
+	if (e != 0): ui_feed_event(ctx, e)
 	ui_begin(ctx, 320, 240)
 	int clicked = ui_button(ctx, c"Click")
 	ui_end(ctx)
@@ -167,8 +166,7 @@ void test_textbox_state_editing():
 	assert_equal(1, st.caret)
 
 	# The buffer caps at capacity; inserts past it are dropped.
-	for i in range(200):
-		ui_textbox_insert(&st, 'z')
+	for i in range(200): ui_textbox_insert(&st, 'z')
 	assert_equal(ui_textbox_capacity, st.length)
 
 

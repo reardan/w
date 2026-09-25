@@ -107,8 +107,7 @@ void test_identical_seeds_replay_identically():
 		int oka = sim_send(a, step % 3, (step + 1) % 3, pl)
 		int okb = sim_send(b, step % 3, (step + 1) % 3, pl)
 		assert_equal(oka, okb)
-		if (oka == 0):
-			free(pl)
+		if (oka == 0): free(pl)
 		sim_advance(a, 2)
 		sim_advance(b, 2)
 		int draining = 1
@@ -117,8 +116,7 @@ void test_identical_seeds_replay_identically():
 			pb = sim_take_due(b, &fb, &tb)
 			# same packet in both (same payload pointer), or both done
 			assert1(pa == pb)
-			if (pa == 0):
-				draining = 0
+			if (pa == 0): draining = 0
 			else:
 				assert_equal(fa, fb)
 				assert_equal(ta, tb)
@@ -131,8 +129,7 @@ void test_identical_seeds_replay_identically():
 		pa = sim_take_due(a, &fa, &ta)
 		pb = sim_take_due(b, &fb, &tb)
 		assert1(pa == pb)
-		if (pa == 0):
-			tail = 0
+		if (pa == 0): tail = 0
 		else:
 			assert_equal(fa, fb)
 			assert_equal(ta, tb)
@@ -147,8 +144,7 @@ void test_drop_rate_deterministic():
 	sim_net* s = sim_new(42, 0, 0, 500)
 	int accepted = 0
 	for i in range(1000):
-		if (sim_send(s, 1, 2, c"d") == 1):
-			accepted = accepted + 1
+		if (sim_send(s, 1, 2, c"d") == 1): accepted = accepted + 1
 	# exact count for seed 42 at 500 per mille (observed once, frozen)
 	assert_equal(518, accepted)
 	assert1(accepted >= 400)

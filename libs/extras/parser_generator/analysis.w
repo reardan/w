@@ -71,22 +71,19 @@ pg_rule_facts* pg_analysis_find(pg_analysis* analysis, char* name):
 
 char* pg_kind_set_new(pg_analysis* analysis):
 	char* kinds = malloc(analysis.kind_count)
-	for i in range(analysis.kind_count):
-		kinds[i] = 0
+	for i in range(analysis.kind_count): kinds[i] = 0
 	return kinds
 
 
 int pg_kind_set_empty(pg_analysis* analysis, char* kinds):
 	for i in range(analysis.kind_count):
-		if (kinds[i] != 0):
-			return 0
+		if (kinds[i] != 0): return 0
 	return 1
 
 
 int pg_kind_set_intersects(pg_analysis* analysis, char* a, char* b):
 	for i in range(analysis.kind_count):
-		if ((a[i] != 0) && (b[i] != 0)):
-			return 1
+		if ((a[i] != 0) && (b[i] != 0)): return 1
 	return 0
 
 
@@ -104,23 +101,18 @@ int pg_analysis_term_nullable(pg_analysis* analysis, pg_term* term):
 	# Actions and predicates (issue #329 milestone 4) consume no tokens and
 	# have no effect on whether the surrounding sequence can match empty --
 	# they are transparent to every sweep below, exactly like an epsilon.
-	if (term.kind != pg_term_kind_normal()):
-		return 1
-	if ((term.modifier == '?') || (term.modifier == '*')):
-		return 1
-	if (pg_grammar_is_token_term(analysis.grammar, term.name)):
-		return 0
+	if (term.kind != pg_term_kind_normal()): return 1
+	if ((term.modifier == '?') || (term.modifier == '*')): return 1
+	if (pg_grammar_is_token_term(analysis.grammar, term.name)): return 0
 	pg_rule_facts* facts = pg_analysis_find(analysis, term.name)
-	if (facts == 0):
-		return 0
+	if (facts == 0): return 0
 	return facts.nullable
 
 
 # Union the term's first set into out. Returns 1 if out gained a kind.
 int pg_analysis_term_first(pg_analysis* analysis, pg_term* term, char* out):
 	int changed = 0
-	if (term.kind != pg_term_kind_normal()):
-		return 0
+	if (term.kind != pg_term_kind_normal()): return 0
 	if (pg_grammar_is_token_term(analysis.grammar, term.name)):
 		int kind = pg_grammar_token_kind(analysis.grammar, term.name)
 		if ((kind >= 0) && (kind < analysis.kind_count)):
@@ -129,8 +121,7 @@ int pg_analysis_term_first(pg_analysis* analysis, pg_term* term, char* out):
 				changed = 1
 		return changed
 	pg_rule_facts* facts = pg_analysis_find(analysis, term.name)
-	if (facts == 0):
-		return 0
+	if (facts == 0): return 0
 	for i in range(analysis.kind_count):
 		if ((facts.first[i] != 0) && (out[i] == 0)):
 			out[i] = 1
@@ -141,8 +132,7 @@ int pg_analysis_term_first(pg_analysis* analysis, pg_term* term, char* out):
 int pg_analysis_alternative_nullable(pg_analysis* analysis, pg_alternative* alternative, int offset):
 	int i = offset
 	while (i < alternative.terms.length):
-		if (pg_analysis_term_nullable(analysis, alternative.terms[i]) == 0):
-			return 0
+		if (pg_analysis_term_nullable(analysis, alternative.terms[i]) == 0): return 0
 		i = i + 1
 	return 1
 
@@ -202,16 +192,12 @@ int pg_analysis_prefix_pure(pg_analysis* analysis, pg_alternative* alternative, 
 			# past it exactly as if it were not there.
 			i = i + 1
 			continue
-		if (pg_analysis_term_recovers(analysis.grammar, term)):
-			return 0
+		if (pg_analysis_term_recovers(analysis.grammar, term)): return 0
 		if (pg_grammar_is_token_term(analysis.grammar, term.name) == 0):
 			pg_rule_facts* facts = pg_analysis_find(analysis, term.name)
-			if (facts == 0):
-				return 0
-			if (facts.pure == 0):
-				return 0
-		if (pg_analysis_term_nullable(analysis, term) == 0):
-			return 1
+			if (facts == 0): return 0
+			if (facts.pure == 0): return 0
+		if (pg_analysis_term_nullable(analysis, term) == 0): return 1
 		i = i + 1
 	return 1
 
@@ -275,20 +261,15 @@ pg_analysis* pg_analyze_grammar(pg_grammar* grammar):
 		facts.recovery_free = 1
 		facts.first = pg_kind_set_new(analysis)
 		analysis.rules.push(facts)
-	while (pg_analysis_nullable_sweep(analysis)):
-		pass
-	while (pg_analysis_first_sweep(analysis)):
-		pass
-	while (pg_analysis_pure_sweep(analysis)):
-		pass
-	while (pg_analysis_recovery_free_sweep(analysis)):
-		pass
+	while (pg_analysis_nullable_sweep(analysis)): pass
+	while (pg_analysis_first_sweep(analysis)): pass
+	while (pg_analysis_pure_sweep(analysis)): pass
+	while (pg_analysis_recovery_free_sweep(analysis)): pass
 	return analysis
 
 
 void pg_analysis_free(pg_analysis* analysis):
-	if (analysis == 0):
-		return
+	if (analysis == 0): return
 	for i in range(analysis.rules.length):
 		pg_rule_facts* facts = analysis.rules[i]
 		free(facts.first)
@@ -302,12 +283,9 @@ void pg_analysis_free(pg_analysis* analysis):
 # cannot match empty, and its first set is non-empty. The returned guard
 # only ever skips attempts that would fail without consuming input.
 int pg_analysis_terms_guardable(pg_analysis* analysis, pg_alternative* alternative, int offset):
-	if (offset >= alternative.terms.length):
-		return 0
-	if (pg_analysis_alternative_nullable(analysis, alternative, offset)):
-		return 0
-	if (pg_analysis_prefix_pure(analysis, alternative, offset) == 0):
-		return 0
+	if (offset >= alternative.terms.length): return 0
+	if (pg_analysis_alternative_nullable(analysis, alternative, offset)): return 0
+	if (pg_analysis_prefix_pure(analysis, alternative, offset) == 0): return 0
 	char* kinds = pg_kind_set_new(analysis)
 	pg_analysis_terms_first(analysis, alternative, offset, kinds)
 	int empty = pg_kind_set_empty(analysis, kinds)
@@ -322,15 +300,11 @@ int pg_analysis_terms_guardable(pg_analysis* analysis, pg_alternative* alternati
 # non-empty first set. Recover-marked repetitions must keep the trial
 # parse: their failure path is the recovery behavior itself.
 int pg_analysis_term_enter_guardable(pg_analysis* analysis, pg_term* term):
-	if (pg_analysis_term_recovers(analysis.grammar, term)):
-		return 0
-	if (pg_grammar_is_token_term(analysis.grammar, term.name)):
-		return 1
+	if (pg_analysis_term_recovers(analysis.grammar, term)): return 0
+	if (pg_grammar_is_token_term(analysis.grammar, term.name)): return 1
 	pg_rule_facts* facts = pg_analysis_find(analysis, term.name)
-	if (facts == 0):
-		return 0
-	if ((facts.pure == 0) | facts.nullable):
-		return 0
+	if (facts == 0): return 0
+	if ((facts.pure == 0) | facts.nullable): return 0
 	return pg_kind_set_empty(analysis, facts.first) == 0
 
 
@@ -349,21 +323,16 @@ int pg_plan_term_factorable(pg_analysis* analysis, pg_term* term):
 	# predicates, at their alternative's true offset 0) is what makes the
 	# $n/text(n) binding surface and the predicate-guarded dispatch below
 	# sound without a separate cross-alternative variable-naming scheme.
-	if (term.kind != pg_term_kind_normal()):
-		return 0
-	if (term.modifier != 0):
-		return 0
-	if (pg_grammar_is_token_term(analysis.grammar, term.name)):
-		return 1
+	if (term.kind != pg_term_kind_normal()): return 0
+	if (term.modifier != 0): return 0
+	if (pg_grammar_is_token_term(analysis.grammar, term.name)): return 1
 	pg_rule_facts* facts = pg_analysis_find(analysis, term.name)
-	if (facts == 0):
-		return 0
+	if (facts == 0): return 0
 	return facts.recovery_free
 
 
 int pg_plan_terms_equal(pg_term* a, pg_term* b):
-	if (a.modifier != b.modifier):
-		return 0
+	if (a.modifier != b.modifier): return 0
 	return strcmp(a.name, b.name) == 0
 
 
@@ -441,16 +410,12 @@ list[pg_choice_unit*] pg_plan_choice(pg_analysis* analysis, pg_rule* rule, int a
 				if (pg_plan_term_factorable(analysis, head.terms[offset])):
 					while (a + run < alt_start + alt_count):
 						pg_alternative* next = rule.alternatives[a + run]
-						if (offset >= next.terms.length):
-							break
-						if (pg_plan_terms_equal(head.terms[offset], next.terms[offset]) == 0):
-							break
+						if (offset >= next.terms.length): break
+						if (pg_plan_terms_equal(head.terms[offset], next.terms[offset]) == 0): break
 						run = run + 1
 			int prefix_length = 0
-			if (run > 1):
-				prefix_length = pg_plan_prefix_length(analysis, rule, a, run, offset)
-			if (prefix_length == 0):
-				run = 1
+			if (run > 1): prefix_length = pg_plan_prefix_length(analysis, rule, a, run, offset)
+			if (prefix_length == 0): run = 1
 			pg_choice_unit* unit = pg_choice_unit_new(a, run, prefix_length)
 			pg_plan_unit_guard(analysis, rule, unit, offset)
 			units.push(unit)
@@ -461,8 +426,7 @@ list[pg_choice_unit*] pg_plan_choice(pg_analysis* analysis, pg_rule* rule, int a
 void pg_choice_units_free(list[pg_choice_unit*] units):
 	for i in range(units.length):
 		pg_choice_unit* unit = units[i]
-		if (unit.guard_set != 0):
-			free(unit.guard_set)
+		if (unit.guard_set != 0): free(unit.guard_set)
 		free(unit)
 	list_free[pg_choice_unit*](units)
 
@@ -475,19 +439,16 @@ void pg_choice_units_free(list[pg_choice_unit*] units):
 
 
 char* pg_report_kind_name(pg_grammar* grammar, int kind):
-	if (kind == 0):
-		return c"EOF"
+	if (kind == 0): return c"EOF"
 	int i = 0
 	while (i < grammar.tokens.length):
 		pg_token_def* token = grammar.tokens[i]
-		if (token.kind == kind):
-			return token.name
+		if (token.kind == kind): return token.name
 		i = i + 1
 	i = 0
 	while (i < grammar.literals.length):
 		pg_literal_def* literal = grammar.literals[i]
-		if (literal.kind == kind):
-			return literal.name
+		if (literal.kind == kind): return literal.name
 		i = i + 1
 	return c"<unknown>"
 
@@ -509,11 +470,9 @@ void pg_report_overlap_kinds(pg_analysis* analysis, char* a, char* b):
 # An unguarded unit attempts on every token; model it as the full kind
 # set so overlap reporting stays truthful about what actually runs.
 char* pg_report_unit_set(pg_analysis* analysis, pg_choice_unit* unit):
-	if (unit.guarded):
-		return unit.guard_set
+	if (unit.guarded): return unit.guard_set
 	char* kinds = pg_kind_set_new(analysis)
-	for i in range(analysis.kind_count):
-		kinds[i] = 1
+	for i in range(analysis.kind_count): kinds[i] = 1
 	return kinds
 
 
@@ -524,13 +483,11 @@ char* pg_report_unit_set(pg_analysis* analysis, pg_choice_unit* unit):
 # a side effect at commit time, not an overlap. Counting raw terms.length
 # here predated transparent terms and spuriously rejected that shape.
 int pg_report_unit_is_empty_suffix(pg_rule* rule, pg_choice_unit* unit, int offset):
-	if (unit.member_count != 1):
-		return 0
+	if (unit.member_count != 1): return 0
 	pg_alternative* alternative = rule.alternatives[unit.alt_start]
 	int i = offset
 	while (i < alternative.terms.length):
-		if (alternative.terms[i].kind == pg_term_kind_normal()):
-			return 0
+		if (alternative.terms[i].kind == pg_term_kind_normal()): return 0
 		i = i + 1
 	return 1
 
@@ -550,24 +507,19 @@ int pg_report_unit_is_empty_suffix(pg_rule* rule, pg_choice_unit* unit, int offs
 # and the emitter's live-unit trim always name the same unit.
 int pg_choice_unit_is_nullable_fallback(pg_analysis* analysis, pg_rule* rule, list[pg_choice_unit*] units, int index, int offset):
 	pg_choice_unit* unit = units[index]
-	if ((unit.predicate_code != 0) || unit.guarded):
-		return 0
-	if (unit.member_count != 1):
-		return 0
+	if ((unit.predicate_code != 0) || unit.guarded): return 0
+	if (unit.member_count != 1): return 0
 	pg_alternative* alternative = rule.alternatives[unit.alt_start]
 	if (offset >= alternative.terms.length):
 		# The empty suffix is the existing trailing-epsilon fallback, not
 		# this exemption -- anywhere but last it stays flagged (a
 		# duplicate epsilon alternative is a grammar bug, not a fallback).
 		return 0
-	if (pg_analysis_alternative_nullable(analysis, alternative, offset) == 0):
-		return 0
+	if (pg_analysis_alternative_nullable(analysis, alternative, offset) == 0): return 0
 	for j in range(index + 1, units.length):
 		pg_choice_unit* later = units[j]
-		if ((later.predicate_code != 0) || (later.member_count != 1)):
-			return 0
-		if (offset < rule.alternatives[later.alt_start].terms.length):
-			return 0
+		if ((later.predicate_code != 0) || (later.member_count != 1)): return 0
+		if (offset < rule.alternatives[later.alt_start].terms.length): return 0
 	return 1
 
 
@@ -638,11 +590,9 @@ int pg_report_choice(pg_analysis* analysis, pg_rule* rule, list[pg_choice_unit*]
 						print2(c" overlap on")
 						pg_report_overlap_kinds(analysis, left_set, right_set)
 						println2(c"")
-					if (right.guarded == 0):
-						free(right_set)
+					if (right.guarded == 0): free(right_set)
 				j = j + 1
-			if (left.guarded == 0):
-				free(left_set)
+			if (left.guarded == 0): free(left_set)
 		i = i + 1
 	# Recurse into factored suffix choices.
 	i = 0
@@ -666,13 +616,10 @@ void pg_report_dispatch(pg_grammar* grammar):
 		list[pg_choice_unit*] units = pg_plan_choice(analysis, rule, 0, rule.alternatives.length, 0)
 		int i = 0
 		while (i < units.length):
-			if (units[i].member_count > 1):
-				factored = factored + 1
+			if (units[i].member_count > 1): factored = factored + 1
 			i = i + 1
-		if (pg_report_choice(analysis, rule, units, 0) == 0):
-			committed = committed + 1
-		else:
-			backtracking = backtracking + 1
+		if (pg_report_choice(analysis, rule, units, 0) == 0): committed = committed + 1
+		else: backtracking = backtracking + 1
 		pg_choice_units_free(units)
 	print2(c"parser_generator: ")
 	print2(grammar.name)
@@ -786,8 +733,7 @@ int pg_rule_has_actions_or_predicates(pg_rule* rule):
 		pg_alternative* alternative = rule.alternatives[a]
 		int t = 0
 		while (t < alternative.terms.length):
-			if (alternative.terms[t].kind != pg_term_kind_normal()):
-				return 1
+			if (alternative.terms[t].kind != pg_term_kind_normal()): return 1
 			t = t + 1
 	return 0
 
@@ -795,8 +741,7 @@ int pg_rule_has_actions_or_predicates(pg_rule* rule):
 int pg_grammar_has_actions_or_predicates(pg_grammar* grammar):
 	int r = 0
 	while (r < grammar.rules.length):
-		if (pg_rule_has_actions_or_predicates(grammar.rules[r])):
-			return 1
+		if (pg_rule_has_actions_or_predicates(grammar.rules[r])): return 1
 		r = r + 1
 	return 0
 
@@ -805,10 +750,8 @@ int pg_grammar_has_actions_or_predicates(pg_grammar* grammar):
 # present are safe to generate (or there are none at all, the case for
 # every grammar written before milestone 4).
 int pg_action_safety_check(pg_grammar* grammar):
-	if (pg_grammar_has_actions_or_predicates(grammar) == 0):
-		return 0
-	if (grammar.mode == pg_grammar_mode_streaming()):
-		return 0
+	if (pg_grammar_has_actions_or_predicates(grammar) == 0): return 0
+	if (grammar.mode == pg_grammar_mode_streaming()): return 0
 	int violations = 0
 	for r in range(grammar.rules.length):
 		pg_rule* rule = grammar.rules[r]

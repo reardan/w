@@ -57,29 +57,25 @@ int asm_x86_reg_field(asm_x86_dec* d, int modrm):
 # push/pop/near-call/near-jmp default to 64-bit operand size in x64
 # regardless of REX.W (only a 0x66 prefix shrinks them to 16-bit).
 int asm_x86_stack_opsize(asm_x86_dec* d):
-	if (d.mode == 8 && d.pfx66 == 0):
-		return 8
+	if (d.mode == 8 && d.pfx66 == 0): return 8
 	return d.opsize
 
 
 int asm_x86_u8(asm_x86_dec* d):
-	if (d.pos >= d.length):
-		return 0
+	if (d.pos >= d.length): return 0
 	int v = d.bytes[d.pos] & 255
 	d.pos = d.pos + 1
 	return v
 
 
 int asm_x86_peek(asm_x86_dec* d):
-	if (d.pos >= d.length):
-		return -1
+	if (d.pos >= d.length): return -1
 	return d.bytes[d.pos] & 255
 
 
 int asm_x86_s8(asm_x86_dec* d):
 	int v = asm_x86_u8(d)
-	if (v >= 128):
-		return v - 256
+	if (v >= 128): return v - 256
 	return v
 
 
@@ -91,8 +87,7 @@ int asm_x86_u16(asm_x86_dec* d):
 
 int asm_x86_s16(asm_x86_dec* d):
 	int v = asm_x86_u16(d)
-	if (v >= 32768):
-		return v - 65536
+	if (v >= 32768): return v - 65536
 	return v
 
 
@@ -152,16 +147,13 @@ void asm_x86_decode_rm(asm_x86_dec* d, int modrm, asm_operand* rm, int rm_class,
 			# no base: absolute disp32 (SIB form) — same on x86 and x64.
 			rm.disp = asm_x86_u32(d)
 			rm.disp_size = 4
-		else:
-			rm.base = base_lo | (rex_b << 3)
+		else: rm.base = base_lo | (rex_b << 3)
 	else if (rm_field == 5 && mod == 0):
 		# mod=0 rm=5: [rip+disp32] on x64, absolute [disp32] on x86.
-		if (d.mode == 8):
-			rm.base = ASM_BASE_RIP
+		if (d.mode == 8): rm.base = ASM_BASE_RIP
 		rm.disp = asm_x86_u32(d)
 		rm.disp_size = 4
-	else:
-		rm.base = rm_field | (rex_b << 3)
+	else: rm.base = rm_field | (rex_b << 3)
 	if (mod == 1):
 		rm.disp = asm_x86_s8(d)
 		rm.disp_size = 1
@@ -189,10 +181,8 @@ char* asm_x86_concat(char* a, char* b):
 	int la = strlen(a)
 	int lb = strlen(b)
 	char* out = malloc(la + lb + 1)
-	for i in range(la):
-		out[i] = a[i]
-	for j in range(lb):
-		out[la + j] = b[j]
+	for i in range(la): out[i] = a[i]
+	for j in range(lb): out[la + j] = b[j]
 	out[la + lb] = 0
 	return out
 
@@ -208,10 +198,8 @@ void asm_x86_rel_target(asm_insn* insn, asm_x86_dec* d, int rel):
 		sign = c".-"
 		magnitude = 0 - target
 	char* text = 0
-	if (magnitude < 10):
-		text = asm_x86_concat(sign, itoa(magnitude))
-	else:
-		text = asm_x86_concat(sign, asm_hex_min(magnitude))
+	if (magnitude < 10): text = asm_x86_concat(sign, itoa(magnitude))
+	else: text = asm_x86_concat(sign, asm_hex_min(magnitude))
 	insn.op1.kind = ASM_OP_LABEL
 	insn.op1.label = text
 	insn.branch_target = insn.address + target
@@ -232,8 +220,7 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 		int modrm = asm_x86_u8(d)
 		int ext = (modrm >> 3) & 7
 		char* g8 = asm_x86_group_name(8, ext)
-		if (cast(int, g8) == 0):
-			return 0
+		if (cast(int, g8) == 0): return 0
 		insn.mnemonic = g8
 		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, d.opsize)
 		asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
@@ -261,12 +248,9 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 	# movzx / movsx r32, r/m8|r/m16
 	if (op == 0xb6 || op == 0xb7 || op == 0xbe || op == 0xbf):
 		int src_size = 1
-		if (op == 0xb7 || op == 0xbf):
-			src_size = 2
-		if (op == 0xb6 || op == 0xb7):
-			insn.mnemonic = c"movzx"
-		else:
-			insn.mnemonic = c"movsx"
+		if (op == 0xb7 || op == 0xbf): src_size = 2
+		if (op == 0xb6 || op == 0xb7): insn.mnemonic = c"movzx"
+		else: insn.mnemonic = c"movsx"
 		int modrm = asm_x86_u8(d)
 		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), d.opsize)
 		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_GP, src_size)
@@ -280,10 +264,8 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 
 	# ucomiss / ucomisd  (0f 2e, 66 0f 2e)
 	if (op == 0x2e):
-		if (d.opsize == 2):
-			insn.mnemonic = c"ucomisd"
-		else:
-			insn.mnemonic = c"ucomiss"
+		if (d.opsize == 2): insn.mnemonic = c"ucomisd"
+		else: insn.mnemonic = c"ucomiss"
 		int modrm = asm_x86_u8(d)
 		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM, asm_x86_reg_field(d, modrm), 16)
 		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM, 16)
@@ -314,10 +296,8 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 
 	# movss/movsd load: f3/f2 0f 10  r/m -> xmm
 	if (op == 0x10 && (d.rep == 0xf2 || d.rep == 0xf3)):
-		if (d.rep == 0xf2):
-			insn.mnemonic = c"movsd"
-		else:
-			insn.mnemonic = c"movss"
+		if (d.rep == 0xf2): insn.mnemonic = c"movsd"
+		else: insn.mnemonic = c"movss"
 		int modrm = asm_x86_u8(d)
 		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM, asm_x86_reg_field(d, modrm), 16)
 		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM, 16)
@@ -325,10 +305,8 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 
 	# movss/movsd store: f3/f2 0f 11  xmm -> r/m
 	if (op == 0x11 && (d.rep == 0xf2 || d.rep == 0xf3)):
-		if (d.rep == 0xf2):
-			insn.mnemonic = c"movsd"
-		else:
-			insn.mnemonic = c"movss"
+		if (d.rep == 0xf2): insn.mnemonic = c"movsd"
+		else: insn.mnemonic = c"movss"
 		int modrm = asm_x86_u8(d)
 		asm_operand xmm
 		asm_operand_clear(&xmm)
@@ -339,10 +317,8 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 
 	# cvtsi2ss/cvtsi2sd xmm, r/m (f3/f2 0f 2a). REX.W widens the GP source.
 	if (op == 0x2a && (d.rep == 0xf3 || d.rep == 0xf2)):
-		if (d.rep == 0xf2):
-			insn.mnemonic = c"cvtsi2sd"
-		else:
-			insn.mnemonic = c"cvtsi2ss"
+		if (d.rep == 0xf2): insn.mnemonic = c"cvtsi2sd"
+		else: insn.mnemonic = c"cvtsi2ss"
 		int modrm = asm_x86_u8(d)
 		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM, asm_x86_reg_field(d, modrm), 16)
 		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_GP, d.opsize)
@@ -350,10 +326,8 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 
 	# cvttss2si/cvttsd2si r32, xmm (f3/f2 0f 2c). REX.W widens the GP dest.
 	if (op == 0x2c && (d.rep == 0xf3 || d.rep == 0xf2)):
-		if (d.rep == 0xf2):
-			insn.mnemonic = c"cvttsd2si"
-		else:
-			insn.mnemonic = c"cvttss2si"
+		if (d.rep == 0xf2): insn.mnemonic = c"cvttsd2si"
+		else: insn.mnemonic = c"cvttss2si"
 		int modrm = asm_x86_u8(d)
 		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), d.opsize)
 		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM, 16)
@@ -382,8 +356,7 @@ int asm_x86_decode_vex(asm_x86_dec* d, asm_insn* insn, char* bytes, int length, 
 int asm_x86_alu_base(int op):
 	if (op < 0x40):
 		int col = op & 7
-		if (col <= 5):
-			return op - col
+		if (col <= 5): return op - col
 	return -1
 
 
@@ -393,10 +366,8 @@ int asm_x86_alu_base(int op):
 int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* insn):
 	asm_insn_clear(insn)
 	insn.address = address
-	if (mode == 8):
-		insn.arch = ASM_ARCH_X64
-	else:
-		insn.arch = ASM_ARCH_X86
+	if (mode == 8): insn.arch = ASM_ARCH_X64
+	else: insn.arch = ASM_ARCH_X86
 
 	asm_x86_dec dec
 	dec.bytes = bytes
@@ -405,10 +376,8 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	dec.mode = mode
 	# x64's default operand size is 32-bit (REX.W promotes it to 64); x86's
 	# is its word size. 0x66 makes it 16-bit either way.
-	if (mode == 8):
-		dec.opsize = 4
-	else:
-		dec.opsize = mode
+	if (mode == 8): dec.opsize = 4
+	else: dec.opsize = mode
 	dec.rep = 0
 	dec.seg = 0
 	dec.pfx66 = 0
@@ -425,8 +394,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 			dec.opsize = 2
 			dec.pfx66 = 1
 			dec.pos = dec.pos + 1
-		else if (p == 0x67):
-			dec.pos = dec.pos + 1
+		else if (p == 0x67): dec.pos = dec.pos + 1
 		else if (p == 0xf2 || p == 0xf3):
 			dec.rep = p
 			dec.pos = dec.pos + 1
@@ -436,11 +404,9 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		else if (mode == 8 && p >= 0x40 && p <= 0x4f):
 			dec.rex = p
 			dec.pos = dec.pos + 1
-			if ((p >> 3) & 1):
-				dec.opsize = 8
+			if ((p >> 3) & 1): dec.opsize = 8
 			scanning = 0
-		else:
-			scanning = 0
+		else: scanning = 0
 
 	int start = 0
 	int op = asm_x86_u8(d)
@@ -494,10 +460,8 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 			# eax, imm(16/32)
 			insn.mnemonic = mnemonic
 			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, 0, d.opsize)
-			if (d.opsize == 2):
-				asm_x86_set_imm(&insn.op2, asm_x86_u16(d), 2)
-			else:
-				asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 4)
+			if (d.opsize == 2): asm_x86_set_imm(&insn.op2, asm_x86_u16(d), 2)
+			else: asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 4)
 			insn.length = d.pos - start
 			return insn.length
 
@@ -580,12 +544,9 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		insn.mnemonic = asm_x86_group_name(1, (modrm >> 3) & 7)
 		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, d.opsize)
 		if (op == 0x81):
-			if (d.opsize == 2):
-				asm_x86_set_imm(&insn.op2, asm_x86_s16(d), 2)
-			else:
-				asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 4)
-		else:
-			asm_x86_set_imm(&insn.op2, asm_x86_s8(d), 1)
+			if (d.opsize == 2): asm_x86_set_imm(&insn.op2, asm_x86_s16(d), 2)
+			else: asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 4)
+		else: asm_x86_set_imm(&insn.op2, asm_x86_s8(d), 1)
 		insn.length = d.pos - start
 		return insn.length
 
@@ -593,8 +554,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	if (op == 0x84 || op == 0x85):
 		insn.mnemonic = c"test"
 		int size = d.opsize
-		if (op == 0x84):
-			size = 1
+		if (op == 0x84): size = 1
 		int modrm = asm_x86_u8(d)
 		asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), size)
 		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, size)
@@ -605,8 +565,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	if (op == 0x88 || op == 0x89 || op == 0x8a || op == 0x8b):
 		insn.mnemonic = c"mov"
 		int size = d.opsize
-		if (op == 0x88 || op == 0x8a):
-			size = 1
+		if (op == 0x88 || op == 0x8a): size = 1
 		int modrm = asm_x86_u8(d)
 		asm_operand reg
 		asm_operand_clear(&reg)
@@ -633,8 +592,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 
 	# nop / xchg eax,r32 (0x90-0x97)
 	if (op >= 0x90 && op <= 0x97):
-		if (op == 0x90):
-			insn.mnemonic = c"nop"
+		if (op == 0x90): insn.mnemonic = c"nop"
 		else:
 			insn.mnemonic = c"xchg"
 			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, (op - 0x90) | (asm_x86_rex_b(d) << 3), d.opsize)
@@ -644,19 +602,15 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 
 	# cdq (0x99) / cqo (0x99 with REX.W)
 	if (op == 0x99):
-		if (asm_x86_rex_w(d)):
-			insn.mnemonic = c"cqo"
-		else:
-			insn.mnemonic = c"cdq"
+		if (asm_x86_rex_w(d)): insn.mnemonic = c"cqo"
+		else: insn.mnemonic = c"cdq"
 		insn.length = d.pos - start
 		return insn.length
 
 	# cwde (0x98) / cdqe (0x98 with REX.W)
 	if (op == 0x98):
-		if (asm_x86_rex_w(d)):
-			insn.mnemonic = c"cdqe"
-		else:
-			insn.mnemonic = c"cwde"
+		if (asm_x86_rex_w(d)): insn.mnemonic = c"cdqe"
+		else: insn.mnemonic = c"cwde"
 		insn.length = d.pos - start
 		return insn.length
 
@@ -676,10 +630,8 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 			# movabs r64, imm64: low then high 32-bit halves.
 			asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 8)
 			insn.op2.imm_hi = asm_x86_u32(d)
-		else if (d.opsize == 2):
-			asm_x86_set_imm(&insn.op2, asm_x86_u16(d), 2)
-		else:
-			asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 4)
+		else if (d.opsize == 2): asm_x86_set_imm(&insn.op2, asm_x86_u16(d), 2)
+		else: asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 4)
 		insn.length = d.pos - start
 		return insn.length
 
@@ -697,10 +649,8 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		int modrm = asm_x86_u8(d)
 		insn.mnemonic = asm_x86_group_name(2, (modrm >> 3) & 7)
 		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, d.opsize)
-		if (op == 0xd3):
-			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP, 1, 1)
-		else:
-			asm_x86_set_imm(&insn.op2, 1, 1)
+		if (op == 0xd3): asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP, 1, 1)
+		else: asm_x86_set_imm(&insn.op2, 1, 1)
 		insn.length = d.pos - start
 		return insn.length
 
@@ -717,10 +667,8 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 
 	# call rel32 (0xe8) / jmp rel32 (0xe9)
 	if (op == 0xe8 || op == 0xe9):
-		if (op == 0xe8):
-			insn.mnemonic = c"call"
-		else:
-			insn.mnemonic = c"jmp"
+		if (op == 0xe8): insn.mnemonic = c"call"
+		else: insn.mnemonic = c"jmp"
 		asm_x86_rel_target(insn, d, asm_x86_u32(d))
 		insn.length = d.pos - start
 		return insn.length
@@ -751,23 +699,18 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	# grp3 r/m32 (0xf7): not/neg/mul/imul/div/idiv
 	if (op == 0xf6 || op == 0xf7):
 		int size = d.opsize
-		if (op == 0xf6):
-			size = 1
+		if (op == 0xf6): size = 1
 		int modrm = asm_x86_u8(d)
 		int ext = (modrm >> 3) & 7
 		char* mnemonic = asm_x86_group_name(3, ext)
-		if (cast(int, mnemonic) == 0):
-			return asm_x86_unknown(insn, bytes)
+		if (cast(int, mnemonic) == 0): return asm_x86_unknown(insn, bytes)
 		insn.mnemonic = mnemonic
 		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, size)
 		if (ext == 0):
 			# test r/m, imm
-			if (size == 1):
-				asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
-			else if (d.opsize == 2):
-				asm_x86_set_imm(&insn.op2, asm_x86_u16(d), 2)
-			else:
-				asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 4)
+			if (size == 1): asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
+			else if (d.opsize == 2): asm_x86_set_imm(&insn.op2, asm_x86_u16(d), 2)
+			else: asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 4)
 		insn.length = d.pos - start
 		return insn.length
 
@@ -776,14 +719,12 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		int modrm = asm_x86_u8(d)
 		int ext = (modrm >> 3) & 7
 		char* mnemonic = asm_x86_group_name(5, ext)
-		if (cast(int, mnemonic) == 0):
-			return asm_x86_unknown(insn, bytes)
+		if (cast(int, mnemonic) == 0): return asm_x86_unknown(insn, bytes)
 		insn.mnemonic = mnemonic
 		int size = d.opsize
 		# call/jmp/push through r/m default to 64-bit in x64; inc/dec honor
 		# REX.W via opsize.
-		if (ext >= 2):
-			size = asm_x86_stack_opsize(d)
+		if (ext >= 2): size = asm_x86_stack_opsize(d)
 		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, size)
 		insn.length = d.pos - start
 		return insn.length
@@ -813,8 +754,7 @@ int asm_x86_unknown(asm_insn* insn, char* bytes):
 #   c4 e2 79 13 /r        vcvtph2ps xmm, xmm
 #   c4 e3 79 1d /r ib     vcvtps2ph xmm, xmm, imm8
 int asm_x86_decode_vex(asm_x86_dec* d, asm_insn* insn, char* bytes, int length, int start):
-	if (length < 5):
-		return 0
+	if (length < 5): return 0
 	int b1 = asm_x86_u8(d)
 	int b2 = asm_x86_u8(d)
 	int op = asm_x86_u8(d)

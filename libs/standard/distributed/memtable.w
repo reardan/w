@@ -48,8 +48,7 @@ void memtable_clear(memtable* m):
 	int i = 0
 	while (i < m.keys.length):
 		free(m.keys[i])
-		if (cast(int, m.values[i]) != 0):
-			free(m.values[i])
+		if (cast(int, m.values[i]) != 0): free(m.values[i])
 		i = i + 1
 	m.keys = new list[char*]
 	m.values = new list[char*]
@@ -62,8 +61,7 @@ void memtable_free(memtable* m):
 	int i = 0
 	while (i < m.keys.length):
 		free(m.keys[i])
-		if (cast(int, m.values[i]) != 0):
-			free(m.values[i])
+		if (cast(int, m.values[i]) != 0): free(m.values[i])
 		i = i + 1
 	free(m)
 
@@ -86,10 +84,8 @@ int memtable_find(memtable* m, char* key):
 		int c = strcmp(m.keys[mid], key)
 		if (c == 0):
 			return mid
-		if (c < 0):
-			lo = mid + 1
-		else:
-			hi = mid
+		if (c < 0): lo = mid + 1
+		else: hi = mid
 	return 0 - lo - 1
 
 
@@ -99,8 +95,7 @@ void memtable_store(memtable* m, char* key, char* value, int value_len, int tomb
 	if (idx >= 0):
 		# replace in place
 		m.bytes = m.bytes - m.value_lens[idx]
-		if (cast(int, m.values[idx]) != 0):
-			free(m.values[idx])
+		if (cast(int, m.values[idx]) != 0): free(m.values[idx])
 		if (tombstone):
 			m.values[idx] = cast(char*, 0)
 			m.value_lens[idx] = 0
@@ -137,10 +132,8 @@ void memtable_delete(memtable* m, char* key):
 # return 1; the value pointer is borrowed.
 int memtable_get(memtable* m, char* key, char** value_out, int* len_out):
 	int idx = memtable_find(m, key)
-	if (idx < 0):
-		return 0
-	if (m.tombstones[idx]):
-		return 2
+	if (idx < 0): return 0
+	if (m.tombstones[idx]): return 2
 	value_out[0] = m.values[idx]
 	len_out[0] = m.value_lens[idx]
 	return 1

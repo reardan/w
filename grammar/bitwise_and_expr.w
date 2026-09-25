@@ -30,8 +30,7 @@ int bitwise_and_expr():
 		int right_type = equality_expr()
 		int right_is_bool = operand_is_bool_condition(right_type)
 		int right_is_pure = operand_is_pure(right_call_count_before)
-		if (var_binary_operands(left_type, right_type)):
-			error(c"var operands do not support &")
+		if (var_binary_operands(left_type, right_type)): error(c"var operands do not support &")
 		if (condition_context && left_is_bool && right_is_bool):
 			# Default: both operands call-free, so '&&' is semantics-
 			# preserving. --bool-ops also reports the call-containing

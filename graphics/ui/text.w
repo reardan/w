@@ -82,8 +82,7 @@ void ui_draw_text_strike_n(ui_renderer* r, float32 x, float32 y, char* s, int li
 		ui_render_glyph_strike(r, cast(float32, pen), cast(float32, top), cp, strike, skew, color)
 		pen = pen + g.advance
 		prev = g
-	if (pen <= start):
-		return
+	if (pen <= start): return
 	int baseline = top + ui_font_strike_ascent(strike)
 	float32 width = cast(float32, pen - start)
 	if (style & UI_TEXT_UNDERLINE):
@@ -133,8 +132,7 @@ void ui_draw_text_centered(ui_renderer* r, ui_rect rect, char* s, int scale, ui_
 void ui_theme_use_strike(ui_theme* theme, int strike):
 	theme.text_scale = ui_font_scale_of(strike)
 	int height = ui_text_height_strike(strike) + theme.pad * 2
-	if (height < 32):
-		height = 32
+	if (height < 32): height = 32
 	theme.widget_height = height
 
 
@@ -143,6 +141,5 @@ void ui_theme_use_strike(ui_theme* theme, int strike):
 # the theme alone) for a bad face or size.
 int ui_theme_use_font(ui_theme* theme, int face, int px):
 	int strike = ui_font_strike(face, px)
-	if (strike >= 0):
-		ui_theme_use_strike(theme, strike)
+	if (strike >= 0): ui_theme_use_strike(theme, strike)
 	return strike

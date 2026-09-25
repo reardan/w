@@ -15,8 +15,7 @@ struct string_builder:
 
 
 string_builder* string_new_sized(int capacity):
-	if (capacity < 8):
-		capacity = 8
+	if (capacity < 8): capacity = 8
 	# new sizes the struct per architecture; malloc(12) undersized it on x64.
 	string_builder* s = new string_builder()
 	s.capacity = capacity
@@ -35,8 +34,7 @@ void string_reserve(string_builder* s, int extra):
 	int needed = s.length + extra + 1
 	if (needed > s.capacity):
 		int new_capacity = s.capacity * 2
-		if (new_capacity < needed):
-			new_capacity = needed
+		if (new_capacity < needed): new_capacity = needed
 		# oldlen must be the allocation size (capacity), not the used
 		# length: freelist_realloc only copies oldlen bytes so a short
 		# oldlen "works" by accident, but the debug allocator checks
@@ -80,8 +78,7 @@ int string_equals(string_builder* s, char* c):
 # through embedded NUL bytes, so it can carry string descriptor contents.
 void string_append_bytes(string_builder* s, char* data, int length):
 	string_reserve(s, length)
-	for i in range(length):
-		s.data[s.length + i] = data[i]
+	for i in range(length): s.data[s.length + i] = data[i]
 	s.length = s.length + length
 	s.data[s.length] = 0
 
@@ -139,8 +136,7 @@ string __w_template_finish(string_builder* s):
 
 
 void __w_template_copy(char* dst, char* src, int length):
-	for i in range(length):
-		dst[i] = src[i]
+	for i in range(length): dst[i] = src[i]
 
 
 # Encode codepoint c as UTF-8 at out (negative values: one raw byte);
@@ -180,16 +176,12 @@ void __w_template_pad(string_builder* s, char* text, int length, int width, int 
 	int align = flags & 255
 	int columns = 0
 	for i in range(length):
-		if ((text[i] & 192) != 128):
-			columns = columns + 1
+		if ((text[i] & 192) != 128): columns = columns + 1
 	int pad = width - columns
-	if (pad < 0):
-		pad = 0
+	if (pad < 0): pad = 0
 	int before = pad
-	if (align == '<'):
-		before = 0
-	if (align == '^'):
-		before = pad / 2
+	if (align == '<'): before = 0
+	if (align == '^'): before = pad / 2
 	if ((align == '=') && (length > 0)):
 		if ((text[0] == '-') || (text[0] == '+')):
 			string_append_bytes(s, text, 1)
@@ -217,13 +209,10 @@ void __w_template_fmt(string_builder* s, int value, int kind, int width, int pre
 		free(digits)
 	else if (kind <= 4):
 		int shift = 4
-		if (kind == 3):
-			shift = 3
-		if (kind == 4):
-			shift = 1
+		if (kind == 3): shift = 3
+		if (kind == 4): shift = 1
 		char* alphabet = c"0123456789abcdef"
-		if (kind == 2):
-			alphabet = c"0123456789ABCDEF"
+		if (kind == 2): alphabet = c"0123456789ABCDEF"
 		# '>>' is arithmetic: mask the shifted-in sign bits off
 		int keep = (1 << (8 * __word_size__ - shift)) - 1
 		int pos = size
@@ -236,8 +225,7 @@ void __w_template_fmt(string_builder* s, int value, int kind, int width, int pre
 			more = v != 0
 		text = buffer + pos
 		length = size - pos
-	else if (kind == 5):
-		length = __w_template_utf8(buffer, value)
+	else if (kind == 5): length = __w_template_utf8(buffer, value)
 	else if (kind == 6):
 		text = cast(char*, value)
 		length = strlen(text)
@@ -252,8 +240,7 @@ void __w_template_fmt(string_builder* s, int value, int kind, int width, int pre
 # '{value}' / '{value:spec}' of a float32: precision digits (6 when the
 # spec gives none), rounded half up.
 void __w_template_float(string_builder* s, float f, int width, int precision, int flags):
-	if (precision < 0):
-		precision = 6
+	if (precision < 0): precision = 6
 	char* buffer = malloc(precision + 48)
 	int pos = 0
 	if (f < 0.0):

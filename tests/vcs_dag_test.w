@@ -59,8 +59,7 @@ void test_linear_chain_generations_and_topo_order():
 		char* id = vdt_make_id(i)
 		ids.push(id)
 		list[char*] parents = new list[char*]
-		if (i > 0):
-			parents.push(ids[i - 1])
+		if (i > 0): parents.push(ids[i - 1])
 		int gen = dag_add_node(d, id, parents)
 		assert_equal(i, gen)
 		i = i + 1
@@ -168,8 +167,7 @@ void test_generation_numbers_deep_chain():
 	for i in range(n):
 		char* id = vdt_make_id(i)
 		list[char*] parents = new list[char*]
-		if (i > 0):
-			parents.push(prev)
+		if (i > 0): parents.push(prev)
 		int gen = dag_add_node(d, id, parents)
 		assert_equal(i, gen)
 		assert_equal(i, dag_generation(d, id))
@@ -254,8 +252,7 @@ void test_randomized_dag_topo_and_reachability_invariants():
 		list[char*] parent_ids = new list[char*]
 		if (i > 0):
 			int max_parents = i
-			if (max_parents > VDT_FUZZ_MAX_PARENTS()):
-				max_parents = VDT_FUZZ_MAX_PARENTS()
+			if (max_parents > VDT_FUZZ_MAX_PARENTS()): max_parents = VDT_FUZZ_MAX_PARENTS()
 			int want = fuzz_range(max_parents + 1)
 			int tries = 0
 			int budget = want * 8 + 8
@@ -273,8 +270,7 @@ void test_randomized_dag_topo_and_reachability_invariants():
 		int j = 0
 		while (j < pidx.length):
 			int pgen = dag_generation(d, ids[pidx[j]])
-			if (pgen + 1 > want_gen):
-				want_gen = pgen + 1
+			if (pgen + 1 > want_gen): want_gen = pgen + 1
 			j = j + 1
 		assert_equal(want_gen, gen)
 
@@ -304,10 +300,8 @@ void test_randomized_dag_topo_and_reachability_invariants():
 		bitset* reachable = all_ancestors[i]
 		for k in range(n):
 			int want = 0
-			if (k == i):
-				want = 1
-			else if (bitset_get(reachable, k)):
-				want = 1
+			if (k == i): want = 1
+			else if (bitset_get(reachable, k)): want = 1
 			int got = dag_is_ancestor(d, ids[k], ids[i])
 			assert_equal(want, got)
 		i = i + 1

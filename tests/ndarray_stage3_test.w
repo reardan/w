@@ -178,8 +178,7 @@ void test_sum_par_two_phase_matches_serial_chunks():
 		int r0 = thread_chunk_offset(11, nthreads, k)
 		int r1 = thread_chunk_offset(11, nthreads, k + 1)
 		float acc = 0.0
-		for i in range(r0 * a.s0, r1 * a.s0):
-			acc = acc + a.data[i]
+		for i in range(r0 * a.s0, r1 * a.s0): acc = acc + a.data[i]
 		total = total + acc
 		k = k + 1
 	assert_feq_bits(total, ndf_sum_par(&a, nthreads))

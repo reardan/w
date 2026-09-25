@@ -24,8 +24,7 @@ const int adler32_mod = 65521
 # na), b, nb) equals the digest of a+b concatenated. A negative length is
 # treated as zero, matching libs/standard/crypto/base64.w's convention.
 int adler32_update(int adler, char* data, int length):
-	if (length < 0):
-		length = 0
+	if (length < 0): length = 0
 	int mod = adler32_mod
 	int s1 = adler & 65535
 	int s2 = shr(adler, 16) & 65535

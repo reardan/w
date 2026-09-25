@@ -47,6 +47,5 @@ void test_binary_literals_in_expressions():
 	assert_equal(8, 0b1010 - 0b10)
 	int x = 0b110
 	assert_equal(6, x)
-	if (0b1):
-		x = 0b111
+	if (0b1): x = 0b111
 	assert_equal(7, x)

@@ -21,10 +21,8 @@ extern int fflush(int stream)
 # getppid syscall number differs by architecture (x86: 64, x64: 110,
 # arm64: 173).
 int raw_getppid():
-	if (__target_isa__ == 1):
-		return syscall(173, 0, 0, 0)
-	if (__word_size__ == 8):
-		return syscall(110, 0, 0, 0)
+	if (__target_isa__ == 1): return syscall(173, 0, 0, 0)
+	if (__word_size__ == 8): return syscall(110, 0, 0, 0)
 	return syscall(64, 0, 0, 0)
 
 
@@ -40,8 +38,7 @@ int _main():
 	if (libc_pid != raw_pid):
 		puts(c"FAIL: libc getppid disagrees with the raw syscall")
 		rc = 1
-	else:
-		puts(c"dynamic linking OK")
+	else: puts(c"dynamic linking OK")
 
 	fflush(0)
 	return rc

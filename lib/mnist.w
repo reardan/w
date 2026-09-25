@@ -35,16 +35,11 @@ const int MNIST_ERR_TRUNCATED = 4
 
 
 char* mnist_error_string(int code):
-	if (code == MNIST_OK):
-		return c"mnist: ok"
-	if (code == MNIST_ERR_OPEN):
-		return c"mnist: could not open file"
-	if (code == MNIST_ERR_BAD_MAGIC):
-		return c"mnist: bad IDX magic number"
-	if (code == MNIST_ERR_BAD_DIMS):
-		return c"mnist: bad or non-positive dimensions"
-	if (code == MNIST_ERR_TRUNCATED):
-		return c"mnist: truncated file"
+	if (code == MNIST_OK): return c"mnist: ok"
+	if (code == MNIST_ERR_OPEN): return c"mnist: could not open file"
+	if (code == MNIST_ERR_BAD_MAGIC): return c"mnist: bad IDX magic number"
+	if (code == MNIST_ERR_BAD_DIMS): return c"mnist: bad or non-positive dimensions"
+	if (code == MNIST_ERR_TRUNCATED): return c"mnist: truncated file"
 	return c"mnist: unknown error"
 
 
@@ -63,8 +58,7 @@ int mnist_read_u32(wstream* in, int* value_out):
 	int b1 = stream_read_byte(in)
 	int b2 = stream_read_byte(in)
 	int b3 = stream_read_byte(in)
-	if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0):
-		return 0
+	if (b0 < 0 || b1 < 0 || b2 < 0 || b3 < 0): return 0
 	*value_out = (b0 << 24) | (b1 << 16) | (b2 << 8) | b3
 	return 1
 
@@ -158,8 +152,7 @@ int mnist_load_labels(char* path, ndi* out):
 		return MNIST_ERR_TRUNCATED
 
 	ndi a = ndi_new1(count)
-	for i in range(count):
-		a.data[i] = raw[i] & 0xff
+	for i in range(count): a.data[i] = raw[i] & 0xff
 	free(raw)
 
 	*out = a

@@ -80,13 +80,10 @@ list[char*] wbt_words(char* text):
 	while (1):
 		int c = text[i]
 		if ((c == ' ') || (c == 0)):
-			if (word.length > 0):
-				words.push(strclone(word.data))
+			if (word.length > 0): words.push(strclone(word.data))
 			string_clear(word)
-			if (c == 0):
-				break
-		else:
-			string_append_char(word, c)
+			if (c == 0): break
+		else: string_append_char(word, c)
 		i = i + 1
 	string_free(word)
 	return words
@@ -112,8 +109,7 @@ list[char*] wbt_client(char* args):
 	# the fallback once it is gone); tests/wbuildd_build_test.w covers
 	# auto-start.
 	argv.push(c"--no-autostart")
-	for char* w in wbt_words(args):
-		argv.push(w)
+	for char* w in wbt_words(args): argv.push(w)
 	return argv
 
 
@@ -123,8 +119,7 @@ process_result* wbt_client_run(char* args):
 
 json_value* wbt_status():
 	process_result* r = wbt_client_run(c"status --json")
-	if (r.status != 0):
-		print(r.stderr_text)
+	if (r.status != 0): print(r.stderr_text)
 	assert_equal(0, r.status)
 	json_value* v = json_parse(r.stdout_text)
 	assert1(v != 0)
@@ -148,8 +143,7 @@ void wbt_wait_prewarm_idle():
 		json_value* state = json_object_get(v, c"prewarm")
 		int idle = strcmp(state.string_value, c"idle") == 0
 		json_free(v)
-		if (idle):
-			return
+		if (idle): return
 		process_sleep_ms(100)
 	asserts(c"prewarm never went idle", 0)
 
@@ -179,17 +173,13 @@ char* wbt_stderr_without_cache_progress(char* text):
 	int i = 0
 	while (text[i] != 0):
 		int end = i
-		while ((text[end] != 0) && (text[end] != 10)):
-			end = end + 1
+		while ((text[end] != 0) && (text[end] != 10)): end = end + 1
 		char* line = &text[i]
 		int progress = starts_with(line, c"wtest: building import-closure cache") || starts_with(line, c"wtest: import-closure cache: ")
 		if (progress == 0):
-			for k in range(i, end):
-				string_append_char(out, text[k])
-			if (text[end] == 10):
-				string_append_char(out, 10)
-		if (text[end] == 10):
-			end = end + 1
+			for k in range(i, end): string_append_char(out, text[k])
+			if (text[end] == 10): string_append_char(out, 10)
+		if (text[end] == 10): end = end + 1
 		i = end
 	return out.data
 
@@ -206,15 +196,13 @@ char* wbt_compare(char* tool, char* args, char* stdin_text):
 		# happens to compute it.
 		list[char*] warm = new list[char*]
 		warm.push(tool)
-		for char* w in wbt_words(args):
-			warm.push(w)
+		for char* w in wbt_words(args): warm.push(w)
 		process_result_free(wbt_run(warm, stdin_text))
 	list[char*] daemon_argv = wbt_client(strjoin(c"--require-daemon ", args))
 	process_result* daemon = wbt_run(daemon_argv, stdin_text)
 	list[char*] oneshot_argv = new list[char*]
 	oneshot_argv.push(tool)
-	for char* w in wbt_words(args):
-		oneshot_argv.push(w)
+	for char* w in wbt_words(args): oneshot_argv.push(w)
 	process_result* oneshot = wbt_run(oneshot_argv, stdin_text)
 	print(c"compare: ")
 	println(args)
@@ -312,8 +300,7 @@ char* wbt_manifest():
 
 void wbt_cleanup():
 	char* names = c"a.w b.w c.w d.w helper.w manifest.json log d.sock a b"
-	for char* name in wbt_words(names):
-		unlink(wbt_path(name))
+	for char* name in wbt_words(names): unlink(wbt_path(name))
 	rmdir(wbt_dir())
 
 
@@ -403,8 +390,7 @@ void test_wbuildd_matches_one_shot():
 	process_result* via_client = wbt_run(fallback, 0)
 	list[char*] direct_argv = new list[char*]
 	direct_argv.push(c"bin/wv2")
-	for char* w in wbt_words(wbt_args2(c"check --json ", c"b.w")):
-		direct_argv.push(w)
+	for char* w in wbt_words(wbt_args2(c"check --json ", c"b.w")): direct_argv.push(w)
 	process_result* direct = wbt_run(direct_argv, 0)
 	assert_strings_equal(direct.stdout_text, via_client.stdout_text)
 	assert_strings_equal(direct.stderr_text, via_client.stderr_text)

@@ -32,8 +32,7 @@ int param_default_record(int current_symbol, int param_count, int saw_default);
 # Errors out when lib.generator has not been imported.
 int generator_object_pointer_type():
 	int generator_type = type_lookup(c"generator")
-	if (generator_type < 0):
-		error(c"generator functions require 'import lib.generator'")
+	if (generator_type < 0): error(c"generator functions require 'import lib.generator'")
 	return type_get_next_pointer(generator_type)
 
 
@@ -88,12 +87,9 @@ void generator_function_definition(int current_symbol):
 		param_count = param_count + 1
 		number_of_args = number_of_args + 1
 		int type = type_name()
-		if (accept(c".")):
-			error(c"variadic generator parameters are not supported")
-		if (type_stack_words(type) != 1):
-			error(c"generator parameters must be word-sized")
-		if (type_num_args(type_real(type)) > 0):
-			error(c"generator parameters must be word-sized")
+		if (accept(c".")): error(c"variadic generator parameters are not supported")
+		if (type_stack_words(type) != 1): error(c"generator parameters must be word-sized")
+		if (type_num_args(type_real(type)) > 0): error(c"generator parameters must be word-sized")
 		if (param_count <= sym_max_param_slots):
 			save_int(table + current_symbol + 22 + (param_count << 2), type)
 		if (peek(c")") == 0):
@@ -172,8 +168,7 @@ int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 			error(c"struct arguments are not supported in generator calls")
 		check_call_argument(callee_sym, -1, callee_name, passed_args, arg_type)
 		int param_type = sym_param_type(callee_sym, passed_args)
-		if (param_type >= 0):
-			coerce_call_argument(param_type, arg_type)
+		if (param_type >= 0): coerce_call_argument(param_type, arg_type)
 		push_slot()
 		passed_args = passed_args + 1
 		while (accept(c",")):
@@ -183,8 +178,7 @@ int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 				error(c"struct arguments are not supported in generator calls")
 			check_call_argument(callee_sym, -1, callee_name, passed_args, arg_type)
 			int loop_param_type = sym_param_type(callee_sym, passed_args)
-			if (loop_param_type >= 0):
-				coerce_call_argument(loop_param_type, arg_type)
+			if (loop_param_type >= 0): coerce_call_argument(loop_param_type, arg_type)
 			push_slot()
 			passed_args = passed_args + 1
 		expect(c")")
@@ -194,14 +188,12 @@ int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 	if ((callee_sym >= 0) && (expected_args > passed_args)):
 		int missing_all_defaulted = 1
 		for check_index in range(passed_args, expected_args):
-			if (sym_param_has_default(callee_sym, check_index) == 0):
-				missing_all_defaulted = 0
+			if (sym_param_has_default(callee_sym, check_index) == 0): missing_all_defaulted = 0
 		if (missing_all_defaulted):
 			while (passed_args < expected_args):
 				mov_eax_int(sym_param_default(callee_sym, passed_args))
 				int default_param_type = sym_param_type(callee_sym, passed_args)
-				if (default_param_type >= 0):
-					coerce(default_param_type, 3)
+				if (default_param_type >= 0): coerce(default_param_type, 3)
 				push_slot()
 				passed_args = passed_args + 1
 
@@ -211,8 +203,7 @@ int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 			diag_part(callee_name)
 			diag_part(c"' expects ")
 			warning3(itoa(expected_args), c" arguments, got ", itoa(passed_args))
-	if (callee_name != 0):
-		free(callee_name)
+	if (callee_name != 0): free(callee_name)
 
 	# Stack: argN .. arg1, fn. Call __w_gen_create(fn, argv, argc)
 	# where argv points at argN (the copy loop walks upwards).

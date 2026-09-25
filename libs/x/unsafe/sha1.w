@@ -44,8 +44,7 @@ int* sha1_k_cache
 # The four round constants K (FIPS 180-4 section 4.2.1), parsed from hex
 # text so no literal carries bit 31.
 int* sha1_k_table():
-	if (sha1_k_cache == 0):
-		sha1_k_cache = sha2_parse_words(c"5a8279996ed9eba18f1bbcdcca62c1d6", 4)
+	if (sha1_k_cache == 0): sha1_k_cache = sha2_parse_words(c"5a8279996ed9eba18f1bbcdcca62c1d6", 4)
 	return sha1_k_cache
 
 
@@ -67,21 +66,16 @@ int sha1_rotl(int x, int n):
 # f_t for round i (FIPS 180-4 section 4.1.1): Ch, Parity, Maj, Parity —
 # lib/sha256.w's ch and maj apply directly.
 int sha1_round_f(int i, int b, int c, int d):
-	if (i < 20):
-		return sha256_ch(b, c, d)
-	if ((i >= 40) && (i < 60)):
-		return sha256_maj(b, c, d)
+	if (i < 20): return sha256_ch(b, c, d)
+	if ((i >= 40) && (i < 60)): return sha256_maj(b, c, d)
 	return (b ^ c ^ d) & sha256_mask32()
 
 
 # K_t for round i.
 int sha1_round_k(int i, int* k):
-	if (i < 20):
-		return k[0]
-	if (i < 40):
-		return k[1]
-	if (i < 60):
-		return k[2]
+	if (i < 20): return k[0]
+	if (i < 40): return k[1]
+	if (i < 60): return k[2]
 	return k[3]
 
 

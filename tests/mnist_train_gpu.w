@@ -32,8 +32,7 @@ void load_batch(tensor* x, ndi* lb, ndf* flat, ndi* labels, int start, int batch
 	for r in range(batch):
 		int src = (start + r) * dims
 		int dst = r * dims
-		for j in range(dims):
-			x.data[dst + j] = flat.data[src + j]
+		for j in range(dims): x.data[dst + j] = flat.data[src + j]
 		lb.data[r] = labels.data[start + r]
 
 
@@ -58,8 +57,7 @@ float accuracy(tensor* logits, ndi* labels, int n, int classes):
 			if (v > bestv):
 				bestv = v
 				best = j
-		if (best == labels.data[i]):
-			correct = correct + 1
+		if (best == labels.data[i]): correct = correct + 1
 	return cast(float, correct) / cast(float, n)
 
 
@@ -74,10 +72,8 @@ int load_or_die(int rc, char* what):
 
 
 int main(int argc, int argv):
-	if (gpu_available()):
-		println(c"mnist: gpu path")
-	else:
-		println(c"mnist: cpu fallback")
+	if (gpu_available()): println(c"mnist: gpu path")
+	else: println(c"mnist: cpu fallback")
 
 	ndf train_images
 	ndi train_labels

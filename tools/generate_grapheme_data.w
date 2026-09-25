@@ -46,12 +46,9 @@ int gen_class_for_category(char* category):
 
 
 int gen_hex_digit(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
+	if ((c >= '0') && (c <= '9')): return c - '0'
+	if ((c >= 'a') && (c <= 'f')): return c - 'a' + 10
+	if ((c >= 'A') && (c <= 'F')): return c - 'A' + 10
 	return -1
 
 
@@ -61,12 +58,10 @@ int gen_hex_digit(int c):
 char* gen_load_classes(char* path):
 	int size = gen_max_codepoint + 1
 	char* classes = malloc(size)
-	for i in range(size):
-		classes[i] = 0
+	for i in range(size): classes[i] = 0
 
 	wstream* in = stream_open_read(path)
-	if (in == 0):
-		return 0
+	if (in == 0): return 0
 	string_builder* line = string_new()
 	int pending_first = -1
 	while (stream_read_line(in, line)):
@@ -80,28 +75,23 @@ char* gen_load_classes(char* path):
 		# Field 1: the character name.
 		j = j + 1
 		int name_start = j
-		while (text[j] != ';'):
-			j = j + 1
+		while (text[j] != ';'): j = j + 1
 		text[j] = 0
 		char* name = text + name_start
 		# Field 2: the general category.
 		j = j + 1
 		int category_start = j
-		while ((text[j] != ';') && (text[j] != 0)):
-			j = j + 1
+		while ((text[j] != ';') && (text[j] != 0)): j = j + 1
 		text[j] = 0
 		char* category = text + category_start
 
 		int cls = gen_class_for_category(category)
-		if (ends_with(name, c", First>")):
-			pending_first = cp
+		if (ends_with(name, c", First>")): pending_first = cp
 		else if (ends_with(name, c", Last>")):
 			if (pending_first >= 0):
-				for fill in range(pending_first, cp + 1):
-					classes[fill] = cls
+				for fill in range(pending_first, cp + 1): classes[fill] = cls
 			pending_first = -1
-		else:
-			classes[cp] = cls
+		else: classes[cp] = cls
 	string_free(line)
 	stream_close(in)
 	return classes
@@ -116,8 +106,7 @@ list[int] gen_ranges_for(char* classes, int cls):
 	int cp = 0
 	while (cp <= gen_max_codepoint):
 		if (classes[cp] == cls):
-			if (start < 0):
-				start = cp
+			if (start < 0): start = cp
 			prev = cp
 		else if (start >= 0):
 			ranges.push(start)
@@ -131,8 +120,7 @@ list[int] gen_ranges_for(char* classes, int cls):
 
 
 void gen_blank_lines(wstream* out, int count):
-	for i in range(count):
-		stream_write_line(out, c"")
+	for i in range(count): stream_write_line(out, c"")
 
 
 void gen_prop_function(wstream* out, char* name, int value):

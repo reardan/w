@@ -53,17 +53,12 @@ void copy_struct_return_value(int declared_type):
 # the type is not a pointer to a wresult instantiation.
 int result_propagate_struct(int type):
 	int operand = type_unqualified(type)
-	if (operand < 0):
-		return -1
-	if (type_get_pointer_level(operand) != 1):
-		return -1
+	if (operand < 0): return -1
+	if (type_get_pointer_level(operand) != 1): return -1
 	int base = type_lookup_previous_pointer(operand)
-	if (base < 0):
-		return -1
-	if (type_num_args(base) <= 0):
-		return -1
-	if (starts_with(type_get_name(base), c"wresult$") == 0):
-		return -1
+	if (base < 0): return -1
+	if (type_num_args(base) <= 0): return -1
+	if (starts_with(type_get_name(base), c"wresult$") == 0): return -1
 	return base
 
 
@@ -75,22 +70,17 @@ int result_propagate_struct(int type):
 # instantiation and an error's payload is never read, so the
 # reinterpretation is layout-safe.
 int result_propagate_suffix(int type):
-	if (target_isa == 3):
-		error(c"'?' is not supported in gpu code")
-	if (in_generator_body):
-		error(c"'?' is not supported in generator bodies")
-	if (current_function_symbol < 0):
-		error(c"'?' outside of a function")
+	if (target_isa == 3): error(c"'?' is not supported in gpu code")
+	if (in_generator_body): error(c"'?' is not supported in generator bodies")
+	if (current_function_symbol < 0): error(c"'?' outside of a function")
 	type = promote(type)
 	int base = result_propagate_struct(type)
-	if (base < 0):
-		error_type(c"'?' requires a wresult[...]* operand, got '", type, c"'")
+	if (base < 0): error_type(c"'?' requires a wresult[...]* operand, got '", type, c"'")
 	int declared_type = load_int(table + current_function_symbol + 6)
 	if (result_propagate_struct(declared_type) < 0):
 		error_type(c"'?' requires the enclosing function to return a wresult[...]*, got '", declared_type, c"'")
 	int payload_type = type_get_field_type(base, c"value")
-	if (payload_type < 0):
-		error(c"'?' operand struct has no 'value' field")
+	if (payload_type < 0): error(c"'?' operand struct has no 'value' field")
 	# eax holds the wresult pointer; keep it while testing the ok flag
 	push_slot()
 	promote_eax() /* load r.ok: an int at field offset 0 */
@@ -111,8 +101,7 @@ int result_propagate_suffix(int type):
 	# Ok path: eax = address of the payload field
 	pop_eax_slot()
 	int value_offset = type_get_field_offset(base, c"value")
-	if (value_offset > 0):
-		add_eax_int32(value_offset)
+	if (value_offset > 0): add_eax_int32(value_offset)
 	return payload_type
 
 
@@ -142,8 +131,7 @@ void if_statement_tail():
 		# 'else if' chain makes, so the nesting guard bounds elif chains
 		# the same way (see the comment in statement() below)
 		stmt_nesting_depth = stmt_nesting_depth + 1
-		if (stmt_nesting_depth > 200):
-			error(c"statement nesting too deep")
+		if (stmt_nesting_depth > 200): error(c"statement nesting too deep")
 		if_statement_tail()
 		stmt_nesting_depth = stmt_nesting_depth - 1
 	else if (peek(c"else")):
@@ -180,8 +168,7 @@ void statement():
 	# statement()), so 200 permits ~99 truly nested levels alongside 200
 	# chain branches; tests/deep_nesting_test.w pins the deep shapes.
 	stmt_nesting_depth = stmt_nesting_depth + 1
-	if (stmt_nesting_depth > 200):
-		error(c"statement nesting too deep")
+	if (stmt_nesting_depth > 200): error(c"statement nesting too deep")
 	# Set by the return/break/continue/goto arms below; published through
 	# lint_last_stmt_jumps at the bottom (compiler/lint.w, unreachable)
 	int jumps = 0
@@ -206,8 +193,7 @@ void statement():
 		# The function body block closing is the fall-through exit: run
 		# the deferred statements (LIFO) while the body's locals are
 		# still in scope
-		if (is_function_body):
-			defer_emit_all()
+		if (is_function_body): defer_emit_all()
 		lint_scope_exit(n)
 		table_pos = n
 		pop_to(s)
@@ -227,8 +213,7 @@ void statement():
 		if (token_newline == 0):
 			# Same-line body: exactly one statement, e.g. "if (x): return"
 			same_line = 1
-			if (token[0] != 0):
-				statement()
+			if (token[0] != 0): statement()
 		if (same_line == 0):
 			# An un-indented next line means the block is empty (like 'pass')
 			if (start_tab_level > block_tab_level):
@@ -240,20 +225,17 @@ void statement():
 		# The function body block closing is the fall-through exit: run
 		# the deferred statements (LIFO) while the body's locals are
 		# still in scope
-		if (is_function_body):
-			defer_emit_all()
+		if (is_function_body): defer_emit_all()
 		lint_scope_exit(n)
 		table_pos = n
 		print_int_v1(c"ending stack_pos: ", stack_pos)
 		pop_to(s)
 
 	# type-name identifier
-	else if (variable_declaration() >= 0):
-		expect_or_newline(c";")
+	else if (variable_declaration() >= 0): expect_or_newline(c";")
 
 	# if expression statement [elif/else ...] (parentheses optional)
-	else if (accept(c"if")):
-		if_statement_tail()
+	else if (accept(c"if")): if_statement_tail()
 
 	else if (while_statement()) {}
 	else if (gpu_for_statement()) {}
@@ -265,41 +247,33 @@ void statement():
 	else if (accept(c"break")):
 		jumps = 1
 		expect_or_newline(c";")
-		if ((loop_depth == 0) && (switch_depth == 0)):
-			error(c"'break' outside of a loop or switch")
+		if ((loop_depth == 0) && (switch_depth == 0)): error(c"'break' outside of a loop or switch")
 		if (break_in_switch):
 			# Unwind block locals pushed since the switch started
-			if (stack_pos > switch_stack_pos):
-				be_pop(stack_pos - switch_stack_pos)
+			if (stack_pos > switch_stack_pos): be_pop(stack_pos - switch_stack_pos)
 			be_br(switch_break_chain)
 		else:
 			# Unwind block locals pushed since the loop started
-			if (stack_pos > loop_stack_pos):
-				be_pop(stack_pos - loop_stack_pos)
+			if (stack_pos > loop_stack_pos): be_pop(stack_pos - loop_stack_pos)
 			be_br(loop_break_chain)
 
-	else if (goto_statement()):
-		jumps = 1
+	else if (goto_statement()): jumps = 1
 
 	else if (accept(c"continue")):
 		jumps = 1
 		expect_or_newline(c";")
-		if (loop_depth == 0):
-			error(c"'continue' outside of a loop")
-		if (stack_pos > loop_stack_pos):
-			be_pop(stack_pos - loop_stack_pos)
+		if (loop_depth == 0): error(c"'continue' outside of a loop")
+		if (stack_pos > loop_stack_pos): be_pop(stack_pos - loop_stack_pos)
 		be_br(loop_continue_chain)
 
 	else if (accept(c"return")):
 		jumps = 1
 		# Each 'gpu for' iteration is one GPU thread: there is no host
 		# frame to return from inside the outlined body.
-		if (in_gpu_for_body):
-			error(c"'return' is not supported in 'gpu for'")
+		if (in_gpu_for_body): error(c"'return' is not supported in 'gpu for'")
 		# A newline (or end of file) after 'return' means no return value.
 		if ((peek(c";") == 0) & (token_newline == 0) & (token[0] != 0)):
-			if (in_generator_body):
-				error(c"generators cannot return a value; use yield")
+			if (in_generator_body): error(c"generators cannot return a value; use yield")
 			int return_type = expression()
 			return_type = promote(return_type)
 			int declared_type = load_int(table + current_function_symbol + 6)
@@ -307,8 +281,7 @@ void statement():
 				if (types_compatible_with_expression(declared_type, return_type) == 0):
 					warn_type_mismatch(c"return", declared_type, return_type)
 				copy_struct_return_value(declared_type)
-			else:
-				coerce_checked(declared_type, return_type, c"return")
+			else: coerce_checked(declared_type, return_type, c"return")
 		expect_or_newline(c";")
 		if (in_generator_body):
 			# Free the suspended generators of enclosing for-in loops
@@ -330,8 +303,7 @@ void statement():
 	# yield expression: store the value into the generator object and
 	# switch back to the consumer until the next gen_next
 	else if (accept(c"yield")):
-		if (in_generator_body == 0):
-			error(c"'yield' outside of a generator body")
+		if (in_generator_body == 0): error(c"'yield' outside of a generator body")
 		int yield_type = expression()
 		yield_type = promote(yield_type)
 		int declared_yield_type = load_int(table + current_function_symbol + 6)
@@ -347,33 +319,26 @@ void statement():
 		expect_or_newline(c";")
 
 	# Explicit no-op, for spelling out an intentionally empty block
-	else if (accept(c"pass")):
-		expect_or_newline(c";")
+	else if (accept(c"pass")): expect_or_newline(c";")
 
 	# '++x' / '--x' — prefix increment/decrement statement
 	# (grammar/increment.w, docs/projects/increment_decrement.md)
-	else if (increment_prefix_statement()):
-		expect_or_newline(c";")
+	else if (increment_prefix_statement()): expect_or_newline(c";")
 
 	# defer <simple-statement>: record the span; it re-parses and runs
 	# at every function exit, LIFO (grammar/defer.w)
 	else if (accept(c"defer")):
-		if (target_isa == 3):
-			error(c"'defer' is not supported in gpu code")
-		if (in_generator_body):
-			error(c"'defer' is not supported in generator bodies")
+		if (target_isa == 3): error(c"'defer' is not supported in gpu code")
+		if (in_generator_body): error(c"'defer' is not supported in generator bodies")
 		defer_register()
 
-	else if (raw_asm_literal()):
-		expect_or_newline(c";")
+	else if (raw_asm_literal()): expect_or_newline(c";")
 
 	# launch kernel[grid, block](args...) (grammar/kernel_decl.w)
-	else if (launch_statement()):
-		expect_or_newline(c";")
+	else if (launch_statement()): expect_or_newline(c";")
 
 	# name := expression (type-inferred local declaration)
-	else if (inferred_declaration()):
-		expect_or_newline(c";")
+	else if (inferred_declaration()): expect_or_newline(c";")
 
 	# name: -- a goto target (grammar/goto_statement.w)
 	else if (labeled_statement()) {}

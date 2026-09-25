@@ -16,6 +16,5 @@ int wx_input_global
 
 int main():
 	wx_input_global = 42
-	if (stdout == 0):
-		return 1
+	if (stdout == 0): return 1
 	return wx_input_global - 42 + optind - 1

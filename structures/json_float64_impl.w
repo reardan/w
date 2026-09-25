@@ -174,8 +174,7 @@ void json_f64_dd_div(float64 hi, float64 lo, float64 p):
 # every float64, a 17-digit decimal mapping back to its exact bits.
 int json_f64_from_decimal(int mant, int exp10, int negative):
 	int sign = 0
-	if (negative):
-		sign = json_f64_sign_bit()
+	if (negative): sign = json_f64_sign_bit()
 	if (mant == 0):
 		return sign
 	# Exact double-double image of mant: hi rounds (mant can exceed
@@ -199,13 +198,11 @@ int json_f64_from_decimal(int mant, int exp10, int negative):
 			lo = lo * two_neg600
 			rescaled = 1
 		k = e
-		if (k > 22):
-			k = 22
+		if (k > 22): k = 22
 		json_f64_dd_mul(hi, lo, json_f64_pow10(k))
 		hi = json_f64_dd_hi
 		lo = json_f64_dd_lo
-		if (json_f64_is_finite(json_f64_bits(hi)) == 0):
-			return json_f64_max_finite_bits() | sign
+		if (json_f64_is_finite(json_f64_bits(hi)) == 0): return json_f64_max_finite_bits() | sign
 		e = e - k
 	while (e < 0):
 		if (rescaled):
@@ -219,8 +216,7 @@ int json_f64_from_decimal(int mant, int exp10, int negative):
 			lo = lo * two600
 			rescaled = 1
 		k = 0 - e
-		if (k > 22):
-			k = 22
+		if (k > 22): k = 22
 		json_f64_dd_div(hi, lo, json_f64_pow10(k))
 		hi = json_f64_dd_hi
 		lo = json_f64_dd_lo
@@ -229,8 +225,7 @@ int json_f64_from_decimal(int mant, int exp10, int negative):
 	if (rescaled):
 		if (exp10 > 0):
 			f = f * two600
-			if (json_f64_is_finite(json_f64_bits(f)) == 0):
-				return json_f64_max_finite_bits() | sign
+			if (json_f64_is_finite(json_f64_bits(f)) == 0): return json_f64_max_finite_bits() | sign
 		else:
 			f = f * two_neg600
 			if (f == 0.0):
@@ -262,8 +257,7 @@ float json_f64_to_float32(int bits):
 	if (json_f64_is_finite(bits)):
 		if ((json_f64_float32_bits(narrow) & 0x7f800000) == 0x7f800000):
 			narrow = 3.40282346e38
-			if (f < 0.0):
-				narrow = -3.40282346e38
+			if (f < 0.0): narrow = -3.40282346e38
 	return narrow
 
 
@@ -278,12 +272,10 @@ void json_f64_append(string_builder* out, int bits):
 		return
 	int pbits = bits & json_f64_abs_mask()
 	if (pbits == 0):
-		if (bits != 0):
-			string_append_char(out, '-')
+		if (bits != 0): string_append_char(out, '-')
 		string_append(out, c"0.0")
 		return
-	if (bits != pbits):
-		string_append_char(out, '-')
+	if (bits != pbits): string_append_char(out, '-')
 
 	# Initial decimal exponent estimate from the binary exponent
 	# (log10(2) ~ 301/1000, floored); denormals all sit within the
@@ -294,8 +286,7 @@ void json_f64_append(string_builder* out, int bits):
 	if (be > 0):
 		int scaled = (be - 1023) * 301
 		e10 = scaled / 1000
-		if ((scaled < 0) && (scaled % 1000 != 0)):
-			e10 = e10 - 1
+		if ((scaled < 0) && (scaled % 1000 != 0)): e10 = e10 - 1
 
 	# Scale into [10^16, 10^17) with exact-power chunks at double-double
 	# precision, keeping e10 the decimal exponent of the leading digit.
@@ -365,8 +356,7 @@ void json_f64_append(string_builder* out, int bits):
 	int d = hi
 	float64 adjust = lo + 0.5
 	int whole = adjust
-	if ((adjust < 0.0) && (whole > adjust)):
-		whole = whole - 1
+	if ((adjust < 0.0) && (whole > adjust)): whole = whole - 1
 	d = d + whole
 	int d_low = 1
 	int i = 0
@@ -396,12 +386,10 @@ void json_f64_append(string_builder* out, int bits):
 	int tries = 0
 	while ((done == 0) && (tries < 64)):
 		int got = json_f64_from_decimal(d, e10 - 16, 0)
-		if (got == pbits):
-			done = 1
+		if (got == pbits): done = 1
 		else if (got < pbits):
 			# positive bit patterns order like their values
-			if (walked_down):
-				done = 1
+			if (walked_down): done = 1
 			else:
 				walked_up = 1
 				d = d + 1
@@ -409,8 +397,7 @@ void json_f64_append(string_builder* out, int bits):
 					d = d_low
 					e10 = e10 + 1
 		else:
-			if (walked_up):
-				done = 1
+			if (walked_up): done = 1
 			else:
 				walked_down = 1
 				d = d - 1
@@ -454,8 +441,7 @@ void json_f64_append(string_builder* out, int bits):
 		i = i - 1
 	digits[17] = 0
 	int n = 17
-	while ((n > 1) && (digits[n - 1] == '0')):
-		n = n - 1
+	while ((n > 1) && (digits[n - 1] == '0')): n = n - 1
 
 	json_append_digits(out, digits, n, e10, 16)
 	free(digits)

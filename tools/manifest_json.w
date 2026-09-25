@@ -13,16 +13,14 @@ import structures.json
 # object's key when it is a string, else 0 (absent or another type).
 char* jfield_string(json_value* object, char* key):
 	json_value* value = json_object_get(object, key)
-	if ((value == 0) || (value.type != json_type_string())):
-		return 0
+	if ((value == 0) || (value.type != json_type_string())): return 0
 	return value.string_value
 
 
 # object's key when it is an array, else 0 (absent or another type).
 json_value* jfield_array(json_value* object, char* key):
 	json_value* value = json_object_get(object, key)
-	if ((value == 0) || (value.type != json_type_array())):
-		return 0
+	if ((value == 0) || (value.type != json_type_array())): return 0
 	return value
 
 
@@ -37,8 +35,7 @@ int jfield_int(json_value* object, char* key, int fallback):
 # 1 when object's key is true or a nonzero integer, else 0.
 int jfield_flag(json_value* object, char* key):
 	json_value* value = json_object_get(object, key)
-	if (value == 0):
-		return 0
+	if (value == 0): return 0
 	if ((value.type == json_type_bool()) || (value.type == json_type_int())):
 		return value.int_value != 0
 	return 0
@@ -93,8 +90,7 @@ manifest* manifest_from_json(json_value* root, char* label, int strict):
 		json_value* target = json_array_get(targets, i)
 		i = i + 1
 		char* name = 0
-		if (target.type == json_type_object()):
-			name = jfield_string(target, c"name")
+		if (target.type == json_type_object()): name = jfield_string(target, c"name")
 		else if (strict):
 			manifest_parse_fail(c"every target must be a JSON object: ", label)
 			return 0

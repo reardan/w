@@ -12,10 +12,8 @@ int result_propagate_struct(int type); /* defined in statement */
 
 
 int buffer_element_type(int type):
-	if (type_is_string(type)):
-		return type_lookup(c"char")
-	if (type_is_array(type) | type_is_slice(type)):
-		return type_get_element_type(type)
+	if (type_is_string(type)): return type_lookup(c"char")
+	if (type_is_array(type) | type_is_slice(type)): return type_get_element_type(type)
 	return type_lookup(c"char")
 
 
@@ -36,8 +34,7 @@ int buffer_result_type(int type):
 # and the later definition patches the reference chain, like any forward
 # reference.
 void bounds_trap_call(char* helper_name):
-	if (sym_lookup(helper_name) < 0):
-		sym_declare_global(helper_name, 4, 2)
+	if (sym_lookup(helper_name) < 0): sym_declare_global(helper_name, 4, 2)
 	push_ebx()
 	push_eax()
 	sym_get_value(helper_name)
@@ -45,8 +42,7 @@ void bounds_trap_call(char* helper_name):
 
 
 void buffer_bounds_check():
-	if (bounds_mode == 0):
-		return;
+	if (bounds_mode == 0): return;
 	# eax = index, stack top = the buffer descriptor. Load the length
 	# first so the trap block can report both values; the descriptor is
 	# valid whatever the index is.
@@ -67,8 +63,7 @@ void buffer_bounds_check():
 
 
 void buffer_range_bounds_check():
-	if (bounds_mode == 0):
-		return;
+	if (bounds_mode == 0): return;
 	# stack top before this helper: end, start, descriptor. Every failing
 	# branch lands on one shared trap block with ebx = the offending bound
 	# and eax = the limit it violated (the length, or the end bound for
@@ -111,8 +106,7 @@ void buffer_push_range_descriptor(int base_type, int start_was_omitted):
 	store_ebx_word()
 
 	mov_eax_esp_plus(2 * word_size)
-	if (element_size > 1):
-		imul_eax_int32(element_size)
+	if (element_size > 1): imul_eax_int32(element_size)
 	mov_ebx_esp_plus(3 * word_size)
 	promote_ebx()
 	alu_add()
@@ -128,12 +122,9 @@ void buffer_push_range_descriptor(int base_type, int start_was_omitted):
 # callee is unknown, e.g. calls through pointers); arg_index is 0-based.
 void check_call_argument(int callee, int signature_type, char* callee_name, int arg_index, int arg_type):
 	int param_type = -1
-	if (signature_type >= 0):
-		param_type = type_function_param_type(signature_type, arg_index)
-	else if (callee >= 0):
-		param_type = sym_param_type(callee, arg_index)
-	if (param_type < 0):
-		return;
+	if (signature_type >= 0): param_type = type_function_param_type(signature_type, arg_index)
+	else if (callee >= 0): param_type = sym_param_type(callee, arg_index)
+	if (param_type < 0): return;
 	# A kernel's plain pointer parameter means "any device-accessible
 	# pointer" (managed or gpu_device_alloc memory), so launching with a
 	# 'gpu T*' checks against its host twin; the reverse direction (a
@@ -158,8 +149,7 @@ void coerce_cstr_to_string_call_arg();
 void coerce_call_argument(int param_type, int arg_type):
 	if (type_is_string(param_type) & type_is_char_pointer(arg_type)):
 		coerce_cstr_to_string_call_arg()
-	else:
-		coerce(param_type, arg_type)
+	else: coerce(param_type, arg_type)
 
 
 # Push a call argument onto the stack. Struct values are copied word by
@@ -179,8 +169,7 @@ void push_call_argument_compact(int arg_type, int leaked_words):
 	if (type_num_args(arg_type) > 0):
 		is_struct = 1
 		arg_words = (type_get_size(arg_type) + word_size - 1) >> word_size_log2
-	if (is_struct == 0):
-		push_eax()
+	if (is_struct == 0): push_eax()
 	else:
 		int j = arg_words - 1
 		while (j >= 0):
@@ -218,12 +207,9 @@ void parse_fixed_call_argument(int callee_sym, int signature_type, char* callee_
 	check_call_argument(callee_sym, signature_type, callee_name, arg_index, arg_type)
 	if ((callee_sym >= 0) || (signature_type >= 0)):
 		int param_type = -1
-		if (callee_sym >= 0):
-			param_type = sym_param_type(callee_sym, arg_index)
-		if (signature_type >= 0):
-			param_type = type_function_param_type(signature_type, arg_index)
-		if (param_type >= 0):
-			coerce_call_argument(param_type, arg_type)
+		if (callee_sym >= 0): param_type = sym_param_type(callee_sym, arg_index)
+		if (signature_type >= 0): param_type = type_function_param_type(signature_type, arg_index)
+		if (param_type >= 0): coerce_call_argument(param_type, arg_type)
 	push_call_argument_compact(arg_type, stack_pos - entry_stack_pos)
 
 
@@ -259,28 +245,21 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 			# the wrong argument count silently reads garbage words: reject
 			# it outright instead of warning.
 			int callee_is_stub = 0
-			if (callee_sym >= 0):
-				callee_is_stub = sym_is_asm_stub(callee_sym)
-			if (callee_is_stub):
-				diag_part(c"function '")
-			else:
-				diag_part(c"warning: function '")
+			if (callee_sym >= 0): callee_is_stub = sym_is_asm_stub(callee_sym)
+			if (callee_is_stub): diag_part(c"function '")
+			else: diag_part(c"warning: function '")
 			diag_part(callee_name)
 			diag_part(c"' expects ")
 			diag_part(itoa(expected_args))
 			diag_part(c" arguments, got ")
-			if (callee_is_stub):
-				error(itoa(passed_args))
-			else:
-				warning(itoa(passed_args))
-	if (callee_name != 0):
-		free(callee_name)
+			if (callee_is_stub): error(itoa(passed_args))
+			else: warning(itoa(passed_args))
+	if (callee_name != 0): free(callee_name)
 
 	load_slot(s + 1)
 
 	# A function's address is its value; other callees hold a pointer
-	if (callee_type != 4):
-		promote(callee_type)
+	if (callee_type != 4): promote(callee_type)
 	call_eax()
 	pop_to(s)
 	int type = 3  # call results are plain values
@@ -289,8 +268,7 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 	if (has_return_buffer):
 		lea_eax_esp_plus(0)
 		type = type_value(declared_return)
-	else if (declared_return >= 0):
-		type = type_value(declared_return)
+	else if (declared_return >= 0): type = type_value(declared_return)
 	return type
 
 
@@ -310,12 +288,10 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 		int more_args = 1
 		while (more_args):
 			if ((w_variadic_fixed >= 0) && (passed_args >= w_variadic_fixed)):
-				if (variadic_values == 0):
-					fixed_words_end = stack_pos
+				if (variadic_values == 0): fixed_words_end = stack_pos
 				parse_variadic_element_argument(callee_name, variadic_element_type, passed_args)
 				variadic_values = variadic_values + 1
-			else:
-				parse_fixed_call_argument(callee_sym, signature_type, callee_name, passed_args)
+			else: parse_fixed_call_argument(callee_sym, signature_type, callee_name, passed_args)
 			passed_args = passed_args + 1
 			more_args = accept(c",")
 
@@ -327,8 +303,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 			diag_part(callee_name)
 			diag_part(c"' expects at least ")
 			warning3(itoa(w_variadic_fixed), c" arguments, got ", itoa(passed_args - variadic_values))
-		if (fixed_words_end < 0):
-			fixed_words_end = stack_pos
+		if (fixed_words_end < 0): fixed_words_end = stack_pos
 		# The variadic values were pushed left to right, so they sit in
 		# reverse order in memory; reverse them in place so the first
 		# value lands at the lowest address (ordinary slice layout).
@@ -348,8 +323,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 		# one contiguous block above the return address: re-push copies
 		# of the fixed argument words so the block it sees is contiguous.
 		int fixed_words = fixed_words_end - s - 1
-		for j in range(1, fixed_words + 1):
-			push_slot_copy(s + 1 + j)
+		for j in range(1, fixed_words + 1): push_slot_copy(s + 1 + j)
 		# The variadic slice parameter: a pointer to the descriptor
 		lea_eax_esp_plus((stack_pos - descriptor_slot) << word_size_log2)
 		push_slot()
@@ -360,14 +334,12 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 	if ((w_variadic_fixed < 0) && (callee_sym >= 0) && (expected_args > passed_args)):
 		int missing_all_defaulted = 1
 		for check_index in range(passed_args, expected_args):
-			if (sym_param_has_default(callee_sym, check_index) == 0):
-				missing_all_defaulted = 0
+			if (sym_param_has_default(callee_sym, check_index) == 0): missing_all_defaulted = 0
 		if (missing_all_defaulted):
 			while (passed_args < expected_args):
 				mov_eax_int(sym_param_default(callee_sym, passed_args))
 				int default_param_type = sym_param_type(callee_sym, passed_args)
-				if (default_param_type >= 0):
-					coerce(default_param_type, 3)
+				if (default_param_type >= 0): coerce(default_param_type, 3)
 				push_call_argument(3)
 				passed_args = passed_args + 1
 
@@ -406,8 +378,7 @@ int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_a
 		stack_pos = stack_pos + ffi_push_promoted_float32()
 		return 2
 	push_slot()
-	if (kind == 2):
-		return 2
+	if (kind == 2): return 2
 	return 0
 
 
@@ -422,8 +393,7 @@ int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int dec
 		arg_classes[passed_args] = parse_variadic_call_argument(callee_sym, callee_name, passed_args, fixed_args)
 		passed_args = passed_args + 1
 		while (accept(c",")):
-			if (passed_args >= extern_max_params):
-				error(c"too many arguments in variadic call")
+			if (passed_args >= extern_max_params): error(c"too many arguments in variadic call")
 			arg_classes[passed_args] = parse_variadic_call_argument(callee_sym, callee_name, passed_args, fixed_args)
 			passed_args = passed_args + 1
 		expect(c")")
@@ -433,8 +403,7 @@ int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int dec
 		diag_part(callee_name)
 		diag_part(c"' expects at least ")
 		warning3(itoa(fixed_args), c" arguments, got ", itoa(passed_args))
-	if (callee_name != 0):
-		free(callee_name)
+	if (callee_name != 0): free(callee_name)
 
 	emit_ffi_call_inline(passed_args, arg_classes, ffi_type_class(declared_return), sym_got_vaddr(callee_sym))
 	free(arg_classes)
@@ -442,8 +411,7 @@ int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int dec
 	int type = 3  # call results are plain values
 	last_call_return_type = declared_return
 	last_call_end = codepos
-	if (declared_return >= 0):
-		type = type_value(declared_return)
+	if (declared_return >= 0): type = type_value(declared_return)
 	return type
 
 
@@ -488,8 +456,7 @@ int postfix_expr():
 				hash_index_map_type = map_type
 				hash_index_pending = 1
 				type = type_map_value_type(map_type)
-			else if (type_is_list(type)):
-				type = list_index_suffix(type)
+			else if (type_is_list(type)): type = list_index_suffix(type)
 			else if (type_is_buffer(type)):
 				type = promote(type)
 				if (accept(c":")):
@@ -528,8 +495,7 @@ int postfix_expr():
 						expression_lhs_readonly = 1
 					else:
 						buffer_bounds_check()
-						if (element_size > 1):
-							imul_eax_int32(element_size)
+						if (element_size > 1): imul_eax_int32(element_size)
 						pop_ebx()
 						promote_ebx()
 						alu_add()
@@ -544,8 +510,7 @@ int postfix_expr():
 				int element_type = 2 /* char: byte elements by default */
 				if (type_get_pointer_level(type) > 0):
 					int previous_type = type_lookup_previous_pointer(type)
-					if (previous_type >= 0):
-						element_type = previous_type
+					if (previous_type >= 0): element_type = previous_type
 				int element_size = type_get_size(element_type)
 				int first_index_type = promote(expression())
 				if (peek(c",")):
@@ -555,8 +520,7 @@ int postfix_expr():
 					# ndX* receiver argument.
 					type = ndarray_index_suffix(type, nd_recv_slot, first_index_type)
 				else:
-					if (element_size > 1):
-						imul_eax_int32(element_size)
+					if (element_size > 1): imul_eax_int32(element_size)
 					pop_ebx()
 					alu_add()
 					stack_pos = stack_pos - 1
@@ -575,8 +539,7 @@ int postfix_expr():
 			# make the absorption visible. A multi-line ARGUMENT LIST is
 			# unaffected: the '(' itself is what is checked here, and it
 			# sits on the callee's own line in that case.
-			if (token_newline):
-				warning(c"warning: call arguments continue from the previous line")
+			if (token_newline): warning(c"warning: call arguments continue from the previous line")
 			get_token()
 			# Remember the callee's declared arity now; parsing the arguments
 			# below overwrites last_identifier.
@@ -602,8 +565,7 @@ int postfix_expr():
 						declared_return = load_int(table + callee + 6)
 						# asm runtime stubs are declared with the 'function'
 						# pseudo-type: their call results are untyped words
-						if (declared_return == 4):
-							declared_return = -1
+						if (declared_return == 4): declared_return = -1
 						expected_args = sym_num_args(callee)
 						if (expected_args >= 0):
 							callee_sym = callee
@@ -619,8 +581,7 @@ int postfix_expr():
 					callee_name = strclone(c"function pointer")
 
 			int callee_is_generator = 0
-			if (callee_sym >= 0):
-				callee_is_generator = sym_is_generator(callee_sym)
+			if (callee_sym >= 0): callee_is_generator = sym_is_generator(callee_sym)
 
 			if (callee_is_generator):
 				# Calling a generator creates the generator object
@@ -636,8 +597,7 @@ int postfix_expr():
 				if (declared_return >= 0):
 					if (type_num_args(declared_return) > 0):
 						int words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
-						for j in range(words):
-							push_eax()
+						for j in range(words): push_eax()
 						stack_pos = stack_pos + words
 						s = stack_pos
 						has_return_buffer = 1
@@ -657,10 +617,8 @@ int postfix_expr():
 				add_eax_int32(word_size)
 				type = type_lookup(c"int")
 				expression_lhs_readonly = 1
-			else if (type_is_map(type) | type_is_set(type)):
-				type = hash_method(type)
-			else if (type_is_list(type)):
-				type = list_method(type)
+			else if (type_is_map(type) | type_is_set(type)): type = hash_method(type)
+			else if (type_is_list(type)): type = list_method(type)
 			else if (type_is_buffer(type)):
 				if (peek(c"data")):
 					get_token()
@@ -668,10 +626,8 @@ int postfix_expr():
 					int element_type = buffer_element_type(type)
 					type = type_get_next_pointer(element_type)
 					expression_lhs_readonly = 1
-				else if ((nextc == '(') && (ufcs_callee(token) >= 0)):
-					type = ufcs_call(type)
-				else:
-					error3(c"buffer field '", token, c"' not found")
+				else if ((nextc == '(') && (ufcs_callee(token) >= 0)): type = ufcs_call(type)
+				else: error3(c"buffer field '", token, c"' not found")
 			else:
 				# A pending map read whose value is a struct must emit the
 				# get call now so eax holds the stored struct's address.
@@ -692,8 +648,7 @@ int postfix_expr():
 					int element = type_lookup_previous_pointer(type)
 					if (element >= 0):
 						if (type_num_args(element) > 0):
-							if (receiver_was_value == 0):
-								promote(type)
+							if (receiver_was_value == 0): promote(type)
 							type = element
 
 				# For structures, find offset of field name
@@ -740,8 +695,7 @@ int postfix_expr():
 
 						# Use child type insted of struct type:
 						type = member_type
-						if (type < 0):
-							error3(c"child field not found: '", itoa(type), c"")
+						if (type < 0): error3(c"child field not found: '", itoa(type), c"")
 						if (verbosity >= 1):
 							print2(itoa(line_number))
 							print_string0(c": using child type: ", type_get_name(type))
@@ -782,8 +736,7 @@ int postfix_expr():
 						if (declared_return >= 0):
 							if (type_num_args(declared_return) > 0):
 								return_words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
-								for j in range(return_words):
-									push_eax()
+								for j in range(return_words): push_eax()
 								stack_pos = stack_pos + return_words
 								has_return_buffer = 1
 
@@ -794,17 +747,14 @@ int postfix_expr():
 						if (has_return_buffer):
 							lea_eax_esp_plus(2 << word_size_log2)
 							push_slot()
-						if (has_return_buffer):
-							mov_eax_esp_plus(2 << word_size_log2)
-						else:
-							mov_eax_esp_plus(1 << word_size_log2)
+						if (has_return_buffer): mov_eax_esp_plus(2 << word_size_log2)
+						else: mov_eax_esp_plus(1 << word_size_log2)
 
 						int receiver_type = type_lookup_next_pointer(type)
 						check_call_argument(callee_sym, signature_type, callee_name, 0, receiver_type)
 						if (callee_sym >= 0):
 							int param_type = sym_param_type(callee_sym, 0)
-							if (param_type >= 0):
-								coerce(param_type, receiver_type)
+							if (param_type >= 0): coerce(param_type, receiver_type)
 						push_call_argument(receiver_type)
 
 						accept(c"(")
@@ -822,14 +772,12 @@ int postfix_expr():
 						# error() exits, so the token buffer is only
 						# swapped for the underline when no REPL entry
 						# will lex again after the jump back
-						if (repl_recovery == 0):
-							token = member_name
+						if (repl_recovery == 0): token = member_name
 						error3(c"struct field '", member_name, c"' not found")
 					free(member_name)
 
 				else if ((nextc == '(') && (ufcs_callee(token) >= 0)):
-					if (receiver_was_value):
-						type = type_value(type)
+					if (receiver_was_value): type = type_value(type)
 					type = ufcs_call(type)
 				else:
 					# cc500 heritage: '.member' on a non-struct expression

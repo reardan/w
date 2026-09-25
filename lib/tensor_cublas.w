@@ -34,8 +34,7 @@ int tensor_cublas_gemm(int op, float* a, float* b, float* out, int m, int kd, in
 
 
 int tensor_use_cublas():
-	if (cublas_available() == 0):
-		return 0
+	if (cublas_available() == 0): return 0
 	tensor_matmul_hook = tensor_cublas_gemm
 	return 1
 

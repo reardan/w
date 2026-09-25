@@ -112,8 +112,7 @@ int gfx_win32_mods():
 # Signed 16-bit halves of a packed LPARAM coordinate pair.
 int gfx_win32_lo16(int v):
 	int x = v & 65535
-	if (x >= 32768):
-		x = x - 65536
+	if (x >= 32768): x = x - 65536
 	return x
 
 
@@ -146,15 +145,13 @@ void gfx_win32_button(gfx_window* win, int button, int down, int lparam):
 	int bit = 1 << (button - 1)
 	if (down):
 		# Keep receiving the release when it happens outside the window.
-		if (win.mouse_buttons == 0):
-			SetCapture(win.hwnd)
+		if (win.mouse_buttons == 0): SetCapture(win.hwnd)
 		win.mouse_buttons = win.mouse_buttons | bit
 		gfx_win32_push(win, GFX_EVENT_MOUSE_DOWN, button, gfx_win32_mods())
 	else:
 		# no bitwise-not operator: -1 - mask == ~mask
 		win.mouse_buttons = win.mouse_buttons & (0 - 1 - bit)
-		if (win.mouse_buttons == 0):
-			ReleaseCapture()
+		if (win.mouse_buttons == 0): ReleaseCapture()
 		gfx_win32_push(win, GFX_EVENT_MOUSE_UP, button, gfx_win32_mods())
 
 
@@ -163,16 +160,14 @@ void gfx_win32_button(gfx_window* win, int button, int down, int lparam):
 int gfx_win32_wndproc(int hwnd, int msg, int wparam, int lparam):
 	gfx_window* win = gfx_win32_active
 	int m = msg & 65535
-	if ((win == 0) || (win.hwnd != hwnd)):
-		return DefWindowProcA(hwnd, msg, wparam, lparam)
+	if ((win == 0) || (win.hwnd != hwnd)): return DefWindowProcA(hwnd, msg, wparam, lparam)
 	if ((m == 16) || (m == 2)):          /* WM_CLOSE, WM_DESTROY */
 		win.should_close = 1
 		return 0
 	if (m == 5):                          /* WM_SIZE */
 		win.width = lparam & 65535
 		win.height = (lparam >> 16) & 65535
-		if (win.context != 0):
-			glViewport(0, 0, win.width, win.height)
+		if (win.context != 0): glViewport(0, 0, win.width, win.height)
 		return 0
 	if ((m == 256) || (m == 260)):        /* WM_KEYDOWN, WM_SYSKEYDOWN */
 		int mods = gfx_win32_mods()
@@ -180,15 +175,12 @@ int gfx_win32_wndproc(int hwnd, int msg, int wparam, int lparam):
 		win.last_keycode = vk
 		gfx_win32_push(win, GFX_EVENT_KEY_DOWN, vk, mods)
 		int nav = gfx_win32_nav(vk)
-		if (nav != 0):
-			gfx_win32_push(win, GFX_EVENT_NAV, nav, mods)
-		if (m == 260):
-			return DefWindowProcA(hwnd, msg, wparam, lparam)
+		if (nav != 0): gfx_win32_push(win, GFX_EVENT_NAV, nav, mods)
+		if (m == 260): return DefWindowProcA(hwnd, msg, wparam, lparam)
 		return 0
 	if ((m == 257) || (m == 261)):        /* WM_KEYUP, WM_SYSKEYUP */
 		gfx_win32_push(win, GFX_EVENT_KEY_UP, wparam & 255, gfx_win32_mods())
-		if (m == 261):
-			return DefWindowProcA(hwnd, msg, wparam, lparam)
+		if (m == 261): return DefWindowProcA(hwnd, msg, wparam, lparam)
 		return 0
 	if (m == 258):                        /* WM_CHAR */
 		int ch = wparam & 255
@@ -240,11 +232,9 @@ int gfx_win32_wndproc(int hwnd, int msg, int wparam, int lparam):
 
 # WNDCLASSEXA (80 bytes on x64) for the class every gfx window uses.
 int gfx_win32_register_class(int instance):
-	if (gfx_win32_class_registered):
-		return 1
+	if (gfx_win32_class_registered): return 1
 	int proc = win_callback(cast(int, gfx_win32_wndproc), 4)
-	if (proc == 0):
-		return 0
+	if (proc == 0): return 0
 	char* wc = malloc(80)
 	mem_fill(wc, 0, 80)
 	save_int32(wc, 80)                    /* cbSize */
@@ -255,8 +245,7 @@ int gfx_win32_register_class(int instance):
 	save_int64(wc + 64, cast(int, c"w_gfx_window"))   /* lpszClassName */
 	int atom = RegisterClassExA(wc)
 	free(wc)
-	if (atom == 0):
-		return 0
+	if (atom == 0): return 0
 	gfx_win32_class_registered = 1
 	return 1
 
@@ -326,8 +315,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	char* pfd = gfx_win32_pixel_format()
 	int format = ChoosePixelFormat(dc, pfd)
 	int ok = 0
-	if (format != 0):
-		ok = SetPixelFormat(dc, format, pfd)
+	if (format != 0): ok = SetPixelFormat(dc, format, pfd)
 	free(pfd)
 	if (ok == 0):
 		print_error(c"graphics.window: no usable OpenGL pixel format\n")
@@ -339,8 +327,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	int context = wglCreateContext(dc)
 	if ((context == 0) || (wglMakeCurrent(dc, context) == 0)):
 		print_error(c"graphics.window: wglCreateContext failed\n")
-		if (context != 0):
-			wglDeleteContext(context)
+		if (context != 0): wglDeleteContext(context)
 		ReleaseDC(hwnd, dc)
 		DestroyWindow(hwnd)
 		gfx_win32_active = cast(gfx_window*, 0)
@@ -363,8 +350,7 @@ int gfx_window_poll(gfx_window* win):
 		TranslateMessage(msg)
 		DispatchMessageA(msg)
 	free(msg)
-	if (win.should_close):
-		return 0
+	if (win.should_close): return 0
 	return 1
 
 

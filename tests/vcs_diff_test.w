@@ -135,10 +135,8 @@ char* vcs_diff_test_numbered_lines(int n, list[int] changed):
 		int line_no = i + 1
 		int is_changed = 0
 		for int c in changed:
-			if (c == line_no):
-				is_changed = 1
-		if (is_changed):
-			string_append(s, c"CHANGED")
+			if (c == line_no): is_changed = 1
+		if (is_changed): string_append(s, c"CHANGED")
 		string_append_int(s, line_no)
 		string_append_char(s, 10)
 	char* text = s.data

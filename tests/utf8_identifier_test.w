@@ -71,8 +71,7 @@ void test_generics():
 
 void test_loops_and_containers():
 	int Σ = 0
-	for ι in range(4):
-		Σ = Σ + ι
+	for ι in range(4): Σ = Σ + ι
 	assert_equal(6, Σ)
 	map[int, int] κλειδιά = new map[int, int]
 	κλειδιά[1] = 2

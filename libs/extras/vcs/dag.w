@@ -112,8 +112,7 @@ char* dag_hex_scratch
 # valid only until the next dag_hex_key call (the map clones it if it is
 # used to insert); never free() it and never hold onto it.
 char* dag_hex_key(char* id):
-	if (dag_hex_scratch == 0):
-		dag_hex_scratch = malloc(DAG_ID_SIZE * 2 + 1)
+	if (dag_hex_scratch == 0): dag_hex_scratch = malloc(DAG_ID_SIZE * 2 + 1)
 	int i = 0
 	while (i < DAG_ID_SIZE):
 		hex_put_byte(&dag_hex_scratch[i * 2], id[i] & 255)
@@ -125,8 +124,7 @@ char* dag_hex_key(char* id):
 dag_node* dag_find_node(dag* d, char* id):
 	char* key = dag_hex_key(id)
 	dag_node* result = 0
-	if (key in d.by_hex):
-		result = d.by_hex[key]
+	if (key in d.by_hex): result = d.by_hex[key]
 	return result
 
 
@@ -156,8 +154,7 @@ int dag_add_node(dag* d, char* id, list[char*] parent_ids):
 	for char* pid in parent_ids:
 		dag_node* p = dag_require_node(d, pid)
 		node.parents.push(p)
-		if (p.generation > max_parent_gen):
-			max_parent_gen = p.generation
+		if (p.generation > max_parent_gen): max_parent_gen = p.generation
 	node.generation = max_parent_gen + 1
 	node.seq = d.by_seq.length
 	d.by_seq.push(node)
@@ -181,8 +178,7 @@ int dag_generation(dag* d, char* id):
 list[char*] dag_parent_ids(dag* d, char* id):
 	dag_node* node = dag_require_node(d, id)
 	list[char*] result = new list[char*]
-	for dag_node* p in node.parents:
-		result.push(p.id)
+	for dag_node* p in node.parents: result.push(p.id)
 	return result
 
 
@@ -191,8 +187,7 @@ list[char*] dag_parent_ids(dag* d, char* id):
 # "loading order").
 list[char*] dag_topo_order(dag* d):
 	list[char*] result = new list[char*]
-	for dag_node* n in d.by_seq:
-		result.push(n.id)
+	for dag_node* n in d.by_seq: result.push(n.id)
 	return result
 
 
@@ -224,8 +219,7 @@ list[char*] dag_topo_order_reverse(dag* d):
 int dag_is_ancestor(dag* d, char* ancestor_id, char* descendant_id):
 	dag_node* anc = dag_require_node(d, ancestor_id)
 	dag_node* desc = dag_require_node(d, descendant_id)
-	if (dag_id_equal(anc.id, desc.id)):
-		return 1
+	if (dag_id_equal(anc.id, desc.id)): return 1
 
 	int n = dag_count(d)
 	bitset* visited = bitset_new(n)
@@ -245,8 +239,7 @@ int dag_is_ancestor(dag* d, char* ancestor_id, char* descendant_id):
 			dag_node* p = cur.parents[pi]
 			pi = pi + 1
 			if (p.generation >= anc.generation):
-				if (dag_id_equal(p.id, anc.id)):
-					result = 1
+				if (dag_id_equal(p.id, anc.id)): result = 1
 				else if (bitset_get(visited, p.seq) == 0):
 					bitset_set(visited, p.seq)
 					queue[queue_len] = p
@@ -281,11 +274,9 @@ int dag_mb_pick_next(list[dag_node*] frontier):
 	for i in range(1, frontier.length):
 		dag_node* cand = frontier[i]
 		dag_node* cur = frontier[best]
-		if (cand.generation > cur.generation):
-			best = i
+		if (cand.generation > cur.generation): best = i
 		else if (cand.generation == cur.generation):
-			if (cand.seq < cur.seq):
-				best = i
+			if (cand.seq < cur.seq): best = i
 	return best
 
 
@@ -337,6 +328,5 @@ list[char*] dag_merge_base(dag* d, char* a_id, char* b_id):
 	free(flags)
 	results.sort_by(dag_mb_seq_cmp)
 	list[char*] out = new list[char*]
-	for dag_node* r in results:
-		out.push(r.id)
+	for dag_node* r in results: out.push(r.id)
 	return out

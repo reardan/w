@@ -111,25 +111,21 @@ int st_int32(int addr):
 # 1 when the page holding addr is mapped: mincore fails with -ENOMEM on
 # an unmapped range instead of faulting like a read would.
 int st_page_readable(int addr):
-	if (st_mincore_vec == 0):
-		st_mincore_vec = malloc(16)
+	if (st_mincore_vec == 0): st_mincore_vec = malloc(16)
 	int page = addr - (addr & 4095)
 	return sys_mincore(page, 1, cast(int, st_mincore_vec)) == 0
 
 
 int st_range_readable(int addr, int length):
-	if (length <= 0):
-		return 0
+	if (length <= 0): return 0
 	for p in range(addr - (addr & 4095), addr + length, 4096):
-		if (st_page_readable(p) == 0):
-			return 0
+		if (st_page_readable(p) == 0): return 0
 	return 1
 
 
 void st_write_cstr(char* s):
 	int n = 0
-	while (s[n]):
-		n = n + 1
+	while (s[n]): n = n + 1
 	write(2, s, n)
 
 
@@ -143,41 +139,34 @@ void st_write_cstr(char* s):
 void st_scratch_ensure():
 	if (st_scratch == 0):
 		int page = mmap(0, 4096, 3, 34) /* RW, PRIVATE|ANONYMOUS */
-		if ((page > 0) || (page < -4095)):
-			st_scratch = cast(char*, page)
+		if ((page > 0) || (page < -4095)): st_scratch = cast(char*, page)
 
 
 void st_write_dec(int v):
-	if (v < 0):
-		v = 0
+	if (v < 0): v = 0
 	st_scratch_ensure()
-	if (st_scratch == 0):
-		return;
+	if (st_scratch == 0): return;
 	char* buf = st_scratch
 	int i = 16
 	while (1):
 		i = i - 1
 		buf[i] = '0' + v - v / 10 * 10
 		v = v / 10
-		if (v == 0):
-			break
+		if (v == 0): break
 	write(2, buf + i, 16 - i)
 
 
 void st_write_hex(int v):
 	int digits = __word_size__ * 2
 	st_scratch_ensure()
-	if (st_scratch == 0):
-		return;
+	if (st_scratch == 0): return;
 	char* buf = st_scratch
 	buf[0] = '0'
 	buf[1] = 'x'
 	for i in range(digits):
 		int nibble = (v >> ((digits - 1 - i) * 4)) & 15
-		if (nibble < 10):
-			buf[2 + i] = '0' + nibble
-		else:
-			buf[2 + i] = 'a' + nibble - 10
+		if (nibble < 10): buf[2 + i] = '0' + nibble
+		else: buf[2 + i] = 'a' + nibble - 10
 	write(2, buf, 2 + digits)
 
 
@@ -187,10 +176,8 @@ int st_cstr_eq(int a, char* b):
 	while (1):
 		int ca = pa[i] & 255
 		int cb = b[i] & 255
-		if (ca != cb):
-			return 0
-		if (ca == 0):
-			return 1
+		if (ca != cb): return 0
+		if (ca == 0): return 1
 		i = i + 1
 
 
@@ -201,8 +188,7 @@ int st_find_base(int pc):
 	int page = pc - (pc & 4095)
 	int guard = 65536
 	while (guard > 0):
-		if (st_page_readable(page) == 0):
-			return 0
+		if (st_page_readable(page) == 0): return 0
 		int b0 = st_byte(page)
 		int b1 = st_byte(page + 1)
 		if (b0 == 127):
@@ -219,8 +205,7 @@ int st_find_base(int pc):
 						return page
 					return 0
 		if (b0 == 'M'):
-			if (b1 == 'Z'):
-				return 0
+			if (b1 == 'Z'): return 0
 		page = page - 4096
 		guard = guard - 1
 	return 0
@@ -228,8 +213,7 @@ int st_find_base(int pc):
 
 # Section header field at the class-dependent offset (32-/64-bit ELF).
 int st_sh_word(int header, int off32, int off64):
-	if (st_class == 1):
-		return st_int32(header + off32)
+	if (st_class == 1): return st_int32(header + off32)
 	return st_word(header + off64)
 
 
@@ -242,8 +226,7 @@ void st_init_macho(int base):
 	st_class = 2
 	st_machine = 183
 	int ncmds = st_int32(base + 16)
-	if (st_range_readable(base + 32, st_int32(base + 20)) == 0):
-		return;
+	if (st_range_readable(base + 32, st_int32(base + 20)) == 0): return;
 	int text_vm = 0
 	int sect_addr = 0
 	int sect_size = 0
@@ -258,8 +241,7 @@ void st_init_macho(int base):
 	for i in range(ncmds):
 		int cmd = st_int32(lc)
 		int size = st_int32(lc + 4)
-		if (size < 8):
-			return;
+		if (size < 8): return;
 		if (cmd == 25):  /* LC_SEGMENT_64 */
 			if (st_cstr_eq(lc + 8, c"__TEXT")):
 				text_vm = st_word(lc + 24)
@@ -283,8 +265,7 @@ void st_init_macho(int base):
 			nsyms = st_int32(lc + 12)
 			stroff = st_int32(lc + 16)
 		lc = lc + size
-	if ((text_vm == 0) || (sect_size == 0) || (linkedit_vm == 0) || (nsyms == 0)):
-		return;
+	if ((text_vm == 0) || (sect_size == 0) || (linkedit_vm == 0) || (nsyms == 0)): return;
 	st_slide = base - text_vm
 	st_text_lo = sect_addr + st_slide
 	st_text_hi = st_text_lo + sect_size
@@ -295,8 +276,7 @@ void st_init_macho(int base):
 	st_symtab_count = nsyms
 	st_symtab_entsize = 16
 	st_strtab_lo = linkedit + stroff
-	if (st_range_readable(st_symtab_lo, nsyms * 16) == 0):
-		return;
+	if (st_range_readable(st_symtab_lo, nsyms * 16) == 0): return;
 	st_dline_lo = 0
 	if (dline_size > 0):
 		if (st_range_readable(dline_addr + st_slide, dline_size)):
@@ -311,13 +291,11 @@ void st_init_macho(int base):
 void st_init(int pc):
 	st_state = -1
 	int base = st_find_base(pc)
-	if (base == 0):
-		return;
+	if (base == 0): return;
 	if (st_macho):
 		st_init_macho(base)
 		return;
-	if (st_byte(base + 4) != __word_size__ / 4):
-		return;
+	if (st_byte(base + 4) != __word_size__ / 4): return;
 	st_class = st_byte(base + 4)
 	st_machine = st_int16(base + 18)
 	int shoff = 0
@@ -334,20 +312,14 @@ void st_init(int pc):
 		shentsize = st_int16(base + 58)
 		shnum = st_int16(base + 60)
 		shstrndx = st_int16(base + 62)
-	if (shoff <= 0):
-		return;
-	if ((shnum < 2) || (shnum > 100)):
-		return;
-	if ((shentsize < 40) || (shentsize > 128)):
-		return;
-	if (shstrndx >= shnum):
-		return;
+	if (shoff <= 0): return;
+	if ((shnum < 2) || (shnum > 100)): return;
+	if ((shentsize < 40) || (shentsize > 128)): return;
+	if (shstrndx >= shnum): return;
 	int table = base + shoff
-	if (st_range_readable(table, shnum * shentsize) == 0):
-		return;
+	if (st_range_readable(table, shnum * shentsize) == 0): return;
 	int shstr = base + st_sh_word(table + shstrndx * shentsize, 16, 24)
-	if (st_page_readable(shstr) == 0):
-		return;
+	if (st_page_readable(shstr) == 0): return;
 	int text_seen = 0
 	int i = 1
 	while (i < shnum):
@@ -357,16 +329,13 @@ void st_init(int pc):
 		if (sh_type == 2):
 			st_symtab_lo = base + st_sh_word(header, 16, 24)
 			int entsize = 16
-			if (st_class == 2):
-				entsize = 24
+			if (st_class == 2): entsize = 24
 			st_symtab_entsize = entsize
 			st_symtab_count = st_sh_word(header, 20, 32) / entsize
 			int link_off = 24
-			if (st_class == 2):
-				link_off = 40
+			if (st_class == 2): link_off = 40
 			int link = st_int32(header + link_off)
-			if (link < shnum):
-				st_strtab_lo = base + st_sh_word(table + link * shentsize, 16, 24)
+			if (link < shnum): st_strtab_lo = base + st_sh_word(table + link * shentsize, 16, 24)
 		else if (st_cstr_eq(name_addr, c".text")):
 			st_text_lo = st_sh_word(header, 12, 16)
 			st_text_hi = st_text_lo + st_sh_word(header, 20, 32)
@@ -375,17 +344,12 @@ void st_init(int pc):
 			st_dline_lo = base + st_sh_word(header, 16, 24)
 			st_dline_size = st_sh_word(header, 20, 32)
 		i = i + 1
-	if (text_seen == 0):
-		return;
-	if (st_symtab_lo == 0):
-		return;
-	if (st_strtab_lo == 0):
-		return;
-	if (st_range_readable(st_symtab_lo, st_symtab_count * st_symtab_entsize) == 0):
-		return;
+	if (text_seen == 0): return;
+	if (st_symtab_lo == 0): return;
+	if (st_strtab_lo == 0): return;
+	if (st_range_readable(st_symtab_lo, st_symtab_count * st_symtab_entsize) == 0): return;
 	if (st_dline_lo != 0):
-		if (st_range_readable(st_dline_lo, st_dline_size) == 0):
-			st_dline_lo = 0
+		if (st_range_readable(st_dline_lo, st_dline_size) == 0): st_dline_lo = 0
 	st_base = base
 	st_state = 1
 
@@ -394,8 +358,7 @@ void st_init(int pc):
 # section symbol with the greatest address at or below it, inside
 # __text.
 int st_macho_func_entry(int pc):
-	if ((pc < st_text_lo) || (pc >= st_text_hi)):
-		return 0
+	if ((pc < st_text_lo) || (pc >= st_text_hi)): return 0
 	int best = 0
 	int best_value = 0
 	int i = 0
@@ -413,10 +376,8 @@ int st_macho_func_entry(int pc):
 # Symbol table entry (its address) of the defined function whose code
 # contains pc, or 0. Mirrors dbg_function_at (debugger/symbols.w).
 int st_func_entry(int pc):
-	if (st_state != 1):
-		return 0
-	if (st_macho):
-		return st_macho_func_entry(pc)
+	if (st_state != 1): return 0
+	if (st_macho): return st_macho_func_entry(pc)
 	int i = 1
 	while (i < st_symtab_count):
 		int e = st_symtab_lo + i * st_symtab_entsize
@@ -443,8 +404,7 @@ int st_func_entry(int pc):
 int st_entry_name(int e):
 	int name = st_strtab_lo + st_int32(e)
 	if (st_macho):
-		if (st_byte(name) == '_'):
-			return name + 1
+		if (st_byte(name) == '_'): return name + 1
 	return name
 
 
@@ -452,16 +412,14 @@ int st_entry_name(int e):
 # compiler's call forms; mirrors dbg_looks_like_return (wdbg.w).
 int st_call_site(int v):
 	if ((st_machine == 3) || (st_machine == 62)):
-		if (v - 5 < st_base):
-			return 0
+		if (v - 5 < st_base): return 0
 		if ((st_byte(v - 2) == 255) & (st_byte(v - 1) == 208)):
 			return 1 /* call *eax / call *rax */
 		if (st_byte(v - 5) == 232):
 			return 1 /* call rel32 (asm stubs) */
 		return 0
 	if (st_machine == 183):
-		if (v - 4 < st_base):
-			return 0
+		if (v - 4 < st_base): return 0
 		if ((st_byte(v - 2) == 63) & (st_byte(v - 1) == 214)):
 			return 1 /* blr xN */
 		if ((st_byte(v - 1) & 252) == 148):
@@ -473,8 +431,7 @@ int st_call_site(int v):
 # in its high bits (stacked return addresses, and repl_setjmp's resume
 # pc under --pac=full); keep the 47 address bits.
 int st_code_address(int v):
-	if ((__target_isa__ == 1) && (__word_size__ == 8)):
-		return v & ((1 << 47) - 1)
+	if ((__target_isa__ == 1) && (__word_size__ == 8)): return v & ((1 << 47) - 1)
 	return v
 
 
@@ -485,8 +442,7 @@ int st_code_address(int v):
 # its completed calls still sit. Stops at max hits, at main's frame, or
 # at the first unmapped page.
 int st_scan(int sp, char* out, int max, int skip_entry):
-	if (st_state != 1):
-		return 0
+	if (st_state != 1): return 0
 	int found = 0
 	int probed_page = 1
 	for i in range(65536):
@@ -522,10 +478,8 @@ int st_chain_fp       /* last frame pointer st_chain accepted, 0 = none */
 
 # Symbol value (entry address) of a symbol table entry.
 int st_entry_value(int e):
-	if (st_macho):
-		return st_word(e + 8) + st_slide
-	if (st_class == 1):
-		return st_int32(e + 4)
+	if (st_macho): return st_word(e + 8) + st_slide
+	if (st_class == 1): return st_int32(e + 4)
 	return st_word(e + 8)
 
 
@@ -542,14 +496,12 @@ int st_prologue_len(int addr):
 		if (st_int32(addr + k + 4) != ((170 << 24) | 1836029)):  /* mov x29, x28: 0xaa1c03fd */
 			return 0
 		return k + 8
-	if (st_byte(addr) != 85):
-		return 0
+	if (st_byte(addr) != 85): return 0
 	if (st_class == 2):
 		if ((st_byte(addr + 1) == 72) && (st_byte(addr + 2) == 137) && (st_byte(addr + 3) == 229)):
 			return 4
 		return 0
-	if ((st_byte(addr + 1) == 137) && (st_byte(addr + 2) == 229)):
-		return 3
+	if ((st_byte(addr + 1) == 137) && (st_byte(addr + 2) == 229)): return 3
 	return 0
 
 
@@ -557,20 +509,16 @@ int st_prologue_len(int addr):
 # comes from one compiler, so probing one of this file's own functions
 # answers for all of them.
 int st_uses_frame_pointers():
-	if (st_state != 1):
-		return 0
-	if ((st_machine != 3) && (st_machine != 62) && (st_machine != 183)):
-		return 0
+	if (st_state != 1): return 0
+	if ((st_machine != 3) && (st_machine != 62) && (st_machine != 183)): return 0
 	return st_prologue_len(st_code_address(cast(int, st_prologue_len))) > 0
 
 
 # 1 when v is a plausible return address: inside a defined function
 # and right after one of the compiler's call forms.
 int st_is_return(int v):
-	if ((v <= st_base) || (v >= st_text_hi)):
-		return 0
-	if (st_call_site(v) == 0):
-		return 0
+	if ((v <= st_base) || (v >= st_text_hi)): return 0
+	if (st_call_site(v) == 0): return 0
 	return st_func_entry(v - 1) != 0
 
 
@@ -581,8 +529,7 @@ void st_out_set(char* out, int k, int v):
 
 int st_is_main_frame(int v):
 	int e = st_func_entry(v)
-	if (e == 0):
-		return 0
+	if (e == 0): return 0
 	return st_cstr_eq(st_entry_name(e), c"main")
 
 
@@ -600,14 +547,11 @@ int st_chain(int fp, char* out, int found, int max, int fallback_sp, int skip_en
 		if (fp == 0):
 			st_unwind_exact = 1
 			return found
-		if ((fp & (__word_size__ - 1)) != 0):
-			broken = 1
-		else if (st_range_readable(fp, 2 * __word_size__) == 0):
-			broken = 1
+		if ((fp & (__word_size__ - 1)) != 0): broken = 1
+		else if (st_range_readable(fp, 2 * __word_size__) == 0): broken = 1
 		else:
 			int v = st_code_address(st_word(fp + __word_size__))
-			if (st_is_return(v) == 0):
-				broken = 1
+			if (st_is_return(v) == 0): broken = 1
 			else:
 				st_out_set(out, found, v - 1)
 				found = found + 1
@@ -616,8 +560,7 @@ int st_chain(int fp, char* out, int found, int max, int fallback_sp, int skip_en
 					st_unwind_exact = 1
 					return found
 				int next = st_word(fp)
-				if ((next != 0) && (next <= fp)):
-					broken = 1
+				if ((next != 0) && (next <= fp)): broken = 1
 				fp = next
 	if (broken == 0):
 		st_unwind_exact = 1
@@ -635,18 +578,14 @@ int st_chain(int fp, char* out, int found, int max, int fallback_sp, int skip_en
 # the heuristic scan otherwise. The trace ends at main.
 int st_unwind(int pc, int sp, int fp, char* out, int max):
 	st_unwind_exact = 0
-	if (st_state != 1):
-		return 0
-	if (st_uses_frame_pointers() == 0):
-		return st_scan(sp, out, max, 0)
+	if (st_state != 1): return 0
+	if (st_uses_frame_pointers() == 0): return st_scan(sp, out, max, 0)
 	int e = st_func_entry(pc)
-	if (e == 0):
-		return st_scan(sp, out, max, 0)
+	if (e == 0): return st_scan(sp, out, max, 0)
 	if (st_cstr_eq(st_entry_name(e), c"main")):
 		st_unwind_exact = 1
 		return 0
-	if (max <= 0):
-		return 0
+	if (max <= 0): return 0
 	int entry = st_entry_value(e)
 	int plen = st_prologue_len(entry)
 	int found = 0
@@ -672,8 +611,7 @@ int st_unwind(int pc, int sp, int fp, char* out, int max):
 		# frame the chain covers; find this one's return address by
 		# scanning (exact enough: it is the first call site above sp).
 		found = st_scan(sp, out, 1, 0)
-		if (found == 0):
-			return 0
+		if (found == 0): return 0
 		if (st_is_main_frame(st_word(cast(int, out)))):
 			return found
 		found = st_chain(fp, out, found, max, sp, 0)
@@ -684,11 +622,9 @@ int st_unwind(int pc, int sp, int fp, char* out, int max):
 	else if (pc < entry + plen):
 		ret_slot = sp + __word_size__  /* after push ebp, before mov */
 	if (ret_slot != 0):
-		if (st_range_readable(ret_slot, __word_size__) == 0):
-			return 0
+		if (st_range_readable(ret_slot, __word_size__) == 0): return 0
 		int v = st_word(ret_slot)
-		if (st_is_return(v) == 0):
-			return st_scan(sp, out, max, 0)
+		if (st_is_return(v) == 0): return st_scan(sp, out, max, 0)
 		st_out_set(out, 0, v - 1)
 		found = 1
 		if (st_is_main_frame(v - 1)):
@@ -719,14 +655,12 @@ int st_sleb():
 		shift = shift + 7
 		if ((b & 128) == 0):
 			if (b & 64):
-				if (shift < __word_size__ * 8):
-					result = result | (0 - (1 << shift))
+				if (shift < __word_size__ * 8): result = result | (0 - (1 << shift))
 			return result
 
 
 void st_skip_cstr():
-	while (st_byte(st_cursor) != 0):
-		st_cursor = st_cursor + 1
+	while (st_byte(st_cursor) != 0): st_cursor = st_cursor + 1
 	st_cursor = st_cursor + 1
 
 
@@ -741,34 +675,26 @@ void st_skip_cstr():
 int st_line_lookup(int pc):
 	st_line_found = 0
 	st_file_found = 0
-	if (st_state != 1):
-		return 0
-	if (st_dline_lo == 0):
-		return 0
+	if (st_state != 1): return 0
+	if (st_dline_lo == 0): return 0
 	# A pc outside our own code (a system DLL frame, a JIT thunk) must
 	# not borrow the line of the last row below it. Skipped when the
 	# text range is unknown: wcore points these globals at an on-disk
 	# binary through lib/core_file.w, which leaves st_text_hi at 0.
 	if (st_text_hi != 0):
-		if ((pc < st_text_lo) || (pc >= st_text_hi)):
-			return 0
+		if ((pc < st_text_lo) || (pc >= st_text_hi)): return 0
 	# Mach-O line tables hold linked vmaddrs: compare unslid.
-	if (st_macho):
-		pc = pc - st_slide
+	if (st_macho): pc = pc - st_slide
 	int unit_length = st_int32(st_dline_lo)
-	if ((unit_length < 16) || (unit_length + 4 > st_dline_size)):
-		return 0
-	if (st_int16(st_dline_lo + 4) != 2):
-		return 0
+	if ((unit_length < 16) || (unit_length + 4 > st_dline_size)): return 0
+	if (st_int16(st_dline_lo + 4) != 2): return 0
 	int unit_end = st_dline_lo + 4 + unit_length
 	int min_inst = st_byte(st_dline_lo + 10)
 	int line_base = st_byte(st_dline_lo + 12)
-	if (line_base > 127):
-		line_base = line_base - 256
+	if (line_base > 127): line_base = line_base - 256
 	int line_range = st_byte(st_dline_lo + 13)
 	int opcode_base = st_byte(st_dline_lo + 14)
-	if (line_range == 0):
-		return 0
+	if (line_range == 0): return 0
 	st_cursor = st_dline_lo + 10 + st_int32(st_dline_lo + 6)
 	int address = 0
 	int file = 1
@@ -789,8 +715,7 @@ int st_line_lookup(int pc):
 			else if (sub == 2):
 				/* set_address: len-1 little-endian bytes */
 				address = 0
-				for k in range(len - 1):
-					address = address | (st_byte(st_cursor + 1 + k) << (k * 8))
+				for k in range(len - 1): address = address | (st_byte(st_cursor + 1 + k) << (k * 8))
 			st_cursor = next
 		else if (op < opcode_base):
 			if (op == 1):
@@ -800,16 +725,12 @@ int st_line_lookup(int pc):
 						best_addr = address
 						st_line_found = line
 						st_file_found = file
-			else if (op == 2):
-				address = address + st_uleb() * min_inst
-			else if (op == 3):
-				line = line + st_sleb()
-			else if (op == 4):
-				file = st_uleb()
+			else if (op == 2): address = address + st_uleb() * min_inst
+			else if (op == 3): line = line + st_sleb()
+			else if (op == 4): file = st_uleb()
 			else if (op == 5):
 				st_uleb() /* set_column */
-			else if (op == 8):
-				address = address + (255 - opcode_base) / line_range * min_inst
+			else if (op == 8): address = address + (255 - opcode_base) / line_range * min_inst
 			else if (op == 9):
 				address = address + st_int16(st_cursor)
 				st_cursor = st_cursor + 2
@@ -824,18 +745,15 @@ int st_line_lookup(int pc):
 					best_addr = address
 					st_line_found = line
 					st_file_found = file
-	if (best_addr < 0):
-		return 0
+	if (best_addr < 0): return 0
 	return 1
 
 
 # Name (address of a C string) of 1-based file number index in the
 # .debug_line file table, or 0.
 int st_file_name(int index):
-	if (index < 1):
-		return 0
-	if (st_dline_lo == 0):
-		return 0
+	if (index < 1): return 0
+	if (st_dline_lo == 0): return 0
 	int opcode_base = st_byte(st_dline_lo + 14)
 	st_cursor = st_dline_lo + 15 + opcode_base - 1
 	while (st_byte(st_cursor) != 0):
@@ -861,8 +779,7 @@ int st_file_name(int index):
 # own stale slots instead.
 int st_collect_from(int pc, int sp, int fp, char* out, int max):
 	st_unwind_exact = 0
-	if (st_uses_frame_pointers()):
-		return st_chain(fp, out, 0, max, sp, st_func_entry(pc))
+	if (st_uses_frame_pointers()): return st_chain(fp, out, 0, max, sp, st_func_entry(pc))
 	return st_scan(sp, out, max, st_func_entry(pc))
 
 
@@ -875,29 +792,24 @@ int st_collect_from(int pc, int sp, int fp, char* out, int max):
 # the binary carries no readable symbols or the stack
 # cannot be unwound.
 int stack_trace_collect(char* out, int max):
-	if (st_jmp_buf == 0):
-		st_jmp_buf = malloc(3 * __word_size__)
+	if (st_jmp_buf == 0): st_jmp_buf = malloc(3 * __word_size__)
 	repl_setjmp(st_jmp_buf)
 	int pc = st_code_address(st_word(cast(int, st_jmp_buf)))
 	int sp = st_word(cast(int, st_jmp_buf) + __word_size__)
 	int fp = st_word(cast(int, st_jmp_buf) + 2 * __word_size__)
-	if (st_state == 0):
-		st_init(pc)
+	if (st_state == 0): st_init(pc)
 	return st_collect_from(pc, sp, fp, out, max)
 
 
 # Runtime address of the defined function called name, or 0. A linear
 # walk of the symbol table: for setup paths, not per-frame work.
 int st_symbol_address(char* name):
-	if (st_state != 1):
-		return 0
+	if (st_state != 1): return 0
 	int i = 0
-	if (st_macho == 0):
-		i = 1
+	if (st_macho == 0): i = 1
 	while (i < st_symtab_count):
 		int e = st_symtab_lo + i * st_symtab_entsize
-		if (st_cstr_eq(st_entry_name(e), name)):
-			return st_entry_value(e)
+		if (st_cstr_eq(st_entry_name(e), name)): return st_entry_value(e)
 		i = i + 1
 	return 0
 
@@ -905,8 +817,7 @@ int st_symbol_address(char* name):
 # Name of the defined function whose code contains pc, or 0.
 char* stack_trace_symbol(int pc):
 	int e = st_func_entry(pc)
-	if (e == 0):
-		return cast(char*, 0)
+	if (e == 0): return cast(char*, 0)
 	return cast(char*, st_entry_name(e))
 
 
@@ -919,8 +830,7 @@ int stack_trace_line(int pc):
 
 # Source file name for pc, or 0 when unknown.
 char* stack_trace_file(int pc):
-	if (st_line_lookup(pc)):
-		return cast(char*, st_file_name(st_file_found))
+	if (st_line_lookup(pc)): return cast(char*, st_file_name(st_file_found))
 	return cast(char*, 0)
 
 
@@ -930,10 +840,8 @@ char* stack_trace_file(int pc):
 void st_write_frame(int addr):
 	st_write_cstr(c"  at ")
 	int e = st_func_entry(addr)
-	if (e != 0):
-		st_write_cstr(cast(char*, st_entry_name(e)))
-	else:
-		st_write_hex(addr)
+	if (e != 0): st_write_cstr(cast(char*, st_entry_name(e)))
+	else: st_write_hex(addr)
 	if (st_line_lookup(addr)):
 		st_write_cstr(c" (")
 		int fname = st_file_name(st_file_found)
@@ -948,14 +856,12 @@ void st_write_frame(int addr):
 # Write a symbolized stack trace of the calling thread to stderr, or
 # nothing when no frames can be recovered.
 void print_stack_trace():
-	if (st_jmp_buf == 0):
-		st_jmp_buf = malloc(3 * __word_size__)
+	if (st_jmp_buf == 0): st_jmp_buf = malloc(3 * __word_size__)
 	repl_setjmp(st_jmp_buf)
 	int pc = st_code_address(st_word(cast(int, st_jmp_buf)))
 	int sp = st_word(cast(int, st_jmp_buf) + __word_size__)
 	int fp = st_word(cast(int, st_jmp_buf) + 2 * __word_size__)
-	if (st_state == 0):
-		st_init(pc)
+	if (st_state == 0): st_init(pc)
 	char* pcs = malloc(64 * __word_size__)
 	int n = st_collect_from(pc, sp, fp, pcs, 64)
 	if (n == 0):

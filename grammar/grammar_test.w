@@ -171,8 +171,7 @@ void test_while_break():
 	int i = 0
 	while (1):
 		i = i + 1
-		if (i == 5):
-			break
+		if (i == 5): break
 	assert_equal(5, i)
 
 
@@ -181,23 +180,20 @@ void test_while_continue():
 	int c = 0
 	while (i < 10):
 		i = i + 1
-		if (i % 2 == 0):
-			continue
+		if (i % 2 == 0): continue
 		c = c + 1
 	assert_equal(5, c)
 
 
 void test_while_without_parens():
 	int i = 0
-	while i < 3:
-		i = i + 1
+	while i < 3: i = i + 1
 	assert_equal(3, i)
 
 
 void test_if_without_parens():
 	int r = 0
-	if 1 < 2:
-		r = 5
+	if 1 < 2: r = 5
 	assert_equal(5, r)
 
 
@@ -209,10 +205,8 @@ void test_single_line_if():
 
 int nested_if_else(int a, int b):
 	if (a):
-		if (b):
-			return 3
-	else:
-		return 2
+		if (b): return 3
+	else: return 2
 	return 1
 
 
@@ -311,12 +305,9 @@ void test_mixed_precedence():
 void test_else_if_without_parens():
 	int a = 2
 	int r = 0
-	if a == 1:
-		r = 1
-	else if a == 2:
-		r = 2
-	else:
-		r = 3
+	if a == 1: r = 1
+	else if a == 2: r = 2
+	else: r = 3
 	assert_equal(2, r)
 
 
@@ -331,10 +322,8 @@ void test_empty_if_body_dedent():
 
 void test_pass_statement():
 	int r = 0
-	if (1):
-		pass
-	else:
-		r = 1
+	if (1): pass
+	else: r = 1
 	assert_equal(0, r)
 	if (0): pass
 	while (0): pass

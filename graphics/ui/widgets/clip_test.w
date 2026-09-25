@@ -125,8 +125,7 @@ void test_clip_depth_overflow_is_dropped_cleanly():
 	ui_render_init_headless(&r)
 	ui_render_begin(&r, 320, 240)
 	ui_clip_push(&r, ui_rect_new(0.0, 0.0, 40.0, 40.0))
-	for i in range(20):
-		ui_clip_push(&r, ui_rect_new(0.0, 0.0, 200.0, 200.0))
+	for i in range(20): ui_clip_push(&r, ui_rect_new(0.0, 0.0, 200.0, 200.0))
 	assert_equal(ui_render_clip_depth, r.clip_depth[UI_LAYER_BASE])
 	# The dropped pushes did not widen the clip: the first one still
 	# rules, so a quad outside it is still gone.

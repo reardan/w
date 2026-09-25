@@ -54,13 +54,11 @@ import libs.standard.web.testing
 # abort (exit 22) and a client-side http_error_tls flake.
 tls_conn* hs_child_accept(int listener):
 	int conn = socket_accept_connection(listener)
-	if (conn < 0):
-		exit(21)
+	if (conn < 0): exit(21)
 	socket_set_recv_timeout(conn, 60000)
 	socket_set_send_timeout(conn, 60000)
 	tls_conn* tc = tls_accept(conn, web_test_server_config())
-	if (tc == 0):
-		exit(22)
+	if (tc == 0): exit(22)
 	return tc
 
 
@@ -70,11 +68,9 @@ void hs_child_read_request(tls_conn* tc):
 	int total = 0
 	while (total < 8192):
 		int got = tls_read(tc, buf + total, 8192 - total)
-		if (got <= 0):
-			break
+		if (got <= 0): break
 		total = total + got
-		if (net_test_head_end(buf, total) >= 0):
-			break
+		if (net_test_head_end(buf, total) >= 0): break
 	free(buf)
 
 
@@ -237,8 +233,7 @@ void test_https_cross_scheme_redirect():
 	if (pid_a == 0):
 		close(tls_listener)
 		int conn = socket_accept_connection(plain_listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		socket_set_recv_timeout(conn, 60000)
 		net_test_read_head(conn)
 		string_builder* redirect = string_new()
@@ -303,10 +298,8 @@ void test_https_connect_timeout():
 	int elapsed = time_monotonic_ms() - started
 	assert_equal(0, resp.status)
 	int bounded_error = 0
-	if (resp.error == http_error_timeout):
-		bounded_error = 1
-	if (resp.error == http_error_connect):
-		bounded_error = 1
+	if (resp.error == http_error_timeout): bounded_error = 1
+	if (resp.error == http_error_connect): bounded_error = 1
 	asserts(c"connect fails bounded", bounded_error != 0)
 	# Upper bound: proves we did not hang on the 30s default. Generous
 	# because a loaded machine deschedules us.
@@ -326,8 +319,7 @@ void test_https_handshake_timeout():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		# Wedge guard only: must outlast the client's pre-ClientHello key
 		# generation plus its 500ms wait, even under suite load.
 		socket_set_recv_timeout(conn, 60000)

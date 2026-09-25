@@ -61,14 +61,12 @@ void bignum_set_zero(bignum* a):
 
 # Drop leading zero limbs so n is the true significant-limb count.
 void bignum_normalize(bignum* a):
-	while ((a.n > 0) && (a.limbs[a.n - 1] == 0)):
-		a.n = a.n - 1
+	while ((a.n > 0) && (a.limbs[a.n - 1] == 0)): a.n = a.n - 1
 
 
 int bignum_is_zero(bignum* a):
 	bignum_normalize(a)
-	if (a.n == 0):
-		return 1
+	if (a.n == 0): return 1
 	return 0
 
 
@@ -122,19 +120,15 @@ void bignum_cselect(int bit, bignum* dst, bignum* src):
 int bignum_cmp(bignum* a, bignum* b):
 	int na = a.n
 	int nb = b.n
-	while ((na > 0) && (a.limbs[na - 1] == 0)):
-		na = na - 1
-	while ((nb > 0) && (b.limbs[nb - 1] == 0)):
-		nb = nb - 1
+	while ((na > 0) && (a.limbs[na - 1] == 0)): na = na - 1
+	while ((nb > 0) && (b.limbs[nb - 1] == 0)): nb = nb - 1
 	if (na != nb):
-		if (na < nb):
-			return 0 - 1
+		if (na < nb): return 0 - 1
 		return 1
 	int i = na - 1
 	while (i >= 0):
 		if (a.limbs[i] != b.limbs[i]):
-			if (a.limbs[i] < b.limbs[i]):
-				return 0 - 1
+			if (a.limbs[i] < b.limbs[i]): return 0 - 1
 			return 1
 		i = i - 1
 	return 0
@@ -144,10 +138,8 @@ int bignum_cmp(bignum* a, bignum* b):
 
 int bignum_bit_length(bignum* a):
 	int i = a.n - 1
-	while ((i >= 0) && (a.limbs[i] == 0)):
-		i = i - 1
-	if (i < 0):
-		return 0
+	while ((i >= 0) && (a.limbs[i] == 0)): i = i - 1
+	if (i < 0): return 0
 	int limb = a.limbs[i]
 	int bits = i * BIGNUM_LIMB_BITS
 	while (limb > 0):
@@ -159,8 +151,7 @@ int bignum_bit_length(bignum* a):
 int bignum_get_bit(bignum* a, int bit):
 	int limb = bit / BIGNUM_LIMB_BITS
 	int off = bit % BIGNUM_LIMB_BITS
-	if (limb >= a.n):
-		return 0
+	if (limb >= a.n): return 0
 	return (a.limbs[limb] >> off) & 1
 
 
@@ -168,8 +159,7 @@ void bignum_set_bit(bignum* a, int bit):
 	int limb = bit / BIGNUM_LIMB_BITS
 	int off = bit % BIGNUM_LIMB_BITS
 	a.limbs[limb] = a.limbs[limb] | (1 << off)
-	if (limb + 1 > a.n):
-		a.n = limb + 1
+	if (limb + 1 > a.n): a.n = limb + 1
 
 
 # a <<= 1 (multiply by two).
@@ -193,17 +183,14 @@ void bignum_shl1(bignum* a):
 void bignum_add(bignum* r, bignum* a, bignum* b):
 	int mask = BIGNUM_LIMB_MASK()
 	int n = a.n
-	if (b.n > n):
-		n = b.n
+	if (b.n > n): n = b.n
 	int carry = 0
 	int i = 0
 	while (i < n):
 		int av = 0
-		if (i < a.n):
-			av = a.limbs[i]
+		if (i < a.n): av = a.limbs[i]
 		int bv = 0
-		if (i < b.n):
-			bv = b.limbs[i]
+		if (i < b.n): bv = b.limbs[i]
 		int t = av + bv + carry
 		r.limbs[i] = t & mask
 		carry = t >> 15
@@ -213,8 +200,7 @@ void bignum_add(bignum* r, bignum* a, bignum* b):
 		n = n + 1
 	# Clear any stale high limbs if r aliased a larger operand.
 	while (i < r.n):
-		if (i >= n):
-			r.limbs[i] = 0
+		if (i >= n): r.limbs[i] = 0
 		i = i + 1
 	r.n = n
 	bignum_normalize(r)
@@ -227,14 +213,12 @@ void bignum_sub(bignum* a, bignum* b):
 	int i = 0
 	while (i < a.n):
 		int bv = 0
-		if (i < b.n):
-			bv = b.limbs[i]
+		if (i < b.n): bv = b.limbs[i]
 		int d = a.limbs[i] - bv - borrow
 		if (d < 0):
 			d = d + base
 			borrow = 1
-		else:
-			borrow = 0
+		else: borrow = 0
 		a.limbs[i] = d
 		i = i + 1
 	bignum_normalize(a)
@@ -303,8 +287,7 @@ bignum* BIGNUM_SCRATCH_Q
 
 
 void bignum_scratch_init():
-	if (BIGNUM_SCRATCH_INITED != 0):
-		return
+	if (BIGNUM_SCRATCH_INITED != 0): return
 	BIGNUM_DIV_U = cast(int*, malloc((BIGNUM_CAP + 1) * __word_size__))
 	BIGNUM_DIV_V = cast(int*, malloc(BIGNUM_CAP * __word_size__))
 	BIGNUM_SCRATCH_T = bignum_new()
@@ -326,11 +309,9 @@ void bignum_divmod(bignum* a, bignum* m, bignum* q, bignum* r):
 	int mask = BIGNUM_LIMB_MASK()
 	int base = 1 << 15
 	int na = a.n
-	while ((na > 0) && (a.limbs[na - 1] == 0)):
-		na = na - 1
+	while ((na > 0) && (a.limbs[na - 1] == 0)): na = na - 1
 	int nm = m.n
-	while ((nm > 0) && (m.limbs[nm - 1] == 0)):
-		nm = nm - 1
+	while ((nm > 0) && (m.limbs[nm - 1] == 0)): nm = nm - 1
 	bignum_set_zero(q)
 	bignum_set_zero(r)
 	int i = 0
@@ -389,8 +370,7 @@ void bignum_divmod(bignum* a, bignum* m, bignum* q, bignum* r):
 		while ((qhat >= base) || (qhat * vsec > rhat * base + un[j + nm - 2])):
 			qhat = qhat - 1
 			rhat = rhat + vtop
-			if (rhat >= base):
-				break
+			if (rhat >= base): break
 		# D4: un[j .. j+nm] -= qhat * vn. k folds the product's carry and
 		# the subtraction's borrow: k <= B + 1, so t lies in [-2B, B), and
 		# t == (t & mask) + (t >> 15) * B with an arithmetic shift, making
@@ -448,8 +428,7 @@ void bignum_modmul(bignum* r, bignum* a, bignum* b, bignum* m):
 # r = (a + b) % m, requires a < m and b < m. r must not alias m.
 void bignum_addmod(bignum* r, bignum* a, bignum* b, bignum* m):
 	bignum_add(r, a, b)
-	if (bignum_cmp(r, m) >= 0):
-		bignum_sub(r, m)
+	if (bignum_cmp(r, m) >= 0): bignum_sub(r, m)
 
 
 # r = (a - b) % m, requires a < m and b < m. r distinct from a, b, m.
@@ -508,8 +487,7 @@ void bignum_from_bytes(bignum* a, char* bytes, int len):
 		# This byte's least significant bit sits at position (len-1-i)*8.
 		int base_bit = (len - 1 - i) * 8
 		for k in range(8):
-			if (((bval >> k) & 1) != 0):
-				bignum_set_bit(a, base_bit + k)
+			if (((bval >> k) & 1) != 0): bignum_set_bit(a, base_bit + k)
 	bignum_normalize(a)
 
 
@@ -519,8 +497,7 @@ void bignum_to_bytes(bignum* a, char* out, int len):
 	for i in range(len):
 		int base_bit = (len - 1 - i) * 8
 		int bval = 0
-		for k in range(8):
-			bval = bval | (bignum_get_bit(a, base_bit + k) << k)
+		for k in range(8): bval = bval | (bignum_get_bit(a, base_bit + k) << k)
 		out[i] = bval
 
 

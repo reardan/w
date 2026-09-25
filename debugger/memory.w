@@ -45,12 +45,10 @@ int dbg_mem_write_fn    /* int f(addr, value) -> 1 ok / 0 failed (word-sized) */
 
 # 1 when n bytes starting at addr sit on mapped pages.
 int dbg_mem_readable_local(int addr, int n):
-	if (dbg_mincore_vec == 0):
-		return 0
+	if (dbg_mincore_vec == 0): return 0
 	int page = addr - (addr & 4095)
 	int length = addr + n - page
-	if (length > 16 * 4096):
-		return 0
+	if (length > 16 * 4096): return 0
 	return sys_mincore(page, length, cast(int, dbg_mincore_vec)) == 0
 
 
@@ -108,10 +106,8 @@ int dbg_mem_write_word(int addr, int value):
 # Print a bounded, escaped preview of a C string the debuggee owns, or
 # nothing when the pointer is unreadable. Used for char* values.
 void dbg_print_string_preview(int addr):
-	if (addr == 0):
-		return;
-	if (dbg_mem_readable(addr, 1) == 0):
-		return;
+	if (addr == 0): return;
+	if (dbg_mem_readable(addr, 1) == 0): return;
 	print(c" \x22")
 	for i in range(64):
 		if (dbg_mem_readable(addr + i, 1) == 0):

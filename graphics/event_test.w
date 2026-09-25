@@ -178,8 +178,7 @@ void test_overflow_drops_newest():
 	int32 tail = 0
 	# Capacity is 64 slots; 63 events fit, the 64th and later are
 	# dropped.
-	for i in range(80):
-		gfx_event_ring_push(&ring[0], &head, &tail, GFX_EVENT_KEY_DOWN, i, 0, 0, 0)
+	for i in range(80): gfx_event_ring_push(&ring[0], &head, &tail, GFX_EVENT_KEY_DOWN, i, 0, 0, 0)
 
 	gfx_event out
 	int drained = 0

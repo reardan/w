@@ -110,8 +110,7 @@ int _main():
 	int ok = 1
 	i = 0
 	while (i < n):
-		if (load_i(h_c + i * 4, 4) != 0x40400000):
-			ok = 0
+		if (load_i(h_c + i * 4, 4) != 0x40400000): ok = 0
 		i = i + 1
 
 	if (had_error):

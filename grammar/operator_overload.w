@@ -40,10 +40,8 @@ void defhash_note(char* name, char* kind, int file_index, int line, int column, 
 # pointer arithmetic, exactly like C++.
 int operand_is_struct_value(int t):
 	t = type_unqualified(t)
-	if (t < 0):
-		return 0
-	if (type_get_pointer_level(t) > 0):
-		return 0
+	if (t < 0): return 0
+	if (type_get_pointer_level(t) > 0): return 0
 	return type_num_args(t) > 0
 
 
@@ -57,22 +55,16 @@ int operand_is_struct_value(int t):
 # scheme).
 char* operator_mangle_type_name(int t):
 	t = type_unqualified(t)
-	if (t == 3):
-		return strclone(c"int")
+	if (t == 3): return strclone(c"int")
 	int kind = type_float_kind(t)
-	if (kind == 1):
-		return strclone(c"float")
-	if (kind == 2):
-		return strclone(c"float64")
-	if (type_is_string(t)):
-		return strclone(c"string")
-	if (type_is_var(t)):
-		return strclone(c"var")
+	if (kind == 1): return strclone(c"float")
+	if (kind == 2): return strclone(c"float64")
+	if (type_is_string(t)): return strclone(c"string")
+	if (type_is_var(t)): return strclone(c"var")
 	# A slice value (the 'int[] value' record promote gives a use-site
 	# slice or array expression) mangles as its storage slice record,
 	# the spelling a declared 'int[]' parameter maps to.
-	if (type_get_kind(t) == type_kind_slice_value):
-		t = type_get_slice(type_get_element_type(t))
+	if (type_get_kind(t) == type_kind_slice_value): t = type_get_slice(type_get_element_type(t))
 	char* name = strclone(type_get_name(t))
 	int stars = type_get_pointer_level(t)
 	while (stars > 0):
@@ -157,10 +149,8 @@ int operator_definition_starts_here():
 	int is_op = (c0 == '+') | (c0 == '-') | (c0 == '*') | (c0 == '/') |
 			(c0 == '%') | (c0 == '<') | (c0 == '>') | (c0 == '!') |
 			(c0 == '&') | (c0 == '|') | (c0 == '^') | (c0 == '~') | (c0 == '=')
-	if (is_op == 0):
-		return 0
-	if ((c0 == '=') && (token[1] == 0)):
-		return 0
+	if (is_op == 0): return 0
+	if ((c0 == '=') && (token[1] == 0)): return 0
 	return 1
 
 
@@ -177,10 +167,8 @@ int operator_definition_starts_here():
 char* operator_definition(int decl_type):
 	int op = token[0]
 	int overloadable = (op == '+') | (op == '-') | (op == '*') | (op == '/') | (op == '%')
-	if (token[1] != 0):
-		overloadable = 0
-	if (overloadable == 0):
-		error3(c"operator '", token, c"' cannot be overloaded")
+	if (token[1] != 0): overloadable = 0
+	if (overloadable == 0): error3(c"operator '", token, c"' cannot be overloaded")
 	get_token()
 	expect(c"(")
 	# Pre-scan the parameter types to build the mangled name, then
@@ -196,21 +184,16 @@ char* operator_definition(int decl_type):
 		# after a parameter type) never fits an operator: use sites
 		# always pass exactly two operands. Reject it here, before the
 		# rewind hands the list to function_definition.
-		if (accept(c".")):
-			error(c"operator definitions do not support variadic parameters")
-		if (param_count == 0):
-			left_type = t
-		if (param_count == 1):
-			right_type = t
+		if (accept(c".")): error(c"operator definitions do not support variadic parameters")
+		if (param_count == 0): left_type = t
+		if (param_count == 1): right_type = t
 		param_count = param_count + 1
 		# Skip the parameter name and any default value
-		while ((peek(c",") == 0) & (peek(c")") == 0) & (token[0] != 0)):
-			get_token()
+		while ((peek(c",") == 0) & (peek(c")") == 0) & (token[0] != 0)): get_token()
 		accept(c",")
 	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
-	if (param_count != 2):
-		error(c"operator definition takes 2 parameters")
+	if (param_count != 2): error(c"operator definition takes 2 parameters")
 	if ((operand_is_struct_value(left_type) == 0) & (operand_is_struct_value(right_type) == 0)):
 		error(c"operator parameters require a struct type")
 	char* name = operator_mangled_name(op, left_type, right_type)
@@ -259,16 +242,14 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 		if (callee >= 0):
 			free(name)
 			name = right_folded
-		else:
-			free(right_folded)
+		else: free(right_folded)
 	if ((callee < 0) & (strcmp(left_name, c"float64") == 0)):
 		char* left_folded = operator_build_name(op, c"float", right_name)
 		callee = sym_lookup(left_folded)
 		if (callee >= 0):
 			free(name)
 			name = left_folded
-		else:
-			free(left_folded)
+		else: free(left_folded)
 	if (callee < 0):
 		diag_part(c"no operator '")
 		char* spelling = malloc(2)
@@ -286,8 +267,7 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 	if (declared_return >= 0):
 		if (type_num_args(declared_return) > 0):
 			buf_words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
-			for j in range(buf_words):
-				push_eax()
+			for j in range(buf_words): push_eax()
 			stack_pos = stack_pos + buf_words
 			has_return_buffer = 1
 	# Save the right operand's word while materializing the callee
@@ -302,15 +282,13 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 	load_slot(left_slot)
 	check_call_argument(callee, -1, name, 0, left_type)
 	int param0 = sym_param_type(callee, 0)
-	if (param0 >= 0):
-		coerce_call_argument(param0, left_type)
+	if (param0 >= 0): coerce_call_argument(param0, left_type)
 	push_call_argument(left_type)
 	# Right operand: reload its save and push it as argument 1
 	load_slot(right_slot)
 	check_call_argument(callee, -1, name, 1, right_type)
 	int param1 = sym_param_type(callee, 1)
-	if (param1 >= 0):
-		coerce_call_argument(param1, right_type)
+	if (param1 >= 0): coerce_call_argument(param1, right_type)
 	push_call_argument(right_type)
 	# The shared call tail frees name
 	int result = finish_call(4, s, sym_num_args(callee), callee, name, declared_return, 2, has_return_buffer, -1)

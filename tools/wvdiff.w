@@ -42,15 +42,12 @@ int main(int argc, int argv):
 	char* new_path = *new_arg
 
 	char* old_text = file_read_text(old_path)
-	if (old_text == 0):
-		return wvdiff_read_error(old_path)
+	if (old_text == 0): return wvdiff_read_error(old_path)
 	char* new_text = file_read_text(new_path)
-	if (new_text == 0):
-		return wvdiff_read_error(new_path)
+	if (new_text == 0): return wvdiff_read_error(new_path)
 
 	diff_result* result = diff_text(old_text, new_text, diff_default_context)
-	if (diff_is_identical(result)):
-		return 0
+	if (diff_is_identical(result)): return 0
 
 	wstream* out = stdout_writer()
 	diff_render_unified(out, old_path, new_path, result)

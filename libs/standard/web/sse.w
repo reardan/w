@@ -120,14 +120,12 @@ sse_reader* sse_open(http_stream* s):
 
 # Frees the reader and its buffers. Does not touch the borrowed stream.
 void sse_reader_free(sse_reader* r):
-	if (r == 0):
-		return
+	if (r == 0): return
 	free(r.buf)
 	string_free(r.line)
 	string_free(r.data)
 	string_free(r.event_type)
-	if (r.last_id != 0):
-		free(r.last_id)
+	if (r.last_id != 0): free(r.last_id)
 	free(r)
 
 
@@ -140,20 +138,15 @@ int sse_reader_error(sse_reader* r):
 
 # The reader's current reconnect delay in milliseconds (0 when unset).
 int sse_reader_retry_ms(sse_reader* r):
-	if (r == 0):
-		return 0
+	if (r == 0): return 0
 	return r.retry_ms
 
 
 void sse_event_free(sse_event* ev):
-	if (ev == 0):
-		return
-	if (ev.event != 0):
-		free(ev.event)
-	if (ev.data != 0):
-		free(ev.data)
-	if (ev.id != 0):
-		free(ev.id)
+	if (ev == 0): return
+	if (ev.event != 0): free(ev.event)
+	if (ev.data != 0): free(ev.data)
+	if (ev.id != 0): free(ev.id)
 	free(ev)
 
 
@@ -163,16 +156,14 @@ void sse_event_free(sse_event* ev):
 # preserved in the copy (though a C-string consumer stops at the first).
 char* sse_range_clone(char* base, int start, int end):
 	int n = end - start
-	if (n < 0):
-		n = 0
+	if (n < 0): n = 0
 	char* out = mem_dup(base + start, n)
 	return out
 
 
 int sse_range_has_nul(char* base, int start, int end):
 	for i in range(start, end):
-		if ((base[i] & 255) == 0):
-			return 1
+		if ((base[i] & 255) == 0): return 1
 	return 0
 
 
@@ -181,21 +172,17 @@ int sse_range_has_nul(char* base, int start, int end):
 int sse_name_eq(char* base, int name_end, char* target):
 	int i = 0
 	while (i < name_end):
-		if (target[i] == 0):
-			return 0
-		if ((base[i] & 255) != (target[i] & 255)):
-			return 0
+		if (target[i] == 0): return 0
+		if ((base[i] & 255) != (target[i] & 255)): return 0
 		i = i + 1
 	return target[i] == 0
 
 
 int sse_range_all_digits(char* base, int start, int end):
-	if (end <= start):
-		return 0
+	if (end <= start): return 0
 	for i in range(start, end):
 		int c = base[i] & 255
-		if ((c < '0') || (c > '9')):
-			return 0
+		if ((c < '0') || (c > '9')): return 0
 	return 1
 
 
@@ -204,8 +191,7 @@ int sse_range_all_digits(char* base, int start, int end):
 int sse_range_atoi(char* base, int start, int end):
 	int v = 0
 	for i in range(start, end):
-		if (v > 200000000):
-			return 2000000000
+		if (v > 200000000): return 2000000000
 		v = v * 10 + (base[i] - '0')
 	return v
 
@@ -219,16 +205,14 @@ void sse_apply_field(sse_reader* r, char* base, int name_end, int vstart, int ve
 		string_clear(r.event_type)
 		string_append_bytes(r.event_type, base + vstart, vend - vstart)
 	else if (sse_name_eq(base, name_end, c"data") != 0):
-		if (r.data.length + (vend - vstart) > sse_max_event):
-			r.error = sse_error_overflow
+		if (r.data.length + (vend - vstart) > sse_max_event): r.error = sse_error_overflow
 		else:
 			string_append_bytes(r.data, base + vstart, vend - vstart)
 			string_append_char(r.data, 10)
 	else if (sse_name_eq(base, name_end, c"id") != 0):
 		# Ignore an id that contains a NUL (WHATWG rule).
 		if (sse_range_has_nul(base, vstart, vend) == 0):
-			if (r.last_id != 0):
-				free(r.last_id)
+			if (r.last_id != 0): free(r.last_id)
 			r.last_id = sse_range_clone(base, vstart, vend)
 	else if (sse_name_eq(base, name_end, c"retry") != 0):
 		# Digits only; anything else leaves the delay unchanged.
@@ -241,23 +225,19 @@ void sse_apply_field(sse_reader* r, char* base, int name_end, int vstart, int ve
 void sse_process_field(sse_reader* r):
 	char* line = r.line.data
 	int len = r.line.length
-	if ((line[0] & 255) == ':'):
-		return
+	if ((line[0] & 255) == ':'): return
 	int colon = 0
 	int found = 0
 	while ((colon < len) && (found == 0)):
-		if ((line[colon] & 255) == ':'):
-			found = 1
-		else:
-			colon = colon + 1
+		if ((line[colon] & 255) == ':'): found = 1
+		else: colon = colon + 1
 	int name_end = colon
 	int vstart = len
 	int vend = len
 	if (found != 0):
 		vstart = colon + 1
 		if (vstart < len):
-			if ((line[vstart] & 255) == ' '):
-				vstart = vstart + 1
+			if ((line[vstart] & 255) == ' '): vstart = vstart + 1
 		vend = len
 	sse_apply_field(r, line, name_end, vstart, vend)
 
@@ -270,18 +250,14 @@ sse_event* sse_dispatch(sse_reader* r):
 		return 0
 	int dlen = r.data.length
 	# Strip the single trailing LF added after the last data line.
-	if ((r.data.data[dlen - 1] & 255) == 10):
-		dlen = dlen - 1
+	if ((r.data.data[dlen - 1] & 255) == 10): dlen = dlen - 1
 	sse_event* ev = new sse_event()
 	if (r.event_type.length > 0):
 		ev.event = sse_range_clone(r.event_type.data, 0, r.event_type.length)
-	else:
-		ev.event = strclone(c"message")
+	else: ev.event = strclone(c"message")
 	ev.data = sse_range_clone(r.data.data, 0, dlen)
-	if (r.last_id != 0):
-		ev.id = strclone(r.last_id)
-	else:
-		ev.id = 0
+	if (r.last_id != 0): ev.id = strclone(r.last_id)
+	else: ev.id = 0
 	ev.retry_ms = r.retry_ms
 	string_clear(r.event_type)
 	string_clear(r.data)
@@ -291,8 +267,7 @@ sse_event* sse_dispatch(sse_reader* r):
 # Called when a line terminator completes r.line. Returns a dispatched
 # event (blank line, non-empty data) or 0.
 sse_event* sse_end_line(sse_reader* r):
-	if (r.line.length == 0):
-		return sse_dispatch(r)
+	if (r.line.length == 0): return sse_dispatch(r)
 	sse_process_field(r)
 	string_clear(r.line)
 	return 0
@@ -303,11 +278,9 @@ sse_event* sse_end_line(sse_reader* r):
 # Ensures r.buf holds unread bytes. Returns 1 when bytes are available,
 # 0 at clean end-of-stream, -1 on a stream error (r.error set).
 int sse_refill(sse_reader* r):
-	if (r.error != 0):
-		return (-1)
+	if (r.error != 0): return (-1)
 	while (r.buf_pos >= r.buf_len):
-		if (r.eof != 0):
-			return 0
+		if (r.eof != 0): return 0
 		if (r.started == 0):
 			# First fill: gather at least 3 bytes (or hit EOF) so a
 			# leading BOM can be recognised even if the initial read is
@@ -316,28 +289,21 @@ int sse_refill(sse_reader* r):
 			r.buf_len = 0
 			while ((r.buf_len < 3) && (r.eof == 0) && (r.error == 0)):
 				int got = http_stream_read(r.stream, r.buf + r.buf_len, r.buf_cap - r.buf_len)
-				if (got > 0):
-					r.buf_len = r.buf_len + got
-				else if (got == 0):
-					r.eof = 1
-				else:
-					r.error = sse_error_stream
+				if (got > 0): r.buf_len = r.buf_len + got
+				else if (got == 0): r.eof = 1
+				else: r.error = sse_error_stream
 			r.started = 1
-			if (r.error != 0):
-				return (-1)
+			if (r.error != 0): return (-1)
 			if (r.buf_len >= 3):
 				if ((r.buf[0] & 255) == 239):
 					if ((r.buf[1] & 255) == 187):
-						if ((r.buf[2] & 255) == 191):
-							r.buf_pos = 3
+						if ((r.buf[2] & 255) == 191): r.buf_pos = 3
 		else:
 			r.buf_pos = 0
 			r.buf_len = 0
 			int got = http_stream_read(r.stream, r.buf, r.buf_cap)
-			if (got > 0):
-				r.buf_len = got
-			else if (got == 0):
-				r.eof = 1
+			if (got > 0): r.buf_len = got
+			else if (got == 0): r.eof = 1
 			else:
 				r.error = sse_error_stream
 				return (-1)
@@ -348,14 +314,11 @@ int sse_refill(sse_reader* r):
 # sse_reader_error to tell a clean EOF (0) from a failure. The returned
 # event is owned by the caller (sse_event_free).
 sse_event* sse_next(sse_reader* r):
-	if (r == 0):
-		return 0
-	if (r.error != 0):
-		return 0
+	if (r == 0): return 0
+	if (r.error != 0): return 0
 	while (1):
 		int state = sse_refill(r)
-		if (state < 0):
-			return 0
+		if (state < 0): return 0
 		if (state == 0):
 			# End of stream: any half-built event is discarded per spec.
 			return 0
@@ -365,17 +328,14 @@ sse_event* sse_next(sse_reader* r):
 			if (b == 13):
 				r.pending_cr = 1
 				sse_event* ev = sse_end_line(r)
-				if (r.error != 0):
-					return 0
+				if (r.error != 0): return 0
 				if (ev != 0):
 					return ev
 			else if (b == 10):
-				if (r.pending_cr != 0):
-					r.pending_cr = 0
+				if (r.pending_cr != 0): r.pending_cr = 0
 				else:
 					sse_event* ev = sse_end_line(r)
-					if (r.error != 0):
-						return 0
+					if (r.error != 0): return 0
 					if (ev != 0):
 						return ev
 			else:

@@ -149,8 +149,7 @@ void test_increment_float():
 
 void test_increment_in_loop_body():
 	int total = 0
-	for i in range(5):
-		total += i
+	for i in range(5): total += i
 	assert_equal(10, total)
 	for int j in range(0, 3):
 		total++

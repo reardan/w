@@ -29,8 +29,7 @@ int ref_load_i(char* p, int n):
 
 int ref_load_int32(char* p):
 	int result = ref_load_i(p, 4)
-	if (__word_size__ == 8):
-		result = (result << 32) >> 32
+	if (__word_size__ == 8): result = (result << 32) >> 32
 	return result
 
 

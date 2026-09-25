@@ -96,11 +96,9 @@ void wasm_extern_init():
 # index), so the index is final the moment the extern is declared.
 int wasm_extern_add(char* module, char* name, int n_params, char* classes, int ret_kind):
 	wasm_extern_init()
-	if (wasm_extern_count >= wasm_extern_max):
-		error(c"too many extern imports")
+	if (wasm_extern_count >= wasm_extern_max): error(c"too many extern imports")
 	char* classes_copy = malloc(n_params + 1)
-	for i in range(n_params):
-		classes_copy[i] = classes[i]
+	for i in range(n_params): classes_copy[i] = classes[i]
 	save_i(wasm_extern_modules + wasm_extern_count * __word_size__, cast(int, strclone(module)), __word_size__)
 	save_i(wasm_extern_names + wasm_extern_count * __word_size__, cast(int, strclone(name)), __word_size__)
 	save_i(wasm_extern_classes + wasm_extern_count * __word_size__, cast(int, classes_copy), __word_size__)
@@ -141,14 +139,10 @@ void wasm_export_init():
 
 # The four names wasm_finish always exports.
 int wasm_export_name_reserved(char* name):
-	if (strcmp(name, c"memory") == 0):
-		return 1
-	if (strcmp(name, c"_start") == 0):
-		return 1
-	if (strcmp(name, c"table") == 0):
-		return 1
-	if (strcmp(name, c"ax") == 0):
-		return 1
+	if (strcmp(name, c"memory") == 0): return 1
+	if (strcmp(name, c"_start") == 0): return 1
+	if (strcmp(name, c"table") == 0): return 1
+	if (strcmp(name, c"ax") == 0): return 1
 	return 0
 
 # Register one 'export'-marked function, called by grammar/program.w
@@ -157,8 +151,7 @@ int wasm_export_name_reserved(char* name):
 # checked here, where the registry lives.
 void wasm_export_add(int sym, char* name, int n_params, char* classes, int ret_kind):
 	wasm_export_init()
-	if (wasm_export_count >= wasm_export_max):
-		error(c"too many exported functions")
+	if (wasm_export_count >= wasm_export_max): error(c"too many exported functions")
 	if (wasm_export_name_reserved(name)):
 		error3(c"export name '", name, c"' collides with a reserved module export")
 	int e = 0
@@ -167,8 +160,7 @@ void wasm_export_add(int sym, char* name, int n_params, char* classes, int ret_k
 			error3(c"function '", name, c"' is already exported")
 		e = e + 1
 	char* classes_copy = malloc(n_params + 1)
-	for i in range(n_params):
-		classes_copy[i] = classes[i]
+	for i in range(n_params): classes_copy[i] = classes[i]
 	save_i(wasm_export_syms + wasm_export_count * 4, sym, 4)
 	save_i(wasm_export_names + wasm_export_count * __word_size__, cast(int, strclone(name)), __word_size__)
 	save_i(wasm_export_classes + wasm_export_count * __word_size__, cast(int, classes_copy), __word_size__)
@@ -193,8 +185,7 @@ char* wasm_export_wrapper_tables
 # for f32 results. The uniform table + "ax" callback contract is
 # untouched: wrappers are additive.
 void wasm_emit_export_wrappers():
-	if (wasm_export_count == 0):
-		return
+	if (wasm_export_count == 0): return
 	wasm_export_wrapper_tables = malloc(wasm_export_count * 4)
 	int e = 0
 	while (e < wasm_export_count):
@@ -215,8 +206,7 @@ void wasm_emit_export_wrappers():
 			wasm_global_get(0)
 			emit_int8(0x20)   # local.get i
 			wasm_leb(i)
-			if (classes[i] == 1):
-				emit_int8(0xbc)   # i32.reinterpret_f32
+			if (classes[i] == 1): emit_int8(0xbc)   # i32.reinterpret_f32
 			wasm_load_op(0x36, 2, 0)
 		emit_int8(0x10)   # call (the function index space is final here)
 		wasm_leb(callee)
@@ -225,8 +215,7 @@ void wasm_emit_export_wrappers():
 		int ret_kind = load_i(wasm_export_rets + e * 4, 4)
 		if (ret_kind):
 			wasm_global_get(1)   # $ax: the cross-call return channel
-			if (ret_kind == 2):
-				emit_int8(0xbe)   # f32.reinterpret_i32
+			if (ret_kind == 2): emit_int8(0xbe)   # f32.reinterpret_i32
 		wasm_function_end()
 		e = e + 1
 
@@ -284,15 +273,12 @@ void wasm_extern_stub(int sym, char* name, int funcidx, int n_params, char* clas
 	int i = 0
 	while (i < n_params):
 		wasm_stub_arg(i, n_params)
-		if (classes[i] == 1):
-			emit_int8(0xbe)   # f32.reinterpret_i32
+		if (classes[i] == 1): emit_int8(0xbe)   # f32.reinterpret_i32
 		i = i + 1
 	emit_int8(0x10)   # call the import
 	wasm_leb(funcidx)
-	if (ret_kind == 2):
-		emit_int8(0xbc)   # i32.reinterpret_f32
-	if (ret_kind):
-		wasm_set_ax()
+	if (ret_kind == 2): emit_int8(0xbc)   # i32.reinterpret_f32
+	if (ret_kind): wasm_set_ax()
 	wasm_stub_end()
 
 # The W-callable OS stubs. Emitted at be_start, before any user code, so
@@ -562,18 +548,13 @@ void wasm_sig_type_entry(int n, char* classes, int ret_kind):
 	emit_int8(0x60)
 	wasm_leb(n)
 	for i in range(n):
-		if (classes[i] == 1):
-			emit_int8(0x7d)
-		else:
-			emit_int8(0x7f)
-	if (ret_kind == 0):
-		wasm_leb(0)
+		if (classes[i] == 1): emit_int8(0x7d)
+		else: emit_int8(0x7f)
+	if (ret_kind == 0): wasm_leb(0)
 	else:
 		wasm_leb(1)
-		if (ret_kind == 2):
-			emit_int8(0x7d)
-		else:
-			emit_int8(0x7f)
+		if (ret_kind == 2): emit_int8(0x7d)
+		else: emit_int8(0x7f)
 
 # The function type of user extern e: i32/f32 params from its class
 # array, then a void, i32 or f32 result. Extern e gets its own type entry
@@ -597,13 +578,10 @@ void wasm_type_entry(int n_params, int i64_mask, int n_results):
 	emit_int8(0x60)
 	wasm_leb(n_params)
 	for i in range(n_params):
-		if ((i64_mask >> i) & 1):
-			emit_int8(0x7e)
-		else:
-			emit_int8(0x7f)
+		if ((i64_mask >> i) & 1): emit_int8(0x7e)
+		else: emit_int8(0x7f)
 	wasm_leb(n_results)
-	if (n_results):
-		emit_int8(0x7f)
+	if (n_results): emit_int8(0x7f)
 
 # one mutable global: value type vt, zero-or-constant init
 void wasm_global_entry(int vt, int init):
@@ -615,8 +593,7 @@ void wasm_global_entry(int vt, int init):
 	else if (vt == 0x7d):
 		emit_int8(0x43)   # f32.const (4 raw bytes; init is the bit pattern)
 		emit_int32(init)
-	else:
-		wasm_i32_const(init)
+	else: wasm_i32_const(init)
 	emit_int8(0x0b)
 
 void wasm_finish():
@@ -624,8 +601,7 @@ void wasm_finish():
 	# runtime startup, which rebuilds real argc/argv) when _main exists
 	# for it to chain to; otherwise _main / main directly.
 	int t = entry_symbol(c"__w_wasm_start")
-	if (t != 0):
-		wasm_addr_slot_write(wasm_entry_slot_pos, t)
+	if (t != 0): wasm_addr_slot_write(wasm_entry_slot_pos, t)
 
 	# Direct-call sites (code_generator/wasm.w): each padded `call`
 	# immediate still holds the callee's TABLE index. The function index
@@ -821,8 +797,7 @@ void wasm_finish():
 		i = 1
 		while (i <= wasm_func_count):
 			if (i < wasm_func_names_cap):
-				if (wasm_func_names[i]):
-					named = named + 1
+				if (wasm_func_names[i]): named = named + 1
 			i = i + 1
 		wasm_leb(named)
 		i = 1
@@ -838,12 +813,10 @@ void wasm_finish():
 
 	if (write(output_fd, code + s1, s1_end - s1) != s1_end - s1):
 		error(c"could not write output file")
-	if (write(output_fd, code, code_end) != code_end):
-		error(c"could not write output file")
+	if (write(output_fd, code, code_end) != code_end): error(c"could not write output file")
 	if (write(output_fd, code + s2, s2_end - s2) != s2_end - s2):
 		error(c"could not write output file")
 	if (datapos):
-		if (write(output_fd, data, datapos) != datapos):
-			error(c"could not write output file")
+		if (write(output_fd, data, datapos) != datapos): error(c"could not write output file")
 	if (write(output_fd, code + s3, s3_end - s3) != s3_end - s3):
 		error(c"could not write output file")

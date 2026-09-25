@@ -37,14 +37,12 @@ char* alpnt_key_path():
 
 
 void alpnt_fill(char* buf, int n, int seed):
-	for i in range(n):
-		buf[i] = (seed + i * 7 + (i >> 3)) & 255
+	for i in range(n): buf[i] = (seed + i * 7 + (i >> 3)) & 255
 
 
 # 1 if two optional C strings are equal (both 0 counts as equal).
 int alpnt_same(char* a, char* b):
-	if ((a == 0) || (b == 0)):
-		return (a == 0) && (b == 0)
+	if ((a == 0) || (b == 0)): return (a == 0) && (b == 0)
 	return strcmp(a, b) == 0
 
 
@@ -70,18 +68,13 @@ int alpnt_loopback(char* server_protos, int required, char* client_protos, char*
 		scfg.cert_chain_path = alpnt_cert_path()
 		scfg.key_path = alpnt_key_path()
 		if (server_protos != 0):
-			if (tls_server_config_set_alpn(scfg, server_protos, required) == 0):
-				exit(6)
+			if (tls_server_config_set_alpn(scfg, server_protos, required) == 0): exit(6)
 		tls_conn* s = tls_accept(fds[1], scfg)
-		if (s == 0):
-			exit(3)
-		if (alpnt_same(tls_alpn_selected(s), expect) == 0):
-			exit(4)
+		if (s == 0): exit(3)
+		if (alpnt_same(tls_alpn_selected(s), expect) == 0): exit(4)
 		char* buf = malloc(64)
-		if (tls_write(s, c"ok", 2) != 2):
-			exit(5)
-		if (tls_read(s, buf, 64) != 0):
-			exit(5)
+		if (tls_write(s, c"ok", 2) != 2): exit(5)
+		if (tls_read(s, buf, 64) != 0): exit(5)
 		tls_close(s)
 		exit(0)
 	close(fds[1])
@@ -94,8 +87,7 @@ int alpnt_loopback(char* server_protos, int required, char* client_protos, char*
 	if (c != 0):
 		char* buf = malloc(64)
 		int got = tls_read(c, buf, 64)
-		if ((got == 2) && (alpnt_same(tls_alpn_selected(c), expect) != 0)):
-			result = 1
+		if ((got == 2) && (alpnt_same(tls_alpn_selected(c), expect) != 0)): result = 1
 		free(buf)
 		tls_close(c)
 	close(fds[0])
@@ -115,8 +107,7 @@ char* alpnt_wrap_handshake(char* msg, int mlen, int* out_len):
 	rec[2] = 3
 	rec[3] = (mlen >> 8) & 255
 	rec[4] = mlen & 255
-	for i in range(mlen):
-		rec[5 + i] = msg[i]
+	for i in range(mlen): rec[5 + i] = msg[i]
 	*out_len = 5 + mlen
 	return rec
 
@@ -151,11 +142,9 @@ char* alpnt_client_hello(char* client_priv, char* protos, int* out_len):
 	alpnt_fill(sid, 32, 0x40)
 	int alen = 0
 	char* alpn = 0
-	if (protos != 0):
-		alpn = tls_alpn_encode(protos, &alen)
+	if (protos != 0): alpn = tls_alpn_encode(protos, &alen)
 	char* ch = tls_build_client_hello_alpn(c"test.w.example", rnd, sid, pub, alpn, alen, out_len)
-	if (alpn != 0):
-		free(alpn)
+	if (alpn != 0): free(alpn)
 	free(pub)
 	free(rnd)
 	free(sid)
@@ -169,8 +158,7 @@ char* alpnt_server_output(char* chrec, int chrec_len, char* server_protos, int r
 	tls_server_config* scfg = alpnt_config_inmem()
 	scfg.test_priv = server_priv
 	scfg.test_random = server_random
-	if (server_protos != 0):
-		tls_server_config_set_alpn(scfg, server_protos, required)
+	if (server_protos != 0): tls_server_config_set_alpn(scfg, server_protos, required)
 	tls_conn* s = tls_conn_new(0 - 1, 1, 0)
 	s.is_server = 1
 	s.scfg = scfg
@@ -206,8 +194,7 @@ char* alpnt_client_vs_flight(char* ch_protos, char* client_protos):
 	cfg.test_priv = client_priv
 	cfg.test_client_hello = ch
 	cfg.test_client_hello_len = ch_len
-	if (client_protos != 0):
-		tls_config_set_alpn(cfg, client_protos)
+	if (client_protos != 0): tls_config_set_alpn(cfg, client_protos)
 	tls_conn* c = tls_connect_mem(flight, flen, c"test.w.example", cfg)
 	char* err = 0
 	if (c == 0):

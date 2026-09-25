@@ -161,8 +161,7 @@ void ui_render_sync_atlas(ui_renderer* r):
 				batch[i * 8 + 3] = batch[i * 8 + 3] * k
 				i = i + 1
 			layer = layer + 1
-	if (r.gl_ready && (r.atlas_generation != ui_font_atlas_generation())):
-		ui_render_upload_atlas(r)
+	if (r.gl_ready && (r.atlas_generation != ui_font_atlas_generation())): ui_render_upload_atlas(r)
 
 
 # (Re)upload the atlas — baked mask rows plus the runtime glyph rows —
@@ -227,8 +226,7 @@ void ui_render_begin(ui_renderer* r, int width, int height):
 	r.vp_w = width
 	r.vp_h = height
 	ui_render_sync_atlas(r)
-	if (r.gl_ready == 0):
-		return
+	if (r.gl_ready == 0): return
 	glUseProgram(r.program)
 	glDisable(GL_DEPTH_TEST)
 	glEnable(GL_BLEND)
@@ -242,8 +240,7 @@ void ui_render_begin(ui_renderer* r, int width, int height):
 # Route subsequent geometry to a layer. Out-of-range layers are
 # ignored rather than corrupting the batch pointers.
 void ui_render_layer(ui_renderer* r, int layer):
-	if ((layer < 0) || (layer >= ui_render_layer_count)):
-		return
+	if ((layer < 0) || (layer >= ui_render_layer_count)): return
 	r.layer = layer
 
 
@@ -251,8 +248,7 @@ void ui_render_layer(ui_renderer* r, int layer):
 # when that layer's stack is empty. Nothing outside it reaches the batch.
 ui_rect ui_clip_current(ui_renderer* r):
 	int depth = r.clip_depth[r.layer]
-	if (depth == 0):
-		return ui_rect_new(0.0, 0.0, cast(float32, r.vp_w), cast(float32, r.vp_h))
+	if (depth == 0): return ui_rect_new(0.0, 0.0, cast(float32, r.vp_w), cast(float32, r.vp_h))
 	return r.clip_stack[r.layer * 8 + depth - 1]
 
 
@@ -262,16 +258,14 @@ ui_rect ui_clip_current(ui_renderer* r):
 # no-op, so a dropped push and its matching pop still balance.
 void ui_clip_push(ui_renderer* r, ui_rect rect):
 	int depth = r.clip_depth[r.layer]
-	if (depth >= ui_render_clip_depth):
-		return
+	if (depth >= ui_render_clip_depth): return
 	r.clip_stack[r.layer * 8 + depth] = ui_rect_intersect(ui_clip_current(r), rect)
 	r.clip_depth[r.layer] = depth + 1
 
 
 void ui_clip_pop(ui_renderer* r):
 	int depth = r.clip_depth[r.layer]
-	if (depth == 0):
-		return
+	if (depth == 0): return
 	r.clip_depth[r.layer] = depth - 1
 
 
@@ -297,8 +291,7 @@ void ui_render_vertex(ui_renderer* r, float32 x, float32 y, float32 u, float32 v
 	if (count >= cap):
 		int32 grown = 0
 		batch = ui_render_grow(batch, cap, &grown)
-		if (grown == cap):
-			return
+		if (grown == cap): return
 		r.layer_verts[layer] = batch
 		r.layer_vert_cap[layer] = grown
 	float32* p = &batch[count * 8]
@@ -333,8 +326,7 @@ void ui_render_quad_sheared(ui_renderer* r, ui_rect rect, float32 u0, float32 v0
 	if (r.clip_depth[r.layer] > 0):
 		ui_rect clip = ui_clip_current(r)
 		ui_rect vis = ui_rect_intersect(rect, clip)
-		if (ui_rect_is_empty(vis)):
-			return
+		if (ui_rect_is_empty(vis)): return
 		if ((rect.w > 0.0) && (rect.h > 0.0)):
 			float32 fu0 = (vis.x - rect.x) / rect.w
 			float32 fu1 = (vis.x + vis.w - rect.x) / rect.w
@@ -429,10 +421,8 @@ int ui_render_glyph(ui_renderer* r, float32 x, float32 y_top, int ch, int scale,
 # radius clamps to half the shorter side; radius 0 is a plain rect.
 void ui_draw_rrect(ui_renderer* r, ui_rect rect, float32 radius, ui_color color):
 	float32 half = rect.w * 0.5
-	if (rect.h * 0.5 < half):
-		half = rect.h * 0.5
-	if (radius > half):
-		radius = half
+	if (rect.h * 0.5 < half): half = rect.h * 0.5
+	if (radius > half): radius = half
 	if (radius < 1.0):
 		ui_render_rect(r, rect, color)
 		return
@@ -483,10 +473,8 @@ void ui_draw_shadow(ui_renderer* r, ui_rect rect, ui_color color):
 	float32 grow = 10.0
 	ui_rect s = ui_rect_new(rect.x - grow, rect.y - grow + 2.0, rect.w + grow * 2.0, rect.h + grow * 2.0)
 	float32 cs = 24.0
-	if (s.w * 0.5 < cs):
-		cs = s.w * 0.5
-	if (s.h * 0.5 < cs):
-		cs = s.h * 0.5
+	if (s.w * 0.5 < cs): cs = s.w * 0.5
+	if (s.h * 0.5 < cs): cs = s.h * 0.5
 	float32 u0 = ui_render_u(m.x)
 	float32 u1 = ui_render_u(m.x + m.w)
 	float32 v0 = ui_render_v(m.y)
@@ -513,8 +501,7 @@ void ui_draw_shadow(ui_renderer* r, ui_rect rect, ui_color color):
 
 
 void ui_render_draw_batch(ui_renderer* r, float32* batch, int count):
-	if (count == 0):
-		return
+	if (count == 0): return
 	glBindBuffer(GL_ARRAY_BUFFER, r.vbuf)
 	glBufferData(GL_ARRAY_BUFFER, count * 32, batch, GL_DYNAMIC_DRAW)
 	glEnableVertexAttribArray(r.a_pos)
@@ -531,8 +518,7 @@ void ui_render_draw_batch(ui_renderer* r, float32* batch, int count):
 # layer over both.
 void ui_render_end(ui_renderer* r):
 	ui_render_sync_atlas(r)
-	if (r.gl_ready == 0):
-		return
+	if (r.gl_ready == 0): return
 	glUseProgram(r.program)
 	int i = 0
 	while (i < ui_render_layer_count):

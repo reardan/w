@@ -64,8 +64,7 @@ void test_incremental_chunking():
 		int off = 0
 		while (off < n):
 			int step = chunk
-			if (n - off < step):
-				step = n - off
+			if (n - off < step): step = n - off
 			poly1305_update(st, msg + off, step)
 			off = off + step
 		poly1305_finish(st, tag)

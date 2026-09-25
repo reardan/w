@@ -18,8 +18,7 @@ int dir_getdents_uint16(char* p):
 # Returns 0, or -1 when path cannot be opened.
 int dir_getdents_read(char* path, list[char*] names, list[int] kinds, int open_flags, int reclen_at, int name_at, int type_at):
 	int fd = open(path, open_flags, 0)
-	if (fd < 0):
-		return -1
+	if (fd < 0): return -1
 	int buffer_size = 65536
 	char* buffer = malloc(buffer_size)
 	int n = getdents(fd, buffer, buffer_size)
@@ -28,11 +27,9 @@ int dir_getdents_read(char* path, list[char*] names, list[int] kinds, int open_f
 		while (off < n):
 			char* record = buffer + off
 			int reclen = dir_getdents_uint16(record + reclen_at)
-			if (reclen <= 0):
-				break
+			if (reclen <= 0): break
 			int at = type_at
-			if (at < 0):
-				at = reclen - 1
+			if (at < 0): at = reclen - 1
 			names.push(strclone(record + name_at))
 			kinds.push(record[at] & 255)
 			off = off + reclen

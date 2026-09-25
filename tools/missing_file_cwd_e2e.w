@@ -46,8 +46,7 @@ void fail(char* desc, char* what):
 
 
 void reject(char* desc, char* text, char* needle):
-	if (index_of(text, needle) >= 0):
-		fail(desc, strjoin(c"stderr contains ", needle))
+	if (index_of(text, needle) >= 0): fail(desc, strjoin(c"stderr contains ", needle))
 
 
 # Runs argv (argc words, argv[0] an absolute path) with cwd DIR; asserts
@@ -76,8 +75,7 @@ int main():
 		return 1
 	WV2 = path_join(root, c"bin/wv2")
 	char* tmp = env_get(c"TMPDIR")
-	if ((tmp == 0) || (tmp[0] == 0)):
-		tmp = c"/tmp"
+	if ((tmp == 0) || (tmp[0] == 0)): tmp = c"/tmp"
 	string_builder* d = string_new()
 	string_append(d, tmp)
 	string_append(d, c"/w_missing_file_e2e_")
@@ -113,8 +111,7 @@ int main():
 	run_clean(c"check from outside the checkout", argv)
 
 	shell_commands_rm_one(DIR, 1, 1)
-	if (FAILED != 0):
-		return 1
+	if (FAILED != 0): return 1
 	out(c"missing_file cwd e2e OK\n")
 	return 0
 # wbuild: target=missing_file_test tag=tests dep=wv2 dep=wfixture

@@ -26,8 +26,7 @@ char* fx_crlf(char* text):
 	string_builder* out = string_new()
 	int i = 0
 	while (text[i] != 0):
-		if (text[i] == 10):
-			string_append_char(out, 13)
+		if (text[i] == 10): string_append_char(out, 13)
 		string_append_char(out, text[i] & 255)
 		i = i + 1
 	char* result = out.data
@@ -53,15 +52,11 @@ struct smtp_fx_io:
 
 
 int fx_fill(smtp_fx_io* io):
-	if (io.pos < io.len):
-		return 1
+	if (io.pos < io.len): return 1
 	int got = 0
-	if (io.tls != 0):
-		got = tls_read(io.tls, io.buf, 4096)
-	else:
-		got = read(io.fd, io.buf, 4096)
-	if (got <= 0):
-		return 0
+	if (io.tls != 0): got = tls_read(io.tls, io.buf, 4096)
+	else: got = read(io.fd, io.buf, 4096)
+	if (got <= 0): return 0
 	io.pos = 0
 	io.len = got
 	return 1
@@ -97,16 +92,13 @@ void fx_write(smtp_fx_io* io, char* data, int n):
 int fx_next_reply(char* script, int* pos, string_builder* resp):
 	string_clear(resp)
 	int i = *pos
-	if (script[i] == 0):
-		return 0
+	if (script[i] == 0): return 0
 	while ((script[i] != 0) && (script[i] != '|')):
-		if (script[i] == 10):
-			string_append_char(resp, 13)
+		if (script[i] == 10): string_append_char(resp, 13)
 		string_append_char(resp, script[i] & 255)
 		i = i + 1
 	string_append(resp, c"\x0d\x0a")
-	if (script[i] == '|'):
-		i = i + 1
+	if (script[i] == '|'): i = i + 1
 	*pos = i
 	return 1
 
@@ -138,33 +130,27 @@ void fx_child(int listener, int pipe_fd, char* script, int implicit_tls):
 	int crlf = 0
 	while ((alive != 0) && (fx_read_line(io, line, &crlf) != 0)):
 		string_append(tr, line.data)
-		if (crlf == 0):
-			string_append(tr, c"<bare LF>")
+		if (crlf == 0): string_append(tr, c"<bare LF>")
 		string_append_char(tr, 10)
 		int reply = 1
 		if (in_data != 0):
-			if (strcmp(line.data, c".") == 0):
-				in_data = 0
-			else:
-				reply = 0
+			if (strcmp(line.data, c".") == 0): in_data = 0
+			else: reply = 0
 		if ((reply != 0) && (fx_next_reply(script, &sp, resp) != 0)):
 			fx_write(io, resp.data, resp.length)
-			if (starts_with(resp.data, c"354") != 0):
-				in_data = 1
+			if (starts_with(resp.data, c"354") != 0): in_data = 1
 			if ((strcmp(line.data, c"STARTTLS") == 0) && (starts_with(resp.data, c"220") != 0)):
 				string_append(tr, c"[tls]\n")
 				io.tls = fx_tls_accept(conn)
 				if (io.tls == 0):
 					string_append(tr, c"[tls failed]\n")
 					alive = 0
-	if (io.tls != 0):
-		tls_close(io.tls)
+	if (io.tls != 0): tls_close(io.tls)
 	close(conn)
 	int total = 0
 	while (total < tr.length):
 		int got = socket_send(pipe_fd, tr.data + total, tr.length - total, msg_nosignal())
-		if (got <= 0):
-			exit(3)
+		if (got <= 0): exit(3)
 		total = total + got
 	close(pipe_fd)
 	exit(0)
@@ -311,12 +297,10 @@ void test_smtp_encode_word():
 	# 30 two-byte characters = 60 bytes: split at a character boundary
 	# (38 bytes, not 39) into two words of at most 64 characters.
 	string_builder* s = string_new()
-	for i in range(30):
-		string_append(s, c"\xc3\xa9")
+	for i in range(30): string_append(s, c"\xc3\xa9")
 	w = smtp_encode_word(s.data)
 	int sp = 0
-	while (w[sp] != ' '):
-		sp = sp + 1
+	while (w[sp] != ' '): sp = sp + 1
 	asserts(c"first word too long", sp <= 64)
 	asserts(c"second word too long", strlen(w) - sp - 1 <= 64)
 	char* first = substring(w, 0, sp)
@@ -698,8 +682,7 @@ void test_smtp_starttls():
 	smtp_client* c = fx_client(fx, c"mx.test")
 	tls_config* cfg = fx_tls_client_config()
 	int ok = smtp_start(c, smtp_security_starttls, cfg, c"client.example")
-	if (ok == 0):
-		println(smtp_error_message(c))
+	if (ok == 0): println(smtp_error_message(c))
 	assert_equal(1, ok)
 	asserts(c"not encrypted", c.tls != 0)
 	# Capabilities come from the post-TLS EHLO only.

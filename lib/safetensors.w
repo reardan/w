@@ -99,16 +99,14 @@ int st_has(st_file* f, char* name):
 
 ndf* st_get(st_file* f, char* name):
 	st_tensor* entry = f.by_name.get(name, 0)
-	if (entry == 0):
-		return 0
+	if (entry == 0): return 0
 	return &entry.t
 
 
 void st_free(st_file* f):
 	for i in range(f.tensors.length):
 		st_tensor* entry = f.tensors[i]
-		if (entry.owned):
-			free(entry.t.data.data)
+		if (entry.owned): free(entry.t.data.data)
 		free(entry.name)
 		free(entry)
 	list_free[st_tensor*](f.tensors)
@@ -131,12 +129,9 @@ void st_write_u64_header_len(char* out, int n):
 
 
 int st_shape_dim(ndf* t, int axis):
-	if (axis == 0):
-		return t.n0
-	if (axis == 1):
-		return t.n1
-	if (axis == 2):
-		return t.n2
+	if (axis == 0): return t.n0
+	if (axis == 1): return t.n1
+	if (axis == 2): return t.n2
 	return t.n3
 
 
@@ -182,8 +177,7 @@ int st_save(char* path, st_file* f):
 	int n = strlen(header_json)
 	int rem = (8 + n) % 8
 	int pad = 0
-	if (rem != 0):
-		pad = 8 - rem
+	if (rem != 0): pad = 8 - rem
 
 	wstream* out = stream_open_write(path)
 	if (out == 0):
@@ -227,8 +221,7 @@ int st_read_header_len(char* b):
 	if (((b[4] & 255) != 0) || ((b[5] & 255) != 0) || ((b[6] & 255) != 0) || ((b[7] & 255) != 0)):
 		return -1
 	int lo = load_le32(b)
-	if ((__word_size__ == 4) && (lo < 0)):
-		return -1
+	if ((__word_size__ == 4) && (lo < 0)): return -1
 	return lo
 
 
@@ -247,12 +240,9 @@ int st_max_header_len():
 
 
 ndf st_ndf_new(int rank, int n0, int n1, int n2, int n3):
-	if (rank == 1):
-		return ndf_new1(n0)
-	if (rank == 2):
-		return ndf_new2(n0, n1)
-	if (rank == 3):
-		return ndf_new3(n0, n1, n2)
+	if (rank == 1): return ndf_new1(n0)
+	if (rank == 2): return ndf_new2(n0, n1)
+	if (rank == 3): return ndf_new3(n0, n1, n2)
 	return ndf_new4(n0, n1, n2, n3)
 
 
@@ -296,14 +286,10 @@ int st_load_tensor(st_file* f, char* name, json_value* meta, string_builder* dat
 			println2(f"safetensors: tensor '{name}' has a non-positive or non-integer shape dimension")
 			return 0
 		elements = elements * d.int_value
-		if (j == 0):
-			n0 = d.int_value
-		else if (j == 1):
-			n1 = d.int_value
-		else if (j == 2):
-			n2 = d.int_value
-		else:
-			n3 = d.int_value
+		if (j == 0): n0 = d.int_value
+		else if (j == 1): n1 = d.int_value
+		else if (j == 2): n2 = d.int_value
+		else: n3 = d.int_value
 
 	json_value* offsets_v = json_object_get(meta, c"data_offsets")
 	if ((offsets_v == 0) || (offsets_v.type != json_type_array()) || (json_array_length(offsets_v) != 2)):
@@ -398,8 +384,7 @@ st_file* st_load(char* path):
 	for char* name, json_value* meta in header.object_values:
 		if (ok):
 			if (strcmp(name, c"__metadata__") != 0):
-				if (st_load_tensor(f, name, meta, data, used_begin, used_end) == 0):
-					ok = 0
+				if (st_load_tensor(f, name, meta, data, used_begin, used_end) == 0): ok = 0
 
 	list_free[int](used_begin)
 	list_free[int](used_end)

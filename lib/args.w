@@ -49,8 +49,7 @@ int args_count():
 
 
 char* args_get(int i):
-	if ((i < 0) || (i >= args_argc)):
-		return 0
+	if ((i < 0) || (i >= args_argc)): return 0
 	char** argv = cast(char**, args_argv)
 	return argv[i]
 
@@ -61,13 +60,10 @@ char* args_program():
 
 # Pointer just past the leading dashes when arg is a flag token, else 0.
 char* args_flag_body(char* arg):
-	if (arg == 0):
-		return 0
-	if (arg[0] != '-'):
-		return 0
+	if (arg == 0): return 0
+	if (arg[0] != '-'): return 0
 	arg = arg + 1
-	if (arg[0] == '-'):
-		arg = arg + 1
+	if (arg[0] == '-'): arg = arg + 1
 	return arg
 
 
@@ -75,8 +71,7 @@ char* args_flag_body(char* arg):
 int args_body_has_value(char* body):
 	int i = 0
 	while (body[i]):
-		if (body[i] == '='):
-			return 1
+		if (body[i] == '='): return 1
 		i = i + 1
 	return 0
 
@@ -85,13 +80,10 @@ int args_body_has_value(char* body):
 int args_name_matches(char* body, char* name):
 	int i = 0
 	while (name[i]):
-		if (body[i] != name[i]):
-			return 0
+		if (body[i] != name[i]): return 0
 		i = i + 1
-	if (body[i] == 0):
-		return 1
-	if (body[i] == '='):
-		return 1
+	if (body[i] == 0): return 1
+	if (body[i] == '='): return 1
 	return 0
 
 
@@ -100,8 +92,7 @@ int args_has_flag(char* name):
 	while (i < args_argc):
 		char* body = args_flag_body(args_get(i))
 		if (body != 0):
-			if (args_name_matches(body, name)):
-				return 1
+			if (args_name_matches(body, name)): return 1
 		i = i + 1
 	return 0
 
@@ -111,23 +102,19 @@ int args_has_flag(char* name):
 # consuming the following token. Safe to call more than once for the
 # same name; declarations persist across args_init calls.
 void args_declare_bool(char* name):
-	if (args_bool_names == 0):
-		args_bool_names = new list[char*]
+	if (args_bool_names == 0): args_bool_names = new list[char*]
 	int i = 0
 	while (i < args_bool_names.length):
-		if (strcmp(args_bool_names[i], name) == 0):
-			return
+		if (strcmp(args_bool_names[i], name) == 0): return
 		i = i + 1
 	args_bool_names.push(name)
 
 
 int args_name_is_bool(char* name):
-	if (args_bool_names == 0):
-		return 0
+	if (args_bool_names == 0): return 0
 	int i = 0
 	while (i < args_bool_names.length):
-		if (strcmp(args_bool_names[i], name) == 0):
-			return 1
+		if (strcmp(args_bool_names[i], name) == 0): return 1
 		i = i + 1
 	return 0
 
@@ -147,10 +134,8 @@ char* args_value(char* name):
 		if (body != 0):
 			if (args_name_matches(body, name)):
 				int name_length = strlen(name)
-				if (body[name_length] == '='):
-					return body + name_length + 1
-				if (args_name_is_bool(name)):
-					return 0
+				if (body[name_length] == '='): return body + name_length + 1
+				if (args_name_is_bool(name)): return 0
 				# Bare flag: the next token is its value unless it is a flag
 				char* next = args_get(i + 1)
 				if (next != 0):
@@ -162,18 +147,15 @@ char* args_value(char* name):
 
 
 int args_is_positional(int i):
-	if ((i < 1) || (i >= args_argc)):
-		return 0
-	if (args_flag_body(args_get(i)) != 0):
-		return 0
+	if ((i < 1) || (i >= args_argc)): return 0
+	if (args_flag_body(args_get(i)) != 0): return 0
 	# The token after a bare -flag (no inline =value) is that flag's value,
 	# unless the flag name was declared boolean (args_declare_bool)
 	if (i >= 2):
 		char* prev_body = args_flag_body(args_get(i - 1))
 		if (prev_body != 0):
 			if (args_body_has_value(prev_body) == 0):
-				if (args_name_is_bool(prev_body) == 0):
-					return 0
+				if (args_name_is_bool(prev_body) == 0): return 0
 	return 1
 
 
@@ -190,8 +172,7 @@ char* args_positional(int index):
 	int i = 1
 	while (i < args_argc):
 		if (args_is_positional(i)):
-			if (index == 0):
-				return args_get(i)
+			if (index == 0): return args_get(i)
 			index = index - 1
 		i = i + 1
 	return 0

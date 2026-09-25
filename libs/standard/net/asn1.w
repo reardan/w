@@ -72,15 +72,13 @@ void asn1_init(asn1* r, char* data, int start, int end):
 
 # 1 when every byte of the window has been consumed (no trailing garbage).
 int asn1_done(asn1* r):
-	if (r.pos == r.end):
-		return 1
+	if (r.pos == r.end): return 1
 	return 0
 
 
 # The tag byte of the next element without consuming it, or -1 at the end.
 int asn1_peek(asn1* r):
-	if (r.pos >= r.end):
-		return -1
+	if (r.pos >= r.end): return -1
 	return r.data[r.pos] & 255
 
 
@@ -88,43 +86,32 @@ int asn1_peek(asn1* r):
 # length, then advances past the element. Returns 1 on success, 0 on any
 # malformed or out-of-bounds header (the reader is left unchanged on error).
 int asn1_next(asn1* r, int* out_tag, int* out_start, int* out_len):
-	if (r.pos >= r.end):
-		return 0
+	if (r.pos >= r.end): return 0
 	int tag = r.data[r.pos] & 255
-	if ((tag & 31) == 31):
-		return 0    # multi-byte tag: not used by X.509, reject
+	if ((tag & 31) == 31): return 0    # multi-byte tag: not used by X.509, reject
 	int p = r.pos + 1
-	if (p >= r.end):
-		return 0
+	if (p >= r.end): return 0
 	int first = r.data[p] & 255
 	p = p + 1
 	int len = 0
-	if (first < 128):
-		len = first
-	else if (first == 128):
-		return 0    # indefinite length: never valid in DER
+	if (first < 128): len = first
+	else if (first == 128): return 0    # indefinite length: never valid in DER
 	else:
 		int nbytes = first - 128
-		if (nbytes > 4):
-			return 0
-		if (nbytes > r.end - p):
-			return 0
+		if (nbytes > 4): return 0
+		if (nbytes > r.end - p): return 0
 		int i = 0
 		while (i < nbytes):
 			int d = r.data[p] & 255
 			if (i == 0):
-				if (d == 0):
-					return 0    # non-minimal: leading zero length byte
+				if (d == 0): return 0    # non-minimal: leading zero length byte
 				if (nbytes == 4):
-					if (d >= 128):
-						return 0    # length would not fit a 32-bit int
+					if (d >= 128): return 0    # length would not fit a 32-bit int
 			len = (len << 8) | d
 			p = p + 1
 			i = i + 1
-		if (len < 128):
-			return 0    # non-minimal: long form used for a short length
-	if (len > r.end - p):
-		return 0    # content would run past the window
+		if (len < 128): return 0    # non-minimal: long form used for a short length
+	if (len > r.end - p): return 0    # content would run past the window
 	*out_tag = tag
 	*out_start = p
 	*out_len = len
@@ -137,10 +124,8 @@ int asn1_expect(asn1* r, int tag, int* out_start, int* out_len):
 	int got = 0
 	int start = 0
 	int len = 0
-	if (asn1_next(r, &got, &start, &len) == 0):
-		return 0
-	if (got != tag):
-		return 0
+	if (asn1_next(r, &got, &start, &len) == 0): return 0
+	if (got != tag): return 0
 	*out_start = start
 	*out_len = len
 	return 1
@@ -158,18 +143,14 @@ int asn1_skip(asn1* r):
 
 # Is the INTEGER content at (start, len) minimally encoded per DER?
 int asn1_integer_minimal(char* data, int start, int len):
-	if (len <= 0):
-		return 0
-	if (len == 1):
-		return 1
+	if (len <= 0): return 0
+	if (len == 1): return 1
 	int b0 = data[start] & 255
 	int b1 = data[start + 1] & 255
 	if (b0 == 0):
-		if (b1 < 128):
-			return 0    # 00 followed by a low byte: redundant leading zero
+		if (b1 < 128): return 0    # 00 followed by a low byte: redundant leading zero
 	if (b0 == 255):
-		if (b1 >= 128):
-			return 0    # ff followed by a high byte: redundant leading ff
+		if (b1 >= 128): return 0    # ff followed by a high byte: redundant leading ff
 	return 1
 
 
@@ -179,10 +160,8 @@ int asn1_integer_minimal(char* data, int start, int len):
 int asn1_read_integer(asn1* r, int* out_start, int* out_len):
 	int start = 0
 	int len = 0
-	if (asn1_expect(r, ASN1_INTEGER, &start, &len) == 0):
-		return 0
-	if (asn1_integer_minimal(r.data, start, len) == 0):
-		return 0
+	if (asn1_expect(r, ASN1_INTEGER, &start, &len) == 0): return 0
+	if (asn1_integer_minimal(r.data, start, len) == 0): return 0
 	*out_start = start
 	*out_len = len
 	return 1
@@ -193,23 +172,18 @@ int asn1_read_integer(asn1* r, int* out_start, int* out_len):
 int asn1_read_small_int(asn1* r, int* out_value):
 	int start = 0
 	int len = 0
-	if (asn1_read_integer(r, &start, &len) == 0):
-		return 0
+	if (asn1_read_integer(r, &start, &len) == 0): return 0
 	int first = r.data[start] & 255
-	if (first >= 128):
-		return 0    # negative
+	if (first >= 128): return 0    # negative
 	# Strip the sign-clearing leading zero if present.
 	if (first == 0):
 		start = start + 1
 		len = len - 1
-	if (len > 4):
-		return 0
+	if (len > 4): return 0
 	if (len == 4):
-		if ((r.data[start] & 255) >= 128):
-			return 0    # would not fit a signed 32-bit int
+		if ((r.data[start] & 255) >= 128): return 0    # would not fit a signed 32-bit int
 	int v = 0
-	for i in range(len):
-		v = (v << 8) | (r.data[start + i] & 255)
+	for i in range(len): v = (v << 8) | (r.data[start + i] & 255)
 	*out_value = v
 	return 1
 
@@ -220,16 +194,13 @@ int asn1_read_small_int(asn1* r, int* out_value):
 int asn1_read_positive_integer(asn1* r, int* out_start, int* out_len):
 	int start = 0
 	int len = 0
-	if (asn1_read_integer(r, &start, &len) == 0):
-		return 0
+	if (asn1_read_integer(r, &start, &len) == 0): return 0
 	int first = r.data[start] & 255
-	if (first >= 128):
-		return 0    # negative
+	if (first >= 128): return 0    # negative
 	if (first == 0):
 		start = start + 1
 		len = len - 1
-	if (len == 0):
-		return 0    # the value zero
+	if (len == 0): return 0    # the value zero
 	*out_start = start
 	*out_len = len
 	return 1
@@ -239,10 +210,8 @@ int asn1_read_positive_integer(asn1* r, int* out_start, int* out_len):
 int asn1_read_boolean(asn1* r, int* out_value):
 	int start = 0
 	int len = 0
-	if (asn1_expect(r, ASN1_BOOLEAN, &start, &len) == 0):
-		return 0
-	if (len != 1):
-		return 0
+	if (asn1_expect(r, ASN1_BOOLEAN, &start, &len) == 0): return 0
+	if (len != 1): return 0
 	int b = r.data[start] & 255
 	if (b == 0):
 		*out_value = 0
@@ -259,12 +228,9 @@ int asn1_read_boolean(asn1* r, int* out_value):
 int asn1_read_bitstring_bytes(asn1* r, int* out_start, int* out_len):
 	int start = 0
 	int len = 0
-	if (asn1_expect(r, ASN1_BIT_STRING, &start, &len) == 0):
-		return 0
-	if (len < 1):
-		return 0
-	if ((r.data[start] & 255) != 0):
-		return 0
+	if (asn1_expect(r, ASN1_BIT_STRING, &start, &len) == 0): return 0
+	if (len < 1): return 0
+	if ((r.data[start] & 255) != 0): return 0
 	*out_start = start + 1
 	*out_len = len - 1
 	return 1

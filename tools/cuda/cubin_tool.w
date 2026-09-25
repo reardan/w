@@ -66,8 +66,7 @@ char* cubin_concat(char* a, char* b):
 int cubin_has_slash(char* name):
 	int i = 0
 	while (name[i] != 0):
-		if (name[i] == '/'):
-			return 1
+		if (name[i] == '/'): return 1
 		i = i + 1
 	return 0
 
@@ -78,8 +77,7 @@ char* cubin_find(char* name):
 	if (cubin_has_slash(name)):
 		return name
 	char* path = env_get(c"PATH")
-	if (path == 0):
-		path = c"/usr/bin:/bin"
+	if (path == 0): path = c"/usr/bin:/bin"
 	string_builder* candidate = string_new()
 	int p = 0
 	int at_end = 0
@@ -88,12 +86,9 @@ char* cubin_find(char* name):
 		while ((path[p] != ':') && (path[p] != 0)):
 			string_append_char(candidate, path[p])
 			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length == 0):
-			string_append_char(candidate, '.')
+		if (path[p] == 0): at_end = 1
+		else: p = p + 1
+		if (candidate.length == 0): string_append_char(candidate, '.')
 		string_append_char(candidate, '/')
 		string_append(candidate, name)
 		int fd = open(candidate.data, 0, 0)
@@ -132,20 +127,16 @@ char* cubin_compute_cap():
 	args.push(c"--query-gpu=compute_cap")
 	args.push(c"--format=csv,noheader")
 	char* program = cubin_find(args[0])
-	if (program == 0):
-		return 0
+	if (program == 0): return 0
 	process_result* r = process_run(program, cubin_vector(args), 0, 0, 60000)
-	if ((r == 0) || (r.status != 0)):
-		return 0
+	if ((r == 0) || (r.status != 0)): return 0
 	string_builder* cap = string_new()
 	int i = 0
 	while ((r.stdout_text[i] != 0) && (r.stdout_text[i] != 10)):
 		int c = r.stdout_text[i]
-		if ((c >= '0') && (c <= '9')):
-			string_append_char(cap, c)
+		if ((c >= '0') && (c <= '9')): string_append_char(cap, c)
 		i = i + 1
-	if (cap.length == 0):
-		return 0
+	if (cap.length == 0): return 0
 	return cap.data
 
 
@@ -162,8 +153,7 @@ int cubin_compile(char* wv2, int argv, int argc, char* src, char* out, char* ext
 	args.push(wv2)
 	args.push(c"x64")
 	args.push(c"--quiet")
-	for i in range(5, argc):
-		args.push(cubin_arg(argv, i))
+	for i in range(5, argc): args.push(cubin_arg(argv, i))
 	args.push(src)
 	args.push(c"-o")
 	args.push(out)
@@ -180,25 +170,20 @@ int cubin_build(int argc, int argv):
 		if (cap == 0):
 			cubin_err(c"cubin_tool: cannot query the GPU compute capability")
 			return 1
-		if (strcmp(arch, c"native") == 0):
-			arch = cubin_concat(c"sm_", cap)
-		else if ((strlen(cap) == 2) && (cap[0] == '5')):
-			arch = c"sm_75"
-		else:
-			arch = c"sm_52"
+		if (strcmp(arch, c"native") == 0): arch = cubin_concat(c"sm_", cap)
+		else if ((strlen(cap) == 2) && (cap[0] == '5')): arch = c"sm_75"
+		else: arch = c"sm_52"
 	char* wv2 = cubin_env_or(c"WV2", c"bin/wv2")
 	char* ptx = cubin_concat(out, c".ptx")
 	char* cubin = cubin_concat(out, c".cubin")
-	if (cubin_compile(wv2, argv, argc, src, out, cubin_concat(c"--ptx=", ptx)) != 0):
-		return 1
+	if (cubin_compile(wv2, argv, argc, src, out, cubin_concat(c"--ptx=", ptx)) != 0): return 1
 	list[char*] ptxas = new list[char*]
 	ptxas.push(cubin_env_or(c"PTXAS", c"ptxas"))
 	ptxas.push(cubin_concat(c"-arch=", arch))
 	ptxas.push(ptx)
 	ptxas.push(c"-o")
 	ptxas.push(cubin)
-	if (cubin_run(ptxas) != 0):
-		return 1
+	if (cubin_run(ptxas) != 0): return 1
 	if (cubin_compile(wv2, argv, argc, src, out, cubin_concat(c"--cubin-file=", cubin)) != 0):
 		return 1
 	return 0
@@ -207,8 +192,7 @@ int cubin_build(int argc, int argv):
 # 1 when the len bytes at s equal those at prefix.
 int cubin_bytes_equal(char* s, char* prefix, int len):
 	for i in range(len):
-		if (s[i] != prefix[i]):
-			return 0
+		if (s[i] != prefix[i]): return 0
 	return 1
 
 
@@ -224,16 +208,13 @@ list[char*] cubin_entries(char* text):
 		if (cubin_bytes_equal(text + i, c".entry ", 7)):
 			int start = i + 7
 			int end = start
-			while (cubin_ident_char(text[end])):
-				end = end + 1
+			while (cubin_ident_char(text[end])): end = end + 1
 			if ((end > start) && (text[end] == '(')):
 				string_builder* name = string_new()
-				for j in range(start, end):
-					string_append_char(name, text[j])
+				for j in range(start, end): string_append_char(name, text[j])
 				names.push(name.data)
 			i = end
-		else:
-			i = i + 1
+		else: i = i + 1
 	return names
 
 
@@ -294,8 +275,7 @@ int cubin_fake(char* ptx, char* prefix):
 		cubin_err(cstr(f"cubin_tool: no .entry kernels in {ptx}"))
 		return 1
 	# 190 = EM_CUDA, 62 = EM_X86_64
-	if (cubin_write_fake(cubin_concat(prefix, c".good.cubin"), 190, names, names.length)):
-		return 1
+	if (cubin_write_fake(cubin_concat(prefix, c".good.cubin"), 190, names, names.length)): return 1
 	if (cubin_write_fake(cubin_concat(prefix, c".stale.cubin"), 190, names, names.length - 1)):
 		return 1
 	return cubin_write_fake(cubin_concat(prefix, c".notcuda.cubin"), 62, names, names.length)
@@ -304,22 +284,19 @@ int cubin_fake(char* ptx, char* prefix):
 # 1 when the file's bytes contain needle (binary safe).
 int cubin_file_contains(char* path, char* needle):
 	int fd = open(path, 0, 0)
-	if (fd < 0):
-		return -1
+	if (fd < 0): return -1
 	string_builder* data = string_new()
 	char* buf = malloc(65536)
 	int n = read(fd, buf, 65536)
 	while (n > 0):
-		for i in range(n):
-			string_append_char(data, buf[i])
+		for i in range(n): string_append_char(data, buf[i])
 		n = read(fd, buf, 65536)
 	free(buf)
 	close(fd)
 	int len = strlen(needle)
 	int at = 0
 	while (at + len <= data.length):
-		if (cubin_bytes_equal(data.data + at, needle, len)):
-			return 1
+		if (cubin_bytes_equal(data.data + at, needle, len)): return 1
 		at = at + 1
 	return 0
 
@@ -332,10 +309,8 @@ int cubin_scan(int argc, int argv):
 		if (found < 0):
 			cubin_err(cstr(f"cubin_tool: cannot read {path}"))
 			failed = 1
-		else if (found):
-			println(cstr(f"{path}: marker"))
-		else:
-			println(cstr(f"{path}: no marker"))
+		else if (found): println(cstr(f"{path}: marker"))
+		else: println(cstr(f"{path}: no marker"))
 	return failed
 
 
@@ -344,11 +319,9 @@ int main(int argc, int argv):
 		cubin_usage()
 		return 2
 	char* mode = cubin_arg(argv, 1)
-	if ((strcmp(mode, c"build") == 0) && (argc >= 5)):
-		return cubin_build(argc, argv)
+	if ((strcmp(mode, c"build") == 0) && (argc >= 5)): return cubin_build(argc, argv)
 	if ((strcmp(mode, c"fake") == 0) && (argc == 4)):
 		return cubin_fake(cubin_arg(argv, 2), cubin_arg(argv, 3))
-	if ((strcmp(mode, c"scan") == 0) && (argc >= 3)):
-		return cubin_scan(argc, argv)
+	if ((strcmp(mode, c"scan") == 0) && (argc >= 3)): return cubin_scan(argc, argv)
 	cubin_usage()
 	return 2

@@ -98,8 +98,7 @@ void goto_scope_end(int outer_label_base, int outer_pending_base):
 	int i = goto_pending_base
 	while (i < goto_pending_count):
 		int label = goto_pending_label[i]
-		if (label >= 0):
-			error3(c"goto to undefined label '", goto_label_names[label], c"'")
+		if (label >= 0): error3(c"goto to undefined label '", goto_label_names[label], c"'")
 		i = i + 1
 	i = goto_label_base
 	while (i < goto_label_count):
@@ -140,8 +139,7 @@ void goto_check_target():
 # Move the machine stack from depth `from` words to depth `to`: pop the
 # locals being left, or reserve (uninitialized) the ones being entered.
 void goto_adjust_stack(int from, int to):
-	if (from != to):
-		be_pop(from - to)
+	if (from != to): be_pop(from - to)
 
 
 int goto_name_is_ident(char* s):
@@ -150,11 +148,9 @@ int goto_name_is_ident(char* s):
 
 # goto identifier ;
 int goto_statement():
-	if (accept(c"goto") == 0):
-		return 0
+	if (accept(c"goto") == 0): return 0
 	goto_check_target()
-	if (goto_name_is_ident(token) == 0):
-		error(c"label name expected after 'goto'")
+	if (goto_name_is_ident(token) == 0): error(c"label name expected after 'goto'")
 	int label = goto_label_intern(token)
 	get_token()
 	expect_or_newline(c";")
@@ -177,10 +173,8 @@ int goto_statement():
 # after inferred_declaration (which owns 'name :='), so the only thing an
 # identifier directly followed by ':' can still be is a label.
 int labeled_statement():
-	if (goto_name_is_ident(token) == 0):
-		return 0
-	if (nextc != ':'):
-		return 0
+	if (goto_name_is_ident(token) == 0): return 0
+	if (nextc != ':'): return 0
 	char* name = strclone(token)
 	char* save = generic_reparse_save()
 	get_token()
@@ -194,8 +188,7 @@ int labeled_statement():
 	get_token() /* consume ':' */
 	goto_check_target()
 	int label = goto_label_intern(name)
-	if (goto_label_pos[label] >= 0):
-		error3(c"duplicate label '", name, c"'")
+	if (goto_label_pos[label] >= 0): error3(c"duplicate label '", name, c"'")
 	free(name)
 	# A jump lands here: no constant/compare fold may reach back across it
 	be_cmp_note_reset()
@@ -215,8 +208,7 @@ int labeled_statement():
 			# The stub's own jump is resolved to the label below
 			goto_pending_site[i] = codepos
 		i = i + 1
-	if (skip):
-		be_branch_patch(skip, codepos)
+	if (skip): be_branch_patch(skip, codepos)
 	# ...nor across the label itself, past any stub emitted above
 	be_notes_reset()
 	goto_label_pos[label] = codepos

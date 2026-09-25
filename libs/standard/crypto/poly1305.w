@@ -146,10 +146,8 @@ void poly1305_block(poly1305* st, char* m, int hibit):
 		j = 0
 		while (j < 10):
 			# The branch condition depends only on loop indices.
-			if (j <= i):
-				d = d + st.h[j] * st.r[i - j]
-			else:
-				d = d + st.h[j] * st.r5[i + 10 - j]
+			if (j <= i): d = d + st.h[j] * st.r[i - j]
+			else: d = d + st.h[j] * st.r5[i + 10 - j]
 			if (j % 3 == 2):
 				hi = hi + (d >> 13)
 				d = d & 0x1fff
@@ -197,8 +195,7 @@ void poly1305_finish(poly1305* st, char* out):
 	if (st.buffered > 0):
 		# Short final block: append 0x01 then zeros; no 2^128 bit.
 		st.buffer[st.buffered] = 1
-		for k in range(st.buffered + 1, 16):
-			st.buffer[k] = 0
+		for k in range(st.buffered + 1, 16): st.buffer[k] = 0
 		poly1305_block(st, st.buffer, 0)
 		st.buffered = 0
 

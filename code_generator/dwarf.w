@@ -31,13 +31,11 @@ int debug_last_file
 # The file registry is also used for declaration locations (symbol/type
 # tables), which can be recorded before the first debug_line_note().
 void debug_files_ensure():
-	if (debug_files == 0):
-		debug_files = malloc(256 * __word_size__)
+	if (debug_files == 0): debug_files = malloc(256 * __word_size__)
 
 
 char* debug_file_name(int index):
-	if ((index < 0) || (index >= debug_file_count)):
-		return c""
+	if ((index < 0) || (index >= debug_file_count)): return c""
 	return cast(char*, load_ptr(debug_files + index * __word_size__))
 
 
@@ -55,8 +53,7 @@ int debug_line_file_index():
 			debug_last_file = i
 			return i
 		i = i + 1
-	if (debug_file_count >= 256):
-		return 0
+	if (debug_file_count >= 256): return 0
 	save_ptr(debug_files + debug_file_count * __word_size__, cast(int, strclone(filename)))
 	debug_last_file = debug_file_count
 	debug_file_count = debug_file_count + 1
@@ -70,8 +67,7 @@ int debug_line_file_index():
 void debug_line_note(int stmt_stack_pos):
 	# Device (PTX) bodies do not advance codepos, so address-keyed line
 	# records would pile up at the same host position: skip them.
-	if (target_isa == 3):
-		return;
+	if (target_isa == 3): return;
 	debug_files_ensure()
 	if (debug_line_addresses == 0):
 		debug_line_capacity = 65536
@@ -79,8 +75,7 @@ void debug_line_note(int stmt_stack_pos):
 		debug_line_lines = malloc(debug_line_capacity * 4)
 		debug_line_file_indexes = malloc(debug_line_capacity * 4)
 		debug_line_stack_pos = malloc(debug_line_capacity * 4)
-	if (debug_line_count >= debug_line_capacity):
-		return;
+	if (debug_line_count >= debug_line_capacity): return;
 
 	int line = line_number + 1
 	int file_index = debug_line_file_index()
@@ -90,8 +85,7 @@ void debug_line_note(int stmt_stack_pos):
 		int prev_line = load_int(debug_line_lines + prev * 4)
 		int prev_file = load_int(debug_line_file_indexes + prev * 4)
 		# Same source position again: nothing new to record
-		if ((prev_line == line) && (prev_file == file_index)):
-			return;
+		if ((prev_line == line) && (prev_file == file_index)): return;
 		# Same address: the earlier statement produced no code, replace it
 		if (load_int(debug_line_addresses + prev * 4) == codepos):
 			save_int(debug_line_lines + prev * 4, line)
@@ -129,8 +123,7 @@ int debug_local_capacity
 void debug_local_note(char* name, int slot, int kind, int type):
 	# Device (PTX) locals live on the GPU-side stack; the wdbg runtime
 	# records are host-only.
-	if (target_isa == 3):
-		return;
+	if (target_isa == 3): return;
 	if (debug_local_capacity == 0):
 		debug_local_capacity = 4096
 		debug_local_names = malloc(debug_local_capacity * __word_size__)
@@ -267,8 +260,7 @@ void debug_line_emit():
 			# the high word (as for the nlist values).
 			emit_int32(cur_address)
 			emit_int32(1)
-		else:
-			emit_target_word(cur_address + code_offset)
+		else: emit_target_word(cur_address + code_offset)
 
 		i = 0
 		while (i < debug_line_count):
@@ -327,8 +319,7 @@ void debug_info_emit_at(int text_start, int text_end):
 	emit_int8(word_size) /* address_size: the target's word size */
 	emit_uleb(1) /* abbrev code 1: the compile unit */
 	char* unit_name = c"w"
-	if (debug_file_count > 0):
-		unit_name = cast(char*, load_ptr(debug_files))
+	if (debug_file_count > 0): unit_name = cast(char*, load_ptr(debug_files))
 	emit_string(unit_name) /* DW_AT_name */
 	emit_int32(0) /* DW_AT_stmt_list: offset 0 in .debug_line */
 	/* DW_FORM_addr fields are address_size (= target word size) wide */

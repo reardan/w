@@ -15,13 +15,10 @@ char* rle_encode(char* pixels, int total, int* out_length):
 	while (i < total):
 		int v = pixels[i] & 255
 		int run = 1
-		while ((i + run < total) && ((pixels[i + run] & 255) == v) && (run < 255)):
-			run = run + 1
+		while ((i + run < total) && ((pixels[i + run] & 255) == v) && (run < 255)): run = run + 1
 		if (((v == 0) || (v == 255)) && (run >= 3)):
-			if (v == 0):
-				stream[pos] = 0
-			else:
-				stream[pos] = 1
+			if (v == 0): stream[pos] = 0
+			else: stream[pos] = 1
 			stream[pos + 1] = run
 			pos = pos + 2
 			i = i + run
@@ -36,16 +33,14 @@ char* rle_encode(char* pixels, int total, int* out_length):
 					int ahead = 1
 					while ((i + ahead < total) && ((pixels[i + ahead] & 255) == b) && (ahead < 3)):
 						ahead = ahead + 1
-					if (ahead >= 3):
-						stop = 1
+					if (ahead >= 3): stop = 1
 				if (stop == 0):
 					i = i + 1
 					n = n + 1
 			stream[pos] = 2
 			stream[pos + 1] = n
 			pos = pos + 2
-			for k in range(n):
-				stream[pos + k] = pixels[start + k]
+			for k in range(n): stream[pos + k] = pixels[start + k]
 			pos = pos + n
 	out_length[0] = pos
 	return stream
@@ -61,8 +56,7 @@ char* rle_decode(char* stream, int length, char* out, int total):
 		int tag = stream[pos] & 255
 		int count = stream[pos + 1] & 255
 		pos = pos + 2
-		if (n + count > total):
-			count = total - n
+		if (n + count > total): count = total - n
 		int k = 0
 		if (tag == 0):
 			while (k < count):

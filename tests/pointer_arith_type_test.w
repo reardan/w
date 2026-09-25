@@ -33,12 +33,10 @@ void test_char_deref_truthiness():
 	buf[3] = 0
 	char* p = buf + 1
 	int wide = 0
-	if (*(p - 1)):
-		wide = 1
+	if (*(p - 1)): wide = 1
 	assert_equal(0, wide)
 	int negated = 0
-	if (!(*(p - 1))):
-		negated = 1
+	if (!(*(p - 1))): negated = 1
 	assert_equal(1, negated)
 
 

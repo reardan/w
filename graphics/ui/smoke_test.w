@@ -38,8 +38,7 @@ int ui_smoke_pixel(int x, int y):
 void ui_smoke_check(char* label, int x, int y, int want, int tolerance):
 	int got = ui_smoke_pixel(x, y)
 	int diff = got - want
-	if (diff < 0):
-		diff = 0 - diff
+	if (diff < 0): diff = 0 - diff
 	if (diff > tolerance):
 		print_error(c"pixel check failed: ")
 		print_error(label)
@@ -80,8 +79,7 @@ int main(int argc, int argv):
 	# as ink (text 0.11 -> 28).
 	int ink_found = 0
 	for x in range(8, 152, 2):
-		if (ui_smoke_pixel(x, 20) < 90):
-			ink_found = 1
+		if (ui_smoke_pixel(x, 20) < 90): ink_found = 1
 	if (ink_found == 0):
 		print_error(c"no glyph ink found across the label row\n")
 		ui_smoke_failures = ui_smoke_failures + 1

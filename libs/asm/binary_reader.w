@@ -73,8 +73,7 @@ int asm_read_word(char* data, int offset, int elf_class):
 
 char* asm_binary_read_file(char* path, int* length_out):
 	wstream* in = stream_open_read(path)
-	if (in == 0):
-		return 0
+	if (in == 0): return 0
 	string_builder* contents = string_new()
 	stream_read_all(in, contents)
 	stream_close(in)
@@ -97,8 +96,7 @@ int asm_find_bytes4(char* data, int length, int b0, int b1, int b2, int b3):
 
 # 1 when data[offset..offset+4) holds exactly b0..b3.
 int asm_bytes_match4_at(char* data, int length, int offset, int b0, int b1, int b2, int b3):
-	if (length < offset + 4):
-		return 0
+	if (length < offset + 4): return 0
 	return (data[offset] & 255) == b0 && (data[offset + 1] & 255) == b1 && (data[offset + 2] & 255) == b2 && (data[offset + 3] & 255) == b3
 
 
@@ -121,12 +119,9 @@ as a test failure.
 asm_binary* asm_binary_open(char* path):
 	int length = 0
 	char* data = asm_binary_read_file(path, &length)
-	if (cast(int, data) == 0):
-		return 0
-	if (length < 52):
-		return 0
-	if (asm_read_u8(data, 0) != 127 | data[1] != 'E' | data[2] != 'L' | data[3] != 'F'):
-		return 0
+	if (cast(int, data) == 0): return 0
+	if (length < 52): return 0
+	if (asm_read_u8(data, 0) != 127 | data[1] != 'E' | data[2] != 'L' | data[3] != 'F'): return 0
 	asm_binary* binary = cast(asm_binary*, malloc(8 * __word_size__))
 	binary.data = data
 	binary.length = length

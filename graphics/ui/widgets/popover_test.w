@@ -17,8 +17,7 @@ import graphics.ui.testing
 # `bg` counts clicks that reached the background button.
 void popover_frame(ui_context* ctx, int32* open, int32* bg, ui_rect anchor):
 	ui_begin(ctx, 320, 240)
-	if (ui_button(ctx, c"behind")):
-		bg[0] = bg[0] + 1
+	if (ui_button(ctx, c"behind")): bg[0] = bg[0] + 1
 	if (ui_popover_begin(ctx, 900, anchor, 160.0, 80.0, open)):
 		ui_label(ctx, c"inside")
 		ui_popover_end(ctx)

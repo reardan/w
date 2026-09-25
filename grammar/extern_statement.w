@@ -42,10 +42,8 @@ int extern_statement():
 		if ((token[0] != '"') && (((token[0] != 'c') || (token[1] != '"')))):
 			error(c"c_lib expects a \"soname\" string literal")
 		int len
-		if (token[0] == 'c'):
-			len = process_prefixed_string_literal()
-		else:
-			len = process_string_literal()
+		if (token[0] == 'c'): len = process_prefixed_string_literal()
+		else: len = process_string_literal()
 		token[len] = 0
 		dyn_add_lib(token)
 		get_token()
@@ -71,27 +69,23 @@ int extern_statement():
 				error(c"extern data objects are not supported on arm64 targets yet")
 			# wasm has no loader and no COPY relocations; imported globals
 			# exist but nothing in lib/ needs them.
-			if (target_isa == 2):
-				error(c"extern data objects are not supported on the wasm target")
+			if (target_isa == 2): error(c"extern data objects are not supported on the wasm target")
 			save_int(table + sym + 10, 1)   /* symtype: object */
 			int size = type_get_size(ret_type)
-			if (size < 1):
-				error(c"extern data object needs a sized type")
+			if (size < 1): error(c"extern data object needs a sized type")
 			# W^X split (data_split): the loader's COPY relocation writes
 			# the library's initial value into this space, so it must live
 			# in the RW data segment — in the code stream it would target
 			# a read-execute page and fault (docs/projects/wx_split.md).
 			if (data_split):
 				int pad = datapos & (word_size - 1)
-				if (pad != 0):
-					emit_data_zeros(word_size - pad)
+				if (pad != 0): emit_data_zeros(word_size - pad)
 				int copy_vaddr = emit_data_zeros(size)
 				sym_define_global_at(sym, copy_vaddr)
 				save_int(table + sym + 14, size)
 				dyn_add_import_data(name, copy_vaddr, size, 0)
 			else:
-				while ((codepos % word_size) != 0):
-					emit_int8(0)
+				while ((codepos % word_size) != 0): emit_int8(0)
 				sym_define_global(sym)
 				save_int(table + sym + 14, size)
 				dyn_add_import_data(name, code_offset + codepos, size, 0)
@@ -107,8 +101,7 @@ int extern_statement():
 		int is_variadic = 0
 		char* param_classes = malloc(extern_max_params)
 		int ret_class = ffi_type_class(ret_type)
-		if ((ret_class == 2) && (word_size != 8)):
-			error(c"float64 requires the x64 target")
+		if ((ret_class == 2) && (word_size != 8)): error(c"float64 requires the x64 target")
 		while (accept(c")") == 0):
 			# A trailing '...' marks a variadic C function: calls may pass
 			# any number of extra arguments after the fixed ones.
@@ -119,18 +112,15 @@ int extern_statement():
 				expect(c")")
 				break
 			param_count = param_count + 1
-			if (param_count > extern_max_params):
-				error(c"too many extern parameters")
+			if (param_count > extern_max_params): error(c"too many extern parameters")
 			int ptype = type_name()
 			int ptype_class = ffi_type_class(ptype)
-			if ((ptype_class == 2) && (word_size != 8)):
-				error(c"float64 requires the x64 target")
+			if ((ptype_class == 2) && (word_size != 8)): error(c"float64 requires the x64 target")
 			param_classes[param_count - 1] = ptype_class
 			if (param_count <= sym_max_param_slots):
 				save_int(table + sym + 22 + (param_count << 2), ptype)
 			# Skip the optional parameter name
-			if (peek(c")") == 0):
-				get_token()
+			if (peek(c")") == 0): get_token()
 			accept(c",")
 		# Parameters need no symbols of their own (no body is emitted)
 		table_pos = saved_table
@@ -144,10 +134,8 @@ int extern_statement():
 			if ((token[0] != '"') && (((token[0] != 'c') || (token[1] != '"')))):
 				error(c"extern alias expects a \"symbol\" string literal")
 			int alias_len
-			if (token[0] == 'c'):
-				alias_len = process_prefixed_string_literal()
-			else:
-				alias_len = process_string_literal()
+			if (token[0] == 'c'): alias_len = process_prefixed_string_literal()
+			else: alias_len = process_string_literal()
 			token[alias_len] = 0
 			import_name = strclone(token)
 			get_token()
@@ -161,14 +149,11 @@ int extern_statement():
 			if (is_variadic):
 				error(c"variadic extern functions are not supported on the wasm target")
 			int ret_kind = 1
-			if (ret_class == 1):
-				ret_kind = 2
+			if (ret_class == 1): ret_kind = 2
 			if (type_get_pointer_level(ret_type) == 0):
-				if (strcmp(type_get_name(ret_type), c"void") == 0):
-					ret_kind = 0
+				if (strcmp(type_get_name(ret_type), c"void") == 0): ret_kind = 0
 			char* module_name = c"env"
-			if (dyn_lib_count > 0):
-				module_name = dyn_lib_name(dyn_lib_count - 1)
+			if (dyn_lib_count > 0): module_name = dyn_lib_name(dyn_lib_count - 1)
 			int funcidx = wasm_extern_add(module_name, import_name, param_count, param_classes, ret_kind)
 			wasm_extern_stub(sym, name, funcidx, param_count, param_classes, ret_kind)
 		else:
@@ -191,8 +176,7 @@ int extern_statement():
 				sym_set_got_vaddr(sym, got_vaddr)
 
 		free(param_classes)
-		if (import_name != name):
-			free(import_name)
+		if (import_name != name): free(import_name)
 		free(name)
 		return 1
 

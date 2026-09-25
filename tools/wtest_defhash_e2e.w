@@ -189,8 +189,7 @@ int main():
 	# The ranged form is the correct spelling and must NOT warn (it
 	# compares the range's own endpoints, not HEAD vs the worktree).
 	err = wtest_err(av(c"changed", c"HEAD~1..HEAD", c"--defhash"), 0)
-	if (contains(err, c"committed-clean")):
-		fail(c"ranged form: warning fired")
+	if (contains(err, c"committed-clean")): fail(c"ranged form: warning fired")
 
 	# A genuinely dirty worktree path piped in (the documented
 	# 'git diff --name-only HEAD | wtest changed --defhash' workflow)
@@ -199,15 +198,13 @@ int main():
 	sc_append(c"scratch_lib.w", c"\n# dirty worktree, comment only\n")
 	piped_paths = git(av(c"diff", c"--name-only", c"HEAD"))
 	err = wtest_err(av(c"changed", c"--defhash"), piped_paths)
-	if (contains(err, c"committed-clean")):
-		fail(c"dirty worktree: warning fired")
+	if (contains(err, c"committed-clean")): fail(c"dirty worktree: warning fired")
 
 	# A committed-clean path named POSITIONALLY was asked about
 	# deliberately (this program's own earlier cases do exactly that),
 	# so it must not warn: the warning is scoped to stdin-piped lists.
 	git(av(c"checkout", c"-q", c"--", c"scratch_lib.w"))
 	err = wtest_err(av(c"changed", c"--defhash", c"scratch_lib.w"), 0)
-	if (contains(err, c"committed-clean")):
-		fail(c"positional committed-clean path: warning fired")
+	if (contains(err, c"committed-clean")): fail(c"positional committed-clean path: warning fired")
 
 	return sc_ok()

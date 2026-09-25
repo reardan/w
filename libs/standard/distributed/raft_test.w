@@ -720,12 +720,10 @@ void test_randomized_timeouts_differ():
 	for t in range(250 + 1):
 		raft_tick(a, t, out)
 		raft_test_free_msgs(out)
-		if (fire_a < 0 && raft_state(a) == raft_candidate):
-			fire_a = t
+		if (fire_a < 0 && raft_state(a) == raft_candidate): fire_a = t
 		raft_tick(b, t, out)
 		raft_test_free_msgs(out)
-		if (fire_b < 0 && raft_state(b) == raft_candidate):
-			fire_b = t
+		if (fire_b < 0 && raft_state(b) == raft_candidate): fire_b = t
 	assert1(fire_a >= 100 && fire_a <= 200)
 	assert1(fire_b >= 100 && fire_b <= 200)
 	assert1(fire_a != fire_b)
@@ -1080,8 +1078,7 @@ int raft_test_snap_term_int(raft* r):
 # Bytewise blob comparison — snapshot blobs are binary, never strcmp'd.
 void raft_test_assert_blob(char* want, int want_len, char* got, int got_len):
 	assert_equal(want_len, got_len)
-	for i in range(want_len):
-		assert_equal(want[i] & 255, got[i] & 255)
+	for i in range(want_len): assert_equal(want[i] & 255, got[i] & 255)
 
 
 void test_take_snapshot_compacts():

@@ -30,17 +30,13 @@ ui_rect menu_area():
 void menu_frame(ui_context* ctx, ui_menu_state* st, int32* chosen, int32* bg, int enable_second):
 	chosen[0] = 0 - 1
 	ui_begin(ctx, 320, 240)
-	if (ui_button(ctx, c"behind")):
-		bg[0] = bg[0] + 1
+	if (ui_button(ctx, c"behind")): bg[0] = bg[0] + 1
 	ui_menu_open_on_right_click(ctx, menu_area(), st)
 	if (ui_menu_begin(ctx, st)):
-		if (ui_menu_item(ctx, st, c"New File", 1)):
-			chosen[0] = 0
-		if (ui_menu_item(ctx, st, c"Rename", enable_second)):
-			chosen[0] = 1
+		if (ui_menu_item(ctx, st, c"New File", 1)): chosen[0] = 0
+		if (ui_menu_item(ctx, st, c"Rename", enable_second)): chosen[0] = 1
 		ui_menu_separator(ctx, st)
-		if (ui_menu_item(ctx, st, c"Delete", 1)):
-			chosen[0] = 2
+		if (ui_menu_item(ctx, st, c"Delete", 1)): chosen[0] = 2
 		ui_menu_end(ctx, st)
 	ui_end(ctx)
 

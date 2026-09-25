@@ -65,8 +65,7 @@ int main(int argc, char** argv):
 
 	# Generators (gen_switch + mmap'd stacks).
 	int total = 0
-	for int v in count_up(5):
-		total = total + v
+	for int v in count_up(5): total = total + v
 	check(c"generator", total == 10)
 
 	# Time: the Unix epoch conversion should land after 2020-01-01 and

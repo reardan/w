@@ -43,8 +43,7 @@ generator int echo_handler(int fd):
 	char* buf = malloc(256)
 	while (1):
 		int n = task_read(fd, buf, 256)
-		if (n <= 0):
-			break
+		if (n <= 0): break
 		assert_equal(n, task_write_all(fd, buf, n))
 	free(buf)
 	close(fd)
@@ -95,8 +94,7 @@ void test_echo_server_with_concurrent_clients():
 	assert_equal(3, state.connections)
 	assert_equal(3, state.log.length)
 	int seen = 0
-	for i in range(3):
-		seen = seen | (1 << state.log[i])
+	for i in range(3): seen = seen | (1 << state.log[i])
 	assert_equal(2 + 4 + 8, seen)
 
 	task_scheduler_free(s)
@@ -110,13 +108,11 @@ void test_echo_server_with_concurrent_clients():
 
 generator int bulk_writer(int fd, int total):
 	char* chunk = malloc(4096)
-	for i in range(4096):
-		chunk[i] = i & 255
+	for i in range(4096): chunk[i] = i & 255
 	int sent = 0
 	while (sent < total):
 		int n = total - sent
-		if (n > 4096):
-			n = 4096
+		if (n > 4096): n = 4096
 		assert_equal(n, task_write_all(fd, chunk, n))
 		sent = sent + n
 	free(chunk)
@@ -130,10 +126,8 @@ generator int bulk_reader(int fd):
 	int checksum = 0
 	while (1):
 		int n = task_read(fd, buf, 4096)
-		if (n <= 0):
-			break
-		for i in range(n):
-			checksum = checksum + (buf[i] & 255)
+		if (n <= 0): break
+		for i in range(n): checksum = checksum + (buf[i] & 255)
 		received = received + n
 	free(buf)
 	task_finish(received + checksum)

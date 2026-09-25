@@ -13,14 +13,10 @@ import lib.crash
 # The analysis subcommand word: 1 check, 2 deps, 3 symbols, 4 defhash,
 # else 0.
 int subcommand_of(char* word):
-	if (strcmp(word, c"check") == 0):
-		return 1
-	if (strcmp(word, c"deps") == 0):
-		return 2
-	if (strcmp(word, c"symbols") == 0):
-		return 3
-	if (strcmp(word, c"defhash") == 0):
-		return 4
+	if (strcmp(word, c"check") == 0): return 1
+	if (strcmp(word, c"deps") == 0): return 2
+	if (strcmp(word, c"symbols") == 0): return 3
+	if (strcmp(word, c"defhash") == 0): return 4
 	return 0
 
 
@@ -50,17 +46,12 @@ int main(int argc, int argv):
 				argc = argc - 1
 	if (argc >= 2):
 		char** first_arg = argv + __word_size__
-		if (strcmp(*first_arg, c"--debug") == 0):
-			return wdbg_main(argc, argv)
+		if (strcmp(*first_arg, c"--debug") == 0): return wdbg_main(argc, argv)
 		int subcommand = subcommand_of(*first_arg)
-		if (subcommand == 1):
-			return check_main(argc, argv)
-		if (subcommand == 2):
-			return deps_main(argc, argv)
-		if (subcommand == 3):
-			return symbols_main(argc, argv)
-		if (subcommand == 4):
-			return defhash_main(argc, argv)
+		if (subcommand == 1): return check_main(argc, argv)
+		if (subcommand == 2): return deps_main(argc, argv)
+		if (subcommand == 3): return symbols_main(argc, argv)
+		if (subcommand == 4): return defhash_main(argc, argv)
 		if (strcmp(*first_arg, c"--version") == 0):
 			# Keep in sync with package.wmeta; release.yml fails a tag
 			# that disagrees with either.

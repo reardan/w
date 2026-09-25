@@ -75,19 +75,16 @@ void gen_atlas_place(gen_atlas* a, char* bitmap, int w, int h, int* out_x, int* 
 		a.y = a.y + a.shelf_h
 		a.x = 1
 		a.shelf_h = 0
-	if (h + 1 > a.shelf_h):
-		a.shelf_h = h + 1
+	if (h + 1 > a.shelf_h): a.shelf_h = h + 1
 	if (a.y + a.shelf_h >= a.h_cap):
 		print_error(c"generate_ui_atlas: atlas height cap exceeded\n")
 		exit(1)
 	for row in range(h):
-		for col in range(w):
-			a.pixels[(a.y + row) * a.w + a.x + col] = bitmap[row * w + col]
+		for col in range(w): a.pixels[(a.y + row) * a.w + a.x + col] = bitmap[row * w + col]
 	out_x[0] = a.x
 	out_y[0] = a.y
 	a.x = a.x + w + 1
-	if (a.y + a.shelf_h > a.used_h):
-		a.used_h = a.y + a.shelf_h
+	if (a.y + a.shelf_h > a.used_h): a.used_h = a.y + a.shelf_h
 	return
 
 
@@ -103,10 +100,8 @@ void gen_atlas_break(gen_atlas* a):
 # ---- procedural masks -------------------------------------------------
 
 float32 gen_clamp01(float32 v):
-	if (v < 0.0):
-		return 0.0
-	if (v > 1.0):
-		return 1.0
+	if (v < 0.0): return 0.0
+	if (v > 1.0): return 1.0
 	return v
 
 
@@ -128,8 +123,7 @@ float32 gen_capsule_dist(float32 px, float32 py, float32 ax, float32 ay, float32
 # Solid white cell: untextured fills sample its center.
 char* gen_mask_white(int size):
 	char* p = malloc(size * size)
-	for i in range(size * size):
-		p[i] = 255
+	for i in range(size * size): p[i] = 255
 	return p
 
 
@@ -178,8 +172,7 @@ char* gen_mask_ring(int size):
 			float32 dx = cast(float32, x) + 0.5 - c
 			float32 dy = cast(float32, y) + 0.5 - c
 			float32 d = gfx_sqrt(dx * dx + dy * dy) - r
-			if (d < 0.0):
-				d = 0.0 - d
+			if (d < 0.0): d = 0.0 - d
 			p[y * size + x] = gen_coverage(half_stroke - d + 0.5)
 		y = y + 1
 	return p
@@ -197,8 +190,7 @@ char* gen_mask_check(int size):
 			float32 d1 = gen_capsule_dist(px, py, 7.0 * s, 16.0 * s, 13.0 * s, 22.0 * s)
 			float32 d2 = gen_capsule_dist(px, py, 13.0 * s, 22.0 * s, 23.0 * s, 9.0 * s)
 			float32 d = d1
-			if (d2 < d):
-				d = d2
+			if (d2 < d): d = d2
 			p[y * size + x] = gen_coverage(2.2 * s - d + 0.5)
 		y = y + 1
 	return p
@@ -216,8 +208,7 @@ char* gen_mask_chevron(int size):
 			float32 d1 = gen_capsule_dist(px, py, 5.0 * s, 9.0 * s, 12.0 * s, 16.0 * s)
 			float32 d2 = gen_capsule_dist(px, py, 12.0 * s, 16.0 * s, 19.0 * s, 9.0 * s)
 			float32 d = d1
-			if (d2 < d):
-				d = d2
+			if (d2 < d): d = d2
 			p[y * size + x] = gen_coverage(1.8 * s - d + 0.5)
 		y = y + 1
 	return p
@@ -238,8 +229,7 @@ char* gen_mask_chevron_right(int size):
 			float32 d1 = gen_capsule_dist(px, py, 9.0 * s, 5.0 * s, 16.0 * s, 12.0 * s)
 			float32 d2 = gen_capsule_dist(px, py, 16.0 * s, 12.0 * s, 9.0 * s, 19.0 * s)
 			float32 d = d1
-			if (d2 < d):
-				d = d2
+			if (d2 < d): d = d2
 			p[y * size + x] = gen_coverage(1.8 * s - d + 0.5)
 		y = y + 1
 	return p
@@ -259,8 +249,7 @@ char* gen_mask_cross(int size):
 			float32 d1 = gen_capsule_dist(px, py, 7.0 * s, 7.0 * s, 17.0 * s, 17.0 * s)
 			float32 d2 = gen_capsule_dist(px, py, 17.0 * s, 7.0 * s, 7.0 * s, 17.0 * s)
 			float32 d = d1
-			if (d2 < d):
-				d = d2
+			if (d2 < d): d = d2
 			p[y * size + x] = gen_coverage(1.8 * s - d + 0.5)
 		y = y + 1
 	return p
@@ -280,10 +269,8 @@ char* gen_mask_shadow(int size):
 		for x in range(size):
 			float32 dx = corner - (cast(float32, x) + 0.5)
 			float32 dy = corner - (cast(float32, y) + 0.5)
-			if (dx < 0.0):
-				dx = 0.0
-			if (dy < 0.0):
-				dy = 0.0
+			if (dx < 0.0): dx = 0.0
+			if (dy < 0.0): dy = 0.0
 			float32 d = gfx_sqrt(dx * dx + dy * dy) - 8.0
 			float32 f = gen_clamp01(1.0 - d / spread)
 			p[y * size + x] = gen_coverage(f * f)
@@ -312,14 +299,10 @@ void gen_append_escape(string_builder* out, int value):
 	string_append_char(out, 120)
 	int hi = (value >> 4) & 15
 	int lo = value & 15
-	if (hi < 10):
-		string_append_char(out, 48 + hi)
-	else:
-		string_append_char(out, 87 + hi)
-	if (lo < 10):
-		string_append_char(out, 48 + lo)
-	else:
-		string_append_char(out, 87 + lo)
+	if (hi < 10): string_append_char(out, 48 + hi)
+	else: string_append_char(out, 87 + hi)
+	if (lo < 10): string_append_char(out, 48 + lo)
+	else: string_append_char(out, 87 + lo)
 
 
 void gen_emit_bytes_func(wstream* out, char* name, int suffix, char* bytes, int length):
@@ -327,13 +310,11 @@ void gen_emit_bytes_func(wstream* out, char* name, int suffix, char* bytes, int 
 	stream_write_line(out, c"")
 	stream_write_cstr(out, c"char* ")
 	stream_write_cstr(out, name)
-	if (suffix >= 0):
-		stream_write_int(out, suffix)
+	if (suffix >= 0): stream_write_int(out, suffix)
 	stream_write_line(out, c"():")
 	string_builder* literal = string_new()
 	string_append(literal, c"\treturn c\"")
-	for i in range(length):
-		gen_append_escape(literal, bytes[i] & 255)
+	for i in range(length): gen_append_escape(literal, bytes[i] & 255)
 	string_append(literal, c"\"")
 	stream_write_line(out, literal.data)
 	string_free(literal)
@@ -416,12 +397,10 @@ const int gen_face_chunk_chars = 4096
 # byte length lands in out_size[0].
 int gen_emit_face(wstream* out, int face, char* path, int* out_size):
 	ttf_font font
-	if (ttf_load(&font, path) == 0):
-		exit(1)
+	if (ttf_load(&font, path) == 0): exit(1)
 	int size = 0
 	char* data = ttf_subset(&font, gen_face_ranges(), gen_face_range_count, &size)
-	if (data == 0):
-		exit(1)
+	if (data == 0): exit(1)
 	ttf_font check
 	if (ttf_load_bytes(&check, data, size) == 0):
 		print_error(c"generate_ui_atlas: subset does not load\n")
@@ -433,8 +412,7 @@ int gen_emit_face(wstream* out, int face, char* path, int* out_size):
 	for k in range(chunks):
 		int first = k * chunk_chars
 		int count = text_length - first
-		if (count > chunk_chars):
-			count = chunk_chars
+		if (count > chunk_chars): count = chunk_chars
 		stream_write_line(out, c"")
 		stream_write_line(out, c"")
 		stream_write_cstr(out, c"char* ui_font_face_")
@@ -491,24 +469,15 @@ int main(int argc, int argv):
 	while (m < gen_mask_count):
 		int size = mask_sizes[m]
 		char* bitmap = 0
-		if (m == 0):
-			bitmap = gen_mask_white(size)
-		else if (m == 1):
-			bitmap = gen_mask_corner(size)
-		else if (m == 2):
-			bitmap = gen_mask_disc(size)
-		else if (m == 3):
-			bitmap = gen_mask_ring(size)
-		else if (m == 4):
-			bitmap = gen_mask_check(size)
-		else if (m == 5):
-			bitmap = gen_mask_chevron(size)
-		else if (m == 6):
-			bitmap = gen_mask_shadow(size)
-		else if (m == 7):
-			bitmap = gen_mask_chevron_right(size)
-		else:
-			bitmap = gen_mask_cross(size)
+		if (m == 0): bitmap = gen_mask_white(size)
+		else if (m == 1): bitmap = gen_mask_corner(size)
+		else if (m == 2): bitmap = gen_mask_disc(size)
+		else if (m == 3): bitmap = gen_mask_ring(size)
+		else if (m == 4): bitmap = gen_mask_check(size)
+		else if (m == 5): bitmap = gen_mask_chevron(size)
+		else if (m == 6): bitmap = gen_mask_shadow(size)
+		else if (m == 7): bitmap = gen_mask_chevron_right(size)
+		else: bitmap = gen_mask_cross(size)
 		int x = 0
 		int y = 0
 		gen_atlas_place(&a, bitmap, size, size, &x, &y)
@@ -580,8 +549,7 @@ int main(int argc, int argv):
 	while (c < chunk_count):
 		int first = c * chunk_size
 		int count = rle_length - first
-		if (count > chunk_size):
-			count = chunk_size
+		if (count > chunk_size): count = chunk_size
 		gen_emit_bytes_func(out, c"ui_font_rle_chunk_", c, &rle[first], count)
 		c = c + 1
 	stream_write_line(out, c"")
@@ -589,10 +557,8 @@ int main(int argc, int argv):
 	stream_write_line(out, c"char* ui_font_rle_chunk(int i):")
 	c = 0
 	while (c < chunk_count):
-		if (c == 0):
-			stream_write_cstr(out, c"\tif (i == ")
-		else:
-			stream_write_cstr(out, c"\telse if (i == ")
+		if (c == 0): stream_write_cstr(out, c"\tif (i == ")
+		else: stream_write_cstr(out, c"\telse if (i == ")
 		stream_write_int(out, c)
 		stream_write_line(out, c"):")
 		stream_write_cstr(out, c"\t\treturn ui_font_rle_chunk_")

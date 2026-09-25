@@ -35,18 +35,15 @@ import libs.asm.format
 int asm_text_has_sequence(char* text):
 	int i = 0
 	while (text[i] != 0):
-		if (text[i] == ' ' && text[i + 1] == ';' && text[i + 2] == ' '):
-			return 1
+		if (text[i] == ' ' && text[i + 1] == ';' && text[i + 2] == ' '): return 1
 		i = i + 1
 	return 1 == 2
 
 
 int asm_bytes_equal(char* a, int an, char* b, int bn):
-	if (an != bn):
-		return 1 == 2
+	if (an != bn): return 1 == 2
 	for i in range(an):
-		if ((a[i] & 255) != (b[i] & 255)):
-			return 1 == 2
+		if ((a[i] & 255) != (b[i] & 255)): return 1 == 2
 	return 1
 
 
@@ -71,16 +68,14 @@ void asm_check_corpus(char* path, int parse_arch, int mode):
 		asm_corpus_entry entry = entries[i]
 		i = i + 1
 		# Skip multi-instruction sequence lines (handled by the .text sweep).
-		if (asm_text_has_sequence(entry.text)):
-			continue
+		if (asm_text_has_sequence(entry.text)): continue
 		checked = checked + 1
 		asm_buffer* encoded = asm_assemble_one(entry.text, parse_arch)
 
 		# Byte differential (informational): does our minimal encoding match?
 		if (asm_bytes_equal(encoded.data, encoded.length, entry.bytes, entry.length)):
 			byte_exact = byte_exact + 1
-		else:
-			non_minimal = non_minimal + 1
+		else: non_minimal = non_minimal + 1
 
 		# Semantic round-trip (required): re-decode our bytes and format.
 		asm_insn back
@@ -107,10 +102,8 @@ void asm_check_corpus(char* path, int parse_arch, int mode):
 
 
 int asm_test_in_text(asm_binary* binary, int value):
-	if (value < binary.text_vaddr):
-		return 1 == 2
-	if (value >= binary.text_vaddr + binary.text_size):
-		return 1 == 2
+	if (value < binary.text_vaddr): return 1 == 2
+	if (value >= binary.text_vaddr + binary.text_size): return 1 == 2
 	return 1
 
 
@@ -122,8 +115,7 @@ int asm_test_in_text(asm_binary* binary, int value):
 void asm_check_encode_identity(char* path, int mode):
 	asm_binary* binary = asm_binary_open(path)
 	asserts(c"cannot open the self-host build", cast(int, binary) != 0)
-	if (mode == 8):
-		assert_equal(ASM_ELF_CLASS64, binary.elf_class)
+	if (mode == 8): assert_equal(ASM_ELF_CLASS64, binary.elf_class)
 	char* text = asm_binary_text(binary)
 	int functions = 0
 	int count = 0
@@ -133,10 +125,8 @@ void asm_check_encode_identity(char* path, int mode):
 	while (i < binary.symbols.length):
 		asm_symbol sym = binary.symbols[i]
 		i = i + 1
-		if (sym.size <= 0):
-			continue
-		if (asm_test_in_text(binary, sym.value) == 0):
-			continue
+		if (sym.size <= 0): continue
+		if (asm_test_in_text(binary, sym.value) == 0): continue
 		functions = functions + 1
 		int func_off = sym.value - binary.text_vaddr
 		int pos = 0
@@ -148,8 +138,7 @@ void asm_check_encode_identity(char* path, int mode):
 				# re-encode the call itself, then skip the inline data.
 				asm_buffer* eb = asm_buffer_new()
 				asm_x86_encode(eb, &insn)
-				if (asm_bytes_equal(eb.data, eb.length, here, n) == 0):
-					mismatch = mismatch + 1
+				if (asm_bytes_equal(eb.data, eb.length, here, n) == 0): mismatch = mismatch + 1
 				asm_buffer_free(eb)
 				count = count + 1
 				pos = insn.branch_target - sym.value

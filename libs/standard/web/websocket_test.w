@@ -56,12 +56,10 @@ void wst_expect_encoding(char* label, int fin, int opcode, char* payload, int le
 	string_builder* out = string_new()
 	char* mask = 0
 	int mask_len = 0
-	if (mask_hex != 0):
-		mask = hex_decode_loose(mask_hex, &mask_len)
+	if (mask_hex != 0): mask = hex_decode_loose(mask_hex, &mask_len)
 	asserts(label, ws_frame_encode(out, fin, opcode, payload, len, mask) == 1)
 	wst_assert_bytes(label, expected_hex, out.data, out.length)
-	if (mask != 0):
-		free(mask)
+	if (mask != 0): free(mask)
 	string_free(out)
 
 
@@ -167,8 +165,7 @@ void test_ws_rfc_5_7_encode():
 
 	# 256 bytes of binary data: 16-bit length.
 	char* data = malloc(65536)
-	for i in range(65536):
-		data[i] = i & 255
+	for i in range(65536): data[i] = i & 255
 	string_builder* out = string_new()
 	assert_equal(1, ws_frame_encode(out, 1, ws_op_binary, data, 256, 0))
 	assert_equal(260, out.length)
@@ -255,17 +252,13 @@ void wst_echo_peer_z(int fd, ws_deflate_config* cfg):
 	ConnectionContext* cc = connection_context_new(fd, 10000, 0)
 	ws_conn* c = ws_conn_wrap(cc, 0, 1)
 	if (cfg != 0):
-		if (ws_set_compression(c, cfg) == 0):
-			exit(7)
+		if (ws_set_compression(c, cfg) == 0): exit(7)
 	while (1):
 		ws_message* m = ws_recv(c)
 		if (m == 0):
-			if (ws_conn_error(c) != ws_error_closed):
-				exit(10 + ws_conn_error(c))
-			if (c.peer_close_code != 1000):
-				exit(3)
-			if (strcmp(c.peer_close_reason, c"bye") != 0):
-				exit(4)
+			if (ws_conn_error(c) != ws_error_closed): exit(10 + ws_conn_error(c))
+			if (c.peer_close_code != 1000): exit(3)
+			if (strcmp(c.peer_close_reason, c"bye") != 0): exit(4)
 			ws_conn_free(c)
 			exit(0)
 		if ((m.opcode == ws_op_text) && (strcmp(m.data, c"ping-me") == 0)):
@@ -276,16 +269,12 @@ void wst_echo_peer_z(int fd, ws_deflate_config* cfg):
 			ws_send_text(c, count, strlen(count))
 			free(count)
 		else if ((m.opcode == ws_op_text) && (strcmp(m.data, c"close-me") == 0)):
-			if (ws_close(c, 4000, c"server bye") == 0):
-				exit(5)
-			if (c.peer_close_code != 4000):
-				exit(6)
+			if (ws_close(c, 4000, c"server bye") == 0): exit(5)
+			if (c.peer_close_code != 4000): exit(6)
 			ws_conn_free(c)
 			exit(0)
-		else if (m.opcode == ws_op_text):
-			ws_send_text(c, m.data, m.len)
-		else:
-			ws_send_binary(c, m.data, m.len)
+		else if (m.opcode == ws_op_text): ws_send_text(c, m.data, m.len)
+		else: ws_send_binary(c, m.data, m.len)
 		ws_message_free(m)
 
 
@@ -307,8 +296,7 @@ ws_conn* wst_client_to_echo_z(int* out_pid, ws_deflate_config* cfg):
 	close(fds[1])
 	*out_pid = pid
 	ws_conn* c = ws_conn_wrap(connection_context_new(fds[0], 10000, 0), 1, 1)
-	if (cfg != 0):
-		assert_equal(1, ws_set_compression(c, cfg))
+	if (cfg != 0): assert_equal(1, ws_set_compression(c, cfg))
 	return c
 
 
@@ -365,8 +353,7 @@ void test_ws_session_echo_and_close():
 		assert_equal(n, m.len)
 		i = 0
 		while (i < n):
-			if ((m.data[i] & 255) != (data[i] & 255)):
-				assert_equal(data[i] & 255, m.data[i] & 255)
+			if ((m.data[i] & 255) != (data[i] & 255)): assert_equal(data[i] & 255, m.data[i] & 255)
 			i = i + 1
 		ws_message_free(m)
 		free(data)
@@ -434,8 +421,7 @@ void wst_raw_peer_bytes(int fd, char* raw, int n, int tested_is_client, int expe
 	while (1):
 		ws_frame f
 		int used = ws_frame_decode(buf, have, &f, 4096)
-		if (used < 0):
-			exit(2)
+		if (used < 0): exit(2)
 		if (used > 0):
 			if (f.opcode != ws_op_close):
 				# Skip anything else (e.g. an auto-pong).
@@ -445,18 +431,14 @@ void wst_raw_peer_bytes(int fd, char* raw, int n, int tested_is_client, int expe
 					i = i + 1
 				have = have - used
 			else:
-				if (f.masked != tested_is_client):
-					exit(3)
-				if (f.payload_len < 2):
-					exit(4)
+				if (f.masked != tested_is_client): exit(3)
+				if (f.payload_len < 2): exit(4)
 				int code = ((f.payload[0] & 255) << 8) | (f.payload[1] & 255)
-				if (code != expect_code):
-					exit(5)
+				if (code != expect_code): exit(5)
 				exit(0)
 		else:
 			int got = read(fd, buf + have, 4096 - have)
-			if (got <= 0):
-				exit(6)
+			if (got <= 0): exit(6)
 			have = have + got
 
 
@@ -482,8 +464,7 @@ void wst_violation_bytes(char* label, int tested_is_client, int max_message, ws_
 	close(fds[1])
 	ws_conn* c = ws_conn_wrap(connection_context_new(fds[0], 10000, 0), tested_is_client, 1)
 	ws_set_max_message(c, max_message)
-	if (cfg != 0):
-		assert_equal(1, ws_set_compression(c, cfg))
+	if (cfg != 0): assert_equal(1, ws_set_compression(c, cfg))
 	ws_message* m = 0
 	for k in range(messages):
 		m = ws_recv(c)
@@ -498,8 +479,7 @@ void wst_violation_bytes(char* label, int tested_is_client, int max_message, ws_
 	if (ws_conn_error(c) != expect_error):
 		print_string(label, ws_error_string(ws_conn_error(c)))
 		assert_equal(expect_error, ws_conn_error(c))
-	if (expect_error != ws_error_closed):
-		assert_equal(expect_code, c.local_close_code)
+	if (expect_error != ws_error_closed): assert_equal(expect_code, c.local_close_code)
 	asserts(label, ws_send_text(c, c"x", 1) == 0)
 	ws_conn_free(c)
 	int status = 0
@@ -559,14 +539,11 @@ void test_ws_client_accepts_close_without_status():
 		int have = 0
 		while (have < 6):
 			int got = read(fds[1], buf + have, 64 - have)
-			if (got <= 0):
-				exit(2)
+			if (got <= 0): exit(2)
 			have = have + got
 		ws_frame f
-		if (ws_frame_decode(buf, have, &f, 64) != 6):
-			exit(3)
-		if ((f.opcode != ws_op_close) || (f.payload_len != 0) || (f.masked != 1)):
-			exit(4)
+		if (ws_frame_decode(buf, have, &f, 64) != 6): exit(3)
+		if ((f.opcode != ws_op_close) || (f.payload_len != 0) || (f.masked != 1)): exit(4)
 		exit(0)
 	close(fds[1])
 	ws_conn* c = ws_conn_wrap(connection_context_new(fds[0], 10000, 0), 1, 1)
@@ -901,8 +878,7 @@ void test_ws_deflate_client_negotiation():
 # beyond small windows.
 char* wst_pattern(int n, int seed):
 	char* data = malloc(n)
-	for i in range(n):
-		data[i] = ((i / 3) * 7 + seed + ((i >> 9) & 31)) & 255
+	for i in range(n): data[i] = ((i / 3) * 7 + seed + ((i >> 9) & 31)) & 255
 	return data
 
 
@@ -912,8 +888,7 @@ void wst_expect_binary_echo(ws_conn* c, char* data, int n):
 	assert_equal(ws_op_binary, m.opcode)
 	assert_equal(n, m.len)
 	for i in range(n):
-		if ((m.data[i] & 255) != (data[i] & 255)):
-			assert_equal(data[i] & 255, m.data[i] & 255)
+		if ((m.data[i] & 255) != (data[i] & 255)): assert_equal(data[i] & 255, m.data[i] & 255)
 	ws_message_free(m)
 
 

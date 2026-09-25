@@ -24,8 +24,7 @@ void sym_define_declare_global_function_arity(char* name, int num_args); /* defi
 # slot I of the context struct x9 points at.
 char* arm64_context_store(int i):
 	char* offset = c"]"
-	if (i > 0):
-		offset = strjoin(c",#", strjoin(itoa(i * 8), c"]"))
+	if (i > 0): offset = strjoin(c",#", strjoin(itoa(i * 8), c"]"))
 	return strjoin(c"str x", strjoin(itoa(i), strjoin(c",[x9", offset)))
 
 
@@ -46,35 +45,27 @@ void define_asm_functions_arm64():
 	# The stub reads exactly nr + 3 fixed stack slots, so record its arity:
 	# a call with any other argument count would read garbage slots.
 	sym_define_declare_global_function_arity(c"syscall", 4)
-	if (target_os == 1):
-		a64_asm(c"ldr x16,[x28,#24]")   # nr
-	else:
-		a64_asm(c"ldr x8,[x28,#24]")   # nr
+	if (target_os == 1): a64_asm(c"ldr x16,[x28,#24]")   # nr
+	else: a64_asm(c"ldr x8,[x28,#24]")   # nr
 	a64_asm(c"ldr x0,[x28,#16]")   # arg1
 	a64_asm(c"ldr x1,[x28,#8]")   # arg2
 	a64_asm(c"ldr x2,[x28]")   # arg3
-	if (target_os == 1):
-		arm64_darwin_svc()
-	else:
-		a64_asm(c"svc #0")
+	if (target_os == 1): arm64_darwin_svc()
+	else: a64_asm(c"svc #0")
 	a64_asm(c"ret")
 
 	# syscall7(nr, a1..a6): arguments in x0..x5.
 	sym_define_declare_global_function_arity(c"syscall7", 7)
-	if (target_os == 1):
-		a64_asm(c"ldr x16,[x28,#48]")   # nr
-	else:
-		a64_asm(c"ldr x8,[x28,#48]")   # nr
+	if (target_os == 1): a64_asm(c"ldr x16,[x28,#48]")   # nr
+	else: a64_asm(c"ldr x8,[x28,#48]")   # nr
 	a64_asm(c"ldr x0,[x28,#40]")   # a1
 	a64_asm(c"ldr x1,[x28,#32]")   # a2
 	a64_asm(c"ldr x2,[x28,#24]")   # a3
 	a64_asm(c"ldr x3,[x28,#16]")   # a4
 	a64_asm(c"ldr x4,[x28,#8]")   # a5
 	a64_asm(c"ldr x5,[x28]")   # a6
-	if (target_os == 1):
-		arm64_darwin_svc()
-	else:
-		a64_asm(c"svc #0")
+	if (target_os == 1): arm64_darwin_svc()
+	else: a64_asm(c"svc #0")
 	a64_asm(c"ret")
 
 	# Darwin-only helper stubs for the two BSD calls whose return
@@ -118,10 +109,8 @@ void define_asm_functions_arm64():
 		a64_asm(c"str x0,[x28,#-8]!")   # callee slot
 		a64_asm(c"str x2,[x28,#-8]!")   # sig
 		a64_asm(c"str x4,[x28,#-8]!")   # ucontext
-		if (arm64_pac == 2):
-			a64_asm(c"blraaz x0")
-		else:
-			a64_asm(c"blr x0")
+		if (arm64_pac == 2): a64_asm(c"blraaz x0")
+		else: a64_asm(c"blr x0")
 		a64_asm(c"add x28,x28,#24")
 		a64_asm(c"ldr x0,[sp,#8]")   # ucontext
 		a64_asm(c"ldr x1,[sp]")   # infostyle
@@ -162,8 +151,7 @@ void define_asm_functions_arm64():
 	if (arm64_pac == 2):
 		# Sign a copy: x30 itself must stay plain for the ret below.
 		a64_asm(c"mov x10,x30; pacia x10,x9; str x10,[x9]")
-	else:
-		a64_asm(c"str x30,[x9]")
+	else: a64_asm(c"str x30,[x9]")
 	a64_asm(c"str x28,[x9,#8]; str x29,[x9,#16]; movz x0,#0; ret")
 
 	# repl_longjmp(buf, val): restore the saved state and branch back to the
@@ -174,8 +162,7 @@ void define_asm_functions_arm64():
 	a64_asm(c"ldr x0,[x28]")   # val
 	a64_asm(c"ldr x9,[x28,#8]")   # buf
 	a64_asm(c"ldr x30,[x9]")
-	if (arm64_pac == 2):
-		a64_asm(c"autia x30,x9")
+	if (arm64_pac == 2): a64_asm(c"autia x30,x9")
 	a64_asm(c"ldr x28,[x9,#8]; ldr x29,[x9,#16]; ret")
 
 	# gen_switch(int* save_wsp_here, int restore_wsp): the generator context
@@ -197,14 +184,12 @@ void define_asm_functions_arm64():
 	sym_define_declare_global_function(c"gen_switch")
 	a64_asm(c"ldr x9,[x28,#8]")   # save_wsp_here
 	a64_asm(c"ldr x10,[x28]")   # restore_wsp
-	if (arm64_pac == 2):
-		a64_asm(c"paciza x30")
+	if (arm64_pac == 2): a64_asm(c"paciza x30")
 	a64_asm(c"str x30,[x28,#-8]!")   # push resume address
 	a64_asm(c"str x29,[x28,#-8]!")   # push frame pointer
 	a64_asm(c"str x28,[x9]")   # *save_wsp_here = x28
 	a64_asm(c"mov x28,x10")   # switch stacks
 	a64_asm(c"ldr x29,[x28],#8")   # pop frame pointer
 	a64_asm(c"ldr x30,[x28],#8")   # pop resume address
-	if (arm64_pac == 2):
-		a64_asm(c"autiza x30")
+	if (arm64_pac == 2): a64_asm(c"autiza x30")
 	a64_asm(c"ret")

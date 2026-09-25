@@ -131,8 +131,7 @@ char* asm_hex_min(int v):
 	char* out = malloc(n + 3)
 	out[0] = '0'
 	out[1] = 'x'
-	for i in range(n):
-		out[2 + i] = tmp[n - 1 - i]
+	for i in range(n): out[2 + i] = tmp[n - 1 - i]
 	out[2 + n] = 0
 	free(tmp)
 	return out
@@ -143,23 +142,18 @@ char* asm_hex_min(int v):
 # is zero-padded to a full 8 digits so no bits are lost
 # (0x12345678, 0x90123456 -> "0x1234567890123456").
 char* asm_hex_min64(int hi, int lo):
-	if (hi == 0):
-		return asm_hex_min(lo)
+	if (hi == 0): return asm_hex_min(lo)
 	char* digits = c"0123456789abcdef"
 	char* lopart = malloc(9)
-	for i in range(8):
-		lopart[i] = digits[(lo >> ((7 - i) * 4)) & 15]
+	for i in range(8): lopart[i] = digits[(lo >> ((7 - i) * 4)) & 15]
 	lopart[8] = 0
 	return strjoin(asm_hex_min(hi), lopart)
 
 
 int asm_insn_operand_count(asm_insn* insn):
-	if (insn.op1.kind == ASM_OP_NONE):
-		return 0
-	if (insn.op2.kind == ASM_OP_NONE):
-		return 1
-	if (insn.op3.kind == ASM_OP_NONE):
-		return 2
+	if (insn.op1.kind == ASM_OP_NONE): return 0
+	if (insn.op2.kind == ASM_OP_NONE): return 1
+	if (insn.op3.kind == ASM_OP_NONE): return 2
 	return 3
 
 
@@ -170,10 +164,8 @@ int asm_insn_operand_count(asm_insn* insn):
 # NUL-padded to the stride; an all-NUL slot has no name). The returned
 # names point into the literal: static, never freed.
 char* asm_name_slot(char* table, int stride, int count, int number):
-	if (number < 0 || number >= count):
-		return 0
-	if (table[number * stride] == 0):
-		return 0
+	if (number < 0 || number >= count): return 0
+	if (table[number * stride] == 0): return 0
 	return table + number * stride
 
 
@@ -301,11 +293,9 @@ int asm_labels_resolve(asm_labels* t, asm_buffer* b):
 		if (found >= 0):
 			asm_label_record rec = t.labels[found]
 			target = rec.position
-		if (target < 0):
-			unresolved = unresolved + 1
+		if (target < 0): unresolved = unresolved + 1
 		else if (fix.kind == ASM_FIX_REL32):
 			asm_buffer_patch_int32(b, fix.position, target - (fix.position + 4))
-		else:
-			asm_buffer_patch_int32(b, fix.position, target)
+		else: asm_buffer_patch_int32(b, fix.position, target)
 		i = i + 1
 	return unresolved

@@ -185,14 +185,12 @@ struct delta_ops:
 
 
 void delta_op_free(delta_op* op):
-	if (op.literal != 0):
-		free(op.literal)
+	if (op.literal != 0): free(op.literal)
 	free(op)
 
 
 void delta_ops_free(delta_ops* ops):
-	for delta_op* op in ops.items:
-		delta_op_free(op)
+	for delta_op* op in ops.items: delta_op_free(op)
 	list_free[delta_op*](ops.items)
 	free(ops)
 
@@ -213,15 +211,13 @@ void delta_ops_push_copy(delta_ops* ops, int offset, int length):
 
 int delta_window_sum_a(char* data, int start, int length):
 	int a = 0
-	for i in range(length):
-		a = a + (data[start + i] & 255)
+	for i in range(length): a = a + (data[start + i] & 255)
 	return a & 65535
 
 
 int delta_window_sum_b(char* data, int start, int length):
 	int b = 0
-	for i in range(length):
-		b = b + ((length - i) * (data[start + i] & 255))
+	for i in range(length): b = b + ((length - i) * (data[start + i] & 255))
 	return b & 65535
 
 
@@ -243,16 +239,14 @@ map[int, list[int]] delta_build_index(char* base, int base_length, int block):
 		int a = delta_window_sum_a(base, off, block)
 		int b = delta_window_sum_b(base, off, block)
 		int cs = delta_combine(a, b)
-		if ((cs in table) == 0):
-			table[cs] = new list[int]
+		if ((cs in table) == 0): table[cs] = new list[int]
 		table[cs].push(off)
 		off = off + block
 	return table
 
 
 void delta_free_index(map[int, list[int]] table):
-	for int key in table:
-		list_free[int](table[key])
+	for int key in table: list_free[int](table[key])
 	map_free[int, list[int]](table)
 
 
@@ -313,8 +307,7 @@ delta_ops* delta_diff(char* base, int base_length, char* target, int target_leng
 			window_valid = next_valid
 			i = i + 1
 
-	if (pending.length > 0):
-		delta_ops_push_insert(result, pending.data, pending.length)
+	if (pending.length > 0): delta_ops_push_insert(result, pending.data, pending.length)
 	string_free(pending)
 	delta_free_index(table)
 	return result
@@ -342,20 +335,17 @@ string_builder* delta_encode_ops(delta_ops* ops):
 
 int delta_find_char(char* data, int end, int start, int ch):
 	int i = start
-	while ((i < end) && (data[i] != ch)):
-		i = i + 1
+	while ((i < end) && (data[i] != ch)): i = i + 1
 	return i
 
 
 # True when data[start,end) is one or more decimal digits (no sign --
 # every numeric field in this module's formats is a non-negative count).
 int delta_valid_nonneg_integer(char* data, int start, int end):
-	if (start >= end):
-		return 0
+	if (start >= end): return 0
 	for i in range(start, end):
 		int c = data[i] & 255
-		if ((c < '0') || (c > '9')):
-			return 0
+		if ((c < '0') || (c > '9')): return 0
 	return 1
 
 
@@ -509,8 +499,7 @@ string_builder* delta_encode_chain(char* base_id, char* logical_type, int depth,
 
 
 int delta_valid_hex_slice(char* data, int start, int end):
-	if ((end - start) != 64):
-		return 0
+	if ((end - start) != 64): return 0
 	char* slice = path_clone_range(data + start, end - start)
 	int ok = cas_valid_id(slice)
 	free(slice)
@@ -672,14 +661,12 @@ wresult[wcas_object*]* delta_resolve(wcas* s, char* id, int hops_remaining):
 
 	int mismatch = ar.length != chain.target_length
 	wcas_object* resolved = 0
-	if (mismatch):
-		delta_apply_result_free(ar)
+	if (mismatch): delta_apply_result_free(ar)
 	else:
 		resolved = new wcas_object(strclone(chain.logical_type), ar.data, ar.length)
 		free(ar)
 	delta_chain_free(chain)
-	if (mismatch):
-		return result_new_error[wcas_object*](DELTA_ERR_MALFORMED())
+	if (mismatch): return result_new_error[wcas_object*](DELTA_ERR_MALFORMED())
 	return result_new_ok[wcas_object*](resolved)
 
 
@@ -715,10 +702,8 @@ wresult[wcas_object*]* cas_get_resolved(wcas* s, char* id):
 wresult[char*]* cas_put_delta(wcas* s, char* base_id, char* logical_type, char* data, int length):
 	if ((cas_valid_id(base_id) == 0) || (cas_valid_tag(logical_type) == 0) || (length < 0)):
 		return result_new_error[char*](-22)
-	if ((data == 0) && (length != 0)):
-		return result_new_error[char*](-22)
-	if (strcmp(logical_type, DELTA_OBJECT_TYPE()) == 0):
-		return result_new_error[char*](-22)
+	if ((data == 0) && (length != 0)): return result_new_error[char*](-22)
+	if (strcmp(logical_type, DELTA_OBJECT_TYPE()) == 0): return result_new_error[char*](-22)
 
 	wresult[wcas_object*]* braw = cas_get(s, base_id)
 	if (result_is_error[wcas_object*](braw)):
@@ -743,8 +728,7 @@ wresult[char*]* cas_put_delta(wcas* s, char* base_id, char* logical_type, char* 
 	cas_object_free(braw_obj)
 
 	int new_depth = base_depth + 1
-	if (new_depth > DELTA_MAX_CHAIN_DEPTH()):
-		return cas_put(s, logical_type, data, length)
+	if (new_depth > DELTA_MAX_CHAIN_DEPTH()): return cas_put(s, logical_type, data, length)
 
 	wresult[wcas_object*]* bres = cas_get_resolved(s, base_id)
 	if (result_is_error[wcas_object*](bres)):

@@ -12,8 +12,7 @@ import libs.extras.parser_generator.ast_node
 # Attach a mandatory child; returns the new `failed` flag: 1 when the
 # child did not parse (child == 0), else 0.
 int pg_ast_add_required(pg_ast_node* node, pg_ast_node* child):
-	if (child == 0):
-		return 1
+	if (child == 0): return 1
 	pg_ast_add(node, child)
 	return 0
 

@@ -88,14 +88,12 @@ void x25519_fe_carry(int* h):
 # give |a[k] + b[k]| <= 18814, and the carry pass returns to the at-rest
 # bound (see the module header).
 void x25519_fe_add(int* out, int* a, int* b):
-	for k in range(20):
-		out[k] = a[k] + b[k]
+	for k in range(20): out[k] = a[k] + b[k]
 	x25519_fe_carry(out)
 
 
 void x25519_fe_sub(int* out, int* a, int* b):
-	for k in range(20):
-		out[k] = a[k] - b[k]
+	for k in range(20): out[k] = a[k] - b[k]
 	x25519_fe_carry(out)
 
 
@@ -131,8 +129,7 @@ void x25519_fe_mul(int* out, int* a, int* b):
 	mem_fill(t, 0, 39)
 	for i in range(20):
 		int ai = a[i]
-		for j in range(20):
-			t[i + j] = t[i + j] + ai * b[j]
+		for j in range(20): t[i + j] = t[i + j] + ai * b[j]
 	x25519_fe_reduce(out, t)
 	free(t)
 
@@ -147,8 +144,7 @@ void x25519_fe_sq(int* out, int* a):
 	for i in range(20):
 		int ai = a[i]
 		t[i + i] = t[i + i] + ai * ai
-		for j in range(i + 1, 20):
-			t[i + j] = t[i + j] + 2 * (ai * a[j])
+		for j in range(i + 1, 20): t[i + j] = t[i + j] + 2 * (ai * a[j])
 	x25519_fe_reduce(out, t)
 	free(t)
 
@@ -157,8 +153,7 @@ void x25519_fe_sq(int* out, int* a):
 # 9407 * 121665 = 1,144,502,655 < 2^31; two carry passes restore the
 # at-rest bound.
 void x25519_fe_mul121665(int* out, int* a):
-	for k in range(20):
-		out[k] = a[k] * 121665
+	for k in range(20): out[k] = a[k] * 121665
 	x25519_fe_carry(out)
 	x25519_fe_carry(out)
 
@@ -188,8 +183,7 @@ void x25519_fe_frombytes(int* h, char* s):
 # [8173, 8191 x 18, 255] carries through to exactly 2^8 * 2^247 = 2^255.
 void x25519_fe_p_digits(int* pd):
 	pd[0] = 8173
-	for k in range(1, 19):
-		pd[k] = 8191
+	for k in range(1, 19): pd[k] = 8191
 	pd[19] = 255
 
 
@@ -263,8 +257,7 @@ void x25519_fe_invert(int* out, int* z):
 	int i = 253
 	while (i >= 0):
 		x25519_fe_sq(c, c)
-		if ((i != 2) && (i != 4)):
-			x25519_fe_mul(c, c, z)
+		if ((i != 2) && (i != 4)): x25519_fe_mul(c, c, z)
 		i = i - 1
 	x25519_fe_copy(out, c)
 	free(c)
@@ -367,10 +360,8 @@ int x25519_scalarmult(char* out, char* scalar, char* point):
 
 	# Low-order point rejection: an all-zero shared secret is an error.
 	int acc = 0
-	for i in range(32):
-		acc = acc | (out[i] & 255)
-	if (acc == 0):
-		return -1
+	for i in range(32): acc = acc | (out[i] & 255)
+	if (acc == 0): return -1
 	return 0
 
 
@@ -380,8 +371,7 @@ int x25519_scalarmult(char* out, char* scalar, char* point):
 int x25519_scalarmult_base(char* out, char* scalar):
 	char* base = malloc(32)
 	base[0] = 9
-	for i in range(1, 32):
-		base[i] = 0
+	for i in range(1, 32): base[i] = 0
 	int result = x25519_scalarmult(out, scalar, base)
 	free(base)
 	return result

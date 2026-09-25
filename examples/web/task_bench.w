@@ -38,8 +38,7 @@ generator int pong(int fd, int messages):
 
 generator int closer(int* fds, int pairs, task* until):
 	task_join(until)
-	for i in range(pairs):
-		close(fds[2 * i])
+	for i in range(pairs): close(fds[2 * i])
 
 
 int run(int use_poll, int pairs, int messages):
@@ -82,10 +81,8 @@ int main(int argc, int argv):
 	char** args = cast(char**, argv)
 	int pairs = 2000
 	int messages = 5000
-	if (argc > 1):
-		pairs = atoi(args[1])
-	if (argc > 2):
-		messages = atoi(args[2])
+	if (argc > 1): pairs = atoi(args[1])
+	if (argc > 2): messages = atoi(args[2])
 	print(c"idle tasks: ")
 	print(itoa(pairs))
 	print(c", round trips: ")

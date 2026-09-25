@@ -33,8 +33,7 @@ int read_pixel_channel(int x, int y, int channel):
 void check_channel(char* label, int x, int y, int channel, int want, int tolerance):
 	int got = read_pixel_channel(x, y, channel)
 	int diff = got - want
-	if (diff < 0):
-		diff = 0 - diff
+	if (diff < 0): diff = 0 - diff
 	if (diff > tolerance):
 		print_error(c"pixel check failed: ")
 		print_error(label)

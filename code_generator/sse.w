@@ -135,12 +135,9 @@ void setcc_movzx_eax(int setcc_opcode):
 	if (target_isa == 3): ptx_setcc_fcmp(setcc_opcode)
 	elif (target_isa == 2): wasm_setcc_f32(setcc_opcode)
 	elif (target_isa == 1):
-		if (setcc_opcode == 0x97):
-			arm64_cset(12)   # gt
-		else if (setcc_opcode == 0x93):
-			arm64_cset(10)   # ge
-		else:
-			arm64_cset(arm64_setcc_cond(setcc_opcode))
+		if (setcc_opcode == 0x97): arm64_cset(12)   # gt
+		else if (setcc_opcode == 0x93): arm64_cset(10)   # ge
+		else: arm64_cset(arm64_setcc_cond(setcc_opcode))
 	else:
 		emit_int8(15)
 		emit_int8(setcc_opcode)

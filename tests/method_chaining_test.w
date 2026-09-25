@@ -163,11 +163,9 @@ void test_chain_in_condition():
 	p.x = 1
 	p.y = 2
 	int taken = 0
-	if (p.plus(2).sum() == 7):
-		taken = 1
+	if (p.plus(2).sum() == 7): taken = 1
 	assert_equal(1, taken)
-	while (p.plus(0).sum() < 0):
-		p.x = p.x - 1
+	while (p.plus(0).sum() < 0): p.x = p.x - 1
 
 
 int chain_helper_return(chain_point* p):

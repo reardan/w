@@ -79,8 +79,7 @@ list[generic_def_record] generic_defs
 
 
 int generic_def_count():
-	if (cast(int, generic_defs) == 0):
-		return 0
+	if (cast(int, generic_defs) == 0): return 0
 	return generic_defs.length
 
 
@@ -134,10 +133,8 @@ int generic_def_lookup(char* name, int kind):
 
 
 int generic_def_add(char* name, int kind, char* file_path, int offset, int line, int column, int param_count, int param_names):
-	if (generic_def_lookup(name, kind) >= 0):
-		error3(c"generic '", name, c"' redefined")
-	if (cast(int, generic_defs) == 0):
-		generic_defs = new list[generic_def_record]
+	if (generic_def_lookup(name, kind) >= 0): error3(c"generic '", name, c"' redefined")
+	if (cast(int, generic_defs) == 0): generic_defs = new list[generic_def_record]
 	generic_def_record rec
 	rec.name = name
 	rec.kind = kind
@@ -168,8 +165,7 @@ list[generic_inst_record] generic_insts
 
 
 int generic_inst_count():
-	if (cast(int, generic_insts) == 0):
-		return 0
+	if (cast(int, generic_insts) == 0): return 0
 	return generic_insts.length
 
 
@@ -223,8 +219,7 @@ int generic_inst_intern(int def, int args, int arg_count, char* mangled):
 		free(mangled)
 		free(cast(char*, args))
 		return existing
-	if (cast(int, generic_insts) == 0):
-		generic_insts = new list[generic_inst_record]
+	if (cast(int, generic_insts) == 0): generic_insts = new list[generic_inst_record]
 	generic_inst_record rec
 	rec.mangled = mangled
 	rec.def = def
@@ -249,8 +244,7 @@ char* generic_subst_block
 
 
 int generic_subst_lookup(char* name):
-	if (generic_subst_block == 0):
-		return -1
+	if (generic_subst_block == 0): return -1
 	int n = load_ptr(generic_subst_block)
 	for i in range(n):
 		if (strcmp(name, cast(char*, load_ptr(generic_subst_block + __word_size__ + i * 2 * __word_size__))) == 0):
@@ -279,11 +273,9 @@ char* generic_subst_swap(char* block):
 # knows: a bound type parameter, or a generic struct instantiation
 # 'name[' (the '[' must follow directly, like map[/set[/list[).
 int generic_type_starts_here():
-	if (generic_subst_lookup(token) >= 0):
-		return 1
+	if (generic_subst_lookup(token) >= 0): return 1
 	if (nextc == '['):
-		if (generic_def_lookup(token, 1) >= 0):
-			return 1
+		if (generic_def_lookup(token, 1) >= 0): return 1
 	return 0
 
 
@@ -346,8 +338,7 @@ void generic_reparse_restore(char* s):
 void generic_reparse_start(int def):
 	char* path = generic_def_file(def)
 	file = open(path, 0, 511)
-	if (file < 0):
-		error3(c"cannot reopen generic definition file '", path, c"'")
+	if (file < 0): error3(c"cannot reopen generic definition file '", path, c"'")
 	filename = path
 	getchar_reset(file)
 	getchar_seek(file, generic_def_offset(def))
@@ -404,10 +395,8 @@ int generic_parse_param_names(int params_out):
 	while (more):
 		int c0 = token[0]
 		int is_ident = is_ident_start_byte(c0)
-		if (is_ident == 0):
-			error3(c"type parameter name expected, found '", token, c"'")
-		if (n >= generic_max_params):
-			error(c"too many type parameters")
+		if (is_ident == 0): error3(c"type parameter name expected, found '", token, c"'")
+		if (n >= generic_max_params): error(c"too many type parameters")
 		save_ptr(params_out + n * __word_size__, cast(int, strclone(token)))
 		n = n + 1
 		get_token()
@@ -424,13 +413,11 @@ int generic_parse_type_args(int args_out, int def):
 	int n = 0
 	int more = 1
 	while (more):
-		if (n >= generic_max_params):
-			error(c"too many type arguments")
+		if (n >= generic_max_params): error(c"too many type arguments")
 		save_ptr(args_out + n * __word_size__, type_name())
 		n = n + 1
 		more = accept(c",")
-	if (peek(c"]") == 0):
-		error3(c"']' expected in type argument list, found '", token, c"'")
+	if (peek(c"]") == 0): error3(c"']' expected in type argument list, found '", token, c"'")
 	if (n != generic_def_param_count(def)):
 		diag_part(c"wrong number of type arguments for generic '")
 		diag_part(generic_def_name(def))
@@ -444,10 +431,8 @@ int generic_parse_type_args(int args_out, int def):
 # comments are already opaque to get_token(), so skipping token by
 # token is safe.
 void generic_skip_definition():
-	while ((token_newline == 0) && (token[0] != 0)):
-		get_token()
-	while ((tab_level > 0) && (token[0] != 0)):
-		get_token()
+	while ((token_newline == 0) && (token[0] != 0)): get_token()
+	while ((tab_level > 0) && (token[0] != 0)): get_token()
 
 
 /*
@@ -465,8 +450,7 @@ void generic_register_struct():
 	expect(c":")
 	generic_def_add(name, 1, strclone(filename), offset, line, column, n, params)
 	# skip the field lines; they are re-parsed per instantiation
-	while ((tab_level > 0) && (token[0] != 0)):
-		get_token()
+	while ((tab_level > 0) && (token[0] != 0)): get_token()
 	# defhash coverage (wave plan C task 4f): hash exactly the span just
 	# registered above, so a reformat/comment-only edit leaves the hash
 	# unchanged and a real field-list edit changes it.
@@ -488,8 +472,7 @@ int generic_instantiate_struct(int def, int args, int arg_count, char* mangled):
 	type_set_decl_location(type_index, decl_file_index(), diag_token_line, diag_token_column)
 	get_token()
 	expect(c"[")
-	while (peek(c"]") == 0):
-		get_token()
+	while (peek(c"]") == 0): get_token()
 	expect(c"]")
 	expect(c":")
 	while ((tab_level > 0) && (token[0] != 0)):
@@ -514,10 +497,8 @@ int generic_struct_type():
 	int arg_count = generic_parse_type_args(args, def)
 	char* mangled = generic_mangle(generic_def_name(def), args, arg_count)
 	int type = type_lookup(mangled)
-	if (type < 0):
-		type = generic_instantiate_struct(def, args, arg_count, mangled)
-	else:
-		free(mangled)
+	if (type < 0): type = generic_instantiate_struct(def, args, arg_count, mangled)
+	else: free(mangled)
 	free(cast(char*, args))
 	get_token() /* consume the ']' */
 	return type
@@ -561,8 +542,7 @@ void generic_register_definition(int first_offset, int first_line, int first_col
 # (the seek trick generic_declaration_scan_repl uses) so type_name()
 # parses the return type from its first token.
 int generic_declaration_scan_generic_return():
-	if (generic_def_lookup(token, 1) < 0):
-		return 0
+	if (generic_def_lookup(token, 1) < 0): return 0
 	int first_offset = token_start_offset
 	int first_line = diag_token_line
 	int first_column = diag_token_column
@@ -574,10 +554,8 @@ int generic_declaration_scan_generic_return():
 		int depth = 1
 		get_token()
 		while ((depth > 0) && (token[0] != 0)):
-			if (peek(c"[")):
-				depth = depth + 1
-			if (peek(c"]")):
-				depth = depth - 1
+			if (peek(c"[")): depth = depth + 1
+			if (peek(c"]")): depth = depth - 1
 			get_token()
 	while (accept(c"*")) {}
 	int c1 = token[0]
@@ -598,22 +576,17 @@ int generic_declaration_scan():
 	generic_scanned_type = -1
 	int c0 = token[0]
 	int is_ident = is_ident_start_byte(c0)
-	if (is_ident == 0):
-		return 0
+	if (is_ident == 0): return 0
 	# const/container types (and generic struct types, handled by
 	# type_name) cannot start a generic function definition; neither can
 	# a 'gpu'-qualified pointer type (grammar/type_name.w)
-	if (peek(c"const") | peek(c"map") | peek(c"set") | peek(c"list")):
-		return 0
-	if (gpu_qualifier_ahead()):
-		return 0
+	if (peek(c"const") | peek(c"map") | peek(c"set") | peek(c"list")): return 0
+	if (gpu_qualifier_ahead()): return 0
 	# An import alias's qualified type ('alias.T name') is never a
 	# generic definition; leave it for type_name()'s alias branch
 	if (nextc == '.'):
-		if (import_alias_lookup(token) >= 0):
-			return 0
-	if (nextc == '['):
-		return generic_declaration_scan_generic_return()
+		if (import_alias_lookup(token) >= 0): return 0
+	if (nextc == '['): return generic_declaration_scan_generic_return()
 	# scan ahead: type '*'* name, generic when '[' follows the name
 	char* first = strclone(token)
 	int first_offset = token_start_offset
@@ -621,8 +594,7 @@ int generic_declaration_scan():
 	int first_column = diag_token_column
 	get_token()
 	int stars = 0
-	while (accept(c"*")):
-		stars = stars + 1
+	while (accept(c"*")): stars = stars + 1
 	int c1 = token[0]
 	int name_is_ident = is_ident_start_byte(c1)
 	if (name_is_ident & (nextc == '[')):
@@ -674,22 +646,18 @@ int generic_inst_signature(int inst):
 	int return_type = type_name()
 	get_token() /* the definition's own name */
 	expect(c"[")
-	while (peek(c"]") == 0):
-		get_token()
+	while (peek(c"]") == 0): get_token()
 	expect(c"]")
 	expect(c"(")
 	char* param_types = malloc(10 * __word_size__)
 	int param_count = 0
 	while (accept(c")") == 0):
 		int param_type = type_name()
-		if (peek(c".")):
-			error(c"variadic parameters are not supported in generic functions")
+		if (peek(c".")): error(c"variadic parameters are not supported in generic functions")
 		if ((peek(c")") == 0) & (peek(c",") == 0) & (peek(c"=") == 0)):
 			get_token() /* the parameter's name */
-		if (peek(c"=")):
-			error(c"default parameter values are not supported in generic functions")
-		if (param_count < 10):
-			save_ptr(param_types + param_count * __word_size__, param_type)
+		if (peek(c"=")): error(c"default parameter values are not supported in generic functions")
+		if (param_count < 10): save_ptr(param_types + param_count * __word_size__, param_type)
 		param_count = param_count + 1
 		accept(c",")
 	close(file)
@@ -796,8 +764,7 @@ int generic_infer_mentions_placeholder(int t):
 	char* name = type_get_name(type_real(t))
 	int i = 0
 	while (name[i] != 0):
-		if (name[i] == '@'):
-			return 1
+		if (name[i] == '@'): return 1
 		i = i + 1
 	return 0
 
@@ -829,37 +796,31 @@ void generic_infer_store_shape(char* block, int slot, int param_type, int def):
 # with the type parameters bound to placeholders instead of concrete
 # types. Safe mid-parse: headers emit no code.
 char* generic_infer_shapes(int def):
-	if (cast(int, generic_infer_shapes_cache) == 0):
-		generic_infer_shapes_cache = new list[int]
-	while (generic_infer_shapes_cache.length <= def):
-		generic_infer_shapes_cache.push(0)
+	if (cast(int, generic_infer_shapes_cache) == 0): generic_infer_shapes_cache = new list[int]
+	while (generic_infer_shapes_cache.length <= def): generic_infer_shapes_cache.push(0)
 	char* cached = cast(char*, generic_infer_shapes_cache[def])
 	if (cached != 0):
 		return cached
 	int n = generic_def_param_count(def)
 	int placeholder_args = cast(int, malloc(generic_max_params * __word_size__))
-	for i in range(n):
-		save_ptr(placeholder_args + i * __word_size__, generic_infer_placeholder(i))
+	for i in range(n): save_ptr(placeholder_args + i * __word_size__, generic_infer_placeholder(i))
 	char* save = generic_reparse_save()
 	char* old_subst = generic_subst_swap(generic_subst_make(def, placeholder_args, n))
 	generic_reparse_start(def)
 	type_name() /* the return type; only the parameters matter here */
 	get_token() /* the definition's own name */
 	expect(c"[")
-	while (peek(c"]") == 0):
-		get_token()
+	while (peek(c"]") == 0): get_token()
 	expect(c"]")
 	expect(c"(")
 	char* block = malloc(__word_size__ + generic_infer_max_args * 2 * __word_size__)
 	int count = 0
 	while (accept(c")") == 0):
 		int param_type = type_name()
-		if (peek(c".")):
-			error(c"variadic parameters are not supported in generic functions")
+		if (peek(c".")): error(c"variadic parameters are not supported in generic functions")
 		if ((peek(c")") == 0) & (peek(c",") == 0) & (peek(c"=") == 0)):
 			get_token() /* the parameter's name */
-		if (peek(c"=")):
-			error(c"default parameter values are not supported in generic functions")
+		if (peek(c"=")): error(c"default parameter values are not supported in generic functions")
 		if (count < generic_infer_max_args):
 			generic_infer_store_shape(block, count, param_type, def)
 		count = count + 1
@@ -891,8 +852,7 @@ int generic_infer_declarable(int t):
 		return float32_type
 	if (t == float64_value_type):
 		return float64_type
-	if (type_get_kind(t) == type_kind_slice_value):
-		return type_get_slice(type_get_element_type(t))
+	if (type_get_kind(t) == type_kind_slice_value): return type_get_slice(type_get_element_type(t))
 	return t
 
 
@@ -912,10 +872,8 @@ void generic_infer_bind(int def, char* bound, int param, int depth, int arg_type
 	if ((arg_type == 3) && (depth == 0)):
 		# untyped constant: bind 'int' when unbound, else coerce the
 		# value in eax to the existing binding (e.g. int -> float)
-		if (existing < 0):
-			save_ptr(bound + param * __word_size__, type_lookup(c"int"))
-		else:
-			coerce(existing, arg_type)
+		if (existing < 0): save_ptr(bound + param * __word_size__, type_lookup(c"int"))
+		else: coerce(existing, arg_type)
 		return;
 	if (arg_type == 4):
 		generic_infer_error_prefix(def)
@@ -927,8 +885,7 @@ void generic_infer_bind(int def, char* bound, int param, int depth, int arg_type
 		if (type_get_pointer_level(stripped) == 0):
 			generic_infer_pointer_error(def, param, arg_type, arg_index)
 		stripped = type_lookup_previous_pointer(stripped)
-		if (stripped < 0):
-			generic_infer_pointer_error(def, param, arg_type, arg_index)
+		if (stripped < 0): generic_infer_pointer_error(def, param, arg_type, arg_index)
 	stripped = type_unqualified(stripped)
 	if (existing < 0):
 		save_ptr(bound + param * __word_size__, stripped)
@@ -993,16 +950,14 @@ int generic_call_infer_expr(int def):
 				generic_infer_bind(def, bound, shape_kind, shape_data, arg_type, passed)
 			else if (shape_kind == -1):
 				generic_infer_check_concrete(def, shape_data, passed, arg_type)
-			else:
-				needs_check = 1
+			else: needs_check = 1
 			if (passed < generic_infer_max_args):
 				save_ptr(arg_records + passed * 2 * __word_size__, arg_type)
 				save_ptr(arg_records + __word_size__ + passed * 2 * __word_size__, needs_check)
 			push_call_argument(arg_type)
 			passed = passed + 1
 			more = accept(c",")
-	if (peek(c")") == 0):
-		error3(c"')' expected in call to generic '", generic_def_name(def), c"'")
+	if (peek(c")") == 0): error3(c"')' expected in call to generic '", generic_def_name(def), c"'")
 	i = 0
 	while (i < n):
 		if (load_ptr(bound + i * __word_size__) < 0):
@@ -1047,10 +1002,8 @@ int generic_call_infer_expr(int def):
 	# (already compiled, or being compiled right now at the drain);
 	# otherwise a mov-imm slot on the instantiation's backpatch chain,
 	# exactly like the explicit path
-	if (sym_lookup(generic_inst_mangled(inst)) >= 0):
-		sym_get_value(generic_inst_mangled(inst))
-	else:
-		generic_inst_emit_callee(inst)
+	if (sym_lookup(generic_inst_mangled(inst)) >= 0): sym_get_value(generic_inst_mangled(inst))
+	else: generic_inst_emit_callee(inst)
 	call_eax()
 	pop_to(s)
 	last_call_return_type = return_type
@@ -1074,12 +1027,10 @@ char* generic_pending_call_name
 
 
 int generic_call_ready():
-	if (generic_def_count() == 0):
-		return 0
+	if (generic_def_count() == 0): return 0
 	int c0 = token[0]
 	int is_ident = is_ident_start_byte(c0)
-	if (is_ident == 0):
-		return 0
+	if (is_ident == 0): return 0
 	return generic_def_lookup(token, 0) >= 0
 
 
@@ -1129,8 +1080,7 @@ void generic_instantiate_function(int inst):
 	int current_symbol = sym_declare_global(generic_inst_mangled(inst), decl_type, 1)
 	get_token() /* the definition's own name; the instance is the mangled one */
 	expect(c"[")
-	while (peek(c"]") == 0):
-		get_token()
+	while (peek(c"]") == 0): get_token()
 	expect(c"]")
 	expect(c"(")
 	function_definition(current_symbol)
@@ -1164,8 +1114,7 @@ list[generic_forward_record] generic_forwards
 
 
 int generic_forward_count():
-	if (cast(int, generic_forwards) == 0):
-		return 0
+	if (cast(int, generic_forwards) == 0): return 0
 	return generic_forwards.length
 
 
@@ -1175,24 +1124,18 @@ int generic_forward_count():
 int generic_forward_call_ready():
 	int c0 = token[0]
 	int is_ident = is_ident_start_byte(c0)
-	if (is_ident == 0):
-		return 0
-	if (nextc != '['):
-		return 0
-	if (sym_lookup(token) >= 0):
-		return 0
-	if (type_lookup(token) >= 0):
-		return 0
-	if (import_alias_lookup(token) >= 0):
-		return 0
+	if (is_ident == 0): return 0
+	if (nextc != '['): return 0
+	if (sym_lookup(token) >= 0): return 0
+	if (type_lookup(token) >= 0): return 0
+	if (import_alias_lookup(token) >= 0): return 0
 	return 1
 
 
 # The (still unknown) generic's name is the current token; leaves the
 # closing ']' current, like generic_call_expr().
 int generic_forward_call_expr():
-	if (cast(int, generic_forwards) == 0):
-		generic_forwards = new list[generic_forward_record]
+	if (cast(int, generic_forwards) == 0): generic_forwards = new list[generic_forward_record]
 	char* name = strclone(token)
 	char* call_file = strclone(filename)
 	int call_line = diag_token_line
@@ -1202,13 +1145,11 @@ int generic_forward_call_expr():
 	int arg_count = 0
 	int more = 1
 	while (more):
-		if (arg_count >= generic_max_params):
-			error(c"too many type arguments")
+		if (arg_count >= generic_max_params): error(c"too many type arguments")
 		save_ptr(args + arg_count * __word_size__, type_name())
 		arg_count = arg_count + 1
 		more = accept(c",")
-	if (peek(c"]") == 0):
-		error3(c"']' expected in type argument list, found '", token, c"'")
+	if (peek(c"]") == 0): error3(c"']' expected in type argument list, found '", token, c"'")
 	# a chain slot for this call; merged into the instantiation's chain
 	# once the definition is known
 	generic_forward_record rec
@@ -1255,8 +1196,7 @@ void generic_resolve_forward(int f):
 	int args = generic_forwards[f].args
 	int arg_count = generic_forwards[f].arg_count
 	int def = generic_def_lookup(name, 0)
-	if (def < 0):
-		generic_forward_error(f, c"is not defined")
+	if (def < 0): generic_forward_error(f, c"is not defined")
 	if (arg_count != generic_def_param_count(def)):
 		generic_forward_error(f, c"called with the wrong number of type arguments")
 	char* mangled = generic_mangle(name, args, arg_count)
@@ -1289,12 +1229,9 @@ void generic_resolve_forward(int f):
 int generic_declaration_scan_repl():
 	int c0 = token[0]
 	int is_ident = is_ident_start_byte(c0)
-	if (is_ident == 0):
-		return 0
-	if (peek(c"const") | peek(c"map") | peek(c"set") | peek(c"list")):
-		return 0
-	if (nextc == '['):
-		return 0
+	if (is_ident == 0): return 0
+	if (peek(c"const") | peek(c"map") | peek(c"set") | peek(c"list")): return 0
+	if (nextc == '['): return 0
 	char* save = generic_reparse_save()
 	get_token()
 	while (accept(c"*")) {}
@@ -1305,8 +1242,7 @@ int generic_declaration_scan_repl():
 	# is exactly the fd position the saved lookahead expects
 	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
-	if (is_generic):
-		return generic_declaration_scan()
+	if (is_generic): return generic_declaration_scan()
 	return 0
 
 
@@ -1383,14 +1319,12 @@ int generic_check_mode
 int generic_def_used(int def):
 	int i = 0
 	while (i < generic_inst_count()):
-		if (generic_inst_def(i) == def):
-			return 1
+		if (generic_inst_def(i) == def): return 1
 		i = i + 1
 	if (generic_def_kind(def) == 0):
 		i = 0
 		while (i < generic_forward_count()):
-			if (strcmp(generic_forwards[i].name, generic_def_name(def)) == 0):
-				return 1
+			if (strcmp(generic_forwards[i].name, generic_def_name(def)) == 0): return 1
 			i = i + 1
 	return 0
 
@@ -1400,24 +1334,20 @@ int generic_def_used(int def):
 # bodies may reference exist) and before the drain that compiles the
 # queued bodies. A no-op unless check_main armed generic_check_mode.
 void generic_check_instantiate_all():
-	if (generic_check_mode == 0):
-		return
+	if (generic_check_mode == 0): return
 	int int_type = type_lookup(c"int")
 	int d = 0
 	while (d < generic_def_count()):
 		if (generic_def_used(d) == 0):
 			int n = generic_def_param_count(d)
 			int args = cast(int, malloc(generic_max_params * __word_size__))
-			for i in range(n):
-				save_ptr(args + i * __word_size__, int_type)
+			for i in range(n): save_ptr(args + i * __word_size__, int_type)
 			char* mangled = generic_mangle(generic_def_name(d), args, n)
 			if (generic_def_kind(d) == 1):
 				# struct: instantiate eagerly (fills the type table only,
 				# no code) unless a real [int] instantiation already did
-				if (type_lookup(mangled) < 0):
-					generic_instantiate_struct(d, args, n, mangled)
-				else:
-					free(mangled)
+				if (type_lookup(mangled) < 0): generic_instantiate_struct(d, args, n, mangled)
+				else: free(mangled)
 				free(cast(char*, args))
 			else:
 				# function: intern a record; the drain compiles the body

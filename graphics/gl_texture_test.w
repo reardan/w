@@ -34,8 +34,7 @@ int texture_read_channel(int x, int y, int channel):
 void texture_check(char* label, int x, int y, int want, int tolerance):
 	int got = texture_read_channel(x, y, 0)
 	int diff = got - want
-	if (diff < 0):
-		diff = 0 - diff
+	if (diff < 0): diff = 0 - diff
 	if (diff > tolerance):
 		print_error(c"pixel check failed: ")
 		print_error(label)

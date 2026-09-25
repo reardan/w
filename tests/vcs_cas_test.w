@@ -57,8 +57,7 @@ wcas* vcst_open():
 # what was created and prove the store directory ends up empty.
 list[char*] vcst_ids
 void vcst_track(char* id):
-	if (vcst_ids == 0):
-		vcst_ids = new list[char*]
+	if (vcst_ids == 0): vcst_ids = new list[char*]
 	vcst_ids.push(strclone(id))
 
 
@@ -240,8 +239,7 @@ void test_cas_dedup_and_double_put():
 	if (child == 0):
 		wresult[char*]* cr = cas_put(s, c"blob", racy, 20)
 		int code = 1
-		if (result_is_ok[char*](cr)):
-			code = 0
+		if (result_is_ok[char*](cr)): code = 0
 		exit(code)
 	assert1(child > 0)
 	char* raced_id = result_expect[char*](cas_put(s, c"blob", racy, 20))
@@ -437,8 +435,7 @@ void test_cas_compressed_truncation_detection():
 	wcas* s = vcst_open()
 	int n = 2048
 	char* payload = malloc(n)
-	for i in range(n):
-		payload[i] = 'A' + (i % 4)
+	for i in range(n): payload[i] = 'A' + (i % 4)
 	char* id = vcst_put(s, c"blob", payload, n)
 	free(payload)
 

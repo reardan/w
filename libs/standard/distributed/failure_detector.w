@@ -95,11 +95,9 @@ float fd_mean_interval_ms(failure_detector* fd):
 # Elapsed silence is clamped below at 0 (a heartbeat "from the future"
 # just reads as no silence).
 float fd_phi(failure_detector* fd, int now_ms):
-	if (fd.intervals.length < 1):
-		return 0.0
+	if (fd.intervals.length < 1): return 0.0
 	int elapsed = mono_delta_ms(now_ms, fd.last_heartbeat)
-	if (elapsed <= 0):
-		return 0.0
+	if (elapsed <= 0): return 0.0
 	float mean = fd_mean_interval_ms(fd)
 	if (mean <= 0.0):
 		# Degenerate window: every retained interval was 0 ms, so any
@@ -113,8 +111,7 @@ float fd_phi(failure_detector* fd, int now_ms):
 # 1 when the suspicion level has reached threshold (>=, so a phi exactly
 # at the threshold counts). The conventional threshold is 8.0.
 int fd_suspect(failure_detector* fd, int now_ms, float threshold):
-	if (fd_phi(fd, now_ms) >= threshold):
-		return 1
+	if (fd_phi(fd, now_ms) >= threshold): return 1
 	return 0
 
 
@@ -122,8 +119,6 @@ int fd_suspect(failure_detector* fd, int now_ms, float threshold):
 # heartbeat was ever recorded, or when at least timeout_ms of silence
 # has elapsed since the last one.
 int fd_timed_out(failure_detector* fd, int now_ms, int timeout_ms):
-	if (fd.has_heartbeat == 0):
-		return 1
-	if (mono_delta_ms(now_ms, fd.last_heartbeat) >= timeout_ms):
-		return 1
+	if (fd.has_heartbeat == 0): return 1
+	if (mono_delta_ms(now_ms, fd.last_heartbeat) >= timeout_ms): return 1
 	return 0

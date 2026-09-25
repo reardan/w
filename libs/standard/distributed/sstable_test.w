@@ -34,8 +34,7 @@ char* sst_pad_key(char* prefix, int i, int digits):
 	assert1(n <= digits)
 	char* suffix = malloc(digits + 1)
 	mem_fill(suffix, '0', digits - n)
-	for j in range(n):
-		suffix[digits - n + j] = num[j]
+	for j in range(n): suffix[digits - n + j] = num[j]
 	suffix[digits] = 0
 	char* key = strjoin(prefix, suffix)
 	free(suffix)

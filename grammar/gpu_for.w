@@ -74,8 +74,7 @@ void gpu_for_emit_runtime_call(char* kernel_name, int base, int count, int has_s
 # expression using a symbol named 'gpu' (rewound with the reparse
 # save/seek/restore trick).
 int gpu_for_statement():
-	if (peek(c"gpu") == 0):
-		return 0
+	if (peek(c"gpu") == 0): return 0
 	char* save = generic_reparse_save()
 	get_token()
 	if (peek(c"for") == 0):
@@ -85,11 +84,9 @@ int gpu_for_statement():
 	free(cast(char*, load_ptr(save + 11 * __word_size__)))
 	free(save)
 
-	if (target_isa == 3):
-		error(c"'gpu for' cannot nest inside gpu code")
+	if (target_isa == 3): error(c"'gpu for' cannot nest inside gpu code")
 	gpu_target_check()
-	if (sym_lookup(c"__w_gpu_launch") < 0):
-		error(c"gpu code requires 'import lib.cuda'")
+	if (sym_lookup(c"__w_gpu_launch") < 0): error(c"gpu code requires 'import lib.cuda'")
 
 	int gpu_for_tab_level = tab_level
 	get_token() /* consume 'for' */
@@ -97,13 +94,11 @@ int gpu_for_statement():
 	# Loop variable: 'int name' (one thread index per iteration)
 	int int_type = type_lookup(c"int")
 	int type = type_name()
-	if (type_unqualified(type) != int_type):
-		error(c"'gpu for' loop variable must be an int")
+	if (type_unqualified(type) != int_type): error(c"'gpu for' loop variable must be an int")
 	char* var_name = strclone(token)
 	get_token()
 	expect(c"in")
-	if (accept(c"range") == 0):
-		error(c"'gpu for' supports only range iteration")
+	if (accept(c"range") == 0): error(c"'gpu for' supports only range iteration")
 
 	# The range operands, evaluated in host mode into hidden slots that
 	# double as the leading capture cells: range(end) pushes just the
@@ -118,11 +113,9 @@ int gpu_for_statement():
 	if (accept(c",")):
 		has_start = 1
 		coerce(int_type, promote(expression()))
-		if (accept(c",")):
-			error(c"'gpu for' supports only range(end) and range(start, end)")
+		if (accept(c",")): error(c"'gpu for' supports only range(end) and range(start, end)")
 		push_slot()
-	if (has_parens):
-		expect(c")")
+	if (has_parens): expect(c")")
 
 	# Device side: outline the body into a fresh kernel
 	int n = table_pos

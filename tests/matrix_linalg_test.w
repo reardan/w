@@ -14,8 +14,7 @@ reconstruction, plus rank, pinv, cond and norm2.
 
 
 float ml_abs(float f):
-	if (f < 0.0):
-		return 0.0 - f
+	if (f < 0.0): return 0.0 - f
 	return f
 
 
@@ -239,8 +238,7 @@ void test_chol():
 
 void test_qr():
 	float[] vals = new float[12]
-	for i in range(12):
-		vals[i] = (i * 7) % 5 + i / 3
+	for i in range(12): vals[i] = (i * 7) % 5 + i / 3
 	matrix a = matrix_from(vals, 4, 3)
 	matrix q
 	matrix r

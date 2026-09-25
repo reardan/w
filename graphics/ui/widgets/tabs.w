@@ -8,8 +8,7 @@ an editor pane (docs/projects/ui_widgets.md §9).
 		ui_tab(ctx, &st, doc_name(i), 1)
 		i = i + 1
 	int closed = ui_tabs_end(ctx, &st)
-	if (closed >= 0):
-		close_document(closed)
+	if (closed >= 0): close_document(closed)
 
 A walk, like the tree's: ui_tab returns 1 on the frame its tab is
 selected and writes active[0] itself, so the caller usually ignores the
@@ -93,12 +92,9 @@ void ui_tabs_begin(ui_context* ctx, ui_rect area, ui_tab_state* st, int32* activ
 float32 ui_tab_width(ui_context* ctx, char* label, int closable):
 	float32 w = cast(float32, ui_text_width(label, ctx.theme.text_scale))
 	w = w + cast(float32, ctx.theme.pad) * 2.0
-	if (closable):
-		w = w + ui_tab_close_size() + cast(float32, ctx.theme.pad)
-	if (w < ui_tab_min_width()):
-		w = ui_tab_min_width()
-	if (w > ui_tab_max_width()):
-		w = ui_tab_max_width()
+	if (closable): w = w + ui_tab_close_size() + cast(float32, ctx.theme.pad)
+	if (w < ui_tab_min_width()): w = ui_tab_min_width()
+	if (w > ui_tab_max_width()): w = ui_tab_max_width()
 	return w
 
 
@@ -118,10 +114,8 @@ int ui_tab(ui_context* ctx, ui_tab_state* st, char* label, int closable):
 	int close_id = ctx.next_id
 	ctx.next_id = ctx.next_id + 1
 
-	if (tab.x + tab.w <= st.strip.x):
-		return 0
-	if (tab.x >= st.strip.x + st.strip.w):
-		return 0
+	if (tab.x + tab.w <= st.strip.x): return 0
+	if (tab.x >= st.strip.x + st.strip.w): return 0
 
 	# The close affordance is hit-tested first and consumes the press, so
 	# closing a tab can never also select it.
@@ -151,8 +145,7 @@ int ui_tab(ui_context* ctx, ui_tab_state* st, char* label, int closable):
 
 	int selected = 0
 	if (st.active != 0):
-		if (st.active[0] == index):
-			selected = 1
+		if (st.active[0] == index): selected = 1
 
 	ui_clip_push(ctx.rndr, tab)
 	if (selected):
@@ -160,21 +153,18 @@ int ui_tab(ui_context* ctx, ui_tab_state* st, char* label, int closable):
 		# colour, with an accent underline tying it to the content.
 		ui_render_rect(ctx.rndr, tab, ctx.theme.surface)
 		ui_render_rect(ctx.rndr, ui_rect_new(tab.x, tab.y + tab.h - 2.0, tab.w, 2.0), ctx.theme.accent)
-	else if (ctx.hot == id):
-		ui_render_rect(ctx.rndr, tab, ctx.theme.widget_hot)
+	else if (ctx.hot == id): ui_render_rect(ctx.rndr, tab, ctx.theme.widget_hot)
 	# A hairline between tabs, so adjacent inactive tabs are separable.
 	ui_render_rect(ctx.rndr, ui_rect_new(tab.x + tab.w - 1.0, tab.y + 4.0, 1.0, tab.h - 8.0), ctx.theme.border)
 
 	int scale = ctx.theme.text_scale
 	ui_color ink = ctx.theme.text_muted
-	if (selected):
-		ink = ui_text_color(ctx)
+	if (selected): ink = ui_text_color(ctx)
 	float32 ty = tab.y + (tab.h - cast(float32, ui_text_height(scale))) * 0.5
 	# Clipped to the label's own column so a long name cannot run under
 	# the close affordance.
 	float32 label_w = tab.w - cast(float32, ctx.theme.pad) * 2.0
-	if (closable):
-		label_w = label_w - ui_tab_close_size()
+	if (closable): label_w = label_w - ui_tab_close_size()
 	ui_clip_push(ctx.rndr, ui_rect_new(tab.x + cast(float32, ctx.theme.pad), tab.y, label_w, tab.h))
 	ui_draw_text(ctx.rndr, tab.x + cast(float32, ctx.theme.pad), ty, label, scale, ink)
 	ui_clip_pop(ctx.rndr)
@@ -183,8 +173,7 @@ int ui_tab(ui_context* ctx, ui_tab_state* st, char* label, int closable):
 		# Brightens on its own hover, not the tab's, so it is obvious
 		# which of the two a click is about to hit.
 		ui_color mark = ctx.theme.text_muted
-		if (ctx.hot == close_id):
-			mark = ui_text_color(ctx)
+		if (ctx.hot == close_id): mark = ui_text_color(ctx)
 		ui_draw_cross(ctx.rndr, close, mark)
 	ui_clip_pop(ctx.rndr)
 	return became_active
@@ -196,12 +185,9 @@ int ui_tabs_end(ui_context* ctx, ui_tab_state* st):
 	st.content_w = st.pen_x
 	# Clamp after the walk, when the total width is finally known.
 	float32 max = st.content_w - st.strip.w
-	if (max < 0.0):
-		max = 0.0
-	if (st.offset_x > max):
-		st.offset_x = max
-	if (st.offset_x < 0.0):
-		st.offset_x = 0.0
+	if (max < 0.0): max = 0.0
+	if (st.offset_x > max): st.offset_x = max
+	if (st.offset_x < 0.0): st.offset_x = 0.0
 	ui_clip_pop(ctx.rndr)
 	ui_region_claim(ctx, st.strip)
 	return st.closed

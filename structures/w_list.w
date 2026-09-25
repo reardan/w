@@ -25,8 +25,7 @@ struct __w_list:
 # wrapper already reachable through lib.memory's import graph.
 void __w_trap_cstr(char* s):
 	int length = 0
-	while (s[length]):
-		length = length + 1
+	while (s[length]): length = length + 1
 	write(2, s, length)
 
 
@@ -36,15 +35,13 @@ void __w_trap_int(int value):
 	int i = end
 	# Work with non-positive magnitudes so the minimum word needs no negation
 	int v = value
-	if (v > 0):
-		v = 0 - v
+	if (v > 0): v = 0 - v
 	while (1):
 		i = i - 1
 		int q = v / 10
 		buf[i] = '0' - (v - q * 10)
 		v = q
-		if (v == 0):
-			break
+		if (v == 0): break
 	if (value < 0):
 		i = i - 1
 		buf[i] = '-'
@@ -93,8 +90,7 @@ void __w_alloc_trap(int length, int limit):
 
 
 __w_list* __w_list_new(int element_size):
-	if (element_size <= 0):
-		__w_trap(c"list element size must be positive")
+	if (element_size <= 0): __w_trap(c"list element size must be positive")
 	int capacity = 8
 	__w_list* list = malloc(4 * __word_size__)
 	list.capacity = capacity
@@ -108,8 +104,7 @@ void __w_list_ensure(__w_list* list, int extra):
 	int needed = list.length + extra
 	if (needed > list.capacity):
 		int new_capacity = list.capacity * 2
-		if (new_capacity < needed):
-			new_capacity = needed
+		if (new_capacity < needed): new_capacity = needed
 		# oldlen is the allocation size (capacity * element_size), not
 		# the populated prefix — see structures/string.w string_reserve.
 		list.items = realloc(list.items, list.capacity * list.element_size, new_capacity * list.element_size)
@@ -122,18 +117,14 @@ void __w_list_ensure(__w_list* list, int extra):
 # issue #360); out of range still traps reporting the index as written.
 char* __w_list_addr(__w_list* list, int index):
 	int i = index
-	if (i < 0):
-		i = i + list.length
-	if (i < 0):
-		__w_list_index_trap(c"list index out of range", index, list.length)
-	if (i >= list.length):
-		__w_list_index_trap(c"list index out of range", index, list.length)
+	if (i < 0): i = i + list.length
+	if (i < 0): __w_list_index_trap(c"list index out of range", index, list.length)
+	if (i >= list.length): __w_list_index_trap(c"list index out of range", index, list.length)
 	return list.items + i * list.element_size
 
 
 void __w_list_store_word(char* addr, int element_size, int value):
-	if (element_size == 1):
-		addr[0] = value
+	if (element_size == 1): addr[0] = value
 	else if (element_size == 2):
 		int16* addr16 = cast(int16*, addr)
 		addr16[0] = value
@@ -146,8 +137,7 @@ void __w_list_store_word(char* addr, int element_size, int value):
 
 
 int __w_list_load_word(char* addr, int element_size):
-	if (element_size == 1):
-		return addr[0]
+	if (element_size == 1): return addr[0]
 	if (element_size == 2):
 		int16* addr16 = cast(int16*, addr)
 		return addr16[0]
@@ -169,14 +159,12 @@ void __w_list_push(__w_list* list, int value):
 void __w_list_push_bytes(__w_list* list, char* src):
 	__w_list_ensure(list, 1)
 	char* dst = list.items + list.length * list.element_size
-	for i in range(list.element_size):
-		dst[i] = src[i]
+	for i in range(list.element_size): dst[i] = src[i]
 	list.length = list.length + 1
 
 
 int __w_list_pop(__w_list* list):
-	if (list.length == 0):
-		__w_trap(c"pop on empty list")
+	if (list.length == 0): __w_trap(c"pop on empty list")
 	list.length = list.length - 1
 	return __w_list_load_word(list.items + list.length * list.element_size, list.element_size)
 
@@ -185,8 +173,7 @@ int __w_list_pop(__w_list* list):
 # storage stays valid until the next push reuses the slot, so callers must
 # copy before mutating the list.
 char* __w_list_pop_addr(__w_list* list):
-	if (list.length == 0):
-		__w_trap(c"pop on empty list")
+	if (list.length == 0): __w_trap(c"pop on empty list")
 	list.length = list.length - 1
 	return list.items + list.length * list.element_size
 
@@ -197,21 +184,18 @@ void __w_list_clear(__w_list* list):
 
 # Removes the element at index, shifting the tail left.
 void __w_list_remove(__w_list* list, int index):
-	if (index < 0):
-		__w_list_index_trap(c"list remove index out of range", index, list.length)
+	if (index < 0): __w_list_index_trap(c"list remove index out of range", index, list.length)
 	if (index >= list.length):
 		__w_list_index_trap(c"list remove index out of range", index, list.length)
 	char* dst = list.items + index * list.element_size
 	int tail_bytes = (list.length - index - 1) * list.element_size
-	for i in range(tail_bytes):
-		dst[i] = dst[i + list.element_size]
+	for i in range(tail_bytes): dst[i] = dst[i + list.element_size]
 	list.length = list.length - 1
 
 
 # Opens a hole at index (0..length inclusive) and returns its address.
 char* __w_list_insert_slot(__w_list* list, int index):
-	if (index < 0):
-		__w_list_index_trap(c"list insert index out of range", index, list.length)
+	if (index < 0): __w_list_index_trap(c"list insert index out of range", index, list.length)
 	if (index > list.length):
 		__w_list_index_trap(c"list insert index out of range", index, list.length)
 	__w_list_ensure(list, 1)
@@ -232,8 +216,7 @@ void __w_list_insert(__w_list* list, int index, int value):
 # Aggregate insert: copies element_size bytes from src into the new slot.
 void __w_list_insert_bytes(__w_list* list, int index, char* src):
 	char* slot = __w_list_insert_slot(list, index)
-	for i in range(list.element_size):
-		slot[i] = src[i]
+	for i in range(list.element_size): slot[i] = src[i]
 
 
 # Word-compared membership scan for scalar elements.
@@ -254,10 +237,8 @@ int __w_list_contains_cstr(__w_list* list, int value):
 	while (i < list.length):
 		char* element = cast(char*, __w_list_load_word(list.items + i * list.element_size, list.element_size))
 		int j = 0
-		while ((element[j] != 0) && (element[j] == wanted[j])):
-			j = j + 1
-		if (element[j] == wanted[j]):
-			return 1
+		while ((element[j] != 0) && (element[j] == wanted[j])): j = j + 1
+		if (element[j] == wanted[j]): return 1
 		i = i + 1
 	return 0
 
@@ -291,8 +272,7 @@ int __w_list_iter_index(__w_list* list, int cursor):
 
 # Copy n bytes; staging for aggregate sort_by and reverse.
 void __w_list_copy_bytes(char* dst, char* src, int n):
-	for i in range(n):
-		dst[i] = src[i]
+	for i in range(n): dst[i] = src[i]
 
 
 # l[start:end] copies the selected range into a NEW list (issue #360).
@@ -306,21 +286,14 @@ void __w_list_copy_bytes(char* dst, char* src, int n):
 __w_list* __w_list_slice(__w_list* list, int start, int end, int has_end):
 	int length = list.length
 	int s = start
-	if (s < 0):
-		s = s + length
+	if (s < 0): s = s + length
 	int e = end
-	if (has_end == 0):
-		e = length
-	else if (e < 0):
-		e = e + length
-	if (s < 0):
-		__w_list_index_trap(c"list slice out of range", start, length)
-	if (e < 0):
-		__w_list_index_trap(c"list slice out of range", end, length)
-	if (e > length):
-		__w_list_index_trap(c"list slice out of range", end, length)
-	if (s > e):
-		__w_list_index_trap(c"list slice out of range", s, e)
+	if (has_end == 0): e = length
+	else if (e < 0): e = e + length
+	if (s < 0): __w_list_index_trap(c"list slice out of range", start, length)
+	if (e < 0): __w_list_index_trap(c"list slice out of range", end, length)
+	if (e > length): __w_list_index_trap(c"list slice out of range", end, length)
+	if (s > e): __w_list_index_trap(c"list slice out of range", s, e)
 	__w_list* result = __w_list_new(list.element_size)
 	int count = e - s
 	if (count > 0):
@@ -338,13 +311,10 @@ int __w_list_compare_values(int a, int b, int kind):
 		char* sa = cast(char*, a)
 		char* sb = cast(char*, b)
 		int j = 0
-		while ((sa[j] != 0) && (sa[j] == sb[j])):
-			j = j + 1
+		while ((sa[j] != 0) && (sa[j] == sb[j])): j = j + 1
 		return sa[j] - sb[j]
-	if (a < b):
-		return 0 - 1
-	if (a > b):
-		return 1
+	if (a < b): return 0 - 1
+	if (a > b): return 1
 	return 0
 
 
@@ -357,8 +327,7 @@ void __w_list_sort(__w_list* list, int kind):
 		int j = i - 1
 		while (j >= 0):
 			int other = __w_list_load_word(list.items + j * list.element_size, list.element_size)
-			if (__w_list_compare_values(other, value, kind) <= 0):
-				break
+			if (__w_list_compare_values(other, value, kind) <= 0): break
 			__w_list_store_word(list.items + (j + 1) * list.element_size, list.element_size, other)
 			j = j - 1
 		__w_list_store_word(list.items + (j + 1) * list.element_size, list.element_size, value)
@@ -375,8 +344,7 @@ void __w_list_sort_by(__w_list* list, int comparator):
 		int j = i - 1
 		while (j >= 0):
 			int other = __w_list_load_word(list.items + j * list.element_size, list.element_size)
-			if (comparator(other, value) <= 0):
-				break
+			if (comparator(other, value) <= 0): break
 			__w_list_store_word(list.items + (j + 1) * list.element_size, list.element_size, other)
 			j = j - 1
 		__w_list_store_word(list.items + (j + 1) * list.element_size, list.element_size, value)
@@ -393,8 +361,7 @@ void __w_list_sort_by_addr(__w_list* list, int comparator):
 		int j = i - 1
 		while (j >= 0):
 			char* other = list.items + j * list.element_size
-			if (comparator(cast(int, other), cast(int, temp)) <= 0):
-				break
+			if (comparator(cast(int, other), cast(int, temp)) <= 0): break
 			__w_list_copy_bytes(other + list.element_size, other, list.element_size)
 			j = j - 1
 		__w_list_copy_bytes(list.items + (j + 1) * list.element_size, temp, list.element_size)
@@ -450,8 +417,7 @@ __w_list* __w_list_filter(__w_list* list, int f):
 	int i = 0
 	while (i < list.length):
 		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
-		if (f(value)):
-			__w_list_push(result, value)
+		if (f(value)): __w_list_push(result, value)
 		i = i + 1
 	return result
 
@@ -476,35 +442,30 @@ int __w_list_sum(__w_list* list):
 
 
 int __w_list_min(__w_list* list):
-	if (list.length == 0):
-		__w_trap(c"min on empty list")
+	if (list.length == 0): __w_trap(c"min on empty list")
 	int best = __w_list_load_word(list.items, list.element_size)
 	int i = 1
 	while (i < list.length):
 		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
-		if (value < best):
-			best = value
+		if (value < best): best = value
 		i = i + 1
 	return best
 
 
 int __w_list_max(__w_list* list):
-	if (list.length == 0):
-		__w_trap(c"max on empty list")
+	if (list.length == 0): __w_trap(c"max on empty list")
 	int best = __w_list_load_word(list.items, list.element_size)
 	int i = 1
 	while (i < list.length):
 		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
-		if (value > best):
-			best = value
+		if (value > best): best = value
 		i = i + 1
 	return best
 
 
 # In-place reversal, any element size (structs included).
 void __w_list_reverse(__w_list* list):
-	if (list.length < 2):
-		return;
+	if (list.length < 2): return;
 	char* temp = malloc(list.element_size)
 	int i = 0
 	int j = list.length - 1
@@ -524,8 +485,7 @@ int __w_list_count(__w_list* list, int value, int kind):
 	int i = 0
 	while (i < list.length):
 		int element = __w_list_load_word(list.items + i * list.element_size, list.element_size)
-		if (__w_list_compare_values(element, value, kind) == 0):
-			total = total + 1
+		if (__w_list_compare_values(element, value, kind) == 0): total = total + 1
 		i = i + 1
 	return total
 
@@ -549,8 +509,7 @@ int __w_list_index(__w_list* list, int value, int kind):
 # __w_list_or_new after the loop (an empty source list). The trailing
 # helpers then combine the source list with its keys.
 __w_list* __w_list_or_new(__w_list* list, int element_size):
-	if (cast(int, list) == 0):
-		return __w_list_new(element_size)
+	if (cast(int, list) == 0): return __w_list_new(element_size)
 	return list
 
 
@@ -582,12 +541,10 @@ int __w_list_truth(__w_list* keys, int mode):
 				return i
 			total = total + 1
 		i = i + 1
-	if (mode == 1):
-		return total > 0
+	if (mode == 1): return total > 0
 	if (mode == 2):
 		return total == keys.length
-	if (mode == 3):
-		return 0 - 1
+	if (mode == 3): return 0 - 1
 	return total
 
 
@@ -602,8 +559,7 @@ void __w_list_sort_keys(__w_list* list, __w_list* keys, int kind):
 		int j = i - 1
 		while (j >= 0):
 			int other = __w_list_load_word(keys.items + j * keys.element_size, keys.element_size)
-			if (__w_list_compare_values(other, key, kind) <= 0):
-				break
+			if (__w_list_compare_values(other, key, kind) <= 0): break
 			__w_list_store_word(keys.items + (j + 1) * keys.element_size, keys.element_size, other)
 			__w_list_copy_bytes(list.items + (j + 1) * list.element_size, list.items + j * list.element_size, list.element_size)
 			j = j - 1
@@ -622,17 +578,14 @@ __w_list* __w_list_sorted_keys(__w_list* list, __w_list* keys, int kind):
 # Index of the first smallest (flags bit 2 clear) or first largest key;
 # the low bits are the compare kind. Traps on an empty list.
 int __w_list_best_key(__w_list* keys, int flags):
-	if (keys.length == 0):
-		__w_trap(c"min_by/max_by on empty list")
+	if (keys.length == 0): __w_trap(c"min_by/max_by on empty list")
 	int kind = flags & 3
 	int best = 0
 	int i = 1
 	while (i < keys.length):
 		int c = __w_list_compare_values(__w_list_load_word(keys.items + i * keys.element_size, keys.element_size), __w_list_load_word(keys.items + best * keys.element_size, keys.element_size), kind)
-		if (flags & 4):
-			c = 0 - c
-		if (c < 0):
-			best = i
+		if (flags & 4): c = 0 - c
+		if (c < 0): best = i
 		i = i + 1
 	return best
 

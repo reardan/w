@@ -229,30 +229,25 @@ int cas_valid_tag_char(int c):
 # restricted -- "extra", "boxed", etc. are fine; only "x...", "xyz",
 # bare "x" and so on are refused.
 int cas_valid_tag(char* object_type):
-	if (object_type == 0):
-		return 0
+	if (object_type == 0): return 0
 	int i = 0
 	while (object_type[i] != 0):
-		if (cas_valid_tag_char(object_type[i] & 255) == 0):
-			return 0
+		if (cas_valid_tag_char(object_type[i] & 255) == 0): return 0
 		i = i + 1
-	if ((i >= 1) && ((object_type[0] & 255) == CAS_ZLIB_MAGIC0())):
-		return 0
+	if ((i >= 1) && ((object_type[0] & 255) == CAS_ZLIB_MAGIC0())): return 0
 	return (i >= 1) && (i <= 64)
 
 
 # Ids are exactly 64 lowercase hex characters (the canonical display
 # and path form of a 32-byte SHA-256; docs/projects/version_control.md).
 int cas_valid_id(char* id):
-	if (id == 0):
-		return 0
+	if (id == 0): return 0
 	int i = 0
 	while (id[i] != 0):
 		int c = id[i] & 255
 		int is_digit = (c >= '0') && (c <= '9')
 		int is_lower_hex = (c >= 'a') && (c <= 'f')
-		if ((is_digit || is_lower_hex) == 0):
-			return 0
+		if ((is_digit || is_lower_hex) == 0): return 0
 		i = i + 1
 	return i == 64
 
@@ -312,10 +307,8 @@ char* cas_id_from_header(string_builder* header, char* data, int length):
 # clients can key lookups (or known-answer tests) without a write.
 # Returns 0 when the type tag is invalid or length is negative.
 char* cas_id_hex(char* object_type, char* data, int length):
-	if ((cas_valid_tag(object_type) == 0) || (length < 0)):
-		return 0
-	if ((data == 0) && (length != 0)):
-		return 0
+	if ((cas_valid_tag(object_type) == 0) || (length < 0)): return 0
+	if ((data == 0) && (length != 0)): return 0
 	string_builder* header = cas_make_header(object_type, length)
 	char* id = cas_id_from_header(header, data, length)
 	string_free(header)
@@ -353,8 +346,7 @@ char* cas_object_path(wcas* s, char* id):
 # exist. Errors carry the mkdir errno.
 wresult[wcas*]* cas_open(char* root):
 	int err = mkdir(root, 493)
-	if ((err < 0) && (err != -17)):
-		return result_new_error[wcas*](err)
+	if ((err < 0) && (err != -17)): return result_new_error[wcas*](err)
 	char* objects = path_join(root, c"objects")
 	err = mkdir(objects, 493)
 	if ((err < 0) && (err != -17)):
@@ -365,8 +357,7 @@ wresult[wcas*]* cas_open(char* root):
 
 
 void cas_close(wcas* s):
-	if (s.fallback_close != 0):
-		s.fallback_close(s.fallback_state)
+	if (s.fallback_close != 0): s.fallback_close(s.fallback_state)
 	free(s.root)
 	free(s.objects)
 	free(s)
@@ -392,8 +383,7 @@ int cas_write_all(int fd, char* data, int n):
 		int wrote = write(fd, data + off, n - off)
 		if (wrote < 0):
 			return wrote
-		if (wrote == 0):
-			return -5   # EIO: a regular file should never short-write
+		if (wrote == 0): return -5   # EIO: a regular file should never short-write
 		off = off + wrote
 	return 0
 
@@ -454,14 +444,12 @@ int cas_store_bytes(wcas* s, char* id, string_builder* header, char* data, int l
 	err = cas_write_all(fd, encoded.data, encoded.length)
 	zlib_result_free(encoded)
 	int closed = close(fd)
-	if ((err == 0) && (closed < 0)):
-		err = closed
+	if ((err == 0) && (closed < 0)): err = closed
 	if (err == 0):
 		char* path = cas_object_path(s, id)
 		err = vcs_rename(temp, path)
 		free(path)
-	if (err < 0):
-		vcs_unlink(temp)
+	if (err < 0): vcs_unlink(temp)
 	free(temp)
 	return err
 
@@ -472,10 +460,8 @@ int cas_store_bytes(wcas* s, char* id, string_builder* header, char* data, int l
 # Errors: -22 for an invalid type tag / negative length, otherwise the
 # failing syscall's errno.
 wresult[char*]* cas_put(wcas* s, char* object_type, char* data, int length):
-	if ((cas_valid_tag(object_type) == 0) || (length < 0)):
-		return result_new_error[char*](-22)
-	if ((data == 0) && (length != 0)):
-		return result_new_error[char*](-22)
+	if ((cas_valid_tag(object_type) == 0) || (length < 0)): return result_new_error[char*](-22)
+	if ((data == 0) && (length != 0)): return result_new_error[char*](-22)
 	string_builder* header = cas_make_header(object_type, length)
 	char* id = cas_id_from_header(header, data, length)
 	# cas_has, not a bare path_exists: an object that only lives in a
@@ -484,8 +470,7 @@ wresult[char*]* cas_put(wcas* s, char* object_type, char* data, int length):
 	# rather than quietly re-growing a loose copy of every packed object.
 	int present = cas_has(s, id)
 	int err = 0
-	if (present == 0):
-		err = cas_store_bytes(s, id, header, data, length)
+	if (present == 0): err = cas_store_bytes(s, id, header, data, length)
 	string_free(header)
 	if (err < 0):
 		free(id)
@@ -503,13 +488,11 @@ wresult[char*]* cas_put(wcas* s, char* object_type, char* data, int length):
 wresult[char*]* cas_put_raw(wcas* s, char* id, char* object_type, char* data, int length):
 	if ((cas_valid_id(id) == 0) || (cas_valid_tag(object_type) == 0) || (length < 0)):
 		return result_new_error[char*](-22)
-	if ((data == 0) && (length != 0)):
-		return result_new_error[char*](-22)
+	if ((data == 0) && (length != 0)): return result_new_error[char*](-22)
 	string_builder* header = cas_make_header(object_type, length)
 	int err = cas_store_bytes(s, id, header, data, length)
 	string_free(header)
-	if (err < 0):
-		return result_new_error[char*](err)
+	if (err < 0): return result_new_error[char*](err)
 	return result_new_ok[char*](strclone(id))
 
 
@@ -520,13 +503,11 @@ wresult[char*]* cas_put_raw(wcas* s, char* id, char* object_type, char* data, in
 # A registered fallback layer (see struct wcas) is consulted when no
 # loose file exists, so a packed-away object still counts as present.
 int cas_has(wcas* s, char* id):
-	if (cas_valid_id(id) == 0):
-		return 0
+	if (cas_valid_id(id) == 0): return 0
 	char* path = cas_object_path(s, id)
 	int present = path_exists(path)
 	free(path)
-	if ((present == 0) && (s.fallback_has != 0)):
-		present = s.fallback_has(s.fallback_state, id)
+	if ((present == 0) && (s.fallback_has != 0)): present = s.fallback_has(s.fallback_state, id)
 	return present
 
 
@@ -561,8 +542,7 @@ string_builder* cas_read_file(char* path):
 wresult[wcas_object*]* cas_parse_framed(char* bytes, int total):
 	# "<type> <len>\0": tag, single space, decimal length, NUL.
 	int i = 0
-	while ((i < total) && cas_valid_tag_char(bytes[i] & 255)):
-		i = i + 1
+	while ((i < total) && cas_valid_tag_char(bytes[i] & 255)): i = i + 1
 	int tag_len = i
 	int valid = (tag_len >= 1) && (tag_len <= 64)
 	valid = valid && (i < total) && ((bytes[i] & 255) == ' ')
@@ -571,8 +551,7 @@ wresult[wcas_object*]* cas_parse_framed(char* bytes, int total):
 	int digits = 0
 	while (valid && (i < total)):
 		int c = bytes[i] & 255
-		if ((c < '0') || (c > '9')):
-			break
+		if ((c < '0') || (c > '9')): break
 		# declared can never legitimately exceed the buffer size, so this
 		# also guards the multiplication against overflow.
 		if (declared > total):
@@ -585,8 +564,7 @@ wresult[wcas_object*]* cas_parse_framed(char* bytes, int total):
 	valid = valid && (i < total) && (bytes[i] == 0)
 	i = i + 1
 	valid = valid && (total - i == declared)
-	if (valid == 0):
-		return result_new_error[wcas_object*](CAS_ERR_CORRUPT())
+	if (valid == 0): return result_new_error[wcas_object*](CAS_ERR_CORRUPT())
 
 	wcas_object* o = new wcas_object
 	o.object_type = malloc(tag_len + 1)
@@ -638,8 +616,7 @@ string_builder* cas_inflate_stored(char* raw, int raw_length):
 # impossible via this module's rename protocol, but the store is just
 # files on disk).
 wresult[wcas_object*]* cas_get(wcas* s, char* id):
-	if (cas_valid_id(id) == 0):
-		return result_new_error[wcas_object*](-22)
+	if (cas_valid_id(id) == 0): return result_new_error[wcas_object*](-22)
 	char* path = cas_object_path(s, id)
 	string_builder* contents = cas_read_file(path)
 	free(path)
@@ -650,15 +627,12 @@ wresult[wcas_object*]* cas_get(wcas* s, char* id):
 		# first -- the layer's own file reads go through cas_read_file
 		# too and would clobber the global.
 		int read_err = cas_read_errno
-		if (s.fallback_load != 0):
-			logical = s.fallback_load(s.fallback_state, id)
-		if (logical == 0):
-			return result_new_error[wcas_object*](read_err)
+		if (s.fallback_load != 0): logical = s.fallback_load(s.fallback_state, id)
+		if (logical == 0): return result_new_error[wcas_object*](read_err)
 	else:
 		logical = cas_inflate_stored(contents.data, contents.length)
 		string_free(contents)
-		if (logical == 0):
-			return result_new_error[wcas_object*](CAS_ERR_CORRUPT())
+		if (logical == 0): return result_new_error[wcas_object*](CAS_ERR_CORRUPT())
 	wresult[wcas_object*]* parsed = cas_parse_framed(logical.data, logical.length)
 	string_free(logical)
 	return parsed
@@ -673,8 +647,7 @@ wresult[wcas_object*]* cas_get(wcas* s, char* id):
 # whose id is a name rather than a content hash), -22 for a malformed
 # id, or the open errno.
 int cas_verify(wcas* s, char* id):
-	if (cas_valid_id(id) == 0):
-		return -22
+	if (cas_valid_id(id) == 0): return -22
 	char* path = cas_object_path(s, id)
 	string_builder* contents = cas_read_file(path)
 	free(path)
@@ -684,15 +657,13 @@ int cas_verify(wcas* s, char* id):
 		# still verifiable, its digest computed over the same logical
 		# bytes the loose encoding would have decoded to.
 		int read_err = cas_read_errno
-		if (s.fallback_load != 0):
-			logical = s.fallback_load(s.fallback_state, id)
+		if (s.fallback_load != 0): logical = s.fallback_load(s.fallback_state, id)
 		if (logical == 0):
 			return read_err
 	else:
 		logical = cas_inflate_stored(contents.data, contents.length)
 		string_free(contents)
-		if (logical == 0):
-			return 0
+		if (logical == 0): return 0
 	char* digest = malloc(32)
 	whash_oneshot(WHASH_SHA256, logical.data, logical.length, digest)
 	char* actual = cas_hex_encode(digest)

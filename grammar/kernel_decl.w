@@ -3,8 +3,7 @@ Raw CUDA-style kernel declarations (docs/projects/cuda.md M1, Stage 2):
 
 	kernel add(float32* a, float32* b, float32* c, int n):
 		int i = block_idx() * block_dim() + thread_idx()
-		if i < n:
-			c[i] = a[i] + b[i]
+		if i < n: c[i] = a[i] + b[i]
 
 The 'kernel' marker is contextual, parsed in grammar/program.w before
 the usual "type-name identifier (" declaration (the 'generator'
@@ -108,8 +107,7 @@ void gpu_capture_reset():
 	int i = 0
 	while (i < gpu_capture_count):
 		char* name = cast(char*, load_ptr(gpu_capture_names + i * __word_size__))
-		if (name != 0):
-			free(name)
+		if (name != 0): free(name)
 		i = i + 1
 	save_ptr(gpu_capture_names, 0)
 	save_int(gpu_capture_syms, -1)
@@ -137,8 +135,7 @@ int gpu_capture_slot(int t, char* name):
 		if (load_int(gpu_capture_syms + i * 4) == t):
 			return i
 		i = i + 1
-	if (gpu_capture_count >= gpu_capture_limit):
-		error(c"too many variables captured in 'gpu for'")
+	if (gpu_capture_count >= gpu_capture_limit): error(c"too many variables captured in 'gpu for'")
 	save_ptr(gpu_capture_names + gpu_capture_count * __word_size__, cast(int, strclone(name)))
 	save_int(gpu_capture_syms + gpu_capture_count * 4, t)
 	gpu_capture_count = gpu_capture_count + 1
@@ -152,10 +149,8 @@ int gpu_capture_slot(int t, char* name):
 # is rejected.
 int gpu_sym_get_value(char* s):
 	int t
-	if ((t = sym_lookup(s)) < 0):
-		sym_not_found_error(s)
-	if (load_int(table + t + 10) == 2):
-		error(c"gpu code cannot call functions")
+	if ((t = sym_lookup(s)) < 0): sym_not_found_error(s)
+	if (load_int(table + t + 10) == 2): error(c"gpu code cannot call functions")
 	char scope_type = table[t + 1]
 	if ((scope_type == 'D') || (scope_type == 'U')):
 		error(c"global variables are not accessible in gpu code")
@@ -166,8 +161,7 @@ int gpu_sym_get_value(char* s):
 		# Word-sized values only: each capture rides one 8-byte cell.
 		# Containers and strings are host-heap structures the device
 		# cannot follow, so they never capture.
-		if (type_stack_words(type) != 1):
-			error(c"'gpu for' captures must be word-sized")
+		if (type_stack_words(type) != 1): error(c"'gpu for' captures must be word-sized")
 		int real_type = type_unqualified(type)
 		if (type_is_map(real_type) | type_is_set(real_type) | type_is_list(real_type) | type_is_string(real_type)):
 			error(c"containers and strings cannot be captured in 'gpu for'")
@@ -184,16 +178,14 @@ int gpu_sym_get_value(char* s):
 		if ((type_get_pointer_level(unqual) == 0) && (unqual != bool_type) && (type_is_var(unqual) == 0)):
 			if (type_is_const(type) == 0):
 				int const_type = type_lookup_const(unqual)
-				if (const_type < 0):
-					const_type = type_push_const(unqual)
+				if (const_type < 0): const_type = type_push_const(unqual)
 				type = const_type
 		return type
 	int k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
 	# Aggregates occupy several stack words; point at the lowest address
 	# (last pushed word), like the host path in sym_get_value.
 	int words = type_stack_words(type)
-	if (words > 1):
-		k = k - ((words - 1) << word_size_log2)
+	if (words > 1): k = k - ((words - 1) << word_size_log2)
 	be_lea_acc_wstack(k)
 	return type
 
@@ -213,12 +205,9 @@ void kernel_function_definition(int current_symbol, char* kernel_name):
 	while (accept(c")") == 0):
 		param_count = param_count + 1
 		int type = type_name()
-		if (accept(c".")):
-			error(c"variadic kernel parameters are not supported")
-		if (type_stack_words(type) != 1):
-			error(c"kernel parameters must be word-sized")
-		if (type_num_args(type_real(type)) > 0):
-			error(c"kernel parameters must be word-sized")
+		if (accept(c".")): error(c"variadic kernel parameters are not supported")
+		if (type_stack_words(type) != 1): error(c"kernel parameters must be word-sized")
+		if (type_num_args(type_real(type)) > 0): error(c"kernel parameters must be word-sized")
 		if (param_count <= sym_max_param_slots):
 			save_int(table + current_symbol + 22 + (param_count << 2), type)
 		# The parameter's value: ld.param into the accumulator, then an
@@ -228,16 +217,14 @@ void kernel_function_definition(int current_symbol, char* kernel_name):
 			sym_declare(token, type, 'L', stack_pos, 1)
 			pointer_indirection = 0
 			get_token()
-		if (accept(c"=")):
-			error(c"kernel parameters cannot have default values")
+		if (accept(c"=")): error(c"kernel parameters cannot have default values")
 		push_slot()
 		accept(c",") /* ignore trailing comma */
 
 	save_int(table + current_symbol + 22, param_count)
 	sym_set_w_variadic(current_symbol, -1)
 
-	if (accept(c";")):
-		error(c"a kernel declaration requires a body")
+	if (accept(c";")): error(c"a kernel declaration requires a body")
 	current_function_symbol = current_symbol
 	enclosing_tab_level = 0
 	statement()
@@ -299,8 +286,7 @@ void launch_emit_runtime_call(char* kernel_name, int base, int passed):
 # an ordinary expression using a symbol named 'launch' (the statement
 # rewinds with the reparse save/seek/restore trick and reports 0).
 int launch_statement():
-	if (peek(c"launch") == 0):
-		return 0
+	if (peek(c"launch") == 0): return 0
 	char* save = generic_reparse_save()
 	get_token()
 	int c0 = token[0]
@@ -312,17 +298,13 @@ int launch_statement():
 	free(cast(char*, load_ptr(save + 11 * __word_size__)))
 	free(save)
 
-	if (target_isa == 3):
-		error(c"'launch' is not supported in gpu code")
+	if (target_isa == 3): error(c"'launch' is not supported in gpu code")
 	gpu_target_check()
-	if (sym_lookup(c"__w_gpu_launch_raw") < 0):
-		error(c"gpu code requires 'import lib.cuda'")
+	if (sym_lookup(c"__w_gpu_launch_raw") < 0): error(c"gpu code requires 'import lib.cuda'")
 	int kernel_sym = sym_lookup(token)
 	int is_kernel = 0
-	if (kernel_sym >= 0):
-		is_kernel = sym_is_kernel(kernel_sym)
-	if (is_kernel == 0):
-		error3(c"'", token, c"' is not a kernel")
+	if (kernel_sym >= 0): is_kernel = sym_is_kernel(kernel_sym)
+	if (is_kernel == 0): error3(c"'", token, c"' is not a kernel")
 	char* kernel_name = strclone(token)
 	get_token()
 
@@ -344,8 +326,7 @@ int launch_statement():
 			error(c"struct arguments are not supported in launch")
 		check_call_argument(kernel_sym, -1, kernel_name, passed, arg_type)
 		int param_type = sym_param_type(kernel_sym, passed)
-		if (param_type >= 0):
-			coerce_call_argument(param_type, arg_type)
+		if (param_type >= 0): coerce_call_argument(param_type, arg_type)
 		push_slot()
 		passed = passed + 1
 		while (accept(c",")):
@@ -354,8 +335,7 @@ int launch_statement():
 				error(c"struct arguments are not supported in launch")
 			check_call_argument(kernel_sym, -1, kernel_name, passed, arg_type)
 			int loop_param_type = sym_param_type(kernel_sym, passed)
-			if (loop_param_type >= 0):
-				coerce_call_argument(loop_param_type, arg_type)
+			if (loop_param_type >= 0): coerce_call_argument(loop_param_type, arg_type)
 			push_slot()
 			passed = passed + 1
 		expect(c")")

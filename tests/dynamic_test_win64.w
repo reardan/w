@@ -35,8 +35,7 @@ int _main():
 	else if (sqrt(1024.0) != 32.0):
 		puts(c"FAIL: sqrt float ABI")
 		rc = 1
-	else:
-		puts(c"dynamic linking OK")
+	else: puts(c"dynamic linking OK")
 
 	fflush(0)
 	return rc

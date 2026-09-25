@@ -62,8 +62,7 @@ const int dns_result_truncated = 2
 
 
 int dns_lower_char(int c):
-	if ((c >= 'A') && (c <= 'Z')):
-		return c + 32
+	if ((c >= 'A') && (c <= 'Z')): return c + 32
 	return c
 
 
@@ -73,16 +72,12 @@ int dns_names_equal_ci(char* a, char* b):
 	int a_length = strlen(a)
 	int b_length = strlen(b)
 	if (a_length > 0):
-		if (a[a_length - 1] == '.'):
-			a_length = a_length - 1
+		if (a[a_length - 1] == '.'): a_length = a_length - 1
 	if (b_length > 0):
-		if (b[b_length - 1] == '.'):
-			b_length = b_length - 1
-	if (a_length != b_length):
-		return 0
+		if (b[b_length - 1] == '.'): b_length = b_length - 1
+	if (a_length != b_length): return 0
 	for i in range(a_length):
-		if (dns_lower_char(a[i] & 255) != dns_lower_char(b[i] & 255)):
-			return 0
+		if (dns_lower_char(a[i] & 255) != dns_lower_char(b[i] & 255)): return 0
 	return 1
 
 
@@ -90,8 +85,7 @@ int dns_names_equal_ci(char* a, char* b):
 # separated by dots, no leading zeros (avoids octal ambiguity), and
 # nothing else. Returns 1 with the host-order address in *out_ip, or 0.
 int dns_parse_ipv4_literal(char* text, int* out_ip):
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	int value = 0
 	int parts = 0
 	int i = 0
@@ -101,23 +95,17 @@ int dns_parse_ipv4_literal(char* text, int* out_ip):
 		while ((text[i] >= '0') && (text[i] <= '9')):
 			part_value = part_value * 10 + (text[i] - '0')
 			i = i + 1
-			if (i - digit_start > 3):
-				return 0
-		if (i == digit_start):
-			return 0
-		if ((i - digit_start > 1) && (text[digit_start] == '0')):
-			return 0
-		if (part_value > 255):
-			return 0
+			if (i - digit_start > 3): return 0
+		if (i == digit_start): return 0
+		if ((i - digit_start > 1) && (text[digit_start] == '0')): return 0
+		if (part_value > 255): return 0
 		value = (value << 8) | part_value
 		parts = parts + 1
 		if (parts == 4):
-			if (text[i] != 0):
-				return 0
+			if (text[i] != 0): return 0
 			*out_ip = value
 			return 1
-		if (text[i] != '.'):
-			return 0
+		if (text[i] != '.'): return 0
 		i = i + 1
 	return 0
 
@@ -133,8 +121,7 @@ int dns_is_space(int c):
 # left on the line. *pos advances past the token either way.
 int dns_next_token(char* text, int* pos, int line_end, int* tok_start, int* tok_end):
 	int p = *pos
-	while ((p < line_end) & (dns_is_space(text[p] & 255) != 0)):
-		p = p + 1
+	while ((p < line_end) & (dns_is_space(text[p] & 255) != 0)): p = p + 1
 	if (p >= line_end):
 		*pos = line_end
 		return 0
@@ -145,10 +132,8 @@ int dns_next_token(char* text, int* pos, int line_end, int* tok_start, int* tok_
 	int done = 0
 	while ((p < line_end) && (done == 0)):
 		int c = text[p] & 255
-		if ((dns_is_space(c) != 0) | (c == '#') || (c == ';')):
-			done = 1
-		else:
-			p = p + 1
+		if ((dns_is_space(c) != 0) | (c == '#') || (c == ';')): done = 1
+		else: p = p + 1
 	*tok_end = p
 	*pos = p
 	return 1
@@ -157,8 +142,7 @@ int dns_next_token(char* text, int* pos, int line_end, int* tok_start, int* tok_
 # Parses text[start, end) as a dotted-quad address. Returns 1/0.
 int dns_token_ipv4(char* text, int start, int end, int* out_ip):
 	int length = end - start
-	if ((length <= 0) || (length > 15)):
-		return 0
+	if ((length <= 0) || (length > 15)): return 0
 	char* token = malloc(16)
 	mem_copy(token, text + start, length)
 	token[length] = 0
@@ -170,11 +154,9 @@ int dns_token_ipv4(char* text, int start, int end, int* out_ip):
 # Case-insensitive comparison of text[start, end) against name.
 int dns_token_equals_ci(char* text, int start, int end, char* name):
 	int length = end - start
-	if (strlen(name) != length):
-		return 0
+	if (strlen(name) != length): return 0
 	for i in range(length):
-		if (dns_lower_char(text[start + i] & 255) != dns_lower_char(name[i] & 255)):
-			return 0
+		if (dns_lower_char(text[start + i] & 255) != dns_lower_char(name[i] & 255)): return 0
 	return 1
 
 
@@ -183,13 +165,11 @@ int dns_token_equals_ci(char* text, int start, int end, char* name):
 # Only IPv4 entries participate; the name match is case-insensitive.
 # Returns 1 with the host-order address in *out_ip, or 0.
 int dns_hosts_lookup_text(char* text, char* hostname, int* out_ip):
-	if ((text == 0) || (hostname == 0)):
-		return 0
+	if ((text == 0) || (hostname == 0)): return 0
 	int i = 0
 	while (text[i] != 0):
 		int line_end = i
-		while ((text[line_end] != 0) && (text[line_end] != 10)):
-			line_end = line_end + 1
+		while ((text[line_end] != 0) && (text[line_end] != 10)): line_end = line_end + 1
 		int pos = i
 		int tok_start = 0
 		int tok_end = 0
@@ -201,8 +181,7 @@ int dns_hosts_lookup_text(char* text, char* hostname, int* out_ip):
 						*out_ip = address
 						return 1
 		i = line_end
-		if (text[i] == 10):
-			i = i + 1
+		if (text[i] == 10): i = i + 1
 	return 0
 
 
@@ -210,8 +189,7 @@ int dns_hosts_lookup_text(char* text, char* hostname, int* out_ip):
 # when the file cannot be read.
 int dns_hosts_lookup_file(char* path, char* hostname, int* out_ip):
 	char* text = file_read_text(path)
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	int found = dns_hosts_lookup_text(text, hostname, out_ip)
 	free(text)
 	return found
@@ -222,14 +200,12 @@ int dns_hosts_lookup_file(char* path, char* hostname, int* out_ip):
 # comments). IPv6 and malformed entries are skipped. Returns the
 # count stored into out_ips (host byte order).
 int dns_resolv_conf_nameservers_text(char* text, int* out_ips, int max_servers):
-	if ((text == 0) || (max_servers <= 0)):
-		return 0
+	if ((text == 0) || (max_servers <= 0)): return 0
 	int count = 0
 	int i = 0
 	while ((text[i] != 0) && (count < max_servers)):
 		int line_end = i
-		while ((text[line_end] != 0) && (text[line_end] != 10)):
-			line_end = line_end + 1
+		while ((text[line_end] != 0) && (text[line_end] != 10)): line_end = line_end + 1
 		int pos = i
 		int tok_start = 0
 		int tok_end = 0
@@ -241,8 +217,7 @@ int dns_resolv_conf_nameservers_text(char* text, int* out_ips, int max_servers):
 						out_ips[count] = address
 						count = count + 1
 		i = line_end
-		if (text[i] == 10):
-			i = i + 1
+		if (text[i] == 10): i = i + 1
 	return count
 
 
@@ -250,8 +225,7 @@ int dns_resolv_conf_nameservers_text(char* text, int* out_ips, int max_servers):
 # /etc/resolv.conf). Returns 0 when the file cannot be read.
 int dns_resolv_conf_nameservers_file(char* path, int* out_ips, int max_servers):
 	char* text = file_read_text(path)
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	int count = dns_resolv_conf_nameservers_text(text, out_ips, max_servers)
 	free(text)
 	return count
@@ -279,10 +253,8 @@ int dns_random_id():
 # label over 63 bytes, encoded name over 255 bytes) or out_cap is too
 # small.
 int dns_build_query(char* hostname, int query_id, char* out, int out_cap):
-	if (hostname == 0):
-		return 0
-	if ((hostname[0] == 0) || (out_cap < 17)):
-		return 0
+	if (hostname == 0): return 0
+	if ((hostname[0] == 0) || (out_cap < 17)): return 0
 	store_be16(out, query_id)
 	out[2] = 1
 	out[3] = 0
@@ -300,14 +272,11 @@ int dns_build_query(char* hostname, int query_id, char* out, int out_cap):
 		int label_length = 0
 		while ((hostname[i + label_length] != 0) && (hostname[i + label_length] != '.')):
 			label_length = label_length + 1
-		if ((label_length == 0) || (label_length > 63)):
-			return 0
+		if ((label_length == 0) || (label_length > 63)): return 0
 		# Room for this label plus the name terminator and qtype/qclass.
-		if (pos + 1 + label_length + 5 > out_cap):
-			return 0
+		if (pos + 1 + label_length + 5 > out_cap): return 0
 		# Encoded name cap: length bytes + labels + terminator <= 255.
-		if (pos + 1 + label_length + 1 - 12 > 255):
-			return 0
+		if (pos + 1 + label_length + 1 - 12 > 255): return 0
 		out[pos] = label_length
 		pos = pos + 1
 		for j in range(label_length):
@@ -338,46 +307,34 @@ int dns_read_name(char* msg, int msg_len, int offset, char* out, int out_cap, in
 	int hops = 0
 	int end = 0 - 1
 	while (1):
-		if ((pos < 0) || (pos >= msg_len)):
-			return 0
+		if ((pos < 0) || (pos >= msg_len)): return 0
 		int tag = msg[pos] & 255
 		if (tag == 0):
-			if (end < 0):
-				end = pos + 1
-			if (out_length >= out_cap):
-				return 0
+			if (end < 0): end = pos + 1
+			if (out_length >= out_cap): return 0
 			out[out_length] = 0
 			*out_end = end
 			return 1
 		if ((tag & 192) == 192):
-			if (pos + 2 > msg_len):
-				return 0
+			if (pos + 2 > msg_len): return 0
 			int target = ((tag & 63) << 8) | (msg[pos + 1] & 255)
-			if (target >= pos):
-				return 0
+			if (target >= pos): return 0
 			hops = hops + 1
-			if (hops > dns_max_pointer_hops):
-				return 0
-			if (end < 0):
-				end = pos + 2
+			if (hops > dns_max_pointer_hops): return 0
+			if (end < 0): end = pos + 2
 			pos = target
-		else if ((tag & 192) != 0):
-			return 0
+		else if ((tag & 192) != 0): return 0
 		else:
-			if (pos + 1 + tag > msg_len):
-				return 0
+			if (pos + 1 + tag > msg_len): return 0
 			if (out_length > 0):
-				if (out_length + 1 >= out_cap):
-					return 0
+				if (out_length + 1 >= out_cap): return 0
 				out[out_length] = '.'
 				out_length = out_length + 1
-			if (out_length + tag >= out_cap):
-				return 0
+			if (out_length + tag >= out_cap): return 0
 			for j in range(tag):
 				out[out_length] = msg[pos + 1 + j]
 				out_length = out_length + 1
-			if (out_length > 254):
-				return 0
+			if (out_length > 254): return 0
 			pos = pos + 1 + tag
 	return 0
 
@@ -425,34 +382,26 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 	int pos = 0
 	if (dns_read_name(msg, msg_len, 12, name, dns_name_buffer_size, &pos) == 0):
 		return dns_parse_fail(name, target)
-	if (dns_names_equal_ci(name, target) == 0):
-		return dns_parse_fail(name, target)
-	if (pos + 4 > msg_len):
-		return dns_parse_fail(name, target)
-	if (load_be16(msg + pos) != dns_type_a):
-		return dns_parse_fail(name, target)
-	if (load_be16(msg + pos + 2) != dns_class_in):
-		return dns_parse_fail(name, target)
+	if (dns_names_equal_ci(name, target) == 0): return dns_parse_fail(name, target)
+	if (pos + 4 > msg_len): return dns_parse_fail(name, target)
+	if (load_be16(msg + pos) != dns_type_a): return dns_parse_fail(name, target)
+	if (load_be16(msg + pos + 2) != dns_class_in): return dns_parse_fail(name, target)
 	pos = pos + 4
 
 	int depth = 0
 	for i in range(ancount):
 		if (dns_read_name(msg, msg_len, pos, name, dns_name_buffer_size, &pos) == 0):
 			return dns_parse_fail(name, target)
-		if (pos + 10 > msg_len):
-			return dns_parse_fail(name, target)
+		if (pos + 10 > msg_len): return dns_parse_fail(name, target)
 		int rtype = load_be16(msg + pos)
 		int rclass = load_be16(msg + pos + 2)
 		int rdlength = load_be16(msg + pos + 8)
 		int rdata = pos + 10
-		if (rdata + rdlength > msg_len):
-			return dns_parse_fail(name, target)
-		if (rclass != dns_class_in):
-			return dns_parse_fail(name, target)
+		if (rdata + rdlength > msg_len): return dns_parse_fail(name, target)
+		if (rclass != dns_class_in): return dns_parse_fail(name, target)
 		if (dns_names_equal_ci(name, target) != 0):
 			if (rtype == dns_type_a):
-				if (rdlength != 4):
-					return dns_parse_fail(name, target)
+				if (rdlength != 4): return dns_parse_fail(name, target)
 				*out_ip = load_be32(msg + rdata)
 				free(name)
 				free(target)
@@ -461,11 +410,9 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 				int cname_end = 0
 				if (dns_read_name(msg, msg_len, rdata, name, dns_name_buffer_size, &cname_end) == 0):
 					return dns_parse_fail(name, target)
-				if (cname_end > rdata + rdlength):
-					return dns_parse_fail(name, target)
+				if (cname_end > rdata + rdlength): return dns_parse_fail(name, target)
 				depth = depth + 1
-				if (depth > dns_max_cname_depth):
-					return dns_parse_fail(name, target)
+				if (depth > dns_max_cname_depth): return dns_parse_fail(name, target)
 				free(target)
 				target = strclone(name)
 		pos = rdata + rdlength
@@ -480,11 +427,9 @@ int dns_tcp_recv_exact(int sock, char* buf, int want, int deadline_ms):
 	int got = 0
 	while (got < want):
 		int remaining = deadline_ms - time_monotonic_ms()
-		if (remaining <= 0):
-			return 0
+		if (remaining <= 0): return 0
 		int ready = io_poll(sock, poll_in, remaining)
-		if (ready <= 0):
-			return 0
+		if (ready <= 0): return 0
 		int count = socket_recv(sock, buf + got, want - got, 0)
 		if (count == 0 - net_eagain()):
 			# EAGAIN: spurious wakeup, poll again.
@@ -538,8 +483,7 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 	close(sock)
 	int parsed = dns_parse_response(response, response_len, query_id, hostname, out_ip)
 	free(response)
-	if (parsed == dns_result_ok):
-		return 1
+	if (parsed == dns_result_ok): return 1
 	return 0
 
 
@@ -587,8 +531,7 @@ int dns_query_server(int server_ip, int server_port, char* hostname, int timeout
 		return 0
 	int parsed = dns_parse_response(response, received, query_id, hostname, out_ip)
 	free(response)
-	if (parsed == dns_result_ok):
-		return 1
+	if (parsed == dns_result_ok): return 1
 	if (parsed == dns_result_truncated):
 		return dns_query_server_tcp(server_ip, server_port, hostname, timeout_ms, out_ip)
 	return 0
@@ -609,14 +552,10 @@ char* dns_resolv_conf_path():
 # resolver falls back to 127.0.0.1, like libc resolvers. Returns 1
 # with the address in *out_ip, else 0.
 int dns_resolve_ipv4(char* hostname, int* out_ip):
-	if (hostname == 0):
-		return 0
-	if (hostname[0] == 0):
-		return 0
-	if (dns_parse_ipv4_literal(hostname, out_ip) != 0):
-		return 1
-	if (dns_hosts_lookup_file(dns_hosts_path(), hostname, out_ip) != 0):
-		return 1
+	if (hostname == 0): return 0
+	if (hostname[0] == 0): return 0
+	if (dns_parse_ipv4_literal(hostname, out_ip) != 0): return 1
+	if (dns_hosts_lookup_file(dns_hosts_path(), hostname, out_ip) != 0): return 1
 	int* servers = malloc(dns_max_nameservers * __word_size__)
 	int count = dns_resolv_conf_nameservers_file(dns_resolv_conf_path(), servers, dns_max_nameservers)
 	if (count == 0):

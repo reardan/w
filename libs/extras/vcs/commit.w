@@ -177,8 +177,7 @@ char* commit_single_line(char* text):
 	char* out = strclone(text)
 	int i = 0
 	while (out[i] != 0):
-		if (out[i] == 10):
-			out[i] = ' '
+		if (out[i] == 10): out[i] = ' '
 		i = i + 1
 	return out
 
@@ -227,8 +226,7 @@ string_builder* commit_encode(commit_object* co):
 # nothing past `end` was read" signal).
 int commit_find_char(char* data, int end, int start, int ch):
 	int i = start
-	while ((i < end) && (data[i] != ch)):
-		i = i + 1
+	while ((i < end) && (data[i] != ch)): i = i + 1
 	return i
 
 
@@ -239,17 +237,13 @@ int commit_find_newline(char* data, int length, int start):
 # True when data[start,end) is one or more decimal digits, optionally
 # preceded by '-' (a timestamp).
 int commit_valid_integer(char* data, int start, int end):
-	if (start >= end):
-		return 0
+	if (start >= end): return 0
 	int i = start
-	if (data[i] == '-'):
-		i = i + 1
-	if (i >= end):
-		return 0
+	if (data[i] == '-'): i = i + 1
+	if (i >= end): return 0
 	while (i < end):
 		int c = data[i] & 255
-		if ((c < '0') || (c > '9')):
-			return 0
+		if ((c < '0') || (c > '9')): return 0
 		i = i + 1
 	return 1
 
@@ -258,8 +252,7 @@ int commit_valid_integer(char* data, int start, int end):
 # without requiring the slice to already be its own NUL-terminated
 # string.
 int commit_valid_hex_slice(char* data, int start, int end):
-	if ((end - start) != 64):
-		return 0
+	if ((end - start) != 64): return 0
 	char* slice = path_clone_range(data + start, end - start)
 	int ok = cas_valid_id(slice)
 	free(slice)
@@ -388,24 +381,18 @@ wresult[commit_object*]* commit_parse(char* data, int length):
 # is copied verbatim for message_length bytes (may embed '\n', and --
 # should a caller ever need it -- NUL).
 wresult[commit_object*]* commit_new(char* tree_id, list[char*] parent_ids, char* author, int timestamp, char* message, int message_length):
-	if (cas_valid_id(tree_id) == 0):
-		return result_new_error[commit_object*](-22)
+	if (cas_valid_id(tree_id) == 0): return result_new_error[commit_object*](-22)
 	for char* parent_id in parent_ids:
-		if (cas_valid_id(parent_id) == 0):
-			return result_new_error[commit_object*](-22)
-	if (message_length < 0):
-		return result_new_error[commit_object*](-22)
-	if ((message == 0) && (message_length != 0)):
-		return result_new_error[commit_object*](-22)
+		if (cas_valid_id(parent_id) == 0): return result_new_error[commit_object*](-22)
+	if (message_length < 0): return result_new_error[commit_object*](-22)
+	if ((message == 0) && (message_length != 0)): return result_new_error[commit_object*](-22)
 
 	commit_object* co = new commit_object
 	co.tree_id = strclone(tree_id)
 	co.parent_ids = new list[char*]
-	for char* pid in parent_ids:
-		co.parent_ids.push(strclone(pid))
+	for char* pid in parent_ids: co.parent_ids.push(strclone(pid))
 	char* raw_author = author
-	if (raw_author == 0):
-		raw_author = c""
+	if (raw_author == 0): raw_author = c""
 	co.author = commit_single_line(raw_author)
 	co.timestamp = timestamp
 	co.message = mem_dup(message, message_length)
@@ -415,8 +402,7 @@ wresult[commit_object*]* commit_new(char* tree_id, list[char*] parent_ids, char*
 
 void commit_free(commit_object* co):
 	free(co.tree_id)
-	for char* parent_id in co.parent_ids:
-		free(parent_id)
+	for char* parent_id in co.parent_ids: free(parent_id)
 	list_free[char*](co.parent_ids)
 	free(co.author)
 	free(co.message)
@@ -478,18 +464,13 @@ int ref_valid_name_char(int c):
 # for its own temp files (see the header comment). Rejects nested names
 # ("feature/x") for now -- '/' is not in the accepted charset.
 int ref_valid_name(char* name):
-	if (name == 0):
-		return 0
+	if (name == 0): return 0
 	int len = strlen(name)
-	if ((len < 1) || (len > 255)):
-		return 0
-	if ((name[0] == '.') || (name[len - 1] == '.')):
-		return 0
-	if (mem_starts_with(name, len, 0, c"tmp_")):
-		return 0
+	if ((len < 1) || (len > 255)): return 0
+	if ((name[0] == '.') || (name[len - 1] == '.')): return 0
+	if (mem_starts_with(name, len, 0, c"tmp_")): return 0
 	for i in range(len):
-		if (ref_valid_name_char(name[i] & 255) == 0):
-			return 0
+		if (ref_valid_name_char(name[i] & 255) == 0): return 0
 	return 1
 
 
@@ -498,8 +479,7 @@ int ref_valid_name(char* name):
 # must already exist" contract. Errors carry the failing mkdir's errno.
 wresult[wrefs*]* refs_open(char* root):
 	int err = mkdir(root, 493)
-	if ((err < 0) && (err != -17)):
-		return result_new_error[wrefs*](err)
+	if ((err < 0) && (err != -17)): return result_new_error[wrefs*](err)
 	char* refs_dir = path_join(root, c"refs")
 	err = mkdir(refs_dir, 493)
 	if ((err < 0) && (err != -17)):
@@ -578,17 +558,12 @@ int ref_write_atomic(wrefs* r, char* final_path, char* contents, int length):
 
 	int err = write(fd, contents, length)
 	if (err >= 0):
-		if (err != length):
-			err = -5   # EIO: a regular file should never short-write
-		else:
-			err = 0
+		if (err != length): err = -5   # EIO: a regular file should never short-write
+		else: err = 0
 	int closed = close(fd)
-	if ((err == 0) && (closed < 0)):
-		err = closed
-	if (err == 0):
-		err = vcs_rename(temp, final_path)
-	if (err < 0):
-		vcs_unlink(temp)
+	if ((err == 0) && (closed < 0)): err = closed
+	if (err == 0): err = vcs_rename(temp, final_path)
+	if (err < 0): vcs_unlink(temp)
 	free(temp)
 	return err
 
@@ -598,13 +573,11 @@ int ref_write_atomic(wrefs* r, char* final_path, char* contents, int length):
 # "no such branch" case a caller checks for), COMMIT_ERR_MALFORMED when
 # the file exists but is not exactly "<64-hex>\n".
 wresult[char*]* ref_read(wrefs* r, char* name):
-	if (ref_valid_name(name) == 0):
-		return result_new_error[char*](-22)
+	if (ref_valid_name(name) == 0): return result_new_error[char*](-22)
 	char* path = ref_path(r, name)
 	string_builder* contents = cas_read_file(path)
 	free(path)
-	if (contents == 0):
-		return result_new_error[char*](cas_read_errno)
+	if (contents == 0): return result_new_error[char*](cas_read_errno)
 	int ok = (contents.length == 65) && (contents.data[64] == 10)
 	char* id = 0
 	if (ok):
@@ -614,14 +587,12 @@ wresult[char*]* ref_read(wrefs* r, char* name):
 			id = 0
 			ok = 0
 	string_free(contents)
-	if (ok == 0):
-		return result_new_error[char*](COMMIT_ERR_MALFORMED())
+	if (ok == 0): return result_new_error[char*](COMMIT_ERR_MALFORMED())
 	return result_new_ok[char*](id)
 
 
 int ref_exists(wrefs* r, char* name):
-	if (ref_valid_name(name) == 0):
-		return 0
+	if (ref_valid_name(name) == 0): return 0
 	char* path = ref_path(r, name)
 	int present = path_exists(path)
 	free(path)
@@ -635,8 +606,7 @@ int ref_exists(wrefs* r, char* name):
 int reflog_append(wrefs* r, char* name, char* old_id, char* new_id, char* message):
 	char* path = reflog_path(r, name)
 	char* raw_message = message
-	if (raw_message == 0):
-		raw_message = c""
+	if (raw_message == 0): raw_message = c""
 	char* safe_message = commit_single_line(raw_message)
 
 	string_builder* line = string_new()
@@ -662,13 +632,10 @@ int reflog_append(wrefs* r, char* name, char* old_id, char* new_id, char* messag
 		return fd
 	int err = write(fd, line.data, line.length)
 	if (err >= 0):
-		if (err != line.length):
-			err = -5
-		else:
-			err = 0
+		if (err != line.length): err = -5
+		else: err = 0
 	int closed = close(fd)
-	if ((err == 0) && (closed < 0)):
-		err = closed
+	if ((err == 0) && (closed < 0)): err = closed
 	string_free(line)
 	return err
 
@@ -685,11 +652,9 @@ wresult[int]* ref_write_and_log(wrefs* r, char* name, char* old_id, char* new_id
 	int err = ref_write_atomic(r, path, body.data, body.length)
 	string_free(body)
 	free(path)
-	if (err < 0):
-		return result_new_error[int](err)
+	if (err < 0): return result_new_error[int](err)
 	int log_err = reflog_append(r, name, old_id, new_id, message)
-	if (log_err < 0):
-		return result_new_error[int](log_err)
+	if (log_err < 0): return result_new_error[int](log_err)
 	return result_new_ok[int](0)
 
 
@@ -697,10 +662,8 @@ wresult[int]* ref_write_and_log(wrefs* r, char* name, char* old_id, char* new_id
 # `name` already exists -- use ref_update to move an existing ref. Logs
 # REF_ZERO_ID() as the reflog's old id.
 wresult[int]* ref_create(wrefs* r, char* name, char* id, char* message):
-	if ((ref_valid_name(name) == 0) || (cas_valid_id(id) == 0)):
-		return result_new_error[int](-22)
-	if (ref_exists(r, name)):
-		return result_new_error[int](-17)
+	if ((ref_valid_name(name) == 0) || (cas_valid_id(id) == 0)): return result_new_error[int](-22)
+	if (ref_exists(r, name)): return result_new_error[int](-17)
 	return ref_write_and_log(r, name, REF_ZERO_ID(), id, message)
 
 
@@ -708,8 +671,7 @@ wresult[int]* ref_create(wrefs* r, char* name, char* id, char* message):
 # not exist -- use ref_create for a brand-new ref. Logs the ref's
 # current id as the reflog's old id.
 wresult[int]* ref_update(wrefs* r, char* name, char* id, char* message):
-	if ((ref_valid_name(name) == 0) || (cas_valid_id(id) == 0)):
-		return result_new_error[int](-22)
+	if ((ref_valid_name(name) == 0) || (cas_valid_id(id) == 0)): return result_new_error[int](-22)
 	wresult[char*]* current = ref_read(r, name)
 	if (result_is_error[char*](current)):
 		int code = result_code[char*](current)
@@ -733,12 +695,10 @@ int commit_load_uint16(char* p):
 # (this module's tested targets), not yet correct on arm64, and not
 # implemented at all on Windows (-38 ENOSYS from os_windows()).
 wresult[list[char*]]* ref_list(wrefs* r):
-	if (os_windows()):
-		return result_new_error[list[char*]](-38)
+	if (os_windows()): return result_new_error[list[char*]](-38)
 	# 65536 = O_DIRECTORY
 	int fd = open(r.heads_dir, 65536, 0)
-	if (fd < 0):
-		return result_new_error[list[char*]](fd)
+	if (fd < 0): return result_new_error[list[char*]](fd)
 	list[char*] names = new list[char*]
 	int buffer_size = 65536
 	char* buffer = malloc(buffer_size)
@@ -753,8 +713,7 @@ wresult[list[char*]]* ref_list(wrefs* r):
 			int is_dot = strcmp(entry_name, c".") == 0
 			int is_dotdot = strcmp(entry_name, c"..") == 0
 			if ((is_dot == 0) && (is_dotdot == 0)):
-				if ((kind == 8) && ref_valid_name(entry_name)):
-					names.push(strclone(entry_name))
+				if ((kind == 8) && ref_valid_name(entry_name)): names.push(strclone(entry_name))
 			off = off + reclen
 		n = getdents(fd, buffer, buffer_size)
 	free(buffer)
@@ -787,20 +746,14 @@ void reflog_entry_free(reflog_entry* e):
 # their separating spaces are mandatory).
 reflog_entry* reflog_parse_line(char* data, int start, int end):
 	int p1 = commit_find_char(data, end, start, ' ')
-	if (p1 >= end):
-		return 0
-	if (commit_valid_hex_slice(data, start, p1) == 0):
-		return 0
+	if (p1 >= end): return 0
+	if (commit_valid_hex_slice(data, start, p1) == 0): return 0
 	int p2 = commit_find_char(data, end, p1 + 1, ' ')
-	if (p2 >= end):
-		return 0
-	if (commit_valid_hex_slice(data, p1 + 1, p2) == 0):
-		return 0
+	if (p2 >= end): return 0
+	if (commit_valid_hex_slice(data, p1 + 1, p2) == 0): return 0
 	int p3 = commit_find_char(data, end, p2 + 1, ' ')
-	if (p3 >= end):
-		return 0
-	if (commit_valid_integer(data, p2 + 1, p3) == 0):
-		return 0
+	if (p3 >= end): return 0
+	if (commit_valid_integer(data, p2 + 1, p3) == 0): return 0
 
 	reflog_entry* e = new reflog_entry
 	e.old_id = path_clone_range(data + start, p1 - start)
@@ -819,8 +772,7 @@ reflog_entry* reflog_parse_line(char* data, int start, int end):
 # empty history is a valid state, exactly like git's reflog for a ref
 # with none yet.
 wresult[list[reflog_entry*]]* reflog_read(wrefs* r, char* name):
-	if (ref_valid_name(name) == 0):
-		return result_new_error[list[reflog_entry*]](-22)
+	if (ref_valid_name(name) == 0): return result_new_error[list[reflog_entry*]](-22)
 	char* path = reflog_path(r, name)
 	string_builder* contents = cas_read_file(path)
 	free(path)
@@ -835,20 +787,17 @@ wresult[list[reflog_entry*]]* reflog_read(wrefs* r, char* name):
 	int ok = 1
 	while ((pos < length) && ok):
 		int line_end = commit_find_newline(contents.data, length, pos)
-		if (line_end >= length):
-			ok = 0
+		if (line_end >= length): ok = 0
 		else:
 			reflog_entry* e = reflog_parse_line(contents.data, pos, line_end)
-			if (e == 0):
-				ok = 0
+			if (e == 0): ok = 0
 			else:
 				entries.push(e)
 				pos = line_end + 1
 	string_free(contents)
 
 	if (ok == 0):
-		for reflog_entry* stale in entries:
-			reflog_entry_free(stale)
+		for reflog_entry* stale in entries: reflog_entry_free(stale)
 		list_free[reflog_entry*](entries)
 		return result_new_error[list[reflog_entry*]](COMMIT_ERR_MALFORMED())
 	return result_new_ok[list[reflog_entry*]](entries)

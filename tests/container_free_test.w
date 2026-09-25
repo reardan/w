@@ -32,8 +32,7 @@ struct cf_point:
 # header's address for the steady-state reuse assertion.
 int cf_list_cycle():
 	list[int] l = new list[int]
-	for i in range(40):
-		l.push(i)
+	for i in range(40): l.push(i)
 	assert_equal(40, l.length)
 	int addr = cast(int, l)
 	l.free()
@@ -44,8 +43,7 @@ int cf_list_cycle():
 # count * 4 >= capacity * 3, so twice from the initial capacity of 16).
 int cf_map_cycle():
 	map[int, int] m = new map[int, int]
-	for i in range(40):
-		m[i] = i * 3
+	for i in range(40): m[i] = i * 3
 	assert_equal(40, m.length)
 	assert_equal(60, m[20])
 	int addr = cast(int, m)
@@ -119,8 +117,7 @@ void test_nested_containers_freed_by_caller():
 		inner.push(i)
 		outer.push(inner)
 	assert_equal(3, outer.length)
-	for list[int] inner in outer:
-		inner.free()
+	for list[int] inner in outer: inner.free()
 	outer.free()
 
 

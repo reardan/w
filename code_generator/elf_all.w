@@ -67,8 +67,7 @@ void elf_emit_build_id_note():
 # sha256(data)), hashed while the id field is still zero. Skipped when the
 # output is discarded ('w check').
 void elf_fill_build_id():
-	if ((build_id_note_pos == 0) || entry_optional):
-		return
+	if ((build_id_note_pos == 0) || entry_optional): return
 	char* digests = malloc(64)
 	sha256(code, codepos, digests)
 	int n = 32
@@ -89,11 +88,9 @@ void elf_fill_build_id():
 # there is one) then data, after the build-id is filled in.
 void elf_write_image():
 	elf_fill_build_id()
-	if (write(output_fd, code, codepos) != codepos):
-		error(c"could not write output file")
+	if (write(output_fd, code, codepos) != codepos): error(c"could not write output file")
 	if (datapos > 0):
-		if (write(output_fd, data, datapos) != datapos):
-			error(c"could not write output file")
+		if (write(output_fd, data, datapos) != datapos): error(c"could not write output file")
 
 
 # The static ELF writers' shared layout (elf_32.w, elf_64.w,
@@ -108,17 +105,13 @@ const int elf_phdr_count = 6
 
 
 void elf_emit_word(int is64, int v):
-	if (is64):
-		emit_int64(v)
-	else:
-		emit_int32(v)
+	if (is64): emit_int64(v)
+	else: emit_int32(v)
 
 
 void elf_save_word(int is64, int pos, int v):
-	if (is64):
-		save_int64(code + pos, v)
-	else:
-		save_int32(code + pos, v)
+	if (is64): save_int64(code + pos, v)
+	else: save_int32(code + pos, v)
 
 
 # The ELF header after the ident (elf_header); machine is 3 (x86), 62
@@ -150,15 +143,13 @@ void elf_header_fields(int machine, int is64):
 # data = 6). offset/filesz/memsz are patched in elf_patch_load_segments.
 void elf_phdr(int is64, int type, int flags):
 	emit_int32(type)
-	if (is64):
-		emit_int32(flags)
+	if (is64): emit_int32(flags)
 	elf_emit_word(is64, 0) /* offset */
 	elf_emit_word(is64, base_code_offset) /* vaddr */
 	elf_emit_word(is64, base_code_offset) /* paddr */
 	elf_emit_word(is64, 0) /* filesz */
 	elf_emit_word(is64, 0) /* memsz */
-	if (is64 == 0):
-		emit_int32(flags)
+	if (is64 == 0): emit_int32(flags)
 	elf_emit_word(is64, 4096) /* align */
 
 
@@ -170,8 +161,7 @@ void elf_phdr_table(int is64):
 	phdr_table_pos = codepos
 	elf_phdr(is64, 1, 5)
 	elf_phdr(is64, 0, 6)
-	for i in range(4):
-		elf_phdr(is64, 0, 0)
+	for i in range(4): elf_phdr(is64, 0, 0)
 	elf_emit_build_id_note()
 
 
@@ -208,6 +198,5 @@ void elf_patch_load_segments(int is64):
 		elf_save_word(is64, p + 5 * w, datapos)
 		# Pad the file to the data segment's page offset, then write code
 		# and data as two segments in one file.
-		while (codepos < data_file_off):
-			emit_int8(0)
+		while (codepos < data_file_off): emit_int8(0)
 	elf_write_image()

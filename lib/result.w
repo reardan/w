@@ -58,8 +58,7 @@ wresult[T]* result_new_error[T](int code):
 # Syscall payloads are always plain ints, so this stays monomorphic.
 wresult[int]* result_new_from_syscall(int value):
 	# Linux reserves -4095..-1 (MAX_ERRNO) for syscall errors.
-	if ((value < 0) && (value > -4096)):
-		return result_new_error[int](value)
+	if ((value < 0) && (value > -4096)): return result_new_error[int](value)
 	return result_new_ok[int](value)
 
 
@@ -80,8 +79,7 @@ int result_code[T](wresult[T]* r):
 
 
 T result_unwrap_or[T](wresult[T]* r, T fallback):
-	if (result_is_ok[T](r)):
-		return r.value
+	if (result_is_ok[T](r)): return r.value
 	return fallback
 
 

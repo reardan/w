@@ -51,8 +51,7 @@ import lib.assert
 # data and holds `length` elements. See the header comment for the
 # layout contract and what the asserts can and cannot catch.
 void array_free_data(void* data, int length):
-	if (data == 0):
-		return
+	if (data == 0): return
 	char* p = cast(char*, data)
 	int* block = cast(int*, p - 2 * __word_size__)
 	int header_ok = block[0] == cast(int, data) && block[1] == length && length >= 0

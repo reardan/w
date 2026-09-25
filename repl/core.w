@@ -252,37 +252,22 @@ int repl_declare_global(char* name, int type, int symtype):
 
 # True when the current token begins a non-expression statement.
 int repl_token_is_statement():
-	if (peek(c"{")):
-		return 1
-	if (peek(c":")):
-		return 1
-	if (peek(c"if")):
-		return 1
-	if (peek(c"while")):
-		return 1
-	if (peek(c"for")):
-		return 1
-	if (peek(c"switch")):
-		return 1
-	if (peek(c"break")):
-		return 1
-	if (peek(c"continue")):
-		return 1
-	if (peek(c"return")):
-		return 1
-	if (peek(c"debugger")):
-		return 1
-	if (peek(c"pass")):
-		return 1
-	if (peek(c"raw_asm")):
-		return 1
-	if (peek(c"defer")):
-		return 1
+	if (peek(c"{")): return 1
+	if (peek(c":")): return 1
+	if (peek(c"if")): return 1
+	if (peek(c"while")): return 1
+	if (peek(c"for")): return 1
+	if (peek(c"switch")): return 1
+	if (peek(c"break")): return 1
+	if (peek(c"continue")): return 1
+	if (peek(c"return")): return 1
+	if (peek(c"debugger")): return 1
+	if (peek(c"pass")): return 1
+	if (peek(c"raw_asm")): return 1
+	if (peek(c"defer")): return 1
 	# prefix increment/decrement statement (grammar/increment.w)
-	if (peek(c"++")):
-		return 1
-	if (peek(c"--")):
-		return 1
+	if (peek(c"++")): return 1
+	if (peek(c"--")): return 1
 	return 0
 
 
@@ -294,10 +279,8 @@ int repl_token_is_statement():
 int repl_infer_declaration():
 	int c0 = token[0]
 	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
-	if (is_ident == 0):
-		return 0
-	if ((nextc != ':') && (nextc != ' ') && (nextc != 9)):
-		return 0
+	if (is_ident == 0): return 0
+	if ((nextc != ':') && (nextc != ' ') && (nextc != 9)): return 0
 	char* name = strclone(token)
 	char* save = generic_reparse_save()
 	get_token()
@@ -326,10 +309,8 @@ int repl_infer_declaration():
 	push_slot()
 	pop_ebx_slot()
 	pop_eax_slot()
-	if (type_num_args(decl_type) > 0):
-		assign_store_struct(decl_type)
-	else:
-		assign_store(decl_type)
+	if (type_num_args(decl_type) > 0): assign_store_struct(decl_type)
+	else: assign_store(decl_type)
 	free(name)
 	return 1
 
@@ -366,8 +347,7 @@ void repl_entry_item(int entry_symbol):
 	# type-name ...: a function definition or a persistent variable
 	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here()):
 		int decl_type = type_name()
-		if (token[0] == 0):
-			error(c"identifier expected after type name")
+		if (token[0] == 0): error(c"identifier expected after type name")
 		char* decl_name = strclone(token)
 		get_token()
 
@@ -419,8 +399,7 @@ void repl_entry_item(int entry_symbol):
 		return;
 
 	# 'name := expression': a persistent variable with an inferred type
-	if (repl_infer_declaration()):
-		return;
+	if (repl_infer_declaration()): return;
 
 	# control flow and other non-expression statements
 	if (repl_token_is_statement()):
@@ -445,10 +424,8 @@ void repl_entry_item(int entry_symbol):
 	# When the expression ends in a call, the callee's declared return
 	# type drives the echo: void stays silent, char* prints as a string
 	if ((result_type == 3) && (last_call_end == codepos)):
-		if (last_call_return_type >= 0):
-			repl_result_type = last_call_return_type
-	if (expression_is_assignment):
-		repl_result_type = -1
+		if (last_call_return_type >= 0): repl_result_type = last_call_return_type
+	if (expression_is_assignment): repl_result_type = -1
 
 
 # ---------------------------------------------------------------------------
@@ -552,8 +529,7 @@ void repl_state_clear_context():
 
 
 void repl_checkpoint():
-	if (repl_saved == 0):
-		repl_saved = new repl_state
+	if (repl_saved == 0): repl_saved = new repl_state
 	repl_state_capture(repl_saved)
 
 
@@ -587,8 +563,7 @@ void repl_genesis_checkpoint():
 # called (nothing to reset to). Only safe between entries: no entry may
 # be mid-compile or mid-execution.
 int repl_reset_to_genesis():
-	if (repl_genesis == 0):
-		return 0
+	if (repl_genesis == 0): return 0
 	repl_state_restore(repl_genesis)
 	repl_sites_truncate(repl_genesis.sites_count)
 	repl_state_clear_context()
@@ -612,8 +587,7 @@ int repl_compile_entry(char* path):
 		repl_call_site_hook = 0
 		repl_rollback()
 		# The failure may have happened inside an imported file
-		if (file != repl_entry_file):
-			close(file)
+		if (file != repl_entry_file): close(file)
 		close(repl_entry_file)
 		return 0
 
@@ -654,11 +628,9 @@ int repl_compile_entry(char* path):
 	number_of_args = 0
 	defer_reset()
 	repl_result_type = -1
-	if (repl_bind_hook != 0):
-		repl_bind_hook()
+	if (repl_bind_hook != 0): repl_bind_hook()
 
-	while (token[0] != 0):
-		repl_entry_item(entry_symbol)
+	while (token[0] != 0): repl_entry_item(entry_symbol)
 
 	# The entry function's implicit end is a function exit: run any
 	# deferred statements registered by this entry (LIFO)
@@ -733,14 +705,12 @@ int* repl_fault_act
 
 void repl_fault_thunk_emit(int n, char* bytes):
 	char* p = cast(char*, repl_fault_thunk_page + repl_fault_thunk_pos)
-	for i in range(n):
-		p[i] = bytes[i]
+	for i in range(n): p[i] = bytes[i]
 	repl_fault_thunk_pos = repl_fault_thunk_pos + n
 
 
 void repl_fault_thunk_init():
-	if (repl_fault_thunk_page != 0):
-		return;
+	if (repl_fault_thunk_page != 0): return;
 	repl_fault_thunk_page = mmap(0, 4096, 7, 34) /* RWX, PRIVATE|ANONYMOUS */
 	asserts(c"mmap of signal thunk page failed", (repl_fault_thunk_page > 0) | (repl_fault_thunk_page < -4095))
 	repl_fault_restorer = repl_fault_thunk_page
@@ -767,8 +737,7 @@ int repl_fault_emit_handler_thunk(int handler):
 # sigreturn); on x86-64 {handler, flags, restorer, mask} with 8-byte
 # fields, SA_SIGINFO (4) | SA_RESTORER (0x04000000) and the thunks.
 void repl_fault_install(int signum, int handler, int flags):
-	if (repl_fault_act == 0):
-		repl_fault_act = malloc(5 * __word_size__)
+	if (repl_fault_act == 0): repl_fault_act = malloc(5 * __word_size__)
 	int* act = repl_fault_act
 	if (__word_size__ == 8):
 		repl_fault_thunk_init()
@@ -809,8 +778,7 @@ void repl_fault_restore_default(int signum):
 # calls the entry made into repl-image functions (and the prompt loop's
 # main) still symbolize. Silent no-op when the image has no symbols.
 void repl_fault_trace(int context):
-	if (st_state == 0):
-		st_init(cast(int, repl_fault_install))
+	if (st_state == 0): st_init(cast(int, repl_fault_install))
 	char* pcs = malloc(64 * __word_size__)
 	int n = st_scan(ctx_esp(context), pcs, 64, 0)
 	if (n == 0):
@@ -821,10 +789,8 @@ void repl_fault_trace(int context):
 		int addr = load_word(pcs + k * __word_size__)
 		st_write_cstr(c"  at ")
 		int e = st_func_entry(addr)
-		if (e != 0):
-			st_write_cstr(cast(char*, st_entry_name(e)))
-		else:
-			st_write_hex(addr)
+		if (e != 0): st_write_cstr(cast(char*, st_entry_name(e)))
+		else: st_write_hex(addr)
 		if (st_line_lookup(addr)):
 			st_write_cstr(c" (")
 			int fname = st_file_name(st_file_found)
@@ -862,8 +828,7 @@ void repl_fault_entry(int sig):
 # long-jumps out of the handler without sigreturn.
 void repl_fault_install_handlers():
 	int handler = cast(int, repl_fault_entry)
-	if (__word_size__ == 8):
-		handler = cast(int, repl_fault)
+	if (__word_size__ == 8): handler = cast(int, repl_fault)
 	repl_fault_install(4, handler, 1073741824) /* SIGILL */
 	repl_fault_install(7, handler, 1073741824) /* SIGBUS */
 	repl_fault_install(8, handler, 1073741824) /* SIGFPE */
@@ -988,11 +953,9 @@ void repl_remove_staging(char* dir, int file_count):
 # session setup; an embedder that already owns its code buffer and signal
 # handlers (wdbg) calls just this before its first repl_eval().
 void repl_engine_init():
-	if (repl_jump_buffer == 0):
-		repl_jump_buffer = cast(int, malloc(3 * __word_size__))
+	if (repl_jump_buffer == 0): repl_jump_buffer = cast(int, malloc(3 * __word_size__))
 	repl_error_jump = cast(int, repl_longjmp)
-	if (repl_fault_jump_buffer == 0):
-		repl_fault_jump_buffer = cast(int, malloc(3 * __word_size__))
+	if (repl_fault_jump_buffer == 0): repl_fault_jump_buffer = cast(int, malloc(3 * __word_size__))
 
 
 # Create the session's staging directory on first use, so a session that
@@ -1002,8 +965,7 @@ void repl_engine_init():
 # running concurrently (e.g. repl_test and repl_test_x64 under a
 # parallel test runner) never collide.
 void repl_stage_init():
-	if (repl_staging_dir != 0):
-		return;
+	if (repl_staging_dir != 0): return;
 	repl_staging_dir = cstr(f"/tmp/w_repl_{getpid()}")
 	mkdir(repl_staging_dir, 511)
 
@@ -1022,8 +984,7 @@ void repl_inprocess_setup():
 	# architecture is the one this binary was compiled for.
 	word_size = __word_size__
 	word_size_log2 = 2
-	if (word_size == 8):
-		word_size_log2 = 3
+	if (word_size == 8): word_size_log2 = 3
 	push_basic_types()
 	pointer_indirection = 0
 	last_identifier = malloc(8000)
@@ -1035,8 +996,7 @@ void repl_inprocess_setup():
 	# MAP_32BIT (0x40).
 	int buffer_size = 8388608
 	int mmap_flags = 34 /* PRIVATE|ANONYMOUS */
-	if (word_size == 8):
-		mmap_flags = 34 + 64
+	if (word_size == 8): mmap_flags = 34 + 64
 	int buffer = mmap(0, buffer_size, 7, mmap_flags) /* RWX */
 	asserts(c"mmap of code buffer failed", (buffer > 0) | (buffer < -4095))
 	code = buffer + 0
@@ -1054,10 +1014,8 @@ void repl_inprocess_setup():
 	# token) unless the helpers are preloaded here too. This runs once at
 	# startup, before any entry's repl_setjmp checkpoint exists, so
 	# per-entry rollback in repl_compile_entry never touches it.
-	if (word_size == 8):
-		define_asm_functions_x64()
-	else:
-		define_asm_functions()
+	if (word_size == 8): define_asm_functions_x64()
+	else: define_asm_functions()
 	import_module(c"structures.hash_table")
 	import_module(c"structures.w_list")
 
@@ -1082,8 +1040,7 @@ list[char*] repl_loaded_files
 
 
 void repl_note_loaded_file(char* path):
-	if (repl_loaded_files == 0):
-		repl_loaded_files = new list[char*]
+	if (repl_loaded_files == 0): repl_loaded_files = new list[char*]
 	repl_loaded_files.push(strclone(path))
 
 
@@ -1095,16 +1052,12 @@ void repl_note_loaded_file(char* path):
 # or "open" into a raw library call.
 int repl_session_function(char* name):
 	int t = sym_lookup(name)
-	if (t < 0):
-		return -1
-	if ((table[t + 1] != 'D') || (sym_symtype(name) != 2)):
-		return -1
+	if (t < 0): return -1
+	if ((table[t + 1] != 'D') || (sym_symtype(name) != 2)): return -1
 	int file_index = sym_decl_file_index(t)
-	if (file_index < 0):
-		return -1
+	if (file_index < 0): return -1
 	char* file = debug_file_name(file_index)
-	if (file == 0):
-		return -1
+	if (file == 0): return -1
 	if (repl_staging_dir != 0):
 		if (starts_with(file, repl_staging_dir)):
 			return t
@@ -1136,8 +1089,7 @@ int repl_load_file(char* path, int run_main, int argc, int argv):
 	compile_input_file(path)
 	finish_on_demand_imports()
 	repl_call_site_hook = 0
-	if (run_main == 0):
-		return 0
+	if (run_main == 0): return 0
 	int main_symbol = sym_lookup(c"main")
 	if (main_symbol >= 0):
 		if (table[main_symbol + 1] == 'D'):
@@ -1168,8 +1120,7 @@ repl_result repl_eval(char* entry_text):
 	char* nest = repl_nest_save()
 
 	repl_stage_init()
-	if (repl_staged_path != 0):
-		free(repl_staged_path)
+	if (repl_staged_path != 0): free(repl_staged_path)
 	repl_staged_path = repl_entry_path(repl_staging_dir, repl_staged_count)
 	repl_staged_count = repl_staged_count + 1
 	int out = create_file(repl_staged_path, 511)
@@ -1199,8 +1150,7 @@ repl_result repl_eval(char* entry_text):
 		return r
 	r.value = address()
 	r.echo_type = repl_result_type
-	if (repl_echo_hook != 0):
-		repl_echo_hook(r.value, repl_result_type)
+	if (repl_echo_hook != 0): repl_echo_hook(r.value, repl_result_type)
 	repl_fault_active = 0
 	# Late binding (#114): the entry compiled and ran to completion, so
 	# its function definitions are permanent -- rewrite every older call
@@ -1217,8 +1167,7 @@ repl_result repl_eval(char* entry_text):
 # instantiation re-parses recorded spans from the staged files. A no-op
 # when nothing was ever staged (the directory is created lazily).
 void repl_cleanup():
-	if (repl_staging_dir == 0):
-		return;
+	if (repl_staging_dir == 0): return;
 	repl_remove_staging(repl_staging_dir, repl_staged_count)
 
 
@@ -1249,8 +1198,7 @@ int repl_complete_names(char* prefix, char* out, int capacity):
 			# in the table; only offer it once.
 			int dup = 0
 			for k in range(count):
-				if (strcmp(cast(char*, load_word(out + k * __word_size__)), name) == 0):
-					dup = 1
+				if (strcmp(cast(char*, load_word(out + k * __word_size__)), name) == 0): dup = 1
 			if (dup == 0):
 				save_word(out + count * __word_size__, cast(int, strclone(name)))
 				count = count + 1

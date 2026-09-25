@@ -42,14 +42,10 @@ int ci_bit_field_unit_size(int type_index);
 # Load the storage unit whose address is in eax at the recorded width,
 # zero-extending sub-word units into the word register.
 void bit_field_load_unit(int unit_size):
-	if (unit_size == 1):
-		promote_uint8_eax()
-	else if (unit_size == 2):
-		promote_uint16_eax()
-	else if (unit_size == 4):
-		promote_uint32_eax()
-	else:
-		promote_eax()
+	if (unit_size == 1): promote_uint8_eax()
+	else if (unit_size == 2): promote_uint16_eax()
+	else if (unit_size == 4): promote_uint32_eax()
+	else: promote_eax()
 
 
 # eax = ((1 << width) - 1) << shift, with width < the word's bit count.
@@ -145,14 +141,10 @@ void bit_field_assign_store(int type):
 	pop_ebx_slot()
 	alu_or()  # merged unit
 	mov_ebx_esp_plus(word_size)  # the saved unit address
-	if (unit_size == 1):
-		store_ebx_int8()
-	else if (unit_size == 2):
-		store_ebx_int16()
-	else if (unit_size == 4):
-		store_ebx_int32()
-	else:
-		store_ebx_word()
+	if (unit_size == 1): store_ebx_int8()
+	else if (unit_size == 2): store_ebx_int16()
+	else if (unit_size == 4): store_ebx_int32()
+	else: store_ebx_word()
 	pop_eax_slot()  # the incoming value: assignment's result
 	pop_ebx_slot()  # drop the saved address
 
@@ -161,8 +153,7 @@ void bit_field_assign_store(int type):
 void print_error_type(int type_index):
 	type_index = type_real(type_index)
 	diag_part(type_get_name(type_index))
-	for int i in range(type_get_pointer_level(type_index)):
-		diag_part(c"*")
+	for int i in range(type_get_pointer_level(type_index)): diag_part(c"*")
 
 
 # error(): prefix, the type's name, suffix.
@@ -229,15 +220,12 @@ void warn_type_mismatch(char* context, int want, int got):
 
 int function_signature_matches_symbol(int signature_type, char* function_name):
 	int symbol = sym_lookup(function_name)
-	if (symbol < 0):
-		return 0
-	if (load_int(table + symbol + 10) != 2):
-		return 0
+	if (symbol < 0): return 0
+	if (load_int(table + symbol + 10) != 2): return 0
 	if (type_unqualified(type_function_return(signature_type)) != type_unqualified(load_int(table + symbol + 6))):
 		return 0
 	int expected_args = type_function_param_count(signature_type)
-	if (sym_num_args(symbol) != expected_args):
-		return 0
+	if (sym_num_args(symbol) != expected_args): return 0
 	for i in range(expected_args):
 		if (type_unqualified(type_function_param_type(signature_type, i)) != type_unqualified(sym_param_type(symbol, i))):
 			return 0
@@ -248,16 +236,13 @@ int types_compatible_with_expression(int want, int got):
 	# an imported C bit-field member reads and writes as a word int; on
 	# the got side its access type only survives promote() as the value
 	# an assignment expression yields ('x = (s.f = 3)')
-	if (ci_is_bit_field_access(want)):
-		want = type_lookup(c"int")
-	if (ci_is_bit_field_access(got)):
-		got = type_lookup(c"int")
+	if (ci_is_bit_field_access(want)): want = type_lookup(c"int")
+	if (ci_is_bit_field_access(got)): got = type_lookup(c"int")
 	if (got == 4):
 		int signature_type = type_function_pointer_signature(want)
 		if (signature_type >= 0):
 			return function_signature_matches_symbol(signature_type, last_identifier)
-	if (type_decays_to_pointer(want, got)):
-		return 1
+	if (type_decays_to_pointer(want, got)): return 1
 	return types_compatible(want, got)
 
 
@@ -286,10 +271,8 @@ mean eax already holds the value. Structs are used by address, so they
 are never loaded either.
 */
 int promote(int type):
-	if (hash_index_pending):
-		return hash_finish_pending_read()
-	if (nd_index_pending):
-		return nd_finish_pending_read()
+	if (hash_index_pending): return hash_finish_pending_read()
+	if (nd_index_pending): return nd_finish_pending_read()
 	if (verbosity >= 1):
 		print2(itoa(line_number))
 		print2(c": promote(")
@@ -300,8 +283,7 @@ int promote(int type):
 		print2(last_identifier)
 		println2(c"')")
 
-	if (type_is_value(type)):
-		return type_strip_gpu(type_real(type))
+	if (type_is_value(type)): return type_strip_gpu(type_real(type))
 	# An lvalue in device global memory ('gpu T*' element): diagnosed in
 	# host code; on device the load itself becomes ld.global
 	# (code_generator/ptx.w, ptx_global_access).
@@ -323,8 +305,7 @@ int promote(int type):
 		return type
 	if (type == var_value_type):
 		return type
-	if (type_is_array(type)):
-		return type_get_slice_value(type_get_element_type(type))
+	if (type_is_array(type)): return type_get_slice_value(type_get_element_type(type))
 	if (type_num_args(type) > 0): /* struct: keep the address */
 		return type
 	if (type_get_kind(type) == type_kind_slice):
@@ -339,16 +320,13 @@ int promote(int type):
 	if (type_get_pointer_level(type) > 0):
 		promote_eax()
 		return type
-	if (ci_is_bit_field_access(type)):
-		return bit_field_promote(type)
+	if (ci_is_bit_field_access(type)): return bit_field_promote(type)
 
 	int size = type_get_size(type)
 	int unsigned_fixed = type_is_unsigned_fixed(type)
 	if (size == 1):
-		if (unsigned_fixed):
-			promote_uint8_eax()
-		else:
-			promote_int8_eax()
+		if (unsigned_fixed): promote_uint8_eax()
+		else: promote_int8_eax()
 	else if (size == 2):
 		if (type == float16_type):
 			promote_uint16_eax()
@@ -356,17 +334,12 @@ int promote(int type):
 			vcvtph2ps_xmm0()
 			movd_eax_xmm0()
 			return float32_value_type
-		else if (unsigned_fixed):
-			promote_uint16_eax()
-		else:
-			promote_int16_eax()
+		else if (unsigned_fixed): promote_uint16_eax()
+		else: promote_int16_eax()
 	else if (size == 4):
-		if (unsigned_fixed):
-			promote_uint32_eax()
-		else:
-			promote_int32_eax()
-	else if (size >= 4):
-		promote_eax()
+		if (unsigned_fixed): promote_uint32_eax()
+		else: promote_int32_eax()
+	else if (size >= 4): promote_eax()
 	/* size 0 (void): nothing to load */
 	if (type_float_kind(type) == 1):
 		return float32_value_type
@@ -387,22 +360,18 @@ void coerce(int want, int got):
 		return;
 	int want_kind = type_float_kind(want)
 	int got_kind = type_float_kind(got)
-	if (want == 3):
-		return;
+	if (want == 3): return;
 
 
-	if (want == 4):
-		return;
-	if (got == 4):
-		return;
+	if (want == 4): return;
+	if (got == 4): return;
 	if (type_decays_to_pointer(want, got)):
 		# Array-to-pointer decay: eax holds the descriptor's address, and
 		# the descriptor's first word is the data pointer.
 		promote_eax()
 		return;
 	if (type_is_string(want)):
-		if (type_is_char_pointer(got)):
-			coerce_cstr_to_string()
+		if (type_is_char_pointer(got)): coerce_cstr_to_string()
 		return;
 	if (want_kind == got_kind):
 		if ((want == float16_type) && (got != float16_type)):
@@ -426,8 +395,7 @@ void coerce(int want, int got):
 		return;
 
 	if (want_kind == 2):
-		if (word_size != 8):
-			error(c"float64 requires the x64 target")
+		if (word_size != 8): error(c"float64 requires the x64 target")
 		if (got_kind == 1):
 			movd_xmm0_eax()
 			cvtss2sd_xmm0()
@@ -449,8 +417,7 @@ void coerce(int want, int got):
 # coerce(), then the usual mismatch warning naming the construct.
 void coerce_checked(int want, int got, char* context):
 	coerce(want, got)
-	if (types_compatible_with_expression(want, got) == 0):
-		warn_type_mismatch(context, want, got)
+	if (types_compatible_with_expression(want, got) == 0): warn_type_mismatch(context, want, got)
 
 
 # Parses an expression and coerces it to want (coerce_checked); returns
@@ -471,11 +438,9 @@ void coerce_explicit(int want, int got):
 	int want_real = type_unqualified(want)
 	int got_real = type_unqualified(got)
 	int got_address_sized = type_get_pointer_level(got_real) > 0
-	if (got_real == 4):
-		got_address_sized = 1
+	if (got_real == 4): got_address_sized = 1
 	int got_decays = type_get_kind(got_real) == type_kind_slice_value
-	if (got_decays):
-		got_address_sized = 1
+	if (got_decays): got_address_sized = 1
 	if (got_address_sized & (type_get_pointer_level(want_real) == 0)):
 		if ((type_num_args(want_real) == 0) & (type_float_kind(want_real) == 0)):
 			int want_size = type_get_size(want_real)

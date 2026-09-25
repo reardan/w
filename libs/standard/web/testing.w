@@ -19,14 +19,11 @@ void web_test_finish(int pid, int listener):
 # sends a SETTINGS frame carrying the given payload (0, 0 for none).
 int h2_test_raw_accept(int listener, char* settings, int settings_len):
 	int fd = socket_accept_connection(listener)
-	if (fd < 0):
-		exit(90)
+	if (fd < 0): exit(90)
 	socket_set_recv_timeout(fd, 10000)
 	char* pre = malloc(24)
-	if (h2_fd_read_exact(fd, pre, 24) == 0):
-		exit(91)
-	if (mem_eq(pre, h2_preface(), 24) == 0):
-		exit(92)
+	if (h2_fd_read_exact(fd, pre, 24) == 0): exit(91)
+	if (mem_eq(pre, h2_preface(), 24) == 0): exit(92)
 	free(pre)
 	h2_raw_write_frame(fd, h2_frame_settings, 0, 0, settings, settings_len)
 	return fd

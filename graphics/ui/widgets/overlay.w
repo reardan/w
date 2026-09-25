@@ -29,10 +29,8 @@ import graphics.ui.widgets.context
 
 # 1 when this id is the innermost open popup.
 int ui_popup_is_top(ui_context* ctx, int id):
-	if (ctx.popup_depth == 0):
-		return 0
-	if (ctx.popup_stack[ctx.popup_depth - 1] == id):
-		return 1
+	if (ctx.popup_depth == 0): return 0
+	if (ctx.popup_stack[ctx.popup_depth - 1] == id): return 1
 	return 0
 
 
@@ -41,10 +39,8 @@ int ui_popup_is_top(ui_context* ctx, int id):
 # without stacking duplicates. A push past ui_popup_max_depth is
 # dropped, so the innermost popup that fits keeps input.
 void ui_popup_open(ui_context* ctx, int id):
-	if (ui_popup_is_top(ctx, id)):
-		return
-	if (ctx.popup_depth >= ui_popup_max_depth):
-		return
+	if (ui_popup_is_top(ctx, id)): return
+	if (ctx.popup_depth >= ui_popup_max_depth): return
 	ctx.popup_stack[ctx.popup_depth] = id
 	ctx.popup_depth = ctx.popup_depth + 1
 
@@ -79,8 +75,7 @@ void ui_popup_begin(ui_context* ctx, int id, ui_rect area, int layer):
 
 # Leave a popup's scope, restoring all four.
 void ui_popup_end(ui_context* ctx):
-	if (ctx.bracket_depth == 0):
-		return
+	if (ctx.bracket_depth == 0): return
 	ctx.bracket_depth = ctx.bracket_depth - 1
 	ui_region_pop(ctx)
 	ui_clip_pop(ctx.rndr)

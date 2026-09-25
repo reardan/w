@@ -132,8 +132,7 @@ void ndf_par_sum_chunk(int row0, int row1, void* p):
 	# (nthreads was clamped to n0), so the start rows are strictly
 	# increasing and the match is unique.
 	int k = 0
-	while (k + 1 < ctx.nthreads && thread_chunk_offset(a.n0, ctx.nthreads, k) != row0):
-		k = k + 1
+	while (k + 1 < ctx.nthreads && thread_chunk_offset(a.n0, ctx.nthreads, k) != row0): k = k + 1
 	float acc = 0.0
 	int i = row0 * a.s0
 	int end = row1 * a.s0
@@ -154,10 +153,8 @@ void ndf_par_sum_chunk(int row0, int row1, void* p):
 # Main thread only.
 float ndf_sum_par(ndf* a, int nthreads):
 	ndf_par_assert_contiguous(a, c"ndf_sum_par: array must be contiguous")
-	if (nthreads > a.n0):
-		nthreads = a.n0
-	if (nthreads <= 1):
-		return ndf_sum(a)
+	if (nthreads > a.n0): nthreads = a.n0
+	if (nthreads <= 1): return ndf_sum(a)
 	float[] partials = new float[nthreads]
 	ndf_par_sum_ctx ctx
 	ctx.a = a
@@ -165,7 +162,6 @@ float ndf_sum_par(ndf* a, int nthreads):
 	ctx.nthreads = nthreads
 	parallel_for(0, a.n0, nthreads, ndf_par_sum_chunk, cast(void*, &ctx))
 	float total = 0.0
-	for k in range(nthreads):
-		total = total + partials[k]
+	for k in range(nthreads): total = total + partials[k]
 	array_free[float](partials)
 	return total

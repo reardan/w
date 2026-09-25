@@ -70,10 +70,8 @@ ndf* need(st_file* f, char* name):
 
 
 int main(int argc, int argv):
-	if (gpu_available()):
-		println(c"torch infer: gpu path")
-	else:
-		println(c"torch infer: cpu fallback")
+	if (gpu_available()): println(c"torch infer: gpu path")
+	else: println(c"torch infer: cpu fallback")
 
 	st_file* f = st_load(c"tests/data/mnist_mlp.safetensors")
 	if (f == 0):
@@ -107,10 +105,8 @@ int main(int argc, int argv):
 	int i = 0
 	while (i < n_probe * classes):
 		float d = lp.data[i] - probe_want.data[i]
-		if (d < 0.0):
-			d = 0.0 - d
-		if (d > max_diff):
-			max_diff = d
+		if (d < 0.0): d = 0.0 - d
+		if (d > max_diff): max_diff = d
 		i = i + 1
 	print(c"probe max logit diff ")
 	println(ftoa(max_diff))
@@ -148,8 +144,7 @@ int main(int argc, int argv):
 			if (v > bestv):
 				bestv = v
 				best = j
-		if (best == test_labels.data[i]):
-			correct = correct + 1
+		if (best == test_labels.data[i]): correct = correct + 1
 		i = i + 1
 	float acc = cast(float, correct) / cast(float, n_test)
 	print(c"torch accuracy ")
@@ -158,8 +153,7 @@ int main(int argc, int argv):
 	println(ftoa(acc))
 
 	float acc_diff = acc - want_acc
-	if (acc_diff < 0.0):
-		acc_diff = 0.0 - acc_diff
+	if (acc_diff < 0.0): acc_diff = 0.0 - acc_diff
 	if (acc_diff > 0.005):
 		println(c"torch infer: FAILED (accuracy does not match torch)")
 		return 1

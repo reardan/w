@@ -17,10 +17,8 @@ void assert_int_list(list[int] want, list[int] got):
 int reference_extreme(list[int] xs, int start, int k, int want_max):
 	int best = xs[start]
 	for i in range(1, k):
-		if (want_max && (xs[start + i] > best)):
-			best = xs[start + i]
-		if ((want_max == 0) && (xs[start + i] < best)):
-			best = xs[start + i]
+		if (want_max && (xs[start + i] > best)): best = xs[start + i]
+		if ((want_max == 0) && (xs[start + i] < best)): best = xs[start + i]
 	return best
 
 

@@ -29,21 +29,17 @@ int dbg_frame_args  /* argument words of the enclosing function */
 
 void dbg_frame_compute(int stop_addr):
 	dbg_frame_ok = 0
-	if (dbg_in_debuggee(stop_addr) == 0):
-		return;
+	if (dbg_in_debuggee(stop_addr) == 0): return;
 	int rel = stop_addr - code_offset
 	int entry = dbg_find_line(rel)
-	if (entry < 0):
-		return;
+	if (entry < 0): return;
 	int f = dbg_function_at(stop_addr)
-	if (f < 0):
-		return;
+	if (f < 0): return;
 	dbg_frame_start = dbg_sym_address(f) - code_offset
 	dbg_frame_end = dbg_frame_start + dbg_sym_size(f)
 	dbg_frame_stack = dbg_line_stack(entry)
 	dbg_frame_args = debug_func_args_at(dbg_frame_start)
-	if (dbg_frame_args < 0):
-		dbg_frame_args = 0
+	if (dbg_frame_args < 0): dbg_frame_args = 0
 	dbg_frame_ok = 1
 
 
@@ -71,16 +67,12 @@ int dbg_local_decl(int i):
 # in the enclosing function before the stop address, and (for locals)
 # whose stack slot has not been popped yet.
 int dbg_local_visible(int i, int rel):
-	if (dbg_frame_ok == 0):
-		return 0
+	if (dbg_frame_ok == 0): return 0
 	int decl = dbg_local_decl(i)
-	if ((decl < dbg_frame_start) || (decl >= dbg_frame_end)):
-		return 0
-	if (decl > rel):
-		return 0
+	if ((decl < dbg_frame_start) || (decl >= dbg_frame_end)): return 0
+	if (decl > rel): return 0
 	if (dbg_local_kind(i) == 'L'):
-		if (dbg_local_slot(i) >= dbg_frame_stack):
-			return 0
+		if (dbg_local_slot(i) >= dbg_frame_stack): return 0
 	return 1
 
 
@@ -88,15 +80,13 @@ int dbg_local_visible(int i, int rel):
 # declaration wins, so inner shadowing declarations take precedence.
 int dbg_local_find(char* name, int stop_addr):
 	dbg_frame_compute(stop_addr)
-	if (dbg_frame_ok == 0):
-		return -1
+	if (dbg_frame_ok == 0): return -1
 	int rel = stop_addr - code_offset
 	int best = -1
 	int i = 0
 	while (i < debug_local_count):
 		if (dbg_local_visible(i, rel)):
-			if (strcmp(dbg_local_name_at(i), name) == 0):
-				best = i
+			if (strcmp(dbg_local_name_at(i), name) == 0): best = i
 		i = i + 1
 	return best
 
@@ -106,10 +96,8 @@ int dbg_local_runtime_addr(int i, int esp):
 	int slot = dbg_local_slot(i)
 	int type = dbg_local_type(i)
 	int k
-	if (dbg_local_kind(i) == 'L'):
-		k = (dbg_frame_stack - slot - 1) * __word_size__
-	else:
-		k = (dbg_frame_stack + dbg_frame_args - slot + 1) * __word_size__
+	if (dbg_local_kind(i) == 'L'): k = (dbg_frame_stack - slot - 1) * __word_size__
+	else: k = (dbg_frame_stack + dbg_frame_args - slot + 1) * __word_size__
 	# Struct values span several words; point at the lowest address so
 	# positive field offsets stay inside, like sym_get_value() does
 	if (type_num_args(type) > 0):
@@ -129,8 +117,7 @@ void dbg_print_int_value(int v):
 
 # 1 when the type is char* (one level of pointer over char).
 int dbg_type_is_string(int type):
-	if (type_get_pointer_level(type) != 1):
-		return 0
+	if (type_get_pointer_level(type) != 1): return 0
 	return strcmp(type_get_name(type), c"char") == 0
 
 
@@ -147,8 +134,7 @@ void dbg_print_typed_value(int addr, int type):
 		print(c"{")
 		int n = type_num_args(type)
 		for i in range(n):
-			if (i > 0):
-				print(c", ")
+			if (i > 0): print(c", ")
 			# Through the accessor, not a hand-computed offset: the old
 			# 'load_int(t + 16 + 8 * i)' spelled the field-name slot with
 			# 4-byte strides, so it only landed correctly on a 32-bit host.
@@ -156,16 +142,14 @@ void dbg_print_typed_value(int addr, int type):
 			print(c" = ")
 			int field_type = type_get_field_type_at(type, i)
 			int width = type_get_size(field_type)
-			if (width > __word_size__):
-				width = __word_size__
+			if (width > __word_size__): width = __word_size__
 			int offset = type_get_field_offset_at(type, i)
 			dbg_print_int_value(dbg_mem_read(addr + offset, width))
 		print(c"}")
 		return;
 	int v = dbg_mem_read_word(addr)
 	dbg_print_int_value(v)
-	if (dbg_type_is_string(type)):
-		dbg_print_string_preview(v)
+	if (dbg_type_is_string(type)): dbg_print_string_preview(v)
 
 
 # name = value, for one note.
@@ -193,15 +177,12 @@ void dbg_print_frame_vars(int stop_addr, int esp, int kind):
 				int j = i + 1
 				while (j < debug_local_count):
 					if (dbg_local_visible(j, rel)):
-						if (strcmp(dbg_local_name_at(i), dbg_local_name_at(j)) == 0):
-							shadowed = 1
+						if (strcmp(dbg_local_name_at(i), dbg_local_name_at(j)) == 0): shadowed = 1
 					j = j + 1
 				if (shadowed == 0):
 					dbg_print_local(i, esp)
 					printed = printed + 1
 		i = i + 1
 	if (printed == 0):
-		if (kind == 'L'):
-			println(c"no locals")
-		else:
-			println(c"no args")
+		if (kind == 'L'): println(c"no locals")
+		else: println(c"no args")

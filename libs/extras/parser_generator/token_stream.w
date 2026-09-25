@@ -29,13 +29,11 @@ pg_token_stream* pg_token_stream_new():
 
 void pg_token_stream_add(pg_token_stream* stream, pg_token* token):
 	stream.all_tokens.push(token)
-	if (token.channel == pg_token_default_channel):
-		stream.tokens.push(token)
+	if (token.channel == pg_token_default_channel): stream.tokens.push(token)
 
 
 pg_token* pg_token_stream_get(pg_token_stream* stream, int index):
-	if (index >= stream.tokens.length):
-		return stream.tokens[stream.tokens.length - 1]
+	if (index >= stream.tokens.length): return stream.tokens[stream.tokens.length - 1]
 	return stream.tokens[index]
 
 
@@ -49,10 +47,8 @@ pg_token* pg_token_stream_peek(pg_token_stream* stream):
 
 pg_token* pg_token_stream_consume(pg_token_stream* stream):
 	pg_token* token = pg_token_stream_peek(stream)
-	if (stream.index < stream.tokens.length):
-		stream.index = stream.index + 1
-	if (stream.index > stream.max_index):
-		stream.max_index = stream.index
+	if (stream.index < stream.tokens.length): stream.index = stream.index + 1
+	if (stream.index > stream.max_index): stream.max_index = stream.index
 	return token
 
 
@@ -97,8 +93,7 @@ char* pg_token_stream_source(pg_token_stream* stream):
 
 
 void pg_token_stream_free(pg_token_stream* stream):
-	if (stream == 0):
-		return
+	if (stream == 0): return
 	int i = 0
 	while (i < stream.all_tokens.length):
 		pg_token_free(stream.all_tokens[i])

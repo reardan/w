@@ -10,8 +10,7 @@ int loop_test_force_poll
 
 
 event_loop* loop_test_new():
-	if (loop_test_force_poll):
-		return event_loop_new_poll()
+	if (loop_test_force_poll): return event_loop_new_poll()
 	return event_loop_new()
 
 
@@ -26,10 +25,8 @@ struct loop_test_log:
 
 void loop_test_record(int timer_id, void* ctx):
 	loop_test_log* log = cast(loop_test_log*, ctx)
-	if (log.count == 0):
-		log.first_id = timer_id
-	else if (log.count == 1):
-		log.second_id = timer_id
+	if (log.count == 0): log.first_id = timer_id
+	else if (log.count == 1): log.second_id = timer_id
 	log.count = log.count + 1
 
 

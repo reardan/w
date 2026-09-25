@@ -18,12 +18,10 @@ void hpack_test_expect_bytes(char* label, string_builder* got, char* want_hex):
 	int want_len = 0
 	char* want = hex_decode_loose(want_hex, &want_len)
 	int ok = 1
-	if (got.length != want_len):
-		ok = 0
+	if (got.length != want_len): ok = 0
 	int i = 0
 	while ((ok != 0) && (i < want_len)):
-		if ((got.data[i] & 255) != (want[i] & 255)):
-			ok = 0
+		if ((got.data[i] & 255) != (want[i] & 255)): ok = 0
 		i = i + 1
 	if (ok == 0):
 		print2(label)
@@ -44,13 +42,11 @@ list[hpack_header*] hpack_test_parse_spec(char* spec):
 	int pos = 0
 	while (spec[pos] != 0):
 		int ns = pos
-		while (spec[pos] != '|'):
-			pos = pos + 1
+		while (spec[pos] != '|'): pos = pos + 1
 		int ne = pos
 		pos = pos + 1
 		int vs = pos
-		while (spec[pos] != 10):
-			pos = pos + 1
+		while (spec[pos] != 10): pos = pos + 1
 		l.push(hpack_header_new(spec + ns, ne - ns, spec + vs, pos - vs))
 		pos = pos + 1
 	return l

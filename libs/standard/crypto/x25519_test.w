@@ -106,8 +106,7 @@ void test_low_order_rejection():
 	hex_decode_into(c"77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", k, 32)
 	mem_fill(u, 0, 32)
 	assert_equal(0 - 1, x25519_scalarmult(r, k, u))
-	for i in range(32):
-		assert_equal(0, r[i] & 255)
+	for i in range(32): assert_equal(0, r[i] & 255)
 	free(k)
 	free(u)
 	free(r)
@@ -119,8 +118,7 @@ void test_clamp():
 	x25519_clamp(k)
 	assert_equal(248, k[0] & 255)
 	assert_equal(127, k[31] & 255)
-	for i in range(1, 31):
-		assert_equal(255, k[i] & 255)
+	for i in range(1, 31): assert_equal(255, k[i] & 255)
 	free(k)
 
 

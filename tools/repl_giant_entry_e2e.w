@@ -56,14 +56,12 @@ int main(int argc, char** argv):
 	if (r == 0):
 		out(c"FAIL: could not spawn the REPL\n")
 		return 1
-	if (r.status != 0):
-		fail(c"REPL exited with a nonzero status", r)
+	if (r.status != 0): fail(c"REPL exited with a nonzero status", r)
 	if (index_of(r.stdout_text, c"second entry ran") < 0):
 		fail(c"stdout lacks 'second entry ran'", r)
 	if (index_of(r.stderr_text, c"expression nesting too deep") < 0):
 		fail(c"stderr lacks 'expression nesting too deep'", r)
 	process_result_free(r)
-	if (FAILED):
-		return 1
+	if (FAILED): return 1
 	out(c"repl giant entry OK\n")
 	return 0

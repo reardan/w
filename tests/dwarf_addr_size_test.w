@@ -24,8 +24,7 @@ import libs.asm.binary_reader
 # through size_out. Exits with a diagnostic when the section is missing.
 int section_find(char* data, int elf_class, char* want, int* size_out):
 	int is64 = 0
-	if (elf_class == ASM_ELF_CLASS64):
-		is64 = 1
+	if (elf_class == ASM_ELF_CLASS64): is64 = 1
 	int shoff_at = 32
 	int shentsize_at = 46
 	int shnum_at = 48
@@ -62,8 +61,7 @@ int section_find(char* data, int elf_class, char* want, int* size_out):
 # far below 4 GiB, so an 8-byte address must have a zero high word.
 int read_address(char* data, int offset, int width):
 	int value = asm_read_u32(data, offset)
-	if (width == 8):
-		assert_equal(0, asm_read_u32(data, offset + 4))
+	if (width == 8): assert_equal(0, asm_read_u32(data, offset + 4))
 	return value
 
 

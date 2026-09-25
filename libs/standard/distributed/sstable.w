@@ -61,10 +61,8 @@ const int sstable_version = 1
 # to [64, 1 << 20]; probes are always k = 5.
 int sstable_bloom_bits(int count):
 	int m = count * 10
-	if (m < 64):
-		m = 64
-	if (m > (1 << 20)):
-		m = 1 << 20
+	if (m < 64): m = 64
+	if (m > (1 << 20)): m = 1 << 20
 	return m
 
 
@@ -88,8 +86,7 @@ struct sstable_writer:
 # when the path cannot be created.
 sstable_writer* sstable_writer_new(char* path):
 	int fd = create_file(path, 420)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	close(fd)
 	sstable_writer* w = new sstable_writer()
 	w.path = mem_dup(path, strlen(path))
@@ -105,8 +102,7 @@ void sstable_writer_release(sstable_writer* w):
 	int i = 0
 	while (i < w.keys.length):
 		free(w.keys[i])
-		if (cast(int, w.values[i]) != 0):
-			free(w.values[i])
+		if (cast(int, w.values[i]) != 0): free(w.values[i])
 		i = i + 1
 	free(w.path)
 	free(w)
@@ -117,8 +113,7 @@ void sstable_writer_release(sstable_writer* w):
 # A tombstone ignores value/value_len entirely (val_len forced 0).
 # Returns 1.
 int sstable_writer_add(sstable_writer* w, char* key, char* value, int value_len, int tombstone):
-	if (w.keys.length > 0):
-		assert1(strcmp(w.keys[w.keys.length - 1], key) < 0)
+	if (w.keys.length > 0): assert1(strcmp(w.keys[w.keys.length - 1], key) < 0)
 	w.keys.push(mem_dup(key, strlen(key)))
 	if (tombstone):
 		w.values.push(cast(char*, 0))
@@ -181,8 +176,7 @@ int sstable_writer_finish(sstable_writer* w):
 	int ok = 0
 	int fd = create_file(w.path, 420)
 	if (fd >= 0):
-		if (write_all(fd, buf, total) == total):
-			ok = 1
+		if (write_all(fd, buf, total) == total): ok = 1
 		close(fd)
 	free(buf)
 	sstable_writer_release(w)
@@ -218,16 +212,14 @@ void sstable_close(sstable* s):
 # file truncated mid-record).
 sstable* sstable_open(char* path):
 	int fd = open(path, 0, 0)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	int size = file_size(fd)
 	char* hdr = malloc(12)
 	seek(fd, 0, 0)
 	int got = read_exact(fd, hdr, 12)
 	int ok = 0
 	if (got == 12 && (hdr[0] & 255) == 87 && (hdr[1] & 255) == 83 && (hdr[2] & 255) == 83 && (hdr[3] & 255) == 84):
-		if (load_le32(hdr + 4) == sstable_version):
-			ok = 1
+		if (load_le32(hdr + 4) == sstable_version): ok = 1
 	int bloom_len = load_le32(hdr + 8)
 	free(hdr)
 	if (ok == 0):
@@ -249,11 +241,9 @@ sstable* sstable_open(char* path):
 	int bm = load_le32(bbuf)
 	int bk = load_le32(bbuf + 4)
 	ok = 1
-	if (bm < 8 || bm > (1 << 24) || bk < 1 || bk > 16):
-		ok = 0
+	if (bm < 8 || bm > (1 << 24) || bk < 1 || bk > 16): ok = 0
 	else:
-		if (bloom_len != 12 + ((bm + 31) >> 5) * 4 || load_le32(bbuf + 8) != bm):
-			ok = 0
+		if (bloom_len != 12 + ((bm + 31) >> 5) * 4 || load_le32(bbuf + 8) != bm): ok = 0
 	if (ok == 0):
 		free(bbuf)
 		close(fd)
@@ -292,16 +282,12 @@ sstable* sstable_open(char* path):
 		int val_len = load_le32(rhdr + 5)
 		free(rhdr)
 		ok = 1
-		if (got != 9 || flag > 1):
-			ok = 0
-		if (key_len < 0 || key_len > remaining - 9):
-			ok = 0
+		if (got != 9 || flag > 1): ok = 0
+		if (key_len < 0 || key_len > remaining - 9): ok = 0
 		# Only checked once key_len is known sane, so the subtraction
 		# cannot underflow.
-		if (ok == 1 && (val_len < 0 || val_len > remaining - 9 - key_len)):
-			ok = 0
-		if (flag == 1 && val_len != 0):
-			ok = 0
+		if (ok == 1 && (val_len < 0 || val_len > remaining - 9 - key_len)): ok = 0
+		if (flag == 1 && val_len != 0): ok = 0
 		if (ok == 0):
 			sstable_close(s)
 			return 0
@@ -336,10 +322,8 @@ int sstable_find(sstable* s, char* key):
 		int c = strcmp(s.keys[mid], key)
 		if (c == 0):
 			return mid
-		if (c < 0):
-			lo = mid + 1
-		else:
-			hi = mid
+		if (c < 0): lo = mid + 1
+		else: hi = mid
 	return 0 - lo - 1
 
 
@@ -358,13 +342,10 @@ char* sstable_read_value(sstable* s, int idx):
 # malloc'd NUL-terminated copy read from disk (caller frees); on 0 and
 # 2 the out-params are untouched.
 int sstable_get(sstable* s, char* key, char** value_out, int* len_out):
-	if (bloom_maybe_contains(s.bloom, key) == 0):
-		return 0
+	if (bloom_maybe_contains(s.bloom, key) == 0): return 0
 	int idx = sstable_find(s, key)
-	if (idx < 0):
-		return 0
-	if (s.flags[idx]):
-		return 2
+	if (idx < 0): return 0
+	if (s.flags[idx]): return 2
 	value_out[0] = sstable_read_value(s, idx)
 	len_out[0] = s.value_lens[idx]
 	return 1

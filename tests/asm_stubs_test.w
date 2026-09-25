@@ -45,11 +45,9 @@ asm_buffer* stubs_assemble(int arch, char* path, int line, char* text):
 	asm_insn insn
 	int n = 0
 	if (arch == ASM_ARCH_ARM64):
-		if (asm_arm64_parse(text, &insn)):
-			n = asm_arm64_encode(b, &insn)
+		if (asm_arm64_parse(text, &insn)): n = asm_arm64_encode(b, &insn)
 	else:
-		if (asm_x86_parse(text, arch, &insn)):
-			n = asm_x86_encode(b, &insn)
+		if (asm_x86_parse(text, arch, &insn)): n = asm_x86_encode(b, &insn)
 	if (n <= 0):
 		print2(path)
 		print2(c":")
@@ -61,11 +59,9 @@ asm_buffer* stubs_assemble(int arch, char* path, int line, char* text):
 
 
 int stubs_bytes_equal(char* a, int a_length, char* b, int b_length):
-	if (a_length != b_length):
-		return 0
+	if (a_length != b_length): return 0
 	for i in range(a_length):
-		if (a[i] != b[i]):
-			return 0
+		if (a[i] != b[i]): return 0
 	return 1
 
 
@@ -78,8 +74,7 @@ void stubs_check_one(char* path, int index, int arch, list[asm_corpus_entry] cor
 	while (i < corpus.length && found == 0):
 		asm_corpus_entry entry = corpus[i]
 		if (strcmp(entry.text, text) == 0):
-			if (stubs_bytes_equal(entry.bytes, entry.length, b.data, b.length)):
-				found = 1
+			if (stubs_bytes_equal(entry.bytes, entry.length, b.data, b.length)): found = 1
 		i = i + 1
 	if (found == 0):
 		print2(path)
@@ -114,28 +109,21 @@ int stubs_check(char* path, char* call, int arch, char* corpus_path):
 		char* line = lines[index]
 		index = index + 1
 		int first = 0
-		while (line[first] == '\t' || line[first] == ' '):
-			first = first + 1
-		if (line[first] == '#'):
-			continue
+		while (line[first] == '\t' || line[first] == ' '): first = first + 1
+		if (line[first] == '#'): continue
 		int at = index_of(line, pat)
-		if (at < 0):
-			continue
+		if (at < 0): continue
 		at = at + strlen(pat)
 		int end = at
-		while (line[end] != 0 && line[end] != 34):
-			end = end + 1
+		while (line[end] != 0 && line[end] != 34): end = end + 1
 		# A stub line may hold several ';'-separated instructions
 		# (code_generator/asm_text.w, asm_text_lines).
 		while (at < end):
-			while (line[at] == ' '):
-				at = at + 1
+			while (line[at] == ' '): at = at + 1
 			int stop = at
-			while (stop < end && line[stop] != ';'):
-				stop = stop + 1
+			while (stop < end && line[stop] != ';'): stop = stop + 1
 			int last = stop
-			while (last > at && line[last - 1] == ' '):
-				last = last - 1
+			while (last > at && line[last - 1] == ' '): last = last - 1
 			char* text = malloc(last - at + 1)
 			int k = 0
 			while (at + k < last):
@@ -143,8 +131,7 @@ int stubs_check(char* path, char* call, int arch, char* corpus_path):
 				k = k + 1
 			text[k] = 0
 			at = stop + 1
-			if (starts_with(text, c"db ")):
-				continue
+			if (starts_with(text, c"db ")): continue
 			stubs_check_one(path, index, arch, corpus, corpus_path, text)
 			checked = checked + 1
 	return checked

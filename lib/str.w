@@ -8,12 +8,9 @@ import lib.lib
 # substring(s, 0, 999) is a safe "rest of the string".
 char* substring(char* s, int start, int end):
 	int length = strlen(s)
-	if (start < 0):
-		start = 0
-	if (end > length):
-		end = length
-	if (end < start):
-		end = start
+	if (start < 0): start = 0
+	if (end > length): end = length
+	if (end < start): end = start
 	char* result = malloc(end - start + 1)
 	int i = 0
 	while (start + i < end):
@@ -29,13 +26,11 @@ int index_of(char* s, char* needle):
 	int i = 0
 	while (s[i] != 0):
 		int j = 0
-		while ((needle[j] != 0) && (s[i + j] == needle[j])):
-			j = j + 1
+		while ((needle[j] != 0) && (s[i + j] == needle[j])): j = j + 1
 		if (needle[j] == 0):
 			return i
 		i = i + 1
-	if (needle[0] == 0):
-		return 0
+	if (needle[0] == 0): return 0
 	return 0 - 1
 
 
@@ -47,20 +42,15 @@ int contains(char* s, char* needle):
 # grep -cx: the number of lines of text exactly equal to line (0 for a
 # null text). A trailing newline does not start an extra empty line.
 int count_line(char* text, char* line):
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	int count = 0
 	int i = 0
 	while (text[i] != 0):
 		int j = 0
-		while ((line[j] != 0) && (text[i + j] == line[j])):
-			j = j + 1
-		if ((line[j] == 0) && ((text[i + j] == 10) || (text[i + j] == 0))):
-			count = count + 1
-		while ((text[i] != 0) && (text[i] != 10)):
-			i = i + 1
-		if (text[i] == 10):
-			i = i + 1
+		while ((line[j] != 0) && (text[i + j] == line[j])): j = j + 1
+		if ((line[j] == 0) && ((text[i + j] == 10) || (text[i + j] == 0))): count = count + 1
+		while ((text[i] != 0) && (text[i] != 10)): i = i + 1
+		if (text[i] == 10): i = i + 1
 	return count
 
 
@@ -83,8 +73,7 @@ list[char*] split(char* s, char delimiter = 0):
 		if (delimiter == 0):
 			is_break = (s[i] == 0) || (s[i] == ' ') || ((s[i] >= 9) && (s[i] <= 13))
 		if (is_break):
-			if ((delimiter != 0) || (i > start)):
-				pieces.push(substring(s, start, i))
+			if ((delimiter != 0) || (i > start)): pieces.push(substring(s, start, i))
 			start = i + 1
 		if (s[i] == 0):
 			return pieces
@@ -95,8 +84,7 @@ list[char*] split(char* s, char delimiter = 0):
 # All occurrences of needle replaced with replacement, in a new string.
 # An empty needle returns a plain copy.
 char* replace(char* s, char* needle, char* replacement):
-	if (needle[0] == 0):
-		return strclone(s)
+	if (needle[0] == 0): return strclone(s)
 	int needle_length = strlen(needle)
 	int replacement_length = strlen(replacement)
 	# Count matches to size the result exactly
@@ -104,20 +92,17 @@ char* replace(char* s, char* needle, char* replacement):
 	int i = 0
 	while (s[i] != 0):
 		int j = 0
-		while ((needle[j] != 0) && (s[i + j] == needle[j])):
-			j = j + 1
+		while ((needle[j] != 0) && (s[i + j] == needle[j])): j = j + 1
 		if (needle[j] == 0):
 			matches = matches + 1
 			i = i + needle_length
-		else:
-			i = i + 1
+		else: i = i + 1
 	char* result = malloc(strlen(s) + matches * (replacement_length - needle_length) + 1)
 	int out = 0
 	i = 0
 	while (s[i] != 0):
 		int k = 0
-		while ((needle[k] != 0) && (s[i + k] == needle[k])):
-			k = k + 1
+		while ((needle[k] != 0) && (s[i + k] == needle[k])): k = k + 1
 		if (needle[k] == 0):
 			for r in range(replacement_length):
 				result[out] = replacement[r]
@@ -157,20 +142,17 @@ int isalnum(char c):
 
 # Space, tab, newline, vertical tab, form feed, carriage return.
 int isspace(char c):
-	if (c == ' '):
-		return 1
+	if (c == ' '): return 1
 	return (c >= 9) & (c <= 13)
 
 
 char tolower(char c):
-	if (isupper(c)):
-		return c + ('a' - 'A')
+	if (isupper(c)): return c + ('a' - 'A')
 	return c
 
 
 char toupper(char c):
-	if (islower(c)):
-		return c - ('a' - 'A')
+	if (islower(c)): return c - ('a' - 'A')
 	return c
 
 
@@ -181,8 +163,7 @@ char* join(list[char*] pieces, char* delimiter):
 	int i = 0
 	while (i < pieces.length):
 		total = total + strlen(pieces[i])
-		if (i > 0):
-			total = total + delimiter_length
+		if (i > 0): total = total + delimiter_length
 		i = i + 1
 	char* result = malloc(total)
 	int out = 0

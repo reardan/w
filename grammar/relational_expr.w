@@ -28,17 +28,13 @@ int relational_op(int type, int cc, int float_cc, int float_swap):
 int relational_expr():
 	int type = shift_expr()
 	while (1):
-		if(accept(c"<=")):
-			type = relational_op(type, 0x9e, 0x93, 1)
+		if(accept(c"<=")): type = relational_op(type, 0x9e, 0x93, 1)
 
-		else if(accept(c"<")):
-			type = relational_op(type, 0x9c, 0x97, 1)
+		else if(accept(c"<")): type = relational_op(type, 0x9c, 0x97, 1)
 
-		else if(accept(c">=")):
-			type = relational_op(type, 0x9d, 0x93, 0)
+		else if(accept(c">=")): type = relational_op(type, 0x9d, 0x93, 0)
 
-		else if(accept(c">")):
-			type = relational_op(type, 0x9f, 0x97, 0)
+		else if(accept(c">")): type = relational_op(type, 0x9f, 0x97, 0)
 
 		else if(accept(c"in")):
 			int key_type = binary1(type)
@@ -52,8 +48,7 @@ int relational_expr():
 			if (type_is_map(container_type)):
 				want_key_type = type_map_key_type(container_type)
 				contains_name = c"__w_map_contains"
-			else if (type_is_set(container_type)):
-				want_key_type = type_set_key_type(container_type)
+			else if (type_is_set(container_type)): want_key_type = type_set_key_type(container_type)
 			else if (type_is_list(container_type)):
 				want_key_type = type_list_element_type(container_type)
 				if ((type_num_args(want_key_type) > 0) | type_is_string(want_key_type)):
@@ -61,10 +56,8 @@ int relational_expr():
 				# char* elements compare by contents, like map/set keys
 				if (hash_key_kind_for_type(want_key_type) == 2):
 					contains_name = c"__w_list_contains_cstr"
-				else:
-					contains_name = c"__w_list_contains"
-			else:
-				error(c"right operand of 'in' must be a map, set, or list")
+				else: contains_name = c"__w_list_contains"
+			else: error(c"right operand of 'in' must be a map, set, or list")
 			if (types_compatible_with_expression(want_key_type, key_type) == 0):
 				warn_type_mismatch(c"membership key", want_key_type, key_type)
 			if (type_decays_to_pointer(want_key_type, key_type)):

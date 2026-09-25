@@ -55,8 +55,7 @@ int task_write_all(int fd, char* buf, int len):
 				return revents
 		else if (n < 0):
 			return n
-		else:
-			total = total + n
+		else: total = total + n
 	return total
 
 
@@ -71,8 +70,7 @@ int task_accept(int listen_fd):
 			if (revents < 0):
 				return revents
 		else:
-			if (fd >= 0):
-				socket_set_nonblocking(fd)
+			if (fd >= 0): socket_set_nonblocking(fd)
 			return fd
 
 
@@ -85,8 +83,7 @@ int task_accept_from(int listen_fd, sockaddr_in* peer):
 			if (revents < 0):
 				return revents
 		else:
-			if (fd >= 0):
-				socket_set_nonblocking(fd)
+			if (fd >= 0): socket_set_nonblocking(fd)
 			return fd
 
 
@@ -97,8 +94,7 @@ int task_connect_ipv4(int fd, int ip_address, int port):
 	if (err < 0):
 		return err
 	err = socket_connect_ipv4(fd, ip_address, port)
-	if (err == 0):
-		return 0
+	if (err == 0): return 0
 	if (err != -115): /* EINPROGRESS */
 		return err
 	int revents = task_await_fd(fd, poll_out)
@@ -123,8 +119,7 @@ int task_connect_ipv4(int fd, int ip_address, int port):
 # stdout_out (0 allowed) and returns the decoded exit status (or 128 +
 # signum), or a negative errno.
 int task_process_run(char* path, char** argv, char** stdout_out):
-	if (cast(int, stdout_out) != 0):
-		*stdout_out = 0
+	if (cast(int, stdout_out) != 0): *stdout_out = 0
 	spawn_options* opts = spawn_options_new()
 	opts.stdin_mode = process_null
 	opts.stdout_mode = process_pipe
@@ -147,8 +142,7 @@ int task_process_run(char* path, char** argv, char** stdout_out):
 		else if (count < 0):
 			err = count
 			break
-		else if (count == 0):
-			break
+		else if (count == 0): break
 
 	# The pipe is closed; the child is exiting or already gone. Reap
 	# without blocking the loop.
@@ -167,8 +161,6 @@ int task_process_run(char* path, char** argv, char** stdout_out):
 	if (err < 0):
 		free(text)
 		return err
-	if (cast(int, stdout_out) != 0):
-		*stdout_out = text
-	else:
-		free(text)
+	if (cast(int, stdout_out) != 0): *stdout_out = text
+	else: free(text)
 	return status

@@ -116,10 +116,8 @@ char* vcpt_nul_content():
 	char* buf = malloc(VCPT_NUL_LEN() + 1)
 	int i = 0
 	while (i < VCPT_NUL_LEN()):
-		if ((i % 7) == 0):
-			buf[i] = 0
-		else:
-			buf[i] = 'A' + (i % 23)
+		if ((i % 7) == 0): buf[i] = 0
+		else: buf[i] = 'A' + (i % 23)
 		i = i + 1
 	buf[VCPT_NUL_LEN()] = 0
 	return buf
@@ -130,8 +128,7 @@ char* vcpt_nul_content():
 # 64), though the test only relies on round-trip correctness.
 string_builder* vcpt_base_content():
 	string_builder* b = string_new()
-	for i in range(192):
-		string_append_char(b, 'x' + (i % 3))
+	for i in range(192): string_append_char(b, 'x' + (i % 3))
 	string_append(b, c" shared tail of the base object")
 	return b
 
@@ -195,8 +192,7 @@ void test_pack_populate_store():
 	string_free(target)
 
 	# Record every loose file's exact on-disk bytes before packing.
-	for char* id in vcpt_ids:
-		vcpt_loose_bytes.push(vcpt_read_loose(s, id))
+	for char* id in vcpt_ids: vcpt_loose_bytes.push(vcpt_read_loose(s, id))
 	cas_close(s)
 
 
@@ -321,8 +317,7 @@ void test_pack_unpack_round_trip():
 	assert_strings_equal(vcpt_pack_path, again.pack_path)
 	pack_stats_free(again)
 	# No prune was requested: the loose copies must all still be there.
-	for char* id in vcpt_ids:
-		assert_equal(1, vcpt_loose_exists(s, id))
+	for char* id in vcpt_ids: assert_equal(1, vcpt_loose_exists(s, id))
 	pack_stats_free(result_expect[pack_stats*](pack_unpack_all(s)))
 
 	cas_close(s)
@@ -419,8 +414,7 @@ string_builder* vcp2_version_content(int k):
 	string_append(b, c"\nversion ")
 	string_append_int(b, k)
 	string_append_char(b, 10)
-	for i in range(40):
-		string_append_char(b, 'a' + ((k * 7 + i * 3) % 26))
+	for i in range(40): string_append_char(b, 'a' + ((k * 7 + i * 3) % 26))
 	return b
 
 
@@ -435,8 +429,7 @@ int vcp2_index_of(char* hay, int hay_len, char* needle):
 	int i = 0
 	while ((i + nl) <= hay_len):
 		int j = 0
-		while ((j < nl) && (hay[i + j] == needle[j])):
-			j = j + 1
+		while ((j < nl) && (hay[i + j] == needle[j])): j = j + 1
 		if (j == nl):
 			return i
 		i = i + 1
@@ -666,8 +659,7 @@ void test_pack_v2_cleanup_store():
 	free(objects)
 	cas_close(s)
 	assert_equal(0, rmdir(vcp2_root()))
-	for string_builder* b in vcp2_loose_bytes:
-		string_free(b)
+	for string_builder* b in vcp2_loose_bytes: string_free(b)
 	string_free(vcp2_compat_loose)
 
 
@@ -694,5 +686,4 @@ void test_pack_cleanup_store():
 	free(objects)
 	cas_close(s)
 	assert_equal(0, rmdir(vcpt_root()))
-	for string_builder* b in vcpt_loose_bytes:
-		string_free(b)
+	for string_builder* b in vcpt_loose_bytes: string_free(b)

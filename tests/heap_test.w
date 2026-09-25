@@ -69,8 +69,7 @@ void test_duplicates_and_negatives():
 
 void test_growth_beyond_initial_capacity():
 	heap[int]* h = heap_new_sized[int](4)
-	for int i in range(100):
-		heap_push[int](h, (i * 37) % 101)
+	for int i in range(100): heap_push[int](h, (i * 37) % 101)
 	assert_equal(100, h.length)
 	int previous = -1
 	for int i in range(100):
@@ -112,8 +111,7 @@ void test_heap_from_list_heap_sort():
 	heap[int]* h = heap_from_list[int](values)
 	assert_equal(6, h.length)
 	list[int] sorted = new list[int]
-	while (h.length > 0):
-		sorted.push(heap_pop[int](h))
+	while (h.length > 0): sorted.push(heap_pop[int](h))
 	assert_equal(1, sorted[0])
 	assert_equal(2, sorted[1])
 	assert_equal(3, sorted[2])
@@ -136,8 +134,7 @@ void test_heap_from_list_by():
 
 void test_iteration_storage_order():
 	heap[int]* h = heap_new[int]()
-	for int v in list[int]{5, 1, 4, 2, 3}:
-		heap_push[int](h, v)
+	for int v in list[int]{5, 1, 4, 2, 3}: heap_push[int](h, v)
 	int sum = 0
 	int count = 0
 	for int x in h:
@@ -153,16 +150,14 @@ void test_iteration_storage_order():
 void test_iteration_empty_and_break():
 	heap[int]* h = heap_new[int]()
 	int count = 0
-	for int x in h:
-		count = count + 1
+	for int x in h: count = count + 1
 	assert_equal(0, count)
 	heap_push[int](h, 1)
 	heap_push[int](h, 2)
 	heap_push[int](h, 3)
 	for int x in h:
 		count = count + 1
-		if (count == 2):
-			break
+		if (count == 2): break
 	assert_equal(2, count)
 	heap_free[int](h)
 
@@ -172,8 +167,7 @@ void test_iteration_inferred_variable():
 	heap_push[char*](h, c"pear")
 	heap_push[char*](h, c"apple")
 	int letters = 0
-	for s in h:
-		letters = letters + strlen(s)
+	for s in h: letters = letters + strlen(s)
 	assert_equal(9, letters)
 	heap_free[char*](h)
 
@@ -205,8 +199,7 @@ list[int] hk_merge(heap[hk_cursor*]* h):
 		hk_cursor* c = heap_pop[hk_cursor*](h)
 		merged.push(c.values[c.pos])
 		c.pos = c.pos + 1
-		if (c.pos < c.values.length):
-			heap_push[hk_cursor*](h, c)
+		if (c.pos < c.values.length): heap_push[hk_cursor*](h, c)
 	return merged
 
 

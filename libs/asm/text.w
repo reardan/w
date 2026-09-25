@@ -28,19 +28,14 @@ int asm_parse_peek(asm_parse* p):
 
 
 void asm_parse_skip_spaces(asm_parse* p):
-	while (p.text[p.pos] == ' '):
-		p.pos = p.pos + 1
+	while (p.text[p.pos] == ' '): p.pos = p.pos + 1
 
 
 int asm_parse_is_ident(int c):
-	if (c >= 'a' && c <= 'z'):
-		return 1
-	if (c >= 'A' && c <= 'Z'):
-		return 1
-	if (c >= '0' && c <= '9'):
-		return 1
-	if (c == '_'):
-		return 1
+	if (c >= 'a' && c <= 'z'): return 1
+	if (c >= 'A' && c <= 'Z'): return 1
+	if (c >= '0' && c <= '9'): return 1
+	if (c == '_'): return 1
 	return 1 == 2
 
 
@@ -49,14 +44,11 @@ int asm_parse_is_ident(int c):
 char* asm_parse_token(asm_parse* p):
 	asm_parse_skip_spaces(p)
 	int start = p.pos
-	if (p.text[p.pos] == '-'):
-		p.pos = p.pos + 1
-	while (asm_parse_is_ident(p.text[p.pos])):
-		p.pos = p.pos + 1
+	if (p.text[p.pos] == '-'): p.pos = p.pos + 1
+	while (asm_parse_is_ident(p.text[p.pos])): p.pos = p.pos + 1
 	int n = p.pos - start
 	char* out = malloc(n + 1)
-	for i in range(n):
-		out[i] = p.text[start + i]
+	for i in range(n): out[i] = p.text[start + i]
 	out[n] = 0
 	return out
 
@@ -65,10 +57,8 @@ char* asm_parse_token(asm_parse* p):
 # r64, imm64). asm_parse_number keeps the low 32 bits; this returns the
 # high word (0 for decimal, negative, or <= 32-bit values).
 int asm_parse_number_hi(char* s):
-	if (s[0] == '-'):
-		return 0
-	if (s[0] != '0' || s[1] != 'x'):
-		return 0
+	if (s[0] == '-'): return 0
+	if (s[0] != '0' || s[1] != 'x'): return 0
 	int i = 2
 	int hi = 0
 	int lo = 0
@@ -80,23 +70,17 @@ int asm_parse_number_hi(char* s):
 
 
 int asm_parse_is_number_start(int c):
-	if (c >= '0' && c <= '9'):
-		return 1
-	if (c == '-'):
-		return 1
+	if (c >= '0' && c <= '9'): return 1
+	if (c == '-'): return 1
 	return 1 == 2
 
 
 # Size keyword -> byte width, or 0 if the token isn't one.
 int asm_parse_size_keyword(char* tok):
-	if (strcmp(tok, c"byte") == 0):
-		return 1
-	if (strcmp(tok, c"word") == 0):
-		return 2
-	if (strcmp(tok, c"dword") == 0):
-		return 4
-	if (strcmp(tok, c"qword") == 0):
-		return 8
+	if (strcmp(tok, c"byte") == 0): return 1
+	if (strcmp(tok, c"word") == 0): return 2
+	if (strcmp(tok, c"dword") == 0): return 4
+	if (strcmp(tok, c"qword") == 0): return 8
 	return 0
 
 
@@ -133,12 +117,9 @@ void asm_parse_mem(asm_parse* p, asm_operand* op, int arch):
 				char* scale_tok = asm_parse_token(p)
 				op.index = number
 				op.scale = asm_parse_number(scale_tok)
-			else if (op.base < 0):
-				op.base = number
-			else:
-				op.index = number
-	if (asm_parse_peek(p) == ']'):
-		p.pos = p.pos + 1
+			else if (op.base < 0): op.base = number
+			else: op.index = number
+	if (asm_parse_peek(p) == ']'): p.pos = p.pos + 1
 
 
 # Parse one operand into op. size_hint carries a preceding size keyword.
@@ -154,12 +135,10 @@ void asm_parse_operand(asm_parse* p, asm_operand* op, int arch, int size_hint):
 		# dot-relative label ".+N" / ".-N"
 		int start = p.pos
 		p.pos = p.pos + 2
-		while (asm_parse_is_ident(p.text[p.pos])):
-			p.pos = p.pos + 1
+		while (asm_parse_is_ident(p.text[p.pos])): p.pos = p.pos + 1
 		int n = p.pos - start
 		char* label = malloc(n + 1)
-		for i in range(n):
-			label[i] = p.text[start + i]
+		for i in range(n): label[i] = p.text[start + i]
 		label[n] = 0
 		op.kind = ASM_OP_LABEL
 		op.label = label
@@ -205,11 +184,9 @@ int asm_x86_parse(char* line, int arch, asm_insn* insn):
 	asm_parse* p = &parse
 
 	insn.mnemonic = asm_parse_token(p)
-	if (insn.mnemonic[0] == 0):
-		return 1 == 2
+	if (insn.mnemonic[0] == 0): return 1 == 2
 	asm_parse_skip_spaces(p)
-	if (asm_parse_peek(p) == 0):
-		return 1
+	if (asm_parse_peek(p) == 0): return 1
 	asm_parse_operand(p, &insn.op1, arch, 0)
 	asm_parse_skip_spaces(p)
 	if (asm_parse_peek(p) == ','):

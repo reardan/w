@@ -128,15 +128,13 @@ int sim_pair_index(sim_net* s, int a, int b):
 
 # 1 when the unordered pair (a, b) is currently blocked.
 int sim_partitioned(sim_net* s, int a, int b):
-	if (sim_pair_index(s, a, b) >= 0):
-		return 1
+	if (sim_pair_index(s, a, b) >= 0): return 1
 	return 0
 
 
 # Block the unordered pair (a, b) in both directions. Idempotent.
 void sim_partition(sim_net* s, int a, int b):
-	if (sim_pair_index(s, a, b) >= 0):
-		return
+	if (sim_pair_index(s, a, b) >= 0): return
 	int lo = a
 	int hi = b
 	if (lo > hi):
@@ -151,8 +149,7 @@ void sim_partition(sim_net* s, int a, int b):
 # blocking is evaluated at delivery time (header).
 void sim_heal(sim_net* s, int a, int b):
 	int idx = sim_pair_index(s, a, b)
-	if (idx < 0):
-		return
+	if (idx < 0): return
 	s.part_a.remove(idx)
 	s.part_b.remove(idx)
 
@@ -165,8 +162,7 @@ void sim_heal(sim_net* s, int a, int b):
 # now + a delay in [min_delay, max_delay]; 0 when the drop roll lost
 # the packet, in which case the caller keeps payload ownership.
 int sim_send(sim_net* s, int from, int to, char* payload):
-	if (prng_range(s.rng, 1000) < s.drop_per_mille):
-		return 0
+	if (prng_range(s.rng, 1000) < s.drop_per_mille): return 0
 	sim_packet* p = new sim_packet()
 	p.seq = s.next_seq
 	s.next_seq = s.next_seq + 1
@@ -193,8 +189,7 @@ int sim_find_due(sim_net* s):
 	while (i < s.in_flight.length):
 		sim_packet* p = s.in_flight[i]
 		if (p.deliver_at <= s.now):
-			if (best < 0):
-				best = i
+			if (best < 0): best = i
 			else:
 				sim_packet* q = s.in_flight[best]
 				if (p.deliver_at < q.deliver_at || (p.deliver_at == q.deliver_at && p.seq < q.seq)):
@@ -234,8 +229,7 @@ int sim_dropped_count(sim_net* s):
 # Oldest partition-dropped payload (FIFO), transferring ownership back
 # to the caller; 0 when the queue is empty.
 char* sim_take_dropped(sim_net* s):
-	if (s.dropped_payloads.length == 0):
-		return 0
+	if (s.dropped_payloads.length == 0): return 0
 	char* payload = s.dropped_payloads[0]
 	s.dropped_payloads.remove(0)
 	return payload

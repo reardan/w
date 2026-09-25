@@ -42,8 +42,7 @@ void test_embedded_nul_reaches_child():
 	process_result* r = run_cat_bytes(payload, 5)
 	assert_equal(0, r.status)
 	assert_equal(5, r.stdout_length)
-	for i in range(5):
-		assert_equal(payload[i] & 255, r.stdout_text[i] & 255)
+	for i in range(5): assert_equal(payload[i] & 255, r.stdout_text[i] & 255)
 	assert_equal(0, r.stderr_length)
 	process_result_free(r)
 	free(payload)

@@ -55,12 +55,9 @@ extern int GetProcAddress(int module, char* name)
 # Standard descriptors 0/1/2 map to the console handles; anything else is
 # already a Windows handle returned by open/create_file.
 int win_handle_for_fd(int fd):
-	if (fd == 0):
-		return GetStdHandle(-10)
-	if (fd == 1):
-		return GetStdHandle(-11)
-	if (fd == 2):
-		return GetStdHandle(-12)
+	if (fd == 0): return GetStdHandle(-10)
+	if (fd == 1): return GetStdHandle(-11)
+	if (fd == 2): return GetStdHandle(-12)
 	return fd
 
 
@@ -71,8 +68,7 @@ int open(char *filename, int mode, int permissions):
 	int rw = mode & 3
 	if (rw == 1):
 		access = 1073741824 /* GENERIC_WRITE */
-	if (rw == 2):
-		access = 2147483648 + 1073741824
+	if (rw == 2): access = 2147483648 + 1073741824
 	int creation = 3 /* OPEN_EXISTING */
 	if (mode & 64):
 		if (mode & 512):
@@ -89,35 +85,30 @@ int open(char *filename, int mode, int permissions):
 		# probes rely on it); reads from such a handle simply fail.
 		flags = flags + 33554432
 	int handle = CreateFileA(filename, access, 3, 0, creation, flags, 0)
-	if (handle == -1):
-		return -1
+	if (handle == -1): return -1
 	return handle
 
 
 int create_file(char* filename, int permissions):
 	int handle = CreateFileA(filename, 1073741824, 3, 0, 2, 128, 0)
-	if (handle == -1):
-		return -1
+	if (handle == -1): return -1
 	return handle
 
 
 int write(int file, char* s, int length):
 	int written = 0
-	if (WriteFile(win_handle_for_fd(file), s, length, &written, 0) == 0):
-		return -1
+	if (WriteFile(win_handle_for_fd(file), s, length, &written, 0) == 0): return -1
 	return written
 
 
 int read(int file, char* buf, int size):
 	int nread = 0
-	if (ReadFile(win_handle_for_fd(file), buf, size, &nread, 0) == 0):
-		return -1
+	if (ReadFile(win_handle_for_fd(file), buf, size, &nread, 0) == 0): return -1
 	return nread
 
 
 int close(int file):
-	if (CloseHandle(file) == 0):
-		return -1
+	if (CloseHandle(file) == 0): return -1
 	return 0
 
 
@@ -128,22 +119,19 @@ int seek(int file, int offset, int reference):
 
 
 int unlink(char* path):
-	if (DeleteFileA(path) == 0):
-		return -1
+	if (DeleteFileA(path) == 0): return -1
 	return 0
 
 
 int rename(char* oldpath, char* newpath):
-	if (MoveFileA(oldpath, newpath) == 0):
-		return -1
+	if (MoveFileA(oldpath, newpath) == 0): return -1
 	return 0
 
 
 # FlushFileBuffers forces the file's buffered data to disk, the
 # kernel32 equivalent of fsync(2).
 int fsync(int file):
-	if (FlushFileBuffers(win_handle_for_fd(file)) == 0):
-		return -1
+	if (FlushFileBuffers(win_handle_for_fd(file)) == 0): return -1
 	return 0
 
 
@@ -155,28 +143,24 @@ int fdatasync(int file):
 
 # Directory syscalls:
 int mkdir(char* path, int mode):
-	if (CreateDirectoryA(path, 0) == 0):
-		return -1
+	if (CreateDirectoryA(path, 0) == 0): return -1
 	return 0
 
 
 int rmdir(char* path):
-	if (RemoveDirectoryA(path) == 0):
-		return -1
+	if (RemoveDirectoryA(path) == 0): return -1
 	return 0
 
 
 int chdir(char* path):
-	if (SetCurrentDirectoryA(path) == 0):
-		return -1
+	if (SetCurrentDirectoryA(path) == 0): return -1
 	return 0
 
 
 # Linux getcwd returns the string length including the terminator.
 int getcwd(char* buf, int size):
 	int len = GetCurrentDirectoryA(size, buf)
-	if (len == 0):
-		return -1
+	if (len == 0): return -1
 	return len + 1
 
 
@@ -192,8 +176,7 @@ int linux_time(int* out):
 	int filetime = 0
 	GetSystemTimeAsFileTime(&filetime)
 	int seconds = filetime / 10000000 - 134774 * 86400
-	if (out != 0):
-		*out = seconds
+	if (out != 0): *out = seconds
 	return seconds
 
 
@@ -204,8 +187,7 @@ int clock_gettime(int clock_id, int* out):
 	int frequency = 0
 	QueryPerformanceCounter(&count)
 	QueryPerformanceFrequency(&frequency)
-	if (frequency == 0):
-		return -1
+	if (frequency == 0): return -1
 	out[0] = count / frequency
 	# The remainder is below the frequency (usually 10MHz), so the
 	# multiplication by 1e9 stays far from overflowing 64 bits.
@@ -274,8 +256,7 @@ int mmap(int addr, int length, int prot, int flags):
 	if (prot & 4):
 		protect = 64 /* PAGE_EXECUTE_READWRITE */
 	int base = VirtualAlloc(0, length, 12288, protect) /* MEM_RESERVE|MEM_COMMIT */
-	if (base == 0):
-		return -12
+	if (base == 0): return -12
 	return base
 
 
@@ -296,8 +277,7 @@ int mprotect(int addr, int length, int prot):
 		if (prot & 4):
 			protect = 64 /* PAGE_EXECUTE_READWRITE */
 	int old_protect = 0
-	if (VirtualProtect(addr, length, protect, &old_protect) == 0):
-		return -1
+	if (VirtualProtect(addr, length, protect, &old_protect) == 0): return -1
 	return 0
 
 
@@ -406,8 +386,7 @@ int wait4(int pid, int* status, int options, int rusage):
 int pipe(int* fds):
 	int read_end = 0
 	int write_end = 0
-	if (CreatePipe(&read_end, &write_end, 0, 0) == 0):
-		return -1
+	if (CreatePipe(&read_end, &write_end, 0, 0) == 0): return -1
 	save_int32(cast(char*, fds), read_end)
 	save_int32(cast(char*, fds) + 4, write_end)
 	return 0
@@ -462,13 +441,11 @@ pages, flipped writable only while a new thunk is written. Returns 0
 when fn is 0 or nargs is out of range.
 */
 int win_callback(int fn, int nargs):
-	if ((fn == 0) || (nargs < 0) || (nargs > 16)):
-		return 0
+	if ((fn == 0) || (nargs < 0) || (nargs > 16)): return 0
 	int size = 64 + nargs * 7
 	if ((win_thunk_page == 0) || (win_thunk_used + size > 4096)):
 		win_thunk_page = VirtualAlloc(0, 4096, 12288, 4) /* commit, PAGE_READWRITE */
-		if (win_thunk_page == 0):
-			return 0
+		if (win_thunk_page == 0): return 0
 		win_thunk_used = 0
 	else:
 		int old = 0
@@ -567,13 +544,11 @@ float results are not supported. Returns 0 when sym is 0 or nargs is
 out of range.
 */
 int win_c_function(int sym, int nargs, int ret32):
-	if ((sym == 0) || (nargs < 0) || (nargs > 16)):
-		return 0
+	if ((sym == 0) || (nargs < 0) || (nargs > 16)): return 0
 	int size = 48 + nargs * 18
 	if ((win_thunk_page == 0) || (win_thunk_used + size > 4096)):
 		win_thunk_page = VirtualAlloc(0, 4096, 12288, 4) /* commit, PAGE_READWRITE */
-		if (win_thunk_page == 0):
-			return 0
+		if (win_thunk_page == 0): return 0
 		win_thunk_used = 0
 	else:
 		int old = 0
@@ -581,11 +556,9 @@ int win_c_function(int sym, int nargs, int ret32):
 	int start = win_thunk_page + win_thunk_used
 	char* p = cast(char*, start)
 	int stack_args = 0
-	if (nargs > 4):
-		stack_args = nargs - 4
+	if (nargs > 4): stack_args = nargs - 4
 	int frame = 32 + stack_args * 8
-	if ((frame & 15) != 0):
-		frame = frame + 8
+	if ((frame & 15) != 0): frame = frame + 8
 	win_thunk_byte(p, 0, 85)        /* push rbp */
 	win_thunk_byte(p, 1, 72)        /* mov rbp,rsp */
 	win_thunk_byte(p, 2, 137)
@@ -664,10 +637,8 @@ int win_c_function(int sym, int nargs, int ret32):
 # ones it does not own through (EXCEPTION_CONTINUE_SEARCH).
 int win_crash_filter_install(int handler):
 	int thunk = win_callback(handler, 1)
-	if (thunk == 0):
-		return 0
-	if (AddVectoredExceptionHandler(1, thunk) == 0):
-		return 0
+	if (thunk == 0): return 0
+	if (AddVectoredExceptionHandler(1, thunk) == 0): return 0
 	return 1
 
 
@@ -703,8 +674,7 @@ char* win_mbi_buffer
 
 
 char* win_mbi_scratch():
-	if (win_mbi_buffer == 0):
-		win_mbi_buffer = cast(char*, mmap(0, 4096, 3, 34))
+	if (win_mbi_buffer == 0): win_mbi_buffer = cast(char*, mmap(0, 4096, 3, 34))
 	return win_mbi_buffer
 
 
@@ -718,18 +688,15 @@ int sys_mincore(int addr, int length, int vec):
 	int p = addr - (addr & 4095)
 	int end = addr + length
 	while (p < end):
-		if (VirtualQuery(p, info, 48) == 0):
-			return -12
+		if (VirtualQuery(p, info, 48) == 0): return -12
 		int state = load_int32(info + 32)
 		int protect = load_int32(info + 36)
 		if (state != 4096): /* MEM_COMMIT */
 			return -12
 		# PAGE_NOACCESS (1) and PAGE_GUARD (0x100) pages fault on read.
-		if ((protect & 1) || (protect & 256)):
-			return -12
+		if ((protect & 1) || (protect & 256)): return -12
 		int region_end = load_int64(info) + load_int64(info + 24)
-		if (region_end <= p):
-			return -12
+		if (region_end <= p): return -12
 		p = region_end
 	return 0
 
@@ -762,35 +729,29 @@ int _main(int argc, int argv);
 int _win_start(int stub_argc, int stub_argv):
 	char* cmd = GetCommandLineA()
 	int len = 0
-	while (cmd[len] != 0):
-		len = len + 1
+	while (cmd[len] != 0): len = len + 1
 	char* env = GetEnvironmentStringsA()
 	int env_count = 0
 	if (env != 0):
 		int e = 0
 		while (env[e] != 0):
-			if (env[e] != '='):
-				env_count = env_count + 1
-			while (env[e] != 0):
-				e = e + 1
+			if (env[e] != '='): env_count = env_count + 1
+			while (env[e] != 0): e = e + 1
 			e = e + 1
 	# Worst case one argument per two characters; the block holds the
 	# argv array, the environment vector, then the unquoted copy.
 	int max_args = len / 2 + 2
 	int slots = max_args + env_count + 2
 	int block = mmap(0, slots * 8 + len + 1, 3, 34)
-	if (block < 0):
-		return _main(stub_argc, stub_argv)
+	if (block < 0): return _main(stub_argc, stub_argv)
 	char** argv = cast(char**, block)
 	char* buf = cast(char*, block + slots * 8)
 	int argc = 0
 	int i = 0
 	int b = 0
 	while (cmd[i] != 0):
-		while ((cmd[i] == ' ') || (cmd[i] == 9)):
-			i = i + 1
-		if (cmd[i] == 0):
-			break
+		while ((cmd[i] == ' ') || (cmd[i] == 9)): i = i + 1
+		if (cmd[i] == 0): break
 		argv[argc] = buf + b
 		argc = argc + 1
 		int quoted = 0
@@ -798,8 +759,7 @@ int _win_start(int stub_argc, int stub_argv):
 			if (cmd[i] == 34): /* double quote toggles word grouping */
 				quoted = 1 - quoted
 				i = i + 1
-			else if ((quoted == 0) && ((cmd[i] == ' ') || (cmd[i] == 9))):
-				break
+			else if ((quoted == 0) && ((cmd[i] == ' ') || (cmd[i] == 9))): break
 			else:
 				buf[b] = cmd[i]
 				b = b + 1
@@ -814,8 +774,7 @@ int _win_start(int stub_argc, int stub_argv):
 			if (env[e2] != '='):
 				argv[n] = env + e2
 				n = n + 1
-			while (env[e2] != 0):
-				e2 = e2 + 1
+			while (env[e2] != 0): e2 = e2 + 1
 			e2 = e2 + 1
 	argv[n] = cast(char*, 0)
 	return _main(argc, cast(int, argv))

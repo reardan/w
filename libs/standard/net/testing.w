@@ -53,8 +53,7 @@ void net_test_send_all(int fd, char* data, int n):
 	int total = 0
 	while (total < n):
 		int got = socket_send(fd, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			return
+		if (got <= 0): return
 		total = total + got
 
 
@@ -67,8 +66,7 @@ void net_test_send_text(int fd, char* text):
 void net_test_drain(int fd):
 	char* scratch = malloc(1024)
 	int got = read(fd, scratch, 1024)
-	while (got > 0):
-		got = read(fd, scratch, 1024)
+	while (got > 0): got = read(fd, scratch, 1024)
 	free(scratch)
 
 
@@ -116,11 +114,9 @@ void net_test_read_head(int fd):
 	int total = 0
 	while (total < 8192):
 		int got = read(fd, buf + total, 8192 - total)
-		if (got <= 0):
-			break
+		if (got <= 0): break
 		total = total + got
-		if (net_test_head_end(buf, total) >= 0):
-			break
+		if (net_test_head_end(buf, total) >= 0): break
 	free(buf)
 
 
@@ -129,8 +125,7 @@ void net_test_read_head(int fd):
 void net_test_finish(int pid, int listener):
 	int status = 0
 	wait4(pid, &status, 0, 0)
-	if (listener >= 0):
-		close(listener)
+	if (listener >= 0): close(listener)
 	if (status != 0):
 		print2(c"fixture child status: ")
 		println2(itoa(status))

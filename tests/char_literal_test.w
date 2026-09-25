@@ -68,10 +68,7 @@ void test_char_default_arg():
 void test_char_in_switch():
 	int hits = 0
 	switch ('\n'):
-		case '\t':
-			hits = 2
-		case 10:
-			hits = 1
-		default:
-			hits = 3
+		case '\t': hits = 2
+		case 10: hits = 1
+		default: hits = 3
 	assert_equal(1, hits)

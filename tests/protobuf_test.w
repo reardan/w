@@ -357,8 +357,7 @@ void test_message_bytes_embedded_nul_and_utf8_string():
 	assert_equal(0, decoded.data.data[1])
 	assert_equal('b', decoded.data.data[2])
 	assert_equal(5, decoded.utf8.length)
-	for j in range(5):
-		assert_equal(text[j] & 255, decoded.utf8.data[j] & 255)
+	for j in range(5): assert_equal(text[j] & 255, decoded.utf8.data[j] & 255)
 	free(decoded.data.data)
 	free(decoded.utf8.data)
 	result_free[char*](r)
@@ -1069,12 +1068,10 @@ void test_message_roundtrip_property_simple():
 		# the actual varint path every trial (zero-field omission is
 		# covered by its own dedicated test above).
 		m.a = rand_below(&rs, 2000000000) - 1000000000
-		if (m.a == 0):
-			m.a = 1
+		if (m.a == 0): m.a = 1
 		int slen = rand_below(&rs, 12)
 		char* s = malloc(slen + 1)
-		for i in range(slen):
-			s[i] = 'a' + rand_below(&rs, 26)
+		for i in range(slen): s[i] = 'a' + rand_below(&rs, 26)
 		s[slen] = 0
 		m.b.data = s
 		m.b.length = slen
@@ -1086,10 +1083,8 @@ void test_message_roundtrip_property_simple():
 		pb_test_simple_msg* decoded = cast(pb_test_simple_msg*, result_value[char*](r))
 		assert_equal(m.a, decoded.a)
 		assert_equal(slen, decoded.b.length)
-		for j in range(slen):
-			assert_equal(s[j] & 255, decoded.b.data[j] & 255)
-		if (slen > 0):
-			free(decoded.b.data)
+		for j in range(slen): assert_equal(s[j] & 255, decoded.b.data[j] & 255)
+		if (slen > 0): free(decoded.b.data)
 		free(cast(char*, decoded))
 		result_free[char*](r)
 		free(out)
@@ -1119,8 +1114,7 @@ void test_message_roundtrip_property_repeated():
 		assert_equal(1, result_is_ok[char*](r))
 		pb_test_rep_msg* decoded = cast(pb_test_rep_msg*, buf)
 		assert_equal(count, decoded.values.length)
-		for j in range(count):
-			assert_equal(rm.values[j], decoded.values[j])
+		for j in range(count): assert_equal(rm.values[j], decoded.values[j])
 		result_free[char*](r)
 		free(out)
 		free(buf)

@@ -29,8 +29,7 @@ void mem_fill[T](T* dst, T v, int n):
 int mem_eq[T](T* a, T* b, int n):
 	int i = 0
 	while (i < n):
-		if (a[i] != b[i]):
-			return 0
+		if (a[i] != b[i]): return 0
 		i = i + 1
 	return 1
 

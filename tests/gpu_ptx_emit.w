@@ -15,8 +15,7 @@ char* __w_ptx_module();
 # Float vector add: the cuda.md reference kernel.
 kernel add(float32* a, float32* b, float32* c, int n):
 	int i = block_idx() * block_dim() + thread_idx()
-	if i < n:
-		c[i] = a[i] + b[i]
+	if i < n: c[i] = a[i] + b[i]
 
 
 # Integer kernel: while-loop (grid-stride), multiplication, comparisons.
@@ -31,8 +30,7 @@ kernel scale(int* v, int n, int k):
 # float64 arithmetic and an int -> float conversion.
 kernel axpb64(float64* y, float64 aa, float64 b, int n):
 	int i = block_idx() * block_dim() + thread_idx()
-	if i < n:
-		y[i] = aa * y[i] + b + i
+	if i < n: y[i] = aa * y[i] + b + i
 
 
 # All nine 32-bit limb/bit intrinsics on device (same masked-unsigned
@@ -80,8 +78,7 @@ kernel stage(float32* a, int n):
 	int tid = thread_idx()
 	buf[tid] = 0.0
 	gpu_barrier()
-	if tid < n:
-		a[tid] = buf[tid]
+	if tid < n: a[tid] = buf[tid]
 
 
 int main(int argc, int argv):

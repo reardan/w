@@ -4,13 +4,10 @@ rather than under a rect (docs/projects/ui_widgets.md §9).
 
 	ui_menu_open_on_right_click(ctx, sidebar, &menu)
 	if (ui_menu_begin(ctx, &menu)):
-		if (ui_menu_item(ctx, &menu, c"New File", 1)):
-			new_file()
-		if (ui_menu_item(ctx, &menu, c"Rename", has_selection)):
-			rename()
+		if (ui_menu_item(ctx, &menu, c"New File", 1)): new_file()
+		if (ui_menu_item(ctx, &menu, c"Rename", has_selection)): rename()
 		ui_menu_separator(ctx, &menu)
-		if (ui_menu_item(ctx, &menu, c"Delete", has_selection)):
-			delete()
+		if (ui_menu_item(ctx, &menu, c"Delete", has_selection)): delete()
 		ui_menu_end(ctx, &menu)
 
 Items are a walk, so the menu's height is whatever the caller issues —
@@ -76,16 +73,12 @@ void ui_menu_init(ui_menu_state* st, float32 w):
 # The edge is consumed, so two overlapping areas cannot both open one.
 # Returns 1 on the frame the menu opens.
 int ui_menu_open_on_right_click(ui_context* ctx, ui_rect area, ui_menu_state* st):
-	if (ctx.input.mouse_right_pressed == 0):
-		return 0
-	if (ctx.disabled):
-		return 0
-	if (ui_scope_blocked(ctx)):
-		return 0
+	if (ctx.input.mouse_right_pressed == 0): return 0
+	if (ctx.disabled): return 0
+	if (ui_scope_blocked(ctx)): return 0
 	float32 px = cast(float32, ctx.input.right_x)
 	float32 py = cast(float32, ctx.input.right_y)
-	if (ui_rect_contains(area, px, py) == 0):
-		return 0
+	if (ui_rect_contains(area, px, py) == 0): return 0
 	ctx.input.mouse_right_pressed = 0
 	st.open = 1
 	st.at_x = px
@@ -110,8 +103,7 @@ int ui_menu_begin(ui_context* ctx, ui_menu_state* st):
 	# then puts the surface just below it, flipping and shifting to stay
 	# inside the viewport, which is exactly what a context menu wants.
 	ui_rect anchor = ui_rect_new(st.at_x, st.at_y, 0.0, 0.0)
-	if (ui_popover_begin(ctx, id, anchor, st.w, st.height, &st.open) == 0):
-		return 0
+	if (ui_popover_begin(ctx, id, anchor, st.w, st.height, &st.open) == 0): return 0
 	# Items place themselves against the surface, not the pad-inset body
 	# region a popover hands out, so the highlight spans the full width.
 	return 1
@@ -145,8 +137,7 @@ int ui_menu_item(ui_context* ctx, ui_menu_state* st, char* label, int enabled):
 
 	int scale = ctx.theme.text_scale
 	ui_color ink = ctx.theme.text
-	if (enabled == 0):
-		ink = ctx.theme.disabled_text
+	if (enabled == 0): ink = ctx.theme.disabled_text
 	float32 ty = row.y + (row.h - cast(float32, ui_text_height(scale))) * 0.5
 	ui_clip_push(ctx.rndr, row)
 	ui_draw_text(ctx.rndr, row.x + pad, ty, label, scale, ink)
@@ -169,6 +160,5 @@ void ui_menu_separator(ui_context* ctx, ui_menu_state* st):
 # Leave the menu, recording the height the next frame will place with.
 void ui_menu_end(ui_context* ctx, ui_menu_state* st):
 	float32 measured = st.pen_y + cast(float32, ctx.theme.pad) * 2.0
-	if (measured > 0.0):
-		st.height = measured
+	if (measured > 0.0): st.height = measured
 	ui_popover_end(ctx)

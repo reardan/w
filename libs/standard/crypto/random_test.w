@@ -7,8 +7,7 @@ import lib.mem
 int count_zero_bytes(char* buf, int len):
 	int zeros = 0
 	for i in range(len):
-		if ((buf[i] & 255) == 0):
-			zeros = zeros + 1
+		if ((buf[i] & 255) == 0): zeros = zeros + 1
 	return zeros
 
 
@@ -32,8 +31,7 @@ void test_random_two_draws_differ():
 	assert_equal(1, random_bytes(b, n))
 	int same = 1
 	for i in range(n):
-		if ((a[i] & 255) != (b[i] & 255)):
-			same = 0
+		if ((a[i] & 255) != (b[i] & 255)): same = 0
 	asserts(c"two 32-byte draws were identical", same == 0)
 	free(b)
 	free(a)
@@ -46,8 +44,7 @@ void test_random_bytes_respects_length():
 	char* buf = malloc(total)
 	mem_fill(buf, 'Z', total)
 	assert_equal(1, random_bytes(buf, ask))
-	for i in range(ask, total):
-		assert_equal('Z', buf[i] & 255)
+	for i in range(ask, total): assert_equal('Z', buf[i] & 255)
 	free(buf)
 
 

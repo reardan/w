@@ -73,20 +73,17 @@ void test_int_list_sum():
 void test_int_list_empty():
 	int_list* a = int_list_new()
 	int count = 0
-	for int x in a:
-		count = count + 1
+	for int x in a: count = count + 1
 	assert_equal(0, count)
 	int_list_free(a)
 
 
 void test_int_list_break():
 	int_list* a = int_list_new()
-	for int i in range(10):
-		int_list_push(a, i)
+	for int i in range(10): int_list_push(a, i)
 	int sum = 0
 	for int x in a:
-		if (x == 3):
-			break
+		if (x == 3): break
 		sum = sum + x
 	assert_equal(3, sum) /* 0 + 1 + 2 */
 	int_list_free(a)
@@ -94,12 +91,10 @@ void test_int_list_break():
 
 void test_int_list_continue():
 	int_list* a = int_list_new()
-	for int i in range(10):
-		int_list_push(a, i)
+	for int i in range(10): int_list_push(a, i)
 	int sum = 0
 	for int x in a:
-		if (x % 2):
-			continue
+		if (x % 2): continue
 		sum = sum + x
 	assert_equal(20, sum) /* 0 + 2 + 4 + 6 + 8 */
 	int_list_free(a)
@@ -114,8 +109,7 @@ void test_nested_two_lists():
 	int_list_push(inner, 20)
 	int sum = 0
 	for int x in outer:
-		for int y in inner:
-			sum = sum + x * y
+		for int y in inner: sum = sum + x * y
 	assert_equal(90, sum) /* (1+2) * (10+20) */
 	int_list_free(outer)
 	int_list_free(inner)
@@ -128,8 +122,7 @@ void test_nested_same_list():
 	int_list_push(a, 3)
 	int count = 0
 	for int x in a:
-		for int y in a:
-			count = count + 1
+		for int y in a: count = count + 1
 	assert_equal(9, count)
 	int_list_free(a)
 
@@ -142,8 +135,7 @@ void test_nested_break_inner_only():
 	int count = 0
 	for int x in a:
 		for int y in a:
-			if (y == 2):
-				break
+			if (y == 2): break
 			count = count + 1
 	assert_equal(3, count) /* inner loop runs once per outer element */
 	int_list_free(a)
@@ -155,23 +147,20 @@ void test_range_inside_container_loop():
 	int_list_push(a, 3)
 	int sum = 0
 	for int x in a:
-		for int i in range(x):
-			sum = sum + 1
+		for int i in range(x): sum = sum + 1
 	assert_equal(5, sum)
 	int_list_free(a)
 
 
 int_list* make_list(int n):
 	int_list* a = int_list_new()
-	for int i in range(n):
-		int_list_push(a, i + 1)
+	for int i in range(n): int_list_push(a, i + 1)
 	return a
 
 
 void test_iterable_from_call_expression():
 	int sum = 0
-	for int x in make_list(4):
-		sum = sum + x
+	for int x in make_list(4): sum = sum + x
 	assert_equal(10, sum) /* 1 + 2 + 3 + 4 */
 
 
@@ -201,7 +190,6 @@ int countdown_iter_value(countdown* c, int cursor):
 void test_user_defined_container():
 	countdown* c = countdown_new(4)
 	int digits = 0
-	for int x in c:
-		digits = digits * 10 + x
+	for int x in c: digits = digits * 10 + x
 	assert_equal(4321, digits)
 	free(c)

@@ -74,8 +74,7 @@ void test_mutex_exact_under_contention():
 
 void broadcast_worker(void* arg):
 	mutex_lock(go_mutex)
-	while (go_flag == 0):
-		cond_wait(go_cond, go_mutex)
+	while (go_flag == 0): cond_wait(go_cond, go_mutex)
 	mutex_unlock(go_mutex)
 	atomic_add(&go_acks, 1)
 
@@ -111,8 +110,7 @@ void pingpong_worker(void* arg):
 	int rounds = cast(int, arg)
 	for i in range(rounds):
 		mutex_lock(go_mutex)
-		while (pingpong_turn == 0):
-			cond_wait(go_cond, go_mutex)
+		while (pingpong_turn == 0): cond_wait(go_cond, go_mutex)
 		pingpong_count = pingpong_count + 1
 		pingpong_turn = 0
 		cond_signal(go_cond)
@@ -135,8 +133,7 @@ void test_cond_signal_pingpong():
 	asserts(c"thread_spawn failed", cast(int, t) != 0)
 	for i in range(rounds):
 		mutex_lock(go_mutex)
-		while (pingpong_turn == 1):
-			cond_wait(go_cond, go_mutex)
+		while (pingpong_turn == 1): cond_wait(go_cond, go_mutex)
 		pingpong_turn = 1
 		cond_signal(go_cond)
 		mutex_unlock(go_mutex)

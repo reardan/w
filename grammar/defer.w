@@ -47,8 +47,7 @@ list[defer_span_record] defer_spans
 
 
 int defer_count():
-	if (cast(int, defer_spans) == 0):
-		return 0
+	if (cast(int, defer_spans) == 0): return 0
 	return defer_spans.length
 
 
@@ -57,8 +56,7 @@ int defer_count():
 # entry with this (the type_table_truncate trick — list[T]'s '.length'
 # is read-only at the language level).
 void defer_truncate(int n):
-	if (cast(int, defer_spans) == 0):
-		return;
+	if (cast(int, defer_spans) == 0): return;
 	__w_list* raw = cast(__w_list*, defer_spans)
 	raw.length = n
 
@@ -87,10 +85,8 @@ with the first token of the deferred statement current.
 void defer_check_form():
 	if ((token_newline != 0) || (token[0] == 0)):
 		error(c"a statement must follow 'defer' on the same line")
-	if (peek(c"return")):
-		error(c"'return' is not allowed in a deferred statement")
-	if (peek(c"defer")):
-		error(c"'defer' cannot be nested in a deferred statement")
+	if (peek(c"return")): error(c"'return' is not allowed in a deferred statement")
+	if (peek(c"defer")): error(c"'defer' cannot be nested in a deferred statement")
 	if (peek(c"if") | peek(c"elif") | peek(c"else") | peek(c"while") | peek(c"for") |
 			peek(c"break") | peek(c"continue") | peek(c"yield") | peek(c"pass") |
 			peek(c"debugger") | peek(c"raw_asm") | peek(c"{") | peek(c":")):
@@ -107,16 +103,14 @@ void defer_check_form():
 # are newline-terminated, so the span ends at the line's end.
 void defer_register():
 	defer_check_form()
-	if (cast(int, defer_spans) == 0):
-		defer_spans = new list[defer_span_record]
+	if (cast(int, defer_spans) == 0): defer_spans = new list[defer_span_record]
 	defer_span_record rec
 	rec.file = strclone(filename)
 	rec.offset = token_start_offset
 	rec.line = diag_token_line - 1
 	rec.column = diag_token_column - 1
 	defer_spans.push(rec)
-	while ((token_newline == 0) && (token[0] != 0)):
-		get_token()
+	while ((token_newline == 0) && (token[0] != 0)): get_token()
 
 
 # Open the recorded file, seek to the span start and prime the
@@ -125,8 +119,7 @@ void defer_register():
 void defer_reparse_start(int i):
 	char* path = defer_spans[i].file
 	file = open(path, 0, 511)
-	if (file < 0):
-		error3(c"cannot reopen deferred statement file '", path, c"'")
+	if (file < 0): error3(c"cannot reopen deferred statement file '", path, c"'")
 	filename = path
 	getchar_reset(file)
 	getchar_seek(file, defer_spans[i].offset)
@@ -163,8 +156,7 @@ void defer_emit_all():
 # preserved either way). Save it around the deferred statements so they
 # cannot clobber it.
 void defer_emit_returning():
-	if (defer_count() == 0):
-		return;
+	if (defer_count() == 0): return;
 	push_slot()
 	defer_emit_all()
 	pop_eax_slot()

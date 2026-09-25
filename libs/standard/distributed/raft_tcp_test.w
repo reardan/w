@@ -30,13 +30,10 @@ void rt_pump_until(raft_tcp* a, raft_tcp* b, raft_tcp* c_or_0, int want_total_in
 	for i in range(max_iters):
 		raft_tcp_pump(a)
 		raft_tcp_pump(b)
-		if (cast(int, c_or_0) != 0):
-			raft_tcp_pump(c_or_0)
+		if (cast(int, c_or_0) != 0): raft_tcp_pump(c_or_0)
 		int total = raft_tcp_inbox_count(a) + raft_tcp_inbox_count(b)
-		if (cast(int, c_or_0) != 0):
-			total = total + raft_tcp_inbox_count(c_or_0)
-		if (total >= want_total_inbox):
-			return
+		if (cast(int, c_or_0) != 0): total = total + raft_tcp_inbox_count(c_or_0)
+		if (total >= want_total_inbox): return
 	asserts(c"rt_pump_until: inbox target not reached", 0)
 
 
@@ -280,8 +277,7 @@ void test_send_before_peer_listens():
 
 	# Nothing listens yet: pumps observe the refused connect, drop the
 	# socket, and retain the buffered frame.
-	for i in range(20):
-		raft_tcp_pump(a)
+	for i in range(20): raft_tcp_pump(a)
 	assert_equal(0, raft_tcp_inbox_count(a))
 
 	raft_tcp* b = raft_tcp_new(2, base + 13)
@@ -447,8 +443,7 @@ void test_partial_head_accounting_with_slow_peer():
 		asserts(c"pending bytes stay bounded by the cap", pb >= 0 && pb <= 4096)
 		int head_sent = pf * fsize - pb
 		asserts(c"head frame intact or split at its sent prefix", head_sent >= 0 && head_sent < fsize)
-		if (pf == 0):
-			assert_equal(0, pb)
+		if (pf == 0): assert_equal(0, pb)
 
 	# Drain: every surviving frame arrives intact and in order (terms
 	# strictly increasing up to the very last send), proving the byte

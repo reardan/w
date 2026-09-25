@@ -243,10 +243,8 @@ wrefs* wvc_open_refs(char* meta):
 
 # A rev is either a 64-hex commit id already, or a ref name to resolve.
 char* wvc_resolve_rev(wcas* store, wrefs* refs, char* rev):
-	if (cas_valid_id(rev)):
-		return strclone(rev)
-	if (ref_valid_name(rev)):
-		return wvc_unwrap[char*](ref_read(refs, rev), c"cannot resolve rev")
+	if (cas_valid_id(rev)): return strclone(rev)
+	if (ref_valid_name(rev)): return wvc_unwrap[char*](ref_read(refs, rev), c"cannot resolve rev")
 	wvc_fail(c"rev is neither a commit id nor a valid ref name", -22)
 	return 0
 
@@ -262,12 +260,10 @@ char* wvc_resolve_rev(wcas* store, wrefs* refs, char* rev):
 # once per merge side -- everything reachable from the first call short-
 # circuits instantly on the second.
 void wvc_dag_insert_ancestors(dag* d, wcas* store, map[char*, int] visited, char* commit_hex):
-	if (commit_hex in visited):
-		return
+	if (commit_hex in visited): return
 	visited[commit_hex] = 1
 	commit_object* co = wvc_unwrap[commit_object*](commit_load(store, commit_hex), c"cannot load commit history for merge-base")
-	for char* parent_hex in co.parent_ids:
-		wvc_dag_insert_ancestors(d, store, visited, parent_hex)
+	for char* parent_hex in co.parent_ids: wvc_dag_insert_ancestors(d, store, visited, parent_hex)
 
 	int raw_len = 0
 	char* raw = hex_decode(commit_hex, 64, &raw_len)
@@ -277,8 +273,7 @@ void wvc_dag_insert_ancestors(dag* d, wcas* store, map[char*, int] visited, char
 		parent_raws.push(hex_decode(parent_hex, 64, &plen))
 	dag_add_node(d, raw, parent_raws)
 	free(raw)
-	for char* p in parent_raws:
-		free(p)
+	for char* p in parent_raws: free(p)
 	list_free[char*](parent_raws)
 	commit_free(co)
 
@@ -304,8 +299,7 @@ int wvc_cmd_init(int argc, int argv):
 	# itself is that parent for <dir>/.wvc, so create it first (like
 	# git init making its target directory).
 	int mkdir_err = mkdir(dir, 493)
-	if ((mkdir_err < 0) && (mkdir_err != -17)):
-		wvc_fail(c"cannot create directory", mkdir_err)
+	if ((mkdir_err < 0) && (mkdir_err != -17)): wvc_fail(c"cannot create directory", mkdir_err)
 
 	char* meta = repo_meta_dir(dir)
 	wcas* store = wvc_open_store(meta)
@@ -345,8 +339,7 @@ int wvc_cmd_snapshot(int argc, int argv):
 				return 2
 			char** v = argv + i * __word_size__
 			author = *v
-		else if (dir == 0):
-			dir = a
+		else if (dir == 0): dir = a
 		else:
 			wvc_usage()
 			return 2
@@ -368,15 +361,13 @@ int wvc_cmd_snapshot(int argc, int argv):
 	char* index_path = repo_index_path(meta)
 	wresult[windex*]* prev_index_r = index_read(index_path)
 	windex* prev_index = 0
-	if (result_is_ok[windex*](prev_index_r)):
-		prev_index = result_value[windex*](prev_index_r)
+	if (result_is_ok[windex*](prev_index_r)): prev_index = result_value[windex*](prev_index_r)
 	result_free[windex*](prev_index_r)
 
 	list[char*] ignore = repo_ignore_list()
 	index_refresh_result* refreshed = wvc_unwrap[index_refresh_result*](index_refresh(store, dir, ignore, prev_index), c"snapshot failed")
 	list_free[char*](ignore)
-	if (prev_index != 0):
-		index_free(prev_index)
+	if (prev_index != 0): index_free(prev_index)
 	char* tree_id = refreshed.tree_id
 	windex* new_index = refreshed.index
 	free(refreshed)
@@ -410,8 +401,7 @@ int wvc_cmd_snapshot(int argc, int argv):
 
 	commit_free(co)
 	list_free[char*](parent_ids)
-	if (have_parent):
-		free(parent_id)
+	if (have_parent): free(parent_id)
 	free(tree_id)
 	index_free(new_index)
 	free(index_path)
@@ -459,18 +449,15 @@ int wvc_cmd_log(int argc, int argv):
 		commit_object* co = wvc_unwrap[commit_object*](commit_load(store, current_id), c"cannot load commit")
 		history.push(co)
 		history_ids.push(current_id)
-		if (co.parent_ids.length > 0):
-			current_id = strclone(co.parent_ids[0])
-		else:
-			current_id = 0
+		if (co.parent_ids.length > 0): current_id = strclone(co.parent_ids[0])
+		else: current_id = 0
 
 	wstream* out = stdout_writer()
 	int i = 0
 	while (i < history.length):
 		commit_object* co = history[i]
 		char* id = history_ids[i]
-		if (i > 0):
-			stream_write_line(out, c"")
+		if (i > 0): stream_write_line(out, c"")
 		stream_write_cstr(out, c"commit ")
 		stream_write_line(out, id)
 		stream_write_cstr(out, c"Author: ")
@@ -484,17 +471,14 @@ int wvc_cmd_log(int argc, int argv):
 		for char* l in lines:
 			stream_write_cstr(out, c"    ")
 			stream_write_line(out, l)
-		for char* l in lines:
-			free(l)
+		for char* l in lines: free(l)
 		list_free[char*](lines)
 		i = i + 1
 	stream_flush(out)
 
-	for commit_object* co in history:
-		commit_free(co)
+	for commit_object* co in history: commit_free(co)
 	list_free[commit_object*](history)
-	for char* id in history_ids:
-		free(id)
+	for char* id in history_ids: free(id)
 	list_free[char*](history_ids)
 	cas_close(store)
 	refs_close(refs)
@@ -594,8 +578,7 @@ int wvc_cmd_status(int argc, int argv):
 	wvc_unwrap[int](tree_diff(store, old_tree_id, new_tree_id, changes), c"status diff failed")
 
 	wstream* out = stdout_writer()
-	if (changes.length == 0):
-		stream_write_line(out, c"nothing to snapshot, working tree clean")
+	if (changes.length == 0): stream_write_line(out, c"nothing to snapshot, working tree clean")
 	else:
 		for tree_change* c in changes:
 			stream_write_byte(out, repo_status_char(c.status))
@@ -615,8 +598,7 @@ int wvc_cmd_status(int argc, int argv):
 
 	tree_changes_free(changes)
 	list_free[tree_change*](changes)
-	if (old_tree_id != 0):
-		free(old_tree_id)
+	if (old_tree_id != 0): free(old_tree_id)
 	free(new_tree_id)
 	free(index_path)
 	free(meta)
@@ -652,8 +634,7 @@ int wvc_cmd_merge(int argc, int argv):
 				return 2
 			char** v = argv + i * __word_size__
 			author = *v
-		else if (other_arg == 0):
-			other_arg = a
+		else if (other_arg == 0): other_arg = a
 		else:
 			wvc_usage()
 			return 2
@@ -703,8 +684,7 @@ int wvc_cmd_merge(int argc, int argv):
 	int other_raw_len = 0
 	char* other_raw = hex_decode(other_id, 64, &other_raw_len)
 	list[char*] base_raws = dag_merge_base(d, head_raw, other_raw)
-	if (base_raws.length == 0):
-		wvc_fail(c"HEAD and the given commit share no common ancestor", -22)
+	if (base_raws.length == 0): wvc_fail(c"HEAD and the given commit share no common ancestor", -22)
 	# dag_merge_base sorts results by ascending insertion sequence number
 	# already (dag.w's own header comment); base_raws[0] is therefore the
 	# deterministic "first" best common ancestor -- see the header
@@ -752,18 +732,15 @@ int wvc_cmd_merge(int argc, int argv):
 			int noop = 1
 		else if (ours_changed == 0):
 			# Only theirs changed: apply cleanly.
-			if (theirs_obj == 0):
-				repo_remove_file(dir, path)
-			else:
-				repo_write_file_bytes(dir, path, theirs_obj)
+			if (theirs_obj == 0): repo_remove_file(dir, path)
+			else: repo_write_file_bytes(dir, path, theirs_obj)
 		else if (theirs_changed == 0):
 			# Only ours changed: keep -- already on disk, no write.
 			int noop = 1
 		else if (repo_blob_content_equal(ours_obj, theirs_obj)):
 			# Both changed identically (including both deleting):
 			# coalesce.
-			if (ours_obj == 0):
-				repo_remove_file(dir, path)
+			if (ours_obj == 0): repo_remove_file(dir, path)
 		else if ((ours_obj == 0) || (theirs_obj == 0)):
 			# Modify/delete conflict: no third text to line-merge
 			# against. Keep whichever side still has content (git's own
@@ -771,8 +748,7 @@ int wvc_cmd_merge(int argc, int argv):
 			# to fall back on.
 			conflicts = conflicts + 1
 			wvc_report_conflict(out, c"modify/delete", path)
-			if (ours_obj == 0):
-				repo_write_file_bytes(dir, path, theirs_obj)
+			if (ours_obj == 0): repo_write_file_bytes(dir, path, theirs_obj)
 		else if (repo_is_binaryish(base_obj) || repo_is_binaryish(ours_obj) || repo_is_binaryish(theirs_obj)):
 			# Binary-ish: conflict wholesale, leave ours' content in
 			# place untouched -- never interleave binary bytes with
@@ -781,8 +757,7 @@ int wvc_cmd_merge(int argc, int argv):
 			wvc_report_conflict(out, c"binary", path)
 		else:
 			char* base_text = c""
-			if (base_obj != 0):
-				base_text = base_obj.data
+			if (base_obj != 0): base_text = base_obj.data
 			merge3_text_result* mr = merge3_merge_text(base_text, ours_obj.data, theirs_obj.data, 0, 0)
 			repo_ensure_parent_dirs(dir, path)
 			char* full_path = path_join(dir, path)
@@ -794,12 +769,9 @@ int wvc_cmd_merge(int argc, int argv):
 			free(mr.text)
 			free(mr)
 
-		if (base_obj != 0):
-			cas_object_free(base_obj)
-		if (ours_obj != 0):
-			cas_object_free(ours_obj)
-		if (theirs_obj != 0):
-			cas_object_free(theirs_obj)
+		if (base_obj != 0): cas_object_free(base_obj)
+		if (ours_obj != 0): cas_object_free(ours_obj)
+		if (theirs_obj != 0): cas_object_free(theirs_obj)
 
 	int result = 0
 	if (conflicts > 0):
@@ -810,13 +782,11 @@ int wvc_cmd_merge(int argc, int argv):
 		char* index_path = repo_index_path(meta)
 		wresult[windex*]* prev_index_r = index_read(index_path)
 		windex* prev_index = 0
-		if (result_is_ok[windex*](prev_index_r)):
-			prev_index = result_value[windex*](prev_index_r)
+		if (result_is_ok[windex*](prev_index_r)): prev_index = result_value[windex*](prev_index_r)
 		result_free[windex*](prev_index_r)
 		index_refresh_result* refreshed = wvc_unwrap[index_refresh_result*](index_refresh(store, dir, ignore, prev_index), c"merge failed while refreshing the dirstate")
 		list_free[char*](ignore)
-		if (prev_index != 0):
-			index_free(prev_index)
+		if (prev_index != 0): index_free(prev_index)
 		char* new_tree_id = refreshed.tree_id
 		windex* new_index = refreshed.index
 		free(refreshed)
@@ -845,8 +815,7 @@ int wvc_cmd_merge(int argc, int argv):
 		stream_write_line(out, commit_id)
 		stream_flush(out)
 
-		if (free_message):
-			free(final_message)
+		if (free_message): free(final_message)
 		commit_free(mco)
 		list_free[char*](parent_ids)
 		free(new_tree_id)
@@ -1014,23 +983,19 @@ int wvc_cmd_pack(int argc, int argv):
 	for i in range(2, argc):
 		char** arg = argv + i * __word_size__
 		char* a = *arg
-		if (strcmp(a, c"--prune") == 0):
-			prune = 1
-		else if (dir == 0):
-			dir = a
+		if (strcmp(a, c"--prune") == 0): prune = 1
+		else if (dir == 0): dir = a
 		else:
 			wvc_usage()
 			return 2
-	if (dir == 0):
-		dir = c"."
+	if (dir == 0): dir = c"."
 
 	char* meta = repo_meta_dir(dir)
 	wcas* store = wvc_open_store(meta)
 	pack_stats* st = wvc_unwrap[pack_stats*](pack_store_loose(store, prune), c"pack failed")
 
 	wstream* out = stdout_writer()
-	if (st.objects == 0):
-		stream_write_line(out, c"nothing to pack (no loose objects)")
+	if (st.objects == 0): stream_write_line(out, c"nothing to pack (no loose objects)")
 	else:
 		stream_write_cstr(out, c"packed ")
 		char* count_text = itoa(st.objects)
@@ -1038,8 +1003,7 @@ int wvc_cmd_pack(int argc, int argv):
 		free(count_text)
 		stream_write_cstr(out, c" objects into ")
 		stream_write_line(out, st.pack_path)
-		if (prune):
-			stream_write_line(out, c"pruned loose copies")
+		if (prune): stream_write_line(out, c"pruned loose copies")
 	stream_flush(out)
 
 	pack_stats_free(st)
@@ -1065,8 +1029,7 @@ int wvc_cmd_unpack(int argc, int argv):
 	pack_stats* st = wvc_unwrap[pack_stats*](pack_unpack_all(store), c"unpack failed")
 
 	wstream* out = stdout_writer()
-	if (st.packs == 0):
-		stream_write_line(out, c"nothing to unpack (no pack files)")
+	if (st.packs == 0): stream_write_line(out, c"nothing to unpack (no pack files)")
 	else:
 		stream_write_cstr(out, c"unpacked ")
 		char* count_text = itoa(st.objects)
@@ -1091,27 +1054,16 @@ int main(int argc, int argv):
 		return 2
 	char** cmd_arg = argv + __word_size__
 	char* cmd = *cmd_arg
-	if (strcmp(cmd, c"init") == 0):
-		return wvc_cmd_init(argc, argv)
-	if (strcmp(cmd, c"snapshot") == 0):
-		return wvc_cmd_snapshot(argc, argv)
-	if (strcmp(cmd, c"log") == 0):
-		return wvc_cmd_log(argc, argv)
-	if (strcmp(cmd, c"diff") == 0):
-		return wvc_cmd_diff(argc, argv)
-	if (strcmp(cmd, c"status") == 0):
-		return wvc_cmd_status(argc, argv)
-	if (strcmp(cmd, c"merge") == 0):
-		return wvc_cmd_merge(argc, argv)
-	if (strcmp(cmd, c"serve") == 0):
-		return wvc_cmd_serve(argc, argv)
-	if (strcmp(cmd, c"pull") == 0):
-		return wvc_cmd_pull(argc, argv)
-	if (strcmp(cmd, c"push") == 0):
-		return wvc_cmd_push(argc, argv)
-	if (strcmp(cmd, c"pack") == 0):
-		return wvc_cmd_pack(argc, argv)
-	if (strcmp(cmd, c"unpack") == 0):
-		return wvc_cmd_unpack(argc, argv)
+	if (strcmp(cmd, c"init") == 0): return wvc_cmd_init(argc, argv)
+	if (strcmp(cmd, c"snapshot") == 0): return wvc_cmd_snapshot(argc, argv)
+	if (strcmp(cmd, c"log") == 0): return wvc_cmd_log(argc, argv)
+	if (strcmp(cmd, c"diff") == 0): return wvc_cmd_diff(argc, argv)
+	if (strcmp(cmd, c"status") == 0): return wvc_cmd_status(argc, argv)
+	if (strcmp(cmd, c"merge") == 0): return wvc_cmd_merge(argc, argv)
+	if (strcmp(cmd, c"serve") == 0): return wvc_cmd_serve(argc, argv)
+	if (strcmp(cmd, c"pull") == 0): return wvc_cmd_pull(argc, argv)
+	if (strcmp(cmd, c"push") == 0): return wvc_cmd_push(argc, argv)
+	if (strcmp(cmd, c"pack") == 0): return wvc_cmd_pack(argc, argv)
+	if (strcmp(cmd, c"unpack") == 0): return wvc_cmd_unpack(argc, argv)
 	wvc_usage()
 	return 2

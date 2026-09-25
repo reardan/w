@@ -22,10 +22,8 @@ void test_radix_types():
 
 
 void test_negative_hex_is_the_unsigned_word():
-	if (__word_size__ == 8):
-		check(c"ffffffffffffffff", f"{-1:x}")
-	else:
-		check(c"ffffffff", f"{-1:x}")
+	if (__word_size__ == 8): check(c"ffffffffffffffff", f"{-1:x}")
+	else: check(c"ffffffff", f"{-1:x}")
 
 
 void test_char_type():

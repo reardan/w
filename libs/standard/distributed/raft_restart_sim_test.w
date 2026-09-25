@@ -45,8 +45,7 @@ char* rc_path(char* name, int id):
 
 rsim* rc_new(int n, char* name, int sim_seed, int min_delay, int max_delay, int drop_per_mille, int raft_seed_base):
 	rsim* c = rsim_new(n, sim_seed, min_delay, max_delay, drop_per_mille, raft_seed_base)
-	for id in range(1, n + 1):
-		rsim_attach_wal(c, id, rc_path(name, id))
+	for id in range(1, n + 1): rsim_attach_wal(c, id, rc_path(name, id))
 	return c
 
 
@@ -66,8 +65,7 @@ void test_restart_rejoin_converges():
 		i = i + 1
 	# crash a follower; its wal holds term, vote and both entries
 	int victim = 1
-	if (victim == lid):
-		victim = 2
+	if (victim == lid): victim = 2
 	rsim_crash(c, victim)
 	rsim_run(c, 20)
 	# the remaining majority keeps committing without it
@@ -192,8 +190,7 @@ void test_restarted_leader_steps_down():
 		rsim_step(c)
 		rafts_assert_no_same_term_leaders(c.nodes)
 		int cand = rsim_leader(c)
-		if (cand != (0 - 1) && cand != old_lid):
-			new_lid = cand
+		if (cand != (0 - 1) && cand != old_lid): new_lid = cand
 		k = k + 1
 	assert1(new_lid >= 1)
 	assert1(new_lid != old_lid)

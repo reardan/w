@@ -70,8 +70,7 @@ char* dl_open(char* soname):
 
 # dlsym; 0 when the symbol is missing.
 char* dl_sym(char* handle, char* name):
-	if (handle == 0):
-		return cast(char*, 0)
+	if (handle == 0): return cast(char*, 0)
 	return dlsym(handle, name)
 
 
@@ -90,27 +89,19 @@ void __dl_emit32(char* p, int v):
 # mode) or r10 (argv mode); the REX byte and ModRM differ accordingly.
 void __dl_emit_load_arg(char* p, int i, int argv, int disp):
 	int rex = 0x48
-	if (i >= 4):
-		rex = 0x4c
-	if (argv):
-		rex = rex + 1    # REX.B: base register r10
+	if (i >= 4): rex = 0x4c
+	if (argv): rex = rex + 1    # REX.B: base register r10
 	__dl_emit(p, rex)
 	__dl_emit(p, 0x8b)
 	# reg field per register, rm = 101 (rbp) or 010 (r10), mod = 10
 	int reg = 7
-	if (i == 1):
-		reg = 6
-	else if (i == 2):
-		reg = 2
-	else if (i == 3):
-		reg = 1
-	else if (i == 4):
-		reg = 0
-	else if (i == 5):
-		reg = 1
+	if (i == 1): reg = 6
+	else if (i == 2): reg = 2
+	else if (i == 3): reg = 1
+	else if (i == 4): reg = 0
+	else if (i == 5): reg = 1
 	int rm = 5
-	if (argv):
-		rm = 2
+	if (argv): rm = 2
 	__dl_emit(p, 0x80 + reg * 8 + rm)
 	__dl_emit32(p, disp)
 
@@ -124,8 +115,7 @@ int __dl_arg_disp(int i, int nargs, int argv):
 
 
 int __dl_build(char* sym, int nargs, int ret32, int argv):
-	if (sym == 0 || nargs < 0 || nargs > 32 || __word_size__ != 8):
-		return 0
+	if (sym == 0 || nargs < 0 || nargs > 32 || __word_size__ != 8): return 0
 	int need = 64 + nargs * 8
 	if (__dl_page == 0 || __dl_page_used + need > 4096):
 		__dl_page = mmap(0, 4096, 3, 34)
@@ -134,8 +124,7 @@ int __dl_build(char* sym, int nargs, int ret32, int argv):
 			return 0
 		__dl_page_used = 0
 	else:
-		if (mprotect(__dl_page, 4096, 3) != 0):
-			return 0
+		if (mprotect(__dl_page, 4096, 3) != 0): return 0
 	char* p = cast(char*, __dl_page)
 	int start = __dl_page_used
 	__dl_emit(p, 0x55)    # push rbp
@@ -152,8 +141,7 @@ int __dl_build(char* sym, int nargs, int ret32, int argv):
 		__dl_emit(p, 0x95)
 		__dl_emit32(p, 16)
 	int nstack = 0
-	if (nargs > 6):
-		nstack = nargs - 6
+	if (nargs > 6): nstack = nargs - 6
 	if (nstack % 2 == 1):
 		__dl_emit(p, 0x48)    # sub rsp, 8
 		__dl_emit(p, 0x83)
@@ -190,10 +178,8 @@ int __dl_build(char* sym, int nargs, int ret32, int argv):
 	__dl_emit(p, 0xc9)    # leave
 	__dl_emit(p, 0xc3)    # ret
 	# Keep the next stub 16-byte aligned.
-	while (__dl_page_used % 16 != 0):
-		__dl_emit(p, 0xcc)
-	if (mprotect(__dl_page, 4096, 5) != 0):
-		return 0
+	while (__dl_page_used % 16 != 0): __dl_emit(p, 0xcc)
+	if (mprotect(__dl_page, 4096, 5) != 0): return 0
 	return __dl_page + start
 
 

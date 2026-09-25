@@ -322,8 +322,7 @@ int grpc_take_message(string_builder* buf, char* encoding, int max, char** out, 
 	*compressed = 0
 	*status = grpc_status_ok
 	*why = c""
-	if (buf.length < 5):
-		return 0
+	if (buf.length < 5): return 0
 	char* p = buf.data
 	int flag = p[0] & 255
 	if (flag > 1):
@@ -335,8 +334,7 @@ int grpc_take_message(string_builder* buf, char* encoding, int max, char** out, 
 		*why = c"message larger than the limit"
 		return (-1)
 	int n = h2_get_u31(p + 1)
-	if (buf.length < 5 + n):
-		return 0
+	if (buf.length < 5 + n): return 0
 	if (flag == 0):
 		*out = mem_dup(p + 5, n)
 		*out_len = n
@@ -376,8 +374,7 @@ char* grpc_percent_encode(char* s):
 			string_append_char(out, '%')
 			string_append_char(out, hex_digit_upper(c >> 4))
 			string_append_char(out, hex_digit_upper(c & 15))
-		else:
-			string_append_char(out, c)
+		else: string_append_char(out, c)
 		i = i + 1
 	char* data = out.data
 	free(out)
@@ -410,8 +407,7 @@ char* grpc_percent_decode(char* s):
 
 # At most 8 digits: milliseconds while they fit, else whole seconds.
 char* grpc_timeout_format(int ms):
-	if (ms < 0):
-		ms = 0
+	if (ms < 0): ms = 0
 	string_builder* out = string_new()
 	if (ms <= 99999999):
 		string_append_int(out, ms)
@@ -431,38 +427,26 @@ int grpc_timeout_parse(char* v, int* out_ms):
 	int n = 0
 	int i = 0
 	while ((v[i] >= '0') && (v[i] <= '9')):
-		if (i >= 8):
-			return 0
+		if (i >= 8): return 0
 		n = n * 10 + (v[i] - '0')
 		i = i + 1
-	if ((i == 0) || (v[i] == 0) || (v[i + 1] != 0)):
-		return 0
+	if ((i == 0) || (v[i] == 0) || (v[i + 1] != 0)): return 0
 	int unit = v[i]
 	int cap = 2147483647
 	int ms = 0
 	if (unit == 'H'):
-		if (n > cap / 3600000):
-			ms = cap
-		else:
-			ms = n * 3600000
+		if (n > cap / 3600000): ms = cap
+		else: ms = n * 3600000
 	else if (unit == 'M'):
-		if (n > cap / 60000):
-			ms = cap
-		else:
-			ms = n * 60000
+		if (n > cap / 60000): ms = cap
+		else: ms = n * 60000
 	else if (unit == 'S'):
-		if (n > cap / 1000):
-			ms = cap
-		else:
-			ms = n * 1000
-	else if (unit == 'm'):
-		ms = n
-	else if (unit == 'u'):
-		ms = (n + 999) / 1000
-	else if (unit == 'n'):
-		ms = (n + 999999) / 1000000
-	else:
-		return 0
+		if (n > cap / 1000): ms = cap
+		else: ms = n * 1000
+	else if (unit == 'm'): ms = n
+	else if (unit == 'u'): ms = (n + 999) / 1000
+	else if (unit == 'n'): ms = (n + 999999) / 1000000
+	else: return 0
 	*out_ms = ms
 	return 1
 
@@ -513,13 +497,11 @@ int grpc_parse_status(char* v):
 
 
 int grpc_is_grpc_content_type(char* ct):
-	if (ct == 0):
-		return 0
+	if (ct == 0): return 0
 	char* want = c"application/grpc"
 	int i = 0
 	while (want[i] != 0):
-		if (ct[i] != want[i]):
-			return 0
+		if (ct[i] != want[i]): return 0
 		i = i + 1
 	return (ct[i] == 0) || (ct[i] == '+') || (ct[i] == ';')
 
@@ -536,16 +518,13 @@ void grpc_pump_ready(h2_conn* c):
 	int saved = c.deadline_ms
 	int n = 0
 	while ((n < 64) && (c.dead == 0)):
-		if (h2_conn_has_pending(c) == 0):
-			break
+		if (h2_conn_has_pending(c) == 0): break
 		int dl = time_monotonic_ms() + 20
-		if ((saved != 0) && (saved < dl)):
-			dl = saved
+		if ((saved != 0) && (saved < dl)): dl = saved
 		h2_set_deadline(c, dl)
 		int rc = h2_pump(c)
 		h2_set_deadline(c, saved)
-		if (rc != 0):
-			break
+		if (rc != 0): break
 		n = n + 1
 	h2_set_deadline(c, saved)
 
@@ -565,8 +544,7 @@ void grpc_add_accept_encoding(list[hpack_header*] l, int always):
 	if (v != 0):
 		hpack_headers_add(l, c"grpc-accept-encoding", v)
 		free(v)
-	else if (always != 0):
-		hpack_headers_add(l, c"grpc-accept-encoding", c"identity")
+	else if (always != 0): hpack_headers_add(l, c"grpc-accept-encoding", c"identity")
 
 
 /* Client */
@@ -595,8 +573,7 @@ grpc_channel* grpc_channel_from_conn(h2_conn* c, char* authority):
 	ch.conn = c
 	ch.authority = strclone(authority)
 	ch.scheme = c"http"
-	if (c.tls != 0):
-		ch.scheme = c"https"
+	if (c.tls != 0): ch.scheme = c"https"
 	ch.owns_conn = 0
 	ch.max_message = grpc_default_max_message
 	ch.send_encoding = 0
@@ -605,8 +582,7 @@ grpc_channel* grpc_channel_from_conn(h2_conn* c, char* authority):
 
 grpc_channel* grpc_channel_open(char* host, int port, int timeout_ms):
 	h2_conn* c = h2_connect(host, port, timeout_ms)
-	if (c == 0):
-		return 0
+	if (c == 0): return 0
 	string_builder* auth = string_new()
 	string_append(auth, host)
 	string_append(auth, c":")
@@ -624,10 +600,8 @@ grpc_channel* grpc_channel_open(char* host, int port, int timeout_ms):
 # tls_last_error(cfg) when cfg != 0).
 grpc_channel* grpc_channel_open_tls(char* host, int port, int timeout_ms, char* server_name, tls_config* cfg):
 	h2_conn* c = h2_connect_tls(host, port, timeout_ms, server_name, cfg)
-	if (c == 0):
-		return 0
-	if (server_name == 0):
-		server_name = host
+	if (c == 0): return 0
+	if (server_name == 0): server_name = host
 	string_builder* auth = string_new()
 	string_append(auth, server_name)
 	string_append(auth, c":")
@@ -639,23 +613,17 @@ grpc_channel* grpc_channel_open_tls(char* host, int port, int timeout_ms, char* 
 
 
 int grpc_channel_set_compression(grpc_channel* ch, char* encoding):
-	if (codec_supported(encoding) == 0):
-		return 0
-	if (ch.send_encoding != 0):
-		free(ch.send_encoding)
+	if (codec_supported(encoding) == 0): return 0
+	if (ch.send_encoding != 0): free(ch.send_encoding)
 	ch.send_encoding = 0
-	if (codec_is_identity(encoding) == 0):
-		ch.send_encoding = strclone(encoding)
+	if (codec_is_identity(encoding) == 0): ch.send_encoding = strclone(encoding)
 	return 1
 
 
 void grpc_channel_close(grpc_channel* ch):
-	if (ch == 0):
-		return
-	if (ch.owns_conn != 0):
-		h2_close(ch.conn)
-	if (ch.send_encoding != 0):
-		free(ch.send_encoding)
+	if (ch == 0): return
+	if (ch.owns_conn != 0): h2_close(ch.conn)
+	if (ch.send_encoding != 0): free(ch.send_encoding)
 	free(ch.authority)
 	free(ch)
 
@@ -687,11 +655,9 @@ char* grpc_result_trailer(grpc_result* r, char* name):
 
 
 void grpc_result_free(grpc_result* r):
-	if (r == 0):
-		return
+	if (r == 0): return
 	free(r.message)
-	if (r.response != 0):
-		free(r.response)
+	if (r.response != 0): free(r.response)
 	hpack_headers_free(r.headers)
 	hpack_headers_free(r.trailers)
 	free(r)
@@ -716,16 +682,14 @@ int grpc_stream_status(grpc_client_stream* cs):
 
 
 char* grpc_stream_header(grpc_client_stream* cs, char* name):
-	if ((cs.s == 0) || (cs.s.headers_received == 0)):
-		return 0
+	if ((cs.s == 0) || (cs.s.headers_received == 0)): return 0
 	return h2_stream_header(cs.s, name)
 
 
 # Decides the call's status locally; the stream is cancelled if it is
 # still open.
 void grpc_cs_fail(grpc_client_stream* cs, int status, char* message):
-	if (cs.status >= 0):
-		return
+	if (cs.status >= 0): return
 	cs.status = status
 	cs.message = strclone(message)
 	if ((cs.s != 0) && (h2_stream_active(cs.s) != 0) && (cs.ch.conn.dead == 0)):
@@ -736,10 +700,8 @@ void grpc_cs_fail(grpc_client_stream* cs, int status, char* message):
 # they decided the call.
 int grpc_cs_check_headers(grpc_client_stream* cs):
 	h2_stream* s = cs.s
-	if (cs.status >= 0):
-		return (-1)
-	if ((cs.headers_checked != 0) || (s.headers_received == 0)):
-		return 0
+	if (cs.status >= 0): return (-1)
+	if ((cs.headers_checked != 0) || (s.headers_received == 0)): return 0
 	cs.headers_checked = 1
 	if (s.status != 200):
 		string_builder* m = string_new()
@@ -762,12 +724,10 @@ int grpc_cs_check_headers(grpc_client_stream* cs):
 # The peer ended the stream: its grpc-status decides the call.
 void grpc_cs_status_from_end(grpc_client_stream* cs):
 	h2_stream* s = cs.s
-	if (grpc_cs_check_headers(cs) != 0):
-		return
+	if (grpc_cs_check_headers(cs) != 0): return
 	# Trailers-only responses carry the status in the headers.
 	list[hpack_header*] status_block = s.trailers
-	if (status_block == 0):
-		status_block = s.headers
+	if (status_block == 0): status_block = s.headers
 	char* st = hpack_headers_get(status_block, c"grpc-status")
 	if (st == 0):
 		grpc_cs_fail(cs, grpc_status_internal, c"missing grpc-status")
@@ -781,8 +741,7 @@ void grpc_cs_status_from_end(grpc_client_stream* cs):
 		char* decoded = grpc_percent_decode(raw)
 		grpc_cs_fail(cs, status, decoded)
 		free(decoded)
-	else:
-		grpc_cs_fail(cs, status, c"")
+	else: grpc_cs_fail(cs, status, c"")
 
 
 # Maps a failed h2 step (-1 reset/dead, -2 deadline) to the status.
@@ -790,16 +749,12 @@ void grpc_cs_status_from_end(grpc_client_stream* cs):
 # still delivers the buffered messages before the server's status.
 void grpc_cs_io_failed(grpc_client_stream* cs, int rc):
 	h2_stream* s = cs.s
-	if (rc == (-2)):
-		grpc_cs_fail(cs, grpc_status_deadline_exceeded, c"deadline exceeded")
-	else if (s.end_received != 0):
-		return
-	else if (s.refused != 0):
-		grpc_cs_fail(cs, grpc_status_unavailable, c"stream refused by server")
+	if (rc == (-2)): grpc_cs_fail(cs, grpc_status_deadline_exceeded, c"deadline exceeded")
+	else if (s.end_received != 0): return
+	else if (s.refused != 0): grpc_cs_fail(cs, grpc_status_unavailable, c"stream refused by server")
 	else if (s.reset_code >= 0):
 		grpc_cs_fail(cs, grpc_status_from_h2_error(s.reset_code), c"stream reset")
-	else:
-		grpc_cs_fail(cs, grpc_status_unavailable, c"connection lost")
+	else: grpc_cs_fail(cs, grpc_status_unavailable, c"connection lost")
 
 
 int grpc_cs_deadline_passed(grpc_client_stream* cs):
@@ -830,10 +785,8 @@ grpc_client_stream* grpc_stream_open(grpc_channel* ch, char* method, list[hpack_
 		hpack_headers_add(hdrs, c"grpc-timeout", t)
 		free(t)
 		cs.deadline_ms = time_monotonic_ms() + timeout_ms
-		if (cs.deadline_ms == 0):
-			cs.deadline_ms = 1
-	if (ch.send_encoding != 0):
-		hpack_headers_add(hdrs, c"grpc-encoding", ch.send_encoding)
+		if (cs.deadline_ms == 0): cs.deadline_ms = 1
+	if (ch.send_encoding != 0): hpack_headers_add(hdrs, c"grpc-encoding", ch.send_encoding)
 	grpc_add_accept_encoding(hdrs, 0)
 	h2_append_extra(hdrs, metadata)
 	h2_set_deadline(c, cs.deadline_ms)
@@ -843,14 +796,12 @@ grpc_client_stream* grpc_stream_open(grpc_channel* ch, char* method, list[hpack_
 	if (cs.s == 0):
 		if ((grpc_cs_deadline_passed(cs) != 0) && (c.dead == 0)):
 			grpc_cs_fail(cs, grpc_status_deadline_exceeded, c"deadline exceeded")
-		else:
-			grpc_cs_fail(cs, grpc_status_unavailable, c"connection unavailable")
+		else: grpc_cs_fail(cs, grpc_status_unavailable, c"connection unavailable")
 	return cs
 
 
 int grpc_stream_send_ex(grpc_client_stream* cs, char* msg, int len, int end_stream):
-	if ((cs.status >= 0) || (cs.send_closed != 0)):
-		return (-1)
+	if ((cs.status >= 0) || (cs.send_closed != 0)): return (-1)
 	h2_conn* c = cs.ch.conn
 	h2_stream* s = cs.s
 	if (grpc_cs_deadline_passed(cs) != 0):
@@ -872,8 +823,7 @@ int grpc_stream_send_ex(grpc_client_stream* cs, char* msg, int len, int end_stre
 	if (rc != 0):
 		grpc_cs_io_failed(cs, rc)
 		return (-1)
-	if (end_stream != 0):
-		cs.send_closed = 1
+	if (end_stream != 0): cs.send_closed = 1
 	return 0
 
 
@@ -884,21 +834,17 @@ int grpc_stream_send(grpc_client_stream* cs, char* msg, int len):
 # Half-closes the request side (END_STREAM). 0 also when the server
 # already ended the stream (nothing left to close).
 int grpc_stream_close_send(grpc_client_stream* cs):
-	if (cs.send_closed != 0):
-		return 0
-	if ((cs.s == 0) || (cs.status >= 0)):
-		return (-1)
+	if (cs.send_closed != 0): return 0
+	if ((cs.s == 0) || (cs.status >= 0)): return (-1)
 	h2_conn* c = cs.ch.conn
 	cs.send_closed = 1
-	if ((h2_stream_active(cs.s) == 0) && (cs.s.end_received != 0)):
-		return 0
+	if ((h2_stream_active(cs.s) == 0) && (cs.s.end_received != 0)): return 0
 	h2_set_deadline(c, cs.deadline_ms)
 	int rc = h2_send_data(c, cs.s, 0, 0, 1)
 	h2_set_deadline(c, 0)
 	if (rc != 0):
 		grpc_cs_io_failed(cs, rc)
-		if (cs.s.end_received != 0):
-			return 0
+		if (cs.s.end_received != 0): return 0
 		return (-1)
 	return 0
 
@@ -909,19 +855,16 @@ int grpc_stream_recv(grpc_client_stream* cs, char** out, int* out_len):
 	h2_conn* c = cs.ch.conn
 	while (1):
 		if (cs.status >= 0):
-			if (cs.status == grpc_status_ok):
-				return 0
+			if (cs.status == grpc_status_ok): return 0
 			return (-1)
 		h2_stream* s = cs.s
-		if (grpc_cs_check_headers(cs) != 0):
-			continue
+		if (grpc_cs_check_headers(cs) != 0): continue
 		if (cs.headers_checked != 0):
 			int compressed = 0
 			int status = 0
 			char* why = 0
 			int rc = grpc_take_message(s.body, cs.recv_encoding, cs.ch.max_message, out, out_len, &compressed, &status, &why)
-			if (rc == 1):
-				return 1
+			if (rc == 1): return 1
 			if (rc < 0):
 				grpc_cs_fail(cs, status, why)
 				continue
@@ -934,8 +877,7 @@ int grpc_stream_recv(grpc_client_stream* cs, char** out, int* out_len):
 		h2_set_deadline(c, cs.deadline_ms)
 		int prc = h2_pump(c)
 		h2_set_deadline(c, 0)
-		if (prc != 0):
-			grpc_cs_io_failed(cs, prc)
+		if (prc != 0): grpc_cs_io_failed(cs, prc)
 	return (-1)
 
 
@@ -944,13 +886,11 @@ void grpc_stream_cancel(grpc_client_stream* cs):
 
 
 grpc_result* grpc_stream_finish(grpc_client_stream* cs):
-	if ((cs.status < 0) && (cs.send_closed == 0)):
-		grpc_stream_close_send(cs)
+	if ((cs.status < 0) && (cs.send_closed == 0)): grpc_stream_close_send(cs)
 	while (cs.status < 0):
 		char* m = 0
 		int n = 0
-		if (grpc_stream_recv(cs, &m, &n) == 1):
-			free(m)
+		if (grpc_stream_recv(cs, &m, &n) == 1): free(m)
 	grpc_result* r = grpc_result_new(cs.status, cs.message)
 	h2_stream* s = cs.s
 	if (s != 0):
@@ -977,22 +917,19 @@ grpc_result* grpc_unary_call(grpc_channel* ch, char* method, char* req, int req_
 	while (1):
 		char* m = 0
 		int n = 0
-		if (grpc_stream_recv(cs, &m, &n) != 1):
-			break
+		if (grpc_stream_recv(cs, &m, &n) != 1): break
 		count = count + 1
 		if (count == 1):
 			resp = m
 			resp_len = n
-		else:
-			free(m)
+		else: free(m)
 	grpc_result* r = grpc_stream_finish(cs)
 	if ((r.status == grpc_status_ok) && (count != 1)):
 		grpc_result_set(r, grpc_status_internal, c"invalid response message")
 	if ((r.status == grpc_status_ok) && (resp != 0)):
 		r.response = resp
 		r.response_len = resp_len
-	else if (resp != 0):
-		free(resp)
+	else if (resp != 0): free(resp)
 	return r
 
 
@@ -1063,13 +1000,10 @@ void grpc_server_register_stream(grpc_server* s, char* path, grpc_unary_handler_
 
 
 int grpc_server_set_compression(grpc_server* s, char* encoding):
-	if (codec_supported(encoding) == 0):
-		return 0
-	if (s.send_encoding != 0):
-		free(s.send_encoding)
+	if (codec_supported(encoding) == 0): return 0
+	if (s.send_encoding != 0): free(s.send_encoding)
 	s.send_encoding = 0
-	if (codec_is_identity(encoding) == 0):
-		s.send_encoding = strclone(encoding)
+	if (codec_is_identity(encoding) == 0): s.send_encoding = strclone(encoding)
 	return 1
 
 
@@ -1079,14 +1013,12 @@ void grpc_server_free(grpc_server* s):
 		free(m.path)
 		free(m)
 	list_free[grpc_method*](s.methods)
-	if (s.send_encoding != 0):
-		free(s.send_encoding)
+	if (s.send_encoding != 0): free(s.send_encoding)
 	free(s)
 
 
 void grpc_call_reply(grpc_call* call, char* msg, int len):
-	if (call.response != 0):
-		free(call.response)
+	if (call.response != 0): free(call.response)
 	call.response = mem_dup(msg, len)
 	call.response_len = len
 	call.has_response = 1
@@ -1095,11 +1027,9 @@ void grpc_call_reply(grpc_call* call, char* msg, int len):
 
 void grpc_call_fail(grpc_call* call, int status, char* message):
 	call.status = status
-	if (call.status_message != 0):
-		free(call.status_message)
+	if (call.status_message != 0): free(call.status_message)
 	call.status_message = 0
-	if (message != 0):
-		call.status_message = strclone(message)
+	if (message != 0): call.status_message = strclone(message)
 
 
 void grpc_call_add_header(grpc_call* call, char* name, char* value):
@@ -1115,11 +1045,9 @@ char* grpc_call_metadata(grpc_call* call, char* name):
 
 
 int grpc_call_time_left_ms(grpc_call* call):
-	if (call.deadline_ms == 0):
-		return (-1)
+	if (call.deadline_ms == 0): return (-1)
 	int left = call.deadline_ms - time_monotonic_ms()
-	if (left < 0):
-		return 0
+	if (left < 0): return 0
 	return left
 
 
@@ -1128,17 +1056,14 @@ int grpc_call_deadline_passed(grpc_call* call):
 
 
 int grpc_call_set_compression(grpc_call* call, char* encoding):
-	if (call.headers_sent != 0):
-		return 0
+	if (call.headers_sent != 0): return 0
 	if (codec_is_identity(encoding) != 0):
-		if (call.send_encoding != 0):
-			free(call.send_encoding)
+		if (call.send_encoding != 0): free(call.send_encoding)
 		call.send_encoding = 0
 		return 1
 	if ((codec_supported(encoding) == 0) || (codec_list_contains(call.accept_encoding, encoding) == 0)):
 		return 0
-	if (call.send_encoding != 0):
-		free(call.send_encoding)
+	if (call.send_encoding != 0): free(call.send_encoding)
 	call.send_encoding = strclone(encoding)
 	return 1
 
@@ -1182,14 +1107,10 @@ grpc_call* grpc_call_new(grpc_server* srv, h2_conn* c, h2_stream* st):
 
 
 void grpc_call_free(grpc_call* call):
-	if (call.request != 0):
-		free(call.request)
-	if (call.response != 0):
-		free(call.response)
-	if (call.status_message != 0):
-		free(call.status_message)
-	if (call.send_encoding != 0):
-		free(call.send_encoding)
+	if (call.request != 0): free(call.request)
+	if (call.response != 0): free(call.response)
+	if (call.status_message != 0): free(call.status_message)
+	if (call.send_encoding != 0): free(call.send_encoding)
 	hpack_headers_free(call.response_headers)
 	hpack_headers_free(call.response_trailers)
 	free(call)
@@ -1198,10 +1119,8 @@ void grpc_call_free(grpc_call* call):
 int grpc_call_recv(grpc_call* call, char** out, int* out_len):
 	*out = 0
 	*out_len = 0
-	if (call.input_done != 0):
-		return 0
-	if ((call.input_failed != 0) || (call.cancelled != 0) || (call.finished != 0)):
-		return (-1)
+	if (call.input_done != 0): return 0
+	if ((call.input_failed != 0) || (call.cancelled != 0) || (call.finished != 0)): return (-1)
 	h2_conn* c = call.conn
 	h2_stream* st = call.stream
 	while (1):
@@ -1213,8 +1132,7 @@ int grpc_call_recv(grpc_call* call, char** out, int* out_len):
 		char* why = 0
 		int rc = grpc_take_message(st.body, call.recv_encoding, call.max_message, out, out_len, &compressed, &status, &why)
 		if (rc == 1):
-			if (compressed != 0):
-				call.recv_compressed = call.recv_compressed + 1
+			if (compressed != 0): call.recv_compressed = call.recv_compressed + 1
 			return 1
 		if (rc < 0):
 			call.input_failed = 1
@@ -1245,13 +1163,11 @@ int grpc_call_recv(grpc_call* call, char** out, int* out_len):
 
 
 int grpc_call_send_headers(grpc_call* call):
-	if (call.headers_sent != 0):
-		return 0
+	if (call.headers_sent != 0): return 0
 	call.headers_sent = 1
 	list[hpack_header*] head = hpack_headers_new()
 	hpack_headers_add(head, c"content-type", c"application/grpc")
-	if (call.send_encoding != 0):
-		hpack_headers_add(head, c"grpc-encoding", call.send_encoding)
+	if (call.send_encoding != 0): hpack_headers_add(head, c"grpc-encoding", call.send_encoding)
 	grpc_add_accept_encoding(head, 0)
 	h2_append_extra(head, call.response_headers)
 	int rc = h2_respond_headers(call.conn, call.stream, 200, head, 0)
@@ -1260,8 +1176,7 @@ int grpc_call_send_headers(grpc_call* call):
 
 
 int grpc_call_send(grpc_call* call, char* msg, int len):
-	if ((call.finished != 0) || (call.cancelled != 0)):
-		return (-1)
+	if ((call.finished != 0) || (call.cancelled != 0)): return (-1)
 	h2_conn* c = call.conn
 	h2_stream* st = call.stream
 	if (grpc_call_deadline_passed(call) != 0):
@@ -1308,16 +1223,13 @@ void grpc_append_status(list[hpack_header*] l, grpc_call* call):
 # Ends the response with the call's status: trailers after headers that
 # went out (or are forced by headers_first), else trailers-only.
 int grpc_call_finish(grpc_call* call):
-	if (call.finished != 0):
-		return 0
+	if (call.finished != 0): return 0
 	call.finished = 1
-	if (call.cancelled != 0):
-		return (-1)
+	if (call.cancelled != 0): return (-1)
 	h2_conn* c = call.conn
 	h2_stream* st = call.stream
 	if ((call.headers_sent == 0) && (call.headers_first != 0)):
-		if (grpc_call_send_headers(call) != 0):
-			return (-1)
+		if (grpc_call_send_headers(call) != 0): return (-1)
 	int rc = 0
 	if (call.headers_sent != 0):
 		list[hpack_header*] trailers = hpack_headers_new()
@@ -1349,17 +1261,14 @@ grpc_method* grpc_find_method(grpc_server* srv, char* path):
 # a normal end of stream rather than a reset.
 void grpc_drain_request(h2_conn* c, h2_stream* st):
 	while ((st.end_received == 0) && (st.reset_code < 0) && (c.dead == 0)):
-		if (h2_pump(c) != 0):
-			return
+		if (h2_pump(c) != 0): return
 
 
 # Unary: exactly one request message, then the client's END_STREAM.
 void grpc_server_run_unary(grpc_call* call, grpc_method* m):
 	int rc = grpc_call_recv(call, &call.request, &call.request_len)
-	if (rc == 0):
-		grpc_call_fail(call, grpc_status_internal, c"missing request message")
-	if (rc != 1):
-		return
+	if (rc == 0): grpc_call_fail(call, grpc_status_internal, c"missing request message")
+	if (rc != 1): return
 	char* extra = 0
 	int extra_len = 0
 	rc = grpc_call_recv(call, &extra, &extra_len)
@@ -1367,8 +1276,7 @@ void grpc_server_run_unary(grpc_call* call, grpc_method* m):
 		free(extra)
 		grpc_call_fail(call, grpc_status_internal, c"more than one request message")
 		return
-	if (rc != 0):
-		return
+	if (rc != 0): return
 	m.handler(call, m.user_data)
 	if (grpc_call_deadline_passed(call) != 0):
 		grpc_call_fail(call, grpc_status_deadline_exceeded, c"deadline exceeded")
@@ -1407,8 +1315,7 @@ void grpc_server_handle(grpc_server* srv, h2_conn* c, h2_stream* st):
 		if (grpc_timeout_parse(timeout, &ms) != 0):
 			call.timeout_ms = ms
 			call.deadline_ms = time_monotonic_ms() + ms
-			if (call.deadline_ms == 0):
-				call.deadline_ms = 1
+			if (call.deadline_ms == 0): call.deadline_ms = 1
 	grpc_method* m = grpc_find_method(srv, call.method)
 	if (m == 0):
 		string_builder* msg = string_new()
@@ -1423,10 +1330,8 @@ void grpc_server_handle(grpc_server* srv, h2_conn* c, h2_stream* st):
 		string_append(msg, c" is not supported")
 		grpc_call_fail(call, grpc_status_unimplemented, msg.data)
 		string_free(msg)
-	else if (m.streaming != 0):
-		grpc_server_run_stream(call, m)
-	else:
-		grpc_server_run_unary(call, m)
+	else if (m.streaming != 0): grpc_server_run_stream(call, m)
+	else: grpc_server_run_unary(call, m)
 	grpc_call_finish(call)
 	grpc_call_free(call)
 
@@ -1447,8 +1352,7 @@ h2_stream* grpc_server_next_stream(h2_conn* c):
 					s.delivered = 1
 					return s
 			i = i + 1
-		if (h2_pump(c) != 0):
-			return 0
+		if (h2_pump(c) != 0): return 0
 	return 0
 
 
@@ -1457,8 +1361,7 @@ h2_stream* grpc_server_next_stream(h2_conn* c):
 int grpc_server_serve_h2(grpc_server* srv, h2_conn* c):
 	while (1):
 		h2_stream* st = grpc_server_next_stream(c)
-		if (st == 0):
-			break
+		if (st == 0): break
 		grpc_server_handle(srv, c, st)
 		# The response is complete; a client still sending is told to
 		# stop with RST_STREAM(NO_ERROR) (RFC 9113 section 8.1).

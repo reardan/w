@@ -38,8 +38,7 @@ import libs.standard.distributed.sim
 list[int] raft_peers_except(int n, int id):
 	list[int] peers = new list[int]
 	for p in range(1, n + 1):
-		if (p != id):
-			peers.push(p)
+		if (p != id): peers.push(p)
 	return peers
 
 
@@ -93,8 +92,7 @@ int rafts_leader(list[raft*] nodes):
 					u64_copy(best, t)
 					leader_id = i + 1
 					dup = 0
-				if (cmp == 0):
-					dup = 1
+				if (cmp == 0): dup = 1
 	u64_free(best)
 	u64_free(t)
 	if (found == 1 && dup == 0):
@@ -106,8 +104,7 @@ int rafts_leader(list[raft*] nodes):
 # same terms, same commands, entry by entry.
 void rafts_assert_logs_identical(list[raft*] nodes):
 	int ref = 0
-	while (ref < nodes.length && nodes[ref] == 0):
-		ref = ref + 1
+	while (ref < nodes.length && nodes[ref] == 0): ref = ref + 1
 	assert1(ref < nodes.length)
 	raft* first = nodes[ref]
 	for i in range(ref + 1, nodes.length):
@@ -201,8 +198,7 @@ raft* rsim_node(rsim* c, int id):
 
 # Persist node index i (no-op without wals or while it is crashed).
 void rsim_sync(rsim* c, int i):
-	if (c.wals.length > 0 && c.nodes[i] != 0):
-		raft_wal_sync(c.wals[i], c.nodes[i])
+	if (c.wals.length > 0 && c.nodes[i] != 0): raft_wal_sync(c.wals[i], c.nodes[i])
 
 
 # Put every buffered outbound message on the wire. A message the drop
@@ -211,8 +207,7 @@ void rsim_route_out(rsim* c):
 	int i = 0
 	while (i < c.out.length):
 		raft_msg* m = c.out[i]
-		if (sim_send(c.net, m.from, m.to, cast(char*, m)) == 0):
-			raft_msg_free(m)
+		if (sim_send(c.net, m.from, m.to, cast(char*, m)) == 0): raft_msg_free(m)
 		i = i + 1
 	c.out.clear()
 
@@ -267,8 +262,7 @@ void rsim_step(rsim* c):
 
 
 void rsim_run(rsim* c, int k):
-	for i in range(k):
-		rsim_step(c)
+	for i in range(k): rsim_step(c)
 
 
 int rsim_leader(rsim* c):
@@ -326,8 +320,7 @@ void rsim_remove_server(rsim* c, int leader_id, int target_id):
 void rsim_partition_from_all(rsim* c, int id):
 	int i = 1
 	while (i <= c.nodes.length):
-		if (i != id):
-			sim_partition(c.net, id, i)
+		if (i != id): sim_partition(c.net, id, i)
 		i = i + 1
 
 
@@ -388,8 +381,7 @@ void rsim_free(rsim* c):
 	while (i < c.nodes.length):
 		if (c.nodes[i] != 0):
 			raft_free(c.nodes[i])
-			if (c.wals.length > 0):
-				raft_wal_close(c.wals[i])
+			if (c.wals.length > 0): raft_wal_close(c.wals[i])
 		i = i + 1
 	i = 0
 	while (i < c.paths.length):

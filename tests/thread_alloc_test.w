@@ -20,14 +20,12 @@ int churn_ok
 
 
 void stamp(int* p, int words, int tag):
-	for i in range(words):
-		p[i] = tag + i
+	for i in range(words): p[i] = tag + i
 
 
 int stamped(int* p, int words, int tag):
 	for i in range(words):
-		if (p[i] != tag + i):
-			return 0
+		if (p[i] != tag + i): return 0
 	return 1
 
 
@@ -47,14 +45,12 @@ void churn_worker(void* arg):
 		seed = (seed * 1103515245 + 12345) & 0x7fffffff
 		int k = seed % slots
 		if (live[k] != 0):
-			if (stamped(live[k], sizes[k], id * 100000 + k) == 0):
-				ok = 0
+			if (stamped(live[k], sizes[k], id * 100000 + k) == 0): ok = 0
 			free(cast(void*, live[k]))
 			live[k] = cast(int*, 0)
 		else:
 			int words = 1 + (seed >> 8) % 300
-			if ((seed & 1023) == 0):
-				words = 20000   # past the small bins
+			if ((seed & 1023) == 0): words = 20000   # past the small bins
 			live[k] = cast(int*, malloc(words * __word_size__))
 			sizes[k] = words
 			stamp(live[k], words, id * 100000 + k)
@@ -62,14 +58,12 @@ void churn_worker(void* arg):
 	i = 0
 	while (i < slots):
 		if (live[i] != 0):
-			if (stamped(live[i], sizes[i], id * 100000 + i) == 0):
-				ok = 0
+			if (stamped(live[i], sizes[i], id * 100000 + i) == 0): ok = 0
 			free(cast(void*, live[i]))
 		i = i + 1
 	free(cast(void*, live))
 	free(cast(void*, sizes))
-	if (ok):
-		atomic_add(&churn_ok, 1)
+	if (ok): atomic_add(&churn_ok, 1)
 
 
 void test_concurrent_malloc_free_churn():
@@ -156,8 +150,7 @@ void consume_worker(void* arg):
 		# wait for slot i to be filled
 		while (atomic_add(&handoff_ring[i % 64 + 64], 0) == 0) {}
 		int* p = cast(int*, handoff_ring[i % 64])
-		if (stamped(p, 8, i) == 0):
-			ok = 0
+		if (stamped(p, 8, i) == 0): ok = 0
 		free(cast(void*, p))
 		handoff_ring[i % 64 + 64] = 0
 		i = i + 1
@@ -176,8 +169,7 @@ void produce_worker(void* arg):
 
 void test_blocks_cross_threads():
 	handoff_ring = cast(int*, malloc(128 * __word_size__))
-	for i in range(128):
-		handoff_ring[i] = 0
+	for i in range(128): handoff_ring[i] = 0
 	handoff_done = 0
 	int n = 20000
 	wthread* c = thread_spawn(consume_worker, cast(void*, n))
@@ -196,15 +188,13 @@ void test_blocks_cross_threads():
 	assert_equal(0, thread_join(c))
 	assert_equal(1, handoff_done)
 	# main keeps allocating: the drained block is reusable
-	for k in range(100):
-		free(malloc(16 * __word_size__))
+	for k in range(100): free(malloc(16 * __word_size__))
 
 
 # Heaps are abandoned at exit and adopted by later threads, so a long
 # spawn/join loop does not grow memory without bound.
 void small_alloc_worker(void* arg):
-	for i in range(200):
-		free(malloc(64))
+	for i in range(200): free(malloc(64))
 	# leave one block behind: the adopter inherits it
 	malloc(32)
 
@@ -221,8 +211,7 @@ void pf_alloc_chunk(int start, int end, void* arg):
 	int* out = cast(int*, arg)
 	for i in range(start, end):
 		list[int] tmp = new list[int]
-		for j in range(100):
-			tmp.push(j)
+		for j in range(100): tmp.push(j)
 		out[i] = tmp.length + tmp[99]
 
 
@@ -231,6 +220,5 @@ void test_parallel_for_callbacks_allocate():
 	int* out = cast(int*, malloc(n * __word_size__))
 	parallel_for(0, n, 4, pf_alloc_chunk, cast(void*, out))
 	parallel_for(0, n, 4, pf_alloc_chunk, cast(void*, out))
-	for i in range(n):
-		assert_equal(199, out[i])
+	for i in range(n): assert_equal(199, out[i])
 	thread_pool_shutdown()

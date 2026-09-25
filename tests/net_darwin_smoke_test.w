@@ -50,14 +50,11 @@ void test_tcp_sockaddr_round_trip():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		char* buf = malloc(16)
 		int got = read(conn, buf, 4)
-		if (got != 4):
-			exit(1)
-		if (socket_send(conn, buf, got, msg_nosignal()) != got):
-			exit(1)
+		if (got != 4): exit(1)
+		if (socket_send(conn, buf, got, msg_nosignal()) != got): exit(1)
 		close(conn)
 		exit(0)
 
@@ -124,16 +121,13 @@ void test_http_get_loopback():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		char* buf = malloc(4096)
-		if (read(conn, buf, 4095) <= 0):
-			exit(1)
+		if (read(conn, buf, 4095) <= 0): exit(1)
 		char* response = c"HTTP/1.1 200 OK\x0d\x0aContent-Length: 12\x0d\x0a\x0d\x0asmoke passed"
 		socket_send(conn, response, strlen(response), msg_nosignal())
 		char* scratch = malloc(64)
-		while (read(conn, scratch, 64) > 0):
-			scratch[0] = 0
+		while (read(conn, scratch, 64) > 0): scratch[0] = 0
 		exit(0)
 
 	string_builder* target = string_new()

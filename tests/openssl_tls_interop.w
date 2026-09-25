@@ -59,8 +59,7 @@ int osl_io_timeout_ms():
 # within the bounded timeouts instead of hanging it.
 int osl_free_port():
 	int fd = socket_tcp_ipv4()
-	if (fd < 0):
-		return -1
+	if (fd < 0): return -1
 	if (socket_bind_ipv4(fd, ip4_from_string(c"127.0.0.1"), 0) < 0):
 		close(fd)
 		return -1
@@ -89,8 +88,7 @@ int osl_fail(process* p, char* msg, char* detail):
 
 int osl_bytes_equal(char* a, char* b, int n):
 	for i in range(n):
-		if (a[i] != b[i]):
-			return 0
+		if (a[i] != b[i]): return 0
 	return 1
 
 
@@ -99,8 +97,7 @@ int osl_bytes_equal(char* a, char* b, int n):
 int osl_connect_retry(int port):
 	for tries in range(100):
 		int fd = socket_tcp_ipv4()
-		if (fd < 0):
-			return -1
+		if (fd < 0): return -1
 		if (socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), port) >= 0):
 			return fd
 		close(fd)
@@ -111,8 +108,7 @@ int osl_connect_retry(int port):
 # Direction 1: our tls_connect client against `openssl s_server -rev`.
 int osl_client_direction(char* openssl_bin, char* cert, char* key):
 	int port = osl_free_port()
-	if (port <= 0):
-		return osl_fail(0, c"client: no free port", 0)
+	if (port <= 0): return osl_fail(0, c"client: no free port", 0)
 
 	char** sargv = strv_new(12)
 	strv_set(sargv, 0, c"openssl")
@@ -134,12 +130,10 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 	opts.stderr_mode = process_null
 	process* p = process_spawn(openssl_bin, sargv, opts)
 	free(opts)
-	if (p == 0):
-		return osl_fail(0, c"client: spawn s_server failed", 0)
+	if (p == 0): return osl_fail(0, c"client: spawn s_server failed", 0)
 
 	int fd = osl_connect_retry(port)
-	if (fd < 0):
-		return osl_fail(p, c"client: connect to s_server failed", 0)
+	if (fd < 0): return osl_fail(p, c"client: connect to s_server failed", 0)
 	# Bound every blocking send/recv inside the handshake and after it.
 	socket_set_recv_timeout(fd, osl_io_timeout_ms())
 	socket_set_send_timeout(fd, osl_io_timeout_ms())
@@ -162,14 +156,12 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 	int got = tls_read(conn, buf, 64)
 	char* want = c"gnip\x0a"   # -rev echoes the line reversed
 	int ok = 0
-	if (got == strlen(want)):
-		ok = osl_bytes_equal(buf, want, got)
+	if (got == strlen(want)): ok = osl_bytes_equal(buf, want, got)
 	free(buf)
 	tls_close(conn)
 	tls_config_free(cfg)
 	close(fd)
-	if (ok == 0):
-		return osl_fail(p, c"client: bad -rev echo payload", 0)
+	if (ok == 0): return osl_fail(p, c"client: bad -rev echo payload", 0)
 	process_kill(p, sigterm)
 	process_wait_or_kill(p, osl_io_timeout_ms())
 	process_free(p)
@@ -179,8 +171,7 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 # Direction 2: our tls_accept server against `openssl s_client`.
 int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	int lfd = socket_tcp_ipv4()
-	if (lfd < 0):
-		return osl_fail(0, c"server: socket failed", 0)
+	if (lfd < 0): return osl_fail(0, c"server: socket failed", 0)
 	socket_set_reuseaddr(lfd)
 	if (socket_bind_ipv4(lfd, ip4_from_string(c"127.0.0.1"), 0) < 0):
 		close(lfd)
@@ -215,8 +206,7 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 
 	int cfd = socket_accept_connection(lfd)
 	close(lfd)
-	if (cfd < 0):
-		return osl_fail(p, c"server: accept failed (timeout?)", 0)
+	if (cfd < 0): return osl_fail(p, c"server: accept failed (timeout?)", 0)
 	socket_set_recv_timeout(cfd, osl_io_timeout_ms())
 	socket_set_send_timeout(cfd, osl_io_timeout_ms())
 
@@ -237,8 +227,7 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	char* buf = malloc(64)
 	int got = tls_read(conn, buf, 64)
 	int ok = 0
-	if (got == strlen(pong)):
-		ok = osl_bytes_equal(buf, pong, got)
+	if (got == strlen(pong)): ok = osl_bytes_equal(buf, pong, got)
 	if (ok == 0):
 		free(buf)
 		tls_close(conn)
@@ -257,14 +246,12 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	ok = 0
 	if (poll_single(p.stdout_fd, poll_in, osl_io_timeout_ms()) > 0):
 		got = read(p.stdout_fd, buf, 64)
-		if (got == strlen(ping)):
-			ok = osl_bytes_equal(buf, ping, got)
+		if (got == strlen(ping)): ok = osl_bytes_equal(buf, ping, got)
 	free(buf)
 	tls_close(conn)
 	tls_server_config_free(scfg)
 	close(cfd)
-	if (ok == 0):
-		return osl_fail(p, c"server: s_client did not echo our line", 0)
+	if (ok == 0): return osl_fail(p, c"server: s_client did not echo our line", 0)
 	process_kill(p, sigterm)
 	process_wait_or_kill(p, osl_io_timeout_ms())
 	process_free(p)
@@ -301,12 +288,10 @@ int osl_generate_cert(char* openssl_bin, char* cert, char* key):
 
 	process_result* pr = process_run(openssl_bin, argv, 0, 0, 30000)
 	free(cast(void*, argv))
-	if (pr == 0):
-		return osl_fail(0, c"cert generation: spawn failed", 0)
+	if (pr == 0): return osl_fail(0, c"cert generation: spawn failed", 0)
 	if (pr.status != 0):
 		char* detail = 0
-		if (pr.stderr_length > 0):
-			detail = pr.stderr_text
+		if (pr.stderr_length > 0): detail = pr.stderr_text
 		int r = osl_fail(0, c"cert generation failed", detail)
 		process_result_free(pr)
 		return r
@@ -339,11 +324,9 @@ int main():
 
 	int ok = osl_generate_cert(openssl_bin, cert, key)
 	if (ok != 0):
-		if (osl_client_direction(openssl_bin, cert, key) == 0):
-			ok = 0
+		if (osl_client_direction(openssl_bin, cert, key) == 0): ok = 0
 	if (ok != 0):
-		if (osl_server_direction(openssl_bin, cert, key) == 0):
-			ok = 0
+		if (osl_server_direction(openssl_bin, cert, key) == 0): ok = 0
 
 	free(cert)
 	free(key)
@@ -351,7 +334,6 @@ int main():
 	free(dir)
 	free(openssl_bin)
 
-	if (ok == 0):
-		return 1
+	if (ok == 0): return 1
 	print(c"openssl interop OK\x0a")
 	return 0

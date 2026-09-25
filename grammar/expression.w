@@ -22,16 +22,11 @@ void assign_store(int type):
 	int lhs_size = word_size
 	if ((type_get_pointer_level(type) == 0) & (type != 3) & (type != 4)):
 		int declared_size = type_get_size(type)
-		if (declared_size > 0):
-			lhs_size = declared_size
-	if (lhs_size == 1):
-		store_ebx_int8()
-	else if (lhs_size == 2):
-		store_ebx_int16()
-	else if (lhs_size == 4):
-		store_ebx_int32()
-	else:
-		store_ebx_word()
+		if (declared_size > 0): lhs_size = declared_size
+	if (lhs_size == 1): store_ebx_int8()
+	else if (lhs_size == 2): store_ebx_int16()
+	else if (lhs_size == 4): store_ebx_int32()
+	else: store_ebx_word()
 
 
 # Copy the struct at eax into the struct at ebx, word by word, then
@@ -43,11 +38,9 @@ void struct_copy_eax_to_ebx(int type):
 	push_slot()
 	for i in range(words):
 		mov_eax_esp_plus(0)
-		if (i > 0):
-			add_eax_int32(i << word_size_log2)
+		if (i > 0): add_eax_int32(i << word_size_log2)
 		promote_eax()
-		if (i > 0):
-			add_ebx_int32(word_size)
+		if (i > 0): add_ebx_int32(word_size)
 		store_ebx_word()
 	pop_eax_slot()
 	pop_ebx_slot()
@@ -65,26 +58,16 @@ void assign_store_struct(int type):
 # token ('+' for '+=', ..., 'l' for '<<=', 'r' for '>>='), or 0 when the
 # token is not a compound assignment operator.
 int compound_assign_op():
-	if (peek(c"+=")):
-		return '+'
-	if (peek(c"-=")):
-		return '-'
-	if (peek(c"*=")):
-		return '*'
-	if (peek(c"/=")):
-		return '/'
-	if (peek(c"%=")):
-		return '%'
-	if (peek(c"&=")):
-		return '&'
-	if (peek(c"|=")):
-		return '|'
-	if (peek(c"^=")):
-		return '^'
-	if (peek(c"<<=")):
-		return 'l'
-	if (peek(c">>=")):
-		return 'r'
+	if (peek(c"+=")): return '+'
+	if (peek(c"-=")): return '-'
+	if (peek(c"*=")): return '*'
+	if (peek(c"/=")): return '/'
+	if (peek(c"%=")): return '%'
+	if (peek(c"&=")): return '&'
+	if (peek(c"|=")): return '|'
+	if (peek(c"^=")): return '^'
+	if (peek(c"<<=")): return 'l'
+	if (peek(c">>=")): return 'r'
 	return 0
 
 
@@ -99,14 +82,10 @@ int compound_assign_apply(int op, int left_type, int right_type):
 				pop_ebx_slot()
 				return float_binary_arithmetic(left_type, right_type, '/')
 			error(c"float operands only support += -= *= /=")
-		if (op == '/'):
-			alu_idiv()
-		else if (op == '%'):
-			alu_imod()
-		else if (op == 'l'):
-			alu_shl()
-		else:
-			alu_sar()
+		if (op == '/'): alu_idiv()
+		else if (op == '%'): alu_imod()
+		else if (op == 'l'): alu_shl()
+		else: alu_sar()
 		stack_pos = stack_pos - 1
 		return 3
 	pop_ebx_slot()
@@ -114,20 +93,13 @@ int compound_assign_apply(int op, int left_type, int right_type):
 		int result_type = float_binary_arithmetic(left_type, right_type, op)
 		if (result_type):
 			return result_type
-	if (binary_float_kind(left_type, right_type)):
-		error(c"float operands only support += -= *= /=")
-	if (op == '+'):
-		alu_add()
-	else if (op == '-'):
-		alu_sub()
-	else if (op == '*'):
-		alu_imul()
-	else if (op == '&'):
-		alu_and()
-	else if (op == '|'):
-		alu_or()
-	else:
-		alu_xor()
+	if (binary_float_kind(left_type, right_type)): error(c"float operands only support += -= *= /=")
+	if (op == '+'): alu_add()
+	else if (op == '-'): alu_sub()
+	else if (op == '*'): alu_imul()
+	else if (op == '&'): alu_and()
+	else if (op == '|'): alu_or()
+	else: alu_xor()
 	return 3
 
 
@@ -159,8 +131,7 @@ int expression():
 		# flag set by statement()'s expression fallback); anywhere else
 		# the v1 statement-only rule makes them an error
 		# (grammar/increment.w, docs/projects/increment_decrement.md).
-		if (stmt_context == 0):
-			increment_expression_error()
+		if (stmt_context == 0): increment_expression_error()
 		get_token()
 		expression_is_assignment = 1
 		return increment_apply(inc_op, type)
@@ -182,15 +153,13 @@ int expression():
 	if (hash_index_pending || nd_index_pending):
 		if (accept(c"=")):
 			expression_is_assignment = 1
-			if (hash_index_pending):
-				return hash_finish_pending_assignment()
+			if (hash_index_pending): return hash_finish_pending_assignment()
 			return nd_finish_pending_assignment()
 		int pending_op = compound_assign_op()
 		if (pending_op):
 			get_token()
 			expression_is_assignment = 1
-			if (hash_index_pending):
-				return hash_finish_pending_compound(pending_op)
+			if (hash_index_pending): return hash_finish_pending_compound(pending_op)
 			return nd_finish_pending_compound(pending_op)
 		type = hash_finalize_pending_read_if_needed(type)
 		type = nd_finalize_pending_read_if_needed(type)
@@ -200,12 +169,10 @@ int expression():
 		expression_is_assignment = 1
 		return compound_assign_scalar(op, type, 0)
 	if (accept(c"=")):
-		if (expression_lhs_readonly):
-			error(c"cannot assign to read-only buffer field")
+		if (expression_lhs_readonly): error(c"cannot assign to read-only buffer field")
 		if ((type_is_value(type)) | (type == 3) | (type == 4)):
 			error(c"assignment target is not assignable")
-		if (type_is_const(type)):
-			error(c"assignment to const")
+		if (type_is_const(type)): error(c"assignment to const")
 		expression_is_assignment = 1
 		expression_lhs_readonly = 0
 		lint_check_condition_assign(eq_line, eq_column)
@@ -219,8 +186,7 @@ int expression():
 		# Count each nested assignment here; same counter, limit and
 		# message as the operand-level guard.
 		expr_nesting_depth = expr_nesting_depth + 1
-		if (expr_nesting_depth > 1000):
-			error(c"expression nesting too deep")
+		if (expr_nesting_depth > 1000): error(c"expression nesting too deep")
 		int type2 = expression()
 		expr_nesting_depth = expr_nesting_depth - 1
 		lint_self_assign_end(self_name, token_serial - rhs_serial, eq_line, eq_column)
@@ -238,10 +204,8 @@ int expression():
 		# saved word and the buffer stay counted in stack_pos, so the
 		# enclosing statement's cleanup pops them.
 		int lhs_buried = stack_pos - lhs_slot
-		if (lhs_buried > 0):
-			mov_ebx_esp_plus(lhs_buried << word_size_log2)
-		else:
-			pop_ebx()
+		if (lhs_buried > 0): mov_ebx_esp_plus(lhs_buried << word_size_log2)
+		else: pop_ebx()
 
 		# Warn when the two sides carry conflicting types; constants (3) and
 		# functions (4) act as wildcards inside types_compatible().
@@ -249,13 +213,10 @@ int expression():
 			warn_type_mismatch(c"assignment", type, type2)
 
 		# Struct assignment copies the aggregate; scalar stores use lhs width.
-		if ((type_num_args(type) > 0) & (type_num_args(type2) > 0)):
-			assign_store_struct(type)
-		else:
-			assign_store(type)
+		if ((type_num_args(type) > 0) & (type_num_args(type2) > 0)): assign_store_struct(type)
+		else: assign_store(type)
 
-		if (lhs_buried == 0):
-			stack_pos = stack_pos - 1
+		if (lhs_buried == 0): stack_pos = stack_pos - 1
 
 		type = type_value(type_strip_gpu(type))  # assignment yields the stored value
 

@@ -105,8 +105,7 @@ int sym_index_offset(int i):
 # data block ends. sym_declare writes the name at table_pos and leaves
 # table_pos at next_token(nul), so the blob has no gaps and this is exact.
 int sym_index_name_start(int i):
-	if (i == 0):
-		return 0
+	if (i == 0): return 0
 	return next_token(sym_index_offset(i - 1))
 
 
@@ -117,13 +116,10 @@ int sym_index_name_start(int i):
 # realloc(0, 0, n), the same call the symbol blob itself makes on the
 # first sym_declare.
 void sym_index_reserve(int n):
-	if (n <= sym_index_capacity):
-		return
+	if (n <= sym_index_capacity): return
 	int x = sym_index_capacity
-	if (x == 0):
-		x = 1024
-	while (x < n):
-		x = x << 1
+	if (x == 0): x = 1024
+	while (x < n): x = x << 1
 	sym_index_offsets = realloc(sym_index_offsets, sym_index_capacity * 4, x * 4)
 	sym_index_prev = realloc(sym_index_prev, sym_index_capacity * 4, x * 4)
 	sym_index_lint = realloc(sym_index_lint, sym_index_capacity, x)
@@ -137,8 +133,7 @@ void sym_index_reserve(int n):
 # and any future append path that bypasses sym_declare.
 void sym_index_check():
 	if (sym_index_count == 0):
-		if (table_pos != 0):
-			error(c"symbol index desync: empty index, non-empty table")
+		if (table_pos != 0): error(c"symbol index desync: empty index, non-empty table")
 		return
 	if (next_token(sym_index_offset(sym_index_count - 1)) != table_pos):
 		error(c"symbol index desync: top record does not end at table_pos")
@@ -162,8 +157,7 @@ void sym_index_check():
 void sym_index_pop():
 	int p = sym_index_count - 1
 	int previous = load_int(sym_index_prev + p * 4)
-	if (previous != -2):
-		sym_name_index[&table[sym_index_name_start(p)]] = previous
+	if (previous != -2): sym_name_index[&table[sym_index_name_start(p)]] = previous
 	sym_index_count = p
 
 
@@ -183,10 +177,8 @@ int sym_index_find(int off):
 		int v = sym_index_offset(mid)
 		if (v == off):
 			return mid
-		if (v < off):
-			lo = mid + 1
-		else:
-			hi = mid - 1
+		if (v < off): lo = mid + 1
+		else: hi = mid - 1
 	return -1
 
 
@@ -209,22 +201,17 @@ int sym_index_unbind(int name_start):
 	sym_index_sync()
 	char* name = &table[name_start]
 	int p = sym_index_find(name_start + strlen(name))
-	if (p < 0):
-		return 0
-	if (sym_index_name_start(p) != name_start):
-		return 0
+	if (p < 0): return 0
+	if (sym_index_name_start(p) != name_start): return 0
 	int previous = load_int(sym_index_prev + p * 4)
-	if (previous == -2):
-		return 1
+	if (previous == -2): return 1
 	# Unlink p from its name's chain. It is usually the head -- the
 	# bindings are the newest records when the eval starts -- but the
 	# entry may have redeclared the same name above them, so the interior
 	# case has to work too.
 	int head = -1
-	if (name in sym_name_index):
-		head = sym_name_index[name]
-	if (head == p):
-		sym_name_index[name] = previous
+	if (name in sym_name_index): head = sym_name_index[name]
+	if (head == p): sym_name_index[name] = previous
 	else:
 		int q = head
 		while (q > p):
@@ -232,8 +219,7 @@ int sym_index_unbind(int name_start):
 			if (r == p):
 				save_int(sym_index_prev + q * 4, previous)
 				q = -1
-			else:
-				q = r
+			else: q = r
 	save_int(sym_index_prev + p * 4, -2)
 	return 1
 
@@ -278,8 +264,7 @@ int sym_index_scan(char *s):
 			j = j + 1
 			t = t + 1
 
-		if (s[j] == table[t]):
-			return sym_index_offset(i)
+		if (s[j] == table[t]): return sym_index_offset(i)
 
 	return -1
 
@@ -301,33 +286,28 @@ int sym_lookup(char *s):
 			if (p >= 0):
 				sym_lookup_steps = sym_lookup_steps + 1
 				found = sym_index_offset(p)
-				if (sym_index_lint[p] == 1):
-					sym_index_lint[p] = 2
+				if (sym_index_lint[p] == 1): sym_index_lint[p] = 2
 	if (sym_index_selfcheck):
-		if (found != sym_index_scan(s)):
-			error(c"symbol index: name index and scan disagree")
+		if (found != sym_index_scan(s)): error(c"symbol index: name index and scan disagree")
 	return found
 
 
 int sym_address(char *s):
 	int t = sym_lookup(s)
-	if (t < 0):
-		return 0
+	if (t < 0): return 0
 	return load_int(table + t + 2)
 
 
 int sym_symtype(char *s):
 	int t = sym_lookup(s)
-	if (t < 0):
-		return 0
+	if (t < 0): return 0
 	return load_int(table + t + 10)
 
 
 # Registered index of the file currently being parsed, or -1 when no source
 # file is active (e.g. runtime stubs declared by be_start before compilation).
 int decl_file_index():
-	if (filename == 0):
-		return -1
+	if (filename == 0): return -1
 	return debug_line_file_index()
 
 
@@ -432,10 +412,8 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	# invariant that is already the newest LIVE record of this name,
 	# which is exactly what this record's chain link should be.
 	int previous = -1
-	if (sym_name_index == 0):
-		sym_name_index = new map[char*, int]
-	else if (s in sym_name_index):
-		previous = sym_name_index[s]
+	if (sym_name_index == 0): sym_name_index = new map[char*, int]
+	else if (s in sym_name_index): previous = sym_name_index[s]
 	save_int(sym_index_prev + p * 4, previous)
 	sym_index_lint[p] = 0
 	sym_name_index[s] = p
@@ -481,8 +459,7 @@ int sym_declare_global(char *s, int type, int symtype):
 # Emit an address slot linked onto the chain whose head is `head`
 # (0 = empty) and return the new head. The slot is signed for pac=full.
 int addr_chain_link(int head):
-	if (head == 0):
-		head = code_offset
+	if (head == 0): head = code_offset
 	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
 	be_addr_slot_write(codepos - 4, head)
 	int slot = codepos + code_offset - 4
@@ -492,8 +469,7 @@ int addr_chain_link(int head):
 
 # Write `value` into every slot of the chain whose head is `head`.
 void addr_chain_patch(int head, int value):
-	if (head == 0):
-		return;
+	if (head == 0): return;
 	int p = head - code_offset
 	while (p):
 		int next = be_addr_slot_read(p) - code_offset
@@ -503,8 +479,7 @@ void addr_chain_patch(int head, int value):
 
 void sym_define_global_at(int current_symbol, int v):
 	int t = current_symbol
-	if (table[t + 1] != 'U'):
-		error3(c"symbol redefined: '", last_global_declaration, c"'")
+	if (table[t + 1] != 'U'): error3(c"symbol redefined: '", last_global_declaration, c"'")
 	# A defining occurrence is more useful than a bare forward declaration
 	# for navigation (w symbols --json / windex/wlsp go-to-definition): a
 	# prototype like lib.w's 'int main(int argc, int argv);' would
@@ -622,8 +597,7 @@ const int extern_max_params = 255
 # slot. Only the first 10 parameters can have defaults (same limit as the
 # declared-type slots).
 int sym_param_has_default(int t, int i):
-	if (i >= sym_max_param_slots):
-		return 0
+	if (i >= sym_max_param_slots): return 0
 	return (load_int(table + t + 86) >> i) & 1
 
 
@@ -644,12 +618,9 @@ void sym_clear_param_defaults(int t):
 # when unknown: no parameter list was parsed or the slot was not recorded.
 int sym_param_type(int t, int i):
 	int num_args = load_int(table + t + 22)
-	if (num_args < 0):
-		return -1
-	if (i >= num_args):
-		return -1
-	if (i >= sym_max_param_slots):
-		return -1
+	if (num_args < 0): return -1
+	if (i >= num_args): return -1
+	if (i >= sym_max_param_slots): return -1
 	return load_int(table + t + 26 + (i << 2))
 
 
@@ -673,8 +644,7 @@ int gpu_sym_get_value(char* s);
 # lead and continuation bytes count as name characters so a whole UTF-8
 # name is one word (#287).
 int sym_is_name_char(int c):
-	if (is_ident_part_byte(c)):
-		return 1
+	if (is_ident_part_byte(c)): return 1
 	c = c & 255
 	return (c >= 128) & (c <= 191)
 
@@ -707,24 +677,19 @@ int sym_defined_later_in_file(char* name):
 			prev_is_name = 0
 			match_i = 0
 			at_line_start = 0
-		if (c == 10):
-			at_line_start = 1
-		else if (c == '#'):
-			line_commented = 1
+		if (c == 10): at_line_start = 1
+		else if (c == '#'): line_commented = 1
 		else if (line_can_define && (line_commented == 0)):
 			if ((match_i > 0) && (name[match_i] == 0)):
 				# Whole name matched; only spaces may separate it from
 				# the '(' of a parameter list. Anything else (another
 				# name character, '[' of a generic definition, ...)
 				# resets the search.
-				if (c == '('):
-					return 1
-				if (c != ' '):
-					match_i = 0
+				if (c == '('): return 1
+				if (c != ' '): match_i = 0
 			else if ((c == name[match_i]) && ((match_i > 0) || (prev_is_name == 0))):
 				match_i = match_i + 1
-			else:
-				match_i = 0
+			else: match_i = 0
 			prev_is_name = sym_is_name_char(c)
 		c = getchar(file)
 	return 0
@@ -770,14 +735,11 @@ int sym_get_value(char *s):
 	int t
 	# Device (PTX) bodies resolve symbols against the GPU-side stack and
 	# reject everything host-only (globals, function calls).
-	if (target_isa == 3):
-		return gpu_sym_get_value(s)
-	if ((t = sym_lookup(s)) < 0):
-		sym_not_found_error(s)
+	if (target_isa == 3): return gpu_sym_get_value(s)
+	if ((t = sym_lookup(s)) < 0): sym_not_found_error(s)
 	# A kernel's body lives in the PTX module, not at a host address:
 	# referencing its name as a value can only be a miscall.
-	if (sym_is_kernel(t)):
-		error(c"kernels cannot be called; use 'launch'")
+	if (sym_is_kernel(t)): error(c"kernels cannot be called; use 'launch'")
 	char scope_type = table[t + 1]
 	int type = load_int(table + t + 6)
 	int symtype = load_int(table + t + 10)
@@ -821,12 +783,10 @@ int sym_get_value(char *s):
 	}
 
 	/* undefined global: link this site into the backpatch chain */
-	else if (scope_type == 'U'):
-		save_int(table + t + 2, codepos + code_offset - 4)
+	else if (scope_type == 'U'): save_int(table + t + 2, codepos + code_offset - 4)
 
 	/* local variable */
-	else if (scope_type == 'L'):
-		k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
+	else if (scope_type == 'L'): k = (stack_pos - load_int(table + t + 2) - 1) << word_size_log2
 
 	/* argument */
 	else if (scope_type == 'A'):
@@ -847,8 +807,7 @@ int sym_get_value(char *s):
 		# Aggregates occupy several stack words; point at the lowest address
 		# (last pushed word) so positive offsets stay inside the object.
 		int words = type_stack_words(type)
-		if (words > 1):
-			k = k - ((words - 1) << word_size_log2)
+		if (words > 1): k = k - ((words - 1) << word_size_log2)
 		# lea (n)(%esp),%eax on x86; add x0,x28,#k on arm64
 		be_lea_acc_wstack(k)
 
@@ -858,8 +817,7 @@ int sym_get_value(char *s):
 			# (still at codepos-4: the D/U paths emit nothing after
 			# be_addr_slot_emit) so a later redefinition of this name
 			# can repatch it. No-op outside the REPL (hook is 0).
-			if (repl_call_site_hook != 0):
-				repl_call_site_hook(s, codepos - 4)
+			if (repl_call_site_hook != 0): repl_call_site_hook(s, codepos - 4)
 			# pac=full: the address just materialized is now a value —
 			# sign it (paciza; call_eax authenticates with blraaz).
 			# Emitted here, after the 'U' backpatch-chain bookkeeping
@@ -872,8 +830,7 @@ int sym_get_value(char *s):
 			# can then lower the call site to a direct `call`
 			# (code_generator/wasm.w).
 			if (target_isa == 2):
-				if (scope_type == 'D'):
-					wasm_call_target_note(load_int(table + t + 2))
+				if (scope_type == 'D'): wasm_call_target_note(load_int(table + t + 2))
 			return 4 /* function */
 
 	return type
@@ -903,10 +860,8 @@ void sym_define_declare_global_function_arity(char* name, int num_args):
 	sym_define_global(t)
 	save_int(table + t + 22, num_args)
 	int slots = num_args
-	if (slots > sym_max_param_slots):
-		slots = sym_max_param_slots
-	for i in range(slots):
-		save_int(table + t + 26 + (i << 2), -1)
+	if (slots > sym_max_param_slots): slots = sym_max_param_slots
+	for i in range(slots): save_int(table + t + 26 + (i << 2), -1)
 
 
 # 1 when the symbol at table offset t is an asm runtime stub: stubs are
@@ -946,8 +901,7 @@ void print_symbol_table(int t):
 
 
 int emit_string_table():
-	if (verbosity >= 1):
-		print_error(c"dumping string table\x0a")
+	if (verbosity >= 1): print_error(c"dumping string table\x0a")
 	int t = 0
 	int n = 0
 	int count = 0
@@ -964,8 +918,7 @@ int emit_string_table():
 
 
 int emit_symbol_table():
-	if (verbosity >= 1):
-		print_error(c"dumping symbol table\x0a")
+	if (verbosity >= 1): print_error(c"dumping symbol table\x0a")
 	int t = 0
 	int n = 0
 	int symbol = 1 /* string table starts with a null byte */
@@ -978,8 +931,7 @@ int emit_symbol_table():
 
 		int visibility = table[t + 1]
 		int binding = 1  /* global by default */
-		if (visibility != 'D'):
-			binding = 0
+		if (visibility != 'D'): binding = 0
 		int symtype = table[t + 10]
 		int address = load_int(table + t + 2)
 		int size = load_int(table + t + 14)
@@ -1030,8 +982,7 @@ void emit_debugging_symbols(int word_size):
 	# Section order: null, text, debug_info, debug_abbrev, debug_line, strings,
 	# symtab, and .note.gnu.build-id when the writer emitted the note
 	int num_sections = 7
-	if (build_id_note_pos != 0):
-		num_sections = 8
+	if (build_id_note_pos != 0): num_sections = 8
 	elf_save_section_info(word_size, header_addr, num_sections, 5)
 
 	# Mandatory null section 0

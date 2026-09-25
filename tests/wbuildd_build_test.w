@@ -69,13 +69,10 @@ list[char*] vw_words(char* text):
 	while (1):
 		int c = text[i]
 		if ((c == ' ') || (c == 0)):
-			if (word.length > 0):
-				words.push(strclone(word.data))
+			if (word.length > 0): words.push(strclone(word.data))
 			string_clear(word)
-			if (c == 0):
-				break
-		else:
-			string_append_char(word, c)
+			if (c == 0): break
+		else: string_append_char(word, c)
 		i = i + 1
 	string_free(word)
 	return words
@@ -103,25 +100,21 @@ list[char*] vw_client(char* flags, char* args):
 	argv.push(c"bin/wbuildd")
 	argv.push(c"--socket")
 	argv.push(vw_path(c"d.sock"))
-	for char* w in vw_words(flags):
-		argv.push(w)
-	for char* w in vw_words(args):
-		argv.push(w)
+	for char* w in vw_words(flags): argv.push(w)
+	for char* w in vw_words(args): argv.push(w)
 	return argv
 
 
 list[char*] vw_oneshot(char* args):
 	list[char*] argv = new list[char*]
 	argv.push(c"bin/wexec")
-	for char* w in vw_words(args):
-		argv.push(w)
+	for char* w in vw_words(args): argv.push(w)
 	return argv
 
 
 json_value* vw_status():
 	process_result* r = vw_run(vw_client(c"", c"status --json"))
-	if (r.status != 0):
-		print(r.stderr_text)
+	if (r.status != 0): print(r.stderr_text)
 	assert_equal(0, r.status)
 	json_value* v = json_parse(r.stdout_text)
 	assert1(v != 0)
@@ -203,8 +196,7 @@ void vw_assert_same_file(char* cold, char* warm):
 	int same = cold_length == warm_length
 	int i = 0
 	while (same && (i < cold_length)):
-		if (a[i] != b[i]):
-			same = 0
+		if (a[i] != b[i]): same = 0
 		i = i + 1
 	if (same == 0):
 		print(c"differs from the cold build: ")
@@ -245,8 +237,7 @@ char* vw_cmd(char* words):
 	string_append_char(s, '[')
 	int first = 1
 	for char* w in vw_words(words):
-		if (first == 0):
-			string_append(s, c", ")
+		if (first == 0): string_append(s, c", ")
 		first = 0
 		string_append_char(s, '"')
 		string_append(s, w)
@@ -302,8 +293,7 @@ void vw_expect_warm():
 		json_value* status = vw_status()
 		int warm = json_object_get(status, c"warm_manifest").int_value && (json_object_get(status, c"warm_hashes").int_value > 0)
 		json_free(status)
-		if (warm):
-			return
+		if (warm): return
 		process_result_free(vw_run(vw_client(c"--no-autostart --require-daemon", strjoin(strjoin(c"build -f ", vw_path(c"manifest.json")), c" -j 1 vw_a"))))
 		process_result_free(vw_run(vw_client(c"--no-autostart --require-daemon", c"build --list")))
 	asserts(c"the daemon never kept a warm manifest and warm hashes", 0)
@@ -311,8 +301,7 @@ void vw_expect_warm():
 
 void vw_cleanup():
 	char* names = c"a.w bad.w helper.w manifest.json log d.sock d.sock.log a a64 wv_self bad a.cold a64.cold wv_self.cold"
-	for char* name in vw_words(names):
-		unlink(vw_path(name))
+	for char* name in vw_words(names): unlink(vw_path(name))
 	rmdir(vw_dir())
 
 

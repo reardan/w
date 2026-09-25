@@ -8,8 +8,7 @@ import libs.standard.distributed.swim
 void swim_test_drain(swim* s):
 	int* out = malloc(16 * __word_size__)
 	int got = swim_next_piggyback(s, 16, out)
-	while (got > 0):
-		got = swim_next_piggyback(s, 16, out)
+	while (got > 0): got = swim_next_piggyback(s, 16, out)
 	free(out)
 
 

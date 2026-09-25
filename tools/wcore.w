@@ -95,12 +95,9 @@ void wc_print_dec(int v):
 void wc_print_frame(int addr):
 	print(c"  at ")
 	int e = 0
-	if (cf_have_syms):
-		e = st_func_entry(addr)
-	if (e != 0):
-		print(cast(char*, st_entry_name(e)))
-	else:
-		wc_print_hex(addr)
+	if (cf_have_syms): e = st_func_entry(addr)
+	if (e != 0): print(cast(char*, st_entry_name(e)))
+	else: wc_print_hex(addr)
 	if (cf_have_syms):
 		if (st_line_lookup(addr)):
 			print(c" (")
@@ -122,8 +119,7 @@ void wc_json_str(char* s):
 		if ((ch == '"') || (ch == 92)):
 			put_char(92)
 			put_char(ch)
-		else if (ch >= 32):
-			put_char(ch)
+		else if (ch >= 32): put_char(ch)
 		i = i + 1
 	put_char('"')
 
@@ -148,10 +144,8 @@ void wc_json_report(char* frames, int nframes):
 	wc_json_str(wc_bin_path)
 	put_char(',')
 	wc_json_key(c"source")
-	if (cf_exe_note != 0):
-		wc_json_str(c"w_crash_dump")
-	else:
-		wc_json_str(c"kernel")
+	if (cf_exe_note != 0): wc_json_str(c"w_crash_dump")
+	else: wc_json_str(c"kernel")
 	put_char(',')
 	if (cf_bin_id != 0):
 		wc_json_key(c"build_id")
@@ -160,10 +154,8 @@ void wc_json_report(char* frames, int nframes):
 		free(id)
 		put_char(',')
 		wc_json_key(c"build_id_verified")
-		if (cf_core_id != 0):
-			print(c"true")
-		else:
-			print(c"false")
+		if (cf_core_id != 0): print(c"true")
+		else: print(c"false")
 		put_char(',')
 	wc_json_key(c"word_size")
 	wc_print_dec(cf_wsize)
@@ -191,24 +183,20 @@ void wc_json_report(char* frames, int nframes):
 	put_char('{')
 	int k = 0
 	while (k < cf_reg_print_count()):
-		if (k > 0):
-			put_char(',')
+		if (k > 0): put_char(',')
 		wc_json_key(cf_reg_print_name(k))
 		wc_json_hex(cf_reg(cf_reg_print_index(k)))
 		k = k + 1
 	put_char('}')
 	put_char(',')
 	wc_json_key(c"trace_exact")
-	if (cf_chain_exact):
-		print(c"true")
-	else:
-		print(c"false")
+	if (cf_chain_exact): print(c"true")
+	else: print(c"false")
 	put_char(',')
 	wc_json_key(c"frames")
 	put_char('[')
 	for f in range(nframes):
-		if (f > 0):
-			put_char(',')
+		if (f > 0): put_char(',')
 		int addr = load_word(&frames[f * __word_size__])
 		put_char('{')
 		wc_json_key(c"pc")
@@ -238,26 +226,20 @@ void wc_json_report(char* frames, int nframes):
 void wc_report(char* frames, int nframes):
 	print(c"core: ")
 	print(wc_core_path)
-	if (cf_class == 2):
-		println(c" (x86-64, 64-bit ELF core)")
-	else:
-		println(c" (x86, 32-bit ELF core)")
+	if (cf_class == 2): println(c" (x86-64, 64-bit ELF core)")
+	else: println(c" (x86, 32-bit ELF core)")
 	print(c"binary: ")
 	println(wc_bin_path)
-	if (cf_exe_note != 0):
-		println(c"source: W crash handler dump (W_CRASH_DUMP)")
+	if (cf_exe_note != 0): println(c"source: W crash handler dump (W_CRASH_DUMP)")
 	if (cf_bin_id != 0):
 		print(c"build-id: ")
 		char* id = cf_id_hex(cf_bin_id, cf_bin_id_size)
 		print(id)
 		free(id)
-		if (cf_core_id != 0):
-			println(c" (core and binary match)")
-		else:
-			println(c" (unverified: the core has no build-id)")
+		if (cf_core_id != 0): println(c" (core and binary match)")
+		else: println(c" (unverified: the core has no build-id)")
 	print(c"signal: ")
-	if (cf_sig == 0):
-		println(c"none recorded")
+	if (cf_sig == 0): println(c"none recorded")
 	else:
 		print(cf_signal_name(cf_sig))
 		char* desc = cf_signal_desc(cf_sig)
@@ -277,8 +259,7 @@ void wc_report(char* frames, int nframes):
 	print(c"pc: ")
 	wc_print_hex(cf_pc)
 	int e = 0
-	if (cf_have_syms):
-		e = st_func_entry(cf_pc)
+	if (cf_have_syms): e = st_func_entry(cf_pc)
 	if (e != 0):
 		print(c"  ")
 		print(cast(char*, st_entry_name(e)))
@@ -301,8 +282,7 @@ void wc_report(char* frames, int nframes):
 		put_char(10)
 		k = k + 1
 	println(c"stack trace (most recent call first):")
-	for f in range(nframes):
-		wc_print_frame(load_word(&frames[f * __word_size__]))
+	for f in range(nframes): wc_print_frame(load_word(&frames[f * __word_size__]))
 	if (cf_chain_exact == 0):
 		println(c"note: part of the trace is heuristic (return-address scan): frames can be missing or stale")
 
@@ -325,8 +305,7 @@ int wc_fail_path(char* msg, char* path):
 
 # A loading error from lib/core_file.w, with its file when it names one.
 int wc_fail_err(char* msg):
-	if (cf_error_path != 0):
-		return wc_fail_path(msg, cf_error_path)
+	if (cf_error_path != 0): return wc_fail_path(msg, cf_error_path)
 	return wc_fail(msg)
 
 
@@ -334,12 +313,9 @@ int main(int argc, int argv):
 	for i in range(1, argc):
 		char** slot = argv + i * __word_size__
 		char* a = *slot
-		if (strcmp(a, c"--json") == 0):
-			wc_json = 1
-		else if (wc_core_path == 0):
-			wc_core_path = a
-		else if (wc_bin_path == 0):
-			wc_bin_path = a
+		if (strcmp(a, c"--json") == 0): wc_json = 1
+		else if (wc_core_path == 0): wc_core_path = a
+		else if (wc_bin_path == 0): wc_bin_path = a
 		else:
 			println2(c"usage: wcore [--json] <core> [<binary>]")
 			return 2
@@ -348,8 +324,7 @@ int main(int argc, int argv):
 		return 2
 
 	char* err = cf_load_core(wc_core_path)
-	if (err != 0):
-		return wc_fail_err(err)
+	if (err != 0): return wc_fail_err(err)
 
 	# A dump written by W's own crash handler (lib/crash_dump.w) names
 	# its executable, so the binary argument is optional for those.
@@ -359,16 +334,14 @@ int main(int argc, int argv):
 			return 2
 		wc_bin_path = cast(char*, cf_exe_note)
 	err = cf_load_binary(wc_bin_path)
-	if (err != 0):
-		return wc_fail_err(err)
+	if (err != 0): return wc_fail_err(err)
 
 	# A core that names a build-id must come from this exact binary.
 	int id_status = cf_check_build_id()
 	if (id_status == 1):
 		print2(c"wcore: build-id mismatch: the core was produced by build-id ")
 		print2(cf_id_hex(cf_core_id, cf_core_id_size))
-		if (cf_bin_id == 0):
-			println2(c", but the binary has no build-id")
+		if (cf_bin_id == 0): println2(c", but the binary has no build-id")
 		else:
 			print2(c", but the binary is ")
 			println2(cf_id_hex(cf_bin_id, cf_bin_id_size))
@@ -377,20 +350,16 @@ int main(int argc, int argv):
 		println2(c"wcore: warning: the core records no build-id (its ELF header page was not dumped); cannot confirm it came from this binary")
 
 	err = cf_read_prstatus()
-	if (err != 0):
-		return wc_fail_err(err)
+	if (err != 0): return wc_fail_err(err)
 
 	cf_load_symbols()
-	if (cf_have_syms == 0):
-		println2(c"wcore: no .symtab in the binary; raw addresses only")
+	if (cf_have_syms == 0): println2(c"wcore: no .symtab in the binary; raw addresses only")
 
 	# Frame 0 is the faulting pc (exact); the rest follows the
 	# frame-pointer chain, falling back to the heuristic scan.
 	char* frames = malloc(cf_frames_max * __word_size__)
 	int nframes = cf_backtrace(frames, cf_frames_max)
 
-	if (wc_json):
-		wc_json_report(frames, nframes)
-	else:
-		wc_report(frames, nframes)
+	if (wc_json): wc_json_report(frames, nframes)
+	else: wc_report(frames, nframes)
 	return 0

@@ -24,12 +24,10 @@ import tools.wtest_scratch
 
 # grep -c .: the number of non-empty lines.
 int wc_count_nonempty(char* text):
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	int count = 0
 	for char* piece in split(text, 10):
-		if (piece[0] != 0):
-			count = count + 1
+		if (piece[0] != 0): count = count + 1
 	return count
 
 
@@ -71,8 +69,7 @@ int main(int argc, char** argv):
 	string_append(manifest, c"{\n\t\"targets\": [\n")
 	for i in range(1, 22 + 1):
 		char* name = strjoin(c"r", itoa(i))
-		if (i < 10):
-			name = strjoin(c"r0", itoa(i))
+		if (i < 10): name = strjoin(c"r0", itoa(i))
 		string_append(manifest, c"\t\t{\"name\": \"")
 		string_append(manifest, name)
 		string_append(manifest, c"_t\", \"steps\": [{\"cmd\": [\"bin/wv2\", \"")
@@ -80,8 +77,7 @@ int main(int argc, char** argv):
 		string_append(manifest, c".w\", \"-o\", \"bin/")
 		string_append(manifest, name)
 		string_append(manifest, c"\"]}]}")
-		if (i < 22):
-			string_append(manifest, c",")
+		if (i < 22): string_append(manifest, c",")
 		string_append(manifest, c"\n")
 		sc_write(strjoin(name, c".w"), c"import dep\n")
 	string_append(manifest, c"\t]\n}\n")
@@ -89,15 +85,13 @@ int main(int argc, char** argv):
 
 	# 0) No bin/wv2: warming is impossible and must say so, loudly.
 	process_result* r = wtest_run(av(c"cache"), 0)
-	if (r.status == 0):
-		fail(c"wtest cache succeeded without bin/wv2")
+	if (r.status == 0): fail(c"wtest cache succeeded without bin/wv2")
 	if (contains(r.stderr_text, c"wtest: error: cannot warm the deps cache: bin/wv2 not found") == 0):
 		fail(c"no bin/wv2-missing error")
 
 	# A bad argument is a usage error, and the usage names the subcommand.
 	r = wtest_run(av(c"cache", c"bogus"), 0)
-	if (r.status == 0):
-		fail(c"unexpected 'wtest cache' argument accepted")
+	if (r.status == 0): fail(c"unexpected 'wtest cache' argument accepted")
 	if (contains(r.stderr_text, c"wtest cache [-f manifest.json]") == 0):
 		fail(c"usage does not document 'wtest cache'")
 
@@ -107,8 +101,7 @@ int main(int argc, char** argv):
 	# time-left estimate on stderr, a summary on stdout, one deps run per
 	# root (22 compile roots + the seed root).
 	r = wtest_run(av(c"cache"), 0)
-	if (r.status != 0):
-		fail(c"cold wtest cache failed")
+	if (r.status != 0): fail(c"cold wtest cache failed")
 	if (contains(r.stdout_text, c"wtest: deps cache ready (23 roots)") == 0):
 		fail(c"no ready summary on stdout")
 	if (contains(r.stderr_text, c"wtest: building import-closure cache, 23 roots to compute") == 0):
@@ -117,29 +110,22 @@ int main(int argc, char** argv):
 		fail(c"no progress line")
 	if (contains(r.stderr_text, c"s elapsed, ~") == 0):
 		fail(c"no elapsed time on the progress line")
-	if (contains(r.stderr_text, c" left") == 0):
-		fail(c"no time-left estimate on the progress line")
+	if (contains(r.stderr_text, c" left") == 0): fail(c"no time-left estimate on the progress line")
 	int calls = wc_count_nonempty(sc_read(c"calls.log"))
-	if (calls != 23):
-		fail(strjoin(c"expected 23 deps runs, got ", itoa(calls)))
+	if (calls != 23): fail(strjoin(c"expected 23 deps runs, got ", itoa(calls)))
 	char* cache = sc_read(c"bin/.wtest_deps_cache")
-	if (count_line(cache, c"R x86 w.w") == 0):
-		fail(c"seed root not warmed")
-	if (count_line(cache, c"R x86 r22.w") == 0):
-		fail(c"compile root not warmed")
+	if (count_line(cache, c"R x86 w.w") == 0): fail(c"seed root not warmed")
+	if (count_line(cache, c"R x86 r22.w") == 0): fail(c"compile root not warmed")
 
 	# 2) Warm rerun: revalidates, computes nothing, same summary.
 	sc_write(c"calls.log", c"")
 	r = wtest_run(av(c"cache"), 0)
-	if (r.status != 0):
-		fail(c"warm wtest cache failed")
+	if (r.status != 0): fail(c"warm wtest cache failed")
 	if (contains(r.stdout_text, c"wtest: deps cache ready (23 roots)") == 0):
 		fail(c"warm rerun lost the summary")
-	if (contains(r.stderr_text, c"building import-closure cache")):
-		fail(c"warm rerun went cold")
+	if (contains(r.stderr_text, c"building import-closure cache")): fail(c"warm rerun went cold")
 	char* log = sc_read(c"calls.log")
-	if ((log != 0) && (log[0] != 0)):
-		fail(c"warm rerun ran bin/wv2 deps")
+	if ((log != 0) && (log[0] != 0)): fail(c"warm rerun ran bin/wv2 deps")
 
 	# 3) A selection after the pre-warm is warm: no banner, no deps runs,
 	# closure selection intact (including through the pre-warmed seed
@@ -148,8 +134,7 @@ int main(int argc, char** argv):
 	if (contains(r.stderr_text, c"building import-closure cache")):
 		fail(c"changed run after pre-warm went cold")
 	log = sc_read(c"calls.log")
-	if ((log != 0) && (log[0] != 0)):
-		fail(c"changed run after pre-warm ran bin/wv2 deps")
+	if ((log != 0) && (log[0] != 0)): fail(c"changed run after pre-warm ran bin/wv2 deps")
 	if (count_line(r.stdout_text, c"r01_t") == 0):
 		fail(c"closure selection missing r01_t after pre-warm")
 	if (count_line(r.stdout_text, c"r22_t") == 0):

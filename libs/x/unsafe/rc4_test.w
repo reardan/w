@@ -67,8 +67,7 @@ void test_rc4_chunked_matches_oneshot():
 	int step = 1
 	while (pos < 272):
 		int take = step
-		if (pos + take > 272):
-			take = 272 - pos
+		if (pos + take > 272): take = 272 - pos
 		rc4_keystream(b, many + pos, take)
 		pos = pos + take
 		step = step + 3

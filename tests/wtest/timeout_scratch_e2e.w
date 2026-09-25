@@ -126,12 +126,10 @@ int main(int argc, char** argv):
 	if (contains(r.stderr_text, c"wtest: warning: 'bin/wv2 deps' failed for root 'x86 broken.w'") == 0):
 		fail(c"no failure warning for broken.w")
 	char* cache = sc_read(c"bin/.wtest_deps_cache")
-	if (count_line(cache, c"R x86 slow.w") == 0):
-		fail(c"slow.w's retried closure was not cached")
+	if (count_line(cache, c"R x86 slow.w") == 0): fail(c"slow.w's retried closure was not cached")
 	if (count_line(cache, c"X x86 broken.w") == 0):
 		fail(c"broken.w's real compile failure was not cached")
-	if (contains(cache, c"x86 hang.w")):
-		fail(c"hang.w's timeout was persisted to the cache")
+	if (contains(cache, c"x86 hang.w")): fail(c"hang.w's timeout was persisted to the cache")
 	char* calls = sc_read(c"calls.log")
 	if (count_line(calls, c"slow.w") != 2):
 		fail(c"expected exactly 2 slow.w attempts (timeout + retry)")
@@ -144,14 +142,12 @@ int main(int argc, char** argv):
 	sc_write(c"calls.log", c"")
 	r = wtest_run(av(c"changed", c"dep.w"), 0)
 	calls = sc_read(c"calls.log")
-	if (count_line(calls, c"slow.w") != 0):
-		fail(c"warm slow.w closure was recomputed")
+	if (count_line(calls, c"slow.w") != 0): fail(c"warm slow.w closure was recomputed")
 	if (count_line(calls, c"broken.w") != 0):
 		fail(c"persisted broken.w failure was retried without a content change")
 	if (count_line(calls, c"hang.w") != 2):
 		fail(c"timed-out hang.w was not retried on the next run")
-	if (count_line(r.stdout_text, c"slow_t") == 0):
-		fail(c"warm rerun lost slow_t")
+	if (count_line(r.stdout_text, c"slow_t") == 0): fail(c"warm rerun lost slow_t")
 
 	# 3) Load lifts: hang.w stops sleeping and the VERY NEXT run computes
 	# its closure (a persisted 'X' entry would have blocked this until

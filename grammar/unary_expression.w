@@ -21,31 +21,24 @@ int import_alias_type_member(int alias_index);
 # scalars store by the field's width. Out-of-range indexes emit
 # nothing; the caller warns about the argument count.
 void new_store_field(int base_type, int field_index, int arg_type, int leaked_words):
-	if (field_index >= type_num_args(base_type)):
-		return;
+	if (field_index >= type_num_args(base_type)): return;
 	int field_type = type_get_field_type_at(base_type, field_index)
 	if (type_has_array_field(field_type)):
 		error(c"cannot initialize fixed-array field in constructor")
 	if (types_compatible_with_expression(field_type, arg_type) == 0):
 		warn_type_mismatch(c"constructor argument", field_type, arg_type)
 	coerce(field_type, arg_type)
-	if (leaked_words > 0):
-		mov_ebx_esp_plus(leaked_words << word_size_log2)
-	else:
-		mov_ebx_esp()
+	if (leaked_words > 0): mov_ebx_esp_plus(leaked_words << word_size_log2)
+	else: mov_ebx_esp()
 	add_ebx_int32(type_get_field_offset_at(base_type, field_index))
 	if ((type_num_args(field_type) > 0) & (type_num_args(arg_type) > 0)):
 		assign_store_struct(field_type)
 		return;
 	int field_size = type_get_size(field_type)
-	if (field_size == 1):
-		store_ebx_int8()
-	else if (field_size == 2):
-		store_ebx_int16()
-	else if (field_size == 4):
-		store_ebx_int32()
-	else:
-		store_ebx_word()
+	if (field_size == 1): store_ebx_int8()
+	else if (field_size == 2): store_ebx_int16()
+	else if (field_size == 4): store_ebx_int32()
+	else: store_ebx_word()
 
 
 # Constructor arguments after '(' for 'T(...)' and 'new T(...)', with
@@ -62,14 +55,12 @@ void new_store_field(int base_type, int field_index, int arg_type, int leaked_wo
 int ctor_field_args(int base):
 	int arg_entry = stack_pos
 	int named = is_ident_start_byte(token[0]) && (nextc == ':')
-	if (named):
-		zero_runtime_object(type_get_size(base))
+	if (named): zero_runtime_object(type_get_size(base))
 	int field_index = 0
 	while (1):
 		int target = field_index
 		if (is_ident_start_byte(token[0]) && (nextc == ':')):
-			if (named == 0):
-				error(c"cannot mix positional and named constructor arguments")
+			if (named == 0): error(c"cannot mix positional and named constructor arguments")
 			char* name = strclone(token)
 			target = type_get_arg(base, name)
 			if (target < 0):
@@ -78,17 +69,14 @@ int ctor_field_args(int base):
 			free(name)
 			get_token()
 			expect(c":")
-		else if (named):
-			error(c"cannot mix positional and named constructor arguments")
+		else if (named): error(c"cannot mix positional and named constructor arguments")
 		int arg_type = expression()
 		arg_type = promote(arg_type)
 		new_store_field(base, target, arg_type, stack_pos - arg_entry)
-		if (stack_pos > arg_entry):
-			pop_to(arg_entry)
+		if (stack_pos > arg_entry): pop_to(arg_entry)
 		field_index = field_index + 1
 		if (accept(c",") == 0):
-			if (named):
-				return 0 - 1
+			if (named): return 0 - 1
 			return field_index
 
 
@@ -116,8 +104,7 @@ void zero_stack_count_bytes():
 # alias like 'type cb = fn(int) -> int' never claims a call.
 int struct_value_ctor_ready():
 	int c = token[0]
-	if (is_ident_start_byte(c) == 0):
-		return 0
+	if (is_ident_start_byte(c) == 0): return 0
 	int base = -1
 	if (nextc == '.'):
 		# 'alias.T(a, b)': the qualified constructor spelling. The
@@ -125,20 +112,14 @@ int struct_value_ctor_ready():
 		# the aliased module with '(' directly after it, so value
 		# accesses ('alias.name') fall through to identifier().
 		base = import_alias_type_ahead(1)
-		if (base < 0):
-			return 0
+		if (base < 0): return 0
 	else:
-		if (nextc != '('):
-			return 0
+		if (nextc != '('): return 0
 		base = type_lookup(token)
-	if (base < 0):
-		return 0
-	if (type_get_pointer_level(base) > 0):
-		return 0
-	if (type_is_function_signature(base)):
-		return 0
-	if (type_num_args(base) <= 0):
-		return 0
+	if (base < 0): return 0
+	if (type_get_pointer_level(base) > 0): return 0
+	if (type_is_function_signature(base)): return 0
+	if (type_num_args(base) <= 0): return 0
 	return 1
 
 
@@ -160,8 +141,7 @@ int struct_value_ctor_expr():
 	expect(c"(")
 	int size = type_get_size(base)
 	int words = (size + word_size - 1) >> word_size_log2
-	for j in range(words):
-		push_eax()
+	for j in range(words): push_eax()
 	stack_pos = stack_pos + words
 	lea_eax_esp_plus(0)
 	if (type_has_array_field(base)):
@@ -172,8 +152,7 @@ int struct_value_ctor_expr():
 	push_slot()
 	if (peek(c")") == 0):
 		int field_index = ctor_field_args(base)
-		if (peek(c")") == 0):
-			error(c"')' expected in constructor")
+		if (peek(c")") == 0): error(c"')' expected in constructor")
 		if ((field_index >= 0) && (field_index != type_num_args(base))):
 			diag_part(c"warning: ")
 			diag_part(type_get_name(base))
@@ -211,8 +190,7 @@ int unary_expression_operand();
 # message.
 int unary_expression():
 	expr_nesting_depth = expr_nesting_depth + 1
-	if (expr_nesting_depth > 1000):
-		error(c"expression nesting too deep")
+	if (expr_nesting_depth > 1000): error(c"expression nesting too deep")
 	int type = unary_expression_operand()
 	expr_nesting_depth = expr_nesting_depth - 1
 	return type
@@ -238,8 +216,7 @@ int unary_expression_operand():
 			print_error(last_global_declaration)
 			print_error(c"\x0a")
 		promote(type) /* load the pointer; eax becomes the element's address */
-		if (type_get_pointer_level(type) > 0):
-			return type_lookup_previous_pointer(type)
+		if (type_get_pointer_level(type) > 0): return type_lookup_previous_pointer(type)
 		return 1 /* deref of a plain int: word-sized lvalue */
 	else if (op && accept(c"!!")):
 		# The tokenizer scans "!!" as one token; it booleanizes like !(!x)
@@ -255,10 +232,8 @@ int unary_expression_operand():
 	else if (op && accept(c"~")):
 		type = unary_expression()
 		type = promote(type)
-		if (type_is_var(type_unqualified(type))):
-			error(c"var operands do not support ~")
-		if (type_float_kind(type)):
-			error(c"float operands do not support ~")
+		if (type_is_var(type_unqualified(type))): error(c"var operands do not support ~")
+		if (type_float_kind(type)): error(c"float operands do not support ~")
 		not_eax()
 		return 3
 	else if (op && accept(c"-")):
@@ -301,8 +276,7 @@ int unary_expression_operand():
 		type = expression()
 		cast_context = outer_cast
 		type = promote(type)
-		if (type_num_args(want) > 0):
-			error(c"cannot cast to a struct value")
+		if (type_num_args(want) > 0): error(c"cannot cast to a struct value")
 		# An array/slice operand promotes to a slice VALUE: eax holds the
 		# address of the {data, length} descriptor (a T[N] local's 2-word
 		# header), not the element data. Casting that to the element's own
@@ -353,8 +327,7 @@ int unary_expression_operand():
 		# a type declared in the aliased module (import_statement.w)
 		if (nextc == '.'):
 			int new_alias = import_alias_lookup(token)
-			if (new_alias >= 0):
-				base = import_alias_type_member(new_alias)
+			if (new_alias >= 0): base = import_alias_type_member(new_alias)
 		if (base < 0):
 			base = type_lookup(token)
 			if (base < 0):
@@ -363,8 +336,7 @@ int unary_expression_operand():
 		get_token()
 		if (accept(c"[")):
 			int element_size = type_get_size(base)
-			if (element_size <= 0):
-				error(c"cannot allocate array of zero-sized type")
+			if (element_size <= 0): error(c"cannot allocate array of zero-sized type")
 			int len_type = expression()
 			promote(len_type)
 			if (bounds_mode != 0):
@@ -392,8 +364,7 @@ int unary_expression_operand():
 			sym_get_value(c"malloc")
 			push_slot()
 			mov_eax_esp_plus(word_size)
-			if (element_size > 1):
-				imul_eax_int32(element_size)
+			if (element_size > 1): imul_eax_int32(element_size)
 			add_eax_int32(2 * word_size)
 			push_slot()
 			mov_eax_esp_plus(word_size)
@@ -414,8 +385,7 @@ int unary_expression_operand():
 
 			# Zero the payload so new arrays have deterministic contents.
 			mov_eax_esp_plus(word_size)
-			if (element_size > 1):
-				imul_eax_int32(element_size)
+			if (element_size > 1): imul_eax_int32(element_size)
 			push_slot()
 			mov_eax_esp_plus(word_size)
 			add_eax_int32(2 * word_size)
@@ -457,5 +427,4 @@ int unary_expression_operand():
 		# eax holds the allocation's address; the expression's type is the
 		# pointer to the allocated type, so mismatched stores warn.
 		return type_value(type_get_next_pointer(base))
-	else:
-		return postfix_expr()
+	else: return postfix_expr()

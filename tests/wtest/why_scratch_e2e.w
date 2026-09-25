@@ -34,16 +34,14 @@ import tools.wtest_scratch
 # grep -A2 "^<line>$" | grep -q "^<prefix>": one of the two lines after
 # a line exactly equal to line starts with prefix.
 int wy_prefix_follows(char* text, char* line, char* prefix):
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	list[char*] lines = split(text, 10)
 	int i = 0
 	while (i < lines.length):
 		if (strcmp(lines[i], line) == 0):
 			int j = i + 1
 			while ((j <= (i + 2)) && (j < lines.length)):
-				if (starts_with(lines[j], prefix)):
-					return 1
+				if (starts_with(lines[j], prefix)): return 1
 				j = j + 1
 		i = i + 1
 	return 0
@@ -135,8 +133,7 @@ int main(int argc, char** argv):
 	int first = 1
 	for char* f in roots:
 		sc_write(strjoin(f, c".w"), c"import dep\n")
-		if (first == 0):
-			string_append(manifest, c",\n")
+		if (first == 0): string_append(manifest, c",\n")
 		first = 0
 		string_append(manifest, c"\t\t{\"name\": \"")
 		string_append(manifest, f)
@@ -160,38 +157,29 @@ int main(int argc, char** argv):
 		fail(c"no representative failure reason")
 	if (contains(r.stderr_text, c"wtest: note: 'wtest why [<arch>] <file.w>' explains any root's selection story") == 0):
 		fail(c"no wtest-why pointer")
-	if (has_line(r.stdout_text, c"ok_t") == 0):
-		fail(c"closure selection lost ok_t")
-	if (has_line(r.stdout_text, c"bad1_t")):
-		fail(c"bad1_t selected without a closure")
+	if (has_line(r.stdout_text, c"ok_t") == 0): fail(c"closure selection lost ok_t")
+	if (has_line(r.stdout_text, c"bad1_t")): fail(c"bad1_t selected without a closure")
 
 	# 2) Persistable failures carry their stderr detail ('E ') and
 	# successes the computing compiler's hash ('V ', informational) in
 	# bin/.wtest_deps_cache; timeouts are still never persisted.
 	char* cache = sc_read(c"bin/.wtest_deps_cache")
-	if (has_line(cache, c"X x86 bad1.w") == 0):
-		fail(c"bad1.w failure not cached")
+	if (has_line(cache, c"X x86 bad1.w") == 0): fail(c"bad1.w failure not cached")
 	if (has_line(cache, c"E bad1.w:2:1: error: cannot locate 'gen/missing1.w'") == 0):
 		fail(c"no E detail line for bad1.w")
-	if (has_line(cache, c"M gen/missing1.w") == 0):
-		fail(c"no M line for bad1.w")
+	if (has_line(cache, c"M gen/missing1.w") == 0): fail(c"no M line for bad1.w")
 	if (wy_prefix_follows(cache, c"R x86 ok.w", c"V ") == 0):
 		fail(c"no informational V line on ok.w's success entry")
-	if (contains(cache, c"x86 hang.w")):
-		fail(c"hang.w's timeout was persisted")
+	if (contains(cache, c"x86 hang.w")): fail(c"hang.w's timeout was persisted")
 
 	# 3) 'wtest why' on a failed root, in a FRESH process: the story (the
 	# recorded stderr included) comes off the cache, not run memory.
 	r = wtest_run(av(c"why", c"bad1.w"), 0)
-	if (r.status != 0):
-		fail(c"wtest why exited nonzero")
+	if (r.status != 0): fail(c"wtest why exited nonzero")
 	char* why = r.stdout_text
-	if (has_line(why, c"wtest: why root 'x86 bad1.w'") == 0):
-		fail(c"why: no header")
-	if (has_line(why, c"root file: present") == 0):
-		fail(c"why: no root-file line")
-	if (has_line(why, c"compile root of: bad1_t") == 0):
-		fail(c"why: no owning target")
+	if (has_line(why, c"wtest: why root 'x86 bad1.w'") == 0): fail(c"why: no header")
+	if (has_line(why, c"root file: present") == 0): fail(c"why: no root-file line")
+	if (has_line(why, c"compile root of: bad1_t") == 0): fail(c"why: no owning target")
 	if (has_line(why, c"cache: failure entry (the last 'bin/wv2 deps' run exited nonzero)") == 0):
 		fail(c"why: no failure-entry line")
 	if (has_line(why, c"  root content: unchanged since the failure") == 0):
@@ -213,8 +201,7 @@ int main(int argc, char** argv):
 	mkdir(sc_path(c"gen"), 493)
 	sc_write(c"gen/missing1.w", c"int missing1 = 1\n")
 	r = wtest_run(av(c"why", c"bad1.w"), 0)
-	if (r.status != 0):
-		fail(c"wtest why (recovered) exited nonzero")
+	if (r.status != 0): fail(c"wtest why (recovered) exited nonzero")
 	why = r.stdout_text
 	if (contains(why, c"missing import: gen/missing1.w (now present -> retried on the next selection)") == 0):
 		fail(c"why: missing-import reappearance not reported")
@@ -231,8 +218,7 @@ int main(int argc, char** argv):
 	# entry" plus the live run's timeout marker -- and still no cache
 	# entry afterwards.
 	r = wtest_run(av(c"why", c"hang.w"), 0)
-	if (r.status != 0):
-		fail(c"wtest why hang.w exited nonzero")
+	if (r.status != 0): fail(c"wtest why hang.w exited nonzero")
 	why = r.stdout_text
 	if (has_line_prefix(why, c"cache: no entry for this root") == 0):
 		fail(c"why: hang.w cache line wrong")
@@ -243,16 +229,13 @@ int main(int argc, char** argv):
 
 	# 6) An arch-prefixed root id, and the usage line documenting 'why'.
 	r = wtest_run(av(c"why", c"x64", c"ok.w"), 0)
-	if (r.status != 0):
-		fail(c"wtest why x64 exited nonzero")
+	if (r.status != 0): fail(c"wtest why x64 exited nonzero")
 	why = r.stdout_text
-	if (has_line(why, c"wtest: why root 'x64 ok.w'") == 0):
-		fail(c"why: arch-prefixed header wrong")
+	if (has_line(why, c"wtest: why root 'x64 ok.w'") == 0): fail(c"why: arch-prefixed header wrong")
 	if (has_line(why, c"compile root of: no target in this manifest compiles this (arch, file) pair -- rule (b) never consults it") == 0):
 		fail(c"why: unknown-pair line missing")
 	r = wtest_run(av(c"why"), 0)
-	if (r.status == 0):
-		fail(c"bare 'wtest why' succeeded")
+	if (r.status == 0): fail(c"bare 'wtest why' succeeded")
 	if (contains(r.stderr_text, c"wtest why [<arch>] <file.w> [-f manifest.json]") == 0):
 		fail(c"usage does not document 'wtest why'")
 

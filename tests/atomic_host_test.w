@@ -24,8 +24,7 @@ int cas_counter
 
 void add_worker(void* arg):
 	int n = cast(int, arg)
-	for i in range(n):
-		atomic_add(&shared_counter, 1)
+	for i in range(n): atomic_add(&shared_counter, 1)
 
 
 # Increment via a compare-and-swap retry loop: exercises the failure
@@ -34,8 +33,7 @@ void cas_worker(void* arg):
 	int n = cast(int, arg)
 	for i in range(n):
 		int seen = cas_counter
-		while (atomic_cas(&cas_counter, seen, seen + 1) != seen):
-			seen = cas_counter
+		while (atomic_cas(&cas_counter, seen, seen + 1) != seen): seen = cas_counter
 
 
 void test_atomic_add_fetches_old_value():

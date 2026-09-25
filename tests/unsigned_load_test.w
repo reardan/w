@@ -92,8 +92,7 @@ void test_unsigned_struct_fields():
 	f.u32 = 0 - 1
 	assert_equal(255, f.u8)
 	assert_equal(65535, f.u16)
-	if (__word_size__ == 8):
-		assert_equal(65536 * 65536 - 1, f.u32)
+	if (__word_size__ == 8): assert_equal(65536 * 65536 - 1, f.u32)
 	asserts(c"uint16 field must compare above 100", f.u16 > 100)
 
 

@@ -18,8 +18,7 @@ import structures.w_list
 
 int __w_strlen(char* c):
 	int length = 0
-	while(c[length]):
-		length = length + 1
+	while(c[length]): length = length + 1
 	return length
 
 
@@ -35,8 +34,7 @@ char* __w_strcpy(char *dst, char *src):
 int __w_strcmp(char* s1, char* s2):
 	int i = 0
 	while (s1[i] == s2[i]):
-		if (s1[i] == 0):
-			return 0
+		if (s1[i] == 0): return 0
 		i = i + 1
 	return s1[i] - s2[i]
 
@@ -79,8 +77,7 @@ char* __w_hash_value_addr(__w_hash_table* table, int i):
 
 
 void __w_hash_value_copy(char* dst, char* src, int count):
-	for i in range(count):
-		dst[i] = src[i]
+	for i in range(count): dst[i] = src[i]
 
 
 const int __w_hash_key_word = 1
@@ -120,12 +117,10 @@ const int __w_hash_default_container = 3
 # as integers. The trap helpers live in structures/w_list.w.
 void __w_map_missing_key(__w_hash_table* table, int key):
 	__w_trap_cstr(c"map key not found: ")
-	if (table.key_kind == __w_hash_key_cstr):
-		__w_trap_cstr(cast(char*, key))
+	if (table.key_kind == __w_hash_key_cstr): __w_trap_cstr(cast(char*, key))
 	else if (table.key_kind == __w_hash_key_string):
 		write(2, cast(char*, load_ptr(cast(char*, key))), load_ptr(key + __word_size__))
-	else:
-		__w_trap_int(key)
+	else: __w_trap_int(key)
 	__w_trap_cstr(c"\n")
 	print_stack_trace()
 	exit(1)
@@ -133,14 +128,12 @@ void __w_map_missing_key(__w_hash_table* table, int key):
 
 int __w_hash_bytes(int data, int length):
 	int h = 5381
-	for i in range(length):
-		h = h * 33 + data[i]
+	for i in range(length): h = h * 33 + data[i]
 	return h
 
 
 int __w_hash_key_hash(int kind, int key):
-	if (kind == __w_hash_key_cstr):
-		return __w_hash_bytes(key, __w_strlen(cast(char*, key)))
+	if (kind == __w_hash_key_cstr): return __w_hash_bytes(key, __w_strlen(cast(char*, key)))
 	if (kind == __w_hash_key_string):
 		return __w_hash_bytes(load_ptr(cast(char*, key)), load_ptr(key + __word_size__))
 	return key * 33
@@ -149,40 +142,32 @@ int __w_hash_key_hash(int kind, int key):
 int __w_hash_string_equal(int left, int right):
 	int left_len = load_ptr(left + __word_size__)
 	int right_len = load_ptr(right + __word_size__)
-	if (left_len != right_len):
-		return 0
+	if (left_len != right_len): return 0
 	int left_data = load_ptr(cast(char*, left))
 	int right_data = load_ptr(cast(char*, right))
 	for i in range(left_len):
-		if (left_data[i] != right_data[i]):
-			return 0
+		if (left_data[i] != right_data[i]): return 0
 	return 1
 
 
 # string == string / != (grammar/equality_expr.w): contents, null-safe
 # (a null descriptor equals only null).
 int __w_string_equal(int left, int right):
-	if (left == right):
-		return 1
-	if ((left == 0) || (right == 0)):
-		return 0
+	if (left == right): return 1
+	if ((left == 0) || (right == 0)): return 0
 	return __w_hash_string_equal(left, right)
 
 
 # switch on a char* (grammar/switch_statement.w): contents, null-safe.
 int __w_cstr_equal(char* left, char* right):
-	if (left == right):
-		return 1
-	if ((left == 0) || (right == 0)):
-		return 0
+	if (left == right): return 1
+	if ((left == 0) || (right == 0)): return 0
 	return __w_strcmp(left, right) == 0
 
 
 int __w_hash_key_equal(int kind, int left, int right):
-	if (kind == __w_hash_key_cstr):
-		return __w_strcmp(cast(char*, left), cast(char*, right)) == 0
-	if (kind == __w_hash_key_string):
-		return __w_hash_string_equal(left, right)
+	if (kind == __w_hash_key_cstr): return __w_strcmp(cast(char*, left), cast(char*, right)) == 0
+	if (kind == __w_hash_key_string): return __w_hash_string_equal(left, right)
 	return left == right
 
 
@@ -193,33 +178,27 @@ int __w_hash_clone_string(int key):
 	save_ptr(clone, data)
 	save_ptr(clone + __word_size__, length)
 	int source = load_ptr(cast(char*, key))
-	for i in range(length):
-		data[i] = source[i]
+	for i in range(length): data[i] = source[i]
 	data[length] = 0
 	return cast(int, clone)
 
 
 int __w_hash_key_clone(int kind, int key):
-	if (kind == __w_hash_key_cstr):
-		return cast(int, __w_strclone(cast(char*, key)))
-	if (kind == __w_hash_key_string):
-		return __w_hash_clone_string(key)
+	if (kind == __w_hash_key_cstr): return cast(int, __w_strclone(cast(char*, key)))
+	if (kind == __w_hash_key_string): return __w_hash_clone_string(key)
 	return key
 
 
 void __w_hash_key_free(int kind, int key):
-	if ((kind == __w_hash_key_cstr) || (kind == __w_hash_key_string)):
-		free(cast(void*, key))
+	if ((kind == __w_hash_key_cstr) || (kind == __w_hash_key_string)): free(cast(void*, key))
 
 
 # Append slot i to the insertion-order chain.
 void __w_hash_order_link(__w_hash_table* table, int i):
 	table.order_next[i] = -1
 	table.order_prev[i] = table.order_tail
-	if (table.order_tail >= 0):
-		table.order_next[table.order_tail] = i
-	else:
-		table.order_head = i
+	if (table.order_tail >= 0): table.order_next[table.order_tail] = i
+	else: table.order_head = i
 	table.order_tail = i
 
 
@@ -227,19 +206,14 @@ void __w_hash_order_link(__w_hash_table* table, int i):
 void __w_hash_order_unlink(__w_hash_table* table, int i):
 	int p = table.order_prev[i]
 	int n = table.order_next[i]
-	if (p >= 0):
-		table.order_next[p] = n
-	else:
-		table.order_head = n
-	if (n >= 0):
-		table.order_prev[n] = p
-	else:
-		table.order_tail = p
+	if (p >= 0): table.order_next[p] = n
+	else: table.order_head = n
+	if (n >= 0): table.order_prev[n] = p
+	else: table.order_tail = p
 
 
 __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
-	if (capacity < 16):
-		capacity = 16
+	if (capacity < 16): capacity = 16
 	__w_hash_table* table = malloc(14 * __word_size__)
 	table.capacity = capacity
 	table.count = 0
@@ -280,8 +254,7 @@ int __w_hash_table_slot(__w_hash_table* table, int key):
 		if (table.states[i] == 1):
 			if (__w_hash_key_equal(table.key_kind, table.keys[i], key)):
 				return i
-		else if (first_deleted < 0):
-			first_deleted = i
+		else if (first_deleted < 0): first_deleted = i
 		i = (i + 1) & mask
 		probes = probes + 1
 	if (first_deleted >= 0):
@@ -349,12 +322,9 @@ void __w_hash_table_rehash(__w_hash_table* table, int new_capacity):
 # keys fill it, rehash in place when tombstones from add/remove churn
 # do (probing needs empty slots to terminate quickly).
 void __w_hash_table_reserve_one(__w_hash_table* table):
-	if ((table.count + table.deleted) * 4 < table.capacity * 3):
-		return
-	if (table.deleted > table.count):
-		__w_hash_table_rehash(table, table.capacity)
-	else:
-		__w_hash_table_rehash(table, table.capacity * 2)
+	if ((table.count + table.deleted) * 4 < table.capacity * 3): return
+	if (table.deleted > table.count): __w_hash_table_rehash(table, table.capacity)
+	else: __w_hash_table_rehash(table, table.capacity * 2)
 
 
 __w_hash_table* __w_map_new(int key_kind, int value_size):
@@ -368,8 +338,7 @@ int __w_map_insert_slot(__w_hash_table* table, int key):
 	__w_hash_table_reserve_one(table)
 	int i = __w_hash_table_slot(table, key)
 	if (table.states[i] != 1):
-		if (table.states[i] == 2):
-			table.deleted = table.deleted - 1
+		if (table.states[i] == 2): table.deleted = table.deleted - 1
 		table.states[i] = 1
 		table.keys[i] = __w_hash_key_clone(table.key_kind, key)
 		table.count = table.count + 1
@@ -417,8 +386,7 @@ int __w_map_default_new_container(int desc):
 	int code = desc & 3
 	int kind = (desc >> 2) & 3
 	int size = desc >> 5
-	if (code == 3):
-		return cast(int, __w_list_new(size))
+	if (code == 3): return cast(int, __w_list_new(size))
 	__w_hash_table* inner = __w_map_new(kind, size)
 	if (desc & 16):
 		inner.default_kind = __w_hash_default_value
@@ -455,8 +423,7 @@ int __w_map_vivify(__w_hash_table* table, int key):
 int __w_map_get(__w_hash_table* table, int key):
 	int i = __w_hash_table_slot(table, key)
 	if (table.states[i] != 1):
-		if (table.default_kind == __w_hash_default_none):
-			__w_map_missing_key(table, key)
+		if (table.default_kind == __w_hash_default_none): __w_map_missing_key(table, key)
 		return __w_map_vivify(table, key)
 	int* slot = cast(int*, __w_hash_value_addr(table, i))
 	return slot[0]
@@ -466,8 +433,7 @@ int __w_map_get(__w_hash_table* table, int key):
 # the next insertion rehashes the table, so callers copy immediately.
 char* __w_map_get_addr(__w_hash_table* table, int key):
 	int i = __w_hash_table_slot(table, key)
-	if (table.states[i] != 1):
-		__w_map_missing_key(table, key)
+	if (table.states[i] != 1): __w_map_missing_key(table, key)
 	return __w_hash_value_addr(table, i)
 
 
@@ -484,8 +450,7 @@ int __w_map_get_or(__w_hash_table* table, int key, int default_value):
 # default_addr (the caller's default storage) when key is absent.
 char* __w_map_get_or_addr(__w_hash_table* table, int key, char* default_addr):
 	int i = __w_hash_table_slot(table, key)
-	if (table.states[i] == 1):
-		return __w_hash_value_addr(table, i)
+	if (table.states[i] == 1): return __w_hash_value_addr(table, i)
 	return default_addr
 
 
@@ -515,8 +480,7 @@ __w_list* __w_map_values(__w_hash_table* table, int element_size):
 
 int __w_map_remove(__w_hash_table* table, int key):
 	int i = __w_hash_table_slot(table, key)
-	if (table.states[i] != 1):
-		return 0
+	if (table.states[i] != 1): return 0
 	__w_hash_key_free(table.key_kind, table.keys[i])
 	table.keys[i] = 0
 	char* slot = __w_hash_value_addr(table, i)
@@ -549,19 +513,15 @@ int __w_map_iter_next(__w_hash_table* table, int cursor):
 
 
 int __w_map_iter_key(__w_hash_table* table, int cursor):
-	if (cursor < 0):
-		__w_trap(c"invalid map iterator")
-	if (table.states[cursor] != 1):
-		__w_trap(c"invalid map iterator")
+	if (cursor < 0): __w_trap(c"invalid map iterator")
+	if (table.states[cursor] != 1): __w_trap(c"invalid map iterator")
 	return table.keys[cursor]
 
 
 # Scalar value at the cursor's slot (for "for key, value in map").
 int __w_map_iter_value(__w_hash_table* table, int cursor):
-	if (cursor < 0):
-		__w_trap(c"invalid map iterator")
-	if (table.states[cursor] != 1):
-		__w_trap(c"invalid map iterator")
+	if (cursor < 0): __w_trap(c"invalid map iterator")
+	if (table.states[cursor] != 1): __w_trap(c"invalid map iterator")
 	int* slot = cast(int*, __w_hash_value_addr(table, cursor))
 	return slot[0]
 
@@ -569,10 +529,8 @@ int __w_map_iter_value(__w_hash_table* table, int cursor):
 # Aggregate value: the address of the stored bytes, valid until the next
 # insertion rehashes the table.
 char* __w_map_iter_value_addr(__w_hash_table* table, int cursor):
-	if (cursor < 0):
-		__w_trap(c"invalid map iterator")
-	if (table.states[cursor] != 1):
-		__w_trap(c"invalid map iterator")
+	if (cursor < 0): __w_trap(c"invalid map iterator")
+	if (table.states[cursor] != 1): __w_trap(c"invalid map iterator")
 	return __w_hash_value_addr(table, cursor)
 
 
@@ -588,8 +546,7 @@ char* __w_map_iter_value_addr(__w_hash_table* table, int cursor):
 void __w_map_free(__w_hash_table* table):
 	int i = 0
 	while (i < table.capacity):
-		if (table.states[i] == 1):
-			__w_hash_key_free(table.key_kind, table.keys[i])
+		if (table.states[i] == 1): __w_hash_key_free(table.key_kind, table.keys[i])
 		i = i + 1
 	free(table.keys)
 	free(table.values)

@@ -125,10 +125,8 @@ void test_acc_merge():
 	int i = 0
 	while (i < xs.length):
 		whole.add(xs[i])
-		if (i < 3):
-			left.add(xs[i])
-		else:
-			right.add(xs[i])
+		if (i < 3): left.add(xs[i])
+		else: right.add(xs[i])
 		i = i + 1
 	left.merge(&right)
 	assert_equal(whole.count, left.count)
@@ -244,8 +242,7 @@ void test_mode_int():
 
 	# enough distinct keys to force map growth past the initial capacity
 	list[int] wide = new list[int]
-	for i in range(100):
-		wide.push(i % 37)
+	for i in range(100): wide.push(i % 37)
 	# 0 through 25 appear three times, 26 through 36 twice: 0 is first
 	assert_equal(0, stats_mode_int(wide))
 	wide.push(17)

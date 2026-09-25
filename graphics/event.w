@@ -96,8 +96,7 @@ const int gfx_event_ring_capacity = 64
 void gfx_event_ring_push(int32* ring, int32* head, int32* tail, int kind, int code, int x, int y, int mods):
 	int slot = tail[0]
 	int next = (slot + 1) & 63
-	if (next == head[0]):
-		return
+	if (next == head[0]): return
 	ring[slot * 5] = kind
 	ring[slot * 5 + 1] = code
 	ring[slot * 5 + 2] = x
@@ -110,8 +109,7 @@ void gfx_event_ring_push(int32* ring, int32* head, int32* tail, int kind, int co
 # the ring is empty.
 int gfx_event_ring_next(int32* ring, int32* head, int32* tail, gfx_event* out):
 	int slot = head[0]
-	if (slot == tail[0]):
-		return 0
+	if (slot == tail[0]): return 0
 	out.kind = ring[slot * 5]
 	out.code = ring[slot * 5 + 1]
 	out.x = ring[slot * 5 + 2]

@@ -53,8 +53,7 @@ void loop_leave(int* outer):
 
 # while ( expression ) statement — parentheses are optional before ':'
 int while_statement():
-	if (accept(c"while") == 0):
-		return 0
+	if (accept(c"while") == 0): return 0
 
 	int while_tab_level = tab_level
 	int* outer = loop_enter()

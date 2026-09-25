@@ -66,8 +66,7 @@ void test_deflate_small_input_roundtrips():
 void test_deflate_binary_payload_roundtrips():
 	int n = 512
 	char* buf = malloc(n)
-	for i in range(n):
-		buf[i] = i & 255
+	for i in range(n): buf[i] = i & 255
 	dt_roundtrip(c"binary 0..511", buf, n)
 	free(buf)
 
@@ -78,8 +77,7 @@ void test_deflate_chains_stored_blocks_over_65535_bytes():
 	# correctly non-final except the last.
 	int n = 70000
 	char* buf = malloc(n)
-	for i in range(n):
-		buf[i] = (i * 7 + (i >> 3)) & 255
+	for i in range(n): buf[i] = (i * 7 + (i >> 3)) & 255
 	deflate_result* d = deflate(buf, n, DEFLATE_LEVEL_STORED())
 	# Two chained blocks: 65535 bytes then 4465 bytes, 5-byte header each.
 	assert_equal(2 * 5 + n, d.length)
@@ -148,8 +146,7 @@ void test_deflate_fast_and_best_roundtrip_empty_and_tiny():
 void test_deflate_fast_and_best_roundtrip_binary_payload():
 	int n = 512
 	char* buf = malloc(n)
-	for i in range(n):
-		buf[i] = i & 255
+	for i in range(n): buf[i] = i & 255
 	dt_roundtrip_all_levels(c"binary 0..511", buf, n)
 	free(buf)
 
@@ -160,8 +157,7 @@ void test_deflate_fast_and_best_roundtrip_binary_payload():
 void test_deflate_fast_and_best_compress_highly_repetitive_data():
 	int n = 20000
 	char* buf = malloc(n)
-	for i in range(n):
-		buf[i] = 'a' + (i % 4)
+	for i in range(n): buf[i] = 'a' + (i % 4)
 	deflate_result* stored = deflate(buf, n, DEFLATE_LEVEL_STORED())
 	deflate_result* fast = deflate(buf, n, DEFLATE_LEVEL_FAST())
 	deflate_result* best = deflate(buf, n, DEFLATE_LEVEL_BEST())
@@ -186,8 +182,7 @@ void test_deflate_fast_and_best_roundtrip_incompressible_random_data():
 	char* buf = malloc(n)
 	rand_state rs
 	rand_init(&rs, 1234)
-	for i in range(n):
-		buf[i] = rand_next31(&rs) & 255
+	for i in range(n): buf[i] = rand_next31(&rs) & 255
 	dt_roundtrip_level(c"random/fast", buf, n, DEFLATE_LEVEL_FAST())
 	dt_roundtrip_level(c"random/best", buf, n, DEFLATE_LEVEL_BEST())
 	free(buf)
@@ -202,8 +197,7 @@ void test_deflate_incompressible_does_not_expand():
 	char* buf = malloc(n)
 	rand_state rs
 	rand_init(&rs, 4242)
-	for i in range(n):
-		buf[i] = rand_next31(&rs) & 255
+	for i in range(n): buf[i] = rand_next31(&rs) & 255
 	# 100000 bytes of input splits into 4 blocks of at most ~32768 bytes
 	# each: allow 5 bytes of stored framing per block plus 1 byte slack.
 	int cap = n + 4 * 5 + 1
@@ -224,8 +218,7 @@ void test_deflate_incompressible_does_not_expand():
 void test_deflate_all_same_byte_run():
 	int n = 65536
 	char* buf = malloc(n)
-	for i in range(n):
-		buf[i] = 'x'
+	for i in range(n): buf[i] = 'x'
 	deflate_result* fast = deflate(buf, n, DEFLATE_LEVEL_FAST())
 	deflate_result* best = deflate(buf, n, DEFLATE_LEVEL_BEST())
 	asserts(c"fast must collapse an all-same-byte run below 1/100th", fast.length < n / 100)
@@ -257,10 +250,8 @@ void test_deflate_mixed_compressible_and_incompressible():
 	rand_init(&rs, 777)
 	int i = 0
 	while (i < n):
-		if (i < n / 2):
-			buf[i] = 'a' + (i % 7)
-		else:
-			buf[i] = rand_next31(&rs) & 255
+		if (i < n / 2): buf[i] = 'a' + (i % 7)
+		else: buf[i] = rand_next31(&rs) & 255
 		i = i + 1
 	deflate_result* fast = deflate(buf, n, DEFLATE_LEVEL_FAST())
 	deflate_result* best = deflate(buf, n, DEFLATE_LEVEL_BEST())
@@ -280,10 +271,8 @@ void dt_boundary_case(int n, rand_state* rs):
 	for i in range(n):
 		# A mix of pseudo-random bytes and a repeating pattern so both
 		# literals and back-references straddle the boundary.
-		if ((i % 5) == 0):
-			buf[i] = rand_next31(rs) & 255
-		else:
-			buf[i] = (i * 3) & 255
+		if ((i % 5) == 0): buf[i] = rand_next31(rs) & 255
+		else: buf[i] = (i * 3) & 255
 	dt_roundtrip_level(c"boundary/fast", buf, n, DEFLATE_LEVEL_FAST())
 	dt_roundtrip_level(c"boundary/best", buf, n, DEFLATE_LEVEL_BEST())
 	free(buf)
@@ -412,8 +401,7 @@ void test_deflate_window_stream_of_pieces():
 	# further back.
 	int total = 5 * 20000
 	char* all = malloc(total)
-	for i in range(total):
-		all[i] = ((i / 3) * 7 + ((i >> 10) & 15)) & 255
+	for i in range(total): all[i] = ((i / 3) * 7 + ((i >> 10) & 15)) & 255
 	int* bits = malloc(3 * __word_size__)
 	bits[0] = 8
 	bits[1] = 12

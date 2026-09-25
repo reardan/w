@@ -43,8 +43,7 @@ raft* rmr_single_node(int seed):
 int rmr_has_peer(raft* r, int id):
 	int i = 0
 	while (i < raft_peer_count(r)):
-		if (raft_peer_at(r, i) == id):
-			return 1
+		if (raft_peer_at(r, i) == id): return 1
 		i = i + 1
 	return 0
 

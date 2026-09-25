@@ -32,12 +32,10 @@ int demo_max_frames
 
 
 int demo_frame():
-	if (gfx_window_poll(demo_win) == 0):
-		return 0
+	if (gfx_window_poll(demo_win) == 0): return 0
 
 	demo_angle = demo_angle + 0.02
-	if (demo_angle > gfx_two_pi()):
-		demo_angle = demo_angle - gfx_two_pi()
+	if (demo_angle > gfx_two_pi()): demo_angle = demo_angle - gfx_two_pi()
 	# Keep the triangle round on non-square canvases.
 	float32 aspect = 1.0
 	if (demo_win.height > 0):
@@ -52,20 +50,17 @@ int demo_frame():
 	gfx_window_swap(demo_win)
 
 	demo_frame_count = demo_frame_count + 1
-	if ((demo_max_frames > 0) && (demo_frame_count >= demo_max_frames)):
-		return 0
+	if ((demo_max_frames > 0) && (demo_frame_count >= demo_max_frames)): return 0
 	return 1
 
 
 int main(int argc, int argv):
 	args_init(argc, argv)
 	char* frames_value = args_value(c"frames")
-	if (frames_value != 0):
-		demo_max_frames = atoi(frames_value)
+	if (frames_value != 0): demo_max_frames = atoi(frames_value)
 
 	demo_win = gfx_window_open(c"W graphics demo", 640, 480)
-	if (demo_win == 0):
-		return 1
+	if (demo_win == 0): return 1
 
 	char* vertex_source = strjoin(gfx_shader_header(), c"in vec2 a_pos;\nin vec3 a_color;\nout vec3 v_color;\nuniform mat4 u_mvp;\nvoid main() {\n\tv_color = a_color;\n\tgl_Position = u_mvp * vec4(a_pos, 0.0, 1.0);\n}\n")
 	char* fragment_source = strjoin(gfx_shader_header(), c"in vec3 v_color;\nout vec4 frag_color;\nvoid main() {\n\tfrag_color = vec4(v_color, 1.0);\n}\n")

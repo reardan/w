@@ -38,10 +38,8 @@ whmac* hmac_new(int alg, char* key, int key_len):
 
 	char* block_key = malloc(m.block_size)
 	mem_fill(block_key, 0, m.block_size)
-	if (key_len > m.block_size):
-		whash_oneshot(alg, key, key_len, block_key)
-	else:
-		mem_copy(block_key, key, key_len)
+	if (key_len > m.block_size): whash_oneshot(alg, key, key_len, block_key)
+	else: mem_copy(block_key, key, key_len)
 
 	int i = 0
 	while (i < m.block_size):
@@ -106,8 +104,6 @@ void hmac_compute(int alg, char* key, int key_len, char* data, int data_len, cha
 # depend on where (or whether) the inputs differ.
 int hmac_equal(char* a, char* b, int len):
 	int diff = 0
-	for i in range(len):
-		diff = diff | ((a[i] & 255) ^ (b[i] & 255))
-	if (diff == 0):
-		return 1
+	for i in range(len): diff = diff | ((a[i] & 255) ^ (b[i] & 255))
+	if (diff == 0): return 1
 	return 0

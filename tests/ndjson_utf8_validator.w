@@ -31,29 +31,20 @@ int fail(char* reason, int line_index):
 
 
 char* required_field(int index):
-	if (index == 0):
-		return c"file"
-	if (index == 1):
-		return c"line"
-	if (index == 2):
-		return c"column"
-	if (index == 3):
-		return c"severity"
-	if (index == 4):
-		return c"message"
-	if (index == 5):
-		return c"token"
+	if (index == 0): return c"file"
+	if (index == 1): return c"line"
+	if (index == 2): return c"column"
+	if (index == 3): return c"severity"
+	if (index == 4): return c"message"
+	if (index == 5): return c"token"
 	return c"arch"
 
 
 int validate_line(char* line, int length, int line_index):
-	if (utf8_validate_bytes(line, length) == 0):
-		return fail(c"is not valid UTF-8", line_index)
+	if (utf8_validate_bytes(line, length) == 0): return fail(c"is not valid UTF-8", line_index)
 	json_value* value = json_parse(line)
-	if (value == 0):
-		return fail(c"does not parse as JSON", line_index)
-	if (value.type != json_type_object()):
-		return fail(c"is not a JSON object", line_index)
+	if (value == 0): return fail(c"does not parse as JSON", line_index)
+	if (value.type != json_type_object()): return fail(c"is not a JSON object", line_index)
 	for i in range(7):
 		if (json_object_has(value, required_field(i)) == 0):
 			print(c"ndjson_utf8_validator: missing field '")
@@ -83,8 +74,7 @@ int main(int argc, int argv):
 	while (c != -1):
 		if (c == 10):
 			line[length] = 0
-			if (validate_line(line, length, validated + 1)):
-				return 1
+			if (validate_line(line, length, validated + 1)): return 1
 			validated = validated + 1
 			length = 0
 		else:
@@ -96,8 +86,7 @@ int main(int argc, int argv):
 		c = getchar(f)
 	if (length > 0):
 		line[length] = 0
-		if (validate_line(line, length, validated + 1)):
-			return 1
+		if (validate_line(line, length, validated + 1)): return 1
 		validated = validated + 1
 	close(f)
 	free(line)

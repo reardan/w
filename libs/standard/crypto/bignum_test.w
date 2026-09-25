@@ -90,8 +90,7 @@ void test_carry_across_limbs():
 	for i in range(45):
 		bignum_shl1(a)
 		a.limbs[0] = a.limbs[0] | 1
-		if (a.n == 0):
-			a.n = 1
+		if (a.n == 0): a.n = 1
 	bignum_add(r, a, one)
 	t_assert_eq_hex(r, c"200000000000")     # 2^45
 	bignum_free(a)
@@ -227,8 +226,7 @@ void t_divmod_bitserial(bignum* a, bignum* m, bignum* q, bignum* r):
 		bignum_shl1(r)
 		if (bignum_get_bit(a, i) != 0):
 			r.limbs[0] = r.limbs[0] | 1
-			if (r.n == 0):
-				r.n = 1
+			if (r.n == 0): r.n = 1
 		if (bignum_cmp(r, m) >= 0):
 			bignum_sub(r, m)
 			bignum_set_bit(q, i)
@@ -263,13 +261,10 @@ int t_rand_limb():
 # small_top is set, kept small so normalization shifts by many bits.
 void t_rand_bignum(bignum* x, int n, int small_top):
 	bignum_set_zero(x)
-	for i in range(n):
-		x.limbs[i] = t_rand_limb()
+	for i in range(n): x.limbs[i] = t_rand_limb()
 	if (n > 0):
-		if (small_top != 0):
-			x.limbs[n - 1] = 1 + (t_rand() % 7)
-		elif (x.limbs[n - 1] == 0):
-			x.limbs[n - 1] = 1 + t_rand()
+		if (small_top != 0): x.limbs[n - 1] = 1 + (t_rand() % 7)
+		elif (x.limbs[n - 1] == 0): x.limbs[n - 1] = 1 + t_rand()
 	x.n = n
 	bignum_normalize(x)
 

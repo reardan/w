@@ -43,8 +43,7 @@ char* gt_msg(char* prefix, int n):
 
 char* gt_fill(int size, int ch):
 	char* buf = malloc(size + 1)
-	for i in range(size):
-		buf[i] = ch
+	for i in range(size): buf[i] = ch
 	buf[size] = 0
 	return buf
 
@@ -60,10 +59,8 @@ void gt_unary(grpc_call* call, void* user_data):
 	string_append(sb, grpc_call_metadata(call, c":scheme"))
 	string_append(sb, c" ")
 	string_append(sb, grpc_call_metadata(call, c":authority"))
-	if (call.conn.tls != 0):
-		string_append(sb, c" tls echo:")
-	else:
-		string_append(sb, c" plain echo:")
+	if (call.conn.tls != 0): string_append(sb, c" tls echo:")
+	else: string_append(sb, c" plain echo:")
 	string_append_bytes(sb, call.request, call.request_len)
 	grpc_call_reply(call, sb.data, sb.length)
 	string_free(sb)
@@ -77,20 +74,17 @@ void gt_unary(grpc_call* call, void* user_data):
 void gt_count(grpc_call* call, void* user_data):
 	char* req = 0
 	int len = 0
-	if (grpc_call_recv(call, &req, &len) != 1):
-		return
+	if (grpc_call_recv(call, &req, &len) != 1): return
 	int n = atoi(req)
 	int i = 0
-	while ((req[i] != ' ') && (req[i] != 0)):
-		i = i + 1
+	while ((req[i] != ' ') && (req[i] != 0)): i = i + 1
 	int size = atoi(req + i + 1)
 	free(req)
 	for k in range(n):
 		char* buf = gt_fill(size, 'a' + (k % 26))
 		int rc = grpc_call_send(call, buf, size)
 		free(buf)
-		if (rc != 0):
-			return
+		if (rc != 0): return
 	grpc_call_add_trailer(call, c"x-sent", c"done")
 
 
@@ -100,16 +94,14 @@ void gt_echo(grpc_call* call, void* user_data):
 	while (1):
 		char* m = 0
 		int len = 0
-		if (grpc_call_recv(call, &m, &len) != 1):
-			break
+		if (grpc_call_recv(call, &m, &len) != 1): break
 		string_builder* sb = string_new()
 		string_append(sb, c"pong:")
 		string_append_bytes(sb, m, len)
 		free(m)
 		int rc = grpc_call_send(call, sb.data, sb.length)
 		string_free(sb)
-		if (rc != 0):
-			return
+		if (rc != 0): return
 		count = count + 1
 	char* n = itoa(count)
 	grpc_call_add_trailer(call, c"x-count", n)
@@ -123,16 +115,14 @@ void gt_echo(grpc_call* call, void* user_data):
 void gt_ticker(grpc_call* call, void* user_data):
 	char* m = 0
 	int len = 0
-	if (grpc_call_recv(call, &m, &len) != 1):
-		return
+	if (grpc_call_recv(call, &m, &len) != 1): return
 	free(m)
 	for i in range(500):
 		char* t = gt_msg(c"tick ", i)
 		int rc = grpc_call_send(call, t, strlen(t))
 		free(t)
 		if (rc != 0):
-			if (call.cancelled != 0):
-				gt_stops = gt_stops + 1
+			if (call.cancelled != 0): gt_stops = gt_stops + 1
 			return
 		sleep_ms(20)
 
@@ -147,8 +137,7 @@ void gt_stats(grpc_call* call, void* user_data):
 
 void gt_server_child(int listener):
 	int fd = socket_accept_connection(listener)
-	if (fd < 0):
-		exit(70)
+	if (fd < 0): exit(70)
 	socket_set_recv_timeout(fd, 20000)
 	socket_set_send_timeout(fd, 20000)
 	grpc_server* srv = grpc_server_new()
@@ -210,8 +199,7 @@ void test_grpc_tls_end_to_end():
 	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
-	if (pid == 0):
-		gt_server_child(listener)
+	if (pid == 0): gt_server_child(listener)
 	tls_config* cfg = web_test_client_config()
 	grpc_channel* ch = grpc_channel_open_tls(c"127.0.0.1", port, 10000, c"test.w.example", cfg)
 	asserts(c"grpc_channel_open_tls failed", ch != 0)
@@ -324,14 +312,12 @@ void test_grpc_tls_server_requires_h2():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int sfd = socket_accept_connection(listener)
-		if (sfd < 0):
-			exit(80)
+		if (sfd < 0): exit(80)
 		socket_set_recv_timeout(sfd, 20000)
 		grpc_server* srv = grpc_server_new()
 		int err = grpc_server_serve_conn_tls(srv, sfd, web_test_server_config())
 		grpc_server_free(srv)
-		if (err != h2_error_protocol):
-			exit(81)
+		if (err != h2_error_protocol): exit(81)
 		exit(0)
 	int fd = socket_tcp_ipv4()
 	asserts(c"socket", fd >= 0)

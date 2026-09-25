@@ -22,8 +22,7 @@ void vfprintf(int fd, char* fmt, int* args, int num_args):
 		if ((fmt[i] == '%') && (fmt[i + 1] != 0)):
 			int verb = fmt[i + 1]
 			i = i + 2
-			if (verb == '%'):
-				putc(fd, '%')
+			if (verb == '%'): putc(fd, '%')
 			else:
 				asserts(c"printf: more verbs than arguments", used < num_args)
 				int value = args[used]
@@ -39,8 +38,7 @@ void vfprintf(int fd, char* fmt, int* args, int num_args):
 				else if (verb == 's'):
 					char* text = cast(char*, value)
 					write(fd, text, strlen(text))
-				else if (verb == 'c'):
-					putc(fd, value)
+				else if (verb == 'c'): putc(fd, value)
 				else:
 					# Unknown verb: print it verbatim
 					putc(fd, '%')

@@ -9,8 +9,7 @@ import lib.result
 # returns the operand pointer as its own wresult (layout-safe because
 # 'ok'/'code' offsets are identical across instantiations).
 wresult[int]* find_number(int key):
-	if (key < 0):
-		return result_new_error[int](-2)
+	if (key < 0): return result_new_error[int](-2)
 	return result_new_ok[int](key * 10)
 
 
@@ -18,8 +17,7 @@ wresult[int]* find_number(int key):
 # type is char* — a different payload type than the operand's.
 wresult[char*]* describe_number(int key):
 	int number = find_number(key)?
-	if (number > 50):
-		return result_new_ok[char*](c"big")
+	if (number > 50): return result_new_ok[char*](c"big")
 	return result_new_ok[char*](c"small")
 
 
@@ -36,8 +34,7 @@ wresult[int]* plus_one_of_four():
 
 # Mixing '?' with normal returns, and using '?' more than once.
 wresult[int]* sum_two(int a, int b):
-	if (a == b):
-		return result_new_error[int](-99)
+	if (a == b): return result_new_error[int](-99)
 	int total = find_number(a)? + find_number(b)?
 	return result_new_ok[int](total)
 

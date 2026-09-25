@@ -18,8 +18,7 @@ int pf_calls
 
 void fill_cb(int chunk_start, int chunk_end, void* arg):
 	int base = cast(int, arg)
-	for i in range(chunk_start, chunk_end):
-		pf_buffer[i] = i * i + base
+	for i in range(chunk_start, chunk_end): pf_buffer[i] = i * i + base
 
 
 void count_cb(int chunk_start, int chunk_end, void* arg):
@@ -28,30 +27,26 @@ void count_cb(int chunk_start, int chunk_end, void* arg):
 
 
 void pf_reset(int len):
-	for i in range(len):
-		pf_buffer[i] = 0 - 1
+	for i in range(len): pf_buffer[i] = 0 - 1
 
 
 # Serial answer: sum of i*i + base over [start, end).
 int pf_serial_sum(int start, int end, int base):
 	int total = 0
-	for i in range(start, end):
-		total = total + i * i + base
+	for i in range(start, end): total = total + i * i + base
 	return total
 
 
 int pf_buffer_sum(int start, int end):
 	int total = 0
-	for i in range(start, end):
-		total = total + pf_buffer[i]
+	for i in range(start, end): total = total + pf_buffer[i]
 	return total
 
 
 void test_parallel_fill_even_split():
 	pf_reset(240)
 	parallel_for(0, 240, 4, fill_cb, cast(void*, 5))
-	for i in range(240):
-		assert_equal(i * i + 5, pf_buffer[i])
+	for i in range(240): assert_equal(i * i + 5, pf_buffer[i])
 	assert_equal(pf_serial_sum(0, 240, 5), pf_buffer_sum(0, 240))
 
 
@@ -62,16 +57,14 @@ void test_parallel_fill_uneven_split():
 	parallel_for(7, 233, 7, fill_cb, cast(void*, 11))
 	assert_equal(0 - 1, pf_buffer[6])
 	assert_equal(0 - 1, pf_buffer[233])
-	for i in range(7, 233):
-		assert_equal(i * i + 11, pf_buffer[i])
+	for i in range(7, 233): assert_equal(i * i + 11, pf_buffer[i])
 	assert_equal(pf_serial_sum(7, 233, 11), pf_buffer_sum(7, 233))
 
 
 void test_nthreads_clamped_to_range():
 	pf_reset(240)
 	parallel_for(10, 15, 64, fill_cb, cast(void*, 3))
-	for i in range(10, 15):
-		assert_equal(i * i + 3, pf_buffer[i])
+	for i in range(10, 15): assert_equal(i * i + 3, pf_buffer[i])
 	assert_equal(0 - 1, pf_buffer[9])
 	assert_equal(0 - 1, pf_buffer[15])
 
@@ -82,8 +75,7 @@ void test_single_thread_runs_inline():
 	parallel_for(0, 64, 1, count_cb, cast(void*, 2))
 	# one inline call covering the whole range, no clone
 	assert_equal(1, pf_calls)
-	for i in range(64):
-		assert_equal(i * i + 2, pf_buffer[i])
+	for i in range(64): assert_equal(i * i + 2, pf_buffer[i])
 
 
 void test_empty_range_never_calls():

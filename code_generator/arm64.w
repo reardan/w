@@ -221,8 +221,7 @@ void arm64_add_stack_word_int32(int offset, int v):
 # cycles and be_ctrl_end looped forever. Chains never leave a function,
 # so the distance always fits.
 int arm64_link_field(int v):
-	if (v == 0):
-		return 0
+	if (v == 0): return 0
 	return codepos + 4 - v
 
 
@@ -250,44 +249,31 @@ void arm64_branch_patch(int site, int target):
 	int top6 = (word >> 26) & 0x3f
 	if (top6 == 0x05):
 		save_int32(code + site - 4, (word & op(0xfc, 0x000000)) | (enc & op(0x03, 0xffffff)))
-	else:
-		save_int32(code + site - 4, (word & op(0xff, 0x00001f)) | ((enc & 0x7ffff) << 5))
+	else: save_int32(code + site - 4, (word & op(0xff, 0x00001f)) | ((enc & 0x7ffff) << 5))
 
 
 int arm64_branch_link_get(int site):
 	int word = load_int32(code + site - 4)
 	int top6 = (word >> 26) & 0x3f
 	int distance = ((word >> 5) & 0x7ffff) << 2
-	if (top6 == 0x05):
-		distance = (word & op(0x03, 0xffffff)) << 2
-	if (distance == 0):
-		return 0
+	if (top6 == 0x05): distance = (word & op(0x03, 0xffffff)) << 2
+	if (distance == 0): return 0
 	return site - distance
 
 
 ################################ comparisons ################################
 # x86 setcc opcode -> AArch64 condition code.
 int arm64_setcc_cond(int setcc):
-	if (setcc == 0x94):
-		return 0    # eq
-	if (setcc == 0x95):
-		return 1    # ne
-	if (setcc == 0x9c):
-		return 11   # lt (signed <)
-	if (setcc == 0x9d):
-		return 10   # ge
-	if (setcc == 0x9e):
-		return 13   # le
-	if (setcc == 0x9f):
-		return 12   # gt
-	if (setcc == 0x92):
-		return 3    # lo (unsigned <)
-	if (setcc == 0x93):
-		return 2    # hs (unsigned >=)
-	if (setcc == 0x96):
-		return 9    # ls (unsigned <=)
-	if (setcc == 0x97):
-		return 8    # hi (unsigned >)
+	if (setcc == 0x94): return 0    # eq
+	if (setcc == 0x95): return 1    # ne
+	if (setcc == 0x9c): return 11   # lt (signed <)
+	if (setcc == 0x9d): return 10   # ge
+	if (setcc == 0x9e): return 13   # le
+	if (setcc == 0x9f): return 12   # gt
+	if (setcc == 0x92): return 3    # lo (unsigned <)
+	if (setcc == 0x93): return 2    # hs (unsigned >=)
+	if (setcc == 0x96): return 9    # ls (unsigned <=)
+	if (setcc == 0x97): return 8    # hi (unsigned >)
 	error(c"arm64: unsupported setcc opcode")
 	return 0
 
@@ -389,8 +375,7 @@ int arm64_addr_slot_read(int pos):
 	int immlo = (word >> 29) & 3
 	int immhi = (word >> 5) & 0x7ffff
 	int delta = (immhi << 2) | immlo
-	if (delta & 0x100000):
-		delta = delta - 0x200000
+	if (delta & 0x100000): delta = delta - 0x200000
 	int page = (adrp_vaddr >> 12) + delta
 	int addw = load_int32(code + pos)
 	return (page << 12) | ((addw >> 10) & 0xfff)
@@ -461,8 +446,7 @@ int be_branch_link_get(int site):
 # instruction stays aligned, which AArch64 requires.
 void be_align_code():
 	if (target_isa == 1):
-		while ((codepos & 3) != 0):
-			emit_int8(0)
+		while ((codepos & 3) != 0): emit_int8(0)
 
 
 # Sign the code pointer in the accumulator (IA key, zero discriminator).
@@ -472,8 +456,7 @@ void be_align_code():
 # equality compares keep working) — W's own convention, see arm64.md D6.
 void be_code_ptr_sign():
 	if (target_isa == 1):
-		if (arm64_pac == 2):
-			a64(op(0xda, 0xc123e0))   # paciza x0
+		if (arm64_pac == 2): a64(op(0xda, 0xc123e0))   # paciza x0
 
 
 # Function prologue: sign the return address and push it onto the W stack so
@@ -523,8 +506,7 @@ int be_frame_words():
 # body's final ret().
 void be_function_epilogue():
 	be_frame_active = 0
-	if (target_isa == 2):
-		wasm_function_end()
+	if (target_isa == 2): wasm_function_end()
 
 
 void be_function_prologue():
@@ -533,8 +515,7 @@ void be_function_prologue():
 	elif (target_isa == 1):
 		# Sign x30 with the W stack pointer at entry; the framed return
 		# pops back to that same x28 before autia.
-		if (arm64_pac):
-			a64(op(0xda, 0xc1039e))   # pacia x30, x28
+		if (arm64_pac): a64(op(0xda, 0xc1039e))   # pacia x30, x28
 		# [x28] = caller's x29, [x28 + 8] = return address: the same
 		# [fp] / [fp + word] layout as x86's push ebp.
 		a64(op(0xa9, 0xbf7b9d))   # stp x29, x30, [x28, #-16]!

@@ -111,28 +111,21 @@ int shell_translate_has_meta(char* line):
 	while (line[i] != 0):
 		if (line[i] == 39): /* '...': nothing is special inside */
 			i = i + 1
-			while ((line[i] != 0) && (line[i] != 39)):
-				i = i + 1
-			if (line[i] != 0):
-				i = i + 1
+			while ((line[i] != 0) && (line[i] != 39)): i = i + 1
+			if (line[i] != 0): i = i + 1
 		else if (line[i] == 34): /* "...": $ and backtick still expand */
 			i = i + 1
 			while ((line[i] != 0) && (line[i] != 34)):
-				if ((line[i] == 92) && ((line[i + 1] == 34) || (line[i + 1] == 92))):
-					i = i + 2
+				if ((line[i] == 92) && ((line[i + 1] == 34) || (line[i + 1] == 92))): i = i + 2
 				else:
-					if ((line[i] == '$') || (line[i] == 96)):
-						return 1
+					if ((line[i] == '$') || (line[i] == 96)): return 1
 					i = i + 1
-			if (line[i] != 0):
-				i = i + 1
+			if (line[i] != 0): i = i + 1
 		else if (line[i] == 92): /* escape outside quotes covers any byte */
 			i = i + 1
-			if (line[i] != 0):
-				i = i + 1
+			if (line[i] != 0): i = i + 1
 		else:
-			if (shell_translate_is_meta(line[i])):
-				return 1
+			if (shell_translate_is_meta(line[i])): return 1
 			i = i + 1
 	return 0
 
@@ -144,10 +137,8 @@ list[char*] shell_translate_tokenize(char* line):
 	int i = 0
 	int n = strlen(line)
 	while (i < n):
-		while ((i < n) && ((line[i] == ' ') || (line[i] == 9))):
-			i = i + 1
-		if (i >= n):
-			break
+		while ((i < n) && ((line[i] == ' ') || (line[i] == 9))): i = i + 1
+		if (i >= n): break
 		string_builder* word = string_new()
 		while ((i < n) && (line[i] != ' ') && (line[i] != 9)):
 			if (line[i] == 39): /* ' -- literal span, no escapes inside */
@@ -155,8 +146,7 @@ list[char*] shell_translate_tokenize(char* line):
 				while ((i < n) && (line[i] != 39)):
 					string_append_char(word, line[i])
 					i = i + 1
-				if (i < n):
-					i = i + 1
+				if (i < n): i = i + 1
 			else if (line[i] == 34): /* " -- \" and \\ recognized */
 				i = i + 1
 				while ((i < n) && (line[i] != 34)):
@@ -166,8 +156,7 @@ list[char*] shell_translate_tokenize(char* line):
 					else:
 						string_append_char(word, line[i])
 						i = i + 1
-				if (i < n):
-					i = i + 1
+				if (i < n): i = i + 1
 			else if (line[i] == 92): /* backslash outside quotes escapes the next byte */
 				i = i + 1
 				if (i < n):
@@ -203,8 +192,7 @@ char* shell_translate_string_literal(char* raw):
 	string_append(out, c"c\"")
 	int i = 0
 	while (raw[i] != 0):
-		if ((raw[i] == 92) || (raw[i] == 34)):
-			string_append_char(out, 92)
+		if ((raw[i] == 92) || (raw[i] == 34)): string_append_char(out, 92)
 		string_append_char(out, raw[i])
 		i = i + 1
 	string_append_char(out, 34)
@@ -219,13 +207,10 @@ char* shell_translate_string_literal(char* raw):
 int shell_translate_name_matches(char* body, char* name):
 	int i = 0
 	while (name[i] != 0):
-		if (body[i] != name[i]):
-			return 0
+		if (body[i] != name[i]): return 0
 		i = i + 1
-	if (body[i] == 0):
-		return 1
-	if (body[i] == '='):
-		return 1
+	if (body[i] == 0): return 1
+	if (body[i] == '='): return 1
 	return 0
 
 
@@ -233,10 +218,8 @@ int shell_translate_name_matches(char* body, char* name):
 # (two dashes), with or without an inline "=value" -- "-n"/"-n=5"/
 # "--lines"/"--lines=5" all match (short_name "n", long_name "lines").
 int shell_translate_flag_named(char* w, char* short_name, char* long_name):
-	if (w[0] != '-'):
-		return 0
-	if (w[1] == '-'):
-		return shell_translate_name_matches(w + 2, long_name)
+	if (w[0] != '-'): return 0
+	if (w[1] == '-'): return shell_translate_name_matches(w + 2, long_name)
 	return shell_translate_name_matches(w + 1, short_name)
 
 
@@ -244,8 +227,7 @@ int shell_translate_flag_named(char* w, char* short_name, char* long_name):
 char* shell_translate_flag_inline_value(char* w):
 	int i = 0
 	while (w[i] != 0):
-		if (w[i] == '='):
-			return w + i + 1
+		if (w[i] == '='): return w + i + 1
 		i = i + 1
 	return 0
 
@@ -254,12 +236,10 @@ char* shell_translate_flag_inline_value(char* w):
 # exactly this, or the whole line fails closed to native -- never a
 # best-guess parse of a partly-numeric value like "5abc").
 int shell_translate_all_digits(char* s):
-	if (s[0] == 0):
-		return 0
+	if (s[0] == 0): return 0
 	int i = 0
 	while (s[i] != 0):
-		if ((s[i] < '0') || (s[i] > '9')):
-			return 0
+		if ((s[i] < '0') || (s[i] > '9')): return 0
 		i = i + 1
 	return 1
 
@@ -352,11 +332,9 @@ char* shell_tool(list[char*] words, char* name, char* letters, char* longs, int 
 	if ((flags >= 0) && (pos.length >= min_pos) && ((max_pos < 0) || (pos.length <= max_pos))):
 		if ((pos.length == 0) && (dflt != 0)): pos.push(dflt)
 		string_builder* out = shell_call_open(name)
-		if (paths_first):
-			for p in pos: shell_call_lit(out, p)
+		if (paths_first): for p in pos: shell_call_lit(out, p)
 		for i in range(strlen(letters)): shell_call_bool(out, (flags >> i) & 1)
-		if (paths_first == 0):
-			for p in pos: shell_call_lit(out, p)
+		if (paths_first == 0): for p in pos: shell_call_lit(out, p)
 		s = shell_call_close(out)
 	__w_list_free(cast(__w_list*, pos))
 	return s
@@ -415,17 +393,14 @@ char* shell_translate_head_tail(list[char*] words, char* callee):
 # octal and makes the whole chmod line fail closed to native, where
 # the real chmod's full mode grammar applies.
 int shell_translate_octal_value(char* s):
-	if (s[0] == 0):
-		return -1
+	if (s[0] == 0): return -1
 	int value = 0
 	int i = 0
 	while (s[i] != 0):
-		if ((s[i] < '0') || (s[i] > '7')):
-			return -1
+		if ((s[i] < '0') || (s[i] > '7')): return -1
 		value = value * 8 + (s[i] - '0')
 		i = i + 1
-	if (i > 4):
-		return -1
+	if (i > 4): return -1
 	return value
 
 
@@ -489,8 +464,7 @@ char* shell_translate_checked(list[char*] words, char* tool):
 #   touch      [-c|--no-create] path...
 #   du         [-s|--summarize] [path=.]
 char* shell_translate_line(char* line):
-	if (shell_translate_has_meta(line)):
-		return 0
+	if (shell_translate_has_meta(line)): return 0
 	list[char*] words = shell_translate_tokenize(line)
 	char* result = 0
 	char* cmd = c""
@@ -534,8 +508,7 @@ enum shell_arg_kind:
 
 # 1 when w is an optional '-' followed by one or more decimal digits.
 int shell_translate_int_word(char* w):
-	if (w[0] == '-'):
-		return shell_translate_all_digits(w + 1)
+	if (w[0] == '-'): return shell_translate_all_digits(w + 1)
 	return shell_translate_all_digits(w)
 
 
@@ -544,8 +517,7 @@ int shell_translate_int_word(char* w):
 # for an integer parameter), else 1.
 int shell_translate_append_arg(string_builder* out, char* w, int kind):
 	if (kind == shell_arg_int):
-		if (shell_translate_int_word(w) == 0):
-			return 0
+		if (shell_translate_int_word(w) == 0): return 0
 		string_append(out, w)
 		return 1
 	if (kind == shell_arg_bool):
@@ -573,19 +545,15 @@ int shell_translate_append_arg(string_builder* out, char* w, int kind):
 # function itself knows what its flags mean.
 char* shell_translate_session_call(list[char*] words, list[int] kinds, int required, int variadic_kind):
 	int given = words.length - 1
-	if (given < required):
-		return 0
-	if ((given > kinds.length) && (variadic_kind < 0)):
-		return 0
+	if (given < required): return 0
+	if ((given > kinds.length) && (variadic_kind < 0)): return 0
 	string_builder* out = string_new()
 	string_append(out, words[0])
 	string_append(out, c"(")
 	for i in range(given):
-		if (i > 0):
-			string_append(out, c", ")
+		if (i > 0): string_append(out, c", ")
 		int kind = variadic_kind
-		if (i < kinds.length):
-			kind = kinds[i]
+		if (i < kinds.length): kind = kinds[i]
 		if (shell_translate_append_arg(out, words[i + 1], kind) == 0):
 			string_free(out)
 			return 0

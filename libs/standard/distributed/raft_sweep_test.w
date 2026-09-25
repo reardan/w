@@ -119,10 +119,8 @@ void swc_check_round(sweep_cluster* c):
 		# (a) at most one leader per term, ever
 		if (raft_state(r) == raft_leader):
 			int term = raft_term_int(r)
-			if ((term in c.term_leader) == 1):
-				asserts(c.tag, c.term_leader[term] == i + 1)
-			else:
-				c.term_leader[term] = i + 1
+			if ((term in c.term_leader) == 1): asserts(c.tag, c.term_leader[term] == i + 1)
+			else: c.term_leader[term] = i + 1
 		i = i + 1
 
 
@@ -179,19 +177,15 @@ void swc_propose_retry(sweep_cluster* c, char* command, int max_rounds):
 # last index == commit index.
 int swc_converged(sweep_cluster* c):
 	int lid = rsim_leader(c.sim)
-	if (lid == (0 - 1)):
-		return 0
+	if (lid == (0 - 1)): return 0
 	raft* lead = c.nodes[lid - 1]
 	int li = raft_last_index(lead)
 	int ci = raft_commit_int(lead)
-	if (ci != li):
-		return 0
+	if (ci != li): return 0
 	for i in range(c.n):
 		raft* r = c.nodes[i]
-		if (raft_last_index(r) != li):
-			return 0
-		if (raft_commit_int(r) != ci):
-			return 0
+		if (raft_last_index(r) != li): return 0
+		if (raft_commit_int(r) != ci): return 0
 	return 1
 
 
@@ -199,8 +193,7 @@ int swc_converged(sweep_cluster* c):
 # not converging is a red seed.
 void swc_settle(sweep_cluster* c, int max_rounds):
 	for round in range(max_rounds):
-		if (swc_converged(c) == 1):
-			return
+		if (swc_converged(c) == 1): return
 		rsim_step(c.sim)
 	asserts(c.tag, swc_converged(c))
 
@@ -216,13 +209,11 @@ void swc_check_log_matching(sweep_cluster* c):
 			raft* a = c.nodes[i]
 			raft* b = c.nodes[j]
 			int lo = raft_snap_base(a)
-			if (raft_snap_base(b) > lo):
-				lo = raft_snap_base(b)
+			if (raft_snap_base(b) > lo): lo = raft_snap_base(b)
 			lo = lo + 1
 			int hi = raft_commit_int(a)
 			int cb = raft_commit_int(b)
-			if (cb < hi):
-				hi = cb
+			if (cb < hi): hi = cb
 			for k in range(lo, hi + 1):
 				raft_entry* ea = raft_log_at(a, k)
 				raft_entry* eb = raft_log_at(b, k)
@@ -244,8 +235,7 @@ void swc_check_applied_equal(sweep_cluster* c):
 		sweep_track* t = c.track[i]
 		if (t.reset == 0):
 			clean = clean + 1
-			if (ref < 0):
-				ref = i
+			if (ref < 0): ref = i
 		i = i + 1
 	asserts(c.tag, clean >= 2)
 	sweep_track* rt = c.track[ref]
@@ -270,8 +260,7 @@ void swc_free(sweep_cluster* c):
 	rsim_free(c.sim)
 	for i in range(c.n):
 		sweep_track* t = c.track[i]
-		while (t.applied.length > 0):
-			free(t.applied.pop())
+		while (t.applied.length > 0): free(t.applied.pop())
 		t.applied.free()
 		free(t)
 	c.track.free()
@@ -315,8 +304,7 @@ void swc_snapshot_twist(sweep_cluster* c):
 	for round in range(30):
 		int lid = rsim_leader(c.sim)
 		if (lid != (0 - 1)):
-			if (raft_take_snapshot(c.nodes[lid - 1], c"SWEEPSNAP", 9) == 1):
-				return
+			if (raft_take_snapshot(c.nodes[lid - 1], c"SWEEPSNAP", 9) == 1): return
 		rsim_step(c.sim)
 
 
@@ -338,20 +326,17 @@ void sweep_churn(int seed):
 	rsim_partition_from_all(c.sim, lid)
 	rsim_run(c.sim, prng_between(sc, 30, 80))
 	rsim_heal_all(c.sim)
-	if (seed % 2 == 0):
-		swc_snapshot_twist(c)
+	if (seed % 2 == 0): swc_snapshot_twist(c)
 	swc_propose_retry(c, c"n2", 400)
 	rsim_run(c.sim, 10)
 	# cycle 2: a random non-leader pair
 	lid = swc_wait_leader(c, 400)
 	list[int] others = new list[int]
 	for idn in range(1, c.n + 1):
-		if (idn != lid):
-			others.push(idn)
+		if (idn != lid): others.push(idn)
 	int ia = prng_range(sc, others.length)
 	int ib = prng_range(sc, others.length - 1)
-	if (ib >= ia):
-		ib = ib + 1
+	if (ib >= ia): ib = ib + 1
 	int pa = others[ia]
 	int pb = others[ib]
 	others.free()

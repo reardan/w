@@ -106,17 +106,14 @@ int protobuf_message_index(int type_index):
 
 
 int protobuf_is_message(int type_index):
-	if (type_index < 0):
-		return 0
-	if (type_get_pointer_level(type_unqualified(type_index)) != 0):
-		return 0
+	if (type_index < 0): return 0
+	if (type_get_pointer_level(type_unqualified(type_index)) != 0): return 0
 	return protobuf_message_index(type_index) >= 0
 
 
 char* protobuf_message_info(int type_index):
 	int i = protobuf_message_index(type_index)
-	if (i < 0):
-		return 0
+	if (i < 0): return 0
 	return cast(char*, load_ptr(protobuf_message_infos + i * __word_size__))
 
 
@@ -189,13 +186,11 @@ int protobuf_scalar_kind(char* name):
 
 # W storage type for a scalar protobuf kind.
 int protobuf_scalar_storage(int kind, char* name):
-	if (strcmp(name, c"float") == 0):
-		return protobuf_lookup_builtin_type(c"float32")
+	if (strcmp(name, c"float") == 0): return protobuf_lookup_builtin_type(c"float32")
 	if (strcmp(name, c"double") == 0):
 		protobuf_require_wide_word(name)
 		return protobuf_lookup_builtin_type(c"float64")
-	if (strcmp(name, c"sfixed32") == 0):
-		return protobuf_lookup_builtin_type(c"int32")
+	if (strcmp(name, c"sfixed32") == 0): return protobuf_lookup_builtin_type(c"int32")
 	if (strcmp(name, c"sfixed64") == 0):
 		protobuf_require_wide_word(name)
 		return protobuf_lookup_builtin_type(c"int64")
@@ -226,12 +221,10 @@ int protobuf_message_field(int message_type, char* info, int field_index):
 	int kind = protobuf_scalar_kind(type_word)
 	int elem_kind = 0
 	int storage = 0
-	if (kind):
-		storage = protobuf_scalar_storage(kind, type_word)
+	if (kind): storage = protobuf_scalar_storage(kind, type_word)
 	else:
 		int named = type_lookup(type_word)
-		if (named < 0):
-			error3(c"unknown protobuf field type '", type_word, c"'")
+		if (named < 0): error3(c"unknown protobuf field type '", type_word, c"'")
 		# The message being declared may refer to itself (a tree
 		# node's children): the singular form is a pointer, the
 		# repeated form a list, so neither needs the finished size.
@@ -242,10 +235,8 @@ int protobuf_message_field(int message_type, char* info, int field_index):
 		else if (is_self || protobuf_is_message(named)):
 			kind = protobuf_kind_message
 			storage = type_get_next_pointer(named)
-			if (repeated):
-				storage = named
-		else:
-			error3(c"unsupported protobuf field type '", type_word, c"'")
+			if (repeated): storage = named
+		else: error3(c"unsupported protobuf field type '", type_word, c"'")
 	if (repeated):
 		elem_kind = kind
 		kind = protobuf_kind_repeated
@@ -282,12 +273,9 @@ int protobuf_message_field(int message_type, char* info, int field_index):
 # 'message Name:' followed by an indented field list. Returns 1 when a
 # message declaration was parsed.
 int message_declaration():
-	if (peek(c"message") == 0):
-		return 0
-	if ((type_lookup(token) >= 0) || (sym_lookup(token) >= 0)):
-		return 0
-	if (nextc != ' '):
-		return 0
+	if (peek(c"message") == 0): return 0
+	if ((type_lookup(token) >= 0) || (sym_lookup(token) >= 0)): return 0
+	if (nextc != ' '): return 0
 	int defhash_start = token_start_offset
 	get_token()
 	protobuf_require_runtime(c"message declaration")
@@ -299,15 +287,11 @@ int message_declaration():
 	int forward_declared = 0
 	if (type_index >= 0):
 		char* existing = protobuf_message_info(type_index)
-		if (existing != 0):
-			forward_declared = load_int(existing) < 0
-	if (type_index < 0):
-		type_index = type_push_size(strclone(token), 0)
-	else if (forward_declared == 0):
-		type_reset_for_redefinition(type_index, 0)
+		if (existing != 0): forward_declared = load_int(existing) < 0
+	if (type_index < 0): type_index = type_push_size(strclone(token), 0)
+	else if (forward_declared == 0): type_reset_for_redefinition(type_index, 0)
 	type_set_decl_location(type_index, decl_file_index(), diag_token_line, diag_token_column)
-	if (forward_declared == 0):
-		sym_declare_global(token, type_index, 1)
+	if (forward_declared == 0): sym_declare_global(token, type_index, 1)
 	get_token()
 	# 'message Name' alone is a forward declaration, so two messages
 	# can refer to each other: fields of a forward-declared message
@@ -322,8 +306,7 @@ int message_declaration():
 	char* info = malloc(4 + max_fields * 12)
 	int n = 0
 	while (tab_level > start_tab_level):
-		if (n >= max_fields):
-			error(c"too many fields in protobuf message")
+		if (n >= max_fields): error(c"too many fields in protobuf message")
 		protobuf_message_field(type_index, info, n)
 		n = n + 1
 		pointer_indirection = 0
@@ -356,8 +339,7 @@ void protobuf_desc_store(int type_index, int address):
 # The message type a MESSAGE or repeated-MESSAGE field refers to.
 int protobuf_field_message_type(int field_type, int kind):
 	field_type = type_unqualified(field_type)
-	if (kind == protobuf_kind_repeated):
-		return type_list_element_type(field_type)
+	if (kind == protobuf_kind_repeated): return type_list_element_type(field_type)
 	return type_lookup_previous_pointer(field_type)
 
 
@@ -370,8 +352,7 @@ int protobuf_pending_count
 int protobuf_is_pending(int type_index):
 	int i = 0
 	while (i < protobuf_pending_count):
-		if (load_int(protobuf_pending_types + i * 4) == type_index):
-			return 1
+		if (load_int(protobuf_pending_types + i * 4) == type_index): return 1
 		i = i + 1
 	return 0
 
@@ -380,13 +361,10 @@ int protobuf_is_pending(int type_index):
 # yet (a message may reach itself, directly or through others).
 void protobuf_collect_pending(int message_type):
 	message_type = type_canonical(type_unqualified(message_type))
-	if (protobuf_desc_lookup(message_type)):
-		return;
-	if (protobuf_is_pending(message_type)):
-		return;
+	if (protobuf_desc_lookup(message_type)): return;
+	if (protobuf_is_pending(message_type)): return;
 	char* info = protobuf_message_info(message_type)
-	if (info == 0):
-		error3(c"'", type_get_name(message_type), c"' is not a protobuf message")
+	if (info == 0): error3(c"'", type_get_name(message_type), c"' is not a protobuf message")
 	if (load_int(info) < 0):
 		error3(c"protobuf message '", type_get_name(message_type), c"' is declared but never defined")
 	assert1(protobuf_pending_count < 400)
@@ -404,8 +382,7 @@ int protobuf_repeated_count(char* info):
 	int n = load_int(info)
 	int r = 0
 	for i in range(n):
-		if (load_int(info + 8 + i * 12) == protobuf_kind_repeated):
-			r = r + 1
+		if (load_int(info + 8 + i * 12) == protobuf_kind_repeated): r = r + 1
 	return r
 
 
@@ -442,8 +419,7 @@ void protobuf_emit_section(int message_type):
 			int elem_aux = 0
 			if (elem_kind == protobuf_kind_message):
 				elem_aux = protobuf_desc_lookup(type_canonical(protobuf_field_message_type(field_type, kind)))
-			if (elem_kind == protobuf_kind_bool):
-				elem_aux = type_get_size(bool_type)
+			if (elem_kind == protobuf_kind_bool): elem_aux = type_get_size(bool_type)
 			aux = code_offset + codepos
 			emit_target_word(elem_kind)
 			emit_target_word(elem_aux)
@@ -495,8 +471,7 @@ int protobuf_descriptor(int message_type):
 	int cached = protobuf_desc_lookup(message_type)
 	if (cached):
 		return cached
-	if (protobuf_pending_types == 0):
-		protobuf_pending_types = malloc(400 * 4)
+	if (protobuf_pending_types == 0): protobuf_pending_types = malloc(400 * 4)
 	protobuf_pending_count = 0
 	protobuf_collect_pending(message_type)
 
@@ -526,8 +501,7 @@ void protobuf_emit_call(char* fn_name, int desc_address, int arg_slot, int arg_c
 		error3(c"protobuf runtime function '", fn_name, c"' is not defined; import libs.extras.protobuf.message")
 	int s = rt_call_begin(fn_name)
 	push_slot_int(desc_address)
-	for i in range(arg_count):
-		push_slot_copy(arg_slot + i)
+	for i in range(arg_count): push_slot_copy(arg_slot + i)
 	rt_call_end(s)
 
 
@@ -552,8 +526,7 @@ int protobuf_to_proto_expr():
 	get_token()
 	expect(c"(")
 	int got = expression()
-	if (peek(c")") == 0):
-		error(c"')' expected in to_proto")
+	if (peek(c")") == 0): error(c"')' expected in to_proto")
 	int bytes_type = protobuf_require_runtime(c"to_proto")
 	got = promote(got)
 	int t = protobuf_message_of_expression(got)
@@ -574,8 +547,7 @@ int protobuf_from_proto_expr():
 	int bytes_type = protobuf_require_runtime(c"from_proto")
 	int target_type = type_name()
 	int t = type_unqualified(target_type)
-	if (protobuf_is_message(t) == 0):
-		error(c"from_proto target must be a protobuf message type")
+	if (protobuf_is_message(t) == 0): error(c"from_proto target must be a protobuf message type")
 	expect(c",")
 	int desc_address = protobuf_descriptor(t)
 	int base_stack = stack_pos
@@ -595,8 +567,7 @@ int protobuf_from_proto_expr():
 		int want = type_get_next_pointer(bytes_type)
 		if (types_compatible_with_expression(want, got) == 0):
 			warn_type_mismatch(c"from_proto value", want, got)
-	if (peek(c")") == 0):
-		error(c"')' expected in from_proto")
+	if (peek(c")") == 0): error(c"')' expected in from_proto")
 	protobuf_emit_call(fn_name, desc_address, arg_slot, arg_count)
 	pop_to(base_stack)
 	return type_value(type_get_next_pointer(t))
@@ -611,8 +582,7 @@ int protobuf_descriptor_expr():
 	int t = type_unqualified(type_name())
 	if (protobuf_is_message(t) == 0):
 		error(c"proto_descriptor argument must be a protobuf message type")
-	if (peek(c")") == 0):
-		error(c"')' expected in proto_descriptor")
+	if (peek(c")") == 0): error(c"')' expected in proto_descriptor")
 	int desc_address = protobuf_descriptor(t)
 	mov_eax_int(desc_address)
 	return type_value(type_get_next_pointer(type_lookup(c"pb_message_desc")))

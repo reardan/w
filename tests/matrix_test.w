@@ -13,8 +13,7 @@ detection, and zero-copy ndarray interop.
 
 
 float mt_abs(float f):
-	if (f < 0.0):
-		return 0.0 - f
+	if (f < 0.0): return 0.0 - f
 	return f
 
 
@@ -106,8 +105,7 @@ void test_operators():
 void test_rectangular_product():
 	# (2x3) * (3x2) -> 2x2, and the transpose shape swap.
 	float[] av = new float[6]
-	for i in range(6):
-		av[i] = i + 1
+	for i in range(6): av[i] = i + 1
 	matrix a = matrix_from(av, 2, 3)
 	matrix t = a.transpose()
 	assert_equal(3, t.rows)

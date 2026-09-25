@@ -86,8 +86,7 @@ void pd_buf_push(pd_buf* b, int c):
 
 
 void pd_buf_append(pd_buf* b, char* s, int n):
-	for i in range(n):
-		pd_buf_push(b, s[i])
+	for i in range(n): pd_buf_push(b, s[i])
 
 
 void pd_buf_cstr(pd_buf* b, char* s):
@@ -99,8 +98,7 @@ int pd_buf_find(pd_buf* b, pd_buf* needle, int start):
 	int i = start
 	while (i + needle.length <= b.length):
 		int j = 0
-		while ((j < needle.length) && (b.data[i + j] == needle.data[j])):
-			j = j + 1
+		while ((j < needle.length) && (b.data[i + j] == needle.data[j])): j = j + 1
 		if (j == needle.length):
 			return i
 		i = i + 1
@@ -111,8 +109,7 @@ void pd_write_all(int fd, char* s, int n):
 	int off = 0
 	while (off < n):
 		int w = write(fd, s + off, n - off)
-		if (w <= 0):
-			return
+		if (w <= 0): return
 		off = off + w
 
 
@@ -132,16 +129,12 @@ void pd_repr(pd_buf* out, char* s, int n, int bytes_mode):
 	int has_double = 0
 	int i = 0
 	while (i < n):
-		if (s[i] == 39):
-			has_single = 1
-		if (s[i] == 34):
-			has_double = 1
+		if (s[i] == 39): has_single = 1
+		if (s[i] == 34): has_double = 1
 		i = i + 1
 	int quote = 39
-	if (has_single && (has_double == 0)):
-		quote = 34
-	if (bytes_mode):
-		pd_buf_push(out, 'b')
+	if (has_single && (has_double == 0)): quote = 34
+	if (bytes_mode): pd_buf_push(out, 'b')
 	pd_buf_push(out, quote)
 	i = 0
 	while (i < n):
@@ -150,22 +143,18 @@ void pd_repr(pd_buf* out, char* s, int n, int bytes_mode):
 			pd_buf_push(out, 92)
 			pd_buf_push(out, c)
 		else:
-			if (c == 10):
-				pd_buf_cstr(out, c"\\n")
+			if (c == 10): pd_buf_cstr(out, c"\\n")
 			else:
-				if (c == 13):
-					pd_buf_cstr(out, c"\\r")
+				if (c == 13): pd_buf_cstr(out, c"\\r")
 				else:
-					if (c == 9):
-						pd_buf_cstr(out, c"\\t")
+					if (c == 9): pd_buf_cstr(out, c"\\t")
 					else:
 						if ((c < 32) || (c == 127) || (bytes_mode && (c > 127))):
 							pd_buf_cstr(out, c"\\x")
 							char* hex_digits = pd_hex_digits()
 							pd_buf_push(out, hex_digits[c >> 4])
 							pd_buf_push(out, hex_digits[c & 15])
-						else:
-							pd_buf_push(out, c)
+						else: pd_buf_push(out, c)
 		i = i + 1
 	pd_buf_push(out, quote)
 
@@ -186,12 +175,9 @@ void pd_format_seconds(pd_buf* out, int ms):
 /* Script parsing. */
 
 int pd_hex_value(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
+	if ((c >= '0') && (c <= '9')): return c - '0'
+	if ((c >= 'a') && (c <= 'f')): return c - 'a' + 10
+	if ((c >= 'A') && (c <= 'F')): return c - 'A' + 10
 	return -1
 
 
@@ -206,25 +192,20 @@ int pd_is_space(int c):
 int pd_parse_hex2(char* s):
 	int start = 0
 	int end = 2
-	while ((start < end) && pd_is_space(s[start])):
-		start = start + 1
-	while ((end > start) && pd_is_space(s[end - 1])):
-		end = end - 1
+	while ((start < end) && pd_is_space(s[start])): start = start + 1
+	while ((end > start) && pd_is_space(s[end - 1])): end = end - 1
 	int negative = 0
 	if ((start < end) && ((s[start] == '+') || (s[start] == '-'))):
 		negative = s[start] == '-'
 		start = start + 1
-	if (start == end):
-		return -1
+	if (start == end): return -1
 	int value = 0
 	while (start < end):
 		int d = pd_hex_value(s[start])
-		if (d < 0):
-			return -1
+		if (d < 0): return -1
 		value = value * 16 + d
 		start = start + 1
-	if (negative && (value != 0)):
-		return -1
+	if (negative && (value != 0)): return -1
 	return value
 
 
@@ -237,18 +218,12 @@ pd_buf* pd_decode(char* text, int n):
 		if ((ch == 92) && (i + 1 < n)):
 			int next = text[i + 1]
 			int simple = -1
-			if (next == 'n'):
-				simple = 10
-			if (next == 'r'):
-				simple = 13
-			if (next == 't'):
-				simple = 9
-			if (next == 'e'):
-				simple = 27
-			if (next == '0'):
-				simple = 0
-			if (next == 92):
-				simple = 92
+			if (next == 'n'): simple = 10
+			if (next == 'r'): simple = 13
+			if (next == 't'): simple = 9
+			if (next == 'e'): simple = 27
+			if (next == '0'): simple = 0
+			if (next == 92): simple = 92
 			if (simple >= 0):
 				pd_buf_push(out, simple)
 				i = i + 2
@@ -272,18 +247,15 @@ struct pd_step:
 
 int pd_line_starts(char* line, int n, char* prefix):
 	int k = strlen(prefix)
-	if (n < k):
-		return 0
+	if (n < k): return 0
 	for i in range(k):
-		if (line[i] != prefix[i]):
-			return 0
+		if (line[i] != prefix[i]): return 0
 	return 1
 
 
 pd_buf* pd_read_file(char* path):
 	int fd = open(path, 0, 0)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	pd_buf* b = pd_buf_new()
 	char* chunk = malloc(65536)
 	int n = read(fd, chunk, 65536)
@@ -292,8 +264,7 @@ pd_buf* pd_read_file(char* path):
 		n = read(fd, chunk, 65536)
 	free(chunk)
 	close(fd)
-	if (n < 0):
-		return 0
+	if (n < 0): return 0
 	return b
 
 
@@ -313,15 +284,13 @@ list[pd_step*] pd_parse_script(char* path):
 		lineno = lineno + 1
 		char* line = text.data + pos
 		int n = 0
-		while ((pos + n < text.length) && (line[n] != 10) && (line[n] != 13)):
-			n = n + 1
+		while ((pos + n < text.length) && (line[n] != 10) && (line[n] != 13)): n = n + 1
 		pos = pos + n
 		if (pos < text.length):
 			if ((text.data[pos] == 13) && (pos + 1 < text.length) && (text.data[pos + 1] == 10)):
 				pos = pos + 1
 			pos = pos + 1
-		if ((n == 0) || (line[0] == '#')):
-			continue
+		if ((n == 0) || (line[0] == '#')): continue
 		if (pd_line_starts(line, n, c"expect ")):
 			pd_step* e = new pd_step()
 			e.is_send = 0
@@ -366,29 +335,24 @@ int pd_execvp(char** argv, char** envp):
 	char* file = argv[0]
 	int i = 0
 	while (file[i] != 0):
-		if (file[i] == '/'):
-			return execve(file, argv, envp)
+		if (file[i] == '/'): return execve(file, argv, envp)
 		i = i + 1
 	char* path = env_get(c"PATH")
-	if (path == 0):
-		path = c":/bin:/usr/bin"
+	if (path == 0): path = c":/bin:/usr/bin"
 	int result = 0 - 2
 	int start = 0
 	int done = 0
 	while (done == 0):
 		int end = start
-		while ((path[end] != 0) && (path[end] != ':')):
-			end = end + 1
+		while ((path[end] != 0) && (path[end] != ':')): end = end + 1
 		pd_buf* candidate = pd_buf_new()
 		if (end > start):
 			pd_buf_append(candidate, path + start, end - start)
 			pd_buf_push(candidate, '/')
 		pd_buf_cstr(candidate, file)
 		int err = execve(candidate.data, argv, envp)
-		if (err != (0 - 2)):
-			result = err
-		if (path[end] == 0):
-			done = 1
+		if (err != (0 - 2)): result = err
+		if (path[end] == 0): done = 1
 		start = end + 1
 	return result
 
@@ -414,8 +378,7 @@ void pd_spawn(char** argv, char** envp):
 		exit(1)
 	if (pid == 0):
 		close(master)
-		if (pty_login_tty(slave) != 0):
-			exit(127)
+		if (pty_login_tty(slave) != 0): exit(127)
 		int exec_err = pd_execvp(argv, envp)
 		pd_buf* emsg = pd_buf_new()
 		pd_buf_cstr(emsg, c"exec ")
@@ -436,27 +399,21 @@ void pd_spawn(char** argv, char** envp):
 # Reads whatever arrives within ms milliseconds; sets pd_eof at EOF (a
 # read error, EIO once the slave side is closed, counts as EOF).
 void pd_pump(int ms):
-	if (pd_eof):
-		return
-	if (ms < 0):
-		ms = 0
+	if (pd_eof): return
+	if (ms < 0): ms = 0
 	int ready = poll_single(pd_fd, poll_in, ms)
-	if (ready <= 0):
-		return
+	if (ready <= 0): return
 	char* chunk = malloc(65536)
 	int n = read(pd_fd, chunk, 65536)
-	if (n <= 0):
-		pd_eof = 1
-	else:
-		pd_buf_append(pd_received, chunk, n)
+	if (n <= 0): pd_eof = 1
+	else: pd_buf_append(pd_received, chunk, n)
 	free(chunk)
 
 
 # The last 500 unconsumed bytes, as a Python bytes repr.
 void pd_tail(pd_buf* out):
 	int start = pd_consumed
-	if (pd_received.length - start > 500):
-		start = pd_received.length - 500
+	if (pd_received.length - start > 500): start = pd_received.length - 500
 	pd_repr(out, pd_received.data + start, pd_received.length - start, 1)
 
 
@@ -527,16 +484,14 @@ int pd_run(char* script_path, char** argv, char** envp, int timeout_ms):
 				pd_buf_cstr(tm, c"s) waiting for ")
 				pd_repr(tm, step.data.data, step.data.length, 1)
 				pd_fail(tm)
-			if (remaining > 250):
-				remaining = 250
+			if (remaining > 250): remaining = 250
 			pd_pump(remaining)
 		pd_consumed = pd_buf_find(pd_received, step.data, pd_consumed) + step.data.length
 
 	# Script done: drain to EOF, then the child must exit 0.
 	int final_deadline = time_monotonic_ms() + timeout_ms
 	while (pd_eof == 0):
-		if (time_monotonic_ms() >= final_deadline):
-			pd_fail_exit_timeout(timeout_ms)
+		if (time_monotonic_ms() >= final_deadline): pd_fail_exit_timeout(timeout_ms)
 		pd_pump(250)
 	# Pre-zeroed: the kernel writes a 32-bit status into a word.
 	int status = 0
@@ -548,11 +503,9 @@ int pd_run(char* script_path, char** argv, char** envp, int timeout_ms):
 			status = 0
 			reaped = 1
 		else:
-			if (r != 0):
-				reaped = 1
+			if (r != 0): reaped = 1
 			else:
-				if (time_monotonic_ms() >= final_deadline):
-					pd_fail_exit_timeout(timeout_ms)
+				if (time_monotonic_ms() >= final_deadline): pd_fail_exit_timeout(timeout_ms)
 				sleep_ms(50)
 	close(pd_fd)
 	int sig = status & 127
@@ -602,8 +555,7 @@ int pd_parse_timeout(char* s):
 			scale = scale / 10
 			i = i + 1
 			digits = digits + 1
-	if ((digits == 0) || (s[i] != 0)):
-		return -1
+	if ((digits == 0) || (s[i] != 0)): return -1
 	return seconds * 1000 + ms
 
 
@@ -615,8 +567,7 @@ char* pd_fresh_home(char* dir):
 	if (dir[0] == '/'):
 		return dir
 	char* cwd = malloc(4096)
-	if (getcwd(cwd, 4096) < 0):
-		pd_die(c"pty_drive: --fresh-home: getcwd failed")
+	if (getcwd(cwd, 4096) < 0): pd_die(c"pty_drive: --fresh-home: getcwd failed")
 	char* with_slash = strjoin(cwd, c"/")
 	return strjoin(with_slash, dir)
 
@@ -641,32 +592,25 @@ int main(int argc, int argv):
 	while (options && (i < argc)):
 		options = 0
 		if (strcmp(av[i], c"--timeout") == 0):
-			if (i + 1 >= argc):
-				pd_die(c"pty_drive: --timeout needs a value")
+			if (i + 1 >= argc): pd_die(c"pty_drive: --timeout needs a value")
 			timeout_ms = pd_parse_timeout(av[i + 1])
-			if (timeout_ms < 0):
-				pd_die(c"pty_drive: --timeout needs a number of seconds")
+			if (timeout_ms < 0): pd_die(c"pty_drive: --timeout needs a number of seconds")
 			i = i + 2
 			options = 1
 		else:
 			if (strcmp(av[i], c"--fresh-home") == 0):
-				if (i + 1 >= argc):
-					pd_die(c"pty_drive: --fresh-home needs a directory")
+				if (i + 1 >= argc): pd_die(c"pty_drive: --fresh-home needs a directory")
 				fresh_home = av[i + 1]
 				i = i + 2
 				options = 1
-	if ((i < argc) && (strcmp(av[i], c"--") == 0)):
-		i = i + 1
+	if ((i < argc) && (strcmp(av[i], c"--") == 0)): i = i + 1
 	if (argc - i < 2):
 		pd_die(c"bin/pty_drive [--timeout SECONDS] [--fresh-home DIR] SCRIPT [--] CMD [ARG...]")
 	char* script_path = av[i]
 	i = i + 1
-	if (strcmp(av[i], c"--") == 0):
-		i = i + 1
-	if (i >= argc):
-		pd_die(c"pty_drive: no command given")
+	if (strcmp(av[i], c"--") == 0): i = i + 1
+	if (i >= argc): pd_die(c"pty_drive: no command given")
 	char** child_argv = pd_strv_from(av, i, argc)
 	char** envp = env_current()
-	if (fresh_home != 0):
-		envp = env_copy_with(envp, c"HOME", pd_fresh_home(fresh_home))
+	if (fresh_home != 0): envp = env_copy_with(envp, c"HOME", pd_fresh_home(fresh_home))
 	return pd_run(script_path, child_argv, envp, timeout_ms)

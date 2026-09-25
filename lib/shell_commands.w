@@ -146,8 +146,7 @@ int shell_commands_pwd():
 	if (getcwd(buf, size) < 0):
 		println2(c"pwd: cannot determine current directory")
 		status = 1
-	else:
-		println(buf)
+	else: println(buf)
 	free(buf)
 	return status
 
@@ -160,16 +159,12 @@ int shell_commands_pwd():
 void shell_commands_mode_string(int mode, char* out):
 	int kind = mode & FILE_S_IFMT
 	out[0] = '-'
-	if (kind == FILE_S_IFDIR):
-		out[0] = 'd'
-	if (kind == FILE_S_IFLNK):
-		out[0] = 'l'
+	if (kind == FILE_S_IFDIR): out[0] = 'd'
+	if (kind == FILE_S_IFLNK): out[0] = 'l'
 	char* letters = c"rwxrwxrwx"
 	for i in range(9):
-		if (mode & (256 >> i)):
-			out[i + 1] = letters[i]
-		else:
-			out[i + 1] = '-'
+		if (mode & (256 >> i)): out[i + 1] = letters[i]
+		else: out[i + 1] = '-'
 	out[10] = 0
 
 
@@ -222,8 +217,7 @@ int shell_commands_ls_long_entry(char* dir, char* entry_name):
 	# time_t past 2038, or a deliberately bogus mtime); clamp to the
 	# epoch instead of taking the whole REPL session down.
 	int mtime = st.mtime
-	if (mtime < 0):
-		mtime = 0
+	if (mtime < 0): mtime = 0
 	char* stamp = time_format_unix_utc(mtime)
 	stamp[16] = 0 /* "YYYY-MM-DD HH:MM:SS" cut to the minute */
 	print(stamp)
@@ -260,17 +254,13 @@ int shell_commands_ls(char* path, bool all, bool long_format):
 		return 1
 	list[char*] names = new list[char*]
 	for char* entry_name in listed:
-		if (all || (entry_name[0] != '.')):
-			names.push(entry_name)
-		else:
-			free(entry_name)
+		if (all || (entry_name[0] != '.')): names.push(entry_name)
+		else: free(entry_name)
 	int status = 0
 	int i = 0
 	while (i < names.length):
-		if (long_format):
-			status = status | shell_commands_ls_long_entry(path, names[i])
-		else:
-			println(names[i])
+		if (long_format): status = status | shell_commands_ls_long_entry(path, names[i])
+		else: println(names[i])
 		free(names[i])
 		i = i + 1
 	return status
@@ -317,12 +307,10 @@ int shell_commands_cat(char*... paths):
 int shell_commands_echo(bool no_newline, char*... words):
 	int i = 0
 	while (i < words.length):
-		if (i > 0):
-			print(c" ")
+		if (i > 0): print(c" ")
 		print(words[i])
 		i = i + 1
-	if (no_newline == 0):
-		println(c"")
+	if (no_newline == 0): println(c"")
 	return 0
 
 
@@ -337,10 +325,8 @@ int shell_commands_head(char* path, int n):
 		println2(c"' for reading: No such file or directory")
 		return 1
 	int count = lines.length
-	if (n < count):
-		count = n
-	if (count < 0):
-		count = 0
+	if (n < count): count = n
+	if (count < 0): count = 0
 	int i = 0
 	while (i < count):
 		println(lines[i])
@@ -361,8 +347,7 @@ int shell_commands_tail(char* path, int n):
 		println2(c"' for reading: No such file or directory")
 		return 1
 	int start = lines.length - n
-	if (start < 0):
-		start = 0
+	if (start < 0): start = 0
 	int i = start
 	while (i < lines.length):
 		println(lines[i])
@@ -409,13 +394,10 @@ int shell_commands_wc(char* path, bool count_lines, bool count_words, bool count
 	int in_word = 0
 	for i in range(length):
 		char ch = text[i]
-		if (ch == 10):
-			lines = lines + 1
-		if ((ch == ' ') || (ch == 9) || (ch == 10)):
-			in_word = 0
+		if (ch == 10): lines = lines + 1
+		if ((ch == ' ') || (ch == 9) || (ch == 10)): in_word = 0
 		else:
-			if (in_word == 0):
-				words = words + 1
+			if (in_word == 0): words = words + 1
 			in_word = 1
 	if (show_lines):
 		char* s = itoa(lines)
@@ -443,8 +425,7 @@ int shell_commands_wc(char* path, bool count_lines, bool count_words, bool count
 int shell_commands_mkdir_ancestors(char* path):
 	if ((path == 0) || (strlen(path) == 0) || (strcmp(path, c"/") == 0) || (strcmp(path, c".") == 0)):
 		return 0
-	if (path_exists(path)):
-		return 0
+	if (path_exists(path)): return 0
 	char* parent = path_dirname(path)
 	int err = shell_commands_mkdir_ancestors(parent)
 	free(parent)
@@ -459,8 +440,7 @@ int shell_commands_mkdir_ancestors(char* path):
 # Returns 1 when path could not be created, else 0.
 int shell_commands_mkdir_one(char* path, int parents):
 	int err = 0
-	if (parents):
-		err = shell_commands_mkdir_ancestors(path)
+	if (parents): err = shell_commands_mkdir_ancestors(path)
 	else:
 		err = mkdir(path, 493) /* 493 = 0755 */
 	if (err != 0):
@@ -496,16 +476,14 @@ int shell_commands_rm_one(char* path, int recursive, int force):
 	file_stat st
 	int err = file_lstat_path(path, &st)
 	if (err != 0):
-		if (force):
-			return 0
+		if (force): return 0
 		print_error(c"rm: cannot remove '")
 		print_error(path)
 		println2(c"': No such file or directory")
 		return 1
 	if (file_is_dir(&st) == 0):
 		int u = unlink(path)
-		if (u == 0):
-			return 0
+		if (u == 0): return 0
 		if (force == 0):
 			print_error(c"rm: cannot remove '")
 			print_error(path)
@@ -590,8 +568,7 @@ int shell_commands_cp_one(char* src, char* dst, int recursive):
 		print_error(src)
 		println2(c"': No such file or directory")
 		return 1
-	if (file_is_dir(&st) == 0):
-		return shell_commands_cp_file(src, dst)
+	if (file_is_dir(&st) == 0): return shell_commands_cp_file(src, dst)
 	if (recursive == 0):
 		print_error(c"cp: -r not specified; omitting directory '")
 		print_error(src)
@@ -647,11 +624,9 @@ int shell_commands_mv(char* src, char* dst):
 # success, exactly like the real "touch -c". Returns 1 on failure.
 int shell_commands_touch_one(char* path, int no_create):
 	int create = 1
-	if (no_create):
-		create = 0
+	if (no_create): create = 0
 	int err = file_touch(path, create)
-	if (err == 0):
-		return 0
+	if (err == 0): return 0
 	if (no_create && (err == (0 - 2))): /* ENOENT under -c: silent */
 		return 0
 	print_error(c"touch: cannot touch '")
@@ -740,14 +715,12 @@ int shell_commands_du(bool summarize, char* path):
 # for the name and for why hard links stay native.
 int shell_commands_ln_s(char* target, char* linkpath):
 	int err = file_symlink(target, linkpath)
-	if (err == 0):
-		return 0
+	if (err == 0): return 0
 	print_error(c"ln: failed to create symbolic link '")
 	print_error(linkpath)
 	if (err == (0 - 17)): /* EEXIST */
 		println2(c"': File exists")
-	else:
-		println2(c"': No such file or directory")
+	else: println2(c"': No such file or directory")
 	return 1
 
 
@@ -759,10 +732,8 @@ char* shell_commands_field(char* line, int index):
 	int i = 0
 	int field = 0
 	while (line[i] != 0):
-		while ((line[i] == ' ') || (line[i] == 9)):
-			i = i + 1
-		if (line[i] == 0):
-			return 0
+		while ((line[i] == ' ') || (line[i] == 9)): i = i + 1
+		if (line[i] == 0): return 0
 		if (field == index):
 			string_builder* out = string_new()
 			while ((line[i] != 0) && (line[i] != ' ') && (line[i] != 9)):
@@ -771,8 +742,7 @@ char* shell_commands_field(char* line, int index):
 			char* s = out.data
 			free(out)
 			return s
-		while ((line[i] != 0) && (line[i] != ' ') && (line[i] != 9)):
-			i = i + 1
+		while ((line[i] != 0) && (line[i] != ' ') && (line[i] != 9)): i = i + 1
 		field = field + 1
 	return 0
 
@@ -781,10 +751,8 @@ char* shell_commands_field(char* line, int index):
 # two on every real filesystem; on 32-bit targets the product can
 # exceed the word for a multi-TB filesystem (module header).
 int shell_commands_df_kunits(int count, int bsize):
-	if (bsize >= 1024):
-		return count * (bsize / 1024)
-	if (bsize <= 0):
-		return 0
+	if (bsize >= 1024): return count * (bsize / 1024)
+	if (bsize <= 0): return 0
 	return count / (1024 / bsize)
 
 
@@ -824,12 +792,9 @@ int shell_commands_df_all():
 		char* mount = shell_commands_field(lines[i], 1)
 		if ((source != 0) && (mount != 0)):
 			if (file_statfs(mount, &fs) == 0):
-				if (fs.blocks > 0):
-					shell_commands_df_line(source, mount, &fs)
-		if (source != 0):
-			free(source)
-		if (mount != 0):
-			free(mount)
+				if (fs.blocks > 0): shell_commands_df_line(source, mount, &fs)
+		if (source != 0): free(source)
+		if (mount != 0): free(mount)
 		free(lines[i])
 		i = i + 1
 	return 0
@@ -869,14 +834,11 @@ int shell_commands_df_path(char* path):
 								mount = entry_mount
 								matched = 1
 					if (matched == 0):
-						if (entry_source != 0):
-							free(entry_source)
-						if (entry_mount != 0):
-							free(entry_mount)
+						if (entry_source != 0): free(entry_source)
+						if (entry_mount != 0): free(entry_mount)
 				free(lines[i])
 				i = i + 1
-	if (mount == 0):
-		shell_commands_df_line(c"-", path, &fs)
+	if (mount == 0): shell_commands_df_line(c"-", path, &fs)
 	else:
 		shell_commands_df_line(source, mount, &fs)
 		free(source)
@@ -889,8 +851,7 @@ int shell_commands_df_path(char* path):
 # simplifications are in the module header.
 int shell_commands_df(char*... paths):
 	println(c"Filesystem 1K-blocks Used Available Mounted on")
-	if (paths.length == 0):
-		return shell_commands_df_all()
+	if (paths.length == 0): return shell_commands_df_all()
 	int status = 0
 	int i = 0
 	while (i < paths.length):
@@ -900,12 +861,10 @@ int shell_commands_df(char*... paths):
 
 
 int shell_commands_all_digits(char* s):
-	if (s[0] == 0):
-		return 0
+	if (s[0] == 0): return 0
 	int i = 0
 	while (s[i] != 0):
-		if ((s[i] < '0') || (s[i] > '9')):
-			return 0
+		if ((s[i] < '0') || (s[i] > '9')): return 0
 		i = i + 1
 	return 1
 
@@ -944,10 +903,8 @@ void shell_commands_ps_line(int pid):
 	int rp = -1
 	int i = 0
 	while (text[i] != 0):
-		if ((text[i] == '(') && (lp < 0)):
-			lp = i
-		if (text[i] == ')'):
-			rp = i
+		if ((text[i] == '(') && (lp < 0)): lp = i
+		if (text[i] == ')'): rp = i
 		i = i + 1
 	if ((lp < 0) || (rp <= lp) || (text[rp + 1] != ' ')):
 		free(text)
@@ -959,8 +916,7 @@ void shell_commands_ps_line(int pid):
 		free(pid_str)
 		return
 	int k = rp + 3
-	while (text[k] == ' '):
-		k = k + 1
+	while (text[k] == ' '): k = k + 1
 	string_builder* ppid = string_new()
 	while ((text[k] >= '0') && (text[k] <= '9')):
 		string_append_char(ppid, text[k])
@@ -993,8 +949,7 @@ int shell_commands_ps():
 		return 1
 	list[int] pids = new list[int]
 	for char* entry_name in names:
-		if (shell_commands_all_digits(entry_name)):
-			pids.push(atoi(entry_name))
+		if (shell_commands_all_digits(entry_name)): pids.push(atoi(entry_name))
 		free(entry_name)
 	shell_commands_sort_ints(pids)
 	println(c"PID PPID S COMM")
@@ -1052,20 +1007,15 @@ int shell_commands_grep(bool line_numbers, char* pattern, char*... paths):
 		println2(c"'")
 		return 2
 	int with_name = 0
-	if (paths.length > 1):
-		with_name = 1
+	if (paths.length > 1): with_name = 1
 	int matched = 0
 	int failed = 0
 	int i = 0
 	while (i < paths.length):
 		int n = shell_commands_grep_one(pattern, paths[i], with_name, line_numbers)
-		if (n < 0):
-			failed = 1
-		else if (n > 0):
-			matched = 1
+		if (n < 0): failed = 1
+		else if (n > 0): matched = 1
 		i = i + 1
-	if (failed):
-		return 2
-	if (matched):
-		return 0
+	if (failed): return 2
+	if (matched): return 0
 	return 1

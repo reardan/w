@@ -16,8 +16,7 @@ import graphics.ui.testing
 # One frame: a button, then the toast over it.
 int toast_frame(ui_context* ctx, ui_toast_state* st, int32* bg, int now_ms):
 	ui_begin(ctx, 320, 240)
-	if (ui_button(ctx, c"behind")):
-		bg[0] = bg[0] + 1
+	if (ui_button(ctx, c"behind")): bg[0] = bg[0] + 1
 	int alive = ui_toast(ctx, st, now_ms)
 	ui_end(ctx)
 	return alive

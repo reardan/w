@@ -75,10 +75,8 @@ int ui_textarea_caret_offset(ui_textarea_state* st):
 
 # Move the caret to a byte offset, keeping line/col in step.
 void ui_textarea_set_caret(ui_textarea_state* st, int offset):
-	if (offset < 0):
-		offset = 0
-	if (offset > st.buf.length):
-		offset = st.buf.length
+	if (offset < 0): offset = 0
+	if (offset > st.buf.length): offset = st.buf.length
 	st.caret_line = ui_text_buffer_offset_to_line(&st.buf, offset)
 	st.caret_col = offset - ui_text_buffer_line_start(&st.buf, st.caret_line)
 
@@ -89,24 +87,20 @@ int ui_textarea_line_height(ui_context* ctx):
 
 # 1 when a selection exists and is not empty.
 int ui_textarea_has_selection(ui_textarea_state* st):
-	if (st.sel_anchor < 0):
-		return 0
-	if (st.sel_anchor == ui_textarea_caret_offset(st)):
-		return 0
+	if (st.sel_anchor < 0): return 0
+	if (st.sel_anchor == ui_textarea_caret_offset(st)): return 0
 	return 1
 
 
 int ui_textarea_sel_start(ui_textarea_state* st):
 	int caret = ui_textarea_caret_offset(st)
-	if (st.sel_anchor < caret):
-		return st.sel_anchor
+	if (st.sel_anchor < caret): return st.sel_anchor
 	return caret
 
 
 int ui_textarea_sel_end(ui_textarea_state* st):
 	int caret = ui_textarea_caret_offset(st)
-	if (st.sel_anchor > caret):
-		return st.sel_anchor
+	if (st.sel_anchor > caret): return st.sel_anchor
 	return caret
 
 
@@ -127,10 +121,8 @@ int ui_textarea_delete_selection(ui_textarea_state* st):
 # anchors at the pre-move caret and keeps it, shift released drops it.
 void ui_textarea_anchor(ui_textarea_state* st, int shift):
 	if (shift):
-		if (st.sel_anchor < 0):
-			st.sel_anchor = ui_textarea_caret_offset(st)
-	else:
-		st.sel_anchor = 0 - 1
+		if (st.sel_anchor < 0): st.sel_anchor = ui_textarea_caret_offset(st)
+	else: st.sel_anchor = 0 - 1
 
 
 # Vertical motion aims at goal_col, which a short line clamps for
@@ -138,16 +130,12 @@ void ui_textarea_anchor(ui_textarea_state* st, int shift):
 # other side lands back at the original column.
 void ui_textarea_move_line(ui_textarea_state* st, int delta):
 	int line = st.caret_line + delta
-	if (line < 0):
-		line = 0
-	if (line >= st.buf.line_count):
-		line = st.buf.line_count - 1
+	if (line < 0): line = 0
+	if (line >= st.buf.line_count): line = st.buf.line_count - 1
 	st.caret_line = line
 	int len = ui_text_buffer_line_length(&st.buf, line)
-	if (st.caret_goal_col < len):
-		st.caret_col = st.caret_goal_col
-	else:
-		st.caret_col = len
+	if (st.caret_goal_col < len): st.caret_col = st.caret_goal_col
+	else: st.caret_col = len
 	# goal_col counts bytes: never land inside a multi-byte character.
 	char* text = &st.buf.data[ui_text_buffer_line_start(&st.buf, line)]
 	while ((st.caret_col > 0) && ((text[st.caret_col] & 192) == 128)):
@@ -174,8 +162,7 @@ void ui_textarea_nav(ui_textarea_state* st, int nav, int mods, int page_lines):
 	ui_textarea_anchor(st, shift)
 	int offset = ui_textarea_caret_offset(st)
 	if (nav == GFX_NAV_LEFT):
-		if (offset > 0):
-			ui_textarea_set_caret(st, ui_utf8_prev(st.buf.data, offset))
+		if (offset > 0): ui_textarea_set_caret(st, ui_utf8_prev(st.buf.data, offset))
 		st.caret_goal_col = st.caret_col
 	else if (nav == GFX_NAV_RIGHT):
 		if (offset < st.buf.length):
@@ -183,25 +170,17 @@ void ui_textarea_nav(ui_textarea_state* st, int nav, int mods, int page_lines):
 			ui_textarea_set_caret(st, ui_utf8_next(st.buf.data, offset, &cp2))
 		st.caret_goal_col = st.caret_col
 	else if (nav == GFX_NAV_HOME):
-		if (ctrl):
-			ui_textarea_set_caret(st, 0)
-		else:
-			st.caret_col = 0
+		if (ctrl): ui_textarea_set_caret(st, 0)
+		else: st.caret_col = 0
 		st.caret_goal_col = st.caret_col
 	else if (nav == GFX_NAV_END):
-		if (ctrl):
-			ui_textarea_set_caret(st, st.buf.length)
-		else:
-			st.caret_col = ui_text_buffer_line_length(&st.buf, st.caret_line)
+		if (ctrl): ui_textarea_set_caret(st, st.buf.length)
+		else: st.caret_col = ui_text_buffer_line_length(&st.buf, st.caret_line)
 		st.caret_goal_col = st.caret_col
-	else if (nav == GFX_NAV_UP):
-		ui_textarea_move_line(st, 0 - 1)
-	else if (nav == GFX_NAV_DOWN):
-		ui_textarea_move_line(st, 1)
-	else if (nav == GFX_NAV_PAGE_UP):
-		ui_textarea_move_line(st, 0 - page_lines)
-	else if (nav == GFX_NAV_PAGE_DOWN):
-		ui_textarea_move_line(st, page_lines)
+	else if (nav == GFX_NAV_UP): ui_textarea_move_line(st, 0 - 1)
+	else if (nav == GFX_NAV_DOWN): ui_textarea_move_line(st, 1)
+	else if (nav == GFX_NAV_PAGE_UP): ui_textarea_move_line(st, 0 - page_lines)
+	else if (nav == GFX_NAV_PAGE_DOWN): ui_textarea_move_line(st, page_lines)
 
 
 # Insert one typed character (a codepoint, as UTF-8), replacing any
@@ -211,8 +190,7 @@ void ui_textarea_type(ui_textarea_state* st, int ch):
 	int offset = ui_textarea_caret_offset(st)
 	char[4] bytes
 	int n = ui_utf8_encode(&bytes[0], ch)
-	for k in range(n):
-		ui_text_buffer_insert(&st.buf, offset + k, bytes[k] & 255)
+	for k in range(n): ui_text_buffer_insert(&st.buf, offset + k, bytes[k] & 255)
 	ui_textarea_set_caret(st, offset + n)
 	st.caret_goal_col = st.caret_col
 
@@ -222,8 +200,7 @@ void ui_textarea_backspace(ui_textarea_state* st):
 		st.caret_goal_col = st.caret_col
 		return
 	int offset = ui_textarea_caret_offset(st)
-	if (offset == 0):
-		return
+	if (offset == 0): return
 	int from = ui_utf8_prev(st.buf.data, offset)
 	ui_text_buffer_delete(&st.buf, from, offset - from)
 	ui_textarea_set_caret(st, from)
@@ -238,13 +215,11 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	float32 pad = cast(float32, ctx.theme.pad)
 	float32 line_h = cast(float32, ui_textarea_line_height(ctx))
 	int page_lines = cast(int, (area.h - pad * 2.0) / line_h)
-	if (page_lines < 1):
-		page_lines = 1
+	if (page_lines < 1): page_lines = 1
 
 	# Field surface, focus underline like ui_textbox's.
 	ui_color line_color = ctx.theme.border
-	if (ctx.focus == id):
-		line_color = ctx.theme.focus
+	if (ctx.focus == id): line_color = ctx.theme.focus
 	ui_color fill = ctx.theme.widget
 	if (ctx.disabled):
 		fill = ctx.theme.disabled_widget
@@ -260,20 +235,16 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 		if (ui_rect_contains(area, px, py)):
 			ctx.focus = id
 			int line = cast(int, (py - view.y + st.scroll.offset_y) / line_h)
-			if (line < 0):
-				line = 0
-			if (line >= st.buf.line_count):
-				line = st.buf.line_count - 1
+			if (line < 0): line = 0
+			if (line >= st.buf.line_count): line = st.buf.line_count - 1
 			st.caret_line = line
 			int start = ui_text_buffer_line_start(&st.buf, line)
 			st.caret_col = ui_text_caret_from_x(&st.buf.data[start], scale, cast(int, px - view.x + st.scroll.offset_x))
 			int len = ui_text_buffer_line_length(&st.buf, line)
-			if (st.caret_col > len):
-				st.caret_col = len
+			if (st.caret_col > len): st.caret_col = len
 			st.caret_goal_col = st.caret_col
 			st.sel_anchor = 0 - 1
-		else if (ctx.focus == id):
-			ctx.focus = 0
+		else if (ctx.focus == id): ctx.focus = 0
 
 	int changed = 0
 	if ((ctx.focus == id) && (ctx.disabled == 0)):
@@ -294,15 +265,13 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 				# no submit edge to steal it for.
 				ui_textarea_type(st, '\n')
 				changed = 1
-			else if (ch == 27):
-				ctx.focus = 0
+			else if (ch == 27): ctx.focus = 0
 			i = i + 1
 		i = 0
 		while (i < ctx.nav_count):
 			int before = st.buf.length
 			ui_textarea_nav(st, ctx.navs[i], ctx.nav_mods[i], page_lines)
-			if (st.buf.length != before):
-				changed = 1
+			if (st.buf.length != before): changed = 1
 			i = i + 1
 
 	# Keep the caret in view after typing or motion.
@@ -317,11 +286,9 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	ui_region_claim(ctx, ui_rect_new(origin_x, origin_y, view.w, cast(float32, st.buf.line_count) * line_h))
 
 	int first = cast(int, st.scroll.offset_y / line_h)
-	if (first < 0):
-		first = 0
+	if (first < 0): first = 0
 	int last = first + page_lines + 1
-	if (last > st.buf.line_count):
-		last = st.buf.line_count
+	if (last > st.buf.line_count): last = st.buf.line_count
 
 	int sel_start = ui_textarea_sel_start(st)
 	int sel_end = ui_textarea_sel_end(st)
@@ -337,10 +304,8 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 		if (has_sel):
 			int from = sel_start - start
 			int to = sel_end - start
-			if (from < 0):
-				from = 0
-			if (to > len):
-				to = len
+			if (from < 0): from = 0
+			if (to > len): to = len
 			if (to > from):
 				float32 hx = origin_x + cast(float32, ui_text_prefix_width(text, from, scale))
 				float32 hw = cast(float32, ui_text_prefix_width(text, to, scale) - ui_text_prefix_width(text, from, scale))

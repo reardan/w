@@ -113,8 +113,7 @@ void ui_begin(ui_context* ctx, int width, int height):
 # in this module that touches gfx_window.
 void ui_begin_window(ui_context* ctx, gfx_window* win):
 	gfx_event e
-	while (gfx_window_next_event(win, &e)):
-		ui_feed_event(ctx, &e)
+	while (gfx_window_next_event(win, &e)): ui_feed_event(ctx, &e)
 	ctx.input.mouse_x = win.mouse_x
 	ctx.input.mouse_y = win.mouse_y
 	ui_begin(ctx, win.width, win.height)
@@ -124,8 +123,7 @@ void ui_begin_window(ui_context* ctx, gfx_window* win):
 # the press owner once the release has been seen by every widget.
 void ui_end(ui_context* ctx):
 	ui_render_end(ctx.rndr)
-	if (ctx.input.mouse_released):
-		ctx.active = 0
+	if (ctx.input.mouse_released): ctx.active = 0
 	ctx.input.mouse_pressed = 0
 	ctx.input.mouse_released = 0
 	ctx.input.mouse_right_pressed = 0
@@ -147,10 +145,8 @@ void ui_disable(ui_context* ctx, int on):
 # BEFORE the popup in the frame as well, which is why the open-popup
 # stack persists across frames instead of being a frame-scoped bracket.
 int ui_scope_blocked(ui_context* ctx):
-	if (ctx.popup_depth == 0):
-		return 0
-	if (ctx.scope == ctx.popup_stack[ctx.popup_depth - 1]):
-		return 0
+	if (ctx.popup_depth == 0): return 0
+	if (ctx.scope == ctx.popup_stack[ctx.popup_depth - 1]): return 0
 	return 1
 
 
@@ -159,32 +155,24 @@ int ui_scope_blocked(ui_context* ctx):
 # the frame the release lands while still over it. Inert inside a
 # ui_disable scope, or outside the innermost open popup.
 int ui_click_behavior(ui_context* ctx, int id, ui_rect r):
-	if (ctx.disabled):
-		return 0
-	if (ui_scope_blocked(ctx)):
-		return 0
+	if (ctx.disabled): return 0
+	if (ui_scope_blocked(ctx)): return 0
 	int over = ui_rect_contains(r, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))
-	if (over):
-		ctx.hot = id
+	if (over): ctx.hot = id
 	if (ctx.input.mouse_pressed):
 		if (ui_rect_contains(r, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
 			ctx.active = id
-	if (ctx.input.mouse_released && (ctx.active == id) && over):
-		return 1
+	if (ctx.input.mouse_released && (ctx.active == id) && over): return 1
 	return 0
 
 
 ui_color ui_widget_fill(ui_context* ctx, int id):
-	if (ctx.disabled):
-		return ctx.theme.disabled_widget
-	if (ctx.active == id):
-		return ctx.theme.widget_active
-	if (ctx.hot == id):
-		return ctx.theme.widget_hot
+	if (ctx.disabled): return ctx.theme.disabled_widget
+	if (ctx.active == id): return ctx.theme.widget_active
+	if (ctx.hot == id): return ctx.theme.widget_hot
 	return ctx.theme.widget
 
 
 ui_color ui_text_color(ui_context* ctx):
-	if (ctx.disabled):
-		return ctx.theme.disabled_text
+	if (ctx.disabled): return ctx.theme.disabled_text
 	return ctx.theme.text

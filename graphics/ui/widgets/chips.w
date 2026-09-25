@@ -6,8 +6,7 @@ input chips with a remove cross (docs/projects/ui_widgets.md §2, §6).
 	ui_chips_begin(ctx, &st, area)
 	int i = 0
 	while (i < tag_count):
-		if (ui_chip_removable(ctx, &st, tag_name(i), 0)):
-			remove_after_walk = i
+		if (ui_chip_removable(ctx, &st, tag_name(i), 0)): remove_after_walk = i
 		i = i + 1
 	ui_chip(ctx, &st, c"Open only", &open_only)
 	ui_chips_end(ctx, &st)
@@ -95,10 +94,8 @@ void ui_chips_end(ui_context* ctx, ui_chips_state* st):
 float32 ui_chip_width(ui_context* ctx, char* label, int selectable, int removable):
 	float32 pad = cast(float32, ctx.theme.pad)
 	float32 w = cast(float32, ui_text_width(label, ctx.theme.text_scale)) + pad * 2.0
-	if (selectable):
-		w = w + ui_chip_mark_size() + pad * 0.5
-	if (removable):
-		w = w + ui_chip_mark_size() + pad * 0.5
+	if (selectable): w = w + ui_chip_mark_size() + pad * 0.5
+	if (removable): w = w + ui_chip_mark_size() + pad * 0.5
 	return w
 
 
@@ -109,16 +106,14 @@ float32 ui_chip_width(ui_context* ctx, char* label, int selectable, int removabl
 ui_rect ui_chip_place(ui_context* ctx, ui_chips_state* st, float32 w):
 	float32 gap = cast(float32, ctx.theme.gap)
 	float32 h = cast(float32, ctx.theme.widget_height)
-	if (w > st.area.w):
-		w = st.area.w
+	if (w > st.area.w): w = st.area.w
 	if ((st.pen_x > 0.0) && (st.pen_x + w > st.area.w)):
 		st.pen_x = 0.0
 		st.pen_y = st.pen_y + h + gap
 		st.row = st.row + 1
 	ui_rect r = ui_rect_new(st.area.x + st.pen_x, st.area.y + st.pen_y, w, h)
 	st.pen_x = st.pen_x + w + gap
-	if (st.pen_x - gap > st.content_w):
-		st.content_w = st.pen_x - gap
+	if (st.pen_x - gap > st.content_w): st.content_w = st.pen_x - gap
 	return r
 
 
@@ -134,8 +129,7 @@ int ui_chip_walk(ui_context* ctx, ui_chips_state* st, char* label, int32* select
 	ctx.next_id = ctx.next_id + 1
 
 	int selectable = 0
-	if (selected != 0):
-		selectable = 1
+	if (selected != 0): selectable = 1
 	float32 pad = cast(float32, ctx.theme.pad)
 	float32 mark = ui_chip_mark_size()
 	ui_rect chip = ui_chip_place(ctx, st, ui_chip_width(ctx, label, selectable, removable))
@@ -144,8 +138,7 @@ int ui_chip_walk(ui_context* ctx, ui_chips_state* st, char* label, int32* select
 	# The cross first: it consumes the click, so removing never toggles.
 	int result = 0
 	if (removable):
-		if (ui_click_behavior(ctx, remove_id, cross)):
-			result = 2
+		if (ui_click_behavior(ctx, remove_id, cross)): result = 2
 	if (result == 0):
 		int clicked = ui_click_behavior(ctx, id, chip)
 		if (removable):
@@ -159,28 +152,22 @@ int ui_chip_walk(ui_context* ctx, ui_chips_state* st, char* label, int32* select
 			if ((ctx.hot == id) && ui_rect_contains(cross, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))):
 				ctx.hot = remove_id
 		if (clicked && selectable):
-			if (selected[0]):
-				selected[0] = 0
-			else:
-				selected[0] = 1
+			if (selected[0]): selected[0] = 0
+			else: selected[0] = 1
 			result = 1
 
 	int on = 0
-	if (selectable):
-		on = selected[0]
+	if (selectable): on = selected[0]
 	ui_color fill = ui_widget_fill(ctx, id)
 	ui_color ink = ui_text_color(ctx)
 	ui_color cross_ink = ctx.theme.text_muted
-	if (ctx.disabled):
-		cross_ink = ctx.theme.disabled_text
+	if (ctx.disabled): cross_ink = ctx.theme.disabled_text
 	else if (on):
 		fill = ctx.theme.accent
-		if ((ctx.hot == id) || (ctx.active == id)):
-			fill = ctx.theme.accent_hot
+		if ((ctx.hot == id) || (ctx.active == id)): fill = ctx.theme.accent_hot
 		ink = ctx.theme.on_accent
 		cross_ink = ctx.theme.on_accent
-	else if (ctx.hot == remove_id):
-		cross_ink = ctx.theme.text
+	else if (ctx.hot == remove_id): cross_ink = ctx.theme.text
 	ui_draw_rrect(ctx.rndr, chip, chip.h * 0.5, fill)
 
 	# The label column: between the check slot and the cross. An
@@ -189,30 +176,26 @@ int ui_chip_walk(ui_context* ctx, ui_chips_state* st, char* label, int32* select
 	int scale = ctx.theme.text_scale
 	float32 col_x = chip.x + pad
 	float32 col_w = chip.w - pad * 2.0
-	if (removable):
-		col_w = col_w - mark - pad * 0.5
+	if (removable): col_w = col_w - mark - pad * 0.5
 	float32 tw = cast(float32, ui_text_width(label, scale))
 	float32 tx = col_x + (col_w - tw) * 0.5
 	if (on):
 		ui_draw_check(ctx.rndr, ui_rect_new(col_x, chip.y + (chip.h - mark) * 0.5, mark, mark), ink)
 		tx = col_x + mark + pad * 0.5
-	if (tx < col_x):
-		tx = col_x
+	if (tx < col_x): tx = col_x
 	float32 ty = chip.y + (chip.h - cast(float32, ui_text_height(scale))) * 0.5
 	ui_clip_push(ctx.rndr, ui_rect_new(col_x, chip.y, col_w, chip.h))
 	ui_draw_text(ctx.rndr, tx, ty, label, scale, ink)
 	ui_clip_pop(ctx.rndr)
 
-	if (removable):
-		ui_draw_cross(ctx.rndr, cross, cross_ink)
+	if (removable): ui_draw_cross(ctx.rndr, cross, cross_ink)
 	return result
 
 
 # A filter chip. Toggles selected[0] when clicked and returns 1 on that
 # frame; selected chips fill with the accent and show a check.
 int ui_chip(ui_context* ctx, ui_chips_state* st, char* label, int32* selected):
-	if (ui_chip_walk(ctx, st, label, selected, 0) == 1):
-		return 1
+	if (ui_chip_walk(ctx, st, label, selected, 0) == 1): return 1
 	return 0
 
 
@@ -221,6 +204,5 @@ int ui_chip(ui_context* ctx, ui_chips_state* st, char* label, int32* selected):
 # for a plain tag, or point at a flag to make the chip toggle as well —
 # a click on the cross never toggles it.
 int ui_chip_removable(ui_context* ctx, ui_chips_state* st, char* label, int32* selected):
-	if (ui_chip_walk(ctx, st, label, selected, 1) == 2):
-		return 1
+	if (ui_chip_walk(ctx, st, label, selected, 1) == 2): return 1
 	return 0

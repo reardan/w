@@ -270,8 +270,7 @@ void test_descriptor_and_wresult_api():
 
 	pb_message_desc* d1 = proto_descriptor(Test1)
 	char* buf = malloc(d1.struct_size)
-	for i in range(d1.struct_size):
-		buf[i] = 0
+	for i in range(d1.struct_size): buf[i] = 0
 	wresult[char*]* r = pb_decode(d1, c"\x08", 1, buf)
 	assert_equal(0, result_is_ok[char*](r))
 	assert_equal(PB_ERR_TRUNCATED, result_code[char*](r))

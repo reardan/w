@@ -119,10 +119,8 @@ int u64_hi32(u64* a):
 # 1 when the value is exactly representable as a non-negative int on
 # every target (i.e. it fits 31 bits).
 int u64_fits_int(u64* a):
-	if (a.w3 != 0 || a.w2 != 0):
-		return 0
-	if (a.w1 >= 32768):
-		return 0
+	if (a.w3 != 0 || a.w2 != 0): return 0
+	if (a.w1 >= 32768): return 0
 	return 1
 
 
@@ -136,14 +134,12 @@ int u64_to_int(u64* a):
 # ---- comparison -------------------------------------------------------------
 
 int u64_is_zero(u64* a):
-	if (a.w0 == 0 && a.w1 == 0 && a.w2 == 0 && a.w3 == 0):
-		return 1
+	if (a.w0 == 0 && a.w1 == 0 && a.w2 == 0 && a.w3 == 0): return 1
 	return 0
 
 
 int u64_eq(u64* a, u64* b):
-	if (a.w0 == b.w0 && a.w1 == b.w1 && a.w2 == b.w2 && a.w3 == b.w3):
-		return 1
+	if (a.w0 == b.w0 && a.w1 == b.w1 && a.w2 == b.w2 && a.w3 == b.w3): return 1
 	return 0
 
 
@@ -151,28 +147,23 @@ int u64_eq(u64* a, u64* b):
 # always in [0, 0xffff], so plain int comparison is correct everywhere.
 int u64_cmp(u64* a, u64* b):
 	if (a.w3 != b.w3):
-		if (a.w3 < b.w3):
-			return 0 - 1
+		if (a.w3 < b.w3): return 0 - 1
 		return 1
 	if (a.w2 != b.w2):
-		if (a.w2 < b.w2):
-			return 0 - 1
+		if (a.w2 < b.w2): return 0 - 1
 		return 1
 	if (a.w1 != b.w1):
-		if (a.w1 < b.w1):
-			return 0 - 1
+		if (a.w1 < b.w1): return 0 - 1
 		return 1
 	if (a.w0 != b.w0):
-		if (a.w0 < b.w0):
-			return 0 - 1
+		if (a.w0 < b.w0): return 0 - 1
 		return 1
 	return 0
 
 
 # a = max(a, b), the merge step of logical clocks.
 void u64_max(u64* a, u64* b):
-	if (u64_cmp(a, b) < 0):
-		u64_copy(a, b)
+	if (u64_cmp(a, b) < 0): u64_copy(a, b)
 
 
 # ---- arithmetic (mod 2^64) --------------------------------------------------
@@ -191,8 +182,7 @@ void u64_add(u64* a, u64* b):
 # a += v for a small non-negative host int (v < 2^31 on every target).
 void u64_add_int(u64* a, int v):
 	assert1(v >= 0)
-	if (__word_size__ == 8):
-		assert1((v >> 31) == 0)
+	if (__word_size__ == 8): assert1((v >> 31) == 0)
 	int c = a.w0 + (v & 65535)
 	a.w0 = c & 65535
 	c = (c >> 16) + a.w1 + ((v >> 16) & 65535)
@@ -218,8 +208,7 @@ int u64_sub(u64* a, u64* b):
 	a.w2 = d & 65535
 	d = (d >> 16) + a.w3 - b.w3
 	a.w3 = d & 65535
-	if ((d >> 16) != 0):
-		return 1
+	if ((d >> 16) != 0): return 1
 	return 0
 
 
@@ -330,8 +319,7 @@ char* u64_to_dec(u64* a):
 		tmp[n] = 48
 		n = n + 1
 	char* s = malloc(n + 1)
-	for i in range(n):
-		s[i] = tmp[n - 1 - i]
+	for i in range(n): s[i] = tmp[n - 1 - i]
 	s[n] = 0
 	free(tmp)
 	return s

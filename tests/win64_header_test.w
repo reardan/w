@@ -198,8 +198,7 @@ void test_iat_slots_in_writable_section():
 int wxs_cstr_at(int off, char* s):
 	int i = 0
 	while (s[i] != 0):
-		if (wxs_u8(off + i) != (s[i] & 255)):
-			return 0
+		if (wxs_u8(off + i) != (s[i] & 255)): return 0
 		i = i + 1
 	return wxs_u8(off + i) == 0
 

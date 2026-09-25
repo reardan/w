@@ -25,8 +25,7 @@ struct dir_entry:
 
 
 void dir_entries_free(list[dir_entry*] entries):
-	if (entries == 0):
-		return
+	if (entries == 0): return
 	for dir_entry* e in entries:
 		free(e.name)
 		free(e)
@@ -40,8 +39,7 @@ list[dir_entry*] dir_read(char* path):
 	list[char*] names = new list[char*]
 	list[int] kinds = new list[int]
 	if (dir_platform_read(path, names, kinds) != 0):
-		for char* name in names:
-			free(name)
+		for char* name in names: free(name)
 		list_free[char*](names)
 		list_free[int](kinds)
 		return 0
@@ -49,8 +47,7 @@ list[dir_entry*] dir_read(char* path):
 	int i = 0
 	while (i < names.length):
 		char* name = names[i]
-		if ((strcmp(name, c".") == 0) || (strcmp(name, c"..") == 0)):
-			free(name)
+		if ((strcmp(name, c".") == 0) || (strcmp(name, c"..") == 0)): free(name)
 		else:
 			dir_entry* e = new dir_entry
 			e.name = name
@@ -71,8 +68,7 @@ list[dir_entry*] dir_read(char* path):
 # Just the sorted entry names of dir_read(path) (owned), or 0.
 list[char*] dir_names(char* path):
 	list[dir_entry*] entries = dir_read(path)
-	if (entries == 0):
-		return 0
+	if (entries == 0): return 0
 	list[char*] names = new list[char*]
 	for dir_entry* e in entries:
 		names.push(e.name)
@@ -86,16 +82,14 @@ list[char*] dir_names(char* path):
 # depth-first name order. An unopenable path appends nothing.
 void dir_walk_files(char* path, list[char*] out):
 	list[dir_entry*] entries = dir_read(path)
-	if (entries == 0):
-		return
+	if (entries == 0): return
 	for dir_entry* e in entries:
 		if ((e.kind == DIR_KIND_DIR) || (e.kind == DIR_KIND_FILE)):
 			char* child = path_join(path, e.name)
 			if (e.kind == DIR_KIND_DIR):
 				dir_walk_files(child, out)
 				free(child)
-			else:
-				out.push(child)
+			else: out.push(child)
 	dir_entries_free(entries)
 
 
@@ -103,20 +97,16 @@ void dir_walk_files(char* path, list[char*] out):
 # a directory is emptied bottom-up and removed. A missing path is
 # success. Returns 0, or -1 when something could not be removed.
 int dir_remove_all(char* path):
-	if (unlink(path) == 0):
-		return 0
+	if (unlink(path) == 0): return 0
 	list[dir_entry*] entries = dir_read(path)
 	if (entries == 0):
-		if (path_exists(path)):
-			return -1
+		if (path_exists(path)): return -1
 		return 0
 	int status = 0
 	for dir_entry* e in entries:
 		char* child = path_join(path, e.name)
-		if (dir_remove_all(child) != 0):
-			status = -1
+		if (dir_remove_all(child) != 0): status = -1
 		free(child)
 	dir_entries_free(entries)
-	if (rmdir(path) != 0):
-		status = -1
+	if (rmdir(path) != 0): status = -1
 	return status

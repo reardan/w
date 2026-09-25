@@ -34,8 +34,7 @@ int min_int(int a, int b):
 
 int bytes4_equal(char* a, char* b):
 	for i in range(4):
-		if ((a[i] & 255) != (b[i] & 255)):
-			return 1 == 2
+		if ((a[i] & 255) != (b[i] & 255)): return 1 == 2
 	return 1
 
 
@@ -69,8 +68,7 @@ void test_corpus():
 		asm_arm64_parse(entry.text, &parsed)
 		asm_buffer* b = asm_buffer_new()
 		asm_arm64_encode(b, &parsed)
-		if (b.length == 4 & bytes4_equal(b.data, entry.bytes)):
-			encoded_exact = encoded_exact + 1
+		if (b.length == 4 & bytes4_equal(b.data, entry.bytes)): encoded_exact = encoded_exact + 1
 		else:
 			encode_mismatch = encode_mismatch + 1
 			if (encode_mismatch <= 10):
@@ -94,10 +92,8 @@ void test_corpus():
 
 
 int in_text(asm_binary* binary, int value):
-	if (value < binary.text_vaddr):
-		return 1 == 2
-	if (value >= binary.text_vaddr + binary.text_size):
-		return 1 == 2
+	if (value < binary.text_vaddr): return 1 == 2
+	if (value >= binary.text_vaddr + binary.text_size): return 1 == 2
 	return 1
 
 
@@ -105,8 +101,7 @@ int in_text(asm_binary* binary, int value):
 int word_is_unknown(char* text, int off, int address):
 	asm_insn probe
 	asm_arm64_decode(text + off, 4, address, &probe)
-	if (strcmp(probe.mnemonic, c".word") == 0):
-		return 1
+	if (strcmp(probe.mnemonic, c".word") == 0): return 1
 	return 1 == 2
 
 
@@ -125,10 +120,8 @@ void test_golden():
 	while (i < binary.symbols.length):
 		asm_symbol sym = binary.symbols[i]
 		i = i + 1
-		if (sym.size <= 0):
-			continue
-		if (in_text(binary, sym.value) == 0):
-			continue
+		if (sym.size <= 0): continue
+		if (in_text(binary, sym.value) == 0): continue
 		functions = functions + 1
 		int func_off = sym.value - binary.text_vaddr
 		int end = sym.size
@@ -142,13 +135,10 @@ void test_golden():
 			int bt = insn.branch_target
 			int forward = bt > address + 4 & bt <= sym.value + end
 			int over = 0
-			if (strcmp(insn.mnemonic, c"bl") == 0 & forward):
-				over = 1
+			if (strcmp(insn.mnemonic, c"bl") == 0 & forward): over = 1
 			else if (strcmp(insn.mnemonic, c"b") == 0 & forward):
-				if (prev_pcrel_ldr):
-					over = 1
-				else if (pos + 8 <= end & word_is_unknown(text, off + 4, address + 4)):
-					over = 1
+				if (prev_pcrel_ldr): over = 1
+				else if (pos + 8 <= end & word_is_unknown(text, off + 4, address + 4)): over = 1
 			# encode-compare this instruction
 			if (strcmp(insn.mnemonic, c".word") == 0):
 				if (unknown < 12):
@@ -161,10 +151,8 @@ void test_golden():
 				unknown = unknown + 1
 			asm_buffer* eb = asm_buffer_new()
 			asm_arm64_encode(eb, &insn)
-			if (arm64_encode_reconstructed):
-				reconstructed = reconstructed + 1
-			else:
-				passthrough = passthrough + 1
+			if (arm64_encode_reconstructed): reconstructed = reconstructed + 1
+			else: passthrough = passthrough + 1
 			if (eb.length != 4 | bytes4_equal(eb.data, text + off) == 0):
 				if (mismatch < 12):
 					print2(c"encode mismatch in ")
@@ -187,8 +175,7 @@ void test_golden():
 				continue
 			prev_pcrel_ldr = 0
 			if (strcmp(insn.mnemonic, c"ldr") == 0 & insn.op2.kind == ASM_OP_MEM):
-				if (insn.op2.disp_size == ARM64_ADDR_PCREL()):
-					prev_pcrel_ldr = 1
+				if (insn.op2.disp_size == ARM64_ADDR_PCREL()): prev_pcrel_ldr = 1
 			pos = pos + 4
 	print2(c"wv2_arm64: ")
 	print2(itoa(functions))

@@ -167,8 +167,7 @@ char* pb_leak_build_deep(int levels, int* out_len):
 
 char* pb_leak_zeroed(int size):
 	char* buf = malloc(size)
-	for i in range(size):
-		buf[i] = 0
+	for i in range(size): buf[i] = 0
 	return buf
 
 

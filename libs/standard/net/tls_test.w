@@ -53,8 +53,7 @@ void tlst_assert_hex(char* want_hex, char* got, int got_len):
 char* tlst_concat(char* a, int alen, char* b, int blen, int* out_len):
 	char* out = malloc(alen + blen)
 	mem_copy(out, a, alen)
-	for i in range(blen):
-		out[alen + i] = b[i]
+	for i in range(blen): out[alen + i] = b[i]
 	*out_len = alen + blen
 	return out
 
@@ -114,8 +113,7 @@ int tlst_dec_record(char* key, char* iv, int seq_hi, int seq_lo, char* rec, int 
 	int ok = chacha20poly1305_open(key, nonce, rec, 5, rec + 5, ct_len, rec + 5 + ct_len, plain)
 	asserts(c"tlst_dec_record: open failed", ok != 0)
 	int p = ct_len - 1
-	while ((p >= 0) && (plain[p] == 0)):
-		p = p - 1
+	while ((p >= 0) && (plain[p] == 0)): p = p - 1
 	int inner_type = plain[p] & 255
 	mem_copy(out_plain, plain, p)
 	*out_len = p
@@ -180,21 +178,18 @@ char* tlst_build_server_bytes(int tamper_off, int tamper_val, int ct_tamper_off,
 	sh_rec[2] = 3
 	sh_rec[3] = (sh_len >> 8) & 255
 	sh_rec[4] = sh_len & 255
-	for i in range(sh_len):
-		sh_rec[5 + i] = sh[i]
+	for i in range(sh_len): sh_rec[5 + i] = sh[i]
 	int sh_rec_len = 5 + sh_len
 
 	int flen = 0
 	char* flight = hex_decode_loose(rfc_flight_plain_hex(), &flen)
-	if (tamper_off >= 0):
-		flight[tamper_off] = tamper_val & 255
+	if (tamper_off >= 0): flight[tamper_off] = tamper_val & 255
 	char* key = malloc(32)
 	char* iv = malloc(12)
 	tlst_keys_from_secret(rfc_shts_hex(), key, iv)
 	int frec_len = 0
 	char* frec = tlst_enc_record(key, iv, 0, 0, flight, flen, 22, &frec_len)
-	if (ct_tamper_off >= 0):
-		frec[ct_tamper_off] = frec[ct_tamper_off] ^ 0xff
+	if (ct_tamper_off >= 0): frec[ct_tamper_off] = frec[ct_tamper_off] ^ 0xff
 
 	int total = 0
 	char* out = tlst_concat(sh_rec, sh_rec_len, frec, frec_len, &total)

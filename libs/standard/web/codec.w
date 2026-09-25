@@ -65,14 +65,10 @@ const int codec_err_unsupported = 3
 
 
 char* codec_error_string(int code):
-	if (code == codec_ok):
-		return c"ok"
-	if (code == codec_err_corrupt):
-		return c"corrupt compressed data"
-	if (code == codec_err_too_large):
-		return c"decompressed size exceeds the limit"
-	if (code == codec_err_unsupported):
-		return c"unsupported encoding"
+	if (code == codec_ok): return c"ok"
+	if (code == codec_err_corrupt): return c"corrupt compressed data"
+	if (code == codec_err_too_large): return c"decompressed size exceeds the limit"
+	if (code == codec_err_unsupported): return c"unsupported encoding"
 	return c"unknown codec error"
 
 
@@ -91,28 +87,24 @@ codec_entry* codec_registry
 
 
 int codec_lower(int ch):
-	if ((ch >= 'A') && (ch <= 'Z')):
-		return ch + 32
+	if ((ch >= 'A') && (ch <= 'Z')): return ch + 32
 	return ch
 
 
 # Compares a[0..alen) with the NUL-terminated b, ASCII case-insensitive.
 int codec_name_eq(char* a, int alen, char* b):
 	for i in range(alen):
-		if ((b[i] == 0) || (codec_lower(a[i] & 255) != codec_lower(b[i] & 255))):
-			return 0
+		if ((b[i] == 0) || (codec_lower(a[i] & 255) != codec_lower(b[i] & 255))): return 0
 	return b[alen] == 0
 
 
 int codec_is_identity(char* name):
-	if ((name == 0) || (name[0] == 0)):
-		return 1
+	if ((name == 0) || (name[0] == 0)): return 1
 	return codec_name_eq(name, strlen(name), c"identity")
 
 
 codec_entry* codec_find(char* name):
-	if (name == 0):
-		return 0
+	if (name == 0): return 0
 	int n = strlen(name)
 	codec_entry* e = codec_registry
 	while (e != 0):
@@ -129,20 +121,17 @@ void codec_register(char* name, codec_compress_fn* compress, codec_decompress_fn
 		e = new codec_entry
 		e.name = strclone(name)
 		e.next = 0
-		if (codec_registry == 0):
-			codec_registry = e
+		if (codec_registry == 0): codec_registry = e
 		else:
 			codec_entry* tail = codec_registry
-			while (tail.next != 0):
-				tail = tail.next
+			while (tail.next != 0): tail = tail.next
 			tail.next = e
 	e.compress = compress
 	e.decompress = decompress
 
 
 int codec_supported(char* name):
-	if (codec_is_identity(name) != 0):
-		return 1
+	if (codec_is_identity(name) != 0): return 1
 	return codec_find(name) != 0
 
 
@@ -174,21 +163,16 @@ int codec_is_space(int ch):
 
 
 int codec_list_contains(char* hdr, char* name):
-	if (codec_is_identity(name) != 0):
-		return 1
-	if (hdr == 0):
-		return 0
+	if (codec_is_identity(name) != 0): return 1
+	if (hdr == 0): return 0
 	int i = 0
 	while (hdr[i] != 0):
-		while (codec_is_space(hdr[i] & 255) || (hdr[i] == ',')):
-			i = i + 1
+		while (codec_is_space(hdr[i] & 255) || (hdr[i] == ',')): i = i + 1
 		int start = i
 		while ((hdr[i] != 0) && (hdr[i] != ',') && (hdr[i] != ';') && (codec_is_space(hdr[i] & 255) == 0)):
 			i = i + 1
-		if ((i > start) && (codec_name_eq(hdr + start, i - start, name) != 0)):
-			return 1
-		while ((hdr[i] != 0) && (hdr[i] != ',')):
-			i = i + 1
+		if ((i > start) && (codec_name_eq(hdr + start, i - start, name) != 0)): return 1
+		while ((hdr[i] != 0) && (hdr[i] != ',')): i = i + 1
 	return 0
 
 

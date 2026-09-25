@@ -252,8 +252,7 @@ void xt_check_rsa_chain_leaf(char* leaf_name, char* hostname, int want, char* wa
 	extra.push(inter)
 	char* err = 0
 	assert_equal(want, x509_verify_chain(leaf, extra, store, hostname, XT_NOW_SYNTH(), &err))
-	if (want_err != 0):
-		assert_strings_equal(want_err, err)
+	if (want_err != 0): assert_strings_equal(want_err, err)
 	list_free[x509_cert*](extra)
 	x509_cert_free(leaf)
 	x509_cert_free(inter)
@@ -483,8 +482,7 @@ void test_ecdsa_sig_to_raw():
 	sig[2] = 2
 	sig[3] = 33
 	sig[4] = 1
-	for i in range(32):
-		sig[5 + i] = 170
+	for i in range(32): sig[5 + i] = 170
 	sig[37] = 2
 	sig[38] = 1
 	sig[39] = 2

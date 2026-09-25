@@ -205,8 +205,7 @@ void test_for_key_value_over_map():
 
 void test_for_key_value_int_keys():
 	map[int, int] m = new map[int, int]
-	for int i in range(10):
-		m[i] = i * i
+	for int i in range(10): m[i] = i * i
 	int checked = 0
 	for int k, int v in m:
 		assert_equal(k * k, v)
@@ -289,12 +288,9 @@ void test_map_iterates_in_insertion_order():
 	m[c"mango"] = 3
 	int step = 0
 	for char* key in m:
-		if (step == 0):
-			assert_strings_equal(c"zebra", key)
-		if (step == 1):
-			assert_strings_equal(c"apple", key)
-		if (step == 2):
-			assert_strings_equal(c"mango", key)
+		if (step == 0): assert_strings_equal(c"zebra", key)
+		if (step == 1): assert_strings_equal(c"apple", key)
+		if (step == 2): assert_strings_equal(c"mango", key)
 		step = step + 1
 	assert_equal(3, step)
 
@@ -307,12 +303,9 @@ void test_map_update_keeps_insertion_position():
 	m[7] = 71
 	int step = 0
 	for int k in m:
-		if (step == 0):
-			assert_equal(7, k)
-		if (step == 1):
-			assert_equal(3, k)
-		if (step == 2):
-			assert_equal(9, k)
+		if (step == 0): assert_equal(7, k)
+		if (step == 1): assert_equal(3, k)
+		if (step == 2): assert_equal(9, k)
 		step = step + 1
 	assert_equal(3, step)
 	assert_equal(71, m[7])
@@ -327,12 +320,9 @@ void test_map_remove_reinsert_moves_to_end():
 	m[1] = 11
 	int step = 0
 	for int k in m:
-		if (step == 0):
-			assert_equal(2, k)
-		if (step == 1):
-			assert_equal(3, k)
-		if (step == 2):
-			assert_equal(1, k)
+		if (step == 0): assert_equal(2, k)
+		if (step == 1): assert_equal(3, k)
+		if (step == 2): assert_equal(1, k)
 		step = step + 1
 	assert_equal(3, step)
 
@@ -341,8 +331,7 @@ void test_map_insertion_order_survives_growth():
 	# 100 int keys force several rehashes past the initial capacity of 16;
 	# iteration must still replay the insertion sequence exactly.
 	map[int, int] m = new map[int, int]
-	for int i in range(100):
-		m[i * 7] = i
+	for int i in range(100): m[i * 7] = i
 	int expect = 0
 	for int k in m:
 		assert_equal(expect * 7, k)
@@ -357,12 +346,9 @@ void test_set_iterates_in_insertion_order():
 	s.add(c"pecan")
 	int step = 0
 	for char* member in s:
-		if (step == 0):
-			assert_strings_equal(c"walnut", member)
-		if (step == 1):
-			assert_strings_equal(c"acorn", member)
-		if (step == 2):
-			assert_strings_equal(c"pecan", member)
+		if (step == 0): assert_strings_equal(c"walnut", member)
+		if (step == 1): assert_strings_equal(c"acorn", member)
+		if (step == 2): assert_strings_equal(c"pecan", member)
 		step = step + 1
 	assert_equal(3, step)
 
@@ -447,10 +433,8 @@ void test_map_compound_assignment_keeps_insertion_position():
 	m[7] += 1
 	int step = 0
 	for int k in m:
-		if (step == 0):
-			assert_equal(7, k)
-		if (step == 1):
-			assert_equal(3, k)
+		if (step == 0): assert_equal(7, k)
+		if (step == 1): assert_equal(3, k)
 		step = step + 1
 	assert_equal(2, step)
 
@@ -476,8 +460,7 @@ void test_map_add_survives_growth():
 	# 100 inserts through add force rehashes; counts must accumulate and
 	# freshly claimed slots must start from zero.
 	map[int, int] m = new map[int, int]
-	for int i in range(100):
-		m.add(i % 10)
+	for int i in range(100): m.add(i % 10)
 	assert_equal(10, m.length)
 	assert_equal(10, m[0])
 	assert_equal(10, m[9])
@@ -505,8 +488,7 @@ void test_map_keys_sort_for_ranked_output():
 	assert_strings_equal(c"apple", words[0])
 	assert_strings_equal(c"pear", words[1])
 	int total = 0
-	for char* w in words:
-		total = total + counts[w]
+	for char* w in words: total = total + counts[w]
 	assert_equal(6, total)
 
 
@@ -566,8 +548,7 @@ void test_set_keys_snapshot():
 void test_map_keys_empty_and_after_remove():
 	map[int, int] m = new map[int, int]
 	assert_equal(0, m.keys().length)
-	for int i in range(40):
-		m[i] = i
+	for int i in range(40): m[i] = i
 	m.remove(0)
 	list[int] keys = m.keys()
 	assert_equal(39, keys.length)

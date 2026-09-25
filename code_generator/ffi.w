@@ -63,26 +63,21 @@ void arm64_ldr_reg_wsp(int rt, int k);
 # 1 = float32, 2 = float64. Pointer types have their own indices, so
 # float* correctly reads as class 0.
 int ffi_type_class(int type):
-	if (type < 0):
-		return 0
-	if (type_get_pointer_level(type) > 0):
-		return 0
+	if (type < 0): return 0
+	if (type_get_pointer_level(type) > 0): return 0
 	return type_float_kind(type)
 
 
 int ffi_arg_class(char* classes, int i):
-	if (classes == 0):
-		return 0
+	if (classes == 0): return 0
 	return classes[i]
 
 
 # Words one argument occupies on the W caller's stack: on x86 a float64
 # (only produced by variadic default promotion) spans two 32-bit words.
 int ffi_arg_words(char* classes, int i):
-	if (word_size == 8):
-		return 1
-	if (ffi_arg_class(classes, i) == 2):
-		return 2
+	if (word_size == 8): return 1
+	if (ffi_arg_class(classes, i) == 2): return 2
 	return 1
 
 
@@ -98,8 +93,7 @@ int ffi_spilled_float
 
 char* ffi_assign_slots(int n, char* classes, int max_gp):
 	char* slots = 0
-	if (n > 0):
-		slots = malloc(n * 4)
+	if (n > 0): slots = malloc(n * 4)
 	int gp_count = 0
 	ffi_fp_used = 0
 	ffi_stack_count = 0
@@ -116,8 +110,7 @@ char* ffi_assign_slots(int n, char* classes, int max_gp):
 				ffi_fp_used = ffi_fp_used + 1
 		if (slot < 0):
 			ffi_stack_count = ffi_stack_count + 1
-			if (ffi_arg_class(classes, i) != 0):
-				ffi_spilled_float = 1
+			if (ffi_arg_class(classes, i) != 0): ffi_spilled_float = 1
 		save_int(slots + (i << 2), slot)
 	return slots
 
@@ -203,13 +196,10 @@ void emit_c_abi_call_x64(int n, char* classes, int ret_class, int got_vaddr, int
 	while (i < n):
 		int assigned = load_int(slots + (i << 2))
 		int disp = arg_base + ((n - 1 - i) << 3)
-		if (assigned >= 16):
-			emit_x64_load_xmm_reg(assigned - 16, ffi_arg_class(classes, i), disp)
-		else if (assigned >= 0):
-			emit_x64_load_gp_reg(assigned, disp)
+		if (assigned >= 16): emit_x64_load_xmm_reg(assigned - 16, ffi_arg_class(classes, i), disp)
+		else if (assigned >= 0): emit_x64_load_gp_reg(assigned, disp)
 		i = i + 1
-	if (slots != 0):
-		free(slots)
+	if (slots != 0): free(slots)
 
 	emit(1, c"\xb8")               /* mov eax,imm32: xmm registers used */
 	emit_int32(ffi_fp_used)
@@ -247,11 +237,9 @@ void emit_c_abi_call_win64(int n, char* classes, int ret_class, int got_vaddr, i
 	# Shadow space plus stack arguments, kept 16-byte aligned so rsp is
 	# aligned at the call instruction.
 	int stack_args = 0
-	if (n > 4):
-		stack_args = n - 4
+	if (n > 4): stack_args = n - 4
 	int frame = 32 + (stack_args << 3)
-	if ((frame & 15) != 0):
-		frame = frame + 8
+	if ((frame & 15) != 0): frame = frame + 8
 	emit(3, c"\x48\x81\xec")       /* sub rsp,imm32 */
 	emit_int32(frame)
 
@@ -294,8 +282,7 @@ Stack word at depth d (0 = the word on top of the W stack) sits at
 low word at the smaller depth.
 */
 void emit_c_abi_call_x86(int n, char* classes, int ret_class, int got_vaddr, int arg_base):
-	if (ret_class == 2):
-		error(c"float64 requires the x64 target")
+	if (ret_class == 2): error(c"float64 requires the x64 target")
 
 	int total_words = 0
 	int i = 0
@@ -349,8 +336,7 @@ void emit_c_abi_call_x86(int n, char* classes, int ret_class, int got_vaddr, int
 void emit_arm64_load_fp_reg(int reg, int arg_class, int off):
 	if (arg_class == 2):
 		a64(op(0xfd, 0x400380) | ((off >> 3) << 10) | reg)   # ldr D<reg>,[x28,#off]
-	else:
-		a64(op(0xbd, 0x400380) | ((off >> 2) << 10) | reg)   # ldr S<reg>,[x28,#off]
+	else: a64(op(0xbd, 0x400380) | ((off >> 2) << 10) | reg)   # ldr S<reg>,[x28,#off]
 
 
 /*
@@ -399,8 +385,7 @@ void emit_c_abi_call_arm64(int n, char* classes, int ret_class, int got_vaddr):
 	# Overflow area: the leftmost overflow argument lands at [sp] (the
 	# AAPCS64 memory order), one 8-byte slot each, size kept 16-aligned.
 	int spill = ((stack_count << 3) + 15) & (0 - 16)
-	if (spill > 0):
-		a64(op(0xd1, 0x0003ff) | (spill << 10))   # sub sp, sp, #spill
+	if (spill > 0): a64(op(0xd1, 0x0003ff) | (spill << 10))   # sub sp, sp, #spill
 	int k = 0
 	int i = 0
 	while (i < n):
@@ -415,13 +400,10 @@ void emit_c_abi_call_arm64(int n, char* classes, int ret_class, int got_vaddr):
 	while (i < n):
 		int assigned = load_int(slots + (i << 2))
 		int off = (n - 1 - i) << 3
-		if (assigned >= 16):
-			emit_arm64_load_fp_reg(assigned - 16, ffi_arg_class(classes, i), off)
-		else if (assigned >= 0):
-			arm64_ldr_reg_wsp(assigned, off)
+		if (assigned >= 16): emit_arm64_load_fp_reg(assigned - 16, ffi_arg_class(classes, i), off)
+		else if (assigned >= 0): arm64_ldr_reg_wsp(assigned, off)
 		i = i + 1
-	if (slots != 0):
-		free(slots)
+	if (slots != 0): free(slots)
 
 	# Call through the GOT slot. The adrp page delta is computed at emit
 	# time and survives the PIE slide because the data segment keeps its
@@ -440,10 +422,8 @@ void emit_c_abi_call_arm64(int n, char* classes, int ret_class, int got_vaddr):
 	a64(op(0xd6, 0x3f0200))   # blr x16
 
 	# Float results come back in s0/d0; W callers expect the bits in x0.
-	if (ret_class == 1):
-		a64(op(0x1e, 0x260000))   # fmov w0, s0
-	else if (ret_class == 2):
-		a64(op(0x9e, 0x660000))   # fmov x0, d0
+	if (ret_class == 1): a64(op(0x1e, 0x260000))   # fmov w0, s0
+	else if (ret_class == 2): a64(op(0x9e, 0x660000))   # fmov x0, d0
 
 	a64(op(0x91, 0x0003bf))   # mov sp, x29       (drop the overflow area)
 	a64(op(0xf9, 0x400be9))   # ldr x9, [sp, #16]
@@ -461,12 +441,9 @@ void emit_ffi_shim(int n, char* classes, int ret_class, int got_vaddr):
 		emit_c_abi_call_arm64(n, classes, ret_class, got_vaddr)
 		a64(op(0xd6, 0x5f03c0))   # ret
 		return
-	if (target_os == 2):
-		emit_c_abi_call_win64(n, classes, ret_class, got_vaddr, 16)
-	else if (word_size == 8):
-		emit_c_abi_call_x64(n, classes, ret_class, got_vaddr, 16)
-	else:
-		emit_c_abi_call_x86(n, classes, ret_class, got_vaddr, 8)
+	if (target_os == 2): emit_c_abi_call_win64(n, classes, ret_class, got_vaddr, 16)
+	else if (word_size == 8): emit_c_abi_call_x64(n, classes, ret_class, got_vaddr, 16)
+	else: emit_c_abi_call_x86(n, classes, ret_class, got_vaddr, 8)
 	emit(1, c"\xc3")           /* ret */
 
 
@@ -480,16 +457,12 @@ void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr):
 		# A variadic callee on Darwin reads its variadic tail from the
 		# stack even when the named arguments fit in registers, which
 		# this register-based conversion cannot express.
-		if (target_os == 1):
-			error(c"variadic extern calls are not supported on arm64_darwin yet")
+		if (target_os == 1): error(c"variadic extern calls are not supported on arm64_darwin yet")
 		emit_c_abi_call_arm64(n, classes, ret_class, got_vaddr)
 		return
-	if (target_os == 2):
-		emit_c_abi_call_win64(n, classes, ret_class, got_vaddr, 8)
-	else if (word_size == 8):
-		emit_c_abi_call_x64(n, classes, ret_class, got_vaddr, 8)
-	else:
-		emit_c_abi_call_x86(n, classes, ret_class, got_vaddr, 4)
+	if (target_os == 2): emit_c_abi_call_win64(n, classes, ret_class, got_vaddr, 8)
+	else if (word_size == 8): emit_c_abi_call_x64(n, classes, ret_class, got_vaddr, 8)
+	else: emit_c_abi_call_x86(n, classes, ret_class, got_vaddr, 4)
 
 
 # C variadic calls apply the default argument promotions, so a float32

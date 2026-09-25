@@ -179,8 +179,7 @@ task_active_set_fn* task_active_set_hook
 
 
 task* task_active_get():
-	if (cast(int, task_active_get_hook) != 0):
-		return cast(task*, task_active_get_hook())
+	if (cast(int, task_active_get_hook) != 0): return cast(task*, task_active_get_hook())
 	return task_active
 
 
@@ -241,25 +240,18 @@ void task_waiter_link(task_wait_queue* q, task_waiter* w):
 	w.queue = cast(void*, q)
 	w.next = 0
 	w.prev = q.tail
-	if (cast(int, q.tail) != 0):
-		q.tail.next = w
-	else:
-		q.head = w
+	if (cast(int, q.tail) != 0): q.tail.next = w
+	else: q.head = w
 	q.tail = w
 
 
 void task_waiter_unlink(task_waiter* w):
 	task_wait_queue* q = cast(task_wait_queue*, w.queue)
-	if (cast(int, q) == 0):
-		return
-	if (cast(int, w.prev) != 0):
-		w.prev.next = w.next
-	else:
-		q.head = w.next
-	if (cast(int, w.next) != 0):
-		w.next.prev = w.prev
-	else:
-		q.tail = w.prev
+	if (cast(int, q) == 0): return
+	if (cast(int, w.prev) != 0): w.prev.next = w.next
+	else: q.head = w.next
+	if (cast(int, w.next) != 0): w.next.prev = w.prev
+	else: q.tail = w.prev
 	w.prev = 0
 	w.next = 0
 	w.queue = 0
@@ -297,8 +289,7 @@ int task_is_parked(task* t):
 # Wake a parked task with value (what its await returns). Returns 1, or
 # 0 when the task was not parked (already woken, running or done).
 int task_wake(task* t, int value):
-	if (task_is_parked(t) == 0):
-		return 0
+	if (task_is_parked(t) == 0): return 0
 	task_unpark(t)
 	t.wake_value = value
 	task_make_ready(task_sched(t), t)
@@ -315,8 +306,7 @@ void task_waiter_fire(task_waiter* w, int status, int value):
 
 # Fire every waiter on q (queue closed, event set, group finished).
 void task_wait_queue_fire_all(task_wait_queue* q, int status, int value):
-	while (cast(int, q.head) != 0):
-		task_waiter_fire(q.head, status, value)
+	while (cast(int, q.head) != 0): task_waiter_fire(q.head, status, value)
 
 
 /* Event-loop callbacks. Each fires at most once per park: task_wake
@@ -340,13 +330,10 @@ void task_on_timer(int timer_id, void* context):
 # The error an await must return without parking: cancellation or an
 # expired deadline. 0 when the await may park.
 int task_park_check(task* t):
-	if (t.shielded):
-		return 0
-	if (t.cancelled):
-		return task_err_cancelled()
+	if (t.shielded): return 0
+	if (t.cancelled): return task_err_cancelled()
 	if (t.has_deadline):
-		if ((t.deadline_ms - time_monotonic_ms()) <= 0):
-			return task_err_timed_out()
+		if ((t.deadline_ms - time_monotonic_ms()) <= 0): return task_err_timed_out()
 	return 0
 
 
@@ -359,8 +346,7 @@ int task_park(task* t, int state, int timeout_ms, int timeout_value):
 	int value = timeout_value
 	if ((t.shielded == 0) && t.has_deadline):
 		int remaining = t.deadline_ms - time_monotonic_ms()
-		if (remaining < 0):
-			remaining = 0
+		if (remaining < 0): remaining = 0
 		if ((delay < 0) || (remaining < delay)):
 			delay = remaining
 			value = task_err_timed_out()
@@ -390,8 +376,7 @@ void task_reclaim(task_scheduler* s, task* t):
 	s.tasks[t.slot] = moved
 	moved.slot = t.slot
 	list_remove_at[task*](s.tasks, last)
-	if (cast(int, t.joiners) != 0):
-		free(cast(void*, t.joiners))
+	if (cast(int, t.joiners) != 0): free(cast(void*, t.joiners))
 	free(cast(void*, t))
 
 
@@ -412,18 +397,14 @@ void task_complete(task_scheduler* s, task* t):
 	t.gen = 0
 	if (cast(int, t.joiners) != 0):
 		task_wait_queue_fire_all(t.joiners, task_waiter_completed, t.result)
-	if (cast(int, t.group) != 0):
-		task_group_done_hook(t.group, t)
-	if (cast(int, s.on_done) != 0):
-		s.on_done(t, s.on_done_context)
-	if (t.detached):
-		task_reclaim(s, t)
+	if (cast(int, t.group) != 0): task_group_done_hook(t.group, t)
+	if (cast(int, s.on_done) != 0): s.on_done(t, s.on_done_context)
+	if (t.detached): task_reclaim(s, t)
 
 
 # Switch into the task until its next suspension or completion.
 void task_resume(task_scheduler* s, task* t):
-	if (t.state == task_state_done):
-		return
+	if (t.state == task_state_done): return
 	task* previous = task_active_get()
 	task_active_set(t)
 	int alive = gen_next(t.gen)
@@ -442,8 +423,7 @@ int task_await_fd_timeout(int fd, int events, int timeout_ms);
 # io_wait hooks (lib/io_wait.w): suspend the calling task, or report
 # EAGAIN outside tasks so blocking callers keep their behavior.
 int task_io_wait(int fd, int events, int timeout_ms):
-	if (task_in_task() == 0):
-		return task_err_would_block()
+	if (task_in_task() == 0): return task_err_would_block()
 	return task_await_fd_timeout(fd, events, timeout_ms)
 
 
@@ -500,8 +480,7 @@ task* task_spawn(task_scheduler* s, generator* g):
 	s.tasks.push(t)
 	deque_push_back[task*](s.ready, t)
 	s.active_count = s.active_count + 1
-	if (cast(int, s.on_spawn) != 0):
-		s.on_spawn(t, s.on_spawn_context)
+	if (cast(int, s.on_spawn) != 0): s.on_spawn(t, s.on_spawn_context)
 	return t
 
 
@@ -556,15 +535,12 @@ int task_run_pass(task_scheduler* s, int max_wait_ms, int wait_when_idle):
 	while (s.ready.length > 0):
 		task* t = deque_pop_front[task*](s.ready)
 		task_resume(s, t)
-	if (s.ready.length > 0):
-		return 0
-	if ((s.active_count == 0) && (wait_when_idle == 0)):
-		return 0
+	if (s.ready.length > 0): return 0
+	if ((s.active_count == 0) && (wait_when_idle == 0)): return 0
 	int watches = event_loop_watch_count(s.loop)
 	int timers = event_loop_timer_count(s.loop)
 	if ((watches == 0) && (timers == 0)):
-		if (s.active_count > 0):
-			return task_err_deadlock()
+		if (s.active_count > 0): return task_err_deadlock()
 		return 0
 	int fired = event_loop_run_once(s.loop, max_wait_ms)
 	if (fired < 0):
@@ -593,16 +569,13 @@ void task_scheduler_free(task_scheduler* s):
 	int i = 0
 	while (i < s.tasks.length):
 		task* t = s.tasks[i]
-		if (task_is_parked(t)):
-			task_unpark(t)
+		if (task_is_parked(t)): task_unpark(t)
 		i = i + 1
 	i = 0
 	while (i < s.tasks.length):
 		task* t = s.tasks[i]
-		if (cast(int, t.gen) != 0):
-			gen_free(t.gen)
-		if (cast(int, t.joiners) != 0):
-			free(cast(void*, t.joiners))
+		if (cast(int, t.gen) != 0): gen_free(t.gen)
+		if (cast(int, t.joiners) != 0): free(cast(void*, t.joiners))
 		free(cast(void*, t))
 		i = i + 1
 	list_free[task*](s.tasks)
@@ -641,8 +614,7 @@ int task_sleep_ms(int ms):
 	int err = task_park_check(t)
 	if (err < 0):
 		return err
-	if (ms < 0):
-		ms = 0
+	if (ms < 0): ms = 0
 	return task_park(t, task_state_waiting_timer, ms, 0)
 
 
@@ -685,13 +657,11 @@ int task_cancelled(task* t):
 # the same target. A detached target must still be running.
 int task_join_timeout(task* target, int timeout_ms):
 	task* t = task_current()
-	if (target.state == task_state_done):
-		return target.result
+	if (target.state == task_state_done): return target.result
 	int err = task_park_check(t)
 	if (err < 0):
 		return err
-	if (cast(int, target.joiners) == 0):
-		target.joiners = task_wait_queue_new()
+	if (cast(int, target.joiners) == 0): target.joiners = task_wait_queue_new()
 	task_waiter w
 	task_waiter_init(&w, t)
 	task_waiter_link(target.joiners, &w)
@@ -708,10 +678,8 @@ int task_join(task* target):
 # same way). The task still runs to completion; join it to observe
 # that. Returns 1, or 0 when it was already done or cancelled.
 int task_cancel(task* t):
-	if (t.state == task_state_done):
-		return 0
-	if (t.cancelled):
-		return 0
+	if (t.state == task_state_done): return 0
+	if (t.cancelled): return 0
 	t.cancelled = 1
 	if (t.shielded == 0):
 		# A parked task wakes now; a ready or running one sees the flag
@@ -738,8 +706,7 @@ void task_deadline_enter(task_deadline_scope* scope, int ms):
 	scope.prev_has = t.has_deadline
 	scope.prev_ms = t.deadline_ms
 	int at = time_monotonic_ms() + ms
-	if ((t.has_deadline == 0) || ((at - t.deadline_ms) < 0)):
-		t.deadline_ms = at
+	if ((t.has_deadline == 0) || ((at - t.deadline_ms) < 0)): t.deadline_ms = at
 	t.has_deadline = 1
 
 
@@ -753,11 +720,9 @@ void task_deadline_exit(task_deadline_scope* scope):
 # passed), or -1 when no deadline is set.
 int task_deadline_remaining():
 	task* t = task_current()
-	if (t.has_deadline == 0):
-		return -1
+	if (t.has_deadline == 0): return -1
 	int left = t.deadline_ms - time_monotonic_ms()
-	if (left < 0):
-		return 0
+	if (left < 0): return 0
 	return left
 
 
@@ -787,8 +752,7 @@ void task_group_on_child_done(void* context, task* child):
 	if ((child.result < 0) && (g.error == 0) && (g.cancelled == 0)):
 		g.error = child.result
 		task_group_cancel(g)
-	if (g.active == 0):
-		task_wait_queue_fire_all(&g.waiters, task_waiter_completed, 0)
+	if (g.active == 0): task_wait_queue_fire_all(&g.waiters, task_waiter_completed, 0)
 
 
 task_group* task_group_new(task_scheduler* s):
@@ -823,8 +787,7 @@ void task_group_spawn(task_group* g, generator* body):
 		t.deadline_ms = parent.deadline_ms
 	g.active = g.active + 1
 	g.spawned = g.spawned + 1
-	if (g.cancelled):
-		t.cancelled = 1
+	if (g.cancelled): t.cancelled = 1
 
 
 # task_group_spawn with a custom stack size (see task_spawn_sized).
@@ -887,20 +850,13 @@ void task_group_free(task_group* g):
 /* Diagnostics. */
 
 char* task_state_name(int state):
-	if (state == task_state_ready):
-		return c"ready"
-	if (state == task_state_waiting_fd):
-		return c"waiting on fd"
-	if (state == task_state_waiting_timer):
-		return c"sleeping"
-	if (state == task_state_waiting_task):
-		return c"joining"
-	if (state == task_state_done):
-		return c"done"
-	if (state == task_state_waiting_queue):
-		return c"waiting on queue"
-	if (state == task_state_waiting_external):
-		return c"waiting on thread"
+	if (state == task_state_ready): return c"ready"
+	if (state == task_state_waiting_fd): return c"waiting on fd"
+	if (state == task_state_waiting_timer): return c"sleeping"
+	if (state == task_state_waiting_task): return c"joining"
+	if (state == task_state_done): return c"done"
+	if (state == task_state_waiting_queue): return c"waiting on queue"
+	if (state == task_state_waiting_external): return c"waiting on thread"
 	return c"unknown"
 
 
@@ -924,10 +880,8 @@ void task_dump_fd(task_scheduler* s, int fd):
 		if (t.state == task_state_waiting_fd):
 			write_string(fd, c" ")
 			write_string(fd, itoa(t.wait_fd))
-		if (t.wait_timer_id != 0):
-			write_string(fd, c" (timer armed)")
-		if (t.cancelled):
-			write_string(fd, c" [cancelled]")
+		if (t.wait_timer_id != 0): write_string(fd, c" (timer armed)")
+		if (t.cancelled): write_string(fd, c" [cancelled]")
 		if (t.has_deadline):
 			write_string(fd, c" [deadline in ")
 			write_string(fd, itoa(t.deadline_ms - time_monotonic_ms()))

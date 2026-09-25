@@ -43,8 +43,7 @@ const int pg_token_hidden_channel = 1
 
 char* pg_substr(char* input, int start, int length):
 	char* text = malloc(length + 1)
-	for i in range(length):
-		text[i] = input[start + i]
+	for i in range(length): text[i] = input[start + i]
 	text[length] = 0
 	return text
 
@@ -82,8 +81,6 @@ pg_token* pg_token_eof(int offset, char* filename, int line, int column):
 
 
 void pg_token_free(pg_token* token):
-	if (token == 0):
-		return
-	if ((token.text != 0) & (strlen(token.text) > 0)):
-		free(token.text)
+	if (token == 0): return
+	if ((token.text != 0) & (strlen(token.text) > 0)): free(token.text)
 	free(token)

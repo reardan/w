@@ -53,8 +53,7 @@ int defhash_depth
 
 void deps_record(char* path):
 	int max_deps = 4000
-	if (deps_paths == 0):
-		deps_paths = malloc(max_deps * __word_size__)
+	if (deps_paths == 0): deps_paths = malloc(max_deps * __word_size__)
 	assert1(deps_count < max_deps)
 	save_ptr(deps_paths + deps_count * __word_size__, cast(int, strclone(path)))
 	deps_count = deps_count + 1
@@ -72,8 +71,7 @@ void missing_file_reset(char* path):
 	line_number = 0
 	diag_token_line = 0
 	diag_token_column = 0
-	if (token == 0):
-		token = path
+	if (token == 0): token = path
 
 
 int compile_attempt(char* fn):
@@ -84,12 +82,10 @@ int compile_attempt(char* fn):
 	filename = fn
 	file = open(filename, 0, 511)
 	if (file < 0):
-		if (verbosity >= 1):
-			file_not_found_error()
+		if (verbosity >= 1): file_not_found_error()
 		filename = old_filename
 		return 0
-	if (deps_mode):
-		deps_record(filename)
+	if (deps_mode): deps_record(filename)
 	lint_note_open(filename)
 	getchar_reset(file)
 	line_number = 0
@@ -131,8 +127,7 @@ int compile_attempt(char* fn):
 	# source: it still fails on its first token, as before.
 	if (nextc == 239):
 		if (getc() == 187):
-			if (getc() == 191):
-				nextc = getc()
+			if (getc() == 191): nextc = getc()
 	get_token()
 	program()
 	return 1
@@ -144,25 +139,21 @@ int compile_attempt(char* fn):
 # Only active on Windows: on Unix a backslash is an ordinary filename
 # character and must be left alone.
 void path_normalize_sep(char* p):
-	if (os_windows() == 0):
-		return
+	if (os_windows() == 0): return
 	while (p[0] != 0):
-		if (p[0] == 92):
-			p[0] = 47
+		if (p[0] == 92): p[0] = 47
 		p = p + 1
 
 
 # Return 1 if the path is absolute: starts with '/' (Unix) or with a
 # Windows drive letter and colon (e.g. 'C:\', 'C:/', 'c:').
 int path_is_absolute(char* p):
-	if (p[0] == 47):
-		return 1
+	if (p[0] == 47): return 1
 	# Windows drive letter: an ASCII letter at [0], colon at [1]. The
 	# letter check keeps ':' in ordinary Unix filenames from matching
 	# (and never reads p[1] when the string is empty).
 	int first = p[0] | 32
-	if ((first >= 'a') && (first <= 'z') && (p[1] == 58)):
-		return 1
+	if ((first >= 'a') && (first <= 'z') && (p[1] == 58)): return 1
 	return 0
 
 
@@ -185,8 +176,7 @@ int compile_joined(char* cwd, char* filename):
 	# it is the global filename now, and diagnostics may still print it
 	# after this frame returns (#190). One path per compiled file leaks.
 	int result = compile_attempt(joined2)
-	if (result == 0):
-		free(joined2)
+	if (result == 0): free(joined2)
 	return result
 
 
@@ -208,15 +198,13 @@ char* compiler_argv0
 # the directory cannot be known — no argv[0] was recorded, or argv[0]
 # is a bare command name found via PATH.
 char* compiler_binary_dir():
-	if (compiler_argv0 == 0):
-		return 0
+	if (compiler_argv0 == 0): return 0
 	char* prog = strclone(compiler_argv0)
 	path_normalize_sep(prog)
 	int last_slash = 0 - 1
 	int i = 0
 	while (prog[i] != 0):
-		if (prog[i] == 47):
-			last_slash = i
+		if (prog[i] == 47): last_slash = i
 		i = i + 1
 	if (last_slash < 0):
 		free(prog)
@@ -224,8 +212,7 @@ char* compiler_binary_dir():
 	if (last_slash == 0):
 		# '/wv2': keep the root itself as the directory
 		prog[1] = 0
-	else:
-		prog[last_slash] = 0
+	else: prog[last_slash] = 0
 	if (path_is_absolute(prog)):
 		return prog
 	int max_path_size = 4096
@@ -250,8 +237,7 @@ int compile_search_upward(char* dir, char* fn):
 		int result = compile_joined(dir, fn)
 
 		# If successfull return
-		if (result == 1):
-			return 1
+		if (result == 1): return 1
 
 		# Go back up one directory. A directory with no '/' left (the
 		# Windows drive root "C:") ends the walk: Unix paths reach ""
@@ -264,10 +250,8 @@ int compile_search_upward(char* dir, char* fn):
 				went_up = 1
 				index = 0 /* hacky way to break from loop */
 			index = index - 1
-		if (went_up == 0):
-			dir[0] = 0
-		if (verbosity >= 1):
-			print_string(c"went up one directory: ", dir)
+		if (went_up == 0): dir[0] = 0
+		if (verbosity >= 1): print_string(c"went up one directory: ", dir)
 	return 0
 
 
@@ -301,8 +285,7 @@ int compile_relative_path(char* fn):
 	# Point the diagnostic at the import statement when an importing
 	# file is current; at cold start (the auto-imported container
 	# runtime) fall back to the searched path itself.
-	if (filename == 0):
-		missing_file_reset(fn)
+	if (filename == 0): missing_file_reset(fn)
 	# A path-shaped spelling ('import lib/assert.w') mangles into a
 	# nonsense search path ('lib/assert/w.w') during dots-to-slashes
 	# resolution: echo the import line as the user wrote it and hint
@@ -341,8 +324,7 @@ int compile_file(char* filename):
 int compile_input_file(char* path):
 	path_normalize_sep(path)
 	if (path_is_absolute(path)):
-		if (compile_attempt(path)):
-			return 1
+		if (compile_attempt(path)): return 1
 	else:
 		int max_path_size = 4096
 		char* cwd = malloc(max_path_size)
@@ -350,8 +332,7 @@ int compile_input_file(char* path):
 		path_normalize_sep(cwd)
 		int result = compile_joined(cwd, path)
 		free(cwd)
-		if (result):
-			return 1
+		if (result): return 1
 	missing_file_reset(path)
 	error3(c"no such file: '", path, c"'")
 	return 0
@@ -388,8 +369,7 @@ void compile_save(char* fn):
 	import_alias_base = import_alias_count
 	import_plain_base = import_plain_count
 
-	if (verbosity >= 0):
-		print_string(c"compiling ", fn)
+	if (verbosity >= 0): print_string(c"compiling ", fn)
 
 	# defhash's root-vs-import scoping (defhash_note, above) reads this:
 	# 0 while the tokens just parsed belong directly to a command-line
@@ -421,24 +401,18 @@ void compile_save(char* fn):
 	# filename is still null when the importer was the cold-start
 	# auto-import (no file was open yet); print_string on a null string
 	# faults, and -v makes this level reachable now.
-	if ((verbosity >= 0) && (filename != 0)):
-		print_string(c"back to ", filename)
+	if ((verbosity >= 0) && (filename != 0)): print_string(c"back to ", filename)
 
 
 # The recognized target-selector words, shared by link_impl's positional
 # parse and the selector-first subcommand spelling ('w x64 check f.w')
 # that main() forwards through target_pending.
 int target_is_selector(char* arg):
-	if (strcmp(arg, c"x64") == 0):
-		return 1
-	if (strcmp(arg, c"arm64") == 0):
-		return 1
-	if (strcmp(arg, c"arm64_darwin") == 0):
-		return 1
-	if (strcmp(arg, c"win64") == 0):
-		return 1
-	if (strcmp(arg, c"wasm") == 0):
-		return 1
+	if (strcmp(arg, c"x64") == 0): return 1
+	if (strcmp(arg, c"arm64") == 0): return 1
+	if (strcmp(arg, c"arm64_darwin") == 0): return 1
+	if (strcmp(arg, c"win64") == 0): return 1
+	if (strcmp(arg, c"wasm") == 0): return 1
 	return 0
 
 
@@ -453,8 +427,7 @@ char* target_pending
 # word selected a target, 0 when it is not a selector.
 int target_selector_apply(char* arg):
 	if (strcmp(arg, c"x64") == 0):
-		if (quiet_mode == 0):
-			println2(c"Compiling in x64 mode")
+		if (quiet_mode == 0): println2(c"Compiling in x64 mode")
 		word_size =  8
 		word_size_log2 = 3
 		diag_word_size = word_size
@@ -464,8 +437,7 @@ int target_selector_apply(char* arg):
 		data_split = 1
 		return 1
 	if (strcmp(arg, c"arm64") == 0):
-		if (quiet_mode == 0):
-			println2(c"Compiling in arm64 mode")
+		if (quiet_mode == 0): println2(c"Compiling in arm64 mode")
 		# AArch64 is a 64-bit target, so it inherits the x64 type system
 		# (8-byte pointers, int64, float64); target_isa selects the A64
 		# instruction emitter and the Mach-O/ELF-arm64 container.
@@ -480,8 +452,7 @@ int target_selector_apply(char* arg):
 		data_split = 1
 		return 1
 	if (strcmp(arg, c"wasm") == 0):
-		if (quiet_mode == 0):
-			println2(c"Compiling in wasm mode")
+		if (quiet_mode == 0): println2(c"Compiling in wasm mode")
 		# wasm32 + WASI (docs/projects/wasm_backend.md): 32-bit words like
 		# the default target; target_isa selects the wasm instruction
 		# emitter and target_os the module container writer. The text/data
@@ -494,8 +465,7 @@ int target_selector_apply(char* arg):
 		data_split = 1
 		return 1
 	if (strcmp(arg, c"win64") == 0):
-		if (quiet_mode == 0):
-			println2(c"Compiling in win64 mode")
+		if (quiet_mode == 0): println2(c"Compiling in win64 mode")
 		# Windows x64: the x86-64 instruction emitter (target_isa 0,
 		# word_size 8) with the PE32+ container and a kernel32-import
 		# runtime instead of Linux syscalls (docs/projects/windows.md).
@@ -510,8 +480,7 @@ int target_selector_apply(char* arg):
 		data_split = 1
 		return 1
 	if (strcmp(arg, c"arm64_darwin") == 0):
-		if (quiet_mode == 0):
-			println2(c"Compiling in arm64_darwin mode")
+		if (quiet_mode == 0): println2(c"Compiling in arm64_darwin mode")
 		# Same A64 instruction emitter and 64-bit type system as the
 		# arm64 (Linux) target; target_os selects the Darwin syscall
 		# stubs and the Mach-O container writer (Stage 4).
@@ -535,12 +504,10 @@ char* root_canonical(char* path):
 	char* normalized = strclone(path)
 	path_normalize_sep(normalized)
 	char* trimmed = normalized
-	if (starts_with(trimmed, c"./")):
-		trimmed = trimmed + 2
+	if (starts_with(trimmed, c"./")): trimmed = trimmed + 2
 	char* canonical = strclone(trimmed)
 	free(normalized)
-	if (ends_with(canonical, c".w")):
-		canonical[strlen(canonical) - 2] = 0
+	if (ends_with(canonical, c".w")): canonical[strlen(canonical) - 2] = 0
 	return canonical
 
 
@@ -561,18 +528,12 @@ char* root_canonical(char* path):
 int root_is_compiler_internal(char* path):
 	char* canonical = root_canonical(path)
 	int internal = 0
-	if (starts_with(canonical, c"compiler/")):
-		internal = 1
-	if (starts_with(canonical, c"grammar/")):
-		internal = 1
-	if (starts_with(canonical, c"code_generator/")):
-		internal = 1
-	if (starts_with(canonical, c"debugger/")):
-		internal = 1
-	if (strcmp(canonical, c"codegen") == 0):
-		internal = 1
-	if (strcmp(canonical, c"grammar") == 0):
-		internal = 1
+	if (starts_with(canonical, c"compiler/")): internal = 1
+	if (starts_with(canonical, c"grammar/")): internal = 1
+	if (starts_with(canonical, c"code_generator/")): internal = 1
+	if (starts_with(canonical, c"debugger/")): internal = 1
+	if (strcmp(canonical, c"codegen") == 0): internal = 1
+	if (strcmp(canonical, c"grammar") == 0): internal = 1
 	free(canonical)
 	return internal
 
@@ -584,10 +545,8 @@ int root_is_compiler_internal(char* path):
 # the compiler-developer debug traces (per-expression promote() dumps,
 # per-symbol declarations, ...); each further flag adds one level.
 void verbosity_raise():
-	if (verbosity < 0):
-		verbosity = 0
-	else:
-		verbosity = verbosity + 1
+	if (verbosity < 0): verbosity = 0
+	else: verbosity = verbosity + 1
 
 
 # Every dash-prefixed option link_impl understands, in one place so the
@@ -599,41 +558,33 @@ void verbosity_raise():
 # pre-scans, so here they are only recognized.
 int link_option(char* arg, int apply):
 	if ((strcmp(arg, c"--bounds=on") == 0) || (strcmp(arg, c"--bounds=trap") == 0)):
-		if (apply):
-			bounds_mode = 1
+		if (apply): bounds_mode = 1
 		return 1
 	if (strcmp(arg, c"--bounds=off") == 0):
-		if (apply):
-			bounds_mode = 0
+		if (apply): bounds_mode = 0
 		return 1
 	if (strcmp(arg, c"--strict") == 0):
-		if (apply):
-			strict_mode = 1
+		if (apply): strict_mode = 1
 		return 1
 	if (strcmp(arg, c"--quiet") == 0):
-		if (apply):
-			quiet_mode = 1
+		if (apply): quiet_mode = 1
 		return 1
 	if (strcmp(arg, c"--stats") == 0):
-		if (apply):
-			stats_mode = 1
+		if (apply): stats_mode = 1
 		return 1
 	if (strcmp(arg, c"--stats-selfcheck") == 0):
-		if (apply):
-			sym_index_selfcheck = 1
+		if (apply): sym_index_selfcheck = 1
 		return 1
 	if (starts_with(arg, c"--ptx=")):
 		# Debug dump of the embedded PTX module (kernels/'gpu for'),
 		# written by ptx_finish_module; ignored when no kernels exist.
-		if (apply):
-			ptx_dump_path = arg + 6
+		if (apply): ptx_dump_path = arg + 6
 		return 1
 	if (starts_with(arg, c"--cubin-file=")):
 		# Opt-in pre-compiled GPU image (ptxas output for the --ptx
 		# dump), embedded by ptx_finish_cubin; the runtime tries it
 		# before JIT-loading the PTX (docs/projects/cuda.md).
-		if (apply):
-			ptx_cubin_path = arg + 13
+		if (apply): ptx_cubin_path = arg + 13
 		return 1
 	if ((strcmp(arg, c"--pac=off") == 0) || (strcmp(arg, c"--pac=ret") == 0) || (strcmp(arg, c"--pac=full") == 0)):
 		return 1
@@ -776,10 +727,8 @@ void help_defhash():
 # scanner so 'w --help', 'w check -h' and a --help anywhere in a compile
 # argument list all work.
 int arg_is_help(char* arg):
-	if (strcmp(arg, c"--help") == 0):
-		return 1
-	if (strcmp(arg, c"-h") == 0):
-		return 1
+	if (strcmp(arg, c"--help") == 0): return 1
+	if (strcmp(arg, c"-h") == 0): return 1
 	return 0
 
 
@@ -794,8 +743,7 @@ void unrecognized_option_error(char* arg):
 	diag_part(c"unrecognized option: '")
 	diag_part(arg)
 	diag_part(c"'")
-	if (diag_json):
-		diag_emit(c"error", c"<command-line>", 0, 0, arg)
+	if (diag_json): diag_emit(c"error", c"<command-line>", 0, 0, arg)
 	else:
 		print_error(c"error: ")
 		print_error(str_from_cstr(diag_buffer))
@@ -863,14 +811,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	int sel_scanning = 1
 	while (sel_scanning && (sel_scan < argc)):
 		char** sel_arg = argv + sel_scan * __word_size__
-		if (strcmp(*sel_arg, c"-o") == 0):
-			sel_scan = sel_scan + 2
-		else if (starts_with(*sel_arg, c"-")):
-			sel_scan = sel_scan + 1
+		if (strcmp(*sel_arg, c"-o") == 0): sel_scan = sel_scan + 2
+		else if (starts_with(*sel_arg, c"-")): sel_scan = sel_scan + 1
 		else:
 			sel_scanning = 0
-			if (target_selector_apply(*sel_arg)):
-				selector_index = sel_scan
+			if (target_selector_apply(*sel_arg)): selector_index = sel_scan
 	if (selector_index == i):
 		i = i + 1
 		selector_index = 0 - 1
@@ -887,16 +832,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	wasm_acc_locals = 1
 	for pre_scan in range(i, argc):
 		char** pre_arg = argv + pre_scan * __word_size__
-		if (strcmp(*pre_arg, c"--pac=off") == 0):
-			arm64_pac = 0
-		else if (strcmp(*pre_arg, c"--pac=ret") == 0):
-			arm64_pac = 1
-		else if (strcmp(*pre_arg, c"--pac=full") == 0):
-			arm64_pac = 2
-		else if (strcmp(*pre_arg, c"--wasm-acc=globals") == 0):
-			wasm_acc_locals = 0
-		else if (strcmp(*pre_arg, c"--wasm-acc=locals") == 0):
-			wasm_acc_locals = 1
+		if (strcmp(*pre_arg, c"--pac=off") == 0): arm64_pac = 0
+		else if (strcmp(*pre_arg, c"--pac=ret") == 0): arm64_pac = 1
+		else if (strcmp(*pre_arg, c"--pac=full") == 0): arm64_pac = 2
+		else if (strcmp(*pre_arg, c"--wasm-acc=globals") == 0): wasm_acc_locals = 0
+		else if (strcmp(*pre_arg, c"--wasm-acc=locals") == 0): wasm_acc_locals = 1
 	# Option validation is up front, not positional: a typo'd flag after
 	# the file list used to be reported only after every earlier root had
 	# fully compiled (docs/projects/ai_tooling.md). -v/--verbose applies
@@ -915,8 +855,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			help_link()
 			exit(0)
 		else if (starts_with(*flag_arg, c"-")):
-			if (link_option(*flag_arg, 0) == 0):
-				unrecognized_option_error(*flag_arg)
+			if (link_option(*flag_arg, 0) == 0): unrecognized_option_error(*flag_arg)
 		flag_scan = flag_scan + 1
 	push_basic_types()
 	pointer_indirection = 0
@@ -979,8 +918,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# such file: '--bounds=xyz'" (the fallthrough below tried to
 			# open it). Normally unreachable: the pre-scan above already
 			# failed before any root compiled; kept as a safety net.
-			if (link_option(*arg, 1) == 0):
-				unrecognized_option_error(*arg)
+			if (link_option(*arg, 1) == 0): unrecognized_option_error(*arg)
 		else:
 			char* input = *arg
 			int lint_text_done = 0
@@ -1101,18 +1039,15 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# them in place; the PE writer embeds a stand-in ELF header at the
 	# start of .text for them (debug_elf_origin, code_generator/pe_64.w).
 	# Mach-O debug info is a later stage.
-	if ((target_os == 0) || (target_os == 2)):
-		emit_debugging_symbols(word_size)
+	if ((target_os == 0) || (target_os == 2)): emit_debugging_symbols(word_size)
 	be_finish(word_size)
 
-	if ((output_path != 0) | check_mode):
-		close(output_fd)
+	if ((output_path != 0) | check_mode): close(output_fd)
 
 	# Every subcommand routes through link_impl (link, check_main,
 	# deps_main, symbols_main, defhash_main), so one call here covers
 	# them all.
-	if (stats_mode):
-		sym_stats_dump()
+	if (stats_mode): sym_stats_dump()
 
 	return 0
 
@@ -1182,8 +1117,7 @@ int check_main(int argc, int argv):
 		else if (arg_is_help(*arg)):
 			help_check()
 			exit(0)
-		else:
-			scanning = 0
+		else: scanning = 0
 	if (argc <= i):
 		println2(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		println2(c"run 'w check --help' for details")
@@ -1231,13 +1165,11 @@ void deps_dump(int json):
 		int duplicate = 0
 		for j in range(i):
 			char* seen = cast(char*, load_ptr(deps_paths + j * __word_size__))
-			if (strcmp(seen, path) == 0):
-				duplicate = 1
+			if (strcmp(seen, path) == 0): duplicate = 1
 		if (duplicate == 0):
 			char* shown = path
 			if (starts_with(path, cwd)):
-				if (path[cwd_len] == '/'):
-					shown = path + cwd_len + 1
+				if (path[cwd_len] == '/'): shown = path + cwd_len + 1
 			deps_emit(json, shown)
 		i = i + 1
 	free(cwd)
@@ -1363,10 +1295,8 @@ map[char*, int] defhash_name_index
 # sites does, since 'kind' is only known at the very end of a successful
 # parse anyway.
 void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset):
-	if (defhash_mode == 0):
-		return
-	if ((defhash_closure_mode == 0) && (defhash_depth != 0)):
-		return
+	if (defhash_mode == 0): return
+	if ((defhash_closure_mode == 0) && (defhash_depth != 0)): return
 	int max_defs = 8000
 	if (defhash_names == 0):
 		defhash_names = malloc(max_defs * __word_size__)
@@ -1385,8 +1315,7 @@ void defhash_note(char* name, char* kind, int file_index, int line, int column, 
 	save_ptr(defhash_starts + defhash_count * __word_size__, start_offset)
 	save_ptr(defhash_ends + defhash_count * __word_size__, end_offset)
 	defhash_count = defhash_count + 1
-	if (defhash_name_index == 0):
-		defhash_name_index = new map[char*, int]
+	if (defhash_name_index == 0): defhash_name_index = new map[char*, int]
 	defhash_name_index[name] = 1
 
 
@@ -1398,18 +1327,12 @@ void defhash_note(char* name, char* kind, int file_index, int line, int column, 
 # downstream needs the finer distinction.
 char* defhash_token_kind(char* tok):
 	int c0 = tok[0] & 255
-	if (c0 == 0):
-		return c"e"
-	if (('0' <= c0) && (c0 <= '9')):
-		return c"n"
-	if (c0 == '"'):
-		return c"s"
-	if (c0 == 39):
-		return c"h"
-	if (((c0 == 's') || (c0 == 'c') || (c0 == 'f')) && (tok[1] == '"')):
-		return c"s"
-	if (is_ident_start_byte(c0)):
-		return c"i"
+	if (c0 == 0): return c"e"
+	if (('0' <= c0) && (c0 <= '9')): return c"n"
+	if (c0 == '"'): return c"s"
+	if (c0 == 39): return c"h"
+	if (((c0 == 's') || (c0 == 'c') || (c0 == 'f')) && (tok[1] == '"')): return c"s"
+	if (is_ident_start_byte(c0)): return c"i"
 	return c"o"
 
 
@@ -1470,8 +1393,7 @@ int defhash_refs_contains(char* name):
 
 
 void defhash_refs_add(char* name):
-	if (defhash_refs_contains(name)):
-		return
+	if (defhash_refs_contains(name)): return
 	assert1(defhash_refs_count < defhash_refs_cap)
 	save_ptr(defhash_refs_buf + defhash_refs_count * __word_size__, cast(int, strclone(name)))
 	defhash_refs_count = defhash_refs_count + 1
@@ -1502,8 +1424,7 @@ void defhash_refs_sort():
 # --closure), but a map lookup is O(1) regardless of scale, which matters
 # once --closure runs over a program an order of magnitude bigger.
 int defhash_is_known_definition(char* name):
-	if (defhash_name_index == 0):
-		return 0
+	if (defhash_name_index == 0): return 0
 	return name in defhash_name_index
 
 
@@ -1553,8 +1474,7 @@ void defhash_process_span(int idx):
 		defhash_buf_append(c":")
 		defhash_buf_append(token)
 		if ((strcmp(kind, c"i") == 0) && (prev_was_dot == 0) && (strcmp(token, self_name) != 0)):
-			if (defhash_is_known_definition(token)):
-				defhash_refs_add(token)
+			if (defhash_is_known_definition(token)): defhash_refs_add(token)
 		prev_was_dot = strcmp(token, c".") == 0
 		get_token()
 	defhash_rehash_mode = 0
@@ -1578,8 +1498,7 @@ void defhash_emit(int idx, char* cwd, int cwd_len):
 	char* path = debug_file_name(file_index)
 	char* shown = path
 	if (starts_with(path, cwd)):
-		if (path[cwd_len] == '/'):
-			shown = path + cwd_len + 1
+		if (path[cwd_len] == '/'): shown = path + cwd_len + 1
 
 	defhash_process_span(idx)
 	char* digest = malloc(32)
@@ -1600,8 +1519,7 @@ void defhash_emit(int idx, char* cwd, int cwd_len):
 	diag_write_cstr(c": [")
 	int j = 0
 	while (j < defhash_refs_count):
-		if (j > 0):
-			diag_write_cstr(c", ")
+		if (j > 0): diag_write_cstr(c", ")
 		diag_write_json_string(cast(char*, load_ptr(defhash_refs_buf + j * __word_size__)))
 		j = j + 1
 	diag_write_cstr(c"]}\x0a")
@@ -1634,8 +1552,7 @@ int defhash_main(int argc, int argv):
 		else if (arg_is_help(*arg)):
 			help_defhash()
 			exit(0)
-		else:
-			scanning = 0
+		else: scanning = 0
 	if (argc <= i):
 		println2(c"usage: w defhash [--closure] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		println2(c"run 'w defhash --help' for details")
@@ -1674,8 +1591,7 @@ layouts are inspectable without running a binary.
 
 # Type name with pointer stars appended, e.g. "char*". Caller frees.
 char* symbols_type_display(int type):
-	if (type < 0):
-		return strclone(c"<none>")
+	if (type < 0): return strclone(c"<none>")
 	char* name = strclone(type_get_name(type))
 	int stars = type_get_pointer_level(type)
 	while (stars > 0):
@@ -1687,10 +1603,8 @@ char* symbols_type_display(int type):
 
 
 char* symbols_kind_name(int symtype):
-	if (symtype == 2):
-		return c"function"
-	if (symtype == 1):
-		return c"object"
+	if (symtype == 2): return c"function"
+	if (symtype == 1): return c"object"
 	return c"notype"
 
 
@@ -1700,14 +1614,10 @@ char* symbols_kind_name(int symtype):
 char* symbols_type_kind_name(int type_index):
 	type_rec* t = type_record(type_index)
 	int kind = t.kind
-	if (kind == type_kind_alias):
-		return c"alias"
-	if (kind == type_kind_union):
-		return c"union"
-	if (kind == type_kind_enum):
-		return c"enum"
-	if (kind == type_kind_function):
-		return c"fn"
+	if (kind == type_kind_alias): return c"alias"
+	if (kind == type_kind_union): return c"union"
+	if (kind == type_kind_enum): return c"enum"
+	if (kind == type_kind_function): return c"fn"
 	return c"struct"
 
 
@@ -1719,8 +1629,7 @@ void symbols_emit_fields_json(int type_index):
 	diag_write_cstr(c": [")
 	int n = type_num_args(type_index)
 	for i in range(n):
-		if (i > 0):
-			diag_write_cstr(c", ")
+		if (i > 0): diag_write_cstr(c", ")
 		int field_type = type_get_field_type_at(type_index, i)
 		char* field_display = symbols_type_display(field_type)
 		diag_write_cstr(c"{")
@@ -1741,15 +1650,11 @@ void symbols_emit_fields_json(int type_index):
 # to 8), so consult the ISA and OS the selector applied.
 char* symbols_arch_name():
 	if (target_isa == 1):
-		if (target_os == 1):
-			return c"arm64_darwin"
+		if (target_os == 1): return c"arm64_darwin"
 		return c"arm64"
-	if (target_isa == 2):
-		return c"wasm"
-	if (target_os == 2):
-		return c"win64"
-	if (diag_word_size == 8):
-		return c"x64"
+	if (target_isa == 2): return c"wasm"
+	if (target_os == 2): return c"win64"
+	if (diag_word_size == 8): return c"x64"
 	return c"x86"
 
 
@@ -1760,8 +1665,7 @@ char* symbols_arch_name():
 # --layout view); it prints with the "<c_import>" file marker.
 void symbols_emit_json(char* name, char* kind, char* type_name, int file_index, int line, int column, int type_index):
 	char* file_name = debug_file_name(file_index)
-	if (file_index < 0):
-		file_name = c"<c_import>"
+	if (file_index < 0): file_name = c"<c_import>"
 	diag_write_cstr(c"{")
 	diag_write_json_field(c"name", name)
 	diag_write_cstr(c", ")
@@ -1807,10 +1711,8 @@ void symbols_emit_human(char* name, char* kind, char* type_name, int file_index,
 
 
 void symbols_emit(int json, char* name, char* kind, char* type_name, int file_index, int line, int column, int type_index):
-	if (json):
-		symbols_emit_json(name, kind, type_name, file_index, line, column, type_index)
-	else:
-		symbols_emit_human(name, kind, type_name, file_index, line, column)
+	if (json): symbols_emit_json(name, kind, type_name, file_index, line, column, type_index)
+	else: symbols_emit_human(name, kind, type_name, file_index, line, column)
 
 
 void symbols_dump(int json):
@@ -1838,14 +1740,11 @@ void symbols_dump(int json):
 # location) or field-carrying without one (c_import types). Built-in
 # scalars are kind-0 records too but have neither fields nor a location.
 int symbols_layout_wanted(int type_index):
-	if (type_get_pointer_level(type_index) != 0):
-		return 0
+	if (type_get_pointer_level(type_index) != 0): return 0
 	type_rec* t = type_record(type_index)
 	int kind = t.kind
-	if ((kind != 0) && (kind != type_kind_union)):
-		return 0
-	if ((type_decl_file_index(type_index) < 0) && (type_num_args(type_index) == 0)):
-		return 0
+	if ((kind != 0) && (kind != type_kind_union)): return 0
+	if ((type_decl_file_index(type_index) < 0) && (type_num_args(type_index) == 0)): return 0
 	return 1
 
 
@@ -1859,10 +1758,8 @@ void symbols_write_int(int value):
 # appended, then one tab-indented line per field: offset, size, type,
 # name (tab-separated). file_index -1 prints the "<c_import>" marker.
 void symbols_emit_layout_human(int type_index, char* kind, int file_index, int line, int column):
-	if (file_index >= 0):
-		diag_write_cstr(debug_file_name(file_index))
-	else:
-		diag_write_cstr(c"<c_import>")
+	if (file_index >= 0): diag_write_cstr(debug_file_name(file_index))
+	else: diag_write_cstr(c"<c_import>")
 	diag_write_cstr(c":")
 	symbols_write_int(line)
 	diag_write_cstr(c":")
@@ -1905,8 +1802,7 @@ void symbols_dump_layout(int json):
 			int column = type_decl_column(i)
 			if (json):
 				symbols_emit_json(type_get_name(i), kind, type_get_name(i), file_index, line, column, i)
-			else:
-				symbols_emit_layout_human(i, kind, file_index, line, column)
+			else: symbols_emit_layout_human(i, kind, file_index, line, column)
 		i = i + 1
 
 
@@ -1929,15 +1825,12 @@ int symbols_main(int argc, int argv):
 		else if (arg_is_help(*arg)):
 			help_symbols()
 			exit(0)
-		else:
-			scanning = 0
+		else: scanning = 0
 	if (argc <= i):
 		println2(c"usage: w symbols [--json] [--layout] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		println2(c"run 'w symbols --help' for details")
 		exit(1)
 	link_impl(argc, argv, i, 1)
-	if (layout):
-		symbols_dump_layout(json)
-	else:
-		symbols_dump(json)
+	if (layout): symbols_dump_layout(json)
+	else: symbols_dump(json)
 	return 0

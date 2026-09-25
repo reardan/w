@@ -45,16 +45,13 @@ struct URL:
 # Default TCP port for a scheme: 80 for http, 443 for https, 0 for
 # anything else (url_parse only accepts http and https).
 int url_default_port(char* scheme):
-	if (strcmp(scheme, c"http") == 0):
-		return 80
-	if (strcmp(scheme, c"https") == 0):
-		return 443
+	if (strcmp(scheme, c"http") == 0): return 80
+	if (strcmp(scheme, c"https") == 0): return 443
 	return 0
 
 
 int url_lower_char(int c):
-	if ((c >= 'A') && (c <= 'Z')):
-		return c + 32
+	if ((c >= 'A') && (c <= 'Z')): return c + 32
 	return c
 
 
@@ -73,19 +70,15 @@ char* url_substring_lower(char* text, int start, int end):
 # or unknown scheme, empty host, userinfo ('@'), IPv6 bracket literal,
 # or a port that is empty, non-numeric, or outside 1..65535.
 URL* url_parse(char* text):
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 
 	# Scheme runs up to the first ':' and must be followed by "//".
 	int scheme_end = 0
 	while ((text[scheme_end] != 0) && (text[scheme_end] != ':') && (text[scheme_end] != '/') && (text[scheme_end] != '?') && (text[scheme_end] != '#')):
 		scheme_end = scheme_end + 1
-	if ((text[scheme_end] != ':') || (scheme_end == 0)):
-		return 0
-	if (text[scheme_end + 1] != '/'):
-		return 0
-	if (text[scheme_end + 2] != '/'):
-		return 0
+	if ((text[scheme_end] != ':') || (scheme_end == 0)): return 0
+	if (text[scheme_end + 1] != '/'): return 0
+	if (text[scheme_end + 2] != '/'): return 0
 	char* scheme = url_substring_lower(text, 0, scheme_end)
 	if (url_default_port(scheme) == 0):
 		free(scheme)
@@ -143,29 +136,24 @@ URL* url_parse(char* text):
 	while ((text[path_end] != 0) && (text[path_end] != '?') && (text[path_end] != '#')):
 		path_end = path_end + 1
 	char* path
-	if (path_end == path_start):
-		path = strclone(c"/")
-	else:
-		path = substring(text, path_start, path_end)
+	if (path_end == path_start): path = strclone(c"/")
+	else: path = substring(text, path_start, path_end)
 
 	# Query runs from '?' to '#' or the end; the fragment is dropped.
 	char* query
 	if (text[path_end] == '?'):
 		int query_start = path_end + 1
 		int query_end = query_start
-		while ((text[query_end] != 0) && (text[query_end] != '#')):
-			query_end = query_end + 1
+		while ((text[query_end] != 0) && (text[query_end] != '#')): query_end = query_end + 1
 		query = substring(text, query_start, query_end)
-	else:
-		query = strclone(c"")
+	else: query = strclone(c"")
 
 	URL* u = new URL(scheme, url_substring_lower(text, host_start, host_end), port, path, query)
 	return u
 
 
 void url_free(URL* u):
-	if (u == 0):
-		return;
+	if (u == 0): return;
 	free(u.scheme)
 	free(u.host)
 	free(u.path)
@@ -197,14 +185,10 @@ char* url_unparse(URL* u):
 # Bytes that url_quote passes through unescaped: RFC 3986 unreserved
 # characters plus '/', matching Python's urllib.parse.quote default.
 int url_quote_is_safe(int c):
-	if ((c >= 'a') && (c <= 'z')):
-		return 1
-	if ((c >= 'A') && (c <= 'Z')):
-		return 1
-	if ((c >= '0') && (c <= '9')):
-		return 1
-	if ((c == '-') || (c == '.') || (c == '_') || (c == '~') || (c == '/')):
-		return 1
+	if ((c >= 'a') && (c <= 'z')): return 1
+	if ((c >= 'A') && (c <= 'Z')): return 1
+	if ((c >= '0') && (c <= '9')): return 1
+	if ((c == '-') || (c == '.') || (c == '_') || (c == '~') || (c == '/')): return 1
 	return 0
 
 
@@ -216,8 +200,7 @@ char* url_quote(char* text):
 	int i = 0
 	while (text[i] != 0):
 		int c = text[i] & 255
-		if (url_quote_is_safe(c)):
-			string_append_char(out, c)
+		if (url_quote_is_safe(c)): string_append_char(out, c)
 		else:
 			string_append_char(out, '%')
 			string_append_char(out, hex_digit_upper(c >> 4))
@@ -240,8 +223,7 @@ char* url_unquote(char* text):
 		if (c == '%'):
 			int hi = hex_decode_char(text[i + 1] & 255)
 			int lo = 0 - 1
-			if (hi >= 0):
-				lo = hex_decode_char(text[i + 2] & 255)
+			if (hi >= 0): lo = hex_decode_char(text[i + 2] & 255)
 			if (lo < 0):
 				string_free(out)
 				return 0
@@ -272,8 +254,7 @@ char* url_query_param(char* query, char* name):
 		int pair_start = i
 		int eq = 0 - 1
 		while ((query[i] != 0) && (query[i] != '&')):
-			if ((query[i] == '=') && (eq < 0)):
-				eq = i
+			if ((query[i] == '=') && (eq < 0)): eq = i
 			i = i + 1
 		int pair_end = i
 		char* key_raw
@@ -288,14 +269,12 @@ char* url_query_param(char* query, char* name):
 		free(key_raw)
 		int matched = 0
 		if (key != 0):
-			if (strcmp(key, name) == 0):
-				matched = 1
+			if (strcmp(key, name) == 0): matched = 1
 			free(key)
 		if (matched != 0):
 			char* value = url_unquote(value_raw)
 			free(value_raw)
 			return value
 		free(value_raw)
-		if (query[i] == '&'):
-			i = i + 1
+		if (query[i] == '&'): i = i + 1
 	return 0

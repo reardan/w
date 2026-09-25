@@ -143,10 +143,8 @@ json_value* json_float64_from_bits(int bits):
 
 json_value* json_bool(int n):
 	json_value* value = json_new(json_type_bool())
-	if (n == 0):
-		value.int_value = 0
-	else:
-		value.int_value = 1
+	if (n == 0): value.int_value = 0
+	else: value.int_value = 1
 	return value
 
 
@@ -176,8 +174,7 @@ void json_object_set(json_value* object, char* key, json_value* value):
 	assert1(object.type == json_type_object())
 	if (key in object.object_values):
 		json_value* old_value = object.object_values[key]
-		if (old_value != value):
-			json_free(old_value)
+		if (old_value != value): json_free(old_value)
 	object.object_values[key] = value
 
 
@@ -207,25 +204,20 @@ int json_array_length(json_value* array):
 
 
 void json_free(json_value* value):
-	if (value == 0):
-		return
-	if (value.type == json_type_string()):
-		free(value.string_value)
+	if (value == 0): return
+	if (value.type == json_type_string()): free(value.string_value)
 	else if (value.type == json_type_object()):
-		for char* key, json_value* member in value.object_values:
-			json_free(member)
+		for char* key, json_value* member in value.object_values: json_free(member)
 		map_free[char*, json_value*](value.object_values)
 	else if (value.type == json_type_array()):
-		for json_value* element in value.array_values:
-			json_free(element)
+		for json_value* element in value.array_values: json_free(element)
 		list_free[json_value*](value.array_values)
 	free(value)
 
 
 # Deep copy; the result is owned by the caller.
 json_value* json_clone(json_value* value):
-	if (value == 0):
-		return 0
+	if (value == 0): return 0
 	if (value.type == json_type_object()):
 		json_value* object = json_object()
 		for char* key, json_value* member in value.object_values:
@@ -238,8 +230,7 @@ json_value* json_clone(json_value* value):
 			json_array_push(array, json_clone(json_array_get(value, i)))
 			i = i + 1
 		return array
-	if (value.type == json_type_string()):
-		return json_string(value.string_value)
+	if (value.type == json_type_string()): return json_string(value.string_value)
 	json_value* copy = json_new(value.type)
 	copy.int_value = value.int_value
 	copy.float_value = value.float_value
@@ -275,8 +266,7 @@ const int json_max_depth = 128
 # same code is right on the 32-bit and 64-bit targets.
 int json_int_min():
 	int low = 1
-	while (low > 0):
-		low = low << 1
+	while (low > 0): low = low << 1
 	return low
 
 
@@ -285,25 +275,19 @@ int json_int_max():
 
 
 int json_hex_value(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
+	if ((c >= '0') && (c <= '9')): return c - '0'
+	if ((c >= 'a') && (c <= 'f')): return c - 'a' + 10
+	if ((c >= 'A') && (c <= 'F')): return c - 'A' + 10
 	return -1
 
 
 void json_append_hex_digit(string_builder* out, int value):
-	if (value < 10):
-		string_append_char(out, '0' + value)
-	else:
-		string_append_char(out, 'a' + value - 10)
+	if (value < 10): string_append_char(out, '0' + value)
+	else: string_append_char(out, 'a' + value - 10)
 
 
 void json_skip_ws(json_parser* p):
-	while (json_is_space(p.input[p.index])):
-		p.index = p.index + 1
+	while (json_is_space(p.input[p.index])): p.index = p.index + 1
 
 
 int json_take(json_parser* p, int c):
@@ -340,8 +324,7 @@ int json_hex4(json_parser* p, int at):
 	int value = 0
 	for i in range(4):
 		int digit = json_hex_value(p.input[at + i])
-		if (digit < 0):
-			return -1
+		if (digit < 0): return -1
 		value = value * 16 + digit
 	return value
 
@@ -353,13 +336,11 @@ int json_hex4(json_parser* p, int at):
 # it) and returns the code point, or -1 when the escape is malformed.
 int json_parse_u_escape(json_parser* p):
 	int unit = json_hex4(p, p.index + 1)
-	if (unit < 0):
-		return -1
+	if (unit < 0): return -1
 	p.index = p.index + 4
 	if ((unit < 0xd800) || (unit > 0xdfff)):
 		return unit
-	if (unit >= 0xdc00):
-		return 0xfffd
+	if (unit >= 0xdc00): return 0xfffd
 	# Nested so a string ending right after the escape never reads past
 	# the NUL terminator.
 	if (p.input[p.index + 1] == '\\'):
@@ -372,8 +353,7 @@ int json_parse_u_escape(json_parser* p):
 
 
 void json_append_utf8(string_builder* out, int cp):
-	if (cp < 0x80):
-		string_append_char(out, cp)
+	if (cp < 0x80): string_append_char(out, cp)
 	else if (cp < 0x800):
 		string_append_char(out, 0xc0 | (cp >> 6))
 		string_append_char(out, 0x80 | (cp & 63))
@@ -408,22 +388,14 @@ char* json_parse_string_raw(json_parser* p):
 				json_fail(p)
 				string_free(out)
 				return 0
-			if (c == '"'):
-				string_append_char(out, '"')
-			else if (c == '\\'):
-				string_append_char(out, '\\')
-			else if (c == '/'):
-				string_append_char(out, '/')
-			else if (c == 'b'):
-				string_append_char(out, 8)
-			else if (c == 'f'):
-				string_append_char(out, 12)
-			else if (c == 'n'):
-				string_append_char(out, '\n')
-			else if (c == 'r'):
-				string_append_char(out, '\r')
-			else if (c == 't'):
-				string_append_char(out, '\t')
+			if (c == '"'): string_append_char(out, '"')
+			else if (c == '\\'): string_append_char(out, '\\')
+			else if (c == '/'): string_append_char(out, '/')
+			else if (c == 'b'): string_append_char(out, 8)
+			else if (c == 'f'): string_append_char(out, 12)
+			else if (c == 'n'): string_append_char(out, '\n')
+			else if (c == 'r'): string_append_char(out, '\r')
+			else if (c == 't'): string_append_char(out, '\t')
 			else if (c == 'u'):
 				int cp = json_parse_u_escape(p)
 				if (cp < 0):
@@ -435,8 +407,7 @@ char* json_parse_string_raw(json_parser* p):
 				json_fail(p)
 				string_free(out)
 				return 0
-		else:
-			string_append_char(out, c)
+		else: string_append_char(out, c)
 		p.index = p.index + 1
 
 	json_fail(p)
@@ -446,8 +417,7 @@ char* json_parse_string_raw(json_parser* p):
 
 json_value* json_parse_string_value(json_parser* p):
 	char* text = json_parse_string_raw(p)
-	if (p.ok == 0):
-		return 0
+	if (p.ok == 0): return 0
 	return json_string_take(text)
 
 
@@ -464,8 +434,7 @@ int json_float_bits(float f):
 # largest finite float32 instead of reaching inf, underflow flushes to
 # zero through the denormals.
 float json_scale_pow10(float m, int t):
-	if (m == 0.0):
-		return 0.0
+	if (m == 0.0): return 0.0
 	if (t > 60):
 		# the smallest mantissa (1) times 10^61 already overflows
 		return 3.40282346e38
@@ -475,13 +444,11 @@ float json_scale_pow10(float m, int t):
 		return 0.0
 	float limit = 3.40282346e38 / 10.0
 	while (t > 0):
-		if (m > limit):
-			return 3.40282346e38
+		if (m > limit): return 3.40282346e38
 		m = m * 10.0
 		t = t - 1
 	while (t < 0):
-		if (m == 0.0):
-			return 0.0
+		if (m == 0.0): return 0.0
 		m = m / 10.0
 		t = t + 1
 	return m
@@ -495,11 +462,9 @@ float json_scale_pow10(float m, int t):
 # 4-byte-word targets — where the wide path is never consumed — this
 # stays the float32 cap so the accumulation cannot overflow the word.
 int json_float64_mant_limit():
-	if (__word_size__ != 8):
-		return 100000000
+	if (__word_size__ != 8): return 100000000
 	int limit = 100000000
-	for i in range(8):
-		limit = limit * 10
+	for i in range(8): limit = limit * 10
 	return limit
 
 
@@ -539,18 +504,12 @@ json_value* json_parse_number(json_parser* p):
 	else:
 		while (json_is_digit(p.input[p.index])):
 			int digit = p.input[p.index] - '0'
-			if (overflow | (value > (int_max - digit) / 10)):
-				overflow = 1
-			else:
-				value = value * 10 + digit
-			if (mant < 100000000):
-				mant = mant * 10 + digit
-			else:
-				mant_exp = mant_exp + 1
-			if (mant64 < mant64_limit):
-				mant64 = mant64 * 10 + digit
-			else:
-				mant64_exp = mant64_exp + 1
+			if (overflow | (value > (int_max - digit) / 10)): overflow = 1
+			else: value = value * 10 + digit
+			if (mant < 100000000): mant = mant * 10 + digit
+			else: mant_exp = mant_exp + 1
+			if (mant64 < mant64_limit): mant64 = mant64 * 10 + digit
+			else: mant64_exp = mant64_exp + 1
 			p.index = p.index + 1
 
 	if (p.input[p.index] == '.'):
@@ -572,8 +531,7 @@ json_value* json_parse_number(json_parser* p):
 		is_float = 1
 		p.index = p.index + 1
 		int exp_negative = 0
-		if (p.input[p.index] == '+'):
-			p.index = p.index + 1
+		if (p.input[p.index] == '+'): p.index = p.index + 1
 		else if (p.input[p.index] == '-'):
 			exp_negative = 1
 			p.index = p.index + 1
@@ -583,19 +541,16 @@ json_value* json_parse_number(json_parser* p):
 		int exp = 0
 		while (json_is_digit(p.input[p.index])):
 			# clamped: anything past ±60 saturates in the scaler anyway
-			if (exp < 10000):
-				exp = exp * 10 + p.input[p.index] - '0'
+			if (exp < 10000): exp = exp * 10 + p.input[p.index] - '0'
 			p.index = p.index + 1
-		if (exp_negative):
-			exp = 0 - exp
+		if (exp_negative): exp = 0 - exp
 		mant_exp = mant_exp + exp
 		mant64_exp = mant64_exp + exp
 
 	if (is_float):
 		float m = mant
 		m = json_scale_pow10(m, mant_exp)
-		if (negative):
-			m = -m
+		if (negative): m = -m
 		json_value* result = json_float(m)
 		if (__word_size__ == 8):
 			result.float64_bits = json_f64_from_decimal(mant64, mant64_exp, negative)
@@ -603,11 +558,9 @@ json_value* json_parse_number(json_parser* p):
 		return result
 
 	if (overflow):
-		if (negative):
-			return json_int(json_int_min())
+		if (negative): return json_int(json_int_min())
 		return json_int(int_max)
-	if (negative):
-		value = 0 - value
+	if (negative): value = 0 - value
 	return json_int(value)
 
 
@@ -686,22 +639,17 @@ json_value* json_parse_value(json_parser* p, int depth):
 			json_fail(p)
 			return 0
 		return json_parse_array(p, depth + 1)
-	if (c == '"'):
-		return json_parse_string_value(p)
+	if (c == '"'): return json_parse_string_value(p)
 	if (c == 't'):
-		if (json_match(p, c"true")):
-			return json_bool(1)
+		if (json_match(p, c"true")): return json_bool(1)
 		return 0
 	if (c == 'f'):
-		if (json_match(p, c"false")):
-			return json_bool(0)
+		if (json_match(p, c"false")): return json_bool(0)
 		return 0
 	if (c == 'n'):
-		if (json_match(p, c"null")):
-			return json_null()
+		if (json_match(p, c"null")): return json_null()
 		return 0
-	if ((c == '-') | json_is_digit(c)):
-		return json_parse_number(p)
+	if ((c == '-') | json_is_digit(c)): return json_parse_number(p)
 	json_fail(p)
 	return 0
 
@@ -710,8 +658,7 @@ json_value* json_parse(char* input):
 	json_parser* p = json_parser_new(input)
 	json_value* value = json_parse_value(p, 0)
 	json_skip_ws(p)
-	if (p.input[p.index] != 0):
-		json_fail(p)
+	if (p.input[p.index] != 0): json_fail(p)
 	if (p.ok == 0):
 		json_free(value)
 		free(p)
@@ -753,8 +700,7 @@ void json_append_escaped_string(string_builder* out, char* text):
 			string_append_char(out, '0')
 			json_append_hex_digit(out, c / 16)
 			json_append_hex_digit(out, c & 15)
-		else:
-			string_append_char(out, c)
+		else: string_append_char(out, c)
 		i = i + 1
 	string_append_char(out, '"')
 
@@ -849,8 +795,7 @@ void json_append_float(string_builder* out, float f):
 		i = i - 1
 	digits[9] = 0
 	int n = 9
-	while ((n > 1) && (digits[n - 1] == '0')):
-		n = n - 1
+	while ((n > 1) && (digits[n - 1] == '0')): n = n - 1
 
 	json_append_digits(out, digits, n, e, 14)
 	free(digits)
@@ -860,8 +805,7 @@ void json_append_object(string_builder* out, json_value* value):
 	string_append_char(out, '{')
 	int first = 1
 	for char* key, json_value* member in value.object_values:
-		if (first == 0):
-			string_append_char(out, ',')
+		if (first == 0): string_append_char(out, ',')
 		first = 0
 		json_append_escaped_string(out, key)
 		string_append_char(out, ':')
@@ -873,36 +817,25 @@ void json_append_array(string_builder* out, json_value* value):
 	string_append_char(out, '[')
 	int i = 0
 	while (i < value.array_values.length):
-		if (i > 0):
-			string_append_char(out, ',')
+		if (i > 0): string_append_char(out, ',')
 		json_append_value(out, value.array_values[i])
 		i = i + 1
 	string_append_char(out, ']')
 
 
 void json_append_value(string_builder* out, json_value* value):
-	if (value == 0):
-		string_append(out, c"null")
-	else if (value.type == json_type_null()):
-		string_append(out, c"null")
-	else if (value.type == json_type_int()):
-		string_append_int(out, value.int_value)
+	if (value == 0): string_append(out, c"null")
+	else if (value.type == json_type_null()): string_append(out, c"null")
+	else if (value.type == json_type_int()): string_append_int(out, value.int_value)
 	else if (value.type == json_type_float()):
-		if (value.has_float64):
-			json_f64_append(out, value.float64_bits)
-		else:
-			json_append_float(out, value.float_value)
-	else if (value.type == json_type_string()):
-		json_append_escaped_string(out, value.string_value)
+		if (value.has_float64): json_f64_append(out, value.float64_bits)
+		else: json_append_float(out, value.float_value)
+	else if (value.type == json_type_string()): json_append_escaped_string(out, value.string_value)
 	else if (value.type == json_type_bool()):
-		if (value.int_value):
-			string_append(out, c"true")
-		else:
-			string_append(out, c"false")
-	else if (value.type == json_type_object()):
-		json_append_object(out, value)
-	else if (value.type == json_type_array()):
-		json_append_array(out, value)
+		if (value.int_value): string_append(out, c"true")
+		else: string_append(out, c"false")
+	else if (value.type == json_type_object()): json_append_object(out, value)
+	else if (value.type == json_type_array()): json_append_array(out, value)
 
 
 char* json_stringify(json_value* value):

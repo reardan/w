@@ -29,8 +29,7 @@ void run_frame(ui_context* ctx, ui_form_state* form, ui_textbox_state* name, for
 	ui_begin(ctx, 320, 240)
 	ui_form_begin(ctx, form, ui_rect_new(10.0, 10.0, 300.0, 220.0), 96.0)
 	ui_form_row(ctx, form, c"Name")
-	if (ui_textbox(ctx, ui_form_field_width(ctx, form), name)):
-		ui_form_request_submit(form)
+	if (ui_textbox(ctx, ui_form_field_width(ctx, form), name)): ui_form_request_submit(form)
 	out.name_valid = ui_form_error(ctx, form, ui_form_required(name, c"Name is required"))
 	out.submitted = ui_form_submit(ctx, form, c"Save")
 	out.submit_top = ui_layout_top(ctx).last_top

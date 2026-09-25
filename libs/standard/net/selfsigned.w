@@ -39,8 +39,7 @@ import lib.bytes
 
 # Append a DER length (short form below 128, else long form).
 void der_put_length(string_builder* b, int n):
-	if (n < 128):
-		string_append_char(b, n)
+	if (n < 128): string_append_char(b, n)
 	else if (n < 256):
 		string_append_char(b, 0x81)
 		string_append_char(b, n)
@@ -99,8 +98,7 @@ string_builder* der_name_cn(char* cn):
 void der_put_extension(string_builder* exts, char* oid, int oid_len, int critical, string_builder* value):
 	string_builder* e = string_new_sized(value.length + 16)
 	der_put_bytes(e, 0x06, oid, oid_len)
-	if (critical):
-		der_put_bytes(e, 0x01, c"\xff", 1)
+	if (critical): der_put_bytes(e, 0x01, c"\xff", 1)
 	der_put(e, der_tlv(0x04, value))
 	der_put(exts, der_tlv(0x30, e))
 
@@ -153,8 +151,7 @@ string_builder* selfsigned_tbs(char* cn, char* dns_name, int ipv4, char* serial,
 	der_put_bytes(eku, 0x06, x509_oid_server_auth(), 8)
 	der_put_extension(exts, x509_oid_ext_key_usage(), 3, 0, der_tlv(0x30, eku))
 	string_builder* names = string_new_sized(32)
-	if (dns_name != 0):
-		der_put_bytes(names, 0x82, dns_name, strlen(dns_name))
+	if (dns_name != 0): der_put_bytes(names, 0x82, dns_name, strlen(dns_name))
 	if (ipv4 != 0):
 		char* ip = malloc(4)
 		store_be32(ip, ipv4)
@@ -162,8 +159,7 @@ string_builder* selfsigned_tbs(char* cn, char* dns_name, int ipv4, char* serial,
 		free(ip)
 	if (names.length > 0):
 		der_put_extension(exts, x509_oid_subject_alt_name(), 3, 0, der_tlv(0x30, names))
-	else:
-		string_free(names)
+	else: string_free(names)
 	string_builder* ext_seq = der_tlv(0x30, exts)
 	der_put(tbs, der_tlv(0xa3, ext_seq))
 	return der_tlv(0x30, tbs)
@@ -194,8 +190,7 @@ char* selfsigned_pem(char* label, char* der, int len):
 	int i = 0
 	while (i < n):
 		int take = n - i
-		if (take > 64):
-			take = 64
+		if (take > 64): take = 64
 		string_append_bytes(out, b64 + i, take)
 		string_append_char(out, 10)
 		i = i + take
@@ -216,8 +211,7 @@ int selfsigned_p256_generate(char* common_name, char* dns_name, int ipv4, char**
 	int ok = 0
 	int tries = 0
 	while ((ok == 0) && (tries < 8)):
-		if (random_bytes(d, 32)):
-			ok = ecdsa_p256_public_key(d, qx, qy)
+		if (random_bytes(d, 32)): ok = ecdsa_p256_public_key(d, qx, qy)
 		tries = tries + 1
 	if (ok == 0):
 		free(d)

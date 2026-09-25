@@ -72,8 +72,7 @@ const int cf_frames_max = 256
 
 # A class-dependent word field (Elf32/Elf64 layouts).
 int cf_field(int addr):
-	if (cf_class == 2):
-		return st_word(addr)
+	if (cf_class == 2): return st_word(addr)
 	return st_int32(addr)
 
 
@@ -87,44 +86,37 @@ int cf_eh_machine(int b):
 
 
 int cf_eh_phoff(int b):
-	if (cf_class == 2):
-		return st_word(b + 32)
+	if (cf_class == 2): return st_word(b + 32)
 	return st_int32(b + 28)
 
 
 int cf_eh_phentsize(int b):
-	if (cf_class == 2):
-		return st_int16(b + 54)
+	if (cf_class == 2): return st_int16(b + 54)
 	return st_int16(b + 42)
 
 
 int cf_eh_phnum(int b):
-	if (cf_class == 2):
-		return st_int16(b + 56)
+	if (cf_class == 2): return st_int16(b + 56)
 	return st_int16(b + 44)
 
 
 int cf_eh_shoff(int b):
-	if (cf_class == 2):
-		return st_word(b + 40)
+	if (cf_class == 2): return st_word(b + 40)
 	return st_int32(b + 32)
 
 
 int cf_eh_shentsize(int b):
-	if (cf_class == 2):
-		return st_int16(b + 58)
+	if (cf_class == 2): return st_int16(b + 58)
 	return st_int16(b + 46)
 
 
 int cf_eh_shnum(int b):
-	if (cf_class == 2):
-		return st_int16(b + 60)
+	if (cf_class == 2): return st_int16(b + 60)
 	return st_int16(b + 48)
 
 
 int cf_eh_shstrndx(int b):
-	if (cf_class == 2):
-		return st_int16(b + 62)
+	if (cf_class == 2): return st_int16(b + 62)
 	return st_int16(b + 50)
 
 
@@ -134,20 +126,17 @@ int cf_ph_type(int p):
 
 
 int cf_ph_offset(int p):
-	if (cf_class == 2):
-		return st_word(p + 8)
+	if (cf_class == 2): return st_word(p + 8)
 	return st_int32(p + 4)
 
 
 int cf_ph_vaddr(int p):
-	if (cf_class == 2):
-		return st_word(p + 16)
+	if (cf_class == 2): return st_word(p + 16)
 	return st_int32(p + 8)
 
 
 int cf_ph_filesz(int p):
-	if (cf_class == 2):
-		return st_word(p + 32)
+	if (cf_class == 2): return st_word(p + 32)
 	return st_int32(p + 16)
 
 
@@ -157,8 +146,7 @@ int cf_read_size
 # Whole file into a malloc'd buffer; returns its address or 0.
 int cf_load_file(char* path):
 	int f = open(path, 0, 0)
-	if (f < 0):
-		return 0
+	if (f < 0): return 0
 	int size = file_size(f)
 	if (size <= 0):
 		close(f)
@@ -178,16 +166,11 @@ int cf_load_file(char* path):
 
 
 int cf_is_elf(int b, int size):
-	if (size < 52):
-		return 0
-	if (st_byte(b) != 127):
-		return 0
-	if (st_byte(b + 1) != 'E'):
-		return 0
-	if (st_byte(b + 2) != 'L'):
-		return 0
-	if (st_byte(b + 3) != 'F'):
-		return 0
+	if (size < 52): return 0
+	if (st_byte(b) != 127): return 0
+	if (st_byte(b + 1) != 'E'): return 0
+	if (st_byte(b + 2) != 'L'): return 0
+	if (st_byte(b + 3) != 'F'): return 0
 	return 1
 
 
@@ -217,8 +200,7 @@ int cf_core_word(int vaddr):
 		cf_read_ok = 0
 		return 0
 	cf_read_ok = 1
-	if (cf_class == 2):
-		return st_word(a)
+	if (cf_class == 2): return st_word(a)
 	return st_int32(a)
 
 
@@ -239,8 +221,7 @@ int cf_code_byte(int vaddr):
 					return st_byte(cf_bin_buf + off + (vaddr - lo))
 		i = i + 1
 	int a = cf_core_mem(vaddr, 1)
-	if (a != 0):
-		return st_byte(a)
+	if (a != 0): return st_byte(a)
 	return -1
 
 
@@ -265,16 +246,13 @@ void cf_parse_notes():
 				int ntype = st_int32(cur + 8)
 				int name = cur + 12
 				int desc = name + (namesz + 3) / 4 * 4
-				if ((desc + descsz > end) || (descsz < 0) || (namesz < 0)):
-					break
+				if ((desc + descsz > end) || (descsz < 0) || (namesz < 0)): break
 				int is_core_note = 0
 				if (namesz >= 5):
-					if (st_cstr_eq(name, c"CORE")):
-						is_core_note = 1
+					if (st_cstr_eq(name, c"CORE")): is_core_note = 1
 				if ((namesz == 2) && (ntype == 0x57455845) && (descsz > 1)):
 					if (st_cstr_eq(name, c"W")):
-						if (st_byte(desc + descsz - 1) == 0):
-							cf_exe_note = desc
+						if (st_byte(desc + descsz - 1) == 0): cf_exe_note = desc
 				if (is_core_note):
 					if ((ntype == 1) && (cf_prstatus == 0)):
 						cf_prstatus = desc
@@ -298,8 +276,7 @@ int cf_find_build_id(int cur, int end):
 		int ntype = st_int32(cur + 8)
 		int name = cur + 12
 		int desc = name + (namesz + 3) / 4 * 4
-		if ((desc + descsz > end) || (descsz < 0) || (namesz < 0)):
-			return 0
+		if ((desc + descsz > end) || (descsz < 0) || (namesz < 0)): return 0
 		if ((ntype == 3) && (namesz == 4) && (descsz > 0)):
 			if (st_cstr_eq(name, c"GNU")):
 				cf_found_id_size = descsz
@@ -334,31 +311,24 @@ void cf_core_build_id():
 	while (i < cf_core_phnum):
 		int p = cf_core_buf + cf_core_phoff + i * cf_core_phentsize
 		i = i + 1
-		if (cf_ph_type(p) != 1):
-			continue
+		if (cf_ph_type(p) != 1): continue
 		int base = cf_ph_vaddr(p)
 		int eh = cf_core_mem(base, 64)
-		if (eh == 0):
-			continue
-		if (cf_is_elf(eh, 64) == 0):
-			continue
-		if ((st_byte(eh + 4) != cf_class) || (cf_eh_type(eh) != 2)):
-			continue
+		if (eh == 0): continue
+		if (cf_is_elf(eh, 64) == 0): continue
+		if ((st_byte(eh + 4) != cf_class) || (cf_eh_type(eh) != 2)): continue
 		int phentsize = cf_eh_phentsize(eh)
 		int phnum = cf_eh_phnum(eh)
 		int ph = cf_core_mem(base + cf_eh_phoff(eh), phnum * phentsize)
-		if (ph == 0):
-			continue
+		if (ph == 0): continue
 		int k = 0
 		while (k < phnum):
 			int q = ph + k * phentsize
 			k = k + 1
-			if (cf_ph_type(q) != 4):
-				continue
+			if (cf_ph_type(q) != 4): continue
 			int fsz = cf_ph_filesz(q)
 			int notes = cf_core_mem(cf_ph_vaddr(q), fsz)
-			if (notes == 0):
-				continue
+			if (notes == 0): continue
 			int id = cf_find_build_id(notes, notes + fsz)
 			if (id != 0):
 				cf_core_id = id
@@ -367,12 +337,10 @@ void cf_core_build_id():
 
 
 int cf_build_ids_match():
-	if (cf_bin_id_size != cf_core_id_size):
-		return 0
+	if (cf_bin_id_size != cf_core_id_size): return 0
 	int i = 0
 	while (i < cf_bin_id_size):
-		if (st_byte(cf_bin_id + i) != st_byte(cf_core_id + i)):
-			return 0
+		if (st_byte(cf_bin_id + i) != st_byte(cf_core_id + i)): return 0
 		i = i + 1
 	return 1
 
@@ -380,8 +348,7 @@ int cf_build_ids_match():
 # Lowercase hex of n bytes at addr (malloc'd).
 char* cf_id_hex(int addr, int n):
 	char* s = malloc(n * 2 + 1)
-	for i in range(n):
-		hex_put_byte(&s[i * 2], st_byte(addr + i))
+	for i in range(n): hex_put_byte(&s[i * 2], st_byte(addr + i))
 	s[n * 2] = 0
 	return s
 
@@ -392,14 +359,12 @@ char* cf_id_hex(int addr, int n):
 # the ptrace user_regs_struct one, the same layout debugger/attach.w
 # reads via PTRACE_GETREGS (ip at word 12/16, sp at word 15/19).
 int cf_prreg_off():
-	if (cf_class == 2):
-		return 112
+	if (cf_class == 2): return 112
 	return 72
 
 
 int cf_prreg_count():
-	if (cf_class == 2):
-		return 27
+	if (cf_class == 2): return 27
 	return 17
 
 
@@ -428,8 +393,7 @@ int cf_sp_index():
 # The registers the report shows, in the same order attach mode's
 # 'registers' command prints them (debugger/attach.w at_print_registers).
 int cf_reg_print_count():
-	if (cf_class == 2):
-		return 18
+	if (cf_class == 2): return 18
 	return 10
 
 
@@ -553,8 +517,7 @@ char* cf_signal_desc(int sig):
 # siginfo_t: si_signo +0, si_errno +4, si_code +8; the fault address
 # union member starts at +12 (32-bit) / +16 (64-bit, 8-byte aligned).
 int cf_fault_addr():
-	if (cf_class == 2):
-		return st_word(cf_siginfo + 16)
+	if (cf_class == 2): return st_word(cf_siginfo + 16)
 	return st_int32(cf_siginfo + 12)
 
 
@@ -563,14 +526,11 @@ int cf_si_code():
 
 
 int cf_have_fault():
-	if (cf_siginfo == 0):
-		return 0
+	if (cf_siginfo == 0): return 0
 	# si_code <= 0 means user-sent (SI_USER/SI_TKILL): the siginfo union
 	# holds the sender's pid/uid there, not a fault address.
-	if (cf_si_code() <= 0):
-		return 0
-	if ((cf_sig == 4) || (cf_sig == 7) || (cf_sig == 8) || (cf_sig == 11)):
-		return 1
+	if (cf_si_code() <= 0): return 0
+	if ((cf_sig == 4) || (cf_sig == 7) || (cf_sig == 8) || (cf_sig == 11)): return 1
 	return 0
 
 
@@ -581,12 +541,9 @@ int cf_have_fault():
 # (call *eax / call *rax, or call rel32 in asm stubs), stop at main's
 # frame or the end of the dumped stack segment.
 int cf_call_site(int v):
-	if (v - 5 < cf_text_lo):
-		return 0
-	if ((cf_code_byte(v - 2) == 255) && (cf_code_byte(v - 1) == 208)):
-		return 1
-	if (cf_code_byte(v - 5) == 232):
-		return 1
+	if (v - 5 < cf_text_lo): return 0
+	if ((cf_code_byte(v - 2) == 255) && (cf_code_byte(v - 1) == 208)): return 1
+	if (cf_code_byte(v - 5) == 232): return 1
 	return 0
 
 
@@ -603,8 +560,7 @@ int cf_scan(int sp, char* out, int max):
 				int e = 0
 				if (cf_have_syms):
 					e = st_func_entry(v - 1)
-					if (e == 0):
-						keep = 0
+					if (e == 0): keep = 0
 				if (keep):
 					save_word(&out[found * __word_size__], v - 1)
 					found = found + 1
@@ -627,43 +583,36 @@ int cf_chain_exact
 
 
 int cf_prologue_len(int addr):
-	if (cf_code_byte(addr) != 85):
-		return 0
+	if (cf_code_byte(addr) != 85): return 0
 	if (cf_class == 2):
 		if ((cf_code_byte(addr + 1) == 72) && (cf_code_byte(addr + 2) == 137) && (cf_code_byte(addr + 3) == 229)):
 			return 4
 		return 0
-	if ((cf_code_byte(addr + 1) == 137) && (cf_code_byte(addr + 2) == 229)):
-		return 3
+	if ((cf_code_byte(addr + 1) == 137) && (cf_code_byte(addr + 2) == 229)): return 3
 	return 0
 
 
 int cf_is_main(int pc):
 	int e = st_func_entry(pc)
-	if (e == 0):
-		return 0
+	if (e == 0): return 0
 	return st_cstr_eq(st_entry_name(e), c"main")
 
 
 # 1 when the binary's main opens with the frame-pointer prologue (the
 # whole image comes from one compiler).
 int cf_uses_frame_pointers():
-	if (cf_have_syms == 0):
-		return 0
+	if (cf_have_syms == 0): return 0
 	int i = 1
 	while (i < st_symtab_count):
 		int e = st_symtab_lo + i * st_symtab_entsize
-		if (st_cstr_eq(st_entry_name(e), c"main")):
-			return cf_prologue_len(st_entry_value(e)) > 0
+		if (st_cstr_eq(st_entry_name(e), c"main")): return cf_prologue_len(st_entry_value(e)) > 0
 		i = i + 1
 	return 0
 
 
 int cf_is_return(int v):
-	if ((v <= cf_text_lo) || (v >= cf_text_hi)):
-		return 0
-	if (cf_call_site(v) == 0):
-		return 0
+	if ((v <= cf_text_lo) || (v >= cf_text_hi)): return 0
+	if (cf_call_site(v) == 0): return 0
 	return st_func_entry(v - 1) != 0
 
 
@@ -675,14 +624,11 @@ int cf_chain(int fp, char* out, int found, int max, int fallback_sp):
 			cf_chain_exact = 1
 			return found
 		int v = 0
-		if ((fp & (cf_wsize - 1)) != 0):
-			broken = 1
+		if ((fp & (cf_wsize - 1)) != 0): broken = 1
 		else:
 			v = cf_core_word(fp + cf_wsize)
-			if (cf_read_ok == 0):
-				broken = 1
-			else if (cf_is_return(v) == 0):
-				broken = 1
+			if (cf_read_ok == 0): broken = 1
+			else if (cf_is_return(v) == 0): broken = 1
 		if (broken == 0):
 			save_word(&out[found * __word_size__], v - 1)
 			found = found + 1
@@ -691,29 +637,24 @@ int cf_chain(int fp, char* out, int found, int max, int fallback_sp):
 				cf_chain_exact = 1
 				return found
 			int next = cf_core_word(fp)
-			if (cf_read_ok == 0):
-				broken = 1
-			else if ((next != 0) && (next <= fp)):
-				broken = 1
+			if (cf_read_ok == 0): broken = 1
+			else if ((next != 0) && (next <= fp)): broken = 1
 			fp = next
 	if (broken == 0):
 		cf_chain_exact = 1
 		return found
 	cf_chain_exact = 0
 	int from = fallback_sp
-	if (last != 0):
-		from = last + 2 * cf_wsize
+	if (last != 0): from = last + 2 * cf_wsize
 	return found + cf_scan(from, &out[found * __word_size__], max - found)
 
 
 # Callers of pc (the faulting thread's pc/sp/fp), most recent first.
 int cf_unwind(int pc, int sp, int fp, char* out, int max):
 	cf_chain_exact = 0
-	if (cf_uses_frame_pointers() == 0):
-		return cf_scan(sp, out, max)
+	if (cf_uses_frame_pointers() == 0): return cf_scan(sp, out, max)
 	int e = st_func_entry(pc)
-	if (e == 0):
-		return cf_scan(sp, out, max)
+	if (e == 0): return cf_scan(sp, out, max)
 	if (cf_is_main(pc)):
 		cf_chain_exact = 1
 		return 0
@@ -722,22 +663,18 @@ int cf_unwind(int pc, int sp, int fp, char* out, int max):
 	int found = 0
 	if (plen == 0):
 		found = cf_scan(sp, out, 1)
-		if (found == 0):
-			return 0
+		if (found == 0): return 0
 		if (cf_is_main(load_word(out))):
 			return found
 		found = cf_chain(fp, out, found, max, sp)
 		cf_chain_exact = 0
 		return found
 	int ret_slot = 0
-	if (pc == entry):
-		ret_slot = sp
-	else if (pc < entry + plen):
-		ret_slot = sp + cf_wsize
+	if (pc == entry): ret_slot = sp
+	else if (pc < entry + plen): ret_slot = sp + cf_wsize
 	if (ret_slot != 0):
 		int v = cf_core_word(ret_slot)
-		if ((cf_read_ok == 0) || (cf_is_return(v) == 0)):
-			return cf_scan(sp, out, max)
+		if ((cf_read_ok == 0) || (cf_is_return(v) == 0)): return cf_scan(sp, out, max)
 		save_word(out, v - 1)
 		found = 1
 		if (cf_is_main(v - 1)):
@@ -758,10 +695,8 @@ void cf_parse_bin_sections():
 	int shentsize = cf_eh_shentsize(b)
 	int shnum = cf_eh_shnum(b)
 	int shstrndx = cf_eh_shstrndx(b)
-	if ((shoff <= 0) || (shnum < 2) || (shstrndx >= shnum)):
-		return;
-	if (shoff + shnum * shentsize > cf_bin_size):
-		return;
+	if ((shoff <= 0) || (shnum < 2) || (shstrndx >= shnum)): return;
+	if (shoff + shnum * shentsize > cf_bin_size): return;
 	int table = b + shoff
 	int shstr = b + st_sh_word(table + shstrndx * shentsize, 16, 24)
 	int text_seen = 0
@@ -773,16 +708,13 @@ void cf_parse_bin_sections():
 		if (sh_type == 2):
 			st_symtab_lo = b + st_sh_word(header, 16, 24)
 			int entsize = 16
-			if (st_class == 2):
-				entsize = 24
+			if (st_class == 2): entsize = 24
 			st_symtab_entsize = entsize
 			st_symtab_count = st_sh_word(header, 20, 32) / entsize
 			int link_off = 24
-			if (st_class == 2):
-				link_off = 40
+			if (st_class == 2): link_off = 40
 			int link = st_int32(header + link_off)
-			if (link < shnum):
-				st_strtab_lo = b + st_sh_word(table + link * shentsize, 16, 24)
+			if (link < shnum): st_strtab_lo = b + st_sh_word(table + link * shentsize, 16, 24)
 		else if (st_cstr_eq(name_addr, c".text")):
 			cf_text_lo = st_sh_word(header, 12, 16)
 			cf_text_hi = cf_text_lo + st_sh_word(header, 20, 32)
@@ -791,10 +723,8 @@ void cf_parse_bin_sections():
 			st_dline_lo = b + st_sh_word(header, 16, 24)
 			st_dline_size = st_sh_word(header, 20, 32)
 		i = i + 1
-	if (text_seen == 0):
-		return;
-	if ((st_symtab_lo == 0) || (st_strtab_lo == 0)):
-		return;
+	if (text_seen == 0): return;
+	if ((st_symtab_lo == 0) || (st_strtab_lo == 0)): return;
 	# st_state = 1 arms st_func_entry/st_line_lookup/st_file_name.
 	st_state = 1
 	cf_have_syms = 1
@@ -803,8 +733,7 @@ void cf_parse_bin_sections():
 # When the section headers gave no .text range, fall back to the text
 # program header so the raw (unsymbolized) scan still bounds itself.
 void cf_text_fallback():
-	if (cf_text_hi != 0):
-		return;
+	if (cf_text_hi != 0): return;
 	int i = 0
 	while (i < cf_bin_phnum):
 		int p = cf_bin_buf + cf_bin_phoff + i * cf_bin_phentsize
@@ -824,10 +753,8 @@ char* cf_hex(int v):
 	s[1] = 'x'
 	for i in range(digits):
 		int nibble = (v >> ((digits - 1 - i) * 4)) & 15
-		if (nibble < 10):
-			s[2 + i] = '0' + nibble
-		else:
-			s[2 + i] = 'a' + nibble - 10
+		if (nibble < 10): s[2 + i] = '0' + nibble
+		else: s[2 + i] = 'a' + nibble - 10
 	s[digits + 2] = 0
 	return s
 
@@ -846,27 +773,21 @@ char* cf_fail_path(char* msg, char* path):
 char* cf_load_core(char* path):
 	cf_error_path = cast(char*, 0)
 	cf_core_buf = cf_load_file(path)
-	if (cf_core_buf == 0):
-		return cf_fail_path(c"cannot read core file", path)
+	if (cf_core_buf == 0): return cf_fail_path(c"cannot read core file", path)
 	cf_core_size = cf_read_size
-	if (cf_is_elf(cf_core_buf, cf_core_size) == 0):
-		return cf_fail_path(c"not an ELF file:", path)
+	if (cf_is_elf(cf_core_buf, cf_core_size) == 0): return cf_fail_path(c"not an ELF file:", path)
 	cf_class = st_byte(cf_core_buf + 4)
-	if ((cf_class != 1) && (cf_class != 2)):
-		return c"unsupported ELF class in core"
-	if ((cf_class == 2) && (__word_size__ != 8)):
-		return c"64-bit cores need the 64-bit wcore build"
+	if ((cf_class != 1) && (cf_class != 2)): return c"unsupported ELF class in core"
+	if ((cf_class == 2) && (__word_size__ != 8)): return c"64-bit cores need the 64-bit wcore build"
 	cf_wsize = cf_class * 4
-	if (cf_eh_type(cf_core_buf) != 4):
-		return cf_fail_path(c"not an ET_CORE core file:", path)
+	if (cf_eh_type(cf_core_buf) != 4): return cf_fail_path(c"not an ET_CORE core file:", path)
 	cf_machine = cf_eh_machine(cf_core_buf)
 	if ((cf_machine != 3) && (cf_machine != 62)):
 		return c"unsupported machine in core (x86 and x86-64 only)"
 	cf_core_phoff = cf_eh_phoff(cf_core_buf)
 	cf_core_phentsize = cf_eh_phentsize(cf_core_buf)
 	cf_core_phnum = cf_eh_phnum(cf_core_buf)
-	if ((cf_core_phoff <= 0) || (cf_core_phnum <= 0)):
-		return c"core has no program headers"
+	if ((cf_core_phoff <= 0) || (cf_core_phnum <= 0)): return c"core has no program headers"
 	if (cf_core_phoff + cf_core_phnum * cf_core_phentsize > cf_core_size):
 		return c"core program header table is truncated"
 	cf_parse_notes()
@@ -878,11 +799,9 @@ char* cf_load_core(char* path):
 char* cf_load_binary(char* path):
 	cf_error_path = cast(char*, 0)
 	cf_bin_buf = cf_load_file(path)
-	if (cf_bin_buf == 0):
-		return cf_fail_path(c"cannot read binary", path)
+	if (cf_bin_buf == 0): return cf_fail_path(c"cannot read binary", path)
 	cf_bin_size = cf_read_size
-	if (cf_is_elf(cf_bin_buf, cf_bin_size) == 0):
-		return cf_fail_path(c"not an ELF file:", path)
+	if (cf_is_elf(cf_bin_buf, cf_bin_size) == 0): return cf_fail_path(c"not an ELF file:", path)
 	if (st_byte(cf_bin_buf + 4) != cf_class):
 		return c"ELF class mismatch: core and binary word sizes differ"
 	if (cf_eh_machine(cf_bin_buf) != cf_machine):
@@ -902,11 +821,9 @@ int cf_check_build_id():
 	cf_bin_build_id()
 	cf_core_build_id()
 	if (cf_core_id != 0):
-		if ((cf_bin_id == 0) || (cf_build_ids_match() == 0)):
-			return 1
+		if ((cf_bin_id == 0) || (cf_build_ids_match() == 0)): return 1
 		return 0
-	if (cf_bin_id != 0):
-		return 2
+	if (cf_bin_id != 0): return 2
 	return 3
 
 
@@ -914,8 +831,7 @@ int cf_check_build_id():
 # 0 or an error message.
 char* cf_read_prstatus():
 	cf_error_path = cast(char*, 0)
-	if (cf_prstatus == 0):
-		return c"core has no NT_PRSTATUS note"
+	if (cf_prstatus == 0): return c"core has no NT_PRSTATUS note"
 	if (cf_prstatus_size < cf_prreg_off() + cf_prreg_count() * cf_wsize):
 		return c"core NT_PRSTATUS note is too small"
 	cf_sig = st_int16(cf_prstatus + 12) /* pr_cursig */

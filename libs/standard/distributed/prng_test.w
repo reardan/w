@@ -6,8 +6,7 @@ import libs.standard.distributed.prng
 void test_same_seed_same_sequence():
 	prng* a = prng_new(42)
 	prng* b = prng_new(42)
-	for i in range(100):
-		assert_equal(prng_next(a), prng_next(b))
+	for i in range(100): assert_equal(prng_next(a), prng_next(b))
 	prng_free(a)
 	prng_free(b)
 
@@ -17,8 +16,7 @@ void test_different_seeds_differ():
 	prng* b = prng_new(2)
 	int same = 0
 	for i in range(10):
-		if (prng_next(a) == prng_next(b)):
-			same = same + 1
+		if (prng_next(a) == prng_next(b)): same = same + 1
 	assert1(same < 10)
 	prng_free(a)
 	prng_free(b)
@@ -36,8 +34,7 @@ void test_seed_zero_is_valid():
 
 void test_outputs_non_negative():
 	prng* p = prng_new(7)
-	for i in range(1000):
-		assert1(prng_next(p) >= 0)
+	for i in range(1000): assert1(prng_next(p) >= 0)
 	prng_free(p)
 
 
@@ -62,12 +59,9 @@ void test_range_hits_all_small_values():
 	int seen2 = 0
 	for i in range(200):
 		int v = prng_range(p, 3)
-		if (v == 0):
-			seen0 = 1
-		if (v == 1):
-			seen1 = 1
-		if (v == 2):
-			seen2 = 1
+		if (v == 0): seen0 = 1
+		if (v == 1): seen1 = 1
+		if (v == 2): seen2 = 1
 	assert_equal(1, seen0)
 	assert_equal(1, seen1)
 	assert_equal(1, seen2)

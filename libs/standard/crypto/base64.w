@@ -26,16 +26,14 @@ char* base64_alphabet():
 
 # Encoded length in characters for len input bytes, excluding the NUL.
 int base64_encoded_length(int len):
-	if (len <= 0):
-		return 0
+	if (len <= 0): return 0
 	return ((len + 2) / 3) * 4
 
 
 # Encodes len bytes at data. Returns a malloc'd NUL-terminated string of
 # base64_encoded_length(len) characters.
 char* base64_encode(char* data, int len):
-	if (len < 0):
-		len = 0
+	if (len < 0): len = 0
 	char* alphabet = base64_alphabet()
 	char* out = malloc(base64_encoded_length(len) + 1)
 	int i = 0
@@ -70,16 +68,11 @@ char* base64_encode(char* data, int len):
 # The 0..63 value of one base64 alphabet character, or -1 for anything
 # else (including '=' — the decoder handles padding by position).
 int base64_decode_char(int ch):
-	if ((ch >= 'A') && (ch <= 'Z')):
-		return ch - 'A'
-	if ((ch >= 'a') && (ch <= 'z')):
-		return ch - 'a' + 26
-	if ((ch >= '0') && (ch <= '9')):
-		return ch - '0' + 52
-	if (ch == '+'):
-		return 62
-	if (ch == '/'):
-		return 63
+	if ((ch >= 'A') && (ch <= 'Z')): return ch - 'A'
+	if ((ch >= 'a') && (ch <= 'z')): return ch - 'a' + 26
+	if ((ch >= '0') && (ch <= '9')): return ch - '0' + 52
+	if (ch == '+'): return 62
+	if (ch == '/'): return 63
 	return -1
 
 
@@ -88,10 +81,8 @@ int base64_decode_char(int ch):
 # *out_len; returns 0 (with *out_len = 0) on any invalid input.
 char* base64_decode(char* text, int len, int* out_len):
 	*out_len = 0
-	if (len < 0):
-		return 0
-	if ((len % 4) != 0):
-		return 0
+	if (len < 0): return 0
+	if ((len % 4) != 0): return 0
 	if (len == 0):
 		char* empty = malloc(1)
 		empty[0] = 0
@@ -100,15 +91,13 @@ char* base64_decode(char* text, int len, int* out_len):
 	int pad = 0
 	if ((text[len - 1] & 255) == '='):
 		pad = 1
-		if ((text[len - 2] & 255) == '='):
-			pad = 2
+		if ((text[len - 2] & 255) == '='): pad = 2
 	char* out = malloc((len / 4) * 3 + 1)
 	int i = 0
 	int o = 0
 	while (i < len):
 		int chars = 4
-		if ((i + 4 == len) && (pad > 0)):
-			chars = 4 - pad
+		if ((i + 4 == len) && (pad > 0)): chars = 4 - pad
 		int v = 0
 		for j in range(chars):
 			int d = base64_decode_char(text[i + j] & 255)

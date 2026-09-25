@@ -99,14 +99,12 @@ void test_join_reclaims_stacks():
 		asserts(c"worker did not record its stack base", base != 0)
 		int seen = 0
 		for j in range(distinct):
-			if (bases[j] == base):
-				seen = 1
+			if (bases[j] == base): seen = 1
 		if (seen == 0):
 			if (distinct < 16):
 				bases[distinct] = base
 				distinct = distinct + 1
-			else:
-				overflow = 1
+			else: overflow = 1
 		assert_equal(0, thread_join(t))
 	asserts(c"joined stacks were not reused", overflow == 0)
 	# the last worker really ran with its argument

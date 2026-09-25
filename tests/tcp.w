@@ -31,8 +31,7 @@ void parse_headers(int message):
 	println(c"parsing headers")
 	println(c"")
 	list[char*] lines = split(cast(char*, message), '\n')
-	for char* line in lines:
-		print_string(c"line: ", line)
+	for char* line in lines: print_string(c"line: ", line)
 
 
 void respond1(int client_sock):

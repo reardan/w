@@ -31,14 +31,12 @@ int signal_restorer
 
 void signal_thunk_emit(int n, char* bytes):
 	char* p = cast(char*, signal_thunk_page + signal_thunk_pos)
-	for i in range(n):
-		p[i] = bytes[i]
+	for i in range(n): p[i] = bytes[i]
 	signal_thunk_pos = signal_thunk_pos + n
 
 
 void signal_thunk_init():
-	if (signal_thunk_page != 0):
-		return;
+	if (signal_thunk_page != 0): return;
 	signal_thunk_page = mmap(0, 4096, 7, 34) /* RWX, PRIVATE|ANONYMOUS */
 	asserts(c"mmap of signal thunk page failed", (signal_thunk_page > 0) | (signal_thunk_page < -4095))
 	signal_restorer = signal_thunk_page

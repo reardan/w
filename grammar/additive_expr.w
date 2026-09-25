@@ -20,14 +20,11 @@ int additive_op(int type, int op):
 		return overload_type
 	pop_ebx_slot()
 	int result_type = var_binary_arithmetic(left_type, right_type, op)
-	if (result_type == 0):
-		result_type = float_binary_arithmetic(left_type, right_type, op)
+	if (result_type == 0): result_type = float_binary_arithmetic(left_type, right_type, op)
 	if (result_type):
 		return result_type
-	if (op == '+'):
-		alu_add()
-	else:
-		alu_sub()
+	if (op == '+'): alu_add()
+	else: alu_sub()
 	# Pointer arithmetic keeps the pointer's type (as a value: eax holds
 	# the computed pointer itself), so a later dereference or index knows
 	# the element width instead of falling back to a word-sized deref /
@@ -35,8 +32,7 @@ int additive_op(int type, int op):
 	# Pointer minus pointer is a plain integer difference.
 	int left_level = type_get_pointer_level(type_unqualified(left_type))
 	int right_level = type_get_pointer_level(type_unqualified(right_type))
-	if ((left_level > 0) && (right_level == 0)):
-		return type_value(type_unqualified(left_type))
+	if ((left_level > 0) && (right_level == 0)): return type_value(type_unqualified(left_type))
 	if ((op == '+') && (right_level > 0) && (left_level == 0)):
 		return type_value(type_unqualified(right_type))
 	return 3
@@ -45,11 +41,9 @@ int additive_op(int type, int op):
 int additive_expr():
 	int type = multiplicative_expr()
 	while (1):
-		if (accept(c"+")):
-			type = additive_op(type, '+')
+		if (accept(c"+")): type = additive_op(type, '+')
 
-		else if (accept(c"-")):
-			type = additive_op(type, '-')
+		else if (accept(c"-")): type = additive_op(type, '-')
 
 		else:
 			return type

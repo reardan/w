@@ -7,12 +7,9 @@ import lib.edit_distance
 # Naive exponential reference: distance between a[ai ..] and b[bi ..].
 # Only run on short strings; exists to cross-check the two-row DP.
 int reference_levenshtein(char* a, int ai, char* b, int bi):
-	if (a[ai] == 0):
-		return strlen(&b[bi])
-	if (b[bi] == 0):
-		return strlen(&a[ai])
-	if (a[ai] == b[bi]):
-		return reference_levenshtein(a, ai + 1, b, bi + 1)
+	if (a[ai] == 0): return strlen(&b[bi])
+	if (b[bi] == 0): return strlen(&a[ai])
+	if (a[ai] == b[bi]): return reference_levenshtein(a, ai + 1, b, bi + 1)
 	int substitute = reference_levenshtein(a, ai + 1, b, bi + 1)
 	int delete_a = reference_levenshtein(a, ai + 1, b, bi)
 	int insert_a = reference_levenshtein(a, ai, b, bi + 1)

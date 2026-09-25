@@ -22,28 +22,20 @@ void print_elf_header():
 	print(c"class: [")
 	print(itoa(class))
 	print(c"] ")
-	if (class == 0):
-		println(c"none")
-	else if(class == 1):
-		println(c"32 bit")
-	else if(class == 2):
-		println(c"64 bit")
-	else:
-		println(c"class not recognized")
+	if (class == 0): println(c"none")
+	else if(class == 1): println(c"32 bit")
+	else if(class == 2): println(c"64 bit")
+	else: println(c"class not recognized")
 
 	# Data encoding
 	int encoding = base[5]
 	print(c"encoding: [")
 	print(itoa(encoding))
 	print(c"] ")
-	if (encoding == 0):
-		println(c"none")
-	else if(encoding == 1):
-		println(c"least significant")
-	else if(encoding == 2):
-		println(c"most significant")
-	else:
-		println(c"encoding not recognized")
+	if (encoding == 0): println(c"none")
+	else if(encoding == 1): println(c"least significant")
+	else if(encoding == 2): println(c"most significant")
+	else: println(c"encoding not recognized")
 
 	# Get Program Header offset
 	int program_header_offset = load_int(base + 28)

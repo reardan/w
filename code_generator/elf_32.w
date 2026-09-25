@@ -61,14 +61,11 @@ void elf_start():
 # so _main sees exactly the frame it would have without the thunk.
 # Returns the thunk's address for the entry call patch.
 int elf_emit_tls_entry_thunk(int main_addr):
-	if (tls_size > 1048576):
-		error(c"thread_local storage exceeds 1MB")
-	if (tls_size_patch_pos == 0):
-		error(c"thread_local: no __w_tls_size stub on this target")
+	if (tls_size > 1048576): error(c"thread_local storage exceeds 1MB")
+	if (tls_size_patch_pos == 0): error(c"thread_local: no __w_tls_size stub on this target")
 	tls_size = (tls_size + 15) & (0 - 16)
 	save_int32(code + tls_size_patch_pos, tls_size)
-	while ((datapos & 15) != 0):
-		emit_data_zeros(1)
+	while ((datapos & 15) != 0): emit_data_zeros(1)
 	int block = emit_data_zeros(tls_size)
 	int set_addr = sym_address(c"__w_tls_set")
 	int thunk = code_offset + codepos
@@ -103,10 +100,8 @@ void elf_finish_entry_patch():
 	elf_emit_dynamic()
 
 	int t = entry_symbol(0)
-	if (t == 0):
-		return
-	if (tls_size > 0):
-		t = elf_emit_tls_entry_thunk(t)
+	if (t == 0): return
+	if (tls_size > 0): t = elf_emit_tls_entry_thunk(t)
 	# rel32 = target - address of the instruction after the 5-byte call
 	t = t - code_offset - entry_call_disp_pos - 4
 

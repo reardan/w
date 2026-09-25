@@ -27,17 +27,14 @@ import graphics.ui.testing
 # rows the caller actually issues — a collapsed folder contributes one.
 char* fixture_file(int folder, int index):
 	if (folder == 0):
-		if (index == 0):
-			return c"main.w"
+		if (index == 0): return c"main.w"
 		return c"lib.w"
-	if (index == 0):
-		return c"readme.md"
+	if (index == 0): return c"readme.md"
 	return c"design.md"
 
 
 char* fixture_folder(int folder):
-	if (folder == 0):
-		return c"src"
+	if (folder == 0): return c"src"
 	return c"docs"
 
 
@@ -53,8 +50,7 @@ int fixture_frame(ui_context* ctx, ui_tree_state* st, int32* open, ui_rect area)
 				# Read the walk index before the call: ui_tree_leaf
 				# advances it.
 				int at = st.walk_index
-				if (ui_tree_leaf(ctx, st, fixture_file(d, f))):
-					activated = at
+				if (ui_tree_leaf(ctx, st, fixture_file(d, f))): activated = at
 			ui_tree_node_end(ctx, st)
 	ui_tree_end(ctx, st)
 	ui_end(ctx)

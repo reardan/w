@@ -59,17 +59,14 @@ int* crc32_build_table():
 	for n in range(256):
 		int word = n
 		for k in range(8):
-			if ((word & 1) != 0):
-				word = shr(word, 1) ^ poly
-			else:
-				word = shr(word, 1)
+			if ((word & 1) != 0): word = shr(word, 1) ^ poly
+			else: word = shr(word, 1)
 		table[n] = word & mask
 	return table
 
 
 int* crc32_table():
-	if (crc32_table_cache == 0):
-		crc32_table_cache = crc32_build_table()
+	if (crc32_table_cache == 0): crc32_table_cache = crc32_build_table()
 	return crc32_table_cache
 
 
@@ -79,8 +76,7 @@ int* crc32_table():
 # a+b concatenated). A negative length is treated as zero, matching
 # libs/standard/crypto/base64.w's base64_encode convention.
 int crc32_update(int crc, char* data, int length):
-	if (length < 0):
-		length = 0
+	if (length < 0): length = 0
 	int* table = crc32_table()
 	int mask = crc32_mask32()
 	int c = crc ^ mask

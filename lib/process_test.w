@@ -50,8 +50,7 @@ void test_large_stdin_does_not_deadlock():
 	# so this only completes when stdin writes interleave with draining.
 	int size = 262144
 	char* text = malloc(size + 1)
-	for i in range(size):
-		text[i] = 'a' + (i % 26)
+	for i in range(size): text[i] = 'a' + (i % 26)
 	text[size] = 0
 	process_result* result = process_run(c"/bin/cat", argv_1(c"/bin/cat"), 0, text, 10000)
 	assert1(result != 0)

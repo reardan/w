@@ -72,8 +72,7 @@ int macho_sig_length(int code_limit, char* ident):
 void macho_sig_reserve(int extra):
 	if (macho_sig_cap < macho_sig_size + extra):
 		int x = (macho_sig_size + extra) << 1
-		if (x < 4096):
-			x = 4096
+		if (x < 4096): x = 4096
 		macho_sig_buf = realloc(macho_sig_buf, macho_sig_cap, x)
 		macho_sig_cap = x
 
@@ -194,8 +193,7 @@ void macho_build_signature(char* img, int code_limit, int text_size, char* ident
 	for slot in range(n_code_slots):
 		int start = slot * page
 		int len = page
-		if (start + len > code_limit):
-			len = code_limit - start
+		if (start + len > code_limit): len = code_limit - start
 		sha256(img + start, len, digest)
 		macho_sig_bytes(digest, hash_size)
 

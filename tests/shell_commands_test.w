@@ -50,8 +50,7 @@ void shtest_capture_stdout_start(char* path):
 char* shtest_read_and_delete(char* path):
 	char* text = file_read_text(path)
 	unlink(path)
-	if (text == 0):
-		return strclone(c"")
+	if (text == 0): return strclone(c"")
 	return text
 
 
@@ -754,8 +753,7 @@ int shtest_count_newlines(char* s):
 	int count = 0
 	int i = 0
 	while (s[i] != 0):
-		if (s[i] == 10):
-			count = count + 1
+		if (s[i] == 10): count = count + 1
 		i = i + 1
 	return count
 
@@ -881,8 +879,7 @@ void test_du_missing_path_reports_cannot_access():
 void tr(char* line, char* want):
 	char* got = shell_translate_line(line)
 	int same = want == got
-	if ((want != 0) && (got != 0)):
-		same = strcmp(want, got) == 0
+	if ((want != 0) && (got != 0)): same = strcmp(want, got) == 0
 	if (same == 0):
 		print2(c"translating: ")
 		println2(line)

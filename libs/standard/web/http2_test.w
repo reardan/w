@@ -43,13 +43,10 @@ h2_conn* h2t_connect(int port):
 # with code on EOF.
 void h2t_expect(int fd, int type, h2_frame* f, int code):
 	while (1):
-		if (h2_raw_read_frame(fd, f) == 0):
-			exit(code)
-		if (f.type == type):
-			return
+		if (h2_raw_read_frame(fd, f) == 0): exit(code)
+		if (f.type == type): return
 		int skip = (f.type == h2_frame_settings) || (f.type == h2_frame_window_update) || ((f.type == h2_frame_ping) && ((f.flags & 1) != 0))
-		if (skip == 0):
-			exit(code)
+		if (skip == 0): exit(code)
 		free(f.payload)
 
 
@@ -59,13 +56,11 @@ list[hpack_header*] h2t_fields(char* spec):
 	int pos = 0
 	while (spec[pos] != 0):
 		int ns = pos
-		while (spec[pos] != '|'):
-			pos = pos + 1
+		while (spec[pos] != '|'): pos = pos + 1
 		int ne = pos
 		pos = pos + 1
 		int vs = pos
-		while (spec[pos] != 10):
-			pos = pos + 1
+		while (spec[pos] != 10): pos = pos + 1
 		l.push(hpack_header_new(spec + ns, ne - ns, spec + vs, pos - vs))
 		pos = pos + 1
 	return l
@@ -135,15 +130,12 @@ void test_h2_error_strings():
 
 void h2t_w_server_child(int listener):
 	int fd = socket_accept_connection(listener)
-	if (fd < 0):
-		exit(80)
+	if (fd < 0): exit(80)
 	h2_conn* c = h2_server_new(fd)
-	if (c == 0):
-		exit(81)
+	if (c == 0): exit(81)
 	while (1):
 		h2_stream* s = h2_server_next_request(c)
-		if (s == 0):
-			break
+		if (s == 0): break
 		char* method = h2_stream_header(s, c":method")
 		char* path = h2_stream_header(s, c":path")
 		list[hpack_header*] extra = hpack_headers_new()
@@ -157,8 +149,7 @@ void h2t_w_server_child(int listener):
 			hpack_headers_free(t)
 		else if (strcmp(path, c"/big") == 0):
 			h2_respond(c, s, 200, extra, h2_stream_body(s), h2_stream_body_len(s))
-		else if (strcmp(path, c"/missing") == 0):
-			h2_respond(c, s, 404, extra, 0, 0)
+		else if (strcmp(path, c"/missing") == 0): h2_respond(c, s, 404, extra, 0, 0)
 		else:
 			string_builder* sb = string_new()
 			string_append(sb, method)
@@ -180,8 +171,7 @@ void test_h2_w_client_and_server():
 	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
-	if (pid == 0):
-		h2t_w_server_child(listener)
+	if (pid == 0): h2t_w_server_child(listener)
 	char* auth = net_test_authority(c"127.0.0.1", port)
 	h2_conn* c = h2t_connect(port)
 
@@ -300,13 +290,11 @@ void test_h2_send_flow_control():
 		h2_frame f
 		h2t_expect(fd, h2_frame_headers, &f, 10)
 		h2t_expect(fd, h2_frame_data, &f, 11)
-		if ((f.length != 10) || ((f.flags & 1) != 0)):
-			exit(12)
+		if ((f.length != 10) || ((f.flags & 1) != 0)): exit(12)
 		# The client must now be blocked: allow 20 more bytes.
 		h2_raw_write_frame(fd, h2_frame_window_update, 0, 1, c"\x00\x00\x00\x14", 4)
 		h2t_expect(fd, h2_frame_data, &f, 13)
-		if ((f.length != 15) || ((f.flags & 1) == 0)):
-			exit(14)
+		if ((f.length != 15) || ((f.flags & 1) == 0)): exit(14)
 		hpack_encoder* e = hpack_encoder_new(4096)
 		h2t_send_headers(fd, e, 1, c":status|200\n", 0)
 		h2t_send_data(fd, 1, c"got 25", h2_flag_end_stream)
@@ -342,12 +330,10 @@ void test_h2_receive_window_violation():
 		mem_fill(big, 'z', 150)
 		h2_raw_write_frame(fd, h2_frame_data, 0, 1, big, 150)
 		h2t_expect(fd, h2_frame_rst_stream, &f, 11)
-		if ((f.stream_id != 1) || (h2_get_u31(f.payload) != h2_error_flow_control)):
-			exit(12)
+		if ((f.stream_id != 1) || (h2_get_u31(f.payload) != h2_error_flow_control)): exit(12)
 		# Stream 3 still works on the same connection.
 		h2t_expect(fd, h2_frame_headers, &f, 13)
-		if (f.stream_id != 3):
-			exit(14)
+		if (f.stream_id != 3): exit(14)
 		h2t_send_headers(fd, e, 3, c":status|204\n", h2_flag_end_stream)
 		net_test_drain(fd)
 		exit(0)
@@ -381,8 +367,7 @@ void test_h2_server_ping_is_acked():
 		h2_raw_write_frame(fd, h2_frame_ping, 0, 0, c"pingpong", 8)
 		while (1):
 			h2t_expect(fd, h2_frame_ping, &f, 11)
-			if ((f.flags & 1) != 0):
-				break
+			if ((f.flags & 1) != 0): break
 		if ((f.length != 8) || (f.payload[0] != 'p') || (f.payload[4] != 'p') || (f.payload[7] != 'g')):
 			exit(12)
 		hpack_encoder* e = hpack_encoder_new(4096)
@@ -409,8 +394,7 @@ void test_h2_goaway_refuses_later_streams():
 		h2_frame f
 		h2t_expect(fd, h2_frame_headers, &f, 10)
 		h2t_expect(fd, h2_frame_headers, &f, 11)
-		if (f.stream_id != 3):
-			exit(12)
+		if (f.stream_id != 3): exit(12)
 		h2_raw_write_frame(fd, h2_frame_goaway, 0, 0, c"\x00\x00\x00\x01\x00\x00\x00\x00bye", 11)
 		hpack_encoder* e = hpack_encoder_new(4096)
 		h2t_send_headers(fd, e, 1, c":status|200\n", 0)
@@ -459,8 +443,7 @@ void h2t_expect_goaway_child(int listener, int kind, int want_code):
 		# WINDOW_UPDATE on the connection with a zero increment.
 		h2_raw_write_frame(fd, h2_frame_window_update, 0, 0, c"\x00\x00\x00\x00", 4)
 	h2t_expect(fd, h2_frame_goaway, &f, 20)
-	if (h2_get_u31(f.payload + 4) != want_code):
-		exit(21)
+	if (h2_get_u31(f.payload + 4) != want_code): exit(21)
 	exit(0)
 
 
@@ -469,8 +452,7 @@ void h2t_run_goaway_case(int kind, int want_code):
 	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
-	if (pid == 0):
-		h2t_expect_goaway_child(listener, kind, want_code)
+	if (pid == 0): h2t_expect_goaway_child(listener, kind, want_code)
 	h2_conn* c = h2t_connect(port)
 	h2_stream* s = h2_request(c, c"GET", c"http", c"x", c"/", 0, 0, 0)
 	assert_equal(0, h2_stream_ok(s))
@@ -544,8 +526,7 @@ void test_h2_informational_trailers_and_content_length():
 		h2t_send_headers(fd, e, 3, c":status|200\ncontent-length|10\n", 0)
 		h2t_send_data(fd, 3, c"short", h2_flag_end_stream)
 		h2t_expect(fd, h2_frame_rst_stream, &f, 12)
-		if ((f.stream_id != 3) || (h2_get_u31(f.payload) != h2_error_protocol)):
-			exit(13)
+		if ((f.stream_id != 3) || (h2_get_u31(f.payload) != h2_error_protocol)): exit(13)
 		net_test_drain(fd)
 		exit(0)
 	h2_conn* c = h2t_connect(port)
@@ -576,13 +557,10 @@ void test_h2_server_rejects_even_stream():
 	if (pid == 0):
 		int sfd = socket_accept_connection(listener)
 		h2_conn* sc = h2_server_new(sfd)
-		if (sc == 0):
-			exit(30)
+		if (sc == 0): exit(30)
 		h2_stream* none = h2_server_next_request(sc)
-		if (none != 0):
-			exit(31)
-		if (sc.error != h2_error_protocol):
-			exit(32)
+		if (none != 0): exit(31)
+		if (sc.error != h2_error_protocol): exit(32)
 		h2_close(sc)
 		exit(0)
 	int fd = socket_tcp_ipv4()
@@ -612,8 +590,7 @@ void test_h2_server_rejects_malformed_request():
 	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
-	if (pid == 0):
-		h2t_w_server_child(listener)
+	if (pid == 0): h2t_w_server_child(listener)
 	int fd = socket_tcp_ipv4()
 	asserts(c"connect", socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), port) >= 0)
 	socket_set_recv_timeout(fd, 10000)
@@ -629,8 +606,7 @@ void test_h2_server_rejects_malformed_request():
 		if ((f.type == h2_frame_rst_stream) && (f.stream_id == 1)):
 			assert_equal(h2_error_protocol, h2_get_u31(f.payload))
 			saw_rst = 1
-		if ((f.type == h2_frame_data) && (f.stream_id == 3) && ((f.flags & 1) != 0)):
-			saw_ok = 1
+		if ((f.type == h2_frame_data) && (f.stream_id == 3) && ((f.flags & 1) != 0)): saw_ok = 1
 		free(f.payload)
 	assert_equal(1, saw_rst)
 	assert_equal(1, saw_ok)

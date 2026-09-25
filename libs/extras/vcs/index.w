@@ -163,8 +163,7 @@ void index_entry_free(index_entry* e):
 
 
 void index_free(windex* idx):
-	for index_entry* e in idx.entries:
-		index_entry_free(e)
+	for index_entry* e in idx.entries: index_entry_free(e)
 	idx.entries.clear()
 	list_free[index_entry*](idx.entries)
 	free(idx)
@@ -179,15 +178,11 @@ int index_entry_compare(index_entry* a, index_entry* b):
 # tree_valid_name -- each component was already validated when the entry
 # was built).
 int index_valid_path(char* path):
-	if (path == 0):
-		return 0
+	if (path == 0): return 0
 	int n = strlen(path)
-	if (n == 0):
-		return 0
-	if (path[0] == '/'):
-		return 0
-	if (path[n - 1] == '/'):
-		return 0
+	if (n == 0): return 0
+	if (path[0] == '/'): return 0
+	if (path[n - 1] == '/'): return 0
 	return 1
 
 
@@ -216,14 +211,10 @@ int index_stat(char* path, int* size_out, int* mtime_out):
 # matches, because a same-tick modification after the reference index
 # was written could be invisible to a one-second-resolution mtime.
 int index_entry_trusted(index_entry* prev, int current_size, int current_mtime, int prev_write_time):
-	if (prev == 0):
-		return 0
-	if (prev.size != current_size):
-		return 0
-	if (prev.mtime != current_mtime):
-		return 0
-	if (prev.mtime == prev_write_time):
-		return 0
+	if (prev == 0): return 0
+	if (prev.size != current_size): return 0
+	if (prev.mtime != current_mtime): return 0
+	if (prev.mtime == prev_write_time): return 0
 	return 1
 
 
@@ -252,8 +243,7 @@ string_builder* index_encode(windex* idx):
 
 int index_find_char(char* data, int end, int start, int ch):
 	int i = start
-	while ((i < end) && (data[i] != ch)):
-		i = i + 1
+	while ((i < end) && (data[i] != ch)): i = i + 1
 	return i
 
 
@@ -262,17 +252,13 @@ int index_find_newline(char* data, int length, int start):
 
 
 int index_valid_integer(char* data, int start, int end):
-	if (start >= end):
-		return 0
+	if (start >= end): return 0
 	int i = start
-	if (data[i] == '-'):
-		i = i + 1
-	if (i >= end):
-		return 0
+	if (data[i] == '-'): i = i + 1
+	if (i >= end): return 0
 	while (i < end):
 		int c = data[i] & 255
-		if ((c < '0') || (c > '9')):
-			return 0
+		if ((c < '0') || (c > '9')): return 0
 		i = i + 1
 	return 1
 
@@ -350,8 +336,7 @@ wresult[windex*]* index_parse(char* data, int length):
 		pos = path_end + 1
 
 		int ok = index_valid_path(path)
-		if (ok && (prev_path != 0)):
-			ok = tree_name_compare(prev_path, path) < 0
+		if (ok && (prev_path != 0)): ok = tree_name_compare(prev_path, path) < 0
 		if (ok == 0):
 			free(id)
 			free(path)
@@ -418,21 +403,15 @@ wresult[int]* index_write(windex* idx, char* path):
 
 	int err = 0
 	int wrote = write(fd, enc.data, enc.length)
-	if (wrote < 0):
-		err = wrote
-	else if (wrote != enc.length):
-		err = -5   # EIO: a regular file should never short-write
+	if (wrote < 0): err = wrote
+	else if (wrote != enc.length): err = -5   # EIO: a regular file should never short-write
 	int closed = close(fd)
-	if ((err == 0) && (closed < 0)):
-		err = closed
-	if (err == 0):
-		err = vcs_rename(temp, path)
-	if (err < 0):
-		vcs_unlink(temp)
+	if ((err == 0) && (closed < 0)): err = closed
+	if (err == 0): err = vcs_rename(temp, path)
+	if (err < 0): vcs_unlink(temp)
 	free(temp)
 	string_free(enc)
-	if (err < 0):
-		return result_new_error[int](err)
+	if (err < 0): return result_new_error[int](err)
 	return result_new_ok[int](0)
 
 
@@ -442,8 +421,7 @@ wresult[int]* index_write(windex* idx, char* path):
 # parse.
 wresult[windex*]* index_read(char* path):
 	string_builder* contents = cas_read_file(path)
-	if (contents == 0):
-		return result_new_error[windex*](cas_read_errno)
+	if (contents == 0): return result_new_error[windex*](cas_read_errno)
 	wresult[windex*]* r = index_parse(contents.data, contents.length)
 	string_free(contents)
 	return r
@@ -469,8 +447,7 @@ int index_load_uint16(char* p):
 wresult[char*]* index_walk(wcas* s, char* dir, char* prefix, list[char*] ignore, map[char*, index_entry*] prev_by_path, int prev_write_time, list[index_entry*] out_entries):
 	# 65536 = O_DIRECTORY: fail up front when dir is not a directory.
 	int fd = open(dir, 65536, 0)
-	if (fd < 0):
-		return result_new_error[char*](fd)
+	if (fd < 0): return result_new_error[char*](fd)
 	wtree* t = tree_new()
 	int buffer_size = 65536
 	char* buffer = malloc(buffer_size)
@@ -493,17 +470,14 @@ wresult[char*]* index_walk(wcas* s, char* dir, char* prefix, list[char*] ignore,
 				char* child_id = 0
 				if (kind == 4):
 					wresult[char*]* sub = index_walk(s, child_disk_path, child_rel_path, ignore, prev_by_path, prev_write_time, out_entries)
-					if (result_is_error[char*](sub)):
-						err = result_code[char*](sub)
-					else:
-						child_id = result_value[char*](sub)
+					if (result_is_error[char*](sub)): err = result_code[char*](sub)
+					else: child_id = result_value[char*](sub)
 					result_free[char*](sub)
 				else:
 					int size = 0
 					int mtime = 0
 					int stat_err = index_stat(child_disk_path, &size, &mtime)
-					if (stat_err < 0):
-						err = stat_err
+					if (stat_err < 0): err = stat_err
 					else:
 						index_entry* prev = 0
 						if ((prev_by_path != 0) && (child_rel_path in prev_by_path)):
@@ -512,14 +486,11 @@ wresult[char*]* index_walk(wcas* s, char* dir, char* prefix, list[char*] ignore,
 							child_id = strclone(prev.blob_id)
 						else:
 							string_builder* contents = cas_read_file(child_disk_path)
-							if (contents == 0):
-								err = cas_read_errno
+							if (contents == 0): err = cas_read_errno
 							else:
 								wresult[char*]* put = cas_put(s, c"blob", contents.data, contents.length)
-								if (result_is_error[char*](put)):
-									err = result_code[char*](put)
-								else:
-									child_id = result_value[char*](put)
+								if (result_is_error[char*](put)): err = result_code[char*](put)
+								else: child_id = result_value[char*](put)
 								result_free[char*](put)
 								string_free(contents)
 						if (err == 0):
@@ -531,17 +502,13 @@ wresult[char*]* index_walk(wcas* s, char* dir, char* prefix, list[char*] ignore,
 							out_entries.push(e)
 				if (err == 0):
 					int mode = TREE_MODE_DIR
-					if (kind == 8):
-						mode = TREE_MODE_FILE()
+					if (kind == 8): mode = TREE_MODE_FILE()
 					err = tree_add(t, entry_name, mode, child_id)
-				if (child_id != 0):
-					free(child_id)
+				if (child_id != 0): free(child_id)
 				free(child_disk_path)
 				free(child_rel_path)
-		if (err == 0):
-			n = getdents(fd, buffer, buffer_size)
-	if ((err == 0) && (n < 0)):
-		err = n
+		if (err == 0): n = getdents(fd, buffer, buffer_size)
+	if ((err == 0) && (n < 0)): err = n
 	free(buffer)
 	close(fd)
 	if (err < 0):
@@ -576,18 +543,15 @@ wresult[index_refresh_result*]* index_refresh_at(wcas* s, char* dir, list[char*]
 	int prev_write_time = 0
 	if (prev != 0):
 		prev_by_path = new map[char*, index_entry*]
-		for index_entry* e in prev.entries:
-			prev_by_path[e.path] = e
+		for index_entry* e in prev.entries: prev_by_path[e.path] = e
 		prev_write_time = prev.write_time
 
 	list[index_entry*] out_entries = new list[index_entry*]
 	wresult[char*]* root = index_walk(s, dir, c"", ignore, prev_by_path, prev_write_time, out_entries)
-	if (prev_by_path != 0):
-		map_free[char*, index_entry*](prev_by_path)
+	if (prev_by_path != 0): map_free[char*, index_entry*](prev_by_path)
 
 	if (result_is_error[char*](root)):
-		for index_entry* e in out_entries:
-			index_entry_free(e)
+		for index_entry* e in out_entries: index_entry_free(e)
 		out_entries.clear()
 		list_free[index_entry*](out_entries)
 		int code = result_code[char*](root)

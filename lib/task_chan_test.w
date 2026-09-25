@@ -10,16 +10,14 @@ import lib.time
 /* Buffered producer/consumer, closed by the producer. */
 
 generator int produce(task_chan* ch, int count):
-	for i in range(1, count + 1):
-		assert_equal(0, task_chan_send(ch, i))
+	for i in range(1, count + 1): assert_equal(0, task_chan_send(ch, i))
 	task_chan_close(ch)
 
 
 generator int consume(task_chan* ch):
 	int sum = 0
 	int v = 0
-	while (task_chan_recv(ch, &v) > 0):
-		sum = sum + v
+	while (task_chan_recv(ch, &v) > 0): sum = sum + v
 	task_finish(sum)
 
 
@@ -50,13 +48,11 @@ void test_rendezvous_channel_delivers_everything():
 
 generator int consume_into(task_chan* ch, list[int] out):
 	int v = 0
-	while (task_chan_recv(ch, &v) > 0):
-		out.push(v)
+	while (task_chan_recv(ch, &v) > 0): out.push(v)
 
 
 generator int produce_range(task_chan* ch, int start, int count):
-	for i in range(count):
-		task_chan_send(ch, start + i)
+	for i in range(count): task_chan_send(ch, start + i)
 
 
 generator int close_after_join(task_chan* ch, task* a, task* b):
@@ -81,8 +77,7 @@ void test_many_to_many():
 	int i = 1
 	int last_a = -1
 	int last_b = -1
-	while (i < out1.length):
-		i = i + 1
+	while (i < out1.length): i = i + 1
 	i = 0
 	while (i < out1.length):
 		int v = out1[i]
@@ -186,12 +181,9 @@ generator int select_two(task_chan* a, task_chan* b, list[int] out):
 		int ia = task_select_recv(&sel, a)
 		int ib = task_select_recv(&sel, b)
 		int which = task_select_wait(&sel, 1000)
-		if (which == ia):
-			out.push(100 + task_select_value(&sel))
-		else if (which == ib):
-			out.push(200 + task_select_value(&sel))
-		else:
-			out.push(which)
+		if (which == ia): out.push(100 + task_select_value(&sel))
+		else if (which == ib): out.push(200 + task_select_value(&sel))
+		else: out.push(which)
 		task_select_free(&sel)
 
 

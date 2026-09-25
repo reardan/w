@@ -44,20 +44,16 @@ list[int] window_extreme(list[int] xs, int k, int want_max):
 	int i = 0
 	while (i < xs.length):
 		# The window slides one step, so at most one index expires.
-		if ((head < tail) && (candidates[head] <= i - k)):
-			head = head + 1
+		if ((head < tail) && (candidates[head] <= i - k)): head = head + 1
 		# Evict dominated candidates from the back.
 		while (head < tail):
 			int back = xs[candidates[tail - 1]]
-			if (want_max && (back > xs[i])):
-				break
-			if ((want_max == 0) && (back < xs[i])):
-				break
+			if (want_max && (back > xs[i])): break
+			if ((want_max == 0) && (back < xs[i])): break
 			tail = tail - 1
 		candidates[tail] = i
 		tail = tail + 1
-		if (i >= k - 1):
-			out.push(xs[candidates[head]])
+		if (i >= k - 1): out.push(xs[candidates[head]])
 		i = i + 1
 	free(candidates)
 	return out
@@ -84,10 +80,8 @@ list[int] window_sum(list[int] xs, int k):
 	int total = 0
 	for i in range(xs.length):
 		total = total + xs[i]
-		if (i >= k):
-			total = total - xs[i - k]
-		if (i >= k - 1):
-			out.push(total)
+		if (i >= k): total = total - xs[i - k]
+		if (i >= k - 1): out.push(total)
 	return out
 
 
@@ -109,10 +103,8 @@ list[float] window_mean(list[int] xs, int k):
 # *comp. Same formulation as stats_sum in lib/stats.w.
 float window_neumaier_step(float total, float x, float* comp):
 	float t = total + x
-	if (fabs(total) >= fabs(x)):
-		*comp = *comp + ((total - t) + x)
-	else:
-		*comp = *comp + ((x - t) + total)
+	if (fabs(total) >= fabs(x)): *comp = *comp + ((total - t) + x)
+	else: *comp = *comp + ((x - t) + total)
 	return t
 
 
@@ -131,10 +123,8 @@ list[float] window_sum_float(list[float] xs, int k):
 	int i = 0
 	while (i < xs.length):
 		total = window_neumaier_step(total, xs[i], &comp)
-		if (i >= k):
-			total = window_neumaier_step(total, 0.0 - xs[i - k], &comp)
-		if (i >= k - 1):
-			out.push(total + comp)
+		if (i >= k): total = window_neumaier_step(total, 0.0 - xs[i - k], &comp)
+		if (i >= k - 1): out.push(total + comp)
 		i = i + 1
 	return out
 

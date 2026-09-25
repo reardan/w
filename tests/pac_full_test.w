@@ -60,8 +60,7 @@ int main(int argc, int argv):
 	# discriminator, matching the seeded entry from __w_gen_create)
 	int sum = 0
 	generator* c = pac_counter(5)
-	while (gen_next(c)):
-		sum = sum + gen_value(c)
+	while (gen_next(c)): sum = sum + gen_value(c)
 	gen_free(c)
 	assert_equal(10, sum)
 

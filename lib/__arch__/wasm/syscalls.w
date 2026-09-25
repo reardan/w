@@ -36,8 +36,7 @@ const int wasi_preopen_fd = 3
 
 int wasi_cstr_len(char* s):
 	int n = 0
-	while (s[n]):
-		n = n + 1
+	while (s[n]): n = n + 1
 	return n
 
 
@@ -48,10 +47,8 @@ int wasi_cstr_len(char* s):
 # 0x400 is O_APPEND. Paths resolve against the preopened directory;
 # a leading "/" or "./" is stripped.
 int open(char *filename, int mode, int permissions):
-	while ((filename[0] == '.') && (filename[1] == '/')):
-		filename = filename + 2
-	while (filename[0] == '/'):
-		filename = filename + 1
+	while ((filename[0] == '.') && (filename[1] == '/')): filename = filename + 2
+	while (filename[0] == '/'): filename = filename + 1
 	int oflags = 0
 	if (mode & 64):
 		oflags = oflags | 1     /* CREAT */
@@ -65,8 +62,7 @@ int open(char *filename, int mode, int permissions):
 	# rights, undefined bits — trips the rights validation in strict
 	# preview1 hosts (uvwasi/Node).
 	int err = wasi_path_open(wasi_preopen_fd, 1, filename, wasi_cstr_len(filename), oflags, 0x08E001FF, fdflags, 260)
-	if (err):
-		return 0 - err
+	if (err): return 0 - err
 	int* out = cast(int*, 260)
 	return *out
 
@@ -80,8 +76,7 @@ int write(int file, char* s, int length):
 	iov[0] = cast(int, s)
 	iov[1] = length
 	int err = wasi_fd_write(file, 256, 1, 264)
-	if (err):
-		return 0 - err
+	if (err): return 0 - err
 	int* out = cast(int*, 264)
 	return *out
 
@@ -91,35 +86,29 @@ int read(int file, char* buf, int size):
 	iov[0] = cast(int, buf)
 	iov[1] = size
 	int err = wasi_fd_read(file, 256, 1, 264)
-	if (err):
-		return 0 - err
+	if (err): return 0 - err
 	int* out = cast(int*, 264)
 	return *out
 
 
 int close(int file):
 	int err = wasi_fd_close(file)
-	if (err):
-		return 0 - err
+	if (err): return 0 - err
 	return 0
 
 
 int seek(int file, int offset, int reference):
 	int err = wasi_fd_seek(file, offset, reference, 272)
-	if (err):
-		return 0 - err
+	if (err): return 0 - err
 	int* out = cast(int*, 272)
 	return *out
 
 
 int unlink(char* path):
-	while ((path[0] == '.') && (path[1] == '/')):
-		path = path + 2
-	while (path[0] == '/'):
-		path = path + 1
+	while ((path[0] == '.') && (path[1] == '/')): path = path + 2
+	while (path[0] == '/'): path = path + 1
 	int err = wasi_path_unlink_file(wasi_preopen_fd, path, wasi_cstr_len(path))
-	if (err):
-		return 0 - err
+	if (err): return 0 - err
 	return 0
 
 
@@ -151,8 +140,7 @@ int chdir(char* path):
 # one pass — open() strips the leading slash and resolves against the
 # preopen.
 int getcwd(char* buf, int size):
-	if (size < 2):
-		return -1
+	if (size < 2): return -1
 	buf[0] = '/'
 	buf[1] = 0
 	return 2
@@ -228,11 +216,9 @@ int symlink(char* target, char* linkpath):
 # time(2): seconds since the epoch; out may be 0.
 int linux_time(int* out):
 	int err = wasi_clock_time_get(0, 280)
-	if (err):
-		return 0 - err
+	if (err): return 0 - err
 	int* ts = cast(int*, 280)
-	if (out):
-		*out = ts[0]
+	if (out): *out = ts[0]
 	return ts[0]
 
 
@@ -242,8 +228,7 @@ int clock_gettime(int clock_id, int* out):
 	if (clock_id == 1):
 		wasi_clock = 1    /* CLOCK_MONOTONIC */
 	int err = wasi_clock_time_get(wasi_clock, cast(int, out))
-	if (err):
-		return 0 - err
+	if (err): return 0 - err
 	return 0
 
 
@@ -274,15 +259,13 @@ int wasm_heap_next
 # memory above the data segment. prot/flags are ignored (memory is
 # always read-write); munmap is a no-op.
 int mmap(int addr, int length, int prot, int flags):
-	if (wasm_heap_next == 0):
-		wasm_heap_next = wasi_memory_size() << 16
+	if (wasm_heap_next == 0): wasm_heap_next = wasi_memory_size() << 16
 	int base = wasm_heap_next
 	int end = base + length
 	int have = wasi_memory_size() << 16
 	if (end > have):
 		int need_pages = ((end - have) + 65535) >> 16
-		if (wasi_memory_grow(need_pages) == -1):
-			return -1
+		if (wasi_memory_grow(need_pages) == -1): return -1
 	wasm_heap_next = (end + 4095) & (0 - 4096)
 	return base
 
@@ -398,19 +381,16 @@ int _main(int argc, int argv);
 
 
 int __w_wasm_start(int stub_argc, int stub_argv):
-	if (wasi_args_sizes_get(256, 260)):
-		return _main(stub_argc, stub_argv)
+	if (wasi_args_sizes_get(256, 260)): return _main(stub_argc, stub_argv)
 	int* argc_p = cast(int*, 256)
 	int* buf_len_p = cast(int*, 260)
 	int argc = *argc_p
 	int buf_len = *buf_len_p
 	int block = mmap(0, (argc + 2) * 4 + buf_len, 3, 34)
-	if (block == -1):
-		return _main(stub_argc, stub_argv)
+	if (block == -1): return _main(stub_argc, stub_argv)
 	int argv = block
 	int buf = block + (argc + 2) * 4
-	if (wasi_args_get(argv, buf)):
-		return _main(stub_argc, stub_argv)
+	if (wasi_args_get(argv, buf)): return _main(stub_argc, stub_argv)
 	int* av = cast(int*, argv)
 	av[argc] = 0
 	av[argc + 1] = 0   /* empty environment vector */

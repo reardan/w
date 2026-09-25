@@ -23,8 +23,7 @@ import libs.standard.net.testing
 # Deterministic binary payload containing NUL, CR and LF bytes.
 char* ftps_payload(int n):
 	char* data = malloc(n + 1)
-	for i in range(n):
-		data[i] = (i * 7 + i / 251) & 255
+	for i in range(n): data[i] = (i * 7 + i / 251) & 255
 	data[n] = 0
 	return data
 
@@ -75,15 +74,11 @@ void ftps_srv_reply(ftps_srv* s, char* text):
 # 1 = a byte is buffered. Plaintext is read one byte at a time so the
 # server never swallows the start of the client's TLS handshake.
 int ftps_srv_fill(ftps_srv* s):
-	if (s.pos < s.len):
-		return 1
+	if (s.pos < s.len): return 1
 	int got = 0
-	if (s.tls != 0):
-		got = tls_read(s.tls, s.buf, 4096)
-	else:
-		got = read(s.ctrl, s.buf, 1)
-	if (got <= 0):
-		return 0
+	if (s.tls != 0): got = tls_read(s.tls, s.buf, 4096)
+	else: got = read(s.ctrl, s.buf, 1)
+	if (got <= 0): return 0
 	s.pos = 0
 	s.len = got
 	return 1
@@ -140,16 +135,12 @@ int ftps_srv_open_transfer(ftps_srv* s, tls_conn** out_tls):
 void ftps_srv_download(ftps_srv* s, char* data, int n, int truncate):
 	tls_conn* dt = 0
 	int conn = ftps_srv_open_transfer(s, &dt)
-	if (conn < 0):
-		return
+	if (conn < 0): return
 	if (dt != 0):
 		tls_write(dt, data, n)
-		if (truncate != 0):
-			tls_conn_free(dt)
-		else:
-			tls_close(dt)
-	else:
-		net_test_send_all(conn, data, n)
+		if (truncate != 0): tls_conn_free(dt)
+		else: tls_close(dt)
+	else: net_test_send_all(conn, data, n)
 	close(conn)
 	ftps_srv_reply(s, c"226 Transfer complete")
 
@@ -157,33 +148,26 @@ void ftps_srv_download(ftps_srv* s, char* data, int n, int truncate):
 void ftps_srv_upload(ftps_srv* s):
 	tls_conn* dt = 0
 	int conn = ftps_srv_open_transfer(s, &dt)
-	if (conn < 0):
-		return
+	if (conn < 0): return
 	string_builder* got = string_new()
 	char* chunk = malloc(4096)
 	int k = 0
 	int clean = 1
 	while (1):
-		if (dt != 0):
-			k = tls_read(dt, chunk, 4096)
-		else:
-			k = read(conn, chunk, 4096)
+		if (dt != 0): k = tls_read(dt, chunk, 4096)
+		else: k = read(conn, chunk, 4096)
 		if (k <= 0):
-			if (k < 0):
-				clean = 0
+			if (k < 0): clean = 0
 			break
 		string_append_bytes(got, chunk, k)
 	free(chunk)
-	if (dt != 0):
-		tls_conn_free(dt)
+	if (dt != 0): tls_conn_free(dt)
 	close(conn)
 	s.stored = got.data
 	s.stored_len = got.length
 	free(got)
-	if (clean != 0):
-		ftps_srv_reply(s, c"226 Transfer complete")
-	else:
-		ftps_srv_reply(s, c"426 Upload truncated")
+	if (clean != 0): ftps_srv_reply(s, c"226 Transfer complete")
+	else: ftps_srv_reply(s, c"426 Upload truncated")
 
 
 # 1 when a transfer may proceed under the server's protection policy.
@@ -208,8 +192,7 @@ int ftps_srv_handle(ftps_srv* s, char* verb, char* arg):
 			# buffer together with the 234.
 			char* both = c"234 Proceed with negotiation\x0d\x0a230 injected: logged in\x0d\x0a"
 			net_test_send_all(s.ctrl, both, strlen(both))
-		else:
-			ftps_srv_reply(s, c"234 Proceed with negotiation")
+		else: ftps_srv_reply(s, c"234 Proceed with negotiation")
 		s.tls = ftps_srv_tls_accept(s.ctrl)
 		if (s.tls == 0):
 			ftps_srv_note(s, c"[tls failed]")
@@ -225,8 +208,7 @@ int ftps_srv_handle(ftps_srv* s, char* verb, char* arg):
 		if (strcmp(arg, c"secret") == 0):
 			s.logged_in = 1
 			ftps_srv_reply(s, c"230 Logged in")
-		else:
-			ftps_srv_reply(s, c"530 Login incorrect")
+		else: ftps_srv_reply(s, c"530 Login incorrect")
 		return 1
 	if (strcmp(verb, c"QUIT") == 0):
 		ftps_srv_reply(s, c"221 Goodbye")
@@ -235,30 +217,26 @@ int ftps_srv_handle(ftps_srv* s, char* verb, char* arg):
 		ftps_srv_reply(s, c"200 NOOP ok")
 		return 1
 	if (strcmp(verb, c"PBSZ") == 0):
-		if (s.tls == 0):
-			ftps_srv_reply(s, c"503 PBSZ requires AUTH")
+		if (s.tls == 0): ftps_srv_reply(s, c"503 PBSZ requires AUTH")
 		else:
 			s.pbsz = 1
 			ftps_srv_reply(s, c"200 PBSZ=0")
 		return 1
 	if (strcmp(verb, c"PROT") == 0):
-		if ((s.tls == 0) || (s.pbsz == 0)):
-			ftps_srv_reply(s, c"503 PROT requires PBSZ")
+		if ((s.tls == 0) || (s.pbsz == 0)): ftps_srv_reply(s, c"503 PROT requires PBSZ")
 		else if (strcmp(arg, c"P") == 0):
 			s.prot_p = 1
 			ftps_srv_reply(s, c"200 Protection set to Private")
 		else if (strcmp(arg, c"C") == 0):
 			s.prot_p = 0
 			ftps_srv_reply(s, c"200 Protection set to Clear")
-		else:
-			ftps_srv_reply(s, c"504 Unsupported protection level")
+		else: ftps_srv_reply(s, c"504 Unsupported protection level")
 		return 1
 	if (s.logged_in == 0):
 		ftps_srv_reply(s, c"530 Please login with USER and PASS")
 		return 1
 	if (strcmp(verb, c"EPSV") == 0):
-		if (s.data_listener >= 0):
-			close(s.data_listener)
+		if (s.data_listener >= 0): close(s.data_listener)
 		int port = 0
 		s.data_listener = net_test_listen(&port)
 		char* text = strjoin(strjoin(c"229 Entering Extended Passive Mode (|||", itoa(port)), c"|)")
@@ -270,12 +248,9 @@ int ftps_srv_handle(ftps_srv* s, char* verb, char* arg):
 			ftps_srv_download(s, listing, strlen(listing), 0)
 		return 1
 	if (strcmp(verb, c"RETR") == 0):
-		if (ftps_srv_prot_ok(s) == 0):
-			return 1
-		if (strcmp(arg, c"hello.txt") == 0):
-			ftps_srv_download(s, c"Hello, FTPS!\x0d\x0a", 14, 0)
-		else if (strcmp(arg, c"trunc.bin") == 0):
-			ftps_srv_download(s, c"partial", 7, 1)
+		if (ftps_srv_prot_ok(s) == 0): return 1
+		if (strcmp(arg, c"hello.txt") == 0): ftps_srv_download(s, c"Hello, FTPS!\x0d\x0a", 14, 0)
+		else if (strcmp(arg, c"trunc.bin") == 0): ftps_srv_download(s, c"partial", 7, 1)
 		else if ((strcmp(arg, c"upload.bin") == 0) && (s.stored != 0)):
 			ftps_srv_download(s, s.stored, s.stored_len, 0)
 		else:
@@ -285,8 +260,7 @@ int ftps_srv_handle(ftps_srv* s, char* verb, char* arg):
 			ftps_srv_reply(s, c"550 Failed to open file")
 		return 1
 	if (strcmp(verb, c"STOR") == 0):
-		if (ftps_srv_prot_ok(s) != 0):
-			ftps_srv_upload(s)
+		if (ftps_srv_prot_ok(s) != 0): ftps_srv_upload(s)
 		return 1
 	ftps_srv_reply(s, c"502 Command not implemented")
 	return 1
@@ -311,8 +285,7 @@ void ftps_srv_run(int listener, int pipe_fd, int implicit, int auth_ok, int inje
 	s.stored_len = 0
 	s.ctrl = socket_accept_connection(listener)
 	close(listener)
-	if (s.ctrl < 0):
-		exit(1)
+	if (s.ctrl < 0): exit(1)
 	socket_set_recv_timeout(s.ctrl, 20000)
 	int alive = 1
 	if (implicit != 0):
@@ -320,24 +293,19 @@ void ftps_srv_run(int listener, int pipe_fd, int implicit, int auth_ok, int inje
 		if (s.tls == 0):
 			ftps_srv_note(s, c"[tls failed]")
 			alive = 0
-		else:
-			ftps_srv_note(s, c"[tls]")
-	if (alive != 0):
-		ftps_srv_reply(s, c"220-W test FTPS server\x0d\x0a220 Ready")
+		else: ftps_srv_note(s, c"[tls]")
+	if (alive != 0): ftps_srv_reply(s, c"220-W test FTPS server\x0d\x0a220 Ready")
 	string_builder* line = string_new()
 	while ((alive != 0) && (ftps_srv_read_line(s, line) != 0)):
 		ftps_srv_note(s, line.data)
 		int sp = 0
-		while ((line.data[sp] != 0) && (line.data[sp] != ' ')):
-			sp = sp + 1
+		while ((line.data[sp] != 0) && (line.data[sp] != ' ')): sp = sp + 1
 		char* verb = substring(line.data, 0, sp)
 		char* arg = c""
-		if (line.data[sp] == ' '):
-			arg = line.data + sp + 1
+		if (line.data[sp] == ' '): arg = line.data + sp + 1
 		alive = ftps_srv_handle(s, verb, arg)
 		free(verb)
-	if (s.tls != 0):
-		tls_close(s.tls)
+	if (s.tls != 0): tls_close(s.tls)
 	close(s.ctrl)
 	net_test_send_all(pipe_fd, s.tr.data, s.tr.length)
 	close(pipe_fd)
@@ -563,8 +531,7 @@ void test_ftps_truncated_download():
 char* ftps_drain(int fd):
 	char* buf = malloc(256)
 	int got = read(fd, buf, 255)
-	if (got < 0):
-		got = 0
+	if (got < 0): got = 0
 	buf[got] = 0
 	return buf
 

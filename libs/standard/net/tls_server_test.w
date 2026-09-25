@@ -53,8 +53,7 @@ char* tlss_key_path():
 
 # Fill n bytes of buf with a deterministic non-trivial pattern.
 void tlss_fill(char* buf, int n, int seed):
-	for i in range(n):
-		buf[i] = (seed + i * 7 + (i >> 3)) & 255
+	for i in range(n): buf[i] = (seed + i * 7 + (i >> 3)) & 255
 
 
 int tlss_bytes_equal(char* a, char* b, int n):
@@ -74,8 +73,7 @@ char* tlss_wrap_handshake(char* msg, int mlen, int* out_len):
 	rec[2] = 3
 	rec[3] = (mlen >> 8) & 255
 	rec[4] = mlen & 255
-	for i in range(mlen):
-		rec[5 + i] = msg[i]
+	for i in range(mlen): rec[5 + i] = msg[i]
 	*out_len = 5 + mlen
 	return rec
 
@@ -95,10 +93,8 @@ tls_server_config* tlss_config_inmem():
 
 
 void tlss_config_inmem_free(tls_server_config* scfg):
-	if (scfg.test_cert_pem != 0):
-		free(scfg.test_cert_pem)
-	if (scfg.test_key_pem != 0):
-		free(scfg.test_key_pem)
+	if (scfg.test_cert_pem != 0): free(scfg.test_cert_pem)
+	if (scfg.test_key_pem != 0): free(scfg.test_key_pem)
 	tls_server_config_free(scfg)
 
 
@@ -512,8 +508,7 @@ void test_server_tampered_client_finished():
 	# the Finished record (offset 5 = first byte past the record header).
 	char* full = malloc(chrec_len + fin_len)
 	mem_copy(full, chrec, chrec_len)
-	for i in range(fin_len):
-		full[chrec_len + i] = cout[ch_rec_len + i]
+	for i in range(fin_len): full[chrec_len + i] = cout[ch_rec_len + i]
 	full[chrec_len + 5] = full[chrec_len + 5] ^ 0xff
 
 	tls_server_config* scfg = tlss_config_inmem()
@@ -557,19 +552,15 @@ void test_server_loopback_fork():
 		scfg.cert_chain_path = tlss_cert_path()
 		scfg.key_path = tlss_key_path()
 		tls_conn* s = tls_accept(fds[1], scfg)
-		if (s == 0):
-			exit(11)
+		if (s == 0): exit(11)
 		char* buf = malloc(256)
 		int got = tls_read(s, buf, 256)
-		if (got <= 0):
-			exit(12)
+		if (got <= 0): exit(12)
 		# Echo a fixed response.
 		char* reply = c"pong from tls_accept"
-		if (tls_write(s, reply, strlen(reply)) != strlen(reply)):
-			exit(13)
+		if (tls_write(s, reply, strlen(reply)) != strlen(reply)): exit(13)
 		# Expect the client's close_notify (clean EOF).
-		if (tls_read(s, buf, 256) != 0):
-			exit(14)
+		if (tls_read(s, buf, 256) != 0): exit(14)
 		tls_close(s)
 		exit(0)
 

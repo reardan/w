@@ -184,26 +184,22 @@ void dfl_find_match(char* data, int length, int* prev, int pos, int hash_head, i
 	*out_len = 0
 	*out_dist = 0
 	int max_len = length - pos
-	if (max_len > dfl_max_match):
-		max_len = dfl_max_match
-	if (max_len < dfl_min_match):
-		return
+	if (max_len > dfl_max_match): max_len = dfl_max_match
+	if (max_len < dfl_min_match): return
 	int best_len = dfl_min_match - 1
 	int best_dist = 0
 	int cand = hash_head
 	int chain = max_chain
 	while ((cand >= 0) && (chain > 0)):
 		int dist = pos - cand
-		if (dist > max_dist):
-			break
+		if (dist > max_dist): break
 		int mlen = 0
 		while ((mlen < max_len) && ((data[cand + mlen] & 255) == (data[pos + mlen] & 255))):
 			mlen = mlen + 1
 		if (mlen > best_len):
 			best_len = mlen
 			best_dist = dist
-			if (mlen >= max_len):
-				break
+			if (mlen >= max_len): break
 		cand = prev[cand]
 		chain = chain - 1
 	if (best_len >= dfl_min_match):
@@ -236,8 +232,7 @@ dfl_tokens* dfl_tokenize_from(char* data, int length, int start, int max_chain, 
 	mem_fill(head, -1, dfl_hash_size)
 	int* prev = cast(int*, malloc(length * __word_size__))
 	for h in range(start):
-		if (h + dfl_min_match <= length):
-			dfl_insert(data, length, head, prev, h)
+		if (h + dfl_min_match <= length): dfl_insert(data, length, head, prev, h)
 
 	int strstart = start
 	int match_available = 0
@@ -257,8 +252,7 @@ dfl_tokens* dfl_tokenize_from(char* data, int length, int start, int max_chain, 
 			t.count = t.count + 1
 			int match_end = (strstart - 1) + prev_length
 			for k in range(strstart + 1, match_end):
-				if (k + dfl_min_match <= length):
-					dfl_insert(data, length, head, prev, k)
+				if (k + dfl_min_match <= length): dfl_insert(data, length, head, prev, k)
 			strstart = match_end
 			match_available = 0
 			prev_length = dfl_min_match - 1
@@ -299,8 +293,7 @@ dfl_tokens* dfl_tokenize(char* data, int length, int max_chain):
 # file's header comment).
 void dfl_length_symbol(int len, int* out_sym, int* out_extra_bits, int* out_extra_val):
 	int idx = 28
-	while ((idx > 0) && (inf_length_base(idx) > len)):
-		idx = idx - 1
+	while ((idx > 0) && (inf_length_base(idx) > len)): idx = idx - 1
 	*out_sym = 257 + idx
 	*out_extra_bits = inf_length_extra(idx)
 	*out_extra_val = len - inf_length_base(idx)
@@ -309,8 +302,7 @@ void dfl_length_symbol(int len, int* out_sym, int* out_extra_bits, int* out_extr
 # Distance 1..32768 -> distance symbol 0..29 plus extra bits.
 void dfl_dist_symbol(int dist, int* out_sym, int* out_extra_bits, int* out_extra_val):
 	int idx = 29
-	while ((idx > 0) && (inf_dist_base(idx) > dist)):
-		idx = idx - 1
+	while ((idx > 0) && (inf_dist_base(idx) > dist)): idx = idx - 1
 	*out_sym = idx
 	*out_extra_bits = inf_dist_extra(idx)
 	*out_extra_val = dist - inf_dist_base(idx)
@@ -438,16 +430,14 @@ int* dfl_build_lengths(int* freq, int n, int max_bits):
 	# never gets that deep (a small alphabet like the 19-symbol
 	# code-length table can have max_bits=7 while total_nodes is tiny).
 	int hist_size = total_nodes + 2
-	if (hist_size < max_bits + 2):
-		hist_size = max_bits + 2
+	if (hist_size < max_bits + 2): hist_size = max_bits + 2
 	int* bl_count = cast(int*, malloc(hist_size * __word_size__))
 	mem_fill(bl_count, 0, hist_size)
 	int maxdepth = 0
 	i = 0
 	while (i < nused):
 		int d = depth[i]
-		if (d > maxdepth):
-			maxdepth = d
+		if (d > maxdepth): maxdepth = d
 		bl_count[d] = bl_count[d] + 1
 		i = i + 1
 	free(node_freq)
@@ -470,8 +460,7 @@ int* dfl_build_lengths(int* freq, int n, int max_bits):
 	while ((total != target) && (guard < hist_size * 4 + 16)):
 		bl_count[max_bits] = bl_count[max_bits] - 1
 		len = max_bits - 1
-		while ((len > 0) && (bl_count[len] == 0)):
-			len = len - 1
+		while ((len > 0) && (bl_count[len] == 0)): len = len - 1
 		bl_count[len] = bl_count[len] - 1
 		bl_count[len + 1] = bl_count[len + 1] + 2
 		total = total - 1
@@ -503,8 +492,7 @@ int* dfl_build_codes(int* lengths, int n, int max_bits):
 		i = i + 1
 	i = 0
 	while (i < n):
-		if (lengths[i] > 0):
-			bl_count[lengths[i]] = bl_count[lengths[i]] + 1
+		if (lengths[i] > 0): bl_count[lengths[i]] = bl_count[lengths[i]] + 1
 		i = i + 1
 	int* next_code = cast(int*, malloc((max_bits + 1) * __word_size__))
 	i = 0
@@ -539,8 +527,7 @@ int* dfl_fixed_dist_codes_cache
 
 
 void dfl_init_fixed_tables():
-	if (dfl_fixed_litlen_lengths_cache != 0):
-		return
+	if (dfl_fixed_litlen_lengths_cache != 0): return
 	int* ll = cast(int*, malloc(288 * __word_size__))
 	int i = 0
 	while (i < 144):
@@ -612,8 +599,7 @@ void dfl_put_bit(dfl_bits* w, int bit):
 
 
 void dfl_put_bits(dfl_bits* w, int value, int nbits):
-	for i in range(nbits):
-		dfl_put_bit(w, shr(value, i) & 1)
+	for i in range(nbits): dfl_put_bit(w, shr(value, i) & 1)
 
 
 void dfl_put_huffman(dfl_bits* w, int code, int length):
@@ -643,23 +629,20 @@ void dfl_emit_body(dfl_bits* w, dfl_tokens* t, int start, int end, int* ll_codes
 	for i in range(start, end):
 		int len = t.len[i]
 		int dist = t.dist[i]
-		if (dist == 0):
-			dfl_put_huffman(w, ll_codes[len], ll_lengths[len])
+		if (dist == 0): dfl_put_huffman(w, ll_codes[len], ll_lengths[len])
 		else:
 			int sym = 0
 			int eb = 0
 			int ev = 0
 			dfl_length_symbol(len, &sym, &eb, &ev)
 			dfl_put_huffman(w, ll_codes[sym], ll_lengths[sym])
-			if (eb > 0):
-				dfl_put_bits(w, ev, eb)
+			if (eb > 0): dfl_put_bits(w, ev, eb)
 			int dsym = 0
 			int deb = 0
 			int dev = 0
 			dfl_dist_symbol(dist, &dsym, &deb, &dev)
 			dfl_put_huffman(w, d_codes[dsym], d_lengths[dsym])
-			if (deb > 0):
-				dfl_put_bits(w, dev, deb)
+			if (deb > 0): dfl_put_bits(w, dev, deb)
 	dfl_put_huffman(w, ll_codes[256], ll_lengths[256])
 
 
@@ -673,8 +656,7 @@ int dfl_body_cost_bits(dfl_tokens* t, int start, int end, int* ll_lengths, int* 
 	for i in range(start, end):
 		int len = t.len[i]
 		int dist = t.dist[i]
-		if (dist == 0):
-			bits = bits + ll_lengths[len]
+		if (dist == 0): bits = bits + ll_lengths[len]
 		else:
 			int sym = 0
 			int eb = 0
@@ -700,8 +682,7 @@ int dfl_body_cost_bits(dfl_tokens* t, int start, int end, int* ll_lengths, int* 
 # bits.
 int dfl_stored_cost_bits(int cur_nbits, int len):
 	int chunks = 1
-	if (len > 65535):
-		chunks = (len + 65534) / 65535
+	if (len > 65535): chunks = (len + 65534) / 65535
 	int first_pad = (8 - ((cur_nbits + 3) % 8)) % 8
 	return 3 + first_pad + (chunks - 1) * 8 + chunks * 32 + len * 8
 
@@ -715,11 +696,9 @@ void dfl_emit_stored_range(dfl_bits* w, char* data, int offset, int len, int is_
 	while ((pos < len) || first):
 		first = 0
 		int chunk = len - pos
-		if (chunk > 65535):
-			chunk = 65535
+		if (chunk > 65535): chunk = 65535
 		int final_bit = 0
-		if ((is_last) && (pos + chunk == len)):
-			final_bit = 1
+		if ((is_last) && (pos + chunk == len)): final_bit = 1
 		dfl_put_bits(w, final_bit, 1)
 		dfl_put_bits(w, 0, 2)
 		dfl_align_byte(w)
@@ -743,8 +722,7 @@ void dfl_count_freqs(dfl_tokens* t, int start, int end, int* freq_ll, int* freq_
 	for i in range(start, end):
 		int len = t.len[i]
 		int dist = t.dist[i]
-		if (dist == 0):
-			freq_ll[len] = freq_ll[len] + 1
+		if (dist == 0): freq_ll[len] = freq_ll[len] + 1
 		else:
 			int sym = 0
 			int eb = 0
@@ -784,8 +762,7 @@ dfl_cltoks* dfl_build_cl_tokens(int* lengths, int total):
 	while (i < total):
 		int curlen = lengths[i]
 		int runlen = 1
-		while ((i + runlen < total) && (lengths[i + runlen] == curlen)):
-			runlen = runlen + 1
+		while ((i + runlen < total) && (lengths[i + runlen] == curlen)): runlen = runlen + 1
 		if (curlen == 0):
 			int remaining = runlen
 			while (remaining > 0):
@@ -797,8 +774,7 @@ dfl_cltoks* dfl_build_cl_tokens(int* lengths, int total):
 					remaining = remaining - 1
 				else:
 					int chunk = remaining
-					if (chunk > 138):
-						chunk = 138
+					if (chunk > 138): chunk = 138
 					if (chunk >= 11):
 						sym[count] = 18
 						extra_val[count] = chunk - 11
@@ -824,8 +800,7 @@ dfl_cltoks* dfl_build_cl_tokens(int* lengths, int total):
 					remaining = remaining - 1
 				else:
 					int chunk = remaining
-					if (chunk > 6):
-						chunk = 6
+					if (chunk > 6): chunk = 6
 					sym[count] = 16
 					extra_val[count] = chunk - 3
 					extra_bits[count] = 2
@@ -873,8 +848,7 @@ dfl_dyn* dfl_dyn_build(dfl_tokens* t, int start, int end):
 	while (i < 30):
 		total_d = total_d + freq_d[i]
 		i = i + 1
-	if (total_d == 0):
-		freq_d[0] = 1
+	if (total_d == 0): freq_d[0] = 1
 
 	dfl_dyn* dy = new dfl_dyn
 	dy.ll_lengths = dfl_build_lengths(freq_ll, 288, 15)
@@ -886,13 +860,10 @@ dfl_dyn* dfl_dyn_build(dfl_tokens* t, int start, int end):
 
 	int hlit = 257
 	int idx = 287
-	while ((idx >= 257) && (dy.ll_lengths[idx] == 0)):
-		idx = idx - 1
-	if (idx >= 257):
-		hlit = idx + 1
+	while ((idx >= 257) && (dy.ll_lengths[idx] == 0)): idx = idx - 1
+	if (idx >= 257): hlit = idx + 1
 	idx = 29
-	while ((idx > 0) && (dy.d_lengths[idx] == 0)):
-		idx = idx - 1
+	while ((idx > 0) && (dy.d_lengths[idx] == 0)): idx = idx - 1
 	int hdist = idx + 1
 	dy.hlit = hlit
 	dy.hdist = hdist
@@ -963,8 +934,7 @@ void dfl_emit_dynamic_block(dfl_bits* w, dfl_tokens* t, int start, int end, dfl_
 	while (i < dy.cl.count):
 		int sym = dy.cl.sym[i]
 		dfl_put_huffman(w, dy.cl_codes[sym], dy.cl_lengths[sym])
-		if (dy.cl.extra_bits[i] > 0):
-			dfl_put_bits(w, dy.cl.extra_val[i], dy.cl.extra_bits[i])
+		if (dy.cl.extra_bits[i] > 0): dfl_put_bits(w, dy.cl.extra_val[i], dy.cl.extra_bits[i])
 		i = i + 1
 	dfl_emit_body(w, t, start, end, dy.ll_codes, dy.ll_lengths, dy.d_codes, dy.d_lengths)
 
@@ -994,10 +964,8 @@ void dfl_emit_block(dfl_bits* w, char* data, dfl_tokens* t, int start, int end, 
 		dfl_put_bits(w, is_last & 1, 1)
 		dfl_put_bits(w, 1, 2)
 		dfl_emit_body(w, t, start, end, dfl_fixed_litlen_codes(), dfl_fixed_litlen_lengths(), dfl_fixed_dist_codes(), dfl_fixed_dist_lengths())
-	else:
-		dfl_emit_dynamic_block(w, t, start, end, dy, is_last)
-	if (dy != 0):
-		dfl_dyn_free(dy)
+	else: dfl_emit_dynamic_block(w, t, start, end, dy, is_last)
+	if (dy != 0): dfl_dyn_free(dy)
 
 
 /* ---- Top level ---- */
@@ -1010,8 +978,7 @@ void dfl_emit_block(dfl_bits* w, char* data, dfl_tokens* t, int start, int end, 
 # projects/compress.md §5.5), so this returns a plain value, never a
 # wresult[T]*.
 deflate_result* deflate(char* data, int length, int level):
-	if (length < 0):
-		length = 0
+	if (length < 0): length = 0
 	if (level <= DEFLATE_LEVEL_STORED()):
 		string_builder* out = string_new()
 		int max_chunk = 65535
@@ -1023,11 +990,9 @@ deflate_result* deflate(char* data, int length, int level):
 		while (pos < length):
 			int remaining = length - pos
 			int chunk = remaining
-			if (chunk > max_chunk):
-				chunk = max_chunk
+			if (chunk > max_chunk): chunk = max_chunk
 			int is_final = 0
-			if (pos + chunk == length):
-				is_final = 1
+			if (pos + chunk == length): is_final = 1
 			deflate_emit_stored_block(out, data, pos, chunk, is_final)
 			pos = pos + chunk
 		char* out_data = out.data
@@ -1037,8 +1002,7 @@ deflate_result* deflate(char* data, int length, int level):
 		return r
 
 	int max_chain = dfl_max_chain_fast
-	if (level >= DEFLATE_LEVEL_BEST()):
-		max_chain = dfl_max_chain_best
+	if (level >= DEFLATE_LEVEL_BEST()): max_chain = dfl_max_chain_best
 	dfl_tokens* t = dfl_tokenize(data, length, max_chain)
 	dfl_bits* w = dfl_bits_new()
 
@@ -1055,10 +1019,8 @@ deflate_result* deflate(char* data, int length, int level):
 		int block_start = pos
 		int consumed = 0
 		while ((pos < t.count) && (consumed < dfl_block_input_bytes)):
-			if (t.dist[pos] == 0):
-				consumed = consumed + 1
-			else:
-				consumed = consumed + t.len[pos]
+			if (t.dist[pos] == 0): consumed = consumed + 1
+			else: consumed = consumed + t.len[pos]
 			pos = pos + 1
 		int is_last = 0
 		if (pos >= t.count):
@@ -1095,13 +1057,10 @@ deflate_result* deflate(char* data, int length, int level):
 # can be handed to a registration hook such as websocket.w's
 # ws_use_deflate without that module importing this package.
 char* deflate_window(char* data, int length, char* window, int window_len, int window_bits, int level, int* out_len):
-	if (length < 0):
-		length = 0
-	if ((window == 0) || (window_len < 0)):
-		window_len = 0
+	if (length < 0): length = 0
+	if ((window == 0) || (window_len < 0)): window_len = 0
 	int max_dist = dfl_max_dist
-	if ((window_bits >= 8) && (window_bits <= 15)):
-		max_dist = 1 << window_bits
+	if ((window_bits >= 8) && (window_bits <= 15)): max_dist = 1 << window_bits
 	if (window_len > max_dist):
 		window = &window[window_len - max_dist]
 		window_len = max_dist
@@ -1110,14 +1069,12 @@ char* deflate_window(char* data, int length, char* window, int window_len, int w
 		int total = window_len + length
 		char* combined = malloc(total)
 		mem_copy(combined, window, window_len)
-		for i in range(length):
-			combined[window_len + i] = data[i]
+		for i in range(length): combined[window_len + i] = data[i]
 		if (level <= DEFLATE_LEVEL_STORED()):
 			dfl_emit_stored_range(w, combined, window_len, length, 0)
 		else:
 			int max_chain = dfl_max_chain_fast
-			if (level >= DEFLATE_LEVEL_BEST()):
-				max_chain = dfl_max_chain_best
+			if (level >= DEFLATE_LEVEL_BEST()): max_chain = dfl_max_chain_best
 			dfl_tokens* t = dfl_tokenize_from(combined, total, window_len, max_chain, max_dist)
 			int pos = 0
 			int in_pos = window_len
@@ -1125,10 +1082,8 @@ char* deflate_window(char* data, int length, char* window, int window_len, int w
 				int block_start = pos
 				int consumed = 0
 				while ((pos < t.count) && (consumed < dfl_block_input_bytes)):
-					if (t.dist[pos] == 0):
-						consumed = consumed + 1
-					else:
-						consumed = consumed + t.len[pos]
+					if (t.dist[pos] == 0): consumed = consumed + 1
+					else: consumed = consumed + t.len[pos]
 					pos = pos + 1
 				dfl_emit_block(w, combined, t, block_start, pos, in_pos, consumed, level, 0)
 				in_pos = in_pos + consumed

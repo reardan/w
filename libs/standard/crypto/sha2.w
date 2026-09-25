@@ -104,32 +104,25 @@ void whash_register(int alg, int digest_size, int block_size, int state_words, i
 # Digest length in bytes.
 int whash_digest_size(int alg):
 	whash_ext* e = whash_ext_find(alg)
-	if (e != 0):
-		return e.digest_size
-	if (alg == WHASH_SHA256):
-		return 32
-	if (alg == WHASH_SHA384):
-		return 48
+	if (e != 0): return e.digest_size
+	if (alg == WHASH_SHA256): return 32
+	if (alg == WHASH_SHA384): return 48
 	return 64
 
 
 # Input block length in bytes (HMAC pads keys to this size).
 int whash_block_size(int alg):
 	whash_ext* e = whash_ext_find(alg)
-	if (e != 0):
-		return e.block_size
-	if (alg == WHASH_SHA256):
-		return 64
+	if (e != 0): return e.block_size
+	if (alg == WHASH_SHA256): return 64
 	return 128
 
 
 # Words of internal state: 8 ints for SHA-256, 8 hi/lo pairs for SHA-512.
 int whash_state_words(int alg):
 	whash_ext* e = whash_ext_find(alg)
-	if (e != 0):
-		return e.state_words
-	if (alg == WHASH_SHA256):
-		return 8
+	if (e != 0): return e.state_words
+	if (alg == WHASH_SHA256): return 8
 	return 16
 
 
@@ -150,10 +143,8 @@ void sha2_add64(int* r, int bh, int bl):
 # High word of (hi:lo) rotated right by n (1..63).
 int sha2_rotr_hi(int hi, int lo, int n):
 	int mask = sha256_mask32()
-	if (n == 32):
-		return lo & mask
-	if (n < 32):
-		return (sha256_shr(hi, n) | (lo << (32 - n))) & mask
+	if (n == 32): return lo & mask
+	if (n < 32): return (sha256_shr(hi, n) | (lo << (32 - n))) & mask
 	int m = n - 32
 	return (sha256_shr(lo, m) | (hi << (32 - m))) & mask
 
@@ -161,10 +152,8 @@ int sha2_rotr_hi(int hi, int lo, int n):
 # Low word of (hi:lo) rotated right by n.
 int sha2_rotr_lo(int hi, int lo, int n):
 	int mask = sha256_mask32()
-	if (n == 32):
-		return hi & mask
-	if (n < 32):
-		return (sha256_shr(lo, n) | (hi << (32 - n))) & mask
+	if (n == 32): return hi & mask
+	if (n < 32): return (sha256_shr(lo, n) | (hi << (32 - n))) & mask
 	int m = n - 32
 	return (sha256_shr(hi, m) | (lo << (32 - m))) & mask
 
@@ -217,16 +206,14 @@ int sha2_ssig1_lo(int hi, int lo):
 # Parse 8 lowercase hex chars into one masked 32-bit word.
 int sha2_hex32(char* s):
 	int v = 0
-	for i in range(8):
-		v = (v << 4) | hex_decode_char(s[i] & 255)
+	for i in range(8): v = (v << 4) | hex_decode_char(s[i] & 255)
 	return v & sha256_mask32()
 
 
 # Parse `words` 32-bit words from hex text into a malloc'd int array.
 int* sha2_parse_words(char* hex, int words):
 	int* out = cast(int*, malloc(words * __word_size__))
-	for i in range(words):
-		out[i] = sha2_hex32(hex + i * 8)
+	for i in range(words): out[i] = sha2_hex32(hex + i * 8)
 	return out
 
 
@@ -420,12 +407,10 @@ void whash_load_iv(whash* h):
 		return
 	if (h.alg == WHASH_SHA256):
 		char* h0 = sha256_h0_table()
-		for i in range(8):
-			h.state[i] = sha256_be32(h0 + i * 4)
+		for i in range(8): h.state[i] = sha256_be32(h0 + i * 4)
 		return
 	int* iv = sha2_h512_table()
-	if (h.alg == WHASH_SHA384):
-		iv = sha2_h384_table()
+	if (h.alg == WHASH_SHA384): iv = sha2_h384_table()
 	mem_copy(h.state, iv, 16)
 
 
@@ -477,16 +462,13 @@ void whash_compress(whash* h, char* block):
 	if (e != 0):
 		e.compress(h.state, block)
 		return
-	if (h.alg == WHASH_SHA256):
-		sha256_block(h.state, block)
-	else:
-		sha512_block(h.state, block)
+	if (h.alg == WHASH_SHA256): sha256_block(h.state, block)
+	else: sha512_block(h.state, block)
 
 
 # Absorb len bytes at data.
 void whash_update(whash* h, char* data, int len):
-	if (len <= 0):
-		return
+	if (len <= 0): return
 	h.scratch[0] = h.len_hi
 	h.scratch[1] = h.len_lo
 	sha2_add64(h.scratch, 0, len)
@@ -525,24 +507,21 @@ void whash_final(whash* h, char* out):
 
 	int bs = h.block_size
 	int length_field = 8
-	if (bs == 128):
-		length_field = 16
+	if (bs == 128): length_field = 16
 	char* tail = malloc(bs * 2)
 	mem_fill(tail, 0, bs * 2)
 	mem_copy(tail, h.buffer, h.buffered)
 	tail[h.buffered] = 128 /* 0x80 terminator */
 
 	int blocks = 1
-	if (h.buffered >= bs - length_field):
-		blocks = 2
+	if (h.buffered >= bs - length_field): blocks = 2
 	# Message length in bits in the trailing length field: big-endian for
 	# the SHA family, little-endian (low word first) for MD5-style
 	# extensions. bits = bytes * 8: a left shift by 3 across the hi/lo
 	# byte count.
 	whash_ext* e = h.ext
 	int le = 0
-	if (e != 0):
-		le = e.little_endian
+	if (e != 0): le = e.little_endian
 	int mask = sha256_mask32()
 	int bits_mid = ((h.len_hi << 3) | sha256_shr(h.len_lo, 29)) & mask
 	int bits_lo = (h.len_lo << 3) & mask
@@ -560,17 +539,14 @@ void whash_final(whash* h, char* out):
 
 	if (e != 0):
 		e.compress(st, tail)
-		if (blocks == 2):
-			e.compress(st, tail + bs)
+		if (blocks == 2): e.compress(st, tail + bs)
 	else:
 		if (h.alg == WHASH_SHA256):
 			sha256_block(st, tail)
-			if (blocks == 2):
-				sha256_block(st, tail + bs)
+			if (blocks == 2): sha256_block(st, tail + bs)
 		else:
 			sha512_block(st, tail)
-			if (blocks == 2):
-				sha512_block(st, tail + bs)
+			if (blocks == 2): sha512_block(st, tail + bs)
 	free(tail)
 
 	# Digest output, truncated to digest_size (SHA-384 keeps the first 6
@@ -578,10 +554,8 @@ void whash_final(whash* h, char* out):
 	# endianness.
 	int words = h.digest_size / 4
 	for i in range(words):
-		if (le == 1):
-			store_le32(out + i * 4, st[i])
-		else:
-			sha256_put_be32(out + i * 4, st[i])
+		if (le == 1): store_le32(out + i * 4, st[i])
+		else: sha256_put_be32(out + i * 4, st[i])
 	free(st)
 
 

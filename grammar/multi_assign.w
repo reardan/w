@@ -57,13 +57,10 @@ int multi_assign_capacity
 # Entries are word-sized ints, so sizes use __word_size__ (not 4) —
 # see code_generator/x86.w's ctrl_stack_reserve for the f13ab7f lesson.
 void multi_assign_reserve(int count):
-	if (count <= multi_assign_capacity):
-		return;
+	if (count <= multi_assign_capacity): return;
 	int old_bytes = multi_assign_capacity * __word_size__
-	if (multi_assign_capacity == 0):
-		multi_assign_capacity = 8
-	while (multi_assign_capacity < count):
-		multi_assign_capacity = multi_assign_capacity << 1
+	if (multi_assign_capacity == 0): multi_assign_capacity = 8
+	while (multi_assign_capacity < count): multi_assign_capacity = multi_assign_capacity << 1
 	int new_bytes = multi_assign_capacity * __word_size__
 	if (old_bytes == 0):
 		multi_assign_lhs_types = cast(int*, malloc(new_bytes))
@@ -79,16 +76,12 @@ void multi_assign_reserve(int count):
 # the two v1 exclusions documented above. The parsed lvalue's address is
 # in eax, untouched; 'type' is its declared type.
 void multi_assign_check_target(int type):
-	if (hash_index_pending):
-		error(c"multi-assignment does not support map or set elements")
-	if (nd_index_pending):
-		error(c"multi-assignment does not support ndarray elements")
-	if (expression_lhs_readonly):
-		error(c"cannot assign to read-only buffer field")
+	if (hash_index_pending): error(c"multi-assignment does not support map or set elements")
+	if (nd_index_pending): error(c"multi-assignment does not support ndarray elements")
+	if (expression_lhs_readonly): error(c"cannot assign to read-only buffer field")
 	if ((type_is_value(type)) || (type == 3) || (type == 4)):
 		error(c"assignment target is not assignable")
-	if (type_is_const(type)):
-		error(c"assignment to const")
+	if (type_is_const(type)): error(c"assignment to const")
 	if (type_num_args(type_canonical(type)) > 0):
 		error(c"multi-assignment does not support struct values")
 
@@ -109,8 +102,7 @@ int multi_assign(int first_type):
 		push_slot()
 		multi_assign_lhs_slots[lhs_count] = stack_pos
 		lhs_count = lhs_count + 1
-		if (accept(c",") == 0):
-			break
+		if (accept(c",") == 0): break
 		expression_lhs_readonly = 0
 		type = conditional_expr()
 	expect(c"=")
@@ -127,8 +119,7 @@ int multi_assign(int first_type):
 		# limit and message as expression()'s '=' branch — each element
 		# recurses expression() directly.
 		expr_nesting_depth = expr_nesting_depth + 1
-		if (expr_nesting_depth > 1000):
-			error(c"expression nesting too deep")
+		if (expr_nesting_depth > 1000): error(c"expression nesting too deep")
 		int got = promote(expression())
 		expr_nesting_depth = expr_nesting_depth - 1
 		if (rhs_count < lhs_count):
@@ -138,8 +129,7 @@ int multi_assign(int first_type):
 		push_slot()
 		multi_assign_rhs_slots[rhs_count] = stack_pos
 		rhs_count = rhs_count + 1
-		if (accept(c",") == 0):
-			more = 0
+		if (accept(c",") == 0): more = 0
 	if (rhs_count != lhs_count):
 		diag_part(c"multi-assignment arity mismatch: ")
 		diag_part(itoa(lhs_count))

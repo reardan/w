@@ -82,15 +82,13 @@ void ptx_reserve(int n):
 	if (ptx_emit_to_module):
 		if (ptx_module_size <= ptx_module_pos + n):
 			int x = (ptx_module_pos + n) << 1
-			if (x < 4096):
-				x = 4096
+			if (x < 4096): x = 4096
 			ptx_module_buf = realloc(ptx_module_buf, ptx_module_size, x)
 			ptx_module_size = x
 	else:
 		if (ptx_body_size <= ptx_body_pos + n):
 			int y = (ptx_body_pos + n) << 1
-			if (y < 4096):
-				y = 4096
+			if (y < 4096): y = 4096
 			ptx_body_buf = realloc(ptx_body_buf, ptx_body_size, y)
 			ptx_body_size = y
 
@@ -129,10 +127,8 @@ void ptx_emit_hex32(int v):
 	int shift = 28
 	while (shift >= 0):
 		int d = (v >> shift) & 15
-		if (d < 10):
-			ptx_emit_char('0' + d)
-		else:
-			ptx_emit_char('a' + d - 10)
+		if (d < 10): ptx_emit_char('0' + d)
+		else: ptx_emit_char('a' + d - 10)
 		shift = shift - 4
 
 
@@ -478,27 +474,17 @@ void ptx_alu_shift(char* mnemonic):
 
 # setCC-opcode -> PTX comparison name (the x86 second setCC byte).
 char* ptx_cc_name(int setcc_opcode):
-	if (setcc_opcode == 0x9c):
-		return c"lt"
-	if (setcc_opcode == 0x9d):
-		return c"ge"
-	if (setcc_opcode == 0x9e):
-		return c"le"
-	if (setcc_opcode == 0x9f):
-		return c"gt"
-	if (setcc_opcode == 0x94):
-		return c"eq"
-	if (setcc_opcode == 0x95):
-		return c"ne"
+	if (setcc_opcode == 0x9c): return c"lt"
+	if (setcc_opcode == 0x9d): return c"ge"
+	if (setcc_opcode == 0x9e): return c"le"
+	if (setcc_opcode == 0x9f): return c"gt"
+	if (setcc_opcode == 0x94): return c"eq"
+	if (setcc_opcode == 0x95): return c"ne"
 	# Unsigned forms, used after float compares: seta/setae/setb/setbe
-	if (setcc_opcode == 0x97):
-		return c"gt"
-	if (setcc_opcode == 0x93):
-		return c"ge"
-	if (setcc_opcode == 0x92):
-		return c"lt"
-	if (setcc_opcode == 0x96):
-		return c"le"
+	if (setcc_opcode == 0x97): return c"gt"
+	if (setcc_opcode == 0x93): return c"ge"
+	if (setcc_opcode == 0x92): return c"lt"
+	if (setcc_opcode == 0x96): return c"le"
 	error(c"gpu: unsupported comparison")
 	return c"eq"
 
@@ -570,14 +556,10 @@ void ptx_trap():
 # GPR -> f32 register transfer (movd xmm<xmm>, eax/ebx): the float bits
 # ride the integer pipeline's low 32 bits, like the host convention.
 void ptx_movd_xmm(int xmm, int reg):
-	if (reg == 0):
-		ptx_line(c"cvt.u32.u64 %w0, %ax;")
-	else:
-		ptx_line(c"cvt.u32.u64 %w0, %bx;")
-	if (xmm == 0):
-		ptx_line(c"mov.b32 %fa, %w0;")
-	else:
-		ptx_line(c"mov.b32 %fb, %w0;")
+	if (reg == 0): ptx_line(c"cvt.u32.u64 %w0, %ax;")
+	else: ptx_line(c"cvt.u32.u64 %w0, %bx;")
+	if (xmm == 0): ptx_line(c"mov.b32 %fa, %w0;")
+	else: ptx_line(c"mov.b32 %fb, %w0;")
 
 
 void ptx_movd_ax_f0():
@@ -587,15 +569,11 @@ void ptx_movd_ax_f0():
 
 void ptx_movq_xmm(int xmm, int reg):
 	if (xmm == 0):
-		if (reg == 0):
-			ptx_line(c"mov.b64 %da, %ax;")
-		else:
-			ptx_line(c"mov.b64 %da, %bx;")
+		if (reg == 0): ptx_line(c"mov.b64 %da, %ax;")
+		else: ptx_line(c"mov.b64 %da, %bx;")
 	else:
-		if (reg == 0):
-			ptx_line(c"mov.b64 %db, %ax;")
-		else:
-			ptx_line(c"mov.b64 %db, %bx;")
+		if (reg == 0): ptx_line(c"mov.b64 %db, %ax;")
+		else: ptx_line(c"mov.b64 %db, %bx;")
 
 
 void ptx_movq_ax_d0():
@@ -611,38 +589,28 @@ void ptx_fcmp_pending(int kind):
 void ptx_setcc_fcmp(int setcc_opcode):
 	ptx_emit(c"setp.")
 	ptx_emit(ptx_cc_name(setcc_opcode))
-	if (ptx_pending_fcmp == 2):
-		ptx_line(c".f64 %p, %da, %db;")
-	else:
-		ptx_line(c".f32 %p, %fa, %fb;")
+	if (ptx_pending_fcmp == 2): ptx_line(c".f64 %p, %da, %db;")
+	else: ptx_line(c".f32 %p, %fa, %fb;")
 	ptx_pending_fcmp = 0
 	ptx_line(c"selp.b64 %ax, 1, 0, %p;")
 
 
 void ptx_cvtsi2ss(int xmm, int reg):
 	if (xmm == 0):
-		if (reg == 0):
-			ptx_line(c"cvt.rn.f32.s64 %fa, %ax;")
-		else:
-			ptx_line(c"cvt.rn.f32.s64 %fa, %bx;")
+		if (reg == 0): ptx_line(c"cvt.rn.f32.s64 %fa, %ax;")
+		else: ptx_line(c"cvt.rn.f32.s64 %fa, %bx;")
 	else:
-		if (reg == 0):
-			ptx_line(c"cvt.rn.f32.s64 %fb, %ax;")
-		else:
-			ptx_line(c"cvt.rn.f32.s64 %fb, %bx;")
+		if (reg == 0): ptx_line(c"cvt.rn.f32.s64 %fb, %ax;")
+		else: ptx_line(c"cvt.rn.f32.s64 %fb, %bx;")
 
 
 void ptx_cvtsi2sd(int xmm, int reg):
 	if (xmm == 0):
-		if (reg == 0):
-			ptx_line(c"cvt.rn.f64.s64 %da, %ax;")
-		else:
-			ptx_line(c"cvt.rn.f64.s64 %da, %bx;")
+		if (reg == 0): ptx_line(c"cvt.rn.f64.s64 %da, %ax;")
+		else: ptx_line(c"cvt.rn.f64.s64 %da, %bx;")
 	else:
-		if (reg == 0):
-			ptx_line(c"cvt.rn.f64.s64 %db, %ax;")
-		else:
-			ptx_line(c"cvt.rn.f64.s64 %db, %bx;")
+		if (reg == 0): ptx_line(c"cvt.rn.f64.s64 %db, %ax;")
+		else: ptx_line(c"cvt.rn.f64.s64 %db, %bx;")
 
 
 void ptx_cvttss2si():
@@ -654,10 +622,8 @@ void ptx_cvttsd2si():
 
 
 void ptx_cvtss2sd(int xmm):
-	if (xmm == 0):
-		ptx_line(c"cvt.f64.f32 %da, %fa;")
-	else:
-		ptx_line(c"cvt.f64.f32 %db, %fb;")
+	if (xmm == 0): ptx_line(c"cvt.f64.f32 %da, %fa;")
+	else: ptx_line(c"cvt.f64.f32 %db, %fb;")
 
 
 void ptx_cvtsd2ss():
@@ -679,12 +645,9 @@ void ptx_btc_63():
 # kind: 1 add, 2 min, 3 max. atom.add has no .s64 form; two's-complement
 # addition makes .u64 exact. min/max are signed, matching W int.
 void ptx_atomic_int(int kind):
-	if (kind == 1):
-		ptx_line(c"atom.add.u64 %ax, [%bx], %ax;")
-	else if (kind == 2):
-		ptx_line(c"atom.min.s64 %ax, [%bx], %ax;")
-	else:
-		ptx_line(c"atom.max.s64 %ax, [%bx], %ax;")
+	if (kind == 1): ptx_line(c"atom.add.u64 %ax, [%bx], %ax;")
+	else if (kind == 2): ptx_line(c"atom.min.s64 %ax, [%bx], %ax;")
+	else: ptx_line(c"atom.max.s64 %ax, [%bx], %ax;")
 
 
 # float32 add (atom.add.f32, sm_20+; float64 atomics need sm_60 and are
@@ -765,14 +728,10 @@ void ptx_barrier():
 # thread_idx()/block_idx()/block_dim()/grid_dim() (x dimension), widened
 # to the W int convention. kind: 1 tid, 2 ctaid, 3 ntid, 4 nctaid.
 void ptx_special_reg(int kind):
-	if (kind == 1):
-		ptx_line(c"mov.u32 %w0, %tid.x;")
-	else if (kind == 2):
-		ptx_line(c"mov.u32 %w0, %ctaid.x;")
-	else if (kind == 3):
-		ptx_line(c"mov.u32 %w0, %ntid.x;")
-	else:
-		ptx_line(c"mov.u32 %w0, %nctaid.x;")
+	if (kind == 1): ptx_line(c"mov.u32 %w0, %tid.x;")
+	else if (kind == 2): ptx_line(c"mov.u32 %w0, %ctaid.x;")
+	else if (kind == 3): ptx_line(c"mov.u32 %w0, %ntid.x;")
+	else: ptx_line(c"mov.u32 %w0, %nctaid.x;")
 	ptx_line(c"cvt.u64.u32 %ax, %w0;")
 
 
@@ -820,10 +779,8 @@ int ptx_peep_vregs
 int ptx_peep_starts(char* b, int pos, int end, char* pat):
 	int i = 0
 	while (pat[i]):
-		if (pos + i >= end):
-			return 0
-		if (b[pos + i] != pat[i]):
-			return 0
+		if (pos + i >= end): return 0
+		if (b[pos + i] != pat[i]): return 0
 		i = i + 1
 	return 1
 
@@ -858,33 +815,22 @@ int ptx_peep_find_spref(char* b, int ls, int le):
 
 # "ld.SFX %ax, [%ax];" -> suffix code, else 0.
 int ptx_prom_load_sfx(char* b, int s, int e):
-	if (ptx_peep_starts(b, s, e, c"ld.u64 %ax, [%ax];")):
-		return 1
-	if (ptx_peep_starts(b, s, e, c"ld.s32 %ax, [%ax];")):
-		return 2
-	if (ptx_peep_starts(b, s, e, c"ld.s16 %ax, [%ax];")):
-		return 3
-	if (ptx_peep_starts(b, s, e, c"ld.u16 %ax, [%ax];")):
-		return 4
-	if (ptx_peep_starts(b, s, e, c"ld.s8 %ax, [%ax];")):
-		return 5
-	if (ptx_peep_starts(b, s, e, c"ld.u32 %ax, [%ax];")):
-		return 6
-	if (ptx_peep_starts(b, s, e, c"ld.u8 %ax, [%ax];")):
-		return 7
+	if (ptx_peep_starts(b, s, e, c"ld.u64 %ax, [%ax];")): return 1
+	if (ptx_peep_starts(b, s, e, c"ld.s32 %ax, [%ax];")): return 2
+	if (ptx_peep_starts(b, s, e, c"ld.s16 %ax, [%ax];")): return 3
+	if (ptx_peep_starts(b, s, e, c"ld.u16 %ax, [%ax];")): return 4
+	if (ptx_peep_starts(b, s, e, c"ld.s8 %ax, [%ax];")): return 5
+	if (ptx_peep_starts(b, s, e, c"ld.u32 %ax, [%ax];")): return 6
+	if (ptx_peep_starts(b, s, e, c"ld.u8 %ax, [%ax];")): return 7
 	return 0
 
 
 # "st.SFX [%bx], %ax;" -> suffix code, else 0.
 int ptx_prom_store_sfx(char* b, int s, int e):
-	if (ptx_peep_starts(b, s, e, c"st.u64 [%bx], %ax;")):
-		return 1
-	if (ptx_peep_starts(b, s, e, c"st.u32 [%bx], %ax;")):
-		return 6
-	if (ptx_peep_starts(b, s, e, c"st.u16 [%bx], %ax;")):
-		return 4
-	if (ptx_peep_starts(b, s, e, c"st.u8 [%bx], %ax;")):
-		return 7
+	if (ptx_peep_starts(b, s, e, c"st.u64 [%bx], %ax;")): return 1
+	if (ptx_peep_starts(b, s, e, c"st.u32 [%bx], %ax;")): return 6
+	if (ptx_peep_starts(b, s, e, c"st.u16 [%bx], %ax;")): return 4
+	if (ptx_peep_starts(b, s, e, c"st.u8 [%bx], %ax;")): return 7
 	return 0
 
 
@@ -896,8 +842,7 @@ int* ptx_peep_ints(int n):
 int ptx_peep_count_lines(char* b, int n):
 	int lines = 0
 	for i in range(n):
-		if (b[i] == 10):
-			lines = lines + 1
+		if (b[i] == 10): lines = lines + 1
 	return lines
 
 
@@ -916,8 +861,7 @@ int* ptx_peep_line_starts(char* b, int n, int lines):
 
 # Offset of line L's terminating newline.
 int ptx_peep_line_end(int* ls, int L, int lines, int n):
-	if (L + 1 < lines):
-		return ls[L + 1] - 1
+	if (L + 1 < lines): return ls[L + 1] - 1
 	return n - 1
 
 
@@ -936,8 +880,7 @@ int ptx_peep_classify(char* b, int s, int e):
 	ptx_peep_reg = 0
 	ptx_peep_val = 0
 	ptx_peep_sfx = 0
-	if (ptx_peep_starts(b, s, e, c"sub.u64 %sp, %sp, 8;")):
-		return 1
+	if (ptx_peep_starts(b, s, e, c"sub.u64 %sp, %sp, 8;")): return 1
 	if (ptx_peep_starts(b, s, e, c"st.u64 [%sp], %")):
 		ptx_peep_reg = b[s + 15]
 		return 2
@@ -951,8 +894,7 @@ int ptx_peep_classify(char* b, int s, int e):
 	if (ptx_peep_starts(b, s, e, c"st.u64 [%sp+")):
 		ptx_peep_val = ptx_peep_num(b, s + 12)
 		int i = s + 12
-		while ((b[i] >= '0') && (b[i] <= '9')):
-			i = i + 1
+		while ((b[i] >= '0') && (b[i] <= '9')): i = i + 1
 		ptx_peep_reg = b[i + 4]
 		return 52
 	if (ptx_peep_starts(b, s, e, c"add.u64 %sp, %sp, ")):
@@ -964,16 +906,12 @@ int ptx_peep_classify(char* b, int s, int e):
 	if (ptx_peep_starts(b, s, e, c"sub.u64 %ax, %bp, ")):
 		ptx_peep_val = ptx_peep_num(b, s + 18)
 		return 9
-	if (ptx_peep_starts(b, s, e, c"bra ") || ptx_peep_starts(b, s, e, c"@%p bra ")):
-		return 8
-	if ((e > s) && (b[e - 1] == ':')):
-		return 7
+	if (ptx_peep_starts(b, s, e, c"bra ") || ptx_peep_starts(b, s, e, c"@%p bra ")): return 8
+	if ((e > s) && (b[e - 1] == ':')): return 7
 	ptx_peep_sfx = ptx_prom_load_sfx(b, s, e)
-	if (ptx_peep_sfx):
-		return 10
+	if (ptx_peep_sfx): return 10
 	ptx_peep_sfx = ptx_prom_store_sfx(b, s, e)
-	if (ptx_peep_sfx):
-		return 11
+	if (ptx_peep_sfx): return 11
 	int at = ptx_peep_find_spref(b, s, e)
 	if (at >= 0):
 		ptx_peep_val = ptx_peep_num(b, at + 5)
@@ -988,8 +926,7 @@ void ptx_peep_shift_span(int* kind, int* sloti, int* shift, int from, int to, in
 	while (from < to):
 		int k = kind[from]
 		if ((k == 5) || (k == 6) || (k >= 50)):
-			if (sloti[from] < slot):
-				shift[from] = shift[from] + 8
+			if (sloti[from] < slot): shift[from] = shift[from] + 8
 		from = from + 1
 
 
@@ -1020,8 +957,7 @@ int ptx_peep_put_spref(char* out, int outp, char* b, int s, int e, int k):
 		outp = outp + 1
 		s = s + 1
 	outp = ptx_peep_put(out, outp, itoa(k))
-	while ((b[s] >= '0') && (b[s] <= '9')):
-		s = s + 1
+	while ((b[s] >= '0') && (b[s] <= '9')): s = s + 1
 	return ptx_peep_copy(out, outp, b, s, e)
 
 
@@ -1049,11 +985,9 @@ void ptx_peephole():
 	ptx_peep_vregs = 0
 	char* b = ptx_body_buf
 	int n = ptx_body_pos
-	if (n == 0):
-		return
+	if (n == 0): return
 	int lines = ptx_peep_count_lines(b, n)
-	if (lines == 0):
-		return
+	if (lines == 0): return
 	int* ls = ptx_peep_line_starts(b, n, lines)
 	int* kind = ptx_peep_ints(lines)
 	int* val = ptx_peep_ints(lines)    # K, N, or reg char
@@ -1069,15 +1003,12 @@ void ptx_peephole():
 	while (L < lines):
 		int c = ptx_peep_classify(b, ls[L], ptx_peep_line_end(ls, L, lines, n))
 		val[L] = 0
-		if ((c == 2) || (c == 3)):
-			val[L] = ptx_peep_reg
-		else if ((c == 4) || (c == 6)):
-			val[L] = ptx_peep_val
+		if ((c == 2) || (c == 3)): val[L] = ptx_peep_reg
+		else if ((c == 4) || (c == 6)): val[L] = ptx_peep_val
 		else if (c >= 50):
 			c = 5
 			val[L] = ptx_peep_val
-		else if (c > 8):
-			c = 0
+		else if (c > 8): c = 0
 		kind[L] = c
 		sloti[L] = 0
 		shift[L] = 0
@@ -1110,13 +1041,11 @@ void ptx_peephole():
 				top = top + 1
 				depth = depth + 1
 				L = L + 2
-			else:
-				ok = 0
+			else: ok = 0
 		else if (k == 3):
 			if ((L + 1 < lines) && (kind[L + 1] == 4) && (val[L + 1] == 8)):
 				# A pop: match the newest open push.
-				if (top == 0):
-					ok = 0
+				if (top == 0): ok = 0
 				else:
 					top = top - 1
 					depth = depth - 1
@@ -1124,8 +1053,7 @@ void ptx_peephole():
 						pr_st[pr_count] = op_st[top]
 						pr_ld[pr_count] = L
 						pr_j[pr_count] = op_slot[top]
-						if (op_slot[top] + 1 > maxv):
-							maxv = op_slot[top] + 1
+						if (op_slot[top] + 1 > maxv): maxv = op_slot[top] + 1
 						pr_count = pr_count + 1
 					L = L + 2
 			else:
@@ -1138,8 +1066,7 @@ void ptx_peephole():
 		else if (k == 4):
 			# Scope pop: discards the top N/8 words without reading.
 			int words = val[L] / 8
-			if (words > top):
-				ok = 0
+			if (words > top): ok = 0
 			else:
 				for w in range(words):
 					top = top - 1
@@ -1148,12 +1075,10 @@ void ptx_peephole():
 				L = L + 1
 		else if ((k == 7) || (k == 8)):
 			# Basic-block boundary: no open push may convert across it.
-			for q in range(top):
-				op_conv[q] = 0
+			for q in range(top): op_conv[q] = 0
 			L = L + 1
 		else:
-			if ((k == 5) || (k == 6)):
-				sloti[L] = depth - val[L] / 8 - 1
+			if ((k == 5) || (k == 6)): sloti[L] = depth - val[L] / 8 - 1
 			L = L + 1
 
 	if (ok && (pr_count > 0)):
@@ -1188,8 +1113,7 @@ void ptx_peephole():
 					outp = ptx_peep_put_num_line(out, outp, c"add.u64 %ax, %sp, ", val[L] - shift[L])
 				else if ((kind[L] == 5) && (shift[L] > 0)):
 					outp = ptx_peep_put_spref(out, outp, b, s2, e2, val[L] - shift[L])
-				else:
-					outp = ptx_peep_copy(out, outp, b, s2, e2)
+				else: outp = ptx_peep_copy(out, outp, b, s2, e2)
 			L = L + 1
 		free(ptx_body_buf)
 		ptx_body_buf = out
@@ -1259,12 +1183,9 @@ int ptx_prom_ncap
 
 # Suffix codes: 1 .u64, 2 .s32, 3 .s16, 4 .u16, 5 .s8, 6 .u32, 7 .u8.
 int ptx_prom_width(int sfxc):
-	if (sfxc == 1):
-		return 8
-	if ((sfxc == 2) || (sfxc == 6)):
-		return 4
-	if ((sfxc == 3) || (sfxc == 4)):
-		return 2
+	if (sfxc == 1): return 8
+	if ((sfxc == 2) || (sfxc == 6)): return 4
+	if ((sfxc == 3) || (sfxc == 4)): return 2
 	return 1
 
 
@@ -1272,8 +1193,7 @@ int ptx_prom_width(int sfxc):
 int ptx_prom_has(char* b, int s, int e, char* pat):
 	int i = s
 	while (i < e):
-		if (ptx_peep_starts(b, i, e, pat)):
-			return 1
+		if (ptx_peep_starts(b, i, e, pat)): return 1
 		i = i + 1
 	return 0
 
@@ -1282,17 +1202,14 @@ int ptx_prom_has(char* b, int s, int e, char* pat):
 # slot whose loads use suffix lsfx: re-widen the stored bits exactly as
 # a store-then-reload through memory would.
 int ptx_prom_widen(char* out, int outp, int lr, int src, int lsfx):
-	if ((lsfx == 0) || (lsfx == 1)):
-		return ptx_peep_put_mov_in(out, outp, c"mov.u64 %l", lr, src)
+	if ((lsfx == 0) || (lsfx == 1)): return ptx_peep_put_mov_in(out, outp, c"mov.u64 %l", lr, src)
 	int amt = 64 - 8 * ptx_prom_width(lsfx)
 	# shl.b64 %l<lr>, %<src>x, <amt>; (the mov shape with the shift
 	# count spliced in before its ";")
 	outp = ptx_peep_put_mov_in(out, outp, c"shl.b64 %l", lr, src)
 	outp = ptx_peep_put_num_line(out, outp - 2, c", ", amt)
-	if ((lsfx == 2) || (lsfx == 3) || (lsfx == 5)):
-		outp = ptx_peep_put(out, outp, c"shr.s64 %l")
-	else:
-		outp = ptx_peep_put(out, outp, c"shr.u64 %l")
+	if ((lsfx == 2) || (lsfx == 3) || (lsfx == 5)): outp = ptx_peep_put(out, outp, c"shr.s64 %l")
+	else: outp = ptx_peep_put(out, outp, c"shr.u64 %l")
 	outp = ptx_peep_put(out, outp, itoa(lr))
 	outp = ptx_peep_put(out, outp, c", %l")
 	outp = ptx_peep_put(out, outp, itoa(lr))
@@ -1315,11 +1232,9 @@ void ptx_promote():
 	ptx_prom_ncap = 0
 	char* b = ptx_body_buf
 	int n = ptx_body_pos
-	if (n == 0):
-		return
+	if (n == 0): return
 	int lines = ptx_peep_count_lines(b, n)
-	if (lines == 0):
-		return
+	if (lines == 0): return
 	int* ls = ptx_peep_line_starts(b, n, lines)
 
 	# Classify (see ptx_peep_classify for the kinds).
@@ -1400,14 +1315,11 @@ void ptx_promote():
 			t = 0 - 1
 			if (k == 6):
 				sloti[L] = depth - val[L] / 8 - 1
-				if ((sloti[L] >= 0) && (sloti[L] < depth)):
-					t = stk[sloti[L]]
-				else:
-					ok = 0
+				if ((sloti[L] >= 0) && (sloti[L] < depth)): t = stk[sloti[L]]
+				else: ok = 0
 			else:
 				i = val[L] / 8 - 1
-				if ((i < 0) || (i >= cap_max)):
-					ok = 0
+				if ((i < 0) || (i >= cap_max)): ok = 0
 				else:
 					t = cap2inst[i]
 					if (t < 0):
@@ -1415,18 +1327,15 @@ void ptx_promote():
 						ninst = ninst + 1
 						icap[t] = i
 						cap2inst[i] = t
-						if (i + 1 > ncap):
-							ncap = i + 1
+						if (i + 1 > ncap): ncap = i + 1
 			if (ok && (t >= 0) && (ctgt[t] >= 0)):
 				# a reference to a held address-carrier word
 				ok = 0
 			if (ok):
 				if ((L + 1 < lines) && (kind[L + 1] == 10)):
 					# lea+deref load
-					if (ilsfx[t] == 0):
-						ilsfx[t] = lsfx2[L + 1]
-					else if (ilsfx[t] != lsfx2[L + 1]):
-						iprom[t] = 0
+					if (ilsfx[t] == 0): ilsfx[t] = lsfx2[L + 1]
+					else if (ilsfx[t] != lsfx2[L + 1]): iprom[t] = 0
 					act[L] = 1
 					tgt[L] = t
 					act[L + 1] = 2
@@ -1460,16 +1369,14 @@ void ptx_promote():
 				act[L + 1] = 3
 				tgt[L + 1] = w
 				L = L + 2
-			else:
-				ok = 0
+			else: ok = 0
 		else if (k == 2):
 			# a store to [%sp] with no preceding push: unexpected
 			ok = 0
 		else if (k == 3):
 			if ((L + 1 < lines) && (kind[L + 1] == 4) && (val[L + 1] == 8)):
 				# a value pop
-				if (depth == 0):
-					ok = 0
+				if (depth == 0): ok = 0
 				else:
 					depth = depth - 1
 					w = stk[depth]
@@ -1480,8 +1387,7 @@ void ptx_promote():
 								# a captured pointer reassigned
 								iprom[t] = 0
 							i = ptx_prom_width(lsfx2[L + 2])
-							if (i < isw[t]):
-								isw[t] = i
+							if (i < isw[t]): isw[t] = i
 							act[clea[w]] = 1
 							tgt[clea[w]] = t
 							act[ipush[w]] = 1
@@ -1505,47 +1411,36 @@ void ptx_promote():
 						L = L + 2
 			else:
 				# bare peek of the top word
-				if (depth == 0):
-					ok = 0
+				if (depth == 0): ok = 0
 				else:
 					t = stk[depth - 1]
-					if (ctgt[t] >= 0):
-						ok = 0
+					if (ctgt[t] >= 0): ok = 0
 					else:
-						if (ilsfx[t] == 0):
-							ilsfx[t] = 1
-						else if (ilsfx[t] != 1):
-							iprom[t] = 0
+						if (ilsfx[t] == 0): ilsfx[t] = 1
+						else if (ilsfx[t] != 1): iprom[t] = 0
 						act[L] = 2
 						tgt[L] = t
 						L = L + 1
 		else if (k == 4):
 			w = val[L] / 8
-			if (w > depth):
-				ok = 0
+			if (w > depth): ok = 0
 			else:
 				i = 0
 				while (i < w):
 					depth = depth - 1
 					ikill[stk[depth]] = L
-					if (ctgt[stk[depth]] >= 0):
-						ok = 0
+					if (ctgt[stk[depth]] >= 0): ok = 0
 					i = i + 1
 				L = L + 1
 		else if ((k == 50) || (k == 51) || (k == 52)):
 			sloti[L] = depth - val[L] / 8 - 1
 			t = 0 - 1
-			if ((sloti[L] >= 0) && (sloti[L] < depth)):
-				t = stk[sloti[L]]
-			if (t < 0):
-				ok = 0
-			else if (ctgt[t] >= 0):
-				ok = 0
+			if ((sloti[L] >= 0) && (sloti[L] < depth)): t = stk[sloti[L]]
+			if (t < 0): ok = 0
+			else if (ctgt[t] >= 0): ok = 0
 			else if (k == 51):
-				if (ilsfx[t] == 0):
-					ilsfx[t] = 1
-				else if (ilsfx[t] != 1):
-					iprom[t] = 0
+				if (ilsfx[t] == 0): ilsfx[t] = 1
+				else if (ilsfx[t] != 1): iprom[t] = 0
 				act[L] = 2
 				tgt[L] = t
 				L = L + 1
@@ -1556,8 +1451,7 @@ void ptx_promote():
 			else:
 				iprom[t] = 0
 				L = L + 1
-		else if ((k == 7) || (k == 8)):
-			L = L + 1
+		else if ((k == 7) || (k == 8)): L = L + 1
 		else:
 			if (k == 0):
 				s = ls[L]
@@ -1570,8 +1464,7 @@ void ptx_promote():
 		# an address carrier still open at the end of the body
 		i = 0
 		while (i < depth):
-			if (ctgt[stk[i]] >= 0):
-				ok = 0
+			if (ctgt[stk[i]] >= 0): ok = 0
 			i = i + 1
 
 	# Decide the promoted set and allocate %l registers.
@@ -1580,12 +1473,9 @@ void ptx_promote():
 		i = 0
 		while (i < ninst):
 			t = iprom[i]
-			if (ctgt[i] >= 0):
-				t = 0
-			if (ivpop[i]):
-				t = 0
-			if ((ilsfx[i] != 0) && (ptx_prom_width(ilsfx[i]) > isw[i])):
-				t = 0
+			if (ctgt[i] >= 0): t = 0
+			if (ivpop[i]): t = 0
+			if ((ilsfx[i] != 0) && (ptx_prom_width(ilsfx[i]) > isw[i])): t = 0
 			iprom[i] = t
 			if (t):
 				ilreg[i] = nl
@@ -1642,10 +1532,8 @@ void ptx_promote():
 			e = ptx_peep_line_end(ls, L, lines, n)
 			ap = 0
 			if ((act[L] > 0) && (tgt[L] >= 0)):
-				if (iprom[tgt[L]]):
-					ap = act[L]
-			if (ap == 2):
-				outp = ptx_peep_put_mov_out(out, outp, lreg2[L], c"x, %l", ilreg[tgt[L]])
+				if (iprom[tgt[L]]): ap = act[L]
+			if (ap == 2): outp = ptx_peep_put_mov_out(out, outp, lreg2[L], c"x, %l", ilreg[tgt[L]])
 			else if (ap == 3):
 				outp = ptx_prom_widen(out, outp, ilreg[tgt[L]], lreg2[L], ilsfx[tgt[L]])
 			else if (ap == 0):
@@ -1655,8 +1543,7 @@ void ptx_promote():
 					outp = ptx_peep_put_num_line(out, outp, c"add.u64 %ax, %sp, ", val[L] - shift[L])
 				else if ((kind[L] >= 50) && (shift[L] > 0)):
 					outp = ptx_peep_put_spref(out, outp, b, s, e, val[L] - shift[L])
-				else:
-					outp = ptx_peep_copy(out, outp, b, s, e)
+				else: outp = ptx_peep_copy(out, outp, b, s, e)
 			L = L + 1
 		free(ptx_body_buf)
 		ptx_body_buf = out
@@ -1720,8 +1607,7 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 	ptx_emit(c"(")
 	int i = 0
 	while (i < nparams):
-		if (i > 0):
-			ptx_emit(c", ")
+		if (i > 0): ptx_emit(c", ")
 		ptx_emit(c".param .u64 p")
 		ptx_emit_int(i)
 		i = i + 1
@@ -1807,8 +1693,7 @@ void ptx_finish_module():
 	if (ptx_dump_path != 0):
 		/* O_WRONLY|O_CREAT|O_TRUNC, mode 0644 */
 		int fd = open(ptx_dump_path, 577, 420)
-		if (fd < 0):
-			error(c"could not open the --ptx output file")
+		if (fd < 0): error(c"could not open the --ptx output file")
 		write(fd, ptx_module_buf, text_len)
 		close(fd)
 	be_function_define_declare(c"__w_ptx_module")
@@ -1826,12 +1711,9 @@ void ptx_cubin_fail(char* why, char* detail, char* tail):
 	diag_part(ptx_cubin_path)
 	diag_part(c"': ")
 	diag_part(why)
-	if (detail != 0):
-		diag_part(detail)
-	if (tail != 0):
-		diag_part(tail)
-	if (diag_json):
-		diag_emit(c"error", c"<command-line>", 0, 0, ptx_cubin_path)
+	if (detail != 0): diag_part(detail)
+	if (tail != 0): diag_part(tail)
+	if (diag_json): diag_emit(c"error", c"<command-line>", 0, 0, ptx_cubin_path)
 	else:
 		print_error(c"error: ")
 		print_error(str_from_cstr(diag_buffer))
@@ -1847,10 +1729,8 @@ int ptx_cubin_has_name(char* blob, int n, char* name):
 	while (i + len < n):
 		if ((i == 0) || (blob[i - 1] == 0)):
 			int j = 0
-			while ((j < len) && (blob[i + j] == name[j])):
-				j = j + 1
-			if ((j == len) && (blob[i + len] == 0)):
-				return 1
+			while ((j < len) && (blob[i + j] == name[j])): j = j + 1
+			if ((j == len) && (blob[i + len] == 0)): return 1
 		i = i + 1
 	return 0
 
@@ -1875,8 +1755,7 @@ void ptx_cubin_check_entries(char* blob, int n):
 			if (ptx_cubin_has_name(blob, n, name) == 0):
 				ptx_cubin_fail(c"stale cubin: it has no kernel '", name, c"' (rebuild it with ptxas from a fresh --ptx dump)")
 			i = k
-		else:
-			i = i + 1
+		else: i = i + 1
 	free(name)
 
 
@@ -1888,25 +1767,20 @@ void ptx_cubin_check_entries(char* blob, int n):
 # the compiler spawns no external tools; users run ptxas on the --ptx
 # dump themselves (bin/cubin_tool build drives the two steps).
 void ptx_finish_cubin():
-	if (sym_lookup(c"__w_cubin_module") < 0):
-		return;
+	if (sym_lookup(c"__w_cubin_module") < 0): return;
 	char* blob = 0
 	int n = 0
 	if ((ptx_cubin_path != 0) && ptx_used):
 		int fd = open(ptx_cubin_path, 0, 0)
-		if (fd < 0):
-			ptx_cubin_fail(c"cannot open file", 0, 0)
+		if (fd < 0): ptx_cubin_fail(c"cannot open file", 0, 0)
 		n = file_size(fd)
-		if (n < 0):
-			n = 0
+		if (n < 0): n = 0
 		blob = malloc(n + 9)
 		int got = 0
 		while (got < n):
 			int r = read(fd, blob + 8 + got, n - got)
-			if (r <= 0):
-				n = got
-			else:
-				got = got + r
+			if (r <= 0): n = got
+			else: got = got + r
 		close(fd)
 		# ELF magic, then e_machine (offset 18, little-endian) == 190
 		# (EM_CUDA): reject PTX text, host objects, fatbins.
@@ -1916,14 +1790,12 @@ void ptx_finish_cubin():
 		if (((img[18] & 255) | ((img[19] & 255) << 8)) != 190):
 			ptx_cubin_fail(c"not a CUDA cubin (ELF e_machine is not EM_CUDA)", 0, 0)
 		ptx_cubin_check_entries(img, n)
-	else:
-		blob = malloc(9)
+	else: blob = malloc(9)
 	# Low 4 bytes carry the length (a 32-bit compiler host has no wider
 	# int; images are far below 2 GB), high 4 bytes are zero.
 	for i in range(8):
 		blob[i] = 0
-		if (i < 4):
-			blob[i] = (n >> (i * 8)) & 255
+		if (i < 4): blob[i] = (n >> (i * 8)) & 255
 	blob[n + 8] = 0
 	be_function_define_declare(c"__w_cubin_module")
 	be_function_prologue()

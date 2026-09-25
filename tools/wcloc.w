@@ -86,8 +86,7 @@ void wcloc_table_row(wstream* out, char* path, cloc_counts* c, int path_width):
 
 
 void wcloc_rule(wstream* out, int width):
-	for n in range(width):
-		stream_write_byte(out, '-')
+	for n in range(width): stream_write_byte(out, '-')
 	stream_write_byte(out, 10)
 
 
@@ -96,14 +95,12 @@ void wcloc_print_table(wstream* out, list[cloc_row*] rows, cloc_counts* total):
 	int i = 0
 	while (i < rows.length):
 		int n = strlen(rows[i].path)
-		if (n > path_width):
-			path_width = n
+		if (n > path_width): path_width = n
 		i = i + 1
 	path_width = path_width + 2
 	int width = path_width + 7 + 9 + 9 + 9 + 10
 	stream_write_cstr(out, c"path")
-	for n in range(4, path_width):
-		stream_write_byte(out, ' ')
+	for n in range(4, path_width): stream_write_byte(out, ' ')
 	stream_write_line(out, c"  files    blank  comment     code    tokens")
 	wcloc_rule(out, width)
 	i = 0
@@ -127,12 +124,9 @@ void wcloc_json_string(wstream* out, char* s):
 			stream_write_cstr(out, c"\\u00")
 			stream_write_byte(out, '0' + (ch >> 4))
 			int low = ch & 15
-			if (low < 10):
-				stream_write_byte(out, '0' + low)
-			else:
-				stream_write_byte(out, 'a' + low - 10)
-		else:
-			stream_write_byte(out, ch)
+			if (low < 10): stream_write_byte(out, '0' + low)
+			else: stream_write_byte(out, 'a' + low - 10)
+		else: stream_write_byte(out, ch)
 		i = i + 1
 	stream_write_byte(out, '"')
 
@@ -163,8 +157,7 @@ void wcloc_print_json(wstream* out, list[cloc_row*] rows, cloc_counts* total):
 	int i = 0
 	while (i < rows.length):
 		char* kind = c"group"
-		if (rows[i].is_file):
-			kind = c"file"
+		if (rows[i].is_file): kind = c"file"
 		wcloc_json_row(out, kind, rows[i].path, rows[i].counts)
 		i = i + 1
 	wcloc_json_row(out, c"total", 0, total)
@@ -178,25 +171,20 @@ int main(int argc, int argv):
 	while (i < argc):
 		char** arg_slot = argv + i * __word_size__
 		char* arg = *arg_slot
-		if (strcmp(arg, c"--by-file") == 0):
-			by_file = 1
-		else if (strcmp(arg, c"--json") == 0):
-			json = 1
+		if (strcmp(arg, c"--by-file") == 0): by_file = 1
+		else if (strcmp(arg, c"--json") == 0): json = 1
 		else if ((arg[0] == '-') && (arg[1] != 0)):
 			wcloc_usage()
 			return 2
-		else:
-			paths.push(arg)
+		else: paths.push(arg)
 		i = i + 1
-	if (paths.length == 0):
-		paths.push(c".")
+	if (paths.length == 0): paths.push(c".")
 
 	int status = 0
 	list[cloc_row*] rows = new list[cloc_row*]
 	i = 0
 	while (i < paths.length):
-		if (wcloc_count_path(paths[i], by_file, rows) != 0):
-			status = 2
+		if (wcloc_count_path(paths[i], by_file, rows) != 0): status = 2
 		i = i + 1
 
 	cloc_counts total
@@ -207,9 +195,7 @@ int main(int argc, int argv):
 		i = i + 1
 
 	wstream* out = stdout_writer()
-	if (json):
-		wcloc_print_json(out, rows, &total)
-	else:
-		wcloc_print_table(out, rows, &total)
+	if (json): wcloc_print_json(out, rows, &total)
+	else: wcloc_print_table(out, rows, &total)
 	stream_flush(out)
 	return status

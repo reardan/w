@@ -43,8 +43,7 @@ void test_env_copy_with_appends_new_name():
 	while (env_entry_at(modified, i) != 0):
 		char* entry = env_entry_at(modified, i)
 		int value_index = env_match_name(entry, c"W_ENV_TEST_ADDED")
-		if (value_index >= 0):
-			found = entry + value_index
+		if (value_index >= 0): found = entry + value_index
 		i = i + 1
 	assert1(found != 0)
 	assert_strings_equal(c"added-value", found)

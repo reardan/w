@@ -42,8 +42,7 @@ void click_cell(ui_context* ctx, int cell):
 int picker_frame(ui_context* ctx, ui_date_picker_state* st, ui_date* value, ui_date* today, int32* bg):
 	ui_begin(ctx, 400, 400)
 	int changed = ui_date_picker(ctx, 200.0, st, value, today, c"Pick a date")
-	if (ui_button(ctx, c"behind")):
-		bg[0] = bg[0] + 1
+	if (ui_button(ctx, c"behind")): bg[0] = bg[0] + 1
 	ui_end(ctx)
 	return changed
 
@@ -214,8 +213,7 @@ void test_ids_do_not_shift_when_it_opens():
 int range_frame(ui_context* ctx, ui_date_range_state* st, ui_date* start, ui_date* end, int32* bg):
 	ui_begin(ctx, 400, 400)
 	int changed = ui_date_range_picker(ctx, 200.0, st, start, end, 0, c"Dates")
-	if (ui_button(ctx, c"behind")):
-		bg[0] = bg[0] + 1
+	if (ui_button(ctx, c"behind")): bg[0] = bg[0] + 1
 	ui_end(ctx)
 	return changed
 

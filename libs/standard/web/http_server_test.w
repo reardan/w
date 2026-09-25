@@ -170,10 +170,8 @@ void test_http_chunked_request_body():
 	int done = 0
 	while (done == 0):
 		int got = read(fd, buf, 4096)
-		if (got <= 0):
-			done = 1
-		else:
-			string_append_bytes(resp_text, buf, got)
+		if (got <= 0): done = 1
+		else: string_append_bytes(resp_text, buf, got)
 	free(buf)
 	close(fd)
 

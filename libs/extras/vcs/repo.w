@@ -52,10 +52,8 @@ list[char*] repo_ignore_list():
 
 
 int repo_status_char(int status):
-	if (status == TREE_ADDED()):
-		return 'A'
-	if (status == TREE_REMOVED()):
-		return 'D'
+	if (status == TREE_ADDED()): return 'A'
+	if (status == TREE_REMOVED()): return 'D'
 	return 'M'
 
 
@@ -71,8 +69,7 @@ list[char*] repo_split_path(char* path):
 	for i in range(n + 1):
 		int at_sep = (i == n) || (path[i] == '/')
 		if (at_sep):
-			if (i > start):
-				parts.push(path_clone_range(path + start, i - start))
+			if (i > start): parts.push(path_clone_range(path + start, i - start))
 			start = i + 1
 	return parts
 
@@ -86,8 +83,7 @@ wresult[char*]* repo_lookup_blob(wcas* store, char* root_id, char* path):
 	list[char*] parts = repo_split_path(path)
 	char* current_id = strclone(root_id)
 	int err = 0
-	if (parts.length == 0):
-		err = -22
+	if (parts.length == 0): err = -22
 	int i = 0
 	while ((i < parts.length) && (err == 0)):
 		wresult[wtree*]* t_r = tree_get(store, current_id)
@@ -100,17 +96,14 @@ wresult[char*]* repo_lookup_blob(wcas* store, char* root_id, char* path):
 			char* want = parts[i]
 			tree_entry* found = 0
 			for tree_entry* e in t.entries:
-				if (strcmp(e.name, want) == 0):
-					found = e
-			if (found == 0):
-				err = -2
+				if (strcmp(e.name, want) == 0): found = e
+			if (found == 0): err = -2
 			else:
 				free(current_id)
 				current_id = strclone(found.id)
 			tree_free(t)
 		i = i + 1
-	for char* p in parts:
-		free(p)
+	for char* p in parts: free(p)
 	list_free[char*](parts)
 	if (err != 0):
 		free(current_id)
@@ -124,8 +117,7 @@ wresult[char*]* repo_lookup_blob(wcas* store, char* root_id, char* path):
 # a soft "maybe present" query on each of three sides independently, not
 # repo_lookup_blob's fail-fast error surface.
 char* repo_maybe_blob_id(wcas* store, char* tree_id, char* path):
-	if (tree_id == 0):
-		return 0
+	if (tree_id == 0): return 0
 	wresult[char*]* r = repo_lookup_blob(store, tree_id, path)
 	if (result_is_error[char*](r)):
 		result_free[char*](r)
@@ -145,8 +137,7 @@ char* repo_maybe_blob_id(wcas* store, char* tree_id, char* path):
 # and releases it with cas_object_free.
 wcas_object* repo_maybe_blob(wcas* store, char* tree_id, char* path):
 	char* id = repo_maybe_blob_id(store, tree_id, path)
-	if (id == 0):
-		return 0
+	if (id == 0): return 0
 	wresult[wcas_object*]* r = cas_get(store, id)
 	free(id)
 	if (result_is_error[wcas_object*](r)):
@@ -163,16 +154,12 @@ wcas_object* repo_maybe_blob(wcas* store, char* tree_id, char* path):
 # Byte-for-byte content equality, treating "both absent" (0, 0) as equal
 # and "one absent" as never equal.
 int repo_blob_content_equal(wcas_object* a, wcas_object* b):
-	if ((a == 0) && (b == 0)):
-		return 1
-	if ((a == 0) || (b == 0)):
-		return 0
-	if (a.length != b.length):
-		return 0
+	if ((a == 0) && (b == 0)): return 1
+	if ((a == 0) || (b == 0)): return 0
+	if (a.length != b.length): return 0
 	int i = 0
 	while (i < a.length):
-		if (a.data[i] != b.data[i]):
-			return 0
+		if (a.data[i] != b.data[i]): return 0
 		i = i + 1
 	return 1
 
@@ -184,14 +171,11 @@ const int REPO_BINARY_SNIFF_LEN = 8000
 # REPO_BINARY_SNIFF_LEN() bytes. 0 (absent) is never binary-ish -- there
 # is no content to sniff.
 int repo_is_binaryish(wcas_object* o):
-	if (o == 0):
-		return 0
+	if (o == 0): return 0
 	int n = o.length
-	if (n > REPO_BINARY_SNIFF_LEN):
-		n = REPO_BINARY_SNIFF_LEN
+	if (n > REPO_BINARY_SNIFF_LEN): n = REPO_BINARY_SNIFF_LEN
 	for i in range(n):
-		if (o.data[i] == 0):
-			return 1
+		if (o.data[i] == 0): return 1
 	return 0
 
 
@@ -233,8 +217,7 @@ void repo_ensure_parent_dirs(char* dir, char* rel_path):
 		mkdir(current, 493)
 		i = i + 1
 	free(current)
-	for char* p in parts:
-		free(p)
+	for char* p in parts: free(p)
 	list_free[char*](parts)
 
 
@@ -246,8 +229,7 @@ void repo_write_file_bytes(char* dir, char* rel_path, wcas_object* obj):
 	char* full_path = path_join(dir, rel_path)
 	wstream* out = stream_open_write(full_path)
 	free(full_path)
-	if (out == 0):
-		return
+	if (out == 0): return
 	stream_write(out, obj.data, obj.length)
 	stream_close(out)
 
@@ -277,27 +259,21 @@ void repo_diff_modified(wcas* store, char* tree_a, char* tree_b, char* path, wst
 	# still needs freeing below rather than leaking.
 	char* old_blob_id = 0
 	char* new_blob_id = 0
-	if (result_is_ok[char*](old_id_r)):
-		old_blob_id = result_value[char*](old_id_r)
-	if (result_is_ok[char*](new_id_r)):
-		new_blob_id = result_value[char*](new_id_r)
+	if (result_is_ok[char*](old_id_r)): old_blob_id = result_value[char*](old_id_r)
+	if (result_is_ok[char*](new_id_r)): new_blob_id = result_value[char*](new_id_r)
 	result_free[char*](old_id_r)
 	result_free[char*](new_id_r)
 	if ((old_blob_id == 0) || (new_blob_id == 0)):
-		if (old_blob_id != 0):
-			free(old_blob_id)
-		if (new_blob_id != 0):
-			free(new_blob_id)
+		if (old_blob_id != 0): free(old_blob_id)
+		if (new_blob_id != 0): free(new_blob_id)
 		return
 
 	wresult[wcas_object*]* old_obj_r = cas_get(store, old_blob_id)
 	wresult[wcas_object*]* new_obj_r = cas_get(store, new_blob_id)
 	wcas_object* old_obj = 0
 	wcas_object* new_obj = 0
-	if (result_is_ok[wcas_object*](old_obj_r)):
-		old_obj = result_value[wcas_object*](old_obj_r)
-	if (result_is_ok[wcas_object*](new_obj_r)):
-		new_obj = result_value[wcas_object*](new_obj_r)
+	if (result_is_ok[wcas_object*](old_obj_r)): old_obj = result_value[wcas_object*](old_obj_r)
+	if (result_is_ok[wcas_object*](new_obj_r)): new_obj = result_value[wcas_object*](new_obj_r)
 	result_free[wcas_object*](old_obj_r)
 	result_free[wcas_object*](new_obj_r)
 	free(old_blob_id)
@@ -314,7 +290,5 @@ void repo_diff_modified(wcas* store, char* tree_a, char* tree_b, char* path, wst
 			diff_render_unified(out, a_label.data, b_label.data, d)
 			string_free(a_label)
 			string_free(b_label)
-	if (old_obj != 0):
-		cas_object_free(old_obj)
-	if (new_obj != 0):
-		cas_object_free(new_obj)
+	if (old_obj != 0): cas_object_free(old_obj)
+	if (new_obj != 0): cas_object_free(new_obj)

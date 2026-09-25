@@ -74,8 +74,7 @@ void test_sse_basic_fields():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		net_test_send_text(conn, c"event: greeting\ndata: hello world\n\n")
@@ -105,8 +104,7 @@ void test_sse_leading_space_stripping():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# One optional space is stripped; a second space is data.
@@ -134,8 +132,7 @@ void test_sse_multiline_data():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		net_test_send_text(conn, c"data: line1\ndata: line2\ndata: line3\n\n")
@@ -161,8 +158,7 @@ void test_sse_comment_keepalive():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# A bare-colon keep-alive, a comment, then the real event.
@@ -185,8 +181,7 @@ void test_sse_retry_field():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		net_test_send_text(conn, c"retry: 7000\ndata: a\n\n")
@@ -220,8 +215,7 @@ void test_sse_id_and_nul():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		string_builder* body = string_new()
@@ -269,8 +263,7 @@ void test_sse_cr_lf_crlf_endings():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# CR-only, LF-only, and CRLF line/terminator styles.
@@ -297,8 +290,7 @@ void test_sse_bom_stripping():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		string_builder* body = string_new()
@@ -328,8 +320,7 @@ void test_sse_blank_line_dispatch():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# An event with only "event:" and no data must NOT dispatch, and
@@ -355,8 +346,7 @@ void test_sse_split_across_reads():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# Dribble with sleeps so each piece surfaces as its own read: a
@@ -396,15 +386,13 @@ void test_sse_buffer_overflow_fails_closed():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# One line larger than the 1 MiB line cap, with no terminator.
 		char* chunk = malloc(65536)
 		mem_fill(chunk, 'x', 65536)
-		for sent in range(0, 1245184, 65536):
-			net_test_send_all(conn, chunk, 65536)
+		for sent in range(0, 1245184, 65536): net_test_send_all(conn, chunk, 65536)
 		free(chunk)
 		close(conn)
 		exit(0)
@@ -425,8 +413,7 @@ void test_sse_stream_error_distinct_from_eof():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		net_test_read_head(conn)
 		# Promise 100 body bytes but deliver 14 then hang up: the stream
 		# read fails mid-body.

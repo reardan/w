@@ -53,10 +53,8 @@ void ui_text_buffer_init(ui_text_buffer* b):
 # Free the storage and leave a zeroed struct — safe to init again, and
 # safe to free twice.
 void ui_text_buffer_free(ui_text_buffer* b):
-	if (b.data != 0):
-		free(b.data)
-	if (b.line_starts != 0):
-		free(cast(char*, b.line_starts))
+	if (b.data != 0): free(b.data)
+	if (b.line_starts != 0): free(cast(char*, b.line_starts))
 	b.data = 0
 	b.length = 0
 	b.capacity = 0
@@ -67,27 +65,21 @@ void ui_text_buffer_free(ui_text_buffer* b):
 
 # Grow the text storage to hold at least `needed` bytes plus the NUL.
 void ui_text_buffer_reserve(ui_text_buffer* b, int needed):
-	if (needed + 1 <= b.capacity):
-		return
+	if (needed + 1 <= b.capacity): return
 	int next = b.capacity
-	while (next < needed + 1):
-		next = next * 2
+	while (next < needed + 1): next = next * 2
 	char* moved = realloc(b.data, b.capacity, next)
-	if (moved == 0):
-		return
+	if (moved == 0): return
 	b.data = moved
 	b.capacity = next
 
 
 void ui_text_buffer_reserve_lines(ui_text_buffer* b, int needed):
-	if (needed <= b.line_capacity):
-		return
+	if (needed <= b.line_capacity): return
 	int next = b.line_capacity
-	while (next < needed):
-		next = next * 2
+	while (next < needed): next = next * 2
 	int32* moved = cast(int32*, realloc(cast(char*, b.line_starts), b.line_capacity * 4, next * 4))
-	if (moved == 0):
-		return
+	if (moved == 0): return
 	b.line_starts = moved
 	b.line_capacity = next
 
@@ -113,8 +105,7 @@ void ui_text_buffer_reindex(ui_text_buffer* b):
 void ui_text_buffer_set(ui_text_buffer* b, char* s):
 	int len = strlen(s)
 	ui_text_buffer_reserve(b, len)
-	if (len + 1 > b.capacity):
-		len = b.capacity - 1
+	if (len + 1 > b.capacity): len = b.capacity - 1
 	mem_copy(b.data, s, len)
 	b.data[len] = 0
 	b.length = len
@@ -124,13 +115,10 @@ void ui_text_buffer_set(ui_text_buffer* b, char* s):
 # Insert one byte at a byte offset. An out-of-range offset clamps to
 # the buffer's ends rather than corrupting it.
 void ui_text_buffer_insert(ui_text_buffer* b, int offset, int ch):
-	if (offset < 0):
-		offset = 0
-	if (offset > b.length):
-		offset = b.length
+	if (offset < 0): offset = 0
+	if (offset > b.length): offset = b.length
 	ui_text_buffer_reserve(b, b.length + 1)
-	if (b.length + 1 >= b.capacity):
-		return
+	if (b.length + 1 >= b.capacity): return
 	int i = b.length
 	while (i > offset):
 		b.data[i] = b.data[i - 1]
@@ -142,18 +130,13 @@ void ui_text_buffer_insert(ui_text_buffer* b, int offset, int ch):
 
 
 void ui_text_buffer_insert_text(ui_text_buffer* b, int offset, char* s):
-	if (offset < 0):
-		offset = 0
-	if (offset > b.length):
-		offset = b.length
+	if (offset < 0): offset = 0
+	if (offset > b.length): offset = b.length
 	int len = strlen(s)
-	if (len == 0):
-		return
+	if (len == 0): return
 	ui_text_buffer_reserve(b, b.length + len)
-	if (b.length + len + 1 > b.capacity):
-		len = b.capacity - 1 - b.length
-	if (len <= 0):
-		return
+	if (b.length + len + 1 > b.capacity): len = b.capacity - 1 - b.length
+	if (len <= 0): return
 	# Shift the tail right, from the end, so the copy never overwrites
 	# a byte it has yet to move.
 	int i = b.length
@@ -172,14 +155,10 @@ void ui_text_buffer_insert_text(ui_text_buffer* b, int offset, char* s):
 # Delete count bytes at offset; a range past the end deletes what
 # exists and stops.
 void ui_text_buffer_delete(ui_text_buffer* b, int offset, int count):
-	if (count <= 0):
-		return
-	if (offset < 0):
-		offset = 0
-	if (offset >= b.length):
-		return
-	if (offset + count > b.length):
-		count = b.length - offset
+	if (count <= 0): return
+	if (offset < 0): offset = 0
+	if (offset >= b.length): return
+	if (offset + count > b.length): count = b.length - offset
 	int i = offset
 	while (i + count < b.length):
 		b.data[i] = b.data[i + count]
@@ -192,31 +171,26 @@ void ui_text_buffer_delete(ui_text_buffer* b, int offset, int count):
 # Byte offset of a line's first byte; out-of-range lines clamp, so a
 # caller walking a stale line number cannot read past the buffer.
 int ui_text_buffer_line_start(ui_text_buffer* b, int line):
-	if (line <= 0):
-		return 0
-	if (line >= b.line_count):
-		return b.length
+	if (line <= 0): return 0
+	if (line >= b.line_count): return b.length
 	return b.line_starts[line]
 
 
 # Bytes on a line, excluding its newline.
 int ui_text_buffer_line_length(ui_text_buffer* b, int line):
-	if ((line < 0) || (line >= b.line_count)):
-		return 0
+	if ((line < 0) || (line >= b.line_count)): return 0
 	int start = b.line_starts[line]
 	int end = b.length
 	if (line + 1 < b.line_count):
 		# The next line starts after the newline, which is not part of
 		# this line's text.
 		end = b.line_starts[line + 1] - 1
-	if (end < start):
-		return 0
+	if (end < start): return 0
 	return end - start
 
 
 int ui_text_buffer_offset_to_line(ui_text_buffer* b, int offset):
-	if (offset <= 0):
-		return 0
+	if (offset <= 0): return 0
 	int line = 0
 	while (line + 1 < b.line_count):
 		if (b.line_starts[line + 1] > offset):
@@ -228,13 +202,9 @@ int ui_text_buffer_offset_to_line(ui_text_buffer* b, int offset):
 # Byte offset of a line/column pair, with the column clamped to the
 # line's length — the caret cannot sit past the end of a short line.
 int ui_text_buffer_line_col_to_offset(ui_text_buffer* b, int line, int col):
-	if (line < 0):
-		line = 0
-	if (line >= b.line_count):
-		line = b.line_count - 1
+	if (line < 0): line = 0
+	if (line >= b.line_count): line = b.line_count - 1
 	int len = ui_text_buffer_line_length(b, line)
-	if (col < 0):
-		col = 0
-	if (col > len):
-		col = len
+	if (col < 0): col = 0
+	if (col > len): col = len
 	return b.line_starts[line] + col

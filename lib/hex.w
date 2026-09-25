@@ -16,12 +16,9 @@ int hex_digit_upper(int n):
 
 # The 0..15 value of one hex digit (either case), or -1.
 int hex_decode_char(int ch):
-	if ((ch >= '0') && (ch <= '9')):
-		return ch - '0'
-	if ((ch >= 'a') && (ch <= 'f')):
-		return ch - 'a' + 10
-	if ((ch >= 'A') && (ch <= 'F')):
-		return ch - 'A' + 10
+	if ((ch >= '0') && (ch <= '9')): return ch - '0'
+	if ((ch >= 'a') && (ch <= 'f')): return ch - 'a' + 10
+	if ((ch >= 'A') && (ch <= 'F')): return ch - 'A' + 10
 	return 0 - 1
 
 
@@ -34,11 +31,9 @@ void hex_put_byte(char* out, int b):
 # Encodes len bytes at data as 2 * len lowercase hex characters. Returns
 # a malloc'd NUL-terminated string.
 char* hex_encode(char* data, int len):
-	if (len < 0):
-		len = 0
+	if (len < 0): len = 0
 	char* out = malloc(len * 2 + 1)
-	for i in range(len):
-		hex_put_byte(&out[i * 2], data[i] & 255)
+	for i in range(len): hex_put_byte(&out[i * 2], data[i] & 255)
 	out[len * 2] = 0
 	return out
 
@@ -48,10 +43,8 @@ char* hex_encode(char* data, int len):
 # returns 0 (with *out_len = 0) on odd lengths or non-hex characters.
 char* hex_decode(char* text, int len, int* out_len):
 	*out_len = 0
-	if (len < 0):
-		return 0
-	if ((len % 2) != 0):
-		return 0
+	if (len < 0): return 0
+	if ((len % 2) != 0): return 0
 	char* out = malloc(len / 2 + 1)
 	for i in range(0, len, 2):
 		int hi = hex_decode_char(text[i] & 255)
@@ -77,16 +70,14 @@ void hex_decode_into(char* text, char* out, int n):
 # malloc'd buffer; stores the byte count in *out_len.
 char* hex_decode_loose(char* text, int* out_len):
 	int len = 0
-	while (text[len] != 0):
-		len = len + 1
+	while (text[len] != 0): len = len + 1
 	char* out = malloc(len / 2 + 1)
 	int n = 0
 	int hi = 0 - 1
 	for i in range(len):
 		int v = hex_decode_char(text[i] & 255)
 		if (v >= 0):
-			if (hi < 0):
-				hi = v
+			if (hi < 0): hi = v
 			else:
 				out[n] = (hi << 4) | v
 				n = n + 1
@@ -114,7 +105,6 @@ char* hex_fixed(int v, int digits):
 # constants) into a malloc'd buffer; 0 when it is not valid hex.
 char* hex_bytes(char* text):
 	int len = 0
-	while (text[len] != 0):
-		len = len + 1
+	while (text[len] != 0): len = len + 1
 	int n = 0
 	return hex_decode(text, len, &n)

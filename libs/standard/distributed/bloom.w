@@ -89,8 +89,7 @@ void bloom_add(bloom_filter* b, char* key):
 	while (i < b.k):
 		bitset_set(b.bits, idx)
 		idx = idx + step
-		if (idx >= b.m):
-			idx = idx - b.m
+		if (idx >= b.m): idx = idx - b.m
 		i = i + 1
 	b.items = b.items + 1
 
@@ -105,11 +104,9 @@ int bloom_maybe_contains(bloom_filter* b, char* key):
 	free(probe)
 	int i = 0
 	while (i < b.k):
-		if (bitset_get(b.bits, idx) == 0):
-			return 0
+		if (bitset_get(b.bits, idx) == 0): return 0
 		idx = idx + step
-		if (idx >= b.m):
-			idx = idx - b.m
+		if (idx >= b.m): idx = idx - b.m
 		i = i + 1
 	return 1
 

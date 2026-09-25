@@ -32,8 +32,7 @@ char* vrt_scoped(char* prefix):
 
 char* vrt_root_cache
 char* vrt_root():
-	if (vrt_root_cache == 0):
-		vrt_root_cache = vrt_scoped(c"bin/vcs_repo_test_")
+	if (vrt_root_cache == 0): vrt_root_cache = vrt_scoped(c"bin/vcs_repo_test_")
 	return vrt_root_cache
 
 
@@ -93,8 +92,7 @@ void test_repo_content_and_binary():
 	# Only the first REPO_BINARY_SNIFF_LEN() bytes are sniffed.
 	int n = REPO_BINARY_SNIFF_LEN + 2
 	char* big = malloc(n)
-	for i in range(n):
-		big[i] = 'x'
+	for i in range(n): big[i] = 'x'
 	big[n - 1] = 0
 	assert_equal(0, repo_is_binaryish(vrt_blob(big, n)))
 

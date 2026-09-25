@@ -94,8 +94,7 @@ void test_conflict_markers_are_exactly_seven_characters():
 	assert_equal(7, strlen(c"<<<<<<<"))
 	assert_equal(7, strlen(c"======="))
 	assert_equal(7, strlen(c">>>>>>>"))
-	for char* l in lines:
-		free(l)
+	for char* l in lines: free(l)
 	list_free[char*](lines)
 	free(r.text)
 	free(r)

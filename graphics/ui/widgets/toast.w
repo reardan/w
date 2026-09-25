@@ -90,13 +90,10 @@ void ui_toast_dismiss(ui_toast_state* st):
 # 1 while the toast should still be on screen. A difference, so a clock
 # that wraps a 32-bit int still measures short intervals correctly.
 int ui_toast_alive(ui_toast_state* st, int now_ms):
-	if (st.visible == 0):
-		return 0
+	if (st.visible == 0): return 0
 	int elapsed = now_ms - st.shown_at_ms
-	if (elapsed < 0):
-		return 1
-	if (elapsed >= st.duration_ms):
-		return 0
+	if (elapsed < 0): return 1
+	if (elapsed >= st.duration_ms): return 0
 	return 1
 
 

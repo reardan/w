@@ -24,15 +24,13 @@ int wexec_remote_http_get(char* url, int timeout_ms, int* out_status, char** out
 	req.max_redirects = 0
 	http_response* resp = http_request(req)
 	int ok = 0
-	if (resp.error != http_error_none):
-		*out_error = http_error_string(resp.error)
+	if (resp.error != http_error_none): *out_error = http_error_string(resp.error)
 	else:
 		ok = 1
 		*out_status = resp.status
 		*out_body_len = resp.body_len
 		char* copy = malloc(resp.body_len + 1)
-		for i in range(resp.body_len):
-			copy[i] = resp.body[i]
+		for i in range(resp.body_len): copy[i] = resp.body[i]
 		copy[resp.body_len] = 0
 		*out_body = copy
 	http_response_free(resp)
@@ -52,8 +50,7 @@ int wexec_remote_http_put(char* url, char* body, int body_len, int timeout_ms, c
 	req.body_len = body_len
 	http_response* resp = http_request(req)
 	int ok = resp.error == http_error_none
-	if (ok == 0):
-		*out_error = http_error_string(resp.error)
+	if (ok == 0): *out_error = http_error_string(resp.error)
 	http_response_free(resp)
 	http_req_free(req)
 	return ok

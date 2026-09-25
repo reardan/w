@@ -62,8 +62,7 @@ void ui_table_init(ui_table_state* st):
 
 
 int ui_table_row_height(ui_context* ctx, ui_table_state* st):
-	if (st.row_height > 0):
-		return st.row_height
+	if (st.row_height > 0): return st.row_height
 	return ctx.theme.widget_height
 
 
@@ -122,10 +121,8 @@ int ui_table_row(ui_context* ctx, ui_table_state* st, int row_index):
 	# Visibility in content space, against the viewport the last frame
 	# measured.
 	float32 top = row_h * cast(float32, row_index)
-	if (top + row_h <= st.scroll.offset_y):
-		return 0
-	if (top >= st.scroll.offset_y + st.scroll.view_h):
-		return 0
+	if (top + row_h <= st.scroll.offset_y): return 0
+	if (top >= st.scroll.offset_y + st.scroll.view_h): return 0
 
 	int id = ctx.next_id
 	ctx.next_id = ctx.next_id + 1
@@ -133,10 +130,8 @@ int ui_table_row(ui_context* ctx, ui_table_state* st, int row_index):
 		if (st.selected != row_index):
 			st.selected = row_index
 			st.changed = 1
-	if (st.selected == row_index):
-		ui_render_rect(ctx.rndr, row, ctx.theme.widget_active)
-	else if (ctx.hot == id):
-		ui_render_rect(ctx.rndr, row, ctx.theme.widget_hot)
+	if (st.selected == row_index): ui_render_rect(ctx.rndr, row, ctx.theme.widget_active)
+	else if (ctx.hot == id): ui_render_rect(ctx.rndr, row, ctx.theme.widget_hot)
 	else if ((row_index & 1) == 1):
 		# Zebra striping: every other row gets the tonal fill.
 		ui_render_rect(ctx.rndr, row, ctx.theme.widget)
@@ -148,8 +143,7 @@ int ui_table_row(ui_context* ctx, ui_table_state* st, int row_index):
 void ui_table_cell(ui_context* ctx, ui_table_state* st, char* text):
 	int col = st.cell_index
 	st.cell_index = st.cell_index + 1
-	if (col >= st.col_count):
-		return
+	if (col >= st.col_count): return
 	float32 cx = st.row_rect.x + ui_table_col_x(st, col)
 	float32 cw = cast(float32, st.col_widths[col])
 	int scale = ctx.theme.text_scale
@@ -164,6 +158,5 @@ void ui_table_cell(ui_context* ctx, ui_table_state* st, char* text):
 # changed, -1 otherwise.
 int ui_table_end(ui_context* ctx, ui_table_state* st):
 	ui_scroll_end(ctx, &st.scroll)
-	if (st.changed):
-		return st.selected
+	if (st.changed): return st.selected
 	return 0 - 1

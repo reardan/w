@@ -9,8 +9,7 @@ import graphics.ui.widgets.buffer
 
 # 1 when the buffer's text equals s.
 int text_is(ui_text_buffer* b, char* s):
-	if (b.length != strlen(s)):
-		return 0
+	if (b.length != strlen(s)): return 0
 	return strcmp(b.data, s) == 0
 
 
@@ -173,8 +172,7 @@ void test_line_index_grows_too():
 	ui_text_buffer b
 	ui_text_buffer_init(&b)
 	int start_cap = b.line_capacity
-	for i in range(300):
-		ui_text_buffer_insert(&b, b.length, '\n')
+	for i in range(300): ui_text_buffer_insert(&b, b.length, '\n')
 	# 300 newlines make 301 lines, the last one empty.
 	assert_equal(301, b.line_count)
 	asserts(c"line index grew", b.line_capacity > start_cap)

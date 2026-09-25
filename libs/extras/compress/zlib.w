@@ -44,8 +44,7 @@ char* zlib_error_string(int code):
 		return c"zlib: bad header (CMF/FLG fails the mod-31 check, or input is too short)"
 	if (code == ZLIB_ERR_UNSUPPORTED_METHOD):
 		return c"zlib: unsupported compression method, or a preset dictionary is set"
-	if (code == ZLIB_ERR_BAD_CHECKSUM):
-		return c"zlib: Adler-32 checksum mismatch"
+	if (code == ZLIB_ERR_BAD_CHECKSUM): return c"zlib: Adler-32 checksum mismatch"
 	return inflate_error_string(code)
 
 
@@ -68,16 +67,13 @@ void zlib_result_free(zlib_result* r):
 # FCHECK is the 5-bit value making (CMF*256 + FLG) a multiple of 31,
 # RFC 1950 §2.2.
 zlib_result* zlib_compress(char* data, int length, int level):
-	if (length < 0):
-		length = 0
+	if (length < 0): length = 0
 	deflate_result* body = deflate(data, length, level)
 	string_builder* out = string_new()
 	int cmf = 0x78
 	int flevel = 0
-	if (level >= DEFLATE_LEVEL_BEST()):
-		flevel = 2
-	else if (level >= DEFLATE_LEVEL_FAST()):
-		flevel = 1
+	if (level >= DEFLATE_LEVEL_BEST()): flevel = 2
+	else if (level >= DEFLATE_LEVEL_FAST()): flevel = 1
 	int flg_partial = flevel << 6
 	int remainder = (cmf * 256 + flg_partial) % 31
 	int fcheck = (31 - remainder) % 31
@@ -103,12 +99,10 @@ zlib_result* zlib_compress(char* data, int length, int level):
 # other way; untrusted input (e.g. an HTTP response body) should always
 # pass a real cap.
 wresult[zlib_result*]* zlib_decompress(char* data, int length, int max_output):
-	if (length < 6):
-		return result_new_error[zlib_result*](ZLIB_ERR_BAD_HEADER)
+	if (length < 6): return result_new_error[zlib_result*](ZLIB_ERR_BAD_HEADER)
 	int cmf = data[0] & 255
 	int flg = data[1] & 255
-	if (((cmf * 256 + flg) % 31) != 0):
-		return result_new_error[zlib_result*](ZLIB_ERR_BAD_HEADER)
+	if (((cmf * 256 + flg) % 31) != 0): return result_new_error[zlib_result*](ZLIB_ERR_BAD_HEADER)
 	int cm = cmf & 15
 	int fdict = (flg >> 5) & 1
 	if ((cm != 8) || (fdict != 0)):

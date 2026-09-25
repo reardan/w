@@ -176,8 +176,7 @@ const int SOCKADDR_UN_PATH_MAX = 103
 # (family word + path + NUL), or -22 (-EINVAL) when path is too long.
 int sockaddr_un_init(char* addr, char* path):
 	int path_length = strlen(path)
-	if (path_length > SOCKADDR_UN_PATH_MAX):
-		return 0 - 22
+	if (path_length > SOCKADDR_UN_PATH_MAX): return 0 - 22
 	int i = 0
 	while (i < SOCKADDR_UN_SIZE):
 		addr[i] = 0
@@ -313,8 +312,7 @@ int socket_set_nonblocking(int sockfd):
 # (Darwin SO_NOSIGPIPE). A no-op returning 0 on Linux, where callers
 # pass msg_nosignal() to socket_send instead.
 int socket_set_nosigpipe(int sockfd):
-	if (socket_abi_so_nosigpipe() == 0):
-		return 0
+	if (socket_abi_so_nosigpipe() == 0): return 0
 	int enabled = 1
 	return sys_setsockopt(sockfd, sol_socket(), socket_abi_so_nosigpipe(), &enabled, 4)
 
@@ -358,8 +356,7 @@ int socket_set_send_timeout(int sockfd, int timeout_ms):
 # it (Darwin), or -2 when the wait timed out, or -1 on any other failure.
 int net_connect_timeout(int ip, int port, int timeout_ms):
 	int fd = socket_tcp_ipv4()
-	if (fd < 0):
-		return -1
+	if (fd < 0): return -1
 	if (socket_set_nonblocking(fd) < 0):
 		close(fd)
 		return -1
@@ -367,8 +364,7 @@ int net_connect_timeout(int ip, int port, int timeout_ms):
 	int rc = socket_connect_ipv4(fd, ip, port)
 	if (rc < 0):
 		int ready = -1
-		if (rc == (0 - net_einprogress())):
-			ready = io_poll(fd, poll_out, timeout_ms)
+		if (rc == (0 - net_einprogress())): ready = io_poll(fd, poll_out, timeout_ms)
 		if (ready == 0):
 			close(fd)
 			return -2

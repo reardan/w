@@ -29,38 +29,29 @@ int expression();
 # Intrinsic index for the current token: 1 mul_hi, 2 mul_wide,
 # 3 add_carry; 0 when the token is not an intrinsic name.
 int limb_builtin_kind():
-	if (peek(c"mul_hi")):
-		return 1
-	if (peek(c"mul_wide")):
-		return 2
-	if (peek(c"add_carry")):
-		return 3
+	if (peek(c"mul_hi")): return 1
+	if (peek(c"mul_wide")): return 2
+	if (peek(c"add_carry")): return 3
 	return 0
 
 
 char* limb_builtin_name(int kind):
-	if (kind == 1):
-		return c"mul_hi"
-	if (kind == 2):
-		return c"mul_wide"
+	if (kind == 1): return c"mul_hi"
+	if (kind == 2): return c"mul_wide"
 	return c"add_carry"
 
 
 int limb_builtin_ready():
-	if (nextc != '('):
-		return 0
-	if (limb_builtin_kind() == 0):
-		return 0
-	if (sym_lookup(token) >= 0):
-		return 0
+	if (nextc != '('): return 0
+	if (limb_builtin_kind() == 0): return 0
+	if (sym_lookup(token) >= 0): return 0
 	return 1
 
 
 # The check_call_argument warning, with the intrinsic standing in for the
 # callee symbol so call sites read like any function's type mismatch.
 void limb_builtin_check_argument(char* name, int arg_index, int param_type, int arg_type):
-	if (types_compatible_with_expression(param_type, arg_type)):
-		return;
+	if (types_compatible_with_expression(param_type, arg_type)): return;
 	gpu_domain_check_argument(name, arg_index, param_type, arg_type)
 	diag_part(c"warning: function '")
 	diag_part(name)
@@ -106,10 +97,7 @@ int limb_builtin_expr():
 		pop_eax()
 		pop_ebx()
 		stack_pos = stack_pos - 2
-		if (kind == 2):
-			alu_mul_wide()
-		else:
-			alu_add_carry()
-	if (peek(c")") == 0):
-		error2(c"')' expected in ", name)
+		if (kind == 2): alu_mul_wide()
+		else: alu_add_carry()
+	if (peek(c")") == 0): error2(c"')' expected in ", name)
 	return type_value(int_type)

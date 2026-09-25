@@ -211,8 +211,7 @@ void test_binary_command_persists():
 	assert_equal(1, raft_log_length(r2))
 	raft_entry* recovered = raft_log_at(r2, 1)
 	assert_equal(6, recovered.command_len)
-	for i in range(6):
-		assert_equal(cmd[i] & 255, recovered.command[i] & 255)
+	for i in range(6): assert_equal(cmd[i] & 255, recovered.command[i] & 255)
 	raft_free(r2)
 	raft_wal_close(rw2)
 	free(cmd)

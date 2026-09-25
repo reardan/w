@@ -53,8 +53,7 @@ process_result* run_wbuildgen(int check):
 	spawn_options* opts = spawn_options_new()
 	opts.cwd = DIR
 	int n = 5
-	if (check):
-		n = 6
+	if (check): n = 6
 	char** argv = strv_new(n)
 	int i = 0
 	strv_set(argv, i, WBUILDGEN)
@@ -69,8 +68,7 @@ process_result* run_wbuildgen(int check):
 	process_result* r = process_run(WBUILDGEN, argv, opts, 0, 120000)
 	free(opts)
 	free(cast(void*, argv))
-	if (r == 0):
-		fail(c"could not spawn bin/wbuildgen")
+	if (r == 0): fail(c"could not spawn bin/wbuildgen")
 	return r
 
 
@@ -107,11 +105,9 @@ int main(int argc, char** argv):
 	# survive the run untouched.
 	file_write_text(in_dir(c"out.json.tmp"), c"sentinel\n")
 	process_result* r = run_wbuildgen(0)
-	if (r.status != 0):
-		fail(c"initial manifest write failed")
+	if (r.status != 0): fail(c"initial manifest write failed")
 	process_result_free(r)
-	if (path_exists(in_dir(c"out.json")) == 0):
-		fail(c"manifest write produced no out.json")
+	if (path_exists(in_dir(c"out.json")) == 0): fail(c"manifest write produced no out.json")
 	if (path_exists(in_dir(c"out.json.tmp"))):
 		fail(c"out.json.tmp left behind (write is not temp-file + rename)")
 
@@ -121,13 +117,11 @@ int main(int argc, char** argv):
 	# pass; the old in-place rewrite (open + truncate + write) let a
 	# concurrent check read a prefix of the file and fail spuriously.
 	int pid = fork()
-	if (pid < 0):
-		fail(c"fork failed")
+	if (pid < 0): fail(c"fork failed")
 	if (pid == 0):
 		for i in range(40):
 			process_result* w = run_wbuildgen(0)
-			if (w.status != 0):
-				exit(1)
+			if (w.status != 0): exit(1)
 			process_result_free(w)
 		exit(0)
 	process* writer = new process()
@@ -146,14 +140,12 @@ int main(int argc, char** argv):
 			process_wait(writer)
 			fail(c"concurrent --check saw a torn manifest mid-rewrite")
 		process_result_free(c)
-	if (process_wait(writer) != 0):
-		fail(c"background manifest writer failed")
+	if (process_wait(writer) != 0): fail(c"background manifest writer failed")
 
 	# ===== Distinct --check message for an unparseable committed manifest
 	file_write_text(in_dir(c"out.json"), c"{\"targets\": [")
 	r = run_wbuildgen(1)
-	if (r.status == 0):
-		fail(c"--check exited 0 on an unparseable manifest")
+	if (r.status == 0): fail(c"--check exited 0 on an unparseable manifest")
 	if (contains(r.stderr_text, c"committed manifest failed to parse: out.json") == 0):
 		fail(c"missing 'committed manifest failed to parse' message")
 	if (contains(r.stderr_text, c"manifests differ in formatting only")):
@@ -164,8 +156,7 @@ int main(int argc, char** argv):
 	# (same parsed structure, different bytes), pinning the triage split.
 	file_write_text(in_dir(c"out.json"), c"{\"targets\": []}")
 	r = run_wbuildgen(1)
-	if (r.status == 0):
-		fail(c"--check exited 0 on formatting drift")
+	if (r.status == 0): fail(c"--check exited 0 on formatting drift")
 	if (contains(r.stderr_text, c"manifests differ in formatting only") == 0):
 		fail(c"missing formatting-only drift message")
 	process_result_free(r)

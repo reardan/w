@@ -52,8 +52,7 @@ cpp_macro* cpp_macro_new(char* name):
 # is set to 0 rather than the key being removed), which correctly looks
 # up as "not defined" here.
 cpp_macro* cpp_macro_lookup(map[char*, cpp_macro*] macros, char* name):
-	if ((name in macros) == 0):
-		return 0
+	if ((name in macros) == 0): return 0
 	return macros[name]
 
 
@@ -90,8 +89,7 @@ cpp_token* cpp_token_list_without_eof(cpp_token* token):
 	head.next = 0
 	cpp_token* tail = &head
 	while (token != 0):
-		if (token.kind == cpp_token_eof()):
-			break
+		if (token.kind == cpp_token_eof()): break
 		tail.next = cpp_token_clone_one(token)
 		tail = tail.next
 		token = token.next
@@ -112,25 +110,20 @@ cpp_token* cpp_make_placemarker():
 
 
 cpp_token* cpp_arg_token(list[cpp_token*] args, int index):
-	if (index < 0):
-		return 0
-	if (index >= args.length):
-		return 0
+	if (index < 0): return 0
+	if (index >= args.length): return 0
 	return args[index]
 
 
 cpp_token* cpp_clone_arg_or_marker(list[cpp_token*] args, int index):
 	cpp_token* arg = cpp_arg_token(args, index)
-	if (arg == 0):
-		return cpp_make_placemarker()
-	if (arg.kind == cpp_token_eof()):
-		return cpp_make_placemarker()
+	if (arg == 0): return cpp_make_placemarker()
+	if (arg.kind == cpp_token_eof()): return cpp_make_placemarker()
 	return cpp_token_list_without_eof(arg)
 
 
 int cpp_arg_has_tokens(cpp_token* arg):
-	if (arg == 0):
-		return 0
+	if (arg == 0): return 0
 	return arg.kind != cpp_token_eof()
 
 
@@ -152,8 +145,7 @@ cpp_macro_args* cpp_collect_args(cpp_token* lparen):
 	int depth = 0
 	cpp_token* token = lparen.next
 	while (token != 0):
-		if (token.kind == cpp_token_eof()):
-			break
+		if (token.kind == cpp_token_eof()): break
 		if (cpp_token_is_punct(token, c"(")):
 			depth = depth + 1
 			cpp_args_push_token(&current_head, token)
@@ -169,8 +161,7 @@ cpp_macro_args* cpp_collect_args(cpp_token* lparen):
 		else if (cpp_token_is_punct(token, c",") & (depth == 0)):
 			args.items.push(current_head.next)
 			current_head.next = 0
-		else:
-			cpp_args_push_token(&current_head, token)
+		else: cpp_args_push_token(&current_head, token)
 		token = token.next
 	return args
 
@@ -195,15 +186,12 @@ cpp_token* cpp_join_variadic_args(cpp_macro_args* args, int first):
 
 
 void cpp_normalize_args(cpp_macro* macro, cpp_macro_args* args):
-	if (macro.is_variadic == 0):
-		return
+	if (macro.is_variadic == 0): return
 	list[cpp_token*] normalized = new list[cpp_token*]
 	int fixed_count = macro.params.length - 1
 	for i in range(fixed_count):
-		if (i < args.items.length):
-			normalized.push(args.items[i])
-		else:
-			normalized.push(0)
+		if (i < args.items.length): normalized.push(args.items[i])
+		else: normalized.push(0)
 	normalized.push(cpp_join_variadic_args(args, fixed_count))
 	args.items = normalized
 
@@ -228,8 +216,7 @@ cpp_token* cpp_builtin_expand(cpp_macro* macro, cpp_token* origin):
 void cpp_stringize_append_escaped(string_builder* out, char* text):
 	int i = 0
 	while (text[i] != 0):
-		if ((text[i] == '"') || (text[i] == 92)):
-			string_append_char(out, 92)
+		if ((text[i] == '"') || (text[i] == 92)): string_append_char(out, 92)
 		string_append_char(out, text[i])
 		i = i + 1
 
@@ -239,11 +226,9 @@ cpp_token* cpp_stringize_arg(cpp_token* arg):
 	string_append_char(out, '"')
 	int need_space = 0
 	while (arg != 0):
-		if (arg.kind == cpp_token_eof()):
-			break
+		if (arg.kind == cpp_token_eof()): break
 		if (arg.has_space | need_space):
-			if (out.data[out.length - 1] != '"'):
-				string_append_char(out, ' ')
+			if (out.data[out.length - 1] != '"'): string_append_char(out, ' ')
 		cpp_stringize_append_escaped(out, arg.text)
 		need_space = 0
 		arg = arg.next
@@ -254,20 +239,16 @@ cpp_token* cpp_stringize_arg(cpp_token* arg):
 
 
 int cpp_token_is_param(cpp_macro* macro, cpp_token* token):
-	if (token == 0):
-		return 0
-	if (token.kind != cpp_token_ident()):
-		return 0
+	if (token == 0): return 0
+	if (token.kind != cpp_token_ident()): return 0
 	return cpp_macro_param_index(macro, token.text) >= 0
 
 
 cpp_token* cpp_param_replacement(map[char*, cpp_macro*] macros, cpp_macro* macro, cpp_macro_args* args, cpp_token* token, int raw):
 	int index = cpp_macro_param_index(macro, token.text)
-	if (raw):
-		return cpp_clone_arg_or_marker(args.items, index)
+	if (raw): return cpp_clone_arg_or_marker(args.items, index)
 	cpp_token* arg = cpp_arg_token(args.items, index)
-	if (arg == 0):
-		return 0
+	if (arg == 0): return 0
 	return cpp_expand_tokens(macros, cpp_token_list_without_eof(arg))
 
 
@@ -278,8 +259,7 @@ cpp_token* cpp_subst_first_pass(map[char*, cpp_macro*] macros, cpp_macro* macro,
 	cpp_token* token = macro.body
 	int last_was_paste = 0
 	while (token != 0):
-		if (token.kind == cpp_token_eof()):
-			break
+		if (token.kind == cpp_token_eof()): break
 		if (cpp_token_is_punct(token, c"#") & cpp_token_is_param(macro, token.next)):
 			int index = cpp_macro_param_index(macro, token.next.text)
 			tail.next = cpp_stringize_arg(cpp_arg_token(args.items, index))
@@ -296,10 +276,8 @@ cpp_token* cpp_subst_first_pass(map[char*, cpp_macro*] macros, cpp_macro* macro,
 						tail = cpp_token_last(&head)
 						tail.next = comma
 						tail = comma
-					else:
-						tail = cpp_token_last(&head)
-				else:
-					tail = cpp_token_last(&head)
+					else: tail = cpp_token_last(&head)
+				else: tail = cpp_token_last(&head)
 				token = token.next.next
 			else:
 				tail.next = cpp_token_clone_one(token)
@@ -308,8 +286,7 @@ cpp_token* cpp_subst_first_pass(map[char*, cpp_macro*] macros, cpp_macro* macro,
 				token = token.next
 		else if (cpp_token_is_param(macro, token)):
 			int raw = 0
-			if (cpp_token_is_punct(token.next, c"##") | last_was_paste):
-				raw = 1
+			if (cpp_token_is_punct(token.next, c"##") | last_was_paste): raw = 1
 			cpp_token* replacement = cpp_param_replacement(macros, macro, args, token, raw)
 			if (replacement != 0):
 				tail.next = replacement
@@ -328,8 +305,7 @@ cpp_token* cpp_subst_first_pass(map[char*, cpp_macro*] macros, cpp_macro* macro,
 cpp_token* cpp_remove_last_token(cpp_token* head):
 	cpp_token* prev = head
 	cpp_token* cur = head.next
-	if (cur == 0):
-		return 0
+	if (cur == 0): return 0
 	while (cur.next != 0):
 		prev = cur
 		cur = cur.next
@@ -369,8 +345,7 @@ cpp_token* cpp_process_paste(cpp_token* tokens):
 	while (token != 0):
 		if (cpp_token_is_punct(token, c"##")):
 			cpp_token* right = token.next
-			if (right == 0):
-				return head.next
+			if (right == 0): return head.next
 			cpp_token* left = cpp_remove_last_token(&head)
 			if (left != 0):
 				if (left.kind == cpp_token_placemarker):
@@ -384,15 +359,13 @@ cpp_token* cpp_process_paste(cpp_token* tokens):
 						tail = cpp_token_last(&head)
 						token = right.next
 				else:
-					if (right.kind != cpp_token_placemarker):
-						cpp_paste_into(left, right)
+					if (right.kind != cpp_token_placemarker): cpp_paste_into(left, right)
 					tail = cpp_token_last(&head)
 					tail.next = left
 					tail = left
 					tail.next = 0
 					token = right.next
-			else:
-				token = right.next
+			else: token = right.next
 		else if (token.kind == cpp_token_placemarker):
 			if (cpp_token_is_punct(token.next, c"##")):
 				cpp_token* next = token.next
@@ -400,8 +373,7 @@ cpp_token* cpp_process_paste(cpp_token* tokens):
 				tail.next = token
 				tail = token
 				token = next
-			else:
-				token = token.next
+			else: token = token.next
 		else:
 			cpp_token* next = token.next
 			token.next = 0
@@ -431,8 +403,7 @@ cpp_token* cpp_expand_tokens(map[char*, cpp_macro*] macros, cpp_token* token):
 	head.next = 0
 	cpp_token* tail = &head
 	while (token != 0):
-		if (token.kind == cpp_token_eof()):
-			break
+		if (token.kind == cpp_token_eof()): break
 		if (token.kind == cpp_token_ident()):
 			cpp_macro* macro = cpp_macro_lookup(macros, token.text)
 			if ((macro != 0) & (cpp_hideset_contains(token.hideset, token.text) == 0)):

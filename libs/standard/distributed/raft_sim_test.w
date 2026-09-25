@@ -39,8 +39,7 @@ void test_election_with_loss_and_delay():
 	for steps in range(400):
 		rsim_step(c)
 		rafts_assert_no_same_term_leaders(c.nodes)
-		if (found < 0 && rsim_leader(c) != (0 - 1)):
-			found = steps
+		if (found < 0 && rsim_leader(c) != (0 - 1)): found = steps
 	assert1(found >= 0)
 	rsim_free(c)
 
@@ -64,8 +63,7 @@ void test_replication_commits_everywhere():
 		list[char*] got = new list[char*]
 		raft_collect_applies(r, got)
 		assert_equal(3, got.length)
-		for k in range(3):
-			assert_strings_equal(want[k], got[k])
+		for k in range(3): assert_strings_equal(want[k], got[k])
 	rsim_assert_logs_identical(c)
 	rsim_free(c)
 
@@ -85,8 +83,7 @@ void test_no_commit_without_majority():
 	assert_equal(1, raft_log_length(old_leader))
 	assert_equal(0, raft_commit_int(old_leader))
 	# nothing applies anywhere
-	for i in range(3):
-		assert_equal(0, raft_pending_apply(c.nodes[i]))
+	for i in range(3): assert_equal(0, raft_pending_apply(c.nodes[i]))
 	# the two connected followers elected a new leader at a higher term,
 	# and it never saw the isolated proposal
 	int new_lid = rsim_leader(c)
@@ -113,8 +110,7 @@ void test_partition_heal_converges():
 	while (k < 200 && new_lid < 0):
 		rsim_step(c)
 		int cand = rsim_leader(c)
-		if (cand != (0 - 1) && cand != old_lid):
-			new_lid = cand
+		if (cand != (0 - 1) && cand != old_lid): new_lid = cand
 		k = k + 1
 	assert1(new_lid >= 1)
 	rsim_propose(c, new_lid, c"x")
@@ -152,8 +148,7 @@ void test_leader_loss_reelection():
 	while (k < 200 && new_lid < 0):
 		rsim_step(c)
 		int cand = rsim_leader(c)
-		if (cand != (0 - 1) && cand != old_lid):
-			new_lid = cand
+		if (cand != (0 - 1) && cand != old_lid): new_lid = cand
 		k = k + 1
 	assert1(new_lid >= 1)
 	assert1(new_lid != old_lid)
@@ -210,8 +205,7 @@ void test_five_node_two_partitions():
 	rsim* c = rsim_new(5, 8008, 0, 0, 0, 800)
 	# {1, 2} vs {3, 4, 5}: block every cross pair before any election
 	for a in range(1, 2 + 1):
-		for b in range(3, 5 + 1):
-			sim_partition(c.net, a, b)
+		for b in range(3, 5 + 1): sim_partition(c.net, a, b)
 	# the minority pair can chase terms as candidates forever but can
 	# never assemble 3 votes; the majority side elects
 	int k = 0
@@ -309,8 +303,7 @@ void test_no_apply_regression():
 			raft_collect_applies(r, drained)
 			applied[i] = applied[i] + drained.length
 			assert1(applied[i] <= ci)
-	for j in range(3):
-		assert_equal(3, applied[j])
+	for j in range(3): assert_equal(3, applied[j])
 	rsim_free(c)
 
 
@@ -360,8 +353,7 @@ void test_hardened_noop_prevote_cluster():
 	while (k < 400 && new_lid < 0):
 		rsim_step(c)
 		int cand = rsim_leader(c)
-		if (cand != (0 - 1) && cand != lid):
-			new_lid = cand
+		if (cand != (0 - 1) && cand != lid): new_lid = cand
 		k = k + 1
 	assert1(new_lid >= 1)
 	rsim_run(c, 30)
@@ -380,8 +372,7 @@ void test_hardened_noop_prevote_cluster():
 		int noops = 0
 		for e in range(1, 3 + 1):
 			raft_entry* entry = raft_log_at(r, e)
-			if (strlen(entry.command) == 0):
-				noops = noops + 1
+			if (strlen(entry.command) == 0): noops = noops + 1
 		assert_equal(2, noops)
 		i = i + 1
 	rsim_free(c)
@@ -397,8 +388,7 @@ import libs.standard.distributed.raft_wal
 # Bytewise blob check against a marker string (blobs are binary).
 void cl_assert_blob(char* want, int want_len, char* got, int got_len):
 	assert_equal(want_len, got_len)
-	for i in range(want_len):
-		assert_equal(want[i] & 255, got[i] & 255)
+	for i in range(want_len): assert_equal(want[i] & 255, got[i] & 255)
 
 
 void test_snapshot_laggard_catchup():
@@ -426,8 +416,7 @@ void test_snapshot_laggard_catchup():
 	assert_equal(6, raft_commit_int(leader))
 	# partition one follower and commit four more on the majority
 	int lag = 1
-	if (lag == lid):
-		lag = 2
+	if (lag == lid): lag = 2
 	raft* laggard = c.nodes[lag - 1]
 	rsim_partition_from_all(c, lag)
 	rsim_propose(c, lid, c"e7")
@@ -482,8 +471,7 @@ void test_snapshot_laggard_catchup():
 		assert_equal(12, raft_commit_int(c.nodes[j]))
 	# the never-partitioned follower kept the FULL 12-entry history...
 	int other = 1
-	while (other == lid || other == lag):
-		other = other + 1
+	while (other == lid || other == lag): other = other + 1
 	raft* full = c.nodes[other - 1]
 	assert_equal(12, raft_log_length(full))
 	raft_entry* head = raft_log_at(full, 1)

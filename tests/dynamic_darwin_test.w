@@ -28,8 +28,7 @@ int _main():
 	if (libc_pid != raw_pid):
 		puts(c"FAIL: libSystem getppid disagrees with the raw syscall")
 		rc = 1
-	else:
-		puts(c"darwin dynamic linking OK")
+	else: puts(c"darwin dynamic linking OK")
 
 	fflush(0)
 	return rc

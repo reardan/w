@@ -93,8 +93,7 @@ void file_stat_from_statx(char* buf, file_stat* out):
 int file_statx_fill(char* path, int flags, file_stat* out):
 	char* buf = malloc(FILE_STATX_BUF_SIZE)
 	int err = statx(path, flags, FILE_STATX_BASIC_STATS, buf)
-	if (err == 0):
-		file_stat_from_statx(buf, out)
+	if (err == 0): file_stat_from_statx(buf, out)
 	free(buf)
 	return err
 
@@ -143,16 +142,13 @@ char* file_mode_octal(int mode):
 # Parse an octal mode string like "644" or "0644". Returns the value,
 # or -1 for an empty string or any non-octal digit.
 int file_mode_parse_octal(char* s):
-	if (s == 0):
-		return -1
-	if (s[0] == 0):
-		return -1
+	if (s == 0): return -1
+	if (s[0] == 0): return -1
 	int result = 0
 	int i = 0
 	while (s[i]):
 		int d = s[i] - '0'
-		if ((d < 0) || (d > 7)):
-			return -1
+		if ((d < 0) || (d > 7)): return -1
 		result = result * 8 + d
 		i = i + 1
 	return result
@@ -161,12 +157,9 @@ int file_mode_parse_octal(char* s):
 # A short name for the file type: "regular file", "directory",
 # "symbolic link" or "other".
 char* file_type_name(file_stat* st):
-	if (file_is_reg(st)):
-		return c"regular file"
-	if (file_is_dir(st)):
-		return c"directory"
-	if (file_is_lnk(st)):
-		return c"symbolic link"
+	if (file_is_reg(st)): return c"regular file"
+	if (file_is_dir(st)): return c"directory"
+	if (file_is_lnk(st)): return c"symbolic link"
 	return c"other"
 
 
@@ -179,8 +172,7 @@ int file_chmod(char* path, int mode):
 # via create_file's 420 = 0644 default used elsewhere in the tree).
 int file_touch(char* path, int create_if_missing):
 	int err = utimensat(path, 0, 0)
-	if (err == 0):
-		return 0
+	if (err == 0): return 0
 	if ((create_if_missing == 0) || (err != (0 - 2))):
 		return err
 	# ENOENT: create then stamp.
@@ -224,8 +216,7 @@ int file_readlink(char* path, char* buf, int size):
 	int n = readlink(path, buf, size)
 	if (n < 0):
 		return n
-	if (n < size):
-		buf[n] = 0
+	if (n < size): buf[n] = 0
 	return n
 
 

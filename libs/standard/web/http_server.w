@@ -257,37 +257,24 @@ const int server_error_tls = 107
 
 
 char* server_error_string(int code):
-	if (code == server_error_none):
-		return c""
-	if (code == server_error_bind):
-		return c"bind/listen failed"
-	if (code == server_error_timeout):
-		return c"timed out"
-	if (code == server_error_bad_request):
-		return c"malformed request"
-	if (code == server_error_headers_too_large):
-		return c"request headers too large"
-	if (code == server_error_body_too_large):
-		return c"request body too large"
-	if (code == server_error_bad_chunk):
-		return c"malformed chunked body"
-	if (code == server_error_not_implemented):
-		return c"unsupported transfer-encoding"
-	if (code == server_error_tls):
-		return c"TLS handshake failed"
+	if (code == server_error_none): return c""
+	if (code == server_error_bind): return c"bind/listen failed"
+	if (code == server_error_timeout): return c"timed out"
+	if (code == server_error_bad_request): return c"malformed request"
+	if (code == server_error_headers_too_large): return c"request headers too large"
+	if (code == server_error_body_too_large): return c"request body too large"
+	if (code == server_error_bad_chunk): return c"malformed chunked body"
+	if (code == server_error_not_implemented): return c"unsupported transfer-encoding"
+	if (code == server_error_tls): return c"TLS handshake failed"
 	return c"unknown error"
 
 
 # HTTP status this server writes back for a request-level failure.
 int server_error_to_status(int code):
-	if (code == server_error_timeout):
-		return 408
-	if (code == server_error_headers_too_large):
-		return 431
-	if (code == server_error_body_too_large):
-		return 413
-	if (code == server_error_not_implemented):
-		return 501
+	if (code == server_error_timeout): return 408
+	if (code == server_error_headers_too_large): return 431
+	if (code == server_error_body_too_large): return 413
+	if (code == server_error_not_implemented): return 501
 	return 400
 
 
@@ -314,12 +301,9 @@ char* server_status_text(int status):
 		case 500: return c"Internal Server Error"
 		case 501: return c"Not Implemented"
 		case 503: return c"Service Unavailable"
-	if (status < 300):
-		return c"OK"
-	if (status < 400):
-		return c"Redirect"
-	if (status < 500):
-		return c"Error"
+	if (status < 300): return c"OK"
+	if (status < 400): return c"Redirect"
+	if (status < 500): return c"Error"
 	return c"Server Error"
 
 
@@ -340,32 +324,25 @@ ServerRequest* server_request_new():
 
 
 void server_request_free(ServerRequest* req):
-	if (req == 0):
-		return
-	if (req.method != 0):
-		free(req.method)
-	if (req.target != 0):
-		free(req.target)
-	if (req.path != 0):
-		free(req.path)
-	if (req.query != 0):
-		free(req.query)
+	if (req == 0): return
+	if (req.method != 0): free(req.method)
+	if (req.target != 0): free(req.target)
+	if (req.path != 0): free(req.path)
+	if (req.query != 0): free(req.query)
 	list[char*] keys = req.headers.keys()
 	for char* key in keys:
 		char* value = req.headers[key]
 		free(value)
 	list_free[char*](keys)
 	map_free[char*, char*](req.headers)
-	if (req.body != 0):
-		free(req.body)
+	if (req.body != 0): free(req.body)
 	free(req)
 
 
 # Case-insensitive header lookup. Returns the stored value (owned by
 # the request; do not free) or 0 when absent.
 char* server_request_header(ServerRequest* req, char* name):
-	if (req == 0):
-		return 0
+	if (req == 0): return 0
 	char* lower = strclone(name)
 	int i = 0
 	while (lower[i] != 0):
@@ -384,13 +361,10 @@ char* server_request_header(ServerRequest* req, char* name):
 int server_request_wants_keep_alive(ServerRequest* req):
 	char* connection = server_request_header(req, c"connection")
 	if (req.http_minor >= 1):
-		if (connection == 0):
-			return 1
-		if (http_value_has_token(connection, c"close") != 0):
-			return 0
+		if (connection == 0): return 1
+		if (http_value_has_token(connection, c"close") != 0): return 0
 		return 1
-	if (connection == 0):
-		return 0
+	if (connection == 0): return 0
 	return http_value_has_token(connection, c"keep-alive")
 
 
@@ -409,16 +383,14 @@ void server_response_add_header(ServerResponse* resp, char* name, char* value):
 
 char* server_response_get_header(ServerResponse* resp, char* name):
 	for http_header* h in resp.headers:
-		if (http_str_ieq(h.name, name) != 0):
-			return h.value
+		if (http_str_ieq(h.name, name) != 0): return h.value
 	return 0
 
 
 # Copies body_len bytes from body (which the caller keeps ownership of
 # and may free or reuse immediately afterwards).
 void server_response_set_body(ServerResponse* resp, char* body, int body_len):
-	if (resp.body != 0):
-		free(resp.body)
+	if (resp.body != 0): free(resp.body)
 	if (body_len <= 0):
 		resp.body = strclone(c"")
 		resp.body_len = 0
@@ -438,30 +410,25 @@ void server_response_set_text(ServerResponse* resp, char* text):
 # server_response_set_body. Used by request_context_write_body's
 # buffered mode, where a handler may call write_body more than once.
 void server_response_append_body(ServerResponse* resp, char* body, int body_len):
-	if (body_len <= 0):
-		return
+	if (body_len <= 0): return
 	int old_len = resp.body_len
 	char* combined = malloc(old_len + body_len + 1)
 	mem_copy(combined, resp.body, old_len)
-	for j in range(body_len):
-		combined[old_len + j] = body[j]
+	for j in range(body_len): combined[old_len + j] = body[j]
 	combined[old_len + body_len] = 0
-	if (resp.body != 0):
-		free(resp.body)
+	if (resp.body != 0): free(resp.body)
 	resp.body = combined
 	resp.body_len = old_len + body_len
 
 
 void server_response_free(ServerResponse* resp):
-	if (resp == 0):
-		return
+	if (resp == 0): return
 	for http_header* h in resp.headers:
 		free(h.name)
 		free(h.value)
 		free(h)
 	list_free[http_header*](resp.headers)
-	if (resp.body != 0):
-		free(resp.body)
+	if (resp.body != 0): free(resp.body)
 	free(resp)
 
 
@@ -471,15 +438,12 @@ void server_response_free(ServerResponse* resp):
 # part (RFC 9112 3). Fills req.method/target/http_minor. Returns 1/0.
 int server_parse_request_line(char* line, ServerRequest* req):
 	int i = 0
-	while ((line[i] != 0) && (line[i] != ' ')):
-		i = i + 1
-	if ((line[i] != ' ') || (i == 0)):
-		return 0
+	while ((line[i] != 0) && (line[i] != ' ')): i = i + 1
+	if ((line[i] != ' ') || (i == 0)): return 0
 	char* method = substring(line, 0, i)
 	int target_start = i + 1
 	i = target_start
-	while ((line[i] != 0) && (line[i] != ' ')):
-		i = i + 1
+	while ((line[i] != 0) && (line[i] != ' ')): i = i + 1
 	if ((line[i] != ' ') || (i == target_start)):
 		free(method)
 		return 0
@@ -494,10 +458,8 @@ int server_parse_request_line(char* line, ServerRequest* req):
 		free(target)
 		return 0
 	int minor = 0
-	if (strcmp(version, c"HTTP/1.1") == 0):
-		minor = 1
-	else if (strcmp(version, c"HTTP/1.0") == 0):
-		minor = 0
+	if (strcmp(version, c"HTTP/1.1") == 0): minor = 1
+	else if (strcmp(version, c"HTTP/1.0") == 0): minor = 0
 	else:
 		free(method)
 		free(target)
@@ -519,13 +481,10 @@ void server_split_target(ServerRequest* req):
 		req.query = strclone(c"")
 		return
 	int i = 0
-	while ((target[i] != 0) && (target[i] != '?')):
-		i = i + 1
+	while ((target[i] != 0) && (target[i] != '?')): i = i + 1
 	req.path = substring(target, 0, i)
-	if (target[i] == '?'):
-		req.query = strclone(target + i + 1)
-	else:
-		req.query = strclone(c"")
+	if (target[i] == '?'): req.query = strclone(target + i + 1)
+	else: req.query = strclone(c"")
 
 
 # Translates a ConnectionContext-level read failure (from
@@ -535,14 +494,10 @@ void server_split_target(ServerRequest* req):
 # through via read_line's oversize_error parameter (headers_too_large,
 # bad_chunk), and a clean mid-line EOF (c.error == 0).
 void server_note_read_failure(ConnectionContext* c, ServerRequest* req):
-	if (c.error == connection_error_timeout):
-		req.error = server_error_timeout
-	else if (c.error == server_error_headers_too_large):
-		req.error = server_error_headers_too_large
-	else if (c.error == server_error_bad_chunk):
-		req.error = server_error_bad_chunk
-	else:
-		req.error = server_error_bad_request
+	if (c.error == connection_error_timeout): req.error = server_error_timeout
+	else if (c.error == server_error_headers_too_large): req.error = server_error_headers_too_large
+	else if (c.error == server_error_bad_chunk): req.error = server_error_bad_chunk
+	else: req.error = server_error_bad_request
 
 
 # Reads header lines up to the blank terminator line into req.headers,
@@ -559,8 +514,7 @@ int server_read_headers(ConnectionContext* c, ServerRequest* req):
 			server_note_read_failure(c, req)
 			ok = 0
 			in_block = 0
-		else if (line.length == 0):
-			in_block = 0
+		else if (line.length == 0): in_block = 0
 		else:
 			total = total + line.length + 2
 			if (total > http_max_header_bytes):
@@ -606,10 +560,8 @@ int server_read_chunked_body(ConnectionContext* c, ServerRequest* req, string_bu
 	while (1):
 		if (chunk_first == 0):
 			if (connection_context_expect_crlf(c) == 0):
-				if (c.error != 0):
-					server_note_read_failure(c, req)
-				else:
-					req.error = server_error_bad_chunk
+				if (c.error != 0): server_note_read_failure(c, req)
+				else: req.error = server_error_bad_chunk
 				return 0
 		chunk_first = 0
 		string_builder* line = string_new()
@@ -623,16 +575,14 @@ int server_read_chunked_body(ConnectionContext* c, ServerRequest* req, string_bu
 		if (size < 0):
 			req.error = server_error_bad_chunk
 			return 0
-		if (size == 0):
-			return server_consume_trailers(c, req)
+		if (size == 0): return server_consume_trailers(c, req)
 		total = total + size
 		if (total > http_max_body_bytes):
 			req.error = server_error_body_too_large
 			return 0
 		char* buf = malloc(size)
 		int ok = connection_context_read_exact(c, buf, size)
-		if (ok != 0):
-			string_append_bytes(out, buf, size)
+		if (ok != 0): string_append_bytes(out, buf, size)
 		free(buf)
 		if (ok == 0):
 			server_note_read_failure(c, req)
@@ -645,11 +595,9 @@ int server_read_chunked_body(ConnectionContext* c, ServerRequest* req, string_bu
 int server_read_length_body(ConnectionContext* c, ServerRequest* req, string_builder* out, int length):
 	char* buf = malloc(length)
 	int ok = connection_context_read_exact(c, buf, length)
-	if (ok != 0):
-		string_append_bytes(out, buf, length)
+	if (ok != 0): string_append_bytes(out, buf, length)
 	free(buf)
-	if (ok == 0):
-		server_note_read_failure(c, req)
+	if (ok == 0): server_note_read_failure(c, req)
 	return ok
 
 
@@ -745,13 +693,10 @@ int server_write_response(ConnectionContext* c, ServerResponse* resp, int keep_a
 		string_append(out, c": ")
 		string_append(out, h.value)
 		string_append(out, c"\x0d\x0a")
-		if (http_str_ieq(h.name, c"connection") != 0):
-			user_connection = 1
-		if (http_str_ieq(h.name, c"content-length") != 0):
-			user_content_length = 1
+		if (http_str_ieq(h.name, c"connection") != 0): user_connection = 1
+		if (http_str_ieq(h.name, c"content-length") != 0): user_content_length = 1
 	int body_len = 0
-	if (resp.body != 0):
-		body_len = resp.body_len
+	if (resp.body != 0): body_len = resp.body_len
 	if (user_content_length == 0):
 		string_append(out, c"Content-Length: ")
 		char* len_text = itoa(body_len)
@@ -759,13 +704,10 @@ int server_write_response(ConnectionContext* c, ServerResponse* resp, int keep_a
 		free(len_text)
 		string_append(out, c"\x0d\x0a")
 	if (user_connection == 0):
-		if (keep_alive != 0):
-			string_append(out, c"Connection: keep-alive\x0d\x0a")
-		else:
-			string_append(out, c"Connection: close\x0d\x0a")
+		if (keep_alive != 0): string_append(out, c"Connection: keep-alive\x0d\x0a")
+		else: string_append(out, c"Connection: close\x0d\x0a")
 	string_append(out, c"\x0d\x0a")
-	if (body_len > 0):
-		string_append_bytes(out, resp.body, body_len)
+	if (body_len > 0): string_append_bytes(out, resp.body, body_len)
 	int ok = connection_context_write_all(c, out.data, out.length)
 	string_free(out)
 	return ok
@@ -802,12 +744,10 @@ RequestContext* request_context_new(ServerRequest* req, ConnectionContext* conn)
 
 
 void request_context_free(RequestContext* rc):
-	if (rc == 0):
-		return
+	if (rc == 0): return
 	server_request_free(rc.request)
 	server_response_free(rc.response)
-	if (rc.url != 0):
-		url_free(rc.url)
+	if (rc.url != 0): url_free(rc.url)
 	free(rc)
 
 
@@ -845,18 +785,13 @@ int request_context_body_len(RequestContext* rc):
 # or when the Host header is missing on an HTTP/1.0 request with no
 # usable authority.
 URL* request_context_url(RequestContext* rc):
-	if (rc.url != 0):
-		return rc.url
+	if (rc.url != 0): return rc.url
 	char* host = server_request_header(rc.request, c"host")
 	string_builder* text = string_new()
-	if (rc.conn.tls != 0):
-		string_append(text, c"https://")
-	else:
-		string_append(text, c"http://")
-	if (host != 0):
-		string_append(text, host)
-	else:
-		string_append(text, c"localhost")
+	if (rc.conn.tls != 0): string_append(text, c"https://")
+	else: string_append(text, c"http://")
+	if (host != 0): string_append(text, host)
+	else: string_append(text, c"localhost")
 	string_append(text, rc.request.target)
 	rc.url = url_parse(text.data)
 	string_free(text)
@@ -869,24 +804,21 @@ URL* request_context_url(RequestContext* rc):
 # value contains an invalid percent-escape.
 char* request_query_param(RequestContext* rc, char* name):
 	URL* u = request_context_url(rc)
-	if (u == 0):
-		return 0
+	if (u == 0): return 0
 	return url_query_param(u.query, name)
 
 
 # Sets the response status. A no-op once request_context_begin_stream
 # has already sent the status line (the wire bytes are already gone).
 void request_context_set_status(RequestContext* rc, int status):
-	if (rc.stream_started != 0):
-		return
+	if (rc.stream_started != 0): return
 	rc.response.status = status
 
 
 # Appends a response header. A no-op once streaming has begun, for the
 # same reason as request_context_set_status.
 void request_context_set_header(RequestContext* rc, char* name, char* value):
-	if (rc.stream_started != 0):
-		return
+	if (rc.stream_started != 0): return
 	server_response_add_header(rc.response, name, value)
 
 
@@ -901,10 +833,8 @@ char* request_context_chunk_size_hex(int n):
 		i = i + 1
 	while (n > 0):
 		int d = n & 15
-		if (d < 10):
-			s[i] = d + '0'
-		else:
-			s[i] = d - 10 + 'a'
+		if (d < 10): s[i] = d + '0'
+		else: s[i] = d - 10 + 'a'
 		i = i + 1
 		n = n >> 4
 	s[i] = 0
@@ -916,8 +846,7 @@ char* request_context_chunk_size_hex(int n):
 # non-positive len is a no-op -- an empty chunk would be mistaken for
 # the terminal chunk that ends the body.
 void request_context_write_chunk(ConnectionContext* c, char* data, int len):
-	if (len <= 0):
-		return
+	if (len <= 0): return
 	string_builder* out = string_new()
 	char* size_hex = request_context_chunk_size_hex(len)
 	string_append(out, size_hex)
@@ -938,15 +867,12 @@ void request_context_write_chunk(ConnectionContext* c, char* data, int len):
 # no-op, so a handler that always begins a stream before writing
 # doesn't need to track whether it already did.
 void request_context_begin_stream(RequestContext* rc):
-	if (rc.stream_started != 0):
-		return
+	if (rc.stream_started != 0): return
 	rc.stream_started = 1
 	char* user_connection = server_response_get_header(rc.response, c"connection")
 	if (user_connection != 0):
-		if (http_value_has_token(user_connection, c"close") != 0):
-			rc.keep_alive = 0
-	if (server_response_get_header(rc.response, c"content-length") == 0):
-		rc.stream_chunked = 1
+		if (http_value_has_token(user_connection, c"close") != 0): rc.keep_alive = 0
+	if (server_response_get_header(rc.response, c"content-length") == 0): rc.stream_chunked = 1
 	string_builder* out = string_new()
 	string_append(out, c"HTTP/1.1 ")
 	char* status_text = itoa(rc.response.status)
@@ -960,13 +886,10 @@ void request_context_begin_stream(RequestContext* rc):
 		string_append(out, c": ")
 		string_append(out, h.value)
 		string_append(out, c"\x0d\x0a")
-	if (rc.stream_chunked != 0):
-		string_append(out, c"Transfer-Encoding: chunked\x0d\x0a")
+	if (rc.stream_chunked != 0): string_append(out, c"Transfer-Encoding: chunked\x0d\x0a")
 	if (user_connection == 0):
-		if (rc.keep_alive != 0):
-			string_append(out, c"Connection: keep-alive\x0d\x0a")
-		else:
-			string_append(out, c"Connection: close\x0d\x0a")
+		if (rc.keep_alive != 0): string_append(out, c"Connection: keep-alive\x0d\x0a")
+		else: string_append(out, c"Connection: close\x0d\x0a")
 	string_append(out, c"\x0d\x0a")
 	connection_context_write_all(rc.conn, out.data, out.length)
 	string_free(out)
@@ -980,13 +903,10 @@ void request_context_begin_stream(RequestContext* rc):
 # set, or raw bytes when the handler supplied its own Content-Length
 # and is managing the byte count itself. A non-positive len is a no-op.
 void request_context_write_body(RequestContext* rc, char* data, int len):
-	if (len <= 0):
-		return
+	if (len <= 0): return
 	if (rc.stream_started != 0):
-		if (rc.stream_chunked != 0):
-			request_context_write_chunk(rc.conn, data, len)
-		else:
-			connection_context_write_all(rc.conn, data, len)
+		if (rc.stream_chunked != 0): request_context_write_chunk(rc.conn, data, len)
+		else: connection_context_write_all(rc.conn, data, len)
 		return
 	server_response_append_body(rc.response, data, len)
 
@@ -997,12 +917,9 @@ void request_context_write_body(RequestContext* rc, char* data, int len):
 # anything, so a handler that calls this without ever writing still
 # produces valid framing. Safe to call more than once.
 void request_context_end_stream(RequestContext* rc):
-	if (rc.stream_started == 0):
-		request_context_begin_stream(rc)
-	if (rc.responded != 0):
-		return
-	if (rc.stream_chunked != 0):
-		connection_context_write_all(rc.conn, c"0\x0d\x0a\x0d\x0a", 5)
+	if (rc.stream_started == 0): request_context_begin_stream(rc)
+	if (rc.responded != 0): return
+	if (rc.stream_chunked != 0): connection_context_write_all(rc.conn, c"0\x0d\x0a\x0d\x0a", 5)
 	rc.responded = 1
 
 
@@ -1017,8 +934,7 @@ int request_context_flush(RequestContext* rc):
 		return rc.conn.error == 0
 	char* user_connection = server_response_get_header(rc.response, c"connection")
 	if (user_connection != 0):
-		if (http_value_has_token(user_connection, c"close") != 0):
-			rc.keep_alive = 0
+		if (http_value_has_token(user_connection, c"close") != 0): rc.keep_alive = 0
 	int ok = server_write_response(rc.conn, rc.response, rc.keep_alive)
 	rc.responded = 1
 	return ok
@@ -1072,10 +988,8 @@ void server_route(ServerContext* s, char* method, char* pattern, request_handler
 
 int server_route_matches(ServerRoute* r, char* method, char* path):
 	if (strcmp(r.method, c"*") != 0):
-		if (strcmp(r.method, method) != 0):
-			return 0
-	if (r.is_prefix != 0):
-		return starts_with(path, r.prefix)
+		if (strcmp(r.method, method) != 0): return 0
+	if (r.is_prefix != 0): return starts_with(path, r.prefix)
 	return strcmp(r.pattern, path) == 0
 
 
@@ -1090,8 +1004,7 @@ ServerRoute* server_route_find(ServerContext* s, char* method, char* path):
 void server_route_free(ServerRoute* r):
 	free(r.method)
 	free(r.pattern)
-	if (r.prefix != 0):
-		free(r.prefix)
+	if (r.prefix != 0): free(r.prefix)
 	free(r)
 
 
@@ -1156,8 +1069,7 @@ int server_context_bind(ServerContext* s):
 # hs_listen).
 int server_context_port(ServerContext* s):
 	sockaddr_in bound
-	if (socket_getsockname_ipv4(s.listener_fd, &bound) < 0):
-		return 0
+	if (socket_getsockname_ipv4(s.listener_fd, &bound) < 0): return 0
 	return net_htons(bound.port)
 
 
@@ -1172,8 +1084,7 @@ void server_context_close(ServerContext* s):
 
 void server_context_free(ServerContext* s):
 	server_context_close(s)
-	for ServerRoute* r in s.routes:
-		server_route_free(r)
+	for ServerRoute* r in s.routes: server_route_free(r)
 	list_free[ServerRoute*](s.routes)
 	free(s)
 
@@ -1186,8 +1097,7 @@ void server_serve_connection(ServerContext* s, ConnectionContext* c):
 	int done = 0
 	while (done == 0):
 		ServerRequest* req = server_read_request(c)
-		if (req == 0):
-			done = 1
+		if (req == 0): done = 1
 		else if (req.error != 0):
 			server_write_error(c, req.error)
 			server_request_free(req)
@@ -1198,17 +1108,13 @@ void server_serve_connection(ServerContext* s, ConnectionContext* c):
 			# ServerContext.routes' doc comment).
 			RequestContext* rc = request_context_new(req, c)
 			ServerRoute* route = server_route_find(s, req.method, req.path)
-			if (route != 0):
-				route.handler(rc, route.user_data)
-			else:
-				server_default_not_found_handler(rc, 0)
+			if (route != 0): route.handler(rc, route.user_data)
+			else: server_default_not_found_handler(rc, 0)
 			int ok = request_context_flush(rc)
 			int keep = rc.keep_alive
 			request_context_free(rc)
-			if (ok == 0):
-				done = 1
-			if (keep == 0):
-				done = 1
+			if (ok == 0): done = 1
+			if (keep == 0): done = 1
 		else:
 			ServerResponse* resp = s.handler(req, s.handler_context)
 			int keep = c.keep_alive
@@ -1218,12 +1124,10 @@ void server_serve_connection(ServerContext* s, ConnectionContext* c):
 			else if (server_response_get_header(resp, c"connection") != 0):
 				if (http_value_has_token(server_response_get_header(resp, c"connection"), c"close") != 0):
 					keep = 0
-			if (server_write_response(c, resp, keep) == 0):
-				done = 1
+			if (server_write_response(c, resp, keep) == 0): done = 1
 			server_response_free(resp)
 			server_request_free(req)
-			if (keep == 0):
-				done = 1
+			if (keep == 0): done = 1
 	connection_context_destroy(c)
 
 
@@ -1294,8 +1198,7 @@ generator int server_accept_task(ServerContext* s, int max_connections):
 		sockaddr_in peer
 		int conn = task_accept_from(s.listener_fd, &peer)
 		if (conn < 0):
-			if ((conn == task_err_cancelled()) || (conn == task_err_timed_out())):
-				break
+			if ((conn == task_err_cancelled()) || (conn == task_err_timed_out())): break
 			if ((conn == -4) || (conn == -103) || (conn == -24) || (conn == -23)):
 				# EINTR, ECONNABORTED, EMFILE/ENFILE: keep serving (the
 				# fd-exhaustion cases recover as connections close).

@@ -46,12 +46,9 @@ int levenshtein(char* a, char* b):
 		while (j <= n):
 			# substitution (free on a match), deletion, insertion
 			int best = prev[j - 1]
-			if (ca != b[j - 1]):
-				best = best + 1
-			if (prev[j] + 1 < best):
-				best = prev[j] + 1
-			if (curr[j - 1] + 1 < best):
-				best = curr[j - 1] + 1
+			if (ca != b[j - 1]): best = best + 1
+			if (prev[j] + 1 < best): best = prev[j] + 1
+			if (curr[j - 1] + 1 < best): best = curr[j - 1] + 1
 			curr[j] = best
 			j = j + 1
 		int* swap_row = prev
@@ -72,10 +69,8 @@ int hamming(char* a, char* b):
 	int distance = 0
 	int i = 0
 	while ((a[i] != 0) && (b[i] != 0)):
-		if (a[i] != b[i]):
-			distance = distance + 1
+		if (a[i] != b[i]): distance = distance + 1
 		i = i + 1
 	# One string ended first: unequal lengths (0 versus a live byte).
-	if (a[i] != b[i]):
-		return -1
+	if (a[i] != b[i]): return -1
 	return distance

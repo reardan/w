@@ -132,13 +132,11 @@ int wdbg_read_command(char* buf, int size):
 # A bare name: the tokenizer's identifier byte classes (ASCII plus UTF-8
 # lead bytes, #287) with continuation bytes allowed after the first.
 int dbg_is_identifier(char* s):
-	if (is_ident_start_byte(s[0]) == 0):
-		return 0
+	if (is_ident_start_byte(s[0]) == 0): return 0
 	int i = 1
 	while (s[i]):
 		int c = s[i] & 255
-		if ((is_ident_part_byte(c) == 0) && ((c < 128) || (c > 191))):
-			return 0
+		if ((is_ident_part_byte(c) == 0) && ((c < 128) || (c > 191))): return 0
 		i = i + 1
 	return 1
 
@@ -194,8 +192,7 @@ void wdbg_print_stack(int context):
 			char* hv = hex_word(dbg_mem_read_word(slot))
 			println(hv)
 			free(hv)
-		else:
-			println(c"<unreadable>")
+		else: println(c"<unreadable>")
 
 
 # "function (file:line)" for an absolute statement address.
@@ -210,11 +207,9 @@ void dbg_announce_location(int addr):
 # of the compiler's call forms (call *eax, or call rel32 in asm stubs).
 int dbg_looks_like_return(int v):
 	if (dbg_in_debuggee(v - 2)):
-		if ((bp_read_byte(v - 2) == 255) & (bp_read_byte(v - 1) == 208)):
-			return 1
+		if ((bp_read_byte(v - 2) == 255) & (bp_read_byte(v - 1) == 208)): return 1
 	if (dbg_in_debuggee(v - 5)):
-		if (bp_read_byte(v - 5) == 232):
-			return 1
+		if (bp_read_byte(v - 5) == 232): return 1
 	return 0
 
 
@@ -230,10 +225,8 @@ int dbg_looks_like_return(int v):
 # 1 when v looks like a return address into wdbg's own image: readable
 # memory just before it that decodes as the compiler's call *reg form.
 int dbg_looks_like_wdbg_return(int v):
-	if (dbg_in_debuggee(v)):
-		return 0
-	if (dbg_mem_readable(v - 2, 2) == 0):
-		return 0
+	if (dbg_in_debuggee(v)): return 0
+	if (dbg_mem_readable(v - 2, 2) == 0): return 0
 	return (bp_read_byte(v - 2) == 255) & (bp_read_byte(v - 1) == 208)
 
 
@@ -246,8 +239,7 @@ void dbg_frames_compute(int context, int stop_addr):
 	int i = 0
 	while ((i < 2048) && (dbg_fr_count < dbg_fr_max)):
 		int slot = esp + i * __word_size__
-		if (dbg_mem_readable(slot, __word_size__) == 0):
-			return;
+		if (dbg_mem_readable(slot, __word_size__) == 0): return;
 		int v = dbg_mem_read_word(slot)
 		if (outermost):
 			# Only the entry function's own base is missing: its return
@@ -260,8 +252,7 @@ void dbg_frames_compute(int context, int stop_addr):
 				# v's slot is the previous frame's function entry esp
 				dbg_fr_set_last_base(slot)
 				dbg_fr_store(v - 1, 0)
-				if (dbg_function_at(v - 1) == main_at):
-					outermost = 1
+				if (dbg_function_at(v - 1) == main_at): outermost = 1
 		i = i + 1
 
 
@@ -276,8 +267,7 @@ int dbg_sel_pc(int stop_addr):
 # esp at the selected frame's statement boundary, or 0 when the frame's
 # base or line info is unknown (locals cannot be addressed then).
 int dbg_sel_esp(int context):
-	if ((dbg_fr_sel <= 0) || (dbg_fr_sel >= dbg_fr_count)):
-		return ctx_esp(context)
+	if ((dbg_fr_sel <= 0) || (dbg_fr_sel >= dbg_fr_count)): return ctx_esp(context)
 	int pc = dbg_fr_pc_at(dbg_fr_sel)
 	return dbg_fr_statement_esp(dbg_fr_base_at(dbg_fr_sel), dbg_in_debuggee(pc), pc)
 
@@ -389,12 +379,10 @@ void dbg_watch_command(int pc, int esp, char* arg):
 		return;
 	int addr = 0
 	int note = -1
-	if (((arg[0] >= '0') && (arg[0] <= '9')) || (arg[0] == '-')):
-		addr = dbg_number(arg)
+	if (((arg[0] >= '0') && (arg[0] <= '9')) || (arg[0] == '-')): addr = dbg_number(arg)
 	else:
 		note = dbg_local_find(arg, pc)
-		if (note >= 0):
-			addr = dbg_local_runtime_addr(note, esp)
+		if (note >= 0): addr = dbg_local_runtime_addr(note, esp)
 		else:
 			int g = dbg_global_find(arg)
 			if ((g < 0) | (dbg_sym_symtype(g) == 2)):
@@ -406,8 +394,7 @@ void dbg_watch_command(int pc, int esp, char* arg):
 		println(c"address is not readable")
 		return;
 	int w = dbg_watch_add(arg, addr)
-	if (w < 0):
-		return;
+	if (w < 0): return;
 	dbg_watch_describe(w)
 	put_char(10)
 	if (note >= 0):
@@ -418,11 +405,9 @@ void dbg_watch_command(int pc, int esp, char* arg):
 # Source file index at stop_addr, or -1 when unknown: what a bare line
 # number resolves against for break/tbreak/log targets.
 int dbg_current_file(int stop_addr):
-	if (dbg_in_debuggee(stop_addr) == 0):
-		return -1
+	if (dbg_in_debuggee(stop_addr) == 0): return -1
 	int entry = dbg_find_line(stop_addr - code_offset)
-	if (entry < 0):
-		return -1
+	if (entry < 0): return -1
 	return dbg_line_file(entry)
 
 
@@ -442,10 +427,8 @@ void dbg_condition_command(char* arg):
 	bp_set_condition(n, rest)
 	print(c"breakpoint ")
 	dbg_print_dec(n + 1)
-	if (rest[0] == 0):
-		println(c": condition cleared")
-	else:
-		println(c": condition set")
+	if (rest[0] == 0): println(c": condition cleared")
+	else: println(c": condition set")
 
 
 # ignore <n> <count>: skip the next <count> eligible (condition-true)
@@ -463,8 +446,7 @@ void dbg_ignore_command(char* arg):
 		println(c"no such breakpoint")
 		return;
 	int count = dbg_number(count_text)
-	if (count < 0):
-		count = 0
+	if (count < 0): count = 0
 	bp_set_ignore(n, count)
 	print(c"breakpoint ")
 	dbg_print_dec(n + 1)
@@ -481,11 +463,9 @@ void dbg_log_command(int current_file, char* arg):
 		println(c"usage: log <function | line | file:line> <expr>")
 		return;
 	int addr = bp_resolve_target(arg, current_file)
-	if (addr == 0):
-		return;
+	if (addr == 0): return;
 	int slot = bp_add(addr, 0)
-	if (slot < 0):
-		return;
+	if (slot < 0): return;
 	bp_set_log(slot, expr)
 	bp_describe(slot)
 	put_char(10)
@@ -498,29 +478,22 @@ void dbg_examine_command(int pc, int esp, char* arg):
 		println(c"usage: x <address | name> [count]")
 		return;
 	int addr = 0
-	if (((arg[0] >= '0') && (arg[0] <= '9')) || (arg[0] == '-')):
-		addr = dbg_number(arg)
+	if (((arg[0] >= '0') && (arg[0] <= '9')) || (arg[0] == '-')): addr = dbg_number(arg)
 	else:
 		int note = dbg_local_find(arg, pc)
-		if (note >= 0):
-			addr = dbg_mem_read_word(dbg_local_runtime_addr(note, esp))
+		if (note >= 0): addr = dbg_mem_read_word(dbg_local_runtime_addr(note, esp))
 		else:
 			int g = dbg_global_find(arg)
 			if (g < 0):
 				print(c"unknown name: ")
 				println(arg)
 				return;
-			if (dbg_sym_symtype(g) == 2):
-				addr = dbg_sym_address(g)
-			else:
-				addr = dbg_mem_read_word(dbg_sym_address(g))
+			if (dbg_sym_symtype(g) == 2): addr = dbg_sym_address(g)
+			else: addr = dbg_mem_read_word(dbg_sym_address(g))
 	int count = 8
-	if (count_text[0] != 0):
-		count = dbg_number(count_text)
-	if (count < 1):
-		count = 1
-	if (count > 1024):
-		count = 1024
+	if (count_text[0] != 0): count = dbg_number(count_text)
+	if (count < 1): count = 1
+	if (count > 1024): count = 1024
 	dbg_examine(addr, count)
 
 
@@ -534,33 +507,28 @@ void dbg_list_command(int stop_addr, char* arg):
 		return;
 	int current = dbg_line_line(entry)
 	int center = current
-	if (arg[0] != 0):
-		center = dbg_number(arg)
+	if (arg[0] != 0): center = dbg_number(arg)
 	dbg_print_source_range(dbg_file_name(dbg_line_file(entry)), center - 5, center + 5, current)
 
 
 # pc/esp describe the selected frame (used by info locals/args).
 void dbg_info_command(int context, int pc, int esp, char* arg):
 	char* rest = dbg_split_word(arg)
-	if ((strcmp(arg, c"b") == 0) | (strcmp(arg, c"breakpoints") == 0)):
-		bp_list()
+	if ((strcmp(arg, c"b") == 0) | (strcmp(arg, c"breakpoints") == 0)): bp_list()
 	else if ((strcmp(arg, c"r") == 0) | (strcmp(arg, c"registers") == 0)):
 		wdbg_print_registers(context)
 	else if ((strcmp(arg, c"l") == 0) | (strcmp(arg, c"locals") == 0)):
 		dbg_print_frame_vars(pc, esp, 'L')
 	else if ((strcmp(arg, c"a") == 0) | (strcmp(arg, c"args") == 0)):
 		dbg_print_frame_vars(pc, esp, 'A')
-	else if ((strcmp(arg, c"w") == 0) | (strcmp(arg, c"watchpoints") == 0)):
-		dbg_watch_list()
-	else if ((strcmp(arg, c"f") == 0) | (strcmp(arg, c"functions") == 0)):
-		dbg_print_functions()
+	else if ((strcmp(arg, c"w") == 0) | (strcmp(arg, c"watchpoints") == 0)): dbg_watch_list()
+	else if ((strcmp(arg, c"f") == 0) | (strcmp(arg, c"functions") == 0)): dbg_print_functions()
 	else if (strcmp(arg, c"files") == 0):
 		int i = 0
 		while (i < debug_file_count):
 			println(str_from_cstr(cast(char*, load_ptr(debug_files + i * __word_size__))))
 			i = i + 1
-	else:
-		println(c"info topics: breakpoints watchpoints registers locals args functions files")
+	else: println(c"info topics: breakpoints watchpoints registers locals args functions files")
 
 
 # ---------------------------------------------------------------------------
@@ -576,15 +544,13 @@ char* dbg_repl_line
 
 # Read one line into dbg_repl_line; returns its length or -1 on EOF/^C.
 int dbg_repl_read_line(char* prompt):
-	if (dbg_repl_line == 0):
-		dbg_repl_line = malloc(4096)
+	if (dbg_repl_line == 0): dbg_repl_line = malloc(4096)
 	return line_edit_read(prompt, dbg_repl_line, 4096, 0)
 
 
 int dbg_repl_line_blank():
 	int i = 0
-	while (dbg_repl_line[i] == 9):
-		i = i + 1
+	while (dbg_repl_line[i] == 9): i = i + 1
 	return dbg_repl_line[i] == 0
 
 
@@ -599,8 +565,7 @@ int dbg_repl_read_entry(string_builder* entry):
 	string_clear(entry)
 	repl_scan_reset()
 	int r = dbg_repl_read_line(c"w> ")
-	if (r == -1):
-		return 0
+	if (r == -1): return 0
 	if (r == -2):
 		return 1 /* Ctrl-C discards: the empty entry is a no-op */
 	string_append(entry, dbg_repl_line)
@@ -619,8 +584,7 @@ int dbg_repl_read_entry(string_builder* entry):
 		string_append_char(entry, 10)
 		string_append(entry, dbg_repl_line)
 		repl_scan_line(dbg_repl_line)
-		if (repl_scan_last_char == ':'):
-			block_mode = 1
+		if (repl_scan_last_char == ':'): block_mode = 1
 		open_state = repl_scan_open()
 	return 1
 
@@ -631,12 +595,9 @@ void dbg_repl_mode(int pc, int esp):
 	println(c"repl mode: entries run at this stop and definitions persist; :end returns to wdbg")
 	string_builder* entry = string_new()
 	while (1):
-		if (dbg_repl_read_entry(entry) == 0):
-			break
-		if (string_equals(entry, c":end")):
-			break
-		if (entry.length == 0):
-			continue
+		if (dbg_repl_read_entry(entry) == 0): break
+		if (string_equals(entry, c":end")): break
+		if (entry.length == 0): continue
 		if (repl_scan_string):
 			# The tokenizer cannot recover from an unterminated string
 			println(c"unterminated string literal, entry discarded")
@@ -696,11 +657,9 @@ void dbg_prepare_resume(int context, int stop_addr, int mode):
 		bp_disarm(bp)
 		dbg_rearm_bp = bp
 		ctx_set_trap_flag(context)
-	else if (mode != dbg_step_none):
-		ctx_set_trap_flag(context)
+	else if (mode != dbg_step_none): ctx_set_trap_flag(context)
 	# Live watchpoints turn every resume into a single-step scan
-	if (dbg_watch_live() > 0):
-		ctx_set_trap_flag(context)
+	if (dbg_watch_live() > 0): ctx_set_trap_flag(context)
 
 
 # Interactive command loop. Returning resumes the debuggee.
@@ -714,16 +673,13 @@ void wdbg_command_loop(int context, int stop_addr):
 		if (n < 0):
 			println(c"(end of input: continuing)")
 			free(command)
-			if (dbg_fatal_stop):
-				exit(1)
+			if (dbg_fatal_stop): exit(1)
 			return;
 		if (n == 0):
-			if (dbg_last_command == 0):
-				continue
+			if (dbg_last_command == 0): continue
 			strcpy(command, dbg_last_command)
 		else:
-			if (dbg_last_command == 0):
-				dbg_last_command = malloc(256)
+			if (dbg_last_command == 0): dbg_last_command = malloc(256)
 			strcpy(dbg_last_command, command)
 
 		char* arg = dbg_split_word(command)
@@ -748,28 +704,22 @@ void wdbg_command_loop(int context, int stop_addr):
 			wdbg_print_stack(context)
 		else if ((strcmp(command, c"l") == 0) | (strcmp(command, c"line") == 0) | (strcmp(command, c"where") == 0)):
 			dbg_announce_location(dbg_sel_pc(stop_addr))
-		else if (strcmp(command, c"list") == 0):
-			dbg_list_command(dbg_sel_pc(stop_addr), arg)
+		else if (strcmp(command, c"list") == 0): dbg_list_command(dbg_sel_pc(stop_addr), arg)
 		else if ((strcmp(command, c"disas") == 0) | (strcmp(command, c"disassemble") == 0)):
 			dbg_disas_command(dbg_sel_pc(stop_addr), arg)
 		else if ((strcmp(command, c"b") == 0) | (strcmp(command, c"break") == 0) | (strcmp(command, c"tb") == 0) | (strcmp(command, c"tbreak") == 0)):
 			int temp = 0
-			if ((command[0] == 't') && (command[1] == 'b')):
-				temp = 1
-			if (strcmp(command, c"tbreak") == 0):
-				temp = 1
+			if ((command[0] == 't') && (command[1] == 'b')): temp = 1
+			if (strcmp(command, c"tbreak") == 0): temp = 1
 			int addr = bp_resolve_target(arg, dbg_current_file(stop_addr))
 			if (addr != 0):
 				int slot = bp_add(addr, temp)
 				if (slot >= 0):
 					bp_describe(slot)
 					put_char(10)
-		else if (strcmp(command, c"condition") == 0):
-			dbg_condition_command(arg)
-		else if (strcmp(command, c"ignore") == 0):
-			dbg_ignore_command(arg)
-		else if (strcmp(command, c"log") == 0):
-			dbg_log_command(dbg_current_file(stop_addr), arg)
+		else if (strcmp(command, c"condition") == 0): dbg_condition_command(arg)
+		else if (strcmp(command, c"ignore") == 0): dbg_ignore_command(arg)
+		else if (strcmp(command, c"log") == 0): dbg_log_command(dbg_current_file(stop_addr), arg)
 		else if ((strcmp(command, c"d") == 0) | (strcmp(command, c"delete") == 0)):
 			if ((arg[0] == 0) | (strcmp(arg, c"all") == 0)):
 				bp_delete_all()
@@ -781,10 +731,8 @@ void wdbg_command_loop(int context, int stop_addr):
 					if (wnum[0] == 0):
 						dbg_watch_delete_all()
 						println(c"all watchpoints deleted")
-					else:
-						dbg_watch_delete(atoi(wnum) - 1)
-				else:
-					bp_delete(atoi(arg) - 1)
+					else: dbg_watch_delete(atoi(wnum) - 1)
+				else: bp_delete(atoi(arg) - 1)
 		else if ((strcmp(command, c"i") == 0) | (strcmp(command, c"info") == 0)):
 			dbg_info_command(context, dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
 		else if ((strcmp(command, c"bt") == 0) | (strcmp(command, c"backtrace") == 0)):
@@ -793,8 +741,7 @@ void wdbg_command_loop(int context, int stop_addr):
 			dbg_frame_command(context, arg)
 		else if ((strcmp(command, c"up") == 0) | (strcmp(command, c"down") == 0)):
 			int frame = dbg_fr_step(1 - 2 * (command[0] == 'd'))
-			if (frame >= 0):
-				dbg_frame_select(context, frame)
+			if (frame >= 0): dbg_frame_select(context, frame)
 		else if ((strcmp(command, c"p") == 0) | (strcmp(command, c"print") == 0)):
 			dbg_print_command(dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
 		else if (strcmp(command, c"repl") == 0):
@@ -807,8 +754,7 @@ void wdbg_command_loop(int context, int stop_addr):
 			dbg_watch_command(dbg_sel_pc(stop_addr), dbg_sel_esp(context), arg)
 		else if ((strcmp(command, c"h") == 0) | (strcmp(command, c"help") == 0) | (strcmp(command, c"?") == 0)):
 			dbg_help()
-		else:
-			println(c"unknown command; type 'help' for the command list")
+		else: println(c"unknown command; type 'help' for the command list")
 
 		if (resume_mode >= 0):
 			if (dbg_fatal_stop):
@@ -835,8 +781,7 @@ void wdbg_command_loop(int context, int stop_addr):
 								dbg_frames_compute(context, stop_addr)
 								dbg_announce_location(stop_addr)
 								dbg_print_source_at(stop_addr)
-								if (dbg_disas_auto):
-									dbg_disas_show_context(stop_addr)
+								if (dbg_disas_auto): dbg_disas_show_context(stop_addr)
 								continue
 			dbg_prepare_resume(context, stop_addr, resume_mode)
 			free(command)
@@ -860,8 +805,7 @@ void wdbg_stop_loop(int context, int stop_addr):
 # it separates this frame from callees (deeper), recursive instances
 # (different base) and callers (shallower), without frame pointers.
 int dbg_step_should_stop(int context, int eip):
-	if (dbg_step_mode == dbg_step_insn):
-		return 1
+	if (dbg_step_mode == dbg_step_insn): return 1
 	if (dbg_in_debuggee(eip) == 0):
 		return 0 /* inside wdbg itself (e.g. between --break_start and main) */
 	int entry = dbg_find_line(eip - code_offset)
@@ -869,19 +813,15 @@ int dbg_step_should_stop(int context, int eip):
 		return 0 /* runtime asm stubs have no line info */
 	int esp = ctx_esp(context)
 	int frame_base = dbg_step_esp
-	if (dbg_step_stack >= 0):
-		frame_base = dbg_step_esp + dbg_step_stack * __word_size__
+	if (dbg_step_stack >= 0): frame_base = dbg_step_esp + dbg_step_stack * __word_size__
 
-	if (dbg_step_mode == dbg_step_finish):
-		return esp > frame_base
+	if (dbg_step_mode == dbg_step_finish): return esp > frame_base
 
 	# step/next only stop at exact statement starts: local addressing is
 	# only accurate there, and every jump target is one. Returning from a
 	# call lands mid-statement and glides on to the next boundary.
-	if (eip != code_offset + dbg_line_addr(entry)):
-		return 0
-	if ((dbg_line_line(entry) == dbg_step_line) & (dbg_line_file(entry) == dbg_step_file)):
-		return 0
+	if (eip != code_offset + dbg_line_addr(entry)): return 0
+	if ((dbg_line_line(entry) == dbg_step_line) & (dbg_line_file(entry) == dbg_step_file)): return 0
 	if (dbg_step_mode == dbg_step_over):
 		if (dbg_step_fstart == 0):
 			return 1 /* unknown starting frame: behave like step */
@@ -910,8 +850,7 @@ void dbg_log_report(int bp, int addr, int esp):
 	if (dbg_eval_ok):
 		dbg_print_int_value(v)
 		put_char(10)
-	else:
-		println(c"<failed to compile>")
+	else: println(c"<failed to compile>")
 
 
 # SIGTRAP handler: breakpoints and 'debugger' statements arrive as int3
@@ -953,8 +892,7 @@ void wdbg_trap(int sig, int context):
 					dbg_print_dec(bp + 1)
 					println(c" failed to compile: stopping unconditionally")
 					stop = 1
-				else:
-					stop = cv != 0
+				else: stop = cv != 0
 			if (stop):
 				if (bp_ignore(bp) > 0):
 					bp_set_ignore(bp, bp_ignore(bp) - 1)
@@ -965,8 +903,7 @@ void wdbg_trap(int sig, int context):
 					# a log expression compile error falls through to
 					# stop, so a broken logpoint is visible once
 					# instead of silently spinning forever
-					if (dbg_eval_ok):
-						stop = 0
+					if (dbg_eval_ok): stop = 0
 			if (stop == 0):
 				# Same re-arm dance 'c' uses to resume over an armed
 				# breakpoint: rewinds eip already happened above, so
@@ -978,11 +915,9 @@ void wdbg_trap(int sig, int context):
 			print(c"hit ")
 			bp_describe(bp)
 			put_char(10)
-			if (bp_is_temp(bp)):
-				bp_delete(bp)
+			if (bp_is_temp(bp)): bp_delete(bp)
 			dbg_print_source_at(addr)
-			if (dbg_disas_auto):
-				dbg_disas_show_context(addr)
+			if (dbg_disas_auto): dbg_disas_show_context(addr)
 			wdbg_stop_loop(context, addr)
 			return;
 		# A compiled-in 'debugger' statement (or --break_start/--break_end)
@@ -992,8 +927,7 @@ void wdbg_trap(int sig, int context):
 		free(h)
 		dbg_announce_location(addr)
 		dbg_print_source_at(addr)
-		if (dbg_disas_auto):
-			dbg_disas_show_context(addr)
+		if (dbg_disas_auto): dbg_disas_show_context(addr)
 		wdbg_stop_loop(context, addr)
 		return;
 
@@ -1010,8 +944,7 @@ void wdbg_trap(int sig, int context):
 						dbg_watch_report(w)
 						dbg_announce_location(eip)
 						dbg_print_source_at(eip)
-						if (dbg_disas_auto):
-							dbg_disas_show_context(eip)
+						if (dbg_disas_auto): dbg_disas_show_context(eip)
 						wdbg_stop_loop(context, eip)
 						return;
 	if (dbg_step_mode == dbg_step_none):
@@ -1031,8 +964,7 @@ void wdbg_trap(int sig, int context):
 	if (dbg_step_count > 500000):
 		println(c"step: no source boundary found: continuing")
 		dbg_step_mode = dbg_step_none
-		if (dbg_watch_live() == 0):
-			ctx_clear_trap_flag(context)
+		if (dbg_watch_live() == 0): ctx_clear_trap_flag(context)
 		return;
 	# Returning past the debuggee's main into wdbg itself ends the step
 	if (dbg_in_debuggee(eip) == 0):
@@ -1059,8 +991,7 @@ void wdbg_trap(int sig, int context):
 		# Instruction stepping means instruction-level display: 'si' stops
 		# always show the surrounding instructions; other stops only after
 		# 'disas on' (source-level stepping stays quiet by default).
-		if ((dbg_step_mode == dbg_step_insn) | dbg_disas_auto):
-			dbg_disas_show_context(eip)
+		if ((dbg_step_mode == dbg_step_insn) | dbg_disas_auto): dbg_disas_show_context(eip)
 		wdbg_stop_loop(context, eip)
 		return;
 	ctx_set_trap_flag(context)
@@ -1074,14 +1005,12 @@ void wdbg_trap(int sig, int context):
 # instead of wedging the session in a post-mortem stop.
 void wdbg_fatal(int sig, int context):
 	dbg_reg_context = context
-	if (repl_fault_active):
-		repl_fault(sig, context)
+	if (repl_fault_active): repl_fault(sig, context)
 	dbg_fatal_stop = 1
 	dbg_fault_banner(c"fatal signal: ", sig, context)
 	dbg_announce_location(ctx_eip(context))
 	dbg_print_source_at(ctx_eip(context))
-	if (dbg_disas_auto):
-		dbg_disas_show_context(ctx_eip(context))
+	if (dbg_disas_auto): dbg_disas_show_context(ctx_eip(context))
 	wdbg_command_loop(context, ctx_eip(context))
 	println(c"cannot resume after a fatal signal: exiting")
 	exit(1)
@@ -1123,8 +1052,7 @@ void wdbg_fatal_entry(int sig):
 # to cross-symbolize a 64-bit process.
 void wdbg_attach_compile(char* target):
 	int n = 4
-	if (__word_size__ == 8):
-		n = 5
+	if (__word_size__ == 8): n = 5
 	int argv = cast(int, malloc(n * __word_size__))
 	int idx = 0
 	save_word(cast(char*, argv + idx * __word_size__), cast(int, c"wdbg"))
@@ -1153,8 +1081,7 @@ int wdbg_main(int argc, int argv):
 	int i = 1
 	while (i < args_count()):
 		if (ends_with(args_get(i), c".w")):
-			if (target == 0):
-				target = args_get(i)
+			if (target == 0): target = args_get(i)
 		i = i + 1
 
 	# --attach <pid>: control a running process through ptrace instead of
@@ -1224,13 +1151,11 @@ int wdbg_main(int argc, int argv):
 	signal_install_handler(8, fatal_handler, 1073741824) /* SIGFPE */
 	signal_install_handler(11, fatal_handler, 1073741824) /* SIGSEGV */
 
-	if (term_isatty(0)):
-		line_edit_history_load(c"~/.wdbg_history")
+	if (term_isatty(0)): line_edit_history_load(c"~/.wdbg_history")
 
 	println(c"wdbg: 'debugger' statements trap into the command loop (type 'help' for commands)")
 
-	if (args_has_flag(c"break_start")):
-		debugger
+	if (args_has_flag(c"break_start")): debugger
 	else if (saw_debugger_statement == 0):
 		# Nothing will pause the debuggee before it runs: no 'debugger'
 		# statement anywhere in the compiled program, and --break_start
@@ -1242,8 +1167,7 @@ int wdbg_main(int argc, int argv):
 
 	int result = target_main(argc, argv)
 
-	if (args_has_flag(c"break_end")):
-		debugger
+	if (args_has_flag(c"break_end")): debugger
 
 	print(c"wdbg: debuggee main returned ")
 	char* digits = itoa(result)

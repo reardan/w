@@ -66,8 +66,7 @@ void malloc_force_debug_mode():
 # mode-selection path it is itself deciding.
 int malloc_debug_env_check():
 	int fd = open(c"/proc/self/environ", 0, 0)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	int cap = 65536
 	char* buf = freelist_malloc(cap)
 	int n = read(fd, buf, cap - 1)
@@ -83,12 +82,9 @@ int malloc_debug_env_check():
 		if (i + needle_len <= n):
 			int matches = 1
 			for j in range(needle_len):
-				if (buf[i + j] != needle[j]):
-					matches = 0
-			if (matches):
-				found = 1
-		while ((i < n) && (buf[i] != 0)):
-			i = i + 1
+				if (buf[i + j] != needle[j]): matches = 0
+			if (matches): found = 1
+		while ((i < n) && (buf[i] != 0)): i = i + 1
 		i = i + 1
 	freelist_free(buf)
 	return found
@@ -97,8 +93,7 @@ int malloc_debug_env_check():
 void malloc_init_mode():
 	if (malloc_mode_determined == 0):
 		malloc_mode_determined = 1
-		if (malloc_debug_env_check()):
-			malloc_debug_mode = 1
+		if (malloc_debug_env_check()): malloc_debug_mode = 1
 
 
 # Thread hooks (lib/thread_heap.w, docs/projects/thread_local.md
@@ -122,38 +117,32 @@ void malloc_hook_set(int m, int f, int r):
 
 void* malloc_backend(int size):
 	malloc_init_mode()
-	if (malloc_debug_mode):
-		return debug_malloc(size)
+	if (malloc_debug_mode): return debug_malloc(size)
 	return freelist_malloc(size)
 
 
 int malloc_backend_free(void* mem_address):
 	malloc_init_mode()
-	if (malloc_debug_mode):
-		return debug_free(mem_address)
+	if (malloc_debug_mode): return debug_free(mem_address)
 	return freelist_free(mem_address)
 
 
 char* malloc_backend_realloc(void* old, int oldlen, int newlen):
 	malloc_init_mode()
-	if (malloc_debug_mode):
-		return debug_realloc(old, oldlen, newlen)
+	if (malloc_debug_mode): return debug_realloc(old, oldlen, newlen)
 	return freelist_realloc(old, oldlen, newlen)
 
 
 void* malloc(int size):
-	if (malloc_hook_malloc != 0):
-		return cast(void*, malloc_hook_malloc(size))
+	if (malloc_hook_malloc != 0): return cast(void*, malloc_hook_malloc(size))
 	return malloc_backend(size)
 
 
 int free(void* mem_address):
-	if (malloc_hook_free != 0):
-		return malloc_hook_free(mem_address)
+	if (malloc_hook_free != 0): return malloc_hook_free(mem_address)
 	return malloc_backend_free(mem_address)
 
 
 char *realloc(void* old, int oldlen, int newlen):
-	if (malloc_hook_realloc != 0):
-		return cast(char*, malloc_hook_realloc(old, oldlen, newlen))
+	if (malloc_hook_realloc != 0): return cast(char*, malloc_hook_realloc(old, oldlen, newlen))
 	return malloc_backend_realloc(old, oldlen, newlen)

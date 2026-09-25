@@ -41,19 +41,16 @@ struct bench_result:
 # built without --stats support reports itself.
 int bench_field(char* text, char* label):
 	int at = index_of(text, label)
-	if (at < 0):
-		return -1
+	if (at < 0): return -1
 	int i = at + strlen(label)
-	while ((text[i] == ' ') || (text[i] == ':')):
-		i = i + 1
+	while ((text[i] == ' ') || (text[i] == ':')): i = i + 1
 	int value = 0
 	int seen = 0
 	while ((text[i] >= '0') && (text[i] <= '9')):
 		value = value * 10 + (text[i] - '0')
 		seen = 1
 		i = i + 1
-	if (seen == 0):
-		return -1
+	if (seen == 0): return -1
 	return value
 
 
@@ -87,8 +84,7 @@ bench_result* bench_run(char* compiler, char* source, char* out_path, int runs):
 			r.failure = c"compiler exited non-zero (does it support --stats?)"
 			process_result_free(result)
 			return r
-		if ((r.best_ms < 0) || (elapsed < r.best_ms)):
-			r.best_ms = elapsed
+		if ((r.best_ms < 0) || (elapsed < r.best_ms)): r.best_ms = elapsed
 		r.calls = bench_field(result.stderr_text, c"sym_lookup calls")
 		r.visits = bench_field(result.stderr_text, c"records visited")
 		process_result_free(result)
@@ -148,8 +144,7 @@ int main(int argc, int argv):
 		if (strcmp(a, c"-n") == 0):
 			i = i + 1
 			runs = atoi(args_get(i))
-		else:
-			compiler = a
+		else: compiler = a
 		i = i + 1
 
 	println(c"wbench: compile-speed benchmark (best of the runs; counters are exact)")

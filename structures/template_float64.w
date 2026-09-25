@@ -12,8 +12,7 @@ import structures.string
 
 
 void __w_template_float64(string_builder* s, float64 f, int width, int precision, int flags):
-	if (precision < 0):
-		precision = 6
+	if (precision < 0): precision = 6
 	char* buffer = malloc(precision + 48)
 	int pos = 0
 	if (f < 0.0):

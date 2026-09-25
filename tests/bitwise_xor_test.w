@@ -47,11 +47,9 @@ void test_globals_and_compound_assign_agree():
 
 void test_xor_in_conditions():
 	int flips = 0
-	if (5 ^ 5):
-		flips = 1
+	if (5 ^ 5): flips = 1
 	assert_equal(0, flips)
-	if (5 ^ 4):
-		flips = 1
+	if (5 ^ 4): flips = 1
 	assert_equal(1, flips)
 
 

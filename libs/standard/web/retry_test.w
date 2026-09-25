@@ -123,10 +123,8 @@ void test_retry_full_jitter_bounds():
 		int d = retry_delay_ms_at(p, attempt, 0, 0)
 		asserts(c"jitter below 0", d >= 0)
 		asserts(c"jitter above computed", d <= computed)
-		if (d < lo):
-			lo = d
-		if (d > hi):
-			hi = d
+		if (d < lo): lo = d
+		if (d > hi): hi = d
 	# Over 300 draws we should see real spread, not a constant.
 	asserts(c"jitter produced no spread", hi > lo)
 	asserts(c"jitter never near top", hi > (computed / 2))

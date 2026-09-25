@@ -92,10 +92,8 @@ void __w_gen_release_stack(generator* g):
 # the frame pointer (x29) beside the resume address (x30), since W keeps
 # no live values in callee-saved registers across calls.
 int __w_gen_switch_regs():
-	if (__target_isa__ == 1):
-		return 1
-	if (__word_size__ == 8):
-		return 6
+	if (__target_isa__ == 1): return 1
+	if (__word_size__ == 8): return 6
 	return 4
 
 
@@ -147,11 +145,9 @@ generator* __w_gen_create(int fn, int* argv, int argc):
 # or 0 when the generator already ran (its frames may hold pointers
 # into the current stack, so it cannot move).
 int gen_set_stack_size(generator* g, int size):
-	if ((g.done != 0) || (g.caller_esp != 0) || (g.stack_base == 0)):
-		return 0
+	if ((g.done != 0) || (g.caller_esp != 0) || (g.stack_base == 0)): return 0
 	size = (size + 4095) & (0 - 4096)
-	if (size < 8192):
-		size = 8192
+	if (size < 8192): size = 8192
 	int old_top = __w_gen_stack_top(g)
 	int used = old_top - g.resume_esp
 	int old_base = g.stack_base
@@ -163,8 +159,7 @@ int gen_set_stack_size(generator* g, int size):
 	int* from = cast(int*, old_top - used)
 	int* to = cast(int*, new_top - used)
 	int words = used / __word_size__
-	for i in range(words):
-		to[i] = from[i]
+	for i in range(words): to[i] = from[i]
 	g.resume_esp = new_top - used
 	munmap(old_base, __w_gen_mapping_size(old_size))
 	return 1
@@ -188,8 +183,7 @@ void __w_gen_return(generator* g):
 # was yielded (read it with gen_value), 0 once the body finished.
 # Safe to keep calling after exhaustion.
 int gen_next(generator* g):
-	if (g.done):
-		return 0
+	if (g.done): return 0
 	gen_switch(&g.caller_esp, g.resume_esp)
 	if (g.done):
 		# The body just finished: release its stack now (it could not
@@ -210,8 +204,7 @@ int gen_done(generator* g):
 # Release a generator: munmap the stack (if still live, i.e. abandoned
 # before exhaustion) and free the object. Do not resume it afterwards.
 void gen_free(generator* g):
-	if (g == 0):
-		return;
+	if (g == 0): return;
 	__w_gen_release_stack(g)
 	free(cast(void*, g))
 

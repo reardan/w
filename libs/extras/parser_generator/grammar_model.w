@@ -191,8 +191,7 @@ pg_match_expr* pg_match_expr_text_new(int kind, char* text, int line, int column
 pg_match_expr* pg_match_expr_charset_new(char* charset, int line, int column):
 	pg_match_expr* expression = pg_match_expr_new(pg_match_expr_charset_kind(), line, column)
 	expression.charset = malloc(128)
-	for i in range(128):
-		expression.charset[i] = charset[i]
+	for i in range(128): expression.charset[i] = charset[i]
 	return expression
 
 
@@ -210,8 +209,7 @@ pg_token_def* pg_token_def_new(char* name, char* matcher, int kind):
 	pg_token_def* token = new pg_token_def()
 	token.name = strclone(name)
 	token.matcher = 0
-	if (matcher != 0):
-		token.matcher = strclone(matcher)
+	if (matcher != 0): token.matcher = strclone(matcher)
 	token.expression = 0
 	token.kind = kind
 	return token
@@ -350,8 +348,7 @@ pg_recover_def* pg_grammar_find_recover(pg_grammar* grammar, char* rule_name):
 
 pg_rule* pg_grammar_add_rule(pg_grammar* grammar, char* name):
 	pg_rule* rule = pg_rule_new(name, grammar.rules.length + 1)
-	if (grammar.start_rule == 0):
-		grammar.start_rule = strclone(name)
+	if (grammar.start_rule == 0): grammar.start_rule = strclone(name)
 	grammar.rules.push(rule)
 	return rule
 
@@ -397,31 +394,24 @@ pg_rule* pg_grammar_find_rule(pg_grammar* grammar, char* name):
 
 
 int pg_grammar_is_token_term(pg_grammar* grammar, char* name):
-	if (strcmp(name, c"EOF") == 0):
-		return 1
-	if (pg_grammar_find_token(grammar, name) != 0):
-		return 1
-	if (pg_grammar_find_literal(grammar, name) != 0):
-		return 1
+	if (strcmp(name, c"EOF") == 0): return 1
+	if (pg_grammar_find_token(grammar, name) != 0): return 1
+	if (pg_grammar_find_literal(grammar, name) != 0): return 1
 	return 0
 
 
 int pg_grammar_token_kind(pg_grammar* grammar, char* name):
-	if (strcmp(name, c"EOF") == 0):
-		return 0
+	if (strcmp(name, c"EOF") == 0): return 0
 	pg_token_def* token = pg_grammar_find_token(grammar, name)
-	if (token != 0):
-		return token.kind
+	if (token != 0): return token.kind
 	pg_literal_def* literal = pg_grammar_find_literal(grammar, name)
-	if (literal != 0):
-		return literal.kind
+	if (literal != 0): return literal.kind
 	return -1
 
 
 void pg_term_free(pg_term* term):
 	free(term.name)
-	if (term.code != 0):
-		free(term.code)
+	if (term.code != 0): free(term.code)
 	free(term)
 
 
@@ -445,26 +435,21 @@ void pg_rule_free(pg_rule* rule):
 
 
 void pg_match_expr_free(pg_match_expr* expression):
-	if (expression == 0):
-		return
+	if (expression == 0): return
 	int i = 0
 	while (i < expression.children.length):
 		pg_match_expr_free(expression.children[i])
 		i = i + 1
-	if (expression.text != 0):
-		free(expression.text)
-	if (expression.charset != 0):
-		free(expression.charset)
+	if (expression.text != 0): free(expression.text)
+	if (expression.charset != 0): free(expression.charset)
 	list_free[pg_match_expr*](expression.children)
 	free(expression)
 
 
 void pg_token_def_free(pg_token_def* token):
 	free(token.name)
-	if (token.matcher != 0):
-		free(token.matcher)
-	if (token.expression != 0):
-		pg_match_expr_free(token.expression)
+	if (token.matcher != 0): free(token.matcher)
+	if (token.expression != 0): pg_match_expr_free(token.expression)
 	free(token)
 
 
@@ -492,8 +477,7 @@ void pg_recover_def_free(pg_recover_def* recover):
 
 
 void pg_grammar_free(pg_grammar* grammar):
-	if (grammar == 0):
-		return
+	if (grammar == 0): return
 	int i = 0
 	while (i < grammar.tokens.length):
 		pg_token_def_free(grammar.tokens[i])
@@ -523,8 +507,7 @@ void pg_grammar_free(pg_grammar* grammar):
 		free(grammar.imports[i])
 		i = i + 1
 	free(grammar.name)
-	if (grammar.start_rule != 0):
-		free(grammar.start_rule)
+	if (grammar.start_rule != 0): free(grammar.start_rule)
 	list_free[pg_token_def*](grammar.tokens)
 	list_free[pg_token_def*](grammar.skips)
 	list_free[pg_fragment_def*](grammar.fragments)

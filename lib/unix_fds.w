@@ -72,8 +72,7 @@ int unix_send_fds(int sock, char* data, int n, int* fds, int count):
 	save_word(control, unix_fds_cmsg_data_offset() + count * 4)
 	save_int(control + __word_size__, unix_fds_sol_socket)
 	save_int(control + __word_size__ + 4, unix_fds_scm_rights)
-	for i in range(count):
-		save_int(control + unix_fds_cmsg_data_offset() + i * 4, fds[i])
+	for i in range(count): save_int(control + unix_fds_cmsg_data_offset() + i * 4, fds[i])
 	char* iov = unix_fds_iovec(data, n)
 	char* msg = unix_fds_msghdr(iov, control, space)
 	int sent = sys_sendmsg(sock, cast(int, msg), 0)
@@ -95,8 +94,7 @@ int unix_recv_fds(int sock, char* buf, int cap, int* fds_out, int max, int* coun
 		int off = 0
 		while (off + unix_fds_cmsg_data_offset() <= control_length):
 			int length = load_word(control + off)
-			if (length < unix_fds_cmsg_data_offset()):
-				break
+			if (length < unix_fds_cmsg_data_offset()): break
 			int level = load_int32(control + off + __word_size__)
 			int kind = load_int32(control + off + __word_size__ + 4)
 			if ((level == unix_fds_sol_socket) && (kind == unix_fds_scm_rights)):

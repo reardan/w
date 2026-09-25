@@ -50,25 +50,21 @@ int sigcontext_eax():
 		return 104 /* rax */
 	return 44
 int sigcontext_trapno():
-	if (__word_size__ == 8):
-		return 160
+	if (__word_size__ == 8): return 160
 	return 48
 int sigcontext_err():
-	if (__word_size__ == 8):
-		return 152
+	if (__word_size__ == 8): return 152
 	return 52
 int sigcontext_eip():
 	if (__word_size__ == 8):
 		return 128 /* rip */
 	return 56
 int sigcontext_eflags():
-	if (__word_size__ == 8):
-		return 136
+	if (__word_size__ == 8): return 136
 	return 64
 # Fault address of the last page fault (only meaningful for SIGSEGV)
 int sigcontext_cr2():
-	if (__word_size__ == 8):
-		return 176
+	if (__word_size__ == 8): return 176
 	return 84
 # x64-only: r8..r15 sit at the start of the 64-bit sigcontext
 const int sigcontext_r8 = 0
@@ -119,5 +115,4 @@ void ctx_set_trap_flag(int context):
 void ctx_clear_trap_flag(int context):
 	int flags = ctx_eflags(context)
 	# eflags & ~0x100 without a bitwise-not operator on constants
-	if (flags & 256):
-		save_word(context + sigcontext_eflags(), flags - 256)
+	if (flags & 256): save_word(context + sigcontext_eflags(), flags - 256)

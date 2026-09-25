@@ -125,18 +125,14 @@ void test_wvc_pack_unpack_end_to_end():
 	free(repack_out)
 	list[char*] kept = wvcp_loose_ids(store)
 	assert_equal(before_ids.length, kept.length)
-	for char* id in kept:
-		free(id)
+	for char* id in kept: free(id)
 	list_free[char*](kept)
 
-	for char* id in before_ids:
-		free(id)
+	for char* id in before_ids: free(id)
 	list_free[char*](before_ids)
-	for char* id in after_ids:
-		free(id)
+	for char* id in after_ids: free(id)
 	list_free[char*](after_ids)
-	for string_builder* b in before_bytes:
-		string_free(b)
+	for string_builder* b in before_bytes: string_free(b)
 	list_free[string_builder*](before_bytes)
 	cas_close(store)
 	free(meta)

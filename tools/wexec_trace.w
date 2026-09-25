@@ -153,13 +153,11 @@ int wtr_off_arg3():
 
 
 int wtr_open_nr():
-	if (__word_size__ == 8):
-		return 2
+	if (__word_size__ == 8): return 2
 	return 5
 
 int wtr_openat_nr():
-	if (__word_size__ == 8):
-		return 257
+	if (__word_size__ == 8): return 257
 	return 295
 
 
@@ -181,8 +179,7 @@ int wtr_reg(int offset):
 # the address is unmapped (mirrors debugger/attach.w's at_read_word).
 int wtr_peek(int pid, int addr):
 	int r = sys_ptrace(wtr_PEEKDATA, pid, addr, wtr_wordbuf)
-	if ((r < 0) && (r >= -4095)):
-		return 0
+	if ((r < 0) && (r >= -4095)): return 0
 	return 1
 
 
@@ -201,8 +198,7 @@ char* wtr_read_cstring(int pid, int addr):
 	int offset = 0
 	int done = 0
 	while ((done == 0) && (len < 4096)):
-		if (wtr_peek(pid, addr + offset) == 0):
-			done = 1
+		if (wtr_peek(pid, addr + offset) == 0): done = 1
 		else:
 			char* wb = cast(char*, wtr_wordbuf)
 			int k = 0
@@ -214,8 +210,7 @@ char* wtr_read_cstring(int pid, int addr):
 					buf = realloc(buf, old_cap, cap)
 				buf[len] = b
 				len = len + 1
-				if (b == 0):
-					done = 1
+				if (b == 0): done = 1
 				k = k + 1
 			offset = offset + __word_size__
 	if ((len == 0) || (buf[len - 1] != 0)):
@@ -243,8 +238,7 @@ int wtr_status_stopsig(int status):
 
 int wtr_decode_status(int status):
 	int sig = status & 127
-	if (sig == 0):
-		return (status >> 8) & 255
+	if (sig == 0): return (status >> 8) & 255
 	return 128 + sig
 
 
@@ -266,8 +260,7 @@ char* wtr_get_cwd_prefix():
 	if (wtr_cwd_prefix == 0):
 		char* buf = malloc(4096)
 		int n = getcwd(buf, 4096)
-		if (n < 0):
-			buf[0] = 0
+		if (n < 0): buf[0] = 0
 		string_builder* s = string_new()
 		string_append(s, buf)
 		string_append_char(s, '/')
@@ -281,32 +274,24 @@ char* wtr_normalize_path(char* path):
 	char* prefix = wtr_get_cwd_prefix()
 	if (prefix[0] == 0):
 		return path
-	if (starts_with(path, prefix)):
-		return path + strlen(prefix)
+	if (starts_with(path, prefix)): return path + strlen(prefix)
 	return path
 
 
 /* --- the noise filter (see the module doc for the rule list) --- */
 
 int wtr_is_noise(char* path, char* program):
-	if (starts_with(path, c"/proc/")):
-		return 1
-	if (starts_with(path, c"/sys/")):
-		return 1
-	if (starts_with(path, c"/dev/")):
-		return 1
+	if (starts_with(path, c"/proc/")): return 1
+	if (starts_with(path, c"/sys/")): return 1
+	if (starts_with(path, c"/dev/")): return 1
 	if (starts_with(path, c"/lib/") || starts_with(path, c"/lib64/") || starts_with(path, c"/usr/lib/")):
 		return 1
-	if (starts_with(path, c"/etc/ld.so")):
-		return 1
+	if (starts_with(path, c"/etc/ld.so")): return 1
 	if (starts_with(path, c"/usr/share/locale/") || starts_with(path, c"/usr/lib/locale/")):
 		return 1
-	if (strcmp(path, c"/etc/localtime") == 0):
-		return 1
-	if (starts_with(path, c"bin/")):
-		return 1
-	if (strcmp(path, program) == 0):
-		return 1
+	if (strcmp(path, c"/etc/localtime") == 0): return 1
+	if (starts_with(path, c"bin/")): return 1
+	if (strcmp(path, program) == 0): return 1
 	return 0
 
 
@@ -316,17 +301,14 @@ int wtr_is_noise(char* path, char* program):
 # match a manifest-declared path even when it refers to the same file;
 # documented limitation, not attempted here.
 int wtr_is_declared(map[char*, int] declared, char* path):
-	if (declared.get(path, 0)):
-		return 1
+	if (declared.get(path, 0)): return 1
 	if (starts_with(path, c"./")):
-		if (declared.get(path + 2, 0)):
-			return 1
+		if (declared.get(path + 2, 0)): return 1
 	return 0
 
 
 int wtr_hex_digit(int value):
-	if (value < 10):
-		return '0' + value
+	if (value < 10): return '0' + value
 	return 'a' + value - 10
 
 
@@ -335,18 +317,14 @@ void wtr_json_escape(string_builder* s, char* text):
 	int i = 0
 	while (text[i] != 0):
 		int ch = text[i] & 255
-		if (ch == '"'):
-			string_append(s, c"\\\"")
-		else if (ch == 92):
-			string_append(s, c"\\\\")
-		else if (ch == 10):
-			string_append(s, c"\\n")
+		if (ch == '"'): string_append(s, c"\\\"")
+		else if (ch == 92): string_append(s, c"\\\\")
+		else if (ch == 10): string_append(s, c"\\n")
 		else if (ch < 32):
 			string_append(s, c"\\u00")
 			string_append_char(s, wtr_hex_digit(ch >> 4))
 			string_append_char(s, wtr_hex_digit(ch & 15))
-		else:
-			string_append_char(s, ch)
+		else: string_append_char(s, ch)
 		i = i + 1
 	string_append_char(s, '"')
 
@@ -356,10 +334,8 @@ void wtr_report_read(char* path, int is_declared):
 	string_append(line, c"{\"file\": ")
 	wtr_json_escape(line, path)
 	string_append(line, c", \"declared\": ")
-	if (is_declared):
-		string_append(line, c"true")
-	else:
-		string_append(line, c"false")
+	if (is_declared): string_append(line, c"true")
+	else: string_append(line, c"false")
 	string_append_char(line, '}')
 	wstream* out = stdout_writer()
 	stream_write_line(out, line.data)
@@ -388,8 +364,7 @@ char** wtr_build_argv(json_value* cmd):
 	for i in range(n):
 		json_value* piece = json_array_get(cmd, i)
 		char* text = c""
-		if (piece.type == json_type_string()):
-			text = piece.string_value
+		if (piece.type == json_type_string()): text = piece.string_value
 		strv_set(argv, i, text)
 	return argv
 
@@ -416,18 +391,15 @@ void wtr_echo_command(char** argv, int count):
 int wtr_trace_step(char** argv, map[char*, int] declared, map[char*, int] seen, int* undeclared_out, int* total_out):
 	char* program = wtr_resolve_program(strv_get(argv, 0))
 	int pid = fork()
-	if (pid < 0):
-		return -1
+	if (pid < 0): return -1
 	if (pid == 0):
 		sys_ptrace(wtr_TRACEME, 0, 0, 0)
 		char** envp = env_current()
 		execve(program, argv, envp)
 		exit(127)
 
-	if (wtr_regs == 0):
-		wtr_regs = cast(int, malloc(512))
-	if (wtr_wordbuf == 0):
-		wtr_wordbuf = cast(int, malloc(16))
+	if (wtr_regs == 0): wtr_regs = cast(int, malloc(512))
+	if (wtr_wordbuf == 0): wtr_wordbuf = cast(int, malloc(16))
 
 	int status = 0
 	wait4(pid, &status, 0, 0)  # post-execve SIGTRAP stop, or an early exit(127)
@@ -443,15 +415,13 @@ int wtr_trace_step(char** argv, map[char*, int] declared, map[char*, int] seen, 
 		sys_ptrace(wtr_SYSCALL, pid, 0, pending_sig)
 		pending_sig = 0
 		wait4(pid, &status, 0, 0)
-		if (wtr_status_exited(status) || wtr_status_signalled(status)):
-			break
+		if (wtr_status_exited(status) || wtr_status_signalled(status)): break
 		int sig = wtr_status_stopsig(status)
 		if (sig != 5):
 			# A real signal, not our syscall-stop trap: hold it for
 			# redelivery on the next resume; the entry/exit toggle is
 			# unaffected since no syscall-stop happened this time.
-			if (sig != 19):
-				pending_sig = sig
+			if (sig != 19): pending_sig = sig
 			continue
 		wtr_getregs(pid)
 		int nr = wtr_reg(wtr_off_syscall_nr())
@@ -505,16 +475,14 @@ int wtr_trace_step(char** argv, map[char*, int] declared, map[char*, int] seen, 
 						seen[strclone(norm)] = 1
 						*total_out = *total_out + 1
 						int declared_ok = wtr_is_declared(declared, norm)
-						if (declared_ok == 0):
-							*undeclared_out = *undeclared_out + 1
+						if (declared_ok == 0): *undeclared_out = *undeclared_out + 1
 						wtr_report_read(norm, declared_ok)
 				free(pending_path)
 				pending_path = 0
 				have_pending = 0
 			in_syscall = 0
 
-	if (have_pending):
-		free(pending_path)
+	if (have_pending): free(pending_path)
 	return wtr_decode_status(status)
 
 
@@ -534,8 +502,7 @@ int wexec_trace_run(char* target_name, json_value* target, map[char*, int] decla
 	json_value* steps = json_object_get(target, c"steps")
 	int step_count = 0
 	if (steps != 0):
-		if (steps.type == json_type_array()):
-			step_count = json_array_length(steps)
+		if (steps.type == json_type_array()): step_count = json_array_length(steps)
 	if (step_count == 0):
 		stream_write_line(out, c"  (no steps to trace)")
 		stream_flush(out)
@@ -576,6 +543,5 @@ int wexec_trace_run(char* target_name, json_value* target, map[char*, int] decla
 	stream_flush(out)
 	string_free(summary)
 
-	if (hermetic && (undeclared > 0)):
-		return 1
+	if (hermetic && (undeclared > 0)): return 1
 	return 0

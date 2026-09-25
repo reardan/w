@@ -77,19 +77,15 @@ void lease_table_free(lease_table* t):
 
 # The record for resource, or 0 when it has never been acquired.
 lease* lease_find(lease_table* t, int resource):
-	if (resource in t.leases):
-		return t.leases[resource]
+	if (resource in t.leases): return t.leases[resource]
 	return 0
 
 
 # 1 when l is a live grant at now_ms: exists, not released, not expired.
 int lease_live(lease* l, int now_ms):
-	if (l == 0):
-		return 0
-	if (l.held == 0):
-		return 0
-	if (mono_expired(now_ms, l.expires_at)):
-		return 0
+	if (l == 0): return 0
+	if (l.held == 0): return 0
+	if (mono_expired(now_ms, l.expires_at)): return 0
 	return 1
 
 
@@ -112,8 +108,7 @@ int lease_live(lease* l, int now_ms):
 int lease_acquire(lease_table* t, int resource, int holder, int now_ms, u64* epoch_out):
 	lease* l = lease_find(t, resource)
 	if (lease_live(l, now_ms)):
-		if (l.holder != holder):
-			return 0
+		if (l.holder != holder): return 0
 	if (l == 0):
 		l = new lease(resource, holder, u64_new(), now_ms, 0)
 		t.leases[resource] = l
@@ -133,12 +128,9 @@ int lease_acquire(lease_table* t, int resource, int holder, int now_ms, u64* epo
 # through lease_acquire (and accept a new epoch).
 int lease_renew(lease_table* t, int resource, int holder, u64* epoch, int now_ms):
 	lease* l = lease_find(t, resource)
-	if (lease_live(l, now_ms) == 0):
-		return 0
-	if (l.holder != holder):
-		return 0
-	if (u64_eq(l.epoch, epoch) == 0):
-		return 0
+	if (lease_live(l, now_ms) == 0): return 0
+	if (l.holder != holder): return 0
+	if (u64_eq(l.epoch, epoch) == 0): return 0
 	l.expires_at = mono_deadline(now_ms, t.ttl_ms)
 	return 1
 
@@ -149,14 +141,10 @@ int lease_renew(lease_table* t, int resource, int holder, u64* epoch, int now_ms
 # a newer holder's grant.
 int lease_release(lease_table* t, int resource, int holder, u64* epoch):
 	lease* l = lease_find(t, resource)
-	if (l == 0):
-		return 0
-	if (l.held == 0):
-		return 0
-	if (l.holder != holder):
-		return 0
-	if (u64_eq(l.epoch, epoch) == 0):
-		return 0
+	if (l == 0): return 0
+	if (l.held == 0): return 0
+	if (l.holder != holder): return 0
+	if (u64_eq(l.epoch, epoch) == 0): return 0
 	l.held = 0
 	return 1
 
@@ -168,12 +156,9 @@ int lease_release(lease_table* t, int resource, int holder, u64* epoch):
 # or released lease, or an unknown resource.
 int lease_check(lease_table* t, int resource, int holder, u64* epoch, int now_ms):
 	lease* l = lease_find(t, resource)
-	if (lease_live(l, now_ms) == 0):
-		return 0
-	if (l.holder != holder):
-		return 0
-	if (u64_eq(l.epoch, epoch) == 0):
-		return 0
+	if (lease_live(l, now_ms) == 0): return 0
+	if (l.holder != holder): return 0
+	if (u64_eq(l.epoch, epoch) == 0): return 0
 	return 1
 
 
@@ -181,8 +166,7 @@ int lease_check(lease_table* t, int resource, int holder, u64* epoch, int now_ms
 # is unheld, expired, or unknown.
 int lease_holder(lease_table* t, int resource, int now_ms):
 	lease* l = lease_find(t, resource)
-	if (lease_live(l, now_ms) == 0):
-		return 0 - 1
+	if (lease_live(l, now_ms) == 0): return 0 - 1
 	return l.holder
 
 
@@ -190,6 +174,5 @@ int lease_holder(lease_table* t, int resource, int now_ms):
 # resource is unheld, expired, or unknown.
 int lease_remaining_ms(lease_table* t, int resource, int now_ms):
 	lease* l = lease_find(t, resource)
-	if (lease_live(l, now_ms) == 0):
-		return 0
+	if (lease_live(l, now_ms) == 0): return 0
 	return mono_remaining_ms(now_ms, l.expires_at)

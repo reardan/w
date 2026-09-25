@@ -43,15 +43,13 @@ void assert_equal_hex(int want, int got):
 # A null pointer prints as (null) and equals only another null, so a
 # missing string fails with a message instead of crashing in strcmp.
 char* assert_text(char* s):
-	if (s == 0):
-		return c"(null)"
+	if (s == 0): return c"(null)"
 	return s
 
 
 void assert_strings_equal(char* want, char* got):
 	int same = want == got
-	if ((want != 0) && (got != 0)):
-		same = strcmp(got, want) == 0
+	if ((want != 0) && (got != 0)): same = strcmp(got, want) == 0
 	if (same == 0):
 		print2(c"Assertion failed: wanted '")
 		print2(assert_text(want))
@@ -64,27 +62,21 @@ void assert_strings_equal(char* want, char* got):
 
 # 1 when needle occurs in haystack (a null haystack contains nothing).
 int assert_has(char* haystack, char* needle):
-	if (haystack == 0):
-		return 0
+	if (haystack == 0): return 0
 	int i = 0
 	while (1):
 		int j = 0
-		while ((needle[j] != 0) && (haystack[i + j] == needle[j])):
-			j = j + 1
-		if (needle[j] == 0):
-			return 1
-		if (haystack[i] == 0):
-			return 0
+		while ((needle[j] != 0) && (haystack[i + j] == needle[j])): j = j + 1
+		if (needle[j] == 0): return 1
+		if (haystack[i] == 0): return 0
 		i = i + 1
 	return 0
 
 
 void assert_substring(char* haystack, char* needle, int want):
 	if (assert_has(haystack, needle) != want):
-		if (want):
-			print2(c"Assertion failed: expected to find '")
-		else:
-			print2(c"Assertion failed: expected NOT to find '")
+		if (want): print2(c"Assertion failed: expected to find '")
+		else: print2(c"Assertion failed: expected NOT to find '")
 		print2(needle)
 		print2(c"' in: ")
 		println2(assert_text(haystack))

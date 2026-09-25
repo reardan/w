@@ -151,8 +151,7 @@ void tree_entry_free(tree_entry* e):
 
 
 void tree_free(wtree* t):
-	for tree_entry* e in t.entries:
-		tree_entry_free(e)
+	for tree_entry* e in t.entries: tree_entry_free(e)
 	t.entries.clear()
 	free(t)
 
@@ -166,30 +165,22 @@ void tree_free(wtree* t):
 # rejected rather than escaped), and no NUL (implicit: names are C
 # strings).
 int tree_valid_name(char* name):
-	if (name == 0):
-		return 0
-	if (name[0] == 0):
-		return 0
-	if (strcmp(name, c".") == 0):
-		return 0
-	if (strcmp(name, c"..") == 0):
-		return 0
+	if (name == 0): return 0
+	if (name[0] == 0): return 0
+	if (strcmp(name, c".") == 0): return 0
+	if (strcmp(name, c"..") == 0): return 0
 	int i = 0
 	while (name[i] != 0):
-		if ((name[i] == '/') || (name[i] == 10)):
-			return 0
+		if ((name[i] == '/') || (name[i] == 10)): return 0
 		i = i + 1
 	return 1
 
 
 # The serialized mode token, or 0 for an unknown mode value.
 char* tree_mode_token(int mode):
-	if (mode == TREE_MODE_DIR):
-		return c"40000"
-	if (mode == TREE_MODE_FILE()):
-		return c"100644"
-	if (mode == TREE_MODE_EXEC):
-		return c"100755"
+	if (mode == TREE_MODE_DIR): return c"40000"
+	if (mode == TREE_MODE_FILE()): return c"100644"
+	if (mode == TREE_MODE_EXEC): return c"100755"
 	return 0
 
 
@@ -220,12 +211,9 @@ int tree_entry_compare(tree_entry* a, tree_entry* b):
 # when the name is not storable, the mode is unknown, or the id is not
 # a 64-lowercase-hex cas id.
 tree_entry* tree_entry_new(char* name, int mode, char* id):
-	if (tree_valid_name(name) == 0):
-		return 0
-	if (tree_mode_token(mode) == 0):
-		return 0
-	if (cas_valid_id(id) == 0):
-		return 0
+	if (tree_valid_name(name) == 0): return 0
+	if (tree_mode_token(mode) == 0): return 0
+	if (cas_valid_id(id) == 0): return 0
 	tree_entry* e = new tree_entry(strclone(name), mode, strclone(id))
 	return e
 
@@ -234,8 +222,7 @@ tree_entry* tree_entry_new(char* name, int mode, char* id):
 # an invalid name/mode/id (nothing is appended).
 int tree_add(wtree* t, char* name, int mode, char* id):
 	tree_entry* e = tree_entry_new(name, mode, id)
-	if (e == 0):
-		return -22
+	if (e == 0): return -22
 	t.entries.push(e)
 	return 0
 
@@ -280,8 +267,7 @@ char* tree_serialize(wtree* t):
 # empty "tree" payload.
 char* tree_id_hex(wtree* t):
 	char* payload = tree_serialize(t)
-	if (payload == 0):
-		return 0
+	if (payload == 0): return 0
 	char* id = cas_id_hex(c"tree", payload, strlen(payload))
 	free(payload)
 	return id
@@ -292,8 +278,7 @@ char* tree_id_hex(wtree* t):
 # serialize, otherwise cas_put's errors.
 wresult[char*]* tree_put(wcas* s, wtree* t):
 	char* payload = tree_serialize(t)
-	if (payload == 0):
-		return result_new_error[char*](-22)
+	if (payload == 0): return result_new_error[char*](-22)
 	wresult[char*]* r = cas_put(s, c"tree", payload, strlen(payload))
 	free(payload)
 	return r
@@ -322,28 +307,21 @@ wresult[wtree*]* tree_get(wcas* s, char* id):
 	while (valid && (i < total)):
 		# "<mode> ": scan to the separating space.
 		int mode_start = i
-		while ((i < total) && (bytes[i] != ' ') && (bytes[i] != 10) && (bytes[i] != 0)):
-			i = i + 1
+		while ((i < total) && (bytes[i] != ' ') && (bytes[i] != 10) && (bytes[i] != 0)): i = i + 1
 		valid = (i < total) && (bytes[i] == ' ')
 		int mode = 0
 		if (valid):
 			char* token = path_clone_range(bytes + mode_start, i - mode_start)
-			if (strcmp(token, c"40000") == 0):
-				mode = TREE_MODE_DIR
-			else if (strcmp(token, c"100644") == 0):
-				mode = TREE_MODE_FILE()
-			else if (strcmp(token, c"100755") == 0):
-				mode = TREE_MODE_EXEC
-			else:
-				valid = 0
+			if (strcmp(token, c"40000") == 0): mode = TREE_MODE_DIR
+			else if (strcmp(token, c"100644") == 0): mode = TREE_MODE_FILE()
+			else if (strcmp(token, c"100755") == 0): mode = TREE_MODE_EXEC
+			else: valid = 0
 			free(token)
 			i = i + 1
 		# "<id> ": exactly 64 hex characters then a space.
 		char* entry_id = 0
-		if (valid):
-			valid = (i + 65) <= total
-		if (valid):
-			valid = bytes[i + 64] == ' '
+		if (valid): valid = (i + 65) <= total
+		if (valid): valid = bytes[i + 64] == ' '
 		if (valid):
 			entry_id = path_clone_range(bytes + i, 64)
 			valid = cas_valid_id(entry_id)
@@ -351,24 +329,20 @@ wresult[wtree*]* tree_get(wcas* s, char* id):
 		# "<name>\n": everything up to the line terminator.
 		if (valid):
 			int name_start = i
-			while ((i < total) && (bytes[i] != 10) && (bytes[i] != 0)):
-				i = i + 1
+			while ((i < total) && (bytes[i] != 10) && (bytes[i] != 0)): i = i + 1
 			valid = (i < total) && (bytes[i] == 10)
 			if (valid):
 				char* name = path_clone_range(bytes + name_start, i - name_start)
 				i = i + 1
 				valid = tree_valid_name(name)
-				if (valid && (prev != 0)):
-					valid = tree_name_compare(prev, name) < 0
+				if (valid && (prev != 0)): valid = tree_name_compare(prev, name) < 0
 				if (valid):
 					tree_entry* e = new tree_entry(name, mode, entry_id)
 					entry_id = 0
 					t.entries.push(e)
 					prev = name
-				else:
-					free(name)
-		if (entry_id != 0):
-			free(entry_id)
+				else: free(name)
+		if (entry_id != 0): free(entry_id)
 	cas_object_free(o)
 	if (valid == 0):
 		tree_free(t)
@@ -381,11 +355,9 @@ wresult[wtree*]* tree_get(wcas* s, char* id):
 
 # 1 when `name` appears verbatim in the ignore list (0 = empty list).
 int tree_ignored(list[char*] ignore, char* name):
-	if (ignore == 0):
-		return 0
+	if (ignore == 0): return 0
 	for char* skip in ignore:
-		if (strcmp(skip, name) == 0):
-			return 1
+		if (strcmp(skip, name) == 0): return 1
 	return 0
 
 
@@ -405,8 +377,7 @@ int tree_load_uint16(char* p):
 wresult[char*]* tree_snapshot(wcas* s, char* path, list[char*] ignore):
 	# 65536 = O_DIRECTORY: fail up front when path is not a directory.
 	int fd = open(path, 65536, 0)
-	if (fd < 0):
-		return result_new_error[char*](fd)
+	if (fd < 0): return result_new_error[char*](fd)
 	wtree* t = tree_new()
 	# getdents record layout, as in tools/wbuildgen.w: d_reclen 2 bytes
 	# after the two word-sized ino/off fields, name after d_reclen,
@@ -431,35 +402,26 @@ wresult[char*]* tree_snapshot(wcas* s, char* path, list[char*] ignore):
 				char* child_id = 0
 				if (kind == 4):
 					wresult[char*]* sub = tree_snapshot(s, child_path, ignore)
-					if (result_is_error[char*](sub)):
-						err = result_code[char*](sub)
-					else:
-						child_id = result_value[char*](sub)
+					if (result_is_error[char*](sub)): err = result_code[char*](sub)
+					else: child_id = result_value[char*](sub)
 					result_free[char*](sub)
 				else:
 					string_builder* contents = cas_read_file(child_path)
-					if (contents == 0):
-						err = cas_read_errno
+					if (contents == 0): err = cas_read_errno
 					else:
 						wresult[char*]* put = cas_put(s, c"blob", contents.data, contents.length)
-						if (result_is_error[char*](put)):
-							err = result_code[char*](put)
-						else:
-							child_id = result_value[char*](put)
+						if (result_is_error[char*](put)): err = result_code[char*](put)
+						else: child_id = result_value[char*](put)
 						result_free[char*](put)
 						string_free(contents)
 				if (err == 0):
 					int mode = TREE_MODE_DIR
-					if (kind == 8):
-						mode = TREE_MODE_FILE()
+					if (kind == 8): mode = TREE_MODE_FILE()
 					err = tree_add(t, entry_name, mode, child_id)
-				if (child_id != 0):
-					free(child_id)
+				if (child_id != 0): free(child_id)
 				free(child_path)
-		if (err == 0):
-			n = getdents(fd, buffer, buffer_size)
-	if ((err == 0) && (n < 0)):
-		err = n
+		if (err == 0): n = getdents(fd, buffer, buffer_size)
+	if ((err == 0) && (n < 0)): err = n
 	free(buffer)
 	close(fd)
 	if (err < 0):
@@ -566,12 +528,9 @@ wresult[int]* tree_diff_walk(wcas* s, char* old_id, char* new_id, char* prefix, 
 	int j = 0
 	while ((err == 0) && ((i < old_tree.entries.length) || (j < new_tree.entries.length))):
 		int cmp = 0
-		if (i >= old_tree.entries.length):
-			cmp = 1
-		else if (j >= new_tree.entries.length):
-			cmp = -1
-		else:
-			cmp = tree_name_compare(old_tree.entries[i].name, new_tree.entries[j].name)
+		if (i >= old_tree.entries.length): cmp = 1
+		else if (j >= new_tree.entries.length): cmp = -1
+		else: cmp = tree_name_compare(old_tree.entries[i].name, new_tree.entries[j].name)
 		if (cmp < 0):
 			# Only in old: removed.
 			wresult[int]* r = tree_diff_emit(s, old_tree.entries[i], prefix, TREE_REMOVED(), out)
@@ -609,8 +568,7 @@ wresult[int]* tree_diff_walk(wcas* s, char* old_id, char* new_id, char* prefix, 
 			j = j + 1
 	tree_free(old_tree)
 	tree_free(new_tree)
-	if (err < 0):
-		return result_new_error[int](err)
+	if (err < 0): return result_new_error[int](err)
 	return result_new_ok[int](count)
 
 
@@ -622,12 +580,8 @@ wresult[int]* tree_diff_walk(wcas* s, char* old_id, char* new_id, char* prefix, 
 # Equal ids (including both 0) return ok(0) without reading anything.
 # The ok value is the number of changes appended; errors are tree_get's.
 wresult[int]* tree_diff(wcas* s, char* old_id, char* new_id, list[tree_change*] out):
-	if ((old_id == 0) && (new_id == 0)):
-		return result_new_ok[int](0)
-	if (old_id == 0):
-		return tree_diff_expand(s, new_id, c"", TREE_ADDED(), out)
-	if (new_id == 0):
-		return tree_diff_expand(s, old_id, c"", TREE_REMOVED(), out)
-	if (strcmp(old_id, new_id) == 0):
-		return result_new_ok[int](0)
+	if ((old_id == 0) && (new_id == 0)): return result_new_ok[int](0)
+	if (old_id == 0): return tree_diff_expand(s, new_id, c"", TREE_ADDED(), out)
+	if (new_id == 0): return tree_diff_expand(s, old_id, c"", TREE_REMOVED(), out)
+	if (strcmp(old_id, new_id) == 0): return result_new_ok[int](0)
 	return tree_diff_walk(s, old_id, new_id, c"", out)

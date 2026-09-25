@@ -49,10 +49,8 @@ int increment_statement_context
 # '+' when the current token is '++', '-' when it is '--', 0 otherwise
 # — the marker shape compound_assign_op() uses.
 int increment_op():
-	if (peek(c"++")):
-		return '+'
-	if (peek(c"--")):
-		return '-'
+	if (peek(c"++")): return '+'
+	if (peek(c"--")): return '-'
 	return 0
 
 
@@ -84,12 +82,10 @@ int compound_assign_rhs(int op, int left_type):
 # side, so every '+= 1' behavior and diagnostic carries over. eax ends
 # holding the stored value, which the expression yields.
 int compound_assign_scalar(int op, int type, int implicit_one):
-	if (expression_lhs_readonly):
-		error(c"cannot assign to read-only buffer field")
+	if (expression_lhs_readonly): error(c"cannot assign to read-only buffer field")
 	if ((type_is_value(type)) | (type == 3) | (type == 4)):
 		error(c"assignment target is not assignable")
-	if (type_is_const(type)):
-		error(c"assignment to const")
+	if (type_is_const(type)): error(c"assignment to const")
 	if (type_num_args(type_canonical(type)) > 0):
 		error(c"compound assignment is not supported on struct values")
 	if (type_is_buffer(type_canonical(type))):
@@ -110,8 +106,7 @@ int compound_assign_scalar(int op, int type, int implicit_one):
 		# descent has already returned -- count them here like the plain
 		# '=' branch of expression() does.
 		expr_nesting_depth = expr_nesting_depth + 1
-		if (expr_nesting_depth > 1000):
-			error(c"expression nesting too deep")
+		if (expr_nesting_depth > 1000): error(c"expression nesting too deep")
 		result_type = compound_assign_rhs(op, left_type)
 		expr_nesting_depth = expr_nesting_depth - 1
 	coerce(type, result_type)
@@ -126,10 +121,8 @@ int compound_assign_scalar(int op, int type, int implicit_one):
 # (lvalue address in eax, 'type' its declared type) and the '++'/'--'
 # token consumed: the compound assignment sequence with an implicit 1.
 int increment_apply(int op, int type):
-	if (hash_index_pending):
-		error(c"'++' and '--' are not supported on map or set elements")
-	if (nd_index_pending):
-		error(c"'++' and '--' are not supported on ndarray elements")
+	if (hash_index_pending): error(c"'++' and '--' are not supported on map or set elements")
+	if (nd_index_pending): error(c"'++' and '--' are not supported on ndarray elements")
 	return compound_assign_scalar(op, type, 1)
 
 
@@ -139,8 +132,7 @@ int increment_apply(int op, int type):
 # increment_apply's assignability checks.
 int increment_prefix_statement():
 	int op = increment_op()
-	if (op == 0):
-		return 0
+	if (op == 0): return 0
 	get_token()
 	expression_lhs_readonly = 0
 	int type = unary_expression()

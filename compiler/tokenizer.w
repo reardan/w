@@ -133,33 +133,28 @@ char* diag_context_buffer
 # through getchar()/getchar_seek() directly, NOT getc(): a read failure
 # here must skip the context, never recurse into error().
 int diag_context_collect():
-	if (file < 0):
-		return (-1)
+	if (file < 0): return (-1)
 	int saved_position = byte_offset
 	getchar_seek(file, 0)
 	int scan_line = 1
 	int c = getchar(file)
 	while ((scan_line < diag_token_line) && (c >= 0)):
-		if (c == 10):
-			scan_line = scan_line + 1
+		if (c == 10): scan_line = scan_line + 1
 		c = getchar(file)
-	if (diag_context_buffer == 0):
-		diag_context_buffer = malloc(diag_context_capacity + 1)
+	if (diag_context_buffer == 0): diag_context_buffer = malloc(diag_context_capacity + 1)
 	int length = 0
 	int failed = 0
 	if (c < 0):
 		# EOF (or a read error) before the line's first character
 		failed = 1
 	while ((failed == 0) && (c >= 0) && (c != 10)):
-		if (length >= diag_context_capacity):
-			failed = 1
+		if (length >= diag_context_capacity): failed = 1
 		else:
 			diag_context_buffer[length] = c
 			length = length + 1
 			c = getchar(file)
 	getchar_seek(file, saved_position)
-	if (failed):
-		return (-1)
+	if (failed): return (-1)
 	diag_context_buffer[length] = 0
 	return length
 
@@ -192,24 +187,19 @@ int diag_color_state
 
 int diag_env_set(char* name):
 	char* value = env_get(name)
-	if (value == 0):
-		return 0
-	if (value[0] == 0):
-		return 0
-	if ((value[0] == '0') && (value[1] == 0)):
-		return 0
+	if (value == 0): return 0
+	if (value[0] == 0): return 0
+	if ((value[0] == '0') && (value[1] == 0)): return 0
 	return 1
 
 
 int diag_color():
 	if (diag_color_state == 0):
 		diag_color_state = 2
-		if (diag_env_set(c"NO_COLOR")):
-			diag_color_state = 2
+		if (diag_env_set(c"NO_COLOR")): diag_color_state = 2
 		else if (diag_env_set(c"FORCE_COLOR") || diag_env_set(c"CLICOLOR_FORCE")):
 			diag_color_state = 1
-		else if (term_isatty(2)):
-			diag_color_state = 1
+		else if (term_isatty(2)): diag_color_state = 1
 	return diag_color_state == 1
 
 
@@ -233,10 +223,8 @@ void diag_reset():
 # Bold red for errors, bold yellow for warnings; bold blue for the
 # gutter and location arrow; bold cyan for help (rustc's palette).
 void diag_severity_style(char* severity):
-	if (severity[0] == 'e'):
-		diag_style(c"1;31")
-	else:
-		diag_style(c"1;33")
+	if (severity[0] == 'e'): diag_style(c"1;31")
+	else: diag_style(c"1;33")
 
 
 int diag_digit_count(int n):
@@ -264,10 +252,8 @@ void diag_gutter(int width):
 # 1 when the diagnostic's column belongs to the tokenizer's current line,
 # the only line the source context can be re-read for.
 int diag_on_current_line():
-	if (diag_token_line < 1):
-		return 0
-	if (diag_token_line != line_number + 1):
-		return 0
+	if (diag_token_line < 1): return 0
+	if (diag_token_line != line_number + 1): return 0
 	return diag_token_column >= 1
 
 
@@ -276,8 +262,7 @@ int diag_codepoints(char* s):
 	int count = 0
 	int i = 0
 	while (s[i] != 0):
-		if ((s[i] & 192) != 128):
-			count = count + 1
+		if ((s[i] & 192) != 128): count = count + 1
 		i = i + 1
 	return count
 
@@ -291,11 +276,9 @@ int diag_codepoints(char* s):
 # source at the column really spells it, and is a single caret
 # otherwise (a repositioned diagnostic, a string token, end of file).
 void diag_context_print(char* severity, int width):
-	if (diag_on_current_line() == 0):
-		return
+	if (diag_on_current_line() == 0): return
 	int length = diag_context_collect()
-	if (length < 0):
-		return
+	if (length < 0): return
 	diag_gutter(width)
 	put_error(10)
 	diag_style(c"1;34")
@@ -315,23 +298,18 @@ void diag_context_print(char* severity, int width):
 	i = 0
 	while (column < diag_token_column):
 		if (i < length):
-			if (diag_context_buffer[i] == 9):
-				put_error(9)
-			else:
-				put_error(' ')
+			if (diag_context_buffer[i] == 9): put_error(9)
+			else: put_error(' ')
 			i = i + 1
-			while ((i < length) && ((diag_context_buffer[i] & 192) == 128)):
-				i = i + 1
-		else:
-			put_error(' ')
+			while ((i < length) && ((diag_context_buffer[i] & 192) == 128)): i = i + 1
+		else: put_error(' ')
 		column = column + 1
 	int marks = 1
 	if (token != 0):
 		int j = 0
 		while ((token[j] != 0) && (i + j < length) && (diag_context_buffer[i + j] == token[j])):
 			j = j + 1
-		if ((j > 0) && (token[j] == 0)):
-			marks = diag_codepoints(token)
+		if ((j > 0) && (token[j] == 0)): marks = diag_codepoints(token)
 	diag_severity_style(severity)
 	while (marks > 0):
 		put_error('^')
@@ -392,8 +370,7 @@ void warning(char *s):
 	if (diag_json):
 		diag_append(s)
 		diag_emit(c"warning", filename, diag_token_line, diag_token_column, token)
-	else:
-		diag_human(c"warning", s)
+	else: diag_human(c"warning", s)
 
 
 # REPL error recovery: when repl_recovery is nonzero, error() reports the
@@ -409,8 +386,7 @@ void error(char *s):
 	if (diag_json):
 		diag_append(s)
 		diag_emit(c"error", filename, diag_token_line, diag_token_column, token)
-	else:
-		diag_human(c"error", s)
+	else: diag_human(c"error", s)
 	if (repl_recovery):
 		diag_clear()
 		repl_error_jump(repl_jump_buffer, 1)
@@ -465,12 +441,10 @@ int getc():
 		# get_token() has ever allocated the token buffer; error() prints
 		# and emits token, so point it at something live (mirrors
 		# compiler/compiler.w's missing_file_reset, #190)
-		if (token == 0):
-			token = filename
+		if (token == 0): token = filename
 		error3(c"read error while reading '", filename, c"'")
 	# EOF consumes nothing, so the offset only advances for real bytes
-	if (c != -1):
-		byte_offset = byte_offset + 1
+	if (c != -1): byte_offset = byte_offset + 1
 	return c
 
 
@@ -488,12 +462,10 @@ int get_character():
 		# not advance the column. Identical to byte counting for
 		# all-ASCII lines; byte_offset stays byte-exact regardless
 		# (grammar/generic.w re-seeks by it). (#287)
-		if ((nextc & 192) != 128):
-			column_number = column_number + 1
+		if ((nextc & 192) != 128): column_number = column_number + 1
 
 	# Handle Tab
-	if(nextc == 9):
-		tab_level = tab_level + 1
+	if(nextc == 9): tab_level = tab_level + 1
 
 	# A last line without a newline is invisible to tab_level-based scoping
 	# and can end an indented block with a confusing parse error, so flag it.
@@ -550,16 +522,12 @@ int is_ident_part_byte(int c):
 char* ident_codepoint_rejection(int cp):
 	# C1 controls, NBSP, soft hyphen, Latin-1 punctuation and symbols
 	# (keeping the letters U+00AA, U+00B5, U+00BA)
-	if ((cp >= 128) && (cp <= 159)):
-		return c"a control character"
-	if (cp == 160):
-		return c"a whitespace character"
-	if (cp == 173):
-		return c"an invisible character"
+	if ((cp >= 128) && (cp <= 159)): return c"a control character"
+	if (cp == 160): return c"a whitespace character"
+	if (cp == 173): return c"an invisible character"
 	if ((cp >= 161) && (cp <= 191) && (cp != 170) && (cp != 181) && (cp != 186)):
 		return c"a punctuation character"
-	if ((cp == 215) || (cp == 247)):
-		return c"a punctuation character"
+	if ((cp == 215) || (cp == 247)): return c"a punctuation character"
 	# Generic combining diacritics: a decomposed spelling (e + U+0301)
 	# would otherwise be a silently different symbol from the
 	# precomposed one, so it is rejected instead of normalised
@@ -568,8 +536,7 @@ char* ident_codepoint_rejection(int cp):
 			((cp >= 65056) && (cp <= 65071))):
 		return c"a combining mark (use the precomposed spelling)"
 	# Arabic letter mark, Mongolian vowel separator, Ogham space
-	if ((cp == 1564) || (cp == 6158) || (cp == 5760)):
-		return c"an invisible character"
+	if ((cp == 1564) || (cp == 6158) || (cp == 5760)): return c"an invisible character"
 	# General Punctuation block U+2000-U+206F: spaces, dashes, quotes,
 	# zero-width characters, bidi embeddings/overrides/isolates and the
 	# invisible operators all live here
@@ -582,8 +549,7 @@ char* ident_codepoint_rejection(int cp):
 		return c"a punctuation character"
 	# Ideographic space and CJK punctuation
 	if ((cp >= 12288) && (cp <= 12291)):
-		if (cp == 12288):
-			return c"a whitespace character"
+		if (cp == 12288): return c"a whitespace character"
 		return c"a punctuation character"
 	if (((cp >= 12296) && (cp <= 12305)) || ((cp >= 12308) && (cp <= 12319))):
 		return c"a punctuation character"
@@ -592,8 +558,7 @@ char* ident_codepoint_rejection(int cp):
 	if (((cp >= 65024) && (cp <= 65039)) || (cp == 65279) ||
 			((cp >= 65529) && (cp <= 65531)) || (cp >= 917504) && (cp <= 917631)):
 		return c"an invisible character"
-	if ((cp == 65534) || (cp == 65535)):
-		return c"a noncharacter"
+	if ((cp == 65534) || (cp == 65535)): return c"a noncharacter"
 	return 0
 
 
@@ -604,15 +569,12 @@ char* ident_codepoint_hex(int cp):
 	int v = cp
 	while ((v > 0) || (n < 4)):
 		int d = v & 15
-		if (d < 10):
-			out[n] = d + '0'
-		else:
-			out[n] = d - 10 + 'A'
+		if (d < 10): out[n] = d + '0'
+		else: out[n] = d - 10 + 'A'
 		v = v >> 4
 		n = n + 1
 	char* text = malloc(n + 1)
-	for i in range(n):
-		text[i] = out[n - 1 - i]
+	for i in range(n): text[i] = out[n - 1 - i]
 	text[n] = 0
 	return text
 
@@ -634,8 +596,7 @@ void take_utf8_ident_char():
 	takechar()
 	for j in range(need):
 		int d = nextc & 255
-		if ((nextc == -1) || (d < 128) || (d > 191)):
-			error(c"invalid UTF-8 sequence in identifier")
+		if ((nextc == -1) || (d < 128) || (d > 191)): error(c"invalid UTF-8 sequence in identifier")
 		cp = (cp << 6) | (d & 63)
 		takechar()
 	if (((need == 2) && (cp < 2048)) || ((need == 3) && (cp < 65536))):
@@ -662,35 +623,27 @@ int ident_byte_class_ready
 
 void ident_byte_class_init():
 	for c in range(256):
-		if (is_utf8_lead_byte(c)):
-			ident_byte_class[c] = 2
-		else if (is_ident_part_byte(c)):
-			ident_byte_class[c] = 1
-		else:
-			ident_byte_class[c] = 0
+		if (is_utf8_lead_byte(c)): ident_byte_class[c] = 2
+		else if (is_ident_part_byte(c)): ident_byte_class[c] = 1
+		else: ident_byte_class[c] = 0
 	ident_byte_class_ready = 1
 
 
 # Scan an identifier (or keyword / integer-literal prefix) run
 void take_ident_run():
-	if (ident_byte_class_ready == 0):
-		ident_byte_class_init()
+	if (ident_byte_class_ready == 0): ident_byte_class_init()
 	while (nextc != -1):
 		int k = ident_byte_class[nextc & 255]
-		if (k == 0):
-			return;
-		if (k == 2):
-			take_utf8_ident_char()
-		else:
-			takechar()
+		if (k == 0): return;
+		if (k == 2): take_utf8_ident_char()
+		else: takechar()
 
 
 # Read UNTIL end of line or end of file
 # (but NOT the newline itself) 
 # Also append a 0 so the string is zero terminated
 void read_until_end():
-	while (nextc != 10 && nextc != 0):
-		takechar()
+	while (nextc != 10 && nextc != 0): takechar()
 	
 	token[token_i] = 0
 	token_i = token_i + 1
@@ -711,28 +664,22 @@ forms, so escaped quotes and braces never terminate the chunk.
 void take_template_chunk():
 	int done = 0
 	while (done == 0):
-		if (nextc == -1):
-			error(c"unterminated template string literal")
+		if (nextc == -1): error(c"unterminated template string literal")
 		else if (nextc == '"'):
 			takechar()
 			done = 1
 		else if (nextc == '{'):
 			takechar()
-			if (nextc == '{'):
-				takechar()
-			else:
-				done = 1
+			if (nextc == '{'): takechar()
+			else: done = 1
 		else if (nextc == '}'):
 			takechar()
-			if (nextc == '}'):
-				takechar()
-			else:
-				error(c"single '}' in template string; use '}}'")
+			if (nextc == '}'): takechar()
+			else: error(c"single '}' in template string; use '}}'")
 		else:
 			if (nextc == 92):
 				takechar()
-				if (nextc == -1):
-					error(c"unterminated template string literal")
+				if (nextc == -1): error(c"unterminated template string literal")
 			takechar()
 
 
@@ -762,8 +709,7 @@ void get_token():
 		w = 0
 		while ((nextc == ' ') || (nextc == 9) || (nextc == 10)):
 			prev_whitespace = nextc
-			if(nextc == 10):
-				token_newline = 1
+			if(nextc == 10): token_newline = 1
 
 			nextc = get_character()
 
@@ -791,12 +737,10 @@ void get_token():
 					# tokenizer forever (nextc pinned at -1 never
 					# matches '"'), consuming memory instead of
 					# reporting the truncation.
-					if (nextc == -1):
-						error(c"unterminated string literal")
+					if (nextc == -1): error(c"unterminated string literal")
 					if (nextc == 92):
 						takechar()
-						if (nextc == -1):
-							error(c"unterminated string literal")
+						if (nextc == -1): error(c"unterminated string literal")
 					takechar()
 				takechar()
 
@@ -823,8 +767,7 @@ void get_token():
 						((token[token_i - 1] == 'e') || (token[token_i - 1] == 'E'))):
 					if ((nextc == '+') || (nextc == '-')):
 						takechar()
-						while (('0' <= nextc) && (nextc <= '9')):
-							takechar()
+						while (('0' <= nextc) && (nextc <= '9')): takechar()
 
 		if (token_i == 0):
 			while ((nextc == '<') || (nextc == '=') || (nextc == '>') ||
@@ -842,12 +785,9 @@ void get_token():
 			if ((nextc == '+') || (nextc == '-') || (nextc == '*') ||
 					(nextc == '%') || (nextc == '^')):
 				takechar()
-				if (nextc == '='):
-					takechar()
-				else if ((token[0] == '+') && (nextc == '+')):
-					takechar()
-				else if ((token[0] == '-') && (nextc == '-')):
-					takechar()
+				if (nextc == '='): takechar()
+				else if ((token[0] == '+') && (nextc == '+')): takechar()
+				else if ((token[0] == '-') && (nextc == '-')): takechar()
 
 		# ':=' inferred declaration: ':' merges with a directly following
 		# '='. A bare ':' (blocks, slices, map literals, ternary) never has
@@ -855,33 +795,28 @@ void get_token():
 		if (token_i == 0):
 			if (nextc == ':'):
 				takechar()
-				if (nextc == '='):
-					takechar()
+				if (nextc == '='): takechar()
 
 		if (token_i == 0):
 			if (nextc == 39):
 				takechar()
 				while (nextc != 39):
-					if (nextc == -1):
-						error(c"unterminated char literal")
+					if (nextc == -1): error(c"unterminated char literal")
 					# A backslash escapes the next character (e.g. '\'')
 					if (nextc == 92):
 						takechar()
-						if (nextc == -1):
-							error(c"unterminated char literal")
+						if (nextc == -1): error(c"unterminated char literal")
 					takechar()
 				takechar()
 
 			else if (nextc == '"'):
 				takechar()
 				while (nextc != '"'):
-					if (nextc == -1):
-						error(c"unterminated string literal")
+					if (nextc == -1): error(c"unterminated string literal")
 					# A backslash escapes the next character (e.g. \")
 					if (nextc == 92):
 						takechar()
-						if (nextc == -1):
-							error(c"unterminated string literal")
+						if (nextc == -1): error(c"unterminated string literal")
 					takechar()
 				takechar()
 
@@ -891,29 +826,25 @@ void get_token():
 				if (nextc == '*'):
 					nextc = get_character()
 					while ((nextc != '/') && (nextc != -1)):
-						while ((nextc != '*') && (nextc != -1)):
-							nextc = get_character()
+						while ((nextc != '*') && (nextc != -1)): nextc = get_character()
 						nextc = get_character()
 
 					nextc = get_character()
 					w = 1
 
 				# '/=' compound assignment
-				else if (nextc == '='):
-					takechar()
+				else if (nextc == '='): takechar()
 			}
 			# Line Comments
 			else if (nextc == '#'):
 				takechar()
 				nextc = get_character()
-				while((nextc != 10) && (nextc != -1)):
-					nextc = get_character()
+				while((nextc != 10) && (nextc != -1)): nextc = get_character()
 
 				# nextc = get_character()
 				w = 1
 
-			else if (nextc != -1):
-				takechar()
+			else if (nextc != -1): takechar()
 
 		token[token_i] = 0
 	# print_string("token: ", token)
@@ -924,27 +855,22 @@ void get_token():
 # case before entering the compare loop.
 int peek(char *s):
 	int c = s[0]
-	if (c != token[0]):
-		return 0
-	if (c == 0):
-		return 1
+	if (c != token[0]): return 0
+	if (c == 0): return 1
 	int i = 1
-	while ((s[i] == token[i]) && (s[i] != 0)):
-		i = i + 1
+	while ((s[i] == token[i]) && (s[i] != 0)): i = i + 1
 
 	return s[i] == token[i]
 
 
 int accept(char *s):
 	# Same first-byte rejection as peek(), without the extra call
-	if (s[0] != token[0]):
-		return 0
+	if (s[0] != token[0]): return 0
 	if (peek(s)):
 		get_token()
 		return 1
 
-	else:
-		return 0
+	else: return 0
 
 
 void expect(char *s):

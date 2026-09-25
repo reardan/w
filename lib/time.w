@@ -54,28 +54,22 @@ void sleep_ms(int ms):
 
 
 int time_is_leap_year(int year):
-	if ((year % 4) != 0):
-		return 0
-	if ((year % 100) != 0):
-		return 1
-	if ((year % 400) == 0):
-		return 1
+	if ((year % 4) != 0): return 0
+	if ((year % 100) != 0): return 1
+	if ((year % 400) == 0): return 1
 	return 0
 
 
 int time_days_in_year(int year):
-	if (time_is_leap_year(year)):
-		return 366
+	if (time_is_leap_year(year)): return 366
 	return 365
 
 
 int time_days_in_month(int year, int month):
 	if (month == 2):
-		if (time_is_leap_year(year)):
-			return 29
+		if (time_is_leap_year(year)): return 29
 		return 28
-	if ((month == 4) || (month == 6) || (month == 9) || (month == 11)):
-		return 30
+	if ((month == 4) || (month == 6) || (month == 9) || (month == 11)): return 30
 	return 31
 
 
@@ -116,8 +110,7 @@ int time_month_from_abbrev(char* s):
 	for m in range(1, 12 + 1):
 		char* name = time_month_name(m)
 		int i = 0
-		while ((i < 3) && (((s[i] | 32) & 255) == (name[i] | 32))):
-			i = i + 1
+		while ((i < 3) && (((s[i] | 32) & 255) == (name[i] | 32))): i = i + 1
 		if (i == 3):
 			return m
 	return 0 - 1
@@ -216,15 +209,12 @@ char* time_format_unix_utc(int timestamp):
 # Days since 1970-01-01 (negative before it) of year-month-day.
 int time_days_from_civil(int year, int month, int day):
 	int y = year
-	if (month <= 2):
-		y = y - 1
+	if (month <= 2): y = y - 1
 	int era = y / 400
-	if (y < 0):
-		era = (y - 399) / 400
+	if (y < 0): era = (y - 399) / 400
 	int yoe = y - era * 400
 	int mp = month - 3
-	if (month <= 2):
-		mp = month + 9
+	if (month <= 2): mp = month + 9
 	int doy = (153 * mp + 2) / 5 + day - 1
 	int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
 	return era * 146097 + doe - 719468

@@ -52,8 +52,7 @@ int f64is_nan(float64 f):
 	# 0x7ff0000000000000: exponent field (bits 52-62) all ones. Built via
 	# shift, not a literal -- see the header comment.
 	int exp_mask = 0x7ff << 52
-	if ((bits & exp_mask) != exp_mask):
-		return 0
+	if ((bits & exp_mask) != exp_mask): return 0
 	# 0x000fffffffffffff: the 52-bit mantissa field.
 	int mantissa_mask = (1 << 52) - 1
 	return (bits & mantissa_mask) != 0
@@ -74,8 +73,7 @@ float64 fabs64(float64 f):
 float64 ffloor64(float64 f):
 	int truncated = f
 	float64 whole = truncated
-	if (f < whole):
-		return whole - 1.0
+	if (f < whole): return whole - 1.0
 	return whole
 
 
@@ -109,8 +107,7 @@ float64 fmod64(float64 a, float64 b):
 # not fixed here, since it's a pre-existing property of the ported
 # algorithm rather than something specific to the float64 port).
 float64 fsqrt64(float64 f):
-	if (f <= 0.0):
-		return 0.0
+	if (f <= 0.0): return 0.0
 	int sign_clear = (1 << 63) - 1
 	int bits = float64_bits(f) & sign_clear
 	int magic = (0x1ff7a3be << 32) | (0xa000 << 16)
@@ -188,13 +185,10 @@ float64 fexp2_poly64(float64 t):
 # straddling the largest finite float64 round to +inf exactly like the
 # hardware would.
 float64 fexp2_scale64(float64 p, int n):
-	if (n > 1024):
-		return float64_from_bits(0x7ff << 52)
-	if (n == 1024):
-		return float64_from_bits(float64_bits(p) + (1023 << 52)) * 2.0
+	if (n > 1024): return float64_from_bits(0x7ff << 52)
+	if (n == 1024): return float64_from_bits(float64_bits(p) + (1023 << 52)) * 2.0
 	if (n < -1021):
-		if (n < -1076):
-			return 0.0
+		if (n < -1076): return 0.0
 		float64 tiny = float64_from_bits(0x1ff << 52)    # 2^-512
 		return float64_from_bits(float64_bits(p) + ((n + 512) << 52)) * tiny
 	return float64_from_bits(float64_bits(p) + (n << 52))
@@ -208,10 +202,8 @@ float64 fexp2_scale64(float64 p, int n):
 float64 fexp264(float64 x):
 	if (f64is_nan(x)):
 		return x
-	if (x > 1026.0):
-		return float64_from_bits(0x7ff << 52)
-	if (x < -1080.0):
-		return 0.0
+	if (x > 1026.0): return float64_from_bits(0x7ff << 52)
+	if (x < -1080.0): return 0.0
 	float64 fn = ffloor64(x + 0.5)
 	int n = fn
 	float64 t = x - fn
@@ -228,10 +220,8 @@ float64 fexp264(float64 x):
 float64 fexp64(float64 x):
 	if (f64is_nan(x)):
 		return x
-	if (x > 710.0):
-		return float64_from_bits(0x7ff << 52)
-	if (x < -746.0):
-		return 0.0
+	if (x > 710.0): return float64_from_bits(0x7ff << 52)
+	if (x < -746.0): return 0.0
 	float64 l2eh = 1.4426946640014648e+00    # log2(e) top 21 bits
 	float64 l2el = 3.7688749856360991e-07    # log2(e) - l2eh
 	float64 l2e = 1.4426950408889634e+00    # log2(e) rounded
@@ -389,10 +379,8 @@ float64 fpow64(float64 x, float64 y):
 	int inf_bits = 0x7ff << 52
 	# bit tests, not float compares: nan == 0.0 is true in W
 	# (docs/projects/float.md), which would turn pow(2, nan) into 1
-	if ((ybits & abs_mask) == 0):
-		return 1.0
-	if (xbits == one_bits):
-		return 1.0
+	if ((ybits & abs_mask) == 0): return 1.0
+	if (xbits == one_bits): return 1.0
 	if (f64is_nan(x)):
 		return x
 	if (f64is_nan(y)):
@@ -402,63 +390,48 @@ float64 fpow64(float64 x, float64 y):
 	float64 ax = fabs64(x)
 	if ((ybits & abs_mask) == inf_bits):
 		# y = +-inf: 1 for |x| = 1, else pick 0 or inf by |x| vs 1
-		if (ax == 1.0):
-			return 1.0
+		if (ax == 1.0): return 1.0
 		int bigger = 0
-		if (ax > 1.0):
-			bigger = 1
+		if (ax > 1.0): bigger = 1
 		if (y > 0.0):
-			if (bigger):
-				return float64_from_bits(inf_bits)
+			if (bigger): return float64_from_bits(inf_bits)
 			return 0.0
-		if (bigger):
-			return 0.0
+		if (bigger): return 0.0
 		return float64_from_bits(inf_bits)
 	# y integer parity: 0 = not an integer, 1 = odd, 2 = even
 	int yint = 0
 	float64 ay = fabs64(y)
 	float64 two53 = 9007199254740992.0    # 2^53
-	if (ay >= two53):
-		yint = 2    # every float64 >= 2^53 in magnitude is an even integer
+	if (ay >= two53): yint = 2    # every float64 >= 2^53 in magnitude is an even integer
 	else:
 		float64 fy = ffloor64(y)
 		if (fy == y):
 			float64 fh = fy * 0.5
-			if (ffloor64(fh) == fh):
-				yint = 2
-			else:
-				yint = 1
+			if (ffloor64(fh) == fh): yint = 2
+			else: yint = 1
 	if (x == 0.0):
 		# +-0 base: result is 0 or inf by y's sign, negative only for
 		# -0 with odd integer y
 		int neg = 0
-		if (xbits < 0 && yint == 1):
-			neg = 1
+		if (xbits < 0 && yint == 1): neg = 1
 		if (y > 0.0):
-			if (neg):
-				return float64_from_bits(1 << 63)
+			if (neg): return float64_from_bits(1 << 63)
 			return 0.0
-		if (neg):
-			return float64_from_bits(0xfff << 52)
+		if (neg): return float64_from_bits(0xfff << 52)
 		return float64_from_bits(inf_bits)
 	if ((xbits & abs_mask) == inf_bits):
 		# +-inf base, mirroring the zero rules
 		int neg = 0
-		if (xbits < 0 && yint == 1):
-			neg = 1
+		if (xbits < 0 && yint == 1): neg = 1
 		if (y > 0.0):
-			if (neg):
-				return float64_from_bits(0xfff << 52)
+			if (neg): return float64_from_bits(0xfff << 52)
 			return float64_from_bits(inf_bits)
-		if (neg):
-			return float64_from_bits(1 << 63)
+		if (neg): return float64_from_bits(1 << 63)
 		return 0.0
 	int sgn = 0
 	if (xbits < 0):
-		if (yint == 0):
-			return float64_from_bits(0x7ff8 << 48)
-		if (yint == 1):
-			sgn = 1
+		if (yint == 0): return float64_from_bits(0x7ff8 << 48)
+		if (yint == 1): sgn = 1
 	float64 t1 = 0.0
 	float64 t2 = 0.0
 	flog2_pair64(ax, &t1, &t2)
@@ -468,19 +441,16 @@ float64 fpow64(float64 x, float64 y):
 	float64 pl = (y - y1) * t1 + y * t2
 	float64 z = ph + pl
 	if (z > 1026.0):
-		if (sgn):
-			return float64_from_bits(0xfff << 52)
+		if (sgn): return float64_from_bits(0xfff << 52)
 		return float64_from_bits(inf_bits)
 	if (z < -1080.0):
-		if (sgn):
-			return float64_from_bits(1 << 63)
+		if (sgn): return float64_from_bits(1 << 63)
 		return 0.0
 	float64 fn = ffloor64(z + 0.5)
 	int n = fn
 	float64 t = (ph - fn) + pl
 	float64 res = fexp2_scale64(fexp2_poly64(t), n)
-	if (sgn):
-		return -res
+	if (sgn): return -res
 	return res
 
 
@@ -549,20 +519,15 @@ float64 fsin64(float64 x):
 	if (f64is_nan(x)):
 		return x
 	int ab = float64_bits(x) & ((1 << 63) - 1)
-	if (ab == (0x7ff << 52)):
-		return float64_from_bits(0x7ff8 << 48)
+	if (ab == (0x7ff << 52)): return float64_from_bits(0x7ff8 << 48)
 	if (ab < (0x3e4 << 52)):
 		return x
-	if (ab >= (0x433 << 52)):
-		return 0.0
+	if (ab >= (0x433 << 52)): return 0.0
 	float64 r = 0.0
 	int q = ftrig_reduce64(x, &r)
-	if (q == 0):
-		return fsin_poly64(r)
-	if (q == 1):
-		return fcos_poly64(r)
-	if (q == 2):
-		return -fsin_poly64(r)
+	if (q == 0): return fsin_poly64(r)
+	if (q == 1): return fcos_poly64(r)
+	if (q == 2): return -fsin_poly64(r)
 	return -fcos_poly64(r)
 
 
@@ -574,18 +539,13 @@ float64 fcos64(float64 x):
 	if (f64is_nan(x)):
 		return x
 	int ab = float64_bits(x) & ((1 << 63) - 1)
-	if (ab == (0x7ff << 52)):
-		return float64_from_bits(0x7ff8 << 48)
-	if (ab >= (0x433 << 52)):
-		return 1.0
+	if (ab == (0x7ff << 52)): return float64_from_bits(0x7ff8 << 48)
+	if (ab >= (0x433 << 52)): return 1.0
 	float64 r = 0.0
 	int q = ftrig_reduce64(x, &r)
-	if (q == 0):
-		return fcos_poly64(r)
-	if (q == 1):
-		return -fsin_poly64(r)
-	if (q == 2):
-		return -fcos_poly64(r)
+	if (q == 0): return fcos_poly64(r)
+	if (q == 1): return -fsin_poly64(r)
+	if (q == 2): return -fcos_poly64(r)
 	return fsin_poly64(r)
 
 
@@ -600,16 +560,13 @@ float64 ftan64(float64 x):
 	if (f64is_nan(x)):
 		return x
 	int ab = float64_bits(x) & ((1 << 63) - 1)
-	if (ab == (0x7ff << 52)):
-		return float64_from_bits(0x7ff8 << 48)
+	if (ab == (0x7ff << 52)): return float64_from_bits(0x7ff8 << 48)
 	if (ab < (0x3e4 << 52)):
 		return x
-	if (ab >= (0x433 << 52)):
-		return 0.0
+	if (ab >= (0x433 << 52)): return 0.0
 	float64 r = 0.0
 	int q = ftrig_reduce64(x, &r)
-	if (q == 0 || q == 2):
-		return fsin_poly64(r) / fcos_poly64(r)
+	if (q == 0 || q == 2): return fsin_poly64(r) / fcos_poly64(r)
 	return -(fcos_poly64(r) / fsin_poly64(r))
 
 
@@ -623,13 +580,11 @@ float64 fatan64(float64 x):
 	if (f64is_nan(x)):
 		return x
 	int sgn = 0
-	if (float64_bits(x) < 0):
-		sgn = 1
+	if (float64_bits(x) < 0): sgn = 1
 	float64 ax = fabs64(x)
 	float64 pio2 = 1.5707963267948966e+00
 	if (float64_bits(ax) == (0x7ff << 52)):
-		if (sgn):
-			return -pio2
+		if (sgn): return -pio2
 		return pio2
 	float64 t3p8 = 2.4142135623730949e+00    # tan(3pi/8)
 	float64 tp8 = 4.1421356237309503e-01    # tan(pi/8)
@@ -656,8 +611,7 @@ float64 fatan64(float64 x):
 	float64 z = w * w
 	float64 p = a0 + z * (a1 + z * (a2 + z * (a3 + z * (a4 + z * (a5 + z * (a6 + z * (a7 + z * (a8 + z * (a9 + z * (a10 + z * a11))))))))))
 	float64 res = base + (w + (z * w) * p)
-	if (sgn):
-		return -res
+	if (sgn): return -res
 	return res
 
 
@@ -677,53 +631,41 @@ float64 fatan264(float64 y, float64 x):
 	int xbits = float64_bits(x)
 	int ybits = float64_bits(y)
 	int sy = 0
-	if (ybits < 0):
-		sy = 1
+	if (ybits < 0): sy = 1
 	float64 pi = 3.1415926535897931e+00
 	float64 pio2 = 1.5707963267948966e+00
 	int abs_mask = (1 << 63) - 1
 	int inf_bits = 0x7ff << 52
 	int x_inf = 0
-	if ((xbits & abs_mask) == inf_bits):
-		x_inf = 1
+	if ((xbits & abs_mask) == inf_bits): x_inf = 1
 	int y_inf = 0
-	if ((ybits & abs_mask) == inf_bits):
-		y_inf = 1
+	if ((ybits & abs_mask) == inf_bits): y_inf = 1
 	if (y_inf):
 		float64 base = pio2
 		if (x_inf):
-			if (xbits < 0):
-				base = 2.3561944901923448e+00    # 3pi/4
-			else:
-				base = 7.8539816339744828e-01    # pi/4
-		if (sy):
-			return -base
+			if (xbits < 0): base = 2.3561944901923448e+00    # 3pi/4
+			else: base = 7.8539816339744828e-01    # pi/4
+		if (sy): return -base
 		return base
 	if (x_inf):
 		if (xbits < 0):
-			if (sy):
-				return -pi
+			if (sy): return -pi
 			return pi
-		if (sy):
-			return float64_from_bits(1 << 63)
+		if (sy): return float64_from_bits(1 << 63)
 		return 0.0
 	if (y == 0.0):
 		if (x < 0.0 || xbits < 0):
-			if (sy):
-				return -pi
+			if (sy): return -pi
 			return pi
 		return y
 	if (x == 0.0):
-		if (sy):
-			return -pio2
+		if (sy): return -pio2
 		return pio2
-	if (x > 0.0):
-		return fatan64(y / x)
+	if (x > 0.0): return fatan64(y / x)
 	float64 m = fatan64(fabs64(y / x))
 	float64 pi_lo = 1.2246467991473532e-16    # pi - pi_hi
 	float64 res = (pi - m) + pi_lo
-	if (sy):
-		return -res
+	if (sy): return -res
 	return res
 
 
@@ -757,11 +699,9 @@ float64 fasin64(float64 x):
 	if (f64is_nan(x)):
 		return x
 	int sgn = 0
-	if (float64_bits(x) < 0):
-		sgn = 1
+	if (float64_bits(x) < 0): sgn = 1
 	float64 ax = fabs64(x)
-	if (ax > 1.0):
-		return float64_from_bits(0x7ff8 << 48)
+	if (ax > 1.0): return float64_from_bits(0x7ff8 << 48)
 	float64 res = 0.0
 	if (ax <= 0.5):
 		float64 z = ax * ax
@@ -773,8 +713,7 @@ float64 fasin64(float64 x):
 		float64 pio2hi = 1.5707963267948966e+00
 		float64 pio2lo = 6.1232339957367660e-17
 		res = (pio2hi - 2.0 * t) + pio2lo
-	if (sgn):
-		return -res
+	if (sgn): return -res
 	return res
 
 
@@ -787,11 +726,9 @@ float64 facos64(float64 x):
 	if (f64is_nan(x)):
 		return x
 	int sgn = 0
-	if (float64_bits(x) < 0):
-		sgn = 1
+	if (float64_bits(x) < 0): sgn = 1
 	float64 ax = fabs64(x)
-	if (ax > 1.0):
-		return float64_from_bits(0x7ff8 << 48)
+	if (ax > 1.0): return float64_from_bits(0x7ff8 << 48)
 	if (ax <= 0.5):
 		float64 z = x * x
 		float64 t = x + (x * z) * fasin_poly64(z)
@@ -801,8 +738,7 @@ float64 facos64(float64 x):
 	float64 z = (1.0 - ax) * 0.5
 	float64 s = fsqrt64(z)
 	float64 t = s + (s * z) * fasin_poly64(z)
-	if (sgn == 0):
-		return 2.0 * t
+	if (sgn == 0): return 2.0 * t
 	float64 pihi = 3.1415926535897931e+00
 	float64 pilo = 1.2246467991473532e-16
 	return (pihi - 2.0 * t) + pilo

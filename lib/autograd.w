@@ -241,8 +241,7 @@ tensor* ag_leaf(ag_tape* t, tensor* x):
 # (tensor_make already zero-fills) and cached in the tape's grads map so
 # later accumulations (and later ag_grad calls) see the same buffer.
 tensor* ag_grad(ag_tape* t, tensor* v):
-	if (v in t.grads):
-		return t.grads[v]
+	if (v in t.grads): return t.grads[v]
 	tensor* g = ag_box_like(v)
 	t.grads[v] = g
 	t.owned_grads.push(g)
@@ -374,8 +373,7 @@ tensor* ag_softmax_ce(ag_tape* t, tensor* logits, ndi* labels):
 		int j = 1
 		while (j < classes):
 			float v = plog[i * classes + j]
-			if (v > m):
-				m = v
+			if (v > m): m = v
 			j = j + 1
 		float rowsum = 0.0
 		j = 0
@@ -424,8 +422,7 @@ tensor* ag_embedding(ag_tape* t, tensor* table, ndi* ids):
 	for i in range(n):
 		int row = ids.data[i]
 		asserts(c"ag_embedding: id out of range", (row >= 0) && (row < table.n0))
-		for j in range(dim):
-			pout[i * dim + j] = ptab[row * dim + j]
+		for j in range(dim): pout[i * dim + j] = ptab[row * dim + j]
 	ag_record_saved(t, ag_op_embedding, out, table, cast(tensor*, 0), 0.0, cast(tensor*, 0), ids)
 	return out
 
@@ -500,8 +497,7 @@ tensor* ag_softmax_causal(ag_tape* t, tensor* s):
 		int j = 1
 		while (j <= i):
 			float v = ps[i * n + j]
-			if (v > m):
-				m = v
+			if (v > m): m = v
 			j = j + 1
 		float rowsum = 0.0
 		j = 0
@@ -541,8 +537,7 @@ tensor* ag_matmul_nt(ag_tape* t, tensor* a, tensor* b):
 
 
 void ag_backward_node(ag_tape* t, ag_node* nd):
-	if (nd.op == ag_op_leaf):
-		return
+	if (nd.op == ag_op_leaf): return
 	tensor* dout = ag_grad(t, nd.out)
 	if (nd.op == ag_op_add):
 		tensor* da = ag_grad(t, nd.a)
@@ -631,8 +626,7 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 			int lbl2 = nd.labels.data[i2]
 			for j2 in range(classes2):
 				float ind = 0.0
-				if (j2 == lbl2):
-					ind = 1.0
+				if (j2 == lbl2): ind = 1.0
 				pg[i2 * classes2 + j2] = pg[i2 * classes2 + j2] + dloss * (pp2[i2 * classes2 + j2] - ind) * invbatch
 		return
 	if (nd.op == ag_op_embedding):

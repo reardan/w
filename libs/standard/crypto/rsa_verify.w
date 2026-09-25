@@ -43,8 +43,7 @@ const int RSA_DIGESTINFO_LEN = 19
 # k is the modulus byte length. Returns 1 on success, 0 if the signature
 # representative is out of range (sig >= n). out must hold at least k bytes.
 int rsa_recover(char* n, int nlen, char* e, int elen, char* sig, int siglen, char* out, int k):
-	if (siglen != k):
-		return 0
+	if (siglen != k): return 0
 	bignum* nn = bignum_new()
 	bignum* ee = bignum_new()
 	bignum* ss = bignum_new()
@@ -79,8 +78,7 @@ int rsa_pkcs1v15_verify(char* n, int nlen, char* e, int elen, char* sig, int sig
 	int prefixlen = RSA_DIGESTINFO_LEN
 	int tlen = prefixlen + diglen
 	# PKCS#1 v1.5 requires at least 8 bytes of 0xFF padding.
-	if (k < tlen + 11):
-		return 0
+	if (k < tlen + 11): return 0
 	char* em = malloc(k)
 	if (rsa_recover(n, nlen, e, elen, sig, siglen, em, k) == 0):
 		free(em)
@@ -110,8 +108,7 @@ int rsa_pkcs1v15_verify(char* n, int nlen, char* e, int elen, char* sig, int sig
 	int match = 1
 	i = 0
 	while (i < k):
-		if ((em[i] & 255) != (want[i] & 255)):
-			match = 0
+		if ((em[i] & 255) != (want[i] & 255)): match = 0
 		i = i + 1
 	free(em)
 	free(want)
@@ -141,10 +138,8 @@ void mgf1(int whash_alg, char* seed, int seedlen, int mask_len, char* out):
 		store_be32(buf + seedlen, counter)
 		whash_oneshot(whash_alg, buf, seedlen + 4, dig)
 		int take = hlen
-		if (mask_len - outpos < hlen):
-			take = mask_len - outpos
-		for j in range(take):
-			out[outpos + j] = dig[j]
+		if (mask_len - outpos < hlen): take = mask_len - outpos
+		for j in range(take): out[outpos + j] = dig[j]
 		outpos = outpos + hlen
 		counter = counter + 1
 	free(buf)
@@ -172,8 +167,7 @@ int rsa_pss_verify(char* n, int nlen, char* e, int elen, char* sig, int siglen, 
 	int embits = modbits - 1
 	int emlen = (embits + 7) / 8
 	# Consistency: EM must hold PS(>=0) 0x01 salt H 0xbc.
-	if (emlen < hlen + slen + 2):
-		return 0
+	if (emlen < hlen + slen + 2): return 0
 	char* em = malloc(k)
 	if (rsa_recover(n, nlen, e, elen, sig, siglen, em, k) == 0):
 		free(em)
@@ -184,15 +178,13 @@ int rsa_pss_verify(char* n, int nlen, char* e, int elen, char* sig, int siglen, 
 	int result = 0
 	int ok = 1
 	# Trailer byte must be 0xbc.
-	if ((emp[emlen - 1] & 255) != 188):
-		ok = 0
+	if ((emp[emlen - 1] & 255) != 188): ok = 0
 	int dblen = emlen - hlen - 1
 	# Top (8*emlen - embits) bits of the leading maskedDB byte must be zero.
 	int topbits = 8 * emlen - embits
 	int topmask = 255 >> topbits            # keep the low (8-topbits) bits
 	if (ok != 0):
-		if (((emp[0] & 255) & ~topmask) != 0):
-			ok = 0
+		if (((emp[0] & 255) & ~topmask) != 0): ok = 0
 	char* db = malloc(dblen)
 	char* h = malloc(hlen)
 	char* dbmask = malloc(dblen)
@@ -211,11 +203,9 @@ int rsa_pss_verify(char* n, int nlen, char* e, int elen, char* sig, int siglen, 
 		int pslen = dblen - slen - 1
 		i = 0
 		while (i < pslen):
-			if ((db[i] & 255) != 0):
-				ok = 0
+			if ((db[i] & 255) != 0): ok = 0
 			i = i + 1
-		if ((db[pslen] & 255) != 1):
-			ok = 0
+		if ((db[pslen] & 255) != 1): ok = 0
 	if (ok != 0):
 		# M' = (0x00)*8 || mHash || salt ; salt = last slen bytes of DB.
 		mem_fill(mprime, 0, 8)
@@ -232,11 +222,9 @@ int rsa_pss_verify(char* n, int nlen, char* e, int elen, char* sig, int siglen, 
 		int eqv = 1
 		i = 0
 		while (i < hlen):
-			if ((hprime[i] & 255) != (h[i] & 255)):
-				eqv = 0
+			if ((hprime[i] & 255) != (h[i] & 255)): eqv = 0
 			i = i + 1
-		if (eqv != 0):
-			result = 1
+		if (eqv != 0): result = 1
 	free(em)
 	free(db)
 	free(h)

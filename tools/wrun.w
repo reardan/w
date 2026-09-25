@@ -63,8 +63,7 @@ void wrun_usage():
 int wrun_has_slash(char* name):
 	int i = 0
 	while (name[i] != 0):
-		if (name[i] == '/'):
-			return 1
+		if (name[i] == '/'): return 1
 		i = i + 1
 	return 0
 
@@ -75,14 +74,11 @@ int wrun_has_slash(char* name):
 # stat stubs fail.
 int wrun_usable(char* path):
 	int fd = open(path, 0, 0)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	close(fd)
 	file_stat st
-	if (file_stat_path(path, &st) != 0):
-		return 1
-	if ((st.mode & FILE_S_IFMT) == FILE_S_IFDIR):
-		return 0
+	if (file_stat_path(path, &st) != 0): return 1
+	if ((st.mode & FILE_S_IFMT) == FILE_S_IFDIR): return 0
 	# 73 = 0111: executable by owner, group, or other.
 	return (st.mode & 73) != 0
 
@@ -92,8 +88,7 @@ char* wrun_find(char* name):
 	if (wrun_has_slash(name)):
 		return name
 	char* path = env_get(c"PATH")
-	if (path == 0):
-		path = c"/usr/bin:/bin"
+	if (path == 0): path = c"/usr/bin:/bin"
 	string_builder* candidate = string_new()
 	int p = 0
 	int at_end = 0
@@ -102,12 +97,9 @@ char* wrun_find(char* name):
 		while ((path[p] != ':') && (path[p] != 0)):
 			string_append_char(candidate, path[p])
 			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length == 0):
-			string_append_char(candidate, '.')
+		if (path[p] == 0): at_end = 1
+		else: p = p + 1
+		if (candidate.length == 0): string_append_char(candidate, '.')
 		string_append_char(candidate, '/')
 		string_append(candidate, name)
 		if (wrun_usable(candidate.data)):
@@ -137,21 +129,17 @@ int wrun_exec(list[char*] argv):
 
 # Appends argv[from..argc) to out.
 void wrun_push_rest(list[char*] out, char** argv, int argc, int from):
-	for i in range(from, argc):
-		out.push(argv[i])
+	for i in range(from, argc): out.push(argv[i])
 
 
 # Appends text's whitespace-separated words to out.
 void wrun_push_words(list[char*] out, char* text):
 	int i = 0
 	while (text[i] != 0):
-		while ((text[i] == ' ') || (text[i] == 9) || (text[i] == 10)):
-			i = i + 1
-		if (text[i] == 0):
-			return
+		while ((text[i] == ' ') || (text[i] == 9) || (text[i] == 10)): i = i + 1
+		if (text[i] == 0): return
 		int start = i
-		while ((text[i] != 0) && (text[i] != ' ') && (text[i] != 9) && (text[i] != 10)):
-			i = i + 1
+		while ((text[i] != 0) && (text[i] != ' ') && (text[i] != 9) && (text[i] != 10)): i = i + 1
 		char* word = malloc(i - start + 1)
 		int k = 0
 		while (k < i - start):
@@ -164,8 +152,7 @@ void wrun_push_words(list[char*] out, char* text):
 # True when the running kernel is aarch64 Linux.
 int wrun_host_is_aarch64():
 	char* arch = file_read_text(c"/proc/sys/kernel/arch")
-	if (arch == 0):
-		return 0
+	if (arch == 0): return 0
 	int n = strlen(arch)
 	while ((n > 0) && ((arch[n - 1] == 10) || (arch[n - 1] == ' '))):
 		n = n - 1
@@ -177,8 +164,7 @@ int wrun_arm64(char** argv, int argc):
 	list[char*] cmd = new list[char*]
 	if (wrun_host_is_aarch64() == 0):
 		char* qemu = env_get(c"QEMU_ARM64")
-		if (qemu != 0):
-			wrun_push_words(cmd, qemu)
+		if (qemu != 0): wrun_push_words(cmd, qemu)
 		# ${QEMU_ARM64:-...}: unset, empty or blank all mean the default.
 		if (cmd.length == 0):
 			cmd.push(c"qemu-aarch64-static")
@@ -196,17 +182,13 @@ char* wrun_wasm_host(char* self):
 	int cut = n
 	while ((cut > 0) && (slashes < 2)):
 		cut = cut - 1
-		if (self[cut] == '/'):
-			slashes = slashes + 1
-	if (slashes < 2):
-		return c"tools/run_wasm.mjs"
+		if (self[cut] == '/'): slashes = slashes + 1
+	if (slashes < 2): return c"tools/run_wasm.mjs"
 	char* root = malloc(cut + 1)
-	for i in range(cut):
-		root[i] = self[i]
+	for i in range(cut): root[i] = self[i]
 	root[cut] = 0
 	if ((cut == 0) || (strcmp(root, c".") == 0)):
-		if (cut == 0):
-			return c"/tools/run_wasm.mjs"
+		if (cut == 0): return c"/tools/run_wasm.mjs"
 		return c"tools/run_wasm.mjs"
 	return cstr(f"{root}/tools/run_wasm.mjs")
 
@@ -246,12 +228,9 @@ int main(int argc, char** argv):
 		wrun_usage()
 		return 2
 	char* mode = argv[1]
-	if (strcmp(mode, c"arm64") == 0):
-		return wrun_arm64(argv, argc)
-	if (strcmp(mode, c"wasm") == 0):
-		return wrun_wasm(argv, argc)
-	if (strcmp(mode, c"node") == 0):
-		return wrun_node(argv, argc)
+	if (strcmp(mode, c"arm64") == 0): return wrun_arm64(argv, argc)
+	if (strcmp(mode, c"wasm") == 0): return wrun_wasm(argv, argc)
+	if (strcmp(mode, c"node") == 0): return wrun_node(argv, argc)
 	wrun_err(cstr(f"wrun: unknown mode '{mode}'"))
 	wrun_usage()
 	return 2

@@ -35,8 +35,7 @@ char* json_nested_array_text(int depth):
 
 void assert_json_parse_fails(char* text):
 	json_value* value = json_parse(text)
-	if (value != 0):
-		json_free(value)
+	if (value != 0): json_free(value)
 	assert_equal(0, cast(int, value))
 
 
@@ -215,11 +214,9 @@ void assert_json_parses_float(char* text, float want):
 void assert_json_float_near(json_value* value, float want):
 	assert_equal(json_type_float(), value.type)
 	float diff = value.float_value - want
-	if (diff < 0.0):
-		diff = -diff
+	if (diff < 0.0): diff = -diff
 	float tolerance = want
-	if (tolerance < 0.0):
-		tolerance = -tolerance
+	if (tolerance < 0.0): tolerance = -tolerance
 	assert1(diff <= tolerance / 100000.0)
 
 
@@ -326,8 +323,7 @@ void test_int_saturation():
 	root = json_parse(c"2147483648")
 	assert1(root != 0)
 	int want = 2147483647
-	if (json_int_max() > want):
-		want = want + 1
+	if (json_int_max() > want): want = want + 1
 	assert_json_int(root, want)
 	json_free(root)
 

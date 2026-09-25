@@ -31,8 +31,7 @@ void test_setjmp_returns_zero_then_longjmp_value():
 		mark(1)
 		thrower(5, 7)
 		mark(8)
-	else:
-		mark(4)
+	else: mark(4)
 	assert_equal(7, r)
 	assert_equal(134, trace)
 
@@ -41,16 +40,14 @@ void test_locals_keep_latest_value():
 	int attempts = 0
 	int r = setjmp(&env)
 	attempts = attempts + 1
-	if (attempts < 4):
-		thrower(2, attempts)
+	if (attempts < 4): thrower(2, attempts)
 	assert_equal(4, attempts)
 	assert_equal(3, r)
 
 
 int checked_divide(jmp_buf* e, int a, int b):
 	int scratch = a
-	if (b == 0):
-		longjmp(e, 1)
+	if (b == 0): longjmp(e, 1)
 	return scratch / b
 
 
@@ -58,8 +55,7 @@ int checked_divide(jmp_buf* e, int a, int b):
 # itself has locals
 int protected_divide(int a, int b):
 	jmp_buf local_env
-	if (setjmp(&local_env)):
-		return -1
+	if (setjmp(&local_env)): return -1
 	return checked_divide(&local_env, a, b)
 
 

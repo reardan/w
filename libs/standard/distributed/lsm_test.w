@@ -42,8 +42,7 @@ list[char*] lt_sst_files(char* prefix):
 			char* record = buffer + off
 			int reclen = (record[2 * __word_size__] & 255) | ((record[2 * __word_size__ + 1] & 255) << 8)
 			char* entry_name = record + 2 * __word_size__ + 2
-			if (starts_with(entry_name, stem)):
-				paths.push(strjoin(c"bin/", entry_name))
+			if (starts_with(entry_name, stem)): paths.push(strjoin(c"bin/", entry_name))
 			off = off + reclen
 		n = getdents(fd, buffer, buffer_size)
 	free(buffer)
@@ -93,8 +92,7 @@ char* lt_pad_key(char* stem, int i, int digits):
 	assert1(n <= digits)
 	char* suffix = malloc(digits + 1)
 	mem_fill(suffix, '0', digits - n)
-	for j in range(n):
-		suffix[digits - n + j] = num[j]
+	for j in range(n): suffix[digits - n + j] = num[j]
 	suffix[digits] = 0
 	char* key = strjoin(stem, suffix)
 	free(suffix)
@@ -641,8 +639,7 @@ void test_stress_stride():
 		assert_equal(1, lsm_put(l, key, val, strlen(val)))
 		free(val)
 		free(key)
-		if (i % 20 == 19):
-			assert_equal(1, lsm_flush(l))
+		if (i % 20 == 19): assert_equal(1, lsm_flush(l))
 		i = i + 1
 	# delete every 3rd key, flushing every 16 deletes
 	int deleted = 0
@@ -653,8 +650,7 @@ void test_stress_stride():
 			assert_equal(1, lsm_delete(l, dkey))
 			free(dkey)
 			deleted = deleted + 1
-			if (deleted % 16 == 0):
-				assert_equal(1, lsm_flush(l))
+			if (deleted % 16 == 0): assert_equal(1, lsm_flush(l))
 		i = i + 1
 	assert_equal(67, deleted)
 	assert_equal(1, lsm_flush(l))
@@ -814,8 +810,7 @@ void test_export_import_roundtrip():
 	assert_equal(3, lsm_total_entries(l2))
 	char* exported2 = lsm_export(l2, n)
 	assert_equal(elen, n[0])
-	for i in range(elen):
-		assert_equal(exported[i] & 255, exported2[i] & 255)
+	for i in range(elen): assert_equal(exported[i] & 255, exported2[i] & 255)
 	free(exported2)
 	free(exported)
 	free(cast(char*, n))

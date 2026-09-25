@@ -80,8 +80,7 @@ void sha1t_check_streaming(char* data, int len, int step):
 	int pos = 0
 	while (pos < len):
 		int take = step
-		if (pos + take > len):
-			take = len - pos
+		if (pos + take > len): take = len - pos
 		whash_update(h, data + pos, take)
 		pos = pos + take
 	char* digest = malloc(20)

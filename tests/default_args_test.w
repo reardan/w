@@ -132,6 +132,5 @@ void test_defaults_in_expressions():
 	int total = da_add(1) + da_add(2, 3) * da_all_defaulted()
 	assert_equal(6 + 5 * 34, total)
 	assert_equal(15, da_add(da_add(5)))
-	if (da_add(0) == 5):
-		total = da_mix(da_add(0))
+	if (da_add(0) == 5): total = da_mix(da_add(0))
 	assert_equal(437, total)

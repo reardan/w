@@ -44,24 +44,20 @@ void test_word_size_operand():
 	assert_equal(218 * __word_size__, 218 * __word_size__)
 	assert_equal(__word_size__ * 2, __word_size__ + __word_size__)
 	int slots = 221 * __word_size__
-	if (__word_size__ == 8):
-		assert_equal(1768, slots)
-	else:
-		assert_equal(884, slots)
+	if (__word_size__ == 8): assert_equal(1768, slots)
+	else: assert_equal(884, slots)
 
 
 void test_constant_index_scaling():
 	# The index scale folds into a constant index. Element widths differ so
 	# the scaled offsets differ; every read must still land on its own slot.
 	int[8] words
-	for i in range(8):
-		words[i] = 100 + i
+	for i in range(8): words[i] = 100 + i
 	assert_equal(100, words[0])
 	assert_equal(103, words[3])
 	assert_equal(107, words[7])
 	char[8] bytes
-	for j in range(8):
-		bytes[j] = 65 + j
+	for j in range(8): bytes[j] = 65 + j
 	assert_equal(65, bytes[0])
 	assert_equal(70, bytes[5])
 
@@ -70,8 +66,7 @@ void test_pointer_slot_indexing():
 	# The type-table access shape: a word-strided record read through an
 	# int*, where the constant index scales by the word size.
 	int* rec = cast(int*, malloc(16 * __word_size__))
-	for i in range(16):
-		rec[i] = i * 11
+	for i in range(16): rec[i] = i * 11
 	assert_equal(0, rec[0])
 	assert_equal(55, rec[5])
 	assert_equal(165, rec[15])

@@ -64,21 +64,18 @@ int rc4_next(rc4* r):
 
 # Write len raw keystream bytes to out.
 void rc4_keystream(rc4* r, char* out, int len):
-	for i in range(len):
-		out[i] = rc4_next(r)
+	for i in range(len): out[i] = rc4_next(r)
 
 
 # XOR len bytes at data with the keystream into out (data == out is
 # fine); RC4 encryption and decryption are the same operation.
 void rc4_process(rc4* r, char* data, char* out, int len):
-	for i in range(len):
-		out[i] = (data[i] & 255) ^ rc4_next(r)
+	for i in range(len): out[i] = (data[i] & 255) ^ rc4_next(r)
 
 
 # Zero the key-derived permutation before releasing it.
 void rc4_free(rc4* r):
-	for i in range(256):
-		r.s[i] = 0
+	for i in range(256): r.s[i] = 0
 	r.i = 0
 	r.j = 0
 	free(r.s)

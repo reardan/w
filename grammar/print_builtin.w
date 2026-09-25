@@ -105,12 +105,9 @@ int value_class_is_int_like(int vc):
 void value_type_error(char* what, int got):
 	diag_part(what)
 	diag_part(c" '")
-	if (got == 3):
-		diag_part(c"constant")
-	else if (got == 4):
-		diag_part(c"function")
-	else:
-		print_error_type(got)
+	if (got == 3): diag_part(c"constant")
+	else if (got == 4): diag_part(c"function")
+	else: print_error_type(got)
 	error(c"'")
 
 
@@ -125,20 +122,13 @@ void print_unsupported(int t):
 # take the list path.
 int print_helper_for_type(int got):
 	int vc = value_class(got)
-	if (vc == VC_INT):
-		return 0
-	if ((vc == VC_CSTR) || (vc == VC_VAR)):
-		return 1
-	if (vc == VC_STRING):
-		return 2
-	if (vc == VC_CHAR):
-		return 13
-	if (vc == VC_F32):
-		return 3
-	if (vc == VC_F64):
-		error(c"print does not support float64 yet")
-	if (vc == VC_LIST):
-		return -1
+	if (vc == VC_INT): return 0
+	if ((vc == VC_CSTR) || (vc == VC_VAR)): return 1
+	if (vc == VC_STRING): return 2
+	if (vc == VC_CHAR): return 13
+	if (vc == VC_F32): return 3
+	if (vc == VC_F64): error(c"print does not support float64 yet")
+	if (vc == VC_LIST): return -1
 	print_unsupported(got)
 	return 0
 
@@ -147,18 +137,13 @@ int print_helper_for_type(int got):
 # helper table: 2 char*, 3 int-like, 4 string.
 int print_list_element_kind(int element_type):
 	int t = type_unqualified(element_type)
-	if (type_is_string(t)):
-		return 4
-	if (type_is_char_pointer(t)):
-		return 2
-	if (type_num_args(t) > 0):
-		error(c"print supports lists of scalar elements only")
-	if (type_float_kind(t)):
-		error(c"print does not support float list elements yet")
+	if (type_is_string(t)): return 4
+	if (type_is_char_pointer(t)): return 2
+	if (type_num_args(t) > 0): error(c"print supports lists of scalar elements only")
+	if (type_float_kind(t)): error(c"print does not support float list elements yet")
 	if (type_is_map(t) | type_is_set(t) | type_is_list(t)):
 		error(c"print supports lists of scalar elements only")
-	if (type_get_pointer_level(t) > 0):
-		error(c"print supports lists of scalar elements only")
+	if (type_get_pointer_level(t) > 0): error(c"print supports lists of scalar elements only")
 	return 3
 
 
@@ -198,25 +183,20 @@ int print_builtin_expr(int newline):
 	int base_stack = stack_pos
 	# println() with no argument writes just the newline
 	if (peek(c")")):
-		if (newline == 0):
-			error(c"print requires an argument")
+		if (newline == 0): error(c"print requires an argument")
 		print_emit_nl()
 		return type_value(type_lookup(c"void"))
 	int got = expression()
-	if (peek(c")") == 0):
-		error(c"')' expected in print")
+	if (peek(c")") == 0): error(c"')' expected in print")
 	got = promote(got)
 	int helper = print_helper_for_type(got)
-	if (type_is_var(type_unqualified(got))):
-		var_emit_to_cstr()
+	if (type_is_var(type_unqualified(got))): var_emit_to_cstr()
 	int value_slot = push_slot()
 	if (helper < 0):
 		int element_type = type_list_element_type(type_unqualified(got))
 		print_emit_call_list(value_slot, print_list_element_kind(element_type))
-	else:
-		print_emit_call1(helper, value_slot)
-	if (newline):
-		print_emit_nl()
+	else: print_emit_call1(helper, value_slot)
+	if (newline): print_emit_nl()
 	pop_to(base_stack)
 	return type_value(type_lookup(c"void"))
 
@@ -226,26 +206,18 @@ int print_builtin_expr(int newline):
 # import so one-liner scripts can read stdin; any user-defined or
 # imported symbol with the same name takes precedence.
 int prelude_input_helper():
-	if (peek(c"input")):
-		return 6
-	if (peek(c"read_all")):
-		return 7
-	if (peek(c"ints")):
-		return 8
-	if (peek(c"lines")):
-		return 16
-	if (peek(c"words")):
-		return 17
+	if (peek(c"input")): return 6
+	if (peek(c"read_all")): return 7
+	if (peek(c"ints")): return 8
+	if (peek(c"lines")): return 16
+	if (peek(c"words")): return 17
 	return -1
 
 
 int prelude_input_ready():
-	if (nextc != '('):
-		return 0
-	if (prelude_input_helper() < 0):
-		return 0
-	if (sym_lookup(token) >= 0):
-		return 0
+	if (nextc != '('): return 0
+	if (prelude_input_helper() < 0): return 0
+	if (sym_lookup(token) >= 0): return 0
 	return 1
 
 
@@ -255,14 +227,12 @@ int prelude_input_expr():
 	int helper = prelude_input_helper()
 	get_token()
 	expect(c"(")
-	if (peek(c")") == 0):
-		error(c"the prelude input helpers take no arguments")
+	if (peek(c")") == 0): error(c"the prelude input helpers take no arguments")
 	print_emit_helper_address(helper)
 	int s = stack_pos
 	push_slot()
 	rt_call_end(s)
-	if (helper == 8):
-		return type_value(type_get_list(type_lookup(c"int")))
+	if (helper == 8): return type_value(type_get_list(type_lookup(c"int")))
 	if (helper >= 16):
 		# lines() / words(): the pieces as C strings
 		return type_value(type_get_list(type_lookup_pointer(c"char", 1)))
@@ -279,12 +249,9 @@ int prelude_input_expr():
 # polymorphic length read, not a runtime helper (except the char*
 # case, which borrows lib/lib.w's strlen).
 int prelude_math_helper():
-	if (peek(c"max")):
-		return 9
-	if (peek(c"min")):
-		return 10
-	if (peek(c"abs")):
-		return 11
+	if (peek(c"max")): return 9
+	if (peek(c"min")): return 10
+	if (peek(c"abs")): return 11
 	return -1
 
 
@@ -293,10 +260,8 @@ int prelude_math_helper():
 # (issue #360), lowered to __w_any/__w_all in structures/prelude.w and
 # shadowed by user symbols exactly like max/min/abs.
 int prelude_seq_helper():
-	if (peek(c"any")):
-		return 14
-	if (peek(c"all")):
-		return 15
+	if (peek(c"any")): return 14
+	if (peek(c"all")): return 15
 	return -1
 
 
@@ -305,24 +270,19 @@ int prelude_seq_helper():
 # structures/prelude.w, shadowed by user symbols (lib/str.w's split and
 # join win once imported) exactly like max/min/abs.
 int prelude_str_helper():
-	if (peek(c"split")):
-		return 18
-	if (peek(c"join")):
-		return 19
+	if (peek(c"split")): return 18
+	if (peek(c"join")): return 19
 	return -1
 
 
 int prelude_math_ready():
-	if (nextc != '('):
-		return 0
+	if (nextc != '('): return 0
 	if ((prelude_math_helper() < 0) && (prelude_seq_helper() < 0) && (peek(c"len") == 0) && (peek(c"enum_name") == 0) && (prelude_str_helper() < 0)):
 		return 0
-	if (sym_lookup(token) >= 0):
-		return 0
+	if (sym_lookup(token) >= 0): return 0
 	# A user generic function of the same name shadows too: its bare
 	# call sites resolve through generic argument inference
-	if (generic_def_lookup(token, 0) >= 0):
-		return 0
+	if (generic_def_lookup(token, 0) >= 0): return 0
 	return 1
 
 
@@ -330,8 +290,7 @@ int prelude_math_ready():
 # floats, pointers, containers and aggregates are rejected (import
 # lib.math or write the comparison out for anything wider).
 void prelude_math_require_int(char* fn_name, int got):
-	if (value_class_is_int_like(value_class(got))):
-		return;
+	if (value_class_is_int_like(value_class(got))): return;
 	diag_part(c"prelude '")
 	diag_part(fn_name)
 	value_type_error(c"' argument must be an int-like value:", got)
@@ -351,11 +310,9 @@ int prelude_len_expr():
 	expect(c"(")
 	int base_stack = stack_pos
 	int got = expression()
-	if (peek(c")") == 0):
-		error(c"')' expected in len")
+	if (peek(c")") == 0): error(c"')' expected in len")
 	got = promote(got)
-	if ((got == 3) || (got == 4)):
-		prelude_len_unsupported(got)
+	if ((got == 3) || (got == 4)): prelude_len_unsupported(got)
 	int t = type_unqualified(got)
 	if (type_is_char_pointer(t)):
 		push_slot()
@@ -364,8 +321,7 @@ int prelude_len_expr():
 	else if (type_is_list(t) | type_is_map(t) | type_is_set(t) | type_is_buffer(t)):
 		add_eax_int32(word_size)
 		promote_eax()
-	else:
-		prelude_len_unsupported(got)
+	else: prelude_len_unsupported(got)
 	return type_value(type_lookup(c"int"))
 
 
@@ -398,8 +354,7 @@ int prelude_seq_expr(int helper):
 	got = promote(got)
 	prelude_seq_require_int_list(fn_name, got)
 	push_slot()
-	if (peek(c")") == 0):
-		error3(c"')' expected in prelude '", fn_name, c"'")
+	if (peek(c")") == 0): error3(c"')' expected in prelude '", fn_name, c"'")
 	rt_call_end(base_stack)
 	free(fn_name)
 	return type_value(type_lookup(c"int"))
@@ -426,8 +381,7 @@ int prelude_math_call_expr(int helper):
 		got = promote(got)
 		prelude_math_require_int(fn_name, got)
 		push_slot()
-	if (peek(c")") == 0):
-		error3(c"')' expected in prelude '", fn_name, c"'")
+	if (peek(c")") == 0): error3(c"')' expected in prelude '", fn_name, c"'")
 	rt_call_end(base_stack)
 	free(fn_name)
 	return type_value(type_lookup(c"int"))
@@ -455,22 +409,18 @@ void enum_register_into(list[enum_constant_record] l, int type_index, char* name
 
 
 void enum_register_constant(int type_index, char* name, int value):
-	if (cast(int, enum_constants) == 0):
-		enum_constants = new list[enum_constant_record]
+	if (cast(int, enum_constants) == 0): enum_constants = new list[enum_constant_record]
 	enum_register_into(enum_constants, type_index, name, value)
 
 
 void enum_forget_constants(int type_index):
-	if (cast(int, enum_constants) == 0):
-		return;
+	if (cast(int, enum_constants) == 0): return;
 	int found = 0
 	int i = 0
 	while (i < enum_constants.length):
-		if (enum_constants[i].type == type_index):
-			found = 1
+		if (enum_constants[i].type == type_index): found = 1
 		i = i + 1
-	if (found == 0):
-		return;
+	if (found == 0): return;
 	list[enum_constant_record] kept = new list[enum_constant_record]
 	i = 0
 	while (i < enum_constants.length):
@@ -495,8 +445,7 @@ int prelude_enum_name_expr():
 	int t = type_canonical(type_unqualified(got))
 	if ((got == 3) || (got == 4) || (type_get_kind(t) != type_kind_enum)):
 		value_type_error(c"enum_name argument must be an enum value, got", got)
-	if (peek(c")") == 0):
-		error(c"')' expected in enum_name")
+	if (peek(c")") == 0): error(c"')' expected in enum_name")
 	int value_slot = push_slot()
 	int capacity = 16
 	char* table_text = malloc(capacity)
@@ -516,8 +465,7 @@ int prelude_enum_name_expr():
 			length = length + strlen(name) + 1
 			free(digits)
 		i = i + 1
-	if (length + 1 > capacity):
-		table_text = realloc(table_text, capacity, length + 1)
+	if (length + 1 > capacity): table_text = realloc(table_text, capacity, length + 1)
 	# the final NUL (be_emit_inline_cstr adds it) ends the table
 	table_text[length] = 0
 	be_emit_inline_cstr(length, table_text)
@@ -535,15 +483,11 @@ int prelude_enum_name_expr():
 
 # 3 for a string, 2 for a char*, 0 for anything else.
 int prelude_text_kind(int got):
-	if (got < -1):
-		got = type_real(got)
-	if ((got == 3) || (got == 4)):
-		return 0
+	if (got < -1): got = type_real(got)
+	if ((got == 3) || (got == 4)): return 0
 	int t = type_unqualified(got)
-	if (type_is_string(t)):
-		return 3
-	if (type_is_char_pointer(t)):
-		return 2
+	if (type_is_string(t)): return 3
+	if (type_is_char_pointer(t)): return 2
 	return 0
 
 
@@ -575,8 +519,7 @@ int prelude_str_expr(int helper):
 		if (accept(c",")):
 			got = promote(expression())
 			prelude_math_require_int(fn_name, got)
-		else:
-			mov_eax_int(0)
+		else: mov_eax_int(0)
 	else:
 		if (type_is_list(type_unqualified(got))):
 			kind = prelude_text_kind(type_list_element_type(type_unqualified(got)))
@@ -592,26 +535,20 @@ int prelude_str_expr(int helper):
 		# flags: bit 0 string pieces, bit 1 string separator
 		mov_eax_int((kind == 3) | ((sep_kind == 3) << 1))
 	push_slot()
-	if (peek(c")") == 0):
-		error3(c"')' expected in prelude '", fn_name, c"'")
+	if (peek(c")") == 0): error3(c"')' expected in prelude '", fn_name, c"'")
 	rt_call_end(base_stack)
 	free(fn_name)
-	if (helper == 18):
-		return type_value(type_get_list(type_lookup_pointer(c"char", 1)))
+	if (helper == 18): return type_value(type_get_list(type_lookup_pointer(c"char", 1)))
 	return type_value(type_lookup_pointer(c"char", 1))
 
 
 # Entry for the primary_expr branch: routes len, any/all, split/join and
 # enum_name separately from the max/min/abs runtime helpers.
 int prelude_math_expr():
-	if (peek(c"len")):
-		return prelude_len_expr()
-	if (prelude_str_helper() >= 0):
-		return prelude_str_expr(prelude_str_helper())
-	if (peek(c"enum_name")):
-		return prelude_enum_name_expr()
-	if (prelude_seq_helper() >= 0):
-		return prelude_seq_expr(prelude_seq_helper())
+	if (peek(c"len")): return prelude_len_expr()
+	if (prelude_str_helper() >= 0): return prelude_str_expr(prelude_str_helper())
+	if (peek(c"enum_name")): return prelude_enum_name_expr()
+	if (prelude_seq_helper() >= 0): return prelude_seq_expr(prelude_seq_helper())
 	return prelude_math_call_expr(prelude_math_helper())
 
 

@@ -28,8 +28,7 @@ int now_us():
 
 
 float64 fabs64(float64 x):
-	if (x < 0.0):
-		return 0.0 - x
+	if (x < 0.0): return 0.0 - x
 	return x
 
 
@@ -46,15 +45,11 @@ float64 ref_elem(int ta, int tb, int i, int j, int k, float* a, int lda, float* 
 	float64 acc = 0.0
 	for p in range(k):
 		float av = 0.0
-		if (ta == 0):
-			av = a[i * lda + p]
-		else:
-			av = a[p * lda + i]
+		if (ta == 0): av = a[i * lda + p]
+		else: av = a[p * lda + i]
 		float bv = 0.0
-		if (tb == 0):
-			bv = b[p * ldb + j]
-		else:
-			bv = b[j * ldb + p]
+		if (tb == 0): bv = b[p * ldb + j]
+		else: bv = b[j * ldb + p]
 		acc = acc + cast(float64, av) * cast(float64, bv)
 	return acc
 
@@ -67,8 +62,7 @@ float64 max_err(int ta, int tb, int m, int n, int k, float alpha, float* a, int 
 		while (j < n):
 			float64 want = cast(float64, alpha) * ref_elem(ta, tb, i, j, k, a, lda, b, ldb) + cast(float64, beta) * cast(float64, c0[i * n + j])
 			float64 d = fabs64(cast(float64, c[i * n + j]) - want)
-			if (d > worst):
-				worst = d
+			if (d > worst): worst = d
 			j = j + 1
 	return worst
 
@@ -88,11 +82,9 @@ int check_sgemm(int ta, int tb, float alpha, float beta):
 	# Stored shapes: A is m x k (row pitch k) or, transposed, k x m
 	# (pitch m); B is k x n (pitch n) or n x k (pitch k).
 	int lda = k
-	if (ta == 1):
-		lda = m
+	if (ta == 1): lda = m
 	int ldb = n
-	if (tb == 1):
-		ldb = k
+	if (tb == 1): ldb = k
 	int st = cublas_sgemm_rm(ta, tb, m, n, k, alpha, a, lda, b, ldb, beta, c, n)
 	gpu_sync()
 	float64 e = max_err(ta, tb, m, n, k, alpha, a, lda, b, ldb, beta, c0, c)
@@ -140,11 +132,9 @@ int check_dgemm():
 		int j = 0
 		while (j < n):
 			float64 want = 0.0
-			for p in range(k):
-				want = want + a[i * k + p] * b[p * n + j]
+			for p in range(k): want = want + a[i * k + p] * b[p * n + j]
 			float64 d = fabs64(c[i * n + j] - want)
-			if (d > worst):
-				worst = d
+			if (d > worst): worst = d
 			j = j + 1
 		i = i + 1
 	gpu_free(cast(char*, a))
@@ -168,8 +158,7 @@ int check_tensor_hook():
 	fill_pattern(b.data, k * n, 6)
 	fill_pattern(bt.data, k * n, 7)
 	float* zero = cast(float*, malloc(m * n * 4))
-	for i in range(m * n):
-		zero[i] = 0.0
+	for i in range(m * n): zero[i] = 0.0
 	int ok = 1
 	tensor_matmul2(&out, &a, &b)
 	tensor_sync()
@@ -201,8 +190,7 @@ int bench_us(tensor* out, tensor* a, tensor* b, int reps):
 	tensor_matmul2(out, a, b)
 	tensor_sync()
 	int t0 = now_us()
-	for r in range(reps):
-		tensor_matmul2(out, a, b)
+	for r in range(reps): tensor_matmul2(out, a, b)
 	tensor_sync()
 	return (now_us() - t0) / reps
 

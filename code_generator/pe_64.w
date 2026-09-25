@@ -63,8 +63,7 @@ const int pe_file_align = 4096
 
 
 void pe_align(int a):
-	while ((codepos % a) != 0):
-		emit_int8(0)
+	while ((codepos % a) != 0): emit_int8(0)
 
 
 # IMAGE_DOS_HEADER: only e_magic and e_lfanew matter to the loader; the
@@ -263,8 +262,7 @@ directory) is read-only at load time and stays in .text; only the
 FirstThunk slots receive loader writes, which is what HVCI requires.
 */
 void pe_emit_imports():
-	if (dyn_import_count == 0):
-		return
+	if (dyn_import_count == 0): return
 
 	# Hint/name entries (2-byte hint + NUL-terminated name, 2-aligned).
 	char* hint_rvas = malloc(dyn_import_count * 4)
@@ -303,10 +301,8 @@ void pe_emit_imports():
 	i = 0
 	while (i < dyn_import_count):
 		int slot = dyn_import_got_vaddr(i)
-		if (slot >= data_offset):
-			save_i(data + slot - data_offset, load_int(hint_rvas + i * 4), 8)
-		else:
-			save_i(code + slot - code_offset, load_int(hint_rvas + i * 4), 8)
+		if (slot >= data_offset): save_i(data + slot - data_offset, load_int(hint_rvas + i * 4), 8)
+		else: save_i(code + slot - code_offset, load_int(hint_rvas + i * 4), 8)
 		i = i + 1
 
 	# Import directory table: one descriptor per import plus the all-zero
@@ -316,8 +312,7 @@ void pe_emit_imports():
 	i = 0
 	while (i < dyn_import_count):
 		int lib = dyn_import_get_lib(i)
-		if (lib < 0):
-			error(c"extern import declared before any c_lib")
+		if (lib < 0): error(c"extern import declared before any c_lib")
 		emit_int32(load_int(ilt_rvas + i * 4)) /* OriginalFirstThunk */
 		emit_int32(0) /* time date stamp */
 		emit_int32(0) /* forwarder chain */
@@ -363,8 +358,7 @@ void pe_finish_64():
 	# addresses it by file offset).
 	int data_virtual_size = datapos
 	int data_pad = datapos % pe_file_align
-	if (data_pad != 0):
-		emit_data_zeros(pe_file_align - data_pad)
+	if (data_pad != 0): emit_data_zeros(pe_file_align - data_pad)
 	int data_raw_size = datapos
 
 	save_i(code + pe_opt_header_pos + 4, text_raw_size, 4) /* SizeOfCode */
@@ -378,7 +372,5 @@ void pe_finish_64():
 
 	# Two write calls, one per section's raw bytes (same shape as
 	# elf_finish_arm64's two-PT_LOAD write).
-	if (write(output_fd, code, codepos) != codepos):
-		error(c"could not write output file")
-	if (write(output_fd, data, datapos) != datapos):
-		error(c"could not write output file")
+	if (write(output_fd, code, codepos) != codepos): error(c"could not write output file")
+	if (write(output_fd, data, datapos) != datapos): error(c"could not write output file")

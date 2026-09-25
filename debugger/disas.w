@@ -41,12 +41,10 @@ char* dbg_disas_buf   /* scratch bytes for one instruction */
 # bad address cannot fault wdbg, with any armed breakpoint's remembered
 # original byte substituted for its int3 patch.
 int dbg_disas_read_local(int addr):
-	if (dbg_mem_readable(addr, 1) == 0):
-		return -1
+	if (dbg_mem_readable(addr, 1) == 0): return -1
 	int bp = bp_find(addr)
 	if (bp >= 0):
-		if (load_int(bp_armeds + bp * 4)):
-			return load_int(bp_bytes + bp * 4)
+		if (load_int(bp_armeds + bp * 4)): return load_int(bp_bytes + bp * 4)
 	return bp_read_byte(addr)
 
 
@@ -78,22 +76,18 @@ int dbg_disas_fetch(int addr, char* buf, int n):
 # 0 when the memory there is not readable. 16 bytes covers the longest
 # x86 instruction (15) with room for the truncated-tail case.
 int dbg_disas_decode(int addr, asm_insn* insn):
-	if (dbg_disas_buf == 0):
-		dbg_disas_buf = malloc(16)
+	if (dbg_disas_buf == 0): dbg_disas_buf = malloc(16)
 	int n = dbg_disas_fetch(addr, dbg_disas_buf, 16)
-	if (n == 0):
-		return 0
+	if (n == 0): return 0
 	return asm_x86_decode(dbg_disas_buf, n, addr, __word_size__, insn)
 
 
 # Print " <name>" or " <name+off>" when an absolute address lands inside
 # a known function; prints nothing otherwise.
 void dbg_disas_annotate(int addr):
-	if (dbg_disas_symbols == 0):
-		return;
+	if (dbg_disas_symbols == 0): return;
 	int f = dbg_function_at(addr - dbg_disas_delta)
-	if (f < 0):
-		return;
+	if (f < 0): return;
 	print(c" <")
 	print(dbg_sym_name(f))
 	int off = (addr - dbg_disas_delta) - dbg_sym_address(f)
@@ -107,15 +101,11 @@ void dbg_disas_annotate(int addr):
 # entry address. The compiler calls through 'mov eax,fn ; call eax', so
 # this is what makes call sites readable in the listing.
 int dbg_disas_imm_function(asm_operand* op):
-	if (op.kind != ASM_OP_IMM):
-		return 0
-	if (dbg_disas_symbols == 0):
-		return 0
-	if (op.imm_hi != 0):
-		return 0
+	if (op.kind != ASM_OP_IMM): return 0
+	if (dbg_disas_symbols == 0): return 0
+	if (op.imm_hi != 0): return 0
 	int f = dbg_function_at(op.imm - dbg_disas_delta)
-	if (f < 0):
-		return 0
+	if (f < 0): return 0
 	return (op.imm - dbg_disas_delta) == dbg_sym_address(f)
 
 
@@ -123,21 +113,16 @@ int dbg_disas_imm_function(asm_operand* op):
 # instruction and a <function> annotation for branch targets and for
 # immediates holding a function's entry address.
 void dbg_disas_print(int addr, asm_insn* insn, int current):
-	if (current):
-		print(c"=> ")
-	else:
-		print(c"   ")
+	if (current): print(c"=> ")
+	else: print(c"   ")
 	dbg_print_hex(addr)
 	print(c"  ")
 	char* text = asm_format(insn)
 	print(text)
 	free(text)
-	if (insn.branch_target != -1):
-		dbg_disas_annotate(insn.branch_target)
-	else if (dbg_disas_imm_function(&insn.op2)):
-		dbg_disas_annotate(insn.op2.imm)
-	else if (dbg_disas_imm_function(&insn.op1)):
-		dbg_disas_annotate(insn.op1.imm)
+	if (insn.branch_target != -1): dbg_disas_annotate(insn.branch_target)
+	else if (dbg_disas_imm_function(&insn.op2)): dbg_disas_annotate(insn.op2.imm)
+	else if (dbg_disas_imm_function(&insn.op1)): dbg_disas_annotate(insn.op1.imm)
 	put_char(10)
 
 
@@ -174,18 +159,15 @@ int dbg_disas_context_start(int pc):
 # before and two after it, "=>" on the current one. Shown at every 'si'
 # stop and, after 'disas on', at every other stop as well.
 void dbg_disas_show_context(int pc):
-	if (dbg_disas_read_fn == 0):
-		return;
+	if (dbg_disas_read_fn == 0): return;
 	int a = dbg_disas_context_start(pc)
 	int after = 0
 	asm_insn insn
 	while (after < 3):
 		int len = dbg_disas_decode(a, &insn)
-		if (len <= 0):
-			return;
+		if (len <= 0): return;
 		dbg_disas_print(a, &insn, a == pc)
-		if (a >= pc):
-			after = after + 1
+		if (a >= pc): after = after + 1
 		a = a + len
 
 
@@ -194,20 +176,16 @@ void dbg_disas_show_context(int pc):
 # keep their own splitter for the same layering reason.
 char* dbg_disas_split(char* s):
 	int i = 0
-	while ((s[i] != 0) && (s[i] != ' ')):
-		i = i + 1
-	if (s[i] == 0):
-		return s + i
+	while ((s[i] != 0) && (s[i] != ' ')): i = i + 1
+	if (s[i] == 0): return s + i
 	s[i] = 0
 	i = i + 1
-	while (s[i] == ' '):
-		i = i + 1
+	while (s[i] == ' '): i = i + 1
 	return s + i
 
 
 int dbg_disas_number(char* s):
-	if (starts_with(s, c"0x")):
-		return from_hex(s)
+	if (starts_with(s, c"0x")): return from_hex(s)
 	return atoi(s)
 
 
@@ -233,10 +211,8 @@ void dbg_disas_command(int pc, char* arg):
 	int count = 0 /* 0 = default for the target form */
 	if (count_text[0] != 0):
 		count = dbg_disas_number(count_text)
-		if (count < 1):
-			count = 1
-		if (count > 1024):
-			count = 1024
+		if (count < 1): count = 1
+		if (count > 1024): count = 1024
 	int start = pc
 	int end = -1 /* function-boundary bound, when one is known */
 	if (arg[0] == 0):
@@ -244,12 +220,10 @@ void dbg_disas_command(int pc, char* arg):
 			int f = dbg_function_at(pc - dbg_disas_delta)
 			if (f >= 0):
 				start = dbg_sym_address(f) + dbg_disas_delta
-				if (dbg_sym_size(f) > 0):
-					end = start + dbg_sym_size(f)
+				if (dbg_sym_size(f) > 0): end = start + dbg_sym_size(f)
 				print(dbg_sym_name(f))
 				println(c":")
-	else if (((arg[0] >= '0') && (arg[0] <= '9')) || (arg[0] == '-')):
-		start = dbg_disas_number(arg)
+	else if (((arg[0] >= '0') && (arg[0] <= '9')) || (arg[0] == '-')): start = dbg_disas_number(arg)
 	else:
 		if (dbg_disas_symbols == 0):
 			println(c"no symbols: disassemble by address (disas 0xADDR)")
@@ -265,22 +239,19 @@ void dbg_disas_command(int pc, char* arg):
 			println(arg)
 			return;
 		start = dbg_sym_address(f) + dbg_disas_delta
-		if (dbg_sym_size(f) > 0):
-			end = start + dbg_sym_size(f)
+		if (dbg_sym_size(f) > 0): end = start + dbg_sym_size(f)
 		print(dbg_sym_name(f))
 		println(c":")
 	if (count > 0):
 		end = -1 /* an explicit count wins over the function boundary */
 	else if (end != -1):
 		count = 1024 /* bounded by the function's end; cap the walk */
-	else:
-		count = 10
+	else: count = 10
 	asm_insn insn
 	int a = start
 	for printed in range(count):
 		if (end != -1):
-			if (a >= end):
-				return;
+			if (a >= end): return;
 		int len = dbg_disas_decode(a, &insn)
 		if (len <= 0):
 			print(c"cannot read memory at ")

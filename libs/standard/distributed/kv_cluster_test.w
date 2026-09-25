@@ -156,8 +156,7 @@ kvc* kvc_new(char* name, int port_off, int seed_base):
 		nd.tcp = raft_tcp_new(id, nd.port)
 		assert1(cast(int, nd.tcp) != 0)
 		for p in range(1, c.n + 1):
-			if (p != id):
-				raft_tcp_add_peer(nd.tcp, p, base + p - 1)
+			if (p != id): raft_tcp_add_peer(nd.tcp, p, base + p - 1)
 		c.nodes.push(nd)
 		c.rafts.push(nd.r)
 		id = id + 1
@@ -193,8 +192,7 @@ void kvc_step(kvc* c):
 		i = 0
 		while (i < c.n):
 			nd = c.nodes[i]
-			if (nd.alive == 1):
-				raft_tcp_pump(nd.tcp)
+			if (nd.alive == 1): raft_tcp_pump(nd.tcp)
 			i = i + 1
 		i = 0
 		while (i < c.n):
@@ -211,16 +209,14 @@ void kvc_step(kvc* c):
 	i = 0
 	while (i < c.n):
 		nd = c.nodes[i]
-		if (nd.alive == 1):
-			kv_apply_pending(nd.r, nd.store)
+		if (nd.alive == 1): kv_apply_pending(nd.r, nd.store)
 		i = i + 1
 	c.vnow = c.vnow + 10
 	rafts_assert_no_same_term_leaders(c.rafts)
 
 
 void kvc_run_steps(kvc* c, int k):
-	for i in range(k):
-		kvc_step(c)
+	for i in range(k): kvc_step(c)
 
 
 # Step until kvc_leader finds one; rounds taken, or 0 - 1 on timeout.
@@ -246,16 +242,12 @@ int kvc_agree(kvc* c, char* key, char* want):
 			int* n = cast(int*, malloc(__word_size__))
 			char* got = lsm_get(nd.store, key, n)
 			if (cast(int, want) == 0):
-				if (cast(int, got) != 0):
-					ok = 0
+				if (cast(int, got) != 0): ok = 0
 			else:
-				if (cast(int, got) == 0):
-					ok = 0
+				if (cast(int, got) == 0): ok = 0
 				else:
-					if (strcmp(want, got) != 0):
-						ok = 0
-			if (cast(int, got) != 0):
-				free(got)
+					if (strcmp(want, got) != 0): ok = 0
+			if (cast(int, got) != 0): free(got)
 			free(cast(char*, n))
 	return ok
 
@@ -286,17 +278,13 @@ int kvc_agree_bytes(kvc* c, char* key, char* want, int want_len):
 			int* n = cast(int*, malloc(__word_size__))
 			char* got = lsm_get(nd.store, key, n)
 			if (cast(int, want) == 0):
-				if (cast(int, got) != 0):
-					ok = 0
+				if (cast(int, got) != 0): ok = 0
 			else:
-				if (cast(int, got) == 0 || n[0] != want_len):
-					ok = 0
+				if (cast(int, got) == 0 || n[0] != want_len): ok = 0
 				else:
 					for k in range(want_len):
-						if ((got[k] & 255) != (want[k] & 255)):
-							ok = 0
-			if (cast(int, got) != 0):
-				free(got)
+						if ((got[k] & 255) != (want[k] & 255)): ok = 0
+			if (cast(int, got) != 0): free(got)
 			free(cast(char*, n))
 	return ok
 
@@ -335,8 +323,7 @@ void kvc_expect_bytes(lsm* store, char* key, char* want, int want_len):
 	char* got = lsm_get(store, key, n)
 	assert1(cast(int, got) != 0)
 	assert_equal(want_len, n[0])
-	for i in range(want_len):
-		assert_equal(want[i] & 255, got[i] & 255)
+	for i in range(want_len): assert_equal(want[i] & 255, got[i] & 255)
 	free(got)
 	free(cast(char*, n))
 
@@ -353,15 +340,13 @@ void kvc_expect_gone(lsm* store, char* key):
 void kvc_assert_kv(kvc* c, char* key, char* want):
 	for i in range(c.n):
 		kvc_node* nd = c.nodes[i]
-		if (nd.alive == 1):
-			kvc_expect(nd.store, key, want)
+		if (nd.alive == 1): kvc_expect(nd.store, key, want)
 
 
 void kvc_assert_gone(kvc* c, char* key):
 	for i in range(c.n):
 		kvc_node* nd = c.nodes[i]
-		if (nd.alive == 1):
-			kvc_expect_gone(nd.store, key)
+		if (nd.alive == 1): kvc_expect_gone(nd.store, key)
 
 
 # ---- client operations ------------------------------------------------------------------
@@ -566,8 +551,7 @@ void test_follower_crash_recover_over_tcp():
 	assert1(kvc_run_until_agree(c, c"paper", c"raft", 500) >= 0)
 	assert1(kvc_run_until_agree(c, c"lang", c"w", 500) >= 0)
 	int victim = 1
-	if (victim == lid):
-		victim = 2
+	if (victim == lid): victim = 2
 	kvc_crash(c, victim)
 	# the surviving pair is still a majority: a third key commits
 	kvc_put(c, lid, c"third", c"key")
@@ -618,8 +602,7 @@ void test_leader_crash_failover():
 	while (k < 500 && new_lid < 0):
 		kvc_step(c)
 		int cand = rafts_leader(c.rafts)
-		if (cand != (0 - 1)):
-			new_lid = cand
+		if (cand != (0 - 1)): new_lid = cand
 		k = k + 1
 	assert1(new_lid >= 1)
 	assert1(new_lid != old_lid)
@@ -665,8 +648,7 @@ void test_client_semantics_on_followers():
 	kvc_run_steps(c, 20)
 	assert_equal(lid, rafts_leader(c.rafts))
 	int fid = 1
-	if (fid == lid):
-		fid = 2
+	if (fid == lid): fid = 2
 	kvc_node* fol = c.nodes[fid - 1]
 	assert_equal(raft_follower, raft_state(fol.r))
 	list[raft_msg*] out = new list[raft_msg*]
@@ -704,8 +686,7 @@ void test_cluster_binary_value_roundtrip():
 	assert1(kvc_run_until_agree_bytes(c, c"binkey", value, 5, 500) >= 0)
 	for i in range(3):
 		kvc_node* nd = c.nodes[i]
-		if (nd.alive == 1):
-			kvc_expect_bytes(nd.store, c"binkey", value, 5)
+		if (nd.alive == 1): kvc_expect_bytes(nd.store, c"binkey", value, 5)
 	free(value)
 	kvc_free(c)
 
@@ -735,8 +716,7 @@ void test_cluster_snapshot_laggard_catchup():
 	kvc_node* ldr = c.nodes[lid - 1]
 	# crash a follower before it ever sees a single entry
 	int victim = 1
-	if (victim == lid):
-		victim = 2
+	if (victim == lid): victim = 2
 	kvc_crash(c, victim)
 	# shrink the leader's per-peer outbound cap to the smallest raft_tcp
 	# allows (4096 bytes, the floor raft_tcp_set_max_pending enforces):

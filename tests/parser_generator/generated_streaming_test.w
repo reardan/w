@@ -121,16 +121,13 @@ void on_exit_numbers(pg_token_stream* stream, void* context):
 
 void on_token_event(pg_token* token, void* context):
 	token_total_count = token_total_count + 1
-	if (token.kind == streaming_sample_token_IDENT):
-		token_ident_count = token_ident_count + 1
+	if (token.kind == streaming_sample_token_IDENT): token_ident_count = token_ident_count + 1
 	else if (token.kind == streaming_sample_token_NUMBER):
 		token_number_count = token_number_count + 1
 	else if (token.kind == streaming_sample_token_EQUALS):
 		token_equals_count = token_equals_count + 1
-	else if (token.kind == streaming_sample_token_SEMI):
-		token_semi_count = token_semi_count + 1
-	else if (token.kind == streaming_sample_token_MINUS):
-		token_minus_count = token_minus_count + 1
+	else if (token.kind == streaming_sample_token_SEMI): token_semi_count = token_semi_count + 1
+	else if (token.kind == streaming_sample_token_MINUS): token_minus_count = token_minus_count + 1
 	else if (token.kind == streaming_sample_token_LBRACE):
 		token_lbrace_count = token_lbrace_count + 1
 	else if (token.kind == streaming_sample_token_RBRACE):

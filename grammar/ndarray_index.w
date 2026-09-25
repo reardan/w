@@ -79,23 +79,17 @@ int nd_index_struct
 # Returns the struct's type index, or -1 when the comma-index sugar
 # does not apply.
 int ndarray_index_struct(int type):
-	if ((type == 3) || (type == 4)):
-		return -1
+	if ((type == 3) || (type == 4)): return -1
 	int t = type_unqualified(type)
-	if (t < 0):
-		return -1
+	if (t < 0): return -1
 	int level = type_get_pointer_level(t)
 	if (level == 1):
 		int base = type_lookup_previous_pointer(t)
-		if (base < 0):
-			return -1
+		if (base < 0): return -1
 		t = type_unqualified(base)
-		if (t < 0):
-			return -1
-	else if (level != 0):
-		return -1
-	if (type_num_args(t) == 0):
-		return -1
+		if (t < 0): return -1
+	else if (level != 0): return -1
+	if (type_num_args(t) == 0): return -1
 	char* name = type_get_name(t)
 	if (strcmp(name, c"ndf") == 0):
 		return t
@@ -123,8 +117,7 @@ char* ndarray_accessor_name(char* op):
 int ndarray_accessor_sym(char* op):
 	char* name = ndarray_accessor_name(op)
 	int sym = sym_lookup(name)
-	if (sym < 0):
-		error3(c"ndarray index requires accessor '", name, c"' in scope")
+	if (sym < 0): error3(c"ndarray index requires accessor '", name, c"' in scope")
 	free(name)
 	return sym
 
@@ -153,17 +146,13 @@ int ndarray_index_suffix(int type, int recv_slot, int first_index_type):
 	int slot3 = 0
 	int count = 1
 	while (accept(c",")):
-		if (count >= 4):
-			error(c"ndarray index supports at most 4 indices")
+		if (count >= 4): error(c"ndarray index supports at most 4 indices")
 		int got = promote(expression())
 		ndarray_check_index(got)
 		push_slot()
-		if (count == 1):
-			slot1 = stack_pos
-		else if (count == 2):
-			slot2 = stack_pos
-		else:
-			slot3 = stack_pos
+		if (count == 1): slot1 = stack_pos
+		else if (count == 2): slot2 = stack_pos
+		else: slot3 = stack_pos
 		count = count + 1
 	expect(c"]")
 	# Commit the pending state only now: an index expression above may
@@ -192,10 +181,8 @@ int* nd_pending_take():
 	park[2] = nd_index_recv_slot
 	park[3] = nd_index_slot0
 	park[4] = nd_index_slot1
-	if (nd_index_count >= 3):
-		park[5] = nd_index_slot2
-	if (nd_index_count >= 4):
-		park[6] = nd_index_slot3
+	if (nd_index_count >= 3): park[5] = nd_index_slot2
+	if (nd_index_count >= 4): park[6] = nd_index_slot3
 	nd_index_pending = 0
 	return park
 
@@ -220,8 +207,7 @@ int nd_finish_pending_assignment():
 	int value_type = sym_param_type(set_sym, nd_index_count + 1)
 	int* park = nd_pending_take()
 	int got_type = promote(expression())
-	if (value_type >= 0):
-		coerce_checked(value_type, got_type, c"ndarray assignment")
+	if (value_type >= 0): coerce_checked(value_type, got_type, c"ndarray assignment")
 	int value_slot = push_slot()
 	int result = park_store(park, set_name, value_slot, value_type)
 	free(set_name)
@@ -245,6 +231,5 @@ int nd_finish_pending_compound(int op):
 
 
 int nd_finalize_pending_read_if_needed(int type):
-	if (nd_index_pending):
-		return nd_finish_pending_read()
+	if (nd_index_pending): return nd_finish_pending_read()
 	return type

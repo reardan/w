@@ -97,8 +97,7 @@ void emit_i(int v, int n):
 void ensure_data(int n):
 	if (data_size <= datapos + n):
 		int x = (datapos + n) << 1
-		if (x < 4096):
-			x = 4096
+		if (x < 4096): x = 4096
 		data = realloc(data, data_size, x)
 		data_size = x
 
@@ -141,8 +140,7 @@ void rebase_note(int vaddr):
 	int needed = (rebase_count + 1) * 8
 	if (rebase_table_size < needed):
 		int x = needed << 1
-		if (x < 4096):
-			x = 4096
+		if (x < 4096): x = 4096
 		rebase_table = realloc(rebase_table, rebase_table_size, x)
 		rebase_table_size = x
 	save_i(rebase_table + rebase_count * 8, vaddr, 8)
@@ -166,10 +164,8 @@ void emit_int64(int v):
 
 
 void emit_target_word(int v):
-	if (word_size == 8):
-		emit_int64(v)
-	else:
-		emit_int32(v)
+	if (word_size == 8): emit_int64(v)
+	else: emit_int32(v)
 
 
 void emit_int(int v):

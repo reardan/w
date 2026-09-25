@@ -6,20 +6,16 @@ import lib.event_loop
 
 
 json_value* rpc_test_handle_add(json_value* params, void* ctx):
-	if (params == 0):
-		return 0
-	if (params.type != json_type_array()):
-		return 0
-	if (json_array_length(params) != 2):
-		return 0
+	if (params == 0): return 0
+	if (params.type != json_type_array()): return 0
+	if (json_array_length(params) != 2): return 0
 	json_value* a = json_array_get(params, 0)
 	json_value* b = json_array_get(params, 1)
 	return json_int(a.int_value + b.int_value)
 
 
 json_value* rpc_test_handle_echo(json_value* params, void* ctx):
-	if (params == 0):
-		return json_null()
+	if (params == 0): return json_null()
 	return json_clone(params)
 
 
@@ -49,8 +45,7 @@ struct rpc_scale_params:
 
 json_value* rpc_test_handle_scale(json_value* params, void* ctx):
 	rpc_scale_params* p = from_json(rpc_scale_params, params)
-	if (p == 0):
-		return 0
+	if (p == 0): return 0
 	rpc_scale_params result
 	result.factor = p.factor
 	result.values = new list[int]

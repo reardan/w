@@ -41,18 +41,14 @@ int main(int argc, int argv):
 		return 0
 
 	char* ip = args_value(c"ip")
-	if (ip == 0):
-		ip = c"127.0.0.1"
+	if (ip == 0): ip = c"127.0.0.1"
 	int port = 8443
 	char* port_arg = args_value(c"port")
-	if (port_arg != 0):
-		port = atoi(port_arg)
+	if (port_arg != 0): port = atoi(port_arg)
 	char* cert = args_value(c"cert")
-	if (cert == 0):
-		cert = c"libs/standard/net/tls_fixtures/server_p256_cert.pem"
+	if (cert == 0): cert = c"libs/standard/net/tls_fixtures/server_p256_cert.pem"
 	char* key = args_value(c"key")
-	if (key == 0):
-		key = c"libs/standard/net/tls_fixtures/server_p256_key.pem"
+	if (key == 0): key = c"libs/standard/net/tls_fixtures/server_p256_key.pem"
 
 	ServerContext* s = server_context_new(ip, port, https_server_unused_handler, 0)
 	server_context_set_tls(s, cert, key)

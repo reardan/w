@@ -106,8 +106,7 @@ void macho_symbols_begin(int cap):
 # Addresses outside the finished text are skipped.
 void macho_sym_add(char* name, int address):
 	int offset = address - base_code_offset
-	if ((offset < macho_text_start) || (offset >= macho_text_limit)):
-		return
+	if ((offset < macho_text_start) || (offset >= macho_text_limit)): return
 	char* entry = macho_sym_buf + macho_sym_count * 16
 	save_int32(entry, macho_str_size)  /* n_strx */
 	entry[4] = 14                      /* n_type N_SECT */
@@ -121,8 +120,7 @@ void macho_sym_add(char* name, int address):
 	macho_sym_count = macho_sym_count + 1
 	macho_str_buf[macho_str_size] = '_'
 	int n = strlen(name)
-	for i in range(n + 1):
-		macho_str_buf[macho_str_size + 1 + i] = name[i]
+	for i in range(n + 1): macho_str_buf[macho_str_size + 1 + i] = name[i]
 	macho_str_size = macho_str_size + n + 2
 
 
@@ -364,14 +362,12 @@ void macho_finish_arm64():
 
 	# Pad the text to a page boundary; __DATA's file offset must be
 	# page-congruent with its vmaddr (both end up 16 KB-aligned).
-	while ((codepos % macho_page_size) != 0):
-		emit_int8(0)
+	while ((codepos % macho_page_size) != 0): emit_int8(0)
 	int text_size = codepos
 
 	# Pad the data segment to a page as well, so __LINKEDIT starts aligned.
 	int data_pad = datapos % macho_page_size
-	if (data_pad != 0):
-		emit_data_zeros(macho_page_size - data_pad)
+	if (data_pad != 0): emit_data_zeros(macho_page_size - data_pad)
 	int data_size_padded = datapos
 
 	# Imports (c_lib / extern): append their load commands into the
@@ -444,12 +440,9 @@ void macho_finish_arm64():
 	# separate data buffer, then the bind stream, then alignment zeros) and
 	# hash it into the CodeDirectory.
 	char* img = malloc(code_limit)
-	for p in range(text_size):
-		img[p] = code[p]
-	for di in range(data_size_padded):
-		img[text_size + di] = data[di]
-	for zi in range(linkedit_fileoff, code_limit):
-		img[zi] = 0
+	for p in range(text_size): img[p] = code[p]
+	for di in range(data_size_padded): img[text_size + di] = data[di]
+	for zi in range(linkedit_fileoff, code_limit): img[zi] = 0
 	int bi = 0
 	while (bi < macho_bind_size):
 		img[linkedit_fileoff + bi] = macho_bind_buf[bi]
@@ -467,14 +460,12 @@ void macho_finish_arm64():
 	# still zero, so identical inputs give identical UUIDs.
 	char* digest = malloc(32)
 	sha256(img, code_limit, digest)
-	for ui in range(16):
-		img[macho_uuid_pos + ui] = digest[ui]
+	for ui in range(16): img[macho_uuid_pos + ui] = digest[ui]
 	free(digest)
 
 	macho_build_signature(img, code_limit, text_size, ident)
 
-	if (write(output_fd, img, code_limit) != code_limit):
-		error(c"could not write output file")
+	if (write(output_fd, img, code_limit) != code_limit): error(c"could not write output file")
 	if (write(output_fd, macho_sig_buf, macho_sig_size) != macho_sig_size):
 		error(c"could not write output file")
 	free(img)

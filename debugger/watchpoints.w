@@ -28,8 +28,7 @@ int dbg_watch_count
 
 
 void dbg_watch_init():
-	if (dbg_watch_addrs != 0):
-		return;
+	if (dbg_watch_addrs != 0): return;
 	dbg_watch_addrs = malloc(dbg_watch_max * __word_size__)
 	dbg_watch_olds = malloc(dbg_watch_max * __word_size__)
 	dbg_watch_texts = malloc(dbg_watch_max * __word_size__)
@@ -53,8 +52,7 @@ int dbg_watch_live():
 	int n = 0
 	int i = 0
 	while (i < dbg_watch_count):
-		if (dbg_watch_addr_at(i) != 0):
-			n = n + 1
+		if (dbg_watch_addr_at(i) != 0): n = n + 1
 		i = i + 1
 	return n
 
@@ -146,5 +144,4 @@ void dbg_watch_list():
 			put_char(10)
 			shown = shown + 1
 		i = i + 1
-	if (shown == 0):
-		println(c"no watchpoints set")
+	if (shown == 0): println(c"no watchpoints set")

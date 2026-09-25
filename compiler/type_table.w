@@ -300,8 +300,7 @@ int type_push(char* name):
 
 
 int type_lookup(char* name):
-	if (type_name_index == 0):
-		type_name_index = new map[char*, int]
+	if (type_name_index == 0): type_name_index = new map[char*, int]
 	if (type_index_indexed > type_records.length):
 		# Records were discarded (type_table_truncate) or the whole list
 		# replaced (push_basic_types re-run). Indices below the new
@@ -316,11 +315,9 @@ int type_lookup(char* name):
 		# First writer wins, so the map answers with the oldest record
 		# carrying the name -- what the linear scan this replaced did by
 		# returning on its first hit.
-		if ((pushed in type_name_index) == 0):
-			type_name_index[pushed] = type_index_indexed
+		if ((pushed in type_name_index) == 0): type_name_index[pushed] = type_index_indexed
 		type_index_indexed = type_index_indexed + 1
-	if (name in type_name_index):
-		return type_name_index[name]
+	if (name in type_name_index): return type_name_index[name]
 	return -1
 
 
@@ -335,21 +332,18 @@ int type_is_value(int type_index):
 
 
 int type_real(int type_index):
-	if (type_index < -1):
-		return 0 - type_index - 2
+	if (type_index < -1): return 0 - type_index - 2
 	return type_index
 
 
 int type_get_alias_target(int type_index):
 	type_index = type_real(type_index)
-	if (type_index < 0):
-		return -1
+	if (type_index < 0): return -1
 	type_rec* t = cast(type_rec*, type_records[type_index])
 	# A gpu-object record (type_kind_gpu, see type_get_gpu) canonicalizes
 	# like an alias: everything but the qualifier-aware checks sees the
 	# plain element type through it.
-	if ((t.kind != type_kind_alias) && (t.kind != 20)):
-		return -1
+	if ((t.kind != type_kind_alias) && (t.kind != 20)): return -1
 	return t.alias_target
 
 
@@ -370,11 +364,9 @@ int type_canonical(int type_index):
 
 int type_get_const_target(int type_index):
 	type_index = type_real(type_index)
-	if (type_index < 0):
-		return -1
+	if (type_index < 0): return -1
 	type_rec* t = cast(type_rec*, type_records[type_index])
-	if (t.kind != type_kind_const):
-		return -1
+	if (t.kind != type_kind_const): return -1
 	return t.alias_target
 
 
@@ -469,8 +461,7 @@ const int type_kind_gpu = 20
 # 1 when type_index (raw, value or not) is a gpu-object lvalue record.
 int type_is_gpu_object(int type_index):
 	type_index = type_real(type_index)
-	if (type_index < 0):
-		return 0
+	if (type_index < 0): return 0
 	type_rec* t = cast(type_rec*, type_records[type_index])
 	return t.kind == 20
 
@@ -481,8 +472,7 @@ int type_strip_gpu(int type_index):
 	if (type_is_gpu_object(type_index) == 0):
 		return type_index
 	type_rec* t = cast(type_rec*, type_records[type_real(type_index)])
-	if (type_is_value(type_index)):
-		return type_value(t.alias_target)
+	if (type_is_value(type_index)): return type_value(t.alias_target)
 	return t.alias_target
 
 
@@ -522,13 +512,10 @@ int type_get_gpu(int target):
 # base type's name, and only type_get_gpu makes names with a space.
 int type_is_gpu_pointer(int t):
 	t = type_unqualified(t)
-	if (t < 0):
-		return 0
-	if (type_get_pointer_level(t) < 1):
-		return 0
+	if (t < 0): return 0
+	if (type_get_pointer_level(t) < 1): return 0
 	char* name = type_get_name(t)
-	if ((name[0] == 'g') && (name[1] == 'p') && (name[2] == 'u') && (name[3] == ' ')):
-		return 1
+	if ((name[0] == 'g') && (name[1] == 'p') && (name[2] == 'u') && (name[3] == ' ')): return 1
 	return 0
 
 
@@ -539,10 +526,8 @@ int type_is_gpu_pointer(int t):
 int types_gpu_domain_mismatch(int want, int got):
 	want = type_unqualified(want)
 	got = type_unqualified(got)
-	if ((want < 0) || (got < 0) || (got == 3) || (got == 4)):
-		return 0
-	if ((type_get_pointer_level(want) < 1) || (type_get_pointer_level(got) < 1)):
-		return 0
+	if ((want < 0) || (got < 0) || (got == 3) || (got == 4)): return 0
+	if ((type_get_pointer_level(want) < 1) || (type_get_pointer_level(got) < 1)): return 0
 	return type_is_gpu_pointer(want) != type_is_gpu_pointer(got)
 
 
@@ -558,15 +543,13 @@ int type_gpu_pointer_host_twin(int t):
 		return t
 	char* plain_name = type_get_name(type_strip_gpu(base))
 	int twin = type_lookup_pointer(plain_name, level)
-	if (twin < 0):
-		twin = type_push_pointer(plain_name, word_size, level)
+	if (twin < 0): twin = type_push_pointer(plain_name, word_size, level)
 	return twin
 
 
 int type_get_kind(int type_index):
 	type_index = type_canonical(type_index)
-	if (type_index < 0):
-		return 0
+	if (type_index < 0): return 0
 	type_rec* t = cast(type_rec*, type_records[type_index])
 	return t.kind
 
@@ -579,8 +562,7 @@ void type_set_kind(int type_index, int kind):
 
 int type_get_element_type(int type_index):
 	type_index = type_canonical(type_index)
-	if (type_index < 0):
-		return -1
+	if (type_index < 0): return -1
 	type_rec* t = cast(type_rec*, type_records[type_index])
 	return t.alias_target
 
@@ -606,19 +588,15 @@ int type_is_string(int type_index):
 
 int type_is_char(int type_index):
 	type_index = type_canonical(type_index)
-	if (type_index < 0):
-		return 0
-	if (type_get_pointer_level(type_index) != 0):
-		return 0
+	if (type_index < 0): return 0
+	if (type_get_pointer_level(type_index) != 0): return 0
 	return strcmp(type_get_name(type_index), c"char") == 0
 
 
 int type_is_char_pointer(int type_index):
 	type_index = type_canonical(type_index)
-	if (type_index < 0):
-		return 0
-	if (type_get_pointer_level(type_index) != 1):
-		return 0
+	if (type_index < 0): return 0
+	if (type_get_pointer_level(type_index) != 1): return 0
 	return strcmp(type_get_name(type_index), c"char") == 0
 
 
@@ -644,23 +622,18 @@ int type_is_buffer(int type_index):
 
 int type_has_array_field(int type_index):
 	type_index = type_canonical(type_index)
-	if (type_index < 0):
-		return 0
-	if (type_get_pointer_level(type_index) > 0):
-		return 0
-	if (type_is_array(type_index)):
-		return 1
+	if (type_index < 0): return 0
+	if (type_get_pointer_level(type_index) > 0): return 0
+	if (type_is_array(type_index)): return 1
 	int count = type_num_args(type_index)
 	for i in range(count):
-		if (type_has_array_field(type_get_field_type_at(type_index, i))):
-			return 1
+		if (type_has_array_field(type_get_field_type_at(type_index, i))): return 1
 	return 0
 
 
 int type_stack_words(int type_index):
 	int size = type_get_size(type_index)
-	if (size <= word_size):
-		return 1
+	if (size <= word_size): return 1
 	return (size + word_size - 1) >> word_size_log2
 
 
@@ -671,11 +644,9 @@ int type_is_function_signature(int type_index):
 
 int type_function_pointer_signature(int type_index):
 	type_index = type_canonical(type_index)
-	if (type_get_pointer_level(type_index) <= 0):
-		return -1
+	if (type_get_pointer_level(type_index) <= 0): return -1
 	int base_type = type_lookup_previous_pointer(type_index)
-	if (base_type < 0):
-		return -1
+	if (base_type < 0): return -1
 	if (type_is_function_signature(base_type)):
 		return base_type
 	return -1
@@ -683,8 +654,7 @@ int type_function_pointer_signature(int type_index):
 
 int type_is_const(int type_index):
 	type_index = type_canonical(type_index)
-	if (type_get_kind(type_index) == type_kind_const):
-		return 1
+	if (type_get_kind(type_index) == type_kind_const): return 1
 	return 0
 
 
@@ -700,8 +670,7 @@ int type_push_function(char* name, int return_type, int param_count, int param_t
 	new_type.fn_param_count = param_count
 	for i in range(10):
 		int param_type = -1
-		if (i < param_count):
-			param_type = load_ptr(param_types + i * __word_size__)
+		if (i < param_count): param_type = load_ptr(param_types + i * __word_size__)
 		new_type.fn_param_types[i] = param_type
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
@@ -722,10 +691,8 @@ int type_function_param_count(int type_index):
 
 int type_function_param_type(int type_index, int i):
 	type_index = type_canonical(type_index)
-	if (i >= type_function_param_count(type_index)):
-		return -1
-	if (i >= 10):
-		return -1
+	if (i >= type_function_param_count(type_index)): return -1
+	if (i >= 10): return -1
 	type_rec* t = cast(type_rec*, type_records[type_index])
 	return t.fn_param_types[i]
 
@@ -782,15 +749,13 @@ int type_lookup_list(int element_type):
 
 int type_get_slice(int element_type):
 	int slice = type_lookup_slice(element_type)
-	if (slice < 0):
-		slice = type_push_slice(type_canonical(element_type))
+	if (slice < 0): slice = type_push_slice(type_canonical(element_type))
 	return slice
 
 
 int type_get_slice_value(int element_type):
 	int slice = type_lookup_slice_value(element_type)
-	if (slice < 0):
-		slice = type_push_slice_value(type_canonical(element_type))
+	if (slice < 0): slice = type_push_slice_value(type_canonical(element_type))
 	return slice
 
 
@@ -803,15 +768,13 @@ int type_get_map(int key_type, int value_type):
 
 int type_get_set(int key_type):
 	int set_type = type_lookup_set(key_type)
-	if (set_type < 0):
-		set_type = type_push_set(type_canonical(key_type))
+	if (set_type < 0): set_type = type_push_set(type_canonical(key_type))
 	return set_type
 
 
 int type_get_list(int element_type):
 	int list_type = type_lookup_list(element_type)
-	if (list_type < 0):
-		list_type = type_push_list(type_canonical(element_type))
+	if (list_type < 0): list_type = type_push_list(type_canonical(element_type))
 	return list_type
 
 
@@ -868,8 +831,7 @@ int type_lookup_pointer(char* name, int pointer_level):
 	int trace = verbosity >= 1
 	while (i < type_records.length):
 		type_rec* t = type_record(i)
-		if (trace):
-			print_hex(c"type_lookup_pointer t: ", cast(int, t))
+		if (trace): print_hex(c"type_lookup_pointer t: ", cast(int, t))
 		# Pointer level first, and as a nested test rather than one '&'
 		# chain: '&' does not short-circuit, so the original ran a strcmp
 		# against every record in the table on every call. The level is a
@@ -884,8 +846,7 @@ int type_lookup_pointer(char* name, int pointer_level):
 # 1 when t is exactly void* (one pointer level over void)
 int type_is_void_pointer(int t):
 	t = type_unqualified(t)
-	if (type_get_pointer_level(t) != 1):
-		return 0
+	if (type_get_pointer_level(t) != 1): return 0
 	return strcmp(type_get_name(t), c"void") == 0
 
 
@@ -894,20 +855,13 @@ int type_is_void_pointer(int t):
 # enums). Floats, structs, containers, and other pointers do not box.
 int type_var_boxable(int t):
 	t = type_unqualified(t)
-	if (type_is_string(t)):
-		return 1
-	if (type_is_char_pointer(t)):
-		return 1
-	if (type_float_kind(t)):
-		return 0
-	if (type_get_pointer_level(t) > 0):
-		return 0
-	if (type_num_args(t) > 0):
-		return 0
-	if (type_is_map(t) | type_is_set(t) | type_is_list(t)):
-		return 0
-	if (type_is_array(t) | type_is_slice(t)):
-		return 0
+	if (type_is_string(t)): return 1
+	if (type_is_char_pointer(t)): return 1
+	if (type_float_kind(t)): return 0
+	if (type_get_pointer_level(t) > 0): return 0
+	if (type_num_args(t) > 0): return 0
+	if (type_is_map(t) | type_is_set(t) | type_is_list(t)): return 0
+	if (type_is_array(t) | type_is_slice(t)): return 0
 	int size = type_get_size(t)
 	return (size == 1) | (size == 2) | (size == 4) | (size == 8)
 
@@ -915,8 +869,7 @@ int type_var_boxable(int t):
 # Unboxing additionally allows void*: the raw box pointer escape hatch
 # used by seed-safe runtime helpers such as print_var.
 int type_var_unboxable(int t):
-	if (type_is_void_pointer(t)):
-		return 1
+	if (type_is_void_pointer(t)): return 1
 	return type_var_boxable(t)
 
 
@@ -928,12 +881,9 @@ int type_var_unboxable(int t):
 # high-bit value. uint64 and word-sized uint load at full width already.
 int type_is_unsigned_fixed(int type_index):
 	type_index = type_unqualified(type_index)
-	if (type_index == uint8_type):
-		return 1
-	if (type_index == uint16_type):
-		return 1
-	if (type_index == uint32_type):
-		return 1
+	if (type_index == uint8_type): return 1
+	if (type_index == uint16_type): return 1
+	if (type_index == uint32_type): return 1
 	return 0
 
 
@@ -950,55 +900,41 @@ int type_is_unsigned_fixed(int type_index):
 int types_compatible(int want, int got):
 	want = type_unqualified(want)
 	got = type_unqualified(got)
-	if (got == 3):
-		return 1
-	if (got == 4):
-		return 0
-	if (want == got):
-		return 1
-	if (type_is_var(want) & type_is_var(got)):
-		return 1
-	if (type_is_var(want)):
-		return type_var_boxable(got)
-	if (type_is_var(got)):
-		return type_var_unboxable(want)
-	if (type_is_string(want) & type_is_string(got)):
-		return 1
-	if (type_is_string(want) & type_is_char_pointer(got)):
-		return 1
-	if (type_is_string(want) | type_is_string(got)):
-		return 0
+	if (got == 3): return 1
+	if (got == 4): return 0
+	if (want == got): return 1
+	if (type_is_var(want) & type_is_var(got)): return 1
+	if (type_is_var(want)): return type_var_boxable(got)
+	if (type_is_var(got)): return type_var_unboxable(want)
+	if (type_is_string(want) & type_is_string(got)): return 1
+	if (type_is_string(want) & type_is_char_pointer(got)): return 1
+	if (type_is_string(want) | type_is_string(got)): return 0
 	if (type_is_map(want) & type_is_map(got)):
 		return (type_unqualified(type_map_key_type(want)) == type_unqualified(type_map_key_type(got))) &
 				(type_unqualified(type_map_value_type(want)) == type_unqualified(type_map_value_type(got)))
 	if (type_is_set(want) & type_is_set(got)):
 		return type_unqualified(type_set_key_type(want)) == type_unqualified(type_set_key_type(got))
-	if (type_is_map(want) | type_is_map(got) | type_is_set(want) | type_is_set(got)):
-		return 0
+	if (type_is_map(want) | type_is_map(got) | type_is_set(want) | type_is_set(got)): return 0
 	if (type_is_list(want) & type_is_list(got)):
 		return type_unqualified(type_list_element_type(want)) == type_unqualified(type_list_element_type(got))
-	if (type_is_list(want) | type_is_list(got)):
-		return 0
+	if (type_is_list(want) | type_is_list(got)): return 0
 	if (type_is_slice(want) & type_is_array(got)):
 		return type_unqualified(type_get_element_type(want)) == type_unqualified(type_get_element_type(got))
 	if (type_is_slice(want) & type_is_slice(got)):
 		return type_unqualified(type_get_element_type(want)) == type_unqualified(type_get_element_type(got))
 	if (type_is_array(want) | type_is_array(got) | type_is_slice(want) | type_is_slice(got)):
 		return 0
-	if (type_get_pointer_level(want) != type_get_pointer_level(got)):
-		return 0
+	if (type_get_pointer_level(want) != type_get_pointer_level(got)): return 0
 	if (type_get_pointer_level(want) == 0):
 		# Struct vs scalar or two different structs
-		if ((type_num_args(want) > 0) | (type_num_args(got) > 0)):
-			return 0
+		if ((type_num_args(want) > 0) | (type_num_args(got) > 0)): return 0
 		return 1
 	# The gpu qualifier partitions pointers into host and device
 	# domains: crossing takes an explicit cast() (grammar/promote.w
 	# reports the mismatch as an error). Within the device domain,
 	# 'gpu void*' converts to and from any same-depth gpu pointer.
 	int want_gpu = type_is_gpu_pointer(want)
-	if (want_gpu != type_is_gpu_pointer(got)):
-		return 0
+	if (want_gpu != type_is_gpu_pointer(got)): return 0
 	if (want_gpu):
 		int want_elem = type_lookup(type_get_name(want))
 		int got_elem = type_lookup(type_get_name(got))
@@ -1006,18 +942,14 @@ int types_compatible(int want, int got):
 			if ((strcmp(type_get_name(type_canonical(want_elem)), c"void") == 0) ||
 					(strcmp(type_get_name(type_canonical(got_elem)), c"void") == 0)):
 				return 1
-	if (strcmp(type_get_name(want), c"void") == 0):
-		return 1
-	if (strcmp(type_get_name(got), c"void") == 0):
-		return 1
-	if (strcmp(type_get_name(want), type_get_name(got)) == 0):
-		return 1
+	if (strcmp(type_get_name(want), c"void") == 0): return 1
+	if (strcmp(type_get_name(got), c"void") == 0): return 1
+	if (strcmp(type_get_name(want), type_get_name(got)) == 0): return 1
 	# Pointer entries store the base type's name; aliases of the same base
 	# (e.g. FILE* vs _IO_FILE*) must stay interchangeable.
 	int want_base = type_lookup(type_get_name(want))
 	int got_base = type_lookup(type_get_name(got))
-	if ((want_base < 0) || (got_base < 0)):
-		return 0
+	if ((want_base < 0) || (got_base < 0)): return 0
 	return type_canonical(want_base) == type_canonical(got_base)
 
 
@@ -1032,29 +964,21 @@ int type_decays_to_pointer(int want, int got):
 	got = type_unqualified(got)
 	if (got == string_literal_type):
 		return (want >= 0) && type_is_char_pointer(type_unqualified(want))
-	if (type_get_kind(got) != type_kind_slice_value):
-		return 0
+	if (type_get_kind(got) != type_kind_slice_value): return 0
 	want = type_unqualified(want)
-	if (want < 0):
-		return 0
+	if (want < 0): return 0
 	int want_level = type_get_pointer_level(want)
-	if (want_level < 1):
-		return 0
-	if (type_is_void_pointer(want)):
-		return 1
+	if (want_level < 1): return 0
+	if (type_is_void_pointer(want)): return 1
 	int element = type_unqualified(type_get_element_type(got))
-	if (element < 0):
-		return 0
-	if (want_level != type_get_pointer_level(element) + 1):
-		return 0
-	if (strcmp(type_get_name(want), type_get_name(element)) == 0):
-		return 1
+	if (element < 0): return 0
+	if (want_level != type_get_pointer_level(element) + 1): return 0
+	if (strcmp(type_get_name(want), type_get_name(element)) == 0): return 1
 	# Pointer entries store the base type's name; decay through an alias
 	# of the element's base (e.g. FILE* from _IO_FILE[]) stays valid.
 	int want_base = type_lookup(type_get_name(want))
 	int element_base = type_lookup(type_get_name(element))
-	if ((want_base < 0) || (element_base < 0)):
-		return 0
+	if ((want_base < 0) || (element_base < 0)): return 0
 	return type_canonical(want_base) == type_canonical(element_base)
 
 
@@ -1070,8 +994,7 @@ int type_float_kind(int t):
 	if ((t == float32_type) || (t == float_type) ||
 			(t == float16_type) || (t == float32_value_type)):
 		return 1
-	if ((t == float64_type) || (t == float64_value_type)):
-		return 2
+	if ((t == float64_type) || (t == float64_value_type)): return 2
 	return 0
 
 
@@ -1136,10 +1059,8 @@ int type_add_arg(int type_index, char* field, int field_type):
 	# Update total size. Structs sum fields; unions take the largest field.
 	int field_size = type_get_size(field_type)
 	if (type_get_kind(type_index) == type_kind_union):
-		if (field_size > t.total_size):
-			t.total_size = field_size
-	else:
-		t.total_size = t.total_size + field_size
+		if (field_size > t.total_size): t.total_size = field_size
+	else: t.total_size = t.total_size + field_size
 
 
 int type_get_arg(int type_index, char* field):
@@ -1152,8 +1073,7 @@ int type_get_arg(int type_index, char* field):
 		println2(c"')")
 	type_rec* t = cast(type_rec*, type_records[type_index])
 	int num_fields = t.num_fields
-	if (verbosity > 0):
-		print_int(c"num_fields: ", num_fields)
+	if (verbosity > 0): print_int(c"num_fields: ", num_fields)
 	for i in range(num_fields):
 		char* f = t.field_names[i]
 		if (verbosity > 0):
@@ -1205,8 +1125,7 @@ int type_get_field_offset(int type_index, char* field):
 			return offset
 		int field_type = t.field_types[i]
 		int field_size = type_get_size(field_type)
-		if (type_get_kind(type_index) != type_kind_union):
-			offset = offset + field_size
+		if (type_get_kind(type_index) != type_kind_union): offset = offset + field_size
 	return -1
 
 
@@ -1230,8 +1149,7 @@ int type_get_field_offset_at(int type_index, int i):
 	type_rec* t = cast(type_rec*, type_records[type_index])
 	int offset = 0
 	int j = 0
-	if (type_get_kind(type_index) == type_kind_union):
-		return 0
+	if (type_get_kind(type_index) == type_kind_union): return 0
 	while (j < i):
 		offset = offset + type_get_size(t.field_types[j])
 		j = j + 1
@@ -1277,8 +1195,7 @@ void type_print(int type_index):
 		int field_type = t.field_types[i]
 		type_rec* field_type_name = type_record(field_type)
 
-		if (i > 0):
-			print2(c"; ")
+		if (i > 0): print2(c"; ")
 
 		char* printed_field_type = field_type_name.name
 		print_n(printed_field_type, strlen(printed_field_type))
@@ -1298,8 +1215,7 @@ void type_print_all():
 		print_error(itoa(i))
 		print_error(c": ")
 		print_error(str_from_cstr(type.name))
-		for int j in range(type_get_pointer_level(i)):
-			print_error(c"*")
+		for int j in range(type_get_pointer_level(i)): print_error(c"*")
 		print_error(c"\x0a")
 		# print_int("len=", strlen(*type))
 		i = i + 1

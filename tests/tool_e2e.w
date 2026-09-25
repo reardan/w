@@ -56,8 +56,7 @@ process_result* tool_spawn(char* cwd, int timeout_ms, list[char*] argv):
 		i = i + 1
 	process_result* r = process_run(tool_bin(argv[0]), v, opts, 0, timeout_ms)
 	assert1(r != 0)
-	if (opts != 0):
-		free(opts)
+	if (opts != 0): free(opts)
 	free(cast(void*, v))
 	list_free[char*](argv)
 	return r
@@ -65,8 +64,7 @@ process_result* tool_spawn(char* cwd, int timeout_ms, list[char*] argv):
 
 list[char*] tool_argv(char*[] words):
 	list[char*] argv = new list[char*]
-	for char* w in words:
-		argv.push(w)
+	for char* w in words: argv.push(w)
 	return argv
 
 

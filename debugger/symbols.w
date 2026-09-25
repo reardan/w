@@ -47,8 +47,7 @@ int dbg_function_at(int addr):
 	int best_size = 0
 	while (t <= table_pos - 1):
 		int name_offset = t
-		while (table[t] != 0):
-			t = t + 1
+		while (table[t] != 0): t = t + 1
 		if (table[t + 1] == 'D'):
 			if (load_int(table + t + 10) == 2):
 				int start = load_int(table + t + 2)
@@ -75,10 +74,8 @@ int dbg_global_find(char* name):
 			i = i + 1
 			t = t + 1
 		if ((name[i] == 0) && (table[t] == 0)):
-			if (table[t + 1] == 'D'):
-				found = name_offset
-		while (table[t] != 0):
-			t = t + 1
+			if (table[t + 1] == 'D'): found = name_offset
+		while (table[t] != 0): t = t + 1
 		t = next_token(t)
 	return found
 
@@ -86,8 +83,7 @@ int dbg_global_find(char* name):
 # Function name for an address, or "?" when unknown.
 char* dbg_function_name(int addr):
 	int f = dbg_function_at(addr)
-	if (f < 0):
-		return c"?"
+	if (f < 0): return c"?"
 	return dbg_sym_name(f)
 
 
@@ -99,21 +95,17 @@ void dbg_suggest_functions(char* name):
 	int t = 0
 	while (t <= table_pos - 1):
 		int name_offset = t
-		while (table[t] != 0):
-			t = t + 1
+		while (table[t] != 0): t = t + 1
 		if (table[t + 1] == 'D'):
 			if (load_int(table + t + 10) == 2):
 				char* candidate = table + name_offset
 				if (dbg_edit_distance(name, candidate) <= threshold):
-					if (shown == 0):
-						print(c"did you mean: ")
-					else:
-						print(c", ")
+					if (shown == 0): print(c"did you mean: ")
+					else: print(c", ")
 					print(candidate)
 					shown = shown + 1
 		t = next_token(t)
-	if (shown > 0):
-		put_char(10)
+	if (shown > 0): put_char(10)
 
 
 # List the debuggee's defined functions with address and size.
@@ -121,8 +113,7 @@ void dbg_print_functions():
 	int t = 0
 	while (t <= table_pos - 1):
 		int name_offset = t
-		while (table[t] != 0):
-			t = t + 1
+		while (table[t] != 0): t = t + 1
 		if (table[t + 1] == 'D'):
 			if (load_int(table + t + 10) == 2):
 				char* h = hex(load_int(table + t + 2))

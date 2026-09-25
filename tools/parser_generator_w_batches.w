@@ -81,20 +81,17 @@ char* pgb_list_path(char* kind, int n):
 # wexec_default_jobs); 1 when it cannot be read.
 int pgb_cpu_count():
 	char* text = file_read_text(c"/proc/cpuinfo")
-	if (text == 0):
-		return 1
+	if (text == 0): return 1
 	int count = 0
 	int line_start = 1
 	int i = 0
 	while (text[i] != 0):
 		if (line_start):
-			if (starts_with(text + i, c"processor")):
-				count = count + 1
+			if (starts_with(text + i, c"processor")): count = count + 1
 		line_start = text[i] == 10
 		i = i + 1
 	free(text)
-	if (count < 1):
-		return 1
+	if (count < 1): return 1
 	return count
 
 
@@ -112,8 +109,7 @@ process* pgb_start(char* list_path, int quiet):
 	free(cast(void*, argv))
 	free(cast(void*, opts.env))
 	free(opts)
-	if (p == 0):
-		pgb_say(c"cannot spawn bin/parser_generator_w_test")
+	if (p == 0): pgb_say(c"cannot spawn bin/parser_generator_w_test")
 	return p
 
 
@@ -121,8 +117,7 @@ process* pgb_start(char* list_path, int quiet):
 # when it passed.
 int pgb_run_one(char* list_path):
 	process* p = pgb_start(list_path, 0)
-	if (p == 0):
-		return 0
+	if (p == 0): return 0
 	int ok = process_wait(p) == 0
 	process_free(p)
 	return ok
@@ -143,8 +138,7 @@ int pgb_run_all(list[char*] paths, list[int] ok):
 	while ((next < paths.length) || (running > 0)):
 		while ((next < paths.length) && (running < pgb_jobs)):
 			process* p = pgb_start(paths[next], 1)
-			if (p == 0):
-				failures = failures + 1
+			if (p == 0): failures = failures + 1
 			else:
 				kids.push(p)
 				owner.push(next)
@@ -156,10 +150,8 @@ int pgb_run_all(list[char*] paths, list[int] ok):
 				pgb_say(c"waiting for a batch failed")
 				exit(1)
 			running = running - 1
-			if (process_decode_status(kids[k].status) == 0):
-				ok[owner[k]] = 1
-			else:
-				failures = failures + 1
+			if (process_decode_status(kids[k].status) == 0): ok[owner[k]] = 1
+			else: failures = failures + 1
 	i = 0
 	while (i < kids.length):
 		process_free(kids[i])
@@ -187,8 +179,7 @@ int main(int argc, int argv):
 	list[char*] kept = new list[char*]
 	int i = 0
 	while (i < lines.length):
-		if (lines[i][0] != 0):
-			kept.push(lines[i])
+		if (lines[i][0] != 0): kept.push(lines[i])
 		i = i + 1
 	lines = kept
 
@@ -198,8 +189,7 @@ int main(int argc, int argv):
 	int start = 0
 	while (start < total):
 		int end = start + batch
-		if (end > total):
-			end = total
+		if (end > total): end = total
 		char* path = pgb_list_path(c"batch", paths.length + 1)
 		pgb_write_slice(path, lines, start, end)
 		paths.push(path)
@@ -214,11 +204,9 @@ int main(int argc, int argv):
 			status = 1
 			start = starts[b]
 			int end = start + batch
-			if (end > total):
-				end = total
+			if (end > total): end = total
 			# Rerun alone, output shown, for the batch's stack trace.
-			if (pgb_run_one(paths[b])):
-				pgb_say(c"(the failing batch passed when rerun alone)")
+			if (pgb_run_one(paths[b])): pgb_say(c"(the failing batch passed when rerun alone)")
 			string_builder* s = string_new()
 			string_append(s, c"batch ")
 			string_append_int(s, b + 1)

@@ -46,8 +46,7 @@ int main():
 
 	# any/all results are plain ints, usable directly as conditions
 	hits := 0
-	if any(mixed):
-		hits = hits + 1
+	if any(mixed): hits = hits + 1
 	assert_equal(1, hits)
 
 	# Sub-word elements: chars and bools load at their own width

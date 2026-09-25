@@ -64,10 +64,8 @@ int term_clear_bits(int v, int mask):
 # Output processing (ONLCR) is left on so '\x0a' still prints normally.
 # Returns 1 on success (original settings saved), 0 when fd is not a tty.
 int term_raw_mode(int fd):
-	if (term_saved_state == 0):
-		term_saved_state = cast(termios*, malloc(40))
-	if (term_get(fd, term_saved_state) != 0):
-		return 0
+	if (term_saved_state == 0): term_saved_state = cast(termios*, malloc(40))
+	if (term_get(fd, term_saved_state) != 0): return 0
 	term_saved_fd = fd
 	termios raw
 	term_get(fd, &raw)
@@ -86,8 +84,7 @@ int term_raw_mode(int fd):
 
 
 void term_restore():
-	if (term_saved_state == 0):
-		return;
+	if (term_saved_state == 0): return;
 	term_set(term_saved_fd, term_saved_state)
 
 
@@ -112,6 +109,5 @@ int term_get_cols(int fd):
 	if (sys_ioctl(fd, term_tiocgwinsz, cast(int, winsize)) == 0):
 		cols = (winsize[2] & 255) | ((winsize[3] & 255) << 8)
 	free(winsize)
-	if (cols <= 0):
-		return 80
+	if (cols <= 0): return 80
 	return cols

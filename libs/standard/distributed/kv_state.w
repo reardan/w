@@ -80,10 +80,8 @@ import lib.mem
 int kv_valid_bytes(char* s, int len, int allow_empty):
 	for i in range(len):
 		int b = s[i] & 255
-		if (b == 9 || b == 10 || b == 13):
-			return 0
-	if (len == 0 && allow_empty == 0):
-		return 0
+		if (b == 9 || b == 10 || b == 13): return 0
+	if (len == 0 && allow_empty == 0): return 0
 	return 1
 
 
@@ -100,10 +98,8 @@ int kv_valid_text(char* s, int allow_empty):
 # "P\t<key>\t<value>", malloc'd; 0 when the key is not non-empty
 # valid text or the value is not valid text (empty value is legal).
 char* kv_encode_put(char* key, char* value):
-	if (kv_valid_text(key, 0) == 0):
-		return 0
-	if (kv_valid_text(value, 1) == 0):
-		return 0
+	if (kv_valid_text(key, 0) == 0): return 0
+	if (kv_valid_text(value, 1) == 0): return 0
 	int klen = strlen(key)
 	int vlen = strlen(value)
 	char* cmd = malloc(klen + vlen + 4)
@@ -129,10 +125,8 @@ char* kv_encode_put(char* key, char* value):
 # the caller must use it (not strlen) as command_len when proposing,
 # since the command may itself contain embedded NUL.
 char* kv_encode_put_len(char* key, char* value, int value_len, int* len_out):
-	if (kv_valid_text(key, 0) == 0):
-		return 0
-	if (kv_valid_bytes(value, value_len, 1) == 0):
-		return 0
+	if (kv_valid_text(key, 0) == 0): return 0
+	if (kv_valid_bytes(value, value_len, 1) == 0): return 0
 	int klen = strlen(key)
 	char* cmd = malloc(klen + value_len + 3)
 	cmd[0] = 'P'
@@ -152,14 +146,12 @@ char* kv_encode_put_len(char* key, char* value, int value_len, int* len_out):
 
 # "D\t<key>", malloc'd; 0 when the key is not non-empty valid text.
 char* kv_encode_delete(char* key):
-	if (kv_valid_text(key, 0) == 0):
-		return 0
+	if (kv_valid_text(key, 0) == 0): return 0
 	int klen = strlen(key)
 	char* cmd = malloc(klen + 3)
 	cmd[0] = 'D'
 	cmd[1] = 9
-	for i in range(klen):
-		cmd[2 + i] = key[i]
+	for i in range(klen): cmd[2 + i] = key[i]
 	cmd[2 + klen] = 0
 	return cmd
 
@@ -174,33 +166,26 @@ char* kv_encode_delete(char* key):
 # embedded junk: newline or CR anywhere, a second tab (a third field),
 # an empty key. A command shorter than the tag+separator is malformed.
 int kv_apply_command(lsm* store, char* command, int command_len):
-	if (command_len < 2):
-		return 0
+	if (command_len < 2): return 0
 	int tag = command[0] & 255
-	if (tag != 'P' && tag != 'D'):
-		return 0
-	if ((command[1] & 255) != 9):
-		return 0
+	if (tag != 'P' && tag != 'D'): return 0
+	if ((command[1] & 255) != 9): return 0
 	char* rest = command + 2
 	int rest_len = command_len - 2
 	int sep = 0 - 1
 	for i in range(rest_len):
 		int b = rest[i] & 255
-		if (b == 10 || b == 13):
-			return 0
+		if (b == 10 || b == 13): return 0
 		if (b == 9):
-			if (sep >= 0):
-				return 0   # a third field: junk
+			if (sep >= 0): return 0   # a third field: junk
 			sep = i
 	if (tag == 'D'):
-		if (sep >= 0 || rest_len == 0):
-			return 0   # delete carries exactly one non-empty field
+		if (sep >= 0 || rest_len == 0): return 0   # delete carries exactly one non-empty field
 		char* key = mem_dup(rest, rest_len)
 		int ok = lsm_delete(store, key)
 		free(key)
 		return ok
-	if (sep <= 0):
-		return 0   # put needs a separator and a non-empty key
+	if (sep <= 0): return 0   # put needs a separator and a non-empty key
 	char* key = mem_dup(rest, sep)
 	int ok = lsm_put(store, key, rest + sep + 1, rest_len - sep - 1)
 	free(key)
@@ -263,8 +248,7 @@ int kv_apply_pending(raft* r, lsm* store):
 	int applied = 0
 	while (raft_pending_apply(r)):
 		raft_entry* e = raft_pop_apply(r)
-		if (kv_apply_command(store, e.command, e.command_len)):
-			applied = applied + 1
+		if (kv_apply_command(store, e.command, e.command_len)): applied = applied + 1
 	return applied
 
 
@@ -275,11 +259,9 @@ int kv_apply_pending(raft* r, lsm* store):
 # into its own log entry, so cmd is freed here once it returns — never
 # retained (see the ownership note in the header).
 int kv_propose_put(raft* r, char* key, char* value, int now_ms, list[raft_msg*] out):
-	if (raft_state(r) != raft_leader):
-		return 0
+	if (raft_state(r) != raft_leader): return 0
 	char* cmd = kv_encode_put(key, value)
-	if (cmd == 0):
-		return 0
+	if (cmd == 0): return 0
 	int ok = raft_propose(r, cmd, strlen(cmd), now_ms, out)
 	free(cmd)
 	return ok
@@ -290,8 +272,7 @@ int kv_propose_put(raft* r, char* key, char* value, int now_ms, list[raft_msg*] 
 # binary values; kv_propose_put remains the NUL-terminated-text
 # convenience form.
 int kv_propose_put_len(raft* r, char* key, char* value, int value_len, int now_ms, list[raft_msg*] out):
-	if (raft_state(r) != raft_leader):
-		return 0
+	if (raft_state(r) != raft_leader): return 0
 	int* len_out = cast(int*, malloc(__word_size__))
 	char* cmd = kv_encode_put_len(key, value, value_len, len_out)
 	if (cmd == 0):
@@ -307,11 +288,9 @@ int kv_propose_put_len(raft* r, char* key, char* value, int value_len, int now_m
 # Encode a delete and hand it to raft_propose; same contract as
 # kv_propose_put.
 int kv_propose_delete(raft* r, char* key, int now_ms, list[raft_msg*] out):
-	if (raft_state(r) != raft_leader):
-		return 0
+	if (raft_state(r) != raft_leader): return 0
 	char* cmd = kv_encode_delete(key)
-	if (cmd == 0):
-		return 0
+	if (cmd == 0): return 0
 	int ok = raft_propose(r, cmd, strlen(cmd), now_ms, out)
 	free(cmd)
 	return ok

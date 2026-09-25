@@ -29,8 +29,7 @@ void park_call(int* park, char* fn, int value_slot):
 	while (i < park[1]):
 		push_slot_copy(park[i + 2])
 		i = i + 1
-	if (value_slot):
-		push_slot_copy(value_slot)
+	if (value_slot): push_slot_copy(value_slot)
 	rt_call_end(s)
 
 

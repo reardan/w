@@ -96,8 +96,7 @@ void sha2t_check_streaming(int alg, char* data, int len, int step):
 	int pos = 0
 	while (pos < len):
 		int take = step
-		if (pos + take > len):
-			take = len - pos
+		if (pos + take > len): take = len - pos
 		whash_update(h, data + pos, take)
 		pos = pos + take
 	int ds = whash_digest_size(alg)

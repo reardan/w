@@ -83,14 +83,12 @@ list[char*] od_split_lines(char* text):
 			out.push(substring(text, start, i))
 			start = i + 1
 		i = i + 1
-	if (i > start):
-		out.push(substring(text, start, i))
+	if (i > start): out.push(substring(text, start, i))
 	return out
 
 
 void od_free_lines(list[char*] lines):
-	for char* s in lines:
-		free(s)
+	for char* s in lines: free(s)
 	list_free[char*](lines)
 
 
@@ -99,10 +97,8 @@ char* od_hex8(int v):
 	int i = 7
 	while (i >= 0):
 		int d = v & 15
-		if (d < 10):
-			s[i] = '0' + d
-		else:
-			s[i] = 'A' + d - 10
+		if (d < 10): s[i] = '0' + d
+		else: s[i] = 'A' + d - 10
 		v = v >> 4
 		i = i - 1
 	s[8] = 0
@@ -130,25 +126,19 @@ int od_parse_hex_at(char* s, int* found):
 	int more = 1
 	while (more):
 		int c = s[i]
-		if ((c >= '0') && (c <= '9')):
-			v = (v << 4) | (c - '0')
-		else if ((c >= 'a') && (c <= 'f')):
-			v = (v << 4) | (c - 'a' + 10)
-		else if ((c >= 'A') && (c <= 'F')):
-			v = (v << 4) | (c - 'A' + 10)
-		else:
-			more = 0
+		if ((c >= '0') && (c <= '9')): v = (v << 4) | (c - '0')
+		else if ((c >= 'a') && (c <= 'f')): v = (v << 4) | (c - 'a' + 10)
+		else if ((c >= 'A') && (c <= 'F')): v = (v << 4) | (c - 'A' + 10)
+		else: more = 0
 		i = i + 1
 	return v
 
 
 char* od_trim(char* s):
 	int a = 0
-	while ((s[a] == ' ') || (s[a] == 9)):
-		a = a + 1
+	while ((s[a] == ' ') || (s[a] == 9)): a = a + 1
 	int b = strlen(s)
-	while ((b > a) && ((s[b - 1] == ' ') || (s[b - 1] == 9) || (s[b - 1] == 13))):
-		b = b - 1
+	while ((b > a) && ((s[b - 1] == ' ') || (s[b - 1] == 9) || (s[b - 1] == 13))): b = b - 1
 	return substring(s, a, b)
 
 
@@ -174,12 +164,9 @@ char* od_expand_tabs(char* s):
 
 
 int od_hex_digit_value(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
+	if ((c >= '0') && (c <= '9')): return c - '0'
+	if ((c >= 'a') && (c <= 'f')): return c - 'a' + 10
+	if ((c >= 'A') && (c <= 'F')): return c - 'A' + 10
 	return 0
 
 
@@ -192,8 +179,7 @@ char* od_json_get(char* json, char* key):
 	int at = index_of(json, pat.data)
 	int plen = pat.length
 	string_free(pat)
-	if (at < 0):
-		return strclone(c"")
+	if (at < 0): return strclone(c"")
 	char* p = json + at + plen
 	string_builder* out = string_new()
 	int i = 0
@@ -201,12 +187,9 @@ char* od_json_get(char* json, char* key):
 		if ((p[i] == 92) && (p[i + 1] != 0)):
 			i = i + 1
 			int c = p[i]
-			if (c == 'n'):
-				string_append_char(out, 10)
-			else if (c == 't'):
-				string_append_char(out, 9)
-			else if (c == 'r'):
-				string_append_char(out, 13)
+			if (c == 'n'): string_append_char(out, 10)
+			else if (c == 't'): string_append_char(out, 9)
+			else if (c == 'r'): string_append_char(out, 13)
 			else if (c == 'u'):
 				int v = 0
 				int k = 1
@@ -214,16 +197,11 @@ char* od_json_get(char* json, char* key):
 					v = (v << 4) | od_hex_digit_value(p[i + k])
 					k = k + 1
 				i = i + 4
-				if ((v >= 32) && (v < 127)):
-					string_append_char(out, v)
-				else if ((v == 9) || (v == 10)):
-					string_append_char(out, v)
-				else:
-					string_append_char(out, '?')
-			else:
-				string_append_char(out, c)
-		else:
-			string_append_char(out, p[i])
+				if ((v >= 32) && (v < 127)): string_append_char(out, v)
+				else if ((v == 9) || (v == 10)): string_append_char(out, v)
+				else: string_append_char(out, '?')
+			else: string_append_char(out, c)
+		else: string_append_char(out, p[i])
 		i = i + 1
 	char* text = strclone(out.data)
 	string_free(out)
@@ -257,8 +235,7 @@ list[char*] od_json_strings(char* json, char* key):
 		if (p[i] == '"'):
 			int start = i + 1
 			i = start
-			while ((p[i] != 0) && (p[i] != '"')):
-				i = i + 1
+			while ((p[i] != 0) && (p[i] != '"')): i = i + 1
 			out.push(substring(p, start, i))
 		i = i + 1
 	return out
@@ -267,8 +244,7 @@ list[char*] od_json_strings(char* json, char* key):
 # The file-name part of a path (a pointer into it, not a copy).
 char* od_path_tail(char* p):
 	int i = strlen(p)
-	while ((i > 0) && (p[i - 1] != '/')):
-		i = i - 1
+	while ((i > 0) && (p[i - 1] != '/')): i = i - 1
 	return p + i
 
 
@@ -331,24 +307,15 @@ int od_dump_valid
 
 
 char* od_reg_name(int i):
-	if (i == 0):
-		return c"EAX"
-	if (i == 1):
-		return c"ECX"
-	if (i == 2):
-		return c"EDX"
-	if (i == 3):
-		return c"EBX"
-	if (i == 4):
-		return c"ESP"
-	if (i == 5):
-		return c"EBP"
-	if (i == 6):
-		return c"ESI"
-	if (i == 7):
-		return c"EDI"
-	if (i == 8):
-		return c"EIP"
+	if (i == 0): return c"EAX"
+	if (i == 1): return c"ECX"
+	if (i == 2): return c"EDX"
+	if (i == 3): return c"EBX"
+	if (i == 4): return c"ESP"
+	if (i == 5): return c"EBP"
+	if (i == 6): return c"ESI"
+	if (i == 7): return c"EDI"
+	if (i == 8): return c"EIP"
 	return c"EFL"
 
 
@@ -364,8 +331,7 @@ void od_log_add(char* text):
 
 
 void od_set_str(char** slot, char* value):
-	if (*slot != 0):
-		free(*slot)
+	if (*slot != 0): free(*slot)
 	*slot = value
 
 
@@ -379,15 +345,13 @@ void od_parse_where(char* text):
 		int open = index_of(ln, c" (/")
 		if ((open > 0) && ends_with(ln, c")") && (od_where_line == 0)):
 			int colon = strlen(ln) - 2
-			while ((colon > open) && (ln[colon] != ':')):
-				colon = colon - 1
+			while ((colon > open) && (ln[colon] != ':')): colon = colon - 1
 			od_set_str(&od_where_func, substring(ln, 0, open))
 			od_set_str(&od_where_file, substring(ln, open + 2, colon))
 			char* num = substring(ln, colon + 1, strlen(ln) - 1)
 			od_where_line = atoi(num)
 			free(num)
-		else if (starts_with(ln, c"->")):
-			od_set_str(&od_where_text, od_expand_tabs(ln))
+		else if (starts_with(ln, c"->")): od_set_str(&od_where_text, od_expand_tabs(ln))
 		free(ln)
 	list_free[char*](lines)
 
@@ -433,8 +397,7 @@ void od_parse_breakpoints(char* text):
 			int close = index_of(ln, c")")
 			if ((open > 0) && (close > open)):
 				int colon = close - 1
-				while ((colon > open) && (ln[colon] != ':')):
-					colon = colon - 1
+				while ((colon > open) && (ln[colon] != ':')): colon = colon - 1
 				od_bp* b = new od_bp()
 				char* num = substring(ln, 11, index_of(ln, c" at "))
 				b.n = atoi(num)
@@ -452,8 +415,7 @@ void od_parse_breakpoints(char* text):
 void od_parse_disas(char* text):
 	for od_insn* d in od_disas:
 		free(d.text)
-		if (d.label != 0):
-			free(d.label)
+		if (d.label != 0): free(d.label)
 		free(cast(char*, d))
 	list_free[od_insn*](od_disas)
 	od_disas = new list[od_insn*]
@@ -475,14 +437,12 @@ void od_parse_disas(char* text):
 			if (found):
 				int at = index_of(ln, c"0x")
 				int sp = at
-				while ((ln[sp] != 0) && (ln[sp] != ' ')):
-					sp = sp + 1
+				while ((ln[sp] != 0) && (ln[sp] != ' ')): sp = sp + 1
 				char* rest = substring(ln, sp, strlen(ln))
 				d.text = od_trim(rest)
 				free(rest)
 				od_disas.push(d)
-			else:
-				free(cast(char*, d))
+			else: free(cast(char*, d))
 		free(ln)
 	list_free[char*](lines)
 
@@ -518,14 +478,12 @@ char* od_parse_words(char* text, int* out_base, int* out_len):
 
 
 void od_set_lines(list[char*]* slot, char* text):
-	if (*slot != 0):
-		od_free_lines(*slot)
+	if (*slot != 0): od_free_lines(*slot)
 	list[char*] lines = od_split_lines(text)
 	list[char*] out = new list[char*]
 	for char* ln in lines:
 		char* t = od_trim(ln)
-		if (strlen(t) > 0):
-			out.push(od_expand_tabs(t))
+		if (strlen(t) > 0): out.push(od_expand_tabs(t))
 		free(t)
 		free(ln)
 	list_free[char*](lines)
@@ -573,16 +531,14 @@ void od_enqueue(int kind, char* method, char* path, char* body, char* arg):
 	r.path = strclone(path)
 	r.body = strclone(body)
 	r.arg = 0
-	if (arg != 0):
-		r.arg = strclone(arg)
+	if (arg != 0): r.arg = strclone(arg)
 	od_queue.push(r)
 
 
 void od_req_free(od_req* r):
 	free(r.path)
 	free(r.body)
-	if (r.arg != 0):
-		free(r.arg)
+	if (r.arg != 0): free(r.arg)
 	free(cast(char*, r))
 
 
@@ -611,8 +567,7 @@ void od_run_command(char* cmd):
 	if (strcmp(od_state, c"stopped") != 0):
 		od_status(c"the debuggee is not paused")
 		return
-	if (od_busy_cmd):
-		return
+	if (od_busy_cmd): return
 	string_builder* echo = string_from(c"wdbg> ")
 	string_append(echo, cmd)
 	od_log_add(echo.data)
@@ -624,16 +579,13 @@ void od_run_command(char* cmd):
 void od_after_state(char* state, char* output):
 	int was_stopped = strcmp(od_state, c"stopped") == 0
 	od_set_str(&od_state, strclone(state))
-	if (strlen(output) > 0):
-		od_log_add(output)
-	if (strcmp(state, c"stopped") == 0):
-		od_request_inspect()
+	if (strlen(output) > 0): od_log_add(output)
+	if (strcmp(state, c"stopped") == 0): od_request_inspect()
 	else if (strcmp(state, c"exited") == 0):
 		od_status(c"Process terminated")
 		print(c"wdbg_ui: exited\n")
 	else if (strcmp(state, c"running") == 0):
-		if (was_stopped):
-			od_status(c"Running")
+		if (was_stopped): od_status(c"Running")
 
 
 # The disassembly and dump panes need raw bytes: fetch them once the
@@ -648,11 +600,9 @@ void od_request_code():
 				first = d.addr
 				have = 1
 			last = d.addr
-	if (have == 0):
-		return
+	if (have == 0): return
 	int words = (last - first + 16) / 4
-	if (words > 512):
-		words = 512
+	if (words > 512): words = 512
 	string_builder* cmd = string_from(c"x ")
 	char* h = hex(first)
 	string_append(cmd, h)
@@ -664,8 +614,7 @@ void od_request_code():
 
 
 void od_request_source(char* path):
-	if (od_find_source(path) != 0):
-		return
+	if (od_find_source(path) != 0): return
 	string_builder* p = string_from(c"/api/source?file=")
 	string_append(p, path)
 	od_enqueue(od_req_source, c"GET", p.data, c"", path)
@@ -678,11 +627,9 @@ void od_disas_follow();
 
 
 void od_handle_reply(od_req* r, int status, char* body):
-	if (r.kind == od_req_cmd):
-		od_busy_cmd = 0
+	if (r.kind == od_req_cmd): od_busy_cmd = 0
 	if (status != 200):
-		if (r.kind == od_req_source):
-			return
+		if (r.kind == od_req_source): return
 		char* err = od_json_get(body, c"error")
 		if (strlen(err) > 0):
 			od_status(err)
@@ -695,10 +642,8 @@ void od_handle_reply(od_req* r, int status, char* body):
 		od_free_lines(od_files)
 		od_files = od_json_strings(body, c"files")
 		od_has_core = od_json_true(body, c"has_core")
-		if (strlen(od_program) > 0):
-			od_request_source(od_program)
-		if (od_has_core):
-			od_enqueue(od_req_core, c"GET", c"/api/core", c"", 0)
+		if (strlen(od_program) > 0): od_request_source(od_program)
+		if (od_has_core): od_enqueue(od_req_core, c"GET", c"/api/core", c"", 0)
 		# The poll reply (od_after_state) brings the program's output
 		# so far and asks for the panes when it is stopped.
 		od_enqueue(od_req_poll, c"GET", c"/api/poll", c"", 0)
@@ -741,8 +686,7 @@ void od_handle_reply(od_req* r, int status, char* body):
 		free(t)
 		od_disas_follow()
 		od_request_code()
-		if (od_dump_addr == 0):
-			od_dump_addr = od_regs[4]
+		if (od_dump_addr == 0): od_dump_addr = od_regs[4]
 		od_request_dump()
 		string_builder* msg = string_new()
 		if (od_where_line > 0):
@@ -785,14 +729,12 @@ void od_handle_reply(od_req* r, int status, char* body):
 		char* bytes = od_parse_words(out, &base, &len)
 		free(out)
 		if (r.kind == od_req_code):
-			if (od_code_bytes != 0):
-				free(od_code_bytes)
+			if (od_code_bytes != 0): free(od_code_bytes)
 			od_code_bytes = bytes
 			od_code_base = base
 			od_code_len = len
 		else:
-			if (od_dump_bytes != 0):
-				free(od_dump_bytes)
+			if (od_dump_bytes != 0): free(od_dump_bytes)
 			od_dump_bytes = bytes
 			od_dump_len = len
 			od_dump_valid = len > 0
@@ -829,8 +771,7 @@ void od_handle_reply(od_req* r, int status, char* body):
 void od_net_step():
 	if (od_inflight != 0):
 		int st = wdbg_http_status(od_inflight)
-		if (st == 0):
-			return
+		if (st == 0): return
 		int len = wdbg_http_length(od_inflight)
 		char* body = malloc(len + 1)
 		int got = wdbg_http_read(od_inflight, body, len)
@@ -841,14 +782,11 @@ void od_net_step():
 		od_inflight_req = 0
 		if (st < 0):
 			od_status(c"lost the connection to wdbg_web")
-			if (r.kind == od_req_cmd):
-				od_busy_cmd = 0
-		else:
-			od_handle_reply(r, st, body)
+			if (r.kind == od_req_cmd): od_busy_cmd = 0
+		else: od_handle_reply(r, st, body)
 		free(body)
 		od_req_free(r)
-	if (od_queue.length == 0):
-		return
+	if (od_queue.length == 0): return
 	od_req* next = od_queue[0]
 	od_queue.remove(0)
 	od_inflight_req = next
@@ -897,8 +835,7 @@ ui_color od_c_yellow():
 
 
 void od_fill(int x, int y, int w, int h, ui_color c):
-	if ((w <= 0) || (h <= 0)):
-		return
+	if ((w <= 0) || (h <= 0)): return
 	ui_render_rect(od_rndr, ui_rect_new(cast(float32, x), cast(float32, y), cast(float32, w), cast(float32, h)), c)
 
 
@@ -925,8 +862,7 @@ int od_cells_n(int x, int y, char* s, int max_cells, ui_color c, int strike):
 		if (ch > 32):
 			ui_glyph g = ui_font_glyph(strike, ch)
 			int ox = (od_cw - g.advance) / 2
-			if (ox < 0):
-				ox = 0
+			if (ox < 0): ox = 0
 			ui_render_glyph_strike(od_rndr, cast(float32, x + i * od_cw + ox), cast(float32, y + od_ascent_pad), ch, strike, 0.0, c)
 		i = i + 1
 	return i
@@ -1000,8 +936,7 @@ void od_poll_input():
 			if ((od_frame - od_last_click_frame < 24) && (dx < 4) && (dx > -4) && (dy < 4) && (dy > -4)):
 				od_dbl = 1
 				od_last_click_frame = -100
-			else:
-				od_last_click_frame = od_frame
+			else: od_last_click_frame = od_frame
 			od_last_click_x = e.x
 			od_last_click_y = e.y
 		else if (e.kind == GFX_EVENT_SCROLL):
@@ -1050,20 +985,16 @@ int od_view            # 'C', 'S', 'L', 'K', 'B'
 
 int od_pane_visible(od_pane* p):
 	int v = (p.y + p.h - p.body_y) / od_lh
-	if (v < 1):
-		return 1
+	if (v < 1): return 1
 	return v
 
 
 void od_pane_clamp(od_pane* p):
 	int vis = od_pane_visible(p)
 	int max_scroll = p.rows - vis
-	if (max_scroll < 0):
-		max_scroll = 0
-	if (p.scroll > max_scroll):
-		p.scroll = max_scroll
-	if (p.scroll < 0):
-		p.scroll = 0
+	if (max_scroll < 0): max_scroll = 0
+	if (p.scroll > max_scroll): p.scroll = max_scroll
+	if (p.scroll < 0): p.scroll = 0
 
 
 void od_pane_show_row(od_pane* p, int row, int center):
@@ -1071,12 +1002,9 @@ void od_pane_show_row(od_pane* p, int row, int center):
 	if ((row >= p.scroll) && (row < p.scroll + vis)):
 		od_pane_clamp(p)
 		return
-	if (center):
-		p.scroll = row - vis / 2
-	else if (row < p.scroll):
-		p.scroll = row
-	else if (row >= p.scroll + vis):
-		p.scroll = row - vis + 1
+	if (center): p.scroll = row - vis / 2
+	else if (row < p.scroll): p.scroll = row
+	else if (row >= p.scroll + vis): p.scroll = row - vis + 1
 	od_pane_clamp(p)
 
 
@@ -1099,15 +1027,13 @@ int od_pane_begin(int idx, int x, int y, int w, int h, char* header, int rows):
 	od_clip(x + 1, y + 1, w - 2, hh)
 	od_cells(x + 4, y + 2, header, od_c_text())
 	od_unclip()
-	if (od_focus == idx):
-		od_fill(x + 1, y + hh + 1, w - 2, 1, od_c_navy())
+	if (od_focus == idx): od_fill(x + 1, y + hh + 1, w - 2, 1, od_c_navy())
 	if (p.follow):
 		od_pane_show_row(p, p.follow_row, 1)
 		p.follow = 0
 	int clicked_row = -1
 	if (od_wheel != 0):
-		if (od_in(x, y, w, h, od_wheel_x, od_wheel_y)):
-			p.scroll = p.scroll - od_wheel * 3
+		if (od_in(x, y, w, h, od_wheel_x, od_wheel_y)): p.scroll = p.scroll - od_wheel * 3
 	od_pane_clamp(p)
 	if (od_clicked_in(x, y, w, h)):
 		od_focus = idx
@@ -1127,15 +1053,13 @@ void od_pane_end():
 # y of a row, or -1 when it is scrolled out of view.
 int od_row_y(od_pane* p, int row):
 	int vis = od_pane_visible(p)
-	if ((row < p.scroll) || (row >= p.scroll + vis + 1)):
-		return -1
+	if ((row < p.scroll) || (row >= p.scroll + vis + 1)): return -1
 	return p.body_y + (row - p.scroll) * od_lh
 
 
 # The selection bar under a row.
 void od_row_bg(od_pane* p, int row, int ry):
-	if (row == p.sel):
-		od_fill(p.x + 1, ry, p.w - 2, od_lh, od_c_select())
+	if (row == p.sel): od_fill(p.x + 1, ry, p.w - 2, od_lh, od_c_select())
 
 
 # ---- CPU view ------------------------------------------------------------------
@@ -1145,8 +1069,7 @@ char* od_insn_bytes(int addr, int next):
 	string_builder* b = string_new()
 	if ((od_code_bytes != 0) && (next > addr)):
 		int n = next - addr
-		if (n > 8):
-			n = 8
+		if (n > 8): n = 8
 		for i in range(n):
 			int off = addr - od_code_base + i
 			if ((off >= 0) && (off < od_code_len)):
@@ -1159,16 +1082,11 @@ char* od_insn_bytes(int addr, int next):
 
 
 ui_color od_mnemonic_color(char* text):
-	if (starts_with(text, c"call")):
-		return od_rgb(0.0, 0.0, 0.8)
-	if (starts_with(text, c"j")):
-		return od_rgb(0.65, 0.0, 0.0)
-	if (starts_with(text, c"ret") || starts_with(text, c"leave")):
-		return od_rgb(0.0, 0.45, 0.0)
-	if (starts_with(text, c"int3")):
-		return od_c_red()
-	if (starts_with(text, c".byte")):
-		return od_c_muted()
+	if (starts_with(text, c"call")): return od_rgb(0.0, 0.0, 0.8)
+	if (starts_with(text, c"j")): return od_rgb(0.65, 0.0, 0.0)
+	if (starts_with(text, c"ret") || starts_with(text, c"leave")): return od_rgb(0.0, 0.45, 0.0)
+	if (starts_with(text, c"int3")): return od_c_red()
+	if (starts_with(text, c".byte")): return od_c_muted()
 	return od_c_text()
 
 
@@ -1182,8 +1100,7 @@ void od_draw_disas(int x, int y, int w, int h):
 	int i = p.scroll
 	while (i < od_disas.length):
 		int ry = od_row_y(p, i)
-		if (ry < 0):
-			i = od_disas.length
+		if (ry < 0): i = od_disas.length
 		else:
 			od_insn* d = od_disas[i]
 			od_row_bg(p, i, ry)
@@ -1198,14 +1115,12 @@ void od_draw_disas(int x, int y, int w, int h):
 				if (d.current):
 					od_fill(c_addr - 2, ry, od_cw * 8 + 4, od_lh, od_c_text())
 					od_cells(c_addr, ry, ah, od_c_light())
-				else:
-					od_cells(c_addr, ry, ah, od_c_text())
+				else: od_cells(c_addr, ry, ah, od_c_text())
 				free(ah)
 				int next = 0
 				int j = i + 1
 				while ((next == 0) && (j < od_disas.length)):
-					if (od_disas[j].is_label == 0):
-						next = od_disas[j].addr
+					if (od_disas[j].is_label == 0): next = od_disas[j].addr
 					j = j + 1
 				char* hb = od_insn_bytes(d.addr, next)
 				od_cells(c_hex, ry, hb, od_c_text())
@@ -1219,8 +1134,7 @@ void od_draw_disas(int x, int y, int w, int h):
 					char* src = od_trim(od_where_text + 2)
 					# drop the leading line number wdbg prints after "->"
 					int k = 0
-					while ((src[k] >= '0') && (src[k] <= '9')):
-						k = k + 1
+					while ((src[k] >= '0') && (src[k] <= '9')): k = k + 1
 					char* rest = od_trim(src + k)
 					string_append(cm, rest)
 					free(rest)
@@ -1229,8 +1143,7 @@ void od_draw_disas(int x, int y, int w, int h):
 					string_free(cm)
 			i = i + 1
 	od_pane_end()
-	if (clicked >= 0):
-		od_focus = od_p_disas
+	if (clicked >= 0): od_focus = od_p_disas
 
 
 void od_follow_in_dump(int addr):
@@ -1246,20 +1159,13 @@ void od_follow_in_dump(int addr):
 
 int od_flag_bit(int i):
 	# C P A Z S T D O
-	if (i == 0):
-		return 0
-	if (i == 1):
-		return 2
-	if (i == 2):
-		return 4
-	if (i == 3):
-		return 6
-	if (i == 4):
-		return 7
-	if (i == 5):
-		return 8
-	if (i == 6):
-		return 10
+	if (i == 0): return 0
+	if (i == 1): return 2
+	if (i == 2): return 4
+	if (i == 3): return 6
+	if (i == 4): return 7
+	if (i == 5): return 8
+	if (i == 6): return 10
 	return 11
 
 
@@ -1276,17 +1182,14 @@ void od_draw_regs(int x, int y, int w, int h):
 			od_row_bg(p, row, ry)
 			if (od_regs_valid && ((row < 8) || (row == 9))):
 				int ri = row
-				if (row == 9):
-					ri = 8
+				if (row == 9): ri = 8
 				ui_color c = od_c_text()
-				if (od_regs[ri] != od_prev_regs[ri]):
-					c = od_c_red()
+				if (od_regs[ri] != od_prev_regs[ri]): c = od_c_red()
 				od_cells(cx, ry, od_reg_name(ri), od_c_text())
 				char* hv = od_hex8(od_regs[ri])
 				od_cells(cx + od_cw * 4, ry, hv, c)
 				free(hv)
-				if (ri == 8):
-					od_cells(cx + od_cw * 13, ry, od_where_func, od_c_navy())
+				if (ri == 8): od_cells(cx + od_cw * 13, ry, od_where_func, od_c_navy())
 			else if (od_regs_valid && (row >= 11) && (row < 19)):
 				int fi = row - 11
 				char* fl = c"CPAZSTDO"
@@ -1296,34 +1199,27 @@ void od_draw_regs(int x, int y, int w, int h):
 				od_cells(cx, ry, one, od_c_text())
 				free(one)
 				ui_color c = od_c_text()
-				if (bit != pbit):
-					c = od_c_red()
+				if (bit != pbit): c = od_c_red()
 				char* v = c"0"
-				if (bit):
-					v = c"1"
+				if (bit): v = c"1"
 				od_cells(cx + od_cw * 2, ry, v, c)
 			else if (od_regs_valid && (row == 20)):
 				od_cells(cx, ry, c"EFL", od_c_text())
 				char* hv = od_hex8(od_regs[9])
 				ui_color c = od_c_text()
-				if (od_regs[9] != od_prev_regs[9]):
-					c = od_c_red()
+				if (od_regs[9] != od_prev_regs[9]): c = od_c_red()
 				od_cells(cx + od_cw * 4, ry, hv, c)
 				free(hv)
-			else if (row == 21):
-				od_cells(cx, ry, c"Locals", od_c_muted())
+			else if (row == 21): od_cells(cx, ry, c"Locals", od_c_muted())
 			else if ((row > 21) && (row <= 21 + od_locals.length)):
 				od_cells(cx + od_cw * 2, ry, od_locals[row - 22], od_c_text())
-			else if (row == 22 + od_locals.length):
-				od_cells(cx, ry, c"Arguments", od_c_muted())
+			else if (row == 22 + od_locals.length): od_cells(cx, ry, c"Arguments", od_c_muted())
 			else if (row > 22 + od_locals.length):
 				od_cells(cx + od_cw * 2, ry, od_args[row - 23 - od_locals.length], od_c_text())
 	od_pane_end()
 	if ((clicked >= 0) && od_dbl && od_regs_valid):
-		if (clicked < 8):
-			od_follow_in_dump(od_regs[clicked])
-		else if (clicked == 9):
-			od_follow_in_dump(od_regs[8])
+		if (clicked < 8): od_follow_in_dump(od_regs[clicked])
+		else if (clicked == 9): od_follow_in_dump(od_regs[8])
 
 
 void od_draw_dump(int x, int y, int w, int h):
@@ -1336,8 +1232,7 @@ void od_draw_dump(int x, int y, int w, int h):
 	int r = p.scroll
 	while (r < rows):
 		int ry = od_row_y(p, r)
-		if (ry < 0):
-			r = rows
+		if (ry < 0): r = rows
 		else:
 			od_row_bg(p, r, ry)
 			char* ah = od_hex8(od_dump_addr + r * 16)
@@ -1349,10 +1244,8 @@ void od_draw_dump(int x, int y, int w, int h):
 				char* hb = od_hex2(v)
 				od_cells(c_hex + od_cw * (k * 3), ry, hb, od_c_text())
 				free(hb)
-				if ((v >= 32) && (v < 127)):
-					asc[k] = v
-				else:
-					asc[k] = '.'
+				if ((v >= 32) && (v < 127)): asc[k] = v
+				else: asc[k] = '.'
 			asc[16] = 0
 			od_cells(c_asc, ry, asc, od_c_text())
 			free(asc)
@@ -1371,8 +1264,7 @@ void od_draw_stack(int x, int y, int w, int h):
 	int r = p.scroll
 	while (r < od_stack.length):
 		int ry = od_row_y(p, r)
-		if (ry < 0):
-			r = od_stack.length
+		if (ry < 0): r = od_stack.length
 		else:
 			od_row_bg(p, r, ry)
 			char* ln = od_stack[r]
@@ -1380,14 +1272,12 @@ void od_draw_stack(int x, int y, int w, int h):
 			int addr = od_parse_hex_at(ln, &found)
 			int colon = index_of(ln, c": ")
 			int val = 0
-			if (colon > 0):
-				val = od_parse_hex_at(ln + colon, &found)
+			if (colon > 0): val = od_parse_hex_at(ln + colon, &found)
 			char* ah = od_hex8(addr)
 			if (od_regs_valid && (addr == od_regs[4])):
 				od_fill(c_addr - 2, ry, od_cw * 8 + 4, od_lh, od_c_text())
 				od_cells(c_addr, ry, ah, od_c_light())
-			else:
-				od_cells(c_addr, ry, ah, od_c_text())
+			else: od_cells(c_addr, ry, ah, od_c_text())
 			free(ah)
 			char* vh = od_hex8(val)
 			od_cells(c_val, ry, vh, od_c_text())
@@ -1417,10 +1307,8 @@ od_bp* od_bp_at(char* file, int line):
 
 # Keep the source view on the stop location once that file is loaded.
 void od_source_follow():
-	if (od_where_line <= 0):
-		return
-	if (od_find_source(od_where_file) == 0):
-		return
+	if (od_where_line <= 0): return
+	if (od_find_source(od_where_file) == 0): return
 	if ((od_src_file == 0) || (strcmp(od_src_file, od_where_file) != 0)):
 		od_set_str(&od_src_file, strclone(od_where_file))
 	od_pane* p = &od_panes[od_p_source]
@@ -1455,8 +1343,7 @@ void od_open_source(char* path, int line):
 
 
 void od_toggle_breakpoint():
-	if (od_src_file == 0):
-		return
+	if (od_src_file == 0): return
 	od_pane* p = &od_panes[od_p_source]
 	if (p.sel < 0):
 		od_status(c"select a source line first")
@@ -1478,11 +1365,9 @@ void od_toggle_breakpoint():
 
 void od_draw_source(int x, int y, int w, int h):
 	od_source* src = 0
-	if (od_src_file != 0):
-		src = od_find_source(od_src_file)
+	if (od_src_file != 0): src = od_find_source(od_src_file)
 	int rows = 0
-	if (src != 0):
-		rows = src.lines.length
+	if (src != 0): rows = src.lines.length
 	char* hdr = c"Line   Source"
 	int clicked = od_pane_begin(od_p_source, x, y, w, h, hdr, rows)
 	od_pane* p = &od_panes[od_p_source]
@@ -1491,8 +1376,7 @@ void od_draw_source(int x, int y, int w, int h):
 	int r = p.scroll
 	while (r < rows):
 		int ry = od_row_y(p, r)
-		if (ry < 0):
-			r = rows
+		if (ry < 0): r = rows
 		else:
 			int is_cur = (od_where_line == r + 1) && (strcmp(od_where_file, od_src_file) == 0)
 			if (is_cur):
@@ -1500,25 +1384,20 @@ void od_draw_source(int x, int y, int w, int h):
 				if (r == p.sel):
 					od_fill(p.x + 1, ry, p.w - 2, 1, od_c_select())
 					od_fill(p.x + 1, ry + od_lh - 1, p.w - 2, 1, od_c_select())
-			else:
-				od_row_bg(p, r, ry)
+			else: od_row_bg(p, r, ry)
 			string_builder* num = string_new()
 			string_append_int(num, r + 1)
 			if (od_bp_at(od_src_file, r + 1) != 0):
 				od_fill(c_num - 2, ry, od_cw * 4 + 4, od_lh, od_c_red())
 				od_cells(c_num, ry, num.data, od_c_light())
-			else:
-				od_cells(c_num, ry, num.data, od_c_muted())
+			else: od_cells(c_num, ry, num.data, od_c_muted())
 			string_free(num)
-			if (is_cur):
-				od_cells(c_num + od_cw * 5, ry, c">", od_c_text())
+			if (is_cur): od_cells(c_num + od_cw * 5, ry, c">", od_c_text())
 			od_cells(c_src, ry, src.lines[r], od_c_text())
 			r = r + 1
-	if (src == 0):
-		od_cells(c_num, p.body_y, c"(no source loaded)", od_c_muted())
+	if (src == 0): od_cells(c_num, p.body_y, c"(no source loaded)", od_c_muted())
 	od_pane_end()
-	if ((clicked >= 0) && od_dbl):
-		od_toggle_breakpoint()
+	if ((clicked >= 0) && od_dbl): od_toggle_breakpoint()
 
 
 void od_draw_files(int x, int y, int w, int h):
@@ -1527,21 +1406,18 @@ void od_draw_files(int x, int y, int w, int h):
 	int r = p.scroll
 	while (r < od_files.length):
 		int ry = od_row_y(p, r)
-		if (ry < 0):
-			r = od_files.length
+		if (ry < 0): r = od_files.length
 		else:
 			char* f = od_files[r]
 			ui_color c = od_c_text()
 			if ((od_src_file != 0) && (strcmp(f, od_src_file) == 0)):
 				od_fill(p.x + 1, ry, p.w - 2, od_lh, od_c_navy())
 				c = od_c_light()
-			else:
-				od_row_bg(p, r, ry)
+			else: od_row_bg(p, r, ry)
 			od_cells(x + 4, ry, od_path_tail(f), c)
 			r = r + 1
 	od_pane_end()
-	if (clicked >= 0):
-		od_open_source(od_files[clicked], 0)
+	if (clicked >= 0): od_open_source(od_files[clicked], 0)
 
 
 void od_draw_text_list(int idx, int x, int y, int w, int h, char* header, list[char*] lines):
@@ -1550,13 +1426,11 @@ void od_draw_text_list(int idx, int x, int y, int w, int h, char* header, list[c
 	int r = p.scroll
 	while (r < lines.length):
 		int ry = od_row_y(p, r)
-		if (ry < 0):
-			r = lines.length
+		if (ry < 0): r = lines.length
 		else:
 			od_row_bg(p, r, ry)
 			ui_color c = od_c_text()
-			if (starts_with(lines[r], c"wdbg> ")):
-				c = od_c_navy()
+			if (starts_with(lines[r], c"wdbg> ")): c = od_c_navy()
 			od_cells(x + 4, ry, lines[r], c)
 			r = r + 1
 	od_pane_end()
@@ -1575,16 +1449,12 @@ void od_draw_log(int x, int y, int w, int h):
 
 
 void od_select_frame(int row):
-	if (row < 0):
-		return
-	if (row >= od_backtrace.length):
-		return
+	if (row < 0): return
+	if (row >= od_backtrace.length): return
 	char* ln = od_backtrace[row]
-	if (ln[0] != '#'):
-		return
+	if (ln[0] != '#'): return
 	int k = 1
-	while ((ln[k] >= '0') && (ln[k] <= '9')):
-		k = k + 1
+	while ((ln[k] >= '0') && (ln[k] <= '9')): k = k + 1
 	char* n = substring(ln, 1, k)
 	string_builder* cmd = string_from(c"f ")
 	string_append(cmd, n)
@@ -1596,8 +1466,7 @@ void od_select_frame(int row):
 void od_draw_calls(int x, int y, int w, int h):
 	od_draw_text_list(od_p_calls, x, y, w, h, c"Call stack of main thread", od_backtrace)
 	od_pane* p = &od_panes[od_p_calls]
-	if (od_dbl && od_in(x, p.body_y, w, h, od_click_x, od_click_y)):
-		od_select_frame(p.sel)
+	if (od_dbl && od_in(x, p.body_y, w, h, od_click_x, od_click_y)): od_select_frame(p.sel)
 
 
 void od_draw_bps(int x, int y, int w, int h):
@@ -1606,8 +1475,7 @@ void od_draw_bps(int x, int y, int w, int h):
 	int r = p.scroll
 	while (r < od_bps.length):
 		int ry = od_row_y(p, r)
-		if (ry < 0):
-			r = od_bps.length
+		if (ry < 0): r = od_bps.length
 		else:
 			od_bp* b = od_bps[r]
 			od_row_bg(p, r, ry)
@@ -1621,10 +1489,8 @@ void od_draw_bps(int x, int y, int w, int h):
 			od_cells(x + 4 + od_cw * 29, ry, l.data, od_c_text())
 			string_free(l)
 			int hit = index_of(b.text, c"hits:")
-			if (hit > 0):
-				od_cells(x + 4 + od_cw * 37, ry, b.text + hit, od_c_text())
-			else:
-				od_cells(x + 4 + od_cw * 37, ry, c"Active", od_c_text())
+			if (hit > 0): od_cells(x + 4 + od_cw * 37, ry, b.text + hit, od_c_text())
+			else: od_cells(x + 4 + od_cw * 37, ry, c"Active", od_c_text())
 			r = r + 1
 	od_pane_end()
 	if ((clicked >= 0) && od_dbl):
@@ -1636,8 +1502,7 @@ void od_draw_bps(int x, int y, int w, int h):
 
 void od_delete_selected_bp():
 	od_pane* p = &od_panes[od_p_bps]
-	if ((p.sel < 0) || (p.sel >= od_bps.length)):
-		return
+	if ((p.sel < 0) || (p.sel >= od_bps.length)): return
 	string_builder* cmd = string_from(c"d ")
 	string_append_int(cmd, od_bps[p.sel].n)
 	od_run_command(cmd.data)
@@ -1656,16 +1521,14 @@ int od_button(int x, int y, int w, int h, char* label, int down, int enabled):
 	int pressed = down || (od_ctx.input.mouse_down && od_in(x, y, w, h, od_mouse_x, od_mouse_y))
 	od_bevel(x, y, w, h, pressed == 0)
 	ui_color c = od_c_text()
-	if (enabled == 0):
-		c = od_c_shadow()
+	if (enabled == 0): c = od_c_shadow()
 	int tw = od_ptext_width(label, od_font)
 	od_ptext(x + (w - tw) / 2, y + (h - od_lh) / 2 + 1, label, c, od_font)
 	return enabled && od_clicked_in(x, y, w, h)
 
 
 void od_restart():
-	if (od_busy_cmd):
-		return
+	if (od_busy_cmd): return
 	od_log_add(c"[restart]")
 	od_busy_cmd = 1
 	od_status(c"Restarting")
@@ -1675,16 +1538,11 @@ void od_restart():
 # Switch views; the keyboard follows to the view's main pane.
 void od_show_view(int v):
 	od_view = v
-	if (v == 'C'):
-		od_focus = od_p_disas
-	else if (v == 'S'):
-		od_focus = od_p_source
-	else if (v == 'L'):
-		od_focus = od_p_log
-	else if (v == 'K'):
-		od_focus = od_p_calls
-	else if (v == 'B'):
-		od_focus = od_p_bps
+	if (v == 'C'): od_focus = od_p_disas
+	else if (v == 'S'): od_focus = od_p_source
+	else if (v == 'L'): od_focus = od_p_log
+	else if (v == 'K'): od_focus = od_p_calls
+	else if (v == 'B'): od_focus = od_p_bps
 
 
 int od_toolbar(int width):
@@ -1694,31 +1552,24 @@ int od_toolbar(int width):
 	int stopped = (strcmp(od_state, c"stopped") == 0) && (od_busy_cmd == 0)
 	int x = 4
 	int bh = h - 6
-	if (od_button(x, 3, 70, bh, c"Restart", 0, od_busy_cmd == 0)):
-		od_restart()
+	if (od_button(x, 3, 70, bh, c"Restart", 0, od_busy_cmd == 0)): od_restart()
 	x = x + 74
-	if (od_button(x, 3, 62, bh, c"Run F9", 0, stopped)):
-		od_run_command(c"c")
+	if (od_button(x, 3, 62, bh, c"Run F9", 0, stopped)): od_run_command(c"c")
 	x = x + 66
-	if (od_button(x, 3, 80, bh, c"Into F7", 0, stopped)):
-		od_run_command(c"s")
+	if (od_button(x, 3, 80, bh, c"Into F7", 0, stopped)): od_run_command(c"s")
 	x = x + 84
-	if (od_button(x, 3, 80, bh, c"Over F8", 0, stopped)):
-		od_run_command(c"n")
+	if (od_button(x, 3, 80, bh, c"Over F8", 0, stopped)): od_run_command(c"n")
 	x = x + 84
-	if (od_button(x, 3, 96, bh, c"Till return", 0, stopped)):
-		od_run_command(c"fin")
+	if (od_button(x, 3, 96, bh, c"Till return", 0, stopped)): od_run_command(c"fin")
 	x = x + 100
-	if (od_button(x, 3, 62, bh, c"Insn", 0, stopped)):
-		od_run_command(c"si")
+	if (od_button(x, 3, 62, bh, c"Insn", 0, stopped)): od_run_command(c"si")
 	x = x + 74
 	# The view letters, OllyDbg's L E M T W H C / K B R ... S row.
 	char* letters = c"LCKBS"
 	for i in range(5):
 		int ch = letters[i]
 		char* one = substring(letters, i, i + 1)
-		if (od_button(x, 3, bh, bh, one, od_view == ch, 1)):
-			od_show_view(ch)
+		if (od_button(x, 3, bh, bh, one, od_view == ch, 1)): od_show_view(ch)
 		free(one)
 		x = x + bh + 2
 	if (od_program != 0):
@@ -1727,14 +1578,10 @@ int od_toolbar(int width):
 
 
 char* od_view_title():
-	if (od_view == 'S'):
-		return c"S  Source"
-	if (od_view == 'L'):
-		return c"L  Log data"
-	if (od_view == 'K'):
-		return c"K  Call stack of main thread"
-	if (od_view == 'B'):
-		return c"B  Breakpoints"
+	if (od_view == 'S'): return c"S  Source"
+	if (od_view == 'L'): return c"L  Log data"
+	if (od_view == 'K'): return c"K  Call stack of main thread"
+	if (od_view == 'B'): return c"B  Breakpoints"
 	return c"C  CPU - main thread"
 
 
@@ -1766,11 +1613,9 @@ void od_submit_command():
 	if (starts_with(cmd, c"D ")):
 		int found = 0
 		int addr = od_parse_hex_at(cmd, &found)
-		if (found == 0):
-			addr = from_hex(cmd + 2)
+		if (found == 0): addr = from_hex(cmd + 2)
 		od_follow_in_dump(addr)
-	else:
-		od_run_command(cmd)
+	else: od_run_command(cmd)
 	free(cmd)
 
 
@@ -1788,15 +1633,11 @@ void od_command_bar(int y, int width):
 	while (i < od_ctx.char_count):
 		int c = od_ctx.chars[i]
 		if (c == 8):
-			if (od_cmd_len > 0):
-				od_cmd_len = od_cmd_len - 1
+			if (od_cmd_len > 0): od_cmd_len = od_cmd_len - 1
 		else if (c == 13):
-			if (od_view == 'K'):
-				od_select_frame(od_panes[od_p_calls].sel)
-			else:
-				od_submit_command()
-		else if (c == 27):
-			od_cmd_len = 0
+			if (od_view == 'K'): od_select_frame(od_panes[od_p_calls].sel)
+			else: od_submit_command()
+		else if (c == 27): od_cmd_len = 0
 		else if ((c >= 32) && (c < 127) && (od_cmd_len < 250)):
 			od_cmd_buf[od_cmd_len] = c
 			od_cmd_len = od_cmd_len + 1
@@ -1825,8 +1666,7 @@ void od_status_bar(int y, int width):
 	if (strcmp(od_state, c"stopped") == 0):
 		label = c"Paused"
 		fill = od_c_yellow()
-	else if (strcmp(od_state, c"running") == 0):
-		label = c"Running"
+	else if (strcmp(od_state, c"running") == 0): label = c"Running"
 	else if (strcmp(od_state, c"exited") == 0):
 		label = c"Terminated"
 		ink = od_c_red()
@@ -1844,10 +1684,8 @@ void od_move_selection(int delta):
 			od_follow_in_dump(od_dump_addr + delta / 16 * 256)
 			return
 	int s = p.sel + delta
-	if (s < 0):
-		s = 0
-	if (s >= p.rows):
-		s = p.rows - 1
+	if (s < 0): s = 0
+	if (s >= p.rows): s = p.rows - 1
 	p.sel = s
 	od_pane_show_row(p, s, 0)
 
@@ -1860,36 +1698,24 @@ void od_handle_keys():
 		int alt = (od_key_mods[i] & 4) != 0
 		if (alt && ((k == 'L') || (k == 'C') || (k == 'K') || (k == 'B') || (k == 'S'))):
 			od_show_view(k)
-		else if ((k == 113) && ctrl):
-			od_restart()
+		else if ((k == 113) && ctrl): od_restart()
 		else if (k == 113):
-			if (od_view == 'S'):
-				od_toggle_breakpoint()
-			else:
-				od_status(c"F2: breakpoints are set on source lines; open S and select a line")
-		else if (k == 118):
-			od_run_command(c"s")
-		else if (k == 119):
-			od_run_command(c"n")
-		else if ((k == 120) && ctrl):
-			od_run_command(c"fin")
-		else if (k == 120):
-			od_run_command(c"c")
+			if (od_view == 'S'): od_toggle_breakpoint()
+			else: od_status(c"F2: breakpoints are set on source lines; open S and select a line")
+		else if (k == 118): od_run_command(c"s")
+		else if (k == 119): od_run_command(c"n")
+		else if ((k == 120) && ctrl): od_run_command(c"fin")
+		else if (k == 120): od_run_command(c"c")
 		i = i + 1
 	int n = 0
 	while (n < od_ctx.nav_count):
 		int nav = od_ctx.navs[n]
-		if (nav == GFX_NAV_UP):
-			od_move_selection(-1)
-		else if (nav == GFX_NAV_DOWN):
-			od_move_selection(1)
-		else if (nav == GFX_NAV_PAGE_UP):
-			od_move_selection(-16)
-		else if (nav == GFX_NAV_PAGE_DOWN):
-			od_move_selection(16)
+		if (nav == GFX_NAV_UP): od_move_selection(-1)
+		else if (nav == GFX_NAV_DOWN): od_move_selection(1)
+		else if (nav == GFX_NAV_PAGE_UP): od_move_selection(-16)
+		else if (nav == GFX_NAV_PAGE_DOWN): od_move_selection(16)
 		else if (nav == GFX_NAV_DELETE):
-			if (od_view == 'B'):
-				od_delete_selected_bp()
+			if (od_view == 'B'): od_delete_selected_bp()
 		n = n + 1
 
 
@@ -1898,8 +1724,7 @@ void od_handle_keys():
 void od_draw_view(int x, int y, int w, int h):
 	if (od_view == 'C'):
 		int lw = w * 62 / 100
-		if (w - lw < od_cw * 30):
-			lw = w - od_cw * 30
+		if (w - lw < od_cw * 30): lw = w - od_cw * 30
 		int th = h * 60 / 100
 		od_draw_disas(x, y, lw, th)
 		od_draw_regs(x + lw, y, w - lw, th)
@@ -1907,21 +1732,16 @@ void od_draw_view(int x, int y, int w, int h):
 		od_draw_stack(x + lw, y + th, w - lw, h - th)
 	else if (od_view == 'S'):
 		int fw = od_cw * 26
-		if (fw > w / 3):
-			fw = w / 3
+		if (fw > w / 3): fw = w / 3
 		od_draw_files(x, y, fw, h)
 		od_draw_source(x + fw, y, w - fw, h)
-	else if (od_view == 'L'):
-		od_draw_log(x, y, w, h)
-	else if (od_view == 'K'):
-		od_draw_calls(x, y, w, h)
-	else if (od_view == 'B'):
-		od_draw_bps(x, y, w, h)
+	else if (od_view == 'L'): od_draw_log(x, y, w, h)
+	else if (od_view == 'K'): od_draw_calls(x, y, w, h)
+	else if (od_view == 'B'): od_draw_bps(x, y, w, h)
 
 
 int od_frame_fn():
-	if (gfx_window_poll(od_win) == 0):
-		return 0
+	if (gfx_window_poll(od_win) == 0): return 0
 	od_frame = od_frame + 1
 	od_net_step()
 	# While the program runs, ask for its output (and the next stop).
@@ -1946,11 +1766,9 @@ int od_frame_fn():
 
 int main(int argc, int argv):
 	od_win = gfx_window_open(c"wdbg", 1280, 800)
-	if (od_win == 0):
-		return 1
+	if (od_win == 0): return 1
 	od_rndr = new ui_renderer()
-	if (ui_render_init(od_rndr) == 0):
-		return 1
+	if (ui_render_init(od_rndr) == 0): return 1
 	ui_theme_light(&od_theme)
 	od_theme.background = od_c_face()
 	od_ctx = new ui_context()
@@ -1980,8 +1798,7 @@ int main(int argc, int argv):
 	od_cmd_buf[0] = 0
 	od_view = 'C'
 	od_focus = od_p_disas
-	for i in range(9):
-		od_panes[i].sel = -1
+	for i in range(9): od_panes[i].sel = -1
 	od_status(c"Connecting to wdbg_web")
 	od_enqueue(od_req_state, c"GET", c"/api/state", c"", 0)
 	gfx_window_run(od_win, od_frame_fn)

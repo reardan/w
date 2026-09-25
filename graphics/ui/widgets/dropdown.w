@@ -39,8 +39,7 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 		if (ctx.input.mouse_pressed):
 			if (ui_rect_contains(list, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
 				int pick = (ctx.input.press_y - cast(int, list.y)) / ctx.theme.widget_height
-				if (pick >= item_count):
-					pick = item_count - 1
+				if (pick >= item_count): pick = item_count - 1
 				if (selected[0] != pick):
 					selected[0] = pick
 					changed = 1

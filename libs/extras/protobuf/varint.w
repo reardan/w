@@ -103,15 +103,12 @@ int varint_decode_parts(char* data, int length, int* lo_out, int* hi_out):
 	int shift = 0
 	int i = 0
 	while (1):
-		if (i >= 10):
-			return 0
-		if (i >= length):
-			return -1
+		if (i >= 10): return 0
+		if (i >= length): return -1
 		int b = data[i] & 255
 		int payload = b & 127
 		if (shift < 32):
-			if ((shift + 7) <= 32):
-				lo = lo | (payload << shift)
+			if ((shift + 7) <= 32): lo = lo | (payload << shift)
 			else:
 				# This group straddles bit 31 -- split it: the low
 				# part finishes lo, the high part starts hi. Only the
@@ -121,8 +118,7 @@ int varint_decode_parts(char* data, int length, int* lo_out, int* hi_out):
 				int low_mask = (1 << low_bits) - 1
 				lo = lo | ((payload & low_mask) << shift)
 				hi = hi | shr(payload, low_bits)
-		else:
-			hi = hi | (payload << (shift - 32))
+		else: hi = hi | (payload << (shift - 32))
 		i = i + 1
 		if ((b & 128) == 0):
 			lo_out[0] = lo
@@ -175,8 +171,7 @@ int varint_encode_i32(int value, char* out):
 	int mask = varint_mask32()
 	int lo = value & mask
 	int hi = 0
-	if (value < 0):
-		hi = mask
+	if (value < 0): hi = mask
 	return varint_encode_parts(lo, hi, out)
 
 
@@ -208,8 +203,7 @@ int zigzag_encode32(int n):
 	int nn = n & mask
 	int bit31 = shr(nn, 31) & 1
 	int signmask = 0
-	if (bit31 == 1):
-		signmask = mask
+	if (bit31 == 1): signmask = mask
 	return ((nn << 1) & mask) ^ signmask
 
 
@@ -221,8 +215,7 @@ int zigzag_decode32(int n):
 	int nn = n & mask
 	int odd = nn & 1
 	int signmask = 0
-	if (odd == 1):
-		signmask = mask
+	if (odd == 1): signmask = mask
 	int result = (shr(nn, 1) ^ signmask) & mask
 	return sign_extend32(result)
 
@@ -243,8 +236,7 @@ int zigzag_encode64_parts(int lo, int hi, int* out_lo, int* out_hi):
 	int h = hi & mask
 	int sign = shr(h, 31) & 1
 	int signmask = 0
-	if (sign == 1):
-		signmask = mask
+	if (sign == 1): signmask = mask
 	int new_lo = (l << 1) & mask
 	int carry = shr(l, 31) & 1
 	int new_hi = ((h << 1) | carry) & mask
@@ -263,8 +255,7 @@ int zigzag_decode64_parts(int rlo, int rhi, int* out_lo, int* out_hi):
 	int mask = varint_mask32()
 	int odd = rlo & 1
 	int signmask = 0
-	if (odd == 1):
-		signmask = mask
+	if (odd == 1): signmask = mask
 	int shifted_lo = (shr(rlo, 1) | ((rhi & 1) << 31)) & mask
 	int shifted_hi = shr(rhi, 1) & mask
 	out_lo[0] = shifted_lo ^ signmask

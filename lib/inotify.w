@@ -181,19 +181,15 @@ int inotify_event_record_size(char* buf, int offset):
 # buf_end. Returns -1 when no whole record starts at offset (offset at
 # or past buf_end, or a truncated/malformed record).
 int inotify_event_parse(char* buf, int buf_end, int offset, inotify_event* out):
-	if (offset < 0 || offset + INOTIFY_EVENT_HEADER_SIZE > buf_end):
-		return -1
+	if (offset < 0 || offset + INOTIFY_EVENT_HEADER_SIZE > buf_end): return -1
 	int name_field_length = load_int32(&buf[offset + 12])
-	if (name_field_length < 0):
-		return -1
+	if (name_field_length < 0): return -1
 	int next = offset + INOTIFY_EVENT_HEADER_SIZE + name_field_length
-	if (next > buf_end):
-		return -1
+	if (next > buf_end): return -1
 	out.wd = load_int32(&buf[offset])
 	out.mask = load_int32(&buf[offset + 4])
 	out.cookie = load_int32(&buf[offset + 8])
-	if (name_field_length == 0):
-		out.name = c""
+	if (name_field_length == 0): out.name = c""
 	else:
 		# NUL-padded to name_field_length; strlen finds the real end.
 		out.name = &buf[offset + INOTIFY_EVENT_HEADER_SIZE]

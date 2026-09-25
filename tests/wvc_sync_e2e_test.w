@@ -100,18 +100,15 @@ int wst_wait_for_port(int port, int attempts, int delay_ms):
 		if (fd >= 0):
 			int rc = socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), port)
 			close(fd)
-			if (rc == 0):
-				ok = 1
-		if (ok == 0):
-			process_sleep_ms(delay_ms)
+			if (rc == 0): ok = 1
+		if (ok == 0): process_sleep_ms(delay_ms)
 		i = i + 1
 	return ok
 
 
 int wst_base_port_cache
 int wst_base_port():
-	if (wst_base_port_cache == 0):
-		wst_base_port_cache = 21000 + (getpid() % 30000)
+	if (wst_base_port_cache == 0): wst_base_port_cache = 21000 + (getpid() % 30000)
 	return wst_base_port_cache
 
 
@@ -150,8 +147,7 @@ char* wst_object_url(int port, char* id):
 
 char* wst_zero_id():
 	char* id = malloc(65)
-	for i in range(64):
-		id[i] = '0'
+	for i in range(64): id[i] = '0'
 	id[64] = 0
 	return id
 

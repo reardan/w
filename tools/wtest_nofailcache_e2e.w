@@ -75,8 +75,7 @@ int main():
 	# 2) A second run without bin/wv2 retries (and warns) instead of
 	# silently reusing a cached failure.
 	char* err = wtest_err(av(c"changed", c"lib/file.w"), 0)
-	if (contains(err, WARNING) == 0):
-		fail(c"second run did not retry / warn")
+	if (contains(err, WARNING) == 0): fail(c"second run did not retry / warn")
 
 	# 3) bin/wv2 back: the VERY NEXT run must recover the derived seed
 	# graph (the old 'X' entry semantics kept the rule pinned to the
@@ -99,14 +98,12 @@ int main():
 	# 4) Warm rerun keeps the derived selection (cache hit, no
 	# recompute).
 	char* out = wtest_out(av(c"changed", c"lib/file.w"), 0)
-	if (has_line(out, c"verify") == 0):
-		fail(c"warm rerun lost verify")
+	if (has_line(out, c"verify") == 0): fail(c"warm rerun lost verify")
 
 	# 5) A stale 'X' failure entry written by an older bin/wtest build is
 	# ignored on load (never pins the rule), whatever its recorded hash.
 	sc_write(c"bin/.wtest_deps_cache", c"X x86 w.w\nH 0123456789abcdef\n")
 	out = wtest_out(av(c"changed", c"lib/file.w"), 0)
-	if (has_line(out, c"verify") == 0):
-		fail(c"a stale legacy 'X' entry pinned the seed rule")
+	if (has_line(out, c"verify") == 0): fail(c"a stale legacy 'X' entry pinned the seed rule")
 
 	return sc_ok()

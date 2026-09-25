@@ -184,8 +184,7 @@ const int TLS_AEAD_TAG_LEN = 16
 # ---- little byte helpers ------------------------------------------------------
 
 void tls_wipe(char* p, int len):
-	if (p == 0):
-		return
+	if (p == 0): return
 	mem_fill(p, 0, len)
 
 
@@ -266,16 +265,13 @@ tls_config* tls_config_new():
 
 
 void tls_config_free(tls_config* c):
-	if (c == 0):
-		return
-	if (c.alpn != 0):
-		free(c.alpn)
+	if (c == 0): return
+	if (c.alpn != 0): free(c.alpn)
 	free(cast(char*, c))
 
 
 char* tls_last_error(tls_config* c):
-	if (c == 0):
-		return 0
+	if (c == 0): return 0
 	return c.last_error
 
 
@@ -287,11 +283,9 @@ char* tls_last_error(tls_config* c):
 # name, or a name longer than 255 bytes.
 char* tls_alpn_encode(char* protos, int* out_len):
 	*out_len = 0
-	if (protos == 0):
-		return 0
+	if (protos == 0): return 0
 	int n = strlen(protos)
-	if (n == 0):
-		return 0
+	if (n == 0): return 0
 	string_builder* b = string_new_sized(n + 1)
 	int start = 0
 	int i = 0
@@ -322,11 +316,9 @@ int tls_alpn_list_contains(char* names, int list_len, char* name, int nlen):
 			int i = 0
 			int same = 1
 			while (i < l):
-				if (names[pos + 1 + i] != name[i]):
-					same = 0
+				if (names[pos + 1 + i] != name[i]): same = 0
 				i = i + 1
-			if (same != 0):
-				return 1
+			if (same != 0): return 1
 		pos = pos + 1 + l
 	return 0
 
@@ -334,15 +326,12 @@ int tls_alpn_list_contains(char* names, int list_len, char* name, int nlen):
 # 1 if list_len bytes at names form a non-empty sequence of non-empty
 # length-prefixed names that ends exactly at list_len.
 int tls_alpn_list_valid(char* names, int list_len):
-	if (list_len <= 0):
-		return 0
+	if (list_len <= 0): return 0
 	int pos = 0
 	while (pos < list_len):
 		int l = names[pos] & 255
-		if (l == 0):
-			return 0
-		if (pos + 1 + l > list_len):
-			return 0
+		if (l == 0): return 0
+		if (pos + 1 + l > list_len): return 0
 		pos = pos + 1 + l
 	return 1
 
@@ -351,18 +340,14 @@ int tls_alpn_list_valid(char* names, int list_len):
 # ("h2,http/1.1"); 0 or "" clears the offer. Returns 1 on success, 0 for a
 # malformed list (the previous setting is then cleared too).
 int tls_config_set_alpn(tls_config* c, char* protos):
-	if (c.alpn != 0):
-		free(c.alpn)
+	if (c.alpn != 0): free(c.alpn)
 	c.alpn = 0
 	c.alpn_len = 0
-	if (protos == 0):
-		return 1
-	if (strlen(protos) == 0):
-		return 1
+	if (protos == 0): return 1
+	if (strlen(protos) == 0): return 1
 	int n = 0
 	char* enc = tls_alpn_encode(protos, &n)
-	if (enc == 0):
-		return 0
+	if (enc == 0): return 0
 	c.alpn = enc
 	c.alpn_len = n
 	return 1
@@ -410,10 +395,8 @@ tls_server_config* tls_server_config_new():
 
 
 void tls_server_config_free(tls_server_config* c):
-	if (c == 0):
-		return
-	if (c.alpn != 0):
-		free(c.alpn)
+	if (c == 0): return
+	if (c.alpn != 0): free(c.alpn)
 	free(cast(char*, c))
 
 
@@ -425,19 +408,15 @@ void tls_server_config_free(tls_server_config* c):
 # clears the setting (ALPN is ignored entirely). Returns 1 on success, 0 for a
 # malformed list (the setting is cleared).
 int tls_server_config_set_alpn(tls_server_config* c, char* protos, int required):
-	if (c.alpn != 0):
-		free(c.alpn)
+	if (c.alpn != 0): free(c.alpn)
 	c.alpn = 0
 	c.alpn_len = 0
 	c.alpn_required = 0
-	if (protos == 0):
-		return 1
-	if (strlen(protos) == 0):
-		return 1
+	if (protos == 0): return 1
+	if (strlen(protos) == 0): return 1
 	int n = 0
 	char* enc = tls_alpn_encode(protos, &n)
-	if (enc == 0):
-		return 0
+	if (enc == 0): return 0
 	c.alpn = enc
 	c.alpn_len = n
 	c.alpn_required = required
@@ -445,8 +424,7 @@ int tls_server_config_set_alpn(tls_server_config* c, char* protos, int required)
 
 
 char* tls_server_last_error(tls_server_config* c):
-	if (c == 0):
-		return 0
+	if (c == 0): return 0
 	return c.last_error
 
 
@@ -554,8 +532,7 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 
 # Wipe every key/secret buffer and release the connection. Safe on 0.
 void tls_conn_free(tls_conn* c):
-	if (c == 0):
-		return
+	if (c == 0): return
 	tls_wipe(c.r_key, TLS_AEAD_KEY_LEN)
 	tls_wipe(c.r_iv, TLS_AEAD_IV_LEN)
 	tls_wipe(c.w_key, TLS_AEAD_KEY_LEN)
@@ -572,70 +549,56 @@ void tls_conn_free(tls_conn* c):
 	free(c.s_hs_secret)
 	free(c.c_ap_secret)
 	free(c.s_ap_secret)
-	if (c.transcript != 0):
-		whash_free(c.transcript)
-	if (c.hs_buf != 0):
-		string_free(c.hs_buf)
-	if (c.mem_in != 0):
-		string_free(c.mem_in)
-	if (c.mem_out != 0):
-		string_free(c.mem_out)
+	if (c.transcript != 0): whash_free(c.transcript)
+	if (c.hs_buf != 0): string_free(c.hs_buf)
+	if (c.mem_in != 0): string_free(c.mem_in)
+	if (c.mem_out != 0): string_free(c.mem_out)
 	if (c.app_buf != 0):
 		tls_wipe(c.app_buf, c.app_len)
 		free(c.app_buf)
-	if (c.alpn != 0):
-		free(c.alpn)
+	if (c.alpn != 0): free(c.alpn)
 	free(cast(char*, c))
 
 
 # The ALPN protocol negotiated on this connection ("h2"), or 0 when none was
 # (ALPN not configured, or the peer did not select one). Owned by c.
 char* tls_alpn_selected(tls_conn* c):
-	if (c == 0):
-		return 0
+	if (c == 0): return 0
 	return c.alpn
 
 
 # Store a copy of the n-byte protocol name as c.alpn.
 void tls_set_alpn_selected(tls_conn* c, char* name, int n):
-	if (c.alpn != 0):
-		free(c.alpn)
+	if (c.alpn != 0): free(c.alpn)
 	c.alpn = mem_dup(name, n)
 
 
 void tls_fail(tls_conn* c, char* msg):
 	c.broken = 1
-	if (c.cfg != 0):
-		c.cfg.last_error = msg
-	if (c.scfg != 0):
-		c.scfg.last_error = msg
+	if (c.cfg != 0): c.cfg.last_error = msg
+	if (c.scfg != 0): c.scfg.last_error = msg
 
 
 # ---- raw I/O ------------------------------------------------------------------
 
 # Read exactly n bytes into buf. Returns 1 on success, 0 on EOF/error.
 int tls_io_recv_full(tls_conn* c, char* buf, int n):
-	if (n <= 0):
-		return 1
+	if (n <= 0): return 1
 	if (c.use_mem != 0):
-		if (c.mem_in_pos + n > c.mem_in.length):
-			return 0
+		if (c.mem_in_pos + n > c.mem_in.length): return 0
 		mem_copy(buf, c.mem_in.data + c.mem_in_pos, n)
 		c.mem_in_pos = c.mem_in_pos + n
 		return 1
 	int got = 0
 	while (got < n):
 		int r = socket_recv(c.fd, buf + got, n - got, 0)
-		if (r > 0):
-			got = got + r
-		else if (r == 0):
-			return 0
+		if (r > 0): got = got + r
+		else if (r == 0): return 0
 		else if (r == 0 - net_eagain()):
 			# Non-blocking fd inside a task: park until readable. Outside a
 			# task io_wait fails at once, so a blocking fd's SO_RCVTIMEO
 			# expiry still ends the read.
-			if (io_wait(c.fd, poll_in, c.io_timeout_ms) < 0):
-				return 0
+			if (io_wait(c.fd, poll_in, c.io_timeout_ms) < 0): return 0
 		else if (r != 0 - 4):
 			# any error other than EINTR
 			return 0
@@ -644,19 +607,16 @@ int tls_io_recv_full(tls_conn* c, char* buf, int n):
 
 # Write all n bytes. Returns 1 on success, 0 on error.
 int tls_io_send_all(tls_conn* c, char* buf, int n):
-	if (n <= 0):
-		return 1
+	if (n <= 0): return 1
 	if (c.use_mem != 0):
 		string_append_bytes(c.mem_out, buf, n)
 		return 1
 	int sent = 0
 	while (sent < n):
 		int r = socket_send(c.fd, buf + sent, n - sent, msg_nosignal())
-		if (r > 0):
-			sent = sent + r
+		if (r > 0): sent = sent + r
 		else if (r == 0 - net_eagain()):
-			if (io_wait(c.fd, poll_out, c.io_timeout_ms) < 0):
-				return 0
+			if (io_wait(c.fd, poll_out, c.io_timeout_ms) < 0): return 0
 		else if (r != 0 - 4):
 			# error other than EINTR
 			return 0
@@ -670,8 +630,7 @@ void tls_seq_inc(int* hi, int* lo):
 	if (*lo == 0x7fffffff):
 		*lo = 0
 		*hi = *hi + 1
-	else:
-		*lo = *lo + 1
+	else: *lo = *lo + 1
 
 
 # Send one record. When encrypted==0 the payload is written as a
@@ -680,8 +639,7 @@ void tls_seq_inc(int* hi, int* lo):
 # whose outer type is application_data. Returns 1 on success.
 int tls_send_record(tls_conn* c, int ct, char* payload, int len, int encrypted):
 	if (encrypted == 0):
-		if (len > TLS_MAX_PLAINTEXT):
-			return 0
+		if (len > TLS_MAX_PLAINTEXT): return 0
 		char* phdr = malloc(5)
 		phdr[0] = ct & 255
 		phdr[1] = 3
@@ -689,15 +647,13 @@ int tls_send_record(tls_conn* c, int ct, char* payload, int len, int encrypted):
 		store_be16(phdr + 3, len)
 		int pok = tls_io_send_all(c, phdr, 5)
 		free(phdr)
-		if (pok == 0):
-			return 0
+		if (pok == 0): return 0
 		return tls_io_send_all(c, payload, len)
 
 	# TLSCiphertext: inner = payload || content_type, then AEAD-sealed.
 	int inner_len = len + 1
 	int rec_len = inner_len + TLS_AEAD_TAG_LEN
-	if (rec_len > TLS_MAX_CIPHERTEXT):
-		return 0
+	if (rec_len > TLS_MAX_CIPHERTEXT): return 0
 	char* hdr = malloc(5)
 	hdr[0] = TLS_CT_APPLICATION_DATA
 	hdr[1] = 3
@@ -717,10 +673,8 @@ int tls_send_record(tls_conn* c, int ct, char* payload, int len, int encrypted):
 	tls_seq_inc(&c.w_seq_hi, &c.w_seq_lo)
 
 	int ok = tls_io_send_all(c, hdr, 5)
-	if (ok != 0):
-		ok = tls_io_send_all(c, ctbuf, inner_len)
-	if (ok != 0):
-		ok = tls_io_send_all(c, tag, TLS_AEAD_TAG_LEN)
+	if (ok != 0): ok = tls_io_send_all(c, ctbuf, inner_len)
+	if (ok != 0): ok = tls_io_send_all(c, tag, TLS_AEAD_TAG_LEN)
 
 	tls_wipe(inner, inner_len)
 	tls_wipe(nonce, TLS_AEAD_IV_LEN)
@@ -802,8 +756,7 @@ int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 			tls_seq_inc(&c.r_seq_hi, &c.r_seq_lo)
 			# Strip zero padding and the content-type trailer.
 			int p = ct_len - 1
-			while ((p >= 0) && (plain[p] == 0)):
-				p = p - 1
+			while ((p >= 0) && (plain[p] == 0)): p = p - 1
 			if (p < 0):
 				tls_wipe(plain, ct_len)
 				free(plain)
@@ -891,8 +844,7 @@ int tls_next_hs_msg(tls_conn* c, int* out_type, char** out_msg, int* out_len):
 		int rtype = 0
 		char* data = 0
 		int dlen = 0
-		if (tls_recv_record(c, &rtype, &data, &dlen) == 0):
-			return 0
+		if (tls_recv_record(c, &rtype, &data, &dlen) == 0): return 0
 		if (rtype == TLS_CT_HANDSHAKE):
 			string_append_bytes(c.hs_buf, data, dlen)
 			free(data)
@@ -1020,66 +972,50 @@ int tls_is_hrr(char* random):
 # X25519 server key_share into out_pub (32 bytes). Returns 1 on success.
 int tls_parse_server_hello(tls_conn* c, char* msg, int len, char* out_pub):
 	int pos = 4
-	if (pos + 2 + 32 + 1 > len):
-		return 0
+	if (pos + 2 + 32 + 1 > len): return 0
 	pos = pos + 2                        # legacy_version
 	char* srandom = msg + pos
 	pos = pos + 32                       # random
 	int sid_len = msg[pos] & 255
 	pos = pos + 1
-	if (pos + sid_len + 3 > len):
-		return 0
+	if (pos + sid_len + 3 > len): return 0
 	pos = pos + sid_len                  # legacy_session_id_echo
 	int suite = load_be16(msg + pos)
 	pos = pos + 2
 	if (suite != TLS_SUITE_CHACHA20_POLY1305_SHA256):
 		int allow = 0
-		if (c.cfg != 0):
-			allow = c.cfg.test_accept_any_cipher
-		if (allow == 0):
-			return 0
+		if (c.cfg != 0): allow = c.cfg.test_accept_any_cipher
+		if (allow == 0): return 0
 	pos = pos + 1                        # legacy_compression_method
-	if (tls_is_hrr(srandom) != 0):
-		return 0
-	if (pos + 2 > len):
-		return 0
+	if (tls_is_hrr(srandom) != 0): return 0
+	if (pos + 2 > len): return 0
 	int ext_total = load_be16(msg + pos)
 	pos = pos + 2
 	int ext_end = pos + ext_total
-	if (ext_end > len):
-		return 0
+	if (ext_end > len): return 0
 	int have_key_share = 0
 	int have_version = 0
 	while (pos + 4 <= ext_end):
 		int etype = load_be16(msg + pos)
 		int elen = load_be16(msg + pos + 2)
 		pos = pos + 4
-		if (pos + elen > ext_end):
-			return 0
+		if (pos + elen > ext_end): return 0
 		if (etype == TLS_EXT_SUPPORTED_VERSIONS):
-			if (elen != 2):
-				return 0
-			if (load_be16(msg + pos) != 0x0304):
-				return 0
+			if (elen != 2): return 0
+			if (load_be16(msg + pos) != 0x0304): return 0
 			have_version = 1
 		else if (etype == TLS_EXT_KEY_SHARE):
-			if (elen < 4):
-				return 0
+			if (elen < 4): return 0
 			int group = load_be16(msg + pos)
 			int klen = load_be16(msg + pos + 2)
-			if (group != TLS_GROUP_X25519):
-				return 0
-			if (klen != 32):
-				return 0
-			if (4 + 32 > elen):
-				return 0
+			if (group != TLS_GROUP_X25519): return 0
+			if (klen != 32): return 0
+			if (4 + 32 > elen): return 0
 			mem_copy(out_pub, msg + pos + 4, 32)
 			have_key_share = 1
 		pos = pos + elen
-	if (have_version == 0):
-		return 0
-	if (have_key_share == 0):
-		return 0
+	if (have_version == 0): return 0
+	if (have_key_share == 0): return 0
 	return 1
 
 
@@ -1093,8 +1029,7 @@ char* tls_certverify_content(char* transcript_hash, int th_len, int* out_len):
 	int total = 64 + clen + 1 + th_len
 	char* out = malloc(total)
 	mem_fill(out, 0x20, 64)
-	for i in range(clen):
-		out[64 + i] = ctx[i]
+	for i in range(clen): out[64 + i] = ctx[i]
 	out[64 + clen] = 0
 	mem_copy(out + 64 + clen + 1, transcript_hash, th_len)
 	*out_len = total
@@ -1110,18 +1045,13 @@ int tls_verify_certverify(x509_cert* leaf, int sig_scheme, char* sig, int siglen
 
 	# Hash the signed content with the scheme's hash.
 	int use_sha384 = 0
-	if (sig_scheme == TLS_SIG_RSA_PSS_RSAE_SHA384):
-		use_sha384 = 1
-	if (sig_scheme == TLS_SIG_RSA_PKCS1_SHA384):
-		use_sha384 = 1
+	if (sig_scheme == TLS_SIG_RSA_PSS_RSAE_SHA384): use_sha384 = 1
+	if (sig_scheme == TLS_SIG_RSA_PKCS1_SHA384): use_sha384 = 1
 	int hlen = 32
-	if (use_sha384 != 0):
-		hlen = 48
+	if (use_sha384 != 0): hlen = 48
 	char* digest = malloc(hlen)
-	if (use_sha384 != 0):
-		whash_oneshot(WHASH_SHA384, content, clen, digest)
-	else:
-		whash_oneshot(WHASH_SHA256, content, clen, digest)
+	if (use_sha384 != 0): whash_oneshot(WHASH_SHA384, content, clen, digest)
+	else: whash_oneshot(WHASH_SHA256, content, clen, digest)
 	free(content)
 
 	int ok = 0
@@ -1225,8 +1155,7 @@ list[x509_cert*] tls_parse_certificate(char* msg, int len):
 		if (pos + clen > list_end):
 			return certs
 		x509_cert* cert = x509_parse(msg + pos, clen)
-		if (cert != 0):
-			certs.push(cert)
+		if (cert != 0): certs.push(cert)
 		pos = pos + clen
 		if (pos + 2 > list_end):
 			return certs
@@ -1259,11 +1188,9 @@ int tls_check_chain(tls_conn* c, list[x509_cert*] certs, char* server_name):
 		if (c.cfg.has_now_unix != 0):
 			now_unix = c.cfg.now_unix
 			have_now = 1
-	if (have_now == 0):
-		now_unix = tls_now_unix()
+	if (have_now == 0): now_unix = tls_now_unix()
 	char* store_path = 0
-	if (c.cfg != 0):
-		store_path = c.cfg.trust_store_path
+	if (c.cfg != 0): store_path = c.cfg.trust_store_path
 	x509_trust_store* store = x509_load_trust_store(store_path)
 	if (store == 0):
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_INTERNAL_ERROR)
@@ -1361,19 +1288,16 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 	int mlen = 0
 
 	# EncryptedExtensions
-	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0):
-		return 0
+	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0): return 0
 	if (htype != TLS_HS_ENCRYPTED_EXTENSIONS):
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_UNEXPECTED_MESSAGE)
 		tls_fail(c, c"tls: expected EncryptedExtensions")
 		return 0
-	if (tls_client_parse_ee(c, msg, mlen) == 0):
-		return 0
+	if (tls_client_parse_ee(c, msg, mlen) == 0): return 0
 	whash_update(c.transcript, msg, mlen)
 
 	# Certificate
-	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0):
-		return 0
+	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0): return 0
 	if (htype != TLS_HS_CERTIFICATE):
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_UNEXPECTED_MESSAGE)
 		tls_fail(c, c"tls: expected Certificate")
@@ -1430,8 +1354,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 
 	# Certificate chain + hostname, unless explicitly skipped.
 	int skip = 0
-	if (c.cfg != 0):
-		skip = c.cfg.insecure_skip_verify
+	if (c.cfg != 0): skip = c.cfg.insecure_skip_verify
 	if (skip == 0):
 		if (tls_check_chain(c, certs, server_name) == 0):
 			free(th_cv)
@@ -1552,8 +1475,7 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 
 	whash_update(c.transcript, ch, ch_len)
 	int sent = tls_send_record(c, TLS_CT_HANDSHAKE, ch, ch_len, 0)
-	if (ch_owned != 0):
-		free(ch)
+	if (ch_owned != 0): free(ch)
 	if (sent == 0):
 		tls_wipe(priv, 32)
 		free(priv)
@@ -1714,13 +1636,11 @@ void tls_update_secret(int alg, char* secret, int ds):
 # client our write secret is c_ap and read is s_ap; for a server it is the
 # mirror image (is_server flips them).
 void tls_post_handshake(tls_conn* c, char* data, int dlen):
-	if (dlen < 4):
-		return
+	if (dlen < 4): return
 	int mt = data[0] & 255
 	if (mt == TLS_HS_KEY_UPDATE):
 		int req = 0
-		if (dlen >= 5):
-			req = data[4] & 255
+		if (dlen >= 5): req = data[4] & 255
 		char* read_secret = c.s_ap_secret
 		char* write_secret = c.c_ap_secret
 		if (c.is_server != 0):
@@ -1744,16 +1664,13 @@ void tls_post_handshake(tls_conn* c, char* data, int dlen):
 # Read up to len application-data bytes. Returns the number read (>0), 0 at
 # clean EOF (close_notify), or -1 on error.
 int tls_read(tls_conn* c, char* buf, int len):
-	if (c.broken != 0):
-		return 0 - 1
-	if (len <= 0):
-		return 0
+	if (c.broken != 0): return 0 - 1
+	if (len <= 0): return 0
 	# Drain any buffered plaintext first.
 	if (c.app_pos < c.app_len):
 		int avail = c.app_len - c.app_pos
 		int n = len
-		if (n > avail):
-			n = avail
+		if (n > avail): n = avail
 		mem_copy(buf, c.app_buf + c.app_pos, n)
 		c.app_pos = c.app_pos + n
 		if (c.app_pos >= c.app_len):
@@ -1763,16 +1680,14 @@ int tls_read(tls_conn* c, char* buf, int len):
 			c.app_len = 0
 			c.app_pos = 0
 		return n
-	if (c.at_eof != 0):
-		return 0
+	if (c.at_eof != 0): return 0
 
 	while (1 == 1):
 		int rtype = 0
 		char* data = 0
 		int dlen = 0
 		if (tls_recv_record(c, &rtype, &data, &dlen) == 0):
-			if (c.at_eof != 0):
-				return 0
+			if (c.at_eof != 0): return 0
 			return 0 - 1
 		if (rtype == TLS_CT_APPLICATION_DATA):
 			if (dlen == 0):
@@ -1783,8 +1698,7 @@ int tls_read(tls_conn* c, char* buf, int len):
 				c.app_len = dlen
 				c.app_pos = 0
 				int n = len
-				if (n > dlen):
-					n = dlen
+				if (n > dlen): n = dlen
 				mem_copy(buf, c.app_buf, n)
 				c.app_pos = n
 				if (c.app_pos >= c.app_len):
@@ -1797,29 +1711,24 @@ int tls_read(tls_conn* c, char* buf, int len):
 		else if (rtype == TLS_CT_ALERT):
 			int cn = tls_handle_alert(c, data, dlen)
 			free(data)
-			if (cn != 0):
-				return 0
+			if (cn != 0): return 0
 			return 0 - 1
 		else if (rtype == TLS_CT_HANDSHAKE):
 			tls_post_handshake(c, data, dlen)
 			free(data)
-		else:
-			free(data)
+		else: free(data)
 	return 0 - 1
 
 
 # Write len bytes as one or more application_data records. Returns len on
 # success, -1 on error. Fragments to the plaintext cap.
 int tls_write(tls_conn* c, char* buf, int len):
-	if (c.broken != 0):
-		return 0 - 1
-	if (len <= 0):
-		return 0
+	if (c.broken != 0): return 0 - 1
+	if (len <= 0): return 0
 	int sent = 0
 	while (sent < len):
 		int chunk = len - sent
-		if (chunk > TLS_MAX_PLAINTEXT):
-			chunk = TLS_MAX_PLAINTEXT
+		if (chunk > TLS_MAX_PLAINTEXT): chunk = TLS_MAX_PLAINTEXT
 		if (tls_send_record(c, TLS_CT_APPLICATION_DATA, buf + sent, chunk, 1) == 0):
 			tls_fail(c, c"tls: write failed")
 			return 0 - 1
@@ -1829,10 +1738,8 @@ int tls_write(tls_conn* c, char* buf, int len):
 
 # Send close_notify (best effort) and free the connection, wiping all keys.
 void tls_close(tls_conn* c):
-	if (c == 0):
-		return
-	if (c.broken == 0):
-		tls_send_alert(c, TLS_ALERT_WARNING, TLS_ALERT_CLOSE_NOTIFY)
+	if (c == 0): return
+	if (c.broken == 0): tls_send_alert(c, TLS_ALERT_WARNING, TLS_ALERT_CLOSE_NOTIFY)
 	tls_conn_free(c)
 
 
@@ -1867,60 +1774,46 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 	*out_sid_len = 0
 	int pos = 4
 	# legacy_version(2) + random(32) + session_id length(1)
-	if (pos + 2 + 32 + 1 > len):
-		return 0
+	if (pos + 2 + 32 + 1 > len): return 0
 	pos = pos + 2
 	mem_copy(out_random, msg + pos, 32)
 	pos = pos + 32
 	int sid_len = msg[pos] & 255
 	pos = pos + 1
-	if (sid_len > 32):
-		return 0
-	if (pos + sid_len > len):
-		return 0
-	if (sid_len > 0):
-		mem_copy(out_sid, msg + pos, sid_len)
+	if (sid_len > 32): return 0
+	if (pos + sid_len > len): return 0
+	if (sid_len > 0): mem_copy(out_sid, msg + pos, sid_len)
 	*out_sid_len = sid_len
 	pos = pos + sid_len
 	# cipher_suites
-	if (pos + 2 > len):
-		return 0
+	if (pos + 2 > len): return 0
 	int cs_len = load_be16(msg + pos)
 	pos = pos + 2
-	if (pos + cs_len > len):
-		return 0
-	if ((cs_len & 1) != 0):
-		return 0
+	if (pos + cs_len > len): return 0
+	if ((cs_len & 1) != 0): return 0
 	int cs_end = pos + cs_len
 	while (pos + 2 <= cs_end):
-		if (load_be16(msg + pos) == TLS_SUITE_CHACHA20_POLY1305_SHA256):
-			*have_chacha = 1
+		if (load_be16(msg + pos) == TLS_SUITE_CHACHA20_POLY1305_SHA256): *have_chacha = 1
 		pos = pos + 2
 	pos = cs_end
 	# legacy_compression_methods
-	if (pos + 1 > len):
-		return 0
+	if (pos + 1 > len): return 0
 	int comp_len = msg[pos] & 255
 	pos = pos + 1
-	if (pos + comp_len > len):
-		return 0
+	if (pos + comp_len > len): return 0
 	pos = pos + comp_len
 	# extensions (a TLS 1.3 ClientHello always carries them, but tolerate none)
-	if (pos == len):
-		return 1
-	if (pos + 2 > len):
-		return 0
+	if (pos == len): return 1
+	if (pos + 2 > len): return 0
 	int ext_total = load_be16(msg + pos)
 	pos = pos + 2
 	int ext_end = pos + ext_total
-	if (ext_end > len):
-		return 0
+	if (ext_end > len): return 0
 	while (pos + 4 <= ext_end):
 		int etype = load_be16(msg + pos)
 		int elen = load_be16(msg + pos + 2)
 		pos = pos + 4
-		if (pos + elen > ext_end):
-			return 0
+		if (pos + elen > ext_end): return 0
 		if (etype == TLS_EXT_SUPPORTED_VERSIONS):
 			if (elen >= 1):
 				int vl = msg[pos] & 255
@@ -1928,8 +1821,7 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 					int vp = pos + 1
 					int ve = pos + 1 + vl
 					while (vp + 2 <= ve):
-						if (load_be16(msg + vp) == 0x0304):
-							*have_tls13 = 1
+						if (load_be16(msg + vp) == 0x0304): *have_tls13 = 1
 						vp = vp + 2
 		else if (etype == TLS_EXT_KEY_SHARE):
 			if (elen >= 2):
@@ -1941,8 +1833,7 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 						int grp = load_be16(msg + kp)
 						int kxl = load_be16(msg + kp + 2)
 						kp = kp + 4
-						if (kp + kxl > ke):
-							return 0
+						if (kp + kxl > ke): return 0
 						if (grp == TLS_GROUP_X25519):
 							if (kxl == 32):
 								if (*have_x25519 == 0):
@@ -1956,8 +1847,7 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 					int sp = pos + 2
 					int se = pos + 2 + sl
 					while (sp + 2 <= se):
-						if (load_be16(msg + sp) == TLS_SIG_ECDSA_SECP256R1_SHA256):
-							*have_ecdsa = 1
+						if (load_be16(msg + sp) == TLS_SIG_ECDSA_SECP256R1_SHA256): *have_ecdsa = 1
 						sp = sp + 2
 		pos = pos + elen
 	return 1
@@ -1977,8 +1867,7 @@ char* tls_build_server_hello(char* random, char* sid, int sid_len, char* server_
 	string_append_be16(b, 0x0303)                   # legacy_version
 	string_append_bytes(b, random, 32)             # random
 	string_append_char(b, sid_len)                   # legacy_session_id_echo length
-	if (sid_len > 0):
-		string_append_bytes(b, sid, sid_len)
+	if (sid_len > 0): string_append_bytes(b, sid, sid_len)
 	string_append_be16(b, TLS_SUITE_CHACHA20_POLY1305_SHA256)
 	string_append_char(b, 0)                         # legacy_compression_method = null
 	int extpos = b.length
@@ -2023,8 +1912,7 @@ char* tls_build_encrypted_extensions(int* out_len):
 # section 3.1: a ProtocolNameList with exactly one name), or the empty form
 # when proto is 0.
 char* tls_build_encrypted_extensions_alpn(char* proto, int* out_len):
-	if (proto == 0):
-		return tls_build_encrypted_extensions(out_len)
+	if (proto == 0): return tls_build_encrypted_extensions(out_len)
 	int n = strlen(proto)
 	string_builder* b = string_new_sized(16 + n)
 	string_append_char(b, TLS_HS_ENCRYPTED_EXTENSIONS)
@@ -2147,11 +2035,9 @@ list[pem_block*] tls_server_cert_blocks(tls_server_config* scfg):
 		if (owned != 0):
 			pem = owned
 			plen = strlen(owned)
-	if (pem == 0):
-		return new list[pem_block*]
+	if (pem == 0): return new list[pem_block*]
 	list[pem_block*] blocks = pem_decode_blocks(pem, plen, c"CERTIFICATE")
-	if (owned != 0):
-		free(owned)
+	if (owned != 0): free(owned)
 	return blocks
 
 
@@ -2170,8 +2056,7 @@ int tls_server_load_key(tls_server_config* scfg, char* out_d32):
 		if (owned != 0):
 			pem = owned
 			plen = strlen(owned)
-	if (pem == 0):
-		return 0
+	if (pem == 0): return 0
 	int ok = x509_load_ec_private_key(pem, plen, out_d32)
 	if (owned != 0):
 		tls_wipe(owned, plen)
@@ -2190,40 +2075,32 @@ int tls_server_load_key(tls_server_config* scfg, char* out_d32):
 # to continue the handshake, 0 after failing the connection.
 int tls_server_select_alpn(tls_conn* c, char* msg, int len):
 	tls_server_config* scfg = c.scfg
-	if (scfg == 0):
-		return 1
-	if (scfg.alpn == 0):
-		return 1
+	if (scfg == 0): return 1
+	if (scfg.alpn == 0): return 1
 	# Skip legacy_version, random, session_id, cipher_suites, compression.
 	int pos = 4 + 2 + 32
-	if (pos + 1 > len):
-		return 1
+	if (pos + 1 > len): return 1
 	pos = pos + 1 + (msg[pos] & 255)
-	if (pos + 2 > len):
-		return 1
+	if (pos + 2 > len): return 1
 	pos = pos + 2 + load_be16(msg + pos)
-	if (pos + 1 > len):
-		return 1
+	if (pos + 1 > len): return 1
 	pos = pos + 1 + (msg[pos] & 255)
 	char* offered = 0
 	int offered_len = 0
 	if (pos + 2 <= len):
 		int ext_end = pos + 2 + load_be16(msg + pos)
 		pos = pos + 2
-		if (ext_end > len):
-			ext_end = len
+		if (ext_end > len): ext_end = len
 		int scanning = 1
 		while ((scanning != 0) && (pos + 4 <= ext_end)):
 			int etype = load_be16(msg + pos)
 			int elen = load_be16(msg + pos + 2)
 			pos = pos + 4
-			if (pos + elen > ext_end):
-				scanning = 0
+			if (pos + elen > ext_end): scanning = 0
 			else:
 				if (etype == TLS_EXT_ALPN):
 					int ll = 0
-					if (elen >= 2):
-						ll = load_be16(msg + pos)
+					if (elen >= 2): ll = load_be16(msg + pos)
 					if ((elen < 2) || (ll != elen - 2) || (tls_alpn_list_valid(msg + pos + 2, ll) == 0)):
 						tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_DECODE_ERROR)
 						tls_fail(c, c"tls: malformed ALPN extension")
@@ -2258,8 +2135,7 @@ int tls_server_read_client_hello(tls_conn* c, char* out_sid, int* out_sid_len, c
 	int htype = 0
 	char* msg = 0
 	int mlen = 0
-	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0):
-		return 0
+	if (tls_next_hs_msg(c, &htype, &msg, &mlen) == 0): return 0
 	if (htype != TLS_HS_CLIENT_HELLO):
 		tls_send_alert(c, TLS_ALERT_FATAL, TLS_ALERT_UNEXPECTED_MESSAGE)
 		tls_fail(c, c"tls: expected ClientHello")
@@ -2537,8 +2413,7 @@ int tls_server_do_handshake(tls_conn* c):
 # tls_conn* on success (the same tls_read/tls_write/tls_close then apply), or 0
 # on failure with the reason in tls_server_last_error(cfg).
 tls_conn* tls_accept(int sockfd, tls_server_config* cfg):
-	if (cfg == 0):
-		return 0
+	if (cfg == 0): return 0
 	tls_conn* c = tls_conn_new(sockfd, 0, 0)
 	c.is_server = 1
 	c.scfg = cfg
@@ -2551,8 +2426,7 @@ tls_conn* tls_accept(int sockfd, tls_server_config* cfg):
 # In-memory server handshake harness (tests): client bytes preloaded, server
 # output captured. Not part of the public API.
 tls_conn* tls_accept_mem(char* client_flight, int flen, tls_server_config* cfg):
-	if (cfg == 0):
-		return 0
+	if (cfg == 0): return 0
 	tls_conn* c = tls_conn_new(0 - 1, 1, 0)
 	c.is_server = 1
 	c.scfg = cfg

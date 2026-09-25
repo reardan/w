@@ -37,8 +37,7 @@ void test_file_read_lines():
 	assert_strings_equal(c"", lines[1])
 	assert_strings_equal(c"three", lines[2])
 	assert_strings_equal(c"trailing", lines[3])
-	for char* line in lines:
-		free(line)
+	for char* line in lines: free(line)
 
 
 void test_file_read_lines_missing_file():

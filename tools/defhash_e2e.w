@@ -56,8 +56,7 @@ char* records(list[char*] lines, char* name):
 	char* key = name_key(name)
 	char* found = c""
 	for char* line in lines:
-		if (index_of(line, key) >= 0):
-			found = strjoin(strjoin(found, line), c"\n")
+		if (index_of(line, key) >= 0): found = strjoin(strjoin(found, line), c"\n")
 	return found
 
 
@@ -82,24 +81,19 @@ char* hashes(list[char*] lines, char* name):
 # name's records in lines include one containing needle
 # (grep "$key" file | grep -qF needle).
 void expect_ref(list[char*] lines, char* name, char* needle):
-	if (index_of(records(lines, name), needle) < 0):
-		fail(strjoin(name, c" record lacks"), needle)
+	if (index_of(records(lines, name), needle) < 0): fail(strjoin(name, c" record lacks"), needle)
 
 
 void expect_same_hash(list[char*] a, list[char*] b, char* name, char* what):
 	char* ha = hashes(a, name)
-	if (ha[0] == 0):
-		fail(strjoin(name, c": no hash in base output"), what)
-	else if (strcmp(ha, hashes(b, name)) != 0):
-		fail(strjoin(name, c": hash changed"), what)
+	if (ha[0] == 0): fail(strjoin(name, c": no hash in base output"), what)
+	else if (strcmp(ha, hashes(b, name)) != 0): fail(strjoin(name, c": hash changed"), what)
 
 
 void expect_new_hash(list[char*] a, list[char*] b, char* name, char* what):
 	char* ha = hashes(a, name)
-	if (ha[0] == 0):
-		fail(strjoin(name, c": no hash in base output"), what)
-	else if (strcmp(ha, hashes(b, name)) == 0):
-		fail(strjoin(name, c": hash did not change"), what)
+	if (ha[0] == 0): fail(strjoin(name, c": no hash in base output"), what)
+	else if (strcmp(ha, hashes(b, name)) == 0): fail(strjoin(name, c": hash did not change"), what)
 
 
 int has_name(list[char*] lines, char* name):
@@ -113,8 +107,7 @@ char* normalize_file(char* line):
 	if (at < 0):
 		return line
 	int end = at + 9
-	while ((line[end] != 0) && (line[end] != '"')):
-		end = end + 1
+	while ((line[end] != 0) && (line[end] != '"')): end = end + 1
 	if (line[end] == 0):
 		return line
 	return strjoin(strjoin(substring(line, 0, at), c"\"file\": \"F\""), substring(line, end + 1, strlen(line)))
@@ -127,8 +120,7 @@ void expect_same_records(list[char*] a, list[char*] b, char* what):
 		return
 	int i = 0
 	while (i < a.length):
-		if (strcmp(normalize_file(a[i]), normalize_file(b[i])) != 0):
-			fail(what, b[i])
+		if (strcmp(normalize_file(a[i]), normalize_file(b[i])) != 0): fail(what, b[i])
 		i = i + 1
 
 
@@ -138,8 +130,7 @@ int main():
 	list[char*] edited = load(c"bin/defhash_fixture_edited.ndjson")
 	list[char*] closure = load(c"bin/defhash_fixture_closure.ndjson")
 
-	if (base.length != 7):
-		fail(c"bin/defhash_fixture.ndjson", c"expected exactly 7 records")
+	if (base.length != 7): fail(c"bin/defhash_fixture.ndjson", c"expected exactly 7 records")
 	expect_ref(base, c"defhash_fixture_helper", c"\"refs\": [\"defhash_fixture_add\", \"defhash_fixture_counter\"]")
 	expect_ref(base, c"main", c"\"refs\": [\"defhash_fixture_helper\"]")
 	expect_ref(base, c"defhash_fixture_add", c"\"refs\": []")
@@ -156,8 +147,7 @@ int main():
 	unchanged.push(c"defhash_fixture_helper")
 	unchanged.push(c"defhash_fixture_color")
 	unchanged.push(c"main")
-	for char* name in unchanged:
-		expect_same_hash(base, edited, name, c"edited fixture")
+	for char* name in unchanged: expect_same_hash(base, edited, name, c"edited fixture")
 
 	if (closure.length <= 7):
 		fail(c"bin/defhash_fixture_closure.ndjson", c"expected more than 7 records")
@@ -186,7 +176,6 @@ int main():
 	if (has_name(generic, c"defhash_generic_fixture_maxval")):
 		fail(c"generic fixture", c"has defhash_generic_fixture_maxval")
 
-	if (FAILED):
-		return 1
+	if (FAILED): return 1
 	out(c"defhash e2e OK\n")
 	return 0

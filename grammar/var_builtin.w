@@ -45,15 +45,11 @@ void var_emit_call1(int i):
 
 void var_box_unsupported(int t):
 	# The float "value" pseudo-types would leak their internal names
-	if (t == float32_value_type):
-		t = float32_type
-	if (t == float64_value_type):
-		t = float64_type
+	if (t == float32_value_type): t = float32_type
+	if (t == float64_value_type): t = float64_type
 	diag_part(c"cannot convert '")
-	if (t == 4):
-		diag_part(c"function")
-	else:
-		print_error_type(t)
+	if (t == 4): diag_part(c"function")
+	else: print_error_type(t)
 	error(c"' to var")
 
 
@@ -66,12 +62,9 @@ void var_unbox_unsupported(int t):
 # -1 when the type cannot be boxed.
 int var_box_helper_for_type(int got):
 	int vc = value_class(got)
-	if (value_class_is_int_like(vc)):
-		return 0
-	if (vc == VC_CSTR):
-		return 1
-	if (vc == VC_STRING):
-		return 2
+	if (value_class_is_int_like(vc)): return 0
+	if (vc == VC_CSTR): return 1
+	if (vc == VC_STRING): return 2
 	return -1
 
 
@@ -81,12 +74,10 @@ int var_box_helper_for_type(int got):
 void var_coerce(int want, int got):
 	if (type_is_var(want) & type_is_var(got)):
 		return; /* pointer copy: aliasing */
-	if ((want == 3) || (want == 4)):
-		return;
+	if ((want == 3) || (want == 4)): return;
 	if (type_is_var(want)):
 		int helper = var_box_helper_for_type(got)
-		if (helper < 0):
-			var_box_unsupported(got)
+		if (helper < 0): var_box_unsupported(got)
 		var_emit_call1(helper)
 		return;
 	# got is var: unbox into want
@@ -98,8 +89,7 @@ void var_coerce(int want, int got):
 		return;
 	if (type_is_void_pointer(want)):
 		return; /* escape hatch: expose the raw box pointer */
-	if (var_box_helper_for_type(want) != 0):
-		var_unbox_unsupported(want)
+	if (var_box_helper_for_type(want) != 0): var_unbox_unsupported(want)
 	var_emit_call1(3)
 	if (want == type_unqualified(bool_type)):
 		alu_test_set(0x95) /* setne: normalize the unboxed word */
@@ -113,8 +103,7 @@ void var_emit_to_cstr():
 # 1 when a binary operator needs runtime var dispatch (either promoted
 # operand is var).
 int var_binary_operands(int left_type, int right_type):
-	if (type_is_var(type_unqualified(left_type))):
-		return 1
+	if (type_is_var(type_unqualified(left_type))): return 1
 	return type_is_var(type_unqualified(right_type))
 
 
@@ -127,15 +116,13 @@ void var_binary_call(int left_type, int right_type, int i):
 	mov_eax_ebx()
 	if (type_is_var(type_unqualified(left_type)) == 0):
 		int left_helper = var_box_helper_for_type(left_type)
-		if (left_helper < 0):
-			var_box_unsupported(left_type)
+		if (left_helper < 0): var_box_unsupported(left_type)
 		var_emit_call1(left_helper)
 	int left_slot = push_slot()
 	load_slot(right_value_slot)
 	if (type_is_var(type_unqualified(right_type)) == 0):
 		int right_helper = var_box_helper_for_type(right_type)
-		if (right_helper < 0):
-			var_box_unsupported(right_type)
+		if (right_helper < 0): var_box_unsupported(right_type)
 		var_emit_call1(right_helper)
 	int right_slot = push_slot()
 	var_emit_helper_address(i)
@@ -151,15 +138,11 @@ void var_binary_call(int left_type, int right_type, int i):
 # operand and call the matching __w_var_* helper. Returns the result
 # type ("var value") or 0 when neither operand is var.
 int var_binary_arithmetic(int left_type, int right_type, int op):
-	if (var_binary_operands(left_type, right_type) == 0):
-		return 0
+	if (var_binary_operands(left_type, right_type) == 0): return 0
 	int i = 6
-	if (op == '-'):
-		i = 7
-	if (op == '*'):
-		i = 8
-	if (op == '/'):
-		i = 9
+	if (op == '-'): i = 7
+	if (op == '*'): i = 8
+	if (op == '/'): i = 9
 	var_binary_call(left_type, right_type, i)
 	return type_value(var_type)
 
@@ -168,8 +151,7 @@ int var_binary_arithmetic(int left_type, int right_type, int op):
 # compare for text tags); negate inverts for '!='. Returns bool value
 # type or 0 when neither operand is var.
 int var_binary_compare_eq(int left_type, int right_type, int negate):
-	if (var_binary_operands(left_type, right_type) == 0):
-		return 0
+	if (var_binary_operands(left_type, right_type) == 0): return 0
 	var_binary_call(left_type, right_type, 10)
 	if (negate):
 		alu_test_set(0x94) /* sete: invert the 0/1 result */
@@ -180,8 +162,7 @@ int var_binary_compare_eq(int left_type, int right_type, int negate):
 # traps otherwise); compare that against 0 with the operator's setcc.
 # Returns bool value type or 0 when neither operand is var.
 int var_binary_compare_order(int left_type, int right_type, int setcc_opcode):
-	if (var_binary_operands(left_type, right_type) == 0):
-		return 0
+	if (var_binary_operands(left_type, right_type) == 0): return 0
 	var_binary_call(left_type, right_type, 11)
 	push_slot()
 	pop_ebx_slot()

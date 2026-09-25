@@ -6,10 +6,8 @@ that wants to unwind several frames at once.
 	import lib.setjmp
 
 	jmp_buf env
-	if (setjmp(&env) == 0):
-		work()            # somewhere below: longjmp(&env, 2)
-	else:
-		recover()
+	if (setjmp(&env) == 0): work()            # somewhere below: longjmp(&env, 2)
+	else: recover()
 
 setjmp and longjmp are not defined here: they are the compiler's own
 runtime stubs (repl_setjmp/repl_longjmp in code_generator/*_asm.w,

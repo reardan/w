@@ -146,8 +146,7 @@ void check_case_fail(check_case* c, char* message, char* detail, list[char*] sel
 	stream_write_line(err, detail)
 	if (selected != 0):
 		stream_write_line(err, c"  selection was:")
-		if (selected.length == 0):
-			stream_write_line(err, c"    (empty)")
+		if (selected.length == 0): stream_write_line(err, c"    (empty)")
 		for char* name in selected:
 			stream_write_cstr(err, c"    ")
 			stream_write_line(err, name)
@@ -191,10 +190,8 @@ list[char*] check_split_words(char* text):
 			if (word.length > 0):
 				out.push(strclone(word.data))
 				string_clear(word)
-			if (ch == 0):
-				at_end = 1
-		else:
-			string_append_char(word, ch)
+			if (ch == 0): at_end = 1
+		else: string_append_char(word, ch)
 		i = i + 1
 	string_free(word)
 	return out
@@ -202,11 +199,9 @@ list[char*] check_split_words(char* text):
 
 void check_parse_line(char* content, int line_number):
 	list[char*] words = check_split_words(content)
-	if (words.length == 0):
-		return
+	if (words.length == 0): return
 	char* head = words[0]
-	if (head[0] == '#'):
-		return
+	if (head[0] == '#'): return
 	if (strcmp(head, c"case") == 0):
 		if (words.length < 2):
 			check_parse_error(line_number, c"'case' needs at least one path", c"")
@@ -222,8 +217,7 @@ void check_parse_line(char* content, int line_number):
 		int i = 1
 		while (i < words.length):
 			c.paths.push(words[i])
-			if (i > 1):
-				string_append_char(label, ' ')
+			if (i > 1): string_append_char(label, ' ')
 			string_append(label, words[i])
 			i = i + 1
 		c.label = label.data
@@ -271,8 +265,7 @@ void check_known_target(int line, char* name):
 # case opted out with 'noorder' (header comment), whose whole point is
 # asserting fixture-only names build.json does not have.
 void check_validate():
-	if (check_cases.length == 0):
-		check_error(c"no cases in ", check_expectations_path)
+	if (check_cases.length == 0): check_error(c"no cases in ", check_expectations_path)
 	for check_case* c in check_cases:
 		if (c.want_empty):
 			if ((c.expects.length > 0) || (c.forbids.length > 0)):
@@ -280,10 +273,8 @@ void check_validate():
 		else if ((c.expects.length == 0) && (c.forbids.length == 0)):
 			check_parse_error(c.line, c"case has no assertions", c"")
 		if (c.want_noorder == 0):
-			for char* name in c.expects:
-				check_known_target(c.line, name)
-			for char* forbidden in c.forbids:
-				check_known_target(c.line, forbidden)
+			for char* name in c.expects: check_known_target(c.line, name)
+			for char* forbidden in c.forbids: check_known_target(c.line, forbidden)
 
 
 int check_parse_expectations():
@@ -299,14 +290,12 @@ int check_parse_expectations():
 	int at_end = 0
 	while (at_end == 0):
 		int ch = text[i]
-		if (ch == 0):
-			at_end = 1
+		if (ch == 0): at_end = 1
 		if ((ch == 10) || (ch == 0)):
 			line_number = line_number + 1
 			check_parse_line(line.data, line_number)
 			string_clear(line)
-		else:
-			string_append_char(line, ch)
+		else: string_append_char(line, ch)
 		i = i + 1
 	string_free(line)
 	free(text)
@@ -323,14 +312,12 @@ list[char*] check_split_lines(char* text):
 	int at_end = 0
 	while (at_end == 0):
 		int ch = text[i]
-		if (ch == 0):
-			at_end = 1
+		if (ch == 0): at_end = 1
 		if ((ch == 10) || (ch == 0)):
 			if (line.length > 0):
 				out.push(strclone(line.data))
 				string_clear(line)
-		else:
-			string_append_char(line, ch)
+		else: string_append_char(line, ch)
 		i = i + 1
 	string_free(line)
 	return out
@@ -338,8 +325,7 @@ list[char*] check_split_lines(char* text):
 
 int check_selected_contains(list[char*] selected, char* name):
 	for char* candidate in selected:
-		if (strcmp(candidate, name) == 0):
-			return 1
+		if (strcmp(candidate, name) == 0): return 1
 	return 0
 
 
@@ -352,8 +338,7 @@ int check_selected_contains(list[char*] selected, char* name):
 char* check_case_fixture(check_case* c):
 	int i = 0
 	while (i + 1 < c.paths.length):
-		if (strcmp(c.paths[i], c"-f") == 0):
-			return c.paths[i + 1]
+		if (strcmp(c.paths[i], c"-f") == 0): return c.paths[i + 1]
 		i = i + 1
 	return 0
 
@@ -450,12 +435,9 @@ int main(int argc, int argv):
 		return 1
 	char** arg = argv + __word_size__
 	check_expectations_path = *arg
-	if (check_load_manifest()):
-		return 1
-	if (check_parse_expectations()):
-		return 1
-	for check_case* c in check_cases:
-		check_run_case(c)
+	if (check_load_manifest()): return 1
+	if (check_parse_expectations()): return 1
+	for check_case* c in check_cases: check_run_case(c)
 	if (check_failures > 0):
 		wstream* err = stderr_writer()
 		stream_write_cstr(err, c"wtest_map_check: ")
