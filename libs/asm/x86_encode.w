@@ -394,6 +394,9 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 	if (strcmp(m, c"ret") == 0):
 		asm_buffer_byte(b, 0xc3)
 		return b.length - start
+	if (strcmp(m, c"leave") == 0):
+		asm_buffer_byte(b, 0xc9)
+		return b.length - start
 	if (strcmp(m, c"nop") == 0):
 		asm_buffer_byte(b, 0x90)
 		return b.length - start

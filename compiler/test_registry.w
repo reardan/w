@@ -46,6 +46,8 @@ void test_registry_finish():
 		return;
 	be_function_define_declare(c"__w_test_main")
 	be_function_prologue()
+	int frame_words = be_frame_words()
+	stack_pos = stack_pos + frame_words
 	int t = 0
 	while (t <= table_pos - 1):
 		char* name = table + t
@@ -54,5 +56,6 @@ void test_registry_finish():
 			if (test_registry_is_test(t)):
 				test_registry_emit_call(name)
 		t = next_token(t)
-	ret()
+	be_return_bare()
 	be_function_epilogue()
+	stack_pos = stack_pos - frame_words

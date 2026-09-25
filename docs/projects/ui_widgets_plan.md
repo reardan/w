@@ -862,3 +862,25 @@ ids; every preset has an error color.
 
 **Landed** as planned. Wiring a form into a demo is left to the Email
 round, which will want a form to validate in anyway.
+
+## Stages 18-21 — round 4: the rest of #441
+
+Implements `ui_widgets.md` §11, one commit per widget so each is
+reviewable alone:
+
+18. **Chips** (`chips.w`, `chips_test.w`), plus the Tabs slow-click
+    close fix it exposed (`tabs_test.w` gains the regression test).
+19. **Email** (`email.w`), then **Dropdown multi-select**
+    (`dropdown_multi.w`) and **Dropdown search** (`dropdown_search.w`).
+    `ui_textbox_state` gains `edited`.
+20. **`lib/time.w` civil-date math**, then **Calendar** (`calendar.w`).
+21. **Date Picker** and **Date Range Picker** (`date_picker.w`), then
+    **Time Range Picker** (`time_picker.w`).
+
+Each new module is imported by the `graphics/ui/widgets.w` umbrella,
+listed in `package.wmeta`, and compiled for `arm64_darwin` by
+`graphics_darwin`; each test is a generated x64 target.
+
+**Landed** as planned; deviations are recorded in §11 of the design
+doc. Gates: `./wbuild tests`, every `graphics_ui_*` target, and
+`time_test` / `time_64_test`.

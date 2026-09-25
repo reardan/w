@@ -51,12 +51,54 @@
 #   void ws_conn_free(ws_conn* c)  /  void ws_message_free(ws_message* m)
 #
 #   int ws_frame_encode(string_builder* out, int fin, int opcode, char* payload, int len, char* mask_key)
+#   int ws_frame_encode_rsv(string_builder* out, int fin, int rsv, int opcode, char* payload, int len, char* mask_key)
 #   int ws_frame_decode(char* buf, int len, ws_frame* f, int max_payload)
+#   int ws_parse_header_rsv(char* h, int hlen, ws_frame* f, int max_payload, int rsv_allowed)
 #   int ws_op_*()  /  int ws_close_*()  /  int ws_error_*()
 #
+# permessage-deflate (RFC 7692), opt-in and off by default:
+#   int   ws_use_deflate(ws_deflate_fn* deflater, ws_inflate_fn* inflater)   1 = accepted
+#   ws_deflate_config* ws_deflate_config_new()  preferences / policy (free)
+#   ws_conn* ws_open_deflate(http_req* req, ws_deflate_config* cfg)
+#   ws_conn* ws_accept_deflate(RequestContext* rc, char* subprotocol, ws_deflate_config* cfg)
+#   ws_conn* ws_server_accept_deflate(ConnectionContext* cc, ServerRequest* req, char* subprotocol, ws_deflate_config* cfg)
+#   int   ws_set_compression(ws_conn* c, ws_deflate_config* cfg)    for ws_conn_wrap conns
+#   int   ws_compression_active(ws_conn* c)
+#   char* ws_pmd_offer(cfg) / ws_pmd_negotiate(offers, cfg, agreed) / int ws_pmd_accept_response(value, cfg, agreed)
+#
+# Compression codec. Like SHA-1, DEFLATE is not reached by import: no
+# libs/standard module imports libs/extras (docs/projects/http2_grpc.md
+# keeps that layering), and a WebSocket program that never compresses
+# should not link a compressor. The application opts in once with
+#
+#	ws_use_deflate(deflate_window, inflate_window)
+#
+# (libs/extras/compress/deflate.w + inflate.w; websocket_test.w and
+# websocket_sha1_test.w are worked examples). ws_use_deflate checks the
+# pair against RFC 7692 section 7.2.3's known answers first. Without it
+# a client asking for compression fails with ws_error_no_deflate and a
+# server declines every offer.
+#
 # Behavior notes:
-# - Frames: FIN + the six RFC opcodes; RSV bits (no extension is ever
-#   negotiated) and reserved opcodes fail the connection with 1002.
+# - Frames: FIN + the six RFC opcodes; RSV bits and reserved opcodes fail
+#   the connection with 1002 -- except RSV1 once permessage-deflate is
+#   negotiated, and then only on the first frame of a data message (on a
+#   control or continuation frame it is still 1002).
+# - permessage-deflate: negotiation follows RFC 7692 section 7.1 (the
+#   client offers server/client_no_context_takeover and
+#   server/client_max_window_bits from its config and fails the
+#   handshake on a response that is malformed, has unknown or duplicate
+#   parameters, or does not honor the offer; the server accepts the first
+#   valid offer and declines -- but still upgrades -- otherwise). While
+#   on, ws_send_text/ws_send_binary compress every message (RSV1, sync
+#   flush with the trailing 00 00 ff ff removed) within the agreed LZ77
+#   window, keeping the window across messages unless no context
+#   takeover applies; ws_send_frame still sends plain frames. Received
+#   RSV1 messages are inflated with 00 00 ff ff appended against the
+#   peer's window (back-references past the agreed window size fail),
+#   capped by ws_set_max_message (1009 when exceeded, never buffered
+#   beyond it); data that does not inflate fails with 1007
+#   (ws_error_compression).
 #   Payload lengths use the 7-bit, 16-bit and 64-bit encodings; the
 #   64-bit form is accepted only when it fits in 31 bits (so it means
 #   the same thing on the 32-bit x86 target as on 64-bit ones) and within
@@ -162,6 +204,64 @@ struct ws_conn:
 	int http_status
 	int pings_received
 	int pongs_received
+	int pmd
+	int pmd_level
+	int pmd_tx_bits
+	int pmd_rx_bits
+	int pmd_tx_no_takeover
+	int pmd_rx_no_takeover
+	string_builder* pmd_tx_window
+	string_builder* pmd_rx_window
+	int frag_compressed
+
+
+# Caller preferences for permessage-deflate (RFC 7692), from
+# ws_deflate_config_new. On a client they are the offer: *_no_context_
+# takeover ask for / announce no context takeover, server_max_window_bits
+# (0 = omitted, else 8..15) limits the server's LZ77 window,
+# client_max_window_bits (0 = sent without a value) announces our own
+# limit. On a server they are policy: server_no_context_takeover and
+# server_max_window_bits restrict what we compress with,
+# client_no_context_takeover and client_max_window_bits (0 = no request)
+# are asked of the client when its offer allows. level is the
+# compression effort passed to the codec (0 stored, 1 fast, 2 best).
+struct ws_deflate_config:
+	int server_no_context_takeover
+	int client_no_context_takeover
+	int server_max_window_bits
+	int client_max_window_bits
+	int level
+
+
+# One permessage-deflate parameter set: a parsed offer/response element
+# (valid = 0 when it has an unknown, duplicate, or ill-valued parameter;
+# *_max_window_bits 0 = absent, -1 = client_max_window_bits without a
+# value, else 8..15), or the agreed configuration after negotiation
+# (window bits always 8..15 there).
+struct ws_pmd_params:
+	int valid
+	int server_no_context_takeover
+	int client_no_context_takeover
+	int server_max_window_bits
+	int client_max_window_bits
+
+
+# The registered permessage-deflate codec (ws_use_deflate). deflate
+# compresses one message given the previous plaintext as its window:
+# fn(data, len, window, window_len, window_bits, level, out_len) -> the
+# malloc'd raw DEFLATE bytes ending in a sync flush (00 00 ff ff).
+# inflate decodes one message given the previous output as its window:
+# fn(data, len, window, window_len, max_output, out_len, out_error) ->
+# the malloc'd, NUL-terminated output, or 0 with out_error set
+# (ws_inflate_too_large() when max_output was exceeded). The shapes are
+# those of libs/extras/compress deflate_window / inflate_window.
+type ws_deflate_fn = fn(char*, int, char*, int, int, int, int*) -> char*
+type ws_inflate_fn = fn(char*, int, char*, int, int, int*, int*) -> char*
+
+
+struct ws_codec:
+	ws_deflate_fn* deflate
+	ws_inflate_fn* inflate
 
 
 /* Opcodes (RFC 6455 section 5.2) */
@@ -304,6 +404,16 @@ int ws_error_eof():
 	return 14
 
 
+# A compressed message did not inflate (close 1007).
+int ws_error_compression():
+	return 15
+
+
+# Compression was requested but ws_use_deflate was never called.
+int ws_error_no_deflate():
+	return 16
+
+
 char* ws_error_string(int code):
 	if (code == ws_error_none()):
 		return c""
@@ -335,6 +445,10 @@ char* ws_error_string(int code):
 		return c"message too big"
 	if (code == ws_error_eof()):
 		return c"connection closed without close frame"
+	if (code == ws_error_compression()):
+		return c"invalid compressed message"
+	if (code == ws_error_no_deflate()):
+		return c"permessage-deflate not configured (ws_use_deflate)"
 	return c"unknown error"
 
 
@@ -457,11 +571,13 @@ void ws_mask_bytes(char* data, int len, char* key):
 
 
 # Parses a complete header of hlen bytes (ws_header_length). Returns 0,
-# or the close status the violation calls for: 1002 for RSV bits,
-# reserved opcodes, fragmented or oversized control frames, a set 64-bit
-# MSB, or a non-minimal length; 1009 when a data frame's payload exceeds
+# or the close status the violation calls for: 1002 for RSV bits outside
+# rsv_allowed (4 = RSV1, legal once permessage-deflate is negotiated, and
+# then only on the first frame of a data message), reserved opcodes,
+# fragmented or oversized control frames, a set 64-bit MSB, or a
+# non-minimal length; 1009 when a data frame's payload exceeds
 # max_payload or does not fit in 31 bits.
-int ws_parse_header(char* h, int hlen, ws_frame* f, int max_payload):
+int ws_parse_header_rsv(char* h, int hlen, ws_frame* f, int max_payload, int rsv_allowed):
 	int b0 = h[0] & 255
 	int b1 = h[1] & 255
 	f.fin = (b0 >> 7) & 1
@@ -472,9 +588,11 @@ int ws_parse_header(char* h, int hlen, ws_frame* f, int max_payload):
 	f.mask_offset = (-1)
 	f.payload_len = 0
 	f.payload = 0
-	if (f.rsv != 0):
+	if ((f.rsv | rsv_allowed) != rsv_allowed):
 		return ws_close_protocol_error()
 	if (ws_opcode_known(f.opcode) == 0):
+		return ws_close_protocol_error()
+	if (((f.rsv & 4) != 0) && ((ws_is_control(f.opcode) != 0) || (f.opcode == ws_op_continuation()))):
 		return ws_close_protocol_error()
 	int len7 = b1 & 127
 	int control = ws_is_control(f.opcode)
@@ -512,6 +630,12 @@ int ws_parse_header(char* h, int hlen, ws_frame* f, int max_payload):
 	return 0
 
 
+# ws_parse_header_rsv with no extension negotiated (every RSV bit is a
+# protocol error).
+int ws_parse_header(char* h, int hlen, ws_frame* f, int max_payload):
+	return ws_parse_header_rsv(h, hlen, f, max_payload, 0)
+
+
 # Decodes one frame from buf[0..len). Returns the bytes consumed (> 0),
 # 0 when more input is needed, or the negated close status for a
 # protocol violation (see ws_parse_header). A masked payload is unmasked
@@ -536,12 +660,16 @@ int ws_frame_decode(char* buf, int len, ws_frame* f, int max_payload):
 # Appends one encoded frame to out. mask_key is 4 bytes (a client frame)
 # or 0 (a server frame). Always uses the minimal length encoding.
 # Returns 1, or 0 for a negative or unencodable length or opcode.
-int ws_frame_encode(string_builder* out, int fin, int opcode, char* payload, int len, char* mask_key):
+# rsv sets the RSV bits (0..7; 4 = RSV1, the permessage-deflate
+# "compressed" flag) in the first header byte.
+int ws_frame_encode_rsv(string_builder* out, int fin, int rsv, int opcode, char* payload, int len, char* mask_key):
 	if ((len < 0) || (len > ws_max_encodable())):
 		return 0
 	if ((opcode < 0) || (opcode > 15)):
 		return 0
-	int b0 = opcode
+	if ((rsv < 0) || (rsv > 7)):
+		return 0
+	int b0 = opcode | (rsv << 4)
 	if (fin != 0):
 		b0 = b0 | 128
 	int mask_bit = 0
@@ -572,6 +700,11 @@ int ws_frame_encode(string_builder* out, int fin, int opcode, char* payload, int
 	if (mask_key != 0):
 		ws_mask_bytes(out.data + start, len, mask_key)
 	return 1
+
+
+# ws_frame_encode_rsv with no RSV bits (no extension in use).
+int ws_frame_encode(string_builder* out, int fin, int opcode, char* payload, int len, char* mask_key):
+	return ws_frame_encode_rsv(out, fin, 0, opcode, payload, len, mask_key)
 
 
 # Whether a received close frame may carry this status (RFC 6455
@@ -610,6 +743,15 @@ ws_conn* ws_conn_new():
 	c.http_status = 0
 	c.pings_received = 0
 	c.pongs_received = 0
+	c.pmd = 0
+	c.pmd_level = 1
+	c.pmd_tx_bits = 15
+	c.pmd_rx_bits = 15
+	c.pmd_tx_no_takeover = 0
+	c.pmd_rx_no_takeover = 0
+	c.pmd_tx_window = string_new()
+	c.pmd_rx_window = string_new()
+	c.frag_compressed = 0
 	return c
 
 
@@ -640,6 +782,8 @@ void ws_conn_free(ws_conn* c):
 	if (c.tls_cfg != 0):
 		tls_config_free(c.tls_cfg)
 	string_free(c.frag)
+	string_free(c.pmd_tx_window)
+	string_free(c.pmd_rx_window)
 	free(c.hdr)
 	if (c.peer_close_reason != 0):
 		free(c.peer_close_reason)
@@ -673,6 +817,507 @@ void ws_set_max_message(ws_conn* c, int max_bytes):
 		c.max_message = max_bytes
 
 
+/* permessage-deflate (RFC 7692): codec opt-in */
+
+ws_codec* ws_pmd_codec
+
+
+# inflate out_error value meaning "max_output exceeded" (the value of
+# libs/extras/compress/inflate.w's INFLATE_ERR_TOO_LARGE; ws_use_deflate
+# checks that the registered inflater reports it).
+int ws_inflate_too_large():
+	return 6
+
+
+# Largest LZ77 window (2^15 bytes) and the RFC 7692 range of window bits.
+int ws_pmd_max_bits():
+	return 15
+
+
+int ws_pmd_min_bits():
+	return 8
+
+
+# Whether bytes[0..len) equal expected[0..expected_len).
+int ws_bytes_equal(char* bytes, int len, char* expected, int expected_len):
+	if (len != expected_len):
+		return 0
+	int i = 0
+	while (i < len):
+		if ((bytes[i] & 255) != (expected[i] & 255)):
+			return 0
+		i = i + 1
+	return 1
+
+
+# Runs the codec's inflate over data (+ window) and checks the output.
+int ws_codec_probe_inflate(ws_codec* k, char* data, int len, char* window, int window_len, char* expected, int expected_len):
+	int out_len = 0
+	int err = 0
+	char* out = k.inflate(data, len, window, window_len, 0, &out_len, &err)
+	if (out == 0):
+		return 0
+	int ok = ws_bytes_equal(out, out_len, expected, expected_len)
+	if (out[out_len] != 0):
+		ok = 0
+	free(out)
+	return ok
+
+
+# Compresses data (with window) and checks that the result ends in a sync
+# flush and inflates back to data with the same window.
+int ws_codec_probe_round_trip(ws_codec* k, char* data, int len, char* window, int window_len, int bits):
+	int z_len = 0
+	char* z = k.deflate(data, len, window, window_len, bits, 1, &z_len)
+	if (z == 0):
+		return 0
+	int ok = 0
+	if (z_len >= 4):
+		ok = ws_bytes_equal(z + z_len - 4, 4, c"\x00\x00\xff\xff", 4)
+	if (ok != 0):
+		ok = ws_codec_probe_inflate(k, z, z_len, window, window_len, data, len)
+	free(z)
+	return ok
+
+
+# Opts this process into permessage-deflate with a raw-DEFLATE codec
+# (libs/standard never imports libs/extras, so the APPLICATION passes
+# libs/extras/compress's deflate_window and inflate_window). The pair
+# must pass RFC 7692 section 7.2.3's known answers (a "Hello" message,
+# the same message against a shared window), report
+# ws_inflate_too_large() past max_output, and round-trip through a sync
+# flush. Returns 1 when accepted, 0 otherwise (the previous codec, if
+# any, is kept).
+int ws_use_deflate(ws_deflate_fn* deflater, ws_inflate_fn* inflater):
+	if ((deflater == 0) || (inflater == 0)):
+		return 0
+	ws_codec* k = new ws_codec
+	k.deflate = deflater
+	k.inflate = inflater
+	int ok = ws_codec_probe_inflate(k, c"\xf2\x48\xcd\xc9\xc9\x07\x00\x00\x00\xff\xff", 11, 0, 0, c"Hello", 5)
+	if (ok != 0):
+		ok = ws_codec_probe_inflate(k, c"\xf2\x00\x11\x00\x00\x00\x00\xff\xff", 9, c"Hello", 5, c"Hello", 5)
+	if (ok != 0):
+		int out_len = 0
+		int err = 0
+		char* out = k.inflate(c"\xf2\x48\xcd\xc9\xc9\x07\x00\x00\x00\xff\xff", 11, 0, 0, 3, &out_len, &err)
+		if (out != 0):
+			free(out)
+			ok = 0
+		else if (err != ws_inflate_too_large()):
+			ok = 0
+	if (ok != 0):
+		ok = ws_codec_probe_round_trip(k, c"abcabcabcabc hello hello", 24, 0, 0, 15)
+	if (ok != 0):
+		ok = ws_codec_probe_round_trip(k, c"hello again, hello", 18, c"say hello again", 15, 8)
+	if (ok == 0):
+		free(k)
+		return 0
+	if (ws_pmd_codec != 0):
+		free(ws_pmd_codec)
+	ws_pmd_codec = k
+	return 1
+
+
+/* permessage-deflate: configuration and negotiation */
+
+# Default preferences: a plain offer / accept-anything policy, 32 KiB
+# windows with context takeover, fast compression. The caller owns it
+# (free).
+ws_deflate_config* ws_deflate_config_new():
+	ws_deflate_config* cfg = new ws_deflate_config()
+	cfg.server_no_context_takeover = 0
+	cfg.client_no_context_takeover = 0
+	cfg.server_max_window_bits = 0
+	cfg.client_max_window_bits = 0
+	cfg.level = 1
+	return cfg
+
+
+int ws_pmd_bits_ok(int bits):
+	if (bits == 0):
+		return 1
+	return (bits >= ws_pmd_min_bits()) && (bits <= ws_pmd_max_bits())
+
+
+int ws_deflate_config_valid(ws_deflate_config* cfg):
+	if (cfg == 0):
+		return 0
+	if (ws_pmd_bits_ok(cfg.server_max_window_bits) == 0):
+		return 0
+	if (ws_pmd_bits_ok(cfg.client_max_window_bits) == 0):
+		return 0
+	return 1
+
+
+void ws_pmd_params_clear(ws_pmd_params* p):
+	p.valid = 1
+	p.server_no_context_takeover = 0
+	p.client_no_context_takeover = 0
+	p.server_max_window_bits = 0
+	p.client_max_window_bits = 0
+
+
+# A window-bits parameter value: "8".."15" without leading zeros -> the
+# number, anything else (including no value) -> 0.
+int ws_pmd_bits_value(char* v):
+	if (v == 0):
+		return 0
+	int n = strlen(v)
+	if (n == 1):
+		if ((v[0] == '8') || (v[0] == '9')):
+			return v[0] - '0'
+		return 0
+	if ((n == 2) && (v[0] == '1') && (v[1] >= '0') && (v[1] <= '5')):
+		return 10 + (v[1] - '0')
+	return 0
+
+
+# Folds one extension parameter into p (RFC 7692 section 7.1): unknown
+# names, duplicates, a value on a *_no_context_takeover, and a missing
+# or out-of-range window-bits value clear p.valid.
+# client_max_window_bits may omit its value only in an offer.
+void ws_pmd_param(ws_pmd_params* p, char* name, char* value, int is_response):
+	if (http_str_ieq(name, c"server_no_context_takeover") != 0):
+		if ((p.server_no_context_takeover != 0) || (value != 0)):
+			p.valid = 0
+		p.server_no_context_takeover = 1
+	else if (http_str_ieq(name, c"client_no_context_takeover") != 0):
+		if ((p.client_no_context_takeover != 0) || (value != 0)):
+			p.valid = 0
+		p.client_no_context_takeover = 1
+	else if (http_str_ieq(name, c"server_max_window_bits") != 0):
+		int bits = ws_pmd_bits_value(value)
+		if ((p.server_max_window_bits != 0) || (bits == 0)):
+			p.valid = 0
+			bits = (-1)
+		p.server_max_window_bits = bits
+	else if (http_str_ieq(name, c"client_max_window_bits") != 0):
+		int cbits = (-1)
+		if (value != 0):
+			cbits = ws_pmd_bits_value(value)
+			if (cbits == 0):
+				p.valid = 0
+				cbits = (-1)
+		else if (is_response != 0):
+			p.valid = 0
+		if (p.client_max_window_bits != 0):
+			p.valid = 0
+		p.client_max_window_bits = cbits
+	else:
+		p.valid = 0
+
+
+int ws_ext_is_ows(int ch):
+	return (ch == ' ') || (ch == 9)
+
+
+void ws_ext_skip_ows(char* s, int* pos):
+	while (ws_ext_is_ows(s[*pos] & 255) != 0):
+		*pos = *pos + 1
+
+
+# The token at s[*pos] (malloc'd; *pos moves past it), or 0 when none.
+char* ws_ext_token(char* s, int* pos):
+	int start = *pos
+	while ((s[*pos] != 0) && (http_is_token_char(s[*pos] & 255) != 0)):
+		*pos = *pos + 1
+	if (*pos == start):
+		return 0
+	return substring(s, start, *pos)
+
+
+# The quoted-string starting at s[*pos] (a double quote), unescaped and
+# malloc'd, or 0 when unterminated.
+char* ws_ext_quoted(char* s, int* pos):
+	string_builder* out = string_new()
+	int i = *pos + 1
+	while ((s[i] & 255) != 34):
+		int ch = s[i] & 255
+		if (ch == 92):
+			i = i + 1
+			ch = s[i] & 255
+		if (ch == 0):
+			string_free(out)
+			return 0
+		string_append_char(out, ch)
+		i = i + 1
+	*pos = i + 1
+	char* text = out.data
+	free(out)
+	return text
+
+
+# Parses the next element of a Sec-WebSocket-Extensions value (RFC 6455
+# section 9.1: extension-token *( ";" param [ "=" (token /
+# quoted-string) ] ), elements separated by commas) from s[*pos]. Returns
+# 1 with the element's name in *out_name (malloc'd) and its parameters
+# folded into p as permessage-deflate parameters (see ws_pmd_param;
+# meaningless for other extensions); 0 at the end of the value; -1 on a
+# syntax error.
+int ws_ext_next(char* s, int* pos, char** out_name, ws_pmd_params* p, int is_response):
+	while ((s[*pos] == ',') || (ws_ext_is_ows(s[*pos] & 255) != 0)):
+		*pos = *pos + 1
+	if (s[*pos] == 0):
+		return 0
+	char* name = ws_ext_token(s, pos)
+	if (name == 0):
+		return (-1)
+	ws_pmd_params_clear(p)
+	while (1):
+		ws_ext_skip_ows(s, pos)
+		int ch = s[*pos] & 255
+		if ((ch == 0) || (ch == ',')):
+			break
+		if (ch != ';'):
+			free(name)
+			return (-1)
+		*pos = *pos + 1
+		ws_ext_skip_ows(s, pos)
+		char* pname = ws_ext_token(s, pos)
+		if (pname == 0):
+			free(name)
+			return (-1)
+		ws_ext_skip_ows(s, pos)
+		char* value = 0
+		if (s[*pos] == '='):
+			*pos = *pos + 1
+			ws_ext_skip_ows(s, pos)
+			if ((s[*pos] & 255) == 34):
+				value = ws_ext_quoted(s, pos)
+			else:
+				value = ws_ext_token(s, pos)
+			if (value == 0):
+				free(pname)
+				free(name)
+				return (-1)
+		ws_pmd_param(p, pname, value, is_response)
+		free(pname)
+		if (value != 0):
+			free(value)
+	*out_name = name
+	return 1
+
+
+int ws_min_bits(int a, int b):
+	if (a < b):
+		return a
+	return b
+
+
+void ws_pmd_append_bits(string_builder* out, char* name, int bits):
+	string_append(out, c"; ")
+	string_append(out, name)
+	if (bits > 0):
+		string_append_char(out, '=')
+		string_append_int(out, bits)
+
+
+# The client's offer for cfg (malloc'd): permessage-deflate with the
+# requested parameters, always announcing client_max_window_bits (the
+# codec honors any window size).
+char* ws_pmd_offer(ws_deflate_config* cfg):
+	string_builder* out = string_new()
+	string_append(out, c"permessage-deflate")
+	if (cfg.server_no_context_takeover != 0):
+		string_append(out, c"; server_no_context_takeover")
+	if (cfg.client_no_context_takeover != 0):
+		string_append(out, c"; client_no_context_takeover")
+	if (cfg.server_max_window_bits > 0):
+		ws_pmd_append_bits(out, c"server_max_window_bits", cfg.server_max_window_bits)
+	ws_pmd_append_bits(out, c"client_max_window_bits", cfg.client_max_window_bits)
+	char* text = out.data
+	free(out)
+	return text
+
+
+# Server side: picks the first permessage-deflate offer in offers (the
+# request's Sec-WebSocket-Extensions value) whose parameters are valid,
+# applies the policy in cfg, and returns the response element
+# (malloc'd) with the agreed configuration in *agreed -- or 0 to decline
+# (no acceptable offer, a syntax error, or an invalid cfg). Offers with
+# unknown, duplicate or ill-valued parameters are declined (RFC 7692
+# section 7.1), as are other extensions.
+char* ws_pmd_negotiate(char* offers, ws_deflate_config* cfg, ws_pmd_params* agreed):
+	if ((offers == 0) || (ws_deflate_config_valid(cfg) == 0)):
+		return 0
+	int pos = 0
+	while (1):
+		char* name = 0
+		ws_pmd_params o
+		int r = ws_ext_next(offers, &pos, &name, &o, 0)
+		if (r <= 0):
+			return 0
+		int is_pmd = http_str_ieq(name, c"permessage-deflate")
+		free(name)
+		if ((is_pmd != 0) && (o.valid != 0)):
+			ws_pmd_params_clear(agreed)
+			string_builder* out = string_new()
+			string_append(out, c"permessage-deflate")
+			if ((o.server_no_context_takeover != 0) || (cfg.server_no_context_takeover != 0)):
+				agreed.server_no_context_takeover = 1
+				string_append(out, c"; server_no_context_takeover")
+			if (cfg.client_no_context_takeover != 0):
+				agreed.client_no_context_takeover = 1
+				string_append(out, c"; client_no_context_takeover")
+			int sbits = ws_pmd_max_bits()
+			if (cfg.server_max_window_bits > 0):
+				sbits = cfg.server_max_window_bits
+			if (o.server_max_window_bits > 0):
+				sbits = ws_min_bits(sbits, o.server_max_window_bits)
+			if ((o.server_max_window_bits > 0) || (sbits < ws_pmd_max_bits())):
+				ws_pmd_append_bits(out, c"server_max_window_bits", sbits)
+			agreed.server_max_window_bits = sbits
+			int cbits = ws_pmd_max_bits()
+			if (o.client_max_window_bits > 0):
+				cbits = o.client_max_window_bits
+			if ((o.client_max_window_bits != 0) && (cfg.client_max_window_bits > 0) && (cfg.client_max_window_bits < cbits)):
+				cbits = cfg.client_max_window_bits
+				ws_pmd_append_bits(out, c"client_max_window_bits", cbits)
+			agreed.client_max_window_bits = cbits
+			char* text = out.data
+			free(out)
+			return text
+	return 0
+
+
+# Client side: validates the server's Sec-WebSocket-Extensions value
+# against the offer made from cfg. It must be exactly one valid
+# permessage-deflate element that honors what we asked for
+# (server_no_context_takeover echoed; server_max_window_bits present and
+# no larger than requested). Returns 1 with *agreed filled, else 0 (the
+# client then fails the handshake).
+int ws_pmd_accept_response(char* value, ws_deflate_config* cfg, ws_pmd_params* agreed):
+	if (value == 0):
+		return 0
+	int pos = 0
+	char* name = 0
+	ws_pmd_params r
+	if (ws_ext_next(value, &pos, &name, &r, 1) != 1):
+		return 0
+	int is_pmd = http_str_ieq(name, c"permessage-deflate")
+	free(name)
+	if ((is_pmd == 0) || (r.valid == 0)):
+		return 0
+	char* extra = 0
+	ws_pmd_params ignored
+	int more = ws_ext_next(value, &pos, &extra, &ignored, 1)
+	if (more != 0):
+		if (more == 1):
+			free(extra)
+		return 0
+	if ((cfg.server_no_context_takeover != 0) && (r.server_no_context_takeover == 0)):
+		return 0
+	if (cfg.server_max_window_bits > 0):
+		if ((r.server_max_window_bits <= 0) || (r.server_max_window_bits > cfg.server_max_window_bits)):
+			return 0
+	ws_pmd_params_clear(agreed)
+	agreed.server_no_context_takeover = r.server_no_context_takeover
+	agreed.client_no_context_takeover = r.client_no_context_takeover | cfg.client_no_context_takeover
+	agreed.server_max_window_bits = ws_pmd_max_bits()
+	if (r.server_max_window_bits > 0):
+		agreed.server_max_window_bits = r.server_max_window_bits
+	int cbits = ws_pmd_max_bits()
+	if (cfg.client_max_window_bits > 0):
+		cbits = cfg.client_max_window_bits
+	if (r.client_max_window_bits > 0):
+		cbits = ws_min_bits(cbits, r.client_max_window_bits)
+	agreed.client_max_window_bits = cbits
+	return 1
+
+
+# Switches c to permessage-deflate with the agreed parameters, read in
+# c's role (a client compresses with the client_* side, a server with the
+# server_* side). Returns 1, or 0 without ws_use_deflate.
+int ws_pmd_enable(ws_conn* c, ws_pmd_params* agreed, int level):
+	if (ws_pmd_codec == 0):
+		return 0
+	int sbits = agreed.server_max_window_bits
+	if (sbits <= 0):
+		sbits = ws_pmd_max_bits()
+	int cbits = agreed.client_max_window_bits
+	if (cbits <= 0):
+		cbits = ws_pmd_max_bits()
+	if (c.is_client != 0):
+		c.pmd_tx_bits = cbits
+		c.pmd_rx_bits = sbits
+		c.pmd_tx_no_takeover = agreed.client_no_context_takeover
+		c.pmd_rx_no_takeover = agreed.server_no_context_takeover
+	else:
+		c.pmd_tx_bits = sbits
+		c.pmd_rx_bits = cbits
+		c.pmd_tx_no_takeover = agreed.server_no_context_takeover
+		c.pmd_rx_no_takeover = agreed.client_no_context_takeover
+	c.pmd_level = level
+	string_clear(c.pmd_tx_window)
+	string_clear(c.pmd_rx_window)
+	c.pmd = 1
+	return 1
+
+
+# Turns permessage-deflate on for an already-upgraded connection
+# (ws_conn_wrap) as if the peer had agreed to exactly cfg -- for
+# transports negotiated elsewhere, and for tests. Returns 1, or 0 for an
+# invalid cfg or without ws_use_deflate.
+int ws_set_compression(ws_conn* c, ws_deflate_config* cfg):
+	if ((c == 0) || (ws_deflate_config_valid(cfg) == 0)):
+		return 0
+	ws_pmd_params agreed
+	ws_pmd_params_clear(&agreed)
+	agreed.server_no_context_takeover = cfg.server_no_context_takeover
+	agreed.client_no_context_takeover = cfg.client_no_context_takeover
+	agreed.server_max_window_bits = cfg.server_max_window_bits
+	agreed.client_max_window_bits = cfg.client_max_window_bits
+	return ws_pmd_enable(c, &agreed, cfg.level)
+
+
+int ws_compression_active(ws_conn* c):
+	if (c == 0):
+		return 0
+	return c.pmd
+
+
+# Appends data to a sliding window, keeping only its last 2^bits bytes.
+void ws_window_push(string_builder* w, char* data, int len, int bits):
+	int cap = 1 << bits
+	if (len >= cap):
+		string_clear(w)
+		string_append_bytes(w, data + (len - cap), cap)
+		return
+	string_append_bytes(w, data, len)
+	if (w.length > cap):
+		int drop = w.length - cap
+		int i = 0
+		while (i < cap):
+			w.data[i] = w.data[drop + i]
+			i = i + 1
+		w.length = cap
+		w.data[cap] = 0
+
+
+# Compresses one message for c (RFC 7692 section 7.2.1): deflate with
+# the send window, strip the sync flush's trailing 00 00 ff ff, then
+# slide the window unless no context takeover applies. Returns the
+# malloc'd payload (length in *out_len), or 0 when the codec misbehaved.
+char* ws_pmd_compress(ws_conn* c, char* data, int len, int* out_len):
+	char* window = 0
+	int window_len = 0
+	if (c.pmd_tx_no_takeover == 0):
+		window = c.pmd_tx_window.data
+		window_len = c.pmd_tx_window.length
+	int z_len = 0
+	char* z = ws_pmd_codec.deflate(data, len, window, window_len, c.pmd_tx_bits, c.pmd_level, &z_len)
+	if (z == 0):
+		return 0
+	if ((z_len < 4) || (ws_bytes_equal(z + z_len - 4, 4, c"\x00\x00\xff\xff", 4) == 0)):
+		free(z)
+		return 0
+	if (c.pmd_tx_no_takeover == 0):
+		ws_window_push(c.pmd_tx_window, data, len, c.pmd_tx_bits)
+	*out_len = z_len - 4
+	return z
+
+
 /* Transport */
 
 # Reads exactly n bytes: 1, 0 on EOF, -1 on a transport error, -2 on a
@@ -701,9 +1346,9 @@ void ws_transport_failed(ws_conn* c, int r):
 		c.error = ws_error_io()
 
 
-# Encodes and writes one frame, masking it in the client role. Returns
-# 1, or 0 with the connection marked broken.
-int ws_write_frame(ws_conn* c, int fin, int opcode, char* data, int len):
+# Encodes and writes one frame (RSV bits rsv), masking it in the client
+# role. Returns 1, or 0 with the connection marked broken.
+int ws_write_frame_rsv(ws_conn* c, int fin, int rsv, int opcode, char* data, int len):
 	string_builder* out = string_new_sized(len + 16)
 	char* key = 0
 	if (c.is_client != 0):
@@ -714,7 +1359,7 @@ int ws_write_frame(ws_conn* c, int fin, int opcode, char* data, int len):
 			c.broken = 1
 			c.error = ws_error_io()
 			return 0
-	int ok = ws_frame_encode(out, fin, opcode, data, len, key)
+	int ok = ws_frame_encode_rsv(out, fin, rsv, opcode, data, len, key)
 	if (key != 0):
 		free(key)
 	if (ok != 0):
@@ -726,6 +1371,10 @@ int ws_write_frame(ws_conn* c, int fin, int opcode, char* data, int len):
 				ws_transport_failed(c, (-1))
 	string_free(out)
 	return ok
+
+
+int ws_write_frame(ws_conn* c, int fin, int opcode, char* data, int len):
+	return ws_write_frame_rsv(c, fin, 0, opcode, data, len)
 
 
 # Writes a close frame carrying code (0 = no status) and reason.
@@ -784,7 +1433,10 @@ int ws_read_frame(ws_conn* c, ws_frame* f, int max_payload):
 		return 0
 	if (max_payload < 0):
 		max_payload = 0
-	int code = ws_parse_header(h, hlen, f, max_payload)
+	int rsv_allowed = 0
+	if (c.pmd != 0):
+		rsv_allowed = 4
+	int code = ws_parse_header_rsv(h, hlen, f, max_payload, rsv_allowed)
 	if (code != 0):
 		ws_fail(c, code, ws_error_for_close(code))
 		return 0
@@ -856,15 +1508,65 @@ ws_message* ws_message_new(int opcode, char* data, int len):
 	return m
 
 
-# Finishes a data message: text must be UTF-8. Returns the message, or
-# 0 with the connection failed (data freed).
-ws_message* ws_finish_message(ws_conn* c, int opcode, char* data, int len):
+# Decompresses one received permessage-deflate message (RFC 7692
+# section 7.2.2): appends 00 00 ff ff and inflates against the receive
+# window, capped at the message size limit. Returns the malloc'd
+# plaintext (length in *out_len), or 0 with the connection failed --
+# 1009 past the cap, 1007 for anything that does not inflate
+# (including a back-reference beyond the peer's agreed window). data is
+# always freed.
+char* ws_pmd_decompress(ws_conn* c, char* data, int len, int* out_len):
+	char* z = malloc(len + 4)
+	int i = 0
+	while (i < len):
+		z[i] = data[i]
+		i = i + 1
+	z[len] = 0
+	z[len + 1] = 0
+	z[len + 2] = 255
+	z[len + 3] = 255
+	free(data)
+	char* window = 0
+	int window_len = 0
+	if (c.pmd_rx_no_takeover == 0):
+		window = c.pmd_rx_window.data
+		window_len = c.pmd_rx_window.length
+	int n = 0
+	int err = 0
+	char* out = ws_pmd_codec.inflate(z, len + 4, window, window_len, c.max_message, &n, &err)
+	free(z)
+	if (out == 0):
+		if (err == ws_inflate_too_large()):
+			ws_fail(c, ws_close_too_big(), ws_error_too_big())
+		else:
+			ws_fail(c, ws_close_invalid_payload(), ws_error_compression())
+		return 0
+	if (c.pmd_rx_no_takeover == 0):
+		ws_window_push(c.pmd_rx_window, out, n, c.pmd_rx_bits)
+	*out_len = n
+	return out
+
+
+# Finishes a data message: inflates it when it arrived compressed
+# (RSV1), then text must be UTF-8. Returns the message, or 0 with the
+# connection failed (data freed).
+ws_message* ws_finish_message_z(ws_conn* c, int opcode, char* data, int len, int compressed):
+	if (compressed != 0):
+		int plain_len = 0
+		data = ws_pmd_decompress(c, data, len, &plain_len)
+		if (data == 0):
+			return 0
+		len = plain_len
 	if (opcode == ws_op_text()):
 		if (utf8_validate_bytes(data, len) == 0):
 			free(data)
 			ws_fail(c, ws_close_invalid_payload(), ws_error_bad_utf8())
 			return 0
 	return ws_message_new(opcode, data, len)
+
+
+ws_message* ws_finish_message(ws_conn* c, int opcode, char* data, int len):
+	return ws_finish_message_z(c, opcode, data, len, 0)
 
 
 # Next complete text or binary message, answering pings and dropping
@@ -910,22 +1612,27 @@ ws_message* ws_recv(ws_conn* c):
 			free(f.payload)
 			if (f.fin != 0):
 				int message_op = c.frag_opcode
+				int message_z = c.frag_compressed
 				string_builder* done = c.frag
 				c.frag = string_new()
 				c.frag_opcode = 0
+				c.frag_compressed = 0
 				char* data = done.data
 				int data_len = done.length
 				free(done)
-				return ws_finish_message(c, message_op, data, data_len)
+				return ws_finish_message_z(c, message_op, data, data_len, message_z)
 		else:
-			# text or binary
+			# text or binary; RSV1 (only reachable once permessage-deflate
+			# is on) marks the whole message as compressed.
+			int compressed = (f.rsv & 4) != 0
 			if (c.frag_opcode != 0):
 				free(f.payload)
 				ws_fail(c, ws_close_protocol_error(), ws_error_protocol())
 				return 0
 			if (f.fin != 0):
-				return ws_finish_message(c, op, f.payload, f.payload_len)
+				return ws_finish_message_z(c, op, f.payload, f.payload_len, compressed)
 			c.frag_opcode = op
+			c.frag_compressed = compressed
 			string_clear(c.frag)
 			string_append_bytes(c.frag, f.payload, f.payload_len)
 			free(f.payload)
@@ -954,16 +1661,33 @@ int ws_send_frame(ws_conn* c, int fin, int opcode, char* data, int len):
 	return ws_write_frame(c, fin, opcode, data, len)
 
 
+# One unfragmented data message: compressed (RSV1) whenever
+# permessage-deflate is on, a plain frame otherwise.
+int ws_send_message(ws_conn* c, int opcode, char* data, int len):
+	if ((c == 0) || (c.pmd == 0)):
+		return ws_send_frame(c, 1, opcode, data, len)
+	if ((c.broken != 0) || (c.close_sent != 0) || (c.cc == 0) || (len < 0)):
+		return 0
+	int z_len = 0
+	char* z = ws_pmd_compress(c, data, len, &z_len)
+	if (z == 0):
+		ws_fail(c, ws_close_internal_error(), ws_error_compression())
+		return 0
+	int ok = ws_write_frame_rsv(c, 1, 4, opcode, z, z_len)
+	free(z)
+	return ok
+
+
 # Sends one unfragmented text message. Refuses (returns 0 without
 # touching the connection) text that is not valid UTF-8.
 int ws_send_text(ws_conn* c, char* data, int len):
 	if (utf8_validate_bytes(data, len) == 0):
 		return 0
-	return ws_send_frame(c, 1, ws_op_text(), data, len)
+	return ws_send_message(c, ws_op_text(), data, len)
 
 
 int ws_send_binary(ws_conn* c, char* data, int len):
-	return ws_send_frame(c, 1, ws_op_binary(), data, len)
+	return ws_send_message(c, ws_op_binary(), data, len)
 
 
 int ws_send_ping(ws_conn* c, char* data, int len):
@@ -1110,9 +1834,12 @@ int ws_read_response_head(http_conn* hc, http_response* resp, int* out_error):
 	return 0
 
 
-# Validates a 101 response against the key we sent and the protocols we
-# offered (0 = none). Returns 1/0.
-int ws_validate_response(http_response* resp, char* key, char* offered):
+# Validates a 101 response against the key we sent, the protocols we
+# offered (0 = none) and the permessage-deflate offer made from cfg (0 =
+# none: then no extension may be accepted). Returns 1/0; *agreed is
+# filled (valid = 1) only when the server accepted compression.
+int ws_validate_response_ext(http_response* resp, char* key, char* offered, ws_deflate_config* cfg, ws_pmd_params* agreed):
+	agreed.valid = 0
 	if (resp.status != 101):
 		return 0
 	char* upgrade = http_response_header(resp, c"upgrade")
@@ -1135,9 +1862,15 @@ int ws_validate_response(http_response* resp, char* key, char* offered):
 	free(expected)
 	if (match == 0):
 		return 0
-	# No extension was offered, so none may be accepted.
-	if (http_response_header(resp, c"sec-websocket-extensions") != 0):
-		return 0
+	# Only an extension we offered may be accepted.
+	char* extensions = http_response_header(resp, c"sec-websocket-extensions")
+	if (extensions != 0):
+		if (cfg == 0):
+			return 0
+		if (ws_pmd_accept_response(extensions, cfg, agreed) == 0):
+			agreed.valid = 0
+			return 0
+		agreed.valid = 1
 	char* proto = http_response_header(resp, c"sec-websocket-protocol")
 	if (proto != 0):
 		if (offered == 0):
@@ -1147,6 +1880,11 @@ int ws_validate_response(http_response* resp, char* key, char* offered):
 		if (http_value_has_token(offered, proto) == 0):
 			return 0
 	return 1
+
+
+int ws_validate_response(http_response* resp, char* key, char* offered):
+	ws_pmd_params agreed
+	return ws_validate_response_ext(resp, key, offered, 0, &agreed)
 
 
 # Converts the handshake's http_conn into the frame transport: a
@@ -1169,7 +1907,7 @@ void ws_adopt_http_conn(ws_conn* c, http_conn* hc):
 
 # Connects (TCP, then TLS for wss), sends the upgrade request, and
 # validates the 101 response.
-ws_conn* ws_dial(http_req* inner, URL* u, char* key, char* offered):
+ws_conn* ws_dial(http_req* inner, URL* u, char* key, char* offered, ws_deflate_config* cfg):
 	int timeout = inner.timeout_ms
 	if (timeout <= 0):
 		timeout = http_default_timeout_ms()
@@ -1216,7 +1954,8 @@ ws_conn* ws_dial(http_req* inner, URL* u, char* key, char* offered):
 		http_conn_destroy(hc)
 		return ws_conn_failed(error)
 	int status = resp.status
-	if (ws_validate_response(resp, key, offered) == 0):
+	ws_pmd_params agreed
+	if (ws_validate_response_ext(resp, key, offered, cfg, &agreed) == 0):
 		http_response_free(resp)
 		http_conn_destroy(hc)
 		ws_conn* failed = ws_conn_failed(ws_error_handshake())
@@ -1228,12 +1967,14 @@ ws_conn* ws_dial(http_req* inner, URL* u, char* key, char* offered):
 	char* proto = http_response_header(resp, c"sec-websocket-protocol")
 	if (proto != 0):
 		c.subprotocol = strclone(proto)
+	if (agreed.valid != 0):
+		ws_pmd_enable(c, &agreed, cfg.level)
 	http_response_free(resp)
 	ws_adopt_http_conn(c, hc)
 	return c
 
 
-ws_conn* ws_open_inner(http_req* inner, int bad_header, char* key, char* offered):
+ws_conn* ws_open_inner(http_req* inner, int bad_header, char* key, char* offered, ws_deflate_config* cfg):
 	if ((bad_header != 0) || (http_validate_req(inner) != 0)):
 		return ws_conn_failed(ws_error_bad_request())
 	if (key == 0):
@@ -1242,13 +1983,17 @@ ws_conn* ws_open_inner(http_req* inner, int bad_header, char* key, char* offered
 	http_req_add_header(inner, c"Connection", c"Upgrade")
 	http_req_add_header(inner, c"Sec-WebSocket-Key", key)
 	http_req_add_header(inner, c"Sec-WebSocket-Version", c"13")
+	if (cfg != 0):
+		char* offer = ws_pmd_offer(cfg)
+		http_req_add_header(inner, c"Sec-WebSocket-Extensions", offer)
+		free(offer)
 	URL* u = url_parse(inner.url)
 	if (u == 0):
 		return ws_conn_failed(ws_error_bad_url())
 	if (http_validate_url(u) != 0):
 		url_free(u)
 		return ws_conn_failed(ws_error_bad_url())
-	ws_conn* c = ws_dial(inner, u, key, offered)
+	ws_conn* c = ws_dial(inner, u, key, offered, cfg)
 	url_free(u)
 	return c
 
@@ -1256,9 +2001,14 @@ ws_conn* ws_open_inner(http_req* inner, int bad_header, char* key, char* offered
 # Opens a client connection: req.url is ws:// or wss://; req's extra
 # headers (e.g. Origin, Sec-WebSocket-Protocol), timeout_ms and TLS
 # knobs apply; its method must be GET and it must carry no body. The
-# request is only read, never modified. Never returns 0: check
-# ws_conn_error(c) == ws_error_none().
-ws_conn* ws_open(http_req* req):
+# request is only read, never modified. cfg (0 = no compression) offers
+# permessage-deflate with those preferences; the server may decline
+# (ws_compression_active then reports 0), and an acceptance that does
+# not match the offer fails the handshake. A cfg needs ws_use_deflate
+# (ws_error_no_deflate otherwise) and window bits of 0 or 8..15
+# (ws_error_bad_request). Never returns 0: check ws_conn_error(c) ==
+# ws_error_none().
+ws_conn* ws_open_deflate(http_req* req, ws_deflate_config* cfg):
 	if (req == 0):
 		return ws_conn_failed(ws_error_bad_url())
 	if (strcmp(req.method, c"GET") != 0):
@@ -1271,6 +2021,13 @@ ws_conn* ws_open(http_req* req):
 	if (ws_sha1_alg == 0):
 		free(http_url)
 		return ws_conn_failed(ws_error_no_sha1())
+	if (cfg != 0):
+		if (ws_deflate_config_valid(cfg) == 0):
+			free(http_url)
+			return ws_conn_failed(ws_error_bad_request())
+		if (ws_pmd_codec == 0):
+			free(http_url)
+			return ws_conn_failed(ws_error_no_deflate())
 	http_req* inner = http_req_new(c"GET", http_url)
 	inner.timeout_ms = req.timeout_ms
 	inner.max_redirects = 0
@@ -1288,12 +2045,17 @@ ws_conn* ws_open(http_req* req):
 			offered = h.value
 		http_req_add_header(inner, h.name, h.value)
 	char* key = ws_new_key()
-	ws_conn* c = ws_open_inner(inner, bad_header, key, offered)
+	ws_conn* c = ws_open_inner(inner, bad_header, key, offered, cfg)
 	if (key != 0):
 		free(key)
 	http_req_free(inner)
 	free(http_url)
 	return c
+
+
+# ws_open_deflate without compression.
+ws_conn* ws_open(http_req* req):
+	return ws_open_deflate(req, 0)
 
 
 # ws_open with default timeout and no extra headers. Never returns 0.
@@ -1380,8 +2142,11 @@ int ws_check_upgrade_request(ServerRequest* req, char* subprotocol):
 # error response (400, 426 for an unsupported version, 500 for a
 # server-side misconfiguration) is written and a failed conn returned
 # (ws_error_handshake, or ws_error_no_sha1). cc stays owned by the
-# caller/server. Never returns 0.
-ws_conn* ws_server_accept(ConnectionContext* cc, ServerRequest* req, char* subprotocol):
+# caller/server. cfg (0 = never compress) is the permessage-deflate
+# policy: the first acceptable offer is accepted (see ws_pmd_negotiate),
+# anything else -- or no ws_use_deflate -- declines compression while
+# the upgrade itself proceeds. Never returns 0.
+ws_conn* ws_server_accept_deflate(ConnectionContext* cc, ServerRequest* req, char* subprotocol, ws_deflate_config* cfg):
 	int status = ws_check_upgrade_request(req, subprotocol)
 	if (status != 0):
 		if (status == 426):
@@ -1396,6 +2161,10 @@ ws_conn* ws_server_accept(ConnectionContext* cc, ServerRequest* req, char* subpr
 		failed.http_status = status
 		return failed
 	char* accept = ws_accept_key(server_request_header(req, c"sec-websocket-key"))
+	ws_pmd_params agreed
+	char* extension = 0
+	if ((cfg != 0) && (ws_pmd_codec != 0)):
+		extension = ws_pmd_negotiate(server_request_header(req, c"sec-websocket-extensions"), cfg, &agreed)
 	string_builder* out = string_new()
 	string_append(out, c"HTTP/1.1 101 Switching Protocols\x0d\x0aUpgrade: websocket\x0d\x0aConnection: Upgrade\x0d\x0aSec-WebSocket-Accept: ")
 	string_append(out, accept)
@@ -1404,27 +2173,45 @@ ws_conn* ws_server_accept(ConnectionContext* cc, ServerRequest* req, char* subpr
 		string_append(out, c"Sec-WebSocket-Protocol: ")
 		string_append(out, subprotocol)
 		string_append(out, c"\x0d\x0a")
+	if (extension != 0):
+		string_append(out, c"Sec-WebSocket-Extensions: ")
+		string_append(out, extension)
+		string_append(out, c"\x0d\x0a")
 	string_append(out, c"\x0d\x0a")
 	int ok = connection_context_write_all(cc, out.data, out.length)
 	string_free(out)
 	free(accept)
 	if (ok == 0):
+		if (extension != 0):
+			free(extension)
 		return ws_conn_failed(ws_error_io())
 	ws_conn* c = ws_conn_wrap(cc, 0, 0)
 	c.http_status = 101
 	if (subprotocol != 0):
 		c.subprotocol = strclone(subprotocol)
+	if (extension != 0):
+		ws_pmd_enable(c, &agreed, cfg.level)
+		free(extension)
 	return c
+
+
+ws_conn* ws_server_accept(ConnectionContext* cc, ServerRequest* req, char* subprotocol):
+	return ws_server_accept_deflate(cc, req, subprotocol, 0)
 
 
 # ws_server_accept for an http_server.w route handler. Either way the
 # RequestContext is marked as answered with keep-alive off, so the
 # server writes nothing more and closes the connection once the handler
-# returns -- run the whole session inside the handler. Never returns 0.
-ws_conn* ws_accept(RequestContext* rc, char* subprotocol):
-	ws_conn* c = ws_server_accept(rc.conn, rc.request, subprotocol)
+# returns -- run the whole session inside the handler. cfg as for
+# ws_server_accept_deflate (0 = never compress). Never returns 0.
+ws_conn* ws_accept_deflate(RequestContext* rc, char* subprotocol, ws_deflate_config* cfg):
+	ws_conn* c = ws_server_accept_deflate(rc.conn, rc.request, subprotocol, cfg)
 	rc.stream_started = 1
 	rc.stream_chunked = 0
 	rc.responded = 1
 	rc.keep_alive = 0
 	return c
+
+
+ws_conn* ws_accept(RequestContext* rc, char* subprotocol):
+	return ws_accept_deflate(rc, subprotocol, 0)

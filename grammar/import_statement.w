@@ -582,6 +582,24 @@ char* import_split_alias(char* line):
 	return 0
 
 
+# 'w check --lint' (compiler/lint.w): a plain import of a module this
+# file already imports plainly adds nothing.
+void import_lint_duplicate(char* resolved, char* spelling):
+	if (lint_file_active() == 0):
+		return
+	int i = import_plain_base
+	while (i < import_plain_count):
+		char* path = cast(char*, load_ptr(import_plain_paths + i * __word_size__))
+		if (strcmp(path, resolved) == 0):
+			if (lint_begin(line_number + 1, 1, c"duplicate-import")):
+				diag_part(c"warning: module '")
+				diag_part(spelling)
+				warning(c"' is already imported [duplicate-import]")
+				lint_end()
+			return
+		i = i + 1
+
+
 int import_statement():
 	if(accept(c"import")):
 		# The rest of the line is the module path plus an optional alias
@@ -605,6 +623,8 @@ int import_statement():
 			error(c"'")
 
 		char* resolved = import_resolve(token)
+		if (alias == 0):
+			import_lint_duplicate(resolved, token)
 
 		# compile_save clobbers nextc, so only re-read it after a compile
 		if (import_module(token)):

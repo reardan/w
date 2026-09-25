@@ -348,7 +348,9 @@
 				{"cmd": ["bin/wv2", "tests/crash_null_deref_fixture.w", "-o", "bin/crash_null_deref_fixture"]},
 				{"cmd": ["bin/crash_null_deref_fixture"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGSEGV (invalid memory reference)", "faulting address 0x00000000", "registers:", "build-id: ", "stack trace (most recent call first):", "at crash_deep (", "at crash_mid (", "at main (", "crash_null_deref_fixture.w:", "terminating with the default action for signal 11"]},
 				{"cmd": ["bin/wv2", "tests/crash_div_zero_fixture.w", "-o", "bin/crash_div_zero_fixture"]},
-				{"cmd": ["bin/crash_div_zero_fixture"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGFPE (arithmetic exception)", "stack trace (most recent call first):", "at crash_divide (", "at main (", "crash_div_zero_fixture.w:", "terminating with the default action for signal 8"]}
+				{"cmd": ["bin/crash_div_zero_fixture"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGFPE (arithmetic exception)", "stack trace (most recent call first):", "at crash_divide (", "at main (", "crash_div_zero_fixture.w:", "terminating with the default action for signal 8"]},
+				{"cmd": ["bin/wv2", "tests/crash_deep_chain_fixture.w", "-o", "bin/crash_deep_chain_fixture"]},
+				{"cmd": ["bin/crash_deep_chain_fixture"], "expect_fail": true, "expect_stderr": ["stack trace (most recent call first):\n  at crash_level6 (", "crash_deep_chain_fixture.w:29)\n  at crash_level5 (", "crash_deep_chain_fixture.w:33)\n  at crash_level4 (", "crash_deep_chain_fixture.w:37)\n  at crash_level3 (", "crash_deep_chain_fixture.w:41)\n  at crash_level2 (", "crash_deep_chain_fixture.w:45)\n  at crash_level1 (", "crash_deep_chain_fixture.w:49)\n  at main (", "crash_deep_chain_fixture.w:55)\nterminating with the default action for signal 11"], "reject_stderr": "heuristic"}
 			]
 		},
 		{
@@ -359,7 +361,9 @@
 				{"cmd": ["bin/wv2", "x64", "tests/crash_null_deref_fixture.w", "-o", "bin/crash_null_deref_fixture64"]},
 				{"cmd": ["bin/crash_null_deref_fixture64"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGSEGV (invalid memory reference)", "faulting address 0x00000000", "registers:", "build-id: ", "stack trace (most recent call first):", "at crash_deep (", "at crash_mid (", "at main (", "crash_null_deref_fixture.w:", "terminating with the default action for signal 11"]},
 				{"cmd": ["bin/wv2", "x64", "tests/crash_div_zero_fixture.w", "-o", "bin/crash_div_zero_fixture64"]},
-				{"cmd": ["bin/crash_div_zero_fixture64"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGFPE (arithmetic exception)", "stack trace (most recent call first):", "at crash_divide (", "at main (", "crash_div_zero_fixture.w:", "terminating with the default action for signal 8"]}
+				{"cmd": ["bin/crash_div_zero_fixture64"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGFPE (arithmetic exception)", "stack trace (most recent call first):", "at crash_divide (", "at main (", "crash_div_zero_fixture.w:", "terminating with the default action for signal 8"]},
+				{"cmd": ["bin/wv2", "x64", "tests/crash_deep_chain_fixture.w", "-o", "bin/crash_deep_chain_fixture64"]},
+				{"cmd": ["bin/crash_deep_chain_fixture64"], "expect_fail": true, "expect_stderr": ["stack trace (most recent call first):\n  at crash_level6 (", "crash_deep_chain_fixture.w:29)\n  at crash_level5 (", "crash_deep_chain_fixture.w:33)\n  at crash_level4 (", "crash_deep_chain_fixture.w:37)\n  at crash_level3 (", "crash_deep_chain_fixture.w:41)\n  at crash_level2 (", "crash_deep_chain_fixture.w:45)\n  at crash_level1 (", "crash_deep_chain_fixture.w:49)\n  at main (", "crash_deep_chain_fixture.w:55)\nterminating with the default action for signal 11"], "reject_stderr": "heuristic"}
 			]
 		},
 		{
@@ -506,6 +510,24 @@
 				{"cmd": ["bin/wv2", "check", "--bool-ops", "--quiet", "tests/bool_ops_clean_fixture.w"], "reject_stderr": "warning:"},
 				{"cmd": ["bin/wv2", "check", "--bool-ops", "--json", "--quiet", "tests/bool_ops_warn_fixture.w"], "stdout_file": "bin/check_bool_ops_warn.ndjson", "expect_stdout": ["\"severity\": \"warning\"", "did you mean '||'?", "did you mean '&&'?"]},
 				{"cmd": ["bin/wv2", "check", "--json", "--quiet", "tests/bool_bitwise_chain_fixture.w"], "stdout_file": "bin/check_bool_ops_chain.ndjson", "expect_stdout": ["\"column\": 15", "\"column\": 26", "\"token\": \"&\"", "did you mean '&&'?"]}
+			]
+		},
+		{
+			"name": "lint_test",
+			"tags": ["tests"],
+			"deps": ["wv2"],
+			"steps": [
+				{"cmd": ["bin/wv2", "check", "--quiet", "tests/lint_warn_fixture.w"], "reject_stderr": "warning:"},
+				{"cmd": ["bin/wv2", "check", "--lint", "--quiet", "tests/lint_warn_fixture.w"], "expect_stderr": ["warning: module 'lib.lib' is already imported [duplicate-import]", "warning: local variable 'never_read' is never used [unused-local]", "warning: unreachable code after return/break/continue/goto [unreachable]", "warning: declaration of 'total' shadows a local declared on line 20 [shadow]", "warning: declaration of 'a' shadows a parameter [shadow]", "warning: assignment used as a condition; use '==' to compare, or wrap it in extra parentheses [assign-in-condition]", "warning: 'a' is assigned to itself [self-assign]"]},
+				{"cmd": ["bin/wv2", "check", "--lint", "--strict", "--quiet", "tests/lint_warn_fixture.w"], "expect_fail": true, "expect_stderr": "warning(s) treated as errors (--strict)"},
+				{"cmd": ["bin/wv2", "check", "--lint", "--json", "--quiet", "tests/lint_warn_fixture.w"], "stdout_file": "bin/lint_warn.ndjson", "expect_stdout": ["\"line\": 10", "\"column\": 6", "is never used [unused-local]"]},
+				{"cmd": ["bin/wv2", "check", "--lint", "--quiet", "tests/lint_clean_fixture.w"], "reject_stderr": "warning:"},
+				{"cmd": ["sh", "-c", "printf '\\nimport lib.lib\\n# carriage return\\r\\n\\n\\n\\n\\n# a comment that runs past forty columns wide\\nint main():   \\n    return 0\\n\\n\\n' > bin/lint_text_input.w"]},
+				{"cmd": ["bin/wv2", "check", "--lint", "--quiet", "--line-length=40", "bin/lint_text_input.w"], "expect_fail": true, "expect_stderr": ["warning: blank line at start of file [leading-blank-lines]", "warning: file uses CRLF line endings [crlf]", "warning: more than two consecutive blank lines [blank-lines]", "warning: line is 45 columns wide (limit 40) [line-too-long]", "warning: trailing whitespace [trailing-whitespace]", "warning: blank lines at end of file [trailing-blank-lines]", "warning: line indented with spaces instead of tabs"]},
+				{"cmd": ["cp", "bin/lint_text_input.w", "bin/lint_fix_input.w"]},
+				{"cmd": ["bin/wv2", "check", "--fix", "bin/lint_fix_input.w"], "expect_stderr": "fixed 6 issue(s) in 'bin/lint_fix_input.w'"},
+				{"cmd": ["cmp", "bin/lint_fix_input.w", "tests/lint_fix_expected.txt"]},
+				{"cmd": ["bin/wv2", "check", "--lint", "--fix", "bin/lint_fix_input.w"], "reject_stderr": ["warning:", "fixed"]}
 			]
 		},
 		{
@@ -1919,6 +1941,13 @@
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/menu_test.w", "-o", "bin/graphics_ui_menu_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/toast_test.w", "-o", "bin/graphics_ui_toast_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/form_test.w", "-o", "bin/graphics_ui_form_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/chips_test.w", "-o", "bin/graphics_ui_chips_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/email_test.w", "-o", "bin/graphics_ui_email_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/dropdown_multi_test.w", "-o", "bin/graphics_ui_dropdown_multi_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/dropdown_search_test.w", "-o", "bin/graphics_ui_dropdown_search_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/calendar_test.w", "-o", "bin/graphics_ui_calendar_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/date_picker_test.w", "-o", "bin/graphics_ui_date_picker_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/time_picker_test.w", "-o", "bin/graphics_ui_time_picker_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/demo.w", "-o", "bin/graphics_ui_demo_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}

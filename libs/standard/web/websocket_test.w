@@ -11,6 +11,15 @@
 # route (the fork-a-fixture pattern of http_client_test.w). The SHA-1
 # dependent pieces -- the section 1.3 accept-key example and full
 # ws://+wss:// handshakes -- live in libs/x/unsafe/websocket_sha1_test.w.
+#
+# permessage-deflate (RFC 7692): the codec opt-in (ws_use_deflate with
+# libs/extras/compress's deflate_window/inflate_window, which a test --
+# unlike libs/standard modules -- may import), the section 7.2.3
+# examples in both directions, RSV1 rules, offer/response negotiation
+# (pure functions), compressed echo sessions over a socketpair with and
+# without context takeover and with small windows, and compressed
+# violations (bad data 1007, inflating past the cap 1009, references
+# beyond the agreed window).
 import lib.testing
 import lib.net
 import lib.utf8
@@ -20,6 +29,8 @@ import libs.standard.web.connection
 import libs.standard.web.http_client
 import libs.standard.web.http_server
 import libs.standard.web.websocket
+import libs.extras.compress.deflate
+import libs.extras.compress.inflate
 
 
 /* ---- helpers ---- */
@@ -287,10 +298,14 @@ void test_ws_decode_rejects():
 # "ping-me" pings the client and then sends "pinged"; on "pongs?"
 # reports how many pongs it has seen; on "close-me" starts the closing
 # handshake itself with 4000 "server bye". Exits 0 after a clean close
-# whose status and reason match what the client test sends.
-void wst_echo_peer(int fd):
+# whose status and reason match what the client test sends. cfg != 0
+# turns permessage-deflate on first (ws_set_compression).
+void wst_echo_peer_z(int fd, ws_deflate_config* cfg):
 	ConnectionContext* cc = connection_context_new(fd, 10000, 0)
 	ws_conn* c = ws_conn_wrap(cc, 0, 1)
+	if (cfg != 0):
+		if (ws_set_compression(c, cfg) == 0):
+			exit(7)
 	while (1):
 		ws_message* m = ws_recv(c)
 		if (m == 0):
@@ -323,18 +338,31 @@ void wst_echo_peer(int fd):
 		ws_message_free(m)
 
 
-ws_conn* wst_client_to_echo(int* out_pid):
+void wst_echo_peer(int fd):
+	wst_echo_peer_z(fd, 0)
+
+
+# A client-role conn talking to a forked echo peer; cfg != 0 turns
+# permessage-deflate on at both ends.
+ws_conn* wst_client_to_echo_z(int* out_pid, ws_deflate_config* cfg):
 	int* fds = malloc(__word_size__ * 2)
 	wst_pair(fds)
 	int pid = fork()
 	asserts(c"fork", pid >= 0)
 	if (pid == 0):
 		close(fds[0])
-		wst_echo_peer(fds[1])
+		wst_echo_peer_z(fds[1], cfg)
 		exit(9)
 	close(fds[1])
 	*out_pid = pid
-	return ws_conn_wrap(connection_context_new(fds[0], 10000, 0), 1, 1)
+	ws_conn* c = ws_conn_wrap(connection_context_new(fds[0], 10000, 0), 1, 1)
+	if (cfg != 0):
+		assert_equal(1, ws_set_compression(c, cfg))
+	return c
+
+
+ws_conn* wst_client_to_echo(int* out_pid):
+	return wst_client_to_echo_z(out_pid, 0)
 
 
 ws_message* wst_recv_ok(ws_conn* c):
@@ -443,15 +471,12 @@ void test_ws_session_server_initiated_close():
 
 /* ---- peer protocol violations, scripted byte for byte ---- */
 
-# Raw peer: writes raw_hex, then reads the frame the side under test
+# Raw peer: writes raw[0..n), then reads the frame the side under test
 # answers with and exits 0 iff it is a close frame carrying expect_code
 # (masked iff the side under test is a client). expect_code 0 means the
 # peer just hangs up after writing.
-void wst_raw_peer(int fd, char* raw_hex, int tested_is_client, int expect_code):
-	int n = 0
-	char* raw = wst_hex(raw_hex, &n)
+void wst_raw_peer_bytes(int fd, char* raw, int n, int tested_is_client, int expect_code):
 	wst_send_all(fd, raw, n)
-	free(raw)
 	if (expect_code == 0):
 		close(fd)
 		exit(0)
@@ -486,28 +511,48 @@ void wst_raw_peer(int fd, char* raw_hex, int tested_is_client, int expect_code):
 			have = have + got
 
 
+void wst_raw_peer(int fd, char* raw_hex, int tested_is_client, int expect_code):
+	int n = 0
+	char* raw = wst_hex(raw_hex, &n)
+	wst_raw_peer_bytes(fd, raw, n, tested_is_client, expect_code)
+
+
 # Runs one violation: the side under test (client or server role, max
-# message cap) must fail with expect_error after sending expect_code.
-void wst_violation(char* label, int tested_is_client, int max_message, char* raw_hex, int expect_error, int expect_code):
+# message cap, permessage-deflate per cfg when non-zero) must deliver
+# `messages` good messages and then fail with expect_error after
+# sending expect_code, on raw[0..n) from the peer.
+void wst_violation_bytes(char* label, int tested_is_client, int max_message, ws_deflate_config* cfg, char* raw, int n, int messages, int expect_error, int expect_code):
 	int* fds = malloc(__word_size__ * 2)
 	wst_pair(fds)
 	int pid = fork()
 	asserts(c"fork", pid >= 0)
 	if (pid == 0):
 		close(fds[0])
-		wst_raw_peer(fds[1], raw_hex, tested_is_client, expect_code)
+		wst_raw_peer_bytes(fds[1], raw, n, tested_is_client, expect_code)
 		exit(9)
 	close(fds[1])
 	ws_conn* c = ws_conn_wrap(connection_context_new(fds[0], 10000, 0), tested_is_client, 1)
 	ws_set_max_message(c, max_message)
-	ws_message* m = ws_recv(c)
+	if (cfg != 0):
+		assert_equal(1, ws_set_compression(c, cfg))
+	ws_message* m = 0
+	int k = 0
+	while (k < messages):
+		m = ws_recv(c)
+		if (m == 0):
+			print_string(label, ws_error_string(ws_conn_error(c)))
+			asserts(label, 0)
+		ws_message_free(m)
+		k = k + 1
+	m = ws_recv(c)
 	if (m != 0):
 		print_string(label, c": unexpected message")
 		asserts(label, 0)
 	if (ws_conn_error(c) != expect_error):
 		print_string(label, ws_error_string(ws_conn_error(c)))
 		assert_equal(expect_error, ws_conn_error(c))
-	assert_equal(expect_code, c.local_close_code)
+	if (expect_error != ws_error_closed()):
+		assert_equal(expect_code, c.local_close_code)
 	asserts(label, ws_send_text(c, c"x", 1) == 0)
 	ws_conn_free(c)
 	int status = 0
@@ -515,6 +560,13 @@ void wst_violation(char* label, int tested_is_client, int max_message, char* raw
 	if (status != 0):
 		print_string(label, c": raw peer rejected the reply")
 		asserts(label, 0)
+
+
+void wst_violation(char* label, int tested_is_client, int max_message, char* raw_hex, int expect_error, int expect_code):
+	int n = 0
+	char* raw = wst_hex(raw_hex, &n)
+	wst_violation_bytes(label, tested_is_client, max_message, 0, raw, n, 0, expect_error, expect_code)
+	free(raw)
 
 
 void test_ws_client_rejects_peer_violations():
@@ -676,3 +728,476 @@ void test_ws_server_upgrade_validation():
 	# Well-formed, but SHA-1 was never opted into: fail closed.
 	wst_expect_status(port, wst_upgrade_request(c"13", key), c"HTTP/1.1 500 ")
 	wst_wait_ok(pid)
+
+
+/* ---- permessage-deflate (RFC 7692) ---- */
+
+char* wst_fake_inflate(char* data, int len, char* window, int window_len, int max_output, int* out_len, int* out_error):
+	# Always "Hello": passes the known answers but ignores max_output.
+	*out_len = 5
+	*out_error = 0
+	return strclone(c"Hello")
+
+
+char* wst_no_flush_deflate(char* data, int len, char* window, int window_len, int window_bits, int level, int* out_len):
+	# A final block instead of a sync flush: inflatable, but no 00 00 ff ff.
+	deflate_result* r = deflate(data, len, level)
+	char* out = r.data
+	*out_len = r.length
+	free(r)
+	return out
+
+
+void wst_use_deflate():
+	assert_equal(1, ws_use_deflate(deflate_window, inflate_window))
+
+
+ws_deflate_config* wst_cfg(int snct, int cnct, int sbits, int cbits):
+	ws_deflate_config* cfg = ws_deflate_config_new()
+	cfg.server_no_context_takeover = snct
+	cfg.client_no_context_takeover = cnct
+	cfg.server_max_window_bits = sbits
+	cfg.client_max_window_bits = cbits
+	return cfg
+
+
+void test_ws_deflate_opt_in_fails_closed():
+	# No codec yet: compression cannot be switched on.
+	ws_conn* c = ws_conn_wrap(0, 1, 0)
+	ws_deflate_config* cfg = ws_deflate_config_new()
+	assert_equal(0, ws_set_compression(c, cfg))
+	assert_equal(0, ws_compression_active(c))
+	# Codecs that fail the known answers / contract are refused.
+	assert_equal(0, ws_use_deflate(deflate_window, wst_fake_inflate))
+	assert_equal(0, ws_use_deflate(wst_no_flush_deflate, inflate_window))
+	assert_equal(0, ws_set_compression(c, cfg))
+	wst_use_deflate()
+	# Window bits must be 0 (default) or 8..15.
+	cfg.server_max_window_bits = 7
+	assert_equal(0, ws_set_compression(c, cfg))
+	cfg.server_max_window_bits = 16
+	assert_equal(0, ws_set_compression(c, cfg))
+	cfg.server_max_window_bits = 8
+	assert_equal(1, ws_set_compression(c, cfg))
+	assert_equal(1, ws_compression_active(c))
+	free(cfg)
+	ws_conn_free(c)
+	assert_strings_equal(c"invalid compressed message", ws_error_string(ws_error_compression()))
+
+
+# Compresses text on c and compares the payload with the RFC bytes.
+void wst_expect_compressed(ws_conn* c, char* label, char* text, char* expected_hex):
+	int n = 0
+	char* z = ws_pmd_compress(c, text, strlen(text), &n)
+	asserts(label, z != 0)
+	wst_assert_bytes(label, expected_hex, z, n)
+	free(z)
+
+
+# Inflates the RFC payload on c and compares with text.
+void wst_expect_decompressed(ws_conn* c, char* label, char* payload_hex, char* text):
+	int n = 0
+	char* z = wst_hex(payload_hex, &n)
+	int out_len = 0
+	char* out = ws_pmd_decompress(c, z, n, &out_len)
+	asserts(label, out != 0)
+	assert_equal(strlen(text), out_len)
+	assert_strings_equal(text, out)
+	free(out)
+
+
+void test_ws_deflate_rfc7692_examples():
+	wst_use_deflate()
+	ws_deflate_config* cfg = ws_deflate_config_new()
+	# 7.2.3.1 / 7.2.3.2: "Hello", then "Hello" again over the shared
+	# window (a 5-byte back-reference into the previous message).
+	ws_conn* c = ws_conn_wrap(0, 0, 0)
+	assert_equal(1, ws_set_compression(c, cfg))
+	wst_expect_compressed(c, c"7.2.3.1 compress", c"Hello", c"f2 48 cd c9 c9 07 00")
+	# The RFC's 7.2.3.2 bytes (zlib's literal "H" + a 4-byte match) are
+	# checked on the inflate side below; this encoder takes the whole
+	# 5-byte match at distance 5, one byte shorter.
+	wst_expect_compressed(c, c"7.2.3.2 compress", c"Hello", c"02 13 00 00")
+	ws_conn_free(c)
+	c = ws_conn_wrap(0, 1, 0)
+	assert_equal(1, ws_set_compression(c, cfg))
+	wst_expect_decompressed(c, c"7.2.3.1 inflate", c"f2 48 cd c9 c9 07 00", c"Hello")
+	wst_expect_decompressed(c, c"7.2.3.2 inflate", c"f2 00 11 00 00", c"Hello")
+	# 7.2.3.3 a stored block, 7.2.3.4 a BFINAL block, 7.2.3.5 two blocks.
+	wst_expect_decompressed(c, c"7.2.3.3 inflate", c"00 05 00 fa ff 48 65 6c 6c 6f 00", c"Hello")
+	wst_expect_decompressed(c, c"7.2.3.4 inflate", c"f3 48 cd c9 c9 07 00 00", c"Hello")
+	wst_expect_decompressed(c, c"7.2.3.5 inflate", c"f2 48 05 00 00 00 ff ff ca c9 c9 07 00", c"Hello")
+	# An empty message compresses to the lone empty-block header.
+	wst_expect_compressed(c, c"empty", c"", c"00")
+	wst_expect_decompressed(c, c"empty inflate", c"00", c"")
+	ws_conn_free(c)
+	# No context takeover on our side: every message starts afresh.
+	cfg.server_no_context_takeover = 1
+	c = ws_conn_wrap(0, 0, 0)
+	assert_equal(1, ws_set_compression(c, cfg))
+	wst_expect_compressed(c, c"no takeover 1", c"Hello", c"f2 48 cd c9 c9 07 00")
+	wst_expect_compressed(c, c"no takeover 2", c"Hello", c"f2 48 cd c9 c9 07 00")
+	ws_conn_free(c)
+	free(cfg)
+	# 7.2.3.1 as a whole frame: RSV1 + text, unmasked.
+	string_builder* out = string_new()
+	int n = 0
+	char* z = wst_hex(c"f2 48 cd c9 c9 07 00", &n)
+	assert_equal(1, ws_frame_encode_rsv(out, 1, 4, ws_op_text(), z, n, 0))
+	wst_assert_bytes(c"rsv1 frame", c"c1 07 f2 48 cd c9 c9 07 00", out.data, out.length)
+	free(z)
+	string_free(out)
+
+
+int wst_parse_rsv(char* frame_hex, int rsv_allowed):
+	int n = 0
+	char* h = wst_hex(frame_hex, &n)
+	ws_frame f
+	int r = ws_parse_header_rsv(h, n, &f, 1000, rsv_allowed)
+	free(h)
+	return r
+
+
+void test_ws_deflate_rsv1_rules():
+	# RSV1 on the first frame of a data message is fine once negotiated.
+	assert_equal(0, wst_parse_rsv(c"c1 00", 4))
+	assert_equal(0, wst_parse_rsv(c"c2 00", 4))
+	assert_equal(0, wst_parse_rsv(c"41 00", 4))
+	# ... but never without it, never RSV2/RSV3, never on control or
+	# continuation frames.
+	assert_equal(1002, wst_parse_rsv(c"c1 00", 0))
+	assert_equal(1002, wst_parse_rsv(c"e1 00", 4))
+	assert_equal(1002, wst_parse_rsv(c"91 00", 4))
+	assert_equal(1002, wst_parse_rsv(c"c9 00", 4))
+	assert_equal(1002, wst_parse_rsv(c"c8 00", 4))
+	assert_equal(1002, wst_parse_rsv(c"c0 00", 4))
+	assert_equal(1002, wst_parse_rsv(c"40 00", 4))
+
+
+# Server negotiation: offers -> expected response (0 = declined).
+void wst_expect_negotiate(char* offers, ws_deflate_config* cfg, char* expected):
+	ws_pmd_params agreed
+	char* got = ws_pmd_negotiate(offers, cfg, &agreed)
+	if (expected == 0):
+		if (got != 0):
+			print_string(c"accepted: ", offers)
+			asserts(c"offer declined", 0)
+		return
+	if (got == 0):
+		print_string(c"declined: ", offers)
+		asserts(c"offer accepted", 0)
+	assert_strings_equal(expected, got)
+	free(got)
+
+
+void wst_expect_agreed(ws_pmd_params* a, int snct, int cnct, int sbits, int cbits):
+	assert_equal(snct, a.server_no_context_takeover)
+	assert_equal(cnct, a.client_no_context_takeover)
+	assert_equal(sbits, a.server_max_window_bits)
+	assert_equal(cbits, a.client_max_window_bits)
+
+
+void test_ws_deflate_server_negotiation():
+	ws_deflate_config* plain = ws_deflate_config_new()
+	wst_expect_negotiate(c"permessage-deflate", plain, c"permessage-deflate")
+	wst_expect_negotiate(c"permessage-deflate; client_max_window_bits", plain, c"permessage-deflate")
+	wst_expect_negotiate(c"PerMessage-Deflate ;client_max_window_bits = 10", plain, c"permessage-deflate")
+	wst_expect_negotiate(c"permessage-deflate; server_max_window_bits=10; server_no_context_takeover", plain, c"permessage-deflate; server_no_context_takeover; server_max_window_bits=10")
+	wst_expect_negotiate(c"permessage-deflate; client_no_context_takeover", plain, c"permessage-deflate")
+	# Agreed parameters.
+	ws_pmd_params a
+	char* r = ws_pmd_negotiate(c"permessage-deflate; client_max_window_bits=\"9\"; server_max_window_bits=12", plain, &a)
+	assert_strings_equal(c"permessage-deflate; server_max_window_bits=12", r)
+	free(r)
+	wst_expect_agreed(&a, 0, 0, 12, 9)
+	# Server policy: its own window/takeover, and limits asked of the
+	# client when (and only when) the offer allows client_max_window_bits.
+	ws_deflate_config* strict = wst_cfg(1, 1, 9, 10)
+	r = ws_pmd_negotiate(c"permessage-deflate; client_max_window_bits", strict, &a)
+	assert_strings_equal(c"permessage-deflate; server_no_context_takeover; client_no_context_takeover; server_max_window_bits=9; client_max_window_bits=10", r)
+	free(r)
+	wst_expect_agreed(&a, 1, 1, 9, 10)
+	r = ws_pmd_negotiate(c"permessage-deflate; server_max_window_bits=8", strict, &a)
+	assert_strings_equal(c"permessage-deflate; server_no_context_takeover; client_no_context_takeover; server_max_window_bits=8", r)
+	free(r)
+	wst_expect_agreed(&a, 1, 1, 8, 15)
+	wst_expect_negotiate(c"permessage-deflate; client_max_window_bits=8", strict, c"permessage-deflate; server_no_context_takeover; client_no_context_takeover; server_max_window_bits=9")
+	# Invalid offers are declined; a later valid one is taken instead.
+	wst_expect_negotiate(c"permessage-deflate; foo", plain, 0)
+	wst_expect_negotiate(c"permessage-deflate; server_no_context_takeover; server_no_context_takeover", plain, 0)
+	wst_expect_negotiate(c"permessage-deflate; client_max_window_bits; client_max_window_bits=10", plain, 0)
+	wst_expect_negotiate(c"permessage-deflate; server_no_context_takeover=1", plain, 0)
+	wst_expect_negotiate(c"permessage-deflate; server_max_window_bits", plain, 0)
+	wst_expect_negotiate(c"permessage-deflate; server_max_window_bits=7", plain, 0)
+	wst_expect_negotiate(c"permessage-deflate; server_max_window_bits=16", plain, 0)
+	wst_expect_negotiate(c"permessage-deflate; server_max_window_bits=08", plain, 0)
+	wst_expect_negotiate(c"permessage-deflate; client_max_window_bits=abc", plain, 0)
+	wst_expect_negotiate(c"x-webkit-deflate-frame", plain, 0)
+	wst_expect_negotiate(c"permessage-deflate; foo=1, permessage-deflate; client_max_window_bits=12", plain, c"permessage-deflate")
+	wst_expect_negotiate(c"x-other; a=b, permessage-deflate", plain, c"permessage-deflate")
+	# Syntax errors decline everything.
+	wst_expect_negotiate(c"permessage-deflate;", plain, 0)
+	wst_expect_negotiate(c"permessage-deflate; client_max_window_bits=\"10", plain, 0)
+	wst_expect_negotiate(c"permessage-deflate server_no_context_takeover", plain, 0)
+	wst_expect_negotiate(c"", plain, 0)
+	# An invalid policy never accepts.
+	ws_deflate_config* bad = wst_cfg(0, 0, 7, 0)
+	wst_expect_negotiate(c"permessage-deflate", bad, 0)
+	free(bad)
+	free(strict)
+	free(plain)
+
+
+void test_ws_deflate_client_negotiation():
+	ws_deflate_config* plain = ws_deflate_config_new()
+	ws_deflate_config* strict = wst_cfg(1, 1, 10, 12)
+	char* offer = ws_pmd_offer(plain)
+	assert_strings_equal(c"permessage-deflate; client_max_window_bits", offer)
+	free(offer)
+	offer = ws_pmd_offer(strict)
+	assert_strings_equal(c"permessage-deflate; server_no_context_takeover; client_no_context_takeover; server_max_window_bits=10; client_max_window_bits=12", offer)
+	free(offer)
+	ws_pmd_params a
+	assert_equal(1, ws_pmd_accept_response(c"permessage-deflate", plain, &a))
+	wst_expect_agreed(&a, 0, 0, 15, 15)
+	assert_equal(1, ws_pmd_accept_response(c"permessage-deflate; server_max_window_bits=12; client_max_window_bits=9; client_no_context_takeover; server_no_context_takeover", plain, &a))
+	wst_expect_agreed(&a, 1, 1, 12, 9)
+	assert_equal(1, ws_pmd_accept_response(c"permessage-deflate; server_no_context_takeover; server_max_window_bits=9", strict, &a))
+	wst_expect_agreed(&a, 1, 1, 9, 12)
+	assert_equal(1, ws_pmd_accept_response(c"permessage-deflate; server_no_context_takeover; server_max_window_bits=10; client_max_window_bits=15", strict, &a))
+	wst_expect_agreed(&a, 1, 1, 10, 12)
+	# Malformed, unknown, duplicate, or not what we offered: fail.
+	assert_equal(0, ws_pmd_accept_response(c"permessage-deflate; client_max_window_bits", plain, &a))
+	assert_equal(0, ws_pmd_accept_response(c"permessage-deflate; foo", plain, &a))
+	assert_equal(0, ws_pmd_accept_response(c"permessage-deflate; client_no_context_takeover; client_no_context_takeover", plain, &a))
+	assert_equal(0, ws_pmd_accept_response(c"permessage-deflate; server_max_window_bits=20", plain, &a))
+	assert_equal(0, ws_pmd_accept_response(c"permessage-deflate, permessage-deflate", plain, &a))
+	assert_equal(0, ws_pmd_accept_response(c"x-webkit-deflate-frame", plain, &a))
+	assert_equal(0, ws_pmd_accept_response(c"permessage-deflate;", plain, &a))
+	assert_equal(0, ws_pmd_accept_response(c"", plain, &a))
+	# strict asked for server_no_context_takeover and a server window <= 10.
+	assert_equal(0, ws_pmd_accept_response(c"permessage-deflate; server_max_window_bits=10", strict, &a))
+	assert_equal(0, ws_pmd_accept_response(c"permessage-deflate; server_no_context_takeover", strict, &a))
+	assert_equal(0, ws_pmd_accept_response(c"permessage-deflate; server_no_context_takeover; server_max_window_bits=11", strict, &a))
+	free(strict)
+	free(plain)
+
+
+# n bytes of compressible-but-not-trivial data whose repeats reach
+# beyond small windows.
+char* wst_pattern(int n, int seed):
+	char* data = malloc(n)
+	int i = 0
+	while (i < n):
+		data[i] = ((i / 3) * 7 + seed + ((i >> 9) & 31)) & 255
+		i = i + 1
+	return data
+
+
+void wst_expect_binary_echo(ws_conn* c, char* data, int n):
+	assert_equal(1, ws_send_binary(c, data, n))
+	ws_message* m = wst_recv_ok(c)
+	assert_equal(ws_op_binary(), m.opcode)
+	assert_equal(n, m.len)
+	int i = 0
+	while (i < n):
+		if ((m.data[i] & 255) != (data[i] & 255)):
+			assert_equal(data[i] & 255, m.data[i] & 255)
+		i = i + 1
+	ws_message_free(m)
+
+
+# A full compressed echo session under cfg (both ends).
+void wst_compressed_session(ws_deflate_config* cfg):
+	wst_use_deflate()
+	int pid = 0
+	ws_conn* c = wst_client_to_echo_z(&pid, cfg)
+	assert_equal(1, ws_compression_active(c))
+	int k = 0
+	while (k < 4):
+		assert_equal(1, ws_send_text(c, c"hello hello hello, compressed world", 35))
+		wst_expect_text(c, c"hello hello hello, compressed world")
+		k = k + 1
+	assert_equal(1, ws_send_text(c, c"h\xc3\xa9llo \xe2\x82\xac", 10))
+	wst_expect_text(c, c"h\xc3\xa9llo \xe2\x82\xac")
+	assert_equal(1, ws_send_binary(c, c"", 0))
+	ws_message* m = wst_recv_ok(c)
+	assert_equal(0, m.len)
+	ws_message_free(m)
+	char* big = wst_pattern(70000, 1)
+	wst_expect_binary_echo(c, big, 70000)
+	wst_expect_binary_echo(c, big, 70000)
+	free(big)
+	char* noise = malloc(3000)
+	int i = 0
+	int x = 12345
+	while (i < 3000):
+		x = (x * 1103515245 + 12345) & 2147483647
+		noise[i] = (x >> 16) & 255
+		i = i + 1
+	wst_expect_binary_echo(c, noise, 3000)
+	free(noise)
+	# Plain (RSV1-clear) fragmented frames still work alongside.
+	assert_equal(1, ws_send_frame(c, 0, ws_op_text(), c"frag", 4))
+	assert_equal(1, ws_send_frame(c, 1, ws_op_continuation(), c"mented", 6))
+	wst_expect_text(c, c"fragmented")
+	ws_send_text(c, c"ping-me", 7)
+	wst_expect_text(c, c"pinged")
+	assert_equal(1, ws_close(c, 1000, c"bye"))
+	ws_conn_free(c)
+	wst_wait_ok(pid)
+
+
+void test_ws_deflate_session_context_takeover():
+	ws_deflate_config* cfg = ws_deflate_config_new()
+	wst_compressed_session(cfg)
+	cfg.level = 2
+	wst_compressed_session(cfg)
+	free(cfg)
+
+
+void test_ws_deflate_session_no_context_takeover():
+	ws_deflate_config* cfg = wst_cfg(1, 1, 0, 0)
+	wst_compressed_session(cfg)
+	free(cfg)
+	cfg = wst_cfg(0, 1, 0, 0)
+	wst_compressed_session(cfg)
+	free(cfg)
+
+
+void test_ws_deflate_session_small_windows():
+	ws_deflate_config* cfg = wst_cfg(0, 0, 8, 9)
+	wst_compressed_session(cfg)
+	free(cfg)
+	cfg = wst_cfg(1, 0, 15, 8)
+	cfg.level = 0
+	wst_compressed_session(cfg)
+	free(cfg)
+
+
+# Reads one small frame off fd into buf (returns its length).
+int wst_read_some(int fd, char* buf, int cap):
+	int got = read(fd, buf, cap)
+	asserts(c"frame read", got > 2)
+	return got
+
+
+void test_ws_deflate_frames_on_the_wire():
+	wst_use_deflate()
+	ws_deflate_config* cfg = ws_deflate_config_new()
+	int* fds = malloc(__word_size__ * 2)
+	wst_pair(fds)
+	ws_conn* client = ws_conn_wrap(connection_context_new(fds[0], 10000, 0), 1, 1)
+	ws_conn* server = ws_conn_wrap(connection_context_new(fds[1], 10000, 0), 0, 1)
+	assert_equal(1, ws_set_compression(client, cfg))
+	assert_equal(1, ws_set_compression(server, cfg))
+	char* text = c"compress me compress me compress me compress me compress me"
+	int n = strlen(text)
+	# Client to server: FIN + RSV1 + text, masked, smaller than the text;
+	# the server inflates it. (Peek with MSG_PEEK-free reads: the frame is
+	# re-injected through the client's socket end.)
+	assert_equal(1, ws_send_text(client, text, n))
+	char* buf = malloc(256)
+	int got = wst_read_some(fds[1], buf, 256)
+	assert_equal(193, buf[0] & 255)
+	assert_equal(128, buf[1] & 128)
+	asserts(c"compressed", (buf[1] & 127) < n)
+	assert_equal((buf[1] & 127) + 6, got)
+	wst_send_all(fds[0], buf, got)
+	wst_expect_text(server, text)
+	# Server to client: unmasked RSV1 binary; the second copy is a
+	# back-reference into the first (context takeover), so it is tiny.
+	assert_equal(1, ws_send_binary(server, text, n))
+	got = wst_read_some(fds[0], buf, 256)
+	assert_equal(194, buf[0] & 255)
+	assert_equal(0, buf[1] & 128)
+	int first_len = buf[1] & 127
+	wst_send_all(fds[1], buf, got)
+	ws_message* m = wst_recv_ok(client)
+	assert_equal(n, m.len)
+	ws_message_free(m)
+	assert_equal(1, ws_send_binary(server, text, n))
+	got = wst_read_some(fds[0], buf, 256)
+	asserts(c"shared window", (buf[1] & 127) < first_len)
+	asserts(c"tiny", (buf[1] & 127) <= 8)
+	wst_send_all(fds[1], buf, got)
+	m = wst_recv_ok(client)
+	assert_equal(n, m.len)
+	assert_strings_equal(text, m.data)
+	ws_message_free(m)
+	free(buf)
+	free(cfg)
+	ws_conn_free(client)
+	ws_conn_free(server)
+
+
+void wst_z_violation(char* label, ws_deflate_config* cfg, int max_message, char* raw_hex, int messages, int expect_error, int expect_code):
+	int n = 0
+	char* raw = wst_hex(raw_hex, &n)
+	wst_violation_bytes(label, 1, max_message, cfg, raw, n, messages, expect_error, expect_code)
+	free(raw)
+
+
+void test_ws_deflate_peer_violations():
+	wst_use_deflate()
+	ws_deflate_config* cfg = ws_deflate_config_new()
+	int proto = ws_error_protocol()
+	int bad = ws_error_compression()
+	# A good compressed message is delivered, then the violation.
+	wst_z_violation(c"rsv1 on ping", cfg, 1000, c"c1 07 f2 48 cd c9 c9 07 00 c9 00", 1, proto, 1002)
+	wst_z_violation(c"rsv1 on continuation", cfg, 1000, c"41 03 f2 48 cd c0 04 c9 c9 07 00", 0, proto, 1002)
+	wst_z_violation(c"rsv1 on close", cfg, 1000, c"c8 02 03 e8", 0, proto, 1002)
+	wst_z_violation(c"rsv2", cfg, 1000, c"a1 00", 0, proto, 1002)
+	# A compressed message split over fragments is fine.
+	wst_z_violation(c"fragmented compressed", cfg, 1000, c"41 03 f2 48 cd 80 04 c9 c9 07 00 c3 00", 1, proto, 1002)
+	# Data that does not inflate: a reserved block type, a stored block
+	# with a bad NLEN, a back-reference before any output.
+	wst_z_violation(c"reserved btype", cfg, 1000, c"c1 01 ff", 0, bad, 1007)
+	wst_z_violation(c"bad stored length", cfg, 1000, c"c1 05 00 05 00 00 00", 0, bad, 1007)
+	wst_z_violation(c"distance before window", cfg, 1000, c"c1 05 f2 00 11 00 00", 0, bad, 1007)
+	# Decompressed size over the cap fails closed with 1009 (the frame
+	# itself is under the cap).
+	wst_z_violation(c"inflates past cap", cfg, 50, c"c1 06 4a 4c a4 3d 00 00", 0, ws_error_too_big(), 1009)
+	wst_z_violation(c"inflates to the cap", cfg, 100, c"c1 06 4a 4c a4 3d 00 00 c3 00", 1, proto, 1002)
+	# Compressed text must still be UTF-8.
+	wst_z_violation(c"compressed bad utf-8", cfg, 1000, c"c1 04 3a ac 01 00", 0, ws_error_bad_utf8(), 1007)
+	# The server promised no context takeover: its second "Hello" may not
+	# reach back into the first message.
+	ws_deflate_config* snct = wst_cfg(1, 0, 0, 0)
+	wst_z_violation(c"takeover after server_no_context_takeover", snct, 1000, c"c1 07 f2 48 cd c9 c9 07 00 c1 05 f2 00 11 00 00", 1, bad, 1007)
+	free(snct)
+	free(cfg)
+
+
+# A 600-byte message with no repeated 3-byte substring, then a message
+# whose back-reference reaches 600 bytes back into it: legal for a 2^15
+# window, a violation for 2^8.
+void test_ws_deflate_window_bits_enforced():
+	wst_use_deflate()
+	char* first = malloc(600)
+	int i = 0
+	while (i < 300):
+		first[2 * i] = i & 255
+		first[2 * i + 1] = i >> 8
+		i = i + 1
+	int n1 = 0
+	char* z1 = deflate_window(first, 600, 0, 0, 15, 1, &n1)
+	int n2 = 0
+	char* z2 = deflate_window(first, 20, first, 600, 15, 1, &n2)
+	asserts(c"second is a back-reference", n2 < 16)
+	string_builder* raw = string_new()
+	ws_frame_encode_rsv(raw, 1, 4, ws_op_binary(), z1, n1 - 4, 0)
+	ws_frame_encode_rsv(raw, 1, 4, ws_op_binary(), z2, n2 - 4, 0)
+	string_append(raw, c"\x88\x02\x03\xe8")
+	# Server window 15: both messages, then the peer's close (echoed).
+	ws_deflate_config* wide = wst_cfg(0, 0, 15, 0)
+	wst_violation_bytes(c"window 15", 1, 100000, wide, raw.data, raw.length, 2, ws_error_closed(), 1000)
+	# Server window 8: the second message reaches too far.
+	ws_deflate_config* narrow = wst_cfg(0, 0, 8, 0)
+	wst_violation_bytes(c"window 8", 1, 100000, narrow, raw.data, raw.length, 1, ws_error_compression(), 1007)
+	free(wide)
+	free(narrow)
+	string_free(raw)
+	free(z1)
+	free(z2)
+	free(first)

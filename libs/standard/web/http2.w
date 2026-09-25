@@ -2,25 +2,50 @@
 # ("Protocols"). Header compression is libs/standard/web/hpack.w;
 # libs/standard/web/grpc.w builds gRPC on top of this file.
 #
-# Scope: cleartext HTTP/2 with prior knowledge ("h2c", RFC 9113 section
-# 3.3): the client sends the connection preface straight away, and the
-# server expects it. There is no HTTP/1.1 Upgrade path, and no h2 over
-# TLS yet -- that needs ALPN ("h2") in libs/standard/net/tls.w, which
-# does not negotiate ALPN today. The follow-up is a transport seam here
-# (h2_conn currently owns a plain fd) plus ALPN in tls.w.
+# Scope: HTTP/2 with prior knowledge, either cleartext ("h2c", RFC 9113
+# section 3.3) or over TLS 1.3 with ALPN "h2" (RFC 9113 section 3.2,
+# libs/standard/net/tls.w): the client sends the connection preface
+# straight away, and the server expects it. There is no HTTP/1.1
+# Upgrade path.
+#
+# Transport: an h2_conn owns a socket fd and, for h2 over TLS, a
+# tls_conn (h2_conn.tls, 0 for h2c). All connection I/O goes through
+# h2_conn_write_all / h2_conn_read, which pick the TLS record stream or
+# the bare fd; everything above them (framing, flow control, streams) is
+# transport-agnostic. The TLS side requires the ALPN selection to be
+# exactly "h2": a peer that negotiated anything else (or nothing) is
+# refused before any HTTP/2 byte is sent.
 #
 # Public API (connection):
 #   h2_conn* h2_connect(char* host, int port, int timeout_ms)  0 on failure
+#   h2_conn* h2_connect_tls(char* host, int port, int timeout_ms,
+#                           char* server_name, tls_config* cfg)
+#                                        TLS + ALPN "h2"; 0 on failure, the reason
+#                                        in tls_last_error(cfg) when cfg != 0
 #   h2_conn* h2_client_new(int fd)       preface + SETTINGS on a connected fd
+#   h2_conn* h2_client_new_tls(int fd, tls_conn* t)
+#                                        same over an established TLS session;
+#                                        0 (t closed) unless ALPN selected "h2"
 #   h2_conn* h2_conn_new(int fd, int is_server) + void h2_client_start(h2_conn* c)
 #                                        same, with local_* settings tuned in between
+#                                        (set c.tls first for h2 over TLS)
 #   h2_conn* h2_server_new(int fd)       reads the client preface; 0 on failure
+#   h2_conn* h2_server_new_tls(int fd, tls_conn* t)
+#                                        same over a tls_accept'ed session; 0 unless "h2"
+#   h2_conn* h2_accept_tls(int fd, tls_server_config* scfg)
+#                                        tls_accept requiring ALPN "h2" (sets it on
+#                                        scfg), then h2_server_new_tls
 #   int  h2_pump(h2_conn* c)             read + handle one frame: 0 / -1 dead / -2 timeout
 #   int  h2_ping(h2_conn* c)             PING and wait for its ACK; 0 on success
 #   int  h2_await_settings(h2_conn* c)   wait for the peer's first SETTINGS
 #   void h2_goaway(h2_conn* c, int code) send GOAWAY (graceful when code == 0)
-#   void h2_close(h2_conn* c)            GOAWAY(NO_ERROR) if needed, close fd, free
+#   void h2_close(h2_conn* c)            GOAWAY(NO_ERROR) if needed, close_notify
+#                                        (TLS), close fd, free
 #   void h2_set_deadline(h2_conn* c, int deadline_ms)  absolute monotonic ms, 0 = none
+#   int  h2_conn_has_pending(h2_conn* c) 1 when h2_pump can make progress without
+#                                        waiting: a whole frame buffered, decrypted
+#                                        TLS plaintext not yet consumed, or a
+#                                        readable socket
 #
 # Public API (client streams):
 #   h2_stream* h2_request_start(h2_conn* c, char* method, char* scheme, char* authority,
@@ -106,7 +131,9 @@ import lib.net
 import lib.time
 import lib.container
 import structures.string
+import lib.poll
 import libs.standard.net.dns
+import libs.standard.net.tls
 import libs.standard.web.hpack
 
 
@@ -362,6 +389,8 @@ struct h2_stream:
 
 struct h2_conn:
 	int fd
+	tls_conn* tls           # h2 over TLS: the record stream (0 = h2c on fd)
+	tls_config* own_tls_cfg # client config h2_connect_tls allocated, or 0
 	int is_server
 	int dead
 	int io_error
@@ -412,6 +441,7 @@ int h2_send_window_update(h2_conn* c, int stream_id, int inc);
 int h2_write_frame_raw_bytes(h2_conn* c, char* p, int n);
 int h2_fill(h2_conn* c, int n);
 void h2_close(h2_conn* c);
+h2_conn* h2_server_start(h2_conn* c);
 int h2_contains(char* hay, char* needle);
 
 
@@ -479,13 +509,20 @@ int h2_fd_read_exact(int fd, char* p, int n):
 	return 1
 
 
-int h2_raw_write_frame(int fd, int type, int flags, int stream_id, char* payload, int len):
+# Serializes one frame (9-byte header + payload) into a malloc'd buffer
+# of 9 + len bytes.
+char* h2_frame_encode(int type, int flags, int stream_id, char* payload, int len):
 	char* buf = malloc(9 + len)
 	h2_put_u24(buf, len)
 	buf[3] = type
 	buf[4] = flags
 	h2_put_u32(buf + 5, stream_id)
 	h2_copy(buf + 9, payload, len)
+	return buf
+
+
+int h2_raw_write_frame(int fd, int type, int flags, int stream_id, char* payload, int len):
+	char* buf = h2_frame_encode(type, flags, stream_id, payload, len)
 	int rc = h2_fd_write_all(fd, buf, 9 + len)
 	free(buf)
 	return rc
@@ -514,6 +551,8 @@ int h2_raw_read_frame(int fd, h2_frame* f):
 h2_conn* h2_conn_new(int fd, int is_server):
 	h2_conn* c = new h2_conn()
 	c.fd = fd
+	c.tls = 0
+	c.own_tls_cfg = 0
 	c.is_server = is_server
 	c.dead = 0
 	c.io_error = 0
@@ -564,10 +603,70 @@ h2_conn* h2_conn_new(int fd, int is_server):
 	return c
 
 
+/* Transport seam: every connection byte goes through these two */
+
+# Writes all n bytes to the peer: TLS application data when c.tls is
+# set, the bare fd otherwise. 0 on success, -1 on error.
+int h2_conn_write_all(h2_conn* c, char* p, int n):
+	if (c.tls != 0):
+		if (n <= 0):
+			return 0
+		if (tls_write(c.tls, p, n) != n):
+			return (-1)
+		return 0
+	return h2_fd_write_all(c.fd, p, n)
+
+
+# Reads up to n bytes (at least one): > 0 bytes read, <= 0 EOF/error,
+# or -net_eagain() when the connection deadline passed first (only
+# while deadline_ms is set). On TLS the deadline is enforced by
+# polling the fd before a record is started (a record is then read
+# whole, bounded by timeout_ms), so an expired deadline never splits a
+# TLS record.
+int h2_conn_read(h2_conn* c, char* p, int n):
+	int left = 0
+	if (c.deadline_ms != 0):
+		left = c.deadline_ms - time_monotonic_ms()
+		if (left <= 0):
+			return (0 - net_eagain())
+	if (c.tls != 0):
+		if ((c.deadline_ms != 0) && (c.tls.app_pos >= c.tls.app_len)):
+			int ready = poll_single(c.fd, poll_in(), left)
+			if (ready == 0):
+				return (0 - net_eagain())
+		return tls_read(c.tls, p, n)
+	if (c.deadline_ms != 0):
+		socket_set_recv_timeout(c.fd, left)
+	int got = read(c.fd, p, n)
+	if (c.deadline_ms != 0):
+		socket_set_recv_timeout(c.fd, c.timeout_ms)
+	return got
+
+
+# 1 when input is available without blocking: a complete frame already
+# in rbuf, plaintext the TLS layer decrypted but h2_conn_read has not
+# consumed yet (h2 over TLS: a record can carry several frames, and a
+# poll on the fd cannot see it), or a readable socket. 0 otherwise.
+int h2_conn_has_pending(h2_conn* c):
+	if (c.dead != 0):
+		return 0
+	int buffered = c.rend - c.rstart
+	if ((buffered >= 9) && (buffered >= 9 + h2_get_u24(c.rbuf + c.rstart))):
+		return 1
+	if ((c.tls != 0) && (c.tls.app_pos < c.tls.app_len)):
+		return 1
+	if (poll_single(c.fd, poll_in(), 0) > 0):
+		return 1
+	return 0
+
+
 int h2_write_frame(h2_conn* c, int type, int flags, int stream_id, char* payload, int len):
 	if (c.dead != 0):
 		return (-1)
-	if (h2_raw_write_frame(c.fd, type, flags, stream_id, payload, len) != 0):
+	char* buf = h2_frame_encode(type, flags, stream_id, payload, len)
+	int rc = h2_conn_write_all(c, buf, 9 + len)
+	free(buf)
+	if (rc != 0):
 		c.io_error = 1
 		c.dead = 1
 		return (-1)
@@ -630,7 +729,7 @@ h2_conn* h2_client_new(int fd):
 int h2_write_frame_raw_bytes(h2_conn* c, char* p, int n):
 	if (c.dead != 0):
 		return (-1)
-	if (h2_fd_write_all(c.fd, p, n) != 0):
+	if (h2_conn_write_all(c, p, n) != 0):
 		c.io_error = 1
 		c.dead = 1
 		return (-1)
@@ -663,7 +762,12 @@ h2_conn* h2_connect(char* host, int port, int timeout_ms):
 # 24-byte client preface, then sends our SETTINGS. 0 on failure (the fd
 # is closed).
 h2_conn* h2_server_new(int fd):
-	h2_conn* c = h2_conn_new(fd, 1)
+	return h2_server_start(h2_conn_new(fd, 1))
+
+
+# Reads the client preface and sends our SETTINGS on a fresh server-side
+# connection (plain or TLS). 0 on failure (the connection is closed).
+h2_conn* h2_server_start(h2_conn* c):
 	if (h2_fill(c, h2_preface_len()) != 0):
 		h2_close(c)
 		return 0
@@ -679,6 +783,102 @@ h2_conn* h2_server_new(int fd):
 		h2_close(c)
 		return 0
 	return c
+
+
+# 1 when the TLS session negotiated ALPN "h2" (RFC 9113 section 3.2).
+int h2_tls_is_h2(tls_conn* t):
+	char* sel = tls_alpn_selected(t)
+	if (sel == 0):
+		return 0
+	return strcmp(sel, c"h2") == 0
+
+
+# Client side over an established TLS session (ALPN must have selected
+# "h2"): sends the preface and SETTINGS as application data. Takes
+# ownership of t and fd: on failure both are closed and 0 is returned.
+h2_conn* h2_client_new_tls(int fd, tls_conn* t):
+	if (h2_tls_is_h2(t) == 0):
+		tls_close(t)
+		close(fd)
+		return 0
+	h2_conn* c = h2_conn_new(fd, 0)
+	c.tls = t
+	h2_client_start(c)
+	if (c.dead != 0):
+		h2_close(c)
+		return 0
+	return c
+
+
+# Server side over a tls_accept'ed session (ALPN must have selected
+# "h2"). Takes ownership of t and fd: on failure both are closed.
+h2_conn* h2_server_new_tls(int fd, tls_conn* t):
+	if (h2_tls_is_h2(t) == 0):
+		tls_close(t)
+		close(fd)
+		return 0
+	h2_conn* c = h2_conn_new(fd, 1)
+	c.tls = t
+	return h2_server_start(c)
+
+
+# Opens TCP, runs the TLS 1.3 handshake offering ALPN "h2" (server_name
+# is the SNI + certificate hostname; 0 = host), then starts HTTP/2.
+# cfg supplies trust/verification settings (0 = defaults) and is
+# modified: its ALPN offer becomes "h2". A server that does not select
+# h2 is refused ("http2: server did not negotiate h2 via ALPN" in
+# tls_last_error(cfg)). Returns 0 on any failure.
+h2_conn* h2_connect_tls(char* host, int port, int timeout_ms, char* server_name, tls_config* cfg):
+	int ip = 0
+	if (dns_resolve_ipv4(host, &ip) == 0):
+		return 0
+	int fd = socket_tcp_ipv4()
+	if (fd < 0):
+		return 0
+	socket_set_send_timeout(fd, timeout_ms)
+	socket_set_recv_timeout(fd, timeout_ms)
+	if (socket_connect_ipv4(fd, ip, port) < 0):
+		close(fd)
+		return 0
+	tls_config* own = 0
+	if (cfg == 0):
+		own = tls_config_new()
+		cfg = own
+	tls_config_set_alpn(cfg, c"h2")
+	if (server_name == 0):
+		server_name = host
+	tls_conn* t = tls_connect(fd, server_name, cfg)
+	if (t == 0):
+		close(fd)
+		if (own != 0):
+			tls_config_free(own)
+		return 0
+	if (h2_tls_is_h2(t) == 0):
+		cfg.last_error = c"http2: server did not negotiate h2 via ALPN"
+	h2_conn* c = h2_client_new_tls(fd, t)
+	if (c == 0):
+		if (own != 0):
+			tls_config_free(own)
+		return 0
+	c.own_tls_cfg = own
+	c.timeout_ms = timeout_ms
+	socket_set_recv_timeout(fd, timeout_ms)
+	socket_set_send_timeout(fd, timeout_ms)
+	return c
+
+
+# Server side of a freshly accepted TCP connection: TLS handshake with
+# ALPN "h2" required (scfg is modified to require it; a client that
+# does not offer h2 gets no_application_protocol), then the preface.
+# 0 on failure (the fd is closed; tls_server_last_error(scfg) explains
+# a TLS failure).
+h2_conn* h2_accept_tls(int fd, tls_server_config* scfg):
+	tls_server_config_set_alpn(scfg, c"h2", 1)
+	tls_conn* t = tls_accept(fd, scfg)
+	if (t == 0):
+		close(fd)
+		return 0
+	return h2_server_new_tls(fd, t)
 
 
 void h2_set_deadline(h2_conn* c, int deadline_ms):
@@ -707,14 +907,7 @@ int h2_fill(h2_conn* c, int n):
 				ncap = ncap * 2
 			c.rbuf = realloc(c.rbuf, c.rcap, ncap)
 			c.rcap = ncap
-		if (c.deadline_ms != 0):
-			int left = c.deadline_ms - time_monotonic_ms()
-			if (left <= 0):
-				return (-2)
-			socket_set_recv_timeout(c.fd, left)
-		int got = read(c.fd, c.rbuf + c.rend, c.rcap - c.rend)
-		if (c.deadline_ms != 0):
-			socket_set_recv_timeout(c.fd, c.timeout_ms)
+		int got = h2_conn_read(c, c.rbuf + c.rend, c.rcap - c.rend)
 		if ((got < 0) && (got == (0 - net_eagain())) && (c.deadline_ms != 0)):
 			return (-2)
 		if (got <= 0):
@@ -1492,6 +1685,11 @@ void h2_close(h2_conn* c):
 		return
 	if (c.dead == 0):
 		h2_send_goaway(c, h2_error_no_error(), 0)
+	if (c.tls != 0):
+		tls_close(c.tls)
+		c.tls = 0
+	if (c.own_tls_cfg != 0):
+		tls_config_free(c.own_tls_cfg)
 	close(c.fd)
 	while (c.streams.length > 0):
 		h2_stream* s = c.streams[0]

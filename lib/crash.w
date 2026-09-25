@@ -17,7 +17,6 @@ sections via lib/stack_trace.w - to stderr:
 	  at crash_deep (tests/crash_null_deref_fixture.w:11)
 	  at crash_mid (tests/crash_null_deref_fixture.w:15)
 	  at main (tests/crash_null_deref_fixture.w:20)
-	note: the trace is heuristic (return-address scan, no frame pointers): frames can be missing or stale
 	crash dump written to /tmp/app.1234.core (inspect with: wcore /tmp/app.1234.core)
 	terminating with the default action for signal 11 (core dump per RLIMIT_CORE)
 
@@ -36,11 +35,19 @@ RLIMIT_CORE) and anything a test harness observes stay exactly as
 without the handler - the report is purely additive on stderr.
 
 Accuracy: the innermost frame comes from the faulting pc and is always
-real. Every OLDER frame comes from lib/stack_trace.w's heuristic
-return-address scan (there are no frame pointers to follow, see
-docs/todo.txt), so a caller can be missing and a stale stack slot that
-still looks like a live return address can add a frame that is not on
-the call path. Do not treat the tail of the trace as exact.
+real. Older frames come from lib/stack_trace.w's st_unwind, which
+follows the frame-pointer chain the compiler maintains on x86/x64
+(push ebp ; mov ebp,esp in every function): exact, every frame in
+order, up to main. When the chain is broken (a corrupted stack, or an
+image without frame pointers) the rest of the trace falls back to the
+heuristic return-address scan, where a caller can be missing and a
+stale stack slot can add a frame not on the call path; the report then
+ends with
+
+	note: part of the trace is heuristic (return-address scan): frames can be missing or stale
+
+Traces longer than crash_frames_max() frames are cut off with a
+"... trace truncated" line.
 
 Installation is opt-in - import this file and call
 crash_handler_install() from main - and is a silent no-op when
@@ -78,7 +85,7 @@ int* crash_dfl_act /* zeroed struct sigaction: SIG_DFL */
 
 
 int crash_frames_max():
-	return 32
+	return 256
 
 
 char* crash_signal_name(int sig):
@@ -206,15 +213,18 @@ void crash_report(int sig, int context):
 		crash_write_build_id()
 		st_write_cstr(c"\n")
 	st_write_cstr(c"stack trace (most recent call first):\n")
-	# The innermost frame is the faulting pc itself (exact); older
-	# frames come from the heuristic return-address scan.
+	# The innermost frame is the faulting pc itself; older frames come
+	# from the frame-pointer chain (heuristic scan where it breaks).
 	crash_write_frame(pc)
-	int n = st_scan(ctx_esp(context), crash_pcs, crash_frames_max(), 0)
+	int n = st_unwind(pc, ctx_esp(context), ctx_reg(context, sigcontext_ebp()), crash_pcs, crash_frames_max())
 	int k = 0
 	while (k < n):
 		crash_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
 		k = k + 1
-	st_write_cstr(c"note: the trace is heuristic (return-address scan, no frame pointers): frames can be missing or stale\n")
+	if (n >= crash_frames_max()):
+		st_write_cstr(c"  ... trace truncated\n")
+	if (st_unwind_exact == 0):
+		st_write_cstr(c"note: part of the trace is heuristic (return-address scan): frames can be missing or stale\n")
 	if (crash_dump_enabled()):
 		if (crash_dump_write(sig, context)):
 			st_write_cstr(c"crash dump written to ")

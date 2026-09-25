@@ -497,15 +497,34 @@ int be_function_define_declare(char* name):
 	return t
 
 
+# 1 while compiling the body of a function whose prologue pushed a
+# frame pointer (x86/x64: push ebp ; mov ebp,esp). The saved frame
+# pointer is one extra W stack word above the return-address slot, so
+# the grammar counts it in stack_pos (be_frame_words) and every return
+# unwinds with 'leave' (be_return in x86.w) instead of popping
+# stack_pos words. The chain [ebp] -> caller's ebp, [ebp + word] ->
+# return address lets lib/stack_trace.w walk every frame exactly.
+# Functions without this prologue (generator bodies, REPL entries, asm
+# stubs) leave ebp untouched. arm64 keeps no frame chain (yet).
+int be_frame_active
+
+
+# Words the current function's prologue pushed beyond the return slot.
+int be_frame_words():
+	return be_frame_active
+
+
 # Close a function body: on wasm the unit's `end` opcode plus the body
 # size patch; nothing on the native targets. Called right after the
 # body's final ret().
 void be_function_epilogue():
+	be_frame_active = 0
 	if (target_isa == 2):
 		wasm_function_end()
 
 
 void be_function_prologue():
+	be_frame_active = 0
 	if (target_isa == 2):
 		wasm_function_begin()
 		return
@@ -513,3 +532,9 @@ void be_function_prologue():
 		if (arm64_pac):
 			a64(op(0xda, 0xc1039e))   # pacia x30, x28
 		a64(op(0xf8, 0x1f8f9e))   # str x30, [x28, #-8]!
+		return
+	if (target_isa == 0):
+		emit(1, c"\x55")   # push ebp / push rbp
+		emit_x64_opcode()
+		emit(2, c"\x89\xe5")   # mov ebp,esp / mov rbp,rsp
+		be_frame_active = 1

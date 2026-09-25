@@ -24,14 +24,16 @@ func syscall
 	ret
 
 func syscall7
-	mov eax,[esp+0x1c]
-	mov ebx,[esp+0x18]
-	mov ecx,[esp+0x14]
-	mov edx,[esp+0x10]
-	mov esi,[esp+0xc]
-	mov edi,[esp+8]
-	mov ebp,[esp+4]
+	push ebp	# W's frame pointer: the 6th argument borrows ebp
+	mov eax,[esp+0x20]
+	mov ebx,[esp+0x1c]
+	mov ecx,[esp+0x18]
+	mov edx,[esp+0x14]
+	mov esi,[esp+0x10]
+	mov edi,[esp+0xc]
+	mov ebp,[esp+8]
 	int 0x80
+	pop ebp
 	ret
 
 # get_context(ctx): fill the 8-word context struct with the caller's
@@ -173,10 +175,11 @@ func socket
 	ret
 
 func connect
+	push ebp	# W's frame pointer: saved around the local frame base
 	mov ebp,esp
-	mov edx,[ebp+0xc]
-	mov eax,[ebp+8]
-	mov ebx,[ebp+4]
+	mov edx,[ebp+0x10]
+	mov eax,[ebp+0xc]
+	mov ebx,[ebp+8]
 	bswap eax
 	push eax
 	bswap ebx
@@ -195,6 +198,7 @@ func connect
 	int 0x80
 	add esp,0x14
 	mov eax,edx
+	pop ebp
 	ret
 
 func setsockopt
@@ -259,17 +263,21 @@ func socket_accept
 # thread_create(func): clone with a fresh 4MB stack whose top slot holds
 # func, so the child's fall-through "ret" jumps straight into func.
 func thread_create
-	call .+0x1e	# stack_create, emitted immediately after this stub
+	call .+0x24	# stack_create, emitted immediately after this stub
 	lea ecx,[eax+0x3ffff0]
 	mov edx,[esp+4]
 	mov [ecx],edx
 	mov ebx,-0x7ffe7100	# CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO
 	mov eax,0x78
 	int 0x80
+	test eax,eax
+	jne .+4	# parent: keep ebp
+	xor ebp,ebp	# child: the frame-pointer chain ends here
 	ret
 
 # stack_create(): mmap2(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)
 func stack_create
+	push ebp	# the offset argument borrows W's frame pointer
 	mov ebx,0
 	mov ecx,0x400000
 	mov edx,3
@@ -278,6 +286,7 @@ func stack_create
 	mov ebp,0
 	mov eax,0xc0
 	int 0x80
+	pop ebp
 	ret
 
 func function_call

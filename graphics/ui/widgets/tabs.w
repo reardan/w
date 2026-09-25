@@ -139,6 +139,15 @@ int ui_tab(ui_context* ctx, ui_tab_state* st, char* label, int closable):
 				if (st.active[0] != index):
 					st.active[0] = index
 					became_active = 1
+		if (closable):
+			# The close affordance lies inside the tab, so the tab just
+			# re-claimed a press (and the hover) that belonged to it.
+			# Hand them back, or a press on the cross released a frame
+			# later would select the tab instead of closing it.
+			if (ctx.input.mouse_pressed && (ctx.active == id) && ui_rect_contains(close, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
+				ctx.active = close_id
+			if ((ctx.hot == id) && ui_rect_contains(close, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))):
+				ctx.hot = close_id
 
 	int selected = 0
 	if (st.active != 0):

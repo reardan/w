@@ -250,6 +250,10 @@ e978563412|jmp .+0x1234567d
 cc|int3
 90|nop
 c3|ret
+# function frame (be_function_prologue / be_return)
+55|push rbp
+4889e5|mov rbp,rsp
+c9|leave
 # bounds_branch_eax_negative / bounds_branch_ebx_negative: test ; js rel32
 # (rel32 placeholder patched via be_branch_patch; example op(0x12, 0x345678))
 4885db|test rbx,rbx

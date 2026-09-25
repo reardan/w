@@ -70,14 +70,20 @@ Other useful targets:
 ./wbuild wdbg        # build the in-process debugger (bin/wdbg)
 ./wbuild verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
                      # the first cmp also proves output is host-word-size independent
-./wbuild warning_test  # asserts the compiler's type/style warnings ("the linter")
+./wbuild warning_test  # asserts the compiler's type/style warnings
+./wbuild lint_test   # asserts 'w check --lint' / '--fix' (docs/projects/lint.md)
 ./wbuild cuda_smoke  # GPU-only: hand-written PTX vector add through libcuda (not part of 'tests')
 ./wbuild cuda_test   # GPU-only: W kernels + 'gpu for' end to end (not part of 'tests')
 ```
 
-There is no separate linter or formatter. "Lint" is the compiler's own
-warnings (type mismatches, spaces-instead-of-tabs, missing trailing newline),
-asserted by `./wbuild warning_test`. Compile-diagnostic fixtures carry
+There is no separate linter binary. The compiler's own warnings (type
+mismatches, spaces-instead-of-tabs, missing trailing newline) are always
+on and asserted by `./wbuild warning_test`; `w check --lint file.w` adds
+opt-in lint rules (unused locals, unreachable code, shadowing,
+assignment as a condition, self-assignment, duplicate imports, and
+whitespace/line-width rules) for the named files, and `w check --fix
+file.w` rewrites their mechanically fixable whitespace issues in place
+(docs/projects/lint.md). Compile-diagnostic fixtures carry
 their expected messages as `# expect_stderr:` / `# reject_stderr:` /
 `# expect_fail` directive lines in their own header comments;
 `bin/wfixture` (`tools/wfixture.w`) compiles each fixture and asserts
@@ -294,9 +300,12 @@ Toolchain beyond the compiler:
   `at function (file:line)` per frame — before exiting. Programs can call
   `print_stack_trace()` / `stack_trace_collect()` directly. Symbols come
   from the binary's own mapped `.symtab` and DWARF `.debug_line` sections
-  (ELF targets emit them unconditionally); unwinding uses the debugger's
-  no-frame-pointer return-address scan. On targets without those sections
-  (Mach-O, PE) the trace is silently skipped. See `stack_trace_test`.
+  (ELF targets emit them unconditionally). On x86/x64 every function
+  keeps a frame-pointer chain (`push ebp ; mov ebp,esp`), so unwinding is
+  exact; where the chain breaks, and on arm64, it falls back to the
+  debugger's return-address scan. On targets without those sections
+  (Mach-O, PE) the trace is silently skipped. See `stack_trace_test` and
+  `stack_trace_chain_test`.
 
 ## How the bootstrap works
 
@@ -387,6 +396,11 @@ seeds — is `docs/release.md`.
   `message`, `token`, and `arch`; stderr keeps the usual human progress text
   unless `--quiet` is given, which silences the non-diagnostic banners so a
   clean file produces no output at all.
+- `./bin/wv2 check --lint file.w` adds the lint rules (docs/projects/lint.md)
+  for the named files only; each message ends with its rule name in
+  brackets, and a line containing `nolint` is exempt. `--fix` rewrites the
+  named files' whitespace issues (indentation, trailing space, blank lines,
+  CRLF, final newline) in place before checking them.
 - `w check` reports all warnings reached before the first error, then stops at
   that first error. Multi-error recovery remains out of scope for the
   single-pass compiler.

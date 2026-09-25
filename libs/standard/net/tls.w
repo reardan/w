@@ -8,7 +8,7 @@ schedule (see "Reusable internals for #203" below).
 Scope (matches the plan's "keep the surface minimal"):
   - TLS 1.3 only, single cipher suite TLS_CHACHA20_POLY1305_SHA256,
     X25519 key exchange, no HelloRetryRequest, no PSK/0-RTT/resumption,
-    no client certificates, no ALPN.
+    no client certificates. ALPN (RFC 7301) is optional: see below.
   - Record layer: TLSPlaintext / TLSCiphertext framing with the TLS 1.3
     AEAD nonce (per-record 64-bit sequence number XORed into write_iv),
     additional_data = the 5-byte record header, ChaCha20-Poly1305 only,
@@ -43,6 +43,21 @@ Public API:
   int         tls_read(tls_conn* c, char* buf, int len)   0=EOF, -1=error
   int         tls_write(tls_conn* c, char* buf, int len)  -1=error
   void        tls_close(tls_conn* c)
+  int         tls_config_set_alpn(tls_config* cfg, char* protos)
+                                   offer "h2,http/1.1" (comma-separated)
+  char*       tls_alpn_selected(tls_conn* c)  negotiated protocol or 0
+  int         tls_server_config_set_alpn(tls_server_config* cfg,
+                                         char* protos, int required)
+
+ALPN (RFC 7301): a client with ALPN configured offers the list in its
+ClientHello and validates the server's EncryptedExtensions selection (exactly
+one name, one we offered; an unsolicited ALPN extension is
+unsupported_extension). The client does not itself require a selection --
+callers that need one (HTTP/2 "h2") check tls_alpn_selected. A server with
+ALPN configured picks the first protocol of ITS preference list the client
+offered and echoes it in EncryptedExtensions; when required and there is no
+match it sends no_application_protocol (120). Without ALPN configured on
+either side nothing changes on the wire.
 
 tls_connect returns 0 on failure; the reason is retrievable via
 tls_last_error(cfg). On success it returns an owned tls_conn* that
@@ -169,6 +184,19 @@ int TLS_ALERT_INTERNAL_ERROR():
 	return 80
 
 
+int TLS_ALERT_ILLEGAL_PARAMETER():
+	return 47
+
+
+int TLS_ALERT_UNSUPPORTED_EXTENSION():
+	return 110
+
+
+# RFC 7301 section 3.2: the server supports none of the client's protocols.
+int TLS_ALERT_NO_APPLICATION_PROTOCOL():
+	return 120
+
+
 # The single supported cipher suite and named group.
 int TLS_SUITE_CHACHA20_POLY1305_SHA256():
 	return 0x1303
@@ -218,6 +246,11 @@ int TLS_EXT_SUPPORTED_VERSIONS():
 
 int TLS_EXT_KEY_SHARE():
 	return 0x0033
+
+
+# application_layer_protocol_negotiation (RFC 7301).
+int TLS_EXT_ALPN():
+	return 0x0010
 
 
 # Record length caps (RFC 8446 5.1/5.2): plaintext content <= 2^14,
@@ -407,6 +440,9 @@ struct tls_config:
 	char* test_priv             # 32-byte X25519 private key, or 0 for random
 	char* test_client_hello     # raw ClientHello handshake message to send
 	int test_client_hello_len   # verbatim, for the RFC 8448 replay test
+	char* alpn                  # ALPN ProtocolNameList body (length-prefixed
+	int alpn_len                # names, no outer length), or 0 = no ALPN;
+	                            # set via tls_config_set_alpn
 	int test_accept_any_cipher  # RFC 8448 replay: accept a non-ChaCha suite id
 	                            # in ServerHello (records stay ChaCha20). RFC
 	                            # 8448 section 3 is an AES-128-GCM trace, so the
@@ -428,12 +464,16 @@ tls_config* tls_config_new():
 	c.test_client_hello = 0
 	c.test_client_hello_len = 0
 	c.test_accept_any_cipher = 0
+	c.alpn = 0
+	c.alpn_len = 0
 	return c
 
 
 void tls_config_free(tls_config* c):
 	if (c == 0):
 		return
+	if (c.alpn != 0):
+		free(c.alpn)
 	free(cast(char*, c))
 
 
@@ -441,6 +481,95 @@ char* tls_last_error(tls_config* c):
 	if (c == 0):
 		return 0
 	return c.last_error
+
+
+# ---- ALPN (RFC 7301) helpers --------------------------------------------------
+
+# Encode a comma-separated protocol list ("h2,http/1.1") as a ProtocolNameList
+# body: each name as a 1-byte length + bytes, no outer 2-byte length. Returns
+# a malloc'd buffer (*out_len its length), or 0 for an empty list, an empty
+# name, or a name longer than 255 bytes.
+char* tls_alpn_encode(char* protos, int* out_len):
+	*out_len = 0
+	if (protos == 0):
+		return 0
+	int n = strlen(protos)
+	if (n == 0):
+		return 0
+	wbuf* b = wbuf_new(n + 1)
+	int start = 0
+	int i = 0
+	while (i <= n):
+		if ((i == n) || (protos[i] == ',')):
+			int nl = i - start
+			if ((nl <= 0) || (nl > 255)):
+				wbuf_free(b)
+				return 0
+			wbuf_u8(b, nl)
+			wbuf_bytes(b, protos + start, nl)
+			start = i + 1
+		i = i + 1
+	char* out = malloc(b.len)
+	tls_copy(out, b.data, b.len)
+	*out_len = b.len
+	wbuf_free(b)
+	return out
+
+
+# 1 if the ProtocolNameList body (names, list_len) holds the name (name, nlen)
+# exactly. The list must already be well-formed (tls_alpn_list_valid).
+int tls_alpn_list_contains(char* names, int list_len, char* name, int nlen):
+	int pos = 0
+	while (pos < list_len):
+		int l = names[pos] & 255
+		if (l == nlen):
+			int i = 0
+			int same = 1
+			while (i < l):
+				if (names[pos + 1 + i] != name[i]):
+					same = 0
+				i = i + 1
+			if (same != 0):
+				return 1
+		pos = pos + 1 + l
+	return 0
+
+
+# 1 if list_len bytes at names form a non-empty sequence of non-empty
+# length-prefixed names that ends exactly at list_len.
+int tls_alpn_list_valid(char* names, int list_len):
+	if (list_len <= 0):
+		return 0
+	int pos = 0
+	while (pos < list_len):
+		int l = names[pos] & 255
+		if (l == 0):
+			return 0
+		if (pos + 1 + l > list_len):
+			return 0
+		pos = pos + 1 + l
+	return 1
+
+
+# Client: offer ALPN protocols in preference order, comma-separated
+# ("h2,http/1.1"); 0 or "" clears the offer. Returns 1 on success, 0 for a
+# malformed list (the previous setting is then cleared too).
+int tls_config_set_alpn(tls_config* c, char* protos):
+	if (c.alpn != 0):
+		free(c.alpn)
+	c.alpn = 0
+	c.alpn_len = 0
+	if (protos == 0):
+		return 1
+	if (strlen(protos) == 0):
+		return 1
+	int n = 0
+	char* enc = tls_alpn_encode(protos, &n)
+	if (enc == 0):
+		return 0
+	c.alpn = enc
+	c.alpn_len = n
+	return 1
 
 
 # ---- server configuration (#203) ----------------------------------------------
@@ -462,6 +591,9 @@ struct tls_server_config:
 	int test_key_pem_len
 	char* test_priv             # 32-byte server X25519 private key, or 0
 	char* test_random           # 32-byte ServerHello random, or 0
+	char* alpn                  # ALPN preference list body, or 0 = ignore ALPN
+	int alpn_len
+	int alpn_required           # 1 => no_application_protocol when no match
 
 
 tls_server_config* tls_server_config_new():
@@ -475,13 +607,45 @@ tls_server_config* tls_server_config_new():
 	c.test_key_pem_len = 0
 	c.test_priv = 0
 	c.test_random = 0
+	c.alpn = 0
+	c.alpn_len = 0
+	c.alpn_required = 0
 	return c
 
 
 void tls_server_config_free(tls_server_config* c):
 	if (c == 0):
 		return
+	if (c.alpn != 0):
+		free(c.alpn)
 	free(cast(char*, c))
+
+
+# Server: the ALPN protocols we accept, in OUR preference order
+# (comma-separated). The first of ours the client also offered is selected
+# and echoed in EncryptedExtensions. required = 1 fails the handshake with a
+# fatal no_application_protocol alert when the client offered no ALPN or none
+# of its protocols match; required = 0 then proceeds without ALPN. 0 or ""
+# clears the setting (ALPN is ignored entirely). Returns 1 on success, 0 for a
+# malformed list (the setting is cleared).
+int tls_server_config_set_alpn(tls_server_config* c, char* protos, int required):
+	if (c.alpn != 0):
+		free(c.alpn)
+	c.alpn = 0
+	c.alpn_len = 0
+	c.alpn_required = 0
+	if (protos == 0):
+		return 1
+	if (strlen(protos) == 0):
+		return 1
+	int n = 0
+	char* enc = tls_alpn_encode(protos, &n)
+	if (enc == 0):
+		return 0
+	c.alpn = enc
+	c.alpn_len = n
+	c.alpn_required = required
+	return 1
 
 
 char* tls_server_last_error(tls_server_config* c):
@@ -534,6 +698,8 @@ struct tls_conn:
 	# slot. Both stay 0 for a client connection, so the client path is inert.
 	int is_server
 	tls_server_config* scfg
+	# Negotiated ALPN protocol (malloc'd NUL-terminated copy), 0 when none.
+	char* alpn
 
 
 tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
@@ -581,6 +747,7 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	c.cfg = cfg
 	c.is_server = 0
 	c.scfg = 0
+	c.alpn = 0
 	return c
 
 
@@ -615,7 +782,26 @@ void tls_conn_free(tls_conn* c):
 	if (c.app_buf != 0):
 		tls_wipe(c.app_buf, c.app_len)
 		free(c.app_buf)
+	if (c.alpn != 0):
+		free(c.alpn)
 	free(cast(char*, c))
+
+
+# The ALPN protocol negotiated on this connection ("h2"), or 0 when none was
+# (ALPN not configured, or the peer did not select one). Owned by c.
+char* tls_alpn_selected(tls_conn* c):
+	if (c == 0):
+		return 0
+	return c.alpn
+
+
+# Store a copy of the n-byte protocol name as c.alpn.
+void tls_set_alpn_selected(tls_conn* c, char* name, int n):
+	if (c.alpn != 0):
+		free(c.alpn)
+	c.alpn = malloc(n + 1)
+	tls_copy(c.alpn, name, n)
+	c.alpn[n] = 0
 
 
 void tls_fail(tls_conn* c, char* msg):
@@ -925,7 +1111,16 @@ int tls_next_hs_msg(tls_conn* c, int* out_type, char** out_msg, int* out_len):
 # random and session_id are 32 bytes each; pubkey is the 32-byte X25519 share.
 # Returns a malloc'd buffer; *out_len gets its length. Reusable shape for the
 # construction test.
+char* tls_build_client_hello_alpn(char* server_name, char* random, char* session_id, char* pubkey, char* alpn, int alpn_len, int* out_len);
+
+
 char* tls_build_client_hello(char* server_name, char* random, char* session_id, char* pubkey, int* out_len):
+	return tls_build_client_hello_alpn(server_name, random, session_id, pubkey, 0, 0, out_len)
+
+
+# Same, additionally offering the ALPN ProtocolNameList body (alpn, alpn_len)
+# when alpn != 0 (RFC 7301 section 3.1).
+char* tls_build_client_hello_alpn(char* server_name, char* random, char* session_id, char* pubkey, char* alpn, int alpn_len, int* out_len):
 	wbuf* b = wbuf_new(256)
 	wbuf_u8(b, TLS_HS_CLIENT_HELLO())
 	int lenpos = b.len
@@ -983,6 +1178,13 @@ char* tls_build_client_hello(char* server_name, char* random, char* session_id, 
 	wbuf_u16(b, TLS_GROUP_X25519())
 	wbuf_u16(b, 32)                      # key_exchange length
 	wbuf_bytes(b, pubkey, 32)
+
+	# application_layer_protocol_negotiation
+	if ((alpn != 0) && (alpn_len > 0)):
+		wbuf_u16(b, TLS_EXT_ALPN())
+		wbuf_u16(b, alpn_len + 2)
+		wbuf_u16(b, alpn_len)
+		wbuf_bytes(b, alpn, alpn_len)
 
 	int ext_len = b.len - ext_start
 	wbuf_set_u16(b, extpos, ext_len)
@@ -1289,6 +1491,71 @@ int tls_check_chain(tls_conn* c, list[x509_cert*] certs, char* server_name):
 # CertificateVerify, Finished), verify the signature, chain and Finished MAC,
 # and stash the CH..serverFinished transcript hash into th_ch_sf. Returns 1 on
 # success. Assumes read keys (server handshake) are already installed.
+# Parse EncryptedExtensions (msg = handshake header + body, len total): the
+# extension block must span the body exactly. An ALPN extension is accepted
+# only if we offered ALPN, must name exactly one protocol, and that protocol
+# must be one we offered (RFC 7301 section 3.1); the selection is stored in
+# c.alpn. Other extensions are ignored. Returns 1 on success; on failure
+# sends the fatal alert, marks the connection and returns 0.
+int tls_client_parse_ee(tls_conn* c, char* msg, int len):
+	if (len < 6):
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
+		tls_fail(c, c"tls: malformed EncryptedExtensions")
+		return 0
+	int ext_total = tls_rd_u16(msg + 4)
+	if (6 + ext_total != len):
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
+		tls_fail(c, c"tls: malformed EncryptedExtensions")
+		return 0
+	int pos = 6
+	int seen_alpn = 0
+	while (pos < len):
+		if (pos + 4 > len):
+			tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
+			tls_fail(c, c"tls: malformed EncryptedExtensions")
+			return 0
+		int etype = tls_rd_u16(msg + pos)
+		int elen = tls_rd_u16(msg + pos + 2)
+		pos = pos + 4
+		if (pos + elen > len):
+			tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
+			tls_fail(c, c"tls: malformed EncryptedExtensions")
+			return 0
+		if (etype == TLS_EXT_ALPN()):
+			char* offered = 0
+			int offered_len = 0
+			if (c.cfg != 0):
+				offered = c.cfg.alpn
+				offered_len = c.cfg.alpn_len
+			if (offered == 0):
+				tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_UNSUPPORTED_EXTENSION())
+				tls_fail(c, c"tls: unsolicited ALPN extension")
+				return 0
+			if (seen_alpn != 0):
+				tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_ILLEGAL_PARAMETER())
+				tls_fail(c, c"tls: duplicate ALPN extension")
+				return 0
+			seen_alpn = 1
+			# ProtocolNameList with exactly one non-empty name.
+			if (elen < 4):
+				tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
+				tls_fail(c, c"tls: malformed ALPN selection")
+				return 0
+			int list_len = tls_rd_u16(msg + pos)
+			int nlen = msg[pos + 2] & 255
+			if ((list_len != elen - 2) || (nlen == 0) || (1 + nlen != list_len)):
+				tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
+				tls_fail(c, c"tls: malformed ALPN selection")
+				return 0
+			if (tls_alpn_list_contains(offered, offered_len, msg + pos + 3, nlen) == 0):
+				tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_ILLEGAL_PARAMETER())
+				tls_fail(c, c"tls: server selected an ALPN protocol we did not offer")
+				return 0
+			tls_set_alpn_selected(c, msg + pos + 3, nlen)
+		pos = pos + elen
+	return 1
+
+
 int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 	int ds = c.digest_size
 	int htype = 0
@@ -1301,6 +1568,8 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 	if (htype != TLS_HS_ENCRYPTED_EXTENSIONS()):
 		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_UNEXPECTED_MESSAGE())
 		tls_fail(c, c"tls: expected EncryptedExtensions")
+		return 0
+	if (tls_client_parse_ee(c, msg, mlen) == 0):
 		return 0
 	whash_update(c.transcript, msg, mlen)
 
@@ -1473,7 +1742,12 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 			free(pub)
 			tls_fail(c, c"tls: RNG failure")
 			return 0
-		ch = tls_build_client_hello(server_name, rnd, sid, pub, &ch_len)
+		char* alpn = 0
+		int alpn_len = 0
+		if (cfg != 0):
+			alpn = cfg.alpn
+			alpn_len = cfg.alpn_len
+		ch = tls_build_client_hello_alpn(server_name, rnd, sid, pub, alpn, alpn_len, &ch_len)
 		free(rnd)
 		free(sid)
 	free(pub)
@@ -1939,6 +2213,29 @@ char* tls_build_encrypted_extensions(int* out_len):
 	return m
 
 
+# Build EncryptedExtensions carrying the selected ALPN protocol (RFC 7301
+# section 3.1: a ProtocolNameList with exactly one name), or the empty form
+# when proto is 0.
+char* tls_build_encrypted_extensions_alpn(char* proto, int* out_len):
+	if (proto == 0):
+		return tls_build_encrypted_extensions(out_len)
+	int n = strlen(proto)
+	wbuf* b = wbuf_new(16 + n)
+	wbuf_u8(b, TLS_HS_ENCRYPTED_EXTENSIONS())
+	wbuf_u24(b, 2 + 4 + 2 + 1 + n)       # body length
+	wbuf_u16(b, 4 + 2 + 1 + n)           # extensions length
+	wbuf_u16(b, TLS_EXT_ALPN())
+	wbuf_u16(b, 2 + 1 + n)               # ext_data length
+	wbuf_u16(b, 1 + n)                   # ProtocolNameList length
+	wbuf_u8(b, n)
+	wbuf_bytes(b, proto, n)
+	char* out = malloc(b.len)
+	tls_copy(out, b.data, b.len)
+	*out_len = b.len
+	wbuf_free(b)
+	return out
+
+
 # Build a Certificate message (RFC 8446 4.4.2) from the raw DER blocks
 # (leaf-first): empty request context, then each cert as a 3-byte-length entry
 # with empty per-cert extensions. Returns a malloc'd message; *out_len its len.
@@ -2078,6 +2375,73 @@ int tls_server_load_key(tls_server_config* scfg, char* out_d32):
 	return ok
 
 
+# ---- server ALPN selection ------------------------------------------------------
+
+# Server-side ALPN (RFC 7301 section 3.2) over a ClientHello already accepted
+# by tls_parse_client_hello (msg = handshake header + body, len total). With
+# no server ALPN configured this is a no-op. Otherwise the first protocol in
+# OUR preference list that the client offered is stored in c.alpn. A
+# malformed client list is a decode_error; no overlap (or no ALPN offered)
+# with scfg.alpn_required set is a fatal no_application_protocol. Returns 1
+# to continue the handshake, 0 after failing the connection.
+int tls_server_select_alpn(tls_conn* c, char* msg, int len):
+	tls_server_config* scfg = c.scfg
+	if (scfg == 0):
+		return 1
+	if (scfg.alpn == 0):
+		return 1
+	# Skip legacy_version, random, session_id, cipher_suites, compression.
+	int pos = 4 + 2 + 32
+	if (pos + 1 > len):
+		return 1
+	pos = pos + 1 + (msg[pos] & 255)
+	if (pos + 2 > len):
+		return 1
+	pos = pos + 2 + tls_rd_u16(msg + pos)
+	if (pos + 1 > len):
+		return 1
+	pos = pos + 1 + (msg[pos] & 255)
+	char* offered = 0
+	int offered_len = 0
+	if (pos + 2 <= len):
+		int ext_end = pos + 2 + tls_rd_u16(msg + pos)
+		pos = pos + 2
+		if (ext_end > len):
+			ext_end = len
+		int scanning = 1
+		while ((scanning != 0) && (pos + 4 <= ext_end)):
+			int etype = tls_rd_u16(msg + pos)
+			int elen = tls_rd_u16(msg + pos + 2)
+			pos = pos + 4
+			if (pos + elen > ext_end):
+				scanning = 0
+			else:
+				if (etype == TLS_EXT_ALPN()):
+					int ll = 0
+					if (elen >= 2):
+						ll = tls_rd_u16(msg + pos)
+					if ((elen < 2) || (ll != elen - 2) || (tls_alpn_list_valid(msg + pos + 2, ll) == 0)):
+						tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
+						tls_fail(c, c"tls: malformed ALPN extension")
+						return 0
+					offered = msg + pos + 2
+					offered_len = ll
+				pos = pos + elen
+	if (offered != 0):
+		int sp = 0
+		while (sp < scfg.alpn_len):
+			int sl = scfg.alpn[sp] & 255
+			if (tls_alpn_list_contains(offered, offered_len, scfg.alpn + sp + 1, sl) != 0):
+				tls_set_alpn_selected(c, scfg.alpn + sp + 1, sl)
+				return 1
+			sp = sp + 1 + sl
+	if (scfg.alpn_required != 0):
+		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_NO_APPLICATION_PROTOCOL())
+		tls_fail(c, c"tls: no common ALPN protocol")
+		return 0
+	return 1
+
+
 # ---- server handshake state machine -------------------------------------------
 
 # Read and validate the ClientHello (bounded), folding it into the transcript.
@@ -2124,7 +2488,7 @@ int tls_server_read_client_hello(tls_conn* c, char* out_sid, int* out_sid_len, c
 		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_HANDSHAKE_FAILURE())
 		tls_fail(c, c"tls: client does not accept ecdsa_secp256r1_sha256")
 		return 0
-	return 1
+	return tls_server_select_alpn(c, msg, mlen)
 
 
 # Drive the full server handshake on connection c (c.scfg holds credentials).
@@ -2235,9 +2599,9 @@ int tls_server_do_handshake(tls_conn* c):
 	tls_install_write_keys(c, c.s_hs_secret)
 	tls_install_read_keys(c, c.c_hs_secret)
 
-	# EncryptedExtensions (empty).
+	# EncryptedExtensions (the selected ALPN protocol, if any; else empty).
 	int ee_len = 0
-	char* ee = tls_build_encrypted_extensions(&ee_len)
+	char* ee = tls_build_encrypted_extensions_alpn(c.alpn, &ee_len)
 	whash_update(c.transcript, ee, ee_len)
 	int eesent = tls_send_record(c, TLS_CT_HANDSHAKE(), ee, ee_len, 1)
 	free(ee)

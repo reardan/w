@@ -854,6 +854,12 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		insn.length = d.pos - start
 		return insn.length
 
+	# leave (0xc9): the frame-pointer epilogue (mov esp,ebp ; pop ebp)
+	if (op == 0xc9):
+		insn.mnemonic = c"leave"
+		insn.length = d.pos - start
+		return insn.length
+
 	# grp3 r/m32 (0xf7): not/neg/mul/imul/div/idiv
 	if (op == 0xf6 || op == 0xf7):
 		int size = d.opsize

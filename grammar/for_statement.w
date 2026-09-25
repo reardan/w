@@ -676,6 +676,7 @@ char* for_infer_name(char* msg):
 void for_infer_declare(char* name, int slot, int type):
 	pointer_indirection = 0
 	sym_declare(name, type, 'L', slot - 1, 1)
+	lint_mark_loop_variable()
 	free(name)
 
 
@@ -834,7 +835,9 @@ int for_statement():
 	mov_eax_int(0) /* default start value for the loop variable */
 	char* infer_name = 0
 	char* infer_name2 = 0
+	lint_for_header = 1
 	int type = variable_declaration()
+	lint_for_header = 0
 	if (type < 0):
 		# No type: 'for name in ...' infers the loop variable's type
 		# from the range/container (docs/projects/golf_ergonomics.md)
@@ -849,7 +852,9 @@ int for_statement():
 	int value_type = -1
 	if (accept(c",")):
 		mov_eax_int(0)
+		lint_for_header = 1
 		value_type = variable_declaration()
+		lint_for_header = 0
 		if (value_type < 0):
 			infer_name2 = for_infer_name(c"type not found in for_statement value variable")
 			value_type = type_lookup(c"int")

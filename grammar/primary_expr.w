@@ -110,6 +110,8 @@ int hash_typed_literal():
 int primary_expr():
 	int type
 	int new_type
+	# Where a '(' group would start (compiler/lint.w, assign-in-condition)
+	int group_offset = token_start_offset
 	# Float literal (must run before int_literal, which only checks the first
 	# character before decoding the whole token)
 	int literal_type = float_literal()
@@ -231,6 +233,7 @@ int primary_expr():
 	}
 	# ( expression )
 	else if (accept(c"(")) {
+		lint_condition_group(group_offset)
 		# Recursion-depth guard: '(' grouping re-enters expression() while
 		# this primary_expr and its enclosing operand frames are still on
 		# the native stack, and the descent back down to the nested
