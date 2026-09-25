@@ -30,6 +30,9 @@ closed, and §9.3 answers the open question 3 below
 (`docs/images/ui_demo_shell.png`, `ui_demo_shell_menu.png`, both
 reproducible via `graphics/ui/demo.w --shell [--menu]`).
 
+**Round 3 resumes §6's staging with Form** (§10, implemented
+2026-09-25); Chips, then the fields and date/time groups, follow.
+
 ## 0. The finding, up front
 
 Almost none of the eighteen items in the issue are blocked on widget
@@ -451,7 +454,8 @@ the glyph runs. Horizontal placement reuses the existing
 9. **Demo and gates.**
 
 Then, each its own round, grouped by what they share: overlays
-(Popover, Toast); containers (Tabs, Form, Chips); fields (Email, and
+(Popover, Toast); containers (Tabs, Form, Chips — Form landed in round 3,
+§10); fields (Email, and
 Dropdown's multi-select + search); date/time (the `lib/time.w`
 extension, then Calendar, Calendar Picker, Date Range, Time Range).
 
@@ -672,3 +676,39 @@ argument, which is also the only way it stays headless-testable.
   works; rewriting it would churn its tests for no behavior change.
 - **Hash-based widget ids.** Still the right fix for dynamic layouts,
   still out of scope.
+
+## 10. Round 3: Form
+
+Round 3 resumes §6's grouping where round 2 left it: Tabs shipped with
+the editor shell, so the containers group continues with **Form**, and
+Chips follows it. Implemented 2026-09-25 (`ui_widgets_plan.md`
+stage 17).
+
+§2 lists Form as blocked on "regions + a validation-message
+convention". Regions landed in round 1; the convention is the design
+work, and it matters beyond Form because Email (§6's fields group)
+shares it by decision of the round-1 plan.
+
+**Validity is the caller's to compute and the form's to report.** Each
+field is followed by `ui_form_error(ctx, &form, msg)`, where `msg` is
+that field's error or 0. A validator is therefore a plain function over
+the caller's own state returning a message — `ui_form_required` ships
+with the form; Email's round adds an email-shaped one — rather than a
+callback the form stores. That keeps the house immediate-mode shape:
+the form holds no field list, only per-frame counts.
+
+**Errors wait for the first submit attempt.** A blank form that opens
+covered in red is noise; after one attempt every failing field shows on
+every frame. Validity is counted from the first frame either way, so an
+attempt on an invalid form is refused on the frame it happens and the
+messages appear from the next — the same one-frame lag the tree and
+scroll regions already document.
+
+**The form takes no widget id.** Rows and error lines are layout; the
+only interactive part is the submit button, which takes the button's
+own id. Showing or hiding an error row therefore shifts no ids, and a
+focused field after the form keeps its focus — the id-drift hazard of
+§9.1 does not recur here.
+
+A new `error` color token carries the failure color in all three
+presets; it is the first token added since the theme shipped.
