@@ -717,7 +717,20 @@ int sym_defined_later_in_file(char* name):
 # the input file, so it only runs when error() is about to exit the
 # process -- under REPL recovery (error() longjmps back to a live
 # prompt) the plain message is kept.
+# Offer every live symbol -- newest (innermost scope) first -- to the
+# did-you-mean suggester (compiler/diagnostics.w, #377).
+void sym_suggest_similar(char* s):
+	sym_index_sync()
+	diag_suggest_begin(s)
+	int i = sym_index_count
+	while (i > 0):
+		i = i - 1
+		diag_suggest_consider(&table[sym_index_name_start(i)])
+	diag_suggest_finish()
+
+
 void sym_not_found_error(char* s):
+	sym_suggest_similar(s)
 	diag_part(c"Cannot find symbol: '")
 	diag_part(token)
 	if (repl_recovery == 0):

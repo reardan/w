@@ -1152,6 +1152,31 @@ int type_get_arg(int type_index, char* field):
 	return -1
 
 
+# Did-you-mean support (compiler/diagnostics.w, #377): offer the
+# struct's field names for a misspelled member, and every named type for
+# a misspelled type name. Derived records (pointers, arrays, maps, ...)
+# carry names that are not identifiers, which the suggester can never
+# pick for an identifier-shaped query within its edit budget anyway.
+void type_suggest_fields(char* field, int type_index):
+	type_index = type_canonical(type_index)
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	diag_suggest_begin(field)
+	int i = 0
+	while (i < t.num_fields):
+		diag_suggest_consider(t.field_names[i])
+		i = i + 1
+	diag_suggest_finish()
+
+
+void type_suggest_names(char* name):
+	diag_suggest_begin(name)
+	int i = 0
+	while (i < type_records.length):
+		diag_suggest_consider(cast(char*, type_record(i).name))
+		i = i + 1
+	diag_suggest_finish()
+
+
 # from type_index, return the offset of the field
 int type_get_field_offset(int type_index, char* field):
 	type_index = type_canonical(type_index)

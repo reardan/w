@@ -332,6 +332,7 @@ int unary_expression_operand():
 		if (base < 0):
 			base = type_lookup(token)
 			if (base < 0):
+				type_suggest_names(token)
 				diag_part(c"unknown type after new: '")
 				diag_part(token)
 				error(c"'")

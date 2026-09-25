@@ -778,6 +778,8 @@ void unrecognized_option_error(char* arg):
 	if (diag_json):
 		diag_emit(c"error", c"<command-line>", 0, 0, arg)
 	else:
+		print_error(c"error: ")
+		print_error(str_from_cstr(diag_buffer))
 		print_error(c"\x0a")
 	exit(1)
 

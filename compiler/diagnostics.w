@@ -37,11 +37,152 @@ void diag_append(char* s):
 	diag_buffer[diag_buffer_pos] = 0
 
 
+# Message fragments are buffered in both output modes: warning()/error()
+# (compiler/tokenizer.w) print the whole message at once, after a
+# severity label, so human-readable diagnostics can lead with
+# 'error:'/'warning:' the way gcc, clang and rustc do (#377).
 void diag_part(char* s):
-	if (diag_json):
-		diag_append(s)
-	else:
-		print_error(str_from_cstr(s))
+	diag_append(s)
+
+
+# Optional '= help: ...' line attached to the next diagnostic (#377):
+# set by the did-you-mean suggester below or directly by a call site,
+# printed under the source context in human output, emitted as an
+# optional "help" field in --json output, and cleared by either.
+char* diag_help_text
+
+
+void diag_set_help(char* s):
+	if (diag_help_text != 0):
+		free(diag_help_text)
+	diag_help_text = strclone(s)
+
+
+void diag_clear_help():
+	if (diag_help_text != 0):
+		free(diag_help_text)
+	diag_help_text = 0
+
+
+/*
+Did-you-mean suggestions (#377), after Python 3.10+'s NameError hints
+and rustc's similar-name help: a lookup failure hands every name that
+was in scope to diag_suggest_consider(); the closest one within
+max(len, 3) / 3 edits (rustc's threshold) becomes the diagnostic's
+help line. Distance is optimal-string-alignment edit distance, so an
+adjacent transposition ('lenght') costs one edit like a typo does, and
+a case-only difference counts as the closest match of all. The first
+candidate wins ties, so callers offer the innermost scope first.
+*/
+char* diag_suggest_name
+char* diag_suggest_best
+int diag_suggest_best_distance
+char* diag_suggest_rows
+
+
+int diag_suggest_max_length():
+	return 64
+
+
+void diag_suggest_begin(char* name):
+	diag_suggest_name = name
+	diag_suggest_best = 0
+	diag_suggest_best_distance = 1000
+	if (diag_suggest_rows == 0):
+		diag_suggest_rows = malloc(3 * (diag_suggest_max_length() + 1))
+
+
+int diag_lower(int c):
+	if ((c >= 'A') && (c <= 'Z')):
+		return c + 32
+	return c
+
+
+int diag_min(int a, int b):
+	if (a < b):
+		return a
+	return b
+
+
+# Edit distance between a and b (lengths n and m, both at most
+# diag_suggest_max_length()); rows are one byte per cell, which the
+# length cap keeps in range. Returns 0 for a case-only difference.
+int diag_edit_distance(char* a, int n, char* b, int m):
+	char* prev2 = diag_suggest_rows
+	char* prev = diag_suggest_rows + (diag_suggest_max_length() + 1)
+	char* row = diag_suggest_rows + 2 * (diag_suggest_max_length() + 1)
+	int j = 0
+	while (j <= m):
+		prev[j] = j
+		j = j + 1
+	int i = 1
+	while (i <= n):
+		row[0] = i
+		j = 1
+		while (j <= m):
+			int cost = 1
+			if (diag_lower(a[i - 1] & 255) == diag_lower(b[j - 1] & 255)):
+				cost = 0
+			int best = diag_min((prev[j] & 255) + 1, (row[j - 1] & 255) + 1)
+			best = diag_min(best, (prev[j - 1] & 255) + cost)
+			if ((i > 1) && (j > 1)):
+				if ((a[i - 1] == b[j - 2]) && (a[i - 2] == b[j - 1])):
+					best = diag_min(best, (prev2[j - 2] & 255) + 1)
+			row[j] = best
+			j = j + 1
+		char* t = prev2
+		prev2 = prev
+		prev = row
+		row = t
+		i = i + 1
+	return prev[m] & 255
+
+
+void diag_suggest_consider(char* candidate):
+	if ((diag_suggest_name == 0) || (candidate == 0)):
+		return
+	char* name = diag_suggest_name
+	# Compiler-internal names ('__w_...') are only offered for a name
+	# that is itself spelled that way.
+	if ((candidate[0] == '_') && (candidate[1] == '_') && (name[0] != '_')):
+		return
+	if (strcmp(candidate, name) == 0):
+		return
+	int n = strlen(name)
+	int m = strlen(candidate)
+	if ((n == 0) || (m == 0)):
+		return
+	if ((n > diag_suggest_max_length()) || (m > diag_suggest_max_length())):
+		return
+	int limit = n
+	if (limit < 3):
+		limit = 3
+	limit = limit / 3
+	int gap = n - m
+	if (gap < 0):
+		gap = 0 - gap
+	if (gap > limit):
+		return
+	int distance = diag_edit_distance(name, n, candidate, m)
+	if ((distance <= limit) && (distance < diag_suggest_best_distance)):
+		diag_suggest_best = candidate
+		diag_suggest_best_distance = distance
+
+
+# Attach "did you mean '<best>'?" as the pending help line when a
+# candidate was close enough; returns 1 when it did.
+int diag_suggest_finish():
+	int found = 0
+	if (diag_suggest_best != 0):
+		char* prefix = strjoin(c"did you mean '", diag_suggest_best)
+		char* text = strjoin(prefix, c"'?")
+		diag_set_help(text)
+		free(prefix)
+		free(text)
+		found = 1
+	diag_suggest_name = 0
+	diag_suggest_best = 0
+	return found
 
 
 int diag_hex_digit(int value):
@@ -217,6 +358,10 @@ void diag_emit(char* severity, char* file, int line, int column, char* token):
 	diag_write_json_field(c"token", token)
 	diag_write_cstr(c", ")
 	diag_write_json_field(c"arch", arch)
+	if (diag_help_text != 0):
+		diag_write_cstr(c", ")
+		diag_write_json_field(c"help", diag_help_text)
 	diag_write_cstr(c"}\x0a")
 	diag_flush()
 	diag_clear()
+	diag_clear_help()

@@ -108,6 +108,7 @@ int type_name():
 		if (type < 0):
 			type = type_lookup(token)
 			if (type < 0):
+				type_suggest_names(token)
 				diag_part(c"unknown type name: '")
 				diag_part(token)
 				error(c"'")

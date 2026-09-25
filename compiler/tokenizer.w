@@ -1,4 +1,6 @@
 import compiler.diagnostics
+import lib.env
+import lib.termios
 
 # tokenizer
 int nextc
@@ -163,27 +165,153 @@ int diag_context_collect():
 	return length
 
 
-# The caret pad advances one character per CODEPOINT (diag_token_column
-# counts codepoints, not bytes -- #287), replaying the line's own tabs
-# verbatim so terminal tab stops keep the caret under the token; every
-# other codepoint pads as a single space (approximate for double-width
-# glyphs, exact everywhere else).
-void diag_context_print():
-	# Only when the diagnostic points at the tokenizer's current line
+/*
+Human-readable diagnostic layout (#377), modeled on rustc -- the
+format gcc and clang converged on for the location line, plus rustc's
+line-number gutter and whole-token underline, plus Python 3.10+'s
+did-you-mean hints (compiler/diagnostics.w's suggester):
+
+	error: Cannot find symbol: 'countr'
+	  --> tests/foo.w:12:9
+	   |
+	12 |	return countr + 1
+	   |	       ^^^^^^
+	   = help: did you mean 'counter'?
+
+The first line leads with the severity; the message text itself is
+unchanged (fixtures pin it). The location line is 'file:line:col', a
+form terminals and editors turn into a jump-to link; the line number is
+the same one the old '<message> in <file>:<line>' header printed, and
+the column is added only when the diagnostic points at the tokenizer's
+current line (the same condition the source context below needs).
+When stderr is a terminal the labels, gutter and underline are colored
+the way rustc colors them; NO_COLOR disables that and FORCE_COLOR (or
+CLICOLOR_FORCE) forces it for a pipe (see https://no-color.org).
+*/
+int diag_color_state
+
+
+int diag_env_set(char* name):
+	char* value = env_get(name)
+	if (value == 0):
+		return 0
+	if (value[0] == 0):
+		return 0
+	if ((value[0] == '0') && (value[1] == 0)):
+		return 0
+	return 1
+
+
+int diag_color():
+	if (diag_color_state == 0):
+		diag_color_state = 2
+		if (diag_env_set(c"NO_COLOR")):
+			diag_color_state = 2
+		else if (diag_env_set(c"FORCE_COLOR") || diag_env_set(c"CLICOLOR_FORCE")):
+			diag_color_state = 1
+		else if (term_isatty(2)):
+			diag_color_state = 1
+	return diag_color_state == 1
+
+
+void diag_out(char* s):
+	print_error(str_from_cstr(s))
+
+
+# ANSI SGR sequence 'ESC [ code m', only when color is on.
+void diag_style(char* code):
+	if (diag_color()):
+		put_error(27)
+		put_error('[')
+		diag_out(code)
+		put_error('m')
+
+
+void diag_reset():
+	diag_style(c"0")
+
+
+# Bold red for errors, bold yellow for warnings; bold blue for the
+# gutter and location arrow; bold cyan for help (rustc's palette).
+void diag_severity_style(char* severity):
+	if (severity[0] == 'e'):
+		diag_style(c"1;31")
+	else:
+		diag_style(c"1;33")
+
+
+int diag_digit_count(int n):
+	int digits = 1
+	while (n >= 10):
+		n = n / 10
+		digits = digits + 1
+	return digits
+
+
+void diag_spaces(int n):
+	while (n > 0):
+		put_error(' ')
+		n = n - 1
+
+
+# '<pad> |' -- an empty gutter row, or the start of the underline row
+void diag_gutter(int width):
+	diag_style(c"1;34")
+	diag_spaces(width + 1)
+	put_error('|')
+	diag_reset()
+
+
+# 1 when the diagnostic's column belongs to the tokenizer's current line,
+# the only line the source context can be re-read for.
+int diag_on_current_line():
 	if (diag_token_line < 1):
-		return
+		return 0
 	if (diag_token_line != line_number + 1):
-		return
-	if (diag_token_column < 1):
+		return 0
+	return diag_token_column >= 1
+
+
+# Codepoints in s (UTF-8 continuation bytes do not count)
+int diag_codepoints(char* s):
+	int count = 0
+	int i = 0
+	while (s[i] != 0):
+		if ((s[i] & 192) != 128):
+			count = count + 1
+		i = i + 1
+	return count
+
+
+# Source line and underline under the gutter. The underline pad
+# advances one character per CODEPOINT (diag_token_column counts
+# codepoints, not bytes -- #287), replaying the line's own tabs verbatim
+# so terminal tab stops keep the underline under the token; every other
+# codepoint pads as a single space (approximate for double-width glyphs,
+# exact everywhere else). The underline spans the current token when the
+# source at the column really spells it, and is a single caret
+# otherwise (a repositioned diagnostic, a string token, end of file).
+void diag_context_print(char* severity, int width):
+	if (diag_on_current_line() == 0):
 		return
 	int length = diag_context_collect()
 	if (length < 0):
 		return
+	diag_gutter(width)
+	put_error(10)
+	diag_style(c"1;34")
+	diag_out(itoa(diag_token_line))
+	diag_spaces(width - diag_digit_count(diag_token_line) + 1)
+	put_error('|')
+	diag_reset()
+	put_error(' ')
 	int i = 0
 	while (i < length):
 		put_error(diag_context_buffer[i] & 255)
 		i = i + 1
 	put_error(10)
+	diag_gutter(width)
+	put_error(' ')
 	int column = 1
 	i = 0
 	while (column < diag_token_column):
@@ -198,25 +326,75 @@ void diag_context_print():
 		else:
 			put_error(' ')
 		column = column + 1
-	put_error('^')
+	int marks = 1
+	if (token != 0):
+		int j = 0
+		while ((token[j] != 0) && (i + j < length) && (diag_context_buffer[i + j] == token[j])):
+			j = j + 1
+		if ((j > 0) && (token[j] == 0)):
+			marks = diag_codepoints(token)
+	diag_severity_style(severity)
+	while (marks > 0):
+		put_error('^')
+		marks = marks - 1
+	diag_reset()
 	put_error(10)
+
+
+void diag_human(char* severity, char* s):
+	diag_append(s)
+	char* message = diag_buffer
+	int label_length = strlen(severity)
+	if (starts_with(message, severity) && (message[label_length] == ':') && (message[label_length + 1] == ' ')):
+		message = message + label_length + 2
+	int line = line_number + 1
+	int width = diag_digit_count(line)
+	diag_severity_style(severity)
+	diag_out(severity)
+	diag_reset()
+	diag_style(c"1")
+	diag_out(c": ")
+	diag_out(message)
+	diag_reset()
+	put_error(10)
+	diag_spaces(width)
+	diag_style(c"1;34")
+	diag_out(c"--> ")
+	diag_reset()
+	diag_out(filename)
+	put_error(':')
+	diag_out(itoa(line))
+	if (diag_on_current_line()):
+		put_error(':')
+		diag_out(itoa(diag_token_column))
+	put_error(10)
+	diag_context_print(severity, width)
+	if (diag_help_text != 0):
+		diag_style(c"1;34")
+		diag_spaces(width + 1)
+		put_error('=')
+		diag_reset()
+		diag_style(c"1")
+		diag_out(c" help")
+		diag_reset()
+		diag_out(c": ")
+		diag_out(diag_help_text)
+		put_error(10)
+	diag_clear()
+	diag_clear_help()
 
 
 void warning(char *s):
 	if (defhash_rehash_mode):
+		diag_clear()
+		diag_clear_help()
 		return
 	warning_count = warning_count + 1
 	if (diag_json):
 		diag_append(s)
 		diag_emit(c"warning", filename, diag_token_line, diag_token_column, token)
 	else:
-		print_error(str_from_cstr(s))
-		print_error(str_from_cstr(c" in "))
-		print_error(str_from_cstr(filename))
-		print_error(str_from_cstr(c":"))
-		print_error(str_from_cstr(itoa(line_number+1)))
-		put_error(10)
-		diag_context_print()
+		diag_human(c"warning", s)
 
 
 # REPL error recovery: when repl_recovery is nonzero, error() reports the
@@ -233,7 +411,7 @@ void error(char *s):
 		diag_append(s)
 		diag_emit(c"error", filename, diag_token_line, diag_token_column, token)
 	else:
-		warning(s)
+		diag_human(c"error", s)
 	if (repl_recovery):
 		diag_clear()
 		repl_error_jump(repl_jump_buffer, 1)
