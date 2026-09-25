@@ -2,8 +2,9 @@
 # saved, pacia-signed return address MUST kill the process at the
 # epilogue's autia (FPAC hardware faults immediately — qemu -cpu max
 # and Apple Silicon alike). The victim's W-stack frame is
-# [return slot][x], so one word above the sole local is the slot the
-# prologue pushed. pac_corrupt_test_arm64 asserts death by signal.
+# [return slot][saved x29][x] (the prologue's stp x29,x30 frame), so two
+# words above the sole local is the slot the prologue pushed.
+# pac_corrupt_test_arm64 asserts death by signal.
 import lib.lib
 
 
@@ -12,7 +13,7 @@ void pac_victim():
 	int* p = &x
 	# Move the signed return address by an address-bit's worth: the
 	# signature no longer matches, so the autia before ret traps.
-	p[1] = p[1] + 4096
+	p[2] = p[2] + 4096
 
 
 int main(int argc, int argv):

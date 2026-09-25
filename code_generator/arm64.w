@@ -18,9 +18,13 @@ ldr x0,[x28],#8.
 A64 has no hardware call stack: bl/blr leave the return address in x30.
 To keep the x86 argument-addressing math (which counts a return-address
 slot) unchanged, every W function's prologue pushes x30 onto the x28 stack
-(be_function_prologue) and the epilogue pops it (ret()). Return addresses
-are signed with PAC (pacia x30,x28) using the W stack pointer as the
-modifier, and authenticated before return (autia) — the --pac=ret model.
+together with the caller's x29 and points x29 at the pair - a frame
+chain like x86's push ebp ; mov ebp,esp (be_function_prologue) - and the
+epilogue unwinds through it (be_return in x86.w). Frameless code (asm
+stubs, generator bodies) pushes nothing and returns with ret(). Return
+addresses are signed with PAC (pacia x30,x28) using the W stack pointer
+at entry as the modifier, and authenticated before return (autia) — the
+--pac=ret model.
 
 All instructions are 4 bytes, emitted little-endian via emit_int32. Every
 encoding here was checked against binutils' assembler output.
@@ -496,14 +500,15 @@ int be_function_define_declare(char* name):
 
 
 # 1 while compiling the body of a function whose prologue pushed a
-# frame pointer (x86/x64: push ebp ; mov ebp,esp). The saved frame
-# pointer is one extra W stack word above the return-address slot, so
-# the grammar counts it in stack_pos (be_frame_words) and every return
-# unwinds with 'leave' (be_return in x86.w) instead of popping
-# stack_pos words. The chain [ebp] -> caller's ebp, [ebp + word] ->
-# return address lets lib/stack_trace.w walk every frame exactly.
-# Functions without this prologue (generator bodies, REPL entries, asm
-# stubs) leave ebp untouched. arm64 keeps no frame chain (yet).
+# frame pointer (x86/x64: push ebp ; mov ebp,esp; arm64: stp x29,x30
+# onto the W stack ; mov x29,x28). The saved frame pointer is one extra
+# W stack word above the return-address slot, so the grammar counts it
+# in stack_pos (be_frame_words) and every return unwinds through the
+# frame (be_return in x86.w: 'leave' on x86/x64, mov x28,x29 ; ldp on
+# arm64) instead of popping stack_pos words. The chain [fp] -> caller's
+# fp, [fp + word] -> return address lets lib/stack_trace.w walk every
+# frame exactly. Functions without this prologue (generator bodies,
+# REPL entries, asm stubs) leave the frame pointer untouched.
 int be_frame_active
 
 
@@ -527,9 +532,15 @@ void be_function_prologue():
 		wasm_function_begin()
 		return
 	if (target_isa == 1):
+		# Sign x30 with the W stack pointer at entry; the framed return
+		# pops back to that same x28 before autia.
 		if (arm64_pac):
 			a64(op(0xda, 0xc1039e))   # pacia x30, x28
-		a64(op(0xf8, 0x1f8f9e))   # str x30, [x28, #-8]!
+		# [x28] = caller's x29, [x28 + 8] = return address: the same
+		# [fp] / [fp + word] layout as x86's push ebp.
+		a64(op(0xa9, 0xbf7b9d))   # stp x29, x30, [x28, #-16]!
+		a64(op(0xaa, 0x1c03fd))   # mov x29, x28
+		be_frame_active = 1
 		return
 	if (target_isa == 0):
 		emit(1, c"\x55")   # push ebp / push rbp

@@ -134,8 +134,10 @@ func gen_switch
 	ldr x10,[x28]	# restore_wsp
 	paciza x30	# pac=full only
 	str x30,[x28,#-8]!	# push resume address
+	str x29,[x28,#-8]!	# push frame pointer
 	str x28,[x9]	# *save_wsp_here = x28
 	mov x28,x10	# switch stacks
+	ldr x29,[x28],#8	# pop frame pointer
 	ldr x30,[x28],#8	# pop resume address
 	autiza x30	# pac=full only
 	ret

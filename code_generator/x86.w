@@ -1939,11 +1939,26 @@ void ret():
 		return
 	emit(1, c"\xc3") /* ret */
 
+# Framed arm64 return: x28 = x29 drops the body's words, the pair pop
+# restores the caller's x29 and the return address and leaves x28 as it
+# was at entry, which is the modifier the prologue signed x30 with.
+void be_arm64_frame_return():
+	a64(op(0xaa, 0x1d03fc))   # mov x28, x29
+	a64(op(0xa8, 0xc17b9d))   # ldp x29, x30, [x28], #16
+	if (arm64_pac):
+		a64(op(0xda, 0xc1139e))   # autia x30, x28
+	a64(op(0xd6, 0x5f03c0))   # ret
+
+
 # Function return from a body holding stack_words W stack words above
-# the return-address slot: a framed x86/x64 function unwinds with
-# 'leave' (esp = ebp ; pop ebp), exact whatever stack_words is;
-# everything else pops the words, as before frame pointers.
+# the return-address slot: a framed function unwinds through its frame
+# pointer ('leave' on x86/x64, be_arm64_frame_return on arm64), exact
+# whatever stack_words is; everything else pops the words, as before
+# frame pointers.
 void be_return(int stack_words):
+	if (be_frame_active && (target_isa == 1)):
+		be_arm64_frame_return()
+		return
 	if ((target_isa == 0) && be_frame_active):
 		emit(1, c"\xc9") /* leave */
 	else:
@@ -1952,9 +1967,13 @@ void be_return(int stack_words):
 
 
 # Return from a body that holds nothing on the W stack beyond its
-# frame: 'leave ; ret' in a framed x86/x64 function, a bare ret
-# otherwise (function fall-through ends, synthesized accessors).
+# frame: 'leave ; ret' in a framed x86/x64 function, the frame return on
+# arm64, a bare ret otherwise (function fall-through ends, synthesized
+# accessors).
 void be_return_bare():
+	if (be_frame_active && (target_isa == 1)):
+		be_arm64_frame_return()
+		return
 	if ((target_isa == 0) && be_frame_active):
 		emit(1, c"\xc9") /* leave */
 	ret()

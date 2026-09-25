@@ -321,6 +321,16 @@ current state:
 				the return-address scan is only the broken-chain fallback;
 				stack_trace_chain_test / crash_trace_test assert exact
 				deep traces past a decoy return address on the stack
+			arm64 frame-pointer chain (issue #378): arm64 and arm64_darwin
+				functions open with stp x29,x30,[x28,#-16]! ; mov x29,x28
+				(the frame lives on the W stack, the saved x29 counts as
+				one W stack word like ebp) and return through mov x28,x29
+				; ldp ; autia; lib/stack_trace.w walks the chain, darwin
+				crash reports are exact (crash handlers run on a
+				sigaltstack: the kernel's signal frame would otherwise
+				land on the W stack), and lldb's bt follows W frames
+				natively on the Mac; stack_trace_chain_arm64 (qemu) and
+				the crash_darwin fixtures assert exact traces past a decoy
 			W-generated crash dumps (lib/crash_dump.w, issue #378): the
 				fatal-signal report also prints all registers and the
 				image's build-id; with W_CRASH_DUMP=<path> ("%p" = pid) the
@@ -489,8 +499,7 @@ current state:
 			wdbg's backtrace is still heuristic (return-address scan) even
 				though x86/x64 code now keeps a frame-pointer chain (crash
 				traces, stack_trace_collect and wcore walk it), so an older
-				frame's base can be unknown (locals unaddressable); arm64
-				keeps no frame chain
+				frame's base can be unknown (locals unaddressable)
 			darwin crash traces: function names only (Mach-O has no
 				line table yet); no crash handler on arm64e (--pac=full)
 				images (needs a signed sa_tramp: name signal_trampoline
