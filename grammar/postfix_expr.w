@@ -706,114 +706,20 @@ int postfix_expr():
 
 		else if (accept(c".")):
 			expression_lhs_readonly = 0
-			if (type_is_map(type) | type_is_set(type)):
-				if (peek(c"length")):
-					get_token()
-					type = promote(type)
-					add_eax_int32(word_size)
-					type = type_lookup(c"int")
-					expression_lhs_readonly = 1
-				else if (peek(c"remove")):
-					get_token()
-					type = hash_remove_suffix(type)
-				else if (peek(c"add") & type_is_set(type)):
-					get_token()
-					type = hash_set_add_suffix(type)
-				else if (peek(c"add") & type_is_map(type)):
-					get_token()
-					type = hash_map_add_suffix(type)
-				else if (peek(c"keys")):
-					get_token()
-					type = hash_keys_suffix(type)
-				else if (peek(c"values") & type_is_map(type)):
-					get_token()
-					type = hash_values_suffix(type)
-				else if (peek(c"get") & type_is_map(type)):
-					get_token()
-					type = hash_get_suffix(type)
-				else if (peek(c"free")):
-					get_token()
-					type = hash_free_suffix(type)
-				else:
-					diag_part(c"hash container field '")
-					diag_part(token)
-					error(c"' not found")
+			# Built-in containers and buffers share the length word at
+			# container + word_size
+			if ((type_is_map(type) | type_is_set(type) | type_is_list(type) | type_is_buffer(type)) && peek(c"length")):
+				get_token()
+				type = promote(type)
+				add_eax_int32(word_size)
+				type = type_lookup(c"int")
+				expression_lhs_readonly = 1
+			else if (type_is_map(type) | type_is_set(type)):
+				type = hash_method(type)
 			else if (type_is_list(type)):
-				if (peek(c"length")):
-					get_token()
-					type = promote(type)
-					add_eax_int32(word_size)
-					type = type_lookup(c"int")
-					expression_lhs_readonly = 1
-				else if (peek(c"push")):
-					get_token()
-					type = list_push_suffix(type)
-				else if (peek(c"pop")):
-					get_token()
-					type = list_pop_suffix(type)
-				else if (peek(c"insert")):
-					get_token()
-					type = list_insert_suffix(type)
-				else if (peek(c"remove")):
-					get_token()
-					type = list_remove_suffix(type)
-				else if (peek(c"clear")):
-					get_token()
-					type = list_clear_suffix(type)
-				else if (peek(c"free")):
-					get_token()
-					type = list_free_suffix(type)
-				else if (peek(c"sort")):
-					get_token()
-					type = list_sort_suffix(type)
-				else if (peek(c"sort_by")):
-					get_token()
-					type = list_sort_by_suffix(type)
-				else if (peek(c"sorted")):
-					get_token()
-					type = list_sorted_suffix(type)
-				else if (peek(c"sorted_by")):
-					get_token()
-					type = list_sorted_by_suffix(type)
-				else if (peek(c"map")):
-					get_token()
-					type = list_map_suffix(type)
-				else if (peek(c"filter")):
-					get_token()
-					type = list_filter_suffix(type)
-				else if (peek(c"reduce")):
-					get_token()
-					type = list_reduce_suffix(type)
-				else if (peek(c"sum")):
-					get_token()
-					type = list_aggregate_suffix(type, c"__w_list_sum", c"sum", type_lookup(c"int"))
-				else if (peek(c"min")):
-					get_token()
-					type = list_aggregate_suffix(type, c"__w_list_min", c"min", type_list_element_type(type_unqualified(type)))
-				else if (peek(c"max")):
-					get_token()
-					type = list_aggregate_suffix(type, c"__w_list_max", c"max", type_list_element_type(type_unqualified(type)))
-				else if (peek(c"reverse")):
-					get_token()
-					type = list_reverse_suffix(type)
-				else if (peek(c"count")):
-					get_token()
-					type = list_scan_suffix(type, c"__w_list_count", c"list count")
-				else if (peek(c"index")):
-					get_token()
-					type = list_scan_suffix(type, c"__w_list_index", c"list index")
-				else:
-					diag_part(c"list field '")
-					diag_part(token)
-					error(c"' not found")
+				type = list_method(type)
 			else if (type_is_buffer(type)):
-				if (peek(c"length")):
-					get_token()
-					type = promote(type)
-					add_eax_int32(word_size)
-					type = type_lookup(c"int")
-					expression_lhs_readonly = 1
-				else if (peek(c"data")):
+				if (peek(c"data")):
 					get_token()
 					type = promote(type)
 					int element_type = buffer_element_type(type)
