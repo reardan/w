@@ -320,6 +320,10 @@ int arm64_enc_branch_reg(asm_insn* insn):
 		return cast(int, 0xd61f0000) | (rn << 5)
 	if (strcmp(m, c"blr") == 0):
 		return cast(int, 0xd63f0000) | (rn << 5)
+	# blraaz Xn: blr authenticating Xn with key A and a zero modifier
+	# (the compiler's --pac=full indirect call, x86.w call_eax)
+	if (strcmp(m, c"blraaz") == 0):
+		return cast(int, 0xd63f081f) | (rn << 5)
 	return cast(int, 0xd65f0000) | (rn << 5)
 
 
@@ -397,7 +401,7 @@ int asm_arm64_encode(asm_buffer* b, asm_insn* insn):
 		w = arm64_enc_cmp_branch(insn)
 	else if (strcmp(m, c"tbz") == 0 | strcmp(m, c"tbnz") == 0):
 		w = arm64_enc_test_branch(insn)
-	else if (strcmp(m, c"br") == 0 | strcmp(m, c"blr") == 0 | strcmp(m, c"ret") == 0):
+	else if (strcmp(m, c"br") == 0 | strcmp(m, c"blr") == 0 | strcmp(m, c"blraaz") == 0 | strcmp(m, c"ret") == 0):
 		w = arm64_enc_branch_reg(insn)
 	else if (strcmp(m, c"svc") == 0 | strcmp(m, c"brk") == 0 | strcmp(m, c"hlt") == 0):
 		w = arm64_enc_exception(insn)

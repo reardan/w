@@ -968,6 +968,20 @@ int emit_symbol_table():
 	return count
 
 
+# The Mach-O writer's symbol table (arm64_darwin): every defined function,
+# the same records emit_symbol_table writes to an ELF .symtab. GPU
+# kernels have no host address and are skipped.
+void macho_collect_symbols():
+	macho_symbols_begin(table_pos + 64)
+	int t = 0
+	while (t <= table_pos - 1):
+		char* sym = table + t
+		t = t + strlen(table + t)
+		if ((table[t + 1] == 'D') && (load_int(table + t + 10) == 2) && (load_int(table + t + 138) == 0)):
+			macho_sym_add(sym, load_int(table + t + 2))
+		t = next_token(t)
+
+
 void emit_section_name(char* s, int header_addr, int strings_addr):
 	save_int(code + header_addr, codepos - strings_addr)
 	emit_string(s)

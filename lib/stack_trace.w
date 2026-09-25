@@ -34,11 +34,17 @@ whole output file - including the .symtab, string table and DWARF
 .debug_line sections written by emit_debugging_symbols() - as one
 PT_LOAD segment, so everything is parsed in place: the ELF header is
 found by walking down one page at a time from a code address (the
-image is contiguous, so the walk cannot skip past the header). On
-targets without those sections (Mach-O, PE) or under arm64 pointer
-authentication (stacked return addresses are signed), collection
-returns no frames and print_stack_trace() is a silent no-op, so the
-trap paths that call it stay safe everywhere.
+image is contiguous, so the walk cannot skip past the header). Mach-O
+images (arm64_darwin) are found the same way; their load commands give
+the ASLR slide (the mapped header minus __TEXT's vmaddr), the __text
+range, and the nlist symbol table the Mach-O writer puts in __LINKEDIT,
+which dyld maps too. Mach-O has no line table yet, so darwin frames
+carry function names only. arm64 keeps no frame chain, so its traces
+always come from the scan; return addresses signed by pointer
+authentication are stripped to their address bits first. On targets
+without symbols (PE), collection returns no frames and
+print_stack_trace() is a silent no-op, so the trap paths that call it
+stay safe everywhere.
 
 Every probe of not-known-mapped memory goes through mincore() first
 (the trick from debugger/memory.w), so scanning past the top of the
@@ -53,7 +59,10 @@ import lib.memory
 
 # Parsed image state: 0 = not yet parsed, 1 = ready, -1 = unavailable.
 int st_state
-int st_base           /* image base = address of the ELF header */
+int st_base           /* image base = address of the ELF or Mach-O header */
+int st_macho          /* 1 when the image is Mach-O */
+int st_slide          /* Mach-O: runtime minus linked addresses */
+int st_text_lo        /* Mach-O: __text start (ELF .text starts at st_base) */
 int st_machine        /* e_machine: 3 x86, 62 x86-64, 183 arm64 */
 int st_class          /* 1 = ELFCLASS32, 2 = ELFCLASS64 */
 int st_text_hi        /* .text end; .text starts at st_base */
@@ -181,9 +190,9 @@ int st_cstr_eq(int a, char* b):
 		i = i + 1
 
 
-# Find the ELF header by walking down one page at a time from a code
-# address. A Mach-O or PE magic (no debug sections there) or an
-# unmapped page ends the search with 0.
+# Find the ELF or 64-bit Mach-O header by walking down one page at a
+# time from a code address (st_macho says which). A 32-bit Mach-O or PE
+# magic or an unmapped page ends the search with 0.
 int st_find_base(int pc):
 	int page = pc - (pc & 4095)
 	int guard = 65536
@@ -197,10 +206,13 @@ int st_find_base(int pc):
 				if (st_byte(page + 2) == 'L'):
 					if (st_byte(page + 3) == 'F'):
 						return page
-		# Mach-O: xx fa ed fe little-endian; PE: "MZ"
+		# Mach-O: cf fa ed fe (64-bit) little-endian; PE: "MZ"
 		if (b1 == 250):
 			if (st_byte(page + 2) == 237):
 				if (st_byte(page + 3) == 254):
+					if (b0 == 207):
+						st_macho = 1
+						return page
 					return 0
 		if (b0 == 'M'):
 			if (b1 == 'Z'):
@@ -217,12 +229,76 @@ int st_sh_word(int header, int off32, int off64):
 	return st_word(header + off64)
 
 
+# Parse our own mapped Mach-O image (arm64 only): the slide, __text
+# and the LC_SYMTAB nlist table. Leaves st_state at -1 when anything is
+# off.
+void st_init_macho(int base):
+	if (st_int32(base + 4) != 16777228):  /* CPU_TYPE_ARM64 0x0100000c */
+		return;
+	st_class = 2
+	st_machine = 183
+	int ncmds = st_int32(base + 16)
+	if (st_range_readable(base + 32, st_int32(base + 20)) == 0):
+		return;
+	int text_vm = 0
+	int sect_addr = 0
+	int sect_size = 0
+	int linkedit_vm = 0
+	int linkedit_off = 0
+	int symoff = 0
+	int nsyms = 0
+	int stroff = 0
+	int lc = base + 32
+	int i = 0
+	while (i < ncmds):
+		int cmd = st_int32(lc)
+		int size = st_int32(lc + 4)
+		if (size < 8):
+			return;
+		if (cmd == 25):  /* LC_SEGMENT_64 */
+			if (st_cstr_eq(lc + 8, c"__TEXT")):
+				text_vm = st_word(lc + 24)
+				if (st_int32(lc + 64) > 0):
+					if (st_cstr_eq(lc + 72, c"__text")):
+						sect_addr = st_word(lc + 72 + 32)
+						sect_size = st_word(lc + 72 + 40)
+			else if (st_cstr_eq(lc + 8, c"__LINKEDIT")):
+				linkedit_vm = st_word(lc + 24)
+				linkedit_off = st_word(lc + 40)
+		else if (cmd == 2):  /* LC_SYMTAB */
+			symoff = st_int32(lc + 8)
+			nsyms = st_int32(lc + 12)
+			stroff = st_int32(lc + 16)
+		lc = lc + size
+		i = i + 1
+	if ((text_vm == 0) || (sect_size == 0) || (linkedit_vm == 0) || (nsyms == 0)):
+		return;
+	st_slide = base - text_vm
+	st_text_lo = sect_addr + st_slide
+	st_text_hi = st_text_lo + sect_size
+	# __LINKEDIT is mapped at its vmaddr; file offsets inside it map
+	# relative to its fileoff.
+	int linkedit = linkedit_vm + st_slide - linkedit_off
+	st_symtab_lo = linkedit + symoff
+	st_symtab_count = nsyms
+	st_symtab_entsize = 16
+	st_strtab_lo = linkedit + stroff
+	if (st_range_readable(st_symtab_lo, nsyms * 16) == 0):
+		return;
+	st_dline_lo = 0
+	st_base = base
+	st_state = 1
+
+
 # Parse our own mapped ELF image: .text bounds, .symtab + strings and
 # .debug_line. Leaves st_state at -1 when anything is off.
 void st_init(int pc):
 	st_state = -1
 	int base = st_find_base(pc)
 	if (base == 0):
+		return;
+	if (st_macho):
+		st_init_macho(base)
 		return;
 	if (st_byte(base + 4) != __word_size__ / 4):
 		return;
@@ -297,11 +373,33 @@ void st_init(int pc):
 	st_state = 1
 
 
+# Mach-O nlist entries carry no size: the function containing pc is the
+# section symbol with the greatest address at or below it, inside
+# __text.
+int st_macho_func_entry(int pc):
+	if ((pc < st_text_lo) || (pc >= st_text_hi)):
+		return 0
+	int best = 0
+	int best_value = 0
+	int i = 0
+	while (i < st_symtab_count):
+		int e = st_symtab_lo + i * 16
+		if ((st_byte(e + 4) & 14) == 14):  /* N_SECT */
+			int value = st_word(e + 8) + st_slide
+			if ((value <= pc) && (value >= best_value)):
+				best = e
+				best_value = value
+		i = i + 1
+	return best
+
+
 # Symbol table entry (its address) of the defined function whose code
 # contains pc, or 0. Mirrors dbg_function_at (debugger/symbols.w).
 int st_func_entry(int pc):
 	if (st_state != 1):
 		return 0
+	if (st_macho):
+		return st_macho_func_entry(pc)
 	int i = 1
 	while (i < st_symtab_count):
 		int e = st_symtab_lo + i * st_symtab_entsize
@@ -326,7 +424,11 @@ int st_func_entry(int pc):
 
 
 int st_entry_name(int e):
-	return st_strtab_lo + st_int32(e)
+	int name = st_strtab_lo + st_int32(e)
+	if (st_macho):
+		if (st_byte(name) == '_'):
+			return name + 1
+	return name
 
 
 # 1 when the bytes before the return address v decode as one of the
@@ -350,6 +452,15 @@ int st_call_site(int v):
 	return 0
 
 
+# An arm64 code address may carry a pointer-authentication signature
+# in its high bits (stacked return addresses, and repl_setjmp's resume
+# pc under --pac=full); keep the 47 address bits.
+int st_code_address(int v):
+	if ((__target_isa__ == 1) && (__word_size__ == 8)):
+		return v & ((1 << 47) - 1)
+	return v
+
+
 # Scan stack words upward from sp for return addresses, storing each
 # hit minus one (an address inside the calling statement) into out.
 # Hits into the function owning skip_entry are dropped: the scan starts
@@ -369,7 +480,7 @@ int st_scan(int sp, char* out, int max, int skip_entry):
 			if (st_page_readable(slot) == 0):
 				return found
 			probed_page = page
-		int v = st_word(slot)
+		int v = st_code_address(st_word(slot))
 		if (v > st_base):
 			if (v < st_text_hi):
 				if (st_call_site(v)):
@@ -396,6 +507,8 @@ int st_chain_fp       /* last frame pointer st_chain accepted, 0 = none */
 
 # Symbol value (entry address) of a symbol table entry.
 int st_entry_value(int e):
+	if (st_macho):
+		return st_word(e + 8) + st_slide
 	if (st_class == 1):
 		return st_int32(e + 4)
 	return st_word(e + 8)
@@ -716,12 +829,28 @@ int stack_trace_collect(char* out, int max):
 	if (st_jmp_buf == 0):
 		st_jmp_buf = malloc(3 * __word_size__)
 	repl_setjmp(st_jmp_buf)
-	int pc = st_word(cast(int, st_jmp_buf))
+	int pc = st_code_address(st_word(cast(int, st_jmp_buf)))
 	int sp = st_word(cast(int, st_jmp_buf) + __word_size__)
 	int fp = st_word(cast(int, st_jmp_buf) + 2 * __word_size__)
 	if (st_state == 0):
 		st_init(pc)
 	return st_collect_from(pc, sp, fp, out, max)
+
+
+# Runtime address of the defined function called name, or 0. A linear
+# walk of the symbol table: for setup paths, not per-frame work.
+int st_symbol_address(char* name):
+	if (st_state != 1):
+		return 0
+	int i = 0
+	if (st_macho == 0):
+		i = 1
+	while (i < st_symtab_count):
+		int e = st_symtab_lo + i * st_symtab_entsize
+		if (st_cstr_eq(st_entry_name(e), name)):
+			return st_entry_value(e)
+		i = i + 1
+	return 0
 
 
 # Name of the defined function whose code contains pc, or 0.
@@ -752,7 +881,7 @@ void print_stack_trace():
 	if (st_jmp_buf == 0):
 		st_jmp_buf = malloc(3 * __word_size__)
 	repl_setjmp(st_jmp_buf)
-	int pc = st_word(cast(int, st_jmp_buf))
+	int pc = st_code_address(st_word(cast(int, st_jmp_buf)))
 	int sp = st_word(cast(int, st_jmp_buf) + __word_size__)
 	int fp = st_word(cast(int, st_jmp_buf) + 2 * __word_size__)
 	if (st_state == 0):
