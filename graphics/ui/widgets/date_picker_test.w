@@ -263,3 +263,157 @@ void test_ids_do_not_shift_when_it_opens():
 	assert_equal(closed_ids, ctx.next_id)
 	assert_equal(2 + ui_date_picker_ids(), closed_ids)
 	ui_render_destroy(&r)
+
+
+int range_frame(ui_context* ctx, ui_date_range_state* st, ui_date* start, ui_date* end, int32* bg):
+	ui_begin(ctx, 400, 400)
+	int changed = ui_date_range_picker(ctx, 200.0, st, start, end, 0, c"Dates")
+	if (ui_button(ctx, c"behind")):
+		bg[0] = bg[0] + 1
+	ui_end(ctx)
+	return changed
+
+
+# First click anchors and stays open; the second completes the range,
+# closes and returns 1.
+void test_a_range_takes_two_clicks():
+	ui_renderer r
+	ui_theme theme
+	ui_context ctx
+	setup(&r, &theme, &ctx)
+	ui_date_range_state st
+	ui_date_range_init(&st)
+	ui_date start
+	ui_date end
+	ui_date_set(&start, 2026, 9, 1)
+	ui_date_set(&end, 2026, 9, 3)
+	int32 bg = 0
+
+	click_field(&ctx)
+	range_frame(&ctx, &st, &start, &end, &bg)
+	assert_equal(1, st.open)
+	assert_equal(9, st.cal.month)
+
+	# September 2026: cell 11 is the 10th, cell 16 the 15th.
+	click_cell(&ctx, 11)
+	assert_equal(0, range_frame(&ctx, &st, &start, &end, &bg))
+	assert_equal(1, st.open)
+	assert_date(&st.anchor, 2026, 9, 10)
+	# Nothing reaches the caller until the range is complete.
+	assert_date(&start, 2026, 9, 1)
+	assert_date(&end, 2026, 9, 3)
+
+	click_cell(&ctx, 16)
+	assert_equal(1, range_frame(&ctx, &st, &start, &end, &bg))
+	assert_date(&start, 2026, 9, 10)
+	assert_date(&end, 2026, 9, 15)
+	assert_equal(0, st.open)
+	assert_equal(0, ctx.popup_depth)
+	assert_equal(0, ui_date_is_set(&st.anchor))
+	ui_render_destroy(&r)
+
+
+# An end before the start is swapped rather than refused, even across a
+# page turn.
+void test_a_backwards_range_is_swapped():
+	ui_renderer r
+	ui_theme theme
+	ui_context ctx
+	setup(&r, &theme, &ctx)
+	ui_date_range_state st
+	ui_date_range_init(&st)
+	ui_date start
+	ui_date end
+	ui_date_clear(&start)
+	ui_date_clear(&end)
+	int32 bg = 0
+
+	click_field(&ctx)
+	range_frame(&ctx, &st, &start, &end, &bg)
+	# Unset and no today: the page is where init left it, January 1970,
+	# which starts on a Thursday (cell 4 is the 1st).
+	assert_equal(1970, st.cal.year)
+	click_cell(&ctx, 8)
+	range_frame(&ctx, &st, &start, &end, &bg)
+	assert_date(&st.anchor, 1970, 1, 5)
+	# A leading cell of the grid is December 1969: the page turns back.
+	click_cell(&ctx, 0)
+	assert_equal(1, range_frame(&ctx, &st, &start, &end, &bg))
+	assert_date(&start, 1969, 12, 28)
+	assert_date(&end, 1970, 1, 5)
+	ui_render_destroy(&r)
+
+
+# The same day twice is a one-day range; return completes it from the
+# keyboard too.
+void test_a_one_day_range_from_the_keyboard():
+	ui_renderer r
+	ui_theme theme
+	ui_context ctx
+	setup(&r, &theme, &ctx)
+	ui_date_range_state st
+	ui_date_range_init(&st)
+	ui_date start
+	ui_date end
+	ui_date_set(&start, 2024, 2, 28)
+	ui_date_set(&end, 2024, 3, 2)
+	int32 bg = 0
+
+	click_field(&ctx)
+	range_frame(&ctx, &st, &start, &end, &bg)
+	feed_nav(&ctx, GFX_NAV_RIGHT)
+	range_frame(&ctx, &st, &start, &end, &bg)
+	assert_date(&st.cursor, 2024, 2, 29)
+	feed_char(&ctx, 13)
+	range_frame(&ctx, &st, &start, &end, &bg)
+	assert_date(&st.anchor, 2024, 2, 29)
+	feed_char(&ctx, 13)
+	assert_equal(1, range_frame(&ctx, &st, &start, &end, &bg))
+	assert_date(&start, 2024, 2, 29)
+	assert_date(&end, 2024, 2, 29)
+	ui_render_destroy(&r)
+
+
+# Closing half-way drops the anchor and leaves the caller's range.
+void test_closing_half_way_keeps_the_old_range():
+	ui_renderer r
+	ui_theme theme
+	ui_context ctx
+	setup(&r, &theme, &ctx)
+	ui_date_range_state st
+	ui_date_range_init(&st)
+	ui_date start
+	ui_date end
+	ui_date_set(&start, 2026, 9, 1)
+	ui_date_set(&end, 2026, 9, 3)
+	int32 bg = 0
+
+	click_field(&ctx)
+	range_frame(&ctx, &st, &start, &end, &bg)
+	click_cell(&ctx, 20)
+	range_frame(&ctx, &st, &start, &end, &bg)
+	assert_equal(1, ui_date_is_set(&st.anchor))
+	feed_char(&ctx, 27)
+	assert_equal(0, range_frame(&ctx, &st, &start, &end, &bg))
+	assert_equal(0, st.open)
+	assert_equal(0, ui_date_is_set(&st.anchor))
+	assert_date(&start, 2026, 9, 1)
+	assert_date(&end, 2026, 9, 3)
+
+	# Reopened, the next click is a fresh first anchor again.
+	click_field(&ctx)
+	range_frame(&ctx, &st, &start, &end, &bg)
+	click_cell(&ctx, 11)
+	assert_equal(0, range_frame(&ctx, &st, &start, &end, &bg))
+	assert_equal(1, st.open)
+	ui_render_destroy(&r)
+
+
+void test_the_range_field_text():
+	ui_date a
+	ui_date b
+	ui_date_set(&a, 2026, 9, 1)
+	ui_date_set(&b, 2026, 10, 12)
+	char[28] text
+	ui_date_range_format(&a, &b, &text[0])
+	assert_strings_equal(c"2026-09-01 – 2026-10-12", &text[0])

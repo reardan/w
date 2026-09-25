@@ -160,3 +160,109 @@ int ui_date_picker(ui_context* ctx, float32 w, ui_date_picker_state* st, ui_date
 	else if (ctx.focus == id + 3):
 		ctx.focus = 0
 	return changed
+
+
+/*
+The date range picker: the same field and popover, with two anchors
+over one grid.
+
+	if (ui_date_range_picker(ctx, 260.0, &rp, &from, &to, &today, c"Dates")):
+		search(from, to)
+
+The first pick sets an anchor and the popover stays open; while it is
+anchored the band follows the pointer (or the keyboard cursor) to
+preview the range. The second pick completes it: the earlier of the two
+becomes the start, the popover closes and the call returns 1. Picking
+the same day twice is a one-day range. Closing half-way (escape, a
+press outside) drops the anchor and leaves the caller's range as it
+was: *start and *end only ever change together.
+*/
+struct ui_date_range_state:
+	ui_calendar_state cal
+	ui_date anchor         # the first pick of a range in progress
+	ui_date cursor         # the keyboard's day while open
+	int32 open
+
+
+void ui_date_range_init(ui_date_range_state* st):
+	ui_calendar_init(&st.cal, 1970, 1)
+	ui_date_clear(&st.anchor)
+	ui_date_clear(&st.cursor)
+	st.open = 0
+
+
+# Write "YYYY-MM-DD – YYYY-MM-DD" plus a NUL (26 bytes; the dash is an
+# en dash, three bytes of UTF-8).
+void ui_date_range_format(ui_date* start, ui_date* end, char* out):
+	ui_date_format(start, out)
+	out[10] = ' '
+	out[11] = 0xe2
+	out[12] = 0x80
+	out[13] = 0x93
+	out[14] = ' '
+	ui_date_format(end, &out[15])
+
+
+# A date range field over caller-owned *start and *end (both unset, or
+# both set with start <= end). Returns 1 on the frame a complete range
+# is picked.
+int ui_date_range_picker(ui_context* ctx, float32 w, ui_date_range_state* st, ui_date* start, ui_date* end, ui_date* today, char* placeholder):
+	int id = ctx.next_id
+	ctx.next_id = ctx.next_id + ui_date_picker_ids()
+	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
+
+	if (ui_picker_field_click(ctx, id, r, &st.open)):
+		ui_date_picker_page_to(&st.cal, start, today)
+		ui_date_clear(&st.anchor)
+		ui_date_copy(&st.cursor, start)
+		ctx.focus = id + 3
+
+	char[28] text
+	if (ui_date_is_set(start) && ui_date_is_set(end)):
+		ui_date_range_format(start, end, &text[0])
+		ui_picker_field_draw(ctx, id, r, &text[0], 0)
+	else:
+		ui_picker_field_draw(ctx, id, r, placeholder, 1)
+
+	int changed = 0
+	if (ui_popover_begin(ctx, id, r, ui_date_popover_w(ctx), ui_date_popover_h(ctx), &st.open)):
+		ui_rect cr = ui_layout_next(ctx, ui_calendar_width(ctx), ui_calendar_height(ctx))
+		# The band: the caller's range, or while anchored, the anchor to
+		# the day under the pointer (else the keyboard cursor).
+		ui_date a
+		ui_date b
+		ui_date_copy(&a, start)
+		ui_date_copy(&b, end)
+		if (ui_date_is_set(&st.anchor)):
+			ui_date_copy(&a, &st.anchor)
+			ui_date_copy(&b, &st.anchor)
+			int hover = ui_calendar_cell_at(ctx, cr, ctx.input.mouse_x, ctx.input.mouse_y)
+			if (hover >= 0):
+				ui_calendar_cell_date(&st.cal, hover, &b)
+			else if (ui_date_is_set(&st.cursor)):
+				ui_date_copy(&b, &st.cursor)
+		ui_date picked
+		ui_date_clear(&picked)
+		int what = ui_calendar_grid(ctx, id + 1, cr, &st.cal, 0, &st.cursor, &a, &b, today, &picked)
+		ui_popover_end(ctx)
+		if (what == UI_CALENDAR_MOVED):
+			ui_date_copy(&st.cursor, &picked)
+		else if ((what == UI_CALENDAR_CLICKED) || (what == UI_CALENDAR_COMMIT)):
+			ui_date_copy(&st.cursor, &picked)
+			if (ui_date_is_set(&st.anchor) == 0):
+				ui_date_copy(&st.anchor, &picked)
+			else:
+				if (ui_date_compare(&picked, &st.anchor) < 0):
+					ui_date_copy(start, &picked)
+					ui_date_copy(end, &st.anchor)
+				else:
+					ui_date_copy(start, &st.anchor)
+					ui_date_copy(end, &picked)
+				ui_date_clear(&st.anchor)
+				changed = 1
+				ui_date_picker_close(ctx, id, &st.open)
+	else:
+		ui_date_clear(&st.anchor)
+		if (ctx.focus == id + 3):
+			ctx.focus = 0
+	return changed
