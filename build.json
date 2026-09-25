@@ -2167,6 +2167,7 @@
 				"heap_64_test",
 				"hpack_64_test",
 				"http2_64_test",
+				"http2_tls_64_test",
 				"http_client_64_test",
 				"http_server_64_test",
 				"http_server_route_64_test",
@@ -2210,6 +2211,7 @@
 				"net_64_test",
 				"net_asn1_64_test",
 				"net_tls_64_test",
+				"net_tls_alpn_64_test",
 				"net_tls_server_64_test",
 				"net_x509_64_test",
 				"operator_overload_64_test",
@@ -2792,6 +2794,7 @@
 				"hmac_test",
 				"hpack_test",
 				"http2_test",
+				"http2_tls_test",
 				"http_client_test",
 				"http_server_route_test",
 				"http_server_test",
@@ -2840,6 +2843,7 @@
 				"ndarray_test",
 				"nested_ctor_test",
 				"net_test",
+				"net_tls_alpn_test",
 				"operator_overload_test",
 				"parallel_for_test",
 				"passwd_test",
@@ -4914,6 +4918,26 @@
 			]
 		},
 		{
+			"name": "http2_tls_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http2_tls_test.w"],
+			"outputs": ["bin/http2_tls_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/http2_tls_test.w", "-o", "bin/http2_tls_64_test"]},
+				{"cmd": ["bin/http2_tls_64_test"]}
+			]
+		},
+		{
+			"name": "http2_tls_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http2_tls_test.w"],
+			"outputs": ["bin/http2_tls_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/http2_tls_test.w", "-o", "bin/http2_tls_test"]},
+				{"cmd": ["bin/http2_tls_test"]}
+			]
+		},
+		{
 			"name": "http_client_64_test",
 			"deps": ["wv2"],
 			"inputs": ["libs/standard/web/http_client_test.w"],
@@ -5918,6 +5942,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_test.w", "-o", "bin/net_tls_64_test"]},
 				{"cmd": ["bin/net_tls_64_test"]}
+			]
+		},
+		{
+			"name": "net_tls_alpn_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/tls_alpn_test.w"],
+			"outputs": ["bin/net_tls_alpn_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_alpn_test.w", "-o", "bin/net_tls_alpn_64_test"]},
+				{"cmd": ["bin/net_tls_alpn_64_test"]}
+			]
+		},
+		{
+			"name": "net_tls_alpn_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/tls_alpn_test.w"],
+			"outputs": ["bin/net_tls_alpn_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/tls_alpn_test.w", "-o", "bin/net_tls_alpn_test"]},
+				{"cmd": ["bin/net_tls_alpn_test"]}
 			]
 		},
 		{

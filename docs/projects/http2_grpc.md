@@ -36,11 +36,20 @@ design choices and what is left.
 
 ## HTTP/2 (`http2.w`)
 
-- Transport: cleartext with prior knowledge (h2c). **Follow-up:** h2 over
-  TLS needs ALPN in `libs/standard/net/tls.w` plus a transport seam in
-  `h2_conn` (it owns a plain fd today). There is no HTTP/1.1 `Upgrade:
-  h2c` path, and server push is permanently disabled (we send
-  `ENABLE_PUSH = 0`; a PUSH_PROMISE is a connection PROTOCOL_ERROR).
+- Transport: prior knowledge, either cleartext (h2c) or h2 over TLS 1.3
+  (RFC 9113 section 3.2). `h2_connect_tls` offers ALPN `h2` through
+  `libs/standard/net/tls.w` (RFC 7301: `tls_config_set_alpn`,
+  `tls_server_config_set_alpn`, `tls_alpn_selected`) and refuses a server
+  that selected anything else; `h2_accept_tls` requires `h2` so a client
+  that does not offer it gets `no_application_protocol`.
+  `h2_client_new_tls` / `h2_server_new_tls` wrap an already-established
+  `tls_conn`. The transport seam is `h2_conn.tls` plus
+  `h2_conn_write_all` / `h2_conn_read`: all framing above them is
+  transport-agnostic, and on TLS a deadline is enforced by polling the fd
+  before a record starts, so an expired deadline never splits a TLS
+  record. There is no HTTP/1.1 `Upgrade: h2c` path, and server push is
+  permanently disabled (we send `ENABLE_PUSH = 0`; a PUSH_PROMISE is a
+  connection PROTOCOL_ERROR).
 - Single-threaded blocking model. `h2_pump` reads one frame and routes it
   to its stream object, so several streams can be in flight and awaited
   in any order; senders pump while a flow-control window is closed.
@@ -56,6 +65,14 @@ design choices and what is left.
   PUSH_PROMISE, oversized frames, bad HPACK, RST_STREAM, 1xx and
   content-length, and raw clients against the W server for its
   stream-id and request-validation errors.
+- `http2_tls_test.w`: the W client against the W server over TLS with the
+  checked-in P-256 fixture cert (GET/POST, concurrency, trailers, 200 KB
+  each way, PING, a deadline expiring on an idle TLS connection), plus
+  both ALPN refusal paths. ALPN itself is covered by
+  `libs/standard/net/tls_alpn_test.w`. gRPC over TLS would hook in by
+  having `grpc.w` open its channel with `h2_connect_tls` and serve
+  accepted sockets with `h2_accept_tls` instead of `h2_connect` /
+  `h2_server_new`.
 
 Not done (candidates for follow-ups): priority scheduling (PRIORITY is
 validated and ignored, as RFC 9113 permits), streaming request bodies
