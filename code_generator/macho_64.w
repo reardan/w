@@ -43,6 +43,7 @@ data_offset - code_offset (16 MB) above __TEXT's, so PC-relative distances
 computed from the nominal bases match the mapped image.
 */
 import code_generator.code_emitter
+import code_generator.image
 import code_generator.macho_dynamic
 import code_generator.macho_sign
 import lib.sha256

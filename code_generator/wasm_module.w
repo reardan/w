@@ -41,6 +41,7 @@ This file is compiled by the committed seed: seed-known syntax only.
 */
 
 import code_generator.wasm
+import code_generator.image
 
 int sym_declare_global(char *s, int type, int symtype); /* symbol_table */
 void sym_define_global_at(int current_symbol, int v);   /* symbol_table */

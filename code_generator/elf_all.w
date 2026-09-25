@@ -1,4 +1,5 @@
 import code_generator.code_emitter
+import code_generator.image
 import lib.sha256
 
 
