@@ -58,3 +58,4 @@ import graphics.ui.widgets.tree
 import graphics.ui.widgets.popover
 import graphics.ui.widgets.menu
 import graphics.ui.widgets.toast
+import graphics.ui.widgets.calendar

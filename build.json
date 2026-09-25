@@ -1964,6 +1964,7 @@
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/email_test.w", "-o", "bin/graphics_ui_email_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/dropdown_multi_test.w", "-o", "bin/graphics_ui_dropdown_multi_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/dropdown_search_test.w", "-o", "bin/graphics_ui_dropdown_search_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/calendar_test.w", "-o", "bin/graphics_ui_calendar_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/demo.w", "-o", "bin/graphics_ui_demo_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
@@ -2151,6 +2152,7 @@
 				"graphics_event_64_test",
 				"graphics_gl_texture_test",
 				"graphics_ui_buffer_64_test",
+				"graphics_ui_calendar_test",
 				"graphics_ui_chips_test",
 				"graphics_ui_clip_test",
 				"graphics_ui_core_64_test",
@@ -4553,6 +4555,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "graphics/ui/widgets/buffer_test.w", "-o", "bin/graphics_ui_buffer_test"]},
 				{"cmd": ["bin/graphics_ui_buffer_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_calendar_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/calendar_test.w"],
+			"outputs": ["bin/graphics_ui_calendar_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/calendar_test.w", "-o", "bin/graphics_ui_calendar_test"]},
+				{"cmd": ["bin/graphics_ui_calendar_test"]}
 			]
 		},
 		{

@@ -2063,6 +2063,7 @@
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/email_test.w", "-o", "bin/graphics_ui_email_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/dropdown_multi_test.w", "-o", "bin/graphics_ui_dropdown_multi_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/dropdown_search_test.w", "-o", "bin/graphics_ui_dropdown_search_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/calendar_test.w", "-o", "bin/graphics_ui_calendar_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/demo.w", "-o", "bin/graphics_ui_demo_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
