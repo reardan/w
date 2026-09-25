@@ -167,17 +167,21 @@ Implemented and covered by tests:
   (`max[int](3, 5)`, `pair[int]`) and call-site type-argument inference
   for functions defined before the call (`max(3, 5)`); see
   `docs/projects/generics.md`.
-- Floating point: `float`/`float32` on the default target, `float64` on x64
-  (plus x64 float32 narrowing coverage), decimal literals with exponent forms,
-  arithmetic/comparisons, int<->float coercions, function parameters/returns,
-  fields/pointers, `ftoa`, and x64 `f64toa`; `float16` as a 2-byte
-  storage/conversion type (load widens to float32, store narrows) on the
-  x86 family (default 32-bit target and x64) — requires an F16C-capable
-  CPU (Ivy Bridge/Zen or newer, 2012+; no software fallback) and is a
-  compile error on arm64/wasm. See `docs/projects/float.md`, including
-  its "Known MVP semantic differences" section (NaN comparisons, signed
-  zeros, int-conversion overflow, and a literal-width cross-target
-  gotcha).
+- Floating point: `float`/`float32` on every target and `float64` on every
+  64-bit-word target (x64, win64, arm64, arm64_darwin, gpu kernels; a
+  compile error on the 32-bit x86 and wasm targets), with decimal literals
+  with exponent forms, arithmetic/comparisons, int<->float coercions,
+  function parameters/returns, fields/pointers, the C float ABI, `ftoa`,
+  `f64toa`, and the `lib/fmath.w`/`lib/fmath64.w` math libraries, checked
+  by TestFloat-derived conformance vectors on x86 and x64; `float16` as a
+  2-byte storage/conversion type (load widens to float32, store narrows)
+  on the x86 family (default 32-bit target, x64, win64), which requires an
+  F16C-capable CPU (Ivy Bridge/Zen or newer, 2012+; no software fallback)
+  and is a compile error on arm64/wasm/gpu. `bfloat16` is not implemented.
+  See `docs/projects/float.md`, including its per-target support table and
+  "Known MVP semantic differences" section (NaN comparisons, signed zeros,
+  int-conversion overflow, a literal-width cross-target gotcha, and where
+  arm64/wasm differ from x86).
 - Expressions: full C-style operator set — arithmetic, shifts, relational
   (with chaining), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
   address/deref, compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`, `&=`,

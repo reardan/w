@@ -63,7 +63,8 @@ Edge-case conformance expansion (issue #17, landed):
   range check and its overflow sentinel is bit-identical to a
   legitimate boundary result, and — the one genuinely surprising
   finding — a bare decimal float literal changes width by target
-  (float64 on x64, float32 elsewhere) and an inline comparison
+  (float64 on 8-byte-word targets such as x64 and arm64, float32 on the
+  32-bit x86 and wasm targets) and an inline comparison
   involving one is not coerced back down, so identical source can
   compare differently across targets. Alternate rounding modes remain
   unexposed, as originally noted.
