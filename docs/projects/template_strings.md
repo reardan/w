@@ -127,6 +127,14 @@ precision, fill << 8 | align)` (int-likes, text), floats to
 flags)`; all of them pad through `__w_template_pad`. The bare `{value}`
 of an int-like or text value keeps the original one-argument helpers.
 
+## An f-string where a `char*` is expected
+
+The builder's buffer is always NUL-terminated, so an f-string literal
+decays to its data pointer wherever a `char*` is expected (argument,
+assignment, return, initializer), exactly like a plain `"..."` literal —
+see `docs/projects/arrays_slices_strings.md`. `puts(f"x={x}")` works
+without `.data` or `cstr()`.
+
 ## On-demand runtime import
 
 `structures/string.w` is not auto-imported. The lowering uses the shared

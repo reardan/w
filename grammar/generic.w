@@ -923,7 +923,7 @@ void generic_infer_error_prefix(int def):
 # argument's promoted expression type (value pseudo-types map back to
 # their storage types).
 int generic_infer_declarable(int t):
-	if (t == string_value_type):
+	if ((t == string_value_type) || (t == string_literal_type)):
 		return string_type
 	if (t == var_value_type):
 		return var_type
