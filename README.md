@@ -499,18 +499,24 @@ seeds — is `docs/release.md`.
   target) and reports pass/fail, so the break is visible before that
   target's next full build.
 - `bin/wbuildd` (`tools/wbuildd.w`, `./wbuild wbuildd`; Linux x86/x64
-  only) is an opt-in persistent daemon for the read-only queries above
-  (issue #231, `docs/projects/wbuildd.md`). `bin/wbuildd start` /
-  `status` / `stop` manage it (`serve` runs it in the foreground; there
-  is no auto-spawn). `bin/wbuildd check|deps|symbols ARGS` and
-  `bin/wbuildd changed ARGS` print exactly what `bin/wv2 check|deps|symbols
-  ARGS` and `bin/wtest changed ARGS` print, answered from the daemon's
-  warm state: check/deps/symbols results stay in memory until inotify
-  sees a file in their import closure change, and the daemon keeps
-  `bin/.wtest_deps_cache` warm in the background. Without a running
-  daemon (or with `WBUILDD=0`) the client simply runs the one-shot
-  command. `wbuildd_test` asserts the two paths stay byte-identical,
-  including after edits.
+  only) is a persistent daemon for the read-only queries above and for
+  builds (issues #231 and #483, `docs/projects/wbuildd.md`). A client
+  command starts one when none is running (`bin/wbuildd start` /
+  `status` / `stop` manage it by hand; `serve` runs it in the
+  foreground; `--no-autostart` or `WBUILDD_AUTOSTART=0` turns auto-start
+  off). `bin/wbuildd check|deps|symbols ARGS` and `bin/wbuildd changed
+  ARGS` print exactly what `bin/wv2 check|deps|symbols ARGS` and
+  `bin/wtest changed ARGS` print, answered from the daemon's warm state:
+  check/deps/symbols results stay in memory until inotify sees a file in
+  their import closure change, and the daemon keeps
+  `bin/.wtest_deps_cache` warm in the background. `bin/wbuildd build
+  ARGS` is `bin/wexec ARGS` run by the daemon in the caller's own
+  terminal, starting from its warm generated manifest and content
+  hashes (`WBUILDD=1 ./wbuild ...` routes `./wbuild` through it). With
+  `WBUILDD=0` (or when no daemon can be reached) the client simply runs
+  the one-shot command. `wbuildd_test` asserts the query paths stay
+  byte-identical, including after edits; `verify_warm` does the same
+  for builds, down to every output binary.
 - Agent-facing guidance is committed alongside the code: `.cursor/skills/`
   holds step-by-step skills (`w-check-diagnostics`, `w-select-tests`,
   `w-debug-wdbg`, `w-repl-explore`) and `.cursor/rules/` holds path-scoped

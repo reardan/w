@@ -357,6 +357,18 @@ int sys_socketpair(int family, int socket_type, int protocol, int fds):
 	return syscall7(53, family, socket_type, protocol, fds, 0, 0)
 
 
+# sendmsg (46) / recvmsg (47): msg points at a struct msghdr (seven word-sized
+# fields on Linux: name, namelen, iov, iovlen, control, controllen,
+# flags). Used for SCM_RIGHTS descriptor passing over AF_UNIX sockets
+# (lib/unix_fds.w).
+int sys_sendmsg(int sockfd, int msg, int flags):
+	return syscall(46, sockfd, msg, flags)
+
+
+int sys_recvmsg(int sockfd, int msg, int flags):
+	return syscall(47, sockfd, msg, flags)
+
+
 # recvfrom (45) with a null address doubles as recv on x86-64.
 int sys_recv(int sockfd, char* buf, int len, int flags):
 	return syscall7(45, sockfd, buf, len, flags, 0, 0)

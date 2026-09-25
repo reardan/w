@@ -1,5 +1,6 @@
 #!/bin/sh
-# Bootstrap the W-native build executor (tools/wexec.w) and forward to it.
+# Bootstrap the W-native build executor (tools/wexec.w, entry point
+# tools/wexec_main.w) and forward to it.
 #
 # This is the only shell in the W-native build path: the pinned seed ./w
 # compiles the compiler, the compiler compiles the executor, and everything
@@ -82,7 +83,7 @@ if [ "$(uname -s)" = "Darwin" ]; then
 		./w_darwin arm64_darwin w.w -o bin/wv2_darwin_raw
 		cp bin/wv2_darwin_raw bin/wv2_darwin.new
 		mv -f bin/wv2_darwin.new bin/wv2_darwin
-		bin/wv2_darwin arm64_darwin tools/wexec.w -o bin/wexec_darwin_raw
+		bin/wv2_darwin arm64_darwin tools/wexec_main.w -o bin/wexec_darwin_raw
 		cp bin/wexec_darwin_raw bin/wexec_darwin.new
 		mv -f bin/wexec_darwin.new bin/wexec_darwin
 	fi
@@ -92,7 +93,7 @@ fi
 ensure_seed w
 if [ ! -x bin/wexec ]; then
 	./w w.w -o bin/wv2
-	./bin/wv2 tools/wexec.w -o bin/wexec
+	./bin/wv2 tools/wexec_main.w -o bin/wexec
 fi
 # An executor older than the tree may not be able to load its manifest
 # at all (one built before the manifest stopped being committed); rebuild
@@ -101,7 +102,7 @@ fi
 if ! ./bin/wexec --list >/dev/null 2>&1; then
 	echo "wbuild: bin/wexec cannot load the manifest; rebuilding it from the seed" >&2
 	./w w.w -o bin/wv2
-	./bin/wv2 tools/wexec.w -o bin/wexec
+	./bin/wv2 tools/wexec_main.w -o bin/wexec
 fi
 ./bin/wexec wv2 wexec >/dev/null
 if [ "$1" = "test_changed" ]; then
@@ -135,5 +136,15 @@ if [ "$1" = "test_changed" ]; then
 	# through the import-closure rules.
 	printf '%s\n' "$changed" | ./bin/wtest changed --available | xargs -r ./wbuild "$@"
 	exit 0
+fi
+# Opt-in (issue #483, docs/projects/wbuildd.md §8): WBUILDD=1 runs the
+# build through bin/wbuildd's build RPC -- the same executor, in this
+# terminal, but starting from the daemon's warm manifest and content
+# hashes, and auto-starting the daemon when none runs. If bin/wbuildd
+# cannot be brought up to date, the one-shot executor runs instead.
+if [ "${WBUILDD:-}" = 1 ] && [ "$(uname -s)" = Linux ]; then
+	if ./bin/wexec wbuildd >/dev/null 2>&1; then
+		exec ./bin/wbuildd build "$@"
+	fi
 fi
 exec ./bin/wexec "$@"

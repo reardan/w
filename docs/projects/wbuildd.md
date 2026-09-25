@@ -18,8 +18,10 @@ stale-file-aware `socket_bind_unix_replacing_stale`,
 landed 2026-09-25 as `tools/wbuildd.w` (`bin/wbuildd`, target
 `wbuildd`) with its byte-identity gate `tests/wbuildd_test.w`; §6
 records the maintainer's decisions that scoped it and §8 describes
-what was built. Build/execution RPCs, auto-spawn, the REPL server and
-the darwin dirent fix remain unimplemented.
+what was built. The next milestone (issue #483) landed the same day:
+the `build` RPC, client auto-start and the `verify_warm` gate
+(`tests/wbuildd_build_test.w`), described at the end of §8. The REPL
+server and the darwin dirent fix remain unimplemented.
 
 ## 0. Summary
 
@@ -174,10 +176,10 @@ method-dispatch envelope" — `lib/json_rpc.w:1`–`10` builds directly on
 
 ### 2.2 Lifecycle
 
-*(Superseded for the first milestone by decision 1 in §6: the daemon is
-started and stopped explicitly and clients never spawn it; the
-auto-spawn sketch below is kept as the design rationale for a later
-milestone. Staleness as implemented is described in §8.)*
+*(The first milestone started the daemon explicitly (decision 1 in
+§6); issue #483 added client auto-start as sketched below, for the
+`bin/wbuildd` client commands and, opt-in, `WBUILDD=1 ./wbuild`.
+Staleness as implemented is described in §8.)*
 
 - **Who starts it**: `wbuild`/`wexec`/`w`/`wtest` each try to connect to
   a well-known socket path first (`bin/.wbuildd.sock`, next to the
@@ -610,7 +612,8 @@ list (2026-09-25). They scope the first milestone (§8).
    `serve` to run it in the foreground. Clients never spawn a daemon;
    with none running they fall back to the one-shot command. No
    auto-spawn in this milestone (§2.2's sketch stays as rationale for
-   a later one).
+   a later one). *(Issue #483, the next milestone, added auto-start;
+   see §8.)*
 2. **Read-only surface:** `check`, `deps`, `symbols`, and
    `test_changed` target selection (the same output as
    `bin/wtest changed`). `test_changed` rides with the read-only
@@ -732,6 +735,92 @@ a protocol number the daemon must match.
 compiler subprocesses see (the compiler reads no environment
 variables today). C headers outside the tree (`/usr/include`) are not
 watched; restart the daemon after changing system headers. The
-`wexec`-facing target layer of §2.4, `build`, and wiring
-`wbuild`/`wtest`/`w` themselves to try the daemon first are later
-milestones.
+build RPC (below) now covers §2.4's target layer; wiring `wtest` and
+`w` themselves to try the daemon first is still open.
+
+### Build RPC, auto-start and `verify_warm` (issue #483)
+
+**`bin/wbuildd build ARGS` ≡ `bin/wexec ARGS`.** The executor is
+compiled into the daemon: `tools/wexec.w` no longer holds `main()`
+(`bin/wexec`'s entry point is now `tools/wexec_main.w`), so
+`tools/wbuildd.w` imports it and calls `wexec_main`. A build request
+carries the client's argument list, working directory (it must be the
+daemon's root), environment and umask, and its stdin, stdout and
+stderr travel with the request as `SCM_RIGHTS` descriptors
+(`lib/unix_fds.w`, over the new `sys_sendmsg`/`sys_recvmsg` shims).
+The daemon forks a child that `dup2`s them onto 0/1/2, closes every
+other descriptor, restores `SIGPIPE`, and runs `wexec_main`, so output
+streams live into the caller's terminal exactly as a one-shot run's
+would, and the child's exit status becomes the answer. Every argument
+`bin/wexec` takes works (`--keep-going`, `-j`, `-f`, `--list`, ...,
+§7). The daemon answers a `build_started` notification with the
+child's pid first; the client then forwards SIGINT/SIGTERM/SIGHUP to
+it (wexec's own handler tears the build down and exits 128+signal) and
+never falls back to the one-shot command after that point, which would
+run the build twice. The event loop keeps serving queries while builds
+run; concurrent builds meet wexec's own `bin/.wexec_lock`, as one-shot
+runs do.
+
+**Warm state a build reuses** (answering §2.4's two layers):
+
+- *The generated default manifest*, already parsed
+  (`wexec_warm_manifest`, used by `wexec_load_manifest` when no `-f`
+  is given): the first build generates it in its child with stderr
+  captured, replays that stderr, and reports the text back; later
+  builds replay the same stderr and skip generation (~0.3s here).
+  Dropped by any inotify event outside `bin/` — generation reads
+  sources, `# wbuild:` directives, sidecars and `build.base.json`, never
+  `bin/`.
+- *Content hashes* (`wexec_file_hashes`, the memo behind the
+  import-closure checks of the deps-driven cache keys): each child
+  reports the hashes it computed; the daemon keeps one unless an event
+  touched that path after the fork. An event drops a path's hash (a
+  directory event, or a queue overflow, drops them all), and before
+  every fork each kept hash is re-checked against the file's size,
+  inode, mtime and ctime, so a write inotify cannot see still rehashes.
+- *Import closures* stay in `bin/.wexec_deps_cache`, which each child
+  loads as a one-shot run does; with warm hashes their validation is
+  the cheap part.
+
+Cache keys, stamps and the deps cache format are wexec's own, computed
+by the same code, so a daemon build and a one-shot build agree on every
+cache hit — the daemon is only a place that avoids recomputing unchanged
+inputs, never a second definition of a key. A no-op `build wv2` here:
+~0.53s one-shot, ~0.18s through a warm daemon.
+
+**Staleness.** The build RPC runs the executor this binary was compiled
+with, so a replaced `bin/wexec` (like a replaced `bin/wbuildd`) makes the
+daemon stop listening, finish the builds in flight and exit; the next
+client starts a fresh one.
+
+**Auto-start (§2.2).** When nothing answers on the socket, a client
+command (`check`, `deps`, `symbols`, `changed`, `build`; never `status`
+or `stop`) spawns `serve --detach` itself and retries for up to 15s
+before falling back. It prints nothing of its own, so answers stay
+byte-identical. Only a working directory holding `build.base.json`
+auto-starts a daemon. An auto-started daemon exits after an hour
+without requests (`WBUILDD_IDLE_TIMEOUT_MS`), logs to
+`bin/.wbuildd.log` (`<socket>.log` for another `--socket`), and skips
+the `test_changed` prewarm when `WBUILDD_PREWARM=0`. `--no-autostart`
+or `WBUILDD_AUTOSTART=0` disables it; `WBUILDD=0` still bypasses the
+daemon entirely. `./wbuild` itself stays one-shot unless `WBUILDD=1`
+is set, which refreshes `bin/wbuildd` and runs `bin/wbuildd build`
+(falling back to `bin/wexec` if `wbuildd` cannot be rebuilt).
+
+**The gate.** `verify_warm` (`tests/wbuildd_build_test.w`, in `tests`)
+builds a scratch manifest's targets — a root with an imported helper
+for x86 and x64, the compiler self-compiled from `w.w`, a root that
+does not compile, a `sleep` — one-shot and through its own daemon, and
+asserts identical stdout, stderr and exit status for cold
+(`--no-cache`), cached, failing and `--keep-going` runs and for the
+default manifest (`--list`, generated cold and then served warm), and
+that every output binary of a daemon build is byte-identical to the
+cold build's, including after an edit inside an import closure. It
+also checks signal forwarding (SIGTERM to the client → 143) and
+auto-start.
+
+**Limits.** `tools/wexec.w` builds only for the default x86 target
+(it has no `x64` platform files), so `bin/wbuildd` is a 32-bit binary
+now; it runs on x86-64 Linux hosts like the rest of the toolchain. A
+build's children see the client's environment, but the check/deps/
+symbols subprocesses still see the daemon's.

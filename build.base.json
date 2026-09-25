@@ -115,10 +115,10 @@
 		{
 			"name": "wexec",
 			"deps": ["wv2"],
-			"inputs": ["tools/wexec.w"],
+			"inputs": ["tools/wexec_main.w"],
 			"outputs": ["bin/wexec"],
 			"steps": [
-				{"cmd": ["bin/wv2", "tools/wexec.w", "-o", "bin/wexec.stage"]},
+				{"cmd": ["bin/wv2", "tools/wexec_main.w", "-o", "bin/wexec.stage"]},
 				{"cmd": ["mv", "bin/wexec.stage", "bin/wexec"]}
 			]
 		},
@@ -165,10 +165,10 @@
 		{
 			"name": "wexec_win",
 			"deps": ["wv2"],
-			"inputs": ["tools/wexec.w"],
+			"inputs": ["tools/wexec_main.w"],
 			"outputs": ["bin/wexec_win.exe"],
 			"steps": [
-				{"cmd": ["bin/wv2", "win64", "tools/wexec.w", "-o", "bin/wexec_win.exe"]}
+				{"cmd": ["bin/wv2", "win64", "tools/wexec_main.w", "-o", "bin/wexec_win.exe"]}
 			]
 		},
 		{
@@ -202,13 +202,13 @@
 		},
 		{
 			"name": "wexec_darwin",
-			"inputs": ["tools/wexec.w", "w_darwin"],
+			"inputs": ["tools/wexec_main.w", "tools/wexec.w", "w_darwin"],
 			"outputs": ["bin/wexec_darwin"],
 			"steps": [
 				{"cmd": ["./w_darwin", "arm64_darwin", "w.w", "-o", "bin/wv2_darwin_raw"]},
 				{"cmd": ["cp", "bin/wv2_darwin_raw", "bin/wv2_darwin.new"]},
 				{"cmd": ["mv", "-f", "bin/wv2_darwin.new", "bin/wv2_darwin"]},
-				{"cmd": ["bin/wv2_darwin", "arm64_darwin", "tools/wexec.w", "-o", "bin/wexec_darwin_raw"]},
+				{"cmd": ["bin/wv2_darwin", "arm64_darwin", "tools/wexec_main.w", "-o", "bin/wexec_darwin_raw"]},
 				{"cmd": ["cp", "bin/wexec_darwin_raw", "bin/wexec_darwin.new"]},
 				{"cmd": ["mv", "-f", "bin/wexec_darwin.new", "bin/wexec_darwin"]}
 			]
