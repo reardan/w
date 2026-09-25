@@ -36,13 +36,13 @@ void var_emit_to_cstr();
 # __w_print_list, 5 __w_print_nl, 6-8 the input helpers, 9-11
 # max/min/abs, 12 strlen (len(char*) borrows lib/lib.w's: the prelude
 # import pulls lib.lib in, so the chain always resolves at patch time),
-# 13 __w_print_char, 14/15 any/all.
+# 13 __w_print_char, 14/15 any/all, 16 __w_enum_name.
 lazy_runtime* print_rt
 
 
 void print_emit_helper_address(int i):
 	if (cast(int, print_rt) == 0):
-		print_rt = lazy_runtime_new(c"structures.prelude", c"__w_print_int __w_print_cstr __w_print_str __w_print_float32 __w_print_list __w_print_nl input read_all ints __w_max __w_min __w_abs strlen __w_print_char __w_any __w_all")
+		print_rt = lazy_runtime_new(c"structures.prelude", c"__w_print_int __w_print_cstr __w_print_str __w_print_float32 __w_print_list __w_print_nl input read_all ints __w_max __w_min __w_abs strlen __w_print_char __w_any __w_all __w_enum_name")
 	lazy_emit_helper(print_rt, i)
 
 
@@ -304,7 +304,7 @@ int prelude_seq_helper():
 int prelude_math_ready():
 	if (nextc != '('):
 		return 0
-	if ((prelude_math_helper() < 0) && (prelude_seq_helper() < 0) && (peek(c"len") == 0)):
+	if ((prelude_math_helper() < 0) && (prelude_seq_helper() < 0) && (peek(c"len") == 0) && (peek(c"enum_name") == 0)):
 		return 0
 	if (sym_lookup(token) >= 0):
 		return 0
@@ -433,11 +433,111 @@ int prelude_math_call_expr(int helper):
 	return type_value(type_lookup(c"int"))
 
 
-# Entry for the primary_expr branch: routes len and any/all separately
-# from the max/min/abs runtime helpers.
+# Registry of every declared enum constant (type, name, value) in
+# declaration order, filled by grammar/enum_declaration.w for
+# enum_name() reflection. Redeclaring an enum (the REPL) drops its old
+# constants first.
+struct enum_constant_record:
+	int type
+	char* name
+	int value
+
+
+list[enum_constant_record] enum_constants
+
+
+void enum_register_into(list[enum_constant_record] l, int type_index, char* name, int value):
+	enum_constant_record rec
+	rec.type = type_index
+	rec.name = name
+	rec.value = value
+	l.push(rec)
+
+
+void enum_register_constant(int type_index, char* name, int value):
+	if (cast(int, enum_constants) == 0):
+		enum_constants = new list[enum_constant_record]
+	enum_register_into(enum_constants, type_index, name, value)
+
+
+void enum_forget_constants(int type_index):
+	if (cast(int, enum_constants) == 0):
+		return;
+	list[enum_constant_record] kept = new list[enum_constant_record]
+	int i = 0
+	while (i < enum_constants.length):
+		if (enum_constants[i].type != type_index):
+			enum_register_into(kept, enum_constants[i].type, enum_constants[i].name, enum_constants[i].value)
+		i = i + 1
+	enum_constants = kept
+
+
+# enum_name(e): the declared name of an enum value as a char*. The
+# enum's constants (grammar/enum_declaration.w's registry) are emitted
+# as an inline table of NUL-separated "value" / "name" pairs next to
+# the call, and __w_enum_name scans it at runtime; a value no constant
+# carries renders as its decimal digits. The first of several names
+# sharing a value wins. Leaves ')' current for primary_expr's trailing
+# get_token().
+int prelude_enum_name_expr():
+	get_token()
+	expect(c"(")
+	int base_stack = stack_pos
+	int got = promote(expression())
+	int t = type_canonical(type_unqualified(got))
+	if ((got == 3) || (got == 4) || (type_get_kind(t) != type_kind_enum)):
+		value_type_error(c"enum_name argument must be an enum value, got", got)
+	if (peek(c")") == 0):
+		error(c"')' expected in enum_name")
+	push_eax()
+	stack_pos = stack_pos + 1
+	int value_slot = stack_pos
+	int capacity = 16
+	char* table_text = malloc(capacity)
+	int length = 0
+	int i = 0
+	while ((cast(int, enum_constants) != 0) && (i < enum_constants.length)):
+		if (type_canonical(enum_constants[i].type) == t):
+			char* digits = itoa(enum_constants[i].value)
+			char* name = enum_constants[i].name
+			int need = length + strlen(digits) + strlen(name) + 3
+			if (need > capacity):
+				table_text = realloc(table_text, capacity, need * 2)
+				capacity = need * 2
+			strcpy(table_text + length, digits)
+			length = length + strlen(digits) + 1
+			strcpy(table_text + length, name)
+			length = length + strlen(name) + 1
+			free(digits)
+		i = i + 1
+	if (length + 1 > capacity):
+		table_text = realloc(table_text, capacity, length + 1)
+	# the final NUL (be_emit_inline_cstr adds it) ends the table
+	table_text[length] = 0
+	be_emit_inline_cstr(length, table_text)
+	free(table_text)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int table_slot = stack_pos
+	print_emit_helper_address(16)
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(table_slot)
+	hash_push_stack_slot(value_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	return type_value(type_lookup_pointer(c"char", 1))
+
+
+# Entry for the primary_expr branch: routes len, any/all and enum_name
+# separately from the max/min/abs runtime helpers.
 int prelude_math_expr():
 	if (peek(c"len")):
 		return prelude_len_expr()
+	if (peek(c"enum_name")):
+		return prelude_enum_name_expr()
 	if (prelude_seq_helper() >= 0):
 		return prelude_seq_expr(prelude_seq_helper())
 	return prelude_math_call_expr(prelude_math_helper())

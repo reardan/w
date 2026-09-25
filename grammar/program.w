@@ -20,54 +20,263 @@
 void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
 
 
-# Decode the compile-time constant at the current token: an integer
-# literal (decimal or hex, optionally negated), a char literal, or a
-# named enum constant (whose int32 value was already emitted into the
-# image at the constant's address). Anything else is rejected, with
-# `what` naming the construct in the diagnostic. Leaves the token after
-# the constant current.
-int parse_constant_literal(char* what, char* name):
-	int negative = 0
+# Compile-time constant expressions: global initializers, parameter
+# defaults and enum values. The C integer-constant-expression subset
+#
+#   or    := xor ('|' xor)*          xor   := and ('^' and)*
+#   and   := shift ('&' shift)*      shift := add (('<<' | '>>') add)*
+#   add   := mul (('+' | '-') mul)*  mul   := unary (('*' | '/' | '%') unary)*
+#   unary := ('-' | '+' | '~') unary | primary
+#   primary := int literal (decimal, hex, binary) | char literal
+#            | enum constant | const-qualified global | sizeof(T)
+#            | __word_size__ | '(' or ')'
+#
+# folds in 32-bit signed arithmetic (the int-literal convention, so a
+# 32- and a 64-bit-hosted compiler agree): a result that does not fit,
+# a shift count outside 0..31 and division by zero are errors. A
+# binary operator on a new line ends the expression (the next
+# declaration or script statement starts there). const_what/const_name
+# name the construct in diagnostics.
+char* const_what
+char* const_name
+int const_paren_depth
+
+
+void const_error_prefix():
+	diag_part(const_what)
+	if (const_name):
+		diag_part(c" '")
+		diag_part(const_name)
+		diag_part(c"'")
+
+
+void const_error(char* why):
+	const_error_prefix()
+	diag_part(c": ")
+	error(why)
+
+
+# 32-bit two's-complement range check on a 64-bit host (always true on
+# a 32-bit host, where the sign checks below catch the wrap).
+int const_fits32(int v):
+	return (v >= -2147483647 - 1) && (v <= 2147483647)
+
+
+int const_checked(int v, int overflowed):
+	if (overflowed || (const_fits32(v) == 0)):
+		const_error(c"constant expression overflows 32 bits")
+	return v
+
+
+# The int32 stored at a defined enum constant's or const global's
+# address (the enum declaration and write_global_initial_value put
+# them there), or error when the symbol is neither.
+int const_symbol_value(int t):
+	int is_object = 0
+	if (t >= 0):
+		is_object = (table[t + 1] == 'D') && (load_int(table + t + 10) == 1)
+	if (is_object):
+		int type = load_int(table + t + 6)
+		int addr = load_int(table + t + 2)
+		if (type_get_kind(type) == type_kind_enum):
+			# in the code stream on the native targets, in the data
+			# segment on wasm (enum_declaration.w)
+			if (target_isa == 2):
+				return load_int32(data + (addr - data_offset))
+			return load_int32(code + addr - code_offset)
+		int t_real = type_unqualified(type)
+		if (type_is_const(type) && (value_class(t_real) == VC_INT)):
+			char* p = code + addr - code_offset
+			if (data_split):
+				p = data + (addr - data_offset)
+			int size = type_get_size(t_real)
+			if (size == 1):
+				if (type_is_unsigned_fixed(t_real)):
+					return p[0] & 255
+				return p[0]
+			if (size == 2):
+				int v = (p[0] & 255) | (p[1] << 8)
+				if (type_is_unsigned_fixed(t_real)):
+					return v & 65535
+				return v
+			return load_int32(p)
+	const_error_prefix()
+	diag_part(c" must be a compile-time constant, got '")
+	diag_part(token)
+	error(c"'")
+	return 0
+
+
+int const_or();
+
+
+int const_primary():
 	int value = 0
-	if (accept(c"-")):
-		negative = 1
+	if (accept(c"(")):
+		const_paren_depth = const_paren_depth + 1
+		value = const_or()
+		const_paren_depth = const_paren_depth - 1
+		if (peek(c")") == 0):
+			const_error(c"')' expected in constant expression")
+	else if (accept(c"sizeof")):
+		expect(c"(")
+		value = type_get_size(type_name())
+		if (peek(c")") == 0):
+			const_error(c"')' expected after sizeof type")
+	else if (peek(c"__word_size__")):
+		value = word_size
 	# char literal e.g. 'c', '\n' or '\x41'; grammar/string_literal.w
 	# decodes and validates the token
-	if (token[0] == 39):
+	else if (token[0] == 39):
 		value = char_literal_value()
-	else if ((token[0] == '0') && (token[1] == 'x')):
+	else if ((token[0] == '0') && ((token[1] == 'x') || (token[1] == 'b'))):
 		int_literal_width_check()
-		value = int_literal_wrap32(from_hex(token + 2))
+		if (token[1] == 'x'):
+			value = from_hex(token + 2)
+		else:
+			int i = 2
+			while (token[i]):
+				value = (value << 1) + token[i] - '0'
+				i = i + 1
+		value = int_literal_wrap32(value)
 	else if (('0' <= token[0]) && (token[0] <= '9')):
 		int_literal_decimal_check()
 		value = int_literal_wrap32(atoi(token))
 	else:
-		# A named enum constant: a defined global object of an enum type.
-		# Its value is the int32 the enum declaration emitted at its address
-		# — in the code stream on the native targets, in the data segment
-		# on wasm (enum_declaration.w).
-		int t = sym_lookup(token)
-		int is_enum_constant = 0
-		if (t >= 0):
-			if ((table[t + 1] == 'D') & (load_int(table + t + 10) == 1)):
-				if (type_get_kind(load_int(table + t + 6)) == type_kind_enum):
-					is_enum_constant = 1
-		if (is_enum_constant == 0):
-			diag_part(what)
-			if (name):
-				diag_part(c" '")
-				diag_part(name)
-				diag_part(c"'")
-			diag_part(c" must be a compile-time constant, got '")
-			diag_part(token)
-			error(c"'")
-		if (target_isa == 2):
-			value = load_int32(data + (load_int(table + t + 2) - data_offset))
-		else:
-			value = load_int32(code + load_int(table + t + 2) - code_offset)
+		value = const_symbol_value(sym_lookup(token))
 	get_token()
-	if (negative):
-		value = 0 - value
+	return value
+
+
+int const_unary():
+	if (accept(c"-")):
+		int v = const_unary()
+		return const_checked(0 - v, (v != 0) && (v == 0 - v))
+	if (accept(c"+")):
+		return const_unary()
+	if (accept(c"~")):
+		return ~const_unary()
+	return const_primary()
+
+
+# 1 when the current token is binary operator op and continues the
+# expression (not the start of the next line outside parentheses).
+int const_binary(char* op):
+	if (token_newline && (const_paren_depth == 0)):
+		return 0
+	return accept(op)
+
+
+int const_min32():
+	return -2147483647 - 1
+
+
+int const_mul():
+	int a = const_unary()
+	while (1):
+		int b
+		if (const_binary(c"*")):
+			b = const_unary()
+			int r = a * b
+			# r / a never runs as MIN / -1, which traps on a 32-bit host
+			int overflowed = 0
+			if (a != 0):
+				if (((a == -1) && (b == const_min32())) || ((b == -1) && (a == const_min32()))):
+					overflowed = 1
+				else:
+					overflowed = r / a != b
+			a = const_checked(r, overflowed)
+		else if (const_binary(c"/")):
+			b = const_unary()
+			if (b == 0):
+				const_error(c"division by zero in constant expression")
+			a = const_checked(a / b, (a == const_min32()) && (b == -1))
+		else if (const_binary(c"%")):
+			b = const_unary()
+			if (b == 0):
+				const_error(c"division by zero in constant expression")
+			if (b == -1):
+				a = 0
+			else:
+				a = a % b
+		else:
+			return a
+
+
+int const_add():
+	int a = const_mul()
+	while (1):
+		int b
+		int r
+		if (const_binary(c"+")):
+			b = const_mul()
+			r = a + b
+			a = const_checked(r, ((a ^ r) & (b ^ r)) < 0)
+		else if (const_binary(c"-")):
+			b = const_mul()
+			r = a - b
+			a = const_checked(r, ((a ^ b) & (a ^ r)) < 0)
+		else:
+			return a
+
+
+int const_shift_count():
+	int n = const_add()
+	if ((n < 0) || (n > 31)):
+		const_error(c"shift count must be 0..31 in a constant expression")
+	return n
+
+
+int const_shift():
+	int a = const_add()
+	while (1):
+		int n
+		if (const_binary(c"<<")):
+			n = const_shift_count()
+			int r = a << n
+			a = const_checked(r, (r >> n) != a)
+		else if (const_binary(c">>")):
+			n = const_shift_count()
+			a = a >> n
+		else:
+			return a
+
+
+int const_and():
+	int a = const_shift()
+	while (const_binary(c"&")):
+		a = a & const_shift()
+	return a
+
+
+int const_xor():
+	int a = const_and()
+	while (const_binary(c"^")):
+		a = a ^ const_and()
+	return a
+
+
+int const_or():
+	int a = const_xor()
+	while (const_binary(c"|")):
+		a = a | const_xor()
+	return a
+
+
+# Parse and fold the constant expression at the current token; `what`
+# (and `name`, when nonzero) name the construct in diagnostics. Leaves
+# the token after the expression current.
+int parse_constant_literal(char* what, char* name):
+	char* outer_what = const_what
+	char* outer_name = const_name
+	int outer_depth = const_paren_depth
+	const_what = what
+	const_name = name
+	const_paren_depth = 0
+	int value = const_or()
+	const_what = outer_what
+	const_name = outer_name
+	const_paren_depth = outer_depth
 	return value
 
 

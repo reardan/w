@@ -203,3 +203,26 @@ list[int] ints():
 			i = i + 1
 	free(text)
 	return values
+
+
+# --- enum_name ------------------------------------------------------------
+# enum_name(e) (grammar/print_builtin.w): table is the compiler-emitted
+# run of NUL-terminated "value" / "name" pairs for e's enum, ended by an
+# empty value. Returns the name inside the table, or the value's decimal
+# digits when no constant carries it.
+char* __w_enum_name(char* table, int value):
+	char* p = table
+	while (p[0] != 0):
+		int negative = p[0] == '-'
+		int i = negative
+		int v = 0
+		while (p[i] != 0):
+			v = v * 10 + p[i] - '0'
+			i = i + 1
+		if (negative):
+			v = 0 - v
+		p = p + i + 1
+		if (v == value):
+			return p
+		p = p + strlen(p) + 1
+	return itoa(value)
