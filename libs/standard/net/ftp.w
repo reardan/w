@@ -127,7 +127,6 @@
 #     users "anonymous" and "ftp" are always allowed.
 import lib.lib
 import lib.net
-import lib.poll
 import structures.string
 import libs.standard.net.dns
 import libs.standard.net.tls
@@ -376,32 +375,15 @@ int ftp_valid_verb(char* verb):
 
 /* Socket plumbing */
 
-# Nonblocking connect bounded by timeout_ms, then back to blocking with
+# lib/net.w's net_connect_timeout, then back to blocking with
 # SO_RCVTIMEO/SO_SNDTIMEO armed. Returns the fd, or the negated
 # ftp_error_* code.
 int ftp_connect_fd(int ip, int port, int timeout_ms):
-	int fd = socket_tcp_ipv4()
+	int fd = net_connect_timeout(ip, port, timeout_ms)
+	if (fd == -2):
+		return 0 - ftp_error_timeout()
 	if (fd < 0):
 		return 0 - ftp_error_connect()
-	if (socket_set_nonblocking(fd) < 0):
-		close(fd)
-		return 0 - ftp_error_connect()
-	socket_set_nosigpipe(fd)
-	int rc = socket_connect_ipv4(fd, ip, port)
-	if (rc < 0):
-		if (rc != (0 - net_einprogress())):
-			close(fd)
-			return 0 - ftp_error_connect()
-		int ready = poll_single(fd, poll_out(), timeout_ms)
-		if (ready == 0):
-			close(fd)
-			return 0 - ftp_error_timeout()
-		if (ready < 0):
-			close(fd)
-			return 0 - ftp_error_connect()
-		if ((ready & (poll_err() | poll_hup())) != 0):
-			close(fd)
-			return 0 - ftp_error_connect()
 	if (socket_set_blocking(fd) < 0):
 		close(fd)
 		return 0 - ftp_error_connect()

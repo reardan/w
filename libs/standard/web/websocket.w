@@ -181,15 +181,14 @@ struct ws_message:
 
 
 # One upgraded connection. cc is the frame transport; owns_cc says
-# whether ws_conn_free destroys it (clients) or leaves it to the server.
-# tls_cfg is the client-side TLS config the tls_conn inside cc borrows.
+# whether ws_conn_free destroys it (clients) or leaves it to the server;
+# a client's cc also owns the TLS config its tls_conn borrows.
 # broken marks a failed connection (no further I/O). frag/frag_opcode
 # reassemble a fragmented message (frag_opcode 0 = none in progress).
 # hdr is scratch for one frame header (at most 14 bytes).
 struct ws_conn:
 	ConnectionContext* cc
 	int owns_cc
-	tls_config* tls_cfg
 	int is_client
 	int error
 	int broken
@@ -721,7 +720,6 @@ ws_conn* ws_conn_new():
 	ws_conn* c = new ws_conn()
 	c.cc = 0
 	c.owns_cc = 0
-	c.tls_cfg = 0
 	c.is_client = 0
 	c.error = 0
 	c.broken = 0
@@ -774,8 +772,6 @@ void ws_conn_free(ws_conn* c):
 		return
 	if ((c.owns_cc != 0) && (c.cc != 0)):
 		connection_context_destroy(c.cc)
-	if (c.tls_cfg != 0):
-		tls_config_free(c.tls_cfg)
 	string_free(c.frag)
 	string_free(c.pmd_tx_window)
 	string_free(c.pmd_rx_window)
@@ -1763,9 +1759,9 @@ int ws_reserved_header(char* name):
 
 # Reads the handshake response head into resp. Returns 1, or 0 with the
 # ws error in *out_error.
-int ws_read_response_head(http_conn* hc, http_response* resp, int* out_error):
+int ws_read_response_head(ConnectionContext* hc, http_response* resp, int* out_error):
 	string_builder* line = string_new()
-	int got = http_conn_read_line(hc, line, http_error_headers_too_large())
+	int got = connection_context_read_line(hc, line, http_error_headers_too_large())
 	if (got <= 0):
 		string_free(line)
 		if (hc.error == http_error_timeout()):
@@ -1782,7 +1778,7 @@ int ws_read_response_head(http_conn* hc, http_response* resp, int* out_error):
 	resp.status = status
 	int total = 0
 	while (1):
-		got = http_conn_read_line(hc, line, http_error_headers_too_large())
+		got = connection_context_read_line(hc, line, http_error_headers_too_large())
 		if (got <= 0):
 			string_free(line)
 			if (hc.error == http_error_timeout()):
@@ -1858,22 +1854,25 @@ int ws_validate_response(http_response* resp, char* key, char* offered):
 	return ws_validate_response_ext(resp, key, offered, 0, &agreed)
 
 
-# Converts the handshake's http_conn into the frame transport: a
-# blocking ConnectionContext (SO_RCVTIMEO/SO_SNDTIMEO armed) that keeps
+# Switches the handshake's client-mode connection to the frame transport
+# in place: blocking with SO_RCVTIMEO/SO_SNDTIMEO armed (a wss socket
+# already is), connection_error_* codes and server-style waits, keeping
 # any frame bytes already buffered behind the 101 head.
-void ws_adopt_http_conn(ws_conn* c, http_conn* hc):
-	int fd = hc.fd
+void ws_adopt_http_conn(ws_conn* c, ConnectionContext* hc):
 	if (hc.tls == 0):
-		socket_set_blocking(fd)
-		socket_set_recv_timeout(fd, hc.timeout_ms)
-		socket_set_send_timeout(fd, hc.timeout_ms)
-	ConnectionContext* cc = connection_context_new(fd, hc.timeout_ms, hc.tls)
-	stream_free(cc.reader)
-	cc.reader = hc.reader
-	c.cc = cc
+		socket_set_blocking(hc.fd)
+		socket_set_recv_timeout(hc.fd, hc.timeout_ms)
+		socket_set_send_timeout(hc.fd, hc.timeout_ms)
+	else:
+		hc.tls.io_timeout_ms = hc.timeout_ms
+	hc.client_waits = 0
+	hc.error_recv = connection_error_recv()
+	hc.error_send = connection_error_send()
+	hc.error_timeout = connection_error_timeout()
+	hc.error = 0
+	hc.received_any = 0
+	c.cc = hc
 	c.owns_cc = 1
-	c.tls_cfg = hc.tls_cfg
-	free(hc)
 
 
 # Connects (TCP, then TLS for wss), sends the upgrade request, and
@@ -1885,11 +1884,9 @@ ws_conn* ws_dial(http_req* inner, URL* u, char* key, char* offered, ws_deflate_c
 	int ip = 0
 	if (dns_resolve_ipv4(u.host, &ip) == 0):
 		return ws_conn_failed(ws_error_dns())
-	int fd = http_connect_fd(ip, u.port, timeout)
+	int fd = net_connect_timeout(ip, u.port, timeout)
 	if (fd < 0):
-		if ((0 - fd) == http_error_timeout()):
-			return ws_conn_failed(ws_error_timeout())
-		return ws_conn_failed(ws_error_connect())
+		return ws_conn_failed(fd == -2 ? ws_error_timeout() : ws_error_connect())
 	tls_conn* tls = 0
 	tls_config* tls_cfg = 0
 	if (http_url_is_tls(u) != 0):
@@ -1909,26 +1906,26 @@ ws_conn* ws_dial(http_req* inner, URL* u, char* key, char* offered, ws_deflate_c
 			return ws_conn_failed(ws_error_tls())
 		socket_set_recv_timeout(fd, timeout)
 		socket_set_send_timeout(fd, timeout)
-	http_conn* hc = http_conn_new(fd, timeout)
+	ConnectionContext* hc = http_conn_new(fd, timeout)
 	hc.tls = tls
 	hc.tls_cfg = tls_cfg
 	if (http_send_request(hc, inner, u, c"GET", 0) == 0):
 		int send_error = ws_error_io()
 		if (hc.error == http_error_timeout()):
 			send_error = ws_error_timeout()
-		http_conn_destroy(hc)
+		connection_context_destroy(hc)
 		return ws_conn_failed(send_error)
 	http_response* resp = http_response_new()
 	int error = 0
 	if (ws_read_response_head(hc, resp, &error) == 0):
 		http_response_free(resp)
-		http_conn_destroy(hc)
+		connection_context_destroy(hc)
 		return ws_conn_failed(error)
 	int status = resp.status
 	ws_pmd_params agreed
 	if (ws_validate_response_ext(resp, key, offered, cfg, &agreed) == 0):
 		http_response_free(resp)
-		http_conn_destroy(hc)
+		connection_context_destroy(hc)
 		ws_conn* failed = ws_conn_failed(ws_error_handshake())
 		failed.http_status = status
 		return failed

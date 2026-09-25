@@ -558,31 +558,11 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 		return 0
 	store_be16(query, query_len)
 
-	int sock = socket_tcp_ipv4()
+	int deadline = time_monotonic_ms() + timeout_ms
+	int sock = net_connect_timeout(server_ip, server_port, timeout_ms)
 	if (sock < 0):
 		free(query)
 		return 0
-	int deadline = time_monotonic_ms() + timeout_ms
-	if (socket_set_nonblocking(sock) < 0):
-		close(sock)
-		free(query)
-		return 0
-	int rc = socket_connect_ipv4(sock, server_ip, server_port)
-	if (rc < 0):
-		if (rc != (0 - net_einprogress())):
-			# Anything but EINPROGRESS is a hard connect failure.
-			close(sock)
-			free(query)
-			return 0
-		int ready = io_poll(sock, poll_out(), timeout_ms)
-		if (ready <= 0):
-			close(sock)
-			free(query)
-			return 0
-		if ((ready & poll_out()) == 0):
-			close(sock)
-			free(query)
-			return 0
 	int sent = write(sock, query, query_len + 2)
 	free(query)
 	if (sent != query_len + 2):

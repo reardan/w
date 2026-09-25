@@ -2,6 +2,8 @@ import lib.lib
 import lib.linux
 import lib.memory
 import lib.__arch__.socket_abi
+import lib.poll
+import lib.io_wait
 
 
 # 16 bytes on the wire. The leading 16-bit field is sin_family on
@@ -364,3 +366,29 @@ int socket_set_recv_timeout(int sockfd, int timeout_ms):
 # Bounds a blocking send on this socket to timeout_ms (0 disables it).
 int socket_set_send_timeout(int sockfd, int timeout_ms):
 	return socket_set_timeout_opt(sockfd, socket_abi_so_sndtimeo(), timeout_ms)
+
+
+# Nonblocking TCP connect to ip:port bounded by timeout_ms (inside a
+# task the wait parks the task, via io_poll). Returns the connected fd,
+# still nonblocking and with SIGPIPE suppressed where the target needs
+# it (Darwin), or -2 when the wait timed out, or -1 on any other failure.
+int net_connect_timeout(int ip, int port, int timeout_ms):
+	int fd = socket_tcp_ipv4()
+	if (fd < 0):
+		return -1
+	if (socket_set_nonblocking(fd) < 0):
+		close(fd)
+		return -1
+	socket_set_nosigpipe(fd)
+	int rc = socket_connect_ipv4(fd, ip, port)
+	if (rc < 0):
+		int ready = -1
+		if (rc == (0 - net_einprogress())):
+			ready = io_poll(fd, poll_out(), timeout_ms)
+		if (ready == 0):
+			close(fd)
+			return -2
+		if ((ready < 0) || ((ready & (poll_err() | poll_hup())) != 0) || ((ready & poll_out()) == 0)):
+			close(fd)
+			return -1
+	return fd
