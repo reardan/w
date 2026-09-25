@@ -33,7 +33,11 @@ substrings — the captured stream must contain), "reject_stdout" /
 version of "! grep -q"), "expect_fail" (the step must exit nonzero,
 the manifest's version of Make's "! cmd"), "expect_status" (an exact
 exit code), "stdout_file" / "stderr_file" (write the captured stream
-to a path, replacing shell "> file" redirects), and "timeout_ms"
+to a path, replacing shell "> file" redirects), "env" (["NAME=value",
+...] set for the child, replacing "NAME=value cmd"), "cwd" (the child's
+working directory; argv[0] still resolves from wexec's own), "expect_signal"
+(the step must die from a signal: decoded status 129..255, the shell's
+"test $? -ge 128"), and "timeout_ms"
 (absent = the 900000 ms default, which the WEXEC_STEP_TIMEOUT_MS
 environment variable replaces; 0 or negative = no timeout; expiry
 SIGKILLs the child and fails the step with a distinct timed-out error).
@@ -1562,7 +1566,7 @@ void wexec_emit_output(process_result* result):
 # it makes a green run look broken (wexec_test's intentional-failure
 # fixtures print "wexec: error: ..." into a passing suite log).
 int wexec_step_expects_failure(json_value* step):
-	if (wexec_get_flag(step, c"expect_fail")):
+	if (wexec_get_flag(step, c"expect_fail") || wexec_get_flag(step, c"expect_signal")):
 		return 1
 	json_value* wanted = json_object_get(step, c"expect_status")
 	if (wanted != 0):
@@ -1752,6 +1756,11 @@ int wexec_check_status(char* target_name, int step_index, json_value* step, proc
 			return 1
 		if (result.status != wanted.int_value):
 			wexec_step_error(target_name, step_index, cstr(f"command exited {result.status}, expected status {wanted.int_value}"))
+			return 1
+		return 0
+	if (wexec_get_flag(step, c"expect_signal")):
+		if (result.status < 129):
+			wexec_step_error(target_name, step_index, cstr(f"command was expected to die from a signal (status 129-255) but exited {result.status}"))
 			return 1
 		return 0
 	if (wexec_get_flag(step, c"expect_fail")):
@@ -1951,6 +1960,76 @@ char** wexec_windows_native_step(char** argv, int* count):
 	return out
 
 
+int wexec_index_of_char(char* s, int c):
+	int i = 0
+	while (s[i] != 0):
+		if (s[i] == c):
+			return i
+		i = i + 1
+	return -1
+
+
+# A step's "env" (["NAME=value", ...], each overriding or adding one
+# variable; "NAME=" sets it empty) and "cwd" (the child's working
+# directory) replace the shell's "NAME=value cmd" and "cd dir && cmd"
+# (issue #323: no shell). Returns 0 after reporting a malformed field.
+spawn_options* wexec_step_spawn_options(char* target_name, int step_index, json_value* step):
+	spawn_options* opts = spawn_options_new()
+	json_value* cwd = json_object_get(step, c"cwd")
+	if (cwd != 0):
+		if (cwd.type != json_type_string()):
+			wexec_step_error(target_name, step_index, c"\"cwd\" must be a string")
+			free(opts)
+			return 0
+		opts.cwd = cwd.string_value
+	json_value* env = json_object_get(step, c"env")
+	if (env == 0):
+		return opts
+	if (env.type == json_type_string()):
+		json_value* single = json_array()
+		json_array_push(single, env)
+		env = single
+	if (env.type != json_type_array()):
+		wexec_step_error(target_name, step_index, c"\"env\" must be a string or an array of \"NAME=value\" strings")
+		free(opts)
+		return 0
+	char** envp = env_current()
+	int i = 0
+	while (i < json_array_length(env)):
+		json_value* entry = json_array_get(env, i)
+		int eq = -1
+		if (entry.type == json_type_string()):
+			eq = wexec_index_of_char(entry.string_value, '=')
+		if (eq <= 0):
+			wexec_step_error(target_name, step_index, c"\"env\" entries must be \"NAME=value\" strings")
+			free(opts)
+			return 0
+		char* name = strclone(entry.string_value)
+		name[eq] = 0
+		envp = env_copy_with(envp, name, entry.string_value + eq + 1)
+		i = i + 1
+	opts.env = envp
+	return opts
+
+
+# With a step "cwd", argv[0] (a PATH hit or a repo-relative path such as
+# bin/wtest) still names a file relative to where wexec runs, so it is
+# made absolute before the child changes directory.
+char* wexec_absolute_program(char* program):
+	if ((program[0] == '/') || (wexec_index_of_char(program, '/') < 0)):
+		return program
+	char* buf = malloc(4096)
+	if (getcwd(buf, 4096) < 0):
+		free(buf)
+		return program
+	string_builder* s = string_new()
+	string_append(s, buf)
+	string_append_char(s, '/')
+	string_append(s, program)
+	free(buf)
+	return s.data
+
+
 int wexec_run_step(char* target_name, int step_index, json_value* step):
 	if (step.type != json_type_object()):
 		wexec_step_error(target_name, step_index, c"step is not a JSON object")
@@ -1998,7 +2077,15 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 	char* program = wexec_resolve_program(strv_get(argv, 0))
 	char* stdin_text = wexec_get_string(step, c"stdin")
 	int timeout_ms = wexec_step_timeout_ms(step)
-	process_result* result = process_run(program, argv, 0, stdin_text, timeout_ms)
+	spawn_options* opts = wexec_step_spawn_options(target_name, step_index, step)
+	if (opts == 0):
+		free(cast(char*, argv))
+		return 1
+	char* cwd = wexec_get_string(step, c"cwd")
+	if (cwd != 0):
+		program = wexec_absolute_program(program)
+	process_result* result = process_run(program, argv, opts, stdin_text, timeout_ms)
+	free(opts)
 	if ((result == 0) && os_windows()):
 		result = wexec_windows_builtin(argv, count)
 	free(cast(char*, argv))

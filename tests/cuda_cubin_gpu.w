@@ -2,7 +2,7 @@
 # embedding)"): a raw kernel plus a 'gpu for' loop, CPU-verified, then
 # reports which embedded image the runtime loaded (gpu_module_source:
 # 1 = PTX via driver JIT, 2 = the --cubin-file cubin). cuda_cubin_test
-# builds it three ways through tools/cuda/build_cubin.sh: plain, with a
+# builds it three ways through bin/cubin_tool build: plain, with a
 # native-arch cubin, and with a wrong-arch cubin that must fall back to
 # the PTX. Needs a GPU and ptxas, so it stays out of './wbuild tests';
 # cuda_cubin_embed_test covers the compile side GPU-less.

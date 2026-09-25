@@ -3,9 +3,9 @@
 # wbuild: target=cuda_runtime_gpu_test dep=wv2
 # wbuild: step="bin/wv2 x64 tests/cuda_runtime_gpu.w -o bin/cuda_runtime_gpu"
 # wbuild: step="bin/cuda_runtime_gpu" expect_stdout="cuda runtime: gpu path" expect_stdout="CUDA_ERROR_OUT_OF_MEMORY: out of memory" expect_stdout="faulting kernel -> CUDA_ERROR_ILLEGAL_ADDRESS" expect_stdout="cuda runtime OK"
-# wbuild: step="sh -c 'CUDA_VISIBLE_DEVICES= bin/cuda_runtime_gpu'" expect_stdout="cuda runtime: no gpu path" expect_stdout="cuda runtime OK"
+# wbuild: step="bin/cuda_runtime_gpu" env="CUDA_VISIBLE_DEVICES=" expect_stdout="cuda runtime: no gpu path" expect_stdout="cuda runtime OK"
 # wbuild: step="bin/cuda_runtime_gpu set_out_of_range" expect_fail expect_stderr="cuda error: gpu_set_device(" expect_stderr="is out of range"
 # wbuild: step="bin/cuda_runtime_gpu fatal_oom" expect_fail expect_stderr="cuda error 2 CUDA_ERROR_OUT_OF_MEMORY (out of memory) at cuMemAlloc"
-# wbuild: step="sh -c 'W_GPU_DEVICE=0 bin/cuda_runtime_gpu alloc'" expect_stdout="cuda runtime: allocated on device 0"
-# wbuild: step="sh -c 'W_GPU_DEVICE=99 bin/cuda_runtime_gpu alloc'" expect_fail expect_stderr="cuda error: W_GPU_DEVICE=99: device ordinal 99 is out of range"
-# wbuild: step="sh -c 'W_GPU_DEVICE=abc bin/cuda_runtime_gpu alloc'" expect_fail expect_stderr="W_GPU_DEVICE=abc is not a device ordinal"
+# wbuild: step="bin/cuda_runtime_gpu alloc" env="W_GPU_DEVICE=0" expect_stdout="cuda runtime: allocated on device 0"
+# wbuild: step="bin/cuda_runtime_gpu alloc" env="W_GPU_DEVICE=99" expect_fail expect_stderr="cuda error: W_GPU_DEVICE=99: device ordinal 99 is out of range"
+# wbuild: step="bin/cuda_runtime_gpu alloc" env="W_GPU_DEVICE=abc" expect_fail expect_stderr="W_GPU_DEVICE=abc is not a device ordinal"

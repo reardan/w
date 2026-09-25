@@ -483,7 +483,7 @@ before.
   bin/wv2 x64 prog.w -o prog --cubin-file=prog.cubin
   ```
 
-  `tools/cuda/build_cubin.sh <sm_XX|native> prog.w prog` scripts exactly
+  `bin/cubin_tool build <sm_XX|native> prog.w prog` (`tools/cuda/cubin_tool.w`) drives exactly
   this (`native` asks `nvidia-smi` for GPU 0's compute capability).
 - **Embedding.** `ptx_finish_cubin` (`code_generator/ptx.w`, run right after
   `ptx_finish_module`) synthesizes `char* __w_cubin_module()` for every
@@ -510,7 +510,7 @@ before.
   distributed binary should keep relying on the PTX for other GPUs.
 - **Tests.** `cuda_cubin_embed_test` (default umbrella, GPU-less) compiles
   `tests/cuda_cubin_gpu.w` with a fake EM_CUDA ELF from
-  `tools/cuda/fake_cubin.sh`, checks the blob lands in the binary and not in
+  `bin/cubin_tool fake`, checks the blob lands in the binary and not in
   the default build, and freezes the stale/not-CUDA/not-ELF/missing-file
   errors. `cuda_cubin_test` (opt-in: GPU + `ptxas`) runs the program built
   with a native cubin (`source=cubin`), a wrong-arch cubin (falls back,

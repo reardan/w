@@ -53,6 +53,13 @@ and `"outputs"` described below. Each step:
 - `"expect_fail"` — step must exit nonzero; replaces Make's `! cmd`.
 - `"expect_status"` — step must exit with this exact code; replaces
   `cmd; test $? -eq N`.
+- `"expect_signal"` — step must die from a signal (decoded status
+  129..255); replaces `cmd; test $? -ge 128`.
+- `"env"` — `["NAME=value", ...]` added to (or replacing entries of)
+  the child's environment; `"NAME="` sets it empty. Replaces
+  `sh -c 'NAME=value cmd'`.
+- `"cwd"` — the child's working directory; argv[0] still resolves from
+  wexec's own directory. Replaces `sh -c 'cd dir && cmd'`.
 - `"stdout_file"` / `"stderr_file"` — save the captured stream to a
   path; replaces `> file` redirects and lets `grep -qE` regex checks
   and `diff -u` comparisons run as ordinary follow-up steps.

@@ -1,9 +1,9 @@
 # wbuild: x64 expect_stdout="protobuf codegen tests OK"
 /*
 The .proto -> W generator (libs/extras/protobuf/codegen.w, issue #16
-stage 2). tests/protobuf/sample_pb.w is the committed output for
-tests/protobuf/sample.proto (proto_to_w_test regenerates and compares
-it); this file compiles against it and round-trips messages through the
+stage 2). tests/protobuf/sample_pb.w is the build output for
+tests/protobuf/sample.proto (the "generated" umbrella's
+protobuf_generated target writes it before any test runs; issue #323); this file compiles against it and round-trips messages through the
 compiler's to_proto/from_proto, then drives the generator in-process for
 its error paths.
 */

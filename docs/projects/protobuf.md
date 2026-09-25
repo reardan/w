@@ -25,12 +25,15 @@ touches `build.json` or any `.w` file.
 - **Stage 2** (`.proto` → W codegen) followed: `bin/proto_to_w
   schema.proto -o schema_pb.w` (`tools/proto_to_w.w`) writes the
   `message`/`enum` declarations. The IDL grammar is
-  `libs/extras/protobuf/proto.pg`, and its generated parser is committed
-  as `generated_proto_parser.w`, the same way the C importer's is. The
-  AST walk and emitter are in `libs/extras/protobuf/codegen.w`.
-  `proto_to_w_test` regenerates both the parser and
-  `tests/protobuf/sample_pb.w` and compares them against the committed
-  copies. `tests/protobuf_codegen_test.w` round-trips the generated
+  `libs/extras/protobuf/proto.pg`. Its parser
+  (`generated_proto_parser.w`) and the test modules
+  `tests/protobuf/{common,sample}_pb.w` are build outputs, not committed
+  (issue #323): the `protobuf_generated` target in `tools/proto_to_w.w`
+  joins the `generated` umbrella, which every `./wbuild` run builds
+  first. The AST walk and emitter are in
+  `libs/extras/protobuf/codegen.w`. `proto_to_w_test` regenerates the
+  `_pb.w` modules through `bin/proto_to_w` and compares them with those
+  outputs. `tests/protobuf_codegen_test.w` round-trips the generated
   messages and covers the generator's errors.
 
 What stage 2 settled:
