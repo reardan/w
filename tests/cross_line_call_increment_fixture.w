@@ -21,3 +21,4 @@ int main():
 	int b = 2
 	(a + b)++
 	return 0
+# wbuild: fixture_group=warning_test

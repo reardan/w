@@ -2,7 +2,7 @@
 /*
 wvc: a porcelain CLI over the VCS wave 1+2 libraries (issue #252 V2c;
 design: docs/projects/version_control.md "Wave 2 -- snapshots and
-history", docs/projects/consolidated_plan_2026_07.md section 4). Thin
+history"). Thin
 wiring only -- every real operation is libs/extras/vcs/{cas,tree,commit,
 diff}.w; this file adds argument parsing, the on-disk repo layout
 convention, and human-readable output.

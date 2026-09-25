@@ -466,8 +466,12 @@ is a queue, not an archive.
   reports the layout gap per target, and `wexec_collect_dir` now warns
   once ("directory inputs are not hashed on this platform") and treats
   the directory as empty instead of parsing Darwin records with Linux
-  offsets. The full fix (per-arch dirent accessors, validated on a
-  Mac) is still open; the accessor plan above stands.
+  offsets. The per-arch accessors now exist: `lib/dir.w` reads through
+  `lib/__arch__/<target>/dirent.w`, which decodes getdirentries64 on
+  arm64_darwin. What is still open is validating that decoding on a Mac
+  (run `lib/dir_test.w` natively), then flipping the darwin
+  `wexec_dirents_supported()` to 1 and giving the darwin targets
+  `"inputs"`.
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
 The 2026-07 review findings and the nullable-suffix fallback all
@@ -616,3 +620,21 @@ bootstrap works on such hosts.
   unrelated `json_parse` calls, and only `W_DEBUG_ALLOC=1` pointed at
   the real site. Worth a sentence in `lib/json_rpc.w`'s header, or
   writers that take `const`-style borrowed params.
+
+## A wexec that misvalidates its own cache cannot rebuild itself (2026-09-25)
+
+- **Found while sharing the closure cache (tools/deps_cache.w).** A
+  development build of `bin/wexec` whose closure-cache validation was
+  wrong (a `new` struct's `checked` field was never initialized, so
+  stale records read as valid) reported `wexec` itself as `(cached)`
+  after the fix landed in the source, because the target's key comes
+  from the executor's own closure validation. `./wbuild` then kept
+  running the broken binary; only `./wbuild --no-cache wexec` (and
+  deleting `bin/.wexec_deps_cache`) recovered. Two cheap guards: key
+  the `wexec` target on its sources' plain file hashes as well as the
+  closure (so an executor bug cannot hide its own rebuild), and have
+  `w check --lint` flag a `new T` whose fields are read before any
+  assignment. Related: `lib/str.w`'s `split` is quadratic (each piece
+  calls `substring`, which runs `strlen` over the whole remaining
+  text), which made a 600 KB cache parse take 20 s; the cache module
+  scans lines by hand instead.

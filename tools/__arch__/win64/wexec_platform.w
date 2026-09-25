@@ -2,10 +2,8 @@
 # file). win64 resolution, compiled into bin/wexec_win.exe.
 
 
-# 1: directory listings work here. wexec_collect_dir's os_windows()
-# branch walks directories with FindFirstFileA/FindNextFileA and
-# returns before the Linux-layout getdents parsing is ever reached, so
-# the dirent-layout caveat this flag guards does not apply on Windows.
+# 1: directory listings work here (lib/__arch__/win64/dirent.w walks
+# directories with FindFirstFileA/FindNextFileA).
 int wexec_dirents_supported():
 	return 1
 

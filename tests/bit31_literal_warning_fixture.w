@@ -17,3 +17,4 @@ int main():
 	if (mask == high_bit):
 		return 1
 	return 0
+# wbuild: fixture_group=warning_test

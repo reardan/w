@@ -10,3 +10,4 @@ message pbe_unnumbered:
 
 int main():
 	return 0
+# wbuild: fixture_group=protobuf_message_error_test

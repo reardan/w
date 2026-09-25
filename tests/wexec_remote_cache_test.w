@@ -44,6 +44,7 @@ import lib.env
 import lib.process
 import structures.string
 import libs.extras.vcs.cas
+import lib.str
 
 
 /* ---- raw-socket CAS object server (the "shared cache" fixture) ---- */
@@ -288,18 +289,6 @@ int wrct_file_exists(char* path):
 	return 1
 
 
-int wrct_contains(char* hay, char* needle):
-	int i = 0
-	while (hay[i] != 0):
-		int j = 0
-		while ((needle[j] != 0) && (hay[i + j] == needle[j])):
-			j = j + 1
-		if (needle[j] == 0):
-			return 1
-		i = i + 1
-	return 0
-
-
 # Runs 'bin/wexec -f tests/wexec/remote_cache.json remote_target' as a
 # real child process with W_CACHE_URL (and, if push, W_CACHE_PUSH=1)
 # set only in that child's environment -- never in this test process's
@@ -361,8 +350,8 @@ void test_remote_cache_round_trip():
 	# for real (marker + output both appear) and the bundle is pushed.
 	process_result* r1 = wrct_run_wexec(url, 1)
 	asserts(c"phase1 exit 0", r1.status == 0)
-	asserts(c"phase1 not served from any cache", wrct_contains(r1.stdout_text, c"(cached)") == 0)
-	asserts(c"phase1 not served from remote cache", wrct_contains(r1.stdout_text, c"(remote cache)") == 0)
+	asserts(c"phase1 not served from any cache", contains(r1.stdout_text, c"(cached)") == 0)
+	asserts(c"phase1 not served from remote cache", contains(r1.stdout_text, c"(remote cache)") == 0)
 	asserts(c"phase1 marker created (steps ran)", wrct_file_exists(c"bin/wexec_remote_cache_marker.txt"))
 	asserts(c"phase1 output created", wrct_file_exists(c"bin/wexec_remote_cache_out.txt"))
 	process_result_free(r1)
@@ -373,7 +362,7 @@ void test_remote_cache_round_trip():
 	wrct_reset_local_state()
 	process_result* r2 = wrct_run_wexec(url, 0)
 	asserts(c"phase2 exit 0", r2.status == 0)
-	asserts(c"phase2 logged as remote cache", wrct_contains(r2.stdout_text, c"(remote cache)"))
+	asserts(c"phase2 logged as remote cache", contains(r2.stdout_text, c"(remote cache)"))
 	asserts(c"phase2 steps did NOT run (marker absent)", wrct_file_exists(c"bin/wexec_remote_cache_marker.txt") == 0)
 	asserts(c"phase2 output restored from bundle", wrct_file_exists(c"bin/wexec_remote_cache_out.txt"))
 	char* restored = file_read_text(c"bin/wexec_remote_cache_out.txt")
@@ -395,8 +384,8 @@ void test_remote_cache_round_trip():
 	wrct_reset_local_state()
 	process_result* r3 = wrct_run_wexec(url, 0)
 	asserts(c"phase3 exit 0 (cache outage does not break the build)", r3.status == 0)
-	asserts(c"phase3 warns once about the unreachable cache", wrct_contains(r3.stderr_text, c"remote cache unreachable"))
-	asserts(c"phase3 not served from remote cache", wrct_contains(r3.stdout_text, c"(remote cache)") == 0)
+	asserts(c"phase3 warns once about the unreachable cache", contains(r3.stderr_text, c"remote cache unreachable"))
+	asserts(c"phase3 not served from remote cache", contains(r3.stdout_text, c"(remote cache)") == 0)
 	asserts(c"phase3 marker created (steps ran locally)", wrct_file_exists(c"bin/wexec_remote_cache_marker.txt"))
 	asserts(c"phase3 output created", wrct_file_exists(c"bin/wexec_remote_cache_out.txt"))
 	process_result_free(r3)

@@ -7,3 +7,4 @@ import tests.subfolder as sub
 
 int main():
 	return subfolder_value()
+# wbuild: fixture_group=warning_test

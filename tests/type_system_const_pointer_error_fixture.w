@@ -11,3 +11,4 @@ void const_pointer_assignment_error():
 
 int main():
 	return 0
+# wbuild: fixture_group=type_system_error_test

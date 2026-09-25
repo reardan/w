@@ -28,6 +28,7 @@ import lib.process
 import lib.path
 import lib.str
 import lib.shell_commands
+import lib.dir
 import structures.string
 
 
@@ -119,29 +120,13 @@ run_out* run(char* path, char* a1, char* a2, char* a3, char* dump, int want):
 # First "w.*.core" entry of dir in name order, as a dir-relative path,
 # or 0 when there is none.
 char* find_dump(char* dir):
-	int fd = open(dir, 65536, 0) /* 65536 = O_DIRECTORY */
-	if (fd < 0):
+	list[char*] names = dir_names(dir)
+	if (names == 0):
 		return 0
-	char* best = 0
-	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* entry = buffer + off
-			int reclen = shell_commands_load_uint16(entry + 2 * __word_size__)
-			char* name = entry + 2 * __word_size__ + 2
-			if ((name[0] == 'w') && (name[1] == '.') && (strlen(name) > 7) && ends_with(name, c".core")):
-				if ((best == 0) || (strcmp(name, best) < 0)):
-					best = strclone(name)
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
-	if (best == 0):
-		return 0
-	return path_join(dir, best)
+	for char* name in names:
+		if ((name[0] == 'w') && (name[1] == '.') && (strlen(name) > 7) && ends_with(name, c".core")):
+			return path_join(dir, name)
+	return 0
 
 
 # run_case <description> <fixture> <div-fixture> <ip-register> <other-binary>
@@ -152,7 +137,7 @@ void run_case(char* desc, char* fixture, char* divfix, char* ipreg, char* other)
 	string_append(d, c"_")
 	string_append(d, ipreg)
 	char* dir = d.data
-	shell_commands_rm_one(dir, 1, 1)
+	dir_remove_all(dir)
 	shell_commands_mkdir_one(dir, 1)
 	char* absdir = path_join(ROOT, dir)
 
@@ -168,7 +153,7 @@ void run_case(char* desc, char* fixture, char* divfix, char* ipreg, char* other)
 	char* core = find_dump(dir)
 	if (core == 0):
 		fail_line(desc, strjoin(c"no dump file appeared in ", dir))
-		shell_commands_rm_one(dir, 1, 1)
+		dir_remove_all(dir)
 		return
 	if (ends_with(core, c"w.%p.core")):
 		fail_line(desc, c"%p was not expanded")
@@ -215,7 +200,7 @@ void run_case(char* desc, char* fixture, char* divfix, char* ipreg, char* other)
 	if (r.status != 139):
 		fail_line(udesc, strjoin(c"expected status 139, got ", itoa(r.status)))
 
-	shell_commands_rm_one(dir, 1, 1)
+	dir_remove_all(dir)
 
 
 int main(int argc, char** argv):

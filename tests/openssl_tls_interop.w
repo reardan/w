@@ -47,52 +47,11 @@ import lib.poll
 import lib.process
 import structures.string
 import libs.standard.net.tls
+import lib.dir
 
 
 int osl_io_timeout_ms():
 	return 10000
-
-
-# First PATH entry where name opens for read (mirrors
-# tests/compress_zlib_interop.w's czi_find_on_path / tools/wexec.w's
-# wexec_resolve_program: an existence check, not a strict executable-bit
-# check -- accepted there too, see docs/projects/ai_tooling_next_steps.md).
-# process_spawn execs directly without a PATH search, so callers need the
-# resolved path this returns. Returns a malloc'd absolute path, or 0 when
-# name is nowhere on PATH.
-char* osl_find_on_path(char* name):
-	char* path = env_get(c"PATH")
-	int win = os_windows()
-	char path_sep = ':'
-	if (win):
-		path_sep = ';'
-	if (path == 0):
-		if (win):
-			path = c"C:/Windows/System32"
-		else:
-			path = c"/usr/bin:/bin"
-	string_builder* candidate = string_new()
-	int p = 0
-	int at_end = 0
-	char* found = 0
-	while ((at_end == 0) && (found == 0)):
-		string_clear(candidate)
-		while ((path[p] != path_sep) && (path[p] != 0)):
-			string_append_char(candidate, path[p])
-			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length > 0):
-			string_append_char(candidate, '/')
-			string_append(candidate, name)
-			int fd = open(candidate.data, 0, 0)
-			if (fd >= 0):
-				close(fd)
-				found = strclone(candidate.data)
-	string_free(candidate)
-	return found
 
 
 # Ask the kernel for a currently free TCP port (bind 0, read it back,
@@ -316,20 +275,6 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	return 1
 
 
-# Best-effort recursive delete via the real /bin/rm -- mirrors
-# tests/compress_zlib_interop.w's czi_rm_rf and the pid-scoped scratch-dir
-# cleanup tests/wvc_e2e_test.w already uses.
-void osl_rm_rf(char* dir):
-	char** argv = strv_new(3)
-	strv_set(argv, 0, c"/bin/rm")
-	strv_set(argv, 1, c"-rf")
-	strv_set(argv, 2, dir)
-	process_result* r = process_run(c"/bin/rm", argv, 0, 0, 10000)
-	if (r != 0):
-		process_result_free(r)
-	free(cast(void*, argv))
-
-
 # Generate a throwaway self-signed ECDSA P-256 cert into cert/key (the only
 # server key shape both sides of our TLS stack support), via a direct argv
 # vector -- no shell, so there is nothing here for a path to escape out of.
@@ -374,7 +319,7 @@ int osl_generate_cert(char* openssl_bin, char* cert, char* key):
 
 
 int main():
-	char* openssl_bin = osl_find_on_path(c"openssl")
+	char* openssl_bin = process_which(c"openssl")
 	if (openssl_bin == 0):
 		println(c"openssl interop OK (skipped: no openssl on PATH)")
 		return 0
@@ -386,7 +331,7 @@ int main():
 	free(dirb)
 
 	# Best-effort cleanup from a previous failed run.
-	osl_rm_rf(dir)
+	dir_remove_all(dir)
 	if (mkdir(dir, 493) != 0):
 		print2(c"cannot create scratch dir: ")
 		println2(dir)
@@ -406,7 +351,7 @@ int main():
 
 	free(cert)
 	free(key)
-	osl_rm_rf(dir)
+	dir_remove_all(dir)
 	free(dir)
 	free(openssl_bin)
 

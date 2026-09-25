@@ -9,3 +9,4 @@ message pbe_no_import:
 
 int main():
 	return 0
+# wbuild: fixture_group=protobuf_message_error_test

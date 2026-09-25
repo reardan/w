@@ -5,3 +5,4 @@ thread_local int helper():
 
 int main():
 	return 0
+# wbuild: fixture_group=thread_local_error_test

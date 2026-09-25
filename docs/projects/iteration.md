@@ -2,10 +2,12 @@
 
 Status: both halves are implemented. Design 3 (the cursor/iterator
 function convention) is the iteration protocol: `for x in <container>`
-compiles in `grammar/for_statement.w` via the cursor lowering below, the
-four `_iter_*` functions exist for `array_list`, `linked_list` and
-`hash_map` (keys), and user-defined containers work by defining the same
-four functions (`tests/for_container_test.w`, `./wbuild for_container_test`).
+compiles in `grammar/for_statement.w` via the cursor lowering below, and
+user-defined containers work by defining the four `_iter_*` functions
+(`tests/for_container_test.w`'s `int_list`, `./wbuild
+for_container_test`). The `array_list`/`linked_list`/`hash_map`
+libraries this design names below have since been replaced by the
+built-in `list`/`map`/`set`.
 Steps 3-4 of the recommendation at the bottom are done.
 
 Generators (steps 1-2 and 5) are implemented as stackful coroutines

@@ -11,3 +11,4 @@ int main():
 	pbe_plain s
 	pb_bytes* w = to_proto(s)
 	return 0
+# wbuild: fixture_group=protobuf_message_error_test

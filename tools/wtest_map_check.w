@@ -34,8 +34,8 @@ say 'noorder':
     does not depend on build.json's target set).
 
 Case words are handed to 'bin/wtest changed' verbatim, so a case may
-lead with '-f <manifest>' / '--base-manifest <manifest>' fixture flags
-before its changed paths (the build.json leaf-diff cases do). The first
+lead with a '-f <manifest>' fixture flag
+before its changed paths. The first
 two implicit properties above are checked against the real build.json
 regardless of which manifest the case itself points bin/wtest at, so by
 default a '-f' fixture manifest must reuse real build.json target names
@@ -80,6 +80,7 @@ import lib.stream
 import structures.string
 import structures.json
 import tools.manifest_source
+import lib.str
 
 
 struct check_case:
@@ -163,29 +164,16 @@ int check_load_manifest():
 	if (text == 0):
 		check_error(c"cannot read ", label)
 		return 1
-	json_value* manifest = json_parse(text)
+	manifest* m = manifest_parse(text, label, 0)
 	free(text)
-	if (manifest == 0):
-		check_error(c"manifest is not valid JSON: ", label)
+	if (m == 0):
+		check_error(manifest_parse_error, c"")
 		return 1
-	json_value* targets = json_object_get(manifest, c"targets")
-	if (targets == 0):
-		check_error(c"manifest has no targets array: ", label)
-		return 1
-	if (targets.type != json_type_array()):
-		check_error(c"manifest targets is not an array: ", label)
-		return 1
-	check_target_names = new list[char*]
+	check_target_names = m.names
 	check_target_index = new map[char*, int]
 	int i = 0
-	while (i < json_array_length(targets)):
-		json_value* target = json_array_get(targets, i)
-		if (target.type == json_type_object()):
-			json_value* name = json_object_get(target, c"name")
-			if (name != 0):
-				if (name.type == json_type_string()):
-					check_target_names.push(name.string_value)
-					check_target_index[name.string_value] = check_target_names.length
+	while (i < check_target_names.length):
+		check_target_index[check_target_names[i]] = i + 1
 		i = i + 1
 	return 0
 
@@ -370,21 +358,6 @@ char* check_case_fixture(check_case* c):
 	return 0
 
 
-int check_str_contains(char* haystack, char* needle):
-	int n = strlen(needle)
-	if (n == 0):
-		return 1
-	int i = 0
-	while (haystack[i] != 0):
-		int j = 0
-		while ((j < n) && (haystack[i + j] == needle[j])):
-			j = j + 1
-		if (j == n):
-			return 1
-		i = i + 1
-	return 0
-
-
 void check_run_case(check_case* c):
 	char** argv = strv_new(2 + c.paths.length)
 	strv_set(argv, 0, c"bin/wtest")
@@ -425,7 +398,7 @@ void check_run_case(check_case* c):
 	# Implicit property: an empty selection announces itself on stderr
 	# ('wtest: 0 targets selected', tools/test_map.w) and a non-empty
 	# one stays quiet, so a zero-target run is never invisible.
-	int announced = check_str_contains(errors, c"wtest: 0 targets selected")
+	int announced = contains(errors, c"wtest: 0 targets selected")
 	free(errors)
 	if (selected.length == 0):
 		if (announced == 0):

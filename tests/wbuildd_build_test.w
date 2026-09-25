@@ -33,6 +33,7 @@ import lib.file
 import lib.env
 import structures.string
 import structures.json
+import lib.str
 
 
 char* vw_dir_cache
@@ -292,15 +293,6 @@ char* vw_manifest():
 	return text
 
 
-int vw_contains(char* text, char* needle):
-	int i = 0
-	while (text[i] != 0):
-		if (starts_with(&text[i], needle)):
-			return 1
-		i = i + 1
-	return 0
-
-
 # After the --list runs the daemon holds a warm manifest and warm
 # hashes. Under a parallel './wbuild tests' another target editing a
 # source outside bin/ legitimately drops the manifest in between, so a
@@ -384,9 +376,9 @@ void test_verify_warm():
 	vw_write(c"helper.w", c"char* helper():\n\treturn c\"helped again\"\n")
 	process_result* edited = vw_run(vw_client(c"--no-autostart --require-daemon", strjoin(strjoin(c"build ", m), c" -j 1 vw_all")))
 	assert_equal(0, edited.status)
-	assert1(vw_contains(edited.stdout_text, c"wexec: target vw_a\n"))
-	assert1(vw_contains(edited.stdout_text, c"wexec: target vw_a64\n"))
-	assert1(vw_contains(edited.stdout_text, c"wexec: target vw_self (cached)"))
+	assert1(contains(edited.stdout_text, c"wexec: target vw_a\n"))
+	assert1(contains(edited.stdout_text, c"wexec: target vw_a64\n"))
+	assert1(contains(edited.stdout_text, c"wexec: target vw_self (cached)"))
 	process_result* recheck = vw_compare(strjoin(m, c" -j 1 vw_all"))
 	assert_equal(0, recheck.status)
 	process_result* cold_edit = vw_run(vw_oneshot(strjoin(m, c" --no-cache -j 1 vw_all")))

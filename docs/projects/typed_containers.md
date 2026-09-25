@@ -212,8 +212,8 @@ seed, so `map`/`set`/`list[T]` syntax is legal inside `compiler/`,
   direct object walks, and `tools/index/w_indexd.w`'s dead imports. With
   no consumers left, `structures/hash_map.w`, `structures/linked_list.w`,
   and `structures/list.w` are deleted along with their tests;
-  `structures/array_list.w` stays as the cursor-protocol exemplar that
-  `tests/for_container_test.w` exercises.
+  `structures/array_list.w` followed later, its cursor-protocol role
+  taken by a small `int_list` inside `tests/for_container_test.w`.
 - Done (issue #120): the parser generator (`libs/extras/parser_generator/`),
   `c_import`/`c_preprocessor` (`libs/extras/c_import/`,
   `libs/extras/c_preprocessor/`), `lib/task.w`, `lib/json_rpc.w`,

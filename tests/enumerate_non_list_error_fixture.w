@@ -5,3 +5,4 @@
 s := set[int]{1, 2}
 for i, x in enumerate(s):
 	println(x)
+# wbuild: fixture_group=enumerate_error_test

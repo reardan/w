@@ -13,3 +13,4 @@ int main(int argc, int argv):
 	lo = mul_wide(2, 3, c"oops")
 	lo = add_carry(lo, 5, hi)
 	return lo
+# wbuild: fixture_group=warning_test

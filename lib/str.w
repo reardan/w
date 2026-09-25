@@ -39,6 +39,36 @@ int index_of(char* s, char* needle):
 	return 0 - 1
 
 
+# grep -qF: 1 when needle occurs in s (a null s contains nothing).
+int contains(char* s, char* needle):
+	return (s != 0) && (index_of(s, needle) >= 0)
+
+
+# grep -cx: the number of lines of text exactly equal to line (0 for a
+# null text). A trailing newline does not start an extra empty line.
+int count_line(char* text, char* line):
+	if (text == 0):
+		return 0
+	int count = 0
+	int i = 0
+	while (text[i] != 0):
+		int j = 0
+		while ((line[j] != 0) && (text[i + j] == line[j])):
+			j = j + 1
+		if ((line[j] == 0) && ((text[i + j] == 10) || (text[i + j] == 0))):
+			count = count + 1
+		while ((text[i] != 0) && (text[i] != 10)):
+			i = i + 1
+		if (text[i] == 10):
+			i = i + 1
+	return count
+
+
+# grep -qx: some line of text is exactly line.
+int has_line(char* text, char* line):
+	return count_line(text, line) > 0
+
+
 # Split on a single-character delimiter without touching the input;
 # every piece is a fresh C string. Adjacent delimiters produce empty
 # pieces ("a,,b" -> "a", "", "b"), like Python's split. With the

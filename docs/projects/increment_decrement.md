@@ -478,8 +478,7 @@ inside `grammar/increment.w` or anywhere else in the seed graph to
 implement itself. Landing follows the two-step pattern
 `CLAUDE.md`/`docs/release.md` describe: merge the feature PR (still
 building under the old pinned seed), tag a release at that commit,
-then a follow-up PR bumps `SEEDS`. Per the wave plan
-(`docs/projects/sonnet_wave_plan_2026_07.md` §6), implementation is a
+then a follow-up PR bumps `SEEDS`. Implementation is a
 later, HIGH-care, seed-graph-touching slot that must merge alone with
 `./wbuild verify` (+ `verify_x64`) green — this doc only unblocks
 that slot.

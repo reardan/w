@@ -3,13 +3,6 @@ import lib.testing
 import libs.standard.crypto.base64
 
 
-void assert_bytes_equal(char* want, char* got, int len):
-	int i = 0
-	while (i < len):
-		assert_equal(want[i] & 255, got[i] & 255)
-		i = i + 1
-
-
 # One encode + decode round-trip against a known text vector.
 void check_base64_vector(char* plain, char* encoded):
 	int plain_len = strlen(plain)

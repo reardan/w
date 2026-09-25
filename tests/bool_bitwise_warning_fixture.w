@@ -27,3 +27,4 @@ int main():
 	if ((x == 1) | (y == 2)):
 		return 3
 	return 0
+# wbuild: fixture_group=warning_test

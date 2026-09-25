@@ -62,7 +62,7 @@ Metadata file:
 		w
 		compiler.compiler
 		lib.lib
-		structures.array_list
+		structures.string
 
 	dependencies:
 		example.net >=1.2.0 path vendor/example.net

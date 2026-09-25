@@ -22,3 +22,4 @@ int main(int argc, int argv):
 	p = f"formatted {n}"
 	char* q = s"explicit string"
 	return 0
+# wbuild: fixture_group=warning_test

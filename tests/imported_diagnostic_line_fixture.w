@@ -29,3 +29,4 @@ int check_after_import(int a, int b):
 
 int main():
 	return check_after_import(imported_diagnostic_line_warn(1, 2), 2)
+# wbuild: fixture_group=warning_test

@@ -13,3 +13,4 @@ int main():
 	a.rank = 2
 	int v = a[1, 2]
 	return v
+# wbuild: fixture_group=ndarray_index_error_test

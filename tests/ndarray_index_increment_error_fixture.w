@@ -8,3 +8,4 @@ int main():
 	ndi a = ndi_new2(2, 2)
 	a[0, 1]++
 	return 0
+# wbuild: fixture_group=ndarray_index_error_test

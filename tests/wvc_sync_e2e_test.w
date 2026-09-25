@@ -46,6 +46,8 @@ pair and port offset:
 import lib.testing
 import lib.net
 import lib.process
+import lib.str
+import tests.tool_e2e
 import lib.path
 import lib.file
 import lib.time
@@ -56,116 +58,22 @@ import libs.standard.web.http_client
 import libs.extras.vcs.cas
 
 
-/* ---- shared helpers (deliberately not shared with wvc_e2e_test.w --
-   separate compiled test binaries, same convention that file's own
-   header comment already follows) ---- */
-
-char* wst_repo_root_cache
-char* wst_repo_root():
-	if (wst_repo_root_cache == 0):
-		char* buf = malloc(4096)
-		int n = getcwd(buf, 4096)
-		assert1(n > 0)
-		wst_repo_root_cache = buf
-	return wst_repo_root_cache
-
-
-char* wst_bin_cache
-char* wst_bin():
-	if (wst_bin_cache == 0):
-		wst_bin_cache = path_join(wst_repo_root(), c"bin/wvc")
-	return wst_bin_cache
-
-
-char** wst_argv(list[char*] args):
-	char** v = strv_new(args.length)
-	int i = 0
-	for char* a in args:
-		strv_set(v, i, a)
-		i = i + 1
-	return v
-
-
-process_result* wst_run(list[char*] args, char* cwd):
-	spawn_options* opts = 0
-	if (cwd != 0):
-		opts = spawn_options_new()
-		opts.cwd = cwd
-	char** argv = wst_argv(args)
-	process_result* r = process_run(wst_bin(), argv, opts, 0, 10000)
-	assert1(r != 0)
-	if (opts != 0):
-		free(opts)
-	free(cast(void*, argv))
-	return r
-
-
-void wst_rm_rf(char* path):
-	list[char*] args = new list[char*]
-	args.push(c"/bin/rm")
-	args.push(c"-rf")
-	args.push(path)
-	char** argv = wst_argv(args)
-	process_result* r = process_run(c"/bin/rm", argv, 0, 0, 10000)
-	if (r != 0):
-		process_result_free(r)
-	free(cast(void*, argv))
-
-
-int wst_index_of(char* haystack, char* needle):
-	int hl = strlen(haystack)
-	int nl = strlen(needle)
-	if (nl == 0):
-		return 0
-	int i = 0
-	while ((i + nl) <= hl):
-		int j = 0
-		while ((j < nl) && (haystack[i + j] == needle[j])):
-			j = j + 1
-		if (j == nl):
-			return i
-		i = i + 1
-	return -1
-
-
-void wst_assert_contains(char* haystack, char* needle):
-	int found = wst_index_of(haystack, needle) >= 0
-	if (found == 0):
-		wstream* err = stderr_writer()
-		stream_write_cstr(err, c"expected to find '")
-		stream_write_cstr(err, needle)
-		stream_write_cstr(err, c"' in: ")
-		stream_write_line(err, haystack)
-		stream_flush(err)
-	assert1(found)
-
-
-char* wst_trim(char* s):
-	char* out = strclone(s)
-	int n = strlen(out)
-	while ((n > 0) && ((out[n - 1] == 10) || (out[n - 1] == 13))):
-		n = n - 1
-		out[n] = 0
-	return out
-
-
 /* ---- server subprocess management ---- */
 
 process* wst_serve_start(char* root_dir, int port):
 	char* port_text = itoa(port)
-	list[char*] args = new list[char*]
-	args.push(c"wvc")
-	args.push(c"serve")
-	args.push(c"--port")
-	args.push(port_text)
-	args.push(c"--root")
-	args.push(root_dir)
-	char** argv = wst_argv(args)
+	char** argv = strv_new(6)
+	strv_set(argv, 0, c"wvc")
+	strv_set(argv, 1, c"serve")
+	strv_set(argv, 2, c"--port")
+	strv_set(argv, 3, port_text)
+	strv_set(argv, 4, c"--root")
+	strv_set(argv, 5, root_dir)
 	spawn_options* opts = spawn_options_new()
 	opts.stdin_mode = process_null()
 	opts.stdout_mode = process_null()
 	opts.stderr_mode = process_null()
-	process* p = process_spawn(wst_bin(), argv, opts)
+	process* p = process_spawn(tool_bin(c"wvc"), argv, opts)
 	assert1(p != 0)
 	free(cast(void*, argv))
 	free(opts)
@@ -252,133 +160,61 @@ char* wst_zero_id():
 
 /* ---- test 1: pull (clone) then push back ---- */
 
-char* wst_dir_a_cache
 char* wst_dir_a():
-	if (wst_dir_a_cache == 0):
-		string_builder* p = string_new()
-		string_append(p, c"bin/wvc_sync_a_")
-		string_append_int(p, getpid())
-		wst_dir_a_cache = p.data
-		free(p)
-	return wst_dir_a_cache
+	return tool_scratch(c"wvc_sync_a_")
 
 
-char* wst_dir_b_cache
 char* wst_dir_b():
-	if (wst_dir_b_cache == 0):
-		string_builder* p = string_new()
-		string_append(p, c"bin/wvc_sync_b_")
-		string_append_int(p, getpid())
-		wst_dir_b_cache = p.data
-		free(p)
-	return wst_dir_b_cache
+	return tool_scratch(c"wvc_sync_b_")
 
 
 void test_wvc_sync_pull_and_push():
 	char* a = wst_dir_a()
 	char* b = wst_dir_b()
-	wst_rm_rf(a)
-	wst_rm_rf(b)
+	dir_remove_all(a)
+	dir_remove_all(b)
 
-	list[char*] init_a = new list[char*]
-	init_a.push(c"wvc")
-	init_a.push(c"init")
-	init_a.push(a)
-	process_result* r_init_a = wst_run(init_a, 0)
-	assert_equal(0, r_init_a.status)
-	process_result_free(r_init_a)
+	tool_ok(0, c"wvc", c"init", a)
 
 	char* a1 = path_join(a, c"file1.txt")
 	assert_equal(1, file_write_text(a1, c"hello\n"))
-	list[char*] snap1 = new list[char*]
-	snap1.push(c"wvc")
-	snap1.push(c"snapshot")
-	snap1.push(a)
-	snap1.push(c"-m")
-	snap1.push(c"first")
-	process_result* r_snap1 = wst_run(snap1, 0)
-	assert_equal(0, r_snap1.status)
-	char* commit1 = wst_trim(r_snap1.stdout_text)
+	char* commit1 = trim_eol(tool_ok(0, c"wvc", c"snapshot", a, c"-m", c"first"))
 	assert1(cas_valid_id(commit1))
-	process_result_free(r_snap1)
 
 	char* a2 = path_join(a, c"file2.txt")
 	assert_equal(1, file_write_text(a2, c"world\n"))
-	list[char*] snap2 = new list[char*]
-	snap2.push(c"wvc")
-	snap2.push(c"snapshot")
-	snap2.push(a)
-	snap2.push(c"-m")
-	snap2.push(c"second")
-	process_result* r_snap2 = wst_run(snap2, 0)
-	assert_equal(0, r_snap2.status)
-	char* commit2 = wst_trim(r_snap2.stdout_text)
+	char* commit2 = trim_eol(tool_ok(0, c"wvc", c"snapshot", a, c"-m", c"second"))
 	assert1(cas_valid_id(commit2))
-	process_result_free(r_snap2)
 
 	int port = wst_base_port()
 	process* server = wst_serve_start(a, port)
 	asserts(c"server accepting connections", wst_wait_for_port(port, 50, 100) != 0)
 	char* url = wst_url(port)
 
-	list[char*] init_b = new list[char*]
-	init_b.push(c"wvc")
-	init_b.push(c"init")
-	init_b.push(b)
-	process_result* r_init_b = wst_run(init_b, 0)
-	assert_equal(0, r_init_b.status)
-	process_result_free(r_init_b)
+	tool_ok(0, c"wvc", c"init", b)
 
-	list[char*] pull_args = new list[char*]
-	pull_args.push(c"wvc")
-	pull_args.push(c"pull")
-	pull_args.push(url)
-	process_result* r_pull = wst_run(pull_args, b)
-	assert_equal(0, r_pull.status)
-	wst_assert_contains(r_pull.stdout_text, commit2)
-	process_result_free(r_pull)
+	char* r_pull = tool_ok(b, c"wvc", c"pull", url)
+	assert_contains(r_pull, commit2)
 
-	list[char*] log_args = new list[char*]
-	log_args.push(c"wvc")
-	log_args.push(c"log")
-	process_result* r_log_b = wst_run(log_args, b)
-	assert_equal(0, r_log_b.status)
-	wst_assert_contains(r_log_b.stdout_text, commit1)
-	wst_assert_contains(r_log_b.stdout_text, commit2)
-	wst_assert_contains(r_log_b.stdout_text, c"second")
-	process_result_free(r_log_b)
+	char* r_log_b = tool_ok(b, c"wvc", c"log")
+	assert_contains(r_log_b, commit1)
+	assert_contains(r_log_b, commit2)
+	assert_contains(r_log_b, c"second")
 
 	# Pulling again is a clean no-op.
-	process_result* r_pull2 = wst_run(pull_args, b)
-	assert_equal(0, r_pull2.status)
-	wst_assert_contains(r_pull2.stdout_text, c"Already up to date.")
-	process_result_free(r_pull2)
+	char* r_pull2 = tool_ok(b, c"wvc", c"pull", url)
+	assert_contains(r_pull2, c"Already up to date.")
 
 	# `pull` only updates the object store and the ref (see sync.w's
 	# header comment: it does not materialize working-tree files), so
 	# a further commit in B needs a fresh file to have real content.
 	char* b3 = path_join(b, c"file3.txt")
 	assert_equal(1, file_write_text(b3, c"from b\n"))
-	list[char*] snap3 = new list[char*]
-	snap3.push(c"wvc")
-	snap3.push(c"snapshot")
-	snap3.push(b)
-	snap3.push(c"-m")
-	snap3.push(c"third (from b)")
-	process_result* r_snap3 = wst_run(snap3, 0)
-	assert_equal(0, r_snap3.status)
-	char* commit3 = wst_trim(r_snap3.stdout_text)
+	char* commit3 = trim_eol(tool_ok(0, c"wvc", c"snapshot", b, c"-m", c"third (from b)"))
 	assert1(cas_valid_id(commit3))
-	process_result_free(r_snap3)
 
-	list[char*] push_args = new list[char*]
-	push_args.push(c"wvc")
-	push_args.push(c"push")
-	push_args.push(url)
-	process_result* r_push = wst_run(push_args, b)
-	assert_equal(0, r_push.status)
-	wst_assert_contains(r_push.stdout_text, commit3)
-	process_result_free(r_push)
+	char* r_push = tool_ok(b, c"wvc", c"push", url)
+	assert_contains(r_push, commit3)
 
 	# Verify over the wire, while the server is still up: /refs shows
 	# the pushed tip, and /objects/<commit3> serves the raw commit
@@ -387,8 +223,8 @@ void test_wvc_sync_pull_and_push():
 	http_response* refs_resp = http_get(refs_url)
 	assert_equal(0, refs_resp.error)
 	assert_equal(200, refs_resp.status)
-	wst_assert_contains(refs_resp.body, commit3)
-	wst_assert_contains(refs_resp.body, c"main")
+	assert_contains(refs_resp.body, commit3)
+	assert_contains(refs_resp.body, c"main")
 	http_response_free(refs_resp)
 	free(refs_url)
 
@@ -396,7 +232,7 @@ void test_wvc_sync_pull_and_push():
 	http_response* obj_resp = http_get(obj_url)
 	assert_equal(0, obj_resp.error)
 	assert_equal(200, obj_resp.status)
-	wst_assert_contains(obj_resp.body, c"commit")
+	assert_contains(obj_resp.body, c"commit")
 	http_response_free(obj_resp)
 	free(obj_url)
 
@@ -404,11 +240,9 @@ void test_wvc_sync_pull_and_push():
 
 	# A's own on-disk state (server now dead) also shows the pushed
 	# commit -- the ref update is durable, not just a live-server view.
-	process_result* r_log_a = wst_run(log_args, a)
-	assert_equal(0, r_log_a.status)
-	wst_assert_contains(r_log_a.stdout_text, commit3)
-	wst_assert_contains(r_log_a.stdout_text, c"third (from b)")
-	process_result_free(r_log_a)
+	char* r_log_a = tool_ok(a, c"wvc", c"log")
+	assert_contains(r_log_a, commit3)
+	assert_contains(r_log_a, c"third (from b)")
 
 	free(url)
 	free(commit1)
@@ -417,124 +251,61 @@ void test_wvc_sync_pull_and_push():
 	free(a1)
 	free(a2)
 	free(b3)
-	wst_rm_rf(a)
-	wst_rm_rf(b)
+	dir_remove_all(a)
+	dir_remove_all(b)
 
 
 /* ---- test 2: divergence is reported and stops (no ref move) ---- */
 
-char* wst_dir_div_a_cache
 char* wst_dir_div_a():
-	if (wst_dir_div_a_cache == 0):
-		string_builder* p = string_new()
-		string_append(p, c"bin/wvc_sync_div_a_")
-		string_append_int(p, getpid())
-		wst_dir_div_a_cache = p.data
-		free(p)
-	return wst_dir_div_a_cache
+	return tool_scratch(c"wvc_sync_div_a_")
 
 
-char* wst_dir_div_b_cache
 char* wst_dir_div_b():
-	if (wst_dir_div_b_cache == 0):
-		string_builder* p = string_new()
-		string_append(p, c"bin/wvc_sync_div_b_")
-		string_append_int(p, getpid())
-		wst_dir_div_b_cache = p.data
-		free(p)
-	return wst_dir_div_b_cache
+	return tool_scratch(c"wvc_sync_div_b_")
 
 
 void test_wvc_sync_divergence():
 	char* a = wst_dir_div_a()
 	char* b = wst_dir_div_b()
-	wst_rm_rf(a)
-	wst_rm_rf(b)
+	dir_remove_all(a)
+	dir_remove_all(b)
 
-	list[char*] init_a = new list[char*]
-	init_a.push(c"wvc")
-	init_a.push(c"init")
-	init_a.push(a)
-	process_result* r_init_a = wst_run(init_a, 0)
-	assert_equal(0, r_init_a.status)
-	process_result_free(r_init_a)
+	tool_ok(0, c"wvc", c"init", a)
 
 	char* base_path = path_join(a, c"base.txt")
 	assert_equal(1, file_write_text(base_path, c"base\n"))
-	list[char*] snap_base = new list[char*]
-	snap_base.push(c"wvc")
-	snap_base.push(c"snapshot")
-	snap_base.push(a)
-	snap_base.push(c"-m")
-	snap_base.push(c"base")
-	process_result* r_base = wst_run(snap_base, 0)
-	assert_equal(0, r_base.status)
-	char* commit_base = wst_trim(r_base.stdout_text)
-	process_result_free(r_base)
+	char* commit_base = trim_eol(tool_ok(0, c"wvc", c"snapshot", a, c"-m", c"base"))
 
 	int port = wst_base_port() + 1
 	process* server = wst_serve_start(a, port)
 	asserts(c"server accepting connections", wst_wait_for_port(port, 50, 100) != 0)
 	char* url = wst_url(port)
 
-	list[char*] init_b = new list[char*]
-	init_b.push(c"wvc")
-	init_b.push(c"init")
-	init_b.push(b)
-	process_result* r_init_b = wst_run(init_b, 0)
-	assert_equal(0, r_init_b.status)
-	process_result_free(r_init_b)
+	tool_ok(0, c"wvc", c"init", b)
 
-	list[char*] pull_args = new list[char*]
-	pull_args.push(c"wvc")
-	pull_args.push(c"pull")
-	pull_args.push(url)
-	process_result* r_pull1 = wst_run(pull_args, b)
-	assert_equal(0, r_pull1.status)
-	process_result_free(r_pull1)
+	tool_ok(b, c"wvc", c"pull", url)
 
 	# Diverge: A gets a commit B never sees, B gets a DIFFERENT commit --
 	# both children of the shared base.
 	char* a_only_path = path_join(a, c"a_only.txt")
 	assert_equal(1, file_write_text(a_only_path, c"a side\n"))
-	list[char*] snap_a_side = new list[char*]
-	snap_a_side.push(c"wvc")
-	snap_a_side.push(c"snapshot")
-	snap_a_side.push(a)
-	snap_a_side.push(c"-m")
-	snap_a_side.push(c"a-side")
-	process_result* r_a_side = wst_run(snap_a_side, 0)
-	assert_equal(0, r_a_side.status)
-	process_result_free(r_a_side)
+	tool_ok(0, c"wvc", c"snapshot", a, c"-m", c"a-side")
 
 	char* b_only_path = path_join(b, c"b_only.txt")
 	assert_equal(1, file_write_text(b_only_path, c"b side\n"))
-	list[char*] snap_b_side = new list[char*]
-	snap_b_side.push(c"wvc")
-	snap_b_side.push(c"snapshot")
-	snap_b_side.push(b)
-	snap_b_side.push(c"-m")
-	snap_b_side.push(c"b-side")
-	process_result* r_b_side = wst_run(snap_b_side, 0)
-	assert_equal(0, r_b_side.status)
-	char* commit_b_side = wst_trim(r_b_side.stdout_text)
-	process_result_free(r_b_side)
+	char* commit_b_side = trim_eol(tool_ok(0, c"wvc", c"snapshot", b, c"-m", c"b-side"))
 
-	process_result* r_pull2 = wst_run(pull_args, b)
+	process_result* r_pull2 = tool_run(b, c"wvc", c"pull", url)
 	assert_equal(1, r_pull2.status)
-	wst_assert_contains(r_pull2.stdout_text, c"diverged")
+	assert_contains(r_pull2.stdout_text, c"diverged")
 	process_result_free(r_pull2)
 
 	# B's ref did not move: log still shows only the base + b-side chain.
-	list[char*] log_args = new list[char*]
-	log_args.push(c"wvc")
-	log_args.push(c"log")
-	process_result* r_log_b = wst_run(log_args, b)
-	assert_equal(0, r_log_b.status)
-	wst_assert_contains(r_log_b.stdout_text, commit_b_side)
-	wst_assert_contains(r_log_b.stdout_text, c"b-side")
-	assert_equal(-1, wst_index_of(r_log_b.stdout_text, c"a-side"))
-	process_result_free(r_log_b)
+	char* r_log_b = tool_ok(b, c"wvc", c"log")
+	assert_contains(r_log_b, commit_b_side)
+	assert_contains(r_log_b, c"b-side")
+	assert_equal(-1, index_of(r_log_b, c"a-side"))
 
 	wst_serve_stop(server)
 	free(url)
@@ -543,34 +314,21 @@ void test_wvc_sync_divergence():
 	free(base_path)
 	free(a_only_path)
 	free(b_only_path)
-	wst_rm_rf(a)
-	wst_rm_rf(b)
+	dir_remove_all(a)
+	dir_remove_all(b)
 
 
 /* ---- test 3: a mismatched-hash upload is rejected and never stored ---- */
 
-char* wst_dir_corrupt_cache
 char* wst_dir_corrupt():
-	if (wst_dir_corrupt_cache == 0):
-		string_builder* p = string_new()
-		string_append(p, c"bin/wvc_sync_corrupt_")
-		string_append_int(p, getpid())
-		wst_dir_corrupt_cache = p.data
-		free(p)
-	return wst_dir_corrupt_cache
+	return tool_scratch(c"wvc_sync_corrupt_")
 
 
 void test_wvc_sync_corrupt_upload_rejected():
 	char* a = wst_dir_corrupt()
-	wst_rm_rf(a)
+	dir_remove_all(a)
 
-	list[char*] init_a = new list[char*]
-	init_a.push(c"wvc")
-	init_a.push(c"init")
-	init_a.push(a)
-	process_result* r_init_a = wst_run(init_a, 0)
-	assert_equal(0, r_init_a.status)
-	process_result_free(r_init_a)
+	tool_ok(0, c"wvc", c"init", a)
 
 	int port = wst_base_port() + 2
 	process* server = wst_serve_start(a, port)
@@ -607,7 +365,7 @@ void test_wvc_sync_corrupt_upload_rejected():
 	free(bogus_id)
 	free(obj_url)
 	wst_serve_stop(server)
-	wst_rm_rf(a)
+	dir_remove_all(a)
 
 
 /* ---- test 4: sync over a mixed-format store (issue #252 "compressed
@@ -617,26 +375,12 @@ void test_wvc_sync_corrupt_upload_rejected():
    (sync.w's header comment), independent of whichever on-disk encoding
    either side's cas.w store happens to use for a given object) ---- */
 
-char* wst_dir_mix_a_cache
 char* wst_dir_mix_a():
-	if (wst_dir_mix_a_cache == 0):
-		string_builder* p = string_new()
-		string_append(p, c"bin/wvc_sync_mix_a_")
-		string_append_int(p, getpid())
-		wst_dir_mix_a_cache = p.data
-		free(p)
-	return wst_dir_mix_a_cache
+	return tool_scratch(c"wvc_sync_mix_a_")
 
 
-char* wst_dir_mix_b_cache
 char* wst_dir_mix_b():
-	if (wst_dir_mix_b_cache == 0):
-		string_builder* p = string_new()
-		string_append(p, c"bin/wvc_sync_mix_b_")
-		string_append_int(p, getpid())
-		wst_dir_mix_b_cache = p.data
-		free(p)
-	return wst_dir_mix_b_cache
+	return tool_scratch(c"wvc_sync_mix_b_")
 
 
 # "<repo_root>/.wvc/objects/<2 hex>/<62 hex>" -- tools/wvc.w's own cas
@@ -677,32 +421,17 @@ void wst_rewrite_as_legacy(char* repo_root, char* id, char* object_type, char* d
 void test_wvc_sync_mixed_format_store():
 	char* a = wst_dir_mix_a()
 	char* b = wst_dir_mix_b()
-	wst_rm_rf(a)
-	wst_rm_rf(b)
+	dir_remove_all(a)
+	dir_remove_all(b)
 
-	list[char*] init_a = new list[char*]
-	init_a.push(c"wvc")
-	init_a.push(c"init")
-	init_a.push(a)
-	process_result* r_init_a = wst_run(init_a, 0)
-	assert_equal(0, r_init_a.status)
-	process_result_free(r_init_a)
+	tool_ok(0, c"wvc", c"init", a)
 
 	char* content_a = c"tracked before the rewrite -- this blob becomes a legacy-format object on disk\n"
 	int content_a_len = strlen(content_a)
 	char* a1 = path_join(a, c"legacy.txt")
 	assert_equal(1, file_write_text(a1, content_a))
-	list[char*] snap_a = new list[char*]
-	snap_a.push(c"wvc")
-	snap_a.push(c"snapshot")
-	snap_a.push(a)
-	snap_a.push(c"-m")
-	snap_a.push(c"legacy blob")
-	process_result* r_snap_a = wst_run(snap_a, 0)
-	assert_equal(0, r_snap_a.status)
-	char* commit_a = wst_trim(r_snap_a.stdout_text)
+	char* commit_a = trim_eol(tool_ok(0, c"wvc", c"snapshot", a, c"-m", c"legacy blob"))
 	assert1(cas_valid_id(commit_a))
-	process_result_free(r_snap_a)
 
 	# The snapshot just wrote legacy.txt's blob (like the tree and
 	# commit objects) in the current zlib-compressed encoding; rewrite
@@ -715,15 +444,9 @@ void test_wvc_sync_mixed_format_store():
 	wst_rewrite_as_legacy(a, blob_id, c"blob", content_a, content_a_len)
 
 	char* meta_a = path_join(a, c".wvc")
-	wresult[wcas*]* store_a_r = cas_open(meta_a)
-	assert1(result_is_ok[wcas*](store_a_r))
-	wcas* store_a = result_value[wcas*](store_a_r)
-	result_free[wcas*](store_a_r)
+	wcas* store_a = result_expect[wcas*](cas_open(meta_a))
 	assert_equal(1, cas_verify(store_a, blob_id))
-	wresult[wcas_object*]* local_check_r = cas_get(store_a, blob_id)
-	assert1(result_is_ok[wcas_object*](local_check_r))
-	wcas_object* local_check = result_value[wcas_object*](local_check_r)
-	result_free[wcas_object*](local_check_r)
+	wcas_object* local_check = result_expect[wcas_object*](cas_get(store_a, blob_id))
 	assert_strings_equal(content_a, local_check.data)
 	cas_object_free(local_check)
 	cas_close(store_a)
@@ -736,37 +459,19 @@ void test_wvc_sync_mixed_format_store():
 	asserts(c"server accepting connections", wst_wait_for_port(port, 50, 100) != 0)
 	char* url = wst_url(port)
 
-	list[char*] init_b = new list[char*]
-	init_b.push(c"wvc")
-	init_b.push(c"init")
-	init_b.push(b)
-	process_result* r_init_b = wst_run(init_b, 0)
-	assert_equal(0, r_init_b.status)
-	process_result_free(r_init_b)
+	tool_ok(0, c"wvc", c"init", b)
 
-	list[char*] pull_args = new list[char*]
-	pull_args.push(c"wvc")
-	pull_args.push(c"pull")
-	pull_args.push(url)
-	process_result* r_pull = wst_run(pull_args, b)
-	assert_equal(0, r_pull.status)
-	wst_assert_contains(r_pull.stdout_text, commit_a)
-	process_result_free(r_pull)
+	char* r_pull = tool_ok(b, c"wvc", c"pull", url)
+	assert_contains(r_pull, commit_a)
 
 	# B stored the fetched blob via cas_put_raw, which always writes
 	# the CURRENT (zlib-compressed) encoding -- so the same logical
 	# object now exists on both sides under two different on-disk
 	# encodings, and both read back identically.
 	char* meta_b = path_join(b, c".wvc")
-	wresult[wcas*]* store_b_r = cas_open(meta_b)
-	assert1(result_is_ok[wcas*](store_b_r))
-	wcas* store_b = result_value[wcas*](store_b_r)
-	result_free[wcas*](store_b_r)
+	wcas* store_b = result_expect[wcas*](cas_open(meta_b))
 	assert_equal(1, cas_verify(store_b, blob_id))
-	wresult[wcas_object*]* fetched_r = cas_get(store_b, blob_id)
-	assert1(result_is_ok[wcas_object*](fetched_r))
-	wcas_object* fetched = result_value[wcas_object*](fetched_r)
-	result_free[wcas_object*](fetched_r)
+	wcas_object* fetched = result_expect[wcas_object*](cas_get(store_b, blob_id))
 	assert_strings_equal(content_a, fetched.data)
 	cas_object_free(fetched)
 
@@ -786,17 +491,8 @@ void test_wvc_sync_mixed_format_store():
 	int content_b_len = strlen(content_b)
 	char* b2 = path_join(b, c"legacy_from_b.txt")
 	assert_equal(1, file_write_text(b2, content_b))
-	list[char*] snap_b = new list[char*]
-	snap_b.push(c"wvc")
-	snap_b.push(c"snapshot")
-	snap_b.push(b)
-	snap_b.push(c"-m")
-	snap_b.push(c"legacy blob from b")
-	process_result* r_snap_b = wst_run(snap_b, 0)
-	assert_equal(0, r_snap_b.status)
-	char* commit_b = wst_trim(r_snap_b.stdout_text)
+	char* commit_b = trim_eol(tool_ok(0, c"wvc", c"snapshot", b, c"-m", c"legacy blob from b"))
 	assert1(cas_valid_id(commit_b))
-	process_result_free(r_snap_b)
 
 	char* blob_id_b = cas_id_hex(c"blob", content_b, content_b_len)
 	assert1(blob_id_b != 0)
@@ -804,29 +500,17 @@ void test_wvc_sync_mixed_format_store():
 	assert_equal(1, cas_verify(store_b, blob_id_b))
 	cas_close(store_b)
 
-	list[char*] push_args = new list[char*]
-	push_args.push(c"wvc")
-	push_args.push(c"push")
-	push_args.push(url)
-	process_result* r_push = wst_run(push_args, b)
-	assert_equal(0, r_push.status)
-	wst_assert_contains(r_push.stdout_text, commit_b)
-	process_result_free(r_push)
+	char* r_push = tool_ok(b, c"wvc", c"push", url)
+	assert_contains(r_push, commit_b)
 
 	wst_serve_stop(server)
 
 	# A's store, off the network entirely now, has the pushed blob --
 	# uploaded from B's legacy-format on-disk bytes, stored via
 	# cas_put_raw in A's current encoding.
-	wresult[wcas*]* store_a2_r = cas_open(meta_a)
-	assert1(result_is_ok[wcas*](store_a2_r))
-	wcas* store_a2 = result_value[wcas*](store_a2_r)
-	result_free[wcas*](store_a2_r)
+	wcas* store_a2 = result_expect[wcas*](cas_open(meta_a))
 	assert_equal(1, cas_verify(store_a2, blob_id_b))
-	wresult[wcas_object*]* pushed_r = cas_get(store_a2, blob_id_b)
-	assert1(result_is_ok[wcas_object*](pushed_r))
-	wcas_object* pushed = result_value[wcas_object*](pushed_r)
-	result_free[wcas_object*](pushed_r)
+	wcas_object* pushed = result_expect[wcas_object*](cas_get(store_a2, blob_id_b))
 	assert_strings_equal(content_b, pushed.data)
 	cas_object_free(pushed)
 	cas_close(store_a2)
@@ -840,7 +524,7 @@ void test_wvc_sync_mixed_format_store():
 	free(b2)
 	free(meta_a)
 	free(meta_b)
-	wst_rm_rf(a)
-	wst_rm_rf(b)
+	dir_remove_all(a)
+	dir_remove_all(b)
 # wbuild: binary=wvc_sync_e2e_test tag=tests dep=wvc
 # wbuild: step="bin/wvc_sync_e2e_test"

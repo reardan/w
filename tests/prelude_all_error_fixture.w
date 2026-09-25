@@ -5,3 +5,4 @@
 l := list[float32]{1.5}
 x := all(l)
 println(x)
+# wbuild: fixture_group=prelude_math_error_test

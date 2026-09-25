@@ -479,8 +479,8 @@ manifest-expressiveness blocker was always "multi-step pipeline", not
 `tests/openssl_tls_interop.w` (issue #236) already did in W — check
 `which openssl`, generate a throwaway ECDSA P-256 cert via `openssl req`,
 and run the harness binary under `timeout(1)` — so all three folded
-straight into the harness itself: `osl_find_on_path` (mirroring task 2e's
-`czi_find_on_path`) resolves `openssl` and prints the same "...OK
+straight into the harness itself: `process_which` (lib/process.w)
+resolves `openssl` and prints the same "...OK
 (skipped: ...)" success when it's missing, `osl_generate_cert` spawns
 `openssl req -x509 -newkey ec ...` via a direct argv vector into a
 pid-scoped scratch dir (no shell, no string interpolation of the scratch

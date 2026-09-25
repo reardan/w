@@ -13,3 +13,4 @@ list[int] items = 0
 
 int main(int argc, int argv):
 	return items.length
+# wbuild: fixture_group=toplevel_init_error_test

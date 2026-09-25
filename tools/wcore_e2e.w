@@ -35,6 +35,7 @@ import lib.path
 import lib.file
 import lib.str
 import lib.shell_commands
+import lib.dir
 import structures.string
 
 
@@ -94,29 +95,13 @@ int raise_core_limit():
 # First "core*" entry of dir in name order (ls "$dir"/core* | head -n 1),
 # as a dir-relative path, or 0 when there is none.
 char* find_core(char* dir):
-	int fd = open(dir, 65536, 0) /* 65536 = O_DIRECTORY */
-	if (fd < 0):
+	list[char*] names = dir_names(dir)
+	if (names == 0):
 		return 0
-	char* best = 0
-	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* entry = buffer + off
-			int reclen = shell_commands_load_uint16(entry + 2 * __word_size__)
-			char* name = entry + 2 * __word_size__ + 2
-			if ((name[0] == 'c') && (name[1] == 'o') && (name[2] == 'r') && (name[3] == 'e')):
-				if ((best == 0) || (strcmp(name, best) < 0)):
-					best = strclone(name)
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
-	if (best == 0):
-		return 0
-	return path_join(dir, best)
+	for char* name in names:
+		if (starts_with(name, c"core")):
+			return path_join(dir, name)
+	return 0
 
 
 # Remove every core* file of dir (rm -f "$dir"/core*).
@@ -178,7 +163,7 @@ void run_case(char* desc, char* fixture, char* ipreg, char* other):
 	string_append(d, c"_")
 	string_append(d, ipreg)
 	char* dir = d.data
-	shell_commands_rm_one(dir, 1, 1)
+	dir_remove_all(dir)
 	shell_commands_mkdir_one(dir, 1)
 	# Crash the fixture with cores enabled, in its own directory so the
 	# "core" file cannot collide with another case.
@@ -186,7 +171,7 @@ void run_case(char* desc, char* fixture, char* ipreg, char* other):
 		crash_fixture(fixture, dir)
 	char* core = find_core(dir)
 	if (core == 0):
-		shell_commands_rm_one(dir, 1, 1)
+		dir_remove_all(dir)
 		skip(cat3(desc, c": no core file appeared (RLIMIT_CORE hard-capped, or core_pattern '", cat3(PATTERN, c"' points elsewhere)", c"")))
 
 	int status = 0
@@ -238,7 +223,7 @@ void run_case(char* desc, char* fixture, char* ipreg, char* other):
 		expect(ndesc, text, c"unverified: the core has no build-id")
 		expect(ndesc, text, c"at crash_deep (")
 
-	shell_commands_rm_one(dir, 1, 1)
+	dir_remove_all(dir)
 
 
 int main(int argc, char** argv):

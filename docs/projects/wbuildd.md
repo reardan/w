@@ -481,8 +481,7 @@ margin on every axis:
   this wrong doesn't fail loudly in `verify`; it corrupts REPL/wdbg
   session state in ways that would only surface as flaky
   multi-entry-session bugs, exactly the failure mode `repl/core.w`'s
-  fault-recovery design (R1 in `docs/projects/consolidated_plan_2026_07.md`)
-  was built to eliminate for runtime faults, not compiler-state ones.
+  fault-recovery design was built to eliminate for runtime faults, not compiler-state ones.
 - **Unlocks**: everything — multi-error reporting for the *production*
   compiler (today's actual limitation, not just `w.pg`'s), true
   incremental recompile (patch a definition's machine code without
@@ -557,10 +556,9 @@ either way; nothing here proposes a second protocol.
    still open, Mac-gated)*:
    `lib/inotify.w` (§2.3), a unix-domain-socket bind/listen helper in
    `lib/net.w` (§2.3), and — if the daemon is meant to serve macOS
-   agents too, not just Linux — the per-arch dirent accessor fix
-   `docs/projects/ai_tooling_next_steps.md` already flags for
-   `wexec_collect_dir` (issue #231's own open question calls this out;
-   confirmed still unresolved by grep). Each is a self-contained,
+   agents too, not just Linux — validating the darwin dirent decoding
+   `docs/projects/ai_tooling_next_steps.md` flags for
+   `wexec_collect_dir` (issue #231's own open question calls this out). Each is a self-contained,
    low-risk library addition with its own tests, landable independently
    of everything else in this doc.
 2. **Stage 2 — `wbuildd` MVP** *(read-only milestone landed
@@ -575,14 +573,13 @@ either way; nothing here proposes a second protocol.
    surface is proven, reusing `wexec`'s existing cache-key and
    remote-cache code paths unchanged (§4).
 3. **Stage 3 — wlsp back in-tree**: once stage 2's `check`/`symbols`/
-   `deps` endpoints exist, moving `wlsp` back in
-   (`docs/projects/consolidated_plan_2026_07.md` §7's framing: "the
-   server and its first consumer co-evolve in one repo") becomes a thin
+   `deps` endpoints exist, moving `wlsp` back in (the 2026-07 plan's
+   framing: "the server and its first consumer co-evolve in one repo")
+   becomes a thin
    protocol adapter PR, not a design decision — this is a corollary of
    stage 2, not new scope. The REPL websocket server
-   (`docs/projects/consolidated_plan_2026_07.md`, Thread B's deferred
-   item 15, "couples to #231") should be designed against the *same*
-   `event_loop`/`json_rpc` stack at this point too, per that doc's
+   (the 2026-07 plan's deferred item 15, "couples to #231") should be
+   designed against the *same* `event_loop`/`json_rpc` stack at this point too, per that doc's
    explicit note — likely as a second listener (`jsonrpc_serve_listener`
    or a raw websocket upgrade over `libs/standard/web/http_server.w`,
    which landed this wave) on the same daemon process rather than a

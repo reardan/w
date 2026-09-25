@@ -7,3 +7,4 @@ union bad_union:
 
 int main(int argc, int argv):
 	return 0
+# wbuild: fixture_group=array_error_test

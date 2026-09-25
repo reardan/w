@@ -12,3 +12,4 @@ int main():
 	a[0, c"x"] = 1.0
 	a[0, 1] = c"y"
 	return 0
+# wbuild: fixture_group=ndarray_index_error_test
