@@ -52,5 +52,14 @@ int scopes(int a):
 	return a
 
 
+int scripts(int a):
+	# Single-script non-Latin names with no Latin twin, and a Latin
+	# name with accents, are not confusable (issue #460)
+	int данные = a
+	int ζωή = 2
+	int café = 3
+	return данные + ζωή + café
+
+
 int main():
-	return loops(2) + intentional(3) + labels(4) + scopes(5)
+	return loops(2) + intentional(3) + labels(4) + scopes(5) + scripts(6)

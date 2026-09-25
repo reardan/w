@@ -527,7 +527,10 @@
 				{"cmd": ["cp", "bin/lint_text_input.w", "bin/lint_fix_input.w"]},
 				{"cmd": ["bin/wv2", "check", "--fix", "bin/lint_fix_input.w"], "expect_stderr": "fixed 6 issue(s) in 'bin/lint_fix_input.w'"},
 				{"cmd": ["cmp", "bin/lint_fix_input.w", "tests/lint_fix_expected.txt"]},
-				{"cmd": ["bin/wv2", "check", "--lint", "--fix", "bin/lint_fix_input.w"], "reject_stderr": ["warning:", "fixed"]}
+				{"cmd": ["bin/wv2", "check", "--lint", "--fix", "bin/lint_fix_input.w"], "reject_stderr": ["warning:", "fixed"]},
+				{"cmd": ["sh", "-c", "printf 'import lib.lib\\n\\n\\nint main():\\n\\tint path = 1\\n\\tint \\321\\200ath = 2\\n\\tint n\\320\\260me = 3\\n\\tchar* s = c\"a\\342\\200\\256b\"\\n\\t# \\342\\201\\246 comment \\330\\234\\n\\treturn path + \\321\\200ath + n\\320\\260me + s[0]\\n' > bin/lint_unicode_input.w"]},
+				{"cmd": ["bin/wv2", "check", "--quiet", "bin/lint_unicode_input.w"], "reject_stderr": "warning:"},
+				{"cmd": ["bin/wv2", "check", "--lint", "--quiet", "bin/lint_unicode_input.w"], "expect_stderr": ["warning: identifier 'рath' mixes Cyrillic and Latin letters [mixed-script]", "warning: identifier 'рath' looks like 'path' from line 5 but is a different name [confusable]", "warning: identifier 'nаme' mixes Latin and Cyrillic letters [mixed-script]", "warning: bidirectional control character U+202E in a string literal can make this line display differently from how it compiles (Trojan Source) [bidi-control]", "warning: bidirectional control character U+2066 in a comment", "warning: bidirectional control character U+061C in a comment"]}
 			]
 		},
 		{
