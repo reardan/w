@@ -439,7 +439,7 @@
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/good.json", "main", "main", "dep"], "expect_stdout": "wexec: OK (2 targets)"},
 				{"cmd": ["rm", "-f", "bin/wexec_generated_marker"]},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/generated.json", "user"], "expect_stdout": ["wexec: target generated", "wexec: target user", "wexec: OK (3 targets)"]},
-				{"cmd": ["bin/wexec", "-f", "tests/wexec/generated_broken.json", "--keep-going", "user"], "expect_fail": true, "expect_stdout": "wexec: keep-going: 1 failed, 2 skipped", "reject_stdout": "user ran"},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/generated_broken.json", "--keep-going", "user"], "expect_fail": true, "expect_stderr": ["wexec: skipped: user (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped"], "reject_stdout": "user ran"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/good.json", "--list"], "stdout_file": "bin/wexec_list.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wexec_list.out"], "stdin": "dep\nmain\nfails\nexpects_fail\nwrong_output\ncycle_a\ncycle_b\n"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/list_json.json", "--list"], "stdout_file": "bin/wexec_list_json_plain.out"},
