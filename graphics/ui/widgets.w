@@ -49,6 +49,7 @@ import graphics.ui.widgets.table
 import graphics.ui.widgets.textarea
 import graphics.ui.widgets.splitter
 import graphics.ui.widgets.tabs
+import graphics.ui.widgets.form
 import graphics.ui.widgets.tree
 import graphics.ui.widgets.popover
 import graphics.ui.widgets.menu

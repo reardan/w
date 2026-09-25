@@ -823,3 +823,42 @@ the same way round 1's four were.
   is exposed to it — `&p[n]`, never `p + n`.
 - **The wasm clock is broken** (`lib/__arch__/wasm/syscalls.w:242`).
   Routed around, not fixed here.
+
+## Stage 17 — Form (round 3)
+
+Implements `ui_widgets.md` §10.
+
+```
+struct ui_form_state:
+	ui_rect area
+	float32 label_w
+	int32 show_errors      # persistent: set by the first submit attempt
+	int32 invalid          # per frame
+	int32 requested        # per frame: return-key submit
+
+void    ui_form_init(ui_form_state* st)
+void    ui_form_begin(ui_context* ctx, ui_form_state* st, ui_rect area, float32 label_w)
+void    ui_form_row(ui_context* ctx, ui_form_state* st, char* label)
+float32 ui_form_field_width(ui_context* ctx, ui_form_state* st)
+int     ui_form_error(ui_context* ctx, ui_form_state* st, char* msg)
+char*   ui_form_required(ui_textbox_state* tb, char* msg)
+void    ui_form_request_submit(ui_form_state* st)
+int     ui_form_submit(ui_context* ctx, ui_form_state* st, char* label)
+void    ui_form_end(ui_context* ctx, ui_form_state* st)
+```
+
+`ui_form_row` draws the label in the label column and calls
+`ui_same_line`, so the field lands in the field column. `ui_form_error`
+paints an error-colored baseline over the field just issued and puts
+the message on its own row beneath it, in the field column.
+`ui_form_submit` returns 1 only when every field issued before it this
+frame was valid; any attempt turns errors on. `ui_theme` gains an
+`error` token in all three presets.
+
+Test `form_test.w`: two-column geometry; errors hidden until the first
+attempt, then an error row pushes the submit down; a valid form submits
+once; return in a field submits under the same rule; error rows take no
+ids; every preset has an error color.
+
+**Landed** as planned. Wiring a form into a demo is left to the Email
+round, which will want a form to validate in anyway.
