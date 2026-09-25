@@ -2175,6 +2175,7 @@
 				"map_nested_key_64_test",
 				"map_set_builtin_64_test",
 				"matrix_64_test",
+				"matrix_linalg_64_test",
 				"md5_64_test",
 				"memory_debug_64_test",
 				"memtable_64_test",
@@ -2786,6 +2787,7 @@
 				"map_float_test",
 				"map_nested_key_test",
 				"math_test",
+				"matrix_linalg_test",
 				"matrix_test",
 				"md5_test",
 				"memory_debug_test",
@@ -5329,6 +5331,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/matrix_test.w", "-o", "bin/matrix_64_test"]},
 				{"cmd": ["bin/matrix_64_test"]}
+			]
+		},
+		{
+			"name": "matrix_linalg_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/matrix_linalg_test.w"],
+			"outputs": ["bin/matrix_linalg_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/matrix_linalg_test.w", "-o", "bin/matrix_linalg_64_test"]},
+				{"cmd": ["bin/matrix_linalg_64_test"]}
+			]
+		},
+		{
+			"name": "matrix_linalg_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/matrix_linalg_test.w"],
+			"outputs": ["bin/matrix_linalg_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/matrix_linalg_test.w", "-o", "bin/matrix_linalg_test"]},
+				{"cmd": ["bin/matrix_linalg_test"]}
 			]
 		},
 		{

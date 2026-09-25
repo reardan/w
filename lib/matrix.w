@@ -30,6 +30,20 @@ collection, so a chained expression like `a * b + c` leaks its
 intermediate (a * b); free the named results you own and bind
 intermediates to names when the leak matters.
 
+MATLAB parity: beyond the core above, the module covers MATLAB's
+everyday matrix surface under matrix_ names --
+	construction  rand randn linspace diag diag_of reshape block
+	              set_block hcat vcat repmat triu tril kron
+	elementwise   ediv (./) epow (.^) abs sqrt exp log neg map, and
+	              matrix +/- float operators in both orders
+	reductions    sum_dim mean_dim mean min max argmin argmax dot
+	              cross norm_fro norm1 norm_inf norm2
+	factorize     lu chol qr eig_sym svd singular_values rank pinv cond
+Differences from MATLAB: indices are 0-based and block ranges
+half-open; reshape walks row-major; eig handles symmetric matrices
+only; svd is the economy size; decompositions write their factors
+through out-pointers ([L, U, P] = lu(A) is matrix_lu(&a, &l, &u, &p)).
+
 Methods: every matrix_X(matrix* m, ...) function is callable as
 m.X(...) (docs/projects/struct_methods.md): m.at(i, j), m.set(i, j, v),
 m.transpose(), m.det(), m.trace(), m.inverse(), m.print(), ...
@@ -48,6 +62,8 @@ import lib.assert
 import lib.array
 import lib.format
 import lib.ndarray
+import lib.fmath
+import lib.rand
 
 
 struct matrix:
@@ -590,6 +606,857 @@ matrix matrix_inverse(matrix* m):
 	asserts(c"matrix_inverse: matrix must be square", matrix_is_square(m))
 	matrix r = matrix_new(m.rows, m.cols)
 	asserts(c"matrix_inverse: matrix is singular", matrix_inverse_into(&r, m))
+	return r
+
+
+##### more construction (MATLAB: rand, randn, linspace, diag, reshape, [A B], [A; B], A(r, c), repmat, triu, tril, kron) #####
+
+
+# Uniform [0, 1) entries drawn from r (lib/rand.w: deterministic for a
+# given seed on every target).
+matrix matrix_rand(int rows, int cols, rand_state* r):
+	matrix m = matrix_new(rows, cols)
+	int i = 0
+	while (i < m.data.length):
+		m.data[i] = rand_float(r)
+		i = i + 1
+	return m
+
+
+# Standard normal entries drawn from r.
+matrix matrix_randn(int rows, int cols, rand_state* r):
+	matrix m = matrix_new(rows, cols)
+	int i = 0
+	while (i < m.data.length):
+		m.data[i] = rand_gaussian(r)
+		i = i + 1
+	return m
+
+
+# 1 x n row vector of n evenly spaced points from a to b inclusive.
+matrix matrix_linspace(float a, float b, int n):
+	asserts(c"matrix_linspace: need at least 2 points", n >= 2)
+	matrix m = matrix_new(1, n)
+	float step = (b - a) / (n - 1)
+	int i = 0
+	while (i < n):
+		m.data[i] = a + step * i
+		i = i + 1
+	m.data[n - 1] = b
+	return m
+
+
+# Square matrix with the vector v (either orientation) on its diagonal.
+matrix matrix_diag(matrix* v):
+	asserts(c"matrix_diag: argument must be a vector", v.rows == 1 || v.cols == 1)
+	int n = v.data.length
+	matrix m = matrix_new(n, n)
+	int i = 0
+	while (i < n):
+		m.data[i * n + i] = v.data[i]
+		i = i + 1
+	return m
+
+
+# The main diagonal of m as a column vector.
+matrix matrix_diag_of(matrix* m):
+	int n = m.rows
+	if (m.cols < n):
+		n = m.cols
+	matrix d = matrix_new(n, 1)
+	int i = 0
+	while (i < n):
+		d.data[i] = m.data[i * m.cols + i]
+		i = i + 1
+	return d
+
+
+# Same elements, new shape, in ROW-MAJOR order (MATLAB's reshape walks
+# column-major; reshape(A', c, r)' is the MATLAB-order equivalent).
+matrix matrix_reshape(matrix* m, int rows, int cols):
+	asserts(c"matrix_reshape: element count must not change", ndarray_mul_checked(rows, cols) == m.data.length)
+	matrix r = matrix_copy(m)
+	r.rows = rows
+	r.cols = cols
+	return r
+
+
+# Copy src into m with its top-left corner at (r0, c0).
+void matrix_set_block(matrix* m, int r0, int c0, matrix* src):
+	asserts(c"matrix_set_block: block out of range", r0 >= 0 && c0 >= 0 && r0 + src.rows <= m.rows && c0 + src.cols <= m.cols)
+	int i = 0
+	while (i < src.rows):
+		int j = 0
+		while (j < src.cols):
+			m.data[(r0 + i) * m.cols + c0 + j] = src.data[i * src.cols + j]
+			j = j + 1
+		i = i + 1
+
+
+# Rows [r0, r1) and columns [c0, c1) as a new matrix: MATLAB's
+# A(r0+1:r1, c0+1:c1) with 0-based half-open ranges.
+matrix matrix_block(matrix* m, int r0, int r1, int c0, int c1):
+	asserts(c"matrix_block: range out of bounds", r0 >= 0 && r0 < r1 && r1 <= m.rows && c0 >= 0 && c0 < c1 && c1 <= m.cols)
+	matrix r = matrix_new(r1 - r0, c1 - c0)
+	int i = 0
+	while (i < r.rows):
+		int j = 0
+		while (j < r.cols):
+			r.data[i * r.cols + j] = m.data[(r0 + i) * m.cols + c0 + j]
+			j = j + 1
+		i = i + 1
+	return r
+
+
+# [a b]: side by side (row counts must match).
+matrix matrix_hcat(matrix* a, matrix* b):
+	asserts(c"matrix_hcat: row counts must match", a.rows == b.rows)
+	matrix r = matrix_new(a.rows, a.cols + b.cols)
+	matrix_set_block(&r, 0, 0, a)
+	matrix_set_block(&r, 0, a.cols, b)
+	return r
+
+
+# [a; b]: stacked (column counts must match).
+matrix matrix_vcat(matrix* a, matrix* b):
+	asserts(c"matrix_vcat: column counts must match", a.cols == b.cols)
+	matrix r = matrix_new(a.rows + b.rows, a.cols)
+	matrix_set_block(&r, 0, 0, a)
+	matrix_set_block(&r, a.rows, 0, b)
+	return r
+
+
+# m tiled rn times down and cn times across.
+matrix matrix_repmat(matrix* m, int rn, int cn):
+	asserts(c"matrix_repmat: counts must be positive", rn > 0 && cn > 0)
+	matrix r = matrix_new(m.rows * rn, m.cols * cn)
+	int i = 0
+	while (i < rn):
+		int j = 0
+		while (j < cn):
+			matrix_set_block(&r, i * m.rows, j * m.cols, m)
+			j = j + 1
+		i = i + 1
+	return r
+
+
+# Upper triangle on and above diagonal k (0 main, 1 above, -1 below).
+matrix matrix_triu(matrix* m, int k):
+	matrix r = matrix_copy(m)
+	int i = 0
+	while (i < m.rows):
+		int j = 0
+		while (j < m.cols):
+			if (j - i < k):
+				r.data[i * m.cols + j] = 0.0
+			j = j + 1
+		i = i + 1
+	return r
+
+
+# Lower triangle on and below diagonal k.
+matrix matrix_tril(matrix* m, int k):
+	matrix r = matrix_copy(m)
+	int i = 0
+	while (i < m.rows):
+		int j = 0
+		while (j < m.cols):
+			if (j - i > k):
+				r.data[i * m.cols + j] = 0.0
+			j = j + 1
+		i = i + 1
+	return r
+
+
+# Kronecker product: every a[i, j] scales a copy of b.
+matrix matrix_kron(matrix* a, matrix* b):
+	matrix r = matrix_new(a.rows * b.rows, a.cols * b.cols)
+	int i = 0
+	while (i < r.rows):
+		int j = 0
+		while (j < r.cols):
+			float x = a.data[(i / b.rows) * a.cols + j / b.cols]
+			r.data[i * r.cols + j] = x * b.data[(i % b.rows) * b.cols + j % b.cols]
+			j = j + 1
+		i = i + 1
+	return r
+
+
+##### elementwise (MATLAB: ./ .^ abs sqrt exp log, arrayfun) #####
+
+
+type matrix_map_fn = fn(float) -> float
+
+
+# fn applied to every element.
+matrix matrix_map(matrix* m, matrix_map_fn* fn):
+	matrix r = matrix_new(m.rows, m.cols)
+	int i = 0
+	while (i < m.data.length):
+		r.data[i] = fn(m.data[i])
+		i = i + 1
+	return r
+
+
+# a ./ b
+matrix matrix_ediv(matrix* a, matrix* b):
+	asserts(c"matrix_ediv: shape mismatch", matrix_same_shape(a, b))
+	matrix r = matrix_new(a.rows, a.cols)
+	int i = 0
+	while (i < a.data.length):
+		r.data[i] = a.data[i] / b.data[i]
+		i = i + 1
+	return r
+
+
+# m .^ p (lib/fmath.w fpow: IEEE pow semantics).
+matrix matrix_epow(matrix* m, float p):
+	matrix r = matrix_new(m.rows, m.cols)
+	int i = 0
+	while (i < m.data.length):
+		r.data[i] = fpow(m.data[i], p)
+		i = i + 1
+	return r
+
+
+matrix matrix_abs(matrix* m):
+	return matrix_map(m, fabs)
+
+
+matrix matrix_sqrt(matrix* m):
+	return matrix_map(m, fsqrt)
+
+
+matrix matrix_exp(matrix* m):
+	return matrix_map(m, fexp)
+
+
+matrix matrix_log(matrix* m):
+	return matrix_map(m, flog)
+
+
+# -m (W has no unary operator overloads).
+matrix matrix_neg(matrix* m):
+	return matrix_scale(m, -1.0)
+
+
+matrix matrix_add_scalar(matrix* m, float s):
+	matrix r = matrix_new(m.rows, m.cols)
+	int i = 0
+	while (i < m.data.length):
+		r.data[i] = m.data[i] + s
+		i = i + 1
+	return r
+
+
+matrix operator+(matrix a, float s):
+	return matrix_add_scalar(&a, s)
+
+
+matrix operator+(float s, matrix a):
+	return matrix_add_scalar(&a, s)
+
+
+matrix operator-(matrix a, float s):
+	return matrix_add_scalar(&a, 0.0 - s)
+
+
+# s - a, elementwise.
+matrix operator-(float s, matrix a):
+	matrix r = matrix_neg(&a)
+	int i = 0
+	while (i < r.data.length):
+		r.data[i] = r.data[i] + s
+		i = i + 1
+	return r
+
+
+##### reductions (MATLAB: sum, mean, min, max, norm, dot, cross) #####
+
+
+# MATLAB's sum(A, dim): dim 1 sums down each column (1 x cols), dim 2
+# sums across each row (rows x 1).
+matrix matrix_sum_dim(matrix* m, int dim):
+	asserts(c"matrix_sum_dim: dim must be 1 or 2", dim == 1 || dim == 2)
+	matrix r
+	if (dim == 1):
+		r = matrix_new(1, m.cols)
+	else:
+		r = matrix_new(m.rows, 1)
+	int i = 0
+	while (i < m.rows):
+		int j = 0
+		while (j < m.cols):
+			if (dim == 1):
+				r.data[j] = r.data[j] + m.data[i * m.cols + j]
+			else:
+				r.data[i] = r.data[i] + m.data[i * m.cols + j]
+			j = j + 1
+		i = i + 1
+	return r
+
+
+# MATLAB's mean(A, dim), same shape rules as matrix_sum_dim.
+matrix matrix_mean_dim(matrix* m, int dim):
+	matrix r = matrix_sum_dim(m, dim)
+	int n = m.cols
+	if (dim == 1):
+		n = m.rows
+	matrix_scale_into(&r, &r, 1.0 / n)
+	return r
+
+
+# Mean of every element.
+float matrix_mean(matrix* m):
+	return matrix_sum(m) / m.data.length
+
+
+# Index of the smallest (want_max == 0) or largest element, flat
+# row-major; ties keep the first.
+int matrix_arg_extreme(matrix* m, int want_max):
+	int best = 0
+	int i = 1
+	while (i < m.data.length):
+		if (want_max && m.data[i] > m.data[best]):
+			best = i
+		if ((want_max == 0) && m.data[i] < m.data[best]):
+			best = i
+		i = i + 1
+	return best
+
+
+# Flat row-major index of the smallest / largest element: row is
+# index / cols, column is index % cols.
+int matrix_argmin(matrix* m):
+	return matrix_arg_extreme(m, 0)
+
+
+int matrix_argmax(matrix* m):
+	return matrix_arg_extreme(m, 1)
+
+
+float matrix_min(matrix* m):
+	return m.data[matrix_argmin(m)]
+
+
+float matrix_max(matrix* m):
+	return m.data[matrix_argmax(m)]
+
+
+# Dot product of two vectors of equal length, either orientation.
+float matrix_dot(matrix* a, matrix* b):
+	asserts(c"matrix_dot: arguments must be vectors", (a.rows == 1 || a.cols == 1) && (b.rows == 1 || b.cols == 1))
+	asserts(c"matrix_dot: lengths must match", a.data.length == b.data.length)
+	float sum = 0.0
+	int i = 0
+	while (i < a.data.length):
+		sum = sum + a.data[i] * b.data[i]
+		i = i + 1
+	return sum
+
+
+# Cross product of two 3-vectors; the result has a's orientation.
+matrix matrix_cross(matrix* a, matrix* b):
+	asserts(c"matrix_cross: arguments must be 3-vectors", a.data.length == 3 && b.data.length == 3 && (a.rows == 1 || a.cols == 1))
+	matrix r = matrix_new(a.rows, a.cols)
+	r.data[0] = a.data[1] * b.data[2] - a.data[2] * b.data[1]
+	r.data[1] = a.data[2] * b.data[0] - a.data[0] * b.data[2]
+	r.data[2] = a.data[0] * b.data[1] - a.data[1] * b.data[0]
+	return r
+
+
+# Frobenius norm: sqrt of the sum of squares (norm(A, 'fro'); the
+# 2-norm of a vector).
+float matrix_norm_fro(matrix* m):
+	float sum = 0.0
+	int i = 0
+	while (i < m.data.length):
+		sum = sum + m.data[i] * m.data[i]
+		i = i + 1
+	return fsqrt(sum)
+
+
+# norm(A, 1): largest absolute column sum.
+float matrix_norm1(matrix* m):
+	float best = 0.0
+	int j = 0
+	while (j < m.cols):
+		float sum = 0.0
+		int i = 0
+		while (i < m.rows):
+			sum = sum + fabs(m.data[i * m.cols + j])
+			i = i + 1
+		if (sum > best):
+			best = sum
+		j = j + 1
+	return best
+
+
+# norm(A, Inf): largest absolute row sum.
+float matrix_norm_inf(matrix* m):
+	float best = 0.0
+	int i = 0
+	while (i < m.rows):
+		float sum = 0.0
+		int j = 0
+		while (j < m.cols):
+			sum = sum + fabs(m.data[i * m.cols + j])
+			j = j + 1
+		if (sum > best):
+			best = sum
+		i = i + 1
+	return best
+
+
+##### decompositions (MATLAB: lu, chol, qr, eig, svd, rank, pinv, cond, norm) #####
+#
+# Output matrices are written through out-pointers, MATLAB's
+# [L, U, P] = lu(A) shape: each is freshly allocated (overwriting the
+# pointee without freeing it) and owned by the caller.
+
+
+# Sign with sign(0) == 1, for Householder / Jacobi rotations.
+float matrix_sign1(float x):
+	if (x < 0.0):
+		return -1.0
+	return 1.0
+
+
+# P * A = L * U with partial pivoting: L unit lower triangular, U upper
+# triangular, P a permutation matrix. Returns 1, or 0 when A is
+# singular (the factors are still produced; U has a zero pivot).
+int matrix_lu(matrix* a, matrix* l, matrix* u, matrix* p):
+	asserts(c"matrix_lu: matrix must be square", matrix_is_square(a))
+	int n = a.rows
+	matrix w = matrix_copy(a)
+	matrix lm = matrix_identity(n)
+	matrix pm = matrix_identity(n)
+	float eps = matrix_singular_eps() * matrix_max_abs(a)
+	int ok = 1
+	int k = 0
+	while (k < n):
+		int piv = matrix_pivot_row(&w, k, k)
+		if (piv != k):
+			matrix_swap_rows(&w, piv, k)
+			matrix_swap_rows(&pm, piv, k)
+			# swap the already-computed multipliers (columns < k)
+			int j = 0
+			while (j < k):
+				float t = lm.data[k * n + j]
+				lm.data[k * n + j] = lm.data[piv * n + j]
+				lm.data[piv * n + j] = t
+				j = j + 1
+		float pivot = w.data[k * n + k]
+		if (fabs(pivot) <= eps):
+			ok = 0
+		else:
+			int i = k + 1
+			while (i < n):
+				float f = w.data[i * n + k] / pivot
+				lm.data[i * n + k] = f
+				int j = k
+				while (j < n):
+					w.data[i * n + j] = w.data[i * n + j] - f * w.data[k * n + j]
+					j = j + 1
+				w.data[i * n + k] = 0.0
+				i = i + 1
+		k = k + 1
+	*l = lm
+	*u = w
+	*p = pm
+	return ok
+
+
+# Cholesky: A = R' * R with R upper triangular (MATLAB's chol). Uses
+# A's upper triangle. Returns 1, or 0 when A is not positive definite
+# (r is then left untouched).
+int matrix_chol(matrix* a, matrix* r):
+	asserts(c"matrix_chol: matrix must be square", matrix_is_square(a))
+	int n = a.rows
+	matrix rm = matrix_new(n, n)
+	int j = 0
+	while (j < n):
+		float s = a.data[j * n + j]
+		int k = 0
+		while (k < j):
+			s = s - rm.data[k * n + j] * rm.data[k * n + j]
+			k = k + 1
+		if (s <= 0.0):
+			matrix_free(&rm)
+			return 0
+		float d = fsqrt(s)
+		rm.data[j * n + j] = d
+		int i = j + 1
+		while (i < n):
+			float t = a.data[j * n + i]
+			k = 0
+			while (k < j):
+				t = t - rm.data[k * n + j] * rm.data[k * n + i]
+				k = k + 1
+			rm.data[j * n + i] = t / d
+			i = i + 1
+		j = j + 1
+	*r = rm
+	return 1
+
+
+# A = Q * R by Householder reflections: Q is m x m orthogonal, R is
+# m x n upper triangular (MATLAB's full qr(A)).
+void matrix_qr(matrix* a, matrix* q, matrix* r):
+	int m = a.rows
+	int n = a.cols
+	matrix rm = matrix_copy(a)
+	matrix qm = matrix_identity(m)
+	float[] v = new float[m]
+	int steps = n
+	if (m - 1 < steps):
+		steps = m - 1
+	int k = 0
+	while (k < steps):
+		float norm = 0.0
+		int i = k
+		while (i < m):
+			norm = norm + rm.data[i * n + k] * rm.data[i * n + k]
+			i = i + 1
+		norm = fsqrt(norm)
+		if (norm > 0.0):
+			float alpha = 0.0 - matrix_sign1(rm.data[k * n + k]) * norm
+			float vv = 0.0
+			i = k
+			while (i < m):
+				v[i] = rm.data[i * n + k]
+				if (i == k):
+					v[i] = v[i] - alpha
+				vv = vv + v[i] * v[i]
+				i = i + 1
+			if (vv > 0.0):
+				# R = H * R, columns k.. (earlier columns are already zero below k)
+				int j = k
+				while (j < n):
+					float s = 0.0
+					i = k
+					while (i < m):
+						s = s + v[i] * rm.data[i * n + j]
+						i = i + 1
+					float f = 2.0 * s / vv
+					i = k
+					while (i < m):
+						rm.data[i * n + j] = rm.data[i * n + j] - f * v[i]
+						i = i + 1
+					j = j + 1
+				# Q = Q * H
+				int row = 0
+				while (row < m):
+					float s = 0.0
+					i = k
+					while (i < m):
+						s = s + qm.data[row * m + i] * v[i]
+						i = i + 1
+					float f = 2.0 * s / vv
+					i = k
+					while (i < m):
+						qm.data[row * m + i] = qm.data[row * m + i] - f * v[i]
+						i = i + 1
+					row = row + 1
+				i = k + 1
+				while (i < m):
+					rm.data[i * n + k] = 0.0
+					i = i + 1
+		k = k + 1
+	array_free[float](v)
+	*q = qm
+	*r = rm
+
+
+# Swap columns c1 and c2 of m in place.
+void matrix_swap_cols(matrix* m, int c1, int c2):
+	if (c1 == c2):
+		return
+	int i = 0
+	while (i < m.rows):
+		float t = m.data[i * m.cols + c1]
+		m.data[i * m.cols + c1] = m.data[i * m.cols + c2]
+		m.data[i * m.cols + c2] = t
+		i = i + 1
+
+
+# Selection-sort the vector vals (and the matching columns of cols)
+# ascending, or descending when descending != 0.
+void matrix_sort_pairs(matrix* vals, matrix* cols, int descending):
+	int n = vals.data.length
+	int i = 0
+	while (i < n):
+		int best = i
+		int j = i + 1
+		while (j < n):
+			if (descending && vals.data[j] > vals.data[best]):
+				best = j
+			if ((descending == 0) && vals.data[j] < vals.data[best]):
+				best = j
+			j = j + 1
+		if (best != i):
+			float t = vals.data[i]
+			vals.data[i] = vals.data[best]
+			vals.data[best] = t
+			matrix_swap_cols(cols, i, best)
+		i = i + 1
+
+
+# One Jacobi rotation parameter t = tan(angle) for zeta = cot(2 angle),
+# the smaller-angle root; guards zeta^2 overflow.
+float matrix_jacobi_t(float zeta):
+	float az = fabs(zeta)
+	if (az > 1000000000.0):
+		return 0.5 / zeta
+	return matrix_sign1(zeta) / (az + fsqrt(1.0 + zeta * zeta))
+
+
+# Eigen-decomposition of a SYMMETRIC matrix by cyclic Jacobi rotations:
+# A * V = V * diag(values). values is an n x 1 column in ascending order
+# (MATLAB's eig order for symmetric input); column i of vectors is the
+# unit eigenvector for values[i]. Only the symmetric case is supported
+# (asserted within a relative tolerance).
+void matrix_eig_sym(matrix* a, matrix* values, matrix* vectors):
+	asserts(c"matrix_eig_sym: matrix must be square", matrix_is_square(a))
+	int n = a.rows
+	matrix t = matrix_transpose(a)
+	asserts(c"matrix_eig_sym: matrix must be symmetric", matrix_near(a, &t, 0.00001 * (1.0 + matrix_max_abs(a))))
+	matrix_free(&t)
+	matrix w = matrix_copy(a)
+	matrix v = matrix_identity(n)
+	int sweep = 0
+	while (sweep < 60):
+		float off = 0.0
+		int p = 0
+		while (p < n):
+			int q = p + 1
+			while (q < n):
+				off = off + w.data[p * n + q] * w.data[p * n + q]
+				q = q + 1
+			p = p + 1
+		if (off == 0.0):
+			break
+		p = 0
+		while (p < n):
+			int q = p + 1
+			while (q < n):
+				float apq = w.data[p * n + q]
+				float app = w.data[p * n + p]
+				float aqq = w.data[q * n + q]
+				float g = 100.0 * fabs(apq)
+				if (sweep > 3 && fabs(app) + g == fabs(app) && fabs(aqq) + g == fabs(aqq)):
+					w.data[p * n + q] = 0.0
+					w.data[q * n + p] = 0.0
+				else if (apq != 0.0):
+					float tt = matrix_jacobi_t((aqq - app) / (2.0 * apq))
+					float c = 1.0 / fsqrt(1.0 + tt * tt)
+					float s = tt * c
+					int k = 0
+					while (k < n):
+						float akp = w.data[k * n + p]
+						float akq = w.data[k * n + q]
+						w.data[k * n + p] = c * akp - s * akq
+						w.data[k * n + q] = s * akp + c * akq
+						k = k + 1
+					k = 0
+					while (k < n):
+						float apk = w.data[p * n + k]
+						float aqk = w.data[q * n + k]
+						w.data[p * n + k] = c * apk - s * aqk
+						w.data[q * n + k] = s * apk + c * aqk
+						k = k + 1
+					k = 0
+					while (k < n):
+						float vkp = v.data[k * n + p]
+						float vkq = v.data[k * n + q]
+						v.data[k * n + p] = c * vkp - s * vkq
+						v.data[k * n + q] = s * vkp + c * vkq
+						k = k + 1
+				q = q + 1
+			p = p + 1
+		sweep = sweep + 1
+	matrix vals = matrix_diag_of(&w)
+	matrix_free(&w)
+	matrix_sort_pairs(&vals, &v, 0)
+	*values = vals
+	*vectors = v
+
+
+# Singular value decomposition by one-sided (Hestenes) Jacobi, economy
+# size: A = U * diag(s) * V' with k = min(rows, cols), U rows x k and V
+# cols x k with orthonormal columns, and s a k x 1 column of singular
+# values in descending order. Columns of U for zero singular values are
+# left zero.
+void matrix_svd(matrix* a, matrix* u, matrix* s, matrix* v):
+	if (a.rows < a.cols):
+		# A' = U1 S V1'  =>  A = V1 S U1'
+		matrix at = matrix_transpose(a)
+		matrix_svd(&at, v, s, u)
+		matrix_free(&at)
+		return
+	int m = a.rows
+	int n = a.cols
+	matrix um = matrix_copy(a)
+	matrix vm = matrix_identity(n)
+	int sweep = 0
+	while (sweep < 60):
+		int rotated = 0
+		int p = 0
+		while (p < n):
+			int q = p + 1
+			while (q < n):
+				float alpha = 0.0
+				float beta = 0.0
+				float gamma = 0.0
+				int i = 0
+				while (i < m):
+					float up = um.data[i * n + p]
+					float uq = um.data[i * n + q]
+					alpha = alpha + up * up
+					beta = beta + uq * uq
+					gamma = gamma + up * uq
+					i = i + 1
+				if (fabs(gamma) > 0.000001 * fsqrt(alpha * beta)):
+					rotated = 1
+					float t = matrix_jacobi_t((beta - alpha) / (2.0 * gamma))
+					float c = 1.0 / fsqrt(1.0 + t * t)
+					float sn = t * c
+					i = 0
+					while (i < m):
+						float up = um.data[i * n + p]
+						float uq = um.data[i * n + q]
+						um.data[i * n + p] = c * up - sn * uq
+						um.data[i * n + q] = sn * up + c * uq
+						i = i + 1
+					i = 0
+					while (i < n):
+						float vp = vm.data[i * n + p]
+						float vq = vm.data[i * n + q]
+						vm.data[i * n + p] = c * vp - sn * vq
+						vm.data[i * n + q] = sn * vp + c * vq
+						i = i + 1
+				q = q + 1
+			p = p + 1
+		if (rotated == 0):
+			break
+		sweep = sweep + 1
+	matrix sv = matrix_new(n, 1)
+	int j = 0
+	while (j < n):
+		float norm = 0.0
+		int i = 0
+		while (i < m):
+			norm = norm + um.data[i * n + j] * um.data[i * n + j]
+			i = i + 1
+		norm = fsqrt(norm)
+		sv.data[j] = norm
+		i = 0
+		while (i < m):
+			if (norm > 0.0):
+				um.data[i * n + j] = um.data[i * n + j] / norm
+			else:
+				um.data[i * n + j] = 0.0
+			i = i + 1
+		j = j + 1
+	# sort descending, permuting U's and V's columns together
+	int i = 0
+	while (i < n):
+		int best = i
+		j = i + 1
+		while (j < n):
+			if (sv.data[j] > sv.data[best]):
+				best = j
+			j = j + 1
+		if (best != i):
+			float t = sv.data[i]
+			sv.data[i] = sv.data[best]
+			sv.data[best] = t
+			matrix_swap_cols(&um, i, best)
+			matrix_swap_cols(&vm, i, best)
+		i = i + 1
+	*u = um
+	*s = sv
+	*v = vm
+
+
+# Singular values only, descending, as a column (MATLAB's svd(A)).
+matrix matrix_singular_values(matrix* a):
+	matrix u
+	matrix s
+	matrix v
+	matrix_svd(a, &u, &s, &v)
+	matrix_free(&u)
+	matrix_free(&v)
+	return s
+
+
+# Singular values at or below this count as zero for rank/pinv:
+# max(rows, cols) * s_max * the float32-scaled singularity threshold.
+float matrix_svd_tol(matrix* a, matrix* s):
+	int big = a.rows
+	if (a.cols > big):
+		big = a.cols
+	return big * s.data[0] * matrix_singular_eps() * 10.0
+
+
+int matrix_rank(matrix* a):
+	matrix s = matrix_singular_values(a)
+	float tol = matrix_svd_tol(a, &s)
+	int r = 0
+	int i = 0
+	while (i < s.data.length):
+		if (s.data[i] > tol):
+			r = r + 1
+		i = i + 1
+	matrix_free(&s)
+	return r
+
+
+# Largest singular value: norm(A) / norm(A, 2).
+float matrix_norm2(matrix* a):
+	matrix s = matrix_singular_values(a)
+	float r = s.data[0]
+	matrix_free(&s)
+	return r
+
+
+# 2-norm condition number s_max / s_min; +inf when A is rank deficient.
+float matrix_cond(matrix* a):
+	matrix s = matrix_singular_values(a)
+	float smin = s.data[s.data.length - 1]
+	float r = float_from_bits(0x7f800000)    # +inf
+	if (smin > 0.0):
+		r = s.data[0] / smin
+	matrix_free(&s)
+	return r
+
+
+# Moore-Penrose pseudoinverse V * diag(1/s) * U', dropping singular
+# values below matrix_svd_tol (MATLAB's pinv). cols x rows.
+matrix matrix_pinv(matrix* a):
+	matrix u
+	matrix s
+	matrix v
+	matrix_svd(a, &u, &s, &v)
+	float tol = matrix_svd_tol(a, &s)
+	int k = s.data.length
+	matrix r = matrix_new(a.cols, a.rows)
+	int c = 0
+	while (c < k):
+		if (s.data[c] > tol):
+			float inv = 1.0 / s.data[c]
+			int i = 0
+			while (i < a.cols):
+				float vi = v.data[i * v.cols + c] * inv
+				int j = 0
+				while (j < a.rows):
+					r.data[i * r.cols + j] = r.data[i * r.cols + j] + vi * u.data[j * u.cols + c]
+					j = j + 1
+				i = i + 1
+		c = c + 1
+	matrix_free(&u)
+	matrix_free(&s)
+	matrix_free(&v)
 	return r
 
 
