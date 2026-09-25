@@ -419,7 +419,18 @@ void error(char *s):
 
 
 int getc():
-	int c = getchar_checked(file)
+	# Inline fast path of lib/lib.w's getchar_checked(): take the next
+	# byte straight from the per-fd buffer while it is non-empty, and
+	# fall back to the full function (refill, EOF, read error, unbuffered
+	# high fds) otherwise. The lexer calls this once per source byte.
+	int c
+	if ((file >= 0) && (file < 256) && (getchar_pos[file] < getchar_limit[file])):
+		char* getc_buffer = cast(char*, getchar_buf_addr[file])
+		c = getc_buffer[getchar_pos[file]] & 255
+		getchar_pos[file] = getchar_pos[file] + 1
+		byte_offset = byte_offset + 1
+		return c
+	c = getchar_checked(file)
 	# A failed read() is not end of file: stopping here with a diagnostic
 	# beats silently truncating the source and reporting a misleadingly
 	# positioned parse error later (docs/projects/ai_tooling_next_steps.md).
@@ -630,10 +641,37 @@ void take_utf8_ident_char():
 		error(ident_codepoint_hex(cp))
 
 
+# Byte class table for take_ident_run(), filled once from the
+# is_ident_part_byte()/is_utf8_lead_byte() predicates above (so it cannot
+# drift from them): 0 = not an identifier byte, 1 = ASCII identifier
+# byte, 2 = UTF-8 lead byte. Replaces three nested predicate calls per
+# identifier byte with one load.
+int[256] ident_byte_class
+int ident_byte_class_ready
+
+
+void ident_byte_class_init():
+	int c = 0
+	while (c < 256):
+		if (is_utf8_lead_byte(c)):
+			ident_byte_class[c] = 2
+		else if (is_ident_part_byte(c)):
+			ident_byte_class[c] = 1
+		else:
+			ident_byte_class[c] = 0
+		c = c + 1
+	ident_byte_class_ready = 1
+
+
 # Scan an identifier (or keyword / integer-literal prefix) run
 void take_ident_run():
-	while (is_ident_part_byte(nextc) && (nextc != -1)):
-		if (is_utf8_lead_byte(nextc)):
+	if (ident_byte_class_ready == 0):
+		ident_byte_class_init()
+	while (nextc != -1):
+		int k = ident_byte_class[nextc & 255]
+		if (k == 0):
+			return;
+		if (k == 2):
 			take_utf8_ident_char()
 		else:
 			takechar()
@@ -873,8 +911,16 @@ void get_token():
 	# print_string("token: ", token)
 
 
+# The grammar tries alternatives in sequence (accept("&"), accept("*"),
+# ...), so almost every call mismatches on the first byte: reject that
+# case before entering the compare loop.
 int peek(char *s):
-	int i = 0
+	int c = s[0]
+	if (c != token[0]):
+		return 0
+	if (c == 0):
+		return 1
+	int i = 1
 	while ((s[i] == token[i]) && (s[i] != 0)):
 		i = i + 1
 
@@ -882,6 +928,9 @@ int peek(char *s):
 
 
 int accept(char *s):
+	# Same first-byte rejection as peek(), without the extra call
+	if (s[0] != token[0]):
+		return 0
 	if (peek(s)):
 		get_token()
 		return 1
