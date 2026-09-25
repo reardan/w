@@ -10,7 +10,7 @@ vector -- no /bin/sh. The FAIL messages and the final OK line keep the
 old script's name so the target's expectations are unchanged.
 
 The '-f manifest.json' fixtures elsewhere in tests/wtest/ cover rule
-(a)/(c)/leaf-diff selection with synthetic "true"/"echo" steps and no
+(a)/(c) selection with synthetic "true"/"echo" steps and no
 real git history, but --defhash's own machinery shells out to
 'git show HEAD:<path>' and 'bin/wv2 defhash', which only mean something
 against a real commit and a real compilable root -- hence a throwaway git

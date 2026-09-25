@@ -1661,7 +1661,7 @@ int wbd_changed_has_paths(list[char*] args):
 	int i = 0
 	while (i < args.length):
 		char* a = args[i]
-		if ((strcmp(a, c"-f") == 0) || (strcmp(a, c"--base-manifest") == 0)):
+		if (strcmp(a, c"-f") == 0):
 			i = i + 1
 		else if (a[0] != '-'):
 			return 1

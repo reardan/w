@@ -666,10 +666,7 @@ Shipped from the next-steps backlog:
 - `wtest` empty-selection visibility + focused leaf selection
   (2026-07-16): empty selections print `wtest: 0 targets selected` on
   stderr; `./wbuild test_changed` falls back to the origin/main
-  merge-base diff on a clean tree; a build.json diff that is exactly
-  wbuildgen-shaped leaf test-target additions/removals selects just
-  those targets + `manifest_check` + `wexec_test` (new
-  `--base-manifest` flag) instead of the whole `tests` umbrella.
+  merge-base diff on a clean tree.
   Covered by `wtest_map_test`/`wtest_run_test`.
 - `lib.assert` standalone import fix (2026-07-16): lib/assert.w
   imports lib.lib for the printers it calls; pinned by

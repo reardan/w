@@ -34,8 +34,8 @@ say 'noorder':
     does not depend on build.json's target set).
 
 Case words are handed to 'bin/wtest changed' verbatim, so a case may
-lead with '-f <manifest>' / '--base-manifest <manifest>' fixture flags
-before its changed paths (the build.json leaf-diff cases do). The first
+lead with a '-f <manifest>' fixture flag
+before its changed paths. The first
 two implicit properties above are checked against the real build.json
 regardless of which manifest the case itself points bin/wtest at, so by
 default a '-f' fixture manifest must reuse real build.json target names
