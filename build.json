@@ -2119,6 +2119,7 @@
 				"for_infer_64_test",
 				"format_64_test",
 				"framing_64_test",
+				"ftp_64_test",
 				"generator_64_test",
 				"generator_return_free_64_test",
 				"generics_64_test",
@@ -2749,6 +2750,7 @@
 				"for_test",
 				"format_test",
 				"framing_test",
+				"ftp_test",
 				"generator_return_free_test",
 				"getchar_checked_test",
 				"grapheme_test",
@@ -4286,6 +4288,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "lib/framing_test.w", "-o", "bin/framing_test"]},
 				{"cmd": ["bin/framing_test"]}
+			]
+		},
+		{
+			"name": "ftp_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/ftp_test.w"],
+			"outputs": ["bin/ftp_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/ftp_test.w", "-o", "bin/ftp_64_test"]},
+				{"cmd": ["bin/ftp_64_test"]}
+			]
+		},
+		{
+			"name": "ftp_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/ftp_test.w"],
+			"outputs": ["bin/ftp_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/ftp_test.w", "-o", "bin/ftp_test"]},
+				{"cmd": ["bin/ftp_test"]}
 			]
 		},
 		{
