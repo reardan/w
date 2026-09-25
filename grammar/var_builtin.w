@@ -71,28 +71,13 @@ void var_unbox_unsupported(int t):
 # fixed-width ints, char, bool, enums, constants), 1 char*, 2 string;
 # -1 when the type cannot be boxed.
 int var_box_helper_for_type(int got):
-	if (got == 3): /* constant: already a plain value */
+	int vc = value_class(got)
+	if (value_class_is_int_like(vc)):
 		return 0
-	if (got == 4): /* function */
-		return -1
-	int t = type_unqualified(got)
-	if (type_is_string(t)):
-		return 2
-	if (type_is_char_pointer(t)):
+	if (vc == VC_CSTR):
 		return 1
-	if (type_float_kind(t)):
-		return -1
-	if (type_get_pointer_level(t) > 0):
-		return -1
-	if (type_num_args(t) > 0):
-		return -1
-	if (type_is_map(t) | type_is_set(t) | type_is_list(t)):
-		return -1
-	if (type_is_array(t) | type_is_slice(t)):
-		return -1
-	int size = type_get_size(t)
-	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
-		return 0
+	if (vc == VC_STRING):
+		return 2
 	return -1
 
 

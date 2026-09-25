@@ -46,57 +46,98 @@ void print_emit_helper_address(int i):
 	lazy_emit_helper(print_rt, i)
 
 
-void print_unsupported(int t):
-	diag_part(c"unsupported print argument type: '")
-	if (t == 4):
+# Rendering class of a promoted value, shared by print, f-strings
+# (grammar/template_string.w), var boxing (grammar/var_builtin.w) and
+# the prelude's int-like argument checks.
+enum value_class:
+	VC_NONE    # functions, non-char pointers, structs, maps, sets, buffers
+	VC_INT     # constants, int, fixed-width ints, bool, enums
+	VC_CHAR    # a genuinely char-typed value
+	VC_CSTR    # char*
+	VC_STRING  # string
+	VC_VAR     # var
+	VC_F32     # float32
+	VC_F64     # float64
+	VC_LIST    # list[T]
+
+
+int value_class(int got):
+	if (got == 3): /* constant: an int-like value */
+		return VC_INT
+	if (got == 4): /* function */
+		return VC_NONE
+	int t = type_unqualified(got)
+	if (type_is_string(t)):
+		return VC_STRING
+	if (type_is_char_pointer(t)):
+		return VC_CSTR
+	if (type_is_var(t)):
+		return VC_VAR
+	# Character literals are untyped constants (the got == 3 branch
+	# above) and char arithmetic yields int.
+	if (type_is_char(t)):
+		return VC_CHAR
+	if (type_float_kind(t) == 1):
+		return VC_F32
+	if (type_float_kind(t) == 2):
+		return VC_F64
+	if (type_is_list(t)):
+		return VC_LIST
+	if ((type_get_pointer_level(t) > 0) || (type_num_args(t) > 0)):
+		return VC_NONE
+	if (type_is_map(t) | type_is_set(t) | type_is_buffer(t)):
+		return VC_NONE
+	if ((type_get_kind(t) == type_kind_enum) || (t == type_unqualified(bool_type))):
+		return VC_INT
+	int size = type_get_size(t)
+	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
+		return VC_INT
+	return VC_NONE
+
+
+int value_class_is_int_like(int vc):
+	return (vc == VC_INT) || (vc == VC_CHAR)
+
+
+# "<what> '<type>'" for an unsupported value: the shared tail of the
+# print/f-string/len diagnostics.
+void value_type_error(char* what, int got):
+	diag_part(what)
+	diag_part(c" '")
+	if (got == 3):
+		diag_part(c"constant")
+	else if (got == 4):
 		diag_part(c"function")
 	else:
-		print_error_type(t)
+		print_error_type(got)
 	error(c"'")
 
 
-# Formatter for a scalar value: 0 int-like, 1 char*, 2 string,
-# 3 float32, 13 char. -1 asks the caller to try the container path.
+void print_unsupported(int t):
+	value_type_error(c"unsupported print argument type:", t)
+
+
+# Formatter for a scalar value: 0 int-like, 1 char* (and var, rendered
+# through __w_var_to_cstr), 2 string, 3 float32, 13 char (a genuinely
+# char-typed value prints as the character itself, while println('a')
+# and println(c + 1) keep printing numerically). -1 asks the caller to
+# take the list path.
 int print_helper_for_type(int got):
-	if (got == 3): /* constant: an int-like value */
+	int vc = value_class(got)
+	if (vc == VC_INT):
 		return 0
-	if (got == 4): /* function */
-		print_unsupported(got)
-	int t = type_unqualified(got)
-	if (type_is_string(t)):
+	if ((vc == VC_CSTR) || (vc == VC_VAR)):
+		return 1
+	if (vc == VC_STRING):
 		return 2
-	if (type_is_char_pointer(t)):
-		return 1
-	# var renders through __w_var_to_cstr, then prints as a char*
-	if (type_is_var(t)):
-		return 1
-	# A genuinely char-typed value prints as the character itself.
-	# Character literals are untyped constants (the got == 3 branch
-	# above) and char arithmetic yields int, so println('a') and
-	# println(c + 1) keep printing numerically.
-	if (type_is_char(t)):
+	if (vc == VC_CHAR):
 		return 13
-	if (type_float_kind(t) == 1):
+	if (vc == VC_F32):
 		return 3
-	if (type_float_kind(t) == 2):
+	if (vc == VC_F64):
 		error(c"print does not support float64 yet")
-	if (type_is_list(t)):
+	if (vc == VC_LIST):
 		return -1
-	if (type_get_pointer_level(t) > 0):
-		print_unsupported(got)
-	if (type_num_args(t) > 0):
-		print_unsupported(got)
-	if (type_is_map(t) | type_is_set(t)):
-		print_unsupported(got)
-	if (type_is_array(t) | type_is_slice(t)):
-		print_unsupported(got)
-	if (type_get_kind(t) == type_kind_enum):
-		return 0
-	if (t == type_unqualified(bool_type)):
-		return 0
-	int size = type_get_size(t)
-	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
-		return 0
 	print_unsupported(got)
 	return 0
 
@@ -274,55 +315,19 @@ int prelude_math_ready():
 	return 1
 
 
-void prelude_math_unsupported(char* fn_name, int got):
-	diag_part(c"prelude '")
-	diag_part(fn_name)
-	diag_part(c"' argument must be an int-like value: '")
-	if (got == 4):
-		diag_part(c"function")
-	else:
-		print_error_type(got)
-	error(c"'")
-
-
 # Constants, enums, bool, char and the fixed-width ints all pass;
 # floats, pointers, containers and aggregates are rejected (import
 # lib.math or write the comparison out for anything wider).
 void prelude_math_require_int(char* fn_name, int got):
-	if (got == 3):
+	if (value_class_is_int_like(value_class(got))):
 		return;
-	if (got == 4):
-		prelude_math_unsupported(fn_name, got)
-	int t = type_unqualified(got)
-	if (type_float_kind(t)):
-		prelude_math_unsupported(fn_name, got)
-	if (type_get_pointer_level(t) > 0):
-		prelude_math_unsupported(fn_name, got)
-	if (type_num_args(t) > 0):
-		prelude_math_unsupported(fn_name, got)
-	if (type_is_map(t) | type_is_set(t) | type_is_list(t) | type_is_var(t)):
-		prelude_math_unsupported(fn_name, got)
-	if (type_is_buffer(t)):
-		prelude_math_unsupported(fn_name, got)
-	if (type_get_kind(t) == type_kind_enum):
-		return;
-	if (t == type_unqualified(bool_type)):
-		return;
-	int size = type_get_size(t)
-	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
-		return;
-	prelude_math_unsupported(fn_name, got)
+	diag_part(c"prelude '")
+	diag_part(fn_name)
+	value_type_error(c"' argument must be an int-like value:", got)
 
 
 void prelude_len_unsupported(int got):
-	diag_part(c"unsupported len argument type: '")
-	if (got == 3):
-		diag_part(c"constant")
-	else if (got == 4):
-		diag_part(c"function")
-	else:
-		print_error_type(got)
-	error(c"'")
+	value_type_error(c"unsupported len argument type:", got)
 
 
 # len(x): compile-time polymorphic length. list/map/set and the
@@ -355,49 +360,18 @@ int prelude_len_expr():
 	return type_value(type_lookup(c"int"))
 
 
-void prelude_seq_unsupported(char* fn_name, int got):
+# any/all take one list[T] whose elements are int-like (enums, bool,
+# char and the fixed-width ints): elements read as words and test
+# truthy. Floats, pointers, aggregates, nested containers and the other
+# container shapes (map/set, buffers) are rejected — spell those loops
+# out or use the list methods.
+void prelude_seq_require_int_list(char* fn_name, int got):
+	if (value_class(got) == VC_LIST):
+		if (value_class_is_int_like(value_class(type_list_element_type(type_unqualified(got))))):
+			return;
 	diag_part(c"prelude '")
 	diag_part(fn_name)
-	diag_part(c"' argument must be a list of int-like elements: '")
-	if (got == 3):
-		diag_part(c"constant")
-	else if (got == 4):
-		diag_part(c"function")
-	else:
-		print_error_type(got)
-	error(c"'")
-
-
-# any/all take one list[T] whose elements are int-like (constants,
-# enums, bool, char and the fixed-width ints): elements read as words
-# and test truthy. Floats, pointers, aggregates, nested containers and
-# the other container shapes (map/set, buffers) are rejected — spell
-# those loops out or use the list methods.
-void prelude_seq_require_int_list(char* fn_name, int got):
-	if ((got == 3) || (got == 4)):
-		prelude_seq_unsupported(fn_name, got)
-	int t = type_unqualified(got)
-	if (type_is_list(t) == 0):
-		prelude_seq_unsupported(fn_name, got)
-	int e = type_unqualified(type_list_element_type(t))
-	if (type_float_kind(e)):
-		prelude_seq_unsupported(fn_name, got)
-	if (type_get_pointer_level(e) > 0):
-		prelude_seq_unsupported(fn_name, got)
-	if (type_num_args(e) > 0):
-		prelude_seq_unsupported(fn_name, got)
-	if (type_is_map(e) | type_is_set(e) | type_is_list(e) | type_is_var(e)):
-		prelude_seq_unsupported(fn_name, got)
-	if (type_is_buffer(e)):
-		prelude_seq_unsupported(fn_name, got)
-	if (type_get_kind(e) == type_kind_enum):
-		return;
-	if (e == type_unqualified(bool_type)):
-		return;
-	int size = type_get_size(e)
-	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
-		return;
-	prelude_seq_unsupported(fn_name, got)
+	value_type_error(c"' argument must be a list of int-like elements:", got)
 
 
 # any(l) / all(l) with no user symbol of that name in scope: true when
