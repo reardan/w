@@ -137,18 +137,6 @@ void ndarray_check_index(int got_type):
 	coerce_checked(int_type, got_type, c"ndarray index")
 
 
-# Push the parked receiver and index slots as call arguments, oldest
-# first (the accessors' parameter order).
-void nd_push_index_args(int recv_slot, int slot0, int slot1, int slot2, int slot3, int count):
-	push_slot_copy(recv_slot)
-	push_slot_copy(slot0)
-	push_slot_copy(slot1)
-	if (count >= 3):
-		push_slot_copy(slot2)
-	if (count >= 4):
-		push_slot_copy(slot3)
-
-
 # base[i, j(, k(, l))]: entered from the '[' handler in
 # grammar/postfix_expr.w with the receiver (the struct's address)
 # parked at recv_slot, the first index value promoted in eax and ','
@@ -197,53 +185,47 @@ int ndarray_index_suffix(int type, int recv_slot, int first_index_type):
 	return load_int(table + at_sym + 6)
 
 
+# Take the parked receiver and index slots (grammar/pending_element.w),
+# oldest first: the accessors' parameter order.
+int* nd_pending_take():
+	int* park = park_new(nd_index_base_stack, nd_index_count + 1)
+	park[2] = nd_index_recv_slot
+	park[3] = nd_index_slot0
+	park[4] = nd_index_slot1
+	if (nd_index_count >= 3):
+		park[5] = nd_index_slot2
+	if (nd_index_count >= 4):
+		park[6] = nd_index_slot3
+	nd_index_pending = 0
+	return park
+
+
 # Read position: lower the pending element to ndX_atN(recv, i...). The
 # call result (the element value) stays in eax.
 int nd_finish_pending_read():
 	int at_sym = ndarray_accessor_sym(c"_at")
 	int declared_return = load_int(table + at_sym + 6)
-	nd_index_pending = 0
 	char* at_name = ndarray_accessor_name(c"_at")
-	sym_get_value(at_name)
+	park_load(nd_pending_take(), at_name)
 	free(at_name)
-	int s = stack_pos
-	push_slot()
-	nd_push_index_args(nd_index_recv_slot, nd_index_slot0, nd_index_slot1, nd_index_slot2, nd_index_slot3, nd_index_count)
-	rt_call_end(s)
-	pop_to(nd_index_base_stack)
 	return type_value(declared_return)
 
 
 # m[i, j] = rhs: lower to ndX_setN(recv, i..., rhs). Like '=', the
 # expression yields the stored value.
 int nd_finish_pending_assignment():
-	int saved_recv = nd_index_recv_slot
-	int saved_slot0 = nd_index_slot0
-	int saved_slot1 = nd_index_slot1
-	int saved_slot2 = nd_index_slot2
-	int saved_slot3 = nd_index_slot3
-	int saved_count = nd_index_count
-	int saved_base = nd_index_base_stack
 	int set_sym = ndarray_accessor_sym(c"_set")
 	char* set_name = ndarray_accessor_name(c"_set")
-	nd_index_pending = 0
 	# The value parameter follows the receiver and the indices.
-	int value_type = sym_param_type(set_sym, saved_count + 1)
-	int got_type = expression()
-	got_type = promote(got_type)
+	int value_type = sym_param_type(set_sym, nd_index_count + 1)
+	int* park = nd_pending_take()
+	int got_type = promote(expression())
 	if (value_type >= 0):
 		coerce_checked(value_type, got_type, c"ndarray assignment")
 	int value_slot = push_slot()
-	sym_get_value(set_name)
+	int result = park_store(park, set_name, value_slot, value_type)
 	free(set_name)
-	int s = stack_pos
-	push_slot()
-	nd_push_index_args(saved_recv, saved_slot0, saved_slot1, saved_slot2, saved_slot3, saved_count)
-	push_slot_copy(value_slot)
-	rt_call_end(s)
-	load_slot(value_slot)
-	pop_to(saved_base)
-	return type_value(value_type)
+	return result
 
 
 # m[i, j] op= rhs: the receiver and indices already sit in the parked
@@ -251,52 +233,15 @@ int nd_finish_pending_assignment():
 # every operand is evaluated exactly once. 'op' is the marker
 # compound_assign_op() returned; the op token has been consumed.
 int nd_finish_pending_compound(int op):
-	int saved_recv = nd_index_recv_slot
-	int saved_slot0 = nd_index_slot0
-	int saved_slot1 = nd_index_slot1
-	int saved_slot2 = nd_index_slot2
-	int saved_slot3 = nd_index_slot3
-	int saved_count = nd_index_count
-	int saved_base = nd_index_base_stack
 	int at_sym = ndarray_accessor_sym(c"_at")
-	int set_sym = ndarray_accessor_sym(c"_set")
+	ndarray_accessor_sym(c"_set")  # the write accessor must exist too
 	int value_type = load_int(table + at_sym + 6)
 	char* at_name = ndarray_accessor_name(c"_at")
 	char* set_name = ndarray_accessor_name(c"_set")
-	nd_index_pending = 0
-
-	# Load the current element; the parked slots stay for the store.
-	sym_get_value(at_name)
+	int result = park_compound(nd_pending_take(), op, value_type, c"ndarray assignment", at_name, set_name)
 	free(at_name)
-	int s = stack_pos
-	push_slot()
-	nd_push_index_args(saved_recv, saved_slot0, saved_slot1, saved_slot2, saved_slot3, saved_count)
-	rt_call_end(s)
-
-	# Same shape the scalar path feeds compound_assign_apply: loaded
-	# left value on top of the stack, promoted right value in eax.
-	int left_type = type_value(value_type)
-	push_slot()
-	int right_type = promote(expression())
-	if (var_binary_operands(left_type, right_type)):
-		error(c"compound assignment does not support var operands")
-	int result_type = compound_assign_apply(op, left_type, right_type)
-	coerce_checked(value_type, result_type, c"ndarray assignment")
-
-	# Store back through the same receiver/index slots.
-	int value_slot = push_slot()
-	sym_get_value(set_name)
 	free(set_name)
-	s = stack_pos
-	push_slot()
-	nd_push_index_args(saved_recv, saved_slot0, saved_slot1, saved_slot2, saved_slot3, saved_count)
-	push_slot_copy(value_slot)
-	rt_call_end(s)
-
-	# Like '=', the expression yields the stored value.
-	load_slot(value_slot)
-	pop_to(saved_base)
-	return type_value(value_type)
+	return result
 
 
 int nd_finalize_pending_read_if_needed(int type):

@@ -37,6 +37,7 @@ tests/ until a SEEDS bump (docs/release.md).
 # compiler needs the declarations up front.
 int compound_assign_apply(int op, int left_type, int right_type);
 void assign_store(int type);
+int expression();
 
 
 # 1 while the next expression() call parses a full expression statement
@@ -64,18 +65,25 @@ void increment_expression_error():
 	error3(token, c"' is a statement and cannot be used inside an expression", c"")
 
 
-# Shared lowering for both statement forms. The operand has been parsed
-# (lvalue address in eax, 'type' its declared type) and the '++'/'--'
-# token consumed. Feeds compound_assign_apply an immediate 1 instead of
-# a parsed right-hand side — otherwise byte-for-byte the compound
-# assignment sequence in expression(); eax ends holding the stored
-# value, and the assignability checks and messages are the same ones
-# '+= 1' would produce.
-int increment_apply(int op, int type):
-	if (hash_index_pending):
-		error(c"'++' and '--' are not supported on map or set elements")
-	if (nd_index_pending):
-		error(c"'++' and '--' are not supported on ndarray elements")
+# The right-hand side of a compound assignment: the loaded left value
+# (left_type) is in eax. Pushes it, parses and promotes the right
+# operand and combines the two with compound_assign_apply; returns the
+# result type. Shared with the map/ndarray element forms
+# (grammar/pending_element.w).
+int compound_assign_rhs(int op, int left_type):
+	push_slot()
+	int right_type = promote(expression())
+	if (var_binary_operands(left_type, right_type)):
+		error(c"compound assignment does not support var operands")
+	return compound_assign_apply(op, left_type, right_type)
+
+
+# 'lhs op= rhs' on an ordinary lvalue: the lhs address is in eax, 'type'
+# its declared type, the operator token consumed. '++'/'--' pass
+# implicit_one to feed an immediate 1 instead of a parsed right-hand
+# side, so every '+= 1' behavior and diagnostic carries over. eax ends
+# holding the stored value, which the expression yields.
+int compound_assign_scalar(int op, int type, int implicit_one):
 	if (expression_lhs_readonly):
 		error(c"cannot assign to read-only buffer field")
 	if ((type_is_value(type)) | (type == 3) | (type == 4)):
@@ -89,18 +97,40 @@ int increment_apply(int op, int type):
 	expression_lhs_readonly = 0
 	push_slot()  # lhs address, kept for the final store
 	int left_type = promote(type)  # eax still holds the address: load
-	push_slot()
-	mov_eax_int(1)  # the implicit right-hand side
-	int right_type = 3  # constant, exactly like a parsed '1' literal
-	if (var_binary_operands(left_type, right_type)):
-		error(c"compound assignment does not support var operands")
-	int result_type = compound_assign_apply(op, left_type, right_type)
+	int result_type = 0
+	if (implicit_one):
+		push_slot()
+		mov_eax_int(1)  # constant, exactly like a parsed '1' literal (type 3)
+		if (var_binary_operands(left_type, 3)):
+			error(c"compound assignment does not support var operands")
+		result_type = compound_assign_apply(op, left_type, 3)
+	else:
+		# Recursion-depth guard (compiler/tokenizer.w): 'a += b += ...'
+		# chains recurse expression() directly, after the left operand's
+		# descent has already returned -- count them here like the plain
+		# '=' branch of expression() does.
+		expr_nesting_depth = expr_nesting_depth + 1
+		if (expr_nesting_depth > 1000):
+			error(c"expression nesting too deep")
+		result_type = compound_assign_rhs(op, left_type)
+		expr_nesting_depth = expr_nesting_depth - 1
 	coerce(type, result_type)
 	pop_ebx_slot()
 	if (types_compatible_with_expression(type, result_type) == 0):
 		warn_type_mismatch(c"assignment", type, result_type)
 	assign_store(type)
-	return type_value(type)  # like '+=', eax holds the stored value
+	return type_value(type)
+
+
+# Shared lowering for both statement forms. The operand has been parsed
+# (lvalue address in eax, 'type' its declared type) and the '++'/'--'
+# token consumed: the compound assignment sequence with an implicit 1.
+int increment_apply(int op, int type):
+	if (hash_index_pending):
+		error(c"'++' and '--' are not supported on map or set elements")
+	if (nd_index_pending):
+		error(c"'++' and '--' are not supported on ndarray elements")
+	return compound_assign_scalar(op, type, 1)
 
 
 # Statement dispatch hook (grammar/statement.w): '++x' / '--x'. The

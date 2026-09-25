@@ -171,65 +171,30 @@ int expression():
 		if (peek(c",")):
 			expression_is_assignment = 1
 			return multi_assign(type)
-	if (hash_index_pending):
+	# A pending map element (grammar/hash_builtin.w) or ndarray element
+	# (grammar/ndarray_index.w, grammar/pending_element.w): '=' lowers
+	# to its store, a compound operator to the read/write pair over the
+	# parked operands, anything else to the read.
+	if (hash_index_pending || nd_index_pending):
 		if (accept(c"=")):
 			expression_is_assignment = 1
-			return hash_finish_pending_assignment()
-		int hash_op = compound_assign_op()
-		if (hash_op):
-			get_token()
-			expression_is_assignment = 1
-			return hash_finish_pending_compound(hash_op)
-		type = hash_finish_pending_read()
-	# A pending ndarray element (grammar/ndarray_index.w) follows the
-	# same discipline: '=' lowers to ndX_setN, a compound operator to
-	# the atN-read/setN-write pair, anything else to the ndX_atN read.
-	if (nd_index_pending):
-		if (accept(c"=")):
-			expression_is_assignment = 1
+			if (hash_index_pending):
+				return hash_finish_pending_assignment()
 			return nd_finish_pending_assignment()
-		int nd_op = compound_assign_op()
-		if (nd_op):
+		int pending_op = compound_assign_op()
+		if (pending_op):
 			get_token()
 			expression_is_assignment = 1
-			return nd_finish_pending_compound(nd_op)
-		type = nd_finish_pending_read()
+			if (hash_index_pending):
+				return hash_finish_pending_compound(pending_op)
+			return nd_finish_pending_compound(pending_op)
+		type = hash_finalize_pending_read_if_needed(type)
+		type = nd_finalize_pending_read_if_needed(type)
 	int op = compound_assign_op()
 	if (op):
 		get_token()
-		if (expression_lhs_readonly):
-			error(c"cannot assign to read-only buffer field")
-		if ((type_is_value(type)) | (type == 3) | (type == 4)):
-			error(c"assignment target is not assignable")
-		if (type_is_const(type)):
-			error(c"assignment to const")
-		if (type_num_args(type_canonical(type)) > 0):
-			error(c"compound assignment is not supported on struct values")
-		if (type_is_buffer(type_canonical(type))):
-			error(c"compound assignment is not supported on string, array or slice values")
 		expression_is_assignment = 1
-		expression_lhs_readonly = 0
-		push_slot()  # lhs address, kept for the final store
-		int left_type = promote(type)  # eax still holds the address: load
-		push_slot()
-		# Recursion-depth guard (compiler/tokenizer.w): 'a += b += ...'
-		# chains recurse this function directly, after the left operand's
-		# descent has already returned -- count them here like the plain
-		# '=' branch below does.
-		expr_nesting_depth = expr_nesting_depth + 1
-		if (expr_nesting_depth > 1000):
-			error(c"expression nesting too deep")
-		int right_type = promote(expression())
-		expr_nesting_depth = expr_nesting_depth - 1
-		if (var_binary_operands(left_type, right_type)):
-			error(c"compound assignment does not support var operands")
-		int result_type = compound_assign_apply(op, left_type, right_type)
-		coerce(type, result_type)
-		pop_ebx_slot()
-		if (types_compatible_with_expression(type, result_type) == 0):
-			warn_type_mismatch(c"assignment", type, result_type)
-		assign_store(type)
-		return type_value(type)  # like '=', yields the stored value
+		return compound_assign_scalar(op, type, 0)
 	if (accept(c"=")):
 		if (expression_lhs_readonly):
 			error(c"cannot assign to read-only buffer field")

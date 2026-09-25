@@ -144,58 +144,38 @@ void hash_map_default_suffix(int type):
 	pop_to(base_stack)
 
 
+# Take the parked map and key slots (grammar/pending_element.w).
+int* hash_pending_take():
+	int* park = park_new(hash_index_base_stack, 2)
+	park[2] = hash_index_map_slot
+	park[3] = hash_index_key_slot
+	hash_index_pending = 0
+	return park
+
+
 int hash_finish_pending_read():
 	int value_type = type_map_value_type(hash_index_map_type)
 	# Struct values are stored by value in the table; the read yields the
 	# stored bytes' address, which is exactly how W passes structs around,
 	# so the result keeps the struct's own (address-based) type. Reads
 	# copy immediately; the address is only valid until the next insert.
-	int value_is_struct = type_num_args(value_type) > 0
-	if (value_is_struct):
-		sym_get_value(c"__w_map_get_addr")
-	else:
-		sym_get_value(c"__w_map_get")
-	int s = stack_pos
-	push_slot()
-	push_slot_copy(hash_index_map_slot)
-	push_slot_copy(hash_index_key_slot)
-	rt_call_end(s)
-	pop_to(hash_index_base_stack)
-	hash_index_pending = 0
-	if (value_is_struct):
+	if (type_num_args(value_type) > 0):
+		park_load(hash_pending_take(), c"__w_map_get_addr")
 		return type_canonical(value_type)
+	park_load(hash_pending_take(), c"__w_map_get")
 	return type_value(value_type)
 
 
 int hash_finish_pending_assignment():
-	int saved_base_stack = hash_index_base_stack
-	int saved_map_slot = hash_index_map_slot
-	int saved_key_slot = hash_index_key_slot
-	int saved_map_type = hash_index_map_type
-	hash_index_pending = 0
 	int value_type = type_map_value_type(hash_index_map_type)
+	int* park = hash_pending_take()
 	int got_type = parse_coerced(value_type, c"map assignment")
 	int value_slot = push_slot()
-	hash_index_base_stack = saved_base_stack
-	hash_index_map_slot = saved_map_slot
-	hash_index_key_slot = saved_key_slot
-	hash_index_map_type = saved_map_type
-
 	# Struct sources arrive as addresses; copy their bytes into the table
+	char* fn = c"__w_map_set"
 	if ((type_num_args(value_type) > 0) & (type_num_args(type_real(got_type)) > 0)):
-		sym_get_value(c"__w_map_set_bytes")
-	else:
-		sym_get_value(c"__w_map_set")
-	int s = stack_pos
-	push_slot()
-	push_slot_copy(hash_index_map_slot)
-	push_slot_copy(hash_index_key_slot)
-	push_slot_copy(value_slot)
-	rt_call_end(s)
-
-	load_slot(value_slot)
-	pop_to(hash_index_base_stack)
-	return type_value(value_type)
+		fn = c"__w_map_set_bytes"
+	return park_store(park, fn, value_slot, value_type)
 
 
 # m[key] op= rhs: the map and key already sit in the pending stack slots,
@@ -205,44 +185,13 @@ int hash_finish_pending_assignment():
 # vivify it (the policy lives inside __w_map_get, issue #327). 'op' is
 # the marker compound_assign_op() returned; the op token is still pending.
 int hash_finish_pending_compound(int op):
-	int saved_base_stack = hash_index_base_stack
-	int saved_map_slot = hash_index_map_slot
-	int saved_key_slot = hash_index_key_slot
 	int value_type = type_map_value_type(hash_index_map_type)
-	hash_index_pending = 0
+	int* park = hash_pending_take()
 	if (type_num_args(value_type) > 0):
 		error(c"compound assignment is not supported on struct values")
 	if (type_is_buffer(type_canonical(value_type))):
 		error(c"compound assignment is not supported on string, array or slice values")
-
-	# Load the current value; keep the parked slots for the store.
-	int s = rt_call_begin(c"__w_map_get")
-	push_slot_copy(saved_map_slot)
-	push_slot_copy(saved_key_slot)
-	rt_call_end(s)
-
-	# Same shape the scalar path feeds compound_assign_apply: loaded left
-	# value on top of the stack, promoted right value in eax.
-	int left_type = type_value(value_type)
-	push_slot()
-	int right_type = promote(expression())
-	if (var_binary_operands(left_type, right_type)):
-		error(c"compound assignment does not support var operands")
-	int result_type = compound_assign_apply(op, left_type, right_type)
-	coerce_checked(value_type, result_type, c"map assignment")
-
-	# Store back through the same map/key slots.
-	int value_slot = push_slot()
-	s = rt_call_begin(c"__w_map_set")
-	push_slot_copy(saved_map_slot)
-	push_slot_copy(saved_key_slot)
-	push_slot_copy(value_slot)
-	rt_call_end(s)
-
-	# Like '=', the expression yields the stored value.
-	load_slot(value_slot)
-	pop_to(saved_base_stack)
-	return type_value(value_type)
+	return park_compound(park, op, value_type, c"map assignment", c"__w_map_get", c"__w_map_set")
 
 
 int hash_finalize_pending_read_if_needed(int type):
