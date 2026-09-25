@@ -31,8 +31,7 @@ struct vclock:
 
 
 vclock* vclock_new():
-	vclock* v = new vclock()
-	v.counters = new map[int, int]
+	vclock* v = new vclock(new map[int, int])
 	return v
 
 
@@ -179,8 +178,7 @@ struct lamport_clock:
 
 
 lamport_clock* lamport_new():
-	lamport_clock* c = new lamport_clock()
-	c.t = 0
+	lamport_clock* c = new lamport_clock(0)
 	return c
 
 
@@ -231,9 +229,7 @@ struct hlc:
 
 
 hlc* hlc_new():
-	hlc* h = new hlc()
-	h.l = u64_new()
-	h.c = 0
+	hlc* h = new hlc(u64_new(), 0)
 	return h
 
 

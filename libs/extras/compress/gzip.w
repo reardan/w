@@ -122,9 +122,7 @@ gzip_result* gzip_compress(char* data, int length, int level):
 	char* out_data = out.data
 	int out_length = out.length
 	free(out)
-	gzip_result* r = new gzip_result
-	r.data = out_data
-	r.length = out_length
+	gzip_result* r = new gzip_result(out_data, out_length)
 	return r
 
 
@@ -200,8 +198,6 @@ wresult[gzip_result*]* gzip_decompress(char* data, int length, int max_output):
 		inflate_result_free(body)
 		return result_new_error[gzip_result*](GZIP_ERR_BAD_SIZE())
 
-	gzip_result* r = new gzip_result
-	r.data = body.data
-	r.length = body.length
+	gzip_result* r = new gzip_result(body.data, body.length)
 	free(body)
 	return result_new_ok[gzip_result*](r)

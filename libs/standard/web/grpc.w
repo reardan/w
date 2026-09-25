@@ -1095,19 +1095,12 @@ struct grpc_server:
 
 
 grpc_server* grpc_server_new():
-	grpc_server* s = new grpc_server()
-	s.methods = new list[grpc_method*]
-	s.max_message = grpc_default_max_message()
-	s.send_encoding = 0
+	grpc_server* s = new grpc_server(new list[grpc_method*], grpc_default_max_message(), 0)
 	return s
 
 
 void grpc_server_add(grpc_server* s, char* path, grpc_unary_handler_fn* handler, void* user_data, int streaming):
-	grpc_method* m = new grpc_method()
-	m.path = strclone(path)
-	m.handler = handler
-	m.user_data = user_data
-	m.streaming = streaming
+	grpc_method* m = new grpc_method(strclone(path), handler, user_data, streaming)
 	s.methods.push(m)
 
 

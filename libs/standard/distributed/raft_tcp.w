@@ -203,13 +203,7 @@ void raft_tcp_add_peer(raft_tcp* t, int peer_id, int port):
 	if (cast(int, p) != 0):
 		p.port = port
 		return
-	p = new rt_peer()
-	p.id = peer_id
-	p.port = port
-	p.fd = 0 - 1
-	p.out = string_new_sized(256)
-	p.frame_lens = new list[int]
-	p.head_sent = 0
+	p = new rt_peer(peer_id, port, 0 - 1, string_new_sized(256), new list[int], 0)
 	t.peers.push(p)
 
 
@@ -332,9 +326,7 @@ void rt_pump_accept(raft_tcp* t):
 		if (socket_set_nonblocking(fd) < 0):
 			close(fd)
 			return
-		rt_conn* c = new rt_conn()
-		c.fd = fd
-		c.acc = string_new_sized(256)
+		rt_conn* c = new rt_conn(fd, string_new_sized(256))
 		t.conns.push(c)
 
 

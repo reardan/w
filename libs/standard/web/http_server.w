@@ -426,19 +426,13 @@ int server_request_wants_keep_alive(ServerRequest* req):
 /* ServerResponse */
 
 ServerResponse* server_response_new(int status):
-	ServerResponse* resp = new ServerResponse()
-	resp.status = status
-	resp.headers = new list[http_header*]
-	resp.body = 0
-	resp.body_len = 0
+	ServerResponse* resp = new ServerResponse(status, new list[http_header*], 0, 0)
 	return resp
 
 
 # Appends a response header; name and value are copied.
 void server_response_add_header(ServerResponse* resp, char* name, char* value):
-	http_header* h = new http_header()
-	h.name = strclone(name)
-	h.value = strclone(value)
+	http_header* h = new http_header(strclone(name), strclone(value))
 	resp.headers.push(h)
 
 

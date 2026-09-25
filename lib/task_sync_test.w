@@ -15,10 +15,7 @@ struct shared_counter:
 
 
 shared_counter* shared_counter_new():
-	shared_counter* c = new shared_counter()
-	c.value = 0
-	c.inside = 0
-	c.max_inside = 0
+	shared_counter* c = new shared_counter(0, 0, 0)
 	return c
 
 

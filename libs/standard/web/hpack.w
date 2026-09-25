@@ -284,10 +284,7 @@ char* hpack_static_value(int index):
 /* Dynamic table */
 
 hpack_table* hpack_table_new(int max_size):
-	hpack_table* t = new hpack_table()
-	t.entries = new list[hpack_header*]
-	t.size = 0
-	t.max_size = max_size
+	hpack_table* t = new hpack_table(new list[hpack_header*], 0, max_size)
 	return t
 
 
@@ -654,12 +651,7 @@ int hpack_emit(hpack_decoder* d, list[hpack_header*] out, int* list_size, char* 
 		free(name)
 		free(value)
 		return hpack_error_too_large()
-	hpack_header* h = new hpack_header()
-	h.name = name
-	h.name_len = name_len
-	h.value = value
-	h.value_len = value_len
-	h.sensitive = sensitive
+	hpack_header* h = new hpack_header(name, name_len, value, value_len, sensitive)
 	out.push(h)
 	return 0
 
@@ -739,13 +731,7 @@ int hpack_decode(hpack_decoder* d, char* block, int len, list[hpack_header*] out
 /* Encoder */
 
 hpack_encoder* hpack_encoder_new(int max_table_size):
-	hpack_encoder* e = new hpack_encoder()
-	e.table = hpack_table_new(max_table_size)
-	e.cap = max_table_size
-	e.pending_min = (-1)
-	e.pending_final = (-1)
-	e.huffman = 1
-	e.indexing = 1
+	hpack_encoder* e = new hpack_encoder(hpack_table_new(max_table_size), max_table_size, (-1), (-1), 1, 1)
 	return e
 
 

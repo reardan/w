@@ -40,12 +40,7 @@ struct memtable:
 
 
 memtable* memtable_new():
-	memtable* m = new memtable()
-	m.keys = new list[char*]
-	m.values = new list[char*]
-	m.value_lens = new list[int]
-	m.tombstones = new list[int]
-	m.bytes = 0
+	memtable* m = new memtable(new list[char*], new list[char*], new list[int], new list[int], 0)
 	return m
 
 

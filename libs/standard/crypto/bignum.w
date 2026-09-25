@@ -46,9 +46,7 @@ struct bignum:
 
 
 bignum* bignum_new():
-	bignum* a = new bignum()
-	a.n = 0
-	a.limbs = cast(int*, malloc(BIGNUM_CAP() * __word_size__))
+	bignum* a = new bignum(0, cast(int*, malloc(BIGNUM_CAP() * __word_size__)))
 	mem_fill(a.limbs, 0, BIGNUM_CAP())
 	return a
 

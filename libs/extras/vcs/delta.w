@@ -203,20 +203,12 @@ void delta_ops_free(delta_ops* ops):
 
 void delta_ops_push_insert(delta_ops* ops, char* bytes, int length):
 	char* literal = mem_dup(bytes, length)
-	delta_op* op = new delta_op
-	op.kind = DELTA_OP_INSERT()
-	op.offset = 0
-	op.length = length
-	op.literal = literal
+	delta_op* op = new delta_op(DELTA_OP_INSERT(), 0, length, literal)
 	ops.items.push(op)
 
 
 void delta_ops_push_copy(delta_ops* ops, int offset, int length):
-	delta_op* op = new delta_op
-	op.kind = DELTA_OP_COPY()
-	op.offset = offset
-	op.length = length
-	op.literal = 0
+	delta_op* op = new delta_op(DELTA_OP_COPY(), offset, length, 0)
 	ops.items.push(op)
 
 
@@ -277,8 +269,7 @@ void delta_free_index(map[int, list[int]] table):
 # succeeds and always round-trips, even when base_length or
 # target_length is 0 -- an unindexable base just yields one big INSERT.
 delta_ops* delta_diff(char* base, int base_length, char* target, int target_length):
-	delta_ops* result = new delta_ops
-	result.items = new list[delta_op*]
+	delta_ops* result = new delta_ops(new list[delta_op*])
 
 	int block = DELTA_BLOCK_SIZE()
 	map[int, list[int]] table = delta_build_index(base, base_length, block)
@@ -384,8 +375,7 @@ int delta_valid_nonneg_integer(char* data, int start, int end):
 # pure decimal digits, a missing separator/newline before EOF, or an
 # INSERT claiming more literal bytes than remain in the buffer.
 wresult[delta_ops*]* delta_decode_ops(char* data, int length):
-	delta_ops* ops = new delta_ops
-	ops.items = new list[delta_op*]
+	delta_ops* ops = new delta_ops(new list[delta_op*])
 	int i = 0
 	while (i < length):
 		int tag = data[i] & 255
@@ -467,9 +457,7 @@ wresult[delta_apply_result*]* delta_apply_ops(char* base, int base_length, delta
 		else:
 			string_free(out)
 			return result_new_error[delta_apply_result*](DELTA_ERR_MALFORMED())
-	delta_apply_result* r = new delta_apply_result
-	r.data = out.data
-	r.length = out.length
+	delta_apply_result* r = new delta_apply_result(out.data, out.length)
 	free(out)
 	return result_new_ok[delta_apply_result*](r)
 
@@ -697,10 +685,7 @@ wresult[wcas_object*]* delta_resolve(wcas* s, char* id, int hops_remaining):
 	if (mismatch):
 		delta_apply_result_free(ar)
 	else:
-		resolved = new wcas_object
-		resolved.object_type = strclone(chain.logical_type)
-		resolved.data = ar.data
-		resolved.length = ar.length
+		resolved = new wcas_object(strclone(chain.logical_type), ar.data, ar.length)
 		free(ar)
 	delta_chain_free(chain)
 	if (mismatch):

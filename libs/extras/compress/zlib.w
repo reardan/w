@@ -101,9 +101,7 @@ zlib_result* zlib_compress(char* data, int length, int level):
 	char* out_data = out.data
 	int out_length = out.length
 	free(out)
-	zlib_result* r = new zlib_result
-	r.data = out_data
-	r.length = out_length
+	zlib_result* r = new zlib_result(out_data, out_length)
 	return r
 
 
@@ -142,8 +140,6 @@ wresult[zlib_result*]* zlib_decompress(char* data, int length, int max_output):
 		inflate_result_free(body)
 		return result_new_error[zlib_result*](ZLIB_ERR_BAD_CHECKSUM())
 
-	zlib_result* r = new zlib_result
-	r.data = body.data
-	r.length = body.length
+	zlib_result* r = new zlib_result(body.data, body.length)
 	free(body)
 	return result_new_ok[zlib_result*](r)

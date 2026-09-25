@@ -279,11 +279,7 @@ int raft_entry_kind_config():
 # instant this returns. command bytes are opaque: no NUL assumptions.
 raft_entry* raft_entry_new_kind(u64* term, char* command, int command_len, int kind):
 	assert1(command_len >= 0)
-	raft_entry* e = new raft_entry()
-	e.term = u64_clone(term)
-	e.command = mem_dup(command, command_len)
-	e.command_len = command_len
-	e.kind = kind
+	raft_entry* e = new raft_entry(u64_clone(term), mem_dup(command, command_len), command_len, kind)
 	return e
 
 

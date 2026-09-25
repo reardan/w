@@ -261,13 +261,7 @@ wthread* thread_spawn(thread_fn* func, void* arg):
 	# Before the first clone, while this is the only thread: from here
 	# on malloc/free/realloc are per-thread (lib/thread_heap.w).
 	thread_heap_install()
-	wthread* t = new wthread()
-	t.tid = 0
-	t.func = func
-	t.arg = arg
-	t.done = 0
-	t.stack_base = 0
-	t.exited = 1
+	wthread* t = new wthread(0, func, arg, 0, 0, 1)
 	thread_spawn_lock()
 	thread_spawn_handoff = t
 	thread_spawn_ack = 0

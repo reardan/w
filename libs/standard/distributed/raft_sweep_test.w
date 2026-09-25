@@ -155,10 +155,7 @@ sweep_cluster* swc_new(int seed, char* scenario):
 	free(si)
 	int id = 1
 	while (id <= c.n):
-		sweep_track* t = new sweep_track()
-		t.prev_commit = 0
-		t.reset = 0
-		t.applied = new list[char*]
+		sweep_track* t = new sweep_track(0, 0, new list[char*])
 		c.track.push(t)
 		id = id + 1
 	return c

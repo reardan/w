@@ -158,11 +158,7 @@ wal* wal_open(char* path):
 		if (ok == 0):
 			close(fd)
 			return 0
-	wal* w = new wal()
-	w.fd = fd
-	w.path = path
-	w.append_off = 8
-	w.record_count = 0
+	wal* w = new wal(fd, path, 8, 0)
 	int* len_out = cast(int*, malloc(__word_size__))
 	int scanning = 1
 	while (scanning):
@@ -250,10 +246,7 @@ wal_reader* wal_reader_open(char* path):
 	int fd = open(path, 0, 0)
 	if (fd < 0):
 		return 0
-	wal_reader* rd = new wal_reader()
-	rd.fd = fd
-	rd.off = 8
-	rd.done = 0
+	wal_reader* rd = new wal_reader(fd, 8, 0)
 	char* hdr = malloc(8)
 	int got = read_exact(fd, hdr, 8)
 	if (got != 8 || (hdr[0] & 255) != 87 || (hdr[1] & 255) != 76 || (hdr[2] & 255) != 79 || (hdr[3] & 255) != 71):

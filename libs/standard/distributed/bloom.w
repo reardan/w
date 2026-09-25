@@ -55,11 +55,7 @@ bloom_filter* bloom_new(int m, int k):
 	assert1(m <= (1 << 24))
 	assert1(k >= 1)
 	assert1(k <= 16)
-	bloom_filter* b = new bloom_filter()
-	b.m = m
-	b.k = k
-	b.bits = bitset_new(m)
-	b.items = 0
+	bloom_filter* b = new bloom_filter(m, k, bitset_new(m), 0)
 	return b
 
 

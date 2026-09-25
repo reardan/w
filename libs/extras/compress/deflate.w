@@ -627,10 +627,7 @@ struct dfl_bits:
 
 
 dfl_bits* dfl_bits_new():
-	dfl_bits* w = new dfl_bits
-	w.out = string_new()
-	w.cur_byte = 0
-	w.cur_nbits = 0
+	dfl_bits* w = new dfl_bits(string_new(), 0, 0)
 	return w
 
 
@@ -872,11 +869,7 @@ dfl_cltoks* dfl_build_cl_tokens(int* lengths, int total):
 					count = count + 1
 					remaining = remaining - chunk
 		i = i + runlen
-	dfl_cltoks* t = new dfl_cltoks
-	t.sym = sym
-	t.extra_val = extra_val
-	t.extra_bits = extra_bits
-	t.count = count
+	dfl_cltoks* t = new dfl_cltoks(sym, extra_val, extra_bits, count)
 	return t
 
 
@@ -1077,9 +1070,7 @@ deflate_result* deflate(char* data, int length, int level):
 		char* out_data = out.data
 		int out_length = out.length
 		free(out)
-		deflate_result* r = new deflate_result
-		r.data = out_data
-		r.length = out_length
+		deflate_result* r = new deflate_result(out_data, out_length)
 		return r
 
 	int max_chain = dfl_max_chain_fast()
@@ -1121,9 +1112,7 @@ deflate_result* deflate(char* data, int length, int level):
 	free(t.len)
 	free(t.dist)
 	free(t)
-	deflate_result* r = new deflate_result
-	r.data = out_data
-	r.length = out_length
+	deflate_result* r = new deflate_result(out_data, out_length)
 	return r
 
 

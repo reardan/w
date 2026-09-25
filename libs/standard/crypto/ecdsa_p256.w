@@ -149,10 +149,7 @@ struct ec_point:
 
 
 ec_point* ec_point_new():
-	ec_point* p = new ec_point()
-	p.X = bignum_new()
-	p.Y = bignum_new()
-	p.Z = bignum_new()
+	ec_point* p = new ec_point(bignum_new(), bignum_new(), bignum_new())
 	return p
 
 
@@ -376,10 +373,7 @@ struct rfc6979:
 
 # d_oct and h_oct are int2octets(privkey) and bits2octets(hash), each 32 bytes.
 rfc6979* rfc6979_new(char* d_oct, char* h_oct):
-	rfc6979* g = new rfc6979()
-	g.k = malloc(32)
-	g.v = malloc(32)
-	g.started = 0
+	rfc6979* g = new rfc6979(malloc(32), malloc(32), 0)
 	int i = 0
 	while (i < 32):
 		g.v[i] = 1

@@ -122,12 +122,7 @@ void fx_child(int listener, int pipe_fd, char* script, int implicit_tls):
 	int conn = socket_accept_connection(listener)
 	close(listener)
 	string_builder* tr = string_new()
-	smtp_fx_io* io = new smtp_fx_io()
-	io.fd = conn
-	io.tls = 0
-	io.buf = malloc(4096)
-	io.pos = 0
-	io.len = 0
+	smtp_fx_io* io = new smtp_fx_io(conn, 0, malloc(4096), 0, 0)
 	int alive = 1
 	if (implicit_tls != 0):
 		io.tls = fx_tls_accept(conn)

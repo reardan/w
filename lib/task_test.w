@@ -69,8 +69,7 @@ generator int yielding_pusher(order_log* log, int id, int rounds):
 
 void test_yield_now_interleaves_tasks():
 	task_scheduler* s = task_scheduler_new()
-	order_log* log = new order_log()
-	log.entries = new list[int]
+	order_log* log = new order_log(new list[int])
 	task_spawn(s, yielding_pusher(log, 1, 3))
 	task_spawn(s, yielding_pusher(log, 2, 3))
 	assert_equal(0, task_run(s))
@@ -94,8 +93,7 @@ generator int sleep_then_push(order_log* log, int id, int ms):
 
 void test_sleeps_wake_in_deadline_order():
 	task_scheduler* s = task_scheduler_new()
-	order_log* log = new order_log()
-	log.entries = new list[int]
+	order_log* log = new order_log(new list[int])
 	task_spawn(s, sleep_then_push(log, 1, 40))
 	task_spawn(s, sleep_then_push(log, 2, 5))
 	assert_equal(0, task_run(s))

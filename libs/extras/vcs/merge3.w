@@ -105,17 +105,11 @@ list[merge3_block*] merge3_matching_blocks(list[char*] base_lines, int base_no_n
 			while ((i < ops.length) && (ops[i].kind == DIFF_EQUAL())):
 				len = len + 1
 				i = i + 1
-			merge3_block* b = new merge3_block()
-			b.base_start = base_start
-			b.side_start = side_start
-			b.len = len
+			merge3_block* b = new merge3_block(base_start, side_start, len)
 			blocks.push(b)
 		else:
 			i = i + 1
-	merge3_block* sentinel = new merge3_block()
-	sentinel.base_start = base_lines.length
-	sentinel.side_start = side_lines.length
-	sentinel.len = 0
+	merge3_block* sentinel = new merge3_block(base_lines.length, side_lines.length, 0)
 	blocks.push(sentinel)
 	for diff_op* op in ops:
 		free(op)
@@ -186,13 +180,7 @@ list[merge3_sync*] merge3_find_sync_regions(list[merge3_block*] a_blocks, list[m
 			ia = ia + 1
 		else:
 			ib = ib + 1
-	merge3_sync* tail = new merge3_sync()
-	tail.base_start = base_len
-	tail.base_end = base_len
-	tail.a_start = a_len
-	tail.a_end = a_len
-	tail.b_start = b_len
-	tail.b_end = b_len
+	merge3_sync* tail = new merge3_sync(base_len, base_len, a_len, a_len, b_len, b_len)
 	result.push(tail)
 	return result
 
@@ -259,10 +247,7 @@ void merge3_result_free(merge3_result* r):
 # emitted most recently determines the merged file's own trailing-
 # newline state.
 void merge3_emit_line(merge3_result* out, char* text, int no_newline, int owned):
-	merge3_line* l = new merge3_line()
-	l.text = text
-	l.owned = owned
-	l.no_newline = no_newline
+	merge3_line* l = new merge3_line(text, owned, no_newline)
 	out.lines.push(l)
 	out.no_newline = no_newline
 
@@ -360,10 +345,7 @@ merge3_result* merge3_merge(list[char*] base_lines, int base_no_nl, list[char*] 
 	list[merge3_block*] b_blocks = merge3_matching_blocks(base_lines, base_no_nl, theirs_lines, theirs_no_nl)
 	list[merge3_sync*] syncs = merge3_find_sync_regions(a_blocks, b_blocks, base_lines.length, ours_lines.length, theirs_lines.length)
 
-	merge3_result* out = new merge3_result()
-	out.lines = new list[merge3_line*]
-	out.no_newline = 0
-	out.conflicts = 0
+	merge3_result* out = new merge3_result(new list[merge3_line*], 0, 0)
 
 	int prev_base_end = 0
 	int prev_a_end = 0
@@ -438,8 +420,6 @@ merge3_text_result* merge3_merge_text(char* base_text, char* ours_text, char* th
 	diff_input* theirs_input = diff_read_text(theirs_text)
 	merge3_result* r = merge3_merge(base_input.lines, base_input.no_newline, ours_input.lines, ours_input.no_newline, theirs_input.lines, theirs_input.no_newline, a_label, b_label)
 
-	merge3_text_result* out = new merge3_text_result()
-	out.text = merge3_join_lines(r.lines, r.no_newline)
-	out.conflicts = r.conflicts
+	merge3_text_result* out = new merge3_text_result(merge3_join_lines(r.lines, r.no_newline), r.conflicts)
 	merge3_result_free(r)
 	return out

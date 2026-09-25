@@ -360,13 +360,7 @@ wresult[wcas*]* cas_open(char* root):
 	if ((err < 0) && (err != -17)):
 		free(objects)
 		return result_new_error[wcas*](err)
-	wcas* s = new wcas
-	s.root = strclone(root)
-	s.objects = objects
-	s.fallback_state = 0
-	s.fallback_load = 0
-	s.fallback_has = 0
-	s.fallback_close = 0
+	wcas* s = new wcas(strclone(root), objects, 0, 0, 0, 0)
 	return result_new_ok[wcas*](s)
 
 

@@ -152,9 +152,7 @@ struct windex:
 
 
 windex* index_new():
-	windex* idx = new windex
-	idx.write_time = 0
-	idx.entries = new list[index_entry*]
+	windex* idx = new windex(0, new list[index_entry*])
 	return idx
 
 
@@ -599,14 +597,10 @@ wresult[index_refresh_result*]* index_refresh_at(wcas* s, char* dir, list[char*]
 	char* tree_id = result_value[char*](root)
 	result_free[char*](root)
 
-	windex* new_index = new windex
-	new_index.write_time = now
-	new_index.entries = out_entries
+	windex* new_index = new windex(now, out_entries)
 	new_index.entries.sort_by(index_entry_compare)
 
-	index_refresh_result* rr = new index_refresh_result
-	rr.tree_id = tree_id
-	rr.index = new_index
+	index_refresh_result* rr = new index_refresh_result(tree_id, new_index)
 	return result_new_ok[index_refresh_result*](rr)
 
 

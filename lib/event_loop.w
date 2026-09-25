@@ -208,13 +208,7 @@ event_fd_slot* event_loop_slot(event_loop* loop, int fd):
 		loop.slot_capacity = capacity
 	event_fd_slot* slot = loop.slots[fd]
 	if (cast(int, slot) == 0):
-		slot = new event_fd_slot()
-		slot.fd = fd
-		slot.registered = 0
-		slot.dirty = 0
-		slot.synthetic = 0
-		slot.live = 0
-		slot.watches = new list[event_watch*]
+		slot = new event_fd_slot(fd, 0, 0, 0, 0, new list[event_watch*])
 		loop.slots[fd] = slot
 	return slot
 
@@ -341,13 +335,7 @@ event_watch* event_loop_find_watch(event_loop* loop, int fd):
 # (a reader and a writer task on the same socket); remove them by
 # handle with event_loop_remove_watch.
 event_watch* event_loop_add_watch(event_loop* loop, int fd, int events, event_fd_cb* callback, void* context):
-	event_watch* watch = new event_watch()
-	watch.fd = fd
-	watch.events = events
-	watch.callback = callback
-	watch.context = context
-	watch.active = 1
-	watch.pass = loop.pass
+	event_watch* watch = new event_watch(1, fd, events, callback, context, loop.pass)
 	loop.watch_count = loop.watch_count + 1
 	if (loop.epfd >= 0):
 		event_fd_slot* slot = event_loop_slot(loop, fd)

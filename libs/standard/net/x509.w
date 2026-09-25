@@ -1110,9 +1110,7 @@ list[pem_block*] pem_decode_blocks(char* text, int len, char* label):
 					int dlen = 0
 					char* decoded = base64_decode(b64, b64len, &dlen)
 					if (decoded != 0):
-						pem_block* blk = new pem_block()
-						blk.data = decoded
-						blk.len = dlen
+						pem_block* blk = new pem_block(decoded, dlen)
 						blocks.push(blk)
 				in_block = 0
 			else:
@@ -1170,8 +1168,7 @@ struct x509_trust_store:
 
 
 x509_trust_store* x509_store_new():
-	x509_trust_store* s = new x509_trust_store()
-	s.certs = new list[x509_cert*]
+	x509_trust_store* s = new x509_trust_store(new list[x509_cert*])
 	return s
 
 

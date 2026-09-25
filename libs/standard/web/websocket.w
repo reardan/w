@@ -879,9 +879,7 @@ int ws_codec_probe_round_trip(ws_codec* k, char* data, int len, char* window, in
 int ws_use_deflate(ws_deflate_fn* deflater, ws_inflate_fn* inflater):
 	if ((deflater == 0) || (inflater == 0)):
 		return 0
-	ws_codec* k = new ws_codec
-	k.deflate = deflater
-	k.inflate = inflater
+	ws_codec* k = new ws_codec(deflater, inflater)
 	int ok = ws_codec_probe_inflate(k, c"\xf2\x48\xcd\xc9\xc9\x07\x00\x00\x00\xff\xff", 11, 0, 0, c"Hello", 5)
 	if (ok != 0):
 		ok = ws_codec_probe_inflate(k, c"\xf2\x00\x11\x00\x00\x00\x00\xff\xff", 9, c"Hello", 5, c"Hello", 5)
@@ -913,12 +911,7 @@ int ws_use_deflate(ws_deflate_fn* deflater, ws_inflate_fn* inflater):
 # windows with context takeover, fast compression. The caller owns it
 # (free).
 ws_deflate_config* ws_deflate_config_new():
-	ws_deflate_config* cfg = new ws_deflate_config()
-	cfg.server_no_context_takeover = 0
-	cfg.client_no_context_takeover = 0
-	cfg.server_max_window_bits = 0
-	cfg.client_max_window_bits = 0
-	cfg.level = 1
+	ws_deflate_config* cfg = new ws_deflate_config(0, 0, 0, 0, 1)
 	return cfg
 
 
@@ -1485,10 +1478,7 @@ int ws_handle_close(ws_conn* c, ws_frame* f):
 
 
 ws_message* ws_message_new(int opcode, char* data, int len):
-	ws_message* m = new ws_message()
-	m.opcode = opcode
-	m.data = data
-	m.len = len
+	ws_message* m = new ws_message(opcode, data, len)
 	return m
 
 

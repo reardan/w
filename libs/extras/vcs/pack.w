@@ -400,13 +400,7 @@ wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 				valid = cas_valid_id(base_id)
 		valid = valid && pack_expect_char(data, length, &pos, 10)
 		if (valid):
-			wpack_entry* e = new wpack_entry
-			e.kind = kind
-			e.offset = offset
-			e.clen = clen
-			e.ulen = ulen
-			e.rlen = rlen
-			e.base_id = base_id
+			wpack_entry* e = new wpack_entry(kind, offset, clen, ulen, rlen, base_id)
 			entries[id] = e
 		else if (base_id != 0):
 			free(base_id)
@@ -430,12 +424,7 @@ wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 		pack_entries_free(entries)
 		return result_new_error[wpack_file*](PACK_ERR_MALFORMED())
 
-	wpack_file* p = new wpack_file
-	p.path = strclone(path)
-	p.data = data
-	p.length = length
-	p.body_start = pos
-	p.entries = entries
+	wpack_file* p = new wpack_file(strclone(path), data, length, pos, entries)
 	return result_new_ok[wpack_file*](p)
 
 
@@ -583,10 +572,7 @@ void pack_free_names(list[char*] names):
 
 
 wpack_set* pack_set_new(char* root):
-	wpack_set* ps = new wpack_set
-	ps.dir = pack_dir_path(root)
-	ps.scanned = 0
-	ps.packs = new list[wpack_file*]
+	wpack_set* ps = new wpack_set(pack_dir_path(root), 0, new list[wpack_file*])
 	return ps
 
 
@@ -896,10 +882,7 @@ wresult[pack_stats*]* pack_store_loose(wcas* s, int prune):
 	list[char*] ids = result_value[list[char*]](ids_r)
 	result_free[list[char*]](ids_r)
 
-	pack_stats* st = new pack_stats
-	st.objects = 0
-	st.packs = 0
-	st.pack_path = 0
+	pack_stats* st = new pack_stats(0, 0, 0)
 	if (ids.length == 0):
 		pack_free_names(ids)
 		return result_new_ok[pack_stats*](st)
@@ -1059,10 +1042,7 @@ wresult[pack_stats*]* pack_store_loose(wcas* s, int prune):
 # a silent skip. A store with no packs is a successful no-op. The
 # returned stats are owned by the caller (pack_stats_free).
 wresult[pack_stats*]* pack_unpack_all(wcas* s):
-	pack_stats* st = new pack_stats
-	st.objects = 0
-	st.packs = 0
-	st.pack_path = 0
+	pack_stats* st = new pack_stats(0, 0, 0)
 
 	char* dir = pack_dir_path(s.root)
 	list[char*] names = new list[char*]

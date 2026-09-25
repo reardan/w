@@ -161,12 +161,7 @@ URL* url_parse(char* text):
 	else:
 		query = strclone(c"")
 
-	URL* u = new URL()
-	u.scheme = scheme
-	u.host = url_substring_lower(text, host_start, host_end)
-	u.port = port
-	u.path = path
-	u.query = query
+	URL* u = new URL(scheme, url_substring_lower(text, host_start, host_end), port, path, query)
 	return u
 
 

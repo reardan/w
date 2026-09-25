@@ -93,13 +93,7 @@ void swim_mark_pending(swim* s, swim_member* m):
 
 
 swim_member* swim_add_member(swim* s, int id, int state, int incarnation):
-	swim_member* m = new swim_member()
-	m.id = id
-	m.state = state
-	m.incarnation = incarnation
-	m.suspect_deadline = 0
-	m.pending = 0
-	m.transmits_left = 0
+	swim_member* m = new swim_member(id, state, incarnation, 0, 0, 0)
 	s.members[id] = m
 	s.member_ids.push(id)
 	return m

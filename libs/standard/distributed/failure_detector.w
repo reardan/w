@@ -45,12 +45,7 @@ struct failure_detector:
 
 failure_detector* fd_new(int window_cap):
 	assert1(window_cap >= 1)
-	failure_detector* fd = new failure_detector()
-	fd.window_cap = window_cap
-	fd.intervals = new list[int]
-	fd.interval_sum = 0
-	fd.last_heartbeat = 0
-	fd.has_heartbeat = 0
+	failure_detector* fd = new failure_detector(window_cap, new list[int], 0, 0, 0)
 	return fd
 
 

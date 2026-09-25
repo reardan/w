@@ -55,9 +55,7 @@ struct st_file:
 
 
 st_file* st_new():
-	st_file* f = new st_file()
-	f.tensors = new list[st_tensor*]
-	f.by_name = new map[char*, st_tensor*]
+	st_file* f = new st_file(new list[st_tensor*], new map[char*, st_tensor*])
 	return f
 
 

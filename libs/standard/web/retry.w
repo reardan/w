@@ -55,12 +55,7 @@ int retry_retryable_default(int status):
 # Sensible defaults: up to 5 attempts, 1s base doubling to a 32s cap,
 # with full jitter enabled.
 retry_policy* retry_policy_default():
-	retry_policy* p = new retry_policy()
-	p.max_attempts = 5
-	p.base_delay_ms = 1000
-	p.max_delay_ms = 32000
-	p.jitter = 1
-	p.retryable = retry_retryable_default
+	retry_policy* p = new retry_policy(5, 1000, 32000, 1, retry_retryable_default)
 	return p
 
 

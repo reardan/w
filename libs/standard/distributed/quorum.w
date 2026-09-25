@@ -38,10 +38,7 @@ struct quorum_config:
 
 
 quorum_config* quorum_config_new(int n, int r, int w):
-	quorum_config* cfg = new quorum_config()
-	cfg.n = n
-	cfg.r = r
-	cfg.w = w
+	quorum_config* cfg = new quorum_config(n, r, w)
 	return cfg
 
 
@@ -83,11 +80,7 @@ struct quorum_tally:
 
 quorum_tally* quorum_tally_new(int needed, int total):
 	assert1(needed >= 1 && needed <= total)
-	quorum_tally* t = new quorum_tally()
-	t.needed = needed
-	t.total = total
-	t.acks = 0
-	t.naks = 0
+	quorum_tally* t = new quorum_tally(needed, total, 0, 0)
 	return t
 
 
@@ -161,10 +154,7 @@ struct repair_plan:
 repair_plan* quorum_read_repair(list[vclock*] versions):
 	int count = versions.length
 	assert1(count >= 1)
-	repair_plan* plan = new repair_plan()
-	plan.winner_index = 0 - 1
-	plan.conflict = 0
-	plan.stale = new list[int]
+	repair_plan* plan = new repair_plan(0 - 1, 0, new list[int])
 	# maximal[i] = 1 when no other version strictly dominates versions[i]
 	list[int] maximal = new list[int]
 	int i = 0

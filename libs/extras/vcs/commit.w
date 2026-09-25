@@ -523,10 +523,7 @@ wresult[wrefs*]* refs_open(char* root):
 		free(logs_dir)
 		return result_new_error[wrefs*](err)
 
-	wrefs* r = new wrefs
-	r.root = strclone(root)
-	r.heads_dir = heads_dir
-	r.logs_dir = logs_dir
+	wrefs* r = new wrefs(strclone(root), heads_dir, logs_dir)
 	return result_new_ok[wrefs*](r)
 
 

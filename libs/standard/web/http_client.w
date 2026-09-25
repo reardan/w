@@ -439,9 +439,7 @@ http_req* http_req_new(char* method, char* url):
 # Appends a request header; name and value are copied. Validation
 # happens when the request is sent (http_error_bad_header).
 void http_req_add_header(http_req* req, char* name, char* value):
-	http_header* h = new http_header()
-	h.name = strclone(name)
-	h.value = strclone(value)
+	http_header* h = new http_header(strclone(name), strclone(value))
 	req.headers.push(h)
 
 
@@ -459,13 +457,7 @@ void http_req_free(http_req* req):
 /* Responses */
 
 http_response* http_response_new():
-	http_response* resp = new http_response()
-	resp.status = 0
-	resp.headers = new map[char*, char*]
-	resp.body = 0
-	resp.body_len = 0
-	resp.error = 0
-	resp.error_message = c""
+	http_response* resp = new http_response(0, new map[char*, char*], 0, 0, 0, c"")
 	return resp
 
 

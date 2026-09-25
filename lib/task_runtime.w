@@ -197,23 +197,13 @@ void task_remote_free(task_remote* r):
 
 # Wake target (parked in park number seq) from any thread.
 void task_remote_wake(task_remote* r, task* target, int seq, int value):
-	task_remote_msg* m = new task_remote_msg()
-	m.kind = task_remote_msg_wake()
-	m.gen = 0
-	m.target = target
-	m.seq = seq
-	m.value = value
+	task_remote_msg* m = new task_remote_msg(task_remote_msg_wake(), 0, target, seq, value)
 	task_remote_post(r, m)
 
 
 # Spawn g on r's scheduler from any thread.
 void task_remote_spawn(task_remote* r, generator* g):
-	task_remote_msg* m = new task_remote_msg()
-	m.kind = task_remote_msg_spawn()
-	m.gen = g
-	m.target = 0
-	m.seq = 0
-	m.value = 0
+	task_remote_msg* m = new task_remote_msg(task_remote_msg_spawn(), g, 0, 0, 0)
 	if (cast(int, r.counter) != 0):
 		atomic_add(r.counter, 1)
 	task_remote_post(r, m)
@@ -512,12 +502,7 @@ task_runtime* task_runtime_new(int nthreads):
 	task_runtime_install()
 	if (nthreads <= 0):
 		nthreads = 4
-	task_runtime* rt = new task_runtime()
-	rt.nthreads = nthreads
-	rt.workers = new list[task_runtime_worker*]
-	rt.next = 0
-	rt.outstanding = 0
-	rt.stopping = 0
+	task_runtime* rt = new task_runtime(nthreads, new list[task_runtime_worker*], 0, 0, 0)
 	int i = 0
 	while (i < nthreads):
 		task_runtime_worker* w = new task_runtime_worker()
@@ -575,12 +560,7 @@ int task_runtime_stop(task_runtime* rt):
 		return 0
 	int i = 0
 	while (i < rt.nthreads):
-		task_remote_msg* m = new task_remote_msg()
-		m.kind = task_remote_msg_nop()
-		m.gen = 0
-		m.target = 0
-		m.seq = 0
-		m.value = 0
+		task_remote_msg* m = new task_remote_msg(task_remote_msg_nop(), 0, 0, 0, 0)
 		task_remote_post(rt.workers[i].remote, m)
 		i = i + 1
 	return 1

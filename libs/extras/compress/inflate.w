@@ -691,9 +691,7 @@ wresult[inflate_result*]* inflate_ex(char* data, int length, int max_output, int
 		free(c)
 		return result_new_error[inflate_result*](status)
 
-	inflate_result* r = new inflate_result
-	r.data = c.out.data
-	r.length = c.out.length
+	inflate_result* r = new inflate_result(c.out.data, c.out.length)
 	free(c.out)
 	free(c)
 	return result_new_ok[inflate_result*](r)

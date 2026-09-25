@@ -89,9 +89,7 @@ struct dag:
 
 
 dag* dag_new():
-	dag* d = new dag()
-	d.by_hex = new map[char*, dag_node*]
-	d.by_seq = new list[dag_node*]
+	dag* d = new dag(new map[char*, dag_node*], new list[dag_node*])
 	return d
 
 
