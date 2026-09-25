@@ -954,15 +954,6 @@ int accept(char *s):
 		return 0
 
 
-int accept_newline(char *s):
-	if(peek(s) | token_newline):
-		get_token()
-		return 1
-
-	else:
-		return 0
-
-
 void expect(char *s):
 	if (accept(s) == 0):
 		diag_part(c"'")

@@ -89,11 +89,6 @@ void push_int32(int v):
 		emit_int32(v)
 
 
-void push_int(int v):
-	if (target_isa == 2): wasm_push_const(v)
-	else: push_int32(v)
-
-
 /* mov eax,[eax] */
 void promote_eax():
 	if (target_isa == 3): ptx_ld_ax(c".u64")

@@ -85,11 +85,6 @@ void emit_string(char* s):
 	emit(strlen(s) + 1, s)
 
 
-void emit_string_raw(char* s):
-	print_int(c"strlen(s)= ", strlen(s))
-	emit(strlen(s), s)
-
-
 void emit_i(int v, int n):
 	resize_code(n)
 	char* p = code + codepos

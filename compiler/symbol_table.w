@@ -260,10 +260,6 @@ void sym_info(int symbol):
 	print_error(c")\x0a")
 
 
-void sym_last_info():
-	sym_info(table_pos - symbol_data_size())
-	
-
 # Returns the table offset of the symbol's data block, or -1 when not found.
 # 0 is a valid offset (the first declared symbol), so callers must test for < 0.
 # Newest-first scan of the offset index. Superseded by the name index in
@@ -326,17 +322,6 @@ int sym_symtype(char *s):
 	if (t < 0):
 		return 0
 	return load_int(table + t + 10)
-
-
-int sym_type(char *s):
-	int t = sym_lookup(s)
-	if (t < 0):
-		return 0
-	return load_int(table + t + 6)
-
-
-void sym_print_info(char *s):
-	sym_info(sym_lookup(s))
 
 
 # Registered index of the file currently being parsed, or -1 when no source
