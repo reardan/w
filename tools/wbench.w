@@ -36,21 +36,11 @@ struct bench_result:
 	char* failure
 
 
-# Offset of the first occurrence of needle in haystack, or -1.
-int bench_find(char* haystack, char* needle):
-	int i = 0
-	while (haystack[i] != 0):
-		if (starts_with(&haystack[i], needle)):
-			return i
-		i = i + 1
-	return -1
-
-
 # Parse "sym_lookup calls: N records visited: M" out of the child's
 # stderr. Returns -1 when the marker is absent, which is how a compiler
 # built without --stats support reports itself.
 int bench_field(char* text, char* label):
-	int at = bench_find(text, label)
+	int at = index_of(text, label)
 	if (at < 0):
 		return -1
 	int i = at + strlen(label)

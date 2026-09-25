@@ -151,15 +151,6 @@ char* pbc_first_error(char* source):
 	return r.errors[0]
 
 
-void pbc_expect_contains(char* haystack, char* needle):
-	if (index_of(haystack, needle) < 0):
-		print2(c"expected to find: ")
-		println2(needle)
-		print2(c"in: ")
-		println2(haystack)
-		exit(1)
-
-
 void test_mutually_recursive_messages():
 	Ping* ping = cast(Ping*, pb_message_new(proto_descriptor(Ping)))
 	Pong* pong = cast(Pong*, pb_message_new(proto_descriptor(Pong)))
@@ -187,23 +178,23 @@ void test_generator_output_shape():
 	int b = index_of(w, c"message B:")
 	assert1((a >= 0) && (b >= 0))
 	assert1(b < a)
-	pbc_expect_contains(w, c"\tB b = 1\n")
-	pbc_expect_contains(w, c"import libs.extras.protobuf.message\n")
+	assert_contains(w, c"\tB b = 1\n")
+	assert_contains(w, c"import libs.extras.protobuf.message\n")
 
 	# A cycle gets one forward declaration; a self reference needs none.
 	char* cyc = pbc_generate(c"message A { B b = 1; A self = 2; }\nmessage B { A a = 1; double d = 2; }\n")
 	assert1(cyc != 0)
-	pbc_expect_contains(cyc, c"\nmessage A\n")
-	pbc_expect_contains(cyc, c"\tA self = 2\n")
-	pbc_expect_contains(cyc, c"\tdouble d = 2\n")
+	assert_contains(cyc, c"\nmessage A\n")
+	assert_contains(cyc, c"\tA self = 2\n")
+	assert_contains(cyc, c"\tdouble d = 2\n")
 
 
 void test_generator_errors():
-	pbc_expect_contains(pbc_first_error(c"message A {\n  Missing m = 1;\n}"), c"t.proto:2: unknown type 'Missing'")
-	pbc_expect_contains(pbc_first_error(c"import \"no/such.proto\";\nmessage A { int32 x = 1; }"), c"t.proto:1: cannot find imported file 'no/such.proto'")
-	pbc_expect_contains(pbc_first_error(c"message A { int32 x = 0; }"), c"field number must be between 1 and 536870911")
-	pbc_expect_contains(pbc_first_error(c"enum E { NEG = -1; }"), c"negative enum values are not supported yet")
-	pbc_expect_contains(pbc_first_error(c"message A { int32 x = 1 }"), c"t.proto:1: syntax error")
+	assert_contains(pbc_first_error(c"message A {\n  Missing m = 1;\n}"), c"t.proto:2: unknown type 'Missing'")
+	assert_contains(pbc_first_error(c"import \"no/such.proto\";\nmessage A { int32 x = 1; }"), c"t.proto:1: cannot find imported file 'no/such.proto'")
+	assert_contains(pbc_first_error(c"message A { int32 x = 0; }"), c"field number must be between 1 and 536870911")
+	assert_contains(pbc_first_error(c"enum E { NEG = -1; }"), c"negative enum values are not supported yet")
+	assert_contains(pbc_first_error(c"message A { int32 x = 1 }"), c"t.proto:1: syntax error")
 
 
 int main():

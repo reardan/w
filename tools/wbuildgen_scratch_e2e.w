@@ -78,10 +78,6 @@ char* in_dir(char* name):
 	return path_join(DIR, name)
 
 
-int contains(char* haystack, char* needle):
-	return index_of(haystack, needle) >= 0
-
-
 int main(int argc, char** argv):
 	char* root = malloc(4096)
 	if (getcwd(root, 4096) <= 0):

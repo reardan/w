@@ -5,17 +5,6 @@ import lib.container
 import lib.window
 
 
-# Same tolerance as lib/stats_test.w.
-void assert_near(float want, float got):
-	if (fabs(want - got) > 0.0001):
-		print2(c"Assertion failed. wanted float(")
-		print2(ftoa(want))
-		print2(c") got float(")
-		print2(ftoa(got))
-		println2(c")")
-		exit(1)
-
-
 void assert_int_list(list[int] want, list[int] got):
 	assert_equal(want.length, got.length)
 	int i = 0

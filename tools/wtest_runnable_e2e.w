@@ -89,27 +89,6 @@ list[char*] marker():
 	return paths
 
 
-# grep -qx: some line of text equals line exactly.
-int has_line(char* text, char* line):
-	int n = strlen(line)
-	int i = 0
-	while (text[i] != 0):
-		int j = 0
-		while ((j < n) && (text[i + j] == line[j])):
-			j = j + 1
-		if ((j == n) && ((text[i + j] == 10) || (text[i + j] == 0))):
-			return 1
-		while ((text[i] != 0) && (text[i] != 10)):
-			i = i + 1
-		if (text[i] == 10):
-			i = i + 1
-	return 0
-
-
-int contains(char* haystack, char* needle):
-	return index_of(haystack, needle) >= 0
-
-
 int has_gpu():
 	return path_exists(c"/dev/nvidiactl") || path_exists(c"/dev/nvidia0") || (process_which(c"nvidia-smi") != 0)
 

@@ -129,6 +129,7 @@ import lib.unix_fds
 import structures.string
 import structures.json
 import tools.wexec
+import lib.str
 
 
 int wbd_protocol():
@@ -154,27 +155,6 @@ void wbd_out(char* text):
 char* wbd_arg(int argv, int i):
 	char** slot = cast(char**, argv + i * __word_size__)
 	return *slot
-
-
-int wbd_prefix_eq(char* a, char* b, int n):
-	int i = 0
-	while (i < n):
-		if (a[i] != b[i]):
-			return 0
-		if (a[i] == 0):
-			return 0
-		i = i + 1
-	return 1
-
-
-int wbd_contains(char* text, char* needle):
-	int n = strlen(needle)
-	int i = 0
-	while (text[i] != 0):
-		if (wbd_prefix_eq(text + i, needle, n)):
-			return 1
-		i = i + 1
-	return 0
 
 
 # "./x/./y" style prefixes are stripped so closure entries and event
@@ -397,7 +377,7 @@ char* wbd_file_sig(char* path):
 int wbd_hash_path_ok(char* path):
 	if ((path[0] == 0) || (path[0] == '/') || (path[0] == '.')):
 		return 0
-	if (wbd_contains(path, c"..") || wbd_contains(path, c"/.") || wbd_contains(path, c"//")):
+	if (contains(path, c"..") || contains(path, c"/.") || contains(path, c"//")):
 		return 0
 	return 1
 
@@ -810,7 +790,7 @@ list[char*] wbd_parse_closure(char* text):
 		if ((c == 10) || (c == 0)):
 			if (line.length > 0):
 				char* p = wbd_strip_dot(line.data)
-				if ((p[0] == '/') || wbd_contains(p, c"..")):
+				if ((p[0] == '/') || contains(p, c"..")):
 					ok = 0
 				else:
 					closure.push(strclone(p))
@@ -892,7 +872,7 @@ list[char*] wbd_closure_for(list[char*] args, char* request_key, process_result*
 			roots = roots + 1
 	if (roots != 1):
 		return 0
-	if ((root[0] == '/') || wbd_contains(root, c"..")):
+	if ((root[0] == '/') || contains(root, c"..")):
 		return 0
 	list[char*] deps_args = new list[char*]
 	if (arch != 0):
@@ -1502,7 +1482,7 @@ char* wbd_find_self_name():
 	if (starts_with(buf, bin_dir) == 0):
 		return 0
 	char* name = buf + strlen(bin_dir)
-	if (wbd_contains(name, c"/")):
+	if (contains(name, c"/")):
 		return 0
 	return strclone(name)
 

@@ -577,21 +577,6 @@ void wtest_note(char* path, char* target):
 	stream_flush(err)
 
 
-int wtest_str_contains(char* haystack, char* needle):
-	int n = strlen(needle)
-	if (n == 0):
-		return 1
-	int i = 0
-	while (haystack[i] != 0):
-		int j = 0
-		while ((j < n) && (haystack[i + j] == needle[j])):
-			j = j + 1
-		if (j == n):
-			return 1
-		i = i + 1
-	return 0
-
-
 int wtest_file_exists(char* path):
 	int fd = open(path, 0, 0)
 	if (fd < 0):
@@ -712,12 +697,12 @@ int wtest_step_mentions(json_value* step, char* path, int path_has_slash):
 				if (piece.type == json_type_string()):
 					if (strcmp(piece.string_value, path) == 0):
 						return 1
-					if (path_has_slash && wtest_str_contains(piece.string_value, path)):
+					if (path_has_slash && contains(piece.string_value, path)):
 						return 1
 				i = i + 1
 	char* stdin_text = wtest_get_string(step, c"stdin")
 	if (stdin_text != 0):
-		if (wtest_str_contains(stdin_text, path)):
+		if (contains(stdin_text, path)):
 			return 1
 	return 0
 
@@ -1736,7 +1721,7 @@ int wtest_closure_contains(char* blob, char* path):
 	string_append_char(needle, 10)
 	string_append(needle, path)
 	string_append_char(needle, 10)
-	int found = wtest_str_contains(blob, needle.data)
+	int found = contains(blob, needle.data)
 	string_free(needle)
 	return found
 
@@ -1876,7 +1861,7 @@ char* wtest_git_merge_base(char* a, char* b):
 
 
 # Index of the first '.' of the '..'/'...' run in a range spec the
-# caller has already proved (via wtest_str_contains) contains "..".
+# caller has already proved (via contains) contains "..".
 # Never returns -1 in practice for such a caller, but the sentinel is
 # kept for safety.
 int wtest_range_dot_index(char* spec):
@@ -2481,7 +2466,7 @@ void wtest_map_path(char* path):
 		matched = 1
 
 	# (a) literal step references
-	int path_has_slash = wtest_str_contains(path, c"/")
+	int path_has_slash = contains(path, c"/")
 	for char* name in wtest_target_names:
 		if (wtest_selectable(name)):
 			if (wtest_target_mentions(name, path, path_has_slash)):
@@ -2648,7 +2633,7 @@ char* wtest_directive_soname(char* text, int i):
 # business), and libcuda* is excluded — the GPU bit covers the NVIDIA
 # driver, whose libcuda.so.1 lives wherever the installer put it.
 int wtest_soname_retained(char* soname):
-	if (wtest_str_contains(soname, c".so") == 0):
+	if (contains(soname, c".so") == 0):
 		return 0
 	return starts_with(soname, c"libcuda") == 0
 
@@ -3101,10 +3086,10 @@ char* wtest_step_unavailable_reason(json_value* step):
 				if (strcmp(second.string_value, c"-c") == 0):
 					json_value* script = json_array_get(cmd, 2)
 					if (script.type == json_type_string()):
-						if (wtest_str_contains(script.string_value, c"bin/wrun arm64")):
+						if (contains(script.string_value, c"bin/wrun arm64")):
 							if (wtest_qemu_arm64_available() == 0):
 								return c"qemu-aarch64-static not found"
-						if (wtest_str_contains(script.string_value, c"bin/wrun wasm")):
+						if (contains(script.string_value, c"bin/wrun wasm")):
 							if (wtest_wasm_runtime_available() == 0):
 								return c"no wasm runtime (wasmtime or node) found"
 		return 0
@@ -3978,7 +3963,7 @@ int wtest_why_main(int argc, int argv):
 	stream_flush(out)
 	wtest_map_path(path)
 	wtest_ensure_roots()
-	int has_slash = wtest_str_contains(path, c"/")
+	int has_slash = contains(path, c"/")
 	int printed = 0
 	for char* name in wtest_target_names:
 		if (wtest_enabled.get(name, 0) == 0):
@@ -4129,7 +4114,7 @@ int main(int argc, int argv):
 				return 1
 			char** value = argv + pre * __word_size__
 			wtest_manifest_path = *value
-		else if ((for_mode == 0) && (argval[0] != '-') && wtest_str_contains(argval, c"..")):
+		else if ((for_mode == 0) && (argval[0] != '-') && contains(argval, c"..")):
 			if (range_index != 0):
 				wtest_error(c"only one revision range argument is allowed, got a second: ", argval)
 				return 1

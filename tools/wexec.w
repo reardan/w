@@ -155,6 +155,7 @@ import tools.__arch__.wexec_platform
 import tools.__arch__.wexec_remote_http
 import tools.wexec_trace
 import tools.manifest_source
+import lib.str
 
 
 json_value* wexec_manifest
@@ -266,21 +267,6 @@ int wexec_get_flag(json_value* object, char* key):
 		return 0
 	if ((value.type == json_type_bool()) | (value.type == json_type_int())):
 		return value.int_value != 0
-	return 0
-
-
-int wexec_str_contains(char* haystack, char* needle):
-	int n = strlen(needle)
-	if (n == 0):
-		return 1
-	int i = 0
-	while (haystack[i] != 0):
-		int j = 0
-		while ((j < n) && (haystack[i + j] == needle[j])):
-			j = j + 1
-		if (j == n):
-			return 1
-		i = i + 1
 	return 0
 
 
@@ -1744,7 +1730,7 @@ int wexec_check_status(char* target_name, int step_index, json_value* step, proc
 
 # reject != 0 inverts the check: the needle must be absent.
 int wexec_check_needle(char* target_name, int step_index, char* stream_name, char* text, char* needle, int reject):
-	int found = wexec_str_contains(text, needle)
+	int found = contains(text, needle)
 	if (reject == 0):
 		if (found):
 			return 0

@@ -234,10 +234,6 @@ attach_run* run_attach(char* dbg, char* fixture, char* src, char* commands, int 
 	return r
 
 
-int contains(char* haystack, char* needle):
-	return index_of(haystack, needle) >= 0
-
-
 void check_contains(char* desc, attach_run* r, char* expect):
 	if (contains(r.text, expect)):
 		out(c"ok: ")

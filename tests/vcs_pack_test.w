@@ -78,10 +78,7 @@ wcas* vcpt_open():
 
 void vcpt_assert_bytes_equal(char* want, int want_len, char* got, int got_len):
 	assert_equal(want_len, got_len)
-	int i = 0
-	while (i < want_len):
-		assert_equal(want[i] & 255, got[i] & 255)
-		i = i + 1
+	assert_bytes_equal(want, got, want_len)
 
 
 # The ids stored by test_pack_populate_store, and each one's loose

@@ -56,19 +56,6 @@ float oo_abs(float f):
 	return f
 
 
-# Same shape as graphics/math_test.w's assert_near: exact float bit
-# patterns differ between the 32-bit (float32) and x64 (float64)
-# builds, so compare within an epsilon instead.
-void assert_near(float want, float got):
-	if (oo_abs(want - got) > 0.0001):
-		print2(c"Assertion failed. wanted float(")
-		print2(ftoa(want))
-		print2(c") got float(")
-		print2(ftoa(got))
-		println2(c")")
-		exit(1)
-
-
 # Forward declaration: the definition follows further down, after
 # operator+ (prototypes follow the normal define-or-declare-before-use
 # rules, docs/projects/operator_overloading.md).
