@@ -18,6 +18,7 @@ the plaintext buffer.
 import lib.memory
 import libs.standard.crypto.chacha20
 import libs.standard.crypto.poly1305
+import lib.bytes
 
 
 # Derive the one-time Poly1305 key for (key, nonce): the first 32 bytes of
@@ -73,14 +74,8 @@ void chacha20poly1305_mac(char* polykey, char* aad, int aad_len, char* ct, int c
 	while (i < 16):
 		lens[i] = 0
 		i = i + 1
-	lens[0] = aad_len & 255
-	lens[1] = (aad_len >> 8) & 255
-	lens[2] = (aad_len >> 16) & 255
-	lens[3] = (aad_len >> 24) & 255
-	lens[8] = ct_len & 255
-	lens[9] = (ct_len >> 8) & 255
-	lens[10] = (ct_len >> 16) & 255
-	lens[11] = (ct_len >> 24) & 255
+	store_le32(lens, aad_len)
+	store_le32(lens + 8, ct_len)
 	poly1305_update(st, lens, 16)
 	poly1305_finish(st, out)
 	poly1305_free(st)

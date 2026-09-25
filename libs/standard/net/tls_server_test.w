@@ -129,7 +129,7 @@ tls_conn* tlss_run_server(char* client_flight, int flen, tls_server_config* scfg
 	tls_conn* c = tls_conn_new(0 - 1, 1, 0)
 	c.is_server = 1
 	c.scfg = scfg
-	wbuf_bytes(c.mem_in, client_flight, flen)
+	string_append_bytes(c.mem_in, client_flight, flen)
 	*out_ok = tls_server_do_handshake(c)
 	return c
 

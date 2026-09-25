@@ -39,6 +39,7 @@ import lib.stream
 import lib.container
 import structures.string
 import structures.json
+import lib.bytes
 
 
 struct st_tensor:
@@ -125,10 +126,7 @@ void st_free(st_file* f):
 # approach 2^32, so the high 4 bytes are always 0; the low bytes are
 # assembled with masking, matching lib/sha256.w's byte-write precedent.
 void st_write_u64_header_len(char* out, int n):
-	out[0] = n & 255
-	out[1] = (n >> 8) & 255
-	out[2] = (n >> 16) & 255
-	out[3] = (n >> 24) & 255
+	store_le32(out, n)
 	out[4] = 0
 	out[5] = 0
 	out[6] = 0
@@ -238,7 +236,7 @@ void st_copy_bytes(char* dst, char* src, int n):
 int st_read_header_len(char* b):
 	if (((b[4] & 255) != 0) || ((b[5] & 255) != 0) || ((b[6] & 255) != 0) || ((b[7] & 255) != 0)):
 		return -1
-	int lo = (b[0] & 255) | ((b[1] & 255) << 8) | ((b[2] & 255) << 16) | ((b[3] & 255) << 24)
+	int lo = load_le32(b)
 	if ((__word_size__ == 4) && (lo < 0)):
 		return -1
 	return lo

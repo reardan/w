@@ -193,6 +193,7 @@ import libs.standard.web.hpack
 import libs.standard.web.http2
 import libs.standard.web.codec
 import lib.hex
+import lib.bytes
 
 
 /* Status codes */
@@ -310,15 +311,6 @@ int grpc_default_max_message():
 
 /* Message framing */
 
-void grpc_frame_message(string_builder* out, char* msg, int len):
-	string_append_char(out, 0)
-	string_append_char(out, (len >> 24) & 255)
-	string_append_char(out, (len >> 16) & 255)
-	string_append_char(out, (len >> 8) & 255)
-	string_append_char(out, len & 255)
-	string_append_bytes(out, msg, len)
-
-
 # Parses a whole body of exactly one uncompressed length-prefixed
 # message (a compressed flag is UNIMPLEMENTED here; streams with a
 # grpc-encoding go through grpc_take_message). Returns
@@ -349,11 +341,12 @@ int grpc_unframe_message(char* body, int len, int max, char** out, int* out_len)
 # Appends one length-prefixed message with the given compressed flag.
 void grpc_frame_message_flag(string_builder* out, int flag, char* msg, int len):
 	string_append_char(out, flag)
-	string_append_char(out, (len >> 24) & 255)
-	string_append_char(out, (len >> 16) & 255)
-	string_append_char(out, (len >> 8) & 255)
-	string_append_char(out, len & 255)
+	string_append_be32(out, len)
 	string_append_bytes(out, msg, len)
+
+
+void grpc_frame_message(string_builder* out, char* msg, int len):
+	grpc_frame_message_flag(out, 0, msg, len)
 
 
 # Frames msg for a message stream whose grpc-encoding is encoding:

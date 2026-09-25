@@ -32,6 +32,7 @@ anything else under libs/standard — importing their namespace.
 import lib.memory
 import lib.sha256
 import lib.hex
+import lib.bytes
 
 
 # Algorithm identifiers for the whash interface. Ids below 100 are
@@ -226,15 +227,6 @@ int sha2_hex32(char* s):
 		v = (v << 4) | hex_decode_char(s[i] & 255)
 		i = i + 1
 	return v & sha256_mask32()
-
-
-# Little-endian store of a masked 32-bit word (MD5-style trailers and
-# digests; the big-endian twin lives in lib/sha256.w).
-void sha2_put_le32(char* p, int v):
-	p[0] = v & 255
-	p[1] = (v >> 8) & 255
-	p[2] = (v >> 16) & 255
-	p[3] = (v >> 24) & 255
 
 
 # Parse `words` 32-bit words from hex text into a malloc'd int array.
@@ -585,8 +577,8 @@ void whash_final(whash* h, char* out):
 	int bits_lo = (h.len_lo << 3) & mask
 	int end = blocks * bs
 	if (le == 1):
-		sha2_put_le32(tail + end - 8, bits_lo)
-		sha2_put_le32(tail + end - 4, bits_mid)
+		store_le32(tail + end - 8, bits_lo)
+		store_le32(tail + end - 4, bits_mid)
 	else:
 		if (bs == 128):
 			# 128-bit field; the byte count fits 64 bits, so the top word
@@ -617,7 +609,7 @@ void whash_final(whash* h, char* out):
 	i = 0
 	while (i < words):
 		if (le == 1):
-			sha2_put_le32(out + i * 4, st[i])
+			store_le32(out + i * 4, st[i])
 		else:
 			sha256_put_be32(out + i * 4, st[i])
 		i = i + 1

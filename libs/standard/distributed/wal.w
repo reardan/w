@@ -33,6 +33,7 @@ import lib.memory
 import lib.assert
 import lib.framing
 import lib.sha256
+import lib.bytes
 
 
 int wal_version():
@@ -59,17 +60,6 @@ struct wal_reader:
 
 
 # ---- record encoding --------------------------------------------------------
-
-void wal_put_le32(char* p, int v):
-	p[0] = v
-	p[1] = v >> 8
-	p[2] = v >> 16
-	p[3] = v >> 24
-
-
-int wal_get_le32(char* p):
-	return (p[0] & 255) | ((p[1] & 255) << 8) | ((p[2] & 255) << 16) | ((p[3] & 255) << 24)
-
 
 # Checksum of (length bytes || payload): first 4 bytes of sha256, raw.
 void wal_checksum(char* len_bytes, char* payload, int len, char* out4):
@@ -101,7 +91,7 @@ char* wal_scan_record(int fd, int off, int* len_out):
 	if (read_exact(fd, hdr, 8) != 8):
 		free(hdr)
 		return 0
-	int len = wal_get_le32(hdr)
+	int len = load_le32(hdr)
 	if (len < 0 || len > wal_max_record()):
 		free(hdr)
 		return 0
@@ -136,7 +126,7 @@ int wal_write_header(int fd):
 	hdr[1] = 76    # L
 	hdr[2] = 79    # O
 	hdr[3] = 71    # G
-	wal_put_le32(hdr + 4, wal_version())
+	store_le32(hdr + 4, wal_version())
 	seek(fd, 0, 0)
 	int n = write_all(fd, hdr, 8)
 	free(hdr)
@@ -164,7 +154,7 @@ wal* wal_open(char* path):
 		int got = read_exact(fd, hdr, 8)
 		int ok = 0
 		if (got == 8 && (hdr[0] & 255) == 87 && (hdr[1] & 255) == 76 && (hdr[2] & 255) == 79 && (hdr[3] & 255) == 71):
-			if (wal_get_le32(hdr + 4) == wal_version()):
+			if (load_le32(hdr + 4) == wal_version()):
 				ok = 1
 		free(hdr)
 		if (ok == 0):
@@ -209,7 +199,7 @@ int wal_append(wal* w, char* payload, int len):
 	assert1(len >= 0)
 	assert1(len <= wal_max_record())
 	char* rec = malloc(8 + len)
-	wal_put_le32(rec, len)
+	store_le32(rec, len)
 	wal_checksum(rec, payload, len, rec + 4)
 	int i = 0
 	while (i < len):

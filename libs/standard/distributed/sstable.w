@@ -48,6 +48,7 @@ import lib.memory
 import lib.assert
 import lib.framing
 import libs.standard.distributed.bloom
+import lib.bytes
 
 
 int sstable_version():
@@ -55,17 +56,6 @@ int sstable_version():
 
 
 # ---- little-endian + buffer helpers -----------------------------------------
-
-void sstable_put_le32(char* p, int v):
-	p[0] = v & 255
-	p[1] = (v >> 8) & 255
-	p[2] = (v >> 16) & 255
-	p[3] = (v >> 24) & 255
-
-
-int sstable_get_le32(char* p):
-	return (p[0] & 255) | ((p[1] & 255) << 8) | ((p[2] & 255) << 16) | ((p[3] & 255) << 24)
-
 
 # Malloc'd copy of len bytes with a convenience NUL appended.
 char* sstable_copy_bytes(char* src, int len):
@@ -175,10 +165,10 @@ int sstable_writer_finish(sstable_writer* w):
 	buf[1] = 83    # S
 	buf[2] = 83    # S
 	buf[3] = 84    # T
-	sstable_put_le32(buf + 4, sstable_version())
-	sstable_put_le32(buf + 8, bloom_len)
+	store_le32(buf + 4, sstable_version())
+	store_le32(buf + 8, bloom_len)
 	bloom_serialize(b, buf + 12)
-	sstable_put_le32(buf + 12 + bloom_len, count)
+	store_le32(buf + 12 + bloom_len, count)
 	bloom_free(b)
 	int off = 16 + bloom_len
 	i = 0
@@ -187,8 +177,8 @@ int sstable_writer_finish(sstable_writer* w):
 		int key_len = strlen(key)
 		int val_len = w.value_lens[i]
 		buf[off] = w.flags[i]
-		sstable_put_le32(buf + off + 1, key_len)
-		sstable_put_le32(buf + off + 5, val_len)
+		store_le32(buf + off + 1, key_len)
+		store_le32(buf + off + 5, val_len)
 		int j = 0
 		while (j < key_len):
 			buf[off + 9 + j] = key[j]
@@ -248,9 +238,9 @@ sstable* sstable_open(char* path):
 	int got = read_exact(fd, hdr, 12)
 	int ok = 0
 	if (got == 12 && (hdr[0] & 255) == 87 && (hdr[1] & 255) == 83 && (hdr[2] & 255) == 83 && (hdr[3] & 255) == 84):
-		if (sstable_get_le32(hdr + 4) == sstable_version()):
+		if (load_le32(hdr + 4) == sstable_version()):
 			ok = 1
-	int bloom_len = sstable_get_le32(hdr + 8)
+	int bloom_len = load_le32(hdr + 8)
 	free(hdr)
 	if (ok == 0):
 		close(fd)
@@ -268,13 +258,13 @@ sstable* sstable_open(char* path):
 		free(bbuf)
 		close(fd)
 		return 0
-	int bm = sstable_get_le32(bbuf)
-	int bk = sstable_get_le32(bbuf + 4)
+	int bm = load_le32(bbuf)
+	int bk = load_le32(bbuf + 4)
 	ok = 1
 	if (bm < 8 || bm > (1 << 24) || bk < 1 || bk > 16):
 		ok = 0
 	else:
-		if (bloom_len != 12 + ((bm + 31) >> 5) * 4 || sstable_get_le32(bbuf + 8) != bm):
+		if (bloom_len != 12 + ((bm + 31) >> 5) * 4 || load_le32(bbuf + 8) != bm):
 			ok = 0
 	if (ok == 0):
 		free(bbuf)
@@ -284,7 +274,7 @@ sstable* sstable_open(char* path):
 	free(bbuf)
 	char* cbuf = malloc(4)
 	got = read_exact(fd, cbuf, 4)
-	int count = sstable_get_le32(cbuf)
+	int count = load_le32(cbuf)
 	free(cbuf)
 	if (got != 4 || count < 0):
 		bloom_free(bl)
@@ -311,8 +301,8 @@ sstable* sstable_open(char* path):
 		seek(fd, off, 0)
 		got = read_exact(fd, rhdr, 9)
 		int flag = rhdr[0] & 255
-		int key_len = sstable_get_le32(rhdr + 1)
-		int val_len = sstable_get_le32(rhdr + 5)
+		int key_len = load_le32(rhdr + 1)
+		int val_len = load_le32(rhdr + 5)
 		free(rhdr)
 		ok = 1
 		if (got != 9 || flag > 1):

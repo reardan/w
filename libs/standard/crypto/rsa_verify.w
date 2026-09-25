@@ -17,6 +17,7 @@ import lib.memory
 import lib.sha256
 import libs.standard.crypto.bignum
 import libs.standard.crypto.sha2
+import lib.bytes
 
 
 int RSA_HASH_SHA256():
@@ -144,10 +145,7 @@ void mgf1(int whash_alg, char* seed, int seedlen, int mask_len, char* out):
 	int counter = 0
 	int outpos = 0
 	while (outpos < mask_len):
-		buf[seedlen] = (counter >> 24) & 255
-		buf[seedlen + 1] = (counter >> 16) & 255
-		buf[seedlen + 2] = (counter >> 8) & 255
-		buf[seedlen + 3] = counter & 255
+		store_be32(buf + seedlen, counter)
 		whash_oneshot(whash_alg, buf, seedlen + 4, dig)
 		int take = hlen
 		if (mask_len - outpos < hlen):

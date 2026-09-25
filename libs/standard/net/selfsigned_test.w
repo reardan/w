@@ -17,24 +17,24 @@ int st_bytes_equal(char* a, char* b, int n):
 
 
 void test_der_lengths():
-	wbuf* small = wbuf_new(4)
-	wbuf_bytes(small, c"abc", 3)
-	wbuf* t = der_tlv(0x04, small)
-	assert_equal(5, t.len)
+	string_builder* small = string_new_sized(4)
+	string_append_bytes(small, c"abc", 3)
+	string_builder* t = der_tlv(0x04, small)
+	assert_equal(5, t.length)
 	assert_equal(0x04, t.data[0] & 255)
 	assert_equal(3, t.data[1] & 255)
-	wbuf_free(t)
-	wbuf* big = wbuf_new(300)
+	string_free(t)
+	string_builder* big = string_new_sized(300)
 	int i = 0
 	while (i < 300):
-		wbuf_u8(big, i)
+		string_append_char(big, i)
 		i = i + 1
 	t = der_tlv(0x30, big)
-	assert_equal(304, t.len)
+	assert_equal(304, t.length)
 	assert_equal(0x82, t.data[1] & 255)
 	assert_equal(1, t.data[2] & 255)
 	assert_equal(44, t.data[3] & 255)
-	wbuf_free(t)
+	string_free(t)
 
 
 void test_generate_parses_and_self_verifies():

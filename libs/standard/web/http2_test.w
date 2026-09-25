@@ -24,6 +24,7 @@ import structures.string
 import libs.standard.web.hpack
 import libs.standard.web.http2
 import libs.standard.web.testing
+import lib.bytes
 
 
 /* Fixture plumbing */
@@ -86,7 +87,7 @@ char* h2t_setting(int id, int value):
 	char* p = malloc(6)
 	p[0] = 0
 	p[1] = id
-	h2_put_u32(p + 2, value)
+	store_be32(p + 2, value)
 	return p
 
 

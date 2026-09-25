@@ -152,6 +152,7 @@ import libs.standard.web.http_client
 import libs.standard.web.http_server
 import libs.standard.net.dns
 import libs.standard.net.tls
+import lib.bytes
 
 
 # One decoded frame header (+ payload once read). mask_offset is where
@@ -604,7 +605,7 @@ int ws_parse_header_rsv(char* h, int hlen, ws_frame* f, int max_payload, int rsv
 	int length = len7
 	int at = 2
 	if (len7 == 126):
-		length = ((h[2] & 255) << 8) | (h[3] & 255)
+		length = load_be16(h + 2)
 		if (length < 126):
 			return ws_close_protocol_error()
 		at = 4
@@ -617,7 +618,7 @@ int ws_parse_header_rsv(char* h, int hlen, ws_frame* f, int max_payload, int rsv
 			return ws_close_too_big()
 		if ((h[6] & 128) != 0):
 			return ws_close_too_big()
-		length = ((h[6] & 255) << 24) | ((h[7] & 255) << 16) | ((h[8] & 255) << 8) | (h[9] & 255)
+		length = load_be32(h + 6)
 		if (length < 65536):
 			return ws_close_protocol_error()
 		at = 10
@@ -680,18 +681,11 @@ int ws_frame_encode_rsv(string_builder* out, int fin, int rsv, int opcode, char*
 		string_append_char(out, mask_bit | len)
 	else if (len < 65536):
 		string_append_char(out, mask_bit | 126)
-		string_append_char(out, (len >> 8) & 255)
-		string_append_char(out, len & 255)
+		string_append_be16(out, len)
 	else:
 		string_append_char(out, mask_bit | 127)
-		string_append_char(out, 0)
-		string_append_char(out, 0)
-		string_append_char(out, 0)
-		string_append_char(out, 0)
-		string_append_char(out, (len >> 24) & 255)
-		string_append_char(out, (len >> 16) & 255)
-		string_append_char(out, (len >> 8) & 255)
-		string_append_char(out, len & 255)
+		string_append_be32(out, 0)
+		string_append_be32(out, len)
 	if (mask_key != 0):
 		string_append_bytes(out, mask_key, 4)
 	int start = out.length
@@ -1381,8 +1375,7 @@ int ws_write_frame(ws_conn* c, int fin, int opcode, char* data, int len):
 int ws_write_close(ws_conn* c, int code, char* reason, int reason_len):
 	string_builder* body = string_new()
 	if (code != 0):
-		string_append_char(body, (code >> 8) & 255)
-		string_append_char(body, code & 255)
+		string_append_be16(body, code)
 		if (reason_len > 0):
 			string_append_bytes(body, reason, reason_len)
 	int ok = ws_write_frame(c, 1, ws_op_close(), body.data, body.length)
@@ -1472,7 +1465,7 @@ int ws_handle_close(ws_conn* c, ws_frame* f):
 		ws_fail(c, ws_close_protocol_error(), ws_error_protocol())
 		return 0
 	if (len >= 2):
-		code = ((p[0] & 255) << 8) | (p[1] & 255)
+		code = load_be16(p)
 		if (ws_close_code_valid(code) == 0):
 			free(p)
 			ws_fail(c, ws_close_protocol_error(), ws_error_protocol())

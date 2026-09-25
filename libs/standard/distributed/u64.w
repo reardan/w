@@ -29,6 +29,7 @@ import lib.lib
 import lib.hex
 import lib.memory
 import lib.assert
+import lib.bytes
 
 
 struct u64:
@@ -272,21 +273,17 @@ void u64_shr(u64* a, int k):
 
 # 8 little-endian bytes.
 void u64_save_le(char* p, u64* a):
-	p[0] = a.w0
-	p[1] = a.w0 >> 8
-	p[2] = a.w1
-	p[3] = a.w1 >> 8
-	p[4] = a.w2
-	p[5] = a.w2 >> 8
-	p[6] = a.w3
-	p[7] = a.w3 >> 8
+	store_le16(p, a.w0)
+	store_le16(p + 2, a.w1)
+	store_le16(p + 4, a.w2)
+	store_le16(p + 6, a.w3)
 
 
 void u64_load_le(u64* a, char* p):
-	a.w0 = (p[0] & 255) | ((p[1] & 255) << 8)
-	a.w1 = (p[2] & 255) | ((p[3] & 255) << 8)
-	a.w2 = (p[4] & 255) | ((p[5] & 255) << 8)
-	a.w3 = (p[6] & 255) | ((p[7] & 255) << 8)
+	a.w0 = load_le16(p)
+	a.w1 = load_le16(p + 2)
+	a.w2 = load_le16(p + 4)
+	a.w3 = load_le16(p + 6)
 
 
 # ---- formatting -------------------------------------------------------------

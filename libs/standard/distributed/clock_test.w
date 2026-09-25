@@ -1,6 +1,7 @@
 # wbuild: x64
 import lib.testing
 import libs.standard.distributed.clock
+import lib.bytes
 
 
 # ---- vector clocks ----------------------------------------------------------
@@ -441,9 +442,9 @@ void test_vclock_wire_canonical():
 		assert_equal(ba[i] & 255, bb[i] & 255)
 		i = i + 1
 	# sorted entries: node 2 first, then 5, then 9
-	assert_equal(2, vclock_wire_read_u32(ba + 4))
-	assert_equal(5, vclock_wire_read_u32(ba + 16))
-	assert_equal(9, vclock_wire_read_u32(ba + 28))
+	assert_equal(2, load_le32(ba + 4))
+	assert_equal(5, load_le32(ba + 16))
+	assert_equal(9, load_le32(ba + 28))
 	free(ba)
 	free(bb)
 	vclock_free(a)
@@ -455,7 +456,7 @@ void test_vclock_wire_empty():
 	assert_equal(4, vclock_wire_size(v))
 	char* buf = malloc(4)
 	vclock_save(v, buf)
-	assert_equal(0, vclock_wire_read_u32(buf))
+	assert_equal(0, load_le32(buf))
 	vclock* w = vclock_load(buf)
 	assert_equal(0, vclock_compare(v, w))
 	free(buf)

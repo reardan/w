@@ -1,6 +1,7 @@
 # wbuild: x64
 import lib.testing
 import libs.standard.distributed.sstable
+import lib.bytes
 
 
 # Distinct table paths per target so the 32- and 64-bit test binaries
@@ -276,8 +277,8 @@ void test_corrupt_file_rejected():
 	hdr[1] = 83
 	hdr[2] = 83
 	hdr[3] = 84
-	sstable_put_le32(hdr + 4, 99)
-	sstable_put_le32(hdr + 8, 20)
+	store_le32(hdr + 4, 99)
+	store_le32(hdr + 8, 20)
 	write_all(fd, hdr, 12)
 	close(fd)
 	free(hdr)

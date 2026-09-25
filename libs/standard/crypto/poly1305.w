@@ -36,6 +36,7 @@ only on loop indices and the (public) message length; no branch or memory
 index ever depends on the key, the accumulator, or message bytes.
 */
 import lib.memory
+import lib.bytes
 
 
 struct poly1305:
@@ -121,7 +122,7 @@ poly1305* poly1305_new(char* key):
 		i = i + 1
 	i = 0
 	while (i < 8):
-		st.pad[i] = (key[16 + i * 2] & 255) | ((key[17 + i * 2] & 255) << 8)
+		st.pad[i] = load_le16(key + 16 + i * 2)
 		i = i + 1
 	return st
 
@@ -258,8 +259,7 @@ void poly1305_finish(poly1305* st, char* out):
 	i = 0
 	while (i < 8):
 		f = w[i] + st.pad[i] + (f >> 16)
-		out[i * 2] = f & 255
-		out[i * 2 + 1] = (f >> 8) & 255
+		store_le16(out + i * 2, f)
 		i = i + 1
 	i = 0
 	while (i < 8):

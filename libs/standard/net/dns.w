@@ -28,6 +28,7 @@
 #   int dns_parse_response(char* msg, int msg_len, int query_id,
 #                          char* hostname, int* out_ip)   dns_result_*
 import lib.lib
+import lib.bytes
 import lib.net
 import lib.poll
 import lib.io_wait
@@ -309,7 +310,7 @@ int dns_random_id():
 		char* buf = malloc(2)
 		int count = read(file, buf, 2)
 		close(file)
-		int id = ((buf[0] & 255) << 8) | (buf[1] & 255)
+		int id = load_be16(buf)
 		free(buf)
 		if (count == 2):
 			return id
@@ -327,8 +328,7 @@ int dns_build_query(char* hostname, int query_id, char* out, int out_cap):
 		return 0
 	if ((hostname[0] == 0) || (out_cap < 17)):
 		return 0
-	out[0] = (query_id >> 8) & 255
-	out[1] = query_id & 255
+	store_be16(out, query_id)
 	out[2] = 1
 	out[3] = 0
 	out[4] = 0
@@ -370,10 +370,6 @@ int dns_build_query(char* hostname, int query_id, char* out, int out_cap):
 	out[pos + 3] = 0
 	out[pos + 4] = dns_class_in()
 	return pos + 5
-
-
-int dns_read_u16(char* msg, int offset):
-	return ((msg[offset] & 255) << 8) | (msg[offset + 1] & 255)
 
 
 # Decodes a (possibly compressed) name starting at offset into out as
@@ -452,9 +448,9 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 		return dns_result_error()
 	if ((msg_len < 12) || (msg_len > 65535)):
 		return dns_result_error()
-	if (dns_read_u16(msg, 0) != (query_id & 65535)):
+	if (load_be16(msg) != (query_id & 65535)):
 		return dns_result_error()
-	int flags = dns_read_u16(msg, 2)
+	int flags = load_be16(msg + 2)
 	if ((flags & 0x8000) == 0):
 		# Not a response.
 		return dns_result_error()
@@ -466,9 +462,9 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 	if ((flags & 15) != 0):
 		# Non-zero RCODE (NXDOMAIN, SERVFAIL, ...).
 		return dns_result_error()
-	if (dns_read_u16(msg, 4) != 1):
+	if (load_be16(msg + 4) != 1):
 		return dns_result_error()
-	int ancount = dns_read_u16(msg, 6)
+	int ancount = load_be16(msg + 6)
 	if (ancount > dns_max_answers()):
 		return dns_result_error()
 
@@ -482,9 +478,9 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 		return dns_parse_fail(name, target)
 	if (pos + 4 > msg_len):
 		return dns_parse_fail(name, target)
-	if (dns_read_u16(msg, pos) != dns_type_a()):
+	if (load_be16(msg + pos) != dns_type_a()):
 		return dns_parse_fail(name, target)
-	if (dns_read_u16(msg, pos + 2) != dns_class_in()):
+	if (load_be16(msg + pos + 2) != dns_class_in()):
 		return dns_parse_fail(name, target)
 	pos = pos + 4
 
@@ -495,9 +491,9 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 			return dns_parse_fail(name, target)
 		if (pos + 10 > msg_len):
 			return dns_parse_fail(name, target)
-		int rtype = dns_read_u16(msg, pos)
-		int rclass = dns_read_u16(msg, pos + 2)
-		int rdlength = dns_read_u16(msg, pos + 8)
+		int rtype = load_be16(msg + pos)
+		int rclass = load_be16(msg + pos + 2)
+		int rdlength = load_be16(msg + pos + 8)
 		int rdata = pos + 10
 		if (rdata + rdlength > msg_len):
 			return dns_parse_fail(name, target)
@@ -507,7 +503,7 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 			if (rtype == dns_type_a()):
 				if (rdlength != 4):
 					return dns_parse_fail(name, target)
-				*out_ip = ((msg[rdata] & 255) << 24) | ((msg[rdata + 1] & 255) << 16) | ((msg[rdata + 2] & 255) << 8) | (msg[rdata + 3] & 255)
+				*out_ip = load_be32(msg + rdata)
 				free(name)
 				free(target)
 				return dns_result_ok()
@@ -562,8 +558,7 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 	if (query_len == 0):
 		free(query)
 		return 0
-	query[0] = (query_len >> 8) & 255
-	query[1] = query_len & 255
+	store_be16(query, query_len)
 
 	int sock = socket_tcp_ipv4()
 	if (sock < 0):
@@ -601,7 +596,7 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 		free(header)
 		close(sock)
 		return 0
-	int response_len = dns_read_u16(header, 0)
+	int response_len = load_be16(header)
 	free(header)
 	if ((response_len < 12) | (response_len > dns_tcp_message_max())):
 		close(sock)

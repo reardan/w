@@ -31,6 +31,7 @@ import structures.string
 import libs.extras.compress.adler32
 import libs.extras.compress.deflate
 import libs.extras.compress.inflate
+import lib.bytes
 
 
 int ZLIB_ERR_BAD_HEADER():
@@ -135,7 +136,7 @@ wresult[zlib_result*]* zlib_decompress(char* data, int length, int max_output):
 	if (length < trailer_start + 4):
 		inflate_result_free(body)
 		return result_new_error[zlib_result*](ZLIB_ERR_BAD_HEADER())
-	int adler = ((data[trailer_start] & 255) << 24) | ((data[trailer_start + 1] & 255) << 16) | ((data[trailer_start + 2] & 255) << 8) | (data[trailer_start + 3] & 255)
+	int adler = load_be32(data + trailer_start)
 	int actual = adler32_of(body.data, body.length)
 	if (actual != adler):
 		inflate_result_free(body)

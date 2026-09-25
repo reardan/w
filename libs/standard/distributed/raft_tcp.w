@@ -53,6 +53,9 @@ import lib.container
 import lib.net
 import lib.poll
 import libs.standard.distributed.raft_wire
+import lib.bytes
+import lib.mem
+import structures.string
 
 
 # Largest accepted frame payload: 1 MiB.
@@ -73,52 +76,16 @@ int rt_loopback():
 	return ip4_from_string(c"127.0.0.1")
 
 
-# ---- growable byte buffer -----------------------------------------------------
-
-struct rt_buf:
-	char* data
-	int cap
-	int len
-
-
-rt_buf* rt_buf_new():
-	rt_buf* b = new rt_buf()
-	b.cap = 256
-	b.data = malloc(b.cap)
-	b.len = 0
-	return b
-
-
-void rt_buf_free(rt_buf* b):
-	free(b.data)
-	free(b)
-
-
-void rt_buf_append(rt_buf* b, char* src, int n):
-	if (b.len + n > b.cap):
-		int newcap = b.cap
-		while (b.len + n > newcap):
-			newcap = newcap * 2
-		b.data = realloc(b.data, b.cap, newcap)
-		b.cap = newcap
-	int i = 0
-	while (i < n):
-		b.data[b.len + i] = src[i]
-		i = i + 1
-	b.len = b.len + n
-
+# ---- byte buffers (string_builder) ---------------------------------------------
 
 # Drops n bytes starting at off, sliding the tail down over them.
-void rt_buf_remove(rt_buf* b, int off, int n):
-	int i = off
-	while (i + n < b.len):
-		b.data[i] = b.data[i + n]
-		i = i + 1
-	b.len = b.len - n
+void rt_buf_remove(string_builder* b, int off, int n):
+	mem_copy(b.data + off, b.data + off + n, b.length - off - n)
+	b.length = b.length - n
 
 
 # Drops the first n bytes, sliding the rest to the front.
-void rt_buf_consume(rt_buf* b, int n):
+void rt_buf_consume(string_builder* b, int n):
 	rt_buf_remove(b, 0, n)
 
 
@@ -134,7 +101,7 @@ struct rt_peer:
 	int id
 	int port
 	int fd
-	rt_buf* out
+	string_builder* out
 	list[int] frame_lens
 	int head_sent
 
@@ -143,7 +110,7 @@ struct rt_peer:
 # frames can be split off.
 struct rt_conn:
 	int fd
-	rt_buf* acc
+	string_builder* acc
 
 
 struct raft_tcp:
@@ -197,7 +164,7 @@ void raft_tcp_free(raft_tcp* t):
 		rt_peer* p = t.peers[i]
 		if (p.fd >= 0):
 			close(p.fd)
-		rt_buf_free(p.out)
+		string_free(p.out)
 		list_free[int](p.frame_lens)
 		free(p)
 		i = i + 1
@@ -205,7 +172,7 @@ void raft_tcp_free(raft_tcp* t):
 	while (i < t.conns.length):
 		rt_conn* c = t.conns[i]
 		close(c.fd)
-		rt_buf_free(c.acc)
+		string_free(c.acc)
 		free(c)
 		i = i + 1
 	i = 0
@@ -240,7 +207,7 @@ void raft_tcp_add_peer(raft_tcp* t, int peer_id, int port):
 	p.id = peer_id
 	p.port = port
 	p.fd = 0 - 1
-	p.out = rt_buf_new()
+	p.out = string_new_sized(256)
 	p.frame_lens = new list[int]
 	p.head_sent = 0
 	t.peers.push(p)
@@ -293,7 +260,7 @@ void rt_peer_flush(rt_peer* p):
 	if ((r & (poll_err() | poll_hup() | poll_nval())) != 0):
 		rt_peer_disconnect(p)
 		return
-	int n = socket_send(p.fd, p.out.data, p.out.len, msg_nosignal())
+	int n = socket_send(p.fd, p.out.data, p.out.length, msg_nosignal())
 	if (n > 0):
 		rt_buf_consume(p.out, n)
 		rt_peer_note_sent(p, n)
@@ -324,7 +291,7 @@ int raft_tcp_send(raft_tcp* t, raft_msg* m):
 		# refuse it up front (same contract as oversize) without
 		# disturbing the frames already queued.
 		return 0
-	while (p.out.len + fsize > t.max_pending):
+	while (p.out.length + fsize > t.max_pending):
 		# Drop the oldest WHOLE frame. When the head frame is
 		# partially on the wire it must survive intact, so the oldest
 		# droppable frame is the one after it.
@@ -339,14 +306,14 @@ int raft_tcp_send(raft_tcp* t, raft_msg* m):
 		rt_buf_remove(p.out, off, p.frame_lens[idx])
 		list_remove_at[int](p.frame_lens, idx)
 		t.dropped = t.dropped + 1
-	if (p.out.len + fsize > t.max_pending):
+	if (p.out.length + fsize > t.max_pending):
 		# Only an undroppable partially-sent head remains and the new
 		# frame still does not fit.
 		return 0
 	char* tmp = malloc(fsize)
-	raft_wire_u32(tmp, size)
+	store_le32(tmp, size)
 	raft_wire_encode(m, tmp + 4)
-	rt_buf_append(p.out, tmp, fsize)
+	string_append_bytes(p.out, tmp, fsize)
 	p.frame_lens.push(fsize)
 	free(tmp)
 	if (p.fd < 0):
@@ -367,18 +334,18 @@ void rt_pump_accept(raft_tcp* t):
 			return
 		rt_conn* c = new rt_conn()
 		c.fd = fd
-		c.acc = rt_buf_new()
+		c.acc = string_new_sized(256)
 		t.conns.push(c)
 
 
 # Splits complete frames out of c.acc into the inbox. Returns 1 on a
 # protocol error (oversize length or undecodable payload).
 int rt_conn_extract(raft_tcp* t, rt_conn* c):
-	while (c.acc.len >= 4):
-		int plen = raft_wire_read_u32(c.acc.data)
+	while (c.acc.length >= 4):
+		int plen = load_le32(c.acc.data)
 		if (plen < 0 || plen > rt_max_frame()):
 			return 1
-		if (c.acc.len < plen + 4):
+		if (c.acc.length < plen + 4):
 			return 0
 		raft_msg* m = raft_wire_decode(c.acc.data + 4, plen)
 		if (cast(int, m) == 0):
@@ -394,7 +361,7 @@ int rt_conn_read(raft_tcp* t, rt_conn* c):
 	while (1):
 		int n = socket_recv(c.fd, t.scratch, rt_scratch_size(), 0)
 		if (n > 0):
-			rt_buf_append(c.acc, t.scratch, n)
+			string_append_bytes(c.acc, t.scratch, n)
 		else:
 			if (n == 0):
 				# EOF: partial data, if any, is dropped.
@@ -411,7 +378,7 @@ void rt_pump_inbound(raft_tcp* t):
 		rt_conn* c = t.conns[i]
 		if (rt_conn_read(t, c)):
 			close(c.fd)
-			rt_buf_free(c.acc)
+			string_free(c.acc)
 			free(c)
 			list_remove_at[rt_conn*](t.conns, i)
 		else:
@@ -422,7 +389,7 @@ void rt_pump_outbound(raft_tcp* t):
 	int i = 0
 	while (i < t.peers.length):
 		rt_peer* p = t.peers[i]
-		if (p.out.len > 0):
+		if (p.out.length > 0):
 			if (p.fd < 0):
 				rt_peer_dial(p)
 			if (p.fd >= 0):
@@ -481,7 +448,7 @@ int raft_tcp_pending_bytes(raft_tcp* t, int peer_id):
 	rt_peer* p = rt_find_peer(t, peer_id)
 	if (cast(int, p) == 0):
 		return 0 - 1
-	return p.out.len
+	return p.out.length
 
 
 # Frames still (wholly or partially) buffered for peer_id, or -1 for

@@ -207,6 +207,7 @@ import lib.assert
 import libs.standard.distributed.u64
 import libs.standard.distributed.monotime
 import libs.standard.distributed.prng
+import lib.bytes
 
 
 # ---- states -----------------------------------------------------------------
@@ -656,7 +657,7 @@ char* raft_config_encode(int op, int id):
 void raft_config_decode(char* command, int command_len, int* op_out, int* id_out):
 	assert1(command_len == 5)
 	op_out[0] = command[0] & 255
-	id_out[0] = (command[1] & 255) | ((command[2] & 255) << 8) | ((command[3] & 255) << 16) | ((command[4] & 255) << 24)
+	id_out[0] = load_le32(command + 1)
 
 
 # Reconcile next_index/match_index against the CURRENT r.peers: insert

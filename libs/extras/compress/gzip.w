@@ -35,6 +35,7 @@ import structures.string
 import libs.extras.compress.crc32
 import libs.extras.compress.deflate
 import libs.extras.compress.inflate
+import lib.bytes
 
 
 int GZIP_ERR_BAD_MAGIC():
@@ -150,7 +151,7 @@ wresult[gzip_result*]* gzip_decompress(char* data, int length, int max_output):
 	if (f_extra):
 		if (pos + 2 > length):
 			return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED())
-		int xlen = (data[pos] & 255) | ((data[pos + 1] & 255) << 8)
+		int xlen = load_le16(data + pos)
 		pos = pos + 2 + xlen
 		if (pos > length):
 			return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED())
@@ -188,8 +189,8 @@ wresult[gzip_result*]* gzip_decompress(char* data, int length, int max_output):
 	if (trailer_start + 8 > length):
 		inflate_result_free(body)
 		return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED())
-	int crc = (data[trailer_start] & 255) | ((data[trailer_start + 1] & 255) << 8) | ((data[trailer_start + 2] & 255) << 16) | ((data[trailer_start + 3] & 255) << 24)
-	int isize = (data[trailer_start + 4] & 255) | ((data[trailer_start + 5] & 255) << 8) | ((data[trailer_start + 6] & 255) << 16) | ((data[trailer_start + 7] & 255) << 24)
+	int crc = load_le32(data + trailer_start)
+	int isize = load_le32(data + trailer_start + 4)
 	int actual_crc = crc32_of(body.data, body.length)
 	if (actual_crc != crc):
 		inflate_result_free(body)

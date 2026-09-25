@@ -28,6 +28,7 @@ import lib.lib
 import lib.ttf
 import lib.rle
 import graphics.ui.font_data
+import lib.bytes
 
 
 # Mask ids in atlas bake order.
@@ -89,8 +90,8 @@ struct ui_glyph:
 
 ui_glyph ui_font_decode(char* record):
 	ui_glyph g
-	g.x = (record[0] & 255) | ((record[1] & 255) << 8)
-	g.y = (record[2] & 255) | ((record[3] & 255) << 8)
+	g.x = load_le16(record)
+	g.y = load_le16(record + 2)
 	g.w = record[4] & 255
 	g.h = record[5] & 255
 	g.advance = record[6] & 255
