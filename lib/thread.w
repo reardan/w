@@ -209,6 +209,13 @@ void thread_entry():
 	# computation recovers it.
 	int stack_end = (cast(int, &t) + 4095) & ~4095
 	t.stack_base = stack_end - thread_stack_size()
+	# thread_local globals (docs/projects/thread_local.md): this thread's
+	# zeroed TLS block is the bottom of its own stack mapping (mmap
+	# zero-fills it; the compiler caps the block at 1MB of the 4MB), so
+	# it needs no allocation and thread_join's munmap reclaims it. Done
+	# before anything that could touch a thread_local.
+	if (__w_tls_size() > 0):
+		__w_tls_set(t.stack_base)
 	# Arm the kernel's exit signal before the ack so it is armed before
 	# thread_join can possibly run: on this thread's exit the kernel
 	# stores 0 to t.exited and futex-wakes it, after the thread's last

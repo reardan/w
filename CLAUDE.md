@@ -30,7 +30,7 @@ Mach-O seed that bootstraps natively on this Mac (`./wbuild build_darwin`,
    The 32-bit dynamically linked tests additionally need `libc6:i386`
    (`/lib/ld-linux.so.2`): `dynamic_test`, `c_import_test`,
    `c_import_errno_test`, `c_import_libc_test`, `float_abi_test`,
-   `varargs_test`, `extern_data_test`. `verify_arm64` and the arm64 run
+   `varargs_test`, `extern_data_test`, `thread_local_dynamic_test`. `verify_arm64` and the arm64 run
    targets need `qemu-user-static`.
 3. **The `w-dev` Docker container** (`tools/mac/wdev.sh`, repo
    bind-mounted at `/w`) ONLY when absolutely necessary — i.e. a job

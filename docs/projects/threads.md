@@ -197,6 +197,11 @@ a callback. Worker functions must not allocate or spawn, and
 mutex/condvar instances must be allocated by the main thread — but
 any thread may lock/unlock/wait/signal them, and use the atomics.
 
+**Thread-local storage.** `thread_entry` installs each spawned
+thread's `thread_local` block, which is the bottom of its own stack
+mapping, before the worker function runs. Pool workers keep theirs
+across jobs. See docs/projects/thread_local.md.
+
 ## Per-target support
 
 | target       | state |

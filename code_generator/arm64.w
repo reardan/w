@@ -422,6 +422,27 @@ int be_addr_slot_read(int pos):
 # Leave the address of the W-stack slot at byte offset k in the accumulator.
 # On x86 this reproduces lea_eax_esp_plus(0) followed by patching the disp32
 # to k (byte-identical to the original sym_get_value sequence).
+# Accumulator = address of the current thread's copy of a thread_local
+# global at byte offset k in the TLS block (docs/projects/thread_local.md).
+# The register is the one libc leaves alone -- gs on x64, fs on x86 -- so
+# thread_local also works in programs that load libc. The block's word 0
+# holds its own address, so one segment-relative load
+# plus an add yields a plain pointer that loads, stores and '&' treat
+# like any other global's address. x86 family only: grammar/program.w
+# rejects thread_local declarations on every other target.
+void be_tls_address(int k):
+	if (word_size == 8):
+		# mov rax,gs:[0] ; add rax,imm32
+		emit(9, c"\x65\x48\x8b\x04\x25\x00\x00\x00\x00")
+		emit(2, c"\x48\x05")
+	else:
+		# mov eax,fs:[0] ; add eax,imm32
+		emit(6, c"\x64\xa1\x00\x00\x00\x00")
+		emit(1, c"\x05")
+	emit_int(0)
+	save_int32(code + codepos - 4, k)
+
+
 void be_lea_acc_wstack(int k):
 	if (target_isa == 3):
 		ptx_lea_ax_sp(k)

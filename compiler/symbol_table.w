@@ -91,7 +91,7 @@ void sym_stats_dump():
 
 
 int symbol_data_size():
-	return 142
+	return 146
 
 
 int next_token(int t):
@@ -435,6 +435,7 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 130, -1) /* not a W variadic function */
 	save_int(table + t + 134, 0)  /* not a generator */
 	save_int(table + t + 138, 0)  /* not a gpu kernel */
+	save_int(table + t + 142, 0)  /* not thread_local */
 	# Declaration location: token position of the name being declared
 	save_int(table + t + 66, decl_file_index())
 	save_int(table + t + 70, diag_token_line)
@@ -586,6 +587,19 @@ int sym_is_kernel(int t):
 
 void sym_set_kernel(int t):
 	save_int(table + t + 138, 1)
+
+
+# 1 when the symbol at table offset t is a thread_local global
+# (docs/projects/thread_local.md): its recorded value is a byte offset in
+# the per-thread TLS block, not a virtual address, and sym_get_value
+# materializes it through the segment register instead of an address
+# slot.
+int sym_is_thread_local(int t):
+	return load_int(table + t + 142)
+
+
+void sym_set_thread_local(int t):
+	save_int(table + t + 142, 1)
 
 
 # Parameter type slots per symbol; arguments past the limit are unchecked.
@@ -778,6 +792,11 @@ int sym_get_value(char *s):
 	# instruction on the 'L'/'A' path, and no already-emitted byte is
 	# rewritten -- fewer bytes are emitted instead, so every codepos
 	# bookmark (REPL rollback, wdbg line table) stays self-consistent.
+	# thread_local global: the value is the TLS block offset; no address
+	# slot, no backpatch chain (it is defined where it is declared).
+	if (sym_is_thread_local(t)):
+		be_tls_address(load_int(table + t + 2))
+		return type
 	if ((scope_type == 'D') || (scope_type == 'U')):
 		be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
 		be_addr_slot_write(codepos - 4, load_int(table + t + 2))
