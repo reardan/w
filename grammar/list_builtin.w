@@ -13,6 +13,7 @@ grammar/hash_builtin.w (hash_push_stack_slot, hash_call_finish).
 */
 int expression();
 int inferred_storage_type(char* name, int got); /* defined in variable_declaration */
+void for_iter_call(char* fn_name, int container_slot, int cursor_slot); /* defined in for_statement */
 
 
 int list_literal_type
@@ -297,6 +298,240 @@ int cm_call(int type, char* helper, char* bytes_helper, int want, char* ctx, int
 	return cm_result_type(result, want)
 
 
+/*
+it-expressions: l.map(it * 2), l.filter(it % 2 == 0), l.sort_by(it.age)
+...: a method argument that mentions the identifier 'it' is an
+expression evaluated once per element, compiled as an INLINE loop in
+the current function, so the enclosing function's locals stay visible
+and no closure is needed. 'it' is a hidden local bound to each element
+(struct elements as element pointers, the for-in rule); outside these
+arguments 'it' stays an ordinary identifier, and a user variable named
+'it' in scope keeps the argument an ordinary value/callback.
+
+Every form shares one loop: the expression's values are collected into
+a "keys" list (created lazily, since its element type is only known
+once the expression has been parsed), then a runtime helper combines
+the source list with its keys:
+  map(e)                  the keys themselves: list of e's type
+  filter(p)               elements whose key is nonzero
+  count(p) / any(p) / all(p) / index(p)   __w_list_truth modes 0-3
+  sum(e) / min(e) / max(e)                aggregate of the keys
+  sort_by(k) / sorted_by(k)               stable sort by key (int-like
+                                          or char* keys, like sort)
+  min_by(k) / max_by(k)   the first element with the smallest/largest
+                          key, as an lvalue like l[i]
+Every element is evaluated (no short-circuit in any/all/index).
+*/
+int list_it_active
+
+
+int list_it_mode(char* name):
+	char* names = c"map filter count any all index sum min max sort_by sorted_by min_by max_by "
+	int mode = 0
+	int i = 0
+	while (names[i] != 0):
+		int j = 0
+		while ((name[j] != 0) && (names[i + j] == name[j])):
+			j = j + 1
+		if ((name[j] == 0) && (names[i + j] == ' ')):
+			return mode
+		while (names[i] != ' '):
+			i = i + 1
+		i = i + 1
+		mode = mode + 1
+	return 0 - 1
+
+
+# Whether the argument list after the current method name mentions 'it'
+# as a free name: a token scan to the matching ')' that rewinds with the
+# ':=' lookahead trick. Member names ('x.it') do not count; f-string
+# embedded expressions do.
+int list_it_argument():
+	if ((nextc != '(') || (list_it_mode(token) < 0)):
+		return 0
+	int sym = sym_lookup(c"it")
+	if ((sym >= 0) && (sym != list_it_active)):
+		return 0
+	int serial = token_serial
+	char* save = generic_reparse_save()
+	char* open = malloc(64)
+	int depth = 0
+	int found = 0
+	int after_dot = 0
+	get_token()
+	while ((found == 0) && (token[0] != 0) && (depth < 64)):
+		get_token()
+		int n = strlen(token)
+		if (peek(c")") | peek(c"]") | peek(c"}")):
+			if (depth == 0):
+				break
+			depth = depth - 1
+			if (open[depth] == 'T'):
+				get_token_template_chunk()
+				n = strlen(token)
+				if ((n > 0) && (token[n - 1] == '{')):
+					open[depth] = 'T'
+					depth = depth + 1
+		else if (peek(c"(") | peek(c"[") | peek(c"{")):
+			open[depth] = token[0]
+			depth = depth + 1
+		else if (peek(c"it") && (after_dot == 0)):
+			found = 1
+		else if ((token[0] == 'f') && (token[1] == '"') && (token[n - 1] == '{')):
+			open[depth] = 'T'
+			depth = depth + 1
+		after_dot = peek(c".")
+	free(open)
+	getchar_seek(file, load_ptr(save + 7 * __word_size__))
+	generic_reparse_restore(save)
+	token_serial = serial
+	return found
+
+
+# helper(slot_a[, slot_b][, constant]) with the result in eax; absent
+# slots are 0, an absent constant is -1.
+void list_it_call(char* helper, int slot_a, int slot_b, int constant):
+	sym_get_value(helper)
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(slot_a)
+	if (slot_b != 0):
+		hash_push_stack_slot(slot_b)
+	if (constant >= 0):
+		mov_eax_int(constant)
+		push_eax()
+		stack_pos = stack_pos + 1
+	hash_call_finish(s)
+
+
+void list_it_reject(char* method, char* what, int got):
+	diag_part(c"list ")
+	diag_part(method)
+	diag_part(what)
+	print_error_type(got)
+	error(c"'")
+
+
+# The method name is the current token and list_it_argument() said its
+# argument is an it-expression.
+int list_it_method(int type):
+	char* method = strclone(token)
+	int mode = list_it_mode(method)
+	get_token()
+	int element_type = type_list_element_type(type_unqualified(type))
+	int it_type = element_type
+	char* value_fn = c"__w_list_iter_value"
+	if (type_num_args(type_unqualified(element_type)) > 0):
+		it_type = type_get_next_pointer(element_type)
+		value_fn = c"__w_list_addr"
+	promote(type)
+	int base_stack = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int list_slot = stack_pos
+	mov_eax_int(0)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int cursor_slot = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int keys_slot = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	int it_slot = stack_pos
+	int table_mark = table_pos
+	int outer_active = list_it_active
+	pointer_indirection = 0
+	sym_declare(c"it", it_type, 'L', it_slot - 1, 1)
+	list_it_active = table_pos - symbol_data_size()
+	expect(c"(")
+
+	# for each element: it = element; keys.push(expression)
+	int exit = be_ctrl_block()
+	int top = be_ctrl_loop()
+	mov_eax_esp_plus((stack_pos - cursor_slot) << word_size_log2)
+	push_eax()
+	stack_pos = stack_pos + 1
+	mov_eax_esp_plus((stack_pos - list_slot) << word_size_log2)
+	add_eax_int32(word_size)
+	promote_eax()
+	pop_ebx()
+	stack_pos = stack_pos - 1
+	alu_cmp_set(0x9c) /* setl: cursor < length */
+	be_br_zero_discard(exit)
+	for_iter_call(value_fn, list_slot, cursor_slot)
+	store_stack_var((stack_pos - it_slot) << word_size_log2)
+	int got = promote(expression())
+	int key_type = inferred_storage_type(method, got)
+	if ((type_num_args(key_type) > 0) | type_is_array(key_type) | type_is_slice(key_type)):
+		list_it_reject(method, c" expression must be a scalar value, got '", got)
+	int key_size = list_element_slot_size(key_type)
+	push_eax()
+	stack_pos = stack_pos + 1
+	list_it_call(c"__w_list_push_lazy", keys_slot, stack_pos, key_size)
+	store_stack_var((stack_pos - keys_slot) << word_size_log2)
+	be_pop(1)
+	stack_pos = stack_pos - 1
+	inc_dword_esp_plus((stack_pos - cursor_slot) << word_size_log2)
+	be_br(top)
+	be_ctrl_end(top)
+	be_ctrl_end(exit)
+	expect(c")")
+	table_pos = table_mark
+	list_it_active = outer_active
+	list_it_call(c"__w_list_or_new", keys_slot, 0, key_size)
+	store_stack_var((stack_pos - keys_slot) << word_size_log2)
+
+	int result = type_value(type_get_list(type_canonical(key_type)))
+	if ((mode >= 1) && (mode <= 5)):
+		# filter / count / any / all / index test the keys' truthiness
+		if ((type_float_kind(key_type) != 0) | type_is_string(key_type) | type_is_map(key_type) | type_is_set(key_type) | type_is_list(key_type)):
+			list_it_reject(method, c" condition must be an int-like or pointer value, got '", got)
+		if (mode == 1):
+			list_it_call(c"__w_list_filter_keys", list_slot, keys_slot, -1)
+			result = type_value(type_get_list(type_canonical(element_type)))
+		else:
+			list_it_call(c"__w_list_truth", keys_slot, 0, mode - 2)
+			result = type_value(type_lookup(c"int"))
+			if ((mode == 3) || (mode == 4)):
+				result = type_value(bool_type)
+	else if (mode >= 6):
+		char* what = strclone(method)
+		if (mode >= 9):
+			free(what)
+			what = strjoin(method, c" key")
+		int kind = list_scalar_kind(key_type, what)
+		free(what)
+		if ((mode <= 8) && (kind != 1)):
+			diag_part(c"list ")
+			diag_part(method)
+			error(c" requires int-like elements")
+		if (mode <= 8):
+			char* helper = strjoin(c"__w_list_", method)
+			list_it_call(helper, keys_slot, 0, -1)
+			free(helper)
+			result = type_value(type_lookup(c"int"))
+			if (mode != 6):
+				result = type_value(key_type)
+		else if (mode == 9):
+			list_it_call(c"__w_list_sort_keys", list_slot, keys_slot, kind)
+			result = type_value(type_lookup(c"void"))
+		else if (mode == 10):
+			list_it_call(c"__w_list_sorted_keys", list_slot, keys_slot, kind)
+			result = type_value(type_get_list(type_canonical(element_type)))
+		else:
+			list_it_call(c"__w_list_best_key", keys_slot, 0, kind | ((mode - 11) << 2))
+			push_eax()
+			stack_pos = stack_pos + 1
+			list_it_call(c"__w_list_addr", list_slot, stack_pos, -1)
+			result = element_type
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
+	free(method)
+	return result
+
+
 # list[T] pseudo-methods; the method name is the current token.
 #   push/insert/remove/pop/clear/free   stack and deque operations
 #   sort/sorted, sort_by/sorted_by      in place / new list; int-like
@@ -305,12 +540,15 @@ int cm_call(int type, char* helper, char* bytes_helper, int want, char* ctx, int
 #                                       return negative/zero/positive
 #   map/filter/reduce                   callbacks over scalar elements
 #   sum/min/max                         int-like aggregations
-#   reverse, count(x), index(x)         index is -1 when absent
+#   reverse, reversed                   in place / new list, any element
+#   count(x), index(x)                  index is -1 when absent
 # Struct elements travel by address: push/insert copy bytes, pop and
 # the comparators see element addresses.
 int list_method(int type):
 	int element_type = type_list_element_type(type_unqualified(type))
 	int aggregate = type_num_args(type_unqualified(element_type)) > 0
+	if (list_it_argument()):
+		return list_it_method(type)
 	if (accept(c"push")):
 		return cm_call(type, c"__w_list_push", c"__w_list_push_bytes", element_type, c"list push", 1, 0, -1, 0)
 	if (accept(c"pop")):
@@ -365,6 +603,8 @@ int list_method(int type):
 		return got
 	if (accept(c"reverse")):
 		return cm_call(type, c"__w_list_reverse", 0, element_type, 0, 0, 0, -1, 0)
+	if (accept(c"reversed")):
+		return cm_call(type, c"__w_list_reversed", 0, element_type, 0, 0, 0, -1, 2)
 	if (accept(c"count")):
 		return cm_call(type, c"__w_list_count", 0, element_type, c"list count", 1, 0, list_scalar_kind(element_type, c"list count"), 3)
 	if (accept(c"index")):
