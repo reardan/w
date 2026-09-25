@@ -202,7 +202,8 @@ struct asm_buffer:
 
 
 asm_buffer* asm_buffer_new():
-	asm_buffer* b = cast(asm_buffer*, malloc(12))
+	# three word-sized fields: 12 bytes on x86, 24 on x64
+	asm_buffer* b = cast(asm_buffer*, malloc(3 * __word_size__))
 	b.capacity = 64
 	b.length = 0
 	b.data = malloc(b.capacity)
@@ -288,7 +289,7 @@ struct asm_labels:
 
 
 asm_labels* asm_labels_new():
-	asm_labels* t = cast(asm_labels*, malloc(8))
+	asm_labels* t = cast(asm_labels*, malloc(2 * __word_size__))
 	t.labels = new list[asm_label_record]
 	t.fixups = new list[asm_fixup_record]
 	return t

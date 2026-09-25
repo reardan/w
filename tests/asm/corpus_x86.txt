@@ -632,3 +632,30 @@ c4e27913c0|vcvtph2ps xmm0,xmm0
 
 # --- vcvtps2ph_xmm0 (F16C VEX, imm8=4 round-to-nearest-even) ---
 c4e3791dc004|vcvtps2ph xmm0,xmm0,4
+
+# ==== code_generator/x86_asm.w: remaining runtime-stub instructions (issue #207; asm_stubs_test) ====
+8b442420|mov eax,[esp+0x20]
+8b5c241c|mov ebx,[esp+0x1c]
+8b4c2418|mov ecx,[esp+0x18]
+8b542414|mov edx,[esp+0x14]
+8b742410|mov esi,[esp+0x10]
+8b7c240c|mov edi,[esp+0xc]
+8b6c2408|mov ebp,[esp+8]
+8b5510|mov edx,[ebp+0x10]
+8b450c|mov eax,[ebp+0xc]
+8b5d08|mov ebx,[ebp+8]
+e81f000000|call .+0x24
+7502|jne .+4
+31ed|xor ebp,ebp
+b800000000|mov eax,0
+8909|mov [ecx],ecx
+83ec10|sub esp,0x10
+0fb7c0|movzx eax,ax
+7505|jne .+7
+b8ffffffff|mov eax,-1
+890424|mov [esp],eax
+894c2404|mov [esp+4],ecx
+89e3|mov ebx,esp
+b8f3000000|mov eax,0xf3
+0d03000000|or eax,3
+83c410|add esp,0x10

@@ -2,8 +2,9 @@
 Seed-compatibility gate for libs/asm (issue #164, Phase 0.5): the
 asm_seed_gate build target compiles THIS FILE WITH THE COMMITTED SEED
 ./w and runs it, mechanically enforcing that everything under libs/asm/
-sticks to seed-understood syntax. That rule exists because the endgame
-consumers (debugger/, potentially code_generator/) live in w.w's seed-
+sticks to seed-understood syntax. That rule exists because its
+consumers (debugger/, and code_generator/asm_text.w, which assembles
+the runtime stubs at compile time, issue #207) live in w.w's seed-
 compiled import graph; see docs/projects/assembler_disassembler.md.
 
 If this target fails to compile after a libs/asm change, the change
@@ -24,7 +25,7 @@ import libs.asm.arm64_decode
 import libs.asm.arm64_format
 import libs.asm.arm64_encode
 import libs.asm.arm64_text
-import libs.asm.stubgen
+import code_generator.asm_text
 
 
 int main():
@@ -44,13 +45,13 @@ int main():
 	assert_equal(0, cast(int, asm_binary_open(c"tests/asm_seed_check.w")))
 
 	# decode + format round-trip one instruction (mov eax,[esp+16]).
-	char* code = malloc(4)
-	code[0] = 0x8b
-	code[1] = 0x44
-	code[2] = 0x24
-	code[3] = 0x10
+	char* x86_code = malloc(4)
+	x86_code[0] = 0x8b
+	x86_code[1] = 0x44
+	x86_code[2] = 0x24
+	x86_code[3] = 0x10
 	asm_insn insn
-	assert_equal(4, asm_x86_decode(code, 4, 0, 4, &insn))
+	assert_equal(4, asm_x86_decode(x86_code, 4, 0, 4, &insn))
 	assert_strings_equal(c"mov eax,[esp+0x10]", asm_format(&insn))
 
 	# parse + encode round-trips back to the same bytes.
@@ -96,14 +97,20 @@ int main():
 	assert_equal(0x8b, enc64.data[1] & 255)
 	assert_equal(0x10, enc64.data[4] & 255)
 
-	# stubgen: assemble one line per encoder family through the stub
-	# generator's entry point.
-	asm_buffer* sb = asm_buffer_new()
-	assert_equal(1, asm_stub_assemble_line(ASM_STUB_X86(), c"ret", sb))
-	assert_equal(0xc3, sb.data[0] & 255)
-	assert_equal(4, asm_stub_assemble_line(ASM_STUB_ARM64(), c"ret", sb))
-	assert_equal(5, sb.length)
-	assert_equal(0, asm_stub_find(c"a64(op(0xd6, 0x5f03c0))", c"op(0x") - 4)
+	# asm_text: the compiler's compile-time stub assembler, one line per
+	# encoder family plus a db raw-byte line, emitted at codepos.
+	code_size = 64
+	code = malloc(code_size)
+	codepos = 0
+	x86_asm(c"ret")
+	x64_asm(c"mov rax,[rsp+0x10]")
+	a64_asm(c"ret")
+	x86_asm(c"db 0x66, 0x8c, 0xe0")
+	assert_equal(13, codepos)
+	assert_equal(0xc3, code[0] & 255)
+	assert_equal(0x48, code[1] & 255)
+	assert_equal(0xd6, code[9] & 255)
+	assert_equal(0xe0, code[12] & 255)
 
 	println(c"asm_seed_check passed")
 	return 0

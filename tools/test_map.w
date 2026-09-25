@@ -78,7 +78,7 @@ build. For a changed path P the emitted targets are the union of:
         reason); the derived remainder keeps its closure selection, so
         a debugger/ edit still recommends the wdbg/attach/repl targets
         alongside verify. *_asm.w runtime stubs also -> asm_stubs_test
-        (drift-checked against tests/asm/, #170).
+        (their assembly text is checked against tests/asm/, #207).
       - lib/__arch__/<arch>/ paths in that arch's OWN seed closure
         ('bin/wv2 <arch> deps w.w', cached as "<arch> w.w") -> the
         arch's self-host fixpoint (verify_x64 / verify_arm64 /
@@ -107,9 +107,8 @@ build. For a changed path P the emitted targets are the union of:
         test coverage.)
       - tests/asm/ -> the asm suite (including the asm_fuzz_* property/
         fuzz targets, which sample the same tests/asm/corpus_*.txt
-        fixtures): the .txt/.asm text sources are read at run time, not
-        imported. tools/gen_stubs.w -> asm_stubs_test (the stub drift
-        check compares its generated output).
+        fixtures): the .txt corpora are read at run time, not
+        imported.
       - libs/extras/c_import/ and c_preprocessor/ -> the c_import
         suite: the C-import machinery is loaded by the compiler itself,
         not through recorded imports.
@@ -2812,9 +2811,6 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		wtest_add(path, c"asm_fuzz_x86_test")
 		wtest_add(path, c"asm_fuzz_x64_test")
 		wtest_add(path, c"asm_fuzz_arm64_test")
-		matched = 1
-	if (strcmp(path, c"tools/gen_stubs.w") == 0):
-		wtest_add(path, c"asm_stubs_test")
 		matched = 1
 	if (strcmp(path, c"tools/mac/run_darwin_tests.sh") == 0):
 		wtest_add(path, c"arm64_darwin_smoke_test")

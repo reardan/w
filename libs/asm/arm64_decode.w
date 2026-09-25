@@ -394,7 +394,9 @@ void arm64_dec_branch_reg(asm_insn* insn, int w):
 			arm64_opaque(insn, c"braaz", w)
 			return
 		if (opc == 1):
-			arm64_opaque(insn, c"blraaz", w)
+			# exact: the --pac=full indirect call and signal_trampoline stub
+			insn.mnemonic = c"blraaz"
+			arm64_set_reg(&insn.op1, rn, 8)
 			return
 		if (opc == 2):
 			arm64_opaque(insn, c"retaa", w)
