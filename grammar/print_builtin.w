@@ -324,7 +324,7 @@ int prelude_str_helper():
 int prelude_math_ready():
 	if (nextc != '('):
 		return 0
-	if ((prelude_math_helper() < 0) && (prelude_seq_helper() < 0) && (peek(c"len") == 0) && (peek(c"enum_name") == 0)):
+	if ((prelude_math_helper() < 0) && (prelude_seq_helper() < 0) && (peek(c"len") == 0) && (peek(c"enum_name") == 0) && (prelude_str_helper() < 0)):
 		return 0
 	if (sym_lookup(token) >= 0):
 		return 0
@@ -559,11 +559,92 @@ int prelude_enum_name_expr():
 	return type_value(type_lookup_pointer(c"char", 1))
 
 
-# Entry for the primary_expr branch: routes len, any/all and enum_name
-# separately from the max/min/abs runtime helpers.
+# 3 for a string, 2 for a char*, 0 for anything else.
+int prelude_text_kind(int got):
+	if (got < -1):
+		got = type_real(got)
+	if ((got == 3) || (got == 4)):
+		return 0
+	int t = type_unqualified(got)
+	if (type_is_string(t)):
+		return 3
+	if (type_is_char_pointer(t)):
+		return 2
+	return 0
+
+
+void prelude_str_unsupported(char* fn_name, char* what, int got):
+	diag_part(c"prelude '")
+	diag_part(fn_name)
+	diag_part(what)
+	print_error_type(got)
+	error(c"'")
+
+
+# split(s) / split(s, ch) (s a char* or string; no ch = whitespace
+# runs, empty pieces dropped) and join(l, sep) (l a list of char* or
+# string) with no user symbol of that name in scope. Leaves ')' current
+# for primary_expr's trailing get_token().
+int prelude_str_expr(int helper):
+	char* fn_name = strclone(token)
+	get_token()
+	expect(c"(")
+	int base_stack = stack_pos
+	print_emit_helper_address(helper)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int got = promote(expression())
+	int kind = 0
+	if (helper == 18):
+		kind = prelude_text_kind(got)
+		if (kind == 0):
+			prelude_str_unsupported(fn_name, c"' argument must be a char* or string: '", got)
+		push_eax()
+		stack_pos = stack_pos + 1
+		mov_eax_int(kind == 3)
+		push_eax()
+		stack_pos = stack_pos + 1
+		if (accept(c",")):
+			got = promote(expression())
+			prelude_math_require_int(fn_name, got)
+		else:
+			mov_eax_int(0)
+	else:
+		if (type_is_list(type_unqualified(got))):
+			kind = prelude_text_kind(type_list_element_type(type_unqualified(got)))
+		if (kind == 0):
+			prelude_str_unsupported(fn_name, c"' argument must be a list of char* or string: '", got)
+		push_eax()
+		stack_pos = stack_pos + 1
+		expect(c",")
+		got = promote(expression())
+		int sep_kind = prelude_text_kind(got)
+		if (sep_kind == 0):
+			prelude_str_unsupported(fn_name, c"' separator must be a char* or string: '", got)
+		push_eax()
+		stack_pos = stack_pos + 1
+		# flags: bit 0 string pieces, bit 1 string separator
+		mov_eax_int((kind == 3) | ((sep_kind == 3) << 1))
+	push_eax()
+	stack_pos = stack_pos + 1
+	if (peek(c")") == 0):
+		diag_part(c"')' expected in prelude '")
+		diag_part(fn_name)
+		error(c"'")
+	hash_call_finish(base_stack)
+	free(fn_name)
+	if (helper == 18):
+		return type_value(type_get_list(type_lookup_pointer(c"char", 1)))
+	return type_value(type_lookup_pointer(c"char", 1))
+
+
+# Entry for the primary_expr branch: routes len, any/all, split/join and
+# enum_name separately from the max/min/abs runtime helpers.
 int prelude_math_expr():
 	if (peek(c"len")):
 		return prelude_len_expr()
+	if (prelude_str_helper() >= 0):
+		return prelude_str_expr(prelude_str_helper())
 	if (peek(c"enum_name")):
 		return prelude_enum_name_expr()
 	if (prelude_seq_helper() >= 0):
