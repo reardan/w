@@ -113,10 +113,12 @@ void test_cloc_collect():
 	# hidden entries; a file argument is returned as-is.
 	list[char*] files = new list[char*]
 	assert_equal(0, cloc_collect(c"libs/extras/protobuf", files))
-	assert_equal(3, files.length)
-	assert_strings_equal(c"libs/extras/protobuf/message.w", files[0])
-	assert_strings_equal(c"libs/extras/protobuf/varint.w", files[1])
-	assert_strings_equal(c"libs/extras/protobuf/wire.w", files[2])
+	assert_equal(5, files.length)
+	assert_strings_equal(c"libs/extras/protobuf/codegen.w", files[0])
+	assert_strings_equal(c"libs/extras/protobuf/generated_proto_parser.w", files[1])
+	assert_strings_equal(c"libs/extras/protobuf/message.w", files[2])
+	assert_strings_equal(c"libs/extras/protobuf/varint.w", files[3])
+	assert_strings_equal(c"libs/extras/protobuf/wire.w", files[4])
 
 	list[char*] one = new list[char*]
 	assert_equal(0, cloc_collect(c"README.md", one))
