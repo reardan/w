@@ -115,5 +115,7 @@ because only the emitted bytes are new.
 3. **Debugger**: the attach debugger has no view of a thread's block
    yet. Printing a thread-local means reading `fs_base`/`gs` from the
    stopped thread (`gs_base` on x64, the `fs` descriptor on x86).
-4. **Allocator** (#498): per-thread heaps whose pointer lives in a
-   `thread_local` once the seed can compile it.
+4. **Allocator** (#498): done. `lib/thread_heap.w` keeps each worker's
+   heap pointer in a `thread_local` (docs/projects/threads.md,
+   Allocator). `lib/memory.w` itself reaches it only through hook
+   words, so the seed-compiled runtime still has no `thread_local`.

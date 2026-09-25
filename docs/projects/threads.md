@@ -80,8 +80,7 @@ clone child materializes out of a bare `ret`), so the library passes
 the argument through a global: `thread_spawn` allocates a `wthread`
 {tid, func, arg, done}, parks it in `thread_spawn_handoff`, clones the
 internal `thread_entry`, and futex-waits on `thread_spawn_ack` until
-the child has copied the pointer. Spawns are thereby serialized, which
-also keeps the (unsynchronized) brk allocator single-user. The
+the child has copied the pointer. Spawns are thereby serialized. The
 alternative — widening the builtin to `thread_create(func, arg)` — was
 rejected because the stub would have to forge an argument frame for
 W's stack convention on two targets; a library-side handshake is
@@ -191,16 +190,54 @@ re-checked in a loop.
 
 **Constraints.** Main thread only for spawn/join/parallel_for and
 thread_pool_init/thread_pool_shutdown (the handoff and pool globals
-and brk allocator are unsynchronized), except the two sanctioned
-nested parallel_for cases above; never call thread_pool_shutdown from
-a callback. Worker functions must not allocate or spawn, and
-mutex/condvar instances must be allocated by the main thread — but
-any thread may lock/unlock/wait/signal them, and use the atomics.
+are unsynchronized), except the two sanctioned nested parallel_for
+cases above; never call thread_pool_shutdown from a callback. Worker
+functions must not spawn. They may allocate (see Allocator below), and
+any thread may lock/unlock/wait/signal a mutex/condvar and use the
+atomics.
 
 **Thread-local storage.** `thread_entry` installs each spawned
 thread's `thread_local` block, which is the bottom of its own stack
 mapping, before the worker function runs. Pool workers keep theirs
 across jobs. See docs/projects/thread_local.md.
+
+**Allocator** (issue #498, `lib/thread_heap.w`). Workers used to be
+barred from allocating because `lib/memory.w`'s free list and brk
+growth are plain globals. Now every spawned thread allocates from its
+own heap, mimalloc's model scaled down:
+
+- `thread_spawn` installs the heaps before its first clone, through
+  three hook words in `lib/memory.w`. The hooks are plain ints called
+  as functions, so that seed-compiled file needs no new syntax, and a
+  program that never spawns pays one null check per call.
+- Each worker's heap (its pointer is the `thread_local` `th_heap`) has
+  its own size-class bins and bump region in 1MB-aligned mmap
+  segments. Allocating, and freeing the thread's own blocks, takes no
+  lock and no atomic. The main thread keeps the unchanged brk free
+  list.
+- A two-level registry keyed by `address >> 20` maps each segment to
+  its heap, so `free` finds a block's owner from the pointer alone.
+  Addresses outside every segment belong to the main heap.
+- Transfer: freeing another thread's block pushes it onto the owner's
+  remote list, a lock-free stack (an `atomic_cas` push, and the owner
+  takes the whole list at once, so there is no ABA). The owner files
+  those blocks at its next malloc, and main drains its own list the
+  same way. Blocks can cross threads in any direction, so a worker can
+  build a `list` and hand it to main.
+- At thread exit the heap is abandoned, not unmapped, and the next
+  spawned thread adopts it along with its pending remote frees.
+  Memory is therefore bounded by the peak number of live threads, and
+  spawn/join loops reuse the same segments.
+- Under `W_DEBUG_ALLOC` the hooks instead serialize the guard-page
+  backend on one spin lock, so its checks still run.
+
+Asserted by `thread_alloc_test` (+ 64-bit twin): concurrent
+mixed-size churn with stamped blocks (the old shared allocator
+segfaults on it), worker-built lists, maps and strings freed on main,
+producer-to-consumer and worker-to-main transfer, 300 spawn/join
+cycles, and allocating `parallel_for` callbacks. Threads created
+through `pthread_create` or the raw `thread_create` builtin have no
+heap and must not allocate.
 
 ## Per-target support
 

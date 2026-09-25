@@ -501,7 +501,8 @@ current state:
 		threading:
 			lib/thread.w (spawn/join/parallel_for dispatching to a
 				persistent worker pool, join-time stack reclamation,
-				wmutex/wcond, host atomic_add/atomic_cas intrinsics) is
+				wmutex/wcond, host atomic_add/atomic_cas intrinsics,
+				per-thread heaps so workers may allocate) is
 				Linux x86/x64 only; arm64/darwin/win64/wasm ports are
 				staged in docs/projects/threads.md
 			thread_local globals: Linux x86/x64 only (no initializers
