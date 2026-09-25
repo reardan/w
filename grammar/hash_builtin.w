@@ -354,7 +354,5 @@ int hash_method(int type):
 		return cm_call(type, c"__w_map_free", 0, key_type, 0, 0, 0, -1, 0)
 	if ((nextc == '(') && (ufcs_callee(token) >= 0)):
 		return ufcs_call(type)
-	diag_part(c"hash container field '")
-	diag_part(token)
-	error(c"' not found")
+	error3(c"hash container field '", token, c"' not found")
 	return 0

@@ -412,9 +412,7 @@ int prelude_seq_expr(int helper):
 	push_eax()
 	stack_pos = stack_pos + 1
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in prelude '")
-		diag_part(fn_name)
-		error(c"'")
+		error3(c"')' expected in prelude '", fn_name, c"'")
 	hash_call_finish(base_stack)
 	free(fn_name)
 	return type_value(type_lookup(c"int"))
@@ -445,9 +443,7 @@ int prelude_math_call_expr(int helper):
 		push_eax()
 		stack_pos = stack_pos + 1
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in prelude '")
-		diag_part(fn_name)
-		error(c"'")
+		error3(c"')' expected in prelude '", fn_name, c"'")
 	hash_call_finish(base_stack)
 	free(fn_name)
 	return type_value(type_lookup(c"int"))
@@ -576,9 +572,7 @@ int prelude_text_kind(int got):
 void prelude_str_unsupported(char* fn_name, char* what, int got):
 	diag_part(c"prelude '")
 	diag_part(fn_name)
-	diag_part(what)
-	print_error_type(got)
-	error(c"'")
+	error_type(what, got, c"'")
 
 
 # split(s) / split(s, ch) (s a char* or string; no ch = whitespace
@@ -628,9 +622,7 @@ int prelude_str_expr(int helper):
 	push_eax()
 	stack_pos = stack_pos + 1
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in prelude '")
-		diag_part(fn_name)
-		error(c"'")
+		error3(c"')' expected in prelude '", fn_name, c"'")
 	hash_call_finish(base_stack)
 	free(fn_name)
 	if (helper == 18):

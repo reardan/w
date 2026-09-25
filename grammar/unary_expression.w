@@ -74,9 +74,7 @@ int ctor_field_args(int base):
 			target = type_get_arg(base, name)
 			if (target < 0):
 				type_suggest_fields(name, base)
-				diag_part(c"struct field '")
-				diag_part(name)
-				error(c"' not found")
+				error3(c"struct field '", name, c"' not found")
 			free(name)
 			get_token()
 			expect(c":")

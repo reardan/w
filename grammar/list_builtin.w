@@ -125,9 +125,7 @@ int list_scalar_kind(int element_type, char* what):
 			type_is_array(t) | type_is_slice(t)):
 		diag_part(c"list ")
 		diag_part(what)
-		diag_part(c" requires int-like or char* elements, got '")
-		print_error_type(element_type)
-		error(c"'")
+		error_type(c" requires int-like or char* elements, got '", element_type, c"'")
 	return hash_key_kind_for_type(t)
 
 
@@ -139,9 +137,7 @@ void list_require_scalar_elements(int element_type, char* what):
 			type_is_array(t) | type_is_slice(t)):
 		diag_part(c"list ")
 		diag_part(what)
-		diag_part(c" requires scalar elements, got '")
-		print_error_type(element_type)
-		error(c"'")
+		error_type(c" requires scalar elements, got '", element_type, c"'")
 
 
 # Callback arguments must be a named function (type 4) or a value
@@ -153,9 +149,7 @@ void list_check_callback(int got, char* what):
 		return;
 	diag_part(c"list ")
 	diag_part(what)
-	diag_part(c" expects a function, got '")
-	print_error_type(got)
-	error(c"'")
+	error_type(c" expects a function, got '", got, c"'")
 
 
 # Declared return type of the callback just parsed (type in got, its
@@ -211,9 +205,7 @@ int cm_out_result
 int cm_arg(int kind, int want, char* ctx):
 	int got = promote(expression())
 	if (kind == 1):
-		coerce(want, got)
-		if (types_compatible_with_expression(want, got) == 0):
-			warn_type_mismatch(ctx, want, got)
+		coerce_checked(want, got, ctx)
 		cm_out_extra = type_num_args(type_real(got)) > 0
 	else if (kind == 3):
 		list_check_callback(got, ctx)
@@ -411,9 +403,7 @@ void list_it_call(char* helper, int slot_a, int slot_b, int constant):
 void list_it_reject(char* method, char* what, int got):
 	diag_part(c"list ")
 	diag_part(method)
-	diag_part(what)
-	print_error_type(got)
-	error(c"'")
+	error_type(what, got, c"'")
 
 
 # The method name is the current token and list_it_argument() said its
@@ -507,9 +497,7 @@ int list_it_method(int type):
 		int kind = list_scalar_kind(key_type, what)
 		free(what)
 		if ((mode <= 8) && (kind != 1)):
-			diag_part(c"list ")
-			diag_part(method)
-			error(c" requires int-like elements")
+			error3(c"list ", method, c" requires int-like elements")
 		if (mode <= 8):
 			char* helper = strjoin(c"__w_list_", method)
 			list_it_call(helper, keys_slot, 0, -1)
@@ -673,9 +661,7 @@ int list_method(int type):
 		char* what = strclone(token)
 		get_token()
 		if (list_scalar_kind(element_type, what) != 1):
-			diag_part(c"list ")
-			diag_part(what)
-			error(c" requires int-like elements")
+			error3(c"list ", what, c" requires int-like elements")
 		char* helper = strjoin(c"__w_list_", what)
 		int result = 1
 		if (what[1] == 'u'):
@@ -694,20 +680,14 @@ int list_method(int type):
 		return cm_call(type, c"__w_list_index", 0, element_type, c"list index", 1, 0, list_scalar_kind(element_type, c"list index"), 3)
 	if ((nextc == '(') && (ufcs_callee(token) >= 0)):
 		return ufcs_call(type)
-	diag_part(c"list field '")
-	diag_part(token)
-	error(c"' not found")
+	error3(c"list field '", token, c"' not found")
 	return 0
 
 
 void list_literal_parse_entry(int container_type, int container_slot):
 	int base_stack = stack_pos
 	int element_type = type_list_element_type(container_type)
-	int got_type = expression()
-	got_type = promote(got_type)
-	coerce(element_type, got_type)
-	if (types_compatible_with_expression(element_type, got_type) == 0):
-		warn_type_mismatch(c"list literal element", element_type, got_type)
+	int got_type = parse_coerced(element_type, c"list literal element")
 	push_eax()
 	stack_pos = stack_pos + 1
 	int value_slot = stack_pos

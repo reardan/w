@@ -52,8 +52,7 @@ void const_error_prefix():
 
 void const_error(char* why):
 	const_error_prefix()
-	diag_part(c": ")
-	error(why)
+	error2(c": ", why)
 
 
 # 32-bit two's-complement range check on a 64-bit host (always true on
@@ -101,9 +100,7 @@ int const_symbol_value(int t):
 				return v
 			return load_int32(p)
 	const_error_prefix()
-	diag_part(c" must be a compile-time constant, got '")
-	diag_part(token)
-	error(c"'")
+	error3(c" must be a compile-time constant, got '", token, c"'")
 	return 0
 
 

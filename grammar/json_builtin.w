@@ -94,9 +94,7 @@ int json_codec_kind(int t):
 		# JSON object keys are strings, so K must be char* or string
 		# (hash key kinds 2 and 3); the value recursion validates V.
 		if (hash_key_kind_for_type(type_map_key_type(t)) == 1):
-			diag_part(c"to_json/from_json map fields need char* or string keys: '")
-			diag_part(type_get_name(t))
-			error(c"'")
+			error3(c"to_json/from_json map fields need char* or string keys: '", type_get_name(t), c"'")
 		json_codec_kind(type_map_value_type(t))
 		return 8
 	if (type_is_set(t)):
@@ -262,8 +260,7 @@ int json_codec_descriptor(int struct_type):
 
 void json_codec_require_json_import(char* builtin_name):
 	if (type_lookup(c"json_value") < 0):
-		diag_part(builtin_name)
-		error(c" requires 'import structures.json'")
+		error2(builtin_name, c" requires 'import structures.json'")
 
 
 # Call helper i (0 encode, 1 decode) with (descriptor, arg), the

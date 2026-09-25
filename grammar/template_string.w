@@ -122,9 +122,7 @@ int template_spec_is_align(int c):
 
 void template_spec_error(char* why):
 	diag_part(c"invalid template string format spec '")
-	diag_part(token)
-	diag_part(c"': ")
-	error(why)
+	error3(token, c"': ", why)
 
 
 # Read the raw format spec after the ':' that follows an embedded

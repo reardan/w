@@ -62,9 +62,7 @@ void var_box_unsupported(int t):
 
 
 void var_unbox_unsupported(int t):
-	diag_part(c"cannot convert var to '")
-	print_error_type(t)
-	error(c"'")
+	error_type(c"cannot convert var to '", t, c"'")
 
 
 # Box helper index for a promoted non-var value: 0 int-like (int,
