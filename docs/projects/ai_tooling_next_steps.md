@@ -218,7 +218,7 @@ is a queue, not an archive.
   naming libGL.so.1 instead of failing at run time. Asserted by the
   rn_dyn_missing (fictional soname, dropped everywhere) and
   rn_cuda_clib (GPU bit, never the soname probe) fixtures in
-  `tools/wtest_runnable_scratch_test.sh` +
+  `tools/wtest_runnable_e2e.w` +
   `tests/wtest/map_expectations.expect`.
 - **Shipped (2026-08-04): timeout-shaped deps failures are never
   persisted, and every failed closure shell-out warns.** This bit
@@ -393,7 +393,7 @@ is a queue, not an archive.
   now scans a `-c` command string for the two known wrapper paths
   (`tools/run_arm64.sh`, `tools/run_wasm.sh`) and applies the same
   probes, still positive-evidence-only — asserted deterministically in
-  `tools/wtest_runnable_scratch_test.sh` by controlling PATH and
+  `tools/wtest_runnable_e2e.w` by controlling PATH and
   QEMU_ARM64. (2) Closure-level GPU attribution was closed the same
   day by PR #400. (3) Umbrella collapse and the availability filter
   now compose: an umbrella whose transitive dep closure (`tests` lists

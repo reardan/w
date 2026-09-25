@@ -509,7 +509,7 @@ forbid collapse_all
 # in the roots themselves. WHICH needs are absent varies by host (CI
 # installs the i386 loader this container lacks; a GPU box has the
 # NVIDIA driver), so the dropped direction is asserted
-# host-conditionally in tools/wtest_runnable_scratch_test.sh — the
+# host-conditionally in tools/wtest_runnable_e2e.w — the
 # same lesson as manifest_unavailable.json's fictional tools/mac/
 # path. The two cases here pin the host-INDEPENDENT halves. First: a
 # changed path that is an imported fixture module selects its
@@ -541,7 +541,7 @@ expect rn_compile_only
 # — either the 64-bit loader is missing (its reason) or the loader
 # exists and the probe reports the fictional soname. WHICH reason
 # fired is asserted host-conditionally in
-# tools/wtest_runnable_scratch_test.sh, like the loader/GPU cases.
+# tools/wtest_runnable_e2e.w, like the loader/GPU cases.
 case -f tests/wtest/manifest_runnable.json --runnable-here widget/runnable.dat
 noorder
 expect rn_static

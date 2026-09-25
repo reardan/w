@@ -174,10 +174,15 @@ int wexec_groups_active         # 1 when run-step process-group cleanup is on: t
 int wexec_worker_group          # worker side: 1 once this worker leads its own process group
 int* wexec_live_worker_pids     # fixed slot table of live (unreaped) worker pids, swept by wexec_on_termination
 int wexec_live_worker_cap       # slots in wexec_live_worker_pids; 0 until groups are activated (and in workers)
+int wexec_gen_gate              # 1 when this run builds the "generated" umbrella first
+map[char*, int] wexec_gen_members  # "generated"'s own closure, which the gate never holds back
+map[char*, int] wexec_gen_outputs  # outputs its direct members declare
+int wexec_gen_outputs_loaded      # 1 once wexec_gen_outputs is filled
 
 
 int wexec_collect_closure(char* name);
 void wexec_collect_dir(char* path, list[char*] files);
+int wexec_is_generated_output(char* path);
 
 
 void wexec_error(char* message):
@@ -1180,7 +1185,11 @@ char* wexec_cache_key(char* name, json_value* target):
 						if (ends_with(found, c".w") == 0):
 							files.push(found)
 				else:
-					wexec_collect_dir(dir, files)
+					list[char*] walked = new list[char*]
+					wexec_collect_dir(dir, walked)
+					for char* found in walked:
+						if (wexec_is_generated_output(found) == 0):
+							files.push(found)
 				free(dir)
 			else:
 				files.push(path)
@@ -1929,7 +1938,59 @@ int wexec_collect_closure(char* name):
 	return 0
 
 
+/* Generated sources (issue #323). Files such as lib/grapheme_data.w
+are build outputs, not committed: their generator targets join the
+"generated" umbrella (through tag=generated), and every run builds that
+umbrella before anything outside its own closure starts, so any compile
+sees them. Its members declare inputs and outputs, so once they exist
+this costs one cache check. Directory inputs skip those outputs when
+hashing (they are a function of their generators' inputs), so a
+freshly generated file does not change the key of a target such as
+wv2 that lists lib/. */
+int wexec_gen_holds(char* name):
+	if (wexec_gen_gate == 0):
+		return 0
+	return wexec_gen_members.get(name, 0) == 0
+
+
+void wexec_gen_load_outputs():
+	if (wexec_gen_outputs_loaded):
+		return
+	wexec_gen_outputs_loaded = 1
+	wexec_gen_outputs = new map[char*, int]
+	json_value* umbrella = wexec_targets.get(c"generated", 0)
+	if (umbrella == 0):
+		return
+	json_value* deps = json_object_get(umbrella, c"deps")
+	if ((deps == 0) || (deps.type != json_type_array())):
+		return
+	int i = 0
+	while (i < json_array_length(deps)):
+		json_value* dep = json_array_get(deps, i)
+		json_value* member = 0
+		if (dep.type == json_type_string()):
+			member = wexec_targets.get(dep.string_value, 0)
+		json_value* outputs = 0
+		if (member != 0):
+			outputs = json_object_get(member, c"outputs")
+		if ((outputs != 0) && (outputs.type == json_type_array())):
+			int j = 0
+			while (j < json_array_length(outputs)):
+				json_value* output = json_array_get(outputs, j)
+				if (output.type == json_type_string()):
+					wexec_gen_outputs[output.string_value] = 1
+				j = j + 1
+		i = i + 1
+
+
+int wexec_is_generated_output(char* path):
+	wexec_gen_load_outputs()
+	return wexec_gen_outputs.get(path, 0)
+
+
 int wexec_deps_finished(char* name):
+	if (wexec_gen_holds(name) && (wexec_finished.get(c"generated", 0) == 0)):
+		return 0
 	json_value* target = wexec_targets.get(name, 0)
 	json_value* deps = json_object_get(target, c"deps")
 	if (deps == 0):
@@ -1947,6 +2008,8 @@ int wexec_deps_finished(char* name):
 # behind a failure) can never build. Deps were validated as strings when
 # the closure was collected.
 int wexec_deps_broken(char* name):
+	if (wexec_gen_holds(name) && wexec_broken.get(c"generated", 0)):
+		return 1
 	json_value* target = wexec_targets.get(name, 0)
 	json_value* deps = json_object_get(target, c"deps")
 	if (deps == 0):
@@ -2575,6 +2638,13 @@ void wexec_report_failures(int total, int finished):
 # completion with up to wexec_jobs targets in flight. Returns 0 when
 # everything succeeded.
 int wexec_execute(list[char*] requested):
+	if (wexec_targets.get(c"generated", 0) != 0):
+		if (wexec_collect_closure(c"generated")):
+			return 1
+		wexec_gen_members = new map[char*, int]
+		for char* member in wexec_closure:
+			wexec_gen_members[member] = 1
+		wexec_gen_gate = 1
 	for char* name in requested:
 		if (wexec_collect_closure(name)):
 			return 1

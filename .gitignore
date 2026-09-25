@@ -20,3 +20,8 @@ log/*.core
 
 # Claude Code local state (session config, agent worktrees)
 .claude/
+
+# Generated sources (issue #323): build outputs of the "generated"
+# umbrella, which every ./wbuild run builds first.
+/lib/grapheme_data.w
+/graphics/ui/font_data.w

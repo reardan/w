@@ -384,14 +384,6 @@
 			]
 		},
 		{
-			"name": "wbuildgen_scratch_test",
-			"tags": ["tests"],
-			"deps": ["wbuildgen"],
-			"steps": [
-				{"cmd": ["sh", "tools/wbuildgen_scratch_test.sh"], "expect_stdout": "wbuildgen_scratch_test: OK"}
-			]
-		},
-		{
 			"name": "wtest_run_test",
 			"tags": ["tests"],
 			"deps": ["wtest", "wexec"],
@@ -406,67 +398,6 @@
 				{"cmd": ["bin/wtest", "for", "-f", "tests/wtest/run_fixture.json", "wtest_run_boom_marker", "--run"], "expect_fail": true, "expect_stdout": "boom", "expect_stderr": "command failed with exit status"},
 				{"cmd": ["bin/wtest", "for"], "expect_fail": true, "expect_stderr": "wtest for <file>..."},
 				{"cmd": ["bin/wtest", "for", "-f", "tests/wtest/manifest_unavailable.json", "--available", "widget/marker.dat"], "expect_stdout": "custom_widget_ok", "reject_stdout": "custom_widget_needs_mac", "expect_stderr": "wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"}
-			]
-		},
-		{
-			"name": "wtest_defhash_test",
-			"tags": ["tests"],
-			"deps": ["wtest"],
-			"steps": [
-				{"cmd": ["sh", "tools/wtest_defhash_scratch_test.sh"], "expect_stdout": "wtest_defhash_scratch_test: OK"}
-			]
-		},
-		{
-			"name": "wtest_range_test",
-			"tags": ["tests"],
-			"deps": ["wtest"],
-			"steps": [
-				{"cmd": ["sh", "tools/wtest_range_scratch_test.sh"], "expect_stdout": "wtest_range_scratch_test: OK"}
-			]
-		},
-		{
-			"name": "wtest_runnable_test",
-			"tags": ["tests"],
-			"deps": ["wtest"],
-			"data": ["tests/wtest/manifest_runnable.json", "tests/wtest/runnable_fixture/", "tools/wtest_runnable_scratch_test.sh"],
-			"steps": [
-				{"cmd": ["sh", "tools/wtest_runnable_scratch_test.sh"], "expect_stdout": "wtest_runnable_scratch_test: OK"}
-			]
-		},
-		{
-			"name": "wtest_nofailcache_test",
-			"tags": ["tests"],
-			"deps": ["wtest", "wv2"],
-			"data": ["tools/wtest_nofailcache_scratch_test.sh"],
-			"steps": [
-				{"cmd": ["sh", "tools/wtest_nofailcache_scratch_test.sh"], "expect_stdout": "wtest_nofailcache_scratch_test: OK"}
-			]
-		},
-		{
-			"name": "wtest_timeout_test",
-			"tags": ["tests"],
-			"deps": ["wtest"],
-			"data": ["tests/wtest/timeout_scratch_test.sh"],
-			"steps": [
-				{"cmd": ["sh", "tests/wtest/timeout_scratch_test.sh"], "expect_stdout": "wtest_timeout_scratch_test: OK"}
-			]
-		},
-		{
-			"name": "wtest_cache_test",
-			"tags": ["tests"],
-			"deps": ["wtest"],
-			"data": ["tests/wtest/cache_scratch_test.sh"],
-			"steps": [
-				{"cmd": ["sh", "tests/wtest/cache_scratch_test.sh"], "expect_stdout": "wtest_cache_scratch_test: OK"}
-			]
-		},
-		{
-			"name": "wtest_why_test",
-			"tags": ["tests"],
-			"deps": ["wtest"],
-			"data": ["tests/wtest/why_scratch_test.sh"],
-			"steps": [
-				{"cmd": ["sh", "tests/wtest/why_scratch_test.sh"], "expect_stdout": "wtest_why_scratch_test: OK"}
 			]
 		},
 		{
@@ -509,6 +440,9 @@
 			"steps": [
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/good.json", "main"], "expect_stdout": ["dep before main", "wexec: OK (2 targets)"]},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/good.json", "main", "main", "dep"], "expect_stdout": "wexec: OK (2 targets)"},
+				{"cmd": ["rm", "-f", "bin/wexec_generated_marker"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/generated.json", "user"], "expect_stdout": ["wexec: target generated", "wexec: target user", "wexec: OK (3 targets)"]},
+				{"cmd": ["bin/wexec", "-f", "tests/wexec/generated_broken.json", "--keep-going", "user"], "expect_fail": true, "expect_stderr": ["wexec: skipped: user (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped"], "reject_stdout": "user ran"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/good.json", "--list"], "stdout_file": "bin/wexec_list.out"},
 				{"cmd": ["diff", "-u", "-", "bin/wexec_list.out"], "stdin": "dep\nmain\nfails\nexpects_fail\nwrong_output\ncycle_a\ncycle_b\n"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/list_json.json", "--list"], "stdout_file": "bin/wexec_list_json_plain.out"},
@@ -1085,6 +1019,10 @@
 				{"cmd": ["cmp", "bin/wv2_wasm", "bin/wv3_wasm"]},
 				{"cmd": ["echo", "wasm self-host fixpoint OK: wv2_wasm == wv3_wasm"]}
 			]
+		},
+		{
+			"name": "generated",
+			"deps": []
 		},
 		{
 			"name": "tests_win64",
