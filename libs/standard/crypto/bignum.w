@@ -274,26 +274,32 @@ void bignum_sub_small(bignum* a, int v):
 # r = a * b. r must be distinct from a and b.
 void bignum_mul(bignum* r, bignum* a, bignum* b):
 	int mask = BIGNUM_LIMB_MASK()
-	int total = a.n + b.n
+	int* rl = r.limbs
+	int* al = a.limbs
+	int* bl = b.limbs
+	int an = a.n
+	int bn = b.n
+	int total = an + bn
 	int i = 0
 	while (i < total):
-		r.limbs[i] = 0
+		rl[i] = 0
 		i = i + 1
 	# Clear stale high limbs above the product width.
 	while (i < r.n):
-		r.limbs[i] = 0
+		rl[i] = 0
 		i = i + 1
 	i = 0
-	while (i < a.n):
-		int ai = a.limbs[i]
+	while (i < an):
+		int ai = al[i]
+		int* rp = &rl[i]
 		int carry = 0
 		int j = 0
-		while (j < b.n):
-			int t = r.limbs[i + j] + ai * b.limbs[j] + carry
-			r.limbs[i + j] = t & mask
+		while (j < bn):
+			int t = rp[j] + ai * bl[j] + carry
+			rp[j] = t & mask
 			carry = t >> 15
 			j = j + 1
-		r.limbs[i + b.n] = r.limbs[i + b.n] + carry
+		rp[bn] = rp[bn] + carry
 		i = i + 1
 	r.n = total
 	bignum_normalize(r)
@@ -301,43 +307,156 @@ void bignum_mul(bignum* r, bignum* a, bignum* b):
 
 # ---- divide / mod -----------------------------------------------------------
 
-# q = a / m, r = a % m via bit-at-a-time long division. Requires m != 0.
+# Module scratch for the division and the modular helpers, allocated once on
+# first use so the hot reduction path does no per-call allocation.
+int BIGNUM_SCRATCH_INITED
+int* BIGNUM_DIV_U      # normalized dividend, BIGNUM_CAP() + 1 limbs
+int* BIGNUM_DIV_V      # normalized divisor, BIGNUM_CAP() limbs
+bignum* BIGNUM_SCRATCH_T
+bignum* BIGNUM_SCRATCH_Q
+
+
+void bignum_scratch_init():
+	if (BIGNUM_SCRATCH_INITED != 0):
+		return
+	BIGNUM_DIV_U = cast(int*, malloc((BIGNUM_CAP() + 1) * __word_size__))
+	BIGNUM_DIV_V = cast(int*, malloc(BIGNUM_CAP() * __word_size__))
+	BIGNUM_SCRATCH_T = bignum_new()
+	BIGNUM_SCRATCH_Q = bignum_new()
+	BIGNUM_SCRATCH_INITED = 1
+
+
+# q = a / m, r = a % m via word-level long division (Knuth TAOCP vol. 2,
+# 4.3.1, Algorithm D) over the 15-bit limbs. Requires m != 0.
 # q and r must be distinct from a and m and from each other.
+#
+# Overflow bounds (signed 32-bit, B = 2^15): after normalization the divisor's
+# top limb is >= B/2, so the trial quotient qhat = (u[j+n]*B + u[j+n-1]) /
+# v[n-1] is at most B + 1 and qhat * v[n-2] < (B+2) * B < 2^31; rhat < B
+# whenever it is compared, so rhat*B + u[j+n-2] < 2^30 + 2^15. In the
+# multiply-subtract qhat <= B - 1, so qhat*v[i] < 2^30.
 void bignum_divmod(bignum* a, bignum* m, bignum* q, bignum* r):
+	bignum_scratch_init()
+	int mask = BIGNUM_LIMB_MASK()
+	int base = 1 << 15
+	int na = a.n
+	while ((na > 0) && (a.limbs[na - 1] == 0)):
+		na = na - 1
+	int nm = m.n
+	while ((nm > 0) && (m.limbs[nm - 1] == 0)):
+		nm = nm - 1
 	bignum_set_zero(q)
 	bignum_set_zero(r)
-	int i = bignum_bit_length(a) - 1
-	while (i >= 0):
-		bignum_shl1(r)
-		if (bignum_get_bit(a, i) != 0):
-			r.limbs[0] = r.limbs[0] | 1
-			if (r.n == 0):
-				r.n = 1
-		if (bignum_cmp(r, m) >= 0):
-			bignum_sub(r, m)
-			bignum_set_bit(q, i)
+	int i = 0
+	if (bignum_cmp(a, m) < 0):
+		# Quotient 0, remainder a.
+		while (i < na):
+			r.limbs[i] = a.limbs[i]
+			i = i + 1
+		r.n = na
+		return
+	if (nm == 1):
+		# Short division by a single limb: rem < d < B keeps cur < 2^30.
+		int d = m.limbs[0]
+		int rem = 0
+		i = na - 1
+		while (i >= 0):
+			int cur = rem * base + a.limbs[i]
+			int qd = cur / d
+			q.limbs[i] = qd
+			rem = cur - qd * d
+			i = i - 1
+		q.n = na
+		bignum_normalize(q)
+		if (rem != 0):
+			r.limbs[0] = rem
+			r.n = 1
+		return
+	int* un = BIGNUM_DIV_U
+	int* vn = BIGNUM_DIV_V
+	# D1: normalize so the divisor's top limb has its high bit (bit 14) set.
+	int s = 0
+	int top = m.limbs[nm - 1]
+	while (top < 16384):
+		top = top << 1
+		s = s + 1
+	int rs = 15 - s
+	i = nm - 1
+	while (i > 0):
+		vn[i] = ((m.limbs[i] << s) | (m.limbs[i - 1] >> rs)) & mask
 		i = i - 1
+	vn[0] = (m.limbs[0] << s) & mask
+	un[na] = a.limbs[na - 1] >> rs
+	i = na - 1
+	while (i > 0):
+		un[i] = ((a.limbs[i] << s) | (a.limbs[i - 1] >> rs)) & mask
+		i = i - 1
+	un[0] = (a.limbs[0] << s) & mask
+	int vtop = vn[nm - 1]
+	int vsec = vn[nm - 2]
+	# D2..D7: one quotient limb per step, most significant first.
+	int j = na - nm
+	while (j >= 0):
+		int num = un[j + nm] * base + un[j + nm - 1]
+		int qhat = num / vtop
+		int rhat = num - qhat * vtop
+		while ((qhat >= base) || (qhat * vsec > rhat * base + un[j + nm - 2])):
+			qhat = qhat - 1
+			rhat = rhat + vtop
+			if (rhat >= base):
+				break
+		# D4: un[j .. j+nm] -= qhat * vn. k folds the product's carry and
+		# the subtraction's borrow: k <= B + 1, so t lies in [-2B, B), and
+		# t == (t & mask) + (t >> 15) * B with an arithmetic shift, making
+		# t & mask the limb and -(t >> 15) (0, 1 or 2) the borrow.
+		int* uj = &un[j]
+		int k = 0
+		i = 0
+		while (i < nm):
+			int p = qhat * vn[i]
+			int t = uj[i] - k - (p & mask)
+			uj[i] = t & mask
+			k = (p >> 15) - (t >> 15)
+			i = i + 1
+		int tt = uj[nm] - k
+		if (tt < 0):
+			# D6: qhat was one too large (rare); add the divisor back.
+			qhat = qhat - 1
+			int c = 0
+			i = 0
+			while (i < nm):
+				int t2 = uj[i] + vn[i] + c
+				uj[i] = t2 & mask
+				c = t2 >> 15
+				i = i + 1
+			tt = tt + c
+		un[j + nm] = tt
+		q.limbs[j] = qhat
+		j = j - 1
+	q.n = na - nm + 1
 	bignum_normalize(q)
+	# D8: the remainder is un[0 .. nm-1] shifted back right by s.
+	i = 0
+	while (i < nm):
+		r.limbs[i] = (un[i] >> s) | ((un[i + 1] << rs) & mask)
+		i = i + 1
+	r.n = nm
 	bignum_normalize(r)
 
 
 # r = a % m. r must be distinct from a and m.
 void bignum_mod(bignum* r, bignum* a, bignum* m):
-	bignum* qq = bignum_new()
-	bignum_divmod(a, m, qq, r)
-	bignum_free(qq)
+	bignum_scratch_init()
+	bignum_divmod(a, m, BIGNUM_SCRATCH_Q, r)
 
 
 # ---- modular arithmetic -----------------------------------------------------
 
 # r = (a * b) % m. r must be distinct from m; a and b may alias each other.
 void bignum_modmul(bignum* r, bignum* a, bignum* b, bignum* m):
-	bignum* t = bignum_new()
-	bignum* qq = bignum_new()
-	bignum_mul(t, a, b)
-	bignum_divmod(t, m, qq, r)
-	bignum_free(t)
-	bignum_free(qq)
+	bignum_scratch_init()
+	bignum_mul(BIGNUM_SCRATCH_T, a, b)
+	bignum_divmod(BIGNUM_SCRATCH_T, m, BIGNUM_SCRATCH_Q, r)
 
 
 # r = (a + b) % m, requires a < m and b < m. r must not alias m.
