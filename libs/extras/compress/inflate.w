@@ -59,6 +59,17 @@ follows it -- the doc's two-field {data, length} inflate_result has no
 room for that, and adding a field to the documented public struct felt
 like a bigger API change than a second, explicitly-internal-use entry
 point. inflate() is a two-line wrapper that discards the count.
+
+inflate_window() decodes raw DEFLATE that is one flushed piece of a
+longer stream: back-references may reach into a caller-kept window of
+earlier output (a preset dictionary / the sliding window across RFC
+7692 permessage-deflate messages), and input that ends at a
+byte-aligned block boundary -- right after a sync flush's empty stored
+block -- ends the piece cleanly instead of reporting truncation. Its
+max_output caps the new bytes only. It returns plain pointers rather
+than a wresult so it can be registered as a codec hook
+(libs/standard/web/websocket.w's ws_use_deflate) by a module that does
+not import this package. deflate.w's deflate_window is the encoder.
 */
 import lib.memory
 import lib.result
@@ -202,6 +213,7 @@ struct winflate_ctx:
 	string_builder* out
 	int max_output
 	int status
+	int base
 
 
 int inf_get_bit(winflate_ctx* c):
@@ -296,7 +308,7 @@ int wh_build(winflate_ctx* c, whuff* h, int* lengths, int n):
 void inf_emit_byte(winflate_ctx* c, int b):
 	if (c.status != 0):
 		return
-	if ((c.max_output > 0) && (c.out.length >= c.max_output)):
+	if ((c.max_output > 0) && (c.out.length - c.base >= c.max_output)):
 		c.status = INFLATE_ERR_TOO_LARGE()
 		return
 	string_append_char(c.out, b)
@@ -466,7 +478,7 @@ void inf_stored_block(winflate_ctx* c):
 	if (c.byte_pos + len > c.in_length):
 		c.status = INFLATE_ERR_TRUNCATED()
 		return
-	if ((c.max_output > 0) && (c.out.length + len > c.max_output)):
+	if ((c.max_output > 0) && (c.out.length - c.base + len > c.max_output)):
 		c.status = INFLATE_ERR_TOO_LARGE()
 		return
 	string_append_bytes(c.out, &c.in_data[c.byte_pos], len)
@@ -629,20 +641,17 @@ void inf_dynamic_block(winflate_ctx* c):
 /* Top level */
 
 
-wresult[inflate_result*]* inflate_ex(char* data, int length, int max_output, int* consumed):
-	if (length < 0):
-		length = 0
-	winflate_ctx* c = new winflate_ctx
-	c.in_data = data
-	c.in_length = length
-	c.byte_pos = 0
-	c.bit_pos = 0
-	c.out = string_new()
-	c.max_output = max_output
-	c.status = 0
-
+# Runs the block loop over c's input. sync == 0 is plain RFC 1951: read
+# blocks until one carries BFINAL. sync != 0 additionally ends cleanly
+# when the input runs out exactly at a byte-aligned block boundary --
+# the shape of a stream cut after a sync flush (an empty non-final
+# stored block, 00 00 ff ff), which is how RFC 7692 permessage-deflate
+# and other "one stream, many flushed messages" users frame their data.
+void inf_run_blocks(winflate_ctx* c, int sync):
 	int bfinal = 0
 	while ((bfinal == 0) && (c.status == 0)):
+		if ((sync != 0) && (c.bit_pos == 0) && (c.byte_pos >= c.in_length)):
+			return
 		bfinal = inf_get_bits(c, 1)
 		int btype = inf_get_bits(c, 2)
 		if (c.status != 0):
@@ -655,6 +664,26 @@ wresult[inflate_result*]* inflate_ex(char* data, int length, int max_output, int
 			inf_dynamic_block(c)
 		else:
 			c.status = INFLATE_ERR_BAD_BTYPE()
+
+
+winflate_ctx* inf_ctx_new(char* data, int length, int max_output):
+	if (length < 0):
+		length = 0
+	winflate_ctx* c = new winflate_ctx
+	c.in_data = data
+	c.in_length = length
+	c.byte_pos = 0
+	c.bit_pos = 0
+	c.out = string_new()
+	c.max_output = max_output
+	c.status = 0
+	c.base = 0
+	return c
+
+
+wresult[inflate_result*]* inflate_ex(char* data, int length, int max_output, int* consumed):
+	winflate_ctx* c = inf_ctx_new(data, length, max_output)
+	inf_run_blocks(c, 0)
 
 	int extra_byte = 0
 	if (c.bit_pos != 0):
@@ -684,3 +713,46 @@ wresult[inflate_result*]* inflate_ex(char* data, int length, int max_output, int
 wresult[inflate_result*]* inflate(char* data, int length, int max_output):
 	int consumed = 0
 	return inflate_ex(data, length, max_output, &consumed)
+
+
+# Raw DEFLATE with a preset sliding window, for callers that decode one
+# long-lived stream in flushed pieces (RFC 7692 permessage-deflate: each
+# message is a sync-flushed chunk whose back-references may reach into
+# earlier messages' output) or that use a preset dictionary. `window`
+# (window_len bytes, may be 0/0) is the history the stream's distances
+# may point into -- it is NOT part of the result; callers keep it
+# themselves (the last 32 KiB of output is always enough). Decoding stops
+# at a BFINAL block (anything after it is ignored) or cleanly when the
+# input ends at a byte-aligned block boundary, e.g. right after a sync
+# flush's empty stored block. max_output (> 0) caps the NEW output only
+# (fails closed with INFLATE_ERR_TOO_LARGE; <= 0 = unbounded).
+#
+# Plain-pointer shape (no wresult) so it can be handed to a registration
+# hook such as libs/standard/web/websocket.w's ws_use_deflate without
+# that module importing this package: returns the malloc'd output
+# (NUL-terminated one byte past *out_len) with *out_error = INFLATE_OK(),
+# or 0 with *out_len = 0 and *out_error set to an INFLATE_ERR_* code.
+char* inflate_window(char* data, int length, char* window, int window_len, int max_output, int* out_len, int* out_error):
+	winflate_ctx* c = inf_ctx_new(data, length, max_output)
+	if ((window != 0) && (window_len > 0)):
+		string_append_bytes(c.out, window, window_len)
+		c.base = window_len
+	inf_run_blocks(c, 1)
+	int status = c.status
+	*out_error = status
+	if (status != 0):
+		*out_len = 0
+		string_free(c.out)
+		free(c)
+		return 0
+	int n = c.out.length - c.base
+	char* out = malloc(n + 1)
+	int i = 0
+	while (i < n):
+		out[i] = c.out.data[c.base + i]
+		i = i + 1
+	out[n] = 0
+	*out_len = n
+	string_free(c.out)
+	free(c)
+	return out

@@ -1,11 +1,9 @@
 # FTP client (RFC 959) for the pure-W network stack, with RFC 2428
-# EPSV and the cheap RFC 3659 extensions (SIZE, MDTM, MLSD). Part of
-# issue #436 (Protocols). Plain FTP over IPv4 only: no FTPS (AUTH TLS),
-# no active mode (PORT/EPRT), no REST/resume.
+# EPSV, the cheap RFC 3659 extensions (SIZE, MDTM, MLSD) and FTPS
+# (RFC 4217 explicit AUTH TLS, and implicit TLS on port 990) over
+# libs/standard/net/tls.w. Part of issue #436 (Protocols). IPv4 only:
+# no active mode (PORT/EPRT), no REST/resume, no CCC.
 #
-# Public API (every int-returning command returns 1 on success, 0 on
-# failure with c.error set; the last reply stays in c.reply_code /
-# c.reply_text so callers can report the server's own words):
 #   ftp_client* ftp_connect(char* host, int port, int timeout_ms)
 #   ftp_client* ftp_attach(int fd, int peer_ip, int timeout_ms)
 #   int   ftp_ok(ftp_client* c)             1 while c.error == 0
@@ -29,8 +27,18 @@
 #   int   ftp_appe(c, path, char* data, int len)
 #   void  ftp_set_max_transfer(c, int bytes)  cap for buffered reads
 #   void  ftp_set_epsv(c, int enabled)        0 = PASV only
-#   void  ftp_close(ftp_client* c)            closes sockets, frees c
+#   void  ftp_close(ftp_client* c)            closes TLS + sockets, frees c
 #   char* ftp_error_string(int code)
+# FTPS (see "TLS" below):
+#   ftp_client* ftp_connect_tls(char* host, int port, int security,
+#                               tls_config* cfg, int timeout_ms)
+#   int   ftp_auth_tls(c, tls_config* cfg)   AUTH TLS on a plain session
+#   int   ftp_prot(c, int private)           PBSZ 0 + PROT P (1) / C (0)
+#   void  ftp_set_server_name(c, char* name) TLS SNI / name to verify
+#   void  ftp_set_allow_insecure_login(c, int allow)
+#   char* ftp_tls_error(c)                   tls.w's reason, or ""
+#   ftp_security_none() / ftp_security_explicit() / ftp_security_implicit()
+#   ftp_default_implicit_port()              990
 # Buffers returned by ftp_list/nlst/mlsd/retr are NUL-terminated (the
 # NUL is not counted in *out_len) and owned by the caller.
 #
@@ -75,11 +83,54 @@
 # ftp_error_bad_argument before anything is sent when it contains CR or
 # LF (or exceeds ftp_max_argument() bytes), so one call can never
 # smuggle a second command onto the control connection.
+#
+# TLS (RFC 4217). ftp_connect_tls with ftp_security_explicit() reads
+# the plaintext 220 greeting and sends AUTH TLS; ftp_security_implicit()
+# (port 990) handshakes before the greeting is read. Certificate
+# validation is on by default: cfg 0 means a fresh tls_config (system
+# trust store, hostname = the host argument); pass a tls_config to
+# override the trust store. The caller keeps ownership of a passed cfg
+# and must keep it alive until ftp_close (data connections reuse it).
+#   - Never a silent downgrade: when TLS was requested and AUTH TLS is
+#     refused (ftp_error_tls_refused) or the handshake fails
+#     (ftp_error_tls) the client is marked broken, so no later call can
+#     continue the session in plaintext. ftp_auth_tls called directly
+#     on a plain session leaves it usable (plaintext) when the server
+#     refuses, with c.error = ftp_error_tls_refused.
+#   - Plaintext injection: bytes the server pipelined behind the 234
+#     reply (already buffered before the handshake starts) break the
+#     session with ftp_error_protocol instead of being read later as if
+#     they had arrived over TLS.
+#   - Data connections: once the control connection is protected, data
+#     protection defaults to Private. Before the first transfer (or on
+#     ftp_prot) the client sends "PBSZ 0" once and then "PROT P", and
+#     every data connection is then a TLS client connection verified
+#     against the same name and tls_config. ftp_prot(c, 0) selects
+#     PROT C (clear data, protected control) explicitly. A rejected
+#     PROT fails the transfer (ftp_error_reply); it never falls back.
+#     ftp_prot(c, 1) on a session without TLS fails with ftp_error_tls.
+#     A protected download must end with the server's TLS close_notify:
+#     a data connection that closes without one is reported as a
+#     truncated transfer (ftp_error_io). Uploads end with the client's
+#     close_notify followed by the TCP close.
+#   - LIMITATION: tls.w has no session resumption (no PSK / tickets),
+#     so every data connection does a full handshake. Servers that
+#     insist on TLS session reuse between control and data channels
+#     (vsftpd require_ssl_reuse=YES, ProFTPD without
+#     NoSessionReuseRequired, FileZilla Server by default) will refuse
+#     the protected data connection (the transfer fails with
+#     ftp_error_tls or ftp_error_reply, never plaintext).
+#   - Credentials: ftp_login refuses (ftp_error_insecure, nothing sent)
+#     to send a non-anonymous USER/PASS over an unencrypted control
+#     connection unless the peer is loopback (127.0.0.0/8) or
+#     ftp_set_allow_insecure_login(c, 1) was called. The anonymous
+#     users "anonymous" and "ftp" are always allowed.
 import lib.lib
 import lib.net
 import lib.poll
 import structures.string
 import libs.standard.net.dns
+import libs.standard.net.tls
 
 
 struct ftp_client:
@@ -95,6 +146,15 @@ struct ftp_client:
 	int use_epsv
 	int max_transfer
 	int broken
+	tls_conn* tls
+	tls_config* tls_cfg
+	int tls_cfg_owned
+	char* server_name
+	int prot_want
+	int prot_have
+	int pbsz_done
+	int allow_insecure_login
+	tls_conn* data_tls
 
 
 /* Limits and error codes */
@@ -169,6 +229,40 @@ int ftp_error_resolve():
 	return 8
 
 
+# TLS handshake (control or data connection) failed; ftp_tls_error(c)
+# has tls.w's reason.
+int ftp_error_tls():
+	return 9
+
+
+# The server refused AUTH TLS (reply in c.reply_code / c.reply_text).
+int ftp_error_tls_refused():
+	return 10
+
+
+# ftp_login refused to send credentials over an unencrypted connection.
+int ftp_error_insecure():
+	return 11
+
+
+int ftp_security_none():
+	return 0
+
+
+# RFC 4217: plaintext greeting, then AUTH TLS.
+int ftp_security_explicit():
+	return 1
+
+
+# TLS from the first byte ("ftps", port 990).
+int ftp_security_implicit():
+	return 2
+
+
+int ftp_default_implicit_port():
+	return 990
+
+
 char* ftp_error_string(int code):
 	if (code == ftp_error_none()):
 		return c""
@@ -188,6 +282,12 @@ char* ftp_error_string(int code):
 		return c"unexpected server reply"
 	if (code == ftp_error_resolve()):
 		return c"host lookup failed"
+	if (code == ftp_error_tls()):
+		return c"TLS handshake failed"
+	if (code == ftp_error_tls_refused()):
+		return c"server refused AUTH TLS"
+	if (code == ftp_error_insecure()):
+		return c"refusing to send credentials without TLS"
 	return c"unknown error"
 
 
@@ -353,6 +453,15 @@ ftp_client* ftp_attach(int fd, int peer_ip, int timeout_ms):
 	c.use_epsv = 1
 	c.max_transfer = ftp_default_max_transfer()
 	c.broken = 0
+	c.tls = 0
+	c.tls_cfg = 0
+	c.tls_cfg_owned = 0
+	c.server_name = 0
+	c.prot_want = 0
+	c.prot_have = 0
+	c.pbsz_done = 0
+	c.allow_insecure_login = 0
+	c.data_tls = 0
 	if (fd < 0):
 		c.broken = 1
 	return c
@@ -363,9 +472,17 @@ int ftp_read_byte(ftp_client* c):
 	if (c.rpos >= c.rlen):
 		if (c.ctrl_fd < 0):
 			return ftp_break_neg(c, ftp_error_io())
-		int got = socket_recv(c.ctrl_fd, c.rbuf, 4096, 0)
-		while (got == (0 - 4)):
+		int got = 0
+		if (c.tls != 0):
+			# tls_read: 0 = close_notify, -1 = error (including a
+			# SO_RCVTIMEO expiry, which tls.w cannot tell apart).
+			got = tls_read(c.tls, c.rbuf, 4096)
+			if (got < 0):
+				return ftp_break_neg(c, ftp_error_io())
+		else:
 			got = socket_recv(c.ctrl_fd, c.rbuf, 4096, 0)
+			while (got == (0 - 4)):
+				got = socket_recv(c.ctrl_fd, c.rbuf, 4096, 0)
 		if (got == 0):
 			return ftp_break_neg(c, ftp_error_io())
 		if (got < 0):
@@ -466,7 +583,13 @@ int ftp_send_command(ftp_client* c, char* verb, char* arg):
 		string_append(out, arg)
 	string_append(out, c"\x0d\x0a")
 	int err = 0
-	int ok = ftp_send_all(c.ctrl_fd, out.data, out.length, &err)
+	int ok = 1
+	if (c.tls != 0):
+		if (tls_write(c.tls, out.data, out.length) != out.length):
+			ok = 0
+			err = ftp_error_io()
+	else:
+		ok = ftp_send_all(c.ctrl_fd, out.data, out.length, &err)
 	string_free(out)
 	if (ok == 0):
 		return ftp_break(c, err)
@@ -492,33 +615,158 @@ int ftp_expect(ftp_client* c, char* verb, char* arg, int want_class):
 	return 1
 
 
-ftp_client* ftp_connect(char* host, int port, int timeout_ms):
+# TLS SNI / certificate name for AUTH TLS and protected data
+# connections (copied). ftp_connect/ftp_connect_tls set it to the host
+# argument; ftp_attach leaves it unset (no SNI, and a trust-store
+# config then fails hostname verification unless it skips it).
+void ftp_set_server_name(ftp_client* c, char* name):
+	if (c.server_name != 0):
+		free(c.server_name)
+	c.server_name = 0
+	if (name != 0):
+		c.server_name = strclone(name)
+
+
+# Permits a non-anonymous ftp_login over an unencrypted, non-loopback
+# control connection.
+void ftp_set_allow_insecure_login(ftp_client* c, int allow):
+	c.allow_insecure_login = allow
+
+
+# tls.w's description of the last TLS failure, or "".
+char* ftp_tls_error(ftp_client* c):
+	char* why = tls_last_error(c.tls_cfg)
+	if (why == 0):
+		return c""
+	return why
+
+
+# Adopts cfg (0 = a fresh default config owned by the client) as the
+# config for the control and every data connection.
+void ftp_use_tls_config(ftp_client* c, tls_config* cfg):
+	if (cfg == 0):
+		if (c.tls_cfg != 0):
+			return
+		c.tls_cfg = tls_config_new()
+		c.tls_cfg_owned = 1
+		return
+	if (c.tls_cfg_owned != 0):
+		tls_config_free(c.tls_cfg)
+		c.tls_cfg_owned = 0
+	c.tls_cfg = cfg
+
+
+char* ftp_tls_name(ftp_client* c):
+	if (c.server_name == 0):
+		return c""
+	return c.server_name
+
+
+# Handshakes TLS over the control socket. Returns 1, or 0 with the
+# session broken (ftp_error_tls).
+int ftp_wrap_control(ftp_client* c, tls_config* cfg):
+	ftp_use_tls_config(c, cfg)
+	c.tls = tls_connect(c.ctrl_fd, ftp_tls_name(c), c.tls_cfg)
+	if (c.tls == 0):
+		return ftp_break(c, ftp_error_tls())
+	# RFC 4217 section 9: data protection defaults to Private once the
+	# control connection is protected (sent lazily, see ftp_prot).
+	c.prot_want = 1
+	c.prot_have = 0
+	c.pbsz_done = 0
+	return 1
+
+
+# AUTH TLS (RFC 4217 section 4) on a plaintext control connection:
+# expects 234, rejects plaintext the server pipelined behind it, then
+# handshakes (cfg 0 = default config with certificate validation).
+# Returns 1, or 0 with c.error set: ftp_error_tls_refused (session
+# still usable in plaintext; the caller decides), ftp_error_protocol
+# (injected plaintext; broken) or ftp_error_tls (broken).
+int ftp_auth_tls(ftp_client* c, tls_config* cfg):
+	if (ftp_begin_op(c) == 0):
+		return 0
+	if (c.tls != 0):
+		return ftp_fail(c, ftp_error_bad_argument())
+	int code = ftp_command(c, c"AUTH", c"TLS")
+	if (code < 0):
+		return 0
+	if (code != 234):
+		return ftp_fail(c, ftp_error_tls_refused())
+	if (c.rpos < c.rlen):
+		# Anything already buffered was sent in the clear after the 234
+		# and must not be read as if it came over TLS.
+		c.rpos = c.rlen
+		return ftp_break(c, ftp_error_protocol())
+	return ftp_wrap_control(c, cfg)
+
+
+# Reads the greeting; RFC 959: it may be preceded by "120 ready in nnn
+# minutes". Returns 1, or 0 with the session broken.
+int ftp_read_greeting(ftp_client* c):
+	int code = ftp_read_reply(c)
+	while ((code >= 100) && (code < 200)):
+		code = ftp_read_reply(c)
+	if (code < 0):
+		return 0
+	if (code != 220):
+		return ftp_break(c, ftp_error_reply())
+	return 1
+
+
+# Resolves host, connects (bounded by timeout_ms) and sets up security:
+# ftp_security_none() (plain FTP), ftp_security_explicit() (greeting,
+# then AUTH TLS) or ftp_security_implicit() (TLS, then greeting). Never
+# returns 0: check c.error (non-zero = failed; a TLS failure or refusal
+# breaks the session so it cannot continue in plaintext). The client
+# must still be released with ftp_close.
+ftp_client* ftp_connect_tls(char* host, int port, int security, tls_config* cfg, int timeout_ms):
 	ftp_client* c = ftp_attach(-1, 0, timeout_ms)
 	int ip = 0
 	if ((host == 0) || (dns_resolve_ipv4(host, &ip) == 0)):
 		ftp_fail(c, ftp_error_resolve())
 		return c
+	ftp_set_server_name(c, host)
 	c.peer_ip = ip
+	if ((security != ftp_security_none()) && (security != ftp_security_explicit()) && (security != ftp_security_implicit())):
+		ftp_fail(c, ftp_error_bad_argument())
+		return c
 	int fd = ftp_connect_fd(ip, port, timeout_ms)
 	if (fd < 0):
 		ftp_fail(c, 0 - fd)
 		return c
 	c.ctrl_fd = fd
-	# RFC 959: the greeting may be preceded by "120 ready in nnn minutes".
 	c.broken = 0
-	int code = ftp_read_reply(c)
-	while ((code >= 100) && (code < 200)):
-		code = ftp_read_reply(c)
-	if ((code >= 0) && (code != 220)):
-		ftp_break(c, ftp_error_reply())
+	if (security == ftp_security_implicit()):
+		if (ftp_wrap_control(c, cfg) == 0):
+			return c
+	if (ftp_read_greeting(c) == 0):
+		return c
+	if (security == ftp_security_explicit()):
+		if (ftp_auth_tls(c, cfg) == 0):
+			# TLS was requested: never continue in plaintext.
+			c.broken = 1
 	return c
+
+
+ftp_client* ftp_connect(char* host, int port, int timeout_ms):
+	return ftp_connect_tls(host, port, ftp_security_none(), 0, timeout_ms)
 
 
 void ftp_close(ftp_client* c):
 	if (c == 0):
 		return
+	if (c.data_tls != 0):
+		tls_conn_free(c.data_tls)
+	if (c.tls != 0):
+		# tls_close sends close_notify unless the TLS layer is broken.
+		tls_close(c.tls)
 	if (c.ctrl_fd >= 0):
 		close(c.ctrl_fd)
+	if (c.tls_cfg_owned != 0):
+		tls_config_free(c.tls_cfg)
+	if (c.server_name != 0):
+		free(c.server_name)
 	string_free(c.reply_text)
 	free(c.rbuf)
 	free(c)
@@ -526,7 +774,29 @@ void ftp_close(ftp_client* c):
 
 /* Simple commands */
 
+# 1 for the conventional anonymous user names (case-insensitive).
+int ftp_is_anonymous_user(char* user):
+	if (user == 0):
+		return 0
+	char* want = c"anonymous"
+	if (((user[0] & 255) | 32) == 'f'):
+		want = c"ftp"
+	int i = 0
+	while ((want[i] != 0) && (((user[i] & 255) | 32) == (want[i] & 255))):
+		i = i + 1
+	return (want[i] == 0) && (user[i] == 0)
+
+
+# 1 when the control peer is in 127.0.0.0/8.
+int ftp_peer_is_loopback(ftp_client* c):
+	return ((c.peer_ip >> 24) & 255) == 127
+
+
 int ftp_login(ftp_client* c, char* user, char* password):
+	if (ftp_begin_op(c) == 0):
+		return 0
+	if ((c.tls == 0) && (c.allow_insecure_login == 0) && (ftp_peer_is_loopback(c) == 0) && (ftp_is_anonymous_user(user) == 0)):
+		return ftp_fail(c, ftp_error_insecure())
 	int code = ftp_command(c, c"USER", user)
 	if (code < 0):
 		return 0
@@ -805,15 +1075,94 @@ int ftp_open_passive(ftp_client* c):
 	return fd
 
 
+/* Data protection (RFC 4217 sections 8-9) */
+
+# Brings the server's data protection level in line with c.prot_want:
+# "PBSZ 0" once, then "PROT P" or "PROT C". Nothing is sent while the
+# wanted level is already in force (a plain session with PROT C wanted
+# sends nothing at all). Returns 1, or 0 with c.error set.
+int ftp_sync_prot(ftp_client* c):
+	if (c.prot_want == c.prot_have):
+		return 1
+	if (c.tls == 0):
+		# PROT P needs a protected control connection; never fall back.
+		return ftp_fail(c, ftp_error_tls())
+	if (c.pbsz_done == 0):
+		if (ftp_expect(c, c"PBSZ", c"0", 2) == 0):
+			return 0
+		c.pbsz_done = 1
+	char* level = c"C"
+	if (c.prot_want != 0):
+		level = c"P"
+	if (ftp_expect(c, c"PROT", level, 2) == 0):
+		return 0
+	c.prot_have = c.prot_want
+	return 1
+
+
+# Selects Private (private != 0: PROT P, TLS data connections) or Clear
+# (PROT C) data protection and negotiates it now. Returns 1, or 0 with
+# c.error set (ftp_error_tls when Private is asked for on a session
+# without TLS; ftp_error_reply when the server rejects it).
+int ftp_prot(ftp_client* c, int private):
+	if (ftp_begin_op(c) == 0):
+		return 0
+	c.prot_want = private != 0
+	return ftp_sync_prot(c)
+
+
+/* Data connections */
+
+# Reads from a data connection (TLS when c.data_tls is set). Returns
+# bytes read, 0 at a clean end, or the negated ftp_error_* code.
+int ftp_data_recv(ftp_client* c, int fd, char* buf, int n):
+	if (c.data_tls != 0):
+		int got = tls_read(c.data_tls, buf, n)
+		if (got < 0):
+			# Includes a TCP close without close_notify (truncation).
+			return 0 - ftp_error_io()
+		return got
+	int raw = socket_recv(fd, buf, n, 0)
+	while (raw == (0 - 4)):
+		raw = socket_recv(fd, buf, n, 0)
+	if (raw < 0):
+		return 0 - ftp_io_error_code(raw)
+	return raw
+
+
+# Sends all n bytes on a data connection. Returns 1, or 0 with *err set.
+int ftp_data_send_all(ftp_client* c, int fd, char* data, int n, int* err):
+	if (c.data_tls != 0):
+		if (n == 0):
+			return 1
+		if (tls_write(c.data_tls, data, n) != n):
+			*err = ftp_error_io()
+			return 0
+		return 1
+	return ftp_send_all(fd, data, n, err)
+
+
+# Closes a data connection; a TLS one gets close_notify first (the
+# end-of-file marker of a protected upload).
+void ftp_data_close(ftp_client* c, int fd):
+	if (c.data_tls != 0):
+		tls_close(c.data_tls)
+		c.data_tls = 0
+	close(fd)
+
+
 # Opens a data connection and issues the transfer command. Returns the
-# data fd once a 1xx preliminary reply arrived, else -1 (data fd closed,
-# c.error set).
+# data fd once a 1xx preliminary reply arrived (and, under PROT P, the
+# TLS handshake on it succeeded; c.data_tls holds that session), else
+# -1 (data connection closed, c.error set).
 int ftp_begin_transfer(ftp_client* c, char* verb, char* arg):
 	if (ftp_begin_op(c) == 0):
 		return (-1)
 	# Validate before EPSV/PASV so a bad argument sends nothing at all.
 	if ((arg != 0) && (ftp_valid_argument(arg) == 0)):
 		return ftp_fail_neg(c, ftp_error_bad_argument())
+	if (ftp_sync_prot(c) == 0):
+		return (-1)
 	int fd = ftp_open_passive(c)
 	if (fd < 0):
 		return (-1)
@@ -824,6 +1173,17 @@ int ftp_begin_transfer(ftp_client* c, char* verb, char* arg):
 	if (code / 100 != 1):
 		close(fd)
 		return ftp_fail_neg(c, ftp_error_reply())
+	if (c.prot_have != 0):
+		# RFC 4217 section 7: the client is the TLS client on the data
+		# connection too, verified against the same name and config.
+		c.data_tls = tls_connect(fd, ftp_tls_name(c), c.tls_cfg)
+		if (c.data_tls == 0):
+			close(fd)
+			# The server answers the dead data connection (425/426/451);
+			# consume that reply so the control connection stays in step.
+			ftp_read_reply(c)
+			c.error = 0
+			return ftp_fail_neg(c, ftp_error_tls())
 	return fd
 
 
@@ -848,13 +1208,11 @@ char* ftp_download(ftp_client* c, char* verb, char* path, int* out_len):
 	char* chunk = malloc(16384)
 	int failed = 0
 	while (1):
-		int got = socket_recv(fd, chunk, 16384, 0)
-		if (got == (0 - 4)):
-			continue
+		int got = ftp_data_recv(c, fd, chunk, 16384)
 		if (got == 0):
 			break
 		else if (got < 0):
-			failed = ftp_io_error_code(got)
+			failed = 0 - got
 			break
 		else:
 			if (out.length + got > c.max_transfer):
@@ -862,7 +1220,7 @@ char* ftp_download(ftp_client* c, char* verb, char* path, int* out_len):
 				break
 			string_append_bytes(out, chunk, got)
 	free(chunk)
-	close(fd)
+	ftp_data_close(c, fd)
 	if (failed != 0):
 		# Closing the data connection early makes the server answer
 		# 426/451 (or 226 if it had already sent everything); consume
@@ -917,12 +1275,11 @@ int ftp_retr_fd(ftp_client* c, char* path, int out_fd):
 	int total = 0
 	int failed = 0
 	while (failed == 0):
-		int got = socket_recv(fd, chunk, 16384, 0)
+		int got = ftp_data_recv(c, fd, chunk, 16384)
 		if (got == 0):
 			break
 		if (got < 0):
-			if (got != (0 - 4)):
-				failed = ftp_io_error_code(got)
+			failed = 0 - got
 		else:
 			int written = 0
 			while ((written < got) && (failed == 0)):
@@ -933,7 +1290,7 @@ int ftp_retr_fd(ftp_client* c, char* path, int out_fd):
 					written = written + w
 			total = total + got
 	free(chunk)
-	close(fd)
+	ftp_data_close(c, fd)
 	if (failed != 0):
 		ftp_read_reply(c)
 		c.error = 0
@@ -954,9 +1311,9 @@ int ftp_upload(ftp_client* c, char* verb, char* path, char* data, int len):
 	if (fd < 0):
 		return 0
 	int err = 0
-	int ok = ftp_send_all(fd, data, len, &err)
+	int ok = ftp_data_send_all(c, fd, data, len, &err)
 	# Closing the data connection is the end-of-file marker in stream mode.
-	close(fd)
+	ftp_data_close(c, fd)
 	if (ok == 0):
 		ftp_read_reply(c)
 		c.error = 0

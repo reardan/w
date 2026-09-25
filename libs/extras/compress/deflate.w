@@ -66,6 +66,14 @@ crc32.w's runtime-mask-building machinery is needed here; plain `<<`
 is used for left shifts (never large enough to touch the sign bit) and
 the `shr` intrinsic for right shifts, matching this file's original
 stored-block code.
+
+deflate_window() encodes one flushed piece of a longer stream: the
+tokenizer is seeded with the preceding plaintext as history (its
+positions enter the hash chains but are never emitted), distances are
+capped at 2^window_bits, every block is non-final, and the piece ends
+with a sync flush (an empty stored block, 00 00 ff ff) -- RFC 7692
+permessage-deflate's per-message format. inflate.w's inflate_window is
+the decoder.
 */
 import lib.memory
 import structures.string
@@ -188,10 +196,11 @@ int dfl_insert(char* data, int length, int* head, int* prev, int pos):
 
 # Walks the hash chain starting at `hash_head`, comparing byte-by-byte
 # against `pos`, tracking the longest match found within `max_chain`
-# candidates. Distances beyond dfl_max_dist() end the search (chain
-# positions only get farther away from `pos` as the walk continues, so
-# once one candidate exceeds the window, every later one will too).
-void dfl_find_match(char* data, int length, int* prev, int pos, int hash_head, int max_chain, int* out_len, int* out_dist):
+# candidates. Distances beyond max_dist (dfl_max_dist() unless a caller
+# asked for a smaller LZ77 window) end the search (chain positions only
+# get farther away from `pos` as the walk continues, so once one
+# candidate exceeds the window, every later one will too).
+void dfl_find_match(char* data, int length, int* prev, int pos, int hash_head, int max_chain, int max_dist, int* out_len, int* out_dist):
 	*out_len = 0
 	*out_dist = 0
 	int max_len = length - pos
@@ -205,7 +214,7 @@ void dfl_find_match(char* data, int length, int* prev, int pos, int hash_head, i
 	int chain = max_chain
 	while ((cand >= 0) && (chain > 0)):
 		int dist = pos - cand
-		if (dist > dfl_max_dist()):
+		if (dist > max_dist):
 			break
 		int mlen = 0
 		while ((mlen < max_len) && ((data[cand + mlen] & 255) == (data[pos + mlen] & 255))):
@@ -222,21 +231,25 @@ void dfl_find_match(char* data, int length, int* prev, int pos, int hash_head, i
 		*out_dist = best_dist
 
 
-# Tokenizes the whole buffer with one-position lazy matching: the match
+# Tokenizes data[start..length) with one-position lazy matching: the match
 # found at the current position is compared against the match found one
 # position later before being committed, emitting a literal instead and
 # deferring to the later match whenever it is strictly longer (RFC
 # 1951 doesn't mandate this -- it's zlib's own default strategy, called
 # out explicitly in docs/projects/compress.md's stage-3 description).
-dfl_tokens* dfl_tokenize(char* data, int length, int max_chain):
+# data[0..start) is preset history: those positions are inserted into the hash chains (so matches
+# may reach back into them) but never emitted as tokens. max_dist caps
+# every back-reference distance (a smaller LZ77 window, e.g. RFC 7692's
+# *_max_window_bits).
+dfl_tokens* dfl_tokenize_from(char* data, int length, int start, int max_chain, int max_dist):
 	dfl_tokens* t = new dfl_tokens
-	if (length <= 0):
+	if (length - start <= 0):
 		t.len = cast(int*, 0)
 		t.dist = cast(int*, 0)
 		t.count = 0
 		return t
-	t.len = cast(int*, malloc(length * __word_size__))
-	t.dist = cast(int*, malloc(length * __word_size__))
+	t.len = cast(int*, malloc((length - start) * __word_size__))
+	t.dist = cast(int*, malloc((length - start) * __word_size__))
 	t.count = 0
 
 	int* head = cast(int*, malloc(dfl_hash_size() * __word_size__))
@@ -245,8 +258,13 @@ dfl_tokens* dfl_tokenize(char* data, int length, int max_chain):
 		head[i] = -1
 		i = i + 1
 	int* prev = cast(int*, malloc(length * __word_size__))
+	int h = 0
+	while (h < start):
+		if (h + dfl_min_match() <= length):
+			dfl_insert(data, length, head, prev, h)
+		h = h + 1
 
-	int strstart = 0
+	int strstart = start
 	int match_available = 0
 	int prev_length = dfl_min_match() - 1
 	int prev_dist = 0
@@ -255,7 +273,7 @@ dfl_tokens* dfl_tokenize(char* data, int length, int max_chain):
 		int cur_dist = 0
 		if (strstart + dfl_min_match() <= length):
 			int hash_head = dfl_insert(data, length, head, prev, strstart)
-			dfl_find_match(data, length, prev, strstart, hash_head, max_chain, &cur_len, &cur_dist)
+			dfl_find_match(data, length, prev, strstart, hash_head, max_chain, max_dist, &cur_len, &cur_dist)
 		if ((prev_length >= dfl_min_match()) && (cur_len <= prev_length)):
 			# Commit the deferred match found one position back (at
 			# strstart-1, length prev_length, distance prev_dist).
@@ -292,6 +310,11 @@ dfl_tokens* dfl_tokenize(char* data, int length, int max_chain):
 	free(head)
 	free(prev)
 	return t
+
+
+# The whole buffer, no preset history, full 32 KiB window.
+dfl_tokens* dfl_tokenize(char* data, int length, int max_chain):
+	return dfl_tokenize_from(data, length, 0, max_chain, dfl_max_dist())
 
 
 /* ---- Length/distance symbol lookup (inverse of inflate.w's tables) ---- */
@@ -1125,3 +1148,75 @@ deflate_result* deflate(char* data, int length, int level):
 	r.data = out_data
 	r.length = out_length
 	return r
+
+
+# Raw DEFLATE of one flushed piece of a longer stream (RFC 7692
+# permessage-deflate's per-message compression; also a preset-dictionary
+# compressor). `window` (window_len bytes, may be 0/0) is the plaintext
+# that preceded this piece -- matches may reach back into it, it is not
+# re-emitted -- and window_bits (8..15; anything else means 15) caps
+# every distance at 2^window_bits, only the last 2^window_bits bytes of
+# the window being used. Every block is non-final and the output ends
+# with a sync flush: an empty stored block, i.e. the last four bytes are
+# always 00 00 ff ff (RFC 7692 section 7.2.1 strips them). An empty
+# piece is just that flush. level is DEFLATE_LEVEL_STORED/FAST/BEST as
+# for deflate(). The matching decoder is inflate.w's inflate_window.
+#
+# Plain-pointer shape (malloc'd bytes, length in *out_len, never 0) so it
+# can be handed to a registration hook such as websocket.w's
+# ws_use_deflate without that module importing this package.
+char* deflate_window(char* data, int length, char* window, int window_len, int window_bits, int level, int* out_len):
+	if (length < 0):
+		length = 0
+	if ((window == 0) || (window_len < 0)):
+		window_len = 0
+	int max_dist = dfl_max_dist()
+	if ((window_bits >= 8) && (window_bits <= 15)):
+		max_dist = 1 << window_bits
+	if (window_len > max_dist):
+		window = &window[window_len - max_dist]
+		window_len = max_dist
+	dfl_bits* w = dfl_bits_new()
+	if (length > 0):
+		int total = window_len + length
+		char* combined = malloc(total)
+		int i = 0
+		while (i < window_len):
+			combined[i] = window[i]
+			i = i + 1
+		i = 0
+		while (i < length):
+			combined[window_len + i] = data[i]
+			i = i + 1
+		if (level <= DEFLATE_LEVEL_STORED()):
+			dfl_emit_stored_range(w, combined, window_len, length, 0)
+		else:
+			int max_chain = dfl_max_chain_fast()
+			if (level >= DEFLATE_LEVEL_BEST()):
+				max_chain = dfl_max_chain_best()
+			dfl_tokens* t = dfl_tokenize_from(combined, total, window_len, max_chain, max_dist)
+			int pos = 0
+			int in_pos = window_len
+			while (pos < t.count):
+				int block_start = pos
+				int consumed = 0
+				while ((pos < t.count) && (consumed < dfl_block_input_bytes())):
+					if (t.dist[pos] == 0):
+						consumed = consumed + 1
+					else:
+						consumed = consumed + t.len[pos]
+					pos = pos + 1
+				dfl_emit_block(w, combined, t, block_start, pos, in_pos, consumed, level, 0)
+				in_pos = in_pos + consumed
+			free(t.len)
+			free(t.dist)
+			free(t)
+		free(combined)
+	# Sync flush: an empty non-final stored block (3 header bits, pad to
+	# a byte boundary, LEN 0000 / NLEN ffff).
+	dfl_emit_stored_range(w, data, 0, 0, 0)
+	char* out_data = w.out.data
+	*out_len = w.out.length
+	free(w.out)
+	free(w)
+	return out_data

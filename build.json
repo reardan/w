@@ -2155,6 +2155,7 @@
 				"format_64_test",
 				"framing_64_test",
 				"ftp_64_test",
+				"ftps_64_test",
 				"generator_64_test",
 				"generator_return_free_64_test",
 				"generics_64_test",
@@ -2185,10 +2186,13 @@
 				"graphics_ui_tree_test",
 				"graphics_ui_widgets_test",
 				"grpc_64_test",
+				"grpc_stream_64_test",
+				"grpc_tls_64_test",
 				"hash_table_64_test",
 				"heap_64_test",
 				"hpack_64_test",
 				"http2_64_test",
+				"http2_tls_64_test",
 				"http_client_64_test",
 				"http_server_64_test",
 				"http_server_route_64_test",
@@ -2232,6 +2236,7 @@
 				"net_64_test",
 				"net_asn1_64_test",
 				"net_tls_64_test",
+				"net_tls_alpn_64_test",
 				"net_tls_server_64_test",
 				"net_x509_64_test",
 				"operator_overload_64_test",
@@ -2800,6 +2805,7 @@
 				"format_test",
 				"framing_test",
 				"ftp_test",
+				"ftps_test",
 				"generator_return_free_test",
 				"getchar_checked_test",
 				"goto_test",
@@ -2807,13 +2813,16 @@
 				"graphics_event_test",
 				"graphics_ui_buffer_test",
 				"graphics_ui_core_test",
+				"grpc_stream_test",
 				"grpc_test",
+				"grpc_tls_test",
 				"hash_table_test",
 				"heap_test",
 				"hkdf_test",
 				"hmac_test",
 				"hpack_test",
 				"http2_test",
+				"http2_tls_test",
 				"http_client_test",
 				"http_server_route_test",
 				"http_server_test",
@@ -2862,6 +2871,7 @@
 				"ndarray_test",
 				"nested_ctor_test",
 				"net_test",
+				"net_tls_alpn_test",
 				"operator_overload_test",
 				"parallel_for_test",
 				"passwd_test",
@@ -4369,6 +4379,26 @@
 			]
 		},
 		{
+			"name": "ftps_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/ftps_test.w"],
+			"outputs": ["bin/ftps_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/ftps_test.w", "-o", "bin/ftps_64_test"]},
+				{"cmd": ["bin/ftps_64_test"]}
+			]
+		},
+		{
+			"name": "ftps_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/ftps_test.w"],
+			"outputs": ["bin/ftps_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/ftps_test.w", "-o", "bin/ftps_test"]},
+				{"cmd": ["bin/ftps_test"]}
+			]
+		},
+		{
 			"name": "generator_64_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/generator_test.w"],
@@ -4786,6 +4816,26 @@
 			]
 		},
 		{
+			"name": "grpc_stream_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/grpc_stream_test.w"],
+			"outputs": ["bin/grpc_stream_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/grpc_stream_test.w", "-o", "bin/grpc_stream_64_test"]},
+				{"cmd": ["bin/grpc_stream_64_test"]}
+			]
+		},
+		{
+			"name": "grpc_stream_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/grpc_stream_test.w"],
+			"outputs": ["bin/grpc_stream_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/grpc_stream_test.w", "-o", "bin/grpc_stream_test"]},
+				{"cmd": ["bin/grpc_stream_test"]}
+			]
+		},
+		{
 			"name": "grpc_test",
 			"deps": ["wv2"],
 			"inputs": ["libs/standard/web/grpc_test.w"],
@@ -4793,6 +4843,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/grpc_test.w", "-o", "bin/grpc_test"]},
 				{"cmd": ["bin/grpc_test"]}
+			]
+		},
+		{
+			"name": "grpc_tls_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/grpc_tls_test.w"],
+			"outputs": ["bin/grpc_tls_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/grpc_tls_test.w", "-o", "bin/grpc_tls_64_test"]},
+				{"cmd": ["bin/grpc_tls_64_test"]}
+			]
+		},
+		{
+			"name": "grpc_tls_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/grpc_tls_test.w"],
+			"outputs": ["bin/grpc_tls_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/grpc_tls_test.w", "-o", "bin/grpc_tls_test"]},
+				{"cmd": ["bin/grpc_tls_test"]}
 			]
 		},
 		{
@@ -4913,6 +4983,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/http2_test.w", "-o", "bin/http2_test"]},
 				{"cmd": ["bin/http2_test"]}
+			]
+		},
+		{
+			"name": "http2_tls_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http2_tls_test.w"],
+			"outputs": ["bin/http2_tls_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/http2_tls_test.w", "-o", "bin/http2_tls_64_test"]},
+				{"cmd": ["bin/http2_tls_64_test"]}
+			]
+		},
+		{
+			"name": "http2_tls_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http2_tls_test.w"],
+			"outputs": ["bin/http2_tls_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/http2_tls_test.w", "-o", "bin/http2_tls_test"]},
+				{"cmd": ["bin/http2_tls_test"]}
 			]
 		},
 		{
@@ -5920,6 +6010,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_test.w", "-o", "bin/net_tls_64_test"]},
 				{"cmd": ["bin/net_tls_64_test"]}
+			]
+		},
+		{
+			"name": "net_tls_alpn_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/tls_alpn_test.w"],
+			"outputs": ["bin/net_tls_alpn_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/tls_alpn_test.w", "-o", "bin/net_tls_alpn_64_test"]},
+				{"cmd": ["bin/net_tls_alpn_64_test"]}
+			]
+		},
+		{
+			"name": "net_tls_alpn_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/tls_alpn_test.w"],
+			"outputs": ["bin/net_tls_alpn_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/tls_alpn_test.w", "-o", "bin/net_tls_alpn_test"]},
+				{"cmd": ["bin/net_tls_alpn_test"]}
 			]
 		},
 		{

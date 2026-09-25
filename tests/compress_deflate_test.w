@@ -367,3 +367,135 @@ void test_deflate_level_dispatch_boundaries():
 	deflate_result_free(fast)
 	deflate_result_free(best)
 	deflate_result_free(above_best)
+
+
+/* ---- deflate_window / inflate_window: flushed pieces of one stream ---- */
+
+
+# Inflates z against window[0..window_len) and checks it yields
+# data[0..len).
+void dt_window_expect(char* label, char* z, int zlen, char* window, int window_len, char* data, int len):
+	int n = 0
+	int err = 0
+	char* out = inflate_window(z, zlen, window, window_len, 0, &n, &err)
+	if (out == 0):
+		print2(label)
+		print2(c": inflate_window failed: ")
+		println2(inflate_error_string(err))
+		exit(1)
+	assert_equal(INFLATE_OK(), err)
+	assert_equal(len, n)
+	assert_equal(0, out[n])
+	int i = 0
+	while (i < len):
+		if ((out[i] & 255) != (data[i] & 255)):
+			print2(label)
+			println2(c": byte mismatch")
+			exit(1)
+		i = i + 1
+	free(out)
+
+
+void test_deflate_window_sync_flush_shape():
+	# An empty piece is just the sync flush: an empty non-final stored
+	# block, exactly what zlib's Z_SYNC_FLUSH emits.
+	int n = 0
+	char* z = deflate_window(c"", 0, 0, 0, 15, DEFLATE_LEVEL_FAST(), &n)
+	assert_equal(5, n)
+	assert_equal(0, z[0])
+	assert_equal(0, z[1])
+	assert_equal(0, z[2])
+	assert_equal(255, z[3] & 255)
+	assert_equal(255, z[4] & 255)
+	free(z)
+	# Every level ends in 00 00 ff ff, and no block carries BFINAL, so
+	# plain inflate() (which wants a final block) reports truncation
+	# while inflate_window decodes it.
+	int level = 0
+	while (level <= DEFLATE_LEVEL_BEST()):
+		z = deflate_window(c"hello hello hello", 17, 0, 0, 15, level, &n)
+		assert_equal(0, z[n - 4])
+		assert_equal(0, z[n - 3])
+		assert_equal(255, z[n - 2] & 255)
+		assert_equal(255, z[n - 1] & 255)
+		wresult[inflate_result*]* r = inflate(z, n, 0)
+		asserts(c"no final block", result_is_error[inflate_result*](r))
+		assert_equal(INFLATE_ERR_TRUNCATED(), result_code[inflate_result*](r))
+		dt_window_expect(c"sync piece", z, n, 0, 0, c"hello hello hello", 17)
+		free(z)
+		level = level + 1
+
+
+void test_deflate_window_stream_of_pieces():
+	# Five pieces of one stream, each compressed against the previous
+	# plaintext and inflated against the previous output, at every level
+	# and several window sizes. With window_bits b the piece must also
+	# inflate against only the last 2^b bytes -- no distance reaches
+	# further back.
+	int total = 5 * 20000
+	char* all = malloc(total)
+	int i = 0
+	while (i < total):
+		all[i] = ((i / 3) * 7 + ((i >> 10) & 15)) & 255
+		i = i + 1
+	int* bits = malloc(3 * __word_size__)
+	bits[0] = 8
+	bits[1] = 12
+	bits[2] = 15
+	int b = 0
+	while (b < 3):
+		int level = 0
+		while (level <= DEFLATE_LEVEL_BEST()):
+			int piece = 0
+			while (piece < 5):
+				char* data = &all[piece * 20000]
+				char* window = all
+				int window_len = piece * 20000
+				int n = 0
+				char* z = deflate_window(data, 20000, window, window_len, bits[b], level, &n)
+				dt_window_expect(c"piece", z, n, window, window_len, data, 20000)
+				int limit = 1 << bits[b]
+				if (window_len > limit):
+					dt_window_expect(c"piece, trimmed window", z, n, &all[window_len - limit], limit, data, 20000)
+				free(z)
+				piece = piece + 1
+			level = level + 1
+		b = b + 1
+	free(bits)
+	free(all)
+
+
+void test_inflate_window_edges():
+	int n = 0
+	int err = 0
+	# RFC 7692 7.2.3.2: a back-reference into the window, which is not
+	# part of the result.
+	char* out = inflate_window(c"\xf2\x00\x11\x00\x00\x00\x00\xff\xff", 9, c"Hello", 5, 0, &n, &err)
+	assert_equal(5, n)
+	assert_strings_equal(c"Hello", out)
+	free(out)
+	# The same reference without the window points before the output.
+	out = inflate_window(c"\xf2\x00\x11\x00\x00\x00\x00\xff\xff", 9, 0, 0, 0, &n, &err)
+	asserts(c"no window", out == 0)
+	assert_equal(INFLATE_ERR_BAD_DISTANCE(), err)
+	# max_output caps new output only, however large the window.
+	out = inflate_window(c"\xf2\x00\x11\x00\x00\x00\x00\xff\xff", 9, c"Hello", 5, 5, &n, &err)
+	assert_equal(5, n)
+	free(out)
+	out = inflate_window(c"\xf2\x00\x11\x00\x00\x00\x00\xff\xff", 9, c"Hello", 5, 4, &n, &err)
+	asserts(c"capped", out == 0)
+	assert_equal(INFLATE_ERR_TOO_LARGE(), err)
+	assert_equal(0, n)
+	# A BFINAL block ends decoding; what follows is ignored.
+	out = inflate_window(c"\xf3\x48\xcd\xc9\xc9\x07\x00\x00\x00\x00\xff\xff", 12, 0, 0, 0, &n, &err)
+	assert_strings_equal(c"Hello", out)
+	free(out)
+	# Input ending mid-block is still truncation.
+	out = inflate_window(c"\xf2\x48\xcd", 3, 0, 0, 0, &n, &err)
+	asserts(c"truncated", out == 0)
+	assert_equal(INFLATE_ERR_TRUNCATED(), err)
+	# Empty input is an empty piece.
+	out = inflate_window(c"", 0, 0, 0, 0, &n, &err)
+	assert_equal(0, n)
+	assert_equal(INFLATE_OK(), err)
+	free(out)
