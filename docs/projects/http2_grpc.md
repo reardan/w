@@ -7,6 +7,7 @@ beyond `lib/`, `structures/` and the existing `libs/standard/net/dns.w`.
 | --- | --- |
 | `hpack.w` | RFC 7541 header compression |
 | `http2.w` | RFC 9113 framing, streams, flow control; blocking client + minimal server |
+| `grpc.w` | gRPC unary calls (client + server) over `http2.w` |
 
 Each file's header comment is the API reference; this note records the
 design choices and what is left.
@@ -60,3 +61,32 @@ Not done (candidates for follow-ups): priority scheduling (PRIORITY is
 validated and ignored, as RFC 9113 permits), streaming request bodies
 to the server application before END_STREAM, extended CONNECT, and a
 SETTINGS ACK timeout.
+
+## gRPC (`grpc.w`)
+
+- Unary RPCs only, following the grpc repository's PROTOCOL-HTTP2.md:
+  `POST`, `content-type: application/grpc`, `te: trailers`, 5-byte
+  length-prefixed messages, `grpc-status` / `grpc-message` trailers
+  (percent-encoded), trailers-only responses, `grpc-timeout`.
+- Serializer-agnostic: messages are bytes in, bytes out. No rule forbids
+  `libs/standard` importing `libs/extras` (only `libs.x.unsafe` is
+  policed, by `unsafe_import_test`), but no `libs/standard` module does
+  today, so `grpc.w` keeps that layering; `grpc_test.w` pairs it with
+  `libs/extras/protobuf/message.w` descriptors (`pb_encode` /
+  `pb_decode_into`).
+- Compression is not negotiated: the compressed flag must be 0 and a
+  compressed message is answered with UNIMPLEMENTED. gzip via
+  `libs/extras/compress` would be the natural follow-up (it would need
+  `grpc-encoding` / `grpc-accept-encoding` handling and, per the
+  layering above, an adapter outside `libs/standard`).
+- Deadlines: the client sends `grpc-timeout` in milliseconds and bounds
+  its wait with `h2_set_deadline`; on expiry it cancels the stream and
+  keeps the connection. The server parses every unit (H/M/S/m/u/n),
+  exposes `grpc_call.timeout_ms` / `grpc_call_time_left_ms`, and answers
+  DEADLINE_EXCEEDED when the handler overran.
+- Status mapping on the client covers non-200 HTTP statuses, missing
+  `grpc-status`, non-gRPC content types, RST_STREAM codes, GOAWAY-refused
+  streams and dead connections.
+
+Not done: streaming RPCs (client, server, bidi), compression, gRPC over
+TLS (blocked on ALPN, as above), a code generator from `.proto`.
