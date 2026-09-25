@@ -8,15 +8,19 @@ stderr:
 	  at middle (tests/stack_trace_test.w:12)
 	  at main (tests/stack_trace_test.w:20)
 
-Unwinding on x86/x64 follows the frame-pointer chain: every compiled
-function opens with push ebp ; mov ebp,esp (be_function_prologue in
-code_generator/arm64.w), so [ebp] is the caller's ebp and [ebp + word]
-the return address, and the walk (st_chain) is exact - every frame, in
-order, nothing stale. The chain ends at main, at a zero ebp (process or
+Unwinding follows the frame-pointer chain: every compiled function
+opens with push ebp ; mov ebp,esp on x86/x64, and with stp x29,x30,
+[x28,#-16]! ; mov x29,x28 on arm64 - the frame lives on the W stack
+(be_function_prologue in code_generator/arm64.w) - so [ebp] is the
+caller's ebp and [ebp + word] the return address, and the walk
+(st_chain) is exact - every frame, in order, nothing stale. On arm64 a
+call leaves the return address in x30, so a frameless stub or a
+function stopped inside its prologue is missing from the chain; the
+crash report adds that frame from the saved x30. The chain ends at main, at a zero ebp (process or
 thread start), or where it stops looking like a chain (ebp not
 increasing, unmapped, or a return address that is not a call site);
-from there, and on images without frame pointers (arm64, or a binary
-built by a pre-frame-pointer compiler such as the seed), unwinding
+from there, and on images without frame pointers (a binary built by a
+pre-frame-pointer compiler such as the seed), unwinding
 falls back to the in-process debugger's return-address heuristic
 (debugger/wdbg.w dbg_frames_compute, st_scan here): scan stack words
 upward from the stack pointer and keep values that point into a
@@ -515,8 +519,18 @@ int st_entry_value(int e):
 
 
 # Length of the frame-pointer prologue at a function entry (x86:
-# 55 89 e5, x64: 55 48 89 e5), 0 when the function has none.
+# 55 89 e5, x64: 55 48 89 e5, arm64: [pacia x30,x28 ;] stp x29,x30,
+# [x28,#-16]! ; mov x29,x28), 0 when the function has none.
 int st_prologue_len(int addr):
+	if (st_machine == 183):
+		int k = 0
+		if (st_int32(addr) == ((218 << 24) | 12649374)):  /* pacia x30, x28: 0xdac1039e */
+			k = 4
+		if (st_int32(addr + k) != ((169 << 24) | 12549021)):  /* stp x29, x30, [x28, #-16]!: 0xa9bf7b9d */
+			return 0
+		if (st_int32(addr + k + 4) != ((170 << 24) | 1836029)):  /* mov x29, x28: 0xaa1c03fd */
+			return 0
+		return k + 8
 	if (st_byte(addr) != 85):
 		return 0
 	if (st_class == 2):
@@ -534,9 +548,9 @@ int st_prologue_len(int addr):
 int st_uses_frame_pointers():
 	if (st_state != 1):
 		return 0
-	if ((st_machine != 3) && (st_machine != 62)):
+	if ((st_machine != 3) && (st_machine != 62) && (st_machine != 183)):
 		return 0
-	return st_prologue_len(cast(int, st_prologue_len)) > 0
+	return st_prologue_len(st_code_address(cast(int, st_prologue_len))) > 0
 
 
 # 1 when v is a plausible return address: inside a defined function
@@ -580,7 +594,7 @@ int st_chain(int fp, char* out, int found, int max, int fallback_sp, int skip_en
 		else if (st_range_readable(fp, 2 * __word_size__) == 0):
 			broken = 1
 		else:
-			int v = st_word(fp + __word_size__)
+			int v = st_code_address(st_word(fp + __word_size__))
 			if (st_is_return(v) == 0):
 				broken = 1
 			else:
@@ -626,6 +640,22 @@ int st_unwind(int pc, int sp, int fp, char* out, int max):
 	int plen = st_prologue_len(entry)
 	int found = 0
 	int ret_slot = 0
+	if (st_machine == 183):
+		# arm64 calls leave the return address in x30, not on the
+		# stack, so a frameless stub (or a function stopped before its
+		# stp) is not on the chain at all: x29 is still the caller's,
+		# and the chain from it starts at the caller's caller. The
+		# crash report adds the x30 frame itself. Once the stp has run
+		# (pc at the mov), [x28 + 8] holds the return address.
+		if ((plen != 0) && (pc == entry + plen - 4)):
+			int v2 = st_code_address(st_word(sp + 8))
+			if (st_is_return(v2)):
+				st_out_set(out, 0, v2 - 1)
+				found = 1
+				if (st_is_main_frame(v2 - 1)):
+					st_unwind_exact = 1
+					return found
+		return st_chain(fp, out, found, max, sp, 0)
 	if (plen == 0):
 		# Frameless function: ebp still belongs to its caller, whose
 		# frame the chain covers; find this one's return address by

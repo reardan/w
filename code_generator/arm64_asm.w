@@ -186,9 +186,13 @@ void define_asm_functions_arm64():
 	# gen_switch(int* save_wsp_here, int restore_wsp): the generator context
 	# switch (docs/projects/iteration.md), AArch64 flavor. W keeps no live
 	# values in callee-saved registers across calls, so only the resume
-	# address (x30) and the W stack pointer (x28) must be preserved. Push the
-	# resume address on the current stack, store x28 through arg1, load arg2
-	# into x28, pop the resume address saved there and return on it.
+	# address (x30), the frame pointer (x29: every framed function's
+	# return unwinds through it) and the W stack pointer (x28) must be
+	# preserved. Push the resume address and x29 on the current stack,
+	# store x28 through arg1, load arg2 into x28, pop the x29 and resume
+	# address saved there and return on it. lib/generator.w seeds a fresh
+	# generator stack with a zero x29 (__w_gen_switch_regs), so the
+	# body's frame chain ends there.
 	# pac=full: the pushed resume address is signed with ZERO discriminator
 	# (paciza/autiza), not the stack address — __w_gen_create seeds a fresh
 	# generator stack with the body's entry address exactly as it received
@@ -201,8 +205,10 @@ void define_asm_functions_arm64():
 	if (arm64_pac == 2):
 		a64(op(0xda, 0xc123fe))   # paciza x30
 	a64(op(0xf8, 0x1f8f9e))   # str x30,[x28,#-8]!  (push resume address)
+	a64(op(0xf8, 0x1f8f9d))   # str x29,[x28,#-8]!  (push frame pointer)
 	a64(op(0xf9, 0x00013c))   # str x28,[x9]        (*save_wsp_here = x28)
 	a64(op(0xaa, 0x0a03fc))   # mov x28,x10         (switch stacks)
+	a64(op(0xf8, 0x40879d))   # ldr x29,[x28],#8    (pop frame pointer)
 	a64(op(0xf8, 0x40879e))   # ldr x30,[x28],#8    (pop resume address)
 	if (arm64_pac == 2):
 		a64(op(0xda, 0xc133fe))   # autiza x30
