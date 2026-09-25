@@ -2229,6 +2229,7 @@
 				"shell_64_test",
 				"shell_commands_64_test",
 				"sim_64_test",
+				"sizeof_64_test",
 				"sse_64_test",
 				"sstable_64_test",
 				"stack_trace_64_test",
@@ -2845,6 +2846,7 @@
 				"shell_commands_test",
 				"shell_test",
 				"sim_test",
+				"sizeof_test",
 				"sse_test",
 				"sstable_test",
 				"stack_trace_test",
@@ -6601,6 +6603,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/distributed/sim_test.w", "-o", "bin/sim_test"]},
 				{"cmd": ["bin/sim_test"]}
+			]
+		},
+		{
+			"name": "sizeof_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/sizeof_test.w"],
+			"outputs": ["bin/sizeof_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/sizeof_test.w", "-o", "bin/sizeof_64_test"]},
+				{"cmd": ["bin/sizeof_64_test"]}
+			]
+		},
+		{
+			"name": "sizeof_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/sizeof_test.w"],
+			"outputs": ["bin/sizeof_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/sizeof_test.w", "-o", "bin/sizeof_test"]},
+				{"cmd": ["bin/sizeof_test"]}
 			]
 		},
 		{

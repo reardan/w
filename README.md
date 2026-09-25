@@ -195,7 +195,9 @@ Implemented and covered by tests:
   `l.push(v)`/`l.pop()` and container `.length`, container `.free()`
   (releases the container's owned storage — element/value pointers are
   not chased, and post-free use is caller error like `lib/memory.w`'s
-  `free()`), explicit `cast(T, expr)`,
+  `free()`), explicit `cast(T, expr)`, `sizeof(T)` (a type's size in
+  bytes as a compile-time int; W structs are packed, and it always equals the
+  `&p[1]` indexing stride),
   postfix `?` error propagation on the generic `wresult[T]` result type
   (unwrap the payload, or return the error to the caller; see
   `docs/error_results.txt`), hex literals (one with bit 31 set

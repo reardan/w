@@ -144,6 +144,7 @@ current state:
 			raw UTF-8 codepoints; unknown escapes are compile errors
 			pointer-aware [] and . code generation
 			explicit cast(type, expr) escape hatch for unsafe conversions
+			sizeof(type) compile-time byte size of any type name (#434, sizeof_test)
 			mul_hi / mul_wide / add_carry 32-bit limb intrinsics (#213):
 				unsigned 32x32 high half, wide product and carry-out add
 				on the operands' low 32 bits; user symbols shadow them
