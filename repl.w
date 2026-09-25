@@ -48,7 +48,11 @@ repl/shell_translate.w's recognition test passes, else farmed out to
 lib/shell.w's sh_interactive exactly like "!cmd" is in W mode. "!" still
 works in shell mode, but with its meaning flipped: it runs exactly one
 line as W, then returns to shell-mode dispatch. "cd"/"export" are
-intercepted the same way "!cd"/"!export" already are.
+intercepted the same way "!cd"/"!export" already are. A function you
+defined in the session takes priority over the native tool and the real
+binary of the same name ("greet world" calls greet(c"world")), and every
+command's nonzero exit status prints as "[exit N]" on stderr (design
+doc Sec 12).
 
 Interactive editing (issue #276 P2, lib/line_edit.w): Tab completes the
 identifier before the cursor from the live symbol table
@@ -109,7 +113,7 @@ char* repl_json_echo_captured
 # instead of W (issue #335, docs/projects/repl_shell_mode.md Sec 4).
 int repl_shell_mode
 
-# 1 once "import lib.shell_commands as shell_commands" has been
+# 1 once "import lib.shell_commands" has been
 # eval'd into the live session, so a later ":sh" toggle does not
 # re-import. Cleared by ":reset", which rolls the import back too.
 int repl_shell_commands_imported
@@ -553,8 +557,9 @@ void repl_handle_bang(char* rest):
 # ---------------------------------------------------------------------------
 # ":sh" (issue #335, docs/projects/repl_shell_mode.md Sec 4): toggles
 # shell mode and, on first entry in a session, synthesizes-and-evals the
-# session import that makes lib/shell_commands.w's bare names (ls, cat,
-# pwd, ...) resolve for repl/shell_translate.w's generated calls -- the
+# session import that makes lib/shell_commands.w's tools
+# (shell_commands_ls, shell_commands_cat, ...) resolve for
+# repl/shell_translate.w's generated calls -- the
 # same mechanism ":load" already uses to run a file's declarations into
 # the live session. The actual line-by-line dispatch once shell mode is
 # on is repl_dispatch_shell_line, defined below after repl_eval_json.
@@ -563,7 +568,7 @@ void repl_cmd_sh():
 	repl_shell_mode = repl_shell_mode == 0
 	if (repl_shell_mode):
 		if (repl_shell_commands_imported == 0):
-			repl_eval(c"import lib.shell_commands as shell_commands")
+			repl_eval(c"import lib.shell_commands")
 			repl_shell_commands_imported = 1
 		println(c"shell mode on (:sh to leave, ! runs one line of W)")
 	else:
@@ -719,13 +724,144 @@ int repl_eval_json(char* entry_text):
 
 # ---------------------------------------------------------------------------
 # Shell mode dispatch (":sh", issue #335, docs/projects/repl_shell_mode.md
-# Sec 4/7). Dispatch one shell-mode line (never starting with '!' -- main()
-# has already peeled that case off and run it as W instead): "cd"/"export"
-# are intercepted exactly like the '!' escape does; else a native
-# lib/shell_commands.w call when repl/shell_translate.w's recognition test
-# passes; else the whole line, verbatim, to sh_interactive -- the same
-# "farm out to native" fallback the '!' escape already uses. Defined after
-# repl_eval_json, which it calls under --json.
+# Sec 4/7/12).
+
+# A shell-mode command's exit status (Sec 12): 0 prints nothing, like a
+# quiet successful command; anything else prints "[exit N]" to stderr,
+# so stdout keeps only the command's own output.
+void repl_shell_report_status(int status):
+	if (status == 0):
+		return;
+	char* n = itoa(status)
+	print_error(c"[exit ")
+	print_error(n)
+	println2(c"]")
+	free(n)
+
+
+# Shell mode's echo hook: an int result is the command's exit status
+# (every lib/shell_commands.w tool returns one, and so may a session
+# function), reported by repl_shell_report_status instead of echoed as
+# a number; any other result (a session function returning a char*,
+# say) echoes exactly as it would at the W prompt.
+void repl_shell_echo(int value, int type):
+	if (type > 0):
+		int t = type_canonical(type)
+		if ((t >= 0) && (type_get_pointer_level(t) == 0) && (strcmp(type_get_name(t), c"int") == 0)):
+			repl_shell_report_status(value)
+			return;
+	repl_echo(value, type)
+
+
+# Evaluate one translated shell-mode call: through repl_eval_json
+# under --json (its record's "echo" carries the status), else with
+# repl_shell_echo standing in for the W prompt's echo.
+void repl_eval_shell_call(char* call):
+	if (repl_json_mode):
+		repl_eval_json(call)
+		return;
+	int saved_hook = repl_echo_hook
+	repl_echo_hook = cast(int, repl_shell_echo)
+	repl_eval(call)
+	repl_echo_hook = saved_hook
+
+
+# The shell_arg_kind (repl/shell_translate.w) a parameter of the given
+# type takes a typed word as, or -1 when no typed word can be one (a
+# struct, a float, a pointer other than char*).
+int repl_shell_arg_kind(int type):
+	if (type_is_char_pointer(type)):
+		return shell_arg_string
+	int t = type_canonical(type)
+	if ((t < 0) || (type_get_pointer_level(t) != 0)):
+		return -1
+	char* name = type_get_name(t)
+	if (strcmp(name, c"bool") == 0):
+		return shell_arg_bool
+	if ((strcmp(name, c"int") == 0) || (strcmp(name, c"char") == 0) || (strcmp(name, c"byte") == 0) ||
+			(strcmp(name, c"int8") == 0) || (strcmp(name, c"int16") == 0) || (strcmp(name, c"int32") == 0) ||
+			(strcmp(name, c"int64") == 0) || (strcmp(name, c"uint") == 0) || (strcmp(name, c"uint8") == 0) ||
+			(strcmp(name, c"uint16") == 0) || (strcmp(name, c"uint32") == 0) || (strcmp(name, c"uint64") == 0)):
+		return shell_arg_int
+	return -1
+
+
+# Call text for session function t (repl_session_function's table
+# offset) with words[1..] as its arguments, or 0 -- after saying why --
+# when a parameter cannot take a typed word or the words do not fit the
+# signature. Sec 12: the session's function wins over the native tool
+# and the real binary alike, so a mismatch is reported rather than
+# silently running something else under the same name.
+char* repl_shell_session_call(int t, list[char*] words):
+	int num_args = sym_num_args(t)
+	int variadic_at = sym_w_variadic_fixed_args(t)
+	int fixed = num_args
+	if (variadic_at >= 0):
+		fixed = variadic_at
+	list[int] kinds = new list[int]
+	int required = 0
+	int variadic_kind = -1
+	int usable = num_args >= 0
+	int i = 0
+	while (usable && (i < num_args)):
+		int param = sym_param_type(t, i)
+		if (i == fixed):
+			param = type_get_element_type(param)
+		int kind = -1
+		if (param >= 0):
+			kind = repl_shell_arg_kind(param)
+		if (kind < 0):
+			usable = 0
+		else if (i == fixed):
+			variadic_kind = kind
+		else:
+			kinds.push(kind)
+			if (sym_param_has_default(t, i) == 0):
+				required = i + 1
+		i = i + 1
+	char* call = 0
+	if (usable):
+		call = shell_translate_session_call(words, kinds, required, variadic_kind)
+	if (call == 0):
+		print_error(words[0])
+		if (usable):
+			print_error(c": arguments do not fit this session's ")
+		else:
+			print_error(c": shell mode cannot pass words to this session's ")
+		print_error(words[0])
+		print_error(c"(")
+		i = 0
+		while (i < num_args):
+			if (i > 0):
+				print_error(c", ")
+			int param = sym_param_type(t, i)
+			if (i == fixed):
+				param = type_get_element_type(param)
+			char* shown = symbols_type_display(param)
+			print_error(shown)
+			free(shown)
+			if (i == fixed):
+				print_error(c"...")
+			i = i + 1
+		println2(c")")
+	return call
+
+
+# Dispatch one shell-mode line (never starting with '!' -- main() has
+# already peeled that case off and run it as W instead), first match
+# wins:
+#   1. "cd"/"export", intercepted exactly like the '!' escape does;
+#   2. a function the user defined in this session (Sec 12: yours
+#      first, like a bash function shadowing /bin/ls), when the line
+#      passes the metacharacter test -- a pipe or glob still means the
+#      real shell;
+#   3. a native lib/shell_commands.w call when
+#      repl/shell_translate.w's recognition test passes;
+#   4. the whole line, verbatim, to sh_interactive -- the same "farm out
+#      to native" fallback the '!' escape already uses.
+# Every path but 1 reports a nonzero exit status the same way
+# (repl_shell_report_status). Defined after repl_eval_json, which it
+# calls under --json.
 void repl_dispatch_shell_line(char* line):
 	if (line[0] == 0):
 		return;
@@ -735,15 +871,27 @@ void repl_dispatch_shell_line(char* line):
 	if (repl_command_is(line, c"export")):
 		repl_handle_export(repl_command_arg(line, c"export"))
 		return;
+	if (shell_translate_has_meta(line) == 0):
+		list[char*] words = shell_translate_tokenize(line)
+		int t = -1
+		if (words.length > 0):
+			t = repl_session_function(words[0])
+		if (t >= 0):
+			char* call = repl_shell_session_call(t, words)
+			shell_translate_free_words(words)
+			if (call == 0):
+				repl_shell_report_status(2)
+				return;
+			repl_eval_shell_call(call)
+			free(call)
+			return;
+		shell_translate_free_words(words)
 	char* translated = shell_translate_line(line)
 	if (translated != 0):
-		if (repl_json_mode):
-			repl_eval_json(translated)
-		else:
-			repl_eval(translated)
+		repl_eval_shell_call(translated)
 		free(translated)
 		return;
-	sh_interactive(line)
+	repl_shell_report_status(sh_interactive(line))
 
 
 # Every "-e"/"--e" occurrence's value, in argv order (repl_run_e_mode
@@ -941,7 +1089,7 @@ int main(int argc, int argv):
 				# ":sh" toggle.
 				repl_shell_commands_imported = 0
 				if (repl_shell_mode):
-					repl_eval(c"import lib.shell_commands as shell_commands")
+					repl_eval(c"import lib.shell_commands")
 					repl_shell_commands_imported = 1
 				println(c"session reset to its startup state")
 			else:

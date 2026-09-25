@@ -3,17 +3,37 @@ Native coreutils-alike tools for the REPL's shell mode (":sh", issue
 #335, docs/projects/repl_shell_mode.md). Each tool is an ordinary,
 directly-callable W function -- useful to any program, not only the
 REPL -- that repl/shell_translate.w's command-line translator maps a
-typed shell command onto (e.g. "ls -a /tmp" -> "shell_commands.ls(c\"/tmp\",
-true)"). repl.w synthesizes "import lib.shell_commands as shell_commands"
-into the live session the first time ":sh" is used; nothing here is
-REPL-specific, so any W program can import it directly too.
+typed shell command onto (e.g. "ls -a /tmp" ->
+"shell_commands_ls(c\"/tmp\", true, false)"). repl.w synthesizes
+"import lib.shell_commands" into the live session the first time ":sh"
+is used; nothing here is REPL-specific, so any W program can import it
+directly too.
 
-Return convention is void (the design doc's Sec 5.6/6.1): a translated
-call is a plain call-statement, not a bare echoable expression, and
-each tool reports its own errors to its own stderr in coreutils' own
-phrasing -- so the wording reads the same whether a command ran
-natively or fell back to the real binary via lib/shell.w's
-sh_interactive.
+Naming (the design doc's Sec 12, settled for issue #335): every tool
+is prefixed shell_commands_<command>, never the bare command word. W
+has one flat symbol table, so a bare "ls" here would collide with a
+user's own ls -- and an import declaring a name the session already
+defined fails outright ("symbol redefined"), which once meant defining
+your own cat before the first ":sh" broke every native tool. The
+prefix is the namespace, and it costs nothing in shell mode: the user
+types "ls" and the translator writes the long name. Overriding goes
+the other way: a function the user defines in the session wins over
+the native tool of the same name (repl.w's repl_dispatch_shell_line),
+which the prefix is also what makes possible. The prefix also retires
+the old collision workarounds with the raw syscall wrappers lib.lib
+declares: the tool for "mkdir" is simply shell_commands_mkdir. The
+"_octal" and "_s" suffixes on chmod/ln stay, because they state the
+tools' restricted scope (octal modes, symbolic links).
+
+Return convention (the design doc's Sec 6.1, revised by issue #335's
+Sec 12 answers): every tool returns an int exit status, the way the
+real command's process would -- 0 on success, 1 when any argument
+failed (grep: 0 when a line matched, 1 when none did, 2 on an error,
+exactly like the real grep). Each tool still reports its own errors to
+its own stderr in coreutils' own phrasing, so the wording reads the
+same whether a command ran natively or fell back to the real binary
+via lib/shell.w's sh_interactive; the status is what the REPL reports
+("[exit 1]") and what a W caller can test.
 
 None of these take parameter defaults, even though the design doc's
 illustrative signature shows one ("char* path = c\".\""): W's
@@ -25,7 +45,7 @@ constant"). This is harmless for the translator, which never relies on
 the callee's own defaults and always resolves every parameter to an
 explicit literal (including "bare ls"'s documented "." default, filled
 in by repl/shell_translate.w itself) -- it only means calling e.g.
-"shell_commands.ls()" directly at the W prompt (bypassing translation
+"shell_commands_ls()" directly at the W prompt (bypassing translation
 entirely) needs an explicit path argument.
 
 Stage 1 scope (design doc Sec 11): pwd (zero-arg), ls (bare and -a;
@@ -35,24 +55,13 @@ layout tools/wbuildgen.w and libs/extras/vcs/tree.w read -- x86/x64
 only, matching repl.w's own arch scope (Sec 6.2).
 
 Stage 2 (this file's remaining functions; design doc Sec 11's "rest of
-the v1 subset"): echo, head, tail, wc, mkdir_p, rm, cp, mv. rm/cp's
+the v1 subset"): echo, head, tail, wc, mkdir, rm, cp, mv. rm/cp's
 recursive walk reuses the same getdents pattern as ls, and reuses
 lib/stat.w's file_lstat_path/file_is_dir (landed via #343, after the
 design doc was written) to tell a directory from a file/symlink without
 following the symlink -- exactly the "second consumer" promotion Sec
-6.2/Sec 3 of the design doc anticipated. Two naming notes:
+6.2/Sec 3 of the design doc anticipated. Notes:
 
-  - The shell command "mkdir" is implemented here as mkdir_p, not
-    mkdir: this file already imports lib.lib, whose transitive
-    lib.linux -> lib.__arch__.syscalls import declares a raw
-    "int mkdir(char* path, int mode)" syscall wrapper, and W's single
-    flat symbol table rejects a second top-level "mkdir" with a
-    different signature ("symbol redefined: 'mkdir'", verified against
-    bin/wv2 directly). repl/shell_translate.w still recognizes the
-    typed word "mkdir" and simply generates a call to mkdir_p --
-    the raw syscall/tool naming collision is invisible to anyone typing
-    shell-mode commands, and only matters to a W-mode caller spelling
-    the qualified name directly.
   - mv uses lib.lib's rename(2) wrapper directly (atomic within one
     filesystem) rather than the design doc's original cp-then-rm
     fallback: the doc's own Sec 6.2 addendum already flagged this as
@@ -75,11 +84,9 @@ unblocked): ls's -l long listing, touch, chmod, du. Notes:
     under TZ=UTC), and print no "total" header line. The
     setuid/setgid/sticky bits are not rendered into the x positions,
     and non-dir/symlink specials (block/char/fifo/socket) all show '-'.
-  - The shell command "chmod" is implemented as chmod_octal, the same
-    flat-symbol-table collision mkdir_p documents above: lib.linux's
-    import closure already declares the raw chmod(2) syscall wrapper.
-    Octal modes only -- repl/shell_translate.w fails symbolic modes
-    ("u+x") closed to the real binary.
+  - chmod is octal modes only (shell_commands_chmod_octal) --
+    repl/shell_translate.w fails symbolic modes ("u+x") closed to the
+    real binary.
   - du sums statx stx_blocks (512-byte units, the same figure real du
     sums -- via lib/stat.w's file_stat.blocks, added for this) and
     prints 1024-byte units, per-directory post-order like the real
@@ -90,12 +97,10 @@ Stage 4 (design doc Sec 11's "stage 4+" items): ln -s, df, ps, and --
 now that lib/regex.w exists as the reusable pattern core Sec 6.3
 waited for -- grep. Notes:
 
-  - The shell command "ln" is implemented as ln_s and creates symbolic
-    links only: a bare "ln" (a hard link) has no link(2) wrapper in
-    lib/ and stays with the real tool via the translator's fail-closed
-    rule, and the name says so (the same
-    restricted-scope-in-the-name spirit as chmod_octal, though here
-    nothing collides -- the raw syscall wrapper is "symlink").
+  - ln creates symbolic links only (shell_commands_ln_s): a bare "ln"
+    (a hard link) has no link(2) wrapper in lib/ and stays with the
+    real tool via the translator's fail-closed rule, and the name says
+    so, like chmod_octal's.
   - df reads f_bsize-block counts through lib/stat.w's file_statfs
     (statfs(2), added for this) and prints 1024-byte units:
     "Filesystem 1K-blocks Used Available Mounted on", single-space
@@ -135,14 +140,17 @@ import lib.regex
 
 
 # Print the process's current working directory, like the real pwd.
-void pwd():
+int shell_commands_pwd():
 	int size = 4096
 	char* buf = malloc(size)
+	int status = 0
 	if (getcwd(buf, size) < 0):
 		println2(c"pwd: cannot determine current directory")
+		status = 1
 	else:
 		println(buf)
 	free(buf)
+	return status
 
 
 # d_reclen is a little-endian 16-bit field two words after the getdents
@@ -202,8 +210,9 @@ char* shell_commands_id_name(char* name, int id):
 # One "ls -l" line for entry_name inside dir: mode string, link count,
 # owner, group, size, UTC mtime to the minute, name, and " -> target"
 # for a symlink. Format notes (single-space columns, UTC long-iso
-# stamp, name-lookup fallback) are in the module header.
-void shell_commands_ls_long_entry(char* dir, char* entry_name):
+# stamp, name-lookup fallback) are in the module header. Returns 1
+# when the entry could not be stat'ed, else 0.
+int shell_commands_ls_long_entry(char* dir, char* entry_name):
 	char* full = path_join(dir, entry_name)
 	file_stat st
 	int err = file_lstat_path(full, &st)
@@ -212,7 +221,7 @@ void shell_commands_ls_long_entry(char* dir, char* entry_name):
 		print_error(full)
 		println2(c"': No such file or directory")
 		free(full)
-		return
+		return 1
 	char* mode_str = malloc(11)
 	shell_commands_mode_string(st.mode, mode_str)
 	print(mode_str)
@@ -257,6 +266,7 @@ void shell_commands_ls_long_entry(char* dir, char* entry_name):
 		free(target)
 	println(c"")
 	free(full)
+	return 0
 
 
 # List path's entries, one name per line, sorted; "." and ".." are
@@ -264,7 +274,7 @@ void shell_commands_ls_long_entry(char* dir, char* entry_name):
 # set (bare "ls" vs. "ls -a"). long_format is "-l": one metadata line
 # per entry (shell_commands_ls_long_entry above) instead of the bare
 # name, with no "total" header line -- see the module header.
-void ls(char* path, bool all, bool long_format):
+int shell_commands_ls(char* path, bool all, bool long_format):
 	# 65536 = O_DIRECTORY: fails with a negative errno on a non-directory
 	# path, same as a missing one -- both read as "cannot access" below.
 	int fd = open(path, 65536, 0)
@@ -272,7 +282,7 @@ void ls(char* path, bool all, bool long_format):
 		print_error(c"ls: cannot access '")
 		print_error(path)
 		println2(c"': No such file or directory")
-		return
+		return 1
 	list[char*] names = new list[char*]
 	int buffer_size = 65536
 	char* buffer = malloc(buffer_size)
@@ -291,27 +301,30 @@ void ls(char* path, bool all, bool long_format):
 	free(buffer)
 	close(fd)
 	shell_commands_sort_names(names)
+	int status = 0
 	int i = 0
 	while (i < names.length):
 		if (long_format):
-			shell_commands_ls_long_entry(path, names[i])
+			status = status | shell_commands_ls_long_entry(path, names[i])
 		else:
 			println(names[i])
 		free(names[i])
 		i = i + 1
+	return status
 
 
 # Print one path's contents to stdout, binary-safe, no size limit.
 # Reports a missing path the way the real cat would ("cat: PATH: No
 # such file or directory", to stderr) and moves on to the next path --
 # the same per-argument recovery a multi-path real cat invocation gives.
-void shell_commands_cat_one(char* path):
+# Returns 1 for a missing path, else 0.
+int shell_commands_cat_one(char* path):
 	wstream* in = stream_open_read(path)
 	if (in == 0):
 		print_error(c"cat: ")
 		print_error(path)
 		println2(c": No such file or directory")
-		return
+		return 1
 	wstream* out = stdout_writer()
 	int buffer_size = 65536
 	char* buffer = malloc(buffer_size)
@@ -322,20 +335,23 @@ void shell_commands_cat_one(char* path):
 	free(buffer)
 	stream_close(in)
 	stream_flush(out)
+	return 0
 
 
 # Concatenate one or more paths to stdout.
-void cat(char*... paths):
+int shell_commands_cat(char*... paths):
+	int status = 0
 	int i = 0
 	while (i < paths.length):
-		shell_commands_cat_one(paths[i])
+		status = status | shell_commands_cat_one(paths[i])
 		i = i + 1
+	return status
 
 
 # Print each word separated by a single space, like the real echo; a
 # trailing newline unless no_newline (real echo's "-n"). No filesystem
 # primitive needed (design doc Sec 6.2).
-void echo(bool no_newline, char*... words):
+int shell_commands_echo(bool no_newline, char*... words):
 	int i = 0
 	while (i < words.length):
 		if (i > 0):
@@ -344,18 +360,19 @@ void echo(bool no_newline, char*... words):
 		i = i + 1
 	if (no_newline == 0):
 		println(c"")
+	return 0
 
 
 # First n lines of path (real head's default n is 10). Loads the whole
 # file first (design doc Sec 6.2: "a streaming version is a later
 # optimization").
-void head(char* path, int n):
+int shell_commands_head(char* path, int n):
 	list[char*] lines = file_read_lines(path)
 	if (lines == 0):
 		print_error(c"head: cannot open '")
 		print_error(path)
 		println2(c"' for reading: No such file or directory")
-		return
+		return 1
 	int count = lines.length
 	if (n < count):
 		count = n
@@ -369,16 +386,17 @@ void head(char* path, int n):
 	while (i < lines.length):
 		free(lines[i])
 		i = i + 1
+	return 0
 
 
 # Last n lines of path (real tail's default n is 10).
-void tail(char* path, int n):
+int shell_commands_tail(char* path, int n):
 	list[char*] lines = file_read_lines(path)
 	if (lines == 0):
 		print_error(c"tail: cannot open '")
 		print_error(path)
 		println2(c"' for reading: No such file or directory")
-		return
+		return 1
 	int start = lines.length - n
 	if (start < 0):
 		start = 0
@@ -390,6 +408,7 @@ void tail(char* path, int n):
 	while (i < lines.length):
 		free(lines[i])
 		i = i + 1
+	return 0
 
 
 # Line/word/byte counts for path, like the real wc; when none of the
@@ -400,13 +419,13 @@ void tail(char* path, int n):
 # bytes. Reads through a stream directly (not file_read_text) so the
 # true byte count is known: deriving it with strlen would stop at the
 # first NUL byte and truncate every figure for a binary file.
-void wc(char* path, bool count_lines, bool count_words, bool count_bytes):
+int shell_commands_wc(char* path, bool count_lines, bool count_words, bool count_bytes):
 	wstream* in = stream_open_read(path)
 	if (in == 0):
 		print_error(c"wc: ")
 		print_error(path)
 		println2(c": No such file or directory")
-		return
+		return 1
 	string_builder* contents = string_new()
 	stream_read_all(in, contents)
 	stream_close(in)
@@ -454,6 +473,7 @@ void wc(char* path, bool count_lines, bool count_words, bool count_bytes):
 		free(s)
 	println(path)
 	free(text)
+	return 0
 
 
 # Creates every missing ancestor of path (real mkdir -p), stopping at
@@ -475,7 +495,8 @@ int shell_commands_mkdir_ancestors(char* path):
 	return 0
 
 
-void shell_commands_mkdir_one(char* path, int parents):
+# Returns 1 when path could not be created, else 0.
+int shell_commands_mkdir_one(char* path, int parents):
 	int err = 0
 	if (parents):
 		err = shell_commands_mkdir_ancestors(path)
@@ -485,16 +506,20 @@ void shell_commands_mkdir_one(char* path, int parents):
 		print_error(c"mkdir: cannot create directory '")
 		print_error(path)
 		println2(c"': No such file or directory")
+		return 1
+	return 0
 
 
 # Create one or more directories, like the real mkdir; parents mirrors
 # "-p" (create missing ancestors, and tolerate an already-existing
-# target) -- named mkdir_p rather than mkdir; see the module header.
-void mkdir_p(bool parents, char*... paths):
+# target).
+int shell_commands_mkdir(bool parents, char*... paths):
+	int status = 0
 	int i = 0
 	while (i < paths.length):
-		shell_commands_mkdir_one(paths[i], parents)
+		status = status | shell_commands_mkdir_one(paths[i], parents)
 		i = i + 1
+	return status
 
 
 # Removes one path: a file/symlink is unlinked directly (never followed
@@ -503,35 +528,41 @@ void mkdir_p(bool parents, char*... paths):
 # getdents pattern as ls, deleting children before the now-empty
 # directory itself (bottom-up, design doc Sec 6.2). force suppresses a
 # missing-path error, matching real "rm -f" -- it does not bypass the
-# recursive requirement for a directory, matching real rm too.
-void shell_commands_rm_one(char* path, int recursive, int force):
+# recursive requirement for a directory, matching real rm too. Returns
+# 1 when anything under path could not be removed (a path missing under
+# force is not a failure, matching "rm -f"'s exit status), else 0.
+int shell_commands_rm_one(char* path, int recursive, int force):
 	file_stat st
 	int err = file_lstat_path(path, &st)
 	if (err != 0):
+		if (force):
+			return 0
+		print_error(c"rm: cannot remove '")
+		print_error(path)
+		println2(c"': No such file or directory")
+		return 1
+	if (file_is_dir(&st) == 0):
+		int u = unlink(path)
+		if (u == 0):
+			return 0
 		if (force == 0):
 			print_error(c"rm: cannot remove '")
 			print_error(path)
 			println2(c"': No such file or directory")
-		return
-	if (file_is_dir(&st) == 0):
-		int u = unlink(path)
-		if ((u != 0) && (force == 0)):
-			print_error(c"rm: cannot remove '")
-			print_error(path)
-			println2(c"': No such file or directory")
-		return
+		return 1
 	if (recursive == 0):
 		print_error(c"rm: cannot remove '")
 		print_error(path)
 		println2(c"': Is a directory")
-		return
+		return 1
 	int fd = open(path, 65536, 0) /* 65536 = O_DIRECTORY */
 	if (fd < 0):
 		if (force == 0):
 			print_error(c"rm: cannot remove '")
 			print_error(path)
 			println2(c"': No such file or directory")
-		return
+		return 1
+	int status = 0
 	int buffer_size = 65536
 	char* buffer = malloc(buffer_size)
 	int n = getdents(fd, buffer, buffer_size)
@@ -544,40 +575,46 @@ void shell_commands_rm_one(char* path, int recursive, int force):
 			off = off + reclen
 			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
 				char* child = path_join(path, entry_name)
-				shell_commands_rm_one(child, recursive, force)
+				status = status | shell_commands_rm_one(child, recursive, force)
 				free(child)
 		n = getdents(fd, buffer, buffer_size)
 	free(buffer)
 	close(fd)
 	int r = rmdir(path)
-	if ((r != 0) && (force == 0)):
-		print_error(c"rm: cannot remove '")
-		print_error(path)
-		println2(c"': Directory not empty")
+	if (r != 0):
+		if (force == 0):
+			print_error(c"rm: cannot remove '")
+			print_error(path)
+			println2(c"': Directory not empty")
+		return 1
+	return status
 
 
 # Remove one or more paths, like the real rm.
-void rm(bool recursive, bool force, char*... paths):
+int shell_commands_rm(bool recursive, bool force, char*... paths):
+	int status = 0
 	int i = 0
 	while (i < paths.length):
-		shell_commands_rm_one(paths[i], recursive, force)
+		status = status | shell_commands_rm_one(paths[i], recursive, force)
 		i = i + 1
+	return status
 
 
-void shell_commands_cp_file(char* src, char* dst):
+# Returns 1 when src could not be read or dst created, else 0.
+int shell_commands_cp_file(char* src, char* dst):
 	wstream* in = stream_open_read(src)
 	if (in == 0):
 		print_error(c"cp: cannot stat '")
 		print_error(src)
 		println2(c"': No such file or directory")
-		return
+		return 1
 	wstream* out = stream_open_write(dst)
 	if (out == 0):
 		print_error(c"cp: cannot create regular file '")
 		print_error(dst)
 		println2(c"': No such file or directory")
 		stream_close(in)
-		return
+		return 1
 	int buffer_size = 65536
 	char* buffer = malloc(buffer_size)
 	int n = stream_read(in, buffer, buffer_size)
@@ -587,6 +624,7 @@ void shell_commands_cp_file(char* src, char* dst):
 	free(buffer)
 	stream_close(in)
 	stream_close(out)
+	return 0
 
 
 # src's kind (file/symlink vs. directory) decides a plain stream copy
@@ -594,35 +632,35 @@ void shell_commands_cp_file(char* src, char* dst):
 # walk shape rm -r uses, mirrored for copying instead of deleting
 # (design doc Sec 6.2: "-r reuses the same recursive walk as rm -r").
 # Does not special-case an existing-directory dst; see the module
-# header.
-void shell_commands_cp_one(char* src, char* dst, int recursive):
+# header. Returns 1 when anything failed to copy, else 0.
+int shell_commands_cp_one(char* src, char* dst, int recursive):
 	file_stat st
 	int err = file_lstat_path(src, &st)
 	if (err != 0):
 		print_error(c"cp: cannot stat '")
 		print_error(src)
 		println2(c"': No such file or directory")
-		return
+		return 1
 	if (file_is_dir(&st) == 0):
-		shell_commands_cp_file(src, dst)
-		return
+		return shell_commands_cp_file(src, dst)
 	if (recursive == 0):
 		print_error(c"cp: -r not specified; omitting directory '")
 		print_error(src)
 		println2(c"'")
-		return
+		return 1
 	int made = mkdir(dst, 493) /* 493 = 0755 */
 	if ((made != 0) && (made != (0 - 17))):
 		print_error(c"cp: cannot create directory '")
 		print_error(dst)
 		println2(c"': No such file or directory")
-		return
+		return 1
 	int fd = open(src, 65536, 0) /* 65536 = O_DIRECTORY */
 	if (fd < 0):
 		print_error(c"cp: cannot stat '")
 		print_error(src)
 		println2(c"': No such file or directory")
-		return
+		return 1
+	int status = 0
 	int buffer_size = 65536
 	char* buffer = malloc(buffer_size)
 	int n = getdents(fd, buffer, buffer_size)
@@ -636,24 +674,25 @@ void shell_commands_cp_one(char* src, char* dst, int recursive):
 			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
 				char* child_src = path_join(src, entry_name)
 				char* child_dst = path_join(dst, entry_name)
-				shell_commands_cp_one(child_src, child_dst, recursive)
+				status = status | shell_commands_cp_one(child_src, child_dst, recursive)
 				free(child_src)
 				free(child_dst)
 		n = getdents(fd, buffer, buffer_size)
 	free(buffer)
 	close(fd)
+	return status
 
 
 # Copy src to dst, like the real cp; recursive mirrors "-r" (copy a
 # directory's contents instead of failing on it).
-void cp(bool recursive, char* src, char* dst):
-	shell_commands_cp_one(src, dst, recursive)
+int shell_commands_cp(bool recursive, char* src, char* dst):
+	return shell_commands_cp_one(src, dst, recursive)
 
 
 # Move/rename src to dst via rename(2) directly -- atomic within one
 # filesystem; see the module header for why this differs from the
 # design doc's original cp-then-rm sketch.
-void mv(char* src, char* dst):
+int shell_commands_mv(char* src, char* dst):
 	int err = rename(src, dst)
 	if (err != 0):
 		print_error(c"mv: cannot move '")
@@ -661,39 +700,44 @@ void mv(char* src, char* dst):
 		print_error(c"' to '")
 		print_error(dst)
 		println2(c"': No such file or directory")
+		return 1
+	return 0
 
 
 # Update one path's atime/mtime to now (lib/stat.w's file_touch,
 # utimensat(2) under the hood), creating a missing path as an empty
 # file unless no_create -- with no_create a missing path is silent
-# success, exactly like the real "touch -c".
-void shell_commands_touch_one(char* path, int no_create):
+# success, exactly like the real "touch -c". Returns 1 on failure.
+int shell_commands_touch_one(char* path, int no_create):
 	int create = 1
 	if (no_create):
 		create = 0
 	int err = file_touch(path, create)
 	if (err == 0):
-		return
+		return 0
 	if (no_create && (err == (0 - 2))): /* ENOENT under -c: silent */
-		return
+		return 0
 	print_error(c"touch: cannot touch '")
 	print_error(path)
 	println2(c"': No such file or directory")
+	return 1
 
 
 # Update timestamps of (or create) one or more paths, like the real
 # touch; no_create mirrors "-c".
-void touch(bool no_create, char*... paths):
+int shell_commands_touch(bool no_create, char*... paths):
+	int status = 0
 	int i = 0
 	while (i < paths.length):
-		shell_commands_touch_one(paths[i], no_create)
+		status = status | shell_commands_touch_one(paths[i], no_create)
 		i = i + 1
+	return status
 
 
 # Set each path's permission bits to mode, like "chmod OCTAL path...".
-# Octal modes only, and named chmod_octal rather than chmod -- see the
-# module header for both.
-void chmod_octal(int mode, char*... paths):
+# Octal modes only -- see the module header.
+int shell_commands_chmod_octal(int mode, char*... paths):
+	int status = 0
 	int i = 0
 	while (i < paths.length):
 		int err = file_chmod(paths[i], mode)
@@ -701,7 +745,9 @@ void chmod_octal(int mode, char*... paths):
 			print_error(c"chmod: cannot access '")
 			print_error(paths[i])
 			println2(c"': No such file or directory")
+			status = 1
 		i = i + 1
+	return status
 
 
 # Cumulative allocated blocks (512-byte units, statx stx_blocks --
@@ -710,7 +756,11 @@ void chmod_octal(int mode, char*... paths):
 # (children before parent, real du's own order) unless summarize,
 # plus always the top-level argument itself. Files below the top
 # contribute silently. Symlinks are never followed (file_lstat_path),
-# matching real du.
+# matching real du. A path that cannot be stat'ed sets
+# shell_commands_du_failed, which du() turns into its exit status (the
+# walk's own return value is already the block total).
+int shell_commands_du_failed
+
 int shell_commands_du_walk(char* path, int summarize, int top):
 	file_stat st
 	int err = file_lstat_path(path, &st)
@@ -718,6 +768,7 @@ int shell_commands_du_walk(char* path, int summarize, int top):
 		print_error(c"du: cannot access '")
 		print_error(path)
 		println2(c"': No such file or directory")
+		shell_commands_du_failed = 1
 		return 0
 	int total = st.blocks
 	int is_dir = file_is_dir(&st)
@@ -753,23 +804,26 @@ int shell_commands_du_walk(char* path, int summarize, int top):
 # Disk usage of path, like the real du: per-directory cumulative
 # 1K-unit totals, post-order; summarize mirrors "-s" (only path's own
 # total). Hard links count once per link -- see the module header.
-void du(bool summarize, char* path):
+int shell_commands_du(bool summarize, char* path):
+	shell_commands_du_failed = 0
 	shell_commands_du_walk(path, summarize, 1)
+	return shell_commands_du_failed
 
 
 # Create a symbolic link at linkpath pointing to target (real
 # "ln -s TARGET LINK_NAME"). Symlinks only -- see the module header
 # for the name and for why hard links stay native.
-void ln_s(char* target, char* linkpath):
+int shell_commands_ln_s(char* target, char* linkpath):
 	int err = file_symlink(target, linkpath)
 	if (err == 0):
-		return
+		return 0
 	print_error(c"ln: failed to create symbolic link '")
 	print_error(linkpath)
 	if (err == (0 - 17)): /* EEXIST */
 		println2(c"': File exists")
 	else:
 		println2(c"': No such file or directory")
+	return 1
 
 
 # The index-th (0-based) space/tab-separated field of line, cloned, or
@@ -832,12 +886,12 @@ void shell_commands_df_line(char* source, char* mount, file_fs_stat* fs):
 # df with no arguments: every /proc/mounts entry whose filesystem
 # reports a nonzero block count (the pseudo filesystems -- proc,
 # sysfs, cgroup -- report zero and are skipped, like real df's
-# dummy-filesystem hiding).
-void shell_commands_df_all():
+# dummy-filesystem hiding). Returns 1 when /proc/mounts is unreadable.
+int shell_commands_df_all():
 	list[char*] lines = file_read_lines(c"/proc/mounts")
 	if (lines == 0):
 		println2(c"df: cannot read /proc/mounts")
-		return
+		return 1
 	file_fs_stat fs
 	int i = 0
 	while (i < lines.length):
@@ -853,6 +907,7 @@ void shell_commands_df_all():
 			free(mount)
 		free(lines[i])
 		i = i + 1
+	return 0
 
 
 # df for one explicit path argument: statfs the path itself for the
@@ -860,14 +915,15 @@ void shell_commands_df_all():
 # device id against each /proc/mounts entry's mount point (bind mounts
 # repeat a device; the first match wins -- a documented
 # simplification). When no mount matches, the source column shows "-"
-# and the path itself stands in for the mount point.
-void shell_commands_df_path(char* path):
+# and the path itself stands in for the mount point. Returns 1 when
+# path cannot be statfs'ed, else 0.
+int shell_commands_df_path(char* path):
 	file_fs_stat fs
 	if (file_statfs(path, &fs) != 0):
 		print_error(c"df: ")
 		print_error(path)
 		println2(c": No such file or directory")
-		return
+		return 1
 	char* source = 0
 	char* mount = 0
 	file_stat st
@@ -900,20 +956,22 @@ void shell_commands_df_path(char* path):
 		shell_commands_df_line(source, mount, &fs)
 		free(source)
 		free(mount)
+	return 0
 
 
 # Filesystem free-space report, like the real df: a header line, then
 # one line per mount (no arguments) or per path argument. Columns and
 # simplifications are in the module header.
-void df(char*... paths):
+int shell_commands_df(char*... paths):
 	println(c"Filesystem 1K-blocks Used Available Mounted on")
 	if (paths.length == 0):
-		shell_commands_df_all()
-		return
+		return shell_commands_df_all()
+	int status = 0
 	int i = 0
 	while (i < paths.length):
-		shell_commands_df_path(paths[i])
+		status = status | shell_commands_df_path(paths[i])
 		i = i + 1
+	return status
 
 
 int shell_commands_all_digits(char* s):
@@ -1004,11 +1062,11 @@ void shell_commands_ps_line(int pid):
 # Process listing, like a bare real ps but for every process: walks
 # /proc's numeric entries and prints "PID PPID S COMM" lines sorted by
 # pid. No flags -- see the module header.
-void ps():
+int shell_commands_ps():
 	int fd = open(c"/proc", 65536, 0) /* 65536 = O_DIRECTORY */
 	if (fd < 0):
 		println2(c"ps: cannot access /proc")
-		return
+		return 1
 	list[int] pids = new list[int]
 	int buffer_size = 65536
 	char* buffer = malloc(buffer_size)
@@ -1031,22 +1089,26 @@ void ps():
 	while (i < pids.length):
 		shell_commands_ps_line(pids[i])
 		i = i + 1
+	return 0
 
 
 # Print path's lines matching pattern; with_name prefixes "path:"
 # (multi-file invocations, like the real tool) and line_numbers adds
 # real grep's "-n" "N:" prefix (1-based). A missing path reports and
-# moves on, cat's per-argument recovery.
-void shell_commands_grep_one(char* pattern, char* path, int with_name, int line_numbers):
+# moves on, cat's per-argument recovery. Returns the number of matching
+# lines, or -1 when path could not be read.
+int shell_commands_grep_one(char* pattern, char* path, int with_name, int line_numbers):
 	list[char*] lines = file_read_lines(path)
 	if (lines == 0):
 		print_error(c"grep: ")
 		print_error(path)
 		println2(c": No such file or directory")
-		return
+		return -1
+	int matches = 0
 	int i = 0
 	while (i < lines.length):
 		if (regex_search(pattern, lines[i]) >= 0):
+			matches = matches + 1
 			if (with_name):
 				print(path)
 				print(c":")
@@ -1058,6 +1120,7 @@ void shell_commands_grep_one(char* pattern, char* path, int with_name, int line_
 			println(lines[i])
 		free(lines[i])
 		i = i + 1
+	return matches
 
 
 # Print lines matching pattern in one or more files, via lib/regex.w's
@@ -1066,17 +1129,30 @@ void shell_commands_grep_one(char* pattern, char* path, int with_name, int line_
 # exactly when more than one file was named, like the real tool. A
 # pattern lib/regex.w rejects reports one error and prints nothing --
 # the shell-mode translator already fails such lines closed to the
-# real grep, so only a direct W-mode caller sees it.
-void grep(bool line_numbers, char* pattern, char*... paths):
+# real grep, so only a direct W-mode caller sees it. Exit status is the
+# real grep's: 0 when some line matched, 1 when none did, 2 when the
+# pattern or any file could not be used (an error wins over a match).
+int shell_commands_grep(bool line_numbers, char* pattern, char*... paths):
 	if (regex_valid(pattern) == 0):
 		print_error(c"grep: invalid pattern: '")
 		print_error(pattern)
 		println2(c"'")
-		return
+		return 2
 	int with_name = 0
 	if (paths.length > 1):
 		with_name = 1
+	int matched = 0
+	int failed = 0
 	int i = 0
 	while (i < paths.length):
-		shell_commands_grep_one(pattern, paths[i], with_name, line_numbers)
+		int n = shell_commands_grep_one(pattern, paths[i], with_name, line_numbers)
+		if (n < 0):
+			failed = 1
+		else if (n > 0):
+			matched = 1
 		i = i + 1
+	if (failed):
+		return 2
+	if (matched):
+		return 0
+	return 1

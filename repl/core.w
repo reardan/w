@@ -1193,6 +1193,49 @@ void repl_init():
 	import_module(c"lib.assert")
 
 
+# Every file compiled through repl_load_file, as passed: the user's own
+# code, which repl_session_function counts as session-defined alongside
+# the staged prompt entries. Never shrinks (":reset" rolls the symbols
+# back, so a stale path simply matches nothing).
+list[char*] repl_loaded_files
+
+
+void repl_note_loaded_file(char* path):
+	if (repl_loaded_files == 0):
+		repl_loaded_files = new list[char*]
+	repl_loaded_files.push(strclone(path))
+
+
+# Table offset of name's newest symbol when it is a function the user
+# defined in this session -- at the prompt, or in a file run with
+# "repl file.w"/":load" -- else -1. Library code (the preloaded stdlib,
+# lib/shell_commands.w, anything a file imports) never counts, so shell
+# mode's "your function first" rule (repl.w) cannot turn a typed "exit"
+# or "open" into a raw library call.
+int repl_session_function(char* name):
+	int t = sym_lookup(name)
+	if (t < 0):
+		return -1
+	if ((table[t + 1] != 'D') || (sym_symtype(name) != 2)):
+		return -1
+	int file_index = sym_decl_file_index(t)
+	if (file_index < 0):
+		return -1
+	char* file = debug_file_name(file_index)
+	if (file == 0):
+		return -1
+	if (repl_staging_dir != 0):
+		if (starts_with(file, repl_staging_dir)):
+			return t
+	if (repl_loaded_files != 0):
+		int i = 0
+		while (i < repl_loaded_files.length):
+			if (strcmp(file, repl_loaded_files[i]) == 0):
+				return t
+			i = i + 1
+	return -1
+
+
 # Compile a source file into the session buffer and resolve the deferred
 # runtimes it may have used (print builtin, f-strings, json codec, var):
 # the call sites go through backpatch chains until the modules are
@@ -1202,6 +1245,7 @@ void repl_init():
 # entry point. Returns 1 when main ran, 0 otherwise. Afterwards every
 # function and global from the file is live for later entries.
 int repl_load_file(char* path, int run_main, int argc, int argv):
+	repl_note_loaded_file(path)
 	# Late binding (#114): register the file's call sites too, so
 	# redefining one of its functions at the prompt retargets the file's
 	# own callers (the python -i workflow). A compile error here exits
