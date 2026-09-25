@@ -53,6 +53,7 @@ import graphics.ui.widgets.form
 import graphics.ui.widgets.chips
 import graphics.ui.widgets.email
 import graphics.ui.widgets.dropdown_multi
+import graphics.ui.widgets.dropdown_search
 import graphics.ui.widgets.tree
 import graphics.ui.widgets.popover
 import graphics.ui.widgets.menu
