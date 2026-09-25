@@ -49,11 +49,24 @@ ends with
 Traces longer than crash_frames_max() frames are cut off with a
 "... trace truncated" line.
 
+macOS (arm64_darwin): the same report, from the darwin ucontext -
+x0..x28, fp, lr, sp, pc and cpsr, the faulting address from the
+exception state, and the image's LC_UUID where ELF prints its build-id.
+SIGTRAP (W's brk traps) and SIGBUS (10 on darwin) are covered too.
+Frames carry function names only (Mach-O has no line table yet), and
+the trace always comes from the scan (arm64 keeps no frame chain), so
+it ends with the heuristic note. Handlers enter through the compiler's
+signal_trampoline stub, found by name in the image's symbol table; an
+image built by a compiler without the stub, or an arm64e (--pac=full)
+image, gets no handler (see crash_install_darwin). No crash
+dump is written (W_CRASH_DUMP writes ELF cores only).
+
 Installation is opt-in - import this file and call
 crash_handler_install() from main - and is a silent no-op when
 W_CRASH_TRACE=0 is set in the environment, or when the running image
-is not a Linux x86/x64 ELF with readable symbol sections (arm64 has no
-sigcontext accessors here; Mach-O/PE carry no symbol sections). The
+is neither a Linux x86/x64 ELF nor an arm64 Mach-O with readable
+symbols (arm64 Linux has no sigcontext accessors here; PE carries no
+symbol sections). The
 compiler driver (w.w) and the test runner main (lib/testing.w) install
 it, so compiler crashes and crashing tests report symbolized traces.
 
@@ -89,6 +102,13 @@ int crash_frames_max():
 
 
 char* crash_signal_name(int sig):
+	if (st_macho):
+		if (sig == 5):
+			return c"SIGTRAP (trace/breakpoint trap)"
+		if (sig == 10):
+			return c"SIGBUS (bus error)"
+		if (sig == 7):
+			return c"unknown"
 	if (sig == 4):
 		return c"SIGILL (illegal instruction)"
 	if (sig == 7):
@@ -243,6 +263,142 @@ void crash_report(int sig, int context):
 	# disposition restored: the process dies of the original signal.
 
 
+# The zeroed struct sigaction (SIG_DFL) the handlers restore first.
+void crash_dfl_act_ensure():
+	if (crash_dfl_act == 0):
+		crash_dfl_act = malloc(5 * __word_size__)
+		int i = 0
+		while (i < 5):
+			crash_dfl_act[i] = 0
+			i = i + 1
+
+
+# --- darwin (arm64_darwin) ---
+# The ucontext's uc_mcontext pointer sits at +48; the arm64 mcontext
+# is the exception state {far, esr, exception} (16 bytes) then the
+# thread state {x0..x28, fp, lr, sp, pc, cpsr} at +16.
+int crash_darwin_reg(int mcontext, int k):
+	return st_word(mcontext + 16 + k * 8)
+
+
+void crash_write_darwin_registers(int mcontext):
+	st_write_cstr(c"registers:")
+	char* digits = c"0123456789"
+	int k = 0
+	while (k < 34):
+		if ((k & 3) == 0):
+			st_write_cstr(c"\n ")
+		st_write_cstr(c" ")
+		if (k < 29):
+			st_write_cstr(c"x")
+			if (k >= 10):
+				write(2, &digits[k / 10], 1)
+			write(2, &digits[k % 10], 1)
+		else if (k == 29):
+			st_write_cstr(c"fp")
+		else if (k == 30):
+			st_write_cstr(c"lr")
+		else if (k == 31):
+			st_write_cstr(c"sp")
+		else if (k == 32):
+			st_write_cstr(c"pc")
+		else:
+			st_write_cstr(c"cpsr")
+		st_write_cstr(c"=")
+		if (k == 33):
+			st_write_hex(st_int32(mcontext + 16 + 33 * 8))
+		else:
+			st_write_hex(crash_darwin_reg(mcontext, k))
+		k = k + 1
+	st_write_cstr(c"\n")
+
+
+# The LC_UUID, formatted the way dwarfdump --uuid prints it.
+void crash_write_darwin_uuid():
+	char* digits = c"0123456789ABCDEF"
+	int i = 0
+	while (i < cd_id_size):
+		if ((i == 4) || (i == 6) || (i == 8) || (i == 10)):
+			st_write_cstr(c"-")
+		int b = st_byte(cd_id_addr + i)
+		write(2, &digits[b >> 4], 1)
+		write(2, &digits[b & 15], 1)
+		i = i + 1
+
+
+# The darwin handler, entered from signal_trampoline with the
+# ucontext. Mirrors crash_report.
+void crash_report_darwin(int sig, int ucontext):
+	rt_sigaction(sig, crash_dfl_act, 0)
+	if (crash_active):
+		return;
+	crash_active = 1
+	int mcontext = st_word(ucontext + 48)
+	int pc = st_code_address(crash_darwin_reg(mcontext, 32))
+	st_write_cstr(c"fatal signal: ")
+	st_write_cstr(crash_signal_name(sig))
+	st_write_cstr(c", pc=")
+	st_write_hex(pc)
+	if ((sig == 11) || (sig == 10)):
+		st_write_cstr(c", faulting address ")
+		st_write_hex(st_word(mcontext))
+	st_write_cstr(c"\n")
+	crash_write_darwin_registers(mcontext)
+	if (cd_id_size > 0):
+		st_write_cstr(c"uuid: ")
+		crash_write_darwin_uuid()
+		st_write_cstr(c"\n")
+	st_write_cstr(c"stack trace (most recent call first):\n")
+	crash_write_frame(pc)
+	# W functions push their return address onto the W stack (x28), so
+	# the scan starts there. A fault in an asm stub, which pushes
+	# nothing, leaves its return address only in lr: lead with it
+	# when the scan does not.
+	int w_sp = crash_darwin_reg(mcontext, 28)
+	int n = st_unwind(pc, w_sp, 0, crash_pcs, crash_frames_max())
+	int lr = st_code_address(crash_darwin_reg(mcontext, 30))
+	if (st_is_return(lr) && (st_func_entry(pc) != st_func_entry(lr - 1))):
+		if ((n == 0) || (st_word(cast(int, crash_pcs)) != lr - 1)):
+			crash_write_frame(lr - 1)
+	int k = 0
+	while (k < n):
+		crash_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
+		k = k + 1
+	if (n >= crash_frames_max()):
+		st_write_cstr(c"  ... trace truncated\n")
+	st_write_cstr(c"note: part of the trace is heuristic (return-address scan): frames can be missing or stale\n")
+	st_write_cstr(c"terminating with the default action for signal ")
+	st_write_dec(sig)
+	st_write_cstr(c"\n")
+
+
+# Install the darwin handlers through signal_trampoline (found by name:
+# see rt_sigaction in lib/__arch__/arm64_darwin/syscalls.w). Skipped on
+# arm64e (--pac=full) images: there the kernel authenticates sa_tramp as
+# a signed function pointer, the address from the symbol table is
+# unsigned, and delivery would fault on the trampoline forever. Naming
+# the stub (once SEEDS allows it) yields a signed pointer and lifts this.
+void crash_install_darwin():
+	if ((st_int32(st_base + 8) & 255) == 2):  /* CPU_SUBTYPE_ARM64E */
+		return;
+	int tramp = st_symbol_address(c"signal_trampoline")
+	if (tramp == 0):
+		return;
+	crash_dfl_act_ensure()
+	int* act = malloc(5 * __word_size__)
+	act[0] = cast(int, crash_report_darwin)
+	act[1] = 0
+	act[2] = tramp
+	act[3] = 0
+	act[4] = 0
+	rt_sigaction(4, act, 0)   /* SIGILL */
+	rt_sigaction(5, act, 0)   /* SIGTRAP */
+	rt_sigaction(8, act, 0)   /* SIGFPE */
+	rt_sigaction(10, act, 0)  /* SIGBUS */
+	rt_sigaction(11, act, 0)  /* SIGSEGV */
+	crash_installed = 1
+
+
 # i386 entry: the classic signal frame is [restorer][sig][sigcontext...],
 # so the sigcontext starts one word past &sig (same as debugger/wdbg.w).
 void crash_entry(int sig):
@@ -268,16 +424,16 @@ void crash_handler_install():
 	st_scratch_ensure()
 	if (st_state != 1):
 		return;
+	if (st_macho):
+		if (st_machine == 183):
+			crash_build_id()
+			crash_install_darwin()
+		return;
 	if ((st_machine != 3) && (st_machine != 62)):
 		return;
 	crash_build_id()
 	crash_dump_prepare(env_get(c"W_CRASH_DUMP"))
-	if (crash_dfl_act == 0):
-		crash_dfl_act = malloc(5 * __word_size__)
-		int i = 0
-		while (i < 5):
-			crash_dfl_act[i] = 0
-			i = i + 1
+	crash_dfl_act_ensure()
 	int handler = cast(int, crash_entry)
 	if (__word_size__ == 8):
 		handler = cast(int, crash_report)

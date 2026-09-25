@@ -292,6 +292,8 @@ no build.json counterpart. They split into four groups:
   `wv2` target does it warm (every ported target already depends on
   `wv2`, the same way Makefile targets depended on `w`). Nothing to port;
   the Makefile's `w` rule just gets dropped with no replacement.
+- (2026-09, issue #323: `archive.sh` and the `cp`/`mv` steps below are now
+  one W program, `tools/promote_seed.w`, which checks every copy.)
 - `update` (archives the seed via `archive.sh`, then promotes `bin/wv2` to
   `./w`) is the highest-blast-radius target in the file: it mutates the
   committed seed. **Manifest entry ported** (`deps: ["verify"]`, then
@@ -511,8 +513,9 @@ itemization had silently skipped, all ported now:
   `dynamic_test_arm64`, `float_abi_test_arm64`, plus main's
   `pac_full_test_arm64` and `pac_corrupt_test_arm64`. The Makefile's
   `QEMU_ARM64 ?= qemu-aarch64-static -cpu max` override convention
-  became `tools/run_arm64.sh` (runs natively on arm64-Linux hosts like
-  the w-dev container, under qemu elsewhere; `QEMU_ARM64` env still
+  became `tools/run_arm64.sh`, since 2026-09 the W program `bin/wrun
+  arm64` (`tools/wrun.w`; runs natively on arm64-Linux hosts like the
+  w-dev container, under qemu elsewhere; `QEMU_ARM64` env still
   overrides). The corruption fixtures keep the Makefile's exact
   "died by signal" assertion via `sh -c '...; test $? -ge 128'`. All
   stay out of the `tests` umbrella (they need qemu or an arm64 host),

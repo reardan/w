@@ -1,0 +1,3 @@
+import bin.read_error_dir
+int main():
+	return 0

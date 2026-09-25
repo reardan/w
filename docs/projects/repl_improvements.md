@@ -98,9 +98,9 @@ and the prompt loop all live in one file with `main()`. Proposed split
 Who benefits: wdbg (Q6), the ui.txt repl server, `#114` (which needs a
 home for a repl-mode flag — see Q3), fault recovery (belongs in core),
 and the MCP tool (can keep shelling out; embedding becomes possible).
-Watch-outs: the hand-written `repl_test`/`repl_test_x64` targets live in
-`build.base.json` and reference `repl.w`; keep the file name stable or
-update them in the same change.
+Watch-outs: the `repl_test`/`repl_test_x64` targets live in the
+`tests/repl_fixture.w.wbuild` sidecar and reference `repl.w`; keep the
+file name stable or update them in the same change.
 
 ### Q2. Issue #33 — essentially done as a tracker; close and replace
 

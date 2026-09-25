@@ -66,3 +66,11 @@ int main(int argc, int argv):
 	stream_flush(out)
 	string_free(s)
 	return 0
+# wbuild: target=metadata_test tag=tests dep=wmeta
+# wbuild: step="bin/wmeta check tests/metadata/good/package.wmeta" expect_stdout="wmeta: OK package 'example.app' version 1.0.0"
+# wbuild: step="bin/wmeta check tests/metadata/bad_version/package.wmeta" expect_fail expect_stderr="expected three numeric components"
+# wbuild: step="bin/wmeta check tests/metadata/missing_module/package.wmeta" expect_fail expect_stderr="module 'nope.missing' not found"
+# wbuild: step="bin/wmeta check tests/metadata/duplicate_module/package.wmeta" expect_fail expect_stderr="duplicate module 'dup.thing'"
+# wbuild: step="bin/wmeta check tests/metadata/bad_constraint/package.wmeta" expect_fail expect_stderr="does not satisfy constraint ^2.0.0"
+# wbuild: step="bin/wmeta check tests/metadata/collision/package.wmeta" expect_fail expect_stderr="top-level module path 'net' claimed by packages"
+# wbuild: step="bin/wmeta check tests/metadata/no_such_dir/package.wmeta" expect_fail expect_stderr="cannot read package.wmeta"

@@ -1054,6 +1054,13 @@ json_value* wexec_make_adhoc_target(char* name, char* arch, char* path, char* bi
 	json_object_set(target, c"name", json_string(name))
 	json_value* deps = json_array()
 	json_array_push(deps, json_string(c"wv2"))
+	# arm64/wasm run steps exec through bin/wrun (below); only a
+	# manifest that defines the wrun target gets the dependency, so a
+	# fixture manifest without it still resolves.
+	int runs = ends_with(path, c"_test.w")
+	int wrapped = (strcmp(arch, c"arm64") == 0) || (strcmp(arch, c"wasm") == 0)
+	if (runs && wrapped && (wexec_targets.get(c"wrun", 0) != 0)):
+		json_array_push(deps, json_string(c"wrun"))
 	json_object_set(target, c"deps", deps)
 	json_value* inputs = json_array()
 	json_array_push(inputs, json_string(path))
@@ -1082,11 +1089,11 @@ json_value* wexec_make_adhoc_target(char* name, char* arch, char* path, char* bi
 	if (ends_with(path, c"_test.w") && (strcmp(arch, c"arm64_darwin") != 0)):
 		json_value* run_cmd = json_array()
 		if (strcmp(arch, c"arm64") == 0):
-			json_array_push(run_cmd, json_string(c"sh"))
-			json_array_push(run_cmd, json_string(c"tools/run_arm64.sh"))
+			json_array_push(run_cmd, json_string(c"bin/wrun"))
+			json_array_push(run_cmd, json_string(c"arm64"))
 		else if (strcmp(arch, c"wasm") == 0):
-			json_array_push(run_cmd, json_string(c"sh"))
-			json_array_push(run_cmd, json_string(c"tools/run_wasm.sh"))
+			json_array_push(run_cmd, json_string(c"bin/wrun"))
+			json_array_push(run_cmd, json_string(c"wasm"))
 		else if (strcmp(arch, c"win64") == 0):
 			json_array_push(run_cmd, json_string(c"wine"))
 		json_array_push(run_cmd, json_string(binary))

@@ -1,0 +1,16 @@
+# wbuild: target=cuda_cubin_test dep=wv2
+# wbuild: step="sh tools/cuda/build_cubin.sh native tests/cuda_cubin_gpu.w bin/cuda_cubin_native"
+# wbuild: step="bin/cuda_cubin_native" expect_stdout="cuda cubin OK source=cubin"
+# wbuild: step="sh tools/cuda/build_cubin.sh wrong tests/cuda_cubin_gpu.w bin/cuda_cubin_wrong"
+# wbuild: step="bin/cuda_cubin_wrong" expect_stdout="cuda cubin OK source=ptx"
+# wbuild: step="bin/wv2 x64 --quiet tests/cuda_cubin_gpu.w -o bin/cuda_cubin_plain"
+# wbuild: step="bin/cuda_cubin_plain" expect_stdout="cuda cubin OK source=ptx"
+# wbuild: target=cuda_cubin_embed_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 x64 --quiet tests/cuda_cubin_gpu.w -o bin/cuda_cubin_embed_plain --ptx=bin/cuda_cubin_embed.ptx"
+# wbuild: step="sh tools/cuda/fake_cubin.sh bin/cuda_cubin_embed.ptx bin/cuda_cubin_embed"
+# wbuild: step="bin/wv2 x64 --quiet tests/cuda_cubin_gpu.w -o bin/cuda_cubin_embed_cubin --cubin-file=bin/cuda_cubin_embed.good.cubin"
+# wbuild: step="sh -c '! grep -q W_FAKE_CUBIN bin/cuda_cubin_embed_plain && grep -q W_FAKE_CUBIN bin/cuda_cubin_embed_cubin'"
+# wbuild: step="bin/wv2 x64 --quiet tests/cuda_cubin_gpu.w -o bin/cuda_cubin_embed_bad --cubin-file=bin/cuda_cubin_embed.stale.cubin" expect_fail expect_stderr="stale cubin: it has no kernel '"
+# wbuild: step="bin/wv2 x64 --quiet tests/cuda_cubin_gpu.w -o bin/cuda_cubin_embed_bad --cubin-file=bin/cuda_cubin_embed.notcuda.cubin" expect_fail expect_stderr="not a CUDA cubin (ELF e_machine is not EM_CUDA)"
+# wbuild: step="bin/wv2 x64 --quiet tests/cuda_cubin_gpu.w -o bin/cuda_cubin_embed_bad --cubin-file=bin/cuda_cubin_embed.ptx" expect_fail expect_stderr="not an ELF cubin (expected ptxas output)"
+# wbuild: step="bin/wv2 x64 --quiet tests/cuda_cubin_gpu.w -o bin/cuda_cubin_embed_bad --cubin-file=bin/cuda_cubin_embed.missing" expect_fail expect_stderr="cannot open file"

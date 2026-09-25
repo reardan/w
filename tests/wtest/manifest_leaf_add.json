@@ -2,16 +2,16 @@
 	"dirs": ["bin"],
 	"targets": [
 		{
-			"name": "wexec_test",
-			"steps": [
-				{"cmd": ["true"]}
-			]
-		},
-		{
 			"name": "tests",
 			"deps": [
 				"math_test",
 				"sha256_test"
+			]
+		},
+		{
+			"name": "wexec_test",
+			"steps": [
+				{"cmd": ["true"]}
 			]
 		},
 		{

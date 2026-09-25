@@ -100,6 +100,34 @@ void define_asm_functions_arm64():
 		a64(op(0xd2, 0x800000))   # movz x0,#0
 		a64(op(0xd6, 0x5f03c0))   # ret
 
+		# signal_trampoline: the sa_tramp of every W signal handler
+		# (rt_sigaction, lib/__arch__/arm64_darwin/syscalls.w). XNU
+		# enters it, not the handler, with x0 = the handler, x1 =
+		# infostyle, x2 = sig, x3 = siginfo, x4 = ucontext, x5 = token.
+		# It calls handler(sig, ucontext) with the W convention on the
+		# interrupted code's W stack (x28), then sigreturn(ucontext,
+		# infostyle, token) resumes the interrupted context. The three
+		# sigreturn arguments wait on the C stack, which W code never
+		# touches. Never returns; brk if sigreturn fails.
+		sym_define_declare_global_function(c"signal_trampoline")
+		a64(op(0xa9, 0xbe13e1))   # stp x1,x4,[sp,#-32]!
+		a64(op(0xf9, 0x000be5))   # str x5,[sp,#16]
+		a64(op(0xf8, 0x1f8f80))   # str x0,[x28,#-8]!  (callee slot)
+		a64(op(0xf8, 0x1f8f82))   # str x2,[x28,#-8]!  (sig)
+		a64(op(0xf8, 0x1f8f84))   # str x4,[x28,#-8]!  (ucontext)
+		if (arm64_pac == 2):
+			a64(op(0xd6, 0x3f081f))   # blraaz x0
+		else:
+			a64(op(0xd6, 0x3f0000))   # blr x0
+		a64(op(0x91, 0x00639c))   # add x28,x28,#24
+		a64(op(0xf9, 0x4007e0))   # ldr x0,[sp,#8]   (ucontext)
+		a64(op(0xf9, 0x4003e1))   # ldr x1,[sp]      (infostyle)
+		a64(op(0xf9, 0x400be2))   # ldr x2,[sp,#16]  (token)
+		a64(op(0x91, 0x0083ff))   # add sp,sp,#32
+		a64(op(0xd2, 0x801710))   # movz x16,#184 (sigreturn)
+		a64(op(0xd4, 0x001001))   # svc #0x80
+		a64(op(0xd4, 0x200020))   # brk #1
+
 	# get_context(ctx): store x0..x30 into the 31-slot context struct.
 	# x9 (loaded first) holds the pointer; it is scratch anyway.
 	sym_define_declare_global_function(c"get_context")
@@ -130,8 +158,12 @@ void define_asm_functions_arm64():
 	sym_stub_alias(c"setjmp")
 	a64(op(0xf9, 0x400389))   # ldr x9,[x28]  (buf)
 	if (arm64_pac == 2):
-		a64(op(0xda, 0xc1013e))   # pacia x30, x9
-	a64(op(0xf9, 0x00013e))   # str x30,[x9,#0]
+		# Sign a copy: x30 itself must stay plain for the ret below.
+		a64(op(0xaa, 0x1e03ea))   # mov x10, x30
+		a64(op(0xda, 0xc1012a))   # pacia x10, x9
+		a64(op(0xf9, 0x00012a))   # str x10,[x9,#0]
+	else:
+		a64(op(0xf9, 0x00013e))   # str x30,[x9,#0]
 	a64(op(0xf9, 0x00053c))   # str x28,[x9,#8]
 	a64(op(0xf9, 0x00093d))   # str x29,[x9,#16]
 	a64(op(0xd2, 0x800000))   # movz x0,#0

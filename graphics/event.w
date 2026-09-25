@@ -30,8 +30,10 @@ enum gfx_event_kind:
 	# backends; portable text arrives as GFX_EVENT_CHAR.
 	GFX_EVENT_KEY_DOWN = 1
 	GFX_EVENT_KEY_UP = 2
-	# code = ASCII 32..126, or 8 (backspace), 9 (tab), 13 (return),
-	# 27 (escape)
+	# code = a Unicode codepoint of typed text, or 8 (backspace),
+	# 9 (tab), 13 (return), 27 (escape). How much of Unicode arrives
+	# depends on the backend: Cocoa any codepoint, X11 Latin-1, the web
+	# ASCII (#459).
 	GFX_EVENT_CHAR = 3
 	# code = button 1 (left), 2 (middle), 3 (right); x,y = pointer
 	# position at event time

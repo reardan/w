@@ -1,4 +1,15 @@
 # wbuild: binary=wtest
+# wbuild: target=wtest_run_test tag=tests dep=wtest dep=wexec
+# wbuild: step="bin/wtest changed docs/todo.txt --run" expect_stderr="wtest: 0 targets selected" stdout_file=bin/wtest_run_empty.out
+# wbuild: step="test ! -s bin/wtest_run_empty.out"
+# wbuild: step="bin/wtest changed -f tests/wtest/run_fixture.json wtest_run_smoke_marker --run" expect_stdout="smoke" expect_stdout="wexec: OK (1 targets)"
+# wbuild: step="bin/wtest changed -f tests/wtest/run_fixture.json wtest_run_boom_marker --run" expect_fail expect_stdout="boom" expect_stderr="command failed with exit status"
+# wbuild: step="bin/wtest changed -f tests/wtest/run_fixture.json wtest_run_smoke_marker" expect_stdout="smoke" reject_stdout="wexec: OK"
+# wbuild: step="bin/wtest for -f tests/wtest/run_fixture.json wtest_run_smoke_marker" expect_stdout="smoke" reject_stdout="wexec: OK"
+# wbuild: step="bin/wtest for -f tests/wtest/run_fixture.json wtest_run_smoke_marker --run" expect_stdout="smoke" expect_stdout="wexec: OK (1 targets)"
+# wbuild: step="bin/wtest for -f tests/wtest/run_fixture.json wtest_run_boom_marker --run" expect_fail expect_stdout="boom" expect_stderr="command failed with exit status"
+# wbuild: step="bin/wtest for" expect_fail expect_stderr="wtest for <file>..."
+# wbuild: step="bin/wtest for -f tests/wtest/manifest_unavailable.json --available widget/marker.dat" expect_stdout="custom_widget_ok" reject_stdout="custom_widget_needs_mac" expect_stderr="wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"
 /*
 wtest: map changed paths to focused build targets.
 
@@ -119,8 +130,8 @@ build. For a changed path P the emitted targets are the union of:
         (arm64_darwin_smoke_test, net_darwin, graphics_darwin,
         pac_darwin): the run leg lives outside the manifest, so no
         argv or import records the coupling. (Its arm64 counterpart
-        tools/run_arm64.sh needs no rule: the qemu targets invoke it
-        directly in their steps, which rule (a) sees.)
+        bin/wrun needs no rule: the qemu targets depend on the 'wrun'
+        target, whose compile root tools/wrun.w rule (b) sees.)
       - build.json / wbuild / build.base.json -> wexec_test + tests (the
         manifest drives every target); build.base.json additionally ->
         manifest_check (it feeds bin/wbuildgen). Exception: when
@@ -221,9 +232,9 @@ no baseline the build.json residue always selects the full suite.
 tests point it at fixture manifests, mirroring -f.
 
 --available drops, after normal selection, targets whose steps name a
-runner this host cannot execute — arm64 run targets (they shell through
-'sh tools/run_arm64.sh', which itself falls back to qemu-aarch64-static
-off an aarch64 host), wasm run targets ('sh tools/run_wasm.sh', which
+runner this host cannot execute — arm64 run targets (they exec through
+'bin/wrun arm64', which itself falls back to qemu-aarch64-static
+off an aarch64 host), wasm run targets ('bin/wrun wasm', which
 needs wasmtime or node), win64 run targets ('wine'/'wine64'), or a
 tools/mac/ script — so the printed selection is runnable as-is instead
 of failing on a missing qemu/wasm-runtime/wine/Mac. Detection is
@@ -231,8 +242,8 @@ mechanical and conservative: only a step whose argv[0] (or, for the
 arm64/wasm wrappers, argv[1]) is one of those recognized shapes is
 checked for presence on PATH (or, for tools/mac/, as a file); a step
 of the form 'sh -c <command>' additionally has its command STRING
-scanned for the two wrapper paths, so a runner wrapped in a shell
-one-liner (pac_corrupt_test_arm64's 'sh -c "sh tools/run_arm64.sh
+scanned for the two wrapper spellings, so a runner wrapped in a shell
+one-liner (pac_corrupt_test_arm64's 'sh -c "bin/wrun arm64
 ...; test $? -ge 128"') is probed exactly like the direct argv shape
 (ai_tooling_next_steps.md 2026-08-05); anything
 else is left alone, so a target is only ever dropped on positive
@@ -2425,8 +2436,8 @@ int wtest_leaf_compile_step(json_value* step):
 
 
 # A run or extra_compile step: the compiled binary (or another bin/
-# tool for extra compiles), the arm64 qemu wrapper, or wine — plus at
-# most the decoration fields.
+# tool for extra compiles, or the bin/wrun arm64/wasm runner), or wine
+# — plus at most the decoration fields.
 int wtest_leaf_run_step(json_value* step):
 	if (wtest_step_only_keys(step, 1) == 0):
 		return 0
@@ -2438,17 +2449,13 @@ int wtest_leaf_run_step(json_value* step):
 		return 1
 	if (strcmp(program.string_value, c"wine") == 0):
 		return 1
-	if (strcmp(program.string_value, c"sh") == 0):
-		if (json_array_length(cmd) >= 2):
-			json_value* script = json_array_get(cmd, 1)
-			if (strcmp(script.string_value, c"tools/run_arm64.sh") == 0):
-				return 1
 	return 0
 
 
 # The conventional compile(+run) shape tools/wbuildgen.w generates for
 # a leaf test target (wbg_make_target): only the keys it emits, deps
-# exactly ["wv2"], a bin/wv2 compile step first, decorated run /
+# exactly ["wv2"] (["wv2", "wrun"] for an arm64/wasm twin), a bin/wv2
+# compile step first, decorated run /
 # extra-compile steps after. A hand-written base target that happens
 # to match is indistinguishable, which is safe: editing one requires a
 # build.base.json change, and that path keeps the full residue.
@@ -2473,13 +2480,22 @@ int wtest_leaf_target(json_value* target):
 		return 0
 	if (deps.type != json_type_array()):
 		return 0
-	if (json_array_length(deps) != 1):
+	# ["wv2"], or ["wv2", "wrun"] for the arm64/wasm twins whose run
+	# step execs through bin/wrun.
+	int dep_count = json_array_length(deps)
+	if ((dep_count != 1) && (dep_count != 2)):
 		return 0
 	json_value* dep = json_array_get(deps, 0)
 	if (dep.type != json_type_string()):
 		return 0
 	if (strcmp(dep.string_value, c"wv2") != 0):
 		return 0
+	if (dep_count == 2):
+		json_value* runner_dep = json_array_get(deps, 1)
+		if (runner_dep.type != json_type_string()):
+			return 0
+		if (strcmp(runner_dep.string_value, c"wrun") != 0):
+			return 0
 	json_value* data = json_object_get(target, c"data")
 	if (data != 0):
 		if (data.type != json_type_array()):
@@ -2712,6 +2728,8 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		wtest_add(path, c"net_darwin")
 		wtest_add(path, c"graphics_darwin")
 		wtest_add(path, c"pac_darwin")
+		wtest_add(path, c"crash_darwin")
+		wtest_add(path, c"graphics_cocoa_input_darwin")
 		matched = 1
 	if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add(path, c"c_import_test")
@@ -2917,7 +2935,7 @@ int wtest_path_has(char* name):
 	return found
 
 
-# tools/run_arm64.sh execs its argv natively on an aarch64 Linux host and
+# 'bin/wrun arm64' execs its argv natively on an aarch64 Linux host and
 # falls back to ${QEMU_ARM64:-qemu-aarch64-static -cpu max} everywhere
 # else; an explicit QEMU_ARM64 override is itself positive evidence the
 # caller has an emulator configured, so it counts as available without a
@@ -2928,7 +2946,7 @@ int wtest_qemu_arm64_available():
 	return wtest_path_has(c"qemu-aarch64-static")
 
 
-# tools/run_wasm.sh execs wasmtime when installed and falls back to
+# 'bin/wrun wasm' execs wasmtime when installed and falls back to
 # node's built-in WASI (node >= 20); either one on PATH is positive
 # evidence a wasm run step can execute.
 int wtest_wasm_runtime_available():
@@ -3399,30 +3417,34 @@ char* wtest_step_unavailable_reason(json_value* step):
 		if (wtest_qemu_arm64_available() == 0):
 			return c"qemu-aarch64-static not found"
 		return 0
+	if ((strcmp(program, c"bin/wrun") == 0) && (n >= 2)):
+		json_value* mode = json_array_get(cmd, 1)
+		if (mode.type == json_type_string()):
+			if (strcmp(mode.string_value, c"arm64") == 0):
+				if (wtest_qemu_arm64_available() == 0):
+					return c"qemu-aarch64-static not found"
+			if (strcmp(mode.string_value, c"wasm") == 0):
+				if (wtest_wasm_runtime_available() == 0):
+					return c"no wasm runtime (wasmtime or node) found"
+		return 0
 	if (strcmp(program, c"sh") == 0):
-		if (n >= 2):
+		if (n >= 3):
 			json_value* second = json_array_get(cmd, 1)
 			if (second.type == json_type_string()):
-				if (strcmp(second.string_value, c"tools/run_arm64.sh") == 0):
-					if (wtest_qemu_arm64_available() == 0):
-						return c"qemu-aarch64-static not found"
-				if (strcmp(second.string_value, c"tools/run_wasm.sh") == 0):
-					if (wtest_wasm_runtime_available() == 0):
-						return c"no wasm runtime (wasmtime or node) found"
 				# 'sh -c' wraps its real command in one string, hiding the
-				# runner from the argv[1] shapes above (pac_corrupt_test_
-				# arm64's 'sh -c "sh tools/run_arm64.sh ...; test $? -ge
+				# runner from the argv shape above (pac_corrupt_test_
+				# arm64's 'sh -c "bin/wrun arm64 ...; test $? -ge
 				# 128"'): scan the command string for the two known
-				# wrapper paths and apply the same probes. Still positive
-				# evidence only — a '-c' string naming neither wrapper is
-				# left alone.
-				if ((strcmp(second.string_value, c"-c") == 0) && (n >= 3)):
+				# runner spellings and apply the same probes. Still
+				# positive evidence only — a '-c' string naming neither
+				# is left alone.
+				if (strcmp(second.string_value, c"-c") == 0):
 					json_value* script = json_array_get(cmd, 2)
 					if (script.type == json_type_string()):
-						if (wtest_str_contains(script.string_value, c"tools/run_arm64.sh")):
+						if (wtest_str_contains(script.string_value, c"bin/wrun arm64")):
 							if (wtest_qemu_arm64_available() == 0):
 								return c"qemu-aarch64-static not found"
-						if (wtest_str_contains(script.string_value, c"tools/run_wasm.sh")):
+						if (wtest_str_contains(script.string_value, c"bin/wrun wasm")):
 							if (wtest_wasm_runtime_available() == 0):
 								return c"no wasm runtime (wasmtime or node) found"
 		return 0

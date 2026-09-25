@@ -1,0 +1,3 @@
+# leaf v2
+int wexec_deps_leaf_value():
+	return 7

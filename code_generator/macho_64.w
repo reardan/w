@@ -9,10 +9,10 @@ MH_DYLDLINK (so LC_UNIXTHREAD static binaries — including Apple's own
 binary without LC_UUID or without at least one LC_LOAD_DYLIB (libSystem).
 So the writer emits the minimal dyld-blessed set, established empirically
 on macOS 26.3: __PAGEZERO / __TEXT rx / __DATA rw / __LINKEDIT segments,
-zeroed LC_SYMTAB + LC_DYSYMTAB (dyld's classic-relocation fallback walks
-these; zero counts make it a no-op — omitting them crashes dyld), a
-LC_LOAD_DYLINKER for /usr/lib/dyld, LC_UUID, LC_BUILD_VERSION, LC_MAIN,
-and LC_LOAD_DYLIB /usr/lib/libSystem.B.dylib. The runtime itself stays
+LC_SYMTAB + LC_DYSYMTAB (dyld's classic-relocation fallback walks these;
+omitting them crashes dyld), a LC_LOAD_DYLINKER for /usr/lib/dyld,
+LC_UUID, LC_BUILD_VERSION, LC_MAIN, and LC_LOAD_DYLIB
+/usr/lib/libSystem.B.dylib. The runtime itself stays
 raw-syscall (no libSystem symbol is bound for it); dyld maps libSystem
 from the shared cache and runs its initializers before _main. Programs
 that use c_lib / extern get their imports bound through the classic
@@ -45,11 +45,13 @@ computed from the nominal bases match the mapped image.
 import code_generator.code_emitter
 import code_generator.macho_dynamic
 import code_generator.macho_sign
+import lib.sha256
 
 
 void error(char *s);                 /* diagnostics.w */
 void define_asm_functions_arm64();   /* arm64_asm.w */
 void a64(int w);                     /* arm64.w */
+void macho_collect_symbols();       /* symbol_table.w */
 void arm64_entry_rebase_stub();      /* elf_arm64.w */
 void arm64_emit_rebase_table();      /* elf_arm64.w */
 int sym_address(char *s);            /* symbol_table.w */
@@ -68,6 +70,59 @@ int macho_page_size():
 int macho_text_seg_pos
 int macho_data_seg_pos
 int macho_linkedit_seg_pos
+int macho_symtab_cmd_pos
+int macho_uuid_pos
+int macho_text_start
+
+
+# The symbol table (issue #378): one nlist_64 per defined W function, so
+# lldb, atos and the crash reporter can name code addresses. Symbols
+# belong to the one section, __TEXT,__text, and are all local (N_SECT
+# without N_EXT), so dyld sees nothing to export. Names carry the C
+# convention's leading underscore, which debuggers strip for display.
+# Built in memory and written into __LINKEDIT between the bind stream and
+# the code signature, the order ld64 uses.
+char* macho_sym_buf
+int macho_sym_count
+char* macho_str_buf
+int macho_str_size
+int macho_text_limit
+
+
+# Size both buffers for up to cap bytes of symbol names (the caller
+# passes the whole symbol table's size, which bounds both).
+void macho_symbols_begin(int cap):
+	macho_sym_buf = malloc(cap)
+	macho_sym_count = 0
+	macho_str_buf = malloc(cap + 8)
+	macho_str_buf[0] = 0
+	macho_str_size = 1
+
+
+# Record one function symbol at a nominal (0x08048000-based) address.
+# Addresses outside the finished text are skipped.
+void macho_sym_add(char* name, int address):
+	int offset = address - base_code_offset
+	if ((offset < macho_text_start) || (offset >= macho_text_limit)):
+		return
+	char* entry = macho_sym_buf + macho_sym_count * 16
+	save_int32(entry, macho_str_size)  /* n_strx */
+	entry[4] = 14                      /* n_type N_SECT */
+	entry[5] = 1                       /* n_sect: __text */
+	entry[6] = 0                       /* n_desc */
+	entry[7] = 0
+	# n_value: __TEXT maps at 0x100000000, so the vmaddr is the text
+	# offset in the low word and 1 in the high word.
+	save_int32(entry + 8, offset)
+	save_int32(entry + 12, 1)
+	macho_sym_count = macho_sym_count + 1
+	macho_str_buf[macho_str_size] = '_'
+	int n = strlen(name)
+	int i = 0
+	while (i <= n):
+		macho_str_buf[macho_str_size + 1 + i] = name[i]
+		i = i + 1
+	macho_str_size = macho_str_size + n + 2
 
 
 # 16-byte fixed-width segment name field.
@@ -128,7 +183,7 @@ void macho_start_arm64():
 		emit_int32(0)               /* cpusubtype CPU_SUBTYPE_ARM64_ALL */
 	emit_int32(2)                   /* filetype MH_EXECUTE */
 	emit_int32(11)                  /* ncmds */
-	emit_int32(552)                 /* sizeofcmds: 4*72+24+80+32+24+24+24+56 */
+	emit_int32(632)                 /* sizeofcmds: 4*72+80+24+80+32+24+24+24+56 */
 	emit_int32(op(0x00, 0x200085))  /* flags MH_NOUNDEFS | MH_DYLDLINK
 	                                   | MH_TWOLEVEL | MH_PIE; without
 	                                   MH_DYLDLINK the process is killed
@@ -142,6 +197,20 @@ void macho_start_arm64():
 	# r-x (Apple Silicon refuses w+x). Sizes patched in finish.
 	macho_text_seg_pos = codepos
 	macho_segment_64(c"__TEXT", 0, 1, 0, 0, 5)
+	# One section, __text, spanning the code after the headerpad: symbols
+	# need a section to belong to (n_sect). Range patched in finish.
+	save_int32(code + macho_text_seg_pos + 4, 152)  /* cmdsize: 72 + 80 */
+	save_int32(code + macho_text_seg_pos + 64, 1)   /* nsects */
+	macho_segname(c"__text")
+	macho_segname(c"__TEXT")
+	emit_int64(0)                   /* addr, patched */
+	emit_int64(0)                   /* size, patched */
+	emit_int32(0)                   /* offset, patched */
+	emit_int32(2)                   /* align: 2^2 */
+	emit_int32(0)                   /* reloff */
+	emit_int32(0)                   /* nreloc */
+	emit_int32(op(0x80, 0x000400))  /* S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS */
+	emit_zeros(12)                  /* reserved1-3 */
 
 	# __DATA: rw globals + rebase table, exactly 16 MB above __TEXT to
 	# match the nominal data_offset - code_offset distance.
@@ -152,10 +221,12 @@ void macho_start_arm64():
 	macho_linkedit_seg_pos = codepos
 	macho_segment_64(c"__LINKEDIT", 16777216, 1, 0, 0, 1)
 
-	# LC_SYMTAB + LC_DYSYMTAB, all zero. dyld's fixup pass reads these
-	# when a binary has no chained-fixups/dyld-info commands; zero counts
-	# mean "nothing to relocate". Omitting the commands crashes dyld in
+	# LC_SYMTAB + LC_DYSYMTAB, patched in finish to describe the local
+	# function symbols. dyld's fixup pass reads these when a binary has no
+	# chained-fixups/dyld-info commands; zero relocation counts mean
+	# "nothing to relocate". Omitting the commands crashes dyld in
 	# forEachRebase_Relocations.
+	macho_symtab_cmd_pos = codepos
 	emit_int32(2)      /* LC_SYMTAB */
 	emit_int32(24)     /* cmdsize */
 	emit_zeros(16)     /* symoff nsyms stroff strsize */
@@ -171,11 +242,13 @@ void macho_start_arm64():
 	emit_string(c"/usr/lib/dyld")
 	emit_zeros(32 - 12 - 14)
 
-	# LC_UUID: required by dyld. A fixed value is sufficient (dyld checks
-	# presence, not uniqueness); a content hash is a nice-to-have later.
+	# LC_UUID: required by dyld, and what lldb and crash tools match a
+	# binary by. Filled in finish with a hash of the finished image, the
+	# Mach-O counterpart of the ELF writers' GNU build-id.
 	emit_int32(27)     /* LC_UUID */
 	emit_int32(24)     /* cmdsize */
-	emit(16, c"w-arm64-darwin.0")
+	macho_uuid_pos = codepos
+	emit_zeros(16)
 
 	# LC_BUILD_VERSION: platform macOS, minos = sdk = 12.0.
 	emit_int32(50)     /* LC_BUILD_VERSION */
@@ -220,6 +293,7 @@ void macho_start_arm64():
 	# every recorded data pointer is slid before user code reads it. x18
 	# is reserved on Darwin and never touched.
 	save_int64(code + macho_entry_off_pos, codepos)
+	macho_text_start = codepos
 	a64(op(0x91, 0x0003fc))   # mov x28, sp
 	a64(op(0xf8, 0x1f8f80))   # str x0, [x28, #-8]!  (argc)
 	a64(op(0xf8, 0x1f8f81))   # str x1, [x28, #-8]!  (argv)
@@ -254,6 +328,13 @@ void macho_finish_arm64():
 		int offset = t - bl_vaddr
 		save_int32(code + arm64_entry_bl_pos, op(0x94, 0x000000) | ((offset >> 2) & op(0x03, 0xffffff)))
 
+	# __text: from the entry stub to the end of the code.
+	macho_text_limit = codepos
+	save_int64(code + macho_text_seg_pos + 72 + 32, macho_text_start)      /* addr lo */
+	save_int32(code + macho_text_seg_pos + 72 + 36, 1)                     /* addr hi */
+	save_int64(code + macho_text_seg_pos + 72 + 40, codepos - macho_text_start)  /* size */
+	save_int32(code + macho_text_seg_pos + 72 + 48, macho_text_start)      /* offset */
+
 	# Pad the text to a page boundary; __DATA's file offset must be
 	# page-congruent with its vmaddr (both end up 16 KB-aligned).
 	while ((codepos % macho_page_size()) != 0):
@@ -287,13 +368,30 @@ void macho_finish_arm64():
 	save_int32(code + macho_linkedit_seg_pos + 24, 16777216 + data_size_padded)
 	save_int64(code + macho_linkedit_seg_pos + 40, linkedit_fileoff)
 
-	# Sign the image ad-hoc. The signature sits at a 16-byte-aligned offset
-	# past the bind stream; everything before it (headers, code, data, bind,
-	# alignment padding) is hashed, so this must run after every other byte
-	# and load command — including the ones patched just above — is final.
+	# The symbol table follows the bind stream (8-byte aligned), then its
+	# string table (padded to 8).
+	macho_collect_symbols()
+	int symoff = linkedit_fileoff + ((macho_bind_size + 7) & (0 - 8))
+	int stroff = symoff + macho_sym_count * 16
+	int strsize = (macho_str_size + 7) & (0 - 8)
 	int raw_end = linkedit_fileoff + macho_bind_size
+	if (macho_sym_count > 0):
+		raw_end = stroff + strsize
+		save_int32(code + macho_symtab_cmd_pos + 8, symoff)
+		save_int32(code + macho_symtab_cmd_pos + 12, macho_sym_count)
+		save_int32(code + macho_symtab_cmd_pos + 16, stroff)
+		save_int32(code + macho_symtab_cmd_pos + 20, strsize)
+		# LC_DYSYMTAB: every symbol local; no external or undefined ones.
+		save_int32(code + macho_symtab_cmd_pos + 24 + 12, macho_sym_count)  /* nlocalsym */
+		save_int32(code + macho_symtab_cmd_pos + 24 + 16, macho_sym_count)  /* iextdefsym */
+		save_int32(code + macho_symtab_cmd_pos + 24 + 24, macho_sym_count)  /* iundefsym */
+
+	# Sign the image ad-hoc. The signature sits at a 16-byte-aligned offset
+	# past the symbol table; everything before it (headers, code, data,
+	# bind, symbols, alignment padding) is hashed, so this must run after
+	# every other byte and load command — including the ones patched just
+	# above — is final.
 	int code_limit = (raw_end + 15) & (0 - 16)
-	int pad_bytes = code_limit - raw_end
 	char* ident = c"w"
 	int sig_size = macho_sig_length(code_limit, ident)
 
@@ -327,14 +425,32 @@ void macho_finish_arm64():
 	while (di < data_size_padded):
 		img[text_size + di] = data[di]
 		di = di + 1
+	int zi = linkedit_fileoff
+	while (zi < code_limit):
+		img[zi] = 0
+		zi = zi + 1
 	int bi = 0
 	while (bi < macho_bind_size):
 		img[linkedit_fileoff + bi] = macho_bind_buf[bi]
 		bi = bi + 1
-	int zi = 0
-	while (zi < pad_bytes):
-		img[raw_end + zi] = 0
-		zi = zi + 1
+	int si = 0
+	while (si < macho_sym_count * 16):
+		img[symoff + si] = macho_sym_buf[si]
+		si = si + 1
+	si = 0
+	while ((macho_sym_count > 0) && (si < macho_str_size)):
+		img[stroff + si] = macho_str_buf[si]
+		si = si + 1
+
+	# LC_UUID: the first 16 bytes of sha256 over the image with the UUID
+	# still zero, so identical inputs give identical UUIDs.
+	char* digest = malloc(32)
+	sha256(img, code_limit, digest)
+	int ui = 0
+	while (ui < 16):
+		img[macho_uuid_pos + ui] = digest[ui]
+		ui = ui + 1
+	free(digest)
 
 	macho_build_signature(img, code_limit, text_size, ident)
 

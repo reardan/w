@@ -621,6 +621,8 @@ int link_option_recognized(char* arg):
 		return 1
 	if (strcmp(arg, c"--verbose") == 0):
 		return 1
+	if (starts_with(arg, c"--cubin-file=")):
+		return 1
 	return starts_with(arg, c"--ptx=")
 
 
@@ -640,6 +642,7 @@ void help_shared_options():
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
+	println(c"  --cubin-file=<path>   embed a ptxas-built cubin of that PTX; loaded before the PTX")
 	println(c"  -v, --verbose         raise verbosity (repeat for compiler debug traces)")
 	println(c"  -h, --help            print this help and exit")
 
@@ -980,6 +983,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# Debug dump of the embedded PTX module (kernels/'gpu for'),
 			# written by ptx_finish_module; ignored when no kernels exist.
 			ptx_dump_path = *arg + 6
+		else if (starts_with(*arg, c"--cubin-file=")):
+			# Opt-in pre-compiled GPU image (ptxas output for the --ptx
+			# dump), embedded by ptx_finish_cubin; the runtime tries it
+			# before JIT-loading the PTX (docs/projects/cuda.md).
+			ptx_cubin_path = *arg + 13
 		else if (starts_with(*arg, c"-")):
 			# Every recognized flag was matched above; a dash-prefixed
 			# argument that reaches here is a typo or an unsupported
@@ -1073,6 +1081,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# Embed the PTX module behind __w_ptx_module (and honor --ptx=<path>)
 	# for programs that declared gpu kernels (code_generator/ptx.w)
 	ptx_finish_module()
+	ptx_finish_cubin()
 
 	# --strict: fail before any output is written so no artifact is
 	# produced when warnings fired. Warnings were already printed with

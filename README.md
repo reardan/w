@@ -68,6 +68,7 @@ Other useful targets:
 
 ```sh
 ./wbuild wdbg        # build the in-process debugger (bin/wdbg)
+./wbuild wdbg_web    # browser debugger: bin/wdbg_web file.w prints an https URL
 ./wbuild verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
                      # the first cmp also proves output is host-word-size independent
 ./wbuild warning_test  # asserts the compiler's type/style warnings
@@ -150,7 +151,7 @@ stock x86-64 system.
 | `tests/` | End-to-end test programs and compile-only warning fixtures |
 | `docs/` | Design notes; `docs/projects/` holds larger design docs |
 | `wbuild`, `build.base.json`, `tools/wexec.w`, `tools/wbuildgen_lib.w`, `tools/wbuildgen.w` | The build system: W-native manifest-driven executor; the manifest is generated in memory from `build.base.json` + the tree on every run |
-| `archive.sh` | Backs up a seed before `./wbuild update` / `update_darwin` promotes a new one |
+| `tools/promote_seed.w` | Backs up a seed to `old/` and installs the new one for `./wbuild update` / `update_win` / `update_darwin` |
 
 ## Language snapshot
 
@@ -294,6 +295,11 @@ Toolchain beyond the compiler:
   fly W expression, `set`, `x`, `backtrace`, `list`, `info locals|args|...`,
   `registers`, `stack`. SIGSEGV and friends stop for post-mortem inspection.
   See `docs/debugging.txt` and the `debug_test` target.
+- **Web debugger** (`./wbuild wdbg_web`): `./bin/wdbg_web file.w` runs
+  `wdbg` behind a local https server and prints `https://127.0.0.1:PORT/?code=...`
+  to open: source view with a breakpoint gutter, step/next/finish controls,
+  locals/args/backtrace/breakpoint panes and a wdbg console. `--core <core>`
+  shows a `wcore` report instead. See `docs/projects/wdbg_web.md`.
 - **Runtime stack traces** (`lib/stack_trace.w`): assertion failures
   (`lib/assert.w`) and container traps (missing map key, list index out of
   range, pop on empty list) print a symbolized stack trace to stderr —
@@ -546,7 +552,7 @@ seeds — is `docs/release.md`.
 - Import-scoped type metadata.
 - WebAssembly backend polish — the wasm32 + WASI backend self-hosts
   (`w wasm file.w`, `./wbuild verify_wasm` / `wasm_smoke_test`, run via
-  `tools/run_wasm.sh` under wasmtime or Node), and `c_lib`/`extern` now
+  `bin/wrun wasm` under wasmtime or Node), and `c_lib`/`extern` now
   compile to typed host imports with a browser WebGL2 backend for
   `graphics/` (`graphics/demo_web.w`, `tools/web/`,
   `./wbuild wasm_extern_test` / `wasm_webgl_test` under Node;

@@ -54,12 +54,18 @@ What stage 2 settled:
 - **Skipped.** Options, reserved ranges and extension ranges are parsed
   and ignored. Services and `extend` blocks become a note in the
   header.
-- **Errors** are reported as `file:line: message`. They cover
-  `float`/`double`/`sfixed32`/`sfixed64` (no runtime kind yet),
-  recursive messages (direct or through a cycle), negative enum
-  values, field numbers out of range, unknown types, and syntax
-  errors. `import` statements are recorded but not followed: generate
-  the imported file too and import its module.
+- **Errors** are reported as `file:line: message`. They cover negative
+  enum values, field numbers out of range, unknown types, missing
+  imports, and syntax errors.
+- **Imports.** `import "a/b.proto"` is read from the import root
+  (`-I`, default the current directory), and its types, plus those of
+  anything it imports, become resolvable. The output then contains
+  `import a.b_pb`, the module `proto_to_w` writes for that file, so
+  proto import paths and W module paths share a root. The test sample
+  imports `tests/protobuf/common.proto`.
+- **Cycles.** Messages that refer to each other get a forward
+  declaration (`message Name`) ahead of the definitions. A message that
+  refers only to itself needs none.
 - **Construction.** Neither `new T` nor locals are zero-initialized,
   and every field of a message is encoded, so build messages with
   `pb_message_new(proto_descriptor(T))`.
@@ -105,10 +111,24 @@ What stage 3 settled, and how it answers the §10 open questions:
   repeated scalar element, a nonzero `pb_value_desc.aux` gives its
   storage width (1 for `list[bool]`). Hand-written descriptors are
   unaffected.
-- **Not yet supported:** `float`/`double`/`sfixed*` (the runtime has
-  no such kinds yet), `map<K, V>`, `oneof`, explicit-presence
-  `optional`, and self-recursive messages (the descriptor would need
-  its own address before it is emitted).
+- **Floating point and sfixed.** `float`/`sfixed32` share FIXED32's
+  wire form and `double`/`sfixed64` share FIXED64's (raw little-endian
+  bits), so the runtime needed no new kinds; only the W storage type
+  differs. `float` is stored as `float32` and `sfixed32` as `int32`.
+  `double` (`float64`) and `sfixed64` (`int64`) are limited to
+  8-byte-word targets.
+- **Recursive messages.** A message may contain itself, as a pointer or
+  as a repeated list. Two messages that refer to each other need a
+  forward declaration, `message Name` with no body, ahead of the
+  first; a forward declaration that is never completed is a compile
+  error when the message is used. Each descriptor request emits every
+  message it reaches that has no descriptor yet into one blob. Section
+  sizes are known up front, so every address is cached before anything
+  is written.
+- **Not in the keyword itself:** native `map<K, V>` and `oneof`. The
+  generator lowers both to wire-compatible forms (below).
+  Explicit-presence `optional` is accepted by the generator but not
+  tracked.
 
 ## Tracker note
 

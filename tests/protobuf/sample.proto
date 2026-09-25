@@ -4,6 +4,8 @@ syntax = "proto3";
 
 package example.shop;
 
+import "tests/protobuf/common.proto";
+
 option java_package = "com.example.shop";
 
 /* A customer order. Declared before the types it uses: the generator
@@ -19,6 +21,8 @@ message Order {
     Voucher voucher = 7;
   }
   optional string note = 8;
+  example.common.Money total = 10;
+  Category category = 11;
   reserved 9, 12 to 15;
   reserved "legacy";
 
@@ -52,6 +56,25 @@ message LineItem {
   uint32 quantity = 2;
   bool gift = 3;
   repeated sint32 adjustments = 4;
+  float weight = 5;
+  sfixed32 offset = 6;
+}
+
+// Recursive messages: a tree refers to itself, and Ping/Pong refer to
+// each other (the generator forward-declares one of them).
+message Category {
+  string name = 1;
+  Category parent = 2;
+  repeated Category children = 3;
+}
+
+message Ping {
+  Pong pong = 1;
+}
+
+message Pong {
+  Ping ping = 1;
+  int32 hops = 2;
 }
 
 enum Country {

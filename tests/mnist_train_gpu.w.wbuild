@@ -4,4 +4,4 @@
 # wbuild: step="sh tools/fetch_mnist.sh"
 # wbuild: step="bin/wv2 x64 tests/mnist_train_gpu.w -o bin/mnist_train_gpu"
 # wbuild: step="bin/mnist_train_gpu" expect_stdout="mnist: gpu path" expect_stdout="mnist train OK"
-# wbuild: step="sh -c 'CUDA_VISIBLE_DEVICES= bin/mnist_train_gpu'" expect_stdout="mnist: cpu fallback" expect_stdout="mnist train OK"
+# wbuild: step="env CUDA_VISIBLE_DEVICES= bin/mnist_train_gpu" expect_stdout="mnist: cpu fallback" expect_stdout="mnist train OK"

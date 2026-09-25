@@ -27,13 +27,13 @@
 		{
 			"name": "leaky",
 			"steps": [
-				{"cmd": ["sh", "-c", "sleep 30 & echo $! > bin/wexec_group_leak_pid; exec sleep 30"], "timeout_ms": 400}
+				{"cmd": ["bin/wexec_e2e_group_kill", "leaky-child", "bin/wexec_group_leak_pid"], "timeout_ms": 400}
 			]
 		},
 		{
 			"name": "term_hang",
 			"steps": [
-				{"cmd": ["sh", "-c", "echo $$ > bin/wexec_group_term_pid; exec sleep 30"], "timeout_ms": 0}
+				{"cmd": ["bin/wexec_e2e_group_kill", "term-hang", "bin/wexec_group_term_pid"], "timeout_ms": 0}
 			]
 		}
 	]

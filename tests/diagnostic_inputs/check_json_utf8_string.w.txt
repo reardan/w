@@ -1,0 +1,3 @@
+int main():
+	string s = "bad ÿş bytes"
+	return 0

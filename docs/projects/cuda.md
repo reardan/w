@@ -5,7 +5,8 @@ work: every viable path below assumes a 64-bit host process, because `libcuda.so
 and the CUDA driver API are 64-bit only. Finishing x64 self-hosting (see
 `docs/mvp.txt`) is effectively Stage 0 of this project.
 
-**Status: Stages 0–3 are done.** The host side went straight to H1 (real
+**Status: Stages 0–4 are done; the only open surface is M3 tiles
+(issue #480).** The host side went straight to H1 (real
 dynamic linking, both x86 and x64): `c_lib "libcuda.so.1"` + `extern`
 declarations link the driver API directly (`grammar/extern_statement.w`,
 `code_generator/elf_dynamic.w`, `code_generator/ffi.w`), and `./wbuild cuda_smoke`
@@ -15,18 +16,26 @@ H3 sidecar was skipped. Stage 2 shipped as option A1 (`code_generator/ptx.w`:
 M2 (`gpu for` outlining with capture-as-parameters), both on the M1+M2
 surface with the `lib/cuda.w` runtime (managed memory, async launches,
 `gpu_sync()`). See "Execution notes (Stages 2–3)" below for the model as
-built. A first Stage 4 slice shipped too: gpu atomics
+built. Stage 4 shipped in slices: gpu atomics
 (`atomic_add`/`atomic_min`/`atomic_max`, with an atomic-reduction
 `cuda_test` case), the explicit memory API (`gpu_device_alloc` +
 `gpu_memcpy_to`/`gpu_memcpy_from`), the nine 32-bit limb/bit intrinsics on
-device, `gpu for ... in range(start, end)`, and a const-based diagnostic
-for writes to captured scalars. docs/projects/torch.md builds on this:
+device, `gpu for ... in range(start, end)`, a const-based diagnostic
+for writes to captured scalars, A2 virtual registers (push/pop peephole
+and stack-slot promotion), shared memory (`gpu_shared_f32` /
+`gpu_barrier`), device math (`gpu_exp`/`gpu_log`), multi-GPU device
+selection and recoverable CUresult handling (`gpu_set_device`,
+`gpu_try_*`, `gpu_error_string`), and the `gpu T*` pointer qualifier
+(host/device mix-up diagnostics plus `ld.global`/`st.global`). From the
+"someday" list, cuBLAS interop (`lib/cublas.w`, runtime-dlopen'd, opt-in
+`tensor_use_cublas()`) and opt-in cubin embedding (`--cubin-file`) also
+landed; each has an execution-notes section below.
+docs/projects/torch.md builds on this:
 its Stage 1 added a non-fatal `gpu_available()` driver+device probe to
 `lib/cuda.w`, and its Stages 2-3 the `lib/tensor.w` managed-memory
 tensor type with CPU fallbacks (reductions ride the Stage 4
-`atomic_add`). Remaining Stage 4 material: A2 virtual registers,
-`gpu float*` types, recoverable CUresult error handling, multi-GPU
-selection, shared memory — and the "someday" list.
+`atomic_add`). Remaining: M3 tile programs (#480), SASS study, and the
+caveats listed in each execution-notes section.
 
 ## Context: what W is today
 
@@ -313,13 +322,14 @@ performance-oriented API.
   blocks) and managed-memory allocation (`gpu_alloc`). Acceptance:
   `./wbuild cuda_test` — `gpu for` vector add + `kernel`/`launch` saxpy,
   verified against CPU results (reduction/atomics moved to Stage 4).
-- **Stage 4 — quality**: A2 virtual-register emission, explicit memory API,
-  `gpu float*` types, error handling for `CUresult` codes, multi-GPU device
+- **Stage 4 — quality** (done): A2 virtual-register emission, explicit memory API,
+  `gpu T*` pointer qualifier, error handling for `CUresult` codes, multi-GPU device
   selection.
-- **Someday**: tile semantics (M3), shared-memory staging, `cuBLAS` interop via
-  `c_import` (host-callable GEMM without writing kernels), SASS study
-  (`cuobjdump -sass` on our PTX; CuAssembler experiments), fatbin embedding of
-  pre-JIT'd cubins alongside PTX.
+- **Someday**: tile semantics (M3, issue #480), SASS study
+  (`cuobjdump -sass` on our PTX; CuAssembler experiments). Done from this
+  list: shared-memory staging, cuBLAS interop (via runtime dlopen rather
+  than `c_import`, so libcublas stays optional), and embedding pre-compiled
+  cubins alongside PTX (`--cubin-file`).
 
 ## Execution notes (Stages 2–3, as built)
 
@@ -400,6 +410,265 @@ performance-oriented API.
   launches — a copy-back implicitly waits for the kernel, so the explicit
   path needs no `gpu_sync()`. A program with no kernels (memory API only)
   gets an empty embedded module and the runtime skips `cuModuleLoadData`.
+
+## Execution notes (runtime: device selection + errors)
+
+All in `lib/cuda.w`; no compiler change.
+
+- **Device selection**: `gpu_device_count()` never exits (cuInit +
+  cuDeviceGetCount; 0 when the driver fails or sees no device, e.g.
+  `CUDA_VISIBLE_DEVICES=`). Lazy init uses ordinal 0, or
+  `W_GPU_DEVICE=<n>` when set and non-empty. `gpu_set_device(n)` may be
+  called at any time — before first use or to switch later — and is lazy:
+  it records the ordinal, and the next GPU call creates that device's
+  context (cuCtxCreate + JIT module load) on first use or makes the
+  existing one current (cuCtxSetCurrent). Contexts and modules are kept
+  per ordinal for the life of the process, and the kernel-handle cache is
+  keyed by (name, device), so switching back and forth is correct and
+  cheap. `gpu_get_device()` reports the current ordinal (-1 if none is
+  usable). Out-of-range ordinals are fatal with a clear message
+  (`cuda error: gpu_set_device(4): device ordinal 4 is out of range: 1
+  CUDA device(s) visible (valid: 0..0)`, likewise for a bad or
+  non-numeric `W_GPU_DEVICE`); `gpu_try_set_device(n)` returns
+  CUDA_ERROR_INVALID_DEVICE (101) instead. `gpu_available()` now probes
+  the selected ordinal; a bad `W_GPU_DEVICE` reads as unavailable (with a
+  stderr note), so the tensor CPU fallback still applies.
+- **Per-device caveats**: allocations, copies, frees, launches and
+  `gpu_sync()` act on the device current when they run (every entry point
+  now calls the init/make-current check, which is one load on the fast
+  path). Free and copy a buffer with its owning device current; peer
+  access and multi-device streams are not wired. The runtime assumes one
+  host thread (contexts are current per thread). Only single-GPU hardware
+  was available, so the multi-device switch was exercised as
+  device 0 → device count-1 → device 0 on one GPU.
+- **Errors**: the plain API still exits, but the message now names the
+  code: `cuda error 2 CUDA_ERROR_OUT_OF_MEMORY (out of memory) at
+  cuMemAlloc` (cuGetErrorName/cuGetErrorString). Non-exiting variants:
+  `gpu_try_alloc`/`gpu_try_device_alloc` (0 on failure),
+  `gpu_try_memcpy_to`/`gpu_try_memcpy_from`/`gpu_try_free`/`gpu_try_sync`/
+  `gpu_try_set_device` (return the CUresult). Every failing call records
+  its code for `gpu_last_error()` — a peek, not reset by later successes;
+  `gpu_clear_error()` resets. `gpu_error_name(code)`/`gpu_error_string(code)`
+  fall back to `CUDA_ERROR_UNKNOWN_CODE` / "unrecognized CUresult code".
+  Try variants never exit even when init fails (no driver device → 100
+  CUDA_ERROR_NO_DEVICE). Launches stay fatal on launch-configuration
+  errors, but a kernel fault is async: it is reported by the next
+  `gpu_try_sync()`/`gpu_sync()` or blocking copy, and sticky errors such
+  as CUDA_ERROR_ILLEGAL_ADDRESS (700) leave that context unusable.
+- **Tests**: `cuda_runtime_gpu_test` (opt-in, `tests/cuda_runtime_gpu.w`
+  + sidecar) checks count ≥ 1, set_device(0) + launch, device switching,
+  a 1 PiB try-alloc returning 0 with CUDA_ERROR_OUT_OF_MEMORY and the
+  program continuing (copies, launches), an async fault surfacing at
+  `gpu_try_sync`, the fatal set_device/OOM/`W_GPU_DEVICE` messages, and a
+  `CUDA_VISIBLE_DEVICES=` step where count is 0 and every try variant
+  fails gracefully. `cuda_runtime_compile_test` (in `tests`) only
+  compiles it: running any lib.cuda program needs libcuda.so.1 at load
+  time, which default CI machines lack.
+
+## Execution notes (cubin embedding)
+
+Opt-in pre-compiled GPU code, so a program can skip the driver's PTX JIT at
+startup (follow-up to issue #28). The default compile is unchanged: no
+external tool runs, no cubin is embedded, and the PTX is JIT-loaded as
+before.
+
+- **Two-step, user-driven.** The compiler never spawns processes (W's
+  identity is "no external toolchain", and the compiler has no process
+  facility on every host it runs on), so the cubin is built by the user
+  from the `--ptx` dump and handed back with `--cubin-file=<path>`:
+
+  ```sh
+  bin/wv2 x64 prog.w -o prog --ptx=prog.ptx
+  ptxas -arch=sm_89 prog.ptx -o prog.cubin
+  bin/wv2 x64 prog.w -o prog --cubin-file=prog.cubin
+  ```
+
+  `tools/cuda/build_cubin.sh <sm_XX|native> prog.w prog` scripts exactly
+  this (`native` asks `nvidia-smi` for GPU 0's compute capability).
+- **Embedding.** `ptx_finish_cubin` (`code_generator/ptx.w`, run right after
+  `ptx_finish_module`) synthesizes `char* __w_cubin_module()` for every
+  program that imports `lib.cuda` (whose prototype declares it): an 8-byte
+  little-endian image length followed by the cubin bytes, inline in the code
+  stream like the PTX text — or just a zero length without `--cubin-file`
+  (also when the program has no kernels). The PTX module stays embedded as
+  the fallback.
+- **Compile-time checks.** The file must be an ELF with `e_machine ==
+  EM_CUDA` (190) — PTX text, host objects and fatbins are rejected — and
+  every `.entry` name in this program's PTX must appear in the cubin's
+  string table: a cubin built from an older dump would otherwise load and
+  then fail at `cuModuleGetFunction`, where no fallback applies (a stale
+  cubin whose kernels merely changed bodies or signatures is not caught;
+  rebuild it whenever the kernels change). Errors are command-line
+  diagnostics (`--cubin-file='<path>': ...`, `<command-line>` in `--json`).
+- **Runtime.** `__w_gpu_load_module` (`lib/cuda.w`, called from
+  `__w_gpu_init`) copies the image to a heap buffer (the inline bytes sit at
+  an arbitrary code address) and tries `cuModuleLoadData` on it; on any
+  error — typically `CUDA_ERROR_NO_BINARY_FOR_GPU` (209) for a cubin built
+  for a different SM major — it loads the PTX instead, whose errors stay
+  fatal. `gpu_module_source()` reports what loaded: 0 nothing yet, 1 PTX,
+  2 cubin. SASS is only compatible within one major architecture, so a
+  distributed binary should keep relying on the PTX for other GPUs.
+- **Tests.** `cuda_cubin_embed_test` (default umbrella, GPU-less) compiles
+  `tests/cuda_cubin_gpu.w` with a fake EM_CUDA ELF from
+  `tools/cuda/fake_cubin.sh`, checks the blob lands in the binary and not in
+  the default build, and freezes the stale/not-CUDA/not-ELF/missing-file
+  errors. `cuda_cubin_test` (opt-in: GPU + `ptxas`) runs the program built
+  with a native cubin (`source=cubin`), a wrong-arch cubin (falls back,
+  `source=ptx`) and no cubin.
+- **Measured** (RTX 4080 SUPER, sm_89, `tests/tensor_gpu.w` — the 17
+  `lib/tensor.w` kernels, 52 KB PTX / 61 KB cubin; whole-process wall time,
+  min of 7): PTX with the driver's JIT cache warm 220 ms, cubin 218 ms;
+  with `CUDA_CACHE_DISABLE=1` PTX 302 ms, cubin 220 ms. So the cubin saves
+  the cold-JIT cost (~80 ms here, growing with kernel count) on a fresh
+  machine or after a driver update; with a warm `~/.nv/ComputeCache` the two
+  are indistinguishable.
+
+## Execution notes (cuBLAS interop)
+
+Follow-up to issue #28 (workstream C): vendor GEMM as an opt-in fast
+path, fenced off so nothing that does not ask for it changes behavior.
+
+- **Run-time loading, not `c_lib`.** `c_lib "libcublas.so.12"` would add
+  a DT_NEEDED entry and `extern` binds eagerly through GLOB_DAT GOT
+  slots, so on a machine without the CUDA *toolkit* (cuBLAS is not part
+  of the driver) the dynamic loader would refuse to start the program
+  before `main` — no probe could run. `lib/dlcall.w` instead needs only
+  `libdl.so.2` at load time and `dlopen`s libcublas lazily (sonames .12,
+  .13, .11, then the unversioned symlink); a missing library, symbol,
+  GPU, or failing `cublasCreate_v2` makes `cublas_available()` return 0.
+  The program still needs `libcuda.so.1` via `lib/cuda.w`, the floor
+  every GPU program already has.
+- **Calling dlsym pointers.** W function pointers use W's stack
+  convention, so a dlsym result cannot be called directly.
+  `dl_trampoline(sym, nargs, ret32)` writes a tiny x64 stub into an
+  mmap'd page (RW, then mprotect RX) that re-loads W's stack arguments
+  into rdi..r9 plus a 16-byte-aligned stack tail, zeroes al (variadic
+  safe), calls the symbol, and sign-extends a C `int` result;
+  `dl_trampoline_argv` + `dl_call` is the same with the arguments read
+  from an `int*` array. Integer/pointer arguments only — cuBLAS passes
+  alpha/beta by pointer, so that is enough. `tests/dlcall_test.w`
+  (`dlcall_test`, default umbrella via tests_x64, no GPU needed) checks
+  missing-library/symbol probes and register + stack argument order
+  against libc (`strlen`, `abs`, 8- and 9-argument `snprintf`).
+- **Why the argv form exists.** A `type ... = fn(...)` alias with more
+  than 10 parameters overflows a fixed 10-slot buffer in
+  `grammar/type_alias_declaration.w` (heap corruption, SIGSEGV later
+  in the compile; logged in ai_tooling_next_steps.md). The 14-argument
+  gemm entry points therefore go through `dl_call`.
+- **c_import was tried first**: `cublas_v2.h` hits host_defines.h's
+  "UNKNOWN COMPILER" `#error` (no `__GNUC__`); a wrapper header that
+  predefines `__align__(n)` and `CUDARTAPI` imports cleanly (c_import.md,
+  Known limitations). Not used: it would reintroduce DT_NEEDED and a
+  hard-coded toolkit include path.
+- **Context sharing.** cuBLAS runs on the runtime API, which binds to
+  the driver context current on the calling thread and only falls back
+  to the primary context when none is current. `cublas_init` runs
+  `__w_gpu_init()` before `cublasCreate_v2`, so the `cuCtxCreate`
+  context `lib/cuda.w` made current is the one cuBLAS uses: managed
+  (`gpu_alloc`) and device (`gpu_device_alloc`) pointers are valid
+  operands, and cuBLAS work is enqueued on the same legacy default
+  stream as `launch`/`gpu for` — ordering needs no extra syncs and
+  `gpu_sync()` covers it. No `lib/cuda.w` change was needed. Caveat:
+  the context is current only on the thread that initialized the GPU
+  (the main thread); calling from another thread would silently give
+  cuBLAS the primary context, a different address space. Switching
+  lib/cuda.w to `cuDevicePrimaryCtxRetain` + `cuCtxSetCurrent` would
+  make both sides share the primary context on every thread.
+- **Row-major vs column-major.** `cublas_sgemm_rm` / `cublas_dgemm_rm`
+  take cblas-style row-major arguments; a row-major matrix is its own
+  column-major transpose, so C = op(A) op(B) is issued as
+  C^T = op(B)^T op(A)^T: operands, trans flags and leading dimensions
+  swap, and so do m and n. alpha/beta live in a module scratch cell
+  (host pointer mode; cuBLAS reads them before returning).
+- **tensor integration is opt-in.** `lib/tensor.w` gained a null
+  `tensor_matmul_hook` consulted on the GPU path of
+  `tensor_matmul2`/`_tn`/`_nt` (a null check before the tiled launch;
+  tensor.w never imports cuBLAS code). `import lib.tensor_cublas` +
+  `tensor_use_cublas()` installs a cublasSgemm hook — which every
+  `lib/autograd.w` linear layer then uses — and
+  `tensor_disable_cublas()` restores the tiled kernels. Results agree
+  with the tiled kernel to FP32 rounding, not bit for bit (default math
+  mode, no TF32).
+- **Tests and numbers.** `cublas_test` (opt-in, needs GPU + toolkit;
+  `tests/cublas_gpu.w.wbuild`) checks all four trans combinations,
+  alpha/beta, dgemm, and the tensor hook on non-square, non-tile-multiple
+  shapes against a float64 CPU reference (max abs error <= 1e-3), and
+  checks the probe returns 0 under `CUDA_VISIBLE_DEVICES=`.
+  `cublas_compile_test` compiles it in the default umbrella. Informational
+  benchmark on an RTX 4080 SUPER (driver 580, libcublas 12.9),
+  `tensor_matmul2` square products, per call after warm-up:
+  256^3 tiled ~22-25 us vs cuBLAS ~6-7 us (3-3.5x); 1024^3 ~790-870 us
+  (~2.5 TFLOP/s) vs ~76-81 us (~27 TFLOP/s, ~10-11x); 2048^3 ~6.2-7.0 ms
+  (~2.6 TFLOP/s) vs ~0.5 ms (~34 TFLOP/s, ~13x).
+
+## Execution notes (gpu pointer qualifier)
+
+- **Syntax and representation.** `gpu T* p` (also `gpu T**`, `gpu void*`,
+  `const` in either order) marks a pointer into device memory. The
+  qualifier sits on the POINTEE: `type_name` wraps `T` in a gpu-object
+  record `G(T)` (kind 20, named `"gpu T"`, `type_get_gpu` in
+  `compiler/type_table.w`) and the stars build ordinary name-keyed pointer
+  records over it. That sidesteps the Stage 4 const-wrapping problem:
+  `type_lookup_previous_pointer` finds `G(T)` by name, and because
+  `type_canonical` strips `G` exactly like an alias, element size, index
+  scaling, field lookup and the float pipeline (`type_float_kind`) all
+  see plain `T`. Only the qualifier-aware checks read the raw record.
+  `gpu` directly followed by a type name is the qualifier; `gpu for` and
+  a user type/symbol named `gpu` keep their meaning. `gpu T` without a
+  star and `gpu` over an already-pointer `T` (a generic substitution)
+  are errors.
+- **Domains, not subtyping.** Pointers split into host and device
+  domains; `types_compatible` refuses any crossing, and the mismatch
+  sites report it as an ERROR (frozen in `cuda_diagnostics_test`):
+  `initialization mixes gpu and host pointers: expected 'float32*',
+  got 'gpu float32*'; use cast() to cross the host/device boundary`
+  (call arguments read `function 'f' argument N mixes ...`). Error
+  rather than the usual mismatch warning because the qualifier is new
+  (no legacy code to keep compiling) and every silent crossing is a
+  latent fault. `void*` does not launder the crossing; `gpu void*` is
+  the device domain's untyped pointer. Untyped constants (`0`, `&d[i]`)
+  convert freely. `cast()` is the escape hatch both ways.
+- **Kernel parameters.** A plain pointer kernel parameter keeps meaning
+  "any device-accessible pointer", so `launch k[...](d)` accepts a
+  `gpu T*` for a plain `T*` parameter (checked against its host twin);
+  a `gpu T*` parameter still rejects a plain pointer argument.
+- **Host dereference.** A load or store whose lvalue is `G(T)` in host
+  code (`target_isa != 3`) is an error: `cannot dereference a gpu pointer
+  in host code; copy the data with gpu_memcpy_from, or cast() to a host
+  pointer for managed memory`. Indexing, unary `*` and scalar struct
+  fields (`p.x`, `p[i].x`, re-wrapped as `G(field)`) are covered;
+  address arithmetic (`&d[i]`, `d + n`) stays legal. Caveat: pointer
+  and nested-struct fields reached through a `gpu` struct pointer are
+  not re-wrapped (a `G` over a pointer record would collide with the
+  name-keyed pointer records), so those loads are neither diagnosed on
+  the host nor global on device.
+- **Memory API fit.** `gpu_device_alloc` memory is the natural `gpu T*`
+  (`cast(gpu float32*, gpu_device_alloc(bytes))`); managed memory
+  (`gpu_alloc`) stays plain, since it is valid on both sides and plain
+  pointers already work in device code. `lib/cuda.w` signatures are
+  unchanged for now (casts at the call sites, as before); the natural
+  follow-up is `gpu void* gpu_device_alloc(int)`,
+  `gpu_memcpy_to(gpu void* dst, char* src, int)`,
+  `gpu_memcpy_from(char* dst, gpu void* src, int)` (and
+  `gpu_free(gpu void*)` or a twin) — lib/cuda.w is a leaf compiled by
+  `bin/wv2`, so no SEEDS bump is needed, but the change breaks every
+  existing caller that keeps device memory in plain pointers
+  (`cast(char*, dev)` would become a crossing error), so it wants a
+  sweep of `lib/tensor.w` and the tests in the same PR.
+- **Codegen payoff.** Inside `kernel`/`gpu for` bodies, `promote()` and
+  `assign_store()` set `ptx_global_access` around exactly the one load
+  or store of a `G(T)` lvalue; `ptx_ld_ax`/`ptx_st_bx` then emit
+  `cvta.to.global.u64 %cx, <addr>` + `ld.global.SFX %ax, [%cx]` /
+  `st.global.SFX [%cx], %ax` instead of the generic forms. The `%cx`
+  scratch keeps `%ax`/`%bx` generic, and the new line shapes match none
+  of the A2 passes' stack patterns (their addresses never come from a
+  stack lea), so `ptx_promote`/`ptx_peephole` leave them untouched.
+  Plain pointers keep generic accesses. Atomics stay generic `atom`.
+  `gpu_qualifier_ptx_test` (default umbrella) asserts the text at every
+  width; `gpu_qualifier_test` (opt-in, like `cuda_test`) runs
+  device-only buffers through a raw kernel, a plain-parameter kernel
+  and a `gpu for` on real hardware. Compiler sources only implement the
+  syntax (seed constraint); it is used in `tests/` alone.
 
 ## Open questions
 

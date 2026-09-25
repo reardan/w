@@ -1,0 +1,10 @@
+// Imported by tests/protobuf/sample.proto; tests/protobuf/common_pb.w
+// is its committed output.
+syntax = "proto3";
+
+package example.common;
+
+message Money {
+  string currency = 1;
+  int32 cents = 2;
+}

@@ -185,11 +185,16 @@ Deliberately not here:
   emitter plus a block-cooperative programming surface (`gpu for` hides
   the block structure). The natural shape is cuda.md's M3 tile
   semantics; do the emitter work first (Stage 4 below).
-- **cuBLAS interop** — `c_import` + `libcublas.so` would give
-  vendor-speed GEMM and a perf oracle, but it drags in the CUDA
-  toolkit (cuBLAS does not ship with the driver), against the
-  "driver-only at runtime" line the whole backend holds. If it lands,
-  it lands opt-in, clearly fenced, and primarily as a *test oracle*.
+- **cuBLAS interop** — landed opt-in, as fenced as planned
+  (cuda.md, "Execution notes (cuBLAS interop)"). `lib/cublas.w`
+  dlopens libcublas at run time through `lib/dlcall.w`, so the
+  toolkit stays optional: without it `cublas_available()` is 0 and
+  nothing else changes. `import lib.tensor_cublas` +
+  `tensor_use_cublas()` routes `tensor_matmul2`/`_tn`/`_nt` (and so
+  autograd's linear layers) to cublasSgemm, ~10-13x the tiled
+  kernel at 1024^3-2048^3 on an RTX 4080 SUPER; programs that never
+  opt in keep the "driver-only at runtime" line. `cublas_test` doubles
+  as the perf oracle.
 
 ## Stage 4 — performance + async (implemented; A2 is the remainder)
 

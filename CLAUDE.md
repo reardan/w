@@ -13,7 +13,7 @@ committed). It emits executables directly,
 with no assembler, linker, or libc dependency: x86/x86-64 Linux ELF
 (primary), plus arm64 Linux ELF, `arm64_darwin` Mach-O, win64 PE, and
 wasm32/WASI backends (`./wbuild verify_wasm` / `wasm_smoke_test` run the
-wasm gates via `tools/run_wasm.sh`, needing wasmtime or node;
+wasm gates via `bin/wrun wasm` (`tools/wrun.w`), needing wasmtime or node;
 `wasm_extern_test` / `wasm_webgl_test` cover the host-import FFI and the
 WebGL graphics path via `tools/web/`, needing node). `README.md` is the detailed orientation doc and `AGENTS.md` the
 agent workflow doc; both are current and authoritative — this file is the
@@ -51,6 +51,7 @@ natively on the Mac with `tools/mac/run_darwin_tests.sh`.
 ./wbuild tests       # full pre-merge suite
 ./wbuild update      # ONLY after verify: archives seed, promotes the bin/wv3 fixpoint to ./w (local only; publishing = release + SEEDS bump, docs/release.md)
 ./wbuild wdbg        # in-process debugger (bin/wdbg file.w)
+./wbuild wdbg_web    # browser debugger (bin/wdbg_web file.w prints an https URL)
 ./bin/wv2 repl.w -o bin/repl && ./bin/repl   # interactive REPL
 ```
 

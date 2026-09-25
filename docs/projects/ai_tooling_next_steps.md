@@ -126,6 +126,18 @@ is a queue, not an archive.
   (`int32*` vs `int*`, `char*` vs `int*`), at least where the pointer
   is `&local`; `cast(...)` stays the explicit opt-out.
 
+- **`w check` (and every compile) SIGSEGVs on a `type ... = fn(...)`
+  alias with more than 10 parameters.** Observed 2026-09-24 (cuBLAS
+  workstream, `type g = fn(char*, int, ... 14 params) -> int` for
+  `cublasSgemm_v2`): `grammar/type_alias_declaration.w` mallocs a
+  10-slot parameter buffer and writes past it with no bound check, so
+  the heap corrupts and the compiler dies later in an unrelated
+  `malloc`/`free` (crash site depends on heap layout: 12+ params crash
+  once `lib.lib` is imported, 14 did not crash in a bare file). The
+  stack trace points nowhere near the alias. Direction: grow the buffer
+  (or size it to `extern_max_params()`) and emit a real diagnostic past
+  any cap. Workaround used: lib/dlcall.w's argv-form trampoline
+  (`dl_trampoline_argv` + `dl_call`), one `int*` parameter.
 
 ## Test selection (`bin/wtest`)
 
@@ -391,7 +403,9 @@ is a queue, not an archive.
   `["sh", "-c", "sh tools/run_arm64.sh ...; test $? -ge 128"]`, which
   the argv[1]-shape check never saw): `wtest_step_unavailable_reason`
   now scans a `-c` command string for the two known wrapper paths
-  (`tools/run_arm64.sh`, `tools/run_wasm.sh`) and applies the same
+  (`tools/run_arm64.sh`, `tools/run_wasm.sh`; since 2026-09-25 the
+  runner spellings `bin/wrun arm64` / `bin/wrun wasm`, which the
+  direct-argv check now also recognizes) and applies the same
   probes, still positive-evidence-only — asserted deterministically in
   `tools/wtest_runnable_e2e.w` by controlling PATH and
   QEMU_ARM64. (2) Closure-level GPU attribution was closed the same
@@ -464,7 +478,7 @@ and `docs/projects/parser_generator.md` for the record.
 ## Skills / rules upkeep
 
 - Skill command examples are kept in sync with CLI changes by the
-  `skills_test` target (build.base.json): it asserts every compiler
+  `skills_test` target (declared at the end of `tools/skills_check.w`): it asserts every compiler
   flag documented in AGENTS.md, README.md and `.cursor/skills/`
   appears in `w --help` / `w <subcommand> --help` output
   (`tools/skills_check.w`). When adding a compiler flag, add its help
@@ -520,3 +534,37 @@ being the normal result everywhere except a maintainer's desktop. The
 SKIP path should stay — it is what makes the suite runnable anywhere —
 but it currently hides a whole class of regression from every
 automated run.
+
+## An `extern` silently binds to the nearest preceding `c_lib` (2026-09-25, #378/#462)
+
+On arm64_darwin, a file that declares `c_lib ".../ApplicationServices"`
+and then, a few lines later, `extern int objc_msg_mouse(...) =
+"objc_msgSend"` binds that extern to ApplicationServices, not libobjc.
+It happened to resolve there (the framework re-exports it); the same
+declaration after `import graphics.window` bound to OpenGL instead, and
+the binary died at launch with dyld's `Symbol not found: _objc_msgSend
+... Expected in: OpenGL`. `w check` and the compile were clean both
+times.
+
+Options: (a) a `check` warning when an extern follows a `c_lib` from a
+different import unit (the binding is then almost certainly
+accidental); (b) on Mach-O, verify at compile time that the named
+dylib exports the symbol when the host has the dylib (a Mac, or an SDK
+.tbd); (c) document the rule next to `c_lib` in the language docs. (a)
+is cheap and catches the case that bit here.
+
+## Darwin bootstrap from a clean checkout is broken with the pinned seeds (2026-09-25)
+
+Both released darwin seeds miscompile current main: v0.1.0's
+`w_darwin` segfaults compiling `w.w` (first bad commit 2a9c034, July
+19), and v0.2.0's compiles it but writes a corrupt Mach-O magic, so
+the stage-1 compiler fails with "exec format error". Current sources
+compiled by a current compiler are fine: a Linux-cross-built
+`bin/wv2 arm64_darwin w.w` reaches a native fixpoint. `release.yml`
+already works around this for CI by cross-building the darwin
+bootstrap; a fresh Mac checkout has no such path, and `./wbuild` on a
+Mac just segfaults. The fix is the documented seed promotion (tag a
+release from current main, bump every `SEEDS` line). Worth adding
+either way: a darwin smoke of the pinned seed against `w.w` in CI, so
+the next divergence shows up the day it happens instead of two months
+later.

@@ -61,6 +61,7 @@ int limb_builtin_ready():
 void limb_builtin_check_argument(char* name, int arg_index, int param_type, int arg_type):
 	if (types_compatible_with_expression(param_type, arg_type)):
 		return;
+	gpu_domain_check_argument(name, arg_index, param_type, arg_type)
 	diag_part(c"warning: function '")
 	diag_part(name)
 	diag_part(c"' argument ")

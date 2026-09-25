@@ -220,7 +220,9 @@ rule param_tail = COMMA gap_many param
 rule param = type_ref ELLIPSIS name_token | type_ref name_token decl_suffix param_default | type_ref
 rule param_default = ASSIGN expression |
 
-rule type_ref = KW_CONST type_ref | fn_type pointer_part* array_part* | map_type pointer_part* array_part* | set_type pointer_part* array_part* | list_type pointer_part* array_part* | type_atom generic_opt pointer_part* array_part*
+# 'gpu T*' marks a device-memory pointer (grammar/type_name.w); gpu_for_stmt
+# is tried first at statement start, and 'for' is never a type_atom.
+rule type_ref = KW_CONST type_ref | KW_GPU type_ref | fn_type pointer_part* array_part* | map_type pointer_part* array_part* | set_type pointer_part* array_part* | list_type pointer_part* array_part* | type_atom generic_opt pointer_part* array_part*
 # Generics ([T] parameter lists on definitions, [int] argument lists at
 # instantiation sites). Permissive: type_ref covers both bare parameter
 # names and concrete argument types; PG is syntax-only.

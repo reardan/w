@@ -24,17 +24,24 @@ keyword (grammar/protobuf_builtin.w):
   emitted (services are out of scope, §7)
 
 Messages are emitted in dependency order (a W declaration must precede
-its use), enums first. Type references resolve with protobuf's scoping:
-innermost enclosing scope outward, a leading '.' is absolute. The
-package only scopes name lookup; W names drop it.
+its use), enums first; messages in a reference cycle get a forward
+declaration ('message Name') ahead of the definitions. Type references
+resolve with protobuf's scoping: innermost enclosing scope outward, a
+leading '.' is absolute. The package only scopes name lookup; W names
+drop it.
 
-Not supported yet (reported as errors naming the line): float, double,
-sfixed32 and sfixed64 fields (the runtime has no such kinds), messages
-that contain themselves directly or through a cycle (the compiler
-rejects recursive messages), negative enum values, and types that come
-from an imported .proto file (generate that file too and import it).
+'import "a/b.proto"' is read from each import root (protoc's -I) and
+its types become resolvable; the output imports the W module generated
+for it, a.b_pb (proto_to_w writes a/b_pb.w), so proto import paths and
+W module paths share a root.
+
+Reported as errors naming the line: negative enum values, field numbers
+out of range, unknown types, missing imports and syntax errors.
+double/int64-family fields generate fine but, like the message keyword,
+compile only for 8-byte-word targets.
 */
 import lib.lib
+import lib.file
 import structures.string
 import libs.extras.parser_generator.runtime
 import libs.extras.protobuf.generated_proto_parser
@@ -74,6 +81,8 @@ struct pc_message:
 	int state
 	int line
 	int is_map_entry
+	int external
+	int needs_forward
 
 
 struct pc_enum:
@@ -83,6 +92,7 @@ struct pc_enum:
 	list[char*] value_names
 	list[int] value_numbers
 	int line
+	int external
 
 
 struct pc_codegen:
@@ -93,6 +103,9 @@ struct pc_codegen:
 	map[char*, int] message_index
 	map[char*, int] enum_index
 	list[char*] imports
+	list[char*] import_roots
+	list[char*] loaded
+	int external
 	list[char*] notes
 	list[char*] errors
 	string_builder* out
@@ -315,6 +328,8 @@ pc_message* pc_message_new(pc_codegen* g, char* full_name, int line):
 	m.state = 0
 	m.line = line
 	m.is_map_entry = 0
+	m.external = g.external
+	m.needs_forward = 0
 	g.message_index[full_name] = g.messages.length
 	g.messages.push(m)
 	return m
@@ -352,6 +367,7 @@ void pc_collect_enum(pc_codegen* g, pg_ast_node* node, char* scope, char* value_
 	e.value_names = new list[char*]
 	e.value_numbers = new list[int]
 	e.line = pc_line(node)
+	e.external = g.external
 	g.enum_index[e.full_name] = g.enums.length
 	g.enums.push(e)
 	int i = 0
@@ -447,6 +463,10 @@ void pc_collect_message(pc_codegen* g, pg_ast_node* node, char* scope):
 		i = i + 1
 
 
+void pc_import(pc_codegen* g, char* path, int line);
+char* pc_unquote(char* text);
+
+
 void pc_collect(pc_codegen* g, pg_ast_node* root):
 	# The package scopes every name, so find it first.
 	int i = 0
@@ -473,12 +493,90 @@ void pc_collect(pc_codegen* g, pg_ast_node* root):
 					if (pc_is_token(child, protoidl_token_STRING())):
 						path = child
 					j = j + 1
-				g.imports.push(path.text)
-			else if (pc_is_rule(decl, protoidl_ast_service_decl())):
+				pc_import(g, pc_unquote(path.text), pc_line(decl))
+			else if (pc_is_rule(decl, protoidl_ast_service_decl()) && (g.external == 0)):
 				g.notes.push(c"services are not generated (RPC is out of scope)")
-			else if (pc_is_rule(decl, protoidl_ast_extend_decl())):
+			else if (pc_is_rule(decl, protoidl_ast_extend_decl()) && (g.external == 0)):
 				g.notes.push(c"extend blocks (proto2 extensions) are not generated")
 		i = i + 1
+
+
+char* pc_unquote(char* text):
+	char* s = strclone(text + 1)
+	s[strlen(s) - 1] = 0
+	return s
+
+
+# W module of the generated file for a .proto import path:
+# "a/b/c.proto" -> "a.b.c_pb" (proto_to_w writes a/b/c_pb.w).
+char* pc_import_module(char* path):
+	string_builder* s = string_new()
+	int n = strlen(path)
+	if ((n > 6) && (strcmp(path + n - 6, c".proto") == 0)):
+		n = n - 6
+	int i = 0
+	while (i < n):
+		if (path[i] == '/'):
+			string_append_char(s, '.')
+		else:
+			string_append_char(s, path[i])
+		i = i + 1
+	string_append(s, c"_pb")
+	char* module = strclone(s.data)
+	string_free(s)
+	return module
+
+
+char* pc_join_path(char* root, char* path):
+	if ((root[0] == 0) || (strcmp(root, c".") == 0)):
+		return strclone(path)
+	string_builder* s = string_new()
+	string_append(s, root)
+	string_append(s, c"/")
+	string_append(s, path)
+	char* joined = strclone(s.data)
+	string_free(s)
+	return joined
+
+
+# Loads an imported .proto (searched under each import root) and
+# collects its types as external: resolvable from this file, declared
+# by that file's own generated module. Imports are followed
+# transitively, since W imports are too.
+void pc_import(pc_codegen* g, char* path, int line):
+	if (g.external == 0):
+		g.imports.push(path)
+	int i = 0
+	while (i < g.loaded.length):
+		if (strcmp(g.loaded[i], path) == 0):
+			return
+		i = i + 1
+	g.loaded.push(path)
+	char* text = 0
+	char* found = 0
+	i = 0
+	while ((i < g.import_roots.length) && (text == 0)):
+		found = pc_join_path(g.import_roots[i], path)
+		text = file_read_text(found)
+		i = i + 1
+	if (text == 0):
+		pc_error(g, line, c"cannot find imported file", path)
+		return
+	pg_diagnostics* diagnostics = pg_diagnostics_new()
+	pg_ast_node* root = protoidl_parse(text, found, diagnostics)
+	if ((root == 0) || (pg_diagnostics_count(diagnostics) != 0)):
+		pc_error(g, line, c"imported file does not parse:", found)
+		return
+	char* saved_package = g.package
+	char* saved_filename = g.filename
+	int saved_external = g.external
+	g.package = c""
+	g.filename = found
+	g.external = 1
+	pc_collect(g, root)
+	g.package = saved_package
+	g.filename = saved_filename
+	g.external = saved_external
 
 
 # ---- resolve pass ---------------------------------------------------------------
@@ -490,11 +588,9 @@ int pc_is_scalar(char* t):
 		return 1
 	if ((strcmp(t, c"bool") == 0) || (strcmp(t, c"string") == 0) || (strcmp(t, c"bytes") == 0)):
 		return 1
+	if ((strcmp(t, c"float") == 0) || (strcmp(t, c"double") == 0) || (strcmp(t, c"sfixed32") == 0) || (strcmp(t, c"sfixed64") == 0)):
+		return 1
 	return 0
-
-
-int pc_is_unsupported_scalar(char* t):
-	return (strcmp(t, c"float") == 0) || (strcmp(t, c"double") == 0) || (strcmp(t, c"sfixed32") == 0) || (strcmp(t, c"sfixed64") == 0)
 
 
 # Fully qualified name a type reference names from inside `scope`, or 0.
@@ -520,26 +616,20 @@ void pc_resolve(pc_codegen* g):
 	while (i < g.messages.length):
 		pc_message* m = g.messages[i]
 		int j = 0
+		if (m.external):
+			j = m.fields.length
 		while (j < m.fields.length):
 			pc_field* f = m.fields[j]
 			if (pc_is_scalar(f.type_ref)):
 				f.w_type = f.type_ref
-			else if (pc_is_unsupported_scalar(f.type_ref)):
-				pc_error(g, f.line, c"protobuf type not supported yet:", f.type_ref)
-				f.w_type = f.type_ref
 			else:
 				char* full = pc_lookup(g, f.type_ref, m.full_name)
 				if (full == 0):
-					if (g.imports.length > 0):
-						pc_error(g, f.line, c"unknown type (types from imported .proto files need their own generated module):", f.type_ref)
-					else:
-						pc_error(g, f.line, c"unknown type", f.type_ref)
+					pc_error(g, f.line, c"unknown type", f.type_ref)
 					f.w_type = f.type_ref
 				else if (full in g.message_index):
 					f.message_dep = g.message_index[full]
 					f.w_type = g.messages[f.message_dep].w_name
-					if (f.message_dep == i):
-						pc_error(g, f.line, c"recursive messages are not supported yet:", m.full_name)
 				else:
 					f.w_type = g.enums[g.enum_index[full]].w_name
 			j = j + 1
@@ -595,12 +685,17 @@ void pc_emit_message(pc_codegen* g, pc_message* m):
 
 
 # Depth-first so every referenced message is declared before its user.
+# A message reached again while its own dependencies are still being
+# visited is part of a cycle: it gets a forward declaration
+# ('message Name') ahead of every definition instead.
 void pc_visit(pc_codegen* g, int index):
 	pc_message* m = g.messages[index]
+	if (m.external):
+		return
 	if (m.state == 2):
 		return
 	if (m.state == 1):
-		pc_error(g, m.line, c"recursive messages are not supported yet:", m.full_name)
+		m.needs_forward = 1
 		return
 	m.state = 1
 	int i = 0
@@ -623,12 +718,6 @@ void pc_emit(pc_codegen* g):
 		string_append(out, g.package)
 		string_append(out, c"\n")
 	int i = 0
-	while (i < g.imports.length):
-		string_append(out, c"# proto import (not followed): ")
-		string_append(out, g.imports[i])
-		string_append(out, c"\n")
-		i = i + 1
-	i = 0
 	while (i < g.notes.length):
 		int seen = 0
 		int j = 0
@@ -641,15 +730,40 @@ void pc_emit(pc_codegen* g):
 			string_append(out, g.notes[i])
 			string_append(out, c"\n")
 		i = i + 1
+	i = 0
+	while (i < g.imports.length):
+		string_append(out, c"import ")
+		string_append(out, pc_import_module(g.imports[i]))
+		string_append(out, c"\n")
+		i = i + 1
 	string_append(out, c"import libs.extras.protobuf.message\n")
 	i = 0
 	while (i < g.enums.length):
-		pc_emit_enum(g, g.enums[i])
+		if (g.enums[i].external == 0):
+			pc_emit_enum(g, g.enums[i])
 		i = i + 1
+	# Definitions go to their own buffer: the visit discovers which
+	# messages need forward declarations, which come first.
+	g.out = string_new()
 	i = 0
 	while (i < g.messages.length):
 		pc_visit(g, i)
 		i = i + 1
+	string_builder* body = g.out
+	g.out = out
+	int forwards = 0
+	i = 0
+	while (i < g.messages.length):
+		if (g.messages[i].needs_forward):
+			if (forwards == 0):
+				string_append(out, c"\n\n# forward declarations (these messages refer to each other)\n")
+			string_append(out, c"message ")
+			string_append(out, g.messages[i].w_name)
+			string_append(out, c"\n")
+			forwards = forwards + 1
+		i = i + 1
+	string_append(out, body.data)
+	string_free(body)
 
 
 # ---- entry point -----------------------------------------------------------------
@@ -658,7 +772,20 @@ void pc_emit(pc_codegen* g):
 # is the W module text and result.errors is empty; otherwise
 # result.source is 0 and result.errors holds "file:line: message" lines
 # (syntax errors included).
+proto_codegen_result* proto_to_w_with_roots(char* input, char* filename, list[char*] roots);
+
+
 proto_codegen_result* proto_to_w(char* input, char* filename):
+	list[char*] roots = new list[char*]
+	roots.push(c".")
+	return proto_to_w_with_roots(input, filename, roots)
+
+
+# As proto_to_w, with the directories 'import "x.proto"' paths are
+# searched under (protoc's -I). Each import becomes a W 'import' of the
+# module proto_to_w writes for it (a/b.proto -> a.b_pb, see
+# pc_import_module), so import paths and W module paths share a root.
+proto_codegen_result* proto_to_w_with_roots(char* input, char* filename, list[char*] roots):
 	proto_codegen_result* result = new proto_codegen_result()
 	result.source = 0
 	result.errors = new list[char*]
@@ -692,10 +819,14 @@ proto_codegen_result* proto_to_w(char* input, char* filename):
 	g.message_index = new map[char*, int]
 	g.enum_index = new map[char*, int]
 	g.imports = new list[char*]
+	g.import_roots = roots
+	g.loaded = new list[char*]
+	g.external = 0
 	g.notes = new list[char*]
 	g.errors = new list[char*]
 	g.out = string_new()
 	pc_collect(g, root)
+	g.filename = filename
 	pc_resolve(g)
 	if (g.errors.length == 0):
 		pc_emit(g)

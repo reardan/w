@@ -1,7 +1,7 @@
 # Reformatted twin of defhash_fixture.w for defhash_test: every
 # definition's token stream is byte-for-byte the same as the baseline's,
-# only comments and blank-line layout differ. defhash_test.w's
-# build.base.json entry asserts every recorded hash matches the
+# only comments and blank-line layout differ. tools/defhash_e2e.w
+# (defhash_test) asserts every recorded hash matches the
 # baseline file's.
 import lib.lib
 

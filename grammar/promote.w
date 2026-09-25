@@ -183,9 +183,49 @@ void print_error_type(int type_index):
 		diag_part(c"*")
 
 
+# The 'gpu' pointer qualifier's diagnostics (docs/projects/cuda.md
+# "Execution notes (gpu pointer qualifier)"). Crossing the host/device
+# pointer boundary without a cast() is an ERROR, not the usual mismatch
+# warning: the qualifier is new, so no legacy code depends on a lenient
+# reading, and every silent crossing is a latent crash (a host deref of
+# device memory, or a device deref of host memory). The caller has
+# already written the construct ("initialization", "function 'f'
+# argument 2", ...) with diag_part.
+void gpu_domain_error_tail(int want, int got):
+	diag_part(c" mixes gpu and host pointers: expected '")
+	print_error_type(want)
+	diag_part(c"', got '")
+	print_error_type(got)
+	error(c"'; use cast() to cross the host/device boundary")
+
+
+void gpu_domain_check(char* context, int want, int got):
+	if (types_gpu_domain_mismatch(want, got)):
+		diag_part(context)
+		gpu_domain_error_tail(want, got)
+
+
+void gpu_domain_check_argument(char* callee_name, int arg_index, int want, int got):
+	if (types_gpu_domain_mismatch(want, got)):
+		diag_part(c"function '")
+		diag_part(callee_name)
+		diag_part(c"' argument ")
+		diag_part(itoa(arg_index + 1))
+		gpu_domain_error_tail(want, got)
+
+
+# A load or store through a 'gpu T*' in host code: device memory
+# (gpu_device_alloc) is not mapped into the host address space. Taking
+# the element's address ('&p[i]', pointer arithmetic) stays legal.
+void gpu_host_access_check(int type):
+	if ((target_isa != 3) && type_is_gpu_object(type)):
+		error(c"cannot dereference a gpu pointer in host code; copy the data with gpu_memcpy_from, or cast() to a host pointer for managed memory")
+
+
 # Warn that 'got' does not convert to 'want'; context names the construct
 # (assignment, initialization, return, ...)
 void warn_type_mismatch(char* context, int want, int got):
+	gpu_domain_check(context, want, got)
 	diag_part(c"warning: ")
 	diag_part(context)
 	diag_part(c" type mismatch: expected '")
@@ -276,7 +316,16 @@ int promote(int type):
 		println2(c"')")
 
 	if (type_is_value(type)):
-		return type_real(type)
+		return type_strip_gpu(type_real(type))
+	# An lvalue in device global memory ('gpu T*' element): diagnosed in
+	# host code; on device the load itself becomes ld.global
+	# (code_generator/ptx.w, ptx_global_access).
+	if (type_is_gpu_object(type)):
+		gpu_host_access_check(type)
+		ptx_global_access = 1
+		int loaded = promote(type_strip_gpu(type))
+		ptx_global_access = 0
+		return loaded
 	if (type == 3): /* constant: already a value */
 		return type
 	if (type == 4): /* function: its address is its value */

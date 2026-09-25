@@ -80,7 +80,7 @@ release and refuse to run it on a hash mismatch. To promote a new seed
 
 `./wbuild update` / `update_darwin` / `update_win` still promote a locally
 built fixpoint onto the (untracked) seed files for local iteration, and
-`archive.sh` still backs the old one up to `old/`. After a local
+`tools/promote_seed.w` still backs the old one up to `old/`. After a local
 promotion — or in a stale checkout after a `SEEDS` bump — `wbuild` prints
 a one-line notice that the seed differs from its pin; `rm w` (or
 `w_darwin` / `w.exe`) re-downloads the pinned one.

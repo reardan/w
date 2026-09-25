@@ -27,13 +27,22 @@ runtime (libs/extras/protobuf/message.w) already reads:
 
 	int32, sint32          int32
 	uint32, fixed32        uint32
-	int64, sint64          int64   (8-byte-word targets only)
+	sfixed32               int32
+	float                  float32
+	int64, sint64, sfixed64  int64 (8-byte-word targets only)
 	uint64, fixed64        uint64  (8-byte-word targets only)
+	double                 float64 (8-byte-word targets only)
 	bool                   bool
 	string, bytes          pb_bytes (explicit length: bytes may hold NULs)
 	an enum type           the enum (encoded as int32)
 	another message M      M*      (null = absent)
 	repeated T             list[storage of T]; message elements by value
+
+A message may refer to itself. Two messages that refer to each other
+need a forward declaration, 'message Name' with no body, ahead of the
+first. Each protobuf_descriptor call emits the descriptors of every
+message it reaches in one blob with precomputed addresses, so cycles
+resolve.
 
 Like to_json (grammar/json_builtin.w) there is no per-message code: the
 first to_proto/from_proto/proto_descriptor use of a message type emits
@@ -209,11 +218,27 @@ int protobuf_scalar_kind(char* name):
 		return protobuf_kind_string()
 	if (strcmp(name, c"bytes") == 0):
 		return protobuf_kind_bytes()
+	# float/sfixed32 and double/sfixed64 share FIXED32/FIXED64's wire
+	# form (raw little-endian bits); only the W storage type differs.
+	if ((strcmp(name, c"float") == 0) || (strcmp(name, c"sfixed32") == 0)):
+		return protobuf_kind_fixed32()
+	if ((strcmp(name, c"double") == 0) || (strcmp(name, c"sfixed64") == 0)):
+		return protobuf_kind_fixed64()
 	return 0
 
 
 # W storage type for a scalar protobuf kind.
 int protobuf_scalar_storage(int kind, char* name):
+	if (strcmp(name, c"float") == 0):
+		return protobuf_lookup_builtin_type(c"float32")
+	if (strcmp(name, c"double") == 0):
+		protobuf_require_wide_word(name)
+		return protobuf_lookup_builtin_type(c"float64")
+	if (strcmp(name, c"sfixed32") == 0):
+		return protobuf_lookup_builtin_type(c"int32")
+	if (strcmp(name, c"sfixed64") == 0):
+		protobuf_require_wide_word(name)
+		return protobuf_lookup_builtin_type(c"int64")
 	if ((kind == protobuf_kind_int32()) || (kind == protobuf_kind_sint32())):
 		return protobuf_lookup_builtin_type(c"int32")
 	if ((kind == protobuf_kind_uint32()) || (kind == protobuf_kind_fixed32())):
@@ -249,12 +274,14 @@ int protobuf_message_field(int message_type, char* info, int field_index):
 			diag_part(c"unknown protobuf field type '")
 			diag_part(type_word)
 			error(c"'")
-		if (type_canonical(named) == type_canonical(message_type)):
-			error(c"a message cannot contain itself")
+		# The message being declared may refer to itself (a tree
+		# node's children): the singular form is a pointer, the
+		# repeated form a list, so neither needs the finished size.
+		int is_self = type_canonical(named) == type_canonical(message_type)
 		if (type_get_kind(named) == type_kind_enum):
 			kind = protobuf_kind_int32()
 			storage = named
-		else if (protobuf_is_message(named)):
+		else if (is_self || protobuf_is_message(named)):
 			kind = protobuf_kind_message()
 			storage = type_get_next_pointer(named)
 			if (repeated):
@@ -319,14 +346,28 @@ int message_declaration():
 	int defhash_line = diag_token_line
 	int defhash_column = diag_token_column
 	int type_index = type_lookup(token)
+	int forward_declared = 0
+	if (type_index >= 0):
+		char* existing = protobuf_message_info(type_index)
+		if (existing != 0):
+			forward_declared = load_int(existing) < 0
 	if (type_index < 0):
 		type_index = type_push_size(strclone(token), 0)
-	else:
+	else if (forward_declared == 0):
 		type_reset_for_redefinition(type_index, 0)
 	type_set_decl_location(type_index, decl_file_index(), diag_token_line, diag_token_column)
-	sym_declare_global(token, type_index, 1)
+	if (forward_declared == 0):
+		sym_declare_global(token, type_index, 1)
 	get_token()
-	expect(c":")
+	# 'message Name' alone is a forward declaration, so two messages
+	# can refer to each other: fields of a forward-declared message
+	# type are pointers or lists, which need no size yet.
+	if (accept(c":") == 0):
+		if (forward_declared == 0):
+			char* forward = malloc(4)
+			save_int(forward, 0 - 1)
+			protobuf_message_store(type_index, forward)
+		return 1
 	int max_fields = 256
 	char* info = malloc(4 + max_fields * 12)
 	int n = 0
@@ -370,41 +411,84 @@ int protobuf_field_message_type(int field_type, int kind):
 	return type_lookup_previous_pointer(field_type)
 
 
-# Emit (or reuse) the pb_message_desc blob for a message type and return
-# its absolute address. Layout (target words), matching the runtime
-# structs: pb_value_desc {kind, aux} per repeated field, then the
-# pb_field_desc {number, kind, offset, aux} array sorted by wire number
-# (deterministic encode order), then pb_message_desc {field_count,
-# fields, struct_size}.
-int protobuf_descriptor(int message_type):
+# Messages whose descriptors the current protobuf_descriptor call will
+# emit, in emission order.
+char* protobuf_pending_types
+int protobuf_pending_count
+
+
+int protobuf_is_pending(int type_index):
+	int i = 0
+	while (i < protobuf_pending_count):
+		if (load_int(protobuf_pending_types + i * 4) == type_index):
+			return 1
+		i = i + 1
+	return 0
+
+
+# Adds message_type and every message it reaches that has no descriptor
+# yet (a message may reach itself, directly or through others).
+void protobuf_collect_pending(int message_type):
 	message_type = type_canonical(type_unqualified(message_type))
-	int cached = protobuf_desc_lookup(message_type)
-	if (cached):
-		return cached
+	if (protobuf_desc_lookup(message_type)):
+		return;
+	if (protobuf_is_pending(message_type)):
+		return;
 	char* info = protobuf_message_info(message_type)
 	if (info == 0):
 		diag_part(c"'")
 		diag_part(type_get_name(message_type))
 		error(c"' is not a protobuf message")
+	if (load_int(info) < 0):
+		diag_part(c"protobuf message '")
+		diag_part(type_get_name(message_type))
+		error(c"' is declared but never defined")
+	assert1(protobuf_pending_count < 400)
+	save_int(protobuf_pending_types + protobuf_pending_count * 4, message_type)
+	protobuf_pending_count = protobuf_pending_count + 1
 	int n = load_int(info)
-
-	# Nested message descriptors first, each in its own blob.
 	int i = 0
 	while (i < n):
 		int kind = load_int(info + 8 + i * 12)
 		int elem_kind = load_int(info + 12 + i * 12)
 		if ((kind == protobuf_kind_message()) || (elem_kind == protobuf_kind_message())):
-			protobuf_descriptor(protobuf_field_message_type(type_get_field_type_at(message_type, i), kind))
+			protobuf_collect_pending(protobuf_field_message_type(type_get_field_type_at(message_type, i), kind))
 		i = i + 1
 
-	int p = be_blob_begin()
+
+int protobuf_repeated_count(char* info):
+	int n = load_int(info)
+	int r = 0
+	int i = 0
+	while (i < n):
+		if (load_int(info + 8 + i * 12) == protobuf_kind_repeated()):
+			r = r + 1
+		i = i + 1
+	return r
+
+
+# Words before a message's pb_message_desc header inside its section:
+# one pb_value_desc per repeated field, then the pb_field_desc array.
+int protobuf_section_prefix_words(char* info):
+	return protobuf_repeated_count(info) * 2 + load_int(info) * 4
+
+
+# Emits one message's section; every descriptor it references already
+# has its (possibly not yet emitted) address in the cache. Layout
+# (target words), matching the runtime structs: pb_value_desc {kind,
+# aux} per repeated field, then the pb_field_desc {number, kind, offset,
+# aux} array sorted by wire number (deterministic encode order), then
+# pb_message_desc {field_count, fields, struct_size}.
+void protobuf_emit_section(int message_type):
+	char* info = protobuf_message_info(message_type)
+	int n = load_int(info)
 
 	# Per-field aux words: nested descriptor for MESSAGE, a value
 	# descriptor for REPEATED (its aux is the nested descriptor for
 	# message elements, or the element width for bool, whose W storage
 	# is one byte).
 	char* aux_words = malloc(n * 4 + 4)
-	i = 0
+	int i = 0
 	while (i < n):
 		int field_type = type_get_field_type_at(message_type, i)
 		int kind = load_int(info + 8 + i * 12)
@@ -450,15 +534,47 @@ int protobuf_descriptor(int message_type):
 	# struct_size is rounded up to whole words: repeated message
 	# elements live by value in list slots of that size
 	# (list_element_slot_size), and the runtime sizes them from here.
-	int desc_address = code_offset + codepos
+	assert1(protobuf_desc_lookup(message_type) == code_offset + codepos)
 	emit_target_word(n)
 	emit_target_word(fields_address)
 	emit_target_word(type_stack_words(message_type) << word_size_log2)
-
-	be_blob_end(p)
 	free(aux_words)
-	protobuf_desc_store(message_type, desc_address)
-	return desc_address
+
+
+# Emit (or reuse) the descriptor for a message type and return its
+# absolute address. Every message it reaches that has no descriptor yet
+# goes into the same be_blob region (jumped over on the native targets,
+# data segment on wasm, so emitting mid-expression is safe). Section
+# sizes are known up front, so each descriptor's address is cached
+# before any section is written, which is what lets messages refer to
+# themselves or to each other.
+int protobuf_descriptor(int message_type):
+	message_type = type_canonical(type_unqualified(message_type))
+	int cached = protobuf_desc_lookup(message_type)
+	if (cached):
+		return cached
+	if (protobuf_pending_types == 0):
+		protobuf_pending_types = malloc(400 * 4)
+	protobuf_pending_count = 0
+	protobuf_collect_pending(message_type)
+
+	int p = be_blob_begin()
+	int address = code_offset + codepos
+	int i = 0
+	while (i < protobuf_pending_count):
+		int t = load_int(protobuf_pending_types + i * 4)
+		char* info = protobuf_message_info(t)
+		int prefix = protobuf_section_prefix_words(info) * word_size
+		protobuf_desc_store(t, address + prefix)
+		address = address + prefix + 3 * word_size
+		i = i + 1
+	i = 0
+	while (i < protobuf_pending_count):
+		protobuf_emit_section(load_int(protobuf_pending_types + i * 4))
+		i = i + 1
+	be_blob_end(p)
+	protobuf_pending_count = 0
+	return protobuf_desc_lookup(message_type)
 
 
 # Call fn_name(descriptor, stacked args...) : the arguments are already

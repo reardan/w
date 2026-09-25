@@ -80,6 +80,8 @@ char* type_get_name(int type_index);
 int type_get_size(int type_index);
 int type_get_pointer_level(int type_index);
 int type_lookup_previous_pointer(int type_index);
+int type_lookup_pointer(char* name, int pointer_level);
+int type_lookup(char* name);
 int type_canonical(int type_index);
 int type_unqualified(int type_index);
 int type_get_kind(int type_index);
@@ -418,7 +420,10 @@ int type_get_alias_target(int type_index):
 	if (type_index < 0):
 		return -1
 	type_rec* t = cast(type_rec*, type_records[type_index])
-	if (t.kind != type_kind_alias):
+	# A gpu-object record (type_kind_gpu, see type_get_gpu) canonicalizes
+	# like an alias: everything but the qualifier-aware checks sees the
+	# plain element type through it.
+	if ((t.kind != type_kind_alias) && (t.kind != 20)):
 		return -1
 	return t.alias_target
 
@@ -523,6 +528,119 @@ int type_lookup_const(int target):
 				return i
 		i = i + 1
 	return -1
+
+
+# 'gpu' pointer qualifier (docs/projects/cuda.md "Execution notes (gpu
+# pointer qualifier)"). 'gpu float32* p' is a pointer to a GPU-OBJECT
+# record G(float32): a kind-20 record named "gpu float32" that copies
+# float32's size/fields and whose alias_target is float32, so
+# type_canonical strips it exactly like an alias. The pointer record is
+# the ordinary name-keyed one ("gpu float32", level 1), so
+# type_lookup_previous_pointer (element lookup, index scaling) finds G
+# by name with no special casing, and every float/size helper sees
+# float32 through the canonical hop. Only the qualifier-aware checks
+# look at the raw record: an lvalue typed G addresses device global
+# memory (ld.global/st.global on device, a diagnostic on the host), and
+# pointer compatibility compares the "gpu " name prefix.
+int type_kind_gpu():
+	return 20
+
+
+# 1 when type_index (raw, value or not) is a gpu-object lvalue record.
+int type_is_gpu_object(int type_index):
+	type_index = type_real(type_index)
+	if (type_index < 0):
+		return 0
+	type_rec* t = cast(type_rec*, type_records[type_index])
+	return t.kind == 20
+
+
+# The plain type under a gpu-object record (value-ness preserved);
+# anything else is returned unchanged.
+int type_strip_gpu(int type_index):
+	if (type_is_gpu_object(type_index) == 0):
+		return type_index
+	type_rec* t = cast(type_rec*, type_records[type_real(type_index)])
+	if (type_is_value(type_index)):
+		return type_value(t.alias_target)
+	return t.alias_target
+
+
+# Memoized gpu-object record over target (a non-pointer type).
+int type_get_gpu(int target):
+	int real_target = type_canonical(target)
+	int i = 0
+	while (i < type_records.length):
+		type_rec* t = cast(type_rec*, type_records[i])
+		if (t.kind == 20):
+			if (t.alias_target == real_target):
+				return i
+		i = i + 1
+	char* name = strjoin(c"gpu ", type_get_name(real_target))
+	type_rec* new_type = type_alloc()
+	type_rec* target_record = type_record(real_target)
+	new_type.name = name
+	new_type.num_fields = target_record.num_fields
+	new_type.total_size = target_record.total_size
+	new_type.pointer_level = target_record.pointer_level
+	i = 0
+	while (i < 100):
+		new_type.field_names[i] = target_record.field_names[i]
+		new_type.field_types[i] = target_record.field_types[i]
+		i = i + 1
+	new_type.alias_target = real_target
+	new_type.kind = 20
+	new_type.fn_return_type = -1
+	new_type.fn_param_count = -1
+	int new_type_index = type_records.length
+	type_records.push(cast(int, new_type))
+	return new_type_index
+
+
+# 1 when t (after const/alias stripping) is a pointer whose base is a
+# gpu-object record: 'gpu T*', 'gpu T**', ... Pointer records store their
+# base type's name, and only type_get_gpu makes names with a space.
+int type_is_gpu_pointer(int t):
+	t = type_unqualified(t)
+	if (t < 0):
+		return 0
+	if (type_get_pointer_level(t) < 1):
+		return 0
+	char* name = type_get_name(t)
+	if ((name[0] == 'g') && (name[1] == 'p') && (name[2] == 'u') && (name[3] == ' ')):
+		return 1
+	return 0
+
+
+# 1 when want/got are both pointer types on different sides of the
+# host/device boundary (exactly one of them 'gpu'-qualified). Untyped
+# constants and non-pointers never mismatch here; the ordinary checks
+# own those.
+int types_gpu_domain_mismatch(int want, int got):
+	want = type_unqualified(want)
+	got = type_unqualified(got)
+	if ((want < 0) || (got < 0) || (got == 3) || (got == 4)):
+		return 0
+	if ((type_get_pointer_level(want) < 1) || (type_get_pointer_level(got) < 1)):
+		return 0
+	return type_is_gpu_pointer(want) != type_is_gpu_pointer(got)
+
+
+# The host-side twin of a gpu pointer type (same level over the plain
+# element type): 'gpu float32*' -> 'float32*'. Other types unchanged.
+int type_gpu_pointer_host_twin(int t):
+	if (type_is_gpu_pointer(t) == 0):
+		return t
+	t = type_unqualified(t)
+	int level = type_get_pointer_level(t)
+	int base = type_lookup(type_get_name(t))
+	if (base < 0):
+		return t
+	char* plain_name = type_get_name(type_strip_gpu(base))
+	int twin = type_lookup_pointer(plain_name, level)
+	if (twin < 0):
+		twin = type_push_pointer(plain_name, word_size, level)
+	return twin
 
 
 int type_get_kind(int type_index):
@@ -991,6 +1109,20 @@ int types_compatible(int want, int got):
 		if ((type_num_args(want) > 0) | (type_num_args(got) > 0)):
 			return 0
 		return 1
+	# The gpu qualifier partitions pointers into host and device
+	# domains: crossing takes an explicit cast() (grammar/promote.w
+	# reports the mismatch as an error). Within the device domain,
+	# 'gpu void*' converts to and from any same-depth gpu pointer.
+	int want_gpu = type_is_gpu_pointer(want)
+	if (want_gpu != type_is_gpu_pointer(got)):
+		return 0
+	if (want_gpu):
+		int want_elem = type_lookup(type_get_name(want))
+		int got_elem = type_lookup(type_get_name(got))
+		if ((want_elem >= 0) && (got_elem >= 0)):
+			if ((strcmp(type_get_name(type_canonical(want_elem)), c"void") == 0) ||
+					(strcmp(type_get_name(type_canonical(got_elem)), c"void") == 0)):
+				return 1
 	if (strcmp(type_get_name(want), c"void") == 0):
 		return 1
 	if (strcmp(type_get_name(got), c"void") == 0):

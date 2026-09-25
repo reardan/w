@@ -1,0 +1,4 @@
+﻿# leading UTF-8 BOM, then plain ASCII source
+int main():
+	println(c"bom ok")
+	return 0
