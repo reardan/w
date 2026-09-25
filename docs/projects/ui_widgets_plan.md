@@ -811,7 +811,10 @@ the same way round 1's four were.
   pin a UV, it updates in stage 10 as expected churn.
 - **`ui_font_data` has no drift check.** It sits outside `tests`, so a
   stale `font_data.w` would pass CI. Generator change and regenerated
-  output must land in one commit.
+  output must land in one commit. (Resolved under issue #323:
+  `font_data.w` is no longer committed; every `./wbuild` run
+  regenerates it through the `generated` umbrella, so it cannot go
+  stale.)
 - **Id stability.** Sequential per-frame ids remain a known limitation
   (`widgets.w:24-26`). Stage 10 removes one source of drift; the tree
   keys its keyboard cursor on a walk index rather than an id. Any

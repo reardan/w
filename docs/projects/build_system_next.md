@@ -75,7 +75,19 @@ What changed since the survey below, in the order it landed:
   are now `*_e2e.w` programs that spawn children through lib/process.w,
   and each owns its target through `target=` lines.
 
-Still hand-written in `build.base.json` (47 entries): the bootstrap
+- **Generated data is a build output.** `lib/grapheme_data.w` and
+  `graphics/ui/font_data.w` are no longer committed (they are
+  gitignored). Their generator targets (`grapheme_data`,
+  `ui_font_data`) are tagged `generated`, declare their inputs and
+  outputs, and wexec builds the `generated` umbrella before anything
+  outside its own closure starts, so every run sees them; once built,
+  that costs one cache check. Directory inputs skip those outputs when
+  hashing, so generating them never changes `wv2`'s key.
+  `libs/extras/c_import/generated_c_parser.w` stays committed because
+  the pinned seed compiles it into the compiler; `parser_generator_c_test`
+  fails if it drifts from `tests/parser_generator/c.pg`.
+
+Still hand-written in `build.base.json` (48 entries): the bootstrap
 chain and per-platform executors (`wv2`, `wexec*`, `build*`,
 `verify*`, `update*`), which the darwin and win64 executors must load
 without a directory walk; the umbrellas; and about 20 targets that

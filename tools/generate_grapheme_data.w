@@ -1,4 +1,4 @@
-# wbuild: target=grapheme_data dep=wv2
+# wbuild: target=grapheme_data tag=generated dep=wv2 input=tools/unicode/UnicodeData.txt output=lib/grapheme_data.w
 # wbuild: step="bin/wv2 tools/generate_grapheme_data.w -o bin/generate_grapheme_data"
 # wbuild: step="bin/generate_grapheme_data"
 # Emits lib/grapheme_data.w from the committed Unicode Character Database
@@ -204,6 +204,7 @@ void gen_emit(wstream* out, char* classes):
 	stream_write_cstr(out, c"# tools/unicode/UnicodeData.txt version ")
 	stream_write_cstr(out, gen_unicode_version())
 	stream_write_line(out, c".")
+	stream_write_line(out, c"# A build output, never committed: any ./wbuild run regenerates it (issue #323).")
 	gen_blank_lines(out, 2)
 
 	gen_prop_function(out, c"other", 0)
