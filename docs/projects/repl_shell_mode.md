@@ -1,6 +1,6 @@
 # REPL shell mode: design (issue #335)
 
-Status: design, stages 1–4 shipped (July–August 2026). Scopes issue
+Status: design, stages 1–5 shipped (July–September 2026). Scopes issue
 #335 against the shipped `!` escape and `lib/shell.w` (issue #276
 P0–P3, previous plan's waves 1–5) and against the Q4/Q5 reasoning in
 `docs/projects/repl_improvements.md`, which this doc extends rather
@@ -10,8 +10,11 @@ a stage 2 (task 3b of `docs/projects/sonnet_wave_plan_2026_07c.md`)
 that fills out the rest of the v1 tool subset, a stage 3 (the
 metadata tools `lib/stat.w` unblocked: `ls -l`, `touch`, `chmod`,
 `du`), and a stage 4 (`ln -s`, `df`, `ps`, and — once `lib/regex.w`
-landed as the reusable pattern core §6.3 waited for — `grep`); §11
-records what shipped and what stays deferred.
+landed as the reusable pattern core §6.3 waited for — `grep`), and a
+stage 5 (September 2026) that settled §12's naming and exit-status
+questions: prefixed tool names, session functions overriding the
+built-ins, and an `int` exit status from every tool; §11 records what
+shipped and what stays deferred.
 
 ## 1. The issue, verbatim
 
@@ -105,8 +108,9 @@ about the `!` escape's behavior in W mode changes.
   already in shell mode toggles back to W mode: one symmetric
   command, not two.
 - On the *first* entry into shell mode in a session, `repl.w`
-  synthesizes and evaluates `import lib.shell_commands as
-  shell_commands\n` through the ordinary `repl_eval` path — the same
+  synthesizes and evaluates `import lib.shell_commands\n` (an
+  aliased `import ... as shell_commands` until stage 5, §11) through
+  the ordinary `repl_eval` path — the same
   mechanism `:load` already uses to run a file's declarations into
   the live session (`repl_cmd_load`, `repl.w:382`). A flag remembers
   this happened once per session; `:reset` (which rolls back to the
@@ -191,6 +195,11 @@ generated: shell_commands.ls(c"/home/w/", true)
 per §6.2 — the issue's own `list=true` flag has no v1 native
 implementation to translate to).
 
+*(Superseded in stage 5, §12: the tools are now plain prefixed
+functions — `shell_commands_ls(c"/home/w/", true, false)` — imported
+without an alias, because a bare `ls` in the one flat symbol table
+collided with the user's own definitions.)*
+
 ### 5.2 Recognition test — fail closed to native, always
 
 A shell-mode line is translated to a native call only when **all**
@@ -259,18 +268,23 @@ already-trusted internal path — and booleans become the literal words
 
 ### 5.6 Echo
 
-`shell_commands` functions return `void` in v1 (§6.1), precisely so a
-translated call is a plain call-statement rather than a bare
-echoable expression — no stray return-code line after every `ls`. A
-function reports its own errors the way a real command would (a
-message to its own stderr), which reads more naturally next to real
-command output than a REPL echo of some encoded status would.
+*(Revised in stage 5, §12.)* v1's tools returned `void` so a
+translated call echoed nothing. They now return an `int` exit status
+(§6.1), and shell mode swaps the REPL's echo for a status reporter:
+0 prints nothing, so a successful `ls` still shows only its listing,
+and anything else prints `[exit N]` to stderr, after the tool's own
+coreutils-style error message. The native fallback's status (§7) is
+reported the same way, so `false` and a failing `ls` look alike
+whichever path ran them. Under `--json` the status is the record's
+`echo` field.
 
 ## 6. The native tool set
 
 ### 6.1 Return convention
 
-`void`, for the reason in §5.6. Errors print in coreutils' own
+An `int` exit status since stage 5 (§12; v1 was `void`): 0 on
+success, 1 when any argument failed, and for `grep` the real grep's
+0 (matched) / 1 (no match) / 2 (error). Errors print in coreutils' own
 phrasing (e.g. `ls: cannot access '...': No such file or directory`)
 to stderr, so the wording looks the same whether a command ran
 natively or fell back to the real binary via `sh_interactive` (§7).
@@ -587,7 +601,51 @@ single quotes.
 Pipes/redirection (§10): considered and deferred a fourth time, same
 reasoning as stages 2 and 3.
 
-**Stage 5+** (research-scale, no wave slot): hard-link `ln` if a
+**Stage 5, landed (September 2026): §12's naming and exit-status
+answers.** The maintainer's call on the two open questions: let the
+user's own functions win, namespace the built-ins, and give every
+command a return value.
+
+- *Prefixed names.* Every tool is `shell_commands_<command>`
+  (`shell_commands_ls`, `shell_commands_mkdir`, ...), imported as
+  plain `import lib.shell_commands`. The bare names had a real bug
+  behind the tradeoff §12 flagged: an import that declares a name the
+  session already defined fails outright ("symbol redefined"), so
+  defining your own `cat` before the first `:sh` made the whole
+  shell_commands import roll back and every native tool vanish. The
+  prefix costs nothing in shell mode, where the user types `ls` and
+  the translator writes the long name. It also retires the
+  `mkdir_p` workaround for the `mkdir(2)` wrapper's name;
+  `_octal`/`_ln_s` stay because they state the tools' restricted
+  scope.
+- *Session functions first.* Shell-mode dispatch (`repl.w`'s
+  `repl_dispatch_shell_line`) now checks, in order: `cd`/`export`;
+  a function the user defined in the session, at the prompt or in a
+  file run with `repl file.w`/`:load` (`repl/core.w`'s
+  `repl_session_function` — library functions never count, so a typed
+  `exit` or `open` cannot become a raw library call); the native tool;
+  the real binary. Like a bash function shadowing `/bin/ls`, this
+  works for any name, not just the built-ins': `deploy prod` calls
+  the session's `deploy(c"prod")`. Words map positionally by
+  parameter type (`repl/shell_translate.w`'s
+  `shell_translate_session_call`): `char*` takes the word as a
+  string, integer types need `[-]digits`, `bool` takes
+  `true`/`false`/`1`/`0`, a trailing `T... rest` takes every
+  remaining word, and parameters with defaults may be left off. A
+  flag-looking word is just a string, since only the function knows
+  what its flags mean. When the words do not fit, or a parameter
+  type cannot come from a word (a struct, a float), the REPL prints
+  the signature and `[exit 2]` rather than silently running the
+  built-in instead. Lines with a pipe, glob or other metacharacter
+  still go to the real shell first (§5.2 rule 1).
+- *Exit status.* Every tool returns an `int` (§6.1), reported as
+  §5.6 describes. A session function returning `int` is read the
+  same way (its return value is its exit status, like a shell
+  function's); any other return type echoes as it would at the W
+  prompt. `&&`/`||` chaining on the status is the natural next step
+  but still falls to the real shell today (rule 1's `&`/`|`).
+
+**Stage 6+** (research-scale, no wave slot): hard-link `ln` if a
 `link(2)` wrapper ever earns its place in `lib/__arch__`;
 `find`/`sed` (the predicate language and the editing engine remain
 unbuilt; `lib/regex.w` now covers sed's pattern half);
@@ -597,25 +655,16 @@ ends want `repl/core.w`.
 
 ## 12. Open questions for the maintainer
 
-- **Naming collisions.** `shell_commands` declares bare `ls`/`cat`/
-  `pwd`/etc. (via the alias-qualified spelling, §5.1) — acceptable to
-  pollute a *session's* flat namespace with those short names (only
-  once `:sh` has been used), or should the module use prefixed names
-  (`shell_commands_ls`) instead? The alias mechanism needs the
-  literal declared name either way — a prefixed name would make the
-  qualified spelling `shell_commands.shell_commands_ls(...)`, which
-  defeats the point. This doc recommends bare names but flags the
-  tradeoff.
+- ~~**Naming collisions.**~~ Settled in stage 5 (§11): prefixed
+  tool names, and the user's own session functions override the
+  built-ins.
 - **Scripted mode.** Should `:sh` even be reachable under
   `--json`/`-e`/`--quiet`, or is shell mode explicitly
   interactive-only for v1? This doc assumes interactive-only;
   scripting it would want its own NDJSON shape for a translated
   call's stdout/stderr/status, unspecified here.
-- **Exit status.** v1's `void`-return convention (§5.6) means a
-  sequence of shell-mode commands has no `$?`-style way to check
-  whether the previous one succeeded. Worth an `int` status
-  convention later (mirroring `lib/shell.w`'s decoded exit status)
-  once shell mode is used for more than one-off interactive commands?
+- ~~**Exit status.**~~ Settled in stage 5 (§11): every tool returns
+  an `int` status; shell mode prints `[exit N]` when it is nonzero.
 - **Prompt string.** Is `sh> ` acceptable, or is a real-shell-like
   `$ ` preferred despite the (minor) collision risk with a command's
   own output that happens to start with `$`?

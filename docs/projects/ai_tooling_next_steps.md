@@ -358,6 +358,20 @@ is a queue, not an archive.
   Cost here was a planning round, since the proposed spelling was in a
   committed design doc and read as known-good.
 
+- **REPL: an import fails when the session already defines one of
+  its names.** Observed 2026-09-25 (issue #335 stage 5): at the prompt,
+  `int ls(char* d): ...` and then `import lib.shell_commands` (which
+  used to declare a bare `ls`) fails with `symbol redefined: 'ls'`,
+  pointing into the library file, and the whole import rolls back.
+  Redefining in the other order is fine (a later prompt definition
+  shadows, #114), so which of two identical sessions works depends on
+  typing order. Shell mode sidestepped it with prefixed tool names, but
+  any `import` after a same-named prompt definition still hits it
+  (`path_join`, `regex_search`, ...). Direction: let an import's
+  declaration shadow a prompt-defined symbol the same way a prompt
+  redefinition shadows an import's, or at least say in the error that
+  the clash is with the session's own definition.
+
 - **`./wbuild -j 2 test_changed` misparses as a target lookup**
   (2026-08-06, lib/regex.w run). `test_changed` is a wbuild script
   mode dispatched only when it is literally `$1`, so leading flags

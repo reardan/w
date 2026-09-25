@@ -55,7 +55,7 @@ applies), and du (-s/--summarize, one optional path). chmod's mode
 word is the first non-flag positional whose spelling is validated
 rather than passed through: 1-4 octal digits, translated to a decimal
 int literal in the generated call ("chmod 644 f" ->
-"shell_commands.chmod_octal(420, c\"f\")").
+"shell_commands_chmod_octal(420, c\"f\")").
 
 Stage 4 adds ln (-s/--symbolic REQUIRED -- a bare "ln" is a hard
 link, which stays native), df (no flags, any number of paths), ps
@@ -269,7 +269,7 @@ int shell_translate_all_digits(char* s):
 char* shell_translate_pwd(list[char*] words):
 	if (words.length != 1):
 		return 0
-	return strclone(c"shell_commands.pwd()")
+	return strclone(c"shell_commands_pwd()")
 
 
 # ls: bare or one path positional; -a/--all and -l (long listing,
@@ -309,7 +309,7 @@ char* shell_translate_ls(list[char*] words):
 		path = c"." /* the documented default for a bare "ls" */
 	char* path_lit = shell_translate_string_literal(path)
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.ls(")
+	string_append(out, c"shell_commands_ls(")
 	string_append(out, path_lit)
 	if (all):
 		string_append(out, c", true")
@@ -336,7 +336,7 @@ char* shell_translate_cat(list[char*] words):
 			return 0
 		i = i + 1
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.cat(")
+	string_append(out, c"shell_commands_cat(")
 	i = 1
 	while (i < words.length):
 		if (i > 1):
@@ -372,7 +372,7 @@ char* shell_translate_echo(list[char*] words):
 			return 0
 		i = i + 1
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.echo(")
+	string_append(out, c"shell_commands_echo(")
 	if (no_newline):
 		string_append(out, c"true")
 	else:
@@ -427,7 +427,7 @@ char* shell_translate_head_tail(list[char*] words, char* callee, int default_n):
 	char* path_lit = shell_translate_string_literal(path)
 	char* n_str = itoa(n)
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.")
+	string_append(out, c"shell_commands_")
 	string_append(out, callee)
 	string_append(out, c"(")
 	string_append(out, path_lit)
@@ -485,7 +485,7 @@ char* shell_translate_wc(list[char*] words):
 		return 0
 	char* path_lit = shell_translate_string_literal(path)
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.wc(")
+	string_append(out, c"shell_commands_wc(")
 	string_append(out, path_lit)
 	if (count_lines):
 		string_append(out, c", true")
@@ -507,10 +507,8 @@ char* shell_translate_wc(list[char*] words):
 
 
 # mkdir: one or more directory positionals; -p/--parents is the only
-# known flag, generating a call to lib/shell_commands.w's mkdir_p (the
-# module header explains the name -- "mkdir" itself collides with the
-# raw mkdir(2) syscall wrapper this file's own import closure already
-# brings in).
+# known flag, generating a call to lib/shell_commands.w's
+# shell_commands_mkdir.
 char* shell_translate_mkdir(list[char*] words):
 	int parents = 0
 	# dirs borrows words' strings, so only the list struct itself needs
@@ -542,7 +540,7 @@ char* shell_translate_mkdir(list[char*] words):
 		__w_list_free(cast(__w_list*, dirs))
 		return 0
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.mkdir_p(")
+	string_append(out, c"shell_commands_mkdir(")
 	if (parents):
 		string_append(out, c"true")
 	else:
@@ -600,7 +598,7 @@ char* shell_translate_rm(list[char*] words):
 		__w_list_free(cast(__w_list*, paths))
 		return 0
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.rm(")
+	string_append(out, c"shell_commands_rm(")
 	if (recursive):
 		string_append(out, c"true, ")
 	else:
@@ -658,7 +656,7 @@ char* shell_translate_cp(list[char*] words):
 	char* src_lit = shell_translate_string_literal(src)
 	char* dst_lit = shell_translate_string_literal(dst)
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.cp(")
+	string_append(out, c"shell_commands_cp(")
 	if (recursive):
 		string_append(out, c"true, ")
 	else:
@@ -683,7 +681,7 @@ char* shell_translate_mv(list[char*] words):
 	char* src_lit = shell_translate_string_literal(words[1])
 	char* dst_lit = shell_translate_string_literal(words[2])
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.mv(")
+	string_append(out, c"shell_commands_mv(")
 	string_append(out, src_lit)
 	string_append(out, c", ")
 	string_append(out, dst_lit)
@@ -730,7 +728,7 @@ char* shell_translate_touch(list[char*] words):
 		__w_list_free(cast(__w_list*, paths))
 		return 0
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.touch(")
+	string_append(out, c"shell_commands_touch(")
 	if (no_create):
 		string_append(out, c"true")
 	else:
@@ -771,9 +769,8 @@ int shell_translate_octal_value(char* s):
 # chmod: an octal mode word then one or more path positionals; no
 # flags in v1 (no -R -- a '-' word anywhere fails the line, so
 # "chmod -R 755 d" runs the real chmod). Generates a call to
-# lib/shell_commands.w's chmod_octal (the module header there explains
-# the name -- "chmod" itself collides with the raw chmod(2) syscall
-# wrapper, the same collision mkdir_p documents).
+# lib/shell_commands.w's shell_commands_chmod_octal (octal modes only,
+# as the name says).
 char* shell_translate_chmod(list[char*] words):
 	if (words.length < 3):
 		return 0 /* a mode and at least one path */
@@ -787,7 +784,7 @@ char* shell_translate_chmod(list[char*] words):
 		i = i + 1
 	char* mode_str = itoa(mode)
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.chmod_octal(")
+	string_append(out, c"shell_commands_chmod_octal(")
 	string_append(out, mode_str)
 	free(mode_str)
 	i = 2
@@ -835,7 +832,7 @@ char* shell_translate_du(list[char*] words):
 		path = c"."
 	char* path_lit = shell_translate_string_literal(path)
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.du(")
+	string_append(out, c"shell_commands_du(")
 	if (summarize):
 		string_append(out, c"true, ")
 	else:
@@ -854,8 +851,8 @@ char* shell_translate_du(list[char*] words):
 # ("ln -s target", linking into the cwd), its N-targets-into-a-
 # directory form, and -f/-n/-r/-t are all unknown shapes here and fail
 # the whole line closed to native. Generates a call to
-# lib/shell_commands.w's ln_s (the module header there explains the
-# restricted-scope name).
+# lib/shell_commands.w's shell_commands_ln_s (the module header there
+# explains the restricted-scope name).
 char* shell_translate_ln(list[char*] words):
 	int symbolic = 0
 	char* target = 0
@@ -889,7 +886,7 @@ char* shell_translate_ln(list[char*] words):
 	char* target_lit = shell_translate_string_literal(target)
 	char* link_lit = shell_translate_string_literal(linkpath)
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.ln_s(")
+	string_append(out, c"shell_commands_ln_s(")
 	string_append(out, target_lit)
 	string_append(out, c", ")
 	string_append(out, link_lit)
@@ -910,7 +907,7 @@ char* shell_translate_df(list[char*] words):
 			return 0 /* no flags in v1 */
 		i = i + 1
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.df(")
+	string_append(out, c"shell_commands_df(")
 	i = 1
 	while (i < words.length):
 		if (i > 1):
@@ -930,7 +927,7 @@ char* shell_translate_df(list[char*] words):
 char* shell_translate_ps(list[char*] words):
 	if (words.length != 1):
 		return 0
-	return strclone(c"shell_commands.ps()")
+	return strclone(c"shell_commands_ps()")
 
 
 # grep: -n/--line-number is the only known flag, then a pattern and
@@ -966,7 +963,7 @@ char* shell_translate_grep(list[char*] words):
 		__w_list_free(cast(__w_list*, positionals))
 		return 0
 	string_builder* out = string_new()
-	string_append(out, c"shell_commands.grep(")
+	string_append(out, c"shell_commands_grep(")
 	if (line_numbers):
 		string_append(out, c"true")
 	else:
@@ -985,7 +982,7 @@ char* shell_translate_grep(list[char*] words):
 	return s
 
 
-# Translate one shell-mode line to a ready-to-eval "shell_commands...."
+# Translate one shell-mode line to a ready-to-eval "shell_commands_...."
 # W call, or 0 when any part of the recognition test failed -- the
 # caller's cue (repl.w) to hand the whole line, untouched, to native
 # (Sec 5.2/Sec 7).
@@ -1033,3 +1030,86 @@ char* shell_translate_line(char* line):
 			result = shell_translate_grep(words)
 	shell_translate_free_words(words)
 	return result
+
+
+# ---------------------------------------------------------------------------
+# Session-function calls (issue #335, design doc Sec 12 "Naming
+# collisions"): in shell mode a function the user defined in this
+# session wins over a same-named native tool and over the real binary,
+# so "greet world" calls the session's greet(c"world"). repl.w owns the
+# symbol-table side (which name is a session function, and each
+# parameter's kind); this file only turns the typed words into call
+# text, staying pure like the rest of the translator.
+
+# How one typed word becomes a W argument for a parameter of that
+# kind: char* takes the word as a c"..." literal, an integer type needs
+# [-]digits, bool takes true/false/1/0.
+enum shell_arg_kind:
+	shell_arg_string
+	shell_arg_int
+	shell_arg_bool
+
+
+# 1 when w is an optional '-' followed by one or more decimal digits.
+int shell_translate_int_word(char* w):
+	if (w[0] == '-'):
+		return shell_translate_all_digits(w + 1)
+	return shell_translate_all_digits(w)
+
+
+# One word rendered as an argument of the given shell_arg_kind kind,
+# appended to out; 0 when the word does not fit the kind (a non-number
+# for an integer parameter), else 1.
+int shell_translate_append_arg(string_builder* out, char* w, int kind):
+	if (kind == shell_arg_int):
+		if (shell_translate_int_word(w) == 0):
+			return 0
+		string_append(out, w)
+		return 1
+	if (kind == shell_arg_bool):
+		if ((strcmp(w, c"true") == 0) || (strcmp(w, c"1") == 0)):
+			string_append(out, c"true")
+			return 1
+		if ((strcmp(w, c"false") == 0) || (strcmp(w, c"0") == 0)):
+			string_append(out, c"false")
+			return 1
+		return 0
+	char* lit = shell_translate_string_literal(w)
+	string_append(out, lit)
+	free(lit)
+	return 1
+
+
+# Call text for session function words[0] with words[1..] as its
+# arguments, or 0 when they do not fit its signature. kinds holds one
+# shell_arg_kind per fixed parameter; the first `required` of them must be
+# supplied, the rest have declared defaults and may be left off.
+# variadic_kind is the element kind of a trailing "T... rest"
+# parameter, which takes every remaining word, or -1 when there is
+# none. Every word is passed positionally and literally: a word
+# starting with '-' is just a string argument here, since only the
+# function itself knows what its flags mean.
+char* shell_translate_session_call(list[char*] words, list[int] kinds, int required, int variadic_kind):
+	int given = words.length - 1
+	if (given < required):
+		return 0
+	if ((given > kinds.length) && (variadic_kind < 0)):
+		return 0
+	string_builder* out = string_new()
+	string_append(out, words[0])
+	string_append(out, c"(")
+	int i = 0
+	while (i < given):
+		if (i > 0):
+			string_append(out, c", ")
+		int kind = variadic_kind
+		if (i < kinds.length):
+			kind = kinds[i]
+		if (shell_translate_append_arg(out, words[i + 1], kind) == 0):
+			string_free(out)
+			return 0
+		i = i + 1
+	string_append(out, c")")
+	char* s = out.data
+	free(out)
+	return s
