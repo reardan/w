@@ -276,17 +276,9 @@ void for_range_loop(int for_var, int for_tab_level):
 		store_stack_var((stack_pos - for_var) << word_size_log2)
 
 	# Enter a new loop context for break/continue
-	int outer_break = loop_break_chain
-	int outer_continue = loop_continue_chain
-	int outer_stack = loop_stack_pos
-	int outer_in_switch = break_in_switch
-	# Exit region: the failed condition and 'break' land after the loop.
+	int* outer = loop_enter()
 	# Loop region: the back edge re-tests the condition.
-	loop_break_chain = be_ctrl_block()
 	int h_top = be_ctrl_loop()
-	loop_stack_pos = stack_pos
-	break_in_switch = 0
-	loop_depth = loop_depth + 1
 
 	# condition: loop var < end
 	push_slot_copy(for_var)
@@ -318,11 +310,7 @@ void for_range_loop(int for_var, int for_tab_level):
 	# break exits here; continue ran the increment first
 	be_ctrl_end(loop_break_chain)
 
-	loop_break_chain = outer_break
-	loop_continue_chain = outer_continue
-	loop_stack_pos = outer_stack
-	break_in_switch = outer_in_switch
-	loop_depth = loop_depth - 1
+	loop_leave(outer)
 
 	# Discard the hidden range slots (the loop variable itself stays)
 	drop_slots(num_range_args)
@@ -432,17 +420,10 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	int cursor_slot = push_slot()
 
 	# Enter a new loop context for break/continue
-	int outer_break = loop_break_chain
-	int outer_continue = loop_continue_chain
-	int outer_stack = loop_stack_pos
-	int outer_in_switch = break_in_switch
-	# Exit region: the done-check and 'break' land after the loop (where
-	# free_fn releases the container). Loop region: the back edge re-tests.
-	loop_break_chain = be_ctrl_block()
+	# The exit region is where free_fn releases the container.
+	int* outer = loop_enter()
+	# Loop region: the back edge re-tests.
 	int h_top = be_ctrl_loop()
-	loop_stack_pos = stack_pos
-	break_in_switch = 0
-	loop_depth = loop_depth + 1
 
 	# condition: exit once done_fn(container, cursor) is true, or once
 	# the index cursor reaches the length word
@@ -518,11 +499,7 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	if (free_fn != 0):
 		for_iter_call(free_fn, container_slot, 0)
 
-	loop_break_chain = outer_break
-	loop_continue_chain = outer_continue
-	loop_stack_pos = outer_stack
-	break_in_switch = outer_in_switch
-	loop_depth = loop_depth - 1
+	loop_leave(outer)
 
 	# Discard the hidden container and cursor slots (the loop variable stays)
 	drop_slots(2)

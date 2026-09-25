@@ -34,8 +34,9 @@ void assign_store(int type):
 		store_ebx_word()
 
 
-void assign_store_struct(int type):
-	gpu_host_access_check(type)
+# Copy the struct at eax into the struct at ebx, word by word, then
+# rebuild any inline array-field descriptors in the destination.
+void struct_copy_eax_to_ebx(int type):
 	int words = (type_get_size(type) + word_size - 1) >> word_size_log2
 	push_ebx()
 	stack_pos = stack_pos + 1
@@ -55,6 +56,11 @@ void assign_store_struct(int type):
 	if (type_has_array_field(type)):
 		mov_eax_ebx()
 		init_array_field_descriptors(type)
+
+
+void assign_store_struct(int type):
+	gpu_host_access_check(type)
+	struct_copy_eax_to_ebx(type)
 
 
 # Compound assignment: return the underlying operator for the current

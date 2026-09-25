@@ -590,42 +590,56 @@ void verbosity_raise():
 		verbosity = verbosity + 1
 
 
-# Every dash-prefixed option link_impl understands. The pre-scan and the
-# positional flag loop below must agree on the set, so it lives in one
-# place; -o is excluded because its argument-consuming form needs
-# special handling at both call sites.
-int link_option_recognized(char* arg):
-	if (strcmp(arg, c"--bounds=on") == 0):
-		return 1
-	if (strcmp(arg, c"--bounds=trap") == 0):
+# Every dash-prefixed option link_impl understands, in one place so the
+# up-front validation and the positional flag loop agree on the set; -o
+# is excluded because its argument-consuming form needs special
+# handling at both call sites. Returns 1 when arg is an option; with
+# apply set, also applies its positional effect. The whole-program
+# options (--pac, --wasm-acc, -v/--verbose) take effect in link_impl's
+# pre-scans, so here they are only recognized.
+int link_option(char* arg, int apply):
+	if ((strcmp(arg, c"--bounds=on") == 0) || (strcmp(arg, c"--bounds=trap") == 0)):
+		if (apply):
+			bounds_mode = 1
 		return 1
 	if (strcmp(arg, c"--bounds=off") == 0):
-		return 1
-	if (strcmp(arg, c"--pac=off") == 0):
-		return 1
-	if (strcmp(arg, c"--pac=ret") == 0):
-		return 1
-	if (strcmp(arg, c"--pac=full") == 0):
+		if (apply):
+			bounds_mode = 0
 		return 1
 	if (strcmp(arg, c"--strict") == 0):
+		if (apply):
+			strict_mode = 1
 		return 1
 	if (strcmp(arg, c"--quiet") == 0):
+		if (apply):
+			quiet_mode = 1
 		return 1
 	if (strcmp(arg, c"--stats") == 0):
+		if (apply):
+			stats_mode = 1
 		return 1
 	if (strcmp(arg, c"--stats-selfcheck") == 0):
+		if (apply):
+			sym_index_selfcheck = 1
 		return 1
-	if (strcmp(arg, c"--wasm-acc=globals") == 0):
-		return 1
-	if (strcmp(arg, c"--wasm-acc=locals") == 0):
-		return 1
-	if (strcmp(arg, c"-v") == 0):
-		return 1
-	if (strcmp(arg, c"--verbose") == 0):
+	if (starts_with(arg, c"--ptx=")):
+		# Debug dump of the embedded PTX module (kernels/'gpu for'),
+		# written by ptx_finish_module; ignored when no kernels exist.
+		if (apply):
+			ptx_dump_path = arg + 6
 		return 1
 	if (starts_with(arg, c"--cubin-file=")):
+		# Opt-in pre-compiled GPU image (ptxas output for the --ptx
+		# dump), embedded by ptx_finish_cubin; the runtime tries it
+		# before JIT-loading the PTX (docs/projects/cuda.md).
+		if (apply):
+			ptx_cubin_path = arg + 13
 		return 1
-	return starts_with(arg, c"--ptx=")
+	if ((strcmp(arg, c"--pac=off") == 0) || (strcmp(arg, c"--pac=ret") == 0) || (strcmp(arg, c"--pac=full") == 0)):
+		return 1
+	if ((strcmp(arg, c"--wasm-acc=globals") == 0) || (strcmp(arg, c"--wasm-acc=locals") == 0)):
+		return 1
+	return (strcmp(arg, c"-v") == 0) || (strcmp(arg, c"--verbose") == 0)
 
 
 # --help/-h: the full documented flag surface, one line per flag, on
@@ -863,42 +877,33 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# --pac is whole-program: signing at materialization and authenticating
 	# at the call site must agree across every compiled file (a mixed image
 	# would trap at runtime), and the Mach-O header consumes the level in
-	# be_start below. So the level is fixed by a pre-scan of the remaining
-	# arguments here; the positional flag loop merely re-applies it.
-	int pac_level = arm64_pac
-	int pac_scan = i
-	while (pac_scan < argc):
-		char** pac_arg = argv + pac_scan * __word_size__
-		if (strcmp(*pac_arg, c"--pac=off") == 0):
-			pac_level = 0
-		else if (strcmp(*pac_arg, c"--pac=ret") == 0):
-			pac_level = 1
-		else if (strcmp(*pac_arg, c"--pac=full") == 0):
-			pac_level = 2
-		pac_scan = pac_scan + 1
-	arm64_pac = pac_level
-	# --wasm-acc is whole-program too (every wasm function body and call
-	# site must agree on the accumulator representation, and be_start
-	# below emits the entry/OS stubs), so pre-scan it the same way; the
-	# positional loop re-applies the level. Default: locals — the stage-5
+	# be_start below. --wasm-acc is whole-program too (every wasm function
+	# body and call site must agree on the accumulator representation, and
+	# be_start below emits the entry/OS stubs). So both levels are fixed by
+	# a pre-scan of the remaining arguments here; link_option only
+	# recognizes them. --wasm-acc default: locals — the stage-5
 	# measurement showed engines run them ~13% faster than module globals
 	# for ~4% larger modules (docs/projects/wasm_backend.md).
-	int wasm_acc_level = 1
-	int acc_scan = i
-	while (acc_scan < argc):
-		char** acc_arg = argv + acc_scan * __word_size__
-		if (strcmp(*acc_arg, c"--wasm-acc=globals") == 0):
-			wasm_acc_level = 0
-		else if (strcmp(*acc_arg, c"--wasm-acc=locals") == 0):
-			wasm_acc_level = 1
-		acc_scan = acc_scan + 1
-	wasm_acc_locals = wasm_acc_level
+	wasm_acc_locals = 1
+	int pre_scan = i
+	while (pre_scan < argc):
+		char** pre_arg = argv + pre_scan * __word_size__
+		if (strcmp(*pre_arg, c"--pac=off") == 0):
+			arm64_pac = 0
+		else if (strcmp(*pre_arg, c"--pac=ret") == 0):
+			arm64_pac = 1
+		else if (strcmp(*pre_arg, c"--pac=full") == 0):
+			arm64_pac = 2
+		else if (strcmp(*pre_arg, c"--wasm-acc=globals") == 0):
+			wasm_acc_locals = 0
+		else if (strcmp(*pre_arg, c"--wasm-acc=locals") == 0):
+			wasm_acc_locals = 1
+		pre_scan = pre_scan + 1
 	# Option validation is up front, not positional: a typo'd flag after
 	# the file list used to be reported only after every earlier root had
 	# fully compiled (docs/projects/ai_tooling.md). -v/--verbose applies
 	# here too, so the flag covers the whole compile wherever it appears
-	# on the line; the loop below re-applies the pre-scanned level, like
-	# the --pac branches.
+	# on the line.
 	int flag_scan = i
 	while (flag_scan < argc):
 		char** flag_arg = argv + flag_scan * __word_size__
@@ -912,10 +917,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			help_link()
 			exit(0)
 		else if (starts_with(*flag_arg, c"-")):
-			if (link_option_recognized(*flag_arg) == 0):
+			if (link_option(*flag_arg, 0) == 0):
 				unrecognized_option_error(*flag_arg)
 		flag_scan = flag_scan + 1
-	int verbose_level = verbosity
 	push_basic_types()
 	pointer_indirection = 0
 	# No function body is being compiled yet: the '?' operator checks
@@ -968,53 +972,17 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			asserts(c"-o requires an output path", i < argc)
 			arg = argv + i * __word_size__
 			output_path = *arg
-		else if (strcmp(*arg, c"--bounds=on") == 0):
-			bounds_mode = 1
-		else if (strcmp(*arg, c"--bounds=trap") == 0):
-			bounds_mode = 1
-		else if (strcmp(*arg, c"--bounds=off") == 0):
-			bounds_mode = 0
-		else if (strcmp(*arg, c"--pac=off") == 0):
-			arm64_pac = pac_level
-		else if (strcmp(*arg, c"--pac=ret") == 0):
-			arm64_pac = pac_level
-		else if (strcmp(*arg, c"--pac=full") == 0):
-			arm64_pac = pac_level
-		else if (strcmp(*arg, c"--strict") == 0):
-			strict_mode = 1
-		else if (strcmp(*arg, c"--quiet") == 0):
-			quiet_mode = 1
-		else if (strcmp(*arg, c"--stats") == 0):
-			stats_mode = 1
-		else if (strcmp(*arg, c"--stats-selfcheck") == 0):
-			sym_index_selfcheck = 1
-		else if (strcmp(*arg, c"--wasm-acc=globals") == 0):
-			wasm_acc_locals = wasm_acc_level
-		else if (strcmp(*arg, c"--wasm-acc=locals") == 0):
-			wasm_acc_locals = wasm_acc_level
-		else if (strcmp(*arg, c"-v") == 0):
-			verbosity = verbose_level
-		else if (strcmp(*arg, c"--verbose") == 0):
-			verbosity = verbose_level
-		else if (starts_with(*arg, c"--ptx=")):
-			# Debug dump of the embedded PTX module (kernels/'gpu for'),
-			# written by ptx_finish_module; ignored when no kernels exist.
-			ptx_dump_path = *arg + 6
-		else if (starts_with(*arg, c"--cubin-file=")):
-			# Opt-in pre-compiled GPU image (ptxas output for the --ptx
-			# dump), embedded by ptx_finish_cubin; the runtime tries it
-			# before JIT-loading the PTX (docs/projects/cuda.md).
-			ptx_cubin_path = *arg + 13
 		else if (starts_with(*arg, c"-")):
-			# Every recognized flag was matched above; a dash-prefixed
-			# argument that reaches here is a typo or an unsupported
+			# Options apply positionally (link_option). A dash-prefixed
+			# argument that is not one is a typo or an unsupported
 			# option ('--bounds=xyz', '--nope'), not an input file — a
 			# file named '-x' is vanishingly rare in this codebase, and
 			# treating it as a root instead produced a misleading "no
 			# such file: '--bounds=xyz'" (the fallthrough below tried to
 			# open it). Normally unreachable: the pre-scan above already
 			# failed before any root compiled; kept as a safety net.
-			unrecognized_option_error(*arg)
+			if (link_option(*arg, 1) == 0):
+				unrecognized_option_error(*arg)
 		else:
 			char* input = *arg
 			int lint_text_done = 0

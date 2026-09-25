@@ -25,7 +25,7 @@ helper symbols it declares.
 
 
 # Defined in grammar/program.w (shared with function_definition)
-int parse_constant_default();
+int param_default_record(int current_symbol, int param_count, int saw_default);
 
 
 # The generator* type for call results and the hidden self parameter.
@@ -105,13 +105,7 @@ void generator_function_definition(int current_symbol):
 		# in grammar/program.w; generator_call_suffix pushes them for
 		# missing trailing arguments.
 		if (accept(c"=")):
-			if (param_count > sym_max_param_slots()):
-				error(c"default values are only supported on the first 10 parameters")
-			int default_value = parse_constant_default()
-			if (saw_default == 0):
-				sym_clear_param_defaults(current_symbol)
-			saw_default = 1
-			sym_set_param_default(current_symbol, param_count - 1, default_value)
+			saw_default = param_default_record(current_symbol, param_count, saw_default)
 		else if (saw_default):
 			error(c"parameter without a default follows a parameter with a default")
 

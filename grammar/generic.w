@@ -541,6 +541,23 @@ type of a non-generic declaration whose name is now the current token.
 int generic_scanned_type
 
 
+# A generic function definition 'T name[params](...) ...' whose type
+# started at first_offset (line/column first_line/first_column), with
+# the name as the current token: register it and skip its body.
+void generic_register_definition(int first_offset, int first_line, int first_column):
+	char* fname = strclone(token)
+	get_token()
+	int params = cast(int, malloc(generic_max_params() * __word_size__))
+	int n = generic_parse_param_names(params)
+	if (peek(c"(") == 0):
+		error3(c"'(' expected after the type parameter list of generic '", fname, c"'")
+	generic_def_add(fname, 0, strclone(filename), first_offset, first_line - 1, first_column - 1, n, params)
+	generic_skip_definition()
+	# defhash coverage (wave plan C task 4f): same span the definition
+	# registry just recorded (first_offset..the skip's end).
+	defhash_note(fname, c"generic_function", decl_file_index(), first_line, first_column, first_offset, token_start_offset)
+
+
 # Lookahead for a generic function definition whose return type is a
 # generic struct instantiation ('wresult[T]* new_ok[T](T value):').
 # The plain scan cannot claim these: the return type itself starts with
@@ -573,20 +590,9 @@ int generic_declaration_scan_generic_return():
 	int c1 = token[0]
 	int name_is_ident = is_ident_start_byte(c1)
 	if (name_is_ident & (nextc == '[')):
-		# generic function definition: register and skip
-		char* fname = strclone(token)
-		get_token()
-		int params = cast(int, malloc(generic_max_params() * __word_size__))
-		int n = generic_parse_param_names(params)
-		if (peek(c"(") == 0):
-			error3(c"'(' expected after the type parameter list of generic '", fname, c"'")
-		generic_def_add(fname, 0, strclone(filename), first_offset, first_line - 1, first_column - 1, n, params)
 		free(cast(char*, load_ptr(save + 11 * __word_size__)))
 		free(save)
-		generic_skip_definition()
-		# defhash coverage (wave plan C task 4f): same span the definition
-		# registry just recorded (first_offset..the skip's end).
-		defhash_note(fname, c"generic_function", decl_file_index(), first_line, first_column, first_offset, token_start_offset)
+		generic_register_definition(first_offset, first_line, first_column)
 		return 1
 	# Not a definition (e.g. 'wresult[int]* f(...)'): rewind, so the
 	# normal type_name() path parses the generic struct return type.
@@ -627,19 +633,8 @@ int generic_declaration_scan():
 	int c1 = token[0]
 	int name_is_ident = is_ident_start_byte(c1)
 	if (name_is_ident & (nextc == '[')):
-		# generic function definition: register and skip
-		char* fname = strclone(token)
-		get_token()
-		int params = cast(int, malloc(generic_max_params() * __word_size__))
-		int n = generic_parse_param_names(params)
-		if (peek(c"(") == 0):
-			error3(c"'(' expected after the type parameter list of generic '", fname, c"'")
-		generic_def_add(fname, 0, strclone(filename), first_offset, first_line - 1, first_column - 1, n, params)
 		free(first)
-		generic_skip_definition()
-		# defhash coverage (wave plan C task 4f): same span the definition
-		# registry just recorded (first_offset..the skip's end).
-		defhash_note(fname, c"generic_function", decl_file_index(), first_line, first_column, first_offset, token_start_offset)
+		generic_register_definition(first_offset, first_line, first_column)
 		return 1
 
 	# Not generic: rebuild the type from the scanned parts, mirroring

@@ -40,26 +40,8 @@ int gpu_for_statement(); /* defined in gpu_for */
 
 
 void copy_struct_return_value(int declared_type):
-	int words = (type_get_size(declared_type) + word_size - 1) >> word_size_log2
 	mov_ebx_esp_plus((stack_pos + number_of_args) << word_size_log2)
-	push_ebx()
-	stack_pos = stack_pos + 1
-	push_slot()
-	int i = 0
-	while (i < words):
-		mov_eax_esp_plus(0)
-		if (i > 0):
-			add_eax_int32(i << word_size_log2)
-		promote_eax()
-		if (i > 0):
-			add_ebx_int32(word_size)
-		store_ebx_word()
-		i = i + 1
-	pop_eax_slot()
-	pop_ebx_slot()
-	if (type_has_array_field(declared_type)):
-		mov_eax_ebx()
-		init_array_field_descriptors(declared_type)
+	struct_copy_eax_to_ebx(declared_type)
 
 # Postfix '?' error propagation (docs/error_results.txt). The operand
 # must be a wresult[T]* — a pointer to an instantiated generic struct

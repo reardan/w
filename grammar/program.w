@@ -77,6 +77,21 @@ int parse_constant_default():
 	return value
 
 
+# Records the constant after a parameter's '=' (already consumed) as the
+# default of parameter param_count (1-based) of the function at
+# current_symbol; returns the new saw_default (1). The first default of
+# a declaration replaces any recorded earlier (a definition overrides
+# its prototype).
+int param_default_record(int current_symbol, int param_count, int saw_default):
+	if (param_count > sym_max_param_slots()):
+		error(c"default values are only supported on the first 10 parameters")
+	int default_value = parse_constant_default()
+	if (saw_default == 0):
+		sym_clear_param_defaults(current_symbol)
+	sym_set_param_default(current_symbol, param_count - 1, default_value)
+	return 1
+
+
 # Parses "parameter-list ) [; | body]" for the function symbol at table
 # offset current_symbol; the opening "(" has already been consumed.
 # Shared by program() and the REPL's entry dispatcher.
@@ -142,15 +157,7 @@ void function_definition(int current_symbol):
 				error(c"a variadic parameter cannot have a default value")
 			if (type_is_var(type_unqualified(type))):
 				error(c"default values are not supported on var parameters")
-			if (param_count > sym_max_param_slots()):
-				error(c"default values are only supported on the first 10 parameters")
-			int default_value = parse_constant_default()
-			if (saw_default == 0):
-				# This declaration's defaults replace any recorded earlier
-				# (a definition overrides its prototype)
-				sym_clear_param_defaults(current_symbol)
-			saw_default = 1
-			sym_set_param_default(current_symbol, param_count - 1, default_value)
+			saw_default = param_default_record(current_symbol, param_count, saw_default)
 		else if (saw_default):
 			error(c"parameter without a default follows a parameter with a default")
 
