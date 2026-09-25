@@ -247,7 +247,7 @@ int repl_declare_global(char* name, int type, int symtype):
 			save_int(table + t + 18, pointer_indirection)
 			return t
 	sym_declare(name, type, 'U', code_offset, symtype)
-	return table_pos - symbol_data_size()
+	return table_pos - symbol_data_size
 
 
 # True when the current token begins a non-expression statement.

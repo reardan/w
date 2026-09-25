@@ -21,8 +21,7 @@ handler owns the gating logic; this file only stores the state.
 import debugger.locals
 
 
-int bp_max():
-	return 64
+const int bp_max = 64
 
 
 char* bp_addrs   /* absolute address, 0 = free slot */
@@ -37,16 +36,16 @@ int bp_used
 
 
 void bp_init():
-	bp_addrs = malloc(bp_max() * 4)
-	bp_bytes = malloc(bp_max() * 4)
-	bp_armeds = malloc(bp_max() * 4)
-	bp_temps = malloc(bp_max() * 4)
-	bp_hit_counts = malloc(bp_max() * 4)
-	bp_ignore_counts = malloc(bp_max() * 4)
-	bp_cond_exprs = malloc(bp_max() * __word_size__)
-	bp_log_exprs = malloc(bp_max() * __word_size__)
+	bp_addrs = malloc(bp_max * 4)
+	bp_bytes = malloc(bp_max * 4)
+	bp_armeds = malloc(bp_max * 4)
+	bp_temps = malloc(bp_max * 4)
+	bp_hit_counts = malloc(bp_max * 4)
+	bp_ignore_counts = malloc(bp_max * 4)
+	bp_cond_exprs = malloc(bp_max * __word_size__)
+	bp_log_exprs = malloc(bp_max * __word_size__)
 	int i = 0
-	while (i < bp_max()):
+	while (i < bp_max):
 		save_int(bp_addrs + i * 4, 0)
 		save_int(bp_hit_counts + i * 4, 0)
 		save_int(bp_ignore_counts + i * 4, 0)
@@ -158,7 +157,7 @@ int bp_add(int addr, int temp):
 	if (bp_find(addr) >= 0):
 		println(c"a breakpoint is already set there")
 		return -1
-	if (bp_used >= bp_max()):
+	if (bp_used >= bp_max):
 		println(c"too many breakpoints")
 		return -1
 	if (bp_read_byte(addr) == 204):

@@ -37,7 +37,7 @@ int conditional_arm_is_value(int t):
 		return 1
 	if ((t == string_value_type) || (t == var_value_type)):
 		return 1
-	if (type_get_kind(t) == type_kind_slice_value()):
+	if (type_get_kind(t) == type_kind_slice_value):
 		return 1
 	return 0
 
@@ -74,8 +74,8 @@ int conditional_expr():
 	else_type = promote(else_type)
 	# An untyped constant then-arm takes the else arm's type ('c ? 1 : x')
 	int result = then_type
-	int then_is_slice_value = type_get_kind(type_unqualified(then_type)) == type_kind_slice_value()
-	int else_is_slice_value = type_get_kind(type_unqualified(else_type)) == type_kind_slice_value()
+	int then_is_slice_value = type_get_kind(type_unqualified(then_type)) == type_kind_slice_value
+	int else_is_slice_value = type_get_kind(type_unqualified(else_type)) == type_kind_slice_value
 	if (then_type == 3):
 		result = else_type
 		if (else_is_slice_value):

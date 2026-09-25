@@ -329,7 +329,7 @@ int promote(int type):
 		return type_get_slice_value(type_get_element_type(type))
 	if (type_num_args(type) > 0): /* struct: keep the address */
 		return type
-	if (type_get_kind(type) == type_kind_slice()):
+	if (type_get_kind(type) == type_kind_slice):
 		promote_eax()
 		return type_get_slice_value(type_get_element_type(type))
 	if (type == string_type):
@@ -475,7 +475,7 @@ void coerce_explicit(int want, int got):
 	int got_address_sized = type_get_pointer_level(got_real) > 0
 	if (got_real == 4):
 		got_address_sized = 1
-	int got_decays = type_get_kind(got_real) == type_kind_slice_value()
+	int got_decays = type_get_kind(got_real) == type_kind_slice_value
 	if (got_decays):
 		got_address_sized = 1
 	if (got_address_sized & (type_get_pointer_level(want_real) == 0)):

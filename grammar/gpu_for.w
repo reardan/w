@@ -171,7 +171,7 @@ int gpu_for_statement():
 
 	be_ctrl_end(h_guard)
 	ret()
-	ptx_kernel_end(gpu_capture_count, gpu_capture_limit() << word_size_log2)
+	ptx_kernel_end(gpu_capture_count, gpu_capture_limit << word_size_log2)
 	in_gpu_for_body = 0
 	device_mode_exit()
 	table_pos = n

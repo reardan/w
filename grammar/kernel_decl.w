@@ -97,15 +97,14 @@ char* gpu_capture_names    # per-slot host symbol name (owned strclone)
 char* gpu_capture_syms     # per-slot host symbol table offset (-1 = bound)
 
 
-int gpu_capture_limit():
-	return 32
+const int gpu_capture_limit = 32
 
 
 # Start a fresh capture set with slot 0 = the range bound.
 void gpu_capture_reset():
 	if (gpu_capture_names == 0):
-		gpu_capture_names = malloc(gpu_capture_limit() * __word_size__)
-		gpu_capture_syms = malloc(gpu_capture_limit() * 4)
+		gpu_capture_names = malloc(gpu_capture_limit * __word_size__)
+		gpu_capture_syms = malloc(gpu_capture_limit * 4)
 	int i = 0
 	while (i < gpu_capture_count):
 		char* name = cast(char*, load_ptr(gpu_capture_names + i * __word_size__))
@@ -138,7 +137,7 @@ int gpu_capture_slot(int t, char* name):
 		if (load_int(gpu_capture_syms + i * 4) == t):
 			return i
 		i = i + 1
-	if (gpu_capture_count >= gpu_capture_limit()):
+	if (gpu_capture_count >= gpu_capture_limit):
 		error(c"too many variables captured in 'gpu for'")
 	save_ptr(gpu_capture_names + gpu_capture_count * __word_size__, cast(int, strclone(name)))
 	save_int(gpu_capture_syms + gpu_capture_count * 4, t)
@@ -220,7 +219,7 @@ void kernel_function_definition(int current_symbol, char* kernel_name):
 			error(c"kernel parameters must be word-sized")
 		if (type_num_args(type_real(type)) > 0):
 			error(c"kernel parameters must be word-sized")
-		if (param_count <= sym_max_param_slots()):
+		if (param_count <= sym_max_param_slots):
 			save_int(table + current_symbol + 22 + (param_count << 2), type)
 		# The parameter's value: ld.param into the accumulator, then an
 		# ordinary local declaration at the slot about to be pushed.

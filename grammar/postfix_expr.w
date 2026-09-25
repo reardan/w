@@ -1,6 +1,5 @@
 int expression_lhs_readonly
 
-int extern_max_params();
 int ffi_type_class(int type);
 int ffi_push_promoted_float32();
 int ci_is_bit_field_access(int type_index); /* defined in libs/extras/c_import/importer */
@@ -398,7 +397,7 @@ int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_a
 		push_slot()
 		return arg_class
 	# Variadic tail: C default argument promotions
-	if (type_get_kind(type_unqualified(arg_type)) == type_kind_slice_value()):
+	if (type_get_kind(type_unqualified(arg_type)) == type_kind_slice_value):
 		# Arrays and slices decay unconditionally in a C variadic tail,
 		# exactly like C: load the descriptor's first word so the callee
 		# receives the data pointer, not the descriptor's address.
@@ -421,13 +420,13 @@ int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_a
 # calls because the float argument classes differ per call site (on x64
 # they select xmm registers and set al).
 int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int declared_return, int fixed_args):
-	char* arg_classes = malloc(extern_max_params())
+	char* arg_classes = malloc(extern_max_params)
 	int passed_args = 0
 	if (accept(c")") == 0):
 		arg_classes[passed_args] = parse_variadic_call_argument(callee_sym, callee_name, passed_args, fixed_args)
 		passed_args = passed_args + 1
 		while (accept(c",")):
-			if (passed_args >= extern_max_params()):
+			if (passed_args >= extern_max_params):
 				error(c"too many arguments in variadic call")
 			arg_classes[passed_args] = parse_variadic_call_argument(callee_sym, callee_name, passed_args, fixed_args)
 			passed_args = passed_args + 1

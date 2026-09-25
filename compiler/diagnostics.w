@@ -80,8 +80,7 @@ int diag_suggest_best_distance
 char* diag_suggest_rows
 
 
-int diag_suggest_max_length():
-	return 64
+const int diag_suggest_max_length = 64
 
 
 void diag_suggest_begin(char* name):
@@ -89,7 +88,7 @@ void diag_suggest_begin(char* name):
 	diag_suggest_best = 0
 	diag_suggest_best_distance = 1000
 	if (diag_suggest_rows == 0):
-		diag_suggest_rows = malloc(3 * (diag_suggest_max_length() + 1))
+		diag_suggest_rows = malloc(3 * (diag_suggest_max_length + 1))
 
 
 int diag_lower(int c):
@@ -105,12 +104,12 @@ int diag_min(int a, int b):
 
 
 # Edit distance between a and b (lengths n and m, both at most
-# diag_suggest_max_length()); rows are one byte per cell, which the
+# diag_suggest_max_length); rows are one byte per cell, which the
 # length cap keeps in range. Returns 0 for a case-only difference.
 int diag_edit_distance(char* a, int n, char* b, int m):
 	char* prev2 = diag_suggest_rows
-	char* prev = diag_suggest_rows + (diag_suggest_max_length() + 1)
-	char* row = diag_suggest_rows + 2 * (diag_suggest_max_length() + 1)
+	char* prev = diag_suggest_rows + (diag_suggest_max_length + 1)
+	char* row = diag_suggest_rows + 2 * (diag_suggest_max_length + 1)
 	int j = 0
 	while (j <= m):
 		prev[j] = j
@@ -152,7 +151,7 @@ void diag_suggest_consider(char* candidate):
 	int m = strlen(candidate)
 	if ((n == 0) || (m == 0)):
 		return
-	if ((n > diag_suggest_max_length()) || (m > diag_suggest_max_length())):
+	if ((n > diag_suggest_max_length) || (m > diag_suggest_max_length)):
 		return
 	int limit = n
 	if (limit < 3):

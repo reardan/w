@@ -15,20 +15,19 @@ int dbg_fr_count
 int dbg_fr_sel
 
 
-int dbg_fr_max():
-	return 16
+const int dbg_fr_max = 16
 
 
 void dbg_fr_reset():
 	if (dbg_fr_pc == 0):
-		dbg_fr_pc = malloc(dbg_fr_max() * __word_size__)
-		dbg_fr_base = malloc(dbg_fr_max() * __word_size__)
+		dbg_fr_pc = malloc(dbg_fr_max * __word_size__)
+		dbg_fr_base = malloc(dbg_fr_max * __word_size__)
 	dbg_fr_count = 0
 	dbg_fr_sel = 0
 
 
 void dbg_fr_store(int pc, int base):
-	if (dbg_fr_count >= dbg_fr_max()):
+	if (dbg_fr_count >= dbg_fr_max):
 		return;
 	save_word(dbg_fr_pc + dbg_fr_count * __word_size__, pc)
 	save_word(dbg_fr_base + dbg_fr_count * __word_size__, base)

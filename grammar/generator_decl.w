@@ -94,7 +94,7 @@ void generator_function_definition(int current_symbol):
 			error(c"generator parameters must be word-sized")
 		if (type_num_args(type_real(type)) > 0):
 			error(c"generator parameters must be word-sized")
-		if (param_count <= sym_max_param_slots()):
+		if (param_count <= sym_max_param_slots):
 			save_int(table + current_symbol + 22 + (param_count << 2), type)
 		if (peek(c")") == 0):
 			sym_declare(token, type, 'A', number_of_args, 1)

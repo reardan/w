@@ -85,34 +85,24 @@ void __w_hash_value_copy(char* dst, char* src, int count):
 		i = i + 1
 
 
-int __w_hash_key_word():
-	return 1
-
-
-int __w_hash_key_cstr():
-	return 2
-
-
-int __w_hash_key_string():
-	return 3
+const int __w_hash_key_word = 1
+const int __w_hash_key_cstr = 2
+const int __w_hash_key_string = 3
 
 
 # Missing-key policies for maps built with 'new map[K, V](...)' (issue
 # #327). 0 (none) keeps the documented trap; the other kinds make a
 # missing read INSERT a freshly-materialized default and return it.
-int __w_hash_default_none():
-	return 0
+const int __w_hash_default_none = 0
 
 
 # default_value is the value word itself, copied into every missing slot.
-int __w_hash_default_value():
-	return 1
+const int __w_hash_default_value = 1
 
 
 # default_value is a zero-argument factory's address, called per missing
 # key so vivified values never alias each other.
-int __w_hash_default_factory():
-	return 2
+const int __w_hash_default_factory = 2
 
 
 # default_value is a packed descriptor for an empty inner container,
@@ -124,8 +114,7 @@ int __w_hash_default_factory():
 #   bit 4     inner map's scalar values default to a zero word, so
 #             outer[a][b] += 1 works on a completely fresh 'a'
 #   bits 5+   inner value_size (map) / element slot size (list)
-int __w_hash_default_container():
-	return 3
+const int __w_hash_default_container = 3
 
 
 # Missing-key trap (issue #188): says which key was missing before
@@ -133,9 +122,9 @@ int __w_hash_default_container():
 # as integers. The trap helpers live in structures/w_list.w.
 void __w_map_missing_key(__w_hash_table* table, int key):
 	__w_trap_cstr(c"map key not found: ")
-	if (table.key_kind == __w_hash_key_cstr()):
+	if (table.key_kind == __w_hash_key_cstr):
 		__w_trap_cstr(cast(char*, key))
-	else if (table.key_kind == __w_hash_key_string()):
+	else if (table.key_kind == __w_hash_key_string):
 		write(2, cast(char*, load_ptr(cast(char*, key))), load_ptr(key + __word_size__))
 	else:
 		__w_trap_int(key)
@@ -154,9 +143,9 @@ int __w_hash_bytes(int data, int length):
 
 
 int __w_hash_key_hash(int kind, int key):
-	if (kind == __w_hash_key_cstr()):
+	if (kind == __w_hash_key_cstr):
 		return __w_hash_bytes(key, __w_strlen(cast(char*, key)))
-	if (kind == __w_hash_key_string()):
+	if (kind == __w_hash_key_string):
 		return __w_hash_bytes(load_ptr(cast(char*, key)), load_ptr(key + __word_size__))
 	return key * 33
 
@@ -177,9 +166,9 @@ int __w_hash_string_equal(int left, int right):
 
 
 int __w_hash_key_equal(int kind, int left, int right):
-	if (kind == __w_hash_key_cstr()):
+	if (kind == __w_hash_key_cstr):
 		return __w_strcmp(cast(char*, left), cast(char*, right)) == 0
-	if (kind == __w_hash_key_string()):
+	if (kind == __w_hash_key_string):
 		return __w_hash_string_equal(left, right)
 	return left == right
 
@@ -200,15 +189,15 @@ int __w_hash_clone_string(int key):
 
 
 int __w_hash_key_clone(int kind, int key):
-	if (kind == __w_hash_key_cstr()):
+	if (kind == __w_hash_key_cstr):
 		return cast(int, __w_strclone(cast(char*, key)))
-	if (kind == __w_hash_key_string()):
+	if (kind == __w_hash_key_string):
 		return __w_hash_clone_string(key)
 	return key
 
 
 void __w_hash_key_free(int kind, int key):
-	if ((kind == __w_hash_key_cstr()) | (kind == __w_hash_key_string())):
+	if ((kind == __w_hash_key_cstr) || (kind == __w_hash_key_string)):
 		free(cast(void*, key))
 
 
@@ -246,7 +235,7 @@ __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 	table.deleted = 0
 	table.key_kind = key_kind
 	table.value_size = value_size
-	table.default_kind = __w_hash_default_none()
+	table.default_kind = __w_hash_default_none
 	table.default_value = 0
 	int slot_size = __w_hash_slot_size(table)
 	table.keys = malloc(capacity * __word_size__)
@@ -411,7 +400,7 @@ void __w_map_set_default(__w_hash_table* table, int kind, int value):
 	table.default_value = value
 
 
-# Build the empty inner container a __w_hash_default_container()
+# Build the empty inner container a __w_hash_default_container
 # descriptor describes (layout above __w_hash_default_container).
 int __w_map_default_new_container(int desc):
 	int code = desc & 3
@@ -421,7 +410,7 @@ int __w_map_default_new_container(int desc):
 		return cast(int, __w_list_new(size))
 	__w_hash_table* inner = __w_map_new(kind, size)
 	if (desc & 16):
-		inner.default_kind = __w_hash_default_value()
+		inner.default_kind = __w_hash_default_value
 		inner.default_value = 0
 	return cast(int, inner)
 
@@ -430,17 +419,17 @@ int __w_map_default_new_container(int desc):
 # the slot is claimed so a factory that mutates this same map cannot
 # invalidate the slot index.
 int __w_map_default_materialize(__w_hash_table* table):
-	if (table.default_kind == __w_hash_default_factory()):
+	if (table.default_kind == __w_hash_default_factory):
 		int factory = table.default_value
 		return factory()
-	if (table.default_kind == __w_hash_default_container()):
+	if (table.default_kind == __w_hash_default_container):
 		return __w_map_default_new_container(table.default_value)
 	return table.default_value
 
 
 # Auto-vivification (issue #327): insert the materialized default for a
 # missing key and return it. Only reachable when default_kind is not
-# __w_hash_default_none(), i.e. the map opted in at construction.
+# __w_hash_default_none, i.e. the map opted in at construction.
 int __w_map_vivify(__w_hash_table* table, int key):
 	int value = __w_map_default_materialize(table)
 	int i = __w_map_insert_slot(table, key)
@@ -455,7 +444,7 @@ int __w_map_vivify(__w_hash_table* table, int key):
 int __w_map_get(__w_hash_table* table, int key):
 	int i = __w_hash_table_slot(table, key)
 	if (table.states[i] != 1):
-		if (table.default_kind == __w_hash_default_none()):
+		if (table.default_kind == __w_hash_default_none):
 			__w_map_missing_key(table, key)
 		return __w_map_vivify(table, key)
 	int* slot = cast(int*, __w_hash_value_addr(table, i))

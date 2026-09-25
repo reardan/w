@@ -103,16 +103,11 @@ import debugger.attach
 
 
 # Stepping state machine, consumed by the SIGTRAP handler.
-int dbg_step_none():
-	return 0
-int dbg_step_insn():
-	return 1
-int dbg_step_line_mode():
-	return 2
-int dbg_step_over():
-	return 3
-int dbg_step_finish():
-	return 4
+const int dbg_step_none = 0
+const int dbg_step_insn = 1
+const int dbg_step_line_mode = 2
+const int dbg_step_over = 3
+const int dbg_step_finish = 4
 
 int dbg_step_mode
 int dbg_step_line   /* source line at the step's start */
@@ -251,7 +246,7 @@ void dbg_frames_compute(int context, int stop_addr):
 	int main_at = dbg_function_at(sym_address(c"main"))
 	int outermost = (dbg_function_at(stop_addr) == main_at)
 	int i = 0
-	while ((i < 2048) & (dbg_fr_count < dbg_fr_max())):
+	while ((i < 2048) && (dbg_fr_count < dbg_fr_max)):
 		int slot = esp + i * __word_size__
 		if (dbg_mem_readable(slot, __word_size__) == 0):
 			return;
@@ -705,7 +700,7 @@ void dbg_prepare_resume(int context, int stop_addr, int mode):
 		bp_disarm(bp)
 		dbg_rearm_bp = bp
 		ctx_set_trap_flag(context)
-	else if (mode != dbg_step_none()):
+	else if (mode != dbg_step_none):
 		ctx_set_trap_flag(context)
 	# Live watchpoints turn every resume into a single-step scan
 	if (dbg_watch_live() > 0):
@@ -739,15 +734,15 @@ void wdbg_command_loop(int context, int stop_addr):
 		int resume_mode = -1
 
 		if ((strcmp(command, c"c") == 0) | (strcmp(command, c"continue") == 0)):
-			resume_mode = dbg_step_none()
+			resume_mode = dbg_step_none
 		else if ((strcmp(command, c"s") == 0) | (strcmp(command, c"step") == 0)):
-			resume_mode = dbg_step_line_mode()
+			resume_mode = dbg_step_line_mode
 		else if ((strcmp(command, c"n") == 0) | (strcmp(command, c"next") == 0)):
-			resume_mode = dbg_step_over()
+			resume_mode = dbg_step_over
 		else if ((strcmp(command, c"si") == 0) | (strcmp(command, c"stepi") == 0)):
-			resume_mode = dbg_step_insn()
+			resume_mode = dbg_step_insn
 		else if ((strcmp(command, c"fin") == 0) | (strcmp(command, c"finish") == 0)):
-			resume_mode = dbg_step_finish()
+			resume_mode = dbg_step_finish
 		else if ((strcmp(command, c"q") == 0) | (strcmp(command, c"quit") == 0)):
 			repl_cleanup()
 			exit(0)
@@ -826,7 +821,7 @@ void wdbg_command_loop(int context, int stop_addr):
 			# A 'debugger' statement is a whole one-byte statement that has
 			# already executed, leaving eip at the next statement's start.
 			# Stepping from it only moves the reported position there.
-			if ((resume_mode == dbg_step_line_mode()) | (resume_mode == dbg_step_over())):
+			if ((resume_mode == dbg_step_line_mode) || (resume_mode == dbg_step_over)):
 				int reip = ctx_eip(context)
 				if (dbg_in_debuggee(reip)):
 					int rentry = dbg_find_line(reip - code_offset)
@@ -854,7 +849,7 @@ void wdbg_command_loop(int context, int stop_addr):
 
 # Announce a stop, reset the stepping state and enter the command loop.
 void wdbg_stop_loop(int context, int stop_addr):
-	dbg_step_mode = dbg_step_none()
+	dbg_step_mode = dbg_step_none
 	ctx_clear_trap_flag(context)
 	wdbg_command_loop(context, stop_addr)
 
@@ -869,7 +864,7 @@ void wdbg_stop_loop(int context, int stop_addr):
 # it separates this frame from callees (deeper), recursive instances
 # (different base) and callers (shallower), without frame pointers.
 int dbg_step_should_stop(int context, int eip):
-	if (dbg_step_mode == dbg_step_insn()):
+	if (dbg_step_mode == dbg_step_insn):
 		return 1
 	if (dbg_in_debuggee(eip) == 0):
 		return 0 /* inside wdbg itself (e.g. between --break_start and main) */
@@ -881,7 +876,7 @@ int dbg_step_should_stop(int context, int eip):
 	if (dbg_step_stack >= 0):
 		frame_base = dbg_step_esp + dbg_step_stack * __word_size__
 
-	if (dbg_step_mode == dbg_step_finish()):
+	if (dbg_step_mode == dbg_step_finish):
 		return esp > frame_base
 
 	# step/next only stop at exact statement starts: local addressing is
@@ -891,7 +886,7 @@ int dbg_step_should_stop(int context, int eip):
 		return 0
 	if ((dbg_line_line(entry) == dbg_step_line) & (dbg_line_file(entry) == dbg_step_file)):
 		return 0
-	if (dbg_step_mode == dbg_step_over()):
+	if (dbg_step_mode == dbg_step_over):
 		if (dbg_step_fstart == 0):
 			return 1 /* unknown starting frame: behave like step */
 		if (esp > frame_base):
@@ -981,7 +976,7 @@ void wdbg_trap(int sig, int context):
 				# breakpoint: rewinds eip already happened above, so
 				# this just re-establishes the one-step re-arm and any
 				# live-watchpoint single-stepping before returning.
-				dbg_prepare_resume(context, addr, dbg_step_none())
+				dbg_prepare_resume(context, addr, dbg_step_none)
 				return;
 
 			print(c"hit ")
@@ -1023,7 +1018,7 @@ void wdbg_trap(int sig, int context):
 							dbg_disas_show_context(eip)
 						wdbg_stop_loop(context, eip)
 						return;
-	if (dbg_step_mode == dbg_step_none()):
+	if (dbg_step_mode == dbg_step_none):
 		if (dbg_watch_live() > 0):
 			# 'continue' with watchpoints: keep scanning until execution
 			# returns past the resume point into wdbg itself
@@ -1039,7 +1034,7 @@ void wdbg_trap(int sig, int context):
 	dbg_step_count = dbg_step_count + 1
 	if (dbg_step_count > 500000):
 		println(c"step: no source boundary found: continuing")
-		dbg_step_mode = dbg_step_none()
+		dbg_step_mode = dbg_step_none
 		if (dbg_watch_live() == 0):
 			ctx_clear_trap_flag(context)
 		return;
@@ -1047,11 +1042,11 @@ void wdbg_trap(int sig, int context):
 	if (dbg_in_debuggee(eip) == 0):
 		if (ctx_esp(context) > dbg_step_esp):
 			println(c"(step left the debuggee: continuing)")
-			dbg_step_mode = dbg_step_none()
+			dbg_step_mode = dbg_step_none
 			ctx_clear_trap_flag(context)
 			return;
 	if (dbg_step_should_stop(context, eip)):
-		if (dbg_step_mode == dbg_step_finish()):
+		if (dbg_step_mode == dbg_step_finish):
 			# The function returned; execution is mid-statement at the call
 			# site, where local addressing would be off by the words the
 			# call pushed. Report the value, then glide to the next
@@ -1059,7 +1054,7 @@ void wdbg_trap(int sig, int context):
 			print(c"value returned = ")
 			dbg_print_int_value(ctx_eax(context))
 			put_char(10)
-			dbg_prepare_resume(context, eip, dbg_step_line_mode())
+			dbg_prepare_resume(context, eip, dbg_step_line_mode)
 			dbg_step_esp = ctx_esp(context)
 			ctx_set_trap_flag(context)
 			return;
@@ -1068,7 +1063,7 @@ void wdbg_trap(int sig, int context):
 		# Instruction stepping means instruction-level display: 'si' stops
 		# always show the surrounding instructions; other stops only after
 		# 'disas on' (source-level stepping stays quiet by default).
-		if ((dbg_step_mode == dbg_step_insn()) | dbg_disas_auto):
+		if ((dbg_step_mode == dbg_step_insn) | dbg_disas_auto):
 			dbg_disas_show_context(eip)
 		wdbg_stop_loop(context, eip)
 		return;

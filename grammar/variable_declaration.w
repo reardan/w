@@ -74,7 +74,7 @@ int inferred_declaration():
 	# initializer, so the initializer cannot reference the new name and
 	# the recorded slot index needs no post-expression fixup.
 	sym_declare(name, type, 'L', stack_pos, 1)
-	lint_track_local(table_pos - symbol_data_size())
+	lint_track_local(table_pos - symbol_data_size)
 	free(name)
 	pointer_indirection = 0
 	int size = type_stack_words(type)

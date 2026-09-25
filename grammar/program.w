@@ -83,7 +83,7 @@ int parse_constant_default():
 # a declaration replaces any recorded earlier (a definition overrides
 # its prototype).
 int param_default_record(int current_symbol, int param_count, int saw_default):
-	if (param_count > sym_max_param_slots()):
+	if (param_count > sym_max_param_slots):
 		error(c"default values are only supported on the first 10 parameters")
 	int default_value = parse_constant_default()
 	if (saw_default == 0):
@@ -121,7 +121,7 @@ void function_definition(int current_symbol):
 			expect(c".")
 			if (saw_default):
 				error(c"a variadic parameter cannot follow parameters with default values")
-			if (param_count > sym_max_param_slots()):
+			if (param_count > sym_max_param_slots):
 				error(c"variadic functions support at most 10 parameters")
 			int elem = type_unqualified(type)
 			if ((type_num_args(elem) > 0) | type_is_array(elem) | type_is_slice(elem) |
@@ -135,7 +135,7 @@ void function_definition(int current_symbol):
 		if (type_is_array(type)):
 			error(c"fixed array parameter is not implemented; use T[] instead")
 		# Record the declared type so call sites can check arguments
-		if (param_count <= sym_max_param_slots()):
+		if (param_count <= sym_max_param_slots):
 			save_int(table + current_symbol + 22 + (param_count << 2), type)
 		/* this seems stupid, you could just have (typename) with no identifier */
 		if (peek(c")") == 0):
@@ -445,7 +445,7 @@ void export_function_note(int t, char* name, int ret_type):
 	if (sym_w_variadic_fixed_args(t) >= 0):
 		error(c"cannot export a variadic function")
 	int n = sym_num_args(t)
-	if (n > sym_max_param_slots()):
+	if (n > sym_max_param_slots):
 		error(c"exported functions support at most 10 parameters")
 	if ((type_num_args(ret_type) > 0) & (type_get_pointer_level(ret_type) == 0)):
 		error(c"cannot export a function returning a struct by value")

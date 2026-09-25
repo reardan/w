@@ -268,8 +268,7 @@ int json_is_digit(int c):
 	return (c >= '0') & (c <= '9')
 
 
-int json_max_depth():
-	return 128
+const int json_max_depth = 128
 
 
 # Native int limits, computed by shifting a 1 into the sign bit so the
@@ -682,12 +681,12 @@ json_value* json_parse_value(json_parser* p, int depth):
 	json_skip_ws(p)
 	int c = p.input[p.index]
 	if (c == '{'):
-		if (depth >= json_max_depth()):
+		if (depth >= json_max_depth):
 			json_fail(p)
 			return 0
 		return json_parse_object(p, depth + 1)
 	if (c == '['):
-		if (depth >= json_max_depth()):
+		if (depth >= json_max_depth):
 			json_fail(p)
 			return 0
 		return json_parse_array(p, depth + 1)

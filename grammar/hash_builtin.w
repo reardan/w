@@ -75,7 +75,7 @@ int hash_default_inner_zero(int value_type):
 
 # Packed descriptor for the synthesized empty-container default of
 # 'new map[K, container]()'. The layout contract lives above
-# __w_hash_default_container() in structures/hash_table.w; the baked
+# __w_hash_default_container in structures/hash_table.w; the baked
 # constants mirror hash_emit_new_container/list_emit_new_container.
 int hash_default_container_descriptor(int value_type):
 	int t = type_unqualified(value_type)

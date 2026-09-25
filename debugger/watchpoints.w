@@ -19,8 +19,7 @@ import debugger.locals
 import debugger.memory
 
 
-int dbg_watch_max():
-	return 16
+const int dbg_watch_max = 16
 
 char* dbg_watch_addrs /* watched address per slot, 0 = deleted (word slots) */
 char* dbg_watch_olds  /* last seen value (word slots) */
@@ -31,9 +30,9 @@ int dbg_watch_count
 void dbg_watch_init():
 	if (dbg_watch_addrs != 0):
 		return;
-	dbg_watch_addrs = malloc(dbg_watch_max() * __word_size__)
-	dbg_watch_olds = malloc(dbg_watch_max() * __word_size__)
-	dbg_watch_texts = malloc(dbg_watch_max() * __word_size__)
+	dbg_watch_addrs = malloc(dbg_watch_max * __word_size__)
+	dbg_watch_olds = malloc(dbg_watch_max * __word_size__)
+	dbg_watch_texts = malloc(dbg_watch_max * __word_size__)
 
 
 int dbg_watch_addr_at(int i):
@@ -63,7 +62,7 @@ int dbg_watch_live():
 # Record a watchpoint over the word at addr; returns its slot or -1.
 int dbg_watch_add(char* text, int addr):
 	dbg_watch_init()
-	if (dbg_watch_count >= dbg_watch_max()):
+	if (dbg_watch_count >= dbg_watch_max):
 		println(c"too many watchpoints")
 		return -1
 	int i = dbg_watch_count

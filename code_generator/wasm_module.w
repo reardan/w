@@ -71,8 +71,7 @@ int wasm_num_imports():
 # parameter class array (ffi.w classes: 0 = i32 word/pointer, 1 = f32),
 # and the result kind (0 = none, 1 = i32, 2 = f32).
 
-int wasm_extern_max():
-	return 1024
+const int wasm_extern_max = 1024
 
 char* wasm_extern_modules
 char* wasm_extern_names
@@ -85,11 +84,11 @@ void wasm_extern_init():
 		# Host pointer arrays stride by __word_size__, not the target's
 		# word_size (an x64 host compiling wasm would truncate the
 		# pointers to 4 bytes otherwise — the wasm_func_names lesson).
-		wasm_extern_modules = malloc(wasm_extern_max() * __word_size__)
-		wasm_extern_names = malloc(wasm_extern_max() * __word_size__)
-		wasm_extern_classes = malloc(wasm_extern_max() * __word_size__)
-		wasm_extern_nparams = malloc(wasm_extern_max() * 4)
-		wasm_extern_rets = malloc(wasm_extern_max() * 4)
+		wasm_extern_modules = malloc(wasm_extern_max * __word_size__)
+		wasm_extern_names = malloc(wasm_extern_max * __word_size__)
+		wasm_extern_classes = malloc(wasm_extern_max * __word_size__)
+		wasm_extern_nparams = malloc(wasm_extern_max * 4)
+		wasm_extern_rets = malloc(wasm_extern_max * 4)
 
 # Register one extern import and return its function index. Imports
 # precede defined functions in the wasm function index space, and W code
@@ -97,7 +96,7 @@ void wasm_extern_init():
 # index), so the index is final the moment the extern is declared.
 int wasm_extern_add(char* module, char* name, int n_params, char* classes, int ret_kind):
 	wasm_extern_init()
-	if (wasm_extern_count >= wasm_extern_max()):
+	if (wasm_extern_count >= wasm_extern_max):
 		error(c"too many extern imports")
 	char* classes_copy = malloc(n_params + 1)
 	int i = 0
@@ -125,8 +124,7 @@ int wasm_extern_add(char* module, char* name, int n_params, char* classes, int r
 # conventions (classes: 0 = i32 word/pointer, 1 = f32; result kind:
 # 0 = none, 1 = i32, 2 = f32).
 
-int wasm_export_max():
-	return 1024
+const int wasm_export_max = 1024
 
 char* wasm_export_syms
 char* wasm_export_names
@@ -137,11 +135,11 @@ int wasm_export_count
 
 void wasm_export_init():
 	if (wasm_export_syms == 0):
-		wasm_export_syms = malloc(wasm_export_max() * 4)
-		wasm_export_names = malloc(wasm_export_max() * __word_size__)
-		wasm_export_classes = malloc(wasm_export_max() * __word_size__)
-		wasm_export_nparams = malloc(wasm_export_max() * 4)
-		wasm_export_rets = malloc(wasm_export_max() * 4)
+		wasm_export_syms = malloc(wasm_export_max * 4)
+		wasm_export_names = malloc(wasm_export_max * __word_size__)
+		wasm_export_classes = malloc(wasm_export_max * __word_size__)
+		wasm_export_nparams = malloc(wasm_export_max * 4)
+		wasm_export_rets = malloc(wasm_export_max * 4)
 
 # The four names wasm_finish always exports.
 int wasm_export_name_reserved(char* name):
@@ -161,7 +159,7 @@ int wasm_export_name_reserved(char* name):
 # checked here, where the registry lives.
 void wasm_export_add(int sym, char* name, int n_params, char* classes, int ret_kind):
 	wasm_export_init()
-	if (wasm_export_count >= wasm_export_max()):
+	if (wasm_export_count >= wasm_export_max):
 		error(c"too many exported functions")
 	if (wasm_export_name_reserved(name)):
 		error3(c"export name '", name, c"' collides with a reserved module export")

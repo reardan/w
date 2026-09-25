@@ -42,8 +42,7 @@ int template_string_needed
 char* template_chains
 
 
-int template_helper_count():
-	return 6
+const int template_helper_count = 6
 
 
 char* template_fn_name(int i):
@@ -69,9 +68,9 @@ void template_emit_helper_address(int i):
 		sym_get_value(name)
 		return;
 	if (template_chains == 0):
-		template_chains = malloc(template_helper_count() * 4)
+		template_chains = malloc(template_helper_count * 4)
 		int j = 0
-		while (j < template_helper_count()):
+		while (j < template_helper_count):
 			save_int(template_chains + j * 4, 0)
 			j = j + 1
 	int head = load_int(template_chains + i * 4)
@@ -309,6 +308,6 @@ void template_string_finish_import():
 	if (template_chains == 0):
 		return;
 	int i = 0
-	while (i < template_helper_count()):
+	while (i < template_helper_count):
 		template_patch_chain(i)
 		i = i + 1

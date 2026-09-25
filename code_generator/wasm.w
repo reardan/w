@@ -184,8 +184,7 @@ int* wasm_dcall_sites   # padded call immediates to rebase at finish
 int wasm_dcall_count
 int wasm_dcall_cap
 
-int wasm_cand_max():
-	return 64
+const int wasm_cand_max = 64
 
 void wasm_cand_reset():
 	wasm_cand_count = 0
@@ -206,9 +205,9 @@ void wasm_cand_trim():
 
 void wasm_cand_add(int depth, int table_index):
 	if (wasm_cand_depth == 0):
-		wasm_cand_depth = cast(int*, malloc(wasm_cand_max() * __word_size__))
-		wasm_cand_index = cast(int*, malloc(wasm_cand_max() * __word_size__))
-	if (wasm_cand_count >= wasm_cand_max()):
+		wasm_cand_depth = cast(int*, malloc(wasm_cand_max * __word_size__))
+		wasm_cand_index = cast(int*, malloc(wasm_cand_max * __word_size__))
+	if (wasm_cand_count >= wasm_cand_max):
 		return
 	wasm_cand_depth[wasm_cand_count] = depth
 	wasm_cand_index[wasm_cand_count] = table_index

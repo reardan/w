@@ -285,7 +285,7 @@ int unary_expression_operand():
 		# far from the bug. Warn instead of changing codegen so the
 		# descriptor address keeps a spelling (issue: ai_tooling_next_steps
 		# 2026-07-25 protobuf hardening).
-		if ((type_get_kind(type_unqualified(type)) == type_kind_slice_value()) &
+		if ((type_get_kind(type_unqualified(type)) == type_kind_slice_value) &
 				(type_get_pointer_level(type_unqualified(want)) > 0) &
 				(type_decays_to_pointer(want, type) == 0)):
 			warning(c"warning: cast of array to pointer addresses the array header, not its data; index or let it decay instead")

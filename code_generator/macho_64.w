@@ -64,8 +64,7 @@ int strlen(char *s);
 
 # Mach-O segments load on 16 KB pages (arm64 macOS); file offsets and
 # vmaddrs must stay congruent modulo this.
-int macho_page_size():
-	return 16384
+const int macho_page_size = 16384
 
 
 # File positions of the __TEXT / __DATA / __LINKEDIT segment commands and
@@ -367,14 +366,14 @@ void macho_finish_arm64():
 
 	# Pad the text to a page boundary; __DATA's file offset must be
 	# page-congruent with its vmaddr (both end up 16 KB-aligned).
-	while ((codepos % macho_page_size()) != 0):
+	while ((codepos % macho_page_size) != 0):
 		emit_int8(0)
 	int text_size = codepos
 
 	# Pad the data segment to a page as well, so __LINKEDIT starts aligned.
-	int data_pad = datapos % macho_page_size()
+	int data_pad = datapos % macho_page_size
 	if (data_pad != 0):
-		emit_data_zeros(macho_page_size() - data_pad)
+		emit_data_zeros(macho_page_size - data_pad)
 	int data_size_padded = datapos
 
 	# Imports (c_lib / extern): append their load commands into the
@@ -438,8 +437,8 @@ void macho_finish_arm64():
 
 	# __LINKEDIT now spans the bind stream + alignment pad + signature.
 	int linkedit_filesize = code_limit + sig_size - linkedit_fileoff
-	int linkedit_vm = linkedit_filesize + macho_page_size() - 1
-	linkedit_vm = linkedit_vm - (linkedit_vm % macho_page_size())
+	int linkedit_vm = linkedit_filesize + macho_page_size - 1
+	linkedit_vm = linkedit_vm - (linkedit_vm % macho_page_size)
 	save_int64(code + macho_linkedit_seg_pos + 32, linkedit_vm)          /* vmsize */
 	save_int64(code + macho_linkedit_seg_pos + 48, linkedit_filesize)    /* filesize */
 

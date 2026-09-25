@@ -32,8 +32,7 @@ int var_needed
 char* var_chains
 
 
-int var_helper_count():
-	return 13
+const int var_helper_count = 13
 
 
 char* var_fn_name(int i):
@@ -73,9 +72,9 @@ void var_emit_helper_address(int i):
 		sym_get_value(name)
 		return;
 	if (var_chains == 0):
-		var_chains = malloc(var_helper_count() * 4)
+		var_chains = malloc(var_helper_count * 4)
 		int j = 0
-		while (j < var_helper_count()):
+		while (j < var_helper_count):
 			save_int(var_chains + j * 4, 0)
 			j = j + 1
 	int head = load_int(var_chains + i * 4)
@@ -303,6 +302,6 @@ void var_finish_import():
 	if (var_chains == 0):
 		return;
 	int i = 0
-	while (i < var_helper_count()):
+	while (i < var_helper_count):
 		var_patch_chain(i)
 		i = i + 1

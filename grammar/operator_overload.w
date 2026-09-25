@@ -71,7 +71,7 @@ char* operator_mangle_type_name(int t):
 	# A slice value (the 'int[] value' record promote gives a use-site
 	# slice or array expression) mangles as its storage slice record,
 	# the spelling a declared 'int[]' parameter maps to.
-	if (type_get_kind(t) == type_kind_slice_value()):
+	if (type_get_kind(t) == type_kind_slice_value):
 		t = type_get_slice(type_get_element_type(t))
 	char* name = strclone(type_get_name(t))
 	int stars = type_get_pointer_level(t)

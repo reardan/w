@@ -77,26 +77,16 @@ import debugger.attach_eval
 
 
 # --- ptrace request numbers (classic ABI, identical on i386 and x86-64) ---
-int at_PEEKDATA():
-	return 2
-int at_PEEKUSER():
-	return 3
-int at_POKEDATA():
-	return 5
-int at_POKEUSER():
-	return 6
-int at_CONT():
-	return 7
-int at_SINGLESTEP():
-	return 9
-int at_GETREGS():
-	return 12
-int at_SETREGS():
-	return 13
-int at_ATTACH():
-	return 16
-int at_DETACH():
-	return 17
+const int at_PEEKDATA = 2
+const int at_PEEKUSER = 3
+const int at_POKEDATA = 5
+const int at_POKEUSER = 6
+const int at_CONT = 7
+const int at_SINGLESTEP = 9
+const int at_GETREGS = 12
+const int at_SETREGS = 13
+const int at_ATTACH = 16
+const int at_DETACH = 17
 
 
 # Byte offsets of the fields we use inside the ptrace user_regs_struct.
@@ -131,7 +121,7 @@ int attach_read_ok
 # word is written by the kernel to *data, so we read it back from the
 # scratch buffer rather than from the return value.
 int at_read_word(int addr):
-	int r = sys_ptrace(at_PEEKDATA(), attach_pid, addr, attach_wordbuf)
+	int r = sys_ptrace(at_PEEKDATA, attach_pid, addr, attach_wordbuf)
 	if ((r < 0) && (r >= -4095)):
 		attach_read_ok = 0
 		return 0
@@ -144,7 +134,7 @@ int at_read_byte(int addr):
 
 
 int at_write_word(int addr, int value):
-	return sys_ptrace(at_POKEDATA(), attach_pid, addr, value)
+	return sys_ptrace(at_POKEDATA, attach_pid, addr, value)
 
 
 # --- target-access seam (#123 phase 2, docs/projects/debugger_attach.md) ---
@@ -197,7 +187,7 @@ int at_mem_write(int addr, int value):
 
 # --- registers ---
 void at_getregs():
-	sys_ptrace(at_GETREGS(), attach_pid, 0, attach_regs)
+	sys_ptrace(at_GETREGS, attach_pid, 0, attach_regs)
 
 
 int at_reg(int offset):
@@ -208,7 +198,7 @@ int at_reg(int offset):
 # push the whole register file back). Used to rewind past a hit int3.
 void at_set_ip(int value):
 	save_word(cast(char*, attach_regs + at_off_ip()), value)
-	sys_ptrace(at_SETREGS(), attach_pid, 0, attach_regs)
+	sys_ptrace(at_SETREGS, attach_pid, 0, attach_regs)
 
 
 # --- register seam (#123 phase 2 remainder, docs/projects/debugger_attach.md) ---
@@ -249,8 +239,7 @@ int at_status_stopsig(int status):
 
 
 # --- breakpoints (attach-mode table, absolute target addresses) ---
-int at_bp_max():
-	return 64
+const int at_bp_max = 64
 
 int attach_bp_addrs   /* target address, 0 = free (word slots) */
 int attach_bp_orig    /* saved original low byte (int slots) */
@@ -318,7 +307,7 @@ int at_bp_add(int addr):
 			at_bp_arm(i)
 			return i
 		i = i + 1
-	if (attach_bp_count >= at_bp_max()):
+	if (attach_bp_count >= at_bp_max):
 		println(c"too many breakpoints")
 		return -1
 	i = attach_bp_count
@@ -354,8 +343,7 @@ int at_disas_read(int addr):
 # and conversely there is no software fallback here, so running out of the
 # four registers is a hard "no free debug register" error, never a silent
 # degradation.
-int at_hw_max():
-	return 4
+const int at_hw_max = 4
 
 int attach_hw_addrs /* watched target address per DR slot, 0 = free (word slots) */
 int attach_hw_olds  /* last seen value (word slots) */
@@ -373,7 +361,7 @@ int at_hw_dr_off(int i):
 # PTRACE_PEEKUSER: like PEEKDATA, the raw syscall writes the word to
 # *data. Sets attach_read_ok like at_read_word.
 int at_hw_peek(int i):
-	int r = sys_ptrace(at_PEEKUSER(), attach_pid, at_hw_dr_off(i), attach_wordbuf)
+	int r = sys_ptrace(at_PEEKUSER, attach_pid, at_hw_dr_off(i), attach_wordbuf)
 	if ((r < 0) && (r >= -4095)):
 		attach_read_ok = 0
 		return 0
@@ -382,7 +370,7 @@ int at_hw_peek(int i):
 
 
 int at_hw_poke(int i, int value):
-	return sys_ptrace(at_POKEUSER(), attach_pid, at_hw_dr_off(i), value)
+	return sys_ptrace(at_POKEUSER, attach_pid, at_hw_dr_off(i), value)
 
 
 int at_hw_addr(int i):
@@ -402,7 +390,7 @@ int at_hw_live():
 		return 0
 	int n = 0
 	int i = 0
-	while (i < at_hw_max()):
+	while (i < at_hw_max):
 		if (at_hw_addr(i) != 0):
 			n = n + 1
 		i = i + 1
@@ -418,7 +406,7 @@ int at_hw_dr7():
 		len = 2
 	int dr7 = 0
 	int i = 0
-	while (i < at_hw_max()):
+	while (i < at_hw_max):
 		if (at_hw_addr(i) != 0):
 			dr7 = dr7 | (1 << (2 * i))
 			dr7 = dr7 | (1 << (16 + 4 * i))
@@ -446,7 +434,7 @@ int at_hw_aligned(int addr):
 # emulator without debug-register support).
 int at_hw_sync():
 	int i = 0
-	while (i < at_hw_max()):
+	while (i < at_hw_max):
 		if (at_hw_addr(i) != 0):
 			if (at_hw_poke(i, at_hw_aligned(at_hw_addr(i))) < 0):
 				return 0
@@ -480,7 +468,7 @@ int at_hw_check():
 		return -1
 	at_hw_poke(6, 0)
 	int i = 0
-	while (i < at_hw_max()):
+	while (i < at_hw_max):
 		if ((dr6 & (1 << i)) && (at_hw_addr(i) != 0)):
 			return i
 		i = i + 1
@@ -504,7 +492,7 @@ void at_hw_report(int i):
 
 
 void at_hw_delete(int i):
-	if (((i < 0) || (i >= at_hw_max())) | (attach_hw_addrs == 0)):
+	if (((i < 0) || (i >= at_hw_max)) || (attach_hw_addrs == 0)):
 		println(c"no such watchpoint")
 		return;
 	if (at_hw_addr(i) == 0):
@@ -521,7 +509,7 @@ void at_hw_delete_all():
 		return;
 	int any = 0
 	int i = 0
-	while (i < at_hw_max()):
+	while (i < at_hw_max):
 		if (at_hw_addr(i) != 0):
 			free(at_hw_text(i))
 			save_word(cast(char*, attach_hw_addrs + i * __word_size__), 0)
@@ -537,7 +525,7 @@ void at_hw_list():
 		return;
 	int shown = 0
 	int i = 0
-	while (i < at_hw_max()):
+	while (i < at_hw_max):
 		if (at_hw_addr(i) != 0):
 			at_hw_describe(i)
 			put_char(10)
@@ -636,7 +624,7 @@ void at_frames_compute(int stop_addr):
 	int main_at = dbg_function_at(sym_address(c"main"))
 	int done = (dbg_function_at(at_to_v(stop_addr)) == main_at)
 	int i = 0
-	while ((i < 2048) && (dbg_fr_count < dbg_fr_max()) && (done == 0)):
+	while ((i < 2048) && (dbg_fr_count < dbg_fr_max) && (done == 0)):
 		int slot = esp + i * __word_size__
 		if (dbg_mem_readable(slot, __word_size__) == 0):
 			return;
@@ -995,7 +983,7 @@ void at_watch_command(char* arg):
 		return;
 	int slot = -1
 	int i = 0
-	while (i < at_hw_max()):
+	while (i < at_hw_max):
 		if ((slot < 0) && (at_hw_addr(i) == 0)):
 			slot = i
 		i = i + 1
@@ -1186,7 +1174,7 @@ void at_continue():
 	int bp = at_bp_find(dbg_reg_pc())
 	if (bp >= 0):
 		at_bp_disarm(bp)
-		at_resume(at_SINGLESTEP())
+		at_resume(at_SINGLESTEP)
 		int st = at_wait()
 		if (at_status_exited(st) | at_status_signalled(st)):
 			at_report_stop(st)
@@ -1203,7 +1191,7 @@ void at_continue():
 				at_frames_compute(dbg_reg_pc())
 			at_print_location(dbg_reg_pc())
 			return;
-	at_resume(at_CONT())
+	at_resume(at_CONT)
 	at_report_stop(at_wait())
 
 
@@ -1214,7 +1202,7 @@ void at_step():
 	int bp = at_bp_find(dbg_reg_pc())
 	if (bp >= 0):
 		at_bp_disarm(bp)
-	at_resume(at_SINGLESTEP())
+	at_resume(at_SINGLESTEP)
 	int st = at_wait()
 	if (at_status_exited(st) | at_status_signalled(st)):
 		at_report_stop(st)
@@ -1238,10 +1226,8 @@ void at_step():
 # against the starting statement's frame_base = esp-at-start + its recorded
 # stack depth), so recursion and step-out-of-frame behave identically to
 # the in-process debugger; only the driving mechanism differs.
-int AT_STEP_LINE():
-	return 1
-int AT_STEP_OVER():
-	return 2
+const int AT_STEP_LINE = 1
+const int AT_STEP_OVER = 2
 
 int attach_step_line   /* source line at the step's start */
 int attach_step_file   /* source file index at the step's start */
@@ -1288,7 +1274,7 @@ int at_step_should_stop(int mode, int ip):
 		return 0
 	if ((dbg_line_line(entry) == attach_step_line) && (dbg_line_file(entry) == attach_step_file)):
 		return 0
-	if (mode == AT_STEP_OVER()):
+	if (mode == AT_STEP_OVER):
 		if (attach_step_fstart == 0):
 			return 1 /* unknown starting frame: behave like step */
 		if (esp > frame_base):
@@ -1301,8 +1287,8 @@ int at_step_should_stop(int mode, int ip):
 
 
 # Drive PTRACE_SINGLESTEP/wait4 until the next statement boundary at the
-# same-or-shallower frame (mode == AT_STEP_OVER()) or any boundary at all
-# (mode == AT_STEP_LINE()). A breakpoint's int3 landing mid-step (armed
+# same-or-shallower frame (mode == AT_STEP_OVER) or any boundary at all
+# (mode == AT_STEP_LINE). A breakpoint's int3 landing mid-step (armed
 # inside the stepped range, e.g. 'next' stepping over a call that hits one)
 # stops early and reports it like a normal continue, rather than silently
 # stepping through it.
@@ -1319,7 +1305,7 @@ void at_step_line_mode(int mode):
 		int bp = at_bp_find(dbg_reg_pc())
 		if (bp >= 0):
 			at_bp_disarm(bp)
-		at_resume(at_SINGLESTEP())
+		at_resume(at_SINGLESTEP)
 		int st = at_wait()
 		if ((at_status_exited(st) == 0) && (at_status_signalled(st) == 0)):
 			if (bp >= 0):
@@ -1419,7 +1405,7 @@ void at_finish():
 		int bp = at_bp_find(dbg_reg_pc())
 		if (bp >= 0):
 			at_bp_disarm(bp)
-			at_resume(at_SINGLESTEP())
+			at_resume(at_SINGLESTEP)
 			int st1 = at_wait()
 			if ((at_status_exited(st1) == 0) && (at_status_signalled(st1) == 0)):
 				at_bp_arm(bp)
@@ -1438,7 +1424,7 @@ void at_finish():
 					at_frames_compute(dbg_reg_pc())
 				at_print_location(dbg_reg_pc())
 				return;
-		at_resume(at_CONT())
+		at_resume(at_CONT)
 		int st = at_wait()
 		if (at_status_exited(st) | at_status_signalled(st)):
 			at_report_stop(st)
@@ -1472,7 +1458,7 @@ void at_finish():
 				# forward to the next real statement boundary like
 				# wdbg.w's in-process 'fin' does, rather than reporting a
 				# stop where local addressing may not be accurate yet.
-				at_step_line_mode(AT_STEP_LINE())
+				at_step_line_mode(AT_STEP_LINE)
 				return;
 			# A recursive call returned to the same call site but has not
 			# yet unwound past the frame 'fin' started in: keep going.
@@ -1500,7 +1486,7 @@ void at_detach():
 	# Disable any hardware watchpoints (DR7 = 0 via at_hw_sync) so the
 	# target runs on without stray debug traps after we let it go.
 	at_hw_delete_all()
-	sys_ptrace(at_DETACH(), attach_pid, 0, 0)
+	sys_ptrace(at_DETACH, attach_pid, 0, 0)
 	attach_alive = 0
 	println(c"detached; process continues")
 
@@ -1525,9 +1511,9 @@ void at_command_loop():
 		else if ((strcmp(command, c"si") == 0) | (strcmp(command, c"stepi") == 0)):
 			at_step()
 		else if ((strcmp(command, c"s") == 0) | (strcmp(command, c"step") == 0)):
-			at_step_line_mode(AT_STEP_LINE())
+			at_step_line_mode(AT_STEP_LINE)
 		else if ((strcmp(command, c"n") == 0) | (strcmp(command, c"next") == 0)):
-			at_step_line_mode(AT_STEP_OVER())
+			at_step_line_mode(AT_STEP_OVER)
 		else if ((strcmp(command, c"fin") == 0) | (strcmp(command, c"finish") == 0)):
 			at_finish()
 		else if ((strcmp(command, c"r") == 0) | (strcmp(command, c"registers") == 0)):
@@ -1604,15 +1590,15 @@ int wdbg_attach_run(int pid, int have_symbols):
 	attach_wordbuf = cast(int, malloc(16))
 	attach_statusbuf = cast(int, malloc(16))
 	attach_regs = cast(int, malloc(512))
-	attach_bp_addrs = cast(int, malloc(at_bp_max() * __word_size__))
-	attach_bp_orig = cast(int, malloc(at_bp_max() * 4))
-	attach_bp_armed = cast(int, malloc(at_bp_max() * 4))
+	attach_bp_addrs = cast(int, malloc(at_bp_max * __word_size__))
+	attach_bp_orig = cast(int, malloc(at_bp_max * 4))
+	attach_bp_armed = cast(int, malloc(at_bp_max * 4))
 	attach_bp_count = 0
-	attach_hw_addrs = cast(int, malloc(at_hw_max() * __word_size__))
-	attach_hw_olds = cast(int, malloc(at_hw_max() * __word_size__))
-	attach_hw_texts = cast(int, malloc(at_hw_max() * __word_size__))
+	attach_hw_addrs = cast(int, malloc(at_hw_max * __word_size__))
+	attach_hw_olds = cast(int, malloc(at_hw_max * __word_size__))
+	attach_hw_texts = cast(int, malloc(at_hw_max * __word_size__))
 	int hwslot = 0
-	while (hwslot < at_hw_max()):
+	while (hwslot < at_hw_max):
 		save_word(cast(char*, attach_hw_addrs + hwslot * __word_size__), 0)
 		hwslot = hwslot + 1
 	attach_pending_sig = 0
@@ -1634,7 +1620,7 @@ int wdbg_attach_run(int pid, int have_symbols):
 	dbg_reg_pc_fn = cast(int, dbg_reg_pc_attach)
 	dbg_reg_sp_fn = cast(int, dbg_reg_sp_attach)
 
-	int r = sys_ptrace(at_ATTACH(), pid, 0, 0)
+	int r = sys_ptrace(at_ATTACH, pid, 0, 0)
 	if ((r < 0) && (r >= -4095)):
 		print2(c"wdbg: cannot attach to pid ")
 		char* d = itoa(pid)

@@ -121,8 +121,7 @@ are not what the current fd would deliver), the fd cannot produce the
 line (closed, read error, EOF before the line), or the line overflows
 the collection buffer.
 */
-int diag_context_capacity():
-	return 512
+const int diag_context_capacity = 512
 
 
 char* diag_context_buffer
@@ -145,14 +144,14 @@ int diag_context_collect():
 			scan_line = scan_line + 1
 		c = getchar(file)
 	if (diag_context_buffer == 0):
-		diag_context_buffer = malloc(diag_context_capacity() + 1)
+		diag_context_buffer = malloc(diag_context_capacity + 1)
 	int length = 0
 	int failed = 0
 	if (c < 0):
 		# EOF (or a read error) before the line's first character
 		failed = 1
 	while ((failed == 0) && (c >= 0) && (c != 10)):
-		if (length >= diag_context_capacity()):
+		if (length >= diag_context_capacity):
 			failed = 1
 		else:
 			diag_context_buffer[length] = c

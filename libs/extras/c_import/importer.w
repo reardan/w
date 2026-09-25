@@ -56,7 +56,6 @@ struct ci_struct_layout:
 	int max_align
 
 
-int extern_max_params();
 
 
 # Session state shared by every c_import statement in one compilation.
@@ -97,7 +96,7 @@ void ci_session_init():
 		ci_bit_field_widths = new map[int, int]
 		ci_bit_field_signs = new map[int, int]
 		ci_bit_field_unit_sizes = new map[int, int]
-		ci_param_classes = malloc(extern_max_params())
+		ci_param_classes = malloc(extern_max_params)
 
 
 int ci_type_from_specs(pg_ast_node* specs);
@@ -1235,9 +1234,9 @@ int ci_lower_params_from(pg_ast_node* params, int sym, int start_count):
 			else:
 				int ptype = ci_parameter_type(parameter)
 				param_count = param_count + 1
-				if (param_count <= extern_max_params()):
+				if (param_count <= extern_max_params):
 					ci_param_classes[param_count - 1] = ffi_type_class(ptype)
-				if (param_count <= sym_max_param_slots()):
+				if (param_count <= sym_max_param_slots):
 					save_int(table + sym + 22 + (param_count << 2), ptype)
 		else if (parameter.token == 0):
 			param_count = ci_lower_params_from(parameter, sym, param_count)

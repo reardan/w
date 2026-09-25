@@ -41,8 +41,7 @@ int print_builtin_needed
 char* print_chains
 
 
-int print_helper_count():
-	return 16
+const int print_helper_count = 16
 
 
 char* print_fn_name(int i):
@@ -89,9 +88,9 @@ void print_emit_helper_address(int i):
 		sym_get_value(name)
 		return;
 	if (print_chains == 0):
-		print_chains = malloc(print_helper_count() * 4)
+		print_chains = malloc(print_helper_count * 4)
 		int j = 0
-		while (j < print_helper_count()):
+		while (j < print_helper_count):
 			save_int(print_chains + j * 4, 0)
 			j = j + 1
 	int head = load_int(print_chains + i * 4)
@@ -558,6 +557,6 @@ void prelude_finish_import():
 	if (print_chains == 0):
 		return;
 	int i = 0
-	while (i < print_helper_count()):
+	while (i < print_helper_count):
 		print_patch_chain(i)
 		i = i + 1

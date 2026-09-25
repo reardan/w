@@ -183,7 +183,7 @@ char* for_iter_generic_require(char* container_name, char* what, int expected_ar
 		# the ordinary symbol checks apply
 		for_iter_require(container_name, mangled, expected_args, container_type)
 		return mangled
-	char* args = malloc(generic_max_params() * __word_size__)
+	char* args = malloc(generic_max_params * __word_size__)
 	save_ptr(args, arg_type)
 	int inst = generic_inst_intern(def, cast(int, args), 1, strclone(mangled))
 	int sig = generic_inst_signature(inst)
@@ -233,7 +233,7 @@ int for_iter_generic_value_type(int container_type):
 		if (load_int(table + symbol + 10) == 2):
 			return load_int(table + symbol + 6)
 		return type_lookup(c"int")
-	char* args = malloc(generic_max_params() * __word_size__)
+	char* args = malloc(generic_max_params * __word_size__)
 	save_ptr(args, arg_type)
 	int inst = generic_inst_intern(def, cast(int, args), 1, mangled)
 	return type_unqualified(type_function_return(generic_inst_signature(inst)))

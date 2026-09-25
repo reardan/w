@@ -83,8 +83,7 @@ int lint_saved_diag_column
 char* lint_saved_token
 
 
-int lint_tab_width():
-	return 4
+const int lint_tab_width = 4
 
 
 # line-too-long limit in columns; --line-length=N sets it, 0 disables
@@ -373,14 +372,14 @@ char* lint_read_file(char* path):
 
 
 # Display width of src[start, end): tabs advance to the next multiple of
-# lint_tab_width(), UTF-8 continuation bytes take no column.
+# lint_tab_width, UTF-8 continuation bytes take no column.
 int lint_line_width(char* src, int start, int end):
 	int width = 0
 	int j = start
 	while (j < end):
 		int c = src[j] & 255
 		if (c == 9):
-			width = width + lint_tab_width() - width % lint_tab_width()
+			width = width + lint_tab_width - width % lint_tab_width
 		else if ((c & 192) != 128):
 			width = width + 1
 		j = j + 1
@@ -808,13 +807,13 @@ void lint_text_file(char* path):
 				if (lint_fix_mode && (state != 2)):
 					keep_cr = 0
 			# Space indentation (the compiler itself warns about it):
-			# re-indent with a tab per lint_tab_width() columns
+			# re-indent with a tab per lint_tab_width columns
 			if (lint_fix_mode && (start_state == 0) && (blank == 0) && (src[start] == ' ')):
 				int indent_end = start
 				while ((indent_end < text_end) && ((src[indent_end] == ' ') || (src[indent_end] == 9))):
 					indent_end = indent_end + 1
 				int width = lint_line_width(src, start, indent_end)
-				if (width >= lint_tab_width()):
+				if (width >= lint_tab_width):
 					lint_text_fixes = lint_text_fixes + 1
 					indent_width = width
 					body = indent_end
@@ -828,12 +827,12 @@ void lint_text_file(char* path):
 		if (keep):
 			if (indent_width >= 0):
 				int k = 0
-				while (k < indent_width / lint_tab_width()):
+				while (k < indent_width / lint_tab_width):
 					out[o] = 9
 					o = o + 1
 					k = k + 1
 				k = 0
-				while (k < indent_width % lint_tab_width()):
+				while (k < indent_width % lint_tab_width):
 					out[o] = ' '
 					o = o + 1
 					k = k + 1

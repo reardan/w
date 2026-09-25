@@ -90,12 +90,11 @@ void sym_stats_dump():
 	print_error(c"\x0a")
 
 
-int symbol_data_size():
-	return 146
+const int symbol_data_size = 146
 
 
 int next_token(int t):
-	return t + symbol_data_size()
+	return t + symbol_data_size
 
 
 int sym_index_offset(int i):
@@ -457,7 +456,7 @@ int sym_declare_global(char *s, int type, int symtype):
 	int current_symbol = sym_lookup(s)
 	if (current_symbol < 0):
 		sym_declare(s, type, 'U', code_offset, symtype)
-		current_symbol = table_pos - symbol_data_size()
+		current_symbol = table_pos - symbol_data_size
 	else if (sym_decl_file_index(current_symbol) < 0):
 		# Forward-referenced symbol (e.g. 'main' pre-declared by be_start):
 		# this explicit declaration is the real source location
@@ -588,8 +587,12 @@ void sym_set_thread_local(int t):
 
 
 # Parameter type slots per symbol; arguments past the limit are unchecked.
-int sym_max_param_slots():
-	return 10
+const int sym_max_param_slots = 10
+
+# Parameters an extern (C) function may declare; its per-call argument
+# class buffers are this size. Used by grammar/postfix_expr.w,
+# grammar/extern_statement.w and the C importer.
+const int extern_max_params = 255
 
 
 # Parameter defaults: bit i of the mask is set when parameter i (0-based)
@@ -597,7 +600,7 @@ int sym_max_param_slots():
 # slot. Only the first 10 parameters can have defaults (same limit as the
 # declared-type slots).
 int sym_param_has_default(int t, int i):
-	if (i >= sym_max_param_slots()):
+	if (i >= sym_max_param_slots):
 		return 0
 	return (load_int(table + t + 86) >> i) & 1
 
@@ -623,7 +626,7 @@ int sym_param_type(int t, int i):
 		return -1
 	if (i >= num_args):
 		return -1
-	if (i >= sym_max_param_slots()):
+	if (i >= sym_max_param_slots):
 		return -1
 	return load_int(table + t + 26 + (i << 2))
 
@@ -878,8 +881,8 @@ void sym_define_declare_global_function_arity(char* name, int num_args):
 	sym_define_global(t)
 	save_int(table + t + 22, num_args)
 	int slots = num_args
-	if (slots > sym_max_param_slots()):
-		slots = sym_max_param_slots()
+	if (slots > sym_max_param_slots):
+		slots = sym_max_param_slots
 	int i = 0
 	while (i < slots):
 		save_int(table + t + 26 + (i << 2), -1)
