@@ -71,25 +71,17 @@ int relational_expr():
 				# The key was pushed before the container's key type was
 				# known: decay the descriptor address in its slot to the
 				# data pointer. eax (the container) is saved around it.
-				push_eax()
-				stack_pos = stack_pos + 1
-				mov_eax_esp_plus((stack_pos - key_slot) << word_size_log2)
+				push_slot()
+				load_slot(key_slot)
 				promote_eax()
 				store_stack_var((stack_pos - key_slot) << word_size_log2)
-				pop_eax()
-				stack_pos = stack_pos - 1
-			push_eax()
-			stack_pos = stack_pos + 1
-			int container_slot = stack_pos
-			sym_get_value(contains_name)
-			int s = stack_pos
-			push_eax()
-			stack_pos = stack_pos + 1
-			hash_push_stack_slot(container_slot)
-			hash_push_stack_slot(key_slot)
-			hash_call_finish(s)
-			be_pop(stack_pos - base_stack)
-			stack_pos = base_stack
+				pop_eax_slot()
+			int container_slot = push_slot()
+			int s = rt_call_begin(contains_name)
+			push_slot_copy(container_slot)
+			push_slot_copy(key_slot)
+			rt_call_end(s)
+			pop_to(base_stack)
 			type = type_value(bool_type)
 
 		else:

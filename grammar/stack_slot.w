@@ -70,11 +70,3 @@ void rt_call_end(int s):
 	call_eax()
 	pop_to(s)
 
-
-# Pre-rename spellings still used by grammar files converted separately.
-void hash_call_finish(int s):
-	rt_call_end(s)
-
-
-void hash_push_stack_slot(int slot):
-	push_slot_copy(slot)

@@ -84,8 +84,7 @@ int ctor_field_args(int base):
 		arg_type = promote(arg_type)
 		new_store_field(base, target, arg_type, stack_pos - arg_entry)
 		if (stack_pos > arg_entry):
-			be_pop(stack_pos - arg_entry)
-			stack_pos = arg_entry
+			pop_to(arg_entry)
 		field_index = field_index + 1
 		if (accept(c",") == 0):
 			if (named):
@@ -172,8 +171,7 @@ int struct_value_ctor_expr():
 		init_array_field_descriptors(base)
 	# Park the temp's address below the buffer while the field
 	# initializers run, mirroring the 'new' constructor path.
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	if (peek(c")") == 0):
 		int field_index = ctor_field_args(base)
 		if (peek(c")") == 0):
@@ -448,8 +446,7 @@ int unary_expression_operand():
 			if (accept(c")") == 0):
 				# Keep the allocation address on the stack while the
 				# field initializers run
-				push_eax()
-				stack_pos = stack_pos + 1
+				push_slot()
 				int field_index = ctor_field_args(base)
 				expect(c")")
 				if ((field_index >= 0) && (field_index != type_num_args(base))):

@@ -476,14 +476,10 @@ int postfix_expr():
 				# map read (chained h[k1][k2]) pops the read's hidden
 				# stack slots (list_index_suffix precedent)
 				type = promote(type)
-				push_eax()
-				stack_pos = stack_pos + 1
-				int map_elem_map_slot = stack_pos
+				int map_elem_map_slot = push_slot()
 				int want_key_type = type_map_key_type(map_type)
 				int got_key_type = parse_coerced(want_key_type, c"map key")
-				push_eax()
-				stack_pos = stack_pos + 1
-				int map_elem_key_slot = stack_pos
+				int map_elem_key_slot = push_slot()
 				expect(c"]")
 				# Commit the pending state only now: the key expression
 				# above may itself have parked and finalized a nested
