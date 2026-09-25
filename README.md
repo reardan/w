@@ -465,6 +465,19 @@ seeds — is `docs/release.md`.
   `bin/wv2 [arch] check <root>` per distinct pair (one per root, not per
   target) and reports pass/fail, so the break is visible before that
   target's next full build.
+- `bin/wbuildd` (`tools/wbuildd.w`, `./wbuild wbuildd`; Linux x86/x64
+  only) is an opt-in persistent daemon for the read-only queries above
+  (issue #231, `docs/projects/wbuildd.md`). `bin/wbuildd start` /
+  `status` / `stop` manage it (`serve` runs it in the foreground; there
+  is no auto-spawn). `bin/wbuildd check|deps|symbols ARGS` and
+  `bin/wbuildd changed ARGS` print exactly what `bin/wv2 check|deps|symbols
+  ARGS` and `bin/wtest changed ARGS` print, answered from the daemon's
+  warm state: check/deps/symbols results stay in memory until inotify
+  sees a file in their import closure change, and the daemon keeps
+  `bin/.wtest_deps_cache` warm in the background. Without a running
+  daemon (or with `WBUILDD=0`) the client simply runs the one-shot
+  command. `wbuildd_test` asserts the two paths stay byte-identical,
+  including after edits.
 - Agent-facing guidance is committed alongside the code: `.cursor/skills/`
   holds step-by-step skills (`w-check-diagnostics`, `w-select-tests`,
   `w-debug-wdbg`, `w-repl-explore`) and `.cursor/rules/` holds path-scoped

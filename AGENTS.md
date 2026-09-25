@@ -94,6 +94,14 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
    language-behavior questions** by piping entries + `:quit` into `./bin/repl`,
    and **debug runtime failures** by scripting `./bin/wdbg` over stdin rather
    than adding print statements.
+5. **Optional warm daemon (Linux x86/x64)**: `bin/wbuildd start` (build it
+   with `./wbuild wbuildd`) keeps check/deps/symbols answers and the
+   `wtest` closure cache warm, invalidated by inotify. Then
+   `bin/wbuildd check --json <file>`, `bin/wbuildd deps|symbols ...` and
+   `git diff --name-only HEAD | bin/wbuildd changed` print exactly what the
+   `bin/wv2`/`bin/wtest` commands print; with no daemon running (or
+   `WBUILDD=0`) they just run the one-shot command. `bin/wbuildd status`
+   / `stop` manage it; see `docs/projects/wbuildd.md`.
 
 Detailed how-tos live in `.cursor/skills/` (`w-check-diagnostics`,
 `w-select-tests`, `w-debug-wdbg`, `w-repl-explore`); path-scoped guardrails in

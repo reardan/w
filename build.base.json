@@ -828,6 +828,16 @@
 			]
 		},
 		{
+			"name": "wbuildd",
+			"deps": ["wv2"],
+			"inputs": ["tools/wbuildd.w"],
+			"outputs": ["bin/wbuildd"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/wbuildd.w", "-o", "bin/wbuildd.stage"]},
+				{"cmd": ["mv", "bin/wbuildd.stage", "bin/wbuildd"]}
+			]
+		},
+		{
 			"name": "wbuildgen",
 			"deps": ["wv2"],
 			"inputs": ["tools/wbuildgen.w"],

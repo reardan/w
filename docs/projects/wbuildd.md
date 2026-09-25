@@ -14,8 +14,12 @@ x86/x64/arm64 Linux, stubs elsewhere, record parsing, mask constants;
 (`sockaddr_un_init`, `socket_bind_unix`/`socket_connect_unix`,
 stale-file-aware `socket_bind_unix_replacing_stale`,
 `socket_listen_unix_path`/`socket_connect_unix_path`;
-`tests/unix_socket_test.w`). The daemon itself (§2) and the darwin
-dirent fix remain unimplemented.
+`tests/unix_socket_test.w`). Stage 2's first read-only milestone
+landed 2026-09-25 as `tools/wbuildd.w` (`bin/wbuildd`, target
+`wbuildd`) with its byte-identity gate `tests/wbuildd_test.w`; §6
+records the maintainer's decisions that scoped it and §8 describes
+what was built. Build/execution RPCs, auto-spawn, the REPL server and
+the darwin dirent fix remain unimplemented.
 
 ## 0. Summary
 
@@ -169,6 +173,11 @@ method-dispatch envelope" — `lib/json_rpc.w:1`–`10` builds directly on
 `lib/framing.w`, so this isn't an either/or).
 
 ### 2.2 Lifecycle
+
+*(Superseded for the first milestone by decision 1 in §6: the daemon is
+started and stopped explicitly and clients never spawn it; the
+auto-spawn sketch below is kept as the design rationale for a later
+milestone. Staleness as implemented is described in §8.)*
 
 - **Who starts it**: `wbuild`/`wexec`/`w`/`wtest` each try to connect to
   a well-known socket path first (`bin/.wbuildd.sock`, next to the
@@ -552,7 +561,8 @@ either way; nothing here proposes a second protocol.
    confirmed still unresolved by grep). Each is a self-contained,
    low-risk library addition with its own tests, landable independently
    of everything else in this doc.
-2. **Stage 2 — `wbuildd` MVP**: single-threaded event-loop daemon,
+2. **Stage 2 — `wbuildd` MVP** *(read-only milestone landed
+   2026-09-25, §8; `build` still open)*: single-threaded event-loop daemon,
    unix-socket JSON-RPC (§2.1), serving `check`/`deps`/`symbols` first
    (the highest-value, lowest-risk endpoints — read-only, no target
    execution, directly answers §1.2's ~1080x opportunity), with the
@@ -575,8 +585,8 @@ either way; nothing here proposes a second protocol.
    or a raw websocket upgrade over `libs/standard/web/http_server.w`,
    which landed this wave) on the same daemon process rather than a
    separate one, since both are "expose live in-process compiler state
-   over a socket" problems. Whether it reuses `wbuildd`'s process or
-   runs as a sibling is an open question (§6).
+   over a socket" problems. *(Decided in §6, item 3: the REPL server
+   will be a separate process.)*
 4. **Stage 4, optional and separable — AST option (b) experiment**:
    `bin/wc2` as a leaf tool over the PG's existing `w.pg` AST (§3.2),
    explicitly scoped as a research spike answering "is AST-based
@@ -591,45 +601,40 @@ either way; nothing here proposes a second protocol.
    4's experiment is the natural input to that decision, not a
    replacement for making it explicitly.
 
-## 6. Open questions for the maintainer
+## 6. Decisions
 
-1. **Daemon lifetime model**: auto-spawned-on-first-use-and-persists
-   (this doc's default assumption, §2.2), or explicitly
-   started/stopped (`wbuildd start`/`wbuildd stop`) like a normal
-   background service? Auto-spawn is more convenient but means a
-   forgotten daemon can accumulate stale watches across long-lived
-   sessions if the staleness check (§2.2) has a bug — worth deciding
-   the failure mode's blast radius up front.
-2. **Scope of the first read-only surface**: `check`/`deps`/`symbols`
-   only, or does `test_changed` belong in stage 2 rather than waiting
-   for target-execution plumbing? It's read-only-ish (it computes a
-   target list, doesn't build) and is exactly what made §1.2's ~143s→
-   0.13s number possible — arguably it should ride with the other
-   read-only endpoints rather than being gated behind `build`.
-3. **REPL websocket server: same process or sibling?** (§5 stage 3) —
-   `wbuildd` answering `check`/`deps` and a REPL server holding live
-   compiler state for eval are different risk profiles (read-only
-   queries vs. mutating a live session); worth an explicit call on
-   whether they share a process before either is designed in detail.
-4. **`verify_warm` gate**: does landing `wbuildd` require a new CI
-   target asserting daemon-served `check`/`build` results are
-   byte-identical to the one-shot path, on top of the existing
-   `verify`? This doc assumes yes for `build` (§2.4's "must not become
-   a second source of truth") but the issue raises it as an open
-   question and it's worth confirming scope (every RPC, or just the
-   ones that produce binaries) before stage 2 lands.
-5. **macOS**: is `wbuildd` Linux-only for its first milestone (matching
-   where `lib/thread.w`, and until stage 1's dirent fix, directory
-   hashing, are already Linux-only), or does macOS support gate stage
-   2? The Mac-gated backlog (`docs/projects/sonnet_wave_plan_2026_07.md`
-   §7) already defers other darwin work "ride the next Mac session" —
-   recommend the same here rather than blocking the daemon on it.
-6. **Windows/wasm**: `lib/net.w`'s unix-socket gap (§2.3) and
-   `lib/thread.w`'s Linux-x86-only scope both suggest `wbuildd` is a
-   Linux(+eventually darwin)-only tool by construction for the
-   foreseeable future, same as `lib/thread.w` today. Worth stating
-   explicitly so win64/wasm consumers know to keep using the one-shot
-   path indefinitely, not as a temporary gap.
+The maintainer's answers to the open questions this section used to
+list (2026-09-25). They scope the first milestone (§8).
+
+1. **Lifetime: explicit.** `bin/wbuildd start|stop|status`, plus
+   `serve` to run it in the foreground. Clients never spawn a daemon;
+   with none running they fall back to the one-shot command. No
+   auto-spawn in this milestone (§2.2's sketch stays as rationale for
+   a later one).
+2. **Read-only surface:** `check`, `deps`, `symbols`, and
+   `test_changed` target selection (the same output as
+   `bin/wtest changed`). `test_changed` rides with the read-only
+   endpoints because it computes a target list and runs nothing. No
+   build/execution RPCs yet; `wtest changed --run` is never served.
+3. **REPL server: out of scope.** It will be a separate process later,
+   not a second listener on `wbuildd` — a read-only query daemon and a
+   server that mutates live compiler state for eval are different risk
+   profiles.
+4. **A verify gate is required:** a test asserting that every
+   daemon-served response is byte-identical (stdout, stderr, exit
+   status) to the one-shot command's output — `bin/wv2 check --json`,
+   `bin/wv2 deps`, `bin/wv2 symbols --json`, `bin/wtest changed` — for
+   a handful of inputs, including after editing files, so the inotify
+   invalidation is exercised. That is `tests/wbuildd_test.w`
+   (`wbuildd_test`, in `tests`).
+5. **macOS: not in this milestone.** `wbuildd` is Linux-only for now.
+6. **Windows/wasm: one-shot path, indefinitely.** Stated explicitly:
+   the first milestone supports **Linux x86 and x86-64 only**
+   (inotify + AF_UNIX sockets + fork/exec). darwin, win64 and wasm
+   consumers keep using the one-shot commands (`bin/wv2 check`,
+   `bin/wtest changed`, ...) — not as a temporary gap to wait out.
+   arm64 Linux has the inotify shims and would likely work, but is not
+   tested or claimed.
 
 ## 7. Note on the `--keep-going` open question
 
@@ -641,3 +646,90 @@ whose dependency failed or was itself skipped is tracked and reported
 in a summary epilogue rather than aborting the run. Nothing in this
 design needs to fold it in; `wbuildd`'s `build` RPC (§2.1) exposes it
 as a boolean flag that maps straight onto the existing behavior.
+
+## 8. The first read-only milestone, as built
+
+`tools/wbuildd.w` is one binary acting as both daemon and client
+(`./wbuild wbuildd` builds `bin/wbuildd`; compiled to a `.stage` file
+and `mv`'d into place like `bin/wexec`, since a running executable
+cannot be overwritten in place).
+
+**Commands.** `bin/wbuildd [--socket P] [--no-daemon|--require-daemon]
+<command>`: `serve` (foreground), `start` (spawns `serve --detach` —
+`setsid`, output to `bin/.wbuildd.log` — and waits until it answers),
+`stop`, `status [--json]`, and the four queries `check|deps|symbols
+ARGS` (≡ `bin/wv2 check|deps|symbols ARGS`) and `changed ARGS`
+(≡ `bin/wtest changed ARGS`, including a path list on stdin). The
+socket is `bin/.wbuildd.sock` relative to the checkout root; `serve`
+options are `--prewarm-manifest M`, `--no-prewarm`, `--log FILE` and
+`--idle-timeout-ms N` (exit after N ms without a request — what the
+test uses so a failed run cannot leave a daemon behind).
+
+**Protocol.** JSON-RPC 2.0 over `lib/framing.w` Content-Length frames
+(`lib/json_rpc.w`, §2.1), methods `check`, `deps`, `symbols`,
+`test_changed`, `status`, `shutdown`. A query's params are
+`{protocol, cwd, args, stdin?}`; its result is `{stdout, stderr,
+status, cached}` — the one-shot command's raw output bytes rather than
+re-parsed diagnostics, so byte-identity with the one-shot path holds by
+construction and no consumer changes its parsing. `{error}` results
+(protocol mismatch, a client in another working directory, a flag that
+writes files such as `-o`/`--ptx`, `--run`) make the client fall back.
+The listener is the daemon's own rather than `jsonrpc_serve_listener`:
+that one makes accepted sockets non-blocking, and `write_all` then
+truncates any answer bigger than the socket buffer at the first
+`EAGAIN` (`symbols --json w.w` is ~740KB) — accepted sockets stay
+blocking with a send timeout instead, and `SIGPIPE` is ignored.
+
+**Client fallback (§2.6).** No socket, connection refused, a malformed
+or error response, `WBUILDD=0` or `--no-daemon` → the client `execve`s
+the one-shot command (replaying stdin through a pipe if it already
+consumed it). `--require-daemon` turns fallback into exit 2, which is
+how the gate proves an answer came from the daemon.
+
+**Warm state and invalidation.**
+
+- *check/deps/symbols:* each answer is memoized under its exact
+  argument list together with the import closure of its single root
+  file — the output of `bin/wv2 deps [arch] <root>`, itself memoized.
+  A repeat request is answered with no compiler run until inotify
+  reports a change to a file in that closure (`check --json w.w`:
+  ~1.2s → ~2ms on the x86_64 host this was built on). Events that can change
+  *resolution* rather than content drop the whole memo: a `.w` file
+  created, deleted or renamed; a directory created or moved; a C
+  header (`.h`/`.c`, the compiler's only non-`.w` inputs via
+  `import c`) edited; `bin/wv2` or `bin/wtest` replaced; an inotify
+  queue overflow (which also re-walks the watches). Requests whose
+  closure cannot be pinned down — several roots, an absolute or `..`
+  path, a root whose `deps` fails (syntax errors) — are never cached,
+  so they always run the compiler. Every request first drains pending
+  inotify events, so an edit that finished before the request was sent
+  is always seen.
+- *test_changed:* runs `bin/wtest changed` per request (fast whenever
+  `bin/.wtest_deps_cache` is warm). The daemon keeps that cache warm:
+  at startup and, debounced by 1.5s, after any `.w` edit, directory
+  change or compiler rebuild it runs `bin/wtest cache [-f manifest]` in
+  the background, so the cold closure walk (§1.2's ~143s) is paid off
+  the agent's critical path. A query arriving mid-prewarm waits for it,
+  keeping one writer of the cache file. Replacing the subprocess with
+  an in-memory closure index (§2.4's "deps/closure layer" proper) is
+  follow-up work; it would change latency, not answers.
+- *Watches:* one inotify watch per directory under the root (dot
+  directories such as `.git`/`.claude` skipped; new directories added
+  as they appear). Under `bin/`, only `.w` files and the `wv2`, `wtest`
+  and `wbuildd` binaries matter; other build outputs are ignored.
+
+**Staleness (§2.2).** Compiler rebuilds are seen as `bin/wv2` /
+`bin/wtest` events and clear the memo. When `bin/wbuildd` itself is
+replaced the daemon exits (clients fall back until the next `start`),
+so an old daemon never serves with outdated logic; requests also carry
+a protocol number the daemon must match.
+
+**Known limits.** Single-threaded: one request at a time, and a cold
+`test_changed` or a big `check` blocks other clients until it finishes
+(§2.5). The daemon's environment, not the client's, is what the
+compiler subprocesses see (the compiler reads no environment
+variables today). C headers outside the tree (`/usr/include`) are not
+watched; restart the daemon after changing system headers. The
+`wexec`-facing target layer of §2.4, `build`, and wiring
+`wbuild`/`wtest`/`w` themselves to try the daemon first are later
+milestones.
