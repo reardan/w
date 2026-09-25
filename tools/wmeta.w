@@ -1,3 +1,4 @@
+# wbuild: binary=wmeta
 /*
 wmeta: the package.wmeta metadata checker (design: docs/package_metadata.txt).
 

@@ -1,3 +1,4 @@
+# wbuild: binary=wfixture
 /*
 wfixture: the compile-diagnostic fixture runner.
 

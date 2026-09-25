@@ -1,3 +1,4 @@
+# wbuild: binary=skills_check
 /*
 skills_check: keep the compiler's --help output and the docs in sync.
 

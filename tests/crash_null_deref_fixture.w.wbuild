@@ -1,0 +1,24 @@
+# wbuild: target=crash_trace_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 tests/crash_null_deref_fixture.w -o bin/crash_null_deref_fixture"
+# wbuild: step="bin/crash_null_deref_fixture" expect_fail expect_stderr="fatal signal: SIGSEGV (invalid memory reference)" expect_stderr="faulting address 0x00000000" expect_stderr="registers:" expect_stderr="build-id: " expect_stderr="stack trace (most recent call first):" expect_stderr="at crash_deep (" expect_stderr="at crash_mid (" expect_stderr="at main (" expect_stderr="crash_null_deref_fixture.w:" expect_stderr="terminating with the default action for signal 11"
+# wbuild: step="bin/wv2 tests/crash_div_zero_fixture.w -o bin/crash_div_zero_fixture"
+# wbuild: step="bin/crash_div_zero_fixture" expect_fail expect_stderr="fatal signal: SIGFPE (arithmetic exception)" expect_stderr="stack trace (most recent call first):" expect_stderr="at crash_divide (" expect_stderr="at main (" expect_stderr="crash_div_zero_fixture.w:" expect_stderr="terminating with the default action for signal 8"
+# wbuild: step="bin/wv2 tests/crash_deep_chain_fixture.w -o bin/crash_deep_chain_fixture"
+# wbuild: step="bin/crash_deep_chain_fixture" expect_fail expect_stderr="stack trace (most recent call first):\n  at crash_level6 (" expect_stderr="crash_deep_chain_fixture.w:29)\n  at crash_level5 (" expect_stderr="crash_deep_chain_fixture.w:33)\n  at crash_level4 (" expect_stderr="crash_deep_chain_fixture.w:37)\n  at crash_level3 (" expect_stderr="crash_deep_chain_fixture.w:41)\n  at crash_level2 (" expect_stderr="crash_deep_chain_fixture.w:45)\n  at crash_level1 (" expect_stderr="crash_deep_chain_fixture.w:49)\n  at main (" expect_stderr="crash_deep_chain_fixture.w:55)\nterminating with the default action for signal 11" reject_stderr="heuristic"
+# wbuild: target=crash_trace_x64_test tag=tests_x64 dep=wv2
+# wbuild: step="bin/wv2 x64 tests/crash_null_deref_fixture.w -o bin/crash_null_deref_fixture64"
+# wbuild: step="bin/crash_null_deref_fixture64" expect_fail expect_stderr="fatal signal: SIGSEGV (invalid memory reference)" expect_stderr="faulting address 0x00000000" expect_stderr="registers:" expect_stderr="build-id: " expect_stderr="stack trace (most recent call first):" expect_stderr="at crash_deep (" expect_stderr="at crash_mid (" expect_stderr="at main (" expect_stderr="crash_null_deref_fixture.w:" expect_stderr="terminating with the default action for signal 11"
+# wbuild: step="bin/wv2 x64 tests/crash_div_zero_fixture.w -o bin/crash_div_zero_fixture64"
+# wbuild: step="bin/crash_div_zero_fixture64" expect_fail expect_stderr="fatal signal: SIGFPE (arithmetic exception)" expect_stderr="stack trace (most recent call first):" expect_stderr="at crash_divide (" expect_stderr="at main (" expect_stderr="crash_div_zero_fixture.w:" expect_stderr="terminating with the default action for signal 8"
+# wbuild: step="bin/wv2 x64 tests/crash_deep_chain_fixture.w -o bin/crash_deep_chain_fixture64"
+# wbuild: step="bin/crash_deep_chain_fixture64" expect_fail expect_stderr="stack trace (most recent call first):\n  at crash_level6 (" expect_stderr="crash_deep_chain_fixture.w:29)\n  at crash_level5 (" expect_stderr="crash_deep_chain_fixture.w:33)\n  at crash_level4 (" expect_stderr="crash_deep_chain_fixture.w:37)\n  at crash_level3 (" expect_stderr="crash_deep_chain_fixture.w:41)\n  at crash_level2 (" expect_stderr="crash_deep_chain_fixture.w:45)\n  at crash_level1 (" expect_stderr="crash_deep_chain_fixture.w:49)\n  at main (" expect_stderr="crash_deep_chain_fixture.w:55)\nterminating with the default action for signal 11" reject_stderr="heuristic"
+# wbuild: target=wcore_test tag=tests dep=wcore input=tools/wcore_test.sh input=tests/crash_null_deref_fixture.w
+# wbuild: step="bin/wv2 tests/crash_null_deref_fixture.w -o bin/wcore_fixture32"
+# wbuild: step="bin/wv2 x64 tests/crash_null_deref_fixture.w -o bin/wcore_fixture64"
+# wbuild: step="sh tools/wcore_test.sh" expect_stdout="wcore test OK"
+# wbuild: target=crash_dump_test tag=tests dep=wcore input=tools/crash_dump_test.sh input=tests/crash_null_deref_fixture.w input=tests/crash_div_zero_fixture.w input=lib/crash.w input=lib/crash_dump.w
+# wbuild: step="bin/wv2 tests/crash_null_deref_fixture.w -o bin/crash_dump_fixture32"
+# wbuild: step="bin/wv2 x64 tests/crash_null_deref_fixture.w -o bin/crash_dump_fixture64"
+# wbuild: step="bin/wv2 tests/crash_div_zero_fixture.w -o bin/crash_dump_div32"
+# wbuild: step="bin/wv2 x64 tests/crash_div_zero_fixture.w -o bin/crash_dump_div64"
+# wbuild: step="sh tools/crash_dump_test.sh" expect_stdout="crash dump test OK"

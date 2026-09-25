@@ -67,3 +67,6 @@ int main(int argc, int argv):
 
 	gfx_window_run(ui_demo_win, ui_demo_frame)
 	return 0
+# wbuild: target=wasm_ui_test dep=wv2
+# wbuild: step="bin/wv2 wasm graphics/ui/demo_web.w -o bin/graphics_ui_demo.wasm"
+# wbuild: step="sh tools/web/run_node.sh tools/web/run_ui_stub.mjs bin/graphics_ui_demo.wasm --frames 4" expect_stdout="ui demo clicks: 1"

@@ -341,3 +341,7 @@ void test_jsonrpc_event_loop_tcp_listener():
 	close(client_a)
 	close(client_b)
 	close(server_fd)
+# wbuild: target=json_rpc_64_test tag=tests_x64 dep=wv2
+# wbuild: step="bin/wv2 x64 lib/json_rpc_test.w -o bin/json_rpc_64_test"
+# wbuild: step="bin/json_rpc_64_test"
+# wbuild: step="bin/wv2 x64 examples/web/json_rpc_server.w -o bin/json_rpc_server_64"

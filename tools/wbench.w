@@ -1,3 +1,4 @@
+# wbuild: binary=wbench
 # wbench: compile-speed benchmark for the compiler itself.
 #
 #	bin/wbench [<compiler>] [-n <runs>]

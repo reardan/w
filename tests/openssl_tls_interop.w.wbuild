@@ -1,0 +1,5 @@
+# wbuild: target=openssl_interop_test dep=wv2
+# wbuild: step="bin/wv2 tests/openssl_tls_interop.w -o bin/openssl_tls_interop32"
+# wbuild: step="bin/wv2 x64 tests/openssl_tls_interop.w -o bin/openssl_tls_interop64"
+# wbuild: step="bin/openssl_tls_interop32" expect_stdout="openssl interop OK" timeout=120000
+# wbuild: step="bin/openssl_tls_interop64" expect_stdout="openssl interop OK" timeout=120000

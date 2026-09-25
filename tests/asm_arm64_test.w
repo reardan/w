@@ -216,3 +216,7 @@ int main():
 	test_golden()
 	println(c"asm_arm64_test passed")
 	return 0
+# wbuild: target=asm_arm64_test tag=tests dep=wv2 input=libs/asm/ input=tests/asm/ input=tests/asm_arm64_test.w input=w.w
+# wbuild: step="bin/wv2 arm64 w.w -o bin/asm_arm64_selfhost"
+# wbuild: step="bin/wv2 tests/asm_arm64_test.w -o bin/asm_arm64_test"
+# wbuild: step="bin/asm_arm64_test"

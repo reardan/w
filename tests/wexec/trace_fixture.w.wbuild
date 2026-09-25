@@ -1,0 +1,5 @@
+# wbuild: target=wexec_trace_test tag=tests dep=wv2 dep=wexec
+# wbuild: step="bin/wv2 tests/wexec/trace_fixture.w -o bin/wexec_trace_fixture"
+# wbuild: step="bin/wexec -f tests/wexec/trace.json --trace trace_target" expect_stdout="wexec: trace trace_target" expect_stdout="{\"file\": \"tests/wexec/trace_declared.txt\", \"declared\": true}" expect_stdout="{\"file\": \"tests/wexec/trace_undeclared.txt\", \"declared\": false}" expect_stdout="wexec: trace summary: 2 read, 1 undeclared"
+# wbuild: step="bin/wexec -f tests/wexec/trace.json --trace trace_target --hermetic" expect_fail expect_stdout="wexec: trace summary: 2 read, 1 undeclared"
+# wbuild: step="bin/wexec -f tests/wexec/trace.json --trace no_such_target" expect_fail expect_stderr="unknown target"

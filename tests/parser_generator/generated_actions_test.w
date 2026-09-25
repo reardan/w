@@ -265,3 +265,8 @@ void test_predicate_must_be_first_term():
 	pg_grammar* grammar = pg_grammar_read(source, c"bad_predicate_position.pg", diagnostics)
 	assert1(grammar == 0)
 	assert1(pg_diagnostics_count(diagnostics) > 0)
+# wbuild: target=parser_generator_actions_test tag=tests dep=parser_generator_test
+# wbuild: step="bin/parser_generator tests/parser_generator/actions_sample.pg -o bin/generated_actions_parser.w"
+# wbuild: step="bin/parser_generator tests/parser_generator/action_paste_reject.pg -o bin/pg_action_paste_reject.w" expect_fail expect_stderr="parser_generator: rule value: action binding $1 is immediately followed by an identifier character -- substitution would paste them into one identifier; separate them with whitespace"
+# wbuild: step="bin/wv2 tests/parser_generator/generated_actions_test.w -o bin/parser_generator_actions_test"
+# wbuild: step="bin/parser_generator_actions_test"

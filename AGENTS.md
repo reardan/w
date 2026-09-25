@@ -28,9 +28,11 @@ from the hand-maintained `build.base.json` plus every conventional
 reading, and `./wbuild manifest_check` (in `tests`) fails when generation
 fails. To add a test: create the `_test.w` file; expectations and extra
 steps are `# wbuild:` directives in it (`expect_stdout=`,
-`step="cmd args" expect_fail ...`; vocabulary in `tools/wbuildgen_lib.w`),
-so hand-written `build.base.json` targets are only for shapes no source
-owns (toolchain, bootstrap). Interactive
+`step="cmd args" expect_fail ...`; vocabulary in `tools/wbuildgen_lib.w`).
+A source can own whole extra targets too (`# wbuild: target=<name>` or
+`binary=<name>` on its own line, followed by `step=` lines), so
+hand-written `build.base.json` targets are only for shapes no source
+owns (bootstrap chain, scripts without a W host). Interactive
 conveniences (debuggers, `stap` traces, hand-testing servers) are manual
 one-liners, listed in README's "Build, verify, test" section — wexec
 captures step stdio, so it cannot host a live prompt or a

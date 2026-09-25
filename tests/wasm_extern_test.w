@@ -59,3 +59,9 @@ int main(int argc, int argv):
 
 	println(c"wasm extern test OK")
 	return 0
+# wbuild: target=wasm_extern_test dep=wv2
+# wbuild: step="bin/wv2 wasm tests/wasm_extern_test.w -o bin/wasm_extern_test"
+# wbuild: step="sh tools/web/run_node.sh tools/web/run_env_test.mjs bin/wasm_extern_test"
+# wbuild: step="bin/wv2 wasm tests/wasm_extern_variadic_fixture.w -o bin/wasm_extern_variadic_fixture" expect_fail expect_stderr="variadic extern functions are not supported on the wasm target"
+# wbuild: step="bin/wv2 wasm tests/wasm_extern_data_fixture.w -o bin/wasm_extern_data_fixture" expect_fail expect_stderr="extern data objects are not supported on the wasm target"
+# wbuild: step="bin/wv2 wasm tests/wasm_c_import_fixture.w -o bin/wasm_c_import_fixture" expect_fail expect_stderr="c_import is not supported on the wasm target"

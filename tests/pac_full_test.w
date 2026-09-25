@@ -69,3 +69,14 @@ int main(int argc, int argv):
 
 	println(c"pac full OK")
 	return 0
+# wbuild: target=pac_flag_test tag=tests dep=wv2 dep=pac_flag_check
+# wbuild: step="bin/wv2 arm64 tests/pac_full_test.w -o bin/pac_flag_ret"
+# wbuild: step="bin/wv2 arm64 --pac=off tests/pac_full_test.w -o bin/pac_flag_off"
+# wbuild: step="bin/wv2 arm64 --pac=full tests/pac_full_test.w -o bin/pac_flag_full"
+# wbuild: step="bin/wv2 arm64_darwin --pac=full tests/pac_full_test.w -o bin/pac_flag_arm64e"
+# wbuild: step="bin/wv2 arm64_darwin tests/pac_full_test.w -o bin/pac_flag_darwin"
+# wbuild: step="bin/pac_flag_check bin/pac_flag_ret bin/pac_flag_off bin/pac_flag_full bin/pac_flag_arm64e bin/pac_flag_darwin" expect_stdout="pac flag test OK"
+# wbuild: target=pac_darwin tag=tests dep=wv2
+# wbuild: step="bin/wv2 arm64_darwin --pac=full tests/pac_full_test.w -o bin/pac_full_darwin_test"
+# wbuild: step="bin/wv2 arm64_darwin --pac=full tests/pac_corrupt_fnptr_test.w -o bin/pac_corrupt_fnptr_darwin_test"
+# wbuild: step="bin/wv2 arm64_darwin --pac=full tests/pac_corrupt_ret_test.w -o bin/pac_corrupt_ret_darwin_test"

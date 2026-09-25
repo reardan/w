@@ -1,0 +1,10 @@
+# wbuild: target=float_reference_test tag=tests dep=wv2
+# wbuild: step="cc -std=c99 -O0 -fno-fast-math tests/float_reference.c -o bin/float_reference_c"
+# wbuild: step="bin/float_reference_c f32" stdout_file="bin/float_reference_c32.out"
+# wbuild: step="bin/wv2 tests/float_reference.w -o bin/float_reference_w32"
+# wbuild: step="bin/float_reference_w32" stdout_file="bin/float_reference_w32.out"
+# wbuild: step="diff -u bin/float_reference_c32.out bin/float_reference_w32.out"
+# wbuild: step="bin/float_reference_c f64" stdout_file="bin/float_reference_c64.out"
+# wbuild: step="bin/wv2 x64 tests/x64_float_reference.w -o bin/float_reference_w64"
+# wbuild: step="bin/float_reference_w64" stdout_file="bin/float_reference_w64.out"
+# wbuild: step="diff -u bin/float_reference_c64.out bin/float_reference_w64.out"

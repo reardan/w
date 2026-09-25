@@ -38,3 +38,9 @@ void test_pow():
 	assert_equal(-27, pow(-3, 3))
 	assert_equal(0, pow(2, -1))
 	assert_equal(1, pow(1, 100))
+# wbuild: target=arg_order_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 --strict x64 tests/math_test.w -o bin/arg_order_m64" expect_stderr="Compiling in x64 mode" reject_stderr="no such file: 'x64'"
+# wbuild: step="bin/arg_order_m64" expect_stdout="All tests passed!"
+# wbuild: step="bin/wv2 -o bin/arg_order_m64b --quiet x64 tests/math_test.w" reject_stderr="no such file: 'x64'"
+# wbuild: step="bin/arg_order_m64b" expect_stdout="All tests passed!"
+# wbuild: step="bin/wv2 check --quiet x64 tests/math_test.w" reject_stderr="no such file: 'x64'"

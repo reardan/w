@@ -1,3 +1,5 @@
+# wbuild: target=gen_stubs dep=wv2 input=libs/asm/ input=tools/gen_stubs.w output=bin/gen_stubs
+# wbuild: step="bin/wv2 tools/gen_stubs.w -o bin/gen_stubs"
 /*
 Offline generator for the runtime stubs in code_generator/{x86,x64,
 arm64}_asm.w (docs/projects/assembler_disassembler.md, issue #170).

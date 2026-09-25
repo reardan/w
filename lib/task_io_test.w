@@ -258,3 +258,8 @@ void test_process_wait_does_not_block_other_tasks():
 	task_scheduler_free(s)
 	list_free[int](log.entries)
 	free(cast(void*, log))
+# wbuild: target=task_io_64_test tag=tests_x64 dep=wv2
+# wbuild: step="bin/wv2 x64 lib/task_io_test.w -o bin/task_io_64_test"
+# wbuild: step="bin/task_io_64_test"
+# wbuild: step="bin/wv2 x64 examples/web/task_echo_server.w -o bin/task_echo_server_64"
+# wbuild: step="bin/task_echo_server_64" expect_stdout="demo: OK"

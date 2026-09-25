@@ -673,9 +673,37 @@ struct wbg_step_dir:
 list[wbg_step_dir*] wbg_dir_steps  # step= directives, encounter order
 wbg_step_dir* wbg_dir_cur_step     # this line's step=, 0 until one appears
 
+
+# One 'target=' or 'binary=' directive: a whole target owned by the
+# source that declares it (see "Source-owned targets" below).
+struct wbg_custom:
+	char* name
+	char* src
+	int is_binary
+	int staged                    # binary=: compile to <out>.stage, then mv
+	char* arch                    # binary=: target selector word, 0 = default
+	char* out                     # binary=: output path, 0 = bin/<name>
+	list[char*] flags             # binary=: extra compiler args
+	list[char*] tags
+	list[char*] deps
+	list[char*] data
+	list[char*] inputs
+	list[char*] outputs
+	list[wbg_step_dir*] steps
+
+int wbg_custom_pass                # 1 while wbg_load_customs parses sources
+list[wbg_custom*] wbg_customs      # every source-owned target, scan order
+wbg_custom* wbg_cur_custom         # the file's latest target=/binary=, 0 before one
+int wbg_line_custom                # 1: this line's remaining tokens are target fields
+int wbg_line_skip                  # 1: ignore this line's remaining tokens
+int wbg_line_tokens                # tokens seen on this line, current one included
+
 json_value* wbg_expectation(list[char*] values);
 void wbg_push_split_args(json_value* cmd, char* args);
 int wbg_collect_tags(char* name, json_value* target);
+int wbg_open_custom(char* path, char* key, int has_value, char* value);
+int wbg_apply_custom_field(char* path, char* key, int has_value, char* value);
+void wbg_push_step_args(json_value* cmd, char* args);
 
 # '# wbuild: fixture_group=<name>' (fixture files only — see wbg_scan's
 # fixture-group pass): the file is not compiled/run itself, it is one
@@ -708,6 +736,10 @@ void wbg_reset_directives():
 	wbg_dir_group_only = 0
 	wbg_dir_steps = new list[wbg_step_dir*]
 	wbg_dir_cur_step = 0
+	wbg_cur_custom = 0
+	wbg_line_custom = 0
+	wbg_line_skip = 0
+	wbg_line_tokens = 0
 	wbg_dir_fixture_group = 0
 
 
@@ -908,15 +940,24 @@ int wbg_apply_step_field(char* path, char* key, int has_value, char* value):
 			return 1
 		json_object_set(sd.step, c"timeout_ms", json_int(ms))
 		return 0
-	if ((strcmp(key, c"stdin") == 0) | (strcmp(key, c"stdout_file") == 0)):
+	if (strcmp(key, c"expect_status") == 0):
 		if (wbg_need_value(path, key, has_value)):
 			return 1
-		if ((value[0] == 0) && (strcmp(key, c"stdout_file") == 0)):
+		int status = wbg_parse_ms(value)
+		if (status < 0):
+			wbg_token_error(path, c"'# wbuild:' expect_status needs a non-negative exit code, got ", value)
+			return 1
+		json_object_set(sd.step, c"expect_status", json_int(status))
+		return 0
+	if ((strcmp(key, c"stdin") == 0) | (strcmp(key, c"stdout_file") == 0) | (strcmp(key, c"stderr_file") == 0)):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		if ((value[0] == 0) && (strcmp(key, c"stdin") != 0)):
 			wbg_token_error(path, c"empty '# wbuild:' directive ", key)
 			return 1
 		json_object_set(sd.step, key, json_string(value))
 		return 0
-	wbg_token_error(path, c"not a 'step=' field (expect_fail, expect_stdout=, expect_stderr=, reject_stdout=, reject_stderr=, timeout=, stdin=, stdout_file=): ", key)
+	wbg_token_error(path, c"not a 'step=' field (expect_fail, expect_status=, expect_stdout=, expect_stderr=, reject_stdout=, reject_stderr=, timeout=, stdin=, stdout_file=, stderr_file=): ", key)
 	return 1
 
 
@@ -936,9 +977,245 @@ json_value* wbg_step_json(wbg_step_dir* sd):
 	return step
 
 
+# step= argument splitting: whitespace-separated words, where a word
+# wrapped in single quotes is kept whole, spaces included ('' is an
+# empty argument). No escapes inside the quotes: an argument that needs
+# a single quote cannot be spelled, and wbuildgen says so.
+void wbg_push_step_args(json_value* cmd, char* args):
+	string_builder* token = string_new()
+	int i = 0
+	int in_word = 0
+	while (args[i] != 0):
+		int c = args[i]
+		if (c == 39):
+			i = i + 1
+			while ((args[i] != 0) && (args[i] != 39)):
+				string_append_char(token, args[i])
+				i = i + 1
+			if (args[i] == 39):
+				i = i + 1
+			in_word = 1
+		else if ((c == ' ') || (c == '\t')):
+			if (in_word):
+				json_array_push(cmd, json_string(token.data))
+				string_clear(token)
+				in_word = 0
+			i = i + 1
+		else:
+			string_append_char(token, c)
+			in_word = 1
+			i = i + 1
+	if (in_word):
+		json_array_push(cmd, json_string(token.data))
+	string_free(token)
+
+
+/* Source-owned targets (issue #323 stage 3). A source can own whole
+targets besides its conventional test target:
+
+  # wbuild: target=<name> [tag=<umbrella>] [dep=<target>] [data=<path>]
+  #         [input=<path>] [output=<path>]
+  # wbuild: binary=<name> [arch=<sel>] [flags="args"] [out=<path>]
+  #         [staged] [tag=...] [dep=...] [data=...]
+
+(each on one line). The tokens after target=/binary= on its line are the
+target's own fields (all repeatable except arch/out/staged); every later
+`step=` line in the file, up to the next target=/binary=, appends a step
+to it with the usual per-step fields. target= spells everything out:
+no deps, inputs or outputs unless given. binary=<name> is the tool
+shorthand: deps ["wv2"] (plus dep=), inputs [the source], outputs
+[out, default bin/<name>], and a first step compiling the source,
+`bin/wv2 [arch] [flags] <source> -o <out>` -- or, with `staged`, to
+<out>.stage followed by `mv <out>.stage <out>` (the idiom for a binary
+that may be running while it is rebuilt). A source's own test-target
+directives, including its own step= lines, must come before its first
+target=/binary= line.
+
+Source-owned targets are read in a first pass over every .w file (and
+.w.wbuild sidecar) under the scanned directories plus compiler/,
+grammar/, debugger/, code_generator/ and examples/ (wbg_load_customs),
+before the conventional scan, and join the hand-written base targets:
+they render right after them, "base wins" and tool=/fixture lookups see
+them, and a name defined both here and in build.base.json is an error. */
+int wbg_open_custom(char* path, char* key, int has_value, char* value):
+	if (wbg_need_value(path, key, has_value)):
+		return 1
+	if (value[0] == 0):
+		wbg_token_error(path, c"empty '# wbuild:' directive ", key)
+		return 1
+	if (wbg_line_tokens > 1):
+		wbg_token_error(path, c"'target='/'binary=' must start its own '# wbuild:' line: ", value)
+		return 1
+	wbg_custom* c = new wbg_custom()
+	c.name = strclone(value)
+	c.src = strclone(path)
+	c.is_binary = strcmp(key, c"binary") == 0
+	c.staged = 0
+	c.arch = 0
+	c.out = 0
+	c.flags = new list[char*]
+	c.tags = new list[char*]
+	c.deps = new list[char*]
+	c.data = new list[char*]
+	c.inputs = new list[char*]
+	c.outputs = new list[char*]
+	c.steps = new list[wbg_step_dir*]
+	wbg_customs.push(c)
+	wbg_cur_custom = c
+	wbg_line_custom = 1
+	return 0
+
+
+int wbg_apply_custom_field(char* path, char* key, int has_value, char* value):
+	wbg_custom* c = wbg_cur_custom
+	if (strcmp(key, c"staged") == 0):
+		if (wbg_no_value(path, key, has_value)):
+			return 1
+		if (c.is_binary == 0):
+			wbg_token_error(path, c"'staged' only applies to 'binary=': ", c.name)
+			return 1
+		c.staged = 1
+		return 0
+	if (wbg_need_value(path, key, has_value)):
+		return 1
+	if (value[0] == 0):
+		wbg_token_error(path, c"empty '# wbuild:' directive ", key)
+		return 1
+	if (strcmp(key, c"tag") == 0):
+		c.tags.push(strclone(value))
+		return 0
+	if (strcmp(key, c"dep") == 0):
+		c.deps.push(strclone(value))
+		return 0
+	if (strcmp(key, c"data") == 0):
+		c.data.push(strclone(value))
+		return 0
+	if (strcmp(key, c"input") == 0):
+		c.inputs.push(strclone(value))
+		return 0
+	if (strcmp(key, c"output") == 0):
+		c.outputs.push(strclone(value))
+		return 0
+	int binary_only = (strcmp(key, c"arch") == 0) | (strcmp(key, c"flags") == 0) | (strcmp(key, c"out") == 0)
+	if (binary_only && (c.is_binary == 0)):
+		wbg_token_error(path, c"only 'binary=' takes this field (spell the compile step out with step=): ", key)
+		return 1
+	if (strcmp(key, c"arch") == 0):
+		c.arch = strclone(value)
+		return 0
+	if (strcmp(key, c"flags") == 0):
+		c.flags.push(strclone(value))
+		return 0
+	if (strcmp(key, c"out") == 0):
+		c.out = strclone(value)
+		return 0
+	wbg_token_error(path, c"not a 'target='/'binary=' field (tag=, dep=, data=, input=, output=; binary= also arch=, flags=, out=, staged): ", key)
+	return 1
+
+
+json_value* wbg_string_array(list[char*] values):
+	json_value* out = json_array()
+	for char* value in values:
+		json_array_push(out, json_string(value))
+	return out
+
+
+# The finished target object for one source-owned target, in the field
+# order the hand-written targets use: name, deps, data, inputs,
+# outputs, steps (plus "tags", which wbg_collect_tags consumes and the
+# renderer drops).
+json_value* wbg_custom_json(wbg_custom* c):
+	json_value* target = json_object()
+	json_object_set(target, c"name", json_string(c.name))
+	list[char*] deps = new list[char*]
+	char* out = c.out
+	if (c.is_binary):
+		deps.push(c"wv2")
+		if (out == 0):
+			out = wbg_concat(c"bin/", c.name)
+	for char* dep in c.deps:
+		deps.push(dep)
+	if (deps.length > 0):
+		json_object_set(target, c"deps", wbg_string_array(deps))
+	if (c.tags.length > 0):
+		json_object_set(target, c"tags", wbg_string_array(c.tags))
+	if (c.data.length > 0):
+		json_object_set(target, c"data", wbg_string_array(c.data))
+	list[char*] inputs = new list[char*]
+	list[char*] outputs = new list[char*]
+	if (c.is_binary):
+		inputs.push(c.src)
+		outputs.push(out)
+	for char* input in c.inputs:
+		inputs.push(input)
+	for char* output in c.outputs:
+		outputs.push(output)
+	if (inputs.length > 0):
+		json_object_set(target, c"inputs", wbg_string_array(inputs))
+	if (outputs.length > 0):
+		json_object_set(target, c"outputs", wbg_string_array(outputs))
+	json_value* steps = json_array()
+	if (c.is_binary):
+		char* compiled = out
+		if (c.staged):
+			compiled = wbg_concat(out, c".stage")
+		json_value* cmd = json_array()
+		json_array_push(cmd, json_string(c"bin/wv2"))
+		if (c.arch != 0):
+			json_array_push(cmd, json_string(c.arch))
+		for char* args in c.flags:
+			wbg_push_split_args(cmd, args)
+		json_array_push(cmd, json_string(c.src))
+		json_array_push(cmd, json_string(c"-o"))
+		json_array_push(cmd, json_string(compiled))
+		json_value* compile_step = json_object()
+		json_object_set(compile_step, c"cmd", cmd)
+		json_array_push(steps, compile_step)
+		if (c.staged):
+			json_value* mv = json_array()
+			json_array_push(mv, json_string(c"mv"))
+			json_array_push(mv, json_string(compiled))
+			json_array_push(mv, json_string(out))
+			json_value* mv_step = json_object()
+			json_object_set(mv_step, c"cmd", mv)
+			json_array_push(steps, mv_step)
+	for wbg_step_dir* sd in c.steps:
+		json_array_push(steps, wbg_step_json(sd))
+	if (json_array_length(steps) == 0):
+		wbg_error2(c"source-owned target has no steps (add step= lines after it): ", c.name)
+		return 0
+	json_object_set(target, c"steps", steps)
+	return target
+
+
 # Applies one parsed key[=value] token to the wbg_dir_* state.
 # Returns 0 on success, 1 after reporting an error.
 int wbg_apply_directive(char* path, char* key, int has_value, char* value):
+	if (wbg_line_skip):
+		return 0
+	wbg_line_tokens = wbg_line_tokens + 1
+	int opens_custom = (strcmp(key, c"target") == 0) | (strcmp(key, c"binary") == 0)
+	if (wbg_custom_pass):
+		# Pass 1 (wbg_load_customs): only source-owned targets and their
+		# steps; every other directive belongs to pass 2.
+		if (opens_custom):
+			return wbg_open_custom(path, key, has_value, value)
+		if (wbg_line_custom):
+			return wbg_apply_custom_field(path, key, has_value, value)
+		if ((strcmp(key, c"step") == 0) && (wbg_cur_custom == 0)):
+			wbg_line_skip = 1
+			return 0
+		if ((strcmp(key, c"step") != 0) && (wbg_dir_cur_step == 0)):
+			return 0
+	else if (opens_custom):
+		# Pass 2 skips what pass 1 already turned into targets: the
+		# target= line itself and every step= line after it.
+		wbg_cur_custom = cast(wbg_custom*, 1)
+		wbg_line_skip = 1
+		return 0
+	else if ((wbg_cur_custom != 0) && (strcmp(key, c"step") == 0)):
+		wbg_line_skip = 1
+		return 0
 	if (strcmp(key, c"step") == 0):
 		if (wbg_need_value(path, key, has_value)):
 			return 1
@@ -950,14 +1227,17 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 			return 1
 		wbg_step_dir* sd = new wbg_step_dir()
 		json_value* cmd = json_array()
-		wbg_push_split_args(cmd, value)
+		wbg_push_step_args(cmd, value)
 		sd.step = json_object()
 		json_object_set(sd.step, c"cmd", cmd)
 		sd.expect_stdout = new list[char*]
 		sd.expect_stderr = new list[char*]
 		sd.reject_stdout = new list[char*]
 		sd.reject_stderr = new list[char*]
-		wbg_dir_steps.push(sd)
+		if (wbg_custom_pass):
+			wbg_cur_custom.steps.push(sd)
+		else:
+			wbg_dir_steps.push(sd)
 		wbg_dir_cur_step = sd
 		return 0
 	if (wbg_dir_cur_step != 0):
@@ -1270,6 +1550,9 @@ int wbg_parse_directives(char* path):
 			# step= scopes the tokens after it to its own step, up to
 			# the end of this line.
 			wbg_dir_cur_step = 0
+			wbg_line_custom = 0
+			wbg_line_skip = 0
+			wbg_line_tokens = 0
 			while (at_end == 0):
 				while ((text[j] == ' ') || (text[j] == '\t')):
 					j = j + 1
@@ -2059,6 +2342,58 @@ int wbg_expand_tool_targets():
 	return 0
 
 
+# Pass 1 of the scan: read every source-owned target (see "Source-owned
+# targets" above) and add it to the base target table, so the
+# conventional pass and every resolver treat it like a hand-written
+# target.
+int wbg_load_customs():
+	wbg_customs = new list[wbg_custom*]
+	list[char*] files = new list[char*]
+	wbg_collect_dir(c"tests", files)
+	wbg_collect_dir(c"lib", files)
+	wbg_collect_dir(c"structures", files)
+	wbg_collect_dir(c"graphics", files)
+	wbg_collect_dir(c"libs", files)
+	wbg_collect_dir(c"tools", files)
+	wbg_collect_dir(c"compiler", files)
+	wbg_collect_dir(c"grammar", files)
+	wbg_collect_dir(c"debugger", files)
+	wbg_collect_dir(c"code_generator", files)
+	wbg_collect_dir(c"examples", files)
+	wbg_sort_strings(files)
+	wbg_custom_pass = 1
+	int failed = 0
+	for char* src in files:
+		if (ends_with(src, c".w") == 0):
+			continue
+		if (wbg_parse_directives(src)):
+			failed = 1
+	wbg_custom_pass = 0
+	if (failed):
+		return 1
+	json_value* targets = json_object_get(wbg_base, c"targets")
+	for wbg_custom* c in wbg_customs:
+		if (c.name in wbg_base_targets):
+			string_builder* s = string_new()
+			string_append(s, c"target '")
+			string_append(s, c.name)
+			string_append(s, c"' is defined both in ")
+			string_append(s, c.src)
+			string_append(s, c" and in build.base.json (or twice in sources)")
+			wbg_error(s.data)
+			string_free(s)
+			return 1
+		json_value* target = wbg_custom_json(c)
+		if (target == 0):
+			return 1
+		json_array_push(targets, target)
+		wbg_base_targets[c.name] = target
+		wbg_base_names.push(c.name)
+		if (wbg_collect_tags(c.name, target)):
+			return 1
+	return 0
+
+
 int wbg_scan():
 	wbg_generated = new list[json_value*]
 	wbg_gen_seen = new map[char*, int]
@@ -2628,6 +2963,8 @@ per process: the wbg_* tables are global. */
 char* wbg_generate(char* base_path, int scan_tree):
 	wbg_scan_tree = scan_tree
 	if (wbg_load_base(base_path)):
+		return 0
+	if (wbg_load_customs()):
 		return 0
 	if (wbg_scan()):
 		return 0

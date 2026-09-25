@@ -1,3 +1,4 @@
+# wbuild: binary=wcore arch=x64 staged
 /*
 wcore: Linux core-dump processor for W binaries (issue #378's tooling half).
 

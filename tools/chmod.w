@@ -1,3 +1,5 @@
+# wbuild: target=chmod dep=wv2 input=tools/chmod.w input=lib/stat.w output=bin/chmod
+# wbuild: step="bin/wv2 tools/chmod.w -o bin/chmod"
 /*
 chmod: set file permission bits (octal mode only).
 

@@ -1,0 +1,7 @@
+# wbuild: target=gpt_train_gpu_test dep=wv2
+# wbuild: step="sh tools/fetch_shakespeare.sh"
+# wbuild: step="bin/wv2 x64 tests/gpt_train_gpu.w -o bin/gpt_train_gpu"
+# wbuild: step="bin/gpt_train_gpu" expect_stdout="gpt: gpu path" expect_stdout="gpt train OK"
+# wbuild: step="sh -c 'CUDA_VISIBLE_DEVICES= bin/gpt_train_gpu'" expect_stdout="gpt: cpu fallback" expect_stdout="gpt train OK"
+# wbuild: target=gpt_train_compile_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 x64 tests/gpt_train_gpu.w -o bin/gpt_train_compile"

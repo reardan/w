@@ -1,0 +1,6 @@
+# wbuild: target=nn_compile_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 x64 tests/nn_train_gpu.w -o bin/nn_train_gpu_compile"
+# wbuild: target=nn_train_gpu_test dep=wv2
+# wbuild: step="bin/wv2 x64 tests/nn_train_gpu.w -o bin/nn_train_gpu"
+# wbuild: step="bin/nn_train_gpu" expect_stdout="nn: gpu path" expect_stdout="nn train OK"
+# wbuild: step="sh -c 'CUDA_VISIBLE_DEVICES= bin/nn_train_gpu'" expect_stdout="nn: cpu fallback" expect_stdout="nn train OK"

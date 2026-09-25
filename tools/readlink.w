@@ -1,3 +1,5 @@
+# wbuild: target=readlink dep=wv2 input=tools/readlink.w input=lib/stat.w output=bin/readlink
+# wbuild: step="bin/wv2 tools/readlink.w -o bin/readlink"
 /*
 readlink: print the target of a symbolic link.
 

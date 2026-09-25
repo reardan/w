@@ -225,3 +225,8 @@ void test_compare_and_zero():
 	assert_equal(0, bignum_is_zero(b))
 	bignum_free(a)
 	bignum_free(b)
+# wbuild: target=crypto_bignum_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 libs/standard/crypto/bignum_test.w -o bin/crypto_bignum_test"
+# wbuild: step="bin/crypto_bignum_test"
+# wbuild: step="bin/wv2 x64 libs/standard/crypto/bignum_test.w -o bin/crypto_bignum_test_x64"
+# wbuild: step="bin/crypto_bignum_test_x64"

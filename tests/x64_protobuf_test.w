@@ -172,3 +172,6 @@ int main():
 	test_uint64_large_value_wire_bytes()
 	println(c"x64 protobuf wide-kind tests OK")
 	return 0
+# wbuild: target=x64_protobuf_test tag=tests_x64 dep=wv2
+# wbuild: step="bin/wv2 x64 tests/x64_protobuf_test.w -o bin/x64_protobuf_test"
+# wbuild: step="bin/x64_protobuf_test" expect_stdout="x64 protobuf wide-kind tests OK"

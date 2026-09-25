@@ -174,9 +174,12 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
   collision, unknown tool path). Expectations, stdin, timeouts and extra
   steps are `# wbuild:` directives in the source too (`expect_stdout=`,
   `timeout=`, and `step="cmd args"` with its own fields after it on the
-  line; vocabulary in `tools/wbuildgen_lib.w`), so a hand-written
-  `build.base.json` target is only for toolchain and other shapes no
-  source owns; it joins `tests` (or `tests_x64`, ...) through its own
+  line; vocabulary in `tools/wbuildgen_lib.w`). A source can also own
+  whole extra targets (`# wbuild: target=<name>` or `binary=<name>` on
+  its own line, then `step=` lines), which is where tool binaries and
+  fixture-driven suites live, so a hand-written `build.base.json`
+  target is only for the bootstrap chain and other shapes no source
+  owns; it joins `tests` (or `tests_x64`, ...) through its own
   `"tags"` field, since umbrella targets carry no member lists. `bin/wtest` picks targets up automatically
   from the manifest (literal step references + import closures); a
   `tools/test_map.w` residue rule is only needed for coupling the import

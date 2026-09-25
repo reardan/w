@@ -249,3 +249,11 @@ void test_streaming_mode_rejects_nullable_suffix_with_live_sibling():
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	char* generated = pg_generate_parser(grammar)
 	assert1(generated == 0)
+# wbuild: target=parser_generator_streaming_test tag=tests dep=parser_generator_test
+# wbuild: step="bin/parser_generator tests/parser_generator/streaming_sample.pg -o bin/generated_streaming_parser.w"
+# wbuild: step="bin/parser_generator tests/parser_generator/streaming_fallback_sample.pg -o bin/generated_streaming_fallback_parser.w"
+# wbuild: step="bin/parser_generator tests/parser_generator/streaming_guard_reject.pg -o bin/pg_streaming_guard_reject.w" expect_fail expect_stderr="parser_generator: rule value: alternative 1 can match nothing and is not the trailing fallback (no committed dispatch)" expect_stderr="parser_generator: rule value: alternatives 1 and 2 overlap on NUMBER"
+# wbuild: step="bin/wv2 tests/parser_generator/generated_streaming_test.w -o bin/parser_generator_streaming_test"
+# wbuild: step="bin/parser_generator_streaming_test"
+# wbuild: step="bin/wv2 tests/parser_generator/generated_streaming_fallback_test.w -o bin/parser_generator_streaming_fallback_test"
+# wbuild: step="bin/parser_generator_streaming_fallback_test"

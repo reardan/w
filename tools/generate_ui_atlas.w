@@ -1,3 +1,6 @@
+# wbuild: target=ui_font_data dep=wv2
+# wbuild: step="bin/wv2 tools/generate_ui_atlas.w -o bin/generate_ui_atlas"
+# wbuild: step="bin/generate_ui_atlas"
 # Emits graphics/ui/font_data.w — the baked rows of the UI's one R8
 # atlas plus the embedded default faces — from the committed
 # Liberation Sans faces (tools/ui/*.ttf, SIL OFL 1.1) via lib/ttf.w

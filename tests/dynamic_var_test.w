@@ -208,3 +208,8 @@ void test_chained_arithmetic():
 	assert_equal(6, sum)
 	var expr = (a + b) * c - 2
 	assert_equal(7, expr)
+# wbuild: target=dynamic_var_64_test tag=tests_x64 dep=wv2
+# wbuild: step="bin/wv2 x64 tests/dynamic_var_test.w -o bin/dynamic_var_64_test"
+# wbuild: step="bin/dynamic_var_64_test"
+# wbuild: step="bin/wv2 x64 tests/dynamic_var_trap_fixture.w -o bin/dynamic_var_trap_fixture_64"
+# wbuild: step="bin/dynamic_var_trap_fixture_64" expect_fail expect_stderr="var runtime error: expected int, got char*"

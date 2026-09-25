@@ -42,7 +42,13 @@ directive-gap closures:
   one line, and sources with no default-arch target;
 - a base target's "tags" puts it in the named umbrellas (ahead of the
   generated members) and never reaches the manifest, and a tag naming
-  no umbrella is a hard error.
+  no umbrella is a hard error;
+- target=/binary= lines make a source own whole targets (binary= adds
+  the wv2 dep, source input, bin/<name> output and a compile step,
+  optionally staged), their step= lines keep quoted words whole and
+  stay out of the source's own test target, and a name clash with
+  build.base.json, a step-less target, 'staged' on target=, or a
+  target= that does not start its line are hard errors.
 */
 # wbuild: tool=tools/wbuildgen.w
 import lib.testing
@@ -481,6 +487,76 @@ void test_tags_reject_unknown_umbrella():
 	process_result* r = wdet_run(dir)
 	assert1(r.status != 0)
 	wdet_assert_contains(r.stderr_text, c"\"tags\" of hand names an unknown umbrella (a step-less build.base.json target): testz")
+	process_result_free(r)
+
+
+void test_binary_target_shape():
+	char* dir = wdet_case_dir(c"binary")
+	wdet_write(dir, c"tests/mytool.w", c"# wbuild: binary=mytool arch=x64 staged tag=tests dep=tests_x64\n# wbuild: step=\"bin/mytool --check 'two words' ''\" expect_status=3 stderr_file=bin/e.txt\nint main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert_equal(0, r.status)
+	process_result_free(r)
+	char* out_path = path_join(dir, c"out.json")
+	char* out = file_read_text(out_path)
+	assert1(out != 0)
+	# binary= implies the wv2 dep, the source input and the bin/<name>
+	# output, and compiles through a staged copy; the step= line after
+	# it keeps single-quoted words whole and '' as an empty argument.
+	wdet_assert_contains(out, c"\"name\": \"mytool\",\n\t\t\t\"deps\": [\"wv2\", \"tests_x64\"],\n\t\t\t\"inputs\": [\"tests/mytool.w\"],\n\t\t\t\"outputs\": [\"bin/mytool\"],")
+	wdet_assert_contains(out, c"{\"cmd\": [\"bin/wv2\", \"x64\", \"tests/mytool.w\", \"-o\", \"bin/mytool.stage\"]},\n\t\t\t\t{\"cmd\": [\"mv\", \"bin/mytool.stage\", \"bin/mytool\"]},\n\t\t\t\t{\"cmd\": [\"bin/mytool\", \"--check\", \"two words\", \"\"], \"expect_status\": 3, \"stderr_file\": \"bin/e.txt\"}")
+	wdet_assert_contains(out, c"\"name\": \"tests\",\n\t\t\t\"deps\": [\n\t\t\t\t\"mytool\"\n\t\t\t]")
+	wdet_assert_lacks(out, c"\"tags\"")
+	free(out)
+	free(out_path)
+
+
+void test_target_after_test_directives():
+	char* dir = wdet_case_dir(c"target")
+	wdet_write(dir, c"tests/spelled_test.w", c"# wbuild: expect_stdout=\"hi\"\nint main():\n\treturn 0\n# wbuild: target=spelled input=tests/spelled_test.w output=bin/spelled.txt\n# wbuild: step=\"true\"\n")
+	process_result* r = wdet_run(dir)
+	assert_equal(0, r.status)
+	process_result_free(r)
+	char* out_path = path_join(dir, c"out.json")
+	char* out = file_read_text(out_path)
+	assert1(out != 0)
+	# target= spells everything out (no implied deps), and its step=
+	# lines never leak into the source's own conventional test target.
+	wdet_assert_contains(out, c"\"name\": \"spelled\",\n\t\t\t\"inputs\": [\"tests/spelled_test.w\"],\n\t\t\t\"outputs\": [\"bin/spelled.txt\"],\n\t\t\t\"steps\": [\n\t\t\t\t{\"cmd\": [\"true\"]}\n\t\t\t]")
+	wdet_assert_contains(out, c"{\"cmd\": [\"bin/spelled_test\"], \"expect_stdout\": \"hi\"}\n\t\t\t]")
+	free(out)
+	free(out_path)
+
+
+void test_target_rejects_duplicate_name():
+	char* dir = wdet_case_dir(c"target_dup")
+	wdet_write(dir, c"tests/dup.w", c"# wbuild: target=tests\n# wbuild: step=\"true\"\n")
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"target 'tests' is defined both in tests/dup.w and in build.base.json (or twice in sources)")
+	process_result_free(r)
+
+
+void test_target_rejects_no_steps():
+	char* dir = wdet_case_dir(c"target_empty")
+	wdet_write(dir, c"tests/empty.w", c"# wbuild: target=empty tag=tests\n")
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"source-owned target has no steps (add step= lines after it): empty")
+	process_result_free(r)
+
+
+void test_target_rejects_misplaced_fields():
+	char* dir = wdet_case_dir(c"target_fields")
+	wdet_write(dir, c"tests/staged.w", c"# wbuild: target=staged staged\n# wbuild: step=\"true\"\n")
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"'staged' only applies to 'binary=': 'staged' in tests/staged.w")
+	process_result_free(r)
+	dir = wdet_case_dir(c"target_midline")
+	wdet_write(dir, c"tests/midline.w", c"# wbuild: tag=tests target=late\n# wbuild: step=\"true\"\n")
+	r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"'target='/'binary=' must start its own '# wbuild:' line: 'late' in tests/midline.w")
 	process_result_free(r)
 
 
