@@ -35,10 +35,10 @@ int expression();
 int json_codec_descriptor(int struct_type);
 int json_codec_emit_value_desc(int t);
 int json_codec_emit_map_desc(int t);
-int import_module(char* dotted);
 
-
-int json_codec_needed
+# The codec runtime (structures/json_codec.w), imported on demand by
+# json_codec_finish_import(): helper 0 __w_json_encode, 1 __w_json_decode.
+lazy_runtime* json_codec_rt
 
 # Emitted struct descriptor address per canonical type index, so every
 # use of the same struct shares one blob.
@@ -266,50 +266,13 @@ void json_codec_require_json_import(char* builtin_name):
 		error(c" requires 'import structures.json'")
 
 
-# Backpatch chains for call sites emitted before structures/json_codec.w
-# is imported. A symbol-table forward declaration would not survive
-# function_definition's scope truncation (table_pos = n), so the chains
-# live here and json_codec_finish_import() patches them once the module
-# has defined the runtime symbols. Encoding matches the 'U' symbol
-# chains: each mov-imm slot holds the previous slot's absolute address,
-# code_offset ends the chain.
-int json_codec_encode_chain
-int json_codec_decode_chain
-
-
-int json_codec_emit_chained_call_target(int head):
-	if (head == 0):
-		head = code_offset
-	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
-	be_addr_slot_write(codepos - 4, head)
-	# pac=full: sign the materialized callee like sym_get_value does; the
-	# chain cell position is captured first so the extra word never lands
-	# inside the chain.
-	int slot = codepos + code_offset - 4
-	be_code_ptr_sign()
-	return slot
-
-
-void json_codec_patch_chain(int head, char* fn_name):
-	int v = sym_address(fn_name)
-	if (head == 0):
-		return;
-	int i = head - code_offset
-	while (i):
-		int j = be_addr_slot_read(i) - code_offset
-		be_addr_slot_write(i, v)
-		i = j
-
-
-# Call fn_name(descriptor, arg) with the argument already pushed at
-# arg_slot; the json_value*/struct pointer result stays in eax.
-void json_codec_emit_call(char* fn_name, int desc_address, int arg_slot):
-	if (sym_lookup(fn_name) >= 0):
-		sym_get_value(fn_name)
-	else if (strcmp(fn_name, c"__w_json_encode") == 0):
-		json_codec_encode_chain = json_codec_emit_chained_call_target(json_codec_encode_chain)
-	else:
-		json_codec_decode_chain = json_codec_emit_chained_call_target(json_codec_decode_chain)
+# Call helper i (0 encode, 1 decode) with (descriptor, arg), the
+# argument already pushed at arg_slot; the json_value*/struct pointer
+# result stays in eax.
+void json_codec_emit_call(int helper, int desc_address, int arg_slot):
+	if (cast(int, json_codec_rt) == 0):
+		json_codec_rt = lazy_runtime_new(c"structures.json_codec", c"__w_json_encode __w_json_decode")
+	lazy_emit_helper(json_codec_rt, helper)
 	int s = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -341,13 +304,12 @@ int json_to_json_expr():
 		error(c"to_json argument must be a struct value or struct pointer")
 	if (type_get_kind(t) == type_kind_union):
 		error(c"to_json does not support unions")
-	json_codec_needed = 1
 	int base_stack = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
 	int arg_slot = stack_pos
 	int desc_address = json_codec_descriptor(t)
-	json_codec_emit_call(c"__w_json_encode", desc_address, arg_slot)
+	json_codec_emit_call(0, desc_address, arg_slot)
 	be_pop(stack_pos - base_stack)
 	stack_pos = base_stack
 	return type_value(type_get_next_pointer(type_lookup(c"json_value")))
@@ -367,7 +329,6 @@ int json_from_json_expr():
 	if (type_get_kind(t) == type_kind_union):
 		error(c"from_json does not support unions")
 	expect(c",")
-	json_codec_needed = 1
 	int desc_address = json_codec_descriptor(t)
 	int got = expression()
 	if (peek(c")") == 0):
@@ -380,7 +341,7 @@ int json_from_json_expr():
 	push_eax()
 	stack_pos = stack_pos + 1
 	int arg_slot = stack_pos
-	json_codec_emit_call(c"__w_json_decode", desc_address, arg_slot)
+	json_codec_emit_call(1, desc_address, arg_slot)
 	be_pop(stack_pos - base_stack)
 	stack_pos = base_stack
 	return type_value(type_get_next_pointer(t))
@@ -388,14 +349,6 @@ int json_from_json_expr():
 
 # Deferred on-demand import of the codec runtime. Called by the drivers
 # (link_impl, the REPL) at a top-level boundary once compilation of the
-# user's files is done; import_module de-duplicates repeat calls. After
-# the module has defined the runtime symbols, resolve the call sites
-# that were emitted before the import.
+# user's files is done (grammar/lazy_runtime.w).
 void json_codec_finish_import():
-	if (json_codec_needed == 0):
-		return;
-	import_module(c"structures.json_codec")
-	json_codec_patch_chain(json_codec_encode_chain, c"__w_json_encode")
-	json_codec_patch_chain(json_codec_decode_chain, c"__w_json_decode")
-	json_codec_encode_chain = 0
-	json_codec_decode_chain = 0
+	lazy_finish_import(json_codec_rt)

@@ -35,7 +35,7 @@ int conditional_arm_is_value(int t):
 		return 1
 	if ((t == float32_value_type) || (t == float64_value_type)):
 		return 1
-	if ((t == string_value_type) || (t == var_value_type)):
+	if ((t == string_value_type) || (t == string_literal_type) || (t == var_value_type)):
 		return 1
 	if (type_get_kind(t) == type_kind_slice_value):
 		return 1
@@ -113,6 +113,9 @@ int conditional_expr():
 		warn_type_mismatch(c"conditional arms", then_type, else_type)
 	be_ctrl_end(h_join)
 	expr_nesting_depth = expr_nesting_depth - 1
+	# Only a join of two literals keeps the literal's char* decay
+	if ((result == string_literal_type) && (else_type != string_literal_type)):
+		result = string_value_type
 	if (conditional_arm_is_value(result)):
 		return result
 	if (type_is_value(result)):

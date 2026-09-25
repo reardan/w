@@ -81,6 +81,8 @@ cpp_token* cpp_expr_identifiers_to_zero(cpp_token* token):
 	return head.next
 
 
+# Shared with libs/extras/c_import/importer.w, which evaluates C constant
+# expressions from the parsed AST with the same literal rules.
 int cpp_expr_hex_value(int c):
 	if ((c >= '0') && (c <= '9')):
 		return c - '0'
@@ -91,6 +93,7 @@ int cpp_expr_hex_value(int c):
 	return -1
 
 
+# Integer constants: decimal, hex, octal; integer suffixes are ignored.
 int cpp_expr_parse_number(char* text):
 	int base = 10
 	int i = 0
@@ -116,21 +119,25 @@ int cpp_expr_parse_number(char* text):
 
 
 int cpp_expr_char_escape(int c):
-	if (c == 'n'):
-		return 10
-	if (c == 't'):
-		return 9
-	if (c == 'r'):
-		return 13
-	if (c == '0'):
-		return 0
+	switch c:
+		case 'n': return 10
+		case 't': return 9
+		case 'r': return 13
+		case '0': return 0
 	return c
 
 
+# Character constants; any prefix before the opening quote (L'x') is skipped.
 int cpp_expr_parse_char(char* text):
-	if (text[1] == 92):
-		return cpp_expr_char_escape(text[2])
-	return text[1]
+	int i = 0
+	while ((text[i] != 0) && (text[i] != 39)):
+		i = i + 1
+	if (text[i] == 0):
+		return 0
+	i = i + 1
+	if (text[i] == 92):
+		return cpp_expr_char_escape(text[i + 1])
+	return text[i]
 
 
 int cpp_expr_accept(cpp_expr* expr, char* text):

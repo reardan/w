@@ -53,6 +53,17 @@ void test_split_empty_pieces():
 	assert_strings_equal(c"", pieces[4])
 
 
+void test_split_whitespace_default():
+	# With the delimiter omitted, runs of whitespace separate the pieces
+	# and empty pieces are dropped (Python's s.split())
+	list[char*] pieces = split(c"  a\tbb \n c  ")
+	assert_equal(3, pieces.length)
+	assert_strings_equal(c"a", pieces[0])
+	assert_strings_equal(c"bb", pieces[1])
+	assert_strings_equal(c"c", pieces[2])
+	assert_equal(0, split(c" \t ").length)
+
+
 void test_replace_multi_char():
 	assert_strings_equal(c"one-two-three", replace(c"one two three", c" ", c"-"))
 	assert_strings_equal(c"aXXcaXXc", replace(c"abcabc", c"b", c"XX"))

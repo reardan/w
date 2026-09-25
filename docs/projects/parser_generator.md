@@ -29,6 +29,20 @@ tooling and generates ordinary W modules instead of changing `compiler/`,
 Generated parsers import `libs.extras.parser_generator.runtime`, which pulls in
 the reusable runtime modules.
 
+## Generated module shape
+
+A generated module declares every token kind as a one-line
+`const int <parser>_token_<NAME> = <kind>` (`EOF` is 0, skips are negative)
+and, in AST mode, every rule kind as `const int <parser>_ast_<rule>`;
+`<parser>_token_name(kind)` maps a kind back to its name with a `switch`.
+(Until 2026-09 the kinds were zero-argument functions, `<parser>_token_<NAME>()`.)
+Rule bodies keep one grammar term to one line through the helpers in
+`libs/extras/parser_generator/runtime.w`: a mandatory term is
+`failed = pg_ast_add_required(node, <parse call>)`, an optional or repeated
+term takes its mark in its own statement and then calls
+`pg_ast_add_or_rewind(node, stream, mark, <parse call>)`, and syntax errors
+are recorded with `pg_syntax_error(diagnostics, token, expected)`.
+
 ## Grammar format
 
 The initial format is line-oriented:

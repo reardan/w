@@ -170,6 +170,21 @@ Add a staged literal story:
 String literal bytes remain null-terminated in emitted storage so `cstr(s)` can
 return a stable `char*` when the string has no interior NUL.
 
+Current state: `"..."` is a `string`, and — because its bytes are
+NUL-terminated — it also **decays to `char*`** wherever a `char*` is
+expected (argument, assignment, return, initializer, a C variadic tail,
+a `switch` case on a `char*` scrutinee), exactly like an array decays to
+its element pointer: the descriptor's first word is loaded. The literal
+carries its own value pseudo-type (`string_literal_type`, same name and
+kind as `string value`, told apart only by identity) and
+`type_decays_to_pointer` is the one place that knows the rule. f-string
+literals decay the same way (the template builder's buffer is always
+NUL-terminated); `s"..."` stays strictly a `string` (the explicit
+spelling, and a `char*` from it still warns). A ternary keeps the decay
+only when both arms are literals. `c"..."` remains valid but is now only
+needed where no type says `char*` (e.g. an untyped `:=` or a `void*`
+parameter).
+
 ## Milestone 1 - Type table kinds and metadata
 
 Update `compiler/type_table.w` without changing existing source syntax:

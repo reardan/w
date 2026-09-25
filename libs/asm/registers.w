@@ -30,101 +30,33 @@ int asm_reg_size(int encoded):
 # x86 register numbers follow the hardware encoding (eax=0 .. edi=7);
 # x64 extends to r15=15; arm64 uses x0..x30 with 31 = sp/xzr by context.
 
+# x86/x64 names by width in bytes (1/2/4/8), as asm_name_slot tables with
+# 4-byte slots: 8 entries, 16 for the x64 qword set.
+char* asm_reg_table(int size):
+	if (size == 1):
+		return c"al\0\0cl\0\0dl\0\0bl\0\0ah\0\0ch\0\0dh\0\0bh\0\0"
+	if (size == 2):
+		return c"ax\0\0cx\0\0dx\0\0bx\0\0sp\0\0bp\0\0si\0\0di\0\0"
+	if (size == 4):
+		return c"eax\0ecx\0edx\0ebx\0esp\0ebp\0esi\0edi\0"
+	return c"rax\0rcx\0rdx\0rbx\0rsp\0rbp\0rsi\0rdi\0r8\0\0r9\0\0r10\0r11\0r12\0r13\0r14\0r15\0"
+
+
 char* asm_reg_name_x86_32(int number):
-	if (number == 0):
-		return c"eax"
-	if (number == 1):
-		return c"ecx"
-	if (number == 2):
-		return c"edx"
-	if (number == 3):
-		return c"ebx"
-	if (number == 4):
-		return c"esp"
-	if (number == 5):
-		return c"ebp"
-	if (number == 6):
-		return c"esi"
-	if (number == 7):
-		return c"edi"
-	return 0
+	return asm_name_slot(asm_reg_table(4), 4, 8, number)
 
 
 char* asm_reg_name_x86_16(int number):
-	if (number == 0):
-		return c"ax"
-	if (number == 1):
-		return c"cx"
-	if (number == 2):
-		return c"dx"
-	if (number == 3):
-		return c"bx"
-	if (number == 4):
-		return c"sp"
-	if (number == 5):
-		return c"bp"
-	if (number == 6):
-		return c"si"
-	if (number == 7):
-		return c"di"
-	return 0
+	return asm_name_slot(asm_reg_table(2), 4, 8, number)
 
 
 char* asm_reg_name_x86_8(int number):
-	if (number == 0):
-		return c"al"
-	if (number == 1):
-		return c"cl"
-	if (number == 2):
-		return c"dl"
-	if (number == 3):
-		return c"bl"
-	if (number == 4):
-		return c"ah"
-	if (number == 5):
-		return c"ch"
-	if (number == 6):
-		return c"dh"
-	if (number == 7):
-		return c"bh"
-	return 0
+	return asm_name_slot(asm_reg_table(1), 4, 8, number)
 
 
 # x64 names: numbers 0..7 are the classic set widened, 8..15 are r8..r15.
 char* asm_reg_name_x64(int number):
-	if (number == 0):
-		return c"rax"
-	if (number == 1):
-		return c"rcx"
-	if (number == 2):
-		return c"rdx"
-	if (number == 3):
-		return c"rbx"
-	if (number == 4):
-		return c"rsp"
-	if (number == 5):
-		return c"rbp"
-	if (number == 6):
-		return c"rsi"
-	if (number == 7):
-		return c"rdi"
-	if (number == 8):
-		return c"r8"
-	if (number == 9):
-		return c"r9"
-	if (number == 10):
-		return c"r10"
-	if (number == 11):
-		return c"r11"
-	if (number == 12):
-		return c"r12"
-	if (number == 13):
-		return c"r13"
-	if (number == 14):
-		return c"r14"
-	if (number == 15):
-		return c"r15"
-	return 0
+	return asm_name_slot(asm_reg_table(8), 4, 16, number)
 
 
 # Extended x64 registers r8..r15 at a sub-qword width: "r8d"/"r8w"/"r8b"
@@ -200,40 +132,68 @@ char* asm_reg_name(int arch, int number, int size):
 	return 0
 
 
+########################### x86 opcode-group names ###########################
+
+# Mnemonic tables shared by x86_decode.w (/ext -> name) and x86_encode.w
+# (name -> /ext), asm_name_slot layout: group 1 is the ALU /ext (and the
+# 00-3f ALU column order), 2 the shifts, 3 the f6/f7 group, 5 the ff group
+# and 8 the 0f ba bit tests; an empty slot is an unassigned /ext.
+char* asm_x86_group_table(int group):
+	if (group == 1):
+		return c"add\0or\0\0adc\0sbb\0and\0sub\0xor\0cmp\0"
+	if (group == 2):
+		return c"rol\0ror\0rcl\0rcr\0shl\0shr\0sal\0sar\0"
+	if (group == 3):
+		return c"test\0\0\0\0\0\0not\0\0neg\0\0mul\0\0imul\0div\0\0idiv\0"
+	if (group == 5):
+		return c"inc\0\0dec\0\0call\0\0\0\0\0\0jmp\0\0\0\0\0\0\0push\0\0\0\0\0\0"
+	return c"\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0bt\0\0bts\0btr\0btc\0"
+
+
+int asm_x86_group_stride(int group):
+	if (group == 3 || group == 5):
+		return 5
+	return 4
+
+
+# The mnemonic of /ext in an opcode group, or 0 when unassigned.
+char* asm_x86_group_name(int group, int ext):
+	return asm_name_slot(asm_x86_group_table(group), asm_x86_group_stride(group), 8, ext)
+
+
+# The /ext of mnemonic m in an opcode group, or -1.
+int asm_x86_group_ext(int group, char* m):
+	return asm_name_slot_find(asm_x86_group_table(group), asm_x86_group_stride(group), 8, m)
+
+
+# Condition-code suffixes by cc number (0x70+cc / 0x0f80+cc / 0x0f90+cc).
+char* asm_x86_cc_table():
+	return c"o\0\0no\0b\0\0ae\0e\0\0ne\0be\0a\0\0s\0\0ns\0p\0\0np\0l\0\0ge\0le\0g\0\0"
+
+
+# Scalar-float ALU mnemonics of f3 (ss) / f2 (sd) 0f 58..5e, by opcode -
+# 0x58 (asm_name_slot layout, 9-byte slots).
+char* asm_x86_sse_table(int rep):
+	if (rep == 0xf2):
+		return c"addsd\0\0\0\0mulsd\0\0\0\0cvtsd2ss\0\0\0\0\0\0\0\0\0\0subsd\0\0\0\0\0\0\0\0\0\0\0\0\0divsd\0\0\0\0"
+	return c"addss\0\0\0\0mulss\0\0\0\0cvtss2sd\0\0\0\0\0\0\0\0\0\0subss\0\0\0\0\0\0\0\0\0\0\0\0\0divss\0\0\0\0"
+
+
 ################################## lookup #####################################
-
-int asm_reg_scan_table(int arch_size, char* name, int number_limit):
-	int number = 0
-	while (number < number_limit):
-		char* candidate = 0
-		if (arch_size == 0):
-			candidate = asm_reg_name_x86_8(number)
-		else if (arch_size == 1):
-			candidate = asm_reg_name_x86_16(number)
-		else if (arch_size == 2):
-			candidate = asm_reg_name_x86_32(number)
-		else:
-			candidate = asm_reg_name_x64(number)
-		if (cast(int, candidate) != 0):
-			if (strcmp(candidate, name) == 0):
-				return number
-		number = number + 1
-	return -1
-
 
 # Look up an x86/x64 register name in any width. Returns the encoded
 # (size << 8) | number word, or -1.
 int asm_reg_lookup_x86(char* name):
-	int number = asm_reg_scan_table(2, name, 8)
+	int number = asm_name_slot_find(asm_reg_table(4), 4, 8, name)
 	if (number >= 0):
 		return asm_reg_encode(4, number)
-	number = asm_reg_scan_table(3, name, 16)
+	number = asm_name_slot_find(asm_reg_table(8), 4, 16, name)
 	if (number >= 0):
 		return asm_reg_encode(8, number)
-	number = asm_reg_scan_table(1, name, 8)
+	number = asm_name_slot_find(asm_reg_table(2), 4, 8, name)
 	if (number >= 0):
 		return asm_reg_encode(2, number)
-	number = asm_reg_scan_table(0, name, 8)
+	number = asm_name_slot_find(asm_reg_table(1), 4, 8, name)
 	if (number >= 0):
 		return asm_reg_encode(1, number)
 	return -1

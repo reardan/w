@@ -187,6 +187,21 @@ int pg_lexer_matcher_c_preprocessor(char* input, int index):
 	return index - start
 
 
+# Length from start through the closing quote of a quoted body whose
+# first byte is at index; a backslash escapes the next byte. With
+# single_line set, a newline also ends the (unterminated) body.
+int pg_lexer_quoted_length(char* input, int start, int index, int quote, int single_line):
+	while ((input[index] != 0) && (input[index] != quote) && ((single_line == 0) || (input[index] != 10))):
+		if (input[index] == 92):
+			index = index + 1
+			if (input[index] == 0):
+				return index - start
+		index = index + 1
+	if (input[index] == quote):
+		index = index + 1
+	return index - start
+
+
 int pg_lexer_c_string_prefix(char* input, int index):
 	if ((input[index] == 'u') && (input[index + 1] == '8') && (input[index + 2] == '"')):
 		return 2
@@ -203,15 +218,7 @@ int pg_lexer_matcher_c_string(char* input, int index):
 		return 0
 	int start = index
 	index = index + prefix + 1
-	while ((input[index] != 0) && (input[index] != '"') && (input[index] != 10)):
-		if (input[index] == 92):
-			index = index + 1
-			if (input[index] == 0):
-				return index - start
-		index = index + 1
-	if (input[index] == '"'):
-		index = index + 1
-	return index - start
+	return pg_lexer_quoted_length(input, start, index, '"', 1)
 
 
 int pg_lexer_c_char_prefix(char* input, int index):
@@ -228,15 +235,7 @@ int pg_lexer_matcher_c_char_literal(char* input, int index):
 		return 0
 	int start = index
 	index = index + prefix + 1
-	while ((input[index] != 0) && (input[index] != 39) && (input[index] != 10)):
-		if (input[index] == 92):
-			index = index + 1
-			if (input[index] == 0):
-				return index - start
-		index = index + 1
-	if (input[index] == 39):
-		index = index + 1
-	return index - start
+	return pg_lexer_quoted_length(input, start, index, 39, 1)
 
 
 int pg_lexer_matcher_c_number(char* input, int index):
@@ -260,16 +259,7 @@ int pg_lexer_matcher_c_number(char* input, int index):
 # expression: index points at the opening delimiter; returns the index
 # right after the closing delimiter (or the end of input).
 int pg_lexer_skip_quoted(char* input, int index, int delimiter):
-	index = index + 1
-	while ((input[index] != 0) && (input[index] != delimiter)):
-		if (input[index] == 92):
-			index = index + 1
-			if (input[index] == 0):
-				return index
-		index = index + 1
-	if (input[index] == delimiter):
-		index = index + 1
-	return index
+	return index + pg_lexer_quoted_length(input, index, index + 1, delimiter, 0)
 
 
 # f"..." template string: the whole literal is one string-like token,
@@ -333,15 +323,7 @@ int pg_lexer_matcher_string(char* input, int index):
 		return 0
 	int start = index
 	index = index + prefix + 1
-	while ((input[index] != 0) && (input[index] != '"')):
-		if (input[index] == 92):
-			index = index + 1
-			if (input[index] == 0):
-				return index - start
-		index = index + 1
-	if (input[index] == '"'):
-		index = index + 1
-	return index - start
+	return pg_lexer_quoted_length(input, start, index, '"', 0)
 
 
 int pg_lexer_matcher_char_literal(char* input, int index):
@@ -349,15 +331,7 @@ int pg_lexer_matcher_char_literal(char* input, int index):
 		return 0
 	int start = index
 	index = index + 1
-	while ((input[index] != 0) && (input[index] != 39)):
-		if (input[index] == 92):
-			index = index + 1
-			if (input[index] == 0):
-				return index - start
-		index = index + 1
-	if (input[index] == 39):
-		index = index + 1
-	return index - start
+	return pg_lexer_quoted_length(input, start, index, 39, 0)
 
 
 int pg_lexer_match_doubled_delimiter_string(char* input, int index, int delimiter):

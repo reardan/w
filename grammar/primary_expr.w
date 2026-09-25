@@ -126,8 +126,9 @@ int primary_expr():
 	else if (c_char_pointer_literal()):
 		type = type_value(type_lookup_pointer(c"char", 1))
 
+	# "..." and f"..." literals decay to char* (string_literal_type)
 	else if (template_string_literal()):
-		type = string_value_type
+		type = string_literal_type
 
 	else if (hash_typed_literal()):
 		type = hash_literal_type
@@ -240,7 +241,7 @@ int primary_expr():
 		type = 3 /* constant */
 
 	else if (char_pointer_literal()):
-		type = string_value_type
+		type = string_literal_type
 
 	else:
 		error2(c"Could not find a valid primary expression, token: ", token)
