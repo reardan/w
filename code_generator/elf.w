@@ -12,6 +12,7 @@ import code_generator.macho_64
 
 
 void be_start(int word_size):
+	build_id_note_pos = 0   /* set again by the ELF writers that emit the note */
 	if (target_os == 3):
 		wasm_start()
 	else if (target_os == 2):

@@ -19,10 +19,10 @@ void a64(int w);                     /* arm64.w */
 
 
 # Number of program headers: a read-execute text load, a read-write data
-# load (W^X, Stage 3), and three reserved slots for future PT_INTERP /
-# PT_DYNAMIC dynamic-linking records.
+# load (W^X, Stage 3), three reserved slots for future PT_INTERP /
+# PT_DYNAMIC dynamic-linking records, and the build-id PT_NOTE.
 int elf_phdr_count_arm64():
-	return 5
+	return 6
 
 
 void elf_header_arm64():
@@ -33,7 +33,7 @@ void elf_header_arm64():
 	emit_int16(2)   /* type: ET_EXEC */
 	emit_int16(183) /* machine: EM_AARCH64 */
 	emit_int32(1)   /* version */
-	emit_int64(base_code_offset + header_size + program_header_size * elf_phdr_count_arm64()) /* entry */
+	emit_int64(base_code_offset + header_size + program_header_size * elf_phdr_count_arm64() + elf_build_id_note_size()) /* entry */
 	emit_int64(64)  /* program header offset */
 	emit_int64(0)   /* section header offset */
 	emit_int32(0)   /* flags */
@@ -127,14 +127,16 @@ void elf_start_arm64():
 	elf_header(2)
 	elf_header_arm64()
 
-	# phdr[0] text (R+X), phdr[1] data (R+W); the rest stay PT_NULL until
-	# dynamic linking needs them.
+	# phdr[0] text (R+X), phdr[1] data (R+W); the next three stay PT_NULL
+	# until dynamic linking needs them; the last is the build-id PT_NOTE.
 	phdr_table_pos = codepos
 	elf_phdr_arm64(1, 5)
 	elf_phdr_arm64(0, 6)
 	elf_phdr_arm64(0, 0)
 	elf_phdr_arm64(0, 0)
 	elf_phdr_arm64(0, 0)
+	elf_phdr_arm64(0, 0)
+	elf_emit_build_id_note()
 
 	# Entry stub. The kernel enters with sp pointing at [argc][argv0]...;
 	# adopt sp as the W stack, push &argv[0] so _main(argc, argv) sees argc
@@ -205,10 +207,4 @@ void elf_finish_arm64():
 		# and data as two segments in one file.
 		while (codepos < data_file_off):
 			emit_int8(0)
-		if (write(output_fd, code, codepos) != codepos):
-			error(c"could not write output file")
-		if (write(output_fd, data, datapos) != datapos):
-			error(c"could not write output file")
-	else:
-		if (write(output_fd, code, codepos) != codepos):
-			error(c"could not write output file")
+	elf_write_image()

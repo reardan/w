@@ -5,6 +5,10 @@
 # dumps enabled, then runs bin/wcore on the resulting ET_CORE file and
 # asserts the report symbolizes the faulting function and shows a
 # plausible backtrace, for both a 32-bit and a 64-bit fixture binary.
+# It also checks the build-id cross-check: the core's copy of the
+# fixture's build-id matches the fixture, a different same-architecture
+# W binary is refused, and a core whose ELF header page was filtered out
+# (coredump_filter without bit 4) is processed with an "unverified" note.
 #
 # Real kernel cores need a cooperative environment: a plain-filename
 # /proc/sys/kernel/core_pattern (so the core lands in the crashing
@@ -41,11 +45,14 @@ expect() {
 	esac
 }
 
-# run_case <description> <fixture-binary> <ip-register-name>
+# run_case <description> <fixture-binary> <ip-register-name> <other-binary>
+# <other-binary> is a different W binary of the same architecture, which
+# wcore must refuse by build-id.
 run_case() {
 	desc="$1"
 	fixture="$2"
 	ipreg="$3"
+	other="$4"
 	dir="bin/wcore_test_dir_$ipreg"
 	rm -rf "$dir"
 	mkdir -p "$dir"
@@ -76,12 +83,31 @@ run_case() {
 	expect "$desc (--json)" "$json" '"signal_name":"SIGSEGV"'
 	expect "$desc (--json)" "$json" '"function":"crash_deep"'
 	expect "$desc (--json)" "$json" "\"$ipreg\":\"0x"
+	expect "$desc (--json)" "$json" '"build_id_verified":true'
+	expect "$desc" "$out" "(core and binary match)"
+
+	if wrong=$("$WCORE" "$core" "$other" 2>&1); then
+		echo "FAIL: $desc: wcore accepted a binary with a different build-id"
+		FAILED=1
+	fi
+	expect "$desc (wrong binary)" "$wrong" "build-id mismatch"
+
+	# Drop coredump_filter bit 4 (ELF headers) so the core has no copy of
+	# the binary's first page, hence no build-id: wcore still reports.
+	rm -f "$dir"/core*
+	( cd "$dir" && ulimit -c unlimited 2>/dev/null && echo 0x23 > /proc/self/coredump_filter && W_CRASH_TRACE=0 "$root/$fixture" ) >/dev/null 2>&1
+	core=$(ls "$dir"/core* 2>/dev/null | head -n 1)
+	if [ -n "$core" ]; then
+		out=$("$WCORE" "$core" "$fixture" 2>&1)
+		expect "$desc (no build-id in core)" "$out" "unverified: the core has no build-id"
+		expect "$desc (no build-id in core)" "$out" "at crash_deep ("
+	fi
 
 	rm -rf "$dir"
 }
 
-run_case "32-bit core" bin/wcore_fixture32 eip
-run_case "64-bit core" bin/wcore_fixture64 rip
+run_case "32-bit core" bin/wcore_fixture32 eip bin/wv2
+run_case "64-bit core" bin/wcore_fixture64 rip bin/wcore
 
 if [ "$FAILED" -ne 0 ]; then
 	exit 1

@@ -52,6 +52,7 @@ struct ui_theme:
 	ui_color disabled_widget # fills inside a ui_disable scope
 	ui_color disabled_text   # text inside a ui_disable scope
 	ui_color shadow          # elevation shadow (dropdown menu)
+	ui_color error           # validation failures (form field messages)
 	# metric tokens: everything is a small multiple of unit
 	int32 unit
 	int32 text_scale
@@ -88,6 +89,7 @@ void ui_theme_light(ui_theme* out):
 	out.disabled_widget = ui_gray(0.91)
 	out.disabled_text = ui_gray(0.62)
 	out.shadow = ui_color_new(0.0, 0.0, 0.0, 0.28)
+	out.error = ui_color_new(0.702, 0.149, 0.118, 1.0)
 	ui_theme_metrics(out)
 
 
@@ -107,6 +109,7 @@ void ui_theme_dark(ui_theme* out):
 	out.disabled_widget = ui_gray(0.2)
 	out.disabled_text = ui_gray(0.42)
 	out.shadow = ui_color_new(0.0, 0.0, 0.0, 0.5)
+	out.error = ui_color_new(0.949, 0.722, 0.71, 1.0)
 	ui_theme_metrics(out)
 
 
@@ -129,4 +132,5 @@ void ui_theme_ocean(ui_theme* out):
 	out.disabled_widget = ui_color_new(0.12, 0.2, 0.27, 1.0)
 	out.disabled_text = ui_color_new(0.36, 0.46, 0.53, 1.0)
 	out.shadow = ui_color_new(0.0, 0.02, 0.05, 0.55)
+	out.error = ui_color_new(1.0, 0.45, 0.45, 1.0)
 	ui_theme_metrics(out)

@@ -7,11 +7,11 @@ void elf_emit_dynamic();   /* from elf_dynamic.w */
 
 
 # Number of program headers: a read-execute text load, a read-write data
-# load (W^X, docs/projects/wx_split.md Stage C), and three slots reserved
-# for PT_INTERP / PT_DYNAMIC when the program imports shared libraries;
-# they stay PT_NULL (ignored) otherwise.
+# load (W^X, docs/projects/wx_split.md Stage C), three slots reserved
+# for PT_INTERP / PT_DYNAMIC when the program imports shared libraries
+# (they stay PT_NULL, ignored, otherwise), and the build-id PT_NOTE.
 int elf_phdr_count_32():
-	return 5
+	return 6
 
 
 void elf_header_32():
@@ -22,7 +22,7 @@ void elf_header_32():
 	emit_int16(2) /* type */
 	emit_int16(3)  /* machine */
 	emit_int(1) /* version */
-	emit_int(base_code_offset + header_size + program_header_size * elf_phdr_count_32()) /* entry */
+	emit_int(base_code_offset + header_size + program_header_size * elf_phdr_count_32() + elf_build_id_note_size()) /* entry */
 	emit_int(header_size) /* program header offset */
 	emit_int(0) /* segment header offset */
 	emit_int(0) /* flags */
@@ -94,14 +94,16 @@ void elf_start():
 	elf_header_32()
 
 	# phdr[0] text (R+X), phdr[1] data (R+W, patched in elf_finish); the
-	# rest start as PT_NULL and are filled in by elf_emit_dynamic() when
-	# there are imports.
+	# next three start as PT_NULL and are filled in by elf_emit_dynamic()
+	# when there are imports; the last is the build-id PT_NOTE.
 	phdr_table_pos = codepos
 	elf_program_header(1, 5)
 	elf_program_header(0, 6)
 	elf_program_header(0, 0)
 	elf_program_header(0, 0)
 	elf_program_header(0, 0)
+	elf_program_header(0, 0)
+	elf_emit_build_id_note()
 
 	/* setup command line args */
 	emit(5, c"\x8d\x44\x24\x04\x50")
@@ -173,13 +175,7 @@ void elf_finish():
 		# and data as two segments in one file.
 		while (codepos < data_file_off):
 			emit_int8(0)
-		if (write(output_fd, code, codepos) != codepos):
-			error(c"could not write output file")
-		if (write(output_fd, data, datapos) != datapos):
-			error(c"could not write output file")
-	else:
-		if (write(output_fd, code, codepos) != codepos):
-			error(c"could not write output file")
+	elf_write_image()
 
 
 void elf_save_section_info_32(int header_addr, int num_sections, int string_index):
