@@ -10,7 +10,10 @@
 # ppem, ASCII 32..126. Pixels are run-length encoded (tag 0: zero
 # run, tag 1: 255 run, tag 2: literal run); records are 9-byte
 # entries x_lo, x_hi, y_lo, y_hi, w, h, advance, bearing_x+8,
-# bearing_top+8, decoded by graphics/ui/font.w.
+# bearing_top+8, decoded by graphics/ui/font.w. The per-strike
+# underline/strikeout functions give each decoration line's top row
+# (y-down from the baseline) and thickness in pixels, from the
+# faces' post and OS/2 tables.
 
 
 int ui_font_atlas_w():
@@ -48,6 +51,30 @@ int ui_font_descent(int strike):
 	if (strike <= 0):
 		return 3
 	return 4
+
+
+int ui_font_baked_underline_top(int strike):
+	if (strike <= 0):
+		return 1
+	return 1
+
+
+int ui_font_baked_underline_thickness(int strike):
+	if (strike <= 0):
+		return 1
+	return 2
+
+
+int ui_font_baked_strikeout_top(int strike):
+	if (strike <= 0):
+		return -4
+	return -5
+
+
+int ui_font_baked_strikeout_thickness(int strike):
+	if (strike <= 0):
+		return 1
+	return 1
 
 
 char* ui_font_mask_records():

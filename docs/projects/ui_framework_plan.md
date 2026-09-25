@@ -343,6 +343,8 @@ serve the repo, open
   typography + the Material-style visual refresh.
 - **Stage 5+**: SDF/dynamic-size text and full #379 typography, a
   win64 window backend, accessibility — each a future design doc.
+  Runtime TrueType loading and the italic/underline/strikethrough
+  styles landed first (section "Runtime fonts and text styles").
 
 ## Stage 4 — typography + Material visual refresh
 
@@ -357,8 +359,9 @@ smoke test's sample points build on.
   `tools/ui/LiberationSans-Regular.ttf` with the license alongside —
   the font8x8.txt provenance precedent, upgraded from asset text to
   the actual TTF so regeneration is byte-reproducible offline.
-- **`tools/ttf.w`**: a minimal TrueType reader/rasterizer for the
-  baker (not a runtime module): head/cmap4/loca/glyf/hhea/hmtx,
+- **`tools/ttf.w`** (since moved to `lib/ttf.w` and made a runtime
+  module — see "Runtime fonts and text styles" below): a minimal
+  TrueType reader/rasterizer for the baker: head/cmap4/loca/glyf/hhea/hmtx,
   simple + offset-composite glyphs, quadratic contours flattened and
   filled by non-zero winding over 4x4 subsamples. Loud failure on any
   table/flag outside that envelope. `ttf_test` asserts metrics and
@@ -405,3 +408,49 @@ smoke test's sample points build on.
   not justify a generated constants file.
 - The wasm UI gate hardcodes the demo's documented button coordinates
   — accepted coupling, localized to `demo_shared.w`'s comment block.
+
+## Runtime fonts and text styles (#379)
+
+Implemented 2026-09-25. Three pieces, none of which changes the
+one-shader/one-atlas renderer or the widget metrics:
+
+- **`lib/ttf.w`** is the former `tools/ttf.w`, now a runtime library.
+  It gained what arbitrary faces need beyond the committed Liberation
+  Sans: `ttf_load_bytes` (fonts already in memory — the wasm/web
+  path), bounds-checked table reads so a truncated or foreign file
+  fails to load instead of reading past the blob, composite glyphs
+  (offset plus uniform, x/y or 2x2 scaled components; point-matched
+  anchors still fail loudly), cmap format 12, the post/OS/2
+  decoration metrics, and `ttf_rasterize_skewed` for oblique outlines.
+  The baker's output is byte-identical apart from the new decoration
+  functions.
+- **Runtime strikes** (`graphics/ui/font.w`): `ui_font_load_ttf(path,
+  ppem)` / `ui_font_load_ttf_bytes` rasterize ASCII 32..126 and
+  shelf-pack them into rows appended below the baked atlas, returning
+  strike ids 2, 3, ... (up to eight). `ui_font_atlas_rows()` is the
+  grown height; the renderer compares `ui_font_atlas_generation()` at
+  each `ui_render_begin` and re-uploads when a load grew the atlas, so
+  fonts load between frames. `_strike` variants of the measure/draw
+  calls (`ui_text_width_strike`, `ui_text_height_strike`,
+  `ui_render_glyph_strike`, `ui_draw_text_strike`) take a strike id
+  directly; the scale-based calls are unchanged.
+- **Styles** (`graphics/ui/text.w`): `ui_draw_text_styled` /
+  `ui_draw_text_strike` take `UI_TEXT_ITALIC | UI_TEXT_UNDERLINE |
+  UI_TEXT_STRIKETHROUGH`. Italic is a synthetic oblique — the glyph
+  quad sheared about the baseline (`ui_render_quad_sheared`, skew
+  0.2) — so it needs no italic face and works on every strike;
+  underline and strikethrough are solid rects at the face's own
+  decoration metrics (baked per strike into `font_data.w`, read from
+  post/OS/2 for runtime strikes). Styling never changes advances.
+
+`graphics_ui_text_style_test` checks the decoration and shear
+geometry and that loading the committed Regular face at 16 ppem at
+run time reproduces the baked body strike glyph for glyph and texel
+for texel; `ttf_test` covers composites, format 12, skew, in-memory
+loading and rejection of bad input.
+
+Still open under #379: UTF-8 decoding and glyphs beyond ASCII in the
+text layer (the rasterizer already handles Latin-1 composites and
+format-12 codepoints), a real italic face rather than a shear,
+kerning, SDF or other scalable text, and letting the theme select a
+runtime strike for widgets.

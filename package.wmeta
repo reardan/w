@@ -73,6 +73,7 @@ modules:
 	lib.str
 	lib.testing
 	lib.time
+	lib.ttf
 	lib.utf8
 	lib.window
 	lib.wmeta

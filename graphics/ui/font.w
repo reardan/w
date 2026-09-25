@@ -8,8 +8,16 @@ text_scale token selects a strike through ui_font_strike_from_scale
 antialiased masks the renderer's shape primitives sample — ids below,
 in the order tools/generate_ui_atlas.w bakes them. Pure CPU code —
 the GL upload lives in graphics.ui.render.
+
+Runtime fonts (issue #379): ui_font_load_ttf rasterizes any TrueType
+face at a chosen ppem through lib.ttf and packs it into rows appended
+below the baked atlas, returning a new strike id (2, 3, ...) that the
+_strike text and glyph functions accept. Loading bumps
+ui_font_atlas_generation(); the renderer re-uploads the grown atlas at
+its next ui_render_begin, so load fonts between frames.
 */
 import lib.lib
+import lib.ttf
 import graphics.ui.font_data
 
 
@@ -84,17 +92,276 @@ int ui_font_strike_from_scale(int scale):
 	return 1
 
 
+# ---- runtime strikes ----------------------------------------------------
+
+int ui_font_max_runtime():
+	return 8
+
+
+# Loaded strikes: glyph records plus per-strike metrics, and the atlas
+# rows they were packed into (ui_font_atlas_w() wide, directly below
+# the baked rows). Rows grow by whole shelves; the packer never reuses
+# space, so a strike's rects stay valid for the process lifetime.
+struct ui_font_runtime:
+	char* pixels
+	int rows            # rows in use
+	int cap_rows        # rows allocated
+	int count           # strikes loaded
+	ui_glyph* glyphs    # ui_font_max_runtime() * ui_font_char_count()
+	int32[8] ascent
+	int32[8] descent
+	int32[8] underline_top
+	int32[8] underline_thickness
+	int32[8] strikeout_top
+	int32[8] strikeout_thickness
+	int generation
+	int shelf_x         # packer: next free x on the current shelf
+	int shelf_y         # packer: current shelf top, in runtime rows
+	int shelf_h         # packer: current shelf height (tallest + 1)
+
+
+ui_font_runtime ui_font_rt
+
+
+# Changes whenever a runtime strike is added; the renderer compares it
+# with the generation it uploaded.
+int ui_font_atlas_generation():
+	return ui_font_rt.generation
+
+
+# Total atlas height: baked rows plus runtime rows.
+int ui_font_atlas_rows():
+	return ui_font_atlas_h() + ui_font_rt.rows
+
+
+int ui_font_strike_total():
+	return ui_font_strike_count() + ui_font_rt.count
+
+
+# Make room for rows runtime rows (zero-filled). Returns 1, or 0 when
+# the allocation fails.
+int ui_font_rt_reserve(int rows):
+	if (rows <= ui_font_rt.cap_rows):
+		return 1
+	int next = ui_font_rt.cap_rows * 2
+	if (next < 64):
+		next = 64
+	while (next < rows):
+		next = next * 2
+	int w = ui_font_atlas_w()
+	char* grown = malloc(next * w)
+	if (grown == 0):
+		return 0
+	int i = 0
+	while (i < ui_font_rt.cap_rows * w):
+		grown[i] = ui_font_rt.pixels[i]
+		i = i + 1
+	while (i < next * w):
+		grown[i] = 0
+		i = i + 1
+	if (ui_font_rt.pixels != 0):
+		free(ui_font_rt.pixels)
+	ui_font_rt.pixels = grown
+	ui_font_rt.cap_rows = next
+	return 1
+
+
+# Shelf-pack a w x h coverage bitmap (1px gap, like the baker) into the
+# runtime rows. Stores the atlas-space rect origin in x[0], y[0].
+# Returns 1, or 0 when it cannot fit (wider than the atlas, or out of
+# memory).
+int ui_font_rt_place(char* bitmap, int w, int h, int* x, int* y):
+	int atlas_w = ui_font_atlas_w()
+	if (w + 2 > atlas_w):
+		return 0
+	if (ui_font_rt.shelf_x + w + 1 > atlas_w):
+		ui_font_rt.shelf_y = ui_font_rt.shelf_y + ui_font_rt.shelf_h
+		ui_font_rt.shelf_x = 1
+		ui_font_rt.shelf_h = 0
+	if (h + 1 > ui_font_rt.shelf_h):
+		ui_font_rt.shelf_h = h + 1
+	if (ui_font_rt_reserve(ui_font_rt.shelf_y + ui_font_rt.shelf_h + 1) == 0):
+		return 0
+	int top = ui_font_rt.shelf_y + 1
+	int row = 0
+	while (row < h):
+		int col = 0
+		char* dst = &ui_font_rt.pixels[(top + row) * atlas_w + ui_font_rt.shelf_x]
+		while (col < w):
+			dst[col] = bitmap[row * w + col]
+			col = col + 1
+		row = row + 1
+	x[0] = ui_font_rt.shelf_x
+	y[0] = ui_font_atlas_h() + top
+	ui_font_rt.shelf_x = ui_font_rt.shelf_x + w + 1
+	if (top + h + 1 > ui_font_rt.rows):
+		ui_font_rt.rows = top + h + 1
+	return 1
+
+
+# Undo a failed strike: clear the rows it wrote and hand them back.
+int ui_font_rt_abandon(int saved_rows):
+	int w = ui_font_atlas_w()
+	int i = saved_rows * w
+	while (i < ui_font_rt.cap_rows * w):
+		ui_font_rt.pixels[i] = 0
+		i = i + 1
+	ui_font_rt.rows = saved_rows
+	return 0 - 1
+
+
+# Rasterize ASCII 32..126 of an indexed face at ppem into a new
+# strike. skew leans every glyph (0.0 upright; ~0.2 for a synthetic
+# oblique face baked at load time). Returns the strike id, or -1 after
+# printing why.
+int ui_font_add_strike(ttf_font* font, int ppem, float32 skew):
+	if (ui_font_rt.count >= ui_font_max_runtime()):
+		print_error(c"graphics.ui.font: runtime strike limit reached\n")
+		return 0 - 1
+	if ((ppem < 4) || (ppem > 200)):
+		print_error(c"graphics.ui.font: ppem out of range (4..200)\n")
+		return 0 - 1
+	int chars = ui_font_char_count()
+	if (ui_font_rt.glyphs == 0):
+		# ui_glyph is seven int32 fields.
+		ui_font_rt.glyphs = cast(ui_glyph*, malloc(ui_font_max_runtime() * chars * 28))
+	int slot = ui_font_rt.count
+	# A strike starts on a fresh shelf, so a failed load leaves no
+	# partial shelf mixed with the next strike's glyphs.
+	ui_font_rt.shelf_y = ui_font_rt.rows
+	ui_font_rt.shelf_x = 1
+	ui_font_rt.shelf_h = 0
+	int saved_rows = ui_font_rt.rows
+	int i = 0
+	while (i < chars):
+		int ch = ui_font_first_char() + i
+		ttf_bitmap bm
+		if (ttf_rasterize_skewed(font, ttf_glyph_id(font, ch), ppem, skew, &bm) == 0):
+			return ui_font_rt_abandon(saved_rows)
+		ui_glyph* g = &ui_font_rt.glyphs[slot * chars + i]
+		g.x = 0
+		g.y = 0
+		g.w = bm.w
+		g.h = bm.h
+		g.advance = bm.advance
+		g.bearing_x = bm.bearing_x
+		g.bearing_top = bm.bearing_top
+		if (bm.pixels != 0):
+			int k = 0
+			while (k < bm.w * bm.h):
+				bm.pixels[k] = ttf_boost_coverage(bm.pixels[k] & 255)
+				k = k + 1
+			int gx = 0
+			int gy = 0
+			int placed = ui_font_rt_place(bm.pixels, bm.w, bm.h, &gx, &gy)
+			free(bm.pixels)
+			if (placed == 0):
+				print_error(c"graphics.ui.font: glyph does not fit the atlas\n")
+				return ui_font_rt_abandon(saved_rows)
+			g.x = gx
+			g.y = gy
+		i = i + 1
+	ui_font_rt.ascent[slot] = ttf_scale_round(font, ppem, font.ascent)
+	ui_font_rt.descent[slot] = ttf_scale_round(font, ppem, font.descent)
+	ui_font_rt.underline_top[slot] = ttf_underline_top(font, ppem)
+	ui_font_rt.underline_thickness[slot] = ttf_underline_thickness(font, ppem)
+	ui_font_rt.strikeout_top[slot] = ttf_strikeout_top(font, ppem)
+	ui_font_rt.strikeout_thickness[slot] = ttf_strikeout_thickness(font, ppem)
+	ui_font_rt.count = slot + 1
+	ui_font_rt.generation = ui_font_rt.generation + 1
+	return ui_font_strike_count() + slot
+
+
+# Load a TrueType file and add it as a strike at ppem. Returns the
+# strike id, or -1 after printing why.
+int ui_font_load_ttf(char* path, int ppem):
+	ttf_font font
+	if (ttf_load(&font, path) == 0):
+		return 0 - 1
+	int strike = ui_font_add_strike(&font, ppem, 0.0)
+	ttf_free(&font)
+	return strike
+
+
+# The same from font bytes already in memory (for hosts without a
+# filesystem). data is only read during the call.
+int ui_font_load_ttf_bytes(char* data, int size, int ppem):
+	ttf_font font
+	if (ttf_load_bytes(&font, data, size) == 0):
+		return 0 - 1
+	return ui_font_add_strike(&font, ppem, 0.0)
+
+
+# The runtime slot of strike, or -1 for a baked (or unknown) strike.
+int ui_font_rt_slot(int strike):
+	int slot = strike - ui_font_strike_count()
+	if ((slot < 0) || (slot >= ui_font_rt.count)):
+		return 0 - 1
+	return slot
+
+
 ui_glyph ui_font_glyph(int strike, int ch):
+	int slot = ui_font_rt_slot(strike)
+	if (slot >= 0):
+		int index = ch - ui_font_first_char()
+		if ((index < 0) || (index >= ui_font_char_count())):
+			index = 0
+		return ui_font_rt.glyphs[slot * ui_font_char_count() + index]
 	return ui_font_decode(ui_font_glyph_record(strike, ch))
+
+
+int ui_font_strike_ascent(int strike):
+	int slot = ui_font_rt_slot(strike)
+	if (slot >= 0):
+		return ui_font_rt.ascent[slot]
+	return ui_font_ascent(strike)
+
+
+int ui_font_strike_descent(int strike):
+	int slot = ui_font_rt_slot(strike)
+	if (slot >= 0):
+		return ui_font_rt.descent[slot]
+	return ui_font_descent(strike)
+
+
+# Decoration lines, y-down pixels from the baseline (lib.ttf's
+# conventions): the top row of the line and its thickness.
+int ui_font_underline_top(int strike):
+	int slot = ui_font_rt_slot(strike)
+	if (slot >= 0):
+		return ui_font_rt.underline_top[slot]
+	return ui_font_baked_underline_top(strike)
+
+
+int ui_font_underline_thickness(int strike):
+	int slot = ui_font_rt_slot(strike)
+	if (slot >= 0):
+		return ui_font_rt.underline_thickness[slot]
+	return ui_font_baked_underline_thickness(strike)
+
+
+int ui_font_strikeout_top(int strike):
+	int slot = ui_font_rt_slot(strike)
+	if (slot >= 0):
+		return ui_font_rt.strikeout_top[slot]
+	return ui_font_baked_strikeout_top(strike)
+
+
+int ui_font_strikeout_thickness(int strike):
+	int slot = ui_font_rt_slot(strike)
+	if (slot >= 0):
+		return ui_font_rt.strikeout_thickness[slot]
+	return ui_font_baked_strikeout_thickness(strike)
 
 
 ui_glyph ui_font_mask(int mask):
 	return ui_font_decode(ui_font_mask_record(mask))
 
 
-# Build the atlas pixel buffer (ui_font_atlas_w x ui_font_atlas_h
+# Build the atlas pixel buffer (ui_font_atlas_w x ui_font_atlas_rows
 # coverage bytes) by expanding the RLE chunk stream (tag 0: zero run,
-# tag 1: 255 run, tag 2: literal run). Caller frees.
+# tag 1: 255 run, tag 2: literal run), then copying any runtime rows
+# below it. Caller frees.
 char* ui_font_build_atlas():
 	int rle_length = ui_font_rle_length()
 	char* stream = malloc(rle_length)
@@ -113,7 +380,8 @@ char* ui_font_build_atlas():
 		i = i + 1
 
 	int total = ui_font_atlas_w() * ui_font_atlas_h()
-	char* pixels = malloc(total)
+	int extra = ui_font_atlas_w() * ui_font_rt.rows
+	char* pixels = malloc(total + extra)
 	int pos = 0
 	int out = 0
 	while ((pos + 1 < rle_length) && (out < total)):
@@ -138,13 +406,15 @@ char* ui_font_build_atlas():
 			pos = pos + count2
 		out = out + count2
 	free(stream)
+	int e = 0
+	while (e < extra):
+		pixels[total + e] = ui_font_rt.pixels[e]
+		e = e + 1
 	return pixels
 
 
-# Proportional pixel width of a string at the strike text_scale
-# selects.
-int ui_text_width(char* s, int scale):
-	int strike = ui_font_strike_from_scale(scale)
+# Proportional pixel width of a string in strike.
+int ui_text_width_strike(char* s, int strike):
 	int width = 0
 	int i = 0
 	while (s[i] != 0):
@@ -154,10 +424,20 @@ int ui_text_width(char* s, int scale):
 	return width
 
 
-# Line-box height (ascent + descent) of the strike.
+# Proportional pixel width of a string at the strike text_scale
+# selects.
+int ui_text_width(char* s, int scale):
+	return ui_text_width_strike(s, ui_font_strike_from_scale(scale))
+
+
+# Line-box height (ascent + descent) of a strike.
+int ui_text_height_strike(int strike):
+	return ui_font_strike_ascent(strike) + ui_font_strike_descent(strike)
+
+
+# Line-box height (ascent + descent) of the strike text_scale selects.
 int ui_text_height(int scale):
-	int strike = ui_font_strike_from_scale(scale)
-	return ui_font_ascent(strike) + ui_font_descent(strike)
+	return ui_text_height_strike(ui_font_strike_from_scale(scale))
 
 
 # Width of the first count bytes (caret positioning).

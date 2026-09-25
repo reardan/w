@@ -108,6 +108,9 @@ struct ui_renderer:
 	int32[3] clip_depth
 	int32 vp_w
 	int32 vp_h
+	# graphics.ui.font's atlas generation at the last texture upload;
+	# ui_render_begin re-uploads when a runtime font has grown the atlas.
+	int32 atlas_generation
 
 
 # CPU-only init: the vertex batch works, every GL call is skipped
@@ -137,6 +140,20 @@ void ui_render_init_headless(ui_renderer* r):
 	r.layer = UI_LAYER_BASE
 	r.vp_w = 0
 	r.vp_h = 0
+	r.atlas_generation = ui_font_atlas_generation()
+
+
+# (Re)upload the atlas — baked rows plus any runtime font rows — into
+# the bound atlas texture, and record the generation it reflects.
+void ui_render_upload_atlas(ui_renderer* r):
+	char* pixels = ui_font_build_atlas()
+	# 2- and odd-width R8 rows are not 4-aligned.
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
+	glActiveTexture(GL_TEXTURE0)
+	glBindTexture(GL_TEXTURE_2D, r.atlas_tex)
+	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, ui_font_atlas_w(), ui_font_atlas_rows(), 0, GL_RED, GL_UNSIGNED_BYTE, pixels)
+	free(pixels)
+	r.atlas_generation = ui_font_atlas_generation()
 
 
 # Full init: shader program, vertex buffer, glyph-atlas upload.
@@ -162,18 +179,14 @@ int ui_render_init(ui_renderer* r):
 
 	glGenBuffers(1, &r.vbuf)
 
-	char* pixels = ui_font_build_atlas()
-	# 2- and odd-width R8 rows are not 4-aligned.
-	glPixelStorei(GL_UNPACK_ALIGNMENT, 1)
 	glGenTextures(1, &r.atlas_tex)
 	glActiveTexture(GL_TEXTURE0)
 	glBindTexture(GL_TEXTURE_2D, r.atlas_tex)
-	glTexImage2D(GL_TEXTURE_2D, 0, GL_R8, ui_font_atlas_w(), ui_font_atlas_h(), 0, GL_RED, GL_UNSIGNED_BYTE, pixels)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE)
 	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE)
-	free(pixels)
+	ui_render_upload_atlas(r)
 	glUniform1i(r.u_tex, 0)
 
 	r.gl_ready = 1
@@ -193,6 +206,8 @@ void ui_render_begin(ui_renderer* r, int width, int height):
 	r.vp_h = height
 	if (r.gl_ready == 0):
 		return
+	if (r.atlas_generation != ui_font_atlas_generation()):
+		ui_render_upload_atlas(r)
 	glUseProgram(r.program)
 	glDisable(GL_DEPTH_TEST)
 	glEnable(GL_BLEND)
@@ -287,7 +302,13 @@ void ui_render_vertex(ui_renderer* r, float32 x, float32 y, float32 u, float32 v
 # the geometry passes through untouched — the viewport is not a clip
 # (the GPU already bounds it), and treating it as one would drop the
 # zero-extent fills that pill-shaped rrects legitimately emit.
-void ui_render_quad(ui_renderer* r, ui_rect rect, float32 u0, float32 v0, float32 u1, float32 v1, ui_color color):
+#
+# skew shears the quad horizontally: each vertex moves right by
+# skew * (pivot_y - y), so rows above pivot_y lean right (synthetic
+# oblique text shears about its baseline; 0.0 is the plain quad).
+# Clipping trims the unsheared rect — exact vertically, while the lean
+# can reach up to skew * h past a clip's left or right edge.
+void ui_render_quad_sheared(ui_renderer* r, ui_rect rect, float32 u0, float32 v0, float32 u1, float32 v1, ui_color color, float32 skew, float32 pivot_y):
 	if (r.clip_depth[r.layer] > 0):
 		ui_rect clip = ui_clip_current(r)
 		ui_rect vis = ui_rect_intersect(rect, clip)
@@ -307,12 +328,19 @@ void ui_render_quad(ui_renderer* r, ui_rect rect, float32 u0, float32 v0, float3
 		rect = vis
 	float32 x1 = rect.x + rect.w
 	float32 y1 = rect.y + rect.h
-	ui_render_vertex(r, rect.x, rect.y, u0, v0, color)
-	ui_render_vertex(r, x1, rect.y, u1, v0, color)
-	ui_render_vertex(r, x1, y1, u1, v1, color)
-	ui_render_vertex(r, rect.x, rect.y, u0, v0, color)
-	ui_render_vertex(r, x1, y1, u1, v1, color)
-	ui_render_vertex(r, rect.x, y1, u0, v1, color)
+	float32 top_dx = skew * (pivot_y - rect.y)
+	float32 bot_dx = skew * (pivot_y - y1)
+	ui_render_vertex(r, rect.x + top_dx, rect.y, u0, v0, color)
+	ui_render_vertex(r, x1 + top_dx, rect.y, u1, v0, color)
+	ui_render_vertex(r, x1 + bot_dx, y1, u1, v1, color)
+	ui_render_vertex(r, rect.x + top_dx, rect.y, u0, v0, color)
+	ui_render_vertex(r, x1 + bot_dx, y1, u1, v1, color)
+	ui_render_vertex(r, rect.x + bot_dx, y1, u0, v1, color)
+
+
+# The unsheared quad every shape primitive uses.
+void ui_render_quad(ui_renderer* r, ui_rect rect, float32 u0, float32 v0, float32 u1, float32 v1, ui_color color):
+	ui_render_quad_sheared(r, rect, u0, v0, u1, v1, color, 0.0, 0.0)
 
 
 # The atlas-space UV of a glyph/mask rect edge.
@@ -321,7 +349,7 @@ float32 ui_render_u(int x):
 
 
 float32 ui_render_v(int y):
-	return cast(float32, y) / cast(float32, ui_font_atlas_h())
+	return cast(float32, y) / cast(float32, ui_font_atlas_rows())
 
 
 # Solid fill: sample the center of the solid-white mask.
@@ -350,20 +378,27 @@ void ui_render_mask(ui_renderer* r, ui_rect rect, int mask, int flip_x, int flip
 	ui_render_quad(r, rect, u0, v0, u1, v1, color)
 
 
-# One glyph at pen x with the line box's top at y_top; returns the pen
-# advance. Inkless glyphs (space) advance without pushing a quad.
-int ui_render_glyph(ui_renderer* r, float32 x, float32 y_top, int ch, int scale, ui_color color):
-	int strike = ui_font_strike_from_scale(scale)
+# One glyph of strike (baked or runtime) at pen x with the line box's
+# top at y_top, leaned by skew about the baseline (0.0 upright;
+# graphics.ui.text's italic passes ui_text_italic_skew()). Returns the
+# pen advance. Inkless glyphs (space) advance without pushing a quad.
+int ui_render_glyph_strike(ui_renderer* r, float32 x, float32 y_top, int ch, int strike, float32 skew, ui_color color):
 	ui_glyph g = ui_font_glyph(strike, ch)
 	if (g.w > 0):
+		float32 baseline = y_top + cast(float32, ui_font_strike_ascent(strike))
 		float32 gx = x + cast(float32, g.bearing_x)
-		float32 gy = y_top + cast(float32, ui_font_ascent(strike) - g.bearing_top)
+		float32 gy = baseline - cast(float32, g.bearing_top)
 		float32 u0 = ui_render_u(g.x)
 		float32 v0 = ui_render_v(g.y)
 		float32 u1 = ui_render_u(g.x + g.w)
 		float32 v1 = ui_render_v(g.y + g.h)
-		ui_render_quad(r, ui_rect_new(gx, gy, cast(float32, g.w), cast(float32, g.h)), u0, v0, u1, v1, color)
+		ui_render_quad_sheared(r, ui_rect_new(gx, gy, cast(float32, g.w), cast(float32, g.h)), u0, v0, u1, v1, color, skew, baseline)
 	return g.advance
+
+
+# ui_render_glyph_strike, upright, at the strike text_scale selects.
+int ui_render_glyph(ui_renderer* r, float32 x, float32 y_top, int ch, int scale, ui_color color):
+	return ui_render_glyph_strike(r, x, y_top, ch, ui_font_strike_from_scale(scale), 0.0, color)
 
 
 # Rounded rect: four mirrored corner-mask quads plus three fills.
