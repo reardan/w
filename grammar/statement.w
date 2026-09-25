@@ -132,8 +132,7 @@ int result_propagate_suffix(int type):
 	for_cleanup_emit_all()
 	mov_eax_esp_plus(0)
 	defer_emit_returning()
-	be_pop(stack_pos)
-	ret()
+	be_return(stack_pos)
 	be_ctrl_end(h_ok)
 	# Ok path: eax = address of the payload field
 	pop_eax()
@@ -337,8 +336,7 @@ void statement():
 			# saved around them
 			for_cleanup_emit_returning()
 			defer_emit_returning()
-			be_pop(stack_pos)
-			ret()
+			be_return(stack_pos)
 
 	# yield expression: store the value into the generator object and
 	# switch back to the consumer until the next gen_next

@@ -10,9 +10,11 @@ binary next to the binary that produced it and prints:
     PT_NOTE segment (NT_PRSTATUS; NT_SIGINFO adds the si_code and the
     faulting address when the kernel recorded them),
   * the faulting pc symbolized to "function (file:line)", and
-  * a heuristic backtrace: the same return-address scan the live
-    tracer uses (lib/stack_trace.w st_scan), reading stack words from
-    the core's PT_LOAD segments instead of live memory.
+  * a backtrace: the frame-pointer chain from the core's ebp/rbp (the
+    live tracer's lib/stack_trace.w st_unwind, reading stack words from
+    the core's PT_LOAD segments instead of live memory), exact for
+    binaries built with frame pointers, falling back to the heuristic
+    return-address scan (st_scan) where the chain breaks.
 
 The word size is detected from the core's ELF class, so one (64-bit)
 wcore build processes both 32- and 64-bit cores.
@@ -31,9 +33,11 @@ Code bytes for the call-site decode come from the binary file (a
 kernel core normally omits the read-only text mapping), located through
 the binary's program headers; stack words come from the core's PT_LOAD
 segments. Like the live tracer, the innermost frame (the faulting pc)
-is exact and every older frame is heuristic: a stale stack slot that
-still looks like a return address can add a frame, and a frame can be
-missing.
+is exact, and so is every older frame the chain yields; frames from
+the fallback scan are heuristic (a stale stack slot that still looks
+like a return address can add a frame, and a frame can be missing), and
+the report says so ("note: part of the trace is heuristic", JSON
+"trace_exact": false).
 
 W binaries carry a GNU build-id note (NT_GNU_BUILD_ID, a content hash
 of the image) right after their program headers, inside the first file
@@ -102,7 +106,7 @@ int wc_sp
 int wc_read_ok        /* last wc_core_word read hit dumped memory */
 
 int wc_frames_max():
-	return 64
+	return 256
 
 
 # --- little-endian field readers ---
@@ -459,6 +463,12 @@ int wc_pc_index():
 	return 12 /* eip */
 
 
+int wc_fp_index():
+	if (wc_class == 2):
+		return 4 /* rbp */
+	return 5 /* ebp */
+
+
 int wc_sp_index():
 	if (wc_class == 2):
 		return 19 /* rsp */
@@ -692,6 +702,136 @@ int wc_scan(int sp, char* out, int max):
 	return found
 
 
+# --- backtrace: the frame-pointer chain (exact) ---
+# W functions open with push ebp ; mov ebp,esp on x86/x64, so the core's
+# ebp/rbp heads a chain of [saved fp | return address] pairs through
+# the dumped stack. Mirrors lib/stack_trace.w st_unwind / st_chain,
+# reading words from the core and code bytes from the binary; where the
+# chain breaks (or the binary predates frame pointers) the rest comes
+# from wc_scan and wc_chain_exact is 0.
+int wc_chain_exact
+
+
+int wc_prologue_len(int addr):
+	if (wc_code_byte(addr) != 85):
+		return 0
+	if (wc_class == 2):
+		if ((wc_code_byte(addr + 1) == 72) && (wc_code_byte(addr + 2) == 137) && (wc_code_byte(addr + 3) == 229)):
+			return 4
+		return 0
+	if ((wc_code_byte(addr + 1) == 137) && (wc_code_byte(addr + 2) == 229)):
+		return 3
+	return 0
+
+
+int wc_is_main(int pc):
+	int e = st_func_entry(pc)
+	if (e == 0):
+		return 0
+	return st_cstr_eq(st_entry_name(e), c"main")
+
+
+# 1 when the binary's main opens with the frame-pointer prologue (the
+# whole image comes from one compiler).
+int wc_uses_frame_pointers():
+	if (wc_have_syms == 0):
+		return 0
+	int i = 1
+	while (i < st_symtab_count):
+		int e = st_symtab_lo + i * st_symtab_entsize
+		if (st_cstr_eq(st_entry_name(e), c"main")):
+			return wc_prologue_len(st_entry_value(e)) > 0
+		i = i + 1
+	return 0
+
+
+int wc_is_return(int v):
+	if ((v <= wc_text_lo) || (v >= wc_text_hi)):
+		return 0
+	if (wc_call_site(v) == 0):
+		return 0
+	return st_func_entry(v - 1) != 0
+
+
+int wc_chain(int fp, char* out, int found, int max, int fallback_sp):
+	int last = 0
+	int broken = 0
+	while ((found < max) && (broken == 0)):
+		if (fp == 0):
+			wc_chain_exact = 1
+			return found
+		int v = 0
+		if ((fp & (wc_wsize - 1)) != 0):
+			broken = 1
+		else:
+			v = wc_core_word(fp + wc_wsize)
+			if (wc_read_ok == 0):
+				broken = 1
+			else if (wc_is_return(v) == 0):
+				broken = 1
+		if (broken == 0):
+			save_word(&out[found * __word_size__], v - 1)
+			found = found + 1
+			last = fp
+			if (wc_is_main(v - 1)):
+				wc_chain_exact = 1
+				return found
+			int next = wc_core_word(fp)
+			if (wc_read_ok == 0):
+				broken = 1
+			else if ((next != 0) && (next <= fp)):
+				broken = 1
+			fp = next
+	if (broken == 0):
+		wc_chain_exact = 1
+		return found
+	wc_chain_exact = 0
+	int from = fallback_sp
+	if (last != 0):
+		from = last + 2 * wc_wsize
+	return found + wc_scan(from, &out[found * __word_size__], max - found)
+
+
+# Callers of pc (the faulting thread's pc/sp/fp), most recent first.
+int wc_unwind(int pc, int sp, int fp, char* out, int max):
+	wc_chain_exact = 0
+	if (wc_uses_frame_pointers() == 0):
+		return wc_scan(sp, out, max)
+	int e = st_func_entry(pc)
+	if (e == 0):
+		return wc_scan(sp, out, max)
+	if (wc_is_main(pc)):
+		wc_chain_exact = 1
+		return 0
+	int entry = st_entry_value(e)
+	int plen = wc_prologue_len(entry)
+	int found = 0
+	if (plen == 0):
+		found = wc_scan(sp, out, 1)
+		if (found == 0):
+			return 0
+		if (wc_is_main(load_word(out))):
+			return found
+		found = wc_chain(fp, out, found, max, sp)
+		wc_chain_exact = 0
+		return found
+	int ret_slot = 0
+	if (pc == entry):
+		ret_slot = sp
+	else if (pc < entry + plen):
+		ret_slot = sp + wc_wsize
+	if (ret_slot != 0):
+		int v = wc_core_word(ret_slot)
+		if ((wc_read_ok == 0) || (wc_is_return(v) == 0)):
+			return wc_scan(sp, out, max)
+		save_word(out, v - 1)
+		found = 1
+		if (wc_is_main(v - 1)):
+			wc_chain_exact = 1
+			return found
+	return wc_chain(fp, out, found, max, sp)
+
+
 # --- binary section parsing (points lib/stack_trace.w at the buffer) ---
 # Mirrors st_init, minus its this-image class check: st_class is the
 # CORE'S class here, not the running tool's, so the shared lookups
@@ -899,6 +1039,12 @@ void wc_json_report(char* frames, int nframes):
 		k = k + 1
 	put_char('}')
 	put_char(',')
+	wc_json_key(c"trace_exact")
+	if (wc_chain_exact):
+		print(c"true")
+	else:
+		print(c"false")
+	put_char(',')
 	wc_json_key(c"frames")
 	put_char('[')
 	int f = 0
@@ -1002,7 +1148,8 @@ void wc_report(char* frames, int nframes):
 	while (f < nframes):
 		wc_print_frame(load_word(&frames[f * __word_size__]))
 		f = f + 1
-	println(c"note: the trace is heuristic (return-address scan, no frame pointers): frames can be missing or stale")
+	if (wc_chain_exact == 0):
+		println(c"note: part of the trace is heuristic (return-address scan): frames can be missing or stale")
 
 
 # --- errors ---
@@ -1120,10 +1267,11 @@ int main(int argc, int argv):
 	if (wc_have_syms == 0):
 		println2(c"wcore: no .symtab in the binary; raw addresses only")
 
-	# Frame 0 is the faulting pc (exact); the rest is the heuristic scan.
+	# Frame 0 is the faulting pc (exact); the rest follows the
+	# frame-pointer chain, falling back to the heuristic scan.
 	char* frames = malloc(wc_frames_max() * __word_size__)
 	save_word(frames, wc_pc)
-	int nframes = 1 + wc_scan(wc_sp, &frames[__word_size__], wc_frames_max() - 1)
+	int nframes = 1 + wc_unwind(wc_pc, wc_sp, wc_reg(wc_fp_index()), &frames[__word_size__], wc_frames_max() - 1)
 
 	if (wc_json):
 		wc_json_report(frames, nframes)

@@ -82,6 +82,7 @@ run_case() {
 	expect "$desc (--json)" "$json" '"signal":11'
 	expect "$desc (--json)" "$json" '"si_code":1'
 	expect "$desc (--json)" "$json" '"function":"crash_deep"'
+	expect "$desc (--json)" "$json" '"trace_exact":true'
 
 	if wrong=$("$WCORE" "$core" "$other" 2>&1); then
 		echo "FAIL: $desc: wcore accepted a binary with a different build-id"

@@ -24,6 +24,25 @@ int dbg_find_line(int rel):
 	return best
 
 
+# Address of a function's first statement: the first line entry inside
+# [addr, addr + size), past the x86/x64 frame-pointer prologue (push
+# ebp ; mov ebp,esp) that precedes it. Breaking there instead of at the
+# entry stops with the frame set up and a line (and stack_pos) that
+# belong to the function, like a debugger's prologue skip. Falls back to
+# addr itself when no entry lies inside. addr is absolute.
+int dbg_body_start(int addr, int size):
+	int rel = addr - code_offset
+	int i = 0
+	while (i < debug_line_count):
+		int a = load_int(debug_line_addresses + i * 4)
+		if (a >= rel):
+			if (a < rel + size):
+				return a + code_offset
+			return addr
+		i = i + 1
+	return addr
+
+
 int dbg_line_addr(int i):
 	return load_int(debug_line_addresses + i * 4)
 

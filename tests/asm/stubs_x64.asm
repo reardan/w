@@ -119,7 +119,7 @@ func syscall7
 # thread_create(func): clone with a fresh 4MB stack whose top slot holds
 # func, so the child's fall-through "ret" jumps straight into func.
 func thread_create
-	call .+0x24	# stack_create, emitted immediately after this stub
+	call .+0x2a	# stack_create, emitted immediately after this stub
 	lea rcx,[rax+0x3ffff0]
 	mov rdx,[rsp+8]
 	mov [rcx],rdx
@@ -127,6 +127,9 @@ func thread_create
 	mov rsi,rcx
 	mov eax,0x38	# clone
 	syscall
+	test eax,eax
+	jne .+4	# parent: keep rbp
+	xor ebp,ebp	# child: the frame-pointer chain ends here
 	ret
 
 # stack_create(): mmap(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)

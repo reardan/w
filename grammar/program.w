@@ -170,9 +170,13 @@ void function_definition(int current_symbol):
 		be_function_define(current_symbol, last_global_declaration)
 		# On arm64 sign and push the return address (x30) onto the W stack
 		# so the callee has the same [return-slot | args] layout the x86
-		# backend relies on; emits nothing on the x86 family. On wasm this
-		# opens the function's size-prefixed code-section unit.
+		# backend relies on. On x86/x64 push ebp ; mov ebp,esp to keep the
+		# frame-pointer chain lib/stack_trace.w walks. On wasm this opens
+		# the function's size-prefixed code-section unit.
 		be_function_prologue()
+		# x86/x64: the saved frame pointer is one more word on the W stack
+		int frame_words = be_frame_words()
+		stack_pos = stack_pos + frame_words
 		current_function_symbol = current_symbol
 		enclosing_tab_level = 0
 		# Record the argument word count for the debugger's
@@ -189,8 +193,9 @@ void function_definition(int current_symbol):
 		statement()
 		goto_scope_end(outer_label_base, outer_pending_base)
 		defer_reset()
-		ret()
+		be_return_bare()
 		be_function_epilogue()
+		stack_pos = stack_pos - frame_words
 		# Store length to symbol table:
 		save_int(table + current_symbol + 14, codepos - function_start)
 
@@ -481,6 +486,7 @@ void script_main():
 	sym_set_w_variadic(current_symbol, -1)
 	be_function_define(current_symbol, c"main")
 	be_function_prologue()
+	stack_pos = stack_pos + be_frame_words()
 	current_function_symbol = current_symbol
 	enclosing_tab_level = 0
 	debug_func_note(function_start, number_of_args)
@@ -498,10 +504,14 @@ void script_main():
 	# Fall-through exit: run deferred statements, then return 0
 	defer_emit_all()
 	defer_reset()
-	be_pop(stack_pos)
+	if (be_frame_words()):
+		mov_eax_int(0)
+		be_return(stack_pos)
+	else:
+		be_pop(stack_pos)
+		mov_eax_int(0)
+		ret()
 	stack_pos = 0
-	mov_eax_int(0)
-	ret()
 	be_function_epilogue()
 	save_int(table + current_symbol + 14, codepos - function_start)
 	table_pos = n

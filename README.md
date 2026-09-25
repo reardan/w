@@ -294,9 +294,12 @@ Toolchain beyond the compiler:
   `at function (file:line)` per frame — before exiting. Programs can call
   `print_stack_trace()` / `stack_trace_collect()` directly. Symbols come
   from the binary's own mapped `.symtab` and DWARF `.debug_line` sections
-  (ELF targets emit them unconditionally); unwinding uses the debugger's
-  no-frame-pointer return-address scan. On targets without those sections
-  (Mach-O, PE) the trace is silently skipped. See `stack_trace_test`.
+  (ELF targets emit them unconditionally). On x86/x64 every function
+  keeps a frame-pointer chain (`push ebp ; mov ebp,esp`), so unwinding is
+  exact; where the chain breaks, and on arm64, it falls back to the
+  debugger's return-address scan. On targets without those sections
+  (Mach-O, PE) the trace is silently skipped. See `stack_trace_test` and
+  `stack_trace_chain_test`.
 
 ## How the bootstrap works
 
