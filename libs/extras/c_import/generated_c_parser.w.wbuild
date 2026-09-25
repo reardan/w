@@ -1,0 +1,5 @@
+# wbuild: target=parser_generator_c_test tag=tests dep=parser_generator_test
+# wbuild: step="bin/parser_generator tests/parser_generator/c.pg -o bin/generated_c_parser.w"
+# wbuild: step="cmp bin/generated_c_parser.w libs/extras/c_import/generated_c_parser.w"
+# wbuild: step="bin/wv2 tests/parser_generator/generated_c_parser_test.w -o bin/parser_generator_c_test"
+# wbuild: step="bin/parser_generator_c_test"

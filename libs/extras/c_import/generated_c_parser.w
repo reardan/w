@@ -6375,8 +6375,3 @@ pg_ast_node* clang_parse(char* input, char* filename, pg_diagnostics* diagnostic
 		pg_diagnostics_add(diagnostics, found.filename, found.line, found.column, c"syntax error", c"translation_unit", found.text)
 	return root
 
-# wbuild: target=parser_generator_c_test tag=tests dep=parser_generator_test
-# wbuild: step="bin/parser_generator tests/parser_generator/c.pg -o bin/generated_c_parser.w"
-# wbuild: step="cmp bin/generated_c_parser.w libs/extras/c_import/generated_c_parser.w"
-# wbuild: step="bin/wv2 tests/parser_generator/generated_c_parser_test.w -o bin/parser_generator_c_test"
-# wbuild: step="bin/parser_generator_c_test"

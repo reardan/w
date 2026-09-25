@@ -522,7 +522,7 @@ void test_target_after_test_directives():
 	# target= spells everything out (no implied deps), and its step=
 	# lines never leak into the source's own conventional test target.
 	wdet_assert_contains(out, c"\"name\": \"spelled\",\n\t\t\t\"inputs\": [\"tests/spelled_test.w\"],\n\t\t\t\"outputs\": [\"bin/spelled.txt\"],\n\t\t\t\"steps\": [\n\t\t\t\t{\"cmd\": [\"true\"]}\n\t\t\t]")
-	wdet_assert_contains(out, c"{\"cmd\": [\"bin/spelled_test\"], \"expect_stdout\": [\"hi\"]}\n\t\t\t]")
+	wdet_assert_contains(out, c"{\"cmd\": [\"bin/spelled_test\"], \"expect_stdout\": \"hi\"}\n\t\t\t]")
 	free(out)
 	free(out_path)
 

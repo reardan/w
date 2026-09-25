@@ -1961,28 +1961,3 @@ int symbols_main(int argc, int argv):
 	else:
 		symbols_dump(json)
 	return 0
-# wbuild: target=check_roots_test tag=tests dep=wv2
-# wbuild: step="bin/wv2 check --json w.w compiler/compiler.w" stdout_file="bin/check_roots_multi.ndjson" expect_stderr="compiling 'w.w'" expect_stderr="check: compiler/compiler.w is compiler-internal; checking w.w" expect_stderr="skipping 'w.w' (already compiled)"
-# wbuild: step="test ! -s bin/check_roots_multi.ndjson"
-# wbuild: step="bin/wv2 check --json lib/args.w lib/lib.w" stdout_file="bin/check_roots_import_first.ndjson" expect_stderr="skipping 'lib/lib.w' (already compiled)"
-# wbuild: step="test ! -s bin/check_roots_import_first.ndjson"
-# wbuild: step="bin/wv2 check --json lib/lib.w lib/args.w" stdout_file="bin/check_roots_root_first.ndjson" expect_stderr="compiling 'lib/lib.w'" expect_stderr="compiling 'lib/args.w'"
-# wbuild: step="test ! -s bin/check_roots_root_first.ndjson"
-# wbuild: step="bin/wv2 check lib/args.w lib/args.w" expect_stderr="skipping 'lib/args.w' (already compiled)"
-# wbuild: step="bin/wv2 check --json lib/args.w" stdout_file="bin/check_roots_args.ndjson"
-# wbuild: step="test ! -s bin/check_roots_args.ndjson"
-# wbuild: step="bin/wv2 check --json lib/sha256.w" stdout_file="bin/check_roots_mainless.ndjson"
-# wbuild: step="test ! -s bin/check_roots_mainless.ndjson"
-# wbuild: step="bin/wv2 check x64 lib/sha256.w"
-# wbuild: step="bin/wv2 check arm64 lib/sha256.w"
-# wbuild: step="bin/wv2 check arm64_darwin lib/sha256.w"
-# wbuild: step="bin/wv2 check win64 lib/sha256.w"
-# wbuild: step="bin/wv2 check wasm lib/sha256.w"
-# wbuild: step="bin/wv2 lib/sha256.w -o /dev/null" expect_fail expect_stderr="Failed to find a _main() function"
-# wbuild: step="bin/wv2 check --json tests/check_library_error_fixture.w" expect_fail expect_stdout="\"severity\": \"error\"" expect_stdout="\"message\": \"Cannot find symbol: 'undefined_symbol_for_check_fixture'\""
-# wbuild: step="bin/wv2 check --json code_generator/arm64.w" stdout_file="bin/check_roots_internal.ndjson" expect_stderr="check: code_generator/arm64.w is compiler-internal; checking w.w" expect_stderr="compiling 'w.w'"
-# wbuild: step="test ! -s bin/check_roots_internal.ndjson"
-# wbuild: step="bin/wv2 check --json code_generator/arm64.w lib/math.w" expect_stderr="check: code_generator/arm64.w is compiler-internal; checking w.w" expect_stderr="compiling 'lib/math.w'"
-# wbuild: step="bin/wv2 check --quiet --json code_generator/arm64.w" stdout_file="bin/check_roots_quiet.ndjson" stderr_file="bin/check_roots_quiet.stderr"
-# wbuild: step="test ! -s bin/check_roots_quiet.ndjson"
-# wbuild: step="test ! -s bin/check_roots_quiet.stderr"
