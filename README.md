@@ -252,9 +252,8 @@ Implemented and covered by tests:
 - Statements: `if`/`else`, `while`, `for int i in range(start, end, step)`
   (1–3 args), `for x in <container>` over built-in lists/maps/sets and any
   struct-pointer type providing the four cursor functions
-  `T_iter_begin/done/next/value` (implemented by `array_list`,
-  `linked_list` and `hash_map`, which yields keys; see
-  `docs/projects/iteration.md`), `for int cp in string` codepoint iteration,
+  `T_iter_begin/done/next/value` (see `tests/for_container_test.w`
+  and `docs/projects/iteration.md`), `for int cp in string` codepoint iteration,
   `switch`/`case`/`default` (multi-value `case a, b:` clauses, implicit
   break with no fallthrough, `default` last; `break` exits the switch while
   `continue` targets the enclosing loop; int-like, `string` and `char*`

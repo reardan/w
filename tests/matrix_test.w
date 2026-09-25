@@ -18,19 +18,6 @@ float mt_abs(float f):
 	return f
 
 
-# Epsilon compare: float is float32 on x86 and wider on x64, so exact
-# bit patterns after a division differ between the two builds.
-void assert_near(float want, float got):
-	if (mt_abs(want - got) > 0.0001):
-		print2(c"Assertion failed. wanted float(")
-		print2(ftoa(want))
-		print2(c") got float(")
-		print2(ftoa(got))
-		println2(c")")
-		print_stack_trace()
-		exit(1)
-
-
 void assert_matrix_near(matrix* want, matrix* got):
 	if (matrix_near(want, got, 0.0001) == 0):
 		println2(c"Assertion failed: matrices differ; wanted")

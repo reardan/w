@@ -4,18 +4,6 @@ import lib.format
 import lib.fmath
 
 
-# Same tolerance as graphics/math_test.w: well within what float32
-# callers need, loose enough to absorb iteration truncation.
-void assert_near(float want, float got):
-	if (fabs(want - got) > 0.0001):
-		print2(c"Assertion failed. wanted float(")
-		print2(ftoa(want))
-		print2(c") got float(")
-		print2(ftoa(got))
-		println2(c")")
-		exit(1)
-
-
 void assert_float_bits(int want, float got):
 	assert_equal_hex(want, float_bits(got))
 

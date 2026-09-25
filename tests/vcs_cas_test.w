@@ -49,10 +49,7 @@ char* vcst_root():
 
 
 wcas* vcst_open():
-	wresult[wcas*]* r = cas_open(vcst_root())
-	assert1(result_is_ok[wcas*](r))
-	wcas* s = result_value[wcas*](r)
-	result_free[wcas*](r)
+	wcas* s = result_expect[wcas*](cas_open(vcst_root()))
 	return s
 
 
@@ -67,10 +64,7 @@ void vcst_track(char* id):
 
 # put + assert ok + track; returns the malloc'd id.
 char* vcst_put(wcas* s, char* object_type, char* data, int length):
-	wresult[char*]* r = cas_put(s, object_type, data, length)
-	assert1(result_is_ok[char*](r))
-	char* id = result_value[char*](r)
-	result_free[char*](r)
+	char* id = result_expect[char*](cas_put(s, object_type, data, length))
 	vcst_track(id)
 	return id
 
@@ -161,10 +155,7 @@ void test_cas_put_get_has_roundtrip():
 	char* id = vcst_put(s, c"blob", c"hello world", 11)
 	assert_equal(1, cas_has(s, id))
 
-	wresult[wcas_object*]* got = cas_get(s, id)
-	assert1(result_is_ok[wcas_object*](got))
-	wcas_object* o = result_value[wcas_object*](got)
-	result_free[wcas_object*](got)
+	wcas_object* o = result_expect[wcas_object*](cas_get(s, id))
 	assert_strings_equal(c"blob", o.object_type)
 	assert_equal(11, o.length)
 	assert_strings_equal(c"hello world", o.data)
@@ -220,10 +211,7 @@ void test_cas_binary_payload_roundtrip():
 		buf[i] = i & 255
 		i = i + 1
 	char* id = vcst_put(s, c"blob", buf, n)
-	wresult[wcas_object*]* got = cas_get(s, id)
-	assert1(result_is_ok[wcas_object*](got))
-	wcas_object* o = result_value[wcas_object*](got)
-	result_free[wcas_object*](got)
+	wcas_object* o = result_expect[wcas_object*](cas_get(s, id))
 	assert_equal(n, o.length)
 	i = 0
 	while (i < n):
@@ -258,10 +246,7 @@ void test_cas_dedup_and_double_put():
 			code = 0
 		exit(code)
 	assert1(child > 0)
-	wresult[char*]* pr = cas_put(s, c"blob", racy, 20)
-	assert1(result_is_ok[char*](pr))
-	char* raced_id = result_value[char*](pr)
-	result_free[char*](pr)
+	char* raced_id = result_expect[char*](cas_put(s, c"blob", racy, 20))
 	vcst_track(raced_id)
 	# Pre-zero: the kernel writes a 32-bit status, W ints are word-sized
 	# (the lib/process.w convention).
@@ -353,10 +338,7 @@ void test_cas_build_cache_client():
 	# Probe + fetch (fresh-clone side): cas_has answers the cache probe,
 	# cas_get returns the artifact bytes intact.
 	assert_equal(1, cas_has(s, key))
-	wresult[wcas_object*]* hit = cas_get(s, key)
-	assert1(result_is_ok[wcas_object*](hit))
-	wcas_object* o = result_value[wcas_object*](hit)
-	result_free[wcas_object*](hit)
+	wcas_object* o = result_expect[wcas_object*](cas_get(s, key))
 	assert_strings_equal(c"out", o.object_type)
 	assert_equal(n, o.length)
 	i = 0
@@ -369,14 +351,8 @@ void test_cas_build_cache_client():
 	# atomically (keyed ids say nothing about the stored bytes, so raw
 	# put must never keep stale data). This is also the
 	# rename-over-existing path the concurrent double-put relies on.
-	wresult[char*]* again = cas_put_raw(s, key, c"out", c"rebuilt", 7)
-	assert1(result_is_ok[char*](again))
-	free(result_value[char*](again))
-	result_free[char*](again)
-	wresult[wcas_object*]* fresh = cas_get(s, key)
-	assert1(result_is_ok[wcas_object*](fresh))
-	wcas_object* o2 = result_value[wcas_object*](fresh)
-	result_free[wcas_object*](fresh)
+	free(result_expect[char*](cas_put_raw(s, key, c"out", c"rebuilt", 7)))
+	wcas_object* o2 = result_expect[wcas_object*](cas_get(s, key))
 	assert_strings_equal(c"rebuilt", o2.data)
 	cas_object_free(o2)
 
@@ -416,10 +392,7 @@ void test_cas_corrupt_detection():
 	write(fd, c"X", 1)
 	close(fd)
 	assert_equal(0, cas_verify(s, id))
-	wresult[wcas_object*]* still = cas_get(s, id)
-	assert1(result_is_ok[wcas_object*](still))
-	cas_object_free(result_value[wcas_object*](still))
-	result_free[wcas_object*](still)
+	cas_object_free(result_expect[wcas_object*](cas_get(s, id)))
 	free(id)
 
 	# Truncation: the declared length no longer matches the payload, so
@@ -531,10 +504,7 @@ void test_cas_write_new_is_compressed_on_disk():
 	string_free(raw)
 	string_free(p)
 
-	wresult[wcas_object*]* got = cas_get(s, id)
-	assert1(result_is_ok[wcas_object*](got))
-	wcas_object* o = result_value[wcas_object*](got)
-	result_free[wcas_object*](got)
+	wcas_object* o = result_expect[wcas_object*](cas_get(s, id))
 	assert_equal(n, o.length)
 	i = 0
 	while (i < n):
@@ -559,10 +529,7 @@ void test_cas_legacy_store_transparent_read():
 	char* id = vcst_write_legacy(s, c"blob", payload, length)
 
 	assert_equal(1, cas_has(s, id))
-	wresult[wcas_object*]* got = cas_get(s, id)
-	assert1(result_is_ok[wcas_object*](got))
-	wcas_object* o = result_value[wcas_object*](got)
-	result_free[wcas_object*](got)
+	wcas_object* o = result_expect[wcas_object*](cas_get(s, id))
 	assert_strings_equal(c"blob", o.object_type)
 	assert_equal(length, o.length)
 	assert_strings_equal(payload, o.data)
@@ -589,17 +556,11 @@ void test_cas_mixed_format_store():
 	assert_equal(1, cas_has(s, new_id))
 	assert_equal(1, cas_has(s, old_id))
 
-	wresult[wcas_object*]* got_new = cas_get(s, new_id)
-	assert1(result_is_ok[wcas_object*](got_new))
-	wcas_object* new_obj = result_value[wcas_object*](got_new)
-	result_free[wcas_object*](got_new)
+	wcas_object* new_obj = result_expect[wcas_object*](cas_get(s, new_id))
 	assert_strings_equal(new_payload, new_obj.data)
 	cas_object_free(new_obj)
 
-	wresult[wcas_object*]* got_old = cas_get(s, old_id)
-	assert1(result_is_ok[wcas_object*](got_old))
-	wcas_object* old_obj = result_value[wcas_object*](got_old)
-	result_free[wcas_object*](got_old)
+	wcas_object* old_obj = result_expect[wcas_object*](cas_get(s, old_id))
 	assert_strings_equal(old_payload, old_obj.data)
 	cas_object_free(old_obj)
 

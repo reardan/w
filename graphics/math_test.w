@@ -4,18 +4,6 @@ import lib.format
 import graphics.math
 
 
-# Shared tolerance for transcendental results: well within what float32
-# rendering math needs, loose enough to absorb polynomial truncation.
-void assert_near(float32 want, float32 got):
-	if (gfx_abs(want - got) > 0.0001):
-		print2(c"Assertion failed. wanted float(")
-		print2(ftoa(want))
-		print2(c") got float(")
-		print2(ftoa(got))
-		println2(c")")
-		exit(1)
-
-
 void assert_float_bits(int want, float32 got):
 	assert_equal_hex(want, gfx_float_bits(got))
 

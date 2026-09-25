@@ -48,7 +48,7 @@ lib/unix_fds.w), environment, umask and arguments. Output therefore
 streams live, byte for byte what 'bin/wexec ARGS' prints, and the exit
 status is the child's. The child starts from the daemon's warm state:
 the generated default manifest, already parsed, and the content hashes
-of every file an earlier build hashed (wexec_file_hash, which backs the
+of every file an earlier build hashed (deps_file_hash, which backs the
 import-closure checks of the deps-driven cache keys). Cache keys, stamps
 and bin/.wexec_deps_cache are wexec's own, unchanged, so a daemon build
 and a one-shot build agree on every hit. The client forwards SIGINT/
@@ -129,6 +129,8 @@ import lib.unix_fds
 import structures.string
 import structures.json
 import tools.wexec
+import lib.str
+import lib.dir
 
 
 int wbd_protocol():
@@ -154,27 +156,6 @@ void wbd_out(char* text):
 char* wbd_arg(int argv, int i):
 	char** slot = cast(char**, argv + i * __word_size__)
 	return *slot
-
-
-int wbd_prefix_eq(char* a, char* b, int n):
-	int i = 0
-	while (i < n):
-		if (a[i] != b[i]):
-			return 0
-		if (a[i] == 0):
-			return 0
-		i = i + 1
-	return 1
-
-
-int wbd_contains(char* text, char* needle):
-	int n = strlen(needle)
-	int i = 0
-	while (text[i] != 0):
-		if (wbd_prefix_eq(text + i, needle, n)):
-			return 1
-		i = i + 1
-	return 0
 
 
 # "./x/./y" style prefixes are stripped so closure entries and event
@@ -317,13 +298,8 @@ int wbd_watch_mask():
 	return IN_MODIFY() | IN_CLOSE_WRITE() | IN_MOVED_FROM() | IN_MOVED_TO() | IN_CREATE() | IN_DELETE() | IN_DELETE_SELF() | IN_MOVE_SELF()
 
 
-int wbd_load_uint16(char* p):
-	return (p[0] & 255) + ((p[1] & 255) << 8)
-
-
 # Adds a watch for rel ("" = the root) and, recursively, every
-# non-dot subdirectory under it (the same getdents record walk
-# tools/wbuildgen.w uses).
+# non-dot subdirectory under it.
 void wbd_watch_tree(char* rel):
 	char* path = rel
 	if (rel[0] == 0):
@@ -334,29 +310,15 @@ void wbd_watch_tree(char* rel):
 	if ((wd in wbd_watch_dirs) == 0):
 		wbd_watch_count = wbd_watch_count + 1
 	wbd_watch_dirs[wd] = strclone(rel)
-	# 65536 = O_DIRECTORY
-	int fd = open(path, 65536, 0)
-	if (fd < 0):
+	list[dir_entry*] entries = dir_read(path)
+	if (entries == 0):
 		return
-	int buffer_size = 32768
-	char* buffer = malloc(buffer_size)
-	list[char*] children = new list[char*]
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* entry = buffer + off
-			int reclen = wbd_load_uint16(entry + 2 * __word_size__)
-			char* entry_name = entry + 2 * __word_size__ + 2
-			int kind = entry[reclen - 1] & 255
-			if ((kind == 4) && (entry_name[0] != '.')):
-				children.push(wbd_join(rel, entry_name))
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
-	for char* child in children:
-		wbd_watch_tree(child)
+	for dir_entry* e in entries:
+		if ((e.kind == DIR_KIND_DIR()) && (e.name[0] != '.')):
+			char* child = wbd_join(rel, e.name)
+			wbd_watch_tree(child)
+			free(child)
+	dir_entries_free(entries)
 
 
 void wbd_on_inotify(int fd, int revents, void* ctx);
@@ -397,7 +359,7 @@ char* wbd_file_sig(char* path):
 int wbd_hash_path_ok(char* path):
 	if ((path[0] == 0) || (path[0] == '/') || (path[0] == '.')):
 		return 0
-	if (wbd_contains(path, c"..") || wbd_contains(path, c"/.") || wbd_contains(path, c"//")):
+	if (contains(path, c"..") || contains(path, c"/.") || contains(path, c"//")):
 		return 0
 	return 1
 
@@ -405,13 +367,13 @@ int wbd_hash_path_ok(char* path):
 void wbd_hashes_clear():
 	wbd_seq = wbd_seq + 1
 	wbd_clear_seq = wbd_seq
-	wexec_file_hashes = new map[char*, char*]
+	deps_file_hashes = new map[char*, char*]
 	wbd_hash_sig = new map[char*, char*]
 
 
 void wbd_hash_forget(char* path):
 	wbd_seq = wbd_seq + 1
-	wexec_file_hashes.remove(path)
+	deps_file_hashes.remove(path)
 	wbd_hash_sig.remove(path)
 	if (wbd_builds_active > 0):
 		wbd_touched[strclone(path)] = wbd_seq
@@ -423,10 +385,10 @@ void wbd_hashes_forget_under(char* dir):
 	char* prefix = strjoin(dir, c"/")
 	if (dir[0] == 0):
 		prefix = strclone(c"")
-	list[char*] paths = wexec_file_hashes.keys()
+	list[char*] paths = deps_file_hashes.keys()
 	for char* path in paths:
 		if (starts_with(path, prefix)):
-			wexec_file_hashes.remove(path)
+			deps_file_hashes.remove(path)
 			wbd_hash_sig.remove(path)
 	if (wbd_builds_active > 0):
 		wbd_touched_dirs.push(prefix)
@@ -458,12 +420,12 @@ void wbd_manifest_drop():
 # Before a build forks: re-stat every warm hash and drop the ones whose
 # file changed without an inotify event reaching us.
 void wbd_hashes_revalidate():
-	list[char*] paths = wexec_file_hashes.keys()
+	list[char*] paths = deps_file_hashes.keys()
 	for char* path in paths:
 		char* sig = wbd_file_sig(path)
 		char* known = wbd_hash_sig.get(path, 0)
 		if ((known == 0) || (strcmp(known, sig) != 0)):
-			wexec_file_hashes.remove(path)
+			deps_file_hashes.remove(path)
 			wbd_hash_sig.remove(path)
 		free(sig)
 
@@ -771,8 +733,8 @@ list[char*] wbd_request_args(json_value* params, char** why):
 	if ((cwd == 0) || (cwd.type != json_type_string()) || (strcmp(cwd.string_value, wbd_root) != 0)):
 		*why = c"client working directory differs from the daemon's root"
 		return 0
-	json_value* args = json_object_get(params, c"args")
-	if ((args == 0) || (args.type != json_type_array())):
+	json_value* args = jfield_array(params, c"args")
+	if (args == 0):
 		*why = c"args must be an array"
 		return 0
 	list[char*] out = new list[char*]
@@ -810,7 +772,7 @@ list[char*] wbd_parse_closure(char* text):
 		if ((c == 10) || (c == 0)):
 			if (line.length > 0):
 				char* p = wbd_strip_dot(line.data)
-				if ((p[0] == '/') || wbd_contains(p, c"..")):
+				if ((p[0] == '/') || contains(p, c"..")):
 					ok = 0
 				else:
 					closure.push(strclone(p))
@@ -892,7 +854,7 @@ list[char*] wbd_closure_for(list[char*] args, char* request_key, process_result*
 			roots = roots + 1
 	if (roots != 1):
 		return 0
-	if ((root[0] == '/') || wbd_contains(root, c"..")):
+	if ((root[0] == '/') || contains(root, c"..")):
 		return 0
 	list[char*] deps_args = new list[char*]
 	if (arch != 0):
@@ -1035,7 +997,7 @@ json_value* wbd_handle_status(json_value* params, void* ctx):
 	json_object_set(result, c"prewarm_runs", json_int(wbd_prewarm_runs))
 	json_object_set(result, c"builds", json_int(wbd_builds_done))
 	json_object_set(result, c"builds_active", json_int(wbd_builds_active))
-	json_object_set(result, c"warm_hashes", json_int(wexec_file_hashes.length))
+	json_object_set(result, c"warm_hashes", json_int(deps_file_hashes.length))
 	json_object_set(result, c"hashes_merged", json_int(wbd_hashes_merged))
 	json_object_set(result, c"warm_manifest", json_bool(wexec_warm_manifest != 0))
 	return result
@@ -1286,7 +1248,7 @@ void wbd_build_child(int* fds, list[char*] args, char** envp, int mask, int repo
 	int status = wexec_main(args.length + 1, cast(int, argv))
 	json_value* report = json_object()
 	json_value* hashes = json_object()
-	for char* path, char* digest in wexec_file_hashes:
+	for char* path, char* digest in deps_file_hashes:
 		if (wbd_hash_path_ok(path)):
 			json_object_set(hashes, path, json_string(digest))
 	json_object_set(report, c"hashes", hashes)
@@ -1333,8 +1295,8 @@ void wbd_start_build(wbd_conn* c, json_value* message):
 	if (c.building || (c.fds.length != 3)):
 		wbd_build_refuse(c, id, c"a build needs the client's stdin, stdout and stderr descriptors")
 		return
-	json_value* env = json_object_get(params, c"env")
-	if ((env == 0) || (env.type != json_type_array())):
+	json_value* env = jfield_array(params, c"env")
+	if (env == 0):
 		wbd_build_refuse(c, id, c"env must be an array")
 		return
 	char** envp = strv_new(json_array_length(env))
@@ -1416,9 +1378,9 @@ void wbd_merge_report(wbd_build* b, json_value* report):
 				continue
 			if (wbd_touched_since(path, b.fork_seq)):
 				continue
-			if (path in wexec_file_hashes):
+			if (path in deps_file_hashes):
 				continue
-			wexec_file_hashes[strclone(path)] = strclone(wbd_json_text(digest))
+			deps_file_hashes[strclone(path)] = strclone(wbd_json_text(digest))
 			wbd_hash_sig[strclone(path)] = wbd_file_sig(path)
 			wbd_hashes_merged = wbd_hashes_merged + 1
 	json_value* manifest = json_object_get(report, c"manifest")
@@ -1502,7 +1464,7 @@ char* wbd_find_self_name():
 	if (starts_with(buf, bin_dir) == 0):
 		return 0
 	char* name = buf + strlen(bin_dir)
-	if (wbd_contains(name, c"/")):
+	if (contains(name, c"/")):
 		return 0
 	return strclone(name)
 
@@ -1661,7 +1623,7 @@ int wbd_changed_has_paths(list[char*] args):
 	int i = 0
 	while (i < args.length):
 		char* a = args[i]
-		if ((strcmp(a, c"-f") == 0) || (strcmp(a, c"--base-manifest") == 0)):
+		if (strcmp(a, c"-f") == 0):
 			i = i + 1
 		else if (a[0] != '-'):
 			return 1
@@ -1744,13 +1706,6 @@ int wbd_query(char* method, char* tool, char* sub, list[char*] args):
 	return code
 
 
-int wbd_json_int(json_value* object, char* key):
-	json_value* v = json_object_get(object, key)
-	if ((v == 0) || (v.type != json_type_int())):
-		return 0
-	return v.int_value
-
-
 int wbd_status_main(list[char*] args):
 	int as_json = 0
 	for char* a in args:
@@ -1769,7 +1724,7 @@ int wbd_status_main(list[char*] args):
 		return 0
 	string_builder* s = string_new()
 	string_append(s, c"wbuildd: running (pid ")
-	string_append_int(s, wbd_json_int(result, c"pid"))
+	string_append_int(s, jfield_int(result, c"pid", 0))
 	string_append(s, c")\nroot: ")
 	json_value* root = json_object_get(result, c"root")
 	if ((root != 0) && (root.type == json_type_string())):
@@ -1777,19 +1732,19 @@ int wbd_status_main(list[char*] args):
 	string_append(s, c"\nsocket: ")
 	string_append(s, wbd_socket_path)
 	string_append(s, c"\nuptime_ms: ")
-	string_append_int(s, wbd_json_int(result, c"uptime_ms"))
+	string_append_int(s, jfield_int(result, c"uptime_ms", 0))
 	string_append(s, c"\ncached_entries: ")
-	string_append_int(s, wbd_json_int(result, c"cached_entries"))
+	string_append_int(s, jfield_int(result, c"cached_entries", 0))
 	string_append(s, c"\nrequests: ")
-	string_append_int(s, wbd_json_int(result, c"requests"))
+	string_append_int(s, jfield_int(result, c"requests", 0))
 	string_append(s, c"\nhits: ")
-	string_append_int(s, wbd_json_int(result, c"hits"))
+	string_append_int(s, jfield_int(result, c"hits", 0))
 	string_append(s, c"\nmisses: ")
-	string_append_int(s, wbd_json_int(result, c"misses"))
+	string_append_int(s, jfield_int(result, c"misses", 0))
 	string_append(s, c"\ninvalidations: ")
-	string_append_int(s, wbd_json_int(result, c"invalidations"))
+	string_append_int(s, jfield_int(result, c"invalidations", 0))
 	string_append(s, c"\nwatched_dirs: ")
-	string_append_int(s, wbd_json_int(result, c"watched_dirs"))
+	string_append_int(s, jfield_int(result, c"watched_dirs", 0))
 	string_append(s, c"\nprewarm: ")
 	json_value* prewarm = json_object_get(result, c"prewarm")
 	if ((prewarm != 0) && (prewarm.type == json_type_string())):
@@ -2041,7 +1996,7 @@ int wbd_build_main(list[char*] args):
 		json_value* method = json_object_get(message, c"method")
 		if ((method != 0) && (method.type == json_type_string()) && (strcmp(method.string_value, c"build_started") == 0)):
 			json_value* started_params = json_object_get(message, c"params")
-			wbd_build_pid = wbd_json_int(started_params, c"pid")
+			wbd_build_pid = jfield_int(started_params, c"pid", 0)
 			if (started == 0):
 				started = 1
 				wexec_install_termination_handler(cast(int, wbd_forward_signal))

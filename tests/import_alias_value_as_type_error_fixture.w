@@ -12,3 +12,4 @@ int use_value(sub.subfolder_value v):
 
 int main():
 	return 0
+# wbuild: fixture_group=import_alias_type_error_test

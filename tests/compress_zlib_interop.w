@@ -44,6 +44,7 @@ import structures.string
 import libs.extras.compress.deflate
 import libs.extras.compress.zlib
 import libs.extras.compress.gzip
+import lib.dir
 
 
 char* compress_zlib_interop_payload():
@@ -183,45 +184,6 @@ char* czi_read_file(char* path, int* out_len):
 	return data
 
 
-# First PATH entry where name opens for read (mirrors tools/wexec.w's
-# wexec_resolve_program: an existence check, not a strict executable-bit
-# check -- accepted there too, see docs/projects/ai_tooling_next_steps.md).
-# Returns a malloc'd absolute path, or 0 when name is nowhere on PATH.
-char* czi_find_on_path(char* name):
-	char* path = env_get(c"PATH")
-	int win = os_windows()
-	char path_sep = ':'
-	if (win):
-		path_sep = ';'
-	if (path == 0):
-		if (win):
-			path = c"C:/Windows/System32"
-		else:
-			path = c"/usr/bin:/bin"
-	string_builder* candidate = string_new()
-	int p = 0
-	int at_end = 0
-	char* found = 0
-	while ((at_end == 0) && (found == 0)):
-		string_clear(candidate)
-		while ((path[p] != path_sep) && (path[p] != 0)):
-			string_append_char(candidate, path[p])
-			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length > 0):
-			string_append_char(candidate, '/')
-			string_append(candidate, name)
-			int fd = open(candidate.data, 0, 0)
-			if (fd >= 0):
-				close(fd)
-				found = strclone(candidate.data)
-	string_free(candidate)
-	return found
-
-
 # Writes payload_<name>.bin plus w_<name>_<tag>.zlib/.gz for every
 # payload at every level.
 void czi_compress(char* dir, int count, char** names, char** datas, int* lens):
@@ -349,21 +311,8 @@ char* czi_python_script():
 	return text
 
 
-# Best-effort recursive delete via the real /bin/rm -- mirrors the
-# pid-scoped scratch-dir cleanup tests/wvc_e2e_test.w already uses.
-void czi_rm_rf(char* dir):
-	char** argv = strv_new(3)
-	strv_set(argv, 0, c"/bin/rm")
-	strv_set(argv, 1, c"-rf")
-	strv_set(argv, 2, dir)
-	process_result* r = process_run(c"/bin/rm", argv, 0, 0, 10000)
-	if (r != 0):
-		process_result_free(r)
-	free(cast(void*, argv))
-
-
 int main():
-	char* python3 = czi_find_on_path(c"python3")
+	char* python3 = process_which(c"python3")
 	if (python3 == 0):
 		println(c"zlib interop OK (skipped: no python3 on PATH)")
 		return 0
@@ -375,7 +324,7 @@ int main():
 	free(dirb)
 
 	# Best-effort cleanup from a previous failed run.
-	czi_rm_rf(dir)
+	dir_remove_all(dir)
 	if (mkdir(dir, 493) != 0):
 		print2(c"cannot create scratch dir: ")
 		println2(dir)
@@ -401,20 +350,20 @@ int main():
 
 	if (pr == 0):
 		println2(c"python3 spawn failed")
-		czi_rm_rf(dir)
+		dir_remove_all(dir)
 		free(dir)
 		return 1
 	if (pr.status != 0):
 		print2(c"python3 check failed: ")
 		println2(pr.stderr_text)
 		process_result_free(pr)
-		czi_rm_rf(dir)
+		dir_remove_all(dir)
 		free(dir)
 		return 1
 	process_result_free(pr)
 
 	int ok = czi_decompress(dir, count, names, datas, lens)
-	czi_rm_rf(dir)
+	dir_remove_all(dir)
 	free(dir)
 	if (ok == 0):
 		return 1

@@ -30,10 +30,6 @@ void assert_near_tol(float want, float got, float tol):
 		exit(1)
 
 
-void assert_near(float want, float got):
-	assert_near_tol(want, got, 0.0001)
-
-
 void assert_matrix_near_tol(matrix* want, matrix* got, float tol):
 	if (matrix_near(want, got, tol) == 0):
 		println2(c"Assertion failed: matrices differ; wanted")

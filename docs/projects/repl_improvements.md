@@ -8,9 +8,8 @@ issues [reardan/w#33](https://github.com/reardan/w/issues/33) and
 during this research.
 
 NOTE (added on import): this research predates the July 2026 wave
-program; D4 and parts of D6 have since been fixed. See
-`docs/projects/consolidated_plan_2026_07.md` §3 for the reconciliation —
-that document is the plan of record; this one is the underlying research.
+program; D4 and parts of D6 have since been fixed. This doc is the
+underlying research, not a current plan of record.
 
 ## 1. Current state
 

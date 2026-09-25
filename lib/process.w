@@ -62,6 +62,72 @@ int sigterm():
 	return 15
 
 
+/* PATH lookup: execve (and so process_spawn) does none. */
+
+type process_path_check = fn(char*) -> int
+
+
+# 1 when path opens for reading: process_which's notion of "there".
+int process_path_readable(char* path):
+	int fd = open(path, 0, 0)
+	if (fd < 0):
+		return 0
+	close(fd)
+	return 1
+
+
+# Resolve a command name against PATH. A name containing '/' (or '\'
+# on Windows) is returned as-is. Otherwise returns a fresh
+# "<dir>/<name>" for the first PATH entry that usable() accepts, or 0
+# when none does. Empty entries are skipped; an unset PATH searches
+# /usr/bin:/bin. On Windows the separator is ';', the default is
+# C:/Windows/System32, and "<dir>/<name>.exe" is tried before
+# "<dir>/<name>".
+char* process_which_by(char* name, process_path_check* usable):
+	int win = os_windows()
+	int i = 0
+	while (name[i] != 0):
+		if ((name[i] == '/') || (win && (name[i] == 92))):
+			return name
+		i = i + 1
+	char* path = env_get(c"PATH")
+	char path_sep = ':'
+	if (win):
+		path_sep = ';'
+	if (path == 0):
+		path = c"/usr/bin:/bin"
+		if (win):
+			path = c"C:/Windows/System32"
+	string_builder* candidate = string_new()
+	char* found = 0
+	int p = 0
+	while ((found == 0) && (path[p] != 0)):
+		string_clear(candidate)
+		while ((path[p] != path_sep) && (path[p] != 0)):
+			string_append_char(candidate, path[p])
+			p = p + 1
+		if (path[p] != 0):
+			p = p + 1
+		if (candidate.length > 0):
+			string_append_char(candidate, '/')
+			string_append(candidate, name)
+			if (win):
+				string_append(candidate, c".exe")
+				if (usable(candidate.data)):
+					found = strclone(candidate.data)
+				candidate.length = candidate.length - 4
+				candidate.data[candidate.length] = 0
+			if ((found == 0) && usable(candidate.data)):
+				found = strclone(candidate.data)
+	string_free(candidate)
+	return found
+
+
+# process_which_by with the readable-file check.
+char* process_which(char* name):
+	return process_which_by(name, process_path_readable)
+
+
 /* NULL-terminated char* vector builder (argv/envp for execve). */
 
 # A vector with room for capacity entries, every slot NULL.

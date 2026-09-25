@@ -876,357 +876,156 @@ void test_du_missing_path_reports_cannot_access():
 # ---------------------------------------------------------------------------
 # repl/shell_translate.w: the argv/flag -> W call translator, pure logic.
 
-void test_translate_pwd():
-	assert_strings_equal(c"shell_commands_pwd()", shell_translate_line(c"pwd"))
+# shell_translate_line(line) must give want; 0 means the line falls
+# back to the native shell.
+void tr(char* line, char* want):
+	char* got = shell_translate_line(line)
+	int same = want == got
+	if ((want != 0) && (got != 0)):
+		same = strcmp(want, got) == 0
+	if (same == 0):
+		print2(c"translating: ")
+		println2(line)
+	assert_strings_equal(want, got)
 
 
-void test_translate_pwd_rejects_extra_word():
-	assert1(shell_translate_line(c"pwd extra") == 0)
-
-
-void test_translate_ls_bare_defaults_to_dot_and_all_false():
-	assert_strings_equal(c"shell_commands_ls(c\".\", false, false)", shell_translate_line(c"ls"))
-
-
-void test_translate_ls_short_all_flag():
-	assert_strings_equal(c"shell_commands_ls(c\".\", true, false)", shell_translate_line(c"ls -a"))
-
-
-void test_translate_ls_long_all_flag():
-	assert_strings_equal(c"shell_commands_ls(c\".\", true, false)", shell_translate_line(c"ls --all"))
-
-
-void test_translate_ls_with_explicit_path():
-	assert_strings_equal(c"shell_commands_ls(c\"/tmp\", false, false)", shell_translate_line(c"ls /tmp"))
-
-
-void test_translate_ls_l_flag_selects_long_format():
+void test_translate_stage1():
+	tr(c"pwd", c"shell_commands_pwd()")
+	tr(c"pwd extra", 0)
+	tr(c"ls", c"shell_commands_ls(c\".\", false, false)")
+	tr(c"ls -a", c"shell_commands_ls(c\".\", true, false)")
+	tr(c"ls --all", c"shell_commands_ls(c\".\", true, false)")
+	tr(c"ls /tmp", c"shell_commands_ls(c\"/tmp\", false, false)")
 	# Stage 3: "-l" is now a known flag (lib/stat.w closed the
 	# stat-wrapper gap the stage 1 tests documented), alone or
 	# clustered with -a in either order.
-	assert_strings_equal(c"shell_commands_ls(c\".\", false, true)", shell_translate_line(c"ls -l"))
-	assert_strings_equal(c"shell_commands_ls(c\".\", true, true)", shell_translate_line(c"ls -la"))
-	assert_strings_equal(c"shell_commands_ls(c\"/tmp\", true, true)", shell_translate_line(c"ls -al /tmp"))
-
-
-void test_translate_ls_rejects_unknown_letter_in_l_cluster():
+	tr(c"ls -l", c"shell_commands_ls(c\".\", false, true)")
+	tr(c"ls -la", c"shell_commands_ls(c\".\", true, true)")
+	tr(c"ls -al /tmp", c"shell_commands_ls(c\"/tmp\", true, true)")
 	# "no partial credit" (Sec 5.4): one unknown letter fails the whole
 	# cluster even when 'l' and 'a' are both known.
-	assert1(shell_translate_line(c"ls -lah") == 0)
-
-
-void test_translate_ls_rejects_unknown_flag():
-	assert1(shell_translate_line(c"ls -x") == 0)
-
-
-void test_translate_ls_rejects_two_paths():
-	assert1(shell_translate_line(c"ls a b") == 0)
-
-
-void test_translate_cat_requires_at_least_one_path():
-	assert1(shell_translate_line(c"cat") == 0)
-
-
-void test_translate_cat_one_path():
-	assert_strings_equal(c"shell_commands_cat(c\"a.txt\")", shell_translate_line(c"cat a.txt"))
-
-
-void test_translate_cat_multiple_paths():
-	assert_strings_equal(c"shell_commands_cat(c\"a.txt\", c\"b.txt\")",
-		shell_translate_line(c"cat a.txt b.txt"))
-
-
-void test_translate_cat_rejects_any_flag():
-	assert1(shell_translate_line(c"cat -n a.txt") == 0)
-
-
-void test_translate_unrecognized_command_falls_back():
+	tr(c"ls -lah", 0)
+	tr(c"ls -x", 0)
+	tr(c"ls a b", 0)
+	tr(c"cat", 0)
+	tr(c"cat a.txt", c"shell_commands_cat(c\"a.txt\")")
+	tr(c"cat a.txt b.txt", c"shell_commands_cat(c\"a.txt\", c\"b.txt\")")
+	tr(c"cat -n a.txt", 0)
 	# sed and find stay unrecognized (design doc Sec 6.3) -- stable
 	# examples of always-native commands now that stage 4 promoted grep
 	# (the way stage 2 promoted this test's original "echo" example and
 	# stage 4 its "grep" one).
-	assert1(shell_translate_line(c"sed hi") == 0)
-	assert1(shell_translate_line(c"find .") == 0)
-
-
-void test_translate_single_quotes_preserve_spaces():
-	assert_strings_equal(c"shell_commands_cat(c\"a b.txt\")", shell_translate_line(c"cat 'a b.txt'"))
-
-
-void test_translate_double_quotes_strip_but_keep_contents():
-	assert_strings_equal(c"shell_commands_cat(c\"plain\")", shell_translate_line(c"cat \"plain\""))
-
-
-void test_translate_backslash_outside_quotes_escapes_next_byte():
+	tr(c"sed hi", 0)
+	tr(c"find .", 0)
+	tr(c"cat 'a b.txt'", c"shell_commands_cat(c\"a b.txt\")")
+	tr(c"cat \"plain\"", c"shell_commands_cat(c\"plain\")")
 	# "foo\ bar.txt" -> one word, the escaped space kept literal.
-	assert_strings_equal(c"shell_commands_cat(c\"foo bar.txt\")",
-		shell_translate_line(c"cat foo\\ bar.txt"))
-
-
-void test_translate_metacharacters_fall_back_to_native():
+	tr(c"cat foo\\ bar.txt", c"shell_commands_cat(c\"foo bar.txt\")")
 	# Sec 5.2 rule 1: any of these anywhere on the line means "native
 	# fallback, unconditionally" -- pipe, redirection, chaining,
 	# backgrounding, variable/command/glob expansion.
-	assert1(shell_translate_line(c"ls foo | bar") == 0)
-	assert1(shell_translate_line(c"cat foo > bar.txt") == 0)
-	assert1(shell_translate_line(c"cat foo < bar.txt") == 0)
-	assert1(shell_translate_line(c"ls; pwd") == 0)
-	assert1(shell_translate_line(c"ls & pwd") == 0)
-	assert1(shell_translate_line(c"echo $HOME") == 0)
-	assert1(shell_translate_line(c"cat `pwd`") == 0)
-	assert1(shell_translate_line(c"ls ~") == 0)
-	assert1(shell_translate_line(c"ls *") == 0)
-	assert1(shell_translate_line(c"ls foo?") == 0)
+	tr(c"ls foo | bar", 0)
+	tr(c"cat foo > bar.txt", 0)
+	tr(c"cat foo < bar.txt", 0)
+	tr(c"ls; pwd", 0)
+	tr(c"ls & pwd", 0)
+	tr(c"echo $HOME", 0)
+	tr(c"cat `pwd`", 0)
+	tr(c"ls ~", 0)
+	tr(c"ls *", 0)
+	tr(c"ls foo?", 0)
 
 
 # ---------------------------------------------------------------------------
 # repl/shell_translate.w: stage 2's translator coverage (echo, head,
 # tail, wc, mkdir, rm, cp, mv).
 
-void test_translate_echo_joins_words():
-	assert_strings_equal(c"shell_commands_echo(false, c\"hi\", c\"there\")",
-		shell_translate_line(c"echo hi there"))
-
-
-void test_translate_echo_no_newline_flag():
-	assert_strings_equal(c"shell_commands_echo(true, c\"hi\")", shell_translate_line(c"echo -n hi"))
-
-
-void test_translate_echo_with_no_words():
-	assert_strings_equal(c"shell_commands_echo(false)", shell_translate_line(c"echo"))
-
-
-void test_translate_echo_rejects_unknown_flag():
-	assert1(shell_translate_line(c"echo -x hi") == 0)
-
-
-void test_translate_echo_n_after_a_word_is_literal_text():
+void test_translate_stage2():
+	tr(c"echo hi there", c"shell_commands_echo(false, c\"hi\", c\"there\")")
+	tr(c"echo -n hi", c"shell_commands_echo(true, c\"hi\")")
+	tr(c"echo", c"shell_commands_echo(false)")
+	tr(c"echo -x hi", 0)
 	# Real echo only honors "-n" while it leads the argument list; after
 	# the first ordinary word it is plain text to print.
-	assert_strings_equal(c"shell_commands_echo(false, c\"hi\", c\"-n\")",
-		shell_translate_line(c"echo hi -n"))
-	assert_strings_equal(c"shell_commands_echo(false, c\"a\", c\"-n\", c\"b\")",
-		shell_translate_line(c"echo a -n b"))
-
-
-void test_translate_echo_repeated_leading_n_flags_all_consumed():
+	tr(c"echo hi -n", c"shell_commands_echo(false, c\"hi\", c\"-n\")")
+	tr(c"echo a -n b", c"shell_commands_echo(false, c\"a\", c\"-n\", c\"b\")")
 	# Real echo consumes a whole leading run of "-n" flags.
-	assert_strings_equal(c"shell_commands_echo(true, c\"hi\")",
-		shell_translate_line(c"echo -n -n hi"))
-
-
-void test_translate_head_default_count():
-	assert_strings_equal(c"shell_commands_head(c\"a.txt\", 10)", shell_translate_line(c"head a.txt"))
-
-
-void test_translate_head_n_flag_space_separated():
-	assert_strings_equal(c"shell_commands_head(c\"a.txt\", 5)", shell_translate_line(c"head -n 5 a.txt"))
-
-
-void test_translate_head_rejects_inline_equals_forms():
+	tr(c"echo -n -n hi", c"shell_commands_echo(true, c\"hi\")")
+	tr(c"head a.txt", c"shell_commands_head(c\"a.txt\", 10)")
+	tr(c"head -n 5 a.txt", c"shell_commands_head(c\"a.txt\", 5)")
 	# "-n=5"/"--lines=5" are lib/args.w spellings, not head's ("head
 	# -n=5" is an "invalid number of lines: '=5'" error from the real
 	# tool) -- the line fails closed to native so the real tool's own
 	# acceptance or diagnostic applies, instead of the translator
 	# accepting a form the native tool would not.
-	assert1(shell_translate_line(c"head -n=5 a.txt") == 0)
-	assert1(shell_translate_line(c"head --lines=5 a.txt") == 0)
-
-
-void test_translate_head_long_lines_flag():
-	assert_strings_equal(c"shell_commands_head(c\"a.txt\", 5)", shell_translate_line(c"head --lines 5 a.txt"))
-
-
-void test_translate_head_rejects_non_numeric_value():
-	assert1(shell_translate_line(c"head -n five a.txt") == 0)
-
-
-void test_translate_head_requires_a_path():
-	assert1(shell_translate_line(c"head -n 5") == 0)
-
-
-void test_translate_head_rejects_two_paths():
-	assert1(shell_translate_line(c"head a.txt b.txt") == 0)
-
-
-void test_translate_tail_default_count():
-	assert_strings_equal(c"shell_commands_tail(c\"a.txt\", 10)", shell_translate_line(c"tail a.txt"))
-
-
-void test_translate_tail_n_flag():
-	assert_strings_equal(c"shell_commands_tail(c\"a.txt\", 3)", shell_translate_line(c"tail -n 3 a.txt"))
-
-
-void test_translate_tail_rejects_inline_equals_forms():
+	tr(c"head -n=5 a.txt", 0)
+	tr(c"head --lines=5 a.txt", 0)
+	tr(c"head --lines 5 a.txt", c"shell_commands_head(c\"a.txt\", 5)")
+	tr(c"head -n five a.txt", 0)
+	tr(c"head -n 5", 0)
+	tr(c"head a.txt b.txt", 0)
+	tr(c"tail a.txt", c"shell_commands_tail(c\"a.txt\", 10)")
+	tr(c"tail -n 3 a.txt", c"shell_commands_tail(c\"a.txt\", 3)")
 	# Same rationale as head's: not the real tools' forms.
-	assert1(shell_translate_line(c"tail -n=3 a.txt") == 0)
-	assert1(shell_translate_line(c"tail --lines=3 a.txt") == 0)
-
-
-void test_translate_wc_default_all_flags_false():
-	assert_strings_equal(c"shell_commands_wc(c\"a.txt\", false, false, false)", shell_translate_line(c"wc a.txt"))
-
-
-void test_translate_wc_l_flag():
-	assert_strings_equal(c"shell_commands_wc(c\"a.txt\", true, false, false)", shell_translate_line(c"wc -l a.txt"))
-
-
-void test_translate_wc_clustered_flags():
-	assert_strings_equal(c"shell_commands_wc(c\"a.txt\", true, true, false)", shell_translate_line(c"wc -lw a.txt"))
-
-
-void test_translate_wc_all_three_clustered():
-	assert_strings_equal(c"shell_commands_wc(c\"a.txt\", true, true, true)", shell_translate_line(c"wc -lwc a.txt"))
-
-
-void test_translate_wc_rejects_unknown_flag():
-	assert1(shell_translate_line(c"wc -x a.txt") == 0)
-
-
-void test_translate_wc_requires_a_path():
-	assert1(shell_translate_line(c"wc -l") == 0)
-
-
-void test_translate_mkdir_bare():
-	assert_strings_equal(c"shell_commands_mkdir(false, c\"newdir\")", shell_translate_line(c"mkdir newdir"))
-
-
-void test_translate_mkdir_p_flag():
-	assert_strings_equal(c"shell_commands_mkdir(true, c\"a/b/c\")", shell_translate_line(c"mkdir -p a/b/c"))
-
-
-void test_translate_mkdir_long_parents_flag():
-	assert_strings_equal(c"shell_commands_mkdir(true, c\"a/b/c\")", shell_translate_line(c"mkdir --parents a/b/c"))
-
-
-void test_translate_mkdir_multiple_dirs():
-	assert_strings_equal(c"shell_commands_mkdir(false, c\"a\", c\"b\")", shell_translate_line(c"mkdir a b"))
-
-
-void test_translate_mkdir_requires_a_path():
-	assert1(shell_translate_line(c"mkdir -p") == 0)
-
-
-void test_translate_rm_bare():
-	assert_strings_equal(c"shell_commands_rm(false, false, c\"a.txt\")", shell_translate_line(c"rm a.txt"))
-
-
-void test_translate_rm_clustered_rf_flags():
-	assert_strings_equal(c"shell_commands_rm(true, true, c\"dir\")", shell_translate_line(c"rm -rf dir"))
-
-
-void test_translate_rm_long_flags():
-	assert_strings_equal(c"shell_commands_rm(true, false, c\"dir\")", shell_translate_line(c"rm --recursive dir"))
-
-
-void test_translate_rm_multiple_paths():
-	assert_strings_equal(c"shell_commands_rm(false, false, c\"a\", c\"b\")", shell_translate_line(c"rm a b"))
-
-
-void test_translate_rm_requires_a_path():
-	assert1(shell_translate_line(c"rm -f") == 0)
-
-
-void test_translate_cp_bare():
-	assert_strings_equal(c"shell_commands_cp(false, c\"a.txt\", c\"b.txt\")", shell_translate_line(c"cp a.txt b.txt"))
-
-
-void test_translate_cp_recursive_flag():
-	assert_strings_equal(c"shell_commands_cp(true, c\"src\", c\"dst\")", shell_translate_line(c"cp -r src dst"))
-
-
-void test_translate_cp_requires_two_paths():
-	assert1(shell_translate_line(c"cp a.txt") == 0)
-	assert1(shell_translate_line(c"cp a.txt b.txt c.txt") == 0)
-
-
-void test_translate_mv_bare():
-	assert_strings_equal(c"shell_commands_mv(c\"a.txt\", c\"b.txt\")", shell_translate_line(c"mv a.txt b.txt"))
-
-
-void test_translate_mv_rejects_flag():
-	assert1(shell_translate_line(c"mv -f a.txt b.txt") == 0)
-
-
-void test_translate_mv_requires_two_paths():
-	assert1(shell_translate_line(c"mv a.txt") == 0)
+	tr(c"tail -n=3 a.txt", 0)
+	tr(c"tail --lines=3 a.txt", 0)
+	tr(c"wc a.txt", c"shell_commands_wc(c\"a.txt\", false, false, false)")
+	tr(c"wc -l a.txt", c"shell_commands_wc(c\"a.txt\", true, false, false)")
+	tr(c"wc -lw a.txt", c"shell_commands_wc(c\"a.txt\", true, true, false)")
+	tr(c"wc -lwc a.txt", c"shell_commands_wc(c\"a.txt\", true, true, true)")
+	tr(c"wc -x a.txt", 0)
+	tr(c"wc -l", 0)
+	tr(c"mkdir newdir", c"shell_commands_mkdir(false, c\"newdir\")")
+	tr(c"mkdir -p a/b/c", c"shell_commands_mkdir(true, c\"a/b/c\")")
+	tr(c"mkdir --parents a/b/c", c"shell_commands_mkdir(true, c\"a/b/c\")")
+	tr(c"mkdir a b", c"shell_commands_mkdir(false, c\"a\", c\"b\")")
+	tr(c"mkdir -p", 0)
+	tr(c"rm a.txt", c"shell_commands_rm(false, false, c\"a.txt\")")
+	tr(c"rm -rf dir", c"shell_commands_rm(true, true, c\"dir\")")
+	tr(c"rm --recursive dir", c"shell_commands_rm(true, false, c\"dir\")")
+	tr(c"rm a b", c"shell_commands_rm(false, false, c\"a\", c\"b\")")
+	tr(c"rm -f", 0)
+	tr(c"cp a.txt b.txt", c"shell_commands_cp(false, c\"a.txt\", c\"b.txt\")")
+	tr(c"cp -r src dst", c"shell_commands_cp(true, c\"src\", c\"dst\")")
+	tr(c"cp a.txt", 0)
+	tr(c"cp a.txt b.txt c.txt", 0)
+	tr(c"mv a.txt b.txt", c"shell_commands_mv(c\"a.txt\", c\"b.txt\")")
+	tr(c"mv -f a.txt b.txt", 0)
+	tr(c"mv a.txt", 0)
 
 
 # ---------------------------------------------------------------------------
 # repl/shell_translate.w: stage 3's translator coverage (ls -l above,
 # touch, chmod, du).
 
-void test_translate_touch_bare():
-	assert_strings_equal(c"shell_commands_touch(false, c\"a.txt\")", shell_translate_line(c"touch a.txt"))
-
-
-void test_translate_touch_no_create_flag():
-	assert_strings_equal(c"shell_commands_touch(true, c\"a.txt\")", shell_translate_line(c"touch -c a.txt"))
-	assert_strings_equal(c"shell_commands_touch(true, c\"a.txt\")",
-		shell_translate_line(c"touch --no-create a.txt"))
-
-
-void test_translate_touch_multiple_paths():
-	assert_strings_equal(c"shell_commands_touch(false, c\"a\", c\"b\")", shell_translate_line(c"touch a b"))
-
-
-void test_translate_touch_requires_a_path():
-	assert1(shell_translate_line(c"touch") == 0)
-	assert1(shell_translate_line(c"touch -c") == 0)
-
-
-void test_translate_touch_rejects_unknown_flag():
+void test_translate_stage3():
+	tr(c"touch a.txt", c"shell_commands_touch(false, c\"a.txt\")")
+	tr(c"touch -c a.txt", c"shell_commands_touch(true, c\"a.txt\")")
+	tr(c"touch --no-create a.txt", c"shell_commands_touch(true, c\"a.txt\")")
+	tr(c"touch a b", c"shell_commands_touch(false, c\"a\", c\"b\")")
+	tr(c"touch", 0)
+	tr(c"touch -c", 0)
 	# Real touch's valued flags (-t STAMP, -d DATE, -r FILE) are
 	# unknown here and fail the whole line closed to native.
-	assert1(shell_translate_line(c"touch -t 202601010000 a.txt") == 0)
-
-
-void test_translate_chmod_octal_mode():
-	assert_strings_equal(c"shell_commands_chmod_octal(420, c\"a.txt\")",
-		shell_translate_line(c"chmod 644 a.txt"))
-	assert_strings_equal(c"shell_commands_chmod_octal(493, c\"a\", c\"b\")",
-		shell_translate_line(c"chmod 0755 a b"))
-
-
-void test_translate_chmod_rejects_symbolic_modes():
+	tr(c"touch -t 202601010000 a.txt", 0)
+	tr(c"chmod 644 a.txt", c"shell_commands_chmod_octal(420, c\"a.txt\")")
+	tr(c"chmod 0755 a b", c"shell_commands_chmod_octal(493, c\"a\", c\"b\")")
 	# Symbolic modes are not octal digits; the whole line fails closed
 	# to the real chmod, whose full mode grammar then applies.
-	assert1(shell_translate_line(c"chmod u+x a.txt") == 0)
-	assert1(shell_translate_line(c"chmod a=r a.txt") == 0)
-
-
-void test_translate_chmod_rejects_bad_octal():
-	assert1(shell_translate_line(c"chmod 999 a.txt") == 0)
-	assert1(shell_translate_line(c"chmod 00644 a.txt") == 0)
-
-
-void test_translate_chmod_requires_mode_and_path():
-	assert1(shell_translate_line(c"chmod 644") == 0)
-	assert1(shell_translate_line(c"chmod") == 0)
-
-
-void test_translate_chmod_rejects_flags():
+	tr(c"chmod u+x a.txt", 0)
+	tr(c"chmod a=r a.txt", 0)
+	tr(c"chmod 999 a.txt", 0)
+	tr(c"chmod 00644 a.txt", 0)
+	tr(c"chmod 644", 0)
+	tr(c"chmod", 0)
 	# No -R in v1; a '-' word anywhere fails the line.
-	assert1(shell_translate_line(c"chmod -R 755 dir") == 0)
-
-
-void test_translate_du_bare_defaults_to_dot():
-	assert_strings_equal(c"shell_commands_du(false, c\".\")", shell_translate_line(c"du"))
-
-
-void test_translate_du_summarize_flag():
-	assert_strings_equal(c"shell_commands_du(true, c\"/tmp\")", shell_translate_line(c"du -s /tmp"))
-	assert_strings_equal(c"shell_commands_du(true, c\"/tmp\")",
-		shell_translate_line(c"du --summarize /tmp"))
-
-
-void test_translate_du_rejects_unknown_flag():
-	assert1(shell_translate_line(c"du -h") == 0)
-	assert1(shell_translate_line(c"du -sh /tmp") == 0)
-
-
-void test_translate_du_rejects_two_paths():
-	assert1(shell_translate_line(c"du a b") == 0)
+	tr(c"chmod -R 755 dir", 0)
+	tr(c"du", c"shell_commands_du(false, c\".\")")
+	tr(c"du -s /tmp", c"shell_commands_du(true, c\"/tmp\")")
+	tr(c"du --summarize /tmp", c"shell_commands_du(true, c\"/tmp\")")
+	tr(c"du -h", 0)
+	tr(c"du -sh /tmp", 0)
+	tr(c"du a b", 0)
 
 
 # ---------------------------------------------------------------------------
@@ -1491,113 +1290,54 @@ void test_grep_invalid_pattern_reports_error():
 # repl/shell_translate.w: stage 4's translator coverage (ln, df, ps,
 # grep) and the quote-aware metacharacter scan.
 
-void test_translate_ln_s_flag_forms():
-	assert_strings_equal(c"shell_commands_ln_s(c\"target\", c\"link\")",
-		shell_translate_line(c"ln -s target link"))
-	assert_strings_equal(c"shell_commands_ln_s(c\"target\", c\"link\")",
-		shell_translate_line(c"ln --symbolic target link"))
-
-
-void test_translate_ln_without_s_falls_back():
+void test_translate_stage4():
+	tr(c"ln -s target link", c"shell_commands_ln_s(c\"target\", c\"link\")")
+	tr(c"ln --symbolic target link", c"shell_commands_ln_s(c\"target\", c\"link\")")
 	# A bare "ln" is a hard link -- no native implementation, so the
 	# real tool handles it.
-	assert1(shell_translate_line(c"ln target link") == 0)
-
-
-void test_translate_ln_rejects_unknown_flag_and_arity():
-	assert1(shell_translate_line(c"ln -sf target link") == 0)
-	assert1(shell_translate_line(c"ln -s target") == 0)
-	assert1(shell_translate_line(c"ln -s a b c") == 0)
-
-
-void test_translate_df_bare():
-	assert_strings_equal(c"shell_commands_df()", shell_translate_line(c"df"))
-
-
-void test_translate_df_with_paths():
-	assert_strings_equal(c"shell_commands_df(c\"/tmp\")", shell_translate_line(c"df /tmp"))
-	assert_strings_equal(c"shell_commands_df(c\"a\", c\"b\")", shell_translate_line(c"df a b"))
-
-
-void test_translate_df_rejects_flags():
-	assert1(shell_translate_line(c"df -h") == 0)
-	assert1(shell_translate_line(c"df --total /tmp") == 0)
-
-
-void test_translate_ps_bare():
-	assert_strings_equal(c"shell_commands_ps()", shell_translate_line(c"ps"))
-
-
-void test_translate_ps_with_any_argument_falls_back():
-	assert1(shell_translate_line(c"ps aux") == 0)
-	assert1(shell_translate_line(c"ps -ef") == 0)
-
-
-void test_translate_grep_pattern_and_file():
-	assert_strings_equal(c"shell_commands_grep(false, c\"foo\", c\"/tmp/x\")",
-		shell_translate_line(c"grep foo /tmp/x"))
-
-
-void test_translate_grep_line_number_flag_and_multiple_files():
-	assert_strings_equal(c"shell_commands_grep(true, c\"foo\", c\"a\", c\"b\")",
-		shell_translate_line(c"grep -n foo a b"))
-	assert_strings_equal(c"shell_commands_grep(true, c\"foo\", c\"a\")",
-		shell_translate_line(c"grep --line-number foo a"))
-
-
-void test_translate_grep_quoted_pattern_with_quantifiers():
+	tr(c"ln target link", 0)
+	tr(c"ln -sf target link", 0)
+	tr(c"ln -s target", 0)
+	tr(c"ln -s a b c", 0)
+	tr(c"df", c"shell_commands_df()")
+	tr(c"df /tmp", c"shell_commands_df(c\"/tmp\")")
+	tr(c"df a b", c"shell_commands_df(c\"a\", c\"b\")")
+	tr(c"df -h", 0)
+	tr(c"df --total /tmp", 0)
+	tr(c"ps", c"shell_commands_ps()")
+	tr(c"ps aux", 0)
+	tr(c"ps -ef", 0)
+	tr(c"grep foo /tmp/x", c"shell_commands_grep(false, c\"foo\", c\"/tmp/x\")")
+	tr(c"grep -n foo a b", c"shell_commands_grep(true, c\"foo\", c\"a\", c\"b\")")
+	tr(c"grep --line-number foo a", c"shell_commands_grep(true, c\"foo\", c\"a\")")
 	# The quote-aware rule-1 scan: '*'/'?'/'$' inside single quotes are
 	# not shell-special, so the line translates and lib/regex.w gets
 	# the pattern verbatim (the old position-blind scan sent every such
 	# line to native).
-	assert_strings_equal(c"shell_commands_grep(false, c\"a.*b\", c\"f\")",
-		shell_translate_line(c"grep 'a.*b' f"))
-	assert_strings_equal(c"shell_commands_grep(false, c\"foo$\", c\"f\")",
-		shell_translate_line(c"grep 'foo$' f"))
-
-
-void test_translate_grep_without_file_falls_back():
+	tr(c"grep 'a.*b' f", c"shell_commands_grep(false, c\"a.*b\", c\"f\")")
+	tr(c"grep 'foo$' f", c"shell_commands_grep(false, c\"foo$\", c\"f\")")
 	# A file-less grep reads stdin -- native territory.
-	assert1(shell_translate_line(c"grep foo") == 0)
-
-
-void test_translate_grep_rejects_unknown_flag():
-	assert1(shell_translate_line(c"grep -i foo f") == 0)
-	assert1(shell_translate_line(c"grep -rn foo f") == 0)
-
-
-void test_translate_grep_malformed_pattern_falls_back():
+	tr(c"grep foo", 0)
+	tr(c"grep -i foo f", 0)
+	tr(c"grep -rn foo f", 0)
 	# Patterns lib/regex.w's regex_valid rejects run the real grep
 	# instead: reserved escapes, dangling quantifiers, unclosed
 	# classes.
-	assert1(shell_translate_line(c"grep 'a[b' f") == 0)
-	assert1(shell_translate_line(c"grep '\\d' f") == 0)
-	assert1(shell_translate_line(c"grep 'a**' f") == 0)
-
-
-void test_translate_quoted_metacharacters_translate():
+	tr(c"grep 'a[b' f", 0)
+	tr(c"grep '\\d' f", 0)
+	tr(c"grep 'a**' f", 0)
 	# sh treats a single-quoted metacharacter as data, and so does the
 	# tokenizer -- both print the same bytes, so no native detour is
 	# needed. Double quotes keep $ and backtick active, so those still
 	# fall back.
-	assert_strings_equal(c"shell_commands_echo(false, c\"$HOME\")",
-		shell_translate_line(c"echo '$HOME'"))
-	assert_strings_equal(c"shell_commands_echo(false, c\"a|b\")",
-		shell_translate_line(c"echo 'a|b'"))
-	assert_strings_equal(c"shell_commands_echo(false, c\"a|b\")",
-		shell_translate_line(c"echo \"a|b\""))
-
-
-void test_translate_dollar_in_double_quotes_falls_back():
-	assert1(shell_translate_line(c"echo \"$HOME\"") == 0)
-	assert1(shell_translate_line(c"echo \"a\\$b\"") == 0)
-
-
-void test_translate_escaped_metacharacter_outside_quotes_translates():
+	tr(c"echo '$HOME'", c"shell_commands_echo(false, c\"$HOME\")")
+	tr(c"echo 'a|b'", c"shell_commands_echo(false, c\"a|b\")")
+	tr(c"echo \"a|b\"", c"shell_commands_echo(false, c\"a|b\")")
+	tr(c"echo \"$HOME\"", 0)
+	tr(c"echo \"a\\$b\"", 0)
 	# sh strips the backslash and passes the byte as data; so does the
 	# tokenizer.
-	assert_strings_equal(c"shell_commands_echo(false, c\"$HOME\")",
-		shell_translate_line(c"echo \\$HOME"))
+	tr(c"echo \\$HOME", c"shell_commands_echo(false, c\"$HOME\")")
 
 
 # ---------------------------------------------------------------------------

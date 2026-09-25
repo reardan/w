@@ -17,3 +17,4 @@ ovar_pt operator+(ovar_pt a, int... rest):
 
 int main():
 	return 0
+# wbuild: fixture_group=operator_overload_error_test

@@ -8,14 +8,58 @@
 # for x in <container> — cursor-protocol iteration over the standard
 # containers and a user-defined one (docs/projects/iteration.md, design 3).
 import lib.testing
-import structures.array_list
 
 
-void test_array_list_sum():
-	array_list* a = array_list_new()
-	array_list_push(a, 4)
-	array_list_push(a, 5)
-	array_list_push(a, 6)
+# A minimal user-defined int container: for-in lowers to its
+# int_list_iter_begin/done/next/value cursor functions.
+struct int_list:
+	int length
+	int capacity
+	int* items
+
+
+int_list* int_list_new():
+	int_list* l = new int_list
+	l.length = 0
+	l.capacity = 8
+	l.items = cast(int*, malloc(8 * __word_size__))
+	return l
+
+
+void int_list_push(int_list* l, int value):
+	if (l.length == l.capacity):
+		l.items = cast(int*, realloc(l.items, l.capacity * __word_size__, 2 * l.capacity * __word_size__))
+		l.capacity = 2 * l.capacity
+	l.items[l.length] = value
+	l.length = l.length + 1
+
+
+void int_list_free(int_list* l):
+	free(l.items)
+	free(l)
+
+
+int int_list_iter_begin(int_list* l):
+	return 0
+
+
+int int_list_iter_done(int_list* l, int cursor):
+	return cursor >= l.length
+
+
+int int_list_iter_next(int_list* l, int cursor):
+	return cursor + 1
+
+
+int int_list_iter_value(int_list* l, int cursor):
+	return l.items[cursor]
+
+
+void test_int_list_sum():
+	int_list* a = int_list_new()
+	int_list_push(a, 4)
+	int_list_push(a, 5)
+	int_list_push(a, 6)
 	int sum = 0
 	int count = 0
 	for int x in a:
@@ -23,78 +67,78 @@ void test_array_list_sum():
 		count = count + 1
 	assert_equal(15, sum)
 	assert_equal(3, count)
-	array_list_free(a)
+	int_list_free(a)
 
 
-void test_array_list_empty():
-	array_list* a = array_list_new()
+void test_int_list_empty():
+	int_list* a = int_list_new()
 	int count = 0
 	for int x in a:
 		count = count + 1
 	assert_equal(0, count)
-	array_list_free(a)
+	int_list_free(a)
 
 
-void test_array_list_break():
-	array_list* a = array_list_new()
+void test_int_list_break():
+	int_list* a = int_list_new()
 	for int i in range(10):
-		array_list_push(a, i)
+		int_list_push(a, i)
 	int sum = 0
 	for int x in a:
 		if (x == 3):
 			break
 		sum = sum + x
 	assert_equal(3, sum) /* 0 + 1 + 2 */
-	array_list_free(a)
+	int_list_free(a)
 
 
-void test_array_list_continue():
-	array_list* a = array_list_new()
+void test_int_list_continue():
+	int_list* a = int_list_new()
 	for int i in range(10):
-		array_list_push(a, i)
+		int_list_push(a, i)
 	int sum = 0
 	for int x in a:
 		if (x % 2):
 			continue
 		sum = sum + x
 	assert_equal(20, sum) /* 0 + 2 + 4 + 6 + 8 */
-	array_list_free(a)
+	int_list_free(a)
 
 
 void test_nested_two_lists():
-	array_list* outer = array_list_new()
-	array_list_push(outer, 1)
-	array_list_push(outer, 2)
-	array_list* inner = array_list_new()
-	array_list_push(inner, 10)
-	array_list_push(inner, 20)
+	int_list* outer = int_list_new()
+	int_list_push(outer, 1)
+	int_list_push(outer, 2)
+	int_list* inner = int_list_new()
+	int_list_push(inner, 10)
+	int_list_push(inner, 20)
 	int sum = 0
 	for int x in outer:
 		for int y in inner:
 			sum = sum + x * y
 	assert_equal(90, sum) /* (1+2) * (10+20) */
-	array_list_free(outer)
-	array_list_free(inner)
+	int_list_free(outer)
+	int_list_free(inner)
 
 
 void test_nested_same_list():
-	array_list* a = array_list_new()
-	array_list_push(a, 1)
-	array_list_push(a, 2)
-	array_list_push(a, 3)
+	int_list* a = int_list_new()
+	int_list_push(a, 1)
+	int_list_push(a, 2)
+	int_list_push(a, 3)
 	int count = 0
 	for int x in a:
 		for int y in a:
 			count = count + 1
 	assert_equal(9, count)
-	array_list_free(a)
+	int_list_free(a)
 
 
 void test_nested_break_inner_only():
-	array_list* a = array_list_new()
-	array_list_push(a, 1)
-	array_list_push(a, 2)
-	array_list_push(a, 3)
+	int_list* a = int_list_new()
+	int_list_push(a, 1)
+	int_list_push(a, 2)
+	int_list_push(a, 3)
 	int count = 0
 	for int x in a:
 		for int y in a:
@@ -102,25 +146,25 @@ void test_nested_break_inner_only():
 				break
 			count = count + 1
 	assert_equal(3, count) /* inner loop runs once per outer element */
-	array_list_free(a)
+	int_list_free(a)
 
 
 void test_range_inside_container_loop():
-	array_list* a = array_list_new()
-	array_list_push(a, 2)
-	array_list_push(a, 3)
+	int_list* a = int_list_new()
+	int_list_push(a, 2)
+	int_list_push(a, 3)
 	int sum = 0
 	for int x in a:
 		for int i in range(x):
 			sum = sum + 1
 	assert_equal(5, sum)
-	array_list_free(a)
+	int_list_free(a)
 
 
-array_list* make_list(int n):
-	array_list* a = array_list_new()
+int_list* make_list(int n):
+	int_list* a = int_list_new()
 	for int i in range(n):
-		array_list_push(a, i + 1)
+		int_list_push(a, i + 1)
 	return a
 
 

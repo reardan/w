@@ -17,3 +17,4 @@ int computed = compute()
 
 int main(int argc, int argv):
 	return computed
+# wbuild: fixture_group=toplevel_init_error_test

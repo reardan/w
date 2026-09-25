@@ -5,8 +5,7 @@ Status: design, stages 1–5 shipped (July–September 2026). Scopes issue
 P0–P3, previous plan's waves 1–5) and against the Q4/Q5 reasoning in
 `docs/projects/repl_improvements.md`, which this doc extends rather
 than revisits. The staged plan in §11 had an intentionally small
-stage 1 (Wave 3 task 3b of `docs/projects/sonnet_wave_plan_2026_07b.md`),
-a stage 2 (task 3b of `docs/projects/sonnet_wave_plan_2026_07c.md`)
+stage 1, a stage 2
 that fills out the rest of the v1 tool subset, a stage 3 (the
 metadata tools `lib/stat.w` unblocked: `ls -l`, `touch`, `chmod`,
 `du`), and a stage 4 (`ln -s`, `df`, `ps`, and — once `lib/regex.w`
@@ -362,8 +361,7 @@ this same `sh_interactive` — shell mode's fallback and the `!` escape
 are the same code path with a different trigger (typing `!cmd` in W
 mode vs. an unrecognized bare line in shell mode).
 
-**Correction for the wave plan.** Wave 3 task 3b
-(`sonnet_wave_plan_2026_07b.md` §4) names the fallback
+**Correction for the wave plan.** The stage-1 wave plan named the fallback
 `lib/shell.run`; the shipped function is `sh_interactive`, not
 `run_argv` (no shell, captures output instead of streaming it,
 no `$PATH` search, no globbing/expansion) and not a function literally
@@ -465,9 +463,7 @@ complexity.
 
 ## 11. Staged plan
 
-**Stage 1 == Wave 3 task 3b**
-(`docs/projects/sonnet_wave_plan_2026_07b.md` §4), scoped small on
-purpose:
+**Stage 1**, scoped small on purpose:
 
 1. `:sh` colon command in `repl.w`: toggle `repl_shell_mode`, change
    the prompt, synthesize-and-eval `import lib.shell_commands as

@@ -11,3 +11,4 @@ int main():
 	int x = 0
 	a[0, 1], x = 1.5, 2
 	return x
+# wbuild: fixture_group=ndarray_index_error_test

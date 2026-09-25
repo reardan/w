@@ -37,6 +37,7 @@ import lib.process
 import lib.path
 import lib.file
 import lib.str
+import lib.dir
 
 
 char* self_path
@@ -48,19 +49,9 @@ void err(char* s):
 	write(2, s, strlen(s))
 
 
-void rm_rf(char* path):
-	char** argv = strv_new(3)
-	strv_set(argv, 0, c"/bin/rm")
-	strv_set(argv, 1, c"-rf")
-	strv_set(argv, 2, path)
-	process_result* r = process_run(c"/bin/rm", argv, 0, 0, 60000)
-	if (r != 0):
-		process_result_free(r)
-
-
 void cleanup():
 	for char* p in cleanup_paths:
-		rm_rf(p)
+		dir_remove_all(p)
 
 
 void fail(char* msg):
@@ -211,7 +202,7 @@ skipped (the old wexec_test PATH=... steps). */
 void mode_xok():
 	char* dir = scratch(c"wexec_xok_")
 	cleanup_paths.push(dir)
-	rm_rf(dir)
+	dir_remove_all(dir)
 	char* shadow = path_join(dir, c"shadow")
 	char* real = path_join(dir, c"real")
 	mkdir(dir, 493)

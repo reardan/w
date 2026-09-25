@@ -5,3 +5,4 @@
 l := list[int]{1, 2}
 for x in enumerate(l):
 	println(x)
+# wbuild: fixture_group=enumerate_error_test

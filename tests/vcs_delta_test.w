@@ -78,10 +78,7 @@ int vcdt_ops_equal(delta_ops* a, delta_ops* b):
 
 void vcdt_assert_bytes_equal(char* want, int want_len, char* got, int got_len):
 	assert_equal(want_len, got_len)
-	int i = 0
-	while (i < want_len):
-		assert_equal(want[i] & 255, got[i] & 255)
-		i = i + 1
+	assert_bytes_equal(want, got, want_len)
 
 
 /* --- pure algorithm: round-trips -------------------------------------- */
@@ -108,10 +105,7 @@ void test_delta_diff_apply_identical():
 	assert1(encoded.length < target_len)
 	string_free(encoded)
 
-	wresult[delta_apply_result*]* applied = delta_apply_ops(base, base_len, ops)
-	assert1(result_is_ok[delta_apply_result*](applied))
-	delta_apply_result* r = result_value[delta_apply_result*](applied)
-	result_free[delta_apply_result*](applied)
+	delta_apply_result* r = result_expect[delta_apply_result*](delta_apply_ops(base, base_len, ops))
 	vcdt_assert_bytes_equal(target, target_len, r.data, r.length)
 	delta_apply_result_free(r)
 
@@ -145,10 +139,7 @@ void test_delta_diff_apply_disjoint():
 	assert_equal(0, vcdt_count_kind(ops, DELTA_OP_COPY()))
 	assert1(vcdt_count_kind(ops, DELTA_OP_INSERT()) >= 1)
 
-	wresult[delta_apply_result*]* applied = delta_apply_ops(base, base_len, ops)
-	assert1(result_is_ok[delta_apply_result*](applied))
-	delta_apply_result* r = result_value[delta_apply_result*](applied)
-	result_free[delta_apply_result*](applied)
+	delta_apply_result* r = result_expect[delta_apply_result*](delta_apply_ops(base, base_len, ops))
 	vcdt_assert_bytes_equal(target, target_len, r.data, r.length)
 	delta_apply_result_free(r)
 
@@ -192,10 +183,7 @@ void test_delta_diff_apply_partial_overlap():
 	assert1(vcdt_count_kind(ops, DELTA_OP_COPY()) >= 1)
 	assert1(vcdt_count_kind(ops, DELTA_OP_INSERT()) >= 1)
 
-	wresult[delta_apply_result*]* applied = delta_apply_ops(base, base_len, ops)
-	assert1(result_is_ok[delta_apply_result*](applied))
-	delta_apply_result* r = result_value[delta_apply_result*](applied)
-	result_free[delta_apply_result*](applied)
+	delta_apply_result* r = result_expect[delta_apply_result*](delta_apply_ops(base, base_len, ops))
 	vcdt_assert_bytes_equal(target, target_len, r.data, r.length)
 	delta_apply_result_free(r)
 
@@ -222,10 +210,7 @@ void test_delta_diff_apply_empty_base():
 	delta_ops* ops = delta_diff(0, 0, target, target_len)
 	assert_equal(0, vcdt_count_kind(ops, DELTA_OP_COPY()))
 
-	wresult[delta_apply_result*]* applied = delta_apply_ops(0, 0, ops)
-	assert1(result_is_ok[delta_apply_result*](applied))
-	delta_apply_result* r = result_value[delta_apply_result*](applied)
-	result_free[delta_apply_result*](applied)
+	delta_apply_result* r = result_expect[delta_apply_result*](delta_apply_ops(0, 0, ops))
 	vcdt_assert_bytes_equal(target, target_len, r.data, r.length)
 	delta_apply_result_free(r)
 
@@ -241,10 +226,7 @@ void test_delta_diff_apply_empty_target():
 	delta_ops* ops = delta_diff(base, 80, 0, 0)
 	assert_equal(0, ops.items.length)
 
-	wresult[delta_apply_result*]* applied = delta_apply_ops(base, 80, ops)
-	assert1(result_is_ok[delta_apply_result*](applied))
-	delta_apply_result* r = result_value[delta_apply_result*](applied)
-	result_free[delta_apply_result*](applied)
+	delta_apply_result* r = result_expect[delta_apply_result*](delta_apply_ops(base, 80, ops))
 	assert_equal(0, r.length)
 	delta_apply_result_free(r)
 
@@ -276,10 +258,7 @@ void test_delta_diff_apply_target_smaller_than_base():
 	assert1(vcdt_count_kind(ops, DELTA_OP_COPY()) >= 1)
 	assert1(target_len < base_len)
 
-	wresult[delta_apply_result*]* applied = delta_apply_ops(base, base_len, ops)
-	assert1(result_is_ok[delta_apply_result*](applied))
-	delta_apply_result* r = result_value[delta_apply_result*](applied)
-	result_free[delta_apply_result*](applied)
+	delta_apply_result* r = result_expect[delta_apply_result*](delta_apply_ops(base, base_len, ops))
 	vcdt_assert_bytes_equal(target, target_len, r.data, r.length)
 	delta_apply_result_free(r)
 
@@ -320,18 +299,12 @@ void test_delta_encode_decode_ops_roundtrip():
 	assert1(vcdt_count_kind(ops, DELTA_OP_INSERT()) >= 1)
 	string_builder* encoded = delta_encode_ops(ops)
 
-	wresult[delta_ops*]* decoded_r = delta_decode_ops(encoded.data, encoded.length)
-	assert1(result_is_ok[delta_ops*](decoded_r))
-	delta_ops* decoded = result_value[delta_ops*](decoded_r)
-	result_free[delta_ops*](decoded_r)
+	delta_ops* decoded = result_expect[delta_ops*](delta_decode_ops(encoded.data, encoded.length))
 	assert1(vcdt_ops_equal(ops, decoded) != 0)
 
 	# the convenience entry point: decode + apply in one call, from the
 	# encoded bytes alone (the shape a stored delta payload's body has).
-	wresult[delta_apply_result*]* applied = delta_apply(base, base_len, encoded.data, encoded.length)
-	assert1(result_is_ok[delta_apply_result*](applied))
-	delta_apply_result* r = result_value[delta_apply_result*](applied)
-	result_free[delta_apply_result*](applied)
+	delta_apply_result* r = result_expect[delta_apply_result*](delta_apply(base, base_len, encoded.data, encoded.length))
 	vcdt_assert_bytes_equal(target, target_len, r.data, r.length)
 	delta_apply_result_free(r)
 
@@ -398,10 +371,7 @@ char* vcdt_root():
 
 
 wcas* vcdt_open():
-	wresult[wcas*]* r = cas_open(vcdt_root())
-	assert1(result_is_ok[wcas*](r))
-	wcas* s = result_value[wcas*](r)
-	result_free[wcas*](r)
+	wcas* s = result_expect[wcas*](cas_open(vcdt_root()))
 	return s
 
 
@@ -428,10 +398,7 @@ char* vcdt_fake_id(int ch):
 void test_delta_cas_put_get_resolved_basic():
 	wcas* s = vcdt_open()
 	char* base_content = vcdt_repeat('A', 200)
-	wresult[char*]* bp = cas_put(s, c"blob", base_content, 200)
-	assert1(result_is_ok[char*](bp))
-	char* base_id = result_value[char*](bp)
-	result_free[char*](bp)
+	char* base_id = result_expect[char*](cas_put(s, c"blob", base_content, 200))
 	vcdt_track(base_id)
 
 	string_builder* sb = string_new()
@@ -441,34 +408,22 @@ void test_delta_cas_put_get_resolved_basic():
 	int target_len = sb.length
 	free(sb)
 
-	wresult[char*]* dp = cas_put_delta(s, base_id, c"blob", target, target_len)
-	assert1(result_is_ok[char*](dp))
-	char* delta_id = result_value[char*](dp)
-	result_free[char*](dp)
+	char* delta_id = result_expect[char*](cas_put_delta(s, base_id, c"blob", target, target_len))
 	vcdt_track(delta_id)
 
 	# it actually took the delta path: base is well over one block and
 	# the chain is only one hop deep.
-	wresult[wcas_object*]* raw = cas_get(s, delta_id)
-	assert1(result_is_ok[wcas_object*](raw))
-	wcas_object* raw_obj = result_value[wcas_object*](raw)
-	result_free[wcas_object*](raw)
+	wcas_object* raw_obj = result_expect[wcas_object*](cas_get(s, delta_id))
 	assert_strings_equal(c"delta", raw_obj.object_type)
 	cas_object_free(raw_obj)
 
-	wresult[wcas_object*]* resolved = cas_get_resolved(s, delta_id)
-	assert1(result_is_ok[wcas_object*](resolved))
-	wcas_object* robj = result_value[wcas_object*](resolved)
-	result_free[wcas_object*](resolved)
+	wcas_object* robj = result_expect[wcas_object*](cas_get_resolved(s, delta_id))
 	assert_strings_equal(c"blob", robj.object_type)
 	vcdt_assert_bytes_equal(target, target_len, robj.data, robj.length)
 	cas_object_free(robj)
 
 	# cas_get_resolved on a PLAIN object is a pure pass-through.
-	wresult[wcas_object*]* plain = cas_get_resolved(s, base_id)
-	assert1(result_is_ok[wcas_object*](plain))
-	wcas_object* pobj = result_value[wcas_object*](plain)
-	result_free[wcas_object*](plain)
+	wcas_object* pobj = result_expect[wcas_object*](cas_get_resolved(s, base_id))
 	assert_strings_equal(c"blob", pobj.object_type)
 	vcdt_assert_bytes_equal(base_content, 200, pobj.data, pobj.length)
 	cas_object_free(pobj)
@@ -483,10 +438,7 @@ void test_delta_cas_put_get_resolved_basic():
 void test_delta_storage_vs_id_invariance():
 	wcas* s = vcdt_open()
 	char* base_content = vcdt_repeat('Q', 150)
-	wresult[char*]* bp = cas_put(s, c"blob", base_content, 150)
-	assert1(result_is_ok[char*](bp))
-	char* base_id = result_value[char*](bp)
-	result_free[char*](bp)
+	char* base_id = result_expect[char*](cas_put(s, c"blob", base_content, 150))
 	vcdt_track(base_id)
 
 	string_builder* sb = string_new()
@@ -499,24 +451,15 @@ void test_delta_storage_vs_id_invariance():
 	# The id a full cas_put would compute, WITHOUT touching the store.
 	char* expected_id = cas_id_hex(c"blob", v2, v2_len)
 
-	wresult[char*]* dp = cas_put_delta(s, base_id, c"blob", v2, v2_len)
-	assert1(result_is_ok[char*](dp))
-	char* delta_id = result_value[char*](dp)
-	result_free[char*](dp)
+	char* delta_id = result_expect[char*](cas_put_delta(s, base_id, c"blob", v2, v2_len))
 	vcdt_track(delta_id)
 	assert_strings_equal(expected_id, delta_id)
 
-	wresult[wcas_object*]* raw = cas_get(s, delta_id)
-	assert1(result_is_ok[wcas_object*](raw))
-	wcas_object* raw_obj = result_value[wcas_object*](raw)
-	result_free[wcas_object*](raw)
+	wcas_object* raw_obj = result_expect[wcas_object*](cas_get(s, delta_id))
 	assert_strings_equal(c"delta", raw_obj.object_type)
 	cas_object_free(raw_obj)
 
-	wresult[wcas_object*]* resolved = cas_get_resolved(s, delta_id)
-	assert1(result_is_ok[wcas_object*](resolved))
-	wcas_object* robj = result_value[wcas_object*](resolved)
-	result_free[wcas_object*](resolved)
+	wcas_object* robj = result_expect[wcas_object*](cas_get_resolved(s, delta_id))
 	assert_strings_equal(c"blob", robj.object_type)
 	vcdt_assert_bytes_equal(v2, v2_len, robj.data, robj.length)
 	cas_object_free(robj)
@@ -524,17 +467,11 @@ void test_delta_storage_vs_id_invariance():
 	# Re-storing the same logical content FULL under the same store
 	# takes cas_put's dedup path (the id already exists) and must not
 	# disturb the delta encoding already on disk.
-	wresult[char*]* redundant = cas_put(s, c"blob", v2, v2_len)
-	assert1(result_is_ok[char*](redundant))
-	char* redundant_id = result_value[char*](redundant)
-	result_free[char*](redundant)
+	char* redundant_id = result_expect[char*](cas_put(s, c"blob", v2, v2_len))
 	assert_strings_equal(expected_id, redundant_id)
 	free(redundant_id)
 
-	wresult[wcas_object*]* still_raw = cas_get(s, delta_id)
-	assert1(result_is_ok[wcas_object*](still_raw))
-	wcas_object* still_obj = result_value[wcas_object*](still_raw)
-	result_free[wcas_object*](still_raw)
+	wcas_object* still_obj = result_expect[wcas_object*](cas_get(s, delta_id))
 	assert_strings_equal(c"delta", still_obj.object_type)
 	cas_object_free(still_obj)
 
@@ -551,10 +488,7 @@ void test_delta_storage_vs_id_invariance():
 void test_delta_chain_depth_bound():
 	wcas* s = vcdt_open()
 	char* v0 = vcdt_repeat('S', 200)
-	wresult[char*]* p0 = cas_put(s, c"blob", v0, 200)
-	assert1(result_is_ok[char*](p0))
-	char* prev_id = result_value[char*](p0)
-	result_free[char*](p0)
+	char* prev_id = result_expect[char*](cas_put(s, c"blob", v0, 200))
 	vcdt_track(prev_id)
 	char* prev_data = v0
 	int prev_len = 200
@@ -569,16 +503,10 @@ void test_delta_chain_depth_bound():
 		int next_len = sb.length
 		free(sb)
 
-		wresult[char*]* put = cas_put_delta(s, prev_id, c"blob", next_data, next_len)
-		assert1(result_is_ok[char*](put))
-		char* next_id = result_value[char*](put)
-		result_free[char*](put)
+		char* next_id = result_expect[char*](cas_put_delta(s, prev_id, c"blob", next_data, next_len))
 		vcdt_track(next_id)
 
-		wresult[wcas_object*]* raw = cas_get(s, next_id)
-		assert1(result_is_ok[wcas_object*](raw))
-		wcas_object* raw_obj = result_value[wcas_object*](raw)
-		result_free[wcas_object*](raw)
+		wcas_object* raw_obj = result_expect[wcas_object*](cas_get(s, next_id))
 		int is_delta = strcmp(raw_obj.object_type, c"delta") == 0
 		if (step == 17):
 			assert_equal(0, is_delta)
@@ -588,10 +516,7 @@ void test_delta_chain_depth_bound():
 			assert_equal(1, is_delta)
 		cas_object_free(raw_obj)
 
-		wresult[wcas_object*]* resolved = cas_get_resolved(s, next_id)
-		assert1(result_is_ok[wcas_object*](resolved))
-		wcas_object* robj = result_value[wcas_object*](resolved)
-		result_free[wcas_object*](resolved)
+		wcas_object* robj = result_expect[wcas_object*](cas_get_resolved(s, next_id))
 		vcdt_assert_bytes_equal(next_data, next_len, robj.data, robj.length)
 		cas_object_free(robj)
 
@@ -611,10 +536,7 @@ void test_delta_chain_depth_bound():
 void test_delta_reserved_type_and_invalid_args():
 	wcas* s = vcdt_open()
 	char* base_content = vcdt_repeat('A', 200)
-	wresult[char*]* bp = cas_put(s, c"blob", base_content, 200)
-	assert1(result_is_ok[char*](bp))
-	char* base_id = result_value[char*](bp)
-	result_free[char*](bp)
+	char* base_id = result_expect[char*](cas_put(s, c"blob", base_content, 200))
 	vcdt_track(base_id)
 
 	# "delta" is reserved: cas_put_delta refuses to encode an object
@@ -662,18 +584,12 @@ void test_delta_corrupted_chain_clean_errors():
 	# A real, valid small base to reference from the well-formed-header
 	# fixtures below.
 	char* base_content = vcdt_repeat('A', 10)
-	wresult[char*]* bp = cas_put(s, c"blob", base_content, 10)
-	assert1(result_is_ok[char*](bp))
-	char* base_id = result_value[char*](bp)
-	result_free[char*](bp)
+	char* base_id = result_expect[char*](cas_put(s, c"blob", base_content, 10))
 	vcdt_track(base_id)
 
 	# (a) Not a chain header at all.
 	char* id_a = vcdt_fake_id('a')
-	wresult[char*]* put_a = cas_put_raw(s, id_a, DELTA_OBJECT_TYPE(), c"not a chain header", 19)
-	assert1(result_is_ok[char*](put_a))
-	free(result_value[char*](put_a))
-	result_free[char*](put_a)
+	free(result_expect[char*](cas_put_raw(s, id_a, DELTA_OBJECT_TYPE(), c"not a chain header", 19)))
 	vcdt_track(id_a)
 	wresult[wcas_object*]* got_a = cas_get_resolved(s, id_a)
 	assert1(result_is_error[wcas_object*](got_a))
@@ -688,10 +604,7 @@ void test_delta_corrupted_chain_clean_errors():
 	string_append(sb_b, c"base ")
 	string_append(sb_b, missing_base)
 	string_append(sb_b, c"\ntype blob\ndepth 1\nlength 0\n\n")
-	wresult[char*]* put_b = cas_put_raw(s, id_b, DELTA_OBJECT_TYPE(), sb_b.data, sb_b.length)
-	assert1(result_is_ok[char*](put_b))
-	free(result_value[char*](put_b))
-	result_free[char*](put_b)
+	free(result_expect[char*](cas_put_raw(s, id_b, DELTA_OBJECT_TYPE(), sb_b.data, sb_b.length)))
 	vcdt_track(id_b)
 	string_free(sb_b)
 	wresult[wcas_object*]* got_b = cas_get_resolved(s, id_b)
@@ -708,10 +621,7 @@ void test_delta_corrupted_chain_clean_errors():
 	string_append(sb_c, base_id)
 	string_append(sb_c, c"\ntype blob\ndepth 1\nlength 5\n\n")
 	string_append(sb_c, c"C0 999\n")
-	wresult[char*]* put_c = cas_put_raw(s, id_c, DELTA_OBJECT_TYPE(), sb_c.data, sb_c.length)
-	assert1(result_is_ok[char*](put_c))
-	free(result_value[char*](put_c))
-	result_free[char*](put_c)
+	free(result_expect[char*](cas_put_raw(s, id_c, DELTA_OBJECT_TYPE(), sb_c.data, sb_c.length)))
 	vcdt_track(id_c)
 	string_free(sb_c)
 	wresult[wcas_object*]* got_c = cas_get_resolved(s, id_c)
@@ -727,10 +637,7 @@ void test_delta_corrupted_chain_clean_errors():
 	string_append(sb_d, base_id)
 	string_append(sb_d, c"\ntype blob\ndepth 1\nlength 999\n\n")
 	string_append(sb_d, c"C0 5\n")
-	wresult[char*]* put_d = cas_put_raw(s, id_d, DELTA_OBJECT_TYPE(), sb_d.data, sb_d.length)
-	assert1(result_is_ok[char*](put_d))
-	free(result_value[char*](put_d))
-	result_free[char*](put_d)
+	free(result_expect[char*](cas_put_raw(s, id_d, DELTA_OBJECT_TYPE(), sb_d.data, sb_d.length)))
 	vcdt_track(id_d)
 	string_free(sb_d)
 	wresult[wcas_object*]* got_d = cas_get_resolved(s, id_d)
@@ -746,10 +653,7 @@ void test_delta_corrupted_chain_clean_errors():
 	string_append(sb_e, c"base ")
 	string_append(sb_e, id_e)
 	string_append(sb_e, c"\ntype blob\ndepth 1\nlength 0\n\n")
-	wresult[char*]* put_e = cas_put_raw(s, id_e, DELTA_OBJECT_TYPE(), sb_e.data, sb_e.length)
-	assert1(result_is_ok[char*](put_e))
-	free(result_value[char*](put_e))
-	result_free[char*](put_e)
+	free(result_expect[char*](cas_put_raw(s, id_e, DELTA_OBJECT_TYPE(), sb_e.data, sb_e.length)))
 	vcdt_track(id_e)
 	string_free(sb_e)
 	wresult[wcas_object*]* got_e = cas_get_resolved(s, id_e)
@@ -787,10 +691,7 @@ string_builder* vcdt_object_file_path(char* id):
 void test_delta_base_is_compressed_on_disk():
 	wcas* s = vcdt_open()
 	char* base_content = vcdt_repeat('B', 512)
-	wresult[char*]* bp = cas_put(s, c"blob", base_content, 512)
-	assert1(result_is_ok[char*](bp))
-	char* base_id = result_value[char*](bp)
-	result_free[char*](bp)
+	char* base_id = result_expect[char*](cas_put(s, c"blob", base_content, 512))
 	vcdt_track(base_id)
 
 	string_builder* p = vcdt_object_file_path(base_id)
@@ -808,16 +709,10 @@ void test_delta_base_is_compressed_on_disk():
 	int target_len = sb.length
 	free(sb)
 
-	wresult[char*]* dp = cas_put_delta(s, base_id, c"blob", target, target_len)
-	assert1(result_is_ok[char*](dp))
-	char* delta_id = result_value[char*](dp)
-	result_free[char*](dp)
+	char* delta_id = result_expect[char*](cas_put_delta(s, base_id, c"blob", target, target_len))
 	vcdt_track(delta_id)
 
-	wresult[wcas_object*]* resolved = cas_get_resolved(s, delta_id)
-	assert1(result_is_ok[wcas_object*](resolved))
-	wcas_object* robj = result_value[wcas_object*](resolved)
-	result_free[wcas_object*](resolved)
+	wcas_object* robj = result_expect[wcas_object*](cas_get_resolved(s, delta_id))
 	assert_strings_equal(c"blob", robj.object_type)
 	vcdt_assert_bytes_equal(target, target_len, robj.data, robj.length)
 	cas_object_free(robj)

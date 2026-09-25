@@ -108,3 +108,13 @@ int web_stream_until_close(int from_file, int to_file, int capacity):
 			total = total + count
 	free(buf)
 	return total
+
+
+# The web examples nothing else runs still have to compile.
+# wbuild: target=web_examples_compile_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 examples/web/http_client.w -o bin/example_http_client"
+# wbuild: step="bin/wv2 examples/web/http_proxy.w -o bin/example_http_proxy"
+# wbuild: step="bin/wv2 examples/web/http_server.w -o bin/example_http_server"
+# wbuild: step="bin/wv2 examples/web/web_file_server.w -o bin/example_web_file_server"
+# wbuild: step="bin/wv2 tests/tcp.w -o bin/tcp"
+# wbuild: step="bin/wv2 tests/whttp.w -o bin/whttp"

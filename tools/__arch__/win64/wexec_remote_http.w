@@ -1,5 +1,5 @@
 # win64 stub for wexec's shared remote build cache HTTP transport (see
-# the x86 sibling file and tools/wexec.w's "Shared remote build cache"
+# tools/wexec_remote_http_net.w and tools/wexec.w's "Shared remote build cache"
 # section). Networking has no win64 backend yet -- lib.net's
 # sys_socket has no lib/__arch__/win64/syscalls.w entry, the same gap
 # libs/extras/vcs/__arch__/'s own doc comment documents for win64/wasm

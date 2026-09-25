@@ -5,18 +5,6 @@ import lib.fmath
 import libs.standard.distributed.failure_detector
 
 
-# Same tolerance idiom as lib/stats_test.w: loose enough for float32
-# arithmetic, tight enough for the values asserted here.
-void assert_near(float want, float got):
-	if (fabs(want - got) > 0.0001):
-		print2(c"Assertion failed. wanted float(")
-		print2(ftoa(want))
-		print2(c") got float(")
-		print2(ftoa(got))
-		println2(c")")
-		exit(1)
-
-
 void test_no_heartbeats():
 	failure_detector* fd = fd_new(4)
 	assert_equal(0, fd_sample_count(fd))

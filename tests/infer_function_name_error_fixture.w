@@ -8,3 +8,4 @@ int ifn_helper():
 int main():
 	g := ifn_helper
 	return 0
+# wbuild: fixture_group=infer_safety_test

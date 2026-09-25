@@ -10,6 +10,7 @@ import lib.testing
 import structures.string
 import libs.extras.vcs.diff
 import libs.extras.vcs.merge3
+import lib.str
 
 
 void assert_merge_text(char* want_text, int want_conflicts, char* base, char* ours, char* theirs):
@@ -20,25 +21,9 @@ void assert_merge_text(char* want_text, int want_conflicts, char* base, char* ou
 	free(r)
 
 
-int wvct_contains(char* haystack, char* needle):
-	int hl = strlen(haystack)
-	int nl = strlen(needle)
-	if (nl == 0):
-		return 1
-	int i = 0
-	while ((i + nl) <= hl):
-		int j = 0
-		while ((j < nl) && (haystack[i + j] == needle[j])):
-			j = j + 1
-		if (j == nl):
-			return 1
-		i = i + 1
-	return 0
-
-
 void wvct_assert_conflict_labels(char* text):
-	assert1(wvct_contains(text, c"<<<<<<< feature"))
-	assert1(wvct_contains(text, c">>>>>>> main"))
+	assert1(contains(text, c"<<<<<<< feature"))
+	assert1(contains(text, c">>>>>>> main"))
 
 
 # --- clean, non-overlapping changes -----------------------------------------
@@ -129,8 +114,8 @@ void test_two_separate_conflicts_counted_separately():
 	char* theirs = c"UNO\n2\n3\n4\nCINCO\n"
 	merge3_text_result* r = merge3_merge_text(base, ours, theirs, 0, 0)
 	assert_equal(2, r.conflicts)
-	assert1(wvct_contains(r.text, c"<<<<<<< ours\nONE\n=======\nUNO\n>>>>>>> theirs"))
-	assert1(wvct_contains(r.text, c"<<<<<<< ours\nFIVE\n=======\nCINCO\n>>>>>>> theirs"))
+	assert1(contains(r.text, c"<<<<<<< ours\nONE\n=======\nUNO\n>>>>>>> theirs"))
+	assert1(contains(r.text, c"<<<<<<< ours\nFIVE\n=======\nCINCO\n>>>>>>> theirs"))
 	free(r.text)
 	free(r)
 
@@ -165,7 +150,7 @@ void test_empty_base_both_add_identical_content():
 void test_empty_base_both_add_different_content_conflicts():
 	merge3_text_result* r = merge3_merge_text(c"", c"ours-text\n", c"theirs-text\n", 0, 0)
 	assert_equal(1, r.conflicts)
-	assert1(wvct_contains(r.text, c"<<<<<<< ours\nours-text\n=======\ntheirs-text\n>>>>>>> theirs\n"))
+	assert1(contains(r.text, c"<<<<<<< ours\nours-text\n=======\ntheirs-text\n>>>>>>> theirs\n"))
 	free(r.text)
 	free(r)
 

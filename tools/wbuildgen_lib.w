@@ -143,9 +143,9 @@ Generation rules:
   a step-less base target's deps. Hand-written base targets and tool
   targets join umbrellas through their own "tags" field (see
   wbg_collect_tags), so the umbrellas' "deps" in build.base.json list
-  only other umbrellas (tests includes tests_x64). Before tags, the
-  umbrella member lists were maintained by hand, and nine fixture-group
-  suites had silently dropped out of "tests". Generated arm64 and wasm twins join no umbrella:
+  only other umbrellas (tests includes tests_x64): a hand-maintained
+  member list is how suites silently drop out of "tests". Generated
+  arm64 and wasm twins join no umbrella:
   like the hand-written arm64/wasm run targets they mirror
   (build_arm64, dynamic_test_arm64, build_wasm, ...), they need qemu
   or a wasm runtime and stay individually invoked.
@@ -203,14 +203,14 @@ per-source generation rules above:
   invocation order (verified by diffing old vs. new build.json for
   every migrated target when this landed).
 
-`fixture_group=` almost always needs the sidecar form
-(`<fixture>.w.wbuild`, see wbg_parse_directives) rather than an inline
-header line: a compile-diagnostic fixture's own `# expect_stderr:`
-routinely embeds this file's exact line numbers (e.g. "got 3 bits at
-<file>.w:10"), so inserting a header line shifts every line reference
-below it and breaks the fixture it decorates — caught by actually
-running the migrated fixture targets, not by inspection, which is why
-every fixture-group member in this migration uses the sidecar.
+A fixture's `fixture_group=` line goes at the END of the fixture
+(directive lines are read from anywhere in a source), not in its
+header: a compile-diagnostic fixture's own `# expect_stderr:`
+routinely embeds its exact line numbers (e.g. "got 3 bits at
+<file>.w:10"), so an inserted header line would shift every reference
+below it. A fixture whose diagnostics change even with a trailing
+line (one reporting the end of the file) keeps the sidecar form
+(`<fixture>.w.wbuild`, see wbg_parse_directives).
 
 Tool targets (2026-07, the last bucket C/K residue in
 docs/projects/build_system_next.md): a family of targets is "invoke an
@@ -273,6 +273,8 @@ import lib.file
 import lib.stream
 import structures.string
 import structures.json
+import lib.dir
+import tools.manifest_json
 
 
 json_value* wbg_base                     # parsed build.base.json
@@ -342,95 +344,13 @@ void wbg_usage():
 	stream_flush(err)
 
 
-char* wbg_get_string(json_value* object, char* key):
-	json_value* value = json_object_get(object, key)
-	if (value == 0):
-		return 0
-	if (value.type != json_type_string()):
-		return 0
-	return value.string_value
-
-
-int wbg_load_uint16(char* p):
-	return (p[0] & 255) + ((p[1] & 255) << 8)
-
-
-void wbg_collect_dir(char* path, list[char*] files);
-
-
-void wbg_collect_dir_windows(char* path, list[char*] files):
-	char* find_data = malloc(320)
-	string_builder* pattern = string_new()
-	string_append(pattern, path)
-	string_append(pattern, c"/*")
-	int handle = FindFirstFileA(pattern.data, find_data)
-	string_free(pattern)
-	if (handle != -1):
-		while (1):
-			char* entry_name = find_data + 44
-			int attrs = load_int32(find_data)
-			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
-				string_builder* child = string_new()
-				string_append(child, path)
-				string_append(child, c"/")
-				string_append(child, entry_name)
-				if (attrs & 16):
-					wbg_collect_dir(child.data, files)
-					string_free(child)
-				else:
-					char* owned = child.data
-					free(child)
-					files.push(owned)
-			if (FindNextFileA(handle, find_data) == 0):
-				break
-		FindClose(handle)
-	free(find_data)
-
-
-# Recursively collect every regular file under path, the same getdents
-# walk wexec uses for directory inputs (d_reclen 2 bytes after the two
-# word-sized ino/off fields, d_type in the record's last byte).
-# On Windows the same walk runs over FindFirstFileA/FindNextFileA
-# (WIN32_FIND_DATAA: dwFileAttributes at 0, cFileName at 44;
-# FILE_ATTRIBUTE_DIRECTORY = 16), mirroring wexec_collect_dir.
+# Recursively collect every regular file under path (lib/dir.w's
+# dir_walk_files, as wexec_collect_dir does for directory inputs), or
+# nothing when this run does not scan the tree (wbg_scan_tree).
 void wbg_collect_dir(char* path, list[char*] files):
 	if (wbg_scan_tree == 0):
 		return
-	if (os_windows()):
-		wbg_collect_dir_windows(path, files)
-		return
-	# 65536 = O_DIRECTORY
-	int fd = open(path, 65536, 0)
-	if (fd < 0):
-		return
-	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* entry = buffer + off
-			int reclen = wbg_load_uint16(entry + 2 * __word_size__)
-			char* entry_name = entry + 2 * __word_size__ + 2
-			int kind = entry[reclen - 1] & 255
-			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
-				string_builder* child = string_new()
-				string_append(child, path)
-				string_append(child, c"/")
-				string_append(child, entry_name)
-				if (kind == 4):
-					wbg_collect_dir(child.data, files)
-					string_free(child)
-				else if (kind == 8):
-					char* owned = child.data
-					free(child)
-					files.push(owned)
-				else:
-					string_free(child)
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
+	dir_walk_files(path, files)
 
 
 # Insertion sort: getdents order depends on filesystem state, and the
@@ -612,7 +532,7 @@ vocabulary:
                            cwd=<dir>, with wexec's own per-step
                            meanings. This is the multi-step
                            shape (a test plus the diagnostic fixtures
-                           it drives) that used to need a hand-written
+                           it drives) without a hand-written
                            build.base.json target. A target with step=
                            lines declares no cache "inputs" (its extra
                            steps can read anything, so like the
@@ -877,8 +797,8 @@ char* wbg_target_binary_path(json_value* target):
 	if ((steps == 0) || (steps.type != json_type_array()) || (json_array_length(steps) == 0)):
 		return 0
 	json_value* first = json_array_get(steps, 0)
-	json_value* cmd = json_object_get(first, c"cmd")
-	if ((cmd == 0) || (cmd.type != json_type_array())):
+	json_value* cmd = jfield_array(first, c"cmd")
+	if (cmd == 0):
 		return 0
 	int i = 0
 	while (i < json_array_length(cmd)):
@@ -929,8 +849,8 @@ json_value* wbg_find_target_by_source(char* src_path):
 json_value* wbg_find_target_by_output(char* binary):
 	for char* name in wbg_base_names:
 		json_value* target = wbg_base_targets[name]
-		json_value* outputs = json_object_get(target, c"outputs")
-		if ((outputs == 0) || (outputs.type != json_type_array())):
+		json_value* outputs = jfield_array(target, c"outputs")
+		if (outputs == 0):
 			continue
 		int i = 0
 		while (i < json_array_length(outputs)):
@@ -948,7 +868,7 @@ char* wbg_resolve_tool_name(char* src_path):
 	json_value* target = wbg_find_target_by_source(src_path)
 	if (target == 0):
 		return 0
-	return wbg_get_string(target, c"name")
+	return jfield_string(target, c"name")
 
 
 # A token after 'step=' on the same line: one of the step's own fields.
@@ -1576,11 +1496,11 @@ int wbg_has_inline_directive(char* text):
 # state. Returns 0 on success, -1 after reporting errors.
 #
 # Sidecar fallback (mirrors wfixture's own "<fixture>.expect" fallback,
-# tools/wfixture.w): a source whose byte content cannot safely carry an
-# extra header line -- a compile-diagnostic fixture whose own
-# expect_stderr text embeds this file's exact line numbers, so any
-# inserted line would shift every reference below it, or a fixture that
-# deliberately ends without a trailing newline -- may put its
+# tools/wfixture.w): a source that cannot carry an extra line at all
+# -- a compile-diagnostic fixture whose diagnostics mention the end of
+# the file, or one that deliberately ends without a trailing newline
+# (any other fixture puts its directive on its last line, below every
+# line its expect_stderr text numbers) -- may put its
 # '# wbuild:' directive lines in a "<path>.wbuild" file next to it
 # instead. When the sidecar exists it is read instead of the source,
 # never both: a source carrying inline '# wbuild:' lines alongside a
@@ -1684,58 +1604,34 @@ int wbg_load_base(char* path):
 	if (text == 0):
 		wbg_error2(c"cannot read base manifest ", path)
 		return 1
-	wbg_base = json_parse(text)
+	manifest* m = manifest_parse(text, path, 1)
 	free(text)
-	if (wbg_base == 0):
-		wbg_error2(c"base manifest is not valid JSON: ", path)
+	if (m == 0):
+		wbg_error(manifest_parse_error)
 		return 1
-	if (wbg_base.type != json_type_object()):
-		wbg_error2(c"base manifest root must be a JSON object: ", path)
-		return 1
-	json_value* targets = json_object_get(wbg_base, c"targets")
-	if (targets == 0):
-		wbg_error2(c"base manifest has no \"targets\" array: ", path)
-		return 1
-	if (targets.type != json_type_array()):
-		wbg_error2(c"\"targets\" must be an array: ", path)
-		return 1
-
-	wbg_base_targets = new map[char*, json_value*]
-	wbg_base_names = new list[char*]
+	wbg_base = m.root
+	wbg_base_targets = m.by_name
+	wbg_base_names = m.names
+	free(m)
 	wbg_tag_umbrellas = new list[char*]
 	wbg_tag_members = new list[char*]
 	wbg_pinned = new map[char*, int]
-	int i = 0
-	while (i < json_array_length(targets)):
-		json_value* target = json_array_get(targets, i)
-		if (target.type != json_type_object()):
-			wbg_error2(c"every target must be a JSON object: ", path)
-			return 1
-		char* name = wbg_get_string(target, c"name")
-		if (name == 0):
-			wbg_error2(c"target without a \"name\" string: ", path)
-			return 1
-		if (name in wbg_base_targets):
-			wbg_error2(c"duplicate base target ", name)
-			return 1
-		wbg_base_targets[name] = target
-		wbg_base_names.push(name)
+	for char* name in wbg_base_names:
+		json_value* target = wbg_base_targets[name]
 		if (wbg_collect_tags(name, target)):
 			return 1
 		# Deps of step-less (umbrella) targets pin their members: a
 		# generated name listed there keeps that hand-chosen placement
 		# instead of being auto-appended to its conventional umbrella.
 		if (json_object_has(target, c"steps") == 0):
-			json_value* deps = json_object_get(target, c"deps")
+			json_value* deps = jfield_array(target, c"deps")
 			if (deps != 0):
-				if (deps.type == json_type_array()):
-					int d = 0
-					while (d < json_array_length(deps)):
-						json_value* dep = json_array_get(deps, d)
-						if (dep.type == json_type_string()):
-							wbg_pinned[dep.string_value] = 1
-						d = d + 1
-		i = i + 1
+				int d = 0
+				while (d < json_array_length(deps)):
+					json_value* dep = json_array_get(deps, d)
+					if (dep.type == json_type_string()):
+						wbg_pinned[dep.string_value] = 1
+					d = d + 1
 
 	wbg_exclude = new map[char*, int]
 	wbg_tool_targets_json = 0
@@ -2123,9 +2019,9 @@ void wbg_sort_generated():
 	int i = 1
 	while (i < wbg_generated.length):
 		json_value* value = wbg_generated[i]
-		char* name = wbg_get_string(value, c"name")
+		char* name = jfield_string(value, c"name")
 		int j = i - 1
-		while ((j >= 0) && (strcmp(wbg_get_string(wbg_generated[j], c"name"), name) > 0)):
+		while ((j >= 0) && (strcmp(jfield_string(wbg_generated[j], c"name"), name) > 0)):
 			wbg_generated[j + 1] = wbg_generated[j]
 			j = j - 1
 		wbg_generated[j + 1] = value
@@ -2448,7 +2344,7 @@ int wbg_tool_derive_deps(char* name, json_value* steps, map[char*, int] produced
 			if ((word in produced) == 0):
 				json_value* producer = wbg_find_target_by_output(word)
 				if (producer != 0):
-					char* dep = wbg_get_string(producer, c"name")
+					char* dep = jfield_string(producer, c"name")
 					if ((dep in dep_seen) == 0):
 						dep_seen[dep] = 1
 						dep_names.push(dep)
@@ -2470,7 +2366,7 @@ int wbg_expand_tool_target(json_value* entry):
 	if (entry.type != json_type_object()):
 		wbg_error(c"\"tool_targets\" entries must be objects")
 		return 1
-	char* name = wbg_get_string(entry, c"name")
+	char* name = jfield_string(entry, c"name")
 	if (name == 0):
 		wbg_error(c"\"tool_targets\" entry without a \"name\" string")
 		return 1
@@ -2638,11 +2534,10 @@ int wbg_scan():
 			fixture_groups[wbg_dir_fixture_group].push(strclone(src))
 			continue
 		if (is_test == 0):
-			# A fixture is not a test target, so a fixture carrying
-			# '# wbuild:' directives without 'fixture_group=' used to be
-			# skipped with the directives silently unhonored (e.g. a
-			# stray '# wbuild: x64' line doing nothing) — a hard error
-			# now, same as any other directive nothing generated honors.
+			# A fixture is not a test target, so '# wbuild:' directives
+			# on it without 'fixture_group=' would go silently unhonored
+			# (e.g. a stray '# wbuild: x64' line doing nothing): a hard
+			# error, same as any other directive nothing generated honors.
 			int stray = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | wbg_dir_wasm | (wbg_dir_arch_only != 0) | wbg_dir_expect_fail | wbg_dir_compile_fail | (wbg_dir_timeout_ms > 0) | (wbg_dir_stdin != 0) | (wbg_dir_expect_stdout.length > 0) | (wbg_dir_expect_stderr.length > 0) | (wbg_dir_extra_compile.length > 0) | (wbg_dir_data.length > 0) | (wbg_dir_names.length > 0) | (wbg_dir_argvs.length > 0) | (wbg_dir_tool.length > 0) | (wbg_dir_flags.length > 0) | (wbg_dir_group_names.length > 0) | wbg_dir_group_only | (wbg_dir_steps.length > 0)
 			if (stray):
 				wbg_error2(c"'# wbuild:' directives on a fixture need 'fixture_group=' (a fixture is not a test target): ", src)
@@ -2863,7 +2758,7 @@ int wbg_scan():
 		if (wfixture_target == 0):
 			wbg_error(c"'fixture_group=' targets need a build.base.json target compiling tools/wfixture.w")
 			return 1
-		char* wfixture_name = wbg_get_string(wfixture_target, c"name")
+		char* wfixture_name = jfield_string(wfixture_target, c"name")
 		char* wfixture_bin = wbg_target_binary_path(wfixture_target)
 		if (wfixture_bin == 0):
 			wbg_error2(c"cannot determine wfixture's output binary from target ", wfixture_name)
@@ -3094,9 +2989,8 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 	int reported = 0
 	if (committed == 0):
 		# A committed manifest that does not even parse (a torn write
-		# from before 'manifest' renamed atomically, or a hand edit) is
-		# its own failure mode; it used to fall through to the
-		# "formatting only" line below, which mislabeled it.
+		# or a hand edit) is its own failure mode, not the "formatting
+		# only" case below.
 		wbg_error2(c"committed manifest failed to parse: ", out_path)
 		reported = 1
 	if ((committed != 0) && (fresh != 0)):
@@ -3106,7 +3000,7 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 		int i = 0
 		while (i < json_array_length(old_targets)):
 			json_value* target = json_array_get(old_targets, i)
-			char* name = wbg_get_string(target, c"name")
+			char* name = jfield_string(target, c"name")
 			if (name != 0):
 				old_defs[name] = json_stringify(target)
 			i = i + 1
@@ -3114,7 +3008,7 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 		i = 0
 		while (i < json_array_length(new_targets)):
 			json_value* target = json_array_get(new_targets, i)
-			char* name = wbg_get_string(target, c"name")
+			char* name = jfield_string(target, c"name")
 			if (name != 0):
 				new_names[name] = 1
 				char* old_def = old_defs.get(name, 0)
@@ -3142,10 +3036,9 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 /* Generate the manifest in memory and return its rendered JSON text, or
 0 after printing an error. scan_tree = 0 skips the source-tree walk, so
 only build.base.json's own targets and its tool_targets come out: the
-executors on hosts whose directory listing this module cannot parse
-(wbg_collect_dir walks getdents on Linux and FindFirstFileA on
-Windows; see wexec_dirents_supported)
-still run the hand-written darwin/win64 toolchain targets. Call it once
+executors on hosts whose directory listing is not trusted yet (darwin;
+see wexec_dirents_supported) still run the hand-written darwin/win64
+toolchain targets. Call it once
 per process: the wbg_* tables are global. */
 char* wbg_generate(char* base_path, int scan_tree):
 	wbg_scan_tree = scan_tree

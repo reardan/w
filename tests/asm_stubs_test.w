@@ -32,24 +32,10 @@ import libs.asm.text
 import libs.asm.x86_encode
 import libs.asm.arm64_text
 import libs.asm.arm64_encode
+import lib.str
 
 
 int stubs_missing
-
-
-# Substring search; returns the index of pat in line or -1.
-int stubs_find(char* line, char* pat):
-	int n = strlen(line)
-	int m = strlen(pat)
-	int i = 0
-	while (i + m <= n):
-		int j = 0
-		while (j < m && line[i + j] == pat[j]):
-			j = j + 1
-		if (j == m):
-			return i
-		i = i + 1
-	return -1
 
 
 # Assemble text for arch (ASM_ARCH_X86/X64/ARM64) into a fresh buffer;
@@ -134,7 +120,7 @@ int stubs_check(char* path, char* call, int arch, char* corpus_path):
 			first = first + 1
 		if (line[first] == '#'):
 			continue
-		int at = stubs_find(line, pat)
+		int at = index_of(line, pat)
 		if (at < 0):
 			continue
 		at = at + strlen(pat)

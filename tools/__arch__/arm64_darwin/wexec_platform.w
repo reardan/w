@@ -2,19 +2,15 @@
 # file). arm64_darwin resolution, compiled into bin/wexec_darwin.
 
 
-# 0: Darwin's getdents shim returns raw getdirentries64 records whose
-# layout (d_ino u64, d_seekoff u64, d_reclen u16, d_namlen u16,
-# d_type u8, name) differs from the Linux layout wexec_collect_dir
-# parses -- see the NOTE next to getdents in
-# lib/__arch__/arm64_darwin/syscalls.w. Parsing them with the Linux
-# offsets silently produced an empty file list, i.e. a stable-but-wrong
-# cache key. Until per-arch dirent accessors exist
-# (docs/projects/ai_tooling_next_steps.md, "wexec directory hashing is
-# Linux-layout only"), reporting 0 makes wexec warn once and treat a
-# directory input as empty instead of hashing that misparse: the same
-# resulting hash, but an honest diagnostic. The darwin build targets
-# already declare no directory "inputs" (they are FORCE-style), so
-# nothing on macOS relies on directory hashing today.
+# 0: Darwin's getdents shim returns raw getdirentries64 records
+# (d_ino u64, d_seekoff u64, d_reclen u16, d_namlen u16, d_type u8,
+# name), which lib/__arch__/arm64_darwin/dirent.w decodes for lib/dir.w
+# -- but that decoding has not been run on a Mac yet, and a misparse
+# would be a silently empty listing, i.e. a stable-but-wrong cache key.
+# Reporting 0 makes wexec warn once and treat a directory input as empty
+# instead. The darwin build targets declare no directory "inputs" (they
+# are FORCE-style), so nothing on macOS relies on directory hashing
+# today; flip this to 1 once lib/dir_test.w passes natively there.
 int wexec_dirents_supported():
 	return 0
 

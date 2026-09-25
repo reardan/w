@@ -1,7 +1,6 @@
 /*
 Commit objects, refs-as-files, and an append-only reflog (VCS wave 2,
-issue #252 V2b; design: docs/projects/version_control.md,
-docs/projects/consolidated_plan_2026_07.md section 4). Built directly on
+issue #252 V2b; design: docs/projects/version_control.md). Built directly on
 libs/extras/vcs/cas.w (wave 1's content-addressed store): a commit is
 just another CAS object under object type "commit", so identity, dedup,
 and integrity all come for free from cas.w's addressing scheme.

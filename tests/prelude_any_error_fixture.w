@@ -4,3 +4,4 @@
 # expect_stderr: prelude 'any' argument must be a list of int-like elements: 'constant'
 x := any(5)
 println(x)
+# wbuild: fixture_group=prelude_math_error_test

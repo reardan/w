@@ -135,7 +135,7 @@ What stage 3 settled, and how it answers the §10 open questions:
 
 ## Tracker note
 
-`docs/projects/sonnet_wave_plan_2026_07b.md` flags an issue-tracker
+A 2026-07 planning pass flagged an issue-tracker
 anomaly: issue #110, titled "Optimization," was found with a body that
 duplicated this protobuf proposal, and asked whether #110's body had
 been pasted over #16's by mistake. Re-checked while writing this doc

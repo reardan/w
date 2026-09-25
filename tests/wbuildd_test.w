@@ -33,6 +33,7 @@ import lib.process
 import lib.file
 import structures.string
 import structures.json
+import lib.str
 
 
 char* wbt_dir_cache
@@ -242,27 +243,6 @@ char* wbt_compare(char* tool, char* args, char* stdin_text):
 	return out
 
 
-int wbt_prefix(char* text, char* prefix, int n):
-	int i = 0
-	while (i < n):
-		if (text[i] != prefix[i]):
-			return 0
-		i = i + 1
-	return 1
-
-
-int wbt_has_line(char* text, char* line):
-	int n = strlen(line)
-	int i = 0
-	int at_start = 1
-	while (text[i] != 0):
-		if (at_start && wbt_prefix(text + i, line, n) && ((text[i + n] == 10) || (text[i + n] == 0))):
-			return 1
-		at_start = text[i] == 10
-		i = i + 1
-	return 0
-
-
 char* wbt_args2(char* prefix, char* name):
 	return strjoin(prefix, wbt_path(name))
 
@@ -403,8 +383,8 @@ void test_wbuildd_matches_one_shot():
 	assert1(strcmp(deps_before, deps_after) != 0)
 	# Rule (b) closure selection really ran: wbt_a compiled a.w, whose
 	# closure contained the helper until the edit.
-	assert1(wbt_has_line(selected_before, c"wbt_a"))
-	assert1(wbt_has_line(selected_after, c"wbt_a") == 0)
+	assert1(has_line(selected_before, c"wbt_a"))
+	assert1(has_line(selected_after, c"wbt_a") == 0)
 	wbt_compare_all()
 
 	# A new module and a deleted one (resolution-changing events).
