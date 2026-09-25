@@ -532,3 +532,37 @@ being the normal result everywhere except a maintainer's desktop. The
 SKIP path should stay — it is what makes the suite runnable anywhere —
 but it currently hides a whole class of regression from every
 automated run.
+
+## An `extern` silently binds to the nearest preceding `c_lib` (2026-09-25, #378/#462)
+
+On arm64_darwin, a file that declares `c_lib ".../ApplicationServices"`
+and then, a few lines later, `extern int objc_msg_mouse(...) =
+"objc_msgSend"` binds that extern to ApplicationServices, not libobjc.
+It happened to resolve there (the framework re-exports it); the same
+declaration after `import graphics.window` bound to OpenGL instead, and
+the binary died at launch with dyld's `Symbol not found: _objc_msgSend
+... Expected in: OpenGL`. `w check` and the compile were clean both
+times.
+
+Options: (a) a `check` warning when an extern follows a `c_lib` from a
+different import unit (the binding is then almost certainly
+accidental); (b) on Mach-O, verify at compile time that the named
+dylib exports the symbol when the host has the dylib (a Mac, or an SDK
+.tbd); (c) document the rule next to `c_lib` in the language docs. (a)
+is cheap and catches the case that bit here.
+
+## Darwin bootstrap from a clean checkout is broken with the pinned seeds (2026-09-25)
+
+Both released darwin seeds miscompile current main: v0.1.0's
+`w_darwin` segfaults compiling `w.w` (first bad commit 2a9c034, July
+19), and v0.2.0's compiles it but writes a corrupt Mach-O magic, so
+the stage-1 compiler fails with "exec format error". Current sources
+compiled by a current compiler are fine: a Linux-cross-built
+`bin/wv2 arm64_darwin w.w` reaches a native fixpoint. `release.yml`
+already works around this for CI by cross-building the darwin
+bootstrap; a fresh Mac checkout has no such path, and `./wbuild` on a
+Mac just segfaults. The fix is the documented seed promotion (tag a
+release from current main, bump every `SEEDS` line). Worth adding
+either way: a darwin smoke of the pinned seed against `w.w` in CI, so
+the next divergence shows up the day it happens instead of two months
+later.

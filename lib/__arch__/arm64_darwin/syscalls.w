@@ -7,9 +7,9 @@
 #
 # The wrapper surface matches lib/__arch__/arm64/syscalls.w exactly. Where
 # Darwin has no equivalent raw syscall the wrapper is a documented stub:
-# brk always fails (lib/memory.w then runs in mmap mode), rt_sigaction and
-# sys_clone return -38 (ENOSYS-style; Darwin signal delivery needs a
-# trampoline and threads go through bsdthread_create).
+# brk always fails (lib/memory.w then runs in mmap mode) and sys_clone
+# returns -38 (ENOSYS-style; threads go through bsdthread_create).
+# rt_sigaction needs the compiler's signal_trampoline stub (see below).
 #
 # Flag translation: lib/ callers hardcode Linux flag values, so open and
 # mmap translate the bits Darwin numbers differently (O_CREAT/O_TRUNC/...,
@@ -250,12 +250,41 @@ int sys_clock_gettime(int clock_id, int ts):
 	out[1] = tv.tv_usec * 1000
 	return 0
 
-# Raw sigaction (46) takes a struct __sigaction whose sa_tramp field must
-# point at a signal-return trampoline; without libc's trampoline the
-# kernel would jump to 0 on delivery. Stubbed out until a W trampoline
-# exists (only the debugger uses this, and wdbg on arm64 is deferred).
+# Raw sigaction (46) takes a struct __sigaction {handler, sa_tramp,
+# uint32 sa_mask, int sa_flags}, and XNU delivers a signal by entering
+# sa_tramp, which must call the handler and then sigreturn. The
+# compiler's signal_trampoline stub (code_generator/arm64_asm.w) does
+# that for a plain W handler(sig, ucontext). act has the Linux layout
+# the shared callers build ({handler, flags, restorer, mask}); here the
+# restorer slot carries the trampoline's address. It is not named in
+# this file because the pinned seed compiles it and predates the stub:
+# lib/crash.w finds the stub in the image's own symbol table instead
+# (once SEEDS pins a release with the stub, `cast(int,
+# signal_trampoline)` can replace the lookup). A handler without a
+# trampoline fails with -38 (ENOSYS); handler 0 (SIG_DFL) needs none.
+# SA_ONSTACK, SA_RESTART, SA_NODEFER and SA_RESETHAND are translated,
+# and SA_SIGINFO is always set because the trampoline passes the
+# ucontext on. oldact is not reported. Allocation-free: lib/crash.w
+# calls this from inside its handler.
 int rt_sigaction(int signum, int* act, int* oldact):
-	return 0 - 38
+	if ((act[0] != 0) && (act[2] == 0)):
+		return 0 - 38
+	int[3] nsa
+	nsa[0] = act[0]
+	nsa[1] = act[2]
+	int lflags = act[1]
+	int flags = 64 /* SA_SIGINFO */
+	if (lflags & 0x08000000):
+		flags = flags | 1   /* SA_ONSTACK */
+	if (lflags & 0x10000000):
+		flags = flags | 2   /* SA_RESTART */
+	if (lflags & 0x40000000):
+		flags = flags | 16  /* SA_NODEFER */
+	if ((lflags >> 31) & 1):
+		flags = flags | 4   /* SA_RESETHAND */
+	# sa_mask (32 bits; signal 32 does not exist) then sa_flags
+	nsa[2] = (act[3] & 0x7fffffff) | (flags << 32)
+	return syscall(46, signum, cast(int, &nsa[0]), 0)
 
 
 /* Process management */

@@ -467,10 +467,9 @@ extension, then Calendar, Calendar Picker, Date Range, Time Range).
   backend, and X11 selections, `NSPasteboard` and the asynchronous
   browser Clipboard API are three genuinely different designs. Its own
   note, before the editor.
-- **Cocoa mouse and CHAR.** A pre-existing documented v1 gap
-  (`window_cocoa.w:17`) needing a struct-return-free selector strategy.
-  The new widgets are compile-verified on `arm64_darwin` through
-  `graphics_darwin` but are not interactively usable there.
+- **Cocoa mouse and CHAR.** Landed 2026-09-25 (#462); the widgets are
+  interactively usable on macOS, and their `*_darwin` test binaries
+  pass natively.
 - **Retained mode / a scene graph.** `ui_framework.md` §3 stages this
   as a post-v1 evolution to revisit with real usage data. Row and line
   virtualization are the cheaper answer to the scale problem that would

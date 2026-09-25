@@ -4,7 +4,7 @@
 # inside the w-dev container (tools/mac/wdev.sh); this half runs on the Mac
 # because only the Mac can load and exec Mach-O.
 #
-# Usage: tools/mac/run_darwin_tests.sh bin/hello_darwin [bin/more...]
+# Usage: tools/mac/run_darwin_tests.sh bin/net_darwin [bin/more...]
 #        tools/mac/run_darwin_tests.sh          # runs the default set
 #
 # The compiler self-signs its output (code_generator/macho_sign.w writes an
@@ -24,7 +24,10 @@ if [ -z "$tests" ]; then
 	# loopback socket + plaintext HTTP smoke for the Darwin
 	# sockaddr/socket-ABI fixes. Linux CI only cross-compiles it; this
 	# script is where it actually runs.
-	tests="bin/hello_darwin bin/dynamic_darwin_test bin/graphics_gl_smoke_darwin bin/pac_full_darwin_test bin/net_darwin"
+	tests="bin/dynamic_darwin_test bin/graphics_gl_smoke_darwin bin/pac_full_darwin_test bin/net_darwin"
+	# Cocoa window input (#462): synthetic NSEvents through the real
+	# AppKit queue; prints a SKIP line outside a GUI session.
+	tests="$tests bin/graphics_cocoa_input_darwin"
 	# The `./wbuild arm64_darwin_smoke_test` set (issue #210): the same
 	# programs as the qemu-based arm64_smoke_test, cross-compiled to
 	# Mach-O, so real-silicon smoke coverage does not need qemu. Like
@@ -35,6 +38,8 @@ if [ -z "$tests" ]; then
 	# is enforced natively, so these MUST die by signal before reaching
 	# their NOT REACHED print.
 	must_die="bin/pac_corrupt_fnptr_darwin_test bin/pac_corrupt_ret_darwin_test"
+	# Crash reports (./wbuild crash_darwin, issue #378); checked below.
+	crash_fixtures=1
 fi
 
 fail=0
@@ -71,4 +76,47 @@ for t in $must_die; do
 		fail=1
 	fi
 done
+# The crash_darwin fixtures: each prints a print_stack_trace() trace and
+# then dies of SIGSEGV. The plain build must also print the full crash
+# report; the --pac=full (arm64e) build must not, since the handler is
+# not installed there (lib/crash.w crash_install_darwin).
+# has_lines OUTPUT LINE...: every LINE appears, in this order.
+has_lines() {
+	rest="$1"
+	shift
+	for line in "$@"; do
+		case "$rest" in
+		*"$line"*) rest="${rest#*"$line"}" ;;
+		*) echo "run_darwin_tests: missing line: $line" >&2; return 1 ;;
+		esac
+	done
+}
+if [ -n "$crash_fixtures" ]; then
+	for t in bin/crash_darwin_fixture bin/crash_darwin_pac_fixture; do
+		if [ ! -f "$t" ]; then
+			echo "run_darwin_tests: missing $t (compile it in the container first)" >&2
+			fail=1
+			continue
+		fi
+		cp "$t" "$t.run"
+		rc=0
+		out=$(W_CRASH_TRACE=1 "./$t.run" 2>&1) || rc=$?
+		rm -f "$t.run"
+		ok=1
+		[ "$rc" -eq 139 ] || { echo "run_darwin_tests: $t: want exit 139 (SIGSEGV), got $rc" >&2; ok=0; }
+		has_lines "$out" "stack trace (most recent call first):" "  at crash_bottom" "  at crash_middle" "  at crash_top" "  at main" "traced" || ok=0
+		if [ "$t" = bin/crash_darwin_fixture ]; then
+			has_lines "$out" "traced" "fatal signal: SIGSEGV (invalid memory reference)" "faulting address 0x0000000000000010" "  x28=" "uuid: " "  at crash_bottom" "  at crash_middle" "  at crash_top" "  at main" "terminating with the default action for signal 11" || ok=0
+		else
+			case "$out" in *"fatal signal"*) echo "run_darwin_tests: $t: arm64e image printed a crash report" >&2; ok=0 ;; esac
+		fi
+		if [ "$ok" -eq 1 ]; then
+			echo "run_darwin_tests: PASS $t"
+		else
+			printf '%s\n' "$out" >&2
+			echo "run_darwin_tests: FAIL $t" >&2
+			fail=1
+		fi
+	done
+fi
 exit $fail

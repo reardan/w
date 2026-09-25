@@ -30,8 +30,11 @@ implemented 2026-08-07 — the full §5 token set (accent_hot,
 on_accent, focus, disabled_widget/disabled_text), a ui_disable scope,
 the demo's dropdown as a live theme picker, and the non-grayscale
 `ui_theme_ocean` proving "fully customizable"
-(`docs/images/ui_demo_ocean.png`). Still pending: Cocoa mouse + CHAR
-(needs a struct-return-free selector strategy — its own design note),
+(`docs/images/ui_demo_ocean.png`). Cocoa mouse, scroll, CHAR and NAV
+input landed 2026-09-25 (#462): struct values such as
+`locationInWindow` are read through key-value coding (`valueForKey:`
+boxes the NSPoint in an NSValue, `getValue:size:` copies it out), so
+the no-struct-return rule in `graphics/cocoa.w` stands. Still pending:
 TTF/SDF typography (#379), win64 backend, accessibility (§8 stage 4).
 
 The widget set's expansion past stage 3 is issue #441 and has its own
@@ -99,7 +102,7 @@ that dispatch (each file read directly):
 |---|---|---|---|
 | x64 Linux | `graphics.window_x11` (X11/GLX) | mouse x/y, 3-button mask, last keycode, resize/close | real, tested (`graphics_gl_smoke_test`) |
 | arm64 Linux | `graphics.window_x11` (same file) | same as x64 | real, needs qemu to run in CI |
-| `arm64_darwin` | `graphics.window_cocoa` (AppKit/NSOpenGL) | last keycode only — **mouse fields stay 0 in v1** (`graphics/window_cocoa.w:17`) | real but input-incomplete |
+| `arm64_darwin` | `graphics.window_cocoa` (AppKit/NSOpenGL) | mouse x/y, 3-button mask, scroll, Unicode CHAR, NAV, modifiers, last keycode, close (#462) | real, tested natively (`graphics_cocoa_input_darwin` via `tools/mac/run_darwin_tests.sh`) |
 | wasm32 (browser) | `graphics.window_web` (canvas + WebGL2 via `tools/web/webgl_env.mjs`) | 7-field snapshot: width, height, should_close, mouse_x, mouse_y, mouse_buttons, last_keycode (`graphics/window_web.w:59`-`60`) | real, tested (`wasm_webgl_test`), needs Node or a browser |
 | win64 | `graphics.window_stub` (`graphics/__arch__/win64/window_native.w` imports it directly) | none — `gfx_window_open` prints a gap message and returns 0 | **no backend at all** |
 | x86 Linux | `graphics.window_stub` | none | **no backend at all** (32-bit is the seed/bootstrap target, not expected to grow a GUI) |
@@ -434,7 +437,8 @@ here as a stage-1 prerequisite, not an incidental nice-to-have.
   actual text entry — `last_keycode` is a raw X keycode, not a
   character, so a naive text-input widget cannot currently render what
   was typed beyond mapping a hardcoded keycode-to-ASCII table by hand.
-- **macOS (`arm64_darwin`, Cocoa)**: keycode tracked
+- **macOS (`arm64_darwin`, Cocoa)** — *resolved 2026-09-25 (#462);
+  the rest of this bullet describes the state at the time*: keycode tracked
   (`window_cocoa.w:151`-`152`), but **mouse position and buttons are
   not implemented at all yet** ("Mouse fields stay 0 in v1,"
   `window_cocoa.w:17`) — a real, not cosmetic, gap: no macOS widget can

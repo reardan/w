@@ -66,6 +66,27 @@ func syscall_pipe
 	movz x0,#0
 	ret
 
+# signal_trampoline (darwin only): the sa_tramp XNU enters with x0 =
+# handler, x1 = infostyle, x2 = sig, x4 = ucontext, x5 = token. Calls
+# handler(sig, ucontext) with the W convention, then sigreturn. The
+# blraaz is emitted under --pac=full, the blr otherwise.
+func signal_trampoline
+	stp x1,x4,[sp,#-32]!
+	str x5,[sp,#16]
+	str x0,[x28,#-8]!	# callee slot
+	str x2,[x28,#-8]!	# sig
+	str x4,[x28,#-8]!	# ucontext
+	blraaz x0	# pac=full only
+	blr x0	# otherwise
+	add x28,x28,#24
+	ldr x0,[sp,#8]	# ucontext
+	ldr x1,[sp]	# infostyle
+	ldr x2,[sp,#16]	# token
+	add sp,sp,#32
+	movz x16,#184	# sigreturn
+	svc #0x80
+	brk #1
+
 # get_context(ctx): store x0..x30 into the 31-slot context struct. The
 # store is a source-level loop `str xi,[x9,#i*8]` for i = 0..30 built by
 # OR-ing i into Rt and imm12; the base word listed here is the i=0 form.
@@ -81,12 +102,14 @@ func store_context
 	ret
 
 # repl_setjmp(buf): save the return address, W stack pointer and frame
-# pointer into a 3-word buffer and return 0. The pacia is emitted only
-# under --pac=full.
+# pointer into a 3-word buffer and return 0. Under --pac=full the saved
+# address is a signed copy (mov/pacia/str x10); otherwise x30 is stored.
 func repl_setjmp
 	ldr x9,[x28]	# buf
-	pacia x30,x9	# pac=full only
-	str x30,[x9]
+	mov x10,x30	# pac=full only: sign a copy, x30 stays plain for ret
+	pacia x10,x9	# pac=full only
+	str x10,[x9]	# pac=full only
+	str x30,[x9]	# otherwise
 	str x28,[x9,#8]
 	str x29,[x9,#16]
 	movz x0,#0

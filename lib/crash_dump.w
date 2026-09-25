@@ -131,6 +131,20 @@ void crash_build_id():
 	cd_id_size = 0
 	if (st_state != 1):
 		return;
+	if (st_macho):
+		# Mach-O: the LC_UUID's 16 bytes (the writer hashes the image
+		# into it, code_generator/macho_64.w).
+		int lc = st_base + 32
+		int ncmds = st_int32(st_base + 16)
+		int k = 0
+		while (k < ncmds):
+			if (st_int32(lc) == 27):
+				cd_id_addr = lc + 8
+				cd_id_size = 16
+				return;
+			lc = lc + st_int32(lc + 4)
+			k = k + 1
+		return;
 	int b = st_base
 	int phoff = 0
 	int phentsize = 0

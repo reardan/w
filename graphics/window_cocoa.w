@@ -14,7 +14,18 @@ red button), so no delegate is needed.
 
 Runs in a real GUI session only; with no WindowServer the pixel format
 init returns nil and gfx_window_open returns 0, which consumers treat
-as SKIP. Mouse fields stay 0 in v1 (last_keycode is tracked).
+as SKIP.
+
+Input: key, character, navigation, mouse and scroll events all reach
+the per-frame ring (graphics.event). No struct-returning selector is
+bound (graphics.cocoa's hard rule): the NSPoint of locationInWindow is
+read through key-value coding instead — valueForKey: boxes it in an
+NSValue (an object id), and getValue:size: copies its two doubles into
+W memory — so both calls stay integer-register-only. CHAR codes are
+full Unicode codepoints decoded from [event characters]; AppKit's
+private-use function-key characters (U+F700..) become NAV codes. There
+is no NSTextInputClient yet, so dead keys and IME composition do not
+compose (#459).
 */
 import lib.lib
 import graphics.cocoa
@@ -48,9 +59,18 @@ struct gfx_window:
 	int sel_is_visible
 	int sel_flush_buffer
 	int sel_close
-	# per-frame event ring (graphics.event); key events only in v1 —
-	# CHAR translation and mouse events land with the stage-2 input
-	# work (docs/projects/ui_framework_plan.md)
+	int sel_characters
+	int sel_utf8_string
+	int sel_value_for_key
+	int sel_get_value_size
+	int sel_button_number
+	int sel_scrolling_delta_y
+	int sel_has_precise_deltas
+	int key_location
+	# scroll delta carried between events, in hundredths of a
+	# notch unit (lines, or points for trackpads)
+	int32 scroll_accum
+	# per-frame event ring (graphics.event)
 	int32 event_head
 	int32 event_tail
 	int32[320] event_ring
@@ -79,6 +99,8 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	# The close button releases the window by default; keep the object
 	# alive so the poll loop can still ask isVisible afterwards.
 	objc_msg1(window, sel_registerName(c"setReleasedWhenClosed:"), 0)
+	# Pointer motion without a held button is only delivered on request.
+	objc_msg1(window, sel_registerName(c"setAcceptsMouseMovedEvents:"), 1)
 	int title_str = objc_msg1(objc_getClass(c"NSString"), sel_registerName(c"stringWithUTF8String:"), cast(int, title))
 	objc_msg1(window, sel_registerName(c"setTitle:"), title_str)
 	objc_msg1(window, sel_registerName(c"makeKeyAndOrderFront:"), 0)
@@ -142,6 +164,16 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 	win.sel_is_visible = sel_registerName(c"isVisible")
 	win.sel_flush_buffer = sel_registerName(c"flushBuffer")
 	win.sel_close = sel_registerName(c"close")
+	win.sel_characters = sel_registerName(c"characters")
+	win.sel_utf8_string = sel_registerName(c"UTF8String")
+	win.sel_value_for_key = sel_registerName(c"valueForKey:")
+	win.sel_get_value_size = sel_registerName(c"getValue:size:")
+	win.sel_button_number = sel_registerName(c"buttonNumber")
+	win.sel_scrolling_delta_y = sel_registerName(c"scrollingDeltaY")
+	win.sel_has_precise_deltas = sel_registerName(c"hasPreciseScrollingDeltas")
+	# Like run_mode: made in the open pool, so it lives until destroy.
+	win.key_location = objc_msg1(objc_getClass(c"NSString"), sel_registerName(c"stringWithUTF8String:"), cast(int, c"locationInWindow"))
+	win.scroll_accum = 0
 	win.event_head = 0
 	win.event_tail = 0
 	return win
@@ -163,6 +195,194 @@ int gfx_cocoa_mods(int flags):
 	return mods
 
 
+# The NAV code for an AppKit function-key character (NSUpArrowFunctionKey
+# U+F700 and its private-use neighbours), or 0.
+int gfx_cocoa_nav(int cp):
+	if (cp == 0xf702):
+		return GFX_NAV_LEFT
+	if (cp == 0xf703):
+		return GFX_NAV_RIGHT
+	if (cp == 0xf700):
+		return GFX_NAV_UP
+	if (cp == 0xf701):
+		return GFX_NAV_DOWN
+	if (cp == 0xf729):
+		return GFX_NAV_HOME
+	if (cp == 0xf72b):
+		return GFX_NAV_END
+	if (cp == 0xf72c):
+		return GFX_NAV_PAGE_UP
+	if (cp == 0xf72d):
+		return GFX_NAV_PAGE_DOWN
+	if (cp == 0xf728):
+		return GFX_NAV_DELETE
+	return 0
+
+
+# The GFX_EVENT_CHAR code for one character of a key event, or 0 when it
+# is not text. The Mac's backspace key sends DEL (127) and the keypad
+# enter key ETX (3); they map to the contract's 8 and 13. Shift-tab
+# arrives as BACKTAB (25). The function-key block and other control
+# characters are not text.
+int gfx_cocoa_char(int cp):
+	if (cp == 127):
+		return 8
+	if (cp == 3):
+		return 13
+	if (cp == 25):
+		return 9
+	if ((cp == 8) || (cp == 9) || (cp == 13) || (cp == 27)):
+		return cp
+	if (cp < 32):
+		return 0
+	if ((cp >= 0xf700) && (cp <= 0xf8ff)):
+		return 0
+	return cp
+
+
+# Decode the UTF-8 codepoint at s[i] into cp[0]; returns the index of the
+# next one. Malformed bytes decode as themselves, one byte at a time.
+int gfx_cocoa_utf8_next(char* s, int i, int* cp):
+	int b = s[i] & 255
+	int n = 0
+	int value = b
+	if ((b & 0xe0) == 0xc0):
+		n = 1
+		value = b & 0x1f
+	else if ((b & 0xf0) == 0xe0):
+		n = 2
+		value = b & 0x0f
+	else if ((b & 0xf8) == 0xf0):
+		n = 3
+		value = b & 0x07
+	int k = 1
+	while (k <= n):
+		int c = s[i + k] & 255
+		if ((c & 0xc0) != 0x80):
+			cp[0] = b
+			return i + 1
+		value = (value << 6) | (c & 0x3f)
+		k = k + 1
+	cp[0] = value
+	return i + n + 1
+
+
+# Fold one scroll delta (hundredths of a line, or of a point when the
+# device reports precise deltas) into *accum and return the whole
+# notches it completes: +n toward the top of the content, matching
+# GFX_EVENT_SCROLL. A trackpad notch is 24 points; a direction change
+# drops the leftover so reversing responds at once.
+int gfx_cocoa_scroll_notches(int* accum, int delta, int precise):
+	int unit = 100
+	if (precise):
+		unit = 2400
+	if (((accum[0] > 0) && (delta < 0)) || ((accum[0] < 0) && (delta > 0))):
+		accum[0] = 0
+	accum[0] = accum[0] + delta
+	int notches = accum[0] / unit
+	accum[0] = accum[0] - notches * unit
+	return notches
+
+
+# Read an event's locationInWindow into win.mouse_x/mouse_y, flipped to
+# the top-left origin every backend reports.
+void gfx_cocoa_track_mouse(gfx_window* win, int event):
+	int boxed = objc_msg1(event, win.sel_value_for_key, win.key_location)
+	if (boxed == 0):
+		return
+	float64[2] pt
+	objc_msg2(boxed, win.sel_get_value_size, cast(int, &pt[0]), 16)
+	win.mouse_x = cast(int, pt[0])
+	win.mouse_y = cast(int, cast(float64, win.height) - pt[1])
+
+
+void gfx_cocoa_push(gfx_window* win, int kind, int code, int mods):
+	gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, kind, code, win.mouse_x, win.mouse_y, mods)
+
+
+# One key-down event: KEY_DOWN, then a CHAR or NAV per character.
+# Returns 1 when AppKit should also see the event (command-key
+# shortcuts); plain typing is kept from sendEvent:, where no responder
+# takes it and AppKit would beep once per keystroke.
+int gfx_cocoa_key_down(gfx_window* win, int event, int mods):
+	win.last_keycode = objc_msg0(event, win.sel_key_code) & 0xffff
+	gfx_cocoa_push(win, GFX_EVENT_KEY_DOWN, win.last_keycode, mods)
+	if (mods & GFX_MOD_SUPER):
+		return 1
+	int text = objc_msg0(event, win.sel_characters)
+	if (text == 0):
+		return 0
+	char* s = cast(char*, objc_msg0(text, win.sel_utf8_string))
+	if (s == 0):
+		return 0
+	int i = 0
+	while (s[i] != 0):
+		int cp = 0
+		i = gfx_cocoa_utf8_next(s, i, &cp)
+		int nav = gfx_cocoa_nav(cp)
+		if (nav != 0):
+			gfx_cocoa_push(win, GFX_EVENT_NAV, nav, mods)
+		else:
+			int ch = gfx_cocoa_char(cp)
+			if (ch != 0):
+				gfx_cocoa_push(win, GFX_EVENT_CHAR, ch, mods)
+	return 0
+
+
+# Queue the ring events for one NSEvent. Returns 1 when the event should
+# also be forwarded to [NSApp sendEvent:].
+int gfx_cocoa_translate(gfx_window* win, int event):
+	# NSEventType values; keyCode is an unsigned short (a raw HID
+	# scancode, not a character).
+	int event_type = objc_msg0(event, win.sel_type) & 0xffff
+	int mods = gfx_cocoa_mods(objc_msg0(event, win.sel_modifier_flags))
+	if (event_type == 10):
+		return gfx_cocoa_key_down(win, event, mods)
+	if (event_type == 11):
+		gfx_cocoa_push(win, GFX_EVENT_KEY_UP, objc_msg0(event, win.sel_key_code) & 0xffff, mods)
+		return mods & GFX_MOD_SUPER
+	# Mouse buttons: left 1/2, right 3/4, other 25/26 (buttonNumber 2 is
+	# the middle button). Moved 5 and dragged 6/7/27 only track.
+	int button = 0
+	int down = 0
+	if ((event_type == 1) || (event_type == 2)):
+		button = 1
+		down = event_type == 1
+	else if ((event_type == 3) || (event_type == 4)):
+		button = 3
+		down = event_type == 3
+	else if ((event_type == 25) || (event_type == 26)):
+		if (objc_msg0(event, win.sel_button_number) == 2):
+			button = 2
+		down = event_type == 25
+	if ((event_type == 5) || (event_type == 6) || (event_type == 7) || (event_type == 27)):
+		gfx_cocoa_track_mouse(win, event)
+	else if (button != 0):
+		gfx_cocoa_track_mouse(win, event)
+		int bit = 1 << (button - 1)
+		if (down):
+			win.mouse_buttons = win.mouse_buttons | bit
+			gfx_cocoa_push(win, GFX_EVENT_MOUSE_DOWN, button, mods)
+		else:
+			# no bitwise-not operator: -1 - mask == ~mask
+			win.mouse_buttons = win.mouse_buttons & (0 - 1 - bit)
+			gfx_cocoa_push(win, GFX_EVENT_MOUSE_UP, button, mods)
+	else if (event_type == 22):
+		gfx_cocoa_track_mouse(win, event)
+		float64 dy = objc_msg_f64(event, win.sel_scrolling_delta_y)
+		int precise = objc_msg0(event, win.sel_has_precise_deltas) & 0xff
+		int accum = win.scroll_accum
+		int notches = gfx_cocoa_scroll_notches(&accum, cast(int, dy * 100.0), precise)
+		win.scroll_accum = accum
+		while (notches > 0):
+			gfx_cocoa_push(win, GFX_EVENT_SCROLL, 1, mods)
+			notches = notches - 1
+		while (notches < 0):
+			gfx_cocoa_push(win, GFX_EVENT_SCROLL, 0 - 1, mods)
+			notches = notches + 1
+	return 1
+
+
 # Drain pending AppKit events. Returns 1 while the window should stay
 # open (0 once the red button closed it).
 int gfx_window_poll(gfx_window* win):
@@ -174,15 +394,8 @@ int gfx_window_poll(gfx_window* win):
 		int event = objc_msg4(win.app, win.sel_next_event, 0 - 1, win.distant_past, win.run_mode, 1)
 		if (event == 0):
 			break
-		# NSEventTypeKeyDown = 10 / KeyUp = 11; keyCode is an unsigned
-		# short (a raw HID scancode, not a character).
-		int event_type = objc_msg0(event, win.sel_type) & 0xffff
-		if (event_type == 10):
-			win.last_keycode = objc_msg0(event, win.sel_key_code) & 0xffff
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_DOWN, win.last_keycode, 0, 0, gfx_cocoa_mods(objc_msg0(event, win.sel_modifier_flags)))
-		else if (event_type == 11):
-			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_KEY_UP, objc_msg0(event, win.sel_key_code) & 0xffff, 0, 0, gfx_cocoa_mods(objc_msg0(event, win.sel_modifier_flags)))
-		objc_msg1(win.app, win.sel_send_event, event)
+		if (gfx_cocoa_translate(win, event)):
+			objc_msg1(win.app, win.sel_send_event, event)
 	# Track window moves (the GL surface follows the view).
 	objc_msg0(win.glctx, win.sel_update)
 	# isVisible is a BOOL: only the low byte is defined.

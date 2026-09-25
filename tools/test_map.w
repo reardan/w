@@ -2712,6 +2712,8 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		wtest_add(path, c"net_darwin")
 		wtest_add(path, c"graphics_darwin")
 		wtest_add(path, c"pac_darwin")
+		wtest_add(path, c"crash_darwin")
+		wtest_add(path, c"graphics_cocoa_input_darwin")
 		matched = 1
 	if (starts_with(path, c"libs/extras/c_import/") | starts_with(path, c"libs/extras/c_preprocessor/")):
 		wtest_add(path, c"c_import_test")
