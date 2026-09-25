@@ -401,6 +401,84 @@ performance-oriented API.
   path needs no `gpu_sync()`. A program with no kernels (memory API only)
   gets an empty embedded module and the runtime skips `cuModuleLoadData`.
 
+## Execution notes (cuBLAS interop)
+
+Follow-up to issue #28 (workstream C): vendor GEMM as an opt-in fast
+path, fenced off so nothing that does not ask for it changes behavior.
+
+- **Run-time loading, not `c_lib`.** `c_lib "libcublas.so.12"` would add
+  a DT_NEEDED entry and `extern` binds eagerly through GLOB_DAT GOT
+  slots, so on a machine without the CUDA *toolkit* (cuBLAS is not part
+  of the driver) the dynamic loader would refuse to start the program
+  before `main` — no probe could run. `lib/dlcall.w` instead needs only
+  `libdl.so.2` at load time and `dlopen`s libcublas lazily (sonames .12,
+  .13, .11, then the unversioned symlink); a missing library, symbol,
+  GPU, or failing `cublasCreate_v2` makes `cublas_available()` return 0.
+  The program still needs `libcuda.so.1` via `lib/cuda.w`, the floor
+  every GPU program already has.
+- **Calling dlsym pointers.** W function pointers use W's stack
+  convention, so a dlsym result cannot be called directly.
+  `dl_trampoline(sym, nargs, ret32)` writes a tiny x64 stub into an
+  mmap'd page (RW, then mprotect RX) that re-loads W's stack arguments
+  into rdi..r9 plus a 16-byte-aligned stack tail, zeroes al (variadic
+  safe), calls the symbol, and sign-extends a C `int` result;
+  `dl_trampoline_argv` + `dl_call` is the same with the arguments read
+  from an `int*` array. Integer/pointer arguments only — cuBLAS passes
+  alpha/beta by pointer, so that is enough. `tests/dlcall_test.w`
+  (`dlcall_test`, default umbrella via tests_x64, no GPU needed) checks
+  missing-library/symbol probes and register + stack argument order
+  against libc (`strlen`, `abs`, 8- and 9-argument `snprintf`).
+- **Why the argv form exists.** A `type ... = fn(...)` alias with more
+  than 10 parameters overflows a fixed 10-slot buffer in
+  `grammar/type_alias_declaration.w` (heap corruption, SIGSEGV later
+  in the compile; logged in ai_tooling_next_steps.md). The 14-argument
+  gemm entry points therefore go through `dl_call`.
+- **c_import was tried first**: `cublas_v2.h` hits host_defines.h's
+  "UNKNOWN COMPILER" `#error` (no `__GNUC__`); a wrapper header that
+  predefines `__align__(n)` and `CUDARTAPI` imports cleanly (c_import.md,
+  Known limitations). Not used: it would reintroduce DT_NEEDED and a
+  hard-coded toolkit include path.
+- **Context sharing.** cuBLAS runs on the runtime API, which binds to
+  the driver context current on the calling thread and only falls back
+  to the primary context when none is current. `cublas_init` runs
+  `__w_gpu_init()` before `cublasCreate_v2`, so the `cuCtxCreate`
+  context `lib/cuda.w` made current is the one cuBLAS uses: managed
+  (`gpu_alloc`) and device (`gpu_device_alloc`) pointers are valid
+  operands, and cuBLAS work is enqueued on the same legacy default
+  stream as `launch`/`gpu for` — ordering needs no extra syncs and
+  `gpu_sync()` covers it. No `lib/cuda.w` change was needed. Caveat:
+  the context is current only on the thread that initialized the GPU
+  (the main thread); calling from another thread would silently give
+  cuBLAS the primary context, a different address space. Switching
+  lib/cuda.w to `cuDevicePrimaryCtxRetain` + `cuCtxSetCurrent` would
+  make both sides share the primary context on every thread.
+- **Row-major vs column-major.** `cublas_sgemm_rm` / `cublas_dgemm_rm`
+  take cblas-style row-major arguments; a row-major matrix is its own
+  column-major transpose, so C = op(A) op(B) is issued as
+  C^T = op(B)^T op(A)^T: operands, trans flags and leading dimensions
+  swap, and so do m and n. alpha/beta live in a module scratch cell
+  (host pointer mode; cuBLAS reads them before returning).
+- **tensor integration is opt-in.** `lib/tensor.w` gained a null
+  `tensor_matmul_hook` consulted on the GPU path of
+  `tensor_matmul2`/`_tn`/`_nt` (a null check before the tiled launch;
+  tensor.w never imports cuBLAS code). `import lib.tensor_cublas` +
+  `tensor_use_cublas()` installs a cublasSgemm hook — which every
+  `lib/autograd.w` linear layer then uses — and
+  `tensor_disable_cublas()` restores the tiled kernels. Results agree
+  with the tiled kernel to FP32 rounding, not bit for bit (default math
+  mode, no TF32).
+- **Tests and numbers.** `cublas_test` (opt-in, needs GPU + toolkit;
+  `tests/cublas_gpu.w.wbuild`) checks all four trans combinations,
+  alpha/beta, dgemm, and the tensor hook on non-square, non-tile-multiple
+  shapes against a float64 CPU reference (max abs error <= 1e-3), and
+  checks the probe returns 0 under `CUDA_VISIBLE_DEVICES=`.
+  `cublas_compile_test` compiles it in the default umbrella. Informational
+  benchmark on an RTX 4080 SUPER (driver 580, libcublas 12.9),
+  `tensor_matmul2` square products, per call after warm-up:
+  256^3 tiled ~22-25 us vs cuBLAS ~6-7 us (3-3.5x); 1024^3 ~790-870 us
+  (~2.5 TFLOP/s) vs ~76-81 us (~27 TFLOP/s, ~10-11x); 2048^3 ~6.2-7.0 ms
+  (~2.6 TFLOP/s) vs ~0.5 ms (~34 TFLOP/s, ~13x).
+
 ## Open questions
 
 - CI on machines without an NVIDIA GPU: `./wbuild cuda_smoke` needs a driver and a

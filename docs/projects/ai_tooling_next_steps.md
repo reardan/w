@@ -126,6 +126,18 @@ is a queue, not an archive.
   (`int32*` vs `int*`, `char*` vs `int*`), at least where the pointer
   is `&local`; `cast(...)` stays the explicit opt-out.
 
+- **`w check` (and every compile) SIGSEGVs on a `type ... = fn(...)`
+  alias with more than 10 parameters.** Observed 2026-09-24 (cuBLAS
+  workstream, `type g = fn(char*, int, ... 14 params) -> int` for
+  `cublasSgemm_v2`): `grammar/type_alias_declaration.w` mallocs a
+  10-slot parameter buffer and writes past it with no bound check, so
+  the heap corrupts and the compiler dies later in an unrelated
+  `malloc`/`free` (crash site depends on heap layout: 12+ params crash
+  once `lib.lib` is imported, 14 did not crash in a bare file). The
+  stack trace points nowhere near the alias. Direction: grow the buffer
+  (or size it to `extern_max_params()`) and emit a real diagnostic past
+  any cap. Workaround used: lib/dlcall.w's argv-form trampoline
+  (`dl_trampoline_argv` + `dl_call`), one `int*` parameter.
 
 ## Test selection (`bin/wtest`)
 

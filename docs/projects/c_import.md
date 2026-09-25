@@ -154,3 +154,16 @@ function definition in an imported header.
 - A cast of a bare typedef name applied to a literal (`(size_t) 42`)
   parses as a call shape; casts with keyword types or pointer/abstract
   declarators are fully supported.
+- CUDA toolkit headers (`cublas_v2.h` and everything that includes
+  `crt/host_defines.h`) stop at `#error --- !!! UNKNOWN COMPILER ...
+  '__align__'`: the preprocessor predefines no compiler identity
+  (`__GNUC__`), so the header's compiler switch falls through. Defining
+  `__GNUC__` does not help (the GNU branch then expands `__align__(n)`
+  to `struct __attribute__((aligned(n))) name {`, which the parser
+  rejects); a wrapper header that predefines `#define __align__(n)` and
+  `#define CUDARTAPI` before including `cublas_v2.h` imports cleanly
+  (found 2026-09-24, cuBLAS workstream). lib/cublas.w does not use
+  c_import anyway: it must load libcublas at run time (dlopen, see
+  lib/dlcall.w) so a missing toolkit is not a load failure, and a
+  hard-coded `/usr/local/cuda/include` path would break GPU-less
+  compile-only gates.
