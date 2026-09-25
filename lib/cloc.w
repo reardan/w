@@ -359,3 +359,102 @@ int cloc_collect(char* path, list[char*] out):
 		free(names[i])
 		i = i + 1
 	return 0
+
+
+# --- per-argument rows (the grouping tools/wcloc.w reports) ---
+
+struct cloc_row:
+	char* path
+	int is_file
+	cloc_counts* counts
+
+
+# The row a file under directory root is grouped into: root itself for
+# a file directly inside it, else root/<first path component>. file
+# always starts with root + '/' (cloc_collect builds it with
+# path_join).
+char* cloc_group_path(char* root, char* file):
+	int start = strlen(root)
+	if ((start > 0) && (root[start - 1] != '/')):
+		start = start + 1
+	int end = start
+	while ((file[end] != 0) && (file[end] != '/')):
+		end = end + 1
+	if (file[end] == 0):
+		return strclone(root)
+	char* group = malloc(end + 1)
+	int i = 0
+	while (i < end):
+		group[i] = file[i]
+		i = i + 1
+	group[end] = 0
+	return group
+
+
+cloc_row* cloc_new_row(char* path, int is_file):
+	cloc_row* row = new cloc_row
+	row.path = path
+	row.is_file = is_file
+	row.counts = new cloc_counts
+	cloc_counts_clear(row.counts)
+	return row
+
+
+# The display form of a collected path: "wcloc" with no argument (or
+# ".") walks "." and cloc_collect joins every result as "./x"; showing
+# "x" reads the way the tree is usually named.
+char* cloc_display_path(char* path):
+	if ((path[0] == '.') && (path[1] == '/') && (path[2] != 0)):
+		return strclone(path + 2)
+	return strclone(path)
+
+
+# The row in rows[first..] whose path is key, or 0.
+cloc_row* cloc_find_row(list[cloc_row*] rows, int first, char* key):
+	int i = first
+	while (i < rows.length):
+		if (strcmp(rows[i].path, key) == 0):
+			return rows[i]
+		i = i + 1
+	return 0
+
+
+# Count every file of one argument into rows, the way wcloc reports
+# them: one row per file with by_file (or when path is a file), else one
+# row per top-level entry of the directory path. Rows are matched only
+# among those this call adds. Files that cannot be read are appended to
+# unreadable (owned by the caller) and skipped. Returns 0, or -1 when
+# path does not exist.
+int cloc_count_path(char* path, int by_file, list[cloc_row*] rows, list[char*] unreadable):
+	list[char*] files = new list[char*]
+	if (cloc_collect(path, files) != 0):
+		return -1
+	int path_is_file = (files.length == 1) && (strcmp(files[0], path) == 0)
+	int first = rows.length
+	int i = 0
+	while (i < files.length):
+		char* file = files[i]
+		char* raw = 0
+		int is_file = 1
+		if (by_file || path_is_file):
+			raw = strclone(file)
+		else:
+			raw = cloc_group_path(path, file)
+			is_file = 0
+		char* key = cloc_display_path(raw)
+		free(raw)
+		cloc_row* row = cloc_find_row(rows, first, key)
+		if (row == 0):
+			row = cloc_new_row(key, is_file)
+			rows.push(row)
+		else:
+			free(key)
+		cloc_counts counts
+		cloc_counts_clear(&counts)
+		if (cloc_scan_file(file, &counts) == 0):
+			cloc_counts_add(row.counts, &counts)
+			free(file)
+		else:
+			unreadable.push(file)
+		i = i + 1
+	return 0

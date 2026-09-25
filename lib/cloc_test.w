@@ -144,3 +144,33 @@ void test_cloc_unterminated_string():
 	# literal runs into does not add a line.
 	cloc_test_expect(c"x = c\"abc\n", 0, 0, 1, 3)
 	cloc_test_expect(c"x = \"a\nb\n", 0, 0, 2, 3)
+
+
+# cloc_count_path groups a directory's files by top-level entry (the
+# wcloc default), or keeps one row per file with by_file.
+void test_cloc_count_path_rows():
+	list[cloc_row*] rows = new list[cloc_row*]
+	list[char*] unreadable = new list[char*]
+	assert_equal(0, cloc_count_path(c"tests/cloc/sample", 0, rows, unreadable))
+	assert_equal(2, rows.length)
+	assert_strings_equal(c"tests/cloc/sample/sub", rows[0].path)
+	assert_equal(0, rows[0].is_file)
+	assert_equal(3, rows[0].counts.code)
+	assert_strings_equal(c"tests/cloc/sample", rows[1].path)
+	assert_equal(1, rows[1].counts.files)
+	assert_equal(0, unreadable.length)
+
+	list[cloc_row*] files = new list[cloc_row*]
+	assert_equal(0, cloc_count_path(c"tests/cloc/sample", 1, files, unreadable))
+	assert_equal(2, files.length)
+	assert_strings_equal(c"tests/cloc/sample/sub/leaf.w", files[0].path)
+	assert_equal(1, files[0].is_file)
+	assert_equal(-1, cloc_count_path(c"tests/cloc/no_such_dir", 0, files, unreadable))
+	assert_equal(2, files.length)
+
+
+void test_cloc_group_and_display_path():
+	assert_strings_equal(c"root/a", cloc_group_path(c"root", c"root/a/b/c.w"))
+	assert_strings_equal(c"root", cloc_group_path(c"root/", c"root/x.w"))
+	assert_strings_equal(c"lib", cloc_display_path(c"./lib"))
+	assert_strings_equal(c".", cloc_display_path(c"."))

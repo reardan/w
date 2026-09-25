@@ -1,6 +1,7 @@
 /*
 wcloc: count lines of W code (issue #437), a cloc for .w sources built
-on lib/cloc.w.
+on lib/cloc.w (counting, file collection and row grouping; this file
+is arguments and the table/JSON output).
 
 Usage: wcloc [--by-file] [--json] [path ...]
 
@@ -29,12 +30,6 @@ import lib.stream
 import lib.cloc
 
 
-struct wcloc_row:
-	char* path
-	int is_file
-	cloc_counts* counts
-
-
 void wcloc_usage():
 	wstream* err = stderr_writer()
 	stream_write_line(err, c"usage: wcloc [--by-file] [--json] [path ...]")
@@ -51,91 +46,16 @@ void wcloc_error(char* what, char* path):
 	stream_flush(err)
 
 
-# The row a file under directory root is grouped into: root itself for
-# a file directly inside it, else root/<first path component>. file
-# always starts with root + '/' (cloc_collect builds it with
-# path_join).
-char* wcloc_group_path(char* root, char* file):
-	int start = strlen(root)
-	if ((start > 0) && (root[start - 1] != '/')):
-		start = start + 1
-	int end = start
-	while ((file[end] != 0) && (file[end] != '/')):
-		end = end + 1
-	if (file[end] == 0):
-		return strclone(root)
-	char* group = malloc(end + 1)
-	int i = 0
-	while (i < end):
-		group[i] = file[i]
-		i = i + 1
-	group[end] = 0
-	return group
-
-
-wcloc_row* wcloc_new_row(char* path, int is_file):
-	wcloc_row* row = new wcloc_row
-	row.path = path
-	row.is_file = is_file
-	row.counts = new cloc_counts
-	cloc_counts_clear(row.counts)
-	return row
-
-
-# The display form of a collected path: "wcloc" with no argument (or
-# ".") walks "." and cloc_collect joins every result as "./x"; showing
-# "x" reads the way the tree is usually named.
-char* wcloc_display_path(char* path):
-	if ((path[0] == '.') && (path[1] == '/') && (path[2] != 0)):
-		return strclone(path + 2)
-	return strclone(path)
-
-
-# The row in rows[first..] whose path is key, or 0.
-wcloc_row* wcloc_find_row(list[wcloc_row*] rows, int first, char* key):
-	int i = first
-	while (i < rows.length):
-		if (strcmp(rows[i].path, key) == 0):
-			return rows[i]
-		i = i + 1
-	return 0
-
-
 # Count every file of one argument into rows. Returns 0, or 2 when the
 # path does not exist.
-int wcloc_count_path(char* path, int by_file, list[wcloc_row*] rows):
-	list[char*] files = new list[char*]
-	if (cloc_collect(path, files) != 0):
+int wcloc_count_path(char* path, int by_file, list[cloc_row*] rows):
+	list[char*] unreadable = new list[char*]
+	if (cloc_count_path(path, by_file, rows, unreadable) != 0):
 		wcloc_error(c"cannot access", path)
 		return 2
-	int path_is_file = (files.length == 1) && (strcmp(files[0], path) == 0)
-	int first = rows.length
-	int i = 0
-	while (i < files.length):
-		char* file = files[i]
-		char* raw = 0
-		int is_file = 1
-		if (by_file || path_is_file):
-			raw = strclone(file)
-		else:
-			raw = wcloc_group_path(path, file)
-			is_file = 0
-		char* key = wcloc_display_path(raw)
-		free(raw)
-		wcloc_row* row = wcloc_find_row(rows, first, key)
-		if (row == 0):
-			row = wcloc_new_row(key, is_file)
-			rows.push(row)
-		else:
-			free(key)
-		cloc_counts counts
-		cloc_counts_clear(&counts)
-		if (cloc_scan_file(file, &counts) == 0):
-			cloc_counts_add(row.counts, &counts)
-		else:
-			wcloc_error(c"cannot read", file)
+	for char* file in unreadable:
+		wcloc_error(c"cannot read", file)
 		free(file)
-		i = i + 1
 	return 0
 
 
@@ -171,7 +91,7 @@ void wcloc_rule(wstream* out, int width):
 	stream_write_byte(out, 10)
 
 
-void wcloc_print_table(wstream* out, list[wcloc_row*] rows, cloc_counts* total):
+void wcloc_print_table(wstream* out, list[cloc_row*] rows, cloc_counts* total):
 	int path_width = 5
 	int i = 0
 	while (i < rows.length):
@@ -241,7 +161,7 @@ void wcloc_json_row(wstream* out, char* kind, char* path, cloc_counts* c):
 	stream_write_line(out, c"}")
 
 
-void wcloc_print_json(wstream* out, list[wcloc_row*] rows, cloc_counts* total):
+void wcloc_print_json(wstream* out, list[cloc_row*] rows, cloc_counts* total):
 	int i = 0
 	while (i < rows.length):
 		char* kind = c"group"
@@ -274,7 +194,7 @@ int main(int argc, int argv):
 		paths.push(c".")
 
 	int status = 0
-	list[wcloc_row*] rows = new list[wcloc_row*]
+	list[cloc_row*] rows = new list[cloc_row*]
 	i = 0
 	while (i < paths.length):
 		if (wcloc_count_path(paths[i], by_file, rows) != 0):
