@@ -38,36 +38,23 @@ import libs.extras.compress.inflate
 import lib.bytes
 
 
-int GZIP_ERR_BAD_MAGIC():
-	return 201
-
-
-int GZIP_ERR_UNSUPPORTED_METHOD():
-	return 202
-
-
-int GZIP_ERR_BAD_CRC():
-	return 203
-
-
-int GZIP_ERR_BAD_SIZE():
-	return 204
-
-
-int GZIP_ERR_TRUNCATED():
-	return 205
+const int GZIP_ERR_BAD_MAGIC = 201
+const int GZIP_ERR_UNSUPPORTED_METHOD = 202
+const int GZIP_ERR_BAD_CRC = 203
+const int GZIP_ERR_BAD_SIZE = 204
+const int GZIP_ERR_TRUNCATED = 205
 
 
 char* gzip_error_string(int code):
-	if (code == GZIP_ERR_BAD_MAGIC()):
+	if (code == GZIP_ERR_BAD_MAGIC):
 		return c"gzip: bad magic bytes (not a gzip stream)"
-	if (code == GZIP_ERR_UNSUPPORTED_METHOD()):
+	if (code == GZIP_ERR_UNSUPPORTED_METHOD):
 		return c"gzip: unsupported compression method"
-	if (code == GZIP_ERR_BAD_CRC()):
+	if (code == GZIP_ERR_BAD_CRC):
 		return c"gzip: CRC-32 checksum mismatch"
-	if (code == GZIP_ERR_BAD_SIZE()):
+	if (code == GZIP_ERR_BAD_SIZE):
 		return c"gzip: decompressed size does not match the ISIZE trailer"
-	if (code == GZIP_ERR_TRUNCATED()):
+	if (code == GZIP_ERR_TRUNCATED):
 		return c"gzip: truncated stream"
 	return inflate_error_string(code)
 
@@ -131,14 +118,14 @@ gzip_result* gzip_compress(char* data, int length, int level):
 # body) should always pass a real cap.
 wresult[gzip_result*]* gzip_decompress(char* data, int length, int max_output):
 	if (length < 10):
-		return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED())
+		return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED)
 	int id1 = data[0] & 255
 	int id2 = data[1] & 255
 	if ((id1 != 0x1f) || (id2 != 0x8b)):
-		return result_new_error[gzip_result*](GZIP_ERR_BAD_MAGIC())
+		return result_new_error[gzip_result*](GZIP_ERR_BAD_MAGIC)
 	int cm = data[2] & 255
 	if (cm != 8):
-		return result_new_error[gzip_result*](GZIP_ERR_UNSUPPORTED_METHOD())
+		return result_new_error[gzip_result*](GZIP_ERR_UNSUPPORTED_METHOD)
 	int flg = data[3] & 255
 	int f_hcrc = (flg >> 1) & 1
 	int f_extra = (flg >> 2) & 1
@@ -148,31 +135,31 @@ wresult[gzip_result*]* gzip_decompress(char* data, int length, int max_output):
 	int pos = 10
 	if (f_extra):
 		if (pos + 2 > length):
-			return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED())
+			return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED)
 		int xlen = load_le16(data + pos)
 		pos = pos + 2 + xlen
 		if (pos > length):
-			return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED())
+			return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED)
 	if (f_name):
 		while ((pos < length) && ((data[pos] & 255) != 0)):
 			pos = pos + 1
 		if (pos >= length):
-			return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED())
+			return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED)
 		pos = pos + 1
 	if (f_comment):
 		while ((pos < length) && ((data[pos] & 255) != 0)):
 			pos = pos + 1
 		if (pos >= length):
-			return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED())
+			return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED)
 		pos = pos + 1
 	if (f_hcrc):
 		if (pos + 2 > length):
-			return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED())
+			return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED)
 		pos = pos + 2
 	if (pos + 8 > length):
 		# Not even room for the 8-byte trailer after a (possibly empty)
 		# deflate stream.
-		return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED())
+		return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED)
 
 	int consumed = 0
 	wresult[inflate_result*]* ir = inflate_ex(data + pos, length - pos, max_output, &consumed)
@@ -186,17 +173,17 @@ wresult[gzip_result*]* gzip_decompress(char* data, int length, int max_output):
 	int trailer_start = pos + consumed
 	if (trailer_start + 8 > length):
 		inflate_result_free(body)
-		return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED())
+		return result_new_error[gzip_result*](GZIP_ERR_TRUNCATED)
 	int crc = load_le32(data + trailer_start)
 	int isize = load_le32(data + trailer_start + 4)
 	int actual_crc = crc32_of(body.data, body.length)
 	if (actual_crc != crc):
 		inflate_result_free(body)
-		return result_new_error[gzip_result*](GZIP_ERR_BAD_CRC())
+		return result_new_error[gzip_result*](GZIP_ERR_BAD_CRC)
 	int actual_size = body.length & crc32_mask32()
 	if (actual_size != isize):
 		inflate_result_free(body)
-		return result_new_error[gzip_result*](GZIP_ERR_BAD_SIZE())
+		return result_new_error[gzip_result*](GZIP_ERR_BAD_SIZE)
 
 	gzip_result* r = new gzip_result(body.data, body.length)
 	free(body)

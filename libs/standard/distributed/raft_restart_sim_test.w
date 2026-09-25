@@ -28,7 +28,7 @@ void rc_free_msgs(list[raft_msg*] out):
 
 raft_msg* rc_make_vote_req(int from, int to, int term, int last_index, int last_term):
 	u64* t = u64_new_int(term)
-	raft_msg* m = raft_msg_new(raft_msg_vote_req(), from, to, t)
+	raft_msg* m = raft_msg_new(raft_msg_vote_req, from, to, t)
 	u64_free(t)
 	u64_set_int(m.last_log_index, last_index)
 	u64_set_int(m.last_log_term, last_term)
@@ -79,7 +79,7 @@ void test_restart_rejoin_converges():
 	rsim_rebuild(c, victim, 900 + victim)
 	assert_equal(2, raft_log_length(c.nodes[victim - 1]))
 	assert_equal(0, raft_commit_int(c.nodes[victim - 1]))
-	assert_equal(raft_follower(), raft_state(c.nodes[victim - 1]))
+	assert_equal(raft_follower, raft_state(c.nodes[victim - 1]))
 	rsim_run(c, 100)
 	# all three logs identical: [a, b, c] committed everywhere, one
 	# leader at the highest term
@@ -181,7 +181,7 @@ void test_restarted_leader_steps_down():
 	rsim_crash(c, old_lid)
 	rsim_rebuild(c, old_lid, 700 + old_lid)
 	rsim_partition_from_all(c, old_lid)
-	assert_equal(raft_follower(), raft_state(c.nodes[old_lid - 1]))
+	assert_equal(raft_follower, raft_state(c.nodes[old_lid - 1]))
 	assert_equal(old_term, raft_term_int(c.nodes[old_lid - 1]))
 	assert_equal(1, raft_log_length(c.nodes[old_lid - 1]))
 	# the connected pair elects a fresh leader at a higher term (the
@@ -207,7 +207,7 @@ void test_restarted_leader_steps_down():
 	rsim_heal_all(c)
 	rsim_run(c, 300)
 	# the ex-leader ends a follower; every log is [x, y], committed
-	assert_equal(raft_follower(), raft_state(c.nodes[old_lid - 1]))
+	assert_equal(raft_follower, raft_state(c.nodes[old_lid - 1]))
 	rsim_assert_logs_identical(c)
 	i = 0
 	while (i < 3):

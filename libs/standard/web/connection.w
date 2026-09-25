@@ -91,30 +91,20 @@ struct ConnectionContext:
 	int error_timeout
 
 
-int connection_error_none():
-	return 0
-
-
-int connection_error_recv():
-	return 1
-
-
-int connection_error_send():
-	return 2
-
-
-int connection_error_timeout():
-	return 3
+const int connection_error_none = 0
+const int connection_error_recv = 1
+const int connection_error_send = 2
+const int connection_error_timeout = 3
 
 
 char* connection_error_string(int code):
-	if (code == connection_error_none()):
+	if (code == connection_error_none):
 		return c""
-	if (code == connection_error_recv()):
+	if (code == connection_error_recv):
 		return c"receive failed"
-	if (code == connection_error_send()):
+	if (code == connection_error_send):
 		return c"send failed"
-	if (code == connection_error_timeout()):
+	if (code == connection_error_timeout):
 		return c"timed out"
 	return c"unknown error"
 
@@ -126,8 +116,7 @@ char* connection_error_string(int code):
 # import (http_server.w, which is HTTP-specific, reuses http_client.w's
 # http_max_header_bytes()/http_max_chunk_size()/http_max_body_bytes()
 # directly for the whole-header-block and body caps).
-int connection_max_line_bytes():
-	return 8192
+const int connection_max_line_bytes = 8192
 
 
 # fd must already be a connected/accepted socket with SO_RCVTIMEO/
@@ -149,9 +138,9 @@ ConnectionContext* connection_context_new(int fd, int timeout_ms, tls_conn* tls)
 	c.tls_cfg = 0
 	c.tls_insecure = 0
 	c.client_waits = 0
-	c.error_recv = connection_error_recv()
-	c.error_send = connection_error_send()
-	c.error_timeout = connection_error_timeout()
+	c.error_recv = connection_error_recv
+	c.error_send = connection_error_send
+	c.error_timeout = connection_error_timeout
 	if (tls != 0):
 		tls.io_timeout_ms = timeout_ms
 	return c
@@ -250,7 +239,7 @@ int connection_context_fill(ConnectionContext* c):
 		if (count == 0):
 			r.eof = 1
 			return 0
-		int failed = connection_context_wait(c, count, poll_in(), c.error_recv)
+		int failed = connection_context_wait(c, count, poll_in, c.error_recv)
 		if (failed != 0):
 			c.error = failed
 			return (-1)
@@ -315,7 +304,7 @@ int connection_context_read_line(ConnectionContext* c, string_builder* line, int
 					line.length = line.length - 1
 					line.data[line.length] = 0
 			return 1
-		if (line.length >= connection_max_line_bytes()):
+		if (line.length >= connection_max_line_bytes):
 			c.error = oversize_error
 			return (-1)
 		string_append_char(line, b)
@@ -352,7 +341,7 @@ int connection_context_write_all(ConnectionContext* c, char* data, int n):
 			c.error = c.error_send
 			return 0
 		else:
-			int failed = connection_context_wait(c, count, poll_out(), c.error_send)
+			int failed = connection_context_wait(c, count, poll_out, c.error_send)
 			if (failed != 0):
 				c.error = failed
 				return 0

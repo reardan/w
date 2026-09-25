@@ -261,9 +261,9 @@ void test_descriptor_and_wresult_api():
 	assert_equal(11, d.field_count)
 	# Fields are sorted by wire number.
 	assert_equal(1, d.fields[0].number)
-	assert_equal(PB_KIND_STRING(), d.fields[0].kind)
+	assert_equal(PB_KIND_STRING, d.fields[0].kind)
 	assert_equal(13, d.fields[10].number)
-	assert_equal(PB_KIND_REPEATED(), d.fields[10].kind)
+	assert_equal(PB_KIND_REPEATED, d.fields[10].kind)
 	assert_equal(0, d.struct_size % __word_size__)
 	# The same descriptor blob is reused per type.
 	assert_equal(cast(int, d), cast(int, proto_descriptor(pbm_person)))
@@ -274,7 +274,7 @@ void test_descriptor_and_wresult_api():
 		buf[i] = 0
 	wresult[char*]* r = pb_decode(d1, c"\x08", 1, buf)
 	assert_equal(0, result_is_ok[char*](r))
-	assert_equal(PB_ERR_TRUNCATED(), result_code[char*](r))
+	assert_equal(PB_ERR_TRUNCATED, result_code[char*](r))
 	result_free[char*](r)
 	free(buf)
 

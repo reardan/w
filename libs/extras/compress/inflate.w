@@ -77,48 +77,34 @@ import structures.string
 import lib.mem
 
 
-int INFLATE_OK():
-	return 0
-
-
-int INFLATE_ERR_BAD_BTYPE():
-	return 1
-
-
-int INFLATE_ERR_BAD_STORED_LEN():
-	return 2
+const int INFLATE_OK = 0
+const int INFLATE_ERR_BAD_BTYPE = 1
+const int INFLATE_ERR_BAD_STORED_LEN = 2
 
 
 int INFLATE_ERR_BAD_HUFFMAN():
 	return 3
 
 
-int INFLATE_ERR_BAD_DISTANCE():
-	return 4
-
-
-int INFLATE_ERR_TRUNCATED():
-	return 5
-
-
-int INFLATE_ERR_TOO_LARGE():
-	return 6
+const int INFLATE_ERR_BAD_DISTANCE = 4
+const int INFLATE_ERR_TRUNCATED = 5
+const int INFLATE_ERR_TOO_LARGE = 6
 
 
 char* inflate_error_string(int code):
-	if (code == INFLATE_OK()):
+	if (code == INFLATE_OK):
 		return c"inflate: ok"
-	if (code == INFLATE_ERR_BAD_BTYPE()):
+	if (code == INFLATE_ERR_BAD_BTYPE):
 		return c"inflate: reserved block type (BTYPE == 11)"
-	if (code == INFLATE_ERR_BAD_STORED_LEN()):
+	if (code == INFLATE_ERR_BAD_STORED_LEN):
 		return c"inflate: stored block NLEN is not the one's complement of LEN"
 	if (code == INFLATE_ERR_BAD_HUFFMAN()):
 		return c"inflate: over-subscribed, incomplete, or invalid Huffman code"
-	if (code == INFLATE_ERR_BAD_DISTANCE()):
+	if (code == INFLATE_ERR_BAD_DISTANCE):
 		return c"inflate: back-reference distance points before the start of output"
-	if (code == INFLATE_ERR_TRUNCATED()):
+	if (code == INFLATE_ERR_TRUNCATED):
 		return c"inflate: input ended mid-block"
-	if (code == INFLATE_ERR_TOO_LARGE()):
+	if (code == INFLATE_ERR_TOO_LARGE):
 		return c"inflate: output exceeded the caller's max_output cap"
 	return c"inflate: unknown error"
 
@@ -143,13 +129,12 @@ struct whuff:
 	int* symbol
 
 
-int wh_maxbits():
-	return 15
+const int wh_maxbits = 15
 
 
 whuff* wh_new(int n):
 	whuff* h = new whuff
-	h.count = cast(int*, malloc((wh_maxbits() + 1) * __word_size__))
+	h.count = cast(int*, malloc((wh_maxbits + 1) * __word_size__))
 	h.symbol = cast(int*, malloc(n * __word_size__))
 	return h
 
@@ -166,7 +151,7 @@ void wh_free(whuff* h):
 # case the caller checks separately; see wh_build).
 int wh_construct(whuff* h, int* lengths, int n):
 	int len = 0
-	while (len <= wh_maxbits()):
+	while (len <= wh_maxbits):
 		h.count[len] = 0
 		len = len + 1
 	int symbol = 0
@@ -178,16 +163,16 @@ int wh_construct(whuff* h, int* lengths, int n):
 
 	int left = 1
 	len = 1
-	while (len <= wh_maxbits()):
+	while (len <= wh_maxbits):
 		left = left * 2 - h.count[len]
 		if (left < 0):
 			return left
 		len = len + 1
 
-	int* offs = cast(int*, malloc((wh_maxbits() + 1) * __word_size__))
+	int* offs = cast(int*, malloc((wh_maxbits + 1) * __word_size__))
 	offs[1] = 0
 	len = 1
-	while (len < wh_maxbits()):
+	while (len < wh_maxbits):
 		offs[len + 1] = offs[len] + h.count[len]
 		len = len + 1
 	symbol = 0
@@ -221,7 +206,7 @@ int inf_get_bit(winflate_ctx* c):
 	if (c.status != 0):
 		return 0
 	if (c.byte_pos >= c.in_length):
-		c.status = INFLATE_ERR_TRUNCATED()
+		c.status = INFLATE_ERR_TRUNCATED
 		return 0
 	int b = shr(c.in_data[c.byte_pos] & 255, c.bit_pos) & 1
 	c.bit_pos = c.bit_pos + 1
@@ -260,7 +245,7 @@ int wh_decode(winflate_ctx* c, whuff* h):
 	int first = 0
 	int index = 0
 	int len = 1
-	while (len <= wh_maxbits()):
+	while (len <= wh_maxbits):
 		code = code | inf_get_bit(c)
 		if (c.status != 0):
 			return -1
@@ -308,7 +293,7 @@ void inf_emit_byte(winflate_ctx* c, int b):
 	if (c.status != 0):
 		return
 	if ((c.max_output > 0) && (c.out.length - c.base >= c.max_output)):
-		c.status = INFLATE_ERR_TOO_LARGE()
+		c.status = INFLATE_ERR_TOO_LARGE
 		return
 	string_append_char(c.out, b)
 
@@ -322,7 +307,7 @@ void inf_copy_match(winflate_ctx* c, int length, int distance):
 	if (c.status != 0):
 		return
 	if ((distance <= 0) || (distance > c.out.length)):
-		c.status = INFLATE_ERR_BAD_DISTANCE()
+		c.status = INFLATE_ERR_BAD_DISTANCE
 		return
 	for i in range(length):
 		if (c.status != 0):
@@ -464,19 +449,19 @@ void inf_stored_block(winflate_ctx* c):
 	if (c.status != 0):
 		return
 	if (c.byte_pos + 4 > c.in_length):
-		c.status = INFLATE_ERR_TRUNCATED()
+		c.status = INFLATE_ERR_TRUNCATED
 		return
 	int len = (c.in_data[c.byte_pos] & 255) | ((c.in_data[c.byte_pos + 1] & 255) << 8)
 	int nlen = (c.in_data[c.byte_pos + 2] & 255) | ((c.in_data[c.byte_pos + 3] & 255) << 8)
 	c.byte_pos = c.byte_pos + 4
 	if ((len ^ 65535) != nlen):
-		c.status = INFLATE_ERR_BAD_STORED_LEN()
+		c.status = INFLATE_ERR_BAD_STORED_LEN
 		return
 	if (c.byte_pos + len > c.in_length):
-		c.status = INFLATE_ERR_TRUNCATED()
+		c.status = INFLATE_ERR_TRUNCATED
 		return
 	if ((c.max_output > 0) && (c.out.length - c.base + len > c.max_output)):
-		c.status = INFLATE_ERR_TOO_LARGE()
+		c.status = INFLATE_ERR_TOO_LARGE
 		return
 	string_append_bytes(c.out, &c.in_data[c.byte_pos], len)
 	c.byte_pos = c.byte_pos + len
@@ -648,7 +633,7 @@ void inf_run_blocks(winflate_ctx* c, int sync):
 		else if (btype == 2):
 			inf_dynamic_block(c)
 		else:
-			c.status = INFLATE_ERR_BAD_BTYPE()
+			c.status = INFLATE_ERR_BAD_BTYPE
 
 
 winflate_ctx* inf_ctx_new(char* data, int length, int max_output):

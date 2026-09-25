@@ -68,8 +68,7 @@ int rt_default_max_pending():
 	return 1 << 18
 
 
-int rt_scratch_size():
-	return 4096
+const int rt_scratch_size = 4096
 
 
 int rt_loopback():
@@ -150,7 +149,7 @@ raft_tcp* raft_tcp_new(int self_id, int port):
 	t.peers = new list[rt_peer*]
 	t.conns = new list[rt_conn*]
 	t.inbox = new list[raft_msg*]
-	t.scratch = malloc(rt_scratch_size())
+	t.scratch = malloc(rt_scratch_size)
 	t.max_pending = rt_default_max_pending()
 	t.dropped = 0
 	return t
@@ -244,12 +243,12 @@ void rt_peer_note_sent(rt_peer* p, int n):
 
 # Writes as much pending data as the socket accepts right now.
 void rt_peer_flush(rt_peer* p):
-	int r = poll_single(p.fd, poll_out(), 0)
+	int r = poll_single(p.fd, poll_out, 0)
 	if (r <= 0):
 		# 0: still connecting or kernel buffer full; <0: transient
 		# poll failure. Either way retry on a later pump.
 		return
-	if ((r & (poll_err() | poll_hup() | poll_nval())) != 0):
+	if ((r & (poll_err | poll_hup | poll_nval)) != 0):
 		rt_peer_disconnect(p)
 		return
 	int n = socket_send(p.fd, p.out.data, p.out.length, msg_nosignal())
@@ -349,7 +348,7 @@ int rt_conn_extract(raft_tcp* t, rt_conn* c):
 # when the connection should be closed (EOF, error, protocol error).
 int rt_conn_read(raft_tcp* t, rt_conn* c):
 	while (1):
-		int n = socket_recv(c.fd, t.scratch, rt_scratch_size(), 0)
+		int n = socket_recv(c.fd, t.scratch, rt_scratch_size, 0)
 		if (n > 0):
 			string_append_bytes(c.acc, t.scratch, n)
 		else:

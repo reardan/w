@@ -395,7 +395,7 @@ tls_config* ftps_client_config():
 void test_ftps_explicit_session():
 	ftps_fx* fx = ftps_start(0, 1, 0, 1)
 	tls_config* cfg = ftps_client_config()
-	ftp_client* c = ftp_connect_tls(c"127.0.0.1", fx.port, ftp_security_explicit(), cfg, 20000)
+	ftp_client* c = ftp_connect_tls(c"127.0.0.1", fx.port, ftp_security_explicit, cfg, 20000)
 	assert_equal(0, c.error)
 	asserts(c"control not encrypted", c.tls != 0)
 	assert_equal(1, ftp_login(c, c"alice", c"secret"))
@@ -426,7 +426,7 @@ void test_ftps_explicit_session():
 void test_ftps_implicit_session():
 	ftps_fx* fx = ftps_start(1, 0, 0, 0)
 	tls_config* cfg = ftps_client_config()
-	ftp_client* c = ftp_connect_tls(c"127.0.0.1", fx.port, ftp_security_implicit(), cfg, 20000)
+	ftp_client* c = ftp_connect_tls(c"127.0.0.1", fx.port, ftp_security_implicit, cfg, 20000)
 	assert_equal(0, c.error)
 	assert_equal(220, c.reply_code)
 	asserts(c"control not encrypted", c.tls != 0)
@@ -460,8 +460,8 @@ void test_ftps_implicit_session():
 void test_ftps_auth_refused_is_fatal():
 	ftps_fx* fx = ftps_start(0, 0, 0, 0)
 	tls_config* cfg = ftps_client_config()
-	ftp_client* c = ftp_connect_tls(c"127.0.0.1", fx.port, ftp_security_explicit(), cfg, 20000)
-	assert_equal(ftp_error_tls_refused(), c.error)
+	ftp_client* c = ftp_connect_tls(c"127.0.0.1", fx.port, ftp_security_explicit, cfg, 20000)
+	assert_equal(ftp_error_tls_refused, c.error)
 	assert_equal(534, c.reply_code)
 	asserts(c"tls set", c.tls == 0)
 	# TLS was requested: the session cannot continue in plaintext.
@@ -478,7 +478,7 @@ void test_ftps_auth_refused_plain_session():
 	ftp_client* c = ftp_connect(c"127.0.0.1", fx.port, 20000)
 	assert_equal(0, c.error)
 	assert_equal(0, ftp_auth_tls(c, 0))
-	assert_equal(ftp_error_tls_refused(), c.error)
+	assert_equal(ftp_error_tls_refused, c.error)
 	# PROT P without TLS fails locally; nothing is sent.
 	assert_equal(0, ftp_prot(c, 1))
 	assert_equal(ftp_error_tls(), c.error)
@@ -495,7 +495,7 @@ void test_ftps_auth_refused_plain_session():
 void test_ftps_plaintext_injection_rejected():
 	ftps_fx* fx = ftps_start(0, 1, 1, 0)
 	tls_config* cfg = ftps_client_config()
-	ftp_client* c = ftp_connect_tls(c"127.0.0.1", fx.port, ftp_security_explicit(), cfg, 20000)
+	ftp_client* c = ftp_connect_tls(c"127.0.0.1", fx.port, ftp_security_explicit, cfg, 20000)
 	assert_equal(ftp_error_protocol(), c.error)
 	asserts(c"tls set", c.tls == 0)
 	assert_equal(0, ftp_login(c, c"alice", c"secret"))
@@ -510,7 +510,7 @@ void test_ftps_default_config_validates():
 	# cfg 0: system trust store + hostname check. The self-signed
 	# fixture cert (for test.w.example, not 127.0.0.1) must be refused.
 	ftps_fx* fx = ftps_start(0, 1, 0, 0)
-	ftp_client* c = ftp_connect_tls(c"127.0.0.1", fx.port, ftp_security_explicit(), 0, 20000)
+	ftp_client* c = ftp_connect_tls(c"127.0.0.1", fx.port, ftp_security_explicit, 0, 20000)
 	assert_equal(ftp_error_tls(), c.error)
 	asserts(c"no TLS reason", strlen(ftp_tls_error(c)) > 0)
 	assert_equal(0, ftp_login(c, c"alice", c"secret"))
@@ -544,7 +544,7 @@ void test_ftps_manual_auth_tls():
 void test_ftps_truncated_download():
 	ftps_fx* fx = ftps_start(1, 0, 0, 1)
 	tls_config* cfg = ftps_client_config()
-	ftp_client* c = ftp_connect_tls(c"127.0.0.1", fx.port, ftp_security_implicit(), cfg, 20000)
+	ftp_client* c = ftp_connect_tls(c"127.0.0.1", fx.port, ftp_security_implicit, cfg, 20000)
 	assert_equal(1, ftp_login(c, c"alice", c"secret"))
 	int n = 0
 	# The data connection closes without close_notify: not a clean EOF.
@@ -576,7 +576,7 @@ void test_ftps_insecure_login_policy():
 	# A non-loopback peer over plaintext: credentials are withheld.
 	ftp_client* c = ftp_attach(fds[0], ip4_from_string(c"192.0.2.1"), 2000)
 	assert_equal(0, ftp_login(c, c"alice", c"secret"))
-	assert_equal(ftp_error_insecure(), c.error)
+	assert_equal(ftp_error_insecure, c.error)
 	# The anonymous convention is not a secret and is allowed.
 	net_test_send_all(fds[1], c"230 ok\x0d\x0a", 8)
 	assert_equal(1, ftp_login(c, c"Anonymous", c"guest@"))

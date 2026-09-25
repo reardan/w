@@ -530,7 +530,7 @@ wresult[char*]* index_walk(wcas* s, char* dir, char* prefix, list[char*] ignore,
 							e.blob_id = strclone(child_id)
 							out_entries.push(e)
 				if (err == 0):
-					int mode = TREE_MODE_DIR()
+					int mode = TREE_MODE_DIR
 					if (kind == 8):
 						mode = TREE_MODE_FILE()
 					err = tree_add(t, entry_name, mode, child_id)

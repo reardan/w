@@ -107,7 +107,7 @@ void dbg_disas_annotate(int addr):
 # entry address. The compiler calls through 'mov eax,fn ; call eax', so
 # this is what makes call sites readable in the listing.
 int dbg_disas_imm_function(asm_operand* op):
-	if (op.kind != ASM_OP_IMM()):
+	if (op.kind != ASM_OP_IMM):
 		return 0
 	if (dbg_disas_symbols == 0):
 		return 0

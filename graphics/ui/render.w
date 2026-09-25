@@ -35,22 +35,19 @@ import graphics.ui.font
 # through realloc rather than dropping geometry — a scrolled list or an
 # edit surface can exceed any fixed cap, and silently losing its tail is
 # the wrong failure mode for content the user is looking at.
-int ui_render_max_verts():
-	return 8192
+const int ui_render_max_verts = 8192
 
 
 # Initial vertices for the two overlay layers: popup geometry is a
 # small fraction of a frame's, and these batches double on demand like
 # the base one.
-int ui_render_overlay_verts():
-	return 1024
+const int ui_render_overlay_verts = 1024
 
 
 # Clip-stack depth, per layer. Deep enough for a scroll region inside a
 # table inside a modal, with room to spare; pushes past it are dropped
 # rather than growing the renderer struct without bound.
-int ui_render_clip_depth():
-	return 8
+const int ui_render_clip_depth = 8
 
 
 # Draw layers, painted in this order by ui_render_end. One flag and one
@@ -63,8 +60,7 @@ enum ui_layer:
 	UI_LAYER_TOP = 2
 
 
-int ui_render_layer_count():
-	return 3
+const int ui_render_layer_count = 3
 
 
 # How far ui_draw_shadow reaches outside the rect it sits behind: the
@@ -125,15 +121,15 @@ void ui_render_init_headless(ui_renderer* r):
 	r.a_pos = 0
 	r.a_uv = 0
 	r.a_color = 0
-	r.layer_verts[UI_LAYER_BASE] = cast(float32*, malloc(ui_render_max_verts() * 32))
-	r.layer_vert_cap[UI_LAYER_BASE] = ui_render_max_verts()
+	r.layer_verts[UI_LAYER_BASE] = cast(float32*, malloc(ui_render_max_verts * 32))
+	r.layer_vert_cap[UI_LAYER_BASE] = ui_render_max_verts
 	int i = UI_LAYER_POPUP
-	while (i < ui_render_layer_count()):
-		r.layer_verts[i] = cast(float32*, malloc(ui_render_overlay_verts() * 32))
-		r.layer_vert_cap[i] = ui_render_overlay_verts()
+	while (i < ui_render_layer_count):
+		r.layer_verts[i] = cast(float32*, malloc(ui_render_overlay_verts * 32))
+		r.layer_vert_cap[i] = ui_render_overlay_verts
 		i = i + 1
 	i = 0
-	while (i < ui_render_layer_count()):
+	while (i < ui_render_layer_count):
 		r.layer_vert_count[i] = 0
 		r.clip_depth[i] = 0
 		i = i + 1
@@ -158,7 +154,7 @@ void ui_render_sync_atlas(ui_renderer* r):
 	if (old_rows != rows):
 		float32 k = cast(float32, old_rows) / cast(float32, rows)
 		int layer = 0
-		while (layer < ui_render_layer_count()):
+		while (layer < ui_render_layer_count):
 			float32* batch = r.layer_verts[layer]
 			int i = 0
 			while (i < r.layer_vert_count[layer]):
@@ -223,7 +219,7 @@ int ui_render_init(ui_renderer* r):
 # the current window size.
 void ui_render_begin(ui_renderer* r, int width, int height):
 	int i = 0
-	while (i < ui_render_layer_count()):
+	while (i < ui_render_layer_count):
 		r.layer_vert_count[i] = 0
 		r.clip_depth[i] = 0
 		i = i + 1
@@ -246,7 +242,7 @@ void ui_render_begin(ui_renderer* r, int width, int height):
 # Route subsequent geometry to a layer. Out-of-range layers are
 # ignored rather than corrupting the batch pointers.
 void ui_render_layer(ui_renderer* r, int layer):
-	if ((layer < 0) || (layer >= ui_render_layer_count())):
+	if ((layer < 0) || (layer >= ui_render_layer_count)):
 		return
 	r.layer = layer
 
@@ -266,7 +262,7 @@ ui_rect ui_clip_current(ui_renderer* r):
 # no-op, so a dropped push and its matching pop still balance.
 void ui_clip_push(ui_renderer* r, ui_rect rect):
 	int depth = r.clip_depth[r.layer]
-	if (depth >= ui_render_clip_depth()):
+	if (depth >= ui_render_clip_depth):
 		return
 	r.clip_stack[r.layer * 8 + depth] = ui_rect_intersect(ui_clip_current(r), rect)
 	r.clip_depth[r.layer] = depth + 1
@@ -382,7 +378,7 @@ float32 ui_render_v(int y):
 
 # Solid fill: sample the center of the solid-white mask.
 void ui_render_rect(ui_renderer* r, ui_rect rect, ui_color color):
-	ui_glyph m = ui_font_mask(ui_mask_white())
+	ui_glyph m = ui_font_mask(ui_mask_white)
 	float32 u = ui_render_u(m.x * 2 + m.w) * 0.5
 	float32 v = ui_render_v(m.y * 2 + m.h) * 0.5
 	ui_render_quad(r, rect, u, v, u, v, color)
@@ -442,40 +438,40 @@ void ui_draw_rrect(ui_renderer* r, ui_rect rect, float32 radius, ui_color color)
 		return
 	float32 x1 = rect.x + rect.w
 	float32 y1 = rect.y + rect.h
-	ui_render_mask(r, ui_rect_new(rect.x, rect.y, radius, radius), ui_mask_corner(), 0, 0, color)
-	ui_render_mask(r, ui_rect_new(x1 - radius, rect.y, radius, radius), ui_mask_corner(), 1, 0, color)
-	ui_render_mask(r, ui_rect_new(rect.x, y1 - radius, radius, radius), ui_mask_corner(), 0, 1, color)
-	ui_render_mask(r, ui_rect_new(x1 - radius, y1 - radius, radius, radius), ui_mask_corner(), 1, 1, color)
+	ui_render_mask(r, ui_rect_new(rect.x, rect.y, radius, radius), ui_mask_corner, 0, 0, color)
+	ui_render_mask(r, ui_rect_new(x1 - radius, rect.y, radius, radius), ui_mask_corner, 1, 0, color)
+	ui_render_mask(r, ui_rect_new(rect.x, y1 - radius, radius, radius), ui_mask_corner, 0, 1, color)
+	ui_render_mask(r, ui_rect_new(x1 - radius, y1 - radius, radius, radius), ui_mask_corner, 1, 1, color)
 	ui_render_rect(r, ui_rect_new(rect.x + radius, rect.y, rect.w - radius * 2.0, rect.h), color)
 	ui_render_rect(r, ui_rect_new(rect.x, rect.y + radius, radius, rect.h - radius * 2.0), color)
 	ui_render_rect(r, ui_rect_new(x1 - radius, rect.y + radius, radius, rect.h - radius * 2.0), color)
 
 
 void ui_draw_disc(ui_renderer* r, ui_rect rect, ui_color color):
-	ui_render_mask(r, rect, ui_mask_disc(), 0, 0, color)
+	ui_render_mask(r, rect, ui_mask_disc, 0, 0, color)
 
 
 void ui_draw_ring(ui_renderer* r, ui_rect rect, ui_color color):
-	ui_render_mask(r, rect, ui_mask_ring(), 0, 0, color)
+	ui_render_mask(r, rect, ui_mask_ring, 0, 0, color)
 
 
 void ui_draw_check(ui_renderer* r, ui_rect rect, ui_color color):
-	ui_render_mask(r, rect, ui_mask_check(), 0, 0, color)
+	ui_render_mask(r, rect, ui_mask_check, 0, 0, color)
 
 
 void ui_draw_chevron(ui_renderer* r, ui_rect rect, ui_color color):
-	ui_render_mask(r, rect, ui_mask_chevron(), 0, 0, color)
+	ui_render_mask(r, rect, ui_mask_chevron, 0, 0, color)
 
 
 # The tree view's disclosure marker: right when collapsed, and the
 # plain down chevron above when expanded.
 void ui_draw_chevron_right(ui_renderer* r, ui_rect rect, ui_color color):
-	ui_render_mask(r, rect, ui_mask_chevron_right(), 0, 0, color)
+	ui_render_mask(r, rect, ui_mask_chevron_right, 0, 0, color)
 
 
 # The tab strip's close affordance.
 void ui_draw_cross(ui_renderer* r, ui_rect rect, ui_color color):
-	ui_render_mask(r, rect, ui_mask_cross(), 0, 0, color)
+	ui_render_mask(r, rect, ui_mask_cross, 0, 0, color)
 
 
 # Soft drop shadow behind rect: a 9-patch of the baked shadow corner
@@ -483,7 +479,7 @@ void ui_draw_cross(ui_renderer* r, ui_rect rect, ui_color color):
 # sample the tile's last row/column (the straight falloff profile);
 # the center samples the fully-dark inner texel. 9 quads total.
 void ui_draw_shadow(ui_renderer* r, ui_rect rect, ui_color color):
-	ui_glyph m = ui_font_mask(ui_mask_shadow())
+	ui_glyph m = ui_font_mask(ui_mask_shadow)
 	float32 grow = 10.0
 	ui_rect s = ui_rect_new(rect.x - grow, rect.y - grow + 2.0, rect.w + grow * 2.0, rect.h + grow * 2.0)
 	float32 cs = 24.0
@@ -539,14 +535,14 @@ void ui_render_end(ui_renderer* r):
 		return
 	glUseProgram(r.program)
 	int i = 0
-	while (i < ui_render_layer_count()):
+	while (i < ui_render_layer_count):
 		ui_render_draw_batch(r, r.layer_verts[i], r.layer_vert_count[i])
 		i = i + 1
 
 
 void ui_render_destroy(ui_renderer* r):
 	int i = 0
-	while (i < ui_render_layer_count()):
+	while (i < ui_render_layer_count):
 		free(cast(char*, r.layer_verts[i]))
 		r.layer_verts[i] = 0
 		r.layer_vert_count[i] = 0

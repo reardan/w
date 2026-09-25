@@ -25,8 +25,7 @@ struct wstream:
 	int writable
 
 
-int STREAM_DEFAULT_CAPACITY():
-	return 4096
+const int STREAM_DEFAULT_CAPACITY = 4096
 
 
 wstream* stream_reader_sized(int fd, int capacity):
@@ -44,7 +43,7 @@ wstream* stream_reader_sized(int fd, int capacity):
 
 
 wstream* stream_reader(int fd):
-	return stream_reader_sized(fd, STREAM_DEFAULT_CAPACITY())
+	return stream_reader_sized(fd, STREAM_DEFAULT_CAPACITY)
 
 
 wstream* stream_writer_sized(int fd, int capacity):
@@ -54,7 +53,7 @@ wstream* stream_writer_sized(int fd, int capacity):
 
 
 wstream* stream_writer(int fd):
-	return stream_writer_sized(fd, STREAM_DEFAULT_CAPACITY())
+	return stream_writer_sized(fd, STREAM_DEFAULT_CAPACITY)
 
 
 # Returns 0 when the file cannot be opened for reading.

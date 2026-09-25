@@ -332,8 +332,7 @@ int at_fdcwd():
 	return 0 - 100
 
 
-int at_symlink_nofollow():
-	return 256
+const int at_symlink_nofollow = 256
 
 
 int statx(char* path, int flags, int mask, char* buf):

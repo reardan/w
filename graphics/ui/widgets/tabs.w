@@ -85,7 +85,7 @@ void ui_tabs_begin(ui_context* ctx, ui_rect area, ui_tab_state* st, int32* activ
 	if (ctx.input.scroll_y != 0):
 		if (ui_rect_contains(area, cast(float32, ctx.input.scroll_at_x), cast(float32, ctx.input.scroll_at_y))):
 			if (st.content_w > area.w):
-				st.offset_x = st.offset_x - cast(float32, ctx.input.scroll_y * ui_scroll_notch())
+				st.offset_x = st.offset_x - cast(float32, ctx.input.scroll_y * ui_scroll_notch)
 				ctx.input.scroll_y = 0
 	ui_clip_push(ctx.rndr, area)
 

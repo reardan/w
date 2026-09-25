@@ -195,10 +195,10 @@ void test_http_value_has_token():
 
 
 void test_http_error_strings():
-	assert_strings_equal(c"", http_error_string(http_error_none()))
-	assert_strings_equal(c"timed out", http_error_string(http_error_timeout()))
-	assert_strings_equal(c"too many redirects", http_error_string(http_error_too_many_redirects()))
-	assert_strings_equal(c"TLS handshake failed", http_error_string(http_error_tls()))
+	assert_strings_equal(c"", http_error_string(http_error_none))
+	assert_strings_equal(c"timed out", http_error_string(http_error_timeout))
+	assert_strings_equal(c"too many redirects", http_error_string(http_error_too_many_redirects))
+	assert_strings_equal(c"TLS handshake failed", http_error_string(http_error_tls))
 	assert_strings_equal(c"unknown error", http_error_string(999))
 
 
@@ -216,38 +216,38 @@ void test_http_request_hardening():
 	http_req_add_header(req, c"X-A", c"a\x0d\x0aEvil: 1")
 	http_response* resp = http_request(req)
 	assert_strings_equal(c"invalid request header", resp.error_message)
-	http_test_expect_error(resp, http_error_bad_header())
+	http_test_expect_error(resp, http_error_bad_header)
 	http_req_free(req)
 
 	# Non-token header name.
 	req = http_req_new(c"GET", c"http://127.0.0.1:9/x")
 	http_req_add_header(req, c"X A", c"v")
-	http_test_expect_error(http_request(req), http_error_bad_header())
+	http_test_expect_error(http_request(req), http_error_bad_header)
 	http_req_free(req)
 
 	# Caller-supplied framing/routing headers are the client's alone.
 	req = http_req_new(c"GET", c"http://127.0.0.1:9/x")
 	http_req_add_header(req, c"Host", c"evil.example")
-	http_test_expect_error(http_request(req), http_error_bad_header())
+	http_test_expect_error(http_request(req), http_error_bad_header)
 	http_req_free(req)
 	req = http_req_new(c"GET", c"http://127.0.0.1:9/x")
 	http_req_add_header(req, c"Content-Length", c"999")
-	http_test_expect_error(http_request(req), http_error_bad_header())
+	http_test_expect_error(http_request(req), http_error_bad_header)
 	http_req_free(req)
 	req = http_req_new(c"GET", c"http://127.0.0.1:9/x")
 	http_req_add_header(req, c"Transfer-Encoding", c"chunked")
-	http_test_expect_error(http_request(req), http_error_bad_header())
+	http_test_expect_error(http_request(req), http_error_bad_header)
 	http_req_free(req)
 
 	# Method with a space.
 	req = http_req_new(c"GE T", c"http://127.0.0.1:9/x")
-	http_test_expect_error(http_request(req), http_error_bad_header())
+	http_test_expect_error(http_request(req), http_error_bad_header)
 	http_req_free(req)
 
 	# CR or space smuggled into the URL path.
-	http_test_expect_error(http_get(c"http://127.0.0.1:9/a\x0db"), http_error_bad_url())
-	http_test_expect_error(http_get(c"http://127.0.0.1:9/a\x0ab"), http_error_bad_url())
-	http_test_expect_error(http_get(c"http://127.0.0.1:9/a b"), http_error_bad_url())
+	http_test_expect_error(http_get(c"http://127.0.0.1:9/a\x0db"), http_error_bad_url)
+	http_test_expect_error(http_get(c"http://127.0.0.1:9/a\x0ab"), http_error_bad_url)
+	http_test_expect_error(http_get(c"http://127.0.0.1:9/a b"), http_error_bad_url)
 
 	# https:// is now a supported transport (wired through net/tls.w, #204);
 	# it validates offline here (the loopback TLS handshake is exercised
@@ -259,8 +259,8 @@ void test_http_request_hardening():
 	url_free(https_url)
 
 	# Not an absolute http URL at all.
-	http_test_expect_error(http_get(c"nope"), http_error_bad_url())
-	http_test_expect_error(http_get(0), http_error_bad_url())
+	http_test_expect_error(http_get(c"nope"), http_error_bad_url)
+	http_test_expect_error(http_get(0), http_error_bad_url)
 
 
 /* End-to-end fixture tests */
@@ -442,16 +442,16 @@ void test_http_chunked_rejects():
 
 	char* target = net_test_url(c"http", port, c"/chunk-abuse")
 	http_response* resp = http_get(target)
-	assert_equal(http_error_bad_chunk(), resp.error)
+	assert_equal(http_error_bad_chunk, resp.error)
 	assert_equal(200, resp.status)
 	http_response_free(resp)
 
 	resp = http_get(target)
-	assert_equal(http_error_bad_chunk(), resp.error)
+	assert_equal(http_error_bad_chunk, resp.error)
 	http_response_free(resp)
 
 	resp = http_get(target)
-	assert_equal(http_error_bad_response(), resp.error)
+	assert_equal(http_error_bad_response, resp.error)
 	http_response_free(resp)
 	free(target)
 	web_test_finish(pid, listener)
@@ -481,12 +481,12 @@ void test_http_malformed_status_line():
 
 	char* target = net_test_url(c"http", port, c"/nonsense")
 	http_response* resp = http_get(target)
-	assert_equal(http_error_bad_response(), resp.error)
+	assert_equal(http_error_bad_response, resp.error)
 	assert_equal(0, resp.status)
 	http_response_free(resp)
 
 	resp = http_get(target)
-	assert_equal(http_error_bad_response(), resp.error)
+	assert_equal(http_error_bad_response, resp.error)
 	http_response_free(resp)
 	free(target)
 	web_test_finish(pid, listener)
@@ -531,11 +531,11 @@ void test_http_oversized_headers():
 
 	char* target = net_test_url(c"http", port, c"/big-headers")
 	http_response* resp = http_get(target)
-	assert_equal(http_error_headers_too_large(), resp.error)
+	assert_equal(http_error_headers_too_large, resp.error)
 	http_response_free(resp)
 
 	resp = http_get(target)
-	assert_equal(http_error_headers_too_large(), resp.error)
+	assert_equal(http_error_headers_too_large, resp.error)
 	http_response_free(resp)
 	free(target)
 	web_test_finish(pid, listener)
@@ -600,7 +600,7 @@ void test_http_redirect_loop():
 
 	char* target = net_test_url(c"http", port, c"/loop")
 	http_response* resp = http_get(target)
-	assert_equal(http_error_too_many_redirects(), resp.error)
+	assert_equal(http_error_too_many_redirects, resp.error)
 	http_response_free(resp)
 	free(target)
 	web_test_finish(pid, listener)
@@ -714,7 +714,7 @@ void test_http_close_mid_body():
 	# Buffered read: error plus the bytes that did arrive.
 	char* target = net_test_url(c"http", port, c"/truncated")
 	http_response* resp = http_get(target)
-	assert_equal(http_error_truncated_body(), resp.error)
+	assert_equal(http_error_truncated_body, resp.error)
 	assert_equal(200, resp.status)
 	assert_strings_equal(c"partial-10", resp.body)
 	assert_equal(10, resp.body_len)
@@ -733,7 +733,7 @@ void test_http_close_mid_body():
 		got = http_stream_read(s, buf, 64)
 	assert_equal((-1), got)
 	assert_equal(10, total)
-	assert_equal(http_error_truncated_body(), s.error)
+	assert_equal(http_error_truncated_body, s.error)
 	free(buf)
 	http_stream_close(s)
 	http_req_free(req)
@@ -804,7 +804,7 @@ void test_http_read_timeout():
 	int started = time_monotonic_ms()
 	http_response* resp = http_request(req)
 	int elapsed = time_monotonic_ms() - started
-	assert_equal(http_error_timeout(), resp.error)
+	assert_equal(http_error_timeout, resp.error)
 	assert_equal(0, resp.status)
 	asserts(c"timed out too early", elapsed >= 100)
 	asserts(c"timeout took too long", elapsed < 5000)

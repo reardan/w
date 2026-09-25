@@ -49,7 +49,7 @@ libs/standard/web/http_server.w's ServerContext + routing:
       locally (cas_has), so subtracting that from this list gives
       exactly the missing commits, with no server-side per-client state
       and no separate negotiation round trip. Bounded by
-      VCS_SYNC_ANCESTRY_CAP() commits (see its own comment) so a client
+      VCS_SYNC_ANCESTRY_CAP commits (see its own comment) so a client
       can never make the server do unbounded work by naming a
       pathologically deep (or malicious) tip; a truncated response
       carries the VCS_SYNC_TRUNCATED_HEADER() response header, and
@@ -143,6 +143,8 @@ import libs.extras.vcs.cas
 import libs.extras.vcs.tree
 import libs.extras.vcs.commit
 
+const int VCS_SYNC_ANCESTRY_CAP = 4096
+
 
 # Cap on how many commits a single /ancestry walk (server side) or local
 # push-side ancestry walk (client side) will enumerate: "a few thousand"
@@ -153,8 +155,6 @@ import libs.extras.vcs.commit
 # rather than silently syncing a partial history (see the header
 # comment) -- raising this constant is always safe, lowering it changes
 # what a client with a longer local history can push/pull.
-int VCS_SYNC_ANCESTRY_CAP():
-	return 4096
 
 
 # Response header the /ancestry endpoint sets (to any non-empty value)
@@ -205,7 +205,7 @@ wresult[list[char*]]* vcs_sync_ancestry(wcas* store, char* tip_hex, int* out_tru
 	list[char*] order = new list[char*]
 	map[char*, int] seen = new map[char*, int]
 	list[char*] queue = new list[char*]
-	int cap = VCS_SYNC_ANCESTRY_CAP()
+	int cap = VCS_SYNC_ANCESTRY_CAP
 
 	char* start = strclone(tip_hex)
 	queue.push(start)
@@ -611,7 +611,7 @@ http_response* vcs_sync_get(char* url, wstream* out):
 	http_req* req = http_req_new(c"GET", url)
 	http_response* resp = http_request(req)
 	http_req_free(req)
-	if (resp.error != http_error_none()):
+	if (resp.error != http_error_none):
 		stream_write_cstr(out, c"wvc: network error: ")
 		stream_write_line(out, http_error_string(resp.error))
 		stream_flush(out)
@@ -626,7 +626,7 @@ http_response* vcs_sync_post(char* url, char* body, int body_len, wstream* out):
 	req.body_len = body_len
 	http_response* resp = http_request(req)
 	http_req_free(req)
-	if (resp.error != http_error_none()):
+	if (resp.error != http_error_none):
 		stream_write_cstr(out, c"wvc: network error: ")
 		stream_write_line(out, http_error_string(resp.error))
 		stream_flush(out)

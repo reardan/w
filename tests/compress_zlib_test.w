@@ -104,7 +104,7 @@ void test_zlib_bad_checksum():
 	# flipped: decompresses fine internally but the checksum fails.
 	wresult[zlib_result*]* r = zlib_decompress(c"\x78\x9c\xab\xca\xc9\x4c\x52\x28\x2f\x4a\x2c\x28\x48\x2d\x52\x28\xca\x2f\xcd\x4b\x51\x28\x29\xca\x2c\x50\x28\x49\x2d\x2e\x51\x48\x49\x2c\x49\x54\x30\x34\x32\x36\x31\x05\x00\x27\xdb\x0d\x4c", 47, 0)
 	assert1(result_is_error[zlib_result*](r))
-	assert_equal(ZLIB_ERR_BAD_CHECKSUM(), result_code[zlib_result*](r))
+	assert_equal(ZLIB_ERR_BAD_CHECKSUM, result_code[zlib_result*](r))
 	result_free[zlib_result*](r)
 
 
@@ -113,7 +113,7 @@ void test_zlib_unsupported_method():
 	# the mod-31 header check passing so BAD_HEADER isn't hit first.
 	wresult[zlib_result*]* r = zlib_decompress(c"\x70\x03\xab\xca\xc9\x4c\x52\x28\x2f\x4a\x2c\x28\x48\x2d\x52\x28\xca\x2f\xcd\x4b\x51\x28\x29\xca\x2c\x50\x28\x49\x2d\x2e\x51\x48\x49\x2c\x49\x54\x30\x34\x32\x36\x31\x05\x00\x27\xdb\x0d\xb3", 47, 0)
 	assert1(result_is_error[zlib_result*](r))
-	assert_equal(ZLIB_ERR_UNSUPPORTED_METHOD(), result_code[zlib_result*](r))
+	assert_equal(ZLIB_ERR_UNSUPPORTED_METHOD, result_code[zlib_result*](r))
 	result_free[zlib_result*](r)
 
 
@@ -121,14 +121,14 @@ void test_zlib_bad_header():
 	# FLG's low bit flipped so (CMF*256+FLG) is no longer a multiple of 31.
 	wresult[zlib_result*]* r = zlib_decompress(c"\x78\x9d\xab\xca\xc9\x4c\x52\x28\x2f\x4a\x2c\x28\x48\x2d\x52\x28\xca\x2f\xcd\x4b\x51\x28\x29\xca\x2c\x50\x28\x49\x2d\x2e\x51\x48\x49\x2c\x49\x54\x30\x34\x32\x36\x31\x05\x00\x27\xdb\x0d\xb3", 47, 0)
 	assert1(result_is_error[zlib_result*](r))
-	assert_equal(ZLIB_ERR_BAD_HEADER(), result_code[zlib_result*](r))
+	assert_equal(ZLIB_ERR_BAD_HEADER, result_code[zlib_result*](r))
 	result_free[zlib_result*](r)
 
 
 void test_zlib_too_short_is_bad_header():
 	wresult[zlib_result*]* r = zlib_decompress(c"\x78", 1, 0)
 	assert1(result_is_error[zlib_result*](r))
-	assert_equal(ZLIB_ERR_BAD_HEADER(), result_code[zlib_result*](r))
+	assert_equal(ZLIB_ERR_BAD_HEADER, result_code[zlib_result*](r))
 	result_free[zlib_result*](r)
 
 
@@ -139,7 +139,7 @@ void test_zlib_truncated_stream_passes_through_inflate_error():
 	# header comment on the passthrough convention).
 	wresult[zlib_result*]* r = zlib_decompress(c"\x78\x9c\xab\xca\xc9\x4c\x52\x28\x2f\x4a", 10, 0)
 	assert1(result_is_error[zlib_result*](r))
-	assert_equal(INFLATE_ERR_TRUNCATED(), result_code[zlib_result*](r))
+	assert_equal(INFLATE_ERR_TRUNCATED, result_code[zlib_result*](r))
 	result_free[zlib_result*](r)
 
 
@@ -148,15 +148,15 @@ void test_zlib_max_output_cap():
 	zlib_result* c = zlib_compress(c"0123456789", 10, DEFLATE_LEVEL_STORED())
 	wresult[zlib_result*]* r = zlib_decompress(c.data, c.length, 3)
 	assert1(result_is_error[zlib_result*](r))
-	assert_equal(INFLATE_ERR_TOO_LARGE(), result_code[zlib_result*](r))
+	assert_equal(INFLATE_ERR_TOO_LARGE, result_code[zlib_result*](r))
 	result_free[zlib_result*](r)
 	zlib_result_free(c)
 	deflate_result_free(d)
 
 
 void test_zlib_error_string_covers_every_code_and_falls_through():
-	assert1(strlen(zlib_error_string(ZLIB_ERR_BAD_HEADER())) > 0)
-	assert1(strlen(zlib_error_string(ZLIB_ERR_UNSUPPORTED_METHOD())) > 0)
-	assert1(strlen(zlib_error_string(ZLIB_ERR_BAD_CHECKSUM())) > 0)
+	assert1(strlen(zlib_error_string(ZLIB_ERR_BAD_HEADER)) > 0)
+	assert1(strlen(zlib_error_string(ZLIB_ERR_UNSUPPORTED_METHOD)) > 0)
+	assert1(strlen(zlib_error_string(ZLIB_ERR_BAD_CHECKSUM)) > 0)
 	# Falls through to inflate_error_string for a non-zlib-specific code.
-	assert_strings_equal(inflate_error_string(INFLATE_ERR_TRUNCATED()), zlib_error_string(INFLATE_ERR_TRUNCATED()))
+	assert_strings_equal(inflate_error_string(INFLATE_ERR_TRUNCATED), zlib_error_string(INFLATE_ERR_TRUNCATED))

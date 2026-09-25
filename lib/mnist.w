@@ -27,36 +27,23 @@ import lib.ndarray
 ########################## error codes ##########################
 
 
-int MNIST_OK():
-	return 0
-
-
-int MNIST_ERR_OPEN():
-	return 1
-
-
-int MNIST_ERR_BAD_MAGIC():
-	return 2
-
-
-int MNIST_ERR_BAD_DIMS():
-	return 3
-
-
-int MNIST_ERR_TRUNCATED():
-	return 4
+const int MNIST_OK = 0
+const int MNIST_ERR_OPEN = 1
+const int MNIST_ERR_BAD_MAGIC = 2
+const int MNIST_ERR_BAD_DIMS = 3
+const int MNIST_ERR_TRUNCATED = 4
 
 
 char* mnist_error_string(int code):
-	if (code == MNIST_OK()):
+	if (code == MNIST_OK):
 		return c"mnist: ok"
-	if (code == MNIST_ERR_OPEN()):
+	if (code == MNIST_ERR_OPEN):
 		return c"mnist: could not open file"
-	if (code == MNIST_ERR_BAD_MAGIC()):
+	if (code == MNIST_ERR_BAD_MAGIC):
 		return c"mnist: bad IDX magic number"
-	if (code == MNIST_ERR_BAD_DIMS()):
+	if (code == MNIST_ERR_BAD_DIMS):
 		return c"mnist: bad or non-positive dimensions"
-	if (code == MNIST_ERR_TRUNCATED()):
+	if (code == MNIST_ERR_TRUNCATED):
 		return c"mnist: truncated file"
 	return c"mnist: unknown error"
 
@@ -64,12 +51,8 @@ char* mnist_error_string(int code):
 ########################## IDX primitives ##########################
 
 
-int MNIST_MAGIC_IMAGES():
-	return 0x00000803
-
-
-int MNIST_MAGIC_LABELS():
-	return 0x00000801
+const int MNIST_MAGIC_IMAGES = 0x00000803
+const int MNIST_MAGIC_LABELS = 0x00000801
 
 
 # Reads one big-endian u32, assembled byte by byte, into *value_out.
@@ -98,25 +81,25 @@ int mnist_read_u32(wstream* in, int* value_out):
 int mnist_load_images(char* path, ndf* out):
 	wstream* in = stream_open_read(path)
 	if (in == 0):
-		return MNIST_ERR_OPEN()
+		return MNIST_ERR_OPEN
 
 	int magic
 	if (mnist_read_u32(in, &magic) == 0):
 		stream_close(in)
-		return MNIST_ERR_TRUNCATED()
-	if (magic != MNIST_MAGIC_IMAGES()):
+		return MNIST_ERR_TRUNCATED
+	if (magic != MNIST_MAGIC_IMAGES):
 		stream_close(in)
-		return MNIST_ERR_BAD_MAGIC()
+		return MNIST_ERR_BAD_MAGIC
 
 	int count
 	int rows
 	int cols
 	if (mnist_read_u32(in, &count) == 0 || mnist_read_u32(in, &rows) == 0 || mnist_read_u32(in, &cols) == 0):
 		stream_close(in)
-		return MNIST_ERR_TRUNCATED()
+		return MNIST_ERR_TRUNCATED
 	if (count <= 0 || rows <= 0 || cols <= 0):
 		stream_close(in)
-		return MNIST_ERR_BAD_DIMS()
+		return MNIST_ERR_BAD_DIMS
 
 	ndf a = ndf_new3(count, rows, cols)
 	int n = a.data.length
@@ -125,7 +108,7 @@ int mnist_load_images(char* path, ndf* out):
 	stream_close(in)
 	if (got != n):
 		free(raw)
-		return MNIST_ERR_TRUNCATED()
+		return MNIST_ERR_TRUNCATED
 
 	# Data bytes are unsigned 0..255; raw is char* (signed), so widening
 	# to int without masking would sign-extend 0x80..0xff negative.
@@ -135,7 +118,7 @@ int mnist_load_images(char* path, ndf* out):
 	free(raw)
 
 	*out = a
-	return MNIST_OK()
+	return MNIST_OK
 
 
 ########################## labels ##########################
@@ -149,30 +132,30 @@ int mnist_load_images(char* path, ndf* out):
 int mnist_load_labels(char* path, ndi* out):
 	wstream* in = stream_open_read(path)
 	if (in == 0):
-		return MNIST_ERR_OPEN()
+		return MNIST_ERR_OPEN
 
 	int magic
 	if (mnist_read_u32(in, &magic) == 0):
 		stream_close(in)
-		return MNIST_ERR_TRUNCATED()
-	if (magic != MNIST_MAGIC_LABELS()):
+		return MNIST_ERR_TRUNCATED
+	if (magic != MNIST_MAGIC_LABELS):
 		stream_close(in)
-		return MNIST_ERR_BAD_MAGIC()
+		return MNIST_ERR_BAD_MAGIC
 
 	int count
 	if (mnist_read_u32(in, &count) == 0):
 		stream_close(in)
-		return MNIST_ERR_TRUNCATED()
+		return MNIST_ERR_TRUNCATED
 	if (count <= 0):
 		stream_close(in)
-		return MNIST_ERR_BAD_DIMS()
+		return MNIST_ERR_BAD_DIMS
 
 	char* raw = malloc(count)
 	int got = stream_read(in, raw, count)
 	stream_close(in)
 	if (got != count):
 		free(raw)
-		return MNIST_ERR_TRUNCATED()
+		return MNIST_ERR_TRUNCATED
 
 	ndi a = ndi_new1(count)
 	for i in range(count):
@@ -180,7 +163,7 @@ int mnist_load_labels(char* path, ndi* out):
 	free(raw)
 
 	*out = a
-	return MNIST_OK()
+	return MNIST_OK
 
 
 ########################## flatten for MLP input ##########################

@@ -15,7 +15,7 @@ the exit code 0..255 for a normal exit, 128 + signum when a signal killed
 the child (the shell convention, so SIGKILL reads as 137) — or a negative
 kernel errno when the wait itself failed. The raw wait4 status stays in
 process.status. Distinct sentinels report non-statuses:
-process_status_running() (-1000) and process_status_timeout() (-1001);
+process_status_running (-1000) and process_status_timeout (-1001);
 both are outside the errno range (-4095..-1), so the three failure kinds
 cannot collide.
 
@@ -28,38 +28,27 @@ import lib.lib
 import lib.env
 import structures.string
 
+const int process_status_running = -1000
+const int process_status_timeout = -1001
+
 
 /* stdio modes for spawn_options */
 
-int process_inherit():
-	return 0
-
-int process_pipe():
-	return 1
-
-int process_null():
-	return 2
+const int process_inherit = 0
+const int process_pipe = 1
+const int process_null = 2
 
 
 /* Sentinels returned by the wait family (outside the errno range). */
 
-int process_status_running():
-	return -1000
 
-int process_status_timeout():
-	return -1001
 
 
 /* Common signal numbers for process_kill. */
 
-int sigint():
-	return 2
-
-int sigkill():
-	return 9
-
-int sigterm():
-	return 15
+const int sigint = 2
+const int sigkill = 9
+const int sigterm = 15
 
 
 /* PATH lookup: execve (and so process_spawn) does none. */
@@ -158,9 +147,9 @@ spawn_options* spawn_options_new():
 	spawn_options* opts = new spawn_options()
 	opts.env = 0
 	opts.cwd = 0
-	opts.stdin_mode = process_inherit()
-	opts.stdout_mode = process_inherit()
-	opts.stderr_mode = process_inherit()
+	opts.stdin_mode = process_inherit
+	opts.stdout_mode = process_inherit
+	opts.stderr_mode = process_inherit
 	return opts
 
 
@@ -300,11 +289,11 @@ process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
 	int stderr_child = -1
 	int err = 0
 
-	if (opts.stdin_mode == process_pipe()):
+	if (opts.stdin_mode == process_pipe):
 		err = process_win_pipe(&stdin_parent, &stdin_child, 1)
-	if ((err == 0) & (opts.stdout_mode == process_pipe())):
+	if ((err == 0) && (opts.stdout_mode == process_pipe)):
 		err = process_win_pipe(&stdout_parent, &stdout_child, 0)
-	if ((err == 0) & (opts.stderr_mode == process_pipe())):
+	if ((err == 0) && (opts.stderr_mode == process_pipe)):
 		err = process_win_pipe(&stderr_parent, &stderr_child, 0)
 
 	if (err != 0):
@@ -333,11 +322,11 @@ process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
 	int use_handles = 0
 	if ((stdin_child >= 0) || (stdout_child >= 0) || (stderr_child >= 0)):
 		use_handles = 1
-	if (opts.stdin_mode == process_null()):
+	if (opts.stdin_mode == process_null):
 		use_handles = 1
-	if (opts.stdout_mode == process_null()):
+	if (opts.stdout_mode == process_null):
 		use_handles = 1
-	if (opts.stderr_mode == process_null()):
+	if (opts.stderr_mode == process_null):
 		use_handles = 1
 
 	# NUL-device handles opened for process_null streams; the parent
@@ -351,21 +340,21 @@ process* process_spawn_windows(char* path, char** argv, spawn_options* opts):
 		int h_stdin = GetStdHandle(-10)
 		int h_stdout = GetStdHandle(-11)
 		int h_stderr = GetStdHandle(-12)
-		if (opts.stdin_mode == process_pipe()):
+		if (opts.stdin_mode == process_pipe):
 			h_stdin = stdin_child
-		if (opts.stdin_mode == process_null()):
+		if (opts.stdin_mode == process_null):
 			null_stdin = CreateFileA(c"NUL", 2147483648, 3, 0, 3, 128, 0)
 			SetHandleInformation(null_stdin, 1, 1)  # HANDLE_FLAG_INHERIT
 			h_stdin = null_stdin
-		if (opts.stdout_mode == process_pipe()):
+		if (opts.stdout_mode == process_pipe):
 			h_stdout = stdout_child
-		if (opts.stdout_mode == process_null()):
+		if (opts.stdout_mode == process_null):
 			null_stdout = CreateFileA(c"NUL", 1073741824, 3, 0, 3, 128, 0)
 			SetHandleInformation(null_stdout, 1, 1)
 			h_stdout = null_stdout
-		if (opts.stderr_mode == process_pipe()):
+		if (opts.stderr_mode == process_pipe):
 			h_stderr = stderr_child
-		if (opts.stderr_mode == process_null()):
+		if (opts.stderr_mode == process_null):
 			null_stderr = CreateFileA(c"NUL", 1073741824, 3, 0, 3, 128, 0)
 			SetHandleInformation(null_stderr, 1, 1)
 			h_stderr = null_stderr
@@ -450,11 +439,11 @@ process* process_spawn(char* path, char** argv, spawn_options* opts):
 	int stderr_read = -1
 	int stderr_write = -1
 	int err = 0
-	if (opts.stdin_mode == process_pipe()):
+	if (opts.stdin_mode == process_pipe):
 		err = process_make_pipe(&stdin_read, &stdin_write)
-	if ((err == 0) & (opts.stdout_mode == process_pipe())):
+	if ((err == 0) && (opts.stdout_mode == process_pipe)):
 		err = process_make_pipe(&stdout_read, &stdout_write)
-	if ((err == 0) & (opts.stderr_mode == process_pipe())):
+	if ((err == 0) && (opts.stderr_mode == process_pipe)):
 		err = process_make_pipe(&stderr_read, &stderr_write)
 
 	int pid = 0
@@ -481,17 +470,17 @@ process* process_spawn(char* path, char** argv, spawn_options* opts):
 		process_close_fd_if_open(stdin_write)
 		process_close_fd_if_open(stdout_read)
 		process_close_fd_if_open(stderr_read)
-		if (opts.stdin_mode == process_pipe()):
+		if (opts.stdin_mode == process_pipe):
 			process_redirect(stdin_read, 0)
-		if (opts.stdin_mode == process_null()):
+		if (opts.stdin_mode == process_null):
 			process_redirect_null(0, 0)
-		if (opts.stdout_mode == process_pipe()):
+		if (opts.stdout_mode == process_pipe):
 			process_redirect(stdout_write, 1)
-		if (opts.stdout_mode == process_null()):
+		if (opts.stdout_mode == process_null):
 			process_redirect_null(1, 1)
-		if (opts.stderr_mode == process_pipe()):
+		if (opts.stderr_mode == process_pipe):
 			process_redirect(stderr_write, 2)
-		if (opts.stderr_mode == process_null()):
+		if (opts.stderr_mode == process_null):
 			process_redirect_null(2, 1)
 		if (opts.cwd != 0):
 			if (chdir(opts.cwd) < 0):
@@ -569,7 +558,7 @@ int process_try_wait(process* p):
 		# WaitForSingleObject with timeout 0: WAIT_TIMEOUT = 258
 		int r = WaitForSingleObject(p.win_handle, 0)
 		if (r == 258):
-			return process_status_running()
+			return process_status_running
 		int code = 0
 		GetExitCodeProcess(p.win_handle, &code)
 		CloseHandle(p.win_handle)
@@ -582,7 +571,7 @@ int process_try_wait(process* p):
 	if (err < 0):
 		return err
 	if (err == 0):
-		return process_status_running()
+		return process_status_running
 	p.status = status
 	p.reaped = 1
 	return process_decode_status(status)
@@ -636,14 +625,14 @@ int process_wait_any(list[process*] kids, int hang):
 		process* p = kids[i]
 		if ((p != 0) && (p.reaped == 0)):
 			int decoded = process_try_wait(p)
-			if (decoded != process_status_running()):
+			if (decoded != process_status_running):
 				# Exit/signal statuses are >= 0; wait errno is negative.
 				if (decoded < 0):
 					return decoded
 				return i
 		i = i + 1
 	if (hang == 0):
-		return process_status_running()
+		return process_status_running
 	# Blocking: wait for any child, then match against the list.
 	# Windows has no wait4(-1); keep polling try_wait with a short sleep.
 	if (os_windows()):
@@ -653,7 +642,7 @@ int process_wait_any(list[process*] kids, int hang):
 				process* p = kids[i]
 				if ((p != 0) && (p.reaped == 0)):
 					int decoded = process_try_wait(p)
-					if (decoded != process_status_running()):
+					if (decoded != process_status_running):
 						if (decoded < 0):
 							return decoded
 						return i
@@ -683,9 +672,9 @@ int process_wait_timeout(process* p, int timeout_ms):
 		return process_wait(p)
 	int deadline = process_monotonic_ms() + timeout_ms
 	int decoded = process_try_wait(p)
-	while (decoded == process_status_running()):
+	while (decoded == process_status_running):
 		if ((deadline - process_monotonic_ms()) <= 0):
-			return process_status_timeout()
+			return process_status_timeout
 		process_sleep_ms(2)
 		decoded = process_try_wait(p)
 	return decoded
@@ -696,11 +685,11 @@ int process_wait_timeout(process* p, int timeout_ms):
 # status is in p.status.
 int process_wait_or_kill(process* p, int timeout_ms):
 	int decoded = process_wait_timeout(p, timeout_ms)
-	if (decoded != process_status_timeout()):
+	if (decoded != process_status_timeout):
 		return decoded
-	process_kill(p, sigkill())
+	process_kill(p, sigkill)
 	process_wait(p)
-	return process_status_timeout()
+	return process_status_timeout
 
 
 void process_free(process* p):
@@ -794,9 +783,9 @@ process_result* process_run_windows_bytes(char* path, char** argv, spawn_options
 	if (opts != 0):
 		run_opts.env = opts.env
 		run_opts.cwd = opts.cwd
-	run_opts.stdin_mode = process_pipe()
-	run_opts.stdout_mode = process_pipe()
-	run_opts.stderr_mode = process_pipe()
+	run_opts.stdin_mode = process_pipe
+	run_opts.stdout_mode = process_pipe
+	run_opts.stderr_mode = process_pipe
 	process* p = process_spawn(path, argv, run_opts)
 	free(run_opts)
 	if (p == 0):
@@ -855,9 +844,9 @@ process_result* process_run_windows_bytes(char* path, char** argv, spawn_options
 
 	int decoded = 0
 	if (timed_out):
-		process_kill(p, sigkill())
+		process_kill(p, sigkill)
 		process_wait(p)
-		decoded = process_status_timeout()
+		decoded = process_status_timeout
 	else:
 		int remaining_ms = 0
 		if (timeout_ms > 0):
@@ -890,9 +879,9 @@ process_result* process_run_bytes(char* path, char** argv, spawn_options* opts, 
 	if (opts != 0):
 		run_opts.env = opts.env
 		run_opts.cwd = opts.cwd
-	run_opts.stdin_mode = process_pipe()
-	run_opts.stdout_mode = process_pipe()
-	run_opts.stderr_mode = process_pipe()
+	run_opts.stdin_mode = process_pipe
+	run_opts.stdout_mode = process_pipe
+	run_opts.stderr_mode = process_pipe
 	process* p = process_spawn(path, argv, run_opts)
 	free(run_opts)
 	if (p == 0):
@@ -945,7 +934,7 @@ process_result* process_run_bytes(char* path, char** argv, spawn_options* opts, 
 			if (ready == 0):
 				timed_out = 1
 		if (timed_out):
-			process_kill(p, sigkill())
+			process_kill(p, sigkill)
 			process_close_stdin(p)
 			stdout_open = 0
 			stderr_open = 0
@@ -975,7 +964,7 @@ process_result* process_run_bytes(char* path, char** argv, spawn_options* opts, 
 	int decoded = 0
 	if (timed_out):
 		process_wait(p)
-		decoded = process_status_timeout()
+		decoded = process_status_timeout
 	else:
 		# Streams are drained but the child may still be running (it
 		# can close its stdio and keep working); the deadline applies

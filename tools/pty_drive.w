@@ -440,7 +440,7 @@ void pd_pump(int ms):
 		return
 	if (ms < 0):
 		ms = 0
-	int ready = poll_single(pd_fd, poll_in(), ms)
+	int ready = poll_single(pd_fd, poll_in, ms)
 	if (ready <= 0):
 		return
 	char* chunk = malloc(65536)

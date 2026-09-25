@@ -90,8 +90,8 @@ void test_parse_google_leaf():
 	x509_cert* c = xt_load_cert(c"google_leaf.pem")
 	assert_equal(3, c.version)
 	xt_assert_serial(c, c"111991593cd5a33d1231ea33c3644cdc")
-	assert_equal(X509_SIGALG_RSA_SHA256(), c.sig_alg)
-	assert_equal(X509_KEY_RSA(), c.key_type)
+	assert_equal(X509_SIGALG_RSA_SHA256, c.sig_alg)
+	assert_equal(X509_KEY_RSA, c.key_type)
 	assert_equal(256, c.rsa_n_len)          # RSA-2048
 	# e = 65537
 	assert_equal(3, c.rsa_e_len)
@@ -122,13 +122,13 @@ void test_parse_isrg_root():
 	# openssl serial 8210CFB0D240E3594463E0BB63828B00; the DER content
 	# carries a sign-clearing 0x00 first.
 	xt_assert_serial(c, c"008210cfb0d240e3594463e0bb63828b00")
-	assert_equal(X509_KEY_RSA(), c.key_type)
+	assert_equal(X509_KEY_RSA, c.key_type)
 	assert_equal(512, c.rsa_n_len)          # RSA-4096
 	assert_equal(1, c.has_basic_constraints)
 	assert_equal(1, c.is_ca)
 	assert_equal(-1, c.path_len)
 	assert_equal(1, c.has_key_usage)
-	assert_equal((c.key_usage & X509_KU_KEY_CERT_SIGN()) != 0, 1)
+	assert_equal((c.key_usage & X509_KU_KEY_CERT_SIGN) != 0, 1)
 	# Self-signed: issuer bytes equal subject bytes.
 	assert_equal(1, x509_names_equal(c, c.subject_start, c.subject_len, c, c.issuer_start, c.issuer_len))
 	# notAfter 2035-06-04 11:04:38
@@ -140,8 +140,8 @@ void test_parse_isrg_root():
 void test_parse_trustasia_chain_certs():
 	# EC P-256 leaf carrying an ecdsa-with-SHA384 signature and wildcard SAN.
 	x509_cert* leaf = xt_load_cert(c"trustasia_leaf.pem")
-	assert_equal(X509_KEY_EC_P256(), leaf.key_type)
-	assert_equal(X509_SIGALG_ECDSA_SHA384(), leaf.sig_alg)
+	assert_equal(X509_KEY_EC_P256, leaf.key_type)
+	assert_equal(X509_SIGALG_ECDSA_SHA384, leaf.sig_alg)
 	assert_equal(2, leaf.san_dns.length)
 	assert_strings_equal(c"*.tm.cn", leaf.san_dns[0])
 	assert_strings_equal(c"tm.cn", leaf.san_dns[1])
@@ -150,8 +150,8 @@ void test_parse_trustasia_chain_certs():
 	assert_equal(0, x509_match_hostname(leaf, c"a.b.tm.cn"))
 	# Its issuer key is EC P-384: parseable, but unsupported for verifying.
 	x509_cert* ca = xt_load_cert(c"trustasia_ca.pem")
-	assert_equal(X509_KEY_UNSUPPORTED(), ca.key_type)
-	assert_equal(X509_SIGALG_RSA_SHA384(), ca.sig_alg)
+	assert_equal(X509_KEY_UNSUPPORTED, ca.key_type)
+	assert_equal(X509_SIGALG_RSA_SHA384, ca.sig_alg)
 	x509_cert_free(leaf)
 	x509_cert_free(ca)
 
@@ -276,8 +276,8 @@ void test_verify_synthetic_rsa_chain():
 void test_verify_synthetic_leaf_fields():
 	x509_cert* c = xt_load_cert(c"leaf_ec.pem")
 	xt_assert_serial(c, c"5f5ccc499d4fc72841ddec7cdfcf15f62797c171")
-	assert_equal(X509_KEY_EC_P256(), c.key_type)
-	assert_equal(X509_SIGALG_RSA_SHA256(), c.sig_alg)
+	assert_equal(X509_KEY_EC_P256, c.key_type)
+	assert_equal(X509_SIGALG_RSA_SHA256, c.sig_alg)
 	# SAN had four entries; only the two dNSNames are kept.
 	assert_equal(2, c.san_dns.length)
 	assert_strings_equal(c"test.w.example", c.san_dns[0])
@@ -305,19 +305,19 @@ void test_verify_synthetic_sha384_and_pss():
 	xt_check_rsa_chain_leaf(c"leaf_pss384.pem", c"test.w.example", 1, 0)
 	# The classified algorithms.
 	x509_cert* a = xt_load_cert(c"leaf_rsa384.pem")
-	assert_equal(X509_SIGALG_RSA_SHA384(), a.sig_alg)
+	assert_equal(X509_SIGALG_RSA_SHA384, a.sig_alg)
 	x509_cert_free(a)
 	a = xt_load_cert(c"leaf_pss256.pem")
-	assert_equal(X509_SIGALG_RSA_PSS_SHA256(), a.sig_alg)
+	assert_equal(X509_SIGALG_RSA_PSS_SHA256, a.sig_alg)
 	x509_cert_free(a)
 	a = xt_load_cert(c"leaf_pss384.pem")
-	assert_equal(X509_SIGALG_RSA_PSS_SHA384(), a.sig_alg)
+	assert_equal(X509_SIGALG_RSA_PSS_SHA384, a.sig_alg)
 	x509_cert_free(a)
 
 
 void test_verify_synthetic_ecdsa_chain():
 	x509_cert* leaf = xt_load_cert(c"leaf_ec_chain.pem")
-	assert_equal(X509_SIGALG_ECDSA_SHA256(), leaf.sig_alg)
+	assert_equal(X509_SIGALG_ECDSA_SHA256, leaf.sig_alg)
 	x509_cert* inter = xt_load_cert(c"int_ec.pem")
 	x509_cert* root = xt_load_cert(c"ca_ec.pem")
 	x509_trust_store* store = x509_store_new()
@@ -548,25 +548,25 @@ void test_time_parsing():
 	int day = 0
 	int sec = 0
 	# UTCTime pivot: 49 -> 2049, 50 -> 1950.
-	assert_equal(1, x509_parse_time(c"491231235959Z", 0, 13, ASN1_UTCTIME(), &day, &sec))
+	assert_equal(1, x509_parse_time(c"491231235959Z", 0, 13, ASN1_UTCTIME, &day, &sec))
 	assert_equal(time_days_from_civil(2049, 12, 31), day)
 	assert_equal(86399, sec)
-	assert_equal(1, x509_parse_time(c"500101000000Z", 0, 13, ASN1_UTCTIME(), &day, &sec))
+	assert_equal(1, x509_parse_time(c"500101000000Z", 0, 13, ASN1_UTCTIME, &day, &sec))
 	assert_equal(time_days_from_civil(1950, 1, 1), day)
 	# GeneralizedTime.
-	assert_equal(1, x509_parse_time(c"20500101000000Z", 0, 15, ASN1_GENERALIZEDTIME(), &day, &sec))
+	assert_equal(1, x509_parse_time(c"20500101000000Z", 0, 15, ASN1_GENERALIZEDTIME, &day, &sec))
 	assert_equal(29220, day)
 	assert_equal(0, sec)
 	# Leap day valid in 2024, invalid in 2050 (not a leap year).
-	assert_equal(1, x509_parse_time(c"240229120000Z", 0, 13, ASN1_UTCTIME(), &day, &sec))
-	assert_equal(0, x509_parse_time(c"20500229000000Z", 0, 15, ASN1_GENERALIZEDTIME(), &day, &sec))
+	assert_equal(1, x509_parse_time(c"240229120000Z", 0, 13, ASN1_UTCTIME, &day, &sec))
+	assert_equal(0, x509_parse_time(c"20500229000000Z", 0, 15, ASN1_GENERALIZEDTIME, &day, &sec))
 	# Malformed forms.
-	assert_equal(0, x509_parse_time(c"491231235959", 0, 12, ASN1_UTCTIME(), &day, &sec))
-	assert_equal(0, x509_parse_time(c"4912312359590", 0, 13, ASN1_UTCTIME(), &day, &sec))
-	assert_equal(0, x509_parse_time(c"491331235959Z", 0, 13, ASN1_UTCTIME(), &day, &sec))
-	assert_equal(0, x509_parse_time(c"490100235959Z", 0, 13, ASN1_UTCTIME(), &day, &sec))
-	assert_equal(0, x509_parse_time(c"491231245959Z", 0, 13, ASN1_UTCTIME(), &day, &sec))
-	assert_equal(0, x509_parse_time(c"20491231235959Z", 0, 15, ASN1_UTCTIME(), &day, &sec))
+	assert_equal(0, x509_parse_time(c"491231235959", 0, 12, ASN1_UTCTIME, &day, &sec))
+	assert_equal(0, x509_parse_time(c"4912312359590", 0, 13, ASN1_UTCTIME, &day, &sec))
+	assert_equal(0, x509_parse_time(c"491331235959Z", 0, 13, ASN1_UTCTIME, &day, &sec))
+	assert_equal(0, x509_parse_time(c"490100235959Z", 0, 13, ASN1_UTCTIME, &day, &sec))
+	assert_equal(0, x509_parse_time(c"491231245959Z", 0, 13, ASN1_UTCTIME, &day, &sec))
+	assert_equal(0, x509_parse_time(c"20491231235959Z", 0, 15, ASN1_UTCTIME, &day, &sec))
 	int now_day = 0
 	int now_sec = 0
 	x509_unix_to_day_sec(1785542400, &now_day, &now_sec)

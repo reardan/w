@@ -61,8 +61,7 @@ int cf_pc
 int cf_sp
 int cf_read_ok        /* last cf_core_word read hit dumped memory */
 
-int cf_frames_max():
-	return 256
+const int cf_frames_max = 256
 
 
 # --- little-endian field readers ---

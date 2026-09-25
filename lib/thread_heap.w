@@ -44,16 +44,14 @@ import lib.lib
 import lib.memory
 
 
-int th_segment_shift():
-	return 20
+const int th_segment_shift = 20
 
 
 int th_segment_size():
-	return 1 << th_segment_shift()
+	return 1 << th_segment_shift
 
 
-int th_bin_count():
-	return 41
+const int th_bin_count = 41
 
 
 # Same size classes as lib/memory_freelist.w: exact 8-byte steps up
@@ -126,7 +124,7 @@ int th_registry_hi(int addr):
 
 
 int th_registry_mid(int addr):
-	return (addr >> th_segment_shift()) & 4095
+	return (addr >> th_segment_shift) & 4095
 
 
 int* th_registry_leaf(int addr, int create):
@@ -156,9 +154,9 @@ wheap* th_owner(int addr):
 # Counted, not compared: on x86 a segment can end exactly at the top
 # of the address space, where base + len wraps.
 int th_register(int base, int len, wheap* h):
-	int n = len >> th_segment_shift()
+	int n = len >> th_segment_shift
 	for i in range(n):
-		int a = base + (i << th_segment_shift())
+		int a = base + (i << th_segment_shift)
 		int* leaf = th_registry_leaf(a, 1)
 		if (leaf == 0):
 			return 0
@@ -210,7 +208,7 @@ wheap* th_heap_create():
 	# The record and its bin heads open the first segment (mmap zeroed
 	# them); blocks bump up from the next 16-byte boundary.
 	h.bins = base + 64
-	int first = h.bins + th_bin_count() * __word_size__
+	int first = h.bins + th_bin_count * __word_size__
 	h.ptr = (first + 15) & (0 - 16)
 	h.end = base + seg
 	return h
@@ -320,7 +318,7 @@ void* th_heap_malloc(wheap* h, int size):
 			cur = cw[1]
 	if (block == 0):
 		int k = b + 1
-		while ((k < th_bin_count()) && (block == 0)):
+		while ((k < th_bin_count) && (block == 0)):
 			if (heads[k] != 0):
 				block = heads[k]
 				int* kw = cast(int*, block)

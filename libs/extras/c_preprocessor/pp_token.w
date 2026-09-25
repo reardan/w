@@ -28,8 +28,7 @@ int cpp_token_number():
 	return 2
 
 
-int cpp_token_string():
-	return 3
+const int cpp_token_string = 3
 
 
 int cpp_token_char():
@@ -48,8 +47,7 @@ int cpp_token_eof():
 	return 7
 
 
-int cpp_token_placemarker():
-	return 8
+const int cpp_token_placemarker = 8
 
 
 cpp_hideset* cpp_hideset_new(char* name, cpp_hideset* next):

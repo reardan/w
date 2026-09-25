@@ -52,8 +52,7 @@ int CLOC_CODE():
 	return 0
 
 
-int CLOC_TEMPLATE():
-	return 1
+const int CLOC_TEMPLATE = 1
 
 
 int CLOC_STACK_MAX():
@@ -159,7 +158,7 @@ void cloc_scan_text(char* text, int length, cloc_counts* out):
 				i = i + 2
 			else:
 				i = i + 1
-		else if (kinds[top] == CLOC_TEMPLATE()):
+		else if (kinds[top] == CLOC_TEMPLATE):
 			# Inside an f-string's literal text: '{{' and '}}' are
 			# escaped braces, a lone '{' opens an embedded expression.
 			line_started = 1
@@ -216,7 +215,7 @@ void cloc_scan_text(char* text, int length, cloc_counts* out):
 				else if ((run == 1) && (i < length) && (text[i] == '"') && (prefix == 'f')):
 					if (top + 1 < CLOC_STACK_MAX()):
 						top = top + 1
-						kinds[top] = CLOC_TEMPLATE()
+						kinds[top] = CLOC_TEMPLATE
 						depths[top] = 0
 					i = i + 1
 				else if (('0' <= prefix) && (prefix <= '9')):

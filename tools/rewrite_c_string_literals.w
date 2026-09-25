@@ -61,64 +61,54 @@ int rw_keep_bare(char* text, int i):
 	return keep
 
 
-int rw_state_code():
-	return 0
-
-
-int rw_state_line_comment():
-	return 1
-
-
-int rw_state_block_comment():
-	return 2
-
-
-int rw_state_char():
-	return 3
+const int rw_state_code = 0
+const int rw_state_line_comment = 1
+const int rw_state_block_comment = 2
+const int rw_state_char = 3
 
 
 # Returns the rewritten text as a string_builder the caller frees.
 string_builder* rw_rewrite(char* text):
 	string_builder* out = string_new_sized(strlen(text) + 1)
 	int i = 0
-	int state = rw_state_code()
+	int state = rw_state_code
 	while (text[i]):
 		int c = text[i]
 		int n = text[i + 1]
-		if (state == rw_state_line_comment()):
+		if (state == rw_state_line_comment):
 			string_append_char(out, c)
 			if (c == '\n'):
-				state = rw_state_code()
+				state = rw_state_code
 			i = i + 1
-		else if (state == rw_state_block_comment()):
+		else if (state == rw_state_block_comment):
 			string_append_char(out, c)
 			if ((c == '*') && (n == '/')):
 				string_append_char(out, n)
 				i = i + 2
-				state = rw_state_code()
+				state = rw_state_code
 			else:
 				i = i + 1
-		else if (state == rw_state_char()):
+		else if (state == rw_state_char):
 			string_append_char(out, c)
 			if ((c == '\\') && (n != 0)):
 				string_append_char(out, n)
 				i = i + 2
 			else:
 				if (c == 39):
-					state = rw_state_code()
+					state = rw_state_code
 				i = i + 1
 		else if (c == '#'):
 			string_append_char(out, c)
-			state = rw_state_line_comment()
+			state = rw_state_line_comment
 			i = i + 1
 		else if ((c == '/') && (n == '*')):
 			string_append_char(out, c)
 			string_append_char(out, n)
-			state = rw_state_block_comment()
+			state = rw_state_block_comment
 			i = i + 2
 		else if (c == 39):
 			string_append_char(out, c)
-			state = rw_state_char()
+			state = rw_state_char
 			i = i + 1
 		else if (c == '"'):
 			if (rw_keep_bare(text, i) == 0):

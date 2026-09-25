@@ -25,7 +25,7 @@ raft_msg* raft_test_find_to(list[raft_msg*] out, int to):
 
 raft_msg* raft_test_vote_req(int from, int to, int term, int last_index, int last_term):
 	u64* t = u64_new_int(term)
-	raft_msg* m = raft_msg_new(raft_msg_vote_req(), from, to, t)
+	raft_msg* m = raft_msg_new(raft_msg_vote_req, from, to, t)
 	u64_free(t)
 	u64_set_int(m.last_log_index, last_index)
 	u64_set_int(m.last_log_term, last_term)
@@ -34,7 +34,7 @@ raft_msg* raft_test_vote_req(int from, int to, int term, int last_index, int las
 
 raft_msg* raft_test_vote_reply(int from, int to, int term, int granted):
 	u64* t = u64_new_int(term)
-	raft_msg* m = raft_msg_new(raft_msg_vote_reply(), from, to, t)
+	raft_msg* m = raft_msg_new(raft_msg_vote_reply, from, to, t)
 	u64_free(t)
 	m.vote_granted = granted
 	return m
@@ -42,7 +42,7 @@ raft_msg* raft_test_vote_reply(int from, int to, int term, int granted):
 
 raft_msg* raft_test_append(int from, int to, int term, int prev_index, int prev_term, int commit):
 	u64* t = u64_new_int(term)
-	raft_msg* m = raft_msg_new(raft_msg_append(), from, to, t)
+	raft_msg* m = raft_msg_new(raft_msg_append, from, to, t)
 	u64_free(t)
 	u64_set_int(m.prev_log_index, prev_index)
 	u64_set_int(m.prev_log_term, prev_term)
@@ -58,7 +58,7 @@ void raft_test_add_entry(raft_msg* m, int term, char* command):
 
 raft_msg* raft_test_append_reply(int from, int to, int term, int success, int match):
 	u64* t = u64_new_int(term)
-	raft_msg* m = raft_msg_new(raft_msg_append_reply(), from, to, t)
+	raft_msg* m = raft_msg_new(raft_msg_append_reply, from, to, t)
 	u64_free(t)
 	m.success = success
 	u64_set_int(m.match_index, match)
@@ -93,7 +93,7 @@ raft* raft_test_make_leader():
 void test_single_node_becomes_leader():
 	list[int] peers = new list[int]
 	raft* r = raft_new(1, peers, 50, 100, 10, 42)
-	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(raft_follower, raft_state(r))
 	assert_equal(0, raft_term_int(r))
 	assert_equal(0 - 1, raft_leader_hint(r))
 	assert_equal(0 - 1, raft_voted_for(r))
@@ -102,12 +102,12 @@ void test_single_node_becomes_leader():
 	# before the randomized deadline (somewhere in [50, 100]) nothing fires
 	raft_tick(r, 10, out)
 	assert_equal(0, out.length)
-	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(raft_follower, raft_state(r))
 	# at election_max the deadline has certainly passed; no peers, so the
 	# election is won on the spot with no messages
 	raft_tick(r, 100, out)
 	assert_equal(0, out.length)
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	assert_equal(1, raft_term_int(r))
 	assert_equal(1, raft_leader_hint(r))
 	assert_equal(1, raft_voted_for(r))
@@ -120,7 +120,7 @@ void test_single_node_propose_commit_apply():
 	raft_start(r, 0)
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	assert_equal(1, raft_propose(r, c"set x", 5, 100, out))
 	assert_equal(0, out.length)
 	assert_equal(1, raft_commit_int(r))
@@ -149,34 +149,34 @@ void test_three_node_election_and_win():
 	raft_tick(r, 99, out)
 	assert_equal(0, out.length)
 	raft_tick(r, 100, out)
-	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(raft_candidate, raft_state(r))
 	assert_equal(1, raft_term_int(r))
 	assert_equal(1, raft_voted_for(r))
 	assert_equal(0 - 1, raft_leader_hint(r))
 	assert_equal(2, out.length)
 	raft_msg* v2 = raft_test_find_to(out, 2)
-	assert_equal(raft_msg_vote_req(), v2.type)
+	assert_equal(raft_msg_vote_req, v2.type)
 	assert_equal(1, v2.from)
 	assert_equal(1, u64_to_int(v2.term))
 	assert_equal(0, u64_to_int(v2.last_log_index))
 	assert_equal(0, u64_to_int(v2.last_log_term))
 	raft_msg* v3 = raft_test_find_to(out, 3)
-	assert_equal(raft_msg_vote_req(), v3.type)
+	assert_equal(raft_msg_vote_req, v3.type)
 	raft_test_free_msgs(out)
 	# one granted vote plus self is a majority of 3: leader, and the
 	# initial empty heartbeats go out in the same call
 	raft_msg* reply = raft_test_vote_reply(2, 1, 1, 1)
 	raft_on_msg(r, reply, 105, out)
 	raft_msg_free(reply)
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	assert_equal(1, raft_leader_hint(r))
 	assert_equal(2, out.length)
 	raft_msg* h2 = raft_test_find_to(out, 2)
-	assert_equal(raft_msg_append(), h2.type)
+	assert_equal(raft_msg_append, h2.type)
 	assert_equal(0, h2.entries.length)
 	assert_equal(0, u64_to_int(h2.prev_log_index))
 	raft_msg* h3 = raft_test_find_to(out, 3)
-	assert_equal(raft_msg_append(), h3.type)
+	assert_equal(raft_msg_append, h3.type)
 	raft_test_free_msgs(out)
 	raft_free(r)
 
@@ -191,7 +191,7 @@ void test_vote_grant_and_deny_same_term():
 	raft_msg_free(req)
 	assert_equal(1, out.length)
 	raft_msg* reply = out[0]
-	assert_equal(raft_msg_vote_reply(), reply.type)
+	assert_equal(raft_msg_vote_reply, reply.type)
 	assert_equal(2, reply.to)
 	assert_equal(1, reply.vote_granted)
 	assert_equal(1, u64_to_int(reply.term))
@@ -236,7 +236,7 @@ void test_vote_denied_stale_log_despite_higher_term():
 	raft_msg_free(req)
 	# the higher term is adopted (step-down rule)...
 	assert_equal(3, raft_term_int(r))
-	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(raft_follower, raft_state(r))
 	# ...but the vote is still denied on log freshness, so voted_for
 	# stays cleared from the step-down
 	assert_equal(0 - 1, raft_voted_for(r))
@@ -250,18 +250,18 @@ void test_vote_denied_stale_log_despite_higher_term():
 
 void test_leader_steps_down_on_higher_term():
 	raft* r = raft_test_make_leader()
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	assert_equal(1, raft_term_int(r))
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_msg* a = raft_test_append(2, 1, 2, 0, 0, 0)
 	raft_on_msg(r, a, 150, out)
 	raft_msg_free(a)
-	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(raft_follower, raft_state(r))
 	assert_equal(2, raft_term_int(r))
 	assert_equal(2, raft_leader_hint(r))
 	assert_equal(1, out.length)
 	raft_msg* reply = out[0]
-	assert_equal(raft_msg_append_reply(), reply.type)
+	assert_equal(raft_msg_append_reply, reply.type)
 	assert_equal(1, reply.success)
 	assert_equal(2, u64_to_int(reply.term))
 	raft_test_free_msgs(out)
@@ -284,13 +284,13 @@ void test_append_walkback_converges():
 	assert_equal(2, raft_log_length(n1))
 	# the valid append pushed the deadline to 110; election fires there
 	raft_tick(n1, 110, out)
-	assert_equal(raft_candidate(), raft_state(n1))
+	assert_equal(raft_candidate, raft_state(n1))
 	assert_equal(2, raft_term_int(n1))
 	raft_test_free_msgs(out)
 	raft_msg* vote = raft_test_vote_reply(3, 1, 2, 1)
 	raft_on_msg(n1, vote, 110, out)
 	raft_msg_free(vote)
-	assert_equal(raft_leader(), raft_state(n1))
+	assert_equal(raft_leader, raft_state(n1))
 	# the initial heartbeat to peer 2 assumes prev=2, which n2 lacks
 	raft_msg* hb = raft_test_find_to(out, 2)
 	assert_equal(2, u64_to_int(hb.prev_log_index))
@@ -396,7 +396,7 @@ void test_commit_rule_old_term_entries():
 	raft_on_msg(n1, vote, 110, out)
 	raft_msg_free(vote)
 	raft_test_free_msgs(out)
-	assert_equal(raft_leader(), raft_state(n1))
+	assert_equal(raft_leader, raft_state(n1))
 	assert_equal(2, raft_term_int(n1))
 	# the term-1 entry now sits on a majority (self + node 2): no commit
 	raft_msg* ack1 = raft_test_append_reply(2, 1, 2, 1, 1)
@@ -465,10 +465,10 @@ void test_leader_heartbeat_interval():
 	raft_tick(r, 130, out)
 	assert_equal(2, out.length)
 	raft_msg* h2 = raft_test_find_to(out, 2)
-	assert_equal(raft_msg_append(), h2.type)
+	assert_equal(raft_msg_append, h2.type)
 	assert_equal(0, h2.entries.length)
 	raft_msg* h3 = raft_test_find_to(out, 3)
-	assert_equal(raft_msg_append(), h3.type)
+	assert_equal(raft_msg_append, h3.type)
 	raft_test_free_msgs(out)
 	# and again one interval later
 	raft_tick(r, 145, out)
@@ -492,11 +492,11 @@ void test_follower_deadline_reset_on_append():
 	# past the original deadline: the valid append pushed it to 190
 	raft_tick(n2, 150, out)
 	assert_equal(0, out.length)
-	assert_equal(raft_follower(), raft_state(n2))
+	assert_equal(raft_follower, raft_state(n2))
 	assert_equal(1, raft_term_int(n2))
 	# at the pushed-back deadline the election fires
 	raft_tick(n2, 190, out)
-	assert_equal(raft_candidate(), raft_state(n2))
+	assert_equal(raft_candidate, raft_state(n2))
 	assert_equal(2, raft_term_int(n2))
 	raft_test_free_msgs(out)
 	raft_free(n2)
@@ -515,9 +515,9 @@ void test_vote_grant_resets_deadline():
 	# granting at t=90 pushed the deadline from 100 to 190
 	raft_tick(n1, 150, out)
 	assert_equal(0, out.length)
-	assert_equal(raft_follower(), raft_state(n1))
+	assert_equal(raft_follower, raft_state(n1))
 	raft_tick(n1, 190, out)
-	assert_equal(raft_candidate(), raft_state(n1))
+	assert_equal(raft_candidate, raft_state(n1))
 	# adopted term 1 with the vote, then bumped to 2 for the election
 	assert_equal(2, raft_term_int(n1))
 	raft_test_free_msgs(out)
@@ -550,7 +550,7 @@ void test_stale_append_rejected_no_reset():
 	raft_test_free_msgs(out)
 	# the stale append did not reset the deadline: election still at 110
 	raft_tick(n2, 110, out)
-	assert_equal(raft_candidate(), raft_state(n2))
+	assert_equal(raft_candidate, raft_state(n2))
 	raft_test_free_msgs(out)
 	raft_free(n2)
 
@@ -561,19 +561,19 @@ void test_stale_vote_reply_ignored():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(n1, 100, out)
 	raft_test_free_msgs(out)
-	assert_equal(raft_candidate(), raft_state(n1))
+	assert_equal(raft_candidate, raft_state(n1))
 	# a granted reply from an older term changes nothing
 	raft_msg* stale = raft_test_vote_reply(2, 1, 0, 1)
 	raft_on_msg(n1, stale, 105, out)
 	raft_msg_free(stale)
 	assert_equal(0, out.length)
-	assert_equal(raft_candidate(), raft_state(n1))
+	assert_equal(raft_candidate, raft_state(n1))
 	assert_equal(1, raft_term_int(n1))
 	# the current-term reply still wins the election
 	raft_msg* good = raft_test_vote_reply(3, 1, 1, 1)
 	raft_on_msg(n1, good, 106, out)
 	raft_msg_free(good)
-	assert_equal(raft_leader(), raft_state(n1))
+	assert_equal(raft_leader, raft_state(n1))
 	raft_test_free_msgs(out)
 	raft_free(n1)
 
@@ -587,28 +587,28 @@ void test_duplicate_vote_reply_counts_once():
 	raft_start(r, 0)
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
-	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(raft_candidate, raft_state(r))
 	assert_equal(4, out.length)
 	raft_test_free_msgs(out)
 	# first granted vote from peer 2: self + one voter = 2 of 5
 	raft_msg* v2 = raft_test_vote_reply(2, 1, 1, 1)
 	raft_on_msg(r, v2, 105, out)
 	raft_msg_free(v2)
-	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(raft_candidate, raft_state(r))
 	assert_equal(0, out.length)
 	# the same voter's granted reply again (duplicate delivery): still
 	# 2 votes, still a candidate
 	raft_msg* dup = raft_test_vote_reply(2, 1, 1, 1)
 	raft_on_msg(r, dup, 106, out)
 	raft_msg_free(dup)
-	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(raft_candidate, raft_state(r))
 	assert_equal(0, out.length)
 	# a genuine second voter is the real majority: leader, and the
 	# initial heartbeats fan out to all four peers
 	raft_msg* v3 = raft_test_vote_reply(3, 1, 1, 1)
 	raft_on_msg(r, v3, 107, out)
 	raft_msg_free(v3)
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	assert_equal(4, out.length)
 	raft_test_free_msgs(out)
 	raft_free(r)
@@ -645,7 +645,7 @@ void test_append_reply_ignored_when_not_leader():
 	raft_on_msg(r, stray, 10, out)
 	raft_msg_free(stray)
 	assert_equal(0, out.length)
-	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(raft_follower, raft_state(r))
 	assert_equal(0, raft_term_int(r))
 	assert_equal(0, raft_commit_int(r))
 	raft_free(r)
@@ -684,7 +684,7 @@ void test_stale_append_reply_does_not_regress_indexes():
 	# re-sent (the proposes re-armed the heartbeat deadline to 161)
 	raft_tick(r, 170, out)
 	raft_msg* hb = raft_test_find_to(out, 2)
-	assert_equal(raft_msg_append(), hb.type)
+	assert_equal(raft_msg_append, hb.type)
 	assert_equal(2, u64_to_int(hb.prev_log_index))
 	assert_equal(0, hb.entries.length)
 	raft_test_free_msgs(out)
@@ -720,11 +720,11 @@ void test_randomized_timeouts_differ():
 	for t in range(250 + 1):
 		raft_tick(a, t, out)
 		raft_test_free_msgs(out)
-		if (fire_a < 0 && raft_state(a) == raft_candidate()):
+		if (fire_a < 0 && raft_state(a) == raft_candidate):
 			fire_a = t
 		raft_tick(b, t, out)
 		raft_test_free_msgs(out)
-		if (fire_b < 0 && raft_state(b) == raft_candidate()):
+		if (fire_b < 0 && raft_state(b) == raft_candidate):
 			fire_b = t
 	assert1(fire_a >= 100 && fire_a <= 200)
 	assert1(fire_b >= 100 && fire_b <= 200)
@@ -773,7 +773,7 @@ void test_noop_single_node_win_commits():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
 	assert_equal(0, out.length)
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	assert_equal(1, raft_term_int(r))
 	# the win itself appended AND committed the term-1 no-op
 	assert_equal(1, raft_log_length(r))
@@ -806,7 +806,7 @@ void test_noop_closes_old_term_commit_gap():
 	raft_msg* vote = raft_test_vote_reply(2, 1, 2, 1)
 	raft_on_msg(n1, vote, 110, out)
 	raft_msg_free(vote)
-	assert_equal(raft_leader(), raft_state(n1))
+	assert_equal(raft_leader, raft_state(n1))
 	assert_equal(2, raft_term_int(n1))
 	# the win appended the term-2 no-op at index 2...
 	assert_equal(2, raft_log_length(n1))
@@ -816,7 +816,7 @@ void test_noop_closes_old_term_commit_gap():
 	# ...and the initial appends CONTAIN it (prev = 1, one entry)
 	assert_equal(2, out.length)
 	raft_msg* ap2 = raft_test_find_to(out, 2)
-	assert_equal(raft_msg_append(), ap2.type)
+	assert_equal(raft_msg_append, ap2.type)
 	assert_equal(1, u64_to_int(ap2.prev_log_index))
 	assert_equal(1, ap2.entries.length)
 	raft_entry* carried = ap2.entries[0]
@@ -863,12 +863,12 @@ void test_prevote_round_then_real_election():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
 	# a pre-vote round, not an election: term, vote and state untouched
-	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(raft_follower, raft_state(r))
 	assert_equal(0, raft_term_int(r))
 	assert_equal(0 - 1, raft_voted_for(r))
 	assert_equal(2, out.length)
 	raft_msg* v2 = raft_test_find_to(out, 2)
-	assert_equal(raft_msg_vote_req(), v2.type)
+	assert_equal(raft_msg_vote_req, v2.type)
 	assert_equal(1, v2.prevote)
 	# the request carries the prospective term current + 1
 	assert_equal(1, u64_to_int(v2.term))
@@ -882,12 +882,12 @@ void test_prevote_round_then_real_election():
 	raft_msg* pv = raft_test_prevote_reply(2, 1, 1, 1)
 	raft_on_msg(r, pv, 105, out)
 	raft_msg_free(pv)
-	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(raft_candidate, raft_state(r))
 	assert_equal(1, raft_term_int(r))
 	assert_equal(1, raft_voted_for(r))
 	assert_equal(2, out.length)
 	raft_msg* rv = raft_test_find_to(out, 2)
-	assert_equal(raft_msg_vote_req(), rv.type)
+	assert_equal(raft_msg_vote_req, rv.type)
 	assert_equal(0, rv.prevote)
 	assert_equal(1, u64_to_int(rv.term))
 	raft_test_free_msgs(out)
@@ -898,13 +898,13 @@ void test_prevote_round_then_real_election():
 	raft_on_msg(r, stale, 106, out)
 	raft_msg_free(stale)
 	assert_equal(0, out.length)
-	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(raft_candidate, raft_state(r))
 	assert_equal(1, raft_term_int(r))
 	# the real election still completes normally
 	raft_msg* real = raft_test_vote_reply(2, 1, 1, 1)
 	raft_on_msg(r, real, 107, out)
 	raft_msg_free(real)
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	raft_test_free_msgs(out)
 	raft_free(r)
 
@@ -920,7 +920,7 @@ void test_duplicate_prevote_reply_counts_once():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
 	# a pre-vote round: still a follower on term 0, four polls out
-	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(raft_follower, raft_state(r))
 	assert_equal(0, raft_term_int(r))
 	assert_equal(4, out.length)
 	raft_test_free_msgs(out)
@@ -928,14 +928,14 @@ void test_duplicate_prevote_reply_counts_once():
 	raft_msg* pv = raft_test_prevote_reply(2, 1, 1, 1)
 	raft_on_msg(r, pv, 105, out)
 	raft_msg_free(pv)
-	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(raft_follower, raft_state(r))
 	assert_equal(0, raft_term_int(r))
 	assert_equal(0, out.length)
 	# the duplicate of the same grant changes nothing
 	raft_msg* dup = raft_test_prevote_reply(2, 1, 1, 1)
 	raft_on_msg(r, dup, 106, out)
 	raft_msg_free(dup)
-	assert_equal(raft_follower(), raft_state(r))
+	assert_equal(raft_follower, raft_state(r))
 	assert_equal(0, raft_term_int(r))
 	assert_equal(0, out.length)
 	# a genuine second granter reaches the pre-vote majority: the real
@@ -943,11 +943,11 @@ void test_duplicate_prevote_reply_counts_once():
 	raft_msg* pv3 = raft_test_prevote_reply(3, 1, 1, 1)
 	raft_on_msg(r, pv3, 107, out)
 	raft_msg_free(pv3)
-	assert_equal(raft_candidate(), raft_state(r))
+	assert_equal(raft_candidate, raft_state(r))
 	assert_equal(1, raft_term_int(r))
 	assert_equal(4, out.length)
 	raft_msg* rv = raft_test_find_to(out, 2)
-	assert_equal(raft_msg_vote_req(), rv.type)
+	assert_equal(raft_msg_vote_req, rv.type)
 	assert_equal(0, rv.prevote)
 	raft_test_free_msgs(out)
 	raft_free(r)
@@ -971,13 +971,13 @@ void test_prevote_leader_stickiness():
 	raft_msg_free(req)
 	assert_equal(1, out.length)
 	raft_msg* reply = out[0]
-	assert_equal(raft_msg_vote_reply(), reply.type)
+	assert_equal(raft_msg_vote_reply, reply.type)
 	assert_equal(1, reply.prevote)
 	assert_equal(0, reply.vote_granted)
 	# the prospective term is echoed and did NOT bump the receiver
 	assert_equal(2, u64_to_int(reply.term))
 	assert_equal(1, raft_term_int(n1))
-	assert_equal(raft_follower(), raft_state(n1))
+	assert_equal(raft_follower, raft_state(n1))
 	raft_test_free_msgs(out)
 	# 150 ms after contact (past the minimum timeout): GRANTED
 	raft_msg* later = raft_test_prevote_req(3, 1, 2, 0, 0)
@@ -1012,7 +1012,7 @@ void test_prevote_grant_does_not_reset_timer():
 	raft_test_free_msgs(out)
 	# the original deadline (100) still stands: the election fires there
 	raft_tick(n1, 100, out)
-	assert_equal(raft_candidate(), raft_state(n1))
+	assert_equal(raft_candidate, raft_state(n1))
 	assert_equal(1, raft_term_int(n1))
 	raft_test_free_msgs(out)
 	raft_free(n1)
@@ -1043,7 +1043,7 @@ void test_prevote_rejoiner_cannot_disrupt():
 	assert_equal(10, u64_to_int(reply.term))
 	# no step-down happened: term 2, still following the real leader
 	assert_equal(2, raft_term_int(n1))
-	assert_equal(raft_follower(), raft_state(n1))
+	assert_equal(raft_follower, raft_state(n1))
 	assert_equal(2, raft_leader_hint(n1))
 	assert_equal(0 - 1, raft_voted_for(n1))
 	raft_test_free_msgs(out)
@@ -1054,7 +1054,7 @@ void test_prevote_rejoiner_cannot_disrupt():
 
 raft_msg* raft_test_install(int from, int to, int term, int snap_index, int snap_term, int commit):
 	u64* t = u64_new_int(term)
-	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), from, to, t)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot, from, to, t)
 	u64_free(t)
 	u64_set_int(m.prev_log_index, snap_index)
 	u64_set_int(m.prev_log_term, snap_term)
@@ -1091,7 +1091,7 @@ void test_take_snapshot_compacts():
 	raft_start(r, 0)
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	assert_equal(1, raft_propose(r, c"a", 1, 100, out))
 	assert_equal(1, raft_propose(r, c"b", 1, 101, out))
 	assert_equal(1, raft_propose(r, c"c", 1, 102, out))
@@ -1255,7 +1255,7 @@ void test_leader_install_snapshot_on_backoff():
 	raft_msg_free(nack)
 	assert_equal(1, out.length)
 	raft_msg* probe = out[0]
-	assert_equal(raft_msg_install_snapshot(), probe.type)
+	assert_equal(raft_msg_install_snapshot, probe.type)
 	assert_equal(3, probe.to)
 	assert_equal(4, u64_to_int(probe.prev_log_index))
 	assert_equal(1, u64_to_int(probe.prev_log_term))
@@ -1267,12 +1267,12 @@ void test_leader_install_snapshot_on_backoff():
 	raft_tick(n1, 200, out)
 	assert_equal(2, out.length)
 	raft_msg* h2 = raft_test_find_to(out, 2)
-	assert_equal(raft_msg_append(), h2.type)
+	assert_equal(raft_msg_append, h2.type)
 	assert_equal(4, u64_to_int(h2.prev_log_index))
 	assert_equal(1, u64_to_int(h2.prev_log_term))
 	assert_equal(0, h2.entries.length)
 	raft_msg* h3 = raft_test_find_to(out, 3)
-	assert_equal(raft_msg_install_snapshot(), h3.type)
+	assert_equal(raft_msg_install_snapshot, h3.type)
 	raft_test_assert_blob(c"SNAP@4", 6, h3.snap_data, h3.snap_len)
 	raft_test_free_msgs(out)
 	# a successful install reply walks next_index past the base: the
@@ -1283,7 +1283,7 @@ void test_leader_install_snapshot_on_backoff():
 	raft_test_free_msgs(out)
 	raft_tick(n1, 230, out)
 	raft_msg* h3b = raft_test_find_to(out, 3)
-	assert_equal(raft_msg_append(), h3b.type)
+	assert_equal(raft_msg_append, h3b.type)
 	assert_equal(4, u64_to_int(h3b.prev_log_index))
 	raft_test_free_msgs(out)
 	raft_free(n1)
@@ -1317,13 +1317,13 @@ void test_install_snapshot_receiver_path():
 	raft_on_msg(n2, inst, 20, out)
 	assert_equal(1, out.length)
 	raft_msg* reply = out[0]
-	assert_equal(raft_msg_append_reply(), reply.type)
+	assert_equal(raft_msg_append_reply, reply.type)
 	assert_equal(1, reply.success)
 	assert_equal(5, u64_to_int(reply.match_index))
 	assert_equal(3, u64_to_int(reply.term))
 	raft_test_free_msgs(out)
 	# installed: follower on term 3 behind leader 1, old log gone
-	assert_equal(raft_follower(), raft_state(n2))
+	assert_equal(raft_follower, raft_state(n2))
 	assert_equal(3, raft_term_int(n2))
 	assert_equal(1, raft_leader_hint(n2))
 	assert_equal(0, raft_log_length(n2))
@@ -1381,7 +1381,7 @@ void test_install_snapshot_stale_ignored():
 	raft_msg_free(inst)
 	assert_equal(1, out.length)
 	raft_msg* reply = out[0]
-	assert_equal(raft_msg_append_reply(), reply.type)
+	assert_equal(raft_msg_append_reply, reply.type)
 	assert_equal(1, reply.success)
 	assert_equal(3, u64_to_int(reply.match_index))
 	raft_test_free_msgs(out)
@@ -1405,7 +1405,7 @@ void test_install_snapshot_stale_ignored():
 	raft_msg_free(old_inst)
 	assert_equal(1, out.length)
 	raft_msg* refuse = out[0]
-	assert_equal(raft_msg_append_reply(), refuse.type)
+	assert_equal(raft_msg_append_reply, refuse.type)
 	assert_equal(0, refuse.success)
 	assert_equal(2, u64_to_int(refuse.term))
 	assert_equal(0, raft_snap_base(n3))

@@ -76,17 +76,17 @@ void test_inotify_watch_lifecycle():
 
 	int fd = inotify_init()
 	it_assert_ok(c"inotify_init", fd)
-	int wd = inotify_add_watch(fd, dir, IN_ALL_EVENTS())
+	int wd = inotify_add_watch(fd, dir, IN_ALL_EVENTS)
 	it_assert_ok(c"inotify_add_watch", wd)
 	it_assert_ok(c"inotify_rm_watch", inotify_rm_watch(fd, wd))
 
 	# Removing the watch queues its final IN_IGNORED event: a record
 	# with no name, exercising the len == 0 parse path (blocking read
 	# is safe -- the event is already queued).
-	char* buf = malloc(INOTIFY_BUF_SIZE())
-	int got = read(fd, buf, INOTIFY_BUF_SIZE())
-	assert_equal(INOTIFY_EVENT_HEADER_SIZE(), got)
-	assert_equal(INOTIFY_EVENT_HEADER_SIZE(), inotify_event_record_size(buf, 0))
+	char* buf = malloc(INOTIFY_BUF_SIZE)
+	int got = read(fd, buf, INOTIFY_BUF_SIZE)
+	assert_equal(INOTIFY_EVENT_HEADER_SIZE, got)
+	assert_equal(INOTIFY_EVENT_HEADER_SIZE, inotify_event_record_size(buf, 0))
 
 	inotify_event ev
 	int next = inotify_event_parse(buf, got, 0, &ev)
@@ -112,7 +112,7 @@ void test_inotify_event_stream():
 
 	int fd = inotify_init_nonblocking()
 	it_assert_ok(c"inotify_init_nonblocking", fd)
-	int mask = IN_CREATE() | IN_MODIFY() | IN_DELETE() | IN_MOVED_FROM() | IN_MOVED_TO()
+	int mask = IN_CREATE | IN_MODIFY | IN_DELETE | IN_MOVED_FROM() | IN_MOVED_TO()
 	int wd = inotify_add_watch(fd, dir, mask)
 	it_assert_ok(c"inotify_add_watch", wd)
 
@@ -134,24 +134,24 @@ void test_inotify_event_stream():
 	it_assert_ok(c"unlink", unlink(path_b))
 
 	# Every event is already queued, so one read drains all five.
-	char* buf = malloc(INOTIFY_BUF_SIZE())
-	int got = read(fd, buf, INOTIFY_BUF_SIZE())
+	char* buf = malloc(INOTIFY_BUF_SIZE)
+	int got = read(fd, buf, INOTIFY_BUF_SIZE)
 	asserts(c"expected queued inotify events", got > 0)
 
 	inotify_event ev
-	int offset = it_expect_event(buf, got, 0, wd, IN_CREATE(), c"a.txt", &ev)
-	offset = it_expect_event(buf, got, offset, wd, IN_MODIFY(), c"a.txt", &ev)
+	int offset = it_expect_event(buf, got, 0, wd, IN_CREATE, c"a.txt", &ev)
+	offset = it_expect_event(buf, got, offset, wd, IN_MODIFY, c"a.txt", &ev)
 	offset = it_expect_event(buf, got, offset, wd, IN_MOVED_FROM(), c"a.txt", &ev)
 	int move_cookie = ev.cookie
 	asserts(c"rename cookie should be nonzero", move_cookie != 0)
 	offset = it_expect_event(buf, got, offset, wd, IN_MOVED_TO(), c"b.txt", &ev)
 	assert_equal(move_cookie, ev.cookie)
-	offset = it_expect_event(buf, got, offset, wd, IN_DELETE(), c"b.txt", &ev)
+	offset = it_expect_event(buf, got, offset, wd, IN_DELETE, c"b.txt", &ev)
 	assert_equal(got, offset)
 	assert_equal(-1, inotify_event_parse(buf, got, offset, &ev))
 
 	# The queue is drained: a nonblocking read reports EAGAIN (11).
-	assert_equal(0 - 11, read(fd, buf, INOTIFY_BUF_SIZE()))
+	assert_equal(0 - 11, read(fd, buf, INOTIFY_BUF_SIZE))
 
 	close(fd)
 	free(buf)
@@ -166,20 +166,20 @@ void test_inotify_directory_events_carry_isdir():
 
 	int fd = inotify_init_nonblocking()
 	it_assert_ok(c"inotify_init_nonblocking", fd)
-	int wd = inotify_add_watch(fd, dir, IN_CREATE() | IN_DELETE())
+	int wd = inotify_add_watch(fd, dir, IN_CREATE | IN_DELETE)
 	it_assert_ok(c"inotify_add_watch", wd)
 
 	char* subdir = it_path(dir, c"sub")
 	it_assert_ok(c"mkdir sub", mkdir(subdir, 493))
 	it_assert_ok(c"rmdir sub", rmdir(subdir))
 
-	char* buf = malloc(INOTIFY_BUF_SIZE())
-	int got = read(fd, buf, INOTIFY_BUF_SIZE())
+	char* buf = malloc(INOTIFY_BUF_SIZE)
+	int got = read(fd, buf, INOTIFY_BUF_SIZE)
 	asserts(c"expected queued inotify events", got > 0)
 
 	inotify_event ev
-	int offset = it_expect_event(buf, got, 0, wd, IN_CREATE() | IN_ISDIR(), c"sub", &ev)
-	offset = it_expect_event(buf, got, offset, wd, IN_DELETE() | IN_ISDIR(), c"sub", &ev)
+	int offset = it_expect_event(buf, got, 0, wd, IN_CREATE | IN_ISDIR, c"sub", &ev)
+	offset = it_expect_event(buf, got, offset, wd, IN_DELETE | IN_ISDIR, c"sub", &ev)
 	assert_equal(got, offset)
 
 	close(fd)
@@ -193,7 +193,7 @@ void test_inotify_event_parse_bounds():
 	# 9, "abc" NUL-padded to len 8), checked against every truncation.
 	char* buf = malloc(64)
 	save_int32(buf, 7)
-	save_int32(&buf[4], IN_CREATE())
+	save_int32(&buf[4], IN_CREATE)
 	save_int32(&buf[8], 9)
 	save_int32(&buf[12], 8)
 	strcpy(&buf[16], c"abc")
@@ -207,7 +207,7 @@ void test_inotify_event_parse_bounds():
 	inotify_event ev
 	assert_equal(24, inotify_event_parse(buf, 24, 0, &ev))
 	assert_equal(7, ev.wd)
-	assert_equal_hex(IN_CREATE(), ev.mask)
+	assert_equal_hex(IN_CREATE, ev.mask)
 	assert_equal(9, ev.cookie)
 	assert_strings_equal(c"abc", ev.name)
 	assert_equal(3, ev.name_length)
@@ -226,6 +226,6 @@ void test_inotify_add_watch_missing_path_fails():
 	int fd = inotify_init()
 	it_assert_ok(c"inotify_init", fd)
 	char* missing = it_path(it_root(), c"does_not_exist")
-	asserts(c"watch on a missing path should fail", inotify_add_watch(fd, missing, IN_ALL_EVENTS()) < 0)
+	asserts(c"watch on a missing path should fail", inotify_add_watch(fd, missing, IN_ALL_EVENTS) < 0)
 	close(fd)
 	free(missing)

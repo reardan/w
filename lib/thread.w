@@ -153,13 +153,11 @@ int thread_spawn_lock_word    # 0 free, 1 held: guards the two handoff words
 
 # FUTEX_WAIT | FUTEX_PRIVATE_FLAG: these futexes are only ever shared
 # between CLONE_VM threads of one process.
-int thread_futex_wait_op():
-	return 128
+const int thread_futex_wait_op = 128
 
 
 # FUTEX_WAKE | FUTEX_PRIVATE_FLAG.
-int thread_futex_wake_op():
-	return 129
+const int thread_futex_wake_op = 129
 
 
 # Block until *word becomes nonzero. The kernel re-checks the word
@@ -168,13 +166,13 @@ int thread_futex_wake_op():
 # re-loop.
 void thread_wait_word(int* word):
 	while (*word == 0):
-		sys_futex(cast(int, word), thread_futex_wait_op(), 0, 0)
+		sys_futex(cast(int, word), thread_futex_wait_op, 0, 0)
 
 
 # Wake one waiter blocked on word (a no-op when nobody waits yet; the
 # waiter's re-check in thread_wait_word covers that window).
 void thread_wake_word(int* word):
-	sys_futex(cast(int, word), thread_futex_wake_op(), 1, 0)
+	sys_futex(cast(int, word), thread_futex_wake_op, 1, 0)
 
 
 # Block until *word becomes zero: thread_wait_word in the other
@@ -198,8 +196,7 @@ void thread_wait_word_clear(int* word):
 
 # Size of the stack thread_create mmaps for each worker
 # (code_generator/{x86,x64}_asm.w stack_create): 4MB.
-int thread_stack_size():
-	return 4194304
+const int thread_stack_size = 4194304
 
 
 # The zero-argument clone entry. Runs on the fresh 4MB stack; it must
@@ -214,7 +211,7 @@ void thread_entry():
 	# base itself is only page-aligned, so only this top-relative
 	# computation recovers it.
 	int stack_end = (cast(int, &t) + 4095) & ~4095
-	t.stack_base = stack_end - thread_stack_size()
+	t.stack_base = stack_end - thread_stack_size
 	# thread_local globals (docs/projects/thread_local.md): this thread's
 	# zeroed TLS block is the bottom of its own stack mapping (mmap
 	# zero-fills it; the compiler caps the block at 1MB of the 4MB), so
@@ -246,7 +243,7 @@ void thread_entry():
 # the failed cas and the syscall returns EAGAIN instead of sleeping.
 void thread_spawn_lock():
 	while (atomic_cas(&thread_spawn_lock_word, 0, 1) != 0):
-		sys_futex(cast(int, &thread_spawn_lock_word), thread_futex_wait_op(), 1, 0)
+		sys_futex(cast(int, &thread_spawn_lock_word), thread_futex_wait_op, 1, 0)
 
 
 void thread_spawn_unlock():
@@ -288,7 +285,7 @@ int thread_join(wthread* t):
 	thread_wait_word(&t.done)
 	thread_wait_word_clear(&t.exited)
 	if (t.stack_base != 0):
-		munmap(t.stack_base, thread_stack_size())
+		munmap(t.stack_base, thread_stack_size)
 	free(cast(void*, t))
 	return 0
 
@@ -414,7 +411,7 @@ void thread_pool_worker(void* p):
 		# the load and the syscall returns immediately (EAGAIN) - the
 		# wake cannot be lost; a spurious wake just re-loops.
 		while (slot.go == seen):
-			sys_futex(cast(int, &slot.go), thread_futex_wait_op(), seen, 0)
+			sys_futex(cast(int, &slot.go), thread_futex_wait_op, seen, 0)
 		seen = slot.go
 		parallel_for_fn* func = slot.func
 		if (cast(int, func) == 0):
@@ -491,7 +488,7 @@ int thread_pool_on_worker():
 	int w = 0
 	while (w < thread_pool_size):
 		int off = here - thread_pool_slots[w].stack_lo
-		if (off >= 0 && off < thread_stack_size()):
+		if (off >= 0 && off < thread_stack_size):
 			return 1
 		w = w + 1
 	return 0
@@ -616,7 +613,7 @@ void mutex_lock(wmutex* m):
 		# fails (EAGAIN) and the wake cannot be lost; a spurious wake
 		# just re-loops.
 		if ((c == 2) || (atomic_cas(&m.word, 1, 2) != 0)):
-			sys_futex(cast(int, &m.word), thread_futex_wait_op(), 2, 0)
+			sys_futex(cast(int, &m.word), thread_futex_wait_op, 2, 0)
 		# Retake as 0 -> 2, not 0 -> 1: other waiters may still be
 		# parked, and only state 2 makes the eventual unlock wake them.
 		c = atomic_cas(&m.word, 0, 2)
@@ -653,7 +650,7 @@ void cond_init(wcond* c):
 void cond_wait(wcond* c, wmutex* m):
 	int observed = c.seq
 	mutex_unlock(m)
-	sys_futex(cast(int, &c.seq), thread_futex_wait_op(), observed, 0)
+	sys_futex(cast(int, &c.seq), thread_futex_wait_op, observed, 0)
 	mutex_lock(m)
 
 
@@ -666,4 +663,4 @@ void cond_signal(wcond* c):
 # Wake every waiter.
 void cond_broadcast(wcond* c):
 	atomic_add(&c.seq, 1)
-	sys_futex(cast(int, &c.seq), thread_futex_wake_op(), 0x7fffffff, 0)
+	sys_futex(cast(int, &c.seq), thread_futex_wake_op, 0x7fffffff, 0)

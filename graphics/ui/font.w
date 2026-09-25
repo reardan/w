@@ -35,43 +35,20 @@ import lib.bytes
 
 
 # Mask ids in atlas bake order.
-int ui_mask_white():
-	return 0
-
-
-int ui_mask_corner():
-	return 1
-
-
-int ui_mask_disc():
-	return 2
-
-
-int ui_mask_ring():
-	return 3
-
-
-int ui_mask_check():
-	return 4
-
-
-int ui_mask_chevron():
-	return 5
-
-
-int ui_mask_shadow():
-	return 6
+const int ui_mask_white = 0
+const int ui_mask_corner = 1
+const int ui_mask_disc = 2
+const int ui_mask_ring = 3
+const int ui_mask_check = 4
+const int ui_mask_chevron = 5
+const int ui_mask_shadow = 6
 
 
 # ui_render_mask mirrors but never rotates, so the 'v' chevron above
 # cannot supply the right-pointing form a collapsed tree node needs.
 # flip_x on this one gives the left-pointing form.
-int ui_mask_chevron_right():
-	return 7
-
-
-int ui_mask_cross():
-	return 8
+const int ui_mask_chevron_right = 7
+const int ui_mask_cross = 8
 
 
 # One glyph's (or mask's) atlas rect and pixel metrics. bearing_x is
@@ -115,25 +92,14 @@ enum ui_font_default_face:
 	UI_FACE_BOLD_ITALIC = 3
 
 
-int ui_font_max_faces():
-	return 32
-
-
-int ui_font_max_fallbacks():
-	return 8
+const int ui_font_max_faces = 32
+const int ui_font_max_fallbacks = 8
 
 
 # Strike ids share a 32-bit cache key with the codepoint (21 bits).
-int ui_font_max_strikes():
-	return 1000
-
-
-int ui_font_min_ppem():
-	return 4
-
-
-int ui_font_max_ppem():
-	return 200
+const int ui_font_max_strikes = 1000
+const int ui_font_min_ppem = 4
+const int ui_font_max_ppem = 200
 
 
 # A face at one pixel size, with its line metrics in pixels (y-down
@@ -226,7 +192,7 @@ ttf_font* ui_font_face_font(int face):
 # the face table is full.
 int ui_font_face_add(ttf_font* font):
 	ui_font_init()
-	if (ui_font_st.face_count >= ui_font_max_faces()):
+	if (ui_font_st.face_count >= ui_font_max_faces):
 		print_error(c"graphics.ui.font: face limit reached\n")
 		return 0 - 1
 	int face = ui_font_st.face_count
@@ -288,7 +254,7 @@ void ui_font_face_set_italic(int face, int italic_face):
 # default Regular is always tried last.
 void ui_font_add_fallback(int face):
 	ui_font_init()
-	if ((face < 0) || (face >= ui_font_st.face_count) || (ui_font_st.fallback_count >= ui_font_max_fallbacks())):
+	if ((face < 0) || (face >= ui_font_st.face_count) || (ui_font_st.fallback_count >= ui_font_max_fallbacks)):
 		return
 	ui_font_st.fallbacks[ui_font_st.fallback_count] = face
 	ui_font_st.fallback_count = ui_font_st.fallback_count + 1
@@ -390,7 +356,7 @@ int ui_font_rows_place(char* bitmap, int w, int h, int* x, int* y):
 # an unknown face or a size outside 4..200 (after printing why).
 int ui_font_strike(int face, int ppem):
 	ui_font_init()
-	if ((ppem < ui_font_min_ppem()) || (ppem > ui_font_max_ppem())):
+	if ((ppem < ui_font_min_ppem) || (ppem > ui_font_max_ppem)):
 		print_error(c"graphics.ui.font: ppem out of range (4..200)\n")
 		return 0 - 1
 	ttf_font* font = ui_font_face_font(face)
@@ -402,7 +368,7 @@ int ui_font_strike(int face, int ppem):
 		if ((ui_font_st.strikes[i].face == face) && (ui_font_st.strikes[i].ppem == ppem)):
 			return i
 		i = i + 1
-	if (ui_font_st.strike_count >= ui_font_max_strikes()):
+	if (ui_font_st.strike_count >= ui_font_max_strikes):
 		print_error(c"graphics.ui.font: strike limit reached\n")
 		return 0 - 1
 	if (ui_font_st.strike_count >= ui_font_st.strike_cap):
@@ -432,7 +398,7 @@ int ui_font_init():
 	ui_font_st.ready = 1
 	ui_font_st.face_count = ui_font_face_count()
 	int i = 0
-	while (i < ui_font_max_faces()):
+	while (i < ui_font_max_faces):
 		ui_font_st.fonts[i] = 0
 		ui_font_st.italic_of[i] = 0 - 1
 		i = i + 1
@@ -460,8 +426,7 @@ int ui_font_init():
 
 
 # The default strikes: body text and titles.
-int ui_font_strike_count():
-	return 2
+const int ui_font_strike_count = 2
 
 
 int ui_font_strike_total():
@@ -577,7 +542,7 @@ int ui_font_strikeout_thickness(int strike):
 # stays loaded: ui_font_strike_resized gives it at other sizes).
 # Returns the strike id, or -1 after printing why.
 int ui_font_load_ttf(char* path, int ppem):
-	if ((ppem < ui_font_min_ppem()) || (ppem > ui_font_max_ppem())):
+	if ((ppem < ui_font_min_ppem) || (ppem > ui_font_max_ppem)):
 		print_error(c"graphics.ui.font: ppem out of range (4..200)\n")
 		return 0 - 1
 	int face = ui_font_face_load_ttf(path)
@@ -589,7 +554,7 @@ int ui_font_load_ttf(char* path, int ppem):
 # The same from font bytes in memory (data is only read during the
 # call).
 int ui_font_load_ttf_bytes(char* data, int size, int ppem):
-	if ((ppem < ui_font_min_ppem()) || (ppem > ui_font_max_ppem())):
+	if ((ppem < ui_font_min_ppem) || (ppem > ui_font_max_ppem)):
 		print_error(c"graphics.ui.font: ppem out of range (4..200)\n")
 		return 0 - 1
 	int face = ui_font_face_load_bytes(data, size)

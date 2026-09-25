@@ -709,7 +709,7 @@ int wvc_cmd_merge(int argc, int argv):
 	# already (dag.w's own header comment); base_raws[0] is therefore the
 	# deterministic "first" best common ancestor -- see the header
 	# comment's criss-cross note.
-	char* base_id = hex_encode(base_raws[0], DAG_ID_SIZE())
+	char* base_id = hex_encode(base_raws[0], DAG_ID_SIZE)
 	free(head_raw)
 	free(other_raw)
 	list_free[char*](base_raws)

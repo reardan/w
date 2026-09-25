@@ -28,7 +28,7 @@ int h2_test_raw_accept(int listener, char* settings, int settings_len):
 	if (mem_eq(pre, h2_preface(), 24) == 0):
 		exit(92)
 	free(pre)
-	h2_raw_write_frame(fd, h2_frame_settings(), 0, 0, settings, settings_len)
+	h2_raw_write_frame(fd, h2_frame_settings, 0, 0, settings, settings_len)
 	return fd
 
 

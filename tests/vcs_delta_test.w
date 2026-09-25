@@ -60,7 +60,7 @@ int vcdt_ops_equal(delta_ops* a, delta_ops* b):
 			return 0
 		if (x.length != y.length):
 			return 0
-		if (x.kind == DELTA_OP_COPY()):
+		if (x.kind == DELTA_OP_COPY):
 			if (x.offset != y.offset):
 				return 0
 		else:
@@ -95,7 +95,7 @@ void test_delta_diff_apply_identical():
 	int target_len = base_len
 
 	delta_ops* ops = delta_diff(base, base_len, target, target_len)
-	assert1(vcdt_count_kind(ops, DELTA_OP_COPY()) >= 1)
+	assert1(vcdt_count_kind(ops, DELTA_OP_COPY) >= 1)
 
 	string_builder* encoded = delta_encode_ops(ops)
 	assert1(encoded.length < target_len)
@@ -132,8 +132,8 @@ void test_delta_diff_apply_disjoint():
 	free(sb2)
 
 	delta_ops* ops = delta_diff(base, base_len, target, target_len)
-	assert_equal(0, vcdt_count_kind(ops, DELTA_OP_COPY()))
-	assert1(vcdt_count_kind(ops, DELTA_OP_INSERT()) >= 1)
+	assert_equal(0, vcdt_count_kind(ops, DELTA_OP_COPY))
+	assert1(vcdt_count_kind(ops, DELTA_OP_INSERT) >= 1)
 
 	delta_apply_result* r = result_expect[delta_apply_result*](delta_apply_ops(base, base_len, ops))
 	vcdt_assert_bytes_equal(target, target_len, r.data, r.length)
@@ -155,8 +155,8 @@ void test_delta_diff_apply_partial_overlap():
 	# requires an exact block-sized common run landing on that grid).
 	# block_c and the target's prefix/suffix are deliberately a
 	# different size -- they are never meant to match anything.
-	char* block_a = vcdt_repeat('A', DELTA_BLOCK_SIZE())
-	char* block_b = vcdt_repeat('B', DELTA_BLOCK_SIZE())
+	char* block_a = vcdt_repeat('A', DELTA_BLOCK_SIZE)
+	char* block_b = vcdt_repeat('B', DELTA_BLOCK_SIZE)
 	char* block_c = vcdt_repeat('C', 80)
 	char* block_x = vcdt_repeat('X', 50)
 	char* block_y = vcdt_repeat('Y', 50)
@@ -176,8 +176,8 @@ void test_delta_diff_apply_partial_overlap():
 	free(sb2)
 
 	delta_ops* ops = delta_diff(base, base_len, target, target_len)
-	assert1(vcdt_count_kind(ops, DELTA_OP_COPY()) >= 1)
-	assert1(vcdt_count_kind(ops, DELTA_OP_INSERT()) >= 1)
+	assert1(vcdt_count_kind(ops, DELTA_OP_COPY) >= 1)
+	assert1(vcdt_count_kind(ops, DELTA_OP_INSERT) >= 1)
 
 	delta_apply_result* r = result_expect[delta_apply_result*](delta_apply_ops(base, base_len, ops))
 	vcdt_assert_bytes_equal(target, target_len, r.data, r.length)
@@ -204,7 +204,7 @@ void test_delta_diff_apply_empty_base():
 	free(sb)
 
 	delta_ops* ops = delta_diff(0, 0, target, target_len)
-	assert_equal(0, vcdt_count_kind(ops, DELTA_OP_COPY()))
+	assert_equal(0, vcdt_count_kind(ops, DELTA_OP_COPY))
 
 	delta_apply_result* r = result_expect[delta_apply_result*](delta_apply_ops(0, 0, ops))
 	vcdt_assert_bytes_equal(target, target_len, r.data, r.length)
@@ -234,7 +234,7 @@ void test_delta_diff_apply_target_smaller_than_base():
 	# Each segment is exactly one DELTA_BLOCK_SIZE() so block_b lands on
 	# a block-aligned offset in base (see the header comment: only
 	# full block-aligned windows are indexed).
-	int block = DELTA_BLOCK_SIZE()
+	int block = DELTA_BLOCK_SIZE
 	char* block_a = vcdt_repeat('A', block)
 	char* block_b = vcdt_repeat('B', block)
 	char* block_c = vcdt_repeat('C', block)
@@ -251,7 +251,7 @@ void test_delta_diff_apply_target_smaller_than_base():
 	int target_len = block
 
 	delta_ops* ops = delta_diff(base, base_len, target, target_len)
-	assert1(vcdt_count_kind(ops, DELTA_OP_COPY()) >= 1)
+	assert1(vcdt_count_kind(ops, DELTA_OP_COPY) >= 1)
 	assert1(target_len < base_len)
 
 	delta_apply_result* r = result_expect[delta_apply_result*](delta_apply_ops(base, base_len, ops))
@@ -274,8 +274,8 @@ void test_delta_encode_decode_ops_roundtrip():
 	# block_b is block-aligned in base (see the header comment) so the
 	# diff actually contains a COPY op, exercising both opcode kinds'
 	# wire encoding.
-	char* block_a = vcdt_repeat('A', DELTA_BLOCK_SIZE())
-	char* block_b = vcdt_repeat('B', DELTA_BLOCK_SIZE())
+	char* block_a = vcdt_repeat('A', DELTA_BLOCK_SIZE)
+	char* block_b = vcdt_repeat('B', DELTA_BLOCK_SIZE)
 	char* block_x = vcdt_repeat('X', 50)
 	string_builder* sb1 = string_new()
 	string_append(sb1, block_a)
@@ -291,8 +291,8 @@ void test_delta_encode_decode_ops_roundtrip():
 	free(sb2)
 
 	delta_ops* ops = delta_diff(base, base_len, target, target_len)
-	assert1(vcdt_count_kind(ops, DELTA_OP_COPY()) >= 1)
-	assert1(vcdt_count_kind(ops, DELTA_OP_INSERT()) >= 1)
+	assert1(vcdt_count_kind(ops, DELTA_OP_COPY) >= 1)
+	assert1(vcdt_count_kind(ops, DELTA_OP_INSERT) >= 1)
 	string_builder* encoded = delta_encode_ops(ops)
 
 	delta_ops* decoded = result_expect[delta_ops*](delta_decode_ops(encoded.data, encoded.length))

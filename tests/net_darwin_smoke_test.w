@@ -36,7 +36,7 @@ int net_smoke_listen(int* out_port):
 	net_smoke_assert_ok(c"getsockname", socket_getsockname_ipv4(listener, &bound))
 	# The kernel filled this sockaddr_in: the portable family accessor
 	# must see AF_INET on every target layout.
-	assert_equal(af_inet(), sockaddr_in_family(&bound))
+	assert_equal(af_inet, sockaddr_in_family(&bound))
 	*out_port = net_htons(bound.port)
 	return listener
 
@@ -96,7 +96,7 @@ void test_udp_recvfrom_sockaddr():
 	int received = socket_recv_from_ipv4(receiver, got, 16, 0, &from)
 	assert_equal(4, received)
 	# Kernel-filled sender address parses on this target's layout.
-	assert_equal(af_inet(), sockaddr_in_family(&from))
+	assert_equal(af_inet, sockaddr_in_family(&from))
 	assert_equal_hex(loopback, net_htonl(from.ip_address))
 	free(got)
 	close(sender)

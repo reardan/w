@@ -24,15 +24,15 @@ int main(int argc, int argv):
 	int client = socket_accept_connection(server)
 	web_check_syscall(c"accept", client)
 
-	char* request = malloc(web_default_buffer_size() + 1)
-	int request_bytes = read(client, request, web_default_buffer_size())
+	char* request = malloc(web_default_buffer_size + 1)
+	int request_bytes = read(client, request, web_default_buffer_size)
 	web_check_syscall(c"read", request_bytes)
 	request[request_bytes] = 0
 	print_int(c"proxy received request bytes: ", request_bytes)
 
 	int upstream = web_connect_ipv4(upstream_ip, upstream_port)
 	web_check_syscall(c"write", write(upstream, request, request_bytes))
-	int response_bytes = web_stream_until_close(upstream, client, web_default_buffer_size())
+	int response_bytes = web_stream_until_close(upstream, client, web_default_buffer_size)
 	print_int(c"proxy forwarded response bytes: ", response_bytes)
 
 	free(request)

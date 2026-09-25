@@ -9,8 +9,7 @@
 # getdents64, pipe2, dup3, ppoll, clock_gettime).
 
 # AT_FDCWD: operate relative to the current working directory.
-int arm64_at_fdcwd():
-	return 0 - 100
+const int arm64_at_fdcwd = -100
 
 
 struct arm64_timespec:
@@ -22,11 +21,11 @@ struct arm64_timespec:
 
 # openat with O_CREAT|O_WRONLY|O_TRUNC (0x241 = 577).
 int create_file(char* filename, int permissions):
-	return syscall7(56, arm64_at_fdcwd(), filename, 577, permissions, 0, 0)
+	return syscall7(56, arm64_at_fdcwd, filename, 577, permissions, 0, 0)
 
 # mode: 0 - read, 1 - write, 2 - readwrite (plus O_CREAT etc.)
 int open(char *filename, int mode, int permissions):
-	return syscall7(56, arm64_at_fdcwd(), filename, mode, permissions, 0, 0)
+	return syscall7(56, arm64_at_fdcwd, filename, mode, permissions, 0, 0)
 
 int write(int file, char* s, int length):
 	return syscall(64, file, s, length)
@@ -43,7 +42,7 @@ int seek(int file, int offset, int reference):
 
 # unlinkat with no flags removes a file.
 int unlink(char* path):
-	return syscall(35, arm64_at_fdcwd(), path, 0)
+	return syscall(35, arm64_at_fdcwd, path, 0)
 
 # fsync (82): flushes the file's data and metadata to stable storage.
 # Returns 0, or a negative errno (e.g. -9 EBADF on a closed fd).
@@ -56,15 +55,15 @@ int fdatasync(int file):
 
 # Directory syscalls:
 int mkdir(char* path, int mode):
-	return syscall7(34, arm64_at_fdcwd(), path, mode, 0, 0, 0)
+	return syscall7(34, arm64_at_fdcwd, path, mode, 0, 0, 0)
 
 # unlinkat with AT_REMOVEDIR (0x200).
 int rmdir(char* path):
-	return syscall(35, arm64_at_fdcwd(), path, 512)
+	return syscall(35, arm64_at_fdcwd, path, 512)
 
 # renameat(olddirfd, old, newdirfd, new) — both dirs AT_FDCWD.
 int rename(char* oldpath, char* newpath):
-	return syscall7(38, arm64_at_fdcwd(), oldpath, arm64_at_fdcwd(), newpath, 0, 0)
+	return syscall7(38, arm64_at_fdcwd, oldpath, arm64_at_fdcwd, newpath, 0, 0)
 
 # getdents64: note its record layout differs from the legacy getdents
 # (d_type sits right after d_reclen rather than at the record's end).
@@ -78,11 +77,10 @@ int getcwd(char* buf, int size):
 # AArch64 uses the *at forms exclusively.
 
 int at_fdcwd():
-	return arm64_at_fdcwd()
+	return arm64_at_fdcwd
 
 
-int at_symlink_nofollow():
-	return 256
+const int at_symlink_nofollow = 256
 
 
 # statx (291).
@@ -111,7 +109,7 @@ int chown(char* path, int uid, int gid):
 
 
 int lchown(char* path, int uid, int gid):
-	return fchownat(path, uid, gid, at_symlink_nofollow())
+	return fchownat(path, uid, gid, at_symlink_nofollow)
 
 
 int getuid():

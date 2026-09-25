@@ -177,8 +177,7 @@ int repo_blob_content_equal(wcas_object* a, wcas_object* b):
 	return 1
 
 
-int REPO_BINARY_SNIFF_LEN():
-	return 8000
+const int REPO_BINARY_SNIFF_LEN = 8000
 
 
 # Git's own binary-detection heuristic: a NUL byte anywhere in the first
@@ -188,8 +187,8 @@ int repo_is_binaryish(wcas_object* o):
 	if (o == 0):
 		return 0
 	int n = o.length
-	if (n > REPO_BINARY_SNIFF_LEN()):
-		n = REPO_BINARY_SNIFF_LEN()
+	if (n > REPO_BINARY_SNIFF_LEN):
+		n = REPO_BINARY_SNIFF_LEN
 	for i in range(n):
 		if (o.data[i] == 0):
 			return 1
@@ -304,7 +303,7 @@ void repo_diff_modified(wcas* store, char* tree_a, char* tree_b, char* path, wst
 	free(old_blob_id)
 	free(new_blob_id)
 	if ((old_obj != 0) && (new_obj != 0)):
-		diff_result* d = diff_text(old_obj.data, new_obj.data, diff_default_context())
+		diff_result* d = diff_text(old_obj.data, new_obj.data, diff_default_context)
 		if (diff_is_identical(d) == 0):
 			string_builder* a_label = string_new()
 			string_append(a_label, c"a/")

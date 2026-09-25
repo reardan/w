@@ -366,12 +366,8 @@ string str_from_cstr(char* s):
 # must call getchar_reset(fd) right after open() to drop stale buffered
 # bytes; callers that reposition a buffered fd must go through
 # getchar_seek() (a raw seek() would silently desync the buffer).
-int GETCHAR_BUF_CAPACITY():
-	return 8192
-
-
-int GETCHAR_MAX_FD():
-	return 256
+const int GETCHAR_BUF_CAPACITY = 8192
+const int GETCHAR_MAX_FD = 256
 
 
 int[256] getchar_buf_addr
@@ -385,7 +381,7 @@ int[256] getchar_kernel_pos
 
 # Invalidate the buffer for a freshly open()ed fd (kernel offset 0).
 void getchar_reset(int file):
-	if ((file >= 0) & (file < GETCHAR_MAX_FD())):
+	if ((file >= 0) && (file < GETCHAR_MAX_FD)):
 		getchar_pos[file] = 0
 		getchar_limit[file] = 0
 		getchar_kernel_pos[file] = 0
@@ -395,7 +391,7 @@ void getchar_reset(int file):
 # When the target still lies inside the buffered window this is free: it
 # just moves the read position, with no syscall.
 void getchar_seek(int file, int offset):
-	if ((file < 0) | (file >= GETCHAR_MAX_FD())):
+	if ((file < 0) || (file >= GETCHAR_MAX_FD)):
 		seek(file, offset, 0)
 		return;
 	int window_start = getchar_kernel_pos[file] - getchar_limit[file]
@@ -420,12 +416,12 @@ int getchar_unbuffered(int file):
 
 
 int getchar(int file):
-	if ((file < 0) | (file >= GETCHAR_MAX_FD())):
+	if ((file < 0) || (file >= GETCHAR_MAX_FD)):
 		return getchar_unbuffered(file)
 	if (getchar_pos[file] >= getchar_limit[file]):
 		if (getchar_buf_addr[file] == 0):
-			getchar_buf_addr[file] = cast(int, malloc(GETCHAR_BUF_CAPACITY()))
-		int count = read(file, cast(char*, getchar_buf_addr[file]), GETCHAR_BUF_CAPACITY())
+			getchar_buf_addr[file] = cast(int, malloc(GETCHAR_BUF_CAPACITY))
+		int count = read(file, cast(char*, getchar_buf_addr[file]), GETCHAR_BUF_CAPACITY)
 		if (count <= 0):
 			return (-1)
 		getchar_pos[file] = 0
@@ -468,12 +464,12 @@ int getchar_unbuffered_checked(int file):
 
 
 int getchar_checked(int file):
-	if ((file < 0) | (file >= GETCHAR_MAX_FD())):
+	if ((file < 0) || (file >= GETCHAR_MAX_FD)):
 		return getchar_unbuffered_checked(file)
 	if (getchar_pos[file] >= getchar_limit[file]):
 		if (getchar_buf_addr[file] == 0):
-			getchar_buf_addr[file] = cast(int, malloc(GETCHAR_BUF_CAPACITY()))
-		int count = read(file, cast(char*, getchar_buf_addr[file]), GETCHAR_BUF_CAPACITY())
+			getchar_buf_addr[file] = cast(int, malloc(GETCHAR_BUF_CAPACITY))
+		int count = read(file, cast(char*, getchar_buf_addr[file]), GETCHAR_BUF_CAPACITY)
 		if (count == 0):
 			return GETCHAR_EOF()
 		if (count < 0):

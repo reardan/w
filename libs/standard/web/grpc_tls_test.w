@@ -189,14 +189,14 @@ void gt_check_count(grpc_channel* ch, int n, int size):
 		k = k + 1
 	assert_equal(n, k)
 	grpc_result* r = grpc_stream_finish(cs)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	assert_strings_equal(c"done", grpc_result_trailer(r, c"x-sent"))
 	grpc_result_free(r)
 
 
 int gt_stats_call(grpc_channel* ch):
 	grpc_result* r = grpc_unary_call(ch, c"/t.S/Stats", c"", 0, 0, 0)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	int n = atoi(r.response)
 	grpc_result_free(r)
 	return n
@@ -221,7 +221,7 @@ void test_grpc_tls_end_to_end():
 
 	# Unary.
 	grpc_result* r = grpc_unary_call(ch, c"/t.S/Unary", c"hi", 2, 0, 0)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	char* want = gt_msg(c"https test.w.example:", port)
 	string_builder* sb = string_new()
 	string_append(sb, want)
@@ -261,7 +261,7 @@ void test_grpc_tls_end_to_end():
 	assert_equal(0, grpc_stream_close_send(cs))
 	assert_equal(0, grpc_stream_recv(cs, &m, &len))
 	r = grpc_stream_finish(cs)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	assert_strings_equal(c"5", grpc_result_trailer(r, c"x-count"))
 	assert_strings_equal(c"5", grpc_result_trailer(r, c"x-req-compressed"))
 	grpc_result_free(r)
@@ -277,10 +277,10 @@ void test_grpc_tls_end_to_end():
 		free(m)
 		i = i + 1
 	grpc_stream_cancel(cs)
-	assert_equal(grpc_status_cancelled(), grpc_stream_status(cs))
+	assert_equal(grpc_status_cancelled, grpc_stream_status(cs))
 	assert_equal(-1, grpc_stream_recv(cs, &m, &len))
 	r = grpc_stream_finish(cs)
-	assert_equal(grpc_status_cancelled(), r.status)
+	assert_equal(grpc_status_cancelled, r.status)
 	grpc_result_free(r)
 	assert_equal(1, gt_stats_call(ch))
 
@@ -307,7 +307,7 @@ void test_grpc_tls_end_to_end():
 
 	# The connection is still healthy.
 	r = grpc_unary_call(ch, c"/t.S/Unary", c"bye", 3, 0, 0)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	grpc_result_free(r)
 
 	grpc_channel_close(ch)
@@ -330,7 +330,7 @@ void test_grpc_tls_server_requires_h2():
 		grpc_server* srv = grpc_server_new()
 		int err = grpc_server_serve_conn_tls(srv, sfd, web_test_server_config())
 		grpc_server_free(srv)
-		if (err != h2_error_protocol()):
+		if (err != h2_error_protocol):
 			exit(81)
 		exit(0)
 	int fd = socket_tcp_ipv4()

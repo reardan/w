@@ -28,10 +28,10 @@ void test_rfc5869_case1():
 	char* salt = hex_bytes(c"000102030405060708090a0b0c")
 	char* info = hex_bytes(c"f0f1f2f3f4f5f6f7f8f9")
 	char* prk = malloc(32)
-	hkdf_extract(WHASH_SHA256(), salt, 13, ikm, 22, prk)
+	hkdf_extract(WHASH_SHA256, salt, 13, ikm, 22, prk)
 	hkdft_assert_bytes(c"077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5", prk, 32)
 	char* okm = malloc(42)
-	assert_equal(1, hkdf_expand(WHASH_SHA256(), prk, 32, info, 10, okm, 42))
+	assert_equal(1, hkdf_expand(WHASH_SHA256, prk, 32, info, 10, okm, 42))
 	hkdft_assert_bytes(c"3cb25f25faacd57a90434f64d0362f2a2d2d0a90cf1a5a4c5db02d56ecc4c5bf34007208d5b887185865", okm, 42)
 	free(okm)
 	free(prk)
@@ -51,10 +51,10 @@ void test_rfc5869_case2():
 		salt[i] = 96 + i
 		info[i] = (176 + i) & 255
 	char* prk = malloc(32)
-	hkdf_extract(WHASH_SHA256(), salt, 80, ikm, 80, prk)
+	hkdf_extract(WHASH_SHA256, salt, 80, ikm, 80, prk)
 	hkdft_assert_bytes(c"06a6b88c5853361a06104c9ceb35b45cef760014904671014a193f40c15fc244", prk, 32)
 	char* okm = malloc(82)
-	assert_equal(1, hkdf_expand(WHASH_SHA256(), prk, 32, info, 80, okm, 82))
+	assert_equal(1, hkdf_expand(WHASH_SHA256, prk, 32, info, 80, okm, 82))
 	hkdft_assert_bytes(c"b11e398dc80327a1c8e7f78c596a49344f012eda2d4efad8a050cc4c19afa97c59045a99cac7827271cb41c65e590e09da3275600c2f09b8367793a9aca3db71cc30c58179ec3e87c14c01d5c1f3434f1d87", okm, 82)
 	free(okm)
 	free(prk)
@@ -67,10 +67,10 @@ void test_rfc5869_case3():
 	# Zero-length salt and info.
 	char* ikm = hex_bytes(c"0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b")
 	char* prk = malloc(32)
-	hkdf_extract(WHASH_SHA256(), c"", 0, ikm, 22, prk)
+	hkdf_extract(WHASH_SHA256, c"", 0, ikm, 22, prk)
 	hkdft_assert_bytes(c"19ef24a32c717b167f33a91d6f648bdf96596776afdb6377ac434c1c293ccb04", prk, 32)
 	char* okm = malloc(42)
-	assert_equal(1, hkdf_expand(WHASH_SHA256(), prk, 32, c"", 0, okm, 42))
+	assert_equal(1, hkdf_expand(WHASH_SHA256, prk, 32, c"", 0, okm, 42))
 	hkdft_assert_bytes(c"8da4e775a563c18f715f802a063c5a31b8a11f5c5ee1879ec3454e5f3c738d2d9d201395faa4b61a96c8", okm, 42)
 	free(okm)
 	free(prk)
@@ -84,10 +84,10 @@ void test_hkdf_sha384():
 	char* salt = hex_bytes(c"000102030405060708090a0b0c")
 	char* info = hex_bytes(c"f0f1f2f3f4f5f6f7f8f9")
 	char* prk = malloc(48)
-	hkdf_extract(WHASH_SHA384(), salt, 13, ikm, 22, prk)
+	hkdf_extract(WHASH_SHA384, salt, 13, ikm, 22, prk)
 	hkdft_assert_bytes(c"704b39990779ce1dc548052c7dc39f303570dd13fb39f7acc564680bef80e8dec70ee9a7e1f3e293ef68eceb072a5ade", prk, 48)
 	char* okm = malloc(48)
-	assert_equal(1, hkdf_expand(WHASH_SHA384(), prk, 48, info, 10, okm, 48))
+	assert_equal(1, hkdf_expand(WHASH_SHA384, prk, 48, info, 10, okm, 48))
 	hkdft_assert_bytes(c"9b5097a86038b805309076a44b3a9f38063e25b516dcbf369f394cfab43685f748b6457763e4f0204fc5d95d1da3e625", okm, 48)
 	free(okm)
 	free(prk)
@@ -102,9 +102,9 @@ void test_hkdf_expand_bounds():
 		prk[i] = i
 	char* okm = malloc(32)
 	# 255 * 32 = 8160 is the SHA-256 ceiling; one past it must fail.
-	assert_equal(0, hkdf_expand(WHASH_SHA256(), prk, 32, c"", 0, okm, 8161))
-	assert_equal(0, hkdf_expand(WHASH_SHA256(), prk, 32, c"", 0, okm, -1))
-	assert_equal(1, hkdf_expand(WHASH_SHA256(), prk, 32, c"", 0, okm, 0))
+	assert_equal(0, hkdf_expand(WHASH_SHA256, prk, 32, c"", 0, okm, 8161))
+	assert_equal(0, hkdf_expand(WHASH_SHA256, prk, 32, c"", 0, okm, -1))
+	assert_equal(1, hkdf_expand(WHASH_SHA256, prk, 32, c"", 0, okm, 0))
 	free(okm)
 	free(prk)
 
@@ -120,7 +120,7 @@ char* hkdft_rfc8448_server_hello():
 
 
 void test_rfc8448_key_schedule():
-	int alg = WHASH_SHA256()
+	int alg = WHASH_SHA256
 	# transcript = ClientHello || ServerHello (196 + 90 bytes).
 	char* ch = hex_bytes(hkdft_rfc8448_client_hello())
 	char* sh = hex_bytes(hkdft_rfc8448_server_hello())

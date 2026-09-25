@@ -49,7 +49,7 @@ void us_assert_ok(char* what, int result):
 char* us_too_long_path():
 	string_builder* p = string_new()
 	int i = 0
-	while (i <= SOCKADDR_UN_PATH_MAX()):
+	while (i <= SOCKADDR_UN_PATH_MAX):
 		string_append_char(p, 'x')
 		i = i + 1
 	char* result = p.data
@@ -59,21 +59,21 @@ char* us_too_long_path():
 
 void test_sockaddr_un_layout():
 	char* path = c"bin/some.sock"
-	char* addr = malloc(SOCKADDR_UN_SIZE())
+	char* addr = malloc(SOCKADDR_UN_SIZE)
 	int addrlen = sockaddr_un_init(addr, path)
 	# family word + path + NUL.
 	assert_equal(2 + strlen(path) + 1, addrlen)
-	assert_equal(socket_abi_family_word(af_unix()), load_int16(addr))
+	assert_equal(socket_abi_family_word(af_unix), load_int16(addr))
 	assert_strings_equal(path, &addr[2])
 	# NUL-padded through the last byte.
 	assert_equal(0, addr[2 + strlen(path)])
-	assert_equal(0, addr[SOCKADDR_UN_SIZE() - 1])
+	assert_equal(0, addr[SOCKADDR_UN_SIZE - 1])
 	free(addr)
 
 
 void test_sockaddr_un_rejects_too_long_path():
 	char* long_path = us_too_long_path()
-	char* addr = malloc(SOCKADDR_UN_SIZE())
+	char* addr = malloc(SOCKADDR_UN_SIZE)
 	assert_equal(0 - 22, sockaddr_un_init(addr, long_path))
 	# The bind/connect wrappers surface the same failure.
 	int sockfd = socket_unix_stream()

@@ -16,7 +16,7 @@ void swim_test_drain(swim* s):
 void test_new_instance_self_alive():
 	swim* s = swim_new(1, 500, 3)
 	assert_equal(1, swim_member_count(s))
-	assert_equal(swim_alive(), swim_state(s, 1))
+	assert_equal(swim_alive, swim_state(s, 1))
 	assert_equal(0, swim_incarnation(s, 1))
 	assert_equal(0, swim_self_incarnation(s))
 	assert_equal(1, swim_alive_count(s))
@@ -33,7 +33,7 @@ void test_join_adds_unknown_only():
 	assert_equal(0, swim_join(s, 2, 150))
 	assert_equal(0, swim_join(s, 1, 150))
 	assert_equal(3, swim_member_count(s))
-	assert_equal(swim_alive(), swim_state(s, 2))
+	assert_equal(swim_alive, swim_state(s, 2))
 	assert_equal(0, swim_incarnation(s, 3))
 	swim_free(s)
 
@@ -72,7 +72,7 @@ void test_probe_timeout_suspects_target():
 	swim* s = swim_new(1, 500, 3)
 	swim_join(s, 2, 0)
 	swim_on_probe_timeout(s, 2, 1000)
-	assert_equal(swim_suspect(), swim_state(s, 2))
+	assert_equal(swim_suspect, swim_state(s, 2))
 	assert_equal(0, swim_incarnation(s, 2))
 	# a timeout for an unknown target is ignored
 	swim_on_probe_timeout(s, 99, 1000)
@@ -87,9 +87,9 @@ void test_suspect_expires_to_dead_after_timeout():
 	swim_on_probe_timeout(s, 2, 1000)
 	swim_test_drain(s)
 	swim_tick(s, 1499)
-	assert_equal(swim_suspect(), swim_state(s, 2))
+	assert_equal(swim_suspect, swim_state(s, 2))
 	swim_tick(s, 1500)
-	assert_equal(swim_dead(), swim_state(s, 2))
+	assert_equal(swim_dead, swim_state(s, 2))
 	# the death is a fresh pending update
 	int* out = malloc(4 * __word_size__)
 	assert_equal(1, swim_next_piggyback(s, 4, out))
@@ -102,13 +102,13 @@ void test_alive_refutation_needs_higher_incarnation():
 	swim* s = swim_new(1, 500, 3)
 	swim_join(s, 2, 0)
 	swim_on_probe_timeout(s, 2, 1000)
-	assert_equal(swim_suspect(), swim_state(s, 2))
+	assert_equal(swim_suspect, swim_state(s, 2))
 	# alive at the same incarnation is not a refutation
 	swim_on_alive_msg(s, 2, 0, 1100)
-	assert_equal(swim_suspect(), swim_state(s, 2))
+	assert_equal(swim_suspect, swim_state(s, 2))
 	# the suspect bumping its incarnation is
 	swim_on_alive_msg(s, 2, 1, 1200)
-	assert_equal(swim_alive(), swim_state(s, 2))
+	assert_equal(swim_alive, swim_state(s, 2))
 	assert_equal(1, swim_incarnation(s, 2))
 	swim_free(s)
 
@@ -117,11 +117,11 @@ void test_suspect_overrides_alive_at_same_incarnation():
 	swim* s = swim_new(1, 500, 3)
 	swim_join(s, 2, 0)
 	assert_equal(0, swim_on_suspect_msg(s, 2, 0, 100))
-	assert_equal(swim_suspect(), swim_state(s, 2))
+	assert_equal(swim_suspect, swim_state(s, 2))
 	# a higher-incarnation suspect lands too, at that incarnation
 	swim_join(s, 3, 0)
 	assert_equal(4, swim_on_suspect_msg(s, 3, 4, 100))
-	assert_equal(swim_suspect(), swim_state(s, 3))
+	assert_equal(swim_suspect, swim_state(s, 3))
 	assert_equal(4, swim_incarnation(s, 3))
 	swim_free(s)
 
@@ -132,15 +132,15 @@ void test_repeat_suspect_same_incarnation_keeps_deadline():
 	swim_on_suspect_msg(s, 2, 0, 1000)   # deadline 1500
 	swim_on_suspect_msg(s, 2, 0, 1400)   # same incarnation: no refresh
 	swim_tick(s, 1500)
-	assert_equal(swim_dead(), swim_state(s, 2))
+	assert_equal(swim_dead, swim_state(s, 2))
 	# a higher-incarnation suspect does re-arm the deadline
 	swim_join(s, 3, 0)
 	swim_on_suspect_msg(s, 3, 0, 1000)   # deadline 1500
 	swim_on_suspect_msg(s, 3, 1, 1400)   # fresh deadline 1900
 	swim_tick(s, 1500)
-	assert_equal(swim_suspect(), swim_state(s, 3))
+	assert_equal(swim_suspect, swim_state(s, 3))
 	swim_tick(s, 1900)
-	assert_equal(swim_dead(), swim_state(s, 3))
+	assert_equal(swim_dead, swim_state(s, 3))
 	swim_free(s)
 
 
@@ -148,7 +148,7 @@ void test_self_refutation_bumps_incarnation():
 	swim* s = swim_new(1, 500, 3)
 	assert_equal(1, swim_on_suspect_msg(s, 1, 0, 100))
 	assert_equal(1, swim_self_incarnation(s))
-	assert_equal(swim_alive(), swim_state(s, 1))
+	assert_equal(swim_alive, swim_state(s, 1))
 	assert_equal(1, swim_incarnation(s, 1))
 	assert_equal(6, swim_on_suspect_msg(s, 1, 5, 200))
 	assert_equal(6, swim_self_incarnation(s))
@@ -168,12 +168,12 @@ void test_dead_is_terminal():
 	swim* s = swim_new(1, 500, 3)
 	swim_join(s, 2, 0)
 	swim_on_dead_msg(s, 2, 100)
-	assert_equal(swim_dead(), swim_state(s, 2))
+	assert_equal(swim_dead, swim_state(s, 2))
 	# v1: no resurrection, even at a higher incarnation (see swim.w)
 	swim_on_alive_msg(s, 2, 99, 200)
-	assert_equal(swim_dead(), swim_state(s, 2))
+	assert_equal(swim_dead, swim_state(s, 2))
 	swim_on_suspect_msg(s, 2, 99, 200)
-	assert_equal(swim_dead(), swim_state(s, 2))
+	assert_equal(swim_dead, swim_state(s, 2))
 	assert_equal(0, swim_incarnation(s, 2))
 	# repeating dead changes nothing and pends nothing new
 	swim_test_drain(s)
@@ -188,7 +188,7 @@ void test_unknown_member_joins_via_alive_gossip():
 	swim* s = swim_new(1, 500, 3)
 	swim_on_alive_msg(s, 7, 3, 100)
 	assert_equal(2, swim_member_count(s))
-	assert_equal(swim_alive(), swim_state(s, 7))
+	assert_equal(swim_alive, swim_state(s, 7))
 	assert_equal(3, swim_incarnation(s, 7))
 	# and the newcomer itself pends for dissemination
 	int* out = malloc(2 * __word_size__)
@@ -201,10 +201,10 @@ void test_unknown_member_joins_via_alive_gossip():
 void test_unknown_member_joins_via_suspect_gossip():
 	swim* s = swim_new(1, 500, 3)
 	assert_equal(2, swim_on_suspect_msg(s, 9, 2, 1000))
-	assert_equal(swim_suspect(), swim_state(s, 9))
+	assert_equal(swim_suspect, swim_state(s, 9))
 	assert_equal(2, swim_incarnation(s, 9))
 	swim_tick(s, 1500)
-	assert_equal(swim_dead(), swim_state(s, 9))
+	assert_equal(swim_dead, swim_state(s, 9))
 	swim_free(s)
 
 
@@ -214,14 +214,14 @@ void test_ack_does_not_clear_suspicion():
 	swim_test_drain(s)
 	# an ack from an alive member changes nothing and pends nothing
 	swim_on_ack(s, 2, 50)
-	assert_equal(swim_alive(), swim_state(s, 2))
+	assert_equal(swim_alive, swim_state(s, 2))
 	int* out = malloc(2 * __word_size__)
 	assert_equal(0, swim_next_piggyback(s, 2, out))
 	# an ack at the same incarnation leaves a suspect suspect: only the
 	# suspect bumping its own incarnation refutes (see swim.w header)
 	swim_on_probe_timeout(s, 2, 1000)
 	swim_on_ack(s, 2, 1100)
-	assert_equal(swim_suspect(), swim_state(s, 2))
+	assert_equal(swim_suspect, swim_state(s, 2))
 	free(out)
 	swim_free(s)
 
@@ -316,11 +316,11 @@ void test_suspect_deadline_across_32bit_wrap():
 	int q = 1 << 30
 	int now = q + q - 100
 	swim_on_probe_timeout(s, 2, now)
-	assert_equal(swim_suspect(), swim_state(s, 2))
+	assert_equal(swim_suspect, swim_state(s, 2))
 	swim_tick(s, now + 499)
-	assert_equal(swim_suspect(), swim_state(s, 2))
+	assert_equal(swim_suspect, swim_state(s, 2))
 	swim_tick(s, now + 500)
-	assert_equal(swim_dead(), swim_state(s, 2))
+	assert_equal(swim_dead, swim_state(s, 2))
 	swim_free(s)
 
 

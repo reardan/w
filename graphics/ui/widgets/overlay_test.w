@@ -176,10 +176,10 @@ void test_popup_stack_overflow_does_not_corrupt():
 	while (i < 20):
 		ui_popup_open(ctx, i + 1)
 		i = i + 1
-	assert_equal(ui_popup_max_depth(), ctx.popup_depth)
+	assert_equal(ui_popup_max_depth, ctx.popup_depth)
 	# The innermost that fit still owns input, and ids past the cap were
 	# never registered.
-	assert_equal(1, ui_popup_is_top(ctx, ui_popup_max_depth()))
+	assert_equal(1, ui_popup_is_top(ctx, ui_popup_max_depth))
 	assert_equal(0, ui_popup_is_top(ctx, 20))
 
 	# Nested brackets past the save array still land back on the base

@@ -269,7 +269,7 @@ void cpp_process_include(cpp_preprocessor* pp, cpp_token* directive, cpp_token* 
 		return
 	int quoted = 0
 	char* name = 0
-	if (token.kind == cpp_token_string()):
+	if (token.kind == cpp_token_string):
 		quoted = 1
 		name = cpp_unquote_header(token.text)
 	else:

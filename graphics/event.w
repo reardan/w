@@ -1,3 +1,4 @@
+const int gfx_event_ring_ints = 320
 /*
 graphics.event: the per-frame input event queue shared by every window
 backend (docs/projects/ui_framework.md §7). The polling fields on
@@ -6,7 +7,7 @@ two key presses) that land in the same poll cycle; widgets that care
 about edges drain gfx_window_next_event instead.
 
 Each backend owns a fixed ring — a flat int32 array of
-gfx_event_ring_ints() slots plus head/tail indices appended to its own
+gfx_event_ring_ints slots plus head/tail indices appended to its own
 gfx_window struct (the struct layouts are already per-backend) — and
 implements the uniform accessor:
 
@@ -83,13 +84,10 @@ struct gfx_event:
 
 
 # Events the ring can hold minus one (tail == head means empty).
-int gfx_event_ring_capacity():
-	return 64
+const int gfx_event_ring_capacity = 64
 
 
 # int32 slots a backend's ring array needs: capacity events x 5 fields.
-int gfx_event_ring_ints():
-	return 320
 
 
 # Append one event. A full ring drops the newest event rather than

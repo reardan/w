@@ -81,7 +81,7 @@ int wrun_usable(char* path):
 	file_stat st
 	if (file_stat_path(path, &st) != 0):
 		return 1
-	if ((st.mode & FILE_S_IFMT()) == FILE_S_IFDIR()):
+	if ((st.mode & FILE_S_IFMT) == FILE_S_IFDIR):
 		return 0
 	# 73 = 0111: executable by owner, group, or other.
 	return (st.mode & 73) != 0

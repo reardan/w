@@ -15,8 +15,7 @@ import lib.linux
 
 
 # EINTR: a signal interrupted the call before any bytes arrived; retry.
-int random_eintr():
-	return 0 - 4
+const int random_eintr = -4
 
 
 # Fallback path: reads exactly len bytes from /dev/urandom. Returns 1 on
@@ -32,7 +31,7 @@ int random_urandom_fill(char* buf, int len):
 		int got = read(fd, buf + off, len - off)
 		if (got > 0):
 			off = off + got
-		else if (got != random_eintr()):
+		else if (got != random_eintr):
 			close(fd)
 			return 0
 	close(fd)
@@ -51,6 +50,6 @@ int random_bytes(char* buf, int len):
 		int got = sys_getrandom(buf + off, len - off, 0)
 		if (got > 0):
 			off = off + got
-		else if (got != random_eintr()):
+		else if (got != random_eintr):
 			return random_urandom_fill(buf + off, len - off)
 	return 1

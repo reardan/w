@@ -21,25 +21,14 @@ import lib.stream
 import structures.string
 
 
-int ASM_ELF_CLASS32():
-	return 1
-
-
-int ASM_ELF_CLASS64():
-	return 2
+const int ASM_ELF_CLASS32 = 1
+const int ASM_ELF_CLASS64 = 2
 
 
 # e_machine values
-int ASM_EM_386():
-	return 3
-
-
-int ASM_EM_X86_64():
-	return 62
-
-
-int ASM_EM_AARCH64():
-	return 183
+const int ASM_EM_386 = 3
+const int ASM_EM_X86_64 = 62
+const int ASM_EM_AARCH64 = 183
 
 
 struct asm_symbol:
@@ -75,7 +64,7 @@ int asm_read_u32(char* data, int offset):
 # 64-bit form is zero (see the header comment).
 int asm_read_word(char* data, int offset, int elf_class):
 	int low = asm_read_u32(data, offset)
-	if (elf_class == ASM_ELF_CLASS64()):
+	if (elf_class == ASM_ELF_CLASS64):
 		if (asm_read_u32(data, offset + 4) != 0):
 			println2(c"asm_binary: 64-bit field exceeds 32 bits")
 			exit(1)
@@ -149,7 +138,7 @@ asm_binary* asm_binary_open(char* path):
 	binary.symbols = new list[asm_symbol]
 
 	# Header field offsets differ by class.
-	int is64 = binary.elf_class == ASM_ELF_CLASS64()
+	int is64 = binary.elf_class == ASM_ELF_CLASS64
 	int shoff_at = 32
 	int shentsize_at = 46
 	int shnum_at = 48

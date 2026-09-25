@@ -30,6 +30,6 @@ import tests.asm_fuzz_x86_common
 
 
 int main():
-	asm_fuzz_x86_run(c"tests/asm/corpus_x86.txt", ASM_ARCH_X86(), 4, 8, c"x86")
+	asm_fuzz_x86_run(c"tests/asm/corpus_x86.txt", ASM_ARCH_X86, 4, 8, c"x86")
 	println(c"asm_fuzz_x86_test passed")
 	return 0

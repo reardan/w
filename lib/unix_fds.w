@@ -23,18 +23,13 @@ import lib.lib
 import lib.mem
 
 
-int unix_fds_sol_socket():
-	return 1
-
-
-int unix_fds_scm_rights():
-	return 1
+const int unix_fds_sol_socket = 1
+const int unix_fds_scm_rights = 1
 
 
 # MSG_CMSG_CLOEXEC: received descriptors do not leak into programs the
 # receiver later execs.
-int unix_fds_msg_cmsg_cloexec():
-	return 1073741824
+const int unix_fds_msg_cmsg_cloexec = 1073741824
 
 
 int unix_fds_align(int n):
@@ -75,8 +70,8 @@ int unix_send_fds(int sock, char* data, int n, int* fds, int count):
 	char* control = malloc(space)
 	mem_fill(control, 0, space)
 	save_word(control, unix_fds_cmsg_data_offset() + count * 4)
-	save_int(control + __word_size__, unix_fds_sol_socket())
-	save_int(control + __word_size__ + 4, unix_fds_scm_rights())
+	save_int(control + __word_size__, unix_fds_sol_socket)
+	save_int(control + __word_size__ + 4, unix_fds_scm_rights)
 	for i in range(count):
 		save_int(control + unix_fds_cmsg_data_offset() + i * 4, fds[i])
 	char* iov = unix_fds_iovec(data, n)
@@ -94,7 +89,7 @@ int unix_recv_fds(int sock, char* buf, int cap, int* fds_out, int max, int* coun
 	char* control = malloc(space)
 	char* iov = unix_fds_iovec(buf, cap)
 	char* msg = unix_fds_msghdr(iov, control, space)
-	int got = sys_recvmsg(sock, cast(int, msg), unix_fds_msg_cmsg_cloexec())
+	int got = sys_recvmsg(sock, cast(int, msg), unix_fds_msg_cmsg_cloexec)
 	if (got >= 0):
 		int control_length = load_word(msg + 5 * __word_size__)
 		int off = 0
@@ -104,7 +99,7 @@ int unix_recv_fds(int sock, char* buf, int cap, int* fds_out, int max, int* coun
 				break
 			int level = load_int32(control + off + __word_size__)
 			int kind = load_int32(control + off + __word_size__ + 4)
-			if ((level == unix_fds_sol_socket()) && (kind == unix_fds_scm_rights())):
+			if ((level == unix_fds_sol_socket) && (kind == unix_fds_scm_rights)):
 				int n = (length - unix_fds_cmsg_data_offset()) / 4
 				for i in range(n):
 					int fd = load_int32(control + off + unix_fds_cmsg_data_offset() + i * 4)

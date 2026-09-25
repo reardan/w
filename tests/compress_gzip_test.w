@@ -122,14 +122,14 @@ void test_gzip_decompress_with_fname_flag():
 void test_gzip_bad_magic():
 	wresult[gzip_result*]* r = gzip_decompress(c"\x1f\x8c\x08\x00\x00\x00\x00\x00\x00\x03\x4b\xaf\xca\x2c\x50\x28\x2f\x4a\x2c\x28\x48\x2d\x52\x28\xca\x2f\xcd\x4b\x51\x28\x29\x02\x0a\x95\xa4\x16\x97\x28\xa4\x24\x96\x24\x2a\x98\x99\x5b\x58\x1a\x00\x00\xfb\x36\x52\xdf\x27\x00\x00\x00", 58, 0)
 	assert1(result_is_error[gzip_result*](r))
-	assert_equal(GZIP_ERR_BAD_MAGIC(), result_code[gzip_result*](r))
+	assert_equal(GZIP_ERR_BAD_MAGIC, result_code[gzip_result*](r))
 	result_free[gzip_result*](r)
 
 
 void test_gzip_bad_crc():
 	wresult[gzip_result*]* r = gzip_decompress(c"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03\x4b\xaf\xca\x2c\x50\x28\x2f\x4a\x2c\x28\x48\x2d\x52\x28\xca\x2f\xcd\x4b\x51\x28\x29\x02\x0a\x95\xa4\x16\x97\x28\xa4\x24\x96\x24\x2a\x98\x99\x5b\x58\x1a\x00\x00\x04\x36\x52\xdf\x27\x00\x00\x00", 58, 0)
 	assert1(result_is_error[gzip_result*](r))
-	assert_equal(GZIP_ERR_BAD_CRC(), result_code[gzip_result*](r))
+	assert_equal(GZIP_ERR_BAD_CRC, result_code[gzip_result*](r))
 	result_free[gzip_result*](r)
 
 
@@ -139,7 +139,7 @@ void test_gzip_bad_size():
 	# from a CRC mismatch, so it needs its own fixture.
 	wresult[gzip_result*]* r = gzip_decompress(c"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03\x4b\xaf\xca\x2c\x50\x28\x2f\x4a\x2c\x28\x48\x2d\x52\x28\xca\x2f\xcd\x4b\x51\x28\x29\x02\x0a\x95\xa4\x16\x97\x28\xa4\x24\x96\x24\x2a\x98\x99\x5b\x58\x1a\x00\x00\xfb\x36\x52\xdf\xd8\x00\x00\x00", 58, 0)
 	assert1(result_is_error[gzip_result*](r))
-	assert_equal(GZIP_ERR_BAD_SIZE(), result_code[gzip_result*](r))
+	assert_equal(GZIP_ERR_BAD_SIZE, result_code[gzip_result*](r))
 	result_free[gzip_result*](r)
 
 
@@ -152,7 +152,7 @@ void test_gzip_unsupported_method():
 	bad[2] = 9    # CM: not deflate
 	wresult[gzip_result*]* r = gzip_decompress(bad, len, 0)
 	assert1(result_is_error[gzip_result*](r))
-	assert_equal(GZIP_ERR_UNSUPPORTED_METHOD(), result_code[gzip_result*](r))
+	assert_equal(GZIP_ERR_UNSUPPORTED_METHOD, result_code[gzip_result*](r))
 	result_free[gzip_result*](r)
 	free(bad)
 
@@ -160,7 +160,7 @@ void test_gzip_unsupported_method():
 void test_gzip_too_short_is_truncated():
 	wresult[gzip_result*]* r = gzip_decompress(c"\x1f\x8b\x08", 3, 0)
 	assert1(result_is_error[gzip_result*](r))
-	assert_equal(GZIP_ERR_TRUNCATED(), result_code[gzip_result*](r))
+	assert_equal(GZIP_ERR_TRUNCATED, result_code[gzip_result*](r))
 	result_free[gzip_result*](r)
 
 
@@ -169,7 +169,7 @@ void test_gzip_truncated_mid_header_region():
 	# trailer that must follow are missing entirely.
 	wresult[gzip_result*]* r = gzip_decompress(c"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03", 10, 0)
 	assert1(result_is_error[gzip_result*](r))
-	assert_equal(GZIP_ERR_TRUNCATED(), result_code[gzip_result*](r))
+	assert_equal(GZIP_ERR_TRUNCATED, result_code[gzip_result*](r))
 	result_free[gzip_result*](r)
 
 
@@ -182,21 +182,21 @@ void test_gzip_truncated_stream_passes_through_inflate_error():
 	# the passthrough convention.
 	wresult[gzip_result*]* r = gzip_decompress(c"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03\x4b\xaf\xca\x2c\x50\x28\x2f\x4a\x2c\x28", 20, 0)
 	assert1(result_is_error[gzip_result*](r))
-	assert_equal(INFLATE_ERR_TRUNCATED(), result_code[gzip_result*](r))
+	assert_equal(INFLATE_ERR_TRUNCATED, result_code[gzip_result*](r))
 	result_free[gzip_result*](r)
 
 
 void test_gzip_max_output_cap():
 	wresult[gzip_result*]* r = gzip_decompress(c"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03\x4b\xaf\xca\x2c\x50\x28\x2f\x4a\x2c\x28\x48\x2d\x52\x28\xca\x2f\xcd\x4b\x51\x28\x29\x02\x0a\x95\xa4\x16\x97\x28\xa4\x24\x96\x24\x2a\x98\x99\x5b\x58\x1a\x00\x00\xfb\x36\x52\xdf\x27\x00\x00\x00", 58, 5)
 	assert1(result_is_error[gzip_result*](r))
-	assert_equal(INFLATE_ERR_TOO_LARGE(), result_code[gzip_result*](r))
+	assert_equal(INFLATE_ERR_TOO_LARGE, result_code[gzip_result*](r))
 	result_free[gzip_result*](r)
 
 
 void test_gzip_error_string_covers_every_code_and_falls_through():
-	assert1(strlen(gzip_error_string(GZIP_ERR_BAD_MAGIC())) > 0)
-	assert1(strlen(gzip_error_string(GZIP_ERR_UNSUPPORTED_METHOD())) > 0)
-	assert1(strlen(gzip_error_string(GZIP_ERR_BAD_CRC())) > 0)
-	assert1(strlen(gzip_error_string(GZIP_ERR_BAD_SIZE())) > 0)
-	assert1(strlen(gzip_error_string(GZIP_ERR_TRUNCATED())) > 0)
+	assert1(strlen(gzip_error_string(GZIP_ERR_BAD_MAGIC)) > 0)
+	assert1(strlen(gzip_error_string(GZIP_ERR_UNSUPPORTED_METHOD)) > 0)
+	assert1(strlen(gzip_error_string(GZIP_ERR_BAD_CRC)) > 0)
+	assert1(strlen(gzip_error_string(GZIP_ERR_BAD_SIZE)) > 0)
+	assert1(strlen(gzip_error_string(GZIP_ERR_TRUNCATED)) > 0)
 	assert_strings_equal(inflate_error_string(INFLATE_ERR_BAD_HUFFMAN()), gzip_error_string(INFLATE_ERR_BAD_HUFFMAN()))

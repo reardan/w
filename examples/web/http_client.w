@@ -44,7 +44,7 @@ int main(int argc, int argv):
 
 	int sock = web_connect_ipv4(ip, port)
 	web_write_get_request(sock, host, path)
-	char* response = web_read_all(sock, web_default_buffer_size())
+	char* response = web_read_all(sock, web_default_buffer_size)
 	close(sock)
 
 	println(c"raw response:")

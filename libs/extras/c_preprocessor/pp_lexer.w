@@ -225,7 +225,7 @@ cpp_token* cpp_tokenize_text(char* input, char* filename):
 					if (prefix >= 0):
 						index = index + prefix
 						length = prefix + cpp_quoted_length(input, index, '"')
-						kind = cpp_token_string()
+						kind = cpp_token_string
 					else:
 						prefix = cpp_char_prefix_length(input, index)
 						if (prefix >= 0):

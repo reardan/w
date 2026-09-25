@@ -117,7 +117,7 @@ int arm64_enc_addsub(asm_insn* insn):
 	char* m = insn.mnemonic
 	int size = insn.op1.size
 	int sf = arm64_enc_sf(size)
-	int is_reg = insn.op3.kind == ASM_OP_REG()
+	int is_reg = insn.op3.kind == ASM_OP_REG
 	int op = 0
 	int s = 0
 	if (strcmp(m, c"sub") == 0):
@@ -149,7 +149,7 @@ int arm64_enc_cmp(asm_insn* insn):
 	if (strcmp(insn.mnemonic, c"cmn") == 0):
 		op = 0
 	int rn = insn.op1.reg
-	if (insn.op2.kind == ASM_OP_REG()):
+	if (insn.op2.kind == ASM_OP_REG):
 		int base = sf | 0x0b000000 | (op << 30) | (1 << 29)
 		return base | (insn.op2.reg << 16) | (rn << 5) | 31
 	int imm = insn.op2.imm
@@ -314,7 +314,7 @@ int arm64_enc_test_branch(asm_insn* insn):
 int arm64_enc_branch_reg(asm_insn* insn):
 	char* m = insn.mnemonic
 	int rn = 30
-	if (insn.op1.kind == ASM_OP_REG()):
+	if (insn.op1.kind == ASM_OP_REG):
 		rn = insn.op1.reg
 	if (strcmp(m, c"br") == 0):
 		return cast(int, 0xd61f0000) | (rn << 5)
@@ -364,7 +364,7 @@ int asm_arm64_encode(asm_buffer* b, asm_insn* insn):
 	char* m = insn.mnemonic
 	int w = 0
 	int done = 1
-	if (arm64_is_load_store(m) & insn.op2.kind == ASM_OP_MEM()):
+	if (arm64_is_load_store(m) & insn.op2.kind == ASM_OP_MEM):
 		w = arm64_enc_ldst(insn)
 	else if (strcmp(m, c"add") == 0 | strcmp(m, c"sub") == 0 | strcmp(m, c"adds") == 0 | strcmp(m, c"subs") == 0):
 		w = arm64_enc_addsub(insn)
@@ -385,7 +385,7 @@ int asm_arm64_encode(asm_buffer* b, asm_insn* insn):
 	else if (strcmp(m, c"cset") == 0):
 		w = arm64_enc_cset(insn)
 	else if (strcmp(m, c"and") == 0 | strcmp(m, c"orr") == 0 | strcmp(m, c"eor") == 0 | strcmp(m, c"ands") == 0 | strcmp(m, c"bic") == 0 | strcmp(m, c"orn") == 0 | strcmp(m, c"eon") == 0 | strcmp(m, c"bics") == 0):
-		if (insn.op3.kind == ASM_OP_REG()):
+		if (insn.op3.kind == ASM_OP_REG):
 			w = arm64_enc_logical(insn)
 		else:
 			done = 0
@@ -406,7 +406,7 @@ int asm_arm64_encode(asm_buffer* b, asm_insn* insn):
 	else if (strcmp(m, c"svc") == 0 | strcmp(m, c"brk") == 0 | strcmp(m, c"hlt") == 0):
 		w = arm64_enc_exception(insn)
 	else if (strcmp(m, c"stp") == 0 | strcmp(m, c"ldp") == 0):
-		if (insn.op3.kind == ASM_OP_MEM()):
+		if (insn.op3.kind == ASM_OP_MEM):
 			w = arm64_enc_pair(insn)
 		else:
 			done = 0

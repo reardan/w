@@ -199,72 +199,23 @@ import lib.mem
 
 /* Status codes */
 
-int grpc_status_ok():
-	return 0
-
-
-int grpc_status_cancelled():
-	return 1
-
-
-int grpc_status_unknown():
-	return 2
-
-
-int grpc_status_invalid_argument():
-	return 3
-
-
-int grpc_status_deadline_exceeded():
-	return 4
-
-
-int grpc_status_not_found():
-	return 5
-
-
-int grpc_status_already_exists():
-	return 6
-
-
-int grpc_status_permission_denied():
-	return 7
-
-
-int grpc_status_resource_exhausted():
-	return 8
-
-
-int grpc_status_failed_precondition():
-	return 9
-
-
-int grpc_status_aborted():
-	return 10
-
-
-int grpc_status_out_of_range():
-	return 11
-
-
-int grpc_status_unimplemented():
-	return 12
-
-
-int grpc_status_internal():
-	return 13
-
-
-int grpc_status_unavailable():
-	return 14
-
-
-int grpc_status_data_loss():
-	return 15
-
-
-int grpc_status_unauthenticated():
-	return 16
+const int grpc_status_ok = 0
+const int grpc_status_cancelled = 1
+const int grpc_status_unknown = 2
+const int grpc_status_invalid_argument = 3
+const int grpc_status_deadline_exceeded = 4
+const int grpc_status_not_found = 5
+const int grpc_status_already_exists = 6
+const int grpc_status_permission_denied = 7
+const int grpc_status_resource_exhausted = 8
+const int grpc_status_failed_precondition = 9
+const int grpc_status_aborted = 10
+const int grpc_status_out_of_range = 11
+const int grpc_status_unimplemented = 12
+const int grpc_status_internal = 13
+const int grpc_status_unavailable = 14
+const int grpc_status_data_loss = 15
+const int grpc_status_unauthenticated = 16
 
 
 char* grpc_status_name(int code):
@@ -290,8 +241,7 @@ char* grpc_status_name(int code):
 
 
 # Default cap on one message (the common gRPC receive default, 4 MiB).
-int grpc_default_max_message():
-	return 4194304
+const int grpc_default_max_message = 4194304
 
 
 /* Message framing */
@@ -305,22 +255,22 @@ int grpc_unframe_message(char* body, int len, int max, char** out, int* out_len)
 	*out = 0
 	*out_len = 0
 	if (len < 5):
-		return grpc_status_internal()
+		return grpc_status_internal
 	int flag = body[0] & 255
 	if (flag == 1):
-		return grpc_status_unimplemented()
+		return grpc_status_unimplemented
 	if (flag != 0):
-		return grpc_status_internal()
+		return grpc_status_internal
 	if ((body[1] & 128) != 0):
-		return grpc_status_resource_exhausted()
+		return grpc_status_resource_exhausted
 	int n = h2_get_u31(body + 1)
 	if (n > max):
-		return grpc_status_resource_exhausted()
+		return grpc_status_resource_exhausted
 	if (n != len - 5):
-		return grpc_status_internal()
+		return grpc_status_internal
 	*out = mem_dup(body + 5, n)
 	*out_len = n
-	return grpc_status_ok()
+	return grpc_status_ok
 
 
 # Appends one length-prefixed message with the given compressed flag.
@@ -340,15 +290,15 @@ void grpc_frame_message(string_builder* out, char* msg, int len):
 int grpc_encode_message(string_builder* out, char* encoding, char* msg, int len):
 	if (codec_is_identity(encoding) != 0):
 		grpc_frame_message_flag(out, 0, msg, len)
-		return codec_ok()
+		return codec_ok
 	char* packed = 0
 	int packed_len = 0
 	int rc = codec_compress(encoding, msg, len, &packed, &packed_len)
-	if (rc != codec_ok()):
+	if (rc != codec_ok):
 		return rc
 	grpc_frame_message_flag(out, 1, packed, packed_len)
 	free(packed)
-	return codec_ok()
+	return codec_ok
 
 
 # Drops the first n bytes of a receive buffer.
@@ -370,18 +320,18 @@ int grpc_take_message(string_builder* buf, char* encoding, int max, char** out, 
 	*out = 0
 	*out_len = 0
 	*compressed = 0
-	*status = grpc_status_ok()
+	*status = grpc_status_ok
 	*why = c""
 	if (buf.length < 5):
 		return 0
 	char* p = buf.data
 	int flag = p[0] & 255
 	if (flag > 1):
-		*status = grpc_status_internal()
+		*status = grpc_status_internal
 		*why = c"invalid message flag"
 		return (-1)
 	if (((p[1] & 128) != 0) || (h2_get_u31(p + 1) > max)):
-		*status = grpc_status_resource_exhausted()
+		*status = grpc_status_resource_exhausted
 		*why = c"message larger than the limit"
 		return (-1)
 	int n = h2_get_u31(p + 1)
@@ -393,20 +343,20 @@ int grpc_take_message(string_builder* buf, char* encoding, int max, char** out, 
 		grpc_consume(buf, 5 + n)
 		return 1
 	if (codec_is_identity(encoding) != 0):
-		*status = grpc_status_internal()
+		*status = grpc_status_internal
 		*why = c"compressed message without grpc-encoding"
 		return (-1)
 	int rc = codec_decompress(encoding, p + 5, n, max, out, out_len)
-	if (rc == codec_err_too_large()):
-		*status = grpc_status_resource_exhausted()
+	if (rc == codec_err_too_large):
+		*status = grpc_status_resource_exhausted
 		*why = c"decompressed message larger than the limit"
 		return (-1)
-	if (rc == codec_err_unsupported()):
-		*status = grpc_status_unimplemented()
+	if (rc == codec_err_unsupported):
+		*status = grpc_status_unimplemented
 		*why = c"unsupported grpc-encoding"
 		return (-1)
-	if (rc != codec_ok()):
-		*status = grpc_status_internal()
+	if (rc != codec_ok):
+		*status = grpc_status_internal
 		*why = c"corrupt compressed message"
 		return (-1)
 	*compressed = 1
@@ -522,43 +472,43 @@ int grpc_timeout_parse(char* v, int* out_ms):
 # gRPC's HTTP status -> status code table for non-200 responses.
 int grpc_status_from_http(int http_status):
 	if (http_status == 400):
-		return grpc_status_internal()
+		return grpc_status_internal
 	if (http_status == 401):
-		return grpc_status_unauthenticated()
+		return grpc_status_unauthenticated
 	if (http_status == 403):
-		return grpc_status_permission_denied()
+		return grpc_status_permission_denied
 	if (http_status == 404):
-		return grpc_status_unimplemented()
+		return grpc_status_unimplemented
 	if ((http_status == 429) || (http_status == 502) || (http_status == 503) || (http_status == 504)):
-		return grpc_status_unavailable()
-	return grpc_status_unknown()
+		return grpc_status_unavailable
+	return grpc_status_unknown
 
 
 int grpc_status_from_h2_error(int h2_code):
-	if ((h2_code == h2_error_no_error()) || (h2_code == h2_error_protocol()) || (h2_code == h2_error_internal()) || (h2_code == h2_error_flow_control()) || (h2_code == h2_error_settings_timeout()) || (h2_code == h2_error_frame_size()) || (h2_code == h2_error_compression()) || (h2_code == h2_error_connect())):
-		return grpc_status_internal()
-	if (h2_code == h2_error_refused_stream()):
-		return grpc_status_unavailable()
-	if (h2_code == h2_error_cancel()):
-		return grpc_status_cancelled()
-	if (h2_code == h2_error_enhance_your_calm()):
-		return grpc_status_resource_exhausted()
-	if (h2_code == h2_error_inadequate_security()):
-		return grpc_status_permission_denied()
-	return grpc_status_unknown()
+	if ((h2_code == h2_error_no_error) || (h2_code == h2_error_protocol) || (h2_code == h2_error_internal) || (h2_code == h2_error_flow_control) || (h2_code == h2_error_settings_timeout) || (h2_code == h2_error_frame_size) || (h2_code == h2_error_compression) || (h2_code == h2_error_connect)):
+		return grpc_status_internal
+	if (h2_code == h2_error_refused_stream):
+		return grpc_status_unavailable
+	if (h2_code == h2_error_cancel):
+		return grpc_status_cancelled
+	if (h2_code == h2_error_enhance_your_calm):
+		return grpc_status_resource_exhausted
+	if (h2_code == h2_error_inadequate_security):
+		return grpc_status_permission_denied
+	return grpc_status_unknown
 
 
 # Parses a grpc-status value: 1-2 digits, 0..16; anything else UNKNOWN.
 int grpc_parse_status(char* v):
 	if ((v == 0) || (v[0] < '0') || (v[0] > '9')):
-		return grpc_status_unknown()
+		return grpc_status_unknown
 	int n = v[0] - '0'
 	if (v[1] != 0):
 		if ((v[1] < '0') || (v[1] > '9') || (v[2] != 0)):
-			return grpc_status_unknown()
+			return grpc_status_unknown
 		n = n * 10 + (v[1] - '0')
 	if (n > 16):
-		return grpc_status_unknown()
+		return grpc_status_unknown
 	return n
 
 
@@ -648,7 +598,7 @@ grpc_channel* grpc_channel_from_conn(h2_conn* c, char* authority):
 	if (c.tls != 0):
 		ch.scheme = c"https"
 	ch.owns_conn = 0
-	ch.max_message = grpc_default_max_message()
+	ch.max_message = grpc_default_max_message
 	ch.send_encoding = 0
 	return ch
 
@@ -779,7 +729,7 @@ void grpc_cs_fail(grpc_client_stream* cs, int status, char* message):
 	cs.status = status
 	cs.message = strclone(message)
 	if ((cs.s != 0) && (h2_stream_active(cs.s) != 0) && (cs.ch.conn.dead == 0)):
-		h2_send_rst(cs.ch.conn, cs.s, h2_error_cancel())
+		h2_send_rst(cs.ch.conn, cs.s, h2_error_cancel)
 
 
 # Validates the response headers once they are in. 0 to go on, -1 when
@@ -799,11 +749,11 @@ int grpc_cs_check_headers(grpc_client_stream* cs):
 		string_free(m)
 		return (-1)
 	if (grpc_is_grpc_content_type(h2_stream_header(s, c"content-type")) == 0):
-		grpc_cs_fail(cs, grpc_status_unknown(), c"response is not application/grpc")
+		grpc_cs_fail(cs, grpc_status_unknown, c"response is not application/grpc")
 		return (-1)
 	char* enc = h2_stream_header(s, c"grpc-encoding")
 	if (codec_supported(enc) == 0):
-		grpc_cs_fail(cs, grpc_status_internal(), c"unsupported grpc-encoding in response")
+		grpc_cs_fail(cs, grpc_status_internal, c"unsupported grpc-encoding in response")
 		return (-1)
 	cs.recv_encoding = enc
 	return 0
@@ -820,11 +770,11 @@ void grpc_cs_status_from_end(grpc_client_stream* cs):
 		status_block = s.headers
 	char* st = hpack_headers_get(status_block, c"grpc-status")
 	if (st == 0):
-		grpc_cs_fail(cs, grpc_status_internal(), c"missing grpc-status")
+		grpc_cs_fail(cs, grpc_status_internal, c"missing grpc-status")
 		return
 	int status = grpc_parse_status(st)
-	if ((status == grpc_status_ok()) && (s.body.length != 0)):
-		grpc_cs_fail(cs, grpc_status_internal(), c"invalid response message")
+	if ((status == grpc_status_ok) && (s.body.length != 0)):
+		grpc_cs_fail(cs, grpc_status_internal, c"invalid response message")
 		return
 	char* raw = hpack_headers_get(status_block, c"grpc-message")
 	if (raw != 0):
@@ -841,15 +791,15 @@ void grpc_cs_status_from_end(grpc_client_stream* cs):
 void grpc_cs_io_failed(grpc_client_stream* cs, int rc):
 	h2_stream* s = cs.s
 	if (rc == (-2)):
-		grpc_cs_fail(cs, grpc_status_deadline_exceeded(), c"deadline exceeded")
+		grpc_cs_fail(cs, grpc_status_deadline_exceeded, c"deadline exceeded")
 	else if (s.end_received != 0):
 		return
 	else if (s.refused != 0):
-		grpc_cs_fail(cs, grpc_status_unavailable(), c"stream refused by server")
+		grpc_cs_fail(cs, grpc_status_unavailable, c"stream refused by server")
 	else if (s.reset_code >= 0):
 		grpc_cs_fail(cs, grpc_status_from_h2_error(s.reset_code), c"stream reset")
 	else:
-		grpc_cs_fail(cs, grpc_status_unavailable(), c"connection lost")
+		grpc_cs_fail(cs, grpc_status_unavailable, c"connection lost")
 
 
 int grpc_cs_deadline_passed(grpc_client_stream* cs):
@@ -892,9 +842,9 @@ grpc_client_stream* grpc_stream_open(grpc_channel* ch, char* method, list[hpack_
 	hpack_headers_free(hdrs)
 	if (cs.s == 0):
 		if ((grpc_cs_deadline_passed(cs) != 0) && (c.dead == 0)):
-			grpc_cs_fail(cs, grpc_status_deadline_exceeded(), c"deadline exceeded")
+			grpc_cs_fail(cs, grpc_status_deadline_exceeded, c"deadline exceeded")
 		else:
-			grpc_cs_fail(cs, grpc_status_unavailable(), c"connection unavailable")
+			grpc_cs_fail(cs, grpc_status_unavailable, c"connection unavailable")
 	return cs
 
 
@@ -911,9 +861,9 @@ int grpc_stream_send_ex(grpc_client_stream* cs, char* msg, int len, int end_stre
 		grpc_cs_io_failed(cs, (-1))
 		return (-1)
 	string_builder* body = string_new()
-	if (grpc_encode_message(body, cs.ch.send_encoding, msg, len) != codec_ok()):
+	if (grpc_encode_message(body, cs.ch.send_encoding, msg, len) != codec_ok):
 		string_free(body)
-		grpc_cs_fail(cs, grpc_status_internal(), c"request compression failed")
+		grpc_cs_fail(cs, grpc_status_internal, c"request compression failed")
 		return (-1)
 	h2_set_deadline(c, cs.deadline_ms)
 	int rc = h2_send_data(c, s, body.data, body.length, end_stream)
@@ -959,7 +909,7 @@ int grpc_stream_recv(grpc_client_stream* cs, char** out, int* out_len):
 	h2_conn* c = cs.ch.conn
 	while (1):
 		if (cs.status >= 0):
-			if (cs.status == grpc_status_ok()):
+			if (cs.status == grpc_status_ok):
 				return 0
 			return (-1)
 		h2_stream* s = cs.s
@@ -990,7 +940,7 @@ int grpc_stream_recv(grpc_client_stream* cs, char** out, int* out_len):
 
 
 void grpc_stream_cancel(grpc_client_stream* cs):
-	grpc_cs_fail(cs, grpc_status_cancelled(), c"cancelled by client")
+	grpc_cs_fail(cs, grpc_status_cancelled, c"cancelled by client")
 
 
 grpc_result* grpc_stream_finish(grpc_client_stream* cs):
@@ -1036,9 +986,9 @@ grpc_result* grpc_unary_call(grpc_channel* ch, char* method, char* req, int req_
 		else:
 			free(m)
 	grpc_result* r = grpc_stream_finish(cs)
-	if ((r.status == grpc_status_ok()) && (count != 1)):
-		grpc_result_set(r, grpc_status_internal(), c"invalid response message")
-	if ((r.status == grpc_status_ok()) && (resp != 0)):
+	if ((r.status == grpc_status_ok) && (count != 1)):
+		grpc_result_set(r, grpc_status_internal, c"invalid response message")
+	if ((r.status == grpc_status_ok) && (resp != 0)):
 		r.response = resp
 		r.response_len = resp_len
 	else if (resp != 0):
@@ -1095,7 +1045,7 @@ struct grpc_server:
 
 
 grpc_server* grpc_server_new():
-	grpc_server* s = new grpc_server(new list[grpc_method*], grpc_default_max_message(), 0)
+	grpc_server* s = new grpc_server(new list[grpc_method*], grpc_default_max_message, 0)
 	return s
 
 
@@ -1140,7 +1090,7 @@ void grpc_call_reply(grpc_call* call, char* msg, int len):
 	call.response = mem_dup(msg, len)
 	call.response_len = len
 	call.has_response = 1
-	call.status = grpc_status_ok()
+	call.status = grpc_status_ok
 
 
 void grpc_call_fail(grpc_call* call, int status, char* message):
@@ -1201,7 +1151,7 @@ grpc_call* grpc_call_new(grpc_server* srv, h2_conn* c, h2_stream* st):
 	call.metadata = st.headers
 	call.timeout_ms = (-1)
 	call.deadline_ms = 0
-	call.status = grpc_status_unknown()
+	call.status = grpc_status_unknown
 	call.status_message = 0
 	call.response = 0
 	call.response_len = 0
@@ -1273,20 +1223,20 @@ int grpc_call_recv(grpc_call* call, char** out, int* out_len):
 		if (st.end_received != 0):
 			if (st.body.length != 0):
 				call.input_failed = 1
-				grpc_call_fail(call, grpc_status_internal(), c"truncated request message")
+				grpc_call_fail(call, grpc_status_internal, c"truncated request message")
 				return (-1)
 			call.input_done = 1
 			return 0
 		if (grpc_call_deadline_passed(call) != 0):
 			call.input_failed = 1
-			grpc_call_fail(call, grpc_status_deadline_exceeded(), c"deadline exceeded")
+			grpc_call_fail(call, grpc_status_deadline_exceeded, c"deadline exceeded")
 			return (-1)
 		h2_set_deadline(c, call.deadline_ms)
 		int prc = h2_pump(c)
 		h2_set_deadline(c, 0)
 		if (prc == (-2)):
 			call.input_failed = 1
-			grpc_call_fail(call, grpc_status_deadline_exceeded(), c"deadline exceeded")
+			grpc_call_fail(call, grpc_status_deadline_exceeded, c"deadline exceeded")
 			return (-1)
 		if (prc != 0):
 			call.cancelled = 1
@@ -1315,7 +1265,7 @@ int grpc_call_send(grpc_call* call, char* msg, int len):
 	h2_conn* c = call.conn
 	h2_stream* st = call.stream
 	if (grpc_call_deadline_passed(call) != 0):
-		grpc_call_fail(call, grpc_status_deadline_exceeded(), c"deadline exceeded")
+		grpc_call_fail(call, grpc_status_deadline_exceeded, c"deadline exceeded")
 		return (-1)
 	grpc_pump_ready(c)
 	if ((st.reset_code >= 0) || (c.dead != 0)):
@@ -1325,16 +1275,16 @@ int grpc_call_send(grpc_call* call, char* msg, int len):
 		call.cancelled = 1
 		return (-1)
 	string_builder* body = string_new()
-	if (grpc_encode_message(body, call.send_encoding, msg, len) != codec_ok()):
+	if (grpc_encode_message(body, call.send_encoding, msg, len) != codec_ok):
 		string_free(body)
-		grpc_call_fail(call, grpc_status_internal(), c"response compression failed")
+		grpc_call_fail(call, grpc_status_internal, c"response compression failed")
 		return (-1)
 	h2_set_deadline(c, call.deadline_ms)
 	int rc = h2_send_data(c, st, body.data, body.length, 0)
 	h2_set_deadline(c, 0)
 	string_free(body)
 	if (rc == (-2)):
-		grpc_call_fail(call, grpc_status_deadline_exceeded(), c"deadline exceeded")
+		grpc_call_fail(call, grpc_status_deadline_exceeded, c"deadline exceeded")
 		return (-1)
 	if (rc != 0):
 		call.cancelled = 1
@@ -1378,7 +1328,7 @@ int grpc_call_finish(grpc_call* call):
 		# Trailers-only: one HEADERS frame with END_STREAM.
 		list[hpack_header*] head = hpack_headers_new()
 		hpack_headers_add(head, c"content-type", c"application/grpc")
-		grpc_add_accept_encoding(head, call.status == grpc_status_unimplemented())
+		grpc_add_accept_encoding(head, call.status == grpc_status_unimplemented)
 		h2_append_extra(head, call.response_headers)
 		grpc_append_status(head, call)
 		rc = h2_respond_headers(c, st, 200, head, 1)
@@ -1407,7 +1357,7 @@ void grpc_drain_request(h2_conn* c, h2_stream* st):
 void grpc_server_run_unary(grpc_call* call, grpc_method* m):
 	int rc = grpc_call_recv(call, &call.request, &call.request_len)
 	if (rc == 0):
-		grpc_call_fail(call, grpc_status_internal(), c"missing request message")
+		grpc_call_fail(call, grpc_status_internal, c"missing request message")
 	if (rc != 1):
 		return
 	char* extra = 0
@@ -1415,28 +1365,28 @@ void grpc_server_run_unary(grpc_call* call, grpc_method* m):
 	rc = grpc_call_recv(call, &extra, &extra_len)
 	if (rc == 1):
 		free(extra)
-		grpc_call_fail(call, grpc_status_internal(), c"more than one request message")
+		grpc_call_fail(call, grpc_status_internal, c"more than one request message")
 		return
 	if (rc != 0):
 		return
 	m.handler(call, m.user_data)
 	if (grpc_call_deadline_passed(call) != 0):
-		grpc_call_fail(call, grpc_status_deadline_exceeded(), c"deadline exceeded")
+		grpc_call_fail(call, grpc_status_deadline_exceeded, c"deadline exceeded")
 		call.headers_first = 0
-	else if ((call.status == grpc_status_ok()) && (call.has_response == 0)):
-		grpc_call_fail(call, grpc_status_unknown(), c"handler produced no response")
-	if (call.status == grpc_status_ok()):
+	else if ((call.status == grpc_status_ok) && (call.has_response == 0)):
+		grpc_call_fail(call, grpc_status_unknown, c"handler produced no response")
+	if (call.status == grpc_status_ok):
 		if (grpc_call_send(call, call.response, call.response_len) != 0):
-			if (call.status == grpc_status_ok()):
-				grpc_call_fail(call, grpc_status_internal(), c"sending the response failed")
+			if (call.status == grpc_status_ok):
+				grpc_call_fail(call, grpc_status_internal, c"sending the response failed")
 
 
 void grpc_server_run_stream(grpc_call* call, grpc_method* m):
 	call.streaming = 1
-	call.status = grpc_status_ok()
+	call.status = grpc_status_ok
 	m.handler(call, m.user_data)
-	if ((call.cancelled == 0) && (call.status == grpc_status_ok()) && (grpc_call_deadline_passed(call) != 0)):
-		grpc_call_fail(call, grpc_status_deadline_exceeded(), c"deadline exceeded")
+	if ((call.cancelled == 0) && (call.status == grpc_status_ok) && (grpc_call_deadline_passed(call) != 0)):
+		grpc_call_fail(call, grpc_status_deadline_exceeded, c"deadline exceeded")
 
 
 # Runs one request stream to completion.
@@ -1464,14 +1414,14 @@ void grpc_server_handle(grpc_server* srv, h2_conn* c, h2_stream* st):
 		string_builder* msg = string_new()
 		string_append(msg, c"unknown method ")
 		string_append(msg, call.method)
-		grpc_call_fail(call, grpc_status_unimplemented(), msg.data)
+		grpc_call_fail(call, grpc_status_unimplemented, msg.data)
 		string_free(msg)
 	else if (codec_supported(call.recv_encoding) == 0):
 		string_builder* msg = string_new()
 		string_append(msg, c"grpc-encoding ")
 		string_append(msg, call.recv_encoding)
 		string_append(msg, c" is not supported")
-		grpc_call_fail(call, grpc_status_unimplemented(), msg.data)
+		grpc_call_fail(call, grpc_status_unimplemented, msg.data)
 		string_free(msg)
 	else if (m.streaming != 0):
 		grpc_server_run_stream(call, m)
@@ -1513,7 +1463,7 @@ int grpc_server_serve_h2(grpc_server* srv, h2_conn* c):
 		# The response is complete; a client still sending is told to
 		# stop with RST_STREAM(NO_ERROR) (RFC 9113 section 8.1).
 		if ((h2_stream_active(st) != 0) && (st.end_sent != 0) && (c.dead == 0)):
-			h2_send_rst(c, st, h2_error_no_error())
+			h2_send_rst(c, st, h2_error_no_error)
 		h2_stream_free(c, st)
 	int err = c.error
 	h2_close(c)
@@ -1523,7 +1473,7 @@ int grpc_server_serve_h2(grpc_server* srv, h2_conn* c):
 int grpc_server_serve_conn(grpc_server* srv, int fd):
 	h2_conn* c = h2_server_new(fd)
 	if (c == 0):
-		return h2_error_protocol()
+		return h2_error_protocol
 	return grpc_server_serve_h2(srv, c)
 
 
@@ -1534,5 +1484,5 @@ int grpc_server_serve_conn(grpc_server* srv, int fd):
 int grpc_server_serve_conn_tls(grpc_server* srv, int fd, tls_server_config* scfg):
 	h2_conn* c = h2_accept_tls(fd, scfg)
 	if (c == 0):
-		return h2_error_protocol()
+		return h2_error_protocol
 	return grpc_server_serve_h2(srv, c)

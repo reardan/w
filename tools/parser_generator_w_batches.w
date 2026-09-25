@@ -103,8 +103,8 @@ int pgb_cpu_count():
 process* pgb_start(char* list_path, int quiet):
 	spawn_options* opts = spawn_options_new()
 	if (quiet):
-		opts.stdout_mode = process_null()
-		opts.stderr_mode = process_null()
+		opts.stdout_mode = process_null
+		opts.stderr_mode = process_null
 	opts.env = env_copy_with(env_current(), c"PARSER_GENERATOR_W_FILES", list_path)
 	char** argv = strv_new(1)
 	strv_set(argv, 0, pgb_binary)

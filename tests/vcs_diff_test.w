@@ -19,13 +19,13 @@ void assert_reconstructs(char* old_text, char* new_text, int context):
 
 
 void assert_reconstructs_default(char* old_text, char* new_text):
-	assert_reconstructs(old_text, new_text, diff_default_context())
+	assert_reconstructs(old_text, new_text, diff_default_context)
 
 
 # --- identical inputs -------------------------------------------------------
 
 void test_diff_identical_empty():
-	diff_result* result = diff_text(c"", c"", diff_default_context())
+	diff_result* result = diff_text(c"", c"", diff_default_context)
 	assert_equal(1, diff_is_identical(result))
 	assert_equal(0, result.hunks.length)
 	assert_reconstructs_default(c"", c"")
@@ -33,7 +33,7 @@ void test_diff_identical_empty():
 
 void test_diff_identical_content():
 	char* text = c"alpha\nbeta\ngamma\n"
-	diff_result* result = diff_text(text, text, diff_default_context())
+	diff_result* result = diff_text(text, text, diff_default_context)
 	assert_equal(1, diff_is_identical(result))
 	assert_strings_equal(c"", diff_render_unified_text(c"a", c"b", result))
 	assert_reconstructs_default(text, text)
@@ -44,7 +44,7 @@ void test_diff_identical_content():
 void test_diff_pure_insertion_into_empty():
 	char* old_text = c""
 	char* new_text = c"one\ntwo\n"
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	assert_equal(0, diff_is_identical(result))
 	assert_equal(1, result.hunks.length)
 	diff_hunk* hunk = result.hunks[0]
@@ -58,7 +58,7 @@ void test_diff_pure_insertion_into_empty():
 void test_diff_pure_deletion_to_empty():
 	char* old_text = c"one\ntwo\nthree\n"
 	char* new_text = c""
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	assert_equal(0, diff_is_identical(result))
 	assert_equal(1, result.hunks.length)
 	diff_hunk* hunk = result.hunks[0]
@@ -73,7 +73,7 @@ void test_diff_append_lines():
 	# trimmed away.
 	char* old_text = c"a\nb\nc\n"
 	char* new_text = c"a\nb\nc\nd\ne\n"
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	assert_equal(1, result.hunks.length)
 	diff_hunk* hunk = result.hunks[0]
 	assert_equal(0, hunk.old_start)
@@ -89,7 +89,7 @@ void test_diff_append_lines_far_from_start():
 	# old file.
 	char* old_text = c"a\nb\nc\nd\ne\nf\ng\n"
 	char* new_text = c"a\nb\nc\nd\ne\nf\ng\nh\ni\n"
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	assert_equal(1, result.hunks.length)
 	diff_hunk* hunk = result.hunks[0]
 	assert_equal(4, hunk.old_start)
@@ -104,7 +104,7 @@ void test_diff_append_lines_far_from_start():
 void test_diff_mid_file_edit():
 	char* old_text = c"alpha\nbeta\ngamma\ndelta\n"
 	char* new_text = c"alpha\nBETA\ngamma\ndelta\nepsilon\n"
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	assert_equal(1, result.hunks.length)
 	diff_hunk* hunk = result.hunks[0]
 	assert_equal(0, hunk.old_start)
@@ -117,7 +117,7 @@ void test_diff_mid_file_edit():
 void test_diff_completely_different():
 	char* old_text = c"one\ntwo\nthree\n"
 	char* new_text = c"uno\ndos\ntres\ncuatro\n"
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	assert_equal(1, result.hunks.length)
 	diff_hunk* hunk = result.hunks[0]
 	assert_equal(3, hunk.old_len)
@@ -152,7 +152,7 @@ void test_diff_adjacent_changes_merge_into_one_hunk():
 	# merges these into a single hunk, and so should we.
 	char* old_text = vcs_diff_test_numbered_lines(20, list[int]{})
 	char* new_text = vcs_diff_test_numbered_lines(20, list[int]{3, 9})
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	assert_equal(1, result.hunks.length)
 	assert_reconstructs_default(old_text, new_text)
 
@@ -162,7 +162,7 @@ void test_diff_far_changes_stay_in_separate_hunks():
 	# overlap: two distinct hunks.
 	char* old_text = vcs_diff_test_numbered_lines(50, list[int]{})
 	char* new_text = vcs_diff_test_numbered_lines(50, list[int]{3, 41})
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	assert_equal(2, result.hunks.length)
 	assert_reconstructs_default(old_text, new_text)
 
@@ -172,7 +172,7 @@ void test_diff_far_changes_stay_in_separate_hunks():
 void test_diff_old_missing_trailing_newline():
 	char* old_text = c"foo\nbar"
 	char* new_text = c"foo\nbar\n"
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	assert_equal(0, diff_is_identical(result))
 	assert_reconstructs_default(old_text, new_text)
 	char* rendered = diff_render_unified_text(c"old", c"new", result)
@@ -182,7 +182,7 @@ void test_diff_old_missing_trailing_newline():
 void test_diff_new_missing_trailing_newline():
 	char* old_text = c"foo\nbar\n"
 	char* new_text = c"foo\nbar"
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	assert_equal(0, diff_is_identical(result))
 	assert_reconstructs_default(old_text, new_text)
 	char* rendered = diff_render_unified_text(c"old", c"new", result)
@@ -192,7 +192,7 @@ void test_diff_new_missing_trailing_newline():
 void test_diff_both_missing_trailing_newline_are_identical():
 	# Same text, both missing the final newline: truly identical files.
 	char* text = c"foo\nbar"
-	diff_result* result = diff_text(text, text, diff_default_context())
+	diff_result* result = diff_text(text, text, diff_default_context)
 	assert_equal(1, diff_is_identical(result))
 	assert_reconstructs_default(text, text)
 
@@ -223,7 +223,7 @@ void test_diff_split_lines_helper():
 void test_diff_unified_rendering_golden_replace():
 	char* old_text = c"one\ntwo\nthree\n"
 	char* new_text = c"one\nTWO\nthree\n"
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	char* rendered = diff_render_unified_text(c"a.txt", c"b.txt", result)
 	assert_strings_equal(c"--- a.txt\n+++ b.txt\n@@ -1,3 +1,3 @@\n one\n-two\n+TWO\n three\n", rendered)
 
@@ -231,7 +231,7 @@ void test_diff_unified_rendering_golden_replace():
 void test_diff_unified_rendering_golden_insert_at_start():
 	char* old_text = c"one\ntwo\n"
 	char* new_text = c"zero\none\ntwo\n"
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	char* rendered = diff_render_unified_text(c"a.txt", c"b.txt", result)
 	assert_strings_equal(c"--- a.txt\n+++ b.txt\n@@ -1,2 +1,3 @@\n+zero\n one\n two\n", rendered)
 
@@ -241,14 +241,14 @@ void test_diff_unified_rendering_golden_pure_insertion_header():
 	# not a 1-based line number (GNU diff convention).
 	char* old_text = c""
 	char* new_text = c"only\n"
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	char* rendered = diff_render_unified_text(c"a.txt", c"b.txt", result)
 	assert_strings_equal(c"--- a.txt\n+++ b.txt\n@@ -0,0 +1 @@\n+only\n", rendered)
 
 
 void test_diff_unified_rendering_golden_identical_is_empty():
 	char* text = c"same\n"
-	diff_result* result = diff_text(text, text, diff_default_context())
+	diff_result* result = diff_text(text, text, diff_default_context)
 	char* rendered = diff_render_unified_text(c"a.txt", c"b.txt", result)
 	assert_strings_equal(c"", rendered)
 

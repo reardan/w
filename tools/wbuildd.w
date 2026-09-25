@@ -133,8 +133,7 @@ import lib.str
 import lib.dir
 
 
-int wbd_protocol():
-	return 2
+const int wbd_protocol = 2
 
 
 /* ---- small helpers ---- */
@@ -295,7 +294,7 @@ char* wbd_manifest_stderr          # what generating the warm manifest printed
 
 
 int wbd_watch_mask():
-	return IN_MODIFY() | IN_CLOSE_WRITE() | IN_MOVED_FROM() | IN_MOVED_TO() | IN_CREATE() | IN_DELETE() | IN_DELETE_SELF() | IN_MOVE_SELF()
+	return IN_MODIFY | IN_CLOSE_WRITE | IN_MOVED_FROM() | IN_MOVED_TO() | IN_CREATE | IN_DELETE | IN_DELETE_SELF() | IN_MOVE_SELF
 
 
 # Adds a watch for rel ("" = the root) and, recursively, every
@@ -304,7 +303,7 @@ void wbd_watch_tree(char* rel):
 	char* path = rel
 	if (rel[0] == 0):
 		path = c"."
-	int wd = inotify_add_watch(wbd_inotify_fd, path, wbd_watch_mask() | IN_ONLYDIR())
+	int wd = inotify_add_watch(wbd_inotify_fd, path, wbd_watch_mask() | IN_ONLYDIR)
 	if (wd < 0):
 		return
 	if ((wd in wbd_watch_dirs) == 0):
@@ -314,7 +313,7 @@ void wbd_watch_tree(char* rel):
 	if (entries == 0):
 		return
 	for dir_entry* e in entries:
-		if ((e.kind == DIR_KIND_DIR()) && (e.name[0] != '.')):
+		if ((e.kind == DIR_KIND_DIR) && (e.name[0] != '.')):
 			char* child = wbd_join(rel, e.name)
 			wbd_watch_tree(child)
 			free(child)
@@ -330,23 +329,23 @@ void wbd_begin_stop();
 # A statx-based identity of a file's current content: size, inode,
 # mtime and ctime (seconds and nanoseconds), or "-" when it is missing.
 char* wbd_file_sig(char* path):
-	char* buf = malloc(FILE_STATX_BUF_SIZE())
-	int err = statx(path, 0, FILE_STATX_BASIC_STATS(), buf)
+	char* buf = malloc(FILE_STATX_BUF_SIZE)
+	int err = statx(path, 0, FILE_STATX_BASIC_STATS, buf)
 	if (err != 0):
 		free(buf)
 		return strclone(c"-")
 	string_builder* s = string_new()
-	string_append_int(s, load_word(buf + FILE_STATX_SIZE_OFFSET()))
+	string_append_int(s, load_word(buf + FILE_STATX_SIZE_OFFSET))
 	string_append_char(s, ':')
-	string_append_int(s, load_word(buf + FILE_STATX_INO_OFFSET()))
+	string_append_int(s, load_word(buf + FILE_STATX_INO_OFFSET))
 	string_append_char(s, ':')
-	string_append_int(s, load_word(buf + FILE_STATX_MTIME_OFFSET()))
+	string_append_int(s, load_word(buf + FILE_STATX_MTIME_OFFSET))
 	string_append_char(s, '.')
-	string_append_int(s, load_int32(buf + FILE_STATX_MTIME_OFFSET() + 8))
+	string_append_int(s, load_int32(buf + FILE_STATX_MTIME_OFFSET + 8))
 	string_append_char(s, ':')
-	string_append_int(s, load_word(buf + FILE_STATX_CTIME_OFFSET()))
+	string_append_int(s, load_word(buf + FILE_STATX_CTIME_OFFSET))
 	string_append_char(s, '.')
-	string_append_int(s, load_int32(buf + FILE_STATX_CTIME_OFFSET() + 8))
+	string_append_int(s, load_int32(buf + FILE_STATX_CTIME_OFFSET + 8))
 	free(buf)
 	char* sig = s.data
 	free(s)
@@ -444,7 +443,7 @@ void wbd_rewatch():
 	if (wbd_inotify_fd < 0):
 		return
 	wbd_watch_tree(c"")
-	event_loop_add_fd(wbd_loop, wbd_inotify_fd, poll_in(), wbd_on_inotify, 0)
+	event_loop_add_fd(wbd_loop, wbd_inotify_fd, poll_in, wbd_on_inotify, 0)
 
 
 void wbd_entry_free(wbd_entry* e):
@@ -496,7 +495,7 @@ int wbd_prewarm_running():
 	if (wbd_prewarm_proc == 0):
 		return 0
 	int status = process_try_wait(wbd_prewarm_proc)
-	if (status == process_status_running()):
+	if (status == process_status_running):
 		return 1
 	process_free(wbd_prewarm_proc)
 	wbd_prewarm_proc = 0
@@ -533,9 +532,9 @@ void wbd_prewarm_fire(int id, void* ctx):
 		strv_set(argv, 2, c"-f")
 		strv_set(argv, 3, wbd_prewarm_manifest)
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_null()
-	opts.stdout_mode = process_null()
-	opts.stderr_mode = process_null()
+	opts.stdin_mode = process_null
+	opts.stdout_mode = process_null
+	opts.stderr_mode = process_null
 	wbd_prewarm_proc = process_spawn(c"bin/wtest", argv, opts)
 	free(cast(char*, opts))
 	free(cast(char*, argv))
@@ -572,7 +571,7 @@ int wbd_in_bin(char* dir):
 
 
 void wbd_handle_event(inotify_event* ev):
-	if (ev.mask & IN_Q_OVERFLOW()):
+	if (ev.mask & IN_Q_OVERFLOW):
 		wbd_rewatch_pending = 1
 		wbd_clear_all()
 		wbd_hashes_clear()
@@ -584,16 +583,16 @@ void wbd_handle_event(inotify_event* ev):
 		return
 	if (ev.name_length == 0):
 		# The watched directory itself went away or moved.
-		if (ev.mask & (IN_DELETE_SELF() | IN_MOVE_SELF())):
-			if (ev.mask & IN_MOVE_SELF()):
+		if (ev.mask & (IN_DELETE_SELF() | IN_MOVE_SELF)):
+			if (ev.mask & IN_MOVE_SELF):
 				wbd_rewatch_pending = 1
 			wbd_clear_all()
 			wbd_hashes_forget_under(dir)
 			if (wbd_in_bin(dir) == 0):
 				wbd_manifest_drop()
 		return
-	int changing = IN_CREATE() | IN_DELETE() | IN_MOVED_FROM() | IN_MOVED_TO()
-	if (ev.mask & IN_ISDIR()):
+	int changing = IN_CREATE | IN_DELETE | IN_MOVED_FROM() | IN_MOVED_TO()
+	if (ev.mask & IN_ISDIR):
 		if (ev.name[0] == '.'):
 			return
 		char* sub = wbd_join(dir, ev.name)
@@ -604,7 +603,7 @@ void wbd_handle_event(inotify_event* ev):
 			wbd_hashes_forget_under(sub)
 			if (wbd_in_bin(dir) == 0):
 				wbd_manifest_drop()
-		if (ev.mask & IN_CREATE()):
+		if (ev.mask & IN_CREATE):
 			wbd_watch_tree(sub)
 		if (ev.mask & (IN_MOVED_FROM() | IN_MOVED_TO())):
 			wbd_rewatch_pending = 1
@@ -642,13 +641,13 @@ void wbd_handle_event(inotify_event* ev):
 				wbd_prewarm_schedule(1500)
 			if (wbd_self_name != 0):
 				if (strcmp(ev.name, wbd_self_name) == 0):
-					if (ev.mask & (IN_MOVED_TO() | IN_CREATE() | IN_CLOSE_WRITE())):
+					if (ev.mask & (IN_MOVED_TO() | IN_CREATE | IN_CLOSE_WRITE)):
 						wbd_stale = 1
 			# The build RPC runs the executor compiled into this binary;
 			# a rebuilt bin/wexec means the one-shot command it stands in
 			# for may have moved on.
 			if (strcmp(ev.name, c"wexec") == 0):
-				if (ev.mask & (IN_MOVED_TO() | IN_CREATE() | IN_CLOSE_WRITE())):
+				if (ev.mask & (IN_MOVED_TO() | IN_CREATE | IN_CLOSE_WRITE)):
 					wbd_stale = 1
 		return
 	# C-import headers are the compiler's only non-.w inputs.
@@ -665,16 +664,16 @@ void wbd_handle_event(inotify_event* ev):
 void wbd_drain_events():
 	if (wbd_inotify_fd < 0):
 		return
-	char* buf = malloc(INOTIFY_BUF_SIZE())
+	char* buf = malloc(INOTIFY_BUF_SIZE)
 	inotify_event ev
-	int n = read(wbd_inotify_fd, buf, INOTIFY_BUF_SIZE())
+	int n = read(wbd_inotify_fd, buf, INOTIFY_BUF_SIZE)
 	while (n > 0):
 		int off = 0
 		while ((off >= 0) && (off < n)):
 			off = inotify_event_parse(buf, n, off, &ev)
 			if (off >= 0):
 				wbd_handle_event(&ev)
-		n = read(wbd_inotify_fd, buf, INOTIFY_BUF_SIZE())
+		n = read(wbd_inotify_fd, buf, INOTIFY_BUF_SIZE)
 	free(buf)
 	if (wbd_rewatch_pending):
 		wbd_rewatch()
@@ -726,7 +725,7 @@ list[char*] wbd_request_args(json_value* params, char** why):
 		*why = c"params must be an object"
 		return 0
 	json_value* protocol = json_object_get(params, c"protocol")
-	if ((protocol == 0) || (protocol.type != json_type_int()) || (protocol.int_value != wbd_protocol())):
+	if ((protocol == 0) || (protocol.type != json_type_int()) || (protocol.int_value != wbd_protocol)):
 		*why = c"protocol mismatch"
 		return 0
 	json_value* cwd = json_object_get(params, c"cwd")
@@ -795,8 +794,7 @@ list[char*] wbd_clone_list(list[char*] items):
 	return copy
 
 
-int wbd_cache_limit():
-	return 256
+const int wbd_cache_limit = 256
 
 
 # Bounded memo: past the limit the oldest answer goes (it is only
@@ -812,7 +810,7 @@ void wbd_evict_oldest():
 
 
 void wbd_store(char* key, process_result* result, list[char*] closure):
-	if (wbd_cache.length >= wbd_cache_limit()):
+	if (wbd_cache.length >= wbd_cache_limit):
 		wbd_evict_oldest()
 	wbd_entry* e = new wbd_entry()
 	e.key = key
@@ -982,7 +980,7 @@ json_value* wbd_handle_status(json_value* params, void* ctx):
 	wbd_touch()
 	wbd_drain_events()
 	json_value* result = json_object()
-	json_object_set(result, c"protocol", json_int(wbd_protocol()))
+	json_object_set(result, c"protocol", json_int(wbd_protocol))
 	json_object_set(result, c"pid", json_int(getpid()))
 	json_object_set(result, c"root", json_string(wbd_root))
 	json_object_set(result, c"socket", json_string(wbd_socket_path))
@@ -1135,7 +1133,7 @@ void wbd_on_listener(int fd, int revents, void* ctx):
 	c.watching = 1
 	c.building = 0
 	wbd_conns.push(c)
-	event_loop_add_fd(wbd_loop, client, poll_in(), wbd_on_conn_readable, cast(void*, c))
+	event_loop_add_fd(wbd_loop, client, poll_in, wbd_on_conn_readable, cast(void*, c))
 
 
 /* ---- build RPC ---- */
@@ -1345,7 +1343,7 @@ void wbd_start_build(wbd_conn* c, json_value* message):
 	b.report_fd = report_read
 	b.report = string_new()
 	b.fork_seq = fork_seq
-	event_loop_add_fd(wbd_loop, report_read, poll_in(), wbd_on_build_report, cast(void*, b))
+	event_loop_add_fd(wbd_loop, report_read, poll_in, wbd_on_build_report, cast(void*, b))
 	# Tells the client the build is running (and which process to
 	# forward its signals to): from here on it must never fall back to
 	# the one-shot command, which would run the build a second time.
@@ -1523,7 +1521,7 @@ int wbd_serve(wbd_serve_options* o):
 		unlink(wbd_socket_path)
 		return 1
 	wbd_server.running = 1
-	event_loop_add_fd(wbd_loop, listen_fd, poll_in(), wbd_on_listener, 0)
+	event_loop_add_fd(wbd_loop, listen_fd, poll_in, wbd_on_listener, 0)
 	wbd_prewarm_schedule(0)
 	wbd_idle_timeout_ms = o.idle_timeout_ms
 	wbd_touch()
@@ -1543,7 +1541,7 @@ int wbd_serve(wbd_serve_options* o):
 	string_free(banner)
 	event_loop_run(wbd_loop)
 	if (wbd_prewarm_proc != 0):
-		process_kill(wbd_prewarm_proc, sigterm())
+		process_kill(wbd_prewarm_proc, sigterm)
 		wbd_prewarm_wait()
 	if (wbd_listen_fd >= 0):
 		close(wbd_listen_fd)
@@ -1603,7 +1601,7 @@ int wbd_oneshot(char* tool, char* sub, list[char*] args, char* stdin_text):
 		wbd_err2(c"wbuildd: cannot run ", tool)
 		return 127
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_pipe()
+	opts.stdin_mode = process_pipe
 	process* p = process_spawn(tool, argv, opts)
 	if (p == 0):
 		wbd_err2(c"wbuildd: cannot run ", tool)
@@ -1667,7 +1665,7 @@ int wbd_query(char* method, char* tool, char* sub, list[char*] args):
 	if (reads_stdin):
 		stdin_text = wbd_read_stdin()
 	json_value* params = json_object()
-	json_object_set(params, c"protocol", json_int(wbd_protocol()))
+	json_object_set(params, c"protocol", json_int(wbd_protocol))
 	char* cwd = wbd_cwd()
 	json_object_set(params, c"cwd", json_string(cwd))
 	free(cwd)
@@ -1804,9 +1802,9 @@ process* wbd_spawn_daemon(char* argv0, wbd_serve_options* o):
 		strv_set(argv, i, argv_list[i])
 		i = i + 1
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_null()
-	opts.stdout_mode = process_null()
-	opts.stderr_mode = process_null()
+	opts.stdin_mode = process_null
+	opts.stdout_mode = process_null
+	opts.stderr_mode = process_null
 	process* p = process_spawn(self, argv, opts)
 	free(cast(char*, opts))
 	free(cast(char*, argv))
@@ -1836,7 +1834,7 @@ int wbd_start_main(char* argv0, wbd_serve_options* o):
 			wbd_out(s.data)
 			string_free(s)
 			return 0
-		if (process_try_wait(p) != process_status_running()):
+		if (process_try_wait(p) != process_status_running):
 			wbd_err2(c"wbuildd: daemon exited during startup; see ", o.log_path)
 			return 1
 		process_sleep_ms(50)
@@ -1893,7 +1891,7 @@ int wbd_connect_client():
 		fd = wbd_connect()
 		if (fd >= 0):
 			return fd
-		if (process_try_wait(p) != process_status_running()):
+		if (process_try_wait(p) != process_status_running):
 			# Lost a start race to another client's daemon, or failed
 			# (see the log): one last look, then fall back.
 			return wbd_connect()
@@ -1926,7 +1924,7 @@ int wbd_build_main(list[char*] args):
 	if (fd < 0):
 		return wbd_unreachable(c"no daemon is listening", tool, 0, args, 0)
 	json_value* params = json_object()
-	json_object_set(params, c"protocol", json_int(wbd_protocol()))
+	json_object_set(params, c"protocol", json_int(wbd_protocol))
 	char* cwd = wbd_cwd()
 	json_object_set(params, c"cwd", json_string(cwd))
 	free(cwd)

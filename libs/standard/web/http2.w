@@ -141,120 +141,35 @@ import lib.mem
 
 /* Constants */
 
-int h2_frame_data():
-	return 0
-
-
-int h2_frame_headers():
-	return 1
-
-
-int h2_frame_priority():
-	return 2
-
-
-int h2_frame_rst_stream():
-	return 3
-
-
-int h2_frame_settings():
-	return 4
-
-
-int h2_frame_push_promise():
-	return 5
-
-
-int h2_frame_ping():
-	return 6
-
-
-int h2_frame_goaway():
-	return 7
-
-
-int h2_frame_window_update():
-	return 8
-
-
-int h2_frame_continuation():
-	return 9
-
-
-int h2_flag_end_stream():
-	return 1
-
-
-int h2_flag_ack():
-	return 1
-
-
-int h2_flag_end_headers():
-	return 4
-
-
-int h2_flag_padded():
-	return 8
-
-
-int h2_flag_priority():
-	return 32
-
-
-int h2_error_no_error():
-	return 0
-
-
-int h2_error_protocol():
-	return 1
-
-
-int h2_error_internal():
-	return 2
-
-
-int h2_error_flow_control():
-	return 3
-
-
-int h2_error_settings_timeout():
-	return 4
-
-
-int h2_error_stream_closed():
-	return 5
-
-
-int h2_error_frame_size():
-	return 6
-
-
-int h2_error_refused_stream():
-	return 7
-
-
-int h2_error_cancel():
-	return 8
-
-
-int h2_error_compression():
-	return 9
-
-
-int h2_error_connect():
-	return 10
-
-
-int h2_error_enhance_your_calm():
-	return 11
-
-
-int h2_error_inadequate_security():
-	return 12
-
-
-int h2_error_http_1_1_required():
-	return 13
+const int h2_frame_data = 0
+const int h2_frame_headers = 1
+const int h2_frame_priority = 2
+const int h2_frame_rst_stream = 3
+const int h2_frame_settings = 4
+const int h2_frame_push_promise = 5
+const int h2_frame_ping = 6
+const int h2_frame_goaway = 7
+const int h2_frame_window_update = 8
+const int h2_frame_continuation = 9
+const int h2_flag_end_stream = 1
+const int h2_flag_ack = 1
+const int h2_flag_end_headers = 4
+const int h2_flag_padded = 8
+const int h2_flag_priority = 32
+const int h2_error_no_error = 0
+const int h2_error_protocol = 1
+const int h2_error_internal = 2
+const int h2_error_flow_control = 3
+const int h2_error_settings_timeout = 4
+const int h2_error_stream_closed = 5
+const int h2_error_frame_size = 6
+const int h2_error_refused_stream = 7
+const int h2_error_cancel = 8
+const int h2_error_compression = 9
+const int h2_error_connect = 10
+const int h2_error_enhance_your_calm = 11
+const int h2_error_inadequate_security = 12
+const int h2_error_http_1_1_required = 13
 
 
 char* h2_error_string(int code):
@@ -276,74 +191,32 @@ char* h2_error_string(int code):
 		default: return c"UNKNOWN_ERROR"
 
 
-int h2_settings_header_table_size():
-	return 1
-
-
-int h2_settings_enable_push():
-	return 2
-
-
-int h2_settings_max_concurrent_streams():
-	return 3
-
-
-int h2_settings_initial_window_size():
-	return 4
-
-
-int h2_settings_max_frame_size():
-	return 5
-
-
-int h2_settings_max_header_list_size():
-	return 6
-
-
-int h2_max_window():
-	return 2147483647
-
-
-int h2_default_window():
-	return 65535
-
-
-int h2_default_max_frame():
-	return 16384
-
-
-int h2_max_frame_limit():
-	return 16777215
+const int h2_settings_header_table_size = 1
+const int h2_settings_enable_push = 2
+const int h2_settings_max_concurrent_streams = 3
+const int h2_settings_initial_window_size = 4
+const int h2_settings_max_frame_size = 5
+const int h2_settings_max_header_list_size = 6
+const int h2_max_window = 2147483647
+const int h2_default_window = 65535
+const int h2_default_max_frame = 16384
+const int h2_max_frame_limit = 16777215
 
 
 # Stream states (RFC 9113 section 5.1; reserved states never occur
 # because push is disabled).
-int h2_state_idle():
-	return 0
-
-
-int h2_state_open():
-	return 1
-
-
-int h2_state_half_closed_local():
-	return 2
-
-
-int h2_state_half_closed_remote():
-	return 3
-
-
-int h2_state_closed():
-	return 4
+const int h2_state_idle = 0
+const int h2_state_open = 1
+const int h2_state_half_closed_local = 2
+const int h2_state_half_closed_remote = 3
+const int h2_state_closed = 4
 
 
 char* h2_preface():
 	return c"PRI * HTTP/2.0\x0d\x0a\x0d\x0aSM\x0d\x0a\x0d\x0a"
 
 
-int h2_preface_len():
-	return 24
+const int h2_preface_len = 24
 
 
 /* Types */
@@ -524,22 +397,22 @@ h2_conn* h2_conn_new(int fd, int is_server):
 	c.rbuf = malloc(c.rcap)
 	c.rstart = 0
 	c.rend = 0
-	c.local_initial_window = h2_default_window()
-	c.local_max_frame = h2_default_max_frame()
-	c.local_max_header_list = hpack_default_max_list_size()
+	c.local_initial_window = h2_default_window
+	c.local_max_frame = h2_default_max_frame
+	c.local_max_header_list = hpack_default_max_list_size
 	c.local_max_concurrent = 100
 	c.local_conn_window = 1048576
 	c.peer_enable_push = 1
 	c.peer_max_concurrent = 2147483647
-	c.peer_initial_window = h2_default_window()
-	c.peer_max_frame = h2_default_max_frame()
+	c.peer_initial_window = h2_default_window
+	c.peer_max_frame = h2_default_max_frame
 	c.peer_max_header_list = 2147483647
 	c.got_peer_settings = 0
 	c.settings_acks = 0
-	c.conn_send_window = h2_default_window()
-	c.conn_recv_window = h2_default_window()
-	c.enc = hpack_encoder_new(hpack_default_table_size())
-	c.dec = hpack_decoder_new(hpack_default_table_size())
+	c.conn_send_window = h2_default_window
+	c.conn_recv_window = h2_default_window
+	c.enc = hpack_encoder_new(hpack_default_table_size)
+	c.dec = hpack_decoder_new(hpack_default_table_size)
 	c.dec.max_list_size = c.local_max_header_list
 	c.streams = new list[h2_stream*]
 	c.next_stream_id = 1
@@ -592,7 +465,7 @@ int h2_conn_read(h2_conn* c, char* p, int n):
 			return (0 - net_eagain())
 	if (c.tls != 0):
 		if ((c.deadline_ms != 0) && (c.tls.app_pos >= c.tls.app_len)):
-			int ready = poll_single(c.fd, poll_in(), left)
+			int ready = poll_single(c.fd, poll_in, left)
 			if (ready == 0):
 				return (0 - net_eagain())
 		return tls_read(c.tls, p, n)
@@ -616,7 +489,7 @@ int h2_conn_has_pending(h2_conn* c):
 		return 1
 	if ((c.tls != 0) && (c.tls.app_pos < c.tls.app_len)):
 		return 1
-	if (poll_single(c.fd, poll_in(), 0) > 0):
+	if (poll_single(c.fd, poll_in, 0) > 0):
 		return 1
 	return 0
 
@@ -640,18 +513,18 @@ int h2_send_settings(h2_conn* c):
 	c.dec.max_list_size = c.local_max_header_list
 	char* p = malloc(24)
 	p[0] = 0
-	p[1] = h2_settings_enable_push()
+	p[1] = h2_settings_enable_push
 	store_be32(p + 2, 0)
 	p[6] = 0
-	p[7] = h2_settings_max_concurrent_streams()
+	p[7] = h2_settings_max_concurrent_streams
 	store_be32(p + 8, c.local_max_concurrent)
 	p[12] = 0
-	p[13] = h2_settings_initial_window_size()
+	p[13] = h2_settings_initial_window_size
 	store_be32(p + 14, c.local_initial_window)
 	p[18] = 0
-	p[19] = h2_settings_max_header_list_size()
+	p[19] = h2_settings_max_header_list_size
 	store_be32(p + 20, c.local_max_header_list)
-	int rc = h2_write_frame(c, h2_frame_settings(), 0, 0, p, 24)
+	int rc = h2_write_frame(c, h2_frame_settings, 0, 0, p, 24)
 	free(p)
 	if (rc != 0):
 		return rc
@@ -663,7 +536,7 @@ int h2_send_window_update(h2_conn* c, int stream_id, int inc):
 		return 0
 	char* p = malloc(4)
 	store_be32(p, inc)
-	int rc = h2_write_frame(c, h2_frame_window_update(), 0, stream_id, p, 4)
+	int rc = h2_write_frame(c, h2_frame_window_update, 0, stream_id, p, 4)
 	free(p)
 	if (rc != 0):
 		return rc
@@ -676,7 +549,7 @@ int h2_send_window_update(h2_conn* c, int stream_id, int inc):
 # (windows, frame size, limits) may be tuned between h2_conn_new and
 # h2_client_start; h2_client_new uses the defaults.
 void h2_client_start(h2_conn* c):
-	if (h2_write_frame_raw_bytes(c, h2_preface(), h2_preface_len()) != 0):
+	if (h2_write_frame_raw_bytes(c, h2_preface(), h2_preface_len) != 0):
 		return
 	h2_send_settings(c)
 
@@ -729,17 +602,17 @@ h2_conn* h2_server_new(int fd):
 # Reads the client preface and sends our SETTINGS on a fresh server-side
 # connection (plain or TLS). 0 on failure (the connection is closed).
 h2_conn* h2_server_start(h2_conn* c):
-	if (h2_fill(c, h2_preface_len()) != 0):
+	if (h2_fill(c, h2_preface_len) != 0):
 		h2_close(c)
 		return 0
 	char* want = h2_preface()
 	int i = 0
-	while (i < h2_preface_len()):
+	while (i < h2_preface_len):
 		if (c.rbuf[c.rstart + i] != want[i]):
 			h2_close(c)
 			return 0
 		i = i + 1
-	c.rstart = c.rstart + h2_preface_len()
+	c.rstart = c.rstart + h2_preface_len
 	if (h2_send_settings(c) != 0):
 		h2_close(c)
 		return 0
@@ -889,7 +762,7 @@ void h2_send_goaway(h2_conn* c, int code, char* debug):
 	store_be32(p, c.last_peer_stream_id)
 	store_be32(p + 4, code)
 	mem_copy(p + 8, debug, dlen)
-	h2_write_frame(c, h2_frame_goaway(), 0, 0, p, 8 + dlen)
+	h2_write_frame(c, h2_frame_goaway, 0, 0, p, 8 + dlen)
 	free(p)
 
 
@@ -914,7 +787,7 @@ h2_stream* h2_find_stream(h2_conn* c, int id):
 int h2_write_rst(h2_conn* c, int stream_id, int code):
 	char* p = malloc(4)
 	store_be32(p, code)
-	int rc = h2_write_frame(c, h2_frame_rst_stream(), 0, stream_id, p, 4)
+	int rc = h2_write_frame(c, h2_frame_rst_stream, 0, stream_id, p, 4)
 	free(p)
 	return rc
 
@@ -927,7 +800,7 @@ int h2_stream_error(h2_conn* c, int stream_id, int code):
 	if (s != 0):
 		if (s.reset_code < 0):
 			s.reset_code = code
-		s.state = h2_state_closed()
+		s.state = h2_state_closed
 	return 0
 
 
@@ -936,7 +809,7 @@ int h2_stream_error(h2_conn* c, int stream_id, int code):
 h2_stream* h2_stream_new(h2_conn* c, int id):
 	h2_stream* s = new h2_stream()
 	s.id = id
-	s.state = h2_state_idle()
+	s.state = h2_state_idle
 	s.send_window = c.peer_initial_window
 	s.recv_window = c.local_initial_window
 	s.headers = 0
@@ -955,7 +828,7 @@ h2_stream* h2_stream_new(h2_conn* c, int id):
 
 
 int h2_stream_active(h2_stream* s):
-	return (s.state == h2_state_open()) || (s.state == h2_state_half_closed_local()) || (s.state == h2_state_half_closed_remote())
+	return (s.state == h2_state_open) || (s.state == h2_state_half_closed_local) || (s.state == h2_state_half_closed_remote)
 
 
 int h2_active_count(h2_conn* c, int locally_initiated):
@@ -970,25 +843,25 @@ int h2_active_count(h2_conn* c, int locally_initiated):
 
 void h2_on_end_received(h2_stream* s):
 	s.end_received = 1
-	if (s.state == h2_state_open()):
-		s.state = h2_state_half_closed_remote()
-	else if (s.state == h2_state_half_closed_local()):
-		s.state = h2_state_closed()
+	if (s.state == h2_state_open):
+		s.state = h2_state_half_closed_remote
+	else if (s.state == h2_state_half_closed_local):
+		s.state = h2_state_closed
 
 
 void h2_on_end_sent(h2_stream* s):
 	s.end_sent = 1
-	if (s.state == h2_state_open()):
-		s.state = h2_state_half_closed_local()
-	else if (s.state == h2_state_half_closed_remote()):
-		s.state = h2_state_closed()
+	if (s.state == h2_state_open):
+		s.state = h2_state_half_closed_local
+	else if (s.state == h2_state_half_closed_remote):
+		s.state = h2_state_closed
 
 
 void h2_stream_free(h2_conn* c, h2_stream* s):
 	if (s == 0):
 		return
 	if ((h2_stream_active(s) != 0) && (c.dead == 0)):
-		h2_write_rst(c, s.id, h2_error_cancel())
+		h2_write_rst(c, s.id, h2_error_cancel)
 	int i = 0
 	while (i < c.streams.length):
 		if (c.streams[i] == s):
@@ -1145,7 +1018,7 @@ int h2_content_length_ok(h2_stream* s):
 int h2_on_end_stream_checks(h2_conn* c, h2_stream* s):
 	h2_on_end_received(s)
 	if (h2_content_length_ok(s) == 0):
-		return h2_stream_error(c, s.id, h2_error_protocol())
+		return h2_stream_error(c, s.id, h2_error_protocol)
 	return 0
 
 
@@ -1156,35 +1029,35 @@ int h2_on_header_block(h2_conn* c, int stream_id, int end_stream, char* block, i
 	int rc = hpack_decode(c.dec, block, len, out)
 	if (rc != 0):
 		hpack_headers_free(out)
-		if (rc == hpack_error_too_large()):
-			return h2_conn_error(c, h2_error_enhance_your_calm(), hpack_error_string(rc))
-		return h2_conn_error(c, h2_error_compression(), hpack_error_string(rc))
+		if (rc == hpack_error_too_large):
+			return h2_conn_error(c, h2_error_enhance_your_calm, hpack_error_string(rc))
+		return h2_conn_error(c, h2_error_compression, hpack_error_string(rc))
 	h2_stream* s = h2_find_stream(c, stream_id)
 	if (c.is_server != 0):
 		if (s == 0):
 			if (((stream_id & 1) == 0) || (stream_id <= c.last_peer_stream_id)):
 				hpack_headers_free(out)
-				return h2_conn_error(c, h2_error_protocol(), c"bad stream id")
+				return h2_conn_error(c, h2_error_protocol, c"bad stream id")
 			c.last_peer_stream_id = stream_id
 			if ((c.goaway_sent != 0) || (h2_active_count(c, 0) >= c.local_max_concurrent) || (c.streams.length >= c.max_streams)):
 				hpack_headers_free(out)
-				return h2_write_rst(c, stream_id, h2_error_refused_stream())
+				return h2_write_rst(c, stream_id, h2_error_refused_stream)
 			s = h2_stream_new(c, stream_id)
-			s.state = h2_state_open()
+			s.state = h2_state_open
 			s.headers = out
 			s.headers_received = 1
 			if (h2_valid_request(out) == 0):
-				return h2_stream_error(c, stream_id, h2_error_protocol())
+				return h2_stream_error(c, stream_id, h2_error_protocol)
 			if (end_stream != 0):
 				return h2_on_end_stream_checks(c, s)
 			return 0
 		# Trailers on an existing request stream.
-		if ((s.state != h2_state_open()) && (s.state != h2_state_half_closed_local())):
+		if ((s.state != h2_state_open) && (s.state != h2_state_half_closed_local)):
 			hpack_headers_free(out)
-			return h2_stream_error(c, stream_id, h2_error_stream_closed())
+			return h2_stream_error(c, stream_id, h2_error_stream_closed)
 		if ((end_stream == 0) || (h2_valid_fields(out, c",") == 0)):
 			hpack_headers_free(out)
-			return h2_stream_error(c, stream_id, h2_error_protocol())
+			return h2_stream_error(c, stream_id, h2_error_protocol)
 		s.trailers = out
 		return h2_on_end_stream_checks(c, s)
 
@@ -1194,20 +1067,20 @@ int h2_on_header_block(h2_conn* c, int stream_id, int end_stream, char* block, i
 		if (((stream_id & 1) == 1) && (stream_id < c.next_stream_id)):
 			# A stream we already released: ignore.
 			return 0
-		return h2_conn_error(c, h2_error_protocol(), c"headers on idle stream")
-	if ((s.state != h2_state_open()) && (s.state != h2_state_half_closed_local())):
+		return h2_conn_error(c, h2_error_protocol, c"headers on idle stream")
+	if ((s.state != h2_state_open) && (s.state != h2_state_half_closed_local)):
 		hpack_headers_free(out)
-		return h2_stream_error(c, stream_id, h2_error_stream_closed())
+		return h2_stream_error(c, stream_id, h2_error_stream_closed)
 	if (s.headers_received == 0):
 		int status = h2_parse_status(out)
 		if (status == 0):
 			hpack_headers_free(out)
-			return h2_stream_error(c, stream_id, h2_error_protocol())
+			return h2_stream_error(c, stream_id, h2_error_protocol)
 		if (status < 200):
 			# Informational (1xx): skipped; the final response follows.
 			hpack_headers_free(out)
 			if (end_stream != 0):
-				return h2_stream_error(c, stream_id, h2_error_protocol())
+				return h2_stream_error(c, stream_id, h2_error_protocol)
 			return 0
 		s.headers = out
 		s.status = status
@@ -1217,7 +1090,7 @@ int h2_on_header_block(h2_conn* c, int stream_id, int end_stream, char* block, i
 		return 0
 	if ((end_stream == 0) || (h2_valid_fields(out, c",") == 0)):
 		hpack_headers_free(out)
-		return h2_stream_error(c, stream_id, h2_error_protocol())
+		return h2_stream_error(c, stream_id, h2_error_protocol)
 	s.trailers = out
 	return h2_on_end_stream_checks(c, s)
 
@@ -1227,7 +1100,7 @@ int h2_on_header_block(h2_conn* c, int stream_id, int end_stream, char* block, i
 int h2_unpad(h2_frame* f, int extra, int* start, int* len):
 	int pos = 0
 	int pad = 0
-	if ((f.flags & h2_flag_padded()) != 0):
+	if ((f.flags & h2_flag_padded) != 0):
 		if (f.length < 1):
 			return (-1)
 		pad = f.payload[0] & 255
@@ -1242,16 +1115,16 @@ int h2_unpad(h2_frame* f, int extra, int* start, int* len):
 
 int h2_on_headers(h2_conn* c, h2_frame* f):
 	if (f.stream_id == 0):
-		return h2_conn_error(c, h2_error_protocol(), c"HEADERS on stream 0")
+		return h2_conn_error(c, h2_error_protocol, c"HEADERS on stream 0")
 	int extra = 0
-	if ((f.flags & h2_flag_priority()) != 0):
+	if ((f.flags & h2_flag_priority) != 0):
 		extra = 5
 	int start = 0
 	int len = 0
 	if (h2_unpad(f, extra, &start, &len) != 0):
-		return h2_conn_error(c, h2_error_protocol(), c"bad padding")
-	int end_stream = (f.flags & h2_flag_end_stream()) != 0
-	if ((f.flags & h2_flag_end_headers()) != 0):
+		return h2_conn_error(c, h2_error_protocol, c"bad padding")
+	int end_stream = (f.flags & h2_flag_end_stream) != 0
+	if ((f.flags & h2_flag_end_headers) != 0):
 		return h2_on_header_block(c, f.stream_id, end_stream, f.payload + start, len)
 	c.cont_stream = f.stream_id
 	c.cont_end_stream = end_stream
@@ -1262,11 +1135,11 @@ int h2_on_headers(h2_conn* c, h2_frame* f):
 
 int h2_on_continuation(h2_conn* c, h2_frame* f):
 	if ((c.cont_stream == 0) || (f.stream_id != c.cont_stream)):
-		return h2_conn_error(c, h2_error_protocol(), c"unexpected CONTINUATION")
+		return h2_conn_error(c, h2_error_protocol, c"unexpected CONTINUATION")
 	if (c.cont_block.length + f.length > c.max_block):
-		return h2_conn_error(c, h2_error_enhance_your_calm(), c"header block too large")
+		return h2_conn_error(c, h2_error_enhance_your_calm, c"header block too large")
 	string_append_bytes(c.cont_block, f.payload, f.length)
-	if ((f.flags & h2_flag_end_headers()) == 0):
+	if ((f.flags & h2_flag_end_headers) == 0):
 		return 0
 	int id = c.cont_stream
 	c.cont_stream = 0
@@ -1288,37 +1161,37 @@ int h2_replenish(h2_conn* c, h2_stream* s):
 
 int h2_on_data(h2_conn* c, h2_frame* f):
 	if (f.stream_id == 0):
-		return h2_conn_error(c, h2_error_protocol(), c"DATA on stream 0")
+		return h2_conn_error(c, h2_error_protocol, c"DATA on stream 0")
 	# The whole frame (padding included) counts against flow control.
 	if (f.length > c.conn_recv_window):
-		return h2_conn_error(c, h2_error_flow_control(), c"connection window exceeded")
+		return h2_conn_error(c, h2_error_flow_control, c"connection window exceeded")
 	c.conn_recv_window = c.conn_recv_window - f.length
 	h2_stream* s = h2_find_stream(c, f.stream_id)
 	if (s == 0):
 		int ours = ((f.stream_id & 1) == 1) != (c.is_server != 0)
 		if (((ours != 0) && (f.stream_id >= c.next_stream_id)) || ((ours == 0) && (f.stream_id > c.last_peer_stream_id))):
-			return h2_conn_error(c, h2_error_protocol(), c"DATA on idle stream")
+			return h2_conn_error(c, h2_error_protocol, c"DATA on idle stream")
 		# A released or refused stream: drop the data, keep the window.
 		return h2_replenish(c, 0)
-	if ((s.state != h2_state_open()) && (s.state != h2_state_half_closed_local())):
-		h2_stream_error(c, s.id, h2_error_stream_closed())
+	if ((s.state != h2_state_open) && (s.state != h2_state_half_closed_local)):
+		h2_stream_error(c, s.id, h2_error_stream_closed)
 		return h2_replenish(c, 0)
 	if ((c.is_server == 0) && (s.headers_received == 0)):
-		h2_stream_error(c, s.id, h2_error_protocol())
+		h2_stream_error(c, s.id, h2_error_protocol)
 		return h2_replenish(c, 0)
 	if (f.length > s.recv_window):
-		h2_stream_error(c, s.id, h2_error_flow_control())
+		h2_stream_error(c, s.id, h2_error_flow_control)
 		return h2_replenish(c, 0)
 	s.recv_window = s.recv_window - f.length
 	int start = 0
 	int len = 0
 	if (h2_unpad(f, 0, &start, &len) != 0):
-		return h2_conn_error(c, h2_error_protocol(), c"bad padding")
+		return h2_conn_error(c, h2_error_protocol, c"bad padding")
 	if (s.body.length + len > c.max_body):
-		h2_stream_error(c, s.id, h2_error_enhance_your_calm())
+		h2_stream_error(c, s.id, h2_error_enhance_your_calm)
 		return h2_replenish(c, 0)
 	string_append_bytes(s.body, f.payload + start, len)
-	if ((f.flags & h2_flag_end_stream()) != 0):
+	if ((f.flags & h2_flag_end_stream) != 0):
 		if (h2_on_end_stream_checks(c, s) != 0):
 			return (-1)
 	return h2_replenish(c, s)
@@ -1326,70 +1199,70 @@ int h2_on_data(h2_conn* c, h2_frame* f):
 
 int h2_on_settings(h2_conn* c, h2_frame* f):
 	if (f.stream_id != 0):
-		return h2_conn_error(c, h2_error_protocol(), c"SETTINGS on a stream")
-	if ((f.flags & h2_flag_ack()) != 0):
+		return h2_conn_error(c, h2_error_protocol, c"SETTINGS on a stream")
+	if ((f.flags & h2_flag_ack) != 0):
 		if (f.length != 0):
-			return h2_conn_error(c, h2_error_frame_size(), c"SETTINGS ACK with payload")
+			return h2_conn_error(c, h2_error_frame_size, c"SETTINGS ACK with payload")
 		c.settings_acks = c.settings_acks + 1
 		return 0
 	if ((f.length % 6) != 0):
-		return h2_conn_error(c, h2_error_frame_size(), c"SETTINGS length")
+		return h2_conn_error(c, h2_error_frame_size, c"SETTINGS length")
 	int pos = 0
 	while (pos < f.length):
 		int id = load_be16(f.payload + pos)
 		int high = f.payload[pos + 2] & 128
 		int v = h2_get_u31(f.payload + pos + 2)
 		if (high != 0):
-			v = h2_max_window()
+			v = h2_max_window
 		pos = pos + 6
-		if (id == h2_settings_header_table_size()):
+		if (id == h2_settings_header_table_size):
 			hpack_encoder_set_max_table_size(c.enc, v)
-		else if (id == h2_settings_enable_push()):
+		else if (id == h2_settings_enable_push):
 			if ((high != 0) || (v > 1)):
-				return h2_conn_error(c, h2_error_protocol(), c"ENABLE_PUSH")
+				return h2_conn_error(c, h2_error_protocol, c"ENABLE_PUSH")
 			if ((c.is_server == 0) && (v != 0)):
-				return h2_conn_error(c, h2_error_protocol(), c"server ENABLE_PUSH")
+				return h2_conn_error(c, h2_error_protocol, c"server ENABLE_PUSH")
 			c.peer_enable_push = v
-		else if (id == h2_settings_max_concurrent_streams()):
+		else if (id == h2_settings_max_concurrent_streams):
 			c.peer_max_concurrent = v
-		else if (id == h2_settings_initial_window_size()):
+		else if (id == h2_settings_initial_window_size):
 			if (high != 0):
-				return h2_conn_error(c, h2_error_flow_control(), c"INITIAL_WINDOW_SIZE")
+				return h2_conn_error(c, h2_error_flow_control, c"INITIAL_WINDOW_SIZE")
 			int delta = v - c.peer_initial_window
 			int i = 0
 			while (i < c.streams.length):
 				h2_stream* s = c.streams[i]
-				if ((delta > 0) && (s.send_window > h2_max_window() - delta)):
-					return h2_conn_error(c, h2_error_flow_control(), c"window overflow")
+				if ((delta > 0) && (s.send_window > h2_max_window - delta)):
+					return h2_conn_error(c, h2_error_flow_control, c"window overflow")
 				s.send_window = s.send_window + delta
 				i = i + 1
 			c.peer_initial_window = v
-		else if (id == h2_settings_max_frame_size()):
-			if ((high != 0) || (v < h2_default_max_frame()) || (v > h2_max_frame_limit())):
-				return h2_conn_error(c, h2_error_protocol(), c"MAX_FRAME_SIZE")
+		else if (id == h2_settings_max_frame_size):
+			if ((high != 0) || (v < h2_default_max_frame) || (v > h2_max_frame_limit)):
+				return h2_conn_error(c, h2_error_protocol, c"MAX_FRAME_SIZE")
 			c.peer_max_frame = v
-		else if (id == h2_settings_max_header_list_size()):
+		else if (id == h2_settings_max_header_list_size):
 			c.peer_max_header_list = v
 	c.got_peer_settings = 1
-	return h2_write_frame(c, h2_frame_settings(), h2_flag_ack(), 0, f.payload, 0)
+	return h2_write_frame(c, h2_frame_settings, h2_flag_ack, 0, f.payload, 0)
 
 
 int h2_on_ping(h2_conn* c, h2_frame* f):
 	if (f.stream_id != 0):
-		return h2_conn_error(c, h2_error_protocol(), c"PING on a stream")
+		return h2_conn_error(c, h2_error_protocol, c"PING on a stream")
 	if (f.length != 8):
-		return h2_conn_error(c, h2_error_frame_size(), c"PING length")
-	if ((f.flags & h2_flag_ack()) != 0):
+		return h2_conn_error(c, h2_error_frame_size, c"PING length")
+	if ((f.flags & h2_flag_ack) != 0):
 		c.ping_acked = c.ping_acked + 1
 		return 0
-	return h2_write_frame(c, h2_frame_ping(), h2_flag_ack(), 0, f.payload, 8)
+	return h2_write_frame(c, h2_frame_ping, h2_flag_ack, 0, f.payload, 8)
 
 
 int h2_on_goaway(h2_conn* c, h2_frame* f):
 	if (f.stream_id != 0):
-		return h2_conn_error(c, h2_error_protocol(), c"GOAWAY on a stream")
+		return h2_conn_error(c, h2_error_protocol, c"GOAWAY on a stream")
 	if (f.length < 8):
-		return h2_conn_error(c, h2_error_frame_size(), c"GOAWAY length")
+		return h2_conn_error(c, h2_error_frame_size, c"GOAWAY length")
 	int last = h2_get_u31(f.payload)
 	c.goaway_received = 1
 	c.goaway_last_stream = last
@@ -1402,85 +1275,85 @@ int h2_on_goaway(h2_conn* c, h2_frame* f):
 		int mine = ((s.id & 1) == 1) != (c.is_server != 0)
 		if ((mine != 0) && (s.id > last) && (h2_stream_active(s) != 0)):
 			s.refused = 1
-			s.state = h2_state_closed()
+			s.state = h2_state_closed
 	return 0
 
 
 int h2_on_rst_stream(h2_conn* c, h2_frame* f):
 	if (f.stream_id == 0):
-		return h2_conn_error(c, h2_error_protocol(), c"RST_STREAM on stream 0")
+		return h2_conn_error(c, h2_error_protocol, c"RST_STREAM on stream 0")
 	if (f.length != 4):
-		return h2_conn_error(c, h2_error_frame_size(), c"RST_STREAM length")
+		return h2_conn_error(c, h2_error_frame_size, c"RST_STREAM length")
 	h2_stream* s = h2_find_stream(c, f.stream_id)
 	if (s == 0):
 		int ours = ((f.stream_id & 1) == 1) != (c.is_server != 0)
 		if (((ours != 0) && (f.stream_id >= c.next_stream_id)) || ((ours == 0) && (f.stream_id > c.last_peer_stream_id))):
-			return h2_conn_error(c, h2_error_protocol(), c"RST_STREAM on idle stream")
+			return h2_conn_error(c, h2_error_protocol, c"RST_STREAM on idle stream")
 		return 0
 	s.reset_code = h2_get_u31(f.payload)
 	s.reset_by_peer = 1
-	s.state = h2_state_closed()
-	if (s.reset_code == h2_error_refused_stream()):
+	s.state = h2_state_closed
+	if (s.reset_code == h2_error_refused_stream):
 		s.refused = 1
 	return 0
 
 
 int h2_on_window_update(h2_conn* c, h2_frame* f):
 	if (f.length != 4):
-		return h2_conn_error(c, h2_error_frame_size(), c"WINDOW_UPDATE length")
+		return h2_conn_error(c, h2_error_frame_size, c"WINDOW_UPDATE length")
 	int inc = h2_get_u31(f.payload)
 	if (f.stream_id == 0):
 		if (inc == 0):
-			return h2_conn_error(c, h2_error_protocol(), c"zero WINDOW_UPDATE")
-		if (c.conn_send_window > h2_max_window() - inc):
-			return h2_conn_error(c, h2_error_flow_control(), c"connection window overflow")
+			return h2_conn_error(c, h2_error_protocol, c"zero WINDOW_UPDATE")
+		if (c.conn_send_window > h2_max_window - inc):
+			return h2_conn_error(c, h2_error_flow_control, c"connection window overflow")
 		c.conn_send_window = c.conn_send_window + inc
 		return 0
 	h2_stream* s = h2_find_stream(c, f.stream_id)
 	if (s == 0):
 		return 0
 	if (inc == 0):
-		return h2_stream_error(c, s.id, h2_error_protocol())
-	if (s.send_window > h2_max_window() - inc):
-		return h2_stream_error(c, s.id, h2_error_flow_control())
+		return h2_stream_error(c, s.id, h2_error_protocol)
+	if (s.send_window > h2_max_window - inc):
+		return h2_stream_error(c, s.id, h2_error_flow_control)
 	s.send_window = s.send_window + inc
 	return 0
 
 
 int h2_on_priority(h2_conn* c, h2_frame* f):
 	if (f.stream_id == 0):
-		return h2_conn_error(c, h2_error_protocol(), c"PRIORITY on stream 0")
+		return h2_conn_error(c, h2_error_protocol, c"PRIORITY on stream 0")
 	if (f.length != 5):
-		return h2_stream_error(c, f.stream_id, h2_error_frame_size())
+		return h2_stream_error(c, f.stream_id, h2_error_frame_size)
 	return 0
 
 
 # Dispatches one frame. 0 to continue, -1 when the connection died.
 int h2_handle_frame(h2_conn* c, h2_frame* f):
 	int t = f.type
-	if ((c.cont_stream != 0) && (t != h2_frame_continuation())):
-		return h2_conn_error(c, h2_error_protocol(), c"expected CONTINUATION")
-	if ((c.got_peer_settings == 0) && ((t != h2_frame_settings()) || ((f.flags & h2_flag_ack()) != 0))):
-		return h2_conn_error(c, h2_error_protocol(), c"first frame must be SETTINGS")
-	if (t == h2_frame_data()):
+	if ((c.cont_stream != 0) && (t != h2_frame_continuation)):
+		return h2_conn_error(c, h2_error_protocol, c"expected CONTINUATION")
+	if ((c.got_peer_settings == 0) && ((t != h2_frame_settings) || ((f.flags & h2_flag_ack) != 0))):
+		return h2_conn_error(c, h2_error_protocol, c"first frame must be SETTINGS")
+	if (t == h2_frame_data):
 		return h2_on_data(c, f)
-	if (t == h2_frame_headers()):
+	if (t == h2_frame_headers):
 		return h2_on_headers(c, f)
-	if (t == h2_frame_priority()):
+	if (t == h2_frame_priority):
 		return h2_on_priority(c, f)
-	if (t == h2_frame_rst_stream()):
+	if (t == h2_frame_rst_stream):
 		return h2_on_rst_stream(c, f)
-	if (t == h2_frame_settings()):
+	if (t == h2_frame_settings):
 		return h2_on_settings(c, f)
-	if (t == h2_frame_push_promise()):
-		return h2_conn_error(c, h2_error_protocol(), c"PUSH_PROMISE with push disabled")
-	if (t == h2_frame_ping()):
+	if (t == h2_frame_push_promise):
+		return h2_conn_error(c, h2_error_protocol, c"PUSH_PROMISE with push disabled")
+	if (t == h2_frame_ping):
 		return h2_on_ping(c, f)
-	if (t == h2_frame_goaway()):
+	if (t == h2_frame_goaway):
 		return h2_on_goaway(c, f)
-	if (t == h2_frame_window_update()):
+	if (t == h2_frame_window_update):
 		return h2_on_window_update(c, f)
-	if (t == h2_frame_continuation()):
+	if (t == h2_frame_continuation):
 		return h2_on_continuation(c, f)
 	return 0
 
@@ -1495,7 +1368,7 @@ int h2_pump(h2_conn* c):
 	char* head = c.rbuf + c.rstart
 	int len = load_be24(head)
 	if (len > c.local_max_frame):
-		return h2_conn_error(c, h2_error_frame_size(), c"frame too large")
+		return h2_conn_error(c, h2_error_frame_size, c"frame too large")
 	rc = h2_fill(c, 9 + len)
 	if (rc != 0):
 		return rc
@@ -1528,13 +1401,13 @@ int h2_write_header_block(h2_conn* c, int stream_id, list[hpack_header*] headers
 		int n = h2_min(block.length - pos, c.peer_max_frame)
 		int flags = 0
 		if (pos + n == block.length):
-			flags = h2_flag_end_headers()
+			flags = h2_flag_end_headers
 		if (first != 0):
 			if (end_stream != 0):
-				flags = flags | h2_flag_end_stream()
-			rc = h2_write_frame(c, h2_frame_headers(), flags, stream_id, block.data + pos, n)
+				flags = flags | h2_flag_end_stream
+			rc = h2_write_frame(c, h2_frame_headers, flags, stream_id, block.data + pos, n)
 		else:
-			rc = h2_write_frame(c, h2_frame_continuation(), flags, stream_id, block.data + pos, n)
+			rc = h2_write_frame(c, h2_frame_continuation, flags, stream_id, block.data + pos, n)
 		pos = pos + n
 		first = 0
 	string_free(block)
@@ -1542,14 +1415,14 @@ int h2_write_header_block(h2_conn* c, int stream_id, list[hpack_header*] headers
 
 
 int h2_stream_can_send(h2_stream* s):
-	return ((s.state == h2_state_open()) || (s.state == h2_state_half_closed_remote()) || (s.state == h2_state_idle())) && (s.reset_code < 0) && (s.refused == 0)
+	return ((s.state == h2_state_open) || (s.state == h2_state_half_closed_remote) || (s.state == h2_state_idle)) && (s.reset_code < 0) && (s.refused == 0)
 
 
 int h2_send_headers(h2_conn* c, h2_stream* s, list[hpack_header*] headers, int end_stream):
 	if ((c.dead != 0) || (h2_stream_can_send(s) == 0)):
 		return (-1)
-	if (s.state == h2_state_idle()):
-		s.state = h2_state_open()
+	if (s.state == h2_state_idle):
+		s.state = h2_state_open
 	if (h2_write_header_block(c, s.id, headers, end_stream) != 0):
 		return (-1)
 	if (end_stream != 0):
@@ -1567,7 +1440,7 @@ int h2_send_trailers(h2_conn* c, h2_stream* s, list[hpack_header*] trailers):
 int h2_send_data(h2_conn* c, h2_stream* s, char* data, int len, int end_stream):
 	int pos = 0
 	while (1):
-		if ((c.dead != 0) || (h2_stream_can_send(s) == 0) || (s.state == h2_state_idle())):
+		if ((c.dead != 0) || (h2_stream_can_send(s) == 0) || (s.state == h2_state_idle)):
 			return (-1)
 		int left = len - pos
 		int n = h2_min(left, c.peer_max_frame)
@@ -1582,8 +1455,8 @@ int h2_send_data(h2_conn* c, h2_stream* s, char* data, int len, int end_stream):
 			n = 0
 		int flags = 0
 		if ((pos + n == len) && (end_stream != 0)):
-			flags = h2_flag_end_stream()
-		if (h2_write_frame(c, h2_frame_data(), flags, s.id, data + pos, n) != 0):
+			flags = h2_flag_end_stream
+		if (h2_write_frame(c, h2_frame_data, flags, s.id, data + pos, n) != 0):
 			return (-1)
 		c.conn_send_window = c.conn_send_window - n
 		s.send_window = s.send_window - n
@@ -1599,7 +1472,7 @@ int h2_send_rst(h2_conn* c, h2_stream* s, int code):
 	if (h2_stream_active(s) == 0):
 		return 0
 	s.reset_code = code
-	s.state = h2_state_closed()
+	s.state = h2_state_closed
 	return h2_write_rst(c, s.id, code)
 
 
@@ -1615,7 +1488,7 @@ int h2_ping(h2_conn* c):
 	c.ping_sent = c.ping_sent + 1
 	store_be32(p, 0)
 	store_be32(p + 4, c.ping_sent)
-	int rc = h2_write_frame(c, h2_frame_ping(), 0, 0, p, 8)
+	int rc = h2_write_frame(c, h2_frame_ping, 0, 0, p, 8)
 	free(p)
 	if (rc != 0):
 		return rc
@@ -1630,7 +1503,7 @@ void h2_close(h2_conn* c):
 	if (c == 0):
 		return
 	if (c.dead == 0):
-		h2_send_goaway(c, h2_error_no_error(), 0)
+		h2_send_goaway(c, h2_error_no_error, 0)
 	if (c.tls != 0):
 		tls_close(c.tls)
 		c.tls = 0
@@ -1639,7 +1512,7 @@ void h2_close(h2_conn* c):
 	close(c.fd)
 	while (c.streams.length > 0):
 		h2_stream* s = c.streams[0]
-		s.state = h2_state_closed()
+		s.state = h2_state_closed
 		h2_stream_free(c, s)
 	list_free[h2_stream*](c.streams)
 	hpack_encoder_free(c.enc)
@@ -1697,8 +1570,8 @@ h2_stream* h2_request_start(h2_conn* c, char* method, char* scheme, char* author
 	int rc = h2_send_headers(c, s, l, end_stream)
 	hpack_headers_free(l)
 	if (rc != 0):
-		s.state = h2_state_closed()
-		s.reset_code = h2_error_internal()
+		s.state = h2_state_closed
+		s.reset_code = h2_error_internal
 	return s
 
 

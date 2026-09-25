@@ -117,28 +117,12 @@ void deflate_emit_stored_block(string_builder* out, char* data, int offset, int 
 /* ---- LZ77: hash-chain match finder with lazy matching ---- */
 
 
-int dfl_min_match():
-	return 3
-
-
-int dfl_max_match():
-	return 258
-
-
-int dfl_max_dist():
-	return 32768
-
-
-int dfl_hash_size():
-	return 32768
-
-
-int dfl_hash_mask():
-	return 32767
-
-
-int dfl_hash_shift():
-	return 5
+const int dfl_min_match = 3
+const int dfl_max_match = 258
+const int dfl_max_dist = 32768
+const int dfl_hash_size = 32768
+const int dfl_hash_mask = 32767
+const int dfl_hash_shift = 5
 
 
 # Chain-search depth caps: FAST spends less effort per position (still
@@ -146,12 +130,8 @@ int dfl_hash_shift():
 # the "stop once max_len is reached" early exit below), BEST searches
 # deeper for a better ratio. Both are plain effort/time knobs, not
 # correctness parameters -- any positive value produces a valid stream.
-int dfl_max_chain_fast():
-	return 32
-
-
-int dfl_max_chain_best():
-	return 256
+const int dfl_max_chain_fast = 32
+const int dfl_max_chain_best = 256
 
 
 # Block-splitting heuristic for both compressive levels (see this
@@ -160,8 +140,7 @@ int dfl_max_chain_best():
 # the per-block stored fallback -- a block's input span can never
 # exceed this plus one final match (258 bytes), comfortably inside a
 # single stored block's 65535-byte LEN field.
-int dfl_block_input_bytes():
-	return 32768
+const int dfl_block_input_bytes = 32768
 
 
 # The LZ77 token stream for a whole input buffer: parallel arrays sized
@@ -178,8 +157,8 @@ struct dfl_tokens:
 
 int dfl_hash3(char* data, int pos):
 	int h = data[pos] & 255
-	h = ((h << dfl_hash_shift()) ^ (data[pos + 1] & 255)) & dfl_hash_mask()
-	h = ((h << dfl_hash_shift()) ^ (data[pos + 2] & 255)) & dfl_hash_mask()
+	h = ((h << dfl_hash_shift) ^ (data[pos + 1] & 255)) & dfl_hash_mask
+	h = ((h << dfl_hash_shift) ^ (data[pos + 2] & 255)) & dfl_hash_mask
 	return h
 
 
@@ -205,11 +184,11 @@ void dfl_find_match(char* data, int length, int* prev, int pos, int hash_head, i
 	*out_len = 0
 	*out_dist = 0
 	int max_len = length - pos
-	if (max_len > dfl_max_match()):
-		max_len = dfl_max_match()
-	if (max_len < dfl_min_match()):
+	if (max_len > dfl_max_match):
+		max_len = dfl_max_match
+	if (max_len < dfl_min_match):
 		return
-	int best_len = dfl_min_match() - 1
+	int best_len = dfl_min_match - 1
 	int best_dist = 0
 	int cand = hash_head
 	int chain = max_chain
@@ -227,7 +206,7 @@ void dfl_find_match(char* data, int length, int* prev, int pos, int hash_head, i
 				break
 		cand = prev[cand]
 		chain = chain - 1
-	if (best_len >= dfl_min_match()):
+	if (best_len >= dfl_min_match):
 		*out_len = best_len
 		*out_dist = best_dist
 
@@ -253,24 +232,24 @@ dfl_tokens* dfl_tokenize_from(char* data, int length, int start, int max_chain, 
 	t.dist = cast(int*, malloc((length - start) * __word_size__))
 	t.count = 0
 
-	int* head = cast(int*, malloc(dfl_hash_size() * __word_size__))
-	mem_fill(head, -1, dfl_hash_size())
+	int* head = cast(int*, malloc(dfl_hash_size * __word_size__))
+	mem_fill(head, -1, dfl_hash_size)
 	int* prev = cast(int*, malloc(length * __word_size__))
 	for h in range(start):
-		if (h + dfl_min_match() <= length):
+		if (h + dfl_min_match <= length):
 			dfl_insert(data, length, head, prev, h)
 
 	int strstart = start
 	int match_available = 0
-	int prev_length = dfl_min_match() - 1
+	int prev_length = dfl_min_match - 1
 	int prev_dist = 0
 	while (strstart < length):
 		int cur_len = 0
 		int cur_dist = 0
-		if (strstart + dfl_min_match() <= length):
+		if (strstart + dfl_min_match <= length):
 			int hash_head = dfl_insert(data, length, head, prev, strstart)
 			dfl_find_match(data, length, prev, strstart, hash_head, max_chain, max_dist, &cur_len, &cur_dist)
-		if ((prev_length >= dfl_min_match()) && (cur_len <= prev_length)):
+		if ((prev_length >= dfl_min_match) && (cur_len <= prev_length)):
 			# Commit the deferred match found one position back (at
 			# strstart-1, length prev_length, distance prev_dist).
 			t.len[t.count] = prev_length
@@ -278,11 +257,11 @@ dfl_tokens* dfl_tokenize_from(char* data, int length, int start, int max_chain, 
 			t.count = t.count + 1
 			int match_end = (strstart - 1) + prev_length
 			for k in range(strstart + 1, match_end):
-				if (k + dfl_min_match() <= length):
+				if (k + dfl_min_match <= length):
 					dfl_insert(data, length, head, prev, k)
 			strstart = match_end
 			match_available = 0
-			prev_length = dfl_min_match() - 1
+			prev_length = dfl_min_match - 1
 			prev_dist = 0
 		else if (match_available):
 			t.len[t.count] = data[strstart - 1] & 255
@@ -308,7 +287,7 @@ dfl_tokens* dfl_tokenize_from(char* data, int length, int start, int max_chain, 
 
 # The whole buffer, no preset history, full 32 KiB window.
 dfl_tokens* dfl_tokenize(char* data, int length, int max_chain):
-	return dfl_tokenize_from(data, length, 0, max_chain, dfl_max_dist())
+	return dfl_tokenize_from(data, length, 0, max_chain, dfl_max_dist)
 
 
 /* ---- Length/distance symbol lookup (inverse of inflate.w's tables) ---- */
@@ -1057,9 +1036,9 @@ deflate_result* deflate(char* data, int length, int level):
 		deflate_result* r = new deflate_result(out_data, out_length)
 		return r
 
-	int max_chain = dfl_max_chain_fast()
+	int max_chain = dfl_max_chain_fast
 	if (level >= DEFLATE_LEVEL_BEST()):
-		max_chain = dfl_max_chain_best()
+		max_chain = dfl_max_chain_best
 	dfl_tokens* t = dfl_tokenize(data, length, max_chain)
 	dfl_bits* w = dfl_bits_new()
 
@@ -1075,7 +1054,7 @@ deflate_result* deflate(char* data, int length, int level):
 	while (done == 0):
 		int block_start = pos
 		int consumed = 0
-		while ((pos < t.count) && (consumed < dfl_block_input_bytes())):
+		while ((pos < t.count) && (consumed < dfl_block_input_bytes)):
 			if (t.dist[pos] == 0):
 				consumed = consumed + 1
 			else:
@@ -1120,7 +1099,7 @@ char* deflate_window(char* data, int length, char* window, int window_len, int w
 		length = 0
 	if ((window == 0) || (window_len < 0)):
 		window_len = 0
-	int max_dist = dfl_max_dist()
+	int max_dist = dfl_max_dist
 	if ((window_bits >= 8) && (window_bits <= 15)):
 		max_dist = 1 << window_bits
 	if (window_len > max_dist):
@@ -1136,16 +1115,16 @@ char* deflate_window(char* data, int length, char* window, int window_len, int w
 		if (level <= DEFLATE_LEVEL_STORED()):
 			dfl_emit_stored_range(w, combined, window_len, length, 0)
 		else:
-			int max_chain = dfl_max_chain_fast()
+			int max_chain = dfl_max_chain_fast
 			if (level >= DEFLATE_LEVEL_BEST()):
-				max_chain = dfl_max_chain_best()
+				max_chain = dfl_max_chain_best
 			dfl_tokens* t = dfl_tokenize_from(combined, total, window_len, max_chain, max_dist)
 			int pos = 0
 			int in_pos = window_len
 			while (pos < t.count):
 				int block_start = pos
 				int consumed = 0
-				while ((pos < t.count) && (consumed < dfl_block_input_bytes())):
+				while ((pos < t.count) && (consumed < dfl_block_input_bytes)):
 					if (t.dist[pos] == 0):
 						consumed = consumed + 1
 					else:

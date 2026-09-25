@@ -267,188 +267,119 @@ struct ws_codec:
 
 /* Opcodes (RFC 6455 section 5.2) */
 
-int ws_op_continuation():
-	return 0
-
-
-int ws_op_text():
-	return 1
-
-
-int ws_op_binary():
-	return 2
-
-
-int ws_op_close():
-	return 8
-
-
-int ws_op_ping():
-	return 9
-
-
-int ws_op_pong():
-	return 10
+const int ws_op_continuation = 0
+const int ws_op_text = 1
+const int ws_op_binary = 2
+const int ws_op_close = 8
+const int ws_op_ping = 9
+const int ws_op_pong = 10
 
 
 /* Close status codes (RFC 6455 section 7.4.1) */
 
-int ws_close_normal():
-	return 1000
-
-
-int ws_close_going_away():
-	return 1001
-
-
-int ws_close_protocol_error():
-	return 1002
-
-
-int ws_close_unsupported():
-	return 1003
+const int ws_close_normal = 1000
+const int ws_close_going_away = 1001
+const int ws_close_protocol_error = 1002
+const int ws_close_unsupported = 1003
 
 
 # Reserved: "no status code was present" (never sent on the wire).
-int ws_close_no_status():
-	return 1005
+const int ws_close_no_status = 1005
 
 
 # Reserved: "closed without a close frame" (never sent on the wire).
-int ws_close_abnormal():
-	return 1006
-
-
-int ws_close_invalid_payload():
-	return 1007
-
-
-int ws_close_policy():
-	return 1008
-
-
-int ws_close_too_big():
-	return 1009
-
-
-int ws_close_internal_error():
-	return 1011
+const int ws_close_abnormal = 1006
+const int ws_close_invalid_payload = 1007
+const int ws_close_policy = 1008
+const int ws_close_too_big = 1009
+const int ws_close_internal_error = 1011
 
 
 /* Error codes reported by ws_conn_error */
 
-int ws_error_none():
-	return 0
+const int ws_error_none = 0
 
 
 # The closing handshake completed (not a failure: the peer said goodbye).
-int ws_error_closed():
-	return 1
-
-
-int ws_error_bad_url():
-	return 2
+const int ws_error_closed = 1
+const int ws_error_bad_url = 2
 
 
 # A caller-supplied handshake header was invalid or reserved.
-int ws_error_bad_request():
-	return 3
-
-
-int ws_error_dns():
-	return 4
-
-
-int ws_error_connect():
-	return 5
-
-
-int ws_error_tls():
-	return 6
-
-
-int ws_error_io():
-	return 7
-
-
-int ws_error_timeout():
-	return 8
+const int ws_error_bad_request = 3
+const int ws_error_dns = 4
+const int ws_error_connect = 5
+const int ws_error_tls = 6
+const int ws_error_io = 7
+const int ws_error_timeout = 8
 
 
 # The peer's opening handshake was not a valid WebSocket upgrade.
-int ws_error_handshake():
-	return 9
+const int ws_error_handshake = 9
 
 
 # ws_use_sha1 was never called (or refused its argument).
-int ws_error_no_sha1():
-	return 10
+const int ws_error_no_sha1 = 10
 
 
 # Frame-level protocol violation by the peer (close 1002).
-int ws_error_protocol():
-	return 11
+const int ws_error_protocol = 11
 
 
 # Text message or close reason that is not UTF-8 (close 1007).
-int ws_error_bad_utf8():
-	return 12
+const int ws_error_bad_utf8 = 12
 
 
 # Frame or message over the size cap (close 1009).
-int ws_error_too_big():
-	return 13
+const int ws_error_too_big = 13
 
 
 # The transport ended without a close frame (1006).
-int ws_error_eof():
-	return 14
+const int ws_error_eof = 14
 
 
 # A compressed message did not inflate (close 1007).
-int ws_error_compression():
-	return 15
+const int ws_error_compression = 15
 
 
 # Compression was requested but ws_use_deflate was never called.
-int ws_error_no_deflate():
-	return 16
+const int ws_error_no_deflate = 16
 
 
 char* ws_error_string(int code):
-	if (code == ws_error_none()):
+	if (code == ws_error_none):
 		return c""
-	if (code == ws_error_closed()):
+	if (code == ws_error_closed):
 		return c"connection closed"
-	if (code == ws_error_bad_url()):
+	if (code == ws_error_bad_url):
 		return c"invalid websocket URL"
-	if (code == ws_error_bad_request()):
+	if (code == ws_error_bad_request):
 		return c"invalid handshake header"
-	if (code == ws_error_dns()):
+	if (code == ws_error_dns):
 		return c"DNS lookup failed"
-	if (code == ws_error_connect()):
+	if (code == ws_error_connect):
 		return c"connect failed"
-	if (code == ws_error_tls()):
+	if (code == ws_error_tls):
 		return c"TLS handshake failed"
-	if (code == ws_error_io()):
+	if (code == ws_error_io):
 		return c"send or receive failed"
-	if (code == ws_error_timeout()):
+	if (code == ws_error_timeout):
 		return c"timed out"
-	if (code == ws_error_handshake()):
+	if (code == ws_error_handshake):
 		return c"invalid websocket handshake"
-	if (code == ws_error_no_sha1()):
+	if (code == ws_error_no_sha1):
 		return c"SHA-1 not configured (ws_use_sha1)"
-	if (code == ws_error_protocol()):
+	if (code == ws_error_protocol):
 		return c"websocket protocol error"
-	if (code == ws_error_bad_utf8()):
+	if (code == ws_error_bad_utf8):
 		return c"invalid UTF-8 in text frame"
-	if (code == ws_error_too_big()):
+	if (code == ws_error_too_big):
 		return c"message too big"
-	if (code == ws_error_eof()):
+	if (code == ws_error_eof):
 		return c"connection closed without close frame"
-	if (code == ws_error_compression()):
+	if (code == ws_error_compression):
 		return c"invalid compressed message"
-	if (code == ws_error_no_deflate()):
+	if (code == ws_error_no_deflate):
 		return c"permessage-deflate not configured (ws_use_deflate)"
 	return c"unknown error"
 
@@ -456,23 +387,19 @@ char* ws_error_string(int code):
 /* Limits */
 
 # Default cap on one reassembled message (and so on one frame).
-int ws_default_max_message():
-	return 16777216
+const int ws_default_max_message = 16777216
 
 
 # Largest length ws_frame_encode will write (fits every target's int).
-int ws_max_encodable():
-	return 2147483647
+const int ws_max_encodable = 2147483647
 
 
 # Frames ws_close discards while waiting for the peer's close frame.
-int ws_close_drain_frames():
-	return 1024
+const int ws_close_drain_frames = 1024
 
 
 # Cap on the handshake response header block a client accepts.
-int ws_max_handshake_bytes():
-	return 65536
+const int ws_max_handshake_bytes = 65536
 
 
 /* SHA-1 opt-in and the accept key */
@@ -588,43 +515,43 @@ int ws_parse_header_rsv(char* h, int hlen, ws_frame* f, int max_payload, int rsv
 	f.payload_len = 0
 	f.payload = 0
 	if ((f.rsv | rsv_allowed) != rsv_allowed):
-		return ws_close_protocol_error()
+		return ws_close_protocol_error
 	if (ws_opcode_known(f.opcode) == 0):
-		return ws_close_protocol_error()
-	if (((f.rsv & 4) != 0) && ((ws_is_control(f.opcode) != 0) || (f.opcode == ws_op_continuation()))):
-		return ws_close_protocol_error()
+		return ws_close_protocol_error
+	if (((f.rsv & 4) != 0) && ((ws_is_control(f.opcode) != 0) || (f.opcode == ws_op_continuation))):
+		return ws_close_protocol_error
 	int len7 = b1 & 127
 	int control = ws_is_control(f.opcode)
 	if (control != 0):
 		if (f.fin == 0):
-			return ws_close_protocol_error()
+			return ws_close_protocol_error
 		if (len7 > 125):
-			return ws_close_protocol_error()
+			return ws_close_protocol_error
 	int length = len7
 	int at = 2
 	if (len7 == 126):
 		length = load_be16(h + 2)
 		if (length < 126):
-			return ws_close_protocol_error()
+			return ws_close_protocol_error
 		at = 4
 	else if (len7 == 127):
 		if ((h[2] & 128) != 0):
-			return ws_close_protocol_error()
+			return ws_close_protocol_error
 		# Only 31-bit lengths are representable on every target: the top
 		# four bytes must be zero and the fifth below 0x80.
 		if (((h[2] & 255) | (h[3] & 255) | (h[4] & 255) | (h[5] & 255)) != 0):
-			return ws_close_too_big()
+			return ws_close_too_big
 		if ((h[6] & 128) != 0):
-			return ws_close_too_big()
+			return ws_close_too_big
 		length = load_be32(h + 6)
 		if (length < 65536):
-			return ws_close_protocol_error()
+			return ws_close_protocol_error
 		at = 10
 	if (f.masked != 0):
 		f.mask_offset = at
 	if (control == 0):
 		if (length > max_payload):
-			return ws_close_too_big()
+			return ws_close_too_big
 	f.payload_len = length
 	return 0
 
@@ -662,7 +589,7 @@ int ws_frame_decode(char* buf, int len, ws_frame* f, int max_payload):
 # rsv sets the RSV bits (0..7; 4 = RSV1, the permessage-deflate
 # "compressed" flag) in the first header byte.
 int ws_frame_encode_rsv(string_builder* out, int fin, int rsv, int opcode, char* payload, int len, char* mask_key):
-	if ((len < 0) || (len > ws_max_encodable())):
+	if ((len < 0) || (len > ws_max_encodable)):
 		return 0
 	if ((opcode < 0) || (opcode > 15)):
 		return 0
@@ -726,7 +653,7 @@ ws_conn* ws_conn_new():
 	c.local_close_code = 0
 	c.peer_close_code = 0
 	c.peer_close_reason = 0
-	c.max_message = ws_default_max_message()
+	c.max_message = ws_default_max_message
 	c.frag = string_new()
 	c.frag_opcode = 0
 	c.hdr = malloc(16)
@@ -814,17 +741,12 @@ ws_codec* ws_pmd_codec
 # inflate out_error value meaning "max_output exceeded" (the value of
 # libs/extras/compress/inflate.w's INFLATE_ERR_TOO_LARGE; ws_use_deflate
 # checks that the registered inflater reports it).
-int ws_inflate_too_large():
-	return 6
+const int ws_inflate_too_large = 6
 
 
 # Largest LZ77 window (2^15 bytes) and the RFC 7692 range of window bits.
-int ws_pmd_max_bits():
-	return 15
-
-
-int ws_pmd_min_bits():
-	return 8
+const int ws_pmd_max_bits = 15
+const int ws_pmd_min_bits = 8
 
 
 # Whether bytes[0..len) equal expected[0..expected_len).
@@ -884,7 +806,7 @@ int ws_use_deflate(ws_deflate_fn* deflater, ws_inflate_fn* inflater):
 		if (out != 0):
 			free(out)
 			ok = 0
-		else if (err != ws_inflate_too_large()):
+		else if (err != ws_inflate_too_large):
 			ok = 0
 	if (ok != 0):
 		ok = ws_codec_probe_round_trip(k, c"abcabcabcabc hello hello", 24, 0, 0, 15)
@@ -912,7 +834,7 @@ ws_deflate_config* ws_deflate_config_new():
 int ws_pmd_bits_ok(int bits):
 	if (bits == 0):
 		return 1
-	return (bits >= ws_pmd_min_bits()) && (bits <= ws_pmd_max_bits())
+	return (bits >= ws_pmd_min_bits) && (bits <= ws_pmd_max_bits)
 
 
 int ws_deflate_config_valid(ws_deflate_config* cfg):
@@ -1135,15 +1057,15 @@ char* ws_pmd_negotiate(char* offers, ws_deflate_config* cfg, ws_pmd_params* agre
 			if (cfg.client_no_context_takeover != 0):
 				agreed.client_no_context_takeover = 1
 				string_append(out, c"; client_no_context_takeover")
-			int sbits = ws_pmd_max_bits()
+			int sbits = ws_pmd_max_bits
 			if (cfg.server_max_window_bits > 0):
 				sbits = cfg.server_max_window_bits
 			if (o.server_max_window_bits > 0):
 				sbits = ws_min_bits(sbits, o.server_max_window_bits)
-			if ((o.server_max_window_bits > 0) || (sbits < ws_pmd_max_bits())):
+			if ((o.server_max_window_bits > 0) || (sbits < ws_pmd_max_bits)):
 				ws_pmd_append_bits(out, c"server_max_window_bits", sbits)
 			agreed.server_max_window_bits = sbits
-			int cbits = ws_pmd_max_bits()
+			int cbits = ws_pmd_max_bits
 			if (o.client_max_window_bits > 0):
 				cbits = o.client_max_window_bits
 			if ((o.client_max_window_bits != 0) && (cfg.client_max_window_bits > 0) && (cfg.client_max_window_bits < cbits)):
@@ -1189,10 +1111,10 @@ int ws_pmd_accept_response(char* value, ws_deflate_config* cfg, ws_pmd_params* a
 	ws_pmd_params_clear(agreed)
 	agreed.server_no_context_takeover = r.server_no_context_takeover
 	agreed.client_no_context_takeover = r.client_no_context_takeover | cfg.client_no_context_takeover
-	agreed.server_max_window_bits = ws_pmd_max_bits()
+	agreed.server_max_window_bits = ws_pmd_max_bits
 	if (r.server_max_window_bits > 0):
 		agreed.server_max_window_bits = r.server_max_window_bits
-	int cbits = ws_pmd_max_bits()
+	int cbits = ws_pmd_max_bits
 	if (cfg.client_max_window_bits > 0):
 		cbits = cfg.client_max_window_bits
 	if (r.client_max_window_bits > 0):
@@ -1209,10 +1131,10 @@ int ws_pmd_enable(ws_conn* c, ws_pmd_params* agreed, int level):
 		return 0
 	int sbits = agreed.server_max_window_bits
 	if (sbits <= 0):
-		sbits = ws_pmd_max_bits()
+		sbits = ws_pmd_max_bits
 	int cbits = agreed.client_max_window_bits
 	if (cbits <= 0):
-		cbits = ws_pmd_max_bits()
+		cbits = ws_pmd_max_bits
 	if (c.is_client != 0):
 		c.pmd_tx_bits = cbits
 		c.pmd_rx_bits = sbits
@@ -1299,7 +1221,7 @@ int ws_read_exact(ws_conn* c, char* out, int n):
 		return 1
 	if (connection_context_read_exact(c.cc, out, n) != 0):
 		return 1
-	if (c.cc.error == connection_error_timeout()):
+	if (c.cc.error == connection_error_timeout):
 		return (-2)
 	if (c.cc.error != 0):
 		return (-1)
@@ -1311,11 +1233,11 @@ int ws_read_exact(ws_conn* c, char* out, int n):
 void ws_transport_failed(ws_conn* c, int r):
 	c.broken = 1
 	if (r == (-2)):
-		c.error = ws_error_timeout()
+		c.error = ws_error_timeout
 	else if (r == 0):
-		c.error = ws_error_eof()
+		c.error = ws_error_eof
 	else:
-		c.error = ws_error_io()
+		c.error = ws_error_io
 
 
 # Encodes and writes one frame (RSV bits rsv), masking it in the client
@@ -1329,7 +1251,7 @@ int ws_write_frame_rsv(ws_conn* c, int fin, int rsv, int opcode, char* data, int
 			free(key)
 			string_free(out)
 			c.broken = 1
-			c.error = ws_error_io()
+			c.error = ws_error_io
 			return 0
 	int ok = ws_frame_encode_rsv(out, fin, rsv, opcode, data, len, key)
 	if (key != 0):
@@ -1337,7 +1259,7 @@ int ws_write_frame_rsv(ws_conn* c, int fin, int rsv, int opcode, char* data, int
 	if (ok != 0):
 		ok = connection_context_write_all(c.cc, out.data, out.length)
 		if (ok == 0):
-			if (c.cc.error == connection_error_timeout()):
+			if (c.cc.error == connection_error_timeout):
 				ws_transport_failed(c, (-2))
 			else:
 				ws_transport_failed(c, (-1))
@@ -1356,7 +1278,7 @@ int ws_write_close(ws_conn* c, int code, char* reason, int reason_len):
 		string_append_be16(body, code)
 		if (reason_len > 0):
 			string_append_bytes(body, reason, reason_len)
-	int ok = ws_write_frame(c, 1, ws_op_close(), body.data, body.length)
+	int ok = ws_write_frame(c, 1, ws_op_close, body.data, body.length)
 	string_free(body)
 	c.close_sent = 1
 	return ok
@@ -1374,11 +1296,11 @@ void ws_fail(ws_conn* c, int close_code, int error):
 
 
 int ws_error_for_close(int close_code):
-	if (close_code == ws_close_invalid_payload()):
-		return ws_error_bad_utf8()
-	if (close_code == ws_close_too_big()):
-		return ws_error_too_big()
-	return ws_error_protocol()
+	if (close_code == ws_close_invalid_payload):
+		return ws_error_bad_utf8
+	if (close_code == ws_close_too_big):
+		return ws_error_too_big
+	return ws_error_protocol
 
 
 # Reads one frame off the connection into f (payload malloc'd and
@@ -1388,7 +1310,7 @@ int ws_read_frame(ws_conn* c, ws_frame* f, int max_payload):
 	char* h = c.hdr
 	int r = ws_read_exact(c, h, 1)
 	if (r == (-2)):
-		c.error = ws_error_timeout()
+		c.error = ws_error_timeout
 		return 0
 	if (r != 1):
 		ws_transport_failed(c, r)
@@ -1412,10 +1334,10 @@ int ws_read_frame(ws_conn* c, ws_frame* f, int max_payload):
 		ws_fail(c, code, ws_error_for_close(code))
 		return 0
 	if ((c.is_client != 0) && (f.masked != 0)):
-		ws_fail(c, ws_close_protocol_error(), ws_error_protocol())
+		ws_fail(c, ws_close_protocol_error, ws_error_protocol)
 		return 0
 	if ((c.is_client == 0) && (f.masked == 0)):
-		ws_fail(c, ws_close_protocol_error(), ws_error_protocol())
+		ws_fail(c, ws_close_protocol_error, ws_error_protocol)
 		return 0
 	char* payload = malloc(f.payload_len + 1)
 	r = ws_read_exact(c, payload, f.payload_len)
@@ -1437,20 +1359,20 @@ int ws_read_frame(ws_conn* c, ws_frame* f, int max_payload):
 int ws_handle_close(ws_conn* c, ws_frame* f):
 	char* p = f.payload
 	int len = f.payload_len
-	int code = ws_close_no_status()
+	int code = ws_close_no_status
 	if (len == 1):
 		free(p)
-		ws_fail(c, ws_close_protocol_error(), ws_error_protocol())
+		ws_fail(c, ws_close_protocol_error, ws_error_protocol)
 		return 0
 	if (len >= 2):
 		code = load_be16(p)
 		if (ws_close_code_valid(code) == 0):
 			free(p)
-			ws_fail(c, ws_close_protocol_error(), ws_error_protocol())
+			ws_fail(c, ws_close_protocol_error, ws_error_protocol)
 			return 0
 		if (utf8_validate_bytes(p + 2, len - 2) == 0):
 			free(p)
-			ws_fail(c, ws_close_invalid_payload(), ws_error_bad_utf8())
+			ws_fail(c, ws_close_invalid_payload, ws_error_bad_utf8)
 			return 0
 	c.close_received = 1
 	c.peer_close_code = code
@@ -1462,12 +1384,12 @@ int ws_handle_close(ws_conn* c, ws_frame* f):
 		c.peer_close_reason = strclone(c"")
 	free(p)
 	if (c.close_sent == 0):
-		if (code == ws_close_no_status()):
+		if (code == ws_close_no_status):
 			ws_write_close(c, 0, 0, 0)
 		else:
 			ws_write_close(c, code, 0, 0)
 	if (c.broken == 0):
-		c.error = ws_error_closed()
+		c.error = ws_error_closed
 	return 0
 
 
@@ -1501,10 +1423,10 @@ char* ws_pmd_decompress(ws_conn* c, char* data, int len, int* out_len):
 	char* out = ws_pmd_codec.inflate(z, len + 4, window, window_len, c.max_message, &n, &err)
 	free(z)
 	if (out == 0):
-		if (err == ws_inflate_too_large()):
-			ws_fail(c, ws_close_too_big(), ws_error_too_big())
+		if (err == ws_inflate_too_large):
+			ws_fail(c, ws_close_too_big, ws_error_too_big)
 		else:
-			ws_fail(c, ws_close_invalid_payload(), ws_error_compression())
+			ws_fail(c, ws_close_invalid_payload, ws_error_compression)
 		return 0
 	if (c.pmd_rx_no_takeover == 0):
 		ws_window_push(c.pmd_rx_window, out, n, c.pmd_rx_bits)
@@ -1522,10 +1444,10 @@ ws_message* ws_finish_message_z(ws_conn* c, int opcode, char* data, int len, int
 		if (data == 0):
 			return 0
 		len = plain_len
-	if (opcode == ws_op_text()):
+	if (opcode == ws_op_text):
 		if (utf8_validate_bytes(data, len) == 0):
 			free(data)
-			ws_fail(c, ws_close_invalid_payload(), ws_error_bad_utf8())
+			ws_fail(c, ws_close_invalid_payload, ws_error_bad_utf8)
 			return 0
 	return ws_message_new(opcode, data, len)
 
@@ -1543,7 +1465,7 @@ ws_message* ws_recv(ws_conn* c):
 		return 0
 	if ((c.broken != 0) || (c.close_received != 0) || (c.cc == 0)):
 		return 0
-	if (c.error == ws_error_timeout()):
+	if (c.error == ws_error_timeout):
 		c.error = 0
 	c.cc.error = 0
 	while (1):
@@ -1554,24 +1476,24 @@ ws_message* ws_recv(ws_conn* c):
 		if (ws_read_frame(c, &f, room) == 0):
 			return 0
 		int op = f.opcode
-		if (op == ws_op_ping()):
+		if (op == ws_op_ping):
 			c.pings_received = c.pings_received + 1
 			int pong_ok = 1
 			if (c.close_sent == 0):
-				pong_ok = ws_write_frame(c, 1, ws_op_pong(), f.payload, f.payload_len)
+				pong_ok = ws_write_frame(c, 1, ws_op_pong, f.payload, f.payload_len)
 			free(f.payload)
 			if (pong_ok == 0):
 				return 0
-		else if (op == ws_op_pong()):
+		else if (op == ws_op_pong):
 			c.pongs_received = c.pongs_received + 1
 			free(f.payload)
-		else if (op == ws_op_close()):
+		else if (op == ws_op_close):
 			ws_handle_close(c, &f)
 			return 0
-		else if (op == ws_op_continuation()):
+		else if (op == ws_op_continuation):
 			if (c.frag_opcode == 0):
 				free(f.payload)
-				ws_fail(c, ws_close_protocol_error(), ws_error_protocol())
+				ws_fail(c, ws_close_protocol_error, ws_error_protocol)
 				return 0
 			string_append_bytes(c.frag, f.payload, f.payload_len)
 			free(f.payload)
@@ -1592,7 +1514,7 @@ ws_message* ws_recv(ws_conn* c):
 			int compressed = (f.rsv & 4) != 0
 			if (c.frag_opcode != 0):
 				free(f.payload)
-				ws_fail(c, ws_close_protocol_error(), ws_error_protocol())
+				ws_fail(c, ws_close_protocol_error, ws_error_protocol)
 				return 0
 			if (f.fin != 0):
 				return ws_finish_message_z(c, op, f.payload, f.payload_len, compressed)
@@ -1616,7 +1538,7 @@ int ws_send_frame(ws_conn* c, int fin, int opcode, char* data, int len):
 		return 0
 	if (ws_opcode_known(opcode) == 0):
 		return 0
-	if (opcode == ws_op_close()):
+	if (opcode == ws_op_close):
 		return 0
 	if (len < 0):
 		return 0
@@ -1636,7 +1558,7 @@ int ws_send_message(ws_conn* c, int opcode, char* data, int len):
 	int z_len = 0
 	char* z = ws_pmd_compress(c, data, len, &z_len)
 	if (z == 0):
-		ws_fail(c, ws_close_internal_error(), ws_error_compression())
+		ws_fail(c, ws_close_internal_error, ws_error_compression)
 		return 0
 	int ok = ws_write_frame_rsv(c, 1, 4, opcode, z, z_len)
 	free(z)
@@ -1648,19 +1570,19 @@ int ws_send_message(ws_conn* c, int opcode, char* data, int len):
 int ws_send_text(ws_conn* c, char* data, int len):
 	if (utf8_validate_bytes(data, len) == 0):
 		return 0
-	return ws_send_message(c, ws_op_text(), data, len)
+	return ws_send_message(c, ws_op_text, data, len)
 
 
 int ws_send_binary(ws_conn* c, char* data, int len):
-	return ws_send_message(c, ws_op_binary(), data, len)
+	return ws_send_message(c, ws_op_binary, data, len)
 
 
 int ws_send_ping(ws_conn* c, char* data, int len):
-	return ws_send_frame(c, 1, ws_op_ping(), data, len)
+	return ws_send_frame(c, 1, ws_op_ping, data, len)
 
 
 int ws_send_pong(ws_conn* c, char* data, int len):
-	return ws_send_frame(c, 1, ws_op_pong(), data, len)
+	return ws_send_frame(c, 1, ws_op_pong, data, len)
 
 
 # Starts (or completes) the closing handshake: sends a close frame with
@@ -1694,8 +1616,8 @@ int ws_close(ws_conn* c, int code, char* reason):
 	c.cc.error = 0
 	int drained = 0
 	while (c.close_received == 0):
-		if (drained >= ws_close_drain_frames()):
-			ws_fail(c, ws_close_policy(), ws_error_protocol())
+		if (drained >= ws_close_drain_frames):
+			ws_fail(c, ws_close_policy, ws_error_protocol)
 			return 0
 		ws_frame f
 		if (ws_read_frame(c, &f, c.max_message) == 0):
@@ -1703,14 +1625,14 @@ int ws_close(ws_conn* c, int code, char* reason):
 				# A timeout while waiting for the peer's close is fatal here.
 				c.broken = 1
 			return 0
-		if (f.opcode == ws_op_close()):
+		if (f.opcode == ws_op_close):
 			ws_handle_close(c, &f)
 		else:
 			free(f.payload)
 		drained = drained + 1
 	if (c.broken != 0):
 		return 0
-	c.error = ws_error_closed()
+	c.error = ws_error_closed
 	return 1
 
 
@@ -1759,42 +1681,42 @@ int ws_reserved_header(char* name):
 # ws error in *out_error.
 int ws_read_response_head(ConnectionContext* hc, http_response* resp, int* out_error):
 	string_builder* line = string_new()
-	int got = connection_context_read_line(hc, line, http_error_headers_too_large())
+	int got = connection_context_read_line(hc, line, http_error_headers_too_large)
 	if (got <= 0):
 		string_free(line)
-		if (hc.error == http_error_timeout()):
-			*out_error = ws_error_timeout()
+		if (hc.error == http_error_timeout):
+			*out_error = ws_error_timeout
 		else:
-			*out_error = ws_error_handshake()
+			*out_error = ws_error_handshake
 		return 0
 	int status = 0
 	int minor = 0
 	if (http_parse_status_line(line.data, &status, &minor) == 0):
 		string_free(line)
-		*out_error = ws_error_handshake()
+		*out_error = ws_error_handshake
 		return 0
 	resp.status = status
 	int total = 0
 	while (1):
-		got = connection_context_read_line(hc, line, http_error_headers_too_large())
+		got = connection_context_read_line(hc, line, http_error_headers_too_large)
 		if (got <= 0):
 			string_free(line)
-			if (hc.error == http_error_timeout()):
-				*out_error = ws_error_timeout()
+			if (hc.error == http_error_timeout):
+				*out_error = ws_error_timeout
 			else:
-				*out_error = ws_error_handshake()
+				*out_error = ws_error_handshake
 			return 0
 		if (line.length == 0):
 			string_free(line)
 			return 1
 		total = total + line.length + 2
-		if (total > ws_max_handshake_bytes()):
+		if (total > ws_max_handshake_bytes):
 			string_free(line)
-			*out_error = ws_error_handshake()
+			*out_error = ws_error_handshake
 			return 0
 		if (http_store_header(resp, line.data, line.length) == 0):
 			string_free(line)
-			*out_error = ws_error_handshake()
+			*out_error = ws_error_handshake
 			return 0
 	return 0
 
@@ -1864,9 +1786,9 @@ void ws_adopt_http_conn(ws_conn* c, ConnectionContext* hc):
 	else:
 		hc.tls.io_timeout_ms = hc.timeout_ms
 	hc.client_waits = 0
-	hc.error_recv = connection_error_recv()
-	hc.error_send = connection_error_send()
-	hc.error_timeout = connection_error_timeout()
+	hc.error_recv = connection_error_recv
+	hc.error_send = connection_error_send
+	hc.error_timeout = connection_error_timeout
 	hc.error = 0
 	hc.received_any = 0
 	c.cc = hc
@@ -1878,19 +1800,19 @@ void ws_adopt_http_conn(ws_conn* c, ConnectionContext* hc):
 ws_conn* ws_dial(http_req* inner, URL* u, char* key, char* offered, ws_deflate_config* cfg):
 	int timeout = inner.timeout_ms
 	if (timeout <= 0):
-		timeout = http_default_timeout_ms()
+		timeout = http_default_timeout_ms
 	int ip = 0
 	if (dns_resolve_ipv4(u.host, &ip) == 0):
-		return ws_conn_failed(ws_error_dns())
+		return ws_conn_failed(ws_error_dns)
 	int fd = net_connect_timeout(ip, u.port, timeout)
 	if (fd < 0):
-		return ws_conn_failed(fd == -2 ? ws_error_timeout() : ws_error_connect())
+		return ws_conn_failed(fd == -2 ? ws_error_timeout : ws_error_connect)
 	tls_conn* tls = 0
 	tls_config* tls_cfg = 0
 	if (http_url_is_tls(u) != 0):
 		if (socket_set_blocking(fd) < 0):
 			close(fd)
-			return ws_conn_failed(ws_error_connect())
+			return ws_conn_failed(ws_error_connect)
 		int hs_timeout = timeout
 		if (inner.tls_handshake_timeout_ms > 0):
 			hs_timeout = inner.tls_handshake_timeout_ms
@@ -1901,16 +1823,16 @@ ws_conn* ws_dial(http_req* inner, URL* u, char* key, char* offered, ws_deflate_c
 		if (tls == 0):
 			tls_config_free(tls_cfg)
 			close(fd)
-			return ws_conn_failed(ws_error_tls())
+			return ws_conn_failed(ws_error_tls)
 		socket_set_recv_timeout(fd, timeout)
 		socket_set_send_timeout(fd, timeout)
 	ConnectionContext* hc = http_conn_new(fd, timeout)
 	hc.tls = tls
 	hc.tls_cfg = tls_cfg
 	if (http_send_request(hc, inner, u, c"GET", 0) == 0):
-		int send_error = ws_error_io()
-		if (hc.error == http_error_timeout()):
-			send_error = ws_error_timeout()
+		int send_error = ws_error_io
+		if (hc.error == http_error_timeout):
+			send_error = ws_error_timeout
 		connection_context_destroy(hc)
 		return ws_conn_failed(send_error)
 	http_response* resp = http_response_new()
@@ -1924,7 +1846,7 @@ ws_conn* ws_dial(http_req* inner, URL* u, char* key, char* offered, ws_deflate_c
 	if (ws_validate_response_ext(resp, key, offered, cfg, &agreed) == 0):
 		http_response_free(resp)
 		connection_context_destroy(hc)
-		ws_conn* failed = ws_conn_failed(ws_error_handshake())
+		ws_conn* failed = ws_conn_failed(ws_error_handshake)
 		failed.http_status = status
 		return failed
 	ws_conn* c = ws_conn_new()
@@ -1942,9 +1864,9 @@ ws_conn* ws_dial(http_req* inner, URL* u, char* key, char* offered, ws_deflate_c
 
 ws_conn* ws_open_inner(http_req* inner, int bad_header, char* key, char* offered, ws_deflate_config* cfg):
 	if ((bad_header != 0) || (http_validate_req(inner) != 0)):
-		return ws_conn_failed(ws_error_bad_request())
+		return ws_conn_failed(ws_error_bad_request)
 	if (key == 0):
-		return ws_conn_failed(ws_error_io())
+		return ws_conn_failed(ws_error_io)
 	http_req_add_header(inner, c"Upgrade", c"websocket")
 	http_req_add_header(inner, c"Connection", c"Upgrade")
 	http_req_add_header(inner, c"Sec-WebSocket-Key", key)
@@ -1955,10 +1877,10 @@ ws_conn* ws_open_inner(http_req* inner, int bad_header, char* key, char* offered
 		free(offer)
 	URL* u = url_parse(inner.url)
 	if (u == 0):
-		return ws_conn_failed(ws_error_bad_url())
+		return ws_conn_failed(ws_error_bad_url)
 	if (http_validate_url(u) != 0):
 		url_free(u)
-		return ws_conn_failed(ws_error_bad_url())
+		return ws_conn_failed(ws_error_bad_url)
 	ws_conn* c = ws_dial(inner, u, key, offered, cfg)
 	url_free(u)
 	return c
@@ -1976,24 +1898,24 @@ ws_conn* ws_open_inner(http_req* inner, int bad_header, char* key, char* offered
 # ws_error_none().
 ws_conn* ws_open_deflate(http_req* req, ws_deflate_config* cfg):
 	if (req == 0):
-		return ws_conn_failed(ws_error_bad_url())
+		return ws_conn_failed(ws_error_bad_url)
 	if (strcmp(req.method, c"GET") != 0):
-		return ws_conn_failed(ws_error_bad_request())
+		return ws_conn_failed(ws_error_bad_request)
 	if (req.body != 0):
-		return ws_conn_failed(ws_error_bad_request())
+		return ws_conn_failed(ws_error_bad_request)
 	char* http_url = ws_http_url(req.url)
 	if (http_url == 0):
-		return ws_conn_failed(ws_error_bad_url())
+		return ws_conn_failed(ws_error_bad_url)
 	if (ws_sha1_alg == 0):
 		free(http_url)
-		return ws_conn_failed(ws_error_no_sha1())
+		return ws_conn_failed(ws_error_no_sha1)
 	if (cfg != 0):
 		if (ws_deflate_config_valid(cfg) == 0):
 			free(http_url)
-			return ws_conn_failed(ws_error_bad_request())
+			return ws_conn_failed(ws_error_bad_request)
 		if (ws_pmd_codec == 0):
 			free(http_url)
-			return ws_conn_failed(ws_error_no_deflate())
+			return ws_conn_failed(ws_error_no_deflate)
 	http_req* inner = http_req_new(c"GET", http_url)
 	inner.timeout_ms = req.timeout_ms
 	inner.max_redirects = 0
@@ -2122,8 +2044,8 @@ ws_conn* ws_server_accept_deflate(ConnectionContext* cc, ServerRequest* req, cha
 		else:
 			ws_write_http_error(cc, 400, c"Bad Request", 0)
 		if ((status == 500) && (ws_sha1_alg == 0)):
-			return ws_conn_failed(ws_error_no_sha1())
-		ws_conn* failed = ws_conn_failed(ws_error_handshake())
+			return ws_conn_failed(ws_error_no_sha1)
+		ws_conn* failed = ws_conn_failed(ws_error_handshake)
 		failed.http_status = status
 		return failed
 	char* accept = ws_accept_key(server_request_header(req, c"sec-websocket-key"))
@@ -2150,7 +2072,7 @@ ws_conn* ws_server_accept_deflate(ConnectionContext* cc, ServerRequest* req, cha
 	if (ok == 0):
 		if (extension != 0):
 			free(extension)
-		return ws_conn_failed(ws_error_io())
+		return ws_conn_failed(ws_error_io)
 	ws_conn* c = ws_conn_wrap(cc, 0, 0)
 	c.http_status = 101
 	if (subprotocol != 0):

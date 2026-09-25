@@ -64,8 +64,7 @@ int malloc_bin_map_hi
 int malloc_heap_total
 
 
-int malloc_bin_count():
-	return 41
+const int malloc_bin_count = 41
 
 
 # Map a payload size (already rounded to a multiple of 8, >= 8) to its
@@ -196,14 +195,14 @@ int malloc_grow(int needed):
 void malloc_bins_init():
 	if (malloc_bins != 0):
 		return
-	int bytes = malloc_bin_count() * __word_size__
+	int bytes = malloc_bin_count * __word_size__
 	bytes = ((bytes + 7) >> 3) << 3
 	int base = malloc_grow(bytes)
 	if (base == 0):
 		return
 	int* heads = cast(int*, base)
 	int i = 0
-	while (i < malloc_bin_count()):
+	while (i < malloc_bin_count):
 		heads[i] = 0
 		i = i + 1
 	malloc_bin_map_lo = 0

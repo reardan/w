@@ -63,13 +63,13 @@ char* arm64_fmt_imm(asm_insn* insn, asm_operand* op):
 
 
 char* arm64_fmt_operand(asm_insn* insn, asm_operand* op):
-	if (op.kind == ASM_OP_REG()):
+	if (op.kind == ASM_OP_REG):
 		return arm64_fmt_reg(op)
-	if (op.kind == ASM_OP_MEM()):
+	if (op.kind == ASM_OP_MEM):
 		return arm64_fmt_mem(op)
-	if (op.kind == ASM_OP_LABEL()):
+	if (op.kind == ASM_OP_LABEL):
 		return op.label
-	if (op.kind == ASM_OP_IMM()):
+	if (op.kind == ASM_OP_IMM):
 		return arm64_fmt_imm(insn, op)
 	return c"?"
 

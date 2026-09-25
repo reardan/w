@@ -123,7 +123,7 @@ void asm_check_encode_identity(char* path, int mode):
 	asm_binary* binary = asm_binary_open(path)
 	asserts(c"cannot open the self-host build", cast(int, binary) != 0)
 	if (mode == 8):
-		assert_equal(ASM_ELF_CLASS64(), binary.elf_class)
+		assert_equal(ASM_ELF_CLASS64, binary.elf_class)
 	char* text = asm_binary_text(binary)
 	int functions = 0
 	int count = 0

@@ -169,7 +169,7 @@ void test_textbox_state_editing():
 	# The buffer caps at capacity; inserts past it are dropped.
 	for i in range(200):
 		ui_textbox_insert(&st, 'z')
-	assert_equal(ui_textbox_capacity(), st.length)
+	assert_equal(ui_textbox_capacity, st.length)
 
 
 # Default metrics: a 200-wide textbox claims row (8,8,200,32); its

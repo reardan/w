@@ -163,7 +163,7 @@ void gs_fail_mid(grpc_call* call, void* user_data):
 	free(m)
 	grpc_call_send(call, c"one", 3)
 	grpc_call_send(call, c"two", 3)
-	grpc_call_fail(call, grpc_status_aborted(), c"stopped")
+	grpc_call_fail(call, grpc_status_aborted, c"stopped")
 
 
 # Ticks every 20 ms until the client goes away; counts the stops it saw
@@ -179,7 +179,7 @@ void gs_ticker(grpc_call* call, void* user_data):
 		int rc = grpc_call_send(call, t, strlen(t))
 		free(t)
 		if (rc != 0):
-			if ((call.cancelled != 0) || (call.status == grpc_status_deadline_exceeded())):
+			if ((call.cancelled != 0) || (call.status == grpc_status_deadline_exceeded)):
 				gs_stops = gs_stops + 1
 			return
 		sleep_ms(20)
@@ -257,7 +257,7 @@ void gs_check_count(grpc_channel* ch, int n, int size):
 	assert_equal(n, k)
 	assert_strings_equal(c"server-streaming", grpc_stream_header(cs, c"x-kind"))
 	grpc_result* r = grpc_stream_finish(cs)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	if (n == 0):
 		# Nothing was sent: a trailers-only response.
 		asserts(c"trailers-only expected", r.trailers == 0)
@@ -307,7 +307,7 @@ void gs_check_sum_reply(grpc_client_stream* cs, int count, int size):
 
 int gs_stats_call(grpc_channel* ch):
 	grpc_result* r = grpc_unary_call(ch, c"/t.S/Stats", c"", 0, 0, 0)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	int n = atoi(r.response)
 	grpc_result_free(r)
 	return n
@@ -336,9 +336,9 @@ void gs_ping_pong(grpc_channel* ch, int rounds, char* want_encoding):
 	char* m = 0
 	int len = 0
 	assert_equal(0, grpc_stream_recv(cs, &m, &len))
-	assert_equal(grpc_status_ok(), grpc_stream_status(cs))
+	assert_equal(grpc_status_ok, grpc_stream_status(cs))
 	grpc_result* r = grpc_stream_finish(cs)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	char* n = itoa(rounds)
 	assert_strings_equal(n, grpc_result_trailer(r, c"x-count"))
 	free(n)
@@ -350,13 +350,13 @@ void gs_ping_pong(grpc_channel* ch, int rounds, char* want_encoding):
 int gs_fake_encode(char* in, int len, char** out, int* out_len):
 	*out = mem_dup(in, len)
 	*out_len = len
-	return codec_ok()
+	return codec_ok
 
 
 int gs_fake_decode(char* in, int len, int max, char** out, int* out_len):
 	*out = mem_dup(in, len)
 	*out_len = len
-	return codec_ok()
+	return codec_ok
 
 
 /* Wire-free checks */
@@ -379,33 +379,33 @@ void test_codec_registry():
 	char* out = 0
 	int out_len = 0
 	char* zeros = gs_fill(10000, 0)
-	assert_equal(codec_ok(), codec_compress(c"gzip", zeros, 10000, &out, &out_len))
+	assert_equal(codec_ok, codec_compress(c"gzip", zeros, 10000, &out, &out_len))
 	asserts(c"gzip did not compress", out_len < 1000)
 	char* back = 0
 	int back_len = 0
-	assert_equal(codec_err_too_large(), codec_decompress(c"gzip", out, out_len, 9999, &back, &back_len))
+	assert_equal(codec_err_too_large, codec_decompress(c"gzip", out, out_len, 9999, &back, &back_len))
 	asserts(c"no output on failure", back == 0)
-	assert_equal(codec_ok(), codec_decompress(c"gzip", out, out_len, 10000, &back, &back_len))
+	assert_equal(codec_ok, codec_decompress(c"gzip", out, out_len, 10000, &back, &back_len))
 	assert_equal(10000, back_len)
 	free(back)
 	out[out_len - 5] = out[out_len - 5] ^ 1
-	assert_equal(codec_err_corrupt(), codec_decompress(c"gzip", out, out_len, 0, &back, &back_len))
+	assert_equal(codec_err_corrupt, codec_decompress(c"gzip", out, out_len, 0, &back, &back_len))
 	free(out)
-	assert_equal(codec_ok(), codec_compress(c"deflate", zeros, 10000, &out, &out_len))
-	assert_equal(codec_ok(), codec_decompress(c"Deflate", out, out_len, 0, &back, &back_len))
+	assert_equal(codec_ok, codec_compress(c"deflate", zeros, 10000, &out, &out_len))
+	assert_equal(codec_ok, codec_decompress(c"Deflate", out, out_len, 0, &back, &back_len))
 	assert_equal(10000, back_len)
 	free(back)
 	free(out)
-	assert_equal(codec_err_unsupported(), codec_compress(c"br", zeros, 10, &out, &out_len))
+	assert_equal(codec_err_unsupported, codec_compress(c"br", zeros, 10, &out, &out_len))
 	free(zeros)
 
 
 void test_grpc_take_message():
 	compress_codecs_register()
 	string_builder* sb = string_new()
-	assert_equal(codec_ok(), grpc_encode_message(sb, 0, c"plain", 5))
+	assert_equal(codec_ok, grpc_encode_message(sb, 0, c"plain", 5))
 	char* big = gs_fill(5000, 'q')
-	assert_equal(codec_ok(), grpc_encode_message(sb, c"gzip", big, 5000))
+	assert_equal(codec_ok, grpc_encode_message(sb, c"gzip", big, 5000))
 	asserts(c"compressed flag", sb.data[10] == 1)
 	# Feed the buffer a byte at a time: 0 until a whole message is in.
 	string_builder* buf = string_new()
@@ -437,18 +437,18 @@ void test_grpc_take_message():
 	string_clear(buf)
 	grpc_encode_message(buf, c"gzip", big, 5000)
 	assert_equal(-1, grpc_take_message(buf, c"gzip", 4999, &m, &len, &compressed, &status, &why))
-	assert_equal(grpc_status_resource_exhausted(), status)
+	assert_equal(grpc_status_resource_exhausted, status)
 	# Compressed flag with no grpc-encoding, and corrupt data.
 	assert_equal(-1, grpc_take_message(buf, 0, 10000, &m, &len, &compressed, &status, &why))
-	assert_equal(grpc_status_internal(), status)
+	assert_equal(grpc_status_internal, status)
 	buf.data[6] = buf.data[6] ^ 255
 	assert_equal(-1, grpc_take_message(buf, c"gzip", 10000, &m, &len, &compressed, &status, &why))
-	assert_equal(grpc_status_internal(), status)
+	assert_equal(grpc_status_internal, status)
 	# Wire length over the cap fails before the body arrives.
 	string_clear(buf)
 	string_append_bytes(buf, c"\x00\x00\x01\x00\x00", 5)
 	assert_equal(-1, grpc_take_message(buf, 0, 1000, &m, &len, &compressed, &status, &why))
-	assert_equal(grpc_status_resource_exhausted(), status)
+	assert_equal(grpc_status_resource_exhausted, status)
 	free(big)
 	string_free(buf)
 	string_free(sb)
@@ -471,7 +471,7 @@ void test_grpc_streaming_end_to_end():
 
 	# Client streaming, 1.5 MB.
 	grpc_result* r = gs_sum_call(ch, 50, 30000)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	grpc_result_free(r)
 
 	# Two client-streaming calls interleaved on one connection.
@@ -493,10 +493,10 @@ void test_grpc_streaming_end_to_end():
 	assert_strings_equal(c"60,6,3", m)
 	free(m)
 	r = grpc_stream_finish(b)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	grpc_result_free(r)
 	r = grpc_stream_finish(a)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	grpc_result_free(r)
 
 	# Bidi ping-pong.
@@ -513,7 +513,7 @@ void test_grpc_streaming_end_to_end():
 	free(m)
 	assert_equal(-1, grpc_stream_recv(cs, &m, &len))
 	r = grpc_stream_finish(cs)
-	assert_equal(grpc_status_aborted(), r.status)
+	assert_equal(grpc_status_aborted, r.status)
 	assert_strings_equal(c"stopped", r.message)
 	grpc_result_free(r)
 
@@ -525,11 +525,11 @@ void test_grpc_streaming_end_to_end():
 		assert_equal(1, grpc_stream_recv(cs, &m, &len))
 		free(m)
 	grpc_stream_cancel(cs)
-	assert_equal(grpc_status_cancelled(), grpc_stream_status(cs))
+	assert_equal(grpc_status_cancelled, grpc_stream_status(cs))
 	assert_equal(-1, grpc_stream_recv(cs, &m, &len))
 	assert_equal(-1, grpc_stream_send(cs, c"x", 1))
 	r = grpc_stream_finish(cs)
-	assert_equal(grpc_status_cancelled(), r.status)
+	assert_equal(grpc_status_cancelled, r.status)
 	grpc_result_free(r)
 	assert_equal(1, gs_stats_call(ch))
 
@@ -545,7 +545,7 @@ void test_grpc_streaming_end_to_end():
 	int elapsed = time_monotonic_ms() - start
 	asserts(c"deadline returned too late", elapsed < 1500)
 	r = grpc_stream_finish(cs)
-	assert_equal(grpc_status_deadline_exceeded(), r.status)
+	assert_equal(grpc_status_deadline_exceeded, r.status)
 	grpc_result_free(r)
 	assert_equal(2, gs_stats_call(ch))
 
@@ -554,7 +554,7 @@ void test_grpc_streaming_end_to_end():
 	assert_equal(1, grpc_channel_set_compression(ch, c"gzip"))
 	char* body = gs_fill(20000, 'z')
 	r = grpc_unary_call(ch, c"/t.S/Unary", body, 20000, 0, 0)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	assert_equal(20005, r.response_len)
 	assert_equal('z', r.response[20004])
 	assert_strings_equal(c"gzip", grpc_result_header(r, c"grpc-encoding"))
@@ -568,7 +568,7 @@ void test_grpc_streaming_end_to_end():
 	assert_equal(1, grpc_channel_set_compression(ch, c"deflate"))
 	gs_check_count(ch, 10, 30000)
 	r = gs_sum_call(ch, 20, 1000)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	grpc_result_free(r)
 
 	# Oversize decompression, request side: 1 MiB of zeros is ~1 KB on
@@ -576,7 +576,7 @@ void test_grpc_streaming_end_to_end():
 	assert_equal(1, grpc_channel_set_compression(ch, c"gzip"))
 	body = gs_fill(1048576, 0)
 	r = grpc_unary_call(ch, c"/t.S/Unary", body, 1048576, 0, 0)
-	assert_equal(grpc_status_resource_exhausted(), r.status)
+	assert_equal(grpc_status_resource_exhausted, r.status)
 	assert_strings_equal(c"decompressed message larger than the limit", r.message)
 	grpc_result_free(r)
 	free(body)
@@ -584,15 +584,15 @@ void test_grpc_streaming_end_to_end():
 	# Oversize decompression, response side (client cap 64 KiB).
 	ch.max_message = 65536
 	r = grpc_unary_call(ch, c"/t.S/Bomb", c"", 0, 0, 0)
-	assert_equal(grpc_status_resource_exhausted(), r.status)
+	assert_equal(grpc_status_resource_exhausted, r.status)
 	asserts(c"no response on error", r.response == 0)
 	grpc_result_free(r)
-	ch.max_message = grpc_default_max_message()
+	ch.max_message = grpc_default_max_message
 
 	# Identity again: nothing compressed, connection still healthy.
 	assert_equal(1, grpc_channel_set_compression(ch, c"identity"))
 	r = grpc_unary_call(ch, c"/t.S/Unary", c"hi", 2, 0, 0)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	assert_strings_equal(c"echo:hi", r.response)
 	assert_strings_equal(c"0", grpc_result_trailer(r, c"x-req-compressed"))
 	asserts(c"identity response", grpc_result_header(r, c"grpc-encoding") == 0)
@@ -614,7 +614,7 @@ void test_grpc_encoding_mismatch():
 	asserts(c"channel open failed", ch != 0)
 	assert_equal(1, grpc_channel_set_compression(ch, c"x-test"))
 	grpc_result* r = grpc_unary_call(ch, c"/t.S/Unary", c"hi", 2, 0, 0)
-	assert_equal(grpc_status_unimplemented(), r.status)
+	assert_equal(grpc_status_unimplemented, r.status)
 	assert_strings_equal(c"grpc-encoding x-test is not supported", r.message)
 	assert_strings_equal(c"gzip,deflate", grpc_result_header(r, c"grpc-accept-encoding"))
 	grpc_result_free(r)
@@ -624,12 +624,12 @@ void test_grpc_encoding_mismatch():
 	int len = 0
 	assert_equal(-1, grpc_stream_recv(cs, &m, &len))
 	r = grpc_stream_finish(cs)
-	assert_equal(grpc_status_unimplemented(), r.status)
+	assert_equal(grpc_status_unimplemented, r.status)
 	grpc_result_free(r)
 	# The connection survives; identity works.
 	assert_equal(1, grpc_channel_set_compression(ch, 0))
 	r = grpc_unary_call(ch, c"/t.S/Unary", c"ok", 2, 0, 0)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	assert_strings_equal(c"echo:ok", r.response)
 	grpc_result_free(r)
 	grpc_channel_close(ch)
@@ -643,7 +643,7 @@ void gs_raw_wait_headers(int fd, int stream):
 	while (1):
 		if (h2_raw_read_frame(fd, &f) == 0):
 			exit(92)
-		int done = (f.type == h2_frame_headers()) && (f.stream_id == stream)
+		int done = (f.type == h2_frame_headers) && (f.stream_id == stream)
 		free(f.payload)
 		if (done != 0):
 			return
@@ -660,10 +660,10 @@ void gs_raw_headers(int fd, hpack_encoder* e, int stream, char* encoding, int en
 		hpack_headers_add(l, c"grpc-status", c"0")
 	string_builder* sb = string_new()
 	hpack_encode(e, l, sb)
-	int flags = h2_flag_end_headers()
+	int flags = h2_flag_end_headers
 	if (end != 0):
-		flags = flags | h2_flag_end_stream()
-	h2_raw_write_frame(fd, h2_frame_headers(), flags, stream, sb.data, sb.length)
+		flags = flags | h2_flag_end_stream
+	h2_raw_write_frame(fd, h2_frame_headers, flags, stream, sb.data, sb.length)
 	string_free(sb)
 	hpack_headers_free(l)
 
@@ -675,7 +675,7 @@ void gs_raw_response(int fd, hpack_encoder* e, int stream, char* encoding, char*
 	gs_raw_headers(fd, e, stream, encoding, 0)
 	string_builder* sb = string_new()
 	grpc_frame_message_flag(sb, 1, payload, len)
-	h2_raw_write_frame(fd, h2_frame_data(), 0, stream, sb.data, sb.length)
+	h2_raw_write_frame(fd, h2_frame_data, 0, stream, sb.data, sb.length)
 	string_free(sb)
 	gs_raw_headers(fd, e, stream, 0, 1)
 
@@ -699,15 +699,15 @@ void test_grpc_client_coding_errors():
 	grpc_channel* ch = grpc_channel_open(c"127.0.0.1", port, 10000)
 	asserts(c"channel open failed", ch != 0)
 	grpc_result* r = grpc_unary_call(ch, c"/x.Y/Z", c"", 0, 0, 0)
-	assert_equal(grpc_status_internal(), r.status)
+	assert_equal(grpc_status_internal, r.status)
 	assert_strings_equal(c"unsupported grpc-encoding in response", r.message)
 	grpc_result_free(r)
 	r = grpc_unary_call(ch, c"/x.Y/Z", c"", 0, 0, 0)
-	assert_equal(grpc_status_internal(), r.status)
+	assert_equal(grpc_status_internal, r.status)
 	assert_strings_equal(c"compressed message without grpc-encoding", r.message)
 	grpc_result_free(r)
 	r = grpc_unary_call(ch, c"/x.Y/Z", c"", 0, 0, 0)
-	assert_equal(grpc_status_internal(), r.status)
+	assert_equal(grpc_status_internal, r.status)
 	assert_strings_equal(c"corrupt compressed message", r.message)
 	grpc_result_free(r)
 	grpc_channel_close(ch)

@@ -119,8 +119,8 @@ void test_nav_event_contract():
 void test_ring_slot_count():
 	# The ring is capacity events x 5 int32 fields; every backend sizes
 	# its own array from this number.
-	assert_equal(64, gfx_event_ring_capacity())
-	assert_equal(320, gfx_event_ring_ints())
+	assert_equal(64, gfx_event_ring_capacity)
+	assert_equal(320, gfx_event_ring_ints)
 
 
 void test_modifier_bits_round_trip():

@@ -159,12 +159,12 @@ void test_region_depth_overflow_is_dropped_cleanly():
 	while (i < 20):
 		ui_region_push(ctx, ui_rect_new(cast(float32, i), 0.0, 50.0, 50.0))
 		i = i + 1
-	assert_equal(ui_layout_max_depth(), ctx.layout_depth)
+	assert_equal(ui_layout_max_depth, ctx.layout_depth)
 	# Widgets still land somewhere sane — the innermost region that fit.
 	# The root holds slot 0, so the last push to land is number
 	# max_depth - 1, pushed with i == max_depth - 2.
 	ui_rect r0 = ui_layout_next(ctx, 10.0, 10.0)
-	asserts(c"placed in deepest region", r0.x == cast(float32, ui_layout_max_depth() - 2))
+	asserts(c"placed in deepest region", r0.x == cast(float32, ui_layout_max_depth - 2))
 
 	# Every push is matched by a pop, and the dropped pushes' pops are
 	# dropped too, so the stack lands back on the root.

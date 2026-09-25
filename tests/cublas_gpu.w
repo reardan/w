@@ -23,7 +23,7 @@ import lib.tensor_cublas
 
 int now_us():
 	timespec ts
-	sys_clock_gettime(clock_monotonic(), cast(int, &ts))
+	sys_clock_gettime(clock_monotonic, cast(int, &ts))
 	return ts.seconds * 1000000 + ts.nanoseconds / 1000
 
 

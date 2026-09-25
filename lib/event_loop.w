@@ -121,13 +121,12 @@ event_loop* event_loop_new_poll():
 
 
 # EPOLL_CLOEXEC
-int event_loop_epoll_cloexec():
-	return 524288
+const int event_loop_epoll_cloexec = 524288
 
 
 event_loop* event_loop_new():
 	event_loop* loop = event_loop_new_poll()
-	int epfd = epoll_create1(event_loop_epoll_cloexec())
+	int epfd = epoll_create1(event_loop_epoll_cloexec)
 	if (epfd >= 0):
 		loop.epfd = epfd
 		loop.event_capacity = 256
@@ -175,16 +174,9 @@ void event_loop_free(event_loop* loop):
 
 /* epoll interest bookkeeping. */
 
-int event_epoll_ctl_add():
-	return 1
-
-
-int event_epoll_ctl_del():
-	return 2
-
-
-int event_epoll_ctl_mod():
-	return 3
+const int event_epoll_ctl_add = 1
+const int event_epoll_ctl_del = 2
+const int event_epoll_ctl_mod = 3
 
 
 event_fd_slot* event_loop_slot(event_loop* loop, int fd):
@@ -243,7 +235,7 @@ void event_loop_slot_watch_gone(event_loop* loop, event_fd_slot* slot):
 	slot.live = slot.live - 1
 	if (slot.live == 0):
 		if (slot.registered != 0):
-			event_loop_epoll_ctl(loop, event_epoll_ctl_del(), slot.fd, 0)
+			event_loop_epoll_ctl(loop, event_epoll_ctl_del, slot.fd, 0)
 			slot.registered = 0
 		slot.synthetic = 0
 	event_loop_mark_dirty(loop, slot)
@@ -267,21 +259,21 @@ void event_loop_sync_slot(event_loop* loop, event_fd_slot* slot):
 		return
 	# POLLERR/POLLHUP are always reported; register at least one bit so
 	# a watch with an empty mask still hears about them.
-	int want = mask | poll_err() | poll_hup()
+	int want = mask | poll_err | poll_hup
 	if (slot.synthetic != 0):
-		slot.synthetic = (want & (poll_in() | poll_out())) | (slot.synthetic & poll_nval())
+		slot.synthetic = (want & (poll_in | poll_out)) | (slot.synthetic & poll_nval)
 		return
 	if (want == slot.registered):
 		return
 	int r = 0
 	if (slot.registered == 0):
-		r = event_loop_epoll_ctl(loop, event_epoll_ctl_add(), slot.fd, want)
+		r = event_loop_epoll_ctl(loop, event_epoll_ctl_add, slot.fd, want)
 		if (r == -17): /* EEXIST: still registered from a dup'd fd */
-			r = event_loop_epoll_ctl(loop, event_epoll_ctl_mod(), slot.fd, want)
+			r = event_loop_epoll_ctl(loop, event_epoll_ctl_mod, slot.fd, want)
 	else:
-		r = event_loop_epoll_ctl(loop, event_epoll_ctl_mod(), slot.fd, want)
+		r = event_loop_epoll_ctl(loop, event_epoll_ctl_mod, slot.fd, want)
 		if (r == -2): /* ENOENT: the kernel dropped it on close */
-			r = event_loop_epoll_ctl(loop, event_epoll_ctl_add(), slot.fd, want)
+			r = event_loop_epoll_ctl(loop, event_epoll_ctl_add, slot.fd, want)
 	if (r >= 0):
 		slot.registered = want
 		return
@@ -290,11 +282,11 @@ void event_loop_sync_slot(event_loop* loop, event_fd_slot* slot):
 	# Fake those revents every pass until the watches go away.
 	slot.registered = 0
 	if (r == -9): /* EBADF */
-		slot.synthetic = poll_nval()
+		slot.synthetic = poll_nval
 	else:
-		slot.synthetic = want & (poll_in() | poll_out())
+		slot.synthetic = want & (poll_in | poll_out)
 		if (slot.synthetic == 0):
-			slot.synthetic = poll_in()
+			slot.synthetic = poll_in
 	loop.synthetic.push(slot)
 
 
@@ -568,7 +560,7 @@ int event_loop_run_once_poll(event_loop* loop, int max_wait_ms):
 # pass began, each seeing its own interest bits plus ERR/HUP/NVAL.
 int event_loop_dispatch_slot(event_loop* loop, event_fd_slot* slot, int revents):
 	int fired = 0
-	int always = poll_err() | poll_hup() | poll_nval()
+	int always = poll_err | poll_hup | poll_nval
 	int count = slot.watches.length
 	for j in range(count):
 		event_watch* w = slot.watches[j]

@@ -206,5 +206,5 @@ void test_ids_do_not_shift_when_it_opens():
 	time_frame(ctx, &st, &start, &end, &bg)
 	assert_equal(1, st.open)
 	assert_equal(closed_ids, ctx.next_id)
-	assert_equal(2 + ui_time_range_ids(), closed_ids)
+	assert_equal(2 + ui_time_range_ids, closed_ids)
 	ui_render_destroy(&fx.r)

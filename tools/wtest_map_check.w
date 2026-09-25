@@ -375,7 +375,7 @@ void check_run_case(check_case* c):
 	# to a rerun that CI never makes.
 	process_result* result = process_run(c"bin/wtest", argv, 0, 0, 300000)
 	int attempt = 1
-	while ((result != 0) && (result.status == process_status_timeout()) && (attempt < 6)):
+	while ((result != 0) && (result.status == process_status_timeout) && (attempt < 6)):
 		process_result_free(result)
 		result = process_run(c"bin/wtest", argv, 0, 0, 300000)
 		attempt = attempt + 1
@@ -383,7 +383,7 @@ void check_run_case(check_case* c):
 	if (result == 0):
 		check_case_fail(c, c"cannot run bin/wtest", c"", 0)
 		return
-	if (result.status == process_status_timeout()):
+	if (result.status == process_status_timeout):
 		check_case_fail(c, c"bin/wtest timed out (6 attempts): ", result.stderr_text, 0)
 		process_result_free(result)
 		return

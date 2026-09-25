@@ -394,8 +394,8 @@ void test_verify_warm():
 		strv_set(v, i, a)
 		i = i + 1
 	spawn_options* quiet = spawn_options_new()
-	quiet.stdout_mode = process_null()
-	quiet.stderr_mode = process_null()
+	quiet.stdout_mode = process_null
+	quiet.stderr_mode = process_null
 	process* client = process_spawn(sleeper[0], v, quiet)
 	assert1(client != 0)
 	int waited = 0

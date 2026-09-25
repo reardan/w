@@ -114,7 +114,7 @@ process_result* run_wexec(char* manifest, char* target, char** env):
 	process_result* r = process_run(c"bin/wexec", wexec_argv(manifest, target), env_opts(env), 0, 120000)
 	if (r == 0):
 		fail(c"could not spawn bin/wexec")
-	if (r.status == process_status_timeout()):
+	if (r.status == process_status_timeout):
 		fail(strjoin(c"bin/wexec timed out running ", target))
 	return r
 
@@ -326,14 +326,14 @@ void mode_group_kill():
 		fail(c"the leaked background grandchild survived the step timeout")
 
 	spawn_options* opts = env_opts(lock_env(lock2, 0))
-	opts.stdout_mode = process_null()
-	opts.stderr_mode = process_null()
+	opts.stdout_mode = process_null
+	opts.stderr_mode = process_null
 	process* p = process_spawn(c"bin/wexec", wexec_argv(manifest, c"term_hang"), opts)
 	if (p == 0):
 		fail(c"could not spawn bin/wexec term_hang")
-	if (process_wait_timeout(p, 600) != process_status_timeout()):
+	if (process_wait_timeout(p, 600) != process_status_timeout):
 		fail(c"term_hang finished before SIGTERM (expected it to hang)")
-	process_kill(p, sigterm())
+	process_kill(p, sigterm)
 	process_wait(p)
 	process_free(p)
 	process_sleep_ms(500)

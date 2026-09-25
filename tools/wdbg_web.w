@@ -120,22 +120,18 @@ int ww_max_requests
 int ww_requests_served
 
 
-int ww_state_none():
-	return 0
-int ww_state_stopped():
-	return 1
-int ww_state_running():
-	return 2
-int ww_state_exited():
-	return 3
+const int ww_state_none = 0
+const int ww_state_stopped = 1
+const int ww_state_running = 2
+const int ww_state_exited = 3
 
 
 char* ww_state_name(int st):
-	if (st == ww_state_stopped()):
+	if (st == ww_state_stopped):
 		return c"stopped"
-	if (st == ww_state_running()):
+	if (st == ww_state_running):
 		return c"running"
-	if (st == ww_state_exited()):
+	if (st == ww_state_exited):
 		return c"exited"
 	return c"none"
 
@@ -153,8 +149,7 @@ char* ww_core_json          # wcore --json output (--core mode), or 0
 
 
 # The largest amount of unread program output kept; older bytes are dropped.
-int ww_out_cap():
-	return 1048576
+const int ww_out_cap = 1048576
 
 
 char* ww_prompt():
@@ -163,8 +158,8 @@ char* ww_prompt():
 
 void ww_out_append(char* data, int n):
 	string_append_bytes(ww_out, data, n)
-	if (ww_out.length > ww_out_cap()):
-		int drop = ww_out.length - ww_out_cap() / 2
+	if (ww_out.length > ww_out_cap):
+		int drop = ww_out.length - ww_out_cap / 2
 		string_builder* kept = string_new()
 		string_append(kept, c"[... earlier output dropped ...]\n")
 		string_append_bytes(kept, ww_out.data + drop, ww_out.length - drop)
@@ -214,7 +209,7 @@ void ww_session_reap():
 	string_free(note)
 	process_free(ww_proc)
 	ww_proc = 0
-	ww_state = ww_state_exited()
+	ww_state = ww_state_exited
 
 
 # Read whatever one of wdbg's pipes has. Returns the byte count, 0 at EOF.
@@ -241,8 +236,8 @@ void ww_pump(int timeout_ms):
 		if (wait < 0):
 			wait = 0
 		pollfd* fds = pollfd_new_array(2)
-		pollfd_set(fds, 0, ww_proc.stdout_fd, poll_in())
-		pollfd_set(fds, 1, ww_proc.stderr_fd, poll_in())
+		pollfd_set(fds, 0, ww_proc.stdout_fd, poll_in)
+		pollfd_set(fds, 1, ww_proc.stderr_fd, poll_in)
 		int nready = poll_wait(fds, 2, wait)
 		int out_ev = pollfd_at(fds, 0).revents
 		int err_ev = pollfd_at(fds, 1).revents
@@ -256,7 +251,7 @@ void ww_pump(int timeout_ms):
 				ww_session_reap()
 				return
 			if (ww_out_take_prompt()):
-				ww_state = ww_state_stopped()
+				ww_state = ww_state_stopped
 				return
 
 
@@ -266,7 +261,7 @@ void ww_send_command(char* line, int timeout_ms):
 	string_append_char(cmd, 10)
 	write(ww_proc.stdin_fd, cmd.data, cmd.length)
 	string_free(cmd)
-	ww_state = ww_state_running()
+	ww_state = ww_state_running
 	ww_pump(timeout_ms)
 
 
@@ -284,7 +279,7 @@ char* ww_query(char* line):
 void ww_load_files():
 	if (ww_files.length > 0):
 		return
-	if (ww_state != ww_state_stopped()):
+	if (ww_state != ww_state_stopped):
 		return
 	char* text = ww_query(c"i files")
 	list[char*] lines = split(text, 10)
@@ -324,17 +319,17 @@ int ww_session_start():
 		i = i + 1
 	strv_set(argv, args.length, 0)
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_pipe()
-	opts.stdout_mode = process_pipe()
-	opts.stderr_mode = process_pipe()
+	opts.stdin_mode = process_pipe
+	opts.stdout_mode = process_pipe
+	opts.stderr_mode = process_pipe
 	ww_proc = process_spawn(ww_wdbg_path, argv, opts)
 	free(cast(char*, opts))
 	free(cast(char*, argv))
 	list_free[char*](args)
 	if (ww_proc == 0):
-		ww_state = ww_state_none()
+		ww_state = ww_state_none
 		return 0
-	ww_state = ww_state_running()
+	ww_state = ww_state_running
 	# Compiling the program in-process takes a moment; wait for the
 	# first stop (or exit) so the page starts with a real state.
 	ww_pump(60000)
@@ -345,7 +340,7 @@ int ww_session_start():
 void ww_session_kill():
 	if (ww_proc == 0):
 		return
-	process_kill(ww_proc, sigkill())
+	process_kill(ww_proc, sigkill)
 	ww_session_reap()
 
 
@@ -633,7 +628,7 @@ void ww_reply_state_output(RequestContext* rc):
 
 
 void ww_api_cmd(RequestContext* rc):
-	if (ww_state != ww_state_stopped()):
+	if (ww_state != ww_state_stopped):
 		ww_reply_error(rc, 409, c"the debugger is not stopped at a prompt")
 		return
 	# One line only: anything after the first newline is ignored, so a
@@ -661,7 +656,7 @@ void ww_inspect_field(string_builder* s, char* name, char* cmd, int comma):
 
 
 void ww_api_inspect(RequestContext* rc):
-	if (ww_state != ww_state_stopped()):
+	if (ww_state != ww_state_stopped):
 		ww_reply_error(rc, 409, c"the debugger is not stopped at a prompt")
 		return
 	string_builder* s = string_new()
@@ -702,7 +697,7 @@ int ww_query_allowed(char* line):
 # mixing it into the program-output stream /api/cmd and /api/poll carry
 # (the W UI's memory dump and code-bytes panes use this).
 void ww_api_query(RequestContext* rc):
-	if (ww_state != ww_state_stopped()):
+	if (ww_state != ww_state_stopped):
 		ww_reply_error(rc, 409, c"the debugger is not stopped at a prompt")
 		return
 	char* body = request_context_body(rc)
@@ -828,12 +823,8 @@ list[ww_conn*] ww_conns
 
 
 # Connections idle longer than this are closed.
-int ww_idle_ms():
-	return 120000
-
-
-int ww_max_conns():
-	return 32
+const int ww_idle_ms = 120000
+const int ww_max_conns = 32
 
 
 void ww_conn_close(ww_conn* k):
@@ -905,7 +896,7 @@ void ww_accept(ServerContext* s):
 		return
 	socket_set_recv_timeout(fd, s.timeout_ms)
 	socket_set_send_timeout(fd, s.timeout_ms)
-	if (ww_conns.length >= ww_max_conns()):
+	if (ww_conns.length >= ww_max_conns):
 		# Make room by dropping the least recently used connection.
 		int oldest = 0
 		int i = 1
@@ -929,18 +920,18 @@ int ww_done():
 void ww_serve_forever(ServerContext* s):
 	while (ww_done() == 0):
 		int npipes = 0
-		if ((ww_proc != 0) && (ww_state == ww_state_running())):
+		if ((ww_proc != 0) && (ww_state == ww_state_running)):
 			npipes = 2
 		int n = 1 + ww_conns.length + npipes
 		pollfd* fds = pollfd_new_array(n)
-		pollfd_set(fds, 0, s.listener_fd, poll_in())
+		pollfd_set(fds, 0, s.listener_fd, poll_in)
 		int i = 0
 		while (i < ww_conns.length):
-			pollfd_set(fds, 1 + i, ww_conns[i].fd, poll_in())
+			pollfd_set(fds, 1 + i, ww_conns[i].fd, poll_in)
 			i = i + 1
 		if (npipes > 0):
-			pollfd_set(fds, n - 2, ww_proc.stdout_fd, poll_in())
-			pollfd_set(fds, n - 1, ww_proc.stderr_fd, poll_in())
+			pollfd_set(fds, n - 2, ww_proc.stdout_fd, poll_in)
+			pollfd_set(fds, n - 1, ww_proc.stderr_fd, poll_in)
 		int nready = poll_wait(fds, n, 1000)
 		int now = process_monotonic_ms()
 		if (nready > 0):
@@ -961,7 +952,7 @@ void ww_serve_forever(ServerContext* s):
 		free(cast(char*, fds))
 		i = ww_conns.length - 1
 		while (i >= 0):
-			if (now - ww_conns[i].last_ms > ww_idle_ms()):
+			if (now - ww_conns[i].last_ms > ww_idle_ms):
 				ww_conn_close(ww_conns[i])
 				ww_conns.remove(i)
 			i = i - 1

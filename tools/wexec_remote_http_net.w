@@ -24,7 +24,7 @@ int wexec_remote_http_get(char* url, int timeout_ms, int* out_status, char** out
 	req.max_redirects = 0
 	http_response* resp = http_request(req)
 	int ok = 0
-	if (resp.error != http_error_none()):
+	if (resp.error != http_error_none):
 		*out_error = http_error_string(resp.error)
 	else:
 		ok = 1
@@ -51,7 +51,7 @@ int wexec_remote_http_put(char* url, char* body, int body_len, int timeout_ms, c
 	req.body = body
 	req.body_len = body_len
 	http_response* resp = http_request(req)
-	int ok = resp.error == http_error_none()
+	int ok = resp.error == http_error_none
 	if (ok == 0):
 		*out_error = http_error_string(resp.error)
 	http_response_free(resp)

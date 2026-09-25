@@ -81,7 +81,7 @@ int arm64_parse_number(arm64_parse* p):
 
 # Parse a [ ... ] memory operand into op.
 void arm64_parse_mem(arm64_parse* p, asm_operand* op):
-	op.kind = ASM_OP_MEM()
+	op.kind = ASM_OP_MEM
 	op.base = -1
 	op.index = -1
 	op.disp = 0
@@ -138,7 +138,7 @@ void arm64_parse_operand(arm64_parse* p, asm_insn* insn, asm_operand* op):
 		return
 	if (c == '#'):
 		p.pos = p.pos + 1
-		op.kind = ASM_OP_IMM()
+		op.kind = ASM_OP_IMM
 		op.imm = arm64_parse_number(p)
 		op.scale = 0   # movz/movk hw (no lsl parsed => 0), not the x86 default 1
 		return
@@ -151,7 +151,7 @@ void arm64_parse_operand(arm64_parse* p, asm_insn* insn, asm_operand* op):
 			offset = arm64_parse_number(p)
 		else if (arm64_parse_peek(p) == '-'):
 			offset = arm64_parse_number(p)
-		op.kind = ASM_OP_LABEL()
+		op.kind = ASM_OP_LABEL
 		op.label = arm64_dotlabel(offset)
 		op.imm = offset
 		insn.branch_target = insn.address + offset
@@ -159,27 +159,27 @@ void arm64_parse_operand(arm64_parse* p, asm_insn* insn, asm_operand* op):
 	char* tok = arm64_parse_ident(p)
 	int reg = asm_reg_lookup_arm64(tok)
 	if (reg >= 0):
-		op.kind = ASM_OP_REG()
-		op.rclass = ASM_RCLASS_GP()
+		op.kind = ASM_OP_REG
+		op.rclass = ASM_RCLASS_GP
 		op.reg = asm_reg_number(reg)
 		op.size = asm_reg_size(reg)
 		return
 	# condition name (cset x0,eq)
 	int cond = arm64_cond_lookup_cset(tok)
 	if (cond >= 0):
-		op.kind = ASM_OP_LABEL()
+		op.kind = ASM_OP_LABEL
 		op.label = tok
 		op.imm = cond
 		return
 	# bare label fallback
-	op.kind = ASM_OP_LABEL()
+	op.kind = ASM_OP_LABEL
 	op.label = tok
 
 
 # Parse a whole A64 instruction line into insn. Returns 1 on success.
 int asm_arm64_parse(char* line, asm_insn* insn):
 	asm_insn_clear(insn)
-	insn.arch = ASM_ARCH_ARM64()
+	insn.arch = ASM_ARCH_ARM64
 	arm64_parse parse
 	parse.text = line
 	parse.pos = 0

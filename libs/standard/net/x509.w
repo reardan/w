@@ -50,62 +50,26 @@ import lib.mem
 # ---- constants ----------------------------------------------------------------
 
 # Largest certificate we will parse (DER bytes).
-int X509_MAX_CERT_LEN():
-	return 1048576
+const int X509_MAX_CERT_LEN = 1048576
 
 
 # Longest chain x509_verify_chain will build: leaf + 5 intermediates.
-int X509_MAX_CHAIN_LEN():
-	return 6
-
-
-int X509_KEY_UNSUPPORTED():
-	return 0
-
-
-int X509_KEY_RSA():
-	return 1
-
-
-int X509_KEY_EC_P256():
-	return 2
-
-
-int X509_SIGALG_UNKNOWN():
-	return 0
-
-
-int X509_SIGALG_RSA_SHA256():
-	return 1
-
-
-int X509_SIGALG_RSA_SHA384():
-	return 2
-
-
-int X509_SIGALG_RSA_PSS_SHA256():
-	return 3
-
-
-int X509_SIGALG_RSA_PSS_SHA384():
-	return 4
-
-
-int X509_SIGALG_ECDSA_SHA256():
-	return 5
-
-
-int X509_SIGALG_ECDSA_SHA384():
-	return 6
+const int X509_MAX_CHAIN_LEN = 6
+const int X509_KEY_UNSUPPORTED = 0
+const int X509_KEY_RSA = 1
+const int X509_KEY_EC_P256 = 2
+const int X509_SIGALG_UNKNOWN = 0
+const int X509_SIGALG_RSA_SHA256 = 1
+const int X509_SIGALG_RSA_SHA384 = 2
+const int X509_SIGALG_RSA_PSS_SHA256 = 3
+const int X509_SIGALG_RSA_PSS_SHA384 = 4
+const int X509_SIGALG_ECDSA_SHA256 = 5
+const int X509_SIGALG_ECDSA_SHA384 = 6
 
 
 # keyUsage bits (RFC 5280 bit i maps to 1 << i here).
-int X509_KU_DIGITAL_SIGNATURE():
-	return 1
-
-
-int X509_KU_KEY_CERT_SIGN():
-	return 32
+const int X509_KU_DIGITAL_SIGNATURE = 1
+const int X509_KU_KEY_CERT_SIGN = 32
 
 
 # ---- OID content bytes ----------------------------------------------------------
@@ -261,7 +225,7 @@ int x509_two_digits(char* data, int start):
 int x509_parse_time(char* data, int start, int len, int tag, int* out_day, int* out_sec):
 	int year = 0
 	int p = start
-	if (tag == ASN1_UTCTIME()):
+	if (tag == ASN1_UTCTIME):
 		if (len != 13):
 			return 0
 		int yy = x509_two_digits(data, p)
@@ -271,7 +235,7 @@ int x509_parse_time(char* data, int start, int len, int tag, int* out_day, int* 
 		if (yy >= 50):
 			year = 1900 + yy
 		p = p + 2
-	else if (tag == ASN1_GENERALIZEDTIME()):
+	else if (tag == ASN1_GENERALIZEDTIME):
 		if (len != 15):
 			return 0
 		int hi = x509_two_digits(data, p)
@@ -337,7 +301,7 @@ int x509_parse_pss_hash(char* data, int start, int len):
 	asn1_init(&a, data, start, start + len)
 	int os = 0
 	int ol = 0
-	if (asn1_expect(&a, ASN1_OID(), &os, &ol) == 0):
+	if (asn1_expect(&a, ASN1_OID, &os, &ol) == 0):
 		return 0
 	int hlen = 0
 	if (x509_oid_is(data, os, ol, x509_oid_sha256()) != 0):
@@ -349,7 +313,7 @@ int x509_parse_pss_hash(char* data, int start, int len):
 	if (asn1_done(&a) == 0):
 		int ns = 0
 		int nl = 0
-		if (asn1_expect(&a, ASN1_NULL(), &ns, &nl) == 0):
+		if (asn1_expect(&a, ASN1_NULL, &ns, &nl) == 0):
 			return 0
 		if (nl != 0):
 			return 0
@@ -369,74 +333,74 @@ int x509_parse_pss_params(char* data, int start, int len):
 	int l = 0
 	# [0] hashAlgorithm (required here: the sha1 default is unsupported)
 	if (asn1_expect(&p, ASN1_CONTEXT(0), &s, &l) == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	int hlen = 0
 	asn1 h
 	asn1_init(&h, data, s, s + l)
 	int hs = 0
 	int hl = 0
 	if (asn1_expect(&h, ASN1_SEQUENCE(), &hs, &hl) == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	if (asn1_done(&h) == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	hlen = x509_parse_pss_hash(data, hs, hl)
 	if (hlen == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	# [1] maskGenAlgorithm: MGF1 with the same hash
 	if (asn1_expect(&p, ASN1_CONTEXT(1), &s, &l) == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	asn1 m
 	asn1_init(&m, data, s, s + l)
 	int ms = 0
 	int ml = 0
 	if (asn1_expect(&m, ASN1_SEQUENCE(), &ms, &ml) == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	if (asn1_done(&m) == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	asn1 mi
 	asn1_init(&mi, data, ms, ms + ml)
 	int os = 0
 	int ol = 0
-	if (asn1_expect(&mi, ASN1_OID(), &os, &ol) == 0):
-		return X509_SIGALG_UNKNOWN()
+	if (asn1_expect(&mi, ASN1_OID, &os, &ol) == 0):
+		return X509_SIGALG_UNKNOWN
 	if (x509_oid_is(data, os, ol, x509_oid_mgf1()) == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	if (asn1_expect(&mi, ASN1_SEQUENCE(), &ms, &ml) == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	if (asn1_done(&mi) == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	if (x509_parse_pss_hash(data, ms, ml) != hlen):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	# [2] saltLength: must equal the hash length
 	if (asn1_expect(&p, ASN1_CONTEXT(2), &s, &l) == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	asn1 sl
 	asn1_init(&sl, data, s, s + l)
 	int salt = 0
 	if (asn1_read_small_int(&sl, &salt) == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	if (asn1_done(&sl) == 0):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	if (salt != hlen):
-		return X509_SIGALG_UNKNOWN()
+		return X509_SIGALG_UNKNOWN
 	# [3] trailerField: absent or 1
 	if (asn1_done(&p) == 0):
 		if (asn1_expect(&p, ASN1_CONTEXT(3), &s, &l) == 0):
-			return X509_SIGALG_UNKNOWN()
+			return X509_SIGALG_UNKNOWN
 		asn1 t
 		asn1_init(&t, data, s, s + l)
 		int trailer = 0
 		if (asn1_read_small_int(&t, &trailer) == 0):
-			return X509_SIGALG_UNKNOWN()
+			return X509_SIGALG_UNKNOWN
 		if (asn1_done(&t) == 0):
-			return X509_SIGALG_UNKNOWN()
+			return X509_SIGALG_UNKNOWN
 		if (trailer != 1):
-			return X509_SIGALG_UNKNOWN()
+			return X509_SIGALG_UNKNOWN
 		if (asn1_done(&p) == 0):
-			return X509_SIGALG_UNKNOWN()
+			return X509_SIGALG_UNKNOWN
 	if (hlen == 48):
-		return X509_SIGALG_RSA_PSS_SHA384()
-	return X509_SIGALG_RSA_PSS_SHA256()
+		return X509_SIGALG_RSA_PSS_SHA384
+	return X509_SIGALG_RSA_PSS_SHA256
 
 
 # Read a signature AlgorithmIdentifier. The TLV span (tag byte through end)
@@ -456,20 +420,20 @@ int x509_parse_sig_algorithm(asn1* r, int* out_alg, int* out_tlv_start, int* out
 	asn1_init(&a, r.data, s, s + l)
 	int os = 0
 	int ol = 0
-	if (asn1_expect(&a, ASN1_OID(), &os, &ol) == 0):
+	if (asn1_expect(&a, ASN1_OID, &os, &ol) == 0):
 		return 0
-	int alg = X509_SIGALG_UNKNOWN()
+	int alg = X509_SIGALG_UNKNOWN
 	int want_null_params = 0
 	if (x509_oid_is(r.data, os, ol, x509_oid_sha256_rsa()) != 0):
-		alg = X509_SIGALG_RSA_SHA256()
+		alg = X509_SIGALG_RSA_SHA256
 		want_null_params = 1
 	else if (x509_oid_is(r.data, os, ol, x509_oid_sha384_rsa()) != 0):
-		alg = X509_SIGALG_RSA_SHA384()
+		alg = X509_SIGALG_RSA_SHA384
 		want_null_params = 1
 	else if (x509_oid_is(r.data, os, ol, x509_oid_ecdsa_sha256()) != 0):
-		alg = X509_SIGALG_ECDSA_SHA256()
+		alg = X509_SIGALG_ECDSA_SHA256
 	else if (x509_oid_is(r.data, os, ol, x509_oid_ecdsa_sha384()) != 0):
-		alg = X509_SIGALG_ECDSA_SHA384()
+		alg = X509_SIGALG_ECDSA_SHA384
 	else if (x509_oid_is(r.data, os, ol, x509_oid_rsassa_pss()) != 0):
 		int ps = 0
 		int pl = 0
@@ -484,14 +448,14 @@ int x509_parse_sig_algorithm(asn1* r, int* out_alg, int* out_tlv_start, int* out
 		while (asn1_done(&a) == 0):
 			if (asn1_skip(&a) == 0):
 				return 0
-		*out_alg = X509_SIGALG_UNKNOWN()
+		*out_alg = X509_SIGALG_UNKNOWN
 		return 1
 	if (want_null_params != 0):
 		# RSA algorithms carry explicit NULL parameters (absent tolerated).
 		if (asn1_done(&a) == 0):
 			int ns = 0
 			int nl = 0
-			if (asn1_expect(&a, ASN1_NULL(), &ns, &nl) == 0):
+			if (asn1_expect(&a, ASN1_NULL, &ns, &nl) == 0):
 				return 0
 			if (nl != 0):
 				return 0
@@ -521,16 +485,16 @@ int x509_parse_spki(asn1* r, x509_cert* c):
 	asn1_init(&alg, r.data, als, als + all)
 	int os = 0
 	int ol = 0
-	if (asn1_expect(&alg, ASN1_OID(), &os, &ol) == 0):
+	if (asn1_expect(&alg, ASN1_OID, &os, &ol) == 0):
 		return 0
-	int kind = X509_KEY_UNSUPPORTED()
+	int kind = X509_KEY_UNSUPPORTED
 	if (x509_oid_is(r.data, os, ol, x509_oid_rsa_encryption()) != 0):
-		kind = X509_KEY_RSA()
+		kind = X509_KEY_RSA
 		# rsaEncryption parameters: NULL (absent tolerated).
 		if (asn1_done(&alg) == 0):
 			int ns = 0
 			int nl = 0
-			if (asn1_expect(&alg, ASN1_NULL(), &ns, &nl) == 0):
+			if (asn1_expect(&alg, ASN1_NULL, &ns, &nl) == 0):
 				return 0
 			if (nl != 0):
 				return 0
@@ -541,12 +505,12 @@ int x509_parse_spki(asn1* r, x509_cert* c):
 		# degrade to an unsupported key.
 		int cs = 0
 		int cl = 0
-		if (asn1_expect(&alg, ASN1_OID(), &cs, &cl) == 0):
+		if (asn1_expect(&alg, ASN1_OID, &cs, &cl) == 0):
 			return 0
 		if (asn1_done(&alg) == 0):
 			return 0
 		if (x509_oid_is(r.data, cs, cl, x509_oid_prime256v1()) != 0):
-			kind = X509_KEY_EC_P256()
+			kind = X509_KEY_EC_P256
 	else:
 		while (asn1_done(&alg) == 0):
 			if (asn1_skip(&alg) == 0):
@@ -557,7 +521,7 @@ int x509_parse_spki(asn1* r, x509_cert* c):
 		return 0
 	if (asn1_done(&spki) == 0):
 		return 0
-	if (kind == X509_KEY_RSA()):
+	if (kind == X509_KEY_RSA):
 		asn1 rk
 		asn1_init(&rk, r.data, ks, ks + kl)
 		int rs = 0
@@ -584,12 +548,12 @@ int x509_parse_spki(asn1* r, x509_cert* c):
 			return 0
 		if (el > 8):
 			return 0
-		c.key_type = X509_KEY_RSA()
+		c.key_type = X509_KEY_RSA
 		c.rsa_n_start = ns
 		c.rsa_n_len = nl
 		c.rsa_e_start = es
 		c.rsa_e_len = el
-	else if (kind == X509_KEY_EC_P256()):
+	else if (kind == X509_KEY_EC_P256):
 		# Uncompressed point only: 0x04 || X(32) || Y(32).
 		if (kl != 65):
 			return 0
@@ -600,9 +564,9 @@ int x509_parse_spki(asn1* r, x509_cert* c):
 		for i in range(32):
 			c.ec_qx[i] = r.data[ks + 1 + i]
 			c.ec_qy[i] = r.data[ks + 33 + i]
-		c.key_type = X509_KEY_EC_P256()
+		c.key_type = X509_KEY_EC_P256
 	else:
-		c.key_type = X509_KEY_UNSUPPORTED()
+		c.key_type = X509_KEY_UNSUPPORTED
 	return 1
 
 
@@ -622,11 +586,11 @@ int x509_parse_ext_basic_constraints(x509_cert* c, char* data, int start, int le
 	asn1 b
 	asn1_init(&b, data, s, s + l)
 	int ca = 0
-	if (asn1_peek(&b) == ASN1_BOOLEAN()):
+	if (asn1_peek(&b) == ASN1_BOOLEAN):
 		if (asn1_read_boolean(&b, &ca) == 0):
 			return 0
 	int plen = -1
-	if (asn1_peek(&b) == ASN1_INTEGER()):
+	if (asn1_peek(&b) == ASN1_INTEGER):
 		if (asn1_read_small_int(&b, &plen) == 0):
 			return 0
 		if (plen < 0):
@@ -646,7 +610,7 @@ int x509_parse_ext_key_usage(x509_cert* c, char* data, int start, int len):
 	asn1_init(&r, data, start, start + len)
 	int s = 0
 	int l = 0
-	if (asn1_expect(&r, ASN1_BIT_STRING(), &s, &l) == 0):
+	if (asn1_expect(&r, ASN1_BIT_STRING, &s, &l) == 0):
 		return 0
 	if (asn1_done(&r) == 0):
 		return 0
@@ -688,7 +652,7 @@ int x509_parse_ext_eku(x509_cert* c, char* data, int start, int len):
 	while (asn1_done(&e) == 0):
 		int os = 0
 		int ol = 0
-		if (asn1_expect(&e, ASN1_OID(), &os, &ol) == 0):
+		if (asn1_expect(&e, ASN1_OID, &os, &ol) == 0):
 			return 0
 		if (x509_oid_is(data, os, ol, x509_oid_server_auth()) != 0):
 			c.eku_server_auth = 1
@@ -759,15 +723,15 @@ int x509_parse_extensions(x509_cert* c, char* data, int start, int len):
 		asn1_init(&e, data, es, es + el)
 		int os = 0
 		int ol = 0
-		if (asn1_expect(&e, ASN1_OID(), &os, &ol) == 0):
+		if (asn1_expect(&e, ASN1_OID, &os, &ol) == 0):
 			return 0
 		int critical = 0
-		if (asn1_peek(&e) == ASN1_BOOLEAN()):
+		if (asn1_peek(&e) == ASN1_BOOLEAN):
 			if (asn1_read_boolean(&e, &critical) == 0):
 				return 0
 		int vs = 0
 		int vl = 0
-		if (asn1_expect(&e, ASN1_OCTET_STRING(), &vs, &vl) == 0):
+		if (asn1_expect(&e, ASN1_OCTET_STRING, &vs, &vl) == 0):
 			return 0
 		if (asn1_done(&e) == 0):
 			return 0
@@ -982,7 +946,7 @@ int x509_parse_into(x509_cert* c):
 x509_cert* x509_parse(char* der, int len):
 	if (der == 0):
 		return 0
-	if ((len < 1) | (len > X509_MAX_CERT_LEN())):
+	if ((len < 1) || (len > X509_MAX_CERT_LEN)):
 		return 0
 	x509_cert* c = new x509_cert()
 	c.der = malloc(len)
@@ -993,7 +957,7 @@ x509_cert* x509_parse(char* der, int len):
 	c.version = 0
 	c.serial_start = 0
 	c.serial_len = 0
-	c.sig_alg = X509_SIGALG_UNKNOWN()
+	c.sig_alg = X509_SIGALG_UNKNOWN
 	c.issuer_start = 0
 	c.issuer_len = 0
 	c.subject_start = 0
@@ -1002,7 +966,7 @@ x509_cert* x509_parse(char* der, int len):
 	c.nb_sec = 0
 	c.na_day = 0
 	c.na_sec = 0
-	c.key_type = X509_KEY_UNSUPPORTED()
+	c.key_type = X509_KEY_UNSUPPORTED
 	c.rsa_n_start = 0
 	c.rsa_n_len = 0
 	c.rsa_e_start = 0
@@ -1474,23 +1438,23 @@ int x509_ecdsa_sig_raw_to_der(char* r32, char* s32, char* out, int* out_len):
 # Verify that issuer's public key signed child's tbsCertificate. Returns 1/0.
 int x509_check_signature(x509_cert* child, x509_cert* issuer):
 	int alg = child.sig_alg
-	if (alg == X509_SIGALG_UNKNOWN()):
+	if (alg == X509_SIGALG_UNKNOWN):
 		return 0
-	int whash_alg = WHASH_SHA256()
+	int whash_alg = WHASH_SHA256
 	int dlen = 32
-	if ((alg == X509_SIGALG_RSA_SHA384()) | (alg == X509_SIGALG_RSA_PSS_SHA384()) | (alg == X509_SIGALG_ECDSA_SHA384())):
-		whash_alg = WHASH_SHA384()
+	if ((alg == X509_SIGALG_RSA_SHA384) || (alg == X509_SIGALG_RSA_PSS_SHA384) || (alg == X509_SIGALG_ECDSA_SHA384)):
+		whash_alg = WHASH_SHA384
 		dlen = 48
 	char* digest = malloc(48)
 	whash_oneshot(whash_alg, child.der + child.tbs_start, child.tbs_len, digest)
 	int result = 0
 	int is_rsa = 0
-	if ((alg == X509_SIGALG_RSA_SHA256()) | (alg == X509_SIGALG_RSA_SHA384())):
+	if ((alg == X509_SIGALG_RSA_SHA256) || (alg == X509_SIGALG_RSA_SHA384)):
 		is_rsa = 1
-	if ((alg == X509_SIGALG_RSA_PSS_SHA256()) | (alg == X509_SIGALG_RSA_PSS_SHA384())):
+	if ((alg == X509_SIGALG_RSA_PSS_SHA256) || (alg == X509_SIGALG_RSA_PSS_SHA384)):
 		is_rsa = 2
 	if (is_rsa != 0):
-		if (issuer.key_type == X509_KEY_RSA()):
+		if (issuer.key_type == X509_KEY_RSA):
 			char* n = issuer.der + issuer.rsa_n_start
 			char* e = issuer.der + issuer.rsa_e_start
 			char* sig = child.der + child.sig_start
@@ -1505,7 +1469,7 @@ int x509_check_signature(x509_cert* child, x509_cert* issuer):
 				else:
 					result = rsa_pss_verify_sha384(n, issuer.rsa_n_len, e, issuer.rsa_e_len, sig, child.sig_len, digest)
 	else:
-		if (issuer.key_type == X509_KEY_EC_P256()):
+		if (issuer.key_type == X509_KEY_EC_P256):
 			char* r32 = malloc(32)
 			char* s32 = malloc(32)
 			if (x509_ecdsa_sig_to_raw(child.der + child.sig_start, child.sig_len, r32, s32) != 0):
@@ -1556,7 +1520,7 @@ char* x509_issuer_check(x509_cert* issuer, int below, int now_day, int now_sec, 
 		if (issuer.version >= 3):
 			return c"x509: issuer is not a CA"
 	if (issuer.has_key_usage != 0):
-		if ((issuer.key_usage & X509_KU_KEY_CERT_SIGN()) == 0):
+		if ((issuer.key_usage & X509_KU_KEY_CERT_SIGN) == 0):
 			return c"x509: issuer key usage does not allow certificate signing"
 	return 0
 
@@ -1595,7 +1559,7 @@ int x509_verify_chain(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store*
 		x509_set_err(err_out, c"x509: certificate expired")
 		return 0
 	if (leaf.has_key_usage != 0):
-		if ((leaf.key_usage & X509_KU_DIGITAL_SIGNATURE()) == 0):
+		if ((leaf.key_usage & X509_KU_DIGITAL_SIGNATURE) == 0):
 			x509_set_err(err_out, c"x509: certificate not valid for server authentication")
 			return 0
 	if (leaf.has_eku != 0):
@@ -1633,7 +1597,7 @@ int x509_verify_chain(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store*
 		if (searching == 0):
 			break
 		# 2) an intermediate from the extras pile
-		if (chain.length >= X509_MAX_CHAIN_LEN()):
+		if (chain.length >= X509_MAX_CHAIN_LEN):
 			reason = c"x509: certificate chain too long"
 			break
 		int advanced = 0
@@ -1708,7 +1672,7 @@ int x509_parse_sec1_key(char* data, int start, int end, int require_params, char
 		return 0
 	int ds = 0
 	int dl = 0
-	if (asn1_expect(&k, ASN1_OCTET_STRING(), &ds, &dl) == 0):
+	if (asn1_expect(&k, ASN1_OCTET_STRING, &ds, &dl) == 0):
 		return 0
 	if (dl != 32):
 		return 0
@@ -1722,7 +1686,7 @@ int x509_parse_sec1_key(char* data, int start, int end, int require_params, char
 		asn1_init(&p, data, ps, ps + pl)
 		int os = 0
 		int ol = 0
-		if (asn1_expect(&p, ASN1_OID(), &os, &ol) == 0):
+		if (asn1_expect(&p, ASN1_OID, &os, &ol) == 0):
 			return 0
 		if (asn1_done(&p) == 0):
 			return 0
@@ -1807,13 +1771,13 @@ int x509_parse_pkcs8_ec_key(char* data, int start, int end, char* out_d32):
 	asn1_init(&alg, data, als, als + all)
 	int os = 0
 	int ol = 0
-	if (asn1_expect(&alg, ASN1_OID(), &os, &ol) == 0):
+	if (asn1_expect(&alg, ASN1_OID, &os, &ol) == 0):
 		return 0
 	if (x509_oid_is(data, os, ol, x509_oid_ec_public_key()) == 0):
 		return 0
 	int cs = 0
 	int cl = 0
-	if (asn1_expect(&alg, ASN1_OID(), &cs, &cl) == 0):
+	if (asn1_expect(&alg, ASN1_OID, &cs, &cl) == 0):
 		return 0
 	if (x509_oid_is(data, cs, cl, x509_oid_prime256v1()) == 0):
 		return 0
@@ -1821,7 +1785,7 @@ int x509_parse_pkcs8_ec_key(char* data, int start, int end, char* out_d32):
 		return 0
 	int ps = 0
 	int pl = 0
-	if (asn1_expect(&k, ASN1_OCTET_STRING(), &ps, &pl) == 0):
+	if (asn1_expect(&k, ASN1_OCTET_STRING, &ps, &pl) == 0):
 		return 0
 	# Optional attributes [0] are tolerated and ignored.
 	if (asn1_peek(&k) == ASN1_CONTEXT(0)):

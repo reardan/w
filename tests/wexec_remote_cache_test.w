@@ -370,7 +370,7 @@ void test_remote_cache_round_trip():
 
 	# Take the server down before phase 3: kill + reap so the listening
 	# socket is provably gone (not just "probably done answering").
-	kill(pid, sigkill())
+	kill(pid, sigkill)
 	int server_status = 0
 	wait4(pid, &server_status, 0, 0)
 

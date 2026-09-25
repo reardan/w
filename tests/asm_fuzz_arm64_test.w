@@ -63,16 +63,16 @@ int asm_fuzz_bytes4_equal(char* a, char* b):
 
 
 void asm_fuzz_arm64_mutate_operand(asm_operand* op):
-	if (op.kind == ASM_OP_REG()):
+	if (op.kind == ASM_OP_REG):
 		if (op.reg != 31):
 			op.reg = fuzz_range(31)
 		return
-	if (op.kind == ASM_OP_IMM()):
+	if (op.kind == ASM_OP_IMM):
 		# A conservative 12-bit unsigned range: exactly legal for add/sub/cmp
 		# immediates, and a legal subset of movz/movk/svc/brk's wider fields.
 		op.imm = fuzz_range(4096)
 		return
-	if (op.kind == ASM_OP_MEM()):
+	if (op.kind == ASM_OP_MEM):
 		if (op.disp_size == ARM64_ADDR_PCREL()):
 			# Literal-pool / pc-relative load: address-derived, leave it be.
 			return

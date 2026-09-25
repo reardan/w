@@ -175,8 +175,7 @@ void ui_calendar_show(ui_calendar_state* st, ui_date* d):
 	st.month = d.month
 
 
-int ui_calendar_cells():
-	return 42
+const int ui_calendar_cells = 42
 
 
 # Cells before the 1st of the shown month, 0..6.
@@ -197,7 +196,7 @@ int ui_calendar_cell_of(ui_calendar_state* st, ui_date* d):
 	ui_date first
 	ui_calendar_cell_date(st, 0, &first)
 	int cell = ui_date_days(d) - ui_date_days(&first)
-	if ((cell < 0) || (cell >= ui_calendar_cells())):
+	if ((cell < 0) || (cell >= ui_calendar_cells)):
 		return -1
 	return cell
 
@@ -246,8 +245,7 @@ int ui_calendar_cell_at(ui_context* ctx, ui_rect r, int x, int y):
 	return row * 7 + col
 
 
-int ui_calendar_ids():
-	return 3
+const int ui_calendar_ids = 3
 
 
 # What ui_calendar_grid reports.
@@ -349,8 +347,8 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 		ui_draw_rrect(ctx.rndr, ui_rect_inset(prev, 2.0), s * 0.5, ctx.theme.widget_hot)
 	if (ctx.hot == next_id):
 		ui_draw_rrect(ctx.rndr, ui_rect_inset(next, 2.0), s * 0.5, ctx.theme.widget_hot)
-	ui_render_mask(ctx.rndr, pc, ui_mask_chevron_right(), 1, 0, ui_text_color(ctx))
-	ui_render_mask(ctx.rndr, nc, ui_mask_chevron_right(), 0, 0, ui_text_color(ctx))
+	ui_render_mask(ctx.rndr, pc, ui_mask_chevron_right, 1, 0, ui_text_color(ctx))
+	ui_render_mask(ctx.rndr, nc, ui_mask_chevron_right, 0, 0, ui_text_color(ctx))
 	char[32] title
 	char* name = time_month_name(st.month)
 	int n = 0
@@ -403,7 +401,7 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 	ui_date d
 	char[4] num
 	int cell = 0
-	while (cell < ui_calendar_cells()):
+	while (cell < ui_calendar_cells):
 		ui_calendar_cell_date(st, cell, &d)
 		int days = ui_date_days(&d)
 		ui_rect cr = ui_calendar_cell_rect(ctx, r, cell)
@@ -444,7 +442,7 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 # frame *selected changes. today (may be 0) is ringed.
 int ui_calendar(ui_context* ctx, ui_calendar_state* st, ui_date* selected, ui_date* today):
 	int base = ctx.next_id
-	ctx.next_id = ctx.next_id + ui_calendar_ids()
+	ctx.next_id = ctx.next_id + ui_calendar_ids
 	ui_rect r = ui_layout_next(ctx, ui_calendar_width(ctx), ui_calendar_height(ctx))
 	ui_date picked
 	ui_date_clear(&picked)

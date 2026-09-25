@@ -37,67 +37,28 @@ import lib.time
 import lib.mem
 
 
-int dns_port():
-	return 53
-
-
-int dns_default_timeout_ms():
-	return 2000
-
-
-int dns_max_nameservers():
-	return 3
-
-
-int dns_udp_message_max():
-	return 512
-
-
-int dns_tcp_message_max():
-	return 4096
+const int dns_port = 53
+const int dns_default_timeout_ms = 2000
+const int dns_max_nameservers = 3
+const int dns_udp_message_max = 512
+const int dns_tcp_message_max = 4096
 
 
 # Longest decoded (presentation-form) name we accept, plus one for the
 # terminating NUL: decode buffers are dns_name_buffer_size() bytes.
-int dns_name_buffer_size():
-	return 256
-
-
-int dns_max_cname_depth():
-	return 8
-
-
-int dns_max_pointer_hops():
-	return 32
-
-
-int dns_max_answers():
-	return 64
-
-
-int dns_type_a():
-	return 1
-
-
-int dns_type_cname():
-	return 5
-
-
-int dns_class_in():
-	return 1
+const int dns_name_buffer_size = 256
+const int dns_max_cname_depth = 8
+const int dns_max_pointer_hops = 32
+const int dns_max_answers = 64
+const int dns_type_a = 1
+const int dns_type_cname = 5
+const int dns_class_in = 1
 
 
 # dns_parse_response result codes.
-int dns_result_error():
-	return 0
-
-
-int dns_result_ok():
-	return 1
-
-
-int dns_result_truncated():
-	return 2
+const int dns_result_error = 0
+const int dns_result_ok = 1
+const int dns_result_truncated = 2
 
 
 int dns_lower_char(int c):
@@ -358,9 +319,9 @@ int dns_build_query(char* hostname, int query_id, char* out, int out_cap):
 			i = i + 1
 	out[pos] = 0
 	out[pos + 1] = 0
-	out[pos + 2] = dns_type_a()
+	out[pos + 2] = dns_type_a
 	out[pos + 3] = 0
-	out[pos + 4] = dns_class_in()
+	out[pos + 4] = dns_class_in
 	return pos + 5
 
 
@@ -395,7 +356,7 @@ int dns_read_name(char* msg, int msg_len, int offset, char* out, int out_cap, in
 			if (target >= pos):
 				return 0
 			hops = hops + 1
-			if (hops > dns_max_pointer_hops()):
+			if (hops > dns_max_pointer_hops):
 				return 0
 			if (end < 0):
 				end = pos + 2
@@ -424,7 +385,7 @@ int dns_read_name(char* msg, int msg_len, int offset, char* out, int out_cap, in
 int dns_parse_fail(char* name, char* target):
 	free(name)
 	free(target)
-	return dns_result_error()
+	return dns_result_error
 
 
 # Validates and parses a response to an A/IN query for hostname with
@@ -435,48 +396,48 @@ int dns_parse_fail(char* name, char* target):
 # TCP retry, or dns_result_error() for anything malformed.
 int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int* out_ip):
 	if ((msg == 0) || (hostname == 0)):
-		return dns_result_error()
+		return dns_result_error
 	if ((msg_len < 12) || (msg_len > 65535)):
-		return dns_result_error()
+		return dns_result_error
 	if (load_be16(msg) != (query_id & 65535)):
-		return dns_result_error()
+		return dns_result_error
 	int flags = load_be16(msg + 2)
 	if ((flags & 0x8000) == 0):
 		# Not a response.
-		return dns_result_error()
+		return dns_result_error
 	if ((flags & 0x7800) != 0):
 		# Opcode must be QUERY.
-		return dns_result_error()
+		return dns_result_error
 	if ((flags & 0x0200) != 0):
-		return dns_result_truncated()
+		return dns_result_truncated
 	if ((flags & 15) != 0):
 		# Non-zero RCODE (NXDOMAIN, SERVFAIL, ...).
-		return dns_result_error()
+		return dns_result_error
 	if (load_be16(msg + 4) != 1):
-		return dns_result_error()
+		return dns_result_error
 	int ancount = load_be16(msg + 6)
-	if (ancount > dns_max_answers()):
-		return dns_result_error()
+	if (ancount > dns_max_answers):
+		return dns_result_error
 
 	# Echoed question must be our A/IN question for hostname.
-	char* name = malloc(dns_name_buffer_size())
+	char* name = malloc(dns_name_buffer_size)
 	char* target = strclone(hostname)
 	int pos = 0
-	if (dns_read_name(msg, msg_len, 12, name, dns_name_buffer_size(), &pos) == 0):
+	if (dns_read_name(msg, msg_len, 12, name, dns_name_buffer_size, &pos) == 0):
 		return dns_parse_fail(name, target)
 	if (dns_names_equal_ci(name, target) == 0):
 		return dns_parse_fail(name, target)
 	if (pos + 4 > msg_len):
 		return dns_parse_fail(name, target)
-	if (load_be16(msg + pos) != dns_type_a()):
+	if (load_be16(msg + pos) != dns_type_a):
 		return dns_parse_fail(name, target)
-	if (load_be16(msg + pos + 2) != dns_class_in()):
+	if (load_be16(msg + pos + 2) != dns_class_in):
 		return dns_parse_fail(name, target)
 	pos = pos + 4
 
 	int depth = 0
 	for i in range(ancount):
-		if (dns_read_name(msg, msg_len, pos, name, dns_name_buffer_size(), &pos) == 0):
+		if (dns_read_name(msg, msg_len, pos, name, dns_name_buffer_size, &pos) == 0):
 			return dns_parse_fail(name, target)
 		if (pos + 10 > msg_len):
 			return dns_parse_fail(name, target)
@@ -486,31 +447,31 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 		int rdata = pos + 10
 		if (rdata + rdlength > msg_len):
 			return dns_parse_fail(name, target)
-		if (rclass != dns_class_in()):
+		if (rclass != dns_class_in):
 			return dns_parse_fail(name, target)
 		if (dns_names_equal_ci(name, target) != 0):
-			if (rtype == dns_type_a()):
+			if (rtype == dns_type_a):
 				if (rdlength != 4):
 					return dns_parse_fail(name, target)
 				*out_ip = load_be32(msg + rdata)
 				free(name)
 				free(target)
-				return dns_result_ok()
-			if (rtype == dns_type_cname()):
+				return dns_result_ok
+			if (rtype == dns_type_cname):
 				int cname_end = 0
-				if (dns_read_name(msg, msg_len, rdata, name, dns_name_buffer_size(), &cname_end) == 0):
+				if (dns_read_name(msg, msg_len, rdata, name, dns_name_buffer_size, &cname_end) == 0):
 					return dns_parse_fail(name, target)
 				if (cname_end > rdata + rdlength):
 					return dns_parse_fail(name, target)
 				depth = depth + 1
-				if (depth > dns_max_cname_depth()):
+				if (depth > dns_max_cname_depth):
 					return dns_parse_fail(name, target)
 				free(target)
 				target = strclone(name)
 		pos = rdata + rdlength
 	free(name)
 	free(target)
-	return dns_result_error()
+	return dns_result_error
 
 
 # Reads exactly want bytes from a (nonblocking) TCP socket, polling
@@ -521,7 +482,7 @@ int dns_tcp_recv_exact(int sock, char* buf, int want, int deadline_ms):
 		int remaining = deadline_ms - time_monotonic_ms()
 		if (remaining <= 0):
 			return 0
-		int ready = io_poll(sock, poll_in(), remaining)
+		int ready = io_poll(sock, poll_in, remaining)
 		if (ready <= 0):
 			return 0
 		int count = socket_recv(sock, buf + got, want - got, 0)
@@ -540,9 +501,9 @@ int dns_tcp_recv_exact(int sock, char* buf, int want, int deadline_ms):
 # whole exchange (connect, send, receive) shares one timeout budget.
 # Returns 1 with the host-order address in *out_ip, else 0.
 int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip):
-	char* query = malloc(2 + dns_udp_message_max())
+	char* query = malloc(2 + dns_udp_message_max)
 	int query_id = dns_random_id()
-	int query_len = dns_build_query(hostname, query_id, query + 2, dns_udp_message_max())
+	int query_len = dns_build_query(hostname, query_id, query + 2, dns_udp_message_max)
 	if (query_len == 0):
 		free(query)
 		return 0
@@ -566,7 +527,7 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 		return 0
 	int response_len = load_be16(header)
 	free(header)
-	if ((response_len < 12) | (response_len > dns_tcp_message_max())):
+	if ((response_len < 12) || (response_len > dns_tcp_message_max)):
 		close(sock)
 		return 0
 	char* response = malloc(response_len)
@@ -577,7 +538,7 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 	close(sock)
 	int parsed = dns_parse_response(response, response_len, query_id, hostname, out_ip)
 	free(response)
-	if (parsed == dns_result_ok()):
+	if (parsed == dns_result_ok):
 		return 1
 	return 0
 
@@ -588,9 +549,9 @@ int dns_query_server_tcp(int server_ip, int server_port, char* hostname, int tim
 # arrive within timeout_ms. Returns 1 with the host-order address in
 # *out_ip, else 0.
 int dns_query_server(int server_ip, int server_port, char* hostname, int timeout_ms, int* out_ip):
-	char* query = malloc(dns_udp_message_max())
+	char* query = malloc(dns_udp_message_max)
 	int query_id = dns_random_id()
-	int query_len = dns_build_query(hostname, query_id, query, dns_udp_message_max())
+	int query_len = dns_build_query(hostname, query_id, query, dns_udp_message_max)
 	if (query_len == 0):
 		free(query)
 		return 0
@@ -603,16 +564,16 @@ int dns_query_server(int server_ip, int server_port, char* hostname, int timeout
 	if (sent != query_len):
 		close(sock)
 		return 0
-	int ready = io_poll(sock, poll_in(), timeout_ms)
+	int ready = io_poll(sock, poll_in, timeout_ms)
 	if (ready <= 0):
 		close(sock)
 		return 0
-	if ((ready & poll_in()) == 0):
+	if ((ready & poll_in) == 0):
 		close(sock)
 		return 0
-	char* response = malloc(dns_udp_message_max())
+	char* response = malloc(dns_udp_message_max)
 	sockaddr_in from
-	int received = socket_recv_from_ipv4(sock, response, dns_udp_message_max(), 0, &from)
+	int received = socket_recv_from_ipv4(sock, response, dns_udp_message_max, 0, &from)
 	close(sock)
 	if (received <= 0):
 		free(response)
@@ -626,9 +587,9 @@ int dns_query_server(int server_ip, int server_port, char* hostname, int timeout
 		return 0
 	int parsed = dns_parse_response(response, received, query_id, hostname, out_ip)
 	free(response)
-	if (parsed == dns_result_ok()):
+	if (parsed == dns_result_ok):
 		return 1
-	if (parsed == dns_result_truncated()):
+	if (parsed == dns_result_truncated):
 		return dns_query_server_tcp(server_ip, server_port, hostname, timeout_ms, out_ip)
 	return 0
 
@@ -656,13 +617,13 @@ int dns_resolve_ipv4(char* hostname, int* out_ip):
 		return 1
 	if (dns_hosts_lookup_file(dns_hosts_path(), hostname, out_ip) != 0):
 		return 1
-	int* servers = malloc(dns_max_nameservers() * __word_size__)
-	int count = dns_resolv_conf_nameservers_file(dns_resolv_conf_path(), servers, dns_max_nameservers())
+	int* servers = malloc(dns_max_nameservers * __word_size__)
+	int count = dns_resolv_conf_nameservers_file(dns_resolv_conf_path(), servers, dns_max_nameservers)
 	if (count == 0):
 		servers[0] = ip4_from_string(c"127.0.0.1")
 		count = 1
 	for i in range(count):
-		if (dns_query_server(servers[i], dns_port(), hostname, dns_default_timeout_ms(), out_ip) != 0):
+		if (dns_query_server(servers[i], dns_port, hostname, dns_default_timeout_ms, out_ip) != 0):
 			free(servers)
 			return 1
 	free(servers)

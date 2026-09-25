@@ -52,8 +52,7 @@ import lib.bytes
 import lib.mem
 
 
-int sstable_version():
-	return 1
+const int sstable_version = 1
 
 
 # ---- little-endian + buffer helpers -----------------------------------------
@@ -69,8 +68,7 @@ int sstable_bloom_bits(int count):
 	return m
 
 
-int sstable_bloom_probes():
-	return 5
+const int sstable_bloom_probes = 5
 
 
 # ---- writer ------------------------------------------------------------------
@@ -139,7 +137,7 @@ int sstable_writer_add(sstable_writer* w, char* key, char* value, int value_len,
 # either way). Returns 1 on success, 0 on an I/O failure.
 int sstable_writer_finish(sstable_writer* w):
 	int count = w.keys.length
-	bloom_filter* b = bloom_new(sstable_bloom_bits(count), sstable_bloom_probes())
+	bloom_filter* b = bloom_new(sstable_bloom_bits(count), sstable_bloom_probes)
 	int i = 0
 	while (i < count):
 		bloom_add(b, w.keys[i])
@@ -155,7 +153,7 @@ int sstable_writer_finish(sstable_writer* w):
 	buf[1] = 83    # S
 	buf[2] = 83    # S
 	buf[3] = 84    # T
-	store_le32(buf + 4, sstable_version())
+	store_le32(buf + 4, sstable_version)
 	store_le32(buf + 8, bloom_len)
 	bloom_serialize(b, buf + 12)
 	store_le32(buf + 12 + bloom_len, count)
@@ -228,7 +226,7 @@ sstable* sstable_open(char* path):
 	int got = read_exact(fd, hdr, 12)
 	int ok = 0
 	if (got == 12 && (hdr[0] & 255) == 87 && (hdr[1] & 255) == 83 && (hdr[2] & 255) == 83 && (hdr[3] & 255) == 84):
-		if (load_le32(hdr + 4) == sstable_version()):
+		if (load_le32(hdr + 4) == sstable_version):
 			ok = 1
 	int bloom_len = load_le32(hdr + 8)
 	free(hdr)

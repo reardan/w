@@ -46,24 +46,11 @@ jsonrpc_server* jsonrpc_connection_server(jsonrpc_connection* conn):
 
 /* Standard JSON-RPC 2.0 error codes. */
 
-int jsonrpc_error_parse():
-	return -32700
-
-
-int jsonrpc_error_invalid_request():
-	return -32600
-
-
-int jsonrpc_error_method_not_found():
-	return -32601
-
-
-int jsonrpc_error_invalid_params():
-	return -32602
-
-
-int jsonrpc_error_internal():
-	return -32603
+const int jsonrpc_error_parse = -32700
+const int jsonrpc_error_invalid_request = -32600
+const int jsonrpc_error_method_not_found = -32601
+const int jsonrpc_error_invalid_params = -32602
+const int jsonrpc_error_internal = -32603
 
 
 /* Message builders. All returned values are owned by the caller. */
@@ -183,10 +170,10 @@ void jsonrpc_respond_error(int out_fd, json_value* id, int code, char* message):
 void jsonrpc_handle_body(jsonrpc_server* s, char* body, int out_fd):
 	json_value* message = json_parse(body)
 	if (message == 0):
-		jsonrpc_respond_error(out_fd, 0, jsonrpc_error_parse(), c"parse error")
+		jsonrpc_respond_error(out_fd, 0, jsonrpc_error_parse, c"parse error")
 		return
 	if (message.type != json_type_object()):
-		jsonrpc_respond_error(out_fd, 0, jsonrpc_error_invalid_request(), c"request must be an object")
+		jsonrpc_respond_error(out_fd, 0, jsonrpc_error_invalid_request, c"request must be an object")
 		json_free(message)
 		return
 
@@ -205,14 +192,14 @@ void jsonrpc_handle_body(jsonrpc_server* s, char* body, int out_fd):
 		if (method.type == json_type_string()):
 			method_ok = 1
 	if ((version_ok == 0) || (method_ok == 0)):
-		jsonrpc_respond_error(out_fd, id, jsonrpc_error_invalid_request(), c"invalid request")
+		jsonrpc_respond_error(out_fd, id, jsonrpc_error_invalid_request, c"invalid request")
 		json_free(message)
 		return
 
 	jsonrpc_handler* handler = s.handlers.get(method.string_value, 0)
 	if (handler == 0):
 		if (has_id):
-			jsonrpc_respond_error(out_fd, id, jsonrpc_error_method_not_found(), c"method not found")
+			jsonrpc_respond_error(out_fd, id, jsonrpc_error_method_not_found, c"method not found")
 		json_free(message)
 		return
 
@@ -220,7 +207,7 @@ void jsonrpc_handle_body(jsonrpc_server* s, char* body, int out_fd):
 	json_value* result = handler(params, s.context)
 	if (has_id):
 		if (result == 0):
-			jsonrpc_respond_error(out_fd, id, jsonrpc_error_internal(), c"internal error")
+			jsonrpc_respond_error(out_fd, id, jsonrpc_error_internal, c"internal error")
 		else:
 			json_value* response = jsonrpc_response_result(id, result)
 			jsonrpc_write_value(out_fd, response)
@@ -304,7 +291,7 @@ jsonrpc_connection* jsonrpc_attach_connection(jsonrpc_server* s, event_loop* loo
 	conn.open = 1
 	s.connections.push(conn)
 	s.running = 1
-	event_loop_add_fd(loop, in_fd, poll_in(), jsonrpc_connection_on_readable, cast(void*, conn))
+	event_loop_add_fd(loop, in_fd, poll_in, jsonrpc_connection_on_readable, cast(void*, conn))
 	return conn
 
 
@@ -328,7 +315,7 @@ void jsonrpc_listener_on_readable(int fd, int revents, void* ctx):
 jsonrpc_listener* jsonrpc_serve_listener(jsonrpc_server* s, event_loop* loop, int listen_fd):
 	jsonrpc_listener* listener = new jsonrpc_listener(s, loop, listen_fd)
 	s.running = 1
-	event_loop_add_fd(loop, listen_fd, poll_in(), jsonrpc_listener_on_readable, cast(void*, listener))
+	event_loop_add_fd(loop, listen_fd, poll_in, jsonrpc_listener_on_readable, cast(void*, listener))
 	return listener
 
 

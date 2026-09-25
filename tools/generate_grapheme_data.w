@@ -14,8 +14,7 @@ import lib.stream
 import structures.string
 
 
-int gen_max_codepoint():
-	return 1114111
+const int gen_max_codepoint = 1114111
 
 
 # Update together with tools/unicode/UnicodeData.txt.
@@ -24,32 +23,25 @@ char* gen_unicode_version():
 
 
 # Derived general-category classes (0 = none of them).
-int gen_class_control():
-	return 1
-
-
-int gen_class_extend():
-	return 2
-
-
-int gen_class_spacing_mark():
-	return 3
+const int gen_class_control = 1
+const int gen_class_extend = 2
+const int gen_class_spacing_mark = 3
 
 
 # Cc/Zl/Zp are Control, Mn/Me are Extend, Mc is SpacingMark (UAX #29).
 int gen_class_for_category(char* category):
 	if (strcmp(category, c"Cc") == 0):
-		return gen_class_control()
+		return gen_class_control
 	if (strcmp(category, c"Zl") == 0):
-		return gen_class_control()
+		return gen_class_control
 	if (strcmp(category, c"Zp") == 0):
-		return gen_class_control()
+		return gen_class_control
 	if (strcmp(category, c"Mn") == 0):
-		return gen_class_extend()
+		return gen_class_extend
 	if (strcmp(category, c"Me") == 0):
-		return gen_class_extend()
+		return gen_class_extend
 	if (strcmp(category, c"Mc") == 0):
-		return gen_class_spacing_mark()
+		return gen_class_spacing_mark
 	return 0
 
 
@@ -67,7 +59,7 @@ int gen_hex_digit(int c):
 # a "<..., First>" / "<..., Last>" name pair mark a whole range assigned
 # to one category; every other line covers a single codepoint.
 char* gen_load_classes(char* path):
-	int size = gen_max_codepoint() + 1
+	int size = gen_max_codepoint + 1
 	char* classes = malloc(size)
 	for i in range(size):
 		classes[i] = 0
@@ -122,7 +114,7 @@ list[int] gen_ranges_for(char* classes, int cls):
 	int start = -1
 	int prev = -1
 	int cp = 0
-	while (cp <= gen_max_codepoint()):
+	while (cp <= gen_max_codepoint):
 		if (classes[cp] == cls):
 			if (start < 0):
 				start = cp
@@ -235,9 +227,9 @@ void gen_emit(wstream* out, char* classes):
 	stream_write_line(out, c"\tif (cp == 8205):")
 	stream_write_line(out, c"\t\treturn grapheme_prop_zwj()")
 	gen_range_checks(out, gen_prepend_ranges(), c"grapheme_prop_prepend()")
-	gen_range_checks(out, gen_ranges_for(classes, gen_class_control()), c"grapheme_prop_control()")
-	gen_range_checks(out, gen_ranges_for(classes, gen_class_extend()), c"grapheme_prop_extend()")
-	gen_range_checks(out, gen_ranges_for(classes, gen_class_spacing_mark()), c"grapheme_prop_spacing_mark()")
+	gen_range_checks(out, gen_ranges_for(classes, gen_class_control), c"grapheme_prop_control()")
+	gen_range_checks(out, gen_ranges_for(classes, gen_class_extend), c"grapheme_prop_extend()")
+	gen_range_checks(out, gen_ranges_for(classes, gen_class_spacing_mark), c"grapheme_prop_spacing_mark()")
 	stream_write_line(out, c"\tif (grapheme_in_range(cp, 4352, 4447)):")
 	stream_write_line(out, c"\t\treturn grapheme_prop_l()")
 	stream_write_line(out, c"\tif (grapheme_in_range(cp, 4448, 4519)):")

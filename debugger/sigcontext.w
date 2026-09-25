@@ -71,22 +71,14 @@ int sigcontext_cr2():
 		return 176
 	return 84
 # x64-only: r8..r15 sit at the start of the 64-bit sigcontext
-int sigcontext_r8():
-	return 0
-int sigcontext_r9():
-	return 8
-int sigcontext_r10():
-	return 16
-int sigcontext_r11():
-	return 24
-int sigcontext_r12():
-	return 32
-int sigcontext_r13():
-	return 40
-int sigcontext_r14():
-	return 48
-int sigcontext_r15():
-	return 56
+const int sigcontext_r8 = 0
+const int sigcontext_r9 = 8
+const int sigcontext_r10 = 16
+const int sigcontext_r11 = 24
+const int sigcontext_r12 = 32
+const int sigcontext_r13 = 40
+const int sigcontext_r14 = 48
+const int sigcontext_r15 = 56
 
 
 # Registers are word-sized fields: 4 bytes on i386, 8 on x86-64.

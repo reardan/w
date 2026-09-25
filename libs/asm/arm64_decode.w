@@ -64,14 +64,14 @@ int arm64_read_word(char* b):
 
 
 void arm64_set_reg(asm_operand* op, int number, int size):
-	op.kind = ASM_OP_REG()
-	op.rclass = ASM_RCLASS_GP()
+	op.kind = ASM_OP_REG
+	op.rclass = ASM_RCLASS_GP
 	op.reg = number
 	op.size = size
 
 
 void arm64_set_imm(asm_operand* op, int v):
-	op.kind = ASM_OP_IMM()
+	op.kind = ASM_OP_IMM
 	op.imm = v
 
 
@@ -86,7 +86,7 @@ char* arm64_dotlabel(int offset):
 
 
 void arm64_set_branch(asm_insn* insn, asm_operand* op, int address, int offset):
-	op.kind = ASM_OP_LABEL()
+	op.kind = ASM_OP_LABEL
 	op.label = arm64_dotlabel(offset)
 	op.imm = offset
 	insn.branch_target = address + offset
@@ -117,7 +117,7 @@ int arm64_cond_lookup_cset(char* name):
 
 
 void arm64_set_cond(asm_operand* op, char* name, int code):
-	op.kind = ASM_OP_LABEL()
+	op.kind = ASM_OP_LABEL
 	op.label = name
 	op.imm = code
 
@@ -238,13 +238,13 @@ void arm64_dec_adr(asm_insn* insn, int w, int address):
 	if (is_page):
 		insn.mnemonic = c"adrp"
 		int byte_delta = imm << 12
-		insn.op2.kind = ASM_OP_LABEL()
+		insn.op2.kind = ASM_OP_LABEL
 		insn.op2.label = arm64_dotlabel(byte_delta)
 		insn.op2.imm = imm
 		insn.branch_target = ((address >> 12) + imm) << 12
 	else:
 		insn.mnemonic = c"adr"
-		insn.op2.kind = ASM_OP_LABEL()
+		insn.op2.kind = ASM_OP_LABEL
 		insn.op2.label = arm64_dotlabel(imm)
 		insn.op2.imm = imm
 		insn.branch_target = address + imm
@@ -656,7 +656,7 @@ void arm64_dec_ldst_uimm(asm_insn* insn, int w):
 	int offset = imm12 * access
 	insn.mnemonic = arm64_ldst_mnemonic(sz, opc)
 	arm64_set_reg(&insn.op1, rt, arm64_ldst_rt_size(sz, opc))
-	insn.op2.kind = ASM_OP_MEM()
+	insn.op2.kind = ASM_OP_MEM
 	insn.op2.base = rn
 	insn.op2.index = -1
 	insn.op2.disp = offset
@@ -677,7 +677,7 @@ void arm64_dec_ldst_reg(asm_insn* insn, int w):
 	int access = arm64_ldst_access(sz)
 	insn.mnemonic = arm64_ldst_mnemonic(sz, opc)
 	arm64_set_reg(&insn.op1, rt, arm64_ldst_rt_size(sz, opc))
-	insn.op2.kind = ASM_OP_MEM()
+	insn.op2.kind = ASM_OP_MEM
 	insn.op2.base = rn
 	insn.op2.index = -1
 	insn.op2.size = access
@@ -723,7 +723,7 @@ void arm64_dec_ldst_pair(asm_insn* insn, int w):
 		insn.mnemonic = c"ldp"
 	arm64_set_reg(&insn.op1, rt, size)
 	arm64_set_reg(&insn.op2, rt2, size)
-	insn.op3.kind = ASM_OP_MEM()
+	insn.op3.kind = ASM_OP_MEM
 	insn.op3.base = rn
 	insn.op3.index = -1
 	insn.op3.disp = offset
@@ -753,7 +753,7 @@ void arm64_dec_ldst_literal(asm_insn* insn, int w, int address):
 	if (opc == 2):
 		insn.mnemonic = c"ldrsw"
 	arm64_set_reg(&insn.op1, rt, size)
-	insn.op2.kind = ASM_OP_MEM()
+	insn.op2.kind = ASM_OP_MEM
 	insn.op2.base = -1
 	insn.op2.index = -1
 	insn.op2.disp = offset
@@ -775,7 +775,7 @@ void arm64_dec_ccmp(asm_insn* insn, int w):
 
 int asm_arm64_decode(char* bytes, int length, int address, asm_insn* insn):
 	asm_insn_clear(insn)
-	insn.arch = ASM_ARCH_ARM64()
+	insn.arch = ASM_ARCH_ARM64
 	insn.address = address
 	insn.length = 4
 	if (length < 4):

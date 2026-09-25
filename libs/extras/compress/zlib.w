@@ -34,24 +34,17 @@ import libs.extras.compress.inflate
 import lib.bytes
 
 
-int ZLIB_ERR_BAD_HEADER():
-	return 101
-
-
-int ZLIB_ERR_UNSUPPORTED_METHOD():
-	return 102
-
-
-int ZLIB_ERR_BAD_CHECKSUM():
-	return 103
+const int ZLIB_ERR_BAD_HEADER = 101
+const int ZLIB_ERR_UNSUPPORTED_METHOD = 102
+const int ZLIB_ERR_BAD_CHECKSUM = 103
 
 
 char* zlib_error_string(int code):
-	if (code == ZLIB_ERR_BAD_HEADER()):
+	if (code == ZLIB_ERR_BAD_HEADER):
 		return c"zlib: bad header (CMF/FLG fails the mod-31 check, or input is too short)"
-	if (code == ZLIB_ERR_UNSUPPORTED_METHOD()):
+	if (code == ZLIB_ERR_UNSUPPORTED_METHOD):
 		return c"zlib: unsupported compression method, or a preset dictionary is set"
-	if (code == ZLIB_ERR_BAD_CHECKSUM()):
+	if (code == ZLIB_ERR_BAD_CHECKSUM):
 		return c"zlib: Adler-32 checksum mismatch"
 	return inflate_error_string(code)
 
@@ -111,15 +104,15 @@ zlib_result* zlib_compress(char* data, int length, int level):
 # pass a real cap.
 wresult[zlib_result*]* zlib_decompress(char* data, int length, int max_output):
 	if (length < 6):
-		return result_new_error[zlib_result*](ZLIB_ERR_BAD_HEADER())
+		return result_new_error[zlib_result*](ZLIB_ERR_BAD_HEADER)
 	int cmf = data[0] & 255
 	int flg = data[1] & 255
 	if (((cmf * 256 + flg) % 31) != 0):
-		return result_new_error[zlib_result*](ZLIB_ERR_BAD_HEADER())
+		return result_new_error[zlib_result*](ZLIB_ERR_BAD_HEADER)
 	int cm = cmf & 15
 	int fdict = (flg >> 5) & 1
 	if ((cm != 8) || (fdict != 0)):
-		return result_new_error[zlib_result*](ZLIB_ERR_UNSUPPORTED_METHOD())
+		return result_new_error[zlib_result*](ZLIB_ERR_UNSUPPORTED_METHOD)
 
 	int consumed = 0
 	wresult[inflate_result*]* ir = inflate_ex(data + 2, length - 2, max_output, &consumed)
@@ -133,12 +126,12 @@ wresult[zlib_result*]* zlib_decompress(char* data, int length, int max_output):
 	int trailer_start = 2 + consumed
 	if (length < trailer_start + 4):
 		inflate_result_free(body)
-		return result_new_error[zlib_result*](ZLIB_ERR_BAD_HEADER())
+		return result_new_error[zlib_result*](ZLIB_ERR_BAD_HEADER)
 	int adler = load_be32(data + trailer_start)
 	int actual = adler32_of(body.data, body.length)
 	if (actual != adler):
 		inflate_result_free(body)
-		return result_new_error[zlib_result*](ZLIB_ERR_BAD_CHECKSUM())
+		return result_new_error[zlib_result*](ZLIB_ERR_BAD_CHECKSUM)
 
 	zlib_result* r = new zlib_result(body.data, body.length)
 	free(body)

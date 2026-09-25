@@ -77,10 +77,10 @@ void wsh_echo_route(RequestContext* rc, void* user_data):
 	if (ws_request_offers_protocol(rc.request, c"chat") != 0):
 		proto = c"chat"
 	ws_conn* c = ws_accept(rc, proto)
-	if (ws_conn_error(c) == ws_error_none()):
+	if (ws_conn_error(c) == ws_error_none):
 		ws_message* m = ws_recv(c)
 		while (m != 0):
-			if (m.opcode == ws_op_text()):
+			if (m.opcode == ws_op_text):
 				ws_send_text(c, m.data, m.len)
 			else:
 				ws_send_binary(c, m.data, m.len)
@@ -93,10 +93,10 @@ void wsh_echo_route(RequestContext* rc, void* user_data):
 # ws_deflate_config*); echoes until the client closes.
 void wsh_deflate_route(RequestContext* rc, void* user_data):
 	ws_conn* c = ws_accept_deflate(rc, 0, cast(ws_deflate_config*, user_data))
-	if (ws_conn_error(c) == ws_error_none()):
+	if (ws_conn_error(c) == ws_error_none):
 		ws_message* m = ws_recv(c)
 		while (m != 0):
-			if (m.opcode == ws_op_text()):
+			if (m.opcode == ws_op_text):
 				ws_send_text(c, m.data, m.len)
 			else:
 				ws_send_binary(c, m.data, m.len)
@@ -140,7 +140,7 @@ int wsh_start_server(int tls, int connections, int* out_pid):
 
 
 void wsh_expect_echo(ws_conn* c, int opcode, char* data, int len):
-	if (opcode == ws_op_text()):
+	if (opcode == ws_op_text):
 		assert_equal(1, ws_send_text(c, data, len))
 	else:
 		assert_equal(1, ws_send_binary(c, data, len))
@@ -164,14 +164,14 @@ void test_ws_loopback_handshake_and_echo():
 	ws_conn* c = ws_connect(url)
 	if (ws_conn_error(c) != 0):
 		print_string(c"ws_connect: ", ws_error_string(ws_conn_error(c)))
-	assert_equal(ws_error_none(), ws_conn_error(c))
+	assert_equal(ws_error_none, ws_conn_error(c))
 	assert_equal(101, c.http_status)
 	asserts(c"no subprotocol unless offered", c.subprotocol == 0)
-	wsh_expect_echo(c, ws_op_text(), c"hello over ws://", 16)
+	wsh_expect_echo(c, ws_op_text, c"hello over ws://", 16)
 	char* big = malloc(70000)
 	for i in range(70000):
 		big[i] = (i * 13) & 255
-	wsh_expect_echo(c, ws_op_binary(), big, 70000)
+	wsh_expect_echo(c, ws_op_binary, big, 70000)
 	free(big)
 	assert_equal(1, ws_close(c, 1000, c"done"))
 	assert_equal(1000, c.peer_close_code)
@@ -182,9 +182,9 @@ void test_ws_loopback_handshake_and_echo():
 	http_req_add_header(req, c"Sec-WebSocket-Protocol", c"superchat, chat")
 	http_req_add_header(req, c"Origin", c"http://127.0.0.1")
 	c = ws_open(req)
-	assert_equal(ws_error_none(), ws_conn_error(c))
+	assert_equal(ws_error_none, ws_conn_error(c))
 	assert_strings_equal(c"chat", c.subprotocol)
-	wsh_expect_echo(c, ws_op_text(), c"chat", 4)
+	wsh_expect_echo(c, ws_op_text, c"chat", 4)
 	assert_equal(1, ws_close(c, 1001, 0))
 	ws_conn_free(c)
 	http_req_free(req)
@@ -193,13 +193,13 @@ void test_ws_loopback_handshake_and_echo():
 	req = http_req_new(c"GET", url)
 	http_req_add_header(req, c"Sec-WebSocket-Key", c"AAAAAAAAAAAAAAAAAAAAAA==")
 	c = ws_open(req)
-	assert_equal(ws_error_bad_request(), ws_conn_error(c))
+	assert_equal(ws_error_bad_request, ws_conn_error(c))
 	ws_conn_free(c)
 	http_req_free(req)
 	req = http_req_new(c"GET", url)
 	http_req_add_header(req, c"X-Evil", c"a\x0d\x0aB: c")
 	c = ws_open(req)
-	assert_equal(ws_error_bad_request(), ws_conn_error(c))
+	assert_equal(ws_error_bad_request, ws_conn_error(c))
 	ws_conn_free(c)
 	http_req_free(req)
 
@@ -221,8 +221,8 @@ void test_wss_loopback_handshake_and_echo():
 	ws_conn* c = ws_open(req)
 	if (ws_conn_error(c) != 0):
 		print_string(c"ws_open wss: ", ws_error_string(ws_conn_error(c)))
-	assert_equal(ws_error_none(), ws_conn_error(c))
-	wsh_expect_echo(c, ws_op_text(), c"hello over wss://", 17)
+	assert_equal(ws_error_none, ws_conn_error(c))
+	wsh_expect_echo(c, ws_op_text, c"hello over wss://", 17)
 	assert_equal(1, ws_close(c, 1000, 0))
 	ws_conn_free(c)
 	http_req_free(req)
@@ -261,55 +261,26 @@ char* wsh_read_key(int conn):
 
 
 # Scenario ids for the raw fixture server.
-int wsh_ok_with_early_frames():
-	return 0
-
-
-int wsh_wrong_accept():
-	return 1
-
-
-int wsh_status_200():
-	return 2
-
-
-int wsh_no_upgrade():
-	return 3
-
-
-int wsh_connection_no_upgrade():
-	return 4
-
-
-int wsh_unrequested_protocol():
-	return 5
-
-
-int wsh_extension():
-	return 6
+const int wsh_ok_with_early_frames = 0
+const int wsh_wrong_accept = 1
+const int wsh_status_200 = 2
+const int wsh_no_upgrade = 3
+const int wsh_connection_no_upgrade = 4
+const int wsh_unrequested_protocol = 5
+const int wsh_extension = 6
 
 
 # permessage-deflate answers to a client that offered it.
-int wsh_pmd_unknown_param():
-	return 7
-
-
-int wsh_pmd_not_honored():
-	return 8
-
-
-int wsh_pmd_ok_with_early_frame():
-	return 9
-
-
-int wsh_scenarios():
-	return 10
+const int wsh_pmd_unknown_param = 7
+const int wsh_pmd_not_honored = 8
+const int wsh_pmd_ok_with_early_frame = 9
+const int wsh_scenarios = 10
 
 
 # Raw fixture child: one connection per scenario, in order.
 void wsh_raw_server(int listener):
 	int scenario = 0
-	while (scenario < wsh_scenarios()):
+	while (scenario < wsh_scenarios):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
@@ -318,39 +289,39 @@ void wsh_raw_server(int listener):
 			exit(2)
 		char* accept = ws_accept_key(key)
 		string_builder* out = string_new()
-		if (scenario == wsh_status_200()):
+		if (scenario == wsh_status_200):
 			string_append(out, c"HTTP/1.1 200 OK\x0d\x0a")
 		else:
 			string_append(out, c"HTTP/1.1 101 Switching Protocols\x0d\x0a")
-		if (scenario != wsh_no_upgrade()):
+		if (scenario != wsh_no_upgrade):
 			string_append(out, c"Upgrade: WebSocket\x0d\x0a")
-		if (scenario == wsh_connection_no_upgrade()):
+		if (scenario == wsh_connection_no_upgrade):
 			string_append(out, c"Connection: keep-alive\x0d\x0a")
 		else:
 			string_append(out, c"Connection: Upgrade\x0d\x0a")
 		string_append(out, c"Sec-WebSocket-Accept: ")
-		if (scenario == wsh_wrong_accept()):
+		if (scenario == wsh_wrong_accept):
 			string_append(out, c"s3pPLMBiTxaQ9kYGzzhZRbK+xOo=")
 		else:
 			string_append(out, accept)
 		string_append(out, c"\x0d\x0a")
-		if (scenario == wsh_unrequested_protocol()):
+		if (scenario == wsh_unrequested_protocol):
 			string_append(out, c"Sec-WebSocket-Protocol: chat\x0d\x0a")
-		if (scenario == wsh_extension()):
+		if (scenario == wsh_extension):
 			string_append(out, c"Sec-WebSocket-Extensions: permessage-deflate\x0d\x0a")
-		if (scenario == wsh_pmd_unknown_param()):
+		if (scenario == wsh_pmd_unknown_param):
 			string_append(out, c"Sec-WebSocket-Extensions: permessage-deflate; x_bits=1\x0d\x0a")
-		if (scenario == wsh_pmd_not_honored()):
+		if (scenario == wsh_pmd_not_honored):
 			# The client asked for server_max_window_bits=10.
 			string_append(out, c"Sec-WebSocket-Extensions: permessage-deflate; server_max_window_bits=12\x0d\x0a")
-		if (scenario == wsh_pmd_ok_with_early_frame()):
+		if (scenario == wsh_pmd_ok_with_early_frame):
 			string_append(out, c"Sec-WebSocket-Extensions: permessage-deflate; server_max_window_bits=10\x0d\x0a")
 		string_append(out, c"\x0d\x0a")
-		if (scenario == wsh_ok_with_early_frames()):
+		if (scenario == wsh_ok_with_early_frames):
 			# Frames in the same write as the 101 head: they sit in the
 			# handshake's read buffer and must survive the handover.
 			string_append(out, c"\x81\x05early\x88\x02\x03\xe8")
-		if (scenario == wsh_pmd_ok_with_early_frame()):
+		if (scenario == wsh_pmd_ok_with_early_frame):
 			# RFC 7692 7.2.3.1 "Hello", compressed, then a close.
 			string_append_bytes(out, c"\xc1\x07\xf2\x48\xcd\xc9\xc9\x07\x00\x88\x02\x03\xe8", 13)
 		net_test_send_all(conn, out.data, out.length)
@@ -365,7 +336,7 @@ void wsh_raw_server(int listener):
 
 void wsh_expect_handshake_failure(char* url, int status):
 	ws_conn* c = ws_connect(url)
-	assert_equal(ws_error_handshake(), ws_conn_error(c))
+	assert_equal(ws_error_handshake, ws_conn_error(c))
 	assert_equal(status, c.http_status)
 	ws_conn_free(c)
 
@@ -387,13 +358,13 @@ void test_ws_client_validates_handshake_response():
 	char* url = net_test_url(c"ws", port, c"/")
 
 	ws_conn* c = ws_connect(url)
-	assert_equal(ws_error_none(), ws_conn_error(c))
+	assert_equal(ws_error_none, ws_conn_error(c))
 	ws_message* m = ws_recv(c)
 	asserts(c"early frame delivered", m != 0)
 	assert_strings_equal(c"early", m.data)
 	ws_message_free(m)
 	asserts(c"early close", ws_recv(c) == 0)
-	assert_equal(ws_error_closed(), ws_conn_error(c))
+	assert_equal(ws_error_closed, ws_conn_error(c))
 	assert_equal(1000, c.peer_close_code)
 	ws_conn_free(c)
 
@@ -410,20 +381,20 @@ void test_ws_client_validates_handshake_response():
 	ws_deflate_config* cfg = wsh_cfg(0, 0, 10, 0)
 	http_req* req = http_req_new(c"GET", url)
 	c = ws_open_deflate(req, cfg)
-	assert_equal(ws_error_handshake(), ws_conn_error(c))
+	assert_equal(ws_error_handshake, ws_conn_error(c))
 	ws_conn_free(c)
 	c = ws_open_deflate(req, cfg)
-	assert_equal(ws_error_handshake(), ws_conn_error(c))
+	assert_equal(ws_error_handshake, ws_conn_error(c))
 	ws_conn_free(c)
 	c = ws_open_deflate(req, cfg)
-	assert_equal(ws_error_none(), ws_conn_error(c))
+	assert_equal(ws_error_none, ws_conn_error(c))
 	assert_equal(1, ws_compression_active(c))
 	m = ws_recv(c)
 	asserts(c"compressed early frame delivered", m != 0)
 	assert_strings_equal(c"Hello", m.data)
 	ws_message_free(m)
 	asserts(c"early close", ws_recv(c) == 0)
-	assert_equal(ws_error_closed(), ws_conn_error(c))
+	assert_equal(ws_error_closed, ws_conn_error(c))
 	ws_conn_free(c)
 	http_req_free(req)
 	free(cfg)
@@ -442,17 +413,17 @@ void wsh_deflate_session(int port, char* path, ws_deflate_config* cfg, int expec
 	ws_conn* c = ws_open_deflate(req, cfg)
 	if (ws_conn_error(c) != 0):
 		print_string(c"ws_open_deflate: ", ws_error_string(ws_conn_error(c)))
-	assert_equal(ws_error_none(), ws_conn_error(c))
+	assert_equal(ws_error_none, ws_conn_error(c))
 	assert_equal(expect_active, ws_compression_active(c))
 	for k in range(3):
-		wsh_expect_echo(c, ws_op_text(), c"compress me, compress me, compress me", 37)
+		wsh_expect_echo(c, ws_op_text, c"compress me, compress me, compress me", 37)
 	char* big = malloc(70000)
 	for i in range(70000):
 		big[i] = ((i / 5) * 13 + (i >> 11)) & 255
-	wsh_expect_echo(c, ws_op_binary(), big, 70000)
-	wsh_expect_echo(c, ws_op_binary(), big, 70000)
+	wsh_expect_echo(c, ws_op_binary, big, 70000)
+	wsh_expect_echo(c, ws_op_binary, big, 70000)
 	free(big)
-	wsh_expect_echo(c, ws_op_binary(), c"", 0)
+	wsh_expect_echo(c, ws_op_binary, c"", 0)
 	assert_equal(1, ws_close(c, 1000, c"done"))
 	ws_conn_free(c)
 	http_req_free(req)
@@ -473,9 +444,9 @@ void test_ws_deflate_loopback_sessions():
 	# Compression off (ws_open) against a deflate route: nothing offered.
 	char* url = net_test_url(c"ws", port, c"/z")
 	ws_conn* c = ws_connect(url)
-	assert_equal(ws_error_none(), ws_conn_error(c))
+	assert_equal(ws_error_none, ws_conn_error(c))
 	assert_equal(0, ws_compression_active(c))
-	wsh_expect_echo(c, ws_op_text(), c"plain", 5)
+	wsh_expect_echo(c, ws_op_text, c"plain", 5)
 	assert_equal(1, ws_close(c, 1000, 0))
 	ws_conn_free(c)
 	free(url)
@@ -484,7 +455,7 @@ void test_ws_deflate_loopback_sessions():
 	url = net_test_url(c"ws", port, c"/z")
 	http_req* req = http_req_new(c"GET", url)
 	c = ws_open_deflate(req, bad)
-	assert_equal(ws_error_bad_request(), ws_conn_error(c))
+	assert_equal(ws_error_bad_request, ws_conn_error(c))
 	ws_conn_free(c)
 	http_req_free(req)
 	free(url)

@@ -93,7 +93,7 @@ void test_sse_basic_fields():
 	sse_event_free(ev)
 	# Clean end-of-stream: a null event with no error.
 	asserts(c"expected EOF", sse_next(c.r) == 0)
-	assert_equal(sse_error_none(), sse_reader_error(c.r))
+	assert_equal(sse_error_none, sse_reader_error(c.r))
 	sse_test_close(c, pid, listener)
 	free(target)
 
@@ -122,7 +122,7 @@ void test_sse_leading_space_stripping():
 	sse_expect(c.r, c"message", c"nospace")
 	sse_expect(c.r, c"message", c" twospaces")
 	asserts(c"expected EOF", sse_next(c.r) == 0)
-	assert_equal(sse_error_none(), sse_reader_error(c.r))
+	assert_equal(sse_error_none, sse_reader_error(c.r))
 	sse_test_close(c, pid, listener)
 	free(target)
 
@@ -384,7 +384,7 @@ void test_sse_split_across_reads():
 	sse_expect(c.r, c"message", c"second")
 	sse_expect(c.r, c"message", c"split")
 	asserts(c"expected EOF", sse_next(c.r) == 0)
-	assert_equal(sse_error_none(), sse_reader_error(c.r))
+	assert_equal(sse_error_none, sse_reader_error(c.r))
 	sse_test_close(c, pid, listener)
 	free(target)
 
@@ -413,7 +413,7 @@ void test_sse_buffer_overflow_fails_closed():
 	sse_test_conn* c = sse_test_open(target)
 	# The oversized line trips the cap: no event, overflow error.
 	asserts(c"overflow should yield no event", sse_next(c.r) == 0)
-	assert_equal(sse_error_overflow(), sse_reader_error(c.r))
+	assert_equal(sse_error_overflow, sse_reader_error(c.r))
 	sse_test_close(c, pid, listener)
 	free(target)
 
@@ -440,6 +440,6 @@ void test_sse_stream_error_distinct_from_eof():
 	# No complete event arrives; the truncation surfaces as a stream
 	# error, distinct from a clean EOF.
 	asserts(c"expected no event", sse_next(c.r) == 0)
-	assert_equal(sse_error_stream(), sse_reader_error(c.r))
+	assert_equal(sse_error_stream, sse_reader_error(c.r))
 	sse_test_close(c, pid, listener)
 	free(target)

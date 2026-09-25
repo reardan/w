@@ -120,14 +120,10 @@ import structures.json
 above; cross-checked against debugger/attach.w's at_* constants and
 at_print_registers offsets, kept as an independent copy here). --- */
 
-int wtr_TRACEME():
-	return 0
-int wtr_PEEKDATA():
-	return 2
-int wtr_GETREGS():
-	return 12
-int wtr_SYSCALL():
-	return 24
+const int wtr_TRACEME = 0
+const int wtr_PEEKDATA = 2
+const int wtr_GETREGS = 12
+const int wtr_SYSCALL = 24
 
 
 int wtr_off_syscall_nr():
@@ -174,7 +170,7 @@ int wtr_wordbuf   /* one peeked word, read back byte-wise (see wtr_read_cstring)
 
 
 void wtr_getregs(int pid):
-	sys_ptrace(wtr_GETREGS(), pid, 0, wtr_regs)
+	sys_ptrace(wtr_GETREGS, pid, 0, wtr_regs)
 
 
 int wtr_reg(int offset):
@@ -184,7 +180,7 @@ int wtr_reg(int offset):
 # Peek one word at addr in pid's memory into wtr_wordbuf. Returns 0 when
 # the address is unmapped (mirrors debugger/attach.w's at_read_word).
 int wtr_peek(int pid, int addr):
-	int r = sys_ptrace(wtr_PEEKDATA(), pid, addr, wtr_wordbuf)
+	int r = sys_ptrace(wtr_PEEKDATA, pid, addr, wtr_wordbuf)
 	if ((r < 0) && (r >= -4095)):
 		return 0
 	return 1
@@ -423,7 +419,7 @@ int wtr_trace_step(char** argv, map[char*, int] declared, map[char*, int] seen, 
 	if (pid < 0):
 		return -1
 	if (pid == 0):
-		sys_ptrace(wtr_TRACEME(), 0, 0, 0)
+		sys_ptrace(wtr_TRACEME, 0, 0, 0)
 		char** envp = env_current()
 		execve(program, argv, envp)
 		exit(127)
@@ -444,7 +440,7 @@ int wtr_trace_step(char** argv, map[char*, int] declared, map[char*, int] seen, 
 	int pending_wants_read = 0
 
 	while ((wtr_status_exited(status) == 0) && (wtr_status_signalled(status) == 0)):
-		sys_ptrace(wtr_SYSCALL(), pid, 0, pending_sig)
+		sys_ptrace(wtr_SYSCALL, pid, 0, pending_sig)
 		pending_sig = 0
 		wait4(pid, &status, 0, 0)
 		if (wtr_status_exited(status) || wtr_status_signalled(status)):

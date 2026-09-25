@@ -275,7 +275,7 @@ int kv_apply_pending(raft* r, lsm* store):
 # into its own log entry, so cmd is freed here once it returns — never
 # retained (see the ownership note in the header).
 int kv_propose_put(raft* r, char* key, char* value, int now_ms, list[raft_msg*] out):
-	if (raft_state(r) != raft_leader()):
+	if (raft_state(r) != raft_leader):
 		return 0
 	char* cmd = kv_encode_put(key, value)
 	if (cmd == 0):
@@ -290,7 +290,7 @@ int kv_propose_put(raft* r, char* key, char* value, int now_ms, list[raft_msg*] 
 # binary values; kv_propose_put remains the NUL-terminated-text
 # convenience form.
 int kv_propose_put_len(raft* r, char* key, char* value, int value_len, int now_ms, list[raft_msg*] out):
-	if (raft_state(r) != raft_leader()):
+	if (raft_state(r) != raft_leader):
 		return 0
 	int* len_out = cast(int*, malloc(__word_size__))
 	char* cmd = kv_encode_put_len(key, value, value_len, len_out)
@@ -307,7 +307,7 @@ int kv_propose_put_len(raft* r, char* key, char* value, int value_len, int now_m
 # Encode a delete and hand it to raft_propose; same contract as
 # kv_propose_put.
 int kv_propose_delete(raft* r, char* key, int now_ms, list[raft_msg*] out):
-	if (raft_state(r) != raft_leader()):
+	if (raft_state(r) != raft_leader):
 		return 0
 	char* cmd = kv_encode_delete(key)
 	if (cmd == 0):

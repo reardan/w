@@ -29,7 +29,7 @@ pg_token_stream* pg_token_stream_new():
 
 void pg_token_stream_add(pg_token_stream* stream, pg_token* token):
 	stream.all_tokens.push(token)
-	if (token.channel == pg_token_default_channel()):
+	if (token.channel == pg_token_default_channel):
 		stream.tokens.push(token)
 
 
@@ -72,7 +72,7 @@ pg_token* pg_token_stream_furthest(pg_token_stream* stream):
 
 
 int pg_token_stream_done(pg_token_stream* stream):
-	return pg_token_stream_peek(stream).kind == pg_token_eof_kind()
+	return pg_token_stream_peek(stream).kind == pg_token_eof_kind
 
 
 # Every token in source order, including hidden-channel trivia.

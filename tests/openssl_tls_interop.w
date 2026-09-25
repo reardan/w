@@ -81,7 +81,7 @@ int osl_fail(process* p, char* msg, char* detail):
 		print(detail)
 	print(c"\x0a")
 	if (p != 0):
-		process_kill(p, sigkill())
+		process_kill(p, sigkill)
 		process_wait_or_kill(p, osl_io_timeout_ms())
 		process_free(p)
 	return 0
@@ -129,9 +129,9 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 	strv_set(sargv, 11, c"-quiet")
 
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_pipe()
-	opts.stdout_mode = process_null()
-	opts.stderr_mode = process_null()
+	opts.stdin_mode = process_pipe
+	opts.stdout_mode = process_null
+	opts.stderr_mode = process_null
 	process* p = process_spawn(openssl_bin, sargv, opts)
 	free(opts)
 	if (p == 0):
@@ -170,7 +170,7 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 	close(fd)
 	if (ok == 0):
 		return osl_fail(p, c"client: bad -rev echo payload", 0)
-	process_kill(p, sigterm())
+	process_kill(p, sigterm)
 	process_wait_or_kill(p, osl_io_timeout_ms())
 	process_free(p)
 	return 1
@@ -204,9 +204,9 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	strv_set(sargv, 6, c"-quiet")
 
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_pipe()
-	opts.stdout_mode = process_pipe()
-	opts.stderr_mode = process_null()
+	opts.stdin_mode = process_pipe
+	opts.stdout_mode = process_pipe
+	opts.stderr_mode = process_null
 	process* p = process_spawn(openssl_bin, sargv, opts)
 	free(opts)
 	if (p == 0):
@@ -255,7 +255,7 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 		close(cfd)
 		return osl_fail(p, c"server: tls_write failed", 0)
 	ok = 0
-	if (poll_single(p.stdout_fd, poll_in(), osl_io_timeout_ms()) > 0):
+	if (poll_single(p.stdout_fd, poll_in, osl_io_timeout_ms()) > 0):
 		got = read(p.stdout_fd, buf, 64)
 		if (got == strlen(ping)):
 			ok = osl_bytes_equal(buf, ping, got)
@@ -265,7 +265,7 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	close(cfd)
 	if (ok == 0):
 		return osl_fail(p, c"server: s_client did not echo our line", 0)
-	process_kill(p, sigterm())
+	process_kill(p, sigterm)
 	process_wait_or_kill(p, osl_io_timeout_ms())
 	process_free(p)
 	return 1

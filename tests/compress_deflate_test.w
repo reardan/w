@@ -363,7 +363,7 @@ void dt_window_expect(char* label, char* z, int zlen, char* window, int window_l
 		print2(c": inflate_window failed: ")
 		println2(inflate_error_string(err))
 		exit(1)
-	assert_equal(INFLATE_OK(), err)
+	assert_equal(INFLATE_OK, err)
 	assert_equal(len, n)
 	assert_equal(0, out[n])
 	for i in range(len):
@@ -398,7 +398,7 @@ void test_deflate_window_sync_flush_shape():
 		assert_equal(255, z[n - 1] & 255)
 		wresult[inflate_result*]* r = inflate(z, n, 0)
 		asserts(c"no final block", result_is_error[inflate_result*](r))
-		assert_equal(INFLATE_ERR_TRUNCATED(), result_code[inflate_result*](r))
+		assert_equal(INFLATE_ERR_TRUNCATED, result_code[inflate_result*](r))
 		dt_window_expect(c"sync piece", z, n, 0, 0, c"hello hello hello", 17)
 		free(z)
 		level = level + 1
@@ -449,14 +449,14 @@ void test_inflate_window_edges():
 	# The same reference without the window points before the output.
 	out = inflate_window(c"\xf2\x00\x11\x00\x00\x00\x00\xff\xff", 9, 0, 0, 0, &n, &err)
 	asserts(c"no window", out == 0)
-	assert_equal(INFLATE_ERR_BAD_DISTANCE(), err)
+	assert_equal(INFLATE_ERR_BAD_DISTANCE, err)
 	# max_output caps new output only, however large the window.
 	out = inflate_window(c"\xf2\x00\x11\x00\x00\x00\x00\xff\xff", 9, c"Hello", 5, 5, &n, &err)
 	assert_equal(5, n)
 	free(out)
 	out = inflate_window(c"\xf2\x00\x11\x00\x00\x00\x00\xff\xff", 9, c"Hello", 5, 4, &n, &err)
 	asserts(c"capped", out == 0)
-	assert_equal(INFLATE_ERR_TOO_LARGE(), err)
+	assert_equal(INFLATE_ERR_TOO_LARGE, err)
 	assert_equal(0, n)
 	# A BFINAL block ends decoding; what follows is ignored.
 	out = inflate_window(c"\xf3\x48\xcd\xc9\xc9\x07\x00\x00\x00\x00\xff\xff", 12, 0, 0, 0, &n, &err)
@@ -465,9 +465,9 @@ void test_inflate_window_edges():
 	# Input ending mid-block is still truncation.
 	out = inflate_window(c"\xf2\x48\xcd", 3, 0, 0, 0, &n, &err)
 	asserts(c"truncated", out == 0)
-	assert_equal(INFLATE_ERR_TRUNCATED(), err)
+	assert_equal(INFLATE_ERR_TRUNCATED, err)
 	# Empty input is an empty piece.
 	out = inflate_window(c"", 0, 0, 0, 0, &n, &err)
 	assert_equal(0, n)
-	assert_equal(INFLATE_OK(), err)
+	assert_equal(INFLATE_OK, err)
 	free(out)

@@ -489,7 +489,7 @@ void test_smtp_message_body_base64():
 
 void test_smtp_send_auth_plain():
 	smtp_fx* fx = fx_start(c"220 mx.test ESMTP|250-mx.test hi\n250-SIZE 10000\n250-8BITMIME\n250-PIPELINING\n250 AUTH PLAIN LOGIN|235 ok|250 sender ok|250 rcpt ok|354 go|250 queued|221 bye")
-	smtp_client* c = smtp_open(c"127.0.0.1", fx.port, smtp_security_none(), 0, c"client.example", 20000)
+	smtp_client* c = smtp_open(c"127.0.0.1", fx.port, smtp_security_none, 0, c"client.example", 20000)
 	assert_equal(0, smtp_error(c))
 	assert_equal(1, c.esmtp)
 	assert_equal(10000, c.size_limit)
@@ -514,7 +514,7 @@ void test_smtp_send_auth_plain():
 void test_smtp_auth_login():
 	smtp_fx* fx = fx_start(c"220 mx|250-mx\n250 AUTH LOGIN|334 VXNlcm5hbWU6|334 UGFzc3dvcmQ6|235 welcome|221 bye")
 	smtp_client* c = fx_client(fx, c"localhost")
-	assert_equal(1, smtp_start(c, smtp_security_none(), 0, c"client.example"))
+	assert_equal(1, smtp_start(c, smtp_security_none, 0, c"client.example"))
 	assert_equal(0, c.auth_plain)
 	assert_equal(1, smtp_auth(c, c"user", c"pass"))
 	assert_equal(235, smtp_last_code(c))
@@ -526,12 +526,12 @@ void test_smtp_auth_login():
 void test_smtp_auth_failure_cancels():
 	smtp_fx* fx = fx_start(c"220 mx|250-mx\n250 AUTH LOGIN|334 VXNlcm5hbWU6|535 bad user|221 bye")
 	smtp_client* c = fx_client(fx, c"127.0.0.1")
-	assert_equal(1, smtp_start(c, smtp_security_none(), 0, 0))
+	assert_equal(1, smtp_start(c, smtp_security_none, 0, 0))
 	assert_equal(0, smtp_auth_login(c, c"nobody", c"x"))
-	assert_equal(smtp_error_rejected(), smtp_error(c))
+	assert_equal(smtp_error_rejected, smtp_error(c))
 	assert_equal(535, smtp_last_code(c))
 	assert_equal(0, smtp_auth_plain(c, c"user", c"pass"))
-	assert_equal(smtp_error_unsupported(), smtp_error(c))
+	assert_equal(smtp_error_unsupported, smtp_error(c))
 	assert_equal(1, smtp_quit(c))
 	smtp_close(c)
 	assert_strings_equal(c"EHLO localhost\nAUTH LOGIN\nbm9ib2R5\nQUIT\n", fx_finish(fx))
@@ -540,7 +540,7 @@ void test_smtp_auth_failure_cancels():
 void test_smtp_multi_recipient_message():
 	smtp_fx* fx = fx_start(c"220 mx|250-mx\n250 8BITMIME|250 ok|250 ok|550 no such user|251 forwarding|354 go|250 queued|221 bye")
 	smtp_client* c = fx_client(fx, c"127.0.0.1")
-	assert_equal(1, smtp_start(c, smtp_security_none(), 0, c"client.example"))
+	assert_equal(1, smtp_start(c, smtp_security_none, 0, c"client.example"))
 	smtp_message* m = fx_simple_message()
 	smtp_message_add_cc(m, c"gone@y.test", 0)
 	smtp_message_add_bcc(m, c"c@z.test")
@@ -554,7 +554,7 @@ void test_smtp_multi_recipient_message():
 void test_smtp_dot_stuffing_on_wire():
 	smtp_fx* fx = fx_start(c"220 mx|250-mx\n250-8BITMIME\n250 SIZE|250 ok|250 ok|354 go|250 queued|250 ok|221 bye")
 	smtp_client* c = fx_client(fx, c"127.0.0.1")
-	assert_equal(1, smtp_start(c, smtp_security_none(), 0, c"client.example"))
+	assert_equal(1, smtp_start(c, smtp_security_none, 0, c"client.example"))
 	char* body = c".hidden\nline2\x0d\x0a..two\x0dbare\n.\ncaf\xc3\xa9"
 	list[char*] rcpts = list[char*]{c"b@y.test"}
 	assert_equal(1, smtp_send(c, c"", rcpts, body, strlen(body)))
@@ -568,12 +568,12 @@ void test_smtp_dot_stuffing_on_wire():
 void test_smtp_helo_fallback():
 	smtp_fx* fx = fx_start(c"220 old.test|502 command not recognized|250 old.test|250 ok|250 ok|354 go|250 queued|221 bye")
 	smtp_client* c = fx_client(fx, c"127.0.0.1")
-	assert_equal(1, smtp_start(c, smtp_security_none(), 0, c"client.example"))
+	assert_equal(1, smtp_start(c, smtp_security_none, 0, c"client.example"))
 	assert_equal(0, c.esmtp)
 	assert_equal(0, c.cap_size)
 	# No AUTH on a HELO server: refused locally, nothing sent.
 	assert_equal(0, smtp_auth(c, c"user", c"pass"))
-	assert_equal(smtp_error_unsupported(), smtp_error(c))
+	assert_equal(smtp_error_unsupported, smtp_error(c))
 	char* msg = fx_crlf(c"x\n")
 	list[char*] rcpts = list[char*]{c"b@y.test"}
 	assert_equal(1, smtp_send(c, c"a@x.test", rcpts, msg, strlen(msg)))
@@ -586,13 +586,13 @@ void test_smtp_helo_fallback():
 void test_smtp_rejections():
 	smtp_fx* fx = fx_start(c"220 mx|250-mx\n250 SIZE 100|550 sender denied|250 ok|550 no|550 no|250 reset|250 ok|250 ok|354 go|554-5.7.1 spam\n554 5.7.1 rejected|250 reset|221 bye")
 	smtp_client* c = fx_client(fx, c"127.0.0.1")
-	assert_equal(1, smtp_start(c, smtp_security_none(), 0, c"client.example"))
+	assert_equal(1, smtp_start(c, smtp_security_none, 0, c"client.example"))
 	char* msg = fx_crlf(c"x\n")
 	list[char*] one = list[char*]{c"b@y.test"}
 	list[char*] two = list[char*]{c"b@y.test", c"c@y.test"}
 	# MAIL rejected: no transaction is open, so no RSET.
 	assert_equal(0, smtp_send(c, c"a@x.test", one, msg, strlen(msg)))
-	assert_equal(smtp_error_rejected(), smtp_error(c))
+	assert_equal(smtp_error_rejected, smtp_error(c))
 	assert_equal(550, smtp_last_code(c))
 	assert_strings_equal(c"sender denied", smtp_last_reply(c))
 	# Every recipient rejected -> RSET, no DATA.
@@ -607,7 +607,7 @@ void test_smtp_rejections():
 	mem_fill(big, 'a', 200)
 	big[200] = 0
 	assert_equal(0, smtp_send(c, c"a@x.test", one, big, 200))
-	assert_equal(smtp_error_too_large(), smtp_error(c))
+	assert_equal(smtp_error_too_large, smtp_error(c))
 	free(big)
 	assert_equal(1, smtp_quit(c))
 	smtp_close(c)
@@ -619,21 +619,21 @@ void test_smtp_rejections():
 void test_smtp_injection_rejected():
 	smtp_fx* fx = fx_start(c"220 mx|250-mx\n250 AUTH PLAIN|235 ok|221 bye")
 	smtp_client* c = fx_client(fx, c"mx.test")
-	assert_equal(1, smtp_start(c, smtp_security_none(), 0, c"client.example"))
+	assert_equal(1, smtp_start(c, smtp_security_none, 0, c"client.example"))
 	assert_equal(0, smtp_mail_from(c, c"a@x\x0d\x0aRCPT TO:<evil@x>", 0))
-	assert_equal(smtp_error_invalid(), smtp_error(c))
+	assert_equal(smtp_error_invalid, smtp_error(c))
 	assert_equal(0, smtp_rcpt_to(c, c"b@y>\x0d\x0a\x44\x41TA"))
-	assert_equal(smtp_error_invalid(), smtp_error(c))
+	assert_equal(smtp_error_invalid, smtp_error(c))
 	assert_equal(0, smtp_rcpt_to(c, c"b@y\nQUIT"))
 	assert_equal(0, smtp_rcpt_to(c, c"b @y"))
 	assert_equal(0, smtp_ehlo(c, c"x\x0d\x0aQUIT"))
-	assert_equal(smtp_error_invalid(), smtp_error(c))
+	assert_equal(smtp_error_invalid, smtp_error(c))
 	assert_equal((-1), smtp_command(c, c"NOOP\x0d\x0aRSET"))
-	assert_equal(smtp_error_invalid(), smtp_error(c))
+	assert_equal(smtp_error_invalid, smtp_error(c))
 	list[char*] evil = list[char*]{c"ok@y.test", c"x@y\x0d\x0aRSET"}
 	char* msg = fx_crlf(c"x\n")
 	assert_equal(0, smtp_send(c, c"a@x.test", evil, msg, strlen(msg)))
-	assert_equal(smtp_error_invalid(), smtp_error(c))
+	assert_equal(smtp_error_invalid, smtp_error(c))
 	evil.free()
 	# Length limits: a 300-character address and a 600-character line.
 	string_builder* s = string_new()
@@ -642,7 +642,7 @@ void test_smtp_injection_rejected():
 		string_append_char(s, 'a')
 		i = i + 1
 	assert_equal(0, smtp_rcpt_to(c, s.data))
-	assert_equal(smtp_error_invalid(), smtp_error(c))
+	assert_equal(smtp_error_invalid, smtp_error(c))
 	while (i < 600):
 		string_append_char(s, 'a')
 		i = i + 1
@@ -653,11 +653,11 @@ void test_smtp_injection_rejected():
 	mem_fill(longline, 'a', 1000)
 	longline[1000] = 0
 	assert_equal(0, smtp_data(c, longline, 1000))
-	assert_equal(smtp_error_too_large(), smtp_error(c))
+	assert_equal(smtp_error_too_large, smtp_error(c))
 	free(longline)
 	# Credentials never go out in plaintext to a non-loopback name...
 	assert_equal(0, smtp_auth_plain(c, c"user", c"pass"))
-	assert_equal(smtp_error_insecure(), smtp_error(c))
+	assert_equal(smtp_error_insecure, smtp_error(c))
 	# ...unless explicitly allowed.
 	smtp_set_allow_insecure_auth(c, 1)
 	assert_equal(1, smtp_auth_plain(c, c"user", c"pass"))
@@ -669,8 +669,8 @@ void test_smtp_injection_rejected():
 void test_smtp_malformed_replies():
 	smtp_fx* fx = fx_start(c"220 mx|250-mx\n251 mixed codes")
 	smtp_client* c = fx_client(fx, c"127.0.0.1")
-	assert_equal(0, smtp_start(c, smtp_security_none(), 0, c"client.example"))
-	assert_equal(smtp_error_protocol(), smtp_error(c))
+	assert_equal(0, smtp_start(c, smtp_security_none, 0, c"client.example"))
+	assert_equal(smtp_error_protocol, smtp_error(c))
 	# The session is dead: later calls fail fast without I/O.
 	assert_equal(0, smtp_noop(c))
 	smtp_close(c)
@@ -679,14 +679,14 @@ void test_smtp_malformed_replies():
 	fx = fx_start(c"hello there")
 	c = fx_client(fx, c"127.0.0.1")
 	assert_equal(0, smtp_greeting(c))
-	assert_equal(smtp_error_protocol(), smtp_error(c))
+	assert_equal(smtp_error_protocol, smtp_error(c))
 	smtp_close(c)
 	assert_strings_equal(c"", fx_finish(fx))
 
 	fx = fx_start(c"554 go away|221 bye")
 	c = fx_client(fx, c"127.0.0.1")
 	assert_equal(0, smtp_greeting(c))
-	assert_equal(smtp_error_rejected(), smtp_error(c))
+	assert_equal(smtp_error_rejected, smtp_error(c))
 	assert_equal(554, smtp_last_code(c))
 	assert_equal(1, smtp_quit(c))
 	smtp_close(c)
@@ -697,7 +697,7 @@ void test_smtp_starttls():
 	smtp_fx* fx = fx_start(c"220 mx|250-mx\n250-STARTTLS\n250 SIZE 1000|220 go ahead|250-mx over tls\n250 AUTH PLAIN|235 ok|250 ok|221 bye")
 	smtp_client* c = fx_client(fx, c"mx.test")
 	tls_config* cfg = fx_tls_client_config()
-	int ok = smtp_start(c, smtp_security_starttls(), cfg, c"client.example")
+	int ok = smtp_start(c, smtp_security_starttls, cfg, c"client.example")
 	if (ok == 0):
 		println(smtp_error_message(c))
 	assert_equal(1, ok)
@@ -717,8 +717,8 @@ void test_smtp_starttls():
 void test_smtp_starttls_required_but_missing():
 	smtp_fx* fx = fx_start(c"220 mx|250-mx\n250 AUTH PLAIN|221 bye")
 	smtp_client* c = fx_client(fx, c"mx.test")
-	assert_equal(0, smtp_start(c, smtp_security_starttls(), 0, c"client.example"))
-	assert_equal(smtp_error_unsupported(), smtp_error(c))
+	assert_equal(0, smtp_start(c, smtp_security_starttls, 0, c"client.example"))
+	assert_equal(smtp_error_unsupported, smtp_error(c))
 	assert_equal(1, smtp_quit(c))
 	smtp_close(c)
 	assert_strings_equal(c"EHLO client.example\nQUIT\n", fx_finish(fx))
@@ -728,8 +728,8 @@ void test_smtp_starttls_injection():
 	# Plaintext pipelined behind the 220 must not survive into TLS.
 	smtp_fx* fx = fx_start(c"220 mx|250-mx\n250 STARTTLS|220 go ahead\n250 injected")
 	smtp_client* c = fx_client(fx, c"mx.test")
-	assert_equal(0, smtp_start(c, smtp_security_starttls(), 0, c"client.example"))
-	assert_equal(smtp_error_protocol(), smtp_error(c))
+	assert_equal(0, smtp_start(c, smtp_security_starttls, 0, c"client.example"))
+	assert_equal(smtp_error_protocol, smtp_error(c))
 	smtp_close(c)
 	assert_strings_equal(c"EHLO client.example\nSTARTTLS\n[tls]\n[tls failed]\n", fx_finish(fx))
 
@@ -738,7 +738,7 @@ void test_smtp_implicit_tls():
 	smtp_fx* fx = fx_start_mode(c"220 mx smtps|250-mx\n250 AUTH LOGIN|334 VXNlcm5hbWU6|334 UGFzc3dvcmQ6|235 ok|221 bye", 1)
 	smtp_client* c = fx_client(fx, c"mx.test")
 	tls_config* cfg = fx_tls_client_config()
-	assert_equal(1, smtp_start(c, smtp_security_implicit(), cfg, c"client.example"))
+	assert_equal(1, smtp_start(c, smtp_security_implicit, cfg, c"client.example"))
 	assert_equal(1, smtp_auth(c, c"user", c"pass"))
 	assert_equal(1, smtp_quit(c))
 	smtp_close(c)

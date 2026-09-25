@@ -27,8 +27,7 @@ char* ftp_test_big_payload(int n):
 	return data
 
 
-int ftp_test_big_size():
-	return 200000
+const int ftp_test_big_size = 200000
 
 
 /* Scripted fixture server (runs in the forked child) */
@@ -129,8 +128,8 @@ char* ftp_srv_file(ftp_srv* s, char* name, int* out_len):
 		*out_len = 13
 		return c"Hello, FTP!\x0d\x0a"
 	if (strcmp(name, c"big.bin") == 0):
-		*out_len = ftp_test_big_size()
-		return ftp_test_big_payload(ftp_test_big_size())
+		*out_len = ftp_test_big_size
+		return ftp_test_big_payload(ftp_test_big_size)
 	if ((s.stored != 0) && (strcmp(name, c"upload.bin") == 0)):
 		*out_len = s.stored_len
 		return s.stored
@@ -386,14 +385,14 @@ void test_ftp_argument_validation():
 	assert_equal(0, ftp_valid_argument(c"a\x0db"))
 	assert_equal(0, ftp_valid_argument(c""))
 	assert_equal(0, ftp_valid_argument(0))
-	char* longarg = malloc(ftp_max_argument() + 2)
+	char* longarg = malloc(ftp_max_argument + 2)
 	int i = 0
-	while (i < ftp_max_argument() + 1):
+	while (i < ftp_max_argument + 1):
 		longarg[i] = 'a'
 		i = i + 1
 	longarg[i] = 0
 	assert_equal(0, ftp_valid_argument(longarg))
-	longarg[ftp_max_argument()] = 0
+	longarg[ftp_max_argument] = 0
 	assert_equal(1, ftp_valid_argument(longarg))
 	free(longarg)
 	assert_equal(1, ftp_valid_verb(c"NOOP"))
@@ -404,8 +403,8 @@ void test_ftp_argument_validation():
 
 
 void test_ftp_error_strings():
-	assert_strings_equal(c"", ftp_error_string(ftp_error_none()))
-	assert_strings_equal(c"timed out", ftp_error_string(ftp_error_timeout()))
+	assert_strings_equal(c"", ftp_error_string(ftp_error_none))
+	assert_strings_equal(c"timed out", ftp_error_string(ftp_error_timeout))
 	assert_strings_equal(c"invalid argument", ftp_error_string(ftp_error_bad_argument()))
 	assert_strings_equal(c"unknown error", ftp_error_string(999))
 
@@ -465,7 +464,7 @@ void test_ftp_reply_bad_codes():
 void test_ftp_reply_line_cap():
 	int* fds = malloc(2 * __word_size__)
 	ftp_client* c = ftp_test_pair_client(fds, 2000)
-	int n = ftp_max_line() + 100
+	int n = ftp_max_line + 100
 	char* big = malloc(n + 1)
 	mem_fill(big, 'x', n)
 	big[0] = '2'
@@ -488,7 +487,7 @@ void test_ftp_reply_timeout():
 	ftp_client* c = ftp_test_pair_client(fds, 200)
 	ftp_test_feed(fds[1], c"220-partial multi-line reply\x0d\x0a")
 	assert_equal((-1), ftp_read_reply(c))
-	assert_equal(ftp_error_timeout(), c.error)
+	assert_equal(ftp_error_timeout, c.error)
 	ftp_close(c)
 	close(fds[1])
 	free(fds)
@@ -571,8 +570,8 @@ void test_ftp_session_epsv():
 	assert_equal(13, n)
 	free(body)
 	body = ftp_retr(c, c"big.bin", &n)
-	assert_equal(ftp_test_big_size(), n)
-	char* want = ftp_test_big_payload(ftp_test_big_size())
+	assert_equal(ftp_test_big_size, n)
+	char* want = ftp_test_big_payload(ftp_test_big_size)
 	assert_equal(1, mem_eq(want, body, n))
 	free(body)
 	asserts(c"RETR missing", ftp_retr(c, c"nope.txt", &n) == 0)
@@ -583,9 +582,9 @@ void test_ftp_session_epsv():
 	assert_equal(1, ftp_stor(c, c"upload.bin", want, 70000))
 	assert_equal(226, c.reply_code)
 	assert_equal(1, ftp_appe(c, c"upload.bin", want + 70000, 130000))
-	assert_equal(ftp_test_big_size(), ftp_size(c, c"upload.bin"))
+	assert_equal(ftp_test_big_size, ftp_size(c, c"upload.bin"))
 	body = ftp_retr(c, c"upload.bin", &n)
-	assert_equal(ftp_test_big_size(), n)
+	assert_equal(ftp_test_big_size, n)
 	assert_equal(1, mem_eq(want, body, n))
 	free(body)
 	assert_equal(0, ftp_stor(c, c"denied.bin", c"x", 1))
@@ -611,7 +610,7 @@ void test_ftp_session_epsv():
 	ftp_set_max_transfer(c, 1000)
 	asserts(c"capped RETR", ftp_retr(c, c"big.bin", &n) == 0)
 	assert_equal(ftp_error_overflow(), c.error)
-	ftp_set_max_transfer(c, ftp_default_max_transfer())
+	ftp_set_max_transfer(c, ftp_default_max_transfer)
 	assert_equal(1, ftp_noop(c))
 	free(want)
 
@@ -710,10 +709,10 @@ void test_ftp_connect_failures():
 	int listener = net_test_listen(&port)
 	close(listener)
 	ftp_client* c = ftp_connect(c"127.0.0.1", port, 2000)
-	assert_equal(ftp_error_connect(), c.error)
+	assert_equal(ftp_error_connect, c.error)
 	assert_equal(0, ftp_noop(c))
 	assert_equal(ftp_error_io(), c.error)
 	ftp_close(c)
 	c = ftp_connect(0, 21, 2000)
-	assert_equal(ftp_error_resolve(), c.error)
+	assert_equal(ftp_error_resolve, c.error)
 	ftp_close(c)

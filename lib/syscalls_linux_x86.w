@@ -67,8 +67,7 @@ int at_fdcwd():
 
 
 # AT_SYMLINK_NOFOLLOW for lstat-style lookups.
-int at_symlink_nofollow():
-	return 256
+const int at_symlink_nofollow = 256
 
 
 # statx: fills a 256-byte struct statx (uapi/linux/stat.h). dirfd
@@ -99,7 +98,7 @@ int chown(char* path, int uid, int gid):
 
 
 int lchown(char* path, int uid, int gid):
-	return fchownat(path, uid, gid, at_symlink_nofollow())
+	return fchownat(path, uid, gid, at_symlink_nofollow)
 
 
 # The real uid/gid (i386 uses the 32-bit-id variants; see its SYS_GETUID).

@@ -441,8 +441,7 @@ int le_candidates_common_len(char* out, int count):
 
 # Starting candidate-buffer capacity; le_try_complete doubles it while
 # the hook reports a full buffer, so this is a first guess, not a cap.
-int le_complete_capacity():
-	return 64
+const int le_complete_capacity = 64
 
 
 # Print candidates in simple columns below the current line; the caller's
@@ -496,7 +495,7 @@ int le_try_complete(char* buf, int size):
 		prefix[i] = buf[start + i]
 	prefix[prefix_len] = 0
 
-	int capacity = le_complete_capacity()
+	int capacity = le_complete_capacity
 	char* out = malloc(capacity * __word_size__)
 	int count = le_complete_hook(prefix, out, capacity)
 	# A full buffer can mean truncation: unseen candidates would make the

@@ -31,8 +31,7 @@ int wasi_memory_size();
 
 # The first preopened directory (WASI convention: fds 0-2 are stdio, 3 is
 # the first preopen — "." under bin/wrun wasm).
-int wasi_preopen_fd():
-	return 3
+const int wasi_preopen_fd = 3
 
 
 int wasi_cstr_len(char* s):
@@ -65,7 +64,7 @@ int open(char *filename, int mode, int permissions):
 	# allocate/filestat/poll, 0x08E001FF). Anything broader — directory
 	# rights, undefined bits — trips the rights validation in strict
 	# preview1 hosts (uvwasi/Node).
-	int err = wasi_path_open(wasi_preopen_fd(), 1, filename, wasi_cstr_len(filename), oflags, 0x08E001FF, fdflags, 260)
+	int err = wasi_path_open(wasi_preopen_fd, 1, filename, wasi_cstr_len(filename), oflags, 0x08E001FF, fdflags, 260)
 	if (err):
 		return 0 - err
 	int* out = cast(int*, 260)
@@ -118,7 +117,7 @@ int unlink(char* path):
 		path = path + 2
 	while (path[0] == '/'):
 		path = path + 1
-	int err = wasi_path_unlink_file(wasi_preopen_fd(), path, wasi_cstr_len(path))
+	int err = wasi_path_unlink_file(wasi_preopen_fd, path, wasi_cstr_len(path))
 	if (err):
 		return 0 - err
 	return 0
@@ -168,8 +167,7 @@ int at_fdcwd():
 	return 0 - 100
 
 
-int at_symlink_nofollow():
-	return 256
+const int at_symlink_nofollow = 256
 
 
 int statx(char* path, int flags, int mask, char* buf):

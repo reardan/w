@@ -45,15 +45,14 @@ import graphics.ui.widgets.popover
 import graphics.ui.widgets.date_picker
 
 
-int ui_minutes_per_day():
-	return 1440
+const int ui_minutes_per_day = 1440
 
 
 # Minutes since midnight, wrapped into 0..1439.
 int ui_time_wrap(int minutes):
-	int m = minutes % ui_minutes_per_day()
+	int m = minutes % ui_minutes_per_day
 	if (m < 0):
-		m = m + ui_minutes_per_day()
+		m = m + ui_minutes_per_day
 	return m
 
 
@@ -122,8 +121,7 @@ void ui_time_range_init(ui_time_range_state* st):
 	st.open = 0
 
 
-int ui_time_range_ids():
-	return 9
+const int ui_time_range_ids = 9
 
 
 # Spinner geometry: a square button either side of the value.
@@ -223,7 +221,7 @@ int ui_time_row(ui_context* ctx, int base_id, char* label, int32* minutes, int m
 # ...). Returns 1 on every frame a spinner changes either end.
 int ui_time_range_picker(ui_context* ctx, float32 w, ui_time_range_state* st, int32* start, int32* end, int minute_step):
 	int id = ctx.next_id
-	ctx.next_id = ctx.next_id + ui_time_range_ids()
+	ctx.next_id = ctx.next_id + ui_time_range_ids
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
 	ui_picker_field_click(ctx, id, r, &st.open)
 

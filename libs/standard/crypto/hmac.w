@@ -3,7 +3,7 @@ HMAC (RFC 2104 / FIPS 198-1) over the whash interface, so the same code
 serves HMAC-SHA-256 and HMAC-SHA-384 — the two MACs the TLS 1.3 key
 schedule (plan 11, issue #195) needs.
 
-	whmac* m = hmac_new(WHASH_SHA256(), key, key_len)
+	whmac* m = hmac_new(WHASH_SHA256, key, key_len)
 	hmac_update(m, data, len)         # any number of times
 	hmac_final(m, out)                # digest_size bytes; non-destructive
 	hmac_reset(m)                     # restart with the same key

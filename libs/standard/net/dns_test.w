@@ -137,15 +137,15 @@ void test_dns_parse_response_a_record():
 	int length = 0
 	char* msg = dns_test_response_a(&length)
 	int ip = 0
-	assert_equal(dns_result_ok(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_ok, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	assert_equal_hex(0x5db8d822, ip)
 
 	# Name matching is case-insensitive and ignores a trailing dot.
 	ip = 0
-	assert_equal(dns_result_ok(), dns_parse_response(msg, length, 0x1234, c"EXAMPLE.COM", &ip))
+	assert_equal(dns_result_ok, dns_parse_response(msg, length, 0x1234, c"EXAMPLE.COM", &ip))
 	assert_equal_hex(0x5db8d822, ip)
 	ip = 0
-	assert_equal(dns_result_ok(), dns_parse_response(msg, length, 0x1234, c"example.com.", &ip))
+	assert_equal(dns_result_ok, dns_parse_response(msg, length, 0x1234, c"example.com.", &ip))
 	assert_equal_hex(0x5db8d822, ip)
 	free(msg)
 
@@ -157,7 +157,7 @@ void test_dns_parse_response_cname_chain():
 	int length = 0
 	char* msg = hex_decode_loose(c"12 34 81 80 00 01 00 02 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 05 00 01 00 00 00 3c 00 06 03 63 64 6e c0 0c c0 29 00 01 00 01 00 00 00 3c 00 04 05 06 07 08", &length)
 	int ip = 0
-	assert_equal(dns_result_ok(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_ok, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	assert_equal_hex(0x05060708, ip)
 	free(msg)
 
@@ -166,13 +166,13 @@ void test_dns_parse_response_cname_depth_limit():
 	int length = 0
 	char* msg = dns_test_build_cname_chain(8, &length)
 	int ip = 0
-	assert_equal(dns_result_ok(), dns_parse_response(msg, length, 0x1234, c"a", &ip))
+	assert_equal(dns_result_ok, dns_parse_response(msg, length, 0x1234, c"a", &ip))
 	assert_equal_hex(0x01020304, ip)
 	free(msg)
 
 	# A ninth CNAME hop exceeds dns_max_cname_depth().
 	msg = dns_test_build_cname_chain(9, &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"a", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"a", &ip))
 	free(msg)
 
 
@@ -180,7 +180,7 @@ void test_dns_parse_response_truncation_bit():
 	int length = 0
 	char* msg = hex_decode_loose(c"12 34 83 80 00 00 00 00 00 00 00 00", &length)
 	int ip = 0
-	assert_equal(dns_result_truncated(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_truncated, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 
@@ -190,34 +190,34 @@ void test_dns_parse_response_header_negatives():
 
 	# Shorter than a header.
 	char* msg = hex_decode_loose(c"12 34 81 80", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Mismatched query id.
 	msg = dns_test_response_a(&length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x9999, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x9999, c"example.com", &ip))
 	# Question name mismatch.
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"other.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"other.com", &ip))
 	free(msg)
 
 	# QR clear: a query, not a response.
 	msg = hex_decode_loose(c"12 34 01 00 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Non-zero opcode.
 	msg = hex_decode_loose(c"12 34 89 80 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# RCODE 3 (NXDOMAIN).
 	msg = hex_decode_loose(c"12 34 81 83 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# QDCOUNT != 1.
 	msg = hex_decode_loose(c"12 34 81 80 00 02 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 
@@ -227,23 +227,23 @@ void test_dns_parse_response_malformed_names():
 
 	# Question name is a compression pointer to itself.
 	char* msg = hex_decode_loose(c"12 34 81 80 00 01 00 00 00 00 00 00 c0 0c 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Answer name is a label/pointer cycle: "a" then a pointer back to
 	# the same label, looping forever without the hop cap.
 	msg = hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 01 61 c0 1d 00 01 00 01 00 00 00 3c 00 04 01 02 03 04", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Label length runs past the end of the message.
 	msg = hex_decode_loose(c"12 34 81 80 00 01 00 00 00 00 00 00 3f 61 61", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Reserved label tag 0x40.
 	msg = hex_decode_loose(c"12 34 81 80 00 01 00 00 00 00 00 00 40 61 00 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 
@@ -253,22 +253,22 @@ void test_dns_parse_response_malformed_records():
 
 	# RDLENGTH runs past the end of the message.
 	char* msg = hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 20 5d b8 d8 22", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# An A record whose RDLENGTH is not 4.
 	msg = hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 05 5d b8 d8 22 00", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# An answer for an unrelated name is skipped, leaving no result.
 	msg = hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 03 77 77 77 c0 0c 00 01 00 01 00 00 00 3c 00 04 05 06 07 08", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# NOERROR with no answers resolves nothing.
 	msg = hex_decode_loose(c"12 34 81 80 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 

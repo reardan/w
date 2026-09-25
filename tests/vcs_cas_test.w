@@ -317,7 +317,7 @@ void test_cas_build_cache_client():
 	# SHA-256 over the target's command line and input hashes.
 	char* manifest = c"target hello\ncmd bin/wv2 tests/hello.w -o bin/hello\ninput tests/hello.w 9d1e4d\n"
 	char* key_digest = malloc(32)
-	whash_oneshot(WHASH_SHA256(), manifest, strlen(manifest), key_digest)
+	whash_oneshot(WHASH_SHA256, manifest, strlen(manifest), key_digest)
 	char* key = vcst_hex(key_digest, 32)
 	free(key_digest)
 	# The key is a precomputed id, not the hash of the tarball.

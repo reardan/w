@@ -94,91 +94,71 @@ import lib.mem
 
 /* Constants */
 
-int smtp_security_none():
-	return 0
-
-
-int smtp_security_starttls():
-	return 1
-
-
-int smtp_security_implicit():
-	return 2
+const int smtp_security_none = 0
+const int smtp_security_starttls = 1
+const int smtp_security_implicit = 2
 
 
 # Conventional port for a security mode: 25 (relay), 587 (submission
 # with STARTTLS), 465 (submission over implicit TLS).
 int smtp_default_port(int security):
-	if (security == smtp_security_implicit()):
+	if (security == smtp_security_implicit):
 		return 465
-	if (security == smtp_security_starttls()):
+	if (security == smtp_security_starttls):
 		return 587
 	return 25
 
 
-int smtp_error_none():
-	return 0
+const int smtp_error_none = 0
 
 
 # Socket or TLS read/write failed, or the peer closed. Fatal.
-int smtp_error_io():
-	return 1
+const int smtp_error_io = 1
 
 
 # Malformed or oversized reply, or plaintext injected after STARTTLS.
-int smtp_error_protocol():
-	return 2
+const int smtp_error_protocol = 2
 
 
 # The server answered with an unexpected (4xx/5xx) reply code.
-int smtp_error_rejected():
-	return 3
+const int smtp_error_rejected = 3
 
 
 # A caller argument failed validation; nothing was sent.
-int smtp_error_invalid():
-	return 4
+const int smtp_error_invalid = 4
 
 
 # TLS handshake failed (see smtp_error_message). Fatal.
-int smtp_error_tls():
-	return 5
+const int smtp_error_tls = 5
 
 
 # The server did not advertise what the call needs (STARTTLS, AUTH ...).
-int smtp_error_unsupported():
-	return 6
+const int smtp_error_unsupported = 6
 
 
 # AUTH refused locally: the channel is not encrypted (see header).
-int smtp_error_insecure():
-	return 7
+const int smtp_error_insecure = 7
 
 
 # The message exceeds the server's SIZE limit or has a line over 998
 # octets.
-int smtp_error_too_large():
-	return 8
+const int smtp_error_too_large = 8
 
 
 # Longest accepted reply line (RFC 5321 says 512; be lenient).
-int smtp_max_reply_line():
-	return 4096
+const int smtp_max_reply_line = 4096
 
 
 # Most lines accepted in one multi-line reply.
-int smtp_max_reply_lines():
-	return 256
+const int smtp_max_reply_lines = 256
 
 
 # Longest command line including CRLF (RFC 5321 4.5.3.1.4).
-int smtp_max_command_line():
-	return 512
+const int smtp_max_command_line = 512
 
 
 # Longest AUTH command / response line including CRLF (RFC 4954 4).
-int smtp_max_auth_line():
-	return 12288
+const int smtp_max_auth_line = 12288
 
 
 # Longest text line of message content, excluding CRLF (RFC 5321
@@ -188,12 +168,8 @@ int smtp_max_text_line():
 
 
 # Longest forward/reverse path content, excluding the angle brackets.
-int smtp_max_address():
-	return 254
-
-
-int smtp_read_buf_cap():
-	return 4096
+const int smtp_max_address = 254
+const int smtp_read_buf_cap = 4096
 
 
 /* Client state */
@@ -254,7 +230,7 @@ smtp_client* smtp_client_from_fd(int fd, char* server_name):
 	if (server_name != 0):
 		c.server_name = strclone(server_name)
 	c.ehlo_domain = 0
-	c.rbuf = malloc(smtp_read_buf_cap())
+	c.rbuf = malloc(smtp_read_buf_cap)
 	c.rpos = 0
 	c.rlen = 0
 	c.error = 0
@@ -323,7 +299,7 @@ void smtp_set_allow_insecure_auth(smtp_client* c, int allow):
 int smtp_fail(smtp_client* c, int code, char* detail):
 	c.error = code
 	c.error_detail = detail
-	if ((code == smtp_error_io()) || (code == smtp_error_protocol()) || (code == smtp_error_tls())):
+	if ((code == smtp_error_io) || (code == smtp_error_protocol) || (code == smtp_error_tls)):
 		c.broken = 1
 	return 0
 
@@ -345,13 +321,13 @@ int smtp_write_all(smtp_client* c, char* data, int n):
 		if (n == 0):
 			return 1
 		if (tls_write(c.tls, data, n) != n):
-			return smtp_fail(c, smtp_error_io(), c"smtp: TLS write failed")
+			return smtp_fail(c, smtp_error_io, c"smtp: TLS write failed")
 		return 1
 	int total = 0
 	while (total < n):
 		int got = socket_send(c.fd, data + total, n - total, msg_nosignal())
 		if (got <= 0):
-			return smtp_fail(c, smtp_error_io(), c"smtp: socket write failed")
+			return smtp_fail(c, smtp_error_io, c"smtp: socket write failed")
 		total = total + got
 	return 1
 
@@ -362,11 +338,11 @@ int smtp_fill(smtp_client* c):
 		return 1
 	int got = 0
 	if (c.tls != 0):
-		got = tls_read(c.tls, c.rbuf, smtp_read_buf_cap())
+		got = tls_read(c.tls, c.rbuf, smtp_read_buf_cap)
 	else:
-		got = read(c.fd, c.rbuf, smtp_read_buf_cap())
+		got = read(c.fd, c.rbuf, smtp_read_buf_cap)
 	if (got <= 0):
-		return smtp_fail(c, smtp_error_io(), c"smtp: connection closed or read failed")
+		return smtp_fail(c, smtp_error_io, c"smtp: connection closed or read failed")
 	c.rpos = 0
 	c.rlen = got
 	return 1
@@ -386,8 +362,8 @@ int smtp_read_line(smtp_client* c, string_builder* line):
 				line.length = line.length - 1
 				line.data[line.length] = 0
 			return 1
-		if (line.length >= smtp_max_reply_line()):
-			return smtp_fail(c, smtp_error_protocol(), c"smtp: reply line too long")
+		if (line.length >= smtp_max_reply_line):
+			return smtp_fail(c, smtp_error_protocol, c"smtp: reply line too long")
 		string_append_char(line, ch)
 	return 0
 
@@ -439,19 +415,19 @@ int smtp_read_reply(smtp_client* c):
 		if (smtp_parse_reply_line(line.data, line.length, &this_code, &more) == 0):
 			string_free(line)
 			string_free(text)
-			smtp_fail(c, smtp_error_protocol(), c"smtp: malformed reply line")
+			smtp_fail(c, smtp_error_protocol, c"smtp: malformed reply line")
 			return (-1)
 		if ((lines > 0) && (this_code != code)):
 			string_free(line)
 			string_free(text)
-			smtp_fail(c, smtp_error_protocol(), c"smtp: inconsistent codes in multi-line reply")
+			smtp_fail(c, smtp_error_protocol, c"smtp: inconsistent codes in multi-line reply")
 			return (-1)
 		code = this_code
 		lines = lines + 1
-		if (lines > smtp_max_reply_lines()):
+		if (lines > smtp_max_reply_lines):
 			string_free(line)
 			string_free(text)
-			smtp_fail(c, smtp_error_protocol(), c"smtp: too many reply lines")
+			smtp_fail(c, smtp_error_protocol, c"smtp: too many reply lines")
 			return (-1)
 		if (lines > 1):
 			string_append_char(text, 10)
@@ -487,7 +463,7 @@ int smtp_valid_token(char* text, int max_len, int allow_empty):
 
 # 1 when addr is a valid (non-empty) forward-path / mailbox address.
 int smtp_valid_address(char* addr):
-	return smtp_valid_token(addr, smtp_max_address(), 0)
+	return smtp_valid_token(addr, smtp_max_address, 0)
 
 
 # 1 when line may be sent as one command: no CR, LF or NUL-truncation
@@ -510,7 +486,7 @@ int smtp_valid_line(char* line, int max_with_crlf):
 
 int smtp_send_line(smtp_client* c, char* line, int max_with_crlf):
 	if (smtp_valid_line(line, max_with_crlf) == 0):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: command line contains CR/LF or is too long")
+		return smtp_fail(c, smtp_error_invalid, c"smtp: command line contains CR/LF or is too long")
 	int n = strlen(line)
 	char* buf = malloc(n + 3)
 	mem_copy(buf, line, n)
@@ -533,7 +509,7 @@ int smtp_command_limit(smtp_client* c, char* line, int max_with_crlf):
 int smtp_command(smtp_client* c, char* line):
 	if (smtp_begin(c) == 0):
 		return (-1)
-	return smtp_command_limit(c, line, smtp_max_command_line())
+	return smtp_command_limit(c, line, smtp_max_command_line)
 
 
 # Maps a reply code to the verb result: 1 when it is one of the wanted
@@ -543,13 +519,13 @@ int smtp_expect(smtp_client* c, int code, int want1, int want2):
 		return 0
 	if ((code == want1) || ((want2 != 0) && (code == want2))):
 		return 1
-	return smtp_fail(c, smtp_error_rejected(), c"smtp: server rejected the command")
+	return smtp_fail(c, smtp_error_rejected, c"smtp: server rejected the command")
 
 
 int smtp_simple(smtp_client* c, char* line, int want1, int want2):
 	if (smtp_begin(c) == 0):
 		return 0
-	return smtp_expect(c, smtp_command_limit(c, line, smtp_max_command_line()), want1, want2)
+	return smtp_expect(c, smtp_command_limit(c, line, smtp_max_command_line), want1, want2)
 
 
 # Reads the 220 service greeting.
@@ -655,12 +631,12 @@ int smtp_ehlo(smtp_client* c, char* domain):
 	if (domain == 0):
 		domain = c"localhost"
 	if (smtp_valid_token(domain, 255, 0) == 0):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: invalid EHLO domain")
+		return smtp_fail(c, smtp_error_invalid, c"smtp: invalid EHLO domain")
 	if (c.ehlo_domain != domain):
 		free(c.ehlo_domain)
 		c.ehlo_domain = strclone(domain)
 	char* line = strjoin(c"EHLO ", domain)
-	int code = smtp_command_limit(c, line, smtp_max_command_line())
+	int code = smtp_command_limit(c, line, smtp_max_command_line)
 	free(line)
 	if (code == 250):
 		smtp_parse_ehlo_caps(c, c.last_text)
@@ -669,7 +645,7 @@ int smtp_ehlo(smtp_client* c, char* domain):
 		return smtp_expect(c, code, 250, 0)
 	smtp_reset_caps(c)
 	line = strjoin(c"HELO ", domain)
-	code = smtp_command_limit(c, line, smtp_max_command_line())
+	code = smtp_command_limit(c, line, smtp_max_command_line)
 	free(line)
 	return smtp_expect(c, code, 250, 0)
 
@@ -693,7 +669,7 @@ int smtp_tls_wrap(smtp_client* c, tls_config* cfg):
 		char* why = tls_last_error(cfg)
 		if (why == 0):
 			why = c"smtp: TLS handshake failed"
-		return smtp_fail(c, smtp_error_tls(), why)
+		return smtp_fail(c, smtp_error_tls, why)
 	return 1
 
 
@@ -704,14 +680,14 @@ int smtp_starttls(smtp_client* c, tls_config* cfg):
 	if (smtp_begin(c) == 0):
 		return 0
 	if (c.tls != 0):
-		return smtp_fail(c, smtp_error_unsupported(), c"smtp: TLS already active")
+		return smtp_fail(c, smtp_error_unsupported, c"smtp: TLS already active")
 	if (c.cap_starttls == 0):
-		return smtp_fail(c, smtp_error_unsupported(), c"smtp: server does not offer STARTTLS")
-	int code = smtp_command_limit(c, c"STARTTLS", smtp_max_command_line())
+		return smtp_fail(c, smtp_error_unsupported, c"smtp: server does not offer STARTTLS")
+	int code = smtp_command_limit(c, c"STARTTLS", smtp_max_command_line)
 	if (smtp_expect(c, code, 220, 0) == 0):
 		return 0
 	if (c.rpos < c.rlen):
-		return smtp_fail(c, smtp_error_protocol(), c"smtp: plaintext data after STARTTLS reply")
+		return smtp_fail(c, smtp_error_protocol, c"smtp: plaintext data after STARTTLS reply")
 	smtp_reset_caps(c)
 	if (smtp_tls_wrap(c, cfg) == 0):
 		return 0
@@ -728,14 +704,14 @@ int smtp_starttls(smtp_client* c, tls_config* cfg):
 int smtp_start(smtp_client* c, int security, tls_config* cfg, char* ehlo_domain):
 	if (smtp_begin(c) == 0):
 		return 0
-	if (security == smtp_security_implicit()):
+	if (security == smtp_security_implicit):
 		if (smtp_tls_wrap(c, cfg) == 0):
 			return 0
 	if (smtp_greeting(c) == 0):
 		return 0
 	if (smtp_ehlo(c, ehlo_domain) == 0):
 		return 0
-	if (security == smtp_security_starttls()):
+	if (security == smtp_security_starttls):
 		return smtp_starttls(c, cfg)
 	return 1
 
@@ -748,11 +724,11 @@ smtp_client* smtp_open(char* host, int port, int security, tls_config* cfg, char
 	smtp_client* c = smtp_client_from_fd((-1), host)
 	int ip = 0
 	if ((host == 0) || (dns_resolve_ipv4(host, &ip) == 0)):
-		smtp_fail(c, smtp_error_io(), c"smtp: cannot resolve host")
+		smtp_fail(c, smtp_error_io, c"smtp: cannot resolve host")
 		return c
 	int fd = socket_tcp_ipv4()
 	if (fd < 0):
-		smtp_fail(c, smtp_error_io(), c"smtp: socket failed")
+		smtp_fail(c, smtp_error_io, c"smtp: socket failed")
 		return c
 	c.fd = fd
 	socket_set_nosigpipe(fd)
@@ -760,7 +736,7 @@ smtp_client* smtp_open(char* host, int port, int security, tls_config* cfg, char
 		socket_set_recv_timeout(fd, timeout_ms)
 		socket_set_send_timeout(fd, timeout_ms)
 	if (socket_connect_ipv4(fd, ip, port) < 0):
-		smtp_fail(c, smtp_error_io(), c"smtp: connect failed")
+		smtp_fail(c, smtp_error_io, c"smtp: connect failed")
 		return c
 	smtp_start(c, security, cfg, ehlo_domain)
 	return c
@@ -776,9 +752,9 @@ int smtp_is_loopback_name(char* name):
 
 int smtp_auth_allowed(smtp_client* c, int advertised):
 	if ((c.tls == 0) && (c.allow_insecure_auth == 0) && (smtp_is_loopback_name(c.server_name) == 0)):
-		return smtp_fail(c, smtp_error_insecure(), c"smtp: refusing to send credentials without TLS")
+		return smtp_fail(c, smtp_error_insecure, c"smtp: refusing to send credentials without TLS")
 	if (advertised == 0):
-		return smtp_fail(c, smtp_error_unsupported(), c"smtp: AUTH mechanism not advertised")
+		return smtp_fail(c, smtp_error_unsupported, c"smtp: AUTH mechanism not advertised")
 	return 1
 
 
@@ -794,7 +770,7 @@ int smtp_sasl_send(smtp_client* c, char* prefix, char* data, int len):
 	if (prefix != 0):
 		line = strjoin(prefix, b64)
 		free(b64)
-	int code = smtp_command_limit(c, line, smtp_max_auth_line())
+	int code = smtp_command_limit(c, line, smtp_max_auth_line)
 	int n = strlen(line)
 	mem_fill(line, 0, n)
 	free(line)
@@ -804,7 +780,7 @@ int smtp_sasl_send(smtp_client* c, char* prefix, char* data, int len):
 # If the server is still mid-exchange (334), cancel it with "*".
 void smtp_sasl_cancel(smtp_client* c, int code):
 	if (code == 334):
-		smtp_command_limit(c, c"*", smtp_max_command_line())
+		smtp_command_limit(c, c"*", smtp_max_command_line)
 
 
 # AUTH PLAIN (RFC 4616) with an initial response: base64 of
@@ -813,7 +789,7 @@ int smtp_auth_plain(smtp_client* c, char* user, char* pass):
 	if (smtp_begin(c) == 0):
 		return 0
 	if ((smtp_valid_credential(user) == 0) || (smtp_valid_credential(pass) == 0) || (strlen(user) == 0)):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: invalid credentials")
+		return smtp_fail(c, smtp_error_invalid, c"smtp: invalid credentials")
 	if (smtp_auth_allowed(c, c.auth_plain) == 0):
 		return 0
 	int ul = strlen(user)
@@ -845,10 +821,10 @@ int smtp_auth_login(smtp_client* c, char* user, char* pass):
 	if (smtp_begin(c) == 0):
 		return 0
 	if ((smtp_valid_credential(user) == 0) || (smtp_valid_credential(pass) == 0) || (strlen(user) == 0)):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: invalid credentials")
+		return smtp_fail(c, smtp_error_invalid, c"smtp: invalid credentials")
 	if (smtp_auth_allowed(c, c.auth_login) == 0):
 		return 0
-	int code = smtp_command_limit(c, c"AUTH LOGIN", smtp_max_command_line())
+	int code = smtp_command_limit(c, c"AUTH LOGIN", smtp_max_command_line)
 	if (code != 334):
 		return smtp_expect(c, code, 334, 0)
 	code = smtp_sasl_send(c, 0, user, strlen(user))
@@ -874,10 +850,10 @@ int smtp_mail_from_ex(smtp_client* c, char* addr, int size, int eightbit):
 		return 0
 	if (addr == 0):
 		addr = c""
-	if (smtp_valid_token(addr, smtp_max_address(), 1) == 0):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: invalid MAIL FROM address")
+	if (smtp_valid_token(addr, smtp_max_address, 1) == 0):
+		return smtp_fail(c, smtp_error_invalid, c"smtp: invalid MAIL FROM address")
 	if ((c.cap_size != 0) && (c.size_limit > 0) && (size > c.size_limit)):
-		return smtp_fail(c, smtp_error_too_large(), c"smtp: message exceeds the server SIZE limit")
+		return smtp_fail(c, smtp_error_too_large, c"smtp: message exceeds the server SIZE limit")
 	string_builder* line = string_new()
 	string_append(line, c"MAIL FROM:<")
 	string_append(line, addr)
@@ -887,7 +863,7 @@ int smtp_mail_from_ex(smtp_client* c, char* addr, int size, int eightbit):
 		string_append_int(line, size)
 	if ((eightbit != 0) && (c.cap_8bitmime != 0)):
 		string_append(line, c" BODY=8BITMIME")
-	int code = smtp_command_limit(c, line.data, smtp_max_command_line())
+	int code = smtp_command_limit(c, line.data, smtp_max_command_line)
 	string_free(line)
 	return smtp_expect(c, code, 250, 0)
 
@@ -903,12 +879,12 @@ int smtp_rcpt_to(smtp_client* c, char* addr):
 	if (smtp_begin(c) == 0):
 		return 0
 	if (smtp_valid_address(addr) == 0):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: invalid RCPT TO address")
+		return smtp_fail(c, smtp_error_invalid, c"smtp: invalid RCPT TO address")
 	string_builder* line = string_new()
 	string_append(line, c"RCPT TO:<")
 	string_append(line, addr)
 	string_append(line, c">")
-	int code = smtp_command_limit(c, line.data, smtp_max_command_line())
+	int code = smtp_command_limit(c, line.data, smtp_max_command_line)
 	string_free(line)
 	return smtp_expect(c, code, 250, 251)
 
@@ -964,8 +940,8 @@ int smtp_data(smtp_client* c, char* msg, int len):
 	int n = 0
 	char* stuffed = smtp_dot_stuff(msg, len, &n)
 	if (stuffed == 0):
-		return smtp_fail(c, smtp_error_too_large(), c"smtp: message line longer than 998 octets")
-	int code = smtp_command_limit(c, c"DATA", smtp_max_command_line())
+		return smtp_fail(c, smtp_error_too_large, c"smtp: message line longer than 998 octets")
+	int code = smtp_command_limit(c, c"DATA", smtp_max_command_line)
 	if (code != 354):
 		free(stuffed)
 		return smtp_expect(c, code, 354, 0)
@@ -1020,11 +996,11 @@ int smtp_send(smtp_client* c, char* from, list[char*] rcpts, char* msg, int len)
 	if (smtp_begin(c) == 0):
 		return 0
 	if (rcpts.length == 0):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: no recipients")
+		return smtp_fail(c, smtp_error_invalid, c"smtp: no recipients")
 	int i = 0
 	while (i < rcpts.length):
 		if (smtp_valid_address(rcpts[i]) == 0):
-			return smtp_fail(c, smtp_error_invalid(), c"smtp: invalid RCPT TO address")
+			return smtp_fail(c, smtp_error_invalid, c"smtp: invalid RCPT TO address")
 		i = i + 1
 	if (smtp_mail_from_ex(c, from, len, smtp_has_8bit(msg, len)) == 0):
 		return 0
@@ -1659,7 +1635,7 @@ int smtp_send_message(smtp_client* c, smtp_message* m):
 	int len = 0
 	char* msg = smtp_message_build(m, &len)
 	if (msg == 0):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: message failed to build")
+		return smtp_fail(c, smtp_error_invalid, c"smtp: message failed to build")
 	list[char*] rcpts = smtp_message_recipients(m)
 	int accepted = smtp_send(c, m.from_addr, rcpts, msg, len)
 	rcpts.free()

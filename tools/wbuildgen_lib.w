@@ -299,8 +299,7 @@ list[char*] wbg_gen_wasm_names
 
 # Arch codes for wbg_make_target/wbg_add_generated (functions, not
 # global variables, so they read as constants like json_type_*()).
-int wbg_arch_default():
-	return 0
+const int wbg_arch_default = 0
 
 
 int wbg_arch_x64():
@@ -1867,7 +1866,7 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 	# step= vocabulary entry).
 	list[char*] step_roots = new list[char*]
 	int force = 0
-	if ((arch == wbg_arch_default()) && (wbg_dir_steps.length > 0)):
+	if ((arch == wbg_arch_default) && (wbg_dir_steps.length > 0)):
 		force = wbg_steps_cacheable(binary, step_roots) == 0
 	if (force == 0):
 		json_value* inputs = json_array()
@@ -1914,7 +1913,7 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 		json_object_set(run_step, c"cmd", run_cmd)
 		wbg_decorate_run_step(run_step)
 		json_array_push(steps, run_step)
-		if (arch == wbg_arch_default()):
+		if (arch == wbg_arch_default):
 			for wbg_step_dir* sd in wbg_dir_steps:
 				json_array_push(steps, wbg_step_json(sd))
 			for char* args in wbg_dir_extra_compile:
@@ -1974,7 +1973,7 @@ json_value* wbg_make_variant_target(char* name, char* src, char* argv):
 	json_array_push(outputs, json_string(binary))
 	json_object_set(target, c"outputs", outputs)
 	json_value* compile_step = json_object()
-	json_object_set(compile_step, c"cmd", wbg_compile_cmd(src, wbg_arch_default(), binary))
+	json_object_set(compile_step, c"cmd", wbg_compile_cmd(src, wbg_arch_default, binary))
 	json_value* run_cmd = json_array()
 	json_array_push(run_cmd, json_string(binary))
 	wbg_push_split_args(run_cmd, argv)
@@ -2577,7 +2576,7 @@ int wbg_scan():
 		if (wbg_dir_compile_fail && (wbg_dir_group_names.length > 0)):
 			wbg_error2(c"'compile_fail' cannot combine with 'group=' (a group member is compiled and run): ", src)
 			return 1
-		int primary_arch = wbg_arch_default()
+		int primary_arch = wbg_arch_default
 		if (wbg_dir_arch_only != 0):
 			# arch_only=: the single target keeps name32 but compiles
 			# with the directive's arch, and no default twin exists. The

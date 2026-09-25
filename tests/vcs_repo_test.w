@@ -91,7 +91,7 @@ void test_repo_content_and_binary():
 	assert_equal(0, repo_is_binaryish(a))
 	assert_equal(1, repo_is_binaryish(vrt_blob(c"ab\x00cd", 5)))
 	# Only the first REPO_BINARY_SNIFF_LEN() bytes are sniffed.
-	int n = REPO_BINARY_SNIFF_LEN() + 2
+	int n = REPO_BINARY_SNIFF_LEN + 2
 	char* big = malloc(n)
 	for i in range(n):
 		big[i] = 'x'

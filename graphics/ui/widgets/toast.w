@@ -43,8 +43,7 @@ import graphics.ui.widgets.context
 
 # Longest message a toast holds. Fixed, like ui_textbox_state's buffer:
 # a notification that needs more than this wants a dialog.
-int ui_toast_capacity():
-	return 128
+const int ui_toast_capacity = 128
 
 
 float32 ui_toast_height():
@@ -75,7 +74,7 @@ void ui_toast_init(ui_toast_state* st):
 # clock.
 void ui_toast_show(ui_toast_state* st, char* text, int now_ms, int duration_ms):
 	int i = 0
-	while ((i < ui_toast_capacity() - 1) && (text[i] != 0)):
+	while ((i < ui_toast_capacity - 1) && (text[i] != 0)):
 		st.text[i] = text[i]
 		i = i + 1
 	st.text[i] = 0

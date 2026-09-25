@@ -25,8 +25,7 @@ import lib.mem
 
 # ---- representation ---------------------------------------------------------
 
-int BIGNUM_LIMB_BITS():
-	return 15
+const int BIGNUM_LIMB_BITS = 15
 
 
 int BIGNUM_LIMB_MASK():
@@ -36,8 +35,7 @@ int BIGNUM_LIMB_MASK():
 # Limb capacity. A base-2^15 limb holds 15 bits, so 560 limbs cover 8400 bits.
 # The largest intermediate is the full-width product of two operands < modulus;
 # for a 4096-bit modulus (274 limbs) that product is 548 limbs, which fits.
-int BIGNUM_CAP():
-	return 560
+const int BIGNUM_CAP = 560
 
 
 struct bignum:
@@ -46,8 +44,8 @@ struct bignum:
 
 
 bignum* bignum_new():
-	bignum* a = new bignum(0, cast(int*, malloc(BIGNUM_CAP() * __word_size__)))
-	mem_fill(a.limbs, 0, BIGNUM_CAP())
+	bignum* a = new bignum(0, cast(int*, malloc(BIGNUM_CAP * __word_size__)))
+	mem_fill(a.limbs, 0, BIGNUM_CAP)
 	return a
 
 
@@ -101,7 +99,7 @@ void bignum_copy(bignum* dst, bignum* src):
 # BIGNUM_CAP() limbs regardless of significant length, so the memory-access
 # pattern does not depend on the source value.
 void bignum_copy_full(bignum* dst, bignum* src):
-	mem_copy(dst.limbs, src.limbs, BIGNUM_CAP())
+	mem_copy(dst.limbs, src.limbs, BIGNUM_CAP)
 	dst.n = src.n
 
 
@@ -112,7 +110,7 @@ void bignum_cselect(int bit, bignum* dst, bignum* src):
 	int mask = 0 - bit          # 0 if bit==0, all-ones if bit==1
 	int notmask = ~mask
 	int i = 0
-	while (i < BIGNUM_CAP()):
+	while (i < BIGNUM_CAP):
 		dst.limbs[i] = (dst.limbs[i] & notmask) | (src.limbs[i] & mask)
 		i = i + 1
 	dst.n = (dst.n & notmask) | (src.n & mask)
@@ -151,7 +149,7 @@ int bignum_bit_length(bignum* a):
 	if (i < 0):
 		return 0
 	int limb = a.limbs[i]
-	int bits = i * BIGNUM_LIMB_BITS()
+	int bits = i * BIGNUM_LIMB_BITS
 	while (limb > 0):
 		bits = bits + 1
 		limb = limb >> 1
@@ -159,16 +157,16 @@ int bignum_bit_length(bignum* a):
 
 
 int bignum_get_bit(bignum* a, int bit):
-	int limb = bit / BIGNUM_LIMB_BITS()
-	int off = bit % BIGNUM_LIMB_BITS()
+	int limb = bit / BIGNUM_LIMB_BITS
+	int off = bit % BIGNUM_LIMB_BITS
 	if (limb >= a.n):
 		return 0
 	return (a.limbs[limb] >> off) & 1
 
 
 void bignum_set_bit(bignum* a, int bit):
-	int limb = bit / BIGNUM_LIMB_BITS()
-	int off = bit % BIGNUM_LIMB_BITS()
+	int limb = bit / BIGNUM_LIMB_BITS
+	int off = bit % BIGNUM_LIMB_BITS
 	a.limbs[limb] = a.limbs[limb] | (1 << off)
 	if (limb + 1 > a.n):
 		a.n = limb + 1
@@ -307,8 +305,8 @@ bignum* BIGNUM_SCRATCH_Q
 void bignum_scratch_init():
 	if (BIGNUM_SCRATCH_INITED != 0):
 		return
-	BIGNUM_DIV_U = cast(int*, malloc((BIGNUM_CAP() + 1) * __word_size__))
-	BIGNUM_DIV_V = cast(int*, malloc(BIGNUM_CAP() * __word_size__))
+	BIGNUM_DIV_U = cast(int*, malloc((BIGNUM_CAP + 1) * __word_size__))
+	BIGNUM_DIV_V = cast(int*, malloc(BIGNUM_CAP * __word_size__))
 	BIGNUM_SCRATCH_T = bignum_new()
 	BIGNUM_SCRATCH_Q = bignum_new()
 	BIGNUM_SCRATCH_INITED = 1

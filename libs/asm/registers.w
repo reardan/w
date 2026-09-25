@@ -106,13 +106,13 @@ char* asm_reg_name_arm64(int number, int size):
 # arm64 number 31 formats as sp; callers that mean xzr/wzr handle it
 # themselves (the meaning is per-instruction, not per-register).
 char* asm_reg_name(int arch, int number, int size):
-	if (arch == ASM_ARCH_X86()):
+	if (arch == ASM_ARCH_X86):
 		if (size == 1):
 			return asm_reg_name_x86_8(number)
 		if (size == 2):
 			return asm_reg_name_x86_16(number)
 		return asm_reg_name_x86_32(number)
-	if (arch == ASM_ARCH_X64()):
+	if (arch == ASM_ARCH_X64):
 		if (number >= 8 && size <= 4):
 			# r8..r15 in dword/word/byte width: r8d / r8w / r8b.
 			if (size == 1):
@@ -127,7 +127,7 @@ char* asm_reg_name(int arch, int number, int size):
 		if (size == 4):
 			return asm_reg_name_x86_32(number)
 		return asm_reg_name_x64(number)
-	if (arch == ASM_ARCH_ARM64()):
+	if (arch == ASM_ARCH_ARM64):
 		return asm_reg_name_arm64(number, size)
 	return 0
 

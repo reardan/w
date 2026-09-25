@@ -293,14 +293,14 @@ void test_ids_and_layout_are_fixed():
 
 	ui_begin(ctx, 400, 400)
 	ui_calendar(ctx, &st, &sel, 0)
-	assert_equal(1 + ui_calendar_ids(), ctx.next_id)
+	assert_equal(1 + ui_calendar_ids, ctx.next_id)
 	float32 bottom = ui_layout_top(ctx).cursor_y
 	ui_end(ctx)
 
 	ui_calendar_init(&st, 2026, 8)
 	ui_begin(ctx, 400, 400)
 	ui_calendar(ctx, &st, &sel, 0)
-	assert_equal(1 + ui_calendar_ids(), ctx.next_id)
+	assert_equal(1 + ui_calendar_ids, ctx.next_id)
 	asserts(c"same height every month", ui_layout_top(ctx).cursor_y == bottom)
 	ui_end(ctx)
 	ui_render_destroy(&fx.r)

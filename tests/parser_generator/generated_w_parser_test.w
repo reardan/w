@@ -111,7 +111,7 @@ void test_w_lexer_midline_tabs_are_hidden():
 		pg_token* token = pg_token_stream_all_get(stream, i)
 		if (token.kind == wlang_token_INLINE_TAB):
 			inline_tab_runs = inline_tab_runs + 1
-			assert_equal(pg_token_hidden_channel(), token.channel)
+			assert_equal(pg_token_hidden_channel, token.channel)
 			assert_equal(2, token.length)
 		i = i + 1
 	assert_equal(1, inline_tab_runs)
@@ -196,7 +196,7 @@ void test_w_lexer_keeps_comments_and_whitespace_hidden():
 	# All-channel stream keeps every byte of trivia in order
 	pg_token* comment = pg_token_stream_all_get(stream, 0)
 	assert_equal(wlang_token_LINE_COMMENT, comment.kind)
-	assert_equal(pg_token_hidden_channel(), comment.channel)
+	assert_equal(pg_token_hidden_channel, comment.channel)
 	assert_strings_equal(c"# heading", comment.text)
 	assert_equal(0, comment.offset)
 	assert_equal(9, comment.length)
@@ -223,7 +223,7 @@ void test_w_ast_node_spans():
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	# Root covers the first token through EOF
 	assert_equal(0, pg_ast_first_token(root).offset)
-	assert_equal(pg_token_eof_kind(), pg_ast_last_token(root).kind)
+	assert_equal(pg_token_eof_kind, pg_ast_last_token(root).kind)
 	# The function declaration spans "int" through the final NEWLINE
 	pg_ast_node* top_item = pg_ast_child(root, 0)
 	assert_strings_equal(c"int", pg_ast_first_token(top_item).text)

@@ -24,8 +24,7 @@ struct pg_token:
 	int length
 
 
-int pg_token_eof_kind():
-	return 0
+const int pg_token_eof_kind = 0
 
 
 int pg_token_invalid_kind():
@@ -38,12 +37,8 @@ int pg_token_whitespace_kind():
 	return -2
 
 
-int pg_token_default_channel():
-	return 0
-
-
-int pg_token_hidden_channel():
-	return 1
+const int pg_token_default_channel = 0
+const int pg_token_hidden_channel = 1
 
 
 char* pg_substr(char* input, int start, int length):
@@ -61,7 +56,7 @@ pg_token* pg_token_new(int kind, char* text, char* filename, int line, int colum
 	token.filename = filename
 	token.line = line
 	token.column = column
-	token.channel = pg_token_default_channel()
+	token.channel = pg_token_default_channel
 	token.offset = 0
 	token.length = strlen(text)
 	return token
@@ -76,12 +71,12 @@ pg_token* pg_token_make(int kind, char* input, int start, int length, char* file
 
 # Move the token to the hidden channel; returns the token for call chaining.
 pg_token* pg_token_hide(pg_token* token):
-	token.channel = pg_token_hidden_channel()
+	token.channel = pg_token_hidden_channel
 	return token
 
 
 pg_token* pg_token_eof(int offset, char* filename, int line, int column):
-	pg_token* token = pg_token_new(pg_token_eof_kind(), c"", filename, line, column)
+	pg_token* token = pg_token_new(pg_token_eof_kind, c"", filename, line, column)
 	token.offset = offset
 	return token
 

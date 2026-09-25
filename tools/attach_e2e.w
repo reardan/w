@@ -189,14 +189,14 @@ int wait_ready(process* target, int timeout_ms):
 # ready, with why in *why.
 process* start_fixture(char* fixture, char** why):
 	spawn_options* opts = spawn_options_new()
-	opts.stdout_mode = process_pipe()
+	opts.stdout_mode = process_pipe
 	process* target = process_spawn(fixture, single_argv(fixture), opts)
 	free(opts)
 	if (target == 0):
 		*why = c"(could not spawn the fixture)"
 		return 0
 	if (wait_ready(target, timeout_secs * 1000) == 0):
-		process_kill(target, sigkill())
+		process_kill(target, sigkill)
 		process_wait(target)
 		process_free(target)
 		*why = c"(the fixture never printed attach_ready)"
@@ -220,13 +220,13 @@ attach_run* run_attach(char* dbg, char* fixture, char* src, char* commands, int 
 		r.text = why
 		return r
 	process_result* res = process_run(dbg, wdbg_argv(dbg, target.pid, src), 0, commands, timeout_secs * 1000)
-	process_kill(target, sigkill())
+	process_kill(target, sigkill)
 	process_wait(target)
 	process_free(target)
 	if (res == 0):
 		r.text = c"(could not spawn wdbg)"
 		return r
-	r.timed_out = (res.status == process_status_timeout())
+	r.timed_out = (res.status == process_status_timeout)
 	if (want_stderr):
 		r.text = strjoin(res.stdout_text, res.stderr_text)
 	else:
@@ -349,7 +349,7 @@ void exec_detach_case(char* prefix, char* dbg, char* fixture):
 	else:
 		process_result* res = process_run(dbg, wdbg_argv(dbg, target.pid, FINITE_SRC), 0, c"b bump\nc\ndetach\n", timeout_secs * 1000)
 		if (res != 0):
-			timed_out = (res.status == process_status_timeout())
+			timed_out = (res.status == process_status_timeout)
 		# The script's bare `wait` had no ceiling; bound it by the same
 		# timeout so a target left stopped by a detach regression fails
 		# instead of hanging.
@@ -370,7 +370,7 @@ void exec_detach_case(char* prefix, char* dbg, char* fixture):
 			else:
 				string_append_int(report, res.status)
 		string_append(report, c"\nexit_code=")
-		if (code == process_status_timeout()):
+		if (code == process_status_timeout):
 			string_append(report, c"timeout")
 		else:
 			string_append_int(report, code)

@@ -1,3 +1,4 @@
+const int wexec_process_groups_supported = 0
 # Per-target platform facts for tools/wexec.w (see the x86 sibling
 # file). arm64_darwin resolution, compiled into bin/wexec_darwin.
 
@@ -23,11 +24,9 @@ story like the one debugger/wdbg.w builds for x86-64 Linux), and the
 darwin executor's targets are compile-only cross builds today (see
 wexec_dirents_supported above for the same keep-the-status-quo
 reasoning). wexec only activates the cleanup when
-wexec_process_groups_supported() is 1, so behavior here is unchanged. */
+wexec_process_groups_supported is 1, so behavior here is unchanged. */
 
 
-int wexec_process_groups_supported():
-	return 0
 
 
 int wexec_process_group_enter():

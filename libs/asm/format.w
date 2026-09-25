@@ -29,7 +29,7 @@ char* asm_fmt_xmm(int number):
 
 
 char* asm_fmt_reg(int arch, asm_operand* op):
-	if (op.rclass == ASM_RCLASS_XMM()):
+	if (op.rclass == ASM_RCLASS_XMM):
 		return asm_fmt_xmm(op.reg)
 	return asm_reg_name(arch, op.reg, op.size)
 
@@ -50,9 +50,9 @@ char* asm_fmt_mem(int arch, asm_operand* op):
 	int wrote = 0
 	# Address registers are the arch's pointer width: 64-bit on x64.
 	int addr_size = 4
-	if (arch == ASM_ARCH_X64()):
+	if (arch == ASM_ARCH_X64):
 		addr_size = 8
-	if (op.base == ASM_BASE_RIP()):
+	if (op.base == ASM_BASE_RIP):
 		# x64 RIP-relative base (mod=0 rm=5); prints as [rip+disp].
 		inner = c"rip"
 		wrote = 1
@@ -81,17 +81,17 @@ char* asm_fmt_mem(int arch, asm_operand* op):
 # operand shows its size keyword only when that width isn't already
 # pinned by a register operand of the same width.
 int asm_fmt_reg_size(asm_insn* insn):
-	if (insn.op1.kind == ASM_OP_REG()):
+	if (insn.op1.kind == ASM_OP_REG):
 		return insn.op1.size
-	if (insn.op2.kind == ASM_OP_REG()):
+	if (insn.op2.kind == ASM_OP_REG):
 		return insn.op2.size
-	if (insn.op3.kind == ASM_OP_REG()):
+	if (insn.op3.kind == ASM_OP_REG):
 		return insn.op3.size
 	return -1
 
 
 int asm_fmt_has_mem(asm_insn* insn):
-	if (insn.op1.kind == ASM_OP_MEM() | insn.op2.kind == ASM_OP_MEM() | insn.op3.kind == ASM_OP_MEM()):
+	if (insn.op1.kind == ASM_OP_MEM || insn.op2.kind == ASM_OP_MEM || insn.op3.kind == ASM_OP_MEM):
 		return 1
 	return 0
 
@@ -116,16 +116,16 @@ int asm_fmt_mem_needs_size(asm_insn* insn, asm_operand* op):
 
 char* asm_fmt_operand(asm_insn* insn, asm_operand* op, int has_mem):
 	int arch = insn.arch
-	if (op.kind == ASM_OP_REG()):
+	if (op.kind == ASM_OP_REG):
 		return asm_fmt_reg(arch, op)
-	if (op.kind == ASM_OP_LABEL()):
+	if (op.kind == ASM_OP_LABEL):
 		return op.label
-	if (op.kind == ASM_OP_MEM()):
+	if (op.kind == ASM_OP_MEM):
 		char* body = asm_fmt_mem(arch, op)
 		if (asm_fmt_mem_needs_size(insn, op)):
 			return strjoin(asm_fmt_size_keyword(op.size), body)
 		return body
-	if (op.kind == ASM_OP_IMM()):
+	if (op.kind == ASM_OP_IMM):
 		char* body = asm_fmt_num(op.imm)
 		if (op.size == 8):
 			# 64-bit immediate (movabs): value carried as imm_hi:imm.

@@ -18,9 +18,9 @@ import tests.asm_fuzz_prng
 
 
 char* vdt_make_id(int n):
-	char* id = malloc(DAG_ID_SIZE())
+	char* id = malloc(DAG_ID_SIZE)
 	int i = 0
-	while (i < DAG_ID_SIZE()):
+	while (i < DAG_ID_SIZE):
 		id[i] = 0
 		i = i + 1
 	id[0] = n & 255

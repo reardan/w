@@ -35,8 +35,7 @@ import lib.mem
 
 # whash extension id for SHA-1 (extension ids start at 100; see the
 # registry in libs/standard/crypto/sha2.w).
-int sha1_alg_id():
-	return 101
+const int sha1_alg_id = 101
 
 
 int* sha1_k_cache
@@ -134,8 +133,8 @@ void sha1_load_iv(int* state):
 # on first use (20-byte digest, 64-byte block, 5 state words, big-endian
 # like the rest of the SHA family) and returns its id.
 int WHASH_SHA1():
-	whash_register(sha1_alg_id(), 20, 64, 5, 0, sha1_block, sha1_load_iv)
-	return sha1_alg_id()
+	whash_register(sha1_alg_id, 20, 64, 5, 0, sha1_block, sha1_load_iv)
+	return sha1_alg_id
 
 
 # One-shot SHA-1: digest of len bytes at data into out (20 bytes).

@@ -95,8 +95,8 @@ void test_jsonrpc_builders_round_trip():
 	json_free(parsed)
 	json_free(request)
 
-	json_value* error_response = jsonrpc_response_error(0, jsonrpc_error_invalid_params(), c"bad params")
-	rpc_test_assert_error_code(error_response, jsonrpc_error_invalid_params())
+	json_value* error_response = jsonrpc_response_error(0, jsonrpc_error_invalid_params, c"bad params")
+	rpc_test_assert_error_code(error_response, jsonrpc_error_invalid_params)
 	json_value* null_id = json_object_get(error_response, c"id")
 	assert_equal(json_type_null(), null_id.type)
 	json_free(error_response)
@@ -134,15 +134,15 @@ void test_jsonrpc_server_round_trip():
 	json_value* missing_response = jsonrpc_read_message(r)
 	json_value* missing_id = json_object_get(missing_response, c"id")
 	assert_equal(2, missing_id.int_value)
-	rpc_test_assert_error_code(missing_response, jsonrpc_error_method_not_found())
+	rpc_test_assert_error_code(missing_response, jsonrpc_error_method_not_found)
 	json_free(missing_response)
 
 	json_value* fail_response = jsonrpc_read_message(r)
-	rpc_test_assert_error_code(fail_response, jsonrpc_error_internal())
+	rpc_test_assert_error_code(fail_response, jsonrpc_error_internal)
 	json_free(fail_response)
 
 	json_value* parse_response = jsonrpc_read_message(r)
-	rpc_test_assert_error_code(parse_response, jsonrpc_error_parse())
+	rpc_test_assert_error_code(parse_response, jsonrpc_error_parse)
 	json_value* parse_id = json_object_get(parse_response, c"id")
 	assert_equal(json_type_null(), parse_id.type)
 	json_free(parse_response)
@@ -195,7 +195,7 @@ void test_jsonrpc_invalid_request_missing_version():
 
 	frame_reader* r = frame_reader_new(fds[0])
 	json_value* response = jsonrpc_read_message(r)
-	rpc_test_assert_error_code(response, jsonrpc_error_invalid_request())
+	rpc_test_assert_error_code(response, jsonrpc_error_invalid_request)
 	json_value* id = json_object_get(response, c"id")
 	assert_equal(5, id.int_value)
 	json_free(response)
@@ -236,7 +236,7 @@ void test_jsonrpc_typed_params_round_trip():
 	json_free(response)
 
 	json_value* bad_response = jsonrpc_read_message(r)
-	rpc_test_assert_error_code(bad_response, jsonrpc_error_internal())
+	rpc_test_assert_error_code(bad_response, jsonrpc_error_internal)
 	json_free(bad_response)
 
 	json_value* shutdown_response = jsonrpc_read_message(r)

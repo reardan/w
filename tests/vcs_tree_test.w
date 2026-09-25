@@ -118,8 +118,8 @@ void test_tree_serialize_known_answer():
 
 	# Entries added out of order; serialization sorts by byte-wise name.
 	wtree* t = tree_new()
-	assert_equal(0, tree_add(t, c"run", TREE_MODE_EXEC(), id_c))
-	assert_equal(0, tree_add(t, c"b", TREE_MODE_DIR(), id_b))
+	assert_equal(0, tree_add(t, c"run", TREE_MODE_EXEC, id_c))
+	assert_equal(0, tree_add(t, c"b", TREE_MODE_DIR, id_b))
 	assert_equal(0, tree_add(t, c"a.txt", TREE_MODE_FILE(), id_a))
 
 	string_builder* want = string_new()
@@ -143,8 +143,8 @@ void test_tree_serialize_known_answer():
 	# Insertion order does not matter: a permuted build hashes the same.
 	wtree* permuted = tree_new()
 	assert_equal(0, tree_add(permuted, c"a.txt", TREE_MODE_FILE(), id_a))
-	assert_equal(0, tree_add(permuted, c"run", TREE_MODE_EXEC(), id_c))
-	assert_equal(0, tree_add(permuted, c"b", TREE_MODE_DIR(), id_b))
+	assert_equal(0, tree_add(permuted, c"run", TREE_MODE_EXEC, id_c))
+	assert_equal(0, tree_add(permuted, c"b", TREE_MODE_DIR, id_b))
 	char* permuted_id = tree_id_hex(permuted)
 	assert_strings_equal(id, permuted_id)
 
@@ -216,7 +216,7 @@ void test_tree_put_get_roundtrip():
 	char* id_b = vtt_fake_id('2')
 
 	wtree* t = tree_new()
-	assert_equal(0, tree_add(t, c"zz", TREE_MODE_DIR(), id_b))
+	assert_equal(0, tree_add(t, c"zz", TREE_MODE_DIR, id_b))
 	assert_equal(0, tree_add(t, c"aa.txt", TREE_MODE_FILE(), id_a))
 	char* id = result_expect[char*](tree_put(s, t))
 	assert_equal(1, cas_has(s, id))
@@ -229,7 +229,7 @@ void test_tree_put_get_roundtrip():
 	assert_equal(TREE_MODE_FILE(), got.entries[0].mode)
 	assert_strings_equal(id_a, got.entries[0].id)
 	assert_strings_equal(c"zz", got.entries[1].name)
-	assert_equal(TREE_MODE_DIR(), got.entries[1].mode)
+	assert_equal(TREE_MODE_DIR, got.entries[1].mode)
 	assert_strings_equal(id_b, got.entries[1].id)
 	tree_free(got)
 
@@ -307,13 +307,13 @@ void test_tree_snapshot_nested_and_deterministic():
 	assert_equal(1, cas_has(s, hello_id))
 	free(hello_id)
 	assert_strings_equal(c"sub", root.entries[1].name)
-	assert_equal(TREE_MODE_DIR(), root.entries[1].mode)
+	assert_equal(TREE_MODE_DIR, root.entries[1].mode)
 
 	# Descend: sub/ holds deep/ and inner.txt, itself readable as a tree.
 	wtree* subtree = vtt_get(s, root.entries[1].id)
 	assert_equal(2, subtree.entries.length)
 	assert_strings_equal(c"deep", subtree.entries[0].name)
-	assert_equal(TREE_MODE_DIR(), subtree.entries[0].mode)
+	assert_equal(TREE_MODE_DIR, subtree.entries[0].mode)
 	assert_strings_equal(c"inner.txt", subtree.entries[1].name)
 	assert_equal(TREE_MODE_FILE(), subtree.entries[1].mode)
 	tree_free(subtree)
@@ -435,7 +435,7 @@ void test_tree_snapshot_empty_directory():
 	wtree* root = vtt_get(s, holder_id)
 	assert_equal(2, root.entries.length)
 	assert_strings_equal(c"hollow", root.entries[0].name)
-	assert_equal(TREE_MODE_DIR(), root.entries[0].mode)
+	assert_equal(TREE_MODE_DIR, root.entries[0].mode)
 	assert_strings_equal(empty_id, root.entries[0].id)
 	assert_strings_equal(c"kept.txt", root.entries[1].name)
 	tree_free(root)
@@ -542,7 +542,7 @@ void test_tree_diff_kind_and_mode_changes():
 	wtree* plain = tree_new()
 	assert_equal(0, tree_add(plain, c"tool", TREE_MODE_FILE(), blob))
 	wtree* exec = tree_new()
-	assert_equal(0, tree_add(exec, c"tool", TREE_MODE_EXEC(), blob))
+	assert_equal(0, tree_add(exec, c"tool", TREE_MODE_EXEC, blob))
 	char* plain_id = result_expect[char*](tree_put(s, plain))
 	char* exec_id = result_expect[char*](tree_put(s, exec))
 	assert1(strcmp(plain_id, exec_id) != 0)
@@ -582,10 +582,10 @@ void test_tree_diff_skips_equal_subtrees():
 	char* blob2 = cas_id_hex(c"blob", c"v2", 2)
 	wtree* r1 = tree_new()
 	assert_equal(0, tree_add(r1, c"data", TREE_MODE_FILE(), blob1))
-	assert_equal(0, tree_add(r1, c"shared", TREE_MODE_DIR(), shared_id))
+	assert_equal(0, tree_add(r1, c"shared", TREE_MODE_DIR, shared_id))
 	wtree* r2 = tree_new()
 	assert_equal(0, tree_add(r2, c"data", TREE_MODE_FILE(), blob2))
-	assert_equal(0, tree_add(r2, c"shared", TREE_MODE_DIR(), shared_id))
+	assert_equal(0, tree_add(r2, c"shared", TREE_MODE_DIR, shared_id))
 	char* r1_id = result_expect[char*](tree_put(s, r1))
 	char* r2_id = result_expect[char*](tree_put(s, r2))
 
@@ -599,7 +599,7 @@ void test_tree_diff_skips_equal_subtrees():
 	char* other_id = vtt_fake_id('f')
 	wtree* r3 = tree_new()
 	assert_equal(0, tree_add(r3, c"data", TREE_MODE_FILE(), blob1))
-	assert_equal(0, tree_add(r3, c"shared", TREE_MODE_DIR(), other_id))
+	assert_equal(0, tree_add(r3, c"shared", TREE_MODE_DIR, other_id))
 	char* r3_id = result_expect[char*](tree_put(s, r3))
 	list[tree_change*] out = new list[tree_change*]
 	wresult[int]* denied = tree_diff(s, r1_id, r3_id, out)

@@ -33,12 +33,8 @@ import lib.rle
 import libs.standard.crypto.base64
 
 
-int gen_atlas_w():
-	return 256
-
-
-int gen_mask_count():
-	return 9
+const int gen_atlas_w = 256
+const int gen_mask_count = 9
 
 
 # ---- atlas packing ----------------------------------------------------
@@ -54,7 +50,7 @@ struct gen_atlas:
 
 
 void gen_atlas_init(gen_atlas* a):
-	a.w = gen_atlas_w()
+	a.w = gen_atlas_w
 	a.h_cap = 512
 	a.pixels = malloc(a.w * a.h_cap)
 	int i = 0
@@ -382,12 +378,11 @@ void gen_pack_record(char* p, gen_glyph* g):
 # Latin-1 and Latin Extended-A, Greek and Coptic, basic Cyrillic, the
 # common general punctuation (dashes, quotes, bullet, ellipsis, primes,
 # guillemets), the euro and trade marks, and the four arrows.
-int gen_face_range_count():
-	return 10
+const int gen_face_range_count = 10
 
 
 int* gen_face_ranges():
-	int* r = cast(int*, malloc(gen_face_range_count() * 2 * __word_size__))
+	int* r = cast(int*, malloc(gen_face_range_count * 2 * __word_size__))
 	r[0] = 32
 	r[1] = 126
 	r[2] = 160
@@ -413,8 +408,7 @@ int* gen_face_ranges():
 
 # base64 characters per emitted string literal (a multiple of 4, so
 # every chunk decodes on its own).
-int gen_face_chunk_chars():
-	return 4096
+const int gen_face_chunk_chars = 4096
 
 
 # Subset one committed face and emit it as base64 chunk functions
@@ -425,7 +419,7 @@ int gen_emit_face(wstream* out, int face, char* path, int* out_size):
 	if (ttf_load(&font, path) == 0):
 		exit(1)
 	int size = 0
-	char* data = ttf_subset(&font, gen_face_ranges(), gen_face_range_count(), &size)
+	char* data = ttf_subset(&font, gen_face_ranges(), gen_face_range_count, &size)
 	if (data == 0):
 		exit(1)
 	ttf_font check
@@ -434,7 +428,7 @@ int gen_emit_face(wstream* out, int face, char* path, int* out_size):
 		exit(1)
 	char* text = base64_encode(data, size)
 	int text_length = base64_encoded_length(size)
-	int chunk_chars = gen_face_chunk_chars()
+	int chunk_chars = gen_face_chunk_chars
 	int chunks = (text_length + chunk_chars - 1) / chunk_chars
 	for k in range(chunks):
 		int first = k * chunk_chars
@@ -482,8 +476,8 @@ int main(int argc, int argv):
 	gen_atlas_init(&a)
 
 	# Masks first, in id order (font.w's mask ids point into this).
-	gen_glyph* masks = cast(gen_glyph*, malloc(gen_mask_count() * 7 * __word_size__))
-	int* mask_sizes = cast(int*, malloc(gen_mask_count() * __word_size__))
+	gen_glyph* masks = cast(gen_glyph*, malloc(gen_mask_count * 7 * __word_size__))
+	int* mask_sizes = cast(int*, malloc(gen_mask_count * __word_size__))
 	mask_sizes[0] = 8
 	mask_sizes[1] = 32
 	mask_sizes[2] = 32
@@ -494,7 +488,7 @@ int main(int argc, int argv):
 	mask_sizes[7] = 24
 	mask_sizes[8] = 24
 	int m = 0
-	while (m < gen_mask_count()):
+	while (m < gen_mask_count):
 		int size = mask_sizes[m]
 		char* bitmap = 0
 		if (m == 0):
@@ -555,23 +549,23 @@ int main(int argc, int argv):
 	gen_emit_int_func(out, c"ui_font_rle_length", rle_length)
 
 	# Mask records: one 63-byte chunk.
-	char* mask_packed = malloc(gen_mask_count() * 9)
+	char* mask_packed = malloc(gen_mask_count * 9)
 	m = 0
-	while (m < gen_mask_count()):
+	while (m < gen_mask_count):
 		gen_pack_record(&mask_packed[m * 9], &masks[m])
 		m = m + 1
-	gen_emit_bytes_func(out, c"ui_font_mask_records", 0 - 1, mask_packed, gen_mask_count() * 9)
+	gen_emit_bytes_func(out, c"ui_font_mask_records", 0 - 1, mask_packed, gen_mask_count * 9)
 	free(mask_packed)
 	stream_write_line(out, c"")
 	stream_write_line(out, c"")
 	# Bound and comment both come from gen_mask_count(), so adding a mask
 	# cannot leave a stale clamp behind that silently maps it to 0.
 	stream_write_cstr(out, c"# 9-byte record for mask id 0..")
-	stream_write_int(out, gen_mask_count() - 1)
+	stream_write_int(out, gen_mask_count - 1)
 	stream_write_line(out, c".")
 	stream_write_line(out, c"char* ui_font_mask_record(int mask):")
 	stream_write_cstr(out, c"\tif ((mask < 0) || (mask >= ")
-	stream_write_int(out, gen_mask_count())
+	stream_write_int(out, gen_mask_count)
 	stream_write_line(out, c")):")
 	stream_write_line(out, c"\t\tmask = 0")
 	stream_write_line(out, c"\tchar* data = ui_font_mask_records()")
@@ -628,7 +622,7 @@ int main(int argc, int argv):
 	stream_write_line(out, c"# Decoded byte length of a default face.")
 	gen_emit_face_table(out, c"ui_font_face_size", face_sizes)
 	gen_emit_face_table(out, c"ui_font_face_chunk_count", face_chunks)
-	gen_emit_int_func(out, c"ui_font_face_chunk_chars", gen_face_chunk_chars())
+	gen_emit_int_func(out, c"ui_font_face_chunk_chars", gen_face_chunk_chars)
 	stream_write_line(out, c"")
 	stream_write_line(out, c"")
 	stream_write_line(out, c"# Base64 chunk k of a default face.")

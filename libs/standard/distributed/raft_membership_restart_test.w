@@ -81,7 +81,7 @@ void test_config_survives_wal_replay():
 	raft_start(r, 0)
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)   # single-node cluster: elects on the spot
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	assert_equal(1, raft_wal_sync(rw, r))   # STATE
 	# add 5, add 6, then remove 5. Hand-built directly (rmr_push_config_
 	# entry — same precedent as raft_wal_test.w's rwal_push_entry)
@@ -99,9 +99,9 @@ void test_config_survives_wal_replay():
 	raft_term(r, t)
 	int term = raft_u64_as_int(t)
 	u64_free(t)
-	rmr_push_config_entry(r, term, raft_config_op_add(), 5)
-	rmr_push_config_entry(r, term, raft_config_op_add(), 6)
-	rmr_push_config_entry(r, term, raft_config_op_remove(), 5)
+	rmr_push_config_entry(r, term, raft_config_op_add, 5)
+	rmr_push_config_entry(r, term, raft_config_op_add, 6)
+	rmr_push_config_entry(r, term, raft_config_op_remove, 5)
 	assert_equal(1, raft_peer_count(r))
 	assert_equal(1, rmr_has_peer(r, 6))
 	assert_equal(0, rmr_has_peer(r, 5))
@@ -141,7 +141,7 @@ void test_config_survives_snapshot_and_restart():
 	raft_start(r, 0)
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	assert_equal(1, raft_wal_sync(rw, r))   # STATE
 	# hand-build (rmr_push_config_entry, header note) rather than
 	# raft_propose_add_server: adding server 7 already raises the
@@ -157,8 +157,8 @@ void test_config_survives_snapshot_and_restart():
 	raft_term(r, t)
 	int term = raft_u64_as_int(t)
 	u64_free(t)
-	rmr_push_config_entry(r, term, raft_config_op_add(), 7)
-	rmr_push_config_entry(r, term, raft_config_op_add(), 8)
+	rmr_push_config_entry(r, term, raft_config_op_add, 7)
+	rmr_push_config_entry(r, term, raft_config_op_add, 8)
 	assert_equal(2, raft_peer_count(r))
 	assert_equal(1, raft_config_pending(r))
 	u64_set_int(r.commit_index, 2)
@@ -220,7 +220,7 @@ void test_config_rollback_survives_wal_truncate_replay():
 	raft* a = rmr_single_node(42)
 	u64_set_int(a.current_term, 2)
 	a.voted_for = 1
-	rmr_push_config_entry(a, 1, raft_config_op_add(), 9)
+	rmr_push_config_entry(a, 1, raft_config_op_add, 9)
 	assert_equal(1, raft_config_pending(a))
 	assert_equal(1, raft_peer_count(a))
 	assert_equal(1, rmr_has_peer(a, 9))

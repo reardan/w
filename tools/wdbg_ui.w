@@ -541,24 +541,15 @@ od_source* od_find_source(char* path):
 
 # ---- requests ------------------------------------------------------------------
 
-int od_req_state():
-	return 1
-int od_req_cmd():
-	return 2
-int od_req_inspect():
-	return 3
-int od_req_poll():
-	return 4
-int od_req_source():
-	return 5
-int od_req_code():
-	return 6
-int od_req_dump():
-	return 7
-int od_req_restart():
-	return 8
-int od_req_core():
-	return 9
+const int od_req_state = 1
+const int od_req_cmd = 2
+const int od_req_inspect = 3
+const int od_req_poll = 4
+const int od_req_source = 5
+const int od_req_code = 6
+const int od_req_dump = 7
+const int od_req_restart = 8
+const int od_req_core = 9
 
 
 struct od_req:
@@ -603,7 +594,7 @@ void od_status(char* msg):
 
 
 void od_request_inspect():
-	od_enqueue(od_req_inspect(), c"GET", c"/api/inspect", c"", 0)
+	od_enqueue(od_req_inspect, c"GET", c"/api/inspect", c"", 0)
 
 
 void od_request_dump():
@@ -612,7 +603,7 @@ void od_request_dump():
 	string_append(cmd, h)
 	free(h)
 	string_append(cmd, c" 64")
-	od_enqueue(od_req_dump(), c"POST", c"/api/query", cmd.data, 0)
+	od_enqueue(od_req_dump, c"POST", c"/api/query", cmd.data, 0)
 	string_free(cmd)
 
 
@@ -627,7 +618,7 @@ void od_run_command(char* cmd):
 	od_log_add(echo.data)
 	string_free(echo)
 	od_busy_cmd = 1
-	od_enqueue(od_req_cmd(), c"POST", c"/api/cmd", cmd, 0)
+	od_enqueue(od_req_cmd, c"POST", c"/api/cmd", cmd, 0)
 
 
 void od_after_state(char* state, char* output):
@@ -668,7 +659,7 @@ void od_request_code():
 	free(h)
 	string_append(cmd, c" ")
 	string_append_int(cmd, words)
-	od_enqueue(od_req_code(), c"POST", c"/api/query", cmd.data, 0)
+	od_enqueue(od_req_code, c"POST", c"/api/query", cmd.data, 0)
 	string_free(cmd)
 
 
@@ -677,7 +668,7 @@ void od_request_source(char* path):
 		return
 	string_builder* p = string_from(c"/api/source?file=")
 	string_append(p, path)
-	od_enqueue(od_req_source(), c"GET", p.data, c"", path)
+	od_enqueue(od_req_source, c"GET", p.data, c"", path)
 	string_free(p)
 
 
@@ -687,10 +678,10 @@ void od_disas_follow();
 
 
 void od_handle_reply(od_req* r, int status, char* body):
-	if (r.kind == od_req_cmd()):
+	if (r.kind == od_req_cmd):
 		od_busy_cmd = 0
 	if (status != 200):
-		if (r.kind == od_req_source()):
+		if (r.kind == od_req_source):
 			return
 		char* err = od_json_get(body, c"error")
 		if (strlen(err) > 0):
@@ -698,7 +689,7 @@ void od_handle_reply(od_req* r, int status, char* body):
 			od_log_add(err)
 		free(err)
 		return
-	if (r.kind == od_req_state()):
+	if (r.kind == od_req_state):
 		char* st = od_json_get(body, c"state")
 		od_set_str(&od_program, od_json_get(body, c"program"))
 		od_free_lines(od_files)
@@ -707,23 +698,23 @@ void od_handle_reply(od_req* r, int status, char* body):
 		if (strlen(od_program) > 0):
 			od_request_source(od_program)
 		if (od_has_core):
-			od_enqueue(od_req_core(), c"GET", c"/api/core", c"", 0)
+			od_enqueue(od_req_core, c"GET", c"/api/core", c"", 0)
 		# The poll reply (od_after_state) brings the program's output
 		# so far and asks for the panes when it is stopped.
-		od_enqueue(od_req_poll(), c"GET", c"/api/poll", c"", 0)
+		od_enqueue(od_req_poll, c"GET", c"/api/poll", c"", 0)
 		free(st)
 		return
-	if ((r.kind == od_req_cmd()) || (r.kind == od_req_poll()) || (r.kind == od_req_restart())):
+	if ((r.kind == od_req_cmd) || (r.kind == od_req_poll) || (r.kind == od_req_restart)):
 		char* st = od_json_get(body, c"state")
 		char* out = od_json_get(body, c"output")
-		if (r.kind == od_req_restart()):
+		if (r.kind == od_req_restart):
 			od_regs_valid = 0
 			od_dump_addr = 0
 		od_after_state(st, out)
 		free(st)
 		free(out)
 		return
-	if (r.kind == od_req_inspect()):
+	if (r.kind == od_req_inspect):
 		char* where = od_json_get(body, c"where")
 		od_parse_where(where)
 		free(where)
@@ -775,7 +766,7 @@ void od_handle_reply(od_req* r, int status, char* body):
 		string_free(msg)
 		od_source_follow()
 		return
-	if (r.kind == od_req_source()):
+	if (r.kind == od_req_source):
 		od_source* s = new od_source()
 		s.path = strclone(r.arg)
 		s.lines = new list[char*]
@@ -787,13 +778,13 @@ void od_handle_reply(od_req* r, int status, char* body):
 		od_sources.push(s)
 		od_source_follow()
 		return
-	if ((r.kind == od_req_code()) || (r.kind == od_req_dump())):
+	if ((r.kind == od_req_code) || (r.kind == od_req_dump)):
 		char* out = od_json_get(body, c"output")
 		int base = 0
 		int len = 0
 		char* bytes = od_parse_words(out, &base, &len)
 		free(out)
-		if (r.kind == od_req_code()):
+		if (r.kind == od_req_code):
 			if (od_code_bytes != 0):
 				free(od_code_bytes)
 			od_code_bytes = bytes
@@ -806,7 +797,7 @@ void od_handle_reply(od_req* r, int status, char* body):
 			od_dump_len = len
 			od_dump_valid = len > 0
 		return
-	if (r.kind == od_req_core()):
+	if (r.kind == od_req_core):
 		od_log_add(c"core dump report (wcore --json):")
 		char* sig = od_json_get(body, c"signal_name")
 		string_builder* ln = string_from(c"  signal ")
@@ -850,7 +841,7 @@ void od_net_step():
 		od_inflight_req = 0
 		if (st < 0):
 			od_status(c"lost the connection to wdbg_web")
-			if (r.kind == od_req_cmd()):
+			if (r.kind == od_req_cmd):
 				od_busy_cmd = 0
 		else:
 			od_handle_reply(r, st, body)
@@ -1041,24 +1032,15 @@ struct od_pane:
 	int follow_row
 
 
-int od_p_disas():
-	return 0
-int od_p_regs():
-	return 1
-int od_p_dump():
-	return 2
-int od_p_stack():
-	return 3
-int od_p_source():
-	return 4
-int od_p_files():
-	return 5
-int od_p_log():
-	return 6
-int od_p_calls():
-	return 7
-int od_p_bps():
-	return 8
+const int od_p_disas = 0
+const int od_p_regs = 1
+const int od_p_dump = 2
+const int od_p_stack = 3
+const int od_p_source = 4
+const int od_p_files = 5
+const int od_p_log = 6
+const int od_p_calls = 7
+const int od_p_bps = 8
 
 
 od_pane[9] od_panes
@@ -1195,8 +1177,8 @@ void od_draw_disas(int x, int y, int w, int h):
 	int c_hex = c_addr + od_cw * 10
 	int c_dis = c_hex + od_cw * 18
 	int c_com = c_dis + od_cw * 34
-	int clicked = od_pane_begin(od_p_disas(), x, y, w, h, c"Address   Hex dump          Disassembly                       Comment", od_disas.length)
-	od_pane* p = &od_panes[od_p_disas()]
+	int clicked = od_pane_begin(od_p_disas, x, y, w, h, c"Address   Hex dump          Disassembly                       Comment", od_disas.length)
+	od_pane* p = &od_panes[od_p_disas]
 	int i = p.scroll
 	while (i < od_disas.length):
 		int ry = od_row_y(p, i)
@@ -1248,7 +1230,7 @@ void od_draw_disas(int x, int y, int w, int h):
 			i = i + 1
 	od_pane_end()
 	if (clicked >= 0):
-		od_focus = od_p_disas()
+		od_focus = od_p_disas
 
 
 void od_follow_in_dump(int addr):
@@ -1285,8 +1267,8 @@ void od_draw_regs(int x, int y, int w, int h):
 	# rows: 8 GPRs, blank, EIP, blank, 8 flags, blank, EFL, blank,
 	# "Locals", locals..., "Arguments", args...
 	int nrows = 21 + 1 + od_locals.length + 1 + od_args.length
-	int clicked = od_pane_begin(od_p_regs(), x, y, w, h, c"Registers (x86)", nrows)
-	od_pane* p = &od_panes[od_p_regs()]
+	int clicked = od_pane_begin(od_p_regs, x, y, w, h, c"Registers (x86)", nrows)
+	od_pane* p = &od_panes[od_p_regs]
 	int cx = x + 6
 	for row in range(nrows):
 		int ry = od_row_y(p, row)
@@ -1346,8 +1328,8 @@ void od_draw_regs(int x, int y, int w, int h):
 
 void od_draw_dump(int x, int y, int w, int h):
 	int rows = od_dump_len / 16
-	od_pane_begin(od_p_dump(), x, y, w, h, c"Address   Hex dump                                         ASCII", rows)
-	od_pane* p = &od_panes[od_p_dump()]
+	od_pane_begin(od_p_dump, x, y, w, h, c"Address   Hex dump                                         ASCII", rows)
+	od_pane* p = &od_panes[od_p_dump]
 	int c_addr = x + 4
 	int c_hex = c_addr + od_cw * 10
 	int c_asc = c_hex + od_cw * 49
@@ -1381,8 +1363,8 @@ void od_draw_dump(int x, int y, int w, int h):
 
 
 void od_draw_stack(int x, int y, int w, int h):
-	int clicked = od_pane_begin(od_p_stack(), x, y, w, h, c"Address   Value     Comment", od_stack.length)
-	od_pane* p = &od_panes[od_p_stack()]
+	int clicked = od_pane_begin(od_p_stack, x, y, w, h, c"Address   Value     Comment", od_stack.length)
+	od_pane* p = &od_panes[od_p_stack]
 	int c_addr = x + 4
 	int c_val = c_addr + od_cw * 10
 	int c_com = c_val + od_cw * 10
@@ -1441,7 +1423,7 @@ void od_source_follow():
 		return
 	if ((od_src_file == 0) || (strcmp(od_src_file, od_where_file) != 0)):
 		od_set_str(&od_src_file, strclone(od_where_file))
-	od_pane* p = &od_panes[od_p_source()]
+	od_pane* p = &od_panes[od_p_source]
 	p.sel = od_where_line - 1
 	p.follow = 1
 	p.follow_row = od_where_line - 1
@@ -1452,7 +1434,7 @@ void od_disas_follow():
 	int i = 0
 	while (i < od_disas.length):
 		if (od_disas[i].current):
-			od_pane* p = &od_panes[od_p_disas()]
+			od_pane* p = &od_panes[od_p_disas]
 			p.follow = 1
 			p.follow_row = i
 			return
@@ -1462,7 +1444,7 @@ void od_disas_follow():
 void od_open_source(char* path, int line):
 	od_set_str(&od_src_file, strclone(path))
 	od_request_source(path)
-	od_pane* p = &od_panes[od_p_source()]
+	od_pane* p = &od_panes[od_p_source]
 	if (line > 0):
 		p.sel = line - 1
 		p.follow = 1
@@ -1475,7 +1457,7 @@ void od_open_source(char* path, int line):
 void od_toggle_breakpoint():
 	if (od_src_file == 0):
 		return
-	od_pane* p = &od_panes[od_p_source()]
+	od_pane* p = &od_panes[od_p_source]
 	if (p.sel < 0):
 		od_status(c"select a source line first")
 		return
@@ -1502,8 +1484,8 @@ void od_draw_source(int x, int y, int w, int h):
 	if (src != 0):
 		rows = src.lines.length
 	char* hdr = c"Line   Source"
-	int clicked = od_pane_begin(od_p_source(), x, y, w, h, hdr, rows)
-	od_pane* p = &od_panes[od_p_source()]
+	int clicked = od_pane_begin(od_p_source, x, y, w, h, hdr, rows)
+	od_pane* p = &od_panes[od_p_source]
 	int c_num = x + 4
 	int c_src = c_num + od_cw * 7
 	int r = p.scroll
@@ -1540,8 +1522,8 @@ void od_draw_source(int x, int y, int w, int h):
 
 
 void od_draw_files(int x, int y, int w, int h):
-	int clicked = od_pane_begin(od_p_files(), x, y, w, h, c"Source files", od_files.length)
-	od_pane* p = &od_panes[od_p_files()]
+	int clicked = od_pane_begin(od_p_files, x, y, w, h, c"Source files", od_files.length)
+	od_pane* p = &od_panes[od_p_files]
 	int r = p.scroll
 	while (r < od_files.length):
 		int ry = od_row_y(p, r)
@@ -1584,12 +1566,12 @@ int od_log_seen
 
 
 void od_draw_log(int x, int y, int w, int h):
-	od_pane* p = &od_panes[od_p_log()]
+	od_pane* p = &od_panes[od_p_log]
 	if (od_log.length != od_log_seen):
 		p.follow = 1
 		p.follow_row = od_log.length
 		od_log_seen = od_log.length
-	od_draw_text_list(od_p_log(), x, y, w, h, c"Log data", od_log)
+	od_draw_text_list(od_p_log, x, y, w, h, c"Log data", od_log)
 
 
 void od_select_frame(int row):
@@ -1612,15 +1594,15 @@ void od_select_frame(int row):
 
 
 void od_draw_calls(int x, int y, int w, int h):
-	od_draw_text_list(od_p_calls(), x, y, w, h, c"Call stack of main thread", od_backtrace)
-	od_pane* p = &od_panes[od_p_calls()]
+	od_draw_text_list(od_p_calls, x, y, w, h, c"Call stack of main thread", od_backtrace)
+	od_pane* p = &od_panes[od_p_calls]
 	if (od_dbl && od_in(x, p.body_y, w, h, od_click_x, od_click_y)):
 		od_select_frame(p.sel)
 
 
 void od_draw_bps(int x, int y, int w, int h):
-	int clicked = od_pane_begin(od_p_bps(), x, y, w, h, c"#     Module / file          Line    Status", od_bps.length)
-	od_pane* p = &od_panes[od_p_bps()]
+	int clicked = od_pane_begin(od_p_bps, x, y, w, h, c"#     Module / file          Line    Status", od_bps.length)
+	od_pane* p = &od_panes[od_p_bps]
 	int r = p.scroll
 	while (r < od_bps.length):
 		int ry = od_row_y(p, r)
@@ -1648,12 +1630,12 @@ void od_draw_bps(int x, int y, int w, int h):
 	if ((clicked >= 0) && od_dbl):
 		od_bp* b = od_bps[clicked]
 		od_view = 'S'
-		od_focus = od_p_source()
+		od_focus = od_p_source
 		od_open_source(b.file, b.line)
 
 
 void od_delete_selected_bp():
-	od_pane* p = &od_panes[od_p_bps()]
+	od_pane* p = &od_panes[od_p_bps]
 	if ((p.sel < 0) || (p.sel >= od_bps.length)):
 		return
 	string_builder* cmd = string_from(c"d ")
@@ -1687,22 +1669,22 @@ void od_restart():
 	od_log_add(c"[restart]")
 	od_busy_cmd = 1
 	od_status(c"Restarting")
-	od_enqueue(od_req_restart(), c"POST", c"/api/restart", c"", 0)
+	od_enqueue(od_req_restart, c"POST", c"/api/restart", c"", 0)
 
 
 # Switch views; the keyboard follows to the view's main pane.
 void od_show_view(int v):
 	od_view = v
 	if (v == 'C'):
-		od_focus = od_p_disas()
+		od_focus = od_p_disas
 	else if (v == 'S'):
-		od_focus = od_p_source()
+		od_focus = od_p_source
 	else if (v == 'L'):
-		od_focus = od_p_log()
+		od_focus = od_p_log
 	else if (v == 'K'):
-		od_focus = od_p_calls()
+		od_focus = od_p_calls
 	else if (v == 'B'):
-		od_focus = od_p_bps()
+		od_focus = od_p_bps
 
 
 int od_toolbar(int width):
@@ -1810,7 +1792,7 @@ void od_command_bar(int y, int width):
 				od_cmd_len = od_cmd_len - 1
 		else if (c == 13):
 			if (od_view == 'K'):
-				od_select_frame(od_panes[od_p_calls()].sel)
+				od_select_frame(od_panes[od_p_calls].sel)
 			else:
 				od_submit_command()
 		else if (c == 27):
@@ -1857,7 +1839,7 @@ void od_status_bar(int y, int width):
 
 void od_move_selection(int delta):
 	od_pane* p = &od_panes[od_focus]
-	if (od_focus == od_p_dump()):
+	if (od_focus == od_p_dump):
 		if ((delta > 1) || (delta < -1)):
 			od_follow_in_dump(od_dump_addr + delta / 16 * 256)
 			return
@@ -1944,7 +1926,7 @@ int od_frame_fn():
 	od_net_step()
 	# While the program runs, ask for its output (and the next stop).
 	if ((strcmp(od_state, c"running") == 0) && (od_inflight == 0) && (od_queue.length == 0) && ((od_frame % 15) == 0)):
-		od_enqueue(od_req_poll(), c"GET", c"/api/poll", c"", 0)
+		od_enqueue(od_req_poll, c"GET", c"/api/poll", c"", 0)
 	od_poll_input()
 	int w = od_win.width
 	int h = od_win.height
@@ -1997,10 +1979,10 @@ int main(int argc, int argv):
 	od_cmd_buf = malloc(256)
 	od_cmd_buf[0] = 0
 	od_view = 'C'
-	od_focus = od_p_disas()
+	od_focus = od_p_disas
 	for i in range(9):
 		od_panes[i].sel = -1
 	od_status(c"Connecting to wdbg_web")
-	od_enqueue(od_req_state(), c"GET", c"/api/state", c"", 0)
+	od_enqueue(od_req_state, c"GET", c"/api/state", c"", 0)
 	gfx_window_run(od_win, od_frame_fn)
 	return 0

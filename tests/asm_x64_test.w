@@ -5,7 +5,7 @@ import tests.asm_x86_roundtrip_common
 
 
 int main():
-	asm_check_corpus(c"tests/asm/corpus_x64.txt", ASM_ARCH_X64(), 8)
+	asm_check_corpus(c"tests/asm/corpus_x64.txt", ASM_ARCH_X64, 8)
 	asm_check_encode_identity(c"bin/asm_x64_selfhost", 8)
 	println(c"asm_x64_test passed")
 	return 0

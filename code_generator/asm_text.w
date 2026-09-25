@@ -109,7 +109,7 @@ void asm_text_lines(int arch, char* text):
 			while ((j > 0) && (one[j - 1] == ' ')):
 				j = j - 1
 			one[j] = 0
-			if (arch == ASM_ARCH_ARM64()):
+			if (arch == ASM_ARCH_ARM64):
 				asm_text_a64(one)
 			else:
 				asm_text_x86_family(arch, one)
@@ -122,14 +122,14 @@ void asm_text_lines(int arch, char* text):
 
 # 32-bit x86 instructions ('mov eax,1; ret').
 void x86_asm(char* text):
-	asm_text_lines(ASM_ARCH_X86(), text)
+	asm_text_lines(ASM_ARCH_X86, text)
 
 
 # x86-64 instructions.
 void x64_asm(char* text):
-	asm_text_lines(ASM_ARCH_X64(), text)
+	asm_text_lines(ASM_ARCH_X64, text)
 
 
 # A64 instructions.
 void a64_asm(char* text):
-	asm_text_lines(ASM_ARCH_ARM64(), text)
+	asm_text_lines(ASM_ARCH_ARM64, text)

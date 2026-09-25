@@ -128,14 +128,14 @@ void test_fd_callback_on_readable():
 	loop_test_io* io = new loop_test_io()
 	io.reads = 0
 	io.loop = loop
-	event_loop_add_fd(loop, fds[1], poll_in(), loop_test_on_readable, cast(void*, io))
+	event_loop_add_fd(loop, fds[1], poll_in, loop_test_on_readable, cast(void*, io))
 
 	assert_equal(4, write(fds[0], c"ping", 4))
 	assert_equal(0, event_loop_run(loop))
 
 	assert_equal(1, io.reads)
 	assert_equal(fds[1], io.fd)
-	assert_equal(poll_in(), io.revents & poll_in())
+	assert_equal(poll_in, io.revents & poll_in)
 
 	free(cast(char*, io))
 	event_loop_free(loop)
@@ -171,7 +171,7 @@ void test_timeout_fires_when_peer_is_silent():
 	event_loop* loop = loop_test_new()
 	loop_test_timeout* state = new loop_test_timeout(0, fds[1], loop)
 
-	event_loop_add_fd(loop, fds[1], poll_in(), loop_test_unexpected_read, cast(void*, state))
+	event_loop_add_fd(loop, fds[1], poll_in, loop_test_unexpected_read, cast(void*, state))
 	event_loop_add_timer(loop, 30, loop_test_on_timeout, cast(void*, state))
 
 	assert_equal(0, event_loop_run(loop))
@@ -192,7 +192,7 @@ void test_run_once_returns_zero_when_idle():
 	loop_test_io* io = new loop_test_io()
 	io.reads = 0
 	io.loop = loop
-	event_loop_add_fd(loop, fds[1], poll_in(), loop_test_on_readable, cast(void*, io))
+	event_loop_add_fd(loop, fds[1], poll_in, loop_test_on_readable, cast(void*, io))
 
 	assert_equal(0, event_loop_run_once(loop, 0))
 	assert_equal(0, io.reads)
@@ -247,12 +247,12 @@ void test_two_watches_share_an_fd():
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	event_loop* loop = loop_test_new()
 	loop_test_pair* p = new loop_test_pair(0, 0, 0, loop)
-	event_loop_add_watch(loop, fds[1], poll_in(), loop_test_record_in, cast(void*, p))
-	event_watch* out = event_loop_add_watch(loop, fds[1], poll_out(), loop_test_record_out, cast(void*, p))
+	event_loop_add_watch(loop, fds[1], poll_in, loop_test_record_in, cast(void*, p))
+	event_watch* out = event_loop_add_watch(loop, fds[1], poll_out, loop_test_record_out, cast(void*, p))
 	assert_equal(4, write(fds[0], c"ping", 4))
 	assert_equal(2, event_loop_run_once(loop, 1000))
-	assert_equal(poll_in(), p.in_revents)
-	assert_equal(poll_out(), p.out_revents)
+	assert_equal(poll_in, p.in_revents)
+	assert_equal(poll_out, p.out_revents)
 	# The reader removed itself; the writer keeps firing alone.
 	event_loop_run_once(loop, 1000)
 	assert_equal(3, p.calls)
@@ -288,14 +288,14 @@ void test_file_and_closed_fd_revents():
 	loop_test_io* nval = new loop_test_io()
 	nval.reads = 0
 	nval.revents = 0
-	event_loop_add_fd(loop, file, poll_in(), loop_test_count_ready, cast(void*, ready))
-	event_loop_add_fd(loop, closed_fd, poll_in(), loop_test_count_ready, cast(void*, nval))
+	event_loop_add_fd(loop, file, poll_in, loop_test_count_ready, cast(void*, ready))
+	event_loop_add_fd(loop, closed_fd, poll_in, loop_test_count_ready, cast(void*, nval))
 	event_loop_run_once(loop, 1000)
 	event_loop_run_once(loop, 1000)
 	assert_equal(2, ready.reads)
-	assert_equal(poll_in(), ready.revents & poll_in())
+	assert_equal(poll_in, ready.revents & poll_in)
 	assert_equal(2, nval.reads)
-	assert_equal(poll_nval(), nval.revents & poll_nval())
+	assert_equal(poll_nval, nval.revents & poll_nval)
 	free(cast(char*, ready))
 	free(cast(char*, nval))
 	event_loop_free(loop)
@@ -330,7 +330,7 @@ void loop_test_first_readable(int fd, int revents, void* ctx):
 	r.second_fd = fds[0]
 	r.peer = fds[1]
 	free(fds)
-	event_loop_add_fd(r.loop, r.second_fd, poll_in(), loop_test_second_readable, ctx)
+	event_loop_add_fd(r.loop, r.second_fd, poll_in, loop_test_second_readable, ctx)
 	assert_equal(1, write(r.peer, c"x", 1))
 
 
@@ -342,7 +342,7 @@ void test_fd_number_reuse_after_close():
 	r.loop = loop
 	r.first_fd = fds[0]
 	r.second_reads = 0
-	event_loop_add_fd(loop, fds[0], poll_in(), loop_test_first_readable, cast(void*, r))
+	event_loop_add_fd(loop, fds[0], poll_in, loop_test_first_readable, cast(void*, r))
 	assert_equal(1, write(fds[1], c"x", 1))
 	assert_equal(0, event_loop_run(loop))
 	assert_equal(r.first_fd, r.second_fd)

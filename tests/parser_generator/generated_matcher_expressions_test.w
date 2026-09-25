@@ -26,14 +26,14 @@ void test_matcher_expressions_lex_end_to_end():
 	assert_matcher_token(stream, 8, matcher_expr_token_PREFIXED, c"pre12")
 	assert_matcher_token(stream, 9, matcher_expr_token_NEWLINE_TOK, c"\r\n")
 	assert_matcher_token(stream, 10, matcher_expr_token_NEWLINE_TOK, c"\n")
-	assert_equal(pg_token_eof_kind(), pg_token_stream_la(stream, 11).kind)
+	assert_equal(pg_token_eof_kind, pg_token_stream_la(stream, 11).kind)
 	int found_comment = 0
 	int i = 0
 	while (i < pg_token_stream_all_count(stream)):
 		pg_token* token = pg_token_stream_all_get(stream, i)
 		if (token.kind == matcher_expr_token_DASH_COMMENT):
 			found_comment = 1
-			assert_equal(pg_token_hidden_channel(), token.channel)
+			assert_equal(pg_token_hidden_channel, token.channel)
 			assert_strings_equal(c"-- hidden", token.text)
 		i = i + 1
 	assert_equal(1, found_comment)
@@ -57,7 +57,7 @@ void test_matcher_dispatch_literals():
 	assert_matcher_token(stream, 7, matcher_expr_token_LT, c"<")
 	assert_matcher_token(stream, 8, matcher_expr_token_ALT, c"z")
 	assert_matcher_token(stream, 9, matcher_expr_token_SHORT, c"ab")
-	assert_equal(pg_token_eof_kind(), pg_token_stream_la(stream, 10).kind)
+	assert_equal(pg_token_eof_kind, pg_token_stream_la(stream, 10).kind)
 
 
 # Bytes outside every matcher's first set (e.g. 0xff) must still lex as
@@ -68,7 +68,7 @@ void test_matcher_dispatch_invalid_byte():
 	assert_equal(1, pg_diagnostics_count(diagnostics))
 	assert_matcher_token(stream, 1, matcher_expr_token_SHORT, c"ab")
 	assert_matcher_token(stream, 2, matcher_expr_token_SHORT, c"ab")
-	assert_equal(pg_token_eof_kind(), pg_token_stream_la(stream, 3).kind)
+	assert_equal(pg_token_eof_kind, pg_token_stream_la(stream, 3).kind)
 
 
 void test_matcher_expression_rejects_nullable_repetition():

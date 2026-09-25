@@ -58,30 +58,20 @@ import lib.lib
 import lib.mem
 
 
-int codec_ok():
-	return 0
-
-
-int codec_err_corrupt():
-	return 1
-
-
-int codec_err_too_large():
-	return 2
-
-
-int codec_err_unsupported():
-	return 3
+const int codec_ok = 0
+const int codec_err_corrupt = 1
+const int codec_err_too_large = 2
+const int codec_err_unsupported = 3
 
 
 char* codec_error_string(int code):
-	if (code == codec_ok()):
+	if (code == codec_ok):
 		return c"ok"
-	if (code == codec_err_corrupt()):
+	if (code == codec_err_corrupt):
 		return c"corrupt compressed data"
-	if (code == codec_err_too_large()):
+	if (code == codec_err_too_large):
 		return c"decompressed size exceeds the limit"
-	if (code == codec_err_unsupported()):
+	if (code == codec_err_unsupported):
 		return c"unsupported encoding"
 	return c"unknown codec error"
 
@@ -208,10 +198,10 @@ int codec_compress(char* name, char* in, int len, char** out, int* out_len):
 	if (codec_is_identity(name) != 0):
 		*out = mem_dup(in, len)
 		*out_len = len
-		return codec_ok()
+		return codec_ok
 	codec_entry* e = codec_find(name)
 	if (e == 0):
-		return codec_err_unsupported()
+		return codec_err_unsupported
 	return e.compress(in, len, out, out_len)
 
 
@@ -220,11 +210,11 @@ int codec_decompress(char* name, char* in, int len, int max, char** out, int* ou
 	*out_len = 0
 	if (codec_is_identity(name) != 0):
 		if ((max > 0) && (len > max)):
-			return codec_err_too_large()
+			return codec_err_too_large
 		*out = mem_dup(in, len)
 		*out_len = len
-		return codec_ok()
+		return codec_ok
 	codec_entry* e = codec_find(name)
 	if (e == 0):
-		return codec_err_unsupported()
+		return codec_err_unsupported
 	return e.decompress(in, len, max, out, out_len)

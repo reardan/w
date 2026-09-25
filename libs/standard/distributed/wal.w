@@ -37,8 +37,7 @@ import lib.bytes
 import lib.mem
 
 
-int wal_version():
-	return 1
+const int wal_version = 1
 
 
 # Records larger than this are treated as corruption on scan and
@@ -120,7 +119,7 @@ int wal_write_header(int fd):
 	hdr[1] = 76    # L
 	hdr[2] = 79    # O
 	hdr[3] = 71    # G
-	store_le32(hdr + 4, wal_version())
+	store_le32(hdr + 4, wal_version)
 	seek(fd, 0, 0)
 	int n = write_all(fd, hdr, 8)
 	free(hdr)
@@ -148,7 +147,7 @@ wal* wal_open(char* path):
 		int got = read_exact(fd, hdr, 8)
 		int ok = 0
 		if (got == 8 && (hdr[0] & 255) == 87 && (hdr[1] & 255) == 76 && (hdr[2] & 255) == 79 && (hdr[3] & 255) == 71):
-			if (load_le32(hdr + 4) == wal_version()):
+			if (load_le32(hdr + 4) == wal_version):
 				ok = 1
 		free(hdr)
 		if (ok == 0):

@@ -471,7 +471,7 @@ void test_sse_streaming_handler():
 
 	sse_event* ev3 = sse_next(r)
 	asserts(c"sse stream ends", ev3 == 0)
-	assert_equal(sse_error_none(), sse_reader_error(r))
+	assert_equal(sse_error_none, sse_reader_error(r))
 
 	sse_reader_free(r)
 	http_stream_close(st)

@@ -293,11 +293,11 @@ void t_check_divmod(bignum* a, bignum* m):
 	assert_equal(0 - 1, bignum_cmp(r, m))
 	# Limbs above n must stay zero (the representation invariant).
 	int i = q.n
-	while (i < BIGNUM_CAP()):
+	while (i < BIGNUM_CAP):
 		assert_equal(0, q.limbs[i])
 		i = i + 1
 	i = r.n
-	while (i < BIGNUM_CAP()):
+	while (i < BIGNUM_CAP):
 		assert_equal(0, r.limbs[i])
 		i = i + 1
 	bignum_mul(back, q, m)

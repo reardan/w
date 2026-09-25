@@ -63,7 +63,7 @@ char* tlst_concat(char* a, int alen, char* b, int blen, int* out_len):
 void tlst_keys_from_secret(char* secret_hex, char* out_key, char* out_iv):
 	int slen = 0
 	char* secret = hex_decode_loose(secret_hex, &slen)
-	tls_derive_traffic_keys(WHASH_SHA256(), secret, out_key, out_iv)
+	tls_derive_traffic_keys(WHASH_SHA256, secret, out_key, out_iv)
 	free(secret)
 
 
@@ -258,8 +258,8 @@ void test_rfc8448_full_handshake():
 	int fin_plain_len = 0
 	int fin_type = tlst_dec_record(c_hs_key, c_hs_iv, 0, 0, out + ch_rec_len, out_len - ch_rec_len, fin_plain, &fin_plain_len)
 	# Inner record content type is handshake; the message is a Finished.
-	assert_equal(TLS_CT_HANDSHAKE(), fin_type)
-	assert_equal(TLS_HS_FINISHED(), fin_plain[0] & 255)
+	assert_equal(TLS_CT_HANDSHAKE, fin_type)
+	assert_equal(TLS_HS_FINISHED, fin_plain[0] & 255)
 	# Finished message = type(1) + len(3) + verify_data(32).
 	assert_equal(36, fin_plain_len)
 	tlst_assert_hex(rfc_client_finished_vd_hex(), fin_plain + 4, 32)
@@ -317,22 +317,22 @@ void test_rfc8448_application_data():
 	char* wplain = malloc(wlen)
 	int wplain_len = 0
 	int wtype = tlst_dec_record(c_ap_key, c_ap_iv, 0, 0, wout, wlen, wplain, &wplain_len)
-	assert_equal(TLS_CT_APPLICATION_DATA(), wtype)
+	assert_equal(TLS_CT_APPLICATION_DATA, wtype)
 	assert_equal(app_len, wplain_len)
 	tlst_assert_hex(rfc_app_plain_hex(), wplain, wplain_len)
 	free(wout)
 	free(wplain)
 
 	# close_notify from tls_close-style path (client app seq 1 after one record).
-	tls_send_alert(c, TLS_ALERT_WARNING(), TLS_ALERT_CLOSE_NOTIFY())
+	tls_send_alert(c, TLS_ALERT_WARNING, TLS_ALERT_CLOSE_NOTIFY)
 	int clen = 0
 	char* cout = tls_mem_take_output(c, &clen)
 	char* cplain = malloc(clen)
 	int cplain_len = 0
 	int ctype = tlst_dec_record(c_ap_key, c_ap_iv, 0, 1, cout, clen, cplain, &cplain_len)
-	assert_equal(TLS_CT_ALERT(), ctype)
+	assert_equal(TLS_CT_ALERT, ctype)
 	assert_equal(2, cplain_len)
-	assert_equal(TLS_ALERT_CLOSE_NOTIFY(), cplain[1] & 255)
+	assert_equal(TLS_ALERT_CLOSE_NOTIFY, cplain[1] & 255)
 	free(cout)
 	free(cplain)
 
@@ -397,7 +397,7 @@ void test_record_roundtrip():
 
 	char* msg = c"hello record layer"
 	int mlen = strlen(msg)
-	asserts(c"tls: send record", tls_send_record(c, TLS_CT_APPLICATION_DATA(), msg, mlen, 1) != 0)
+	asserts(c"tls: send record", tls_send_record(c, TLS_CT_APPLICATION_DATA, msg, mlen, 1) != 0)
 	int reclen = 0
 	char* rec = tls_mem_take_output(c, &reclen)
 	tls_mem_feed(c, rec, reclen)
@@ -405,7 +405,7 @@ void test_record_roundtrip():
 	char* data = 0
 	int dlen = 0
 	asserts(c"tls: recv record", tls_recv_record(c, &rtype, &data, &dlen) != 0)
-	assert_equal(TLS_CT_APPLICATION_DATA(), rtype)
+	assert_equal(TLS_CT_APPLICATION_DATA, rtype)
 	assert_equal(mlen, dlen)
 	char* want = hex_encode(msg, mlen)
 	tlst_assert_hex(want, data, dlen)
@@ -645,7 +645,7 @@ void test_client_hello_build():
 	int len = 0
 	char* ch = tls_build_client_hello(c"example.com", rnd, sid, pub, &len)
 
-	assert_equal(TLS_HS_CLIENT_HELLO(), ch[0] & 255)
+	assert_equal(TLS_HS_CLIENT_HELLO, ch[0] & 255)
 	int body = ((ch[1] & 255) << 16) | ((ch[2] & 255) << 8) | (ch[3] & 255)
 	assert_equal(len - 4, body)
 	# legacy_version 0x0303 at offset 4.
@@ -655,7 +655,7 @@ void test_client_hello_build():
 	tlst_assert_hex(want, ch + len - 32, 32)
 	free(want)
 	# cipher_suites: length at 71..72, the single suite 0x1303 at 73..74.
-	assert_equal(TLS_SUITE_CHACHA20_POLY1305_SHA256(), ((ch[73] & 255) << 8) | (ch[74] & 255))
+	assert_equal(TLS_SUITE_CHACHA20_POLY1305_SHA256, ((ch[73] & 255) << 8) | (ch[74] & 255))
 
 	free(ch)
 	free(rnd)

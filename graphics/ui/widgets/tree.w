@@ -67,8 +67,7 @@ import lib.mem
 # still navigate up and down; only "left ascends to the parent" stops
 # working past it, which is the documented fixed-capacity convention
 # ui_context.chars and the popup stack already use.
-int ui_tree_max_depth():
-	return 32
+const int ui_tree_max_depth = 32
 
 
 # Width of the disclosure marker's column. Leaves reserve it too, so a
@@ -112,7 +111,7 @@ void ui_tree_init(ui_tree_state* st):
 	st.tree_id = 0
 	st.pending_nav = 0
 	st.pending_enter = 0
-	mem_fill[int32](st.parent_of_depth, 0 - 1, ui_tree_max_depth())
+	mem_fill[int32](st.parent_of_depth, 0 - 1, ui_tree_max_depth)
 	st.body_x = 0.0
 	st.body_y = 0.0
 	st.body_w = 0.0
@@ -272,7 +271,7 @@ int ui_tree_row(ui_context* ctx, ui_tree_state* st, char* label, int is_node, in
 # nothing — the ui_modal_begin contract.
 int ui_tree_node(ui_context* ctx, ui_tree_state* st, char* label, int32* open):
 	int index = st.walk_index
-	if (st.depth < ui_tree_max_depth()):
+	if (st.depth < ui_tree_max_depth):
 		st.parent_of_depth[st.depth] = index
 
 	# Left and right are resolved here, where this node's own expansion

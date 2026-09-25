@@ -45,7 +45,7 @@ void pb_leak_msg_desc_init():
 	pb_leak_msg_fields[0].offset = cast(int, &m.a) - cast(int, &m)
 	pb_leak_msg_fields[0].aux = 0
 	pb_leak_msg_fields[1].number = 2
-	pb_leak_msg_fields[1].kind = PB_KIND_STRING()
+	pb_leak_msg_fields[1].kind = PB_KIND_STRING
 	pb_leak_msg_fields[1].offset = cast(int, &m.s) - cast(int, &m)
 	pb_leak_msg_fields[1].aux = 0
 	pb_leak_msg_desc.field_count = 2
@@ -86,7 +86,7 @@ void pb_leak_holder_desc_init():
 
 	pb_leak_holder hm
 	pb_leak_holder_fields[0].number = 3
-	pb_leak_holder_fields[0].kind = PB_KIND_MESSAGE()
+	pb_leak_holder_fields[0].kind = PB_KIND_MESSAGE
 	pb_leak_holder_fields[0].offset = cast(int, &hm.pt) - cast(int, &hm)
 	pb_leak_holder_fields[0].aux = cast(int, &pb_leak_pt_desc)
 	pb_leak_holder_desc.field_count = 1
@@ -110,20 +110,20 @@ pb_message_desc pb_leak_rep_msg_desc
 
 void pb_leak_rep_descs_init():
 	pb_leak_rep rm
-	pb_leak_rep_str_elem.kind = PB_KIND_STRING()
+	pb_leak_rep_str_elem.kind = PB_KIND_STRING
 	pb_leak_rep_str_elem.aux = 0
 	pb_leak_rep_str_fields[0].number = 4
-	pb_leak_rep_str_fields[0].kind = PB_KIND_REPEATED()
+	pb_leak_rep_str_fields[0].kind = PB_KIND_REPEATED
 	pb_leak_rep_str_fields[0].offset = cast(int, &rm.items) - cast(int, &rm)
 	pb_leak_rep_str_fields[0].aux = cast(int, &pb_leak_rep_str_elem)
 	pb_leak_rep_str_desc.field_count = 1
 	pb_leak_rep_str_desc.fields = pb_leak_rep_str_fields
 	pb_leak_rep_str_desc.struct_size = __word_size__
 
-	pb_leak_rep_msg_elem.kind = PB_KIND_MESSAGE()
+	pb_leak_rep_msg_elem.kind = PB_KIND_MESSAGE
 	pb_leak_rep_msg_elem.aux = cast(int, &pb_leak_msg_desc)
 	pb_leak_rep_msg_fields[0].number = 5
-	pb_leak_rep_msg_fields[0].kind = PB_KIND_REPEATED()
+	pb_leak_rep_msg_fields[0].kind = PB_KIND_REPEATED
 	pb_leak_rep_msg_fields[0].offset = cast(int, &rm.items) - cast(int, &rm)
 	pb_leak_rep_msg_fields[0].aux = cast(int, &pb_leak_rep_msg_elem)
 	pb_leak_rep_msg_desc.field_count = 1
@@ -141,7 +141,7 @@ pb_message_desc pb_leak_deep_desc
 
 void pb_leak_deep_desc_init():
 	pb_leak_deep_fields[0].number = 1
-	pb_leak_deep_fields[0].kind = PB_KIND_MESSAGE()
+	pb_leak_deep_fields[0].kind = PB_KIND_MESSAGE
 	pb_leak_deep_fields[0].offset = 0
 	pb_leak_deep_fields[0].aux = cast(int, &pb_leak_deep_desc)
 	pb_leak_deep_desc.field_count = 1
@@ -198,7 +198,7 @@ int main():
 	char* buf2 = pb_leak_zeroed(pb_leak_msg_desc.struct_size)
 	wresult[char*]* r2 = pb_decode(&pb_leak_msg_desc, c"\x12\x02\x68\x69\x08", 5, buf2)
 	asserts(c"string-then-truncation errors", result_is_error[char*](r2))
-	asserts(c"string-then-truncation is TRUNCATED", result_code[char*](r2) == PB_ERR_TRUNCATED())
+	asserts(c"string-then-truncation is TRUNCATED", result_code[char*](r2) == PB_ERR_TRUNCATED)
 	result_free[char*](r2)
 	free(buf2)
 
@@ -216,7 +216,7 @@ int main():
 	# 4. Depth-limit bail-out with ~150 nesting levels already
 	# allocated: the partial chain attached to `out` must be swept.
 	int deep_len = 0
-	char* deep = pb_leak_build_deep(PB_MAX_DECODE_DEPTH() + 50, &deep_len)
+	char* deep = pb_leak_build_deep(PB_MAX_DECODE_DEPTH + 50, &deep_len)
 	char* buf4 = pb_leak_zeroed(pb_leak_deep_desc.struct_size)
 	wresult[char*]* r4 = pb_decode(&pb_leak_deep_desc, deep, deep_len, buf4)
 	asserts(c"deep nesting errors", result_is_error[char*](r4))
@@ -231,7 +231,7 @@ int main():
 	char* buf5 = pb_leak_zeroed(pb_leak_rep_str_desc.struct_size)
 	wresult[char*]* r5 = pb_decode(&pb_leak_rep_str_desc, c"\x22\x02\x68\x69\x22\x05\x68\x69", 8, buf5)
 	asserts(c"repeated string overrun errors", result_is_error[char*](r5))
-	asserts(c"repeated string overrun kind", result_code[char*](r5) == PB_ERR_LENGTH_OVERRUN())
+	asserts(c"repeated string overrun kind", result_code[char*](r5) == PB_ERR_LENGTH_OVERRUN)
 	result_free[char*](r5)
 	free(buf5)
 
@@ -242,7 +242,7 @@ int main():
 	char* buf6 = pb_leak_zeroed(pb_leak_rep_msg_desc.struct_size)
 	wresult[char*]* r6 = pb_decode(&pb_leak_rep_msg_desc, c"\x2a\x04\x12\x02\x68\x69\x2a\x05\x12\x02\x68\x69\x08", 13, buf6)
 	asserts(c"repeated message inner error", result_is_error[char*](r6))
-	asserts(c"repeated message inner error kind", result_code[char*](r6) == PB_ERR_TRUNCATED())
+	asserts(c"repeated message inner error kind", result_code[char*](r6) == PB_ERR_TRUNCATED)
 	result_free[char*](r6)
 	free(buf6)
 

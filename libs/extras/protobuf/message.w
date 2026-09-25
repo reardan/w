@@ -41,7 +41,7 @@ tests/protobuf_test.w's companion x64-only supplementary target).
 Hardening invariants for untrusted input (the stage-1 backlog in
 docs/projects/ai_tooling_next_steps.md):
 
-- Submessage recursion is capped at PB_MAX_DECODE_DEPTH() nesting
+- Submessage recursion is capped at PB_MAX_DECODE_DEPTH nesting
   levels (PB_ERR_DEPTH_EXCEEDED past it), so crafted input nesting one
   length-delimited field per few bytes cannot overflow the stack.
 - Duplicate occurrences of the same singular field follow proto3
@@ -62,6 +62,8 @@ import libs.extras.protobuf.varint
 import libs.extras.protobuf.wire
 import lib.mem
 
+const int PB_MAX_DECODE_DEPTH = 100
+
 
 # ---- field kinds ------------------------------------------------------
 
@@ -73,66 +75,25 @@ int PB_KIND_INT64():
 	return 2
 
 
-int PB_KIND_UINT32():
-	return 3
-
-
-int PB_KIND_UINT64():
-	return 4
-
-
-int PB_KIND_SINT32():
-	return 5
-
-
-int PB_KIND_SINT64():
-	return 6
-
-
-int PB_KIND_BOOL():
-	return 7
-
-
-int PB_KIND_FIXED32():
-	return 8
-
-
-int PB_KIND_FIXED64():
-	return 9
-
-
-int PB_KIND_STRING():
-	return 10
-
-
-int PB_KIND_BYTES():
-	return 11
-
-
-int PB_KIND_MESSAGE():
-	return 12
-
-
-int PB_KIND_REPEATED():
-	return 13
+const int PB_KIND_UINT32 = 3
+const int PB_KIND_UINT64 = 4
+const int PB_KIND_SINT32 = 5
+const int PB_KIND_SINT64 = 6
+const int PB_KIND_BOOL = 7
+const int PB_KIND_FIXED32 = 8
+const int PB_KIND_FIXED64 = 9
+const int PB_KIND_STRING = 10
+const int PB_KIND_BYTES = 11
+const int PB_KIND_MESSAGE = 12
+const int PB_KIND_REPEATED = 13
 
 
 # ---- error codes --------------------------------------------------------
 
-int PB_ERR_TRUNCATED():
-	return 1
-
-
-int PB_ERR_BAD_WIRE_TYPE():
-	return 2
-
-
-int PB_ERR_BAD_VARINT():
-	return 3
-
-
-int PB_ERR_LENGTH_OVERRUN():
-	return 4
+const int PB_ERR_TRUNCATED = 1
+const int PB_ERR_BAD_WIRE_TYPE = 2
+const int PB_ERR_BAD_VARINT = 3
+const int PB_ERR_LENGTH_OVERRUN = 4
 
 
 int PB_ERR_DEPTH_EXCEEDED():
@@ -144,18 +105,16 @@ int PB_ERR_DEPTH_EXCEEDED():
 # nesting one length-delimited field per few bytes drives
 # pb_decode_message_field's recursion arbitrarily deep and overflows
 # the stack long before the buffer runs out.
-int PB_MAX_DECODE_DEPTH():
-	return 100
 
 
 char* pb_error_string(int code):
-	if (code == PB_ERR_TRUNCATED()):
+	if (code == PB_ERR_TRUNCATED):
 		return c"protobuf: input ended mid-field"
-	if (code == PB_ERR_BAD_WIRE_TYPE()):
+	if (code == PB_ERR_BAD_WIRE_TYPE):
 		return c"protobuf: unsupported wire type"
-	if (code == PB_ERR_BAD_VARINT()):
+	if (code == PB_ERR_BAD_VARINT):
 		return c"protobuf: varint exceeds 10 bytes"
-	if (code == PB_ERR_LENGTH_OVERRUN()):
+	if (code == PB_ERR_LENGTH_OVERRUN):
 		return c"protobuf: length-delimited field overruns the buffer"
 	if (code == PB_ERR_DEPTH_EXCEEDED()):
 		return c"protobuf: message nesting exceeds depth limit"
@@ -212,13 +171,13 @@ void pb_store_ptr(char* addr, int value):
 
 
 int pb_kind_wire_type(int kind):
-	if ((kind == PB_KIND_INT32()) || (kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT32()) || (kind == PB_KIND_UINT64()) || (kind == PB_KIND_SINT32()) || (kind == PB_KIND_SINT64()) || (kind == PB_KIND_BOOL())):
-		return PB_WIRE_VARINT()
-	if (kind == PB_KIND_FIXED32()):
-		return PB_WIRE_FIXED32()
-	if (kind == PB_KIND_FIXED64()):
-		return PB_WIRE_FIXED64()
-	return PB_WIRE_LENGTH_DELIMITED()
+	if ((kind == PB_KIND_INT32()) || (kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT32) || (kind == PB_KIND_UINT64) || (kind == PB_KIND_SINT32) || (kind == PB_KIND_SINT64) || (kind == PB_KIND_BOOL)):
+		return PB_WIRE_VARINT
+	if (kind == PB_KIND_FIXED32):
+		return PB_WIRE_FIXED32
+	if (kind == PB_KIND_FIXED64):
+		return PB_WIRE_FIXED64
+	return PB_WIRE_LENGTH_DELIMITED
 
 
 # Only scalar numeric/fixed wire types 0/1/5 may be packed (proto3's
@@ -226,7 +185,7 @@ int pb_kind_wire_type(int kind):
 # already carry their own delimiter and can't be (docs/projects/
 # protobuf.md §2).
 int pb_kind_is_packable(int kind):
-	if ((kind == PB_KIND_STRING()) || (kind == PB_KIND_BYTES()) || (kind == PB_KIND_MESSAGE()) || (kind == PB_KIND_REPEATED())):
+	if ((kind == PB_KIND_STRING) || (kind == PB_KIND_BYTES) || (kind == PB_KIND_MESSAGE) || (kind == PB_KIND_REPEATED)):
 		return 0
 	return 1
 
@@ -236,13 +195,13 @@ int pb_kind_is_packable(int kind):
 # from a merely truncated buffer is PB_ERR_BAD_WIRE_TYPE's whole reason
 # to exist as its own code.
 int pb_wire_type_valid(int wire_type):
-	if (wire_type == PB_WIRE_VARINT()):
+	if (wire_type == PB_WIRE_VARINT):
 		return 1
-	if (wire_type == PB_WIRE_FIXED64()):
+	if (wire_type == PB_WIRE_FIXED64):
 		return 1
-	if (wire_type == PB_WIRE_LENGTH_DELIMITED()):
+	if (wire_type == PB_WIRE_LENGTH_DELIMITED):
 		return 1
-	if (wire_type == PB_WIRE_FIXED32()):
+	if (wire_type == PB_WIRE_FIXED32):
 		return 1
 	return 0
 
@@ -260,49 +219,49 @@ int pb_wire_type_valid(int wire_type):
 # the distinction wire.w's wire_tag_decode comment defers to here.
 int pb_skip_or_error(char* data, int length, int wire_type, int* consumed_out):
 	if (pb_wire_type_valid(wire_type) == 0):
-		return PB_ERR_BAD_WIRE_TYPE()
-	if (wire_type == PB_WIRE_VARINT()):
+		return PB_ERR_BAD_WIRE_TYPE
+	if (wire_type == PB_WIRE_VARINT):
 		int lo = 0
 		int hi = 0
 		int n = varint_decode_parts(data, length, &lo, &hi)
 		if (n < 0):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		if (n == 0):
-			return PB_ERR_BAD_VARINT()
+			return PB_ERR_BAD_VARINT
 		consumed_out[0] = n
 		return 0
-	if (wire_type == PB_WIRE_FIXED64()):
+	if (wire_type == PB_WIRE_FIXED64):
 		if (length < 8):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		consumed_out[0] = 8
 		return 0
-	if (wire_type == PB_WIRE_FIXED32()):
+	if (wire_type == PB_WIRE_FIXED32):
 		if (length < 4):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		consumed_out[0] = 4
 		return 0
 	# PB_WIRE_LENGTH_DELIMITED -- the only remaining valid wire type.
 	int blen = 0
 	int n = varint_decode_u32(data, length, &blen)
 	if (n < 0):
-		return PB_ERR_TRUNCATED()
+		return PB_ERR_TRUNCATED
 	if (n == 0):
-		return PB_ERR_BAD_VARINT()
+		return PB_ERR_BAD_VARINT
 	if (blen < 0):
-		return PB_ERR_LENGTH_OVERRUN()
+		return PB_ERR_LENGTH_OVERRUN
 	if ((length - n) < blen):
-		return PB_ERR_LENGTH_OVERRUN()
+		return PB_ERR_LENGTH_OVERRUN
 	consumed_out[0] = n + blen
 	return 0
 
 
 int pb_element_size(pb_value_desc* elem):
 	int kind = elem.kind
-	if ((kind == PB_KIND_FIXED64()) || (kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT64()) || (kind == PB_KIND_SINT64())):
+	if ((kind == PB_KIND_FIXED64) || (kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT64) || (kind == PB_KIND_SINT64)):
 		return 8
-	if ((kind == PB_KIND_STRING()) || (kind == PB_KIND_BYTES())):
+	if ((kind == PB_KIND_STRING) || (kind == PB_KIND_BYTES)):
 		return 2 * __word_size__
-	if (kind == PB_KIND_MESSAGE()):
+	if (kind == PB_KIND_MESSAGE):
 		pb_message_desc* nested = cast(pb_message_desc*, elem.aux)
 		return nested.struct_size
 	# A scalar element's aux, when set, is its explicit storage width:
@@ -314,10 +273,10 @@ int pb_element_size(pb_value_desc* elem):
 
 
 int pb_is_zero_scalar(int kind, char* addr):
-	if (kind == PB_KIND_BOOL()):
+	if (kind == PB_KIND_BOOL):
 		return (addr[0] & 1) == 0
 	int width = 4
-	if ((kind == PB_KIND_FIXED64()) || (kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT64()) || (kind == PB_KIND_SINT64())):
+	if ((kind == PB_KIND_FIXED64) || (kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT64) || (kind == PB_KIND_SINT64)):
 		width = 8
 	for i in range(width):
 		if ((addr[i] & 255) != 0):
@@ -333,28 +292,28 @@ void pb_encode_scalar(int kind, char* addr, string_builder* out):
 		int32* p = cast(int32*, addr)
 		int n = varint_encode_i32(p[0], buf)
 		string_append_bytes(out, buf, n)
-	else if (kind == PB_KIND_UINT32()):
+	else if (kind == PB_KIND_UINT32):
 		uint32* p = cast(uint32*, addr)
 		int n = varint_encode_u32(p[0], buf)
 		string_append_bytes(out, buf, n)
-	else if (kind == PB_KIND_SINT32()):
+	else if (kind == PB_KIND_SINT32):
 		int32* p = cast(int32*, addr)
 		int n = varint_encode_u32(zigzag_encode32(p[0]), buf)
 		string_append_bytes(out, buf, n)
-	else if (kind == PB_KIND_BOOL()):
+	else if (kind == PB_KIND_BOOL):
 		int v = addr[0] & 1
 		int n = varint_encode_u32(v, buf)
 		string_append_bytes(out, buf, n)
-	else if (kind == PB_KIND_FIXED32()):
+	else if (kind == PB_KIND_FIXED32):
 		string_append_bytes(out, addr, 4)
-	else if (kind == PB_KIND_FIXED64()):
+	else if (kind == PB_KIND_FIXED64):
 		string_append_bytes(out, addr, 8)
-	else if ((kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT64())):
+	else if ((kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT64)):
 		int32* lo_p = cast(int32*, addr)
 		int32* hi_p = cast(int32*, addr + 4)
 		int n = varint_encode_parts(lo_p[0], hi_p[0], buf)
 		string_append_bytes(out, buf, n)
-	else if (kind == PB_KIND_SINT64()):
+	else if (kind == PB_KIND_SINT64):
 		int32* lo_p = cast(int32*, addr)
 		int32* hi_p = cast(int32*, addr + 4)
 		int zlo = 0
@@ -380,7 +339,7 @@ char* pb_encode(pb_message_desc* desc, char* addr, int* out_length);
 
 
 void pb_encode_message_value(pb_message_desc* nested, char* addr, int number, string_builder* out):
-	pb_append_tag(number, PB_WIRE_LENGTH_DELIMITED(), out)
+	pb_append_tag(number, PB_WIRE_LENGTH_DELIMITED, out)
 	int sub_len = 0
 	char* sub = pb_encode(nested, addr, &sub_len)
 	pb_append_length(sub_len, out)
@@ -389,7 +348,7 @@ void pb_encode_message_value(pb_message_desc* nested, char* addr, int number, st
 
 
 void pb_encode_bytes_value(pb_bytes* b, int number, string_builder* out):
-	pb_append_tag(number, PB_WIRE_LENGTH_DELIMITED(), out)
+	pb_append_tag(number, PB_WIRE_LENGTH_DELIMITED, out)
 	pb_append_length(b.length, out)
 	string_append_bytes(out, b.data, b.length)
 
@@ -409,11 +368,11 @@ void pb_encode_repeated(pb_field_desc* f, char* addr, string_builder* out):
 		while (i < list.length):
 			pb_encode_scalar(ekind, list.items + i * list.element_size, payload)
 			i = i + 1
-		pb_append_tag(f.number, PB_WIRE_LENGTH_DELIMITED(), out)
+		pb_append_tag(f.number, PB_WIRE_LENGTH_DELIMITED, out)
 		pb_append_length(payload.length, out)
 		string_append_bytes(out, payload.data, payload.length)
 		string_free(payload)
-	else if (ekind == PB_KIND_MESSAGE()):
+	else if (ekind == PB_KIND_MESSAGE):
 		pb_message_desc* nested = cast(pb_message_desc*, elem.aux)
 		int i = 0
 		while (i < list.length):
@@ -429,16 +388,16 @@ void pb_encode_repeated(pb_field_desc* f, char* addr, string_builder* out):
 
 void pb_encode_field(pb_field_desc* f, char* addr, string_builder* out):
 	int kind = f.kind
-	if (kind == PB_KIND_REPEATED()):
+	if (kind == PB_KIND_REPEATED):
 		pb_encode_repeated(f, addr, out)
 		return
-	if (kind == PB_KIND_MESSAGE()):
+	if (kind == PB_KIND_MESSAGE):
 		int raw = pb_load_ptr(addr)
 		if (raw == 0):
 			return
 		pb_encode_message_value(cast(pb_message_desc*, f.aux), cast(char*, raw), f.number, out)
 		return
-	if ((kind == PB_KIND_STRING()) || (kind == PB_KIND_BYTES())):
+	if ((kind == PB_KIND_STRING) || (kind == PB_KIND_BYTES)):
 		pb_bytes* b = cast(pb_bytes*, addr)
 		if (b.length == 0):
 			return
@@ -474,42 +433,42 @@ int pb_decode_scalar_field(int kind, char* data, int length, char* out_addr, int
 		int v = 0
 		int n = varint_decode_i32(data, length, &v)
 		if (n < 0):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		if (n == 0):
-			return PB_ERR_BAD_VARINT()
+			return PB_ERR_BAD_VARINT
 		int32* p = cast(int32*, out_addr)
 		p[0] = v
 		consumed_out[0] = n
 		return 0
-	if (kind == PB_KIND_UINT32()):
+	if (kind == PB_KIND_UINT32):
 		int v = 0
 		int n = varint_decode_u32(data, length, &v)
 		if (n < 0):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		if (n == 0):
-			return PB_ERR_BAD_VARINT()
+			return PB_ERR_BAD_VARINT
 		uint32* p = cast(uint32*, out_addr)
 		p[0] = v
 		consumed_out[0] = n
 		return 0
-	if (kind == PB_KIND_SINT32()):
+	if (kind == PB_KIND_SINT32):
 		int v = 0
 		int n = varint_decode_u32(data, length, &v)
 		if (n < 0):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		if (n == 0):
-			return PB_ERR_BAD_VARINT()
+			return PB_ERR_BAD_VARINT
 		int32* p = cast(int32*, out_addr)
 		p[0] = zigzag_decode32(v)
 		consumed_out[0] = n
 		return 0
-	if (kind == PB_KIND_BOOL()):
+	if (kind == PB_KIND_BOOL):
 		int v = 0
 		int n = varint_decode_u32(data, length, &v)
 		if (n < 0):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		if (n == 0):
-			return PB_ERR_BAD_VARINT()
+			return PB_ERR_BAD_VARINT
 		# Write the element's full 4-byte width like the other 4-byte
 		# kinds: repeated decode stages elements in a reused stack slot,
 		# so a byte-0-only write would copy the slot's stale bytes 1-3
@@ -520,40 +479,40 @@ int pb_decode_scalar_field(int kind, char* data, int length, char* out_addr, int
 		out_addr[3] = 0
 		consumed_out[0] = n
 		return 0
-	if (kind == PB_KIND_FIXED32()):
+	if (kind == PB_KIND_FIXED32):
 		if (length < 4):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		mem_copy(out_addr, data, 4)
 		consumed_out[0] = 4
 		return 0
-	if (kind == PB_KIND_FIXED64()):
+	if (kind == PB_KIND_FIXED64):
 		if (length < 8):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		mem_copy(out_addr, data, 8)
 		consumed_out[0] = 8
 		return 0
-	if ((kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT64())):
+	if ((kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT64)):
 		int lo = 0
 		int hi = 0
 		int n = varint_decode_parts(data, length, &lo, &hi)
 		if (n < 0):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		if (n == 0):
-			return PB_ERR_BAD_VARINT()
+			return PB_ERR_BAD_VARINT
 		int32* lo_p = cast(int32*, out_addr)
 		int32* hi_p = cast(int32*, out_addr + 4)
 		lo_p[0] = lo
 		hi_p[0] = hi
 		consumed_out[0] = n
 		return 0
-	if (kind == PB_KIND_SINT64()):
+	if (kind == PB_KIND_SINT64):
 		int lo = 0
 		int hi = 0
 		int n = varint_decode_parts(data, length, &lo, &hi)
 		if (n < 0):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		if (n == 0):
-			return PB_ERR_BAD_VARINT()
+			return PB_ERR_BAD_VARINT
 		int dlo = 0
 		int dhi = 0
 		zigzag_decode64_parts(lo, hi, &dlo, &dhi)
@@ -563,20 +522,20 @@ int pb_decode_scalar_field(int kind, char* data, int length, char* out_addr, int
 		hi_p[0] = dhi
 		consumed_out[0] = n
 		return 0
-	return PB_ERR_BAD_WIRE_TYPE()
+	return PB_ERR_BAD_WIRE_TYPE
 
 
 int pb_decode_bytes_field(char* data, int length, char* out_addr, int* consumed_out):
 	int blen = 0
 	int n = varint_decode_u32(data, length, &blen)
 	if (n < 0):
-		return PB_ERR_TRUNCATED()
+		return PB_ERR_TRUNCATED
 	if (n == 0):
-		return PB_ERR_BAD_VARINT()
+		return PB_ERR_BAD_VARINT
 	if (blen < 0):
-		return PB_ERR_LENGTH_OVERRUN()
+		return PB_ERR_LENGTH_OVERRUN
 	if ((length - n) < blen):
-		return PB_ERR_LENGTH_OVERRUN()
+		return PB_ERR_LENGTH_OVERRUN
 	# Allocate one extra byte and NUL-terminate (mirrors structures/
 	# json_codec.w's __w_json_encode_string): b.length is always the
 	# true byte count, so a BYTES field with an embedded NUL still
@@ -607,14 +566,14 @@ int pb_decode_message_field(pb_message_desc* nested, char* data, int length, cha
 	int mlen = 0
 	int n = varint_decode_u32(data, length, &mlen)
 	if (n < 0):
-		return PB_ERR_TRUNCATED()
+		return PB_ERR_TRUNCATED
 	if (n == 0):
-		return PB_ERR_BAD_VARINT()
+		return PB_ERR_BAD_VARINT
 	if (mlen < 0):
-		return PB_ERR_LENGTH_OVERRUN()
+		return PB_ERR_LENGTH_OVERRUN
 	if ((length - n) < mlen):
-		return PB_ERR_LENGTH_OVERRUN()
-	if (depth >= PB_MAX_DECODE_DEPTH()):
+		return PB_ERR_LENGTH_OVERRUN
+	if (depth >= PB_MAX_DECODE_DEPTH):
 		return PB_ERR_DEPTH_EXCEEDED()
 	# proto3 duplicate-message semantics: a later occurrence of the same
 	# singular message field MERGES into the earlier one, not replaces
@@ -668,19 +627,19 @@ void pb_free_decoded(pb_message_desc* desc, char* out):
 		pb_field_desc* f = &desc.fields[i]
 		char* addr = out + f.offset
 		int kind = f.kind
-		if ((kind == PB_KIND_STRING()) || (kind == PB_KIND_BYTES())):
+		if ((kind == PB_KIND_STRING) || (kind == PB_KIND_BYTES)):
 			pb_bytes* b = cast(pb_bytes*, addr)
 			if (cast(int, b.data) != 0):
 				free(b.data)
 			b.data = cast(char*, 0)
 			b.length = 0
-		else if (kind == PB_KIND_MESSAGE()):
+		else if (kind == PB_KIND_MESSAGE):
 			int raw = pb_load_ptr(addr)
 			if (raw != 0):
 				pb_free_decoded(cast(pb_message_desc*, f.aux), cast(char*, raw))
 				free(cast(char*, raw))
 				pb_store_ptr(addr, 0)
-		else if (kind == PB_KIND_REPEATED()):
+		else if (kind == PB_KIND_REPEATED):
 			int raw = pb_load_ptr(addr)
 			if (raw != 0):
 				__w_list* list = cast(__w_list*, raw)
@@ -688,11 +647,11 @@ void pb_free_decoded(pb_message_desc* desc, char* out):
 				int ekind = elem.kind
 				for j in range(list.length):
 					char* eaddr = list.items + j * list.element_size
-					if ((ekind == PB_KIND_STRING()) || (ekind == PB_KIND_BYTES())):
+					if ((ekind == PB_KIND_STRING) || (ekind == PB_KIND_BYTES)):
 						pb_bytes* eb = cast(pb_bytes*, eaddr)
 						if (cast(int, eb.data) != 0):
 							free(eb.data)
-					else if (ekind == PB_KIND_MESSAGE()):
+					else if (ekind == PB_KIND_MESSAGE):
 						# Message elements are stored by value inside
 						# list.items -- free their internals only, not
 						# the element storage itself.
@@ -716,13 +675,13 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 	int natural_wire = pb_kind_wire_type(ekind)
 
 	int is_packed_form = 0
-	if (packable && (wire_type == PB_WIRE_LENGTH_DELIMITED()) && (natural_wire != PB_WIRE_LENGTH_DELIMITED())):
+	if (packable && (wire_type == PB_WIRE_LENGTH_DELIMITED) && (natural_wire != PB_WIRE_LENGTH_DELIMITED)):
 		is_packed_form = 1
 	int is_unpacked_scalar = 0
 	if (packable && (wire_type == natural_wire)):
 		is_unpacked_scalar = 1
 	int is_delimited_element = 0
-	if ((packable == 0) && (wire_type == PB_WIRE_LENGTH_DELIMITED())):
+	if ((packable == 0) && (wire_type == PB_WIRE_LENGTH_DELIMITED)):
 		is_delimited_element = 1
 
 	if ((is_packed_form == 0) && (is_unpacked_scalar == 0) && (is_delimited_element == 0)):
@@ -740,13 +699,13 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 		int blen = 0
 		int n = varint_decode_u32(data, length, &blen)
 		if (n < 0):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		if (n == 0):
-			return PB_ERR_BAD_VARINT()
+			return PB_ERR_BAD_VARINT
 		if (blen < 0):
-			return PB_ERR_LENGTH_OVERRUN()
+			return PB_ERR_LENGTH_OVERRUN
 		if ((length - n) < blen):
-			return PB_ERR_LENGTH_OVERRUN()
+			return PB_ERR_LENGTH_OVERRUN
 		int pos = 0
 		char[8] slot
 		while (pos < blen):
@@ -759,19 +718,19 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 		consumed_out[0] = n + blen
 		return 0
 
-	if (ekind == PB_KIND_MESSAGE()):
+	if (ekind == PB_KIND_MESSAGE):
 		pb_message_desc* nested = cast(pb_message_desc*, elem.aux)
 		int mlen = 0
 		int n = varint_decode_u32(data, length, &mlen)
 		if (n < 0):
-			return PB_ERR_TRUNCATED()
+			return PB_ERR_TRUNCATED
 		if (n == 0):
-			return PB_ERR_BAD_VARINT()
+			return PB_ERR_BAD_VARINT
 		if (mlen < 0):
-			return PB_ERR_LENGTH_OVERRUN()
+			return PB_ERR_LENGTH_OVERRUN
 		if ((length - n) < mlen):
-			return PB_ERR_LENGTH_OVERRUN()
-		if (depth >= PB_MAX_DECODE_DEPTH()):
+			return PB_ERR_LENGTH_OVERRUN
+		if (depth >= PB_MAX_DECODE_DEPTH):
 			return PB_ERR_DEPTH_EXCEEDED()
 		char* buf = malloc(nested.struct_size)
 		mem_fill(buf, 0, nested.struct_size)
@@ -788,7 +747,7 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 		consumed_out[0] = n + mlen
 		return 0
 
-	if ((ekind == PB_KIND_STRING()) || (ekind == PB_KIND_BYTES())):
+	if ((ekind == PB_KIND_STRING) || (ekind == PB_KIND_BYTES)):
 		# Zero the staging slot: pb_decode_bytes_field frees a non-null
 		# previous b.data (proto3 last-one-wins), which must never see
 		# this stack slot's stale bytes. Zeroed via indexed byte writes
@@ -818,19 +777,19 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 
 int pb_decode_one(pb_field_desc* f, int wire_type, char* data, int length, char* out_addr, int* consumed_out, int depth):
 	int kind = f.kind
-	if (kind == PB_KIND_REPEATED()):
+	if (kind == PB_KIND_REPEATED):
 		return pb_decode_repeated(f, wire_type, data, length, out_addr, consumed_out, depth)
-	if (kind == PB_KIND_MESSAGE()):
-		if (wire_type != PB_WIRE_LENGTH_DELIMITED()):
+	if (kind == PB_KIND_MESSAGE):
+		if (wire_type != PB_WIRE_LENGTH_DELIMITED):
 			return pb_skip_or_error(data, length, wire_type, consumed_out)
 		return pb_decode_message_field(cast(pb_message_desc*, f.aux), data, length, out_addr, consumed_out, depth)
-	if ((kind == PB_KIND_STRING()) || (kind == PB_KIND_BYTES())):
-		if (wire_type != PB_WIRE_LENGTH_DELIMITED()):
+	if ((kind == PB_KIND_STRING) || (kind == PB_KIND_BYTES)):
+		if (wire_type != PB_WIRE_LENGTH_DELIMITED):
 			return pb_skip_or_error(data, length, wire_type, consumed_out)
 		return pb_decode_bytes_field(data, length, out_addr, consumed_out)
 	if (wire_type != pb_kind_wire_type(kind)):
 		return pb_skip_or_error(data, length, wire_type, consumed_out)
-	if (kind == PB_KIND_BOOL()):
+	if (kind == PB_KIND_BOOL):
 		# pb_decode_scalar_field writes a BOOL's full 4-byte element
 		# width; a singular bool field may be a one-byte W bool (the
 		# message keyword's storage), so stage it and store one byte.
@@ -865,8 +824,8 @@ int pb_decode_into_depth(pb_message_desc* desc, char* data, int length, char* ou
 			int tlo = 0
 			int thi = 0
 			if (varint_decode_parts(data + pos, length - pos, &tlo, &thi) == 0):
-				return PB_ERR_BAD_VARINT()
-			return PB_ERR_TRUNCATED()
+				return PB_ERR_BAD_VARINT
+			return PB_ERR_TRUNCATED
 		pos = pos + tn
 		pb_field_desc* f = pb_find_field(desc, field_number)
 		if (cast(int, f) == 0):

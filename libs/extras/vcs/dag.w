@@ -71,8 +71,7 @@ import lib.mem
 
 
 # Every id dag.w accepts or returns is exactly this many bytes.
-int DAG_ID_SIZE():
-	return 32
+const int DAG_ID_SIZE = 32
 
 
 struct dag_node:
@@ -100,7 +99,7 @@ int dag_count(dag* d):
 
 # Byte-for-byte equality of two DAG_ID_SIZE() ids.
 int dag_id_equal(char* a, char* b):
-	return mem_eq(a, b, DAG_ID_SIZE())
+	return mem_eq(a, b, DAG_ID_SIZE)
 
 
 # Lazily-allocated, reused-forever scratch buffer for dag_hex_key: see
@@ -114,12 +113,12 @@ char* dag_hex_scratch
 # used to insert); never free() it and never hold onto it.
 char* dag_hex_key(char* id):
 	if (dag_hex_scratch == 0):
-		dag_hex_scratch = malloc(DAG_ID_SIZE() * 2 + 1)
+		dag_hex_scratch = malloc(DAG_ID_SIZE * 2 + 1)
 	int i = 0
-	while (i < DAG_ID_SIZE()):
+	while (i < DAG_ID_SIZE):
 		hex_put_byte(&dag_hex_scratch[i * 2], id[i] & 255)
 		i = i + 1
-	dag_hex_scratch[DAG_ID_SIZE() * 2] = 0
+	dag_hex_scratch[DAG_ID_SIZE * 2] = 0
 	return dag_hex_scratch
 
 
@@ -150,8 +149,8 @@ dag_node* dag_require_node(dag* d, char* id):
 int dag_add_node(dag* d, char* id, list[char*] parent_ids):
 	assert1(dag_find_node(d, id) == 0)
 	dag_node* node = new dag_node()
-	node.id = malloc(DAG_ID_SIZE())
-	mem_copy(node.id, id, DAG_ID_SIZE())
+	node.id = malloc(DAG_ID_SIZE)
+	mem_copy(node.id, id, DAG_ID_SIZE)
 	node.parents = new list[dag_node*]
 	int max_parent_gen = -1
 	for char* pid in parent_ids:

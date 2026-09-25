@@ -44,7 +44,7 @@ asm_buffer* stubs_assemble(int arch, char* path, int line, char* text):
 	asm_buffer* b = asm_buffer_new()
 	asm_insn insn
 	int n = 0
-	if (arch == ASM_ARCH_ARM64()):
+	if (arch == ASM_ARCH_ARM64):
 		if (asm_arm64_parse(text, &insn)):
 			n = asm_arm64_encode(b, &insn)
 	else:
@@ -152,9 +152,9 @@ int stubs_check(char* path, char* call, int arch, char* corpus_path):
 
 int main():
 	stubs_missing = 0
-	int n = stubs_check(c"code_generator/x86_asm.w", c"x86_asm", ASM_ARCH_X86(), c"tests/asm/corpus_x86.txt")
-	n = n + stubs_check(c"code_generator/x64_asm.w", c"x64_asm", ASM_ARCH_X64(), c"tests/asm/corpus_x64.txt")
-	n = n + stubs_check(c"code_generator/arm64_asm.w", c"a64_asm", ASM_ARCH_ARM64(), c"tests/asm/corpus_arm64.txt")
+	int n = stubs_check(c"code_generator/x86_asm.w", c"x86_asm", ASM_ARCH_X86, c"tests/asm/corpus_x86.txt")
+	n = n + stubs_check(c"code_generator/x64_asm.w", c"x64_asm", ASM_ARCH_X64, c"tests/asm/corpus_x64.txt")
+	n = n + stubs_check(c"code_generator/arm64_asm.w", c"a64_asm", ASM_ARCH_ARM64, c"tests/asm/corpus_arm64.txt")
 	if (stubs_missing > 0):
 		print2(itoa(stubs_missing))
 		println2(c" stub instruction(s) missing from the corpus")

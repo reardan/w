@@ -45,8 +45,7 @@ import lib.linux
 import lib.stack_trace
 
 
-int debug_page_size():
-	return 4096
+const int debug_page_size = 4096
 
 
 # Freed-but-still-mapped quarantine budget. ~32 MiB keeps recent UAFs
@@ -187,7 +186,7 @@ void debug_fatal(char* message, int addr):
 
 
 int debug_pages_for(int size):
-	int page = debug_page_size()
+	int page = debug_page_size
 	int pages = (size + page - 1) >> 12
 	if (pages < 1):
 		pages = 1
@@ -197,7 +196,7 @@ int debug_pages_for(int size):
 void* debug_malloc(int size):
 	if (size < 1):
 		size = 1
-	int page = debug_page_size()
+	int page = debug_page_size
 	int payload_pages = debug_pages_for(size)
 	int payload_size = payload_pages * page
 	int region_size = payload_size + page

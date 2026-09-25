@@ -35,8 +35,7 @@ import lib.bytes
 
 # whash extension id for MD5 (extension ids start at 100; see the
 # registry in libs/standard/crypto/sha2.w).
-int md5_alg_id():
-	return 100
+const int md5_alg_id = 100
 
 
 int* md5_t_cache
@@ -144,8 +143,8 @@ void md5_load_iv(int* state):
 # first use (16-byte digest, 64-byte block, 4 state words, little-endian
 # trailer and output) and returns its id.
 int WHASH_MD5():
-	whash_register(md5_alg_id(), 16, 64, 4, 1, md5_block, md5_load_iv)
-	return md5_alg_id()
+	whash_register(md5_alg_id, 16, 64, 4, 1, md5_block, md5_load_iv)
+	return md5_alg_id
 
 
 # One-shot MD5: digest of len bytes at data into out (16 bytes).

@@ -22,7 +22,7 @@ void test_short_form_header():
 	int start = 0
 	int len = 0
 	assert_equal(1, asn1_next(&r, &tag, &start, &len))
-	assert_equal(ASN1_INTEGER(), tag)
+	assert_equal(ASN1_INTEGER, tag)
 	assert_equal(2, start)
 	assert_equal(1, len)
 	assert_equal(1, asn1_done(&r))
@@ -168,7 +168,7 @@ void test_expect_and_skip():
 	assert_equal(1, asn1_done(&r))
 	asn1 inner
 	asn1_init(&inner, b, s, s + l)
-	assert_equal(ASN1_INTEGER(), asn1_peek(&inner))
+	assert_equal(ASN1_INTEGER, asn1_peek(&inner))
 	assert_equal(1, asn1_skip(&inner))
 	int v = 0
 	assert_equal(1, asn1_read_boolean(&inner, &v))

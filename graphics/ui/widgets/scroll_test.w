@@ -58,7 +58,7 @@ void test_wheel_moves_the_offset():
 	# A notch toward the user scrolls down by one notch's worth.
 	ui_test_wheel(ctx, 0 - 1, 50, 50)
 	scroll_frame(ctx, area, &st, 20)
-	asserts(c"scrolled down", st.offset_y == cast(float32, ui_scroll_notch()))
+	asserts(c"scrolled down", st.offset_y == cast(float32, ui_scroll_notch))
 
 	# And back up.
 	ui_test_wheel(ctx, 1, 50, 50)

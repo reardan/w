@@ -28,8 +28,7 @@ import graphics.ui.widgets.context
 
 
 # Pixels one wheel notch scrolls.
-int ui_scroll_notch():
-	return 48
+const int ui_scroll_notch = 48
 
 
 # Thickness of the scrollbar drawn inside the viewport's right edge.
@@ -135,7 +134,7 @@ void ui_scroll_end(ui_context* ctx, ui_scroll_state* st):
 	if (ctx.input.scroll_y != 0):
 		if (ui_rect_contains(area, cast(float32, ctx.input.scroll_at_x), cast(float32, ctx.input.scroll_at_y))):
 			if (ui_scroll_overflows(st)):
-				st.offset_y = st.offset_y - cast(float32, ctx.input.scroll_y * ui_scroll_notch())
+				st.offset_y = st.offset_y - cast(float32, ctx.input.scroll_y * ui_scroll_notch)
 				ctx.input.scroll_y = 0
 	ui_scroll_clamp(st)
 

@@ -113,7 +113,7 @@ int word_is_unknown(char* text, int off, int address):
 void test_golden():
 	asm_binary* binary = asm_binary_open(c"bin/asm_arm64_selfhost")
 	asserts(c"cannot open bin/wv2_arm64", cast(int, binary) != 0)
-	assert_equal(ASM_EM_AARCH64(), binary.machine)
+	assert_equal(ASM_EM_AARCH64, binary.machine)
 	char* text = asm_binary_text(binary)
 	int functions = 0
 	int count = 0
@@ -186,7 +186,7 @@ void test_golden():
 				prev_pcrel_ldr = 0
 				continue
 			prev_pcrel_ldr = 0
-			if (strcmp(insn.mnemonic, c"ldr") == 0 & insn.op2.kind == ASM_OP_MEM()):
+			if (strcmp(insn.mnemonic, c"ldr") == 0 & insn.op2.kind == ASM_OP_MEM):
 				if (insn.op2.disp_size == ARM64_ADDR_PCREL()):
 					prev_pcrel_ldr = 1
 			pos = pos + 4

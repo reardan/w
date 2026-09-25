@@ -43,7 +43,7 @@ int ui_popup_is_top(ui_context* ctx, int id):
 void ui_popup_open(ui_context* ctx, int id):
 	if (ui_popup_is_top(ctx, id)):
 		return
-	if (ctx.popup_depth >= ui_popup_max_depth()):
+	if (ctx.popup_depth >= ui_popup_max_depth):
 		return
 	ctx.popup_stack[ctx.popup_depth] = id
 	ctx.popup_depth = ctx.popup_depth + 1
@@ -64,7 +64,7 @@ void ui_popup_dismiss(ui_context* ctx, int id):
 # Enter a popup's scope: its input scope, draw layer, clip and layout
 # region. Every call must be matched by ui_popup_end.
 void ui_popup_begin(ui_context* ctx, int id, ui_rect area, int layer):
-	if (ctx.bracket_depth < ui_popup_max_depth()):
+	if (ctx.bracket_depth < ui_popup_max_depth):
 		ctx.scope_saved[ctx.bracket_depth] = ctx.scope
 		ctx.layer_saved[ctx.bracket_depth] = ctx.rndr.layer
 	ctx.bracket_depth = ctx.bracket_depth + 1
@@ -84,7 +84,7 @@ void ui_popup_end(ui_context* ctx):
 	ctx.bracket_depth = ctx.bracket_depth - 1
 	ui_region_pop(ctx)
 	ui_clip_pop(ctx.rndr)
-	if (ctx.bracket_depth < ui_popup_max_depth()):
+	if (ctx.bracket_depth < ui_popup_max_depth):
 		ui_render_layer(ctx.rndr, ctx.layer_saved[ctx.bracket_depth])
 		ctx.scope = ctx.scope_saved[ctx.bracket_depth]
 	else:

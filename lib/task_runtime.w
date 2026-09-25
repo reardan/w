@@ -74,16 +74,9 @@ void task_runtime_install():
 
 /* Remote inbox: how other threads reach a scheduler. */
 
-int task_remote_msg_spawn():
-	return 1
-
-
-int task_remote_msg_wake():
-	return 2
-
-
-int task_remote_msg_nop():
-	return 3
+const int task_remote_msg_spawn = 1
+const int task_remote_msg_wake = 2
+const int task_remote_msg_nop = 3
 
 
 struct task_remote_msg:
@@ -138,13 +131,13 @@ void task_remote_on_readable(int fd, int revents, void* context):
 	int i = 0
 	while (i < batch.length):
 		task_remote_msg* m = batch[i]
-		if (m.kind == task_remote_msg_spawn()):
+		if (m.kind == task_remote_msg_spawn):
 			task_spawn(r.sched, m.gen)
 			if (cast(int, r.counter) != 0):
 				# The post counted it in flight; task_spawn counted it
 				# again through the scheduler hook.
 				atomic_add(r.counter, -1)
-		else if (m.kind == task_remote_msg_wake()):
+		else if (m.kind == task_remote_msg_wake):
 			task* t = m.target
 			if ((t.park_seq == m.seq) && task_is_parked(t)):
 				task_wake(t, m.value)
@@ -177,7 +170,7 @@ task_remote* task_remote_attach(task_scheduler* s):
 		socket_set_nonblocking(fds[1])
 		free(cast(void*, fds))
 	s.remote = cast(void*, r)
-	event_loop_add_watch(s.loop, r.read_fd, poll_in(), task_remote_on_readable, cast(void*, r))
+	event_loop_add_watch(s.loop, r.read_fd, poll_in, task_remote_on_readable, cast(void*, r))
 	return r
 
 
@@ -195,13 +188,13 @@ void task_remote_free(task_remote* r):
 
 # Wake target (parked in park number seq) from any thread.
 void task_remote_wake(task_remote* r, task* target, int seq, int value):
-	task_remote_msg* m = new task_remote_msg(task_remote_msg_wake(), 0, target, seq, value)
+	task_remote_msg* m = new task_remote_msg(task_remote_msg_wake, 0, target, seq, value)
 	task_remote_post(r, m)
 
 
 # Spawn g on r's scheduler from any thread.
 void task_remote_spawn(task_remote* r, generator* g):
-	task_remote_msg* m = new task_remote_msg(task_remote_msg_spawn(), g, 0, 0, 0)
+	task_remote_msg* m = new task_remote_msg(task_remote_msg_spawn, g, 0, 0, 0)
 	if (cast(int, r.counter) != 0):
 		atomic_add(r.counter, 1)
 	task_remote_post(r, m)
@@ -247,7 +240,7 @@ int task_spawn_blocking(task_blocking_fn* func, void* arg):
 	int saved = t.shielded
 	t.shielded = 1
 	wthread* th = thread_spawn(task_blocking_main, cast(void*, job))
-	task_park(t, task_state_waiting_external(), -1, 0)
+	task_park(t, task_state_waiting_external, -1, 0)
 	t.shielded = saved
 	thread_join(th)
 	int result = job.result
@@ -327,9 +320,9 @@ void task_xchan_close(task_xchan* ch):
 	mutex_lock(&ch.lock)
 	ch.closed = 1
 	while (ch.receivers.length > 0):
-		task_xwaiter_fire(task_xchan_take_first(ch.receivers), task_waiter_closed())
+		task_xwaiter_fire(task_xchan_take_first(ch.receivers), task_waiter_closed)
 	while (ch.senders.length > 0):
-		task_xwaiter_fire(task_xchan_take_first(ch.senders), task_waiter_closed())
+		task_xwaiter_fire(task_xchan_take_first(ch.senders), task_waiter_closed)
 	mutex_unlock(&ch.lock)
 
 
@@ -340,7 +333,7 @@ int task_xchan_try_send_locked(task_xchan* ch, int value):
 	task_xwaiter* r = task_xchan_take_first(ch.receivers)
 	if (cast(int, r) != 0):
 		r.value = value
-		task_xwaiter_fire(r, task_waiter_completed())
+		task_xwaiter_fire(r, task_waiter_completed)
 		return 0
 	if (ch.buffer.length < ch.capacity):
 		deque_push_back[int](ch.buffer, value)
@@ -355,12 +348,12 @@ int task_xchan_try_recv_locked(task_xchan* ch, int* out):
 		task_xwaiter* s = task_xchan_take_first(ch.senders)
 		if (cast(int, s) != 0):
 			deque_push_back[int](ch.buffer, s.value)
-			task_xwaiter_fire(s, task_waiter_completed())
+			task_xwaiter_fire(s, task_waiter_completed)
 		return 1
 	task_xwaiter* w = task_xchan_take_first(ch.senders)
 	if (cast(int, w) != 0):
 		*out = w.value
-		task_xwaiter_fire(w, task_waiter_completed())
+		task_xwaiter_fire(w, task_waiter_completed)
 		return 1
 	if (ch.closed):
 		return 0
@@ -386,7 +379,7 @@ void task_xwaiter_init(task_xwaiter* w, task* t):
 	w.remote = task_remote_attach(task_sched(t))
 	w.seq = t.park_seq + 1
 	w.value = 0
-	w.status = task_waiter_pending()
+	w.status = task_waiter_pending
 
 
 # Park after registering w (lock held on entry, released here). Returns
@@ -396,9 +389,9 @@ int task_xchan_park(task_xchan* ch, list[task_xwaiter*] queue, task_xwaiter* w, 
 	task* t = w.owner
 	queue.push(w)
 	mutex_unlock(&ch.lock)
-	int r = task_park(t, task_state_waiting_external(), timeout_ms, task_err_timed_out())
+	int r = task_park(t, task_state_waiting_external, timeout_ms, task_err_timed_out())
 	mutex_lock(&ch.lock)
-	if (w.status == task_waiter_pending()):
+	if (w.status == task_waiter_pending):
 		task_xchan_forget(queue, w)
 	mutex_unlock(&ch.lock)
 	return r
@@ -422,9 +415,9 @@ int task_xchan_send_timeout(task_xchan* ch, int value, int timeout_ms):
 	task_xwaiter_init(&w, t)
 	w.value = value
 	r = task_xchan_park(ch, ch.senders, &w, timeout_ms)
-	if (w.status == task_waiter_completed()):
+	if (w.status == task_waiter_completed):
 		return 0
-	if (w.status == task_waiter_closed()):
+	if (w.status == task_waiter_closed):
 		return task_err_closed()
 	return r
 
@@ -449,10 +442,10 @@ int task_xchan_recv_timeout(task_xchan* ch, int* out, int timeout_ms):
 	task_xwaiter w
 	task_xwaiter_init(&w, t)
 	r = task_xchan_park(ch, ch.receivers, &w, timeout_ms)
-	if (w.status == task_waiter_completed()):
+	if (w.status == task_waiter_completed):
 		*out = w.value
 		return 1
-	if (w.status == task_waiter_closed()):
+	if (w.status == task_waiter_closed):
 		return 0
 	return r
 
@@ -556,7 +549,7 @@ int task_runtime_stop(task_runtime* rt):
 		return 0
 	int i = 0
 	while (i < rt.nthreads):
-		task_remote_msg* m = new task_remote_msg(task_remote_msg_nop(), 0, 0, 0, 0)
+		task_remote_msg* m = new task_remote_msg(task_remote_msg_nop, 0, 0, 0, 0)
 		task_remote_post(rt.workers[i].remote, m)
 		i = i + 1
 	return 1

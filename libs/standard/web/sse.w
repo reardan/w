@@ -72,33 +72,27 @@ struct sse_reader:
 
 /* Error codes reported by sse_reader_error */
 
-int sse_error_none():
-	return 0
+const int sse_error_none = 0
 
 
 # The underlying http_stream_read returned an error.
-int sse_error_stream():
-	return 1
+const int sse_error_stream = 1
 
 
 # A single line, or the accumulated data buffer, exceeded its cap.
-int sse_error_overflow():
-	return 2
+const int sse_error_overflow = 2
 
 
 # Cap on one line (bytes between terminators).
-int sse_max_line():
-	return 1048576
+const int sse_max_line = 1048576
 
 
 # Cap on the accumulated data buffer of one event.
-int sse_max_event():
-	return 8388608
+const int sse_max_event = 8388608
 
 
 # Size of the raw read buffer pulled from the stream.
-int sse_buf_cap():
-	return 4096
+const int sse_buf_cap = 4096
 
 
 /* Construction / teardown */
@@ -108,7 +102,7 @@ int sse_buf_cap():
 sse_reader* sse_open(http_stream* s):
 	sse_reader* r = new sse_reader()
 	r.stream = s
-	r.buf_cap = sse_buf_cap()
+	r.buf_cap = sse_buf_cap
 	r.buf = malloc(r.buf_cap)
 	r.buf_pos = 0
 	r.buf_len = 0
@@ -140,7 +134,7 @@ void sse_reader_free(sse_reader* r):
 # 0 after a clean end-of-stream, otherwise an sse_error_* code.
 int sse_reader_error(sse_reader* r):
 	if (r == 0):
-		return sse_error_none()
+		return sse_error_none
 	return r.error
 
 
@@ -225,8 +219,8 @@ void sse_apply_field(sse_reader* r, char* base, int name_end, int vstart, int ve
 		string_clear(r.event_type)
 		string_append_bytes(r.event_type, base + vstart, vend - vstart)
 	else if (sse_name_eq(base, name_end, c"data") != 0):
-		if (r.data.length + (vend - vstart) > sse_max_event()):
-			r.error = sse_error_overflow()
+		if (r.data.length + (vend - vstart) > sse_max_event):
+			r.error = sse_error_overflow
 		else:
 			string_append_bytes(r.data, base + vstart, vend - vstart)
 			string_append_char(r.data, 10)
@@ -327,7 +321,7 @@ int sse_refill(sse_reader* r):
 				else if (got == 0):
 					r.eof = 1
 				else:
-					r.error = sse_error_stream()
+					r.error = sse_error_stream
 			r.started = 1
 			if (r.error != 0):
 				return (-1)
@@ -345,7 +339,7 @@ int sse_refill(sse_reader* r):
 			else if (got == 0):
 				r.eof = 1
 			else:
-				r.error = sse_error_stream()
+				r.error = sse_error_stream
 				return (-1)
 	return 1
 
@@ -386,8 +380,8 @@ sse_event* sse_next(sse_reader* r):
 						return ev
 			else:
 				r.pending_cr = 0
-				if (r.line.length >= sse_max_line()):
-					r.error = sse_error_overflow()
+				if (r.line.length >= sse_max_line):
+					r.error = sse_error_overflow
 					return 0
 				string_append_char(r.line, b)
 	return 0

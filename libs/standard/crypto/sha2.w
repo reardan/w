@@ -7,7 +7,7 @@ compiler's import graph).
 The whash interface is the hash surface the rest of the stack (HMAC, HKDF,
 the TLS 1.3 transcript hash, ECDSA digests) builds against:
 
-	whash* h = whash_new(WHASH_SHA384())
+	whash* h = whash_new(WHASH_SHA384)
 	whash_update(h, data, len)        # any number of times
 	whash_final(h, out)               # non-destructive: h keeps absorbing,
 	                                  # so a TLS transcript can snapshot
@@ -35,20 +35,14 @@ import lib.hex
 import lib.bytes
 import lib.mem
 
+const int WHASH_SHA384 = 2
+
 
 # Algorithm identifiers for the whash interface. Ids below 100 are
 # reserved for the built-in SHA-2 family; algorithms plugged in through
 # whash_register use ids of 100 and up.
-int WHASH_SHA256():
-	return 1
-
-
-int WHASH_SHA384():
-	return 2
-
-
-int WHASH_SHA512():
-	return 3
+const int WHASH_SHA256 = 1
+const int WHASH_SHA512 = 3
 
 
 /* Extension registry: whash_register plugs an out-of-tree compression
@@ -112,9 +106,9 @@ int whash_digest_size(int alg):
 	whash_ext* e = whash_ext_find(alg)
 	if (e != 0):
 		return e.digest_size
-	if (alg == WHASH_SHA256()):
+	if (alg == WHASH_SHA256):
 		return 32
-	if (alg == WHASH_SHA384()):
+	if (alg == WHASH_SHA384):
 		return 48
 	return 64
 
@@ -124,7 +118,7 @@ int whash_block_size(int alg):
 	whash_ext* e = whash_ext_find(alg)
 	if (e != 0):
 		return e.block_size
-	if (alg == WHASH_SHA256()):
+	if (alg == WHASH_SHA256):
 		return 64
 	return 128
 
@@ -134,7 +128,7 @@ int whash_state_words(int alg):
 	whash_ext* e = whash_ext_find(alg)
 	if (e != 0):
 		return e.state_words
-	if (alg == WHASH_SHA256()):
+	if (alg == WHASH_SHA256):
 		return 8
 	return 16
 
@@ -424,13 +418,13 @@ void whash_load_iv(whash* h):
 	if (e != 0):
 		e.load_iv(h.state)
 		return
-	if (h.alg == WHASH_SHA256()):
+	if (h.alg == WHASH_SHA256):
 		char* h0 = sha256_h0_table()
 		for i in range(8):
 			h.state[i] = sha256_be32(h0 + i * 4)
 		return
 	int* iv = sha2_h512_table()
-	if (h.alg == WHASH_SHA384()):
+	if (h.alg == WHASH_SHA384):
 		iv = sha2_h384_table()
 	mem_copy(h.state, iv, 16)
 
@@ -483,7 +477,7 @@ void whash_compress(whash* h, char* block):
 	if (e != 0):
 		e.compress(h.state, block)
 		return
-	if (h.alg == WHASH_SHA256()):
+	if (h.alg == WHASH_SHA256):
 		sha256_block(h.state, block)
 	else:
 		sha512_block(h.state, block)
@@ -569,7 +563,7 @@ void whash_final(whash* h, char* out):
 		if (blocks == 2):
 			e.compress(st, tail + bs)
 	else:
-		if (h.alg == WHASH_SHA256()):
+		if (h.alg == WHASH_SHA256):
 			sha256_block(st, tail)
 			if (blocks == 2):
 				sha256_block(st, tail + bs)
@@ -593,7 +587,7 @@ void whash_final(whash* h, char* out):
 
 # One-shot convenience: digest of len bytes at data into out.
 void whash_oneshot(int alg, char* data, int len, char* out):
-	if (alg == WHASH_SHA256()):
+	if (alg == WHASH_SHA256):
 		# lib/sha256.w already implements the one-shot form.
 		sha256(data, len, out)
 		return

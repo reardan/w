@@ -190,14 +190,14 @@ void test_varint_parts_64bit_negative_one():
 void test_wire_tag_encode_decode():
 	char[16] buf
 	# field 1, varint: (1<<3)|0 = 8.
-	int n = wire_tag_encode(1, PB_WIRE_VARINT(), buf)
+	int n = wire_tag_encode(1, PB_WIRE_VARINT, buf)
 	pb_expect_bytes(c"tag(1,varint)", buf, n, c"\x08", 1)
 	# field 2, length-delimited: (2<<3)|2 = 18 = 0x12.
-	n = wire_tag_encode(2, PB_WIRE_LENGTH_DELIMITED(), buf)
+	n = wire_tag_encode(2, PB_WIRE_LENGTH_DELIMITED, buf)
 	pb_expect_bytes(c"tag(2,length)", buf, n, c"\x12", 1)
 	# field 4, length-delimited (a packed-repeated field's tag):
 	# (4<<3)|2 = 34 = 0x22.
-	n = wire_tag_encode(4, PB_WIRE_LENGTH_DELIMITED(), buf)
+	n = wire_tag_encode(4, PB_WIRE_LENGTH_DELIMITED, buf)
 	pb_expect_bytes(c"tag(4,length)", buf, n, c"\x22", 1)
 
 	int field = 0
@@ -205,22 +205,22 @@ void test_wire_tag_encode_decode():
 	int consumed = wire_tag_decode(c"\x08", 1, &field, &wtype)
 	assert_equal(1, consumed)
 	assert_equal(1, field)
-	assert_equal(PB_WIRE_VARINT(), wtype)
+	assert_equal(PB_WIRE_VARINT, wtype)
 
 
 void test_wire_skip_field_each_wire_type():
 	# varint: one byte, no continuation.
-	assert_equal(1, wire_skip_field(c"\x2a", 1, PB_WIRE_VARINT()))
+	assert_equal(1, wire_skip_field(c"\x2a", 1, PB_WIRE_VARINT))
 	# varint: two bytes (128 encoded).
-	assert_equal(2, wire_skip_field(c"\x80\x01", 2, PB_WIRE_VARINT()))
+	assert_equal(2, wire_skip_field(c"\x80\x01", 2, PB_WIRE_VARINT))
 	# fixed64: always exactly 8 bytes regardless of content.
-	assert_equal(8, wire_skip_field(c"\x01\x02\x03\x04\x05\x06\x07\x08", 8, PB_WIRE_FIXED64()))
+	assert_equal(8, wire_skip_field(c"\x01\x02\x03\x04\x05\x06\x07\x08", 8, PB_WIRE_FIXED64))
 	# fixed32: always exactly 4 bytes.
-	assert_equal(4, wire_skip_field(c"\x01\x02\x03\x04", 4, PB_WIRE_FIXED32()))
+	assert_equal(4, wire_skip_field(c"\x01\x02\x03\x04", 4, PB_WIRE_FIXED32))
 	# length-delimited: a 1-byte length prefix (3) plus 3 payload bytes.
-	assert_equal(4, wire_skip_field(c"\x03\x61\x62\x63", 4, PB_WIRE_LENGTH_DELIMITED()))
+	assert_equal(4, wire_skip_field(c"\x03\x61\x62\x63", 4, PB_WIRE_LENGTH_DELIMITED))
 	# truncated fixed32 (only 2 of 4 bytes present).
-	assert_equal(0, wire_skip_field(c"\x01\x02", 2, PB_WIRE_FIXED32()))
+	assert_equal(0, wire_skip_field(c"\x01\x02", 2, PB_WIRE_FIXED32))
 	# unsupported wire type (3 = start group).
 	assert_equal(0, wire_skip_field(c"\x00", 1, 3))
 
@@ -244,7 +244,7 @@ void pb_test_simple_desc_init():
 	pb_test_simple_fields[0].offset = cast(int, &m.a) - cast(int, &m)
 	pb_test_simple_fields[0].aux = 0
 	pb_test_simple_fields[1].number = 2
-	pb_test_simple_fields[1].kind = PB_KIND_STRING()
+	pb_test_simple_fields[1].kind = PB_KIND_STRING
 	pb_test_simple_fields[1].offset = cast(int, &m.b) - cast(int, &m)
 	pb_test_simple_fields[1].aux = 0
 	pb_test_simple_desc.field_count = 2
@@ -315,11 +315,11 @@ pb_message_desc pb_test_blob_desc
 void pb_test_blob_desc_init():
 	pb_test_blob_msg m
 	pb_test_blob_fields[0].number = 1
-	pb_test_blob_fields[0].kind = PB_KIND_BYTES()
+	pb_test_blob_fields[0].kind = PB_KIND_BYTES
 	pb_test_blob_fields[0].offset = cast(int, &m.data) - cast(int, &m)
 	pb_test_blob_fields[0].aux = 0
 	pb_test_blob_fields[1].number = 2
-	pb_test_blob_fields[1].kind = PB_KIND_STRING()
+	pb_test_blob_fields[1].kind = PB_KIND_STRING
 	pb_test_blob_fields[1].offset = cast(int, &m.utf8) - cast(int, &m)
 	pb_test_blob_fields[1].aux = 0
 	pb_test_blob_desc.field_count = 2
@@ -395,11 +395,11 @@ pb_message_desc pb_test_fixed_desc
 void pb_test_fixed_desc_init():
 	pb_test_fixed_msg m
 	pb_test_fixed_fields[0].number = 1
-	pb_test_fixed_fields[0].kind = PB_KIND_FIXED32()
+	pb_test_fixed_fields[0].kind = PB_KIND_FIXED32
 	pb_test_fixed_fields[0].offset = cast(int, &m.f) - cast(int, &m)
 	pb_test_fixed_fields[0].aux = 0
 	pb_test_fixed_fields[1].number = 2
-	pb_test_fixed_fields[1].kind = PB_KIND_FIXED64()
+	pb_test_fixed_fields[1].kind = PB_KIND_FIXED64
 	pb_test_fixed_fields[1].offset = cast(int, &m.raw64_lo) - cast(int, &m)
 	pb_test_fixed_fields[1].aux = 0
 	pb_test_fixed_desc.field_count = 2
@@ -463,7 +463,7 @@ void pb_test_nested_desc_init():
 
 	pb_test_outer om
 	pb_test_outer_fields[0].number = 3
-	pb_test_outer_fields[0].kind = PB_KIND_MESSAGE()
+	pb_test_outer_fields[0].kind = PB_KIND_MESSAGE
 	pb_test_outer_fields[0].offset = cast(int, &om.inner) - cast(int, &om)
 	pb_test_outer_fields[0].aux = cast(int, &pb_test_inner_desc)
 	pb_test_outer_desc.field_count = 1
@@ -515,7 +515,7 @@ void pb_test_rep_desc_init():
 	pb_test_rep_elem.kind = PB_KIND_INT32()
 	pb_test_rep_elem.aux = 0
 	pb_test_rep_fields[0].number = 4
-	pb_test_rep_fields[0].kind = PB_KIND_REPEATED()
+	pb_test_rep_fields[0].kind = PB_KIND_REPEATED
 	pb_test_rep_fields[0].offset = cast(int, &rm.values) - cast(int, &rm)
 	pb_test_rep_fields[0].aux = cast(int, &pb_test_rep_elem)
 	pb_test_rep_desc.field_count = 1
@@ -562,10 +562,10 @@ pb_message_desc pb_test_rep_bool_desc
 
 void pb_test_rep_bool_desc_init():
 	pb_test_rep_msg rm
-	pb_test_rep_bool_elem.kind = PB_KIND_BOOL()
+	pb_test_rep_bool_elem.kind = PB_KIND_BOOL
 	pb_test_rep_bool_elem.aux = 0
 	pb_test_rep_bool_fields[0].number = 4
-	pb_test_rep_bool_fields[0].kind = PB_KIND_REPEATED()
+	pb_test_rep_bool_fields[0].kind = PB_KIND_REPEATED
 	pb_test_rep_bool_fields[0].offset = cast(int, &rm.values) - cast(int, &rm)
 	pb_test_rep_bool_fields[0].aux = cast(int, &pb_test_rep_bool_elem)
 	pb_test_rep_bool_desc.field_count = 1
@@ -663,12 +663,12 @@ void pb_test_poly_desc_init():
 	pb_test_pt_desc.fields = pb_test_pt_fields
 	pb_test_pt_desc.struct_size = 8
 
-	pb_test_poly_elem.kind = PB_KIND_MESSAGE()
+	pb_test_poly_elem.kind = PB_KIND_MESSAGE
 	pb_test_poly_elem.aux = cast(int, &pb_test_pt_desc)
 
 	pb_test_poly pm
 	pb_test_poly_fields[0].number = 5
-	pb_test_poly_fields[0].kind = PB_KIND_REPEATED()
+	pb_test_poly_fields[0].kind = PB_KIND_REPEATED
 	pb_test_poly_fields[0].offset = cast(int, &pm.points) - cast(int, &pm)
 	pb_test_poly_fields[0].aux = cast(int, &pb_test_poly_elem)
 	pb_test_poly_desc.field_count = 1
@@ -724,38 +724,38 @@ void test_message_decode_error_paths():
 	# Tag present but the varint payload never arrives at all.
 	wresult[char*]* r1 = pb_test_simple_decode(c"\x08", 1)
 	assert_equal(1, result_is_error[char*](r1))
-	assert_equal(PB_ERR_TRUNCATED(), result_code[char*](r1))
+	assert_equal(PB_ERR_TRUNCATED, result_code[char*](r1))
 	result_free[char*](r1)
 
 	# A lone continuation byte with nothing following it.
 	wresult[char*]* r2 = pb_test_simple_decode(c"\x08\x80", 2)
 	assert_equal(1, result_is_error[char*](r2))
-	assert_equal(PB_ERR_TRUNCATED(), result_code[char*](r2))
+	assert_equal(PB_ERR_TRUNCATED, result_code[char*](r2))
 	result_free[char*](r2)
 
 	# 11 continuation bytes -- exceeds the 10-byte varint maximum.
 	wresult[char*]* r3 = pb_test_simple_decode(c"\x08\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80\x01", 12)
 	assert_equal(1, result_is_error[char*](r3))
-	assert_equal(PB_ERR_BAD_VARINT(), result_code[char*](r3))
+	assert_equal(PB_ERR_BAD_VARINT, result_code[char*](r3))
 	result_free[char*](r3)
 
 	# field 2 (string) declares a length exceeding the remaining buffer.
 	wresult[char*]* r4 = pb_test_simple_decode(c"\x12\x05\x68\x69", 4)
 	assert_equal(1, result_is_error[char*](r4))
-	assert_equal(PB_ERR_LENGTH_OVERRUN(), result_code[char*](r4))
+	assert_equal(PB_ERR_LENGTH_OVERRUN, result_code[char*](r4))
 	result_free[char*](r4)
 
 	# field 1 declared with wire type 3 (start group) -- unsupported.
 	wresult[char*]* r5 = pb_test_simple_decode(c"\x0b", 1)
 	assert_equal(1, result_is_error[char*](r5))
-	assert_equal(PB_ERR_BAD_WIRE_TYPE(), result_code[char*](r5))
+	assert_equal(PB_ERR_BAD_WIRE_TYPE, result_code[char*](r5))
 	result_free[char*](r5)
 
 	# Unknown field number 7 with wire type 3 (group) -- also
 	# unsupported, even though field 7 isn't in the descriptor.
 	wresult[char*]* r6 = pb_test_simple_decode(c"\x3b", 1)
 	assert_equal(1, result_is_error[char*](r6))
-	assert_equal(PB_ERR_BAD_WIRE_TYPE(), result_code[char*](r6))
+	assert_equal(PB_ERR_BAD_WIRE_TYPE, result_code[char*](r6))
 	result_free[char*](r6)
 
 
@@ -810,7 +810,7 @@ void pb_test_pt_holder_desc_init():
 	pb_test_poly_desc_init()
 	pb_test_pt_holder hm
 	pb_test_pt_holder_fields[0].number = 3
-	pb_test_pt_holder_fields[0].kind = PB_KIND_MESSAGE()
+	pb_test_pt_holder_fields[0].kind = PB_KIND_MESSAGE
 	pb_test_pt_holder_fields[0].offset = cast(int, &hm.pt) - cast(int, &hm)
 	pb_test_pt_holder_fields[0].aux = cast(int, &pb_test_pt_desc)
 	pb_test_pt_holder_desc.field_count = 1
@@ -874,7 +874,7 @@ pb_message_desc pb_test_deep_desc
 void pb_test_deep_desc_init():
 	pb_test_deep_msg dm
 	pb_test_deep_fields[0].number = 1
-	pb_test_deep_fields[0].kind = PB_KIND_MESSAGE()
+	pb_test_deep_fields[0].kind = PB_KIND_MESSAGE
 	pb_test_deep_fields[0].offset = cast(int, &dm.child) - cast(int, &dm)
 	pb_test_deep_fields[0].aux = cast(int, &pb_test_deep_desc)
 	pb_test_deep_desc.field_count = 1
@@ -914,7 +914,7 @@ void test_message_depth_limit():
 	# Exactly at the limit: accepted, and the decoded chain really is
 	# PB_MAX_DECODE_DEPTH() submessages deep.
 	int len = 0
-	char* data = pb_test_build_deep(PB_MAX_DECODE_DEPTH(), &len)
+	char* data = pb_test_build_deep(PB_MAX_DECODE_DEPTH, &len)
 	char* buf = malloc(pb_test_deep_desc.struct_size)
 	int i = 0
 	while (i < pb_test_deep_desc.struct_size):
@@ -927,7 +927,7 @@ void test_message_depth_limit():
 	while (cast(int, node.child) != 0):
 		count = count + 1
 		node = cast(pb_test_deep_msg*, node.child)
-	assert_equal(PB_MAX_DECODE_DEPTH(), count)
+	assert_equal(PB_MAX_DECODE_DEPTH, count)
 	result_free[char*](r)
 	pb_free_decoded(&pb_test_deep_desc, buf)
 	free(buf)
@@ -936,7 +936,7 @@ void test_message_depth_limit():
 	# One level past the limit: clean error, and the error-path sweep
 	# left the caller's buffer re-zeroed (no dangling partial chain).
 	int len2 = 0
-	char* data2 = pb_test_build_deep(PB_MAX_DECODE_DEPTH() + 1, &len2)
+	char* data2 = pb_test_build_deep(PB_MAX_DECODE_DEPTH + 1, &len2)
 	char* buf2 = malloc(pb_test_deep_desc.struct_size)
 	i = 0
 	while (i < pb_test_deep_desc.struct_size):
@@ -980,33 +980,33 @@ void test_message_varint_truncated_vs_malformed():
 	# Known field 1: exactly 10 continuation bytes, then end of buffer.
 	wresult[char*]* r1 = pb_test_simple_decode(c"\x08\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80", 11)
 	assert_equal(1, result_is_error[char*](r1))
-	assert_equal(PB_ERR_BAD_VARINT(), result_code[char*](r1))
+	assert_equal(PB_ERR_BAD_VARINT, result_code[char*](r1))
 	result_free[char*](r1)
 
 	# Same shape one byte shorter (9 continuation bytes): a terminating
 	# 10th byte could still arrive, so this is truncation.
 	wresult[char*]* r2 = pb_test_simple_decode(c"\x08\x80\x80\x80\x80\x80\x80\x80\x80\x80", 10)
 	assert_equal(1, result_is_error[char*](r2))
-	assert_equal(PB_ERR_TRUNCATED(), result_code[char*](r2))
+	assert_equal(PB_ERR_TRUNCATED, result_code[char*](r2))
 	result_free[char*](r2)
 
 	# Unknown field 99 (varint; tag 0x98 0x06): the skip path must
 	# classify identically instead of folding everything to TRUNCATED.
 	wresult[char*]* r3 = pb_test_simple_decode(c"\x98\x06\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80", 12)
 	assert_equal(1, result_is_error[char*](r3))
-	assert_equal(PB_ERR_BAD_VARINT(), result_code[char*](r3))
+	assert_equal(PB_ERR_BAD_VARINT, result_code[char*](r3))
 	result_free[char*](r3)
 
 	wresult[char*]* r4 = pb_test_simple_decode(c"\x98\x06\x80", 3)
 	assert_equal(1, result_is_error[char*](r4))
-	assert_equal(PB_ERR_TRUNCATED(), result_code[char*](r4))
+	assert_equal(PB_ERR_TRUNCATED, result_code[char*](r4))
 	result_free[char*](r4)
 
 	# The TAG varint itself over-long: 10 continuation bytes at the top
 	# of the message.
 	wresult[char*]* r5 = pb_test_simple_decode(c"\x80\x80\x80\x80\x80\x80\x80\x80\x80\x80", 10)
 	assert_equal(1, result_is_error[char*](r5))
-	assert_equal(PB_ERR_BAD_VARINT(), result_code[char*](r5))
+	assert_equal(PB_ERR_BAD_VARINT, result_code[char*](r5))
 	result_free[char*](r5)
 
 
@@ -1019,14 +1019,14 @@ void test_message_unknown_field_skip_error_kinds():
 	# 0x06): declared length 5 with only 2 payload bytes present.
 	wresult[char*]* r1 = pb_test_simple_decode(c"\x9a\x06\x05\x68\x69", 5)
 	assert_equal(1, result_is_error[char*](r1))
-	assert_equal(PB_ERR_LENGTH_OVERRUN(), result_code[char*](r1))
+	assert_equal(PB_ERR_LENGTH_OVERRUN, result_code[char*](r1))
 	result_free[char*](r1)
 
 	# Unknown field 99, fixed32 (tag (99<<3)|5 = 797 = 0x9d 0x06) with
 	# only 2 of 4 payload bytes: genuinely truncated.
 	wresult[char*]* r2 = pb_test_simple_decode(c"\x9d\x06\x01\x02", 4)
 	assert_equal(1, result_is_error[char*](r2))
-	assert_equal(PB_ERR_TRUNCATED(), result_code[char*](r2))
+	assert_equal(PB_ERR_TRUNCATED, result_code[char*](r2))
 	result_free[char*](r2)
 
 
@@ -1047,7 +1047,7 @@ void test_message_error_path_resets_out():
 		i = i + 1
 	wresult[char*]* r = pb_decode(&pb_test_simple_desc, data, 5, buf)
 	assert_equal(1, result_is_error[char*](r))
-	assert_equal(PB_ERR_TRUNCATED(), result_code[char*](r))
+	assert_equal(PB_ERR_TRUNCATED, result_code[char*](r))
 	pb_test_simple_msg* m = cast(pb_test_simple_msg*, buf)
 	assert_equal(0, cast(int, m.b.data))
 	assert_equal(0, m.b.length)

@@ -234,12 +234,8 @@ struct ServerContext:
 	int error
 
 
-int server_default_timeout_ms():
-	return 30000
-
-
-int server_default_backlog():
-	return 16
+const int server_default_timeout_ms = 30000
+const int server_default_backlog = 16
 
 
 /* Error codes. Deliberately disjoint from connection.w's
@@ -249,73 +245,48 @@ int server_default_backlog():
    connection_context_read_line's oversize_error parameter, so the two
    small enums must never collide on a shared value. */
 
-int server_error_none():
-	return 0
-
-
-int server_error_bind():
-	return 100
-
-
-int server_error_timeout():
-	return 101
-
-
-int server_error_bad_request():
-	return 102
-
-
-int server_error_headers_too_large():
-	return 103
-
-
-int server_error_body_too_large():
-	return 104
-
-
-int server_error_bad_chunk():
-	return 105
-
-
-int server_error_not_implemented():
-	return 106
-
-
-int server_error_tls():
-	return 107
+const int server_error_none = 0
+const int server_error_bind = 100
+const int server_error_timeout = 101
+const int server_error_bad_request = 102
+const int server_error_headers_too_large = 103
+const int server_error_body_too_large = 104
+const int server_error_bad_chunk = 105
+const int server_error_not_implemented = 106
+const int server_error_tls = 107
 
 
 char* server_error_string(int code):
-	if (code == server_error_none()):
+	if (code == server_error_none):
 		return c""
-	if (code == server_error_bind()):
+	if (code == server_error_bind):
 		return c"bind/listen failed"
-	if (code == server_error_timeout()):
+	if (code == server_error_timeout):
 		return c"timed out"
-	if (code == server_error_bad_request()):
+	if (code == server_error_bad_request):
 		return c"malformed request"
-	if (code == server_error_headers_too_large()):
+	if (code == server_error_headers_too_large):
 		return c"request headers too large"
-	if (code == server_error_body_too_large()):
+	if (code == server_error_body_too_large):
 		return c"request body too large"
-	if (code == server_error_bad_chunk()):
+	if (code == server_error_bad_chunk):
 		return c"malformed chunked body"
-	if (code == server_error_not_implemented()):
+	if (code == server_error_not_implemented):
 		return c"unsupported transfer-encoding"
-	if (code == server_error_tls()):
+	if (code == server_error_tls):
 		return c"TLS handshake failed"
 	return c"unknown error"
 
 
 # HTTP status this server writes back for a request-level failure.
 int server_error_to_status(int code):
-	if (code == server_error_timeout()):
+	if (code == server_error_timeout):
 		return 408
-	if (code == server_error_headers_too_large()):
+	if (code == server_error_headers_too_large):
 		return 431
-	if (code == server_error_body_too_large()):
+	if (code == server_error_body_too_large):
 		return 413
-	if (code == server_error_not_implemented()):
+	if (code == server_error_not_implemented):
 		return 501
 	return 400
 
@@ -564,14 +535,14 @@ void server_split_target(ServerRequest* req):
 # through via read_line's oversize_error parameter (headers_too_large,
 # bad_chunk), and a clean mid-line EOF (c.error == 0).
 void server_note_read_failure(ConnectionContext* c, ServerRequest* req):
-	if (c.error == connection_error_timeout()):
-		req.error = server_error_timeout()
-	else if (c.error == server_error_headers_too_large()):
-		req.error = server_error_headers_too_large()
-	else if (c.error == server_error_bad_chunk()):
-		req.error = server_error_bad_chunk()
+	if (c.error == connection_error_timeout):
+		req.error = server_error_timeout
+	else if (c.error == server_error_headers_too_large):
+		req.error = server_error_headers_too_large
+	else if (c.error == server_error_bad_chunk):
+		req.error = server_error_bad_chunk
 	else:
-		req.error = server_error_bad_request()
+		req.error = server_error_bad_request
 
 
 # Reads header lines up to the blank terminator line into req.headers,
@@ -583,7 +554,7 @@ int server_read_headers(ConnectionContext* c, ServerRequest* req):
 	int in_block = 1
 	int ok = 1
 	while (in_block != 0):
-		int got = connection_context_read_line(c, line, server_error_headers_too_large())
+		int got = connection_context_read_line(c, line, server_error_headers_too_large)
 		if (got <= 0):
 			server_note_read_failure(c, req)
 			ok = 0
@@ -592,12 +563,12 @@ int server_read_headers(ConnectionContext* c, ServerRequest* req):
 			in_block = 0
 		else:
 			total = total + line.length + 2
-			if (total > http_max_header_bytes()):
-				req.error = server_error_headers_too_large()
+			if (total > http_max_header_bytes):
+				req.error = server_error_headers_too_large
 				ok = 0
 				in_block = 0
 			else if (http_store_header_into(req.headers, line.data, line.length) == 0):
-				req.error = server_error_bad_request()
+				req.error = server_error_bad_request
 				ok = 0
 				in_block = 0
 	string_free(line)
@@ -610,7 +581,7 @@ int server_consume_trailers(ConnectionContext* c, ServerRequest* req):
 	string_builder* line = string_new()
 	int total = 0
 	while (1):
-		int got = connection_context_read_line(c, line, server_error_headers_too_large())
+		int got = connection_context_read_line(c, line, server_error_headers_too_large)
 		if (got <= 0):
 			server_note_read_failure(c, req)
 			string_free(line)
@@ -619,8 +590,8 @@ int server_consume_trailers(ConnectionContext* c, ServerRequest* req):
 			string_free(line)
 			return 1
 		total = total + line.length + 2
-		if (total > http_max_header_bytes()):
-			req.error = server_error_headers_too_large()
+		if (total > http_max_header_bytes):
+			req.error = server_error_headers_too_large
 			string_free(line)
 			return 0
 	return 0
@@ -638,11 +609,11 @@ int server_read_chunked_body(ConnectionContext* c, ServerRequest* req, string_bu
 				if (c.error != 0):
 					server_note_read_failure(c, req)
 				else:
-					req.error = server_error_bad_chunk()
+					req.error = server_error_bad_chunk
 				return 0
 		chunk_first = 0
 		string_builder* line = string_new()
-		int got = connection_context_read_line(c, line, server_error_bad_chunk())
+		int got = connection_context_read_line(c, line, server_error_bad_chunk)
 		if (got <= 0):
 			server_note_read_failure(c, req)
 			string_free(line)
@@ -650,13 +621,13 @@ int server_read_chunked_body(ConnectionContext* c, ServerRequest* req, string_bu
 		int size = http_parse_chunk_size(line.data)
 		string_free(line)
 		if (size < 0):
-			req.error = server_error_bad_chunk()
+			req.error = server_error_bad_chunk
 			return 0
 		if (size == 0):
 			return server_consume_trailers(c, req)
 		total = total + size
-		if (total > http_max_body_bytes()):
-			req.error = server_error_body_too_large()
+		if (total > http_max_body_bytes):
+			req.error = server_error_body_too_large
 			return 0
 		char* buf = malloc(size)
 		int ok = connection_context_read_exact(c, buf, size)
@@ -690,7 +661,7 @@ int server_read_length_body(ConnectionContext* c, ServerRequest* req, string_bui
 # to a server_error_* code on any parse/transport failure.
 ServerRequest* server_read_request(ConnectionContext* c):
 	string_builder* line = string_new()
-	int got = connection_context_read_line(c, line, server_error_headers_too_large())
+	int got = connection_context_read_line(c, line, server_error_headers_too_large)
 	if (got == 0):
 		string_free(line)
 		return 0
@@ -701,7 +672,7 @@ ServerRequest* server_read_request(ConnectionContext* c):
 		return req
 	if (server_parse_request_line(line.data, req) == 0):
 		string_free(line)
-		req.error = server_error_bad_request()
+		req.error = server_error_bad_request
 		return req
 	string_free(line)
 	server_split_target(req)
@@ -713,21 +684,21 @@ ServerRequest* server_read_request(ConnectionContext* c):
 		# ", " so a duplicate Host still fails downstream (as an invalid
 		# authority) rather than silently picking one.
 		if (server_request_header(req, c"host") == 0):
-			req.error = server_error_bad_request()
+			req.error = server_error_bad_request
 			return req
 	char* te = server_request_header(req, c"transfer-encoding")
 	char* cl = server_request_header(req, c"content-length")
 	if ((te != 0) && (cl != 0)):
 		# Ambiguous framing (RFC 9112 6.3 request smuggling hardening):
 		# fail closed rather than guess which header the peer meant.
-		req.error = server_error_bad_request()
+		req.error = server_error_bad_request
 		return req
 	if (te != 0):
 		char* trimmed = http_trimmed_value(te, 0, strlen(te))
 		int is_chunked = http_str_ieq(trimmed, c"chunked")
 		free(trimmed)
 		if (is_chunked == 0):
-			req.error = server_error_not_implemented()
+			req.error = server_error_not_implemented
 			return req
 		string_builder* body = string_new()
 		if (server_read_chunked_body(c, req, body) == 0):
@@ -739,7 +710,7 @@ ServerRequest* server_read_request(ConnectionContext* c):
 	else if (cl != 0):
 		int length = http_parse_content_length(cl)
 		if (length < 0):
-			req.error = server_error_bad_request()
+			req.error = server_error_bad_request
 			return req
 		if (length > 0):
 			string_builder* body = string_new()
@@ -1135,8 +1106,8 @@ ServerContext* server_context_new(char* bind_ip, int port, server_handler_fn* ha
 	ServerContext* s = new ServerContext()
 	s.bind_ip = bind_ip
 	s.port = port
-	s.backlog = server_default_backlog()
-	s.timeout_ms = server_default_timeout_ms()
+	s.backlog = server_default_backlog
+	s.timeout_ms = server_default_timeout_ms
 	s.cert_path = 0
 	s.key_path = 0
 	s.is_tls = 0
@@ -1160,16 +1131,16 @@ void server_context_set_tls(ServerContext* s, char* cert_path, char* key_path):
 int server_context_bind(ServerContext* s):
 	int listener = socket_tcp_ipv4()
 	if (listener < 0):
-		s.error = server_error_bind()
+		s.error = server_error_bind
 		return 0
 	socket_set_reuseaddr(listener)
 	if (socket_bind_ipv4(listener, ip4_from_string(s.bind_ip), s.port) < 0):
 		close(listener)
-		s.error = server_error_bind()
+		s.error = server_error_bind
 		return 0
 	if (socket_listen(listener, s.backlog) < 0):
 		close(listener)
-		s.error = server_error_bind()
+		s.error = server_error_bind
 		return 0
 	s.listener_fd = listener
 	if (s.is_tls != 0):

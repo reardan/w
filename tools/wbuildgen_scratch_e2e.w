@@ -138,11 +138,11 @@ int main(int argc, char** argv):
 	writer.status = 0
 	writer.reaped = 0
 	writer.win_handle = 0
-	while (process_try_wait(writer) == process_status_running()):
+	while (process_try_wait(writer) == process_status_running):
 		process_result* c = run_wbuildgen(1)
 		if (c.status != 0):
 			err_out(c.stderr_text)
-			process_kill(writer, sigkill())
+			process_kill(writer, sigkill)
 			process_wait(writer)
 			fail(c"concurrent --check saw a torn manifest mid-rewrite")
 		process_result_free(c)

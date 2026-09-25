@@ -64,7 +64,7 @@ float accuracy(tensor* logits, ndi* labels, int n, int classes):
 
 
 int load_or_die(int rc, char* what):
-	if (rc != MNIST_OK()):
+	if (rc != MNIST_OK):
 		print(c"mnist train: FAILED loading ")
 		print(what)
 		print(c": ")

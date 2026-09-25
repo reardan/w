@@ -10,7 +10,7 @@ operand model records the width a decoder saw (asm_operand.disp_size,
 op.size), so decode -> encode reproduces the exact bytes; an insn built
 by the text parser leaves those at "auto" and gets the minimal form.
 
-x64 support (insn.arch == ASM_ARCH_X64()): a REX prefix is emitted where
+x64 support (insn.arch == ASM_ARCH_X64): a REX prefix is emitted where
 REX.W (64-bit operand) or REX.R/X/B (extended reg / SIB index /
 rm-or-base) requires it; absolute [disp32] uses the SIB form and
 [rip+disp32] the rm=5 form. The 32-bit path is byte-identical to before
@@ -29,7 +29,7 @@ int asm_enc_fits_int8(int v):
 
 
 int asm_enc_is64(asm_insn* insn):
-	return insn.arch == ASM_ARCH_X64()
+	return insn.arch == ASM_ARCH_X64
 
 
 int asm_enc_w(int size):
@@ -65,7 +65,7 @@ void asm_enc_rex(asm_buffer* b, int is64, int w, int reg_field, asm_operand* rm)
 	if (reg_field >= 8):
 		rex = rex | 4
 	if (cast(int, rm) != 0):
-		if (rm.kind == ASM_OP_REG()):
+		if (rm.kind == ASM_OP_REG):
 			if (rm.reg >= 8):
 				rex = rex | 1
 		else:
@@ -113,10 +113,10 @@ int asm_enc_disp_size(asm_operand* mem):
 # does not otherwise change the low bits, since REX carries the high
 # register bits and is emitted by the caller.
 void asm_enc_modrm(asm_buffer* b, int reg_field, asm_operand* rm, int is64):
-	if (rm.kind == ASM_OP_REG()):
+	if (rm.kind == ASM_OP_REG):
 		asm_buffer_byte(b, 0xc0 | ((reg_field & 7) << 3) | (rm.reg & 7))
 		return
-	if (rm.base == ASM_BASE_RIP()):
+	if (rm.base == ASM_BASE_RIP):
 		# [rip+disp32]: mod=0 rm=5, no SIB (x64 only).
 		asm_buffer_byte(b, ((reg_field & 7) << 3) | 5)
 		asm_buffer_int32(b, rm.disp)
@@ -285,12 +285,12 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 
 	# push
 	if (strcmp(m, c"push") == 0):
-		if (insn.op1.kind == ASM_OP_REG()):
+		if (insn.op1.kind == ASM_OP_REG):
 			asm_enc_opsize_prefix(b, insn.op1.size)
 			asm_enc_rex_reg(b, is64, 0, insn.op1.reg)
 			asm_buffer_byte(b, 0x50 + (insn.op1.reg & 7))
 			return b.length - start
-		if (insn.op1.kind == ASM_OP_IMM()):
+		if (insn.op1.kind == ASM_OP_IMM):
 			if (insn.op1.size == 1):
 				asm_buffer_byte(b, 0x6a)
 				asm_buffer_byte(b, insn.op1.imm & 255)
@@ -298,7 +298,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 				asm_buffer_byte(b, 0x68)
 				asm_buffer_int32(b, insn.op1.imm)
 			return b.length - start
-		if (insn.op1.kind == ASM_OP_MEM()):
+		if (insn.op1.kind == ASM_OP_MEM):
 			asm_enc_rex(b, is64, 0, 6, &insn.op1)
 			asm_buffer_byte(b, 0xff)
 			asm_enc_modrm(b, 6, &insn.op1, is64)
@@ -317,7 +317,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 			asm_buffer_byte(b, 0x68)
 			asm_enc_imm(b, insn.op1.imm, 2)
 		return b.length - start
-	if (strcmp(m, c"pop") == 0 & insn.op1.kind == ASM_OP_REG()):
+	if (strcmp(m, c"pop") == 0 & insn.op1.kind == ASM_OP_REG):
 		asm_enc_opsize_prefix(b, insn.op1.size)
 		asm_enc_rex_reg(b, is64, 0, insn.op1.reg)
 		asm_buffer_byte(b, 0x58 + (insn.op1.reg & 7))
@@ -325,7 +325,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 
 	# inc/dec register: x86 has a one-byte short form (0x40/0x48+reg); x64
 	# reuses those bytes for REX, so it must use the grp5 (0xff /0 /1) form.
-	if ((strcmp(m, c"inc") == 0 | strcmp(m, c"dec") == 0) & insn.op1.kind == ASM_OP_REG()):
+	if ((strcmp(m, c"inc") == 0 | strcmp(m, c"dec") == 0) & insn.op1.kind == ASM_OP_REG):
 		int ext = 0
 		if (strcmp(m, c"dec") == 0):
 			ext = 1
@@ -350,7 +350,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 
 	# grp5 memory (call/jmp/push/inc/dec through r/m)
 	int g5 = asm_x86_group_ext(5, m)
-	if (((g5 >= 0) && (count == 1)) & insn.op1.kind == ASM_OP_MEM()):
+	if (((g5 >= 0) && (count == 1)) && insn.op1.kind == ASM_OP_MEM):
 		int w5 = 0
 		if ((g5 == 0 || g5 == 1) && insn.op1.size == 8):
 			w5 = 1
@@ -360,21 +360,21 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 		return b.length - start
 
 	# call/jmp rel32 (label target)
-	if (strcmp(m, c"call") == 0 & insn.op1.kind == ASM_OP_LABEL()):
+	if (strcmp(m, c"call") == 0 & insn.op1.kind == ASM_OP_LABEL):
 		asm_enc_rel32(b, insn, 0xe8)
 		return b.length - start
-	if (strcmp(m, c"jmp") == 0 & insn.op1.kind == ASM_OP_LABEL()):
+	if (strcmp(m, c"jmp") == 0 & insn.op1.kind == ASM_OP_LABEL):
 		asm_enc_rel32(b, insn, 0xe9)
 		return b.length - start
 	# jmp/call register indirect (grp5 with reg operand); near, default 64.
-	if ((strcmp(m, c"jmp") == 0 | strcmp(m, c"call") == 0) & insn.op1.kind == ASM_OP_REG()):
+	if ((strcmp(m, c"jmp") == 0 | strcmp(m, c"call") == 0) & insn.op1.kind == ASM_OP_REG):
 		asm_enc_rex(b, is64, 0, asm_x86_group_ext(5, m), &insn.op1)
 		asm_buffer_byte(b, 0xff)
 		asm_enc_modrm(b, asm_x86_group_ext(5, m), &insn.op1, is64)
 		return b.length - start
 
 	# Jcc rel8/rel32 (mnemonic j<cc>, label target)
-	if (m[0] == 'j' & insn.op1.kind == ASM_OP_LABEL()):
+	if (m[0] == 'j' && insn.op1.kind == ASM_OP_LABEL):
 		int cc = asm_enc_cc(m + 1)
 		if (cc >= 0):
 			asm_enc_jcc(b, insn, cc)
@@ -411,7 +411,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 		return b.length - start
 
 	# test r/m, r
-	if (strcmp(m, c"test") == 0 & count == 2 & insn.op2.kind == ASM_OP_REG()):
+	if (strcmp(m, c"test") == 0 & count == 2 & insn.op2.kind == ASM_OP_REG):
 		int opcode = 0x85
 		if (insn.op2.size == 1):
 			opcode = 0x84
@@ -425,7 +425,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 	int g2 = asm_enc_grp2_ext(m)
 	if (g2 >= 0):
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), g2, &insn.op1)
-		if (insn.op2.kind == ASM_OP_REG()):
+		if (insn.op2.kind == ASM_OP_REG):
 			asm_buffer_byte(b, 0xd3)
 		else if (insn.op2.imm == 1):
 			asm_buffer_byte(b, 0xd1)
@@ -489,7 +489,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 
 	# btc/bt/bts/btr r/m, imm8 (0f ba /ext ib)
 	int g8 = asm_x86_group_ext(8, m)
-	if (((g8 >= 0) && (count == 2)) & insn.op2.kind == ASM_OP_IMM()):
+	if (((g8 >= 0) && (count == 2)) && insn.op2.kind == ASM_OP_IMM):
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), g8, &insn.op1)
 		asm_buffer_byte(b, 0x0f)
 		asm_buffer_byte(b, 0xba)
@@ -521,7 +521,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 int asm_x86_encode_mov(asm_buffer* b, asm_insn* insn, int start):
 	int is64 = asm_enc_is64(insn)
 	# mov r, imm
-	if (insn.op1.kind == ASM_OP_REG() & insn.op2.kind == ASM_OP_IMM()):
+	if (insn.op1.kind == ASM_OP_REG && insn.op2.kind == ASM_OP_IMM):
 		if (insn.op1.size == 1):
 			asm_enc_rex_reg(b, is64, 0, insn.op1.reg)
 			asm_buffer_byte(b, 0xb0 + (insn.op1.reg & 7))
@@ -543,12 +543,12 @@ int asm_x86_encode_mov(asm_buffer* b, asm_insn* insn, int start):
 		return b.length - start
 	# mov r/m, r  (store) and mov r, r/m (load)
 	int size = 4
-	if (insn.op1.kind == ASM_OP_REG()):
+	if (insn.op1.kind == ASM_OP_REG):
 		size = insn.op1.size
-	else if (insn.op2.kind == ASM_OP_REG()):
+	else if (insn.op2.kind == ASM_OP_REG):
 		size = insn.op2.size
 	asm_enc_opsize_prefix(b, size)
-	if (insn.op2.kind == ASM_OP_REG() & insn.op1.kind != ASM_OP_IMM()):
+	if (insn.op2.kind == ASM_OP_REG && insn.op1.kind != ASM_OP_IMM):
 		# store: op1 is r/m, op2 is reg
 		int opcode = 0x89
 		if (size == 1):
@@ -574,12 +574,12 @@ int asm_x86_encode_alu(asm_buffer* b, asm_insn* insn):
 	int base = asm_enc_alu_base(m)
 	int ext = base >> 3
 	# imm form
-	if (insn.op2.kind == ASM_OP_IMM()):
+	if (insn.op2.kind == ASM_OP_IMM):
 		int size = insn.op1.size
-		if (insn.op1.kind == ASM_OP_MEM()):
+		if (insn.op1.kind == ASM_OP_MEM):
 			size = insn.op1.size
 		# eax, imm32 short form
-		if (insn.op1.kind == ASM_OP_REG() & insn.op1.reg == 0 & insn.op2.size != 1):
+		if (insn.op1.kind == ASM_OP_REG && insn.op1.reg == 0 && insn.op2.size != 1):
 			asm_enc_opsize_prefix(b, insn.op1.size)
 			asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), 0, cast(asm_operand*, 0))
 			asm_buffer_byte(b, base + 5)
@@ -609,7 +609,7 @@ int asm_x86_encode_alu(asm_buffer* b, asm_insn* insn):
 				asm_buffer_int32(b, insn.op2.imm)
 		return 1
 	# register forms
-	if (insn.op2.kind == ASM_OP_REG()):
+	if (insn.op2.kind == ASM_OP_REG):
 		int size = insn.op2.size
 		asm_enc_opsize_prefix(b, size)
 		asm_enc_rex(b, is64, asm_enc_w(size), insn.op2.reg, &insn.op1)
@@ -620,7 +620,7 @@ int asm_x86_encode_alu(asm_buffer* b, asm_insn* insn):
 		asm_enc_modrm(b, insn.op2.reg, &insn.op1, is64)
 		return 1
 	# op1 reg, op2 mem  (op /r, load direction base+3)
-	if (insn.op1.kind == ASM_OP_REG() & insn.op2.kind == ASM_OP_MEM()):
+	if (insn.op1.kind == ASM_OP_REG && insn.op2.kind == ASM_OP_MEM):
 		asm_enc_opsize_prefix(b, insn.op1.size)
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), insn.op1.reg, &insn.op2)
 		asm_buffer_byte(b, base + 3)
@@ -640,7 +640,7 @@ int asm_x86_encode_0f(asm_buffer* b, asm_insn* insn):
 		if (strcmp(m, c"movq") == 0):
 			w = 1
 		asm_buffer_byte(b, 0x66)
-		if (insn.op1.rclass == ASM_RCLASS_XMM()):
+		if (insn.op1.rclass == ASM_RCLASS_XMM):
 			asm_enc_rex(b, is64, w, insn.op1.reg, &insn.op2)
 			asm_buffer_byte(b, 0x0f)
 			asm_buffer_byte(b, 0x6e)
@@ -656,7 +656,7 @@ int asm_x86_encode_0f(asm_buffer* b, asm_insn* insn):
 		if (strcmp(m, c"movss") == 0):
 			rep = 0xf3
 		asm_buffer_byte(b, rep)
-		if (insn.op1.rclass == ASM_RCLASS_XMM()):
+		if (insn.op1.rclass == ASM_RCLASS_XMM):
 			# load: xmm <- r/m  (0f 10)
 			asm_enc_rex(b, is64, 0, insn.op1.reg, &insn.op2)
 			asm_buffer_byte(b, 0x0f)

@@ -104,8 +104,8 @@ void test_sleeps_wake_in_deadline_order():
 /* An fd wakeup: the reader suspends first, a slower writer wakes it. */
 
 generator int await_then_read(int fd):
-	int revents = task_await_fd(fd, poll_in())
-	asserts(c"expected POLLIN", (revents & poll_in()) != 0)
+	int revents = task_await_fd(fd, poll_in)
+	asserts(c"expected POLLIN", (revents & poll_in) != 0)
 	char* buf = malloc(8)
 	int n = read(fd, buf, 8)
 	assert_equal(4, n)
@@ -141,8 +141,8 @@ generator int ponger(int fd, int rounds):
 	char* buf = malloc(4)
 	int received = 0
 	for i in range(rounds):
-		int revents = task_await_fd(fd, poll_in())
-		asserts(c"ponger expected POLLIN", (revents & poll_in()) != 0)
+		int revents = task_await_fd(fd, poll_in)
+		asserts(c"ponger expected POLLIN", (revents & poll_in) != 0)
 		if (read(fd, buf, 1) == 1):
 			received = received + 1
 		assert_equal(1, write(fd, c"o", 1))
@@ -155,8 +155,8 @@ generator int pinger(int fd, int rounds):
 	int received = 0
 	for i in range(rounds):
 		assert_equal(1, write(fd, c"i", 1))
-		int revents = task_await_fd(fd, poll_in())
-		asserts(c"pinger expected POLLIN", (revents & poll_in()) != 0)
+		int revents = task_await_fd(fd, poll_in)
+		asserts(c"pinger expected POLLIN", (revents & poll_in) != 0)
 		if (read(fd, buf, 1) == 1):
 			received = received + 1
 	free(buf)
@@ -258,7 +258,7 @@ void test_cancel_sleeping_task():
 
 
 generator int await_silent_fd(int fd):
-	task_finish(task_await_fd(fd, poll_in()))
+	task_finish(task_await_fd(fd, poll_in))
 
 
 void test_cancel_task_waiting_on_fd():
@@ -301,7 +301,7 @@ void test_cancel_task_waiting_in_join():
 /* Await timeouts: the timer path and the operation-wins path. */
 
 generator int await_with_timeout(int fd, int timeout_ms):
-	task_finish(task_await_fd_timeout(fd, poll_in(), timeout_ms))
+	task_finish(task_await_fd_timeout(fd, poll_in, timeout_ms))
 
 
 void test_await_fd_timeout_fires():
@@ -328,7 +328,7 @@ void test_await_fd_timeout_operation_wins():
 	task_scheduler* s = task_scheduler_new()
 	task* waiter = task_spawn(s, await_with_timeout(fds[1], 1000))
 	assert_equal(0, task_run(s))
-	asserts(c"expected POLLIN before the timeout", (task_result(waiter) & poll_in()) != 0)
+	asserts(c"expected POLLIN before the timeout", (task_result(waiter) & poll_in) != 0)
 	task_scheduler_free(s)
 	close(fds[0])
 	close(fds[1])
@@ -603,7 +603,7 @@ generator int read_n(int fd, int n):
 	while (got < n):
 		int r = read(fd, buf + got, n - got)
 		if (r == -11):
-			task_await_fd(fd, poll_in())
+			task_await_fd(fd, poll_in)
 		else if (r <= 0):
 			break
 		else:
@@ -618,7 +618,7 @@ generator int write_n(int fd, int n):
 	while (sent < n):
 		int r = write(fd, buf + sent, n - sent)
 		if (r == -11):
-			task_await_fd(fd, poll_out())
+			task_await_fd(fd, poll_out)
 		else if (r < 0):
 			break
 		else:
@@ -633,7 +633,7 @@ generator int echo_n(int fd, int n):
 	while (moved < n):
 		int r = read(fd, buf, 4096)
 		if (r == -11):
-			task_await_fd(fd, poll_in())
+			task_await_fd(fd, poll_in)
 		else if (r <= 0):
 			break
 		else:
@@ -641,7 +641,7 @@ generator int echo_n(int fd, int n):
 			while (off < r):
 				int w = write(fd, buf + off, r - off)
 				if (w == -11):
-					task_await_fd(fd, poll_out())
+					task_await_fd(fd, poll_out)
 				else:
 					off = off + w
 			moved = moved + r
@@ -695,19 +695,19 @@ void test_spawn_sized_runs_deep_recursion():
 /* io_wait (lib/io_wait.w) suspends inside tasks, fails outside. */
 
 generator int io_wait_reader(int fd):
-	task_finish(io_wait(fd, poll_in(), 1000))
+	task_finish(io_wait(fd, poll_in, 1000))
 
 
 void test_io_wait_follows_context():
 	int* fds = malloc(__word_size__ * 2)
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	task_scheduler* s = task_scheduler_new()
-	assert_equal(-11, io_wait(fds[1], poll_in(), 1000))
+	assert_equal(-11, io_wait(fds[1], poll_in, 1000))
 	assert_equal(0, io_wait_available())
 	task* t = task_spawn(s, io_wait_reader(fds[1]))
 	task_spawn(s, sleep_then_write(fds[0]))
 	assert_equal(0, task_run(s))
-	asserts(c"io_wait did not report POLLIN", (task_result(t) & poll_in()) != 0)
+	asserts(c"io_wait did not report POLLIN", (task_result(t) & poll_in) != 0)
 	task_scheduler_free(s)
 	close(fds[0])
 	close(fds[1])

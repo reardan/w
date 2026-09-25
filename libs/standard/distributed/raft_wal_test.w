@@ -74,7 +74,7 @@ void test_election_state_record():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)   # deadline passed: term 1, self-vote, leader
 	assert_equal(0, out.length)
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	assert_equal(1, raft_wal_pending(rw, r))
 	assert_equal(1, raft_wal_sync(rw, r))   # one STATE record covers both
 	# the sync fsynced internally (asserted in raft_wal_sync); the fd
@@ -88,7 +88,7 @@ void test_election_state_record():
 	# recover into a fresh raft: term and vote survive, the log is empty
 	list[int] peers = new list[int]
 	raft* r2 = raft_wal_recover(rw, 1, peers, 50, 100, 10, 43)
-	assert_equal(raft_follower(), raft_state(r2))
+	assert_equal(raft_follower, raft_state(r2))
 	assert_equal(1, raft_term_int(r2))
 	assert_equal(1, raft_voted_for(r2))
 	assert_equal(0, raft_log_length(r2))
@@ -149,7 +149,7 @@ void test_propose_recover_commit():
 	# current-term entry lands, so pin one and drain the applies
 	raft_start(r2, 200)
 	raft_tick(r2, 300, out)
-	assert_equal(raft_leader(), raft_state(r2))
+	assert_equal(raft_leader, raft_state(r2))
 	assert_equal(2, raft_term_int(r2))
 	assert_equal(1, raft_propose(r2, c"pin", 3, 300, out))
 	assert_equal(0, out.length)
@@ -431,7 +431,7 @@ void test_snapshot_rewrite_compacts_wal():
 	# election bumps the term, one STATE record follows
 	raft_start(r2, 200)
 	raft_tick(r2, 300, out)
-	assert_equal(raft_leader(), raft_state(r2))
+	assert_equal(raft_leader, raft_state(r2))
 	assert_equal(2, raft_term_int(r2))
 	assert_equal(1, raft_wal_sync(rw2, r2))
 	assert_equal(5, wal_record_count(rw2.wlog))

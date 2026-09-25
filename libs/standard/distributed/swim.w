@@ -45,16 +45,9 @@ import libs.standard.distributed.monotime
 
 # ---- member states ----------------------------------------------------------
 
-int swim_alive():
-	return 0
-
-
-int swim_suspect():
-	return 1
-
-
-int swim_dead():
-	return 2
+const int swim_alive = 0
+const int swim_suspect = 1
+const int swim_dead = 2
 
 
 # ---- state ------------------------------------------------------------------
@@ -104,13 +97,13 @@ swim_member* swim_add_member(swim* s, int id, int state, int incarnation):
 void swim_apply_alive(swim* s, int id, int incarnation, int now_ms):
 	swim_member* m = swim_lookup(s, id)
 	if (m == 0):
-		m = swim_add_member(s, id, swim_alive(), incarnation)
+		m = swim_add_member(s, id, swim_alive, incarnation)
 		swim_mark_pending(s, m)
 		return
-	if (m.state == swim_dead()):
+	if (m.state == swim_dead):
 		return
 	if (incarnation > m.incarnation):
-		m.state = swim_alive()
+		m.state = swim_alive
 		m.incarnation = incarnation
 		swim_mark_pending(s, m)
 
@@ -120,19 +113,19 @@ void swim_apply_alive(swim* s, int id, int incarnation, int now_ms):
 void swim_apply_suspect(swim* s, int id, int incarnation, int now_ms):
 	swim_member* m = swim_lookup(s, id)
 	if (m == 0):
-		m = swim_add_member(s, id, swim_suspect(), incarnation)
+		m = swim_add_member(s, id, swim_suspect, incarnation)
 		m.suspect_deadline = mono_deadline(now_ms, s.suspect_timeout_ms)
 		swim_mark_pending(s, m)
 		return
-	if (m.state == swim_dead()):
+	if (m.state == swim_dead):
 		return
 	int overrides = 0
-	if (m.state == swim_alive() && incarnation >= m.incarnation):
+	if (m.state == swim_alive && incarnation >= m.incarnation):
 		overrides = 1
-	if (m.state == swim_suspect() && incarnation > m.incarnation):
+	if (m.state == swim_suspect && incarnation > m.incarnation):
 		overrides = 1
 	if (overrides == 1):
-		m.state = swim_suspect()
+		m.state = swim_suspect
 		m.incarnation = incarnation
 		m.suspect_deadline = mono_deadline(now_ms, s.suspect_timeout_ms)
 		swim_mark_pending(s, m)
@@ -143,12 +136,12 @@ void swim_apply_suspect(swim* s, int id, int incarnation, int now_ms):
 void swim_apply_dead(swim* s, int id, int now_ms):
 	swim_member* m = swim_lookup(s, id)
 	if (m == 0):
-		m = swim_add_member(s, id, swim_dead(), 0)
+		m = swim_add_member(s, id, swim_dead, 0)
 		swim_mark_pending(s, m)
 		return
-	if (m.state == swim_dead()):
+	if (m.state == swim_dead):
 		return
-	m.state = swim_dead()
+	m.state = swim_dead
 	swim_mark_pending(s, m)
 
 
@@ -165,7 +158,7 @@ swim* swim_new(int self_id, int suspect_timeout_ms, int piggyback_transmits):
 	s.probe_cursor = 0
 	s.suspect_timeout_ms = suspect_timeout_ms
 	s.piggyback_transmits = piggyback_transmits
-	swim_add_member(s, self_id, swim_alive(), 0)
+	swim_add_member(s, self_id, swim_alive, 0)
 	return s
 
 
@@ -185,7 +178,7 @@ void swim_free(swim* s):
 int swim_join(swim* s, int id, int now_ms):
 	if (id in s.members):
 		return 0
-	swim_member* m = swim_add_member(s, id, swim_alive(), 0)
+	swim_member* m = swim_add_member(s, id, swim_alive, 0)
 	swim_mark_pending(s, m)
 	return 1
 
@@ -205,7 +198,7 @@ int swim_probe_target(swim* s):
 		scanned = scanned + 1
 		if (id != s.self_id):
 			swim_member* m = s.members[id]
-			if (m.state != swim_dead()):
+			if (m.state != swim_dead):
 				return id
 	return 0 - 1
 
@@ -238,7 +231,7 @@ int swim_indirect_candidates(swim* s, int target, int k, int* out):
 		scanned = scanned + 1
 		if (id != s.self_id && id != target):
 			swim_member* m = s.members[id]
-			if (m.state != swim_dead()):
+			if (m.state != swim_dead):
 				out[count] = id
 				count = count + 1
 	return count
@@ -267,7 +260,7 @@ int swim_on_suspect_msg(swim* s, int id, int incarnation, int now_ms):
 		if (incarnation >= s.self_incarnation):
 			s.self_incarnation = incarnation + 1
 			swim_member* self_m = s.members[s.self_id]
-			self_m.state = swim_alive()
+			self_m.state = swim_alive
 			self_m.incarnation = s.self_incarnation
 			swim_mark_pending(s, self_m)
 		return s.self_incarnation
@@ -301,8 +294,8 @@ void swim_tick(swim* s, int now_ms):
 	while (i < s.member_ids.length):
 		int id = s.member_ids[i]
 		swim_member* m = s.members[id]
-		if (m.state == swim_suspect() && mono_expired(now_ms, m.suspect_deadline)):
-			m.state = swim_dead()
+		if (m.state == swim_suspect && mono_expired(now_ms, m.suspect_deadline)):
+			m.state = swim_dead
 			swim_mark_pending(s, m)
 		i = i + 1
 
@@ -371,7 +364,7 @@ int swim_alive_count(swim* s):
 	for i in range(s.member_ids.length):
 		int id = s.member_ids[i]
 		swim_member* m = s.members[id]
-		if (m.state == swim_alive()):
+		if (m.state == swim_alive):
 			count = count + 1
 	return count
 

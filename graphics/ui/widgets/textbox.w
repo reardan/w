@@ -30,8 +30,7 @@ struct ui_textbox_state:
 	int32 edited
 
 
-int ui_textbox_capacity():
-	return 127
+const int ui_textbox_capacity = 127
 
 
 void ui_textbox_init(ui_textbox_state* st):
@@ -43,8 +42,8 @@ void ui_textbox_init(ui_textbox_state* st):
 
 void ui_textbox_set(ui_textbox_state* st, char* s):
 	int len = strlen(s)
-	if (len > ui_textbox_capacity()):
-		len = ui_textbox_capacity()
+	if (len > ui_textbox_capacity):
+		len = ui_textbox_capacity
 	mem_copy[char](st.text, s, len)
 	st.text[len] = 0
 	st.length = len
@@ -56,7 +55,7 @@ void ui_textbox_set(ui_textbox_state* st, char* s):
 void ui_textbox_insert(ui_textbox_state* st, int ch):
 	char[4] bytes
 	int n = ui_utf8_encode(&bytes[0], ch)
-	if (st.length + n > ui_textbox_capacity()):
+	if (st.length + n > ui_textbox_capacity):
 		return
 	int i = st.length - 1
 	while (i >= st.caret):

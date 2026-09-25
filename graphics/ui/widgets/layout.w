@@ -37,7 +37,7 @@ void ui_layout_reset(ui_layout* lo, ui_rect area):
 # A push past ui_layout_max_depth is dropped; ui_region_pop refuses to
 # pop the root, so a dropped push and its matching pop still balance.
 void ui_region_push(ui_context* ctx, ui_rect area):
-	if (ctx.layout_depth >= ui_layout_max_depth()):
+	if (ctx.layout_depth >= ui_layout_max_depth):
 		return
 	ui_layout_reset(&ctx.layout_stack[ctx.layout_depth], area)
 	ctx.layout_depth = ctx.layout_depth + 1

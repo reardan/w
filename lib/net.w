@@ -5,6 +5,8 @@ import lib.__arch__.socket_abi
 import lib.poll
 import lib.io_wait
 
+const int SOCKADDR_UN_SIZE = 110
+
 
 # 16 bytes on the wire. The leading 16-bit field is sin_family on
 # Linux and sin_len + sin_family bytes on Darwin; always write it with
@@ -18,20 +20,10 @@ struct sockaddr_in:
 	int zero2
 
 
-int af_unix():
-	return 1
-
-
-int af_inet():
-	return 2
-
-
-int sock_stream():
-	return 1
-
-
-int sock_dgram():
-	return 2
+const int af_unix = 1
+const int af_inet = 2
+const int sock_stream = 1
+const int sock_dgram = 2
 
 
 int sol_socket():
@@ -58,8 +50,7 @@ int net_einprogress():
 	return socket_abi_einprogress()
 
 
-int sockaddr_in_size():
-	return 16
+const int sockaddr_in_size = 16
 
 
 int net_htons(int value):
@@ -75,7 +66,7 @@ int net_htonl(int value):
 
 
 void sockaddr_in_init(sockaddr_in* addr, int ip_address, int port):
-	addr.family = socket_abi_family_word(af_inet())
+	addr.family = socket_abi_family_word(af_inet)
 	addr.port = net_htons(port)
 	addr.ip_address = net_htonl(ip_address)
 	addr.zero1 = 0
@@ -89,27 +80,27 @@ int sockaddr_in_family(sockaddr_in* addr):
 
 
 int socket_ipv4(int socket_type):
-	return sys_socket(af_inet(), socket_type, 0)
+	return sys_socket(af_inet, socket_type, 0)
 
 
 int socket_tcp_ipv4():
-	return socket_ipv4(sock_stream())
+	return socket_ipv4(sock_stream)
 
 
 int socket_udp_ipv4():
-	return socket_ipv4(sock_dgram())
+	return socket_ipv4(sock_dgram)
 
 
 int socket_bind_ipv4(int sockfd, int ip_address, int port):
 	sockaddr_in addr
 	sockaddr_in_init(&addr, ip_address, port)
-	return sys_bind(sockfd, &addr, sockaddr_in_size())
+	return sys_bind(sockfd, &addr, sockaddr_in_size)
 
 
 int socket_connect_ipv4(int sockfd, int ip_address, int port):
 	sockaddr_in addr
 	sockaddr_in_init(&addr, ip_address, port)
-	return sys_connect(sockfd, &addr, sockaddr_in_size())
+	return sys_connect(sockfd, &addr, sockaddr_in_size)
 
 
 int socket_listen(int sockfd, int backlog):
@@ -127,12 +118,12 @@ int socket_accept_connection(int sockfd):
 # issue #235) to record ConnectionContext's peer address without a
 # separate getpeername(2) call.
 int socket_accept_connection_from(int sockfd, sockaddr_in* addr):
-	int addrlen = sockaddr_in_size()
+	int addrlen = sockaddr_in_size
 	return sys_accept(sockfd, cast(int, addr), &addrlen)
 
 
 int socket_getsockname_ipv4(int sockfd, sockaddr_in* addr):
-	int addrlen = sockaddr_in_size()
+	int addrlen = sockaddr_in_size
 	return sys_getsockname(sockfd, cast(int, addr), &addrlen)
 
 
@@ -143,7 +134,7 @@ int socket_set_reuseaddr(int sockfd):
 
 int socket_pair(int* fds):
 	char* kernel_fds = malloc(8)
-	int err = sys_socketpair(af_unix(), sock_stream(), 0, cast(int, kernel_fds))
+	int err = sys_socketpair(af_unix, sock_stream, 0, cast(int, kernel_fds))
 	if (err < 0):
 		free(kernel_fds)
 		return err
@@ -162,7 +153,7 @@ but keeps sun_path at the same offset 2, and xnu overwrites sun_len
 from the syscall's addrlen argument on input, so writing the leading
 word with socket_abi_family_word keeps the family byte right on both
 layouts. W structs carry no fixed-size array fields (the lib/ndarray.w
-note), so the address is built in a raw SOCKADDR_UN_SIZE() buffer
+note), so the address is built in a raw SOCKADDR_UN_SIZE buffer
 instead of a struct, and bind/connect pass the exact used length
 (2 + path + NUL) -- valid on every target. The helpers below wrap the
 buffer handling completely, so callers only ever pass a path; listen
@@ -173,14 +164,11 @@ A bound socket file is NOT removed by close(); servers should
 unlink(path) when shutting down, and socket_bind_unix_replacing_stale
 handles the crashed-predecessor case at startup. */
 
-int SOCKADDR_UN_SIZE():
-	return 110
 
 
 # Longest usable path (excluding its NUL): the tightest sun_path across
 # supported targets (Darwin's 104 bytes; Linux would allow 107).
-int SOCKADDR_UN_PATH_MAX():
-	return 103
+const int SOCKADDR_UN_PATH_MAX = 103
 
 
 # Fills the SOCKADDR_UN_SIZE()-byte buffer at addr with an AF_UNIX
@@ -188,13 +176,13 @@ int SOCKADDR_UN_PATH_MAX():
 # (family word + path + NUL), or -22 (-EINVAL) when path is too long.
 int sockaddr_un_init(char* addr, char* path):
 	int path_length = strlen(path)
-	if (path_length > SOCKADDR_UN_PATH_MAX()):
+	if (path_length > SOCKADDR_UN_PATH_MAX):
 		return 0 - 22
 	int i = 0
-	while (i < SOCKADDR_UN_SIZE()):
+	while (i < SOCKADDR_UN_SIZE):
 		addr[i] = 0
 		i = i + 1
-	save_int16(addr, socket_abi_family_word(af_unix()))
+	save_int16(addr, socket_abi_family_word(af_unix))
 	i = 0
 	while (i < path_length):
 		addr[2 + i] = path[i]
@@ -203,11 +191,11 @@ int sockaddr_un_init(char* addr, char* path):
 
 
 int socket_unix_stream():
-	return sys_socket(af_unix(), sock_stream(), 0)
+	return sys_socket(af_unix, sock_stream, 0)
 
 
 int socket_bind_unix(int sockfd, char* path):
-	char* addr = malloc(SOCKADDR_UN_SIZE())
+	char* addr = malloc(SOCKADDR_UN_SIZE)
 	int addrlen = sockaddr_un_init(addr, path)
 	if (addrlen < 0):
 		free(addr)
@@ -218,7 +206,7 @@ int socket_bind_unix(int sockfd, char* path):
 
 
 int socket_connect_unix(int sockfd, char* path):
-	char* addr = malloc(SOCKADDR_UN_SIZE())
+	char* addr = malloc(SOCKADDR_UN_SIZE)
 	int addrlen = sockaddr_un_init(addr, path)
 	if (addrlen < 0):
 		free(addr)
@@ -285,7 +273,7 @@ int socket_connect_unix_path(char* path):
 int socket_send_to_ipv4(int sockfd, char* buf, int len, int flags, int ip_address, int port):
 	sockaddr_in addr
 	sockaddr_in_init(&addr, ip_address, port)
-	return sys_sendto(sockfd, buf, len, flags, &addr, sockaddr_in_size())
+	return sys_sendto(sockfd, buf, len, flags, &addr, sockaddr_in_size)
 
 
 # send(2) on a connected socket (sendto with no address).
@@ -300,16 +288,12 @@ int socket_recv(int sockfd, char* buf, int len, int flags):
 # Receives one datagram and fills addr with the sender address.
 # Returns the number of bytes received or a negative errno.
 int socket_recv_from_ipv4(int sockfd, char* buf, int len, int flags, sockaddr_in* addr):
-	int addrlen = sockaddr_in_size()
+	int addrlen = sockaddr_in_size
 	return sys_recvfrom(sockfd, buf, len, flags, cast(int, addr), cast(int, &addrlen))
 
 
-int f_getfl():
-	return 3
-
-
-int f_setfl():
-	return 4
+const int f_getfl = 3
+const int f_setfl = 4
 
 
 int o_nonblock():
@@ -319,10 +303,10 @@ int o_nonblock():
 # After this, read/recv on an empty descriptor returns -EAGAIN
 # (-net_eagain()) instead of blocking.
 int socket_set_nonblocking(int sockfd):
-	int flags = sys_fcntl(sockfd, f_getfl(), 0)
+	int flags = sys_fcntl(sockfd, f_getfl, 0)
 	if (flags < 0):
 		return flags
-	return sys_fcntl(sockfd, f_setfl(), flags | o_nonblock())
+	return sys_fcntl(sockfd, f_setfl, flags | o_nonblock())
 
 
 # Disables SIGPIPE for the whole socket on targets that support it
@@ -340,10 +324,10 @@ int socket_set_nosigpipe(int sockfd):
 # net/tls.w does blocking socket_recv/socket_send internally, and the
 # timeouts keep every handshake/read/write wait bounded.
 int socket_set_blocking(int sockfd):
-	int flags = sys_fcntl(sockfd, f_getfl(), 0)
+	int flags = sys_fcntl(sockfd, f_getfl, 0)
 	if (flags < 0):
 		return flags
-	return sys_fcntl(sockfd, f_setfl(), flags & ~o_nonblock())
+	return sys_fcntl(sockfd, f_setfl, flags & ~o_nonblock())
 
 
 # Sets a SO_RCVTIMEO/SO_SNDTIMEO option from a millisecond timeout. The
@@ -384,11 +368,11 @@ int net_connect_timeout(int ip, int port, int timeout_ms):
 	if (rc < 0):
 		int ready = -1
 		if (rc == (0 - net_einprogress())):
-			ready = io_poll(fd, poll_out(), timeout_ms)
+			ready = io_poll(fd, poll_out, timeout_ms)
 		if (ready == 0):
 			close(fd)
 			return -2
-		if ((ready < 0) || ((ready & (poll_err() | poll_hup())) != 0) || ((ready & poll_out()) == 0)):
+		if ((ready < 0) || ((ready & (poll_err | poll_hup)) != 0) || ((ready & poll_out) == 0)):
 			close(fd)
 			return -1
 	return fd

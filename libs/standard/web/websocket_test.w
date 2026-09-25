@@ -126,11 +126,11 @@ void test_ws_sha1_opt_in_fails_closed():
 	# Nothing configured: no accept key, no client handshake.
 	asserts(c"accept key without SHA-1", ws_accept_key(c"dGhlIHNhbXBsZSBub25jZQ==") == 0)
 	ws_conn* c = ws_connect(c"ws://127.0.0.1:9/")
-	assert_equal(ws_error_no_sha1(), ws_conn_error(c))
+	assert_equal(ws_error_no_sha1, ws_conn_error(c))
 	ws_conn_free(c)
 	# Built-in SHA-2 ids, unregistered ids, and a 20-byte digest that is
 	# not SHA-1 (fails the RFC 6455 1.3 known answer) are all refused.
-	assert_equal(0, ws_use_sha1(WHASH_SHA256()))
+	assert_equal(0, ws_use_sha1(WHASH_SHA256))
 	assert_equal(0, ws_use_sha1(173))
 	whash_register(174, 20, 64, 5, 0, wst_fake_compress, wst_fake_iv)
 	assert_equal(0, ws_use_sha1(174))
@@ -140,75 +140,75 @@ void test_ws_sha1_opt_in_fails_closed():
 void test_ws_client_request_validation():
 	# URL scheme is checked before anything else.
 	ws_conn* c = ws_connect(c"http://127.0.0.1:9/")
-	assert_equal(ws_error_bad_url(), ws_conn_error(c))
+	assert_equal(ws_error_bad_url, ws_conn_error(c))
 	ws_conn_free(c)
 	c = ws_connect(c"ftp://127.0.0.1:9/")
-	assert_equal(ws_error_bad_url(), ws_conn_error(c))
+	assert_equal(ws_error_bad_url, ws_conn_error(c))
 	ws_conn_free(c)
 	http_req* req = http_req_new(c"POST", c"ws://127.0.0.1:9/")
 	c = ws_open(req)
-	assert_equal(ws_error_bad_request(), ws_conn_error(c))
+	assert_equal(ws_error_bad_request, ws_conn_error(c))
 	ws_conn_free(c)
 	http_req_free(req)
 	assert_strings_equal(c"http://h/x", ws_http_url(c"ws://h/x"))
 	assert_strings_equal(c"https://h:9/x?q", ws_http_url(c"WSS://h:9/x?q"))
-	assert_strings_equal(c"message too big", ws_error_string(ws_error_too_big()))
+	assert_strings_equal(c"message too big", ws_error_string(ws_error_too_big))
 
 
 /* ---- frame codec: RFC 6455 section 5.7 examples ---- */
 
 void test_ws_rfc_5_7_encode():
-	wst_expect_encoding(c"unmasked Hello", 1, ws_op_text(), c"Hello", 5, 0, c"81 05 48 65 6c 6c 6f")
-	wst_expect_encoding(c"masked Hello", 1, ws_op_text(), c"Hello", 5, c"37 fa 21 3d", c"81 85 37 fa 21 3d 7f 9f 4d 51 58")
-	wst_expect_encoding(c"fragment Hel", 0, ws_op_text(), c"Hel", 3, 0, c"01 03 48 65 6c")
-	wst_expect_encoding(c"fragment lo", 1, ws_op_continuation(), c"lo", 2, 0, c"80 02 6c 6f")
-	wst_expect_encoding(c"unmasked ping", 1, ws_op_ping(), c"Hello", 5, 0, c"89 05 48 65 6c 6c 6f")
-	wst_expect_encoding(c"masked pong", 1, ws_op_pong(), c"Hello", 5, c"37 fa 21 3d", c"8a 85 37 fa 21 3d 7f 9f 4d 51 58")
+	wst_expect_encoding(c"unmasked Hello", 1, ws_op_text, c"Hello", 5, 0, c"81 05 48 65 6c 6c 6f")
+	wst_expect_encoding(c"masked Hello", 1, ws_op_text, c"Hello", 5, c"37 fa 21 3d", c"81 85 37 fa 21 3d 7f 9f 4d 51 58")
+	wst_expect_encoding(c"fragment Hel", 0, ws_op_text, c"Hel", 3, 0, c"01 03 48 65 6c")
+	wst_expect_encoding(c"fragment lo", 1, ws_op_continuation, c"lo", 2, 0, c"80 02 6c 6f")
+	wst_expect_encoding(c"unmasked ping", 1, ws_op_ping, c"Hello", 5, 0, c"89 05 48 65 6c 6c 6f")
+	wst_expect_encoding(c"masked pong", 1, ws_op_pong, c"Hello", 5, c"37 fa 21 3d", c"8a 85 37 fa 21 3d 7f 9f 4d 51 58")
 
 	# 256 bytes of binary data: 16-bit length.
 	char* data = malloc(65536)
 	for i in range(65536):
 		data[i] = i & 255
 	string_builder* out = string_new()
-	assert_equal(1, ws_frame_encode(out, 1, ws_op_binary(), data, 256, 0))
+	assert_equal(1, ws_frame_encode(out, 1, ws_op_binary, data, 256, 0))
 	assert_equal(260, out.length)
 	wst_assert_bytes(c"256 header", c"82 7e 01 00", out.data, 4)
 	assert_equal(255, out.data[259] & 255)
 	# 64KiB: 64-bit length.
 	string_clear(out)
-	assert_equal(1, ws_frame_encode(out, 1, ws_op_binary(), data, 65536, 0))
+	assert_equal(1, ws_frame_encode(out, 1, ws_op_binary, data, 65536, 0))
 	assert_equal(65546, out.length)
 	wst_assert_bytes(c"64KiB header", c"82 7f 00 00 00 00 00 01 00 00", out.data, 10)
 	ws_frame f
 	assert_equal(65546, ws_frame_decode(out.data, out.length, &f, 65536))
 	assert_equal(65536, f.payload_len)
-	assert_equal(ws_op_binary(), f.opcode)
+	assert_equal(ws_op_binary, f.opcode)
 	assert_equal(7, f.payload[7] & 255)
 	# The same 64KiB frame over a smaller cap fails closed with 1009.
 	assert_equal(0 - 1009, ws_frame_decode(out.data, out.length, &f, 65535))
 	# Boundaries between the encodings.
 	string_clear(out)
-	ws_frame_encode(out, 1, ws_op_binary(), data, 125, 0)
+	ws_frame_encode(out, 1, ws_op_binary, data, 125, 0)
 	assert_equal(127, out.length)
 	string_clear(out)
-	ws_frame_encode(out, 1, ws_op_binary(), data, 126, 0)
+	ws_frame_encode(out, 1, ws_op_binary, data, 126, 0)
 	wst_assert_bytes(c"126 header", c"82 7e 00 7e", out.data, 4)
 	string_clear(out)
-	ws_frame_encode(out, 1, ws_op_binary(), data, 65535, 0)
+	ws_frame_encode(out, 1, ws_op_binary, data, 65535, 0)
 	wst_assert_bytes(c"65535 header", c"82 7e ff ff", out.data, 4)
-	assert_equal(0, ws_frame_encode(out, 1, ws_op_binary(), data, (-1), 0))
+	assert_equal(0, ws_frame_encode(out, 1, ws_op_binary, data, (-1), 0))
 	string_free(out)
 	free(data)
 
 
 void test_ws_rfc_5_7_decode():
-	wst_expect_decoding(c"unmasked Hello", c"81 05 48 65 6c 6c 6f", 1, ws_op_text(), 0, c"Hello")
-	wst_expect_decoding(c"masked Hello", c"81 85 37 fa 21 3d 7f 9f 4d 51 58", 1, ws_op_text(), 1, c"Hello")
-	wst_expect_decoding(c"fragment Hel", c"01 03 48 65 6c", 0, ws_op_text(), 0, c"Hel")
-	wst_expect_decoding(c"fragment lo", c"80 02 6c 6f", 1, ws_op_continuation(), 0, c"lo")
-	wst_expect_decoding(c"unmasked ping", c"89 05 48 65 6c 6c 6f", 1, ws_op_ping(), 0, c"Hello")
-	wst_expect_decoding(c"masked pong", c"8a 85 37 fa 21 3d 7f 9f 4d 51 58", 1, ws_op_pong(), 1, c"Hello")
-	wst_expect_decoding(c"empty close", c"88 00", 1, ws_op_close(), 0, c"")
+	wst_expect_decoding(c"unmasked Hello", c"81 05 48 65 6c 6c 6f", 1, ws_op_text, 0, c"Hello")
+	wst_expect_decoding(c"masked Hello", c"81 85 37 fa 21 3d 7f 9f 4d 51 58", 1, ws_op_text, 1, c"Hello")
+	wst_expect_decoding(c"fragment Hel", c"01 03 48 65 6c", 0, ws_op_text, 0, c"Hel")
+	wst_expect_decoding(c"fragment lo", c"80 02 6c 6f", 1, ws_op_continuation, 0, c"lo")
+	wst_expect_decoding(c"unmasked ping", c"89 05 48 65 6c 6c 6f", 1, ws_op_ping, 0, c"Hello")
+	wst_expect_decoding(c"masked pong", c"8a 85 37 fa 21 3d 7f 9f 4d 51 58", 1, ws_op_pong, 1, c"Hello")
+	wst_expect_decoding(c"empty close", c"88 00", 1, ws_op_close, 0, c"")
 
 
 void test_ws_decode_rejects():
@@ -260,7 +260,7 @@ void wst_echo_peer_z(int fd, ws_deflate_config* cfg):
 	while (1):
 		ws_message* m = ws_recv(c)
 		if (m == 0):
-			if (ws_conn_error(c) != ws_error_closed()):
+			if (ws_conn_error(c) != ws_error_closed):
 				exit(10 + ws_conn_error(c))
 			if (c.peer_close_code != 1000):
 				exit(3)
@@ -268,21 +268,21 @@ void wst_echo_peer_z(int fd, ws_deflate_config* cfg):
 				exit(4)
 			ws_conn_free(c)
 			exit(0)
-		if ((m.opcode == ws_op_text()) && (strcmp(m.data, c"ping-me") == 0)):
+		if ((m.opcode == ws_op_text) && (strcmp(m.data, c"ping-me") == 0)):
 			ws_send_ping(c, c"hi", 2)
 			ws_send_text(c, c"pinged", 6)
-		else if ((m.opcode == ws_op_text()) && (strcmp(m.data, c"pongs?") == 0)):
+		else if ((m.opcode == ws_op_text) && (strcmp(m.data, c"pongs?") == 0)):
 			char* count = itoa(c.pongs_received)
 			ws_send_text(c, count, strlen(count))
 			free(count)
-		else if ((m.opcode == ws_op_text()) && (strcmp(m.data, c"close-me") == 0)):
+		else if ((m.opcode == ws_op_text) && (strcmp(m.data, c"close-me") == 0)):
 			if (ws_close(c, 4000, c"server bye") == 0):
 				exit(5)
 			if (c.peer_close_code != 4000):
 				exit(6)
 			ws_conn_free(c)
 			exit(0)
-		else if (m.opcode == ws_op_text()):
+		else if (m.opcode == ws_op_text):
 			ws_send_text(c, m.data, m.len)
 		else:
 			ws_send_binary(c, m.data, m.len)
@@ -326,7 +326,7 @@ ws_message* wst_recv_ok(ws_conn* c):
 
 void wst_expect_text(ws_conn* c, char* text):
 	ws_message* m = wst_recv_ok(c)
-	assert_equal(ws_op_text(), m.opcode)
+	assert_equal(ws_op_text, m.opcode)
 	assert_strings_equal(text, m.data)
 	assert_equal(strlen(text), m.len)
 	ws_message_free(m)
@@ -345,7 +345,7 @@ void test_ws_session_echo_and_close():
 	# Empty message.
 	assert_equal(1, ws_send_binary(c, c"", 0))
 	ws_message* m = wst_recv_ok(c)
-	assert_equal(ws_op_binary(), m.opcode)
+	assert_equal(ws_op_binary, m.opcode)
 	assert_equal(0, m.len)
 	ws_message_free(m)
 	# 16-bit and 64-bit length encodings, both directions.
@@ -361,7 +361,7 @@ void test_ws_session_echo_and_close():
 			i = i + 1
 		assert_equal(1, ws_send_binary(c, data, n))
 		m = wst_recv_ok(c)
-		assert_equal(ws_op_binary(), m.opcode)
+		assert_equal(ws_op_binary, m.opcode)
 		assert_equal(n, m.len)
 		i = 0
 		while (i < n):
@@ -373,14 +373,14 @@ void test_ws_session_echo_and_close():
 	# Fragmented text with a ping interleaved between fragments; the
 	# echo peer answers the ping (dropped by our ws_recv) and echoes the
 	# reassembled message.
-	assert_equal(1, ws_send_frame(c, 0, ws_op_text(), c"frag", 4))
+	assert_equal(1, ws_send_frame(c, 0, ws_op_text, c"frag", 4))
 	assert_equal(1, ws_send_ping(c, c"mid", 3))
-	assert_equal(1, ws_send_frame(c, 0, ws_op_continuation(), c"men", 3))
-	assert_equal(1, ws_send_frame(c, 1, ws_op_continuation(), c"ted", 3))
+	assert_equal(1, ws_send_frame(c, 0, ws_op_continuation, c"men", 3))
+	assert_equal(1, ws_send_frame(c, 1, ws_op_continuation, c"ted", 3))
 	wst_expect_text(c, c"fragmented")
 	assert_equal(1, c.pongs_received)
 	# Control-frame sending rules are enforced locally.
-	assert_equal(0, ws_send_frame(c, 0, ws_op_ping(), c"x", 1))
+	assert_equal(0, ws_send_frame(c, 0, ws_op_ping, c"x", 1))
 	char* big = malloc(126)
 	assert_equal(0, ws_send_ping(c, big, 126))
 	free(big)
@@ -396,7 +396,7 @@ void test_ws_session_echo_and_close():
 	assert_equal(0, ws_close(c, 0, c"reason without code"))
 	# Client-initiated close handshake.
 	assert_equal(1, ws_close(c, 1000, c"bye"))
-	assert_equal(ws_error_closed(), ws_conn_error(c))
+	assert_equal(ws_error_closed, ws_conn_error(c))
 	assert_equal(1000, c.peer_close_code)
 	asserts(c"no sends after close", ws_send_text(c, c"late", 4) == 0)
 	asserts(c"no recv after close", ws_recv(c) == 0)
@@ -409,7 +409,7 @@ void test_ws_session_server_initiated_close():
 	ws_conn* c = wst_client_to_echo(&pid)
 	ws_send_text(c, c"close-me", 8)
 	asserts(c"recv ends at close", ws_recv(c) == 0)
-	assert_equal(ws_error_closed(), ws_conn_error(c))
+	assert_equal(ws_error_closed, ws_conn_error(c))
 	assert_equal(4000, c.peer_close_code)
 	assert_strings_equal(c"server bye", c.peer_close_reason)
 	# Our echo already went out; ws_close just reports the handshake done.
@@ -437,7 +437,7 @@ void wst_raw_peer_bytes(int fd, char* raw, int n, int tested_is_client, int expe
 		if (used < 0):
 			exit(2)
 		if (used > 0):
-			if (f.opcode != ws_op_close()):
+			if (f.opcode != ws_op_close):
 				# Skip anything else (e.g. an auto-pong).
 				int i = 0
 				while (used + i < have):
@@ -498,7 +498,7 @@ void wst_violation_bytes(char* label, int tested_is_client, int max_message, ws_
 	if (ws_conn_error(c) != expect_error):
 		print_string(label, ws_error_string(ws_conn_error(c)))
 		assert_equal(expect_error, ws_conn_error(c))
-	if (expect_error != ws_error_closed()):
+	if (expect_error != ws_error_closed):
 		assert_equal(expect_code, c.local_close_code)
 	asserts(label, ws_send_text(c, c"x", 1) == 0)
 	ws_conn_free(c)
@@ -517,7 +517,7 @@ void wst_violation(char* label, int tested_is_client, int max_message, char* raw
 
 
 void test_ws_client_rejects_peer_violations():
-	int proto = ws_error_protocol()
+	int proto = ws_error_protocol
 	# A server must not mask.
 	wst_violation(c"masked server frame", 1, 1000, c"81 85 37 fa 21 3d 7f 9f 4d 51 58", proto, 1002)
 	wst_violation(c"rsv bit", 1, 1000, c"c1 01 41", proto, 1002)
@@ -525,22 +525,22 @@ void test_ws_client_rejects_peer_violations():
 	wst_violation(c"fragmented ping", 1, 1000, c"09 00", proto, 1002)
 	wst_violation(c"orphan continuation", 1, 1000, c"80 01 41", proto, 1002)
 	wst_violation(c"text inside fragmented text", 1, 1000, c"01 01 41 81 01 42", proto, 1002)
-	wst_violation(c"invalid utf-8 text", 1, 1000, c"81 02 c3 28", ws_error_bad_utf8(), 1007)
-	wst_violation(c"invalid utf-8 across fragments", 1, 1000, c"01 01 c3 80 01 28", ws_error_bad_utf8(), 1007)
-	wst_violation(c"64-bit length 2^32", 1, 1000, c"82 7f 00 00 00 01 00 00 00 00", ws_error_too_big(), 1009)
-	wst_violation(c"frame over cap", 1, 100, c"82 65", ws_error_too_big(), 1009)
-	wst_violation(c"fragments over cap", 1, 4, c"02 03 41 42 43 00 02 44 45", ws_error_too_big(), 1009)
+	wst_violation(c"invalid utf-8 text", 1, 1000, c"81 02 c3 28", ws_error_bad_utf8, 1007)
+	wst_violation(c"invalid utf-8 across fragments", 1, 1000, c"01 01 c3 80 01 28", ws_error_bad_utf8, 1007)
+	wst_violation(c"64-bit length 2^32", 1, 1000, c"82 7f 00 00 00 01 00 00 00 00", ws_error_too_big, 1009)
+	wst_violation(c"frame over cap", 1, 100, c"82 65", ws_error_too_big, 1009)
+	wst_violation(c"fragments over cap", 1, 4, c"02 03 41 42 43 00 02 44 45", ws_error_too_big, 1009)
 	wst_violation(c"close with 1 byte", 1, 1000, c"88 01 03", proto, 1002)
 	wst_violation(c"close with code 1005", 1, 1000, c"88 02 03 ed", proto, 1002)
-	wst_violation(c"close reason not utf-8", 1, 1000, c"88 04 03 e8 c3 28", ws_error_bad_utf8(), 1007)
+	wst_violation(c"close reason not utf-8", 1, 1000, c"88 04 03 e8 c3 28", ws_error_bad_utf8, 1007)
 	# Hang-up without a close frame (here mid-payload, and at a frame
 	# boundary) is abnormal closure, not a clean close.
-	wst_violation(c"eof mid-frame", 1, 1000, c"81 05 41", ws_error_eof(), 0)
-	wst_violation(c"eof at boundary", 1, 1000, c"", ws_error_eof(), 0)
+	wst_violation(c"eof mid-frame", 1, 1000, c"81 05 41", ws_error_eof, 0)
+	wst_violation(c"eof at boundary", 1, 1000, c"", ws_error_eof, 0)
 
 
 void test_ws_server_rejects_unmasked_frames():
-	wst_violation(c"unmasked client frame", 0, 1000, c"81 05 48 65 6c 6c 6f", ws_error_protocol(), 1002)
+	wst_violation(c"unmasked client frame", 0, 1000, c"81 05 48 65 6c 6c 6f", ws_error_protocol, 1002)
 
 
 void test_ws_client_accepts_close_without_status():
@@ -565,15 +565,15 @@ void test_ws_client_accepts_close_without_status():
 		ws_frame f
 		if (ws_frame_decode(buf, have, &f, 64) != 6):
 			exit(3)
-		if ((f.opcode != ws_op_close()) || (f.payload_len != 0) || (f.masked != 1)):
+		if ((f.opcode != ws_op_close) || (f.payload_len != 0) || (f.masked != 1)):
 			exit(4)
 		exit(0)
 	close(fds[1])
 	ws_conn* c = ws_conn_wrap(connection_context_new(fds[0], 10000, 0), 1, 1)
 	wst_expect_text(c, c"ok")
 	asserts(c"close ends recv", ws_recv(c) == 0)
-	assert_equal(ws_error_closed(), ws_conn_error(c))
-	assert_equal(ws_close_no_status(), c.peer_close_code)
+	assert_equal(ws_error_closed, ws_conn_error(c))
+	assert_equal(ws_close_no_status, c.peer_close_code)
 	ws_conn_free(c)
 	net_test_finish(pid, -1)
 
@@ -696,7 +696,7 @@ void test_ws_deflate_opt_in_fails_closed():
 	assert_equal(1, ws_compression_active(c))
 	free(cfg)
 	ws_conn_free(c)
-	assert_strings_equal(c"invalid compressed message", ws_error_string(ws_error_compression()))
+	assert_strings_equal(c"invalid compressed message", ws_error_string(ws_error_compression))
 
 
 # Compresses text on c and compares the payload with the RFC bytes.
@@ -757,7 +757,7 @@ void test_ws_deflate_rfc7692_examples():
 	string_builder* out = string_new()
 	int n = 0
 	char* z = hex_decode_loose(c"f2 48 cd c9 c9 07 00", &n)
-	assert_equal(1, ws_frame_encode_rsv(out, 1, 4, ws_op_text(), z, n, 0))
+	assert_equal(1, ws_frame_encode_rsv(out, 1, 4, ws_op_text, z, n, 0))
 	wst_assert_bytes(c"rsv1 frame", c"c1 07 f2 48 cd c9 c9 07 00", out.data, out.length)
 	free(z)
 	string_free(out)
@@ -909,7 +909,7 @@ char* wst_pattern(int n, int seed):
 void wst_expect_binary_echo(ws_conn* c, char* data, int n):
 	assert_equal(1, ws_send_binary(c, data, n))
 	ws_message* m = wst_recv_ok(c)
-	assert_equal(ws_op_binary(), m.opcode)
+	assert_equal(ws_op_binary, m.opcode)
 	assert_equal(n, m.len)
 	for i in range(n):
 		if ((m.data[i] & 255) != (data[i] & 255)):
@@ -946,8 +946,8 @@ void wst_compressed_session(ws_deflate_config* cfg):
 	wst_expect_binary_echo(c, noise, 3000)
 	free(noise)
 	# Plain (RSV1-clear) fragmented frames still work alongside.
-	assert_equal(1, ws_send_frame(c, 0, ws_op_text(), c"frag", 4))
-	assert_equal(1, ws_send_frame(c, 1, ws_op_continuation(), c"mented", 6))
+	assert_equal(1, ws_send_frame(c, 0, ws_op_text, c"frag", 4))
+	assert_equal(1, ws_send_frame(c, 1, ws_op_continuation, c"mented", 6))
 	wst_expect_text(c, c"fragmented")
 	ws_send_text(c, c"ping-me", 7)
 	wst_expect_text(c, c"pinged")
@@ -1049,8 +1049,8 @@ void wst_z_violation(char* label, ws_deflate_config* cfg, int max_message, char*
 void test_ws_deflate_peer_violations():
 	wst_use_deflate()
 	ws_deflate_config* cfg = ws_deflate_config_new()
-	int proto = ws_error_protocol()
-	int bad = ws_error_compression()
+	int proto = ws_error_protocol
+	int bad = ws_error_compression
 	# A good compressed message is delivered, then the violation.
 	wst_z_violation(c"rsv1 on ping", cfg, 1000, c"c1 07 f2 48 cd c9 c9 07 00 c9 00", 1, proto, 1002)
 	wst_z_violation(c"rsv1 on continuation", cfg, 1000, c"41 03 f2 48 cd c0 04 c9 c9 07 00", 0, proto, 1002)
@@ -1065,10 +1065,10 @@ void test_ws_deflate_peer_violations():
 	wst_z_violation(c"distance before window", cfg, 1000, c"c1 05 f2 00 11 00 00", 0, bad, 1007)
 	# Decompressed size over the cap fails closed with 1009 (the frame
 	# itself is under the cap).
-	wst_z_violation(c"inflates past cap", cfg, 50, c"c1 06 4a 4c a4 3d 00 00", 0, ws_error_too_big(), 1009)
+	wst_z_violation(c"inflates past cap", cfg, 50, c"c1 06 4a 4c a4 3d 00 00", 0, ws_error_too_big, 1009)
 	wst_z_violation(c"inflates to the cap", cfg, 100, c"c1 06 4a 4c a4 3d 00 00 c3 00", 1, proto, 1002)
 	# Compressed text must still be UTF-8.
-	wst_z_violation(c"compressed bad utf-8", cfg, 1000, c"c1 04 3a ac 01 00", 0, ws_error_bad_utf8(), 1007)
+	wst_z_violation(c"compressed bad utf-8", cfg, 1000, c"c1 04 3a ac 01 00", 0, ws_error_bad_utf8, 1007)
 	# The server promised no context takeover: its second "Hello" may not
 	# reach back into the first message.
 	ws_deflate_config* snct = wst_cfg(1, 0, 0, 0)
@@ -1092,15 +1092,15 @@ void test_ws_deflate_window_bits_enforced():
 	char* z2 = deflate_window(first, 20, first, 600, 15, 1, &n2)
 	asserts(c"second is a back-reference", n2 < 16)
 	string_builder* raw = string_new()
-	ws_frame_encode_rsv(raw, 1, 4, ws_op_binary(), z1, n1 - 4, 0)
-	ws_frame_encode_rsv(raw, 1, 4, ws_op_binary(), z2, n2 - 4, 0)
+	ws_frame_encode_rsv(raw, 1, 4, ws_op_binary, z1, n1 - 4, 0)
+	ws_frame_encode_rsv(raw, 1, 4, ws_op_binary, z2, n2 - 4, 0)
 	string_append(raw, c"\x88\x02\x03\xe8")
 	# Server window 15: both messages, then the peer's close (echoed).
 	ws_deflate_config* wide = wst_cfg(0, 0, 15, 0)
-	wst_violation_bytes(c"window 15", 1, 100000, wide, raw.data, raw.length, 2, ws_error_closed(), 1000)
+	wst_violation_bytes(c"window 15", 1, 100000, wide, raw.data, raw.length, 2, ws_error_closed, 1000)
 	# Server window 8: the second message reaches too far.
 	ws_deflate_config* narrow = wst_cfg(0, 0, 8, 0)
-	wst_violation_bytes(c"window 8", 1, 100000, narrow, raw.data, raw.length, 1, ws_error_compression(), 1007)
+	wst_violation_bytes(c"window 8", 1, 100000, narrow, raw.data, raw.length, 1, ws_error_compression, 1007)
 	free(wide)
 	free(narrow)
 	string_free(raw)

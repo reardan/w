@@ -31,8 +31,7 @@ struct timespec:
 	int nanoseconds
 
 
-int clock_monotonic():
-	return 1
+const int clock_monotonic = 1
 
 
 # Milliseconds from the monotonic clock (time since boot). The product
@@ -40,7 +39,7 @@ int clock_monotonic():
 # measurements such as timeouts.
 int time_monotonic_ms():
 	timespec ts
-	int err = sys_clock_gettime(clock_monotonic(), cast(int, &ts))
+	int err = sys_clock_gettime(clock_monotonic, cast(int, &ts))
 	if (err < 0):
 		return err
 	return ts.seconds * 1000 + ts.nanoseconds / 1000000

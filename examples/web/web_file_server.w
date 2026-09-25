@@ -75,10 +75,10 @@ void web_file_stream_file(int client, char* path):
 
 	http_write_response_headers(client, 200, c"OK", web_file_content_type(path), size, c"close")
 
-	char* buf = malloc(web_default_buffer_size())
+	char* buf = malloc(web_default_buffer_size)
 	int remaining = size
 	while (remaining > 0):
-		int chunk_size = web_default_buffer_size()
+		int chunk_size = web_default_buffer_size
 		if (remaining < chunk_size):
 			chunk_size = remaining
 		int read_count = read(file, buf, chunk_size)
@@ -109,8 +109,8 @@ int main(int argc, int argv):
 	int client = socket_accept_connection(server)
 	web_check_syscall(c"accept", client)
 
-	char* request = malloc(web_default_buffer_size() + 1)
-	int request_bytes = read(client, request, web_default_buffer_size())
+	char* request = malloc(web_default_buffer_size + 1)
+	int request_bytes = read(client, request, web_default_buffer_size)
 	web_check_syscall(c"read", request_bytes)
 	request[request_bytes] = 0
 

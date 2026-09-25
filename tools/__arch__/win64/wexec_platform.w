@@ -1,3 +1,4 @@
+const int wexec_process_groups_supported = 0
 # Per-target platform facts for tools/wexec.w (see the x86 sibling
 # file). win64 resolution, compiled into bin/wexec_win.exe.
 
@@ -10,14 +11,12 @@ int wexec_dirents_supported():
 
 /* Run-step process-group cleanup: not available on win64 -- there is
 no fork/setpgid model here, and wexec only activates the cleanup when
-wexec_process_groups_supported() is 1, so these stubs are never
+wexec_process_groups_supported is 1, so these stubs are never
 reached with expectations attached; behavior is byte-for-byte the
 pre-existing one (same degrade-to-status-quo pattern as the statx and
 remote-cache stubs). */
 
 
-int wexec_process_groups_supported():
-	return 0
 
 
 int wexec_process_group_enter():

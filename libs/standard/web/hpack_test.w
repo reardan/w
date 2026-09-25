@@ -391,11 +391,11 @@ void test_hpack_size_update_decode():
 	hpack_test_decode_step(d, c"3fe11f 82", c":method|GET\n", c"", 0)
 	assert_equal(4096, d.table.max_size)
 	# Above the limit: 4097 = 3f e2 1f.
-	assert_equal(hpack_error_table_size(), hpack_test_decode_rc(d, c"3fe21f"))
+	assert_equal(hpack_error_table_size, hpack_test_decode_rc(d, c"3fe21f"))
 	hpack_decoder_free(d)
 	# A size update after a field is an error.
 	d = hpack_decoder_new(4096)
-	assert_equal(hpack_error_table_size(), hpack_test_decode_rc(d, c"82 20"))
+	assert_equal(hpack_error_table_size, hpack_test_decode_rc(d, c"82 20"))
 	hpack_decoder_free(d)
 
 
@@ -435,23 +435,23 @@ void test_hpack_eviction_on_oversized_entry():
 void test_hpack_rejects_bad_input():
 	hpack_decoder* d = hpack_decoder_new(4096)
 	# Index 0.
-	assert_equal(hpack_error_bad_index(), hpack_test_decode_rc(d, c"80"))
+	assert_equal(hpack_error_bad_index, hpack_test_decode_rc(d, c"80"))
 	# Index 62 with an empty dynamic table.
-	assert_equal(hpack_error_bad_index(), hpack_test_decode_rc(d, c"be"))
+	assert_equal(hpack_error_bad_index, hpack_test_decode_rc(d, c"be"))
 	# Literal name index out of range.
-	assert_equal(hpack_error_bad_index(), hpack_test_decode_rc(d, c"7f00 0161"))
+	assert_equal(hpack_error_bad_index, hpack_test_decode_rc(d, c"7f00 0161"))
 	# String length past the end of the block.
-	assert_equal(hpack_error_malformed(), hpack_test_decode_rc(d, c"0005 6162"))
+	assert_equal(hpack_error_malformed, hpack_test_decode_rc(d, c"0005 6162"))
 	# Value containing CR.
-	assert_equal(hpack_error_bad_field(), hpack_test_decode_rc(d, c"0001 61 01 0d"))
+	assert_equal(hpack_error_bad_field, hpack_test_decode_rc(d, c"0001 61 01 0d"))
 	# Empty name.
-	assert_equal(hpack_error_bad_field(), hpack_test_decode_rc(d, c"0000 0161"))
+	assert_equal(hpack_error_bad_field, hpack_test_decode_rc(d, c"0000 0161"))
 	hpack_decoder_free(d)
 
 	# String cap.
 	d = hpack_decoder_new(4096)
 	d.max_string = 3
-	assert_equal(hpack_error_too_large(), hpack_test_decode_rc(d, c"0004 6162 6364 0161"))
+	assert_equal(hpack_error_too_large, hpack_test_decode_rc(d, c"0004 6162 6364 0161"))
 	assert_equal(0, hpack_test_decode_rc(d, c"0003 6162 63 0161"))
 	hpack_decoder_free(d)
 
@@ -459,13 +459,13 @@ void test_hpack_rejects_bad_input():
 	d = hpack_decoder_new(4096)
 	d.max_list_size = 80
 	assert_equal(0, hpack_test_decode_rc(d, c"82 84"))
-	assert_equal(hpack_error_too_large(), hpack_test_decode_rc(d, c"82 84 86"))
+	assert_equal(hpack_error_too_large, hpack_test_decode_rc(d, c"82 84 86"))
 	hpack_decoder_free(d)
 
 	# Field count cap.
 	d = hpack_decoder_new(4096)
 	d.max_headers = 2
-	assert_equal(hpack_error_too_large(), hpack_test_decode_rc(d, c"82 84 86"))
+	assert_equal(hpack_error_too_large, hpack_test_decode_rc(d, c"82 84 86"))
 	hpack_decoder_free(d)
 
 

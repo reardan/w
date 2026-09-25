@@ -109,7 +109,7 @@ void test_timeout_kills_the_child():
 	process_result* result = process_run(c"/bin/sleep", argv, 0, 0, 200)
 	int elapsed = process_monotonic_ms() - start
 	assert1(result != 0)
-	assert_equal(process_status_timeout(), result.status)
+	assert_equal(process_status_timeout, result.status)
 	# Nowhere near the 5s the child asked for.
 	assert1(elapsed < 3000)
 	process_result_free(result)
@@ -121,11 +121,11 @@ void test_wait_timeout_leaves_child_running():
 	strv_set(argv, 1, c"5")
 	process* p = process_spawn(c"/bin/sleep", argv, 0)
 	assert1(p != 0)
-	assert_equal(process_status_timeout(), process_wait_timeout(p, 100))
+	assert_equal(process_status_timeout, process_wait_timeout(p, 100))
 	# Still alive: try_wait sees it running, then the kill path reaps it.
-	assert_equal(process_status_running(), process_try_wait(p))
-	assert_equal(0, process_kill(p, sigkill()))
-	assert_equal(128 + sigkill(), process_wait(p))
+	assert_equal(process_status_running, process_try_wait(p))
+	assert_equal(0, process_kill(p, sigkill))
+	assert_equal(128 + sigkill, process_wait(p))
 	process_free(p)
 
 
@@ -135,19 +135,19 @@ void test_signal_death_decodes_as_128_plus_signum():
 	strv_set(argv, 1, c"5")
 	process* p = process_spawn(c"/bin/sleep", argv, 0)
 	assert1(p != 0)
-	assert_equal(0, process_kill(p, sigterm()))
-	assert_equal(128 + sigterm(), process_wait(p))
+	assert_equal(0, process_kill(p, sigterm))
+	assert_equal(128 + sigterm, process_wait(p))
 	# Reaped results are cached.
-	assert_equal(128 + sigterm(), process_wait(p))
-	assert_equal(128 + sigterm(), process_try_wait(p))
+	assert_equal(128 + sigterm, process_wait(p))
+	assert_equal(128 + sigterm, process_try_wait(p))
 	process_free(p)
 
 
 void test_spawn_with_piped_streams_and_manual_wait():
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_pipe()
-	opts.stdout_mode = process_pipe()
-	opts.stderr_mode = process_null()
+	opts.stdin_mode = process_pipe
+	opts.stdout_mode = process_pipe
+	opts.stderr_mode = process_null
 	process* p = process_spawn(c"/bin/cat", argv_1(c"/bin/cat"), opts)
 	assert1(p != 0)
 	assert1(p.stdin_fd >= 0)
@@ -185,8 +185,8 @@ void test_wait_any_reaps_first_finished_child():
 	assert_equal(1, idx)
 	assert_equal(1, fast.reaped)
 	assert_equal(0, process_wait(fast))
-	assert_equal(0, process_kill(slow, sigkill()))
-	assert_equal(128 + sigkill(), process_wait(slow))
+	assert_equal(0, process_kill(slow, sigkill))
+	assert_equal(128 + sigkill, process_wait(slow))
 	process_free(slow)
 	process_free(fast)
 	free(cast(void*, kids))
@@ -200,9 +200,9 @@ void test_wait_any_nonblocking_while_running():
 	assert1(p != 0)
 	list[process*] kids = new list[process*]
 	kids.push(p)
-	assert_equal(process_status_running(), process_wait_any(kids, 0))
-	assert_equal(0, process_kill(p, sigkill()))
+	assert_equal(process_status_running, process_wait_any(kids, 0))
+	assert_equal(0, process_kill(p, sigkill))
 	assert_equal(0, process_wait_any(kids, 1))
-	assert_equal(128 + sigkill(), process_wait(p))
+	assert_equal(128 + sigkill, process_wait(p))
 	process_free(p)
 	free(cast(void*, kids))

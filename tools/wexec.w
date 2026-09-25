@@ -159,6 +159,8 @@ import tools.deps_cache
 import lib.str
 import lib.dir
 
+const int wexec_cache_timeout_ms = 3000
+
 
 json_value* wexec_manifest
 map[char*, json_value*] wexec_targets  # name -> json_value* of the target object
@@ -1217,7 +1219,7 @@ char* wexec_status_127_message():
 
 
 int wexec_check_status(char* target_name, int step_index, json_value* step, process_result* result, int timeout_ms):
-	if (result.status == process_status_timeout()):
+	if (result.status == process_status_timeout):
 		# Distinct from a generic nonzero exit: names the limit (the
 		# target and step come from wexec_step_error), so a deadlocked
 		# test reads as exactly that instead of hanging the whole
@@ -1818,7 +1820,7 @@ length, never NUL/strlen-scanned) --
     "<content length>\n"
     <content length> bytes   the file's exact contents
 
-Timeouts are short (wexec_cache_timeout_ms(), a few seconds): a
+Timeouts are short (wexec_cache_timeout_ms, a few seconds): a
 misconfigured or dead cache must fail fast, not stall the build. */
 
 char* wexec_cache_url_value
@@ -1845,8 +1847,6 @@ int wexec_cache_push_enabled():
 	return strcmp(raw, c"1") == 0
 
 
-int wexec_cache_timeout_ms():
-	return 3000
 
 
 # One warning line per process, the first time the remote cache proves
@@ -2064,7 +2064,7 @@ int wexec_cache_remote_fetch(char* url, char* key):
 	int body_len = 0
 	char* error = 0
 	int ok = 0
-	if (wexec_remote_http_get(full, wexec_cache_timeout_ms(), &status, &body, &body_len, &error)):
+	if (wexec_remote_http_get(full, wexec_cache_timeout_ms, &status, &body, &body_len, &error)):
 		if (status == 200):
 			ok = wexec_bundle_unpack(body, body_len)
 			if (ok == 0):
@@ -2088,7 +2088,7 @@ void wexec_cache_remote_push(char* url, char* key, json_value* target):
 		return
 	char* full = wexec_cache_object_url(url, key)
 	char* error = 0
-	if (wexec_remote_http_put(full, bundle, length, wexec_cache_timeout_ms(), &error) == 0):
+	if (wexec_remote_http_put(full, bundle, length, wexec_cache_timeout_ms, &error) == 0):
 		wexec_remote_warn(error)
 	free(full)
 	free(bundle)
@@ -3284,7 +3284,7 @@ int wexec_main(int argc, int argv):
 	# the outer worker's group, so the outer sweep covers them; win64
 	# and arm64_darwin report unsupported and keep their pre-existing
 	# behavior (tools/__arch__/wexec_platform.w).
-	if (wexec_process_groups_supported() && wexec_lock_held):
+	if (wexec_process_groups_supported && wexec_lock_held):
 		wexec_groups_active = 1
 		wexec_live_worker_cap = wexec_jobs
 		wexec_live_worker_pids = cast(int*, malloc(wexec_jobs * __word_size__))

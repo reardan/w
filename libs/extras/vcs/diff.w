@@ -37,16 +37,9 @@ int DIFF_EQUAL():
 	return 0
 
 
-int DIFF_DELETE():
-	return 1
-
-
-int DIFF_INSERT():
-	return 2
-
-
-int diff_default_context():
-	return 3
+const int DIFF_DELETE = 1
+const int DIFF_INSERT = 2
+const int diff_default_context = 3
 
 
 # One rendered line of a hunk: EQUAL (context, present in both files),
@@ -237,11 +230,11 @@ list[diff_op*] diff_myers_ops(list[char*] old_lines, int old_no_nl, list[char*] 
 		if (d > 0):
 			diff_op* step = new diff_op()
 			if (x == prev_x):
-				step.kind = DIFF_INSERT()
+				step.kind = DIFF_INSERT
 				step.old_index = -1
 				step.new_index = prev_y
 			else:
-				step.kind = DIFF_DELETE()
+				step.kind = DIFF_DELETE
 				step.old_index = prev_x
 				step.new_index = -1
 			rev.push(step)
@@ -285,7 +278,7 @@ list[diff_range_op*] diff_coalesce_ops(list[diff_op*] ops):
 			if (kind == DIFF_EQUAL()):
 				old_pos = old_pos + 1
 				new_pos = new_pos + 1
-			else if (kind == DIFF_DELETE()):
+			else if (kind == DIFF_DELETE):
 				old_pos = old_pos + 1
 			else:
 				new_pos = new_pos + 1
@@ -326,11 +319,11 @@ diff_hunk* diff_group_to_hunk(list[diff_range_op*] group, list[char*] old_lines,
 				dl.no_newline = diff_missing_at(old_lines, old_no_nl, i)
 				hunk.lines.push(dl)
 				i = i + 1
-		else if (code.kind == DIFF_DELETE()):
+		else if (code.kind == DIFF_DELETE):
 			int i = code.old_start
 			while (i < code.old_end):
 				diff_line* dl = new diff_line()
-				dl.kind = DIFF_DELETE()
+				dl.kind = DIFF_DELETE
 				dl.text = old_lines[i]
 				dl.no_newline = diff_missing_at(old_lines, old_no_nl, i)
 				hunk.lines.push(dl)
@@ -339,7 +332,7 @@ diff_hunk* diff_group_to_hunk(list[diff_range_op*] group, list[char*] old_lines,
 			int j = code.new_start
 			while (j < code.new_end):
 				diff_line* dl = new diff_line()
-				dl.kind = DIFF_INSERT()
+				dl.kind = DIFF_INSERT
 				dl.text = new_lines[j]
 				dl.no_newline = diff_missing_at(new_lines, new_no_nl, j)
 				hunk.lines.push(dl)
@@ -436,7 +429,7 @@ diff_apply_result* diff_apply(list[char*] old_lines, int old_no_nl, diff_result*
 			out.no_newline = diff_missing_at(old_lines, old_no_nl, old_pos)
 			old_pos = old_pos + 1
 		for diff_line* dl in hunk.lines:
-			if (dl.kind == DIFF_DELETE()):
+			if (dl.kind == DIFF_DELETE):
 				old_pos = old_pos + 1
 			else:
 				out.lines.push(dl.text)
@@ -523,7 +516,7 @@ char* diff_render_unified_text(char* old_label, char* new_label, diff_result* re
 			for diff_line* dl in hunk.lines:
 				if (dl.kind == DIFF_EQUAL()):
 					string_append_char(s, ' ')
-				else if (dl.kind == DIFF_DELETE()):
+				else if (dl.kind == DIFF_DELETE):
 					string_append_char(s, '-')
 				else:
 					string_append_char(s, '+')

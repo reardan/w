@@ -14,16 +14,9 @@ import structures.string
 
 
 # Architecture ids (asm_insn.arch, asm_binary.machine mapping)
-int ASM_ARCH_X86():
-	return 0
-
-
-int ASM_ARCH_X64():
-	return 1
-
-
-int ASM_ARCH_ARM64():
-	return 2
+const int ASM_ARCH_X86 = 0
+const int ASM_ARCH_X64 = 1
+const int ASM_ARCH_ARM64 = 2
 
 
 # Base-register sentinel for x64 RIP-relative memory ([rip+disp32]): a
@@ -32,42 +25,21 @@ int ASM_ARCH_ARM64():
 # holds a real register number >= 16), so no extra field is needed; the
 # formatter prints it as "rip" and the encoder re-emits the rm=5 (no-SIB)
 # form instead of the SIB form a genuine absolute [disp32] uses on x64.
-int ASM_BASE_RIP():
-	return 16
+const int ASM_BASE_RIP = 16
 
 
 # Register classes (asm_operand.rclass for kind reg)
-int ASM_RCLASS_GP():
-	return 0
-
-
-int ASM_RCLASS_XMM():
-	return 1
-
-
-int ASM_RCLASS_X87():
-	return 2
+const int ASM_RCLASS_GP = 0
+const int ASM_RCLASS_XMM = 1
+const int ASM_RCLASS_X87 = 2
 
 
 # Operand kinds
-int ASM_OP_NONE():
-	return 0
-
-
-int ASM_OP_REG():
-	return 1
-
-
-int ASM_OP_IMM():
-	return 2
-
-
-int ASM_OP_MEM():
-	return 3
-
-
-int ASM_OP_LABEL():
-	return 4
+const int ASM_OP_NONE = 0
+const int ASM_OP_REG = 1
+const int ASM_OP_IMM = 2
+const int ASM_OP_MEM = 3
+const int ASM_OP_LABEL = 4
 
 
 /*
@@ -96,9 +68,9 @@ struct asm_operand:
 
 
 void asm_operand_clear(asm_operand* op):
-	op.kind = ASM_OP_NONE()
+	op.kind = ASM_OP_NONE
 	op.reg = -1
-	op.rclass = ASM_RCLASS_GP()
+	op.rclass = ASM_RCLASS_GP
 	op.base = -1
 	op.index = -1
 	op.scale = 1
@@ -131,7 +103,7 @@ struct asm_insn:
 
 
 void asm_insn_clear(asm_insn* insn):
-	insn.arch = ASM_ARCH_X86()
+	insn.arch = ASM_ARCH_X86
 	insn.address = 0
 	insn.length = 0
 	insn.branch_target = -1
@@ -182,11 +154,11 @@ char* asm_hex_min64(int hi, int lo):
 
 
 int asm_insn_operand_count(asm_insn* insn):
-	if (insn.op1.kind == ASM_OP_NONE()):
+	if (insn.op1.kind == ASM_OP_NONE):
 		return 0
-	if (insn.op2.kind == ASM_OP_NONE()):
+	if (insn.op2.kind == ASM_OP_NONE):
 		return 1
-	if (insn.op3.kind == ASM_OP_NONE()):
+	if (insn.op3.kind == ASM_OP_NONE):
 		return 2
 	return 3
 
@@ -256,12 +228,8 @@ void asm_buffer_patch_int32(asm_buffer* b, int position, int v):
 ############################## labels and fixups ##############################
 
 # Fixup kinds
-int ASM_FIX_REL32():
-	return 0
-
-
-int ASM_FIX_ABS32():
-	return 1
+const int ASM_FIX_REL32 = 0
+const int ASM_FIX_ABS32 = 1
 
 
 struct asm_label_record:
@@ -335,7 +303,7 @@ int asm_labels_resolve(asm_labels* t, asm_buffer* b):
 			target = rec.position
 		if (target < 0):
 			unresolved = unresolved + 1
-		else if (fix.kind == ASM_FIX_REL32()):
+		else if (fix.kind == ASM_FIX_REL32):
 			asm_buffer_patch_int32(b, fix.position, target - (fix.position + 4))
 		else:
 			asm_buffer_patch_int32(b, fix.position, target)

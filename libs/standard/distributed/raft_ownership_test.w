@@ -59,7 +59,7 @@ raft* rot_leader():
 	raft_start(r, 0)
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 300, out)
-	asserts(c"single-node cluster ticks straight to leader", raft_state(r) == raft_leader())
+	asserts(c"single-node cluster ticks straight to leader", raft_state(r) == raft_leader)
 	asserts(c"single-node win emits no messages", out.length == 0)
 	return r
 

@@ -215,7 +215,7 @@ void test_https_sse_over_tls():
 
 	sse_event* ev4 = sse_next(r)
 	asserts(c"sse stream ends", ev4 == 0)
-	assert_equal(sse_error_none(), sse_reader_error(r))
+	assert_equal(sse_error_none, sse_reader_error(r))
 
 	sse_reader_free(r)
 	http_stream_close(st)
@@ -303,9 +303,9 @@ void test_https_connect_timeout():
 	int elapsed = time_monotonic_ms() - started
 	assert_equal(0, resp.status)
 	int bounded_error = 0
-	if (resp.error == http_error_timeout()):
+	if (resp.error == http_error_timeout):
 		bounded_error = 1
-	if (resp.error == http_error_connect()):
+	if (resp.error == http_error_connect):
 		bounded_error = 1
 	asserts(c"connect fails bounded", bounded_error != 0)
 	# Upper bound: proves we did not hang on the 30s default. Generous
@@ -344,7 +344,7 @@ void test_https_handshake_timeout():
 	int started = time_monotonic_ms()
 	http_response* resp = http_request(req)
 	int elapsed = time_monotonic_ms() - started
-	assert_equal(http_error_tls(), resp.error)
+	assert_equal(http_error_tls, resp.error)
 	assert_equal(0, resp.status)
 	asserts(c"handshake timeout too early", elapsed >= 300)
 	# Elapsed includes the client's own X25519 keygen CPU time, which a
@@ -378,7 +378,7 @@ void test_https_header_timeout():
 	req.tls_handshake_timeout_ms = 60000
 	req.timeout_ms = 500
 	http_response* resp = http_request(req)
-	assert_equal(http_error_timeout(), resp.error)
+	assert_equal(http_error_timeout, resp.error)
 	assert_equal(0, resp.status)
 	http_response_free(resp)
 	http_req_free(req)
@@ -422,8 +422,8 @@ void test_https_idle_stream_timeout():
 
 	sse_event* ev2 = sse_next(r)
 	asserts(c"stalled stream yields no event", ev2 == 0)
-	assert_equal(sse_error_stream(), sse_reader_error(r))
-	assert_equal(http_error_timeout(), head.error)
+	assert_equal(sse_error_stream, sse_reader_error(r))
+	assert_equal(http_error_timeout, head.error)
 
 	sse_reader_free(r)
 	http_stream_close(st)

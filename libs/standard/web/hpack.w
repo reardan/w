@@ -102,38 +102,31 @@ struct hpack_encoder:
 
 /* Error codes */
 
-int hpack_error_none():
-	return 0
+const int hpack_error_none = 0
 
 
 # Truncated or malformed integer / string / representation.
-int hpack_error_malformed():
-	return 1
+const int hpack_error_malformed = 1
 
 
 # Index 0 or beyond the static + dynamic tables.
-int hpack_error_bad_index():
-	return 2
+const int hpack_error_bad_index = 2
 
 
 # Invalid Huffman data (EOS, bad padding).
-int hpack_error_huffman():
-	return 3
+const int hpack_error_huffman = 3
 
 
 # A string, the header list, or the field count exceeded a cap.
-int hpack_error_too_large():
-	return 4
+const int hpack_error_too_large = 4
 
 
 # Dynamic table size update above the limit, or not at block start.
-int hpack_error_table_size():
-	return 5
+const int hpack_error_table_size = 5
 
 
 # A field name/value containing NUL, CR or LF, or an empty name.
-int hpack_error_bad_field():
-	return 6
+const int hpack_error_bad_field = 6
 
 
 char* hpack_error_string(int code):
@@ -150,20 +143,10 @@ char* hpack_error_string(int code):
 
 /* Defaults */
 
-int hpack_default_table_size():
-	return 4096
-
-
-int hpack_default_max_string():
-	return 65536
-
-
-int hpack_default_max_list_size():
-	return 65536
-
-
-int hpack_default_max_headers():
-	return 256
+const int hpack_default_table_size = 4096
+const int hpack_default_max_string = 65536
+const int hpack_default_max_list_size = 65536
+const int hpack_default_max_headers = 256
 
 
 /* Header fields and lists */
@@ -233,8 +216,7 @@ char** hpack_static_names_g
 char** hpack_static_values_g
 
 
-int hpack_static_count():
-	return 61
+const int hpack_static_count = 61
 
 
 # "name value" pairs separated by '|', one entry per ';'. Entry 1 first.
@@ -245,7 +227,7 @@ char* hpack_static_text():
 void hpack_static_init():
 	if (hpack_static_names_g != 0):
 		return
-	int n = hpack_static_count() + 1
+	int n = hpack_static_count + 1
 	char** names = cast(char**, malloc(n * __word_size__))
 	char** values = cast(char**, malloc(n * __word_size__))
 	char* text = hpack_static_text()
@@ -539,15 +521,15 @@ void hpack_encode_string(string_builder* out, char* s, int len, int huffman):
 # copy (length in *out_len) or 0 with *err set.
 char* hpack_decode_string(hpack_decoder* d, char* p, int len, int* pos, int* out_len, int* err):
 	if (*pos >= len):
-		*err = hpack_error_malformed()
+		*err = hpack_error_malformed
 		return 0
 	int huff = p[*pos] & 128
 	int slen = 0
 	if (hpack_decode_int(p, len, pos, 7, &slen) == 0):
-		*err = hpack_error_malformed()
+		*err = hpack_error_malformed
 		return 0
 	if (slen > len - *pos):
-		*err = hpack_error_malformed()
+		*err = hpack_error_malformed
 		return 0
 	char* result = 0
 	if (huff != 0):
@@ -556,13 +538,13 @@ char* hpack_decode_string(hpack_decoder* d, char* p, int len, int* pos, int* out
 		result = hpack_huffman_decode(p + *pos, slen, d.max_string, out_len)
 		if (result == 0):
 			if ((slen * 8) / 5 > d.max_string):
-				*err = hpack_error_too_large()
+				*err = hpack_error_too_large
 			else:
-				*err = hpack_error_huffman()
+				*err = hpack_error_huffman
 			return 0
 	else:
 		if (slen > d.max_string):
-			*err = hpack_error_too_large()
+			*err = hpack_error_too_large
 			return 0
 		result = mem_dup(p + *pos, slen)
 		*out_len = slen
@@ -576,9 +558,9 @@ hpack_decoder* hpack_decoder_new(int max_table_size):
 	hpack_decoder* d = new hpack_decoder()
 	d.table = hpack_table_new(max_table_size)
 	d.settings_max = max_table_size
-	d.max_list_size = hpack_default_max_list_size()
-	d.max_string = hpack_default_max_string()
-	d.max_headers = hpack_default_max_headers()
+	d.max_list_size = hpack_default_max_list_size
+	d.max_string = hpack_default_max_string
+	d.max_headers = hpack_default_max_headers
 	return d
 
 
@@ -611,13 +593,13 @@ int hpack_field_ok(char* p, int n, int is_name):
 hpack_header* hpack_lookup(hpack_decoder* d, int index, hpack_header* scratch):
 	if (index <= 0):
 		return 0
-	if (index <= hpack_static_count()):
+	if (index <= hpack_static_count):
 		scratch.name = hpack_static_name(index)
 		scratch.name_len = strlen(scratch.name)
 		scratch.value = hpack_static_value(index)
 		scratch.value_len = strlen(scratch.value)
 		return scratch
-	int dyn = index - hpack_static_count()
+	int dyn = index - hpack_static_count
 	if (dyn > hpack_table_count(d.table)):
 		return 0
 	return hpack_table_get(d.table, dyn)
@@ -629,12 +611,12 @@ int hpack_emit(hpack_decoder* d, list[hpack_header*] out, int* list_size, char* 
 	if ((hpack_field_ok(name, name_len, 1) == 0) || (hpack_field_ok(value, value_len, 0) == 0)):
 		free(name)
 		free(value)
-		return hpack_error_bad_field()
+		return hpack_error_bad_field
 	*list_size = *list_size + name_len + value_len + 32
 	if ((*list_size > d.max_list_size) || (out.length >= d.max_headers)):
 		free(name)
 		free(value)
-		return hpack_error_too_large()
+		return hpack_error_too_large
 	hpack_header* h = new hpack_header(name, name_len, value, value_len, sensitive)
 	out.push(h)
 	return 0
@@ -653,10 +635,10 @@ int hpack_decode(hpack_decoder* d, char* block, int len, list[hpack_header*] out
 		if ((b & 128) != 0):
 			int index = 0
 			if (hpack_decode_int(block, len, &pos, 7, &index) == 0):
-				return hpack_error_malformed()
+				return hpack_error_malformed
 			hpack_header* h = hpack_lookup(d, index, &scratch)
 			if (h == 0):
-				return hpack_error_bad_index()
+				return hpack_error_bad_index
 			int rc = hpack_emit(d, out, &list_size, mem_dup(h.name, h.name_len), h.name_len, mem_dup(h.value, h.value_len), h.value_len, 0)
 			if (rc != 0):
 				return rc
@@ -664,12 +646,12 @@ int hpack_decode(hpack_decoder* d, char* block, int len, list[hpack_header*] out
 		else if ((b & 224) == 32):
 			# Dynamic table size update: only before the first field.
 			if (seen_field != 0):
-				return hpack_error_table_size()
+				return hpack_error_table_size
 			int size = 0
 			if (hpack_decode_int(block, len, &pos, 5, &size) == 0):
-				return hpack_error_malformed()
+				return hpack_error_malformed
 			if (size > d.settings_max):
-				return hpack_error_table_size()
+				return hpack_error_table_size
 			hpack_table_set_max(d.table, size)
 		else:
 			int prefix = 4
@@ -681,17 +663,17 @@ int hpack_decode(hpack_decoder* d, char* block, int len, list[hpack_header*] out
 			else if ((b & 240) == 16):
 				sensitive = 1
 			else if ((b & 240) != 0):
-				return hpack_error_malformed()
+				return hpack_error_malformed
 			int name_index = 0
 			if (hpack_decode_int(block, len, &pos, prefix, &name_index) == 0):
-				return hpack_error_malformed()
+				return hpack_error_malformed
 			char* name = 0
 			int name_len = 0
 			int err = 0
 			if (name_index != 0):
 				hpack_header* nh = hpack_lookup(d, name_index, &scratch)
 				if (nh == 0):
-					return hpack_error_bad_index()
+					return hpack_error_bad_index
 				name = mem_dup(nh.name, nh.name_len)
 				name_len = nh.name_len
 			else:
@@ -747,7 +729,7 @@ void hpack_find(hpack_encoder* e, hpack_header* h, int* full, int* name_only):
 	*full = 0
 	*name_only = 0
 	int i = 1
-	while (i <= hpack_static_count()):
+	while (i <= hpack_static_count):
 		if (hpack_cstr_equal(hpack_static_name(i), h.name, h.name_len) != 0):
 			if (*name_only == 0):
 				*name_only = i
@@ -760,9 +742,9 @@ void hpack_find(hpack_encoder* e, hpack_header* h, int* full, int* name_only):
 		hpack_header* t = hpack_table_get(e.table, j)
 		if (hpack_bytes_equal(t.name, t.name_len, h.name, h.name_len) != 0):
 			if (*name_only == 0):
-				*name_only = hpack_static_count() + j
+				*name_only = hpack_static_count + j
 			if (hpack_bytes_equal(t.value, t.value_len, h.value, h.value_len) != 0):
-				*full = hpack_static_count() + j
+				*full = hpack_static_count + j
 				return
 
 

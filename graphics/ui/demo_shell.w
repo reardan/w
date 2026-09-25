@@ -45,12 +45,8 @@ import lib.mem
 
 # How many documents the shell knows about. Two folders' worth, with the
 # second folder's files sharing the same tab strip.
-int ui_shell_doc_count():
-	return 5
-
-
-int ui_shell_folder_count():
-	return 2
+const int ui_shell_doc_count = 5
+const int ui_shell_folder_count = 2
 
 
 char* ui_shell_folder_name(int folder):
@@ -123,7 +119,7 @@ void ui_shell_init(ui_shell_state* st):
 	ui_textarea_init(&st.editor)
 	st.folder_open[0] = 1
 	st.folder_open[1] = 0
-	mem_fill[int32](st.open_docs, 0, ui_shell_doc_count())
+	mem_fill[int32](st.open_docs, 0, ui_shell_doc_count)
 	st.open_count = 0
 	st.active_tab = 0
 	st.loaded_doc = 0 - 1
@@ -138,7 +134,7 @@ void ui_shell_open_doc(ui_shell_state* st, int doc):
 			st.active_tab = i
 			return
 		i = i + 1
-	if (st.open_count >= ui_shell_doc_count()):
+	if (st.open_count >= ui_shell_doc_count):
 		return
 	st.open_docs[st.open_count] = doc
 	st.active_tab = st.open_count
@@ -185,7 +181,7 @@ void ui_shell_body(ui_context* ctx, ui_shell_state* st, int now_ms):
 	ui_render_rect(ctx.rndr, sidebar, ctx.theme.background)
 	ui_tree_begin(ctx, sidebar, &st.tree)
 	int folder = 0
-	while (folder < ui_shell_folder_count()):
+	while (folder < ui_shell_folder_count):
 		if (ui_tree_node(ctx, &st.tree, ui_shell_folder_name(folder), &st.folder_open[folder])):
 			int f = 0
 			while (f < ui_shell_folder_files(folder)):

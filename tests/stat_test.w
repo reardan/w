@@ -161,7 +161,7 @@ void test_file_mode_octal_and_parse():
 	assert_strings_equal(c"0644", file_mode_octal(420))
 	assert_strings_equal(c"4755", file_mode_octal(2541))
 	# Only the low 12 bits: the file-type bits are dropped.
-	assert_strings_equal(c"0755", file_mode_octal(FILE_S_IFDIR() | 493))
+	assert_strings_equal(c"0755", file_mode_octal(FILE_S_IFDIR | 493))
 	assert_equal(420, file_mode_parse_octal(c"644"))
 	assert_equal(420, file_mode_parse_octal(c"0644"))
 	assert_equal(-1, file_mode_parse_octal(c""))

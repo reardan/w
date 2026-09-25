@@ -34,15 +34,14 @@ void core_test_phdr(char* buf, int p, int type, int offset, int vaddr, int size)
 		core_test_putw(buf, p + 20, size)
 
 
-int core_test_size():
-	return 1024
+const int core_test_size = 1024
 
 
 # Lays out: header, two program headers, notes at 256, stack at 768.
 char* core_test_image():
 	int w = core_test_wsize()
-	char* buf = malloc(core_test_size())
-	mem_fill(buf, 0, core_test_size())
+	char* buf = malloc(core_test_size)
+	mem_fill(buf, 0, core_test_size)
 	buf[0] = 127
 	buf[1] = 'E'
 	buf[2] = 'L'
@@ -113,7 +112,7 @@ void core_test_write(char* path, char* data, int size):
 
 
 void test_core_file_reads_synthetic_core():
-	core_test_write(core_test_path(), core_test_image(), core_test_size())
+	core_test_write(core_test_path(), core_test_image(), core_test_size)
 	assert1(cf_load_core(core_test_path()) == 0)
 	assert_equal(core_test_wsize(), cf_wsize)
 	assert1(cf_exe_note != 0)

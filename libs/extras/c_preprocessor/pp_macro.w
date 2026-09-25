@@ -33,12 +33,8 @@ int cpp_macro_builtin_none():
 	return 0
 
 
-int cpp_macro_builtin_file():
-	return 1
-
-
-int cpp_macro_builtin_line():
-	return 2
+const int cpp_macro_builtin_file = 1
+const int cpp_macro_builtin_line = 2
 
 
 cpp_macro* cpp_macro_new(char* name):
@@ -112,7 +108,7 @@ cpp_token* cpp_token_append_list(cpp_token* left, cpp_token* right):
 
 
 cpp_token* cpp_make_placemarker():
-	return cpp_token_new(cpp_token_placemarker(), c"", c"<macro>", 0, 0, 0)
+	return cpp_token_new(cpp_token_placemarker, c"", c"<macro>", 0, 0, 0)
 
 
 cpp_token* cpp_arg_token(list[cpp_token*] args, int index):
@@ -213,17 +209,17 @@ void cpp_normalize_args(cpp_macro* macro, cpp_macro_args* args):
 
 
 cpp_token* cpp_builtin_expand(cpp_macro* macro, cpp_token* origin):
-	if (macro.builtin == cpp_macro_builtin_line()):
+	if (macro.builtin == cpp_macro_builtin_line):
 		char* text = itoa(origin.line)
 		cpp_token* token = cpp_token_new(cpp_token_number(), text, origin.filename, origin.line, origin.has_space, origin.at_bol)
 		free(text)
 		return token
-	if (macro.builtin == cpp_macro_builtin_file()):
+	if (macro.builtin == cpp_macro_builtin_file):
 		string_builder* s = string_new()
 		string_append_char(s, '"')
 		string_append(s, origin.filename)
 		string_append_char(s, '"')
-		cpp_token* token = cpp_token_new(cpp_token_string(), s.data, origin.filename, origin.line, origin.has_space, origin.at_bol)
+		cpp_token* token = cpp_token_new(cpp_token_string, s.data, origin.filename, origin.line, origin.has_space, origin.at_bol)
 		string_free(s)
 		return token
 	return 0
@@ -252,7 +248,7 @@ cpp_token* cpp_stringize_arg(cpp_token* arg):
 		need_space = 0
 		arg = arg.next
 	string_append_char(out, '"')
-	cpp_token* token = cpp_token_new(cpp_token_string(), out.data, c"<macro>", 0, 0, 0)
+	cpp_token* token = cpp_token_new(cpp_token_string, out.data, c"<macro>", 0, 0, 0)
 	string_free(out)
 	return token
 
@@ -377,8 +373,8 @@ cpp_token* cpp_process_paste(cpp_token* tokens):
 				return head.next
 			cpp_token* left = cpp_remove_last_token(&head)
 			if (left != 0):
-				if (left.kind == cpp_token_placemarker()):
-					if (right.kind != cpp_token_placemarker()):
+				if (left.kind == cpp_token_placemarker):
+					if (right.kind != cpp_token_placemarker):
 						tail = cpp_token_last(&head)
 						tail.next = right
 						tail = right
@@ -388,7 +384,7 @@ cpp_token* cpp_process_paste(cpp_token* tokens):
 						tail = cpp_token_last(&head)
 						token = right.next
 				else:
-					if (right.kind != cpp_token_placemarker()):
+					if (right.kind != cpp_token_placemarker):
 						cpp_paste_into(left, right)
 					tail = cpp_token_last(&head)
 					tail.next = left
@@ -397,7 +393,7 @@ cpp_token* cpp_process_paste(cpp_token* tokens):
 					token = right.next
 			else:
 				token = right.next
-		else if (token.kind == cpp_token_placemarker()):
+		else if (token.kind == cpp_token_placemarker):
 			if (cpp_token_is_punct(token.next, c"##")):
 				cpp_token* next = token.next
 				token.next = 0

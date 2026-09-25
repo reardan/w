@@ -56,34 +56,19 @@ import lib.container
 import structures.deque
 
 
-int task_state_ready():
-	return 0
-
-
-int task_state_waiting_fd():
-	return 1
-
-
-int task_state_waiting_timer():
-	return 2
-
-
-int task_state_waiting_task():
-	return 3
-
-
-int task_state_done():
-	return 4
+const int task_state_ready = 0
+const int task_state_waiting_fd = 1
+const int task_state_waiting_timer = 2
+const int task_state_waiting_task = 3
+const int task_state_done = 4
 
 
 # Parked on one or more wait queues (channel, lock, event, group).
-int task_state_waiting_queue():
-	return 5
+const int task_state_waiting_queue = 5
 
 
 # Parked until another thread wakes it (task_spawn_blocking).
-int task_state_waiting_external():
-	return 6
+const int task_state_waiting_external = 6
 
 
 # Errors delivered through awaits, negative-errno convention.
@@ -127,16 +112,9 @@ struct task_wait_queue:
 
 
 # Values for task_waiter.status.
-int task_waiter_pending():
-	return 0
-
-
-int task_waiter_completed():
-	return 1
-
-
-int task_waiter_closed():
-	return 2
+const int task_waiter_pending = 0
+const int task_waiter_completed = 1
+const int task_waiter_closed = 2
 
 
 struct task:
@@ -256,7 +234,7 @@ void task_waiter_init(task_waiter* w, task* owner):
 	w.queue = 0
 	w.owner = cast(void*, owner)
 	w.value = 0
-	w.status = task_waiter_pending()
+	w.status = task_waiter_pending
 
 
 void task_waiter_link(task_wait_queue* q, task_waiter* w):
@@ -288,7 +266,7 @@ void task_waiter_unlink(task_waiter* w):
 
 
 void task_make_ready(task_scheduler* s, task* t):
-	t.state = task_state_ready()
+	t.state = task_state_ready
 	deque_push_back[task*](s.ready, t)
 
 
@@ -313,7 +291,7 @@ void task_unpark(task* t):
 
 
 int task_is_parked(task* t):
-	return (t.state != task_state_ready()) && (t.state != task_state_done())
+	return (t.state != task_state_ready) && (t.state != task_state_done)
 
 
 # Wake a parked task with value (what its await returns). Returns 1, or
@@ -401,7 +379,7 @@ int task_park_on(task_wait_queue* q, task_waiter* w, int timeout_ms):
 	task* t = task_current()
 	task_waiter_link(q, w)
 	t.wait_one = w
-	return task_park(t, task_state_waiting_queue(), timeout_ms, task_err_timed_out())
+	return task_park(t, task_state_waiting_queue, timeout_ms, task_err_timed_out())
 
 
 /* Scheduler. */
@@ -428,12 +406,12 @@ task_group_done_fn* task_group_done_hook
 # The body returned or fell off the end: gen_next already unmapped its
 # stack, so gen_free only releases the generator object here.
 void task_complete(task_scheduler* s, task* t):
-	t.state = task_state_done()
+	t.state = task_state_done
 	s.active_count = s.active_count - 1
 	gen_free(t.gen)
 	t.gen = 0
 	if (cast(int, t.joiners) != 0):
-		task_wait_queue_fire_all(t.joiners, task_waiter_completed(), t.result)
+		task_wait_queue_fire_all(t.joiners, task_waiter_completed, t.result)
 	if (cast(int, t.group) != 0):
 		task_group_done_hook(t.group, t)
 	if (cast(int, s.on_done) != 0):
@@ -444,7 +422,7 @@ void task_complete(task_scheduler* s, task* t):
 
 # Switch into the task until its next suspension or completion.
 void task_resume(task_scheduler* s, task* t):
-	if (t.state == task_state_done()):
+	if (t.state == task_state_done):
 		return
 	task* previous = task_active_get()
 	task_active_set(t)
@@ -453,7 +431,7 @@ void task_resume(task_scheduler* s, task* t):
 	if (alive == 0):
 		task_complete(s, t)
 		return
-	if (t.state == task_state_ready()):
+	if (t.state == task_state_ready):
 		# task_yield_now (or a stray body-level yield): requeue.
 		deque_push_back[task*](s.ready, t)
 
@@ -495,7 +473,7 @@ task_scheduler* task_scheduler_new():
 task* task_spawn(task_scheduler* s, generator* g):
 	task* t = new task()
 	t.gen = g
-	t.state = task_state_ready()
+	t.state = task_state_ready
 	t.id = s.next_id
 	s.next_id = s.next_id + 1
 	t.name = 0
@@ -550,7 +528,7 @@ task* task_go(generator* g):
 # tasks in long-running programs, which would otherwise keep their
 # task struct until task_scheduler_free.
 void task_detach(task* t):
-	if (t.state == task_state_done()):
+	if (t.state == task_state_done):
 		task_reclaim(task_sched(t), t)
 		return
 	t.detached = 1
@@ -649,7 +627,7 @@ int task_await_fd_timeout(int fd, int events, int timeout_ms):
 	t.wait_fd = fd
 	t.wait_events = events
 	t.wait_watch = event_loop_add_watch(task_sched(t).loop, fd, events, task_on_fd_event, cast(void*, t))
-	return task_park(t, task_state_waiting_fd(), timeout_ms, task_err_timed_out())
+	return task_park(t, task_state_waiting_fd, timeout_ms, task_err_timed_out())
 
 
 int task_await_fd(int fd, int events):
@@ -665,7 +643,7 @@ int task_sleep_ms(int ms):
 		return err
 	if (ms < 0):
 		ms = 0
-	return task_park(t, task_state_waiting_timer(), ms, 0)
+	return task_park(t, task_state_waiting_timer, ms, 0)
 
 
 # Reschedule behind every currently ready task without waiting on
@@ -676,7 +654,7 @@ int task_yield_now():
 	int err = task_park_check(t)
 	if (err < 0):
 		return err
-	t.state = task_state_ready()
+	t.state = task_state_ready
 	t.wake_value = 0
 	__w_gen_yield(t.gen, 0)
 	return t.wake_value
@@ -694,7 +672,7 @@ int task_result(task* t):
 
 
 int task_done(task* t):
-	return t.state == task_state_done()
+	return t.state == task_state_done
 
 
 int task_cancelled(task* t):
@@ -707,7 +685,7 @@ int task_cancelled(task* t):
 # the same target. A detached target must still be running.
 int task_join_timeout(task* target, int timeout_ms):
 	task* t = task_current()
-	if (target.state == task_state_done()):
+	if (target.state == task_state_done):
 		return target.result
 	int err = task_park_check(t)
 	if (err < 0):
@@ -718,7 +696,7 @@ int task_join_timeout(task* target, int timeout_ms):
 	task_waiter_init(&w, t)
 	task_waiter_link(target.joiners, &w)
 	t.wait_one = &w
-	return task_park(t, task_state_waiting_task(), timeout_ms, task_err_timed_out())
+	return task_park(t, task_state_waiting_task, timeout_ms, task_err_timed_out())
 
 
 int task_join(task* target):
@@ -730,7 +708,7 @@ int task_join(task* target):
 # same way). The task still runs to completion; join it to observe
 # that. Returns 1, or 0 when it was already done or cancelled.
 int task_cancel(task* t):
-	if (t.state == task_state_done()):
+	if (t.state == task_state_done):
 		return 0
 	if (t.cancelled):
 		return 0
@@ -810,7 +788,7 @@ void task_group_on_child_done(void* context, task* child):
 		g.error = child.result
 		task_group_cancel(g)
 	if (g.active == 0):
-		task_wait_queue_fire_all(&g.waiters, task_waiter_completed(), 0)
+		task_wait_queue_fire_all(&g.waiters, task_waiter_completed, 0)
 
 
 task_group* task_group_new(task_scheduler* s):
@@ -862,7 +840,7 @@ int task_group_cancel(task_group* g):
 	task_scheduler* s = g.sched
 	for i in range(s.tasks.length):
 		task* t = s.tasks[i]
-		if ((cast(task_group*, t.group) == g) && (t.state != task_state_done())):
+		if ((cast(task_group*, t.group) == g) && (t.state != task_state_done)):
 			count = count + task_cancel(t)
 	return count
 
@@ -890,7 +868,7 @@ int task_group_wait(task_group* g):
 			t.shielded = 1
 		task_waiter_link(&g.waiters, &w)
 		t.wait_one = &w
-		int r = task_park(t, task_state_waiting_queue(), -1, 0)
+		int r = task_park(t, task_state_waiting_queue, -1, 0)
 		t.shielded = saved
 		if ((r < 0) && (g.cancelled == 0)):
 			interrupted = r
@@ -909,19 +887,19 @@ void task_group_free(task_group* g):
 /* Diagnostics. */
 
 char* task_state_name(int state):
-	if (state == task_state_ready()):
+	if (state == task_state_ready):
 		return c"ready"
-	if (state == task_state_waiting_fd()):
+	if (state == task_state_waiting_fd):
 		return c"waiting on fd"
-	if (state == task_state_waiting_timer()):
+	if (state == task_state_waiting_timer):
 		return c"sleeping"
-	if (state == task_state_waiting_task()):
+	if (state == task_state_waiting_task):
 		return c"joining"
-	if (state == task_state_done()):
+	if (state == task_state_done):
 		return c"done"
-	if (state == task_state_waiting_queue()):
+	if (state == task_state_waiting_queue):
 		return c"waiting on queue"
-	if (state == task_state_waiting_external()):
+	if (state == task_state_waiting_external):
 		return c"waiting on thread"
 	return c"unknown"
 
@@ -943,7 +921,7 @@ void task_dump_fd(task_scheduler* s, int fd):
 			write_string(fd, t.name)
 		write_string(fd, c": ")
 		write_string(fd, task_state_name(t.state))
-		if (t.state == task_state_waiting_fd()):
+		if (t.state == task_state_waiting_fd):
 			write_string(fd, c" ")
 			write_string(fd, itoa(t.wait_fd))
 		if (t.wait_timer_id != 0):

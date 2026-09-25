@@ -296,7 +296,7 @@ string_builder* cas_object_bytes(char* object_type, char* data, int length):
 # sha256(header + payload) as a malloc'd hex id. Streaming through
 # whash, so the payload is never copied.
 char* cas_id_from_header(string_builder* header, char* data, int length):
-	whash* h = whash_new(WHASH_SHA256())
+	whash* h = whash_new(WHASH_SHA256)
 	whash_update(h, header.data, header.length)
 	whash_update(h, data, length)
 	char* digest = malloc(32)
@@ -694,7 +694,7 @@ int cas_verify(wcas* s, char* id):
 		if (logical == 0):
 			return 0
 	char* digest = malloc(32)
-	whash_oneshot(WHASH_SHA256(), logical.data, logical.length, digest)
+	whash_oneshot(WHASH_SHA256, logical.data, logical.length, digest)
 	char* actual = cas_hex_encode(digest)
 	free(digest)
 	int match = strcmp(actual, id) == 0

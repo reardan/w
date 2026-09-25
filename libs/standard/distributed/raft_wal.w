@@ -108,20 +108,10 @@ import lib.bytes
 
 # ---- record tags --------------------------------------------------------------
 
-int raft_wal_tag_state():
-	return 1
-
-
-int raft_wal_tag_append():
-	return 2
-
-
-int raft_wal_tag_truncate():
-	return 3
-
-
-int raft_wal_tag_snapshot():
-	return 4
+const int raft_wal_tag_state = 1
+const int raft_wal_tag_append = 2
+const int raft_wal_tag_truncate = 3
+const int raft_wal_tag_snapshot = 4
 
 
 # ---- adapter state --------------------------------------------------------------
@@ -160,19 +150,19 @@ int raft_wal_decode_vote(int wire):
 # records, so a malformed payload here means a foreign writer.
 void raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 	int tag = p[0] & 255
-	if (tag == raft_wal_tag_state()):
+	if (tag == raft_wal_tag_state):
 		assert1(len == 13)
 		u64_load_le(rw.term, p + 1)
 		rw.voted_for = raft_wal_decode_vote(load_le32(p + 9))
 		return
-	if (tag == raft_wal_tag_append()):
+	if (tag == raft_wal_tag_append):
 		assert1(len >= 14)
 		assert1(load_le32(p + 10) == len - 14)
 		u64* t = u64_new()
 		u64_load_le(t, p + 2)
 		rw.entry_terms.push(t)
 		return
-	if (tag == raft_wal_tag_truncate()):
+	if (tag == raft_wal_tag_truncate):
 		assert1(len == 5)
 		int keep = load_le32(p + 1)
 		assert1(keep >= 0 && keep <= rw.entry_terms.length)
@@ -180,7 +170,7 @@ void raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 			u64* dropped = rw.entry_terms.pop()
 			u64_free(dropped)
 		return
-	if (tag == raft_wal_tag_snapshot()):
+	if (tag == raft_wal_tag_snapshot):
 		assert1(len >= 25)
 		u64_load_le(rw.snap_index, p + 1)
 		u64_load_le(rw.snap_term, p + 9)
@@ -286,7 +276,7 @@ void raft_wal_put_record(raft_wal* rw, char* payload, int len):
 # shadow pair is updated to match.
 void raft_wal_put_state(raft_wal* rw, raft* r):
 	char* srec = malloc(13)
-	srec[0] = raft_wal_tag_state()
+	srec[0] = raft_wal_tag_state
 	u64_save_le(srec + 1, r.current_term)
 	store_le32(srec + 9, raft_wal_encode_vote(r.voted_for))
 	raft_wal_put_record(rw, srec, 13)
@@ -302,7 +292,7 @@ void raft_wal_put_append(raft_wal* rw, raft* r, int i):
 	raft_entry* e = r.log[i]
 	int cmd_len = e.command_len
 	char* arec = malloc(14 + cmd_len)
-	arec[0] = raft_wal_tag_append()
+	arec[0] = raft_wal_tag_append
 	arec[1] = e.kind
 	u64_save_le(arec + 2, e.term)
 	store_le32(arec + 10, cmd_len)
@@ -324,7 +314,7 @@ int raft_wal_rewrite(raft_wal* rw, raft* r):
 	int ccount = r.snap_config.length
 	int coff = 21 + 4 * ccount
 	char* nrec = malloc(coff + 4 + blob_len)
-	nrec[0] = raft_wal_tag_snapshot()
+	nrec[0] = raft_wal_tag_snapshot
 	u64_save_le(nrec + 1, r.snap_last_index)
 	u64_save_le(nrec + 9, r.snap_last_term)
 	store_le32(nrec + 17, ccount)
@@ -372,7 +362,7 @@ int raft_wal_sync(raft_wal* rw, raft* r):
 	int agree = raft_wal_agree_len(rw, r)
 	if (rw.entry_terms.length > agree):
 		char* trec = malloc(5)
-		trec[0] = raft_wal_tag_truncate()
+		trec[0] = raft_wal_tag_truncate
 		store_le32(trec + 1, agree)
 		raft_wal_put_record(rw, trec, 5)
 		free(trec)
@@ -399,12 +389,12 @@ int raft_wal_sync(raft_wal* rw, raft* r):
 # copy) for every entry it discards.
 void raft_wal_replay_into(raft* r, char* p, int len):
 	int tag = p[0] & 255
-	if (tag == raft_wal_tag_state()):
+	if (tag == raft_wal_tag_state):
 		assert1(len == 13)
 		u64_load_le(r.current_term, p + 1)
 		r.voted_for = raft_wal_decode_vote(load_le32(p + 9))
 		return
-	if (tag == raft_wal_tag_append()):
+	if (tag == raft_wal_tag_append):
 		assert1(len >= 14)
 		int kind = p[1] & 255
 		int cmd_len = load_le32(p + 10)
@@ -419,7 +409,7 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		raft_note_entry_appended(r, raft_last_index(r), e)
 		u64_free(t)
 		return
-	if (tag == raft_wal_tag_truncate()):
+	if (tag == raft_wal_tag_truncate):
 		assert1(len == 5)
 		int keep = load_le32(p + 1)
 		assert1(keep >= 0 && keep <= r.log.length)
@@ -431,7 +421,7 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 			raft_entry* removed = r.log.pop()
 			raft_entry_free(removed)
 		return
-	if (tag == raft_wal_tag_snapshot()):
+	if (tag == raft_wal_tag_snapshot):
 		# resets the replay state (header): the replayed prefix is
 		# covered by the snapshot (a rewrite starts the wal with this
 		# record, so the log is normally empty here), commit and

@@ -59,20 +59,10 @@ int cd_id_size
 
 # Note type of the "W" executable-path note ("WEXE"); tools/wcore.w
 # reads it to find the binary when none is given.
-int cd_nt_exe_path():
-	return 0x57455845
-
-
-int cd_max_segs():
-	return 1024
-
-
-int cd_hdr_size():
-	return 131072
-
-
-int cd_maps_size():
-	return 262144
+const int cd_nt_exe_path = 0x57455845
+const int cd_max_segs = 1024
+const int cd_hdr_size = 131072
+const int cd_maps_size = 262144
 
 
 int cd_mmap(int size):
@@ -113,7 +103,7 @@ void cd_seg_set(int i, int k, int v):
 
 
 void cd_seg_add(int lo, int hi, int flags):
-	if (cd_nseg >= cd_max_segs()):
+	if (cd_nseg >= cd_max_segs):
 		return;
 	if (hi - lo <= 0):
 		return;
@@ -211,9 +201,9 @@ void crash_dump_prepare(char* template):
 	if (template[0] == 0):
 		return;
 	if (cd_hdr == 0):
-		cd_hdr = cast(char*, cd_mmap(cd_hdr_size()))
-		cd_maps = cast(char*, cd_mmap(cd_maps_size()))
-		cd_seg = cast(char*, cd_mmap(cd_max_segs() * 4 * __word_size__))
+		cd_hdr = cast(char*, cd_mmap(cd_hdr_size))
+		cd_maps = cast(char*, cd_mmap(cd_maps_size))
+		cd_seg = cast(char*, cd_mmap(cd_max_segs * 4 * __word_size__))
 		cd_path = cast(char*, cd_mmap(4096))
 		cd_exe = cast(char*, cd_mmap(4096))
 	if ((cd_hdr == 0) || (cd_maps == 0) || (cd_seg == 0) || (cd_path == 0) || (cd_exe == 0)):
@@ -289,7 +279,7 @@ int cd_collect_maps():
 	if (f < 0):
 		return 0
 	int got = 0
-	int cap = cd_maps_size() - 1
+	int cap = cd_maps_size - 1
 	while (got < cap):
 		int r = read(f, &cd_maps[got], cap - got)
 		if (r <= 0):
@@ -536,7 +526,7 @@ int crash_dump_write(int sig, int context):
 	int notes_size = cd_notes_size()
 	int data_off = notes_off + notes_size
 	data_off = data_off + ((4096 - (data_off & 4095)) & 4095)
-	if (data_off > cd_hdr_size()):
+	if (data_off > cd_hdr_size):
 		close(fd)
 		return 0
 
@@ -645,7 +635,7 @@ int crash_dump_write(int sig, int context):
 	else:
 		cd_put32(d + 12, cd_fault_addr(sig, context))
 	# W_NT_EXE_PATH
-	d = cd_note(d + 128, c"W", 2, cd_exe_len + 1, cd_nt_exe_path())
+	d = cd_note(d + 128, c"W", 2, cd_exe_len + 1, cd_nt_exe_path)
 	k = 0
 	while (k < cd_exe_len):
 		cd_put8(d + k, cd_exe[k])

@@ -107,14 +107,14 @@ int asm_x86_u32(asm_x86_dec* d):
 ############################## operand helpers ################################
 
 void asm_x86_set_reg(asm_operand* op, int rclass, int number, int size):
-	op.kind = ASM_OP_REG()
+	op.kind = ASM_OP_REG
 	op.rclass = rclass
 	op.reg = number
 	op.size = size
 
 
 void asm_x86_set_imm(asm_operand* op, int value, int size):
-	op.kind = ASM_OP_IMM()
+	op.kind = ASM_OP_IMM
 	op.imm = value
 	op.size = size
 
@@ -130,7 +130,7 @@ void asm_x86_decode_rm(asm_x86_dec* d, int modrm, asm_operand* rm, int rm_class,
 	if (mod == 3):
 		asm_x86_set_reg(rm, rm_class, rm_field | (rex_b << 3), rm_size)
 		return
-	rm.kind = ASM_OP_MEM()
+	rm.kind = ASM_OP_MEM
 	rm.size = rm_size
 	rm.base = -1
 	rm.index = -1
@@ -157,7 +157,7 @@ void asm_x86_decode_rm(asm_x86_dec* d, int modrm, asm_operand* rm, int rm_class,
 	else if (rm_field == 5 && mod == 0):
 		# mod=0 rm=5: [rip+disp32] on x64, absolute [disp32] on x86.
 		if (d.mode == 8):
-			rm.base = ASM_BASE_RIP()
+			rm.base = ASM_BASE_RIP
 		rm.disp = asm_x86_u32(d)
 		rm.disp_size = 4
 	else:
@@ -174,8 +174,8 @@ void asm_x86_decode_rm(asm_x86_dec* d, int modrm, asm_operand* rm, int rm_class,
 # current operand size.
 void asm_x86_modrm_gp(asm_x86_dec* d, asm_operand* reg, asm_operand* rm):
 	int modrm = asm_x86_u8(d)
-	asm_x86_set_reg(reg, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), d.opsize)
-	asm_x86_decode_rm(d, modrm, rm, ASM_RCLASS_GP(), d.opsize)
+	asm_x86_set_reg(reg, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), d.opsize)
+	asm_x86_decode_rm(d, modrm, rm, ASM_RCLASS_GP, d.opsize)
 
 
 ############################### opcode groups ################################
@@ -212,7 +212,7 @@ void asm_x86_rel_target(asm_insn* insn, asm_x86_dec* d, int rel):
 		text = asm_x86_concat(sign, itoa(magnitude))
 	else:
 		text = asm_x86_concat(sign, asm_hex_min(magnitude))
-	insn.op1.kind = ASM_OP_LABEL()
+	insn.op1.kind = ASM_OP_LABEL
 	insn.op1.label = text
 	insn.branch_target = insn.address + target
 
@@ -235,7 +235,7 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 		if (cast(int, g8) == 0):
 			return 0
 		insn.mnemonic = g8
-		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), d.opsize)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, d.opsize)
 		asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
 		return d.pos - start
 
@@ -249,13 +249,13 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 	if (op >= 0x90 && op <= 0x9f):
 		insn.mnemonic = asm_x86_concat(c"set", asm_x86_cc(op - 0x90))
 		int modrm = asm_x86_u8(d)
-		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), 1)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, 1)
 		return d.pos - start
 
 	# bswap r32
 	if (op >= 0xc8 && op <= 0xcf):
 		insn.mnemonic = c"bswap"
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (op - 0xc8) | (asm_x86_rex_b(d) << 3), d.opsize)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, (op - 0xc8) | (asm_x86_rex_b(d) << 3), d.opsize)
 		return d.pos - start
 
 	# movzx / movsx r32, r/m8|r/m16
@@ -268,8 +268,8 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 		else:
 			insn.mnemonic = c"movsx"
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), d.opsize)
-		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_GP(), src_size)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), d.opsize)
+		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_GP, src_size)
 		return d.pos - start
 
 	# imul r32, r/m32
@@ -285,8 +285,8 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 		else:
 			insn.mnemonic = c"ucomiss"
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), asm_x86_reg_field(d, modrm), 16)
-		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM(), 16)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM, asm_x86_reg_field(d, modrm), 16)
+		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM, 16)
 		return d.pos - start
 
 	# movd/movq xmm, r/m (66 0f 6e) and r/m, xmm (66 0f 7e). REX.W selects
@@ -300,10 +300,10 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 		int modrm = asm_x86_u8(d)
 		asm_operand xmm
 		asm_operand_clear(&xmm)
-		asm_x86_set_reg(&xmm, ASM_RCLASS_XMM(), asm_x86_reg_field(d, modrm), 16)
+		asm_x86_set_reg(&xmm, ASM_RCLASS_XMM, asm_x86_reg_field(d, modrm), 16)
 		asm_operand rm
 		asm_operand_clear(&rm)
-		asm_x86_decode_rm(d, modrm, &rm, ASM_RCLASS_GP(), gsize)
+		asm_x86_decode_rm(d, modrm, &rm, ASM_RCLASS_GP, gsize)
 		if (op == 0x6e):
 			insn.op1 = xmm
 			insn.op2 = rm
@@ -319,8 +319,8 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 		else:
 			insn.mnemonic = c"movss"
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), asm_x86_reg_field(d, modrm), 16)
-		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM(), 16)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM, asm_x86_reg_field(d, modrm), 16)
+		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM, 16)
 		return d.pos - start
 
 	# movss/movsd store: f3/f2 0f 11  xmm -> r/m
@@ -332,8 +332,8 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 		int modrm = asm_x86_u8(d)
 		asm_operand xmm
 		asm_operand_clear(&xmm)
-		asm_x86_set_reg(&xmm, ASM_RCLASS_XMM(), asm_x86_reg_field(d, modrm), 16)
-		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_XMM(), 16)
+		asm_x86_set_reg(&xmm, ASM_RCLASS_XMM, asm_x86_reg_field(d, modrm), 16)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_XMM, 16)
 		insn.op2 = xmm
 		return d.pos - start
 
@@ -344,8 +344,8 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 		else:
 			insn.mnemonic = c"cvtsi2ss"
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), asm_x86_reg_field(d, modrm), 16)
-		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_GP(), d.opsize)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM, asm_x86_reg_field(d, modrm), 16)
+		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_GP, d.opsize)
 		return d.pos - start
 
 	# cvttss2si/cvttsd2si r32, xmm (f3/f2 0f 2c). REX.W widens the GP dest.
@@ -355,8 +355,8 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 		else:
 			insn.mnemonic = c"cvttss2si"
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), d.opsize)
-		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM(), 16)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), d.opsize)
+		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM, 16)
 		return d.pos - start
 
 	# scalar-float ALU (add/mul/sub/div/cvt between ss/sd)
@@ -364,8 +364,8 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 	if (cast(int, sse) != 0):
 		insn.mnemonic = sse
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), asm_x86_reg_field(d, modrm), 16)
-		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM(), 16)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM, asm_x86_reg_field(d, modrm), 16)
+		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM, 16)
 		return d.pos - start
 
 	return 0
@@ -394,9 +394,9 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	asm_insn_clear(insn)
 	insn.address = address
 	if (mode == 8):
-		insn.arch = ASM_ARCH_X64()
+		insn.arch = ASM_ARCH_X64
 	else:
-		insn.arch = ASM_ARCH_X86()
+		insn.arch = ASM_ARCH_X86
 
 	asm_x86_dec dec
 	dec.bytes = bytes
@@ -469,8 +469,8 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		if (col == 0):
 			# r/m8, r8
 			int modrm = asm_x86_u8(d)
-			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), 1)
-			asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), 1)
+			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), 1)
+			asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, 1)
 			insn.mnemonic = mnemonic
 			insn.length = d.pos - start
 			return insn.length
@@ -493,7 +493,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		if (col == 5):
 			# eax, imm(16/32)
 			insn.mnemonic = mnemonic
-			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), 0, d.opsize)
+			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, 0, d.opsize)
 			if (d.opsize == 2):
 				asm_x86_set_imm(&insn.op2, asm_x86_u16(d), 2)
 			else:
@@ -505,10 +505,10 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	if (op >= 0x40 && op <= 0x4f):
 		if (op < 0x48):
 			insn.mnemonic = c"inc"
-			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), op - 0x40, d.opsize)
+			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, op - 0x40, d.opsize)
 		else:
 			insn.mnemonic = c"dec"
-			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), op - 0x48, d.opsize)
+			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, op - 0x48, d.opsize)
 		insn.length = d.pos - start
 		return insn.length
 
@@ -516,12 +516,12 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	# (no REX.W needed); REX.B extends the register to r8-r15.
 	if (op >= 0x50 && op <= 0x57):
 		insn.mnemonic = c"push"
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (op - 0x50) | (asm_x86_rex_b(d) << 3), asm_x86_stack_opsize(d))
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, (op - 0x50) | (asm_x86_rex_b(d) << 3), asm_x86_stack_opsize(d))
 		insn.length = d.pos - start
 		return insn.length
 	if (op >= 0x58 && op <= 0x5f):
 		insn.mnemonic = c"pop"
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (op - 0x58) | (asm_x86_rex_b(d) << 3), asm_x86_stack_opsize(d))
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, (op - 0x58) | (asm_x86_rex_b(d) << 3), asm_x86_stack_opsize(d))
 		insn.length = d.pos - start
 		return insn.length
 
@@ -578,7 +578,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	if (op == 0x81 || op == 0x83):
 		int modrm = asm_x86_u8(d)
 		insn.mnemonic = asm_x86_group_name(1, (modrm >> 3) & 7)
-		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), d.opsize)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, d.opsize)
 		if (op == 0x81):
 			if (d.opsize == 2):
 				asm_x86_set_imm(&insn.op2, asm_x86_s16(d), 2)
@@ -596,8 +596,8 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		if (op == 0x84):
 			size = 1
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), size)
-		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), size)
+		asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), size)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, size)
 		insn.length = d.pos - start
 		return insn.length
 
@@ -612,8 +612,8 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		asm_operand_clear(&reg)
 		asm_operand rm
 		asm_operand_clear(&rm)
-		asm_x86_set_reg(&reg, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), size)
-		asm_x86_decode_rm(d, modrm, &rm, ASM_RCLASS_GP(), size)
+		asm_x86_set_reg(&reg, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), size)
+		asm_x86_decode_rm(d, modrm, &rm, ASM_RCLASS_GP, size)
 		if (op == 0x88 || op == 0x89):
 			insn.op1 = rm
 			insn.op2 = reg
@@ -637,8 +637,8 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 			insn.mnemonic = c"nop"
 		else:
 			insn.mnemonic = c"xchg"
-			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (op - 0x90) | (asm_x86_rex_b(d) << 3), d.opsize)
-			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP(), 0, d.opsize)
+			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, (op - 0x90) | (asm_x86_rex_b(d) << 3), d.opsize)
+			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP, 0, d.opsize)
 		insn.length = d.pos - start
 		return insn.length
 
@@ -663,7 +663,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	# mov r8, imm8 (0xb0-0xb7)
 	if (op >= 0xb0 && op <= 0xb7):
 		insn.mnemonic = c"mov"
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (op - 0xb0) | (asm_x86_rex_b(d) << 3), 1)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, (op - 0xb0) | (asm_x86_rex_b(d) << 3), 1)
 		asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
 		insn.length = d.pos - start
 		return insn.length
@@ -671,7 +671,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	# mov r32, imm32 (0xb8-0xbf)
 	if (op >= 0xb8 && op <= 0xbf):
 		insn.mnemonic = c"mov"
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), (op - 0xb8) | (asm_x86_rex_b(d) << 3), d.opsize)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, (op - 0xb8) | (asm_x86_rex_b(d) << 3), d.opsize)
 		if (d.opsize == 8):
 			# movabs r64, imm64: low then high 32-bit halves.
 			asm_x86_set_imm(&insn.op2, asm_x86_u32(d), 8)
@@ -687,7 +687,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	if (op == 0xc1):
 		int modrm = asm_x86_u8(d)
 		insn.mnemonic = asm_x86_group_name(2, (modrm >> 3) & 7)
-		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), d.opsize)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, d.opsize)
 		asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
 		insn.length = d.pos - start
 		return insn.length
@@ -696,9 +696,9 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	if (op == 0xd1 || op == 0xd3):
 		int modrm = asm_x86_u8(d)
 		insn.mnemonic = asm_x86_group_name(2, (modrm >> 3) & 7)
-		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), d.opsize)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, d.opsize)
 		if (op == 0xd3):
-			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP(), 1, 1)
+			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP, 1, 1)
 		else:
 			asm_x86_set_imm(&insn.op2, 1, 1)
 		insn.length = d.pos - start
@@ -710,7 +710,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		int ext = (modrm >> 3) & 7
 		if (ext == 3):
 			insn.mnemonic = c"fstp"
-			asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_X87(), 4)
+			asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_X87, 4)
 			insn.length = d.pos - start
 			return insn.length
 		return asm_x86_unknown(insn, bytes)
@@ -759,7 +759,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		if (cast(int, mnemonic) == 0):
 			return asm_x86_unknown(insn, bytes)
 		insn.mnemonic = mnemonic
-		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), size)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, size)
 		if (ext == 0):
 			# test r/m, imm
 			if (size == 1):
@@ -784,7 +784,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		# REX.W via opsize.
 		if (ext >= 2):
 			size = asm_x86_stack_opsize(d)
-		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), size)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, size)
 		insn.length = d.pos - start
 		return insn.length
 
@@ -792,8 +792,8 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	if (op == 0x63 && d.mode == 8):
 		insn.mnemonic = c"movsxd"
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP(), asm_x86_reg_field(d, modrm), d.opsize)
-		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_GP(), 4)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, asm_x86_reg_field(d, modrm), d.opsize)
+		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_GP, 4)
 		insn.length = d.pos - start
 		return insn.length
 
@@ -821,14 +821,14 @@ int asm_x86_decode_vex(asm_x86_dec* d, asm_insn* insn, char* bytes, int length, 
 	if (b1 == 0xe2 && b2 == 0x79 && op == 0x13):
 		insn.mnemonic = c"vcvtph2ps"
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), (modrm >> 3) & 7, 16)
-		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM(), 16)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM, (modrm >> 3) & 7, 16)
+		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM, 16)
 		return d.pos - start
 	if (b1 == 0xe3 && b2 == 0x79 && op == 0x1d):
 		insn.mnemonic = c"vcvtps2ph"
 		int modrm = asm_x86_u8(d)
-		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM(), modrm & 7, 16)
-		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM(), 16)
+		asm_x86_set_reg(&insn.op1, ASM_RCLASS_XMM, modrm & 7, 16)
+		asm_x86_decode_rm(d, modrm, &insn.op2, ASM_RCLASS_XMM, 16)
 		asm_x86_set_imm(&insn.op3, asm_x86_u8(d), 1)
 		return d.pos - start
 	return 0

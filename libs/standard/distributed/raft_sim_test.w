@@ -26,7 +26,7 @@ void test_election_clean_network():
 	assert_equal(lid, rsim_leader(c))
 	for i in range(3):
 		if ((i + 1) != lid):
-			assert_equal(raft_follower(), raft_state(c.nodes[i]))
+			assert_equal(raft_follower, raft_state(c.nodes[i]))
 			assert_equal(lid, raft_leader_hint(c.nodes[i]))
 	rsim_free(c)
 
@@ -81,7 +81,7 @@ void test_no_commit_without_majority():
 	rsim_run(c, 100)
 	# the isolated leader keeps its throne (it cannot learn otherwise)
 	# and the uncommitted entry, but the commit index stays 0
-	assert_equal(raft_leader(), raft_state(old_leader))
+	assert_equal(raft_leader, raft_state(old_leader))
 	assert_equal(1, raft_log_length(old_leader))
 	assert_equal(0, raft_commit_int(old_leader))
 	# nothing applies anywhere
@@ -125,7 +125,7 @@ void test_partition_heal_converges():
 	rsim_heal_all(c)
 	rsim_run(c, 200)
 	# the old leader stepped down on contact with the higher term
-	assert_equal(raft_follower(), raft_state(old_leader))
+	assert_equal(raft_follower, raft_state(old_leader))
 	rsim_assert_logs_identical(c)
 	for i in range(3):
 		raft* r = c.nodes[i]
@@ -167,7 +167,7 @@ void test_leader_loss_reelection():
 	rsim_run(c, 200)
 	# the old leader rejoined as a follower; one leader stands, everyone
 	# shares its term and hint, and the pinned entry is everywhere
-	assert_equal(raft_follower(), raft_state(c.nodes[old_lid - 1]))
+	assert_equal(raft_follower, raft_state(c.nodes[old_lid - 1]))
 	int lid = rsim_leader(c)
 	assert1(lid >= 1 && lid <= 3)
 	assert1(lid != old_lid)
@@ -217,8 +217,8 @@ void test_five_node_two_partitions():
 	int k = 0
 	while (k < 200):
 		rsim_step(c)
-		assert1(raft_state(c.nodes[0]) != raft_leader())
-		assert1(raft_state(c.nodes[1]) != raft_leader())
+		assert1(raft_state(c.nodes[0]) != raft_leader)
+		assert1(raft_state(c.nodes[1]) != raft_leader)
 		k = k + 1
 	int maj_lid = rsim_leader(c)
 	assert1(maj_lid >= 3 && maj_lid <= 5)
@@ -226,8 +226,8 @@ void test_five_node_two_partitions():
 	k = 0
 	while (k < 50):
 		rsim_step(c)
-		assert1(raft_state(c.nodes[0]) != raft_leader())
-		assert1(raft_state(c.nodes[1]) != raft_leader())
+		assert1(raft_state(c.nodes[0]) != raft_leader)
+		assert1(raft_state(c.nodes[1]) != raft_leader)
 		k = k + 1
 	# committed on the majority side only
 	int i = 2
@@ -528,7 +528,7 @@ void test_snapshot_restart_from_wal():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)
 	assert_equal(0, out.length)
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	# the win no-op committed at index 1; three real commands follow
 	assert_equal(1, raft_propose(r, c"s1", 2, 100, out))
 	assert_equal(1, raft_propose(r, c"s2", 2, 101, out))
@@ -578,7 +578,7 @@ void test_snapshot_restart_from_wal():
 	raft_start(r2, 200)
 	raft_tick(r2, 300, out)
 	assert_equal(0, out.length)
-	assert_equal(raft_leader(), raft_state(r2))
+	assert_equal(raft_leader, raft_state(r2))
 	assert_equal(2, raft_term_int(r2))
 	assert_equal(7, raft_commit_int(r2))
 	# pop_apply yields exactly the post-snapshot entries, then the

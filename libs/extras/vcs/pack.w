@@ -63,7 +63,7 @@ Base selection (the writer's pairing heuristic, git's sliding-window
 scheme scaled down): objects are sorted by (logical type tag, size
 descending, id) so related objects -- successive versions of similar
 content -- land next to each other, then each object tries a delta
-against the up-to-PACK_DELTA_WINDOW() immediately preceding objects
+against the up-to-PACK_DELTA_WINDOW immediately preceding objects
 in that order (skipping candidates whose own chain depth is already
 at the bound). The smallest raw opcode stream that also beats the
 object's own size is the one candidate that gets deflated, and the
@@ -157,6 +157,8 @@ import libs.extras.vcs.delta
 import libs.extras.vcs.__arch__.fsops
 import lib.mem
 
+const int PACK_DELTA_WINDOW = 8
+
 
 /* Constants */
 
@@ -189,20 +191,14 @@ char* PACK_MAGIC_V2():
 # Index-line encoding kinds (v2): 'f' = full (the zlib stream inflates
 # to the object's logical bytes), 'd' = delta (it inflates to a delta.w
 # opcode stream against another entry of the same pack).
-int PACK_ENTRY_FULL():
-	return 'f'
-
-
-int PACK_ENTRY_DELTA():
-	return 'd'
+const int PACK_ENTRY_FULL = 'f'
+const int PACK_ENTRY_DELTA = 'd'
 
 
 # How many immediately preceding objects (in the writer's sorted order)
 # are tried as delta bases for each object -- git's sliding window,
 # scaled to this store's size. Purely a write-time effort/ratio knob:
 # packs written under any window read back identically.
-int PACK_DELTA_WINDOW():
-	return 8
 
 
 # "<root>/packs" (owned by the caller).
@@ -364,12 +360,12 @@ wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 			id = path_clone_range(data + pos, 64)
 			pos = pos + 64
 			valid = cas_valid_id(id) && ((id in entries) == 0)
-		int kind = PACK_ENTRY_FULL()
+		int kind = PACK_ENTRY_FULL
 		if (version == 2):
 			valid = valid && pack_expect_char(data, length, &pos, ' ')
 			if (valid && (pos < length)):
 				kind = data[pos] & 255
-				valid = (kind == PACK_ENTRY_FULL()) || (kind == PACK_ENTRY_DELTA())
+				valid = (kind == PACK_ENTRY_FULL) || (kind == PACK_ENTRY_DELTA)
 				pos = pos + 1
 			else:
 				valid = 0
@@ -388,7 +384,7 @@ wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 			valid = valid && (ulen >= 0)
 		int rlen = ulen
 		char* base_id = 0
-		if (valid && (kind == PACK_ENTRY_DELTA())):
+		if (valid && (kind == PACK_ENTRY_DELTA)):
 			valid = pack_expect_char(data, length, &pos, ' ')
 			if (valid):
 				rlen = pack_parse_uint(data, length, &pos)
@@ -483,7 +479,7 @@ string_builder* pack_file_get_hops(wpack_file* p, char* id, int hops_remaining):
 	string_builder* stream = pack_entry_inflate(p, e)
 	if (stream == 0):
 		return 0
-	if (e.kind != PACK_ENTRY_DELTA()):
+	if (e.kind != PACK_ENTRY_DELTA):
 		return stream
 	if (hops_remaining <= 0):
 		string_free(stream)
@@ -844,7 +840,7 @@ int pack_plan_compare(pack_plan* a, pack_plan* b):
 string_builder* pack_pick_delta(list[pack_plan*] plans, int i, int* best_index):
 	pack_plan* target = plans[i]
 	string_builder* best = 0
-	int j = i - PACK_DELTA_WINDOW()
+	int j = i - PACK_DELTA_WINDOW
 	if (j < 0):
 		j = 0
 	while (j < i):
@@ -936,9 +932,9 @@ wresult[pack_stats*]* pack_store_loose(wcas* s, int prune):
 		string_append(index_lines, pl.id)
 		string_append_char(index_lines, ' ')
 		if (delta_z != 0):
-			string_append_char(index_lines, PACK_ENTRY_DELTA())
+			string_append_char(index_lines, PACK_ENTRY_DELTA)
 		else:
-			string_append_char(index_lines, PACK_ENTRY_FULL())
+			string_append_char(index_lines, PACK_ENTRY_FULL)
 		string_append_char(index_lines, ' ')
 		string_append_int(index_lines, body.length)
 		string_append_char(index_lines, ' ')
@@ -979,7 +975,7 @@ wresult[pack_stats*]* pack_store_loose(wcas* s, int prune):
 	string_free(body)
 
 	char* digest = malloc(32)
-	whash_oneshot(WHASH_SHA256(), file_bytes.data, file_bytes.length, digest)
+	whash_oneshot(WHASH_SHA256, file_bytes.data, file_bytes.length, digest)
 	char* name_hex = cas_hex_encode(digest)
 	free(digest)
 

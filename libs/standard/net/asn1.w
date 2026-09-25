@@ -23,32 +23,13 @@ import lib.mem
 
 # ---- universal tags (and the X.509 context tags built from them) -------------
 
-int ASN1_BOOLEAN():
-	return 1
-
-
-int ASN1_INTEGER():
-	return 2
-
-
-int ASN1_BIT_STRING():
-	return 3
-
-
-int ASN1_OCTET_STRING():
-	return 4
-
-
-int ASN1_NULL():
-	return 5
-
-
-int ASN1_OID():
-	return 6
-
-
-int ASN1_UTF8STRING():
-	return 12
+const int ASN1_BOOLEAN = 1
+const int ASN1_INTEGER = 2
+const int ASN1_BIT_STRING = 3
+const int ASN1_OCTET_STRING = 4
+const int ASN1_NULL = 5
+const int ASN1_OID = 6
+const int ASN1_UTF8STRING = 12
 
 
 int ASN1_SEQUENCE():
@@ -59,20 +40,10 @@ int ASN1_SET():
 	return 49    # 0x31: SET, constructed
 
 
-int ASN1_PRINTABLESTRING():
-	return 19
-
-
-int ASN1_IA5STRING():
-	return 22
-
-
-int ASN1_UTCTIME():
-	return 23
-
-
-int ASN1_GENERALIZEDTIME():
-	return 24
+const int ASN1_PRINTABLESTRING = 19
+const int ASN1_IA5STRING = 22
+const int ASN1_UTCTIME = 23
+const int ASN1_GENERALIZEDTIME = 24
 
 
 # Context-specific tag [n], constructed (0xa0 | n).
@@ -208,7 +179,7 @@ int asn1_integer_minimal(char* data, int start, int len):
 int asn1_read_integer(asn1* r, int* out_start, int* out_len):
 	int start = 0
 	int len = 0
-	if (asn1_expect(r, ASN1_INTEGER(), &start, &len) == 0):
+	if (asn1_expect(r, ASN1_INTEGER, &start, &len) == 0):
 		return 0
 	if (asn1_integer_minimal(r.data, start, len) == 0):
 		return 0
@@ -268,7 +239,7 @@ int asn1_read_positive_integer(asn1* r, int* out_start, int* out_len):
 int asn1_read_boolean(asn1* r, int* out_value):
 	int start = 0
 	int len = 0
-	if (asn1_expect(r, ASN1_BOOLEAN(), &start, &len) == 0):
+	if (asn1_expect(r, ASN1_BOOLEAN, &start, &len) == 0):
 		return 0
 	if (len != 1):
 		return 0
@@ -288,7 +259,7 @@ int asn1_read_boolean(asn1* r, int* out_value):
 int asn1_read_bitstring_bytes(asn1* r, int* out_start, int* out_len):
 	int start = 0
 	int len = 0
-	if (asn1_expect(r, ASN1_BIT_STRING(), &start, &len) == 0):
+	if (asn1_expect(r, ASN1_BIT_STRING, &start, &len) == 0):
 		return 0
 	if (len < 1):
 		return 0

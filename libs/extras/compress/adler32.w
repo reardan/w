@@ -15,8 +15,7 @@ differently on a 32- vs 64-bit host.
 */
 
 
-int adler32_mod():
-	return 65521
+const int adler32_mod = 65521
 
 
 # Continues a checksum: adler=1 starts a fresh one -- the algorithm's true
@@ -27,7 +26,7 @@ int adler32_mod():
 int adler32_update(int adler, char* data, int length):
 	if (length < 0):
 		length = 0
-	int mod = adler32_mod()
+	int mod = adler32_mod
 	int s1 = adler & 65535
 	int s2 = shr(adler, 16) & 65535
 	for i in range(length):

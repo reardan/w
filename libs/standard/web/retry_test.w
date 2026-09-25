@@ -63,7 +63,7 @@ void test_retry_should_retry_statuses():
 	http_response_free(r200)
 
 	# A transport error (status 0) is always retryable.
-	http_response* rerr = retry_test_resp(0, http_error_connect())
+	http_response* rerr = retry_test_resp(0, http_error_connect)
 	assert_equal(1, retry_should_retry(p, 0, rerr))
 	http_response_free(rerr)
 

@@ -21,12 +21,8 @@ import lib.bytes
 import lib.mem
 
 
-int RSA_HASH_SHA256():
-	return 256
-
-
-int RSA_HASH_SHA384():
-	return 384
+const int RSA_HASH_SHA256 = 256
+const int RSA_HASH_SHA384 = 384
 
 
 # DigestInfo ASN.1 prefixes (the bytes preceding the raw digest).
@@ -38,8 +34,7 @@ char* rsa_digestinfo_sha384():
 	return c"\x30\x41\x30\x0d\x06\x09\x60\x86\x48\x01\x65\x03\x04\x02\x02\x05\x00\x04\x30"
 
 
-int RSA_DIGESTINFO_LEN():
-	return 19
+const int RSA_DIGESTINFO_LEN = 19
 
 
 # ---- RSA primitive ----------------------------------------------------------
@@ -78,10 +73,10 @@ int rsa_pkcs1v15_verify(char* n, int nlen, char* e, int elen, char* sig, int sig
 	int k = nlen
 	char* prefix = rsa_digestinfo_sha256()
 	int diglen = 32
-	if (hash_alg == RSA_HASH_SHA384()):
+	if (hash_alg == RSA_HASH_SHA384):
 		prefix = rsa_digestinfo_sha384()
 		diglen = 48
-	int prefixlen = RSA_DIGESTINFO_LEN()
+	int prefixlen = RSA_DIGESTINFO_LEN
 	int tlen = prefixlen + diglen
 	# PKCS#1 v1.5 requires at least 8 bytes of 0xFF padding.
 	if (k < tlen + 11):
@@ -124,11 +119,11 @@ int rsa_pkcs1v15_verify(char* n, int nlen, char* e, int elen, char* sig, int sig
 
 
 int rsa_pkcs1v15_verify_sha256(char* n, int nlen, char* e, int elen, char* sig, int siglen, char* digest):
-	return rsa_pkcs1v15_verify(n, nlen, e, elen, sig, siglen, digest, RSA_HASH_SHA256())
+	return rsa_pkcs1v15_verify(n, nlen, e, elen, sig, siglen, digest, RSA_HASH_SHA256)
 
 
 int rsa_pkcs1v15_verify_sha384(char* n, int nlen, char* e, int elen, char* sig, int siglen, char* digest):
-	return rsa_pkcs1v15_verify(n, nlen, e, elen, sig, siglen, digest, RSA_HASH_SHA384())
+	return rsa_pkcs1v15_verify(n, nlen, e, elen, sig, siglen, digest, RSA_HASH_SHA384)
 
 
 # ---- MGF1 -------------------------------------------------------------------
@@ -158,7 +153,7 @@ void mgf1(int whash_alg, char* seed, int seedlen, int mask_len, char* out):
 
 # out[0 .. mask_len) = MGF1(seed, mask_len) with SHA-256.
 void mgf1_sha256(char* seed, int seedlen, int mask_len, char* out):
-	mgf1(WHASH_SHA256(), seed, seedlen, mask_len, out)
+	mgf1(WHASH_SHA256, seed, seedlen, mask_len, out)
 
 
 # ---- PSS (sLen = hLen) --------------------------------------------------------
@@ -253,9 +248,9 @@ int rsa_pss_verify(char* n, int nlen, char* e, int elen, char* sig, int siglen, 
 
 # PSS with SHA-256 and MGF1-SHA256, salt length 32.
 int rsa_pss_verify_sha256(char* n, int nlen, char* e, int elen, char* sig, int siglen, char* mhash):
-	return rsa_pss_verify(n, nlen, e, elen, sig, siglen, mhash, WHASH_SHA256())
+	return rsa_pss_verify(n, nlen, e, elen, sig, siglen, mhash, WHASH_SHA256)
 
 
 # PSS with SHA-384 and MGF1-SHA384, salt length 48.
 int rsa_pss_verify_sha384(char* n, int nlen, char* e, int elen, char* sig, int siglen, char* mhash):
-	return rsa_pss_verify(n, nlen, e, elen, sig, siglen, mhash, WHASH_SHA384())
+	return rsa_pss_verify(n, nlen, e, elen, sig, siglen, mhash, WHASH_SHA384)

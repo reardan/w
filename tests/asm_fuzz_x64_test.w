@@ -23,6 +23,6 @@ import tests.asm_fuzz_x86_common
 
 
 int main():
-	asm_fuzz_x86_run(c"tests/asm/corpus_x64.txt", ASM_ARCH_X64(), 8, 16, c"x64")
+	asm_fuzz_x86_run(c"tests/asm/corpus_x64.txt", ASM_ARCH_X64, 8, 16, c"x64")
 	println(c"asm_fuzz_x64_test passed")
 	return 0

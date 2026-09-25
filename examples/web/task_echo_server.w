@@ -28,7 +28,7 @@ char* task_frame_read_message(frame_reader* r, int* length_out):
 	while (body == 0):
 		if (r.error):
 			return 0
-		int revents = task_await_fd(r.fd, poll_in())
+		int revents = task_await_fd(r.fd, poll_in)
 		if (revents < 0):
 			return 0
 		int count = frame_reader_fill(r)

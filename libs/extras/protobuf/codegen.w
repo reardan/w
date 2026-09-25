@@ -48,20 +48,10 @@ import libs.extras.parser_generator.runtime
 import libs.extras.protobuf.generated_proto_parser
 
 
-int pc_label_none():
-	return 0
-
-
-int pc_label_repeated():
-	return 1
-
-
-int pc_label_optional():
-	return 2
-
-
-int pc_label_required():
-	return 3
+const int pc_label_none = 0
+const int pc_label_repeated = 1
+const int pc_label_optional = 2
+const int pc_label_required = 3
 
 
 struct pc_field:
@@ -342,14 +332,14 @@ int pc_field_number(pc_codegen* g, pg_ast_node* node, char* field_name):
 
 int pc_label_of(pg_ast_node* label):
 	if (label == 0):
-		return pc_label_none()
+		return pc_label_none
 	if (pc_has_token(label, protoidl_token_KW_REPEATED)):
-		return pc_label_repeated()
+		return pc_label_repeated
 	if (pc_has_token(label, protoidl_token_KW_OPTIONAL)):
-		return pc_label_optional()
+		return pc_label_optional
 	if (pc_has_token(label, protoidl_token_KW_REQUIRED)):
-		return pc_label_required()
-	return pc_label_none()
+		return pc_label_required
+	return pc_label_none
 
 
 void pc_collect_enum(pc_codegen* g, pg_ast_node* node, char* scope, char* value_prefix):
@@ -413,13 +403,13 @@ void pc_collect_map_field(pc_codegen* g, pc_message* m, pg_ast_node* node):
 	char* entry_full = pc_join(m.full_name, pc_map_entry_name(field_name))
 	pc_message* entry = pc_message_new(g, entry_full, line)
 	entry.is_map_entry = 1
-	entry.fields.push(pc_field_new(c"key", key_type, pc_label_none(), 1, line))
-	entry.fields.push(pc_field_new(c"value", value_type, pc_label_none(), 2, line))
+	entry.fields.push(pc_field_new(c"key", key_type, pc_label_none, 1, line))
+	entry.fields.push(pc_field_new(c"value", value_type, pc_label_none, 2, line))
 	# Absolute reference: the entry lives in m's scope under this name.
 	string_builder* s = string_new()
 	string_append(s, c".")
 	string_append(s, entry_full)
-	m.fields.push(pc_field_new(field_name, strclone(s.data), pc_label_repeated(), pc_field_number(g, node, field_name), line))
+	m.fields.push(pc_field_new(field_name, strclone(s.data), pc_label_repeated, pc_field_number(g, node, field_name), line))
 	string_free(s)
 
 
@@ -450,7 +440,7 @@ void pc_collect_message(pc_codegen* g, pg_ast_node* node, char* scope):
 					pg_ast_node* oitem = pg_ast_child(decl, j)
 					pg_ast_node* ofield = pc_child_rule(oitem, protoidl_ast_oneof_field)
 					if (pc_is_rule(oitem, protoidl_ast_oneof_item) && (ofield != 0)):
-						pc_collect_field(g, m, ofield, pc_label_none(), oneof_name)
+						pc_collect_field(g, m, ofield, pc_label_none, oneof_name)
 					j = j + 1
 			else if (pc_is_rule(decl, protoidl_ast_extend_decl)):
 				g.notes.push(c"extend blocks (proto2 extensions) are not generated")
@@ -657,7 +647,7 @@ void pc_emit_message(pc_codegen* g, pc_message* m):
 	for i in range(m.fields.length):
 		pc_field* f = m.fields[i]
 		string_append(out, c"\t")
-		if (f.label == pc_label_repeated()):
+		if (f.label == pc_label_repeated):
 			string_append(out, c"repeated ")
 		string_append(out, f.w_type)
 		string_append(out, c" ")
@@ -667,9 +657,9 @@ void pc_emit_message(pc_codegen* g, pc_message* m):
 		if (f.oneof_name != 0):
 			string_append(out, c"  # oneof ")
 			string_append(out, f.oneof_name)
-		else if (f.label == pc_label_optional()):
+		else if (f.label == pc_label_optional):
 			string_append(out, c"  # optional (presence not tracked)")
-		else if (f.label == pc_label_required()):
+		else if (f.label == pc_label_required):
 			string_append(out, c"  # required (not enforced)")
 		string_append(out, c"\n")
 

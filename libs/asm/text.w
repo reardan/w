@@ -102,7 +102,7 @@ int asm_parse_size_keyword(char* tok):
 
 # Parse a [ ... ] memory body into op (base/index/scale/disp).
 void asm_parse_mem(asm_parse* p, asm_operand* op, int arch):
-	op.kind = ASM_OP_MEM()
+	op.kind = ASM_OP_MEM
 	op.base = -1
 	op.index = -1
 	op.scale = 1
@@ -161,12 +161,12 @@ void asm_parse_operand(asm_parse* p, asm_operand* op, int arch, int size_hint):
 		for i in range(n):
 			label[i] = p.text[start + i]
 		label[n] = 0
-		op.kind = ASM_OP_LABEL()
+		op.kind = ASM_OP_LABEL
 		op.label = label
 		return
 	if (asm_parse_is_number_start(c)):
 		char* tok = asm_parse_token(p)
-		op.kind = ASM_OP_IMM()
+		op.kind = ASM_OP_IMM
 		op.imm = asm_parse_number(tok)
 		op.imm_hi = asm_parse_number_hi(tok)
 		op.size = size_hint
@@ -179,19 +179,19 @@ void asm_parse_operand(asm_parse* p, asm_operand* op, int arch, int size_hint):
 		return
 	int reg = asm_reg_lookup_x86(tok)
 	if (tok[0] == 'x' && tok[1] == 'm' && tok[2] == 'm'):
-		op.kind = ASM_OP_REG()
-		op.rclass = ASM_RCLASS_XMM()
+		op.kind = ASM_OP_REG
+		op.rclass = ASM_RCLASS_XMM
 		op.reg = asm_parse_number(tok + 3)
 		op.size = 16
 		return
 	if (reg >= 0):
-		op.kind = ASM_OP_REG()
-		op.rclass = ASM_RCLASS_GP()
+		op.kind = ASM_OP_REG
+		op.rclass = ASM_RCLASS_GP
 		op.reg = asm_reg_number(reg)
 		op.size = asm_reg_size(reg)
 		return
 	# bare label
-	op.kind = ASM_OP_LABEL()
+	op.kind = ASM_OP_LABEL
 	op.label = tok
 
 

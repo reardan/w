@@ -39,8 +39,7 @@ struct generator:
 	int stack_size     # usable bytes above the guard
 
 
-int __w_gen_stack_size():
-	return 65536
+const int __w_gen_stack_size = 65536
 
 
 # mmap reports failure as a small negative (errno-shaped) value, the same
@@ -54,13 +53,12 @@ int __w_gen_mmap_failed(int addr):
 # PROT_NONE region below every stack. 16KB covers the largest page size
 # of any supported target (arm64 darwin), so the protected range stays
 # page-aligned everywhere.
-int __w_gen_guard_size():
-	return 16384
+const int __w_gen_guard_size = 16384
 
 
 # Total mapping for a stack with size usable bytes.
 int __w_gen_mapping_size(int size):
-	return size + __w_gen_guard_size()
+	return size + __w_gen_guard_size
 
 
 # Maps size usable bytes plus the guard; returns the mapping base.
@@ -73,7 +71,7 @@ int __w_gen_map_stack(int size):
 		exit(1)
 	# Best effort: targets without page protection report failure and
 	# keep an unprotected (but still unused) guard region.
-	mprotect(base, __w_gen_guard_size(), 0)
+	mprotect(base, __w_gen_guard_size, 0)
 	return base
 
 
@@ -112,7 +110,7 @@ generator* __w_gen_create(int fn, int* argv, int argc):
 	g.caller_esp = 0
 	g.value = 0
 	g.done = 0
-	int size = __w_gen_stack_size()
+	int size = __w_gen_stack_size
 	g.stack_base = __w_gen_map_stack(size)
 	g.stack_size = size
 	int* top = cast(int*, __w_gen_stack_top(g))

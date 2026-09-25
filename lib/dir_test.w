@@ -39,13 +39,13 @@ void test_dir_read_sorted_kinds():
 	assert1(entries != 0)
 	assert_equal(4, entries.length)
 	assert_strings_equal(c"a", entries[0].name)
-	assert_equal(DIR_KIND_DIR(), entries[0].kind)
+	assert_equal(DIR_KIND_DIR, entries[0].kind)
 	assert_strings_equal(c"b.txt", entries[1].name)
-	assert_equal(DIR_KIND_FILE(), entries[1].kind)
+	assert_equal(DIR_KIND_FILE, entries[1].kind)
 	assert_strings_equal(c"c", entries[2].name)
-	assert_equal(DIR_KIND_DIR(), entries[2].kind)
+	assert_equal(DIR_KIND_DIR, entries[2].kind)
 	assert_strings_equal(c"l", entries[3].name)
-	assert_equal(DIR_KIND_LINK(), entries[3].kind)
+	assert_equal(DIR_KIND_LINK, entries[3].kind)
 	dir_entries_free(entries)
 
 

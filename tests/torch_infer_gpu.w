@@ -123,10 +123,10 @@ int main(int argc, int argv):
 	float want_acc = need(f, c"test_acc").data[0]
 	ndf test_images
 	ndi test_labels
-	if (mnist_load_images(c"bin/mnist/t10k-images-idx3-ubyte", &test_images) != MNIST_OK()):
+	if (mnist_load_images(c"bin/mnist/t10k-images-idx3-ubyte", &test_images) != MNIST_OK):
 		println(c"torch infer: FAILED (cannot load t10k images; run tools/fetch_mnist.sh)")
 		return 1
-	if (mnist_load_labels(c"bin/mnist/t10k-labels-idx1-ubyte", &test_labels) != MNIST_OK()):
+	if (mnist_load_labels(c"bin/mnist/t10k-labels-idx1-ubyte", &test_labels) != MNIST_OK):
 		println(c"torch infer: FAILED (cannot load t10k labels)")
 		return 1
 	ndf test_flat = mnist_flatten_images(&test_images)

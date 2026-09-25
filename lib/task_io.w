@@ -24,7 +24,7 @@ int task_read(int fd, char* buf, int len):
 		int n = read(fd, buf, len)
 		if (n != -11): /* EAGAIN */
 			return n
-		int revents = task_await_fd(fd, poll_in())
+		int revents = task_await_fd(fd, poll_in)
 		if (revents < 0):
 			return revents
 
@@ -50,7 +50,7 @@ int task_write_all(int fd, char* buf, int len):
 	while (total < len):
 		int n = write(fd, buf + total, len - total)
 		if (n == -11): /* EAGAIN */
-			int revents = task_await_fd(fd, poll_out())
+			int revents = task_await_fd(fd, poll_out)
 			if (revents < 0):
 				return revents
 		else if (n < 0):
@@ -67,7 +67,7 @@ int task_accept(int listen_fd):
 	while (1):
 		int fd = socket_accept_connection(listen_fd)
 		if (fd == -11): /* EAGAIN */
-			int revents = task_await_fd(listen_fd, poll_in())
+			int revents = task_await_fd(listen_fd, poll_in)
 			if (revents < 0):
 				return revents
 		else:
@@ -81,7 +81,7 @@ int task_accept_from(int listen_fd, sockaddr_in* peer):
 	while (1):
 		int fd = socket_accept_connection_from(listen_fd, peer)
 		if (fd == -11): /* EAGAIN */
-			int revents = task_await_fd(listen_fd, poll_in())
+			int revents = task_await_fd(listen_fd, poll_in)
 			if (revents < 0):
 				return revents
 		else:
@@ -101,7 +101,7 @@ int task_connect_ipv4(int fd, int ip_address, int port):
 		return 0
 	if (err != -115): /* EINPROGRESS */
 		return err
-	int revents = task_await_fd(fd, poll_out())
+	int revents = task_await_fd(fd, poll_out)
 	if (revents < 0):
 		return revents
 	# Retrying the connect reports the outcome without needing
@@ -126,8 +126,8 @@ int task_process_run(char* path, char** argv, char** stdout_out):
 	if (cast(int, stdout_out) != 0):
 		*stdout_out = 0
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_null()
-	opts.stdout_mode = process_pipe()
+	opts.stdin_mode = process_null
+	opts.stdout_mode = process_pipe
 	process* p = process_spawn(path, argv, opts)
 	free(cast(void*, opts))
 	if (cast(int, p) == 0):
@@ -140,7 +140,7 @@ int task_process_run(char* path, char** argv, char** stdout_out):
 	while (1):
 		int count = process_capture_read(&buffer, p.stdout_fd)
 		if (count == -11): /* EAGAIN */
-			count = task_await_fd(p.stdout_fd, poll_in())
+			count = task_await_fd(p.stdout_fd, poll_in)
 			if (count < 0):
 				err = count
 				break
@@ -153,11 +153,11 @@ int task_process_run(char* path, char** argv, char** stdout_out):
 	# The pipe is closed; the child is exiting or already gone. Reap
 	# without blocking the loop.
 	int status = process_try_wait(p)
-	while (status == process_status_running()):
+	while (status == process_status_running):
 		int slept = task_sleep_ms(2)
 		if (slept < 0):
 			err = slept
-			process_kill(p, sigkill())
+			process_kill(p, sigkill)
 			process_wait(p)
 			break
 		status = process_try_wait(p)

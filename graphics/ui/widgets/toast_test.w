@@ -136,7 +136,7 @@ void test_a_long_message_truncates_safely():
 
 	ui_toast_show(&st, c"0123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789", 0, 1000)
 	assert_equal(1, toast_frame(ctx, &st, &bg, 0))
-	assert_equal(0, st.text[ui_toast_capacity() - 1])
+	assert_equal(0, st.text[ui_toast_capacity - 1])
 	ui_render_destroy(&fx.r)
 
 

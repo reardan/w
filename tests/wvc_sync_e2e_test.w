@@ -18,7 +18,7 @@ a fixed sleep and the need to read the server's own "Listening on..."
 announcement back over a pipe (which would need its own bounded-read
 timeout to avoid ever hanging the test if the server failed to start).
 The server subprocess itself runs with all three stdio streams
-redirected to /dev/null (process_null()): nothing here drains its
+redirected to /dev/null (process_null): nothing here drains its
 output, and leaving stdout piped-but-undrained risks a full-pipe
 deadlock once the accept loop's own "Listening on..." line (small, but
 the OS pipe buffer is finite) plus anything unread later fills it.
@@ -70,9 +70,9 @@ process* wst_serve_start(char* root_dir, int port):
 	strv_set(argv, 4, c"--root")
 	strv_set(argv, 5, root_dir)
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_null()
-	opts.stdout_mode = process_null()
-	opts.stderr_mode = process_null()
+	opts.stdin_mode = process_null
+	opts.stdout_mode = process_null
+	opts.stderr_mode = process_null
 	process* p = process_spawn(tool_bin(c"wvc"), argv, opts)
 	assert1(p != 0)
 	free(cast(void*, argv))
@@ -82,7 +82,7 @@ process* wst_serve_start(char* root_dir, int port):
 
 
 void wst_serve_stop(process* p):
-	process_kill(p, sigkill())
+	process_kill(p, sigkill)
 	process_wait(p)
 	process_free(p)
 

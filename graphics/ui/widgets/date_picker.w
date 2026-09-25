@@ -119,7 +119,7 @@ void ui_date_picker_init(ui_date_picker_state* st):
 
 # The field ids plus the calendar's.
 int ui_date_picker_ids():
-	return 1 + ui_calendar_ids()
+	return 1 + ui_calendar_ids
 
 
 # A date field over caller-owned *value (day 0 = unset). placeholder

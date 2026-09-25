@@ -53,5 +53,5 @@ void cpp_init_predefined_macros(map[char*, cpp_macro*] macros):
 	else:
 		cpp_init_define_number(macros, c"__i386__", 1)
 		cpp_init_define_number(macros, c"__ILP32__", 1)
-	cpp_macro_define_builtin(macros, c"__FILE__", cpp_macro_builtin_file())
-	cpp_macro_define_builtin(macros, c"__LINE__", cpp_macro_builtin_line())
+	cpp_macro_define_builtin(macros, c"__FILE__", cpp_macro_builtin_file)
+	cpp_macro_define_builtin(macros, c"__LINE__", cpp_macro_builtin_line)

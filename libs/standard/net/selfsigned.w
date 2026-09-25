@@ -233,7 +233,7 @@ int selfsigned_p256_generate(char* common_name, char* dns_name, int ipv4, char**
 	string_builder* tbs = selfsigned_tbs(common_name, dns_name, ipv4, serial, qx, qy)
 	free(serial)
 	char* digest = malloc(32)
-	whash_oneshot(WHASH_SHA256(), tbs.data, tbs.length, digest)
+	whash_oneshot(WHASH_SHA256, tbs.data, tbs.length, digest)
 	char* r = malloc(32)
 	char* s = malloc(32)
 	ok = ecdsa_p256_sign(d, digest, 32, r, s)

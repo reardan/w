@@ -183,12 +183,12 @@ void test_remove_the_leader_steps_down_and_successor_elected():
 	rsim_remove_server(c, old_lid, old_lid)
 	assert_equal(1, raft_config_pending(old_leader))
 	# still leader while the removal is only appended, not committed
-	assert_equal(raft_leader(), raft_state(old_leader))
+	assert_equal(raft_leader, raft_state(old_leader))
 	int k = 0
-	while (k < 60 && raft_state(old_leader) == raft_leader()):
+	while (k < 60 && raft_state(old_leader) == raft_leader):
 		rsim_step(c)
 		k = k + 1
-	assert_equal(raft_follower(), raft_state(old_leader))
+	assert_equal(raft_follower, raft_state(old_leader))
 	assert_equal(0, raft_config_pending(old_leader))
 	# the remaining pair elects a successor and keeps committing
 	int new_lid = 0 - 1
@@ -311,7 +311,7 @@ void test_uncommitted_config_rollback_on_leader_change():
 	assert_equal(0, raft_config_pending(old_leader))
 	assert_equal(2, raft_peer_count(old_leader))
 	assert_equal(0, mc_has_peer(old_leader, new_id))
-	assert_equal(raft_follower(), raft_state(old_leader))
+	assert_equal(raft_follower, raft_state(old_leader))
 	rsim_run(c, 40)
 	assert_equal(1, raft_log_length(old_leader))
 	raft_entry* e = raft_log_at(old_leader, 1)

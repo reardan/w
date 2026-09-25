@@ -3,8 +3,7 @@ import lib.args
 import lib.net
 
 
-int web_default_buffer_size():
-	return 32768
+const int web_default_buffer_size = 32768
 
 
 void web_check_syscall(char* name, int result):

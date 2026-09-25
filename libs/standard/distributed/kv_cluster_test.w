@@ -636,7 +636,7 @@ void test_leader_crash_failover():
 	assert1(kvc_run_until_agree(c, c"cfg2", c"two", 500) >= 0)
 	kvc_assert_kv(c, c"cfg", c"one")
 	kvc_assert_kv(c, c"cfg2", c"two")
-	assert_equal(raft_follower(), raft_state(old_ldr.r))
+	assert_equal(raft_follower, raft_state(old_ldr.r))
 	# exactly one leader at the highest term; every node shares that
 	# term and the same fully committed 2-entry log
 	int final_lid = rafts_leader(c.rafts)
@@ -668,7 +668,7 @@ void test_client_semantics_on_followers():
 	if (fid == lid):
 		fid = 2
 	kvc_node* fol = c.nodes[fid - 1]
-	assert_equal(raft_follower(), raft_state(fol.r))
+	assert_equal(raft_follower, raft_state(fol.r))
 	list[raft_msg*] out = new list[raft_msg*]
 	assert_equal(0, kv_propose_put(fol.r, c"k", c"v", c.vnow, out))
 	assert_equal(0, kv_propose_delete(fol.r, c"k", c.vnow, out))

@@ -24,7 +24,7 @@ void test_rect_pushes_two_triangles():
 	# uses, so equality is exact.
 	asserts(c"x", r.layer_verts[UI_LAYER_BASE][0] == 10.0)
 	asserts(c"y", r.layer_verts[UI_LAYER_BASE][1] == 20.0)
-	ui_glyph white = ui_font_mask(ui_mask_white())
+	ui_glyph white = ui_font_mask(ui_mask_white)
 	float32 want_u = ui_render_u(white.x * 2 + white.w) * 0.5
 	float32 want_v = ui_render_v(white.y * 2 + white.h) * 0.5
 	asserts(c"u", r.layer_verts[UI_LAYER_BASE][2] == want_u)
@@ -121,7 +121,7 @@ void test_begin_resets_and_batch_grows():
 	# with: it doubles instead of dropping the tail, so every vertex
 	# pushed is a vertex kept.
 	assert_equal(9600, r.layer_vert_count[UI_LAYER_BASE])
-	asserts(c"grew", r.layer_vert_cap[UI_LAYER_BASE] > ui_render_max_verts())
+	asserts(c"grew", r.layer_vert_cap[UI_LAYER_BASE] > ui_render_max_verts)
 	# Growth preserves what was already written: the last rect's first
 	# vertex is intact past the old cap.
 	asserts(c"last vertex kept", r.layer_verts[UI_LAYER_BASE][9594 * 8 + 7] == 1.0)
@@ -129,5 +129,5 @@ void test_begin_resets_and_batch_grows():
 	assert_equal(0, r.layer_vert_count[UI_LAYER_BASE])
 	# The grown capacity survives the frame reset — it is the batch,
 	# not the frame, that grew.
-	asserts(c"cap kept", r.layer_vert_cap[UI_LAYER_BASE] > ui_render_max_verts())
+	asserts(c"cap kept", r.layer_vert_cap[UI_LAYER_BASE] > ui_render_max_verts)
 	ui_render_destroy(&r)

@@ -25,7 +25,7 @@ verification pass -- a weak-checksum hit is confirmed by direct byte
 comparison, which is always available here and strictly stronger than
 any hash).
 
-  - DELTA_BLOCK_SIZE() = 64 bytes. Fixed, chosen so small test fixtures
+  - DELTA_BLOCK_SIZE = 64 bytes. Fixed, chosen so small test fixtures
     (a few hundred bytes) still span several blocks while staying fast
     and easy to hand-trace. Not tunable per call in this v1.
   - Index the base: for every non-overlapping, block-aligned,
@@ -47,7 +47,7 @@ any hash).
     target merge into one COPY op instead of two). Bytes that never
     match anything accumulate into a pending literal run, flushed as an
     INSERT op whenever a copy interrupts it (or at end of input).
-  - A base shorter than DELTA_BLOCK_SIZE() indexes no blocks, so
+  - A base shorter than DELTA_BLOCK_SIZE indexes no blocks, so
     delta_diff degenerates to a single INSERT covering the whole
     target. This is still a correct delta (round-trips exactly) --
     just not a compact one. Extending the index to also cover a final
@@ -141,12 +141,12 @@ import structures.string
 import libs.extras.vcs.cas
 import lib.mem
 
+const int DELTA_BLOCK_SIZE = 64
+
 
 /* Tunable constants */
 
 
-int DELTA_BLOCK_SIZE():
-	return 64
 
 
 int DELTA_MAX_CHAIN_DEPTH():
@@ -163,12 +163,8 @@ int DELTA_ERR_MALFORMED():
 	return -74
 
 
-int DELTA_OP_COPY():
-	return 0
-
-
-int DELTA_OP_INSERT():
-	return 1
+const int DELTA_OP_COPY = 0
+const int DELTA_OP_INSERT = 1
 
 
 /* Opcodes */
@@ -203,12 +199,12 @@ void delta_ops_free(delta_ops* ops):
 
 void delta_ops_push_insert(delta_ops* ops, char* bytes, int length):
 	char* literal = mem_dup(bytes, length)
-	delta_op* op = new delta_op(DELTA_OP_INSERT(), 0, length, literal)
+	delta_op* op = new delta_op(DELTA_OP_INSERT, 0, length, literal)
 	ops.items.push(op)
 
 
 void delta_ops_push_copy(delta_ops* ops, int offset, int length):
-	delta_op* op = new delta_op(DELTA_OP_COPY(), offset, length, 0)
+	delta_op* op = new delta_op(DELTA_OP_COPY, offset, length, 0)
 	ops.items.push(op)
 
 
@@ -267,7 +263,7 @@ void delta_free_index(map[int, list[int]] table):
 delta_ops* delta_diff(char* base, int base_length, char* target, int target_length):
 	delta_ops* result = new delta_ops(new list[delta_op*])
 
-	int block = DELTA_BLOCK_SIZE()
+	int block = DELTA_BLOCK_SIZE
 	map[int, list[int]] table = delta_build_index(base, base_length, block)
 
 	string_builder* pending = string_new()
@@ -330,7 +326,7 @@ delta_ops* delta_diff(char* base, int base_length, char* target, int target_leng
 string_builder* delta_encode_ops(delta_ops* ops):
 	string_builder* s = string_new()
 	for delta_op* op in ops.items:
-		if (op.kind == DELTA_OP_COPY()):
+		if (op.kind == DELTA_OP_COPY):
 			string_append_char(s, 'C')
 			string_append_int(s, op.offset)
 			string_append_char(s, ' ')
@@ -436,13 +432,13 @@ void delta_apply_result_free(delta_apply_result* r):
 wresult[delta_apply_result*]* delta_apply_ops(char* base, int base_length, delta_ops* ops):
 	string_builder* out = string_new()
 	for delta_op* op in ops.items:
-		if (op.kind == DELTA_OP_COPY()):
+		if (op.kind == DELTA_OP_COPY):
 			int in_bounds = (op.offset >= 0) && (op.length >= 0) && (op.offset <= base_length) && (op.length <= (base_length - op.offset))
 			if (in_bounds == 0):
 				string_free(out)
 				return result_new_error[delta_apply_result*](DELTA_ERR_MALFORMED())
 			string_append_bytes(out, base + op.offset, op.length)
-		else if (op.kind == DELTA_OP_INSERT()):
+		else if (op.kind == DELTA_OP_INSERT):
 			int valid = (op.length >= 0) && ((op.length == 0) || (op.literal != 0))
 			if (valid == 0):
 				string_free(out)

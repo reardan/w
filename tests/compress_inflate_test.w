@@ -93,12 +93,12 @@ void test_inflate_stored_chained_blocks():
 void test_inflate_stored_bad_nlen():
 	# LEN=5, NLEN=0 (not ~5) -- the self-check must reject this before
 	# ever looking at payload bytes.
-	ct_expect_err(c"bad stored NLEN", c"\x01\x05\x00\x00\x00", 5, 0, INFLATE_ERR_BAD_STORED_LEN())
+	ct_expect_err(c"bad stored NLEN", c"\x01\x05\x00\x00\x00", 5, 0, INFLATE_ERR_BAD_STORED_LEN)
 
 
 void test_inflate_stored_truncated():
 	# Declares LEN=10 but only 3 payload bytes follow.
-	ct_expect_err(c"truncated stored", c"\x01\x0a\x00\xf5\xff\x41\x42\x43", 8, 0, INFLATE_ERR_TRUNCATED())
+	ct_expect_err(c"truncated stored", c"\x01\x0a\x00\xf5\xff\x41\x42\x43", 8, 0, INFLATE_ERR_TRUNCATED)
 
 
 /* Fixed Huffman blocks (BTYPE=01) */
@@ -129,19 +129,19 @@ void test_inflate_fixed_invalid_distance_symbol():
 void test_inflate_fixed_backreference_before_output_start():
 	# A length/distance pair as the very first symbols: distance 1 with
 	# zero bytes of output produced so far.
-	ct_expect_err(c"backref before output start", c"\x03\x02", 2, 0, INFLATE_ERR_BAD_DISTANCE())
+	ct_expect_err(c"backref before output start", c"\x03\x02", 2, 0, INFLATE_ERR_BAD_DISTANCE)
 
 
 void test_inflate_reserved_btype():
-	ct_expect_err(c"reserved btype", c"\x07", 1, 0, INFLATE_ERR_BAD_BTYPE())
+	ct_expect_err(c"reserved btype", c"\x07", 1, 0, INFLATE_ERR_BAD_BTYPE)
 
 
 void test_inflate_truncated_fixed_huffman():
-	ct_expect_err(c"truncated fixed huffman", c"\xcb\x48\xcd\xc9\xc9", 5, 0, INFLATE_ERR_TRUNCATED())
+	ct_expect_err(c"truncated fixed huffman", c"\xcb\x48\xcd\xc9\xc9", 5, 0, INFLATE_ERR_TRUNCATED)
 
 
 void test_inflate_max_output_cap():
-	ct_expect_err(c"max_output exceeded", c"\xcb\x48\xcd\xc9\xc9\x57\x28\xcf\x2f\xca\x49\x51\xc8\x40\xb0\x15\x01", 17, 5, INFLATE_ERR_TOO_LARGE())
+	ct_expect_err(c"max_output exceeded", c"\xcb\x48\xcd\xc9\xc9\x57\x28\xcf\x2f\xca\x49\x51\xc8\x40\xb0\x15\x01", 17, 5, INFLATE_ERR_TOO_LARGE)
 
 
 /* Dynamic Huffman blocks (BTYPE=10) */

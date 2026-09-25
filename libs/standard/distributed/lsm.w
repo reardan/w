@@ -126,16 +126,9 @@ struct lsm:
 
 # ---- record tags ------------------------------------------------------------
 
-int lsm_tag_put():
-	return 1
-
-
-int lsm_tag_delete():
-	return 2
-
-
-int lsm_tag_add_table():
-	return 1
+const int lsm_tag_put = 1
+const int lsm_tag_delete = 2
+const int lsm_tag_add_table = 1
 
 
 # ---- small helpers ----------------------------------------------------------
@@ -154,7 +147,7 @@ char* lsm_table_path(char* prefix, int seq):
 # wal_append's result (1 ok, 0 short write).
 int lsm_manifest_append_table(wal* mlog, int seq):
 	char* rec = malloc(5)
-	rec[0] = lsm_tag_add_table()
+	rec[0] = lsm_tag_add_table
 	store_le32(rec + 1, seq)
 	int ok = wal_append(mlog, rec, 5)
 	free(rec)
@@ -166,7 +159,7 @@ int lsm_manifest_append_table(wal* mlog, int seq):
 # payload here means a foreign writer — asserted, not tolerated.
 void lsm_replay_data_record(memtable* m, char* p, int len):
 	int tag = p[0] & 255
-	if (tag == lsm_tag_put()):
+	if (tag == lsm_tag_put):
 		assert1(len >= 9)
 		int key_len = load_le32(p + 1)
 		int val_len = load_le32(p + 5)
@@ -175,7 +168,7 @@ void lsm_replay_data_record(memtable* m, char* p, int len):
 		memtable_put(m, key, p + 9 + key_len, val_len)
 		free(key)
 		return
-	if (tag == lsm_tag_delete()):
+	if (tag == lsm_tag_delete):
 		assert1(len >= 5)
 		int dkey_len = load_le32(p + 1)
 		assert1(dkey_len >= 0 && len == 5 + dkey_len)
@@ -213,7 +206,7 @@ lsm* lsm_open(char* prefix, int memtable_limit_bytes):
 	assert1(cast(int, mrd) != 0)
 	char* mp = wal_read_next(mrd, len_out)
 	while (mp != 0):
-		if (len_out[0] == 5 && (mp[0] & 255) == lsm_tag_add_table()):
+		if (len_out[0] == 5 && (mp[0] & 255) == lsm_tag_add_table):
 			seqs.push(load_le32(mp + 1))
 		else:
 			fail = 1
@@ -383,7 +376,7 @@ int lsm_put(lsm* l, char* key, char* value, int value_len):
 	assert1(value_len >= 0)
 	int key_len = strlen(key)
 	char* rec = malloc(9 + key_len + value_len)
-	rec[0] = lsm_tag_put()
+	rec[0] = lsm_tag_put
 	store_le32(rec + 1, key_len)
 	store_le32(rec + 5, value_len)
 	int i = 0
@@ -409,7 +402,7 @@ int lsm_put(lsm* l, char* key, char* value, int value_len):
 int lsm_delete(lsm* l, char* key):
 	int key_len = strlen(key)
 	char* rec = malloc(5 + key_len)
-	rec[0] = lsm_tag_delete()
+	rec[0] = lsm_tag_delete
 	store_le32(rec + 1, key_len)
 	for i in range(key_len):
 		rec[5 + i] = key[i]
@@ -562,8 +555,7 @@ int lsm_compact(lsm* l):
 
 # ---- export / import (full-scan snapshot surface, issue #314) ---------------
 
-int lsm_export_version():
-	return 1
+const int lsm_export_version = 1
 
 
 # Merge-source count: every table plus the memtable, which is always
@@ -659,7 +651,7 @@ char* lsm_export(lsm* l, int* len_out):
 	buf[1] = 83   # S
 	buf[2] = 77   # M
 	buf[3] = 88   # X
-	store_le32(buf + 4, lsm_export_version())
+	store_le32(buf + 4, lsm_export_version)
 	store_le32(buf + 8, keys.length)
 	int off = 12
 	i = 0
@@ -730,7 +722,7 @@ int lsm_import(lsm* l, char* blob, int len):
 		return 0
 	if ((blob[0] & 255) != 76 || (blob[1] & 255) != 83 || (blob[2] & 255) != 77 || (blob[3] & 255) != 88):
 		return 0
-	if (load_le32(blob + 4) != lsm_export_version()):
+	if (load_le32(blob + 4) != lsm_export_version):
 		return 0
 	int count = load_le32(blob + 8)
 	if (count < 0):

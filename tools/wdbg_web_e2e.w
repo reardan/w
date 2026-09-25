@@ -62,7 +62,7 @@ we_server* we_start(list[char*] extra):
 		i = i + 1
 	strv_set(argv, args.length, 0)
 	spawn_options* opts = spawn_options_new()
-	opts.stdout_mode = process_pipe()
+	opts.stdout_mode = process_pipe
 	process* p = process_spawn(c"bin/wdbg_web", argv, opts)
 	if (p == 0):
 		println2(c"FAIL: cannot spawn bin/wdbg_web")
@@ -78,7 +78,7 @@ we_server* we_start(list[char*] extra):
 		if (wait <= 0):
 			println2(c"FAIL: wdbg_web printed no URL")
 			exit(1)
-		if (poll_single(p.stdout_fd, poll_in(), wait) <= 0):
+		if (poll_single(p.stdout_fd, poll_in, wait) <= 0):
 			continue
 		if (read(p.stdout_fd, ch, 1) != 1):
 			println2(c"FAIL: wdbg_web exited before printing its URL")
@@ -99,7 +99,7 @@ we_server* we_start(list[char*] extra):
 
 
 void we_stop(we_server* s):
-	process_kill(s.p, sigkill())
+	process_kill(s.p, sigkill)
 	process_wait(s.p)
 	process_free(s.p)
 

@@ -27,8 +27,7 @@ import lib.lib
 import lib.mem
 
 
-int ui_text_buffer_min_capacity():
-	return 64
+const int ui_text_buffer_min_capacity = 64
 
 
 struct ui_text_buffer:
@@ -41,11 +40,11 @@ struct ui_text_buffer:
 
 
 void ui_text_buffer_init(ui_text_buffer* b):
-	b.capacity = ui_text_buffer_min_capacity()
+	b.capacity = ui_text_buffer_min_capacity
 	b.data = malloc(b.capacity)
 	b.data[0] = 0
 	b.length = 0
-	b.line_capacity = ui_text_buffer_min_capacity()
+	b.line_capacity = ui_text_buffer_min_capacity
 	b.line_starts = cast(int32*, malloc(b.line_capacity * 4))
 	b.line_starts[0] = 0
 	b.line_count = 1

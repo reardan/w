@@ -158,11 +158,11 @@ int shell_commands_pwd():
 # the setuid/setgid/sticky bits are not rendered -- see the module
 # header.
 void shell_commands_mode_string(int mode, char* out):
-	int kind = mode & FILE_S_IFMT()
+	int kind = mode & FILE_S_IFMT
 	out[0] = '-'
-	if (kind == FILE_S_IFDIR()):
+	if (kind == FILE_S_IFDIR):
 		out[0] = 'd'
-	if (kind == FILE_S_IFLNK()):
+	if (kind == FILE_S_IFLNK):
 		out[0] = 'l'
 	char* letters = c"rwxrwxrwx"
 	for i in range(9):

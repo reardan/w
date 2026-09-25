@@ -98,16 +98,14 @@ import libs.extras.vcs.cas
 /* Entry modes (serialized tokens in tree_mode_token) */
 
 
-int TREE_MODE_DIR():
-	return 1
+const int TREE_MODE_DIR = 1
 
 
 int TREE_MODE_FILE():
 	return 2
 
 
-int TREE_MODE_EXEC():
-	return 3
+const int TREE_MODE_EXEC = 3
 
 
 /* tree_diff statuses */
@@ -186,17 +184,17 @@ int tree_valid_name(char* name):
 
 # The serialized mode token, or 0 for an unknown mode value.
 char* tree_mode_token(int mode):
-	if (mode == TREE_MODE_DIR()):
+	if (mode == TREE_MODE_DIR):
 		return c"40000"
 	if (mode == TREE_MODE_FILE()):
 		return c"100644"
-	if (mode == TREE_MODE_EXEC()):
+	if (mode == TREE_MODE_EXEC):
 		return c"100755"
 	return 0
 
 
 int tree_mode_is_dir(int mode):
-	return mode == TREE_MODE_DIR()
+	return mode == TREE_MODE_DIR
 
 
 # Byte-wise (unsigned) name order -- the canonical sort. strcmp compares
@@ -331,11 +329,11 @@ wresult[wtree*]* tree_get(wcas* s, char* id):
 		if (valid):
 			char* token = path_clone_range(bytes + mode_start, i - mode_start)
 			if (strcmp(token, c"40000") == 0):
-				mode = TREE_MODE_DIR()
+				mode = TREE_MODE_DIR
 			else if (strcmp(token, c"100644") == 0):
 				mode = TREE_MODE_FILE()
 			else if (strcmp(token, c"100755") == 0):
-				mode = TREE_MODE_EXEC()
+				mode = TREE_MODE_EXEC
 			else:
 				valid = 0
 			free(token)
@@ -451,7 +449,7 @@ wresult[char*]* tree_snapshot(wcas* s, char* path, list[char*] ignore):
 						result_free[char*](put)
 						string_free(contents)
 				if (err == 0):
-					int mode = TREE_MODE_DIR()
+					int mode = TREE_MODE_DIR
 					if (kind == 8):
 						mode = TREE_MODE_FILE()
 					err = tree_add(t, entry_name, mode, child_id)

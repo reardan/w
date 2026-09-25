@@ -1033,7 +1033,7 @@ char* wtest_run_deps(char* id):
 		return 0
 	int budget = wtest_deps_budget_ms()
 	process_result* result = deps_run(id, budget)
-	if ((result != 0) && (result.status == process_status_timeout())):
+	if ((result != 0) && (result.status == process_status_timeout)):
 		wtest_deps_shellout_warn(c"timed out", id, c"; retrying once")
 		process_result_free(result)
 		result = deps_run(id, budget)
@@ -1041,7 +1041,7 @@ char* wtest_run_deps(char* id):
 		wtest_deps_shellout_warn(c"failed", id, c" (could not run bin/wv2)")
 		wtest_last_failure_line = c"could not run bin/wv2 (spawn failure; never cached)"
 		return 0
-	if (result.status == process_status_timeout()):
+	if (result.status == process_status_timeout):
 		# Never persisted (header comment above wtest_cache_load): a
 		# run-local memo only, so the next run retries instead of a
 		# stale cache entry pinning selection until the root changes.

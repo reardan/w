@@ -58,10 +58,10 @@ void rafts_assert_no_same_term_leaders(list[raft*] nodes):
 	u64* tj = u64_new()
 	int i = 0
 	while (i < nodes.length):
-		if (nodes[i] != 0 && raft_state(nodes[i]) == raft_leader()):
+		if (nodes[i] != 0 && raft_state(nodes[i]) == raft_leader):
 			int j = i + 1
 			while (j < nodes.length):
-				if (nodes[j] != 0 && raft_state(nodes[j]) == raft_leader()):
+				if (nodes[j] != 0 && raft_state(nodes[j]) == raft_leader):
 					raft_term(nodes[i], ti)
 					raft_term(nodes[j], tj)
 					assert_equal(0, u64_eq(ti, tj))
@@ -81,7 +81,7 @@ int rafts_leader(list[raft*] nodes):
 	int leader_id = 0 - 1
 	for i in range(nodes.length):
 		raft* r = nodes[i]
-		if (r != 0 && raft_state(r) == raft_leader()):
+		if (r != 0 && raft_state(r) == raft_leader):
 			raft_term(r, t)
 			if (found == 0):
 				found = 1

@@ -54,12 +54,8 @@ documented there), with the per-round checks as its after_step hook.
 
 # ---- sweep configuration ------------------------------------------------------
 
-int sweep_seed_count():
-	return 100
-
-
-int sweep_nodes():
-	return 5
+const int sweep_seed_count = 100
+const int sweep_nodes = 5
 
 
 # Completed-scenario counter asserted by test_sweep_smoke_report: a
@@ -121,7 +117,7 @@ void swc_check_round(sweep_cluster* c):
 				# which compares across the whole run.
 				t.applied.push(mem_dup(e.command, e.command_len))
 		# (a) at most one leader per term, ever
-		if (raft_state(r) == raft_leader()):
+		if (raft_state(r) == raft_leader):
 			int term = raft_term_int(r)
 			if ((term in c.term_leader) == 1):
 				asserts(c.tag, c.term_leader[term] == i + 1)
@@ -140,11 +136,11 @@ void swc_after_step(void* user):
 # 50 ms, and BOTH phase-5 hardening features enabled.
 sweep_cluster* swc_new(int seed, char* scenario):
 	sweep_cluster* c = new sweep_cluster()
-	c.sim = rsim_new(sweep_nodes(), seed, 1, 25, 80, seed * 10)
+	c.sim = rsim_new(sweep_nodes, seed, 1, 25, 80, seed * 10)
 	rsim_harden(c.sim, 1, 1)
 	c.sim.after_step = cast(rsim_hook, swc_after_step)
 	c.sim.user = c
-	c.n = sweep_nodes()
+	c.n = sweep_nodes
 	c.nodes = c.sim.nodes
 	c.net = c.sim.net
 	c.track = new list[sweep_track*]
@@ -376,17 +372,17 @@ void sweep_churn(int seed):
 
 void test_sweep_lossy_life():
 	int seed = 1
-	while (seed <= sweep_seed_count()):
+	while (seed <= sweep_seed_count):
 		sweep_lossy_life(seed)
 		seed = seed + 1
 
 
 void test_sweep_churn():
 	int seed = 1
-	while (seed <= sweep_seed_count()):
+	while (seed <= sweep_seed_count):
 		sweep_churn(seed)
 		seed = seed + 1
 
 
 void test_sweep_smoke_report():
-	assert_equal(2 * sweep_seed_count(), sweep_scenarios_run)
+	assert_equal(2 * sweep_seed_count, sweep_scenarios_run)

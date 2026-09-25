@@ -22,8 +22,7 @@ timeouts and child cleanup"). */
 # frame's return address at the vdso sigreturn trampoline, see the
 # rt_sigaction note in lib/__arch__/x86/syscalls.w and
 # wdbg_install_handler in debugger/wdbg.w).
-int wexec_process_groups_supported():
-	return 1
+const int wexec_process_groups_supported = 1
 
 
 # setpgid(0, 0) (i386 syscall 57): make the calling process the leader

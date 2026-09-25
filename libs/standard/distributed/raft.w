@@ -213,38 +213,18 @@ import lib.mem
 
 # ---- states -----------------------------------------------------------------
 
-int raft_follower():
-	return 0
-
-
-int raft_candidate():
-	return 1
-
-
-int raft_leader():
-	return 2
+const int raft_follower = 0
+const int raft_candidate = 1
+const int raft_leader = 2
 
 
 # ---- message types ----------------------------------------------------------
 
-int raft_msg_vote_req():
-	return 0
-
-
-int raft_msg_vote_reply():
-	return 1
-
-
-int raft_msg_append():
-	return 2
-
-
-int raft_msg_append_reply():
-	return 3
-
-
-int raft_msg_install_snapshot():
-	return 4
+const int raft_msg_vote_req = 0
+const int raft_msg_vote_reply = 1
+const int raft_msg_append = 2
+const int raft_msg_append_reply = 3
+const int raft_msg_install_snapshot = 4
 
 
 # ---- log entries -------------------------------------------------------------
@@ -509,7 +489,7 @@ void raft_clear_prevote_granters(raft* r):
 # appends and election starts reset it).
 void raft_step_down(raft* r, u64* term):
 	u64_copy(r.current_term, term)
-	r.state = raft_follower()
+	r.state = raft_follower
 	r.voted_for = 0 - 1
 	r.leader_hint = 0 - 1
 	r.votes_received = 0
@@ -535,7 +515,7 @@ raft* raft_new(int self_id, list[int] peers, int election_min_ms, int election_m
 	r.current_term = u64_new()
 	r.voted_for = 0 - 1
 	r.log = new list[raft_entry*]
-	r.state = raft_follower()
+	r.state = raft_follower
 	r.commit_index = u64_new()
 	r.last_applied = u64_new()
 	r.leader_hint = 0 - 1
@@ -618,12 +598,8 @@ void raft_set_prevote(raft* r, int enabled):
 
 # ---- cluster membership changes (§4.1, single-server changes; see header) -------
 
-int raft_config_op_add():
-	return 1
-
-
-int raft_config_op_remove():
-	return 2
+const int raft_config_op_add = 1
+const int raft_config_op_remove = 2
 
 
 # 5-byte config-entry command: op byte + node id (little-endian u32).
@@ -696,10 +672,10 @@ void raft_note_entry_appended(raft* r, int idx, raft_entry* e):
 	r.config_prev_peers = raft_clone_int_list(r.peers)
 	r.config_pending_index = idx
 	r.config_pending_removes_self = 0
-	if (op == raft_config_op_add()):
+	if (op == raft_config_op_add):
 		if (id != r.self_id && raft_is_peer(r, id) == 0):
 			r.peers.push(id)
-	if (op == raft_config_op_remove()):
+	if (op == raft_config_op_remove):
 		if (id == r.self_id):
 			r.config_pending_removes_self = 1
 		else:
@@ -742,8 +718,8 @@ void raft_note_truncated_to(raft* r, int keep):
 # (see the header's REMOVAL DISRUPTION note for what happens next).
 void raft_note_commit_advanced(raft* r):
 	if (r.config_pending_index > 0 && raft_u64_as_int(r.commit_index) >= r.config_pending_index):
-		if (r.config_pending_removes_self == 1 && r.state == raft_leader()):
-			r.state = raft_follower()
+		if (r.config_pending_removes_self == 1 && r.state == raft_leader):
+			r.state = raft_follower
 			r.leader_hint = 0 - 1
 		r.config_pending_index = 0
 		r.config_pending_removes_self = 0
@@ -805,7 +781,7 @@ void raft_adopt_snapshot_config(raft* r, list[int] cfg):
 # routes lower next_index values to InstallSnapshot); a prev exactly
 # at the base takes the snapshot's last term.
 raft_msg* raft_make_append(raft* r, int peer):
-	raft_msg* m = raft_msg_new(raft_msg_append(), r.self_id, peer, r.current_term)
+	raft_msg* m = raft_msg_new(raft_msg_append, r.self_id, peer, r.current_term)
 	int base = raft_snap_base(r)
 	int next_i = raft_u64_as_int(r.next_index[peer])
 	assert1(next_i >= base + 1 && next_i <= base + r.log.length + 1)
@@ -828,7 +804,7 @@ raft_msg* raft_make_append(raft* r, int peer):
 # blob rides as an owned deep copy and leader_commit as usual. The
 # reply is an ordinary append_reply.
 raft_msg* raft_make_install_snapshot(raft* r, int peer):
-	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), r.self_id, peer, r.current_term)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot, r.self_id, peer, r.current_term)
 	u64_copy(m.prev_log_index, r.snap_last_index)
 	u64_copy(m.prev_log_term, r.snap_last_term)
 	u64_copy(m.leader_commit, r.commit_index)
@@ -896,7 +872,7 @@ void raft_try_advance_commit(raft* r):
 # single-node cluster commits the no-op (and everything before it,
 # closing the §5.4.2 gap) right here.
 void raft_become_leader(raft* r, int now_ms, list[raft_msg*] out):
-	r.state = raft_leader()
+	r.state = raft_leader
 	r.leader_hint = r.self_id
 	int i = 0
 	while (i < r.peers.length):
@@ -919,7 +895,7 @@ void raft_become_leader(raft* r, int now_ms, list[raft_msg*] out):
 # split): bump the term, vote for self, re-arm a fresh randomized
 # deadline and solicit votes. A single-node cluster wins immediately.
 void raft_start_election(raft* r, int now_ms, list[raft_msg*] out):
-	r.state = raft_candidate()
+	r.state = raft_candidate
 	u64_inc(r.current_term)
 	r.voted_for = r.self_id
 	r.leader_hint = 0 - 1
@@ -932,7 +908,7 @@ void raft_start_election(raft* r, int now_ms, list[raft_msg*] out):
 	raft_last_term(r, last_term)
 	int i = 0
 	while (i < r.peers.length):
-		raft_msg* m = raft_msg_new(raft_msg_vote_req(), r.self_id, r.peers[i], r.current_term)
+		raft_msg* m = raft_msg_new(raft_msg_vote_req, r.self_id, r.peers[i], r.current_term)
 		u64_set_int(m.last_log_index, raft_last_index(r))
 		u64_copy(m.last_log_term, last_term)
 		out.push(m)
@@ -958,7 +934,7 @@ void raft_start_prevote(raft* r, int now_ms, list[raft_msg*] out):
 	raft_last_term(r, last_term)
 	int i = 0
 	while (i < r.peers.length):
-		raft_msg* m = raft_msg_new(raft_msg_vote_req(), r.self_id, r.peers[i], prospective)
+		raft_msg* m = raft_msg_new(raft_msg_vote_req, r.self_id, r.peers[i], prospective)
 		m.prevote = 1
 		u64_set_int(m.last_log_index, raft_last_index(r))
 		u64_copy(m.last_log_term, last_term)
@@ -973,7 +949,7 @@ void raft_start_prevote(raft* r, int now_ms, list[raft_msg*] out):
 # ---- timers --------------------------------------------------------------------
 
 void raft_tick(raft* r, int now_ms, list[raft_msg*] out):
-	if (r.state == raft_leader()):
+	if (r.state == raft_leader):
 		if (mono_expired(now_ms, r.heartbeat_deadline)):
 			int i = 0
 			while (i < r.peers.length):
@@ -995,7 +971,7 @@ void raft_tick(raft* r, int now_ms, list[raft_msg*] out):
 # conflicting vote this term, and the candidate's log is at least as
 # up-to-date (§5.4.1). Granting resets the election deadline.
 void raft_handle_vote_req(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
-	raft_msg* reply = raft_msg_new(raft_msg_vote_reply(), r.self_id, m.from, r.current_term)
+	raft_msg* reply = raft_msg_new(raft_msg_vote_reply, r.self_id, m.from, r.current_term)
 	reply.vote_granted = 0
 	if (u64_cmp(m.term, r.current_term) < 0):
 		out.push(reply)
@@ -1032,7 +1008,7 @@ void raft_handle_vote_req(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out)
 # Granting mutates nothing: no voted_for, no election-deadline reset.
 # The reply echoes the prospective term with prevote = 1.
 void raft_handle_prevote_req(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
-	raft_msg* reply = raft_msg_new(raft_msg_vote_reply(), r.self_id, m.from, m.term)
+	raft_msg* reply = raft_msg_new(raft_msg_vote_reply, r.self_id, m.from, m.term)
 	reply.prevote = 1
 	reply.vote_granted = 0
 	if (u64_cmp(m.term, r.current_term) < 0):
@@ -1070,7 +1046,7 @@ void raft_handle_prevote_req(raft* r, raft_msg* m, int now_ms, list[raft_msg*] o
 # term == current_term) fail this check. Leaders never count pre-votes.
 # Each granter counts once per round (prevote_granters, issue #320).
 void raft_handle_prevote_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
-	if (r.state == raft_leader()):
+	if (r.state == raft_leader):
 		return
 	if (r.prevotes_received < 1):
 		return
@@ -1094,7 +1070,7 @@ void raft_handle_prevote_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*]
 # candidate counts, and each voter counts once per election
 # (vote_granters, issue #320); reaching a majority wins the election.
 void raft_handle_vote_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
-	if (r.state != raft_candidate()):
+	if (r.state != raft_candidate):
 		return
 	if (u64_eq(m.term, r.current_term) == 0):
 		return
@@ -1114,12 +1090,12 @@ void raft_handle_vote_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] ou
 # and missing entries appended as deep copies; commit_index advances to
 # min(leader_commit, index of the last entry known to match).
 void raft_handle_append(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
-	raft_msg* reply = raft_msg_new(raft_msg_append_reply(), r.self_id, m.from, r.current_term)
+	raft_msg* reply = raft_msg_new(raft_msg_append_reply, r.self_id, m.from, r.current_term)
 	reply.success = 0
 	if (u64_cmp(m.term, r.current_term) < 0):
 		out.push(reply)
 		return
-	r.state = raft_follower()
+	r.state = raft_follower
 	r.leader_hint = m.from
 	raft_reset_election_deadline(r, now_ms)
 	# leader stickiness bookkeeping: this proves a live current-term
@@ -1204,7 +1180,7 @@ void raft_handle_append(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 # InstallSnapshot when the backoff lands at or below the snapshot base
 # (raft_make_peer_msg).
 void raft_handle_append_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
-	if (r.state != raft_leader()):
+	if (r.state != raft_leader):
 		return
 	if (u64_eq(m.term, r.current_term) == 0):
 		return
@@ -1250,12 +1226,12 @@ void raft_handle_append_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] 
 # as our own latest snapshot (snap_data) and in the pending slot for
 # the state-machine owner (raft_take_pending_snapshot).
 void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
-	raft_msg* reply = raft_msg_new(raft_msg_append_reply(), r.self_id, m.from, r.current_term)
+	raft_msg* reply = raft_msg_new(raft_msg_append_reply, r.self_id, m.from, r.current_term)
 	reply.success = 0
 	if (u64_cmp(m.term, r.current_term) < 0):
 		out.push(reply)
 		return
-	r.state = raft_follower()
+	r.state = raft_follower
 	r.leader_hint = m.from
 	raft_reset_election_deadline(r, now_ms)
 	r.last_leader_contact = now_ms
@@ -1299,26 +1275,26 @@ void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_ms
 # an append/append_reply is malformed and the message is dropped.
 void raft_on_msg(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 	if (m.prevote == 1):
-		if (m.type == raft_msg_vote_req()):
+		if (m.type == raft_msg_vote_req):
 			raft_handle_prevote_req(r, m, now_ms, out)
-		if (m.type == raft_msg_vote_reply()):
+		if (m.type == raft_msg_vote_reply):
 			raft_handle_prevote_reply(r, m, now_ms, out)
 		return
 	if (u64_cmp(m.term, r.current_term) > 0):
 		raft_step_down(r, m.term)
-	if (m.type == raft_msg_vote_req()):
+	if (m.type == raft_msg_vote_req):
 		raft_handle_vote_req(r, m, now_ms, out)
 		return
-	if (m.type == raft_msg_vote_reply()):
+	if (m.type == raft_msg_vote_reply):
 		raft_handle_vote_reply(r, m, now_ms, out)
 		return
-	if (m.type == raft_msg_append()):
+	if (m.type == raft_msg_append):
 		raft_handle_append(r, m, now_ms, out)
 		return
-	if (m.type == raft_msg_append_reply()):
+	if (m.type == raft_msg_append_reply):
 		raft_handle_append_reply(r, m, now_ms, out)
 		return
-	if (m.type == raft_msg_install_snapshot()):
+	if (m.type == raft_msg_install_snapshot):
 		raft_handle_install_snapshot(r, m, now_ms, out)
 		return
 
@@ -1340,7 +1316,7 @@ void raft_on_msg(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 # normal) and raft_propose_add_server/raft_propose_remove_server
 # (kind config) below.
 int raft_propose_internal(raft* r, char* command, int command_len, int kind, int now_ms, list[raft_msg*] out):
-	if (r.state != raft_leader()):
+	if (r.state != raft_leader):
 		return 0
 	raft_entry* e = raft_entry_new_kind(r.current_term, command, command_len, kind)
 	r.log.push(e)
@@ -1372,13 +1348,13 @@ int raft_propose(raft* r, char* command, int command_len, int now_ms, list[raft_
 # prefix (raft_make_peer_msg) — no bespoke bootstrap RPC (issue #319
 # scope note: no learner/non-voting phase).
 int raft_propose_add_server(raft* r, int id, int now_ms, list[raft_msg*] out):
-	if (r.state != raft_leader()):
+	if (r.state != raft_leader):
 		return 0
 	if (r.config_pending_index > 0):
 		return 0
 	if (id == r.self_id || raft_is_peer(r, id)):
 		return 0
-	char* cmd = raft_config_encode(raft_config_op_add(), id)
+	char* cmd = raft_config_encode(raft_config_op_add, id)
 	int ok = raft_propose_internal(r, cmd, 5, raft_entry_kind_config(), now_ms, out)
 	free(cmd)
 	return ok
@@ -1394,13 +1370,13 @@ int raft_propose_add_server(raft* r, int id, int now_ms, list[raft_msg*] out):
 # See the file header's REMOVAL DISRUPTION note for what governs a
 # removed PEER's continued (non-)disruption of the cluster.
 int raft_propose_remove_server(raft* r, int id, int now_ms, list[raft_msg*] out):
-	if (r.state != raft_leader()):
+	if (r.state != raft_leader):
 		return 0
 	if (r.config_pending_index > 0):
 		return 0
 	if (id != r.self_id && raft_is_peer(r, id) == 0):
 		return 0
-	char* cmd = raft_config_encode(raft_config_op_remove(), id)
+	char* cmd = raft_config_encode(raft_config_op_remove, id)
 	int ok = raft_propose_internal(r, cmd, 5, raft_entry_kind_config(), now_ms, out)
 	free(cmd)
 	return ok

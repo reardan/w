@@ -48,7 +48,7 @@ int main(int argc, int argv):
 	if (new_text == 0):
 		return wvdiff_read_error(new_path)
 
-	diff_result* result = diff_text(old_text, new_text, diff_default_context())
+	diff_result* result = diff_text(old_text, new_text, diff_default_context)
 	if (diff_is_identical(result)):
 		return 0
 

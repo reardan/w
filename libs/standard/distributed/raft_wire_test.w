@@ -26,12 +26,12 @@ void rw_assert_blob(char* want, int want_len, char* got, int got_len):
 
 void test_vote_req_roundtrip():
 	u64* term = u64_new_int(7)
-	raft_msg* m = raft_msg_new(raft_msg_vote_req(), 1, 2, term)
+	raft_msg* m = raft_msg_new(raft_msg_vote_req, 1, 2, term)
 	u64_set_int(m.last_log_index, 42)
 	u64_set_int(m.last_log_term, 6)
 	assert_equal(34, raft_wire_size(m))
 	raft_msg* out = rw_roundtrip(m)
-	assert_equal(raft_msg_vote_req(), out.type)
+	assert_equal(raft_msg_vote_req, out.type)
 	assert_equal(1, out.from)
 	assert_equal(2, out.to)
 	assert_equal(7, raft_u64_as_int(out.term))
@@ -44,7 +44,7 @@ void test_vote_req_roundtrip():
 
 void test_vote_reply_roundtrip():
 	u64* term = u64_new_int(3)
-	raft_msg* m = raft_msg_new(raft_msg_vote_reply(), 5, 1, term)
+	raft_msg* m = raft_msg_new(raft_msg_vote_reply, 5, 1, term)
 	m.vote_granted = 1
 	assert_equal(19, raft_wire_size(m))
 	raft_msg* out = rw_roundtrip(m)
@@ -57,7 +57,7 @@ void test_vote_reply_roundtrip():
 
 void test_append_roundtrip_with_entries():
 	u64* term = u64_new_int(9)
-	raft_msg* m = raft_msg_new(raft_msg_append(), 3, 4, term)
+	raft_msg* m = raft_msg_new(raft_msg_append, 3, 4, term)
 	u64_set_int(m.prev_log_index, 10)
 	u64_set_int(m.prev_log_term, 8)
 	u64_set_int(m.leader_commit, 10)
@@ -88,7 +88,7 @@ void test_append_roundtrip_with_entries():
 # for a terminator or truncate the payload.
 void test_binary_command_roundtrip():
 	u64* term = u64_new_int(5)
-	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 2, term)
+	raft_msg* m = raft_msg_new(raft_msg_append, 1, 2, term)
 	u64_set_int(m.prev_log_index, 3)
 	u64_set_int(m.prev_log_term, 4)
 	u64_set_int(m.leader_commit, 3)
@@ -119,7 +119,7 @@ void test_binary_command_roundtrip():
 
 void test_append_heartbeat_empty_entries():
 	u64* term = u64_new_int(2)
-	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 3, term)
+	raft_msg* m = raft_msg_new(raft_msg_append, 1, 3, term)
 	assert_equal(17 + 28, raft_wire_size(m))
 	raft_msg* out = rw_roundtrip(m)
 	assert_equal(0, out.entries.length)
@@ -130,7 +130,7 @@ void test_append_heartbeat_empty_entries():
 
 void test_append_reply_roundtrip():
 	u64* term = u64_new_int(4)
-	raft_msg* m = raft_msg_new(raft_msg_append_reply(), 2, 1, term)
+	raft_msg* m = raft_msg_new(raft_msg_append_reply, 2, 1, term)
 	m.success = 1
 	u64_set_int(m.match_index, 17)
 	assert_equal(26, raft_wire_size(m))
@@ -145,11 +145,11 @@ void test_append_reply_roundtrip():
 void test_layout_bytes():
 	# vote_reply from 258 (0x102): type byte then from as le32
 	u64* term = u64_new_int(1)
-	raft_msg* m = raft_msg_new(raft_msg_vote_reply(), 258, 1, term)
+	raft_msg* m = raft_msg_new(raft_msg_vote_reply, 258, 1, term)
 	m.vote_granted = 1
 	char* buf = malloc(raft_wire_size(m))
 	raft_wire_encode(m, buf)
-	assert_equal(raft_msg_vote_reply(), buf[0] & 255)
+	assert_equal(raft_msg_vote_reply, buf[0] & 255)
 	assert_equal(2, buf[1] & 255)
 	assert_equal(1, buf[2] & 255)
 	assert_equal(0, buf[3] & 255)
@@ -166,7 +166,7 @@ void test_layout_bytes():
 void test_prevote_flag_roundtrip():
 	# vote_req with the flag set: last byte of the 34-byte layout
 	u64* term = u64_new_int(9)
-	raft_msg* m = raft_msg_new(raft_msg_vote_req(), 1, 2, term)
+	raft_msg* m = raft_msg_new(raft_msg_vote_req, 1, 2, term)
 	m.prevote = 1
 	u64_set_int(m.last_log_index, 3)
 	u64_set_int(m.last_log_term, 2)
@@ -189,7 +189,7 @@ void test_prevote_flag_roundtrip():
 	u64_free(term)
 	# vote_reply set...
 	u64* t2 = u64_new_int(4)
-	raft_msg* rep = raft_msg_new(raft_msg_vote_reply(), 2, 1, t2)
+	raft_msg* rep = raft_msg_new(raft_msg_vote_reply, 2, 1, t2)
 	rep.vote_granted = 1
 	rep.prevote = 1
 	assert_equal(19, raft_wire_size(rep))
@@ -214,7 +214,7 @@ void test_prevote_flag_roundtrip():
 
 void test_decode_rejects_malformed():
 	u64* term = u64_new_int(5)
-	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 2, term)
+	raft_msg* m = raft_msg_new(raft_msg_append, 1, 2, term)
 	u64* t = u64_new_int(5)
 	m.entries.push(raft_entry_new(t, c"P\ta\tb", 5))
 	int size = raft_wire_size(m)
@@ -231,7 +231,7 @@ void test_decode_rejects_malformed():
 	# unknown type
 	buf[0] = 42
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
-	buf[0] = raft_msg_append()
+	buf[0] = raft_msg_append
 	# entry cmd_len overrunning the buffer (offset +9: 1 kind byte + 8
 	# term bytes ahead of cmd_len — issue #319's per-entry kind field)
 	store_le32(buf + 17 + 28 + 9, 1000)
@@ -248,7 +248,7 @@ void test_decode_rejects_malformed():
 
 void test_install_snapshot_roundtrip():
 	u64* term = u64_new_int(6)
-	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), 1, 3, term)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot, 1, 3, term)
 	u64_set_int(m.prev_log_index, 10)
 	u64_set_int(m.prev_log_term, 5)
 	u64_set_int(m.leader_commit, 12)
@@ -269,7 +269,7 @@ void test_install_snapshot_roundtrip():
 	m.snap_config.push(7)
 	assert_equal(17 + 28 + 4 + 3 * 4 + 6, raft_wire_size(m))
 	raft_msg* out = rw_roundtrip(m)
-	assert_equal(raft_msg_install_snapshot(), out.type)
+	assert_equal(raft_msg_install_snapshot, out.type)
 	assert_equal(1, out.from)
 	assert_equal(3, out.to)
 	assert_equal(6, raft_u64_as_int(out.term))
@@ -288,13 +288,13 @@ void test_install_snapshot_roundtrip():
 
 void test_install_snapshot_empty_blob():
 	u64* term = u64_new_int(2)
-	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), 2, 1, term)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot, 2, 1, term)
 	u64_set_int(m.prev_log_index, 4)
 	u64_set_int(m.prev_log_term, 1)
 	u64_set_int(m.leader_commit, 4)
 	assert_equal(17 + 28 + 4, raft_wire_size(m))
 	raft_msg* out = rw_roundtrip(m)
-	assert_equal(raft_msg_install_snapshot(), out.type)
+	assert_equal(raft_msg_install_snapshot, out.type)
 	assert_equal(4, raft_u64_as_int(out.prev_log_index))
 	assert_equal(1, raft_u64_as_int(out.prev_log_term))
 	assert_equal(0, out.snap_len)
@@ -306,7 +306,7 @@ void test_install_snapshot_empty_blob():
 
 void test_install_snapshot_malformed():
 	u64* term = u64_new_int(3)
-	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), 1, 2, term)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot, 1, 2, term)
 	u64_set_int(m.prev_log_index, 9)
 	u64_set_int(m.prev_log_term, 2)
 	char* blob = malloc(4)
@@ -345,14 +345,14 @@ void test_type4_known_type5_rejected():
 	# the unknown-type guard moved: 4 (install_snapshot) is now a KNOWN
 	# type, 5 is the first unknown one
 	u64* term = u64_new_int(1)
-	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), 1, 2, term)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot, 1, 2, term)
 	int size = raft_wire_size(m)
 	char* buf = malloc(size)
 	raft_wire_encode(m, buf)
 	assert_equal(4, buf[0] & 255)
 	raft_msg* ok = raft_wire_decode(buf, size)
 	assert1(cast(int, ok) != 0)
-	assert_equal(raft_msg_install_snapshot(), ok.type)
+	assert_equal(raft_msg_install_snapshot, ok.type)
 	raft_msg_free(ok)
 	buf[0] = 5
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
@@ -370,12 +370,12 @@ void test_type4_known_type5_rejected():
 # and does not disturb neighboring entries' offsets.
 void test_config_entry_roundtrip():
 	u64* term = u64_new_int(4)
-	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 2, term)
+	raft_msg* m = raft_msg_new(raft_msg_append, 1, 2, term)
 	u64_set_int(m.prev_log_index, 0)
 	u64_set_int(m.prev_log_term, 0)
 	u64_set_int(m.leader_commit, 0)
 	u64* t1 = u64_new_int(4)
-	char* cfg_cmd = raft_config_encode(raft_config_op_add(), 9)
+	char* cfg_cmd = raft_config_encode(raft_config_op_add, 9)
 	m.entries.push(raft_entry_new_kind(t1, cfg_cmd, 5, raft_entry_kind_config()))
 	u64* t2 = u64_new_int(4)
 	m.entries.push(raft_entry_new(t2, c"P\tk\tv", 5))
@@ -387,7 +387,7 @@ void test_config_entry_roundtrip():
 	int op = 0
 	int id = 0
 	raft_config_decode(e0.command, e0.command_len, &op, &id)
-	assert_equal(raft_config_op_add(), op)
+	assert_equal(raft_config_op_add, op)
 	assert_equal(9, id)
 	raft_entry* e1 = out.entries[1]
 	assert_equal(raft_entry_kind_normal(), e1.kind)
@@ -402,7 +402,7 @@ void test_config_entry_roundtrip():
 
 void test_decode_rejects_bad_entry_kind():
 	u64* term = u64_new_int(1)
-	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 2, term)
+	raft_msg* m = raft_msg_new(raft_msg_append, 1, 2, term)
 	u64* t = u64_new_int(1)
 	m.entries.push(raft_entry_new(t, c"x", 1))
 	int size = raft_wire_size(m)
@@ -428,7 +428,7 @@ void test_decode_rejects_bad_entry_kind():
 # kind==config-implies-len==5 check can be what rejects this.
 void test_decode_rejects_bad_config_command_len():
 	u64* term = u64_new_int(1)
-	raft_msg* m = raft_msg_new(raft_msg_append(), 1, 2, term)
+	raft_msg* m = raft_msg_new(raft_msg_append, 1, 2, term)
 	u64* t = u64_new_int(1)
 	m.entries.push(raft_entry_new_kind(t, c"abcd", 4, raft_entry_kind_config()))
 	int size = raft_wire_size(m)
@@ -445,7 +445,7 @@ void test_decode_rejects_bad_config_command_len():
 # oversize snap_len already was.
 void test_decode_rejects_bad_config_count():
 	u64* term = u64_new_int(1)
-	raft_msg* m = raft_msg_new(raft_msg_install_snapshot(), 1, 2, term)
+	raft_msg* m = raft_msg_new(raft_msg_install_snapshot, 1, 2, term)
 	u64_set_int(m.prev_log_index, 1)
 	u64_set_int(m.prev_log_term, 1)
 	int size = raft_wire_size(m)

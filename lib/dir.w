@@ -14,16 +14,9 @@ import lib.__arch__.dirent
 
 
 # Entry kinds (the d_type values; win64 reports only the first two).
-int DIR_KIND_DIR():
-	return 4
-
-
-int DIR_KIND_FILE():
-	return 8
-
-
-int DIR_KIND_LINK():
-	return 10
+const int DIR_KIND_DIR = 4
+const int DIR_KIND_FILE = 8
+const int DIR_KIND_LINK = 10
 
 
 struct dir_entry:
@@ -96,9 +89,9 @@ void dir_walk_files(char* path, list[char*] out):
 	if (entries == 0):
 		return
 	for dir_entry* e in entries:
-		if ((e.kind == DIR_KIND_DIR()) || (e.kind == DIR_KIND_FILE())):
+		if ((e.kind == DIR_KIND_DIR) || (e.kind == DIR_KIND_FILE)):
 			char* child = path_join(path, e.name)
-			if (e.kind == DIR_KIND_DIR()):
+			if (e.kind == DIR_KIND_DIR):
 				dir_walk_files(child, out)
 				free(child)
 			else:

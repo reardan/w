@@ -91,7 +91,7 @@ int asm_test_in_text(asm_binary* binary, int value):
 void test_zero_unknown_wv2():
 	asm_binary* binary = asm_binary_open(c"bin/wv2")
 	asserts(c"cannot open bin/wv2", cast(int, binary) != 0)
-	assert_equal(ASM_ELF_CLASS32(), binary.elf_class)
+	assert_equal(ASM_ELF_CLASS32, binary.elf_class)
 	char* text = asm_binary_text(binary)
 	int functions = 0
 	int count = 0
