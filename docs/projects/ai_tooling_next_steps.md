@@ -43,6 +43,10 @@ is a queue, not an archive.
   token) and report from that, at least for initializer/assignment
   mismatches. Changing it moves pinned `file:line` needles in the
   fixture battery, so it is its own unit, not a caret follow-up.
+  Started in #377's rustc-style pass: `struct field 'x' not found` now
+  saves the member's own position and reports there (the pattern
+  `warn_bool_bitwise_at` in grammar/binary_op.w already used); the
+  other constructs still report at the token after.
 
 - **Multi-error reporting.** The compiler stops at the first error
   (single-pass, no recovery). Documented limitation; real fix is parser

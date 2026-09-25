@@ -395,9 +395,16 @@ seeds — is `docs/release.md`.
 - Use `./bin/wv2 check --json file.w` for compile-only diagnostics without
   writing an ELF. Add `x64` after `--json` for the 64-bit target. Output is
   newline-delimited JSON on stdout with `file`, `line`, `column`, `severity`,
-  `message`, `token`, and `arch`; stderr keeps the usual human progress text
+  `message`, `token`, and `arch`, plus an optional `help` (a did-you-mean
+  suggestion) when the compiler has one; stderr keeps the usual human progress text
   unless `--quiet` is given, which silences the non-diagnostic banners so a
   clean file produces no output at all.
+- Human-readable diagnostics follow rustc's layout: a `error:`/`warning:`
+  header, a `--> file:line:col` location line, the source line behind a
+  line-number gutter with the offending token underlined, and an optional
+  `= help: did you mean '...'?` line for misspelled symbols, struct fields
+  and type names. They are colored when stderr is a terminal; `NO_COLOR`
+  turns that off and `FORCE_COLOR` forces it on for a pipe.
 - `./bin/wv2 check --lint file.w` adds the lint rules (docs/projects/lint.md)
   for the named files only; each message ends with its rule name in
   brackets, and a line containing `nolint` is exempt. `--fix` rewrites the

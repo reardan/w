@@ -658,6 +658,7 @@ int generic_declaration_scan():
 	pointer_indirection = 0
 	int type = type_lookup(first)
 	if (type < 0):
+		type_suggest_names(first)
 		diag_part(c"unknown type name: '")
 		diag_part(first)
 		error(c"'")

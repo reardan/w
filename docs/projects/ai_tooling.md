@@ -981,7 +981,9 @@ by committing the agent-facing configuration Cursor reads from the repo:
 
 - **Every diagnostic funnels through two functions**: `warning(char* s)`
   and `error(char* s)` in `compiler/tokenizer.w`. They print
-  `<message> in <filename>:<line+1>` to stderr; `error()` then exits 1
+  `<message> in <filename>:<line+1>` to stderr (since #377 a rustc-style
+  `error: <message>` header, `--> <filename>:<line>:<col>` location, gutter,
+  underline and optional `= help:` line); `error()` then exits 1
   (or long-jumps back to the REPL prompt when `repl_recovery` is set).
 - **Composed messages are assembled from fragments.** Sites like
   `expect()` (`'X' expected, found 'Y'`), `sym_get_value()`

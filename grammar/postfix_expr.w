@@ -843,6 +843,12 @@ int postfix_expr():
 				if (num_args > 0):
 					char* member_name = strclone(token)
 					int arg = type_get_arg(type, member_name)
+					# The member's own position, so a not-found error
+					# below points at it rather than at the token after
+					# it (#377)
+					int member_line_number = line_number
+					int member_diag_line = diag_token_line
+					int member_diag_column = diag_token_column
 					get_token()
 
 					if (arg >= 0):
@@ -954,6 +960,15 @@ int postfix_expr():
 							type = type_value(declared_return)
 						free(method_symbol)
 					else:
+						type_suggest_fields(member_name, type)
+						line_number = member_line_number
+						diag_token_line = member_diag_line
+						diag_token_column = member_diag_column
+						# error() exits, so the token buffer is only
+						# swapped for the underline when no REPL entry
+						# will lex again after the jump back
+						if (repl_recovery == 0):
+							token = member_name
 						diag_part(c"struct field '")
 						diag_part(member_name)
 						error(c"' not found")
