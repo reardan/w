@@ -35,10 +35,15 @@ is exact and every older frame is heuristic: a stale stack slot that
 still looks like a return address can add a frame, and a frame can be
 missing.
 
-There is no build-id in W binaries, so wcore cannot detect a wrong
-same-architecture binary; passing one yields wrong names, exactly like
-attach mode before its calibration. Cross-checks that are possible
-(ELF class and machine of core vs. binary) are enforced.
+W binaries carry a GNU build-id note (NT_GNU_BUILD_ID, a content hash
+of the image) right after their program headers, inside the first file
+page, which the kernel copies into the core by default (coredump_filter
+bit 4, "ELF headers"). wcore finds the executable's ELF header among the
+core's dumped pages, reads the build-id through that copy's PT_NOTE,
+and refuses a binary whose build-id differs, since symbolizing against
+the wrong binary yields wrong names. When the core has no build-id (the
+page was filtered out, or the binary predates build-ids) the check is
+skipped with a warning. ELF class and machine are cross-checked too.
 
 --json prints one JSON object on one line instead of the human report.
 
@@ -77,6 +82,11 @@ int wc_prstatus       /* address of the first NT_PRSTATUS desc, 0 = none */
 int wc_prstatus_size
 int wc_siginfo        /* address of the NT_SIGINFO desc, 0 = none */
 int wc_siginfo_size
+
+int wc_bin_id         /* address of the binary's build-id bytes, 0 = none */
+int wc_bin_id_size
+int wc_core_id        /* address of the core's copy of the build-id, 0 = none */
+int wc_core_id_size
 
 int wc_sig            /* fatal signal number, 0 = none recorded */
 int wc_pc
@@ -304,6 +314,110 @@ void wc_parse_notes():
 						wc_siginfo_size = descsz
 				cur = desc + (descsz + 3) / 4 * 4
 		i = i + 1
+
+
+# --- build-id (NT_GNU_BUILD_ID) ---
+int wc_found_id_size
+
+# Scan the notes in [cur, end) for the GNU build-id; returns the address
+# of its descriptor bytes (size in wc_found_id_size) or 0.
+int wc_find_build_id(int cur, int end):
+	while (cur + 12 <= end):
+		int namesz = st_int32(cur)
+		int descsz = st_int32(cur + 4)
+		int ntype = st_int32(cur + 8)
+		int name = cur + 12
+		int desc = name + (namesz + 3) / 4 * 4
+		if ((desc + descsz > end) || (descsz < 0) || (namesz < 0)):
+			return 0
+		if ((ntype == 3) && (namesz == 4) && (descsz > 0)):
+			if (st_cstr_eq(name, c"GNU")):
+				wc_found_id_size = descsz
+				return desc
+		cur = desc + (descsz + 3) / 4 * 4
+	return 0
+
+
+# The binary's build-id, from its PT_NOTE segments.
+void wc_bin_build_id():
+	int i = 0
+	while (i < wc_bin_phnum):
+		int p = wc_bin_buf + wc_bin_phoff + i * wc_bin_phentsize
+		if (wc_ph_type(p) == 4):
+			int off = wc_ph_offset(p)
+			int fsz = wc_ph_filesz(p)
+			if ((off >= 0) && (off + fsz <= wc_bin_size)):
+				int id = wc_find_build_id(wc_bin_buf + off, wc_bin_buf + off + fsz)
+				if (id != 0):
+					wc_bin_id = id
+					wc_bin_id_size = wc_found_id_size
+					return;
+		i = i + 1
+
+
+# The build-id as the crashed process had it mapped: find a dumped PT_LOAD
+# page holding an ET_EXEC ELF header (W binaries are ET_EXEC; the loader,
+# shared libraries and the vDSO are ET_DYN), then follow that copy's
+# program headers to its PT_NOTE, whose p_vaddr is absolute.
+void wc_core_build_id():
+	int i = 0
+	while (i < wc_core_phnum):
+		int p = wc_core_buf + wc_core_phoff + i * wc_core_phentsize
+		i = i + 1
+		if (wc_ph_type(p) != 1):
+			continue
+		int base = wc_ph_vaddr(p)
+		int eh = wc_core_mem(base, 64)
+		if (eh == 0):
+			continue
+		if (wc_is_elf(eh, 64) == 0):
+			continue
+		if ((st_byte(eh + 4) != wc_class) || (wc_eh_type(eh) != 2)):
+			continue
+		int phentsize = wc_eh_phentsize(eh)
+		int phnum = wc_eh_phnum(eh)
+		int ph = wc_core_mem(base + wc_eh_phoff(eh), phnum * phentsize)
+		if (ph == 0):
+			continue
+		int k = 0
+		while (k < phnum):
+			int q = ph + k * phentsize
+			k = k + 1
+			if (wc_ph_type(q) != 4):
+				continue
+			int fsz = wc_ph_filesz(q)
+			int notes = wc_core_mem(wc_ph_vaddr(q), fsz)
+			if (notes == 0):
+				continue
+			int id = wc_find_build_id(notes, notes + fsz)
+			if (id != 0):
+				wc_core_id = id
+				wc_core_id_size = wc_found_id_size
+				return;
+
+
+int wc_build_ids_match():
+	if (wc_bin_id_size != wc_core_id_size):
+		return 0
+	int i = 0
+	while (i < wc_bin_id_size):
+		if (st_byte(wc_bin_id + i) != st_byte(wc_core_id + i)):
+			return 0
+		i = i + 1
+	return 1
+
+
+# Lowercase hex of n bytes at addr (malloc'd).
+char* wc_id_hex(int addr, int n):
+	char* s = malloc(n * 2 + 1)
+	int i = 0
+	while (i < n):
+		int b = st_byte(addr + i)
+		s[i * 2] = c"0123456789abcdef"[b >> 4]
+		s[i * 2 + 1] = c"0123456789abcdef"[b & 15]
+		i = i + 1
+	s[n * 2] = 0
+	return s
 
 
 # --- registers (elf_prstatus.pr_reg, user_regs_struct layout) ---
@@ -722,6 +836,18 @@ void wc_json_report(char* frames, int nframes):
 	wc_json_key(c"binary")
 	wc_json_str(wc_bin_path)
 	put_char(',')
+	if (wc_bin_id != 0):
+		wc_json_key(c"build_id")
+		char* id = wc_id_hex(wc_bin_id, wc_bin_id_size)
+		wc_json_str(id)
+		free(id)
+		put_char(',')
+		wc_json_key(c"build_id_verified")
+		if (wc_core_id != 0):
+			print(c"true")
+		else:
+			print(c"false")
+		put_char(',')
 	wc_json_key(c"word_size")
 	wc_print_dec(wc_wsize)
 	put_char(',')
@@ -797,6 +923,15 @@ void wc_report(char* frames, int nframes):
 		println(c" (x86, 32-bit ELF core)")
 	print(c"binary: ")
 	println(wc_bin_path)
+	if (wc_bin_id != 0):
+		print(c"build-id: ")
+		char* id = wc_id_hex(wc_bin_id, wc_bin_id_size)
+		print(id)
+		free(id)
+		if (wc_core_id != 0):
+			println(c" (core and binary match)")
+		else:
+			println(c" (unverified: the core has no build-id)")
 	print(c"signal: ")
 	if (wc_sig == 0):
 		println(c"none recorded")
@@ -926,6 +1061,22 @@ int main(int argc, int argv):
 	wc_bin_phnum = wc_eh_phnum(wc_bin_buf)
 	if (wc_bin_phoff + wc_bin_phnum * wc_bin_phentsize > wc_bin_size):
 		return wc_fail(c"binary program header table is truncated")
+
+	# A core that names a build-id must come from this exact binary.
+	wc_bin_build_id()
+	wc_core_build_id()
+	if (wc_core_id != 0):
+		if ((wc_bin_id == 0) || (wc_build_ids_match() == 0)):
+			print2(c"wcore: build-id mismatch: the core was produced by build-id ")
+			print2(wc_id_hex(wc_core_id, wc_core_id_size))
+			if (wc_bin_id == 0):
+				println2(c", but the binary has no build-id")
+			else:
+				print2(c", but the binary is ")
+				println2(wc_id_hex(wc_bin_id, wc_bin_id_size))
+			return 1
+	else if (wc_bin_id != 0):
+		println2(c"wcore: warning: the core records no build-id (its ELF header page was not dumped); cannot confirm it came from this binary")
 
 	wc_parse_notes()
 	if (wc_prstatus == 0):
