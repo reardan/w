@@ -229,37 +229,12 @@ char* wfixture_output_path(char* fixture):
 
 
 # execve does no PATH lookup, so a compiler name without a slash must
-# be resolved here (same as wexec_resolve_program in tools/wexec.w).
+# be resolved here; name itself when nothing on PATH matches.
 char* wfixture_resolve_program(char* name):
-	int i = 0
-	while (name[i] != 0):
-		if (name[i] == '/'):
-			return name
-		i = i + 1
-	char* path = env_get(c"PATH")
-	if (path == 0):
-		path = c"/usr/bin:/bin"
-	string_builder* candidate = string_new()
-	int p = 0
-	int at_end = 0
-	while (at_end == 0):
-		string_clear(candidate)
-		while ((path[p] != ':') && (path[p] != 0)):
-			string_append_char(candidate, path[p])
-			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length > 0):
-			string_append_char(candidate, '/')
-			string_append(candidate, name)
-			int fd = open(candidate.data, 0, 0)
-			if (fd >= 0):
-				close(fd)
-				return candidate.data
-	string_free(candidate)
-	return name
+	char* found = process_which(name)
+	if (found == 0):
+		return name
+	return found
 
 
 void wfixture_echo_command(char* compiler, char* fixture, char* out_path):

@@ -183,45 +183,6 @@ char* czi_read_file(char* path, int* out_len):
 	return data
 
 
-# First PATH entry where name opens for read (mirrors tools/wexec.w's
-# wexec_resolve_program: an existence check, not a strict executable-bit
-# check -- accepted there too, see docs/projects/ai_tooling_next_steps.md).
-# Returns a malloc'd absolute path, or 0 when name is nowhere on PATH.
-char* czi_find_on_path(char* name):
-	char* path = env_get(c"PATH")
-	int win = os_windows()
-	char path_sep = ':'
-	if (win):
-		path_sep = ';'
-	if (path == 0):
-		if (win):
-			path = c"C:/Windows/System32"
-		else:
-			path = c"/usr/bin:/bin"
-	string_builder* candidate = string_new()
-	int p = 0
-	int at_end = 0
-	char* found = 0
-	while ((at_end == 0) && (found == 0)):
-		string_clear(candidate)
-		while ((path[p] != path_sep) && (path[p] != 0)):
-			string_append_char(candidate, path[p])
-			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length > 0):
-			string_append_char(candidate, '/')
-			string_append(candidate, name)
-			int fd = open(candidate.data, 0, 0)
-			if (fd >= 0):
-				close(fd)
-				found = strclone(candidate.data)
-	string_free(candidate)
-	return found
-
-
 # Writes payload_<name>.bin plus w_<name>_<tag>.zlib/.gz for every
 # payload at every level.
 void czi_compress(char* dir, int count, char** names, char** datas, int* lens):
@@ -363,7 +324,7 @@ void czi_rm_rf(char* dir):
 
 
 int main():
-	char* python3 = czi_find_on_path(c"python3")
+	char* python3 = process_which(c"python3")
 	if (python3 == 0):
 		println(c"zlib interop OK (skipped: no python3 on PATH)")
 		return 0

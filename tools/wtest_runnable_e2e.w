@@ -110,26 +110,8 @@ int contains(char* haystack, char* needle):
 	return index_of(haystack, needle) >= 0
 
 
-# command -v <name>: some PATH entry holds it.
-int on_path(char* name):
-	char* p = env_get(c"PATH")
-	if (p == 0):
-		return 0
-	list[char*] dirs = split(p, ':')
-	int i = 0
-	while (i < dirs.length):
-		if (strlen(dirs[i]) > 0):
-			char* candidate = path_join(dirs[i], name)
-			int found = path_exists(candidate)
-			free(candidate)
-			if (found):
-				return 1
-		i = i + 1
-	return 0
-
-
 int has_gpu():
-	return path_exists(c"/dev/nvidiactl") || path_exists(c"/dev/nvidia0") || on_path(c"nvidia-smi")
+	return path_exists(c"/dev/nvidiactl") || path_exists(c"/dev/nvidia0") || (process_which(c"nvidia-smi") != 0)
 
 
 # Copy of the current environment without any "name=" entry.

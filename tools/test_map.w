@@ -1746,45 +1746,14 @@ comment). Everything below is only ever consulted when wtest_defhash_flag
 is set, so the default (no --defhash) selection path never runs it. */
 
 # execve does no PATH lookup (lib/process.w), so a bare command name like
-# "git" must be resolved against PATH here first -- mirrors
-# tools/wexec.w's wexec_resolve_program (and this file's own
-# wtest_path_has), minus the Windows suffix handling: git is never one of
-# the runners --available checks for, and this codebase's git-based tools
-# already assume a POSIX host. Returns 'name' unresolved when it is not
-# found (or already contains a '/'), so the caller's spawn fails cleanly
-# instead of silently doing the wrong thing.
+# "git" must be resolved against PATH here first. Returns 'name'
+# unresolved when it is not found (or already contains a '/'), so the
+# caller's spawn fails cleanly instead of silently doing the wrong thing.
 char* wtest_resolve_program(char* name):
-	int i = 0
-	while (name[i] != 0):
-		if (name[i] == '/'):
-			return name
-		i = i + 1
-	char* path = env_get(c"PATH")
-	if (path == 0):
-		path = c"/usr/bin:/bin"
-	string_builder* candidate = string_new()
-	int p = 0
-	int at_end = 0
-	int found = 0
-	while ((at_end == 0) && (found == 0)):
-		string_clear(candidate)
-		while ((path[p] != ':') && (path[p] != 0)):
-			string_append_char(candidate, path[p])
-			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length > 0):
-			string_append_char(candidate, '/')
-			string_append(candidate, name)
-			if (wtest_file_exists(candidate.data)):
-				found = 1
-	char* result = name
-	if (found):
-		result = strclone(candidate.data)
-	string_free(candidate)
-	return result
+	char* found = process_which(name)
+	if (found == 0):
+		return name
+	return found
 
 
 # 'git show <rev>:<path>' -- <path> as recorded at <rev>, with no
@@ -2617,33 +2586,13 @@ int wtest_range_expand(char* spec):
 
 /* --available: drop targets this host cannot run (header comment). */
 
-# Whether 'name' resolves to a readable file on some PATH entry (mirrors
-# tools/wexec.w's wexec_resolve_program lookup, minus the Windows/.exe
-# handling: the runners --available checks for are never Windows tools).
+# Whether 'name' resolves to a readable file on some PATH entry.
 int wtest_path_has(char* name):
-	char* path = env_get(c"PATH")
-	if (path == 0):
-		path = c"/usr/bin:/bin"
-	string_builder* candidate = string_new()
-	int p = 0
-	int at_end = 0
-	int found = 0
-	while ((at_end == 0) && (found == 0)):
-		string_clear(candidate)
-		while ((path[p] != ':') && (path[p] != 0)):
-			string_append_char(candidate, path[p])
-			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length > 0):
-			string_append_char(candidate, '/')
-			string_append(candidate, name)
-			if (wtest_file_exists(candidate.data)):
-				found = 1
-	string_free(candidate)
-	return found
+	char* found = process_which(name)
+	if (found == 0):
+		return 0
+	free(found)
+	return 1
 
 
 # 'bin/wrun arm64' execs its argv natively on an aarch64 Linux host and

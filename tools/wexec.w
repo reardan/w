@@ -1455,70 +1455,35 @@ void wexec_resolve_note_unusable(char* candidate):
 		wexec_resolve_unusable = strclone(candidate)
 
 
+# process_which_by's check for wexec: readable AND executable
+# (wexec_candidate_is_executable above); a readable non-executable
+# match is noted for the exit-127 diagnostic and the search continues
+# down PATH.
+int wexec_resolve_usable(char* candidate):
+	if (process_path_readable(candidate) == 0):
+		return 0
+	if (wexec_candidate_is_executable(candidate)):
+		return 1
+	wexec_resolve_note_unusable(candidate)
+	return 0
+
+
 # execve does no PATH lookup, so commands like "cmp" or "grep" must be
 # resolved here. Anything with a slash is used as-is (on Windows, after
-# the ".exe" fallback). A candidate must be readable AND executable
-# (wexec_candidate_is_executable above); a readable non-executable
-# match is skipped and the search continues down PATH.
+# the ".exe" fallback).
 char* wexec_resolve_program_search(char* name):
 	wexec_resolve_command = name
 	if (wexec_resolve_unusable != 0):
 		free(wexec_resolve_unusable)
 		wexec_resolve_unusable = 0
 	wexec_resolve_missed = 0
-	int win = os_windows()
-	int i = 0
-	while (name[i] != 0):
-		if ((name[i] == '/') || (win && (name[i] == 92))):
-			if (win):
-				return wexec_resolve_exe_suffix(name)
-			return name
-		i = i + 1
-	char* path = env_get(c"PATH")
-	# On Windows the PATH separator is ';' and executables need '.exe'
-	char path_sep = ':'
-	if (win):
-		path_sep = ';'
-	if (path == 0):
-		if (win):
-			path = c"C:/Windows/System32"
-		else:
-			path = c"/usr/bin:/bin"
-	string_builder* candidate = string_new()
-	int p = 0
-	int at_end = 0
-	while (at_end == 0):
-		string_clear(candidate)
-		while ((path[p] != path_sep) && (path[p] != 0)):
-			string_append_char(candidate, path[p])
-			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length > 0):
-			string_append_char(candidate, '/')
-			string_append(candidate, name)
-			if (win):
-				# Try both with and without .exe suffix
-				string_append(candidate, c".exe")
-			int fd = open(candidate.data, 0, 0)
-			if (fd >= 0):
-				close(fd)
-				if (wexec_candidate_is_executable(candidate.data)):
-					return candidate.data
-				wexec_resolve_note_unusable(candidate.data)
-			if (win):
-				# Also try without .exe (script-style names)
-				candidate.data[candidate.length - 4] = 0
-				candidate.length = candidate.length - 4
-				fd = open(candidate.data, 0, 0)
-				if (fd >= 0):
-					close(fd)
-					if (wexec_candidate_is_executable(candidate.data)):
-						return candidate.data
-					wexec_resolve_note_unusable(candidate.data)
-	string_free(candidate)
+	char* found = process_which_by(name, wexec_resolve_usable)
+	if (found == name):
+		if (os_windows()):
+			return wexec_resolve_exe_suffix(name)
+		return name
+	if (found != 0):
+		return found
 	wexec_resolve_missed = 1
 	return name
 
