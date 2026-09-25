@@ -1,6 +1,7 @@
 # Generated from tests/protobuf/sample.proto by tools/proto_to_w.w. Do not edit.
 # proto package: example.shop
 # note: services are not generated (RPC is out of scope)
+import tests.protobuf.common_pb
 import libs.extras.protobuf.message
 
 
@@ -14,6 +15,10 @@ enum Country:
 	COUNTRY_UNSPECIFIED = 0
 	COUNTRY_NO = 47
 	COUNTRY_US = 1
+
+
+# forward declarations (these messages refer to each other)
+message Ping
 
 
 message Address:
@@ -34,6 +39,8 @@ message LineItem:
 	uint32 quantity = 2
 	bool gift = 3
 	repeated sint32 adjustments = 4
+	float weight = 5
+	sfixed32 offset = 6
 
 
 # map entry (key = 1, value = 2)
@@ -47,6 +54,12 @@ message Order_Voucher:
 	sint32 discount = 2
 
 
+message Category:
+	string name = 1
+	Category parent = 2
+	repeated Category children = 3
+
+
 message Order:
 	uint32 id = 1
 	Customer customer = 2
@@ -56,3 +69,14 @@ message Order:
 	string card_token = 6  # oneof payment
 	Order_Voucher voucher = 7  # oneof payment
 	string note = 8  # optional (presence not tracked)
+	Money total = 10
+	Category category = 11
+
+
+message Pong:
+	Ping ping = 1
+	int32 hops = 2
+
+
+message Ping:
+	Pong pong = 1

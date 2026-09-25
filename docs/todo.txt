@@ -142,8 +142,11 @@ current state:
 			.proto -> W codegen (stage 2): bin/proto_to_w schema.proto -o out.w
 				(tools/proto_to_w.w, libs/extras/protobuf/{proto.pg,codegen.w});
 				map<K, V> lowers to repeated entry messages, oneof flattens
-			missing: float/double/sfixed kinds, native map<K, V>/oneof in the
-				message keyword, self-recursive messages, following imports
+			float/double/sfixed kinds, recursive messages (forward declaration
+				'message Name' for mutual references), .proto imports followed
+				(a/b.proto -> import a.b_pb)
+			missing: native map<K, V>/oneof in the message keyword, explicit
+				field presence (proto3 'optional')
 		expressions:
 			&& and || short-circuit expressions
 			! unary operator

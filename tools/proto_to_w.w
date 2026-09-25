@@ -4,13 +4,18 @@
 # wbuild: step="bin/wv2 tools/proto_to_w.w -o bin/proto_to_w"
 # wbuild: step="bin/proto_to_w tests/protobuf/sample.proto -o bin/sample_pb.w"
 # wbuild: step="cmp bin/sample_pb.w tests/protobuf/sample_pb.w"
+# wbuild: step="bin/proto_to_w tests/protobuf/common.proto -o bin/common_pb.w"
+# wbuild: step="cmp bin/common_pb.w tests/protobuf/common_pb.w"
 /*
 proto_to_w: generate W 'message' declarations from a .proto file
 (issue #16 stage 2; libs/extras/protobuf/codegen.w).
 
-	bin/proto_to_w schema.proto -o schema_pb.w
+	bin/proto_to_w schema.proto -o schema_pb.w [-I root]
 
-Without -o the module is written to stdout. Errors go to stderr as
+Without -o the module is written to stdout. 'import "a/b.proto"' is
+read from <root>/a/b.proto (root defaults to the current directory)
+and becomes 'import a.b_pb': generate each imported file to
+<root>/a/b_pb.w, with <root> the directory W imports resolve from. Errors go to stderr as
 "file:line: message" and exit 1.
 */
 import lib.lib
@@ -20,7 +25,7 @@ import libs.extras.protobuf.codegen
 
 
 void proto_to_w_usage():
-	println2(c"usage: proto_to_w schema.proto [-o output.w]")
+	println2(c"usage: proto_to_w schema.proto [-o output.w] [-I import_root]")
 
 
 int main(int argc, int argv):
@@ -35,7 +40,12 @@ int main(int argc, int argv):
 		print2(c"proto_to_w: could not read ")
 		println2(input_path)
 		return 1
-	proto_codegen_result* result = proto_to_w(input, input_path)
+	list[char*] roots = new list[char*]
+	char* root = args_value(c"I")
+	if (root == 0):
+		root = c"."
+	roots.push(root)
+	proto_codegen_result* result = proto_to_w_with_roots(input, input_path, roots)
 	if (result.source == 0):
 		int i = 0
 		while (i < result.errors.length):
