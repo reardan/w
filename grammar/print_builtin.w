@@ -27,144 +27,118 @@ This file is compiled by the committed seed: only seed-understood
 syntax here.
 */
 int expression();
-int import_module(char* dotted);
 void var_emit_to_cstr();
 
 
-# Set when a compiled program used print/println or referenced one of
-# the prelude input helpers; the drivers call prelude_finish_import()
-# once compilation is done.
-int print_builtin_needed
-
-# Backpatch chain heads for the runtime helpers, indexed like
-# print_fn_name; the encoding matches the 'U' symbol chains.
-char* print_chains
-
-
-int print_helper_count():
-	return 20
+# The prelude runtime (structures/prelude.w), imported on demand by
+# prelude_finish_import(). Helper indexes: 0 __w_print_int, 1
+# __w_print_cstr, 2 __w_print_str, 3 __w_print_float32, 4
+# __w_print_list, 5 __w_print_nl, 6-8 the input helpers, 9-11
+# max/min/abs, 12 strlen (len(char*) borrows lib/lib.w's: the prelude
+# import pulls lib.lib in, so the chain always resolves at patch time),
+# 13 __w_print_char, 14/15 any/all, 16-19 lines/words/split/join,
+# 20 __w_enum_name.
+lazy_runtime* print_rt
 
 
-char* print_fn_name(int i):
-	if (i == 0):
-		return c"__w_print_int"
-	if (i == 1):
-		return c"__w_print_cstr"
-	if (i == 2):
-		return c"__w_print_str"
-	if (i == 3):
-		return c"__w_print_float32"
-	if (i == 4):
-		return c"__w_print_list"
-	if (i == 5):
-		return c"__w_print_nl"
-	if (i == 6):
-		return c"input"
-	if (i == 7):
-		return c"read_all"
-	if (i == 8):
-		return c"ints"
-	if (i == 9):
-		return c"__w_max"
-	if (i == 10):
-		return c"__w_min"
-	if (i == 11):
-		return c"__w_abs"
-	if (i == 12):
-		# len(char*) borrows lib/lib.w's strlen: the prelude import
-		# pulls lib.lib in, so the chain always resolves at patch time
-		return c"strlen"
-	if (i == 13):
-		return c"__w_print_char"
-	if (i == 14):
-		return c"__w_any"
-	if (i == 15):
-		return c"__w_all"
-	if (i == 16):
-		return c"__w_lines"
-	if (i == 17):
-		return c"__w_words"
-	if (i == 18):
-		return c"__w_split"
-	return c"__w_join"
-
-
-# Leave helper i's address in eax: directly when the runtime module is
-# already compiled, through the helper's backpatch chain otherwise.
 void print_emit_helper_address(int i):
-	char* name = print_fn_name(i)
-	if (sym_lookup(name) >= 0):
-		sym_get_value(name)
-		return;
-	if (print_chains == 0):
-		print_chains = malloc(print_helper_count() * 4)
-		int j = 0
-		while (j < print_helper_count()):
-			save_int(print_chains + j * 4, 0)
-			j = j + 1
-	int head = load_int(print_chains + i * 4)
-	if (head == 0):
-		head = code_offset
-	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
-	be_addr_slot_write(codepos - 4, head)
-	save_int(print_chains + i * 4, codepos + code_offset - 4)
-	# pac=full: chain slots materialize a callee like sym_get_value does,
-	# so the value needs the same signature (emitted after the chain
-	# bookkeeping so the recorded cell stays the slot's add instruction).
-	be_code_ptr_sign()
+	if (cast(int, print_rt) == 0):
+		print_rt = lazy_runtime_new(c"structures.prelude", c"__w_print_int __w_print_cstr __w_print_str __w_print_float32 __w_print_list __w_print_nl input read_all ints __w_max __w_min __w_abs strlen __w_print_char __w_any __w_all __w_lines __w_words __w_split __w_join __w_enum_name")
+	lazy_emit_helper(print_rt, i)
 
 
-void print_unsupported(int t):
-	diag_part(c"unsupported print argument type: '")
-	if (t == 4):
+# Rendering class of a promoted value, shared by print, f-strings
+# (grammar/template_string.w), var boxing (grammar/var_builtin.w) and
+# the prelude's int-like argument checks.
+enum value_class:
+	VC_NONE    # functions, non-char pointers, structs, maps, sets, buffers
+	VC_INT     # constants, int, fixed-width ints, bool, enums
+	VC_CHAR    # a genuinely char-typed value
+	VC_CSTR    # char*
+	VC_STRING  # string
+	VC_VAR     # var
+	VC_F32     # float32
+	VC_F64     # float64
+	VC_LIST    # list[T]
+
+
+int value_class(int got):
+	if (got == 3): /* constant: an int-like value */
+		return VC_INT
+	if (got == 4): /* function */
+		return VC_NONE
+	int t = type_unqualified(got)
+	if (type_is_string(t)):
+		return VC_STRING
+	if (type_is_char_pointer(t)):
+		return VC_CSTR
+	if (type_is_var(t)):
+		return VC_VAR
+	# Character literals are untyped constants (the got == 3 branch
+	# above) and char arithmetic yields int.
+	if (type_is_char(t)):
+		return VC_CHAR
+	if (type_float_kind(t) == 1):
+		return VC_F32
+	if (type_float_kind(t) == 2):
+		return VC_F64
+	if (type_is_list(t)):
+		return VC_LIST
+	if ((type_get_pointer_level(t) > 0) || (type_num_args(t) > 0)):
+		return VC_NONE
+	if (type_is_map(t) | type_is_set(t) | type_is_buffer(t)):
+		return VC_NONE
+	if ((type_get_kind(t) == type_kind_enum) || (t == type_unqualified(bool_type))):
+		return VC_INT
+	int size = type_get_size(t)
+	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
+		return VC_INT
+	return VC_NONE
+
+
+int value_class_is_int_like(int vc):
+	return (vc == VC_INT) || (vc == VC_CHAR)
+
+
+# "<what> '<type>'" for an unsupported value: the shared tail of the
+# print/f-string/len diagnostics.
+void value_type_error(char* what, int got):
+	diag_part(what)
+	diag_part(c" '")
+	if (got == 3):
+		diag_part(c"constant")
+	else if (got == 4):
 		diag_part(c"function")
 	else:
-		print_error_type(t)
+		print_error_type(got)
 	error(c"'")
 
 
-# Formatter for a scalar value: 0 int-like, 1 char*, 2 string,
-# 3 float32, 13 char. -1 asks the caller to try the container path.
+void print_unsupported(int t):
+	value_type_error(c"unsupported print argument type:", t)
+
+
+# Formatter for a scalar value: 0 int-like, 1 char* (and var, rendered
+# through __w_var_to_cstr), 2 string, 3 float32, 13 char (a genuinely
+# char-typed value prints as the character itself, while println('a')
+# and println(c + 1) keep printing numerically). -1 asks the caller to
+# take the list path.
 int print_helper_for_type(int got):
-	if (got == 3): /* constant: an int-like value */
+	int vc = value_class(got)
+	if (vc == VC_INT):
 		return 0
-	if (got == 4): /* function */
-		print_unsupported(got)
-	int t = type_unqualified(got)
-	if (type_is_string(t)):
+	if ((vc == VC_CSTR) || (vc == VC_VAR)):
+		return 1
+	if (vc == VC_STRING):
 		return 2
-	if (type_is_char_pointer(t)):
-		return 1
-	# var renders through __w_var_to_cstr, then prints as a char*
-	if (type_is_var(t)):
-		return 1
-	# A genuinely char-typed value prints as the character itself.
-	# Character literals are untyped constants (the got == 3 branch
-	# above) and char arithmetic yields int, so println('a') and
-	# println(c + 1) keep printing numerically.
-	if (type_is_char(t)):
+	if (vc == VC_CHAR):
 		return 13
-	if (type_float_kind(t) == 1):
+	if (vc == VC_F32):
 		return 3
-	if (type_float_kind(t) == 2):
+	if (vc == VC_F64):
 		error(c"print does not support float64 yet")
-	if (type_is_list(t)):
+	if (vc == VC_LIST):
 		return -1
-	if (type_get_pointer_level(t) > 0):
-		print_unsupported(got)
-	if (type_num_args(t) > 0):
-		print_unsupported(got)
-	if (type_is_map(t) | type_is_set(t)):
-		print_unsupported(got)
-	if (type_is_array(t) | type_is_slice(t)):
-		print_unsupported(got)
-	if (type_get_kind(t) == type_kind_enum):
-		return 0
-	if (t == type_unqualified(bool_type)):
-		return 0
-	int size = type_get_size(t)
-	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
-		return 0
 	print_unsupported(got)
 	return 0
 
@@ -190,7 +164,6 @@ int print_list_element_kind(int element_type):
 
 # __w_print_nl()
 void print_emit_nl():
-	print_builtin_needed = 1
 	print_emit_helper_address(5)
 	int s = stack_pos
 	push_eax()
@@ -200,7 +173,6 @@ void print_emit_nl():
 
 # helper(value) with the value in the given stack slot
 void print_emit_call1(int helper, int value_slot):
-	print_builtin_needed = 1
 	print_emit_helper_address(helper)
 	int s = stack_pos
 	push_eax()
@@ -211,7 +183,6 @@ void print_emit_call1(int helper, int value_slot):
 
 # __w_print_list(list, kind)
 void print_emit_call_list(int value_slot, int kind):
-	print_builtin_needed = 1
 	print_emit_helper_address(4)
 	int s = stack_pos
 	push_eax()
@@ -290,7 +261,6 @@ int prelude_input_ready():
 # scope. Leaves ')' current for primary_expr's trailing get_token().
 int prelude_input_expr():
 	int helper = prelude_input_helper()
-	print_builtin_needed = 1
 	get_token()
 	expect(c"(")
 	if (peek(c")") == 0):
@@ -354,7 +324,7 @@ int prelude_str_helper():
 int prelude_math_ready():
 	if (nextc != '('):
 		return 0
-	if ((prelude_math_helper() < 0) && (prelude_seq_helper() < 0) && (peek(c"len") == 0) && (prelude_str_helper() < 0)):
+	if ((prelude_math_helper() < 0) && (prelude_seq_helper() < 0) && (peek(c"len") == 0) && (peek(c"enum_name") == 0)):
 		return 0
 	if (sym_lookup(token) >= 0):
 		return 0
@@ -365,55 +335,19 @@ int prelude_math_ready():
 	return 1
 
 
-void prelude_math_unsupported(char* fn_name, int got):
-	diag_part(c"prelude '")
-	diag_part(fn_name)
-	diag_part(c"' argument must be an int-like value: '")
-	if (got == 4):
-		diag_part(c"function")
-	else:
-		print_error_type(got)
-	error(c"'")
-
-
 # Constants, enums, bool, char and the fixed-width ints all pass;
 # floats, pointers, containers and aggregates are rejected (import
 # lib.math or write the comparison out for anything wider).
 void prelude_math_require_int(char* fn_name, int got):
-	if (got == 3):
+	if (value_class_is_int_like(value_class(got))):
 		return;
-	if (got == 4):
-		prelude_math_unsupported(fn_name, got)
-	int t = type_unqualified(got)
-	if (type_float_kind(t)):
-		prelude_math_unsupported(fn_name, got)
-	if (type_get_pointer_level(t) > 0):
-		prelude_math_unsupported(fn_name, got)
-	if (type_num_args(t) > 0):
-		prelude_math_unsupported(fn_name, got)
-	if (type_is_map(t) | type_is_set(t) | type_is_list(t) | type_is_var(t)):
-		prelude_math_unsupported(fn_name, got)
-	if (type_is_buffer(t)):
-		prelude_math_unsupported(fn_name, got)
-	if (type_get_kind(t) == type_kind_enum):
-		return;
-	if (t == type_unqualified(bool_type)):
-		return;
-	int size = type_get_size(t)
-	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
-		return;
-	prelude_math_unsupported(fn_name, got)
+	diag_part(c"prelude '")
+	diag_part(fn_name)
+	value_type_error(c"' argument must be an int-like value:", got)
 
 
 void prelude_len_unsupported(int got):
-	diag_part(c"unsupported len argument type: '")
-	if (got == 3):
-		diag_part(c"constant")
-	else if (got == 4):
-		diag_part(c"function")
-	else:
-		print_error_type(got)
-	error(c"'")
+	value_type_error(c"unsupported len argument type:", got)
 
 
 # len(x): compile-time polymorphic length. list/map/set and the
@@ -446,49 +380,18 @@ int prelude_len_expr():
 	return type_value(type_lookup(c"int"))
 
 
-void prelude_seq_unsupported(char* fn_name, int got):
+# any/all take one list[T] whose elements are int-like (enums, bool,
+# char and the fixed-width ints): elements read as words and test
+# truthy. Floats, pointers, aggregates, nested containers and the other
+# container shapes (map/set, buffers) are rejected — spell those loops
+# out or use the list methods.
+void prelude_seq_require_int_list(char* fn_name, int got):
+	if (value_class(got) == VC_LIST):
+		if (value_class_is_int_like(value_class(type_list_element_type(type_unqualified(got))))):
+			return;
 	diag_part(c"prelude '")
 	diag_part(fn_name)
-	diag_part(c"' argument must be a list of int-like elements: '")
-	if (got == 3):
-		diag_part(c"constant")
-	else if (got == 4):
-		diag_part(c"function")
-	else:
-		print_error_type(got)
-	error(c"'")
-
-
-# any/all take one list[T] whose elements are int-like (constants,
-# enums, bool, char and the fixed-width ints): elements read as words
-# and test truthy. Floats, pointers, aggregates, nested containers and
-# the other container shapes (map/set, buffers) are rejected — spell
-# those loops out or use the list methods.
-void prelude_seq_require_int_list(char* fn_name, int got):
-	if ((got == 3) || (got == 4)):
-		prelude_seq_unsupported(fn_name, got)
-	int t = type_unqualified(got)
-	if (type_is_list(t) == 0):
-		prelude_seq_unsupported(fn_name, got)
-	int e = type_unqualified(type_list_element_type(t))
-	if (type_float_kind(e)):
-		prelude_seq_unsupported(fn_name, got)
-	if (type_get_pointer_level(e) > 0):
-		prelude_seq_unsupported(fn_name, got)
-	if (type_num_args(e) > 0):
-		prelude_seq_unsupported(fn_name, got)
-	if (type_is_map(e) | type_is_set(e) | type_is_list(e) | type_is_var(e)):
-		prelude_seq_unsupported(fn_name, got)
-	if (type_is_buffer(e)):
-		prelude_seq_unsupported(fn_name, got)
-	if (type_get_kind(e) == type_kind_enum):
-		return;
-	if (e == type_unqualified(bool_type)):
-		return;
-	int size = type_get_size(e)
-	if ((size == 1) || (size == 2) || (size == 4) || (size == 8)):
-		return;
-	prelude_seq_unsupported(fn_name, got)
+	value_type_error(c"' argument must be a list of int-like elements:", got)
 
 
 # any(l) / all(l) with no user symbol of that name in scope: true when
@@ -500,7 +403,6 @@ int prelude_seq_expr(int helper):
 	get_token()
 	expect(c"(")
 	int base_stack = stack_pos
-	print_builtin_needed = 1
 	print_emit_helper_address(helper)
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -526,7 +428,6 @@ int prelude_math_call_expr(int helper):
 	get_token()
 	expect(c"(")
 	int base_stack = stack_pos
-	print_builtin_needed = 1
 	print_emit_helper_address(helper)
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -552,121 +453,126 @@ int prelude_math_call_expr(int helper):
 	return type_value(type_lookup(c"int"))
 
 
-# 3 for a string, 2 for a char*, 0 for anything else.
-int prelude_text_kind(int got):
-	if (got < -1):
-		got = type_real(got)
-	if ((got == 3) || (got == 4)):
-		return 0
-	int t = type_unqualified(got)
-	if (type_is_string(t)):
-		return 3
-	if (type_is_char_pointer(t)):
-		return 2
-	return 0
+# Registry of every declared enum constant (type, name, value) in
+# declaration order, filled by grammar/enum_declaration.w for
+# enum_name() reflection. Redeclaring an enum (the REPL) drops its old
+# constants first.
+struct enum_constant_record:
+	int type
+	char* name
+	int value
 
 
-void prelude_str_unsupported(char* fn_name, char* what, int got):
-	diag_part(c"prelude '")
-	diag_part(fn_name)
-	diag_part(what)
-	print_error_type(got)
-	error(c"'")
+list[enum_constant_record] enum_constants
 
 
-# split(s) / split(s, ch) (s a char* or string; no ch = whitespace
-# runs, empty pieces dropped) and join(l, sep) (l a list of char* or
-# string) with no user symbol of that name in scope. Leaves ')' current
-# for primary_expr's trailing get_token().
-int prelude_str_expr(int helper):
-	char* fn_name = strclone(token)
+void enum_register_into(list[enum_constant_record] l, int type_index, char* name, int value):
+	enum_constant_record rec
+	rec.type = type_index
+	rec.name = name
+	rec.value = value
+	l.push(rec)
+
+
+void enum_register_constant(int type_index, char* name, int value):
+	if (cast(int, enum_constants) == 0):
+		enum_constants = new list[enum_constant_record]
+	enum_register_into(enum_constants, type_index, name, value)
+
+
+void enum_forget_constants(int type_index):
+	if (cast(int, enum_constants) == 0):
+		return;
+	int found = 0
+	int i = 0
+	while (i < enum_constants.length):
+		if (enum_constants[i].type == type_index):
+			found = 1
+		i = i + 1
+	if (found == 0):
+		return;
+	list[enum_constant_record] kept = new list[enum_constant_record]
+	i = 0
+	while (i < enum_constants.length):
+		if (enum_constants[i].type != type_index):
+			enum_register_into(kept, enum_constants[i].type, enum_constants[i].name, enum_constants[i].value)
+		i = i + 1
+	enum_constants = kept
+
+
+# enum_name(e): the declared name of an enum value as a char*. The
+# enum's constants (the registry above) are emitted
+# as an inline table of NUL-separated "value" / "name" pairs next to
+# the call, and __w_enum_name scans it at runtime; a value no constant
+# carries renders as its decimal digits. The first of several names
+# sharing a value wins. Leaves ')' current for primary_expr's trailing
+# get_token().
+int prelude_enum_name_expr():
 	get_token()
 	expect(c"(")
 	int base_stack = stack_pos
-	print_builtin_needed = 1
-	print_emit_helper_address(helper)
-	push_eax()
-	stack_pos = stack_pos + 1
 	int got = promote(expression())
-	int kind = 0
-	if (helper == 18):
-		kind = prelude_text_kind(got)
-		if (kind == 0):
-			prelude_str_unsupported(fn_name, c"' argument must be a char* or string: '", got)
-		push_eax()
-		stack_pos = stack_pos + 1
-		mov_eax_int(kind == 3)
-		push_eax()
-		stack_pos = stack_pos + 1
-		if (accept(c",")):
-			got = promote(expression())
-			prelude_math_require_int(fn_name, got)
-		else:
-			mov_eax_int(0)
-	else:
-		if (type_is_list(type_unqualified(got))):
-			kind = prelude_text_kind(type_list_element_type(type_unqualified(got)))
-		if (kind == 0):
-			prelude_str_unsupported(fn_name, c"' argument must be a list of char* or string: '", got)
-		push_eax()
-		stack_pos = stack_pos + 1
-		expect(c",")
-		got = promote(expression())
-		int sep_kind = prelude_text_kind(got)
-		if (sep_kind == 0):
-			prelude_str_unsupported(fn_name, c"' separator must be a char* or string: '", got)
-		push_eax()
-		stack_pos = stack_pos + 1
-		# flags: bit 0 string pieces, bit 1 string separator
-		mov_eax_int((kind == 3) | ((sep_kind == 3) << 1))
+	int t = type_canonical(type_unqualified(got))
+	if ((got == 3) || (got == 4) || (type_get_kind(t) != type_kind_enum)):
+		value_type_error(c"enum_name argument must be an enum value, got", got)
+	if (peek(c")") == 0):
+		error(c"')' expected in enum_name")
 	push_eax()
 	stack_pos = stack_pos + 1
-	if (peek(c")") == 0):
-		diag_part(c"')' expected in prelude '")
-		diag_part(fn_name)
-		error(c"'")
-	hash_call_finish(base_stack)
-	free(fn_name)
-	if (helper == 18):
-		return type_value(type_get_list(type_lookup_pointer(c"char", 1)))
+	int value_slot = stack_pos
+	int capacity = 16
+	char* table_text = malloc(capacity)
+	int length = 0
+	int i = 0
+	while ((cast(int, enum_constants) != 0) && (i < enum_constants.length)):
+		if (type_canonical(enum_constants[i].type) == t):
+			char* digits = itoa(enum_constants[i].value)
+			char* name = enum_constants[i].name
+			int need = length + strlen(digits) + strlen(name) + 3
+			if (need > capacity):
+				table_text = realloc(table_text, capacity, need * 2)
+				capacity = need * 2
+			strcpy(table_text + length, digits)
+			length = length + strlen(digits) + 1
+			strcpy(table_text + length, name)
+			length = length + strlen(name) + 1
+			free(digits)
+		i = i + 1
+	if (length + 1 > capacity):
+		table_text = realloc(table_text, capacity, length + 1)
+	# the final NUL (be_emit_inline_cstr adds it) ends the table
+	table_text[length] = 0
+	be_emit_inline_cstr(length, table_text)
+	free(table_text)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int table_slot = stack_pos
+	print_emit_helper_address(20)
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	hash_push_stack_slot(table_slot)
+	hash_push_stack_slot(value_slot)
+	hash_call_finish(s)
+	be_pop(stack_pos - base_stack)
+	stack_pos = base_stack
 	return type_value(type_lookup_pointer(c"char", 1))
 
 
-# Entry for the primary_expr branch: routes len, any/all and split/join
+# Entry for the primary_expr branch: routes len, any/all and enum_name
 # separately from the max/min/abs runtime helpers.
 int prelude_math_expr():
 	if (peek(c"len")):
 		return prelude_len_expr()
-	if (prelude_str_helper() >= 0):
-		return prelude_str_expr(prelude_str_helper())
+	if (peek(c"enum_name")):
+		return prelude_enum_name_expr()
 	if (prelude_seq_helper() >= 0):
 		return prelude_seq_expr(prelude_seq_helper())
 	return prelude_math_call_expr(prelude_math_helper())
 
 
-void print_patch_chain(int i):
-	int head = load_int(print_chains + i * 4)
-	if (head == 0):
-		return;
-	int v = sym_address(print_fn_name(i))
-	int p = head - code_offset
-	while (p):
-		int next = be_addr_slot_read(p) - code_offset
-		be_addr_slot_write(p, v)
-		p = next
-	save_int(print_chains + i * 4, 0)
-
-
 # Deferred on-demand import of the prelude runtime, called by the
 # drivers at a top-level boundary once compilation of the user's files
-# is done (the template_string_finish_import pattern).
+# is done (grammar/lazy_runtime.w).
 void prelude_finish_import():
-	if (print_builtin_needed == 0):
-		return;
-	import_module(c"structures.prelude")
-	if (print_chains == 0):
-		return;
-	int i = 0
-	while (i < print_helper_count()):
-		print_patch_chain(i)
-		i = i + 1
+	lazy_finish_import(print_rt)

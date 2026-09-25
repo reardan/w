@@ -424,6 +424,60 @@ expression-bodied variant of `function_definition` and the drivers'
 top-level hook. it-expressions cover the single-element cases inline,
 so this stays open (issue #107).
 
+### String comparison and switch (grammar/equality_expr.w, grammar/switch_statement.w)
+
+`==` / `!=` with two `string` operands (variables, `"..."` literals,
+f-strings) compare contents through `__w_string_equal` in the
+always-imported container runtime (structures/hash_table.w): lengths
+first, then bytes; a null descriptor equals only null. A string
+against the constant 0 stays a null check, and `char* == char*` keeps
+its pointer semantics (null checks and identity are used everywhere).
+A repo-wide audit (every tracked `.w` compiled with a temporary
+diagnostic on the new path) found no existing `string == string` site,
+so no identity comparison changed meaning.
+
+`switch` follows the same rule: a `string` scrutinee compares string
+case values by contents, and a `char*` scrutinee compares `char*` and
+`"..."` case values with a null-safe strcmp (`__w_cstr_equal`), while a
+constant case (`case 0:`) stays a word compare. Scrutinees other than
+int-likes, strings and `char*` (non-char pointers, structs, containers,
+functions) used to compile and match only by identity; they are now
+"switch expression must be an int-like value, a string or a char*, got
+'T'" (the float/var/word-size errors are unchanged).
+
+### Constant expressions in initializers (grammar/program.w)
+
+Global initializers, parameter defaults and enum values take a C
+integer constant expression instead of a single literal: `+ - * / %`,
+`<< >>`, `& ^ |`, unary `- + ~`, parentheses, `sizeof(T)`,
+`__word_size__`, `true`/`false`, enum constants and earlier
+`const`-qualified int-like globals, folded at compile time (`const int PAGE = 4 * KB`,
+`perm_all = perm_read | perm_write`). Folding is 32-bit signed — the
+int-literal convention, so a 32- and a 64-bit-hosted compiler emit the
+same bytes: a result that does not fit (`1 << 31`), a shift count
+outside 0..31 and division by zero are errors ("initializer for global
+'X': constant expression overflows 32 bits"). Non-const globals are
+still rejected ("... must be a compile-time constant, got 'name'"):
+their value can change before the initializer would read it. A
+binary operator at the start of a new line ends the expression outside
+parentheses, so the next declaration or script statement is never
+swallowed. The pinned seed still only accepts literal initializers, so
+the compiler's own sources keep literals until SEEDS moves.
+
+### enum_name reflection (grammar/print_builtin.w, structures/prelude.w)
+
+`enum_name(e)` returns the declared name of an enum value as a `char*`
+(`enum_name(shade_dark)` → `"shade_dark"`), under the prelude resolve
+rule (a user symbol or generic named `enum_name` wins). The enum
+declaration records every constant in a compile-time registry; the call
+site emits the enum's table inline as NUL-separated value/name pairs
+(`be_emit_inline_cstr`, position-independent on every target, so no
+absolute-address blob needs rebasing) and `__w_enum_name` scans it. The
+first of several names sharing a value wins; a value no constant carries
+renders as its decimal digits. The json codec's descriptor tables have
+no enum information, so they were not reusable here. Enums that come
+from `c_import` are not in the registry and always render as digits.
+
 ## Acceptance
 
 - `./wbuild verify` — self-host fixpoint (wv3 == wv4 == wv5) with every

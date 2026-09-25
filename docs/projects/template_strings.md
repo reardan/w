@@ -70,26 +70,76 @@ struct, the bytes belong to the resulting string).
 Everything is plain word-sized function calls, so x86 and x64 work from the
 same lowering (`./wbuild template_string_test` / `template_string_64_test`).
 
-## Supported expression types (v1)
+## Supported expression types
 
 - **int-like**: `int`, fixed-width ints, `char`, `bool`, enums — appended via
-  `itoa`, so `char` and `bool` print numerically (`'A'` → `65`, `true` → `1`).
-- **`char*`** — appended as a NUL-terminated C string.
+  `itoa`, so `char` and `bool` print numerically (`'A'` → `65`, `true` → `1`;
+  `{c:c}` asks for the character, see below).
+- **`char*`** — appended as a NUL-terminated C string (`var` values render
+  through `__w_var_to_cstr` and append the same way).
 - **`string`** — appended by descriptor length (embedded NUL bytes survive).
+- **`float32`** — six fraction digits by default (`{f}`), rounded half up;
+  `float64` on the 64-bit-word targets through its own on-demand module
+  (`structures/template_float64.w`: `structures/string.w` is compiled on
+  every target, including by the seed, so it cannot mention `float64`).
 
-Anything else — floats, structs, non-char pointers, `map`/`set`/`list`,
+Anything else — structs, non-char pointers, `map`/`set`/`list`,
 arrays/slices, `void`, bare function names — is a compile error:
-`unsupported template string expression type: 'T'`.
+`unsupported template string expression type: 'T'`. The type
+classification is shared with `print`, var boxing and the prelude's
+int-like checks (`value_class` in `grammar/print_builtin.w`).
 
-**Floats are not supported** in v1: `ftoa` lives in `lib/format.w`, not in
-`structures/string.w`, and float values travel in xmm/eax with per-target ABI
-differences; wiring that into the on-demand runtime was not worth it for the
-first cut. `f"{x}"` with a float `x` errors; use `ftoa` explicitly.
+## Format specs: `{value:spec}`
+
+After the embedded expression, a `:` starts a format spec running to the
+closing `}` — the Python mini-language subset
+
+    [[fill]align][0][width][.precision][type]
+
+- `align`: `<` left, `>` right, `^` center, `=` sign-aware (padding goes
+  between a leading `-`/`+` and the digits). Numbers align right by
+  default, text left. `fill` is one printable ASCII character before the
+  align character (`{n:*>6}`).
+- `0` before the width selects `0` fill with `=` alignment (`{n:06}` →
+  `-00042`); numeric values only.
+- `width` counts UTF-8 codepoints and never truncates.
+- `.precision` is float-only: the number of fraction digits (`{f:.3}`).
+- `type`: `d` decimal, `x`/`X` hex, `o` octal, `b` binary (int-likes;
+  the radix types render the word's bits as unsigned, so `{-1:x}` is
+  `ffffffff` on the 32-bit targets, the C `%x` rule rather than
+  Python's `-1`), `c` the value as a character (a codepoint, UTF-8
+  encoded; a negative `char` is emitted as the raw byte it holds), `s`
+  text, `f` float.
+
+Mismatches are compile errors naming the spec:
+`invalid template string format spec 'x': a text value takes type s`
+(also: `precision needs a float value`, `zero padding and '=' alignment
+need a numeric value`, and the grammar summary for anything unparsable).
+The spec is read raw (`template_take_spec`): after `expression()` stops at
+the `:` token, the characters up to `}` become one token, so specs never
+go through the ordinary tokenizer. A ternary inside the braces still
+works — `conditional_expr` consumes its own `:` — and an empty spec
+(`{n:}`) is the plain rendering.
+
+Spec'd values lower to `__w_template_fmt(b, value, kind, width,
+precision, fill << 8 | align)` (int-likes, text), floats to
+`__w_template_float` / `__w_template_float64(b, value, width, precision,
+flags)`; all of them pad through `__w_template_pad`. The bare `{value}`
+of an int-like or text value keeps the original one-argument helpers.
+
+## An f-string where a `char*` is expected
+
+The builder's buffer is always NUL-terminated, so an f-string literal
+decays to its data pointer wherever a `char*` is expected (argument,
+assignment, return, initializer), exactly like a plain `"..."` literal —
+see `docs/projects/arrays_slices_strings.md`. `puts(f"x={x}")` works
+without `.data` or `cstr()`.
 
 ## On-demand runtime import
 
-`structures/string.w` is not auto-imported. The lowering follows the json
-codec precedent (`grammar/json_builtin.w`): call sites emitted before the
+`structures/string.w` is not auto-imported. The lowering uses the shared
+deferred-runtime facility (`grammar/lazy_runtime.w`, also used by print,
+var and the json codec): call sites emitted before the
 module exists go through per-helper backpatch chains (same encoding as the
 `'U'` symbol chains — the chains live outside the symbol table because
 `function_definition`'s scope truncation would drop a forward declaration),
@@ -133,6 +183,10 @@ only pre-existing syntax. F-string syntax itself appears only under `tests/`.
   `template_string_unterminated_fixture.w` (no closing quote),
   `template_string_unterminated_expr_fixture.w` (unclosed `{`),
   `template_string_stray_brace_fixture.w` (single `}`).
+- `tests/template_format_test.w` (x86, x64, arm64 and wasm twins): every
+  spec element, float32 values, the spec error fixtures
+  (`template_format_*_fixture.w`); `tests/template_format_float64_test.w`
+  (x64 only) covers float64.
 
 ## string -> char* interop (the #146 seam)
 

@@ -215,8 +215,17 @@ Implemented and covered by tests:
   sign-extends into the word-sized `int` on every target — `0xffffffff`
   is `-1` even on x64, so `x & 0xffffffff` never truncates; build 32-bit
   masks at runtime like `lib/sha256.w`'s `sha256_mask32`), UTF-8 `"..."`
-  literals with `\u`/`\U` escapes, and explicit legacy C strings via
-  `c"..."`.
+  literals with `\u`/`\U` escapes (a `string` that also decays to its
+  NUL-terminated `char*` wherever a `char*` is expected, so `c"..."` is
+  optional there), `==`/`!=` on two `string` values comparing contents
+  (`char*` comparisons stay pointer comparisons), f-strings with format
+  specs (`f"{n:04x} {f:.3} {name:>10} {c:c}"`, float interpolation; see
+  `docs/projects/template_strings.md`), `enum_name(e)` reflection, and
+  explicit legacy C strings via `c"..."`.
+- Compile-time constant expressions in global initializers, parameter
+  defaults and enum values: `const int PAGE = 4 * KB`,
+  `perm_all = perm_read | perm_write`, `sizeof(T)`, shifts and bit
+  operations, folded in 32-bit arithmetic with overflow errors.
 - 32-bit limb intrinsics for multi-precision arithmetic (#213):
   `mul_hi(a, b)` (high 32 bits of the unsigned 32×32 product),
   `mul_wide(a, b, &hi)` (low half returned, high half stored to `hi`) and
@@ -248,7 +257,8 @@ Implemented and covered by tests:
   `docs/projects/iteration.md`), `for int cp in string` codepoint iteration,
   `switch`/`case`/`default` (multi-value `case a, b:` clauses, implicit
   break with no fallthrough, `default` last; `break` exits the switch while
-  `continue` targets the enclosing loop), `break`, `continue`, `return`,
+  `continue` targets the enclosing loop; int-like, `string` and `char*`
+  scrutinees, the text ones comparing cases by contents), `break`, `continue`, `return`,
   `debugger` (emits `int3`), and Go-style `defer <call>` (function-scoped,
   LIFO at every exit; the deferred expression is re-emitted at each exit
   point, so it is evaluated at exit time — see `docs/projects/defer.md`),

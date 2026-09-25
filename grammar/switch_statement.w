@@ -9,10 +9,14 @@ switch (expression):             # parentheses optional, like if/while
 
 The scrutinee is evaluated exactly once, into a hidden stack slot. Each
 case compares it against its comma-separated values in source order
-(word equality, like ==); the first match runs that case's body and
+(word equality for int-likes; contents for a string scrutinee, like
+== on strings, and for a char* scrutinee against char* and
+string-literal values, a null-safe strcmp); the first match runs that
+case's body and
 control then leaves the switch (no fallthrough). 'default' runs when no
 case matched and must be the last clause. A switch with no clauses is
-legal and only evaluates the scrutinee.
+legal and only evaluates the scrutinee. Scrutinees other than
+int-likes, strings and char* are compile errors.
 
 'break' inside a case body exits the switch (see the switch context
 globals in grammar/while_statement.w); 'continue' still targets the
@@ -38,6 +42,12 @@ int switch_statement():
 		error(c"switch on a var value is not supported")
 	if (type_stack_words(scrutinee_type) != 1):
 		error(c"switch expression must be a word-sized value")
+	# int-likes compare as words; string and char* scrutinees compare
+	# case values by contents. Anything else (pointers, structs,
+	# containers, functions) could only ever match by identity.
+	int scrutinee_class = value_class(scrutinee_type)
+	if ((value_class_is_int_like(scrutinee_class) == 0) && (scrutinee_class != VC_STRING) && (scrutinee_class != VC_CSTR)):
+		value_type_error(c"switch expression must be an int-like value, a string or a char*, got", scrutinee_type)
 	push_eax()
 	stack_pos = stack_pos + 1
 	int scrutinee_slot = stack_pos
@@ -81,7 +91,15 @@ int switch_statement():
 					promote_eax()
 				pop_ebx()
 				stack_pos = stack_pos - 1
-				alu_cmp_set(0x94) /* sete: scrutinee == value */
+				# text scrutinees compare contents against text values;
+				# a constant case (a null check) stays a word compare
+				int value_class_got = value_class(value_type)
+				if ((scrutinee_class == VC_STRING) && (value_class_got == VC_STRING)):
+					emit_runtime_call_ebx_eax(c"__w_string_equal")
+				else if ((scrutinee_class == VC_CSTR) && ((value_class_got == VC_CSTR) || (value_type == string_literal_type))):
+					emit_runtime_call_ebx_eax(c"__w_cstr_equal")
+				else:
+					alu_cmp_set(0x94) /* sete: scrutinee == value */
 				more = accept(c",")
 				if (more):
 					be_br_nonzero_discard(h_body)
