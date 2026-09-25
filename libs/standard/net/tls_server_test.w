@@ -38,6 +38,7 @@ import libs.standard.crypto.x25519
 import libs.standard.crypto.ecdsa_p256
 import libs.standard.net.x509
 import libs.standard.net.tls
+import lib.mem
 
 
 # ---- small helpers ------------------------------------------------------------
@@ -288,11 +289,8 @@ void test_server_client_interop_inmem():
 
 	# Pass 3: a fresh server must accept [ClientHello || clientFinished].
 	char* full = malloc(chrec_len + fin_len)
+	mem_copy(full, chrec, chrec_len)
 	int i = 0
-	while (i < chrec_len):
-		full[i] = chrec[i]
-		i = i + 1
-	i = 0
 	while (i < fin_len):
 		full[chrec_len + i] = cout[ch_rec_len + i]
 		i = i + 1
@@ -517,11 +515,8 @@ void test_server_tampered_client_finished():
 	# Assemble [ClientHello || clientFinished] and flip a ciphertext byte in
 	# the Finished record (offset 5 = first byte past the record header).
 	char* full = malloc(chrec_len + fin_len)
+	mem_copy(full, chrec, chrec_len)
 	int i = 0
-	while (i < chrec_len):
-		full[i] = chrec[i]
-		i = i + 1
-	i = 0
 	while (i < fin_len):
 		full[chrec_len + i] = cout[ch_rec_len + i]
 		i = i + 1

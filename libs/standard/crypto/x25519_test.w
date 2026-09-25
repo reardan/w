@@ -11,6 +11,7 @@ import lib.lib
 import lib.assert
 import libs.standard.crypto.x25519
 import lib.hex
+import lib.mem
 
 
 void x25519_test_check32(char* want_hex, char* got):
@@ -107,12 +108,9 @@ void test_low_order_rejection():
 	char* u = malloc(32)
 	char* r = malloc(32)
 	hex_decode_into(c"77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", k, 32)
-	int i = 0
-	while (i < 32):
-		u[i] = 0
-		i = i + 1
+	mem_fill(u, 0, 32)
 	assert_equal(0 - 1, x25519_scalarmult(r, k, u))
-	i = 0
+	int i = 0
 	while (i < 32):
 		assert_equal(0, r[i] & 255)
 		i = i + 1
@@ -123,14 +121,11 @@ void test_low_order_rejection():
 
 void test_clamp():
 	char* k = malloc(32)
-	int i = 0
-	while (i < 32):
-		k[i] = 255
-		i = i + 1
+	mem_fill(k, 255, 32)
 	x25519_clamp(k)
 	assert_equal(248, k[0] & 255)
 	assert_equal(127, k[31] & 255)
-	i = 1
+	int i = 1
 	while (i < 31):
 		assert_equal(255, k[i] & 255)
 		i = i + 1

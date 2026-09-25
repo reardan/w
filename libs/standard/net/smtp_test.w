@@ -16,6 +16,7 @@ import structures.string
 import libs.standard.net.tls
 import libs.standard.net.smtp
 import libs.standard.net.testing
+import lib.mem
 
 
 /* Helpers */
@@ -277,10 +278,7 @@ void test_smtp_dot_stuff():
 	free(out)
 	# 998 octets is the limit; 999 fails closed.
 	char* longline = malloc(1001)
-	int i = 0
-	while (i < 999):
-		longline[i] = 'a'
-		i = i + 1
+	mem_fill(longline, 'a', 999)
 	longline[999] = 0
 	asserts(c"999-octet line accepted", smtp_dot_stuff(longline, 999, &n) == 0)
 	out = smtp_dot_stuff(longline, 998, &n)
@@ -613,10 +611,7 @@ void test_smtp_rejections():
 	assert_strings_equal(c"5.7.1 spam\n5.7.1 rejected", smtp_last_reply(c))
 	# Over the advertised SIZE: refused locally, nothing sent.
 	char* big = malloc(201)
-	int i = 0
-	while (i < 200):
-		big[i] = 'a'
-		i = i + 1
+	mem_fill(big, 'a', 200)
 	big[200] = 0
 	assert_equal(0, smtp_send(c, c"a@x.test", one, big, 200))
 	assert_equal(smtp_error_too_large(), smtp_error(c))
@@ -662,10 +657,7 @@ void test_smtp_injection_rejected():
 	string_free(s)
 	# A 1000-octet text line fails before DATA is sent.
 	char* longline = malloc(1001)
-	i = 0
-	while (i < 1000):
-		longline[i] = 'a'
-		i = i + 1
+	mem_fill(longline, 'a', 1000)
 	longline[1000] = 0
 	assert_equal(0, smtp_data(c, longline, 1000))
 	assert_equal(smtp_error_too_large(), smtp_error(c))

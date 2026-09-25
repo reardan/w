@@ -14,6 +14,7 @@ constant time (every byte is always inspected, no early exit).
 */
 import lib.memory
 import libs.standard.crypto.sha2
+import lib.mem
 
 
 struct whmac:
@@ -36,19 +37,13 @@ whmac* hmac_new(int alg, char* key, int key_len):
 	m.opad_key = malloc(m.block_size)
 
 	char* block_key = malloc(m.block_size)
-	int i = 0
-	while (i < m.block_size):
-		block_key[i] = 0
-		i = i + 1
+	mem_fill(block_key, 0, m.block_size)
 	if (key_len > m.block_size):
 		whash_oneshot(alg, key, key_len, block_key)
 	else:
-		i = 0
-		while (i < key_len):
-			block_key[i] = key[i]
-			i = i + 1
+		mem_copy(block_key, key, key_len)
 
-	i = 0
+	int i = 0
 	while (i < m.block_size):
 		m.ipad_key[i] = (block_key[i] & 255) ^ 54 /* 0x36 */
 		m.opad_key[i] = (block_key[i] & 255) ^ 92 /* 0x5c */
@@ -75,10 +70,7 @@ void hmac_final(whmac* m, char* out):
 	whash_update(outer, inner_digest, m.digest_size)
 	whash_final(outer, out)
 	whash_free(outer)
-	int i = 0
-	while (i < m.digest_size):
-		inner_digest[i] = 0
-		i = i + 1
+	mem_fill(inner_digest, 0, m.digest_size)
 	free(inner_digest)
 
 

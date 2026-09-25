@@ -30,6 +30,7 @@ its low 32 bits, and right shifts go through sha256_shr.
 import lib.memory
 import lib.sha256
 import libs.standard.crypto.sha2
+import lib.mem
 
 
 # whash extension id for SHA-1 (extension ids start at 100; see the
@@ -126,10 +127,7 @@ void sha1_block(int* state, char* block):
 # whash_iv_fn: load the initial state.
 void sha1_load_iv(int* state):
 	int* iv = sha1_iv_table()
-	int i = 0
-	while (i < 5):
-		state[i] = iv[i]
-		i = i + 1
+	mem_copy(state, iv, 5)
 
 
 # whash algorithm descriptor: registers SHA-1 with the whash dispatcher

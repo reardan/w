@@ -136,6 +136,7 @@ import libs.standard.net.dns
 import libs.standard.net.tls
 import libs.standard.web.hpack
 import lib.bytes
+import lib.mem
 
 
 /* Constants */
@@ -453,13 +454,6 @@ int h2_get_u31(char* p):
 	return ((p[0] & 127) << 24) | ((p[1] & 255) << 16) | ((p[2] & 255) << 8) | (p[3] & 255)
 
 
-void h2_copy(char* dst, char* src, int n):
-	int i = 0
-	while (i < n):
-		dst[i] = src[i]
-		i = i + 1
-
-
 int h2_min(int a, int b):
 	if (a < b):
 		return a
@@ -497,7 +491,7 @@ char* h2_frame_encode(int type, int flags, int stream_id, char* payload, int len
 	buf[3] = type
 	buf[4] = flags
 	store_be32(buf + 5, stream_id)
-	h2_copy(buf + 9, payload, len)
+	mem_copy(buf + 9, payload, len)
 	return buf
 
 
@@ -875,10 +869,7 @@ int h2_fill(h2_conn* c, int n):
 	while (c.rend - c.rstart < n):
 		if (c.rstart > 0):
 			int have = c.rend - c.rstart
-			int i = 0
-			while (i < have):
-				c.rbuf[i] = c.rbuf[c.rstart + i]
-				i = i + 1
+			mem_copy(c.rbuf, c.rbuf + c.rstart, have)
 			c.rstart = 0
 			c.rend = have
 		if (n > c.rcap):
@@ -910,7 +901,7 @@ void h2_send_goaway(h2_conn* c, int code, char* debug):
 	char* p = malloc(8 + dlen)
 	store_be32(p, c.last_peer_stream_id)
 	store_be32(p + 4, code)
-	h2_copy(p + 8, debug, dlen)
+	mem_copy(p + 8, debug, dlen)
 	h2_write_frame(c, h2_frame_goaway(), 0, 0, p, 8 + dlen)
 	free(p)
 
@@ -1428,7 +1419,7 @@ int h2_on_goaway(h2_conn* c, h2_frame* f):
 	c.goaway_code = h2_get_u31(f.payload + 4)
 	if (c.goaway_debug != 0):
 		free(c.goaway_debug)
-	c.goaway_debug = hpack_copy_bytes(f.payload + 8, f.length - 8)
+	c.goaway_debug = mem_dup(f.payload + 8, f.length - 8)
 	int i = 0
 	while (i < c.streams.length):
 		h2_stream* s = c.streams[i]

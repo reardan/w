@@ -128,6 +128,7 @@ import libs.standard.web.connection
 import libs.standard.web.http_client
 import libs.standard.web.urlparse
 import libs.standard.net.tls
+import lib.mem
 
 
 # One parsed request. target is the raw request-target off the request
@@ -472,12 +473,7 @@ void server_response_set_body(ServerResponse* resp, char* body, int body_len):
 		resp.body = strclone(c"")
 		resp.body_len = 0
 		return
-	char* copy = malloc(body_len + 1)
-	int i = 0
-	while (i < body_len):
-		copy[i] = body[i]
-		i = i + 1
-	copy[body_len] = 0
+	char* copy = mem_dup(body, body_len)
 	resp.body = copy
 	resp.body_len = body_len
 
@@ -496,10 +492,7 @@ void server_response_append_body(ServerResponse* resp, char* body, int body_len)
 		return
 	int old_len = resp.body_len
 	char* combined = malloc(old_len + body_len + 1)
-	int i = 0
-	while (i < old_len):
-		combined[i] = resp.body[i]
-		i = i + 1
+	mem_copy(combined, resp.body, old_len)
 	int j = 0
 	while (j < body_len):
 		combined[old_len + j] = body[j]

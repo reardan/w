@@ -153,6 +153,7 @@ import libs.standard.web.http_server
 import libs.standard.net.dns
 import libs.standard.net.tls
 import lib.bytes
+import lib.mem
 
 
 # One decoded frame header (+ payload once read). mask_offset is where
@@ -834,14 +835,7 @@ int ws_pmd_min_bits():
 
 # Whether bytes[0..len) equal expected[0..expected_len).
 int ws_bytes_equal(char* bytes, int len, char* expected, int expected_len):
-	if (len != expected_len):
-		return 0
-	int i = 0
-	while (i < len):
-		if ((bytes[i] & 255) != (expected[i] & 255)):
-			return 0
-		i = i + 1
-	return 1
+	return (len == expected_len) && mem_eq(bytes, expected, len)
 
 
 # Runs the codec's inflate over data (+ window) and checks the output.
@@ -1281,10 +1275,7 @@ void ws_window_push(string_builder* w, char* data, int len, int bits):
 	string_append_bytes(w, data, len)
 	if (w.length > cap):
 		int drop = w.length - cap
-		int i = 0
-		while (i < cap):
-			w.data[i] = w.data[drop + i]
-			i = i + 1
+		mem_copy(w.data, w.data + drop, cap)
 		w.length = cap
 		w.data[cap] = 0
 
@@ -1510,10 +1501,7 @@ ws_message* ws_message_new(int opcode, char* data, int len):
 # always freed.
 char* ws_pmd_decompress(ws_conn* c, char* data, int len, int* out_len):
 	char* z = malloc(len + 4)
-	int i = 0
-	while (i < len):
-		z[i] = data[i]
-		i = i + 1
+	mem_copy(z, data, len)
 	z[len] = 0
 	z[len + 1] = 0
 	z[len + 2] = 255

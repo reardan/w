@@ -108,6 +108,7 @@ import libs.standard.distributed.wal
 import libs.standard.distributed.memtable
 import libs.standard.distributed.sstable
 import lib.bytes
+import lib.mem
 
 
 struct lsm:
@@ -138,17 +139,6 @@ int lsm_tag_add_table():
 
 
 # ---- small helpers ----------------------------------------------------------
-
-# Malloc'd copy of len bytes with a convenience NUL appended.
-char* lsm_copy_bytes(char* src, int len):
-	char* dst = malloc(len + 1)
-	int i = 0
-	while (i < len):
-		dst[i] = src[i]
-		i = i + 1
-	dst[len] = 0
-	return dst
-
 
 # "<prefix>.sst<seq>", malloc'd; caller frees (or hands to table_paths).
 char* lsm_table_path(char* prefix, int seq):
@@ -181,7 +171,7 @@ void lsm_replay_data_record(memtable* m, char* p, int len):
 		int key_len = load_le32(p + 1)
 		int val_len = load_le32(p + 5)
 		assert1(key_len >= 0 && val_len >= 0 && len == 9 + key_len + val_len)
-		char* key = lsm_copy_bytes(p + 9, key_len)
+		char* key = mem_dup(p + 9, key_len)
 		memtable_put(m, key, p + 9 + key_len, val_len)
 		free(key)
 		return
@@ -189,7 +179,7 @@ void lsm_replay_data_record(memtable* m, char* p, int len):
 		assert1(len >= 5)
 		int dkey_len = load_le32(p + 1)
 		assert1(dkey_len >= 0 && len == 5 + dkey_len)
-		char* dkey = lsm_copy_bytes(p + 5, dkey_len)
+		char* dkey = mem_dup(p + 5, dkey_len)
 		memtable_delete(m, dkey)
 		free(dkey)
 		return
@@ -206,7 +196,7 @@ void lsm_replay_data_record(memtable* m, char* p, int len):
 # corrupt table that is not the last manifest entry), with everything
 # that was opened closed again.
 lsm* lsm_open(char* prefix, int memtable_limit_bytes):
-	char* own_prefix = lsm_copy_bytes(prefix, strlen(prefix))
+	char* own_prefix = mem_dup(prefix, strlen(prefix))
 	char* wpath = strjoin(own_prefix, c".wal")
 	char* mpath = strjoin(own_prefix, c".manifest")
 	wal* mlog = wal_open(mpath)
@@ -451,7 +441,7 @@ char* lsm_get(lsm* l, char* key, int* len_out):
 	int state = memtable_get(l.mem, key, value_out, vlen)
 	if (state == 1):
 		# memtable values are borrowed; copy for the uniform contract
-		result = lsm_copy_bytes(value_out[0], vlen[0])
+		result = mem_dup(value_out[0], vlen[0])
 		len_out[0] = vlen[0]
 		decided = 1
 	if (state == 2):
@@ -612,7 +602,7 @@ char* lsm_export_value_at(lsm* l, int src, int i, int* len_out):
 	if (src < l.tables.length):
 		return sstable_value_at(l.tables[src], i, len_out)
 	char* borrowed = memtable_value_at(l.mem, i, len_out)
-	return lsm_copy_bytes(borrowed, len_out[0])
+	return mem_dup(borrowed, len_out[0])
 
 
 # Full-scan export: the same k-way merge lsm_compact runs across every
@@ -651,7 +641,7 @@ char* lsm_export(lsm* l, int* len_out):
 		else:
 			if (lsm_export_tombstone_at(l, best, cursors[best]) == 0):
 				char* val = lsm_export_value_at(l, best, cursors[best], vl)
-				keys.push(lsm_copy_bytes(best_key, strlen(best_key)))
+				keys.push(mem_dup(best_key, strlen(best_key)))
 				vals.push(val)
 				vlens.push(vl[0])
 			# advance every cursor sitting on this key: the winner and
@@ -779,7 +769,7 @@ int lsm_import(lsm* l, char* blob, int len):
 		return 0
 	i = 0
 	while (i < count):
-		char* key = lsm_copy_bytes(blob + key_off[i], key_len[i])
+		char* key = mem_dup(blob + key_off[i], key_len[i])
 		int ok = lsm_put(l, key, blob + val_off[i], val_len[i])
 		free(key)
 		if (ok == 0):

@@ -1,6 +1,7 @@
 # wbuild: x64
 import lib.testing
 import libs.standard.distributed.raft
+import lib.mem
 
 
 # ---- helpers ----------------------------------------------------------------
@@ -1069,12 +1070,7 @@ raft_msg* raft_test_install(int from, int to, int term, int snap_index, int snap
 
 # Attach an owned blob copy to an install message (the message frees it).
 void raft_test_set_blob(raft_msg* m, char* bytes, int len):
-	char* copy = malloc(len + 1)
-	int i = 0
-	while (i < len):
-		copy[i] = bytes[i]
-		i = i + 1
-	copy[len] = 0
+	char* copy = mem_dup(bytes, len)
 	m.snap_data = copy
 	m.snap_len = len
 

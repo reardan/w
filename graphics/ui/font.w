@@ -253,10 +253,7 @@ int ui_font_face_load_ttf(char* path):
 # bytes are copied, so data is only read during the call.
 int ui_font_face_load_bytes(char* data, int size):
 	char* copy = malloc(size + 1)
-	int i = 0
-	while (i < size):
-		copy[i] = data[i]
-		i = i + 1
+	mem_copy(copy, data, size)
 	ttf_font* font = cast(ttf_font*, malloc(sizeof(ttf_font)))
 	if (ttf_load_bytes(font, copy, size) == 0):
 		free(copy)
@@ -454,10 +451,7 @@ int ui_font_init():
 	ui_font_st.table_cap = 512
 	ui_font_st.keys = cast(int*, malloc(ui_font_st.table_cap * __word_size__))
 	ui_font_st.slots = cast(int*, malloc(ui_font_st.table_cap * __word_size__))
-	i = 0
-	while (i < ui_font_st.table_cap):
-		ui_font_st.keys[i] = 0 - 1
-		i = i + 1
+	mem_fill(ui_font_st.keys, 0 - 1, ui_font_st.table_cap)
 	ui_font_st.shelf_x = 1
 	ui_font_st.shelf_y = 0
 	ui_font_st.shelf_h = 0
@@ -628,11 +622,8 @@ void ui_font_table_grow():
 	ui_font_st.table_cap = old_cap * 2
 	ui_font_st.keys = cast(int*, malloc(ui_font_st.table_cap * __word_size__))
 	ui_font_st.slots = cast(int*, malloc(ui_font_st.table_cap * __word_size__))
+	mem_fill(ui_font_st.keys, 0 - 1, ui_font_st.table_cap)
 	int i = 0
-	while (i < ui_font_st.table_cap):
-		ui_font_st.keys[i] = 0 - 1
-		i = i + 1
-	i = 0
 	while (i < old_cap):
 		if (old_keys[i] != 0 - 1):
 			ui_font_table_insert(old_keys[i], old_slots[i])
@@ -794,10 +785,7 @@ char* ui_font_build_atlas():
 	int total = ui_font_atlas_w() * ui_font_atlas_h()
 	int extra = ui_font_atlas_w() * ui_font_st.cap_rows
 	char* pixels = malloc(total + extra + 1)
-	int i = 0
-	while (i < total):
-		pixels[i] = baked[i]
-		i = i + 1
+	mem_copy(pixels, baked, total)
 	int e = 0
 	while (e < extra):
 		pixels[total + e] = ui_font_st.pixels[e]

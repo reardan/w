@@ -89,6 +89,7 @@ import libs.standard.crypto.base64
 import libs.standard.crypto.random
 import libs.standard.net.dns
 import libs.standard.net.tls
+import lib.mem
 
 
 /* Constants */
@@ -512,10 +513,7 @@ int smtp_send_line(smtp_client* c, char* line, int max_with_crlf):
 		return smtp_fail(c, smtp_error_invalid(), c"smtp: command line contains CR/LF or is too long")
 	int n = strlen(line)
 	char* buf = malloc(n + 3)
-	int i = 0
-	while (i < n):
-		buf[i] = line[i]
-		i = i + 1
+	mem_copy(buf, line, n)
 	buf[n] = 13
 	buf[n + 1] = 10
 	buf[n + 2] = 0
@@ -804,10 +802,7 @@ int smtp_sasl_send(smtp_client* c, char* prefix, char* data, int len):
 		free(b64)
 	int code = smtp_command_limit(c, line, smtp_max_auth_line())
 	int n = strlen(line)
-	int i = 0
-	while (i < n):
-		line[i] = 0
-		i = i + 1
+	mem_fill(line, 0, n)
 	free(line)
 	return code
 
@@ -842,10 +837,7 @@ int smtp_auth_plain(smtp_client* c, char* user, char* pass):
 		raw[2 + ul + i] = pass[i]
 		i = i + 1
 	int code = smtp_sasl_send(c, c"AUTH PLAIN ", raw, n)
-	i = 0
-	while (i < n):
-		raw[i] = 0
-		i = i + 1
+	mem_fill(raw, 0, n)
 	free(raw)
 	if (code == 235):
 		return 1

@@ -8,6 +8,7 @@ import lib.thread
 import lib.task
 import lib.task_runtime
 import lib.container
+import lib.mem
 
 
 /* Tasks spread over every worker and the run ends when all are done. */
@@ -38,10 +39,7 @@ void test_runtime_spreads_tasks_over_workers():
 	assert_equal(0, task_runtime_run(rt))
 	assert_equal(40, rec.done)
 	int* seen = cast(int*, malloc(4 * __word_size__))
-	i = 0
-	while (i < 4):
-		seen[i] = 0
-		i = i + 1
+	mem_fill(seen, 0, 4)
 	i = 0
 	while (i < 40):
 		int w = rec.worker_of[i]

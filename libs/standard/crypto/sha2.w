@@ -33,6 +33,7 @@ import lib.memory
 import lib.sha256
 import lib.hex
 import lib.bytes
+import lib.mem
 
 
 # Algorithm identifiers for the whash interface. Ids below 100 are
@@ -437,10 +438,7 @@ void whash_load_iv(whash* h):
 	int* iv = sha2_h512_table()
 	if (h.alg == WHASH_SHA384()):
 		iv = sha2_h384_table()
-	int j = 0
-	while (j < 16):
-		h.state[j] = iv[j]
-		j = j + 1
+	mem_copy(h.state, iv, 16)
 
 
 whash* whash_new(int alg):
@@ -471,14 +469,8 @@ void whash_reset(whash* h):
 # Independent copy with the same absorbed input (transcript snapshots).
 whash* whash_clone(whash* h):
 	whash* c = whash_new(h.alg)
-	int i = 0
-	while (i < h.state_words):
-		c.state[i] = h.state[i]
-		i = i + 1
-	i = 0
-	while (i < h.buffered):
-		c.buffer[i] = h.buffer[i]
-		i = i + 1
+	mem_copy(c.state, h.state, h.state_words)
+	mem_copy(c.buffer, h.buffer, h.buffered)
 	c.buffered = h.buffered
 	c.len_hi = h.len_hi
 	c.len_lo = h.len_lo
@@ -541,24 +533,15 @@ void whash_update(whash* h, char* data, int len):
 # exactly this mid-handshake snapshot.
 void whash_final(whash* h, char* out):
 	int* st = cast(int*, malloc(h.state_words * __word_size__))
-	int i = 0
-	while (i < h.state_words):
-		st[i] = h.state[i]
-		i = i + 1
+	mem_copy(st, h.state, h.state_words)
 
 	int bs = h.block_size
 	int length_field = 8
 	if (bs == 128):
 		length_field = 16
 	char* tail = malloc(bs * 2)
-	int j = 0
-	while (j < bs * 2):
-		tail[j] = 0
-		j = j + 1
-	j = 0
-	while (j < h.buffered):
-		tail[j] = h.buffer[j]
-		j = j + 1
+	mem_fill(tail, 0, bs * 2)
+	mem_copy(tail, h.buffer, h.buffered)
 	tail[h.buffered] = 128 /* 0x80 terminator */
 
 	int blocks = 1
@@ -606,7 +589,7 @@ void whash_final(whash* h, char* out):
 	# of the 8 state words); word order follows the algorithm's
 	# endianness.
 	int words = h.digest_size / 4
-	i = 0
+	int i = 0
 	while (i < words):
 		if (le == 1):
 			store_le32(out + i * 4, st[i])

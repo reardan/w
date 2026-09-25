@@ -66,6 +66,7 @@ import structures.string
 import libs.standard.web.urlparse
 import libs.standard.net.dns
 import libs.standard.net.tls
+import lib.mem
 
 
 struct http_header:
@@ -693,10 +694,7 @@ int http_conn_read(http_conn* c, char* out, int want):
 	int n = r.limit - r.position
 	if (n > want):
 		n = want
-	int i = 0
-	while (i < n):
-		out[i] = r.buffer[r.position + i]
-		i = i + 1
+	mem_copy(out, r.buffer + r.position, n)
 	r.position = r.position + n
 	return n
 

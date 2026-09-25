@@ -115,6 +115,7 @@ import libs.standard.crypto.sha2
 import libs.extras.compress.deflate
 import libs.extras.compress.zlib
 import libs.extras.vcs.__arch__.fsops
+import lib.mem
 
 
 # Error code for an object whose stored bytes do not match the
@@ -595,16 +596,10 @@ wresult[wcas_object*]* cas_parse_framed(char* bytes, int total):
 
 	wcas_object* o = new wcas_object
 	o.object_type = malloc(tag_len + 1)
-	int j = 0
-	while (j < tag_len):
-		o.object_type[j] = bytes[j]
-		j = j + 1
+	mem_copy(o.object_type, bytes, tag_len)
 	o.object_type[tag_len] = 0
 	o.data = malloc(declared + 1)
-	j = 0
-	while (j < declared):
-		o.data[j] = bytes[i + j]
-		j = j + 1
+	mem_copy(o.data, bytes + i, declared)
 	o.data[declared] = 0
 	o.length = declared
 	return result_new_ok[wcas_object*](o)

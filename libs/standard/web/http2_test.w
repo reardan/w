@@ -25,6 +25,7 @@ import libs.standard.web.hpack
 import libs.standard.web.http2
 import libs.standard.web.testing
 import lib.bytes
+import lib.mem
 
 
 /* Fixture plumbing */
@@ -338,10 +339,7 @@ void test_h2_receive_window_violation():
 		hpack_encoder* e = hpack_encoder_new(4096)
 		h2t_send_headers(fd, e, 1, c":status|200\n", 0)
 		char* big = malloc(150)
-		int i = 0
-		while (i < 150):
-			big[i] = 'z'
-			i = i + 1
+		mem_fill(big, 'z', 150)
 		h2_raw_write_frame(fd, h2_frame_data(), 0, 1, big, 150)
 		h2t_expect(fd, h2_frame_rst_stream(), &f, 11)
 		if ((f.stream_id != 1) || (h2_get_u31(f.payload) != h2_error_flow_control())):
@@ -448,10 +446,7 @@ void h2t_expect_goaway_child(int listener, int kind, int want_code):
 	else if (kind == 2):
 		# A frame above the 16384-byte SETTINGS_MAX_FRAME_SIZE.
 		char* big = malloc(16385)
-		int i = 0
-		while (i < 16385):
-			big[i] = 0
-			i = i + 1
+		mem_fill(big, 0, 16385)
 		h2_raw_write_frame(fd, h2_frame_data(), 0, 1, big, 16385)
 	else if (kind == 3):
 		# Response HEADERS without END_HEADERS, then a DATA frame.

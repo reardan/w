@@ -69,6 +69,7 @@ headers hide the renaming; see docs/projects/cuda.md H1).
 import lib.lib
 import lib.env
 import code_generator.integer
+import lib.mem
 
 c_lib "libcuda.so.1"
 
@@ -324,10 +325,7 @@ int __w_gpu_load_module(char* cell, char* module_text):
 	int err = 1
 	if (n > 0):
 		char* image = malloc(n)
-		int i = 0
-		while (i < n):
-			image[i] = blob[8 + i]
-			i = i + 1
+		mem_copy(image, blob + 8, n)
 		err = cuModuleLoadData(cell, image)
 		free(image)
 		if (err == 0):

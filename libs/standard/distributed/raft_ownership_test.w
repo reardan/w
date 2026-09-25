@@ -3,7 +3,7 @@
 /*
 Command-ownership regression (issue #315): raft_propose COPIES the
 caller's command bytes into a fresh, entry-owned buffer
-(raft_entry_new -> raft_copy_blob), and raft_entry_free releases that
+(raft_entry_new -> mem_dup), and raft_entry_free releases that
 copy. So (1) mutating or freeing the caller's buffer immediately after
 append must never corrupt the log, and (2) tearing an entry (or the
 whole raft) down must free the copy with no leak.

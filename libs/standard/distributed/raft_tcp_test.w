@@ -10,6 +10,7 @@
 # possible but the range is quiet.
 import lib.testing
 import libs.standard.distributed.raft_tcp
+import lib.mem
 
 
 int rt_port_base():
@@ -492,10 +493,7 @@ void test_frame_over_cap_refused():
 	raft_tcp_set_max_pending(a, 4096)
 
 	char* cmd = malloc(5001)
-	int i = 0
-	while (i < 5000):
-		cmd[i] = 120
-		i = i + 1
+	mem_fill(cmd, 120, 5000)
 	cmd[5000] = 0
 	raft_msg* big = rt_make_msg(raft_msg_append(), 1, 2, 2)
 	u64* et = u64_new_int(2)

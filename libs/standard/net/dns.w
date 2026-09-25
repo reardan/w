@@ -34,6 +34,7 @@ import lib.poll
 import lib.io_wait
 import lib.file
 import lib.time
+import lib.mem
 
 
 int dns_port():
@@ -200,10 +201,7 @@ int dns_token_ipv4(char* text, int start, int end, int* out_ip):
 	if ((length <= 0) || (length > 15)):
 		return 0
 	char* token = malloc(16)
-	int i = 0
-	while (i < length):
-		token[i] = text[start + i]
-		i = i + 1
+	mem_copy(token, text + start, length)
 	token[length] = 0
 	int ok = dns_parse_ipv4_literal(token, out_ip)
 	free(token)

@@ -94,6 +94,7 @@ import libs.standard.crypto.ecdsa_p256
 import libs.standard.net.x509
 import lib.bytes
 import structures.string
+import lib.mem
 
 
 # ---- protocol constants -------------------------------------------------------
@@ -295,17 +296,7 @@ int TLS_AEAD_TAG_LEN():
 void tls_wipe(char* p, int len):
 	if (p == 0):
 		return
-	int i = 0
-	while (i < len):
-		p[i] = 0
-		i = i + 1
-
-
-void tls_copy(char* dst, char* src, int n):
-	int i = 0
-	while (i < n):
-		dst[i] = src[i]
-		i = i + 1
+	mem_fill(p, 0, len)
 
 
 # ---- AEAD nonce (reusable by #203) --------------------------------------------
@@ -425,7 +416,7 @@ char* tls_alpn_encode(char* protos, int* out_len):
 			start = i + 1
 		i = i + 1
 	char* out = malloc(b.length)
-	tls_copy(out, b.data, b.length)
+	mem_copy(out, b.data, b.length)
 	*out_len = b.length
 	string_free(b)
 	return out
@@ -719,9 +710,7 @@ char* tls_alpn_selected(tls_conn* c):
 void tls_set_alpn_selected(tls_conn* c, char* name, int n):
 	if (c.alpn != 0):
 		free(c.alpn)
-	c.alpn = malloc(n + 1)
-	tls_copy(c.alpn, name, n)
-	c.alpn[n] = 0
+	c.alpn = mem_dup(name, n)
 
 
 void tls_fail(tls_conn* c, char* msg):
@@ -741,7 +730,7 @@ int tls_io_recv_full(tls_conn* c, char* buf, int n):
 	if (c.use_mem != 0):
 		if (c.mem_in_pos + n > c.mem_in.length):
 			return 0
-		tls_copy(buf, c.mem_in.data + c.mem_in_pos, n)
+		mem_copy(buf, c.mem_in.data + c.mem_in_pos, n)
 		c.mem_in_pos = c.mem_in_pos + n
 		return 1
 	int got = 0
@@ -826,7 +815,7 @@ int tls_send_record(tls_conn* c, int ct, char* payload, int len, int encrypted):
 	store_be16(hdr + 3, rec_len)
 
 	char* inner = malloc(inner_len)
-	tls_copy(inner, payload, len)
+	mem_copy(inner, payload, len)
 	inner[len] = ct & 255
 
 	char* nonce = malloc(TLS_AEAD_IV_LEN())
@@ -940,7 +929,7 @@ int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 				tls_fail(c, c"tls: plaintext too long")
 				return 0
 			char* out = malloc(data_len + 1)
-			tls_copy(out, plain, data_len)
+			mem_copy(out, plain, data_len)
 			tls_wipe(plain, ct_len)
 			free(plain)
 			*out_type = inner_type
@@ -957,7 +946,7 @@ int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 				tls_fail(c, c"tls: application_data before keys")
 				return 0
 			char* out = malloc(rlen + 1)
-			tls_copy(out, body, rlen)
+			mem_copy(out, body, rlen)
 			free(hdr)
 			free(body)
 			*out_type = rtype
@@ -992,10 +981,7 @@ int tls_next_hs_msg(tls_conn* c, int* out_type, char** out_msg, int* out_len):
 		# Compact consumed bytes so hs_buf can't grow without bound.
 		if (c.hs_pos > 0):
 			int rem = c.hs_buf.length - c.hs_pos
-			int i = 0
-			while (i < rem):
-				c.hs_buf.data[i] = c.hs_buf.data[c.hs_pos + i]
-				i = i + 1
+			mem_copy(c.hs_buf.data, c.hs_buf.data + c.hs_pos, rem)
 			c.hs_buf.length = rem
 			c.hs_pos = 0
 		int avail = c.hs_buf.length - c.hs_pos
@@ -1119,7 +1105,7 @@ char* tls_build_client_hello_alpn(char* server_name, char* random, char* session
 	store_be24(b.data + lenpos, body_len)
 
 	char* out = malloc(b.length)
-	tls_copy(out, b.data, b.length)
+	mem_copy(out, b.data, b.length)
 	*out_len = b.length
 	string_free(b)
 	return out
@@ -1197,7 +1183,7 @@ int tls_parse_server_hello(tls_conn* c, char* msg, int len, char* out_pub):
 				return 0
 			if (4 + 32 > elen):
 				return 0
-			tls_copy(out_pub, msg + pos + 4, 32)
+			mem_copy(out_pub, msg + pos + 4, 32)
 			have_key_share = 1
 		pos = pos + elen
 	if (have_version == 0):
@@ -1216,16 +1202,13 @@ char* tls_certverify_content(char* transcript_hash, int th_len, int* out_len):
 	int clen = strlen(ctx)
 	int total = 64 + clen + 1 + th_len
 	char* out = malloc(total)
+	mem_fill(out, 0x20, 64)
 	int i = 0
-	while (i < 64):
-		out[i] = 0x20
-		i = i + 1
-	i = 0
 	while (i < clen):
 		out[64 + i] = ctx[i]
 		i = i + 1
 	out[64 + clen] = 0
-	tls_copy(out + 64 + clen + 1, transcript_hash, th_len)
+	mem_copy(out + 64 + clen + 1, transcript_hash, th_len)
 	*out_len = total
 	return out
 
@@ -1544,7 +1527,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 		return 0
 	# Copy the signature out before hs_buf can move.
 	char* sig = malloc(sig_len)
-	tls_copy(sig, msg + 8, sig_len)
+	mem_copy(sig, msg + 8, sig_len)
 	int cvok = tls_verify_certverify(certs[0], sig_scheme, sig, sig_len, th_cert, ds)
 	free(sig)
 	free(th_cert)
@@ -1589,7 +1572,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 	char* expected = malloc(ds)
 	hmac_compute(c.hash_alg, fkey, ds, th_cv, ds, expected)
 	char* got = malloc(ds)
-	tls_copy(got, msg + 4, ds)
+	mem_copy(got, msg + 4, ds)
 	int fin_ok = hmac_equal(expected, got, ds)
 	tls_wipe(fkey, ds)
 	free(fkey)
@@ -1626,7 +1609,7 @@ void tls_install_write_keys(tls_conn* c, char* secret):
 int tls_gen_priv(tls_conn* c, char* priv):
 	if (c.cfg != 0):
 		if (c.cfg.test_priv != 0):
-			tls_copy(priv, c.cfg.test_priv, 32)
+			mem_copy(priv, c.cfg.test_priv, 32)
 			return 1
 	return random_bytes(priv, 32)
 
@@ -1758,7 +1741,7 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 	fin[1] = 0
 	fin[2] = 0
 	fin[3] = ds
-	tls_copy(fin + 4, cvd, ds)
+	mem_copy(fin + 4, cvd, ds)
 	free(cvd)
 	int fsent = tls_send_record(c, TLS_CT_HANDSHAKE(), fin, 4 + ds, 1)
 	free(fin)
@@ -1820,7 +1803,7 @@ void tls_mem_feed(tls_conn* c, char* data, int len):
 char* tls_mem_take_output(tls_conn* c, int* out_len):
 	int n = c.mem_out.length
 	char* out = malloc(n + 1)
-	tls_copy(out, c.mem_out.data, n)
+	mem_copy(out, c.mem_out.data, n)
 	c.mem_out.length = 0
 	*out_len = n
 	return out
@@ -1831,7 +1814,7 @@ char* tls_mem_take_output(tls_conn* c, int* out_len):
 void tls_update_secret(int alg, char* secret, int ds):
 	char* next = malloc(ds)
 	tls13_hkdf_expand_label(alg, secret, c"traffic upd", 11, c"", 0, next, ds)
-	tls_copy(secret, next, ds)
+	mem_copy(secret, next, ds)
 	tls_wipe(next, ds)
 	free(next)
 
@@ -1883,7 +1866,7 @@ int tls_read(tls_conn* c, char* buf, int len):
 		int n = len
 		if (n > avail):
 			n = avail
-		tls_copy(buf, c.app_buf + c.app_pos, n)
+		mem_copy(buf, c.app_buf + c.app_pos, n)
 		c.app_pos = c.app_pos + n
 		if (c.app_pos >= c.app_len):
 			tls_wipe(c.app_buf, c.app_len)
@@ -1914,7 +1897,7 @@ int tls_read(tls_conn* c, char* buf, int len):
 				int n = len
 				if (n > dlen):
 					n = dlen
-				tls_copy(buf, c.app_buf, n)
+				mem_copy(buf, c.app_buf, n)
 				c.app_pos = n
 				if (c.app_pos >= c.app_len):
 					tls_wipe(c.app_buf, c.app_len)
@@ -1999,7 +1982,7 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 	if (pos + 2 + 32 + 1 > len):
 		return 0
 	pos = pos + 2
-	tls_copy(out_random, msg + pos, 32)
+	mem_copy(out_random, msg + pos, 32)
 	pos = pos + 32
 	int sid_len = msg[pos] & 255
 	pos = pos + 1
@@ -2008,7 +1991,7 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 	if (pos + sid_len > len):
 		return 0
 	if (sid_len > 0):
-		tls_copy(out_sid, msg + pos, sid_len)
+		mem_copy(out_sid, msg + pos, sid_len)
 	*out_sid_len = sid_len
 	pos = pos + sid_len
 	# cipher_suites
@@ -2075,7 +2058,7 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 						if (grp == TLS_GROUP_X25519()):
 							if (kxl == 32):
 								if (*have_x25519 == 0):
-									tls_copy(out_pub, msg + kp, 32)
+									mem_copy(out_pub, msg + kp, 32)
 									*have_x25519 = 1
 						kp = kp + kxl
 		else if (etype == TLS_EXT_SIGNATURE_ALGORITHMS()):
@@ -2128,7 +2111,7 @@ char* tls_build_server_hello(char* random, char* sid, int sid_len, char* server_
 	int body_len = b.length - body_start
 	store_be24(b.data + lenpos, body_len)
 	char* out = malloc(b.length)
-	tls_copy(out, b.data, b.length)
+	mem_copy(out, b.data, b.length)
 	*out_len = b.length
 	string_free(b)
 	return out
@@ -2165,7 +2148,7 @@ char* tls_build_encrypted_extensions_alpn(char* proto, int* out_len):
 	string_append_char(b, n)
 	string_append_bytes(b, proto, n)
 	char* out = malloc(b.length)
-	tls_copy(out, b.data, b.length)
+	mem_copy(out, b.data, b.length)
 	*out_len = b.length
 	string_free(b)
 	return out
@@ -2194,7 +2177,7 @@ char* tls_build_certificate(list[pem_block*] certs, int* out_len):
 	store_be24(b.data + listpos, b.length - list_start)
 	store_be24(b.data + lenpos, b.length - body_start)
 	char* out = malloc(b.length)
-	tls_copy(out, b.data, b.length)
+	mem_copy(out, b.data, b.length)
 	*out_len = b.length
 	string_free(b)
 	return out
@@ -2236,7 +2219,7 @@ char* tls_build_certverify(char* server_d, char* th_cert, int th_len, int* out_l
 	free(der)
 	store_be24(b.data + lenpos, b.length - body_start)
 	char* out = malloc(b.length)
-	tls_copy(out, b.data, b.length)
+	mem_copy(out, b.data, b.length)
 	*out_len = b.length
 	string_free(b)
 	return out
@@ -2249,7 +2232,7 @@ char* tls_build_certverify(char* server_d, char* th_cert, int th_len, int* out_l
 int tls_server_gen_priv(tls_conn* c, char* priv):
 	if (c.scfg != 0):
 		if (c.scfg.test_priv != 0):
-			tls_copy(priv, c.scfg.test_priv, 32)
+			mem_copy(priv, c.scfg.test_priv, 32)
 			return 1
 	return random_bytes(priv, 32)
 
@@ -2258,7 +2241,7 @@ int tls_server_gen_priv(tls_conn* c, char* priv):
 int tls_server_gen_random(tls_conn* c, char* rnd):
 	if (c.scfg != 0):
 		if (c.scfg.test_random != 0):
-			tls_copy(rnd, c.scfg.test_random, 32)
+			mem_copy(rnd, c.scfg.test_random, 32)
 			return 1
 	return random_bytes(rnd, 32)
 
@@ -2603,7 +2586,7 @@ int tls_server_do_handshake(tls_conn* c):
 	fin[1] = 0
 	fin[2] = 0
 	fin[3] = ds
-	tls_copy(fin + 4, svd, ds)
+	mem_copy(fin + 4, svd, ds)
 	free(svd)
 	whash_update(c.transcript, fin, 4 + ds)
 	int fsent = tls_send_record(c, TLS_CT_HANDSHAKE(), fin, 4 + ds, 1)
@@ -2650,7 +2633,7 @@ int tls_server_do_handshake(tls_conn* c):
 		tls_fail(c, c"tls: bad client Finished length")
 		return 0
 	char* got = malloc(ds)
-	tls_copy(got, msg + 4, ds)
+	mem_copy(got, msg + 4, ds)
 	int finok = hmac_equal(expected, got, ds)
 	free(expected)
 	free(got)

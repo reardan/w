@@ -2,6 +2,7 @@
 import lib.testing
 import libs.standard.distributed.raft_wire
 import lib.bytes
+import lib.mem
 
 
 raft_msg* rw_roundtrip(raft_msg* m):
@@ -226,10 +227,7 @@ void test_decode_rejects_malformed():
 	assert_equal(0, cast(int, raft_wire_decode(buf, 16)))
 	# trailing garbage
 	char* big = malloc(size + 1)
-	int i = 0
-	while (i < size):
-		big[i] = buf[i]
-		i = i + 1
+	mem_copy(big, buf, size)
 	big[size] = 99
 	assert_equal(0, cast(int, raft_wire_decode(big, size + 1)))
 	# unknown type
@@ -329,10 +327,7 @@ void test_install_snapshot_malformed():
 	assert_equal(0, cast(int, raft_wire_decode(buf, 17 + 27)))
 	# trailing garbage byte
 	char* big = malloc(size + 1)
-	int i = 0
-	while (i < size):
-		big[i] = buf[i]
-		i = i + 1
+	mem_copy(big, buf, size)
 	big[size] = 7
 	assert_equal(0, cast(int, raft_wire_decode(big, size + 1)))
 	# huge snap_len overrunning the buffer (offset +28: past config_count,

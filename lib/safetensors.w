@@ -40,6 +40,7 @@ import lib.container
 import structures.string
 import structures.json
 import lib.bytes
+import lib.mem
 
 
 struct st_tensor:
@@ -217,13 +218,6 @@ int st_save(char* path, st_file* f):
 ##################################### load #####################################
 
 
-void st_copy_bytes(char* dst, char* src, int n):
-	int i = 0
-	while (i < n):
-		dst[i] = src[i]
-		i = i + 1
-
-
 # Assembles the little-endian u64 header length from raw bytes, masking
 # each byte per lib/sha256.w precedent. Returns -1 (never a valid
 # length) when the value does not fit: bytes 4..7 nonzero means the
@@ -345,7 +339,7 @@ int st_load_tensor(st_file* f, char* name, json_value* meta, string_builder* dat
 	used_end.push(end)
 
 	ndf t = st_ndf_new(rank, n0, n1, n2, n3)
-	st_copy_bytes(cast(char*, t.data.data), data.data + begin, end - begin)
+	mem_copy(cast(char*, t.data.data), data.data + begin, end - begin)
 	st_insert(f, strclone(name), t, 1)
 	return 1
 

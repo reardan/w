@@ -1,6 +1,7 @@
 # wbuild: name=crypto_random_test x64
 import lib.testing
 import libs.standard.crypto.random
+import lib.mem
 
 
 int count_zero_bytes(char* buf, int len):
@@ -18,10 +19,7 @@ int count_zero_bytes(char* buf, int len):
 void test_random_bytes_fills_buffer():
 	int n = 64
 	char* buf = malloc(n)
-	int i = 0
-	while (i < n):
-		buf[i] = 0
-		i = i + 1
+	mem_fill(buf, 0, n)
 	assert_equal(1, random_bytes(buf, n))
 	asserts(c"random_bytes returned 64 zero bytes", count_zero_bytes(buf, n) < n)
 	free(buf)
@@ -50,12 +48,9 @@ void test_random_bytes_respects_length():
 	int total = 48
 	int ask = 16
 	char* buf = malloc(total)
-	int i = 0
-	while (i < total):
-		buf[i] = 'Z'
-		i = i + 1
+	mem_fill(buf, 'Z', total)
 	assert_equal(1, random_bytes(buf, ask))
-	i = ask
+	int i = ask
 	while (i < total):
 		assert_equal('Z', buf[i] & 255)
 		i = i + 1
@@ -82,10 +77,7 @@ void test_random_negative_length_fails():
 void test_random_urandom_fallback_path():
 	int n = 32
 	char* buf = malloc(n)
-	int i = 0
-	while (i < n):
-		buf[i] = 0
-		i = i + 1
+	mem_fill(buf, 0, n)
 	assert_equal(1, random_urandom_fill(buf, n))
 	asserts(c"urandom fallback returned 32 zero bytes", count_zero_bytes(buf, n) < n)
 	free(buf)

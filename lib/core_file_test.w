@@ -4,6 +4,7 @@
 # note, and one PT_LOAD standing in for dumped stack memory.
 import lib.testing
 import lib.core_file
+import lib.mem
 
 
 int core_test_wsize():
@@ -43,10 +44,7 @@ int core_test_size():
 char* core_test_image():
 	int w = core_test_wsize()
 	char* buf = malloc(core_test_size())
-	int z = 0
-	while (z < core_test_size()):
-		buf[z] = 0
-		z = z + 1
+	mem_fill(buf, 0, core_test_size())
 	buf[0] = 127
 	buf[1] = 'E'
 	buf[2] = 'L'

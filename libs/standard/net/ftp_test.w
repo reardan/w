@@ -469,10 +469,7 @@ void test_ftp_reply_line_cap():
 	ftp_client* c = ftp_test_pair_client(fds, 2000)
 	int n = ftp_max_line() + 100
 	char* big = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		big[i] = 'x'
-		i = i + 1
+	mem_fill(big, 'x', n)
 	big[0] = '2'
 	big[1] = '0'
 	big[2] = '0'

@@ -13,6 +13,7 @@ import structures.string
 import libs.standard.web.http_client
 import libs.standard.web.sse
 import libs.standard.web.testing
+import lib.mem
 
 
 /* Fixture server helpers */
@@ -401,10 +402,7 @@ void test_sse_buffer_overflow_fails_closed():
 		sse_child_send_head(conn)
 		# One line larger than the 1 MiB line cap, with no terminator.
 		char* chunk = malloc(65536)
-		int i = 0
-		while (i < 65536):
-			chunk[i] = 'x'
-			i = i + 1
+		mem_fill(chunk, 'x', 65536)
 		int sent = 0
 		while (sent < 1245184):
 			net_test_send_all(conn, chunk, 65536)

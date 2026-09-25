@@ -43,6 +43,7 @@ import lib.net
 import lib.task
 import lib.container
 import structures.deque
+import lib.mem
 
 
 /* Per-thread current task. */
@@ -111,10 +112,7 @@ int task_remote_eventfd_flags():
 
 void task_remote_signal(task_remote* r):
 	char[8] one
-	int i = 0
-	while (i < 8):
-		one[i] = 0
-		i = i + 1
+	mem_fill[char](one, 0, 8)
 	one[0] = 1
 	# An eventfd takes an 8-byte counter increment, a pipe any byte. A
 	# full pipe (EAGAIN) already guarantees a pending wakeup.

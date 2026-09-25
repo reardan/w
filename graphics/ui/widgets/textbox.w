@@ -14,6 +14,7 @@ import graphics.ui.text
 import graphics.ui.widgets.state
 import graphics.ui.widgets.layout
 import graphics.ui.widgets.context
+import lib.mem
 
 
 # Caller-owned single-line text buffer for ui_textbox. text stays
@@ -44,10 +45,7 @@ void ui_textbox_set(ui_textbox_state* st, char* s):
 	int len = strlen(s)
 	if (len > ui_textbox_capacity()):
 		len = ui_textbox_capacity()
-	int i = 0
-	while (i < len):
-		st.text[i] = s[i]
-		i = i + 1
+	mem_copy[char](st.text, s, len)
 	st.text[len] = 0
 	st.length = len
 	st.caret = len

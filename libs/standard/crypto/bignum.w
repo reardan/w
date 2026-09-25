@@ -20,6 +20,7 @@
 # constant-time discipline for the secret scalar lives in the elliptic-curve
 # ladder in ecdsa_p256.w, which calls these).
 import lib.memory
+import lib.mem
 
 
 # ---- representation ---------------------------------------------------------
@@ -48,10 +49,7 @@ bignum* bignum_new():
 	bignum* a = new bignum()
 	a.n = 0
 	a.limbs = cast(int*, malloc(BIGNUM_CAP() * __word_size__))
-	int i = 0
-	while (i < BIGNUM_CAP()):
-		a.limbs[i] = 0
-		i = i + 1
+	mem_fill(a.limbs, 0, BIGNUM_CAP())
 	return a
 
 
@@ -61,10 +59,7 @@ void bignum_free(bignum* a):
 
 
 void bignum_set_zero(bignum* a):
-	int i = 0
-	while (i < a.n):
-		a.limbs[i] = 0
-		i = i + 1
+	mem_fill(a.limbs, 0, a.n)
 	a.n = 0
 
 
@@ -108,10 +103,7 @@ void bignum_copy(bignum* dst, bignum* src):
 # BIGNUM_CAP() limbs regardless of significant length, so the memory-access
 # pattern does not depend on the source value.
 void bignum_copy_full(bignum* dst, bignum* src):
-	int i = 0
-	while (i < BIGNUM_CAP()):
-		dst.limbs[i] = src.limbs[i]
-		i = i + 1
+	mem_copy(dst.limbs, src.limbs, BIGNUM_CAP())
 	dst.n = src.n
 
 

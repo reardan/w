@@ -10,6 +10,7 @@ hashlib. Issue #195, plan 11 phase 4.
 import lib.testing
 import libs.standard.crypto.sha2
 import lib.hex
+import lib.mem
 
 
 # One-shot digest of data as hex.
@@ -42,10 +43,7 @@ void test_sha384_block_boundaries():
 	# field: 111 fits one padded block, 112 forces a second, 128 is an
 	# exact block, 129 spills into a new one.
 	char* a129 = malloc(129)
-	int i = 0
-	while (i < 129):
-		a129[i] = 'a'
-		i = i + 1
+	mem_fill(a129, 'a', 129)
 	sha2t_check(WHASH_SHA384(), a129, 111, c"3c37955051cb5c3026f94d551d5b5e2ac38d572ae4e07172085fed81f8466b8f90dc23a8ffcdea0b8d8e58e8fdacc80a")
 	sha2t_check(WHASH_SHA384(), a129, 112, c"187d4e07cb306103c69967bf544d0dfbe9042577599c73c330abc0cb64c61236d5ed565ee19119d8c31779a38f791fcd")
 	sha2t_check(WHASH_SHA384(), a129, 127, c"9bd06b1763c2cf7aef40e795dc65bc96d59c41b537f3ad72ebdefd485476b5717c1aeb37c327fe9c1831b12b9efd08ae")
@@ -60,10 +58,7 @@ void test_sha384_million_a():
 	int n = 1000000
 	int chunk = 100000
 	char* big = malloc(chunk)
-	int i = 0
-	while (i < chunk):
-		big[i] = 'a'
-		i = i + 1
+	mem_fill(big, 'a', chunk)
 	whash* h = whash_new(WHASH_SHA384())
 	int fed = 0
 	while (fed < n):

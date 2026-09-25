@@ -39,6 +39,7 @@ import libs.standard.crypto.sha2
 import libs.standard.crypto.chacha20poly1305
 import libs.standard.net.tls
 import lib.hex
+import lib.mem
 
 
 # ---- hex helpers --------------------------------------------------------------
@@ -51,11 +52,8 @@ void tlst_assert_hex(char* want_hex, char* got, int got_len):
 
 char* tlst_concat(char* a, int alen, char* b, int blen, int* out_len):
 	char* out = malloc(alen + blen)
+	mem_copy(out, a, alen)
 	int i = 0
-	while (i < alen):
-		out[i] = a[i]
-		i = i + 1
-	i = 0
 	while (i < blen):
 		out[alen + i] = b[i]
 		i = i + 1
@@ -84,17 +82,14 @@ char* tlst_enc_record(char* key, char* iv, int seq_hi, int seq_lo, char* plain, 
 	rec[3] = (rec_len >> 8) & 255
 	rec[4] = rec_len & 255
 	char* inner = malloc(inner_len)
-	int i = 0
-	while (i < plain_len):
-		inner[i] = plain[i]
-		i = i + 1
+	mem_copy(inner, plain, plain_len)
 	inner[plain_len] = inner_ct & 255
 	char* nonce = malloc(12)
 	tls_nonce(iv, seq_hi, seq_lo, nonce)
 	char* ct = malloc(inner_len)
 	char* tag = malloc(16)
 	chacha20poly1305_seal(key, nonce, rec, 5, inner, inner_len, ct, tag)
-	i = 0
+	int i = 0
 	while (i < inner_len):
 		rec[5 + i] = ct[i]
 		i = i + 1
@@ -124,10 +119,7 @@ int tlst_dec_record(char* key, char* iv, int seq_hi, int seq_lo, char* rec, int 
 	while ((p >= 0) && (plain[p] == 0)):
 		p = p - 1
 	int inner_type = plain[p] & 255
-	int i = 0
-	while (i < p):
-		out_plain[i] = plain[i]
-		i = i + 1
+	mem_copy(out_plain, plain, p)
 	*out_len = p
 	free(nonce)
 	free(plain)

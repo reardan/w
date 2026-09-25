@@ -194,6 +194,7 @@ import libs.standard.web.http2
 import libs.standard.web.codec
 import lib.hex
 import lib.bytes
+import lib.mem
 
 
 /* Status codes */
@@ -333,7 +334,7 @@ int grpc_unframe_message(char* body, int len, int max, char** out, int* out_len)
 		return grpc_status_resource_exhausted()
 	if (n != len - 5):
 		return grpc_status_internal()
-	*out = hpack_copy_bytes(body + 5, n)
+	*out = mem_dup(body + 5, n)
 	*out_len = n
 	return grpc_status_ok()
 
@@ -369,10 +370,7 @@ int grpc_encode_message(string_builder* out, char* encoding, char* msg, int len)
 # Drops the first n bytes of a receive buffer.
 void grpc_consume(string_builder* buf, int n):
 	int rest = buf.length - n
-	int i = 0
-	while (i < rest):
-		buf.data[i] = buf.data[n + i]
-		i = i + 1
+	mem_copy(buf.data, buf.data + n, rest)
 	buf.length = rest
 	buf.data[rest] = 0
 
@@ -406,7 +404,7 @@ int grpc_take_message(string_builder* buf, char* encoding, int max, char** out, 
 	if (buf.length < 5 + n):
 		return 0
 	if (flag == 0):
-		*out = hpack_copy_bytes(p + 5, n)
+		*out = mem_dup(p + 5, n)
 		*out_len = n
 		grpc_consume(buf, 5 + n)
 		return 1
@@ -1164,7 +1162,7 @@ void grpc_server_free(grpc_server* s):
 void grpc_call_reply(grpc_call* call, char* msg, int len):
 	if (call.response != 0):
 		free(call.response)
-	call.response = hpack_copy_bytes(msg, len)
+	call.response = mem_dup(msg, len)
 	call.response_len = len
 	call.has_response = 1
 	call.status = grpc_status_ok()

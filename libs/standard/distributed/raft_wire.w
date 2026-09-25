@@ -61,6 +61,7 @@ import lib.assert
 import libs.standard.distributed.u64
 import libs.standard.distributed.raft
 import lib.bytes
+import lib.mem
 
 
 # Encoded size of m in bytes.
@@ -211,12 +212,7 @@ raft_msg* raft_wire_decode(char* buf, int len):
 		if (blen < 0 || blen != len - coff - 4):
 			raft_msg_free(m)
 			return 0
-		char* blob = malloc(blen + 1)
-		int bi = 0
-		while (bi < blen):
-			blob[bi] = buf[coff + 4 + bi]
-			bi = bi + 1
-		blob[blen] = 0
+		char* blob = mem_dup(buf + (coff + 4), blen)
 		m.snap_data = blob
 		m.snap_len = blen
 		return m

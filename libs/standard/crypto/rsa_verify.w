@@ -18,6 +18,7 @@ import lib.sha256
 import libs.standard.crypto.bignum
 import libs.standard.crypto.sha2
 import lib.bytes
+import lib.mem
 
 
 int RSA_HASH_SHA256():
@@ -137,10 +138,7 @@ int rsa_pkcs1v15_verify_sha384(char* n, int nlen, char* e, int elen, char* sig, 
 void mgf1(int whash_alg, char* seed, int seedlen, int mask_len, char* out):
 	int hlen = whash_digest_size(whash_alg)
 	char* buf = malloc(seedlen + 4)
-	int i = 0
-	while (i < seedlen):
-		buf[i] = seed[i]
-		i = i + 1
+	mem_copy(buf, seed, seedlen)
 	char* dig = malloc(hlen)
 	int counter = 0
 	int outpos = 0
@@ -208,12 +206,9 @@ int rsa_pss_verify(char* n, int nlen, char* e, int elen, char* sig, int siglen, 
 	char* mprime = malloc(8 + hlen + slen)
 	char* hprime = malloc(hlen)
 	if (ok != 0):
-		int i = 0
-		while (i < hlen):
-			h[i] = emp[dblen + i]
-			i = i + 1
+		mem_copy(h, emp + dblen, hlen)
 		mgf1(whash_alg, h, hlen, dblen, dbmask)
-		i = 0
+		int i = 0
 		while (i < dblen):
 			db[i] = (emp[i] & 255) ^ (dbmask[i] & 255)
 			i = i + 1
@@ -230,11 +225,8 @@ int rsa_pss_verify(char* n, int nlen, char* e, int elen, char* sig, int siglen, 
 			ok = 0
 	if (ok != 0):
 		# M' = (0x00)*8 || mHash || salt ; salt = last slen bytes of DB.
+		mem_fill(mprime, 0, 8)
 		int i = 0
-		while (i < 8):
-			mprime[i] = 0
-			i = i + 1
-		i = 0
 		while (i < hlen):
 			mprime[8 + i] = mhash[i]
 			i = i + 1

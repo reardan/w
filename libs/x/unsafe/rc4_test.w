@@ -9,6 +9,7 @@ import lib.testing
 import lib.memory
 import libs.x.unsafe.rc4
 import lib.hex
+import lib.mem
 
 
 # Check 16 keystream bytes at stream offset `off` for the hex key.
@@ -112,10 +113,7 @@ void test_rc4_process_roundtrip():
 	# the same key restores the plaintext, in place.
 	char* plain = c"Attack at dawn"
 	char* buf = malloc(15)
-	int i = 0
-	while (i < 14):
-		buf[i] = plain[i]
-		i = i + 1
+	mem_copy(buf, plain, 14)
 	buf[14] = 0
 	rc4* r = rc4_new(c"Secret", 6)
 	rc4_process(r, buf, buf, 14)

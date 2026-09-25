@@ -19,6 +19,7 @@ keystream material.
 */
 import lib.memory
 import lib.bytes
+import lib.mem
 
 
 int chacha20_mask32():
@@ -72,11 +73,8 @@ void chacha20_init_state(int* s, char* key, int counter, char* nonce):
 # original state back in, and serialize the 64-byte keystream block.
 void chacha20_core(int* s, int* w, char* out):
 	int mask = chacha20_mask32()
+	mem_copy(w, s, 16)
 	int i = 0
-	while (i < 16):
-		w[i] = s[i]
-		i = i + 1
-	i = 0
 	while (i < 10):
 		chacha20_quarter(w, 0, 4, 8, 12)
 		chacha20_quarter(w, 1, 5, 9, 13)
@@ -127,10 +125,7 @@ void chacha20_xor(char* key, int counter, char* nonce, char* data, int len, char
 			i = i + 1
 		off = off + 64
 	# Keystream bytes are secret; scrub before returning the buffer.
-	i = 0
-	while (i < 64):
-		ks[i] = 0
-		i = i + 1
+	mem_fill(ks, 0, 64)
 	free(ks)
 	free(w)
 	free(s)

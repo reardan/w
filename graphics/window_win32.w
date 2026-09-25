@@ -37,6 +37,7 @@ Design notes: docs/projects/graphics.md
 import lib.lib
 import graphics.gl
 import graphics.event
+import lib.mem
 
 
 c_lib "user32.dll"
@@ -253,10 +254,7 @@ int gfx_win32_register_class(int instance):
 	if (proc == 0):
 		return 0
 	char* wc = malloc(80)
-	int i = 0
-	while (i < 80):
-		wc[i] = 0
-		i = i + 1
+	mem_fill(wc, 0, 80)
 	save_int32(wc, 80)                    /* cbSize */
 	save_int32(wc + 4, 35)                /* CS_OWNDC | CS_HREDRAW | CS_VREDRAW */
 	save_int64(wc + 8, proc)              /* lpfnWndProc */
@@ -275,10 +273,7 @@ int gfx_win32_register_class(int instance):
 # depth and 8-bit stencil buffer.
 char* gfx_win32_pixel_format():
 	char* pfd = malloc(40)
-	int i = 0
-	while (i < 40):
-		pfd[i] = 0
-		i = i + 1
+	mem_fill(pfd, 0, 40)
 	save_int16(pfd, 40)          /* nSize */
 	save_int16(pfd + 2, 1)       /* nVersion */
 	save_int32(pfd + 4, 37)      /* PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER */

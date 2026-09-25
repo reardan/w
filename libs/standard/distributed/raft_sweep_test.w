@@ -119,7 +119,7 @@ void swc_check_round(sweep_cluster* c):
 				# (raft_entry_free now frees its owned command copy too),
 				# so this driver keeps its OWN copy for the (d) check,
 				# which compares across the whole run.
-				t.applied.push(raft_copy_blob(e.command, e.command_len))
+				t.applied.push(mem_dup(e.command, e.command_len))
 		# (a) at most one leader per term, ever
 		if (raft_state(r) == raft_leader()):
 			int term = raft_term_int(r)

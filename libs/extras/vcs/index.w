@@ -115,6 +115,7 @@ import structures.string
 import libs.extras.vcs.cas
 import libs.extras.vcs.tree
 import libs.extras.vcs.__arch__.fsops
+import lib.mem
 
 
 # Error code for a stored index whose bytes do not parse as this
@@ -262,18 +263,6 @@ int index_find_newline(char* data, int length, int start):
 	return index_find_char(data, length, start, 10)
 
 
-int index_starts_with(char* data, int length, int offset, char* prefix):
-	int n = strlen(prefix)
-	if ((offset + n) > length):
-		return 0
-	int i = 0
-	while (i < n):
-		if (data[offset + i] != prefix[i]):
-			return 0
-		i = i + 1
-	return 1
-
-
 int index_valid_integer(char* data, int start, int end):
 	if (start >= end):
 		return 0
@@ -304,11 +293,11 @@ int index_parse_integer(char* data, int start, int end):
 # unstorable path, or entries out of order -- is INDEX_ERR_MALFORMED.
 wresult[windex*]* index_parse(char* data, int length):
 	int pos = 0
-	if (index_starts_with(data, length, pos, c"index 1\n") == 0):
+	if (mem_starts_with(data, length, pos, c"index 1\n") == 0):
 		return result_new_error[windex*](INDEX_ERR_MALFORMED())
 	pos = pos + strlen(c"index 1\n")
 
-	if (index_starts_with(data, length, pos, c"write_time ") == 0):
+	if (mem_starts_with(data, length, pos, c"write_time ") == 0):
 		return result_new_error[windex*](INDEX_ERR_MALFORMED())
 	pos = pos + strlen(c"write_time ")
 	int wt_end = index_find_newline(data, length, pos)
@@ -322,7 +311,7 @@ wresult[windex*]* index_parse(char* data, int length):
 	char* prev_path = 0
 	int valid = 1
 	while (valid && (pos < length)):
-		if (index_starts_with(data, length, pos, c"entry ") == 0):
+		if (mem_starts_with(data, length, pos, c"entry ") == 0):
 			valid = 0
 			break
 		pos = pos + strlen(c"entry ")

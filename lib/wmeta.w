@@ -17,6 +17,7 @@ checker validates the declared tree, it cannot pin what the compiler sees.
 import lib.lib
 import lib.file
 import structures.string
+import lib.mem
 
 
 struct wmeta_version:
@@ -79,12 +80,7 @@ list[char*] wmeta_split_words(char* line):
 		while ((line[i] != 0) && (line[i] != ' ') && (line[i] != 9)):
 			i = i + 1
 		int n = i - start
-		char* word = malloc(n + 1)
-		int j = 0
-		while (j < n):
-			word[j] = line[start + j]
-			j = j + 1
-		word[n] = 0
+		char* word = mem_dup(line + start, n)
 		words.push(word)
 	return words
 

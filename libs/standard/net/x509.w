@@ -44,6 +44,7 @@ import libs.standard.crypto.rsa_verify
 import libs.standard.crypto.ecdsa_p256
 import libs.standard.net.asn1
 import lib.time
+import lib.mem
 
 
 # ---- constants ----------------------------------------------------------------
@@ -741,12 +742,7 @@ int x509_parse_ext_san(x509_cert* c, char* data, int start, int len):
 			# dNSName IA5String
 			if (x509_valid_dns_name_bytes(data, gs, gl) == 0):
 				return 0
-			char* name = malloc(gl + 1)
-			int i = 0
-			while (i < gl):
-				name[i] = data[gs + i]
-				i = i + 1
-			name[gl] = 0
+			char* name = mem_dup(data + gs, gl)
 			c.san_dns.push(name)
 		count = count + 1
 	if (count == 0):
@@ -996,10 +992,7 @@ x509_cert* x509_parse(char* der, int len):
 		return 0
 	x509_cert* c = new x509_cert()
 	c.der = malloc(len)
-	int i = 0
-	while (i < len):
-		c.der[i] = der[i]
-		i = i + 1
+	mem_copy(c.der, der, len)
 	c.der_len = len
 	c.tbs_start = 0
 	c.tbs_len = 0
@@ -1713,10 +1706,7 @@ int x509_verify_chain(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store*
 # ---- EC private key loading (TLS server role) -------------------------------------------
 
 void x509_wipe(char* p, int len):
-	int i = 0
-	while (i < len):
-		p[i] = 0
-		i = i + 1
+	mem_fill(p, 0, len)
 
 
 # Parse a SEC1 ECPrivateKey structure (RFC 5915) at data[start, end):
@@ -1810,10 +1800,7 @@ int x509_parse_sec1_key(char* data, int start, int end, int require_params, char
 					ok = 0
 				i = i + 1
 	if (ok != 0):
-		i = 0
-		while (i < 32):
-			out_d32[i] = d32[i]
-			i = i + 1
+		mem_copy(out_d32, d32, 32)
 	x509_wipe(d32, 32)
 	free(d32)
 	free(qx)

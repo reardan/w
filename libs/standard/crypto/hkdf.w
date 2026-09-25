@@ -18,6 +18,7 @@ import lib.memory
 import libs.standard.crypto.sha2
 import libs.standard.crypto.hmac
 import lib.bytes
+import lib.mem
 
 
 # HKDF-Extract(salt, IKM) -> PRK (digest_size bytes at out_prk). A zero
@@ -29,10 +30,7 @@ void hkdf_extract(int alg, char* salt, int salt_len, char* ikm, int ikm_len, cha
 		return
 	int ds = whash_digest_size(alg)
 	char* zeros = malloc(ds)
-	int i = 0
-	while (i < ds):
-		zeros[i] = 0
-		i = i + 1
+	mem_fill(zeros, 0, ds)
 	hmac_compute(alg, zeros, ds, ikm, ikm_len, out_prk)
 	free(zeros)
 
@@ -69,10 +67,7 @@ int hkdf_expand(int alg, char* prk, int prk_len, char* info, int info_len, char*
 			i = i + 1
 		produced = produced + take
 		round = round + 1
-	int j = 0
-	while (j < ds):
-		t[j] = 0
-		j = j + 1
+	mem_fill(t, 0, ds)
 	free(counter)
 	free(t)
 	hmac_free(m)

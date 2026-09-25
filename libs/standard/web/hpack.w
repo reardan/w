@@ -62,6 +62,7 @@
 import lib.lib
 import lib.container
 import structures.string
+import lib.mem
 
 
 # One header field. name/value are owned, NUL-terminated copies.
@@ -173,21 +174,11 @@ int hpack_default_max_headers():
 
 /* Header fields and lists */
 
-char* hpack_copy_bytes(char* p, int n):
-	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = p[i]
-		i = i + 1
-	out[n] = 0
-	return out
-
-
 hpack_header* hpack_header_new(char* name, int name_len, char* value, int value_len):
 	hpack_header* h = new hpack_header()
-	h.name = hpack_copy_bytes(name, name_len)
+	h.name = mem_dup(name, name_len)
 	h.name_len = name_len
-	h.value = hpack_copy_bytes(value, value_len)
+	h.value = mem_dup(value, value_len)
 	h.value_len = value_len
 	h.sensitive = 0
 	return h
@@ -216,14 +207,7 @@ void hpack_headers_add_sensitive(list[hpack_header*] l, char* name, char* value)
 
 
 int hpack_bytes_equal(char* a, int alen, char* b, int blen):
-	if (alen != blen):
-		return 0
-	int i = 0
-	while (i < alen):
-		if (a[i] != b[i]):
-			return 0
-		i = i + 1
-	return 1
+	return (alen == blen) && mem_eq(a, b, alen)
 
 
 # First header whose name equals name exactly (HTTP/2 names are
@@ -279,12 +263,12 @@ void hpack_static_init():
 		int start = pos
 		while (text[pos] != '|'):
 			pos = pos + 1
-		names[idx] = hpack_copy_bytes(text + start, pos - start)
+		names[idx] = mem_dup(text + start, pos - start)
 		pos = pos + 1
 		start = pos
 		while (text[pos] != ';'):
 			pos = pos + 1
-		values[idx] = hpack_copy_bytes(text + start, pos - start)
+		values[idx] = mem_dup(text + start, pos - start)
 		pos = pos + 1
 		idx = idx + 1
 	names[0] = 0
@@ -603,7 +587,7 @@ char* hpack_decode_string(hpack_decoder* d, char* p, int len, int* pos, int* out
 		if (slen > d.max_string):
 			*err = hpack_error_too_large()
 			return 0
-		result = hpack_copy_bytes(p + *pos, slen)
+		result = mem_dup(p + *pos, slen)
 		*out_len = slen
 	*pos = *pos + slen
 	return result
@@ -703,7 +687,7 @@ int hpack_decode(hpack_decoder* d, char* block, int len, list[hpack_header*] out
 			hpack_header* h = hpack_lookup(d, index, &scratch)
 			if (h == 0):
 				return hpack_error_bad_index()
-			int rc = hpack_emit(d, out, &list_size, hpack_copy_bytes(h.name, h.name_len), h.name_len, hpack_copy_bytes(h.value, h.value_len), h.value_len, 0)
+			int rc = hpack_emit(d, out, &list_size, mem_dup(h.name, h.name_len), h.name_len, mem_dup(h.value, h.value_len), h.value_len, 0)
 			if (rc != 0):
 				return rc
 			seen_field = 1
@@ -738,7 +722,7 @@ int hpack_decode(hpack_decoder* d, char* block, int len, list[hpack_header*] out
 				hpack_header* nh = hpack_lookup(d, name_index, &scratch)
 				if (nh == 0):
 					return hpack_error_bad_index()
-				name = hpack_copy_bytes(nh.name, nh.name_len)
+				name = mem_dup(nh.name, nh.name_len)
 				name_len = nh.name_len
 			else:
 				name = hpack_decode_string(d, block, len, &pos, &name_len, &err)

@@ -155,6 +155,7 @@ import libs.extras.compress.zlib
 import libs.extras.vcs.cas
 import libs.extras.vcs.delta
 import libs.extras.vcs.__arch__.fsops
+import lib.mem
 
 
 /* Constants */
@@ -291,20 +292,6 @@ void pack_stats_free(pack_stats* st):
 /* Header parsing */
 
 
-# True when data[offset .. offset+strlen(prefix)) equals prefix, without
-# reading past `length` (mirrors delta.w's delta_starts_with).
-int pack_starts_with(char* data, int length, int offset, char* prefix):
-	int n = strlen(prefix)
-	if ((offset + n) > length):
-		return 0
-	int i = 0
-	while (i < n):
-		if (data[offset + i] != prefix[i]):
-			return 0
-		i = i + 1
-	return 1
-
-
 # Parses a non-negative decimal at data[*pos], advancing *pos past the
 # digits. Returns -1 for "no digits" or a value that would overflow the
 # word-sized int (the running value is capped at 100000000 BEFORE each
@@ -349,17 +336,17 @@ int pack_expect_char(char* data, int length, int* pos, int ch):
 wresult[wpack_file*]* pack_parse(char* path, char* data, int length):
 	int pos = 0
 	int version = 0
-	if (pack_starts_with(data, length, pos, PACK_MAGIC_V1())):
+	if (mem_starts_with(data, length, pos, PACK_MAGIC_V1())):
 		version = 1
 		pos = pos + strlen(PACK_MAGIC_V1())
-	else if (pack_starts_with(data, length, pos, PACK_MAGIC_V2())):
+	else if (mem_starts_with(data, length, pos, PACK_MAGIC_V2())):
 		version = 2
 		pos = pos + strlen(PACK_MAGIC_V2())
 	int valid = version != 0
 	if (valid):
 		valid = pack_expect_char(data, length, &pos, 10)
 	if (valid):
-		valid = pack_starts_with(data, length, pos, c"count ")
+		valid = mem_starts_with(data, length, pos, c"count ")
 	int count = 0
 	if (valid):
 		pos = pos + strlen(c"count ")

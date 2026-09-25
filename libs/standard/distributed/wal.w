@@ -34,6 +34,7 @@ import lib.assert
 import lib.framing
 import lib.sha256
 import lib.bytes
+import lib.mem
 
 
 int wal_version():
@@ -64,11 +65,8 @@ struct wal_reader:
 # Checksum of (length bytes || payload): first 4 bytes of sha256, raw.
 void wal_checksum(char* len_bytes, char* payload, int len, char* out4):
 	char* buf = malloc(4 + len)
+	mem_copy(buf, len_bytes, 4)
 	int i = 0
-	while (i < 4):
-		buf[i] = len_bytes[i]
-		i = i + 1
-	i = 0
 	while (i < len):
 		buf[4 + i] = payload[i]
 		i = i + 1

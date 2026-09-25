@@ -13,6 +13,7 @@ import structures.string
 import libs.standard.web.http_client
 import libs.standard.web.urlparse
 import libs.standard.web.testing
+import lib.mem
 
 
 /* Fixture server helpers (reusable server bits) */
@@ -106,10 +107,7 @@ int http_test_read_request(int conn, http_test_request* q):
 	int have = total - head_end
 	if (have > content_length):
 		have = content_length
-	int i = 0
-	while (i < have):
-		q.body[i] = buf[head_end + i]
-		i = i + 1
+	mem_copy(q.body, buf + head_end, have)
 	free(buf)
 	while (have < content_length):
 		int more = read(conn, q.body + have, content_length - have)

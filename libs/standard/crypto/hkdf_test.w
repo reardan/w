@@ -14,6 +14,7 @@ import libs.standard.crypto.sha2
 import libs.standard.crypto.hmac
 import libs.standard.crypto.hkdf
 import lib.hex
+import lib.mem
 
 
 void hkdft_assert_bytes(char* want_hex, char* got, int len):
@@ -128,11 +129,8 @@ void test_rfc8448_key_schedule():
 	char* ch = hex_bytes(hkdft_rfc8448_client_hello())
 	char* sh = hex_bytes(hkdft_rfc8448_server_hello())
 	char* transcript = malloc(286)
+	mem_copy(transcript, ch, 196)
 	int i = 0
-	while (i < 196):
-		transcript[i] = ch[i]
-		i = i + 1
-	i = 0
 	while (i < 90):
 		transcript[196 + i] = sh[i]
 		i = i + 1
@@ -144,10 +142,7 @@ void test_rfc8448_key_schedule():
 
 	# early_secret = HKDF-Extract(salt="", IKM=32 zero bytes)
 	char* zeros = malloc(32)
-	i = 0
-	while (i < 32):
-		zeros[i] = 0
-		i = i + 1
+	mem_fill(zeros, 0, 32)
 	char* early = malloc(32)
 	hkdf_extract(alg, c"", 0, zeros, 32, early)
 	hkdft_assert_bytes(c"33ad0a1c607ec03b09e6cd9893680ce210adf300aa1f2660e1b22e10f170f92a", early, 32)
@@ -195,10 +190,7 @@ void test_rfc8448_key_schedule():
 
 	# Label bounds: prefixed label must fit one length byte.
 	char* big_label = malloc(251)
-	i = 0
-	while (i < 250):
-		big_label[i] = 'x'
-		i = i + 1
+	mem_fill(big_label, 'x', 250)
 	big_label[250] = 0
 	assert_equal(0, tls13_hkdf_expand_label(alg, hs, big_label, 250, c"", 0, chts2, 32))
 	assert_equal(1, tls13_hkdf_expand_label(alg, hs, big_label, 249, c"", 0, chts2, 32))

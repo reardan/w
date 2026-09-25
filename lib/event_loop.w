@@ -25,6 +25,7 @@ import lib.time
 import lib.math
 import lib.container
 import structures.heap
+import lib.mem
 
 
 # fd, revents, context
@@ -227,10 +228,7 @@ event_fd_slot* event_loop_find_slot(event_loop* loop, int fd):
 int event_loop_epoll_ctl(event_loop* loop, int op, int fd, int events):
 	int size = epoll_event_bytes()
 	char* ev = malloc(size)
-	int i = 0
-	while (i < size):
-		ev[i] = 0
-		i = i + 1
+	mem_fill(ev, 0, size)
 	int* mask = cast(int*, ev)
 	mask[0] = events
 	int* data = cast(int*, ev + epoll_event_data_offset())

@@ -20,6 +20,7 @@ words, and struct cmsghdr is {size_t len, int level, int type} followed
 by the descriptors at the next word boundary.
 */
 import lib.lib
+import lib.mem
 
 
 int unix_fds_sol_socket():
@@ -72,14 +73,11 @@ char* unix_fds_iovec(char* data, int n):
 int unix_send_fds(int sock, char* data, int n, int* fds, int count):
 	int space = unix_fds_cmsg_space(count)
 	char* control = malloc(space)
-	int i = 0
-	while (i < space):
-		control[i] = 0
-		i = i + 1
+	mem_fill(control, 0, space)
 	save_word(control, unix_fds_cmsg_data_offset() + count * 4)
 	save_int(control + __word_size__, unix_fds_sol_socket())
 	save_int(control + __word_size__ + 4, unix_fds_scm_rights())
-	i = 0
+	int i = 0
 	while (i < count):
 		save_int(control + unix_fds_cmsg_data_offset() + i * 4, fds[i])
 		i = i + 1

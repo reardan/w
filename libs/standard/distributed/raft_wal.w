@@ -153,17 +153,6 @@ int raft_wal_decode_vote(int wire):
 	return wire - 1
 
 
-char* raft_wal_copy_string(char* s):
-	int n = strlen(s)
-	char* p = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		p[i] = s[i]
-		i = i + 1
-	p[n] = 0
-	return p
-
-
 # ---- shadow replay ----------------------------------------------------------------
 
 # Fold one persisted record into the shadow. Payload layouts are
@@ -215,7 +204,7 @@ void raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 # issued after recovery only appends genuine changes. Returns 0 when
 # wal_open fails (unopenable path, foreign or corrupt header).
 raft_wal* raft_wal_open(char* path):
-	char* own = raft_wal_copy_string(path)
+	char* own = strclone(path)
 	wal* w = wal_open(own)
 	if (cast(int, w) == 0):
 		free(own)
@@ -482,11 +471,11 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		u64_copy(r.last_applied, r.snap_last_index)
 		if (r.snap_data != 0):
 			free(r.snap_data)
-		r.snap_data = raft_copy_blob(p + coff + 4, blob_len)
+		r.snap_data = mem_dup(p + coff + 4, blob_len)
 		r.snap_len = blob_len
 		if (r.pending_snap_data != 0):
 			free(r.pending_snap_data)
-		r.pending_snap_data = raft_copy_blob(p + coff + 4, blob_len)
+		r.pending_snap_data = mem_dup(p + coff + 4, blob_len)
 		r.pending_snap_len = blob_len
 		u64_copy(r.pending_snap_index, r.snap_last_index)
 		return

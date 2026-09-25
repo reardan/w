@@ -358,13 +358,13 @@ void gs_ping_pong(grpc_channel* ch, int rounds, char* want_encoding):
 /* Fake coding for the mismatch test (registered in the client only) */
 
 int gs_fake_encode(char* in, int len, char** out, int* out_len):
-	*out = hpack_copy_bytes(in, len)
+	*out = mem_dup(in, len)
 	*out_len = len
 	return codec_ok()
 
 
 int gs_fake_decode(char* in, int len, int max, char** out, int* out_len):
-	*out = hpack_copy_bytes(in, len)
+	*out = mem_dup(in, len)
 	*out_len = len
 	return codec_ok()
 

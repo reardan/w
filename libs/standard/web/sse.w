@@ -34,6 +34,7 @@
 import lib.lib
 import structures.string
 import libs.standard.web.http_client
+import lib.mem
 
 
 # One dispatched event. event defaults to "message". data is the joined
@@ -170,12 +171,7 @@ char* sse_range_clone(char* base, int start, int end):
 	int n = end - start
 	if (n < 0):
 		n = 0
-	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = base[start + i]
-		i = i + 1
-	out[n] = 0
+	char* out = mem_dup(base + start, n)
 	return out
 
 

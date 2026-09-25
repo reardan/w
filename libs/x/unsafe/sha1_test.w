@@ -14,6 +14,7 @@ import libs.standard.crypto.sha2
 import libs.standard.crypto.hmac
 import libs.x.unsafe.sha1
 import lib.hex
+import lib.mem
 
 
 void sha1t_check(char* data, int len, char* want_hex):
@@ -36,10 +37,7 @@ void test_sha1_block_boundaries():
 	# 55/56/63/64/65 'a's straddle the 0x80 terminator, the 8-byte length
 	# field, and the 64-byte block edge (checked against hashlib).
 	char* a65 = malloc(65)
-	int i = 0
-	while (i < 65):
-		a65[i] = 'a'
-		i = i + 1
+	mem_fill(a65, 'a', 65)
 	sha1t_check(a65, 55, c"c1c8bbdc22796e28c0e15163d20899b65621d65a")
 	sha1t_check(a65, 56, c"c2db330f6083854c99d4b5bfb6e8f29f201be699")
 	sha1t_check(a65, 63, c"03f09f5b158a7a8cdad920bddc29b81c18a551f5")
@@ -54,10 +52,7 @@ void test_sha1_million_a():
 	int n = 1000000
 	int chunk = 100000
 	char* big = malloc(chunk)
-	int i = 0
-	while (i < chunk):
-		big[i] = 'a'
-		i = i + 1
+	mem_fill(big, 'a', chunk)
 	whash* h = whash_new(WHASH_SHA1())
 	int fed = 0
 	while (fed < n):
@@ -155,17 +150,11 @@ void test_hmac_sha1_rfc2202():
 	sha1t_check_hmac(c"Jefe", 4, c"what do ya want for nothing?", 28, c"effcdf6ae5eb2fa2d27416d5f184df9c259a7c79")
 	char* key3 = hex_bytes(c"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	char* data3 = malloc(50)
-	int i = 0
-	while (i < 50):
-		data3[i] = 221 /* 0xdd */
-		i = i + 1
+	mem_fill(data3, 221, 50)
 	sha1t_check_hmac(key3, 20, data3, 50, c"125d7342b9ac11cd91a39af48aa17b4f63f175d3")
 	free(data3)
 	free(key3)
 	char* key6 = malloc(80)
-	i = 0
-	while (i < 80):
-		key6[i] = 170 /* 0xaa */
-		i = i + 1
+	mem_fill(key6, 170, 80)
 	sha1t_check_hmac(key6, 80, c"Test Using Larger Than Block-Size Key - Hash Key First", 54, c"aa4ae5e15272d00e95705637ce8a3b55ed402112")
 	free(key6)

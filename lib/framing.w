@@ -9,6 +9,7 @@
 # split across reads, and several messages arriving in a single read.
 import lib.lib
 import lib.memory
+import lib.mem
 
 
 # Writes all n bytes, retrying on short writes.
@@ -161,12 +162,7 @@ char* frame_take_buffered_message(frame_reader* r, int* length_out):
 	if (r.length - header_end < body_length):
 		return 0
 
-	char* body = malloc(body_length + 1)
-	int i = 0
-	while (i < body_length):
-		body[i] = r.buffer[header_end + i]
-		i = i + 1
-	body[body_length] = 0
+	char* body = mem_dup(r.buffer + header_end, body_length)
 	r.offset = header_end + body_length
 	*length_out = body_length
 	return body

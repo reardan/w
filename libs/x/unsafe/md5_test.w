@@ -13,6 +13,7 @@ import libs.standard.crypto.sha2
 import libs.standard.crypto.hmac
 import libs.x.unsafe.md5
 import lib.hex
+import lib.mem
 
 
 void md5t_check(char* data, int len, char* want_hex):
@@ -39,10 +40,7 @@ void test_md5_block_boundaries():
 	# 55/56/63/64/65 'a's straddle the 0x80 terminator, the 8-byte length
 	# field, and the 64-byte block edge (checked against hashlib).
 	char* a65 = malloc(65)
-	int i = 0
-	while (i < 65):
-		a65[i] = 'a'
-		i = i + 1
+	mem_fill(a65, 'a', 65)
 	md5t_check(a65, 55, c"ef1772b6dff9a122358552954ad0df65")
 	md5t_check(a65, 56, c"3b0c8ac703f828b04c6c197006d17218")
 	md5t_check(a65, 63, c"b06521f39153d618550606be297466d5")
@@ -133,17 +131,11 @@ void test_hmac_md5_rfc2202():
 	md5t_check_hmac(c"Jefe", 4, c"what do ya want for nothing?", 28, c"750c783e6ab0b503eaa86e310a5db738")
 	char* key3 = hex_bytes(c"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	char* data3 = malloc(50)
-	int i = 0
-	while (i < 50):
-		data3[i] = 221 /* 0xdd */
-		i = i + 1
+	mem_fill(data3, 221, 50)
 	md5t_check_hmac(key3, 16, data3, 50, c"56be34521d144c88dbb8c733f0e8b3f6")
 	free(data3)
 	free(key3)
 	char* key6 = malloc(80)
-	i = 0
-	while (i < 80):
-		key6[i] = 170 /* 0xaa */
-		i = i + 1
+	mem_fill(key6, 170, 80)
 	md5t_check_hmac(key6, 80, c"Test Using Larger Than Block-Size Key - Hash Key First", 54, c"6b1ab7fe4bd7bf8f0b62e6ce61b9d0cd")
 	free(key6)

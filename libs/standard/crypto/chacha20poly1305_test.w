@@ -12,6 +12,7 @@ import lib.testing
 import libs.standard.crypto.chacha20poly1305
 import libs.standard.crypto.chacha20poly1305_wycheproof_fixture
 import lib.hex
+import lib.mem
 
 
 # --- test-local hex helpers (vectors are embedded as lowercase hex) ---
@@ -97,12 +98,9 @@ void test_rfc8439_open_a5():
 # both the return code and that not one plaintext byte was released.
 void cp_check_open_fails(char* key, char* nonce, char* aad, int aad_len, char* ct, int n, char* tag):
 	char* pt = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		pt[i] = 0x5a
-		i = i + 1
+	mem_fill(pt, 0x5a, n)
 	assert_equal(0, chacha20poly1305_open(key, nonce, aad, aad_len, ct, n, tag, pt))
-	i = 0
+	int i = 0
 	while (i < n):
 		assert_equal(0x5a, pt[i] & 255)
 		i = i + 1

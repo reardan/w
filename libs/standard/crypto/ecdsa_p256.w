@@ -23,6 +23,7 @@ import lib.memory
 import lib.sha256
 import libs.standard.crypto.bignum
 import lib.hex
+import lib.mem
 
 
 # ---- curve constants (loaded once) ------------------------------------------
@@ -335,20 +336,14 @@ void p256_hash_scalar(bignum* z, char* hash, int hashlen):
 
 void hmac_sha256(char* key, int keylen, char* msg, int msglen, char* out):
 	char* kb = malloc(64)
-	int i = 0
-	while (i < 64):
-		kb[i] = 0
-		i = i + 1
+	mem_fill(kb, 0, 64)
 	if (keylen > 64):
 		sha256(key, keylen, kb)
 	else:
-		i = 0
-		while (i < keylen):
-			kb[i] = key[i]
-			i = i + 1
+		mem_copy(kb, key, keylen)
 	char* ipad = malloc(64 + msglen)
 	char* opad = malloc(64 + 32)
-	i = 0
+	int i = 0
 	while (i < 64):
 		int kv = kb[i] & 255
 		ipad[i] = kv ^ 54     # 0x36
@@ -392,10 +387,7 @@ rfc6979* rfc6979_new(char* d_oct, char* h_oct):
 		i = i + 1
 	char* buf = malloc(97)
 	# K = HMAC_K(V || 0x00 || d_oct || h_oct)
-	i = 0
-	while (i < 32):
-		buf[i] = g.v[i]
-		i = i + 1
+	mem_copy(buf, g.v, 32)
 	buf[32] = 0
 	i = 0
 	while (i < 32):
@@ -405,10 +397,7 @@ rfc6979* rfc6979_new(char* d_oct, char* h_oct):
 	hmac_sha256(g.k, 32, buf, 97, g.k)
 	hmac_sha256(g.k, 32, g.v, 32, g.v)
 	# K = HMAC_K(V || 0x01 || d_oct || h_oct)
-	i = 0
-	while (i < 32):
-		buf[i] = g.v[i]
-		i = i + 1
+	mem_copy(buf, g.v, 32)
 	buf[32] = 1
 	hmac_sha256(g.k, 32, buf, 97, g.k)
 	hmac_sha256(g.k, 32, g.v, 32, g.v)
@@ -427,10 +416,7 @@ void rfc6979_free(rfc6979* g):
 void rfc6979_next(rfc6979* g, char* out):
 	if (g.started != 0):
 		char* buf = malloc(33)
-		int j = 0
-		while (j < 32):
-			buf[j] = g.v[j]
-			j = j + 1
+		mem_copy(buf, g.v, 32)
 		buf[32] = 0
 		hmac_sha256(g.k, 32, buf, 33, g.k)
 		hmac_sha256(g.k, 32, g.v, 32, g.v)
@@ -438,10 +424,7 @@ void rfc6979_next(rfc6979* g, char* out):
 	g.started = 1
 	# qlen == hlen == 256, so one HMAC block fills the 32-byte candidate.
 	hmac_sha256(g.k, 32, g.v, 32, g.v)
-	int i = 0
-	while (i < 32):
-		out[i] = g.v[i]
-		i = i + 1
+	mem_copy(out, g.v, 32)
 
 
 # ---- public API -------------------------------------------------------------

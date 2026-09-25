@@ -40,6 +40,7 @@ import graphics.ui.font
 import graphics.ui.render
 import graphics.ui.text
 import graphics.ui.widgets
+import lib.mem
 
 
 # How many documents the shell knows about. Two folders' worth, with the
@@ -128,10 +129,7 @@ void ui_shell_init(ui_shell_state* st):
 	ui_textarea_init(&st.editor)
 	st.folder_open[0] = 1
 	st.folder_open[1] = 0
-	int i = 0
-	while (i < ui_shell_doc_count()):
-		st.open_docs[i] = 0
-		i = i + 1
+	mem_fill[int32](st.open_docs, 0, ui_shell_doc_count())
 	st.open_count = 0
 	st.active_tab = 0
 	st.loaded_doc = 0 - 1

@@ -33,6 +33,7 @@ import libs.extras.compress.deflate
 import libs.extras.compress.inflate
 import libs.standard.net.testing
 import lib.hex
+import lib.mem
 
 
 /* ---- helpers ---- */
@@ -87,10 +88,7 @@ void wst_expect_decoding(char* label, char* frame_hex, int fin, int opcode, int 
 	int k = 0
 	while (k < n):
 		char* copy = malloc(n)
-		int j = 0
-		while (j < n):
-			copy[j] = buf[j]
-			j = j + 1
+		mem_copy(copy, buf, n)
 		ws_frame g
 		assert_equal(0, ws_frame_decode(copy, k, &g, 1000))
 		free(copy)
@@ -123,10 +121,7 @@ void wst_fake_compress(int* state, char* block):
 
 
 void wst_fake_iv(int* state):
-	int i = 0
-	while (i < 5):
-		state[i] = 0
-		i = i + 1
+	mem_fill(state, 0, 5)
 
 
 void test_ws_sha1_opt_in_fails_closed():

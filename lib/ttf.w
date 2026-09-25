@@ -25,6 +25,7 @@ import lib.lib
 import lib.stream
 import structures.string
 import lib.bytes
+import lib.mem
 
 
 struct ttf_font:
@@ -1205,10 +1206,7 @@ int ttf_checksum(char* data, int length):
 char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	int n = f.glyph_count
 	char* keep = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		keep[i] = 0
-		i = i + 1
+	mem_fill(keep, 0, n)
 	keep[0] = 1
 	int total = 0
 	int r = 0
@@ -1236,7 +1234,7 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	int* new_id = cast(int*, malloc((n + 1) * __word_size__))
 	int* old_id = cast(int*, malloc((n + 1) * __word_size__))
 	int count = 0
-	i = 0
+	int i = 0
 	while (i < n):
 		new_id[i] = 0
 		if (keep[i]):

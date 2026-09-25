@@ -53,6 +53,7 @@ import lib.io_wait
 import lib.stream
 import structures.string
 import libs.standard.net.tls
+import lib.mem
 
 
 # One accepted connection. reader is a buffered reader over fd; tls is 0
@@ -225,10 +226,7 @@ int connection_context_read(ConnectionContext* c, char* out, int want):
 	int n = r.limit - r.position
 	if (n > want):
 		n = want
-	int i = 0
-	while (i < n):
-		out[i] = r.buffer[r.position + i]
-		i = i + 1
+	mem_copy(out, r.buffer + r.position, n)
 	r.position = r.position + n
 	return n
 

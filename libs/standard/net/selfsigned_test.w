@@ -5,15 +5,7 @@
 import lib.testing
 import libs.standard.net.x509
 import libs.standard.net.selfsigned
-
-
-int st_bytes_equal(char* a, char* b, int n):
-	int i = 0
-	while (i < n):
-		if (a[i] != b[i]):
-			return 0
-		i = i + 1
-	return 1
+import lib.mem
 
 
 void test_der_lengths():
@@ -71,8 +63,8 @@ void test_generate_parses_and_self_verifies():
 	char* qx = malloc(32)
 	char* qy = malloc(32)
 	assert_equal(1, ecdsa_p256_public_key(d, qx, qy))
-	assert_equal(1, st_bytes_equal(qx, c.ec_qx, 32))
-	assert_equal(1, st_bytes_equal(qy, c.ec_qy, 32))
+	assert_equal(1, mem_eq(qx, c.ec_qx, 32))
+	assert_equal(1, mem_eq(qy, c.ec_qy, 32))
 	free(d)
 	free(qx)
 	free(qy)

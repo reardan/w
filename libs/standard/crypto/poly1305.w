@@ -37,6 +37,7 @@ index ever depends on the key, the accumulator, or message bytes.
 */
 import lib.memory
 import lib.bytes
+import lib.mem
 
 
 struct poly1305:
@@ -109,10 +110,7 @@ poly1305* poly1305_new(char* key):
 	rb[8] = rb[8] & 252
 	rb[12] = rb[12] & 252
 	poly1305_limbs(rb, 0, st.r)
-	i = 0
-	while (i < 16):
-		rb[i] = 0
-		i = i + 1
+	mem_fill(rb, 0, 16)
 	free(rb)
 
 	i = 0
@@ -261,10 +259,7 @@ void poly1305_finish(poly1305* st, char* out):
 		f = w[i] + st.pad[i] + (f >> 16)
 		store_le16(out + i * 2, f)
 		i = i + 1
-	i = 0
-	while (i < 8):
-		w[i] = 0
-		i = i + 1
+	mem_fill(w, 0, 8)
 	free(w)
 
 
@@ -278,14 +273,8 @@ void poly1305_free(poly1305* st):
 		st.ml[i] = 0
 		st.t[i] = 0
 		i = i + 1
-	i = 0
-	while (i < 8):
-		st.pad[i] = 0
-		i = i + 1
-	i = 0
-	while (i < 16):
-		st.buffer[i] = 0
-		i = i + 1
+	mem_fill(st.pad, 0, 8)
+	mem_fill(st.buffer, 0, 16)
 	free(st.r)
 	free(st.r5)
 	free(st.h)

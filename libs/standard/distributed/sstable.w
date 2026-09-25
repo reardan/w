@@ -49,6 +49,7 @@ import lib.assert
 import lib.framing
 import libs.standard.distributed.bloom
 import lib.bytes
+import lib.mem
 
 
 int sstable_version():
@@ -56,17 +57,6 @@ int sstable_version():
 
 
 # ---- little-endian + buffer helpers -----------------------------------------
-
-# Malloc'd copy of len bytes with a convenience NUL appended.
-char* sstable_copy_bytes(char* src, int len):
-	char* dst = malloc(len + 1)
-	int i = 0
-	while (i < len):
-		dst[i] = src[i]
-		i = i + 1
-	dst[len] = 0
-	return dst
-
 
 # Bloom bit count for a table of `count` records: count * 10 clamped
 # to [64, 1 << 20]; probes are always k = 5.
@@ -104,7 +94,7 @@ sstable_writer* sstable_writer_new(char* path):
 		return 0
 	close(fd)
 	sstable_writer* w = new sstable_writer()
-	w.path = sstable_copy_bytes(path, strlen(path))
+	w.path = mem_dup(path, strlen(path))
 	w.keys = new list[char*]
 	w.values = new list[char*]
 	w.value_lens = new list[int]
@@ -131,14 +121,14 @@ void sstable_writer_release(sstable_writer* w):
 int sstable_writer_add(sstable_writer* w, char* key, char* value, int value_len, int tombstone):
 	if (w.keys.length > 0):
 		assert1(strcmp(w.keys[w.keys.length - 1], key) < 0)
-	w.keys.push(sstable_copy_bytes(key, strlen(key)))
+	w.keys.push(mem_dup(key, strlen(key)))
 	if (tombstone):
 		w.values.push(cast(char*, 0))
 		w.value_lens.push(0)
 		w.flags.push(1)
 	else:
 		assert1(value_len >= 0)
-		w.values.push(sstable_copy_bytes(value, value_len))
+		w.values.push(mem_dup(value, value_len))
 		w.value_lens.push(value_len)
 		w.flags.push(0)
 	return 1

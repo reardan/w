@@ -22,6 +22,7 @@ import libs.standard.web.hpack
 import libs.standard.web.http2
 import libs.standard.web.grpc
 import libs.standard.web.testing
+import lib.mem
 
 
 /* Protobuf message types */
@@ -61,10 +62,7 @@ char* gt_encode(char* text, int count, int* out_len):
 # Decodes into a zeroed gt_hello; asserts success.
 gt_hello* gt_decode(char* data, int len):
 	char* buf = malloc(gt_hello_desc.struct_size)
-	int i = 0
-	while (i < gt_hello_desc.struct_size):
-		buf[i] = 0
-		i = i + 1
+	mem_fill(buf, 0, gt_hello_desc.struct_size)
 	assert_equal(0, pb_decode_into(&gt_hello_desc, data, len, buf))
 	return cast(gt_hello*, buf)
 
