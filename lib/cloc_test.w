@@ -171,6 +171,6 @@ void test_cloc_count_path_rows():
 
 void test_cloc_group_and_display_path():
 	assert_strings_equal(c"root/a", cloc_group_path(c"root", c"root/a/b/c.w"))
-	assert_strings_equal(c"root", cloc_group_path(c"root/", c"root/x.w"))
+	assert_strings_equal(c"root/", cloc_group_path(c"root/", c"root/x.w"))
 	assert_strings_equal(c"lib", cloc_display_path(c"./lib"))
 	assert_strings_equal(c".", cloc_display_path(c"."))
