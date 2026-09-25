@@ -879,9 +879,8 @@ void sym_define_declare_global_function(char* name):
 
 # A second name for the asm runtime stub about to be emitted (declared
 # right after the stub's own sym_define_declare_global_function, so both
-# resolve to the same bytes). A separate helper so libs/asm/stubgen's
-# drift check, which splits stubs at every sym_define_declare_global_
-# function call, still sees one stub.
+# resolve to the same bytes). A separate helper so an alias never reads
+# as the start of a new stub.
 void sym_stub_alias(char* name):
 	sym_define_global(sym_declare_global(name, 4, 2))
 

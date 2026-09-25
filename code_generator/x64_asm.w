@@ -1,4 +1,5 @@
 import code_generator.code_emitter
+import code_generator.asm_text
 
 
 void sym_define_declare_global_function(char* name); /* defined in symbol_table */
@@ -15,24 +16,49 @@ void define_asm_functions_x64_portable():
 	# caller's registers. rcx is saved before the pushed rax is popped
 	# through it, so the stored rsp is the value at function entry.
 	sym_define_declare_global_function(c"get_context")
-	/* push rax ; mov rax,[rsp+16] ; mov [rax+8],rcx ; pop rcx ; mov [rax],rcx */
-	emit(20, c"\x50\x48\x8b\x44\x24\x10\x48\x89\x48\x08\x59\x48\x89\x08\x48\x89\x50\x10\x48\x89")
-	/* mov [rax+16],rdx ; [rax+24],rbx ; [rax+32],rsp ; [rax+40],rbp ; [rax+48],rsi ; [rax+56],rdi */
-	emit(20, c"\x58\x18\x48\x89\x60\x20\x48\x89\x68\x28\x48\x89\x70\x30\x48\x89\x78\x38\x4c\x89")
-	/* mov [rax+64],r8 ... mov [rax+120],r15 ; ret */
-	emit(20, c"\x40\x40\x4c\x89\x48\x48\x4c\x89\x50\x50\x4c\x89\x58\x58\x4c\x89\x60\x60\x4c\x89")
-	emit(11, c"\x68\x68\x4c\x89\x70\x70\x4c\x89\x78\x78\xc3")
+	x64_asm(c"push rax")
+	x64_asm(c"mov rax,[rsp+0x10]")
+	x64_asm(c"mov [rax+8],rcx")
+	x64_asm(c"pop rcx")
+	x64_asm(c"mov [rax],rcx")
+	x64_asm(c"mov [rax+0x10],rdx")
+	x64_asm(c"mov [rax+0x18],rbx")
+	x64_asm(c"mov [rax+0x20],rsp")
+	x64_asm(c"mov [rax+0x28],rbp")
+	x64_asm(c"mov [rax+0x30],rsi")
+	x64_asm(c"mov [rax+0x38],rdi")
+	x64_asm(c"mov [rax+0x40],r8")
+	x64_asm(c"mov [rax+0x48],r9")
+	x64_asm(c"mov [rax+0x50],r10")
+	x64_asm(c"mov [rax+0x58],r11")
+	x64_asm(c"mov [rax+0x60],r12")
+	x64_asm(c"mov [rax+0x68],r13")
+	x64_asm(c"mov [rax+0x70],r14")
+	x64_asm(c"mov [rax+0x78],r15")
+	x64_asm(c"ret")
 
 	# store_context(ctx): like get_context but preserves rax instead of
 	# recording it (mirrors the x86 stub's behavior).
 	sym_define_declare_global_function(c"store_context")
-	/* push rax ; mov rax,[rsp+16] ; mov [rax+8],rcx ; [rax+16],rdx ; [rax+24],rbx */
-	emit(20, c"\x50\x48\x8b\x44\x24\x10\x48\x89\x48\x08\x48\x89\x50\x10\x48\x89\x58\x18\x48\x89")
-	/* mov [rax+32],rsp ; [rax+40],rbp ; [rax+48],rsi ; [rax+56],rdi ; [rax+64],r8 */
-	emit(20, c"\x60\x20\x48\x89\x68\x28\x48\x89\x70\x30\x48\x89\x78\x38\x4c\x89\x40\x40\x4c\x89")
-	/* mov [rax+72],r9 ... mov [rax+120],r15 ; pop rax ; ret */
-	emit(20, c"\x48\x48\x4c\x89\x50\x50\x4c\x89\x58\x58\x4c\x89\x60\x60\x4c\x89\x68\x68\x4c\x89")
-	emit(8, c"\x70\x70\x4c\x89\x78\x78\x58\xc3")
+	x64_asm(c"push rax")
+	x64_asm(c"mov rax,[rsp+0x10]")
+	x64_asm(c"mov [rax+8],rcx")
+	x64_asm(c"mov [rax+0x10],rdx")
+	x64_asm(c"mov [rax+0x18],rbx")
+	x64_asm(c"mov [rax+0x20],rsp")
+	x64_asm(c"mov [rax+0x28],rbp")
+	x64_asm(c"mov [rax+0x30],rsi")
+	x64_asm(c"mov [rax+0x38],rdi")
+	x64_asm(c"mov [rax+0x40],r8")
+	x64_asm(c"mov [rax+0x48],r9")
+	x64_asm(c"mov [rax+0x50],r10")
+	x64_asm(c"mov [rax+0x58],r11")
+	x64_asm(c"mov [rax+0x60],r12")
+	x64_asm(c"mov [rax+0x68],r13")
+	x64_asm(c"mov [rax+0x70],r14")
+	x64_asm(c"mov [rax+0x78],r15")
+	x64_asm(c"pop rax")
+	x64_asm(c"ret")
 
 	# repl_setjmp(buf): save return address, caller rsp and rbp into the
 	# 24-byte buffer, then return 0. repl_longjmp resumes here returning
@@ -42,10 +68,14 @@ void define_asm_functions_x64_portable():
 	sym_define_declare_global_function(c"repl_setjmp")
 	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
 	sym_stub_alias(c"setjmp")
-	# mov rax,[rsp+8] ; mov rcx,[rsp] ; mov [rax],rcx ; lea rcx,[rsp+8] ;
-	# mov [rax+8],rcx ; mov [rax+16],rbp ; xor eax,eax ; ret
-	emit(20, c"\x48\x8b\x44\x24\x08\x48\x8b\x0c\x24\x48\x89\x08\x48\x8d\x4c\x24\x08\x48\x89\x48")
-	emit(8, c"\x08\x48\x89\x68\x10\x31\xc0\xc3")
+	x64_asm(c"mov rax,[rsp+8]")
+	x64_asm(c"mov rcx,[rsp]")
+	x64_asm(c"mov [rax],rcx")
+	x64_asm(c"lea rcx,[rsp+8]")
+	x64_asm(c"mov [rax+8],rcx")
+	x64_asm(c"mov [rax+0x10],rbp")
+	x64_asm(c"xor eax,eax")
+	x64_asm(c"ret")
 
 	# repl_longjmp(buf, val): restore rsp/rbp and jump to the address
 	# saved by repl_setjmp with val in rax. Like all stubs, the first
@@ -53,8 +83,11 @@ void define_asm_functions_x64_portable():
 	sym_define_declare_global_function(c"repl_longjmp")
 	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
 	sym_stub_alias(c"longjmp")
-	# mov rax,[rsp+8] ; mov rcx,[rsp+16] ; mov rsp,[rcx+8] ; mov rbp,[rcx+16] ; jmp [rcx]
-	emit(20, c"\x48\x8b\x44\x24\x08\x48\x8b\x4c\x24\x10\x48\x8b\x61\x08\x48\x8b\x69\x10\xff\x21")
+	x64_asm(c"mov rax,[rsp+8]")
+	x64_asm(c"mov rcx,[rsp+0x10]")
+	x64_asm(c"mov rsp,[rcx+8]")
+	x64_asm(c"mov rbp,[rcx+0x10]")
+	x64_asm(c"jmp [rcx]")
 
 	# gen_switch(int* save_esp_here, int restore_esp): the generator
 	# context switch (docs/projects/iteration.md), x64 flavor. Saves the
@@ -62,60 +95,96 @@ void define_asm_functions_x64_portable():
 	# stack, stores rsp through arg1, loads arg2 into rsp, restores the
 	# registers saved there and returns on the other stack.
 	sym_define_declare_global_function(c"gen_switch")
-	# push rbx ; push rbp ; push r12 ; push r13 ; push r14 ; push r15 ;
-	# mov rax,[rsp+64] ; mov rcx,[rsp+56]
-	emit(20, c"\x53\x55\x41\x54\x41\x55\x41\x56\x41\x57\x48\x8b\x44\x24\x40\x48\x8b\x4c\x24\x38")
-	# mov [rax],rsp ; mov rsp,rcx ; pop r15 ; pop r14 ; pop r13 ;
-	# pop r12 ; pop rbp ; pop rbx ; ret
-	emit(17, c"\x48\x89\x20\x48\x89\xcc\x41\x5f\x41\x5e\x41\x5d\x41\x5c\x5d\x5b\xc3")
+	x64_asm(c"push rbx")
+	x64_asm(c"push rbp")
+	x64_asm(c"push r12")
+	x64_asm(c"push r13")
+	x64_asm(c"push r14")
+	x64_asm(c"push r15")
+	x64_asm(c"mov rax,[rsp+0x40]")
+	x64_asm(c"mov rcx,[rsp+0x38]")
+	x64_asm(c"mov [rax],rsp")
+	x64_asm(c"mov rsp,rcx")
+	x64_asm(c"pop r15")
+	x64_asm(c"pop r14")
+	x64_asm(c"pop r13")
+	x64_asm(c"pop r12")
+	x64_asm(c"pop rbp")
+	x64_asm(c"pop rbx")
+	x64_asm(c"ret")
 
 
 void define_asm_functions_x64():
 	# syscall reads exactly nr + 3 fixed stack slots, so record its arity:
 	# a call with any other argument count would read garbage slots.
 	sym_define_declare_global_function_arity(c"syscall", 4)
-	/* mov rax,[rsp+32] ; mov rdi,[rsp+24] ; mov rsi,[rsp+16] ; mov rdx,[rsp+8] ; syscall ; ret */
-	emit(20, c"\x48\x8b\x44\x24\x20\x48\x8b\x7c\x24\x18\x48\x8b\x74\x24\x10\x48\x8b\x54\x24\x08")
-	emit(3, c"\x0f\x05\xc3")
+	x64_asm(c"mov rax,[rsp+0x20]")
+	x64_asm(c"mov rdi,[rsp+0x18]")
+	x64_asm(c"mov rsi,[rsp+0x10]")
+	x64_asm(c"mov rdx,[rsp+8]")
+	x64_asm(c"syscall")
+	x64_asm(c"ret")
 
 	sym_define_declare_global_function_arity(c"syscall7", 7)
-	/* mov rax,[rsp+56] ; mov rdi,[rsp+48] ; mov rsi,[rsp+40] ; mov rdx,[rsp+32] ; mov r10,[rsp+24] ; mov r8,[rsp+16] ; mov r9,[rsp+8] ; syscall ; ret */
-	emit(20, c"\x48\x8b\x44\x24\x38\x48\x8b\x7c\x24\x30\x48\x8b\x74\x24\x28\x48\x8b\x54\x24\x20")
-	emit(18, c"\x4c\x8b\x54\x24\x18\x4c\x8b\x44\x24\x10\x4c\x8b\x4c\x24\x08\x0f\x05\xc3")
+	x64_asm(c"mov rax,[rsp+0x38]")
+	x64_asm(c"mov rdi,[rsp+0x30]")
+	x64_asm(c"mov rsi,[rsp+0x28]")
+	x64_asm(c"mov rdx,[rsp+0x20]")
+	x64_asm(c"mov r10,[rsp+0x18]")
+	x64_asm(c"mov r8,[rsp+0x10]")
+	x64_asm(c"mov r9,[rsp+8]")
+	x64_asm(c"syscall")
+	x64_asm(c"ret")
 
 	# thread_create(func): clone with a fresh 4MB stack whose top slot
 	# holds func, so the child's fall-through "ret" jumps straight into
 	# func (the x64 twin of the x86 stub; docs/projects/threads.md).
-	# The call +0x25 targets stack_create, emitted immediately after.
+	# The call targets stack_create, emitted immediately after.
 	# The child zeroes rbp so its frame-pointer chain ends at the thread
 	# function instead of running into the parent's frames.
 	sym_define_declare_global_function(c"thread_create")
-	/* call stack_create ; lea rcx,[rax+0x3ffff0] ; mov rdx,[rsp+8] ; mov [rcx],rdx */
-	emit(20, c"\xe8\x25\x00\x00\x00\x48\x8d\x88\xf0\xff\x3f\x00\x48\x8b\x54\x24\x08\x48\x89\x11")
-	/* mov edi,CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO ; mov rsi,rcx ; mov eax,56 ; syscall ;
-	   test eax,eax ; jne +2 (parent) ; xor ebp,ebp (child) ; ret */
-	emit(20, c"\xbf\x00\x8f\x01\x80\x48\x89\xce\xb8\x38\x00\x00\x00\x0f\x05\x85\xc0\x75\x02\x31")
-	emit(2, c"\xed\xc3")
+	x64_asm(c"call .+0x2a")   # stack_create, emitted immediately after this stub
+	x64_asm(c"lea rcx,[rax+0x3ffff0]")
+	x64_asm(c"mov rdx,[rsp+8]")
+	x64_asm(c"mov [rcx],rdx")
+	x64_asm(c"mov edi,-0x7ffe7100")   # CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO
+	x64_asm(c"mov rsi,rcx")
+	x64_asm(c"mov eax,0x38")   # clone
+	x64_asm(c"syscall")
+	x64_asm(c"test eax,eax")
+	x64_asm(c"jne .+4")   # parent: keep rbp
+	x64_asm(c"xor ebp,ebp")   # child: the frame-pointer chain ends here
+	x64_asm(c"ret")
 
 	# stack_create(): mmap(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)
 	sym_define_declare_global_function(c"stack_create")
-	/* xor edi,edi ; mov esi,0x400000 ; mov edx,3 ; push 0x122 ; pop r10 ; push byte -1 */
-	emit(20, c"\x31\xff\xbe\x00\x00\x40\x00\xba\x03\x00\x00\x00\x68\x22\x01\x00\x00\x41\x5a\x6a")
-	/* ... ; pop r8 ; xor r9,r9 ; mov eax,9 ; syscall ; ret */
-	emit(14, c"\xff\x41\x58\x4d\x31\xc9\xb8\x09\x00\x00\x00\x0f\x05\xc3")
+	x64_asm(c"xor edi,edi")
+	x64_asm(c"mov esi,0x400000")
+	x64_asm(c"mov edx,3")
+	x64_asm(c"push dword 0x122")
+	x64_asm(c"pop r10")
+	x64_asm(c"push byte -1")   # fd for MAP_ANONYMOUS
+	x64_asm(c"pop r8")
+	x64_asm(c"xor r9,r9")
+	x64_asm(c"mov eax,9")   # mmap
+	x64_asm(c"syscall")
+	x64_asm(c"ret")
 
 	# Thread-local storage (docs/projects/thread_local.md).
 	# __w_tls_size(): the per-thread block size, patched at finish.
 	sym_define_declare_global_function(c"__w_tls_size")
 	tls_size_patch_pos = codepos + 1
-	/* mov eax,imm32 ; ret */
-	emit(6, c"\xb8\x00\x00\x00\x00\xc3")
+	x64_asm(c"mov eax,0")
+	x64_asm(c"ret")
 	# __w_tls_set(block): write the self pointer to block[0] and make
 	# block this thread's gs base (fs stays libc's in a dynamically
 	# linked program): arch_prctl(ARCH_SET_GS, block).
 	sym_define_declare_global_function(c"__w_tls_set")
-	/* mov rsi,[rsp+8] ; mov [rsi],rsi ; mov edi,0x1001 ; mov eax,158 ; syscall ; ret */
-	emit(20, c"\x48\x8b\x74\x24\x08\x48\x89\x36\xbf\x01\x10\x00\x00\xb8\x9e\x00\x00\x00\x0f\x05")
-	emit(1, c"\xc3")
+	x64_asm(c"mov rsi,[rsp+8]")
+	x64_asm(c"mov [rsi],rsi")
+	x64_asm(c"mov edi,0x1001")   # ARCH_SET_GS
+	x64_asm(c"mov eax,0x9e")   # arch_prctl
+	x64_asm(c"syscall")
+	x64_asm(c"ret")
 
 	define_asm_functions_x64_portable()

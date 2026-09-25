@@ -1,4 +1,5 @@
 import code_generator.code_emitter
+import code_generator.asm_text
 
 
 void sym_define_declare_global_function(char* name); /* defined in symbol_table */
@@ -9,39 +10,69 @@ void define_asm_functions():
 	# syscall reads exactly nr + 3 fixed stack slots, so record its arity:
 	# a call with any other argument count would read garbage slots.
 	sym_define_declare_global_function_arity(c"syscall", 4)
-	/* mov eax,[esp+16] ; mov ebx,[esp+12] ; mov ecx,[esp+8] ; mov edx,[esp+4] ; int 0x80 ; ret */
-	emit(19, c"\x8b\x44\x24\x10\x8b\x5c\x24\x0c\x8b\x4c\x24\x08\x8b\x54\x24\x04\xcd\x80\xc3")
+	x86_asm(c"mov eax,[esp+0x10]")
+	x86_asm(c"mov ebx,[esp+0xc]")
+	x86_asm(c"mov ecx,[esp+8]")
+	x86_asm(c"mov edx,[esp+4]")
+	x86_asm(c"int 0x80")
+	x86_asm(c"ret")
 
 	sym_define_declare_global_function_arity(c"syscall7", 7)
 	# The sixth syscall argument travels in ebp, which W code keeps as
 	# its frame pointer (be_function_prologue): save it around the call.
-	/* push ebp ; mov eax,[esp+32] ; mov ebx,[esp+28] ; mov ecx,[esp+24] ; mov edx,[esp+20] ; mov esi,[esp+16] ; mov edi,[esp+12] ; mov ebp,[esp+8] ; int 0x80 ; pop ebp ; ret */
-	emit(19, c"\x55\x8b\x44\x24\x20\x8b\x5c\x24\x1c\x8b\x4c\x24\x18\x8b\x54\x24\x14\x8b\x74")
-	emit(13, c"\x24\x10\x8b\x7c\x24\x0c\x8b\x6c\x24\x08\xcd\x80\x5d")
-	emit(1, c"\xc3")
+	x86_asm(c"push ebp")   # W's frame pointer: the 6th argument borrows ebp
+	x86_asm(c"mov eax,[esp+0x20]")
+	x86_asm(c"mov ebx,[esp+0x1c]")
+	x86_asm(c"mov ecx,[esp+0x18]")
+	x86_asm(c"mov edx,[esp+0x14]")
+	x86_asm(c"mov esi,[esp+0x10]")
+	x86_asm(c"mov edi,[esp+0xc]")
+	x86_asm(c"mov ebp,[esp+8]")
+	x86_asm(c"int 0x80")
+	x86_asm(c"pop ebp")
+	x86_asm(c"ret")
 
 	# debug
 	sym_define_declare_global_function(c"get_context")
-	# push eax; mov eax,[esp+8] ; mov [eax+4],ecx ; pop ecx ; mov [eax+0],ecx ; mov [eax+8],edx ; mov [eax+12],ebx; mov [eax+16],esp ; mov [eax+20], ebp ; mov [eax+24], esi ; mov [eax+28],edi ; ret
-	emit(20, c"\x50\x8b\x44\x24\x08\x89\x48\x04\x59\x89\x08\x89\x50\x08\x89\x58\x0c\x89\x60\x10")
-	emit(10, c"\x89\x68\x14\x89\x70\x18\x89\x78\x1c\xc3")
+	x86_asm(c"push eax")
+	x86_asm(c"mov eax,[esp+8]")
+	x86_asm(c"mov [eax+4],ecx")
+	x86_asm(c"pop ecx")
+	x86_asm(c"mov [eax],ecx")
+	x86_asm(c"mov [eax+8],edx")
+	x86_asm(c"mov [eax+0xc],ebx")
+	x86_asm(c"mov [eax+0x10],esp")
+	x86_asm(c"mov [eax+0x14],ebp")
+	x86_asm(c"mov [eax+0x18],esi")
+	x86_asm(c"mov [eax+0x1c],edi")
+	x86_asm(c"ret")
 
-	# push eax ; mov eax,[esp+8] ; mov [eax+4],ecx ; mov [eax+8],edx ; mov [eax+12],ebx ; mov [eax+16],esp ; mov [eax+20],ebp ; mov [eax+24],esi ; mov [eax+28],edi ; pop eax ; ret ;
 	sym_define_declare_global_function(c"store_context")
-	emit(20, c"\x50\x8b\x44\x24\x08\x89\x48\x04\x89\x50\x08\x89\x58\x0c\x89\x60\x10\x89\x68\x14")
-	# the length was 9 for this 8-byte string until #170's drift test:
-	# emit() copied the terminating NUL as a stray trailing byte
-	emit(8, c"\x89\x70\x18\x89\x78\x1c\x58\xc3")
+	x86_asm(c"push eax")
+	x86_asm(c"mov eax,[esp+8]")
+	x86_asm(c"mov [eax+4],ecx")
+	x86_asm(c"mov [eax+8],edx")
+	x86_asm(c"mov [eax+0xc],ebx")
+	x86_asm(c"mov [eax+0x10],esp")
+	x86_asm(c"mov [eax+0x14],ebp")
+	x86_asm(c"mov [eax+0x18],esi")
+	x86_asm(c"mov [eax+0x1c],edi")
+	x86_asm(c"pop eax")
+	x86_asm(c"ret")
 
 	# repl_setjmp(buf): save return address, caller esp and ebp into the
 	# 12-byte buffer, then return 0. repl_longjmp resumes here returning 1.
 	sym_define_declare_global_function(c"repl_setjmp")
 	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
 	sym_stub_alias(c"setjmp")
-	# mov eax,[esp+4] ; mov ecx,[esp] ; mov [eax],ecx ; lea ecx,[esp+4] ;
-	# mov [eax+4],ecx ; mov [eax+8],ebp ; xor eax,eax ; ret
-	emit(20, c"\x8b\x44\x24\x04\x8b\x0c\x24\x89\x08\x8d\x4c\x24\x04\x89\x48\x04\x89\x68\x08\x31")
-	emit(2, c"\xc0\xc3")
+	x86_asm(c"mov eax,[esp+4]")
+	x86_asm(c"mov ecx,[esp]")
+	x86_asm(c"mov [eax],ecx")
+	x86_asm(c"lea ecx,[esp+4]")
+	x86_asm(c"mov [eax+4],ecx")
+	x86_asm(c"mov [eax+8],ebp")
+	x86_asm(c"xor eax,eax")
+	x86_asm(c"ret")
 
 	# repl_longjmp(buf, val): restore esp/ebp and jump to the address saved
 	# by repl_setjmp with val in eax. Like all stubs, the first argument
@@ -49,98 +80,262 @@ void define_asm_functions():
 	sym_define_declare_global_function(c"repl_longjmp")
 	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
 	sym_stub_alias(c"longjmp")
-	# mov eax,[esp+4] ; mov ecx,[esp+8] ; mov esp,[ecx+4] ; mov ebp,[ecx+8] ; jmp [ecx]
-	emit(16, c"\x8b\x44\x24\x04\x8b\x4c\x24\x08\x8b\x61\x04\x8b\x69\x08\xff\x21")
+	x86_asm(c"mov eax,[esp+4]")
+	x86_asm(c"mov ecx,[esp+8]")
+	x86_asm(c"mov esp,[ecx+4]")
+	x86_asm(c"mov ebp,[ecx+8]")
+	x86_asm(c"jmp [ecx]")
 
 	# endian
 	sym_define_declare_global_function(c"swap_endian")
-	/* mov eax,[esp+4] ; bswap eax ; ret */
-	emit(7, c"\x8b\x44\x24\x04\x0f\xc8\xc3")
+	x86_asm(c"mov eax,[esp+4]")
+	x86_asm(c"bswap eax")
+	x86_asm(c"ret")
 
 	# the shift targeted ebx (d3 fb) until #175, returning the swapped
 	# halfword stuck in eax's high bits and clobbering ebx
 	sym_define_declare_global_function(c"swap_endian16")
-	/* mov eax,[esp+4] ; bswap eax ; mov cl,0x10 ; sar eax,cl ; ret */
-	emit(11, c"\x8b\x44\x24\x04\x0f\xc8\xb1\x10\xd3\xf8\xc3")
+	x86_asm(c"mov eax,[esp+4]")
+	x86_asm(c"bswap eax")
+	x86_asm(c"mov cl,0x10")
+	x86_asm(c"sar eax,cl")
+	x86_asm(c"ret")
 
 	# tcp.asm
 	sym_define_declare_global_function(c"socket_connect")
-	emit(52, c"\xb8\x66\x00\x00\x00\xbb\x01\x00\x00\x00\x31\xd2\x52\x53\x6a\x02\x89\xe1\xcd\x80\x92\xb0\x66\x68\x7f\x01\x01\x01\x66\x68\x11\x5c\x43\x66\x53\x89\xe1\x6a\x10\x51\x52\x89\xe1\x43\xcd\x80\x83\xc4\x20\x89\xd0\xc3")
+	x86_asm(c"mov eax,0x66")
+	x86_asm(c"mov ebx,1")
+	x86_asm(c"xor edx,edx")
+	x86_asm(c"push edx")
+	x86_asm(c"push ebx")
+	x86_asm(c"push byte 2")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"int 0x80")
+	x86_asm(c"xchg edx,eax")
+	x86_asm(c"mov al,0x66")
+	x86_asm(c"push dword 0x101017f")
+	x86_asm(c"pushw 0x5c11")
+	x86_asm(c"inc ebx")
+	x86_asm(c"push bx")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"push byte 0x10")
+	x86_asm(c"push ecx")
+	x86_asm(c"push edx")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"inc ebx")
+	x86_asm(c"int 0x80")
+	x86_asm(c"add esp,0x20")
+	x86_asm(c"mov eax,edx")
+	x86_asm(c"ret")
 
 	sym_define_declare_global_function(c"socket_connect_new")
-	emit(76, c"\xb8\x66\x00\x00\x00\xbb\x01\x00\x00\x00\x31\xd2\x6a\x00\x6a\x01\x6a\x02\x89\xe1\xcd\x80\x83\xc4\x0c\x50\x50\xb8\x66\x00\x00\x00\x8b\x54\x24\x04\x83\xc4\x08\x68\x7f\x01\x01\x01\x66\x68\x11\x5c\xbb\x02\x00\x00\x00\x66\x53\x89\xe1\x6a\x10\x51\x52\x89\xe1\xbb\x03\x00\x00\x00\xcd\x80\x83\xc4\x14\x89\xd0\xc3")
+	x86_asm(c"mov eax,0x66")
+	x86_asm(c"mov ebx,1")
+	x86_asm(c"xor edx,edx")
+	x86_asm(c"push byte 0")
+	x86_asm(c"push byte 1")
+	x86_asm(c"push byte 2")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"int 0x80")
+	x86_asm(c"add esp,0xc")
+	x86_asm(c"push eax")
+	x86_asm(c"push eax")
+	x86_asm(c"mov eax,0x66")
+	x86_asm(c"mov edx,[esp+4]")
+	x86_asm(c"add esp,8")
+	x86_asm(c"push dword 0x101017f")
+	x86_asm(c"pushw 0x5c11")
+	x86_asm(c"mov ebx,2")
+	x86_asm(c"push bx")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"push byte 0x10")
+	x86_asm(c"push ecx")
+	x86_asm(c"push edx")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"mov ebx,3")
+	x86_asm(c"int 0x80")
+	x86_asm(c"add esp,0x14")
+	x86_asm(c"mov eax,edx")
+	x86_asm(c"ret")
 
 	sym_define_declare_global_function(c"socket")
-	emit(35, c"\x8b\x44\x24\x04\x8b\x5c\x24\x08\x8b\x4c\x24\x0c\x50\x53\x51\x89\xe1\xb8\x66\x00\x00\x00\xbb\x01\x00\x00\x00\x31\xd2\xcd\x80\x83\xc4\x0c\xc3")
+	x86_asm(c"mov eax,[esp+4]")
+	x86_asm(c"mov ebx,[esp+8]")
+	x86_asm(c"mov ecx,[esp+0xc]")
+	x86_asm(c"push eax")
+	x86_asm(c"push ebx")
+	x86_asm(c"push ecx")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"mov eax,0x66")
+	x86_asm(c"mov ebx,1")
+	x86_asm(c"xor edx,edx")
+	x86_asm(c"int 0x80")
+	x86_asm(c"add esp,0xc")
+	x86_asm(c"ret")
 
 	# Uses ebp as its own frame base: saved and restored (push ebp ...
 	# pop ebp) because W code keeps its frame pointer there.
 	sym_define_declare_global_function(c"connect")
-	emit(57, c"\x55\x89\xe5\x8b\x55\x10\x8b\x45\x0c\x8b\x5d\x08\x0f\xc8\x50\x0f\xcb\xb1\x10\xd3\xfb\x66\x53\xbb\x02\x00\x00\x00\x66\x53\x89\xe1\x6a\x10\x51\x52\x89\xe1\xb8\x66\x00\x00\x00\xbb\x03\x00\x00\x00\xcd\x80\x83\xc4\x14\x89\xd0\x5d\xc3")
+	x86_asm(c"push ebp")   # W's frame pointer: saved around the local frame base
+	x86_asm(c"mov ebp,esp")
+	x86_asm(c"mov edx,[ebp+0x10]")
+	x86_asm(c"mov eax,[ebp+0xc]")
+	x86_asm(c"mov ebx,[ebp+8]")
+	x86_asm(c"bswap eax")
+	x86_asm(c"push eax")
+	x86_asm(c"bswap ebx")
+	x86_asm(c"mov cl,0x10")
+	x86_asm(c"sar ebx,cl")
+	x86_asm(c"push bx")
+	x86_asm(c"mov ebx,2")
+	x86_asm(c"push bx")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"push byte 0x10")
+	x86_asm(c"push ecx")
+	x86_asm(c"push edx")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"mov eax,0x66")
+	x86_asm(c"mov ebx,3")
+	x86_asm(c"int 0x80")
+	x86_asm(c"add esp,0x14")
+	x86_asm(c"mov eax,edx")
+	x86_asm(c"pop ebp")
+	x86_asm(c"ret")
 
 	sym_define_declare_global_function(c"setsockopt")
-	emit(30, c"\x8b\x54\x24\x04\x6a\x04\x54\x6a\x02\x6a\x01\x52\x89\xe1\xb8\x66\x00\x00\x00\xbb\x0e\x00\x00\x00\xcd\x80\x83\xc4\x14\xc3")
+	x86_asm(c"mov edx,[esp+4]")
+	x86_asm(c"push byte 4")
+	x86_asm(c"push esp")
+	x86_asm(c"push byte 2")
+	x86_asm(c"push byte 1")
+	x86_asm(c"push edx")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"mov eax,0x66")
+	x86_asm(c"mov ebx,0xe")
+	x86_asm(c"int 0x80")
+	x86_asm(c"add esp,0x14")
+	x86_asm(c"ret")
 
 	sym_define_declare_global_function(c"bind")
-	emit(45, c"\x8b\x54\x24\x08\x8b\x5c\x24\x04\x0f\xcb\xb1\x10\xd3\xfb\x6a\x00\x66\x53\x66\x6a\x02\x89\xe1\x6a\x10\x51\x52\xb8\x66\x00\x00\x00\xbb\x02\x00\x00\x00\x89\xe1\xcd\x80\x83\xc4\x14\xc3")
+	x86_asm(c"mov edx,[esp+8]")
+	x86_asm(c"mov ebx,[esp+4]")
+	x86_asm(c"bswap ebx")
+	x86_asm(c"mov cl,0x10")
+	x86_asm(c"sar ebx,cl")
+	x86_asm(c"push byte 0")
+	x86_asm(c"push bx")
+	x86_asm(c"pushw 2")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"push byte 0x10")
+	x86_asm(c"push ecx")
+	x86_asm(c"push edx")
+	x86_asm(c"mov eax,0x66")
+	x86_asm(c"mov ebx,2")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"int 0x80")
+	x86_asm(c"add esp,0x14")
+	x86_asm(c"ret")
 
 	sym_define_declare_global_function(c"listen")
-	emit(27, c"\x8b\x54\x24\x04\x6a\x00\x52\x89\xe1\xb8\x66\x00\x00\x00\xbb\x04\x00\x00\x00\xcd\x80\x83\xc4\x08\x89\xd0\xc3")
+	x86_asm(c"mov edx,[esp+4]")
+	x86_asm(c"push byte 0")
+	x86_asm(c"push edx")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"mov eax,0x66")
+	x86_asm(c"mov ebx,4")
+	x86_asm(c"int 0x80")
+	x86_asm(c"add esp,8")
+	x86_asm(c"mov eax,edx")
+	x86_asm(c"ret")
 
 	sym_define_declare_global_function(c"socket_accept")
-	emit(29, c"\x8b\x54\x24\x04\xb8\x66\x00\x00\x00\xbb\x05\x00\x00\x00\x6a\x00\x6a\x00\x52\x89\xe1\xcd\x80\x89\xc2\x83\xc4\x0c\xc3")
+	x86_asm(c"mov edx,[esp+4]")
+	x86_asm(c"mov eax,0x66")
+	x86_asm(c"mov ebx,5")
+	x86_asm(c"push byte 0")
+	x86_asm(c"push byte 0")
+	x86_asm(c"push edx")
+	x86_asm(c"mov ecx,esp")
+	x86_asm(c"int 0x80")
+	x86_asm(c"mov edx,eax")
+	x86_asm(c"add esp,0xc")
+	x86_asm(c"ret")
 
 	# thread_i386.s
 	# thread_create(func): clone with a fresh 4MB stack whose top slot holds func,
 	# so the child's fall-through "ret" jumps straight into func.
-	# The call +31 targets stack_create, which is emitted immediately after.
+	# The call targets stack_create, which is emitted immediately after.
 	# The child zeroes ebp so its frame-pointer chain ends at the thread
 	# function instead of running into the parent's frames.
 	sym_define_declare_global_function(c"thread_create")
-	/* call stack_create ; lea ecx,[eax+0x3ffff0] ; mov edx,[esp+4] ; mov [ecx],edx */
-	emit(17, c"\xe8\x1f\x00\x00\x00\x8d\x88\xf0\xff\x3f\x00\x8b\x54\x24\x04\x89\x11")
-	/* mov ebx,CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO ; mov eax,120 ; int 0x80 ;
-	   test eax,eax ; jne +2 (parent) ; xor ebp,ebp (child) ; ret */
-	emit(18, c"\xbb\x00\x8f\x01\x80\xb8\x78\x00\x00\x00\xcd\x80\x85\xc0\x75\x02\x31\xed")
-	emit(1, c"\xc3")
+	x86_asm(c"call .+0x24")   # stack_create, emitted immediately after this stub
+	x86_asm(c"lea ecx,[eax+0x3ffff0]")
+	x86_asm(c"mov edx,[esp+4]")
+	x86_asm(c"mov [ecx],edx")
+	x86_asm(c"mov ebx,-0x7ffe7100")   # CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO
+	x86_asm(c"mov eax,0x78")
+	x86_asm(c"int 0x80")
+	x86_asm(c"test eax,eax")
+	x86_asm(c"jne .+4")   # parent: keep ebp
+	x86_asm(c"xor ebp,ebp")   # child: the frame-pointer chain ends here
+	x86_asm(c"ret")
 
 	# stack_create(): mmap2(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)
 	# The offset argument travels in ebp, the caller's frame pointer:
 	# saved and restored around the syscall.
 	sym_define_declare_global_function(c"stack_create")
-	emit(1, c"\x55") /* push ebp */
-	emit(20, c"\xbb\x00\x00\x00\x00\xb9\x00\x00\x40\x00\xba\x03\x00\x00\x00\xbe\x22\x01\x00\x00")
-	/* mov edi,-1 ; mov ebp,0 ; mov eax,192 ; int 0x80 ; pop ebp ; ret */
-	emit(19, c"\xbf\xff\xff\xff\xff\xbd\x00\x00\x00\x00\xb8\xc0\x00\x00\x00\xcd\x80\x5d\xc3")
+	x86_asm(c"push ebp")   # the offset argument borrows W's frame pointer
+	x86_asm(c"mov ebx,0")
+	x86_asm(c"mov ecx,0x400000")
+	x86_asm(c"mov edx,3")
+	x86_asm(c"mov esi,0x122")
+	x86_asm(c"mov edi,-1")
+	x86_asm(c"mov ebp,0")
+	x86_asm(c"mov eax,0xc0")
+	x86_asm(c"int 0x80")
+	x86_asm(c"pop ebp")
+	x86_asm(c"ret")
 
 	# Thread-local storage (docs/projects/thread_local.md).
 	# __w_tls_size(): the per-thread block size, patched at finish.
 	sym_define_declare_global_function(c"__w_tls_size")
 	tls_size_patch_pos = codepos + 1
-	/* mov eax,imm32 ; ret */
-	emit(6, c"\xb8\x00\x00\x00\x00\xc3")
+	x86_asm(c"mov eax,0")
+	x86_asm(c"ret")
 	# __w_tls_set(block): make block this thread's fs-based TLS block
 	# (gs stays libc's in a dynamically linked program). Writes the self
 	# pointer to block[0], then set_thread_area with the GDT entry the
 	# inherited fs selector names (-1 = let the kernel pick one, on the
 	# main thread), and loads fs with the entry's selector.
 	sym_define_declare_global_function(c"__w_tls_set")
-	/* push ebx ; mov ecx,[esp+8] ; mov [ecx],ecx ; sub esp,16 ; mov ax,fs ;
-	   movzx eax,ax ; shr eax,3 ; jnz +5 ; mov eax,-1 ;
-	   user_desc on the stack: mov [esp],eax (entry) ; mov [esp+4],ecx (base) ;
-	   mov dword [esp+8],0xfffff (limit) ; mov dword [esp+12],0x51
-	   (seg_32bit | limit_in_pages | useable) ;
-	   mov ebx,esp ; mov eax,243 (set_thread_area) ; int 0x80 ; mov eax,[esp] ;
-	   shl eax,3 ; or eax,3 ; mov fs,ax ; add esp,16 ; pop ebx ; ret */
-	emit(20, c"\x53\x8b\x4c\x24\x08\x89\x09\x83\xec\x10\x66\x8c\xe0\x0f\xb7\xc0\xc1\xe8\x03\x75")
-	emit(20, c"\x05\xb8\xff\xff\xff\xff\x89\x04\x24\x89\x4c\x24\x04\xc7\x44\x24\x08\xff\xff\x0f")
-	emit(20, c"\x00\xc7\x44\x24\x0c\x51\x00\x00\x00\x89\xe3\xb8\xf3\x00\x00\x00\xcd\x80\x8b\x04")
-	emit(16, c"\x24\xc1\xe0\x03\x0d\x03\x00\x00\x00\x8e\xe0\x83\xc4\x10\x5b\xc3")
+	x86_asm(c"push ebx")
+	x86_asm(c"mov ecx,[esp+8]")
+	x86_asm(c"mov [ecx],ecx")
+	x86_asm(c"sub esp,0x10")
+	x86_asm(c"db 0x66, 0x8c, 0xe0")   # mov ax,fs
+	x86_asm(c"movzx eax,ax")
+	x86_asm(c"db 0xc1, 0xe8, 0x03")   # shr eax,3
+	x86_asm(c"jne .+7")   # fs already names an entry (spawned thread)
+	x86_asm(c"mov eax,-1")
+	x86_asm(c"mov [esp],eax")   # user_desc.entry_number
+	x86_asm(c"mov [esp+4],ecx")   # base_addr
+	x86_asm(c"db 0xc7, 0x44, 0x24, 0x08, 0xff, 0xff, 0x0f, 0x00")   # mov dword [esp+8],0xfffff: limit (pages)
+	x86_asm(c"db 0xc7, 0x44, 0x24, 0x0c, 0x51, 0x00, 0x00, 0x00")   # mov dword [esp+12],0x51: seg_32bit | limit_in_pages | useable
+	x86_asm(c"mov ebx,esp")
+	x86_asm(c"mov eax,0xf3")   # set_thread_area
+	x86_asm(c"int 0x80")
+	x86_asm(c"mov eax,[esp]")
+	x86_asm(c"db 0xc1, 0xe0, 0x03")   # shl eax,3
+	x86_asm(c"or eax,3")
+	x86_asm(c"db 0x8e, 0xe0")   # mov fs,ax
+	x86_asm(c"add esp,0x10")
+	x86_asm(c"pop ebx")
+	x86_asm(c"ret")
 
 	# function_call(func_ptr)
 	sym_define_declare_global_function(c"function_call")
-	# mov eax,[esp+4]; jmp eax
-	emit(6, c"\x8b\x44\x24\x04\xff\xe0")
+	x86_asm(c"mov eax,[esp+4]")
+	x86_asm(c"jmp eax")
 
 	# gen_switch(int* save_esp_here, int restore_esp): the generator
 	# context switch (docs/projects/iteration.md). Saves the callee-saved
@@ -148,9 +343,17 @@ void define_asm_functions():
 	# loads arg2 into esp, restores the registers saved there and returns
 	# on the other stack. One stub serves both yield and resume.
 	sym_define_declare_global_function(c"gen_switch")
-	# push ebx ; push esi ; push edi ; push ebp ; mov eax,[esp+24] ;
-	# mov ecx,[esp+20] ; mov [eax],esp ; mov esp,ecx ;
-	# pop ebp ; pop edi ; pop esi ; pop ebx ; ret
-	emit(20, c"\x53\x56\x57\x55\x8b\x44\x24\x18\x8b\x4c\x24\x14\x89\x20\x89\xcc\x5d\x5f\x5e\x5b")
-	emit(1, c"\xc3")
+	x86_asm(c"push ebx")
+	x86_asm(c"push esi")
+	x86_asm(c"push edi")
+	x86_asm(c"push ebp")
+	x86_asm(c"mov eax,[esp+0x18]")
+	x86_asm(c"mov ecx,[esp+0x14]")
+	x86_asm(c"mov [eax],esp")
+	x86_asm(c"mov esp,ecx")
+	x86_asm(c"pop ebp")
+	x86_asm(c"pop edi")
+	x86_asm(c"pop esi")
+	x86_asm(c"pop ebx")
+	x86_asm(c"ret")
 

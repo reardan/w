@@ -213,16 +213,31 @@ void arm64_add_stack_word_int32(int offset, int v):
 # in the instruction's immediate field, scaled by 4. Unconditional jumps
 # are `b` (imm26, +/-128MB); zero/nonzero tests fold into cbz/cbnz (imm19,
 # +/-1MB, always intra-function here).
+#
+# A pending link is stored as the distance back to the previous site in
+# the chain (0 ends the chain), not as that site's absolute codepos: the
+# imm19 field holds only 2 MiB of absolute positions, and once an image
+# grew past that (the arm64 compiler itself) the truncated links formed
+# cycles and be_ctrl_end looped forever. Chains never leave a function,
+# so the distance always fits.
+int arm64_link_field(int v):
+	if (v == 0):
+		return 0
+	return codepos + 4 - v
+
 
 void arm64_emit_b(int v):
+	v = arm64_link_field(v)
 	a64(op(0x14, 0x000000) | ((v >> 2) & op(0x03, 0xffffff)))   # b (link/placeholder in imm26)
 
 
 void arm64_emit_cbz(int v):
+	v = arm64_link_field(v)
 	a64(op(0xb4, 0x000000) | (((v >> 2) & 0x7ffff) << 5))   # cbz x0
 
 
 void arm64_emit_cbnz(int v):
+	v = arm64_link_field(v)
 	a64(op(0xb5, 0x000000) | (((v >> 2) & 0x7ffff) << 5))   # cbnz x0
 
 
@@ -242,9 +257,12 @@ void arm64_branch_patch(int site, int target):
 int arm64_branch_link_get(int site):
 	int word = load_int32(code + site - 4)
 	int top6 = (word >> 26) & 0x3f
+	int distance = ((word >> 5) & 0x7ffff) << 2
 	if (top6 == 0x05):
-		return (word & op(0x03, 0xffffff)) << 2
-	return ((word >> 5) & 0x7ffff) << 2
+		distance = (word & op(0x03, 0xffffff)) << 2
+	if (distance == 0):
+		return 0
+	return site - distance
 
 
 ################################ comparisons ################################
@@ -305,6 +323,7 @@ void arm64_alu_test_set(int setcc):
 
 # b.cond with the chain link in its displacement field.
 void arm64_bounds_branch(int cond, int link):
+	link = arm64_link_field(link)
 	a64(op(0x54, 0x000000) | cond | (((link >> 2) & 0x7ffff) << 5))
 
 

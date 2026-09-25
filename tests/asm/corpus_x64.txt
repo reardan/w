@@ -438,3 +438,15 @@ cc|int3
 # - code_generator/macho_64.w (emits arm64 instructions only)
 # - code_generator/elf_dynamic.w (data-only: dynamic tables, no code)
 # ============================================================================
+
+# ==== code_generator/x64_asm.w: remaining runtime-stub instructions (issue #207; asm_stubs_test) ====
+e825000000|call .+0x2a
+85c0|test eax,eax
+7502|jne .+4
+31ed|xor ebp,ebp
+6822010000|push dword 0x122
+b800000000|mov eax,0
+488b742408|mov rsi,[rsp+8]
+488936|mov [rsi],rsi
+bf01100000|mov edi,0x1001
+b89e000000|mov eax,0x9e

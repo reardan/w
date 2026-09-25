@@ -294,3 +294,24 @@ fc030091|mov x28,sp
 00000094|bl .
 c80b80d2|movz x8,#94
 010000d4|svc #0
+
+# ==== code_generator/arm64_asm.w: remaining runtime-stub instructions (issue #207; asm_stubs_test) ====
+e113bea9|stp x1,x4,[sp,#-32]!
+e50b00f9|str x5,[sp,#16]
+808f1ff8|str x0,[x28,#-8]!
+828f1ff8|str x2,[x28,#-8]!
+848f1ff8|str x4,[x28,#-8]!
+1f083fd6|blraaz x0
+00003fd6|blr x0
+9c630091|add x28,x28,#24
+e00740f9|ldr x0,[sp,#8]
+e10340f9|ldr x1,[sp]
+e20b40f9|ldr x2,[sp,#16]
+ff830091|add sp,sp,#32
+101780d2|movz x16,#184
+200020d4|brk #1
+ea031eaa|mov x10,x30
+2a01c1da|pacia x10,x9
+2a0100f9|str x10,[x9]
+9d8f1ff8|str x29,[x28,#-8]!
+9d8740f8|ldr x29,[x28],#8

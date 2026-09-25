@@ -34,17 +34,21 @@ randomized round-trip fuzzing over all three arches (#171). Coverage:
 a mode-8 REX.W decode+encode and an arm64 word decode/encode too). Epic:
 #163; the remaining phase (wdbg #169) is tracked in its sub-issue.
 
-**Stub generation complete (issue #170).** The runtime stubs in
-`code_generator/{x86,x64,arm64}_asm.w` now have assembly-text sources
-(`tests/asm/stubs_{x86,x64,arm64}.asm`) assembled by `libs/asm/stubgen.w`;
-`tools/gen_stubs.w` prints the `emit(n, c"...")` / `a64(op(...))` lines
-and `asm_stubs_test` is the drift test — see "Maintaining the runtime
-stubs" below. `debugger/convert.w` (the objdump-parsing crutch this
-replaces) is retired. Bugs surfaced by making the stubs assemble:
-`swap_endian16` shifted ebx instead of eax (#175), `arm64_add_x9_imm`
-pre-set imm12 bit 0 so even immediates encoded `#(imm|1)` (#174), and
-`store_context`'s `emit(9, ...)` counted 9 bytes for an 8-byte string,
-emitting the terminating NUL as a stray trailing byte.
+**Stub generation complete (issue #170), stubs assembled at compile
+time (issue #207).** The runtime stubs in
+`code_generator/{x86,x64,arm64}_asm.w` are assembly text: one
+`x86_asm(c"...")` / `x64_asm(c"...")` / `a64_asm(c"...")` call per
+instruction, assembled through `libs/asm` by
+`code_generator/asm_text.w` every time the compiler emits them — see
+"Maintaining the runtime stubs" below. #170's offline route (stub
+sources in `tests/asm/stubs_*.asm`, `tools/gen_stubs.w` printing the
+hand-hexed `emit()`/`a64(op())` lines, `libs/asm/stubgen.w`'s drift
+check) is retired, as is `debugger/convert.w` before it. Bugs surfaced
+by making the stubs assemble: `swap_endian16` shifted ebx instead of
+eax (#175), `arm64_add_x9_imm` pre-set imm12 bit 0 so even immediates
+encoded `#(imm|1)` (#174), and `store_context`'s `emit(9, ...)` counted
+9 bytes for an 8-byte string, emitting the terminating NUL as a stray
+trailing byte.
 
 **arm64 (A64) complete: decoder + formatter + encoder + text parser
 (issue #168).** `libs/asm/arm64_decode.w` decodes one little-endian 32-bit
@@ -194,55 +198,73 @@ consumer; the golden test is what ratchets coverage.
   the `tests` umbrella, `tools/test_map.w` entries. No new language
   syntax, so `tests/parser_generator/w.pg` is untouched.
 
-## Compiler integration without touching the seed
+## Compiler integration
 
-Rewriting the `*_asm.w` stubs must not perturb self-hosting. Two options:
+Rewriting the `*_asm.w` stubs must not perturb self-hosting. Two options
+were planned:
 
-1. **(Recommended first)** an offline generator, `tools/gen_stubs.w`:
-   reads assembly-text stub sources, prints the `emit(n, c"...")` lines.
-   A drift test asserts regenerated output matches the committed files.
-   `./wbuild verify` stays byte-identical; `libs/asm` stays out of the
-   seed graph entirely. This also retires `debugger/convert.w`.
-2. (Later, optional) `code_generator/` imports the assembler directly and
-   the stubs become text. That pulls `libs/asm` into the seed graph
-   (seed-syntax rule applies, `./wbuild verify` + possible `update` /
-   `update_darwin` dance) and is a separate decision.
+1. An offline generator, `tools/gen_stubs.w`: reads assembly-text stub
+   sources, prints the `emit(n, c"...")` lines, with a drift test
+   against the committed files. Keeps `libs/asm` out of the seed graph.
+   **Done in #170, retired by #207.**
+2. `code_generator/` imports the assembler directly and the stubs become
+   text. **Done in #207** — see "Maintaining the runtime stubs".
 
 Inline `asm` blocks in the language, and REPL/JIT uses, are explicitly
 **out of scope** for this epic — natural follow-ups once the encoder
 exists.
 
-## Maintaining the runtime stubs (issue #170)
+## Maintaining the runtime stubs (issues #170, #207)
 
-The committed `emit()`/`a64(op())` bytes in
-`code_generator/{x86,x64,arm64}_asm.w` stay the compiled artifact (the
-seed graph is untouched), but their source of truth is now the
-assembly-text files `tests/asm/stubs_{x86,x64,arm64}.asm`. To add or
-change a stub:
+The stubs in `code_generator/{x86,x64,arm64}_asm.w` are written as
+assembly text in the canonical syntax below, one instruction per call:
 
-1. Edit the `.asm` stub source: `func NAME` opens a stub, one
-   instruction per tab-indented line in the canonical syntax above; a
-   tab followed by `#` starts a trailing comment.
-2. `./wbuild gen_stubs && bin/gen_stubs tests/asm/stubs_<arch>.asm`
-   prints the `sym_define_declare_global_function()` + `emit(n,
-   c"\x...")` lines (or `a64(op(...))` words with their assembly
-   comments) to paste into the committed `*_asm.w` file.
-3. `./wbuild asm_stubs_test` (also part of `./wbuild tests`) re-runs the
-   drift check: it re-assembles the stub sources, re-extracts the
-   committed byte strings, and fails on any difference — including an
-   `emit(n, ...)` length that disagrees with its string's escape count
-   (that mismatch class emitted a stray NUL in store_context for years).
-4. `./wbuild verify` still gates the change like any other
-   `code_generator/` edit.
+```
+	sym_define_declare_global_function(c"swap_endian")
+	x86_asm(c"mov eax,[esp+4]")
+	x86_asm(c"bswap eax")
+	x86_asm(c"ret")
+```
 
-The extractor understands the committed files' idioms, not general W:
-`sym_define_declare_global_function(c"...")` and top-level `void f():`
-lines delimit stubs, every `emit(n, c"\xNN...")` / `a64(op(0xAA,
-0xBBBBBB))` in source text order contributes bytes (so both branches of
-a `target_os`/`arm64_pac` conditional are listed in the stub source, and
-the get_context register loop appears as its i=0 base word), and `#`
-comment lines are inert. Keep new stub code within those shapes — or
-extend `libs/asm/stubgen.w` alongside it.
+`code_generator/asm_text.w` runs each line through the `libs/asm` text
+parser and encoder (`asm_x86_parse`/`asm_x86_encode` in mode 4 or 8,
+`asm_arm64_parse`/`asm_arm64_encode`) and emits the bytes at `codepos`,
+so ordinary W control flow (`target_os`/`arm64_pac` conditionals, the
+arm64 get_context register loop, `tls_size_patch_pos = codepos + 1`)
+wraps the text directly. `db 0xNN, ...` emits raw bytes for the few x86
+instructions the text assembler cannot encode (segment-register moves,
+shift by an immediate other than 1, a store of an immediate to memory).
+A line the assembler rejects is an internal compiler error; since every
+stub is assembled on every compile, a broken line cannot ship.
+
+To add or change a stub:
+
+1. Edit the text in the `*_asm.w` file.
+2. `./wbuild asm_stubs_test` (part of `./wbuild tests`) assembles every
+   literal stub line and asserts its text and bytes appear in the arch's
+   `tests/asm/corpus_*.txt`; a new instruction is reported as a
+   ready-to-append `hexbytes|text` corpus line (check the bytes against
+   an independent assembler first). Being in the corpus puts every stub
+   instruction under the decode/encode round-trip tests, so an encoder
+   change cannot silently alter a stub.
+3. `./wbuild verify` (and `verify_x64` / `verify_arm64`) gates the change
+   like any other `code_generator/` edit.
+
+**Seed graph.** `asm_text.w` pulls `libs/asm/{insn,registers,hexutil,
+text,x86_encode,arm64_decode,arm64_text,arm64_encode}` into w.w's import
+graph, so they are compiled by the pinned seed and must stay
+seed-syntax-safe; `asm_seed_gate` compiles the whole library plus
+`asm_text.w` with the committed `./w` and exercises each entry point.
+
+**Cost (measured at #207, x86-64 cloud container).** The migration was a
+pure refactor: 60 test programs plus `w.w`, compiled for x86, x64,
+arm64 (pac off/ret/full), arm64_darwin (ret/full) and win64 by the
+compilers before and after, were byte-identical (453/453 comparisons).
+The compiler grew by the assembler: the self-hosted `bin/wv3` went from
+1,642,352 to 1,744,760 bytes (+6%), and a self-host compile of `w.w`
+from ~0.81 s to ~0.83 s (+3%, the extra source). Assembling the ~250
+stub lines per program is below measurement noise: 50 compiles of a
+hello-world program took 3.08 s before and 3.05 s after.
 
 ## Canonical text syntax (Phase 0.2)
 
@@ -373,8 +395,8 @@ Epic: **Asm: in-house assembler/disassembler libraries (x86, x64, arm64)**
    **Done (#170).**
    - [x] `tools/gen_stubs.w` + drift test against committed `*_asm.w`
    - [x] retire `debugger/convert.w`
-   - [ ] (separate decision, not in this epic: direct import into
-         `code_generator/`)
+   - [x] direct import into `code_generator/` (#207; retires
+         `gen_stubs`, `stubgen.w` and the `.asm` stub sources)
 8. **Asm: property/fuzz harness + docs** — ongoing once 3 lands. **Done
    (#171).**
    - [x] randomized round-trip within the supported subset

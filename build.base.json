@@ -89,7 +89,7 @@
 			{
 				"name": "asm_seed_gate",
 				"tags": ["tests"],
-				"inputs": ["libs/asm/", "tests/asm_seed_check.w", "w"],
+				"inputs": ["libs/asm/", "code_generator/asm_text.w", "code_generator/code_emitter.w", "code_generator/integer.w", "tests/asm_seed_check.w", "w"],
 				"steps": [
 					{"cmd": ["./w", "tests/asm_seed_check.w", "-o", "bin/asm_seed_check"]},
 					{"cmd": ["bin/asm_seed_check"]}

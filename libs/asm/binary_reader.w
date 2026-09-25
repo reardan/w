@@ -140,7 +140,7 @@ asm_binary* asm_binary_open(char* path):
 		return 0
 	if (asm_read_u8(data, 0) != 127 | data[1] != 'E' | data[2] != 'L' | data[3] != 'F'):
 		return 0
-	asm_binary* binary = cast(asm_binary*, malloc(32))
+	asm_binary* binary = cast(asm_binary*, malloc(8 * __word_size__))
 	binary.data = data
 	binary.length = length
 	binary.elf_class = asm_read_u8(data, 4)
