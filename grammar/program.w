@@ -28,8 +28,8 @@ void defhash_note(char* name, char* kind, int file_index, int line, int column, 
 #   add   := mul (('+' | '-') mul)*  mul   := unary (('*' | '/' | '%') unary)*
 #   unary := ('-' | '+' | '~') unary | primary
 #   primary := int literal (decimal, hex, binary) | char literal
-#            | enum constant | const-qualified global | sizeof(T)
-#            | __word_size__ | '(' or ')'
+#            | true | false | enum constant | const-qualified global
+#            | sizeof(T) | __word_size__ | '(' or ')'
 #
 # folds in 32-bit signed arithmetic (the int-literal convention, so a
 # 32- and a 64-bit-hosted compiler agree): a result that does not fit,
@@ -125,6 +125,10 @@ int const_primary():
 			const_error(c"')' expected after sizeof type")
 	else if (peek(c"__word_size__")):
 		value = word_size
+	else if (peek(c"true")):
+		value = 1
+	else if (peek(c"false")):
+		value = 0
 	# char literal e.g. 'c', '\n' or '\x41'; grammar/string_literal.w
 	# decodes and validates the token
 	else if (token[0] == 39):

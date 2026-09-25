@@ -463,8 +463,16 @@ void enum_register_constant(int type_index, char* name, int value):
 void enum_forget_constants(int type_index):
 	if (cast(int, enum_constants) == 0):
 		return;
-	list[enum_constant_record] kept = new list[enum_constant_record]
+	int found = 0
 	int i = 0
+	while (i < enum_constants.length):
+		if (enum_constants[i].type == type_index):
+			found = 1
+		i = i + 1
+	if (found == 0):
+		return;
+	list[enum_constant_record] kept = new list[enum_constant_record]
+	i = 0
 	while (i < enum_constants.length):
 		if (enum_constants[i].type != type_index):
 			enum_register_into(kept, enum_constants[i].type, enum_constants[i].name, enum_constants[i].value)
@@ -473,7 +481,7 @@ void enum_forget_constants(int type_index):
 
 
 # enum_name(e): the declared name of an enum value as a char*. The
-# enum's constants (grammar/enum_declaration.w's registry) are emitted
+# enum's constants (the registry above) are emitted
 # as an inline table of NUL-separated "value" / "name" pairs next to
 # the call, and __w_enum_name scans it at runtime; a value no constant
 # carries renders as its decimal digits. The first of several names

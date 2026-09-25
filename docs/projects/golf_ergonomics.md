@@ -340,8 +340,8 @@ functions) used to compile and match only by identity; they are now
 Global initializers, parameter defaults and enum values take a C
 integer constant expression instead of a single literal: `+ - * / %`,
 `<< >>`, `& ^ |`, unary `- + ~`, parentheses, `sizeof(T)`,
-`__word_size__`, enum constants and earlier `const`-qualified int-like
-globals, folded at compile time (`const int PAGE = 4 * KB`,
+`__word_size__`, `true`/`false`, enum constants and earlier
+`const`-qualified int-like globals, folded at compile time (`const int PAGE = 4 * KB`,
 `perm_all = perm_read | perm_write`). Folding is 32-bit signed — the
 int-literal convention, so a 32- and a 64-bit-hosted compiler emit the
 same bytes: a result that does not fit (`1 << 31`), a shift count

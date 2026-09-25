@@ -34,6 +34,8 @@ enum perm:
 const int ALL_TWICE = perm_all * 2
 const int MIN32 = -2147483647 - 1
 const int XOR = 0xff ^ 0x0f
+bool ENABLED = true
+const bool DISABLED = false
 
 
 int with_default(int x = 2 * 21):
@@ -51,6 +53,8 @@ void test_arithmetic_folds():
 	assert_equal('b', NEXT_LETTER)
 	assert_equal(__word_size__ + 1, WORDS)
 	assert_equal(0xf0, XOR)
+	assert_equal(1, ENABLED)
+	assert_equal(0, DISABLED)
 	assert_equal(1, MIN32 < 0)
 	assert_equal(-1, MIN32 - 1 + 1 >> 31)
 

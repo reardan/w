@@ -16,7 +16,9 @@ int enum_declaration():
 			type_index = type_push_size(strclone(token), 4)
 		else:
 			type_reset_for_redefinition(type_index, 4)
-			enum_forget_constants(type_index)
+		# a redefinition (or a type index a REPL rollback freed and
+		# reused) must not keep older constants in enum_name's registry
+		enum_forget_constants(type_index)
 		type_set_decl_location(type_index, decl_file_index(), diag_token_line, diag_token_column)
 		type_set_kind(type_index, type_kind_enum)
 		sym_declare_global(token, type_index, 1)
