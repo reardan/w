@@ -180,8 +180,20 @@ void stream_append_bytes(string_builder* out, char* data, int n):
 
 # Appends everything remaining on the stream to the builder. Works on
 # non-seekable descriptors (pipes, sockets), unlike file_size().
+#
+# While the builder already has room (file_read_text reserves the file's
+# size up front), reads go straight into its storage, skipping the
+# stream buffer and the byte-copy loop.
 void stream_read_all(wstream* s, string_builder* out):
 	while (1):
+		if ((s.position >= s.limit) && (s.eof == 0) && (out.capacity - out.length - 1 >= s.capacity)):
+			int count = read(s.fd, out.data + out.length, out.capacity - out.length - 1)
+			if (count <= 0):
+				s.eof = 1
+				return
+			out.length = out.length + count
+			out.data[out.length] = 0
+			continue
 		if (s.position >= s.limit):
 			stream_fill(s)
 			if (s.position >= s.limit):

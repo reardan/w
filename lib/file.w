@@ -18,6 +18,12 @@ char* file_read_text(char* path):
 	if (in == 0):
 		return 0
 	string_builder* contents = string_new()
+	# A regular file's size is only a hint (it may still grow, and pipes
+	# and /proc files report nothing useful), but reserving it lets
+	# stream_read_all read straight into the result with no regrowth.
+	int size = file_size(in.fd)
+	if (size > 0):
+		string_reserve(contents, size + in.capacity)
 	stream_read_all(in, contents)
 	stream_close(in)
 	char* text = contents.data

@@ -56,6 +56,11 @@ int main(int argc, int argv):
 	attach_items[3] = 444
 	attach_counter = 1000
 	zähler = 777
+	# Readiness signal for tools/attach_e2e.w (which pipes stdout and
+	# waits for this line instead of sleeping a fixed settle delay):
+	# every global above is initialized and the next statement is the
+	# spin loop.
+	write(1, c"attach_ready\n", 13)
 	while (1):
 		attach_counter = slow_step(attach_counter)
 		int j = 0

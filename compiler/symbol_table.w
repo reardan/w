@@ -461,6 +461,8 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	# Record where locals and arguments live so the in-process debugger
 	# (wdbg) can inspect them by name at runtime
 	if ((visibility == 'L') || (visibility == 'A')):
+		# The record's codepos must stay an instruction boundary
+		be_notes_reset()
 		debug_local_note(s, value, visibility, type)
 
 

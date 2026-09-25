@@ -1,4 +1,5 @@
 import lib.testing
+import lib.env
 import libs.extras.parser_generator.runtime
 import libs.extras.parser_generator.source_writer
 import bin.generated_w_parser
@@ -270,8 +271,14 @@ void test_parse_all_tracked_w_files():
 	# address-space ceiling once the repo's tracked source grows past a
 	# few MB (and freeing per file crawls the first-fit allocator).
 	# The count floor only guards against an empty/misread manifest.
+	# PARSER_GENERATOR_W_FILES names the batch's list so the batch
+	# runner can run several batches at once; unset, the canonical
+	# full list is read.
 	parsed_manifest_count = 0
-	assert_w_parse_manifest(c"bin/parser_generator_w_files.txt")
+	char* manifest = env_get(c"PARSER_GENERATOR_W_FILES")
+	if ((manifest == 0) || (manifest[0] == 0)):
+		manifest = c"bin/parser_generator_w_files.txt"
+	assert_w_parse_manifest(manifest)
 	assert1(parsed_manifest_count > 0)
 # wbuild: target=parser_generator_w_test tag=tests dep=parser_generator_test
 # wbuild: step="git ls-files *.w" stdout_file="bin/parser_generator_w_files.txt"

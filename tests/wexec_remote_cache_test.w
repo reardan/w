@@ -323,7 +323,7 @@ process_result* wrct_run_wexec(char* url, int push):
 
 
 void wrct_reset_local_state():
-	unlink(c"bin/.wexec_cache/remote_target")
+	unlink(c"bin/.wexec_cache/tests_wexec_remote_cache.json__remote_target")
 	unlink(c"bin/wexec_remote_cache_marker.txt")
 	unlink(c"bin/wexec_remote_cache_out.txt")
 
