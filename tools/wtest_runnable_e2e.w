@@ -29,28 +29,10 @@ directory is a pid-scoped directory under bin/.
 */
 import lib.lib
 import lib.env
-import lib.process
-import lib.path
-import lib.str
-import lib.shell_commands
-import structures.string
+import tools.wtest_scratch
 
 
 char* MANIFEST
-char* EMPTY_DIR
-
-
-void err_out(char* s):
-	write(2, s, strlen(s))
-
-
-void fail(char* msg):
-	err_out(c"wtest_runnable_scratch_test: FAIL: ")
-	err_out(msg)
-	err_out(c"\n")
-	if (EMPTY_DIR != 0):
-		shell_commands_rm_one(EMPTY_DIR, 1, 1)
-	exit(1)
 
 
 struct wtest_out:
@@ -110,9 +92,9 @@ char** env_without(char* name):
 
 
 int main(int argc, char** argv):
-	if (path_exists(c"bin/wtest") == 0):
-		err_out(c"wtest_runnable_scratch_test: bin/wtest must be built first\n")
-		return 1
+	# The scratch directory is the empty PATH entry of the runner probes.
+	sc_init(c"wtest_runnable_scratch_test", c"wtest_runnable_e2e_")
+	sc_require(c"bin/wtest")
 	MANIFEST = c"tests/wtest/manifest_runnable.json"
 	int has32 = path_exists(c"/lib/ld-linux.so.2")
 	int has64 = path_exists(c"/lib64/ld-linux-x86-64.so.2")
@@ -129,14 +111,6 @@ int main(int argc, char** argv):
 		if (has_line(o.out, keep[k]) == 0):
 			fail(strjoin(c"--available dropped ", keep[k]))
 		k = k + 1
-
-	string_builder* d = string_new()
-	string_append(d, c"bin/wtest_runnable_e2e_")
-	string_append_int(d, getpid())
-	EMPTY_DIR = d.data
-	shell_commands_rm_one(EMPTY_DIR, 1, 1)
-	if (shell_commands_mkdir_one(EMPTY_DIR, 1) != 0):
-		fail(c"cannot create the empty PATH directory")
 
 	o = run_wtest(0, c"--runnable-here", marker())
 	char* out = o.out
@@ -258,7 +232,7 @@ int main(int argc, char** argv):
 	# controlling the evidence the filter reads: an empty PATH removes
 	# qemu, wasmtime and node (QEMU_ARM64 unset), while a set QEMU_ARM64
 	# is itself positive evidence the arm64 runner works.
-	char** bare = env_copy_with(env_without(c"QEMU_ARM64"), c"PATH", EMPTY_DIR)
+	char** bare = env_copy_with(env_without(c"QEMU_ARM64"), c"PATH", sc_dir)
 	o = run_wtest(bare, c"--available", marker())
 	out = o.out
 	err = o.err
@@ -282,6 +256,4 @@ int main(int argc, char** argv):
 	if (has_line(o.out, c"rn_wrun_arm64") == 0):
 		fail(c"QEMU_ARM64 set but the bin/wrun arm64 runner target was dropped")
 
-	shell_commands_rm_one(EMPTY_DIR, 1, 1)
-	write(1, c"wtest_runnable_scratch_test: OK\n", 32)
-	return 0
+	return sc_ok()
