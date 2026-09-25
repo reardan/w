@@ -656,5 +656,5 @@ current state:
 			shell execute syscall
 			fork
 		debugger information
-		w debugger (tools/wdbg_web.w: https UI over wdbg, issue #98)
+		w debugger (tools/wdbg_web.w: https server over wdbg; tools/wdbg_ui.w: OllyDbg-style W/wasm UI, issue #98)
 
