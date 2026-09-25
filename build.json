@@ -2124,6 +2124,7 @@
 				"generics_64_test",
 				"generics_inference_64_test",
 				"getchar_checked_64_test",
+				"goto_64_test",
 				"graphics_event_64_test",
 				"graphics_gl_texture_test",
 				"graphics_ui_buffer_64_test",
@@ -2227,6 +2228,7 @@
 				"retry_64_test",
 				"ring_64_test",
 				"safetensors_64_test",
+				"setjmp_64_test",
 				"sha1_64_test",
 				"shell_64_test",
 				"shell_commands_64_test",
@@ -2553,6 +2555,7 @@
 				"memory_debug_fault_test",
 				"buffer_field_assign_test",
 				"array_error_test",
+				"goto_error_test",
 				"syscall_arity_test",
 				"int_literal_width_test",
 				"prefixed_string_literal_test",
@@ -2752,6 +2755,7 @@
 				"framing_test",
 				"generator_return_free_test",
 				"getchar_checked_test",
+				"goto_test",
 				"grapheme_test",
 				"graphics_event_test",
 				"graphics_ui_buffer_test",
@@ -2843,6 +2847,7 @@
 				"retry_test",
 				"ring_test",
 				"safetensors_test",
+				"setjmp_test",
 				"sha1_test",
 				"sha256_test",
 				"sha2_test",
@@ -4357,6 +4362,43 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/getchar_checked_test.w", "-o", "bin/getchar_checked_test"]},
 				{"cmd": ["bin/getchar_checked_test"]}
+			]
+		},
+		{
+			"name": "goto_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/goto_test.w"],
+			"outputs": ["bin/goto_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/goto_test.w", "-o", "bin/goto_64_test"]},
+				{"cmd": ["bin/goto_64_test"]}
+			]
+		},
+		{
+			"name": "goto_error_test",
+			"deps": ["wv2", "wfixture"],
+			"steps": [
+				{"cmd": ["bin/wfixture", "bin/wv2", "tests/goto_duplicate_label_error_fixture.w", "tests/goto_undefined_label_error_fixture.w", "tests/goto_wasm_error_fixture.w"]}
+			]
+		},
+		{
+			"name": "goto_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/goto_test.w"],
+			"outputs": ["bin/goto_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/goto_test.w", "-o", "bin/goto_test"]},
+				{"cmd": ["bin/goto_test"]}
+			]
+		},
+		{
+			"name": "goto_test_arm64",
+			"deps": ["wv2"],
+			"inputs": ["tests/goto_test.w"],
+			"outputs": ["bin/goto_test_arm64"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "tests/goto_test.w", "-o", "bin/goto_test_arm64"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/goto_test_arm64"]}
 			]
 		},
 		{
@@ -6536,6 +6578,36 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/safetensors_test.w", "-o", "bin/safetensors_test"]},
 				{"cmd": ["bin/safetensors_test"]}
+			]
+		},
+		{
+			"name": "setjmp_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/setjmp_test.w"],
+			"outputs": ["bin/setjmp_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/setjmp_test.w", "-o", "bin/setjmp_64_test"]},
+				{"cmd": ["bin/setjmp_64_test"]}
+			]
+		},
+		{
+			"name": "setjmp_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/setjmp_test.w"],
+			"outputs": ["bin/setjmp_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/setjmp_test.w", "-o", "bin/setjmp_test"]},
+				{"cmd": ["bin/setjmp_test"]}
+			]
+		},
+		{
+			"name": "setjmp_test_arm64",
+			"deps": ["wv2"],
+			"inputs": ["tests/setjmp_test.w"],
+			"outputs": ["bin/setjmp_test_arm64"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "tests/setjmp_test.w", "-o", "bin/setjmp_test_arm64"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/setjmp_test_arm64"]}
 			]
 		},
 		{

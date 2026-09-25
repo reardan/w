@@ -183,7 +183,11 @@ void function_definition(int current_symbol):
 		# consumes when it opens the body block.
 		defer_reset()
 		defer_function_body_pending = 1
+		int outer_label_base = goto_label_base
+		int outer_pending_base = goto_pending_base
+		goto_scope_begin()
 		statement()
+		goto_scope_end(outer_label_base, outer_pending_base)
 		defer_reset()
 		ret()
 		be_function_epilogue()
@@ -481,12 +485,16 @@ void script_main():
 	enclosing_tab_level = 0
 	debug_func_note(function_start, number_of_args)
 	defer_reset()
+	int outer_label_base = goto_label_base
+	int outer_pending_base = goto_pending_base
+	goto_scope_begin()
 	while (token[0] != 0):
 		if (script_declaration_keyword()):
 			error(c"declarations must come before the first top-level statement")
 		if (script_function_definition_ahead()):
 			error(c"declarations must come before the first top-level statement")
 		statement()
+	goto_scope_end(outer_label_base, outer_pending_base)
 	# Fall-through exit: run deferred statements, then return 0
 	defer_emit_all()
 	defer_reset()

@@ -13,6 +13,8 @@
  *     switch expression : case-clauses       (parentheses optional)
  *     break ;
  *     continue ;
+ *     goto identifier ;                      (grammar/goto_statement.w)
+ *     identifier :                           (label)
  *     return ;
  *     return expression ;
  *     debugger ;
@@ -289,6 +291,8 @@ void statement():
 				be_pop(stack_pos - loop_stack_pos)
 			be_br(loop_break_chain)
 
+	else if (goto_statement()) {}
+
 	else if (accept(c"continue")):
 		expect_or_newline(c";")
 		if (loop_depth == 0):
@@ -385,6 +389,9 @@ void statement():
 	# name := expression (type-inferred local declaration)
 	else if (inferred_declaration()):
 		expect_or_newline(c";")
+
+	# name: -- a goto target (grammar/goto_statement.w)
+	else if (labeled_statement()) {}
 
 	else:
 		# Postfix 'x++'/'x--' are only recognized at true statement

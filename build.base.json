@@ -2450,6 +2450,7 @@
 				"memory_debug_fault_test",
 				"buffer_field_assign_test",
 				"array_error_test",
+				"goto_error_test",
 				"syscall_arity_test",
 				"int_literal_width_test",
 				"prefixed_string_literal_test",
