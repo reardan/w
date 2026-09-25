@@ -2164,6 +2164,7 @@
 				"graphics_ui_widgets_test",
 				"grpc_64_test",
 				"grpc_stream_64_test",
+				"grpc_tls_64_test",
 				"hash_table_64_test",
 				"heap_64_test",
 				"hpack_64_test",
@@ -2790,6 +2791,7 @@
 				"graphics_ui_core_test",
 				"grpc_stream_test",
 				"grpc_test",
+				"grpc_tls_test",
 				"hash_table_test",
 				"heap_test",
 				"hkdf_test",
@@ -4817,6 +4819,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/web/grpc_test.w", "-o", "bin/grpc_test"]},
 				{"cmd": ["bin/grpc_test"]}
+			]
+		},
+		{
+			"name": "grpc_tls_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/grpc_tls_test.w"],
+			"outputs": ["bin/grpc_tls_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/grpc_tls_test.w", "-o", "bin/grpc_tls_64_test"]},
+				{"cmd": ["bin/grpc_tls_64_test"]}
+			]
+		},
+		{
+			"name": "grpc_tls_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/grpc_tls_test.w"],
+			"outputs": ["bin/grpc_tls_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/grpc_tls_test.w", "-o", "bin/grpc_tls_test"]},
+				{"cmd": ["bin/grpc_tls_test"]}
 			]
 		},
 		{

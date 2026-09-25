@@ -16,6 +16,12 @@
 # A length-prefixed message is a 1-byte compressed flag, a 4-byte
 # big-endian length and the (possibly compressed) bytes.
 #
+# Transports: cleartext h2c (grpc_channel_open / grpc_server_serve_conn)
+# or TLS 1.3 with ALPN "h2" (grpc_channel_open_tls /
+# grpc_server_serve_conn_tls, built on h2_connect_tls / h2_accept_tls
+# in http2.w). Everything above the h2_conn is transport-agnostic; the
+# only difference on the wire is :scheme https.
+#
 # Messages are opaque bytes here: this file does not depend on a
 # serializer, so it stays inside libs/standard. Pair it with
 # libs/extras/protobuf/message.w (pb_encode / pb_decode_into) as
@@ -63,7 +69,13 @@
 #
 # Public API (client):
 #   grpc_channel* grpc_channel_open(char* host, int port, int timeout_ms)   0 on failure
-#   grpc_channel* grpc_channel_from_conn(h2_conn* c, char* authority)       borrows c
+#   grpc_channel* grpc_channel_open_tls(char* host, int port, int timeout_ms,
+#                                       char* server_name, tls_config* cfg)
+#                                             gRPC over TLS 1.3 + ALPN "h2"
+#                                             (h2_connect_tls); :scheme https;
+#                                             0 on failure
+#   grpc_channel* grpc_channel_from_conn(h2_conn* c, char* authority)       borrows c;
+#                                             :scheme https when c.tls is set
 #   int  grpc_channel_set_compression(grpc_channel* ch, char* encoding)     1 = set; 0 or
 #                                             "identity" turns it off; 0 when unregistered
 #   grpc_result*  grpc_unary_call(grpc_channel* ch, char* method, char* req, int req_len,
@@ -111,6 +123,12 @@
 #                                             coding; 1 = set, 0 when unregistered
 #   int  grpc_server_serve_conn(grpc_server* s, int fd)   serves one accepted connection;
 #                                                         0 on a clean end, else the h2 error
+#   int  grpc_server_serve_conn_tls(grpc_server* s, int fd, tls_server_config* scfg)
+#                                             same over TLS (h2_accept_tls; ALPN "h2"
+#                                             required); PROTOCOL_ERROR when the
+#                                             handshake fails (fd closed)
+#   int  grpc_server_serve_h2(grpc_server* s, h2_conn* c)   serves an established
+#                                             connection (either transport), closes it
 #   void grpc_call_reply(grpc_call* call, char* msg, int len)     unary; copies msg
 #   int  grpc_call_recv(grpc_call* call, char** out, int* out_len)
 #                                             1 = a message (*out malloc'd), 0 = the
@@ -169,7 +187,6 @@
 # into grpc_result.message.
 import lib.lib
 import lib.time
-import lib.poll
 import lib.container
 import structures.string
 import libs.standard.web.hpack
@@ -599,8 +616,9 @@ int grpc_is_grpc_content_type(char* ct):
 
 /* Pumping without blocking */
 
-# Handles frames that can be read without waiting (a complete frame
-# already buffered, or a readable socket), at most 64 of them, so a
+# Handles frames that can be read without waiting (h2_conn_has_pending:
+# a complete frame buffered, unconsumed TLS plaintext, or a readable
+# socket), at most 64 of them, so a
 # sender notices RST_STREAM or an early END_STREAM from the peer before
 # its window closes. A frame that arrives only partially is waited for
 # at most 20 ms (the rest stays buffered). The caller's deadline is kept.
@@ -608,13 +626,7 @@ void grpc_pump_ready(h2_conn* c):
 	int saved = c.deadline_ms
 	int n = 0
 	while ((n < 64) && (c.dead == 0)):
-		int buffered = c.rend - c.rstart
-		int ready = 0
-		if ((buffered >= 9) && (buffered >= 9 + h2_get_u24(c.rbuf + c.rstart))):
-			ready = 1
-		else if (poll_single(c.fd, poll_in(), 0) > 0):
-			ready = 1
-		if (ready == 0):
+		if (h2_conn_has_pending(c) == 0):
 			break
 		int dl = time_monotonic_ms() + 20
 		if ((saved != 0) && (saved < dl)):
@@ -673,6 +685,8 @@ grpc_channel* grpc_channel_from_conn(h2_conn* c, char* authority):
 	ch.conn = c
 	ch.authority = strclone(authority)
 	ch.scheme = c"http"
+	if (c.tls != 0):
+		ch.scheme = c"https"
 	ch.owns_conn = 0
 	ch.max_message = grpc_default_max_message()
 	ch.send_encoding = 0
@@ -685,6 +699,27 @@ grpc_channel* grpc_channel_open(char* host, int port, int timeout_ms):
 		return 0
 	string_builder* auth = string_new()
 	string_append(auth, host)
+	string_append(auth, c":")
+	string_append_int(auth, port)
+	grpc_channel* ch = grpc_channel_from_conn(c, auth.data)
+	string_free(auth)
+	ch.owns_conn = 1
+	return ch
+
+
+# gRPC over TLS: h2_connect_tls (TLS 1.3, ALPN "h2"; server_name is
+# the SNI + certificate hostname, 0 = host; cfg as for h2_connect_tls,
+# 0 = defaults, and its ALPN offer becomes "h2"). Calls use :scheme
+# https and :authority server_name:port. 0 on failure (the reason in
+# tls_last_error(cfg) when cfg != 0).
+grpc_channel* grpc_channel_open_tls(char* host, int port, int timeout_ms, char* server_name, tls_config* cfg):
+	h2_conn* c = h2_connect_tls(host, port, timeout_ms, server_name, cfg)
+	if (c == 0):
+		return 0
+	if (server_name == 0):
+		server_name = host
+	string_builder* auth = string_new()
+	string_append(auth, server_name)
 	string_append(auth, c":")
 	string_append_int(auth, port)
 	grpc_channel* ch = grpc_channel_from_conn(c, auth.data)
@@ -1518,10 +1553,9 @@ h2_stream* grpc_server_next_stream(h2_conn* c):
 	return 0
 
 
-int grpc_server_serve_conn(grpc_server* srv, int fd):
-	h2_conn* c = h2_server_new(fd)
-	if (c == 0):
-		return h2_error_protocol()
+# Serves every call on an established server connection, then closes
+# it. 0 on a clean end, else the h2 error.
+int grpc_server_serve_h2(grpc_server* srv, h2_conn* c):
 	while (1):
 		h2_stream* st = grpc_server_next_stream(c)
 		if (st == 0):
@@ -1535,3 +1569,21 @@ int grpc_server_serve_conn(grpc_server* srv, int fd):
 	int err = c.error
 	h2_close(c)
 	return err
+
+
+int grpc_server_serve_conn(grpc_server* srv, int fd):
+	h2_conn* c = h2_server_new(fd)
+	if (c == 0):
+		return h2_error_protocol()
+	return grpc_server_serve_h2(srv, c)
+
+
+# gRPC over TLS on one accepted TCP connection: h2_accept_tls (TLS 1.3
+# handshake requiring ALPN "h2"; scfg is modified to require it), then
+# grpc_server_serve_h2. A failed handshake closes fd and returns
+# PROTOCOL_ERROR (tls_server_last_error(scfg) explains a TLS failure).
+int grpc_server_serve_conn_tls(grpc_server* srv, int fd, tls_server_config* scfg):
+	h2_conn* c = h2_accept_tls(fd, scfg)
+	if (c == 0):
+		return h2_error_protocol()
+	return grpc_server_serve_h2(srv, c)

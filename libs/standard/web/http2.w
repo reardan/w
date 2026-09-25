@@ -42,6 +42,10 @@
 #   void h2_close(h2_conn* c)            GOAWAY(NO_ERROR) if needed, close_notify
 #                                        (TLS), close fd, free
 #   void h2_set_deadline(h2_conn* c, int deadline_ms)  absolute monotonic ms, 0 = none
+#   int  h2_conn_has_pending(h2_conn* c) 1 when h2_pump can make progress without
+#                                        waiting: a whole frame buffered, decrypted
+#                                        TLS plaintext not yet consumed, or a
+#                                        readable socket
 #
 # Public API (client streams):
 #   h2_stream* h2_request_start(h2_conn* c, char* method, char* scheme, char* authority,
@@ -637,6 +641,23 @@ int h2_conn_read(h2_conn* c, char* p, int n):
 	if (c.deadline_ms != 0):
 		socket_set_recv_timeout(c.fd, c.timeout_ms)
 	return got
+
+
+# 1 when input is available without blocking: a complete frame already
+# in rbuf, plaintext the TLS layer decrypted but h2_conn_read has not
+# consumed yet (h2 over TLS: a record can carry several frames, and a
+# poll on the fd cannot see it), or a readable socket. 0 otherwise.
+int h2_conn_has_pending(h2_conn* c):
+	if (c.dead != 0):
+		return 0
+	int buffered = c.rend - c.rstart
+	if ((buffered >= 9) && (buffered >= 9 + h2_get_u24(c.rbuf + c.rstart))):
+		return 1
+	if ((c.tls != 0) && (c.tls.app_pos < c.tls.app_len)):
+		return 1
+	if (poll_single(c.fd, poll_in(), 0) > 0):
+		return 1
+	return 0
 
 
 int h2_write_frame(h2_conn* c, int type, int flags, int stream_id, char* payload, int len):

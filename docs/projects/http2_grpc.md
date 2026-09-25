@@ -73,10 +73,13 @@ design choices and what is left.
   checked-in P-256 fixture cert (GET/POST, concurrency, trailers, 200 KB
   each way, PING, a deadline expiring on an idle TLS connection), plus
   both ALPN refusal paths. ALPN itself is covered by
-  `libs/standard/net/tls_alpn_test.w`. gRPC over TLS would hook in by
-  having `grpc.w` open its channel with `h2_connect_tls` and serve
-  accepted sockets with `h2_accept_tls` instead of `h2_connect` /
-  `h2_server_new`.
+  `libs/standard/net/tls_alpn_test.w`. gRPC uses the same entry points
+  (see the gRPC transport bullet below).
+- `h2_conn_has_pending(c)` says whether `h2_pump` can make progress
+  without waiting: a complete frame in `rbuf`, decrypted TLS plaintext
+  the TLS layer holds but `h2_conn_read` has not consumed yet (a poll on
+  the fd cannot see it), or a readable socket. Callers use it instead
+  of inspecting `h2_conn` buffers or polling `h2_conn.fd` themselves.
 
 Not done (candidates for follow-ups): priority scheduling (PRIORITY is
 validated and ignored, as RFC 9113 permits), streaming request bodies
@@ -121,8 +124,8 @@ SETTINGS ACK timeout.
   bounded by `h2_conn.max_body` (RST_STREAM(ENHANCE_YOUR_CALM) ->
   RESOURCE_EXHAUSTED). Sends go through `h2_send_data`, which honors the
   peer's windows. Before each message a sender also handles frames that
-  are already readable (`grpc_pump_ready`: buffered complete frames, or
-  a `poll` on `h2_conn.fd`), so cancellation or an early server status
+  are already readable (`grpc_pump_ready`, via `h2_conn_has_pending`, so
+  plaintext buffered inside the TLS layer counts as readable), so cancellation or an early server status
   is noticed without waiting for a window to close.
 - Cancellation and deadlines mid-stream: `grpc_stream_cancel` sends
   RST_STREAM(CANCEL) (status CANCELLED); the server's next
@@ -165,14 +168,25 @@ SETTINGS ACK timeout.
 - Status mapping on the client covers non-200 HTTP statuses, missing
   `grpc-status`, non-gRPC content types, RST_STREAM codes, GOAWAY-refused
   streams and dead connections.
+- Transport: cleartext h2c (`grpc_channel_open`,
+  `grpc_server_serve_conn`) or TLS 1.3 with ALPN `h2`
+  (`grpc_channel_open_tls(host, port, timeout_ms, server_name, cfg)`
+  over `h2_connect_tls`; `grpc_server_serve_conn_tls(srv, fd, scfg)`
+  over `h2_accept_tls`; `grpc_server_serve_h2` serves an already
+  established `h2_conn` of either kind). A channel on a TLS connection
+  sends `:scheme https` and `:authority server_name:port`; everything
+  else is transport-agnostic.
 - Tests: `grpc_test.w` (unary, protobuf, status mapping) and
   `grpc_stream_test.w` (each streaming kind, 1.2-1.5 MB streams past
   every flow-control window, interleaved calls, bidi ping-pong, error
   after messages, cancellation and deadline mid-stream, gzip/deflate
   unary and streaming, oversize decompression both ways, encoding
-  mismatch, and scripted client-side coding errors).
+  mismatch, and scripted client-side coding errors), and
+  `grpc_tls_test.w` (over TLS with the P-256 fixture cert: unary,
+  server streaming up to 1.2 MB, gzip bidi, cancel mid-stream,
+  `h2_conn_has_pending` on TLS-buffered plaintext, and a client that
+  does not offer `h2`).
 
-Not done: gRPC over TLS (blocked on ALPN, as above), a code generator
-from `.proto`, per-message compression opt-out on a compressed stream,
+Not done: a code generator from `.proto`, per-message compression opt-out on a compressed stream,
 flow-control windows tied to message consumption, and concurrent calls
 within one server connection.
