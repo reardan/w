@@ -153,7 +153,7 @@ rule program = separator* top_item* EOF
 rule separator = NEWLINE
 rule top_item = declaration separator* | statement separator*
 
-rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | kernel_decl | export_decl | operator_def | function_decl | global_decl
+rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | kernel_decl | export_decl | message_decl | operator_def | function_decl | global_decl
 rule import_decl = KW_IMPORT dotted_name import_alias_opt
 rule import_alias_opt = KW_AS name_token |
 rule dotted_name = name_token dotted_tail*
@@ -180,6 +180,17 @@ rule type_alias_decl = KW_TYPE IDENT ASSIGN type_ref
 rule generator_decl = KW_GENERATOR type_ref name_token LPAREN param_list RPAREN function_body
 # gpu kernels: implicit void return (grammar/kernel_decl.w)
 rule kernel_decl = KW_KERNEL name_token LPAREN param_list RPAREN function_body
+# protobuf messages (grammar/protobuf_builtin.w): 'message' is contextual
+# in the compiler, so the declaration is two identifiers and a colon
+# here, and each field line is '[repeated] type name = number'.
+rule message_decl = IDENT IDENT COLON message_body
+rule message_body = message_line message_body |
+rule message_line = NEWLINE tab_prefix message_field | NEWLINE tab_prefix | NEWLINE
+# The number is optional here (PG is syntax-only and permissive, like
+# operator_token) so the missing-number fixture
+# (tests/protobuf_message_number_error_fixture.w) still parses.
+rule message_field = IDENT type_ref name_token message_number | type_ref name_token message_number
+rule message_number = ASSIGN NUMBER |
 # wasm real-signature exports: 'export' marks a function definition
 # (grammar/program.w; docs/projects/wasm_backend.md stage 5)
 rule export_decl = KW_EXPORT function_decl

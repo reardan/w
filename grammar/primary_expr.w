@@ -1,6 +1,9 @@
 int expression();
 int struct_value_ctor_ready(); /* defined in unary_expression */
 int struct_value_ctor_expr(); /* defined in unary_expression */
+int protobuf_to_proto_expr(); /* defined in protobuf_builtin */
+int protobuf_from_proto_expr(); /* defined in protobuf_builtin */
+int protobuf_descriptor_expr(); /* defined in protobuf_builtin */
 int hash_literal_type
 
 
@@ -164,6 +167,17 @@ int primary_expr():
 
 	else if (peek(c"from_json") & (nextc == '(')):
 		type = json_from_json_expr()
+
+	# Protobuf message builtins (grammar/protobuf_builtin.w); a user
+	# symbol of the same name keeps the call meaning.
+	else if (peek(c"to_proto") & (nextc == '(') & (sym_lookup(c"to_proto") < 0)):
+		type = protobuf_to_proto_expr()
+
+	else if (peek(c"from_proto") & (nextc == '(') & (sym_lookup(c"from_proto") < 0)):
+		type = protobuf_from_proto_expr()
+
+	else if (peek(c"proto_descriptor") & (nextc == '(') & (sym_lookup(c"proto_descriptor") < 0)):
+		type = protobuf_descriptor_expr()
 
 	# Polymorphic print/println builtin (grammar/print_builtin.w)
 	else if (peek(c"print") & (nextc == '(')):

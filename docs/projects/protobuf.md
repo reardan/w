@@ -12,6 +12,65 @@ third one, recommends proto3-first with a staged plan, and lists open
 questions. No implementation lands here, and nothing in this doc
 touches `build.json` or any `.w` file.
 
+## Status (2026-09)
+
+- **Stage 1** (wire library, `libs/extras/protobuf/`) shipped in #346.
+- **Stage 3** (language integration) shipped first, ahead of stage 2,
+  so the `.proto` generator has a stable target:
+  `grammar/protobuf_builtin.w` adds the contextual `message`
+  declaration and the `to_proto` / `from_proto` / `proto_descriptor`
+  builtins. Tests: `tests/protobuf_message_test.w` (plus x64 and wasm
+  twins), `tests/protobuf_message_x64_test.w` (the 64-bit kinds), and
+  the `protobuf_message_error_test` fixtures.
+- **Stage 2** (`.proto` → W codegen) is still open. It should emit
+  `message` declarations.
+
+What stage 3 settled, and how it answers the §10 open questions:
+
+- **Surface B (Q1).** `message Name:` is contextual rather than a
+  reserved word. A user type or symbol named `message` keeps its
+  identifier meaning, as does every non-top-level use (the word is a
+  common variable name across the tree). Each field is written
+  `[repeated] <proto type> <name> = <number>`. Field numbers are
+  checked at compile time: they must be in the range 1..2^29-1, must
+  not be in the reserved 19000-19999 block, and must not repeat within
+  the message (Q4's in-message check; cross-version checking remains
+  unscoped).
+- **Storage.** `int32`/`sint32` are stored as `int32`, and
+  `uint32`/`fixed32` as `uint32`. The 64-bit kinds are stored as
+  `int64`/`uint64` and are a compile error on 4-byte words, which
+  matches JSON's float64 rule. `bool` is stored as `bool`, and
+  `string`/`bytes` as the runtime's `pb_bytes`. A W enum is encoded as
+  int32. A nested message `M` is stored as `M*`, and `repeated T` as
+  `list[T]` (message elements by value). A message is an ordinary W
+  struct in the type table, with a side table that holds each field's
+  wire number and protobuf kind.
+- **Runtime home (Q3).** The runtime stays in `libs/extras/protobuf/`
+  and is not promoted to `structures/`. It is also not imported on
+  demand the way `json_codec` is: a declaration needs `pb_bytes` at
+  parse time, so `import libs.extras.protobuf.message` must be in
+  scope, and the builtins call the runtime's already-defined
+  functions directly (`pb_to_bytes`, `pb_from_bytes`, `pb_from_data`).
+- **Descriptors.** As with `to_json`, the first use of a message emits
+  a static blob in a `be_blob` region. The blob is laid out exactly
+  like the runtime's `pb_value_desc` / `pb_field_desc` /
+  `pb_message_desc`, fields are sorted by wire number (deterministic
+  output), and `struct_size` is rounded up to whole words so that
+  repeated message elements match `list[T]`'s slot size.
+- **Permissive decode (Q5).** Decode is permissive, as proto3 requires:
+  absent fields stay zero and unknown numbers are skipped.
+  `from_proto` returns 0 on malformed input. The `wresult` error codes
+  are still reachable through `pb_decode(proto_descriptor(T), ...)`.
+- **Runtime changes.** A singular `bool` decodes into one byte, because
+  the runtime's 4-byte BOOL write would clobber the next field. For a
+  repeated scalar element, a nonzero `pb_value_desc.aux` gives its
+  storage width (1 for `list[bool]`). Hand-written descriptors are
+  unaffected.
+- **Not yet supported:** `float`/`double`/`sfixed*` (the runtime has
+  no such kinds yet), `map<K, V>`, `oneof`, explicit-presence
+  `optional`, and self-recursive messages (the descriptor would need
+  its own address before it is emitted).
+
 ## Tracker note
 
 `docs/projects/sonnet_wave_plan_2026_07b.md` flags an issue-tracker
