@@ -1,3 +1,4 @@
+int parse_constant_literal(char* what, char* name);
 # Forward declaration: defhash_note is defined in compiler/compiler.w,
 # which compiles after grammar/.
 void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
@@ -15,6 +16,9 @@ int enum_declaration():
 			type_index = type_push_size(strclone(token), 4)
 		else:
 			type_reset_for_redefinition(type_index, 4)
+		# a redefinition (or a type index a REPL rollback freed and
+		# reused) must not keep older constants in enum_name's registry
+		enum_forget_constants(type_index)
 		type_set_decl_location(type_index, decl_file_index(), diag_token_line, diag_token_column)
 		type_set_kind(type_index, type_kind_enum)
 		sym_declare_global(token, type_index, 1)
@@ -27,13 +31,9 @@ int enum_declaration():
 			int value_column = diag_token_column
 			get_token()
 			if (accept(c"=")):
-				if ((token[0] == '0') && (token[1] == 'x')):
-					int_literal_width_check()
-					value = int_literal_wrap32(from_hex(token + 2))
-				else:
-					int_literal_decimal_check()
-					value = int_literal_wrap32(atoi(token))
-				get_token()
+				# a constant expression (grammar/program.w), which may
+				# name the enum's earlier values
+				value = parse_constant_literal(c"enum value", value_name)
 			int current_symbol = sym_declare_global(value_name, type_index, 1)
 			sym_set_decl_location(current_symbol, decl_file_index(), value_line, value_column)
 			# The constant's int32 lives at the symbol's address
@@ -48,6 +48,7 @@ int enum_declaration():
 			else:
 				sym_define_global(current_symbol)
 				emit_int32(value)
+			enum_register_constant(type_index, value_name, value)
 			value = value + 1
 			pointer_indirection = 0
 		defhash_note(defhash_name, c"enum", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)

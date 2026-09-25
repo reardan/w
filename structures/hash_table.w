@@ -176,6 +176,25 @@ int __w_hash_string_equal(int left, int right):
 	return 1
 
 
+# string == string / != (grammar/equality_expr.w): contents, null-safe
+# (a null descriptor equals only null).
+int __w_string_equal(int left, int right):
+	if (left == right):
+		return 1
+	if ((left == 0) || (right == 0)):
+		return 0
+	return __w_hash_string_equal(left, right)
+
+
+# switch on a char* (grammar/switch_statement.w): contents, null-safe.
+int __w_cstr_equal(char* left, char* right):
+	if (left == right):
+		return 1
+	if ((left == 0) || (right == 0)):
+		return 0
+	return __w_strcmp(left, right) == 0
+
+
 int __w_hash_key_equal(int kind, int left, int right):
 	if (kind == __w_hash_key_cstr()):
 		return __w_strcmp(cast(char*, left), cast(char*, right)) == 0

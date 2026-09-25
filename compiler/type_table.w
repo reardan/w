@@ -72,6 +72,10 @@ int type_kind_enum
 int type_kind_const
 int string_type
 int string_value_type
+# A "..." or f"..." literal's value: a string value whose data is known
+# to be NUL-terminated, so it also decays to char* (type_decays_to_pointer).
+# Same name and kind as string_value_type; only identity tells them apart.
+int string_literal_type
 int var_type
 int var_value_type
 
@@ -1141,11 +1145,14 @@ int types_compatible(int want, int got):
 # Return 1 when 'got' is a slice VALUE (a promoted array or slice
 # expression: eax holds the {data, length} descriptor's address) that
 # decays to the pointer type 'want'. Decay targets are the element type's
-# own pointer (char[] -> char*, char*[] -> char**) and void*. coerce()
-# performs the decay by loading the descriptor's first word, turning the
-# descriptor address into the data pointer.
+# own pointer (char[] -> char*, char*[] -> char**) and void*. A string
+# literal (string_literal_type) decays the same way to char* only.
+# coerce() performs the decay by loading the descriptor's first word,
+# turning the descriptor address into the data pointer.
 int type_decays_to_pointer(int want, int got):
 	got = type_unqualified(got)
+	if (got == string_literal_type):
+		return (want >= 0) && type_is_char_pointer(type_unqualified(want))
 	if (type_get_kind(got) != type_kind_slice_value()):
 		return 0
 	want = type_unqualified(want)
@@ -1473,6 +1480,8 @@ void push_basic_types():
 	type_set_kind(string_type, type_kind_string())
 	string_value_type = type_push_size(c"string value", 0)
 	type_set_kind(string_value_type, type_kind_string())
+	string_literal_type = type_push_size(c"string value", 0)
+	type_set_kind(string_literal_type, type_kind_string())
 
 	# Dynamic 'var': one word holding a pointer to a heap-allocated
 	# tagged box (structures/w_dynamic.w). The value pseudo-type follows

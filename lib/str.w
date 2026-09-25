@@ -71,14 +71,20 @@ int has_line(char* text, char* line):
 
 # Split on a single-character delimiter without touching the input;
 # every piece is a fresh C string. Adjacent delimiters produce empty
-# pieces ("a,,b" -> "a", "", "b"), like Python's split.
-list[char*] split(char* s, char delimiter):
+# pieces ("a,,b" -> "a", "", "b"), like Python's split. With the
+# delimiter omitted (0), split(s) splits on runs of ASCII whitespace
+# and drops empty pieces, like Python's s.split().
+list[char*] split(char* s, char delimiter = 0):
 	list[char*] pieces = new list[char*]
 	int start = 0
 	int i = 0
 	while (1):
-		if ((s[i] == delimiter) || (s[i] == 0)):
-			pieces.push(substring(s, start, i))
+		int is_break = (s[i] == delimiter) || (s[i] == 0)
+		if (delimiter == 0):
+			is_break = (s[i] == 0) || (s[i] == ' ') || ((s[i] >= 9) && (s[i] <= 13))
+		if (is_break):
+			if ((delimiter != 0) || (i > start)):
+				pieces.push(substring(s, start, i))
 			start = i + 1
 		if (s[i] == 0):
 			return pieces

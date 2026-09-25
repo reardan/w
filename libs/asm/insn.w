@@ -3,12 +3,14 @@ Arch-neutral core of the in-house assembler/disassembler libraries
 (docs/projects/assembler_disassembler.md, issue #164): the structured
 instruction/operand model that encoders, decoders, the text parser and
 the formatter all share, plus the byte buffer and label/fixup machinery
-the assembler emits through.
+the assembler emits through, and the static name tables the decoders
+and encoders share.
 
 This library is compiled directly by the committed seed as a build gate
 (asm_seed_gate): only seed-understood syntax here.
 */
 import lib.lib
+import structures.string
 
 
 # Architecture ids (asm_insn.arch, asm_binary.machine mapping)
@@ -193,51 +195,52 @@ int asm_insn_operand_count(asm_insn* insn):
 	return 3
 
 
+################################ name tables ##################################
+
+# A small number -> name table packed into one string literal: entry n is
+# the NUL-terminated name in the stride-byte slot at n * stride (names are
+# NUL-padded to the stride; an all-NUL slot has no name). The returned
+# names point into the literal: static, never freed.
+char* asm_name_slot(char* table, int stride, int count, int number):
+	if (number < 0 || number >= count):
+		return 0
+	if (table[number * stride] == 0):
+		return 0
+	return table + number * stride
+
+
+# Reverse lookup in an asm_name_slot table: the number whose slot holds
+# name, or -1.
+int asm_name_slot_find(char* table, int stride, int count, char* name):
+	int number = 0
+	while (number < count):
+		if (table[number * stride] != 0 && strcmp(table + number * stride, name) == 0):
+			return number
+		number = number + 1
+	return -1
+
+
 ################################ byte buffer ##################################
 
-struct asm_buffer:
-	int capacity
-	int length
-	char* data
+# The assembler's output bytes: a structures/string builder (capacity,
+# length, data), which also keeps data NUL-terminated.
+type asm_buffer = string_builder
 
 
 asm_buffer* asm_buffer_new():
-	# three word-sized fields: 12 bytes on x86, 24 on x64
-	asm_buffer* b = cast(asm_buffer*, malloc(3 * __word_size__))
-	b.capacity = 64
-	b.length = 0
-	b.data = malloc(b.capacity)
-	return b
+	return string_new_sized(64)
 
 
 void asm_buffer_free(asm_buffer* b):
-	free(b.data)
-	free(cast(char*, b))
-
-
-void asm_buffer_reserve(asm_buffer* b, int extra):
-	if (b.length + extra <= b.capacity):
-		return
-	int capacity = b.capacity
-	while (b.length + extra > capacity):
-		capacity = capacity * 2
-	b.data = realloc(b.data, b.capacity, capacity)
-	b.capacity = capacity
+	string_free(b)
 
 
 void asm_buffer_byte(asm_buffer* b, int v):
-	asm_buffer_reserve(b, 1)
-	b.data[b.length] = v
-	b.length = b.length + 1
+	string_append_char(b, v)
 
 
 void asm_buffer_bytes(asm_buffer* b, char* data, int n):
-	asm_buffer_reserve(b, n)
-	int i = 0
-	while (i < n):
-		b.data[b.length + i] = data[i]
-		i = i + 1
-	b.length = b.length + n
+	string_append_bytes(b, data, n)
 
 
 # Little-endian 32-bit word, the common immediate/displacement width.

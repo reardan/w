@@ -92,66 +92,28 @@ void arm64_set_branch(asm_insn* insn, asm_operand* op, int address, int offset):
 	insn.branch_target = address + offset
 
 
-# Condition-code name tables. b.cond uses cs/cc; cset/csel use hs/lo. They
-# differ only at codes 2 and 3.
+# Condition-code names by code, as asm_name_slot tables (3-byte slots).
+# b.cond uses cs/cc; cset/csel use hs/lo. They differ only at codes 2 and 3.
+char* arm64_cond_table(int cset):
+	if (cset):
+		return c"eq\0ne\0hs\0lo\0mi\0pl\0vs\0vc\0hi\0ls\0ge\0lt\0gt\0le\0al\0nv\0"
+	return c"eq\0ne\0cs\0cc\0mi\0pl\0vs\0vc\0hi\0ls\0ge\0lt\0gt\0le\0al\0nv\0"
+
+
 char* arm64_cond_name_branch(int c):
-	if (c == 0):
-		return c"eq"
-	if (c == 1):
-		return c"ne"
-	if (c == 2):
-		return c"cs"
-	if (c == 3):
-		return c"cc"
-	if (c == 4):
-		return c"mi"
-	if (c == 5):
-		return c"pl"
-	if (c == 6):
-		return c"vs"
-	if (c == 7):
-		return c"vc"
-	if (c == 8):
-		return c"hi"
-	if (c == 9):
-		return c"ls"
-	if (c == 10):
-		return c"ge"
-	if (c == 11):
-		return c"lt"
-	if (c == 12):
-		return c"gt"
-	if (c == 13):
-		return c"le"
-	if (c == 14):
-		return c"al"
-	return c"nv"
+	return asm_name_slot(arm64_cond_table(0), 3, 16, c)
 
 
 char* arm64_cond_name_cset(int c):
-	if (c == 2):
-		return c"hs"
-	if (c == 3):
-		return c"lo"
-	return arm64_cond_name_branch(c)
+	return asm_name_slot(arm64_cond_table(1), 3, 16, c)
 
 
 int arm64_cond_lookup_branch(char* name):
-	int c = 0
-	while (c < 16):
-		if (strcmp(arm64_cond_name_branch(c), name) == 0):
-			return c
-		c = c + 1
-	return -1
+	return asm_name_slot_find(arm64_cond_table(0), 3, 16, name)
 
 
 int arm64_cond_lookup_cset(char* name):
-	int c = 0
-	while (c < 16):
-		if (strcmp(arm64_cond_name_cset(c), name) == 0):
-			return c
-		c = c + 1
-	return -1
+	return asm_name_slot_find(arm64_cond_table(1), 3, 16, name)
 
 
 void arm64_set_cond(asm_operand* op, char* name, int code):

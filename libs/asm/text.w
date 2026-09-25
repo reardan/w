@@ -63,26 +63,6 @@ char* asm_parse_token(asm_parse* p):
 	return out
 
 
-# Parse a signed number token (decimal or 0x hex, optional leading '-').
-int asm_parse_number(char* s):
-	int sign = 1
-	int i = 0
-	if (s[0] == '-'):
-		sign = 0 - 1
-		i = 1
-	int value = 0
-	if (s[i] == '0' && s[i + 1] == 'x'):
-		i = i + 2
-		while (s[i] != 0):
-			value = (value << 4) | asm_hex_digit(s[i])
-			i = i + 1
-	else:
-		while (s[i] != 0):
-			value = value * 10 + (s[i] - '0')
-			i = i + 1
-	return sign * value
-
-
 # High 32 bits of a hex immediate token wider than 32 bits (for movabs
 # r64, imm64). asm_parse_number keeps the low 32 bits; this returns the
 # high word (0 for decimal, negative, or <= 32-bit values).
