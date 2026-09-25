@@ -285,6 +285,13 @@ current state:
 				fixture under ulimit -c on both word sizes and processes
 				the real kernel cores, skipping cleanly when
 				core_pattern is piped or cores cannot appear
+			GNU build-id (issue #378): every ELF writer (x86, x64, arm64)
+				emits an NT_GNU_BUILD_ID note after the program headers
+				(own PT_NOTE + .note.gnu.build-id section), a content hash
+				of the image so the self-host fixpoint holds; it sits in the
+				first file page, which kernel cores keep by default, and
+				wcore refuses a binary whose build-id differs from the
+				core's copy (warns and continues when the core has none)
 		library and data structures:
 			malloc/free/realloc as a library module (lib/memory.w)
 			list

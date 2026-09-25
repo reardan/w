@@ -957,8 +957,12 @@ void emit_debugging_symbols(int word_size):
 	int header_addr = codepos
 
 	# Save section header address + number of sections
-	# Section order: null, text, debug_info, debug_abbrev, debug_line, strings, symtab
-	elf_save_section_info(word_size, header_addr, 7, 5)
+	# Section order: null, text, debug_info, debug_abbrev, debug_line, strings,
+	# symtab, and .note.gnu.build-id when the writer emitted the note
+	int num_sections = 7
+	if (build_id_note_pos != 0):
+		num_sections = 8
+	elf_save_section_info(word_size, header_addr, num_sections, 5)
 
 	# Mandatory null section 0
 	emit_zeros(elf_section_header_length())
@@ -991,6 +995,16 @@ void emit_debugging_symbols(int word_size):
 	int symbol_section_header = codepos
 	elf_emit_section_header(2)
 
+	# The build-id note (SHT_NOTE) that the writer placed after the program
+	# headers; readelf -n and debuggers look for it by section name.
+	int build_id_section_header = 0
+	if (build_id_note_pos != 0):
+		build_id_section_header = codepos
+		elf_emit_section_header(7)
+		elf_section_set_flags(build_id_section_header, 2) /* alloc */
+		elf_section_set_addr(build_id_section_header, code_offset + build_id_note_pos)
+		section_set_range(build_id_section_header, build_id_note_pos, elf_build_id_note_size())
+
 	# Emit strings
 	int strings_addr = codepos
 	int string_count = emit_string_table()
@@ -1002,6 +1016,8 @@ void emit_debugging_symbols(int word_size):
 	emit_section_name(c".debug_info", debug_info_section_header, strings_addr)
 	emit_section_name(c".debug_abbrev", debug_abbrev_section_header, strings_addr)
 	emit_section_name(c".debug_line", debug_line_section_header, strings_addr)
+	if (build_id_section_header != 0):
+		emit_section_name(c".note.gnu.build-id", build_id_section_header, strings_addr)
 
 	# Store string strings_addr + length
 	int length = codepos - strings_addr
