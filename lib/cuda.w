@@ -301,6 +301,49 @@ int __w_gpu_choose(int loud):
 	return 0
 
 
+# Opt-in pre-compiled image (docs/projects/cuda.md "Execution notes
+# (cubin embedding)"): synthesized by the compiler as an 8-byte image
+# length followed by a ptxas cubin given with --cubin-file, length 0
+# without one.
+char* __w_cubin_module();
+
+# Which image the last module load used: 0 none yet, 1 PTX (driver
+# JIT), 2 embedded cubin. Read it with gpu_module_source().
+int __w_gpu_module_source
+
+# Load the embedded module into the current context, storing the
+# CUmodule handle in cell: the cubin first when present (no JIT),
+# falling back to the PTX when the driver rejects it — any error,
+# typically CUDA_ERROR_NO_BINARY_FOR_GPU (209) for a cubin built for
+# another sm_XX. The image is copied to a heap buffer first: the
+# embedded bytes sit at an arbitrary code address. Returns the PTX
+# load's CUresult (cubin failures are not recorded as errors).
+int __w_gpu_load_module(char* cell, char* module_text):
+	char* blob = __w_cubin_module()
+	int n = load_i(blob, 8)
+	int err = 1
+	if (n > 0):
+		char* image = malloc(n)
+		int i = 0
+		while (i < n):
+			image[i] = blob[8 + i]
+			i = i + 1
+		err = cuModuleLoadData(cell, image)
+		free(image)
+		if (err == 0):
+			__w_gpu_module_source = 2
+	if (err != 0):
+		save_i(cell, 0, 8)
+		err = __w_gpu_note(cuModuleLoadData(cell, module_text), c"cuModuleLoadData")
+		if (err == 0):
+			__w_gpu_module_source = 1
+	return err
+
+
+int gpu_module_source():
+	return __w_gpu_module_source
+
+
 # Make the chosen device's context current, creating it (and loading
 # the embedded module) on the device's first use. A program with no
 # kernels (explicit-memory use only) has an empty module: skip the
@@ -329,7 +372,7 @@ int __w_gpu_try_init_loud(int loud):
 		char* module_text = __w_ptx_module()
 		if (module_text[0] != 0):
 			save_i(cell, 0, 8)
-			err = __w_gpu_note(cuModuleLoadData(cell, module_text), c"cuModuleLoadData")
+			err = __w_gpu_load_module(cell, module_text)
 			if (err == 0):
 				save_i(__w_gpu_modules + __w_gpu_device * 8, load_i(cell, 8), 8)
 	free(cell)
