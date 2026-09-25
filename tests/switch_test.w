@@ -1,4 +1,7 @@
 # wbuild: x64
+# wbuild: step="bin/wv2 tests/switch_default_not_last_error_fixture.w -o bin/switch_default_not_last_error_fixture" expect_fail expect_stderr="'default' must be the last clause in a switch"
+# wbuild: step="bin/wv2 tests/switch_body_error_fixture.w -o bin/switch_body_error_fixture" expect_fail expect_stderr="'case' or 'default' expected in switch body"
+# wbuild: step="bin/wv2 tests/switch_float_error_fixture.w -o bin/switch_float_error_fixture" expect_fail expect_stderr="switch on a float value is not supported"
 # switch statement (grammar/switch_statement.w): the scrutinee is
 # evaluated exactly once, cases compare with == semantics in source
 # order, every case body has an implicit break (no fallthrough),

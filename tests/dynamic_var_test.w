@@ -1,3 +1,9 @@
+# wbuild: step="bin/wv2 tests/dynamic_var_trap_fixture.w -o bin/dynamic_var_trap_fixture"
+# wbuild: step="bin/dynamic_var_trap_fixture" expect_fail expect_stderr="var runtime error: expected int, got char*"
+# wbuild: step="bin/wv2 tests/dynamic_var_float_error_fixture.w -o bin/dynamic_var_float_error_fixture" expect_fail expect_stderr="cannot convert 'float32' to var"
+# wbuild: step="bin/wv2 tests/dynamic_var_mod_error_fixture.w -o bin/dynamic_var_mod_error_fixture" expect_fail expect_stderr="var operands do not support %"
+# wbuild: step="bin/wv2 tests/dynamic_var_variadic_error_fixture.w -o bin/dynamic_var_variadic_error_fixture" expect_fail expect_stderr="variadic parameter element type cannot be var"
+# wbuild: step="bin/wv2 tests/dynamic_var_default_error_fixture.w -o bin/dynamic_var_default_error_fixture" expect_fail expect_stderr="default values are not supported on var parameters"
 import lib.testing
 import lib.utf8
 import structures.w_dynamic

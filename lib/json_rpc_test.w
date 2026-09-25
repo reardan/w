@@ -1,3 +1,4 @@
+# wbuild: step="bin/wv2 examples/web/json_rpc_server.w -o bin/json_rpc_server"
 import lib.testing
 import lib.net
 import lib.json_rpc

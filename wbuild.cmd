@@ -11,7 +11,7 @@ REM the up-to-date executor. 'rmdir /s /q bin' resets everything.
 REM
 REM Usage: wbuild.cmd [target ...]
 REM   wbuild.cmd verify_win   self-host fixpoint (wv3_win==wv4_win==wv5_win)
-REM   wbuild.cmd --list       show every target in build.json
+REM   wbuild.cmd --list       show every target in the manifest
 REM
 REM Only the win64 chain (wv2_win, wexec_win, build_win, verify_win,
 REM update_win) works here: wexec drops the manifest's "wine" prefix when

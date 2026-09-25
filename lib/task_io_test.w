@@ -1,3 +1,5 @@
+# wbuild: step="bin/wv2 examples/web/task_echo_server.w -o bin/task_echo_server"
+# wbuild: step="bin/task_echo_server" expect_stdout="demo: OK"
 # Tests for awaitable I/O (lib/task_io.w): an in-process echo server
 # with several concurrent clients over TCP loopback, backpressure on
 # writes, EOF delivery, and worker processes that suspend instead of

@@ -1,4 +1,11 @@
 # wbuild: x64 group=arm64_smoke_test@arm64 group=wasm_smoke_test@wasm
+# wbuild: step="bin/wv2 tests/map_add_error_fixture.w -o bin/map_add_error_fixture" expect_fail expect_stderr="map add requires an integer or float value type"
+# wbuild: step="bin/wv2 tests/map_add_float16_error_fixture.w -o bin/map_add_float16_error_fixture" expect_fail expect_stderr="map add does not support float16 values"
+# wbuild: step="bin/wv2 tests/map_value_array_error_fixture.w -o bin/map_value_array_error_fixture" expect_fail expect_stderr="map value type cannot be a fixed-size array"
+# wbuild: step="bin/wv2 tests/map_default_empty_error_fixture.w -o bin/map_default_empty_error_fixture" expect_fail expect_stderr="map default with no argument requires a container value type"
+# wbuild: step="bin/wv2 tests/map_default_struct_error_fixture.w -o bin/map_default_struct_error_fixture" expect_fail expect_stderr="map default does not support struct value types"
+# wbuild: step="bin/wv2 tests/map_default_factory_required_error_fixture.w -o bin/map_default_factory_required_error_fixture" expect_fail expect_stderr="map default for a container or pointer value type must be a factory function"
+# wbuild: step="bin/wv2 tests/map_default_warning_fixture.w -o bin/map_default_warning_fixture" expect_stderr="warning: map default factory type mismatch: expected 'char*', got 'int'" expect_stderr="warning: map default type mismatch: expected 'int', got 'char*'"
 import lib.testing
 
 

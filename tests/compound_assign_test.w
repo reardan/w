@@ -1,4 +1,6 @@
 # wbuild: x64 group=arm64_smoke_test@arm64 group=wasm_smoke_test@wasm
+# wbuild: step="bin/wv2 tests/compound_assign_map_error_fixture.w -o bin/compound_assign_map_error_fixture" expect_fail expect_stderr="compound assignment is not supported on struct values"
+# wbuild: step="bin/wv2 tests/compound_assign_struct_error_fixture.w -o bin/compound_assign_struct_error_fixture" expect_fail expect_stderr="compound assignment is not supported on struct values"
 import lib.testing
 
 
