@@ -701,13 +701,31 @@ kernel tensor_matmul_nt_tiled_kernel(float* a, float* b, float* out, int m, int 
 			out[row * n + col] = acc
 
 
+# Optional matmul accelerator. Null (the default) unless a program opts
+# in -- lib/tensor_cublas.w's tensor_use_cublas() installs a cuBLAS
+# GEMM here; this file never imports it, so programs that do not ask
+# for cuBLAS never load it. Called only on the GPU path with the op
+# (0 = a @ b, 1 = aT @ b, 2 = a @ bT), the raw operand pointers and the
+# m x n output / kd shared-axis shape; returns 1 when it enqueued the
+# product, 0 to make the caller launch its tiled kernel instead.
+type tensor_matmul_fn = fn(int, float*, float*, float*, int, int, int) -> int
+tensor_matmul_fn* tensor_matmul_hook
+
+
+int tensor_matmul_hooked(int op, float* pa, float* pb, float* po, int m, int kd, int n):
+	if (cast(int, tensor_matmul_hook) == 0):
+		return 0
+	return tensor_matmul_hook(op, pa, pb, po, m, kd, n)
+
+
 # Shared launch arithmetic: one 256-thread block per 16x16 output tile.
 int tensor_matmul_blocks(int m, int n):
 	return ((m + 15) / 16) * ((n + 15) / 16)
 
 
 # out = a @ b for rank-2 a (m x k), b (k x n), out (m x n). GPU path:
-# the tiled kernel above; CPU fallback: the naive triple loop.
+# the tiled kernel above (or the opt-in tensor_matmul_hook, e.g.
+# cuBLAS); CPU fallback: the naive triple loop.
 void tensor_matmul2(tensor* out, tensor* a, tensor* b):
 	asserts(c"tensor_matmul2: rank must be 2", a.rank == 2 && b.rank == 2 && out.rank == 2)
 	asserts(c"tensor_matmul2: inner dimensions must match", a.n1 == b.n0)
@@ -720,7 +738,8 @@ void tensor_matmul2(tensor* out, tensor* a, tensor* b):
 	float* pa = a.data
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
-		launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
+		if (tensor_matmul_hooked(0, pa, pb, po, m, kd, n) == 0):
+			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
 	else:
 		int i = 0
 		while (i < m):
@@ -753,7 +772,8 @@ void tensor_matmul2_tn(tensor* out, tensor* a, tensor* b):
 	float* pa = a.data
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
-		launch tensor_matmul_tn_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
+		if (tensor_matmul_hooked(1, pa, pb, po, m, kd, n) == 0):
+			launch tensor_matmul_tn_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
 	else:
 		int i = 0
 		while (i < m):
@@ -786,7 +806,8 @@ void tensor_matmul2_nt(tensor* out, tensor* a, tensor* b):
 	float* pa = a.data
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
-		launch tensor_matmul_nt_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
+		if (tensor_matmul_hooked(2, pa, pb, po, m, kd, n) == 0):
+			launch tensor_matmul_nt_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
 	else:
 		int i = 0
 		while (i < m):
