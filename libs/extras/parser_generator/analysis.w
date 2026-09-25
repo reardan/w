@@ -728,7 +728,7 @@ void pg_report_dispatch(pg_grammar* grammar):
 #     guardable — a FIRST-set match only proves the decision to enter is
 #     right, not that the callee rule goes on to succeed, so today's
 #     generator still wraps it in a trial mark/rewind attempt
-#     (pg_emit_optional_attempt / pg_emit_repeat_attempt in generator.w).
+#     (pg_attempt_call in generator.w).
 #     Streaming mode has nothing to rewind to, so these are rejected
 #     rather than silently miscompiled.
 #
