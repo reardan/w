@@ -45,6 +45,38 @@
 				{"cmd": ["sh", "-c", "echo err text >&2"], "stderr_file": "bin/wexec_capture.err"},
 				{"cmd": ["grep", "-qF", "err text", "bin/wexec_capture.err"]}
 			]
+		},
+		{
+			"name": "step_env",
+			"steps": [
+				{"cmd": ["env"], "env": ["W_STEP_ENV=hello", "W_STEP_EMPTY="], "expect_stdout": ["W_STEP_ENV=hello", "W_STEP_EMPTY=\n"]},
+				{"cmd": ["env"], "env": "W_STEP_ENV=single", "expect_stdout": "W_STEP_ENV=single"}
+			]
+		},
+		{
+			"name": "step_env_bad",
+			"steps": [
+				{"cmd": ["true"], "env": ["NO_EQUALS"]}
+			]
+		},
+		{
+			"name": "step_cwd",
+			"steps": [
+				{"cmd": ["pwd"], "cwd": "tests/wexec", "expect_stdout": "/tests/wexec\n"},
+				{"cmd": ["bin/hello"], "cwd": "tests", "expect_stdout": "hello, world!"}
+			]
+		},
+		{
+			"name": "signal_ok",
+			"steps": [
+				{"cmd": ["timeout", "-s", "KILL", "0.2", "sleep", "5"], "expect_signal": true}
+			]
+		},
+		{
+			"name": "signal_wrong",
+			"steps": [
+				{"cmd": ["false"], "expect_signal": true}
+			]
 		}
 	]
 }

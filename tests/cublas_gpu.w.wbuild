@@ -3,4 +3,4 @@
 # wbuild: target=cublas_test dep=wv2
 # wbuild: step="bin/wv2 x64 tests/cublas_gpu.w -o bin/cublas_gpu"
 # wbuild: step="bin/cublas_gpu" expect_stdout="cublas gpu OK"
-# wbuild: step="sh -c 'CUDA_VISIBLE_DEVICES= bin/cublas_gpu'" expect_stdout="cublas: unavailable"
+# wbuild: step="bin/cublas_gpu" env="CUDA_VISIBLE_DEVICES=" expect_stdout="cublas: unavailable"

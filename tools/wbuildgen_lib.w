@@ -606,9 +606,11 @@ vocabulary:
                            step: expect_fail, expect_stdout=,
                            expect_stderr=, reject_stdout=,
                            reject_stderr= (the last four repeatable),
-                           timeout=<ms>, stdin="text" and
-                           stdout_file=<path>, with wexec's own
-                           per-step meanings. This is the multi-step
+                           timeout=<ms>, stdin="text",
+                           stdout_file=<path>, expect_signal,
+                           env="NAME=value" (repeatable) and
+                           cwd=<dir>, with wexec's own per-step
+                           meanings. This is the multi-step
                            shape (a test plus the diagnostic fixtures
                            it drives) that used to need a hand-written
                            build.base.json target. A target with step=
@@ -976,6 +978,26 @@ int wbg_apply_step_field(char* path, char* key, int has_value, char* value):
 		else:
 			sd.reject_stderr.push(strclone(value))
 		return 0
+	if (strcmp(key, c"expect_signal") == 0):
+		if (wbg_no_value(path, key, has_value)):
+			return 1
+		json_object_set(sd.step, c"expect_signal", json_bool(1))
+		return 0
+	if (strcmp(key, c"env") == 0):
+		if (wbg_need_value(path, key, has_value)):
+			return 1
+		int eq = 0
+		while ((value[eq] != 0) && (value[eq] != '=')):
+			eq = eq + 1
+		if ((eq == 0) || (value[eq] == 0)):
+			wbg_token_error(path, c"'# wbuild:' env needs NAME=value, got ", value)
+			return 1
+		json_value* env = json_object_get(sd.step, c"env")
+		if (env == 0):
+			env = json_array()
+			json_object_set(sd.step, c"env", env)
+		json_array_push(env, json_string(value))
+		return 0
 	if (strcmp(key, c"timeout") == 0):
 		if (wbg_need_value(path, key, has_value)):
 			return 1
@@ -994,7 +1016,7 @@ int wbg_apply_step_field(char* path, char* key, int has_value, char* value):
 			return 1
 		json_object_set(sd.step, c"expect_status", json_int(status))
 		return 0
-	if ((strcmp(key, c"stdin") == 0) | (strcmp(key, c"stdout_file") == 0) | (strcmp(key, c"stderr_file") == 0)):
+	if ((strcmp(key, c"stdin") == 0) | (strcmp(key, c"stdout_file") == 0) | (strcmp(key, c"stderr_file") == 0) | (strcmp(key, c"cwd") == 0)):
 		if (wbg_need_value(path, key, has_value)):
 			return 1
 		if ((value[0] == 0) && (strcmp(key, c"stdin") != 0)):
@@ -1002,7 +1024,7 @@ int wbg_apply_step_field(char* path, char* key, int has_value, char* value):
 			return 1
 		json_object_set(sd.step, key, json_string(value))
 		return 0
-	wbg_token_error(path, c"not a 'step=' field (expect_fail, expect_status=, expect_stdout=, expect_stderr=, reject_stdout=, reject_stderr=, timeout=, stdin=, stdout_file=, stderr_file=): ", key)
+	wbg_token_error(path, c"not a 'step=' field (expect_fail, expect_signal, expect_status=, expect_stdout=, expect_stderr=, reject_stdout=, reject_stderr=, timeout=, stdin=, stdout_file=, stderr_file=, env=, cwd=): ", key)
 	return 1
 
 
@@ -1871,7 +1893,7 @@ void wbg_decorate_run_step(json_value* run_step):
 # compile, which disables wexec's closure keys, is still hashed
 # directly), and its extra runs are binaries it built -- so it caches
 # like one instead of rerunning on every request. Anything else (sh,
-# env, git, cat, stdout_file=, a compile without -o) keeps the target a
+# env, git, cat, stdout_file=, env=, cwd=, a compile without -o) keeps the target a
 # FORCE target.
 int wbg_steps_cacheable(char* binary, list[char*] roots):
 	list[char*] produced = new list[char*]
@@ -1880,6 +1902,8 @@ int wbg_steps_cacheable(char* binary, list[char*] roots):
 		if (json_object_get(sd.step, c"stdout_file") != 0):
 			return 0
 		if (json_object_get(sd.step, c"stderr_file") != 0):
+			return 0
+		if ((json_object_get(sd.step, c"env") != 0) || (json_object_get(sd.step, c"cwd") != 0)):
 			return 0
 		json_value* cmd = json_object_get(sd.step, c"cmd")
 		if (cmd == 0):

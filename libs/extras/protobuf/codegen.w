@@ -3,8 +3,8 @@ libs/extras/protobuf/codegen.w: .proto IDL -> W 'message' source
 (issue #16 stage 2, docs/projects/protobuf.md §4.3 / §9).
 
 Parses a .proto file with the parser generated from
-libs/extras/protobuf/proto.pg (generated_proto_parser.w, committed and
-checked against regeneration like the C importer's parser), walks the
+libs/extras/protobuf/proto.pg (generated_proto_parser.w, a build output of the "generated"
+umbrella's protobuf_generated target, issue #323), walks the
 AST, and writes ordinary W declarations for the compiler's 'message'
 keyword (grammar/protobuf_builtin.w):
 

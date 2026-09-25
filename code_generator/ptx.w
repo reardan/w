@@ -1988,7 +1988,7 @@ void ptx_cubin_check_entries(char* blob, int n):
 # length when no --cubin-file was given (the runtime then JIT-loads
 # the PTX as before). The cubin is opt-in and never produced here:
 # the compiler spawns no external tools; users run ptxas on the --ptx
-# dump themselves (tools/cuda/build_cubin.sh scripts the two steps).
+# dump themselves (bin/cubin_tool build drives the two steps).
 void ptx_finish_cubin():
 	if (sym_lookup(c"__w_cubin_module") < 0):
 		return;

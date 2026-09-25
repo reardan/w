@@ -83,6 +83,9 @@ What changed since the survey below, in the order it landed:
   outside its own closure starts, so every run sees them; once built,
   that costs one cache check. Directory inputs skip those outputs when
   hashing, so generating them never changes `wv2`'s key.
+  The protobuf IDL parser (`libs/extras/protobuf/generated_proto_parser.w`)
+  and the `tests/protobuf/*_pb.w` modules followed the same way (the
+  `protobuf_generated` target in `tools/proto_to_w.w`).
   `libs/extras/c_import/generated_c_parser.w` stays committed because
   the pinned seed compiles it into the compiler; `parser_generator_c_test`
   fails if it drifts from `tests/parser_generator/c.pg`.
@@ -107,9 +110,11 @@ without a directory walk, and the four umbrellas. Scripts left in the
 tree are outside the build graph's core: the Mac helpers
 (`tools/mac/`), dataset fetchers (`fetch_mnist.sh`,
 `fetch_shakespeare.sh`, used by the opt-in GPU training targets), the
-TLS/x509 fixture regenerators, `ppm_to_png.py`, the torch reference
-trainer, and one `sh -c` in `pac_corrupt_fnptr_test.w` that asserts a
-signal exit (`$? -ge 128`), which wexec has no field for yet.
+TLS/x509 fixture regenerators, `ppm_to_png.py` and the torch reference
+trainer. No step runs `sh -c`: wexec steps gained `env`, `cwd` and
+`expect_signal` for the last few (CUDA env overrides, a `cd docs`, the
+pac signal-exit check), and the CUDA cubin scripts became
+`bin/cubin_tool` (`tools/cuda/cubin_tool.w`).
 
 ## Where the system stands today
 
