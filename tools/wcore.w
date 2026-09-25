@@ -1,7 +1,7 @@
 /*
 wcore: Linux core-dump processor for W binaries (issue #378's tooling half).
 
-Usage: wcore [--json] <core> <binary>
+Usage: wcore [--json] <core> [<binary>]
 
 Reads an ET_CORE ELF core file of a W-compiled x86 or x86-64 Linux
 binary next to the binary that produced it and prints:
@@ -45,6 +45,13 @@ the wrong binary yields wrong names. When the core has no build-id (the
 page was filtered out, or the binary predates build-ids) the check is
 skipped with a warning. ELF class and machine are cross-checked too.
 
+Besides kernel cores, wcore reads the dumps W programs write themselves
+when W_CRASH_DUMP=<path> is set (lib/crash_dump.w): the same ET_CORE
+layout, plus a "W" note (type 0x57455845, "WEXE") naming the crashed
+executable, so <binary> may be omitted for them. The report says
+"source: W crash handler dump" and --json carries "source":"w_crash_dump"
+(or "kernel").
+
 --json prints one JSON object on one line instead of the human report.
 
 Exit status: 0 on success, 1 on a processing error, 2 on usage errors.
@@ -82,6 +89,7 @@ int wc_prstatus       /* address of the first NT_PRSTATUS desc, 0 = none */
 int wc_prstatus_size
 int wc_siginfo        /* address of the NT_SIGINFO desc, 0 = none */
 int wc_siginfo_size
+int wc_exe_note       /* address of the "W" exe-path note's string, 0 = none */
 
 int wc_bin_id         /* address of the binary's build-id bytes, 0 = none */
 int wc_bin_id_size
@@ -305,6 +313,10 @@ void wc_parse_notes():
 				if (namesz >= 5):
 					if (st_cstr_eq(name, c"CORE")):
 						is_core_note = 1
+				if ((namesz == 2) && (ntype == 0x57455845) && (descsz > 1)):
+					if (st_cstr_eq(name, c"W")):
+						if (st_byte(desc + descsz - 1) == 0):
+							wc_exe_note = desc
 				if (is_core_note):
 					if ((ntype == 1) && (wc_prstatus == 0)):
 						wc_prstatus = desc
@@ -836,6 +848,12 @@ void wc_json_report(char* frames, int nframes):
 	wc_json_key(c"binary")
 	wc_json_str(wc_bin_path)
 	put_char(',')
+	wc_json_key(c"source")
+	if (wc_exe_note != 0):
+		wc_json_str(c"w_crash_dump")
+	else:
+		wc_json_str(c"kernel")
+	put_char(',')
 	if (wc_bin_id != 0):
 		wc_json_key(c"build_id")
 		char* id = wc_id_hex(wc_bin_id, wc_bin_id_size)
@@ -923,6 +941,8 @@ void wc_report(char* frames, int nframes):
 		println(c" (x86, 32-bit ELF core)")
 	print(c"binary: ")
 	println(wc_bin_path)
+	if (wc_exe_note != 0):
+		println(c"source: W crash handler dump (W_CRASH_DUMP)")
 	if (wc_bin_id != 0):
 		print(c"build-id: ")
 		char* id = wc_id_hex(wc_bin_id, wc_bin_id_size)
@@ -1013,26 +1033,19 @@ int main(int argc, int argv):
 		else if (wc_bin_path == 0):
 			wc_bin_path = a
 		else:
-			println2(c"usage: wcore [--json] <core> <binary>")
+			println2(c"usage: wcore [--json] <core> [<binary>]")
 			return 2
 		i = i + 1
-	if (wc_bin_path == 0):
-		println2(c"usage: wcore [--json] <core> <binary>")
+	if (wc_core_path == 0):
+		println2(c"usage: wcore [--json] <core> [<binary>]")
 		return 2
 
 	wc_core_buf = wc_load_file(wc_core_path)
 	if (wc_core_buf == 0):
 		return wc_fail_path(c"cannot read core file", wc_core_path)
 	wc_core_size = wc_read_size
-	wc_bin_buf = wc_load_file(wc_bin_path)
-	if (wc_bin_buf == 0):
-		return wc_fail_path(c"cannot read binary", wc_bin_path)
-	wc_bin_size = wc_read_size
-
 	if (wc_is_elf(wc_core_buf, wc_core_size) == 0):
 		return wc_fail_path(c"not an ELF file:", wc_core_path)
-	if (wc_is_elf(wc_bin_buf, wc_bin_size) == 0):
-		return wc_fail_path(c"not an ELF file:", wc_bin_path)
 	wc_class = st_byte(wc_core_buf + 4)
 	if ((wc_class != 1) && (wc_class != 2)):
 		return wc_fail(c"unsupported ELF class in core")
@@ -1044,11 +1057,6 @@ int main(int argc, int argv):
 	wc_machine = wc_eh_machine(wc_core_buf)
 	if ((wc_machine != 3) && (wc_machine != 62)):
 		return wc_fail(c"unsupported machine in core (x86 and x86-64 only)")
-	if (st_byte(wc_bin_buf + 4) != wc_class):
-		return wc_fail(c"ELF class mismatch: core and binary word sizes differ")
-	if (wc_eh_machine(wc_bin_buf) != wc_machine):
-		return wc_fail(c"machine mismatch: core and binary architectures differ")
-
 	wc_core_phoff = wc_eh_phoff(wc_core_buf)
 	wc_core_phentsize = wc_eh_phentsize(wc_core_buf)
 	wc_core_phnum = wc_eh_phnum(wc_core_buf)
@@ -1056,6 +1064,25 @@ int main(int argc, int argv):
 		return wc_fail(c"core has no program headers")
 	if (wc_core_phoff + wc_core_phnum * wc_core_phentsize > wc_core_size):
 		return wc_fail(c"core program header table is truncated")
+	wc_parse_notes()
+
+	# A dump written by W's own crash handler (lib/crash_dump.w) names
+	# its executable, so the binary argument is optional for those.
+	if (wc_bin_path == 0):
+		if (wc_exe_note == 0):
+			println2(c"usage: wcore [--json] <core> <binary>  (the binary may be omitted for W_CRASH_DUMP dumps)")
+			return 2
+		wc_bin_path = cast(char*, wc_exe_note)
+	wc_bin_buf = wc_load_file(wc_bin_path)
+	if (wc_bin_buf == 0):
+		return wc_fail_path(c"cannot read binary", wc_bin_path)
+	wc_bin_size = wc_read_size
+	if (wc_is_elf(wc_bin_buf, wc_bin_size) == 0):
+		return wc_fail_path(c"not an ELF file:", wc_bin_path)
+	if (st_byte(wc_bin_buf + 4) != wc_class):
+		return wc_fail(c"ELF class mismatch: core and binary word sizes differ")
+	if (wc_eh_machine(wc_bin_buf) != wc_machine):
+		return wc_fail(c"machine mismatch: core and binary architectures differ")
 	wc_bin_phoff = wc_eh_phoff(wc_bin_buf)
 	wc_bin_phentsize = wc_eh_phentsize(wc_bin_buf)
 	wc_bin_phnum = wc_eh_phnum(wc_bin_buf)
@@ -1078,7 +1105,6 @@ int main(int argc, int argv):
 	else if (wc_bin_id != 0):
 		println2(c"wcore: warning: the core records no build-id (its ELF header page was not dumped); cannot confirm it came from this binary")
 
-	wc_parse_notes()
 	if (wc_prstatus == 0):
 		return wc_fail(c"core has no NT_PRSTATUS note")
 	if (wc_prstatus_size < wc_prreg_off() + wc_prreg_count() * wc_wsize):

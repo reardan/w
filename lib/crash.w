@@ -8,12 +8,26 @@ resolved from the running binary's own .symtab and .debug_line
 sections via lib/stack_trace.w - to stderr:
 
 	fatal signal: SIGSEGV (invalid memory reference), pc=0x08048b31, faulting address 0x00000000
+	registers:
+	  eax=0x00000000 ebx=0x00000000 ecx=0x00000003 edx=0x00000000
+	  esi=0x00000008 edi=0x00000000 ebp=0x00000000 esp=0xffc3124c
+	  eip=0x08048b31 eflags=0x00010246
+	build-id: 199db5dc9bd729cb179241cc99048232e56f26cb
 	stack trace (most recent call first):
 	  at crash_deep (tests/crash_null_deref_fixture.w:11)
 	  at crash_mid (tests/crash_null_deref_fixture.w:15)
 	  at main (tests/crash_null_deref_fixture.w:20)
 	note: the trace is heuristic (return-address scan, no frame pointers): frames can be missing or stale
+	crash dump written to /tmp/app.1234.core (inspect with: wcore /tmp/app.1234.core)
 	terminating with the default action for signal 11 (core dump per RLIMIT_CORE)
+
+The "crash dump written" line appears only when W_CRASH_DUMP=<path> is
+set ("%p" expands to the pid): the handler then also writes an ELF
+ET_CORE dump of the process itself - registers, siginfo, the executable
+path and every readable mapping - that gdb and tools/wcore.w read, even
+when kernel cores are disabled or piped away (lib/crash_dump.w). The
+build-id line is the image's NT_GNU_BUILD_ID, for matching the report
+against a binary.
 
 The handler then restores the signal's default disposition and returns;
 the kernel re-executes the faulting instruction and the process dies of
@@ -52,6 +66,7 @@ syntax only.
 */
 import lib.signal
 import lib.stack_trace
+import lib.crash_dump
 import lib.env
 import debugger.sigcontext
 
@@ -98,6 +113,73 @@ void crash_write_frame(int addr):
 	st_write_cstr(c"\n")
 
 
+# Register display order (same as wcore and wdbg attach mode):
+# eax ebx ecx edx esi edi ebp esp [r8..r15] eip eflags.
+int crash_reg_count():
+	if (__word_size__ == 8):
+		return 18
+	return 10
+
+
+char* crash_reg_name(int k):
+	char* names = c"eaxebxecxedxesiediebpesp"
+	if (__word_size__ == 8):
+		names = c"raxrbxrcxrdxrsirdirbprspr8 r9 r10r11r12r13r14r15"
+	if (k == crash_reg_count() - 2):
+		if (__word_size__ == 8):
+			return c"rip"
+		return c"eip"
+	if (k == crash_reg_count() - 1):
+		return c"eflags"
+	return &names[k * 3]
+
+
+int crash_reg_offset(int k):
+	if (k == crash_reg_count() - 2):
+		return sigcontext_eip()
+	if (k == crash_reg_count() - 1):
+		return sigcontext_eflags()
+	if (k == 0):
+		return sigcontext_eax()
+	if (k == 1):
+		return sigcontext_ebx()
+	if (k == 2):
+		return sigcontext_ecx()
+	if (k == 3):
+		return sigcontext_edx()
+	if (k == 4):
+		return sigcontext_esi()
+	if (k == 5):
+		return sigcontext_edi()
+	if (k == 6):
+		return sigcontext_ebp()
+	if (k == 7):
+		return sigcontext_esp()
+	return (k - 8) * 8 /* r8..r15 at the start of the 64-bit sigcontext */
+
+
+# "registers:" then four "name=value" pairs per line.
+void crash_write_registers(int context):
+	st_write_cstr(c"registers:")
+	int k = 0
+	while (k < crash_reg_count()):
+		if ((k & 3) == 0):
+			st_write_cstr(c"\n ")
+		st_write_cstr(c" ")
+		# Names are 3 letters (r8/r9 padded with a space) or "eflags".
+		char* name = crash_reg_name(k)
+		int n = 3
+		if (name[2] == 'l'):
+			n = 6
+		if (name[2] == ' '):
+			n = 2
+		write(2, name, n)
+		st_write_cstr(c"=")
+		st_write_hex(ctx_reg(context, crash_reg_offset(k)))
+		k = k + 1
+	st_write_cstr(c"\n")
+
+
 # The fatal-signal handler. On x86-64 the lib/signal.w thunk calls this
 # directly with &uc_mcontext; on i386 crash_entry below converts the
 # classic frame first.
@@ -118,6 +200,11 @@ void crash_report(int sig, int context):
 		st_write_cstr(c", faulting address ")
 		st_write_hex(ctx_reg(context, sigcontext_cr2()))
 	st_write_cstr(c"\n")
+	crash_write_registers(context)
+	if (cd_id_size > 0):
+		st_write_cstr(c"build-id: ")
+		crash_write_build_id()
+		st_write_cstr(c"\n")
 	st_write_cstr(c"stack trace (most recent call first):\n")
 	# The innermost frame is the faulting pc itself (exact); older
 	# frames come from the heuristic return-address scan.
@@ -128,6 +215,17 @@ void crash_report(int sig, int context):
 		crash_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
 		k = k + 1
 	st_write_cstr(c"note: the trace is heuristic (return-address scan, no frame pointers): frames can be missing or stale\n")
+	if (crash_dump_enabled()):
+		if (crash_dump_write(sig, context)):
+			st_write_cstr(c"crash dump written to ")
+			st_write_cstr(cd_path)
+			st_write_cstr(c" (inspect with: wcore ")
+			st_write_cstr(cd_path)
+			st_write_cstr(c")\n")
+		else:
+			st_write_cstr(c"crash dump: cannot write ")
+			st_write_cstr(cd_path)
+			st_write_cstr(c"\n")
 	st_write_cstr(c"terminating with the default action for signal ")
 	st_write_dec(sig)
 	st_write_cstr(c" (core dump per RLIMIT_CORE)\n")
@@ -162,6 +260,8 @@ void crash_handler_install():
 		return;
 	if ((st_machine != 3) && (st_machine != 62)):
 		return;
+	crash_build_id()
+	crash_dump_prepare(env_get(c"W_CRASH_DUMP"))
 	if (crash_dfl_act == 0):
 		crash_dfl_act = malloc(5 * __word_size__)
 		int i = 0
