@@ -173,139 +173,23 @@ void asm_enc_opsize_prefix(asm_buffer* b, int size):
 
 # ALU family base opcode for the r/m,r form (op /r), or -1.
 int asm_enc_alu_base(char* m):
-	if (strcmp(m, c"add") == 0):
-		return 0x00
-	if (strcmp(m, c"or") == 0):
-		return 0x08
-	if (strcmp(m, c"adc") == 0):
-		return 0x10
-	if (strcmp(m, c"sbb") == 0):
-		return 0x18
-	if (strcmp(m, c"and") == 0):
-		return 0x20
-	if (strcmp(m, c"sub") == 0):
-		return 0x28
-	if (strcmp(m, c"xor") == 0):
-		return 0x30
-	if (strcmp(m, c"cmp") == 0):
-		return 0x38
-	return -1
+	int ext = asm_x86_group_ext(1, m)
+	if (ext < 0):
+		return -1
+	return ext << 3
 
 
-int asm_enc_alu_ext(char* m):
-	if (strcmp(m, c"add") == 0):
-		return 0
-	if (strcmp(m, c"or") == 0):
-		return 1
-	if (strcmp(m, c"adc") == 0):
-		return 2
-	if (strcmp(m, c"sbb") == 0):
-		return 3
-	if (strcmp(m, c"and") == 0):
-		return 4
-	if (strcmp(m, c"sub") == 0):
-		return 5
-	if (strcmp(m, c"xor") == 0):
-		return 6
-	return 7
-
-
+# Condition-code number of a j<cc>/set<cc> suffix, or -1.
 int asm_enc_cc(char* suffix):
-	if (strcmp(suffix, c"o") == 0):
-		return 0
-	if (strcmp(suffix, c"no") == 0):
-		return 1
-	if (strcmp(suffix, c"b") == 0):
-		return 2
-	if (strcmp(suffix, c"ae") == 0):
-		return 3
-	if (strcmp(suffix, c"e") == 0):
-		return 4
-	if (strcmp(suffix, c"ne") == 0):
-		return 5
-	if (strcmp(suffix, c"be") == 0):
-		return 6
-	if (strcmp(suffix, c"a") == 0):
-		return 7
-	if (strcmp(suffix, c"s") == 0):
-		return 8
-	if (strcmp(suffix, c"ns") == 0):
-		return 9
-	if (strcmp(suffix, c"p") == 0):
-		return 10
-	if (strcmp(suffix, c"np") == 0):
-		return 11
-	if (strcmp(suffix, c"l") == 0):
-		return 12
-	if (strcmp(suffix, c"ge") == 0):
-		return 13
-	if (strcmp(suffix, c"le") == 0):
-		return 14
-	if (strcmp(suffix, c"g") == 0):
-		return 15
-	return -1
+	return asm_name_slot_find(asm_x86_cc_table(), 3, 16, suffix)
 
 
+# Shift-group /ext of m, or -1. sal (/6) decodes but is never emitted:
+# shl (/4) is its canonical encoding.
 int asm_enc_grp2_ext(char* m):
-	if (strcmp(m, c"rol") == 0):
-		return 0
-	if (strcmp(m, c"ror") == 0):
-		return 1
-	if (strcmp(m, c"rcl") == 0):
-		return 2
-	if (strcmp(m, c"rcr") == 0):
-		return 3
-	if (strcmp(m, c"shl") == 0):
-		return 4
-	if (strcmp(m, c"shr") == 0):
-		return 5
-	if (strcmp(m, c"sar") == 0):
-		return 7
-	return -1
-
-
-int asm_enc_grp3_ext(char* m):
-	if (strcmp(m, c"test") == 0):
-		return 0
-	if (strcmp(m, c"not") == 0):
-		return 2
-	if (strcmp(m, c"neg") == 0):
-		return 3
-	if (strcmp(m, c"mul") == 0):
-		return 4
-	if (strcmp(m, c"imul") == 0):
-		return 5
-	if (strcmp(m, c"div") == 0):
-		return 6
-	if (strcmp(m, c"idiv") == 0):
-		return 7
-	return -1
-
-
-int asm_enc_grp5_ext(char* m):
-	if (strcmp(m, c"inc") == 0):
-		return 0
-	if (strcmp(m, c"dec") == 0):
-		return 1
-	if (strcmp(m, c"call") == 0):
-		return 2
-	if (strcmp(m, c"jmp") == 0):
-		return 4
-	if (strcmp(m, c"push") == 0):
-		return 6
-	return -1
-
-
-int asm_enc_grp8_ext(char* m):
-	if (strcmp(m, c"bt") == 0):
-		return 4
-	if (strcmp(m, c"bts") == 0):
-		return 5
-	if (strcmp(m, c"btr") == 0):
-		return 6
-	if (strcmp(m, c"btc") == 0):
-		return 7
-	return -1
+	if (strcmp(m, c"sal") == 0):
+		return -1
+	return asm_x86_group_ext(2, m)
 
 
 ############################### SSE encoding #################################
@@ -313,40 +197,13 @@ int asm_enc_grp8_ext(char* m):
 # Emit f2/f3 0f xx /r for a scalar-float op with two operands
 # (op1 reg field, op2 r/m). Returns 1 if handled.
 int asm_enc_sse(asm_buffer* b, asm_insn* insn):
-	char* m = insn.mnemonic
-	int rep = 0
-	int op = -1
-	if (strcmp(m, c"addss") == 0):
-		rep = 0xf3
-		op = 0x58
-	else if (strcmp(m, c"addsd") == 0):
+	int rep = 0xf3
+	int index = asm_name_slot_find(asm_x86_sse_table(rep), 9, 7, insn.mnemonic)
+	if (index < 0):
 		rep = 0xf2
-		op = 0x58
-	else if (strcmp(m, c"mulss") == 0):
-		rep = 0xf3
-		op = 0x59
-	else if (strcmp(m, c"mulsd") == 0):
-		rep = 0xf2
-		op = 0x59
-	else if (strcmp(m, c"subss") == 0):
-		rep = 0xf3
-		op = 0x5c
-	else if (strcmp(m, c"subsd") == 0):
-		rep = 0xf2
-		op = 0x5c
-	else if (strcmp(m, c"divss") == 0):
-		rep = 0xf3
-		op = 0x5e
-	else if (strcmp(m, c"divsd") == 0):
-		rep = 0xf2
-		op = 0x5e
-	else if (strcmp(m, c"cvtss2sd") == 0):
-		rep = 0xf3
-		op = 0x5a
-	else if (strcmp(m, c"cvtsd2ss") == 0):
-		rep = 0xf2
-		op = 0x5a
-	if (op < 0):
+		index = asm_name_slot_find(asm_x86_sse_table(rep), 9, 7, insn.mnemonic)
+	int op = 0x58 + index
+	if (index < 0):
 		return 0
 	int is64 = asm_enc_is64(insn)
 	asm_buffer_byte(b, rep)
@@ -492,7 +349,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 		return b.length - start
 
 	# grp5 memory (call/jmp/push/inc/dec through r/m)
-	int g5 = asm_enc_grp5_ext(m)
+	int g5 = asm_x86_group_ext(5, m)
 	if (((g5 >= 0) && (count == 1)) & insn.op1.kind == ASM_OP_MEM()):
 		int w5 = 0
 		if ((g5 == 0 || g5 == 1) && insn.op1.size == 8):
@@ -511,9 +368,9 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 		return b.length - start
 	# jmp/call register indirect (grp5 with reg operand); near, default 64.
 	if ((strcmp(m, c"jmp") == 0 | strcmp(m, c"call") == 0) & insn.op1.kind == ASM_OP_REG()):
-		asm_enc_rex(b, is64, 0, asm_enc_grp5_ext(m), &insn.op1)
+		asm_enc_rex(b, is64, 0, asm_x86_group_ext(5, m), &insn.op1)
 		asm_buffer_byte(b, 0xff)
-		asm_enc_modrm(b, asm_enc_grp5_ext(m), &insn.op1, is64)
+		asm_enc_modrm(b, asm_x86_group_ext(5, m), &insn.op1, is64)
 		return b.length - start
 
 	# Jcc rel8/rel32 (mnemonic j<cc>, label target)
@@ -582,7 +439,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 		return b.length - start
 
 	# grp3 (not/neg/mul/imul/div/idiv r/m)  — single r/m operand form
-	int g3 = asm_enc_grp3_ext(m)
+	int g3 = asm_x86_group_ext(3, m)
 	if (g3 >= 0 && count == 1):
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), g3, &insn.op1)
 		asm_buffer_byte(b, 0xf7)
@@ -631,7 +488,7 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 		return b.length - start
 
 	# btc/bt/bts/btr r/m, imm8 (0f ba /ext ib)
-	int g8 = asm_enc_grp8_ext(m)
+	int g8 = asm_x86_group_ext(8, m)
 	if (((g8 >= 0) && (count == 2)) & insn.op2.kind == ASM_OP_IMM()):
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), g8, &insn.op1)
 		asm_buffer_byte(b, 0x0f)
@@ -715,7 +572,7 @@ int asm_x86_encode_alu(asm_buffer* b, asm_insn* insn):
 	char* m = insn.mnemonic
 	int is64 = asm_enc_is64(insn)
 	int base = asm_enc_alu_base(m)
-	int ext = asm_enc_alu_ext(m)
+	int ext = base >> 3
 	# imm form
 	if (insn.op2.kind == ASM_OP_IMM()):
 		int size = insn.op1.size
@@ -865,22 +722,10 @@ void asm_enc_jcc(asm_buffer* b, asm_insn* insn, int cc):
 	asm_buffer_int32(b, target - 6)
 
 
-# Parse a ".+N" / ".-N" dot-relative label into its signed N.
+# Parse a ".+N" / ".-N" dot-relative label (N decimal or 0x-hex) into
+# its signed N.
 int asm_enc_dot_target(char* label):
-	# label is ".+<num>" or ".-<num>"; num decimal or 0x-hex.
-	int sign = 1
-	int i = 1
-	if (label[i] == '-'):
-		sign = 0 - 1
-	i = i + 1
-	int value = 0
-	if (label[i] == '0' && label[i + 1] == 'x'):
-		i = i + 2
-		while (label[i] != 0):
-			value = (value << 4) | asm_hex_digit(label[i])
-			i = i + 1
-	else:
-		while (label[i] != 0):
-			value = value * 10 + (label[i] - '0')
-			i = i + 1
-	return sign * value
+	int value = asm_parse_number(label + 2)
+	if (label[1] == '-'):
+		return 0 - value
+	return value

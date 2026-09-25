@@ -178,7 +178,7 @@ pg_ast_node* pc_number_token(pg_ast_node* node):
 	int i = 0
 	while (i < pg_ast_child_count(node)):
 		pg_ast_node* child = pg_ast_child(node, i)
-		if (pc_is_token(child, protoidl_token_NUMBER())):
+		if (pc_is_token(child, protoidl_token_NUMBER)):
 			return child
 		i = i + 1
 	return 0
@@ -349,17 +349,17 @@ int pc_field_number(pc_codegen* g, pg_ast_node* node, char* field_name):
 int pc_label_of(pg_ast_node* label):
 	if (label == 0):
 		return pc_label_none()
-	if (pc_has_token(label, protoidl_token_KW_REPEATED())):
+	if (pc_has_token(label, protoidl_token_KW_REPEATED)):
 		return pc_label_repeated()
-	if (pc_has_token(label, protoidl_token_KW_OPTIONAL())):
+	if (pc_has_token(label, protoidl_token_KW_OPTIONAL)):
 		return pc_label_optional()
-	if (pc_has_token(label, protoidl_token_KW_REQUIRED())):
+	if (pc_has_token(label, protoidl_token_KW_REQUIRED)):
 		return pc_label_required()
 	return pc_label_none()
 
 
 void pc_collect_enum(pc_codegen* g, pg_ast_node* node, char* scope, char* value_prefix):
-	char* name = pc_text(pc_child_rule(node, protoidl_ast_ident_word()))
+	char* name = pc_text(pc_child_rule(node, protoidl_ast_ident_word))
 	pc_enum* e = new pc_enum()
 	e.full_name = pc_join(scope, name)
 	e.w_name = pc_w_name(g, e.full_name)
@@ -373,13 +373,13 @@ void pc_collect_enum(pc_codegen* g, pg_ast_node* node, char* scope, char* value_
 	int i = 0
 	while (i < pg_ast_child_count(node)):
 		pg_ast_node* item = pg_ast_child(node, i)
-		pg_ast_node* value = pc_child_rule(item, protoidl_ast_enum_value())
-		if (pc_is_rule(item, protoidl_ast_enum_item()) && (value != 0)):
-			char* value_name = pc_text(pc_child_rule(value, protoidl_ast_ident_word()))
-			pg_ast_node* sign = pc_child_rule(value, protoidl_ast_sign())
+		pg_ast_node* value = pc_child_rule(item, protoidl_ast_enum_value)
+		if (pc_is_rule(item, protoidl_ast_enum_item) && (value != 0)):
+			char* value_name = pc_text(pc_child_rule(value, protoidl_ast_ident_word))
+			pg_ast_node* sign = pc_child_rule(value, protoidl_ast_sign)
 			pg_ast_node* num = pc_number_token(value)
 			int number = pc_parse_int(num.text)
-			if (pc_has_token(sign, protoidl_token_MINUS())):
+			if (pc_has_token(sign, protoidl_token_MINUS)):
 				pc_error(g, pc_line(value), c"negative enum values are not supported yet:", value_name)
 			else if (number < 0):
 				pc_error(g, pc_line(value), c"enum value must be an integer literal:", value_name)
@@ -394,8 +394,8 @@ void pc_collect_message(pc_codegen* g, pg_ast_node* node, char* scope);
 
 
 void pc_collect_field(pc_codegen* g, pc_message* m, pg_ast_node* node, int label, char* oneof_name):
-	char* field_name = pc_text(pc_child_rule(node, protoidl_ast_ident_word()))
-	char* type_ref = pc_text(pc_child_rule(node, protoidl_ast_type_name()))
+	char* field_name = pc_text(pc_child_rule(node, protoidl_ast_ident_word))
+	char* type_ref = pc_text(pc_child_rule(node, protoidl_ast_type_name))
 	pc_field* f = pc_field_new(field_name, type_ref, label, pc_field_number(g, node, field_name), pc_line(node))
 	f.oneof_name = oneof_name
 	m.fields.push(f)
@@ -403,13 +403,13 @@ void pc_collect_field(pc_codegen* g, pc_message* m, pg_ast_node* node, int label
 
 # map<K, V> name = N  ->  a synthetic Entry message plus a repeated field.
 void pc_collect_map_field(pc_codegen* g, pc_message* m, pg_ast_node* node):
-	char* field_name = pc_text(pc_child_rule(node, protoidl_ast_ident_word()))
+	char* field_name = pc_text(pc_child_rule(node, protoidl_ast_ident_word))
 	char* key_type = 0
 	char* value_type = 0
 	int i = 0
 	while (i < pg_ast_child_count(node)):
 		pg_ast_node* child = pg_ast_child(node, i)
-		if (pc_is_rule(child, protoidl_ast_type_name())):
+		if (pc_is_rule(child, protoidl_ast_type_name)):
 			if (key_type == 0):
 				key_type = pc_text(child)
 			else:
@@ -430,35 +430,35 @@ void pc_collect_map_field(pc_codegen* g, pc_message* m, pg_ast_node* node):
 
 
 void pc_collect_message(pc_codegen* g, pg_ast_node* node, char* scope):
-	char* name = pc_text(pc_child_rule(node, protoidl_ast_ident_word()))
+	char* name = pc_text(pc_child_rule(node, protoidl_ast_ident_word))
 	pc_message* m = pc_message_new(g, pc_join(scope, name), pc_line(node))
 	int i = 0
 	while (i < pg_ast_child_count(node)):
 		pg_ast_node* item = pg_ast_child(node, i)
-		if (pc_is_rule(item, protoidl_ast_message_item()) && (pg_ast_child_count(item) > 0)):
+		if (pc_is_rule(item, protoidl_ast_message_item) && (pg_ast_child_count(item) > 0)):
 			pg_ast_node* decl = pg_ast_child(item, 0)
-			if (pc_is_rule(decl, protoidl_ast_field())):
-				pc_collect_field(g, m, decl, pc_label_of(pc_child_rule(decl, protoidl_ast_field_label())), 0)
-			else if (pc_is_rule(decl, protoidl_ast_message_decl())):
+			if (pc_is_rule(decl, protoidl_ast_field)):
+				pc_collect_field(g, m, decl, pc_label_of(pc_child_rule(decl, protoidl_ast_field_label)), 0)
+			else if (pc_is_rule(decl, protoidl_ast_message_decl)):
 				pc_collect_message(g, decl, m.full_name)
-			else if (pc_is_rule(decl, protoidl_ast_enum_decl())):
+			else if (pc_is_rule(decl, protoidl_ast_enum_decl)):
 				string_builder* p = string_new()
 				string_append(p, m.w_name)
 				string_append(p, c"_")
 				pc_collect_enum(g, decl, m.full_name, strclone(p.data))
 				string_free(p)
-			else if (pc_is_rule(decl, protoidl_ast_map_field())):
+			else if (pc_is_rule(decl, protoidl_ast_map_field)):
 				pc_collect_map_field(g, m, decl)
-			else if (pc_is_rule(decl, protoidl_ast_oneof_decl())):
-				char* oneof_name = pc_text(pc_child_rule(decl, protoidl_ast_ident_word()))
+			else if (pc_is_rule(decl, protoidl_ast_oneof_decl)):
+				char* oneof_name = pc_text(pc_child_rule(decl, protoidl_ast_ident_word))
 				int j = 0
 				while (j < pg_ast_child_count(decl)):
 					pg_ast_node* oitem = pg_ast_child(decl, j)
-					pg_ast_node* ofield = pc_child_rule(oitem, protoidl_ast_oneof_field())
-					if (pc_is_rule(oitem, protoidl_ast_oneof_item()) && (ofield != 0)):
+					pg_ast_node* ofield = pc_child_rule(oitem, protoidl_ast_oneof_field)
+					if (pc_is_rule(oitem, protoidl_ast_oneof_item) && (ofield != 0)):
 						pc_collect_field(g, m, ofield, pc_label_none(), oneof_name)
 					j = j + 1
-			else if (pc_is_rule(decl, protoidl_ast_extend_decl())):
+			else if (pc_is_rule(decl, protoidl_ast_extend_decl)):
 				g.notes.push(c"extend blocks (proto2 extensions) are not generated")
 		i = i + 1
 
@@ -472,31 +472,31 @@ void pc_collect(pc_codegen* g, pg_ast_node* root):
 	int i = 0
 	while (i < pg_ast_child_count(root)):
 		pg_ast_node* item = pg_ast_child(root, i)
-		pg_ast_node* pkg = pc_child_rule(item, protoidl_ast_package_decl())
-		if (pc_is_rule(item, protoidl_ast_top_item()) && (pkg != 0)):
-			g.package = pc_text(pc_child_rule(pkg, protoidl_ast_full_ident()))
+		pg_ast_node* pkg = pc_child_rule(item, protoidl_ast_package_decl)
+		if (pc_is_rule(item, protoidl_ast_top_item) && (pkg != 0)):
+			g.package = pc_text(pc_child_rule(pkg, protoidl_ast_full_ident))
 		i = i + 1
 	i = 0
 	while (i < pg_ast_child_count(root)):
 		pg_ast_node* item = pg_ast_child(root, i)
-		if (pc_is_rule(item, protoidl_ast_top_item()) && (pg_ast_child_count(item) > 0)):
+		if (pc_is_rule(item, protoidl_ast_top_item) && (pg_ast_child_count(item) > 0)):
 			pg_ast_node* decl = pg_ast_child(item, 0)
-			if (pc_is_rule(decl, protoidl_ast_message_decl())):
+			if (pc_is_rule(decl, protoidl_ast_message_decl)):
 				pc_collect_message(g, decl, g.package)
-			else if (pc_is_rule(decl, protoidl_ast_enum_decl())):
+			else if (pc_is_rule(decl, protoidl_ast_enum_decl)):
 				pc_collect_enum(g, decl, g.package, c"")
-			else if (pc_is_rule(decl, protoidl_ast_import_decl())):
+			else if (pc_is_rule(decl, protoidl_ast_import_decl)):
 				pg_ast_node* path = 0
 				int j = 0
 				while (j < pg_ast_child_count(decl)):
 					pg_ast_node* child = pg_ast_child(decl, j)
-					if (pc_is_token(child, protoidl_token_STRING())):
+					if (pc_is_token(child, protoidl_token_STRING)):
 						path = child
 					j = j + 1
 				pc_import(g, pc_unquote(path.text), pc_line(decl))
-			else if (pc_is_rule(decl, protoidl_ast_service_decl()) && (g.external == 0)):
+			else if (pc_is_rule(decl, protoidl_ast_service_decl) && (g.external == 0)):
 				g.notes.push(c"services are not generated (RPC is out of scope)")
-			else if (pc_is_rule(decl, protoidl_ast_extend_decl()) && (g.external == 0)):
+			else if (pc_is_rule(decl, protoidl_ast_extend_decl) && (g.external == 0)):
 				g.notes.push(c"extend blocks (proto2 extensions) are not generated")
 		i = i + 1
 
