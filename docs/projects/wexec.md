@@ -541,6 +541,5 @@ itemization had silently skipped, all ported now:
   expressed as expect/reject on the numbered "logpoint 1 hit N" lines.
 - **Still dead, not ported** (reference root-level files that moved,
   broken under `make` too, or are commented-out experiments): `test1`,
-  `test_debug`, `threading` (`tests/threading.w` is an entirely
-  commented-out clone() experiment), joining `logging` and `range` from
-  the group D notes.
+  `test_debug`, `threading` (a commented-out clone() experiment, since
+  deleted), joining `logging` and `range` from the group D notes.
