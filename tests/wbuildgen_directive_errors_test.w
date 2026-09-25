@@ -39,7 +39,10 @@ directive-gap closures:
 - step="cmd args" appends an extra step after the default-arch run
   step, decorated by the fields that follow it on its line, turns the
   target into a FORCE target, and rejects unknown fields, two steps on
-  one line, and sources with no default-arch target.
+  one line, and sources with no default-arch target;
+- a base target's "tags" puts it in the named umbrellas (ahead of the
+  generated members) and never reaches the manifest, and a tag naming
+  no umbrella is a hard error.
 */
 # wbuild: tool=tools/wbuildgen.w
 import lib.testing
@@ -451,6 +454,33 @@ void test_step_rejects_arch_only():
 	process_result* r = wdet_run(dir)
 	assert1(r.status != 0)
 	wdet_assert_contains(r.stderr_text, c"'step=' needs a generated default-arch target")
+	process_result_free(r)
+
+
+void test_tags_join_umbrellas():
+	char* dir = wdet_case_dir(c"tags")
+	wdet_write(dir, c"base.json", c"{\n\t\"targets\": [\n\t\t{\n\t\t\t\"name\": \"hand\",\n\t\t\t\"tags\": [\"tests\"],\n\t\t\t\"steps\": [{\"cmd\": [\"true\"]}]\n\t\t},\n\t\t{\n\t\t\t\"name\": \"tests\",\n\t\t\t\"deps\": [\"tests_x64\"]\n\t\t},\n\t\t{\n\t\t\t\"name\": \"tests_x64\",\n\t\t\t\"deps\": []\n\t\t}\n\t]\n}\n")
+	wdet_write(dir, c"tests/auto_test.w", c"int main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert_equal(0, r.status)
+	process_result_free(r)
+	char* out_path = path_join(dir, c"out.json")
+	char* out = file_read_text(out_path)
+	assert1(out != 0)
+	# The tagged hand-written target joins first, then the generated
+	# one; "tags" itself is generator input and never reaches wexec.
+	wdet_assert_contains(out, c"\"name\": \"tests\",\n\t\t\t\"deps\": [\n\t\t\t\t\"tests_x64\",\n\t\t\t\t\"hand\",\n\t\t\t\t\"auto_test\"\n\t\t\t]")
+	wdet_assert_lacks(out, c"\"tags\"")
+	free(out)
+	free(out_path)
+
+
+void test_tags_reject_unknown_umbrella():
+	char* dir = wdet_case_dir(c"tags_unknown")
+	wdet_write(dir, c"base.json", c"{\n\t\"targets\": [\n\t\t{\n\t\t\t\"name\": \"hand\",\n\t\t\t\"tags\": [\"testz\"],\n\t\t\t\"steps\": [{\"cmd\": [\"true\"]}]\n\t\t},\n\t\t{\n\t\t\t\"name\": \"tests\",\n\t\t\t\"deps\": []\n\t\t}\n\t]\n}\n")
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"\"tags\" of hand names an unknown umbrella (a step-less build.base.json target): testz")
 	process_result_free(r)
 
 

@@ -173,7 +173,8 @@ Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
   `timeout=`, and `step="cmd args"` with its own fields after it on the
   line; vocabulary in `tools/wbuildgen_lib.w`), so a hand-written
   `build.base.json` target is only for toolchain and other shapes no
-  source owns. `bin/wtest` picks targets up automatically
+  source owns; it joins `tests` (or `tests_x64`, ...) through its own
+  `"tags"` field, since umbrella targets carry no member lists. `bin/wtest` picks targets up automatically
   from the manifest (literal step references + import closures); a
   `tools/test_map.w` residue rule is only needed for coupling the import
   graph cannot see (run-time data files, non-default-arch modules).

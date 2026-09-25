@@ -134,12 +134,16 @@ Generation rules:
   base64_test.w, the pac/darwin fixtures, the parser-generator outputs
   that cannot carry directives because they are regenerated and
   diffed). The "generate" key is not copied into build.json.
-- Umbrellas: generated 32-bit and arm64_darwin (compile-only) targets
-  are appended to "tests", and generated x64 / win64 twins to
-  "tests_x64" / "tests_win64", each sorted by name, except names
-  already pinned by an explicit mention in a step-less base target's
-  deps (that is how sha2/hmac/hkdf/x25519's twins stay members of
-  "tests" instead). Generated arm64 and wasm twins join no umbrella:
+- Umbrellas: generated 32-bit targets, fixture groups and
+  arm64_darwin (compile-only) targets are appended to "tests", and
+  generated x64 / win64 twins to "tests_x64" / "tests_win64", each
+  sorted by name, except names already pinned by an explicit mention in
+  a step-less base target's deps. Hand-written base targets and tool
+  targets join umbrellas through their own "tags" field (see
+  wbg_collect_tags), so the umbrellas' "deps" in build.base.json list
+  only other umbrellas (tests includes tests_x64). Before tags, the
+  umbrella member lists were maintained by hand, and nine fixture-group
+  suites had silently dropped out of "tests". Generated arm64 and wasm twins join no umbrella:
   like the hand-written arm64/wasm run targets they mirror
   (build_arm64, dynamic_test_arm64, build_wasm, ...), they need qemu
   or a wasm runtime and stay individually invoked.
@@ -271,6 +275,8 @@ import structures.json
 
 json_value* wbg_base                     # parsed build.base.json
 int wbg_scan_tree                        # 0 = base targets only (wbg_generate)
+list[char*] wbg_tag_umbrellas            # "tags" (umbrella, member) pairs, flattened:
+list[char*] wbg_tag_members              #   parallel lists in declaration order
 char* wbg_summary                        # "N targets, M generated)" after wbg_generate
 map[char*, json_value*] wbg_base_targets # name -> target object
 list[char*] wbg_base_names               # base manifest order
@@ -669,6 +675,7 @@ wbg_step_dir* wbg_dir_cur_step     # this line's step=, 0 until one appears
 
 json_value* wbg_expectation(list[char*] values);
 void wbg_push_split_args(json_value* cmd, char* args);
+int wbg_collect_tags(char* name, json_value* target);
 
 # '# wbuild: fixture_group=<name>' (fixture files only — see wbg_scan's
 # fixture-group pass): the file is not compiled/run itself, it is one
@@ -1304,6 +1311,8 @@ int wbg_load_base(char* path):
 
 	wbg_base_targets = new map[char*, json_value*]
 	wbg_base_names = new list[char*]
+	wbg_tag_umbrellas = new list[char*]
+	wbg_tag_members = new list[char*]
 	wbg_pinned = new map[char*, int]
 	int i = 0
 	while (i < json_array_length(targets)):
@@ -1320,6 +1329,8 @@ int wbg_load_base(char* path):
 			return 1
 		wbg_base_targets[name] = target
 		wbg_base_names.push(name)
+		if (wbg_collect_tags(name, target)):
+			return 1
 		# Deps of step-less (umbrella) targets pin their members: a
 		# generated name listed there keeps that hand-chosen placement
 		# instead of being auto-appended to its conventional umbrella.
@@ -1700,6 +1711,9 @@ int wbg_add_fixture_group_target(char* name, list[char*] members, char* wfixture
 		return 1
 	wbg_gen_seen[name] = 1
 	wbg_generated.push(wbg_make_fixture_group_target(name, members, wfixture_name, wfixture_bin))
+	# A fixture group is a 32-bit diagnostics suite, so it joins "tests"
+	# like any other generated default-arch target.
+	wbg_gen32_names.push(name)
 	return 0
 
 
@@ -1885,6 +1899,8 @@ int wbg_tool_entry_key_ok(char* key):
 		return 1
 	if (strcmp(key, c"data") == 0):
 		return 1
+	if (strcmp(key, c"tags") == 0):
+		return 1
 	return 0
 
 
@@ -2023,8 +2039,10 @@ int wbg_expand_tool_target(json_value* entry):
 			json_array_push(deps, json_string(dep))
 		json_object_set(target, c"deps", deps)
 	for char* key, json_value* member in entry.object_values:
-		if (strcmp(key, c"name") != 0):
+		if ((strcmp(key, c"name") != 0) && (strcmp(key, c"tags") != 0)):
 			json_object_set(target, key, member)
+	if (wbg_collect_tags(name, entry)):
+		return 1
 	wbg_gen_seen[name] = 1
 	wbg_generated.push(target)
 	return 0
@@ -2350,6 +2368,59 @@ int wbg_scan():
 
 # Append the generated members of one umbrella (already sorted), minus
 # the pinned names, to the umbrella target's deps.
+/* Umbrella tags. A base target or tool-target entry names the umbrellas
+it belongs to with "tags": ["tests", ...] instead of being listed in the
+umbrella's own "deps" array, so an umbrella target in build.base.json
+is just {"name": "tests", "deps": [<other umbrellas>]} and nobody
+maintains its member list by hand. Generated targets need no tag: they
+join their conventional umbrella (see the module doc comment). Tagged
+members come first in the generated deps, in build.base.json order,
+then the generated ones sorted by name. */
+int wbg_collect_tags(char* name, json_value* target):
+	json_value* tags = json_object_get(target, c"tags")
+	if (tags == 0):
+		return 0
+	if (tags.type != json_type_array()):
+		wbg_error2(c"\"tags\" must be an array of umbrella names: ", name)
+		return 1
+	int i = 0
+	while (i < json_array_length(tags)):
+		json_value* tag = json_array_get(tags, i)
+		if (tag.type != json_type_string()):
+			wbg_error2(c"\"tags\" entries must be strings: ", name)
+			return 1
+		wbg_tag_umbrellas.push(tag.string_value)
+		wbg_tag_members.push(name)
+		i = i + 1
+	return 0
+
+
+# Append every tagged member to its umbrella's deps. Runs before the
+# generated names are appended; the umbrella must be a step-less base
+# target (a typoed tag is an error, not a silently dropped member).
+int wbg_apply_tags():
+	int i = 0
+	while (i < wbg_tag_umbrellas.length):
+		char* umbrella = wbg_tag_umbrellas[i]
+		json_value* target = wbg_base_targets.get(umbrella, 0)
+		if ((target == 0) || json_object_has(target, c"steps")):
+			string_builder* s = string_new()
+			string_append(s, c"\"tags\" of ")
+			string_append(s, wbg_tag_members[i])
+			string_append(s, c" names an unknown umbrella (a step-less build.base.json target): ")
+			string_append(s, umbrella)
+			wbg_error(s.data)
+			string_free(s)
+			return 1
+		json_value* deps = json_object_get(target, c"deps")
+		if (deps == 0):
+			deps = json_array()
+			json_object_set(target, c"deps", deps)
+		json_array_push(deps, json_string(wbg_tag_members[i]))
+		i = i + 1
+	return 0
+
+
 int wbg_extend_umbrella(char* umbrella, list[char*] names):
 	list[char*] wanted = new list[char*]
 	for char* name in names:
@@ -2433,6 +2504,10 @@ void wbg_append_target(string_builder* out, json_value* target):
 	int has_steps = json_object_has(target, c"steps")
 	int first = 1
 	for char* key, json_value* member in target.object_values:
+		# "tags" is generator input (umbrella membership, applied by
+		# wbg_apply_tags), not a wexec field.
+		if (strcmp(key, c"tags") == 0):
+			continue
 		if (first == 0):
 			string_append(out, c",\n")
 		first = 0
@@ -2555,6 +2630,8 @@ char* wbg_generate(char* base_path, int scan_tree):
 	if (wbg_load_base(base_path)):
 		return 0
 	if (wbg_scan()):
+		return 0
+	if (wbg_apply_tags()):
 		return 0
 	if (wbg_extend_umbrella(c"tests", wbg_gen32_names)):
 		return 0
