@@ -9,7 +9,7 @@ The compiler cross-emits arm64 from any host (`./bin/wv2 arm64 file.w
 -o out` produces a static AArch64 Linux ELF), so *compiling* for arm64
 never needs special hardware. *Running* the output on an x86 host needs
 `qemu-user-static` — every arm64 run target wraps execution in
-`tools/run_arm64.sh`, which execs natively on an aarch64 Linux host and
+`bin/wrun arm64` (`tools/wrun.w`, built by `./wbuild wrun`), which execs natively on an aarch64 Linux host and
 otherwise falls back to `qemu-aarch64-static -cpu max` (override the
 emulator with the `QEMU_ARM64` environment variable). `-cpu max`
 enables FEAT_PAuth/FPAC, so `--pac=ret|full` binaries are enforced
@@ -20,7 +20,7 @@ under qemu with Apple-M3-equivalent trap semantics.
 ```sh
 ./wbuild verify_arm64        # arm64 self-host fixpoint (needs qemu)
 ./wbuild arm64_smoke_test    # six representative tests under qemu
-./bin/wv2 arm64 file.w -o out && sh tools/run_arm64.sh out
+./bin/wv2 arm64 file.w -o out && ./bin/wrun arm64 out
 ./bin/wv2 check --json arm64 file.w   # compile-only, no qemu needed
 ```
 
@@ -42,8 +42,8 @@ runtime behavior.
 
 ## Without qemu (env-blocked hosts)
 
-If `qemu-aarch64-static` is missing, `run_arm64.sh` fails with exit 127
-(`qemu-aarch64-static: not found`); install `qemu-user-static` or treat
+If `qemu-aarch64-static` is missing, `bin/wrun arm64` fails with exit 127
+(`wrun: qemu-aarch64-static: command not found`); install `qemu-user-static` or treat
 the run targets above as env-blocked and verify what still works:
 
 - Cross-compilation: `./bin/wv2 arm64 file.w -o out` and

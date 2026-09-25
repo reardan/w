@@ -1,5 +1,5 @@
 // Minimal WASI preview1 runner on Node's built-in implementation, the
-// fallback path of tools/run_wasm.sh. The module path doubles as
+// fallback path of bin/wrun wasm (tools/wrun.w). The module path doubles as
 // argv[0], mirroring the wasmtime CLI.
 import { readFile } from 'node:fs/promises';
 import { WASI } from 'node:wasi';

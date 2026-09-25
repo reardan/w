@@ -1,7 +1,7 @@
 # Reformatted twin of defhash_generic_fixture.w for defhash_test: every
 # definition's token stream is byte-for-byte the same as the baseline's,
-# only comments and blank-line layout differ. build.base.json's
-# defhash_test entry asserts every recorded hash matches the baseline
+# only comments and blank-line layout differ. tools/defhash_e2e.w
+# (defhash_test) asserts every recorded hash matches the baseline
 # file's, including the generic function, the generic struct and the
 # operator overload.
 import lib.lib

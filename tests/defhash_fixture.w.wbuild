@@ -1,0 +1,15 @@
+# wbuild: target=defhash_test tag=tests dep=wv2 input=tools/defhash_e2e.w input=tests/defhash_fixture.w input=tests/defhash_fixture_reformatted.w input=tests/defhash_fixture_edited.w input=tests/defhash_generic_fixture.w input=tests/defhash_generic_fixture_reformatted.w input=tests/defhash_generic_fixture_edited.w input=tests/defhash_generic_fixture_renamed.w
+# wbuild: step="bin/wv2 defhash tests/defhash_fixture.w" stdout_file=bin/defhash_fixture.ndjson expect_stdout="\"name\": \"defhash_fixture_size\", \"kind\": \"alias\"" expect_stdout="\"name\": \"defhash_fixture_point\", \"kind\": \"struct\"" expect_stdout="\"name\": \"defhash_fixture_counter\", \"kind\": \"global\"" expect_stdout="\"name\": \"defhash_fixture_add\", \"kind\": \"function\"" expect_stdout="\"name\": \"defhash_fixture_helper\", \"kind\": \"function\"" expect_stdout="\"name\": \"defhash_fixture_color\", \"kind\": \"enum\"" expect_stdout="\"name\": \"main\", \"kind\": \"function\""
+# wbuild: step="grep -qF '\"name\": \"defhash_fixture_helper\", \"kind\": \"function\", \"hash\": \"' bin/defhash_fixture.ndjson"
+# wbuild: step="bin/wv2 defhash tests/defhash_fixture_reformatted.w" stdout_file=bin/defhash_fixture_reformatted.ndjson
+# wbuild: step="bin/wv2 defhash tests/defhash_fixture_edited.w" stdout_file=bin/defhash_fixture_edited.ndjson
+# wbuild: step="bin/wv2 defhash --closure tests/defhash_fixture.w" stdout_file=bin/defhash_fixture_closure.ndjson
+# wbuild: step="grep -qF '\"name\": \"defhash_fixture_helper\"' bin/defhash_fixture_closure.ndjson"
+# wbuild: step="bin/wv2 defhash" expect_fail expect_stderr="usage: w defhash"
+# wbuild: step="bin/wv2 defhash tests/type_system_error_fixture.w" expect_fail expect_stderr="assignment to const"
+# wbuild: step="bin/wv2 defhash tests/defhash_generic_fixture.w" stdout_file=bin/defhash_generic_fixture.ndjson expect_stdout="\"name\": \"defhash_generic_fixture_point\", \"kind\": \"struct\"" expect_stdout="\"name\": \"defhash_generic_fixture_max\", \"kind\": \"generic_function\"" expect_stdout="\"name\": \"defhash_generic_fixture_pair\", \"kind\": \"generic_struct\"" expect_stdout="\"name\": \"operator+(defhash_generic_fixture_point, defhash_generic_fixture_point)\", \"kind\": \"operator\"" expect_stdout="\"name\": \"defhash_generic_fixture_use_max\", \"kind\": \"function\"" expect_stdout="\"name\": \"main\", \"kind\": \"function\""
+# wbuild: step="bin/wv2 defhash tests/defhash_generic_fixture_reformatted.w" stdout_file=bin/defhash_generic_fixture_reformatted.ndjson
+# wbuild: step="bin/wv2 defhash tests/defhash_generic_fixture_edited.w" stdout_file=bin/defhash_generic_fixture_edited.ndjson
+# wbuild: step="bin/wv2 defhash tests/defhash_generic_fixture_renamed.w" stdout_file=bin/defhash_generic_fixture_renamed.ndjson
+# wbuild: step="bin/wv2 tools/defhash_e2e.w -o bin/defhash_e2e"
+# wbuild: step="bin/defhash_e2e" expect_stdout="defhash e2e OK"

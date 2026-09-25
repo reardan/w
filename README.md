@@ -150,7 +150,7 @@ stock x86-64 system.
 | `tests/` | End-to-end test programs and compile-only warning fixtures |
 | `docs/` | Design notes; `docs/projects/` holds larger design docs |
 | `wbuild`, `build.base.json`, `tools/wexec.w`, `tools/wbuildgen_lib.w`, `tools/wbuildgen.w` | The build system: W-native manifest-driven executor; the manifest is generated in memory from `build.base.json` + the tree on every run |
-| `archive.sh` | Backs up a seed before `./wbuild update` / `update_darwin` promotes a new one |
+| `tools/promote_seed.w` | Backs up a seed to `old/` and installs the new one for `./wbuild update` / `update_win` / `update_darwin` |
 
 ## Language snapshot
 
@@ -546,7 +546,7 @@ seeds — is `docs/release.md`.
 - Import-scoped type metadata.
 - WebAssembly backend polish — the wasm32 + WASI backend self-hosts
   (`w wasm file.w`, `./wbuild verify_wasm` / `wasm_smoke_test`, run via
-  `tools/run_wasm.sh` under wasmtime or Node), and `c_lib`/`extern` now
+  `bin/wrun wasm` under wasmtime or Node), and `c_lib`/`extern` now
   compile to typed host imports with a browser WebGL2 backend for
   `graphics/` (`graphics/demo_web.w`, `tools/web/`,
   `./wbuild wasm_extern_test` / `wasm_webgl_test` under Node;

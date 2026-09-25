@@ -9,7 +9,7 @@ compiler grew a real --help (issue #377). This tool closes the loop:
 	skills_check <help-output.txt> <doc>...
 
 <help-output.txt> is the concatenated stdout of 'w --help' and every
-'w <subcommand> --help' (the skills_test target in build.base.json
+'w <subcommand> --help' (the skills_test target at the end of this file
 produces it). Each <doc> is scanned line by line; a line that mentions
 the compiler binary (any of the anchors below) has its dash-prefixed
 flag tokens extracted, and every extracted flag must appear in the help
@@ -231,3 +231,12 @@ int main(int argc, int argv):
 		return 1
 	println(c"skills_check: OK")
 	return 0
+# wbuild: target=skills_test tag=tests dep=wv2 dep=skills_check data=AGENTS.md data=README.md data=.cursor/skills/w-arm64-qemu/SKILL.md data=.cursor/skills/w-c-import-debug/SKILL.md data=.cursor/skills/w-check-diagnostics/SKILL.md data=.cursor/skills/w-debug-wdbg/SKILL.md data=.cursor/skills/w-repl-explore/SKILL.md data=.cursor/skills/w-seed-update/SKILL.md data=.cursor/skills/w-select-tests/SKILL.md
+# wbuild: step="bin/wv2 --help" stdout_file=bin/skills_help_w.txt expect_stdout="usage: w [x64|arm64|arm64_darwin|win64|wasm]" expect_stdout="-h, --help"
+# wbuild: step="bin/wv2 check --help" stdout_file=bin/skills_help_check.txt
+# wbuild: step="bin/wv2 deps --help" stdout_file=bin/skills_help_deps.txt
+# wbuild: step="bin/wv2 symbols --help" stdout_file=bin/skills_help_symbols.txt
+# wbuild: step="bin/wv2 defhash --help" stdout_file=bin/skills_help_defhash.txt
+# wbuild: step="cat bin/skills_help_w.txt bin/skills_help_check.txt bin/skills_help_deps.txt bin/skills_help_symbols.txt bin/skills_help_defhash.txt" stdout_file=bin/skills_help.txt
+# wbuild: step="bin/wv2 check -h" expect_stdout="usage: w check [--json]"
+# wbuild: step="bin/skills_check bin/skills_help.txt AGENTS.md README.md .cursor/skills/w-arm64-qemu/SKILL.md .cursor/skills/w-c-import-debug/SKILL.md .cursor/skills/w-check-diagnostics/SKILL.md .cursor/skills/w-debug-wdbg/SKILL.md .cursor/skills/w-repl-explore/SKILL.md .cursor/skills/w-seed-update/SKILL.md .cursor/skills/w-select-tests/SKILL.md" expect_stdout="skills_check: OK"

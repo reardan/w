@@ -16,8 +16,8 @@ that instant treats Ctrl-R as VREPRINT and silently drops the byte before
 the process ever sees it. That is a test-harness limitation, not a bug in
 the feature: this file's test_reverse_search_state below drives the exact
 same state transitions le_search_step performs per keystroke, and the
-marker-synchronized pty harness (tools/pty_test.py running
-tests/repl_pty_ctrl_r.pty, build.base.json's repl_pty_test target)
+marker-synchronized pty harness (tools/pty_drive.w running
+tests/repl_pty_ctrl_r.pty, the repl_pty_test target it owns)
 scripts the tty integration end to end. This file also asserts
 le_render_search's climb over a wrapped previous render, via a
 capture-stdout-to-file seam.

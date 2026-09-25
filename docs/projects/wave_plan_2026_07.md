@@ -37,7 +37,7 @@ and wasm stage 5 landed in the last merges, so those sub-items are already done.
 | P0.4 | c_preprocessor `#error` never echoes the directive's message text | ai_tooling residue note | `libs/extras/c_preprocessor/pp_directives.w` + fixture |
 | P0.5 | wexec exit-127 diagnostic should name the resolved-but-unusable candidate | ai_tooling (nice-to-have residue) | `tools/wexec.w` + `tests/wexec/` |
 | P0.6 | line_edit residual gaps: multi-line paste renders bare newlines; arrow-key during Ctrl-R inserts literal `[A`; search while line wraps leaves stale rows | ai_tooling 2026-07-25 | `lib/line_edit.w`, `tests/line_edit_*` |
-| P0.7 | `tools/pty_test.py` reusable pty harness (script canonical-mode keystrokes: Ctrl-R etc.) + wire one scripted Ctrl-R case | ai_tooling | new `tools/pty_test.py`, `build.base.json` |
+| P0.7 | `tools/pty_test.py` (since ported to `tools/pty_drive.w`) reusable pty harness (script canonical-mode keystrokes: Ctrl-R etc.) + wire one scripted Ctrl-R case | ai_tooling | new `tools/pty_test.py`, `build.base.json` |
 | P0.8 | Stale-doc sweep: `wc`-strlen note contradicts its own "fixed" entry; move shipped entries to `ai_tooling.md` status | ai_tooling hygiene | docs only |
 
 ### P1 — compiler diagnostics & medium isolated features

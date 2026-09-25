@@ -81,7 +81,7 @@ Shipped from the next-steps backlog:
 - **wbuildgen `wasm` arch value, `flags=`, and `group=`/`group_only`
   aggregate directives** (2026-07-28, wave plan P1.3). `arch=wasm` /
   `arch_only=wasm` generate the wasm compile+run shape (run via
-  `sh tools/run_wasm.sh`), with the `wasm` selector word also taught to
+  `sh tools/run_wasm.sh`, since 2026-09 `bin/wrun wasm`), with the `wasm` selector word also taught to
   `bin/wexec`'s compile-root scan (deps-driven cache keys compute the
   *wasm* closure for wasm roots), its direct-file mode, and `bin/wtest`'s
   rule (b) closures + `--available` — `lib/__arch__/wasm/` edits used to
@@ -108,7 +108,7 @@ Shipped from the next-steps backlog:
   compiler source read flows through — reports
   `read error while reading '<file>'` through the normal `error()` path
   instead of silently truncating the source into a clean-looking parse.
-  Exercised for real by `read_error_test` (`build.base.json`): on Linux,
+  Exercised for real by `read_error_test` (`tests/diagnostics_suite.w`): on Linux,
   compiling a directory path — `open()` succeeds, `read()` fails with
   `EISDIR` — previously exited 0 parsing the failed read as an empty
   file, and now fails with the diagnostic (root file, `--json`, and
@@ -147,7 +147,10 @@ Shipped from the next-steps backlog:
   shapes are pinned by `streaming_fallback_sample.pg` /
   `generated_streaming_fallback_test.w`. Details in
   `docs/projects/parser_generator.md`.
-- **`tools/pty_test.py` reusable pty harness** (2026-07-28): spawns a
+- **`tools/pty_drive.w` reusable pty harness** (2026-07-28 as
+  `tools/pty_test.py`; ported to W for issue #323, which bans Python
+  and shell scripts, with `--fresh-home DIR` replacing the target's
+  `sh -c` HOME setup; the pty itself is `lib/pty.w`): spawns a
   command under a real pty and waits for a marker (e.g. the `w> ` prompt,
   proof `term_raw_mode()` already ran) before writing each keystroke
   chunk, driven by a simple expect/send script with `\xHH` escapes. This
@@ -156,7 +159,7 @@ Shipped from the next-steps backlog:
   delivers piped stdin in one burst while the pty is still in canonical
   mode, where the driver consumes Ctrl-R as `VREPRINT` before raw mode
   ever starts. `tests/repl_pty_ctrl_r.pty` scripts a Ctrl-R history
-  search end to end (`repl_pty_test`, `build.base.json`).
+  search end to end (`repl_pty_test`, owned by `tools/pty_drive.w`).
 - **line_edit paste/search gaps — all closed** (2026-07-25, last three
   2026-07-28; `lib/line_edit.w`, unit-tested by
   `tests/line_edit_paste_test.w`): partial ESC-sequence mismatches push
@@ -303,7 +306,9 @@ Shipped from the next-steps backlog:
   darwin/win64 stubs are unchanged) now filters the loop, and
   `wexec_status_127_message` names the readable-but-non-executable
   candidate it skipped and/or the plain nothing-found case. Regression
-  steps in `wexec_test` (`tests/wexec/path_xok.json`).
+  steps in `wexec_test` (`tests/wexec/path_xok.json`, driven by
+  `tests/wexec/wexec_e2e.w xok`, which puts pid-scoped shadow/real
+  directories on `PATH`).
 - **`w check --bool-ops` position/chain bugs — all three fixed, including
   the imported-file line-number off-by-one** (2026-07-17, wave 2f; the
   line bug 2026-07-19, wave 1b). (1) A diagnostic inside an imported
@@ -523,17 +528,17 @@ Shipped from the next-steps backlog:
   ancestor. `--list`/`--explain-cache`/`--trace` return before the lock
   is ever taken (out of scope: no steps run, or, for `--trace`, a
   separate manual audit path). Covered by `wexec_lock_test`
-  (`build.base.json`; `tests/wexec/lock_scratch.json`), which plants a
-  manually-created live/stale pid lock file to stand in for a real
-  second concurrent process rather than racing a real backgrounded
-  build (which would be flaky to assert against), and runs its nested
-  `bin/wexec` invocations through `sh -c "unset WEXEC_LOCK_HELD; exec
-  bin/wexec ..."` (not `env -u`, which resolves to a stray non-executable
-  `~/.local/bin/env` ahead of the real one on this sandbox's `PATH` — see
-  the wexec `PATH`-resolution status entry above) so they
-  exercise a fresh, non-reentrant acquire instead of inheriting the
-  outer test-runner's own lock marker. Design: `docs/projects/wexec.md`'s
-  "Locking" section; block comment above `wexec_lock_file` in
+  (`tests/wexec/wexec_e2e.w.wbuild`; `tests/wexec/lock_scratch.json`),
+  which plants a manually-created live/stale pid lock file to stand in
+  for a real second concurrent process rather than racing a real
+  backgrounded build (which would be flaky to assert against). Its W
+  driver (`tests/wexec/wexec_e2e.w lock`, replacing the old
+  `sh -c "unset WEXEC_LOCK_HELD; ..."` steps, issue #323) spawns each
+  nested `bin/wexec` with `WEXEC_LOCK_HELD` removed from a copied
+  environment and `WEXEC_LOCK_FILE` pointed at a pid-scoped scratch
+  path, so they exercise a fresh, non-reentrant acquire instead of
+  inheriting the outer test-runner's own lock marker. Design:
+  `docs/projects/wexec.md`'s "Locking" section; block comment above `wexec_lock_file` in
   `tools/wexec.w`.
 - Portable `lib/stat.w` + Linux `statx`/`chmod`/`utimensat`/`readlink`/
   `symlink` wrappers in `lib/__arch__/{x86,x64,arm64}/syscalls.w`

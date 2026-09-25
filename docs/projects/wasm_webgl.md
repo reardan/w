@@ -12,7 +12,7 @@ holds the JS host glue plus the Node test harnesses.
 the rejection diagnostics); `./wbuild wasm_webgl_test` gates the whole
 graphics path headlessly; `tools/web/index.html` runs the same module
 in a real browser (`graphics/demo_web.w` is the demo). Both need Node,
-like `tools/run_wasm.sh`'s fallback path.
+like `bin/wrun wasm`'s fallback path (`bin/wrun node` runs them).
 
 ## D1: extern → import section (the compiler change)
 

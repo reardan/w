@@ -87,13 +87,29 @@ What changed since the survey below, in the order it landed:
   the pinned seed compiles it into the compiler; `parser_generator_c_test`
   fails if it drifts from `tests/parser_generator/c.pg`.
 
-Still hand-written in `build.base.json` (48 entries): the bootstrap
+- **The last test targets moved into sources, and the build's own
+  scripts are W.** The 23 remaining hand-written test targets
+  (`wexec_*`, `debug_test*`, `repl_test*`, `lint_test`, `defhash_test`,
+  the diagnostics suites, ...) are source-owned, mostly in fixture
+  sidecars, and none of them runs `sh -c` any more: generated inputs
+  are committed fixtures (`tests/diagnostic_inputs/`,
+  `tests/wexec/cache_inputs/`), and procedural steps are W drivers
+  (`tests/wexec/wexec_e2e.w`, `tools/defhash_e2e.w`,
+  `tools/missing_file_cwd_e2e.w`, `tools/repl_giant_entry_e2e.w`).
+  `archive.sh` became `tools/promote_seed.w`, the three run shims
+  became `bin/wrun arm64|wasm|node` (`tools/wrun.w`), and
+  `tools/pty_test.py` became `tools/pty_drive.w` (on `lib/pty.w`).
+
+Still hand-written in `build.base.json` (24 entries): the bootstrap
 chain and per-platform executors (`wv2`, `wexec*`, `build*`,
 `verify*`, `update*`), which the darwin and win64 executors must load
-without a directory walk; the umbrellas; and about 20 targets that
-still drive shell or Python helpers or have no W source to host them
-(`wexec_*_test`, `wtest_run_test`, `debug_test`, `repl_test`,
-`repl_pty_test`, `lint_test`, ...).
+without a directory walk, and the four umbrellas. Scripts left in the
+tree are outside the build graph's core: the Mac helpers
+(`tools/mac/`), dataset fetchers (`fetch_mnist.sh`,
+`fetch_shakespeare.sh`, used by the opt-in GPU training targets), the
+TLS/x509 fixture regenerators, `ppm_to_png.py`, the torch reference
+trainer, and one `sh -c` in `pac_corrupt_fnptr_test.w` that asserts a
+signal exit (`$? -ge 128`), which wexec has no field for yet.
 
 ## Where the system stands today
 
@@ -240,7 +256,7 @@ alongside the cache stamp.
 
 - Catches what no declaration can: the compiler reading
   `structures/hash_table.w` via auto-import, fixtures read at runtime,
-  `run_arm64.sh` invoking qemu.
+  `bin/wrun arm64` (formerly `run_arm64.sh`) invoking qemu.
 - Gives hermeticity-lite for free: a `--hermetic` flag fails a target
   that reads outside its recorded set — Bazel's sandbox benefit without
   a sandbox.
@@ -482,14 +498,14 @@ so it moved from bucket E to bucket L below.
 
 | Script | Invoked by (`build.base.json`) | #323 blocker |
 |---|---|---|
-| `tools/run_arm64.sh` | `build_arm64`, `arm64_smoke_test`, `pac_full_test_arm64`, `pac_corrupt_test_arm64`, plus every generated `arch=arm64` twin | qemu-user-static / native-exec wrapper — a cross-arch execution shim is likely permanent (Bazel/Buck2 keep an equivalent runner); revisit only if `lib.process` grows emulator-aware exec. |
-| `tools/run_wasm.sh` | `build_wasm`, `wasm_smoke_test`, plus every wasm run step | Wraps `wasmtime`/`node`; same "permanent execution shim" reasoning as `run_arm64.sh`. (The former bucket-G side blocker is gone: wbuildgen's `arch=`/`arch_only=`/`group=` all take `wasm` since 2026-07-28 and emit this wrapper.) |
-| `tools/web/run_node.sh` | `wasm_extern_test`, `wasm_webgl_test` | Wraps `node` to run `tools/web/*.mjs` harnesses; the harnesses themselves are non-W, so this sits outside the ".w sources" model regardless of the shell wrapper. |
+| ~~`tools/run_arm64.sh`~~ | `build_arm64`, `arm64_smoke_test`, `pac_full_test_arm64`, `pac_corrupt_test_arm64`, plus every generated `arch=arm64` twin | Ported to `bin/wrun arm64` (`tools/wrun.w`, 2026-09-25): the same native-on-aarch64 / `$QEMU_ARM64` / `qemu-aarch64-static -cpu max` choice, exec'd in place. |
+| ~~`tools/run_wasm.sh`~~ | `build_wasm`, `wasm_smoke_test`, plus every wasm run step | Ported to `bin/wrun wasm` (`tools/wrun.w`, 2026-09-25): wasmtime, else `node tools/run_wasm.mjs`. |
+| ~~`tools/web/run_node.sh`~~ | `wasm_extern_test`, `wasm_webgl_test`, `wasm_export_test`, `wasm_ui_test` | Ported to `bin/wrun node` (`tools/wrun.w`, 2026-09-25); the `tools/web/*.mjs` harnesses themselves stay non-W. |
 | ~~`tools/parser_generator_w_batches.sh`~~ | `parser_generator_w_test` | Ported to `tools/parser_generator_w_batches.w` (2026-09-25). |
 | ~~`tools/merge_manifest.sh`~~ | *(not referenced)* | Deleted with `build.json` (2026-09-25): there is no committed manifest left to conflict. |
 | `tools/mac/run_darwin_tests.sh` | *(not referenced — invoked by hand per `AGENTS.md`/`CLAUDE.md`)* | Developer-invoked native Mach-O test runner; Mac-only, never a manifest target. Out of scope for #323's manifest-capture model. |
 | `tools/mac/wdev.sh` | *(not referenced — invoked by hand)* | Docker `w-dev` container wrapper for the agent/dev workflow. Same "out of scope" reasoning as `run_darwin_tests.sh`. |
-| `archive.sh` (repo root) | `update`, `update_win`, `update_darwin` | Archives the current seed before promotion (`docs/release.md`). Tightly coupled to seed bootstrap (inventory bucket A below); runs before any freshly-built compiler is trustworthy, so it is unlikely to become a W program before the bootstrap chain itself is redesigned. |
+| ~~`archive.sh` (repo root)~~ | `update`, `update_win`, `update_darwin` | **Ported** (2026-09): `tools/promote_seed.w`, compiled by the just-verified compiler, backs the seed up to `old/` and installs the new one atomically. |
 
 `libs/standard/net/{tls,x509}_fixtures/gen_*.sh` are real shell scripts
 in the tree but match neither filter (not under `tools/`, not referenced
@@ -581,7 +597,7 @@ optimistic for 7 of the 21; see below.**
     `(source, arch)` shape `wbuildgen` ever generates. `wasm_smoke_test`
     is additionally blocked at the arch level: `wbuildgen` has zero
     `wasm` awareness (`arch=` only accepts `x64`/`arm64`/`win64`/
-    `arm64_darwin`), matching the `run_wasm.sh` row above.
+    `arm64_darwin`), matching the (former) `run_wasm.sh` row above.
   - `pac_full_test_arm64` (1): needs `--pac=full` injected into the
     arm64 compile command and carries the same `echo "... OK"` epilogue
     convention as its sibling `pac_corrupt_test_arm64` (bucket E) — no

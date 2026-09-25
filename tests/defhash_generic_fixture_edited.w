@@ -1,8 +1,8 @@
 # Body-edited twin of defhash_generic_fixture.w for defhash_test: only
 # defhash_generic_fixture_max's body (branch/operand order swapped,
 # still returns the larger value) and operator+'s body (operand order
-# swapped, still commutative) differ from the baseline. build.base.json's
-# defhash_test entry asserts those two hashes differ from the baseline's
+# swapped, still commutative) differ from the baseline. tools/defhash_e2e.w
+# (defhash_test) asserts those two hashes differ from the baseline's
 # while defhash_generic_fixture_pair (untouched) and every ordinary
 # definition keep the baseline's hash.
 import lib.lib

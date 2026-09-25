@@ -1,0 +1,2 @@
+# Byte-exact diagnostic inputs (CRLF, BOM, invalid UTF-8): never normalize.
+* -text

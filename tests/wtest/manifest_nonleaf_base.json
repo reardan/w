@@ -8,16 +8,16 @@
 			]
 		},
 		{
-			"name": "wexec_test",
-			"steps": [
-				{"cmd": ["echo", "hand-written step, changed vs manifest_leaf_add.json"]}
-			]
-		},
-		{
 			"name": "tests",
 			"deps": [
 				"math_test",
 				"sha256_test"
+			]
+		},
+		{
+			"name": "wexec_test",
+			"steps": [
+				{"cmd": ["echo", "hand-written step, changed vs manifest_leaf_add.json"]}
 			]
 		},
 		{

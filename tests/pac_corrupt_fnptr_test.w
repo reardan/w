@@ -23,9 +23,9 @@ int main(int argc, int argv):
 	int r = f(41)
 	println(c"NOT REACHED: forged function pointer survived authentication")
 	return r - 41
-# wbuild: target=pac_corrupt_test_arm64 dep=wv2
+# wbuild: target=pac_corrupt_test_arm64 dep=wv2 dep=wrun
 # wbuild: step="bin/wv2 arm64 --pac=full tests/pac_corrupt_fnptr_test.w -o bin/pac_corrupt_fnptr_arm64_test"
-# wbuild: step="sh -c 'sh tools/run_arm64.sh bin/pac_corrupt_fnptr_arm64_test; test $? -ge 128'" reject_stdout="NOT REACHED"
+# wbuild: step="sh -c 'bin/wrun arm64 bin/pac_corrupt_fnptr_arm64_test; test $? -ge 128'" reject_stdout="NOT REACHED"
 # wbuild: step="bin/wv2 arm64 tests/pac_corrupt_ret_test.w -o bin/pac_corrupt_ret_arm64_test"
-# wbuild: step="sh -c 'sh tools/run_arm64.sh bin/pac_corrupt_ret_arm64_test; test $? -ge 128'" reject_stdout="NOT REACHED"
+# wbuild: step="sh -c 'bin/wrun arm64 bin/pac_corrupt_ret_arm64_test; test $? -ge 128'" reject_stdout="NOT REACHED"
 # wbuild: step="echo 'pac corruption tests OK (both fixtures died)'"

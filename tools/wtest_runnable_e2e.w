@@ -159,7 +159,7 @@ int main(int argc, char** argv):
 
 	# --available alone must keep every loader/GPU/soname fixture target:
 	# those probes are part of --runnable-here, not of the older flag (the
-	# rn_shc_* runner-wrapper targets are asserted separately below --
+	# rn_shc_*/rn_wrun_* runner targets are asserted separately below --
 	# their --available probes legitimately vary by host).
 	wtest_out* o = run_wtest(0, c"--available", marker())
 	list[char*] keep = split(c"rn_dyn32 rn_dyn64 rn_gpu rn_static rn_compile_only rn_dyn_imp rn_gpu_imp rn_plain_imp rn_broken_imp rn_dyn_missing rn_cuda_clib", ' ')
@@ -290,7 +290,10 @@ int main(int argc, char** argv):
 	# 'sh -c'-wrapped runner steps (ai_tooling_next_steps.md 2026-08-05,
 	# point 1): the runner path hides inside the '-c' command string --
 	# pac_corrupt_test_arm64's shape -- so --available must scan the
-	# string for the known wrapper paths. Probed deterministically by
+	# string for the known runner spellings ('bin/wrun arm64', 'bin/wrun
+	# wasm'); the direct 'bin/wrun <mode>' argv shape (rn_wrun_*, every
+	# generated arm64/wasm twin's run step) is probed the same way.
+	# Probed deterministically by
 	# controlling the evidence the filter reads: an empty PATH removes
 	# qemu, wasmtime and node (QEMU_ARM64 unset), while a set QEMU_ARM64
 	# is itself positive evidence the arm64 runner works.
@@ -302,6 +305,10 @@ int main(int argc, char** argv):
 		fail(c"no qemu on PATH but the sh -c arm64 runner target was kept")
 	if (has_line(out, c"rn_shc_wasm")):
 		fail(c"no wasm runtime on PATH but the sh -c wasm runner target was kept")
+	if (has_line(out, c"rn_wrun_arm64")):
+		fail(c"no qemu on PATH but the bin/wrun arm64 runner target was kept")
+	if (has_line(out, c"rn_wrun_wasm")):
+		fail(c"no wasm runtime on PATH but the bin/wrun wasm runner target was kept")
 	if (contains(err, c"qemu-aarch64-static not found") == 0):
 		fail(c"sh -c arm64 drop reason did not name qemu")
 	if (contains(err, c"no wasm runtime (wasmtime or node) found") == 0):
@@ -311,6 +318,8 @@ int main(int argc, char** argv):
 	o = run_wtest(env_copy_with(bare, c"QEMU_ARM64", c"qemu-aarch64"), c"--available", marker())
 	if (has_line(o.out, c"rn_shc_arm64") == 0):
 		fail(c"QEMU_ARM64 set but the sh -c arm64 runner target was dropped")
+	if (has_line(o.out, c"rn_wrun_arm64") == 0):
+		fail(c"QEMU_ARM64 set but the bin/wrun arm64 runner target was dropped")
 
 	shell_commands_rm_one(EMPTY_DIR, 1, 1)
 	write(1, c"wtest_runnable_scratch_test: OK\n", 32)

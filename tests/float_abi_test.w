@@ -3,7 +3,7 @@
 # pass on the stack and the result comes back in st(0); on x64 they use
 # xmm registers. float64 externs are x64-only and live in
 # x64_float_abi_test.w. Also builds and runs on arm64
-# (float_abi_test_arm64, under qemu via tools/run_arm64.sh).
+# (float_abi_test_arm64, under qemu via bin/wrun arm64).
 # wbuild: arch=arm64 expect_stdout="float abi OK" group=float_abi_test_x64@x64
 import lib.lib
 import lib.assert

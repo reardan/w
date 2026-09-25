@@ -403,7 +403,9 @@ is a queue, not an archive.
   `["sh", "-c", "sh tools/run_arm64.sh ...; test $? -ge 128"]`, which
   the argv[1]-shape check never saw): `wtest_step_unavailable_reason`
   now scans a `-c` command string for the two known wrapper paths
-  (`tools/run_arm64.sh`, `tools/run_wasm.sh`) and applies the same
+  (`tools/run_arm64.sh`, `tools/run_wasm.sh`; since 2026-09-25 the
+  runner spellings `bin/wrun arm64` / `bin/wrun wasm`, which the
+  direct-argv check now also recognizes) and applies the same
   probes, still positive-evidence-only — asserted deterministically in
   `tools/wtest_runnable_e2e.w` by controlling PATH and
   QEMU_ARM64. (2) Closure-level GPU attribution was closed the same
@@ -476,7 +478,7 @@ and `docs/projects/parser_generator.md` for the record.
 ## Skills / rules upkeep
 
 - Skill command examples are kept in sync with CLI changes by the
-  `skills_test` target (build.base.json): it asserts every compiler
+  `skills_test` target (declared at the end of `tools/skills_check.w`): it asserts every compiler
   flag documented in AGENTS.md, README.md and `.cursor/skills/`
   appears in `w --help` / `w <subcommand> --help` output
   (`tools/skills_check.w`). When adding a compiler flag, add its help

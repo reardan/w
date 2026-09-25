@@ -376,7 +376,7 @@ forbid tests
 
 # tools/mac/run_darwin_tests.sh is the Mac-side run leg for the darwin
 # cross-compile targets; no manifest argv names the script (unlike
-# tools/run_arm64.sh, which the qemu targets invoke directly), so a
+# bin/wrun, which the qemu targets invoke directly), so a
 # residue rule in tools/test_map.w pins the coupling.
 case tools/mac/run_darwin_tests.sh
 expect arm64_darwin_smoke_test

@@ -1,6 +1,6 @@
 # Body-edited twin of defhash_fixture.w for defhash_test: only
 # defhash_fixture_add's body differs (operand order swapped) from the
-# baseline file. defhash_test.w's build.base.json entry asserts that
+# baseline file. tools/defhash_e2e.w (defhash_test) asserts that
 # defhash_fixture_add's hash differs from the baseline's while every
 # other definition's hash stays the same.
 import lib.lib
