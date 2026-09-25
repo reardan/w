@@ -50,14 +50,31 @@ What changed since the survey below, in the order it landed:
   `tools/parser_generator_w_batches.w`. `attach_test.sh` is now
   `tools/attach_e2e.w`.
 
-Still hand-written in `build.base.json`: the bootstrap chain (bucket
-A), the tool binaries (C), and the multi-step targets whose primary
-step is not a scan-directory `*_test.w` compile+run. That last group
-includes diagnostics suites driven from fixtures (`check_json_test`,
-`symbols_test`, ...), x64-only step sequences, and compiler/ and
-grammar/ unit tests. Extending `step=` to those needs either a source
-to carry the directives (a fixture, via its `.wbuild` sidecar) or
-scanning compiler/ and grammar/.
+- **Sources own whole targets.** `# wbuild: target=<name>` (every
+  field spelled out) and `# wbuild: binary=<name>` (the tool shorthand:
+  `wv2` dep, source input, `bin/<name>` output, and a compile step,
+  optionally `staged` through `<out>.stage` + `mv`) start a target on
+  their own line, with `tag=`, `dep=`, `data=`, `input=`, `output=`
+  (and `arch=`, `flags=`, `out=` for `binary=`) after them; the
+  `step=` lines that follow add its steps. `step=` gained
+  `expect_status=` and `stderr_file=`, and single-quoted words stay
+  whole (`''` is an empty argument). A first pass reads these from
+  every scanned `.w` file and sidecar, plus compiler/, grammar/,
+  debugger/, code_generator/ and examples/. 111 targets moved out of
+  `build.base.json` this way: the tool binaries (bucket C), the
+  fixture-driven diagnostics suites (`check_json_test`,
+  `symbols_test`, `crash_trace_test`, ...), the x64-only step
+  sequences, and the compiler/ and grammar/ unit tests. The generated
+  manifest was identical target for target (umbrella member order
+  aside).
+
+Still hand-written in `build.base.json` (64 entries): the bootstrap
+chain and per-platform executors (`wv2`, `wexec*`, `build*`,
+`verify*`, `update*`), which the darwin and win64 executors must load
+without a directory walk; the umbrellas; and about 30 targets whose
+steps are shell scripts or scratch-tree setups with no W source to
+host them (`wexec_*_test`, `wtest_*_test`, `debug_test`, `repl_test`,
+`lint_test`, ...). Those move once the scripts become W programs.
 
 ## Where the system stands today
 

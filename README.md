@@ -355,8 +355,10 @@ seeds — is `docs/release.md`.
   compile+run target and its `tests`/`tests_x64` membership on the next
   run. Expectations, stdin, timeouts and extra steps are `# wbuild:`
   directives in the source as well (`step="cmd args"` appends a step,
-  decorated by the fields after it on its line), so `build.base.json`
-  is only for targets no single source owns.
+  decorated by the fields after it on its line), and a source can own
+  whole extra targets (`# wbuild: target=<name>` or `binary=<name>` on
+  its own line, followed by `step=` lines), so `build.base.json` is
+  only for targets no single source owns.
   `./wbuild manifest_check` fails CI when generation fails.
 - Because codegen is single-pass with no IR, grammar modules both parse and
   emit; changes to expression/statement handling usually live in

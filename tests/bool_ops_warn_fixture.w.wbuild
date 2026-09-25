@@ -1,0 +1,7 @@
+# wbuild: target=check_bool_ops_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 check --quiet tests/bool_ops_warn_fixture.w" reject_stderr="warning:"
+# wbuild: step="bin/wv2 check --bool-ops --quiet tests/bool_ops_warn_fixture.w" expect_stderr="warning: bitwise '|' on bool operands in a condition does not short-circuit; did you mean '||'?" expect_stderr="warning: bitwise '&' on bool operands in a condition does not short-circuit; did you mean '&&'?"
+# wbuild: step="bin/wv2 check --quiet tests/bool_ops_clean_fixture.w" reject_stderr="warning:"
+# wbuild: step="bin/wv2 check --bool-ops --quiet tests/bool_ops_clean_fixture.w" reject_stderr="warning:"
+# wbuild: step="bin/wv2 check --bool-ops --json --quiet tests/bool_ops_warn_fixture.w" stdout_file="bin/check_bool_ops_warn.ndjson" expect_stdout="\"severity\": \"warning\"" expect_stdout="did you mean '||'?" expect_stdout="did you mean '&&'?"
+# wbuild: step="bin/wv2 check --json --quiet tests/bool_bitwise_chain_fixture.w" stdout_file="bin/check_bool_ops_chain.ndjson" expect_stdout="\"column\": 15" expect_stdout="\"column\": 26" expect_stdout="\"token\": \"&\"" expect_stdout="did you mean '&&'?"

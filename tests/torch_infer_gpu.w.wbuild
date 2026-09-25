@@ -1,0 +1,7 @@
+# wbuild: target=torch_infer_compile_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 x64 tests/torch_infer_gpu.w -o bin/torch_infer_gpu_compile"
+# wbuild: target=torch_infer_gpu_test dep=wv2
+# wbuild: step="sh tools/fetch_mnist.sh"
+# wbuild: step="bin/wv2 x64 tests/torch_infer_gpu.w -o bin/torch_infer_gpu"
+# wbuild: step="bin/torch_infer_gpu" expect_stdout="torch infer: gpu path" expect_stdout="torch infer OK"
+# wbuild: step="sh -c 'CUDA_VISIBLE_DEVICES= bin/torch_infer_gpu'" expect_stdout="torch infer: cpu fallback" expect_stdout="torch infer OK"

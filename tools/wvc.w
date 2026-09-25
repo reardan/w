@@ -1,3 +1,4 @@
+# wbuild: binary=wvc
 /*
 wvc: a porcelain CLI over the VCS wave 1+2 libraries (issue #252 V2c;
 design: docs/projects/version_control.md "Wave 2 -- snapshots and

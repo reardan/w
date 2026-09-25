@@ -1,3 +1,5 @@
+# wbuild: target=stat dep=wv2 input=tools/stat.w input=lib/stat.w input=lib/passwd.w output=bin/stat
+# wbuild: step="bin/wv2 tools/stat.w -o bin/stat"
 /*
 stat: print file metadata, dogfooding lib/stat.w.
 

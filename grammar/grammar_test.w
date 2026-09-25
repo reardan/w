@@ -366,3 +366,6 @@ void test_compound_assignment_is_expression():
 	int r = (a += 4)
 	assert_equal(5, a)
 	assert_equal(5, r)
+# wbuild: target=grammar_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 grammar/grammar_test.w -o bin/grammar_test"
+# wbuild: step="bin/grammar_test"

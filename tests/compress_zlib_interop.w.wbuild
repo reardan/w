@@ -1,0 +1,5 @@
+# wbuild: target=compress_zlib_interop_test dep=wv2
+# wbuild: step="bin/wv2 tests/compress_zlib_interop.w -o bin/compress_zlib_interop32"
+# wbuild: step="bin/wv2 x64 tests/compress_zlib_interop.w -o bin/compress_zlib_interop64"
+# wbuild: step="bin/compress_zlib_interop32" expect_stdout="zlib interop OK" timeout=60000
+# wbuild: step="bin/compress_zlib_interop64" expect_stdout="zlib interop OK" timeout=60000

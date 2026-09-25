@@ -199,3 +199,7 @@ int main():
 	test_wv2_64_encode_identity()
 	println(c"asm_x64_test passed")
 	return 0
+# wbuild: target=asm_x64_test tag=tests dep=wv2 input=libs/asm/ input=tests/asm/ input=tests/asm_x64_test.w input=w.w
+# wbuild: step="bin/wv2 x64 w.w -o bin/asm_x64_selfhost"
+# wbuild: step="bin/wv2 tests/asm_x64_test.w -o bin/asm_x64_test"
+# wbuild: step="bin/asm_x64_test"

@@ -1,0 +1,7 @@
+# wbuild: target=dwarf_addr_size_test tag=tests dep=wv2 input=libs/asm/ input=code_generator/dwarf.w input=tests/dwarf_addr_size_test.w input=tests/dwarf_addr_fixture.w
+# wbuild: step="bin/wv2 tests/dwarf_addr_fixture.w -o bin/dwarf_addr_fixture_32"
+# wbuild: step="bin/wv2 x64 tests/dwarf_addr_fixture.w -o bin/dwarf_addr_fixture_64"
+# wbuild: step="bin/dwarf_addr_fixture_32" expect_stdout="hello from dwarf fixture"
+# wbuild: step="bin/dwarf_addr_fixture_64" expect_stdout="hello from dwarf fixture"
+# wbuild: step="bin/wv2 tests/dwarf_addr_size_test.w -o bin/dwarf_addr_size_test"
+# wbuild: step="bin/dwarf_addr_size_test" expect_stdout="dwarf_addr_size_test passed"

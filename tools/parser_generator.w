@@ -1,3 +1,11 @@
+# wbuild: target=parser_generator_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 tools/parser_generator.w -o bin/parser_generator"
+# wbuild: step="bin/parser_generator tests/parser_generator/sample.pg -o bin/generated_sample_parser.w"
+# wbuild: step="bin/wv2 tests/parser_generator/generated_sample_test.w -o bin/parser_generator_test"
+# wbuild: step="bin/parser_generator_test"
+# wbuild: step="bin/parser_generator tests/parser_generator/matcher_expressions.pg -o bin/generated_matcher_expressions_parser.w"
+# wbuild: step="bin/wv2 tests/parser_generator/generated_matcher_expressions_test.w -o bin/parser_generator_matcher_expressions_test"
+# wbuild: step="bin/parser_generator_matcher_expressions_test"
 /*
 Standalone ParserGenerator CLI.
 */

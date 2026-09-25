@@ -1,3 +1,4 @@
+# wbuild: binary=wtest
 /*
 wtest: map changed paths to focused build targets.
 

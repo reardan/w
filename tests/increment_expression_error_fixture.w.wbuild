@@ -1,0 +1,2 @@
+# wbuild: target=increment_error_test tag=tests dep=wv2 dep=wfixture
+# wbuild: step="bin/wfixture bin/wv2 tests/increment_expression_error_fixture.w tests/decrement_expression_error_fixture.w tests/increment_non_lvalue_error_fixture.w tests/increment_map_element_error_fixture.w"

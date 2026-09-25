@@ -1,3 +1,4 @@
+# wbuild: binary=wbuildd staged
 /*
 wbuildd: the persistent, read-only build/check daemon (issue #231,
 docs/projects/wbuildd.md -- stage 2, first read-only milestone).

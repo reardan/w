@@ -333,3 +333,11 @@ void test_print_registers():
 void test_print_stack():
 	print_stack()
 
+# wbuild: target=arm64_darwin_smoke_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 arm64_darwin lib/lib_test.w -o bin/lib_darwin_test"
+# wbuild: step="bin/wv2 arm64_darwin structures/hash_table_test.w -o bin/hash_table_darwin_test"
+# wbuild: step="bin/wv2 arm64_darwin tests/map_set_builtin_test.w -o bin/map_set_builtin_darwin_test"
+# wbuild: step="bin/wv2 arm64_darwin tests/generator_test.w -o bin/generator_darwin_test"
+# wbuild: step="bin/wv2 arm64_darwin tests/compound_assign_test.w -o bin/compound_assign_darwin_test"
+# wbuild: step="bin/wv2 arm64_darwin tests/limb_builtin_test.w -o bin/limb_builtin_darwin_test"
+# wbuild: step="echo 'arm64_darwin smoke binaries cross-compiled OK; run them on a Mac via tools/mac/run_darwin_tests.sh'"

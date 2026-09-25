@@ -1,3 +1,4 @@
+# wbuild: binary=pac_flag_check
 /*
 pac_flag_check: W replacement for tools/pac_flag_check.sh (issue: bucket E
 script retirement, docs/projects/sonnet_wave_plan_2026_07c.md task 2f).

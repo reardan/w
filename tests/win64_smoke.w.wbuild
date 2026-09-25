@@ -1,0 +1,3 @@
+# wbuild: target=win64_smoke_test tag=tests_win64 dep=wv2
+# wbuild: step="bin/wv2 win64 tests/win64_smoke.w -o bin/win64_smoke.exe"
+# wbuild: step="wine bin/win64_smoke.exe" expect_stdout="win64 smoke OK"

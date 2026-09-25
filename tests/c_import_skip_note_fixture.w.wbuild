@@ -1,0 +1,4 @@
+# wbuild: target=c_import_verbose_note_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 -v tests/c_import_skip_note_fixture.w -o /dev/null" expect_stderr="note: c_import skipped 'ci_skip_note_fn': static/inline function"
+# wbuild: step="bin/wv2 -v --strict tests/c_import_skip_note_fixture.w -o /dev/null" expect_stderr="note: c_import skipped 'ci_skip_note_fn': static/inline function" reject_stderr="treated as errors"
+# wbuild: step="bin/wv2 tests/c_import_skip_note_fixture.w -o /dev/null" reject_stderr="c_import skipped"

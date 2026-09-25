@@ -1,0 +1,5 @@
+# wbuild: target=gpu_promote_test dep=wv2
+# wbuild: step="bin/wv2 x64 tests/gpu_promote_gpu.w -o bin/gpu_promote_gpu"
+# wbuild: step="bin/gpu_promote_gpu" expect_stdout="gpu promote OK"
+# wbuild: target=gpu_promote_compile_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 x64 tests/gpu_promote_gpu.w -o bin/gpu_promote_compile"
