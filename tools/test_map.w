@@ -1531,7 +1531,20 @@ void wtest_cache_save():
 			string_free(line)
 		i = i + 1
 	mkdir(c"bin", 493)
-	file_write_text(c"bin/.wtest_deps_cache", out.data)
+	# Write a private temp file and rename it into place: wbuildd and
+	# one-shot wtest runs read and rewrite this cache concurrently, and a
+	# reader that caught a truncate-then-write mid-way saw a root as
+	# uncomputed (wbuildd_test's one-shot/daemon stderr comparison
+	# failed under suite load with a spurious "building import-closure
+	# cache" line).
+	string_builder* tmp = string_new()
+	string_append(tmp, c"bin/.wtest_deps_cache.")
+	string_append(tmp, itoa(getpid()))
+	string_append(tmp, c".tmp")
+	if (file_write_text(tmp.data, out.data)):
+		if (rename(tmp.data, c"bin/.wtest_deps_cache") < 0):
+			unlink(tmp.data)
+	string_free(tmp)
 	string_free(out)
 
 
