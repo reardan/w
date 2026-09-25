@@ -14,6 +14,7 @@ import lib.task_io
 import structures.string
 import libs.standard.web.connection
 import libs.standard.web.http_server
+import libs.standard.web.http_server_threads
 import libs.standard.web.http_client
 import libs.standard.net.tls
 
@@ -266,3 +267,47 @@ void test_http_client_in_tasks():
 
 void test_https_client_in_tasks():
 	htt_clients_in_tasks(c"https", 1, 2)
+
+
+/* Multi-threaded serving (libs/standard/web/http_server_threads.w). */
+
+void test_threaded_server_serves_concurrently():
+	ServerContext* s = htt_new_server()
+	asserts(c"server bind", server_context_bind(s) != 0)
+	int port = server_context_port(s)
+	int pid = fork()
+	asserts(c"fork failed", pid >= 0)
+	if (pid == 0):
+		assert_equal(6, server_context_serve_threads(s, 3, 6))
+		exit(0)
+	server_context_close(s)
+	server_context_free(s)
+
+	int stalled = htt_connect(port)
+	char* partial = c"GET /slow HTTP/1.1\x0d\x0a"
+	socket_send(stalled, partial, strlen(partial), msg_nosignal())
+	char* url = htt_url(c"http", port, c"/threaded")
+	int i = 0
+	while (i < 4):
+		char* body = htt_get(url)
+		assert_strings_equal(c"/threaded", body)
+		free(body)
+		i = i + 1
+	free(url)
+	char* rest = c"Host: x\x0d\x0aConnection: close\x0d\x0a\x0d\x0a"
+	socket_send(stalled, rest, strlen(rest), msg_nosignal())
+	char* text = htt_read_all(stalled)
+	asserts(c"stalled request answered", htt_contains(text, c"/slow"))
+	free(text)
+	close(stalled)
+	# The sixth connection: a TLS server is refused up front.
+	ServerContext* tls = htt_new_server()
+	server_context_set_tls(tls, c"libs/standard/net/tls_fixtures/server_p256_cert.pem", c"libs/standard/net/tls_fixtures/server_p256_key.pem")
+	assert_equal(-1, server_context_serve_threads(tls, 2, 1))
+	server_context_free(tls)
+	url = htt_url(c"http", port, c"/last")
+	char* last = htt_get(url)
+	assert_strings_equal(c"/last", last)
+	free(last)
+	free(url)
+	htt_finish(pid)

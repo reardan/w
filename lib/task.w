@@ -179,6 +179,8 @@ struct task_scheduler:
 	int next_id
 	task_done_cb* on_done  # optional completion hook
 	void* on_done_context
+	task_done_cb* on_spawn # optional hook, called for every new task
+	void* on_spawn_context
 	void* remote           # lib/task_runtime.w inbox, 0 if none
 
 
@@ -482,6 +484,8 @@ task_scheduler* task_scheduler_new():
 	s.next_id = 1
 	s.on_done = 0
 	s.on_done_context = 0
+	s.on_spawn = 0
+	s.on_spawn_context = 0
 	s.remote = 0
 	return s
 
@@ -518,6 +522,8 @@ task* task_spawn(task_scheduler* s, generator* g):
 	s.tasks.push(t)
 	deque_push_back[task*](s.ready, t)
 	s.active_count = s.active_count + 1
+	if (cast(int, s.on_spawn) != 0):
+		s.on_spawn(t, s.on_spawn_context)
 	return t
 
 
@@ -554,16 +560,27 @@ void task_set_name(task* t, char* name):
 	t.name = name
 
 
+int task_run_pass(task_scheduler* s, int max_wait_ms, int wait_when_idle);
+
+
 # Resume every ready task once, then run one event-loop iteration that
 # waits at most max_wait_ms (-1: until an fd or timer fires). Returns
 # 0, a negative errno from poll, or task_err_deadlock() when tasks
 # remain but nothing can ever wake them (e.g. a join cycle or a
 # channel nobody else holds).
 int task_run_once(task_scheduler* s, int max_wait_ms):
+	return task_run_pass(s, max_wait_ms, 0)
+
+
+# task_run_once, except that with wait_when_idle set it also waits (for
+# remote spawns, lib/task_runtime.w) when no task is left.
+int task_run_pass(task_scheduler* s, int max_wait_ms, int wait_when_idle):
 	while (s.ready.length > 0):
 		task* t = deque_pop_front[task*](s.ready)
 		task_resume(s, t)
 	if (s.ready.length > 0):
+		return 0
+	if ((s.active_count == 0) && (wait_when_idle == 0)):
 		return 0
 	int watches = event_loop_watch_count(s.loop)
 	int timers = event_loop_timer_count(s.loop)
