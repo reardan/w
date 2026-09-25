@@ -68,13 +68,20 @@ What changed since the survey below, in the order it landed:
   manifest was identical target for target (umbrella member order
   aside).
 
-Still hand-written in `build.base.json` (64 entries): the bootstrap
+- **Scratch-tree test scripts are W.** The ten scripts that built a
+  throwaway checkout and drove `bin/wtest`, `bin/wbuildgen` or
+  `bin/wcore` against it (`wtest_{cache,timeout,why,defhash,range,
+  nofailcache,runnable}`, `wbuildgen_scratch`, `wcore`, `crash_dump`)
+  are now `*_e2e.w` programs that spawn children through lib/process.w,
+  and each owns its target through `target=` lines.
+
+Still hand-written in `build.base.json` (47 entries): the bootstrap
 chain and per-platform executors (`wv2`, `wexec*`, `build*`,
 `verify*`, `update*`), which the darwin and win64 executors must load
-without a directory walk; the umbrellas; and about 30 targets whose
-steps are shell scripts or scratch-tree setups with no W source to
-host them (`wexec_*_test`, `wtest_*_test`, `debug_test`, `repl_test`,
-`lint_test`, ...). Those move once the scripts become W programs.
+without a directory walk; the umbrellas; and about 20 targets that
+still drive shell or Python helpers or have no W source to host them
+(`wexec_*_test`, `wtest_run_test`, `debug_test`, `repl_test`,
+`repl_pty_test`, `lint_test`, ...).
 
 ## Where the system stands today
 

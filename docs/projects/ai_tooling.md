@@ -257,7 +257,7 @@ Shipped from the next-steps backlog:
   error, not a silent fallback. Deliberately not attempted: per-commit
   historical closures (the import graph stays keyed to the current
   worktree — exact for the common case, can only over-select). Tested by
-  `tools/wtest_range_scratch_test.sh` (`wtest_range_test`).
+  `tools/wtest_range_e2e.w` (`wtest_range_test`).
 - **`wtest --defhash` opt-in selection refinement** (2026-07-19, wave
   plan C task 2g): per changed `.w` path, rule (b) shells out to
   `bin/wv2 defhash` on the worktree copy and on `git show HEAD:<path>`,
@@ -267,7 +267,7 @@ Shipped from the next-steps backlog:
   Fails open in every other case (new path, git/defhash error, real
   definition change); rule (a) literals and rule (c) residue mappings
   still apply. Selection without the flag is byte-identical. Tested by
-  `tools/wtest_defhash_scratch_test.sh` (`wtest_defhash_test`).
+  `tools/wtest_defhash_e2e.w` (`wtest_defhash_test`).
 - **Generic/operator defhash coverage + `--closure` map lookup**
   (2026-07-19, wave plan C task 4f): `grammar/generic.w`'s three
   registration points call `defhash_note` over the exact
@@ -476,7 +476,7 @@ Shipped from the next-steps backlog:
   changed-file path, match nothing, and fall to the `tests`-umbrella
   catch-all. Now `wtest: error: only one revision range argument is
   allowed, got a second: <arg>` and exit 1, pinned by a
-  `tools/wtest_range_scratch_test.sh` case. `tools/test_map.w`.
+  `tools/wtest_range_e2e.w` case. `tools/test_map.w`.
 - **`lib/args.w` boolean flags no longer swallow the next positional**
   (2026-07-19, wave plan C task 1e): `args_declare_bool(name)` marks a
   flag presence-only so `args_is_positional`/`args_value` stop treating
