@@ -1564,6 +1564,16 @@ void raft_commit_index(raft* r, u64* out):
 	u64_copy(out, r.commit_index)
 
 
+# Host-int views of the current term and commit index (asserted to fit;
+# see raft_u64_as_int). raft_snap_base is the snapshot index's.
+int raft_term_int(raft* r):
+	return raft_u64_as_int(r.current_term)
+
+
+int raft_commit_int(raft* r):
+	return raft_u64_as_int(r.commit_index)
+
+
 # 1-based conceptual index; the returned pointer is borrowed. Asserts
 # the index is above the snapshot base (compacted entries are gone)
 # and at most the last index.
