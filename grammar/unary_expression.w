@@ -48,6 +48,53 @@ void new_store_field(int base_type, int field_index, int arg_type, int leaked_wo
 		store_ebx_word()
 
 
+# Constructor arguments after '(' for 'T(...)' and 'new T(...)', with
+# the object's address in eax and parked on top of the stack. Positional
+# arguments fill the fields in declaration order; 'name: value'
+# arguments (golf ergonomics wave 5) fill the named fields in any order,
+# and a named constructor zeroes the object first so every field it
+# leaves out reads 0. The two forms do not mix. Each argument is stored
+# as it is evaluated; an argument that parks a temp on the stack (a
+# struct-value constructor or a struct-returning call) buries the saved
+# address, so the store reads it esp-relative and the leak is popped.
+# Returns the positional argument count, or -1 for the named form;
+# leaves ')' current.
+int ctor_field_args(int base):
+	int arg_entry = stack_pos
+	int named = is_ident_start_byte(token[0]) && (nextc == ':')
+	if (named):
+		zero_runtime_object(type_get_size(base))
+	int field_index = 0
+	while (1):
+		int target = field_index
+		if (is_ident_start_byte(token[0]) && (nextc == ':')):
+			if (named == 0):
+				error(c"cannot mix positional and named constructor arguments")
+			char* name = strclone(token)
+			target = type_get_arg(base, name)
+			if (target < 0):
+				type_suggest_fields(name, base)
+				diag_part(c"struct field '")
+				diag_part(name)
+				error(c"' not found")
+			free(name)
+			get_token()
+			expect(c":")
+		else if (named):
+			error(c"cannot mix positional and named constructor arguments")
+		int arg_type = expression()
+		arg_type = promote(arg_type)
+		new_store_field(base, target, arg_type, stack_pos - arg_entry)
+		if (stack_pos > arg_entry):
+			be_pop(stack_pos - arg_entry)
+			stack_pos = arg_entry
+		field_index = field_index + 1
+		if (accept(c",") == 0):
+			if (named):
+				return 0 - 1
+			return field_index
+
+
 void zero_stack_count_bytes():
 	int h_done = be_ctrl_block()
 	int h_top = be_ctrl_loop()
@@ -129,27 +176,11 @@ int struct_value_ctor_expr():
 	# initializers run, mirroring the 'new' constructor path.
 	push_eax()
 	stack_pos = stack_pos + 1
-	int field_index = 0
 	if (peek(c")") == 0):
-		int arg_entry = stack_pos
-		int arg_type = expression()
-		arg_type = promote(arg_type)
-		new_store_field(base, 0, arg_type, stack_pos - arg_entry)
-		if (stack_pos > arg_entry):
-			be_pop(stack_pos - arg_entry)
-			stack_pos = arg_entry
-		field_index = 1
-		while (accept(c",")):
-			arg_type = expression()
-			arg_type = promote(arg_type)
-			new_store_field(base, field_index, arg_type, stack_pos - arg_entry)
-			if (stack_pos > arg_entry):
-				be_pop(stack_pos - arg_entry)
-				stack_pos = arg_entry
-			field_index = field_index + 1
+		int field_index = ctor_field_args(base)
 		if (peek(c")") == 0):
 			error(c"')' expected in constructor")
-		if (field_index != type_num_args(base)):
+		if ((field_index >= 0) && (field_index != type_num_args(base))):
 			diag_part(c"warning: ")
 			diag_part(type_get_name(base))
 			diag_part(c" constructor expects ")
@@ -436,33 +467,13 @@ int unary_expression_operand():
 
 		if (has_parens):
 			if (accept(c")") == 0):
-				# Constructor arguments: keep the allocation address on the
-				# stack while each argument expression runs, storing every
-				# result into its field. An argument that parks a temp on
-				# the stack (a struct-value constructor or a
-				# struct-returning call) buries the saved address; the
-				# store reads it esp-relative and the leak is popped so
-				# the next argument sees the address on top again.
+				# Keep the allocation address on the stack while the
+				# field initializers run
 				push_eax()
 				stack_pos = stack_pos + 1
-				int arg_entry = stack_pos
-				int arg_type = expression()
-				arg_type = promote(arg_type)
-				new_store_field(base, 0, arg_type, stack_pos - arg_entry)
-				if (stack_pos > arg_entry):
-					be_pop(stack_pos - arg_entry)
-					stack_pos = arg_entry
-				int field_index = 1
-				while (accept(c",")):
-					arg_type = expression()
-					arg_type = promote(arg_type)
-					new_store_field(base, field_index, arg_type, stack_pos - arg_entry)
-					if (stack_pos > arg_entry):
-						be_pop(stack_pos - arg_entry)
-						stack_pos = arg_entry
-					field_index = field_index + 1
+				int field_index = ctor_field_args(base)
 				expect(c")")
-				if (field_index != type_num_args(base)):
+				if ((field_index >= 0) && (field_index != type_num_args(base))):
 					diag_part(c"warning: new ")
 					diag_part(type_get_name(base))
 					diag_part(c" expects ")
