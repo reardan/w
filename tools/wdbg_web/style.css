@@ -128,6 +128,11 @@ summary { font-weight: 600; cursor: pointer; padding: 2px 0; }
 #core dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; font-family: var(--code); font-size: 12px; margin: 4px 0; }
 #core dt { color: var(--muted); }
 #core dd { margin: 0; overflow-wrap: anywhere; }
+body.core-only #controls,
+body.core-only #side > details:not(#core-panel),
+body.core-only #console-pane { display: none; }
+body.core-only main { grid-template-rows: minmax(0, 1fr); }
+body.core-only #side { grid-row: 1; }
 @media (max-width: 760px) {
 	main { grid-template-columns: 1fr; grid-template-rows: minmax(260px, 1fr) auto minmax(160px, 30%); }
 	#side { grid-row: auto; grid-column: auto; }

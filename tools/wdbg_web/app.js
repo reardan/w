@@ -301,6 +301,9 @@ async function refreshState() {
 	document.title = 'wdbg ' + (st.program ? basename(st.program) : '');
 	renderFilePicker();
 	setState(st.state);
+	// --core without a program: a post-mortem view, no live session.
+	document.body.classList.toggle('core-only', st.has_core && !st.program);
+	if (st.has_core && !st.program) $('state').textContent = 'core dump';
 	if (st.has_core) await loadCore();
 	return st;
 }
@@ -414,7 +417,7 @@ async function start() {
 		await refreshInspect();
 		const pending = await api('/api/poll');
 		consoleWrite(pending.output);
-		setState(pending.state);
+		if (!document.body.classList.contains('core-only')) setState(pending.state);
 	} catch (e) {
 		consoleWrite(e.message + '\n', 'err');
 		setState('none');
