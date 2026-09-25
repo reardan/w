@@ -1,6 +1,6 @@
 # wbuild: target=deps_test tag=tests dep=wv2
 # wbuild: step="bin/wv2 deps tests/deps_fixture.w" stdout_file="bin/deps_test.out"
-# wbuild: step="diff -u - bin/deps_test.out" stdin="structures/hash_table.w\nlib/memory.w\nlib/linux.w\ncode_generator/integer.w\nlib/__arch__/x86/syscalls.w\nlib/memory_freelist.w\nlib/memory_debug.w\nlib/stack_trace.w\nstructures/w_list.w\ntests/deps_fixture.w\nlib/lib.w\nlib/__arch__/x86/context.w\nlib/assert.w\nstructures/prelude.w\n"
+# wbuild: step="diff -u - bin/deps_test.out" stdin="structures/hash_table.w\nlib/memory.w\nlib/linux.w\ncode_generator/integer.w\nlib/__arch__/x86/syscalls.w\nlib/memory_freelist.w\nlib/memory_debug.w\nlib/stack_trace.w\nstructures/w_list.w\ntests/deps_fixture.w\nlib/lib.w\nlib/hex.w\nlib/__arch__/x86/context.w\nlib/assert.w\nstructures/prelude.w\n"
 # wbuild: step="bin/wv2 deps --json tests/deps_fixture.w" expect_stdout="{\"file\": \"tests/deps_fixture.w\"}" expect_stdout="{\"file\": \"lib/assert.w\"}" expect_stdout="{\"file\": \"structures/hash_table.w\"}"
 # wbuild: step="bin/wv2 deps tests/type_system_error_fixture.w" expect_fail expect_stderr="assignment to const"
 # wbuild: step="bin/wv2 deps" expect_fail expect_stderr="usage: w deps"
