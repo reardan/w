@@ -154,22 +154,15 @@ int dbg_number(char* s):
 	return atoi(s)
 
 
+# A bare name: the tokenizer's identifier byte classes (ASCII plus UTF-8
+# lead bytes, #287) with continuation bytes allowed after the first.
 int dbg_is_identifier(char* s):
-	if (s[0] == 0):
+	if (is_ident_start_byte(s[0]) == 0):
 		return 0
-	int i = 0
+	int i = 1
 	while (s[i]):
-		int c = s[i]
-		int ok = 0
-		if (('a' <= c) && (c <= 'z')):
-			ok = 1
-		if (('A' <= c) && (c <= 'Z')):
-			ok = 1
-		if (c == '_'):
-			ok = 1
-		if ((i > 0) && ('0' <= c) && (c <= '9')):
-			ok = 1
-		if (ok == 0):
+		int c = s[i] & 255
+		if ((is_ident_part_byte(c) == 0) && ((c < 128) || (c > 191))):
 			return 0
 		i = i + 1
 	return 1

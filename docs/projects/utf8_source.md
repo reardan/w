@@ -498,5 +498,8 @@ Still open, deliberately:
 - Trojan Source in comments and string literals: bidi controls are
   rejected in identifiers only. A warning for U+202A-U+202E /
   U+2066-U+2069 anywhere in a source file is a small, separate change.
-- The debugger's expression reader (`debugger/attach_eval.w`,
-  `debugger/wdbg.w`) still reads ASCII names only.
+- ~~The debugger's expression reader still reads ASCII names only.~~
+  Done: `debugger/wdbg.w`'s `dbg_is_identifier` and
+  `debugger/attach_eval.w`'s `aev_is_ident_char` accept UTF-8 lead and
+  continuation bytes (`p größe` in `debug_test`, `p zähler` in
+  `attach_test`).
