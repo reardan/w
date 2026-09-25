@@ -91,12 +91,22 @@ int aev_peek_char():
 	return aev_text[aev_pos] & 255
 
 
+# ASCII letters, digits, '_', plus any UTF-8 lead (0xC2-0xF4) or
+# continuation (0x80-0xBF) byte, so a UTF-8 name reads as one word the
+# way compiler/tokenizer.w lexes it (#287). The compiler already
+# validated the name when the debuggee was built; this reader only has
+# to match it byte for byte against the symbol table.
 int aev_is_ident_char(int c):
+	c = c & 255
 	if ((c >= 'a') && (c <= 'z')):
 		return 1
 	if ((c >= 'A') && (c <= 'Z')):
 		return 1
 	if ((c >= '0') && (c <= '9')):
+		return 1
+	if ((c >= 128) && (c <= 191)):
+		return 1
+	if ((c >= 194) && (c <= 244)):
 		return 1
 	return c == '_'
 

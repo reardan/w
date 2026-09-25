@@ -15,6 +15,8 @@ struct at_pair:
 at_pair attach_pair
 at_pair* attach_pair_ref
 int* attach_items
+# A UTF-8 global name for the attach-mode expression reader (#287)
+int zähler
 
 # A nested call with a local in each frame, so the attach test can exercise
 # args/locals inspection and frame selection (#123 phase 5) against a real
@@ -53,6 +55,7 @@ int main(int argc, int argv):
 	attach_items[2] = 333
 	attach_items[3] = 444
 	attach_counter = 1000
+	zähler = 777
 	while (1):
 		attach_counter = slow_step(attach_counter)
 		int j = 0

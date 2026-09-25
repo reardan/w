@@ -225,6 +225,9 @@ run_case "eval: set through a field" "$FIXTURE_SRC" 'set attach_pair.second 42\n
 # In-target calls are rejected with a clear diagnostic, not silently 0.
 run_case "eval: function calls rejected" "$FIXTURE_SRC" 'p bump(3)\ndetach\n' "function calls are not supported in attach mode"
 
+# UTF-8 names are one word to the expression reader (#287).
+run_case "eval: UTF-8 global name" "$FIXTURE_SRC" 'p zähler\ndetach\n' "zähler = 777"
+
 # --- hardware watchpoints (DR0-DR3; #123's last remaining phase) ---
 # Native x86/x86-64 only: the debug registers are real hardware state
 # (PTRACE_PEEKUSER/POKEUSER on the user area), which qemu-user does not
