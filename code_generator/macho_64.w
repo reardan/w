@@ -185,15 +185,9 @@ void macho_start_arm64():
 	# symbol addressing, the data split and the rebase machinery behave
 	# identically (see the file comment for why this may differ from the
 	# header's 0x100000000).
-	base_code_offset = 134512640 /* 0x08048000 */
-	code_offset = base_code_offset
-
-	# The read-write data segment loads 16 MB above the image, matching
-	# elf_start_arm64; global-variable storage is emitted here.
-	data_offset = base_code_offset + 16777216 /* +0x1000000 */
-	datapos = 0
-	data_size = 4096
-	data = malloc(data_size)
+	# The read-write data segment loads 16 MB above the image (image_begin),
+	# matching elf_start_arm64.
+	image_begin(134512640) /* 0x08048000 */
 
 	# mach_header_64
 	emit_int32(op(0xfe, 0xedfacf))  /* magic MH_MAGIC_64 */
@@ -349,20 +343,7 @@ void macho_finish_arm64():
 	# data cell it lists has been reserved.
 	arm64_emit_rebase_table()
 
-	int t = sym_address(c"_main")
-	if (t == 0):
-		t = sym_address(c"main")
-	if (t == 0):
-		# 'w check' on a main-less library module: not an error, and the
-		# entry bl stays unpatched (the output is discarded)
-		if (entry_optional == 0):
-			error(c"Failed to find a _main() function. Did you import lib/testing?")
-
-	if (t != 0):
-		# Patch the bl: imm26 = (target - bl_vaddr) / 4.
-		int bl_vaddr = code_offset + arm64_entry_bl_pos
-		int offset = t - bl_vaddr
-		save_int32(code + arm64_entry_bl_pos, op(0x94, 0x000000) | ((offset >> 2) & op(0x03, 0xffffff)))
+	arm64_patch_entry_bl(entry_symbol(0))
 
 	# __text: from the entry stub to the end of the code.
 	macho_text_limit = codepos

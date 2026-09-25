@@ -634,18 +634,7 @@ void wasm_finish():
 	# Entry selection, mirroring the PE writer: __w_wasm_start (the WASI
 	# runtime startup, which rebuilds real argc/argv) when _main exists
 	# for it to chain to; otherwise _main / main directly.
-	int t = 0
-	if (sym_address(c"_main") != 0):
-		t = sym_address(c"__w_wasm_start")
-	if (t == 0):
-		t = sym_address(c"_main")
-	if (t == 0):
-		t = sym_address(c"main")
-	if (t == 0):
-		# 'w check' on a main-less library module: not an error, and the
-		# entry slot stays unpatched (the output is discarded)
-		if (entry_optional == 0):
-			error(c"Failed to find a _main() function. Did you import lib/testing?")
+	int t = entry_symbol(c"__w_wasm_start")
 	if (t != 0):
 		wasm_addr_slot_write(wasm_entry_slot_pos, t)
 
