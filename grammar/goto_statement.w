@@ -147,8 +147,7 @@ void goto_adjust_stack(int from, int to):
 
 
 int goto_name_is_ident(char* s):
-	int c0 = s[0]
-	return (('a' <= c0) && (c0 <= 'z')) || (('A' <= c0) && (c0 <= 'Z')) || (c0 == '_')
+	return is_ident_start_byte(s[0])
 
 
 # goto identifier ;

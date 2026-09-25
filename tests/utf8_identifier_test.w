@@ -88,3 +88,12 @@ void test_ascii_prefix_is_not_a_separate_token():
 	int caf = 1
 	int café = 2
 	assert_equal(3, caf + café)
+
+
+void test_goto_label():
+	int n = 0
+	goto ziel
+	n = 100
+	ziel:
+	n = n + 1
+	assert_equal(1, n)
