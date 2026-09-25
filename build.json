@@ -2148,6 +2148,8 @@
 				"graphics_ui_widgets_test",
 				"hash_table_64_test",
 				"heap_64_test",
+				"hpack_64_test",
+				"http2_64_test",
 				"http_client_64_test",
 				"http_server_64_test",
 				"http_server_route_64_test",
@@ -2764,6 +2766,8 @@
 				"heap_test",
 				"hkdf_test",
 				"hmac_test",
+				"hpack_test",
+				"http2_test",
 				"http_client_test",
 				"http_server_route_test",
 				"http_server_test",
@@ -4744,6 +4748,46 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/hmac_test.w", "-o", "bin/hmac_test"]},
 				{"cmd": ["bin/hmac_test"]}
+			]
+		},
+		{
+			"name": "hpack_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/hpack_test.w"],
+			"outputs": ["bin/hpack_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/hpack_test.w", "-o", "bin/hpack_64_test"]},
+				{"cmd": ["bin/hpack_64_test"]}
+			]
+		},
+		{
+			"name": "hpack_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/hpack_test.w"],
+			"outputs": ["bin/hpack_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/hpack_test.w", "-o", "bin/hpack_test"]},
+				{"cmd": ["bin/hpack_test"]}
+			]
+		},
+		{
+			"name": "http2_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http2_test.w"],
+			"outputs": ["bin/http2_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/http2_test.w", "-o", "bin/http2_64_test"]},
+				{"cmd": ["bin/http2_64_test"]}
+			]
+		},
+		{
+			"name": "http2_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http2_test.w"],
+			"outputs": ["bin/http2_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/http2_test.w", "-o", "bin/http2_test"]},
+				{"cmd": ["bin/http2_test"]}
 			]
 		},
 		{
