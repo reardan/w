@@ -68,6 +68,7 @@ Other useful targets:
 
 ```sh
 ./wbuild wdbg        # build the in-process debugger (bin/wdbg)
+./wbuild wdbg_web    # browser debugger: bin/wdbg_web file.w prints an https URL
 ./wbuild verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
                      # the first cmp also proves output is host-word-size independent
 ./wbuild warning_test  # asserts the compiler's type/style warnings
@@ -294,6 +295,11 @@ Toolchain beyond the compiler:
   fly W expression, `set`, `x`, `backtrace`, `list`, `info locals|args|...`,
   `registers`, `stack`. SIGSEGV and friends stop for post-mortem inspection.
   See `docs/debugging.txt` and the `debug_test` target.
+- **Web debugger** (`./wbuild wdbg_web`): `./bin/wdbg_web file.w` runs
+  `wdbg` behind a local https server and prints `https://127.0.0.1:PORT/?code=...`
+  to open: source view with a breakpoint gutter, step/next/finish controls,
+  locals/args/backtrace/breakpoint panes and a wdbg console. `--core <core>`
+  shows a `wcore` report instead. See `docs/projects/wdbg_web.md`.
 - **Runtime stack traces** (`lib/stack_trace.w`): assertion failures
   (`lib/assert.w`) and container traps (missing map key, list index out of
   range, pop on empty list) print a symbolized stack trace to stderr —
