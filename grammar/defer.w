@@ -126,9 +126,7 @@ void defer_reparse_start(int i):
 	char* path = defer_spans[i].file
 	file = open(path, 0, 511)
 	if (file < 0):
-		diag_part(c"cannot reopen deferred statement file '")
-		diag_part(path)
-		error(c"'")
+		error3(c"cannot reopen deferred statement file '", path, c"'")
 	filename = path
 	getchar_reset(file)
 	getchar_seek(file, defer_spans[i].offset)
@@ -167,8 +165,6 @@ void defer_emit_all():
 void defer_emit_returning():
 	if (defer_count() == 0):
 		return;
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	defer_emit_all()
-	pop_eax()
-	stack_pos = stack_pos - 1
+	pop_eax_slot()

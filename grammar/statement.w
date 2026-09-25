@@ -40,29 +40,8 @@ int gpu_for_statement(); /* defined in gpu_for */
 
 
 void copy_struct_return_value(int declared_type):
-	int words = (type_get_size(declared_type) + word_size - 1) >> word_size_log2
 	mov_ebx_esp_plus((stack_pos + number_of_args) << word_size_log2)
-	push_ebx()
-	stack_pos = stack_pos + 1
-	push_eax()
-	stack_pos = stack_pos + 1
-	int i = 0
-	while (i < words):
-		mov_eax_esp_plus(0)
-		if (i > 0):
-			add_eax_int32(i << word_size_log2)
-		promote_eax()
-		if (i > 0):
-			add_ebx_int32(word_size)
-		store_ebx_word()
-		i = i + 1
-	pop_eax()
-	stack_pos = stack_pos - 1
-	pop_ebx()
-	stack_pos = stack_pos - 1
-	if (type_has_array_field(declared_type)):
-		mov_eax_ebx()
-		init_array_field_descriptors(declared_type)
+	struct_copy_eax_to_ebx(declared_type)
 
 # Postfix '?' error propagation (docs/error_results.txt). The operand
 # must be a wresult[T]* — a pointer to an instantiated generic struct
@@ -105,20 +84,15 @@ int result_propagate_suffix(int type):
 	type = promote(type)
 	int base = result_propagate_struct(type)
 	if (base < 0):
-		diag_part(c"'?' requires a wresult[...]* operand, got '")
-		print_error_type(type)
-		error(c"'")
+		error_type(c"'?' requires a wresult[...]* operand, got '", type, c"'")
 	int declared_type = load_int(table + current_function_symbol + 6)
 	if (result_propagate_struct(declared_type) < 0):
-		diag_part(c"'?' requires the enclosing function to return a wresult[...]*, got '")
-		print_error_type(declared_type)
-		error(c"'")
+		error_type(c"'?' requires the enclosing function to return a wresult[...]*, got '", declared_type, c"'")
 	int payload_type = type_get_field_type(base, c"value")
 	if (payload_type < 0):
 		error(c"'?' operand struct has no 'value' field")
 	# eax holds the wresult pointer; keep it while testing the ok flag
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	promote_eax() /* load r.ok: an int at field offset 0 */
 	int h_ok = be_ctrl_block()
 	be_br_nonzero(h_ok)
@@ -135,8 +109,7 @@ int result_propagate_suffix(int type):
 	be_return(stack_pos)
 	be_ctrl_end(h_ok)
 	# Ok path: eax = address of the payload field
-	pop_eax()
-	stack_pos = stack_pos - 1
+	pop_eax_slot()
 	int value_offset = type_get_field_offset(base, c"value")
 	if (value_offset > 0):
 		add_eax_int32(value_offset)
@@ -237,8 +210,7 @@ void statement():
 			defer_emit_all()
 		lint_scope_exit(n)
 		table_pos = n
-		be_pop(stack_pos - s)
-		stack_pos = s
+		pop_to(s)
 	}
 
 	# : statement-list-tab-scoped
@@ -273,8 +245,7 @@ void statement():
 		lint_scope_exit(n)
 		table_pos = n
 		print_int_v1(c"ending stack_pos: ", stack_pos)
-		be_pop(stack_pos - s)
-		stack_pos = s
+		pop_to(s)
 
 	# type-name identifier
 	else if (variable_declaration() >= 0):
@@ -337,9 +308,7 @@ void statement():
 					warn_type_mismatch(c"return", declared_type, return_type)
 				copy_struct_return_value(declared_type)
 			else:
-				coerce(declared_type, return_type)
-				if (types_compatible_with_expression(declared_type, return_type) == 0):
-					warn_type_mismatch(c"return", declared_type, return_type)
+				coerce_checked(declared_type, return_type, c"return")
 		expect_or_newline(c";")
 		if (in_generator_body):
 			# Free the suspended generators of enclosing for-in loops
@@ -366,9 +335,7 @@ void statement():
 		int yield_type = expression()
 		yield_type = promote(yield_type)
 		int declared_yield_type = load_int(table + current_function_symbol + 6)
-		coerce(declared_yield_type, yield_type)
-		if (types_compatible_with_expression(declared_yield_type, yield_type) == 0):
-			warn_type_mismatch(c"yield", declared_yield_type, yield_type)
+		coerce_checked(declared_yield_type, yield_type, c"yield")
 		expect_or_newline(c";")
 		emit_generator_yield_call()
 

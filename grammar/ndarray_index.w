@@ -47,6 +47,9 @@ tests/ until a SEEDS bump (docs/release.md).
 int expression();
 int promote(int type);
 void coerce(int want, int got);
+void coerce_checked(int want, int got, char* context);
+int parse_coerced(int want, char* context);
+void error_type(char* prefix, int type_index, char* suffix);
 int types_compatible_with_expression(int want, int got);
 void warn_type_mismatch(char* context, int want, int got);
 void print_error_type(int type_index);
@@ -121,9 +124,7 @@ int ndarray_accessor_sym(char* op):
 	char* name = ndarray_accessor_name(op)
 	int sym = sym_lookup(name)
 	if (sym < 0):
-		diag_part(c"ndarray index requires accessor '")
-		diag_part(name)
-		error(c"' in scope")
+		error3(c"ndarray index requires accessor '", name, c"' in scope")
 	free(name)
 	return sym
 
@@ -133,21 +134,7 @@ int ndarray_accessor_sym(char* op):
 # call would.
 void ndarray_check_index(int got_type):
 	int int_type = type_lookup(c"int")
-	coerce(int_type, got_type)
-	if (types_compatible_with_expression(int_type, got_type) == 0):
-		warn_type_mismatch(c"ndarray index", int_type, got_type)
-
-
-# Push the parked receiver and index slots as call arguments, oldest
-# first (the accessors' parameter order).
-void nd_push_index_args(int recv_slot, int slot0, int slot1, int slot2, int slot3, int count):
-	hash_push_stack_slot(recv_slot)
-	hash_push_stack_slot(slot0)
-	hash_push_stack_slot(slot1)
-	if (count >= 3):
-		hash_push_stack_slot(slot2)
-	if (count >= 4):
-		hash_push_stack_slot(slot3)
+	coerce_checked(int_type, got_type, c"ndarray index")
 
 
 # base[i, j(, k(, l))]: entered from the '[' handler in
@@ -158,13 +145,9 @@ void nd_push_index_args(int recv_slot, int slot0, int slot1, int slot2, int slot
 int ndarray_index_suffix(int type, int recv_slot, int first_index_type):
 	int nd_struct = ndarray_index_struct(type)
 	if (nd_struct < 0):
-		diag_part(c"comma-separated indexing requires an ndarray or matrix (ndf, ndi, ndf64 or matrix), got '")
-		print_error_type(type)
-		error(c"'")
+		error_type(c"comma-separated indexing requires an ndarray or matrix (ndf, ndi, ndf64 or matrix), got '", type, c"'")
 	ndarray_check_index(first_index_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int slot0 = stack_pos
+	int slot0 = push_slot()
 	int slot1 = 0
 	int slot2 = 0
 	int slot3 = 0
@@ -174,8 +157,7 @@ int ndarray_index_suffix(int type, int recv_slot, int first_index_type):
 			error(c"ndarray index supports at most 4 indices")
 		int got = promote(expression())
 		ndarray_check_index(got)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		if (count == 1):
 			slot1 = stack_pos
 		else if (count == 2):
@@ -203,61 +185,47 @@ int ndarray_index_suffix(int type, int recv_slot, int first_index_type):
 	return load_int(table + at_sym + 6)
 
 
+# Take the parked receiver and index slots (grammar/pending_element.w),
+# oldest first: the accessors' parameter order.
+int* nd_pending_take():
+	int* park = park_new(nd_index_base_stack, nd_index_count + 1)
+	park[2] = nd_index_recv_slot
+	park[3] = nd_index_slot0
+	park[4] = nd_index_slot1
+	if (nd_index_count >= 3):
+		park[5] = nd_index_slot2
+	if (nd_index_count >= 4):
+		park[6] = nd_index_slot3
+	nd_index_pending = 0
+	return park
+
+
 # Read position: lower the pending element to ndX_atN(recv, i...). The
 # call result (the element value) stays in eax.
 int nd_finish_pending_read():
 	int at_sym = ndarray_accessor_sym(c"_at")
 	int declared_return = load_int(table + at_sym + 6)
-	nd_index_pending = 0
 	char* at_name = ndarray_accessor_name(c"_at")
-	sym_get_value(at_name)
+	park_load(nd_pending_take(), at_name)
 	free(at_name)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	nd_push_index_args(nd_index_recv_slot, nd_index_slot0, nd_index_slot1, nd_index_slot2, nd_index_slot3, nd_index_count)
-	hash_call_finish(s)
-	be_pop(stack_pos - nd_index_base_stack)
-	stack_pos = nd_index_base_stack
 	return type_value(declared_return)
 
 
 # m[i, j] = rhs: lower to ndX_setN(recv, i..., rhs). Like '=', the
 # expression yields the stored value.
 int nd_finish_pending_assignment():
-	int saved_recv = nd_index_recv_slot
-	int saved_slot0 = nd_index_slot0
-	int saved_slot1 = nd_index_slot1
-	int saved_slot2 = nd_index_slot2
-	int saved_slot3 = nd_index_slot3
-	int saved_count = nd_index_count
-	int saved_base = nd_index_base_stack
 	int set_sym = ndarray_accessor_sym(c"_set")
 	char* set_name = ndarray_accessor_name(c"_set")
-	nd_index_pending = 0
 	# The value parameter follows the receiver and the indices.
-	int value_type = sym_param_type(set_sym, saved_count + 1)
-	int got_type = expression()
-	got_type = promote(got_type)
+	int value_type = sym_param_type(set_sym, nd_index_count + 1)
+	int* park = nd_pending_take()
+	int got_type = promote(expression())
 	if (value_type >= 0):
-		coerce(value_type, got_type)
-		if (types_compatible_with_expression(value_type, got_type) == 0):
-			warn_type_mismatch(c"ndarray assignment", value_type, got_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
-	sym_get_value(set_name)
+		coerce_checked(value_type, got_type, c"ndarray assignment")
+	int value_slot = push_slot()
+	int result = park_store(park, set_name, value_slot, value_type)
 	free(set_name)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	nd_push_index_args(saved_recv, saved_slot0, saved_slot1, saved_slot2, saved_slot3, saved_count)
-	hash_push_stack_slot(value_slot)
-	hash_call_finish(s)
-	mov_eax_esp_plus((stack_pos - value_slot) << word_size_log2)
-	be_pop(stack_pos - saved_base)
-	stack_pos = saved_base
-	return type_value(value_type)
+	return result
 
 
 # m[i, j] op= rhs: the receiver and indices already sit in the parked
@@ -265,60 +233,15 @@ int nd_finish_pending_assignment():
 # every operand is evaluated exactly once. 'op' is the marker
 # compound_assign_op() returned; the op token has been consumed.
 int nd_finish_pending_compound(int op):
-	int saved_recv = nd_index_recv_slot
-	int saved_slot0 = nd_index_slot0
-	int saved_slot1 = nd_index_slot1
-	int saved_slot2 = nd_index_slot2
-	int saved_slot3 = nd_index_slot3
-	int saved_count = nd_index_count
-	int saved_base = nd_index_base_stack
 	int at_sym = ndarray_accessor_sym(c"_at")
-	int set_sym = ndarray_accessor_sym(c"_set")
+	ndarray_accessor_sym(c"_set")  # the write accessor must exist too
 	int value_type = load_int(table + at_sym + 6)
 	char* at_name = ndarray_accessor_name(c"_at")
 	char* set_name = ndarray_accessor_name(c"_set")
-	nd_index_pending = 0
-
-	# Load the current element; the parked slots stay for the store.
-	sym_get_value(at_name)
+	int result = park_compound(nd_pending_take(), op, value_type, c"ndarray assignment", at_name, set_name)
 	free(at_name)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	nd_push_index_args(saved_recv, saved_slot0, saved_slot1, saved_slot2, saved_slot3, saved_count)
-	hash_call_finish(s)
-
-	# Same shape the scalar path feeds compound_assign_apply: loaded
-	# left value on top of the stack, promoted right value in eax.
-	int left_type = type_value(value_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int right_type = promote(expression())
-	if (var_binary_operands(left_type, right_type)):
-		error(c"compound assignment does not support var operands")
-	int result_type = compound_assign_apply(op, left_type, right_type)
-	coerce(value_type, result_type)
-	if (types_compatible_with_expression(value_type, result_type) == 0):
-		warn_type_mismatch(c"ndarray assignment", value_type, result_type)
-
-	# Store back through the same receiver/index slots.
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
-	sym_get_value(set_name)
 	free(set_name)
-	s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	nd_push_index_args(saved_recv, saved_slot0, saved_slot1, saved_slot2, saved_slot3, saved_count)
-	hash_push_stack_slot(value_slot)
-	hash_call_finish(s)
-
-	# Like '=', the expression yields the stored value.
-	mov_eax_esp_plus((stack_pos - value_slot) << word_size_log2)
-	be_pop(stack_pos - saved_base)
-	stack_pos = saved_base
-	return type_value(value_type)
+	return result
 
 
 int nd_finalize_pending_read_if_needed(int type):

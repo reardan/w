@@ -34,17 +34,13 @@ void var_emit_helper_address(int i):
 # Call helper i with the single argument in eax; the result stays in eax.
 void var_emit_call1(int i):
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
+	int value_slot = push_slot()
 	var_emit_helper_address(i)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(value_slot)
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	push_slot()
+	push_slot_copy(value_slot)
+	rt_call_end(s)
+	pop_to(base_stack)
 
 
 void var_box_unsupported(int t):
@@ -62,9 +58,7 @@ void var_box_unsupported(int t):
 
 
 void var_unbox_unsupported(int t):
-	diag_part(c"cannot convert var to '")
-	print_error_type(t)
-	error(c"'")
+	error_type(c"cannot convert var to '", t, c"'")
 
 
 # Box helper index for a promoted non-var value: 0 int-like (int,
@@ -129,36 +123,28 @@ int var_binary_operands(int left_type, int right_type):
 # with (left, right); the result stays in eax.
 void var_binary_call(int left_type, int right_type, int i):
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int right_value_slot = stack_pos
+	int right_value_slot = push_slot()
 	mov_eax_ebx()
 	if (type_is_var(type_unqualified(left_type)) == 0):
 		int left_helper = var_box_helper_for_type(left_type)
 		if (left_helper < 0):
 			var_box_unsupported(left_type)
 		var_emit_call1(left_helper)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int left_slot = stack_pos
-	mov_eax_esp_plus((stack_pos - right_value_slot) << word_size_log2)
+	int left_slot = push_slot()
+	load_slot(right_value_slot)
 	if (type_is_var(type_unqualified(right_type)) == 0):
 		int right_helper = var_box_helper_for_type(right_type)
 		if (right_helper < 0):
 			var_box_unsupported(right_type)
 		var_emit_call1(right_helper)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int right_slot = stack_pos
+	int right_slot = push_slot()
 	var_emit_helper_address(i)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(left_slot)
-	hash_push_stack_slot(right_slot)
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	push_slot()
+	push_slot_copy(left_slot)
+	push_slot_copy(right_slot)
+	rt_call_end(s)
+	pop_to(base_stack)
 
 
 # Runtime-dispatched + - * / when either operand is var: box the non-var
@@ -197,10 +183,8 @@ int var_binary_compare_order(int left_type, int right_type, int setcc_opcode):
 	if (var_binary_operands(left_type, right_type) == 0):
 		return 0
 	var_binary_call(left_type, right_type, 11)
-	push_eax()
-	stack_pos = stack_pos + 1
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	push_slot()
+	pop_ebx_slot()
 	mov_eax_int(0)
 	alu_cmp_set(setcc_opcode)
 	return type_value(bool_type)

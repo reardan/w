@@ -58,12 +58,8 @@ int pe_empty_args_vaddr
 int pe_exit_process_slot
 
 
-int pe_image_base():
-	return 4194304 /* 0x00400000 */
-
-
-int pe_file_align():
-	return 4096
+const int pe_image_base = 4194304 /* 0x00400000 */
+const int pe_file_align = 4096
 
 
 void pe_align(int a):
@@ -105,7 +101,7 @@ void pe_optional_header():
 	emit_int32(0) /* size of uninitialized data */
 	emit_int32(0) /* address of entry point OVERWRITTEN below in pe_start_64() */
 	emit_int32(4096) /* base of code */
-	emit_int64(pe_image_base()) /* image base */
+	emit_int64(pe_image_base) /* image base */
 	emit_int32(4096) /* section alignment */
 	emit_int32(4096) /* file alignment: equal, so RVA == file offset */
 	emit_int16(6) /* major OS version (Vista+) */
@@ -173,18 +169,12 @@ void pe_data_section_header():
 
 
 void pe_start_64():
-	base_code_offset = pe_image_base()
-	code_offset = base_code_offset
-
 	# The read-write data section loads 16 MB above the image base, clear
-	# of the code (same distance as the arm64 targets). IAT slots
-	# (dyn_emit_import_slot) and global-variable storage (grammar/program.w
-	# define_global_variable) are emitted here at data_offset + datapos;
-	# the win64 selector sets data_split (compiler/compiler.w).
-	data_offset = base_code_offset + 16777216 /* +0x1000000 */
-	datapos = 0
-	data_size = 4096
-	data = malloc(data_size)
+	# of the code (image_begin, the same distance as the arm64 targets).
+	# IAT slots (dyn_emit_import_slot) and global-variable storage are
+	# emitted there; the win64 selector sets data_split
+	# (compiler/compiler.w).
+	image_begin(pe_image_base)
 
 	pe_dos_header()
 	pe_coff_header()
@@ -351,18 +341,7 @@ void pe_finish_64():
 	# Entry function: _win_start (the win64 runtime startup, which
 	# parses the real command line) when _main exists for it to chain
 	# to; otherwise _main / main directly, mirroring elf_finish_64().
-	int t = 0
-	if (sym_address(c"_main") != 0):
-		t = sym_address(c"_win_start")
-	if (t == 0):
-		t = sym_address(c"_main")
-	if (t == 0):
-		t = sym_address(c"main")
-	if (t == 0):
-		# 'w check' on a main-less library module: not an error, and the
-		# entry call stays unpatched (the output is discarded)
-		if (entry_optional == 0):
-			error(c"Failed to find a _main() function. Did you import lib/testing?")
+	int t = entry_symbol(c"_win_start")
 	if (t != 0):
 		# rel32 = target - address of the instruction after the 5-byte call
 		t = t - code_offset - entry_call_disp_pos - 4
@@ -373,7 +352,7 @@ void pe_finish_64():
 	# loader zero-fills the gap, .bss-style), keeping the two sections
 	# virtually adjacent as the loader requires while .data's RVA stayed
 	# constant during code emission.
-	pe_align(pe_file_align())
+	pe_align(pe_file_align)
 	int text_raw_size = codepos - 4096
 	int data_rva = data_offset - base_code_offset
 	int text_virtual_size = data_rva - 4096
@@ -383,9 +362,9 @@ void pe_finish_64():
 	# padded end of the code (RVA != file offset for .data; nothing
 	# addresses it by file offset).
 	int data_virtual_size = datapos
-	int data_pad = datapos % pe_file_align()
+	int data_pad = datapos % pe_file_align
 	if (data_pad != 0):
-		emit_data_zeros(pe_file_align() - data_pad)
+		emit_data_zeros(pe_file_align - data_pad)
 	int data_raw_size = datapos
 
 	save_i(code + pe_opt_header_pos + 4, text_raw_size, 4) /* SizeOfCode */

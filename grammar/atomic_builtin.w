@@ -119,8 +119,7 @@ int atomic_builtin_expr():
 		int host_pointer_type = type_get_next_pointer(int_type)
 		limb_builtin_check_argument(name, 0, host_pointer_type, got)
 		coerce(host_pointer_type, got)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 
 	expect(c",")
 	if (kind == 4):
@@ -129,8 +128,7 @@ int atomic_builtin_expr():
 		# in eax and desired in ecx (the mul_wide/add_carry register
 		# plan from grammar/limb_builtin.w).
 		limb_builtin_int_argument(name, 1, int_type)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		expect(c",")
 		limb_builtin_int_argument(name, 2, int_type)
 		mov_ecx_eax()
@@ -145,8 +143,7 @@ int atomic_builtin_expr():
 			coerce(float32_type, value_type)
 		else:
 			coerce(int_type, value_type)
-		pop_ebx()
-		stack_pos = stack_pos - 1
+		pop_ebx_slot()
 		if (flavor == 2):
 			ptx_atomic_add_f32()
 		else:
@@ -155,8 +152,7 @@ int atomic_builtin_expr():
 			else:
 				alu_atomic_add()
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in ")
-		error(name)
+		error2(c"')' expected in ", name)
 	if (flavor == 2):
 		return float32_value_type
 	return type_value(int_type)

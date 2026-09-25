@@ -99,9 +99,7 @@ void dbg_disas_annotate(int addr):
 	int off = (addr - dbg_disas_delta) - dbg_sym_address(f)
 	if (off != 0):
 		print(c"+")
-		char* digits = itoa(off)
-		print(digits)
-		free(digits)
+		dbg_print_dec(off)
 	print(c">")
 
 
@@ -129,9 +127,7 @@ void dbg_disas_print(int addr, asm_insn* insn, int current):
 		print(c"=> ")
 	else:
 		print(c"   ")
-	char* h = hex_word(addr)
-	print(h)
-	free(h)
+	dbg_print_hex(addr)
 	print(c"  ")
 	char* text = asm_format(insn)
 	print(text)

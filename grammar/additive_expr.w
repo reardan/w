@@ -18,8 +18,7 @@ int additive_op(int type, int op):
 	int overload_type = operator_overload_binary(left_type, right_type, op, left_slot)
 	if (overload_type):
 		return overload_type
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	int result_type = var_binary_arithmetic(left_type, right_type, op)
 	if (result_type == 0):
 		result_type = float_binary_arithmetic(left_type, right_type, op)

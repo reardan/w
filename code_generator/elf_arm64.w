@@ -18,48 +18,17 @@ void define_asm_functions_arm64();   /* arm64_asm.w */
 void a64(int w);                     /* arm64.w */
 
 
-# Number of program headers: a read-execute text load, a read-write data
-# load (W^X, Stage 3), three reserved slots for future PT_INTERP /
-# PT_DYNAMIC dynamic-linking records, and the build-id PT_NOTE.
-int elf_phdr_count_arm64():
-	return 6
-
-
-void elf_header_arm64():
-	/* ElfHeader64: 48 bytes after the 16-byte ident */
-	int header_size = 48 + 16
-	int program_header_size = 56
-	int section_header_size = 64
-	emit_int16(2)   /* type: ET_EXEC */
-	emit_int16(183) /* machine: EM_AARCH64 */
-	emit_int32(1)   /* version */
-	emit_int64(base_code_offset + header_size + program_header_size * elf_phdr_count_arm64() + elf_build_id_note_size()) /* entry */
-	emit_int64(64)  /* program header offset */
-	emit_int64(0)   /* section header offset */
-	emit_int32(0)   /* flags */
-	emit_int16(header_size)
-	emit_int16(program_header_size)
-	emit_int16(elf_phdr_count_arm64())   /* number of program headers */
-	emit_int16(section_header_size)
-	emit_int16(0)   /* number of section headers */
-	emit_int16(0)   /* section header string table index */
-
-
-# One 64-bit program header with an explicit flags field (RX text = 5,
-# RW data = 6). offset/vaddr/filesz/memsz are patched in elf_finish_arm64.
-void elf_phdr_arm64(int type, int flags):
-	emit_int32(type)
-	emit_int32(flags)
-	emit_int64(0)                /* offset */
-	emit_int64(base_code_offset) /* vaddr */
-	emit_int64(base_code_offset) /* paddr */
-	emit_int64(0)                /* filesz */
-	emit_int64(0)                /* memsz */
-	emit_int64(4096)             /* align */
-
-
-# Codepos of the entry stub's `bl _main`, patched in elf_finish_arm64.
+# Codepos of the entry stub's `bl _main`, patched in elf_finish_arm64
+# and macho_finish_arm64.
 int arm64_entry_bl_pos
+
+
+# Patch the entry stub's bl to target t (0: no entry, left unpatched):
+# imm26 = (target - bl_vaddr) / 4.
+void arm64_patch_entry_bl(int t):
+	if (t != 0):
+		int offset = t - (code_offset + arm64_entry_bl_pos)
+		save_int32(code + arm64_entry_bl_pos, op(0x94, 0x000000) | ((offset >> 2) & op(0x03, 0xffffff)))
 
 # Codepos of the 8-byte literal in the entry stub that holds the rebase
 # table's linked vaddr; patched once the table's position is known
@@ -113,30 +82,7 @@ void arm64_emit_rebase_table():
 
 
 void elf_start_arm64():
-	base_code_offset = 134512640 /* 0x08048000 */
-	code_offset = base_code_offset
-
-	# The read-write data segment loads 16 MB above the image, clear of the
-	# code + section tables (~1.5 MB). Global-variable storage is emitted
-	# here (grammar/program.w define_global_variable) at data_offset+datapos.
-	data_offset = base_code_offset + 16777216 /* +0x1000000 */
-	datapos = 0
-	data_size = 4096
-	data = malloc(data_size)
-
-	elf_header(2)
-	elf_header_arm64()
-
-	# phdr[0] text (R+X), phdr[1] data (R+W); the next three stay PT_NULL
-	# until dynamic linking needs them; the last is the build-id PT_NOTE.
-	phdr_table_pos = codepos
-	elf_phdr_arm64(1, 5)
-	elf_phdr_arm64(0, 6)
-	elf_phdr_arm64(0, 0)
-	elf_phdr_arm64(0, 0)
-	elf_phdr_arm64(0, 0)
-	elf_phdr_arm64(0, 0)
-	elf_emit_build_id_note()
+	elf_image_headers(183, 1)
 
 	# Entry stub. The kernel enters with sp pointing at [argc][argv0]...;
 	# adopt sp as the W stack, push &argv[0] so _main(argc, argv) sees argc
@@ -171,40 +117,5 @@ void elf_finish_arm64():
 	# data cell it lists has been reserved.
 	arm64_emit_rebase_table()
 
-	int t = sym_address(c"_main")
-	if (t == 0):
-		t = sym_address(c"main")
-	if (t == 0):
-		# 'w check' on a main-less library module: not an error, and the
-		# entry bl stays unpatched (the output is discarded)
-		if (entry_optional == 0):
-			error(c"Failed to find a _main() function. Did you import lib/testing?")
-
-	if (t != 0):
-		# Patch the bl: imm26 = (target - bl_vaddr) / 4.
-		int bl_vaddr = code_offset + arm64_entry_bl_pos
-		int offset = t - bl_vaddr
-		save_int32(code + arm64_entry_bl_pos, op(0x94, 0x000000) | ((offset >> 2) & op(0x03, 0xffffff)))
-
-	# Text segment (phdr[0], R+X): offset 0, vaddr base, size = codepos.
-	save_int64(code + phdr_table_pos + 32, codepos)   /* p_filesz */
-	save_int64(code + phdr_table_pos + 40, codepos)   /* p_memsz */
-
-	if (datapos > 0):
-		# Place the data segment on its own file page after the code; its
-		# vaddr (data_offset) is already page-aligned and 16 MB above base,
-		# so (vaddr - file_offset) stays page-congruent as the loader
-		# requires. phdr[1] is the R+W data load.
-		int data_file_off = (codepos + 4095) & (0 - 4096)
-		int p = phdr_table_pos + 56
-		save_int32(code + p + 0, 1)              /* p_type = PT_LOAD */
-		save_int64(code + p + 8, data_file_off)  /* p_offset */
-		save_int64(code + p + 16, data_offset)   /* p_vaddr */
-		save_int64(code + p + 24, data_offset)   /* p_paddr */
-		save_int64(code + p + 32, datapos)       /* p_filesz */
-		save_int64(code + p + 40, datapos)       /* p_memsz */
-		# Pad the file to the data segment's page offset, then write code
-		# and data as two segments in one file.
-		while (codepos < data_file_off):
-			emit_int8(0)
-	elf_write_image()
+	arm64_patch_entry_bl(entry_symbol(0))
+	elf_patch_load_segments(1)

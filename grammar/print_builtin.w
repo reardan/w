@@ -166,32 +166,27 @@ int print_list_element_kind(int element_type):
 void print_emit_nl():
 	print_emit_helper_address(5)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_call_finish(s)
+	push_slot()
+	rt_call_end(s)
 
 
 # helper(value) with the value in the given stack slot
 void print_emit_call1(int helper, int value_slot):
 	print_emit_helper_address(helper)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(value_slot)
-	hash_call_finish(s)
+	push_slot()
+	push_slot_copy(value_slot)
+	rt_call_end(s)
 
 
 # __w_print_list(list, kind)
 void print_emit_call_list(int value_slot, int kind):
 	print_emit_helper_address(4)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(value_slot)
-	mov_eax_int(kind)
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_call_finish(s)
+	push_slot()
+	push_slot_copy(value_slot)
+	push_slot_int(kind)
+	rt_call_end(s)
 
 
 # print(expr) / println(expr): the builtin's name is the current token
@@ -214,9 +209,7 @@ int print_builtin_expr(int newline):
 	int helper = print_helper_for_type(got)
 	if (type_is_var(type_unqualified(got))):
 		var_emit_to_cstr()
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
+	int value_slot = push_slot()
 	if (helper < 0):
 		int element_type = type_list_element_type(type_unqualified(got))
 		print_emit_call_list(value_slot, print_list_element_kind(element_type))
@@ -224,8 +217,7 @@ int print_builtin_expr(int newline):
 		print_emit_call1(helper, value_slot)
 	if (newline):
 		print_emit_nl()
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	pop_to(base_stack)
 	return type_value(type_lookup(c"void"))
 
 
@@ -267,9 +259,8 @@ int prelude_input_expr():
 		error(c"the prelude input helpers take no arguments")
 	print_emit_helper_address(helper)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_call_finish(s)
+	push_slot()
+	rt_call_end(s)
 	if (helper == 8):
 		return type_value(type_get_list(type_lookup(c"int")))
 	if (helper >= 16):
@@ -367,11 +358,9 @@ int prelude_len_expr():
 		prelude_len_unsupported(got)
 	int t = type_unqualified(got)
 	if (type_is_char_pointer(t)):
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		print_emit_call1(12, stack_pos)
-		be_pop(stack_pos - base_stack)
-		stack_pos = base_stack
+		pop_to(base_stack)
 	else if (type_is_list(t) | type_is_map(t) | type_is_set(t) | type_is_buffer(t)):
 		add_eax_int32(word_size)
 		promote_eax()
@@ -404,18 +393,14 @@ int prelude_seq_expr(int helper):
 	expect(c"(")
 	int base_stack = stack_pos
 	print_emit_helper_address(helper)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	int got = expression()
 	got = promote(got)
 	prelude_seq_require_int_list(fn_name, got)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in prelude '")
-		diag_part(fn_name)
-		error(c"'")
-	hash_call_finish(base_stack)
+		error3(c"')' expected in prelude '", fn_name, c"'")
+	rt_call_end(base_stack)
 	free(fn_name)
 	return type_value(type_lookup(c"int"))
 
@@ -429,26 +414,21 @@ int prelude_math_call_expr(int helper):
 	expect(c"(")
 	int base_stack = stack_pos
 	print_emit_helper_address(helper)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	int got = expression()
 	got = promote(got)
 	prelude_math_require_int(fn_name, got)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	if (helper != 11):
 		# max and min take a second argument; abs takes exactly one
 		expect(c",")
 		got = expression()
 		got = promote(got)
 		prelude_math_require_int(fn_name, got)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in prelude '")
-		diag_part(fn_name)
-		error(c"'")
-	hash_call_finish(base_stack)
+		error3(c"')' expected in prelude '", fn_name, c"'")
+	rt_call_end(base_stack)
 	free(fn_name)
 	return type_value(type_lookup(c"int"))
 
@@ -517,9 +497,7 @@ int prelude_enum_name_expr():
 		value_type_error(c"enum_name argument must be an enum value, got", got)
 	if (peek(c")") == 0):
 		error(c"')' expected in enum_name")
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
+	int value_slot = push_slot()
 	int capacity = 16
 	char* table_text = malloc(capacity)
 	int length = 0
@@ -544,18 +522,14 @@ int prelude_enum_name_expr():
 	table_text[length] = 0
 	be_emit_inline_cstr(length, table_text)
 	free(table_text)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int table_slot = stack_pos
+	int table_slot = push_slot()
 	print_emit_helper_address(20)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(table_slot)
-	hash_push_stack_slot(value_slot)
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	push_slot()
+	push_slot_copy(table_slot)
+	push_slot_copy(value_slot)
+	rt_call_end(s)
+	pop_to(base_stack)
 	return type_value(type_lookup_pointer(c"char", 1))
 
 
@@ -576,9 +550,7 @@ int prelude_text_kind(int got):
 void prelude_str_unsupported(char* fn_name, char* what, int got):
 	diag_part(c"prelude '")
 	diag_part(fn_name)
-	diag_part(what)
-	print_error_type(got)
-	error(c"'")
+	error_type(what, got, c"'")
 
 
 # split(s) / split(s, ch) (s a char* or string; no ch = whitespace
@@ -591,19 +563,15 @@ int prelude_str_expr(int helper):
 	expect(c"(")
 	int base_stack = stack_pos
 	print_emit_helper_address(helper)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	int got = promote(expression())
 	int kind = 0
 	if (helper == 18):
 		kind = prelude_text_kind(got)
 		if (kind == 0):
 			prelude_str_unsupported(fn_name, c"' argument must be a char* or string: '", got)
-		push_eax()
-		stack_pos = stack_pos + 1
-		mov_eax_int(kind == 3)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
+		push_slot_int(kind == 3)
 		if (accept(c",")):
 			got = promote(expression())
 			prelude_math_require_int(fn_name, got)
@@ -614,24 +582,19 @@ int prelude_str_expr(int helper):
 			kind = prelude_text_kind(type_list_element_type(type_unqualified(got)))
 		if (kind == 0):
 			prelude_str_unsupported(fn_name, c"' argument must be a list of char* or string: '", got)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		expect(c",")
 		got = promote(expression())
 		int sep_kind = prelude_text_kind(got)
 		if (sep_kind == 0):
 			prelude_str_unsupported(fn_name, c"' separator must be a char* or string: '", got)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		# flags: bit 0 string pieces, bit 1 string separator
 		mov_eax_int((kind == 3) | ((sep_kind == 3) << 1))
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in prelude '")
-		diag_part(fn_name)
-		error(c"'")
-	hash_call_finish(base_stack)
+		error3(c"')' expected in prelude '", fn_name, c"'")
+	rt_call_end(base_stack)
 	free(fn_name)
 	if (helper == 18):
 		return type_value(type_get_list(type_lookup_pointer(c"char", 1)))

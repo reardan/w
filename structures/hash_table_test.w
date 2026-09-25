@@ -4,7 +4,7 @@ import structures.hash_table
 
 
 void test_map_word_keys():
-	__w_hash_table* m = __w_map_new(__w_hash_key_word(), __word_size__)
+	__w_hash_table* m = __w_map_new(__w_hash_key_word, __word_size__)
 	__w_map_set(m, 1, 10)
 	__w_map_set(m, 2, 20)
 	assert_equal(10, __w_map_get(m, 1))
@@ -16,7 +16,7 @@ void test_map_word_keys():
 
 
 void test_map_overwrite():
-	__w_hash_table* m = __w_map_new(__w_hash_key_word(), __word_size__)
+	__w_hash_table* m = __w_map_new(__w_hash_key_word, __word_size__)
 	__w_map_set(m, 7, 70)
 	__w_map_set(m, 7, 71)
 	assert_equal(71, __w_map_get(m, 7))
@@ -25,7 +25,7 @@ void test_map_overwrite():
 
 
 void test_map_growth_and_iteration():
-	__w_hash_table* m = __w_map_new(__w_hash_key_word(), __word_size__)
+	__w_hash_table* m = __w_map_new(__w_hash_key_word, __word_size__)
 	int i = 0
 	while (i < 200):
 		__w_map_set(m, i, i * 3)
@@ -50,7 +50,7 @@ void test_map_growth_and_iteration():
 
 
 void test_map_remove_tombstone():
-	__w_hash_table* m = __w_map_new(__w_hash_key_word(), __word_size__)
+	__w_hash_table* m = __w_map_new(__w_hash_key_word, __word_size__)
 	__w_map_set(m, 1, 10)
 	__w_map_set(m, 17, 170)
 	assert_equal(1, __w_map_remove(m, 1))
@@ -63,7 +63,7 @@ void test_map_remove_tombstone():
 
 
 void test_cstr_key_is_cloned():
-	__w_hash_table* m = __w_map_new(__w_hash_key_cstr(), __word_size__)
+	__w_hash_table* m = __w_map_new(__w_hash_key_cstr, __word_size__)
 	char* key = strclone(c"mutable")
 	__w_map_set(m, cast(int, key), 42)
 	key[0] = 'X'
@@ -73,7 +73,7 @@ void test_cstr_key_is_cloned():
 
 
 void test_string_key_contents():
-	__w_hash_table* m = __w_map_new(__w_hash_key_string(), __word_size__)
+	__w_hash_table* m = __w_map_new(__w_hash_key_string, __word_size__)
 	string one = s"alpha"
 	string two = s"alpha"
 	string other = s"beta"
@@ -84,7 +84,7 @@ void test_string_key_contents():
 
 
 void test_set_word_keys():
-	__w_hash_table* s = __w_set_new(__w_hash_key_word())
+	__w_hash_table* s = __w_set_new(__w_hash_key_word)
 	__w_set_add(s, 4)
 	__w_set_add(s, 4)
 	__w_set_add(s, 5)

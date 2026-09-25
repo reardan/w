@@ -134,9 +134,7 @@ int type_name():
 			type = type_lookup(token)
 			if (type < 0):
 				type_suggest_names(token)
-				diag_part(c"unknown type name: '")
-				diag_part(token)
-				error(c"'")
+				error3(c"unknown type name: '", token, c"'")
 		int checked_type = type_unqualified(type)
 		if ((checked_type == float64_type) && (word_size != 8)):
 			error(c"float64 requires the x64 target")

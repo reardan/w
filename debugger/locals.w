@@ -119,9 +119,7 @@ int dbg_local_runtime_addr(int i, int esp):
 
 
 void dbg_print_int_value(int v):
-	char* digits = itoa(v)
-	print(digits)
-	free(digits)
+	dbg_print_dec(v)
 	print(c" (")
 	char* h = hex(v)
 	print(h)
@@ -142,9 +140,7 @@ int dbg_type_is_string(int type):
 void dbg_print_typed_value(int addr, int type):
 	if (dbg_mem_readable(addr, __word_size__) == 0):
 		print(c"<unreadable at ")
-		char* h = hex_word(addr)
-		print(h)
-		free(h)
+		dbg_print_hex(addr)
 		print(c">")
 		return;
 	if ((type_get_pointer_level(type) == 0) & (type_num_args(type) > 0)):

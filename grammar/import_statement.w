@@ -140,9 +140,7 @@ void import_alias_register(char* name, char* path):
 		import_alias_paths = malloc(max_aliases * __word_size__)
 	assert1(import_alias_count < max_aliases)
 	if (import_alias_lookup(name) >= 0):
-		diag_part(c"duplicate import alias: '")
-		diag_part(name)
-		error(c"'")
+		error3(c"duplicate import alias: '", name, c"'")
 	save_ptr(import_alias_names + import_alias_count * __word_size__, cast(int, name))
 	save_ptr(import_alias_paths + import_alias_count * __word_size__, cast(int, path))
 	import_alias_count = import_alias_count + 1
@@ -204,9 +202,7 @@ void import_warn_unqualified(char* name):
 			if (import_plain_imported(file_path) == 0):
 				diag_part(c"warning: unqualified use of '")
 				diag_part(name)
-				diag_part(c"' from module imported as '")
-				diag_part(import_alias_name(i))
-				warning(c"'")
+				warning3(c"' from module imported as '", import_alias_name(i), c"'")
 			return;
 		i = i + 1
 
@@ -314,9 +310,7 @@ void import_warn_transitive(char* name):
 	import_transitive_mark_warned(cur_index, name)
 	diag_part(c"warning: symbol '")
 	diag_part(name)
-	diag_part(c"' resolves through a transitive import (defined in '")
-	diag_part(def_file)
-	warning(c"'); import it directly")
+	warning3(c"' resolves through a transitive import (defined in '", def_file, c"'); import it directly")
 
 
 # Type index of the type named `name` when it was declared in the
@@ -380,9 +374,7 @@ int import_alias_type_member(int alias_index):
 	int c = token[0]
 	int is_name = is_ident_start_byte(c)
 	if (is_name == 0):
-		diag_part(c"identifier expected after import alias '")
-		diag_part(import_alias_name(alias_index))
-		error(c"'")
+		error3(c"identifier expected after import alias '", import_alias_name(alias_index), c"'")
 	int t = import_alias_module_type(alias_index, token)
 	if (t >= 0):
 		return t
@@ -398,14 +390,10 @@ int import_alias_type_member(int alias_index):
 		if (type_lookup(token) < 0):
 			diag_part(c"'")
 			diag_part(token)
-			diag_part(c"' is a value, not a type, in module imported as '")
-			diag_part(import_alias_name(alias_index))
-			error(c"'")
+			error3(c"' is a value, not a type, in module imported as '", import_alias_name(alias_index), c"'")
 	diag_part(c"type '")
 	diag_part(token)
-	diag_part(c"' is not defined in module imported as '")
-	diag_part(import_alias_name(alias_index))
-	error(c"'")
+	error3(c"' is not defined in module imported as '", import_alias_name(alias_index), c"'")
 	return -1
 
 
@@ -419,9 +407,7 @@ int import_alias_member(int alias_index):
 	int c = token[0]
 	int is_name = is_ident_start_byte(c)
 	if (is_name == 0):
-		diag_part(c"identifier expected after import alias '")
-		diag_part(import_alias_name(alias_index))
-		error(c"'")
+		error3(c"identifier expected after import alias '", import_alias_name(alias_index), c"'")
 	int t = sym_lookup(token)
 	int in_module = 0
 	if (t >= 0):
@@ -431,9 +417,7 @@ int import_alias_member(int alias_index):
 	if (in_module == 0):
 		diag_part(c"symbol '")
 		diag_part(token)
-		diag_part(c"' is not defined in module imported as '")
-		diag_part(import_alias_name(alias_index))
-		error(c"'")
+		error3(c"' is not defined in module imported as '", import_alias_name(alias_index), c"'")
 	strcpy(last_identifier, token)
 	return sym_get_value(token)
 
@@ -541,9 +525,7 @@ void import_validate_alias(char* alias):
 		valid = is_ident_part_byte(c)
 		i = i + 1
 	if (valid == 0):
-		diag_part(c"invalid import alias: '")
-		diag_part(alias)
-		error(c"'")
+		error3(c"invalid import alias: '", alias, c"'")
 
 
 # Truncates a trailing '#' comment (and the spaces/tabs before it) off an
@@ -592,9 +574,7 @@ void import_lint_duplicate(char* resolved, char* spelling):
 		char* path = cast(char*, load_ptr(import_plain_paths + i * __word_size__))
 		if (strcmp(path, resolved) == 0):
 			if (lint_begin(line_number + 1, 1, c"duplicate-import")):
-				diag_part(c"warning: module '")
-				diag_part(spelling)
-				warning(c"' is already imported [duplicate-import]")
+				warning3(c"warning: module '", spelling, c"' is already imported [duplicate-import]")
 				lint_end()
 			return
 		i = i + 1
@@ -618,9 +598,7 @@ int import_statement():
 		if (ends_with(token, c".*")):
 			int len = strlen(token)
 			token[len - 2] = 0
-			diag_part(c"import wildcard '.*' is not supported (an import already makes the whole module visible); use 'import ")
-			diag_part(token)
-			error(c"'")
+			error3(c"import wildcard '.*' is not supported (an import already makes the whole module visible); use 'import ", token, c"'")
 
 		char* resolved = import_resolve(token)
 		if (alias == 0):

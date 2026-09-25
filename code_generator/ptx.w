@@ -856,6 +856,197 @@ int ptx_peep_find_spref(char* b, int ls, int le):
 	return 0 - 1
 
 
+# "ld.SFX %ax, [%ax];" -> suffix code, else 0.
+int ptx_prom_load_sfx(char* b, int s, int e):
+	if (ptx_peep_starts(b, s, e, c"ld.u64 %ax, [%ax];")):
+		return 1
+	if (ptx_peep_starts(b, s, e, c"ld.s32 %ax, [%ax];")):
+		return 2
+	if (ptx_peep_starts(b, s, e, c"ld.s16 %ax, [%ax];")):
+		return 3
+	if (ptx_peep_starts(b, s, e, c"ld.u16 %ax, [%ax];")):
+		return 4
+	if (ptx_peep_starts(b, s, e, c"ld.s8 %ax, [%ax];")):
+		return 5
+	if (ptx_peep_starts(b, s, e, c"ld.u32 %ax, [%ax];")):
+		return 6
+	if (ptx_peep_starts(b, s, e, c"ld.u8 %ax, [%ax];")):
+		return 7
+	return 0
+
+
+# "st.SFX [%bx], %ax;" -> suffix code, else 0.
+int ptx_prom_store_sfx(char* b, int s, int e):
+	if (ptx_peep_starts(b, s, e, c"st.u64 [%bx], %ax;")):
+		return 1
+	if (ptx_peep_starts(b, s, e, c"st.u32 [%bx], %ax;")):
+		return 6
+	if (ptx_peep_starts(b, s, e, c"st.u16 [%bx], %ax;")):
+		return 4
+	if (ptx_peep_starts(b, s, e, c"st.u8 [%bx], %ax;")):
+		return 7
+	return 0
+
+
+# An int table of n words (the post-passes' per-line and per-slot state).
+int* ptx_peep_ints(int n):
+	return cast(int*, malloc(n * __word_size__))
+
+
+int ptx_peep_count_lines(char* b, int n):
+	int lines = 0
+	int i = 0
+	while (i < n):
+		if (b[i] == 10):
+			lines = lines + 1
+		i = i + 1
+	return lines
+
+
+# Start offset of each of the body's lines.
+int* ptx_peep_line_starts(char* b, int n, int lines):
+	int* ls = ptx_peep_ints(lines)
+	int L = 0
+	int start = 0
+	int i = 0
+	while (i < n):
+		if (b[i] == 10):
+			ls[L] = start
+			L = L + 1
+			start = i + 1
+		i = i + 1
+	return ls
+
+
+# Offset of line L's terminating newline.
+int ptx_peep_line_end(int* ls, int L, int lines, int n):
+	if (L + 1 < lines):
+		return ls[L + 1] - 1
+	return n - 1
+
+
+# Operands of the most recently classified line: register char, number
+# (K or N), load/store suffix code.
+int ptx_peep_reg
+int ptx_peep_val
+int ptx_peep_sfx
+
+# Classifies line [s, e) for both post-passes. Kinds: 0 other,
+# 1 push-sub, 2 push-st (reg), 3 pop/peek-ld (reg), 4 sp-add (N in val),
+# 6 lea %ax,%sp,K, 7 label, 8 branch, 9 lea %ax,%bp,-K, 10 deref load
+# (sfx), 11 store via %bx (sfx), 50/51/52 direct [%sp+K]
+# unknown/load (reg)/store (reg), K in val.
+int ptx_peep_classify(char* b, int s, int e):
+	ptx_peep_reg = 0
+	ptx_peep_val = 0
+	ptx_peep_sfx = 0
+	if (ptx_peep_starts(b, s, e, c"sub.u64 %sp, %sp, 8;")):
+		return 1
+	if (ptx_peep_starts(b, s, e, c"st.u64 [%sp], %")):
+		ptx_peep_reg = b[s + 15]
+		return 2
+	if (ptx_peep_starts(b, s, e, c"ld.u64 %") && ptx_peep_starts(b, s + 9, e, c"x, [%sp];")):
+		ptx_peep_reg = b[s + 8]
+		return 3
+	if (ptx_peep_starts(b, s, e, c"ld.u64 %") && ptx_peep_starts(b, s + 9, e, c"x, [%sp+")):
+		ptx_peep_reg = b[s + 8]
+		ptx_peep_val = ptx_peep_num(b, s + 17)
+		return 51
+	if (ptx_peep_starts(b, s, e, c"st.u64 [%sp+")):
+		ptx_peep_val = ptx_peep_num(b, s + 12)
+		int i = s + 12
+		while ((b[i] >= '0') && (b[i] <= '9')):
+			i = i + 1
+		ptx_peep_reg = b[i + 4]
+		return 52
+	if (ptx_peep_starts(b, s, e, c"add.u64 %sp, %sp, ")):
+		ptx_peep_val = ptx_peep_num(b, s + 18)
+		return 4
+	if (ptx_peep_starts(b, s, e, c"add.u64 %ax, %sp, ")):
+		ptx_peep_val = ptx_peep_num(b, s + 18)
+		return 6
+	if (ptx_peep_starts(b, s, e, c"sub.u64 %ax, %bp, ")):
+		ptx_peep_val = ptx_peep_num(b, s + 18)
+		return 9
+	if (ptx_peep_starts(b, s, e, c"bra ") || ptx_peep_starts(b, s, e, c"@%p bra ")):
+		return 8
+	if ((e > s) && (b[e - 1] == ':')):
+		return 7
+	ptx_peep_sfx = ptx_prom_load_sfx(b, s, e)
+	if (ptx_peep_sfx):
+		return 10
+	ptx_peep_sfx = ptx_prom_store_sfx(b, s, e)
+	if (ptx_peep_sfx):
+		return 11
+	int at = ptx_peep_find_spref(b, s, e)
+	if (at >= 0):
+		ptx_peep_val = ptx_peep_num(b, at + 5)
+		return 50
+	return 0
+
+
+# Every %sp lea or [%sp+K] reference in lines [from, to) reaching a slot
+# older than slot sits 8 bytes closer to %sp once a word pushed at slot
+# is deleted.
+void ptx_peep_shift_span(int* kind, int* sloti, int* shift, int from, int to, int slot):
+	while (from < to):
+		int k = kind[from]
+		if ((k == 5) || (k == 6) || (k >= 50)):
+			if (sloti[from] < slot):
+				shift[from] = shift[from] + 8
+		from = from + 1
+
+
+# Appends line [s, e) of b and a newline.
+int ptx_peep_copy(char* out, int outp, char* b, int s, int e):
+	while (s < e):
+		out[outp] = b[s]
+		outp = outp + 1
+		s = s + 1
+	out[outp] = 10
+	return outp + 1
+
+
+# Appends prefix, the number v, ";" and a newline.
+int ptx_peep_put_num_line(char* out, int outp, char* prefix, int v):
+	outp = ptx_peep_put(out, outp, prefix)
+	outp = ptx_peep_put(out, outp, itoa(v))
+	out[outp] = ';'
+	out[outp + 1] = 10
+	return outp + 2
+
+
+# Appends line [s, e) with its [%sp+K] offset replaced by k.
+int ptx_peep_put_spref(char* out, int outp, char* b, int s, int e, int k):
+	int at = ptx_peep_find_spref(b, s, e) + 5
+	while (s < at):
+		out[outp] = b[s]
+		outp = outp + 1
+		s = s + 1
+	outp = ptx_peep_put(out, outp, itoa(k))
+	while ((b[s] >= '0') && (b[s] <= '9')):
+		s = s + 1
+	return ptx_peep_copy(out, outp, b, s, e)
+
+
+# "mov.u64 %v<idx>, %<reg>x;" with dst = "mov.u64 %v" (or "%l").
+int ptx_peep_put_mov_in(char* out, int outp, char* dst, int idx, int reg):
+	outp = ptx_peep_put(out, outp, dst)
+	outp = ptx_peep_put(out, outp, itoa(idx))
+	outp = ptx_peep_put(out, outp, c", %")
+	out[outp] = reg
+	outp = ptx_peep_put(out, outp + 1, c"x;")
+	out[outp] = 10
+	return outp + 1
+
+
+# "mov.u64 %<reg>x, %v<idx>;" with src = "x, %v" (or "x, %l").
+int ptx_peep_put_mov_out(char* out, int outp, int reg, char* src, int idx):
+	outp = ptx_peep_put(out, outp, c"mov.u64 %")
+	out[outp] = reg
+	return ptx_peep_put_num_line(out, outp + 1, src, idx)
+
+
 # Rewrites ptx_body_buf in place (via a fresh buffer). See the header
 # comment above for the model.
 void ptx_peephole():
@@ -864,83 +1055,50 @@ void ptx_peephole():
 	int n = ptx_body_pos
 	if (n == 0):
 		return
-
-	# Count lines, then record each line's start offset.
-	int lines = 0
-	int i = 0
-	while (i < n):
-		if (b[i] == 10):
-			lines = lines + 1
-		i = i + 1
+	int lines = ptx_peep_count_lines(b, n)
 	if (lines == 0):
 		return
-	int* ls = cast(int*, malloc(lines * __word_size__))
-	int* kind = cast(int*, malloc(lines * __word_size__))
-	int* val = cast(int*, malloc(lines * __word_size__))    # K, N, or reg char
-	int* sloti = cast(int*, malloc(lines * __word_size__))  # kinds 5/6: slot index
-	int* shift = cast(int*, malloc(lines * __word_size__))
-	int* action = cast(int*, malloc(lines * __word_size__)) # 0 copy, 1 del, 2 mov-to-v, 3 mov-from-v
-	int* vreg = cast(int*, malloc(lines * __word_size__))
-	int L = 0
-	int start = 0
-	i = 0
-	while (i < n):
-		if (b[i] == 10):
-			ls[L] = start
-			L = L + 1
-			start = i + 1
-		i = i + 1
+	int* ls = ptx_peep_line_starts(b, n, lines)
+	int* kind = ptx_peep_ints(lines)
+	int* val = ptx_peep_ints(lines)    # K, N, or reg char
+	int* sloti = ptx_peep_ints(lines)  # kinds 5/6: slot index
+	int* shift = ptx_peep_ints(lines)
+	int* action = ptx_peep_ints(lines) # 0 copy, 1 del, 2 mov-to-v, 3 mov-from-v
+	int* vreg = ptx_peep_ints(lines)
 
 	# Classify. Kinds: 0 other, 1 push-sub, 2 push-st, 3 pop-ld,
 	# 4 sp-add (N in val), 5 [%sp+K] reference, 6 lea %ax,%sp,K,
 	# 7 label, 8 branch.
-	L = 0
+	int L = 0
 	while (L < lines):
-		int s = ls[L]
-		int e = n - 1
-		if (L + 1 < lines):
-			e = ls[L + 1] - 1
-		kind[L] = 0
+		int c = ptx_peep_classify(b, ls[L], ptx_peep_line_end(ls, L, lines, n))
 		val[L] = 0
+		if ((c == 2) || (c == 3)):
+			val[L] = ptx_peep_reg
+		else if ((c == 4) || (c == 6)):
+			val[L] = ptx_peep_val
+		else if (c >= 50):
+			c = 5
+			val[L] = ptx_peep_val
+		else if (c > 8):
+			c = 0
+		kind[L] = c
 		sloti[L] = 0
 		shift[L] = 0
 		action[L] = 0
 		vreg[L] = 0
-		if (ptx_peep_starts(b, s, e, c"sub.u64 %sp, %sp, 8;")):
-			kind[L] = 1
-		else if (ptx_peep_starts(b, s, e, c"st.u64 [%sp], %")):
-			kind[L] = 2
-			val[L] = b[s + 15]
-		else if (ptx_peep_starts(b, s, e, c"ld.u64 %") && ptx_peep_starts(b, s + 9, e, c"x, [%sp];")):
-			kind[L] = 3
-			val[L] = b[s + 8]
-		else if (ptx_peep_starts(b, s, e, c"add.u64 %sp, %sp, ")):
-			kind[L] = 4
-			val[L] = ptx_peep_num(b, s + 18)
-		else if (ptx_peep_starts(b, s, e, c"add.u64 %ax, %sp, ")):
-			kind[L] = 6
-			val[L] = ptx_peep_num(b, s + 18)
-		else if (ptx_peep_starts(b, s, e, c"bra ") || ptx_peep_starts(b, s, e, c"@%p bra ")):
-			kind[L] = 8
-		else if ((e > s) && (b[e - 1] == ':')):
-			kind[L] = 7
-		else:
-			int at = ptx_peep_find_spref(b, s, e)
-			if (at >= 0):
-				kind[L] = 5
-				val[L] = ptx_peep_num(b, at + 5)
 		L = L + 1
 
 	# Scan: simulate depth, track open pushes, match pairs.
-	int* op_st = cast(int*, malloc(lines * __word_size__))   # push-st line
-	int* op_slot = cast(int*, malloc(lines * __word_size__))
-	int* op_conv = cast(int*, malloc(lines * __word_size__))
+	int* op_st = ptx_peep_ints(lines)   # push-st line
+	int* op_slot = ptx_peep_ints(lines)
+	int* op_conv = ptx_peep_ints(lines)
 	int top = 0
 	int depth = 0
 	int pr_count = 0
-	int* pr_st = cast(int*, malloc(lines * __word_size__))
-	int* pr_ld = cast(int*, malloc(lines * __word_size__))
-	int* pr_j = cast(int*, malloc(lines * __word_size__))
+	int* pr_st = ptx_peep_ints(lines)
+	int* pr_ld = ptx_peep_ints(lines)
+	int* pr_j = ptx_peep_ints(lines)
 	int ok = 1
 	int maxv = 0
 	L = 0
@@ -1012,12 +1170,7 @@ void ptx_peephole():
 		# %sp once that word is gone.
 		int p = 0
 		while (p < pr_count):
-			int q2 = pr_st[p] + 1
-			while (q2 < pr_ld[p]):
-				if ((kind[q2] == 5) || (kind[q2] == 6)):
-					if (sloti[q2] < pr_j[p]):
-						shift[q2] = shift[q2] + 8
-				q2 = q2 + 1
+			ptx_peep_shift_span(kind, sloti, shift, pr_st[p] + 1, pr_ld[p], pr_j[p])
 			# Mark the pair's four lines: delete sub/add, replace st/ld
 			# with moves through the pair's depth-indexed vreg.
 			action[pr_st[p] - 1] = 1
@@ -1035,64 +1188,19 @@ void ptx_peephole():
 		L = 0
 		while (L < lines):
 			int s2 = ls[L]
-			int e2 = n - 1
-			if (L + 1 < lines):
-				e2 = ls[L + 1] - 1
-			if (action[L] == 1):
-				L = L + 1
-			else if (action[L] == 2):
-				outp = ptx_peep_put(out, outp, c"mov.u64 %v")
-				outp = ptx_peep_put(out, outp, itoa(vreg[L]))
-				outp = ptx_peep_put(out, outp, c", %")
-				out[outp] = val[L]
-				outp = outp + 1
-				outp = ptx_peep_put(out, outp, c"x;")
-				out[outp] = 10
-				outp = outp + 1
-				L = L + 1
+			int e2 = ptx_peep_line_end(ls, L, lines, n)
+			if (action[L] == 2):
+				outp = ptx_peep_put_mov_in(out, outp, c"mov.u64 %v", vreg[L], val[L])
 			else if (action[L] == 3):
-				outp = ptx_peep_put(out, outp, c"mov.u64 %")
-				out[outp] = val[L]
-				outp = outp + 1
-				outp = ptx_peep_put(out, outp, c"x, %v")
-				outp = ptx_peep_put(out, outp, itoa(vreg[L]))
-				out[outp] = ';'
-				out[outp + 1] = 10
-				outp = outp + 2
-				L = L + 1
-			else if ((kind[L] == 6) && (shift[L] > 0)):
-				outp = ptx_peep_put(out, outp, c"add.u64 %ax, %sp, ")
-				outp = ptx_peep_put(out, outp, itoa(val[L] - shift[L]))
-				out[outp] = ';'
-				out[outp + 1] = 10
-				outp = outp + 2
-				L = L + 1
-			else if ((kind[L] == 5) && (shift[L] > 0)):
-				int at2 = ptx_peep_find_spref(b, s2, e2)
-				int cp = s2
-				while (cp < at2 + 5):
-					out[outp] = b[cp]
-					outp = outp + 1
-					cp = cp + 1
-				outp = ptx_peep_put(out, outp, itoa(val[L] - shift[L]))
-				while ((b[cp] >= '0') && (b[cp] <= '9')):
-					cp = cp + 1
-				while (cp < e2):
-					out[outp] = b[cp]
-					outp = outp + 1
-					cp = cp + 1
-				out[outp] = 10
-				outp = outp + 1
-				L = L + 1
-			else:
-				int cp2 = s2
-				while (cp2 < e2):
-					out[outp] = b[cp2]
-					outp = outp + 1
-					cp2 = cp2 + 1
-				out[outp] = 10
-				outp = outp + 1
-				L = L + 1
+				outp = ptx_peep_put_mov_out(out, outp, val[L], c"x, %v", vreg[L])
+			else if (action[L] == 0):
+				if ((kind[L] == 6) && (shift[L] > 0)):
+					outp = ptx_peep_put_num_line(out, outp, c"add.u64 %ax, %sp, ", val[L] - shift[L])
+				else if ((kind[L] == 5) && (shift[L] > 0)):
+					outp = ptx_peep_put_spref(out, outp, b, s2, e2, val[L] - shift[L])
+				else:
+					outp = ptx_peep_copy(out, outp, b, s2, e2)
+			L = L + 1
 		free(ptx_body_buf)
 		ptx_body_buf = out
 		ptx_body_size = cap
@@ -1170,38 +1278,6 @@ int ptx_prom_width(int sfxc):
 	return 1
 
 
-# "ld.SFX %ax, [%ax];" -> suffix code, else 0.
-int ptx_prom_load_sfx(char* b, int s, int e):
-	if (ptx_peep_starts(b, s, e, c"ld.u64 %ax, [%ax];")):
-		return 1
-	if (ptx_peep_starts(b, s, e, c"ld.s32 %ax, [%ax];")):
-		return 2
-	if (ptx_peep_starts(b, s, e, c"ld.s16 %ax, [%ax];")):
-		return 3
-	if (ptx_peep_starts(b, s, e, c"ld.u16 %ax, [%ax];")):
-		return 4
-	if (ptx_peep_starts(b, s, e, c"ld.s8 %ax, [%ax];")):
-		return 5
-	if (ptx_peep_starts(b, s, e, c"ld.u32 %ax, [%ax];")):
-		return 6
-	if (ptx_peep_starts(b, s, e, c"ld.u8 %ax, [%ax];")):
-		return 7
-	return 0
-
-
-# "st.SFX [%bx], %ax;" -> suffix code, else 0.
-int ptx_prom_store_sfx(char* b, int s, int e):
-	if (ptx_peep_starts(b, s, e, c"st.u64 [%bx], %ax;")):
-		return 1
-	if (ptx_peep_starts(b, s, e, c"st.u32 [%bx], %ax;")):
-		return 6
-	if (ptx_peep_starts(b, s, e, c"st.u16 [%bx], %ax;")):
-		return 4
-	if (ptx_peep_starts(b, s, e, c"st.u8 [%bx], %ax;")):
-		return 7
-	return 0
-
-
 # Does the [s, e) line contain the pattern anywhere?
 int ptx_prom_has(char* b, int s, int e, char* pat):
 	int i = s
@@ -1217,29 +1293,12 @@ int ptx_prom_has(char* b, int s, int e, char* pat):
 # a store-then-reload through memory would.
 int ptx_prom_widen(char* out, int outp, int lr, int src, int lsfx):
 	if ((lsfx == 0) || (lsfx == 1)):
-		outp = ptx_peep_put(out, outp, c"mov.u64 %l")
-		outp = ptx_peep_put(out, outp, itoa(lr))
-		outp = ptx_peep_put(out, outp, c", %")
-		out[outp] = src
-		outp = outp + 1
-		outp = ptx_peep_put(out, outp, c"x;")
-		out[outp] = 10
-		return outp + 1
-	int amt = 32
-	if ((lsfx == 3) || (lsfx == 4)):
-		amt = 48
-	else if ((lsfx == 5) || (lsfx == 7)):
-		amt = 56
-	outp = ptx_peep_put(out, outp, c"shl.b64 %l")
-	outp = ptx_peep_put(out, outp, itoa(lr))
-	outp = ptx_peep_put(out, outp, c", %")
-	out[outp] = src
-	outp = outp + 1
-	outp = ptx_peep_put(out, outp, c"x, ")
-	outp = ptx_peep_put(out, outp, itoa(amt))
-	outp = ptx_peep_put(out, outp, c";")
-	out[outp] = 10
-	outp = outp + 1
+		return ptx_peep_put_mov_in(out, outp, c"mov.u64 %l", lr, src)
+	int amt = 64 - 8 * ptx_prom_width(lsfx)
+	# shl.b64 %l<lr>, %<src>x, <amt>; (the mov shape with the shift
+	# count spliced in before its ";")
+	outp = ptx_peep_put_mov_in(out, outp, c"shl.b64 %l", lr, src)
+	outp = ptx_peep_put_num_line(out, outp - 2, c", ", amt)
 	if ((lsfx == 2) || (lsfx == 3) || (lsfx == 5)):
 		outp = ptx_peep_put(out, outp, c"shr.s64 %l")
 	else:
@@ -1247,41 +1306,16 @@ int ptx_prom_widen(char* out, int outp, int lr, int src, int lsfx):
 	outp = ptx_peep_put(out, outp, itoa(lr))
 	outp = ptx_peep_put(out, outp, c", %l")
 	outp = ptx_peep_put(out, outp, itoa(lr))
-	outp = ptx_peep_put(out, outp, c", ")
-	outp = ptx_peep_put(out, outp, itoa(amt))
-	outp = ptx_peep_put(out, outp, c";")
-	out[outp] = 10
-	return outp + 1
+	return ptx_peep_put_num_line(out, outp, c", ", amt)
 
 
 # The prologue twin of ptx_prom_widen: seed a promoted capture's
 # register from %cx (which holds the just-loaded parameter value).
 void ptx_prom_cap_init(int lr, int lsfx):
-	if ((lsfx == 0) || (lsfx == 1)):
-		ptx_emit(c"mov.u64 %l")
-		ptx_emit_int(lr)
-		ptx_line(c", %cx;")
-		return;
-	int amt = 32
-	if ((lsfx == 3) || (lsfx == 4)):
-		amt = 48
-	else if ((lsfx == 5) || (lsfx == 7)):
-		amt = 56
-	ptx_emit(c"shl.b64 %l")
-	ptx_emit_int(lr)
-	ptx_emit(c", %cx, ")
-	ptx_emit_int(amt)
-	ptx_line(c";")
-	if ((lsfx == 2) || (lsfx == 3) || (lsfx == 5)):
-		ptx_emit(c"shr.s64 %l")
-	else:
-		ptx_emit(c"shr.u64 %l")
-	ptx_emit_int(lr)
-	ptx_emit(c", %l")
-	ptx_emit_int(lr)
-	ptx_emit(c", ")
-	ptx_emit_int(amt)
-	ptx_line(c";")
+	char* buf = malloc(128)
+	buf[ptx_prom_widen(buf, 0, lr, 'c', lsfx)] = 0
+	ptx_emit(buf)
+	free(buf)
 
 
 # Rewrites ptx_body_buf in place (via a fresh buffer). See the section
@@ -1293,124 +1327,57 @@ void ptx_promote():
 	int n = ptx_body_pos
 	if (n == 0):
 		return
-
-	# Count lines, record each line's start offset.
-	int lines = 0
-	int i = 0
-	while (i < n):
-		if (b[i] == 10):
-			lines = lines + 1
-		i = i + 1
+	int lines = ptx_peep_count_lines(b, n)
 	if (lines == 0):
 		return
-	int* ls = cast(int*, malloc(lines * __word_size__))
-	int L = 0
-	int start = 0
-	i = 0
-	while (i < n):
-		if (b[i] == 10):
-			ls[L] = start
-			L = L + 1
-			start = i + 1
-		i = i + 1
+	int* ls = ptx_peep_line_starts(b, n, lines)
 
-	# Classify. Kinds: 0 other, 1 push-sub, 2 push-st, 3 pop/peek-ld,
-	# 4 sp-add (N in val), 6 lea %ax,%sp,K, 7 label, 8 branch,
-	# 9 lea %ax,%bp,-K, 10 deref load, 11 store via %bx,
-	# 50/51/52 direct [%sp+K] unknown/load/store.
-	int* kind = cast(int*, malloc(lines * __word_size__))
-	int* val = cast(int*, malloc(lines * __word_size__))
-	int* lreg2 = cast(int*, malloc(lines * __word_size__))  # reg char per line
-	int* lsfx2 = cast(int*, malloc(lines * __word_size__))  # suffix per line
-	int* sloti = cast(int*, malloc(lines * __word_size__))
-	int* shift = cast(int*, malloc(lines * __word_size__))
-	int* dec = cast(int*, malloc(lines * __word_size__))
-	int* act = cast(int*, malloc(lines * __word_size__))    # 1 del, 2 load-mov, 3 store-widen
-	int* tgt = cast(int*, malloc(lines * __word_size__))
+	# Classify (see ptx_peep_classify for the kinds).
+	int* kind = ptx_peep_ints(lines)
+	int* val = ptx_peep_ints(lines)
+	int* lreg2 = ptx_peep_ints(lines)  # reg char per line
+	int* lsfx2 = ptx_peep_ints(lines)  # suffix per line
+	int* sloti = ptx_peep_ints(lines)
+	int* shift = ptx_peep_ints(lines)
+	int* dec = ptx_peep_ints(lines)
+	int* act = ptx_peep_ints(lines)    # 1 del, 2 load-mov, 3 store-widen
+	int* tgt = ptx_peep_ints(lines)
 	int s = 0
 	int e = 0
-	L = 0
+	int i = 0
+	int L = 0
 	while (L < lines):
-		s = ls[L]
-		e = n - 1
-		if (L + 1 < lines):
-			e = ls[L + 1] - 1
-		kind[L] = 0
-		val[L] = 0
-		lreg2[L] = 0
-		lsfx2[L] = 0
+		kind[L] = ptx_peep_classify(b, ls[L], ptx_peep_line_end(ls, L, lines, n))
+		val[L] = ptx_peep_val
+		lreg2[L] = ptx_peep_reg
+		lsfx2[L] = ptx_peep_sfx
 		sloti[L] = 0
 		shift[L] = 0
 		dec[L] = 0
 		act[L] = 0
 		tgt[L] = 0 - 1
-		if (ptx_peep_starts(b, s, e, c"sub.u64 %sp, %sp, 8;")):
-			kind[L] = 1
-		else if (ptx_peep_starts(b, s, e, c"st.u64 [%sp], %")):
-			kind[L] = 2
-			lreg2[L] = b[s + 15]
-		else if (ptx_peep_starts(b, s, e, c"ld.u64 %") && ptx_peep_starts(b, s + 9, e, c"x, [%sp];")):
-			kind[L] = 3
-			lreg2[L] = b[s + 8]
-		else if (ptx_peep_starts(b, s, e, c"ld.u64 %") && ptx_peep_starts(b, s + 9, e, c"x, [%sp+")):
-			kind[L] = 51
-			lreg2[L] = b[s + 8]
-			val[L] = ptx_peep_num(b, s + 17)
-		else if (ptx_peep_starts(b, s, e, c"st.u64 [%sp+")):
-			kind[L] = 52
-			val[L] = ptx_peep_num(b, s + 12)
-			i = s + 12
-			while ((b[i] >= '0') && (b[i] <= '9')):
-				i = i + 1
-			lreg2[L] = b[i + 4]
-		else if (ptx_peep_starts(b, s, e, c"add.u64 %sp, %sp, ")):
-			kind[L] = 4
-			val[L] = ptx_peep_num(b, s + 18)
-		else if (ptx_peep_starts(b, s, e, c"add.u64 %ax, %sp, ")):
-			kind[L] = 6
-			val[L] = ptx_peep_num(b, s + 18)
-		else if (ptx_peep_starts(b, s, e, c"sub.u64 %ax, %bp, ")):
-			kind[L] = 9
-			val[L] = ptx_peep_num(b, s + 18)
-		else if (ptx_peep_starts(b, s, e, c"bra ") || ptx_peep_starts(b, s, e, c"@%p bra ")):
-			kind[L] = 8
-		else if ((e > s) && (b[e - 1] == ':')):
-			kind[L] = 7
-		else:
-			i = ptx_prom_load_sfx(b, s, e)
-			if (i):
-				kind[L] = 10
-				lsfx2[L] = i
-			else:
-				i = ptx_prom_store_sfx(b, s, e)
-				if (i):
-					kind[L] = 11
-					lsfx2[L] = i
-				else if (ptx_peep_find_spref(b, s, e) >= 0):
-					kind[L] = 50
-					val[L] = ptx_peep_num(b, ptx_peep_find_spref(b, s, e) + 5)
 		L = L + 1
 
 	# Slot instances: created by pushes and (lazily) by capture leas.
 	int cap_max = 520
 	int imax = lines + cap_max + 1
-	int* cap2inst = cast(int*, malloc(cap_max * __word_size__))
+	int* cap2inst = ptx_peep_ints(cap_max)
 	i = 0
 	while (i < cap_max):
 		cap2inst[i] = 0 - 1
 		i = i + 1
-	int* ipush = cast(int*, malloc(imax * __word_size__))
-	int* ikill = cast(int*, malloc(imax * __word_size__))
-	int* islot = cast(int*, malloc(imax * __word_size__))
-	int* iprom = cast(int*, malloc(imax * __word_size__))
-	int* ilsfx = cast(int*, malloc(imax * __word_size__))   # load suffix seen
-	int* isw = cast(int*, malloc(imax * __word_size__))     # narrowest store width
-	int* ivpop = cast(int*, malloc(imax * __word_size__))   # closed by a value pop
-	int* icap = cast(int*, malloc(imax * __word_size__))    # capture slot or -1
-	int* ctgt = cast(int*, malloc(imax * __word_size__))    # carrier: target inst
-	int* clea = cast(int*, malloc(imax * __word_size__))    # carrier: lea line
-	int* cpop = cast(int*, malloc(imax * __word_size__))    # carrier: pop line
-	int* ilreg = cast(int*, malloc(imax * __word_size__))
+	int* ipush = ptx_peep_ints(imax)
+	int* ikill = ptx_peep_ints(imax)
+	int* islot = ptx_peep_ints(imax)
+	int* iprom = ptx_peep_ints(imax)
+	int* ilsfx = ptx_peep_ints(imax)   # load suffix seen
+	int* isw = ptx_peep_ints(imax)     # narrowest store width
+	int* ivpop = ptx_peep_ints(imax)   # closed by a value pop
+	int* icap = ptx_peep_ints(imax)    # capture slot or -1
+	int* ctgt = ptx_peep_ints(imax)    # carrier: target inst
+	int* clea = ptx_peep_ints(imax)    # carrier: lea line
+	int* cpop = ptx_peep_ints(imax)    # carrier: pop line
+	int* ilreg = ptx_peep_ints(imax)
 	i = 0
 	while (i < imax):
 		ipush[i] = 0 - 1
@@ -1428,7 +1395,7 @@ void ptx_promote():
 		i = i + 1
 	int ninst = 0
 	int ncap = 0
-	int* stk = cast(int*, malloc(lines * __word_size__))
+	int* stk = ptx_peep_ints(lines)
 	int depth = 0
 	int ok = 1
 
@@ -1604,9 +1571,7 @@ void ptx_promote():
 		else:
 			if (k == 0):
 				s = ls[L]
-				e = n - 1
-				if (L + 1 < lines):
-					e = ls[L + 1] - 1
+				e = ptx_peep_line_end(ls, L, lines, n)
 				if (ptx_prom_has(b, s, e, c"%sp") || ptx_prom_has(b, s, e, c"%bp")):
 					# an unrecognized line touching the stack registers
 					ok = 0
@@ -1641,8 +1606,8 @@ void ptx_promote():
 		# Promoted captures: hand the prologue their register + suffix.
 		if (ncap > 0):
 			ptx_prom_ncap = ncap
-			ptx_prom_capreg = cast(int*, malloc(ncap * __word_size__))
-			ptx_prom_capsfx = cast(int*, malloc(ncap * __word_size__))
+			ptx_prom_capreg = ptx_peep_ints(ncap)
+			ptx_prom_capsfx = ptx_peep_ints(ncap)
 			i = 0
 			while (i < ncap):
 				ptx_prom_capreg[i] = 0 - 1
@@ -1658,7 +1623,6 @@ void ptx_promote():
 		# Offset rewrites: each deleted stack word moves %sp over its
 		# live range, so [%sp+K] references to older slots shrink by 8
 		# and the scope pop that covered the word shrinks by 8.
-		int rk = 0
 		i = 0
 		while (i < ninst):
 			if (iprom[i] && (icap[i] < 0)):
@@ -1667,23 +1631,12 @@ void ptx_promote():
 				if (ikill[i] >= 0):
 					w = ikill[i]
 					dec[w] = dec[w] + 8
-				while (t < w):
-					rk = kind[t]
-					if ((rk == 6) || (rk == 50) || (rk == 51) || (rk == 52)):
-						if (sloti[t] < islot[i]):
-							shift[t] = shift[t] + 8
-					t = t + 1
+				ptx_peep_shift_span(kind, sloti, shift, t, w, islot[i])
 			i = i + 1
 		i = 0
 		while (i < ninst):
 			if ((ctgt[i] >= 0) && (cpop[i] >= 0) && iprom[ctgt[i]]):
-				t = ipush[i] + 2
-				while (t < cpop[i]):
-					rk = kind[t]
-					if ((rk == 6) || (rk == 50) || (rk == 51) || (rk == 52)):
-						if (sloti[t] < islot[i]):
-							shift[t] = shift[t] + 8
-					t = t + 1
+				ptx_peep_shift_span(kind, sloti, shift, ipush[i] + 2, cpop[i], islot[i])
 			i = i + 1
 
 		# Rebuild the body into a fresh scratch buffer. 3x covers the
@@ -1696,68 +1649,25 @@ void ptx_promote():
 		L = 0
 		while (L < lines):
 			s = ls[L]
-			e = n - 1
-			if (L + 1 < lines):
-				e = ls[L + 1] - 1
+			e = ptx_peep_line_end(ls, L, lines, n)
 			ap = 0
 			if ((act[L] > 0) && (tgt[L] >= 0)):
 				if (iprom[tgt[L]]):
 					ap = act[L]
-			if (ap == 1):
-				L = L + 1
-			else if (ap == 2):
-				outp = ptx_peep_put(out, outp, c"mov.u64 %")
-				out[outp] = lreg2[L]
-				outp = outp + 1
-				outp = ptx_peep_put(out, outp, c"x, %l")
-				outp = ptx_peep_put(out, outp, itoa(ilreg[tgt[L]]))
-				out[outp] = ';'
-				out[outp + 1] = 10
-				outp = outp + 2
-				L = L + 1
+			if (ap == 2):
+				outp = ptx_peep_put_mov_out(out, outp, lreg2[L], c"x, %l", ilreg[tgt[L]])
 			else if (ap == 3):
 				outp = ptx_prom_widen(out, outp, ilreg[tgt[L]], lreg2[L], ilsfx[tgt[L]])
-				L = L + 1
-			else if ((kind[L] == 4) && (dec[L] > 0)):
-				outp = ptx_peep_put(out, outp, c"add.u64 %sp, %sp, ")
-				outp = ptx_peep_put(out, outp, itoa(val[L] - dec[L]))
-				out[outp] = ';'
-				out[outp + 1] = 10
-				outp = outp + 2
-				L = L + 1
-			else if ((kind[L] == 6) && (shift[L] > 0)):
-				outp = ptx_peep_put(out, outp, c"add.u64 %ax, %sp, ")
-				outp = ptx_peep_put(out, outp, itoa(val[L] - shift[L]))
-				out[outp] = ';'
-				out[outp + 1] = 10
-				outp = outp + 2
-				L = L + 1
-			else if (((kind[L] == 50) || (kind[L] == 51) || (kind[L] == 52)) && (shift[L] > 0)):
-				i = ptx_peep_find_spref(b, s, e)
-				t = s
-				while (t < i + 5):
-					out[outp] = b[t]
-					outp = outp + 1
-					t = t + 1
-				outp = ptx_peep_put(out, outp, itoa(val[L] - shift[L]))
-				while ((b[t] >= '0') && (b[t] <= '9')):
-					t = t + 1
-				while (t < e):
-					out[outp] = b[t]
-					outp = outp + 1
-					t = t + 1
-				out[outp] = 10
-				outp = outp + 1
-				L = L + 1
-			else:
-				t = s
-				while (t < e):
-					out[outp] = b[t]
-					outp = outp + 1
-					t = t + 1
-				out[outp] = 10
-				outp = outp + 1
-				L = L + 1
+			else if (ap == 0):
+				if ((kind[L] == 4) && (dec[L] > 0)):
+					outp = ptx_peep_put_num_line(out, outp, c"add.u64 %sp, %sp, ", val[L] - dec[L])
+				else if ((kind[L] == 6) && (shift[L] > 0)):
+					outp = ptx_peep_put_num_line(out, outp, c"add.u64 %ax, %sp, ", val[L] - shift[L])
+				else if ((kind[L] >= 50) && (shift[L] > 0)):
+					outp = ptx_peep_put_spref(out, outp, b, s, e, val[L] - shift[L])
+				else:
+					outp = ptx_peep_copy(out, outp, b, s, e)
+			L = L + 1
 		free(ptx_body_buf)
 		ptx_body_buf = out
 		ptx_body_size = cap2

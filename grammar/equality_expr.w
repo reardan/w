@@ -9,22 +9,14 @@
 # auto-imported container runtime); the result stays in eax.
 void emit_runtime_call_ebx_eax(char* fn_name):
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int right_slot = stack_pos
+	int right_slot = push_slot()
 	mov_eax_ebx()
-	push_eax()
-	stack_pos = stack_pos + 1
-	int left_slot = stack_pos
-	sym_get_value(fn_name)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(left_slot)
-	hash_push_stack_slot(right_slot)
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	int left_slot = push_slot()
+	int s = rt_call_begin(fn_name)
+	push_slot_copy(left_slot)
+	push_slot_copy(right_slot)
+	rt_call_end(s)
+	pop_to(base_stack)
 
 
 # == / != on two string operands (variables, literals, f-strings)

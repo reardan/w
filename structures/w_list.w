@@ -193,10 +193,6 @@ char* __w_list_pop_addr(__w_list* list):
 	return list.items + list.length * list.element_size
 
 
-int __w_list_length(__w_list* list):
-	return list.length
-
-
 void __w_list_clear(__w_list* list):
 	list.length = 0
 

@@ -132,22 +132,19 @@ int char_literal_value():
 		else:
 			value = escape_char_value(e)
 			if (value < 0):
-				diag_part(c"unknown escape in char literal: ")
-				error(token)
+				error2(c"unknown escape in char literal: ", token)
 			end = 3
 	else:
 		value = string_utf8_decode(1, strlen(token))
 		if (value < 0):
-			diag_part(c"invalid UTF-8 char literal: ")
-			error(token)
+			error2(c"invalid UTF-8 char literal: ", token)
 		end = 1 + utf8_decoded_length
 	if ((value >= 55296) && (value <= 57343)):
 		error(c"invalid unicode surrogate")
 	if (value > 1114111):
 		error(c"unicode codepoint out of range")
 	if ((token[end] != 39) || (token[end + 1] != 0)):
-		diag_part(c"multi-character char literal: ")
-		error(token)
+		error2(c"multi-character char literal: ", token)
 	return value
 
 

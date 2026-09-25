@@ -15,7 +15,8 @@ user's files are compiled; lazy_finish_import imports the module
 forward declaration would not survive function_definition's scope
 truncation (table_pos = n), so the chains live here.
 
-Chain encoding (addr_chain_link / addr_chain_patch) matches the 'U'
+Chain encoding (addr_chain_link / addr_chain_patch, compiler/symbol_table.w)
+matches the 'U'
 symbol chains: each address slot holds the previous slot's absolute
 address and code_offset ends the chain. Every chain slot materializes
 a callee, so under arm64 --pac=full it is signed exactly like
@@ -34,29 +35,6 @@ struct lazy_runtime:
 	char** names   # helper names, indexed like the chains
 	int* chains    # backpatch chain heads (0 = no pending site)
 	int needed     # set once any call site used the runtime
-
-
-# Emit an address slot linked onto the chain whose head is `head`
-# (0 = empty) and return the new head. The slot is signed for pac=full.
-int addr_chain_link(int head):
-	if (head == 0):
-		head = code_offset
-	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
-	be_addr_slot_write(codepos - 4, head)
-	int slot = codepos + code_offset - 4
-	be_code_ptr_sign()
-	return slot
-
-
-# Write `value` into every slot of the chain whose head is `head`.
-void addr_chain_patch(int head, int value):
-	if (head == 0):
-		return;
-	int p = head - code_offset
-	while (p):
-		int next = be_addr_slot_read(p) - code_offset
-		be_addr_slot_write(p, value)
-		p = next
 
 
 lazy_runtime* lazy_runtime_new(char* module, char* names):

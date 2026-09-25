@@ -13,15 +13,6 @@ we will have to use 'uint' as the filename and 'int' in the code
 
 */
 
-##################  Integer Type Information ##################
-
-void push_all_integer_types():
-	# todo: 64, 128, 256, 512, 1024, 2048, 4096
-	# 8, 16, 32
-	# int, uint
-	int name_index = 0
-
-
 ##################  BIG ENDIAN (CPU) => LITTLE ENDIAN (MEM) ##################
 #
 # Every target is little-endian, so an n-byte field at p is exactly what a

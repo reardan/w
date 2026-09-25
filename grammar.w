@@ -1,3 +1,5 @@
+import grammar.stack_slot
+import grammar.pending_element
 import grammar.hash_builtin
 import grammar.ndarray_index
 import grammar.promote
