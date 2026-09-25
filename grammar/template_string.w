@@ -26,60 +26,20 @@ drivers call template_string_finish_import() at a top-level boundary
 once compilation of the user's files is done.
 */
 int expression();
-int import_module(char* dotted);
 void var_emit_to_cstr();
 
 
-# Set when a compiled program used an f-string; the drivers call
-# template_string_finish_import() once compilation is done.
-int template_string_needed
-
-# Backpatch chain heads for the runtime helpers, indexed like
-# template_fn_name. Encoding matches the 'U' symbol chains: each mov-imm
-# slot holds the previous slot's absolute address, code_offset ends the
-# chain. A symbol-table forward declaration would not survive
-# function_definition's scope truncation, so the chains live here.
-char* template_chains
+# The f-string runtime (structures/string.w), imported on demand by
+# template_string_finish_import(). Helper indexes: 0 __w_template_new,
+# 1 __w_template_bytes, 2 __w_template_cstr, 3 __w_template_int, 4
+# __w_template_str, 5 __w_template_finish.
+lazy_runtime* template_rt
 
 
-int template_helper_count():
-	return 6
-
-
-char* template_fn_name(int i):
-	if (i == 0):
-		return c"__w_template_new"
-	if (i == 1):
-		return c"__w_template_bytes"
-	if (i == 2):
-		return c"__w_template_cstr"
-	if (i == 3):
-		return c"__w_template_int"
-	if (i == 4):
-		return c"__w_template_str"
-	return c"__w_template_finish"
-
-
-# Leave helper i's address in eax: directly when the runtime module is
-# already compiled (the program imported structures.string itself),
-# through the helper's backpatch chain otherwise.
 void template_emit_helper_address(int i):
-	char* name = template_fn_name(i)
-	if (sym_lookup(name) >= 0):
-		sym_get_value(name)
-		return;
-	if (template_chains == 0):
-		template_chains = malloc(template_helper_count() * 4)
-		int j = 0
-		while (j < template_helper_count()):
-			save_int(template_chains + j * 4, 0)
-			j = j + 1
-	int head = load_int(template_chains + i * 4)
-	if (head == 0):
-		head = code_offset
-	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
-	be_addr_slot_write(codepos - 4, head)
-	save_int(template_chains + i * 4, codepos + code_offset - 4)
+	if (cast(int, template_rt) == 0):
+		template_rt = lazy_runtime_new(c"structures.string", c"__w_template_new __w_template_bytes __w_template_cstr __w_template_int __w_template_str __w_template_finish")
+	lazy_emit_helper(template_rt, i)
 
 
 int template_chunk_final
@@ -240,7 +200,6 @@ void template_emit_value_append(int got, int builder_slot):
 int template_string_literal():
 	if ((token[0] != 'f') || (token[1] != '"')):
 		return 0
-	template_string_needed = 1
 	int base_stack = stack_pos
 
 	# builder = __w_template_new()
@@ -284,31 +243,8 @@ int template_string_literal():
 	return 1
 
 
-void template_patch_chain(int i):
-	int head = load_int(template_chains + i * 4)
-	if (head == 0):
-		return;
-	int v = sym_address(template_fn_name(i))
-	int p = head - code_offset
-	while (p):
-		int next = be_addr_slot_read(p) - code_offset
-		be_addr_slot_write(p, v)
-		p = next
-	save_int(template_chains + i * 4, 0)
-
-
 # Deferred on-demand import of the template string runtime. Called by
 # the drivers (link_impl, the REPL, wdbg) at a top-level boundary once
-# compilation of the user's files is done; import_module de-duplicates
-# repeat calls. After the module has defined the helpers, resolve the
-# call sites that were emitted before the import.
+# compilation of the user's files is done (grammar/lazy_runtime.w).
 void template_string_finish_import():
-	if (template_string_needed == 0):
-		return;
-	import_module(c"structures.string")
-	if (template_chains == 0):
-		return;
-	int i = 0
-	while (i < template_helper_count()):
-		template_patch_chain(i)
-		i = i + 1
+	lazy_finish_import(template_rt)

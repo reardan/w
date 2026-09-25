@@ -16,79 +16,23 @@ once compilation of the user's files is done.
 
 Design notes: docs/projects/dynamic_var.md.
 */
-int import_module(char* dotted);
 void print_error_type(int type_index);
 
 
-# Set when a compiled program used var; the drivers call
-# var_finish_import() once compilation is done.
-int var_needed
-
-# Backpatch chain heads for the runtime helpers, indexed like
-# var_fn_name. Encoding matches the 'U' symbol chains: each mov-imm
-# slot holds the previous slot's absolute address, code_offset ends the
-# chain. A symbol-table forward declaration would not survive
-# function_definition's scope truncation, so the chains live here.
-char* var_chains
+# The var runtime (structures/w_dynamic.w), imported on demand by
+# var_finish_import(). Helper indexes: 0-2 box int/cstr/str, 3-5 unbox
+# int/cstr/str, 6-9 add/sub/mul/div, 10 eq, 11 cmp, 12 to_cstr.
+lazy_runtime* var_rt
 
 
-int var_helper_count():
-	return 13
-
-
-char* var_fn_name(int i):
-	if (i == 0):
-		return c"__w_var_box_int"
-	if (i == 1):
-		return c"__w_var_box_cstr"
-	if (i == 2):
-		return c"__w_var_box_str"
-	if (i == 3):
-		return c"__w_var_unbox_int"
-	if (i == 4):
-		return c"__w_var_unbox_cstr"
-	if (i == 5):
-		return c"__w_var_unbox_str"
-	if (i == 6):
-		return c"__w_var_add"
-	if (i == 7):
-		return c"__w_var_sub"
-	if (i == 8):
-		return c"__w_var_mul"
-	if (i == 9):
-		return c"__w_var_div"
-	if (i == 10):
-		return c"__w_var_eq"
-	if (i == 11):
-		return c"__w_var_cmp"
-	return c"__w_var_to_cstr"
-
-
-# Leave helper i's address in eax: directly when the runtime module is
-# already compiled (the program imported structures.w_dynamic itself),
-# through the helper's backpatch chain otherwise.
 void var_emit_helper_address(int i):
-	char* name = var_fn_name(i)
-	if (sym_lookup(name) >= 0):
-		sym_get_value(name)
-		return;
-	if (var_chains == 0):
-		var_chains = malloc(var_helper_count() * 4)
-		int j = 0
-		while (j < var_helper_count()):
-			save_int(var_chains + j * 4, 0)
-			j = j + 1
-	int head = load_int(var_chains + i * 4)
-	if (head == 0):
-		head = code_offset
-	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
-	be_addr_slot_write(codepos - 4, head)
-	save_int(var_chains + i * 4, codepos + code_offset - 4)
+	if (cast(int, var_rt) == 0):
+		var_rt = lazy_runtime_new(c"structures.w_dynamic", c"__w_var_box_int __w_var_box_cstr __w_var_box_str __w_var_unbox_int __w_var_unbox_cstr __w_var_unbox_str __w_var_add __w_var_sub __w_var_mul __w_var_div __w_var_eq __w_var_cmp __w_var_to_cstr")
+	lazy_emit_helper(var_rt, i)
 
 
 # Call helper i with the single argument in eax; the result stays in eax.
 void var_emit_call1(int i):
-	var_needed = 1
 	int base_stack = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -199,7 +143,6 @@ int var_binary_operands(int left_type, int right_type):
 # in eax (both promoted). Boxes non-var operands, then calls helper i
 # with (left, right); the result stays in eax.
 void var_binary_call(int left_type, int right_type, int i):
-	var_needed = 1
 	int base_stack = stack_pos
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -278,31 +221,8 @@ int var_binary_compare_order(int left_type, int right_type, int setcc_opcode):
 	return type_value(bool_type)
 
 
-void var_patch_chain(int i):
-	int head = load_int(var_chains + i * 4)
-	if (head == 0):
-		return;
-	int v = sym_address(var_fn_name(i))
-	int p = head - code_offset
-	while (p):
-		int next = be_addr_slot_read(p) - code_offset
-		be_addr_slot_write(p, v)
-		p = next
-	save_int(var_chains + i * 4, 0)
-
-
 # Deferred on-demand import of the var runtime. Called by the drivers
 # (link_impl, the REPL, wdbg) at a top-level boundary once compilation
-# of the user's files is done; import_module de-duplicates repeat calls.
-# After the module has defined the helpers, resolve the call sites that
-# were emitted before the import.
+# of the user's files is done (grammar/lazy_runtime.w).
 void var_finish_import():
-	if (var_needed == 0):
-		return;
-	import_module(c"structures.w_dynamic")
-	if (var_chains == 0):
-		return;
-	int i = 0
-	while (i < var_helper_count()):
-		var_patch_chain(i)
-		i = i + 1
+	lazy_finish_import(var_rt)

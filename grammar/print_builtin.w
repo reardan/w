@@ -27,83 +27,23 @@ This file is compiled by the committed seed: only seed-understood
 syntax here.
 */
 int expression();
-int import_module(char* dotted);
 void var_emit_to_cstr();
 
 
-# Set when a compiled program used print/println or referenced one of
-# the prelude input helpers; the drivers call prelude_finish_import()
-# once compilation is done.
-int print_builtin_needed
-
-# Backpatch chain heads for the runtime helpers, indexed like
-# print_fn_name; the encoding matches the 'U' symbol chains.
-char* print_chains
-
-
-int print_helper_count():
-	return 16
+# The prelude runtime (structures/prelude.w), imported on demand by
+# prelude_finish_import(). Helper indexes: 0 __w_print_int, 1
+# __w_print_cstr, 2 __w_print_str, 3 __w_print_float32, 4
+# __w_print_list, 5 __w_print_nl, 6-8 the input helpers, 9-11
+# max/min/abs, 12 strlen (len(char*) borrows lib/lib.w's: the prelude
+# import pulls lib.lib in, so the chain always resolves at patch time),
+# 13 __w_print_char, 14/15 any/all.
+lazy_runtime* print_rt
 
 
-char* print_fn_name(int i):
-	if (i == 0):
-		return c"__w_print_int"
-	if (i == 1):
-		return c"__w_print_cstr"
-	if (i == 2):
-		return c"__w_print_str"
-	if (i == 3):
-		return c"__w_print_float32"
-	if (i == 4):
-		return c"__w_print_list"
-	if (i == 5):
-		return c"__w_print_nl"
-	if (i == 6):
-		return c"input"
-	if (i == 7):
-		return c"read_all"
-	if (i == 8):
-		return c"ints"
-	if (i == 9):
-		return c"__w_max"
-	if (i == 10):
-		return c"__w_min"
-	if (i == 11):
-		return c"__w_abs"
-	if (i == 12):
-		# len(char*) borrows lib/lib.w's strlen: the prelude import
-		# pulls lib.lib in, so the chain always resolves at patch time
-		return c"strlen"
-	if (i == 13):
-		return c"__w_print_char"
-	if (i == 14):
-		return c"__w_any"
-	return c"__w_all"
-
-
-# Leave helper i's address in eax: directly when the runtime module is
-# already compiled, through the helper's backpatch chain otherwise.
 void print_emit_helper_address(int i):
-	char* name = print_fn_name(i)
-	if (sym_lookup(name) >= 0):
-		sym_get_value(name)
-		return;
-	if (print_chains == 0):
-		print_chains = malloc(print_helper_count() * 4)
-		int j = 0
-		while (j < print_helper_count()):
-			save_int(print_chains + j * 4, 0)
-			j = j + 1
-	int head = load_int(print_chains + i * 4)
-	if (head == 0):
-		head = code_offset
-	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
-	be_addr_slot_write(codepos - 4, head)
-	save_int(print_chains + i * 4, codepos + code_offset - 4)
-	# pac=full: chain slots materialize a callee like sym_get_value does,
-	# so the value needs the same signature (emitted after the chain
-	# bookkeeping so the recorded cell stays the slot's add instruction).
-	be_code_ptr_sign()
+	if (cast(int, print_rt) == 0):
+		print_rt = lazy_runtime_new(c"structures.prelude", c"__w_print_int __w_print_cstr __w_print_str __w_print_float32 __w_print_list __w_print_nl input read_all ints __w_max __w_min __w_abs strlen __w_print_char __w_any __w_all")
+	lazy_emit_helper(print_rt, i)
 
 
 void print_unsupported(int t):
@@ -182,7 +122,6 @@ int print_list_element_kind(int element_type):
 
 # __w_print_nl()
 void print_emit_nl():
-	print_builtin_needed = 1
 	print_emit_helper_address(5)
 	int s = stack_pos
 	push_eax()
@@ -192,7 +131,6 @@ void print_emit_nl():
 
 # helper(value) with the value in the given stack slot
 void print_emit_call1(int helper, int value_slot):
-	print_builtin_needed = 1
 	print_emit_helper_address(helper)
 	int s = stack_pos
 	push_eax()
@@ -203,7 +141,6 @@ void print_emit_call1(int helper, int value_slot):
 
 # __w_print_list(list, kind)
 void print_emit_call_list(int value_slot, int kind):
-	print_builtin_needed = 1
 	print_emit_helper_address(4)
 	int s = stack_pos
 	push_eax()
@@ -278,7 +215,6 @@ int prelude_input_ready():
 # scope. Leaves ')' current for primary_expr's trailing get_token().
 int prelude_input_expr():
 	int helper = prelude_input_helper()
-	print_builtin_needed = 1
 	get_token()
 	expect(c"(")
 	if (peek(c")") == 0):
@@ -473,7 +409,6 @@ int prelude_seq_expr(int helper):
 	get_token()
 	expect(c"(")
 	int base_stack = stack_pos
-	print_builtin_needed = 1
 	print_emit_helper_address(helper)
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -499,7 +434,6 @@ int prelude_math_call_expr(int helper):
 	get_token()
 	expect(c"(")
 	int base_stack = stack_pos
-	print_builtin_needed = 1
 	print_emit_helper_address(helper)
 	push_eax()
 	stack_pos = stack_pos + 1
@@ -535,29 +469,8 @@ int prelude_math_expr():
 	return prelude_math_call_expr(prelude_math_helper())
 
 
-void print_patch_chain(int i):
-	int head = load_int(print_chains + i * 4)
-	if (head == 0):
-		return;
-	int v = sym_address(print_fn_name(i))
-	int p = head - code_offset
-	while (p):
-		int next = be_addr_slot_read(p) - code_offset
-		be_addr_slot_write(p, v)
-		p = next
-	save_int(print_chains + i * 4, 0)
-
-
 # Deferred on-demand import of the prelude runtime, called by the
 # drivers at a top-level boundary once compilation of the user's files
-# is done (the template_string_finish_import pattern).
+# is done (grammar/lazy_runtime.w).
 void prelude_finish_import():
-	if (print_builtin_needed == 0):
-		return;
-	import_module(c"structures.prelude")
-	if (print_chains == 0):
-		return;
-	int i = 0
-	while (i < print_helper_count()):
-		print_patch_chain(i)
-		i = i + 1
+	lazy_finish_import(print_rt)
