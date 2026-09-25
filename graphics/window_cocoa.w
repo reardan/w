@@ -198,25 +198,17 @@ int gfx_cocoa_mods(int flags):
 # The NAV code for an AppKit function-key character (NSUpArrowFunctionKey
 # U+F700 and its private-use neighbours), or 0.
 int gfx_cocoa_nav(int cp):
-	if (cp == 0xf702):
-		return GFX_NAV_LEFT
-	if (cp == 0xf703):
-		return GFX_NAV_RIGHT
-	if (cp == 0xf700):
-		return GFX_NAV_UP
-	if (cp == 0xf701):
-		return GFX_NAV_DOWN
-	if (cp == 0xf729):
-		return GFX_NAV_HOME
-	if (cp == 0xf72b):
-		return GFX_NAV_END
-	if (cp == 0xf72c):
-		return GFX_NAV_PAGE_UP
-	if (cp == 0xf72d):
-		return GFX_NAV_PAGE_DOWN
-	if (cp == 0xf728):
-		return GFX_NAV_DELETE
-	return 0
+	switch (cp):
+		case 0xf702: return GFX_NAV_LEFT
+		case 0xf703: return GFX_NAV_RIGHT
+		case 0xf700: return GFX_NAV_UP
+		case 0xf701: return GFX_NAV_DOWN
+		case 0xf729: return GFX_NAV_HOME
+		case 0xf72b: return GFX_NAV_END
+		case 0xf72c: return GFX_NAV_PAGE_UP
+		case 0xf72d: return GFX_NAV_PAGE_DOWN
+		case 0xf728: return GFX_NAV_DELETE
+		default: return 0
 
 
 # The GFX_EVENT_CHAR code for one character of a key event, or 0 when it

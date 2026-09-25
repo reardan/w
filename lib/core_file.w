@@ -438,60 +438,36 @@ int cf_reg_print_count():
 
 char* cf_reg_print_name(int k):
 	if (cf_class == 2):
-		if (k == 0):
-			return c"rax"
-		if (k == 1):
-			return c"rbx"
-		if (k == 2):
-			return c"rcx"
-		if (k == 3):
-			return c"rdx"
-		if (k == 4):
-			return c"rsi"
-		if (k == 5):
-			return c"rdi"
-		if (k == 6):
-			return c"rbp"
-		if (k == 7):
-			return c"rsp"
-		if (k == 8):
-			return c"r8"
-		if (k == 9):
-			return c"r9"
-		if (k == 10):
-			return c"r10"
-		if (k == 11):
-			return c"r11"
-		if (k == 12):
-			return c"r12"
-		if (k == 13):
-			return c"r13"
-		if (k == 14):
-			return c"r14"
-		if (k == 15):
-			return c"r15"
-		if (k == 16):
-			return c"rip"
-		return c"eflags"
-	if (k == 0):
-		return c"eax"
-	if (k == 1):
-		return c"ebx"
-	if (k == 2):
-		return c"ecx"
-	if (k == 3):
-		return c"edx"
-	if (k == 4):
-		return c"esi"
-	if (k == 5):
-		return c"edi"
-	if (k == 6):
-		return c"ebp"
-	if (k == 7):
-		return c"esp"
-	if (k == 8):
-		return c"eip"
-	return c"eflags"
+		switch (k):
+			case 0: return c"rax"
+			case 1: return c"rbx"
+			case 2: return c"rcx"
+			case 3: return c"rdx"
+			case 4: return c"rsi"
+			case 5: return c"rdi"
+			case 6: return c"rbp"
+			case 7: return c"rsp"
+			case 8: return c"r8"
+			case 9: return c"r9"
+			case 10: return c"r10"
+			case 11: return c"r11"
+			case 12: return c"r12"
+			case 13: return c"r13"
+			case 14: return c"r14"
+			case 15: return c"r15"
+			case 16: return c"rip"
+			default: return c"eflags"
+	switch (k):
+		case 0: return c"eax"
+		case 1: return c"ebx"
+		case 2: return c"ecx"
+		case 3: return c"edx"
+		case 4: return c"esi"
+		case 5: return c"edi"
+		case 6: return c"ebp"
+		case 7: return c"esp"
+		case 8: return c"eip"
+		default: return c"eflags"
 
 
 int cf_reg_print_index(int k):
@@ -554,36 +530,26 @@ int cf_reg_print_index(int k):
 
 # --- signal info ---
 char* cf_signal_name(int sig):
-	if (sig == 3):
-		return c"SIGQUIT"
-	if (sig == 4):
-		return c"SIGILL"
-	if (sig == 5):
-		return c"SIGTRAP"
-	if (sig == 6):
-		return c"SIGABRT"
-	if (sig == 7):
-		return c"SIGBUS"
-	if (sig == 8):
-		return c"SIGFPE"
-	if (sig == 11):
-		return c"SIGSEGV"
-	return c"unknown"
+	switch (sig):
+		case 3: return c"SIGQUIT"
+		case 4: return c"SIGILL"
+		case 5: return c"SIGTRAP"
+		case 6: return c"SIGABRT"
+		case 7: return c"SIGBUS"
+		case 8: return c"SIGFPE"
+		case 11: return c"SIGSEGV"
+		default: return c"unknown"
 
 
 # The parenthetical the human report appends, mirroring lib/crash.w's
 # crash_signal_name text for the signals both tools describe.
 char* cf_signal_desc(int sig):
-	if (sig == 4):
-		return c"illegal instruction"
-	if (sig == 6):
-		return c"abort"
-	if (sig == 7):
-		return c"bus error"
-	if (sig == 8):
-		return c"arithmetic exception"
-	if (sig == 11):
-		return c"invalid memory reference"
+	switch (sig):
+		case 4: return c"illegal instruction"
+		case 6: return c"abort"
+		case 7: return c"bus error"
+		case 8: return c"arithmetic exception"
+		case 11: return c"invalid memory reference"
 	return cast(char*, 0)
 
 

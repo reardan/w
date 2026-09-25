@@ -1210,19 +1210,14 @@ int x509_store_add_pem_file(x509_trust_store* s, char* path):
 
 
 char* x509_default_bundle_path(int i):
-	if (i == 0):
-		return c"/etc/ssl/certs/ca-certificates.crt"
-	if (i == 1):
-		return c"/etc/pki/tls/certs/ca-bundle.crt"
-	if (i == 2):
-		return c"/etc/ssl/ca-bundle.pem"
-	if (i == 3):
-		return c"/etc/pki/tls/cacert.pem"
-	if (i == 4):
-		return c"/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
-	if (i == 5):
-		return c"/etc/ssl/cert.pem"
-	return 0
+	switch (i):
+		case 0: return c"/etc/ssl/certs/ca-certificates.crt"
+		case 1: return c"/etc/pki/tls/certs/ca-bundle.crt"
+		case 2: return c"/etc/ssl/ca-bundle.pem"
+		case 3: return c"/etc/pki/tls/cacert.pem"
+		case 4: return c"/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
+		case 5: return c"/etc/ssl/cert.pem"
+		default: return 0
 
 
 # Load the system trust store. Priority: the override_path argument, then

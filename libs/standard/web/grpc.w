@@ -268,41 +268,25 @@ int grpc_status_unauthenticated():
 
 
 char* grpc_status_name(int code):
-	if (code == 0):
-		return c"OK"
-	if (code == 1):
-		return c"CANCELLED"
-	if (code == 2):
-		return c"UNKNOWN"
-	if (code == 3):
-		return c"INVALID_ARGUMENT"
-	if (code == 4):
-		return c"DEADLINE_EXCEEDED"
-	if (code == 5):
-		return c"NOT_FOUND"
-	if (code == 6):
-		return c"ALREADY_EXISTS"
-	if (code == 7):
-		return c"PERMISSION_DENIED"
-	if (code == 8):
-		return c"RESOURCE_EXHAUSTED"
-	if (code == 9):
-		return c"FAILED_PRECONDITION"
-	if (code == 10):
-		return c"ABORTED"
-	if (code == 11):
-		return c"OUT_OF_RANGE"
-	if (code == 12):
-		return c"UNIMPLEMENTED"
-	if (code == 13):
-		return c"INTERNAL"
-	if (code == 14):
-		return c"UNAVAILABLE"
-	if (code == 15):
-		return c"DATA_LOSS"
-	if (code == 16):
-		return c"UNAUTHENTICATED"
-	return c"UNKNOWN"
+	switch (code):
+		case 0: return c"OK"
+		case 1: return c"CANCELLED"
+		case 2: return c"UNKNOWN"
+		case 3: return c"INVALID_ARGUMENT"
+		case 4: return c"DEADLINE_EXCEEDED"
+		case 5: return c"NOT_FOUND"
+		case 6: return c"ALREADY_EXISTS"
+		case 7: return c"PERMISSION_DENIED"
+		case 8: return c"RESOURCE_EXHAUSTED"
+		case 9: return c"FAILED_PRECONDITION"
+		case 10: return c"ABORTED"
+		case 11: return c"OUT_OF_RANGE"
+		case 12: return c"UNIMPLEMENTED"
+		case 13: return c"INTERNAL"
+		case 14: return c"UNAVAILABLE"
+		case 15: return c"DATA_LOSS"
+		case 16: return c"UNAUTHENTICATED"
+		default: return c"UNKNOWN"
 
 
 # Default cap on one message (the common gRPC receive default, 4 MiB).

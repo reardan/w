@@ -14,15 +14,12 @@ import graphics.ui.testing
 
 
 char* tab_label(int index):
-	if (index == 0):
-		return c"main.w"
-	if (index == 1):
-		return c"tree.w"
-	if (index == 2):
-		return c"tabs.w"
-	if (index == 3):
-		return c"render.w"
-	return c"theme.w"
+	switch (index):
+		case 0: return c"main.w"
+		case 1: return c"tree.w"
+		case 2: return c"tabs.w"
+		case 3: return c"render.w"
+		default: return c"theme.w"
 
 
 ui_rect strip_area():

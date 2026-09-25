@@ -326,38 +326,23 @@ int server_error_to_status(int code):
    handlers are likely to use; anything else falls back to its class. */
 
 char* server_status_text(int status):
-	if (status == 200):
-		return c"OK"
-	if (status == 201):
-		return c"Created"
-	if (status == 204):
-		return c"No Content"
-	if (status == 301):
-		return c"Moved Permanently"
-	if (status == 302):
-		return c"Found"
-	if (status == 304):
-		return c"Not Modified"
-	if (status == 400):
-		return c"Bad Request"
-	if (status == 404):
-		return c"Not Found"
-	if (status == 405):
-		return c"Method Not Allowed"
-	if (status == 408):
-		return c"Request Timeout"
-	if (status == 411):
-		return c"Length Required"
-	if (status == 413):
-		return c"Payload Too Large"
-	if (status == 431):
-		return c"Request Header Fields Too Large"
-	if (status == 500):
-		return c"Internal Server Error"
-	if (status == 501):
-		return c"Not Implemented"
-	if (status == 503):
-		return c"Service Unavailable"
+	switch (status):
+		case 200: return c"OK"
+		case 201: return c"Created"
+		case 204: return c"No Content"
+		case 301: return c"Moved Permanently"
+		case 302: return c"Found"
+		case 304: return c"Not Modified"
+		case 400: return c"Bad Request"
+		case 404: return c"Not Found"
+		case 405: return c"Method Not Allowed"
+		case 408: return c"Request Timeout"
+		case 411: return c"Length Required"
+		case 413: return c"Payload Too Large"
+		case 431: return c"Request Header Fields Too Large"
+		case 500: return c"Internal Server Error"
+		case 501: return c"Not Implemented"
+		case 503: return c"Service Unavailable"
 	if (status < 300):
 		return c"OK"
 	if (status < 400):

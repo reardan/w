@@ -258,35 +258,22 @@ int h2_error_http_1_1_required():
 
 
 char* h2_error_string(int code):
-	if (code == 0):
-		return c"NO_ERROR"
-	if (code == 1):
-		return c"PROTOCOL_ERROR"
-	if (code == 2):
-		return c"INTERNAL_ERROR"
-	if (code == 3):
-		return c"FLOW_CONTROL_ERROR"
-	if (code == 4):
-		return c"SETTINGS_TIMEOUT"
-	if (code == 5):
-		return c"STREAM_CLOSED"
-	if (code == 6):
-		return c"FRAME_SIZE_ERROR"
-	if (code == 7):
-		return c"REFUSED_STREAM"
-	if (code == 8):
-		return c"CANCEL"
-	if (code == 9):
-		return c"COMPRESSION_ERROR"
-	if (code == 10):
-		return c"CONNECT_ERROR"
-	if (code == 11):
-		return c"ENHANCE_YOUR_CALM"
-	if (code == 12):
-		return c"INADEQUATE_SECURITY"
-	if (code == 13):
-		return c"HTTP_1_1_REQUIRED"
-	return c"UNKNOWN_ERROR"
+	switch (code):
+		case 0: return c"NO_ERROR"
+		case 1: return c"PROTOCOL_ERROR"
+		case 2: return c"INTERNAL_ERROR"
+		case 3: return c"FLOW_CONTROL_ERROR"
+		case 4: return c"SETTINGS_TIMEOUT"
+		case 5: return c"STREAM_CLOSED"
+		case 6: return c"FRAME_SIZE_ERROR"
+		case 7: return c"REFUSED_STREAM"
+		case 8: return c"CANCEL"
+		case 9: return c"COMPRESSION_ERROR"
+		case 10: return c"CONNECT_ERROR"
+		case 11: return c"ENHANCE_YOUR_CALM"
+		case 12: return c"INADEQUATE_SECURITY"
+		case 13: return c"HTTP_1_1_REQUIRED"
+		default: return c"UNKNOWN_ERROR"
 
 
 int h2_settings_header_table_size():

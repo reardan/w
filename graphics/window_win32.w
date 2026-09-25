@@ -127,25 +127,17 @@ void gfx_win32_push(gfx_window* win, int kind, int code, int mods):
 
 # Portable NAV code for a Win32 virtual-key code, or 0.
 int gfx_win32_nav(int vk):
-	if (vk == 37):
-		return GFX_NAV_LEFT
-	if (vk == 39):
-		return GFX_NAV_RIGHT
-	if (vk == 36):
-		return GFX_NAV_HOME
-	if (vk == 35):
-		return GFX_NAV_END
-	if (vk == 38):
-		return GFX_NAV_UP
-	if (vk == 40):
-		return GFX_NAV_DOWN
-	if (vk == 33):
-		return GFX_NAV_PAGE_UP
-	if (vk == 34):
-		return GFX_NAV_PAGE_DOWN
-	if (vk == 46):
-		return GFX_NAV_DELETE
-	return 0
+	switch (vk):
+		case 37: return GFX_NAV_LEFT
+		case 39: return GFX_NAV_RIGHT
+		case 36: return GFX_NAV_HOME
+		case 35: return GFX_NAV_END
+		case 38: return GFX_NAV_UP
+		case 40: return GFX_NAV_DOWN
+		case 33: return GFX_NAV_PAGE_UP
+		case 34: return GFX_NAV_PAGE_DOWN
+		case 46: return GFX_NAV_DELETE
+		default: return 0
 
 
 void gfx_win32_button(gfx_window* win, int button, int down, int lparam):

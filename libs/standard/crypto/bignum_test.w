@@ -252,16 +252,12 @@ int t_rand():
 # qhat correction (0, 1, B/2 - 1, B/2, B - 1) plus uniform limbs.
 int t_rand_limb():
 	int k = t_rand() % 8
-	if (k == 0):
-		return 0
-	if (k == 1):
-		return 1
-	if (k == 2):
-		return 16383
-	if (k == 3):
-		return 16384
-	if (k == 4):
-		return 32767
+	switch (k):
+		case 0: return 0
+		case 1: return 1
+		case 2: return 16383
+		case 3: return 16384
+		case 4: return 32767
 	return t_rand()
 
 

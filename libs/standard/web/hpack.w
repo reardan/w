@@ -137,21 +137,15 @@ int hpack_error_bad_field():
 
 
 char* hpack_error_string(int code):
-	if (code == 0):
-		return c"ok"
-	if (code == 1):
-		return c"malformed header block"
-	if (code == 2):
-		return c"invalid header index"
-	if (code == 3):
-		return c"invalid huffman data"
-	if (code == 4):
-		return c"header block exceeds limits"
-	if (code == 5):
-		return c"invalid dynamic table size update"
-	if (code == 6):
-		return c"invalid header field"
-	return c"unknown hpack error"
+	switch (code):
+		case 0: return c"ok"
+		case 1: return c"malformed header block"
+		case 2: return c"invalid header index"
+		case 3: return c"invalid huffman data"
+		case 4: return c"header block exceeds limits"
+		case 5: return c"invalid dynamic table size update"
+		case 6: return c"invalid header field"
+		default: return c"unknown hpack error"
 
 
 /* Defaults */

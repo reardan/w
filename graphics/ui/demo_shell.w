@@ -74,29 +74,23 @@ int ui_shell_doc_id(int folder, int index):
 
 
 char* ui_shell_doc_name(int doc):
-	if (doc == 0):
-		return c"tree.w"
-	if (doc == 1):
-		return c"tabs.w"
-	if (doc == 2):
-		return c"toast.w"
-	if (doc == 3):
-		return c"ui_widgets.md"
-	return c"README.md"
+	switch (doc):
+		case 0: return c"tree.w"
+		case 1: return c"tabs.w"
+		case 2: return c"toast.w"
+		case 3: return c"ui_widgets.md"
+		default: return c"README.md"
 
 
 # Placeholder contents, so the editor pane shows something per document
 # and switching tabs visibly changes it.
 char* ui_shell_doc_body(int doc):
-	if (doc == 0):
-		return c"# tree.w\n\nThe caller's recursion is the tree walk.\nA collapsed subtree costs nothing because\nthe caller simply does not recurse into it.\n\nLeft collapses, then ascends to the parent.\nRight expands, then descends to the first child."
-	if (doc == 1):
-		return c"# tabs.w\n\nThe close affordance is hit-tested before\nthe tab and consumes the click, so closing a\nbackground tab never first drags it into focus."
-	if (doc == 2):
-		return c"# toast.w\n\nThe widget holds no clock: the time comes in\nas an argument. UI code should not read clocks.\n\nDraws on UI_LAYER_TOP, takes no input."
-	if (doc == 3):
-		return c"# Widget expansion\n\nRound 1: clipping, layers, regions, scroll,\na text buffer, and Modal/Table/Textarea.\n\nRound 2: the editor shell."
-	return c"# W\n\nA small, self-hosting compiled language.\nC-like semantics, Python-like syntax.\n\nThe compiler is written in W."
+	switch (doc):
+		case 0: return c"# tree.w\n\nThe caller's recursion is the tree walk.\nA collapsed subtree costs nothing because\nthe caller simply does not recurse into it.\n\nLeft collapses, then ascends to the parent.\nRight expands, then descends to the first child."
+		case 1: return c"# tabs.w\n\nThe close affordance is hit-tested before\nthe tab and consumes the click, so closing a\nbackground tab never first drags it into focus."
+		case 2: return c"# toast.w\n\nThe widget holds no clock: the time comes in\nas an argument. UI code should not read clocks.\n\nDraws on UI_LAYER_TOP, takes no input."
+		case 3: return c"# Widget expansion\n\nRound 1: clipping, layers, regions, scroll,\na text buffer, and Modal/Table/Textarea.\n\nRound 2: the editor shell."
+		default: return c"# W\n\nA small, self-hosting compiled language.\nC-like semantics, Python-like syntax.\n\nThe compiler is written in W."
 
 
 struct ui_shell_state:

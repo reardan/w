@@ -99,19 +99,14 @@ void ui_demo_init(ui_demo_state* st):
 
 # The table's rows: one per widget the round shipped.
 char* ui_demo_row_name(int row):
-	if (row == 0):
-		return c"button"
-	if (row == 1):
-		return c"checkbox"
-	if (row == 2):
-		return c"textbox"
-	if (row == 3):
-		return c"dropdown"
-	if (row == 4):
-		return c"modal"
-	if (row == 5):
-		return c"table"
-	return c"textarea"
+	switch (row):
+		case 0: return c"button"
+		case 1: return c"checkbox"
+		case 2: return c"textbox"
+		case 3: return c"dropdown"
+		case 4: return c"modal"
+		case 5: return c"table"
+		default: return c"textarea"
 
 
 char* ui_demo_row_round(int row):
