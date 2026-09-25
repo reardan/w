@@ -500,3 +500,30 @@ int _win_start(int stub_argc, int stub_argv):
 	argv[argc] = cast(char*, 0)
 	argv[argc + 1] = cast(char*, 0) /* empty environment vector */
 	return _main(argc, cast(int, argv))
+
+
+/* No epoll or eventfd here: -ENOSYS makes lib/event_loop.w fall back to
+   poll and lib/task_runtime.w to a pipe. */
+
+int epoll_event_bytes():
+	return 16
+
+
+int epoll_event_data_offset():
+	return 8
+
+
+int epoll_create1(int flags):
+	return -38
+
+
+int epoll_ctl(int epfd, int op, int fd, int event):
+	return -38
+
+
+int epoll_wait(int epfd, int events, int maxevents, int timeout_ms):
+	return -38
+
+
+int eventfd2(int initval, int flags):
+	return -38

@@ -565,8 +565,8 @@ int task_run_once(task_scheduler* s, int max_wait_ms):
 		task_resume(s, t)
 	if (s.ready.length > 0):
 		return 0
-	int watches = event_loop_active_count[event_watch*](s.loop, s.loop.watches)
-	int timers = event_loop_active_count[event_timer*](s.loop, s.loop.timers)
+	int watches = event_loop_watch_count(s.loop)
+	int timers = event_loop_timer_count(s.loop)
 	if ((watches == 0) && (timers == 0)):
 		if (s.active_count > 0):
 			return task_err_deadlock()
