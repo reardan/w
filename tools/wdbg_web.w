@@ -1,4 +1,4 @@
-# wbuild: binary=wdbg_web arch=x64 staged
+# wbuild: binary=wdbg_web arch=x64 staged dep=wdbg_ui
 /*
 wdbg_web: a browser front end for wdbg (issue #98).
 
@@ -11,11 +11,12 @@ one-time access code in its query string:
 
   https://127.0.0.1:PORT/?code=CODE
 
-The page it serves (static files from tools/wdbg_web/) is a debugger
-UI: a source view with a clickable breakpoint gutter, run controls
-(continue / step / next / finish / step instruction), locals, arguments,
-backtrace and breakpoint panes, the program's output, and a console that
-takes any wdbg command.
+The page it serves is a W program: tools/wdbg_ui.w, compiled to wasm
+against graphics/ui and drawn with WebGL on a full-window canvas
+(tools/wdbg_web/index.html is only the host glue). Its layout follows
+OllyDbg: a CPU view (disassembly, registers + locals, memory dump,
+stack), source / log / call stack / breakpoint views, a toolbar, a
+command line and a status bar.
 
 Transport: the server runs bin/wdbg as a child process over pipes and
 speaks its existing text command loop, which is fully scriptable and
@@ -33,8 +34,12 @@ HTTP API (JSON unless noted; every request needs the access code):
                              returns {"state", "output"} once wdbg
                              prompts again or ~2s pass ("running")
   GET  /api/poll             output produced since the last call
-  GET  /api/inspect          bt / i locals / i args / i b / l outputs
-                             in one round trip (stopped sessions only)
+  GET  /api/inspect          l / bt / i locals / i args / i b / i w /
+                             r / st / disas outputs in one round trip
+                             (stopped sessions only)
+  POST /api/query            body = one inspection command (x, disas,
+                             p, bt, l, list, r, st, i); its output alone,
+                             kept out of the program-output stream
   GET  /api/source?file=P    source text of P (text/plain), only for
                              files wdbg's 'i files' lists
   POST /api/restart          kill the session and start a fresh one
@@ -68,7 +73,9 @@ Options:
                   breakpoints can be set first)
   --wdbg PATH     debugger binary (default: wdbg next to this binary)
   --wcore PATH    core processor (default: wcore next to this binary)
-  --static DIR    UI files (default: ../tools/wdbg_web from this binary)
+  --static DIR    page files (default: ../tools/wdbg_web from this binary;
+                  the wasm host glue is served from DIR/../web)
+  --ui PATH       the W UI module (default: wdbg_ui.wasm next to this binary)
   --max-requests N  exit after serving N requests (tests)
 
 This is a leaf tool (not in the seed's import graph); built as a 64-bit
@@ -103,6 +110,8 @@ int ww_break_start
 char* ww_wdbg_path
 char* ww_wcore_path
 char* ww_static_dir
+char* ww_web_dir         # tools/web: the shared wasm host glue
+char* ww_ui_wasm_path    # the W UI module (tools/wdbg_ui.w, compiled to wasm)
 char* ww_program
 char* ww_core_path
 char* ww_binary_path
@@ -508,7 +517,7 @@ int ww_authorized(RequestContext* rc):
 char* ww_content_type(char* path):
 	if (ends_with(path, c".html")):
 		return c"text/html; charset=utf-8"
-	if (ends_with(path, c".js")):
+	if (ends_with(path, c".js") || ends_with(path, c".mjs")):
 		return c"text/javascript; charset=utf-8"
 	if (ends_with(path, c".css")):
 		return c"text/css; charset=utf-8"
@@ -565,7 +574,16 @@ void ww_serve_static(RequestContext* rc, char* path):
 	if (ww_safe_static_path(rel) == 0):
 		request_context_text(rc, 404, c"not found\n")
 		return
-	char* full = strjoin(ww_static_dir, rel)
+	# Three roots: the W UI module (a build output, next to this
+	# binary), the shared wasm host glue under /web/ (tools/web), and
+	# the page itself (tools/wdbg_web).
+	char* full = 0
+	if (strcmp(rel, c"/wdbg_ui.wasm") == 0):
+		full = strclone(ww_ui_wasm_path)
+	else if (starts_with(rel, c"/web/")):
+		full = strjoin(ww_web_dir, rel + 4)
+	else:
+		full = strjoin(ww_static_dir, rel)
 	int len = 0
 	char* data = ww_read_file(full, &len)
 	if (data == 0):
@@ -658,7 +676,56 @@ void ww_api_inspect(RequestContext* rc):
 	ww_inspect_field(s, c"args", c"i args", 1)
 	ww_inspect_field(s, c"breakpoints", c"i b", 1)
 	ww_inspect_field(s, c"watchpoints", c"i w", 1)
+	ww_inspect_field(s, c"registers", c"r", 1)
+	ww_inspect_field(s, c"stack", c"st", 1)
+	ww_inspect_field(s, c"disas", c"disas", 1)
 	string_append(s, c"}")
+	ww_reply_json(rc, 200, s)
+
+
+# 1 when line starts with one of wdbg's inspection-only commands (no
+# execution, no state change), the only ones /api/query runs.
+int ww_query_allowed(char* line):
+	char* words = c"x disas p print bt backtrace l list r registers st stack i info"
+	list[char*] allowed = split(words, ' ')
+	int n = 0
+	while ((line[n] != 0) && (line[n] != ' ')):
+		n = n + 1
+	char* first = substring(line, 0, n)
+	int ok = 0
+	for char* w in allowed:
+		if (strcmp(w, first) == 0):
+			ok = 1
+		free(w)
+	list_free[char*](allowed)
+	free(first)
+	return ok
+
+
+# Run one inspection command and return its output on its own, without
+# mixing it into the program-output stream /api/cmd and /api/poll carry
+# (the W UI's memory dump and code-bytes panes use this).
+void ww_api_query(RequestContext* rc):
+	if (ww_state != ww_state_stopped()):
+		ww_reply_error(rc, 409, c"the debugger is not stopped at a prompt")
+		return
+	char* body = request_context_body(rc)
+	int n = 0
+	while ((body[n] != 0) && (body[n] != 10) && (body[n] != 13)):
+		n = n + 1
+	char* line = substring(body, 0, n)
+	if (ww_query_allowed(line) == 0):
+		free(line)
+		ww_reply_error(rc, 400, c"/api/query runs inspection commands only (x, disas, p, bt, l, list, r, st, i)")
+		return
+	char* out = ww_query(line)
+	free(line)
+	string_builder* s = string_new()
+	string_append(s, c"{")
+	ww_json_field(s, c"state", ww_state_name(ww_state), 0)
+	ww_json_field(s, c"output", out, 1)
+	string_append(s, c"}")
+	free(out)
 	ww_reply_json(rc, 200, s)
 
 
@@ -741,6 +808,8 @@ void ww_handle(RequestContext* rc, void* user_data):
 		ww_api_poll(rc)
 	else if (is_get && (strcmp(path, c"/api/inspect") == 0)):
 		ww_api_inspect(rc)
+	else if (is_post && (strcmp(path, c"/api/query") == 0)):
+		ww_api_query(rc)
 	else if (is_get && (strcmp(path, c"/api/source") == 0)):
 		ww_api_source(rc)
 	else if (is_post && (strcmp(path, c"/api/restart") == 0)):
@@ -983,6 +1052,9 @@ int main(int argc, int argv):
 		else if (has_next && (strcmp(a, c"--wcore") == 0)):
 			i = i + 1
 			ww_wcore_path = ww_arg(argv, i)
+		else if (has_next && (strcmp(a, c"--ui") == 0)):
+			i = i + 1
+			ww_ui_wasm_path = ww_arg(argv, i)
 		else if (has_next && (strcmp(a, c"--static") == 0)):
 			i = i + 1
 			ww_static_dir = ww_arg(argv, i)
@@ -1015,6 +1087,14 @@ int main(int argc, int argv):
 		ww_wcore_path = path_join(self_dir, c"wcore")
 	if (ww_static_dir == 0):
 		ww_static_dir = path_join(self_dir, c"../tools/wdbg_web")
+	if (ww_web_dir == 0):
+		ww_web_dir = path_join(ww_static_dir, c"../web")
+	if (ww_ui_wasm_path == 0):
+		ww_ui_wasm_path = path_join(self_dir, c"wdbg_ui.wasm")
+	if (path_exists(ww_ui_wasm_path) == 0):
+		print2(c"wdbg_web: warning: UI module not found: ")
+		println2(ww_ui_wasm_path)
+		println2(c"(build it with ./wbuild wdbg_web, or pass --ui <path>)")
 	if (path_exists(ww_static_dir) == 0):
 		print2(c"wdbg_web: UI directory not found: ")
 		println2(ww_static_dir)

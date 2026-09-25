@@ -297,9 +297,11 @@ Toolchain beyond the compiler:
   See `docs/debugging.txt` and the `debug_test` target.
 - **Web debugger** (`./wbuild wdbg_web`): `./bin/wdbg_web file.w` runs
   `wdbg` behind a local https server and prints `https://127.0.0.1:PORT/?code=...`
-  to open: source view with a breakpoint gutter, step/next/finish controls,
-  locals/args/backtrace/breakpoint panes and a wdbg console. `--core <core>`
-  shows a `wcore` report instead. See `docs/projects/wdbg_web.md`.
+  to open. The page is a W program (`tools/wdbg_ui.w`, compiled to wasm and
+  drawn with graphics/ui) laid out after OllyDbg: a CPU view with
+  disassembly, registers, memory dump and stack panes, a source view with
+  F2 breakpoints, log, call stack and breakpoint views, F7/F8/F9 stepping
+  and a wdbg command line. `--core <core>` shows a `wcore` report instead. See `docs/projects/wdbg_web.md`.
 - **Runtime stack traces** (`lib/stack_trace.w`): assertion failures
   (`lib/assert.w`) and container traps (missing map key, list index out of
   range, pop on empty list) print a symbolized stack trace to stderr —
