@@ -156,6 +156,19 @@ void test_binary_reader_rejects_non_elf():
 	assert_equal(0, cast(int, binary))
 
 
+void test_binary_reader_byte_patterns():
+	char* data = c"\x7fELF\x00\x9e\x03\xc1\xda"
+	assert_equal(1, asm_is_elf(data, 9))
+	assert_equal(0, asm_is_elf(data, 3))
+	assert_equal(0, asm_is_macho64(data, 9))
+	assert_equal(1, asm_is_macho64(c"\xcf\xfa\xed\xfe", 4))
+	# Unaligned match at offset 5; a pattern past length is not found.
+	assert_equal(1, asm_find_bytes4(data, 9, 0x9e, 0x03, 0xc1, 0xda))
+	assert_equal(0, asm_find_bytes4(data, 8, 0x9e, 0x03, 0xc1, 0xda))
+	assert_equal(1, asm_bytes_match4_at(data, 9, 5, 0x9e, 0x03, 0xc1, 0xda))
+	assert_equal(0, asm_bytes_match4_at(data, 9, 6, 0x9e, 0x03, 0xc1, 0xda))
+
+
 int main():
 	test_buffer_and_labels()
 	test_insn_model()
@@ -165,5 +178,6 @@ int main():
 	test_binary_reader_elf32()
 	test_binary_reader_elf64()
 	test_binary_reader_rejects_non_elf()
+	test_binary_reader_byte_patterns()
 	println(c"asm_foundations_test passed")
 	return 0
