@@ -1960,6 +1960,7 @@
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/menu_test.w", "-o", "bin/graphics_ui_menu_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/toast_test.w", "-o", "bin/graphics_ui_toast_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/form_test.w", "-o", "bin/graphics_ui_form_darwin"]},
+				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/widgets/chips_test.w", "-o", "bin/graphics_ui_chips_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/smoke_test.w", "-o", "bin/graphics_ui_smoke_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/ui/demo.w", "-o", "bin/graphics_ui_demo_darwin"]},
 				{"cmd": ["bin/wv2", "arm64_darwin", "graphics/demo.w", "-o", "bin/graphics_demo_darwin"]}
@@ -2147,6 +2148,7 @@
 				"graphics_event_64_test",
 				"graphics_gl_texture_test",
 				"graphics_ui_buffer_64_test",
+				"graphics_ui_chips_test",
 				"graphics_ui_clip_test",
 				"graphics_ui_core_64_test",
 				"graphics_ui_form_test",
@@ -4545,6 +4547,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "graphics/ui/widgets/buffer_test.w", "-o", "bin/graphics_ui_buffer_test"]},
 				{"cmd": ["bin/graphics_ui_buffer_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_chips_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/widgets/chips_test.w"],
+			"outputs": ["bin/graphics_ui_chips_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/chips_test.w", "-o", "bin/graphics_ui_chips_test"]},
+				{"cmd": ["bin/graphics_ui_chips_test"]}
 			]
 		},
 		{
