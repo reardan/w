@@ -473,9 +473,35 @@ int sym_declare_global(char *s, int type, int symtype):
 # slots in `code`) to v and mark the symbol defined. v is a code address for
 # functions and read-only globals, or a data-segment address for mutable
 # globals under the W^X split (Stage 3).
+# Address-slot backpatch chains, the encoding of 'U' symbols (patched
+# by sym_define_global_at below), generic instantiations and the lazy
+# runtime helpers (grammar/generic.w, grammar/lazy_runtime.w): each slot
+# holds the previous slot's absolute address and code_offset ends the
+# chain; a head of 0 is an empty chain.
+# Emit an address slot linked onto the chain whose head is `head`
+# (0 = empty) and return the new head. The slot is signed for pac=full.
+int addr_chain_link(int head):
+	if (head == 0):
+		head = code_offset
+	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
+	be_addr_slot_write(codepos - 4, head)
+	int slot = codepos + code_offset - 4
+	be_code_ptr_sign()
+	return slot
+
+
+# Write `value` into every slot of the chain whose head is `head`.
+void addr_chain_patch(int head, int value):
+	if (head == 0):
+		return;
+	int p = head - code_offset
+	while (p):
+		int next = be_addr_slot_read(p) - code_offset
+		be_addr_slot_write(p, value)
+		p = next
+
+
 void sym_define_global_at(int current_symbol, int v):
-	int i
-	int j
 	int t = current_symbol
 	if (table[t + 1] != 'U'):
 		error3(c"symbol redefined: '", last_global_declaration, c"'")
@@ -490,11 +516,7 @@ void sym_define_global_at(int current_symbol, int v):
 	# declaration path that bypasses sym_declare_global) leaves it alone.
 	if (sym_last_declared_offset == current_symbol):
 		sym_set_decl_location(current_symbol, decl_file_index(), sym_last_declared_line, sym_last_declared_column)
-	i = load_int(table + t + 2) - code_offset
-	while (i):
-		j = be_addr_slot_read(i) - code_offset
-		be_addr_slot_write(i, v)
-		i = j
+	addr_chain_patch(load_int(table + t + 2), v)
 
 	table[t + 1] = 'D'
 	save_int(table + t + 2, v)

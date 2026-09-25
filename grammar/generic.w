@@ -716,14 +716,7 @@ int generic_inst_signature(int inst):
 # the cursor-protocol calls for_statement.w emits for generic
 # containers.
 void generic_inst_emit_callee(int inst):
-	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
-	int head = generic_inst_chain(inst)
-	if (head == 0):
-		head = code_offset
-	be_addr_slot_write(codepos - 4, head)
-	generic_inst_set_chain(inst, codepos + code_offset - 4)
-	# pac=full: sign the chain-materialized callee like sym_get_value does
-	be_code_ptr_sign()
+	generic_inst_set_chain(inst, addr_chain_link(generic_inst_chain(inst)))
 
 
 /*
@@ -1160,14 +1153,7 @@ void generic_instantiate_function(int inst):
 	free(generic_subst_swap(old_subst))
 	generic_reparse_restore(save)
 	# patch the pre-definition call sites (json_codec chain encoding)
-	int head = generic_inst_chain(inst)
-	int p = 0
-	if (head != 0):
-		p = head - code_offset
-	while (p):
-		int next = be_addr_slot_read(p) - code_offset
-		be_addr_slot_write(p, address)
-		p = next
+	addr_chain_patch(generic_inst_chain(inst), address)
 
 
 # Forward calls: 'fwd[int](x)' where the generic's definition appears
@@ -1237,19 +1223,14 @@ int generic_forward_call_expr():
 		error3(c"']' expected in type argument list, found '", token, c"'")
 	# a chain slot for this call; merged into the instantiation's chain
 	# once the definition is known
-	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
-	be_addr_slot_write(codepos - 4, code_offset)
 	generic_forward_record rec
 	rec.name = name
 	rec.args = args
 	rec.arg_count = arg_count
-	rec.chain = codepos + code_offset - 4
+	rec.chain = addr_chain_link(0)
 	rec.call_file = call_file
 	rec.call_line = call_line
 	generic_forwards.push(rec)
-	# pac=full: sign the chain-materialized callee like sym_get_value does
-	# (after the slot position was recorded in the forward entry above)
-	be_code_ptr_sign()
 	# keep postfix_expr's callee lookup from matching a stale identifier
 	strcpy(last_identifier, c"$forward generic call$")
 	return 4
@@ -1296,11 +1277,7 @@ void generic_resolve_forward(int f):
 		if (table[t + 1] == 'D'):
 			# already compiled: patch this record's chain directly
 			int address = load_int(table + t + 2)
-			int p = generic_forwards[f].chain - code_offset
-			while (p):
-				int next = be_addr_slot_read(p) - code_offset
-				be_addr_slot_write(p, address)
-				p = next
+			addr_chain_patch(generic_forwards[f].chain, address)
 			free(mangled)
 			free(cast(char*, args))
 			return;
