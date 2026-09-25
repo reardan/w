@@ -59,8 +59,8 @@ void test_generate_parses_and_self_verifies():
 	assert_strings_equal(c"localhost", c.san_dns[0])
 	assert_equal(1, x509_match_hostname(c, c"localhost"))
 	# notBefore 2020-01-01, notAfter 2049-12-31 23:59:59
-	assert_equal(x509_days_from_civil(2020, 1, 1), c.nb_day)
-	assert_equal(x509_days_from_civil(2049, 12, 31), c.na_day)
+	assert_equal(time_days_from_civil(2020, 1, 1), c.nb_day)
+	assert_equal(time_days_from_civil(2049, 12, 31), c.na_day)
 	assert_equal(86399, c.na_sec)
 	# Self-signed: the cert's own key verifies its signature.
 	assert_equal(1, x509_check_signature(c, c))

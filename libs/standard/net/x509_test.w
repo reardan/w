@@ -551,17 +551,17 @@ void test_hostname_rules():
 
 
 void test_time_parsing():
-	assert_equal(0, x509_days_from_civil(1970, 1, 1))
-	assert_equal(24855, x509_days_from_civil(2038, 1, 19))
-	assert_equal(29220, x509_days_from_civil(2050, 1, 1))
+	assert_equal(0, time_days_from_civil(1970, 1, 1))
+	assert_equal(24855, time_days_from_civil(2038, 1, 19))
+	assert_equal(29220, time_days_from_civil(2050, 1, 1))
 	int day = 0
 	int sec = 0
 	# UTCTime pivot: 49 -> 2049, 50 -> 1950.
 	assert_equal(1, x509_parse_time(c"491231235959Z", 0, 13, ASN1_UTCTIME(), &day, &sec))
-	assert_equal(x509_days_from_civil(2049, 12, 31), day)
+	assert_equal(time_days_from_civil(2049, 12, 31), day)
 	assert_equal(86399, sec)
 	assert_equal(1, x509_parse_time(c"500101000000Z", 0, 13, ASN1_UTCTIME(), &day, &sec))
-	assert_equal(x509_days_from_civil(1950, 1, 1), day)
+	assert_equal(time_days_from_civil(1950, 1, 1), day)
 	# GeneralizedTime.
 	assert_equal(1, x509_parse_time(c"20500101000000Z", 0, 15, ASN1_GENERALIZEDTIME(), &day, &sec))
 	assert_equal(29220, day)

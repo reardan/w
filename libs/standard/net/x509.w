@@ -43,6 +43,7 @@ import libs.standard.crypto.base64
 import libs.standard.crypto.rsa_verify
 import libs.standard.crypto.ecdsa_p256
 import libs.standard.net.asn1
+import lib.time
 
 
 # ---- constants ----------------------------------------------------------------
@@ -237,36 +238,6 @@ void x509_cert_free(x509_cert* c):
 
 # ---- date handling -------------------------------------------------------------
 
-# Days since 1970-01-01 for a proleptic-Gregorian date (Hinnant's
-# days-from-civil; exact for every year this module accepts).
-int x509_days_from_civil(int y, int m, int d):
-	if (m <= 2):
-		y = y - 1
-	int era = y / 400
-	int yoe = y - era * 400
-	int mp = m + 9
-	if (m > 2):
-		mp = m - 3
-	int doy = (153 * mp + 2) / 5 + d - 1
-	int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
-	return era * 146097 + doe - 719468
-
-
-int x509_days_in_month(int y, int m):
-	if (m == 2):
-		int leap = 0
-		if (y % 4 == 0):
-			leap = 1
-		if (y % 100 == 0):
-			leap = 0
-		if (y % 400 == 0):
-			leap = 1
-		return 28 + leap
-	if ((m == 4) || (m == 6) || (m == 9) || (m == 11)):
-		return 30
-	return 31
-
-
 # Split a non-negative unix timestamp into (days since epoch, seconds in day).
 void x509_unix_to_day_sec(int unix_time, int* out_day, int* out_sec):
 	*out_day = unix_time / 86400
@@ -321,7 +292,7 @@ int x509_parse_time(char* data, int start, int len, int tag, int* out_day, int* 
 		return 0
 	if (day < 1):
 		return 0
-	if (day > x509_days_in_month(year, month)):
+	if (day > time_days_in_month(year, month)):
 		return 0
 	if ((hour < 0) || (hour > 23)):
 		return 0
@@ -329,7 +300,7 @@ int x509_parse_time(char* data, int start, int len, int tag, int* out_day, int* 
 		return 0
 	if ((second < 0) || (second > 59)):
 		return 0
-	*out_day = x509_days_from_civil(year, month, day)
+	*out_day = time_days_from_civil(year, month, day)
 	*out_sec = hour * 3600 + minute * 60 + second
 	return 1
 

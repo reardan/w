@@ -80,6 +80,52 @@ int time_days_in_month(int year, int month):
 	return 31
 
 
+# English month name for 1..12 ("January"); the first three letters are
+# the RFC 5322 / HTTP-date abbreviation.
+char* time_month_name(int month):
+	switch (month):
+		case 1: return c"January"
+		case 2: return c"February"
+		case 3: return c"March"
+		case 4: return c"April"
+		case 5: return c"May"
+		case 6: return c"June"
+		case 7: return c"July"
+		case 8: return c"August"
+		case 9: return c"September"
+		case 10: return c"October"
+		case 11: return c"November"
+		default: return c"December"
+
+
+# English weekday name, 0 = Sunday through 6 = Saturday (date_time.weekday
+# numbering); the first three letters are the RFC 5322 abbreviation.
+char* time_weekday_name(int weekday):
+	switch (weekday):
+		case 0: return c"Sunday"
+		case 1: return c"Monday"
+		case 2: return c"Tuesday"
+		case 3: return c"Wednesday"
+		case 4: return c"Thursday"
+		case 5: return c"Friday"
+		default: return c"Saturday"
+
+
+# Month 1..12 whose English name starts with the three letters at s
+# (any case), or -1.
+int time_month_from_abbrev(char* s):
+	int m = 1
+	while (m <= 12):
+		char* name = time_month_name(m)
+		int i = 0
+		while ((i < 3) && (((s[i] | 32) & 255) == (name[i] | 32))):
+			i = i + 1
+		if (i == 3):
+			return m
+		m = m + 1
+	return 0 - 1
+
+
 # Converts non-negative Unix timestamps to UTC; negative inputs assert loudly.
 # weekday is 0=Sunday..6=Saturday; year_day is 1-based.
 void time_utc_from_unix(int timestamp, date_time* out):

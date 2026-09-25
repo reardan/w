@@ -1270,16 +1270,6 @@ char* smtp_encode_word(char* text):
 	return result
 
 
-char* smtp_day_name(int weekday):
-	char* names = c"SunMonTueWedThuFriSat"
-	return substring(names, weekday * 3, weekday * 3 + 3)
-
-
-char* smtp_month_name(int month):
-	char* names = c"JanFebMarAprMayJunJulAugSepOctNovDec"
-	return substring(names, (month - 1) * 3, (month - 1) * 3 + 3)
-
-
 void smtp_append_2(string_builder* out, int v):
 	string_append_char(out, '0' + (v / 10) % 10)
 	string_append_char(out, '0' + v % 10)
@@ -1292,13 +1282,11 @@ char* smtp_format_date(int unix_time):
 	date_time dt
 	time_utc_from_unix(unix_time, &dt)
 	string_builder* out = string_new()
-	char* day = smtp_day_name(dt.weekday)
-	char* mon = smtp_month_name(dt.month)
-	string_append(out, day)
+	string_append_bytes(out, time_weekday_name(dt.weekday), 3)
 	string_append(out, c", ")
 	string_append_int(out, dt.day)
 	string_append_char(out, ' ')
-	string_append(out, mon)
+	string_append_bytes(out, time_month_name(dt.month), 3)
 	string_append_char(out, ' ')
 	string_append_int(out, dt.year)
 	string_append_char(out, ' ')
@@ -1308,8 +1296,6 @@ char* smtp_format_date(int unix_time):
 	string_append_char(out, ':')
 	smtp_append_2(out, dt.second)
 	string_append(out, c" +0000")
-	free(day)
-	free(mon)
 	char* result = out.data
 	free(cast(char*, out))
 	return result
