@@ -472,7 +472,7 @@ void wbd_handle_event(inotify_event* ev):
 	# C-import headers are the compiler's only non-.w inputs.
 	if (ends_with(ev.name, c".h") || ends_with(ev.name, c".c")):
 		wbd_clear_all()
-	if (strcmp(ev.name, c"build.json") == 0):
+	if (strcmp(ev.name, c"build.base.json") == 0):
 		wbd_prewarm_schedule(1500)
 
 

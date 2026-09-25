@@ -15,7 +15,7 @@ instead. Inputs live in a pid-scoped bin/wbuildd_test_<pid>/ tree: a
 root importing a helper module, a root with a warning, a root with a
 syntax error, plus a throwaway wtest manifest compiling two of them
 (the "-f" isolation trick tests/wtest/ uses, so bin/wtest never reads
-the real build.json). Each comparison runs twice (the second answer is
+the real manifest). Each comparison runs twice (the second answer is
 served from the daemon's memo, which status --json must show as hits),
 then the files are EDITED -- a warning appears in the imported helper,
 the root stops importing it, a module is created and one deleted -- and
