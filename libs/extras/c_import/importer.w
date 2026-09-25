@@ -425,65 +425,6 @@ pg_ast_node* ci_qualifier_specs(pg_ast_node* node):
 /* ---------- constant expression evaluation ---------- */
 
 
-int ci_hex_digit(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
-	return -1
-
-
-# Integer constants: decimal, hex, octal; integer suffixes are ignored.
-int ci_parse_number_text(char* text):
-	int base = 10
-	int i = 0
-	if (text[0] == '0'):
-		if ((text[1] == 'x') || (text[1] == 'X')):
-			base = 16
-			i = 2
-		else if (text[1] != 0):
-			base = 8
-			i = 1
-	int value = 0
-	while (text[i] != 0):
-		int digit = -1
-		if (base == 16):
-			digit = ci_hex_digit(text[i])
-		else if ((text[i] >= '0') && (text[i] <= '9')):
-			digit = text[i] - '0'
-		if ((digit < 0) || (digit >= base)):
-			return value
-		value = value * base + digit
-		i = i + 1
-	return value
-
-
-int ci_char_escape_value(int c):
-	if (c == 'n'):
-		return 10
-	if (c == 't'):
-		return 9
-	if (c == 'r'):
-		return 13
-	if (c == '0'):
-		return 0
-	return c
-
-
-int ci_parse_char_text(char* text):
-	int i = 0
-	while ((text[i] != 0) && (text[i] != 39)):
-		i = i + 1
-	if (text[i] == 0):
-		return 0
-	i = i + 1
-	if (text[i] == 92):
-		return ci_char_escape_value(text[i + 1])
-	return text[i]
-
-
 int ci_binary_op_precedence(char* op):
 	if (strcmp(op, c"||") == 0):
 		return 1
@@ -705,9 +646,9 @@ int ci_const_value(char* name):
 int ci_eval_primary(pg_ast_node* node):
 	pg_ast_node* first = pg_ast_child(node, 0)
 	if (ci_is_token(first, clang_token_NUMBER)):
-		return ci_parse_number_text(first.text)
+		return cpp_expr_parse_number(first.text)
 	if (ci_is_token(first, clang_token_CHAR_LITERAL)):
-		return ci_parse_char_text(first.text)
+		return cpp_expr_parse_char(first.text)
 	if (ci_is_token(first, clang_token_IDENT)):
 		return ci_const_value(first.text)
 	pg_ast_node* expr = ci_child_ast(node, clang_ast_expression)
@@ -731,9 +672,9 @@ int ci_eval_const(pg_ast_node* node):
 		return 0
 	if (node.token != 0):
 		if (node.kind == clang_token_NUMBER):
-			return ci_parse_number_text(node.text)
+			return cpp_expr_parse_number(node.text)
 		if (node.kind == clang_token_CHAR_LITERAL):
-			return ci_parse_char_text(node.text)
+			return cpp_expr_parse_char(node.text)
 		if (node.kind == clang_token_IDENT):
 			return ci_const_value(node.text)
 		return 0
