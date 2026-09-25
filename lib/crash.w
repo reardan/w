@@ -391,16 +391,12 @@ void crash_install_darwin():
 	# (x28) at the initial sp and grows it down while sp stays put, so a
 	# signal frame built below sp would land on the live W frames and
 	# the handler's own W pushes would then overwrite the saved
-	# ucontext. sigaltstack (53) takes a stack_t {ss_sp, ss_size,
-	# ss_flags}.
+	# ucontext. sigaltstack is the per-arch wrapper in
+	# lib/__arch__/*/syscalls.w (win64 has no raw syscall).
 	int alt_size = 131072
 	int alt = mmap(0, alt_size, 3, 34) /* RW, PRIVATE|ANONYMOUS */
 	if ((alt > 0) || (alt < -4095)):
-		int[3] ss
-		ss[0] = alt
-		ss[1] = alt_size
-		ss[2] = 0
-		if (syscall(53, cast(int, &ss[0]), 0, 0) != 0):
+		if (sigaltstack(alt, alt_size) != 0):
 			return;
 	else:
 		return;

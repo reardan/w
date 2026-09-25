@@ -287,6 +287,16 @@ int rt_sigaction(int signum, int* act, int* oldact):
 	return syscall(46, signum, cast(int, &nsa[0]), 0)
 
 
+# sigaltstack: deliver signals on [sp, sp + size). 0 on success.
+# Darwin's stack_t is {ss_sp, ss_size, ss_flags}.
+int sigaltstack(int sp, int size):
+	int[3] ss
+	ss[0] = sp
+	ss[1] = size
+	ss[2] = 0
+	return syscall(53, cast(int, &ss[0]), 0, 0)
+
+
 /* Process management */
 
 # fork (2) returns two values on Darwin: x0 = pid, x1 = 1 in the child.

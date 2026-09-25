@@ -196,6 +196,16 @@ int rt_sigaction(int signum, int* act, int* oldact):
 	return syscall7(174, signum, act, oldact, 8, 0, 0)
 
 
+# sigaltstack: deliver signals on [sp, sp + size). 0 on success.
+# stack_t is {ss_sp, ss_flags, ss_size}, each field word-aligned.
+int sigaltstack(int sp, int size):
+	int[3] ss
+	ss[0] = sp
+	ss[1] = 0
+	ss[2] = size
+	return syscall(186, cast(int, &ss[0]), 0, 0)
+
+
 /* Process management */
 
 # Returns the child pid in the parent and 0 in the child; the child gets a

@@ -374,6 +374,10 @@ int rt_sigaction(int signum, int* act, int* oldact):
 	return -1
 
 
+int sigaltstack(int sp, int size):
+	return -1
+
+
 /* Startup */
 
 # The wasm entry stub calls __w_wasm_start (see wasm_finish in
