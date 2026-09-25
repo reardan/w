@@ -22,6 +22,7 @@ import lib.file
 import lib.str
 import lib.container
 import structures.string
+import lib.dir
 
 
 char* sc_name = 0    # the fixture's name in its FAIL/OK lines
@@ -34,20 +35,9 @@ void sc_err(char* s):
 	write(2, s, strlen(s))
 
 
-void sc_rm_rf(char* path):
-	char** argv = strv_new(3)
-	strv_set(argv, 0, c"/bin/rm")
-	strv_set(argv, 1, c"-rf")
-	strv_set(argv, 2, path)
-	process_result* r = process_run(c"/bin/rm", argv, 0, 0, 60000)
-	if (r != 0):
-		process_result_free(r)
-	free(cast(void*, argv))
-
-
 void sc_cleanup():
 	if (sc_dir != 0):
-		sc_rm_rf(sc_dir)
+		dir_remove_all(sc_dir)
 
 
 void fail(char* msg):

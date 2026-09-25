@@ -156,6 +156,7 @@ import tools.__arch__.wexec_remote_http
 import tools.wexec_trace
 import tools.manifest_source
 import lib.str
+import lib.dir
 
 
 json_value* wexec_manifest
@@ -186,7 +187,6 @@ int wexec_gen_outputs_loaded      # 1 once wexec_gen_outputs is filled
 
 
 int wexec_collect_closure(char* name);
-void wexec_collect_dir(char* path, list[char*] files);
 int wexec_is_generated_output(char* path);
 
 
@@ -428,91 +428,20 @@ void wexec_warn_dir_unhashed(char* path):
 	stream_flush(err)
 
 
-# Recursively collect every regular file under path. Uses the classic
-# Linux getdents layout: d_reclen is 2 bytes after ino and off (one word
-# each), the name follows it, and d_type sits in the record's last byte
-# (4 = directory, 8 = regular file).
-# On Windows, FindFirstFileA/FindNextFileA are used instead.
-# On darwin the getdents shim returns raw getdirentries64 records in a
-# DIFFERENT layout (see the NOTE in lib/__arch__/arm64_darwin/
-# syscalls.w), which the offsets below would misparse into a silently
-# empty listing -- and so a stable-but-wrong cache key. Until per-arch
-# dirent accessors exist (docs/projects/ai_tooling_next_steps.md,
-# "wexec directory hashing is Linux-layout only"), that platform's
-# tools/__arch__/wexec_platform.w reports the layout unsupported and
-# this function warns once and returns no files instead of guessing:
-# same hash as before, but an honest diagnostic in the log. The darwin
-# build targets declare no directory "inputs" (FORCE-style), so nothing
-# relies on directory hashing there today.
+# Recursively collect every regular file under path (lib/dir.w's
+# dir_walk_files, which decodes each target's dirent layout). On darwin
+# the record layout lib/__arch__/arm64_darwin/dirent.w decodes has not
+# been checked on a Mac yet, so that platform's
+# tools/__arch__/wexec_platform.w still reports directory listing
+# unsupported and this function warns once and returns no files: the
+# same hash as an empty directory, but an honest diagnostic in the log.
+# The darwin build targets declare no directory "inputs" (FORCE-style),
+# so nothing relies on directory hashing there today.
 void wexec_collect_dir(char* path, list[char*] files):
-	if (os_windows()):
-		# WIN32_FIND_DATAA: dwFileAttributes(4)+3×FILETIME(24)+4×DWORD(16)+
-		# cFileName[260]+cAlternateFileName[14] = 320 bytes.
-		# cFileName is at offset 44; FILE_ATTRIBUTE_DIRECTORY = 0x10 = 16.
-		char* find_data = malloc(320)
-		string_builder* pat = string_new()
-		string_append(pat, path)
-		string_append(pat, c"/*")
-		int handle = FindFirstFileA(pat.data, find_data)
-		string_free(pat)
-		if (handle != -1):
-			while (1):
-				char* name = find_data + 44
-				int attrs = load_int32(find_data)
-				if ((strcmp(name, c".") != 0) && (strcmp(name, c"..") != 0)):
-					string_builder* child = string_new()
-					string_append(child, path)
-					string_append_char(child, '/')
-					string_append(child, name)
-					if (attrs & 16):
-						wexec_collect_dir(child.data, files)
-						string_free(child)
-					else:
-						char* owned = child.data
-						free(child)
-						files.push(owned)
-				if (FindNextFileA(handle, find_data) == 0):
-					break
-			FindClose(handle)
-		free(find_data)
-		return
 	if (wexec_dirents_supported() == 0):
-		# Non-Linux dirent layout (darwin): warn once, hash as empty --
-		# see this function's header comment for why.
 		wexec_warn_dir_unhashed(path)
 		return
-	# 65536 = O_DIRECTORY
-	int fd = open(path, 65536, 0)
-	if (fd < 0):
-		return
-	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* entry = buffer + off
-			int reclen = wexec_load_uint16(entry + 2 * __word_size__)
-			char* entry_name = entry + 2 * __word_size__ + 2
-			int kind = entry[reclen - 1] & 255
-			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
-				string_builder* child = string_new()
-				string_append(child, path)
-				string_append(child, c"/")
-				string_append(child, entry_name)
-				if (kind == 4):
-					wexec_collect_dir(child.data, files)
-					string_free(child)
-				else if (kind == 8):
-					char* owned = child.data
-					free(child)
-					files.push(owned)
-				else:
-					string_free(child)
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
+	dir_walk_files(path, files)
 
 
 # Insertion sort: getdents order depends on filesystem state, and the
@@ -3084,9 +3013,9 @@ char* wexec_warm_manifest_label
 
 # path = 0 is the default manifest: generated in memory from
 # build.base.json and the source tree (tools/manifest_source.w). The
-# generator walks directories with Linux-layout getdents, or with
-# FindFirstFileA on Windows; where neither holds (darwin; see
-# wexec_dirents_supported) only build.base.json's own targets are
+# generator walks directories with lib/dir.w; where that listing is
+# not trusted yet (darwin; see wexec_dirents_supported) only
+# build.base.json's own targets are
 # loaded -- the darwin toolchain targets that executor runs all live
 # there.
 int wexec_load_manifest(char* path):

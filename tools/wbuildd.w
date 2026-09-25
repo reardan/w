@@ -130,6 +130,7 @@ import structures.string
 import structures.json
 import tools.wexec
 import lib.str
+import lib.dir
 
 
 int wbd_protocol():
@@ -297,13 +298,8 @@ int wbd_watch_mask():
 	return IN_MODIFY() | IN_CLOSE_WRITE() | IN_MOVED_FROM() | IN_MOVED_TO() | IN_CREATE() | IN_DELETE() | IN_DELETE_SELF() | IN_MOVE_SELF()
 
 
-int wbd_load_uint16(char* p):
-	return (p[0] & 255) + ((p[1] & 255) << 8)
-
-
 # Adds a watch for rel ("" = the root) and, recursively, every
-# non-dot subdirectory under it (the same getdents record walk
-# tools/wbuildgen.w uses).
+# non-dot subdirectory under it.
 void wbd_watch_tree(char* rel):
 	char* path = rel
 	if (rel[0] == 0):
@@ -314,29 +310,15 @@ void wbd_watch_tree(char* rel):
 	if ((wd in wbd_watch_dirs) == 0):
 		wbd_watch_count = wbd_watch_count + 1
 	wbd_watch_dirs[wd] = strclone(rel)
-	# 65536 = O_DIRECTORY
-	int fd = open(path, 65536, 0)
-	if (fd < 0):
+	list[dir_entry*] entries = dir_read(path)
+	if (entries == 0):
 		return
-	int buffer_size = 32768
-	char* buffer = malloc(buffer_size)
-	list[char*] children = new list[char*]
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* entry = buffer + off
-			int reclen = wbd_load_uint16(entry + 2 * __word_size__)
-			char* entry_name = entry + 2 * __word_size__ + 2
-			int kind = entry[reclen - 1] & 255
-			if ((kind == 4) && (entry_name[0] != '.')):
-				children.push(wbd_join(rel, entry_name))
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
-	for char* child in children:
-		wbd_watch_tree(child)
+	for dir_entry* e in entries:
+		if ((e.kind == DIR_KIND_DIR()) && (e.name[0] != '.')):
+			char* child = wbd_join(rel, e.name)
+			wbd_watch_tree(child)
+			free(child)
+	dir_entries_free(entries)
 
 
 void wbd_on_inotify(int fd, int revents, void* ctx);

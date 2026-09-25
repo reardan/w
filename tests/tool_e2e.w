@@ -9,6 +9,7 @@ import lib.process
 import lib.path
 import lib.container
 import structures.string
+import lib.dir
 
 
 char* tool_root_cache
@@ -39,17 +40,6 @@ char* tool_scratch(char* prefix):
 	char* path = p.data
 	free(p)
 	return path
-
-
-void tool_rm_rf(char* path):
-	char** argv = strv_new(3)
-	strv_set(argv, 0, c"/bin/rm")
-	strv_set(argv, 1, c"-rf")
-	strv_set(argv, 2, path)
-	process_result* r = process_run(c"/bin/rm", argv, 0, 0, 10000)
-	if (r != 0):
-		process_result_free(r)
-	free(cast(void*, argv))
 
 
 # Runs bin/<argv[0]> with argv under cwd (0 inherits) for at most

@@ -28,13 +28,13 @@ global file state and turns malformed input into a fatal compile
 error, while a counter has to keep going over any file. Malformed
 input (an unterminated literal or comment) is counted up to EOF.
 
-cloc_collect walks directories with getdents, so it is Linux-only like
-the rest of the stdlib's directory walkers (lib/shell_commands.w's du).
+cloc_collect walks directories with lib/dir.w.
 */
 import lib.lib
 import lib.file
 import lib.path
 import lib.stat
+import lib.dir
 
 
 struct cloc_counts:
@@ -282,26 +282,6 @@ int cloc_scan_file(char* path, cloc_counts* out):
 	return 0
 
 
-# d_reclen is a little-endian 16-bit field two words into each getdents
-# record (the same layout lib/shell_commands.w reads).
-int cloc_load_uint16(char* p):
-	return (p[0] & 255) + ((p[1] & 255) << 8)
-
-
-# Insertion sort, so the walk order (and so the output) does not depend
-# on getdents' filesystem-dependent order.
-void cloc_sort_strings(list[char*] items):
-	int i = 1
-	while (i < items.length):
-		char* value = items[i]
-		int j = i - 1
-		while ((j >= 0) && (strcmp(items[j], value) > 0)):
-			items[j + 1] = items[j]
-			j = j - 1
-		items[j + 1] = value
-		i = i + 1
-
-
 # Directory entries cloc_collect skips: hidden entries ('.git', ...)
 # and bin/, the gitignored build-output directory.
 int cloc_skip_entry(char* name):
@@ -312,25 +292,15 @@ int cloc_skip_entry(char* name):
 # list when it cannot be opened.
 list[char*] cloc_dir_entries(char* path):
 	list[char*] names = new list[char*]
-	int fd = open(path, 65536, 0) /* 65536 = O_DIRECTORY */
-	if (fd < 0):
+	list[char*] all = dir_names(path)
+	if (all == 0):
 		return names
-	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* entry = buffer + off
-			int reclen = cloc_load_uint16(entry + 2 * __word_size__)
-			char* entry_name = entry + 2 * __word_size__ + 2
-			off = off + reclen
-			if (cloc_skip_entry(entry_name) == 0):
-				names.push(strclone(entry_name))
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
-	cloc_sort_strings(names)
+	for char* name in all:
+		if (cloc_skip_entry(name)):
+			free(name)
+		else:
+			names.push(name)
+	list_free[char*](all)
 	return names
 
 

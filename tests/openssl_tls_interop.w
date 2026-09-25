@@ -47,6 +47,7 @@ import lib.poll
 import lib.process
 import structures.string
 import libs.standard.net.tls
+import lib.dir
 
 
 int osl_io_timeout_ms():
@@ -274,20 +275,6 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	return 1
 
 
-# Best-effort recursive delete via the real /bin/rm -- mirrors
-# tests/compress_zlib_interop.w's czi_rm_rf and the pid-scoped scratch-dir
-# cleanup tests/wvc_e2e_test.w already uses.
-void osl_rm_rf(char* dir):
-	char** argv = strv_new(3)
-	strv_set(argv, 0, c"/bin/rm")
-	strv_set(argv, 1, c"-rf")
-	strv_set(argv, 2, dir)
-	process_result* r = process_run(c"/bin/rm", argv, 0, 0, 10000)
-	if (r != 0):
-		process_result_free(r)
-	free(cast(void*, argv))
-
-
 # Generate a throwaway self-signed ECDSA P-256 cert into cert/key (the only
 # server key shape both sides of our TLS stack support), via a direct argv
 # vector -- no shell, so there is nothing here for a path to escape out of.
@@ -344,7 +331,7 @@ int main():
 	free(dirb)
 
 	# Best-effort cleanup from a previous failed run.
-	osl_rm_rf(dir)
+	dir_remove_all(dir)
 	if (mkdir(dir, 493) != 0):
 		print2(c"cannot create scratch dir: ")
 		println2(dir)
@@ -364,7 +351,7 @@ int main():
 
 	free(cert)
 	free(key)
-	osl_rm_rf(dir)
+	dir_remove_all(dir)
 	free(dir)
 	free(openssl_bin)
 

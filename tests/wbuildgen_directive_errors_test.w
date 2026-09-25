@@ -450,4 +450,4 @@ void test_cleanup():
 	# Best-effort removal of the pid-scoped scratch root; a leftover
 	# tree only wastes bin/ space (bin/ is gitignored and never walked
 	# by the real manifest run).
-	tool_rm_rf(wdet_dir())
+	dir_remove_all(wdet_dir())

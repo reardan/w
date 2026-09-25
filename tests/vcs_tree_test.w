@@ -23,6 +23,7 @@ test removes everything the run created and asserts the roots rmdir
 cleanly.
 */
 import lib.testing
+import lib.dir
 import libs.extras.vcs.cas
 import libs.extras.vcs.tree
 
@@ -623,50 +624,11 @@ void test_tree_diff_skips_equal_subtrees():
 	cas_close(s)
 
 
-# Recursively deletes a fixture/store directory: collect this level's
-# names first (deleting while iterating a getdents cursor is
-# unreliable), then remove children before the directory itself.
-void vtt_remove_all(char* path):
-	int fd = open(path, 65536, 0)
-	if (fd < 0):
-		return
-	list[char*] names = new list[char*]
-	list[int] kinds = new list[int]
-	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* record = buffer + off
-			int reclen = (record[2 * __word_size__] & 255) + ((record[2 * __word_size__ + 1] & 255) << 8)
-			char* entry_name = record + 2 * __word_size__ + 2
-			int kind = record[reclen - 1] & 255
-			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
-				names.push(strclone(entry_name))
-				kinds.push(kind)
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
-	int i = 0
-	while (i < names.length):
-		char* child = path_join(path, names[i])
-		if (kinds[i] == 4):
-			vtt_remove_all(child)
-			rmdir(child)
-		else:
-			vcs_unlink(child)
-		free(child)
-		free(names[i])
-		i = i + 1
-
-
 # Runs last (tests execute in definition order): removes the snapshot
 # fixtures and the object store and asserts both roots rmdir cleanly,
 # so the run leaves nothing behind under bin/.
 void test_tree_cleanup():
-	vtt_remove_all(vtt_work())
-	assert_equal(0, rmdir(vtt_work()))
-	vtt_remove_all(vtt_root())
-	assert_equal(0, rmdir(vtt_root()))
+	assert_equal(0, dir_remove_all(vtt_work()))
+	assert_equal(0, path_exists(vtt_work()))
+	assert_equal(0, dir_remove_all(vtt_root()))
+	assert_equal(0, path_exists(vtt_root()))

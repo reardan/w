@@ -54,7 +54,7 @@ void test_wvc_end_to_end():
 	char* dir = wvct_dir()
 
 	# Best-effort cleanup from a previous failed run.
-	tool_rm_rf(dir)
+	dir_remove_all(dir)
 
 	char* r_init = tool_ok(0, c"wvc", c"init", dir)
 	assert_contains(r_init, c"Initialized empty wvc repository")
@@ -116,7 +116,7 @@ void test_wvc_end_to_end():
 	free(b_path)
 	free(c_path)
 
-	tool_rm_rf(dir)
+	dir_remove_all(dir)
 
 
 void test_wvc_usage_errors():
@@ -151,7 +151,7 @@ char* wvct_index_dir():
 void test_wvc_status_fast_path_and_index_fallback():
 	char* dir = wvct_index_dir()
 
-	tool_rm_rf(dir)
+	dir_remove_all(dir)
 
 	tool_ok(0, c"wvc", c"init", dir)
 
@@ -206,7 +206,7 @@ void test_wvc_status_fast_path_and_index_fallback():
 	free(c_path)
 	free(index_path)
 
-	tool_rm_rf(dir)
+	dir_remove_all(dir)
 
 
 /* wvc merge (wave 4, issue #252) -- see the header comment for why
@@ -259,8 +259,8 @@ char* wvct_merge_clean_theirs_dir():
 void test_wvc_merge_clean():
 	char* dir = wvct_merge_clean_dir()
 	char* theirs_dir = wvct_merge_clean_theirs_dir()
-	tool_rm_rf(dir)
-	tool_rm_rf(theirs_dir)
+	dir_remove_all(dir)
+	dir_remove_all(theirs_dir)
 
 	tool_ok(0, c"wvc", c"init", dir)
 
@@ -322,8 +322,8 @@ void test_wvc_merge_clean():
 	free(commit_head)
 	free(commit_theirs)
 	free(commit_merge)
-	tool_rm_rf(dir)
-	tool_rm_rf(theirs_dir)
+	dir_remove_all(dir)
+	dir_remove_all(theirs_dir)
 
 
 char* wvct_merge_conflict_dir():
@@ -341,8 +341,8 @@ char* wvct_merge_conflict_theirs_dir():
 void test_wvc_merge_conflict():
 	char* dir = wvct_merge_conflict_dir()
 	char* theirs_dir = wvct_merge_conflict_theirs_dir()
-	tool_rm_rf(dir)
-	tool_rm_rf(theirs_dir)
+	dir_remove_all(dir)
+	dir_remove_all(theirs_dir)
 
 	tool_ok(0, c"wvc", c"init", dir)
 
@@ -390,5 +390,5 @@ void test_wvc_merge_conflict():
 	free(commit_base)
 	free(commit_head)
 	free(commit_theirs)
-	tool_rm_rf(dir)
-	tool_rm_rf(theirs_dir)
+	dir_remove_all(dir)
+	dir_remove_all(theirs_dir)

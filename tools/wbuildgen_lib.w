@@ -273,6 +273,7 @@ import lib.file
 import lib.stream
 import structures.string
 import structures.json
+import lib.dir
 
 
 json_value* wbg_base                     # parsed build.base.json
@@ -351,86 +352,13 @@ char* wbg_get_string(json_value* object, char* key):
 	return value.string_value
 
 
-int wbg_load_uint16(char* p):
-	return (p[0] & 255) + ((p[1] & 255) << 8)
-
-
-void wbg_collect_dir(char* path, list[char*] files);
-
-
-void wbg_collect_dir_windows(char* path, list[char*] files):
-	char* find_data = malloc(320)
-	string_builder* pattern = string_new()
-	string_append(pattern, path)
-	string_append(pattern, c"/*")
-	int handle = FindFirstFileA(pattern.data, find_data)
-	string_free(pattern)
-	if (handle != -1):
-		while (1):
-			char* entry_name = find_data + 44
-			int attrs = load_int32(find_data)
-			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
-				string_builder* child = string_new()
-				string_append(child, path)
-				string_append(child, c"/")
-				string_append(child, entry_name)
-				if (attrs & 16):
-					wbg_collect_dir(child.data, files)
-					string_free(child)
-				else:
-					char* owned = child.data
-					free(child)
-					files.push(owned)
-			if (FindNextFileA(handle, find_data) == 0):
-				break
-		FindClose(handle)
-	free(find_data)
-
-
-# Recursively collect every regular file under path, the same getdents
-# walk wexec uses for directory inputs (d_reclen 2 bytes after the two
-# word-sized ino/off fields, d_type in the record's last byte).
-# On Windows the same walk runs over FindFirstFileA/FindNextFileA
-# (WIN32_FIND_DATAA: dwFileAttributes at 0, cFileName at 44;
-# FILE_ATTRIBUTE_DIRECTORY = 16), mirroring wexec_collect_dir.
+# Recursively collect every regular file under path (lib/dir.w's
+# dir_walk_files, as wexec_collect_dir does for directory inputs), or
+# nothing when this run does not scan the tree (wbg_scan_tree).
 void wbg_collect_dir(char* path, list[char*] files):
 	if (wbg_scan_tree == 0):
 		return
-	if (os_windows()):
-		wbg_collect_dir_windows(path, files)
-		return
-	# 65536 = O_DIRECTORY
-	int fd = open(path, 65536, 0)
-	if (fd < 0):
-		return
-	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* entry = buffer + off
-			int reclen = wbg_load_uint16(entry + 2 * __word_size__)
-			char* entry_name = entry + 2 * __word_size__ + 2
-			int kind = entry[reclen - 1] & 255
-			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
-				string_builder* child = string_new()
-				string_append(child, path)
-				string_append(child, c"/")
-				string_append(child, entry_name)
-				if (kind == 4):
-					wbg_collect_dir(child.data, files)
-					string_free(child)
-				else if (kind == 8):
-					char* owned = child.data
-					free(child)
-					files.push(owned)
-				else:
-					string_free(child)
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
+	dir_walk_files(path, files)
 
 
 # Insertion sort: getdents order depends on filesystem state, and the
@@ -3142,10 +3070,9 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 /* Generate the manifest in memory and return its rendered JSON text, or
 0 after printing an error. scan_tree = 0 skips the source-tree walk, so
 only build.base.json's own targets and its tool_targets come out: the
-executors on hosts whose directory listing this module cannot parse
-(wbg_collect_dir walks getdents on Linux and FindFirstFileA on
-Windows; see wexec_dirents_supported)
-still run the hand-written darwin/win64 toolchain targets. Call it once
+executors on hosts whose directory listing is not trusted yet (darwin;
+see wexec_dirents_supported) still run the hand-written darwin/win64
+toolchain targets. Call it once
 per process: the wbg_* tables are global. */
 char* wbg_generate(char* base_path, int scan_tree):
 	wbg_scan_tree = scan_tree

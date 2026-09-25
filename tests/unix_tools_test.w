@@ -11,6 +11,7 @@ import lib.stat
 import lib.time
 import structures.string
 import lib.str
+import lib.dir
 
 
 char* utt_repo_root_cache
@@ -40,14 +41,7 @@ char* utt_dir():
 		utt_dir_cache = p.data
 		free(p)
 		mkdir(c"bin", 493)
-		char** rm_argv = strv_new(3)
-		strv_set(rm_argv, 0, c"/bin/rm")
-		strv_set(rm_argv, 1, c"-rf")
-		strv_set(rm_argv, 2, utt_dir_cache)
-		process_result* rm = process_run(c"/bin/rm", rm_argv, 0, 0, 10000)
-		assert1(rm != 0)
-		process_result_free(rm)
-		free(cast(void*, rm_argv))
+		assert_equal(0, dir_remove_all(utt_dir_cache))
 		assert_equal(0, mkdir(utt_dir_cache, 493))
 	return utt_dir_cache
 

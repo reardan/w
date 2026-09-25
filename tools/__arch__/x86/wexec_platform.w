@@ -4,13 +4,10 @@
 # resolution (bin/wexec, x86 Linux).
 
 
-# 1 when wexec_collect_dir can produce a real directory listing on this
-# platform: its getdents parsing assumes the classic Linux dirent
-# layout, which is exactly this target's own, so directory inputs hash
-# correctly here. The arm64_darwin sibling returns 0 (Darwin
-# getdirentries64 records use a different layout -- see the NOTE in
-# lib/__arch__/arm64_darwin/syscalls.w), making wexec warn and treat
-# directory inputs as empty instead of silently misparsing them.
+# 1 when wexec_collect_dir's listing (lib/dir.w) is trusted on this
+# platform, so directory inputs hash correctly here. The arm64_darwin
+# sibling returns 0 until its getdirentries64 decoding is checked on a
+# Mac, making wexec warn and treat directory inputs as empty.
 int wexec_dirents_supported():
 	return 1
 

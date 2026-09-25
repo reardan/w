@@ -19,6 +19,7 @@ bin/ so the 32- and 64-bit twins (and a parallel wvc_index_e2e run) never
 collide; the final test removes everything this run created.
 */
 import lib.testing
+import lib.dir
 import libs.extras.vcs.cas
 import libs.extras.vcs.tree
 import libs.extras.vcs.index
@@ -457,47 +458,8 @@ void test_index_refresh_ignore_list_and_dropped_files():
 	cas_close(s)
 
 
-# Recursively deletes a fixture/store directory (vcs_tree_test.w's
-# vtt_remove_all, duplicated here since it is test-local plumbing, not
-# library code).
-void vit_remove_all(char* path):
-	int fd = open(path, 65536, 0)
-	if (fd < 0):
-		return
-	list[char*] names = new list[char*]
-	list[int] kinds = new list[int]
-	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* record = buffer + off
-			int reclen = (record[2 * __word_size__] & 255) + ((record[2 * __word_size__ + 1] & 255) << 8)
-			char* entry_name = record + 2 * __word_size__ + 2
-			int kind = record[reclen - 1] & 255
-			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
-				names.push(strclone(entry_name))
-				kinds.push(kind)
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
-	int i = 0
-	while (i < names.length):
-		char* child = path_join(path, names[i])
-		if (kinds[i] == 4):
-			vit_remove_all(child)
-			rmdir(child)
-		else:
-			vcs_unlink(child)
-		free(child)
-		free(names[i])
-		i = i + 1
-
-
 void test_index_cleanup():
-	vit_remove_all(vit_work())
-	assert_equal(0, rmdir(vit_work()))
-	vit_remove_all(vit_root())
-	assert_equal(0, rmdir(vit_root()))
+	assert_equal(0, dir_remove_all(vit_work()))
+	assert_equal(0, path_exists(vit_work()))
+	assert_equal(0, dir_remove_all(vit_root()))
+	assert_equal(0, path_exists(vit_root()))

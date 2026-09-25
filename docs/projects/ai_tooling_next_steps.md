@@ -466,8 +466,12 @@ is a queue, not an archive.
   reports the layout gap per target, and `wexec_collect_dir` now warns
   once ("directory inputs are not hashed on this platform") and treats
   the directory as empty instead of parsing Darwin records with Linux
-  offsets. The full fix (per-arch dirent accessors, validated on a
-  Mac) is still open; the accessor plan above stands.
+  offsets. The per-arch accessors now exist: `lib/dir.w` reads through
+  `lib/__arch__/<target>/dirent.w`, which decodes getdirentries64 on
+  arm64_darwin. What is still open is validating that decoding on a Mac
+  (run `lib/dir_test.w` natively), then flipping the darwin
+  `wexec_dirents_supported()` to 1 and giving the darwin targets
+  `"inputs"`.
 ## ParserGenerator streaming codegen (`libs/extras/parser_generator/`)
 
 The 2026-07 review findings and the nullable-suffix fallback all

@@ -44,6 +44,7 @@ import structures.string
 import libs.extras.compress.deflate
 import libs.extras.compress.zlib
 import libs.extras.compress.gzip
+import lib.dir
 
 
 char* compress_zlib_interop_payload():
@@ -310,19 +311,6 @@ char* czi_python_script():
 	return text
 
 
-# Best-effort recursive delete via the real /bin/rm -- mirrors the
-# pid-scoped scratch-dir cleanup tests/wvc_e2e_test.w already uses.
-void czi_rm_rf(char* dir):
-	char** argv = strv_new(3)
-	strv_set(argv, 0, c"/bin/rm")
-	strv_set(argv, 1, c"-rf")
-	strv_set(argv, 2, dir)
-	process_result* r = process_run(c"/bin/rm", argv, 0, 0, 10000)
-	if (r != 0):
-		process_result_free(r)
-	free(cast(void*, argv))
-
-
 int main():
 	char* python3 = process_which(c"python3")
 	if (python3 == 0):
@@ -336,7 +324,7 @@ int main():
 	free(dirb)
 
 	# Best-effort cleanup from a previous failed run.
-	czi_rm_rf(dir)
+	dir_remove_all(dir)
 	if (mkdir(dir, 493) != 0):
 		print2(c"cannot create scratch dir: ")
 		println2(dir)
@@ -362,20 +350,20 @@ int main():
 
 	if (pr == 0):
 		println2(c"python3 spawn failed")
-		czi_rm_rf(dir)
+		dir_remove_all(dir)
 		free(dir)
 		return 1
 	if (pr.status != 0):
 		print2(c"python3 check failed: ")
 		println2(pr.stderr_text)
 		process_result_free(pr)
-		czi_rm_rf(dir)
+		dir_remove_all(dir)
 		free(dir)
 		return 1
 	process_result_free(pr)
 
 	int ok = czi_decompress(dir, count, names, datas, lens)
-	czi_rm_rf(dir)
+	dir_remove_all(dir)
 	free(dir)
 	if (ok == 0):
 		return 1

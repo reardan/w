@@ -111,8 +111,8 @@ a 3000-line JSON file. `tools/wbuildgen.w` generates them instead:
   merge-conflict magnet and could only ever be stale. The generator
   copies the base targets verbatim (order
   and field order preserved), walks tests/, lib/, structures/,
-  graphics/, libs/ and tools/ with the same getdents walk wexec uses
-  for directory inputs, and appends one conventional compile+run
+  graphics/, libs/ and tools/ with `lib/dir.w`'s `dir_walk_files`, the
+  walk wexec uses for directory inputs, and appends one conventional compile+run
   target per `*_test.w` source, sorted by name. A `# wbuild: x64`
   directive line in a source also appends the `X_64_test` twin
   compiling the same file with the `x64` argument.
@@ -140,8 +140,8 @@ a 3000-line JSON file. `tools/wbuildgen.w` generates them instead:
   or a tool target naming an unknown `bin/` path. `tools/test_map.w`
   maps `build.base.json`, the generator, and every `*_test.w` change to
   it.
-- Hosts where the generator's getdents walk does not apply (the darwin
-  and win64 executors; `wexec_dirents_supported`) load only
+- Hosts where the generator's tree walk is not trusted yet (the darwin
+  executor; `wexec_dirents_supported`) load only
   `build.base.json`'s own targets, which is where every target they can
   run lives.
 
@@ -156,7 +156,7 @@ deltas being the three new targets and `tests` gaining
 ## Caching
 
 A target that declares `"inputs"` (files, or directory prefixes ending
-in `/` that are walked recursively with getdents) is cached by content
+in `/` that are walked recursively with `lib/dir.w`) is cached by content
 hash: a 64-bit rolling hash over the serialized target definition, the
 dependencies' cache keys and every input file's contents. After a
 successful run the key is stamped into `bin/.wexec_cache/<name>`; a
@@ -346,16 +346,16 @@ archive.sh grew that seed-name argument), and is the gate that promotes
 a self-signing seed.
 One deliberate divergence from the Linux chain's idiom: the darwin
 targets declare no `"inputs"`, i.e. they are FORCE-style and never
-cached. That is not laziness — `wexec_collect_dir` parses the *Linux*
-getdents record layout, and Darwin's `getdirentries64` records differ
-(see the NOTE in `lib/__arch__/arm64_darwin/syscalls.w`), so a
-directory input on macOS silently hashes as an empty file list. Caching
-`verify_darwin` on such a key would return "cached" after real source
-changes — a false-green on the one target whose entire job is to be a
-gate. Always-run matches the Makefile's FORCE behavior exactly; if the
-rebuild cost ever matters, the fix is per-arch dirent accessors next to
-`getdents` in `lib/__arch__/*/syscalls.w`, and only then `"inputs"` on
-the darwin targets. (`wexec_darwin` itself *is* cached, on plain-file
+cached. That is not laziness — Darwin's `getdirentries64` records
+differ from the Linux layout, and the decoding in
+`lib/__arch__/arm64_darwin/dirent.w` has not been run on a Mac yet; a
+misparse would hash a directory input as an empty file list, and
+caching `verify_darwin` on such a key would return "cached" after real
+source changes — a false-green on the one target whose entire job is
+to be a gate. Until then the darwin `wexec_dirents_supported()` stays
+0. Always-run matches the Makefile's FORCE behavior exactly; if the
+rebuild cost ever matters, validate `lib/dir_test.w` natively, flip
+that flag, and only then add `"inputs"` to the darwin targets. (`wexec_darwin` itself *is* cached, on plain-file
 inputs only — `tools/wexec.w` + the seed — which file-hashes correctly
 on Darwin; a `lib/` edit won't refresh it, `rm -rf bin` or `--no-cache`
 will.)

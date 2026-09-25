@@ -13,6 +13,7 @@ Fixture and store roots are pid-scoped under bin/ so the 32- and 64-bit
 twins can run in parallel; the last test removes everything it created.
 */
 import lib.testing
+import lib.dir
 import libs.extras.vcs.cas
 import libs.extras.vcs.tree
 import libs.extras.vcs.repo
@@ -147,45 +148,6 @@ void test_repo_write_lookup_remove():
 	repo_remove_file(vrt_work(), c"not-there.txt")
 
 
-# Recursively deletes a directory: collect this level's names first
-# (deleting while iterating a getdents cursor is unreliable), then
-# remove children before the directory itself.
-void vrt_remove_all(char* path):
-	int fd = open(path, 65536, 0)
-	if (fd < 0):
-		return
-	list[char*] names = new list[char*]
-	list[int] kinds = new list[int]
-	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* record = buffer + off
-			int reclen = (record[2 * __word_size__] & 255) + ((record[2 * __word_size__ + 1] & 255) << 8)
-			char* entry_name = record + 2 * __word_size__ + 2
-			int kind = record[reclen - 1] & 255
-			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
-				names.push(strclone(entry_name))
-				kinds.push(kind)
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
-	int i = 0
-	while (i < names.length):
-		char* child = path_join(path, names[i])
-		if (kinds[i] == 4):
-			vrt_remove_all(child)
-			rmdir(child)
-		else:
-			vcs_unlink(child)
-		free(child)
-		free(names[i])
-		i = i + 1
-
-
 # Runs last: the files repo_remove_file deleted leave only the empty
 # parents repo_write_file_bytes created, and the object store.
 void test_repo_cleanup():
@@ -194,5 +156,5 @@ void test_repo_cleanup():
 	char* dir = path_join(vrt_work(), c"dir")
 	assert_equal(0, rmdir(dir))
 	assert_equal(0, rmdir(vrt_work()))
-	vrt_remove_all(vrt_root())
-	assert_equal(0, rmdir(vrt_root()))
+	assert_equal(0, dir_remove_all(vrt_root()))
+	assert_equal(0, path_exists(vrt_root()))

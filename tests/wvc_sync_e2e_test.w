@@ -171,8 +171,8 @@ char* wst_dir_b():
 void test_wvc_sync_pull_and_push():
 	char* a = wst_dir_a()
 	char* b = wst_dir_b()
-	tool_rm_rf(a)
-	tool_rm_rf(b)
+	dir_remove_all(a)
+	dir_remove_all(b)
 
 	tool_ok(0, c"wvc", c"init", a)
 
@@ -251,8 +251,8 @@ void test_wvc_sync_pull_and_push():
 	free(a1)
 	free(a2)
 	free(b3)
-	tool_rm_rf(a)
-	tool_rm_rf(b)
+	dir_remove_all(a)
+	dir_remove_all(b)
 
 
 /* ---- test 2: divergence is reported and stops (no ref move) ---- */
@@ -268,8 +268,8 @@ char* wst_dir_div_b():
 void test_wvc_sync_divergence():
 	char* a = wst_dir_div_a()
 	char* b = wst_dir_div_b()
-	tool_rm_rf(a)
-	tool_rm_rf(b)
+	dir_remove_all(a)
+	dir_remove_all(b)
 
 	tool_ok(0, c"wvc", c"init", a)
 
@@ -314,8 +314,8 @@ void test_wvc_sync_divergence():
 	free(base_path)
 	free(a_only_path)
 	free(b_only_path)
-	tool_rm_rf(a)
-	tool_rm_rf(b)
+	dir_remove_all(a)
+	dir_remove_all(b)
 
 
 /* ---- test 3: a mismatched-hash upload is rejected and never stored ---- */
@@ -326,7 +326,7 @@ char* wst_dir_corrupt():
 
 void test_wvc_sync_corrupt_upload_rejected():
 	char* a = wst_dir_corrupt()
-	tool_rm_rf(a)
+	dir_remove_all(a)
 
 	tool_ok(0, c"wvc", c"init", a)
 
@@ -365,7 +365,7 @@ void test_wvc_sync_corrupt_upload_rejected():
 	free(bogus_id)
 	free(obj_url)
 	wst_serve_stop(server)
-	tool_rm_rf(a)
+	dir_remove_all(a)
 
 
 /* ---- test 4: sync over a mixed-format store (issue #252 "compressed
@@ -421,8 +421,8 @@ void wst_rewrite_as_legacy(char* repo_root, char* id, char* object_type, char* d
 void test_wvc_sync_mixed_format_store():
 	char* a = wst_dir_mix_a()
 	char* b = wst_dir_mix_b()
-	tool_rm_rf(a)
-	tool_rm_rf(b)
+	dir_remove_all(a)
+	dir_remove_all(b)
 
 	tool_ok(0, c"wvc", c"init", a)
 
@@ -524,7 +524,7 @@ void test_wvc_sync_mixed_format_store():
 	free(b2)
 	free(meta_a)
 	free(meta_b)
-	tool_rm_rf(a)
-	tool_rm_rf(b)
+	dir_remove_all(a)
+	dir_remove_all(b)
 # wbuild: binary=wvc_sync_e2e_test tag=tests dep=wvc
 # wbuild: step="bin/wvc_sync_e2e_test"

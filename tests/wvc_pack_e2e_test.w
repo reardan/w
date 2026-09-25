@@ -46,7 +46,7 @@ list[char*] wvcp_loose_ids(wcas* s):
 
 void test_wvc_pack_unpack_end_to_end():
 	char* dir = wvcp_dir()
-	tool_rm_rf(dir)
+	dir_remove_all(dir)
 
 	char* init_out = tool_ok(0, c"wvc", c"init", dir)
 	assert_contains(init_out, c"Initialized empty wvc repository")
@@ -143,7 +143,7 @@ void test_wvc_pack_unpack_end_to_end():
 	free(a_path)
 	free(b_path)
 	free(sub_dir)
-	tool_rm_rf(dir)
+	dir_remove_all(dir)
 
 
 void test_wvc_pack_usage_errors():

@@ -556,10 +556,9 @@ either way; nothing here proposes a second protocol.
    still open, Mac-gated)*:
    `lib/inotify.w` (§2.3), a unix-domain-socket bind/listen helper in
    `lib/net.w` (§2.3), and — if the daemon is meant to serve macOS
-   agents too, not just Linux — the per-arch dirent accessor fix
-   `docs/projects/ai_tooling_next_steps.md` already flags for
-   `wexec_collect_dir` (issue #231's own open question calls this out;
-   confirmed still unresolved by grep). Each is a self-contained,
+   agents too, not just Linux — validating the darwin dirent decoding
+   `docs/projects/ai_tooling_next_steps.md` flags for
+   `wexec_collect_dir` (issue #231's own open question calls this out). Each is a self-contained,
    low-risk library addition with its own tests, landable independently
    of everything else in this doc.
 2. **Stage 2 — `wbuildd` MVP** *(read-only milestone landed
