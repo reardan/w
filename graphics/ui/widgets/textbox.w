@@ -47,36 +47,47 @@ void ui_textbox_set(ui_textbox_state* st, char* s):
 	st.caret = len
 
 
+# Insert codepoint ch at the caret as UTF-8. A character that does not
+# fit whole is dropped rather than split.
 void ui_textbox_insert(ui_textbox_state* st, int ch):
-	if (st.length >= ui_textbox_capacity()):
+	char[4] bytes
+	int n = ui_utf8_encode(&bytes[0], ch)
+	if (st.length + n > ui_textbox_capacity()):
 		return
-	int i = st.length
-	while (i > st.caret):
-		st.text[i] = st.text[i - 1]
+	int i = st.length - 1
+	while (i >= st.caret):
+		st.text[i + n] = st.text[i]
 		i = i - 1
-	st.text[st.caret] = ch
-	st.length = st.length + 1
-	st.caret = st.caret + 1
+	int k = 0
+	while (k < n):
+		st.text[st.caret + k] = bytes[k]
+		k = k + 1
+	st.length = st.length + n
+	st.caret = st.caret + n
 	st.text[st.length] = 0
 
 
+# Delete the whole character before the caret.
 void ui_textbox_backspace(ui_textbox_state* st):
 	if (st.caret == 0):
 		return
-	int i = st.caret - 1
-	while (i < st.length - 1):
-		st.text[i] = st.text[i + 1]
+	int from = ui_utf8_prev(&st.text[0], st.caret)
+	int n = st.caret - from
+	int i = from
+	while (i + n < st.length):
+		st.text[i] = st.text[i + n]
 		i = i + 1
-	st.length = st.length - 1
-	st.caret = st.caret - 1
+	st.length = st.length - n
+	st.caret = from
 	st.text[st.length] = 0
 
 
 # Single-line text input over caller-owned state. Clicking focuses it
 # (the caret lands at the nearest glyph boundary to the click); the
 # focused textbox consumes the frame's CHAR/NAV queues — printable
-# ASCII inserts at the caret, backspace deletes, left/right/home/end
-# move, escape drops focus. Returns 1 on the frame return is typed
+# characters insert at the caret as UTF-8, backspace deletes and
+# left/right step over whole characters, home/end move, escape drops
+# focus. Returns 1 on the frame return is typed
 # (the submit edge). No horizontal scroll in stage 2: glyphs past the
 # field's width are not drawn.
 int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
@@ -104,7 +115,7 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 		int i = 0
 		while (i < ctx.char_count):
 			int ch = ctx.chars[i]
-			if ((ch >= 32) && (ch <= 126)):
+			if (ui_utf8_is_text(ch)):
 				ui_textbox_insert(st, ch)
 			else if (ch == 8):
 				ui_textbox_backspace(st)
@@ -117,9 +128,10 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 		while (i < ctx.nav_count):
 			int nav = ctx.navs[i]
 			if ((nav == GFX_NAV_LEFT) && (st.caret > 0)):
-				st.caret = st.caret - 1
+				st.caret = ui_utf8_prev(&st.text[0], st.caret)
 			else if ((nav == GFX_NAV_RIGHT) && (st.caret < st.length)):
-				st.caret = st.caret + 1
+				int cp = 0
+				st.caret = ui_utf8_next(&st.text[0], st.caret, &cp)
 			else if (nav == GFX_NAV_HOME):
 				st.caret = 0
 			else if (nav == GFX_NAV_END):
@@ -137,20 +149,12 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 		line = ctx.theme.disabled_widget
 	ui_draw_rrect(ctx.rndr, r, cast(float32, ctx.theme.radius), field_fill)
 	ui_render_rect(ctx.rndr, ui_rect_new(r.x + 4.0, r.y + r.h - 2.0, r.w - 8.0, 2.0), line)
-	# Proportional draw: advance per glyph, stop at the field's width
+	# Proportional draw of the characters that fit the field's width
 	# (no horizontal scroll yet — glyphs past it are not drawn).
 	int fit_w = cast(int, r.w) - ctx.theme.pad * 2
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
-	int strike = ui_font_strike_from_scale(scale)
-	int pen = 0
-	int col = 0
-	while (col < st.length):
-		ui_glyph g = ui_font_glyph(strike, st.text[col] & 255)
-		if (pen + g.advance > fit_w):
-			break
-		ui_render_glyph(ctx.rndr, text_x + cast(float32, pen), ty, st.text[col] & 255, scale, ui_text_color(ctx))
-		pen = pen + g.advance
-		col = col + 1
+	int shown = ui_text_fit_strike(&st.text[0], ui_font_strike_from_scale(scale), fit_w)
+	ui_draw_text_n(ctx.rndr, text_x, ty, &st.text[0], shown, scale, ui_text_color(ctx))
 	if (ctx.focus == id):
 		int caret_w = ui_text_prefix_width(&st.text[0], st.caret, scale)
 		if (caret_w > fit_w):

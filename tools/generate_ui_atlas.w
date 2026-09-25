@@ -1,21 +1,24 @@
-# Emits graphics/ui/font_data.w — the UI's one R8 atlas — from the
-# committed Liberation Sans faces (tools/ui/*.ttf, SIL OFL 1.1) via
-# lib/ttf.w, plus the procedural AA masks the Material-style widgets
-# draw with (docs/projects/ui_framework_plan.md stage 4).
+# Emits graphics/ui/font_data.w — the baked rows of the UI's one R8
+# atlas plus the embedded default faces — from the committed
+# Liberation Sans faces (tools/ui/*.ttf, SIL OFL 1.1) via lib/ttf.w
+# (docs/projects/ui_framework_plan.md stage 4, issue #379).
 #
-# Atlas contents, packed on 256-wide shelves with a 1px gap:
+# Baked atlas rows, packed on 256-wide shelves with a 1px gap:
 #   masks 0..8  — 0 solid white (untextured fills), 1 rounded-corner
 #                 quarter disc, 2 disc, 3 ring, 4 checkmark,
 #                 5 chevron, 6 blurred shadow corner tile,
 #                 7 right-pointing chevron, 8 cross
-#   strike 0    — Liberation Sans Regular at 16 ppem (body text)
-#   strike 1    — Liberation Sans Bold at 20 ppem (titles)
+# Mask pixels are run-length encoded (tag 0: zero run, tag 1: 255 run,
+# tag 2: literal run — decoded by graphics/ui/font.w) into c"\x.."
+# byte-string chunk functions (the lib/sha256.w table idiom); mask
+# records are 9-byte entries: x_lo, x_hi, y_lo, y_hi, w, h, advance,
+# bearing_x+8, bearing_top+8.
 #
-# The data lands as c"\x.." byte-string chunk functions (the
-# lib/sha256.w table idiom). Atlas pixels are run-length encoded
-# (tag 0: zero run, tag 1: 255 run, tag 2: literal run — decoded by
-# graphics/ui/font.w); glyph records are 9-byte entries:
-# x_lo, x_hi, y_lo, y_hi, w, h, advance, bearing_x+8, bearing_top+8.
+# Faces 0..3 (Regular, Bold, Italic, Bold Italic) are ttf_subset
+# outputs covering gen_face_ranges(), emitted as base64 chunks.
+# graphics/ui/font.w decodes a face the first time a strike needs it
+# and rasterizes glyphs into the atlas on demand, at any size — so
+# text glyphs are no longer baked here.
 #
 # Run from the repo root: ./wbuild ui_font_data
 import lib.lib
@@ -27,10 +30,6 @@ import lib.ttf
 
 int gen_atlas_w():
 	return 256
-
-
-int gen_char_count():
-	return 95
 
 
 int gen_mask_count():
@@ -313,9 +312,9 @@ char* gen_mask_shadow(int size):
 	return p
 
 
-# ---- strikes ----------------------------------------------------------
+# ---- glyph/mask records -----------------------------------------------
 
-# One baked glyph record (atlas rect + metrics, all in pixels).
+# One baked mask record (atlas rect + metrics, all in pixels).
 struct gen_glyph:
 	int x
 	int y
@@ -324,49 +323,6 @@ struct gen_glyph:
 	int advance
 	int bearing_x
 	int bearing_top
-
-
-# Rasterize and place one strike; fills records[0..94] and the strike's
-# ascent/descent (pixels) via out params, and its decoration lines in
-# deco[0..3]: underline top, underline thickness, strikeout top,
-# strikeout thickness (lib/ttf.w's pixel conventions).
-void gen_bake_strike(gen_atlas* a, char* path, int ppem, gen_glyph* records, int* out_ascent, int* out_descent, int* deco):
-	ttf_font font
-	if (ttf_load(&font, path) == 0):
-		exit(1)
-	out_ascent[0] = ttf_scale_round(&font, ppem, font.ascent)
-	out_descent[0] = ttf_scale_round(&font, ppem, font.descent)
-	deco[0] = ttf_underline_top(&font, ppem)
-	deco[1] = ttf_underline_thickness(&font, ppem)
-	deco[2] = ttf_strikeout_top(&font, ppem)
-	deco[3] = ttf_strikeout_thickness(&font, ppem)
-
-	gen_atlas_break(a)
-	int ch = 32
-	while (ch <= 126):
-		int index = ch - 32
-		ttf_bitmap bm
-		if (ttf_rasterize(&font, ttf_glyph_id(&font, ch), ppem, &bm) == 0):
-			print_error(c"generate_ui_atlas: glyph rasterization failed\n")
-			exit(1)
-		int i = 0
-		while (i < bm.w * bm.h):
-			bm.pixels[i] = ttf_boost_coverage(bm.pixels[i] & 255)
-			i = i + 1
-		int x = 0
-		int y = 0
-		gen_atlas_place(a, bm.pixels, bm.w, bm.h, &x, &y)
-		records[index].x = x
-		records[index].y = y
-		records[index].w = bm.w
-		records[index].h = bm.h
-		records[index].advance = bm.advance
-		records[index].bearing_x = bm.bearing_x
-		records[index].bearing_top = bm.bearing_top
-		if (bm.pixels != 0):
-			free(bm.pixels)
-		ch = ch + 1
-	free(font.data)
 
 
 # ---- RLE --------------------------------------------------------------
@@ -466,22 +422,6 @@ void gen_emit_int_func(wstream* out, char* name, int value):
 	stream_write_line(out, c"")
 
 
-# A per-strike int function: body for strike 0, title otherwise.
-void gen_emit_strike_func(wstream* out, char* name, int body, int title):
-	stream_write_line(out, c"")
-	stream_write_line(out, c"")
-	stream_write_cstr(out, c"int ")
-	stream_write_cstr(out, name)
-	stream_write_line(out, c"(int strike):")
-	stream_write_line(out, c"\tif (strike <= 0):")
-	stream_write_cstr(out, c"\t\treturn ")
-	stream_write_int(out, body)
-	stream_write_line(out, c"")
-	stream_write_cstr(out, c"\treturn ")
-	stream_write_int(out, title)
-	stream_write_line(out, c"")
-
-
 int gen_record_byte(int value):
 	if ((value < 0) || (value > 255)):
 		print_error(c"generate_ui_atlas: record field out of byte range: ")
@@ -504,25 +444,146 @@ void gen_pack_record(char* p, gen_glyph* g):
 	p[8] = gen_record_byte(g.bearing_top + 8)
 
 
-int gen_glyphs_per_chunk():
-	return 24
+# ---- embedded faces --------------------------------------------------
+
+# The codepoints the embedded faces keep, as inclusive ranges: ASCII,
+# Latin-1 and Latin Extended-A, Greek and Coptic, basic Cyrillic, the
+# common general punctuation (dashes, quotes, bullet, ellipsis, primes,
+# guillemets), the euro and trade marks, and the four arrows.
+int gen_face_range_count():
+	return 10
 
 
-void gen_emit_strike_records(wstream* out, char* name_prefix, gen_glyph* records):
-	char* packed = malloc(gen_char_count() * 9)
+int* gen_face_ranges():
+	int* r = cast(int*, malloc(gen_face_range_count() * 2 * __word_size__))
+	r[0] = 32
+	r[1] = 126
+	r[2] = 160
+	r[3] = 383
+	r[4] = 880
+	r[5] = 1023
+	r[6] = 1024
+	r[7] = 1119
+	r[8] = 8208
+	r[9] = 8231
+	r[10] = 8240
+	r[11] = 8250
+	r[12] = 8364
+	r[13] = 8364
+	r[14] = 8482
+	r[15] = 8482
+	r[16] = 8592
+	r[17] = 8597
+	r[18] = 65533
+	r[19] = 65533
+	return r
+
+
+int gen_base64_char(int v):
+	if (v < 26):
+		return 65 + v
+	if (v < 52):
+		return 97 + v - 26
+	if (v < 62):
+		return 48 + v - 52
+	if (v == 62):
+		return 43
+	return 47
+
+
+# Standard base64 (with = padding) of length bytes.
+string_builder* gen_base64(char* data, int length):
+	string_builder* out = string_new()
 	int i = 0
-	while (i < gen_char_count()):
-		gen_pack_record(&packed[i * 9], &records[i])
-		i = i + 1
-	int chunk = 0
-	while (chunk * gen_glyphs_per_chunk() < gen_char_count()):
-		int first = chunk * gen_glyphs_per_chunk()
-		int count = gen_char_count() - first
-		if (count > gen_glyphs_per_chunk()):
-			count = gen_glyphs_per_chunk()
-		gen_emit_bytes_func(out, name_prefix, chunk, &packed[first * 9], count * 9)
-		chunk = chunk + 1
-	free(packed)
+	while (i < length):
+		int b0 = data[i] & 255
+		int b1 = 0
+		int b2 = 0
+		if (i + 1 < length):
+			b1 = data[i + 1] & 255
+		if (i + 2 < length):
+			b2 = data[i + 2] & 255
+		string_append_char(out, gen_base64_char(b0 >> 2))
+		string_append_char(out, gen_base64_char(((b0 & 3) << 4) | (b1 >> 4)))
+		if (i + 1 < length):
+			string_append_char(out, gen_base64_char(((b1 & 15) << 2) | (b2 >> 6)))
+		else:
+			string_append_char(out, 61)
+		if (i + 2 < length):
+			string_append_char(out, gen_base64_char(b2 & 63))
+		else:
+			string_append_char(out, 61)
+		i = i + 3
+	return out
+
+
+# base64 characters per emitted string literal (a multiple of 4, so
+# every chunk decodes on its own).
+int gen_face_chunk_chars():
+	return 4096
+
+
+# Subset one committed face and emit it as base64 chunk functions
+# ui_font_face_<face>_<k>(). Returns the chunk count; the decoded
+# byte length lands in out_size[0].
+int gen_emit_face(wstream* out, int face, char* path, int* out_size):
+	ttf_font font
+	if (ttf_load(&font, path) == 0):
+		exit(1)
+	int size = 0
+	char* data = ttf_subset(&font, gen_face_ranges(), gen_face_range_count(), &size)
+	if (data == 0):
+		exit(1)
+	ttf_font check
+	if (ttf_load_bytes(&check, data, size) == 0):
+		print_error(c"generate_ui_atlas: subset does not load\n")
+		exit(1)
+	string_builder* text = gen_base64(data, size)
+	int chunk_chars = gen_face_chunk_chars()
+	int chunks = (text.length + chunk_chars - 1) / chunk_chars
+	int k = 0
+	while (k < chunks):
+		int first = k * chunk_chars
+		int count = text.length - first
+		if (count > chunk_chars):
+			count = chunk_chars
+		stream_write_line(out, c"")
+		stream_write_line(out, c"")
+		stream_write_cstr(out, c"char* ui_font_face_")
+		stream_write_int(out, face)
+		stream_write_cstr(out, c"_")
+		stream_write_int(out, k)
+		stream_write_line(out, c"():")
+		stream_write_cstr(out, c"\treturn c\"")
+		stream_write(out, &text.data[first], count)
+		stream_write_line(out, c"\"")
+		k = k + 1
+	out_size[0] = size
+	string_free(text)
+	free(data)
+	ttf_free(&font)
+	return chunks
+
+
+# An int function of one argument answering from a table of four.
+void gen_emit_face_table(wstream* out, char* name, int* values):
+	stream_write_line(out, c"")
+	stream_write_line(out, c"")
+	stream_write_cstr(out, c"int ")
+	stream_write_cstr(out, name)
+	stream_write_line(out, c"(int face):")
+	int f = 0
+	while (f < 3):
+		stream_write_cstr(out, c"\tif (face == ")
+		stream_write_int(out, f)
+		stream_write_line(out, c"):")
+		stream_write_cstr(out, c"\t\treturn ")
+		stream_write_int(out, values[f])
+		stream_write_line(out, c"")
+		f = f + 1
+	stream_write_cstr(out, c"\treturn ")
+	stream_write_int(out, values[3])
+	stream_write_line(out, c"")
 
 
 int main(int argc, int argv):
@@ -576,17 +637,6 @@ int main(int argc, int argv):
 		masks[m].bearing_top = 0
 		m = m + 1
 
-	gen_glyph* body = cast(gen_glyph*, malloc(gen_char_count() * 7 * __word_size__))
-	gen_glyph* title = cast(gen_glyph*, malloc(gen_char_count() * 7 * __word_size__))
-	int body_ascent = 0
-	int body_descent = 0
-	int title_ascent = 0
-	int title_descent = 0
-	int* body_deco = cast(int*, malloc(4 * __word_size__))
-	int* title_deco = cast(int*, malloc(4 * __word_size__))
-	gen_bake_strike(&a, c"tools/ui/LiberationSans-Regular.ttf", 16, body, &body_ascent, &body_descent, body_deco)
-	gen_bake_strike(&a, c"tools/ui/LiberationSans-Bold.ttf", 20, title, &title_ascent, &title_descent, title_deco)
-
 	# Trim to the used height, rounded up to a multiple of 4.
 	int atlas_h = (a.used_h + 3) / 4 * 4
 	int total = a.w * atlas_h
@@ -599,49 +649,19 @@ int main(int argc, int argv):
 	stream_write_line(out, c"# tools/ui/LiberationSans-LICENSE.txt) — do not edit by hand; run")
 	stream_write_line(out, c"# ./wbuild ui_font_data to regenerate.")
 	stream_write_line(out, c"#")
-	stream_write_line(out, c"# One R8 atlas: masks 0..8 (white, corner, disc, ring, check,")
-	stream_write_line(out, c"# chevron, shadow, chevron_right, cross — graphics/ui/font.w")
-	stream_write_line(out, c"# documents the drawing), then")
-	stream_write_line(out, c"# strike 0 = Liberation Sans Regular 16 ppem, strike 1 = Bold 20")
-	stream_write_line(out, c"# ppem, ASCII 32..126. Pixels are run-length encoded (tag 0: zero")
-	stream_write_line(out, c"# run, tag 1: 255 run, tag 2: literal run); records are 9-byte")
-	stream_write_line(out, c"# entries x_lo, x_hi, y_lo, y_hi, w, h, advance, bearing_x+8,")
-	stream_write_line(out, c"# bearing_top+8, decoded by graphics/ui/font.w. The per-strike")
-	stream_write_line(out, c"# underline/strikeout functions give each decoration line's top row")
-	stream_write_line(out, c"# (y-down from the baseline) and thickness in pixels, from the")
-	stream_write_line(out, c"# faces' post and OS/2 tables.")
+	stream_write_line(out, c"# Two things: the R8 atlas's baked rows, holding masks 0..8")
+	stream_write_line(out, c"# (white, corner, disc, ring, check, chevron, shadow,")
+	stream_write_line(out, c"# chevron_right, cross — graphics/ui/font.w documents the")
+	stream_write_line(out, c"# drawing), run-length encoded (tag 0: zero run, tag 1: 255 run,")
+	stream_write_line(out, c"# tag 2: literal run) with 9-byte records x_lo, x_hi, y_lo, y_hi,")
+	stream_write_line(out, c"# w, h, advance, bearing_x+8, bearing_top+8; and the four default")
+	stream_write_line(out, c"# faces (0 Regular, 1 Bold, 2 Italic, 3 Bold Italic), each a")
+	stream_write_line(out, c"# lib.ttf subset (Latin, Greek, Cyrillic, common punctuation;")
+	stream_write_line(out, c"# no hinting; kerning as a format-0 kern table) in base64 chunks.")
+	stream_write_line(out, c"# Glyphs are rasterized from those faces at run time, at any size.")
 	gen_emit_int_func(out, c"ui_font_atlas_w", a.w)
 	gen_emit_int_func(out, c"ui_font_atlas_h", atlas_h)
-	gen_emit_int_func(out, c"ui_font_first_char", 32)
-	gen_emit_int_func(out, c"ui_font_char_count", gen_char_count())
-	gen_emit_int_func(out, c"ui_font_strike_count", 2)
 	gen_emit_int_func(out, c"ui_font_rle_length", rle_length)
-
-	stream_write_line(out, c"")
-	stream_write_line(out, c"")
-	stream_write_line(out, c"# Ascent/descent in pixels per strike (0 = body, 1 = title).")
-	stream_write_line(out, c"int ui_font_ascent(int strike):")
-	stream_write_line(out, c"\tif (strike <= 0):")
-	stream_write_cstr(out, c"\t\treturn ")
-	stream_write_int(out, body_ascent)
-	stream_write_line(out, c"")
-	stream_write_cstr(out, c"\treturn ")
-	stream_write_int(out, title_ascent)
-	stream_write_line(out, c"")
-	stream_write_line(out, c"")
-	stream_write_line(out, c"")
-	stream_write_line(out, c"int ui_font_descent(int strike):")
-	stream_write_line(out, c"\tif (strike <= 0):")
-	stream_write_cstr(out, c"\t\treturn ")
-	stream_write_int(out, body_descent)
-	stream_write_line(out, c"")
-	stream_write_cstr(out, c"\treturn ")
-	stream_write_int(out, title_descent)
-	stream_write_line(out, c"")
-	gen_emit_strike_func(out, c"ui_font_baked_underline_top", body_deco[0], title_deco[0])
-	gen_emit_strike_func(out, c"ui_font_baked_underline_thickness", body_deco[1], title_deco[1])
-	gen_emit_strike_func(out, c"ui_font_baked_strikeout_top", body_deco[2], title_deco[2])
-	gen_emit_strike_func(out, c"ui_font_baked_strikeout_thickness", body_deco[3], title_deco[3])
 
 	# Mask records: one 63-byte chunk.
 	char* mask_packed = malloc(gen_mask_count() * 9)
@@ -665,39 +685,6 @@ int main(int argc, int argv):
 	stream_write_line(out, c"\t\tmask = 0")
 	stream_write_line(out, c"\tchar* data = ui_font_mask_records()")
 	stream_write_line(out, c"\treturn &data[mask * 9]")
-
-	gen_emit_strike_records(out, c"ui_font_records_0_", body)
-	gen_emit_strike_records(out, c"ui_font_records_1_", title)
-	stream_write_line(out, c"")
-	stream_write_line(out, c"")
-	stream_write_line(out, c"# 9-byte record for a strike's character (32..126; others map to")
-	stream_write_line(out, c"# space).")
-	stream_write_line(out, c"char* ui_font_glyph_record(int strike, int ch):")
-	stream_write_line(out, c"\tint index = ch - 32")
-	stream_write_line(out, c"\tif ((index < 0) || (index >= 95)):")
-	stream_write_line(out, c"\t\tindex = 0")
-	stream_write_line(out, c"\tint chunk = index / 24")
-	stream_write_line(out, c"\tint rest = index % 24")
-	stream_write_line(out, c"\tchar* data = 0")
-	stream_write_line(out, c"\tif (strike <= 0):")
-	stream_write_line(out, c"\t\tif (chunk == 0):")
-	stream_write_line(out, c"\t\t\tdata = ui_font_records_0_0()")
-	stream_write_line(out, c"\t\telse if (chunk == 1):")
-	stream_write_line(out, c"\t\t\tdata = ui_font_records_0_1()")
-	stream_write_line(out, c"\t\telse if (chunk == 2):")
-	stream_write_line(out, c"\t\t\tdata = ui_font_records_0_2()")
-	stream_write_line(out, c"\t\telse:")
-	stream_write_line(out, c"\t\t\tdata = ui_font_records_0_3()")
-	stream_write_line(out, c"\telse:")
-	stream_write_line(out, c"\t\tif (chunk == 0):")
-	stream_write_line(out, c"\t\t\tdata = ui_font_records_1_0()")
-	stream_write_line(out, c"\t\telse if (chunk == 1):")
-	stream_write_line(out, c"\t\t\tdata = ui_font_records_1_1()")
-	stream_write_line(out, c"\t\telse if (chunk == 2):")
-	stream_write_line(out, c"\t\t\tdata = ui_font_records_1_2()")
-	stream_write_line(out, c"\t\telse:")
-	stream_write_line(out, c"\t\t\tdata = ui_font_records_1_3()")
-	stream_write_line(out, c"\treturn &data[rest * 9]")
 
 	# RLE chunks + dispatcher.
 	int chunk_size = 256
@@ -728,6 +715,50 @@ int main(int argc, int argv):
 		stream_write_line(out, c"()")
 		c = c + 1
 	stream_write_line(out, c"\treturn ui_font_rle_chunk_0()")
+
+	# The default faces, then their size/chunk tables and the chunk
+	# dispatcher.
+	char*[4] paths
+	paths[0] = c"tools/ui/LiberationSans-Regular.ttf"
+	paths[1] = c"tools/ui/LiberationSans-Bold.ttf"
+	paths[2] = c"tools/ui/LiberationSans-Italic.ttf"
+	paths[3] = c"tools/ui/LiberationSans-BoldItalic.ttf"
+	int* face_sizes = cast(int*, malloc(4 * __word_size__))
+	int* face_chunks = cast(int*, malloc(4 * __word_size__))
+	int face = 0
+	int face_total = 0
+	while (face < 4):
+		face_chunks[face] = gen_emit_face(out, face, paths[face], &face_sizes[face])
+		face_total = face_total + face_sizes[face]
+		face = face + 1
+	gen_emit_int_func(out, c"ui_font_face_count", 4)
+	stream_write_line(out, c"")
+	stream_write_line(out, c"")
+	stream_write_line(out, c"# Decoded byte length of a default face.")
+	gen_emit_face_table(out, c"ui_font_face_size", face_sizes)
+	gen_emit_face_table(out, c"ui_font_face_chunk_count", face_chunks)
+	gen_emit_int_func(out, c"ui_font_face_chunk_chars", gen_face_chunk_chars())
+	stream_write_line(out, c"")
+	stream_write_line(out, c"")
+	stream_write_line(out, c"# Base64 chunk k of a default face.")
+	stream_write_line(out, c"char* ui_font_face_chunk(int face, int k):")
+	face = 0
+	while (face < 4):
+		int k = 0
+		while (k < face_chunks[face]):
+			stream_write_cstr(out, c"\tif ((face == ")
+			stream_write_int(out, face)
+			stream_write_cstr(out, c") && (k == ")
+			stream_write_int(out, k)
+			stream_write_line(out, c")):")
+			stream_write_cstr(out, c"\t\treturn ui_font_face_")
+			stream_write_int(out, face)
+			stream_write_cstr(out, c"_")
+			stream_write_int(out, k)
+			stream_write_line(out, c"()")
+			k = k + 1
+		face = face + 1
+	stream_write_line(out, c"\treturn c\"\"")
 	stream_close(out)
 
 	print(c"generated graphics/ui/font_data.w (atlas ")
@@ -736,9 +767,9 @@ int main(int argc, int argv):
 	print(itoa(atlas_h))
 	print(c", rle ")
 	print(itoa(rle_length))
+	print(c" bytes, faces ")
+	print(itoa(face_total))
 	println(c" bytes)")
 	free(rle)
 	free(a.pixels)
-	free(cast(char*, body))
-	free(cast(char*, title))
 	return 0

@@ -44,6 +44,10 @@ struct ttf_font:
 	int underline_thick # font units
 	int strike_pos      # font units, top of the strikeout, positive up
 	int strike_thick    # font units
+	int kern            # offset of a format-0 kern subtable, or 0
+	int kern_pairs      # its pair count
+	int gpos_feature    # offset of the GPOS 'kern' Feature table, or 0
+	int gpos_lookup_list # offset of the GPOS LookupList
 
 
 # Out-of-range reads yield 0: a truncated file degrades to a failed
@@ -86,6 +90,18 @@ int ttf_table(ttf_font* f, char* tag):
 	return 0
 
 
+# Byte length of a table by tag, or 0 when absent.
+int ttf_table_length(ttf_font* f, char* tag):
+	int count = ttf_u16(f, 4)
+	int i = 0
+	while (i < count):
+		int rec = 12 + i * 16
+		if ((ttf_u8(f, rec) == tag[0]) && (ttf_u8(f, rec + 1) == tag[1]) && (ttf_u8(f, rec + 2) == tag[2]) && (ttf_u8(f, rec + 3) == tag[3])):
+			return ttf_u32(f, rec + 12)
+		i = i + 1
+	return 0
+
+
 # Read a whole file into memory. Returns the bytes (caller frees) and
 # stores the length in size[0], or 0 after printing why.
 char* ttf_read_file(char* path, int* size):
@@ -105,6 +121,7 @@ char* ttf_read_file(char* path, int* size):
 
 
 int ttf_load_bytes(ttf_font* f, char* data, int size);
+void ttf_index_kerning(ttf_font* f);
 
 
 # Load and index a TrueType file. Returns 1, or 0 after printing what
@@ -193,7 +210,224 @@ int ttf_load_bytes(ttf_font* f, char* data, int size):
 	if ((f.cmap4 == 0) && (f.cmap12 == 0)):
 		print_error(c"ttf: no format-4 or format-12 cmap subtable\n")
 		return 0
+	ttf_index_kerning(f)
 	return 1
+
+
+# Find the pair-kerning data: the GPOS 'kern' feature's lookups
+# (modern fonts) and a legacy format-0 kern subtable. Both are optional;
+# a font with neither simply never kerns.
+void ttf_index_kerning(ttf_font* f):
+	f.kern = 0
+	f.kern_pairs = 0
+	f.gpos_feature = 0
+	f.gpos_lookup_list = 0
+	int kern = ttf_table(f, c"kern")
+	# Version-0 (Microsoft) kern: the first horizontal format-0
+	# subtable. Apple's version-1 layout is not read.
+	if ((kern != 0) && (ttf_u16(f, kern) == 0)):
+		int tables = ttf_u16(f, kern + 2)
+		int sub = kern + 4
+		int t = 0
+		while (t < tables):
+			int length = ttf_u16(f, sub + 2)
+			int coverage = ttf_u16(f, sub + 4)
+			# format 0 in the high byte; horizontal, not minimum or
+			# cross-stream.
+			if (((coverage >> 8) == 0) && ((coverage & 7) == 1)):
+				f.kern = sub + 6
+				f.kern_pairs = ttf_u16(f, sub + 6)
+				t = tables
+			sub = sub + length
+			t = t + 1
+	int gpos = ttf_table(f, c"GPOS")
+	if (gpos == 0):
+		return
+	int features = gpos + ttf_u16(f, gpos + 6)
+	f.gpos_lookup_list = gpos + ttf_u16(f, gpos + 8)
+	# The first 'kern' feature record: scripts list their own records,
+	# but fonts point them all at the same lookups.
+	int count = ttf_u16(f, features)
+	int i = 0
+	while (i < count):
+		int rec = features + 2 + i * 6
+		if ((ttf_u8(f, rec) == 'k') && (ttf_u8(f, rec + 1) == 'e') && (ttf_u8(f, rec + 2) == 'r') && (ttf_u8(f, rec + 3) == 'n')):
+			f.gpos_feature = features + ttf_u16(f, rec + 4)
+			i = count
+		i = i + 1
+
+
+# Coverage index of gid in a Coverage table, or -1.
+int ttf_coverage(ttf_font* f, int cov, int gid):
+	int format = ttf_u16(f, cov)
+	int n = ttf_u16(f, cov + 2)
+	int lo = 0
+	int hi = n - 1
+	while (lo <= hi):
+		int mid = (lo + hi) / 2
+		if (format == 1):
+			int g = ttf_u16(f, cov + 4 + mid * 2)
+			if (g == gid):
+				return mid
+			if (g < gid):
+				lo = mid + 1
+			else:
+				hi = mid - 1
+		else if (format == 2):
+			int rec = cov + 4 + mid * 6
+			if (gid < ttf_u16(f, rec)):
+				hi = mid - 1
+			else if (gid > ttf_u16(f, rec + 2)):
+				lo = mid + 1
+			else:
+				return ttf_u16(f, rec + 4) + gid - ttf_u16(f, rec)
+		else:
+			return 0 - 1
+	return 0 - 1
+
+
+# Class of gid in a ClassDef table (0 when unlisted).
+int ttf_class(ttf_font* f, int def, int gid):
+	int format = ttf_u16(f, def)
+	if (format == 1):
+		int start = ttf_u16(f, def + 2)
+		int n = ttf_u16(f, def + 4)
+		if ((gid < start) || (gid >= start + n)):
+			return 0
+		return ttf_u16(f, def + 6 + (gid - start) * 2)
+	if (format != 2):
+		return 0
+	int count = ttf_u16(f, def + 2)
+	int lo = 0
+	int hi = count - 1
+	while (lo <= hi):
+		int mid = (lo + hi) / 2
+		int rec = def + 4 + mid * 6
+		if (gid < ttf_u16(f, rec)):
+			hi = mid - 1
+		else if (gid > ttf_u16(f, rec + 2)):
+			lo = mid + 1
+		else:
+			return ttf_u16(f, rec + 4)
+	return 0
+
+
+# Bytes in a ValueRecord of the given ValueFormat: two per set bit.
+int ttf_value_size(int format):
+	int size = 0
+	int bit = 0
+	while (bit < 8):
+		if (format & (1 << bit)):
+			size = size + 2
+		bit = bit + 1
+	return size
+
+
+# The XAdvance field of a ValueRecord at rec, or 0 when the format has
+# none (placement-only adjustments do not move the pen).
+int ttf_value_x_advance(ttf_font* f, int rec, int format):
+	if ((format & 4) == 0):
+		return 0
+	return ttf_s16(f, rec + ttf_value_size(format & 3))
+
+
+# One PairPos subtable's x-advance adjustment for (left, right). Stores
+# 1 in matched[0] when the subtable applies to the pair.
+int ttf_pair_pos(ttf_font* f, int sub, int left, int right, int* matched):
+	matched[0] = 0
+	int format = ttf_u16(f, sub)
+	int index = ttf_coverage(f, sub + ttf_u16(f, sub + 2), left)
+	if (index < 0):
+		return 0
+	int vf1 = ttf_u16(f, sub + 4)
+	int vf2 = ttf_u16(f, sub + 6)
+	int size1 = ttf_value_size(vf1)
+	int size2 = ttf_value_size(vf2)
+	if (format == 1):
+		if (index >= ttf_u16(f, sub + 8)):
+			return 0
+		int set = sub + ttf_u16(f, sub + 10 + index * 2)
+		int n = ttf_u16(f, set)
+		int stride = 2 + size1 + size2
+		int lo = 0
+		int hi = n - 1
+		while (lo <= hi):
+			int mid = (lo + hi) / 2
+			int rec = set + 2 + mid * stride
+			int g = ttf_u16(f, rec)
+			if (g == right):
+				matched[0] = 1
+				return ttf_value_x_advance(f, rec + 2, vf1)
+			if (g < right):
+				lo = mid + 1
+			else:
+				hi = mid - 1
+		return 0
+	if (format == 2):
+		int c1 = ttf_class(f, sub + ttf_u16(f, sub + 8), left)
+		int c2 = ttf_class(f, sub + ttf_u16(f, sub + 10), right)
+		int class1_count = ttf_u16(f, sub + 12)
+		int class2_count = ttf_u16(f, sub + 14)
+		if ((c1 >= class1_count) || (c2 >= class2_count)):
+			return 0
+		matched[0] = 1
+		int rec2 = sub + 16 + (c1 * class2_count + c2) * (size1 + size2)
+		return ttf_value_x_advance(f, rec2, vf1)
+	return 0
+
+
+# Pair-kerning adjustment between two glyph ids, in font units
+# (negative pulls the right glyph closer). GPOS 'kern' lookups when the
+# font has them, else the legacy kern table; 0 when neither lists the
+# pair.
+int ttf_kern_units(ttf_font* f, int left, int right):
+	if (f.gpos_feature != 0):
+		int total = 0
+		int lookups = f.gpos_lookup_list
+		int lookup_count = ttf_u16(f, lookups)
+		int n = ttf_u16(f, f.gpos_feature + 2)
+		int i = 0
+		while (i < n):
+			int index = ttf_u16(f, f.gpos_feature + 4 + i * 2)
+			if (index >= lookup_count):
+				return total
+			int lookup = lookups + ttf_u16(f, lookups + 2 + index * 2)
+			int type = ttf_u16(f, lookup)
+			int subs = ttf_u16(f, lookup + 4)
+			int s = 0
+			while (s < subs):
+				int sub = lookup + ttf_u16(f, lookup + 6 + s * 2)
+				int sub_type = type
+				if (type == 9):
+					# Extension: the real subtable sits behind a 32-bit
+					# offset.
+					sub_type = ttf_u16(f, sub + 2)
+					sub = sub + ttf_u32(f, sub + 4)
+				int matched = 0
+				if (sub_type == 2):
+					total = total + ttf_pair_pos(f, sub, left, right, &matched)
+				# The first subtable that applies ends the lookup.
+				if (matched):
+					s = subs
+				s = s + 1
+			i = i + 1
+		return total
+	if (f.kern == 0):
+		return 0
+	int key = left * 65536 + right
+	int lo = 0
+	int hi = f.kern_pairs - 1
+	while (lo <= hi):
+		int mid = (lo + hi) / 2
+		int rec = f.kern + 8 + mid * 6
+		int k = ttf_u16(f, rec) * 65536 + ttf_u16(f, rec + 2)
+		if (k == key):
+			return ttf_s16(f, rec + 4)
+		if (k < key):
+			lo = mid + 1
+		else:
+			hi = mid - 1
+	return 0
 
 
 # Release the bytes ttf_load read. Not for ttf_load_bytes fonts, whose
@@ -833,3 +1067,388 @@ int ttf_fill(ttf_outline* o, ttf_bitmap* out):
 	out.bearing_x = left
 	out.bearing_top = 0 - top
 	return 1
+
+
+# ---- subsetting -----------------------------------------------------
+#
+# ttf_subset writes a minimal TrueType font holding just the glyphs a
+# set of codepoints needs (plus .notdef and composite components), with
+# hinting instructions stripped and kerning flattened into a format-0
+# kern table. The UI atlas baker uses it to embed its default faces in
+# graphics/ui/font_data.w small enough to compile into every UI program.
+
+
+void ttf_put16(string_builder* b, int v):
+	string_append_char(b, (v >> 8) & 255)
+	string_append_char(b, v & 255)
+
+
+void ttf_put32(string_builder* b, int v):
+	ttf_put16(b, (v >> 16) & 65535)
+	ttf_put16(b, v & 65535)
+
+
+void ttf_set16(char* p, int off, int v):
+	p[off] = (v >> 8) & 255
+	p[off + 1] = v & 255
+
+
+# Append bytes [off, off + length) of the font.
+void ttf_put_range(string_builder* b, ttf_font* f, int off, int length):
+	int i = 0
+	while (i < length):
+		string_append_char(b, ttf_u8(f, off + i))
+		i = i + 1
+
+
+void ttf_pad4(string_builder* b):
+	while (b.length % 4 != 0):
+		string_append_char(b, 0)
+
+
+# glyf bytes of gid: offset (absolute) in off[0], length returned.
+int ttf_glyph_span(ttf_font* f, int gid, int* off):
+	int start = ttf_glyf_offset(f, gid)
+	int end = ttf_glyf_offset(f, gid + 1)
+	off[0] = f.glyf + start
+	if (end < start):
+		return 0
+	return end - start
+
+
+# Byte size of a composite component record with the given flags
+# (flags, glyph index, the two args, and its transform).
+int ttf_component_size(int flags):
+	int size = 4
+	if (flags & 1):
+		size = size + 4
+	else:
+		size = size + 2
+	if (flags & 8):
+		size = size + 2
+	else if (flags & 64):
+		size = size + 4
+	else if (flags & 128):
+		size = size + 8
+	return size
+
+
+# Mark the components of every kept composite glyph as kept, until no
+# new glyph turns up (composites nest). keep[] is 0/1 per glyph id.
+void ttf_subset_closure(ttf_font* f, char* keep):
+	int changed = 1
+	while (changed):
+		changed = 0
+		int gid = 0
+		while (gid < f.glyph_count):
+			int off = 0
+			if (keep[gid] && (ttf_glyph_span(f, gid, &off) > 0) && (ttf_s16(f, off) < 0)):
+				int pos = off + 10
+				int more = 1
+				while (more):
+					int flags = ttf_u16(f, pos)
+					int component = ttf_u16(f, pos + 2)
+					if ((component < f.glyph_count) && (keep[component] == 0)):
+						keep[component] = 1
+						changed = 1
+					pos = pos + ttf_component_size(flags)
+					more = flags & 32
+			gid = gid + 1
+
+
+# Append glyph old's outline with instructions removed and component
+# ids remapped through new_id.
+void ttf_subset_glyph(string_builder* b, ttf_font* f, int old, int* new_id):
+	int off = 0
+	int length = ttf_glyph_span(f, old, &off)
+	if (length == 0):
+		return
+	int contours = ttf_s16(f, off)
+	if (contours >= 0):
+		int head = 10 + contours * 2
+		int instructions = ttf_u16(f, off + head)
+		ttf_put_range(b, f, off, head)
+		ttf_put16(b, 0)
+		int rest = head + 2 + instructions
+		if (rest < length):
+			ttf_put_range(b, f, off + rest, length - rest)
+		ttf_pad4(b)
+		return
+	ttf_put_range(b, f, off, 10)
+	int pos = off + 10
+	int more = 1
+	while (more):
+		int flags = ttf_u16(f, pos)
+		int size = ttf_component_size(flags)
+		# Drop WE_HAVE_INSTRUCTIONS (0x100): the instructions are gone.
+		ttf_put16(b, flags & (65535 - 256))
+		ttf_put16(b, new_id[ttf_u16(f, pos + 2)])
+		ttf_put_range(b, f, pos + 4, size - 4)
+		pos = pos + size
+		more = flags & 32
+	ttf_pad4(b)
+
+
+# Left side bearing of gid from hmtx (font units).
+int ttf_lsb_units(ttf_font* f, int gid):
+	if (gid < f.num_hmetrics):
+		return ttf_s16(f, f.hmtx + gid * 4 + 2)
+	return ttf_s16(f, f.hmtx + f.num_hmetrics * 4 + (gid - f.num_hmetrics) * 2)
+
+
+int ttf_checksum(char* data, int length):
+	int sum = 0
+	int i = 0
+	while (i < length):
+		int word = 0
+		int k = 0
+		while (k < 4):
+			word = word << 8
+			if (i + k < length):
+				word = word | (data[i + k] & 255)
+			k = k + 1
+		sum = sum + word
+		i = i + 4
+	return sum
+
+
+# Subset f to the codepoints in ranges (range_count inclusive
+# [start, end] pairs, ascending and non-overlapping). Returns the new
+# font's bytes (caller frees) with the length in size[0], or 0 after
+# printing why.
+char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
+	int n = f.glyph_count
+	char* keep = malloc(n + 1)
+	int i = 0
+	while (i < n):
+		keep[i] = 0
+		i = i + 1
+	keep[0] = 1
+	int total = 0
+	int r = 0
+	while (r < range_count):
+		total = total + ranges[r * 2 + 1] - ranges[r * 2] + 1
+		r = r + 1
+	int* cps = cast(int*, malloc((total + 1) * __word_size__))
+	int* gids = cast(int*, malloc((total + 1) * __word_size__))
+	int mapped = 0
+	r = 0
+	while (r < range_count):
+		int cp = ranges[r * 2]
+		while (cp <= ranges[r * 2 + 1]):
+			int gid = ttf_glyph_id(f, cp)
+			if ((gid > 0) && (gid < n)):
+				cps[mapped] = cp
+				gids[mapped] = gid
+				mapped = mapped + 1
+				keep[gid] = 1
+			cp = cp + 1
+		r = r + 1
+	ttf_subset_closure(f, keep)
+
+	# New ids follow old-id order, so .notdef stays 0.
+	int* new_id = cast(int*, malloc((n + 1) * __word_size__))
+	int* old_id = cast(int*, malloc((n + 1) * __word_size__))
+	int count = 0
+	i = 0
+	while (i < n):
+		new_id[i] = 0
+		if (keep[i]):
+			new_id[i] = count
+			old_id[count] = i
+			count = count + 1
+		i = i + 1
+
+	# glyf + loca (long offsets).
+	string_builder* glyf = string_new()
+	string_builder* loca = string_new()
+	i = 0
+	while (i < count):
+		ttf_put32(loca, glyf.length)
+		ttf_subset_glyph(glyf, f, old_id[i], new_id)
+		i = i + 1
+	ttf_put32(loca, glyf.length)
+
+	string_builder* hmtx = string_new()
+	i = 0
+	while (i < count):
+		ttf_put16(hmtx, ttf_advance_units(f, old_id[i]))
+		ttf_put16(hmtx, ttf_lsb_units(f, old_id[i]) & 65535)
+		i = i + 1
+
+	# cmap: one format-12 subtable (Windows, full Unicode), grouping
+	# runs where codepoint and glyph id both step by one.
+	string_builder* groups = string_new()
+	int group_count = 0
+	i = 0
+	while (i < mapped):
+		int j = i
+		while ((j + 1 < mapped) && (cps[j + 1] == cps[j] + 1) && (new_id[gids[j + 1]] == new_id[gids[j]] + 1)):
+			j = j + 1
+		ttf_put32(groups, cps[i])
+		ttf_put32(groups, cps[j])
+		ttf_put32(groups, new_id[gids[i]])
+		group_count = group_count + 1
+		i = j + 1
+	string_builder* cmap = string_new()
+	ttf_put16(cmap, 0)
+	ttf_put16(cmap, 1)
+	ttf_put16(cmap, 3)
+	ttf_put16(cmap, 10)
+	ttf_put32(cmap, 12)
+	ttf_put16(cmap, 12)
+	ttf_put16(cmap, 0)
+	ttf_put32(cmap, 16 + groups.length)
+	ttf_put32(cmap, 0)
+	ttf_put32(cmap, group_count)
+	string_append_bytes(cmap, groups.data, groups.length)
+
+	# kern: every kept pair the source kerns (GPOS or kern), flattened
+	# into one sorted format-0 subtable. Class-based GPOS kerning can
+	# expand past what a format-0 subtable holds; the excess (the
+	# weakest adjustments are not singled out) is dropped with a note.
+	string_builder* pairs = string_new()
+	int pair_count = 0
+	int max_pairs = (65535 - 14) / 6
+	int dropped = 0
+	int left = 1
+	while (left < count):
+		int right = 1
+		while (right < count):
+			int v = ttf_kern_units(f, old_id[left], old_id[right])
+			if (v != 0):
+				if (pair_count < max_pairs):
+					ttf_put16(pairs, left)
+					ttf_put16(pairs, right)
+					ttf_put16(pairs, v & 65535)
+					pair_count = pair_count + 1
+				else:
+					dropped = dropped + 1
+			right = right + 1
+		left = left + 1
+	if (dropped > 0):
+		print_error(c"ttf_subset: kern pairs past the format-0 limit were dropped\n")
+	string_builder* kern = string_new()
+	ttf_put16(kern, 0)
+	ttf_put16(kern, 1)
+	ttf_put16(kern, 0)
+	ttf_put16(kern, 14 + pairs.length)
+	ttf_put16(kern, 1)
+	ttf_put16(kern, pair_count)
+	int search = 1
+	int selector = 0
+	while (search * 2 <= pair_count):
+		search = search * 2
+		selector = selector + 1
+	if (pair_count == 0):
+		search = 0
+	ttf_put16(kern, search * 6)
+	ttf_put16(kern, selector)
+	ttf_put16(kern, pair_count * 6 - search * 6)
+	string_append_bytes(kern, pairs.data, pairs.length)
+
+	# Copied tables, patched: head (long loca, no checksum adjustment),
+	# hhea and maxp (new glyph count), post (version 3: no names).
+	int head_at = ttf_table(f, c"head")
+	string_builder* head = string_new()
+	ttf_put_range(head, f, head_at, 54)
+	ttf_set16(head.data, 8, 0)
+	ttf_set16(head.data, 10, 0)
+	ttf_set16(head.data, 50, 1)
+	string_builder* hhea = string_new()
+	ttf_put_range(hhea, f, ttf_table(f, c"hhea"), 36)
+	ttf_set16(hhea.data, 34, count)
+	string_builder* maxp = string_new()
+	ttf_put_range(maxp, f, ttf_table(f, c"maxp"), ttf_table_length(f, c"maxp"))
+	ttf_set16(maxp.data, 4, count)
+	string_builder* os2 = string_new()
+	ttf_put_range(os2, f, ttf_table(f, c"OS/2"), ttf_table_length(f, c"OS/2"))
+	string_builder* post = string_new()
+	int post_at = ttf_table(f, c"post")
+	if (post_at != 0):
+		ttf_put_range(post, f, post_at, 32)
+	else:
+		i = 0
+		while (i < 32):
+			string_append_char(post, 0)
+			i = i + 1
+	ttf_set16(post.data, 0, 3)
+	ttf_set16(post.data, 2, 0)
+
+	# Table directory, tags in sorted (byte) order. An absent OS/2
+	# leaves a zero-length entry out.
+	string_builder*[10] tables
+	char*[10] tags
+	int table_count = 0
+	if (os2.length > 0):
+		tags[table_count] = c"OS/2"
+		tables[table_count] = os2
+		table_count = table_count + 1
+	tags[table_count] = c"cmap"
+	tables[table_count] = cmap
+	table_count = table_count + 1
+	tags[table_count] = c"glyf"
+	tables[table_count] = glyf
+	table_count = table_count + 1
+	tags[table_count] = c"head"
+	tables[table_count] = head
+	table_count = table_count + 1
+	tags[table_count] = c"hhea"
+	tables[table_count] = hhea
+	table_count = table_count + 1
+	tags[table_count] = c"hmtx"
+	tables[table_count] = hmtx
+	table_count = table_count + 1
+	tags[table_count] = c"kern"
+	tables[table_count] = kern
+	table_count = table_count + 1
+	tags[table_count] = c"loca"
+	tables[table_count] = loca
+	table_count = table_count + 1
+	tags[table_count] = c"maxp"
+	tables[table_count] = maxp
+	table_count = table_count + 1
+	tags[table_count] = c"post"
+	tables[table_count] = post
+	table_count = table_count + 1
+
+	string_builder* out = string_new()
+	ttf_put32(out, 65536)
+	ttf_put16(out, table_count)
+	int tsearch = 1
+	int tselector = 0
+	while (tsearch * 2 <= table_count):
+		tsearch = tsearch * 2
+		tselector = tselector + 1
+	ttf_put16(out, tsearch * 16)
+	ttf_put16(out, tselector)
+	ttf_put16(out, table_count * 16 - tsearch * 16)
+	int offset = 12 + table_count * 16
+	int t = 0
+	while (t < table_count):
+		string_builder* tb = tables[t]
+		string_append_bytes(out, tags[t], 4)
+		ttf_put32(out, ttf_checksum(tb.data, tb.length))
+		ttf_put32(out, offset)
+		ttf_put32(out, tb.length)
+		offset = offset + (tb.length + 3) / 4 * 4
+		t = t + 1
+	t = 0
+	while (t < table_count):
+		string_builder* tb2 = tables[t]
+		string_append_bytes(out, tb2.data, tb2.length)
+		ttf_pad4(out)
+		string_free(tb2)
+		t = t + 1
+	string_free(groups)
+	string_free(pairs)
+
+	free(keep)
+	free(cast(char*, cps))
+	free(cast(char*, gids))
+	free(cast(char*, new_id))
+	free(cast(char*, old_id))
+	char* data = out.data
+	size[0] = out.length
+	free(out)
+	return data

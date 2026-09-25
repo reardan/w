@@ -145,7 +145,8 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 		int keysym = 0
 		if (XLookupString(event, &text[0], 4, &keysym, 0) == 1):
 			int ch = text[0] & 255
-			if (((ch >= 32) && (ch <= 126)) || (ch == 8) || (ch == 9) || (ch == 13) || (ch == 27)):
+			# Latin-1 keysyms come back as their codepoint byte.
+			if (((ch >= 32) && (ch <= 126)) || (ch >= 160) || (ch == 8) || (ch == 9) || (ch == 13) || (ch == 27)):
 				gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_CHAR, ch, event.input.x, event.input.y, mods)
 		# Navigation keysyms have no character; translate the portable
 		# set (XK_Home 0xff50, XK_Left 0xff51, XK_Up 0xff52,

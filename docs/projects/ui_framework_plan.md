@@ -341,10 +341,9 @@ serve the repo, open
   theme.
 - **Stage 4** (implemented 2026-08-07, see the section below): real
   typography + the Material-style visual refresh.
-- **Stage 5+**: SDF/dynamic-size text and full #379 typography, a
-  win64 window backend, accessibility — each a future design doc.
-  Runtime TrueType loading and the italic/underline/strikethrough
-  styles landed first (section "Runtime fonts and text styles").
+- **Stage 5+**: a win64 window backend, accessibility — each a future
+  design doc. #379 typography landed in two rounds (sections "Runtime
+  fonts and text styles" and "Fonts, round two").
 
 ## Stage 4 — typography + Material visual refresh
 
@@ -449,8 +448,64 @@ run time reproduces the baked body strike glyph for glyph and texel
 for texel; `ttf_test` covers composites, format 12, skew, in-memory
 loading and rejection of bad input.
 
-Still open under #379: UTF-8 decoding and glyphs beyond ASCII in the
-text layer (the rasterizer already handles Latin-1 composites and
-format-12 codepoints), a real italic face rather than a shear,
-kerning, SDF or other scalable text, and letting the theme select a
-runtime strike for widgets.
+Round two (below) closed the rest: UTF-8, true italics, kerning,
+text at any size and widgets in a loaded font.
+
+## Fonts, round two (#379)
+
+Implemented 2026-09-25. The baked glyph strikes are gone: every strike
+is now a face at a pixel size, rasterized glyph by glyph on first use.
+The renderer is still one shader and one atlas.
+
+- **Embedded faces.** `font_data.w` carries the baked mask rows plus
+  four default faces (Liberation Sans Regular, Bold, Italic, Bold
+  Italic). Each is a `ttf_subset` of the committed TTF covering
+  Latin-1, Latin Extended-A, Greek, basic Cyrillic, common
+  punctuation, the euro and trade marks and the arrows, about 45 KB
+  per face, stored as base64 chunks. `graphics.ui.font` decodes a face
+  the first time a strike needs it. A subset keeps its outlines
+  exactly, so its glyphs match the full file's texel for texel
+  (`graphics_ui_text_style_test` checks this). Strikes 0 (Regular 16)
+  and 1 (Bold 20) remain the body and title text `text_scale` selects.
+- **Any size.** `ui_font_strike(face, ppem)` finds or makes the strike
+  for any size from 4 to 200, and `ui_font_strike_resized` gives the
+  same face at another size. Every size is rasterized from the
+  outlines and drawn 1:1, so text is crisp at every size. We did not
+  use a signed distance field: that would need a second shader path
+  and gives softer small text.
+- **Glyph cache.** A hash from (strike, codepoint) to a glyph record.
+  Glyphs shelf-pack into atlas rows that grow by doubling. A glyph can
+  first appear mid-frame, so v is normalized by `ui_font_uv_rows()`,
+  which holds still for the whole frame. `ui_render_sync_atlas` (at
+  begin and at end) rescales the v of every batched vertex when the
+  atlas grew, and re-uploads the texture before drawing.
+- **UTF-8.** Text is decoded by `ui_utf8_next`. Malformed bytes read
+  as U+FFFD and consume one byte. Byte offsets stay the caret unit,
+  always on character boundaries. The textbox and textarea insert
+  typed codepoints as UTF-8 and step over whole characters (X11 now
+  passes Latin-1 keysyms through). A codepoint the face lacks comes
+  from the first `ui_font_add_fallback` face that has it, then the
+  default Regular, then the face's .notdef box.
+- **Kerning.** `lib/ttf.w` reads the GPOS `kern` feature (PairPos
+  formats 1 and 2, including extension lookups) and falls back to a
+  legacy format-0 `kern` table. Subsets flatten kerning into a format-0
+  table. Pens add the pair adjustment rounded at the strike's size, and
+  every measurement adds the same value.
+- **True italic.** `UI_TEXT_ITALIC` draws the strike's italic
+  companion: Regular pairs with Italic, and Bold with Bold Italic.
+  `ui_font_face_set_italic` pairs loaded faces. A face with no italic
+  still gets the sheared oblique. A true italic has its own advances,
+  so `ui_text_width_styled` measures styled runs.
+- **Widgets in a loaded font.** `ui_theme_use_strike` and
+  `ui_theme_use_font(theme, face, px)` point `text_scale` at any strike
+  (scale 1000 + strike; 1 to 3 keep their meaning) and grow
+  `widget_height` to fit. No widget code changed for this.
+
+`graphics_ui_text_font_test` covers UTF-8 decoding and drawing,
+fallback, kerning, true italic, arbitrary sizes, mid-frame atlas
+growth, a themed widget in a loaded face, and UTF-8 editing. `ttf_test`
+adds the GPOS/kern and subsetting cases.
+
+Not done: shaping beyond pair kerning (ligatures, marks, right-to-left
+text, complex scripts), CFF/OpenType outlines, hinting, and
+non-Latin-1 key input from the Cocoa and web backends.

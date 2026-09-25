@@ -228,3 +228,74 @@ void test_cmap_format_12():
 	assert_equal(0, ttf_glyph_id(&f, 128515))
 	assert_equal(0, ttf_glyph_id(&f, 'A'))
 	free(data)
+
+
+# Pair kerning: Liberation Sans kerns through GPOS PairPos lookups
+# under its 'kern' feature (it also ships a legacy kern table, which
+# GPOS takes precedence over). "AV" and "To" pull together; "ab" does
+# not kern.
+void test_kerning():
+	ttf_font* f = regular()
+	asserts(c"GPOS kern feature found", f.gpos_feature != 0)
+	asserts(c"legacy kern table found", (f.kern != 0) && (f.kern_pairs > 0))
+	int av = ttf_kern_units(f, ttf_glyph_id(f, 'A'), ttf_glyph_id(f, 'V'))
+	asserts(c"AV kerns tighter", av < 0)
+	asserts(c"To kerns tighter", ttf_kern_units(f, ttf_glyph_id(f, 'T'), ttf_glyph_id(f, 'o')) < 0)
+	assert_equal(0, ttf_kern_units(f, ttf_glyph_id(f, 'a'), ttf_glyph_id(f, 'b')))
+	# Order matters: "VA" is its own pair.
+	asserts(c"VA kerns too", ttf_kern_units(f, ttf_glyph_id(f, 'V'), ttf_glyph_id(f, 'A')) < 0)
+
+
+# ttf_subset keeps what the ranges map plus composite components,
+# renumbers glyphs, strips instructions and flattens kerning into a
+# format-0 kern table — and the result loads, rasterizes and kerns
+# exactly like the source.
+void test_subset():
+	ttf_font* f = regular()
+	int* ranges = cast(int*, malloc(4 * __word_size__))
+	ranges[0] = 'A'
+	ranges[1] = 'Z'
+	ranges[2] = 193
+	ranges[3] = 193
+	int size = 0
+	char* data = ttf_subset(f, ranges, 2, &size)
+	asserts(c"subset written", (data != 0) && (size > 0))
+	asserts(c"far smaller", size < 20000)
+	ttf_font sub
+	asserts(c"subset loads", ttf_load_bytes(&sub, data, size))
+	# .notdef, 26 capitals, A-acute, and the acute accent A-acute is
+	# composed from (the capitals include its base).
+	assert_equal(29, sub.glyph_count)
+	assert_equal(0, ttf_glyph_id(&sub, 'a'))
+	asserts(c"kept A", ttf_glyph_id(&sub, 'A') > 0)
+	assert_equal(f.upem, sub.upem)
+	assert_equal(f.ascent, sub.ascent)
+	assert_equal(ttf_advance_units(f, ttf_glyph_id(f, 'W')), ttf_advance_units(&sub, ttf_glyph_id(&sub, 'W')))
+	# GPOS in the source, format-0 kern in the subset: same values.
+	assert_equal(0, sub.gpos_feature)
+	assert_equal(ttf_kern_units(f, ttf_glyph_id(f, 'A'), ttf_glyph_id(f, 'V')), ttf_kern_units(&sub, ttf_glyph_id(&sub, 'A'), ttf_glyph_id(&sub, 'V')))
+	# Same outlines: identical coverage, composite included.
+	int code = 'Q'
+	while (code != 0):
+		ttf_bitmap a
+		ttf_bitmap b
+		asserts(c"source rasterizes", ttf_rasterize(f, ttf_glyph_id(f, code), 24, &a))
+		asserts(c"subset rasterizes", ttf_rasterize(&sub, ttf_glyph_id(&sub, code), 24, &b))
+		assert_equal(a.w, b.w)
+		assert_equal(a.h, b.h)
+		assert_equal(a.bearing_top, b.bearing_top)
+		int i = 0
+		int same = 1
+		while (i < a.w * a.h):
+			if (a.pixels[i] != b.pixels[i]):
+				same = 0
+			i = i + 1
+		asserts(c"same coverage", same)
+		free(a.pixels)
+		free(b.pixels)
+		if (code == 'Q'):
+			code = 193
+		else:
+			code = 0
+	free(data)
+	free(cast(char*, ranges))

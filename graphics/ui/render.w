@@ -140,11 +140,37 @@ void ui_render_init_headless(ui_renderer* r):
 	r.layer = UI_LAYER_BASE
 	r.vp_w = 0
 	r.vp_h = 0
+	ui_font_uv_sync()
 	r.atlas_generation = ui_font_atlas_generation()
 
 
-# (Re)upload the atlas — baked rows plus any runtime font rows — into
-# the bound atlas texture, and record the generation it reflects.
+void ui_render_upload_atlas(ui_renderer* r);
+
+
+# Bring UVs and the texture up to date with the glyph atlas. Glyphs are
+# rasterized on first draw, so the atlas can grow in the middle of a
+# frame: when it has doubled, every vertex batched so far (normalized
+# by the old height) is rescaled to the new one, and a changed atlas is
+# re-uploaded — both before anything is drawn.
+void ui_render_sync_atlas(ui_renderer* r):
+	int old_rows = ui_font_uv_sync()
+	int rows = ui_font_uv_rows()
+	if (old_rows != rows):
+		float32 k = cast(float32, old_rows) / cast(float32, rows)
+		int layer = 0
+		while (layer < ui_render_layer_count()):
+			float32* batch = r.layer_verts[layer]
+			int i = 0
+			while (i < r.layer_vert_count[layer]):
+				batch[i * 8 + 3] = batch[i * 8 + 3] * k
+				i = i + 1
+			layer = layer + 1
+	if (r.gl_ready && (r.atlas_generation != ui_font_atlas_generation())):
+		ui_render_upload_atlas(r)
+
+
+# (Re)upload the atlas — baked mask rows plus the runtime glyph rows —
+# into the bound atlas texture, and record the generation it reflects.
 void ui_render_upload_atlas(ui_renderer* r):
 	char* pixels = ui_font_build_atlas()
 	# 2- and odd-width R8 rows are not 4-aligned.
@@ -204,10 +230,9 @@ void ui_render_begin(ui_renderer* r, int width, int height):
 	r.layer = UI_LAYER_BASE
 	r.vp_w = width
 	r.vp_h = height
+	ui_render_sync_atlas(r)
 	if (r.gl_ready == 0):
 		return
-	if (r.atlas_generation != ui_font_atlas_generation()):
-		ui_render_upload_atlas(r)
 	glUseProgram(r.program)
 	glDisable(GL_DEPTH_TEST)
 	glEnable(GL_BLEND)
@@ -348,8 +373,11 @@ float32 ui_render_u(int x):
 	return cast(float32, x) / cast(float32, ui_font_atlas_w())
 
 
+# v normalizes by ui_font_uv_rows(), which holds still for a whole
+# frame; ui_render_sync_atlas rescales the batch when glyphs rasterized
+# mid-frame have grown the atlas.
 float32 ui_render_v(int y):
-	return cast(float32, y) / cast(float32, ui_font_atlas_rows())
+	return cast(float32, y) / cast(float32, ui_font_uv_rows())
 
 
 # Solid fill: sample the center of the solid-white mask.
@@ -378,7 +406,7 @@ void ui_render_mask(ui_renderer* r, ui_rect rect, int mask, int flip_x, int flip
 	ui_render_quad(r, rect, u0, v0, u1, v1, color)
 
 
-# One glyph of strike (baked or runtime) at pen x with the line box's
+# One glyph (codepoint ch) of strike at pen x with the line box's
 # top at y_top, leaned by skew about the baseline (0.0 upright;
 # graphics.ui.text's italic passes ui_text_italic_skew()). Returns the
 # pen advance. Inkless glyphs (space) advance without pushing a quad.
@@ -506,8 +534,10 @@ void ui_render_draw_batch(ui_renderer* r, float32* batch, int count):
 # geometry paints over widgets issued later in the frame and the top
 # layer over both.
 void ui_render_end(ui_renderer* r):
+	ui_render_sync_atlas(r)
 	if (r.gl_ready == 0):
 		return
+	glUseProgram(r.program)
 	int i = 0
 	while (i < ui_render_layer_count()):
 		ui_render_draw_batch(r, r.layer_verts[i], r.layer_vert_count[i])
