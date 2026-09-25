@@ -10,7 +10,18 @@ to it with a piped command script, and checks the output. Every child is
 spawned through lib/process.w with an argv vector — no /bin/sh.
 
 The fixture (tests/attach_target_fixture.w) calls PR_SET_PTRACER_ANY, so a
-sibling tracer can attach even under YAMA ptrace_scope=1. Prerequisites,
+sibling tracer can attach even under YAMA ptrace_scope=1. Both fixtures
+print "attach_ready" to their (piped) stdout once their globals are set
+and they are about to enter their loop; each case waits for that line
+(bounded by the same timeout) instead of the old fixed 400ms settle
+sleep.
+
+Cases are independent (each launches its own fixture and wdbg), so they
+run in forked workers, up to one per online CPU (ATTACH_TEST_JOBS=<n>
+overrides; 1 runs them in-process, serially). A worker buffers its
+case's report and hands it back through a bin/ file; the parent prints
+reports in declaration order, so output is identical to a serial run
+(2026-09-25: 26.7 s serial wall time, most of it the settle sleeps). Prerequisites,
 built by the attach_test target before this program runs: bin/wdbg,
 bin/wdbg64, bin/attach_target, bin/attach_target64,
 bin/attach_finite_target and bin/attach_finite_target64.
@@ -31,6 +42,7 @@ assertion failure.
 */
 import lib.lib
 import lib.env
+import lib.file
 import lib.process
 import lib.str
 import structures.string
@@ -63,10 +75,22 @@ void init_paths():
 
 int failed = 0
 int timeout_secs = 120
+# Non-zero inside a case worker: out() buffers the case's report here.
+string_builder* case_out = 0
 
 
 void out(char* s):
+	if (case_out != 0):
+		string_append(case_out, s)
+		return
 	write(1, s, strlen(s))
+
+
+void out_bytes(char* s, int n):
+	if (case_out != 0):
+		string_append_bytes(case_out, s, n)
+		return
+	write(1, s, n)
 
 
 void outln(char* s):
@@ -83,7 +107,7 @@ void out_indented(char* text):
 	while (1):
 		if ((text[i] == 10) || (text[i] == 0)):
 			out(c"    ")
-			write(1, text + start, i - start)
+			out_bytes(text + start, i - start)
 			out(c"\n")
 			if (text[i] == 0):
 				return
@@ -128,7 +152,59 @@ struct attach_run:
 	int timed_out
 
 
-# Launches a fresh fixture, lets it reach its spin loop, attaches dbg with
+# Waits (up to timeout_ms) for the fixture's "attach_ready" line on its
+# piped stdout, reading byte by byte so nothing after the newline is
+# consumed. 1 once the line arrived; 0 on EOF, error or timeout.
+int wait_ready(process* target, int timeout_ms):
+	int deadline = process_monotonic_ms() + timeout_ms
+	char* fds = malloc(8)
+	char* ch = malloc(1)
+	int ready = 0
+	while (1):
+		int left = deadline - process_monotonic_ms()
+		if ((timeout_ms > 0) && (left <= 0)):
+			break
+		if (timeout_ms <= 0):
+			left = 0 - 1
+		process_pollfd_set(fds, 0, target.stdout_fd, 1)
+		int n = poll(cast(int*, fds), 1, left)
+		if (n < 0):
+			if (n == 0 - 4):
+				continue
+			break
+		if (n == 0):
+			continue
+		if (read(target.stdout_fd, ch, 1) != 1):
+			break
+		if (ch[0] == 10):
+			ready = 1
+			break
+	free(fds)
+	free(ch)
+	return ready
+
+
+# Spawns fixture with stdout piped and waits for its readiness line; 0
+# (fixture killed and reaped) when it cannot be spawned or never becomes
+# ready, with why in *why.
+process* start_fixture(char* fixture, char** why):
+	spawn_options* opts = spawn_options_new()
+	opts.stdout_mode = process_pipe()
+	process* target = process_spawn(fixture, single_argv(fixture), opts)
+	free(opts)
+	if (target == 0):
+		*why = c"(could not spawn the fixture)"
+		return 0
+	if (wait_ready(target, timeout_secs * 1000) == 0):
+		process_kill(target, sigkill())
+		process_wait(target)
+		process_free(target)
+		*why = c"(the fixture never printed attach_ready)"
+		return 0
+	return target
+
+
+# Launches a fresh fixture, waits until it reports reaching its spin loop, attaches dbg with
 # the command script on stdin, and always kills the fixture afterwards.
 # wdbg's stderr is dropped unless want_stderr (it only ever carries the
 # "compiling '...'" progress banner, which no case asserts on); cases that
@@ -138,12 +214,11 @@ attach_run* run_attach(char* dbg, char* fixture, char* src, char* commands, int 
 	attach_run* r = new attach_run()
 	r.text = c""
 	r.timed_out = 0
-	process* target = process_spawn(fixture, single_argv(fixture), 0)
+	char* why = 0
+	process* target = start_fixture(fixture, &why)
 	if (target == 0):
-		r.text = c"(could not spawn the fixture)"
+		r.text = why
 		return r
-	# Let the fixture reach its spin loop before attaching.
-	process_sleep_ms(400)
 	process_result* res = process_run(dbg, wdbg_argv(dbg, target.pid, src), 0, commands, timeout_secs * 1000)
 	process_kill(target, sigkill())
 	process_wait(target)
@@ -174,17 +249,6 @@ void check_contains(char* desc, attach_run* r, char* expect):
 	out_indented(r.text)
 
 
-# run_case: the 32-bit fixture and wdbg; src 0 is raw mode.
-void run_case(char* desc, char* src, char* commands, char* expect):
-	check_contains(desc, run_attach(WDBG, FIXTURE_BIN, src, commands, 0), expect)
-
-
-void run_case_stderr(char* desc, char* src, char* commands, char* expect):
-	check_contains(desc, run_attach(WDBG, FIXTURE_BIN, src, commands, 1), expect)
-
-
-void run_case_64(char* desc, char* src, char* commands, char* expect):
-	check_contains(desc, run_attach(WDBG64, FIXTURE_BIN64, src, commands, 0), expect)
 
 
 # Number of lines containing needle (grep -cF).
@@ -200,7 +264,7 @@ int count_lines_with(char* text, char* needle):
 # Like run_case, but requires the substring on at least min lines: a
 # substring that the FIRST occurrence already satisfies (e.g. "hit
 # breakpoint 1") cannot otherwise prove a second stop happened.
-void run_count_case(char* desc, char* dbg, char* fixture, char* commands, char* expect, int min):
+void exec_count_case(char* desc, char* dbg, char* fixture, char* commands, char* expect, int min):
 	attach_run* r = run_attach(dbg, fixture, FIXTURE_SRC, commands, 0)
 	int got = count_lines_with(r.text, expect)
 	if (got >= min):
@@ -241,7 +305,7 @@ char* print_n_value(char* line):
 # stop) must differ by exactly that offset. A frame-base regression that
 # reads frame 0's slot twice yields delta 0 and fails; a plain substring
 # check could not tell the two apart when both frames held the same value.
-void run_frame_delta_case(char* desc, char* dbg, char* fixture):
+void exec_frame_delta_case(char* desc, char* dbg, char* fixture):
 	attach_run* r = run_attach(dbg, fixture, FIXTURE_SRC, c"b bump\nc\np n\nup\np n\nkill\n", 0)
 	char* n0 = 0
 	char* n1 = 0
@@ -277,17 +341,16 @@ void run_frame_delta_case(char* desc, char* dbg, char* fixture):
 # as a crash or a wrong exit code instead of silently passing. Both the
 # fixture's final printed line and its real exit code are asserted from
 # one run.
-void run_detach_case(char* prefix, char* dbg, char* fixture):
-	spawn_options* opts = spawn_options_new()
-	opts.stdout_mode = process_pipe()
-	process* target = process_spawn(fixture, single_argv(fixture), opts)
+void exec_detach_case(char* prefix, char* dbg, char* fixture):
+	char* why = 0
+	process* target = start_fixture(fixture, &why)
 	string_builder* report = string_new()
 	int timed_out = 0
 	int code = -1
 	if (target == 0):
-		string_append(report, c"(could not spawn the fixture)\n")
+		string_append(report, why)
+		string_append(report, c"\n")
 	else:
-		process_sleep_ms(400)
 		process_result* res = process_run(dbg, wdbg_argv(dbg, target.pid, FINITE_SRC), 0, c"b bump\nc\ndetach\n", timeout_secs * 1000)
 		if (res != 0):
 			timed_out = (res.status == process_status_timeout())
@@ -339,11 +402,210 @@ void run_detach_case(char* prefix, char* dbg, char* fixture):
 		failed = 1
 
 
+/* Case registry and parallel runner. main declares every case through
+the run_* helpers below, which only record it; run_all_cases then
+executes them. */
+
+struct attach_case:
+	int kind          # 0 substring, 1 line count, 2 frame delta, 3 detach
+	char* desc        # the detach kind's description prefix
+	char* dbg
+	char* fixture
+	char* src
+	char* commands
+	char* expect
+	int want_stderr
+	int min
+
+
+list[attach_case*] cases
+# The parent's pid, naming the report files (a worker's getpid differs).
+int runner_pid
+
+
+attach_case* add_case(int kind, char* desc, char* dbg, char* fixture, char* src, char* commands, char* expect):
+	attach_case* c = new attach_case()
+	c.kind = kind
+	c.desc = desc
+	c.dbg = dbg
+	c.fixture = fixture
+	c.src = src
+	c.commands = commands
+	c.expect = expect
+	c.want_stderr = 0
+	c.min = 0
+	cases.push(c)
+	return c
+
+
+# run_case: the 32-bit fixture and wdbg; src 0 is raw mode.
+void run_case(char* desc, char* src, char* commands, char* expect):
+	add_case(0, desc, WDBG, FIXTURE_BIN, src, commands, expect)
+
+
+void run_case_stderr(char* desc, char* src, char* commands, char* expect):
+	attach_case* c = add_case(0, desc, WDBG, FIXTURE_BIN, src, commands, expect)
+	c.want_stderr = 1
+
+
+void run_case_64(char* desc, char* src, char* commands, char* expect):
+	add_case(0, desc, WDBG64, FIXTURE_BIN64, src, commands, expect)
+
+
+void run_count_case(char* desc, char* dbg, char* fixture, char* commands, char* expect, int min):
+	attach_case* c = add_case(1, desc, dbg, fixture, FIXTURE_SRC, commands, expect)
+	c.min = min
+
+
+void run_frame_delta_case(char* desc, char* dbg, char* fixture):
+	add_case(2, desc, dbg, fixture, FIXTURE_SRC, 0, 0)
+
+
+void run_detach_case(char* prefix, char* dbg, char* fixture):
+	add_case(3, prefix, dbg, fixture, FINITE_SRC, 0, 0)
+
+
+void exec_case(attach_case* c):
+	if (c.kind == 0):
+		check_contains(c.desc, run_attach(c.dbg, c.fixture, c.src, c.commands, c.want_stderr), c.expect)
+	else:
+		if (c.kind == 1):
+			exec_count_case(c.desc, c.dbg, c.fixture, c.commands, c.expect, c.min)
+		else:
+			if (c.kind == 2):
+				exec_frame_delta_case(c.desc, c.dbg, c.fixture)
+			else:
+				exec_detach_case(c.desc, c.dbg, c.fixture)
+
+
+# Online CPU count from /proc/cpuinfo (tools/wexec.w's
+# wexec_default_jobs); 1 when it cannot be read.
+int cpu_count():
+	char* text = file_read_text(c"/proc/cpuinfo")
+	if (text == 0):
+		return 1
+	int count = 0
+	int line_start = 1
+	int i = 0
+	while (text[i] != 0):
+		if (line_start):
+			if (starts_with(text + i, c"processor")):
+				count = count + 1
+		line_start = text[i] == 10
+		i = i + 1
+	free(text)
+	if (count < 1):
+		return 1
+	return count
+
+
+char* case_report_path(int i):
+	string_builder* s = string_new()
+	string_append(s, c"bin/attach_e2e_")
+	string_append_int(s, runner_pid)
+	string_append_char(s, '_')
+	string_append_int(s, i)
+	string_append(s, c".txt")
+	return s.data
+
+
+# Runs case i in-process with its report buffered; returns the report.
+char* exec_case_buffered(int i):
+	case_out = string_new()
+	exec_case(cases[i])
+	char* text = case_out.data
+	case_out = 0
+	return text
+
+
+void run_all_cases(int jobs):
+	if (jobs <= 1):
+		for attach_case* c in cases:
+			exec_case(c)
+		return
+	runner_pid = getpid()
+	int total = cases.length
+	list[char*] texts = new list[char*]
+	list[int] done = new list[int]
+	int i = 0
+	while (i < total):
+		texts.push(0)
+		done.push(0)
+		i = i + 1
+	list[process*] kids = new list[process*]
+	list[int] owner = new list[int]
+	int next = 0
+	int running = 0
+	int printed = 0
+	while (printed < total):
+		while ((next < total) && (running < jobs)):
+			int pid = fork()
+			if (pid == 0):
+				# Worker: run the case, hand its report back, exit with
+				# its verdict.
+				failed = 0
+				char* report = exec_case_buffered(next)
+				if (file_write_text(case_report_path(next), report) == 0):
+					exit(2)
+				exit(failed)
+			if (pid < 0):
+				# No worker: run it here instead.
+				texts[next] = exec_case_buffered(next)
+				done[next] = 1
+			else:
+				process* p = new process()
+				p.pid = pid
+				p.stdin_fd = 0 - 1
+				p.stdout_fd = 0 - 1
+				p.stderr_fd = 0 - 1
+				p.status = 0
+				p.reaped = 0
+				p.win_handle = 0
+				kids.push(p)
+				owner.push(next)
+				running = running + 1
+			next = next + 1
+		# Print every finished case whose predecessors are all printed.
+		while ((printed < total) && (done[printed] != 0)):
+			out(texts[printed])
+			printed = printed + 1
+		if (running > 0):
+			int k = process_wait_any(kids, 1)
+			if (k < 0):
+				outln(c"FAIL: waiting for a case worker failed")
+				failed = 1
+				return
+			running = running - 1
+			int c = owner[k]
+			int status = process_decode_status(kids[k].status)
+			char* path = case_report_path(c)
+			char* text = file_read_text(path)
+			unlink(path)
+			if (status != 0):
+				failed = 1
+			if (text == 0):
+				failed = 1
+				string_builder* s = string_new()
+				string_append(s, c"FAIL: ")
+				string_append(s, cases[c].desc)
+				string_append(s, c" (case worker exited with status ")
+				string_append_int(s, status)
+				string_append(s, c" and no report)\n")
+				text = s.data
+			texts[c] = text
+			done[c] = 1
+
+
 int main(int argc, char** argv):
 	init_paths()
 	char* override = env_get(c"ATTACH_TEST_TIMEOUT")
 	if ((override != 0) && (override[0] != 0)):
 		timeout_secs = atoi(override)
+	int jobs = cpu_count()
+	char* jobs_override = env_get(c"ATTACH_TEST_JOBS")
+	if ((jobs_override != 0) && (jobs_override[0] != 0)):
+		jobs = atoi(jobs_override)
+	cases = new list[attach_case*]
 
 	# Symbolized mode: the current location resolves to the fixture's source.
 	run_case(c"symbolized location", FIXTURE_SRC, c"l\ndetach\n", c"attach_target_fixture.w:")
@@ -542,6 +804,8 @@ int main(int argc, char** argv):
 	# x64: detach truly restores patched bytes, same shape as the 32-bit
 	# case above.
 	run_detach_case(c"x64: ", WDBG64, FINITE_BIN64)
+
+	run_all_cases(jobs)
 
 	if (failed == 0):
 		outln(c"attach test OK")

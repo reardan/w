@@ -225,6 +225,201 @@ void test_compare_and_zero():
 	assert_equal(0, bignum_is_zero(b))
 	bignum_free(a)
 	bignum_free(b)
+
+# ---- Algorithm D cross-checks against the old bit-serial division ---------
+
+# Test oracle: the bit-at-a-time long division bignum_divmod used before it
+# moved to Knuth's Algorithm D. Slow but obviously correct.
+void t_divmod_bitserial(bignum* a, bignum* m, bignum* q, bignum* r):
+	bignum_set_zero(q)
+	bignum_set_zero(r)
+	int i = bignum_bit_length(a) - 1
+	while (i >= 0):
+		bignum_shl1(r)
+		if (bignum_get_bit(a, i) != 0):
+			r.limbs[0] = r.limbs[0] | 1
+			if (r.n == 0):
+				r.n = 1
+		if (bignum_cmp(r, m) >= 0):
+			bignum_sub(r, m)
+			bignum_set_bit(q, i)
+		i = i - 1
+	bignum_normalize(q)
+	bignum_normalize(r)
+
+
+int T_RNG
+
+
+# 31-bit LCG (deterministic; masks keep it word-size independent).
+int t_rand():
+	T_RNG = (T_RNG * 1103515245 + 12345) & 2147483647
+	return (T_RNG >> 8) & 32767
+
+
+# Limb values biased toward the boundaries that stress normalization and the
+# qhat correction (0, 1, B/2 - 1, B/2, B - 1) plus uniform limbs.
+int t_rand_limb():
+	int k = t_rand() % 8
+	if (k == 0):
+		return 0
+	if (k == 1):
+		return 1
+	if (k == 2):
+		return 16383
+	if (k == 3):
+		return 16384
+	if (k == 4):
+		return 32767
+	return t_rand()
+
+
+# Fill x with n random limbs; the top limb is forced non-zero and, when
+# small_top is set, kept small so normalization shifts by many bits.
+void t_rand_bignum(bignum* x, int n, int small_top):
+	bignum_set_zero(x)
+	int i = 0
+	while (i < n):
+		x.limbs[i] = t_rand_limb()
+		i = i + 1
+	if (n > 0):
+		if (small_top != 0):
+			x.limbs[n - 1] = 1 + (t_rand() % 7)
+		elif (x.limbs[n - 1] == 0):
+			x.limbs[n - 1] = 1 + t_rand()
+	x.n = n
+	bignum_normalize(x)
+
+
+# Check divmod(a, m) against the oracle and the identity a == q*m + r, r < m.
+void t_check_divmod(bignum* a, bignum* m):
+	bignum* q = bignum_new()
+	bignum* r = bignum_new()
+	bignum* q2 = bignum_new()
+	bignum* r2 = bignum_new()
+	bignum* back = bignum_new()
+	# Leave garbage-free but non-empty outputs to exercise stale-limb clearing.
+	bignum_set_u32(q, 12345)
+	bignum_copy(r, a)
+	bignum_divmod(a, m, q, r)
+	t_divmod_bitserial(a, m, q2, r2)
+	assert_equal(0, bignum_cmp(q, q2))
+	assert_equal(0, bignum_cmp(r, r2))
+	assert_equal(q2.n, q.n)
+	assert_equal(r2.n, r.n)
+	assert_equal(0 - 1, bignum_cmp(r, m))
+	# Limbs above n must stay zero (the representation invariant).
+	int i = q.n
+	while (i < BIGNUM_CAP()):
+		assert_equal(0, q.limbs[i])
+		i = i + 1
+	i = r.n
+	while (i < BIGNUM_CAP()):
+		assert_equal(0, r.limbs[i])
+		i = i + 1
+	bignum_mul(back, q, m)
+	bignum_add(back, back, r)
+	assert_equal(0, bignum_cmp(back, a))
+	# bignum_mod and bignum_modmul (via a * 1) agree with divmod.
+	bignum_mod(r2, a, m)
+	assert_equal(0, bignum_cmp(r, r2))
+	bignum* one = bignum_new()
+	bignum_set_u32(one, 1)
+	bignum_modmul(r2, a, one, m)
+	assert_equal(0, bignum_cmp(r, r2))
+	bignum_free(one)
+	bignum_free(q)
+	bignum_free(r)
+	bignum_free(q2)
+	bignum_free(r2)
+	bignum_free(back)
+
+
+void test_divmod_random_vs_bitserial():
+	T_RNG = 20260925
+	bignum* a = bignum_new()
+	bignum* m = bignum_new()
+	int iter = 0
+	while (iter < 1500):
+		int mn = 1 + (t_rand() % 20)
+		int an = t_rand() % 42
+		t_rand_bignum(m, mn, (iter / 3) % 2)
+		t_rand_bignum(a, an, 0)
+		t_check_divmod(a, m)
+		iter = iter + 1
+	bignum_free(a)
+	bignum_free(m)
+
+
+void test_divmod_edges():
+	T_RNG = 7
+	bignum* a = bignum_new()
+	bignum* m = bignum_new()
+	bignum* t = bignum_new()
+	int iter = 0
+	while (iter < 60):
+		int mn = 1 + (iter % 12)
+		t_rand_bignum(m, mn, iter % 2)
+		# a == 0
+		bignum_set_zero(a)
+		t_check_divmod(a, m)
+		# a == m (q = 1, r = 0)
+		bignum_copy(a, m)
+		t_check_divmod(a, m)
+		# a == m - 1 (a < m)
+		bignum_sub_small(a, 1)
+		t_check_divmod(a, m)
+		# a == k*m and k*m - 1 for a random multi-limb k
+		t_rand_bignum(t, 1 + (iter % 9), 0)
+		bignum_mul(a, t, m)
+		t_check_divmod(a, m)
+		bignum_sub_small(a, 1)
+		t_check_divmod(a, m)
+		# a == m*m - 1 (largest remainder shape for a modmul)
+		bignum_mul(a, m, m)
+		bignum_sub_small(a, 1)
+		t_check_divmod(a, m)
+		iter = iter + 1
+	# Divisor one: q = a, r = 0.
+	bignum_set_u32(m, 1)
+	t_rand_bignum(a, 30, 0)
+	t_check_divmod(a, m)
+	# Single-limb divisors at the extremes.
+	bignum_set_u32(m, 32767)
+	t_check_divmod(a, m)
+	bignum_set_u32(m, 2)
+	t_check_divmod(a, m)
+	# Two-limb divisor with top limb 1 (normalization shifts by 14 bits).
+	bignum_set_u32(m, 32768 + 5)
+	t_check_divmod(a, m)
+	bignum_free(a)
+	bignum_free(m)
+	bignum_free(t)
+
+
+# Operands (found by a Python model of the same algorithm) whose trial
+# quotient survives the qhat/v[n-2] test yet is still one too large, forcing
+# the D6 add-back step.
+void t_check_addback(char* ah, char* mh, char* qh, char* rh):
+	bignum* a = t_from_hex(ah)
+	bignum* m = t_from_hex(mh)
+	bignum* q = bignum_new()
+	bignum* r = bignum_new()
+	bignum_divmod(a, m, q, r)
+	t_assert_eq_hex(q, qh)
+	t_assert_eq_hex(r, rh)
+	t_check_divmod(a, m)
+	bignum_free(a)
+	bignum_free(m)
+	bignum_free(q)
+	bignum_free(r)
+
+
+void test_divmod_addback():
+	t_check_addback(c"7ffe7ffffffffffc001", c"fffdfffffff", c"7fff7fff", c"5fff4000")
+	t_check_addback(c"7ffe7ffffffe000ffff", c"1fffdfffc001", c"3fff7fff", c"1fff60014000")
+	t_check_addback(c"80010000ffff0003fff4001", c"4000800100000014001", c"1ffff", c"3fff7fffffdbffe8002")
+	t_check_addback(c"7ffe8002fffe0003fff", c"1fffa000c001", c"3fffffff", c"1fff40010000")
 # wbuild: target=crypto_bignum_test tag=tests dep=wv2
 # wbuild: step="bin/wv2 libs/standard/crypto/bignum_test.w -o bin/crypto_bignum_test"
 # wbuild: step="bin/crypto_bignum_test"

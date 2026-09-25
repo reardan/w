@@ -4,8 +4,9 @@
 # one proves 'detach' truly restores every patched breakpoint byte and
 # leaves the target able to run to completion and produce its normal
 # output/exit code, not just "no longer traced". The 150ms sleep between
-# iterations keeps total runtime short (~1s for 6 iterations) while
-# comfortably outliving tools/attach_e2e.w's 0.4s post-fork settle delay.
+# iterations keeps total runtime short (~1.5s for 10 iterations) while
+# leaving wdbg (~0.2s to recompile and attach) a comfortable window after
+# the "attach_ready" line tools/attach_e2e.w waits for.
 import lib.lib
 import lib.time
 
@@ -29,8 +30,11 @@ int main(int argc, int argv):
 		prctl_nr = 157
 	syscall(prctl_nr, 0x59616d61, -1, 0)
 	attach_counter = 1000
+	# Readiness signal: tools/attach_e2e.w waits for this line (see
+	# attach_target_fixture.w) before attaching.
+	write(1, c"attach_ready\n", 13)
 	int i = 0
-	while (i < 6):
+	while (i < 10):
 		attach_counter = slow_step(attach_counter)
 		sleep_ms(150)
 		i = i + 1

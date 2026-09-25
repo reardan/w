@@ -34,6 +34,7 @@ import code_generator.code_emitter
 
 void error(char *s);       /* from diagnostics.w */
 void emit_x64_opcode();    /* from x86.w (used on the x86 path of be_lea) */
+void lea_eax_esp_plus(int v);   /* from x86.w (the x86 path of be_lea_acc_wstack) */
 void sym_define_global(int current_symbol);          /* symbol_table.w */
 void sym_define_global_at(int current_symbol, int v);
 int sym_declare_global(char *s, int type, int symtype);
@@ -420,8 +421,8 @@ int be_addr_slot_read(int pos):
 
 
 # Leave the address of the W-stack slot at byte offset k in the accumulator.
-# On x86 this reproduces lea_eax_esp_plus(0) followed by patching the disp32
-# to k (byte-identical to the original sym_get_value sequence).
+# On x86 this is lea_eax_esp_plus(k), which also notes the lea so a load
+# that follows can fold it (code_generator/x86.w, local-slot load fusion).
 void be_lea_acc_wstack(int k):
 	if (target_isa == 3):
 		ptx_lea_ax_sp(k)
@@ -432,10 +433,7 @@ void be_lea_acc_wstack(int k):
 	if (target_isa == 1):
 		arm64_lea_eax_esp_plus(k)
 		return
-	emit_x64_opcode()
-	emit(3, c"\x8d\x84\x24")
-	emit_int(0)
-	save_int(code + codepos - 4, k)
+	lea_eax_esp_plus(k)
 
 
 # Patch a recorded branch site to the current position (or a given target).

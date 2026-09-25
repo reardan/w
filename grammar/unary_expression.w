@@ -198,11 +198,15 @@ int unary_expression():
 
 int unary_expression_operand():
 	int type
-	if (accept(c"&")):
+	# Most operands are identifiers or literals: when the token starts
+	# with an identifier byte (compiler/tokenizer.w's class table), none
+	# of the operator spellings below can match, so skip their accept()s.
+	int op = ident_byte_class[token[0] & 255] == 0
+	if (op && accept(c"&")):
 		type = unary_expression()
 		# eax already holds the lvalue address; that address is the value here
 		return 3 /* constant */
-	else if (accept(c"*")):
+	else if (op && accept(c"*")):
 		type = unary_expression()
 		if (verbosity >= 1):
 			print_error(itoa(line_number))
@@ -215,18 +219,18 @@ int unary_expression_operand():
 		if (type_get_pointer_level(type) > 0):
 			return type_lookup_previous_pointer(type)
 		return 1 /* deref of a plain int: word-sized lvalue */
-	else if (accept(c"!!")):
+	else if (op && accept(c"!!")):
 		# The tokenizer scans "!!" as one token; it booleanizes like !(!x)
 		type = unary_expression()
 		promote(type)
 		alu_test_set(0x95) /* setne */
 		return type_value(bool_type)
-	else if (accept(c"!")):
+	else if (op && accept(c"!")):
 		type = unary_expression()
 		promote(type)
 		alu_test_set(0x94) /* sete */
 		return type_value(bool_type)
-	else if (accept(c"~")):
+	else if (op && accept(c"~")):
 		type = unary_expression()
 		type = promote(type)
 		if (type_is_var(type_unqualified(type))):
@@ -235,7 +239,7 @@ int unary_expression_operand():
 			error(c"float operands do not support ~")
 		not_eax()
 		return 3
-	else if (accept(c"-")):
+	else if (op && accept(c"-")):
 		type = unary_expression()
 		type = promote(type)
 		int kind = type_float_kind(type)
@@ -250,7 +254,7 @@ int unary_expression_operand():
 		else:
 			neg_eax()
 			return 3
-	else if (accept(c"+")):
+	else if (op && accept(c"+")):
 		# unary plus: load the operand's value, no code beyond the promote
 		type = unary_expression()
 		type = promote(type)
@@ -259,7 +263,7 @@ int unary_expression_operand():
 		if (type_float_kind(type) == 1):
 			return float32_value_type
 		return 3
-	else if (increment_op()):
+	else if (op && increment_op()):
 		# '++x'/'--x' in expression position: '++'/'--' are statements
 		# with no value (grammar/increment.w). This also catches the
 		# pre-#103 double-unary reading of '++x', which lexes as one
