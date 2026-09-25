@@ -51,6 +51,7 @@ natively on the Mac with `tools/mac/run_darwin_tests.sh`.
 ./wbuild tests       # full pre-merge suite
 ./wbuild update      # ONLY after verify: archives seed, promotes the bin/wv3 fixpoint to ./w (local only; publishing = release + SEEDS bump, docs/release.md)
 ./wbuild wdbg        # in-process debugger (bin/wdbg file.w)
+./wbuild wdbg_web    # browser debugger (bin/wdbg_web file.w prints an https URL)
 ./bin/wv2 repl.w -o bin/repl && ./bin/repl   # interactive REPL
 ```
 

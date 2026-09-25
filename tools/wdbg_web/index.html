@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>wdbg</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header>
+	<span class="brand">wdbg</span>
+	<span id="program" class="program"></span>
+	<span id="state" class="state">connecting</span>
+	<nav id="controls">
+		<button data-cmd="c" title="Continue (F5)">Continue</button>
+		<button data-cmd="n" title="Step over (F10)">Next</button>
+		<button data-cmd="s" title="Step into (F11)">Step</button>
+		<button data-cmd="fin" title="Step out (Shift+F11)">Finish</button>
+		<button data-cmd="si" title="One machine instruction">Step insn</button>
+		<button id="restart" title="Kill and start again">Restart</button>
+	</nav>
+</header>
+<main>
+	<section id="source-pane">
+		<div class="pane-head">
+			<select id="file-picker" aria-label="Source file"></select>
+			<span id="where" class="where"></span>
+		</div>
+		<div id="source" class="source" tabindex="0"></div>
+	</section>
+	<aside id="side">
+		<details open><summary>Locals</summary><table id="locals" class="vars"></table></details>
+		<details open><summary>Arguments</summary><table id="args" class="vars"></table></details>
+		<details open><summary>Backtrace</summary><ol id="backtrace" class="frames"></ol></details>
+		<details open><summary>Breakpoints</summary><ul id="breakpoints" class="list"></ul></details>
+		<details><summary>Watchpoints</summary><pre id="watchpoints" class="raw"></pre></details>
+		<details id="core-panel" hidden open><summary>Core dump</summary><div id="core"></div></details>
+	</aside>
+	<section id="console-pane">
+		<div class="pane-head">Console <span class="hint">any wdbg command: p x, b file.w:12, condition 1 i &gt; 3, watch x, disas, help</span></div>
+		<pre id="console" class="console"></pre>
+		<form id="console-form" autocomplete="off">
+			<span class="prompt">wdbg&gt;</span>
+			<input id="console-input" spellcheck="false" aria-label="wdbg command">
+		</form>
+	</section>
+</main>
+<script src="app.js"></script>
+</body>
+</html>

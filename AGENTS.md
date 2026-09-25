@@ -14,6 +14,7 @@ Standard commands live in `build.base.json` (targets, not duplicated here):
 - `./wbuild verify` — self-host fixpoint check (`wv3 == wv4 == wv5`); the key regression guard.
 - `./wbuild tests` — full suite (includes `verify`, x64 tests, REPL, debugger, stdlib, structures).
 - `./wbuild wdbg` — build the in-process debugger (`bin/wdbg`).
+- `./wbuild wdbg_web` — build the browser debugger (`bin/wdbg_web file.w` prints an https URL; its JSON API is scriptable too, see `docs/projects/wdbg_web.md`).
 - `./bin/wv2 repl.w -o bin/repl && ./bin/repl` — build and launch the interactive REPL.
 
 `./wbuild` is backed by `tools/wexec.w` and the generated manifest (see
