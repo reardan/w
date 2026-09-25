@@ -15,6 +15,7 @@ import lib.net
 import structures.string
 import libs.standard.net.tls
 import libs.standard.net.smtp
+import libs.standard.net.testing
 
 
 /* Helpers */
@@ -31,13 +32,6 @@ char* fx_crlf(char* text):
 	char* result = out.data
 	free(cast(char*, out))
 	return result
-
-
-void fx_assert_ok(char* what, int rc):
-	if (rc < 0):
-		print_string(what, c" failed")
-		translate_syscall_failure(rc)
-		exit(1)
 
 
 /* Scripted SMTP fixture server */
@@ -94,12 +88,7 @@ void fx_write(smtp_fx_io* io, char* data, int n):
 	if (io.tls != 0):
 		tls_write(io.tls, data, n)
 		return
-	int total = 0
-	while (total < n):
-		int got = socket_send(io.fd, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			return
-		total = total + got
+	net_test_send_all(io.fd, data, n)
 
 
 # Copies the next '|'-separated reply from script into resp (LF turned
@@ -187,17 +176,10 @@ void fx_child(int listener, int pipe_fd, char* script, int implicit_tls):
 
 smtp_fx* fx_start_mode(char* script, int implicit_tls):
 	smtp_fx* fx = new smtp_fx()
-	int listener = socket_tcp_ipv4()
-	fx_assert_ok(c"socket", listener)
-	fx_assert_ok(c"reuseaddr", socket_set_reuseaddr(listener))
-	fx_assert_ok(c"bind", socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0))
-	fx_assert_ok(c"listen", socket_listen(listener, 4))
-	sockaddr_in bound
-	fx_assert_ok(c"getsockname", socket_getsockname_ipv4(listener, &bound))
+	int listener = net_test_listen(&fx.port)
 	fx.listener = listener
-	fx.port = net_htons(bound.port)
 	int* fds = malloc(__word_size__ * 2)
-	fx_assert_ok(c"socketpair", socket_pair(fds))
+	net_test_assert_ok(c"socketpair", socket_pair(fds))
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -218,29 +200,21 @@ smtp_fx* fx_start(char* script):
 # from hanging).
 smtp_client* fx_client(smtp_fx* fx, char* server_name):
 	int fd = socket_tcp_ipv4()
-	fx_assert_ok(c"client socket", fd)
+	net_test_assert_ok(c"client socket", fd)
 	socket_set_recv_timeout(fd, 20000)
-	fx_assert_ok(c"connect", socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), fx.port))
+	net_test_assert_ok(c"connect", socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), fx.port))
 	return smtp_client_from_fd(fd, server_name)
 
 
 # Waits for the child and returns everything it recorded.
 char* fx_finish(smtp_fx* fx):
-	string_builder* out = string_new()
-	char* buf = malloc(1024)
-	int got = read(fx.pipe_fd, buf, 1024)
-	while (got > 0):
-		string_append_bytes(out, buf, got)
-		got = read(fx.pipe_fd, buf, 1024)
-	free(buf)
+	char* result = net_test_read_all(fx.pipe_fd)
 	close(fx.pipe_fd)
 	int status = 0
 	wait4(fx.pid, &status, 0, 0)
 	close(fx.listener)
 	free(cast(char*, fx))
 	asserts(c"fixture child failed", status == 0)
-	char* result = out.data
-	free(cast(char*, out))
 	return result
 
 

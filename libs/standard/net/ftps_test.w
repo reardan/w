@@ -16,22 +16,8 @@ import lib.str
 import structures.string
 import libs.standard.net.tls
 import libs.standard.net.ftp
-
-
-void ftps_assert_ok(char* name, int result):
-	if (result < 0):
-		print_string(name, c" failed")
-		translate_syscall_failure(result)
-		exit(1)
-
-
-int ftps_bytes_equal(char* a, char* b, int n):
-	int i = 0
-	while (i < n):
-		if (a[i] != b[i]):
-			return 0
-		i = i + 1
-	return 1
+import lib.mem
+import libs.standard.net.testing
 
 
 # Deterministic binary payload containing NUL, CR and LF bytes.
@@ -43,19 +29,6 @@ char* ftps_payload(int n):
 		i = i + 1
 	data[n] = 0
 	return data
-
-
-# Listener on 127.0.0.1 with a kernel-assigned port.
-int ftps_listen(int* out_port):
-	int listener = socket_tcp_ipv4()
-	ftps_assert_ok(c"tcp socket", listener)
-	ftps_assert_ok(c"reuseaddr", socket_set_reuseaddr(listener))
-	ftps_assert_ok(c"bind", socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0))
-	ftps_assert_ok(c"listen", socket_listen(listener, 8))
-	sockaddr_in bound
-	ftps_assert_ok(c"getsockname", socket_getsockname_ipv4(listener, &bound))
-	*out_port = net_htons(bound.port)
-	return listener
 
 
 /* FTPS fixture server (runs in the forked child) */
@@ -86,20 +59,11 @@ tls_conn* ftps_srv_tls_accept(int fd):
 	return tls_accept(fd, scfg)
 
 
-void ftps_srv_raw_send(int fd, char* data, int n):
-	int total = 0
-	while (total < n):
-		int got = socket_send(fd, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			return
-		total = total + got
-
-
 void ftps_srv_write(ftps_srv* s, char* data, int n):
 	if (s.tls != 0):
 		tls_write(s.tls, data, n)
 		return
-	ftps_srv_raw_send(s.ctrl, data, n)
+	net_test_send_all(s.ctrl, data, n)
 
 
 void ftps_srv_reply(ftps_srv* s, char* text):
@@ -187,7 +151,7 @@ void ftps_srv_download(ftps_srv* s, char* data, int n, int truncate):
 		else:
 			tls_close(dt)
 	else:
-		ftps_srv_raw_send(conn, data, n)
+		net_test_send_all(conn, data, n)
 	close(conn)
 	ftps_srv_reply(s, c"226 Transfer complete")
 
@@ -245,7 +209,7 @@ int ftps_srv_handle(ftps_srv* s, char* verb, char* arg):
 			# One write: the forged 230 lands in the client's plaintext
 			# buffer together with the 234.
 			char* both = c"234 Proceed with negotiation\x0d\x0a230 injected: logged in\x0d\x0a"
-			ftps_srv_raw_send(s.ctrl, both, strlen(both))
+			net_test_send_all(s.ctrl, both, strlen(both))
 		else:
 			ftps_srv_reply(s, c"234 Proceed with negotiation")
 		s.tls = ftps_srv_tls_accept(s.ctrl)
@@ -298,7 +262,7 @@ int ftps_srv_handle(ftps_srv* s, char* verb, char* arg):
 		if (s.data_listener >= 0):
 			close(s.data_listener)
 		int port = 0
-		s.data_listener = ftps_listen(&port)
+		s.data_listener = net_test_listen(&port)
 		char* text = strjoin(strjoin(c"229 Entering Extended Passive Mode (|||", itoa(port)), c"|)")
 		ftps_srv_reply(s, text)
 		return 1
@@ -377,7 +341,7 @@ void ftps_srv_run(int listener, int pipe_fd, int implicit, int auth_ok, int inje
 	if (s.tls != 0):
 		tls_close(s.tls)
 	close(s.ctrl)
-	ftps_srv_raw_send(pipe_fd, s.tr.data, s.tr.length)
+	net_test_send_all(pipe_fd, s.tr.data, s.tr.length)
 	close(pipe_fd)
 	exit(0)
 
@@ -391,9 +355,9 @@ struct ftps_fx:
 ftps_fx* ftps_start(int implicit, int auth_ok, int inject, int require_prot):
 	ftps_fx* fx = new ftps_fx()
 	int port = 0
-	int listener = ftps_listen(&port)
+	int listener = net_test_listen(&port)
 	int* fds = malloc(__word_size__ * 2)
-	ftps_assert_ok(c"socketpair", socket_pair(fds))
+	net_test_assert_ok(c"socketpair", socket_pair(fds))
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -410,20 +374,12 @@ ftps_fx* ftps_start(int implicit, int auth_ok, int inject, int require_prot):
 
 # Waits for the child and returns its transcript.
 char* ftps_finish(ftps_fx* fx):
-	string_builder* out = string_new()
-	char* buf = malloc(1024)
-	int got = read(fx.pipe_fd, buf, 1024)
-	while (got > 0):
-		string_append_bytes(out, buf, got)
-		got = read(fx.pipe_fd, buf, 1024)
-	free(buf)
+	char* result = net_test_read_all(fx.pipe_fd)
 	close(fx.pipe_fd)
 	int status = 0
 	wait4(fx.pid, &status, 0, 0)
 	free(cast(char*, fx))
 	asserts(c"fixture child failed", status == 0)
-	char* result = out.data
-	free(cast(char*, out))
 	return result
 
 
@@ -460,7 +416,7 @@ void test_ftps_explicit_session():
 	assert_equal(226, c.reply_code)
 	body = ftp_retr(c, c"upload.bin", &n)
 	assert_equal(40000, n)
-	assert_equal(1, ftps_bytes_equal(want, body, n))
+	assert_equal(1, mem_eq(want, body, n))
 	free(body)
 	free(want)
 	assert_equal(1, ftp_quit(c))
@@ -617,14 +573,14 @@ char* ftps_drain(int fd):
 
 void test_ftps_insecure_login_policy():
 	int* fds = malloc(2 * __word_size__)
-	ftps_assert_ok(c"socketpair", socket_pair(fds))
+	net_test_assert_ok(c"socketpair", socket_pair(fds))
 	socket_set_recv_timeout(fds[0], 2000)
 	# A non-loopback peer over plaintext: credentials are withheld.
 	ftp_client* c = ftp_attach(fds[0], ip4_from_string(c"192.0.2.1"), 2000)
 	assert_equal(0, ftp_login(c, c"alice", c"secret"))
 	assert_equal(ftp_error_insecure(), c.error)
 	# The anonymous convention is not a secret and is allowed.
-	ftps_srv_raw_send(fds[1], c"230 ok\x0d\x0a", 8)
+	net_test_send_all(fds[1], c"230 ok\x0d\x0a", 8)
 	assert_equal(1, ftp_login(c, c"Anonymous", c"guest@"))
 	char* sent = ftps_drain(fds[1])
 	assert_strings_equal(c"USER Anonymous\x0d\x0a", sent)
@@ -634,7 +590,7 @@ void test_ftps_insecure_login_policy():
 	assert_equal(0, ftp_is_anonymous_user(c"anon"))
 	# Explicit opt-in sends them.
 	ftp_set_allow_insecure_login(c, 1)
-	ftps_srv_raw_send(fds[1], c"230 ok\x0d\x0a", 8)
+	net_test_send_all(fds[1], c"230 ok\x0d\x0a", 8)
 	assert_equal(1, ftp_login(c, c"alice", c"secret"))
 	sent = ftps_drain(fds[1])
 	assert_strings_equal(c"USER alice\x0d\x0a", sent)

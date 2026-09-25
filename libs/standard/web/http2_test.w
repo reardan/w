@@ -23,41 +23,10 @@ import lib.container
 import structures.string
 import libs.standard.web.hpack
 import libs.standard.web.http2
+import libs.standard.web.testing
 
 
 /* Fixture plumbing */
-
-int h2t_listen(int* out_port):
-	int listener = socket_tcp_ipv4()
-	asserts(c"socket", listener >= 0)
-	socket_set_reuseaddr(listener)
-	asserts(c"bind", socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0) >= 0)
-	asserts(c"listen", socket_listen(listener, 8) >= 0)
-	sockaddr_in bound
-	socket_getsockname_ipv4(listener, &bound)
-	*out_port = net_htons(bound.port)
-	return listener
-
-
-char* h2t_authority(int port):
-	string_builder* sb = string_new()
-	string_append(sb, c"127.0.0.1:")
-	string_append_int(sb, port)
-	char* out = sb.data
-	free(sb)
-	return out
-
-
-# Waits for the child and asserts it exited 0.
-void h2t_finish(int pid, int listener):
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	close(listener)
-	if (status != 0):
-		print2(c"fixture child status: ")
-		println2(itoa(status))
-	assert_equal(0, status)
-
 
 h2_conn* h2t_connect(int port):
 	h2_conn* c = h2_connect(c"127.0.0.1", port, 10000)
@@ -65,35 +34,7 @@ h2_conn* h2t_connect(int port):
 	return c
 
 
-void h2t_drain(int fd):
-	char* scratch = malloc(1024)
-	int got = read(fd, scratch, 1024)
-	while (got > 0):
-		got = read(fd, scratch, 1024)
-	free(scratch)
-
-
 /* Raw-frame server helpers */
-
-# Accepts, checks the client preface, sends our SETTINGS payload.
-int h2t_raw_accept(int listener, char* settings, int settings_len):
-	int fd = socket_accept_connection(listener)
-	if (fd < 0):
-		exit(90)
-	socket_set_recv_timeout(fd, 10000)
-	char* pre = malloc(24)
-	if (h2_fd_read_exact(fd, pre, 24) == 0):
-		exit(91)
-	char* want = h2_preface()
-	int i = 0
-	while (i < 24):
-		if (pre[i] != want[i]):
-			exit(92)
-		i = i + 1
-	free(pre)
-	h2_raw_write_frame(fd, h2_frame_settings(), 0, 0, settings, settings_len)
-	return fd
-
 
 # Next frame of the given type, skipping SETTINGS / WINDOW_UPDATE /
 # PING ACK traffic unless that is the type asked for. Exits the child
@@ -234,12 +175,12 @@ void h2t_w_server_child(int listener):
 
 void test_h2_w_client_and_server():
 	int port = 0
-	int listener = h2t_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		h2t_w_server_child(listener)
-	char* auth = h2t_authority(port)
+	char* auth = net_test_authority(c"127.0.0.1", port)
 	h2_conn* c = h2t_connect(port)
 
 	# Plain GET.
@@ -307,18 +248,18 @@ void test_h2_w_client_and_server():
 	assert_equal(0, h2_ping(c))
 	assert_equal(0, c.error)
 	h2_close(c)
-	h2t_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 /* Scripted servers */
 
 void test_h2_continuation_and_padding():
 	int port = 0
-	int listener = h2t_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int fd = h2t_raw_accept(listener, 0, 0)
+		int fd = h2_test_raw_accept(listener, 0, 0)
 		h2_frame f
 		h2t_expect(fd, h2_frame_headers(), &f, 10)
 		hpack_encoder* e = hpack_encoder_new(4096)
@@ -332,7 +273,7 @@ void test_h2_continuation_and_padding():
 		# Padded DATA: pad length 4, "hello", 4 zero bytes.
 		h2_raw_write_frame(fd, h2_frame_data(), h2_flag_padded(), 1, c"\x04hello\x00\x00\x00\x00", 10)
 		h2_raw_write_frame(fd, h2_frame_data(), h2_flag_end_stream(), 1, c" world", 6)
-		h2t_drain(fd)
+		net_test_drain(fd)
 		exit(0)
 	h2_conn* c = h2t_connect(port)
 	h2_stream* s = h2_request(c, c"GET", c"http", c"x", c"/", 0, 0, 0)
@@ -342,18 +283,18 @@ void test_h2_continuation_and_padding():
 	assert_strings_equal(c"hello world", h2_stream_body(s))
 	h2_stream_free(c, s)
 	h2_close(c)
-	h2t_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 # The server advertises INITIAL_WINDOW_SIZE = 10: the client may send
 # only 10 bytes until the server's WINDOW_UPDATE.
 void test_h2_send_flow_control():
 	int port = 0
-	int listener = h2t_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int fd = h2t_raw_accept(listener, h2t_setting(h2_settings_initial_window_size(), 10), 6)
+		int fd = h2_test_raw_accept(listener, h2t_setting(h2_settings_initial_window_size(), 10), 6)
 		h2_frame f
 		h2t_expect(fd, h2_frame_headers(), &f, 10)
 		h2t_expect(fd, h2_frame_data(), &f, 11)
@@ -367,7 +308,7 @@ void test_h2_send_flow_control():
 		hpack_encoder* e = hpack_encoder_new(4096)
 		h2t_send_headers(fd, e, 1, c":status|200\n", 0)
 		h2t_send_data(fd, 1, c"got 25", h2_flag_end_stream())
-		h2t_drain(fd)
+		net_test_drain(fd)
 		exit(0)
 	h2_conn* c = h2t_connect(port)
 	# Until the server's SETTINGS arrive the RFC default window applies.
@@ -379,18 +320,18 @@ void test_h2_send_flow_control():
 	assert_equal(5, s.send_window)
 	h2_stream_free(c, s)
 	h2_close(c)
-	h2t_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 # The client advertises a 100-byte stream window; a 150-byte DATA frame
 # is a stream FLOW_CONTROL_ERROR (RST_STREAM), the connection survives.
 void test_h2_receive_window_violation():
 	int port = 0
-	int listener = h2t_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int fd = h2t_raw_accept(listener, 0, 0)
+		int fd = h2_test_raw_accept(listener, 0, 0)
 		h2_frame f
 		h2t_expect(fd, h2_frame_headers(), &f, 10)
 		hpack_encoder* e = hpack_encoder_new(4096)
@@ -409,7 +350,7 @@ void test_h2_receive_window_violation():
 		if (f.stream_id != 3):
 			exit(14)
 		h2t_send_headers(fd, e, 3, c":status|204\n", h2_flag_end_stream())
-		h2t_drain(fd)
+		net_test_drain(fd)
 		exit(0)
 	h2_conn* c = h2_conn_new(socket_tcp_ipv4(), 0)
 	asserts(c"connect", socket_connect_ipv4(c.fd, ip4_from_string(c"127.0.0.1"), port) >= 0)
@@ -425,17 +366,17 @@ void test_h2_receive_window_violation():
 	assert_equal(204, h2_stream_status(s))
 	h2_stream_free(c, s)
 	h2_close(c)
-	h2t_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 # Server PING mid-exchange: the client must ACK it with the same bytes.
 void test_h2_server_ping_is_acked():
 	int port = 0
-	int listener = h2t_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int fd = h2t_raw_accept(listener, 0, 0)
+		int fd = h2_test_raw_accept(listener, 0, 0)
 		h2_frame f
 		h2t_expect(fd, h2_frame_headers(), &f, 10)
 		h2_raw_write_frame(fd, h2_frame_ping(), 0, 0, c"pingpong", 8)
@@ -447,25 +388,25 @@ void test_h2_server_ping_is_acked():
 			exit(12)
 		hpack_encoder* e = hpack_encoder_new(4096)
 		h2t_send_headers(fd, e, 1, c":status|200\n", h2_flag_end_stream())
-		h2t_drain(fd)
+		net_test_drain(fd)
 		exit(0)
 	h2_conn* c = h2t_connect(port)
 	h2_stream* s = h2_request(c, c"GET", c"http", c"x", c"/", 0, 0, 0)
 	asserts(c"request failed", h2_stream_ok(s))
 	h2_stream_free(c, s)
 	h2_close(c)
-	h2t_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 # GOAWAY(last = 1) with streams 1 and 3 open: 1 completes, 3 is refused
 # (retryable), and no new stream can start.
 void test_h2_goaway_refuses_later_streams():
 	int port = 0
-	int listener = h2t_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int fd = h2t_raw_accept(listener, 0, 0)
+		int fd = h2_test_raw_accept(listener, 0, 0)
 		h2_frame f
 		h2t_expect(fd, h2_frame_headers(), &f, 10)
 		h2t_expect(fd, h2_frame_headers(), &f, 11)
@@ -475,7 +416,7 @@ void test_h2_goaway_refuses_later_streams():
 		hpack_encoder* e = hpack_encoder_new(4096)
 		h2t_send_headers(fd, e, 1, c":status|200\n", 0)
 		h2t_send_data(fd, 1, c"done", h2_flag_end_stream())
-		h2t_drain(fd)
+		net_test_drain(fd)
 		exit(0)
 	h2_conn* c = h2t_connect(port)
 	h2_stream* one = h2_request_start(c, c"GET", c"http", c"x", c"/1", 0, 1)
@@ -491,13 +432,13 @@ void test_h2_goaway_refuses_later_streams():
 	h2_stream_free(c, one)
 	h2_stream_free(c, three)
 	h2_close(c)
-	h2t_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 # Scripted server that sends one bad frame after the request HEADERS and
 # expects GOAWAY with want_code back.
 void h2t_expect_goaway_child(int listener, int kind, int want_code):
-	int fd = h2t_raw_accept(listener, 0, 0)
+	int fd = h2_test_raw_accept(listener, 0, 0)
 	h2_frame f
 	h2t_expect(fd, h2_frame_headers(), &f, 10)
 	if (kind == 1):
@@ -529,7 +470,7 @@ void h2t_expect_goaway_child(int listener, int kind, int want_code):
 
 void h2t_run_goaway_case(int kind, int want_code):
 	int port = 0
-	int listener = h2t_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -541,7 +482,7 @@ void h2t_run_goaway_case(int kind, int want_code):
 	assert_equal(want_code, c.error)
 	h2_stream_free(c, s)
 	h2_close(c)
-	h2t_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 void test_h2_push_promise_rejected():
@@ -566,15 +507,15 @@ void test_h2_zero_window_update_rejected():
 
 void test_h2_rst_stream_from_server():
 	int port = 0
-	int listener = h2t_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int fd = h2t_raw_accept(listener, 0, 0)
+		int fd = h2_test_raw_accept(listener, 0, 0)
 		h2_frame f
 		h2t_expect(fd, h2_frame_headers(), &f, 10)
 		h2_raw_write_frame(fd, h2_frame_rst_stream(), 0, 1, c"\x00\x00\x00\x08", 4)
-		h2t_drain(fd)
+		net_test_drain(fd)
 		exit(0)
 	h2_conn* c = h2t_connect(port)
 	h2_stream* s = h2_request(c, c"GET", c"http", c"x", c"/", 0, 0, 0)
@@ -584,18 +525,18 @@ void test_h2_rst_stream_from_server():
 	assert_equal(0, c.dead)
 	h2_stream_free(c, s)
 	h2_close(c)
-	h2t_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 # 103 Early Hints before the final response, trailers after, and a
 # content-length that does not match the DATA (stream PROTOCOL_ERROR).
 void test_h2_informational_trailers_and_content_length():
 	int port = 0
-	int listener = h2t_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int fd = h2t_raw_accept(listener, 0, 0)
+		int fd = h2_test_raw_accept(listener, 0, 0)
 		h2_frame f
 		hpack_encoder* e = hpack_encoder_new(4096)
 		h2t_expect(fd, h2_frame_headers(), &f, 10)
@@ -609,7 +550,7 @@ void test_h2_informational_trailers_and_content_length():
 		h2t_expect(fd, h2_frame_rst_stream(), &f, 12)
 		if ((f.stream_id != 3) || (h2_get_u31(f.payload) != h2_error_protocol())):
 			exit(13)
-		h2t_drain(fd)
+		net_test_drain(fd)
 		exit(0)
 	h2_conn* c = h2t_connect(port)
 	h2_stream* s = h2_request(c, c"GET", c"http", c"x", c"/", 0, 0, 0)
@@ -624,7 +565,7 @@ void test_h2_informational_trailers_and_content_length():
 	assert_equal(h2_error_protocol(), s.reset_code)
 	h2_stream_free(c, s)
 	h2_close(c)
-	h2t_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 /* Raw client against the W server */
@@ -633,7 +574,7 @@ void test_h2_informational_trailers_and_content_length():
 # the client with GOAWAY(PROTOCOL_ERROR).
 void test_h2_server_rejects_even_stream():
 	int port = 0
-	int listener = h2t_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -665,14 +606,14 @@ void test_h2_server_rejects_even_stream():
 		free(f.payload)
 	assert_equal(1, found)
 	close(fd)
-	h2t_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 # A request missing :path is a stream error (RST_STREAM PROTOCOL_ERROR);
 # the next valid request on the connection is served.
 void test_h2_server_rejects_malformed_request():
 	int port = 0
-	int listener = h2t_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -699,4 +640,4 @@ void test_h2_server_rejects_malformed_request():
 	assert_equal(1, saw_ok)
 	h2_raw_write_frame(fd, h2_frame_goaway(), 0, 0, c"\x00\x00\x00\x00\x00\x00\x00\x00", 8)
 	close(fd)
-	h2t_finish(pid, listener)
+	net_test_finish(pid, listener)

@@ -8,13 +8,7 @@ import lib.testing
 import lib.file
 import lib.net
 import libs.standard.net.dns
-
-
-void dns_test_assert_ok(char* name, int result):
-	if (result < 0):
-		print_string(name, c" failed")
-		translate_syscall_failure(result)
-		exit(1)
+import libs.standard.net.testing
 
 
 # Decodes "12 34 ab ..." (lowercase hex pairs, whitespace ignored)
@@ -443,10 +437,10 @@ int dns_test_mock_answer(char* buf, int query_len):
 void test_dns_query_server_mock_udp():
 	int loopback = ip4_from_string(c"127.0.0.1")
 	int server = socket_udp_ipv4()
-	dns_test_assert_ok(c"udp socket", server)
-	dns_test_assert_ok(c"udp bind", socket_bind_ipv4(server, loopback, 0))
+	net_test_assert_ok(c"udp socket", server)
+	net_test_assert_ok(c"udp bind", socket_bind_ipv4(server, loopback, 0))
 	sockaddr_in bound
-	dns_test_assert_ok(c"getsockname", socket_getsockname_ipv4(server, &bound))
+	net_test_assert_ok(c"getsockname", socket_getsockname_ipv4(server, &bound))
 	int port = net_htons(bound.port)
 
 	int pid = fork()
@@ -475,17 +469,17 @@ void test_dns_query_server_mock_udp():
 void test_dns_query_server_mock_tcp_fallback():
 	int loopback = ip4_from_string(c"127.0.0.1")
 	int udp_server = socket_udp_ipv4()
-	dns_test_assert_ok(c"udp socket", udp_server)
-	dns_test_assert_ok(c"udp bind", socket_bind_ipv4(udp_server, loopback, 0))
+	net_test_assert_ok(c"udp socket", udp_server)
+	net_test_assert_ok(c"udp bind", socket_bind_ipv4(udp_server, loopback, 0))
 	sockaddr_in bound
-	dns_test_assert_ok(c"getsockname", socket_getsockname_ipv4(udp_server, &bound))
+	net_test_assert_ok(c"getsockname", socket_getsockname_ipv4(udp_server, &bound))
 	int port = net_htons(bound.port)
 
 	int tcp_server = socket_tcp_ipv4()
-	dns_test_assert_ok(c"tcp socket", tcp_server)
-	dns_test_assert_ok(c"tcp reuseaddr", socket_set_reuseaddr(tcp_server))
-	dns_test_assert_ok(c"tcp bind", socket_bind_ipv4(tcp_server, loopback, port))
-	dns_test_assert_ok(c"tcp listen", socket_listen(tcp_server, 1))
+	net_test_assert_ok(c"tcp socket", tcp_server)
+	net_test_assert_ok(c"tcp reuseaddr", socket_set_reuseaddr(tcp_server))
+	net_test_assert_ok(c"tcp bind", socket_bind_ipv4(tcp_server, loopback, port))
+	net_test_assert_ok(c"tcp listen", socket_listen(tcp_server, 1))
 
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
@@ -541,10 +535,10 @@ void test_dns_query_server_timeout():
 	int loopback = ip4_from_string(c"127.0.0.1")
 	# A bound socket that never answers: the query must time out.
 	int silent = socket_udp_ipv4()
-	dns_test_assert_ok(c"udp socket", silent)
-	dns_test_assert_ok(c"udp bind", socket_bind_ipv4(silent, loopback, 0))
+	net_test_assert_ok(c"udp socket", silent)
+	net_test_assert_ok(c"udp bind", socket_bind_ipv4(silent, loopback, 0))
 	sockaddr_in bound
-	dns_test_assert_ok(c"getsockname", socket_getsockname_ipv4(silent, &bound))
+	net_test_assert_ok(c"getsockname", socket_getsockname_ipv4(silent, &bound))
 	int port = net_htons(bound.port)
 
 	int ip = 0

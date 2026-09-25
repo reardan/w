@@ -31,6 +31,7 @@ import libs.standard.web.http_server
 import libs.standard.web.websocket
 import libs.extras.compress.deflate
 import libs.extras.compress.inflate
+import libs.standard.net.testing
 
 
 /* ---- helpers ---- */
@@ -139,21 +140,6 @@ void wst_pair(int* fds):
 	socket_set_send_timeout(fds[0], 10000)
 	socket_set_recv_timeout(fds[1], 10000)
 	socket_set_send_timeout(fds[1], 10000)
-
-
-void wst_wait_ok(int pid):
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	asserts(c"peer child exited cleanly", status == 0)
-
-
-void wst_send_all(int fd, char* data, int n):
-	int total = 0
-	while (total < n):
-		int got = socket_send(fd, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			return
-		total = total + got
 
 
 /* ---- SHA-1 opt-in ---- */
@@ -452,7 +438,7 @@ void test_ws_session_echo_and_close():
 	asserts(c"no sends after close", ws_send_text(c, c"late", 4) == 0)
 	asserts(c"no recv after close", ws_recv(c) == 0)
 	ws_conn_free(c)
-	wst_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 void test_ws_session_server_initiated_close():
@@ -466,7 +452,7 @@ void test_ws_session_server_initiated_close():
 	# Our echo already went out; ws_close just reports the handshake done.
 	assert_equal(1, ws_close(c, 1000, 0))
 	ws_conn_free(c)
-	wst_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 /* ---- peer protocol violations, scripted byte for byte ---- */
@@ -476,7 +462,7 @@ void test_ws_session_server_initiated_close():
 # (masked iff the side under test is a client). expect_code 0 means the
 # peer just hangs up after writing.
 void wst_raw_peer_bytes(int fd, char* raw, int n, int tested_is_client, int expect_code):
-	wst_send_all(fd, raw, n)
+	net_test_send_all(fd, raw, n)
 	if (expect_code == 0):
 		close(fd)
 		exit(0)
@@ -607,7 +593,7 @@ void test_ws_client_accepts_close_without_status():
 		# close echoed back.
 		int n = 0
 		char* raw = wst_hex(c"81 02 6f 6b 88 00", &n)
-		wst_send_all(fds[1], raw, n)
+		net_test_send_all(fds[1], raw, n)
 		char* buf = malloc(64)
 		int have = 0
 		while (have < 6):
@@ -628,7 +614,7 @@ void test_ws_client_accepts_close_without_status():
 	assert_equal(ws_error_closed(), ws_conn_error(c))
 	assert_equal(ws_close_no_status(), c.peer_close_code)
 	ws_conn_free(c)
-	wst_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 /* ---- server upgrade validation through http_server.w routes ---- */
@@ -642,39 +628,6 @@ ServerResponse* wst_unused_handler(ServerRequest* req, void* context):
 void wst_ws_route(RequestContext* rc, void* user_data):
 	ws_conn* c = ws_accept(rc, 0)
 	ws_conn_free(c)
-
-
-# Sends one raw request to port and returns everything the server says
-# before closing (malloc'd).
-char* wst_raw_exchange(int port, char* request):
-	int fd = socket_tcp_ipv4()
-	asserts(c"socket", fd >= 0)
-	socket_set_recv_timeout(fd, 10000)
-	asserts(c"connect", socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), port) >= 0)
-	wst_send_all(fd, request, strlen(request))
-	string_builder* out = string_new()
-	char* buf = malloc(1024)
-	int got = read(fd, buf, 1024)
-	while (got > 0):
-		string_append_bytes(out, buf, got)
-		got = read(fd, buf, 1024)
-	free(buf)
-	close(fd)
-	char* text = out.data
-	free(out)
-	return text
-
-
-int wst_contains(char* hay, char* needle):
-	int i = 0
-	while (hay[i] != 0):
-		int j = 0
-		while ((needle[j] != 0) && (hay[i + j] == needle[j])):
-			j = j + 1
-		if (needle[j] == 0):
-			return 1
-		i = i + 1
-	return 0
 
 
 char* wst_upgrade_request(char* version, char* key):
@@ -695,8 +648,8 @@ char* wst_upgrade_request(char* version, char* key):
 
 
 void wst_expect_status(int port, char* request, char* status_line):
-	char* reply = wst_raw_exchange(port, request)
-	if (wst_contains(reply, status_line) == 0):
+	char* reply = net_test_exchange(port, request)
+	if (net_test_contains(reply, status_line) == 0):
 		print_string(c"reply: ", reply)
 		asserts(status_line, 0)
 	free(reply)
@@ -717,9 +670,9 @@ void test_ws_server_upgrade_validation():
 	server_context_close(s)
 	char* key = c"dGhlIHNhbXBsZSBub25jZQ=="
 	# Unsupported version: 426 advertising version 13.
-	char* reply = wst_raw_exchange(port, wst_upgrade_request(c"8", key))
-	asserts(c"426", wst_contains(reply, c"HTTP/1.1 426 Upgrade Required") != 0)
-	asserts(c"version hint", wst_contains(reply, c"Sec-WebSocket-Version: 13") != 0)
+	char* reply = net_test_exchange(port, wst_upgrade_request(c"8", key))
+	asserts(c"426", net_test_contains(reply, c"HTTP/1.1 426 Upgrade Required") != 0)
+	asserts(c"version hint", net_test_contains(reply, c"Sec-WebSocket-Version: 13") != 0)
 	free(reply)
 	wst_expect_status(port, wst_upgrade_request(c"13", 0), c"HTTP/1.1 400 ")
 	# The key must be base64 of exactly 16 bytes.
@@ -727,7 +680,7 @@ void test_ws_server_upgrade_validation():
 	wst_expect_status(port, strclone(c"GET /ws HTTP/1.1\x0d\x0aHost: h\x0d\x0a\x0d\x0a"), c"HTTP/1.1 400 ")
 	# Well-formed, but SHA-1 was never opted into: fail closed.
 	wst_expect_status(port, wst_upgrade_request(c"13", key), c"HTTP/1.1 500 ")
-	wst_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 /* ---- permessage-deflate (RFC 7692) ---- */
@@ -1045,7 +998,7 @@ void wst_compressed_session(ws_deflate_config* cfg):
 	wst_expect_text(c, c"pinged")
 	assert_equal(1, ws_close(c, 1000, c"bye"))
 	ws_conn_free(c)
-	wst_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 void test_ws_deflate_session_context_takeover():
@@ -1103,7 +1056,7 @@ void test_ws_deflate_frames_on_the_wire():
 	assert_equal(128, buf[1] & 128)
 	asserts(c"compressed", (buf[1] & 127) < n)
 	assert_equal((buf[1] & 127) + 6, got)
-	wst_send_all(fds[0], buf, got)
+	net_test_send_all(fds[0], buf, got)
 	wst_expect_text(server, text)
 	# Server to client: unmasked RSV1 binary; the second copy is a
 	# back-reference into the first (context takeover), so it is tiny.
@@ -1112,7 +1065,7 @@ void test_ws_deflate_frames_on_the_wire():
 	assert_equal(194, buf[0] & 255)
 	assert_equal(0, buf[1] & 128)
 	int first_len = buf[1] & 127
-	wst_send_all(fds[1], buf, got)
+	net_test_send_all(fds[1], buf, got)
 	ws_message* m = wst_recv_ok(client)
 	assert_equal(n, m.len)
 	ws_message_free(m)
@@ -1120,7 +1073,7 @@ void test_ws_deflate_frames_on_the_wire():
 	got = wst_read_some(fds[0], buf, 256)
 	asserts(c"shared window", (buf[1] & 127) < first_len)
 	asserts(c"tiny", (buf[1] & 127) <= 8)
-	wst_send_all(fds[1], buf, got)
+	net_test_send_all(fds[1], buf, got)
 	m = wst_recv_ok(client)
 	assert_equal(n, m.len)
 	assert_strings_equal(text, m.data)

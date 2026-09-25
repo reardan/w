@@ -12,51 +12,10 @@ import lib.time
 import structures.string
 import libs.standard.web.http_client
 import libs.standard.web.urlparse
-
-
-void http_client_test_assert_ok(char* name, int result):
-	if (result < 0):
-		print_string(name, c" failed")
-		translate_syscall_failure(result)
-		exit(1)
+import libs.standard.web.testing
 
 
 /* Fixture server helpers (reusable server bits) */
-
-# Listener on 127.0.0.1 with a kernel-assigned port.
-int http_test_listen(int* out_port):
-	int listener = socket_tcp_ipv4()
-	http_client_test_assert_ok(c"tcp socket", listener)
-	http_client_test_assert_ok(c"reuseaddr", socket_set_reuseaddr(listener))
-	http_client_test_assert_ok(c"bind", socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0))
-	http_client_test_assert_ok(c"listen", socket_listen(listener, 8))
-	sockaddr_in bound
-	http_client_test_assert_ok(c"getsockname", socket_getsockname_ipv4(listener, &bound))
-	*out_port = net_htons(bound.port)
-	return listener
-
-
-char* http_test_url(int port, char* path):
-	string_builder* out = string_new()
-	string_append(out, c"http://127.0.0.1:")
-	string_append_int(out, port)
-	string_append(out, path)
-	char* text = out.data
-	free(out)
-	return text
-
-
-int http_test_contains(char* hay, char* needle):
-	int i = 0
-	while (hay[i] != 0):
-		int j = 0
-		while ((needle[j] != 0) && (hay[i + j] == needle[j])):
-			j = j + 1
-		if (needle[j] == 0):
-			return 1
-		i = i + 1
-	return 0
-
 
 # One parsed request as seen by the fixture server child.
 struct http_test_request:
@@ -72,15 +31,6 @@ void http_test_request_free(http_test_request* q):
 	free(q.method)
 	free(q.path)
 	free(q.body)
-
-
-int http_test_find_head_end(char* buf, int total):
-	int i = 0
-	while (i + 3 < total):
-		if ((buf[i] == 13) && (buf[i + 1] == 10) && (buf[i + 2] == 13) && (buf[i + 3] == 10)):
-			return i + 4
-		i = i + 1
-	return (-1)
 
 
 int http_test_prefix_ieq(char* text, int at, char* prefix):
@@ -126,7 +76,7 @@ int http_test_read_request(int conn, http_test_request* q):
 			free(buf)
 			return 0
 		total = total + got
-		head_end = http_test_find_head_end(buf, total)
+		head_end = net_test_head_end(buf, total)
 	buf[total] = 0
 
 	int sp1 = 0
@@ -175,21 +125,6 @@ int http_test_read_request(int conn, http_test_request* q):
 	return 1
 
 
-# Sends every byte, SIGPIPE-proof: an early client close (the
-# fail-closed tests) must not kill the fixture child.
-void http_test_send_all(int conn, char* data, int n):
-	int total = 0
-	while (total < n):
-		int got = socket_send(conn, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			return
-		total = total + got
-
-
-void http_test_send_text(int conn, char* text):
-	http_test_send_all(conn, text, strlen(text))
-
-
 # Well-formed Content-Length response. extra_headers (0 for none) must
 # be complete "Name: value\r\n" lines.
 void http_test_respond(int conn, int status, char* extra_headers, char* body):
@@ -203,27 +138,8 @@ void http_test_respond(int conn, int status, char* extra_headers, char* body):
 	string_append_int(out, strlen(body))
 	string_append(out, c"\x0d\x0a\x0d\x0a")
 	string_append(out, body)
-	http_test_send_all(conn, out.data, out.length)
+	net_test_send_all(conn, out.data, out.length)
 	string_free(out)
-
-
-# Reads until the peer closes, so the child never exits while the
-# client still expects the connection to be open.
-void http_test_drain(int conn):
-	char* scratch = malloc(1024)
-	int got = read(conn, scratch, 1024)
-	while (got > 0):
-		got = read(conn, scratch, 1024)
-	free(scratch)
-
-
-void http_test_finish(int pid, int listener):
-	# Drop the cached keep-alive connection first: children that serve
-	# until EOF exit only once the client side is really closed.
-	http_client_close_idle()
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	close(listener)
 
 
 /* Wire-free unit coverage of the parsing helpers */
@@ -353,7 +269,7 @@ void test_http_request_hardening():
 
 void test_http_get_round_trip():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -369,23 +285,23 @@ void test_http_get_round_trip():
 		if (strcmp(q.path, c"/hello?x=1") != 0):
 			ok = 0
 		char* want_host = strjoin(c"Host: 127.0.0.1:", itoa(port))
-		if (http_test_contains(q.head, want_host) == 0):
+		if (net_test_contains(q.head, want_host) == 0):
 			ok = 0
-		if (http_test_contains(q.head, c"Accept-Encoding: identity") == 0):
+		if (net_test_contains(q.head, c"Accept-Encoding: identity") == 0):
 			ok = 0
-		if (http_test_contains(q.head, c"Connection: keep-alive") == 0):
+		if (net_test_contains(q.head, c"Connection: keep-alive") == 0):
 			ok = 0
 		# A GET without a body must not announce one.
-		if (http_test_contains(q.head, c"Content-Length") != 0):
+		if (net_test_contains(q.head, c"Content-Length") != 0):
 			ok = 0
 		if (ok != 0):
 			http_test_respond(conn, 200, c"X-Custom: hello\x0d\x0aX-Dup: a\x0d\x0aX-Dup: b\x0d\x0a", c"hello world")
 		else:
 			http_test_respond(conn, 500, 0, c"bad request seen by fixture")
-		http_test_drain(conn)
+		net_test_drain(conn)
 		exit(0)
 
-	char* target = http_test_url(port, c"/hello?x=1")
+	char* target = net_test_url(c"http", port, c"/hello?x=1")
 	http_response* resp = http_get(target)
 	assert_equal(0, resp.error)
 	assert_equal(200, resp.status)
@@ -397,12 +313,12 @@ void test_http_get_round_trip():
 	asserts(c"missing header not 0", http_response_header(resp, c"x-missing") == 0)
 	http_response_free(resp)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_post_round_trip():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -419,19 +335,19 @@ void test_http_post_round_trip():
 			ok = 0
 		if (q.body_len != 9):
 			ok = 0
-		if (http_test_contains(q.head, c"Content-Length: 9") == 0):
+		if (net_test_contains(q.head, c"Content-Length: 9") == 0):
 			ok = 0
-		if (http_test_contains(q.head, c"X-Token: t1") == 0):
+		if (net_test_contains(q.head, c"X-Token: t1") == 0):
 			ok = 0
 		if (ok != 0):
 			# Echo the request body back.
 			http_test_respond(conn, 200, 0, q.body)
 		else:
 			http_test_respond(conn, 500, 0, c"bad request seen by fixture")
-		http_test_drain(conn)
+		net_test_drain(conn)
 		exit(0)
 
-	char* target = http_test_url(port, c"/echo")
+	char* target = net_test_url(c"http", port, c"/echo")
 	http_req* req = http_req_new(c"POST", target)
 	req.body = c"ping-pong"
 	req.body_len = 9
@@ -443,12 +359,12 @@ void test_http_post_round_trip():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_chunked_body():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -461,11 +377,11 @@ void test_http_chunked_body():
 		http_test_request_free(&q)
 		# Multi-chunk body with a chunk extension, a 0-size terminator,
 		# and trailers.
-		http_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aTransfer-Encoding: chunked\x0d\x0a\x0d\x0a")
-		http_test_send_text(conn, c"4\x0d\x0aWiki\x0d\x0a")
-		http_test_send_text(conn, c"5;ext=1\x0d\x0apedia\x0d\x0a")
-		http_test_send_text(conn, c"e\x0d\x0a in\x0d\x0a\x0d\x0achunks.\x0d\x0a")
-		http_test_send_text(conn, c"0\x0d\x0aX-Trailer: done\x0d\x0a\x0d\x0a")
+		net_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aTransfer-Encoding: chunked\x0d\x0a\x0d\x0a")
+		net_test_send_text(conn, c"4\x0d\x0aWiki\x0d\x0a")
+		net_test_send_text(conn, c"5;ext=1\x0d\x0apedia\x0d\x0a")
+		net_test_send_text(conn, c"e\x0d\x0a in\x0d\x0a\x0d\x0achunks.\x0d\x0a")
+		net_test_send_text(conn, c"0\x0d\x0aX-Trailer: done\x0d\x0a\x0d\x0a")
 		# The trailers must have been consumed exactly: a second
 		# request on the same connection still frames correctly.
 		if (http_test_read_request(conn, &q) == 0):
@@ -478,10 +394,10 @@ void test_http_chunked_body():
 			http_test_respond(conn, 200, 0, c"second")
 		else:
 			http_test_respond(conn, 500, 0, c"unexpected second request")
-		http_test_drain(conn)
+		net_test_drain(conn)
 		exit(0)
 
-	char* target = http_test_url(port, c"/chunked")
+	char* target = net_test_url(c"http", port, c"/chunked")
 	http_response* resp = http_get(target)
 	assert_equal(0, resp.error)
 	assert_equal(200, resp.status)
@@ -491,18 +407,18 @@ void test_http_chunked_body():
 	free(target)
 
 	# Keep-alive reuse across the chunked response.
-	target = http_test_url(port, c"/after")
+	target = net_test_url(c"http", port, c"/after")
 	resp = http_get(target)
 	assert_equal(0, resp.error)
 	assert_strings_equal(c"second", resp.body)
 	http_response_free(resp)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_chunked_rejects():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -517,18 +433,18 @@ void test_http_chunked_rejects():
 			http_test_request_free(&q)
 			if (k == 0):
 				# 0xFFFFF0 = 16 MB chunk, over the 8 MB cap.
-				http_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aTransfer-Encoding: chunked\x0d\x0a\x0d\x0aFFFFF0\x0d\x0a")
+				net_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aTransfer-Encoding: chunked\x0d\x0a\x0d\x0aFFFFF0\x0d\x0a")
 			else if (k == 1):
-				http_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aTransfer-Encoding: chunked\x0d\x0a\x0d\x0azz\x0d\x0a")
+				net_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aTransfer-Encoding: chunked\x0d\x0a\x0d\x0azz\x0d\x0a")
 			else:
 				# Undecodable transfer coding fails closed.
-				http_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aTransfer-Encoding: gzip\x0d\x0a\x0d\x0a")
-			http_test_drain(conn)
+				net_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aTransfer-Encoding: gzip\x0d\x0a\x0d\x0a")
+			net_test_drain(conn)
 			close(conn)
 			k = k + 1
 		exit(0)
 
-	char* target = http_test_url(port, c"/chunk-abuse")
+	char* target = net_test_url(c"http", port, c"/chunk-abuse")
 	http_response* resp = http_get(target)
 	assert_equal(http_error_bad_chunk(), resp.error)
 	assert_equal(200, resp.status)
@@ -542,12 +458,12 @@ void test_http_chunked_rejects():
 	assert_equal(http_error_bad_response(), resp.error)
 	http_response_free(resp)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_malformed_status_line():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -561,15 +477,15 @@ void test_http_malformed_status_line():
 				exit(1)
 			http_test_request_free(&q)
 			if (k == 0):
-				http_test_send_text(conn, c"BANANA\x0d\x0a\x0d\x0abody")
+				net_test_send_text(conn, c"BANANA\x0d\x0a\x0d\x0abody")
 			else:
-				http_test_send_text(conn, c"HTTP/1.1 20 OK\x0d\x0a\x0d\x0a")
-			http_test_drain(conn)
+				net_test_send_text(conn, c"HTTP/1.1 20 OK\x0d\x0a\x0d\x0a")
+			net_test_drain(conn)
 			close(conn)
 			k = k + 1
 		exit(0)
 
-	char* target = http_test_url(port, c"/nonsense")
+	char* target = net_test_url(c"http", port, c"/nonsense")
 	http_response* resp = http_get(target)
 	assert_equal(http_error_bad_response(), resp.error)
 	assert_equal(0, resp.status)
@@ -579,12 +495,12 @@ void test_http_malformed_status_line():
 	assert_equal(http_error_bad_response(), resp.error)
 	http_response_free(resp)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_oversized_headers():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -620,14 +536,14 @@ void test_http_oversized_headers():
 					string_append(out, c"\x0d\x0a")
 					h = h + 1
 			string_append(out, c"\x0d\x0aContent-Length: 0\x0d\x0a\x0d\x0a")
-			http_test_send_all(conn, out.data, out.length)
+			net_test_send_all(conn, out.data, out.length)
 			string_free(out)
-			http_test_drain(conn)
+			net_test_drain(conn)
 			close(conn)
 			k = k + 1
 		exit(0)
 
-	char* target = http_test_url(port, c"/big-headers")
+	char* target = net_test_url(c"http", port, c"/big-headers")
 	http_response* resp = http_get(target)
 	assert_equal(http_error_headers_too_large(), resp.error)
 	http_response_free(resp)
@@ -636,7 +552,7 @@ void test_http_oversized_headers():
 	assert_equal(http_error_headers_too_large(), resp.error)
 	http_response_free(resp)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 # Serves the redirect fixture paths on one keep-alive connection.
@@ -665,25 +581,25 @@ void http_test_redirect_child(int listener, int port):
 
 void test_http_redirect_chain():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		http_test_redirect_child(listener, port)
 
-	char* target = http_test_url(port, c"/start")
+	char* target = net_test_url(c"http", port, c"/start")
 	http_response* resp = http_get(target)
 	assert_equal(0, resp.error)
 	assert_equal(200, resp.status)
 	assert_strings_equal(c"arrived", resp.body)
 	http_response_free(resp)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_redirect_loop():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -696,17 +612,17 @@ void test_http_redirect_loop():
 			http_test_respond(conn, 302, c"Location: /loop\x0d\x0a", c"")
 		exit(0)
 
-	char* target = http_test_url(port, c"/loop")
+	char* target = net_test_url(c"http", port, c"/loop")
 	http_response* resp = http_get(target)
 	assert_equal(http_error_too_many_redirects(), resp.error)
 	http_response_free(resp)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_redirects_not_followed_when_disabled():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -718,10 +634,10 @@ void test_http_redirects_not_followed_when_disabled():
 			exit(1)
 		http_test_request_free(&q)
 		http_test_respond(conn, 302, c"Location: /elsewhere\x0d\x0a", c"redir")
-		http_test_drain(conn)
+		net_test_drain(conn)
 		exit(0)
 
-	char* target = http_test_url(port, c"/moved")
+	char* target = net_test_url(c"http", port, c"/moved")
 	http_req* req = http_req_new(c"GET", target)
 	req.max_redirects = 0
 	http_response* resp = http_request(req)
@@ -732,12 +648,12 @@ void test_http_redirects_not_followed_when_disabled():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_303_post_becomes_get():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -754,7 +670,7 @@ void test_http_303_post_becomes_get():
 		http_test_request_free(&q)
 		if (first_ok == 0):
 			http_test_respond(conn, 500, 0, c"bad first request")
-			http_test_drain(conn)
+			net_test_drain(conn)
 			exit(1)
 		http_test_respond(conn, 303, c"Location: /done\x0d\x0a", c"")
 		if (http_test_read_request(conn, &q) == 0):
@@ -763,7 +679,7 @@ void test_http_303_post_becomes_get():
 		if (strcmp(q.path, c"/done") != 0):
 			second_ok = 0
 		# The 303 follow-up must be a GET and must drop the body.
-		if (http_test_contains(q.head, c"Content-Length") != 0):
+		if (net_test_contains(q.head, c"Content-Length") != 0):
 			second_ok = 0
 		if (q.body_len != 0):
 			second_ok = 0
@@ -773,10 +689,10 @@ void test_http_303_post_becomes_get():
 			http_test_respond(conn, 200, 0, seen_method)
 		else:
 			http_test_respond(conn, 500, 0, c"bad second request")
-		http_test_drain(conn)
+		net_test_drain(conn)
 		exit(0)
 
-	char* target = http_test_url(port, c"/submit")
+	char* target = net_test_url(c"http", port, c"/submit")
 	http_req* req = http_req_new(c"POST", target)
 	req.body = c"data=1"
 	req.body_len = 6
@@ -787,12 +703,12 @@ void test_http_303_post_becomes_get():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_close_mid_body():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -806,13 +722,13 @@ void test_http_close_mid_body():
 				exit(1)
 			http_test_request_free(&q)
 			# Promise 100 bytes, deliver 10, hang up.
-			http_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aContent-Length: 100\x0d\x0a\x0d\x0apartial-10")
+			net_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aContent-Length: 100\x0d\x0a\x0d\x0apartial-10")
 			close(conn)
 			k = k + 1
 		exit(0)
 
 	# Buffered read: error plus the bytes that did arrive.
-	char* target = http_test_url(port, c"/truncated")
+	char* target = net_test_url(c"http", port, c"/truncated")
 	http_response* resp = http_get(target)
 	assert_equal(http_error_truncated_body(), resp.error)
 	assert_equal(200, resp.status)
@@ -838,12 +754,12 @@ void test_http_close_mid_body():
 	http_stream_close(s)
 	http_req_free(req)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_keep_alive_reuse():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -861,10 +777,10 @@ void test_http_keep_alive_reuse():
 			exit(1)
 		http_test_request_free(&q)
 		http_test_respond(conn, 200, 0, c"two")
-		http_test_drain(conn)
+		net_test_drain(conn)
 		exit(0)
 
-	char* target = http_test_url(port, c"/counted")
+	char* target = net_test_url(c"http", port, c"/counted")
 	http_req* req = http_req_new(c"GET", target)
 	req.timeout_ms = 3000
 	http_response* resp = http_request(req)
@@ -878,12 +794,12 @@ void test_http_keep_alive_reuse():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_read_timeout():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -895,10 +811,10 @@ void test_http_read_timeout():
 			exit(1)
 		http_test_request_free(&q)
 		# Never respond; wait for the client to give up and close.
-		http_test_drain(conn)
+		net_test_drain(conn)
 		exit(0)
 
-	char* target = http_test_url(port, c"/slow")
+	char* target = net_test_url(c"http", port, c"/slow")
 	http_req* req = http_req_new(c"GET", target)
 	req.timeout_ms = 150
 	int started = time_monotonic_ms()
@@ -911,12 +827,12 @@ void test_http_read_timeout():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_read_to_close_body():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -928,23 +844,23 @@ void test_http_read_to_close_body():
 			exit(1)
 		http_test_request_free(&q)
 		# HTTP/1.0 style: no Content-Length, body delimited by close.
-		http_test_send_text(conn, c"HTTP/1.0 200 OK\x0d\x0a\x0d\x0aold-school body")
+		net_test_send_text(conn, c"HTTP/1.0 200 OK\x0d\x0a\x0d\x0aold-school body")
 		close(conn)
 		exit(0)
 
-	char* target = http_test_url(port, c"/http10")
+	char* target = net_test_url(c"http", port, c"/http10")
 	http_response* resp = http_get(target)
 	assert_equal(0, resp.error)
 	assert_equal(200, resp.status)
 	assert_strings_equal(c"old-school body", resp.body)
 	http_response_free(resp)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 void test_http_streaming_matches_buffered():
 	int port = 0
-	int listener = http_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -957,16 +873,16 @@ void test_http_streaming_matches_buffered():
 			if (http_test_read_request(conn, &q) == 0):
 				exit(1)
 			http_test_request_free(&q)
-			http_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aContent-Type: text/plain\x0d\x0aTransfer-Encoding: chunked\x0d\x0a\x0d\x0a")
-			http_test_send_text(conn, c"6\x0d\x0astream\x0d\x0a")
-			http_test_send_text(conn, c"4\x0d\x0a me \x0d\x0a")
-			http_test_send_text(conn, c"7\x0d\x0aplease.\x0d\x0a")
-			http_test_send_text(conn, c"0\x0d\x0a\x0d\x0a")
+			net_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aContent-Type: text/plain\x0d\x0aTransfer-Encoding: chunked\x0d\x0a\x0d\x0a")
+			net_test_send_text(conn, c"6\x0d\x0astream\x0d\x0a")
+			net_test_send_text(conn, c"4\x0d\x0a me \x0d\x0a")
+			net_test_send_text(conn, c"7\x0d\x0aplease.\x0d\x0a")
+			net_test_send_text(conn, c"0\x0d\x0a\x0d\x0a")
 			k = k + 1
-		http_test_drain(conn)
+		net_test_drain(conn)
 		exit(0)
 
-	char* target = http_test_url(port, c"/stream")
+	char* target = net_test_url(c"http", port, c"/stream")
 	http_response* buffered = http_get(target)
 	assert_equal(0, buffered.error)
 	assert_strings_equal(c"stream me please.", buffered.body)
@@ -996,4 +912,4 @@ void test_http_streaming_matches_buffered():
 	http_req_free(req)
 	http_response_free(buffered)
 	free(target)
-	http_test_finish(pid, listener)
+	web_test_finish(pid, listener)
