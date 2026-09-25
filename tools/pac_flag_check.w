@@ -22,7 +22,7 @@ or notes either -- it hex-dumped the whole file (od -An -v -tx1) and
 grepped for byte substrings, plus one raw fixed-offset read for the
 Mach-O binaries. That is all pac_flag_test actually needs, so that is
 all this tool does: whole-file byte-pattern search, reusing
-libs/asm/binary_reader.w's file-read helper (the same module the
+libs/asm/binary_reader.w's file-read and byte-pattern helpers (the same module the
 disassembler tests use to pull a binary off disk) rather than adding a
 new file reader. libs/asm/binary_reader.w's ELF section-header walk
 (asm_binary_open) is not used here -- these assertions never needed
@@ -46,58 +46,30 @@ void pac_usage():
 	stream_flush(err)
 
 
-# Whole-file, byte-aligned (not word-aligned) search -- matches what
-# `od -An -v -tx1 | tr -d ' \n' | grep` found in the original script:
-# a plain substring match over the file's raw bytes.
-int pac_find_bytes4(char* data, int length, int b0, int b1, int b2, int b3):
-	int limit = length - 4
-	int i = 0
-	while (i <= limit):
-		if ((data[i] & 255) == b0 && (data[i + 1] & 255) == b1 && (data[i + 2] & 255) == b2 && (data[i + 3] & 255) == b3):
-			return 1
-		i = i + 1
-	return 0
-
-
-int pac_bytes_match4_at(char* data, int length, int offset, int b0, int b1, int b2, int b3):
-	if (length < offset + 4):
-		return 0
-	return (data[offset] & 255) == b0 && (data[offset + 1] & 255) == b1 && (data[offset + 2] & 255) == b2 && (data[offset + 3] & 255) == b3
-
-
 int pac_has_pacia_x30_x28(char* data, int length):
-	return pac_find_bytes4(data, length, 0x9e, 0x03, 0xc1, 0xda)
+	return asm_find_bytes4(data, length, 0x9e, 0x03, 0xc1, 0xda)
 
 
 int pac_has_autia_x30_x28(char* data, int length):
-	return pac_find_bytes4(data, length, 0x9e, 0x13, 0xc1, 0xda)
+	return asm_find_bytes4(data, length, 0x9e, 0x13, 0xc1, 0xda)
 
 
 int pac_has_paciza_x0(char* data, int length):
-	return pac_find_bytes4(data, length, 0xe0, 0x23, 0xc1, 0xda)
+	return asm_find_bytes4(data, length, 0xe0, 0x23, 0xc1, 0xda)
 
 
 int pac_has_blraaz_x0(char* data, int length):
-	return pac_find_bytes4(data, length, 0x1f, 0x08, 0x3f, 0xd6)
-
-
-int pac_is_elf(char* data, int length):
-	return pac_bytes_match4_at(data, length, 0, 127, 'E', 'L', 'F')
-
-
-# Mach-O 64-bit magic (MH_MAGIC_64), little-endian file bytes for 0xfeedfacf.
-int pac_is_macho64(char* data, int length):
-	return pac_bytes_match4_at(data, length, 0, 0xcf, 0xfa, 0xed, 0xfe)
+	return asm_find_bytes4(data, length, 0x1f, 0x08, 0x3f, 0xd6)
 
 
 # CPU_SUBTYPE_ARM64E (0x81000002), little-endian file bytes at offset 8.
 int pac_is_arm64e_subtype(char* data, int length):
-	return pac_bytes_match4_at(data, length, 8, 2, 0, 0, 0x81)
+	return asm_bytes_match4_at(data, length, 8, 2, 0, 0, 0x81)
 
 
 # Plain (non-arm64e) ARM64_ALL subtype: zero at offset 8.
 int pac_is_plain_arm64_subtype(char* data, int length):
-	return pac_bytes_match4_at(data, length, 8, 0, 0, 0, 0)
+	return asm_bytes_match4_at(data, length, 8, 0, 0, 0, 0)
 
 
 void pac_assert(int ok, char* path, char* what):
@@ -144,7 +116,7 @@ int main(int argc, int argv):
 	# default: pac=ret -- return addresses signed, no code-pointer signing
 	length = 0
 	data = pac_load(ret_path, &length)
-	pac_assert(pac_is_elf(data, length), ret_path, c"not an ELF file")
+	pac_assert(asm_is_elf(data, length), ret_path, c"not an ELF file")
 	pac_assert(pac_has_pacia_x30_x28(data, length), ret_path, c"missing pacia x30,x28 (9e03c1da)")
 	pac_assert(pac_has_autia_x30_x28(data, length), ret_path, c"missing autia x30,x28 (9e13c1da)")
 	pac_assert(pac_has_paciza_x0(data, length) == 0, ret_path, c"unexpected paciza x0 (e023c1da) at pac=ret")
@@ -153,14 +125,14 @@ int main(int argc, int argv):
 	# --pac=off: no pointer authentication at all
 	length = 0
 	data = pac_load(off_path, &length)
-	pac_assert(pac_is_elf(data, length), off_path, c"not an ELF file")
+	pac_assert(asm_is_elf(data, length), off_path, c"not an ELF file")
 	pac_assert(pac_has_pacia_x30_x28(data, length) == 0, off_path, c"unexpected pacia x30,x28 (9e03c1da) at pac=off")
 	pac_assert(pac_has_autia_x30_x28(data, length) == 0, off_path, c"unexpected autia x30,x28 (9e13c1da) at pac=off")
 
 	# --pac=full: ret signing plus paciza/blraaz code-pointer signing
 	length = 0
 	data = pac_load(full_path, &length)
-	pac_assert(pac_is_elf(data, length), full_path, c"not an ELF file")
+	pac_assert(asm_is_elf(data, length), full_path, c"not an ELF file")
 	pac_assert(pac_has_pacia_x30_x28(data, length), full_path, c"missing pacia x30,x28 (9e03c1da) at pac=full")
 	pac_assert(pac_has_paciza_x0(data, length), full_path, c"missing paciza x0 (e023c1da) at pac=full")
 	pac_assert(pac_has_blraaz_x0(data, length), full_path, c"missing blraaz x0 (1f083fd6) at pac=full")
@@ -168,12 +140,12 @@ int main(int argc, int argv):
 	# arm64_darwin --pac=full marks the slice arm64e; plain stays ARM64_ALL
 	length = 0
 	data = pac_load(arm64e_path, &length)
-	pac_assert(pac_is_macho64(data, length), arm64e_path, c"not a Mach-O 64 file")
+	pac_assert(asm_is_macho64(data, length), arm64e_path, c"not a Mach-O 64 file")
 	pac_assert(pac_is_arm64e_subtype(data, length), arm64e_path, c"cpusubtype is not CPU_SUBTYPE_ARM64E (0x81000002)")
 
 	length = 0
 	data = pac_load(darwin_path, &length)
-	pac_assert(pac_is_macho64(data, length), darwin_path, c"not a Mach-O 64 file")
+	pac_assert(asm_is_macho64(data, length), darwin_path, c"not a Mach-O 64 file")
 	pac_assert(pac_is_plain_arm64_subtype(data, length), darwin_path, c"cpusubtype is not the plain ARM64_ALL (0)")
 
 	if (pac_failures > 0):

@@ -25,30 +25,6 @@ void stat_usage():
 	stream_flush(err)
 
 
-void stat_print_octal(wstream* out, int mode):
-	char* digits = malloc(5)
-	digits[4] = 0
-	int i = 3
-	int v = mode & 4095
-	while (i >= 0):
-		digits[i] = (v & 7) + '0'
-		v = v / 8
-		i = i - 1
-	stream_write_cstr(out, digits)
-	free(digits)
-
-
-void stat_print_type(wstream* out, file_stat* st):
-	if (file_is_reg(st)):
-		stream_write_cstr(out, c"regular file")
-	else if (file_is_dir(st)):
-		stream_write_cstr(out, c"directory")
-	else if (file_is_lnk(st)):
-		stream_write_cstr(out, c"symbolic link")
-	else:
-		stream_write_cstr(out, c"other")
-
-
 int stat_print_one(char* path, int nofollow):
 	file_stat st
 	int err = 0
@@ -71,10 +47,12 @@ int stat_print_one(char* path, int nofollow):
 	stream_write_cstr(out, c"  Size: ")
 	stream_write_cstr(out, itoa(st.size))
 	stream_write_cstr(out, c"\tType: ")
-	stat_print_type(out, &st)
+	stream_write_cstr(out, file_type_name(&st))
 	stream_write_line(out, c"")
 	stream_write_cstr(out, c"  Mode: ")
-	stat_print_octal(out, file_mode_perm(&st))
+	char* mode = file_mode_octal(file_mode_perm(&st))
+	stream_write_cstr(out, mode)
+	free(mode)
 	stream_write_cstr(out, c"\tUid: ")
 	stream_write_cstr(out, itoa(st.uid))
 	char* user = passwd_uid_name(st.uid)

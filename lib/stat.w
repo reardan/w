@@ -175,6 +175,50 @@ int file_mode_perm(file_stat* st):
 	return st.mode & FILE_MODE_PERM_MASK()
 
 
+# The permission bits of mode (low 12 bits: setuid/setgid/sticky and
+# rwx) as four octal digits, e.g. "0644". Returns a malloc'd string.
+char* file_mode_octal(int mode):
+	char* digits = malloc(5)
+	digits[4] = 0
+	int i = 3
+	int v = mode & 4095
+	while (i >= 0):
+		digits[i] = (v & 7) + '0'
+		v = v / 8
+		i = i - 1
+	return digits
+
+
+# Parse an octal mode string like "644" or "0644". Returns the value,
+# or -1 for an empty string or any non-octal digit.
+int file_mode_parse_octal(char* s):
+	if (s == 0):
+		return -1
+	if (s[0] == 0):
+		return -1
+	int result = 0
+	int i = 0
+	while (s[i]):
+		int d = s[i] - '0'
+		if ((d < 0) || (d > 7)):
+			return -1
+		result = result * 8 + d
+		i = i + 1
+	return result
+
+
+# A short name for the file type: "regular file", "directory",
+# "symbolic link" or "other".
+char* file_type_name(file_stat* st):
+	if (file_is_reg(st)):
+		return c"regular file"
+	if (file_is_dir(st)):
+		return c"directory"
+	if (file_is_lnk(st)):
+		return c"symbolic link"
+	return c"other"
+
+
 int file_chmod(char* path, int mode):
 	return chmod(path, mode)
 

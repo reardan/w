@@ -95,6 +95,36 @@ char* asm_binary_read_file(char* path, int* length_out):
 	return data
 
 
+# 1 when the four bytes b0..b3 occur anywhere in data[0..length), at
+# any byte alignment (a raw substring search, e.g. for an instruction
+# encoding in a whole file image).
+int asm_find_bytes4(char* data, int length, int b0, int b1, int b2, int b3):
+	int limit = length - 4
+	int i = 0
+	while (i <= limit):
+		if ((data[i] & 255) == b0 && (data[i + 1] & 255) == b1 && (data[i + 2] & 255) == b2 && (data[i + 3] & 255) == b3):
+			return 1
+		i = i + 1
+	return 0
+
+
+# 1 when data[offset..offset+4) holds exactly b0..b3.
+int asm_bytes_match4_at(char* data, int length, int offset, int b0, int b1, int b2, int b3):
+	if (length < offset + 4):
+		return 0
+	return (data[offset] & 255) == b0 && (data[offset + 1] & 255) == b1 && (data[offset + 2] & 255) == b2 && (data[offset + 3] & 255) == b3
+
+
+# ELF magic (0x7f 'E' 'L' 'F') at the start of data.
+int asm_is_elf(char* data, int length):
+	return asm_bytes_match4_at(data, length, 0, 127, 'E', 'L', 'F')
+
+
+# Mach-O 64-bit magic (MH_MAGIC_64), little-endian file bytes for 0xfeedfacf.
+int asm_is_macho64(char* data, int length):
+	return asm_bytes_match4_at(data, length, 0, 0xcf, 0xfa, 0xed, 0xfe)
+
+
 /*
 Open and parse a compiled ELF binary. Returns 0 when the file cannot be
 read or is not ELF; exits with a diagnostic on a structurally broken

@@ -26,6 +26,7 @@ upload lives in graphics.ui.render.
 */
 import lib.lib
 import lib.ttf
+import lib.rle
 import graphics.ui.font_data
 
 
@@ -785,8 +786,8 @@ ui_glyph ui_font_mask(int mask):
 	return ui_font_decode(ui_font_mask_record(mask))
 
 
-# The baked mask rows, expanded once from the RLE chunk stream (tag 0:
-# zero run, tag 1: 255 run, tag 2: literal run).
+# The baked mask rows, expanded once from the RLE chunk stream
+# (lib/rle.w).
 char* ui_font_baked_pixels():
 	if (ui_font_st.baked != 0):
 		return ui_font_st.baked
@@ -806,33 +807,7 @@ char* ui_font_baked_pixels():
 			j = j + 1
 		i = i + 1
 	int total = ui_font_atlas_w() * ui_font_atlas_h()
-	char* pixels = malloc(total)
-	int pos = 0
-	int out = 0
-	while ((pos + 1 < rle_length) && (out < total)):
-		int tag = stream[pos] & 255
-		int count2 = stream[pos + 1] & 255
-		pos = pos + 2
-		if (out + count2 > total):
-			count2 = total - out
-		int k = 0
-		if (tag == 0):
-			while (k < count2):
-				pixels[out + k] = 0
-				k = k + 1
-		else if (tag == 1):
-			while (k < count2):
-				pixels[out + k] = 255
-				k = k + 1
-		else:
-			while (k < count2):
-				pixels[out + k] = stream[pos + k]
-				k = k + 1
-			pos = pos + count2
-		out = out + count2
-	while (out < total):
-		pixels[out] = 0
-		out = out + 1
+	char* pixels = rle_decode(stream, rle_length, malloc(total), total)
 	free(stream)
 	ui_font_st.baked = pixels
 	return pixels

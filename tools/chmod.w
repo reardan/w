@@ -18,23 +18,6 @@ void chmod_usage():
 	stream_flush(err)
 
 
-# Parse an octal integer. Returns the value, or -1 on invalid input.
-int chmod_parse_octal(char* s):
-	if (s == 0):
-		return -1
-	if (s[0] == 0):
-		return -1
-	int result = 0
-	int i = 0
-	while (s[i]):
-		int d = s[i] - '0'
-		if ((d < 0) | (d > 7)):
-			return -1
-		result = result * 8 + d
-		i = i + 1
-	return result
-
-
 int main(int argc, int argv):
 	if (argc >= 2):
 		char** help_slot = argv + __word_size__
@@ -46,7 +29,7 @@ int main(int argc, int argv):
 		chmod_usage()
 		return 1
 	char** mode_slot = argv + __word_size__
-	int mode = chmod_parse_octal(*mode_slot)
+	int mode = file_mode_parse_octal(*mode_slot)
 	if (mode < 0):
 		wstream* err = stderr_writer()
 		stream_write_line(err, c"chmod: invalid octal mode")
