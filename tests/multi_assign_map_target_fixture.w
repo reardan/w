@@ -8,3 +8,4 @@ int main():
 	int x
 	m[1], x = 1, 2
 	return 0
+# wbuild: fixture_group=multi_assign_error_test

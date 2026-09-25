@@ -25,3 +25,4 @@ void function_pointer_mismatch_warning():
 
 int main():
 	return 0
+# wbuild: fixture_group=type_system_warning_test

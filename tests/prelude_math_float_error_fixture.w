@@ -4,3 +4,4 @@
 # expect_stderr: prelude 'max' argument must be an int-like value: 'float32 value'
 x := max(1.5, 2.0)
 println(x)
+# wbuild: fixture_group=prelude_math_error_test

@@ -5,3 +5,4 @@ int main(int argc, int argv):
 	goto end
 	end:
 	return 0
+# wbuild: fixture_group=goto_error_test

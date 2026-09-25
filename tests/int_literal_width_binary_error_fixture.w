@@ -8,3 +8,4 @@
 # expect_stderr: int_literal_width_binary_error_fixture.w:10
 int main():
 	return 0b100000000000000000000000000000000
+# wbuild: fixture_group=int_literal_width_test

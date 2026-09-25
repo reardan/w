@@ -13,3 +13,4 @@ void function_to_sub_word_cast_error():
 
 int main():
 	return 0
+# wbuild: fixture_group=type_system_error_test

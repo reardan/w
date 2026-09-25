@@ -10,3 +10,4 @@ struct pbe_plain:
 int main():
 	pbe_plain* p = from_proto(pbe_plain, c"", 0)
 	return 0
+# wbuild: fixture_group=protobuf_message_error_test

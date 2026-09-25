@@ -13,3 +13,4 @@ import lib.lib
 int main():
 	int x = 4294967296
 	return x
+# wbuild: fixture_group=int_literal_width_test

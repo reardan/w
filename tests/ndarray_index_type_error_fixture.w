@@ -8,3 +8,4 @@ int main():
 	int* p = &buf[0]
 	int v = p[1, 2]
 	return v
+# wbuild: fixture_group=ndarray_index_error_test

@@ -17,3 +17,4 @@ int main(int argc, int argv):
 	takes_char_ptr("plain arg")
 	p = "plain assign"
 	return 0
+# wbuild: fixture_group=warning_test

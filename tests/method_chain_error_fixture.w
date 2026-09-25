@@ -18,3 +18,4 @@ int main():
 	chain_err_point p
 	p.x = 1
 	return p.sum().sum()
+# wbuild: fixture_group=type_system_error_test

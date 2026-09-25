@@ -203,14 +203,14 @@ per-source generation rules above:
   invocation order (verified by diffing old vs. new build.json for
   every migrated target when this landed).
 
-`fixture_group=` almost always needs the sidecar form
-(`<fixture>.w.wbuild`, see wbg_parse_directives) rather than an inline
-header line: a compile-diagnostic fixture's own `# expect_stderr:`
-routinely embeds this file's exact line numbers (e.g. "got 3 bits at
-<file>.w:10"), so inserting a header line shifts every line reference
-below it and breaks the fixture it decorates — caught by actually
-running the migrated fixture targets, not by inspection, which is why
-every fixture-group member in this migration uses the sidecar.
+A fixture's `fixture_group=` line goes at the END of the fixture
+(directive lines are read from anywhere in a source), not in its
+header: a compile-diagnostic fixture's own `# expect_stderr:`
+routinely embeds its exact line numbers (e.g. "got 3 bits at
+<file>.w:10"), so an inserted header line would shift every reference
+below it. A fixture whose diagnostics change even with a trailing
+line (one reporting the end of the file) keeps the sidecar form
+(`<fixture>.w.wbuild`, see wbg_parse_directives).
 
 Tool targets (2026-07, the last bucket C/K residue in
 docs/projects/build_system_next.md): a family of targets is "invoke an
@@ -1496,11 +1496,11 @@ int wbg_has_inline_directive(char* text):
 # state. Returns 0 on success, -1 after reporting errors.
 #
 # Sidecar fallback (mirrors wfixture's own "<fixture>.expect" fallback,
-# tools/wfixture.w): a source whose byte content cannot safely carry an
-# extra header line -- a compile-diagnostic fixture whose own
-# expect_stderr text embeds this file's exact line numbers, so any
-# inserted line would shift every reference below it, or a fixture that
-# deliberately ends without a trailing newline -- may put its
+# tools/wfixture.w): a source that cannot carry an extra line at all
+# -- a compile-diagnostic fixture whose diagnostics mention the end of
+# the file, or one that deliberately ends without a trailing newline
+# (any other fixture puts its directive on its last line, below every
+# line its expect_stderr text numbers) -- may put its
 # '# wbuild:' directive lines in a "<path>.wbuild" file next to it
 # instead. When the sidecar exists it is read instead of the source,
 # never both: a source carrying inline '# wbuild:' lines alongside a

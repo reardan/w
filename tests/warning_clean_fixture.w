@@ -113,3 +113,4 @@ int main():
 	if (multiline_call_args_are_clean(x, 4) == 0):
 		x = 0
 	return x
+# wbuild: fixture_group=warning_test

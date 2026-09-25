@@ -16,3 +16,4 @@ int operator==(optok_pt a, optok_pt b):
 
 int main():
 	return 0
+# wbuild: fixture_group=operator_overload_error_test

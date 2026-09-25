@@ -14,3 +14,4 @@ int main():
 	ms_pair q
 	p, q = q, p
 	return 0
+# wbuild: fixture_group=multi_assign_error_test

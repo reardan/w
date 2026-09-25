@@ -12,3 +12,4 @@ int use_missing(sub.no_such_type v):
 
 int main():
 	return 0
+# wbuild: fixture_group=import_alias_type_error_test

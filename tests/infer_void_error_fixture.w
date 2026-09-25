@@ -8,3 +8,4 @@ void ive_nothing():
 int main():
 	v := ive_nothing()
 	return 0
+# wbuild: fixture_group=infer_safety_test

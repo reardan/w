@@ -8,3 +8,4 @@ int isp_double(int a):
 
 int main():
 	return isp_double(2)
+# wbuild: fixture_group=infer_safety_test

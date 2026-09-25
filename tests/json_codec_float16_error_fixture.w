@@ -18,3 +18,4 @@ int main():
 	jc_err_half s
 	json_value* v = to_json(s)
 	return 0
+# wbuild: fixture_group=json_codec_error_test
