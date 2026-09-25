@@ -401,6 +401,64 @@ performance-oriented API.
   path needs no `gpu_sync()`. A program with no kernels (memory API only)
   gets an empty embedded module and the runtime skips `cuModuleLoadData`.
 
+## Execution notes (cubin embedding)
+
+Opt-in pre-compiled GPU code, so a program can skip the driver's PTX JIT at
+startup (follow-up to issue #28). The default compile is unchanged: no
+external tool runs, no cubin is embedded, and the PTX is JIT-loaded as
+before.
+
+- **Two-step, user-driven.** The compiler never spawns processes (W's
+  identity is "no external toolchain", and the compiler has no process
+  facility on every host it runs on), so the cubin is built by the user
+  from the `--ptx` dump and handed back with `--cubin-file=<path>`:
+
+  ```sh
+  bin/wv2 x64 prog.w -o prog --ptx=prog.ptx
+  ptxas -arch=sm_89 prog.ptx -o prog.cubin
+  bin/wv2 x64 prog.w -o prog --cubin-file=prog.cubin
+  ```
+
+  `tools/cuda/build_cubin.sh <sm_XX|native> prog.w prog` scripts exactly
+  this (`native` asks `nvidia-smi` for GPU 0's compute capability).
+- **Embedding.** `ptx_finish_cubin` (`code_generator/ptx.w`, run right after
+  `ptx_finish_module`) synthesizes `char* __w_cubin_module()` for every
+  program that imports `lib.cuda` (whose prototype declares it): an 8-byte
+  little-endian image length followed by the cubin bytes, inline in the code
+  stream like the PTX text — or just a zero length without `--cubin-file`
+  (also when the program has no kernels). The PTX module stays embedded as
+  the fallback.
+- **Compile-time checks.** The file must be an ELF with `e_machine ==
+  EM_CUDA` (190) — PTX text, host objects and fatbins are rejected — and
+  every `.entry` name in this program's PTX must appear in the cubin's
+  string table: a cubin built from an older dump would otherwise load and
+  then fail at `cuModuleGetFunction`, where no fallback applies (a stale
+  cubin whose kernels merely changed bodies or signatures is not caught;
+  rebuild it whenever the kernels change). Errors are command-line
+  diagnostics (`--cubin-file='<path>': ...`, `<command-line>` in `--json`).
+- **Runtime.** `__w_gpu_load_module` (`lib/cuda.w`, called from
+  `__w_gpu_init`) copies the image to a heap buffer (the inline bytes sit at
+  an arbitrary code address) and tries `cuModuleLoadData` on it; on any
+  error — typically `CUDA_ERROR_NO_BINARY_FOR_GPU` (209) for a cubin built
+  for a different SM major — it loads the PTX instead, whose errors stay
+  fatal. `gpu_module_source()` reports what loaded: 0 nothing yet, 1 PTX,
+  2 cubin. SASS is only compatible within one major architecture, so a
+  distributed binary should keep relying on the PTX for other GPUs.
+- **Tests.** `cuda_cubin_embed_test` (default umbrella, GPU-less) compiles
+  `tests/cuda_cubin_gpu.w` with a fake EM_CUDA ELF from
+  `tools/cuda/fake_cubin.sh`, checks the blob lands in the binary and not in
+  the default build, and freezes the stale/not-CUDA/not-ELF/missing-file
+  errors. `cuda_cubin_test` (opt-in: GPU + `ptxas`) runs the program built
+  with a native cubin (`source=cubin`), a wrong-arch cubin (falls back,
+  `source=ptx`) and no cubin.
+- **Measured** (RTX 4080 SUPER, sm_89, `tests/tensor_gpu.w` — the 17
+  `lib/tensor.w` kernels, 52 KB PTX / 61 KB cubin; whole-process wall time,
+  min of 7): PTX with the driver's JIT cache warm 220 ms, cubin 218 ms;
+  with `CUDA_CACHE_DISABLE=1` PTX 302 ms, cubin 220 ms. So the cubin saves
+  the cold-JIT cost (~80 ms here, growing with kernel count) on a fresh
+  machine or after a driver update; with a warm `~/.nv/ComputeCache` the two
+  are indistinguishable.
+
 ## Open questions
 
 - CI on machines without an NVIDIA GPU: `./wbuild cuda_smoke` needs a driver and a

@@ -67,6 +67,11 @@ int ptx_pending_fcmp
 # --ptx=<path>: dump the finished module text here (compiler/compiler.w).
 char* ptx_dump_path
 
+# --cubin-file=<path>: a pre-compiled cubin (ptxas output for the --ptx
+# dump) embedded next to the PTX behind __w_cubin_module
+# (compiler/compiler.w; see ptx_finish_cubin).
+char* ptx_cubin_path
+
 
 ############################ text buffer plumbing #############################
 
@@ -1889,3 +1894,120 @@ void ptx_finish_module():
 	be_emit_inline_cstr(text_len, ptx_module_buf)
 	be_return_bare()
 	be_function_epilogue()
+
+
+# --cubin-file diagnostics: a command-line error, reported like an
+# unrecognized option (no source position applies).
+# detail/tail may be 0.
+void ptx_cubin_fail(char* why, char* detail, char* tail):
+	diag_part(c"--cubin-file='")
+	diag_part(ptx_cubin_path)
+	diag_part(c"': ")
+	diag_part(why)
+	if (detail != 0):
+		diag_part(detail)
+	if (tail != 0):
+		diag_part(tail)
+	if (diag_json):
+		diag_emit(c"error", c"<command-line>", 0, 0, ptx_cubin_path)
+	else:
+		print_error(c"error: ")
+		print_error(str_from_cstr(diag_buffer))
+		print_error(c"\x0a")
+	exit(1)
+
+
+# 1 when the NUL-terminated name occurs in blob[0, n) followed by a NUL
+# (i.e. as a whole string-table entry of the cubin ELF).
+int ptx_cubin_has_name(char* blob, int n, char* name):
+	int len = strlen(name)
+	int i = 0
+	while (i + len < n):
+		if ((i == 0) || (blob[i - 1] == 0)):
+			int j = 0
+			while ((j < len) && (blob[i + j] == name[j])):
+				j = j + 1
+			if ((j == len) && (blob[i + len] == 0)):
+				return 1
+		i = i + 1
+	return 0
+
+
+# Staleness guard: every '.entry NAME(' in the embedded PTX module must
+# name a symbol in the cubin — a cubin built from an older --ptx dump
+# would otherwise load fine and fail at the first cuModuleGetFunction,
+# where no PTX fallback applies.
+void ptx_cubin_check_entries(char* blob, int n):
+	char* m = ptx_module_buf
+	char* name = malloc(256)
+	int i = 0
+	while (m[i] != 0):
+		if (starts_with(m + i, c".entry ")):
+			int k = i + 7
+			int len = 0
+			while ((m[k] != 0) && (m[k] != '(') && (len < 255)):
+				name[len] = m[k]
+				len = len + 1
+				k = k + 1
+			name[len] = 0
+			if (ptx_cubin_has_name(blob, n, name) == 0):
+				ptx_cubin_fail(c"stale cubin: it has no kernel '", name, c"' (rebuild it with ptxas from a fresh --ptx dump)")
+			i = k
+		else:
+			i = i + 1
+	free(name)
+
+
+# Synthesize `char* __w_cubin_module()` for programs that import
+# lib.cuda (its prototype declares the accessor): an 8-byte
+# little-endian image length followed by the image bytes, or a zero
+# length when no --cubin-file was given (the runtime then JIT-loads
+# the PTX as before). The cubin is opt-in and never produced here:
+# the compiler spawns no external tools; users run ptxas on the --ptx
+# dump themselves (tools/cuda/build_cubin.sh scripts the two steps).
+void ptx_finish_cubin():
+	if (sym_lookup(c"__w_cubin_module") < 0):
+		return;
+	char* blob = 0
+	int n = 0
+	if ((ptx_cubin_path != 0) && ptx_used):
+		int fd = open(ptx_cubin_path, 0, 0)
+		if (fd < 0):
+			ptx_cubin_fail(c"cannot open file", 0, 0)
+		n = file_size(fd)
+		if (n < 0):
+			n = 0
+		blob = malloc(n + 9)
+		int got = 0
+		while (got < n):
+			int r = read(fd, blob + 8 + got, n - got)
+			if (r <= 0):
+				n = got
+			else:
+				got = got + r
+		close(fd)
+		# ELF magic, then e_machine (offset 18, little-endian) == 190
+		# (EM_CUDA): reject PTX text, host objects, fatbins.
+		char* img = blob + 8
+		if ((n < 64) || (img[0] != 127) || (img[1] != 'E') || (img[2] != 'L') || (img[3] != 'F')):
+			ptx_cubin_fail(c"not an ELF cubin (expected ptxas output)", 0, 0)
+		if (((img[18] & 255) | ((img[19] & 255) << 8)) != 190):
+			ptx_cubin_fail(c"not a CUDA cubin (ELF e_machine is not EM_CUDA)", 0, 0)
+		ptx_cubin_check_entries(img, n)
+	else:
+		blob = malloc(9)
+	# Low 4 bytes carry the length (a 32-bit compiler host has no wider
+	# int; images are far below 2 GB), high 4 bytes are zero.
+	int i = 0
+	while (i < 8):
+		blob[i] = 0
+		if (i < 4):
+			blob[i] = (n >> (i * 8)) & 255
+		i = i + 1
+	blob[n + 8] = 0
+	be_function_define_declare(c"__w_cubin_module")
+	be_function_prologue()
+	be_emit_inline_cstr(n + 8, blob)
+	be_return_bare()
+	be_function_epilogue()
+	free(blob)

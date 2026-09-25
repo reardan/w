@@ -88,6 +88,48 @@ char* __w_gpu_cell():
 	return cell
 
 
+# Opt-in pre-compiled image (docs/projects/cuda.md "Execution notes
+# (cubin embedding)"): synthesized by the compiler as an 8-byte image
+# length followed by a ptxas cubin given with --cubin-file, length 0
+# without one.
+char* __w_cubin_module();
+
+# Which image __w_gpu_load_module loaded: 0 none yet, 1 PTX (driver
+# JIT), 2 embedded cubin. Read it with gpu_module_source().
+int __w_gpu_module_source
+
+# Load the embedded module and return its CUmodule handle: the cubin
+# first when present (no JIT), falling back to the PTX when the driver
+# rejects it — any error, typically CUDA_ERROR_NO_BINARY_FOR_GPU (209)
+# for a cubin built for another sm_XX. The image is copied to a heap
+# buffer first: the embedded bytes sit at an arbitrary code address.
+int __w_gpu_load_module(char* module_text):
+	char* cell = __w_gpu_cell()
+	char* blob = __w_cubin_module()
+	int n = load_i(blob, 8)
+	int err = 1
+	if (n > 0):
+		char* image = malloc(n)
+		int i = 0
+		while (i < n):
+			image[i] = blob[8 + i]
+			i = i + 1
+		err = cuModuleLoadData(cell, image)
+		free(image)
+		if (err == 0):
+			__w_gpu_module_source = 2
+	if (err != 0):
+		__w_gpu_check(cuModuleLoadData(cell, module_text), c"cuModuleLoadData")
+		__w_gpu_module_source = 1
+	int module = load_i(cell, 8)
+	free(cell)
+	return module
+
+
+int gpu_module_source():
+	return __w_gpu_module_source
+
+
 # One-time driver init + context + JIT-load of the embedded module.
 # A program with no kernels (explicit-memory use only) has an empty
 # module: skip the load — nothing could be launched anyway.
@@ -101,10 +143,7 @@ void __w_gpu_init():
 	__w_gpu_check(cuCtxCreate_v2(ctx, 0, load_i(dev, 8)), c"cuCtxCreate")
 	char* module_text = __w_ptx_module()
 	if (module_text[0] != 0):
-		char* module = __w_gpu_cell()
-		__w_gpu_check(cuModuleLoadData(module, module_text), c"cuModuleLoadData")
-		__w_gpu_module = load_i(module, 8)
-		free(module)
+		__w_gpu_module = __w_gpu_load_module(module_text)
 	free(dev)
 	free(ctx)
 	__w_gpu_inited = 1
