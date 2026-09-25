@@ -107,6 +107,10 @@ list[char*] wbt_client(char* args):
 	argv.push(c"bin/wbuildd")
 	argv.push(c"--socket")
 	argv.push(wbt_path(c"d.sock"))
+	# The daemon's lifecycle is this test's to drive (start/stop, and
+	# the fallback once it is gone); tests/wbuildd_build_test.w covers
+	# auto-start.
+	argv.push(c"--no-autostart")
 	for char* w in wbt_words(args):
 		argv.push(w)
 	return argv

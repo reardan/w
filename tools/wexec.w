@@ -3036,6 +3036,14 @@ void wexec_make_dirs():
 		i = i + 1
 
 
+# tools/wbuildd.w's warm state: the default manifest (no -f), already
+# generated and parsed by an earlier build the daemon served and kept
+# until inotify reports a change that could alter it. Zero in a plain
+# bin/wexec run.
+json_value* wexec_warm_manifest
+char* wexec_warm_manifest_label
+
+
 # path = 0 is the default manifest: generated in memory from
 # build.base.json and the source tree (tools/manifest_source.w). The
 # generator walks directories with Linux-layout getdents, or with
@@ -3045,8 +3053,13 @@ void wexec_make_dirs():
 # there.
 int wexec_load_manifest(char* path):
 	int scan_tree = wexec_dirents_supported() || os_windows()
-	char* text = manifest_source_text(path, scan_tree)
-	if ((text == 0) && (path == 0) && scan_tree && (strcmp(manifest_source_label, c"build.base.json") == 0)):
+	int warm = (path == 0) && (wexec_warm_manifest != 0)
+	char* text = 0
+	if (warm):
+		manifest_source_label = wexec_warm_manifest_label
+	else:
+		text = manifest_source_text(path, scan_tree)
+	if ((text == 0) && (warm == 0) && (path == 0) && scan_tree && (strcmp(manifest_source_label, c"build.base.json") == 0)):
 		# A source-tree directive this binary's generator predates (the
 		# tree grew new '# wbuild:' vocabulary since bin/wexec was
 		# built) must not stop wbuild from rebuilding wexec itself, so
@@ -3056,14 +3069,17 @@ int wexec_load_manifest(char* path):
 		wexec_error(c"manifest generation failed; loading build.base.json's targets only")
 		text = manifest_source_text(path, 0)
 	path = manifest_source_label
-	if (text == 0):
-		if (strcmp(path, c"build.base.json") == 0):
-			wexec_error(c"cannot generate the manifest from build.base.json")
-		else:
-			wexec_error2(c"cannot read manifest ", path)
-		return 1
-	wexec_manifest = json_parse(text)
-	free(text)
+	if (warm):
+		wexec_manifest = wexec_warm_manifest
+	else:
+		if (text == 0):
+			if (strcmp(path, c"build.base.json") == 0):
+				wexec_error(c"cannot generate the manifest from build.base.json")
+			else:
+				wexec_error2(c"cannot read manifest ", path)
+			return 1
+		wexec_manifest = json_parse(text)
+		free(text)
 	if (wexec_manifest == 0):
 		wexec_error2(c"manifest is not valid JSON: ", path)
 		return 1
@@ -3635,7 +3651,9 @@ void wexec_on_termination(int sig):
 	exit(128 + sig)
 
 
-int main(int argc, int argv):
+# The whole executor behind bin/wexec (tools/wexec_main.w is its entry
+# point; tools/wbuildd.w's build RPC runs it in a forked child).
+int wexec_main(int argc, int argv):
 	wexec_jobs = 0
 	char* manifest_path = 0
 	list[char*] requested = new list[char*]

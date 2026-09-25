@@ -601,3 +601,14 @@ runner running `wbuild.cmd verify_win tests_win64` (GitHub's
 windows-latest has no Wine dependency and exercises the strict loader).
 The pinned seed still needs a release after this fix before a cold
 bootstrap works on such hosts.
+
+## `lib/json_rpc.w` writers take ownership of params (2026-09-25, #483)
+
+- **Fixed: `bin/wbuildd`'s query client freed its request params twice.**
+  `jsonrpc_write_request` and `jsonrpc_write_notification` free the
+  message they build, params included, but `wbd_query` also called
+  `json_free(params)` afterwards. The free-list allocator tolerated it;
+  the build RPC's larger allocations then crashed the daemon in
+  unrelated `json_parse` calls, and only `W_DEBUG_ALLOC=1` pointed at
+  the real site. Worth a sentence in `lib/json_rpc.w`'s header, or
+  writers that take `const`-style borrowed params.

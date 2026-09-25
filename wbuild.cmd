@@ -62,9 +62,9 @@ if not exist bin\wexec.exe (
         )
     )
     echo Bootstrapping build executor...
-    bin\wv2.exe win64 tools\wexec.w -o bin\wexec.exe
+    bin\wv2.exe win64 tools\wexec_main.w -o bin\wexec.exe
     if errorlevel 1 (
-        echo Error: failed to compile tools\wexec.w
+        echo Error: failed to compile tools\wexec_main.w
         exit /b 1
     )
 )
