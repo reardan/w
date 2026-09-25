@@ -78,15 +78,11 @@ int dbg_watch_add(char* text, int addr):
 
 void dbg_watch_describe(int i):
 	print(c"watchpoint ")
-	char* digits = itoa(i + 1)
-	print(digits)
-	free(digits)
+	dbg_print_dec(i + 1)
 	print(c": ")
 	print(str_from_cstr(dbg_watch_text_at(i)))
 	print(c" at ")
-	char* ha = hex_word(dbg_watch_addr_at(i))
-	print(ha)
-	free(ha)
+	dbg_print_hex(dbg_watch_addr_at(i))
 	print(c", value ")
 	dbg_print_int_value(dbg_watch_old_at(i))
 
@@ -111,9 +107,7 @@ int dbg_watch_check():
 void dbg_watch_report(int i):
 	int now = dbg_mem_read_word(dbg_watch_addr_at(i))
 	print(c"watchpoint ")
-	char* digits = itoa(i + 1)
-	print(digits)
-	free(digits)
+	dbg_print_dec(i + 1)
 	print(c": ")
 	print(str_from_cstr(dbg_watch_text_at(i)))
 	print(c" changed: ")

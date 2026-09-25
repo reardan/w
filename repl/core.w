@@ -42,6 +42,7 @@ import compiler.compiler
 import lib.stack_trace
 import lib.utf8
 import debugger.sigcontext
+import debugger.common
 import structures.json
 import structures.json_codec
 
@@ -674,12 +675,7 @@ int repl_compile_entry(char* path):
 	# strings: the modules' functions land after the entry's ret, so
 	# they are never in the execution path. Generic instantiations
 	# requested by this entry compile here too.
-	generic_finish_instantiations()
-	json_codec_finish_import()
-	template_string_finish_import()
-	prelude_finish_import()
-	var_finish_import()
-	generic_finish_instantiations()
+	finish_on_demand_imports()
 	close(file)
 	repl_recovery = 0
 	repl_call_site_hook = 0
@@ -854,30 +850,7 @@ void repl_fault(int sig, int context):
 		repl_fault_restore_default(sig)
 		return;
 	repl_fault_active = 0
-	print(c"runtime fault: ")
-	if (sig == 11):
-		print(c"SIGSEGV")
-	else if (sig == 4):
-		print(c"SIGILL")
-	else if (sig == 7):
-		print(c"SIGBUS")
-	else if (sig == 8):
-		print(c"SIGFPE")
-	else:
-		print(c"signal ")
-		char* digits = itoa(sig)
-		print(digits)
-		free(digits)
-	print(c" at eip=")
-	char* h = hex_word(ctx_eip(context))
-	print(h)
-	free(h)
-	if (sig == 11):
-		print(c" fault address=")
-		char* fa = hex_word(ctx_reg(context, sigcontext_cr2()))
-		print(fa)
-		free(fa)
-	put_char(10)
+	dbg_fault_banner(c"runtime fault: ", sig, context)
 	repl_fault_trace(context)
 	println(c"entry rolled back")
 	repl_longjmp(repl_fault_jump_buffer, 1)
@@ -1045,9 +1018,13 @@ void repl_stage_init():
 # compilation, the executable buffer the compiled entries run from, the
 # recovery jump buffers and fault handlers, the runtime stubs and
 # preloaded library modules, and the per-session staging directory.
-void repl_init():
+# The in-process compile-and-run model shared with wdbg (wdbg_main):
+# native word size, basic types, the executable buffer compiled code
+# runs from, the shared eval engine (repl_engine_init: recoverable
+# compile errors, staging directory) and the runtime support modules.
+void repl_inprocess_setup():
 	verbosity = -1
-	# The in-process model runs compiled entries directly, so the target
+	# The in-process model runs compiled code directly, so the target
 	# architecture is the one this binary was compiled for.
 	word_size = __word_size__
 	word_size_log2 = 2
@@ -1058,10 +1035,10 @@ void repl_init():
 	last_identifier = malloc(8000)
 	last_global_declaration = malloc(8000)
 
-	# Executable buffer the compiled entries run from. code_offset makes
-	# every embedded address point into this mapping, so no relocation is
-	# needed. The codegen embeds addresses as 32-bit immediates, so on
-	# x64 the buffer must sit in the low 2GB: MAP_32BIT (0x40).
+	# code_offset makes every embedded address point into this mapping,
+	# so no relocation is needed. The codegen embeds addresses as 32-bit
+	# immediates, so on x64 the buffer must sit in the low 2GB:
+	# MAP_32BIT (0x40).
 	int buffer_size = 8388608
 	int mmap_flags = 34 /* PRIVATE|ANONYMOUS */
 	if (word_size == 8):
@@ -1074,30 +1051,31 @@ void repl_init():
 	be_cmp_note_reset()
 	be_imm_note_reset()
 	code_offset = buffer
-
-	# Recoverable compile errors and staging directory (repl_engine_init),
-	# plus recoverable runtime faults: a fault inside an executing entry
-	# long-jumps back into repl_eval. repl_fault_active gates the
-	# handlers, so faults anywhere else still kill the process as before.
 	repl_engine_init()
-	repl_fault_install_handlers()
 
-	# Runtime support: syscall stubs first, then the library itself.
-	# import_module (not compile_save) registers the modules, so a loaded
-	# file importing lib.lib is not compiled a second time.
+	# Runtime support: syscall stubs first, then the container runtime,
+	# exactly like link_impl: built-in list/map/set lower to
+	# __w_list_*/__w_hash_* helper calls, so the first 'new list[T]' dies
+	# in sym_get_value (with a misleading message naming the lookahead
+	# token) unless the helpers are preloaded here too. This runs once at
+	# startup, before any entry's repl_setjmp checkpoint exists, so
+	# per-entry rollback in repl_compile_entry never touches it.
 	if (word_size == 8):
 		define_asm_functions_x64()
 	else:
 		define_asm_functions()
-	# The container runtime next, exactly like link_impl and wdbg_main:
-	# built-in list/map/set lower to __w_list_*/__w_hash_* helper calls,
-	# so the first 'new list[T]' at the prompt dies in sym_get_value
-	# (with a misleading message naming the lookahead token) unless the
-	# helpers are preloaded here too. This runs once at startup, before
-	# any entry's repl_setjmp checkpoint exists, so per-entry rollback
-	# in repl_compile_entry never touches it.
 	import_module(c"structures.hash_table")
 	import_module(c"structures.w_list")
+
+
+void repl_init():
+	repl_inprocess_setup()
+	# Recoverable runtime faults: a fault inside an executing entry
+	# long-jumps back into repl_eval. repl_fault_active gates the
+	# handlers, so faults anywhere else still kill the process as before.
+	repl_fault_install_handlers()
+	# import_module (not compile_save) registers the library modules, so
+	# a loaded file importing lib.lib is not compiled a second time.
 	import_module(c"lib.lib")
 	import_module(c"lib.assert")
 
@@ -1162,12 +1140,7 @@ int repl_load_file(char* path, int run_main, int argc, int argv):
 	# is needed.
 	repl_call_site_hook = cast(int, repl_register_call_site)
 	compile_input_file(path)
-	generic_finish_instantiations()
-	json_codec_finish_import()
-	template_string_finish_import()
-	prelude_finish_import()
-	var_finish_import()
-	generic_finish_instantiations()
+	finish_on_demand_imports()
 	repl_call_site_hook = 0
 	if (run_main == 0):
 		return 0

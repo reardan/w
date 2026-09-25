@@ -210,9 +210,7 @@ void bp_describe(int i):
 		print(c"logpoint ")
 	else:
 		print(c"breakpoint ")
-	char* digits = itoa(i + 1)
-	print(digits)
-	free(digits)
+	dbg_print_dec(i + 1)
 	if (bp_is_temp(i)):
 		print(c" (temporary)")
 	print(c" at ")
@@ -228,14 +226,10 @@ void bp_describe(int i):
 		print(bp_log_expr(i))
 	if (bp_hits(i) > 0):
 		print(c", hits: ")
-		char* hd = itoa(bp_hits(i))
-		print(hd)
-		free(hd)
+		dbg_print_dec(bp_hits(i))
 	if (bp_ignore(i) > 0):
 		print(c", ignore: ")
-		char* id = itoa(bp_ignore(i))
-		print(id)
-		free(id)
+		dbg_print_dec(bp_ignore(i))
 
 
 void bp_list():

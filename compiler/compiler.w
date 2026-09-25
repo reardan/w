@@ -789,6 +789,21 @@ void unrecognized_option_error(char* arg):
 	exit(1)
 
 
+# The on-demand runtimes a compiled program used -- to_json/from_json,
+# f"..." template strings, the prelude and var -- imported after all
+# user files so the modules' code lands at a top-level boundary, with
+# the queued generic instantiations drained first (instantiated bodies
+# can rely on the runtimes) and again after (covering instantiations
+# the runtime modules might request).
+void finish_on_demand_imports():
+	generic_finish_instantiations()
+	json_codec_finish_import()
+	template_string_finish_import()
+	prelude_finish_import()
+	var_finish_import()
+	generic_finish_instantiations()
+
+
 int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (argc <= start_index):
 		println2(c"usage: w [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [-o output] [--bounds=on|off|trap] [--pac=off|ret|full] [--strict] [--quiet] [-v|--verbose] [--version]")
@@ -1053,27 +1068,21 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# (grammar/generic.w, generic_check_instantiate_all).
 	generic_check_instantiate_all()
 
-	# Queued generic instantiations compile at this top-level boundary,
-	# before the runtime imports so instantiated bodies can rely on the
-	# to_json/template-string finishers below; a second drain afterwards
-	# covers instantiations those runtime modules might request.
+	# User generic instantiations drain first, outside the --bool-ops
+	# suppression below (finish_on_demand_imports' own first drain then
+	# finds the queue empty).
 	generic_finish_instantiations()
 
-	# On-demand runtimes for the to_json/from_json builtins and f"..."
-	# template strings: imported after all user files so the modules'
-	# code lands at a top-level boundary. Like the auto-import closure
-	# above, these are compiler-injected modules, so --bool-ops's extra
-	# call-containing reporting stays quiet while they compile — their
-	# remaining '&'/'|' sites are deliberate (structures/prelude.w and
-	# friends), and would otherwise warn on every --bool-ops check of any
-	# file regardless of what that file itself contains.
+	# The on-demand runtimes (finish_on_demand_imports). Like the
+	# auto-import closure above, these are compiler-injected modules, so
+	# --bool-ops's extra call-containing reporting stays quiet while they
+	# compile — their remaining '&'/'|' sites are deliberate
+	# (structures/prelude.w and friends), and would otherwise warn on
+	# every --bool-ops check of any file regardless of what that file
+	# itself contains.
 	int bool_ops_finish_saved = check_bool_ops_mode
 	check_bool_ops_mode = 0
-	json_codec_finish_import()
-	template_string_finish_import()
-	prelude_finish_import()
-	generic_finish_instantiations()
-	var_finish_import()
+	finish_on_demand_imports()
 	check_bool_ops_mode = bool_ops_finish_saved
 
 	# Synthesize __w_test_main for lib/testing.w consumers now that every

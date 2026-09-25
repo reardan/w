@@ -487,9 +487,7 @@ void aev_print_result(at_val v):
 			return;
 		if (dbg_mem_readable(v.addr, __word_size__) == 0):
 			print(c"<unreadable at ")
-			char* h = hex_word(v.addr)
-			print(h)
-			free(h)
+			dbg_print_hex(v.addr)
 			print(c">")
 			return;
 		dbg_print_int_value(dbg_mem_read_word(v.addr))
