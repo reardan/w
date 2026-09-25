@@ -498,7 +498,7 @@
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/parallel.json", "parallel_fails"], "expect_fail": true, "expect_stderr": "command failed with exit status"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/good.json"], "expect_fail": true, "expect_stderr": "usage: wexec", "expect_stdout": "main"},
 				{"cmd": ["bin/wexec", "hello"], "expect_stdout": "hello, world!"},
-				{"cmd": ["rm", "-f", "bin/.wexec_cache/tests_wexec_direct_file.json__tests_wexec_direct_file_plain.w", "bin/plain", "bin/direct_file_known_target", "bin/sample_test", "bin/sample_test_x64"]},
+				{"cmd": ["rm", "-f", "bin/.wexec_cache/tests_wexec_direct_file.json__tests_wexec_direct_file_plain.w", "bin/.wexec_cache/tests_wexec_direct_file.json__wv2", "bin/plain", "bin/direct_file_known_target", "bin/sample_test", "bin/sample_test_x64"]},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/plain.w"], "expect_stdout": "wexec: target tests/wexec/direct_file/plain.w", "reject_stdout": "(cached)"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/plain.w"], "expect_stdout": "tests/wexec/direct_file/plain.w (cached)"},
 				{"cmd": ["bin/wexec", "-f", "tests/wexec/direct_file.json", "tests/wexec/direct_file/known.w"], "expect_stdout": "wexec: target direct_file_known_target"},

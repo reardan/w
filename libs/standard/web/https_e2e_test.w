@@ -1,5 +1,4 @@
-# wbuild: step="bin/wv2 x64 libs/standard/web/https_e2e_test.w -o bin/https_e2e_test_x64"
-# wbuild: step="bin/https_e2e_test_x64"
+# wbuild: x64
 # wbuild: step="bin/wv2 examples/web/https_get.w -o bin/https_get_example"
 # wbuild: step="bin/wv2 examples/web/https_server.w -o bin/https_server_example"
 # End-to-end tests for https:// through libs/standard/web/http_client.w

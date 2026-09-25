@@ -572,10 +572,15 @@ vocabulary:
                            shape (a test plus the diagnostic fixtures
                            it drives) that used to need a hand-written
                            build.base.json target. A target with step=
-                           lines declares no cache "inputs": its extra
+                           lines declares no cache "inputs" (its extra
                            steps can read anything, so like the
                            hand-written targets it replaces it reruns
-                           on every request
+                           on every request) unless every step= is a
+                           'bin/wv2 ... -o out' compile or a run of a
+                           binary the target built; then it caches
+                           like any generated target, with the step
+                           compiles' roots added to its inputs
+                           (wbg_steps_cacheable)
   tool=<path>              resolve <path> (another tool's own .w
                            source, e.g. "tools/wvc.w") to the name of
                            the build.base.json target that compiles
@@ -1770,6 +1775,59 @@ void wbg_decorate_run_step(json_value* run_step):
 		json_object_set(run_step, c"timeout_ms", json_int(wbg_dir_timeout_ms))
 
 
+# 1 when every step= directive is either a 'bin/wv2 ... <root>.w ... -o
+# <out>' compile or a run of a binary this target itself produced (its
+# own compile output or an earlier step's -o), pushing each step's
+# compile roots onto roots. Such a target reads nothing a plain
+# generated target doesn't -- its extra compiles are keyed like its own
+# (their roots join the cache "inputs", so a fixture that fails to
+# compile, which disables wexec's closure keys, is still hashed
+# directly), and its extra runs are binaries it built -- so it caches
+# like one instead of rerunning on every request. Anything else (sh,
+# env, git, cat, stdout_file=, a compile without -o) keeps the target a
+# FORCE target.
+int wbg_steps_cacheable(char* binary, list[char*] roots):
+	list[char*] produced = new list[char*]
+	produced.push(binary)
+	for wbg_step_dir* sd in wbg_dir_steps:
+		if (json_object_get(sd.step, c"stdout_file") != 0):
+			return 0
+		if (json_object_get(sd.step, c"stderr_file") != 0):
+			return 0
+		json_value* cmd = json_object_get(sd.step, c"cmd")
+		if (cmd == 0):
+			return 0
+		int n = json_array_length(cmd)
+		if (n < 1):
+			return 0
+		char* program = json_array_get(cmd, 0).string_value
+		if (strcmp(program, c"bin/wv2") == 0):
+			char* out = 0
+			int i = 1
+			while (i < n):
+				char* piece = json_array_get(cmd, i).string_value
+				if (strcmp(piece, c"-o") == 0):
+					if (i + 1 >= n):
+						return 0
+					out = json_array_get(cmd, i + 1).string_value
+					i = i + 2
+					continue
+				if (ends_with(piece, c".w")):
+					roots.push(piece)
+				i = i + 1
+			if (out == 0):
+				return 0
+			produced.push(out)
+		else:
+			int known = 0
+			for char* made in produced:
+				if (strcmp(made, program) == 0):
+					known = 1
+			if (known == 0):
+				return 0
+	return 1
+
+
 json_value* wbg_make_target(char* name, char* src, int arch):
 	char* ext = c""
 	if (arch == wbg_arch_win64()):
@@ -1796,13 +1854,21 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 	# nothing about the closure is baked into the manifest. "outputs"
 	# makes a cache hit conditional on the binary still existing;
 	# compile_fail targets produce none, so they declare only inputs.
-	# step= targets declare neither: their extra steps can read any
-	# file, so they stay make-style FORCE targets like the hand-written
-	# ones they replace (see the step= vocabulary entry).
-	int force = (arch == wbg_arch_default()) && (wbg_dir_steps.length > 0)
+	# step= targets declare neither unless wbg_steps_cacheable proves
+	# their extra steps only compile W roots and run what they built:
+	# otherwise those steps can read any file, so they stay make-style
+	# FORCE targets like the hand-written ones they replace (see the
+	# step= vocabulary entry).
+	list[char*] step_roots = new list[char*]
+	int force = 0
+	if ((arch == wbg_arch_default()) && (wbg_dir_steps.length > 0)):
+		force = wbg_steps_cacheable(binary, step_roots) == 0
 	if (force == 0):
 		json_value* inputs = json_array()
 		json_array_push(inputs, json_string(src))
+		for char* root in step_roots:
+			if (strcmp(root, src) != 0):
+				json_array_push(inputs, json_string(root))
 		for char* input_entry in wbg_dir_data:
 			json_array_push(inputs, json_string(input_entry))
 		json_object_set(target, c"inputs", inputs)
