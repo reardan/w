@@ -227,6 +227,19 @@ Implemented and covered by tests:
   lower to 1–4 instructions per backend (x86/x64 `MUL`/`ADC`, arm64
   `UMULL`); a user symbol with the same name that is defined before the
   call site takes precedence.
+- Script ergonomics, wave 5 (`docs/projects/golf_ergonomics.md`):
+  `it`-expressions for list methods, compiled as inline loops so the
+  enclosing function's locals stay visible (`l.map(it * k)`,
+  `l.filter(it % 2 == 0)`, `count`/`any`/`all`/`index`/`sum`/`min`/`max`
+  of an expression, key-based `sort_by`/`sorted_by`/`min_by`/`max_by`
+  such as `people.sort_by(it.age)`), `l.reversed()`, import-free
+  `lines()`, `words()`, `split(s)` (whitespace; `split(s, ch)` too) and
+  `join(l, sep)`, named-field construction (`new T(y: 2, x: 1)`,
+  `T(x: 1)`; omitted fields are zero), and uniform call syntax
+  (`x.f(args)` calls `f(x, args)` where no field, method or built-in
+  pseudo-method claims `.f`) — so
+  `println(ints().filter(it % 2 == 0).map(it * it).sum())` is a whole
+  program.
 - Statements: `if`/`else`, `while`, `for int i in range(start, end, step)`
   (1–3 args), `for x in <container>` over built-in lists/maps/sets and any
   struct-pointer type providing the four cursor functions
