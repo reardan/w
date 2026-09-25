@@ -357,7 +357,7 @@ int script_statement_starts_here():
 			peek(c"pass") | peek(c"debugger") | peek(c"defer")):
 		return 1
 	int c0 = token[0]
-	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	int is_ident = is_ident_start_byte(c0)
 	if (is_ident == 0):
 		return 1
 	# 'name name' or 'name * name' is the shape of a declaration whose
@@ -368,7 +368,7 @@ int script_statement_starts_here():
 	get_token()
 	while (accept(c"*")) {}
 	int c1 = token[0]
-	int next_is_ident = (('a' <= c1) & (c1 <= 'z')) | (('A' <= c1) & (c1 <= 'Z')) | (c1 == '_')
+	int next_is_ident = is_ident_start_byte(c1)
 	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
 	if (next_is_ident):
@@ -406,7 +406,7 @@ int script_function_definition_ahead():
 	get_token()
 	while (accept(c"*")) {}
 	int c1 = token[0]
-	int next_is_ident = (('a' <= c1) & (c1 <= 'z')) | (('A' <= c1) & (c1 <= 'Z')) | (c1 == '_')
+	int next_is_ident = is_ident_start_byte(c1)
 	int is_definition = 0
 	if (next_is_ident):
 		if (nextc == '('):

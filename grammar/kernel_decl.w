@@ -312,7 +312,7 @@ int launch_statement():
 	char* save = generic_reparse_save()
 	get_token()
 	int c0 = token[0]
-	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	int is_ident = is_ident_start_byte(c0)
 	if (is_ident == 0):
 		getchar_seek(file, load_ptr(save + 7 * __word_size__))
 		generic_reparse_restore(save)

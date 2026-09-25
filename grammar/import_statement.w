@@ -346,7 +346,7 @@ int import_alias_module_type(int alias_index, char* name):
 # ('alias.name') keep flowing through identifier().
 int import_alias_type_ahead(int require_call):
 	int c = token[0]
-	int is_name = (('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) | (c == '_')
+	int is_name = is_ident_start_byte(c)
 	if (is_name == 0):
 		return -1
 	if (nextc != '.'):
@@ -378,7 +378,7 @@ int import_alias_type_member(int alias_index):
 	get_token() /* consume the alias name; the next token is the '.' */
 	expect(c".")
 	int c = token[0]
-	int is_name = (('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) | (c == '_')
+	int is_name = is_ident_start_byte(c)
 	if (is_name == 0):
 		diag_part(c"identifier expected after import alias '")
 		diag_part(import_alias_name(alias_index))
@@ -417,7 +417,7 @@ int import_alias_member(int alias_index):
 	get_token() /* consume the alias name; the next token is the '.' */
 	expect(c".")
 	int c = token[0]
-	int is_name = (('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) | (c == '_')
+	int is_name = is_ident_start_byte(c)
 	if (is_name == 0):
 		diag_part(c"identifier expected after import alias '")
 		diag_part(import_alias_name(alias_index))
@@ -534,11 +534,11 @@ int import_module(char* dotted):
 # starting with a digit.
 void import_validate_alias(char* alias):
 	int c = alias[0]
-	int valid = (('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) | (c == '_')
+	int valid = is_ident_start_byte(c)
 	int i = 1
 	while (valid & (alias[i] != 0)):
 		c = alias[i]
-		valid = (('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) | (('0' <= c) & (c <= '9')) | (c == '_')
+		valid = is_ident_part_byte(c)
 		i = i + 1
 	if (valid == 0):
 		diag_part(c"invalid import alias: '")

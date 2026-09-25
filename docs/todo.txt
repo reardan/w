@@ -61,7 +61,11 @@ current state:
 			a leading BOM is silently stripped
 			check --json escapes invalid byte sequences so diagnostics
 				stay valid UTF-8/JSON; columns count codepoints, not bytes
-			UTF-8 identifiers (stage 2) remain a policy decision, not scheduled
+		UTF-8 identifiers (issue #287 stage 2, docs/projects/utf8_source.md §7):
+			any well-formed non-ASCII codepoint outside a security floor
+				(controls, Unicode whitespace, invisible and bidi characters,
+				generic combining marks, plain punctuation) is a name character
+			names compare byte for byte; no normalization, no confusables check
 		imports and packages:
 			import a.b as f binds a file-scoped alias; f.name access is
 				checked against the module's declarations (import_test)

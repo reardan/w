@@ -413,7 +413,7 @@ int generic_parse_param_names(int params_out):
 	int more = 1
 	while (more):
 		int c0 = token[0]
-		int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+		int is_ident = is_ident_start_byte(c0)
 		if (is_ident == 0):
 			diag_part(c"type parameter name expected, found '")
 			diag_part(token)
@@ -580,7 +580,7 @@ int generic_declaration_scan_generic_return():
 			get_token()
 	while (accept(c"*")) {}
 	int c1 = token[0]
-	int name_is_ident = (('a' <= c1) & (c1 <= 'z')) | (('A' <= c1) & (c1 <= 'Z')) | (c1 == '_')
+	int name_is_ident = is_ident_start_byte(c1)
 	if (name_is_ident & (nextc == '[')):
 		# generic function definition: register and skip
 		char* fname = strclone(token)
@@ -609,7 +609,7 @@ int generic_declaration_scan_generic_return():
 int generic_declaration_scan():
 	generic_scanned_type = -1
 	int c0 = token[0]
-	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	int is_ident = is_ident_start_byte(c0)
 	if (is_ident == 0):
 		return 0
 	# const/container types (and generic struct types, handled by
@@ -633,7 +633,7 @@ int generic_declaration_scan():
 	while (accept(c"*")):
 		stars = stars + 1
 	int c1 = token[0]
-	int name_is_ident = (('a' <= c1) & (c1 <= 'z')) | (('A' <= c1) & (c1 <= 'Z')) | (c1 == '_')
+	int name_is_ident = is_ident_start_byte(c1)
 	if (name_is_ident & (nextc == '[')):
 		# generic function definition: register and skip
 		char* fname = strclone(token)
@@ -1131,7 +1131,7 @@ int generic_call_ready():
 	if (generic_def_count() == 0):
 		return 0
 	int c0 = token[0]
-	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	int is_ident = is_ident_start_byte(c0)
 	if (is_ident == 0):
 		return 0
 	return generic_def_lookup(token, 0) >= 0
@@ -1239,7 +1239,7 @@ int generic_forward_count():
 # claim the name.
 int generic_forward_call_ready():
 	int c0 = token[0]
-	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	int is_ident = is_ident_start_byte(c0)
 	if (is_ident == 0):
 		return 0
 	if (nextc != '['):
@@ -1366,7 +1366,7 @@ void generic_resolve_forward(int f):
 # and registers it. Returns 1 when a definition was captured.
 int generic_declaration_scan_repl():
 	int c0 = token[0]
-	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
+	int is_ident = is_ident_start_byte(c0)
 	if (is_ident == 0):
 		return 0
 	if (peek(c"const") | peek(c"map") | peek(c"set") | peek(c"list")):
@@ -1377,7 +1377,7 @@ int generic_declaration_scan_repl():
 	get_token()
 	while (accept(c"*")) {}
 	int c1 = token[0]
-	int name_is_ident = (('a' <= c1) & (c1 <= 'z')) | (('A' <= c1) & (c1 <= 'Z')) | (c1 == '_')
+	int name_is_ident = is_ident_start_byte(c1)
 	int is_generic = name_is_ident & (nextc == '[')
 	# rewind: byte_offset (save offset 28) counts consumed bytes, so it
 	# is exactly the fd position the saved lookahead expects

@@ -72,7 +72,7 @@ void zero_stack_count_bytes():
 # alias like 'type cb = fn(int) -> int' never claims a call.
 int struct_value_ctor_ready():
 	int c = token[0]
-	if (((('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) || (c == '_')) == 0):
+	if (is_ident_start_byte(c) == 0):
 		return 0
 	int base = -1
 	if (nextc == '.'):

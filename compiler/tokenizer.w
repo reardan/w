@@ -308,6 +308,154 @@ void takechar():
 	nextc = get_character()
 
 
+# Identifier character classes (#287 stage 2). ASCII letters, digits and
+# '_' as before, plus raw UTF-8: a lead byte (0xC2-0xF4) can start or
+# continue an identifier and take_utf8_ident_char() consumes the whole
+# sequence, so a continuation byte (0x80-0xBF) never reaches the loop
+# on its own. Byte values are masked because char is sign-extended.
+# grammar/*.w's "is this token an identifier" gates share these so a
+# UTF-8 name is recognised everywhere the tokenizer accepts it.
+int is_utf8_lead_byte(int c):
+	c = c & 255
+	return (c >= 194) & (c <= 244)
+
+
+int is_ident_start_byte(int c):
+	c = c & 255
+	return (('a' <= c) & (c <= 'z')) | (('A' <= c) & (c <= 'Z')) | (c == '_') | is_utf8_lead_byte(c)
+
+
+int is_ident_part_byte(int c):
+	c = c & 255
+	return is_ident_start_byte(c) | (('0' <= c) & (c <= '9'))
+
+
+# The identifier security floor: codepoints that are well-formed UTF-8
+# but must not appear in a name because they are invisible, control the
+# display order of the surrounding text (Trojan Source, CVE-2021-42574),
+# look like whitespace, or are plain punctuation. Everything else above
+# U+007F is accepted; there are no Unicode category tables in the seed-
+# compiled tokenizer (docs/projects/utf8_source.md). Returns a message
+# fragment naming the reason, or 0 when the codepoint is allowed.
+char* ident_codepoint_rejection(int cp):
+	# C1 controls, NBSP, soft hyphen, Latin-1 punctuation and symbols
+	# (keeping the letters U+00AA, U+00B5, U+00BA)
+	if ((cp >= 128) && (cp <= 159)):
+		return c"a control character"
+	if (cp == 160):
+		return c"a whitespace character"
+	if (cp == 173):
+		return c"an invisible character"
+	if ((cp >= 161) && (cp <= 191) && (cp != 170) && (cp != 181) && (cp != 186)):
+		return c"a punctuation character"
+	if ((cp == 215) || (cp == 247)):
+		return c"a punctuation character"
+	# Generic combining diacritics: a decomposed spelling (e + U+0301)
+	# would otherwise be a silently different symbol from the
+	# precomposed one, so it is rejected instead of normalised
+	if (((cp >= 768) && (cp <= 879)) || ((cp >= 6832) && (cp <= 6911)) ||
+			((cp >= 7616) && (cp <= 7679)) || ((cp >= 8400) && (cp <= 8447)) ||
+			((cp >= 65056) && (cp <= 65071))):
+		return c"a combining mark (use the precomposed spelling)"
+	# Arabic letter mark, Mongolian vowel separator, Ogham space
+	if ((cp == 1564) || (cp == 6158) || (cp == 5760)):
+		return c"an invisible character"
+	# General Punctuation block U+2000-U+206F: spaces, dashes, quotes,
+	# zero-width characters, bidi embeddings/overrides/isolates and the
+	# invisible operators all live here
+	if ((cp >= 8192) && (cp <= 8303)):
+		if ((cp <= 8202) || (cp == 8232) || (cp == 8233) || (cp == 8239) || (cp == 8287)):
+			return c"a whitespace character"
+		if (((cp >= 8203) && (cp <= 8207)) || ((cp >= 8234) && (cp <= 8238)) ||
+				((cp >= 8288) && (cp <= 8303))):
+			return c"an invisible or bidirectional control character"
+		return c"a punctuation character"
+	# Ideographic space and CJK punctuation
+	if ((cp >= 12288) && (cp <= 12291)):
+		if (cp == 12288):
+			return c"a whitespace character"
+		return c"a punctuation character"
+	if (((cp >= 12296) && (cp <= 12305)) || ((cp >= 12308) && (cp <= 12319))):
+		return c"a punctuation character"
+	# Variation selectors, BOM/ZWNBSP, interlinear annotations,
+	# noncharacters, tag characters
+	if (((cp >= 65024) && (cp <= 65039)) || (cp == 65279) ||
+			((cp >= 65529) && (cp <= 65531)) || (cp >= 917504) && (cp <= 917631)):
+		return c"an invisible character"
+	if ((cp == 65534) || (cp == 65535)):
+		return c"a noncharacter"
+	return 0
+
+
+# Uppercase hex spelling of a codepoint, at least four digits (U+00E9)
+char* ident_codepoint_hex(int cp):
+	char* out = malloc(8)
+	int n = 0
+	int v = cp
+	while ((v > 0) || (n < 4)):
+		int d = v & 15
+		if (d < 10):
+			out[n] = d + '0'
+		else:
+			out[n] = d - 10 + 'A'
+		v = v >> 4
+		n = n + 1
+	char* text = malloc(n + 1)
+	int i = 0
+	while (i < n):
+		text[i] = out[n - 1 - i]
+		i = i + 1
+	text[n] = 0
+	return text
+
+
+# Consume one raw UTF-8 sequence inside an identifier: nextc holds the
+# lead byte. Validates the encoding (the same rules as
+# grammar/string_literal.w's validate_utf8_literal) and the security
+# floor above, then appends every byte to the token.
+void take_utf8_ident_char():
+	int c = nextc & 255
+	int need = 1
+	int cp = c & 31
+	if (c >= 240):
+		need = 3
+		cp = c & 7
+	else if (c >= 224):
+		need = 2
+		cp = c & 15
+	takechar()
+	int j = 0
+	while (j < need):
+		int d = nextc & 255
+		if ((nextc == -1) || (d < 128) || (d > 191)):
+			error(c"invalid UTF-8 sequence in identifier")
+		cp = (cp << 6) | (d & 63)
+		takechar()
+		j = j + 1
+	if (((need == 2) && (cp < 2048)) || ((need == 3) && (cp < 65536))):
+		error(c"invalid UTF-8 sequence in identifier")
+	if (((cp >= 55296) && (cp <= 57343)) || (cp > 1114111)):
+		error(c"invalid UTF-8 sequence in identifier")
+	char* why = ident_codepoint_rejection(cp)
+	if (why != 0):
+		token[token_i] = 0
+		diag_part(c"identifier '")
+		diag_part(token)
+		diag_part(c"' contains ")
+		diag_part(why)
+		diag_part(c": U+")
+		error(ident_codepoint_hex(cp))
+
+
+# Scan an identifier (or keyword / integer-literal prefix) run
+void take_ident_run():
+	while (is_ident_part_byte(nextc) && (nextc != -1)):
+		if (is_utf8_lead_byte(nextc)):
+			take_utf8_ident_char()
+		else:
+			takechar()
+
+
 # Read UNTIL end of line or end of file
 # (but NOT the newline itself) 
 # Also append a 0 so the string is zero terminated
@@ -401,10 +549,7 @@ void get_token():
 		diag_token_line = line_number + 1
 		diag_token_column = column_number + 1
 		token_start_offset = byte_offset - 1
-		while ((('a' <= nextc) && (nextc <= 'z')) ||
-					 (('A' <= nextc) && (nextc <= 'Z')) ||
-					 (('0' <= nextc) && (nextc <= '9')) || (nextc == '_')):
-			takechar()
+		take_ident_run()
 
 		# Prefixed string literals: s"..." is a UTF-8 string descriptor,
 		# c"..." is the legacy char* literal spelling.

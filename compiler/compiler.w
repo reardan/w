@@ -1378,7 +1378,7 @@ char* defhash_token_kind(char* tok):
 		return c"h"
 	if (((c0 == 's') || (c0 == 'c') || (c0 == 'f')) && (tok[1] == '"')):
 		return c"s"
-	if ((('a' <= c0) && (c0 <= 'z')) || (('A' <= c0) && (c0 <= 'Z')) || (c0 == '_')):
+	if (is_ident_start_byte(c0)):
 		return c"i"
 	return c"o"
 
