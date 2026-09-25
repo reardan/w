@@ -472,10 +472,8 @@ void server_response_append_body(ServerResponse* resp, char* body, int body_len)
 	int old_len = resp.body_len
 	char* combined = malloc(old_len + body_len + 1)
 	mem_copy(combined, resp.body, old_len)
-	int j = 0
-	while (j < body_len):
+	for j in range(body_len):
 		combined[old_len + j] = body[j]
-		j = j + 1
 	combined[old_len + body_len] = 0
 	if (resp.body != 0):
 		free(resp.body)

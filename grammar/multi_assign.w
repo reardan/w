@@ -149,12 +149,10 @@ int multi_assign(int first_type):
 	# their recorded stack_pos: a call inside a later element may have
 	# parked its own words (a struct return buffer) between ours, and
 	# stack_pos-based offsets stay exact regardless.
-	int i = 0
-	while (i < lhs_count):
+	for i in range(lhs_count):
 		mov_eax_esp_plus((stack_pos - multi_assign_rhs_slots[i]) << word_size_log2)
 		mov_ebx_esp_plus((stack_pos - multi_assign_lhs_slots[i]) << word_size_log2)
 		assign_store(multi_assign_lhs_types[i])
-		i = i + 1
 
 	# Unlike '=' (whose result can point into a buried struct-return
 	# buffer), nothing of this statement's value points into the parked

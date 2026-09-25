@@ -16,21 +16,17 @@ void check(char* label, int ok):
 # Generators run on a private mmap'd (VirtualAlloc) stack switched by the
 # shared gen_switch stub.
 generator int count_up(int limit):
-	int i = 0
-	while (i < limit):
+	for i in range(limit):
 		yield i
-		i = i + 1
 
 
 int main(int argc, char** argv):
 	# Heap: many allocations so brk growth (committed VirtualAlloc pages)
 	# gets exercised past the first 64KB chunk.
-	int i = 0
-	while (i < 200):
+	for i in range(200):
 		char* chunk = malloc(1000)
 		chunk[999] = 42
 		free(chunk)
-		i = i + 1
 	check(c"heap", 1)
 
 	# Strings and formatting.

@@ -320,22 +320,18 @@ int swim_next_piggyback(swim* s, int max, int* out_ids):
 		int best_id = 0
 		int best_left = 0
 		int found = 0
-		int i = 0
-		while (i < s.member_ids.length):
+		for i in range(s.member_ids.length):
 			int id = s.member_ids[i]
 			swim_member* m = s.members[id]
 			if (m.pending == 1 && m.transmits_left > best_left):
 				int emitted = 0
-				int j = 0
-				while (j < count):
+				for j in range(count):
 					if (out_ids[j] == id):
 						emitted = 1
-					j = j + 1
 				if (emitted == 0):
 					best_id = id
 					best_left = m.transmits_left
 					found = 1
-			i = i + 1
 		if (found == 0):
 			return count
 		swim_member* chosen = s.members[best_id]
@@ -372,13 +368,11 @@ int swim_member_count(swim* s):
 
 int swim_alive_count(swim* s):
 	int count = 0
-	int i = 0
-	while (i < s.member_ids.length):
+	for i in range(s.member_ids.length):
 		int id = s.member_ids[i]
 		swim_member* m = s.members[id]
 		if (m.state == swim_alive()):
 			count = count + 1
-		i = i + 1
 	return count
 
 

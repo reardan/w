@@ -238,11 +238,9 @@ int function_signature_matches_symbol(int signature_type, char* function_name):
 	int expected_args = type_function_param_count(signature_type)
 	if (sym_num_args(symbol) != expected_args):
 		return 0
-	int i = 0
-	while (i < expected_args):
+	for i in range(expected_args):
 		if (type_unqualified(type_function_param_type(signature_type, i)) != type_unqualified(sym_param_type(symbol, i))):
 			return 0
-		i = i + 1
 	return 1
 
 

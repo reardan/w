@@ -45,15 +45,13 @@ int section_find(char* data, int elf_class, char* want, int* size_out):
 	int shstrndx = asm_read_u16(data, shstrndx_at)
 	int shstr_header = shoff + shstrndx * shentsize
 	int shstr_offset = asm_read_word(data, shstr_header + sh_offset_at, elf_class)
-	int index = 0
-	while (index < shnum):
+	for index in range(shnum):
 		int header = shoff + index * shentsize
 		int name_index = asm_read_u32(data, header)
 		char* name = data + shstr_offset + name_index
 		if (strcmp(name, want) == 0):
 			*size_out = asm_read_word(data, header + sh_size_at, elf_class)
 			return asm_read_word(data, header + sh_offset_at, elf_class)
-		index = index + 1
 	print(c"missing section: ")
 	println(want)
 	exit(1)

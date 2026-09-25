@@ -381,10 +381,8 @@ char* wbg_basename(char* path):
 char* wbg_strip_suffix(char* text, int n):
 	int keep = strlen(text) - n
 	string_builder* s = string_new()
-	int i = 0
-	while (i < keep):
+	for i in range(keep):
 		string_append_char(s, text[i])
-		i = i + 1
 	char* out = s.data
 	free(s)
 	return out
@@ -1395,10 +1393,8 @@ int wbg_apply_directive(char* path, char* key, int has_value, char* value):
 			wbg_token_error(path, c"unsupported '# wbuild:' group arch (x64, arm64, win64, arm64_darwin, wasm) ", value + at + 1)
 			return 1
 		string_builder* group_name = string_new()
-		int ni = 0
-		while (ni < at):
+		for ni in range(at):
 			string_append_char(group_name, value[ni])
-			ni = ni + 1
 		wbg_dir_group_names.push(group_name.data)
 		wbg_dir_group_archs.push(group_arch)
 		free(group_name)
@@ -2661,11 +2657,9 @@ int wbg_scan():
 					return 1
 				gen_wasm = 1
 		if ((n_names > 0) && (n_argv > 0) && (n_names == n_argv)):
-			int vi = 0
-			while (vi < n_names):
+			for vi in range(n_names):
 				if (wbg_add_variant(wbg_dir_names[vi], strclone(src), wbg_dir_argvs[vi])):
 					return 1
-				vi = vi + 1
 		# Group memberships: each group= token contributes this source's
 		# compile(+run) steps to its aggregate, with the member's own
 		# run-field directives decorating its run step (built here,

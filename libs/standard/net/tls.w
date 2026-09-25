@@ -1203,10 +1203,8 @@ char* tls_certverify_content(char* transcript_hash, int th_len, int* out_len):
 	int total = 64 + clen + 1 + th_len
 	char* out = malloc(total)
 	mem_fill(out, 0x20, 64)
-	int i = 0
-	while (i < clen):
+	for i in range(clen):
 		out[64 + i] = ctx[i]
-		i = i + 1
 	out[64 + clen] = 0
 	mem_copy(out + 64 + clen + 1, transcript_hash, th_len)
 	*out_len = total
@@ -2167,13 +2165,11 @@ char* tls_build_certificate(list[pem_block*] certs, int* out_len):
 	int listpos = b.length
 	string_append_be24(b, 0)                        # certificate_list length placeholder
 	int list_start = b.length
-	int i = 0
-	while (i < certs.length):
+	for i in range(certs.length):
 		pem_block* blk = certs[i]
 		string_append_be24(b, blk.len)              # cert_data length
 		string_append_bytes(b, blk.data, blk.len)
 		string_append_be16(b, 0)                    # per-certificate extensions length = 0
-		i = i + 1
 	store_be24(b.data + listpos, b.length - list_start)
 	store_be24(b.data + lenpos, b.length - body_start)
 	char* out = malloc(b.length)

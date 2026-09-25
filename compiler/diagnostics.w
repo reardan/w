@@ -114,8 +114,7 @@ int diag_edit_distance(char* a, int n, char* b, int m):
 	while (j <= m):
 		prev[j] = j
 		j = j + 1
-	int i = 1
-	while (i <= n):
+	for i in range(1, n + 1):
 		row[0] = i
 		j = 1
 		while (j <= m):
@@ -133,7 +132,6 @@ int diag_edit_distance(char* a, int n, char* b, int m):
 		prev2 = prev
 		prev = row
 		row = t
-		i = i + 1
 	return prev[m] & 255
 
 
@@ -226,11 +224,9 @@ void diag_flush():
 void diag_write_cstr(char* s):
 	int len = strlen(s)
 	diag_out_ensure(len)
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		diag_out_buffer[diag_out_buffer_pos] = s[i]
 		diag_out_buffer_pos = diag_out_buffer_pos + 1
-		i = i + 1
 
 
 # The codepoint of the multi-byte UTF-8 sequence starting at s[i], with

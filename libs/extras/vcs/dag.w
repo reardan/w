@@ -279,8 +279,7 @@ int dag_mb_seq_cmp(dag_node* a, dag_node* b):
 # result order) is reproducible run to run.
 int dag_mb_pick_next(list[dag_node*] frontier):
 	int best = 0
-	int i = 1
-	while (i < frontier.length):
+	for i in range(1, frontier.length):
 		dag_node* cand = frontier[i]
 		dag_node* cur = frontier[best]
 		if (cand.generation > cur.generation):
@@ -288,7 +287,6 @@ int dag_mb_pick_next(list[dag_node*] frontier):
 		else if (cand.generation == cur.generation):
 			if (cand.seq < cur.seq):
 				best = i
-		i = i + 1
 	return best
 
 

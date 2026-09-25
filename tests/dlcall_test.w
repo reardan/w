@@ -51,11 +51,9 @@ int main():
 	asserts(c"argv snprintf text", strcmp(buf, c"6,5,4,3,2,-1") == 0)
 
 	# Many stubs share a page; fill past one page to exercise the rollover.
-	int i = 0
-	while (i < 200):
+	for i in range(200):
 		strlen_fn* s = cast(strlen_fn*, dl_trampoline(dl_sym(libc, c"strlen"), 7, 0))
 		asserts(c"trampoline allocated", cast(int, s) != 0)
-		i = i + 1
 	asserts(c"earlier stub still valid after rollover", my_strlen(c"ok") == 2)
 	println(c"dlcall OK")
 	return 0

@@ -30,10 +30,8 @@ ui_rect strip_area():
 int tabs_frame(ui_context* ctx, ui_tab_state* st, int32* active, int count, ui_rect area):
 	ui_begin(ctx, 320, 240)
 	ui_tabs_begin(ctx, area, st, active)
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		ui_tab(ctx, st, tab_label(i), 1)
-		i = i + 1
 	int closed = ui_tabs_end(ctx, st)
 	ui_end(ctx)
 	return closed

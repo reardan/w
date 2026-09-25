@@ -86,8 +86,7 @@ void print_elf_header():
 		section_index = section_index + 1
 
 	# Process Symbol Table Entries
-	int symbol_index = 0
-	while (symbol_index < symbol_count):
+	for symbol_index in range(symbol_count):
 		int entry_size = 16 /* remove this assertion */
 		int symbol_addr = symbol_table_addr + entry_size * symbol_index
 		print_hex(c"symbol_addr: ", symbol_addr)
@@ -102,7 +101,6 @@ void print_elf_header():
 		int symbol_info = load_int(symbol_addr + 12)
 		print_hex(c"symbol_info: ", symbol_info)
 
-		symbol_index = symbol_index + 1
 
 
 int main():

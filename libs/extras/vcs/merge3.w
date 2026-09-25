@@ -206,11 +206,9 @@ int merge3_ranges_equal(list[char*] a_lines, int a_no_nl, int a_start, int a_end
 	int b_len = b_end - b_start
 	if (a_len != b_len):
 		return 0
-	int i = 0
-	while (i < a_len):
+	for i in range(a_len):
 		if (strcmp(a_lines[a_start + i], b_lines[b_start + i]) != 0):
 			return 0
-		i = i + 1
 	if (merge3_range_no_newline(a_lines, a_no_nl, a_start, a_end) != merge3_range_no_newline(b_lines, b_no_nl, b_start, b_end)):
 		return 0
 	return 1
@@ -253,10 +251,8 @@ void merge3_emit_line(merge3_result* out, char* text, int no_newline, int owned)
 
 
 void merge3_emit_range(merge3_result* out, list[char*] lines, int no_nl, int start, int end):
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		merge3_emit_line(out, lines[i], diff_missing_at(lines, no_nl, i), 0)
-		i = i + 1
 
 
 char* MERGE3_MARKER_OURS_PREFIX():

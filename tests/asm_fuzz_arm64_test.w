@@ -56,11 +56,9 @@ import tests.asm_fuzz_prng
 
 
 int asm_fuzz_bytes4_equal(char* a, char* b):
-	int i = 0
-	while (i < 4):
+	for i in range(4):
 		if ((a[i] & 255) != (b[i] & 255)):
 			return 1 == 2
-		i = i + 1
 	return 1
 
 
@@ -221,8 +219,7 @@ void test_arm64_opaque_raw_roundtrip():
 	int madd_count = 0
 	int msub_count = 0
 	int fp_count = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int which = fuzz_range(3)
 		int w = 0
 		char* want_mnemonic = c"fp"
@@ -281,7 +278,6 @@ void test_arm64_opaque_raw_roundtrip():
 			fp_count = fp_count + 1
 		asm_buffer_free(wb)
 		asm_buffer_free(eb)
-		i = i + 1
 	print2(c"arm64 opaque-form raw round trip: madd=")
 	print2(itoa(madd_count))
 	print2(c" msub=")

@@ -54,10 +54,8 @@ char* arm64_parse_ident(arm64_parse* p):
 		p.pos = p.pos + 1
 	int n = p.pos - start
 	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		out[i] = p.text[start + i]
-		i = i + 1
 	out[n] = 0
 	return out
 
@@ -193,10 +191,8 @@ int asm_arm64_parse(char* line, asm_insn* insn):
 		p.pos = p.pos + 1
 	int n = p.pos - start
 	char* mn = malloc(n + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		mn[i] = p.text[start + i]
-		i = i + 1
 	mn[n] = 0
 	insn.mnemonic = mn
 	if (mn[0] == 0):

@@ -803,13 +803,11 @@ pg_grammar* pg_grammar_read(char* input, char* filename, pg_diagnostics* diagnos
 		if (pg_grammar_token_kind(grammar, recover.sync_token) <= 0):
 			pg_reader_error(reader, c"recover sync must be a token or literal", recover.sync_token)
 			return 0
-		int s = 0
-		while (s < recover.skip_tokens.length):
+		for s in range(recover.skip_tokens.length):
 			char* skip_name = recover.skip_tokens[s]
 			if (pg_grammar_token_kind(grammar, skip_name) <= 0):
 				pg_reader_error(reader, c"recover skip must be a token or literal", skip_name)
 				return 0
-			s = s + 1
 		r = r + 1
 	if (pg_reader_validate_matchers(reader, grammar) == 0):
 		return 0

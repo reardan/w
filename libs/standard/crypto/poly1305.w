@@ -197,10 +197,8 @@ void poly1305_finish(poly1305* st, char* out):
 	if (st.buffered > 0):
 		# Short final block: append 0x01 then zeros; no 2^128 bit.
 		st.buffer[st.buffered] = 1
-		int k = st.buffered + 1
-		while (k < 16):
+		for k in range(st.buffered + 1, 16):
 			st.buffer[k] = 0
-			k = k + 1
 		poly1305_block(st, st.buffer, 0)
 		st.buffered = 0
 
@@ -265,14 +263,12 @@ void poly1305_finish(poly1305* st, char* out):
 
 # Zero and release a MAC state (the key material in r/pad is secret).
 void poly1305_free(poly1305* st):
-	int i = 0
-	while (i < 10):
+	for i in range(10):
 		st.r[i] = 0
 		st.r5[i] = 0
 		st.h[i] = 0
 		st.ml[i] = 0
 		st.t[i] = 0
-		i = i + 1
 	mem_fill(st.pad, 0, 8)
 	mem_fill(st.buffer, 0, 16)
 	free(st.r)

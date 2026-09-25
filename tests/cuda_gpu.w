@@ -58,10 +58,8 @@ int gpu_for_vector_add(int n):
 int atomic_reduce(int n):
 	int* cells = cast(int*, gpu_alloc(3 * 8))
 	int* data = cast(int*, gpu_alloc(n * 8))
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		data[i] = i + 1
-		i = i + 1
 	cells[0] = 0
 	cells[1] = 1 << 30
 	cells[2] = 0 - (1 << 30)
@@ -246,12 +244,10 @@ int shared_reduce_check(int n):
 	float* p = cast(float*, gpu_alloc(n * 4))
 	float32* acc = cast(float32*, gpu_alloc(4))
 	float want = 0.0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		float v = cast(float, i % 8) * 0.25
 		p[i] = v
 		want = want + v
-		i = i + 1
 	acc[0] = 0.0
 
 	int threads = 256

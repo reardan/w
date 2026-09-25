@@ -392,12 +392,10 @@ char* repl_type_name(int type):
 		return strclone(c"string")
 	char* base = strclone(type_get_name(type))
 	int pointers = type_get_pointer_level(type)
-	int i = 0
-	while (i < pointers):
+	for i in range(pointers):
 		char* starred = strjoin(base, c"*")
 		free(base)
 		base = starred
-		i = i + 1
 	return base
 
 
@@ -504,10 +502,8 @@ void repl_handle_export(char* arg):
 		println(c"usage: !export NAME=VALUE")
 		return;
 	char* name = malloc(i + 1)
-	int k = 0
-	while (k < i):
+	for k in range(i):
 		name[k] = arg[k]
-		k = k + 1
 	name[i] = 0
 	setenv(name, arg + i + 1)
 	free(name)

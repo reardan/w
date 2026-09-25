@@ -165,10 +165,8 @@ int gen_set_stack_size(generator* g, int size):
 	int* from = cast(int*, old_top - used)
 	int* to = cast(int*, new_top - used)
 	int words = used / __word_size__
-	int i = 0
-	while (i < words):
+	for i in range(words):
 		to[i] = from[i]
-		i = i + 1
 	g.resume_esp = new_top - used
 	munmap(old_base, __w_gen_mapping_size(old_size))
 	return 1

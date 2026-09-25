@@ -105,10 +105,8 @@ int __w_var_unbox_int(__w_var_box* b):
 
 
 void __w_var_copy_bytes(char* dst, char* src, int count):
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		dst[i] = src[i]
-		i = i + 1
 
 
 # NUL-terminated copy of length bytes at data.
@@ -215,11 +213,9 @@ int __w_var_eq(__w_var_box* a, __w_var_box* b):
 			return 0
 		char* a_data = cast(char*, a.payload)
 		char* b_data = cast(char*, b.payload)
-		int i = 0
-		while (i < a_length):
+		for i in range(a_length):
 			if (a_data[i] != b_data[i]):
 				return 0
-			i = i + 1
 		return 1
 	return 0
 

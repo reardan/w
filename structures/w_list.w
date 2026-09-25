@@ -169,10 +169,8 @@ void __w_list_push(__w_list* list, int value):
 void __w_list_push_bytes(__w_list* list, char* src):
 	__w_list_ensure(list, 1)
 	char* dst = list.items + list.length * list.element_size
-	int i = 0
-	while (i < list.element_size):
+	for i in range(list.element_size):
 		dst[i] = src[i]
-		i = i + 1
 	list.length = list.length + 1
 
 
@@ -205,10 +203,8 @@ void __w_list_remove(__w_list* list, int index):
 		__w_list_index_trap(c"list remove index out of range", index, list.length)
 	char* dst = list.items + index * list.element_size
 	int tail_bytes = (list.length - index - 1) * list.element_size
-	int i = 0
-	while (i < tail_bytes):
+	for i in range(tail_bytes):
 		dst[i] = dst[i + list.element_size]
-		i = i + 1
 	list.length = list.length - 1
 
 
@@ -236,10 +232,8 @@ void __w_list_insert(__w_list* list, int index, int value):
 # Aggregate insert: copies element_size bytes from src into the new slot.
 void __w_list_insert_bytes(__w_list* list, int index, char* src):
 	char* slot = __w_list_insert_slot(list, index)
-	int i = 0
-	while (i < list.element_size):
+	for i in range(list.element_size):
 		slot[i] = src[i]
-		i = i + 1
 
 
 # Word-compared membership scan for scalar elements.
@@ -297,10 +291,8 @@ int __w_list_iter_index(__w_list* list, int cursor):
 
 # Copy n bytes; staging for aggregate sort_by and reverse.
 void __w_list_copy_bytes(char* dst, char* src, int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		dst[i] = src[i]
-		i = i + 1
 
 
 # l[start:end] copies the selected range into a NEW list (issue #360).

@@ -20,10 +20,8 @@ raft_msg* rw_roundtrip(raft_msg* m):
 # never touch them.
 void rw_assert_blob(char* want, int want_len, char* got, int got_len):
 	assert_equal(want_len, got_len)
-	int i = 0
-	while (i < want_len):
+	for i in range(want_len):
 		assert_equal(want[i] & 255, got[i] & 255)
-		i = i + 1
 
 
 void test_vote_req_roundtrip():

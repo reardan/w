@@ -187,12 +187,10 @@ void raft_tcp_free(raft_tcp* t):
 
 
 rt_peer* rt_find_peer(raft_tcp* t, int id):
-	int i = 0
-	while (i < t.peers.length):
+	for i in range(t.peers.length):
 		rt_peer* p = t.peers[i]
 		if (p.id == id):
 			return p
-		i = i + 1
 	return 0
 
 
@@ -378,15 +376,13 @@ void rt_pump_inbound(raft_tcp* t):
 
 
 void rt_pump_outbound(raft_tcp* t):
-	int i = 0
-	while (i < t.peers.length):
+	for i in range(t.peers.length):
 		rt_peer* p = t.peers[i]
 		if (p.out.length > 0):
 			if (p.fd < 0):
 				rt_peer_dial(p)
 			if (p.fd >= 0):
 				rt_peer_flush(p)
-		i = i + 1
 
 
 # One nonblocking progress pass: accept pending connections, flush (or

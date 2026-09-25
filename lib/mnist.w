@@ -129,11 +129,9 @@ int mnist_load_images(char* path, ndf* out):
 
 	# Data bytes are unsigned 0..255; raw is char* (signed), so widening
 	# to int without masking would sign-extend 0x80..0xff negative.
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int pixel = raw[i] & 0xff
 		a.data[i] = cast(float, pixel) / 255.0
-		i = i + 1
 	free(raw)
 
 	*out = a
@@ -177,10 +175,8 @@ int mnist_load_labels(char* path, ndi* out):
 		return MNIST_ERR_TRUNCATED()
 
 	ndi a = ndi_new1(count)
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		a.data[i] = raw[i] & 0xff
-		i = i + 1
 	free(raw)
 
 	*out = a

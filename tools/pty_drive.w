@@ -86,10 +86,8 @@ void pd_buf_push(pd_buf* b, int c):
 
 
 void pd_buf_append(pd_buf* b, char* s, int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		pd_buf_push(b, s[i])
-		i = i + 1
 
 
 void pd_buf_cstr(pd_buf* b, char* s):
@@ -276,11 +274,9 @@ int pd_line_starts(char* line, int n, char* prefix):
 	int k = strlen(prefix)
 	if (n < k):
 		return 0
-	int i = 0
-	while (i < k):
+	for i in range(k):
 		if (line[i] != prefix[i]):
 			return 0
-		i = i + 1
 	return 1
 
 

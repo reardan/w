@@ -236,15 +236,13 @@ void cpp_process_define(cpp_preprocessor* pp, cpp_token* directive, cpp_token* e
 
 
 char* cpp_find_include_in_paths(cpp_preprocessor* pp, char* name, int start_index, int* found_index):
-	int i = start_index
-	while (i < pp.include_paths.length):
+	for i in range(start_index, pp.include_paths.length):
 		char* dir = pp.include_paths[i]
 		char* path = path_join(dir, name)
 		if (path_exists(path)):
 			*found_index = i
 			return path
 		free(path)
-		i = i + 1
 	return 0
 
 

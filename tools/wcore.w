@@ -206,8 +206,7 @@ void wc_json_report(char* frames, int nframes):
 	put_char(',')
 	wc_json_key(c"frames")
 	put_char('[')
-	int f = 0
-	while (f < nframes):
+	for f in range(nframes):
 		if (f > 0):
 			put_char(',')
 		int addr = load_word(&frames[f * __word_size__])
@@ -230,7 +229,6 @@ void wc_json_report(char* frames, int nframes):
 				wc_json_key(c"line")
 				wc_print_dec(st_line_found)
 		put_char('}')
-		f = f + 1
 	put_char(']')
 	put_char('}')
 	put_char(10)
@@ -303,10 +301,8 @@ void wc_report(char* frames, int nframes):
 		put_char(10)
 		k = k + 1
 	println(c"stack trace (most recent call first):")
-	int f = 0
-	while (f < nframes):
+	for f in range(nframes):
 		wc_print_frame(load_word(&frames[f * __word_size__]))
-		f = f + 1
 	if (cf_chain_exact == 0):
 		println(c"note: part of the trace is heuristic (return-address scan): frames can be missing or stale")
 
@@ -335,8 +331,7 @@ int wc_fail_err(char* msg):
 
 
 int main(int argc, int argv):
-	int i = 1
-	while (i < argc):
+	for i in range(1, argc):
 		char** slot = argv + i * __word_size__
 		char* a = *slot
 		if (strcmp(a, c"--json") == 0):
@@ -348,7 +343,6 @@ int main(int argc, int argv):
 		else:
 			println2(c"usage: wcore [--json] <core> [<binary>]")
 			return 2
-		i = i + 1
 	if (wc_core_path == 0):
 		println2(c"usage: wcore [--json] <core> [<binary>]")
 		return 2

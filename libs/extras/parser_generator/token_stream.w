@@ -88,11 +88,9 @@ pg_token* pg_token_stream_all_get(pg_token_stream* stream, int index):
 # this reproduces the lexed input byte for byte. Caller frees the result.
 char* pg_token_stream_source(pg_token_stream* stream):
 	string_builder* out = string_new()
-	int i = 0
-	while (i < stream.all_tokens.length):
+	for i in range(stream.all_tokens.length):
 		pg_token* token = stream.all_tokens[i]
 		string_append(out, token.text)
-		i = i + 1
 	char* text = out.data
 	free(out)
 	return text

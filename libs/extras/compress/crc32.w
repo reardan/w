@@ -56,18 +56,14 @@ int* crc32_build_table():
 	int* table = cast(int*, malloc(256 * __word_size__))
 	int poly = crc32_poly()
 	int mask = crc32_mask32()
-	int n = 0
-	while (n < 256):
+	for n in range(256):
 		int word = n
-		int k = 0
-		while (k < 8):
+		for k in range(8):
 			if ((word & 1) != 0):
 				word = shr(word, 1) ^ poly
 			else:
 				word = shr(word, 1)
-			k = k + 1
 		table[n] = word & mask
-		n = n + 1
 	return table
 
 
@@ -88,11 +84,9 @@ int crc32_update(int crc, char* data, int length):
 	int* table = crc32_table()
 	int mask = crc32_mask32()
 	int c = crc ^ mask
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		int idx = (c ^ (data[i] & 255)) & 255
 		c = shr(c, 8) ^ table[idx]
-		i = i + 1
 	return c ^ mask
 
 

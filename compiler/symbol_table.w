@@ -905,10 +905,8 @@ void sym_define_declare_global_function_arity(char* name, int num_args):
 	int slots = num_args
 	if (slots > sym_max_param_slots):
 		slots = sym_max_param_slots
-	int i = 0
-	while (i < slots):
+	for i in range(slots):
 		save_int(table + t + 26 + (i << 2), -1)
-		i = i + 1
 
 
 # 1 when the symbol at table offset t is an asm runtime stub: stubs are

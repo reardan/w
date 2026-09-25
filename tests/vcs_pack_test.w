@@ -130,10 +130,8 @@ char* vcpt_nul_content():
 # 64), though the test only relies on round-trip correctness.
 string_builder* vcpt_base_content():
 	string_builder* b = string_new()
-	int i = 0
-	while (i < 192):
+	for i in range(192):
 		string_append_char(b, 'x' + (i % 3))
-		i = i + 1
 	string_append(b, c" shared tail of the base object")
 	return b
 
@@ -408,11 +406,9 @@ int VCP2_VERSIONS():
 string_builder* vcp2_shared_noise():
 	string_builder* b = string_new()
 	int seed = 12345
-	int i = 0
-	while (i < 2048):
+	for i in range(2048):
 		seed = (seed * 75 + 74) % 65537
 		string_append_char(b, 33 + (seed % 94))
-		i = i + 1
 	return b
 
 
@@ -423,10 +419,8 @@ string_builder* vcp2_version_content(int k):
 	string_append(b, c"\nversion ")
 	string_append_int(b, k)
 	string_append_char(b, 10)
-	int i = 0
-	while (i < 40):
+	for i in range(40):
 		string_append_char(b, 'a' + ((k * 7 + i * 3) % 26))
-		i = i + 1
 	return b
 
 

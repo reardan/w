@@ -27,11 +27,9 @@ void test_env_get_ignores_prefix_matches():
 void test_env_count_and_at_walk_the_vector():
 	int count = env_count()
 	assert1(count > 0)
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		char* entry = env_at(i)
 		assert1(entry != 0)
-		i = i + 1
 	assert1(env_at(count) == 0)
 	assert1(env_at(-1) == 0)
 

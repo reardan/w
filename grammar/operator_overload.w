@@ -286,10 +286,8 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 	if (declared_return >= 0):
 		if (type_num_args(declared_return) > 0):
 			buf_words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
-			int j = 0
-			while (j < buf_words):
+			for j in range(buf_words):
 				push_eax()
-				j = j + 1
 			stack_pos = stack_pos + buf_words
 			has_return_buffer = 1
 	# Save the right operand's word while materializing the callee

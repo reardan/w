@@ -189,14 +189,10 @@ char* asm_x86_concat(char* a, char* b):
 	int la = strlen(a)
 	int lb = strlen(b)
 	char* out = malloc(la + lb + 1)
-	int i = 0
-	while (i < la):
+	for i in range(la):
 		out[i] = a[i]
-		i = i + 1
-	int j = 0
-	while (j < lb):
+	for j in range(lb):
 		out[la + j] = b[j]
-		j = j + 1
 	out[la + lb] = 0
 	return out
 

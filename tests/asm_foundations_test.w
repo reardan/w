@@ -36,10 +36,8 @@ void test_buffer_and_labels():
 	asm_assert_bytes_equal(c"label fixup", want, 7, b.data, b.length)
 
 	# Growth: push enough bytes to force several reallocations.
-	int i = 0
-	while (i < 1000):
+	for i in range(1000):
 		asm_buffer_byte(b, i & 255)
-		i = i + 1
 	assert_equal(1007, b.length)
 	assert_equal(999 & 255, b.data[b.length - 1] & 255)
 
@@ -105,12 +103,10 @@ void check_corpus(char* path, int minimum):
 		print2(c" entries, want at least ")
 		println2(itoa(minimum))
 		exit(1)
-	int i = 0
-	while (i < entries.length):
+	for i in range(entries.length):
 		asm_corpus_entry entry = entries[i]
 		asserts(c"corpus entry has no bytes", entry.length > 0)
 		asserts(c"corpus entry has no text", entry.text[0] != 0)
-		i = i + 1
 
 
 void test_corpus_fixtures():

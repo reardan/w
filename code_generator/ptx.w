@@ -895,11 +895,9 @@ int* ptx_peep_ints(int n):
 
 int ptx_peep_count_lines(char* b, int n):
 	int lines = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (b[i] == 10):
 			lines = lines + 1
-		i = i + 1
 	return lines
 
 
@@ -908,13 +906,11 @@ int* ptx_peep_line_starts(char* b, int n, int lines):
 	int* ls = ptx_peep_ints(lines)
 	int L = 0
 	int start = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (b[i] == 10):
 			ls[L] = start
 			L = L + 1
 			start = i + 1
-		i = i + 1
 	return ls
 
 
@@ -1145,19 +1141,15 @@ void ptx_peephole():
 			if (words > top):
 				ok = 0
 			else:
-				int w = 0
-				while (w < words):
+				for w in range(words):
 					top = top - 1
 					op_conv[top] = 0
-					w = w + 1
 				depth = depth - words
 				L = L + 1
 		else if ((k == 7) || (k == 8)):
 			# Basic-block boundary: no open push may convert across it.
-			int q = 0
-			while (q < top):
+			for q in range(top):
 				op_conv[q] = 0
-				q = q + 1
 			L = L + 1
 		else:
 			if ((k == 5) || (k == 6)):
@@ -1168,8 +1160,7 @@ void ptx_peephole():
 		# Offset rewrites: a reference inside a pair's span reaching a
 		# slot older than the eliminated word sits 8 bytes closer to
 		# %sp once that word is gone.
-		int p = 0
-		while (p < pr_count):
+		for p in range(pr_count):
 			ptx_peep_shift_span(kind, sloti, shift, pr_st[p] + 1, pr_ld[p], pr_j[p])
 			# Mark the pair's four lines: delete sub/add, replace st/ld
 			# with moves through the pair's depth-indexed vreg.
@@ -1179,7 +1170,6 @@ void ptx_peephole():
 			action[pr_ld[p]] = 3
 			vreg[pr_ld[p]] = pr_j[p]
 			action[pr_ld[p] + 1] = 1
-			p = p + 1
 
 		# Rebuild the body into a fresh scratch buffer.
 		int cap = n * 2 + 128
@@ -1764,8 +1754,7 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 		ptx_line(c";")
 		# Captured values: parameter k -> its fixed slot below %bp
 		# (and, when promoted, its %l register)
-		int k = 0
-		while (k < nparams):
+		for k in range(nparams):
 			ptx_emit(c"ld.param.u64 %cx, [p")
 			ptx_emit_int(k)
 			ptx_line(c"];")
@@ -1775,7 +1764,6 @@ void ptx_kernel_end(int nparams, int reserve_bytes):
 			if ((ptx_prom_capreg != 0) && (k < ptx_prom_ncap)):
 				if (ptx_prom_capreg[k] >= 0):
 					ptx_prom_cap_init(ptx_prom_capreg[k], ptx_prom_capsfx[k])
-			k = k + 1
 	# The body (already emitted to scratch while parsing)
 	i = 0
 	while (i < ptx_body_pos):
@@ -1932,12 +1920,10 @@ void ptx_finish_cubin():
 		blob = malloc(9)
 	# Low 4 bytes carry the length (a 32-bit compiler host has no wider
 	# int; images are far below 2 GB), high 4 bytes are zero.
-	int i = 0
-	while (i < 8):
+	for i in range(8):
 		blob[i] = 0
 		if (i < 4):
 			blob[i] = (n >> (i * 8)) & 255
-		i = i + 1
 	blob[n + 8] = 0
 	be_function_define_declare(c"__w_cubin_module")
 	be_function_prologue()

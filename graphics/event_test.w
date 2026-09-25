@@ -49,8 +49,7 @@ void test_wraparound_past_capacity():
 	gfx_event out
 	# Three laps of push-one/pop-one walk the indices through the mask
 	# boundary twice.
-	int i = 0
-	while (i < 200):
+	for i in range(200):
 		gfx_event_ring_push(&ring[0], &head, &tail, GFX_EVENT_KEY_DOWN, i, i + 1, i + 2, i & 15)
 		assert_equal(1, gfx_event_ring_next(&ring[0], &head, &tail, &out))
 		assert_equal(GFX_EVENT_KEY_DOWN, out.kind)
@@ -58,7 +57,6 @@ void test_wraparound_past_capacity():
 		assert_equal(i + 1, out.x)
 		assert_equal(i + 2, out.y)
 		assert_equal(i & 15, out.mods)
-		i = i + 1
 	assert_equal(0, gfx_event_ring_next(&ring[0], &head, &tail, &out))
 
 
@@ -180,10 +178,8 @@ void test_overflow_drops_newest():
 	int32 tail = 0
 	# Capacity is 64 slots; 63 events fit, the 64th and later are
 	# dropped.
-	int i = 0
-	while (i < 80):
+	for i in range(80):
 		gfx_event_ring_push(&ring[0], &head, &tail, GFX_EVENT_KEY_DOWN, i, 0, 0, 0)
-		i = i + 1
 
 	gfx_event out
 	int drained = 0

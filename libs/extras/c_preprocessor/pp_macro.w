@@ -82,12 +82,10 @@ void cpp_macro_define_builtin(map[char*, cpp_macro*] macros, char* name, int bui
 
 
 int cpp_macro_param_index(cpp_macro* macro, char* name):
-	int i = 0
-	while (i < macro.params.length):
+	for i in range(macro.params.length):
 		char* param = macro.params[i]
 		if (strcmp(param, name) == 0):
 			return i
-		i = i + 1
 	return -1
 
 
@@ -205,13 +203,11 @@ void cpp_normalize_args(cpp_macro* macro, cpp_macro_args* args):
 		return
 	list[cpp_token*] normalized = new list[cpp_token*]
 	int fixed_count = macro.params.length - 1
-	int i = 0
-	while (i < fixed_count):
+	for i in range(fixed_count):
 		if (i < args.items.length):
 			normalized.push(args.items[i])
 		else:
 			normalized.push(0)
-		i = i + 1
 	normalized.push(cpp_join_variadic_args(args, fixed_count))
 	args.items = normalized
 

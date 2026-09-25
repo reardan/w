@@ -551,10 +551,8 @@ char* wexec_adhoc_basename(char* path):
 char* wexec_adhoc_strip_suffix(char* text, int n):
 	int keep = strlen(text) - n
 	string_builder* s = string_new()
-	int i = 0
-	while (i < keep):
+	for i in range(keep):
 		string_append_char(s, text[i])
-		i = i + 1
 	char* out = s.data
 	free(s)
 	return out
@@ -1019,11 +1017,9 @@ char* wexec_resolve_program(char* name):
 void wexec_echo_command(char** argv, int count):
 	string_builder* line = string_new()
 	string_append(line, c"$")
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		string_append(line, c" ")
 		string_append(line, strv_get(argv, i))
-		i = i + 1
 	wstream* out = stdout_writer()
 	stream_write_line(out, line.data)
 	stream_flush(out)
@@ -1348,12 +1344,10 @@ process_result* wexec_windows_builtin(char** argv, int count):
 	char* name = strv_get(argv, 0)
 	string_builder* out = string_new()
 	if (strcmp(name, c"echo") == 0):
-		int i = 1
-		while (i < count):
+		for i in range(1, count):
 			if (i > 1):
 				string_append_char(out, ' ')
 			string_append(out, strv_get(argv, i))
-			i = i + 1
 		string_append_char(out, 10)
 		return wexec_builtin_result(0, out)
 	if ((strcmp(name, c"cmp") == 0) && (count == 3)):
@@ -1426,8 +1420,7 @@ char** wexec_windows_native_step(char** argv, int* count):
 	if (insert):
 		strv_set(out, 1, c"win64")
 		j = 2
-	int i = 1
-	while (i < n):
+	for i in range(1, n):
 		char* arg = strv_get(argv, i)
 		if ((i > 1) && (strcmp(strv_get(argv, i - 1), c"-o") == 0) && (ends_with(arg, c".exe") == 0)):
 			string_builder* exe = string_new()
@@ -1437,7 +1430,6 @@ char** wexec_windows_native_step(char** argv, int* count):
 			free(exe)
 		strv_set(out, j, arg)
 		j = j + 1
-		i = i + 1
 	*count = n + insert
 	return out
 
@@ -1540,15 +1532,13 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 	count = count - skip
 
 	char** argv = strv_new(count)
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		json_value* piece = json_array_get(cmd, i + skip)
 		if (piece.type != json_type_string()):
 			wexec_step_error(target_name, step_index, c"\"cmd\" entries must be strings")
 			free(cast(char*, argv))
 			return 1
 		strv_set(argv, i, piece.string_value)
-		i = i + 1
 
 	if (os_windows()):
 		char** native = wexec_windows_native_step(argv, &count)
@@ -1905,10 +1895,8 @@ char* wexec_cache_object_url(char* base, char* key):
 # arbitrary binary and may contain embedded NUL bytes.
 char* wexec_bundle_slice(char* data, int pos, int length):
 	char* out = malloc(length + 1)
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		out[i] = data[pos + i]
-		i = i + 1
 	out[length] = 0
 	return out
 
@@ -1918,11 +1906,9 @@ int wexec_bundle_check_magic(char* data, int length, int* pos):
 	int n = strlen(magic)
 	if ((length - *pos) < n):
 		return 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (data[*pos + i] != magic[i]):
 			return 0
-		i = i + 1
 	*pos = *pos + n
 	return 1
 
@@ -1969,8 +1955,7 @@ int wexec_bundle_unpack(char* data, int length):
 	int count = wexec_bundle_read_uint(data, length, &pos)
 	if (count < 0):
 		return 0
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		int path_len = wexec_bundle_read_uint(data, length, &pos)
 		if (path_len <= 0):
 			return 0
@@ -1990,7 +1975,6 @@ int wexec_bundle_unpack(char* data, int length):
 		if (wrote_ok == 0):
 			return 0
 		pos = pos + content_len
-		i = i + 1
 	return 1
 
 

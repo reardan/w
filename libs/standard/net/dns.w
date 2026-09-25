@@ -119,11 +119,9 @@ int dns_names_equal_ci(char* a, char* b):
 			b_length = b_length - 1
 	if (a_length != b_length):
 		return 0
-	int i = 0
-	while (i < a_length):
+	for i in range(a_length):
 		if (dns_lower_char(a[i] & 255) != dns_lower_char(b[i] & 255)):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -213,11 +211,9 @@ int dns_token_equals_ci(char* text, int start, int end, char* name):
 	int length = end - start
 	if (strlen(name) != length):
 		return 0
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		if (dns_lower_char(text[start + i] & 255) != dns_lower_char(name[i] & 255)):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -353,11 +349,9 @@ int dns_build_query(char* hostname, int query_id, char* out, int out_cap):
 			return 0
 		out[pos] = label_length
 		pos = pos + 1
-		int j = 0
-		while (j < label_length):
+		for j in range(label_length):
 			out[pos] = hostname[i + j]
 			pos = pos + 1
-			j = j + 1
 		i = i + label_length
 		if (hostname[i] == '.'):
 			# Skip the separator; a single trailing dot ends the loop.
@@ -418,11 +412,9 @@ int dns_read_name(char* msg, int msg_len, int offset, char* out, int out_cap, in
 				out_length = out_length + 1
 			if (out_length + tag >= out_cap):
 				return 0
-			int j = 0
-			while (j < tag):
+			for j in range(tag):
 				out[out_length] = msg[pos + 1 + j]
 				out_length = out_length + 1
-				j = j + 1
 			if (out_length > 254):
 				return 0
 			pos = pos + 1 + tag
@@ -483,8 +475,7 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 	pos = pos + 4
 
 	int depth = 0
-	int i = 0
-	while (i < ancount):
+	for i in range(ancount):
 		if (dns_read_name(msg, msg_len, pos, name, dns_name_buffer_size(), &pos) == 0):
 			return dns_parse_fail(name, target)
 		if (pos + 10 > msg_len):
@@ -517,7 +508,6 @@ int dns_parse_response(char* msg, int msg_len, int query_id, char* hostname, int
 				free(target)
 				target = strclone(name)
 		pos = rdata + rdlength
-		i = i + 1
 	free(name)
 	free(target)
 	return dns_result_error()
@@ -671,11 +661,9 @@ int dns_resolve_ipv4(char* hostname, int* out_ip):
 	if (count == 0):
 		servers[0] = ip4_from_string(c"127.0.0.1")
 		count = 1
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		if (dns_query_server(servers[i], dns_port(), hostname, dns_default_timeout_ms(), out_ip) != 0):
 			free(servers)
 			return 1
-		i = i + 1
 	free(servers)
 	return 0

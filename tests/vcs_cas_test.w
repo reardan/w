@@ -122,12 +122,10 @@ char* vcst_write_legacy(wcas* s, char* object_type, char* data, int length):
 char* vcst_hex(char* digest, int len):
 	char* hex_digits = c"0123456789abcdef"
 	char* out = malloc(len * 2 + 1)
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		int b = digest[i] & 255
 		out[i * 2] = hex_digits[(b >> 4) & 15]
 		out[i * 2 + 1] = hex_digits[b & 15]
-		i = i + 1
 	out[len * 2] = 0
 	return out
 
@@ -439,10 +437,8 @@ void test_cas_compressed_truncation_detection():
 	wcas* s = vcst_open()
 	int n = 2048
 	char* payload = malloc(n)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		payload[i] = 'A' + (i % 4)
-		i = i + 1
 	char* id = vcst_put(s, c"blob", payload, n)
 	free(payload)
 

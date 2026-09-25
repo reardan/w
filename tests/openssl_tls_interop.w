@@ -88,19 +88,16 @@ int osl_fail(process* p, char* msg, char* detail):
 
 
 int osl_bytes_equal(char* a, char* b, int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (a[i] != b[i]):
 			return 0
-		i = i + 1
 	return 1
 
 
 # Connect to 127.0.0.1:port, retrying while the just-spawned server boots.
 # Bounded: ~5s of attempts, then -1.
 int osl_connect_retry(int port):
-	int tries = 0
-	while (tries < 100):
+	for tries in range(100):
 		int fd = socket_tcp_ipv4()
 		if (fd < 0):
 			return -1
@@ -108,7 +105,6 @@ int osl_connect_retry(int port):
 			return fd
 		close(fd)
 		process_sleep_ms(50)
-		tries = tries + 1
 	return -1
 
 

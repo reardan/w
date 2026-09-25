@@ -63,11 +63,9 @@ asm_buffer* stubs_assemble(int arch, char* path, int line, char* text):
 int stubs_bytes_equal(char* a, int a_length, char* b, int b_length):
 	if (a_length != b_length):
 		return 0
-	int i = 0
-	while (i < a_length):
+	for i in range(a_length):
 		if (a[i] != b[i]):
 			return 0
-		i = i + 1
 	return 1
 
 

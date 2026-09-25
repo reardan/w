@@ -283,12 +283,10 @@ void bignum_mul(bignum* r, bignum* a, bignum* b):
 		int ai = al[i]
 		int* rp = &rl[i]
 		int carry = 0
-		int j = 0
-		while (j < bn):
+		for j in range(bn):
 			int t = rp[j] + ai * bl[j] + carry
 			rp[j] = t & mask
 			carry = t >> 15
-			j = j + 1
 		rp[bn] = rp[bn] + carry
 		i = i + 1
 	r.n = total
@@ -507,33 +505,25 @@ void bignum_modinv(bignum* r, bignum* a, bignum* m):
 # Load a big-endian byte string of length len into a (most significant first).
 void bignum_from_bytes(bignum* a, char* bytes, int len):
 	bignum_set_zero(a)
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		int bval = bytes[i] & 255
 		# This byte's least significant bit sits at position (len-1-i)*8.
 		int base_bit = (len - 1 - i) * 8
-		int k = 0
-		while (k < 8):
+		for k in range(8):
 			if (((bval >> k) & 1) != 0):
 				bignum_set_bit(a, base_bit + k)
-			k = k + 1
-		i = i + 1
 	bignum_normalize(a)
 
 
 # Write a as a big-endian byte string of exactly len bytes (zero padded on the
 # left). Bits above len*8 are dropped.
 void bignum_to_bytes(bignum* a, char* out, int len):
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		int base_bit = (len - 1 - i) * 8
 		int bval = 0
-		int k = 0
-		while (k < 8):
+		for k in range(8):
 			bval = bval | (bignum_get_bit(a, base_bit + k) << k)
-			k = k + 1
 		out[i] = bval
-		i = i + 1
 
 
 # Number of whole bytes needed to represent a (0 for zero).

@@ -420,8 +420,7 @@ void test_http_chunked_rejects():
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int k = 0
-		while (k < 3):
+		for k in range(3):
 			int conn = socket_accept_connection(listener)
 			if (conn < 0):
 				exit(1)
@@ -439,7 +438,6 @@ void test_http_chunked_rejects():
 				net_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aTransfer-Encoding: gzip\x0d\x0a\x0d\x0a")
 			net_test_drain(conn)
 			close(conn)
-			k = k + 1
 		exit(0)
 
 	char* target = net_test_url(c"http", port, c"/chunk-abuse")
@@ -465,8 +463,7 @@ void test_http_malformed_status_line():
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int k = 0
-		while (k < 2):
+		for k in range(2):
 			int conn = socket_accept_connection(listener)
 			if (conn < 0):
 				exit(1)
@@ -480,7 +477,6 @@ void test_http_malformed_status_line():
 				net_test_send_text(conn, c"HTTP/1.1 20 OK\x0d\x0a\x0d\x0a")
 			net_test_drain(conn)
 			close(conn)
-			k = k + 1
 		exit(0)
 
 	char* target = net_test_url(c"http", port, c"/nonsense")
@@ -502,8 +498,7 @@ void test_http_oversized_headers():
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int k = 0
-		while (k < 2):
+		for k in range(2):
 			int conn = socket_accept_connection(listener)
 			if (conn < 0):
 				exit(1)
@@ -516,29 +511,22 @@ void test_http_oversized_headers():
 			if (k == 0):
 				# One 9000-byte header line, over the 8192 line cap.
 				string_append(out, c"X-Big: ")
-				int i = 0
-				while (i < 9000):
+				for i in range(9000):
 					string_append_char(out, 'a')
-					i = i + 1
 				string_append(out, c"\x0d\x0a")
 			else:
 				# Twelve 6 KB header lines: each under the line cap,
 				# together over the 64 KB block cap.
-				int h = 0
-				while (h < 12):
+				for h in range(12):
 					string_append(out, c"X-Fill: ")
-					int i = 0
-					while (i < 6000):
+					for i in range(6000):
 						string_append_char(out, 'b')
-						i = i + 1
 					string_append(out, c"\x0d\x0a")
-					h = h + 1
 			string_append(out, c"\x0d\x0aContent-Length: 0\x0d\x0a\x0d\x0a")
 			net_test_send_all(conn, out.data, out.length)
 			string_free(out)
 			net_test_drain(conn)
 			close(conn)
-			k = k + 1
 		exit(0)
 
 	char* target = net_test_url(c"http", port, c"/big-headers")
@@ -710,8 +698,7 @@ void test_http_close_mid_body():
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int k = 0
-		while (k < 2):
+		for k in range(2):
 			int conn = socket_accept_connection(listener)
 			if (conn < 0):
 				exit(1)
@@ -722,7 +709,6 @@ void test_http_close_mid_body():
 			# Promise 100 bytes, deliver 10, hang up.
 			net_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aContent-Length: 100\x0d\x0a\x0d\x0apartial-10")
 			close(conn)
-			k = k + 1
 		exit(0)
 
 	# Buffered read: error plus the bytes that did arrive.
@@ -865,8 +851,7 @@ void test_http_streaming_matches_buffered():
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		int k = 0
-		while (k < 2):
+		for k in range(2):
 			http_test_request q
 			if (http_test_read_request(conn, &q) == 0):
 				exit(1)
@@ -876,7 +861,6 @@ void test_http_streaming_matches_buffered():
 			net_test_send_text(conn, c"4\x0d\x0a me \x0d\x0a")
 			net_test_send_text(conn, c"7\x0d\x0aplease.\x0d\x0a")
 			net_test_send_text(conn, c"0\x0d\x0a\x0d\x0a")
-			k = k + 1
 		net_test_drain(conn)
 		exit(0)
 

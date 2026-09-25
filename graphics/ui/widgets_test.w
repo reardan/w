@@ -167,10 +167,8 @@ void test_textbox_state_editing():
 	assert_equal(1, st.caret)
 
 	# The buffer caps at capacity; inserts past it are dropped.
-	int i = 0
-	while (i < 200):
+	for i in range(200):
 		ui_textbox_insert(&st, 'z')
-		i = i + 1
 	assert_equal(ui_textbox_capacity(), st.length)
 
 
@@ -301,11 +299,9 @@ void test_progress_vertices_and_clamp():
 	# vertex of the third widget's fill (the last 42) reaches past
 	# x = 8 + 100.
 	float32 max_x = 0.0
-	int v = 168
-	while (v < 210):
+	for v in range(168, 210):
 		if (fx.r.layer_verts[UI_LAYER_BASE][v * 8] > max_x):
 			max_x = fx.r.layer_verts[UI_LAYER_BASE][v * 8]
-		v = v + 1
 	asserts(c"clamped fill width", max_x == 108.0)
 	ui_end(ctx)
 	ui_render_destroy(&fx.r)

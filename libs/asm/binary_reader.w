@@ -100,11 +100,9 @@ char* asm_binary_read_file(char* path, int* length_out):
 # encoding in a whole file image).
 int asm_find_bytes4(char* data, int length, int b0, int b1, int b2, int b3):
 	int limit = length - 4
-	int i = 0
-	while (i <= limit):
+	for i in range(limit + 1):
 		if ((data[i] & 255) == b0 && (data[i + 1] & 255) == b1 && (data[i + 2] & 255) == b2 && (data[i + 3] & 255) == b3):
 			return 1
-		i = i + 1
 	return 0
 
 
@@ -189,8 +187,7 @@ asm_binary* asm_binary_open(char* path):
 	int symtab_offset = 0
 	int symtab_size = 0
 	int strtab_offset = 0
-	int index = 0
-	while (index < shnum):
+	for index in range(shnum):
 		int header = shoff + index * shentsize
 		int name_index = asm_read_u32(data, header)
 		int section_type = asm_read_u32(data, header + 4)
@@ -206,7 +203,6 @@ asm_binary* asm_binary_open(char* path):
 			int link = asm_read_u32(data, header + sh_link_at)
 			int link_header = shoff + link * shentsize
 			strtab_offset = asm_read_word(data, link_header + sh_offset_at, binary.elf_class)
-		index = index + 1
 	if (binary.text_size == 0):
 		println2(c"asm_binary: no .text section")
 		exit(1)
@@ -214,8 +210,7 @@ asm_binary* asm_binary_open(char* path):
 	# Symbol table (optional: stripped binaries have none).
 	if (symtab_offset != 0):
 		int count = symtab_size / sh_entsize
-		int i = 0
-		while (i < count):
+		for i in range(count):
 			int entry = symtab_offset + i * sh_entsize
 			int name_at = asm_read_u32(data, entry)
 			int value = 0
@@ -232,7 +227,6 @@ asm_binary* asm_binary_open(char* path):
 				sym.value = value
 				sym.size = size
 				binary.symbols.push(sym)
-			i = i + 1
 	return binary
 
 
@@ -243,21 +237,17 @@ char* asm_binary_text(asm_binary* binary):
 
 # Symbol covering the given virtual address, or -1.
 int asm_binary_symbol_at(asm_binary* binary, int address):
-	int i = 0
-	while (i < binary.symbols.length):
+	for i in range(binary.symbols.length):
 		asm_symbol sym = binary.symbols[i]
 		if (address >= sym.value && address < sym.value + sym.size):
 			return i
-		i = i + 1
 	return -1
 
 
 # Named symbol's index, or -1.
 int asm_binary_symbol_named(asm_binary* binary, char* name):
-	int i = 0
-	while (i < binary.symbols.length):
+	for i in range(binary.symbols.length):
 		asm_symbol sym = binary.symbols[i]
 		if (strcmp(sym.name, name) == 0):
 			return i
-		i = i + 1
 	return -1

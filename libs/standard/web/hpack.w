@@ -210,12 +210,10 @@ char* hpack_headers_get(list[hpack_header*] l, char* name):
 	if (l == 0):
 		return 0
 	int n = strlen(name)
-	int i = 0
-	while (i < l.length):
+	for i in range(l.length):
 		hpack_header* h = l[i]
 		if (hpack_bytes_equal(h.name, h.name_len, name, n) != 0):
 			return h.value
-		i = i + 1
 	return 0
 
 
@@ -252,8 +250,7 @@ void hpack_static_init():
 	char** values = cast(char**, malloc(n * __word_size__))
 	char* text = hpack_static_text()
 	int pos = 0
-	int idx = 1
-	while (idx < n):
+	for idx in range(1, n):
 		int start = pos
 		while (text[pos] != '|'):
 			pos = pos + 1
@@ -264,7 +261,6 @@ void hpack_static_init():
 			pos = pos + 1
 		values[idx] = mem_dup(text + start, pos - start)
 		pos = pos + 1
-		idx = idx + 1
 	names[0] = 0
 	values[0] = 0
 	hpack_static_values_g = values
@@ -419,20 +415,16 @@ void hpack_huffman_init():
 		i = i + 1
 	int next = 0
 	int n = 0
-	int L = 1
-	while (L < 32):
+	for L in range(1, 32):
 		first_code[L] = next
 		first_index[L] = n
-		int s = 0
-		while (s < 257):
+		for s in range(257):
 			if (len[s] == L):
 				code[s] = next
 				sorted[n] = s
 				next = next + 1
 				n = n + 1
-			s = s + 1
 		next = next << 1
-		L = L + 1
 	hpack_huff_len_g = len
 	hpack_huff_sorted_g = sorted
 	hpack_huff_first_code_g = first_code
@@ -455,10 +447,8 @@ int hpack_huffman_code_length(int sym):
 int hpack_huffman_length(char* s, int len):
 	hpack_huffman_init()
 	int bits = 0
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		bits = bits + hpack_huff_len_g[s[i] & 255]
-		i = i + 1
 	return (bits + 7) / 8
 
 
@@ -469,8 +459,7 @@ int hpack_huffman_encode(char* s, int len, string_builder* out):
 	int start = out.length
 	int cur = 0
 	int nbits = 0
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		int sym = s[i] & 255
 		int c = hpack_huff_code_g[sym]
 		int b = hpack_huff_len_g[sym] - 1
@@ -482,7 +471,6 @@ int hpack_huffman_encode(char* s, int len, string_builder* out):
 				cur = 0
 				nbits = 0
 			b = b - 1
-		i = i + 1
 	if (nbits > 0):
 		cur = (cur << (8 - nbits)) | ((1 << (8 - nbits)) - 1)
 		string_append_char(out, cur)
@@ -497,8 +485,7 @@ char* hpack_huffman_decode(char* p, int len, int max_out, int* out_len):
 	string_builder* out = string_new()
 	int code = 0
 	int clen = 0
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		int v = p[i] & 255
 		int b = 7
 		while (b >= 0):
@@ -522,7 +509,6 @@ char* hpack_huffman_decode(char* p, int len, int max_out, int* out_len):
 					code = 0
 					clen = 0
 			b = b - 1
-		i = i + 1
 	# Padding: at most 7 bits, all ones (a prefix of EOS).
 	if (clen > 7):
 		string_free(out)
@@ -613,12 +599,10 @@ void hpack_decoder_free(hpack_decoder* d):
 int hpack_field_ok(char* p, int n, int is_name):
 	if ((is_name != 0) && (n == 0)):
 		return 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int c = p[i] & 255
 		if ((c == 0) || (c == 10) || (c == 13)):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -772,8 +756,7 @@ void hpack_find(hpack_encoder* e, hpack_header* h, int* full, int* name_only):
 				return
 		i = i + 1
 	int n = hpack_table_count(e.table)
-	int j = 1
-	while (j <= n):
+	for j in range(1, n + 1):
 		hpack_header* t = hpack_table_get(e.table, j)
 		if (hpack_bytes_equal(t.name, t.name_len, h.name, h.name_len) != 0):
 			if (*name_only == 0):
@@ -781,7 +764,6 @@ void hpack_find(hpack_encoder* e, hpack_header* h, int* full, int* name_only):
 			if (hpack_bytes_equal(t.value, t.value_len, h.value, h.value_len) != 0):
 				*full = hpack_static_count() + j
 				return
-		j = j + 1
 
 
 # Appends one encoded header block for headers to out.
@@ -793,8 +775,7 @@ void hpack_encode(hpack_encoder* e, list[hpack_header*] headers, string_builder*
 		hpack_table_set_max(e.table, e.pending_final)
 		e.pending_min = (-1)
 		e.pending_final = (-1)
-	int i = 0
-	while (i < headers.length):
+	for i in range(headers.length):
 		hpack_header* h = headers[i]
 		int full = 0
 		int name_only = 0
@@ -813,4 +794,3 @@ void hpack_encode(hpack_encoder* e, list[hpack_header*] headers, string_builder*
 			hpack_encode_string(out, h.value, h.value_len, e.huffman)
 			if ((h.sensitive == 0) && (e.indexing != 0)):
 				hpack_table_add(e.table, h.name, h.name_len, h.value, h.value_len)
-		i = i + 1

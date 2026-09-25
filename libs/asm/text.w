@@ -55,10 +55,8 @@ char* asm_parse_token(asm_parse* p):
 		p.pos = p.pos + 1
 	int n = p.pos - start
 	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		out[i] = p.text[start + i]
-		i = i + 1
 	out[n] = 0
 	return out
 
@@ -160,10 +158,8 @@ void asm_parse_operand(asm_parse* p, asm_operand* op, int arch, int size_hint):
 			p.pos = p.pos + 1
 		int n = p.pos - start
 		char* label = malloc(n + 1)
-		int i = 0
-		while (i < n):
+		for i in range(n):
 			label[i] = p.text[start + i]
-			i = i + 1
 		label[n] = 0
 		op.kind = ASM_OP_LABEL()
 		op.label = label

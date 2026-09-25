@@ -69,8 +69,7 @@ int main(int argc, char** argv):
 	# through all of them.
 	string_builder* manifest = string_new()
 	string_append(manifest, c"{\n\t\"targets\": [\n")
-	int i = 1
-	while (i <= 22):
+	for i in range(1, 22 + 1):
 		char* name = strjoin(c"r", itoa(i))
 		if (i < 10):
 			name = strjoin(c"r0", itoa(i))
@@ -85,7 +84,6 @@ int main(int argc, char** argv):
 			string_append(manifest, c",")
 		string_append(manifest, c"\n")
 		sc_write(strjoin(name, c".w"), c"import dep\n")
-		i = i + 1
 	string_append(manifest, c"\t]\n}\n")
 	sc_write(c"build.json", manifest.data)
 

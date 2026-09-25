@@ -348,15 +348,13 @@ int lsm_flush(lsm* l):
 		free(path)
 		return 0
 	int* len_out = cast(int*, malloc(__word_size__))
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		char* key = memtable_key_at(l.mem, i)
 		if (memtable_is_tombstone_at(l.mem, i)):
 			sstable_writer_add(w, key, cast(char*, 0), 0, 1)
 		else:
 			char* val = memtable_value_at(l.mem, i, len_out)
 			sstable_writer_add(w, key, val, len_out[0], 0)
-		i = i + 1
 	free(cast(char*, len_out))
 	if (sstable_writer_finish(w) == 0):
 		free(path)
@@ -413,10 +411,8 @@ int lsm_delete(lsm* l, char* key):
 	char* rec = malloc(5 + key_len)
 	rec[0] = lsm_tag_delete()
 	store_le32(rec + 1, key_len)
-	int i = 0
-	while (i < key_len):
+	for i in range(key_len):
 		rec[5 + i] = key[i]
-		i = i + 1
 	int ok = wal_append(l.log, rec, 5 + key_len)
 	free(rec)
 	if (ok == 0):
@@ -796,9 +792,7 @@ int lsm_memtable_bytes(lsm* l):
 # resolved (compaction shrinks this; reads do not).
 int lsm_total_entries(lsm* l):
 	int total = memtable_count(l.mem)
-	int i = 0
-	while (i < l.tables.length):
+	for i in range(l.tables.length):
 		sstable* t = l.tables[i]
 		total = total + sstable_count(t)
-		i = i + 1
 	return total

@@ -353,10 +353,8 @@ char* cloc_group_path(char* root, char* file):
 	if (file[end] == 0):
 		return strclone(root)
 	char* group = malloc(end + 1)
-	int i = 0
-	while (i < end):
+	for i in range(end):
 		group[i] = file[i]
-		i = i + 1
 	group[end] = 0
 	return group
 

@@ -254,8 +254,7 @@ int main():
 
 	float first_loss = 0.0
 	float last_loss = 0.0
-	int step = 1
-	while (step <= steps):
+	for step in range(1, steps + 1):
 		int base = rand_next31(&rng) % (corpus_len - BLOCK() - 1)
 		i = 0
 		while (i < BLOCK()):
@@ -283,7 +282,6 @@ int main():
 			nn_adamw_step(t, g_params[pi], &st, step, 0.001, 0.9, 0.99, 0.00000001, wd)
 			pi = pi + 1
 		ag_tape_reset(t)
-		step = step + 1
 
 	# The untrained head is ~uniform over the vocab: loss ~ ln(65) ~ 4.17.
 	asserts(c"gpt train: initial loss should sit near ln(vocab)", (first_loss > 3.0) && (first_loss < 5.0))

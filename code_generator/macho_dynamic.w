@@ -114,10 +114,8 @@ void macho_emit_dynamic(int text_size, int data_size_padded):
 			macho_lc_int32(2)       /* timestamp */
 			macho_lc_int32(65536)   /* current version 1.0.0 */
 			macho_lc_int32(65536)   /* compatibility version 1.0.0 */
-			int ci = 0
-			while (ci < len):
+			for ci in range(len):
 				code[macho_lc_pos + ci] = path[ci]
-				ci = ci + 1
 			macho_lc_pos = macho_lc_pos + (cmdsize - 24)  /* NUL + pad stay zero */
 			added_cmds = added_cmds + 1
 		i = i + 1

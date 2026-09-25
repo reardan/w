@@ -44,11 +44,9 @@ int asm_text_has_sequence(char* text):
 int asm_bytes_equal(char* a, int an, char* b, int bn):
 	if (an != bn):
 		return 1 == 2
-	int i = 0
-	while (i < an):
+	for i in range(an):
 		if ((a[i] & 255) != (b[i] & 255)):
 			return 1 == 2
-		i = i + 1
 	return 1
 
 

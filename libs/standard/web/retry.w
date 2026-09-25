@@ -87,12 +87,10 @@ int retry_backoff_ms(retry_policy* p, int attempt):
 	int delay = p.base_delay_ms
 	if (delay < 0):
 		delay = 0
-	int i = 0
-	while (i < attempt):
+	for i in range(attempt):
 		if (delay >= p.max_delay_ms):
 			return p.max_delay_ms
 		delay = delay * 2
-		i = i + 1
 	if (delay > p.max_delay_ms):
 		return p.max_delay_ms
 	if (delay < 0):

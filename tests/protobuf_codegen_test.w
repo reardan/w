@@ -25,14 +25,12 @@ void pbc_expect_bytes(char* label, pb_bytes* got, char* want, int want_len):
 		print2(c": length mismatch got=")
 		println2(itoa(got.length))
 		exit(1)
-	int i = 0
-	while (i < want_len):
+	for i in range(want_len):
 		if ((got.data[i] & 255) != (want[i] & 255)):
 			print2(label)
 			print2(c": byte mismatch at offset ")
 			println2(itoa(i))
 			exit(1)
-		i = i + 1
 
 
 # Neither locals nor 'new' are zero-initialized, and to_proto encodes

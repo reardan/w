@@ -237,10 +237,8 @@ int asn1_read_small_int(asn1* r, int* out_value):
 		if ((r.data[start] & 255) >= 128):
 			return 0    # would not fit a signed 32-bit int
 	int v = 0
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		v = (v << 8) | (r.data[start + i] & 255)
-		i = i + 1
 	*out_value = v
 	return 1
 

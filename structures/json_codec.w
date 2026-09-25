@@ -96,8 +96,7 @@ void __w_json_store_pointer(char* addr, int value):
 json_value* __w_json_encode(int desc, char* addr):
 	json_value* obj = json_object()
 	int n = __w_json_desc_word(desc, 0)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int f = 2 + 5 * i
 		char* name = cast(char*, __w_json_desc_word(desc, f))
 		int offset = __w_json_desc_word(desc, f + 1)
@@ -105,7 +104,6 @@ json_value* __w_json_encode(int desc, char* addr):
 		int size = __w_json_desc_word(desc, f + 3)
 		int aux = __w_json_desc_word(desc, f + 4)
 		json_object_set(obj, name, __w_json_encode_field(kind, size, aux, addr + offset))
-		i = i + 1
 	return obj
 
 
@@ -116,10 +114,8 @@ char* __w_json_cstr_from_string(int s):
 	char* data = cast(char*, __w_json_load_pointer(descriptor))
 	int length = __w_json_load_pointer(descriptor + __word_size__)
 	char* copy = malloc(length + 1)
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		copy[i] = data[i]
-		i = i + 1
 	copy[length] = 0
 	return copy
 
@@ -211,10 +207,8 @@ char* __w_json_decode(int desc, json_value* value):
 		return 0
 	int struct_size = __w_json_desc_word(desc, 1)
 	char* out = malloc(struct_size)
-	int i = 0
-	while (i < struct_size):
+	for i in range(struct_size):
 		out[i] = 0
-		i = i + 1
 	if (__w_json_decode_into(desc, value, out) == 0):
 		free(out)
 		return 0
@@ -227,8 +221,7 @@ int __w_json_decode_into(int desc, json_value* value, char* out):
 	if (value.type != json_type_object()):
 		return 0
 	int n = __w_json_desc_word(desc, 0)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int f = 2 + 5 * i
 		char* name = cast(char*, __w_json_desc_word(desc, f))
 		int offset = __w_json_desc_word(desc, f + 1)
@@ -240,7 +233,6 @@ int __w_json_decode_into(int desc, json_value* value, char* out):
 		json_value* member = json_object_get(value, name)
 		if (__w_json_decode_field(kind, size, aux, member, out + offset) == 0):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -256,18 +248,14 @@ int __w_json_decode_list(int size, int aux, json_value* v, char* addr):
 	__w_list* list = __w_list_new(size)
 	char* slot = malloc(size)
 	int n = json_array_length(v)
-	int i = 0
-	while (i < n):
-		int j = 0
-		while (j < size):
+	for i in range(n):
+		for j in range(size):
 			slot[j] = 0
-			j = j + 1
 		if (__w_json_decode_field(ekind, esize, eaux, json_array_get(v, i), slot) == 0):
 			free(slot)
 			__w_list_free(list)
 			return 0
 		__w_list_push_bytes(list, slot)
-		i = i + 1
 	free(slot)
 	__w_json_store_pointer(addr, cast(int, list))
 	return 1
@@ -302,10 +290,8 @@ int __w_json_decode_map(int size, int aux, json_value* v, char* addr):
 	int ok = 1
 	for char* member_key, json_value* member in v.object_values:
 		if (ok):
-			int j = 0
-			while (j < slot_size):
+			for j in range(slot_size):
 				slot[j] = 0
-				j = j + 1
 			if (__w_json_decode_field(vkind, vsize, vaux, member, slot) == 0):
 				ok = 0
 			else if (key_kind == __w_hash_key_string):

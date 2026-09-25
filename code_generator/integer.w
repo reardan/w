@@ -41,11 +41,9 @@ void save_i(char* p, int v, int n):
 	if (n == 1):
 		p[0] = v
 		return
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		p[i] = v
 		v = v >> 8
-		i = i + 1
 
 
 # On a 32-bit host this keeps the byte loop's sign-fill of the upper four

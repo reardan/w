@@ -60,11 +60,9 @@ struct order_log:
 
 
 generator int yielding_pusher(order_log* log, int id, int rounds):
-	int i = 0
-	while (i < rounds):
+	for i in range(rounds):
 		log.entries.push(id)
 		task_yield_now()
-		i = i + 1
 
 
 void test_yield_now_interleaves_tasks():
@@ -74,11 +72,9 @@ void test_yield_now_interleaves_tasks():
 	task_spawn(s, yielding_pusher(log, 2, 3))
 	assert_equal(0, task_run(s))
 	assert_equal(6, log.entries.length)
-	int i = 0
-	while (i < 6):
+	for i in range(6):
 		# 1,2,1,2,1,2: strict alternation under FIFO scheduling.
 		assert_equal(1 + (i & 1), log.entries[i])
-		i = i + 1
 	list_free[int](log.entries)
 	free(cast(void*, log))
 	task_scheduler_free(s)
@@ -144,14 +140,12 @@ void test_await_fd_wakes_on_data():
 generator int ponger(int fd, int rounds):
 	char* buf = malloc(4)
 	int received = 0
-	int i = 0
-	while (i < rounds):
+	for i in range(rounds):
 		int revents = task_await_fd(fd, poll_in())
 		asserts(c"ponger expected POLLIN", (revents & poll_in()) != 0)
 		if (read(fd, buf, 1) == 1):
 			received = received + 1
 		assert_equal(1, write(fd, c"o", 1))
-		i = i + 1
 	free(buf)
 	task_finish(received)
 
@@ -159,14 +153,12 @@ generator int ponger(int fd, int rounds):
 generator int pinger(int fd, int rounds):
 	char* buf = malloc(4)
 	int received = 0
-	int i = 0
-	while (i < rounds):
+	for i in range(rounds):
 		assert_equal(1, write(fd, c"i", 1))
 		int revents = task_await_fd(fd, poll_in())
 		asserts(c"pinger expected POLLIN", (revents & poll_in()) != 0)
 		if (read(fd, buf, 1) == 1):
 			received = received + 1
-		i = i + 1
 	free(buf)
 	task_finish(received)
 

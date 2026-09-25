@@ -15,10 +15,8 @@ int vsum(int... values):
 	return total
 
 generator int squares(int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		yield i * i
-		i = i + 1
 
 void test_fstring_with_defaults_and_variadics():
 	string s = f"greet={greet(10)} vsum={vsum(1, 2, 3)}"

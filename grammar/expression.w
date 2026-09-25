@@ -41,8 +41,7 @@ void struct_copy_eax_to_ebx(int type):
 	push_ebx()
 	stack_pos = stack_pos + 1
 	push_slot()
-	int i = 0
-	while (i < words):
+	for i in range(words):
 		mov_eax_esp_plus(0)
 		if (i > 0):
 			add_eax_int32(i << word_size_log2)
@@ -50,7 +49,6 @@ void struct_copy_eax_to_ebx(int type):
 		if (i > 0):
 			add_ebx_int32(word_size)
 		store_ebx_word()
-		i = i + 1
 	pop_eax_slot()
 	pop_ebx_slot()
 	if (type_has_array_field(type)):

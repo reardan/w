@@ -99,10 +99,8 @@ int* sha256_k():
 	if (sha256_k_words == 0):
 		char* k = sha256_k_table()
 		sha256_k_words = cast(int*, malloc(64 * __word_size__))
-		int i = 0
-		while (i < 64):
+		for i in range(64):
 			sha256_k_words[i] = sha256_be32(k + i * 4)
-			i = i + 1
 	return sha256_k_words
 
 

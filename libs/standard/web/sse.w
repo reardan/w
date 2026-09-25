@@ -176,11 +176,9 @@ char* sse_range_clone(char* base, int start, int end):
 
 
 int sse_range_has_nul(char* base, int start, int end):
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		if ((base[i] & 255) == 0):
 			return 1
-		i = i + 1
 	return 0
 
 
@@ -200,12 +198,10 @@ int sse_name_eq(char* base, int name_end, char* target):
 int sse_range_all_digits(char* base, int start, int end):
 	if (end <= start):
 		return 0
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		int c = base[i] & 255
 		if ((c < '0') || (c > '9')):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -213,12 +209,10 @@ int sse_range_all_digits(char* base, int start, int end):
 # values so the multiply cannot overflow.
 int sse_range_atoi(char* base, int start, int end):
 	int v = 0
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		if (v > 200000000):
 			return 2000000000
 		v = v * 10 + (base[i] - '0')
-		i = i + 1
 	return v
 
 

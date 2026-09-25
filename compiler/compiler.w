@@ -885,8 +885,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# measurement showed engines run them ~13% faster than module globals
 	# for ~4% larger modules (docs/projects/wasm_backend.md).
 	wasm_acc_locals = 1
-	int pre_scan = i
-	while (pre_scan < argc):
+	for pre_scan in range(i, argc):
 		char** pre_arg = argv + pre_scan * __word_size__
 		if (strcmp(*pre_arg, c"--pac=off") == 0):
 			arm64_pac = 0
@@ -898,7 +897,6 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			wasm_acc_locals = 0
 		else if (strcmp(*pre_arg, c"--wasm-acc=locals") == 0):
 			wasm_acc_locals = 1
-		pre_scan = pre_scan + 1
 	# Option validation is up front, not positional: a typo'd flag after
 	# the file list used to be reported only after every earlier root had
 	# fully compiled (docs/projects/ai_tooling.md). -v/--verbose applies
@@ -1231,12 +1229,10 @@ void deps_dump(int json):
 		char* path = cast(char*, load_ptr(deps_paths + i * __word_size__))
 		# Deduplicate on the recorded (absolute) path
 		int duplicate = 0
-		int j = 0
-		while (j < i):
+		for j in range(i):
 			char* seen = cast(char*, load_ptr(deps_paths + j * __word_size__))
 			if (strcmp(seen, path) == 0):
 				duplicate = 1
-			j = j + 1
 		if (duplicate == 0):
 			char* shown = path
 			if (starts_with(path, cwd)):
@@ -1440,11 +1436,9 @@ void defhash_buf_ensure(int n):
 
 void defhash_buf_append_n(char* s, int len):
 	defhash_buf_ensure(len)
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		defhash_buf[defhash_buf_pos] = s[i]
 		defhash_buf_pos = defhash_buf_pos + 1
-		i = i + 1
 
 
 void defhash_buf_append(char* s):
@@ -1570,11 +1564,9 @@ void defhash_process_span(int idx):
 
 char* defhash_hex_digits(char* digest):
 	char* hex = malloc(65)
-	int i = 0
-	while (i < 32):
+	for i in range(32):
 		hex[i * 2] = diag_hex_digit((digest[i] >> 4) & 15)
 		hex[i * 2 + 1] = diag_hex_digit(digest[i] & 15)
-		i = i + 1
 	hex[64] = 0
 	return hex
 
@@ -1726,8 +1718,7 @@ void symbols_emit_fields_json(int type_index):
 	diag_write_json_string(c"fields")
 	diag_write_cstr(c": [")
 	int n = type_num_args(type_index)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (i > 0):
 			diag_write_cstr(c", ")
 		int field_type = type_get_field_type_at(type_index, i)
@@ -1742,7 +1733,6 @@ void symbols_emit_fields_json(int type_index):
 		diag_write_json_int_field(c"size", type_get_size(field_type))
 		diag_write_cstr(c"}")
 		free(field_display)
-		i = i + 1
 	diag_write_cstr(c"]")
 
 
@@ -1885,8 +1875,7 @@ void symbols_emit_layout_human(int type_index, char* kind, int file_index, int l
 	symbols_write_int(type_get_size(type_index))
 	diag_write_cstr(c"\x0a")
 	int n = type_num_args(type_index)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int field_type = type_get_field_type_at(type_index, i)
 		char* field_display = symbols_type_display(field_type)
 		diag_write_cstr(c"\x09")
@@ -1899,7 +1888,6 @@ void symbols_emit_layout_human(int type_index, char* kind, int file_index, int l
 		diag_write_cstr(type_get_field_name_at(type_index, i))
 		diag_write_cstr(c"\x0a")
 		free(field_display)
-		i = i + 1
 	diag_flush()
 
 

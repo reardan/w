@@ -146,8 +146,7 @@ void dbg_print_typed_value(int addr, int type):
 	if ((type_get_pointer_level(type) == 0) & (type_num_args(type) > 0)):
 		print(c"{")
 		int n = type_num_args(type)
-		int i = 0
-		while (i < n):
+		for i in range(n):
 			if (i > 0):
 				print(c", ")
 			# Through the accessor, not a hand-computed offset: the old
@@ -161,7 +160,6 @@ void dbg_print_typed_value(int addr, int type):
 				width = __word_size__
 			int offset = type_get_field_offset_at(type, i)
 			dbg_print_int_value(dbg_mem_read(addr + offset, width))
-			i = i + 1
 		print(c"}")
 		return;
 	int v = dbg_mem_read_word(addr)

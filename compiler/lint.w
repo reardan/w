@@ -375,23 +375,19 @@ char* lint_read_file(char* path):
 # lint_tab_width, UTF-8 continuation bytes take no column.
 int lint_line_width(char* src, int start, int end):
 	int width = 0
-	int j = start
-	while (j < end):
+	for j in range(start, end):
 		int c = src[j] & 255
 		if (c == 9):
 			width = width + lint_tab_width - width % lint_tab_width
 		else if ((c & 192) != 128):
 			width = width + 1
-		j = j + 1
 	return width
 
 
 int lint_is_blank(char* src, int start, int end):
-	int j = start
-	while (j < end):
+	for j in range(start, end):
 		if ((src[j] != ' ') && (src[j] != 9)):
 			return 0
-		j = j + 1
 	return 1
 
 
@@ -418,13 +414,11 @@ int lint_decode(char* src, int j, int end):
 		c = c & 7
 	if (j + extra >= end + 1):
 		return src[j] & 255
-	int k = 1
-	while (k <= extra):
+	for k in range(1, extra + 1):
 		int b = src[j + k] & 255
 		if ((b & 192) != 128):
 			return src[j] & 255
 		c = (c << 6) | (b & 63)
-		k = k + 1
 	lint_decode_length = extra + 1
 	return c
 
@@ -489,10 +483,8 @@ int lint_confusable_ascii(int cp):
 	int i = 0
 	while (table[i] != 0):
 		int v = 0
-		int d = 0
-		while (d < 4):
+		for d in range(4):
 			v = (v << 4) | lint_hex_digit(table[i + d])
-			d = d + 1
 		if (v == cp):
 			return table[i + 4]
 		i = i + 5
@@ -516,11 +508,9 @@ void lint_unicode_reset():
 # matching the compiler's own diagnostic columns
 int lint_codepoint_column(char* src, int start, int pos):
 	int column = 1
-	int j = start
-	while (j < pos):
+	for j in range(start, pos):
 		if ((src[j] & 192) != 128):
 			column = column + 1
-		j = j + 1
 	return column
 
 
@@ -565,11 +555,9 @@ void lint_identifier(char* src, int s, int e, int line, int column):
 			skeleton[k] = twin
 			k = k + 1
 		else:
-			int b = 0
-			while (b < length):
+			for b in range(length):
 				skeleton[k] = src[j + b]
 				k = k + 1
-				b = b + 1
 		j = j + length
 	skeleton[k] = 0
 	char* mixed_key = strjoin(c"mixed:", name)
@@ -836,11 +824,9 @@ void lint_text_file(char* path):
 					out[o] = ' '
 					o = o + 1
 					k = k + 1
-			int j = body
-			while (j < text_end):
+			for j in range(body, text_end):
 				out[o] = src[j]
 				o = o + 1
-				j = j + 1
 			if (keep_cr):
 				out[o] = 13
 				o = o + 1

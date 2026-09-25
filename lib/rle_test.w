@@ -9,10 +9,8 @@ void rle_test_roundtrip(char* pixels, int total, int want_length):
 	if (want_length >= 0):
 		assert_equal(want_length, length)
 	char* out = rle_decode(stream, length, malloc(total), total)
-	int i = 0
-	while (i < total):
+	for i in range(total):
 		assert_equal(pixels[i] & 255, out[i] & 255)
-		i = i + 1
 
 
 void test_rle_runs_and_literals():
@@ -37,12 +35,10 @@ void test_rle_short_runs_stay_literal():
 void test_rle_long_runs_split_at_255():
 	int total = 600
 	char* pixels = malloc(total)
-	int i = 0
-	while (i < total):
+	for i in range(total):
 		pixels[i] = 0
 		if (i >= 300):
 			pixels[i] = (i * 7) & 255
-		i = i + 1
 	rle_test_roundtrip(pixels, total, -1)
 
 

@@ -148,12 +148,10 @@ void ui_demo_body(ui_context* ctx, ui_demo_state* st):
 	# A table one header plus four rows tall, holding seven rows — so
 	# the scroll thumb and row virtualization are both on screen.
 	ui_table_begin(ctx, ui_rect_new(8.0, 368.0, 304.0, 129.0), st.table_headers, st.table_widths, 2, &st.table)
-	int row = 0
-	while (row < 7):
+	for row in range(7):
 		if (ui_table_row(ctx, &st.table, row)):
 			ui_table_cell(ctx, &st.table, ui_demo_row_name(row))
 			ui_table_cell(ctx, &st.table, ui_demo_row_round(row))
-		row = row + 1
 	ui_table_end(ctx, &st.table)
 	ui_textarea(ctx, ui_rect_new(8.0, 505.0, 304.0, 160.0), &st.notes)
 

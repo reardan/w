@@ -21,10 +21,8 @@ import libs.standard.net.testing
 # Deterministic binary payload containing NUL, CR and LF bytes.
 char* ftp_test_big_payload(int n):
 	char* data = malloc(n + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		data[i] = (i * 7 + i / 251) & 255
-		i = i + 1
 	data[n] = 0
 	return data
 

@@ -57,11 +57,9 @@ void pgb_write(char* path, char* text):
 # Writes lines[start..end) to path, one per line.
 void pgb_write_slice(char* path, list[char*] lines, int start, int end):
 	string_builder* s = string_new()
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		string_append(s, lines[i])
 		string_append_char(s, '\n')
-		i = i + 1
 	pgb_write(path, s.data)
 	string_free(s)
 

@@ -149,11 +149,9 @@ void test_axpy_and_sum():
 	ndf64 x = ndf64_new1(3)
 	ndf64 y = ndf64_new1(3)
 	ndf64 out = ndf64_new1(3)
-	int i = 0
-	while (i < 3):
+	for i in range(3):
 		ndf64_set1(&x, i, cast(float64, i + 1))         # 1 2 3
 		ndf64_set1(&y, i, cast(float64, (i + 1) * 10))  # 10 20 30
-		i = i + 1
 	ndf64_axpy_into(&out, 2.0, &x, &y)                  # 2x + y
 	assert_f64eq(12.0, ndf64_at1(&out, 0))
 	assert_f64eq(24.0, ndf64_at1(&out, 1))

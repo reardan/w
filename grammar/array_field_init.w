@@ -27,12 +27,10 @@ void init_array_field_descriptors_at(int type, int offset):
 		init_array_field_descriptor(type, offset)
 		return;
 	int count = type_num_args(type)
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		int field_type = type_get_field_type_at(type, i)
 		if (type_has_array_field(field_type)):
 			init_array_field_descriptors_at(field_type, offset + type_get_field_offset_at(type, i))
-		i = i + 1
 
 
 void init_array_field_descriptors(int type):

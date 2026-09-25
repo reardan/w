@@ -472,8 +472,7 @@ void test_hpack_rejects_bad_input():
 void test_hpack_encode_decode_round_trip():
 	hpack_encoder* e = hpack_encoder_new(4096)
 	hpack_decoder* d = hpack_decoder_new(4096)
-	int round = 0
-	while (round < 3):
+	for round in range(3):
 		list[hpack_header*] l = hpack_headers_new()
 		hpack_headers_add(l, c":method", c"POST")
 		hpack_headers_add(l, c":scheme", c"http")
@@ -500,6 +499,5 @@ void test_hpack_encode_decode_round_trip():
 		hpack_headers_free(out)
 		hpack_headers_free(l)
 		string_free(sb)
-		round = round + 1
 	hpack_encoder_free(e)
 	hpack_decoder_free(d)

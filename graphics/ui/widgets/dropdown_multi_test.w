@@ -68,11 +68,9 @@ void test_summary_names_the_first_and_counts_the_rest():
 void test_summary_counts_past_nine():
 	char** items = cast(char**, malloc(12 * __word_size__))
 	int32[12] checked
-	int i = 0
-	while (i < 12):
+	for i in range(12):
 		items[i] = c"x"
 		checked[i] = 1
-		i = i + 1
 	char[64] out
 	assert_equal(12, ui_dropdown_multi_summary(&out[0], 64, items, 12, &checked[0]))
 	asserts(c"x +11", strcmp(&out[0], c"x +11") == 0)

@@ -57,13 +57,11 @@ int ui_dropdown_multi_summary(char* out, int cap, char** items, int item_count, 
 	int32 len = 0
 	out[0] = 0
 	int count = 0
-	int i = 0
-	while (i < item_count):
+	for i in range(item_count):
 		if (checked[i]):
 			if (count == 0):
 				ui_dropdown_append(out, cap, &len, items[i])
 			count = count + 1
-		i = i + 1
 	if (count > 1):
 		char[16] digits
 		int n = count - 1
@@ -138,8 +136,7 @@ int ui_dropdown_multi(ui_context* ctx, float32 w, char** items, int item_count, 
 
 	if (ui_popover_begin(ctx, id, r, r.w, ui_dropdown_multi_list_height(ctx, item_count), open)):
 		ui_rect body = ui_layout_top(ctx).bounds
-		int i = 0
-		while (i < item_count):
+		for i in range(item_count):
 			ui_rect row = ui_rect_new(body.x, body.y + row_h * cast(float32, i), body.w, row_h)
 			if (ctx.input.mouse_pressed && ui_rect_contains(row, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
 				checked[i] = 1 - checked[i]
@@ -147,7 +144,6 @@ int ui_dropdown_multi(ui_context* ctx, float32 w, char** items, int item_count, 
 				ctx.input.mouse_pressed = 0
 			ui_dropdown_multi_row(ctx, row, items[i], checked[i])
 			ui_region_claim(ctx, row)
-			i = i + 1
 		ui_popover_end(ctx)
 
 	# The header draws after the list so it summarises this frame's

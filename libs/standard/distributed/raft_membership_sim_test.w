@@ -159,14 +159,12 @@ void test_shrink_5_to_4():
 	rsim_propose(c, lid, c"post-shrink")
 	rsim_run(c, 30)
 	assert_equal(2, raft_commit_int(c.nodes[lid - 1]))
-	int i = 1
-	while (i <= 5):
+	for i in range(1, 5 + 1):
 		if (i != victim):
 			raft* r = c.nodes[i - 1]
 			assert_equal(2, raft_commit_int(r))
 			assert_equal(3, raft_peer_count(r))
 			assert_equal(0, mc_has_peer(r, victim))
-		i = i + 1
 	rsim_free(c)
 
 
@@ -321,11 +319,9 @@ void test_uncommitted_config_rollback_on_leader_change():
 	assert_equal(raft_entry_kind_normal(), e.kind)
 	# the whole (still 3-node -- node 4 never actually joined) cluster
 	# agrees
-	int i = 0
-	while (i < 3):
+	for i in range(3):
 		raft* r = c.nodes[i]
 		assert_equal(1, raft_log_length(r))
 		assert_equal(1, raft_commit_int(r))
 		assert_equal(2, raft_peer_count(r))
-		i = i + 1
 	rsim_free(c)

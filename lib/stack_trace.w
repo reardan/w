@@ -120,11 +120,9 @@ int st_page_readable(int addr):
 int st_range_readable(int addr, int length):
 	if (length <= 0):
 		return 0
-	int p = addr - (addr & 4095)
-	while (p < addr + length):
+	for p in range(addr - (addr & 4095), addr + length, 4096):
 		if (st_page_readable(p) == 0):
 			return 0
-		p = p + 4096
 	return 1
 
 
@@ -174,14 +172,12 @@ void st_write_hex(int v):
 	char* buf = st_scratch
 	buf[0] = '0'
 	buf[1] = 'x'
-	int i = 0
-	while (i < digits):
+	for i in range(digits):
 		int nibble = (v >> ((digits - 1 - i) * 4)) & 15
 		if (nibble < 10):
 			buf[2 + i] = '0' + nibble
 		else:
 			buf[2 + i] = 'a' + nibble - 10
-		i = i + 1
 	write(2, buf, 2 + digits)
 
 
@@ -259,8 +255,7 @@ void st_init_macho(int base):
 	int nsyms = 0
 	int stroff = 0
 	int lc = base + 32
-	int i = 0
-	while (i < ncmds):
+	for i in range(ncmds):
 		int cmd = st_int32(lc)
 		int size = st_int32(lc + 4)
 		if (size < 8):
@@ -272,8 +267,7 @@ void st_init_macho(int base):
 				# command: __text, and __debug_line (the DWARF line
 				# table, addresses as linked vmaddrs).
 				int nsects = st_int32(lc + 64)
-				int k = 0
-				while (k < nsects):
+				for k in range(nsects):
 					int sect = lc + 72 + k * 80
 					if (st_cstr_eq(sect, c"__text")):
 						sect_addr = st_word(sect + 32)
@@ -281,7 +275,6 @@ void st_init_macho(int base):
 					else if (st_cstr_eq(sect, c"__debug_line")):
 						dline_addr = st_word(sect + 32)
 						dline_size = st_word(sect + 40)
-					k = k + 1
 			else if (st_cstr_eq(lc + 8, c"__LINKEDIT")):
 				linkedit_vm = st_word(lc + 24)
 				linkedit_off = st_word(lc + 40)
@@ -290,7 +283,6 @@ void st_init_macho(int base):
 			nsyms = st_int32(lc + 12)
 			stroff = st_int32(lc + 16)
 		lc = lc + size
-		i = i + 1
 	if ((text_vm == 0) || (sect_size == 0) || (linkedit_vm == 0) || (nsyms == 0)):
 		return;
 	st_slide = base - text_vm
@@ -497,8 +489,7 @@ int st_scan(int sp, char* out, int max, int skip_entry):
 		return 0
 	int found = 0
 	int probed_page = 1
-	int i = 0
-	while (i < 65536):
+	for i in range(65536):
 		int slot = sp + i * __word_size__
 		int page = slot - (slot & 4095)
 		if (page != probed_page):
@@ -519,7 +510,6 @@ int st_scan(int sp, char* out, int max, int skip_entry):
 								return found
 							if (st_cstr_eq(st_entry_name(e), c"main")):
 								return found
-		i = i + 1
 	return found
 
 
@@ -799,10 +789,8 @@ int st_line_lookup(int pc):
 			else if (sub == 2):
 				/* set_address: len-1 little-endian bytes */
 				address = 0
-				int k = 0
-				while (k < len - 1):
+				for k in range(len - 1):
 					address = address | (st_byte(st_cursor + 1 + k) << (k * 8))
-					k = k + 1
 			st_cursor = next
 		else if (op < opcode_base):
 			if (op == 1):
@@ -974,9 +962,7 @@ void print_stack_trace():
 		free(pcs)
 		return;
 	st_write_cstr(c"stack trace (most recent call first):\n")
-	int k = 0
-	while (k < n):
+	for k in range(n):
 		int addr = st_word(cast(int, pcs) + k * __word_size__)
 		st_write_frame(addr)
-		k = k + 1
 	free(pcs)

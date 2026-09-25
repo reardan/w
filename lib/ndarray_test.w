@@ -336,11 +336,9 @@ void test_axpy_into():
 	ndf x = ndf_new1(4)
 	ndf y = ndf_new1(4)
 	ndf out = ndf_new1(4)
-	int i = 0
-	while (i < 4):
+	for i in range(4):
 		ndf_set1(&x, i, cast(float, i + 1))         # x = 1 2 3 4
 		ndf_set1(&y, i, cast(float, (i + 1) * 10))  # y = 10 20 30 40
-		i = i + 1
 	ndf_axpy_into(&out, 2.0, &x, &y)         # out = 2x + y
 	assert_feq(12.0, ndf_at1(&out, 0))
 	assert_feq(24.0, ndf_at1(&out, 1))
@@ -354,10 +352,8 @@ void test_axpy_into():
 
 void test_sum():
 	ndf a = ndf_new2(2, 3)
-	int i = 0
-	while (i < 6):
+	for i in range(6):
 		a.data[i] = cast(float, i + 1)              # 1..6
-		i = i + 1
 	assert_feq(21.0, ndf_sum(&a))
 	ndf zero = ndf_new1(3)
 	assert_feq(0.0, ndf_sum(&zero))

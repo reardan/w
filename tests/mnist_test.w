@@ -34,8 +34,7 @@ void write_mnist_images_fixture(char* path):
 	write_u32_be(out, 3)
 	write_u32_be(out, 4)
 	write_u32_be(out, 5)
-	int i = 0
-	while (i < 60):
+	for i in range(60):
 		int v = 0
 		if (i == 0):
 			v = 255       # (image 0, row 0, col 0)
@@ -44,7 +43,6 @@ void write_mnist_images_fixture(char* path):
 		if (i == 59):
 			v = 200       # (image 2, row 3, col 4) -- last byte in the file
 		stream_write_byte(out, v)
-		i = i + 1
 	stream_close(out)
 
 

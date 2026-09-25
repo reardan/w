@@ -48,29 +48,23 @@ int near(float a, float b, float eps):
 void gen_clusters(tensor* x, ndi* labels, int dims, int classes, int per_class, float stddev, int seed):
 	rand_state r
 	rand_init(&r, seed)
-	int c = 0
-	while (c < classes):
+	for c in range(classes):
 		float m0 = 3.0
 		if (c % 2 == 1):
 			m0 = 0.0 - 3.0
 		float m1 = 3.0
 		if ((c / 2) % 2 == 1):
 			m1 = 0.0 - 3.0
-		int s = 0
-		while (s < per_class):
+		for s in range(per_class):
 			int row = c * per_class + s
-			int j = 0
-			while (j < dims):
+			for j in range(dims):
 				float mean = 0.0
 				if (j == 0):
 					mean = m0
 				else if (j == 1):
 					mean = m1
 				x.data[row * dims + j] = rand_gaussian_scaled(&r, mean, stddev)
-				j = j + 1
 			labels.data[row] = c
-			s = s + 1
-		c = c + 1
 
 
 # linear -> relu -> linear.
@@ -107,8 +101,7 @@ int main(int argc, int argv):
 	ag_tape* t = ag_tape_new()
 
 	float initial_loss = 0.0
-	int epoch = 0
-	while (epoch < epochs):
+	for epoch in range(epochs):
 		tensor* logits = mlp_forward(t, &l1, &l2, &x)
 		tensor* loss = ag_softmax_ce(t, logits, &labels)
 		if (epoch == 0):
@@ -117,7 +110,6 @@ int main(int argc, int argv):
 		nn_linear_sgd_step(t, &l1, lr)
 		nn_linear_sgd_step(t, &l2, lr)
 		ag_tape_reset(t)
-		epoch = epoch + 1
 
 	# Final evaluation pass: fresh forward (no backward/update) so the
 	# reported loss and accuracy reflect the fully-trained parameters.
@@ -126,20 +118,16 @@ int main(int argc, int argv):
 	float final_loss = loss_final.data[0]
 
 	int correct = 0
-	int i = 0
-	while (i < batch):
+	for i in range(batch):
 		int best = 0
 		float bestv = logits_final.data[i * classes]
-		int j = 1
-		while (j < classes):
+		for j in range(1, classes):
 			float v = logits_final.data[i * classes + j]
 			if (v > bestv):
 				bestv = v
 				best = j
-			j = j + 1
 		if (best == labels.data[i]):
 			correct = correct + 1
-		i = i + 1
 	float train_acc = cast(float, correct) / cast(float, batch)
 
 	ag_tape_free(t)

@@ -53,10 +53,8 @@ void tlst_assert_hex(char* want_hex, char* got, int got_len):
 char* tlst_concat(char* a, int alen, char* b, int blen, int* out_len):
 	char* out = malloc(alen + blen)
 	mem_copy(out, a, alen)
-	int i = 0
-	while (i < blen):
+	for i in range(blen):
 		out[alen + i] = b[i]
-		i = i + 1
 	*out_len = alen + blen
 	return out
 
@@ -182,10 +180,8 @@ char* tlst_build_server_bytes(int tamper_off, int tamper_val, int ct_tamper_off,
 	sh_rec[2] = 3
 	sh_rec[3] = (sh_len >> 8) & 255
 	sh_rec[4] = sh_len & 255
-	int i = 0
-	while (i < sh_len):
+	for i in range(sh_len):
 		sh_rec[5 + i] = sh[i]
-		i = i + 1
 	int sh_rec_len = 5 + sh_len
 
 	int flen = 0
@@ -642,12 +638,10 @@ void test_client_hello_build():
 	char* rnd = malloc(32)
 	char* sid = malloc(32)
 	char* pub = malloc(32)
-	int i = 0
-	while (i < 32):
+	for i in range(32):
 		rnd[i] = i
 		sid[i] = 0x40 + i
 		pub[i] = 0x80 + i
-		i = i + 1
 	int len = 0
 	char* ch = tls_build_client_hello(c"example.com", rnd, sid, pub, &len)
 

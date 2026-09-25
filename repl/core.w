@@ -733,10 +733,8 @@ int* repl_fault_act
 
 void repl_fault_thunk_emit(int n, char* bytes):
 	char* p = cast(char*, repl_fault_thunk_page + repl_fault_thunk_pos)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		p[i] = bytes[i]
-		i = i + 1
 	repl_fault_thunk_pos = repl_fault_thunk_pos + n
 
 
@@ -819,8 +817,7 @@ void repl_fault_trace(int context):
 		free(pcs)
 		return;
 	st_write_cstr(c"stack trace (most recent call first):\n")
-	int k = 0
-	while (k < n):
+	for k in range(n):
 		int addr = load_word(pcs + k * __word_size__)
 		st_write_cstr(c"  at ")
 		int e = st_func_entry(addr)
@@ -837,7 +834,6 @@ void repl_fault_trace(int context):
 			st_write_dec(st_line_found)
 			st_write_cstr(c")")
 		st_write_cstr(c"\n")
-		k = k + 1
 	free(pcs)
 
 
@@ -976,12 +972,10 @@ char* repl_entry_path(char* dir, int n):
 # generic instantiation re-parses recorded (file, offset) spans from
 # these files, so they must survive until then.
 void repl_remove_staging(char* dir, int file_count):
-	int i = 0
-	while (i < file_count):
+	for i in range(file_count):
 		char* path = repl_entry_path(dir, i)
 		unlink(path)
 		free(path)
-		i = i + 1
 	rmdir(dir)
 
 
@@ -1254,11 +1248,9 @@ int repl_complete_names(char* prefix, char* out, int capacity):
 			# repl_declare_global) can leave the same name more than once
 			# in the table; only offer it once.
 			int dup = 0
-			int k = 0
-			while (k < count):
+			for k in range(count):
 				if (strcmp(cast(char*, load_word(out + k * __word_size__)), name) == 0):
 					dup = 1
-				k = k + 1
 			if (dup == 0):
 				save_word(out + count * __word_size__, cast(int, strclone(name)))
 				count = count + 1

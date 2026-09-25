@@ -45,10 +45,8 @@ char* rc_path(char* name, int id):
 
 rsim* rc_new(int n, char* name, int sim_seed, int min_delay, int max_delay, int drop_per_mille, int raft_seed_base):
 	rsim* c = rsim_new(n, sim_seed, min_delay, max_delay, drop_per_mille, raft_seed_base)
-	int id = 1
-	while (id <= n):
+	for id in range(1, n + 1):
 		rsim_attach_wal(c, id, rc_path(name, id))
-		id = id + 1
 	return c
 
 

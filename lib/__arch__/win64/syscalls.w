@@ -507,13 +507,11 @@ int win_callback(int fn, int nargs):
 		win_thunk_byte(p, k, 65)    /* push r9 */
 		win_thunk_byte(p, k + 1, 81)
 		k = k + 2
-	int i = 4
-	while (i < nargs):
+	for i in range(4, nargs):
 		win_thunk_byte(p, k, 255)   /* push qword [rbp+disp32] */
 		win_thunk_byte(p, k + 1, 181)
 		save_int32(p + k + 2, 48 + (i - 4) * 8)
 		k = k + 6
-		i = i + 1
 	win_thunk_byte(p, k, 72)        /* mov rax,imm64 */
 	win_thunk_byte(p, k + 1, 184)
 	save_int64(p + k + 2, fn)

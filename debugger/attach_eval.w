@@ -122,10 +122,8 @@ char* aev_read_ident():
 	if (n == 0):
 		return 0
 	char* s = malloc(n + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		s[i] = aev_text[start + i]
-		i = i + 1
 	s[n] = 0
 	return s
 

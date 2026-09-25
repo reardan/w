@@ -69,10 +69,8 @@ int gen_hex_digit(int c):
 char* gen_load_classes(char* path):
 	int size = gen_max_codepoint() + 1
 	char* classes = malloc(size)
-	int i = 0
-	while (i < size):
+	for i in range(size):
 		classes[i] = 0
-		i = i + 1
 
 	wstream* in = stream_open_read(path)
 	if (in == 0):
@@ -107,10 +105,8 @@ char* gen_load_classes(char* path):
 			pending_first = cp
 		else if (ends_with(name, c", Last>")):
 			if (pending_first >= 0):
-				int fill = pending_first
-				while (fill <= cp):
+				for fill in range(pending_first, cp + 1):
 					classes[fill] = cls
-					fill = fill + 1
 			pending_first = -1
 		else:
 			classes[cp] = cls
@@ -143,10 +139,8 @@ list[int] gen_ranges_for(char* classes, int cls):
 
 
 void gen_blank_lines(wstream* out, int count):
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		stream_write_line(out, c"")
-		i = i + 1
 
 
 void gen_prop_function(wstream* out, char* name, int value):
@@ -159,8 +153,7 @@ void gen_prop_function(wstream* out, char* name, int value):
 
 
 void gen_range_checks(wstream* out, list[int] ranges, char* prop):
-	int i = 0
-	while (i < ranges.length):
+	for i in range(0, ranges.length, 2):
 		int start = ranges[i]
 		int end = ranges[i + 1]
 		if (start == end):
@@ -175,7 +168,6 @@ void gen_range_checks(wstream* out, list[int] ranges, char* prop):
 			stream_write_line(out, c")):")
 		stream_write_cstr(out, c"\t\treturn ")
 		stream_write_line(out, prop)
-		i = i + 2
 
 
 # Prepend stays a compact hardcoded table: UnicodeData.txt does not carry

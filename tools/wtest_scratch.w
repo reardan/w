@@ -208,10 +208,8 @@ int has_line_prefix(char* text, char* prefix):
 
 # One line of generated W source, indented by tabs.
 void sc_src(string_builder* sb, int tabs, char* line):
-	int i = 0
-	while (i < tabs):
+	for i in range(tabs):
 		string_append(sb, c"\t")
-		i = i + 1
 	string_append(sb, line)
 	string_append(sb, c"\n")
 

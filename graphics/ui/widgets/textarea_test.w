@@ -306,10 +306,8 @@ void test_only_visible_lines_are_drawn():
 
 	# 400 identical lines in a field about six lines tall.
 	ui_text_buffer_set(&st.buf, c"x")
-	int i = 0
-	while (i < 400):
+	for i in range(400):
 		ui_text_buffer_insert_text(&st.buf, st.buf.length, c"\nx")
-		i = i + 1
 	assert_equal(401, st.buf.line_count)
 
 	area_frame(ctx, &st)
@@ -330,10 +328,8 @@ void test_caret_motion_scrolls_it_into_view():
 	ui_textarea_state st
 	ui_textarea_init(&st)
 	ui_text_buffer_set(&st.buf, c"x")
-	int i = 0
-	while (i < 200):
+	for i in range(200):
 		ui_text_buffer_insert_text(&st.buf, st.buf.length, c"\nx")
-		i = i + 1
 	focus(ctx, &st)
 	asserts(c"starts at top", st.scroll.offset_y == 0.0)
 

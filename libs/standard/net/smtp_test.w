@@ -311,10 +311,8 @@ void test_smtp_encode_word():
 	# 30 two-byte characters = 60 bytes: split at a character boundary
 	# (38 bytes, not 39) into two words of at most 64 characters.
 	string_builder* s = string_new()
-	int i = 0
-	while (i < 30):
+	for i in range(30):
 		string_append(s, c"\xc3\xa9")
-		i = i + 1
 	w = smtp_encode_word(s.data)
 	int sp = 0
 	while (w[sp] != ' '):

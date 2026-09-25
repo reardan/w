@@ -506,8 +506,7 @@ int ci_eval_binary(pg_ast_node* node):
 	int op_top = 0
 	save_int(values, ci_eval_const(pg_ast_child(node, 0)))
 	value_top = 1
-	int i = 1
-	while (i < count):
+	for i in range(1, count):
 		pg_ast_node* tail = pg_ast_child(node, i)
 		pg_ast_node* op_node = ci_child_ast(tail, clang_ast_binary_operator)
 		pg_ast_node* op_token = pg_ast_child(op_node, 0)
@@ -528,7 +527,6 @@ int ci_eval_binary(pg_ast_node* node):
 		int operand = ci_eval_const(ci_child_ast(tail, clang_ast_unary_expression))
 		save_int(values + (value_top << 2), operand)
 		value_top = value_top + 1
-		i = i + 1
 	while (op_top > 0):
 		int right = load_int(values + ((value_top - 1) << 2))
 		int left = load_int(values + ((value_top - 2) << 2))

@@ -91,10 +91,8 @@ void test_streaming_and_reset():
 	# non-destructive and hmac_reset restarts under the same key.
 	char* data = c"what do ya want for nothing?"
 	whmac* m = hmac_new(WHASH_SHA256(), c"Jefe", 4)
-	int i = 0
-	while (i < 28):
+	for i in range(28):
 		hmac_update(m, data + i, 1)
-		i = i + 1
 	char* mac = malloc(32)
 	hmac_final(m, mac)
 	char* got = hex_encode(mac, 32)

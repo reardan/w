@@ -256,11 +256,9 @@ dfl_tokens* dfl_tokenize_from(char* data, int length, int start, int max_chain, 
 	int* head = cast(int*, malloc(dfl_hash_size() * __word_size__))
 	mem_fill(head, -1, dfl_hash_size())
 	int* prev = cast(int*, malloc(length * __word_size__))
-	int h = 0
-	while (h < start):
+	for h in range(start):
 		if (h + dfl_min_match() <= length):
 			dfl_insert(data, length, head, prev, h)
-		h = h + 1
 
 	int strstart = start
 	int match_available = 0
@@ -279,11 +277,9 @@ dfl_tokens* dfl_tokenize_from(char* data, int length, int start, int max_chain, 
 			t.dist[t.count] = prev_dist
 			t.count = t.count + 1
 			int match_end = (strstart - 1) + prev_length
-			int k = strstart + 1
-			while (k < match_end):
+			for k in range(strstart + 1, match_end):
 				if (k + dfl_min_match() <= length):
 					dfl_insert(data, length, head, prev, k)
-				k = k + 1
 			strstart = match_end
 			match_available = 0
 			prev_length = dfl_min_match() - 1
@@ -480,11 +476,9 @@ int* dfl_build_lengths(int* freq, int n, int max_bits):
 	free(depth)
 
 	if (maxdepth > max_bits):
-		int len = max_bits + 1
-		while (len <= maxdepth):
+		for len in range(max_bits + 1, maxdepth + 1):
 			bl_count[max_bits] = bl_count[max_bits] + bl_count[len]
 			bl_count[len] = 0
-			len = len + 1
 		maxdepth = max_bits
 
 	int total = 0
@@ -540,11 +534,9 @@ int* dfl_build_codes(int* lengths, int n, int max_bits):
 		i = i + 1
 	int code = 0
 	bl_count[0] = 0
-	int len = 1
-	while (len <= max_bits):
+	for len in range(1, max_bits + 1):
 		code = (code + bl_count[len - 1]) << 1
 		next_code[len] = code
-		len = len + 1
 	int* codes = cast(int*, malloc(n * __word_size__))
 	i = 0
 	while (i < n):
@@ -641,10 +633,8 @@ void dfl_put_bit(dfl_bits* w, int bit):
 
 
 void dfl_put_bits(dfl_bits* w, int value, int nbits):
-	int i = 0
-	while (i < nbits):
+	for i in range(nbits):
 		dfl_put_bit(w, shr(value, i) & 1)
-		i = i + 1
 
 
 void dfl_put_huffman(dfl_bits* w, int code, int length):
@@ -671,8 +661,7 @@ void dfl_align_byte(dfl_bits* w):
 # (BTYPE=01) and dynamic (BTYPE=10) paths, which differ only in which
 # tables were built.
 void dfl_emit_body(dfl_bits* w, dfl_tokens* t, int start, int end, int* ll_codes, int* ll_lengths, int* d_codes, int* d_lengths):
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		int len = t.len[i]
 		int dist = t.dist[i]
 		if (dist == 0):
@@ -692,7 +681,6 @@ void dfl_emit_body(dfl_bits* w, dfl_tokens* t, int start, int end, int* ll_codes
 			dfl_put_huffman(w, d_codes[dsym], d_lengths[dsym])
 			if (deb > 0):
 				dfl_put_bits(w, dev, deb)
-		i = i + 1
 	dfl_put_huffman(w, ll_codes[256], ll_lengths[256])
 
 
@@ -703,8 +691,7 @@ void dfl_emit_body(dfl_bits* w, dfl_tokens* t, int start, int end, int* ll_codes
 # choice in dfl_emit_block cheap.
 int dfl_body_cost_bits(dfl_tokens* t, int start, int end, int* ll_lengths, int* d_lengths):
 	int bits = 0
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		int len = t.len[i]
 		int dist = t.dist[i]
 		if (dist == 0):
@@ -720,7 +707,6 @@ int dfl_body_cost_bits(dfl_tokens* t, int start, int end, int* ll_lengths, int* 
 			int dev = 0
 			dfl_dist_symbol(dist, &dsym, &deb, &dev)
 			bits = bits + d_lengths[dsym] + deb
-		i = i + 1
 	return bits + ll_lengths[256]
 
 
@@ -775,8 +761,7 @@ void dfl_emit_stored_range(dfl_bits* w, char* data, int offset, int len, int is_
 void dfl_count_freqs(dfl_tokens* t, int start, int end, int* freq_ll, int* freq_d):
 	mem_fill(freq_ll, 0, 288)
 	mem_fill(freq_d, 0, 30)
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		int len = t.len[i]
 		int dist = t.dist[i]
 		if (dist == 0):
@@ -792,7 +777,6 @@ void dfl_count_freqs(dfl_tokens* t, int start, int end, int* freq_ll, int* freq_
 			int dev = 0
 			dfl_dist_symbol(dist, &dsym, &deb, &dev)
 			freq_d[dsym] = freq_d[dsym] + 1
-		i = i + 1
 	freq_ll[256] = freq_ll[256] + 1
 
 
@@ -1147,10 +1131,8 @@ char* deflate_window(char* data, int length, char* window, int window_len, int w
 		int total = window_len + length
 		char* combined = malloc(total)
 		mem_copy(combined, window, window_len)
-		int i = 0
-		while (i < length):
+		for i in range(length):
 			combined[window_len + i] = data[i]
-			i = i + 1
 		if (level <= DEFLATE_LEVEL_STORED()):
 			dfl_emit_stored_range(w, combined, window_len, length, 0)
 		else:

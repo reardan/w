@@ -44,10 +44,8 @@ char* rle_encode(char* pixels, int total, int* out_length):
 			stream[pos] = 2
 			stream[pos + 1] = n
 			pos = pos + 2
-			int k = 0
-			while (k < n):
+			for k in range(n):
 				stream[pos + k] = pixels[start + k]
-				k = k + 1
 			pos = pos + n
 	out_length[0] = pos
 	return stream

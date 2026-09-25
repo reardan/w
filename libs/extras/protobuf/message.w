@@ -319,11 +319,9 @@ int pb_is_zero_scalar(int kind, char* addr):
 	int width = 4
 	if ((kind == PB_KIND_FIXED64()) || (kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT64()) || (kind == PB_KIND_SINT64())):
 		width = 8
-	int i = 0
-	while (i < width):
+	for i in range(width):
 		if ((addr[i] & 255) != 0):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -688,8 +686,7 @@ void pb_free_decoded(pb_message_desc* desc, char* out):
 				__w_list* list = cast(__w_list*, raw)
 				pb_value_desc* elem = cast(pb_value_desc*, f.aux)
 				int ekind = elem.kind
-				int j = 0
-				while (j < list.length):
+				for j in range(list.length):
 					char* eaddr = list.items + j * list.element_size
 					if ((ekind == PB_KIND_STRING()) || (ekind == PB_KIND_BYTES())):
 						pb_bytes* eb = cast(pb_bytes*, eaddr)
@@ -700,7 +697,6 @@ void pb_free_decoded(pb_message_desc* desc, char* out):
 						# list.items -- free their internals only, not
 						# the element storage itself.
 						pb_free_decoded(cast(pb_message_desc*, elem.aux), eaddr)
-					j = j + 1
 				__w_list_free(list)
 				pb_store_ptr(addr, 0)
 		i = i + 1

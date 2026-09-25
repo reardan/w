@@ -816,11 +816,9 @@ raft_msg* raft_make_append(raft* r, int peer):
 	if (prev_i > base):
 		raft_entry* prev_e = r.log[prev_i - base - 1]
 		u64_copy(m.prev_log_term, prev_e.term)
-	int k = next_i
-	while (k <= base + r.log.length):
+	for k in range(next_i, base + r.log.length + 1):
 		raft_entry* e = r.log[k - base - 1]
 		m.entries.push(raft_entry_new_kind(e.term, e.command, e.command_len, e.kind))
-		k = k + 1
 	u64_copy(m.leader_commit, r.commit_index)
 	return m
 
@@ -1157,8 +1155,7 @@ void raft_handle_append(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 	if (ok == 0):
 		out.push(reply)
 		return
-	int k = 0
-	while (k < m.entries.length):
+	for k in range(m.entries.length):
 		raft_entry* incoming = m.entries[k]
 		int idx = prev_i + 1 + k
 		if (idx <= base + r.log.length):
@@ -1181,7 +1178,6 @@ void raft_handle_append(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
 			raft_entry* pushed = raft_entry_new_kind(incoming.term, incoming.command, incoming.command_len, incoming.kind)
 			r.log.push(pushed)
 			raft_note_entry_appended(r, raft_last_index(r), pushed)
-		k = k + 1
 	int match_i = prev_i + m.entries.length
 	reply.success = 1
 	u64_set_int(reply.match_index, match_i)

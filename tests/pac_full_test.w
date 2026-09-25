@@ -27,10 +27,8 @@ int pac_desc(int a, int b):
 
 
 generator int pac_counter(int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		yield i
-		i = i + 1
 
 
 int pac_apply(pac_binop* f, int a, int b):

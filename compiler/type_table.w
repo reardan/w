@@ -403,11 +403,9 @@ int type_push_alias(char* name, int target):
 	new_type.num_fields = target_record.num_fields
 	new_type.total_size = target_record.total_size
 	new_type.pointer_level = target_record.pointer_level
-	int i = 0
-	while (i < 100):
+	for i in range(100):
 		new_type.field_names[i] = target_record.field_names[i]
 		new_type.field_types[i] = target_record.field_types[i]
-		i = i + 1
 	new_type.alias_target = real_target
 	new_type.kind = type_kind_alias
 	new_type.fn_return_type = -1
@@ -426,11 +424,9 @@ int type_push_const(int target):
 	new_type.num_fields = target_record.num_fields
 	new_type.total_size = target_record.total_size
 	new_type.pointer_level = target_record.pointer_level
-	int i = 0
-	while (i < 100):
+	for i in range(100):
 		new_type.field_names[i] = target_record.field_names[i]
 		new_type.field_types[i] = target_record.field_types[i]
-		i = i + 1
 	new_type.alias_target = real_target
 	new_type.kind = type_kind_const
 	new_type.fn_return_type = -1
@@ -655,11 +651,9 @@ int type_has_array_field(int type_index):
 	if (type_is_array(type_index)):
 		return 1
 	int count = type_num_args(type_index)
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		if (type_has_array_field(type_get_field_type_at(type_index, i))):
 			return 1
-		i = i + 1
 	return 0
 
 
@@ -704,13 +698,11 @@ int type_push_function(char* name, int return_type, int param_count, int param_t
 	new_type.kind = type_kind_function
 	new_type.fn_return_type = return_type
 	new_type.fn_param_count = param_count
-	int i = 0
-	while (i < 10):
+	for i in range(10):
 		int param_type = -1
 		if (i < param_count):
 			param_type = load_ptr(param_types + i * __word_size__)
 		new_type.fn_param_types[i] = param_type
-		i = i + 1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
 	return new_type_index
@@ -1162,8 +1154,7 @@ int type_get_arg(int type_index, char* field):
 	int num_fields = t.num_fields
 	if (verbosity > 0):
 		print_int(c"num_fields: ", num_fields)
-	int i = 0
-	while (i < num_fields):
+	for i in range(num_fields):
 		char* f = t.field_names[i]
 		if (verbosity > 0):
 			print2(itoa(i))
@@ -1174,7 +1165,6 @@ int type_get_arg(int type_index, char* field):
 			println2(c"")
 		if (strcmp(field, f) == 0):
 			return i
-		i = i + 1
 	return -1
 
 
@@ -1209,8 +1199,7 @@ int type_get_field_offset(int type_index, char* field):
 	type_rec* t = cast(type_rec*, type_records[type_index])
 	int num_fields = t.num_fields
 	int offset = 0
-	int i = 0
-	while (i < num_fields):
+	for i in range(num_fields):
 		char* f = t.field_names[i]
 		if (strcmp(field, f) == 0):
 			return offset
@@ -1218,7 +1207,6 @@ int type_get_field_offset(int type_index, char* field):
 		int field_size = type_get_size(field_type)
 		if (type_get_kind(type_index) != type_kind_union):
 			offset = offset + field_size
-		i = i + 1
 	return -1
 
 
@@ -1255,13 +1243,11 @@ int type_get_field_type(int type_index, char* field):
 	type_index = type_canonical(type_index)
 	type_rec* t = cast(type_rec*, type_records[type_index])
 	int num_fields = t.num_fields
-	int i = 0
-	while (i < num_fields):
+	for i in range(num_fields):
 		char* f = t.field_names[i]
 		int field_type = t.field_types[i]
 		if (strcmp(field, f) == 0):
 			return field_type
-		i = i + 1
 	return -1
 
 

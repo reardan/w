@@ -59,10 +59,8 @@ void chacha20_init_state(int* s, char* key, int counter, char* nonce):
 	s[1] = 0x3320646e
 	s[2] = 0x79622d32
 	s[3] = 0x6b206574
-	int i = 0
-	while (i < 8):
+	for i in range(8):
 		s[4 + i] = load_le32(key + i * 4)
-		i = i + 1
 	s[12] = counter & chacha20_mask32()
 	s[13] = load_le32(nonce)
 	s[14] = load_le32(nonce + 4)

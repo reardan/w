@@ -44,10 +44,8 @@ char* gs_msg(char* prefix, int n):
 
 char* gs_fill(int size, int ch):
 	char* buf = malloc(size + 1)
-	int i = 0
-	while (i < size):
+	for i in range(size):
 		buf[i] = ch
-		i = i + 1
 	buf[size] = 0
 	return buf
 
@@ -96,14 +94,12 @@ void gs_count(grpc_call* call, void* user_data):
 	int size = atoi(req + i + 1)
 	free(req)
 	grpc_call_add_header(call, c"x-kind", c"server-streaming")
-	int k = 0
-	while (k < n):
+	for k in range(n):
 		char* buf = gs_fill(size, 'a' + (k % 26))
 		int rc = grpc_call_send(call, buf, size)
 		free(buf)
 		if (rc != 0):
 			return
-		k = k + 1
 	grpc_call_add_trailer(call, c"x-sent", c"done")
 
 
@@ -178,8 +174,7 @@ void gs_ticker(grpc_call* call, void* user_data):
 	if (grpc_call_recv(call, &m, &len) != 1):
 		return
 	free(m)
-	int i = 0
-	while (i < 500):
+	for i in range(500):
 		char* t = gs_msg(c"tick ", i)
 		int rc = grpc_call_send(call, t, strlen(t))
 		free(t)
@@ -188,7 +183,6 @@ void gs_ticker(grpc_call* call, void* user_data):
 				gs_stops = gs_stops + 1
 			return
 		sleep_ms(20)
-		i = i + 1
 
 
 void gs_stats(grpc_call* call, void* user_data):
@@ -277,8 +271,7 @@ void gs_check_count(grpc_channel* ch, int n, int size):
 # i; returns the finished result (reply in r.response).
 grpc_result* gs_sum_call(grpc_channel* ch, int count, int size):
 	grpc_client_stream* cs = grpc_stream_open(ch, c"/t.S/Sum", 0, 0)
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		char* buf = gs_fill(size, 'x')
 		char* num = gs_msg(c"", i)
 		int k = 0
@@ -288,7 +281,6 @@ grpc_result* gs_sum_call(grpc_channel* ch, int count, int size):
 		assert_equal(0, grpc_stream_send(cs, buf, size))
 		free(num)
 		free(buf)
-		i = i + 1
 	assert_equal(0, grpc_stream_close_send(cs))
 	char* m = 0
 	int len = 0
@@ -324,8 +316,7 @@ int gs_stats_call(grpc_channel* ch):
 # Bidi ping-pong: rounds messages, each answered before the next.
 void gs_ping_pong(grpc_channel* ch, int rounds, char* want_encoding):
 	grpc_client_stream* cs = grpc_stream_open(ch, c"/t.S/Echo", 0, 0)
-	int i = 0
-	while (i < rounds):
+	for i in range(rounds):
 		char* ping = gs_msg(c"ping ", i)
 		assert_equal(0, grpc_stream_send(cs, ping, strlen(ping)))
 		char* m = 0
@@ -337,7 +328,6 @@ void gs_ping_pong(grpc_channel* ch, int rounds, char* want_encoding):
 		free(want)
 		free(m)
 		free(ping)
-		i = i + 1
 	if (want_encoding != 0):
 		assert_strings_equal(want_encoding, grpc_stream_header(cs, c"grpc-encoding"))
 	else:
@@ -531,11 +521,9 @@ void test_grpc_streaming_end_to_end():
 	# handler counts it.
 	cs = grpc_stream_open(ch, c"/t.S/Ticker", 0, 0)
 	assert_equal(0, grpc_stream_send(cs, c"go", 2))
-	int i = 0
-	while (i < 3):
+	for i in range(3):
 		assert_equal(1, grpc_stream_recv(cs, &m, &len))
 		free(m)
-		i = i + 1
 	grpc_stream_cancel(cs)
 	assert_equal(grpc_status_cancelled(), grpc_stream_status(cs))
 	assert_equal(-1, grpc_stream_recv(cs, &m, &len))

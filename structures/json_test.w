@@ -235,12 +235,10 @@ void test_parse_floats():
 	# zero in float spelling stays a float, whatever the sign
 	json_value* zero = json_parse(c"[0.0,0e0,-0.0]")
 	assert1(zero != 0)
-	int i = 0
-	while (i < 3):
+	for i in range(3):
 		json_value* element = json_array_get(zero, i)
 		assert_equal(json_type_float(), element.type)
 		assert1(element.float_value == 0.0)
-		i = i + 1
 	json_free(zero)
 
 	# more mantissa digits than float32 holds still parses

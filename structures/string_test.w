@@ -37,10 +37,8 @@ void test_append_int():
 
 void test_growth():
 	string_builder* s = string_new_sized(8)
-	int i = 0
-	while (i < 100):
+	for i in range(100):
 		string_append(s, c"0123456789")
-		i = i + 1
 	assert_equal(1000, s.length)
 	assert_equal(1000, strlen(s.data))
 	string_free(s)

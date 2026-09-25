@@ -100,10 +100,8 @@ void cp_check_open_fails(char* key, char* nonce, char* aad, int aad_len, char* c
 	char* pt = malloc(n + 1)
 	mem_fill(pt, 0x5a, n)
 	assert_equal(0, chacha20poly1305_open(key, nonce, aad, aad_len, ct, n, tag, pt))
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		assert_equal(0x5a, pt[i] & 255)
-		i = i + 1
 	free(pt)
 
 
@@ -132,12 +130,10 @@ void test_open_fail_closed():
 	aad[0] = aad[0] ^ 1
 
 	# tampered tag: each byte flipped in turn
-	int i = 0
-	while (i < 16):
+	for i in range(16):
 		tag[i] = tag[i] ^ 255
 		cp_check_open_fails(key, nonce, aad, aad_len, ct, n, tag)
 		tag[i] = tag[i] ^ 255
-		i = i + 1
 
 	# truncated ciphertext (tag no longer matches the shorter data)
 	cp_check_open_fails(key, nonce, aad, aad_len, ct, n - 1, tag)

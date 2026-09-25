@@ -370,14 +370,12 @@ int ui_font_rows_place(char* bitmap, int w, int h, int* x, int* y):
 	if (ui_font_rows_reserve(ui_font_st.shelf_y + ui_font_st.shelf_h + 1) == 0):
 		return 0
 	int top = ui_font_st.shelf_y + 1
-	int row = 0
-	while (row < h):
+	for row in range(h):
 		int col = 0
 		char* dst = &ui_font_st.pixels[(top + row) * atlas_w + ui_font_st.shelf_x]
 		while (col < w):
 			dst[col] = bitmap[row * w + col]
 			col = col + 1
-		row = row + 1
 	x[0] = ui_font_st.shelf_x
 	y[0] = ui_font_atlas_h() + top
 	ui_font_st.shelf_x = ui_font_st.shelf_x + w + 1
@@ -624,11 +622,9 @@ void ui_font_table_grow():
 	ui_font_st.keys = cast(int*, malloc(ui_font_st.table_cap * __word_size__))
 	ui_font_st.slots = cast(int*, malloc(ui_font_st.table_cap * __word_size__))
 	mem_fill(ui_font_st.keys, 0 - 1, ui_font_st.table_cap)
-	int i = 0
-	while (i < old_cap):
+	for i in range(old_cap):
 		if (old_keys[i] != 0 - 1):
 			ui_font_table_insert(old_keys[i], old_slots[i])
-		i = i + 1
 	free(cast(char*, old_keys))
 	free(cast(char*, old_slots))
 
@@ -765,10 +761,8 @@ char* ui_font_baked_pixels():
 		int count = rle_length - base
 		if (count > chunk_size):
 			count = chunk_size
-		int j = 0
-		while (j < count):
+		for j in range(count):
 			stream[base + j] = chunk[j]
-			j = j + 1
 		i = i + 1
 	int total = ui_font_atlas_w() * ui_font_atlas_h()
 	char* pixels = rle_decode(stream, rle_length, malloc(total), total)
@@ -787,10 +781,8 @@ char* ui_font_build_atlas():
 	int extra = ui_font_atlas_w() * ui_font_st.cap_rows
 	char* pixels = malloc(total + extra + 1)
 	mem_copy(pixels, baked, total)
-	int e = 0
-	while (e < extra):
+	for e in range(extra):
 		pixels[total + e] = ui_font_st.pixels[e]
-		e = e + 1
 	return pixels
 
 

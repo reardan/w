@@ -86,10 +86,8 @@ void wcloc_table_row(wstream* out, char* path, cloc_counts* c, int path_width):
 
 
 void wcloc_rule(wstream* out, int width):
-	int n = 0
-	while (n < width):
+	for n in range(width):
 		stream_write_byte(out, '-')
-		n = n + 1
 	stream_write_byte(out, 10)
 
 
@@ -104,10 +102,8 @@ void wcloc_print_table(wstream* out, list[cloc_row*] rows, cloc_counts* total):
 	path_width = path_width + 2
 	int width = path_width + 7 + 9 + 9 + 9 + 10
 	stream_write_cstr(out, c"path")
-	int n = 4
-	while (n < path_width):
+	for n in range(4, path_width):
 		stream_write_byte(out, ' ')
-		n = n + 1
 	stream_write_line(out, c"  files    blank  comment     code    tokens")
 	wcloc_rule(out, width)
 	i = 0

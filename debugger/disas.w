@@ -277,8 +277,7 @@ void dbg_disas_command(int pc, char* arg):
 		count = 10
 	asm_insn insn
 	int a = start
-	int printed = 0
-	while (printed < count):
+	for printed in range(count):
 		if (end != -1):
 			if (a >= end):
 				return;
@@ -291,4 +290,3 @@ void dbg_disas_command(int pc, char* arg):
 			return;
 		dbg_disas_print(a, &insn, a == pc)
 		a = a + len
-		printed = printed + 1

@@ -16,13 +16,11 @@ void assert_int_list(list[int] want, list[int] got):
 # O(n * k) reference for the extremes.
 int reference_extreme(list[int] xs, int start, int k, int want_max):
 	int best = xs[start]
-	int i = 1
-	while (i < k):
+	for i in range(1, k):
 		if (want_max && (xs[start + i] > best)):
 			best = xs[start + i]
 		if ((want_max == 0) && (xs[start + i] < best)):
 			best = xs[start + i]
-		i = i + 1
 	return best
 
 
@@ -111,12 +109,10 @@ void test_window_extremes_duplicates():
 void test_window_extremes_match_reference():
 	list[int] xs = new list[int]
 	int state = 12345
-	int i = 0
-	while (i < 40):
+	for i in range(40):
 		state = state * 1103515245 + 12345
 		# fold to a small signed range so duplicates are common
 		xs.push((state / 65536) % 50)
-		i = i + 1
 	int k = 1
 	while (k <= xs.length):
 		list[int] maxes = window_max(xs, k)
@@ -230,21 +226,17 @@ void test_window_sum_matches_float_on_int_values():
 	# integer-valued floats: the int and float paths agree exactly
 	list[int] xs = list[int]{7, -2, 9, 4, -5, 1}
 	list[float] fs = new list[float]
-	int i = 0
-	while (i < xs.length):
+	for i in range(xs.length):
 		float v = xs[i]
 		fs.push(v)
-		i = i + 1
 	int k = 1
 	while (k <= xs.length):
 		list[int] want = window_sum(xs, k)
 		list[float] got = window_sum_float(fs, k)
 		assert_equal(want.length, got.length)
-		int j = 0
-		while (j < want.length):
+		for j in range(want.length):
 			float w = want[j]
 			assert_near(w, got[j])
-			j = j + 1
 		list_free[int](want)
 		list_free[float](got)
 		k = k + 1

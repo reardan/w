@@ -338,13 +338,11 @@ char* json_take_string_data(string_builder* s):
 # a bad digit. Reads sequentially, so it never looks past a terminator.
 int json_hex4(json_parser* p, int at):
 	int value = 0
-	int i = 0
-	while (i < 4):
+	for i in range(4):
 		int digit = json_hex_value(p.input[at + i])
 		if (digit < 0):
 			return -1
 		value = value * 16 + digit
-		i = i + 1
 	return value
 
 
@@ -500,10 +498,8 @@ int json_float64_mant_limit():
 	if (__word_size__ != 8):
 		return 100000000
 	int limit = 100000000
-	int i = 0
-	while (i < 8):
+	for i in range(8):
 		limit = limit * 10
-		i = i + 1
 	return limit
 
 

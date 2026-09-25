@@ -63,12 +63,10 @@ int task_frame_write_message(int fd, char* body, int length):
 
 
 void uppercase_ascii(char* text, int length):
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		int b = text[i] & 255
 		if ((b >= 'a') && (b <= 'z')):
 			text[i] = b - 32
-		i = i + 1
 
 
 # One task per connection: read a frame, uppercase it, write it back,
@@ -136,8 +134,7 @@ generator int demo_client(int port, int id, char* message):
 	int failures = 0
 	int length = strlen(message)
 	frame_reader* reader = frame_reader_new(fd)
-	int round = 0
-	while (round < 2):
+	for round in range(2):
 		if (task_frame_write_message(fd, message, length) < 0):
 			failures = failures + 1
 		int reply_length = 0
@@ -151,7 +148,6 @@ generator int demo_client(int port, int id, char* message):
 			print(reply)
 			print(c"\n")
 			free(reply)
-		round = round + 1
 	frame_reader_free(reader)
 	close(fd)
 	task_finish(failures)

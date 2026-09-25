@@ -565,10 +565,8 @@ int ws_header_length(int b1):
 
 # XORs len bytes at data with the 4-byte key (RFC 6455 section 5.3).
 void ws_mask_bytes(char* data, int len, char* key):
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		data[i] = (data[i] & 255) ^ (key[i & 3] & 255)
-		i = i + 1
 
 
 # Parses a complete header of hlen bytes (ws_header_length). Returns 0,

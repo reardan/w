@@ -130,12 +130,10 @@ void nn_adamw_step(ag_tape* t, tensor* param, nn_adamw* s, int step, float lr, f
 	float* pm = s.m.data
 	float* pv = s.v.data
 	int n = param.len
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		float gi = pg[i]
 		pm[i] = beta1 * pm[i] + (1.0 - beta1) * gi
 		pv[i] = beta2 * pv[i] + (1.0 - beta2) * gi * gi
 		float mhat = pm[i] / bc1
 		float vhat = pv[i] / bc2
 		pp[i] = pp[i] - lr * (mhat / (fsqrt(vhat) + eps) + wd * pp[i])
-		i = i + 1

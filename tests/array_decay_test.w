@@ -19,18 +19,14 @@ int[4] global_cells
 
 
 void fill_bytes(char* dst, int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		dst[i] = 'a' + i
-		i = i + 1
 
 
 int sum_words(int* values, int n):
 	int total = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		total = total + values[i]
-		i = i + 1
 	return total
 
 

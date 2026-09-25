@@ -106,10 +106,8 @@ void test_operators():
 void test_rectangular_product():
 	# (2x3) * (3x2) -> 2x2, and the transpose shape swap.
 	float[] av = new float[6]
-	int i = 0
-	while (i < 6):
+	for i in range(6):
 		av[i] = i + 1
-		i = i + 1
 	matrix a = matrix_from(av, 2, 3)
 	matrix t = a.transpose()
 	assert_equal(3, t.rows)

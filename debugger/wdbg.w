@@ -186,8 +186,7 @@ void wdbg_print_registers(int context):
 
 void wdbg_print_stack(int context):
 	int esp = ctx_esp(context)
-	int i = 0
-	while (i < 16):
+	for i in range(16):
 		int slot = esp + i * __word_size__
 		dbg_print_hex(slot)
 		print(c": ")
@@ -197,7 +196,6 @@ void wdbg_print_stack(int context):
 			free(hv)
 		else:
 			println(c"<unreadable>")
-		i = i + 1
 
 
 # "function (file:line)" for an absolute statement address.
@@ -319,8 +317,7 @@ void dbg_backtrace():
 
 
 void dbg_examine(int addr, int count):
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		int slot = addr + i * __word_size__
 		dbg_print_hex(slot)
 		print(c": ")
@@ -331,7 +328,6 @@ void dbg_examine(int addr, int count):
 		else:
 			println(c"<unreadable>")
 			return;
-		i = i + 1
 
 
 # print <arg>: locals and args by name first, then defined globals, then

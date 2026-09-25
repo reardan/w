@@ -43,11 +43,9 @@ int launch_works(int n):
 	launch fill[(n + threads - 1) / threads, threads](out, 5, n)
 	gpu_sync()
 	int ok = 1
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (out[i] != 5 + i):
 			ok = 0
-		i = i + 1
 	gpu_free(cast(char*, out))
 	return ok
 

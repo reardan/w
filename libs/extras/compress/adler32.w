@@ -30,11 +30,9 @@ int adler32_update(int adler, char* data, int length):
 	int mod = adler32_mod()
 	int s1 = adler & 65535
 	int s2 = shr(adler, 16) & 65535
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		s1 = (s1 + (data[i] & 255)) % mod
 		s2 = (s2 + s1) % mod
-		i = i + 1
 	return (s2 << 16) | s1
 
 

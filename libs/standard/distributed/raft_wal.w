@@ -252,12 +252,10 @@ int raft_wal_agree_len(raft_wal* rw, raft* r):
 	int n = rw.entry_terms.length
 	if (r.log.length < n):
 		n = r.log.length
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		raft_entry* e = r.log[i]
 		if (u64_eq(rw.entry_terms[i], e.term) == 0):
 			return i
-		i = i + 1
 	return n
 
 
@@ -308,10 +306,8 @@ void raft_wal_put_append(raft_wal* rw, raft* r, int i):
 	arec[1] = e.kind
 	u64_save_le(arec + 2, e.term)
 	store_le32(arec + 10, cmd_len)
-	int k = 0
-	while (k < cmd_len):
+	for k in range(cmd_len):
 		arec[14 + k] = e.command[k]
-		k = k + 1
 	raft_wal_put_record(rw, arec, 14 + cmd_len)
 	free(arec)
 	rw.entry_terms.push(u64_clone(e.term))
@@ -332,15 +328,11 @@ int raft_wal_rewrite(raft_wal* rw, raft* r):
 	u64_save_le(nrec + 1, r.snap_last_index)
 	u64_save_le(nrec + 9, r.snap_last_term)
 	store_le32(nrec + 17, ccount)
-	int ci = 0
-	while (ci < ccount):
+	for ci in range(ccount):
 		store_le32(nrec + 21 + 4 * ci, r.snap_config[ci])
-		ci = ci + 1
 	store_le32(nrec + coff, blob_len)
-	int b = 0
-	while (b < blob_len):
+	for b in range(blob_len):
 		nrec[coff + 4 + b] = r.snap_data[b]
-		b = b + 1
 	raft_wal_put_record(rw, nrec, coff + 4 + blob_len)
 	free(nrec)
 	u64_copy(rw.snap_index, r.snap_last_index)
@@ -462,10 +454,8 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		u64_load_le(r.snap_last_index, p + 1)
 		u64_load_le(r.snap_last_term, p + 9)
 		list[int] cfg = new list[int]
-		int ci = 0
-		while (ci < ccount):
+		for ci in range(ccount):
 			cfg.push(load_le32(p + 21 + 4 * ci))
-			ci = ci + 1
 		raft_adopt_snapshot_config(r, cfg)
 		u64_copy(r.commit_index, r.snap_last_index)
 		u64_copy(r.last_applied, r.snap_last_index)
@@ -509,11 +499,9 @@ raft* raft_wal_recover(raft_wal* rw, int self_id, list[int] peers, int election_
 	assert1(u64_eq(rw.snap_index, r.snap_last_index))
 	assert1(u64_eq(rw.snap_term, r.snap_last_term))
 	assert1(rw.entry_terms.length == r.log.length)
-	int i = 0
-	while (i < r.log.length):
+	for i in range(r.log.length):
 		raft_entry* e = r.log[i]
 		assert1(u64_eq(rw.entry_terms[i], e.term))
-		i = i + 1
 	return r
 
 

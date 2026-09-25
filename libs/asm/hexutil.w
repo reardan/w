@@ -67,12 +67,10 @@ int asm_hex_decode(char* hex, char* out, int max):
 char* asm_hex_encode(char* bytes, int n):
 	char* digits = c"0123456789abcdef"
 	char* text = malloc(n * 2 + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int v = bytes[i] & 255
 		text[i * 2] = digits[v >> 4]
 		text[i * 2 + 1] = digits[v & 15]
-		i = i + 1
 	text[n * 2] = 0
 	return text
 

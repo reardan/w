@@ -54,14 +54,12 @@ int validate_line(char* line, int length, int line_index):
 		return fail(c"does not parse as JSON", line_index)
 	if (value.type != json_type_object()):
 		return fail(c"is not a JSON object", line_index)
-	int i = 0
-	while (i < 7):
+	for i in range(7):
 		if (json_object_has(value, required_field(i)) == 0):
 			print(c"ndjson_utf8_validator: missing field '")
 			print(required_field(i))
 			println(c"'")
 			return fail(c"is missing a diagnostic field", line_index)
-		i = i + 1
 	json_free(value)
 	return 0
 

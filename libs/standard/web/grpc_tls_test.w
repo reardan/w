@@ -43,10 +43,8 @@ char* gt_msg(char* prefix, int n):
 
 char* gt_fill(int size, int ch):
 	char* buf = malloc(size + 1)
-	int i = 0
-	while (i < size):
+	for i in range(size):
 		buf[i] = ch
-		i = i + 1
 	buf[size] = 0
 	return buf
 
@@ -87,14 +85,12 @@ void gt_count(grpc_call* call, void* user_data):
 		i = i + 1
 	int size = atoi(req + i + 1)
 	free(req)
-	int k = 0
-	while (k < n):
+	for k in range(n):
 		char* buf = gt_fill(size, 'a' + (k % 26))
 		int rc = grpc_call_send(call, buf, size)
 		free(buf)
 		if (rc != 0):
 			return
-		k = k + 1
 	grpc_call_add_trailer(call, c"x-sent", c"done")
 
 
@@ -130,8 +126,7 @@ void gt_ticker(grpc_call* call, void* user_data):
 	if (grpc_call_recv(call, &m, &len) != 1):
 		return
 	free(m)
-	int i = 0
-	while (i < 500):
+	for i in range(500):
 		char* t = gt_msg(c"tick ", i)
 		int rc = grpc_call_send(call, t, strlen(t))
 		free(t)
@@ -140,7 +135,6 @@ void gt_ticker(grpc_call* call, void* user_data):
 				gt_stops = gt_stops + 1
 			return
 		sleep_ms(20)
-		i = i + 1
 
 
 void gt_stats(grpc_call* call, void* user_data):

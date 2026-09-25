@@ -13,10 +13,8 @@ import lib.hex
 
 
 void dns_test_assert_bytes_equal(char* want, char* got, int length):
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		assert_equal(want[i] & 255, got[i] & 255)
-		i = i + 1
 
 
 int dns_test_put_u16(char* msg, int pos, int value):
@@ -42,8 +40,7 @@ char* dns_test_build_cname_chain(int cname_count, int* out_len):
 	pos = pos + 3
 	pos = dns_test_put_u16(msg, pos, 1)
 	pos = dns_test_put_u16(msg, pos, 1)
-	int k = 0
-	while (k < cname_count):
+	for k in range(cname_count):
 		msg[pos] = 1
 		msg[pos + 1] = 'a' + k
 		msg[pos + 2] = 0
@@ -57,7 +54,6 @@ char* dns_test_build_cname_chain(int cname_count, int* out_len):
 		msg[pos + 1] = 'a' + k + 1
 		msg[pos + 2] = 0
 		pos = pos + 3
-		k = k + 1
 	msg[pos] = 1
 	msg[pos + 1] = 'a' + cname_count
 	msg[pos + 2] = 0
@@ -119,8 +115,7 @@ void test_dns_build_query_rejects_bad_names():
 	# Four 63-byte labels encode to 257 bytes, over the 255 cap.
 	char* long_name = malloc(260)
 	int pos = 0
-	int part = 0
-	while (part < 4):
+	for part in range(4):
 		if (part > 0):
 			long_name[pos] = '.'
 			pos = pos + 1
@@ -129,7 +124,6 @@ void test_dns_build_query_rejects_bad_names():
 			long_name[pos] = 'b'
 			pos = pos + 1
 			i = i + 1
-		part = part + 1
 	long_name[pos] = 0
 	asserts(c"oversized name accepted", dns_build_query(long_name, 1, out, 512) == 0)
 	free(long_name)
@@ -361,11 +355,9 @@ void test_dns_resolv_conf_nameservers_file():
 
 
 void test_dns_random_id_range():
-	int i = 0
-	while (i < 8):
+	for i in range(8):
 		int id = dns_random_id()
 		asserts(c"id out of range", (id >= 0) & (id <= 65535))
-		i = i + 1
 
 
 # Blocking exact read helper for the mock server child.
@@ -467,10 +459,8 @@ void test_dns_query_server_mock_tcp_fallback():
 		truncated[1] = buf[1]
 		truncated[2] = 0x83
 		truncated[3] = 0x80
-		int z = 4
-		while (z < 12):
+		for z in range(4, 12):
 			truncated[z] = 0
-			z = z + 1
 		socket_send_to_ipv4(udp_server, truncated, 12, 0, net_htonl(from.ip_address), net_htons(from.port))
 
 		# Full answer over TCP, RFC 1035 4.2.2 length-prefixed.

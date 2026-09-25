@@ -111,8 +111,7 @@ float stats_acc_stddev(stats_acc* a, int ddof = 0):
 float stats_sum(list[float] xs):
 	float total = 0.0
 	float comp = 0.0
-	int i = 0
-	while (i < xs.length):
+	for i in range(xs.length):
 		float x = xs[i]
 		float t = total + x
 		if (fabs(total) >= fabs(x)):
@@ -120,7 +119,6 @@ float stats_sum(list[float] xs):
 		else:
 			comp = comp + ((x - t) + total)
 		total = t
-		i = i + 1
 	return total + comp
 
 
@@ -161,12 +159,10 @@ float stats_variance(list[float] xs, int ddof = 0):
 	float m = stats_mean(xs)
 	float s2 = 0.0
 	float comp = 0.0
-	int i = 0
-	while (i < xs.length):
+	for i in range(xs.length):
 		float d = xs[i] - m
 		s2 = s2 + d * d
 		comp = comp + d
-		i = i + 1
 	float n = xs.length
 	float denom = xs.length - ddof
 	float v = (s2 - comp * comp / n) / denom

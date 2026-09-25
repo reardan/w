@@ -240,10 +240,8 @@ int wmeta_arch_segment(char* path):
 # "lib/__arch__/syscalls" + "x86" -> "lib/__arch__/x86/syscalls"
 char* wmeta_insert_arch(char* path, int pos, char* arch):
 	string_builder* s = string_new()
-	int i = 0
-	while (i < pos + 8):
+	for i in range(pos + 8):
 		string_append_char(s, path[i])
-		i = i + 1
 	string_append_char(s, '/')
 	string_append(s, arch)
 	string_append(s, path + pos + 8)
@@ -364,12 +362,10 @@ void wmeta_validate_module(wmeta_check* check, wmeta_package* pkg, char* module,
 	if (wmeta_valid_dotted_name(module) == 0):
 		wmeta_error2(check, pkg.meta_path, c"invalid module name '", module, c"'")
 		return
-	int i = 0
-	while (i < index):
+	for i in range(index):
 		if (strcmp(pkg.modules[i], module) == 0):
 			wmeta_error2(check, pkg.meta_path, c"duplicate module '", module, c"'")
 			return
-		i = i + 1
 	char* path = wmeta_module_path(module)
 	int arch_pos = wmeta_arch_segment(path)
 	if (arch_pos >= 0):
@@ -428,13 +424,11 @@ void wmeta_check_dep(wmeta_check* check, wmeta_package* pkg, wmeta_dep* dep, int
 	if (constraint == 0):
 		wmeta_error2(check, pkg.meta_path, c"invalid constraint '", dep.constraint, c"'")
 		return
-	int i = 0
-	while (i < index):
+	for i in range(index):
 		wmeta_dep* other = pkg.deps[i]
 		if (strcmp(other.name, dep.name) == 0):
 			wmeta_error2(check, pkg.meta_path, c"duplicate dependency '", dep.name, c"'")
 			return
-		i = i + 1
 	if (dep.path == 0):
 		# No path: nothing on disk to verify (a registry is a later stage)
 		return

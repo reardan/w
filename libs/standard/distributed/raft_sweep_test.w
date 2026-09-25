@@ -153,11 +153,9 @@ sweep_cluster* swc_new(int seed, char* scenario):
 	char* si = itoa(seed)
 	c.tag = strjoin(scenario, si)
 	free(si)
-	int id = 1
-	while (id <= c.n):
+	for id in range(1, c.n + 1):
 		sweep_track* t = new sweep_track(0, 0, new list[char*])
 		c.track.push(t)
-		id = id + 1
 	return c
 
 
@@ -171,15 +169,13 @@ int swc_wait_leader(sweep_cluster* c, int max_steps):
 # each round — elections may churn under 8% drop; a round with no
 # unique leader (or a refused propose) just steps and retries.
 void swc_propose_retry(sweep_cluster* c, char* command, int max_rounds):
-	int round = 0
-	while (round < max_rounds):
+	for round in range(max_rounds):
 		int lid = rsim_leader(c.sim)
 		if (lid != (0 - 1)):
 			if (raft_propose(c.nodes[lid - 1], command, strlen(command), sim_now(c.net), c.sim.out) == 1):
 				rsim_route_out(c.sim)
 				return
 		rsim_step(c.sim)
-		round = round + 1
 	asserts(c.tag, 0)
 
 
@@ -194,26 +190,22 @@ int swc_converged(sweep_cluster* c):
 	int ci = raft_commit_int(lead)
 	if (ci != li):
 		return 0
-	int i = 0
-	while (i < c.n):
+	for i in range(c.n):
 		raft* r = c.nodes[i]
 		if (raft_last_index(r) != li):
 			return 0
 		if (raft_commit_int(r) != ci):
 			return 0
-		i = i + 1
 	return 1
 
 
 # Step (with checks) inside a generous settle window until converged;
 # not converging is a red seed.
 void swc_settle(sweep_cluster* c, int max_rounds):
-	int round = 0
-	while (round < max_rounds):
+	for round in range(max_rounds):
 		if (swc_converged(c) == 1):
 			return
 		rsim_step(c.sim)
-		round = round + 1
 	asserts(c.tag, swc_converged(c))
 
 
@@ -235,13 +227,11 @@ void swc_check_log_matching(sweep_cluster* c):
 			int cb = raft_commit_int(b)
 			if (cb < hi):
 				hi = cb
-			int k = lo
-			while (k <= hi):
+			for k in range(lo, hi + 1):
 				raft_entry* ea = raft_log_at(a, k)
 				raft_entry* eb = raft_log_at(b, k)
 				asserts(c.tag, u64_eq(ea.term, eb.term) == 1)
 				asserts(c.tag, strcmp(ea.command, eb.command) == 0)
-				k = k + 1
 			j = j + 1
 		i = i + 1
 
@@ -282,14 +272,12 @@ void swc_check_applied_equal(sweep_cluster* c):
 # memory-flat.
 void swc_free(sweep_cluster* c):
 	rsim_free(c.sim)
-	int i = 0
-	while (i < c.n):
+	for i in range(c.n):
 		sweep_track* t = c.track[i]
 		while (t.applied.length > 0):
 			free(t.applied.pop())
 		t.applied.free()
 		free(t)
-		i = i + 1
 	c.track.free()
 	c.term_leader.free()
 	u64_free(c.scratch)
@@ -328,14 +316,12 @@ void sweep_lossy_life(int seed):
 # sweep both orders occur, which is the point. No unique leader within
 # the window (rare mid-election heal) skips the twist for this seed.
 void swc_snapshot_twist(sweep_cluster* c):
-	int round = 0
-	while (round < 30):
+	for round in range(30):
 		int lid = rsim_leader(c.sim)
 		if (lid != (0 - 1)):
 			if (raft_take_snapshot(c.nodes[lid - 1], c"SWEEPSNAP", 9) == 1):
 				return
 		rsim_step(c.sim)
-		round = round + 1
 
 
 # Scenario 2, churn: elect, propose, then two partition cycles from
@@ -363,11 +349,9 @@ void sweep_churn(int seed):
 	# cycle 2: a random non-leader pair
 	lid = swc_wait_leader(c, 400)
 	list[int] others = new list[int]
-	int idn = 1
-	while (idn <= c.n):
+	for idn in range(1, c.n + 1):
 		if (idn != lid):
 			others.push(idn)
-		idn = idn + 1
 	int ia = prng_range(sc, others.length)
 	int ib = prng_range(sc, others.length - 1)
 	if (ib >= ia):

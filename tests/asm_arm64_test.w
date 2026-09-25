@@ -33,11 +33,9 @@ int min_int(int a, int b):
 
 
 int bytes4_equal(char* a, char* b):
-	int i = 0
-	while (i < 4):
+	for i in range(4):
 		if ((a[i] & 255) != (b[i] & 255)):
 			return 1 == 2
-		i = i + 1
 	return 1
 
 

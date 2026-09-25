@@ -466,10 +466,8 @@ int ww_code_matches(char* given):
 	if (strlen(given) != n):
 		return 0
 	int diff = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		diff = diff | ((given[i] ^ ww_code[i]) & 255)
-		i = i + 1
 	return diff == 0
 
 
@@ -487,11 +485,9 @@ char* ww_cookie_value(char* header, char* name):
 			i = i + 1
 		if ((i - start > nlen) && (header[start + nlen] == '=')):
 			int same = 1
-			int k = 0
-			while (k < nlen):
+			for k in range(nlen):
 				if (header[start + k] != name[k]):
 					same = 0
-				k = k + 1
 			if (same):
 				return substring(header, start + nlen + 1, i)
 	return 0

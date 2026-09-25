@@ -95,15 +95,13 @@ list[char*] diff_split_lines(char* text):
 	list[char*] lines = new list[char*]
 	int n = strlen(text)
 	string_builder* line = string_new()
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		char c = text[i]
 		if (c == 10):
 			lines.push(strclone(line.data))
 			string_clear(line)
 		else:
 			string_append_char(line, c)
-		i = i + 1
 	if (line.length > 0):
 		lines.push(strclone(line.data))
 	string_free(line)

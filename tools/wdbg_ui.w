@@ -401,15 +401,13 @@ void od_parse_registers(char* text):
 	char* names = c"eax ecx edx ebx esp ebp esi edi eip eflags"
 	list[char*] want = split(names, ' ')
 	for char* ln in lines:
-		int k = 0
-		while (k < 10):
+		for k in range(10):
 			string_builder* pfx = string_from(want[k])
 			string_append(pfx, c":")
 			if (starts_with(ln, pfx.data)):
 				int found = 0
 				od_regs[k] = od_parse_hex_at(ln, &found)
 			string_free(pfx)
-			k = k + 1
 		free(ln)
 	list_free[char*](lines)
 	od_free_lines(want)
@@ -1167,14 +1165,12 @@ char* od_insn_bytes(int addr, int next):
 		int n = next - addr
 		if (n > 8):
 			n = 8
-		int i = 0
-		while (i < n):
+		for i in range(n):
 			int off = addr - od_code_base + i
 			if ((off >= 0) && (off < od_code_len)):
 				char* h = od_hex2(od_code_bytes[off] & 255)
 				string_append(b, h)
 				free(h)
-			i = i + 1
 	char* out = strclone(b.data)
 	string_free(b)
 	return out
@@ -1292,8 +1288,7 @@ void od_draw_regs(int x, int y, int w, int h):
 	int clicked = od_pane_begin(od_p_regs(), x, y, w, h, c"Registers (x86)", nrows)
 	od_pane* p = &od_panes[od_p_regs()]
 	int cx = x + 6
-	int row = 0
-	while (row < nrows):
+	for row in range(nrows):
 		int ry = od_row_y(p, row)
 		if (ry >= 0):
 			od_row_bg(p, row, ry)
@@ -1341,7 +1336,6 @@ void od_draw_regs(int x, int y, int w, int h):
 				od_cells(cx, ry, c"Arguments", od_c_muted())
 			else if (row > 22 + od_locals.length):
 				od_cells(cx + od_cw * 2, ry, od_args[row - 23 - od_locals.length], od_c_text())
-		row = row + 1
 	od_pane_end()
 	if ((clicked >= 0) && od_dbl && od_regs_valid):
 		if (clicked < 8):
@@ -1368,8 +1362,7 @@ void od_draw_dump(int x, int y, int w, int h):
 			od_cells(c_addr, ry, ah, od_c_text())
 			free(ah)
 			char* asc = malloc(17)
-			int k = 0
-			while (k < 16):
+			for k in range(16):
 				int v = od_dump_bytes[r * 16 + k] & 255
 				char* hb = od_hex2(v)
 				od_cells(c_hex + od_cw * (k * 3), ry, hb, od_c_text())
@@ -1378,7 +1371,6 @@ void od_draw_dump(int x, int y, int w, int h):
 					asc[k] = v
 				else:
 					asc[k] = '.'
-				k = k + 1
 			asc[16] = 0
 			od_cells(c_asc, ry, asc, od_c_text())
 			free(asc)
@@ -1740,15 +1732,13 @@ int od_toolbar(int width):
 	x = x + 74
 	# The view letters, OllyDbg's L E M T W H C / K B R ... S row.
 	char* letters = c"LCKBS"
-	int i = 0
-	while (i < 5):
+	for i in range(5):
 		int ch = letters[i]
 		char* one = substring(letters, i, i + 1)
 		if (od_button(x, 3, bh, bh, one, od_view == ch, 1)):
 			od_show_view(ch)
 		free(one)
 		x = x + bh + 2
-		i = i + 1
 	if (od_program != 0):
 		od_ptext(x + 12, 3 + (bh - od_lh) / 2 + 1, od_path_tail(od_program), od_c_muted(), od_font)
 	return h
@@ -2008,10 +1998,8 @@ int main(int argc, int argv):
 	od_cmd_buf[0] = 0
 	od_view = 'C'
 	od_focus = od_p_disas()
-	int i = 0
-	while (i < 9):
+	for i in range(9):
 		od_panes[i].sel = -1
-		i = i + 1
 	od_status(c"Connecting to wdbg_web")
 	od_enqueue(od_req_state(), c"GET", c"/api/state", c"", 0)
 	gfx_window_run(od_win, od_frame_fn)

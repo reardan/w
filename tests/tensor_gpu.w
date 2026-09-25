@@ -99,10 +99,8 @@ int check_sum():
 	# accumulation order varies — a tight tolerance still holds.
 	int n = 3000
 	tensor t = tensor_new1(n)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		t.data[i] = cast(float, i + 1)
-		i = i + 1
 	float got = tensor_sum(&t)
 	float want = cast(float, n * (n + 1) / 2)
 	tensor_free(&t)
@@ -275,29 +273,23 @@ int check_row_col_reductions():
 	while (i < m):
 		float want = 0.0
 		float best = ha.data[i * n]
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			float v = ha.data[i * n + j]
 			want = want + v
 			if (v > best):
 				best = v
-			j = j + 1
 		if (feq(rsum.data[i], want, 0.001) == 0):
 			return 0
 		if (feq(rmax.data[i], best, 0.0001) == 0):
 			return 0
 		i = i + 1
 
-	int j2 = 0
-	while (j2 < n):
+	for j2 in range(n):
 		float want2 = 0.0
-		int i2 = 0
-		while (i2 < m):
+		for i2 in range(m):
 			want2 = want2 + ha.data[i2 * n + j2]
-			i2 = i2 + 1
 		if (feq(csum.data[j2], want2, 0.001) == 0):
 			return 0
-		j2 = j2 + 1
 
 	tensor_free(&a)
 	tensor_free(&rsum)
@@ -334,17 +326,13 @@ int check_matmul_multitile():
 	# same product.
 	i = 0
 	while (i < m):
-		int j = 0
-		while (j < kd):
+		for j in range(kd):
 			ndf_set2(&hat, j, i, ndf_at2(&ha, i, j))
-			j = j + 1
 		i = i + 1
 	i = 0
 	while (i < kd):
-		int j2 = 0
-		while (j2 < n):
+		for j2 in range(n):
 			ndf_set2(&hbt, j2, i, ndf_at2(&hb, i, j2))
-			j2 = j2 + 1
 		i = i + 1
 	ndf want = ndf_new2(m, n)
 	ndf_matmul2(&want, &ha, &hb)
@@ -413,10 +401,8 @@ int check_matmul_variants():
 		int col = 0
 		while (col < n):
 			float want = 0.0
-			int p = 0
-			while (p < k):
+			for p in range(k):
 				want = want + ha.data[p * m + row] * hb.data[p * n + col]
-				p = p + 1
 			if (feq(r.data[row * n + col], want, 0.001) == 0):
 				return 0
 			col = col + 1
@@ -449,10 +435,8 @@ int check_matmul_variants():
 		int col2 = 0
 		while (col2 < n):
 			float want2 = 0.0
-			int p2 = 0
-			while (p2 < k):
+			for p2 in range(k):
 				want2 = want2 + hc.data[row * k + p2] * hd.data[col2 * k + p2]
-				p2 = p2 + 1
 			if (feq(r2.data[row * n + col2], want2, 0.001) == 0):
 				return 0
 			col2 = col2 + 1

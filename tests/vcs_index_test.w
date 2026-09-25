@@ -74,10 +74,8 @@ void vit_write(char* dir, char* name, char* contents):
 
 char* vit_fake_id(int digit):
 	char* id = malloc(65)
-	int i = 0
-	while (i < 64):
+	for i in range(64):
 		id[i] = digit
-		i = i + 1
 	id[64] = 0
 	return id
 

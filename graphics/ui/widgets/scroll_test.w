@@ -18,10 +18,8 @@ import graphics.ui.testing
 void scroll_frame(ui_context* ctx, ui_rect area, ui_scroll_state* st, int rows):
 	ui_begin(ctx, 320, 240)
 	ui_scroll_begin(ctx, area, st)
-	int i = 0
-	while (i < rows):
+	for i in range(rows):
 		ui_label(ctx, c"row")
-		i = i + 1
 	ui_scroll_end(ctx, st)
 	ui_end(ctx)
 
@@ -190,10 +188,8 @@ void test_scrolling_swaps_which_rows_draw():
 	ui_scroll_begin(ctx, area, &st)
 	ui_label(ctx, c"first")
 	assert_equal(0, fx.r.layer_vert_count[UI_LAYER_BASE])
-	int i = 1
-	while (i < 8):
+	for i in range(1, 8):
 		ui_label(ctx, c"row")
-		i = i + 1
 	asserts(c"later rows drew", fx.r.layer_vert_count[UI_LAYER_BASE] > 0)
 	ui_scroll_end(ctx, &st)
 	ui_end(ctx)
@@ -233,8 +229,7 @@ void test_nested_viewports_do_not_share_a_notch():
 	ui_rect outer_area = ui_rect_new(0.0, 0.0, 300.0, 120.0)
 	ui_rect inner_area = ui_rect_new(20.0, 20.0, 200.0, 40.0)
 
-	int frame = 0
-	while (frame < 2):
+	for frame in range(2):
 		if (frame == 1):
 			ui_test_wheel(ctx, 0 - 1, 60, 40)
 		ui_begin(ctx, 320, 240)
@@ -251,7 +246,6 @@ void test_nested_viewports_do_not_share_a_notch():
 			i = i + 1
 		ui_scroll_end(ctx, &outer)
 		ui_end(ctx)
-		frame = frame + 1
 
 	# The inner viewport ends first, so it claims the notch; the outer
 	# one sees nothing left to claim.

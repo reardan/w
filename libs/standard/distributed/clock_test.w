@@ -169,10 +169,8 @@ void test_lamport_observe_remote_ahead():
 
 void test_lamport_observe_remote_behind():
 	lamport_clock* c = lamport_new()
-	int i = 0
-	while (i < 5):
+	for i in range(5):
 		lamport_tick(c)
-		i = i + 1
 	# t = 5, remote 1 behind: max(5, 1) + 1
 	assert_equal(6, lamport_observe(c, 1))
 	# tie: max(6, 6) + 1
@@ -360,10 +358,8 @@ void test_hlc_counter_overflow_bumps_physical():
 	u64* wall = u64_new_int(100)
 	u64* out = u64_new()
 	hlc_now(h, wall, out)   # l = 100, c = 0
-	int i = 0
-	while (i < 65535):
+	for i in range(65535):
 		hlc_now(h, wall, out)
-		i = i + 1
 	# counter saturated
 	assert_equal(65535, out.w0)
 	assert_equal(100, hlc_test_physical(out))
@@ -437,10 +433,8 @@ void test_vclock_wire_canonical():
 	char* bb = malloc(size)
 	vclock_save(a, ba)
 	vclock_save(b, bb)
-	int i = 0
-	while (i < size):
+	for i in range(size):
 		assert_equal(ba[i] & 255, bb[i] & 255)
-		i = i + 1
 	# sorted entries: node 2 first, then 5, then 9
 	assert_equal(2, load_le32(ba + 4))
 	assert_equal(5, load_le32(ba + 16))

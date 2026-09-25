@@ -173,10 +173,8 @@ void test_line_index_grows_too():
 	ui_text_buffer b
 	ui_text_buffer_init(&b)
 	int start_cap = b.line_capacity
-	int i = 0
-	while (i < 300):
+	for i in range(300):
 		ui_text_buffer_insert(&b, b.length, '\n')
-		i = i + 1
 	# 300 newlines make 301 lines, the last one empty.
 	assert_equal(301, b.line_count)
 	asserts(c"line index grew", b.line_capacity > start_cap)

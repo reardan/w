@@ -31,10 +31,8 @@ int wexec_remote_http_get(char* url, int timeout_ms, int* out_status, char** out
 		*out_status = resp.status
 		*out_body_len = resp.body_len
 		char* copy = malloc(resp.body_len + 1)
-		int i = 0
-		while (i < resp.body_len):
+		for i in range(resp.body_len):
 			copy[i] = resp.body[i]
-			i = i + 1
 		copy[resp.body_len] = 0
 		*out_body = copy
 	http_response_free(resp)

@@ -148,10 +148,8 @@ void mgf1(int whash_alg, char* seed, int seedlen, int mask_len, char* out):
 		int take = hlen
 		if (mask_len - outpos < hlen):
 			take = mask_len - outpos
-		int j = 0
-		while (j < take):
+		for j in range(take):
 			out[outpos + j] = dig[j]
-			j = j + 1
 		outpos = outpos + hlen
 		counter = counter + 1
 	free(buf)

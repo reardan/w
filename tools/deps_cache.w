@@ -75,10 +75,8 @@ void deps_hash_init(deps_hash* h, int sha):
 		return
 	h.state = cast(int*, malloc(8 * __word_size__))
 	char* h0 = sha256_h0_table()
-	int i = 0
-	while (i < 8):
+	for i in range(8):
 		h.state[i] = sha256_be32(h0 + i * 4)
-		i = i + 1
 	h.block = malloc(64)
 	h.block_len = 0
 	h.total_len = 0

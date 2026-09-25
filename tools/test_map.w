@@ -1222,12 +1222,10 @@ void wtest_compute_closures(list[char*] roots):
 		int shown = failed_roots.length
 		if (shown > 5):
 			shown = 5
-		int k = 0
-		while (k < shown):
+		for k in range(shown):
 			if (k > 0):
 				string_append(note, c", ")
 			string_append(note, failed_roots[k])
-			k = k + 1
 		if (failed_roots.length > shown):
 			string_append(note, c" (and ")
 			string_append_int(note, failed_roots.length - shown)
@@ -1441,10 +1439,8 @@ int wtest_range_setup(char* spec):
 	if (three_dot):
 		dots = 3
 	string_builder* left_b = string_new()
-	int i = 0
-	while (i < idx):
+	for i in range(idx):
 		string_append_char(left_b, spec[i])
-		i = i + 1
 	char* left = strclone(left_b.data)
 	string_free(left_b)
 	if (strlen(left) == 0):
@@ -1881,12 +1877,10 @@ json_value* wtest_step_cmd(json_value* step):
 	int n = json_array_length(cmd)
 	if (n == 0):
 		return 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		json_value* piece = json_array_get(cmd, i)
 		if (piece.type != json_type_string()):
 			return 0
-		i = i + 1
 	return cmd
 
 

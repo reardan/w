@@ -268,11 +268,9 @@ int protobuf_message_field(int message_type, char* info, int field_index):
 		error(c"protobuf field number must be between 1 and 536870911")
 	if ((number >= 19000) && (number <= 19999)):
 		error(c"protobuf field numbers 19000-19999 are reserved")
-	int i = 0
-	while (i < field_index):
+	for i in range(field_index):
 		if (load_int(info + 4 + i * 12) == number):
 			error3(c"duplicate protobuf field number in message '", type_get_name(message_type), c"'")
-		i = i + 1
 	get_token()
 	type_add_arg(message_type, field_name, storage)
 	save_int(info + 4 + field_index * 12, number)
@@ -395,23 +393,19 @@ void protobuf_collect_pending(int message_type):
 	save_int(protobuf_pending_types + protobuf_pending_count * 4, message_type)
 	protobuf_pending_count = protobuf_pending_count + 1
 	int n = load_int(info)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int kind = load_int(info + 8 + i * 12)
 		int elem_kind = load_int(info + 12 + i * 12)
 		if ((kind == protobuf_kind_message) || (elem_kind == protobuf_kind_message)):
 			protobuf_collect_pending(protobuf_field_message_type(type_get_field_type_at(message_type, i), kind))
-		i = i + 1
 
 
 int protobuf_repeated_count(char* info):
 	int n = load_int(info)
 	int r = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (load_int(info + 8 + i * 12) == protobuf_kind_repeated):
 			r = r + 1
-		i = i + 1
 	return r
 
 
@@ -532,10 +526,8 @@ void protobuf_emit_call(char* fn_name, int desc_address, int arg_slot, int arg_c
 		error3(c"protobuf runtime function '", fn_name, c"' is not defined; import libs.extras.protobuf.message")
 	int s = rt_call_begin(fn_name)
 	push_slot_int(desc_address)
-	int i = 0
-	while (i < arg_count):
+	for i in range(arg_count):
 		push_slot_copy(arg_slot + i)
-		i = i + 1
 	rt_call_end(s)
 
 

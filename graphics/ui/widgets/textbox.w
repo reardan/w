@@ -62,10 +62,8 @@ void ui_textbox_insert(ui_textbox_state* st, int ch):
 	while (i >= st.caret):
 		st.text[i + n] = st.text[i]
 		i = i - 1
-	int k = 0
-	while (k < n):
+	for k in range(n):
 		st.text[st.caret + k] = bytes[k]
-		k = k + 1
 	st.length = st.length + n
 	st.caret = st.caret + n
 	st.text[st.length] = 0

@@ -66,10 +66,8 @@ struct wal_reader:
 void wal_checksum(char* len_bytes, char* payload, int len, char* out4):
 	char* buf = malloc(4 + len)
 	mem_copy(buf, len_bytes, 4)
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		buf[4 + i] = payload[i]
-		i = i + 1
 	char* digest = malloc(32)
 	sha256(buf, 4 + len, digest)
 	out4[0] = digest[0]
@@ -101,11 +99,9 @@ char* wal_scan_record(int fd, int off, int* len_out):
 	char* sum = malloc(4)
 	wal_checksum(hdr, payload, len, sum)
 	int ok = 1
-	int i = 0
-	while (i < 4):
+	for i in range(4):
 		if ((sum[i] & 255) != (hdr[4 + i] & 255)):
 			ok = 0
-		i = i + 1
 	free(sum)
 	free(hdr)
 	if (ok == 0):
@@ -195,10 +191,8 @@ int wal_append(wal* w, char* payload, int len):
 	char* rec = malloc(8 + len)
 	store_le32(rec, len)
 	wal_checksum(rec, payload, len, rec + 4)
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		rec[8 + i] = payload[i]
-		i = i + 1
 	seek(w.fd, w.append_off, 0)
 	int n = write_all(w.fd, rec, 8 + len)
 	free(rec)

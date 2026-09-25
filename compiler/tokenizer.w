@@ -611,10 +611,8 @@ char* ident_codepoint_hex(int cp):
 		v = v >> 4
 		n = n + 1
 	char* text = malloc(n + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		text[i] = out[n - 1 - i]
-		i = i + 1
 	text[n] = 0
 	return text
 
@@ -634,14 +632,12 @@ void take_utf8_ident_char():
 		need = 2
 		cp = c & 15
 	takechar()
-	int j = 0
-	while (j < need):
+	for j in range(need):
 		int d = nextc & 255
 		if ((nextc == -1) || (d < 128) || (d > 191)):
 			error(c"invalid UTF-8 sequence in identifier")
 		cp = (cp << 6) | (d & 63)
 		takechar()
-		j = j + 1
 	if (((need == 2) && (cp < 2048)) || ((need == 3) && (cp < 65536))):
 		error(c"invalid UTF-8 sequence in identifier")
 	if (((cp >= 55296) && (cp <= 57343)) || (cp > 1114111)):
@@ -665,15 +661,13 @@ int ident_byte_class_ready
 
 
 void ident_byte_class_init():
-	int c = 0
-	while (c < 256):
+	for c in range(256):
 		if (is_utf8_lead_byte(c)):
 			ident_byte_class[c] = 2
 		else if (is_ident_part_byte(c)):
 			ident_byte_class[c] = 1
 		else:
 			ident_byte_class[c] = 0
-		c = c + 1
 	ident_byte_class_ready = 1
 
 

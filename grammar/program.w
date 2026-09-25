@@ -668,15 +668,13 @@ void export_function_note(int t, char* name, int ret_type):
 		if (strcmp(type_get_name(ret_type), c"void") == 0):
 			ret_kind = 0
 	char* classes = malloc(n + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int ptype = sym_param_type(t, i)
 		if (type_stack_words(ptype) != 1):
 			error(c"exported function parameters must be single words")
 		classes[i] = 0
 		if (ffi_type_class(ptype) == 1):
 			classes[i] = 1
-		i = i + 1
 	wasm_export_add(t, name, n, classes, ret_kind)
 	free(classes)
 

@@ -1011,8 +1011,7 @@ int wvc_cmd_push(int argc, int argv):
 int wvc_cmd_pack(int argc, int argv):
 	char* dir = 0
 	int prune = 0
-	int i = 2
-	while (i < argc):
+	for i in range(2, argc):
 		char** arg = argv + i * __word_size__
 		char* a = *arg
 		if (strcmp(a, c"--prune") == 0):
@@ -1022,7 +1021,6 @@ int wvc_cmd_pack(int argc, int argv):
 		else:
 			wvc_usage()
 			return 2
-		i = i + 1
 	if (dir == 0):
 		dir = c"."
 

@@ -37,11 +37,9 @@ import libs.standard.distributed.sim
 # Every id in 1..n except id.
 list[int] raft_peers_except(int n, int id):
 	list[int] peers = new list[int]
-	int p = 1
-	while (p <= n):
+	for p in range(1, n + 1):
 		if (p != id):
 			peers.push(p)
-		p = p + 1
 	return peers
 
 
@@ -81,8 +79,7 @@ int rafts_leader(list[raft*] nodes):
 	int found = 0
 	int dup = 0
 	int leader_id = 0 - 1
-	int i = 0
-	while (i < nodes.length):
+	for i in range(nodes.length):
 		raft* r = nodes[i]
 		if (r != 0 && raft_state(r) == raft_leader()):
 			raft_term(r, t)
@@ -98,7 +95,6 @@ int rafts_leader(list[raft*] nodes):
 					dup = 0
 				if (cmp == 0):
 					dup = 1
-		i = i + 1
 	u64_free(best)
 	u64_free(t)
 	if (found == 1 && dup == 0):
@@ -114,8 +110,7 @@ void rafts_assert_logs_identical(list[raft*] nodes):
 		ref = ref + 1
 	assert1(ref < nodes.length)
 	raft* first = nodes[ref]
-	int i = ref + 1
-	while (i < nodes.length):
+	for i in range(ref + 1, nodes.length):
 		raft* other = nodes[i]
 		if (other != 0):
 			assert_equal(raft_log_length(first), raft_log_length(other))
@@ -126,7 +121,6 @@ void rafts_assert_logs_identical(list[raft*] nodes):
 				assert_equal(1, u64_eq(mine.term, theirs.term))
 				assert_strings_equal(mine.command, theirs.command)
 				k = k + 1
-		i = i + 1
 
 
 # ---- the simulated cluster --------------------------------------------------------
@@ -273,10 +267,8 @@ void rsim_step(rsim* c):
 
 
 void rsim_run(rsim* c, int k):
-	int i = 0
-	while (i < k):
+	for i in range(k):
 		rsim_step(c)
-		i = i + 1
 
 
 int rsim_leader(rsim* c):

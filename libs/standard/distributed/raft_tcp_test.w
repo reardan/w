@@ -27,8 +27,7 @@ raft_msg* rt_make_msg(int type, int from, int to, int term_v):
 # Pumps every given endpoint until the summed inbox count reaches
 # want_total_inbox, asserting if max_iters passes run out first.
 void rt_pump_until(raft_tcp* a, raft_tcp* b, raft_tcp* c_or_0, int want_total_inbox, int max_iters):
-	int i = 0
-	while (i < max_iters):
+	for i in range(max_iters):
 		raft_tcp_pump(a)
 		raft_tcp_pump(b)
 		if (cast(int, c_or_0) != 0):
@@ -38,7 +37,6 @@ void rt_pump_until(raft_tcp* a, raft_tcp* b, raft_tcp* c_or_0, int want_total_in
 			total = total + raft_tcp_inbox_count(c_or_0)
 		if (total >= want_total_inbox):
 			return
-		i = i + 1
 	asserts(c"rt_pump_until: inbox target not reached", 0)
 
 
@@ -282,10 +280,8 @@ void test_send_before_peer_listens():
 
 	# Nothing listens yet: pumps observe the refused connect, drop the
 	# socket, and retain the buffered frame.
-	int i = 0
-	while (i < 20):
+	for i in range(20):
 		raft_tcp_pump(a)
-		i = i + 1
 	assert_equal(0, raft_tcp_inbox_count(a))
 
 	raft_tcp* b = raft_tcp_new(2, base + 13)
@@ -332,13 +328,11 @@ void test_cap_bounds_dead_peer_buffer():
 	int fit = 8192 / fsize
 	assert1(fit > 0 && fit < 200)
 
-	int i = 0
-	while (i < 200):
+	for i in range(200):
 		raft_msg* m = rt_make_msg(raft_msg_append(), 1, 2, i + 1)
 		assert_equal(1, raft_tcp_send(a, m))
 		raft_msg_free(m)
 		asserts(c"pending never exceeds the cap", raft_tcp_pending_bytes(a, 2) <= 8192)
-		i = i + 1
 
 	assert_equal(fit * fsize, raft_tcp_pending_bytes(a, 2))
 	assert_equal(fit, raft_tcp_pending_frames(a, 2))
@@ -465,8 +459,7 @@ void test_partial_head_accounting_with_slow_peer():
 	assert_equal(0, raft_tcp_pending_bytes(a, 2))
 	assert_equal(0, raft_tcp_pending_frames(a, 2))
 	int last = 0
-	int k = 0
-	while (k < expect):
+	for k in range(expect):
 		raft_msg* got = raft_tcp_recv(b)
 		assert1(cast(int, got) != 0)
 		assert_equal(raft_msg_append(), got.type)
@@ -476,7 +469,6 @@ void test_partial_head_accounting_with_slow_peer():
 		asserts(c"terms strictly increasing", term_v > last)
 		last = term_v
 		raft_msg_free(got)
-		k = k + 1
 	asserts(c"newest frame survived", last == total)
 	raft_tcp_free(a)
 	raft_tcp_free(b)

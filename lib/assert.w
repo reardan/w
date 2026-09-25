@@ -102,8 +102,7 @@ void assert_lacks(char* haystack, char* needle):
 
 # The first length bytes of got equal want's.
 void assert_bytes_equal(char* want, char* got, int length):
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		if ((want[i] & 255) != (got[i] & 255)):
 			print2(c"Assertion failed: bytes differ at offset ")
 			print2(itoa(i))
@@ -113,4 +112,3 @@ void assert_bytes_equal(char* want, char* got, int length):
 			println2(itoa(got[i] & 255))
 			print_stack_trace()
 			exit(1)
-		i = i + 1

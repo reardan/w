@@ -403,8 +403,7 @@ tensor* ag_softmax_ce(ag_tape* t, tensor* logits, ndi* labels):
 	float* plog = logits.data
 	float* pp = probs.data
 	float total = 0.0
-	int i = 0
-	while (i < batch):
+	for i in range(batch):
 		# numerically-stable softmax: subtract the row max before exp
 		float m = plog[i * classes]
 		int j = 1
@@ -426,7 +425,6 @@ tensor* ag_softmax_ce(ag_tape* t, tensor* logits, ndi* labels):
 			j = j + 1
 		int lbl = labels.data[i]
 		total = total - flog(pp[i * classes + lbl])
-		i = i + 1
 	float mean_loss = total / cast(float, batch)
 	tensor* out = ag_box_shape(1, 1, 1, 1, 1)
 	t.owned.push(out)
@@ -458,15 +456,11 @@ tensor* ag_embedding(ag_tape* t, tensor* table, ndi* ids):
 	tensor_sync()
 	float* ptab = table.data
 	float* pout = out.data
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int row = ids.data[i]
 		asserts(c"ag_embedding: id out of range", (row >= 0) && (row < table.n0))
-		int j = 0
-		while (j < dim):
+		for j in range(dim):
 			pout[i * dim + j] = ptab[row * dim + j]
-			j = j + 1
-		i = i + 1
 	ag_record_saved(t, ag_op_embedding(), out, table, cast(tensor*, 0), 0.0, cast(tensor*, 0), ids)
 	return out
 
@@ -491,8 +485,7 @@ tensor* ag_layernorm_core(ag_tape* t, tensor* x, tensor* gamma):
 	float* pg = gamma.data
 	float* pout2 = out.data
 	float fcols = cast(float, cols)
-	int i = 0
-	while (i < rows):
+	for i in range(rows):
 		float mean = 0.0
 		int j = 0
 		while (j < cols):
@@ -510,7 +503,6 @@ tensor* ag_layernorm_core(ag_tape* t, tensor* x, tensor* gamma):
 		while (j < cols):
 			pout2[i * cols + j] = pg[j] * ((px[i * cols + j] - mean) * rstd)
 			j = j + 1
-		i = i + 1
 	ag_record(t, ag_op_layernorm(), out, x, gamma, 0.0)
 	return out
 
@@ -670,17 +662,13 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		float invbatch = 1.0 / cast(float, batch2)
 		float* pg = dlogits.data
 		float* pp2 = nd.saved.data
-		int i2 = 0
-		while (i2 < batch2):
+		for i2 in range(batch2):
 			int lbl2 = nd.labels.data[i2]
-			int j2 = 0
-			while (j2 < classes2):
+			for j2 in range(classes2):
 				float ind = 0.0
 				if (j2 == lbl2):
 					ind = 1.0
 				pg[i2 * classes2 + j2] = pg[i2 * classes2 + j2] + dloss * (pp2[i2 * classes2 + j2] - ind) * invbatch
-				j2 = j2 + 1
-			i2 = i2 + 1
 		return
 	if (nd.op == ag_op_embedding()):
 		# d_table[ids[i], :] += dOut[i, :] -- the host scatter-add
@@ -691,14 +679,10 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		tensor_sync()
 		float* pdt = dtab.data
 		float* pdo = dout.data
-		int i3 = 0
-		while (i3 < n3):
+		for i3 in range(n3):
 			int row3 = nd.labels.data[i3]
-			int j3 = 0
-			while (j3 < dim3):
+			for j3 in range(dim3):
 				pdt[row3 * dim3 + j3] = pdt[row3 * dim3 + j3] + pdo[i3 * dim3 + j3]
-				j3 = j3 + 1
-			i3 = i3 + 1
 		return
 	if (nd.op == ag_op_layernorm()):
 		# out = gamma * xhat with xhat = (x - mean) * rstd. Recompute
@@ -717,8 +701,7 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		float* pdg9 = dg9.data
 		float* pdo9 = dout.data
 		float fcols9 = cast(float, cols9)
-		int i9 = 0
-		while (i9 < rows9):
+		for i9 in range(rows9):
 			float mean9 = 0.0
 			int j9 = 0
 			while (j9 < cols9):
@@ -750,7 +733,6 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 				float dxh2 = pdo9[i9 * cols9 + j9] * pg9[j9]
 				pdx9[i9 * cols9 + j9] = pdx9[i9 * cols9 + j9] + rstd9 * (dxh2 - s1 - xh2 * s2)
 				j9 = j9 + 1
-			i9 = i9 + 1
 		return
 	if (nd.op == ag_op_softmax_causal()):
 		# dS[i,j] += P[i,j] * (dP[i,j] - sum_{k<=i} P[i,k] dP[i,k]),
@@ -762,8 +744,7 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		float* pp10 = nd.out.data
 		float* pdo10 = dout.data
 		float* pds10 = ds10.data
-		int i10 = 0
-		while (i10 < n10):
+		for i10 in range(n10):
 			float dot = 0.0
 			int j10 = 0
 			while (j10 <= i10):
@@ -773,7 +754,6 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 			while (j10 <= i10):
 				pds10[i10 * n10 + j10] = pds10[i10 * n10 + j10] + pp10[i10 * n10 + j10] * (pdo10[i10 * n10 + j10] - dot)
 				j10 = j10 + 1
-			i10 = i10 + 1
 		return
 	if (nd.op == ag_op_matmul_nt()):
 		# out = A @ B^T: dA (m,k) += dOut (m,n) @ B (n,k);

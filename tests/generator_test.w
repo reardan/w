@@ -6,17 +6,13 @@ import lib.generator
 
 
 generator int counter(int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		yield i
-		i = i + 1
 
 
 generator int from_to(int start, int end):
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		yield i
-		i = i + 1
 
 
 generator int empty():
@@ -24,12 +20,10 @@ generator int empty():
 
 
 generator int stops_early(int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (i == 3):
 			return
 		yield i
-		i = i + 1
 
 
 # A generator consuming another generator: doubles each value of an
@@ -43,14 +37,10 @@ generator int doubled(int n):
 
 # yield inside nested control flow: a loop inside an if inside a while
 generator int nested_flow(int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (i % 2 == 0):
-			int j = 0
-			while (j < 2):
+			for j in range(2):
 				yield i * 10 + j
-				j = j + 1
-		i = i + 1
 
 
 void test_basic_counter_while_loop():
@@ -186,15 +176,13 @@ void test_gen_free_abandoned_generator():
 
 void test_many_generators():
 	# 64KB stacks: dozens of live generators plus create/free churn
-	int round = 0
-	while (round < 50):
+	for round in range(50):
 		generator* g = counter(4)
 		int sum = 0
 		while (gen_next(g)):
 			sum = sum + gen_value(g)
 		assert_equal(6, sum)
 		gen_free(g)
-		round = round + 1
 
 
 generator char* words():

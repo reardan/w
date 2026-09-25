@@ -20,8 +20,7 @@ shared_counter* shared_counter_new():
 
 
 generator int locked_increments(task_mutex* m, shared_counter* c, int rounds):
-	int i = 0
-	while (i < rounds):
+	for i in range(rounds):
 		assert_equal(0, task_mutex_lock(m))
 		c.inside = c.inside + 1
 		if (c.inside > c.max_inside):
@@ -31,17 +30,14 @@ generator int locked_increments(task_mutex* m, shared_counter* c, int rounds):
 		c.value = v + 1
 		c.inside = c.inside - 1
 		task_mutex_unlock(m)
-		i = i + 1
 
 
 void test_mutex_serializes_across_awaits():
 	task_scheduler* s = task_scheduler_new()
 	task_mutex* m = task_mutex_new()
 	shared_counter* c = shared_counter_new()
-	int i = 0
-	while (i < 5):
+	for i in range(5):
 		task_spawn(s, locked_increments(m, c, 20))
-		i = i + 1
 	assert_equal(0, task_run(s))
 	assert_equal(100, c.value)
 	assert_equal(1, c.max_inside)
@@ -85,10 +81,8 @@ void test_semaphore_bounds_concurrency():
 	task_scheduler* s = task_scheduler_new()
 	task_semaphore* sem = task_semaphore_new(3)
 	shared_counter* c = shared_counter_new()
-	int i = 0
-	while (i < 10):
+	for i in range(10):
 		task_spawn(s, limited_work(sem, c))
-		i = i + 1
 	assert_equal(0, task_run(s))
 	assert_equal(10, c.value)
 	assert_equal(3, c.max_inside)

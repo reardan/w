@@ -223,20 +223,16 @@ int sha2_ssig1_lo(int hi, int lo):
 # Parse 8 lowercase hex chars into one masked 32-bit word.
 int sha2_hex32(char* s):
 	int v = 0
-	int i = 0
-	while (i < 8):
+	for i in range(8):
 		v = (v << 4) | hex_decode_char(s[i] & 255)
-		i = i + 1
 	return v & sha256_mask32()
 
 
 # Parse `words` 32-bit words from hex text into a malloc'd int array.
 int* sha2_parse_words(char* hex, int words):
 	int* out = cast(int*, malloc(words * __word_size__))
-	int i = 0
-	while (i < words):
+	for i in range(words):
 		out[i] = sha2_hex32(hex + i * 8)
-		i = i + 1
 	return out
 
 
@@ -430,10 +426,8 @@ void whash_load_iv(whash* h):
 		return
 	if (h.alg == WHASH_SHA256()):
 		char* h0 = sha256_h0_table()
-		int i = 0
-		while (i < 8):
+		for i in range(8):
 			h.state[i] = sha256_be32(h0 + i * 4)
-			i = i + 1
 		return
 	int* iv = sha2_h512_table()
 	if (h.alg == WHASH_SHA384()):
@@ -589,13 +583,11 @@ void whash_final(whash* h, char* out):
 	# of the 8 state words); word order follows the algorithm's
 	# endianness.
 	int words = h.digest_size / 4
-	int i = 0
-	while (i < words):
+	for i in range(words):
 		if (le == 1):
 			store_le32(out + i * 4, st[i])
 		else:
 			sha256_put_be32(out + i * 4, st[i])
-		i = i + 1
 	free(st)
 
 

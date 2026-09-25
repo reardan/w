@@ -424,12 +424,10 @@ void thread_pool_worker(void* p):
 		int job_len = slot.job_len
 		int job_chunks = slot.job_chunks
 		int chunk_hi = slot.chunk_hi
-		int k = slot.chunk_lo
-		while (k < chunk_hi):
+		for k in range(slot.chunk_lo, chunk_hi):
 			int c0 = job_start + thread_chunk_offset(job_len, job_chunks, k)
 			int c1 = job_start + thread_chunk_offset(job_len, job_chunks, k + 1)
 			func(c0, c1, arg)
-			k = k + 1
 		slot.done = 1
 		thread_wake_word(&slot.done)
 

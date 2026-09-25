@@ -77,10 +77,8 @@ int unix_send_fds(int sock, char* data, int n, int* fds, int count):
 	save_word(control, unix_fds_cmsg_data_offset() + count * 4)
 	save_int(control + __word_size__, unix_fds_sol_socket())
 	save_int(control + __word_size__ + 4, unix_fds_scm_rights())
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		save_int(control + unix_fds_cmsg_data_offset() + i * 4, fds[i])
-		i = i + 1
 	char* iov = unix_fds_iovec(data, n)
 	char* msg = unix_fds_msghdr(iov, control, space)
 	int sent = sys_sendmsg(sock, cast(int, msg), 0)
@@ -108,8 +106,7 @@ int unix_recv_fds(int sock, char* buf, int cap, int* fds_out, int max, int* coun
 			int kind = load_int32(control + off + __word_size__ + 4)
 			if ((level == unix_fds_sol_socket()) && (kind == unix_fds_scm_rights())):
 				int n = (length - unix_fds_cmsg_data_offset()) / 4
-				int i = 0
-				while (i < n):
+				for i in range(n):
 					int fd = load_int32(control + off + unix_fds_cmsg_data_offset() + i * 4)
 					if (*count_out < max):
 						fds_out[*count_out] = fd
@@ -117,7 +114,6 @@ int unix_recv_fds(int sock, char* buf, int cap, int* fds_out, int max, int* coun
 					else:
 						# More than the caller has room for: never leak.
 						close(fd)
-					i = i + 1
 			off = off + unix_fds_align(length)
 	free(msg)
 	free(iov)

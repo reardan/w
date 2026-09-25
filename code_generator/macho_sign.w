@@ -95,11 +95,9 @@ void macho_sig_int8(int v):
 
 void macho_sig_bytes(char* p, int n):
 	macho_sig_reserve(n)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		macho_sig_buf[macho_sig_size] = p[i]
 		macho_sig_size = macho_sig_size + 1
-		i = i + 1
 
 
 # Build the embedded-signature SuperBlob into macho_sig_buf/macho_sig_size.
@@ -193,15 +191,13 @@ void macho_build_signature(char* img, int code_limit, int text_size, char* ident
 		z = z + 1
 
 	# Code slots: SHA-256 of each page of the file up to code_limit.
-	int slot = 0
-	while (slot < n_code_slots):
+	for slot in range(n_code_slots):
 		int start = slot * page
 		int len = page
 		if (start + len > code_limit):
 			len = code_limit - start
 		sha256(img + start, len, digest)
 		macho_sig_bytes(digest, hash_size)
-		slot = slot + 1
 
 	# --- Requirements (slot 2) ---
 	macho_sig_bytes(reqs, 12)

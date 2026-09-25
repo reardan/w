@@ -160,10 +160,8 @@ int struct_value_ctor_expr():
 	expect(c"(")
 	int size = type_get_size(base)
 	int words = (size + word_size - 1) >> word_size_log2
-	int j = 0
-	while (j < words):
+	for j in range(words):
 		push_eax()
-		j = j + 1
 	stack_pos = stack_pos + words
 	lea_eax_esp_plus(0)
 	if (type_has_array_field(base)):

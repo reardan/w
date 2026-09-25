@@ -99,10 +99,8 @@ tensor tensor_make(int rank, int n0, int n1, int n2, int n3):
 		t.data = cast(float*, malloc(n * 4))
 		t.on_gpu = 0
 	float* p = t.data
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		p[i] = 0.0
-		i = i + 1
 	return t
 
 
@@ -138,10 +136,8 @@ void tensor_randn(tensor* t, int seed, float mean, float stddev):
 	rand_init(&r, seed)
 	float* p = t.data
 	int n = t.len
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		p[i] = rand_gaussian_scaled(&r, mean, stddev)
-		i = i + 1
 
 
 void tensor_free(tensor* t):
@@ -162,10 +158,8 @@ void tensor_free(tensor* t):
 tensor tensor_from_ndf(ndf* a):
 	tensor t = tensor_make(a.rank, a.n0, a.n1, a.n2, a.n3)
 	float* p = t.data
-	int i = 0
-	while (i < a.data.length):
+	for i in range(a.data.length):
 		p[i] = a.data[i]
-		i = i + 1
 	return t
 
 
@@ -216,10 +210,8 @@ void tensor_fill(tensor* t, float v):
 		gpu for int i in range(n):
 			p[i] = v
 	else:
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			p[j] = v
-			j = j + 1
 
 
 void tensor_add_into(tensor* out, tensor* a, tensor* b):
@@ -233,10 +225,8 @@ void tensor_add_into(tensor* out, tensor* a, tensor* b):
 		gpu for int i in range(n):
 			po[i] = pa[i] + pb[i]
 	else:
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			po[j] = pa[j] + pb[j]
-			j = j + 1
 
 
 void tensor_sub_into(tensor* out, tensor* a, tensor* b):
@@ -250,10 +240,8 @@ void tensor_sub_into(tensor* out, tensor* a, tensor* b):
 		gpu for int i in range(n):
 			po[i] = pa[i] - pb[i]
 	else:
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			po[j] = pa[j] - pb[j]
-			j = j + 1
 
 
 void tensor_mul_into(tensor* out, tensor* a, tensor* b):
@@ -267,10 +255,8 @@ void tensor_mul_into(tensor* out, tensor* a, tensor* b):
 		gpu for int i in range(n):
 			po[i] = pa[i] * pb[i]
 	else:
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			po[j] = pa[j] * pb[j]
-			j = j + 1
 
 
 void tensor_add_scalar_into(tensor* out, tensor* a, float s):
@@ -282,10 +268,8 @@ void tensor_add_scalar_into(tensor* out, tensor* a, float s):
 		gpu for int i in range(n):
 			po[i] = pa[i] + s
 	else:
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			po[j] = pa[j] + s
-			j = j + 1
 
 
 void tensor_mul_scalar_into(tensor* out, tensor* a, float s):
@@ -297,10 +281,8 @@ void tensor_mul_scalar_into(tensor* out, tensor* a, float s):
 		gpu for int i in range(n):
 			po[i] = pa[i] * s
 	else:
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			po[j] = pa[j] * s
-			j = j + 1
 
 
 # y += s*x, in place -- the SGD update primitive (torch's axpy_/add_).
@@ -315,10 +297,8 @@ void tensor_axpy_into(tensor* y, float s, tensor* x):
 		gpu for int i in range(n):
 			py[i] = py[i] + s * px[i]
 	else:
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			py[j] = py[j] + s * px[j]
-			j = j + 1
 
 
 void tensor_relu_into(tensor* out, tensor* a):
@@ -334,14 +314,12 @@ void tensor_relu_into(tensor* out, tensor* a):
 				r = x
 			po[i] = r
 	else:
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			float y = pa[j]
 			if (y > 0.0):
 				po[j] = y
 			else:
 				po[j] = 0.0
-			j = j + 1
 
 
 # ReLU backward: out = dout where the *forward* input a was positive,
@@ -364,14 +342,12 @@ void tensor_relu_grad_into(tensor* out, tensor* a, tensor* dout):
 				g = pd[i]
 			po[i] = g
 	else:
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			float x2 = pa[j]
 			if (x2 > 0.0):
 				po[j] = pd[j]
 			else:
 				po[j] = 0.0
-			j = j + 1
 
 
 ##### broadcast ops (bias add) #####
@@ -398,10 +374,8 @@ void tensor_add_row_into(tensor* out, tensor* a, tensor* r):
 			int col = idx % width
 			po[idx] = pa[idx] + pr[col]
 	else:
-		int j = 0
-		while (j < total):
+		for j in range(total):
 			po[j] = pa[j] + pr[j % width]
-			j = j + 1
 
 
 ##### reduction (torch.md Stage 1 atomics, Stage 4 block staging) #####
@@ -449,10 +423,8 @@ float tensor_sum(tensor* t):
 		gpu_free(cast(char*, acc))
 		return s
 	float total = 0.0
-	int j = 0
-	while (j < n):
+	for j in range(n):
 		total = total + p[j]
-		j = j + 1
 	return total
 
 
@@ -476,21 +448,15 @@ void tensor_col_sum_into(tensor* out, tensor* a):
 	if (tensor_gpu2(out, a)):
 		gpu for int j in range(n):
 			float acc = 0.0
-			int i = 0
-			while (i < m):
+			for i in range(m):
 				acc = acc + pa[i * n + j]
-				i = i + 1
 			po[j] = acc
 	else:
-		int j2 = 0
-		while (j2 < n):
+		for j2 in range(n):
 			float acc2 = 0.0
-			int i2 = 0
-			while (i2 < m):
+			for i2 in range(m):
 				acc2 = acc2 + pa[i2 * n + j2]
-				i2 = i2 + 1
 			po[j2] = acc2
-			j2 = j2 + 1
 
 
 # out[i] = sum_j a[i,j] for rank-2 a (m, n). One thread per row, looping
@@ -506,21 +472,15 @@ void tensor_row_sum_into(tensor* out, tensor* a):
 	if (tensor_gpu2(out, a)):
 		gpu for int i in range(m):
 			float acc = 0.0
-			int j = 0
-			while (j < n):
+			for j in range(n):
 				acc = acc + pa[i * n + j]
-				j = j + 1
 			po[i] = acc
 	else:
-		int i2 = 0
-		while (i2 < m):
+		for i2 in range(m):
 			float acc2 = 0.0
-			int j2 = 0
-			while (j2 < n):
+			for j2 in range(n):
 				acc2 = acc2 + pa[i2 * n + j2]
-				j2 = j2 + 1
 			po[i2] = acc2
-			i2 = i2 + 1
 
 
 # out[i] = max_j a[i,j] for rank-2 a (m, n) -- softmax numerical
@@ -538,25 +498,19 @@ void tensor_row_max_into(tensor* out, tensor* a):
 	if (tensor_gpu2(out, a)):
 		gpu for int i in range(m):
 			float best = pa[i * n]
-			int j = 1
-			while (j < n):
+			for j in range(1, n):
 				float v = pa[i * n + j]
 				if (v > best):
 					best = v
-				j = j + 1
 			po[i] = best
 	else:
-		int i2 = 0
-		while (i2 < m):
+		for i2 in range(m):
 			float best2 = pa[i2 * n]
-			int j2 = 1
-			while (j2 < n):
+			for j2 in range(1, n):
 				float v2 = pa[i2 * n + j2]
 				if (v2 > best2):
 					best2 = v2
-				j2 = j2 + 1
 			po[i2] = best2
-			i2 = i2 + 1
 
 
 ##### matmul (torch.md Stage 3 naive CPU path, Stage 4 tiled GPU path) #####
@@ -598,8 +552,7 @@ kernel tensor_matmul_tiled_kernel(float* a, float* b, float* out, int m, int kd,
 	int col = bx * 16 + tx
 	float acc = 0.0
 	int nt = (kd + 15) / 16
-	int t = 0
-	while (t < nt):
+	for t in range(nt):
 		int ak = t * 16 + tx
 		float av = 0.0
 		if (row < m):
@@ -613,12 +566,9 @@ kernel tensor_matmul_tiled_kernel(float* a, float* b, float* out, int m, int kd,
 				bv = b[bk * b_ks + col * b_cs]
 		tb[ty * 16 + tx] = bv
 		gpu_barrier()
-		int q = 0
-		while (q < 16):
+		for q in range(16):
 			acc = acc + ta[ty * 16 + q] * tb[q * 16 + tx]
-			q = q + 1
 		gpu_barrier()
-		t = t + 1
 	if (row < m):
 		if (col < n):
 			out[row * n + col] = acc
@@ -664,18 +614,12 @@ void tensor_matmul2(tensor* out, tensor* a, tensor* b):
 		if (tensor_matmul_hooked(0, pa, pb, po, m, kd, n) == 0):
 			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, kd, 1, n, 1)
 	else:
-		int i = 0
-		while (i < m):
-			int j = 0
-			while (j < n):
+		for i in range(m):
+			for j in range(n):
 				float sum = 0.0
-				int k2 = 0
-				while (k2 < kd):
+				for k2 in range(kd):
 					sum = sum + pa[i * kd + k2] * pb[k2 * n + j]
-					k2 = k2 + 1
 				po[i * n + j] = sum
-				j = j + 1
-			i = i + 1
 
 
 # out = aT @ b for a (k, m), b (k, n), out (m, n) -- i.e. out[i,j] =
@@ -698,18 +642,12 @@ void tensor_matmul2_tn(tensor* out, tensor* a, tensor* b):
 		if (tensor_matmul_hooked(1, pa, pb, po, m, kd, n) == 0):
 			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, 1, m, n, 1)
 	else:
-		int i = 0
-		while (i < m):
-			int j = 0
-			while (j < n):
+		for i in range(m):
+			for j in range(n):
 				float sum = 0.0
-				int p2 = 0
-				while (p2 < kd):
+				for p2 in range(kd):
 					sum = sum + pa[p2 * m + i] * pb[p2 * n + j]
-					p2 = p2 + 1
 				po[i * n + j] = sum
-				j = j + 1
-			i = i + 1
 
 
 # out = a @ bT for a (m, k), b (n, k), out (m, n) -- i.e. out[i,j] =
@@ -732,15 +670,9 @@ void tensor_matmul2_nt(tensor* out, tensor* a, tensor* b):
 		if (tensor_matmul_hooked(2, pa, pb, po, m, kd, n) == 0):
 			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, kd, 1, 1, kd)
 	else:
-		int i = 0
-		while (i < m):
-			int j = 0
-			while (j < n):
+		for i in range(m):
+			for j in range(n):
 				float sum = 0.0
-				int p2 = 0
-				while (p2 < kd):
+				for p2 in range(kd):
 					sum = sum + pa[i * kd + p2] * pb[j * kd + p2]
-					p2 = p2 + 1
 				po[i * n + j] = sum
-				j = j + 1
-			i = i + 1

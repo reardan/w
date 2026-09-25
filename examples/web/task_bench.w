@@ -24,28 +24,22 @@ generator int idle_reader(int fd):
 generator int ping(int fd, int messages):
 	char[1] b
 	b[0] = 120
-	int i = 0
-	while (i < messages):
+	for i in range(messages):
 		task_write_all(fd, &b[0], 1)
 		task_read_exact(fd, &b[0], 1)
-		i = i + 1
 
 
 generator int pong(int fd, int messages):
 	char[1] b
-	int i = 0
-	while (i < messages):
+	for i in range(messages):
 		task_read_exact(fd, &b[0], 1)
 		task_write_all(fd, &b[0], 1)
-		i = i + 1
 
 
 generator int closer(int* fds, int pairs, task* until):
 	task_join(until)
-	int i = 0
-	while (i < pairs):
+	for i in range(pairs):
 		close(fds[2 * i])
-		i = i + 1
 
 
 int run(int use_poll, int pairs, int messages):

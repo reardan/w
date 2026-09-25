@@ -87,13 +87,11 @@ void test_carry_across_limbs():
 	t_assert_eq_hex(r, c"8000")             # 32768 = 2^15
 	# A chain of all-ones limbs: 2^45 - 1 plus 1 = 2^45, three limbs roll over.
 	bignum_set_u32(a, 0)
-	int i = 0
-	while (i < 45):
+	for i in range(45):
 		bignum_shl1(a)
 		a.limbs[0] = a.limbs[0] | 1
 		if (a.n == 0):
 			a.n = 1
-		i = i + 1
 	bignum_add(r, a, one)
 	t_assert_eq_hex(r, c"200000000000")     # 2^45
 	bignum_free(a)
@@ -265,10 +263,8 @@ int t_rand_limb():
 # small_top is set, kept small so normalization shifts by many bits.
 void t_rand_bignum(bignum* x, int n, int small_top):
 	bignum_set_zero(x)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		x.limbs[i] = t_rand_limb()
-		i = i + 1
 	if (n > 0):
 		if (small_top != 0):
 			x.limbs[n - 1] = 1 + (t_rand() % 7)
@@ -326,14 +322,12 @@ void test_divmod_random_vs_bitserial():
 	T_RNG = 20260925
 	bignum* a = bignum_new()
 	bignum* m = bignum_new()
-	int iter = 0
-	while (iter < 1500):
+	for iter in range(1500):
 		int mn = 1 + (t_rand() % 20)
 		int an = t_rand() % 42
 		t_rand_bignum(m, mn, (iter / 3) % 2)
 		t_rand_bignum(a, an, 0)
 		t_check_divmod(a, m)
-		iter = iter + 1
 	bignum_free(a)
 	bignum_free(m)
 
@@ -343,8 +337,7 @@ void test_divmod_edges():
 	bignum* a = bignum_new()
 	bignum* m = bignum_new()
 	bignum* t = bignum_new()
-	int iter = 0
-	while (iter < 60):
+	for iter in range(60):
 		int mn = 1 + (iter % 12)
 		t_rand_bignum(m, mn, iter % 2)
 		# a == 0
@@ -366,7 +359,6 @@ void test_divmod_edges():
 		bignum_mul(a, m, m)
 		bignum_sub_small(a, 1)
 		t_check_divmod(a, m)
-		iter = iter + 1
 	# Divisor one: q = a, r = 0.
 	bignum_set_u32(m, 1)
 	t_rand_bignum(a, 30, 0)

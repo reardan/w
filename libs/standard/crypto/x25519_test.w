@@ -56,15 +56,11 @@ void test_iterated(int iterations, char* want_hex):
 	char* r = malloc(32)
 	hex_decode_into(c"0900000000000000000000000000000000000000000000000000000000000000", k, 32)
 	hex_decode_into(c"0900000000000000000000000000000000000000000000000000000000000000", u, 32)
-	int i = 0
-	while (i < iterations):
+	for i in range(iterations):
 		assert_equal(0, x25519_scalarmult(r, k, u))
-		int j = 0
-		while (j < 32):
+		for j in range(32):
 			u[j] = k[j]
 			k[j] = r[j]
-			j = j + 1
-		i = i + 1
 	x25519_test_check32(want_hex, k)
 	free(k)
 	free(u)
@@ -110,10 +106,8 @@ void test_low_order_rejection():
 	hex_decode_into(c"77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", k, 32)
 	mem_fill(u, 0, 32)
 	assert_equal(0 - 1, x25519_scalarmult(r, k, u))
-	int i = 0
-	while (i < 32):
+	for i in range(32):
 		assert_equal(0, r[i] & 255)
-		i = i + 1
 	free(k)
 	free(u)
 	free(r)
@@ -125,10 +119,8 @@ void test_clamp():
 	x25519_clamp(k)
 	assert_equal(248, k[0] & 255)
 	assert_equal(127, k[31] & 255)
-	int i = 1
-	while (i < 31):
+	for i in range(1, 31):
 		assert_equal(255, k[i] & 255)
-		i = i + 1
 	free(k)
 
 

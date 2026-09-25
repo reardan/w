@@ -483,10 +483,8 @@ void test_ecdsa_sig_to_raw():
 	sig[2] = 2
 	sig[3] = 33
 	sig[4] = 1
-	int i = 0
-	while (i < 32):
+	for i in range(32):
 		sig[5 + i] = 170
-		i = i + 1
 	sig[37] = 2
 	sig[38] = 1
 	sig[39] = 2
@@ -688,11 +686,9 @@ void test_ec_private_key_loading():
 	assert_equal(1, x509_load_ec_private_key(p8, strlen(p8), d1))
 	char* s1 = xt_read_fixture(c"key_p256_sec1.pem")
 	assert_equal(1, x509_load_ec_private_key(s1, strlen(s1), d2))
-	int i = 0
-	while (i < 32):
+	for i in range(32):
 		assert_equal(want[i] & 255, d1[i] & 255)
 		assert_equal(d1[i] & 255, d2[i] & 255)
-		i = i + 1
 	# Wrong curve (P-384) fails.
 	char* p384 = xt_read_fixture(c"key_p384_pkcs8.pem")
 	assert_equal(0, x509_load_ec_private_key(p384, strlen(p384), d1))

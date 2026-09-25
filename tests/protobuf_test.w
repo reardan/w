@@ -55,8 +55,7 @@ void pb_expect_bytes(char* label, char* got, int got_len, char* want, int want_l
 		print2(c" want=")
 		println2(itoa(want_len))
 		exit(1)
-	int i = 0
-	while (i < want_len):
+	for i in range(want_len):
 		if ((got[i] & 255) != (want[i] & 255)):
 			print2(label)
 			print2(c": byte mismatch at offset ")
@@ -66,7 +65,6 @@ void pb_expect_bytes(char* label, char* got, int got_len, char* want, int want_l
 			print2(c" want=")
 			println2(itoa(want[i] & 255))
 			exit(1)
-		i = i + 1
 
 
 /* ---- varint / zigzag / tag core (docs/projects/protobuf.md §2, §6.1) */
@@ -359,10 +357,8 @@ void test_message_bytes_embedded_nul_and_utf8_string():
 	assert_equal(0, decoded.data.data[1])
 	assert_equal('b', decoded.data.data[2])
 	assert_equal(5, decoded.utf8.length)
-	int j = 0
-	while (j < 5):
+	for j in range(5):
 		assert_equal(text[j] & 255, decoded.utf8.data[j] & 255)
-		j = j + 1
 	free(decoded.data.data)
 	free(decoded.utf8.data)
 	result_free[char*](r)
@@ -896,8 +892,7 @@ void pb_test_deep_desc_init():
 char* pb_test_build_deep(int levels, int* out_len):
 	int total = levels * 6
 	char* buf = malloc(total)
-	int i = 0
-	while (i < levels):
+	for i in range(levels):
 		int pos = i * 6
 		int payload = total - pos - 6
 		buf[pos] = 0x0a
@@ -906,7 +901,6 @@ char* pb_test_build_deep(int levels, int* out_len):
 		buf[pos + 3] = 128 | (shr(payload, 14) & 127)
 		buf[pos + 4] = 128 | (shr(payload, 21) & 127)
 		buf[pos + 5] = shr(payload, 28) & 127
-		i = i + 1
 	out_len[0] = total
 	return buf
 
@@ -1068,8 +1062,7 @@ void test_message_roundtrip_property_simple():
 	pb_test_simple_desc_init()
 	rand_state rs
 	rand_init(&rs, 20260719)
-	int trial = 0
-	while (trial < 200):
+	for trial in range(200):
 		pb_test_simple_msg m
 		# A zero value would be omitted on encode and read back as the
 		# same zero default either way, so keep 'a' nonzero to exercise
@@ -1080,10 +1073,8 @@ void test_message_roundtrip_property_simple():
 			m.a = 1
 		int slen = rand_below(&rs, 12)
 		char* s = malloc(slen + 1)
-		int i = 0
-		while (i < slen):
+		for i in range(slen):
 			s[i] = 'a' + rand_below(&rs, 26)
-			i = i + 1
 		s[slen] = 0
 		m.b.data = s
 		m.b.length = slen
@@ -1095,33 +1086,27 @@ void test_message_roundtrip_property_simple():
 		pb_test_simple_msg* decoded = cast(pb_test_simple_msg*, result_value[char*](r))
 		assert_equal(m.a, decoded.a)
 		assert_equal(slen, decoded.b.length)
-		int j = 0
-		while (j < slen):
+		for j in range(slen):
 			assert_equal(s[j] & 255, decoded.b.data[j] & 255)
-			j = j + 1
 		if (slen > 0):
 			free(decoded.b.data)
 		free(cast(char*, decoded))
 		result_free[char*](r)
 		free(out)
 		free(s)
-		trial = trial + 1
 
 
 void test_message_roundtrip_property_repeated():
 	pb_test_rep_desc_init()
 	rand_state rs
 	rand_init(&rs, 6220719)
-	int trial = 0
-	while (trial < 200):
+	for trial in range(200):
 		pb_test_rep_msg rm
 		rm.values = new list[int32]
 		int count = rand_below(&rs, 8) + 1
-		int i = 0
-		while (i < count):
+		for i in range(count):
 			int v = rand_below(&rs, 200000) - 100000
 			rm.values.push(v)
-			i = i + 1
 
 		int out_len = 0
 		char* out = pb_encode(&pb_test_rep_desc, cast(char*, &rm), &out_len)
@@ -1134,11 +1119,8 @@ void test_message_roundtrip_property_repeated():
 		assert_equal(1, result_is_ok[char*](r))
 		pb_test_rep_msg* decoded = cast(pb_test_rep_msg*, buf)
 		assert_equal(count, decoded.values.length)
-		int j = 0
-		while (j < count):
+		for j in range(count):
 			assert_equal(rm.values[j], decoded.values[j])
-			j = j + 1
 		result_free[char*](r)
 		free(out)
 		free(buf)
-		trial = trial + 1

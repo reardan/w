@@ -53,10 +53,8 @@ char* tlss_key_path():
 
 # Fill n bytes of buf with a deterministic non-trivial pattern.
 void tlss_fill(char* buf, int n, int seed):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		buf[i] = (seed + i * 7 + (i >> 3)) & 255
-		i = i + 1
 
 
 int tlss_bytes_equal(char* a, char* b, int n):
@@ -76,10 +74,8 @@ char* tlss_wrap_handshake(char* msg, int mlen, int* out_len):
 	rec[2] = 3
 	rec[3] = (mlen >> 8) & 255
 	rec[4] = mlen & 255
-	int i = 0
-	while (i < mlen):
+	for i in range(mlen):
 		rec[5 + i] = msg[i]
-		i = i + 1
 	*out_len = 5 + mlen
 	return rec
 
@@ -516,10 +512,8 @@ void test_server_tampered_client_finished():
 	# the Finished record (offset 5 = first byte past the record header).
 	char* full = malloc(chrec_len + fin_len)
 	mem_copy(full, chrec, chrec_len)
-	int i = 0
-	while (i < fin_len):
+	for i in range(fin_len):
 		full[chrec_len + i] = cout[ch_rec_len + i]
-		i = i + 1
 	full[chrec_len + 5] = full[chrec_len + 5] ^ 0xff
 
 	tls_server_config* scfg = tlss_config_inmem()

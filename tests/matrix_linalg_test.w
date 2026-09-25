@@ -239,10 +239,8 @@ void test_chol():
 
 void test_qr():
 	float[] vals = new float[12]
-	int i = 0
-	while (i < 12):
+	for i in range(12):
 		vals[i] = (i * 7) % 5 + i / 3
-		i = i + 1
 	matrix a = matrix_from(vals, 4, 3)
 	matrix q
 	matrix r

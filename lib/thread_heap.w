@@ -157,14 +157,12 @@ wheap* th_owner(int addr):
 # of the address space, where base + len wraps.
 int th_register(int base, int len, wheap* h):
 	int n = len >> th_segment_shift()
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int a = base + (i << th_segment_shift())
 		int* leaf = th_registry_leaf(a, 1)
 		if (leaf == 0):
 			return 0
 		leaf[th_registry_mid(a)] = cast(int, h)
-		i = i + 1
 	return 1
 
 

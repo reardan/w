@@ -124,13 +124,11 @@ int main(int argc, char** argv):
 	if (pid < 0):
 		fail(c"fork failed")
 	if (pid == 0):
-		int i = 0
-		while (i < 40):
+		for i in range(40):
 			process_result* w = run_wbuildgen(0)
 			if (w.status != 0):
 				exit(1)
 			process_result_free(w)
-			i = i + 1
 		exit(0)
 	process* writer = new process()
 	writer.pid = pid

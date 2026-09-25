@@ -178,8 +178,7 @@ void test_atlas_decode():
 	int partial = 0
 	row = 0
 	while (row < a.h):
-		int col2 = 0
-		while (col2 < a.w):
+		for col2 in range(a.w):
 			int value = pixels[(a.y + row) * width + a.x + col2] & 255
 			if (value == 255):
 				solid = solid + 1
@@ -187,7 +186,6 @@ void test_atlas_decode():
 				background = background + 1
 			else:
 				partial = partial + 1
-			col2 = col2 + 1
 		row = row + 1
 	asserts(c"A has solid ink", solid > 0)
 	asserts(c"A has background", background > 0)

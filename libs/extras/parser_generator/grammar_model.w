@@ -191,10 +191,8 @@ pg_match_expr* pg_match_expr_text_new(int kind, char* text, int line, int column
 pg_match_expr* pg_match_expr_charset_new(char* charset, int line, int column):
 	pg_match_expr* expression = pg_match_expr_new(pg_match_expr_charset_kind(), line, column)
 	expression.charset = malloc(128)
-	int i = 0
-	while (i < 128):
+	for i in range(128):
 		expression.charset[i] = charset[i]
-		i = i + 1
 	return expression
 
 
@@ -343,12 +341,10 @@ void pg_recover_add_skip(pg_recover_def* recover, char* token_name):
 
 
 pg_recover_def* pg_grammar_find_recover(pg_grammar* grammar, char* rule_name):
-	int i = 0
-	while (i < grammar.recovers.length):
+	for i in range(grammar.recovers.length):
 		pg_recover_def* recover = grammar.recovers[i]
 		if (strcmp(recover.rule_name, rule_name) == 0):
 			return recover
-		i = i + 1
 	return 0
 
 
@@ -369,42 +365,34 @@ void pg_alternative_add_term(pg_alternative* alternative, pg_term* term):
 
 
 pg_token_def* pg_grammar_find_token(pg_grammar* grammar, char* name):
-	int i = 0
-	while (i < grammar.tokens.length):
+	for i in range(grammar.tokens.length):
 		pg_token_def* token = grammar.tokens[i]
 		if (strcmp(token.name, name) == 0):
 			return token
-		i = i + 1
 	return 0
 
 
 pg_fragment_def* pg_grammar_find_fragment(pg_grammar* grammar, char* name):
-	int i = 0
-	while (i < grammar.fragments.length):
+	for i in range(grammar.fragments.length):
 		pg_fragment_def* fragment = grammar.fragments[i]
 		if (strcmp(fragment.name, name) == 0):
 			return fragment
-		i = i + 1
 	return 0
 
 
 pg_literal_def* pg_grammar_find_literal(pg_grammar* grammar, char* name):
-	int i = 0
-	while (i < grammar.literals.length):
+	for i in range(grammar.literals.length):
 		pg_literal_def* literal = grammar.literals[i]
 		if (strcmp(literal.name, name) == 0):
 			return literal
-		i = i + 1
 	return 0
 
 
 pg_rule* pg_grammar_find_rule(pg_grammar* grammar, char* name):
-	int i = 0
-	while (i < grammar.rules.length):
+	for i in range(grammar.rules.length):
 		pg_rule* rule = grammar.rules[i]
 		if (strcmp(rule.name, name) == 0):
 			return rule
-		i = i + 1
 	return 0
 
 

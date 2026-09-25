@@ -27,14 +27,12 @@ void pbw_expect_bytes(char* label, pb_bytes* got, char* want, int want_len):
 		print2(c": length mismatch got=")
 		println2(itoa(got.length))
 		exit(1)
-	int i = 0
-	while (i < want_len):
+	for i in range(want_len):
 		if ((got.data[i] & 255) != (want[i] & 255)):
 			print2(label)
 			print2(c": byte mismatch at offset ")
 			println2(itoa(i))
 			exit(1)
-		i = i + 1
 
 
 int main():
@@ -62,10 +60,8 @@ int main():
 	m.g = -2
 	w = to_proto(m)
 	char* tail = c"\x31\x00\x00\x00\x00\x00\x00\xf0\x3f\x39\xfe\xff\xff\xff\xff\xff\xff\xff"
-	int i = 0
-	while (i < 18):
+	for i in range(18):
 		assert_equal(tail[i] & 255, w.data[32 + i] & 255)
-		i = i + 1
 	assert_equal(50, w.length)
 	pbw_wide* q = from_proto(pbw_wide, w)
 	assert1(q.a == -2)

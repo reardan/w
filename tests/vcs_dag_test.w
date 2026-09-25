@@ -165,8 +165,7 @@ void test_generation_numbers_deep_chain():
 	dag* d = dag_new()
 	int n = 200
 	char* prev = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		char* id = vdt_make_id(i)
 		list[char*] parents = new list[char*]
 		if (i > 0):
@@ -175,7 +174,6 @@ void test_generation_numbers_deep_chain():
 		assert_equal(i, gen)
 		assert_equal(i, dag_generation(d, id))
 		prev = id
-		i = i + 1
 
 
 void test_reachability_positive_and_negative():
@@ -232,12 +230,10 @@ list[bitset*] vdt_compute_all_ancestors(list[list[int]] parent_indices, int n):
 	while (i < n):
 		bitset* a = bitset_new(n)
 		list[int] pidx = parent_indices[i]
-		int j = 0
-		while (j < pidx.length):
+		for j in range(pidx.length):
 			int p = pidx[j]
 			bitset_set(a, p)
 			bitset_or(a, anc[p])
-			j = j + 1
 		anc.push(a)
 		i = i + 1
 	return anc
@@ -306,8 +302,7 @@ void test_randomized_dag_topo_and_reachability_invariants():
 	i = 0
 	while (i < n):
 		bitset* reachable = all_ancestors[i]
-		int k = 0
-		while (k < n):
+		for k in range(n):
 			int want = 0
 			if (k == i):
 				want = 1
@@ -315,5 +310,4 @@ void test_randomized_dag_topo_and_reachability_invariants():
 				want = 1
 			int got = dag_is_ancestor(d, ids[k], ids[i])
 			assert_equal(want, got)
-			k = k + 1
 		i = i + 1

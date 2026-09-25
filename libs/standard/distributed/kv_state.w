@@ -78,12 +78,10 @@ import lib.mem
 # line-structure bytes are rejected — so this is safe to use on binary
 # values, unlike a NUL-terminated scan.
 int kv_valid_bytes(char* s, int len, int allow_empty):
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		int b = s[i] & 255
 		if (b == 9 || b == 10 || b == 13):
 			return 0
-		i = i + 1
 	if (len == 0 && allow_empty == 0):
 		return 0
 	return 1
@@ -160,10 +158,8 @@ char* kv_encode_delete(char* key):
 	char* cmd = malloc(klen + 3)
 	cmd[0] = 'D'
 	cmd[1] = 9
-	int i = 0
-	while (i < klen):
+	for i in range(klen):
 		cmd[2 + i] = key[i]
-		i = i + 1
 	cmd[2 + klen] = 0
 	return cmd
 
@@ -188,8 +184,7 @@ int kv_apply_command(lsm* store, char* command, int command_len):
 	char* rest = command + 2
 	int rest_len = command_len - 2
 	int sep = 0 - 1
-	int i = 0
-	while (i < rest_len):
+	for i in range(rest_len):
 		int b = rest[i] & 255
 		if (b == 10 || b == 13):
 			return 0
@@ -197,7 +192,6 @@ int kv_apply_command(lsm* store, char* command, int command_len):
 			if (sep >= 0):
 				return 0   # a third field: junk
 			sep = i
-		i = i + 1
 	if (tag == 'D'):
 		if (sep >= 0 || rest_len == 0):
 			return 0   # delete carries exactly one non-empty field

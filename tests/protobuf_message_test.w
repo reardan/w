@@ -24,14 +24,12 @@ void pbm_expect_bytes(char* label, pb_bytes* got, char* want, int want_len):
 		print2(c" want=")
 		println2(itoa(want_len))
 		exit(1)
-	int i = 0
-	while (i < want_len):
+	for i in range(want_len):
 		if ((got.data[i] & 255) != (want[i] & 255)):
 			print2(label)
 			print2(c": byte mismatch at offset ")
 			println2(itoa(i))
 			exit(1)
-		i = i + 1
 
 
 void pbm_set(pb_bytes* b, char* s):
@@ -272,10 +270,8 @@ void test_descriptor_and_wresult_api():
 
 	pb_message_desc* d1 = proto_descriptor(Test1)
 	char* buf = malloc(d1.struct_size)
-	int i = 0
-	while (i < d1.struct_size):
+	for i in range(d1.struct_size):
 		buf[i] = 0
-		i = i + 1
 	wresult[char*]* r = pb_decode(d1, c"\x08", 1, buf)
 	assert_equal(0, result_is_ok[char*](r))
 	assert_equal(PB_ERR_TRUNCATED(), result_code[char*](r))

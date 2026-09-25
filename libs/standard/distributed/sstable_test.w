@@ -34,10 +34,8 @@ char* sst_pad_key(char* prefix, int i, int digits):
 	assert1(n <= digits)
 	char* suffix = malloc(digits + 1)
 	mem_fill(suffix, '0', digits - n)
-	int j = 0
-	while (j < n):
+	for j in range(n):
 		suffix[digits - n + j] = num[j]
-		j = j + 1
 	suffix[digits] = 0
 	char* key = strjoin(prefix, suffix)
 	free(suffix)
@@ -57,14 +55,12 @@ char* sst_other(int i):
 void sst_build50(char* path):
 	sstable_writer* w = sstable_writer_new(path)
 	assert1(cast(int, w) != 0)
-	int i = 0
-	while (i < 50):
+	for i in range(50):
 		char* key = sst_pad_key(c"key", i, 2)
 		char* val = strjoin(c"v", key)
 		assert_equal(1, sstable_writer_add(w, key, val, strlen(val), 0))
 		free(val)
 		free(key)
-		i = i + 1
 	assert_equal(1, sstable_writer_finish(w))
 
 

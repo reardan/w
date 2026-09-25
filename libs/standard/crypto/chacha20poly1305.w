@@ -27,10 +27,8 @@ import lib.mem
 void poly1305_key_gen(char* key, char* nonce, char* out):
 	char* block = malloc(64)
 	chacha20_block(key, 0, nonce, block)
-	int i = 0
-	while (i < 32):
+	for i in range(32):
 		out[i] = block[i] & 255
-		i = i + 1
 	mem_fill(block, 0, 64)
 	free(block)
 
@@ -39,10 +37,8 @@ void poly1305_key_gen(char* key, char* nonce, char* out):
 # differences, test once at the end. Returns 1 when equal.
 int chacha20poly1305_tag_equal(char* a, char* b):
 	int diff = 0
-	int i = 0
-	while (i < 16):
+	for i in range(16):
 		diff = diff | ((a[i] ^ b[i]) & 255)
-		i = i + 1
 	return diff == 0
 
 

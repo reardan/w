@@ -79,10 +79,8 @@ char* __w_hash_value_addr(__w_hash_table* table, int i):
 
 
 void __w_hash_value_copy(char* dst, char* src, int count):
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		dst[i] = src[i]
-		i = i + 1
 
 
 const int __w_hash_key_word = 1
@@ -135,10 +133,8 @@ void __w_map_missing_key(__w_hash_table* table, int key):
 
 int __w_hash_bytes(int data, int length):
 	int h = 5381
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		h = h * 33 + data[i]
-		i = i + 1
 	return h
 
 
@@ -157,11 +153,9 @@ int __w_hash_string_equal(int left, int right):
 		return 0
 	int left_data = load_ptr(cast(char*, left))
 	int right_data = load_ptr(cast(char*, right))
-	int i = 0
-	while (i < left_len):
+	for i in range(left_len):
 		if (left_data[i] != right_data[i]):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -199,10 +193,8 @@ int __w_hash_clone_string(int key):
 	save_ptr(clone, data)
 	save_ptr(clone + __word_size__, length)
 	int source = load_ptr(cast(char*, key))
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		data[i] = source[i]
-		i = i + 1
 	data[length] = 0
 	return cast(int, clone)
 

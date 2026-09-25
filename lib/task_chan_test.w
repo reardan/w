@@ -10,10 +10,8 @@ import lib.time
 /* Buffered producer/consumer, closed by the producer. */
 
 generator int produce(task_chan* ch, int count):
-	int i = 1
-	while (i <= count):
+	for i in range(1, count + 1):
 		assert_equal(0, task_chan_send(ch, i))
-		i = i + 1
 	task_chan_close(ch)
 
 
@@ -57,10 +55,8 @@ generator int consume_into(task_chan* ch, list[int] out):
 
 
 generator int produce_range(task_chan* ch, int start, int count):
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		task_chan_send(ch, start + i)
-		i = i + 1
 
 
 generator int close_after_join(task_chan* ch, task* a, task* b):
@@ -184,8 +180,7 @@ generator int send_after(task_chan* ch, int value, int ms):
 
 
 generator int select_two(task_chan* a, task_chan* b, list[int] out):
-	int round = 0
-	while (round < 2):
+	for round in range(2):
 		task_select sel
 		task_select_init(&sel)
 		int ia = task_select_recv(&sel, a)
@@ -198,7 +193,6 @@ generator int select_two(task_chan* a, task_chan* b, list[int] out):
 		else:
 			out.push(which)
 		task_select_free(&sel)
-		round = round + 1
 
 
 void test_select_takes_whichever_is_ready():

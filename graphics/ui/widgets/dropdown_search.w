@@ -65,11 +65,9 @@ int ui_dropdown_matches(char* label, char* query):
 
 # Index of the first item matching query, or -1.
 int ui_dropdown_first_match(char** items, int item_count, char* query):
-	int i = 0
-	while (i < item_count):
+	for i in range(item_count):
 		if (ui_dropdown_matches(items[i], query)):
 			return i
-		i = i + 1
 	return 0 - 1
 
 
@@ -116,8 +114,7 @@ int ui_dropdown_search(ui_context* ctx, float32 w, char** items, int item_count,
 		# Rows sit flush under the filter, one row pitch apart.
 		float32 y = lo.cursor_y
 		int shown = 0
-		int i = 0
-		while (i < item_count):
+		for i in range(item_count):
 			if (ui_dropdown_matches(items[i], &query.text[0])):
 				ui_rect row = ui_rect_new(lo.bounds.x, y, inner_w, row_h)
 				if (ctx.input.mouse_pressed && ui_rect_contains(row, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
@@ -130,7 +127,6 @@ int ui_dropdown_search(ui_context* ctx, float32 w, char** items, int item_count,
 				ui_region_claim(ctx, row)
 				y = y + row_h
 				shown = shown + 1
-			i = i + 1
 		if (shown == 0):
 			ui_rect none = ui_rect_new(lo.bounds.x, y, inner_w, row_h)
 			ui_draw_text(ctx.rndr, none.x + cast(float32, ctx.theme.pad + 4), none.y + (none.h - cast(float32, ui_text_height(scale))) * 0.5, c"No matches", scale, ctx.theme.text_muted)

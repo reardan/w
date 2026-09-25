@@ -81,13 +81,11 @@ char** env_without(char* name):
 	int count = env_vector_count(base)
 	char** v = strv_new(count)
 	int out = 0
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		char* entry = env_entry_at(base, i)
 		if (env_match_name(entry, name) < 0):
 			strv_set(v, out, entry)
 			out = out + 1
-		i = i + 1
 	return v
 
 

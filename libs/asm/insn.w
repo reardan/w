@@ -159,10 +159,8 @@ char* asm_hex_min(int v):
 	char* out = malloc(n + 3)
 	out[0] = '0'
 	out[1] = 'x'
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		out[2 + i] = tmp[n - 1 - i]
-		i = i + 1
 	out[2 + n] = 0
 	free(tmp)
 	return out
@@ -177,10 +175,8 @@ char* asm_hex_min64(int hi, int lo):
 		return asm_hex_min(lo)
 	char* digits = c"0123456789abcdef"
 	char* lopart = malloc(9)
-	int i = 0
-	while (i < 8):
+	for i in range(8):
 		lopart[i] = digits[(lo >> ((7 - i) * 4)) & 15]
-		i = i + 1
 	lopart[8] = 0
 	return strjoin(asm_hex_min(hi), lopart)
 
@@ -212,11 +208,9 @@ char* asm_name_slot(char* table, int stride, int count, int number):
 # Reverse lookup in an asm_name_slot table: the number whose slot holds
 # name, or -1.
 int asm_name_slot_find(char* table, int stride, int count, char* name):
-	int number = 0
-	while (number < count):
+	for number in range(count):
 		if (table[number * stride] != 0 && strcmp(table + number * stride, name) == 0):
 			return number
-		number = number + 1
 	return -1
 
 
@@ -299,12 +293,10 @@ asm_labels* asm_labels_new():
 
 
 int asm_labels_find(asm_labels* t, char* name):
-	int i = 0
-	while (i < t.labels.length):
+	for i in range(t.labels.length):
 		asm_label_record rec = t.labels[i]
 		if (strcmp(rec.name, name) == 0):
 			return i
-		i = i + 1
 	return -1
 
 

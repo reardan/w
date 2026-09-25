@@ -189,12 +189,10 @@ int ring_successors(hash_ring* r, char* key, int n, char** out):
 	while (steps < r.points.length && count < n):
 		char* owner = r.owners[idx]
 		int seen = 0
-		int j = 0
-		while (j < count):
+		for j in range(count):
 			if (strcmp(out[j], owner) == 0):
 				seen = 1
 				break
-			j = j + 1
 		if (seen == 0):
 			out[count] = owner
 			count = count + 1

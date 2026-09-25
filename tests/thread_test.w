@@ -92,18 +92,15 @@ void test_join_reclaims_stacks():
 	int distinct = 0
 	int overflow = 0
 	reclaim_last = 0
-	int i = 0
-	while (i < 1100):
+	for i in range(1100):
 		wthread* t = thread_spawn(reclaim_worker, cast(void*, i + 1))
 		asserts(c"thread_spawn failed (stack leak?)", cast(int, t) != 0)
 		int base = t.stack_base
 		asserts(c"worker did not record its stack base", base != 0)
 		int seen = 0
-		int j = 0
-		while (j < distinct):
+		for j in range(distinct):
 			if (bases[j] == base):
 				seen = 1
-			j = j + 1
 		if (seen == 0):
 			if (distinct < 16):
 				bases[distinct] = base
@@ -111,7 +108,6 @@ void test_join_reclaims_stacks():
 			else:
 				overflow = 1
 		assert_equal(0, thread_join(t))
-		i = i + 1
 	asserts(c"joined stacks were not reused", overflow == 0)
 	# the last worker really ran with its argument
 	assert_equal(1100, reclaim_last)

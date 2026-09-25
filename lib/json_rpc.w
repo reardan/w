@@ -333,14 +333,12 @@ jsonrpc_listener* jsonrpc_serve_listener(jsonrpc_server* s, event_loop* loop, in
 
 
 void jsonrpc_server_free(jsonrpc_server* s):
-	int i = 0
-	while (i < s.connections.length):
+	for i in range(s.connections.length):
 		jsonrpc_connection* conn = s.connections[i]
 		if (conn.open):
 			if (conn.reader != 0):
 				frame_reader_free(conn.reader)
 		free(cast(char*, conn))
-		i = i + 1
 	list_free[jsonrpc_connection*](s.connections)
 	map_free[char*, jsonrpc_handler*](s.handlers)
 	free(s)

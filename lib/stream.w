@@ -170,10 +170,8 @@ int stream_read_line(wstream* s, string_builder* line):
 
 void stream_append_bytes(string_builder* out, char* data, int n):
 	string_reserve(out, n)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		out.data[out.length + i] = data[i]
-		i = i + 1
 	out.length = out.length + n
 	out.data[out.length] = 0
 
@@ -212,10 +210,8 @@ void stream_write(wstream* s, char* data, int n):
 		return
 	if ((s.limit + n) > s.capacity):
 		stream_flush(s)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		s.buffer[s.limit + i] = data[i]
-		i = i + 1
 	s.limit = s.limit + n
 
 
@@ -299,13 +295,11 @@ int frame_read(wstream* in, string_builder* body):
 		return 0
 	string_clear(body)
 	string_reserve(body, length)
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		int c = stream_read_byte(in)
 		if (c == -1):
 			return 0
 		string_append_char(body, c)
-		i = i + 1
 	return 1
 
 

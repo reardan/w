@@ -252,22 +252,18 @@ int generic_subst_lookup(char* name):
 	if (generic_subst_block == 0):
 		return -1
 	int n = load_ptr(generic_subst_block)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (strcmp(name, cast(char*, load_ptr(generic_subst_block + __word_size__ + i * 2 * __word_size__))) == 0):
 			return load_ptr(generic_subst_block + 2 * __word_size__ + i * 2 * __word_size__)
-		i = i + 1
 	return -1
 
 
 char* generic_subst_make(int def, int args, int arg_count):
 	char* block = malloc(__word_size__ + arg_count * 2 * __word_size__)
 	save_ptr(block, arg_count)
-	int i = 0
-	while (i < arg_count):
+	for i in range(arg_count):
 		save_ptr(block + __word_size__ + i * 2 * __word_size__, cast(int, generic_def_param_name(def, i)))
 		save_ptr(block + 2 * __word_size__ + i * 2 * __word_size__, load_ptr(args + i * __word_size__))
-		i = i + 1
 	return block
 
 
@@ -388,15 +384,13 @@ char* generic_mangle_arg(int arg_type):
 
 char* generic_mangle(char* base, int args, int arg_count):
 	char* name = strclone(base)
-	int i = 0
-	while (i < arg_count):
+	for i in range(arg_count):
 		char* with_sep = strjoin(name, c"$")
 		free(name)
 		char* arg_name = generic_mangle_arg(load_ptr(args + i * __word_size__))
 		name = strjoin(with_sep, arg_name)
 		free(with_sep)
 		free(arg_name)
-		i = i + 1
 	return name
 
 
@@ -817,13 +811,11 @@ void generic_infer_store_shape(char* block, int slot, int param_type, int def):
 	int u = type_unqualified(param_type)
 	char* name = type_get_name(u)
 	int n = generic_def_param_count(def)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (strcmp(name, type_get_name(generic_infer_placeholder(i))) == 0):
 			save_ptr(e, i)
 			save_ptr(e + __word_size__, type_get_pointer_level(u))
 			return;
-		i = i + 1
 	if (generic_infer_mentions_placeholder(u)):
 		save_ptr(e, -2)
 		save_ptr(e + __word_size__, 0)
@@ -846,10 +838,8 @@ char* generic_infer_shapes(int def):
 		return cached
 	int n = generic_def_param_count(def)
 	int placeholder_args = cast(int, malloc(generic_max_params * __word_size__))
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		save_ptr(placeholder_args + i * __word_size__, generic_infer_placeholder(i))
-		i = i + 1
 	char* save = generic_reparse_save()
 	char* old_subst = generic_subst_swap(generic_subst_make(def, placeholder_args, n))
 	generic_reparse_start(def)
@@ -933,14 +923,12 @@ void generic_infer_bind(int def, char* bound, int param, int depth, int arg_type
 		diag_part(generic_def_param_name(def, param))
 		error3(c"' from argument ", itoa(arg_index + 1), c": a bare function name has no value type; use explicit type arguments")
 	int stripped = generic_infer_declarable(arg_type)
-	int level = 0
-	while (level < depth):
+	for level in range(depth):
 		if (type_get_pointer_level(stripped) == 0):
 			generic_infer_pointer_error(def, param, arg_type, arg_index)
 		stripped = type_lookup_previous_pointer(stripped)
 		if (stripped < 0):
 			generic_infer_pointer_error(def, param, arg_type, arg_index)
-		level = level + 1
 	stripped = type_unqualified(stripped)
 	if (existing < 0):
 		save_ptr(bound + param * __word_size__, stripped)
@@ -1420,10 +1408,8 @@ void generic_check_instantiate_all():
 		if (generic_def_used(d) == 0):
 			int n = generic_def_param_count(d)
 			int args = cast(int, malloc(generic_max_params * __word_size__))
-			int i = 0
-			while (i < n):
+			for i in range(n):
 				save_ptr(args + i * __word_size__, int_type)
-				i = i + 1
 			char* mangled = generic_mangle(generic_def_name(d), args, n)
 			if (generic_def_kind(d) == 1):
 				# struct: instantiate eagerly (fills the type table only,

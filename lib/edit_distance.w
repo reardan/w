@@ -39,8 +39,7 @@ int levenshtein(char* a, char* b):
 	while (j <= n):
 		prev[j] = j
 		j = j + 1
-	int i = 1
-	while (i <= m):
+	for i in range(1, m + 1):
 		curr[0] = i
 		char ca = a[i - 1]
 		j = 1
@@ -58,7 +57,6 @@ int levenshtein(char* a, char* b):
 		int* swap_row = prev
 		prev = curr
 		curr = swap_row
-		i = i + 1
 	int result = prev[n]
 	free(prev)
 	free(curr)

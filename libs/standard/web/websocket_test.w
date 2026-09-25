@@ -44,12 +44,10 @@ void wst_assert_bytes(char* label, char* expected_hex, char* actual, int actual_
 	if (n != actual_len):
 		print_string(label, c": length mismatch")
 		assert_equal(n, actual_len)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if ((expected[i] & 255) != (actual[i] & 255)):
 			print_string(label, c": byte mismatch")
 			assert_equal(expected[i] & 255, actual[i] & 255)
-		i = i + 1
 	free(expected)
 
 
@@ -169,10 +167,8 @@ void test_ws_rfc_5_7_encode():
 
 	# 256 bytes of binary data: 16-bit length.
 	char* data = malloc(65536)
-	int i = 0
-	while (i < 65536):
+	for i in range(65536):
 		data[i] = i & 255
-		i = i + 1
 	string_builder* out = string_new()
 	assert_equal(1, ws_frame_encode(out, 1, ws_op_binary(), data, 256, 0))
 	assert_equal(260, out.length)
@@ -356,8 +352,7 @@ void test_ws_session_echo_and_close():
 	int* sizes = malloc(__word_size__ * 2)
 	sizes[0] = 300
 	sizes[1] = 70000
-	int k = 0
-	while (k < 2):
+	for k in range(2):
 		int n = sizes[k]
 		char* data = malloc(n)
 		int i = 0
@@ -375,7 +370,6 @@ void test_ws_session_echo_and_close():
 			i = i + 1
 		ws_message_free(m)
 		free(data)
-		k = k + 1
 	# Fragmented text with a ping interleaved between fragments; the
 	# echo peer answers the ping (dropped by our ws_recv) and echoes the
 	# reassembled message.
@@ -491,14 +485,12 @@ void wst_violation_bytes(char* label, int tested_is_client, int max_message, ws_
 	if (cfg != 0):
 		assert_equal(1, ws_set_compression(c, cfg))
 	ws_message* m = 0
-	int k = 0
-	while (k < messages):
+	for k in range(messages):
 		m = ws_recv(c)
 		if (m == 0):
 			print_string(label, ws_error_string(ws_conn_error(c)))
 			asserts(label, 0)
 		ws_message_free(m)
-		k = k + 1
 	m = ws_recv(c)
 	if (m != 0):
 		print_string(label, c": unexpected message")
@@ -909,10 +901,8 @@ void test_ws_deflate_client_negotiation():
 # beyond small windows.
 char* wst_pattern(int n, int seed):
 	char* data = malloc(n)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		data[i] = ((i / 3) * 7 + seed + ((i >> 9) & 31)) & 255
-		i = i + 1
 	return data
 
 
@@ -921,11 +911,9 @@ void wst_expect_binary_echo(ws_conn* c, char* data, int n):
 	ws_message* m = wst_recv_ok(c)
 	assert_equal(ws_op_binary(), m.opcode)
 	assert_equal(n, m.len)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if ((m.data[i] & 255) != (data[i] & 255)):
 			assert_equal(data[i] & 255, m.data[i] & 255)
-		i = i + 1
 	ws_message_free(m)
 
 
@@ -935,11 +923,9 @@ void wst_compressed_session(ws_deflate_config* cfg):
 	int pid = 0
 	ws_conn* c = wst_client_to_echo_z(&pid, cfg)
 	assert_equal(1, ws_compression_active(c))
-	int k = 0
-	while (k < 4):
+	for k in range(4):
 		assert_equal(1, ws_send_text(c, c"hello hello hello, compressed world", 35))
 		wst_expect_text(c, c"hello hello hello, compressed world")
-		k = k + 1
 	assert_equal(1, ws_send_text(c, c"h\xc3\xa9llo \xe2\x82\xac", 10))
 	wst_expect_text(c, c"h\xc3\xa9llo \xe2\x82\xac")
 	assert_equal(1, ws_send_binary(c, c"", 0))
@@ -1097,11 +1083,9 @@ void test_ws_deflate_peer_violations():
 void test_ws_deflate_window_bits_enforced():
 	wst_use_deflate()
 	char* first = malloc(600)
-	int i = 0
-	while (i < 300):
+	for i in range(300):
 		first[2 * i] = i & 255
 		first[2 * i + 1] = i >> 8
-		i = i + 1
 	int n1 = 0
 	char* z1 = deflate_window(first, 600, 0, 0, 15, 1, &n1)
 	int n2 = 0

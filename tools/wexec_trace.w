@@ -389,25 +389,21 @@ char* wtr_resolve_program(char* name):
 char** wtr_build_argv(json_value* cmd):
 	int n = json_array_length(cmd)
 	char** argv = strv_new(n)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		json_value* piece = json_array_get(cmd, i)
 		char* text = c""
 		if (piece.type == json_type_string()):
 			text = piece.string_value
 		strv_set(argv, i, text)
-		i = i + 1
 	return argv
 
 
 void wtr_echo_command(char** argv, int count):
 	string_builder* line = string_new()
 	string_append(line, c"$")
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		string_append(line, c" ")
 		string_append(line, strv_get(argv, i))
-		i = i + 1
 	wstream* out = stdout_writer()
 	stream_write_line(out, line.data)
 	stream_flush(out)
@@ -551,8 +547,7 @@ int wexec_trace_run(char* target_name, json_value* target, map[char*, int] decla
 
 	int total = 0
 	int undeclared = 0
-	int s = 0
-	while (s < step_count):
+	for s in range(step_count):
 		json_value* step = json_array_get(steps, s)
 		json_value* cmd = json_object_get(step, c"cmd")
 		if ((cmd == 0) || (cmd.type != json_type_array()) || (json_array_length(cmd) < 1)):
@@ -574,7 +569,6 @@ int wexec_trace_run(char* target_name, json_value* target, map[char*, int] decla
 		if (decoded != 0):
 			wtr_error(cstr(f"target '{target_name}' step {s + 1}: command failed with exit status {decoded}"))
 			return 1
-		s = s + 1
 
 	string_builder* summary = string_new()
 	string_append(summary, c"wexec: trace summary: ")

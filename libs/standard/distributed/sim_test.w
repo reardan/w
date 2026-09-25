@@ -102,8 +102,7 @@ void test_identical_seeds_replay_identically():
 	int tb = 0
 	char* pa = 0
 	char* pb = 0
-	int step = 0
-	while (step < 30):
+	for step in range(30):
 		char* pl = itoa(step)
 		int oka = sim_send(a, step % 3, (step + 1) % 3, pl)
 		int okb = sim_send(b, step % 3, (step + 1) % 3, pl)
@@ -124,7 +123,6 @@ void test_identical_seeds_replay_identically():
 				assert_equal(fa, fb)
 				assert_equal(ta, tb)
 				free(pa)
-		step = step + 1
 	# drain the tail after the script
 	sim_advance(a, 60)
 	sim_advance(b, 60)
@@ -148,11 +146,9 @@ void test_identical_seeds_replay_identically():
 void test_drop_rate_deterministic():
 	sim_net* s = sim_new(42, 0, 0, 500)
 	int accepted = 0
-	int i = 0
-	while (i < 1000):
+	for i in range(1000):
 		if (sim_send(s, 1, 2, c"d") == 1):
 			accepted = accepted + 1
-		i = i + 1
 	# exact count for seed 42 at 500 per mille (observed once, frozen)
 	assert_equal(518, accepted)
 	assert1(accepted >= 400)

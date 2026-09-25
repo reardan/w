@@ -298,8 +298,7 @@ char* vw_manifest():
 # source outside bin/ legitimately drops the manifest in between, so a
 # cold answer is retried a few times before it counts as a failure.
 void vw_expect_warm():
-	int attempt = 0
-	while (attempt < 10):
+	for attempt in range(10):
 		json_value* status = vw_status()
 		int warm = json_object_get(status, c"warm_manifest").int_value && (json_object_get(status, c"warm_hashes").int_value > 0)
 		json_free(status)
@@ -307,7 +306,6 @@ void vw_expect_warm():
 			return
 		process_result_free(vw_run(vw_client(c"--no-autostart --require-daemon", strjoin(strjoin(c"build -f ", vw_path(c"manifest.json")), c" -j 1 vw_a"))))
 		process_result_free(vw_run(vw_client(c"--no-autostart --require-daemon", c"build --list")))
-		attempt = attempt + 1
 	asserts(c"the daemon never kept a warm manifest and warm hashes", 0)
 
 

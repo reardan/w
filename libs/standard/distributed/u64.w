@@ -330,10 +330,8 @@ char* u64_to_dec(u64* a):
 		tmp[n] = 48
 		n = n + 1
 	char* s = malloc(n + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		s[i] = tmp[n - 1 - i]
-		i = i + 1
 	s[n] = 0
 	free(tmp)
 	return s

@@ -247,10 +247,8 @@ void test_propose_apply_loop_binary_value():
 	char* got = lsm_get(store, c"bin", n)
 	assert1(cast(int, got) != 0)
 	assert_equal(5, n[0])
-	int i = 0
-	while (i < 5):
+	for i in range(5):
 		assert_equal(value[i] & 255, got[i] & 255)
-		i = i + 1
 	free(got)
 	free(cast(char*, n))
 	free(value)

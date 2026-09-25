@@ -43,12 +43,10 @@ int ui_demo_write_ppm(char* path, int w, int h):
 	int y = h - 1
 	while (y >= 0):
 		char* src = &pixels[y * w * 4]
-		int x = 0
-		while (x < w):
+		for x in range(w):
 			row[x * 3] = src[x * 4]
 			row[x * 3 + 1] = src[x * 4 + 1]
 			row[x * 3 + 2] = src[x * 4 + 2]
-			x = x + 1
 		stream_write(out, row, w * 3)
 		y = y - 1
 	stream_close(out)

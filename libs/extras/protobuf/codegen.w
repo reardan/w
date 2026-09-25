@@ -508,13 +508,11 @@ char* pc_import_module(char* path):
 	int n = strlen(path)
 	if ((n > 6) && (strcmp(path + n - 6, c".proto") == 0)):
 		n = n - 6
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (path[i] == '/'):
 			string_append_char(s, '.')
 		else:
 			string_append_char(s, path[i])
-		i = i + 1
 	string_append(s, c"_pb")
 	char* module = strclone(s.data)
 	string_free(s)
@@ -656,8 +654,7 @@ void pc_emit_message(pc_codegen* g, pc_message* m):
 	string_append(out, c"message ")
 	string_append(out, m.w_name)
 	string_append(out, c":\n")
-	int i = 0
-	while (i < m.fields.length):
+	for i in range(m.fields.length):
 		pc_field* f = m.fields[i]
 		string_append(out, c"\t")
 		if (f.label == pc_label_repeated()):
@@ -675,7 +672,6 @@ void pc_emit_message(pc_codegen* g, pc_message* m):
 		else if (f.label == pc_label_required()):
 			string_append(out, c"  # required (not enforced)")
 		string_append(out, c"\n")
-		i = i + 1
 
 
 # Depth-first so every referenced message is declared before its user.
@@ -692,12 +688,10 @@ void pc_visit(pc_codegen* g, int index):
 		m.needs_forward = 1
 		return
 	m.state = 1
-	int i = 0
-	while (i < m.fields.length):
+	for i in range(m.fields.length):
 		pc_field* f = m.fields[i]
 		if ((f.message_dep >= 0) && (f.message_dep != index)):
 			pc_visit(g, f.message_dep)
-		i = i + 1
 	m.state = 2
 	pc_emit_message(g, m)
 

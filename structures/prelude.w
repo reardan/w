@@ -56,14 +56,12 @@ void __w_print_float32(float f):
 	s[pos] = '.'
 	pos = pos + 1
 	float frac = f - whole
-	int i = 0
-	while (i < 6):
+	for i in range(6):
 		frac = frac * 10.0
 		int digit = frac
 		s[pos] = digit + '0'
 		pos = pos + 1
 		frac = frac - digit
-		i = i + 1
 	s[pos] = 0
 	write(1, s, pos)
 	free(s)
@@ -230,8 +228,7 @@ char* __w_piece(char* s, int start, int end):
 list[char*] __w_split_bytes(char* s, int length, int delimiter):
 	list[char*] pieces = new list[char*]
 	int start = 0
-	int i = 0
-	while (i <= length):
+	for i in range(length + 1):
 		int is_break = i == length
 		if ((is_break == 0) && (delimiter == 0)):
 			is_break = (s[i] == ' ') || ((s[i] >= 9) && (s[i] <= 13))
@@ -241,7 +238,6 @@ list[char*] __w_split_bytes(char* s, int length, int delimiter):
 			if ((delimiter != 0) || (i > start)):
 				pieces.push(__w_piece(s, start, i))
 			start = i + 1
-		i = i + 1
 	return pieces
 
 
@@ -277,10 +273,8 @@ list[char*] __w_words():
 # result only measures.
 int __w_join_copy(char* result, int out, char* data, int length):
 	if (cast(int, result) != 0):
-		int j = 0
-		while (j < length):
+		for j in range(length):
 			result[out + j] = data[j]
-			j = j + 1
 	return out + length
 
 
@@ -297,8 +291,7 @@ char* __w_join(__w_list* parts, int sep, int flags):
 	else:
 		sep_length = strlen(sep_data)
 	char* result = 0
-	int round = 0
-	while (round < 2):
+	for round in range(2):
 		int out = 0
 		int i = 0
 		while (i < parts.length):
@@ -315,7 +308,6 @@ char* __w_join(__w_list* parts, int sep, int flags):
 			result = malloc(out + 1)
 		else:
 			result[out] = 0
-		round = round + 1
 	return result
 
 # --- enum_name ------------------------------------------------------------

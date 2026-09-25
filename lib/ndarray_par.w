@@ -165,9 +165,7 @@ float ndf_sum_par(ndf* a, int nthreads):
 	ctx.nthreads = nthreads
 	parallel_for(0, a.n0, nthreads, ndf_par_sum_chunk, cast(void*, &ctx))
 	float total = 0.0
-	int k = 0
-	while (k < nthreads):
+	for k in range(nthreads):
 		total = total + partials[k]
-		k = k + 1
 	array_free[float](partials)
 	return total

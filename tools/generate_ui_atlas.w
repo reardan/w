@@ -84,13 +84,9 @@ void gen_atlas_place(gen_atlas* a, char* bitmap, int w, int h, int* out_x, int* 
 	if (a.y + a.shelf_h >= a.h_cap):
 		print_error(c"generate_ui_atlas: atlas height cap exceeded\n")
 		exit(1)
-	int row = 0
-	while (row < h):
-		int col = 0
-		while (col < w):
+	for row in range(h):
+		for col in range(w):
 			a.pixels[(a.y + row) * a.w + a.x + col] = bitmap[row * w + col]
-			col = col + 1
-		row = row + 1
 	out_x[0] = a.x
 	out_y[0] = a.y
 	a.x = a.x + w + 1
@@ -136,10 +132,8 @@ float32 gen_capsule_dist(float32 px, float32 py, float32 ax, float32 ay, float32
 # Solid white cell: untextured fills sample its center.
 char* gen_mask_white(int size):
 	char* p = malloc(size * size)
-	int i = 0
-	while (i < size * size):
+	for i in range(size * size):
 		p[i] = 255
-		i = i + 1
 	return p
 
 
@@ -151,13 +145,11 @@ char* gen_mask_corner(int size):
 	float32 s = cast(float32, size)
 	int y = 0
 	while (y < size):
-		int x = 0
-		while (x < size):
+		for x in range(size):
 			float32 dx = s - (cast(float32, x) + 0.5)
 			float32 dy = s - (cast(float32, y) + 0.5)
 			float32 d = gfx_sqrt(dx * dx + dy * dy)
 			p[y * size + x] = gen_coverage(s - d + 0.5)
-			x = x + 1
 		y = y + 1
 	return p
 
@@ -168,13 +160,11 @@ char* gen_mask_disc(int size):
 	float32 r = c - 0.5
 	int y = 0
 	while (y < size):
-		int x = 0
-		while (x < size):
+		for x in range(size):
 			float32 dx = cast(float32, x) + 0.5 - c
 			float32 dy = cast(float32, y) + 0.5 - c
 			float32 d = gfx_sqrt(dx * dx + dy * dy)
 			p[y * size + x] = gen_coverage(r - d + 0.5)
-			x = x + 1
 		y = y + 1
 	return p
 
@@ -188,15 +178,13 @@ char* gen_mask_ring(int size):
 	float32 half_stroke = 2.0
 	int y = 0
 	while (y < size):
-		int x = 0
-		while (x < size):
+		for x in range(size):
 			float32 dx = cast(float32, x) + 0.5 - c
 			float32 dy = cast(float32, y) + 0.5 - c
 			float32 d = gfx_sqrt(dx * dx + dy * dy) - r
 			if (d < 0.0):
 				d = 0.0 - d
 			p[y * size + x] = gen_coverage(half_stroke - d + 0.5)
-			x = x + 1
 		y = y + 1
 	return p
 
@@ -207,8 +195,7 @@ char* gen_mask_check(int size):
 	float32 s = cast(float32, size) / 30.0
 	int y = 0
 	while (y < size):
-		int x = 0
-		while (x < size):
+		for x in range(size):
 			float32 px = cast(float32, x) + 0.5
 			float32 py = cast(float32, y) + 0.5
 			float32 d1 = gen_capsule_dist(px, py, 7.0 * s, 16.0 * s, 13.0 * s, 22.0 * s)
@@ -217,7 +204,6 @@ char* gen_mask_check(int size):
 			if (d2 < d):
 				d = d2
 			p[y * size + x] = gen_coverage(2.2 * s - d + 0.5)
-			x = x + 1
 		y = y + 1
 	return p
 
@@ -228,8 +214,7 @@ char* gen_mask_chevron(int size):
 	float32 s = cast(float32, size) / 24.0
 	int y = 0
 	while (y < size):
-		int x = 0
-		while (x < size):
+		for x in range(size):
 			float32 px = cast(float32, x) + 0.5
 			float32 py = cast(float32, y) + 0.5
 			float32 d1 = gen_capsule_dist(px, py, 5.0 * s, 9.0 * s, 12.0 * s, 16.0 * s)
@@ -238,7 +223,6 @@ char* gen_mask_chevron(int size):
 			if (d2 < d):
 				d = d2
 			p[y * size + x] = gen_coverage(1.8 * s - d + 0.5)
-			x = x + 1
 		y = y + 1
 	return p
 
@@ -252,8 +236,7 @@ char* gen_mask_chevron_right(int size):
 	float32 s = cast(float32, size) / 24.0
 	int y = 0
 	while (y < size):
-		int x = 0
-		while (x < size):
+		for x in range(size):
 			float32 px = cast(float32, x) + 0.5
 			float32 py = cast(float32, y) + 0.5
 			float32 d1 = gen_capsule_dist(px, py, 9.0 * s, 5.0 * s, 16.0 * s, 12.0 * s)
@@ -262,7 +245,6 @@ char* gen_mask_chevron_right(int size):
 			if (d2 < d):
 				d = d2
 			p[y * size + x] = gen_coverage(1.8 * s - d + 0.5)
-			x = x + 1
 		y = y + 1
 	return p
 
@@ -275,8 +257,7 @@ char* gen_mask_cross(int size):
 	float32 s = cast(float32, size) / 24.0
 	int y = 0
 	while (y < size):
-		int x = 0
-		while (x < size):
+		for x in range(size):
 			float32 px = cast(float32, x) + 0.5
 			float32 py = cast(float32, y) + 0.5
 			float32 d1 = gen_capsule_dist(px, py, 7.0 * s, 7.0 * s, 17.0 * s, 17.0 * s)
@@ -285,7 +266,6 @@ char* gen_mask_cross(int size):
 			if (d2 < d):
 				d = d2
 			p[y * size + x] = gen_coverage(1.8 * s - d + 0.5)
-			x = x + 1
 		y = y + 1
 	return p
 
@@ -301,8 +281,7 @@ char* gen_mask_shadow(int size):
 	float32 spread = 20.0
 	int y = 0
 	while (y < size):
-		int x = 0
-		while (x < size):
+		for x in range(size):
 			float32 dx = corner - (cast(float32, x) + 0.5)
 			float32 dy = corner - (cast(float32, y) + 0.5)
 			if (dx < 0.0):
@@ -312,7 +291,6 @@ char* gen_mask_shadow(int size):
 			float32 d = gfx_sqrt(dx * dx + dy * dy) - 8.0
 			float32 f = gen_clamp01(1.0 - d / spread)
 			p[y * size + x] = gen_coverage(f * f)
-			x = x + 1
 		y = y + 1
 	return p
 
@@ -358,10 +336,8 @@ void gen_emit_bytes_func(wstream* out, char* name, int suffix, char* bytes, int 
 	stream_write_line(out, c"():")
 	string_builder* literal = string_new()
 	string_append(literal, c"\treturn c\"")
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		gen_append_escape(literal, bytes[i] & 255)
-		i = i + 1
 	string_append(literal, c"\"")
 	stream_write_line(out, literal.data)
 	string_free(literal)
@@ -460,8 +436,7 @@ int gen_emit_face(wstream* out, int face, char* path, int* out_size):
 	int text_length = base64_encoded_length(size)
 	int chunk_chars = gen_face_chunk_chars()
 	int chunks = (text_length + chunk_chars - 1) / chunk_chars
-	int k = 0
-	while (k < chunks):
+	for k in range(chunks):
 		int first = k * chunk_chars
 		int count = text_length - first
 		if (count > chunk_chars):
@@ -476,7 +451,6 @@ int gen_emit_face(wstream* out, int face, char* path, int* out_size):
 		stream_write_cstr(out, c"\treturn c\"")
 		stream_write(out, &text[first], count)
 		stream_write_line(out, c"\"")
-		k = k + 1
 	out_size[0] = size
 	free(text)
 	free(data)
@@ -491,15 +465,13 @@ void gen_emit_face_table(wstream* out, char* name, int* values):
 	stream_write_cstr(out, c"int ")
 	stream_write_cstr(out, name)
 	stream_write_line(out, c"(int face):")
-	int f = 0
-	while (f < 3):
+	for f in range(3):
 		stream_write_cstr(out, c"\tif (face == ")
 		stream_write_int(out, f)
 		stream_write_line(out, c"):")
 		stream_write_cstr(out, c"\t\treturn ")
 		stream_write_int(out, values[f])
 		stream_write_line(out, c"")
-		f = f + 1
 	stream_write_cstr(out, c"\treturn ")
 	stream_write_int(out, values[3])
 	stream_write_line(out, c"")

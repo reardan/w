@@ -74,11 +74,9 @@ void resize_code(int n):
 
 void emit(int n, char *s):
 	resize_code(n)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		code[codepos] = s[i]
 		codepos = codepos + 1
-		i = i + 1
 
 
 void emit_string(char* s):
@@ -109,11 +107,9 @@ void ensure_data(int n):
 int emit_data_zeros(int n):
 	ensure_data(n)
 	int start = datapos
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		data[datapos] = 0
 		datapos = datapos + 1
-		i = i + 1
 	return data_offset + start
 
 

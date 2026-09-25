@@ -150,11 +150,9 @@ void wsh_expect_echo(ws_conn* c, int opcode, char* data, int len):
 		asserts(c"echo arrived", 0)
 	assert_equal(opcode, m.opcode)
 	assert_equal(len, m.len)
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		if ((m.data[i] & 255) != (data[i] & 255)):
 			assert_equal(data[i] & 255, m.data[i] & 255)
-		i = i + 1
 	ws_message_free(m)
 
 
@@ -171,10 +169,8 @@ void test_ws_loopback_handshake_and_echo():
 	asserts(c"no subprotocol unless offered", c.subprotocol == 0)
 	wsh_expect_echo(c, ws_op_text(), c"hello over ws://", 16)
 	char* big = malloc(70000)
-	int i = 0
-	while (i < 70000):
+	for i in range(70000):
 		big[i] = (i * 13) & 255
-		i = i + 1
 	wsh_expect_echo(c, ws_op_binary(), big, 70000)
 	free(big)
 	assert_equal(1, ws_close(c, 1000, c"done"))
@@ -448,15 +444,11 @@ void wsh_deflate_session(int port, char* path, ws_deflate_config* cfg, int expec
 		print_string(c"ws_open_deflate: ", ws_error_string(ws_conn_error(c)))
 	assert_equal(ws_error_none(), ws_conn_error(c))
 	assert_equal(expect_active, ws_compression_active(c))
-	int k = 0
-	while (k < 3):
+	for k in range(3):
 		wsh_expect_echo(c, ws_op_text(), c"compress me, compress me, compress me", 37)
-		k = k + 1
 	char* big = malloc(70000)
-	int i = 0
-	while (i < 70000):
+	for i in range(70000):
 		big[i] = ((i / 5) * 13 + (i >> 11)) & 255
-		i = i + 1
 	wsh_expect_echo(c, ws_op_binary(), big, 70000)
 	wsh_expect_echo(c, ws_op_binary(), big, 70000)
 	free(big)

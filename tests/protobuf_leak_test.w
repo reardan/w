@@ -152,8 +152,7 @@ void pb_leak_deep_desc_init():
 char* pb_leak_build_deep(int levels, int* out_len):
 	int total = levels * 6
 	char* buf = malloc(total)
-	int i = 0
-	while (i < levels):
+	for i in range(levels):
 		int pos = i * 6
 		int payload = total - pos - 6
 		buf[pos] = 0x0a
@@ -162,17 +161,14 @@ char* pb_leak_build_deep(int levels, int* out_len):
 		buf[pos + 3] = 128 | (shr(payload, 14) & 127)
 		buf[pos + 4] = 128 | (shr(payload, 21) & 127)
 		buf[pos + 5] = shr(payload, 28) & 127
-		i = i + 1
 	out_len[0] = total
 	return buf
 
 
 char* pb_leak_zeroed(int size):
 	char* buf = malloc(size)
-	int i = 0
-	while (i < size):
+	for i in range(size):
 		buf[i] = 0
-		i = i + 1
 	return buf
 
 

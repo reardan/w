@@ -99,10 +99,8 @@ struct rt_sum:
 
 
 generator int rt_producer(task_xchan* ch, int start, int count):
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		assert_equal(0, task_xchan_send(ch, start + i))
-		i = i + 1
 
 
 generator int rt_consumer(task_xchan* ch, rt_sum* sum):
@@ -192,10 +190,8 @@ void test_spawn_blocking_keeps_the_loop_running():
 int rt_sum_range(void* arg):
 	int n = cast(int, arg)
 	int total = 0
-	int i = 1
-	while (i <= n):
+	for i in range(1, n + 1):
 		total = total + i
-		i = i + 1
 	return total
 
 

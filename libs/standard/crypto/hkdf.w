@@ -61,10 +61,8 @@ int hkdf_expand(int alg, char* prk, int prk_len, char* info, int info_len, char*
 		int take = okm_len - produced
 		if (take > ds):
 			take = ds
-		int i = 0
-		while (i < take):
+		for i in range(take):
 			okm[produced + i] = t[i]
-			i = i + 1
 		produced = produced + take
 		round = round + 1
 	mem_fill(t, 0, ds)

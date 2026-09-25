@@ -195,13 +195,11 @@ event_fd_slot* event_loop_slot(event_loop* loop, int fd):
 		while (capacity <= fd):
 			capacity = capacity * 2
 		event_fd_slot** grown = cast(event_fd_slot**, malloc(capacity * __word_size__))
-		int i = 0
-		while (i < capacity):
+		for i in range(capacity):
 			if (i < loop.slot_capacity):
 				grown[i] = loop.slots[i]
 			else:
 				grown[i] = 0
-			i = i + 1
 		if (cast(int, loop.slots) != 0):
 			free(cast(char*, loop.slots))
 		loop.slots = grown
@@ -315,19 +313,15 @@ event_watch* event_loop_find_watch(event_loop* loop, int fd):
 		event_fd_slot* slot = event_loop_find_slot(loop, fd)
 		if (cast(int, slot) == 0):
 			return 0
-		int j = 0
-		while (j < slot.watches.length):
+		for j in range(slot.watches.length):
 			event_watch* w = slot.watches[j]
 			if (w.active):
 				return w
-			j = j + 1
 		return 0
-	int i = 0
-	while (i < loop.watches.length):
+	for i in range(loop.watches.length):
 		event_watch* watch = loop.watches[i]
 		if ((watch.fd == fd) & watch.active):
 			return watch
-		i = i + 1
 	return 0
 
 
@@ -542,11 +536,9 @@ int event_loop_run_once_poll(event_loop* loop, int max_wait_ms):
 	pollfd* fds = 0
 	if (watch_count > 0):
 		fds = pollfd_new_array(watch_count)
-		int i = 0
-		while (i < watch_count):
+		for i in range(watch_count):
 			event_watch* watch = loop.watches[i]
 			pollfd_set(fds, i, watch.fd, watch.events)
-			i = i + 1
 
 	int ready = poll_wait(fds, watch_count, timeout)
 	if (ready < 0):
@@ -559,15 +551,13 @@ int event_loop_run_once_poll(event_loop* loop, int max_wait_ms):
 
 	int fired = event_loop_fire_due_timers(loop)
 
-	int i = 0
-	while (i < watch_count):
+	for i in range(watch_count):
 		event_watch* watch = loop.watches[i]
 		pollfd* entry = pollfd_at(fds, i)
 		int revents = entry.revents
 		if (watch.active & (revents != 0)):
 			watch.callback(watch.fd, revents, watch.context)
 			fired = fired + 1
-		i = i + 1
 
 	if (cast(int, fds) != 0):
 		free(cast(char*, fds))
@@ -580,15 +570,13 @@ int event_loop_dispatch_slot(event_loop* loop, event_fd_slot* slot, int revents)
 	int fired = 0
 	int always = poll_err() | poll_hup() | poll_nval()
 	int count = slot.watches.length
-	int j = 0
-	while (j < count):
+	for j in range(count):
 		event_watch* w = slot.watches[j]
 		if (w.active && (w.pass != loop.pass)):
 			int mine = revents & (w.events | always)
 			if (mine != 0):
 				w.callback(slot.fd, mine, w.context)
 				fired = fired + 1
-		j = j + 1
 	return fired
 
 
@@ -619,8 +607,7 @@ int event_loop_run_once_epoll(event_loop* loop, int max_wait_ms):
 
 	int size = epoll_event_bytes()
 	int offset = epoll_event_data_offset()
-	int i = 0
-	while (i < ready):
+	for i in range(ready):
 		char* ev = loop.events + i * size
 		int* mask = cast(int*, ev)
 		int* data = cast(int*, ev + offset)
@@ -631,7 +618,6 @@ int event_loop_run_once_epoll(event_loop* loop, int max_wait_ms):
 		event_fd_slot* slot = event_loop_find_slot(loop, fd)
 		if (cast(int, slot) != 0):
 			fired = fired + event_loop_dispatch_slot(loop, slot, revents)
-		i = i + 1
 
 	s = 0
 	int synthetic_count = loop.synthetic.length

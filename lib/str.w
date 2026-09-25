@@ -119,11 +119,9 @@ char* replace(char* s, char* needle, char* replacement):
 		while ((needle[k] != 0) && (s[i + k] == needle[k])):
 			k = k + 1
 		if (needle[k] == 0):
-			int r = 0
-			while (r < replacement_length):
+			for r in range(replacement_length):
 				result[out] = replacement[r]
 				out = out + 1
-				r = r + 1
 			i = i + needle_length
 		else:
 			result[out] = s[i]

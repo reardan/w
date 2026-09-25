@@ -82,14 +82,12 @@ list[int] window_sum(list[int] xs, int k):
 	if (xs.length < k):
 		return out
 	int total = 0
-	int i = 0
-	while (i < xs.length):
+	for i in range(xs.length):
 		total = total + xs[i]
 		if (i >= k):
 			total = total - xs[i - k]
 		if (i >= k - 1):
 			out.push(total)
-		i = i + 1
 	return out
 
 
@@ -99,11 +97,9 @@ list[float] window_mean(list[int] xs, int k):
 	list[int] sums = window_sum(xs, k)
 	list[float] out = new list[float]
 	float divisor = k
-	int i = 0
-	while (i < sums.length):
+	for i in range(sums.length):
 		float total = sums[i]
 		out.push(total / divisor)
-		i = i + 1
 	list_free[int](sums)
 	return out
 

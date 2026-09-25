@@ -193,11 +193,9 @@ int generator_call_suffix(int callee_sym, char* callee_name, int expected_args):
 	# filled in with the recorded constants, like parse_call_suffix
 	if ((callee_sym >= 0) && (expected_args > passed_args)):
 		int missing_all_defaulted = 1
-		int check_index = passed_args
-		while (check_index < expected_args):
+		for check_index in range(passed_args, expected_args):
 			if (sym_param_has_default(callee_sym, check_index) == 0):
 				missing_all_defaulted = 0
-			check_index = check_index + 1
 		if (missing_all_defaulted):
 			while (passed_args < expected_args):
 				mov_eax_int(sym_param_default(callee_sym, passed_args))

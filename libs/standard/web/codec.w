@@ -108,11 +108,9 @@ int codec_lower(int ch):
 
 # Compares a[0..alen) with the NUL-terminated b, ASCII case-insensitive.
 int codec_name_eq(char* a, int alen, char* b):
-	int i = 0
-	while (i < alen):
+	for i in range(alen):
 		if ((b[i] == 0) || (codec_lower(a[i] & 255) != codec_lower(b[i] & 255))):
 			return 0
-		i = i + 1
 	return b[alen] == 0
 
 

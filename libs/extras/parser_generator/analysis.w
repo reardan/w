@@ -62,39 +62,31 @@ struct pg_choice_unit:
 
 
 pg_rule_facts* pg_analysis_find(pg_analysis* analysis, char* name):
-	int i = 0
-	while (i < analysis.rules.length):
+	for i in range(analysis.rules.length):
 		pg_rule_facts* facts = analysis.rules[i]
 		if (strcmp(facts.rule.name, name) == 0):
 			return facts
-		i = i + 1
 	return 0
 
 
 char* pg_kind_set_new(pg_analysis* analysis):
 	char* kinds = malloc(analysis.kind_count)
-	int i = 0
-	while (i < analysis.kind_count):
+	for i in range(analysis.kind_count):
 		kinds[i] = 0
-		i = i + 1
 	return kinds
 
 
 int pg_kind_set_empty(pg_analysis* analysis, char* kinds):
-	int i = 0
-	while (i < analysis.kind_count):
+	for i in range(analysis.kind_count):
 		if (kinds[i] != 0):
 			return 0
-		i = i + 1
 	return 1
 
 
 int pg_kind_set_intersects(pg_analysis* analysis, char* a, char* b):
-	int i = 0
-	while (i < analysis.kind_count):
+	for i in range(analysis.kind_count):
 		if ((a[i] != 0) && (b[i] != 0)):
 			return 1
-		i = i + 1
 	return 0
 
 
@@ -139,12 +131,10 @@ int pg_analysis_term_first(pg_analysis* analysis, pg_term* term, char* out):
 	pg_rule_facts* facts = pg_analysis_find(analysis, term.name)
 	if (facts == 0):
 		return 0
-	int i = 0
-	while (i < analysis.kind_count):
+	for i in range(analysis.kind_count):
 		if ((facts.first[i] != 0) && (out[i] == 0)):
 			out[i] = 1
 			changed = 1
-		i = i + 1
 	return changed
 
 
@@ -161,13 +151,11 @@ int pg_analysis_alternative_nullable(pg_analysis* analysis, pg_alternative* alte
 # every term up to and including the first non-nullable one contributes.
 int pg_analysis_terms_first(pg_analysis* analysis, pg_alternative* alternative, int offset, char* out):
 	int changed = 0
-	int i = offset
-	while (i < alternative.terms.length):
+	for i in range(offset, alternative.terms.length):
 		pg_term* term = alternative.terms[i]
 		changed = changed | pg_analysis_term_first(analysis, term, out)
 		if (pg_analysis_term_nullable(analysis, term) == 0):
 			return changed
-		i = i + 1
 	return changed
 
 
@@ -279,8 +267,7 @@ pg_analysis* pg_analyze_grammar(pg_grammar* grammar):
 	analysis.grammar = grammar
 	analysis.kind_count = grammar.tokens.length + grammar.literals.length + 1
 	analysis.rules = new list[pg_rule_facts*]
-	int r = 0
-	while (r < grammar.rules.length):
+	for r in range(grammar.rules.length):
 		pg_rule_facts* facts = new pg_rule_facts()
 		facts.rule = grammar.rules[r]
 		facts.nullable = 0
@@ -288,7 +275,6 @@ pg_analysis* pg_analyze_grammar(pg_grammar* grammar):
 		facts.recovery_free = 1
 		facts.first = pg_kind_set_new(analysis)
 		analysis.rules.push(facts)
-		r = r + 1
 	while (pg_analysis_nullable_sweep(analysis)):
 		pass
 	while (pg_analysis_first_sweep(analysis)):
@@ -303,12 +289,10 @@ pg_analysis* pg_analyze_grammar(pg_grammar* grammar):
 void pg_analysis_free(pg_analysis* analysis):
 	if (analysis == 0):
 		return
-	int i = 0
-	while (i < analysis.rules.length):
+	for i in range(analysis.rules.length):
 		pg_rule_facts* facts = analysis.rules[i]
 		free(facts.first)
 		free(facts)
-		i = i + 1
 	list_free[pg_rule_facts*](analysis.rules)
 	free(analysis)
 
@@ -396,14 +380,12 @@ int pg_plan_prefix_length(pg_analysis* analysis, pg_rule* rule, int alt_start, i
 		pg_term* term = head.terms[index]
 		if (pg_plan_term_factorable(analysis, term) == 0):
 			return length
-		int m = 1
-		while (m < member_count):
+		for m in range(1, member_count):
 			pg_alternative* member = rule.alternatives[alt_start + m]
 			if (index >= member.terms.length):
 				return length
 			if (pg_plan_terms_equal(term, member.terms[index]) == 0):
 				return length
-			m = m + 1
 		length = length + 1
 	return length
 
@@ -477,13 +459,11 @@ list[pg_choice_unit*] pg_plan_choice(pg_analysis* analysis, pg_rule* rule, int a
 
 
 void pg_choice_units_free(list[pg_choice_unit*] units):
-	int i = 0
-	while (i < units.length):
+	for i in range(units.length):
 		pg_choice_unit* unit = units[i]
 		if (unit.guard_set != 0):
 			free(unit.guard_set)
 		free(unit)
-		i = i + 1
 	list_free[pg_choice_unit*](units)
 
 
@@ -532,10 +512,8 @@ char* pg_report_unit_set(pg_analysis* analysis, pg_choice_unit* unit):
 	if (unit.guarded):
 		return unit.guard_set
 	char* kinds = pg_kind_set_new(analysis)
-	int i = 0
-	while (i < analysis.kind_count):
+	for i in range(analysis.kind_count):
 		kinds[i] = 1
-		i = i + 1
 	return kinds
 
 
@@ -584,14 +562,12 @@ int pg_choice_unit_is_nullable_fallback(pg_analysis* analysis, pg_rule* rule, li
 		return 0
 	if (pg_analysis_alternative_nullable(analysis, alternative, offset) == 0):
 		return 0
-	int j = index + 1
-	while (j < units.length):
+	for j in range(index + 1, units.length):
 		pg_choice_unit* later = units[j]
 		if ((later.predicate_code != 0) || (later.member_count != 1)):
 			return 0
 		if (offset < rule.alternatives[later.alt_start].terms.length):
 			return 0
-		j = j + 1
 	return 1
 
 
@@ -685,8 +661,7 @@ void pg_report_dispatch(pg_grammar* grammar):
 	int committed = 0
 	int backtracking = 0
 	int factored = 0
-	int r = 0
-	while (r < grammar.rules.length):
+	for r in range(grammar.rules.length):
 		pg_rule* rule = grammar.rules[r]
 		list[pg_choice_unit*] units = pg_plan_choice(analysis, rule, 0, rule.alternatives.length, 0)
 		int i = 0
@@ -699,7 +674,6 @@ void pg_report_dispatch(pg_grammar* grammar):
 		else:
 			backtracking = backtracking + 1
 		pg_choice_units_free(units)
-		r = r + 1
 	print2(c"parser_generator: ")
 	print2(grammar.name)
 	print2(c": ")
@@ -747,8 +721,7 @@ int pg_streaming_term_violations(pg_grammar* grammar, pg_rule* rule):
 	int a = 0
 	while (a < rule.alternatives.length):
 		pg_alternative* alternative = rule.alternatives[a]
-		int t = 0
-		while (t < alternative.terms.length):
+		for t in range(alternative.terms.length):
 			pg_term* term = alternative.terms[t]
 			if (term.modifier != 0):
 				if (pg_grammar_is_token_term(grammar, term.name) == 0):
@@ -759,7 +732,6 @@ int pg_streaming_term_violations(pg_grammar* grammar, pg_rule* rule):
 					print2(c"' to be a token or literal to carry ?/*/+ (a rule reference needs a trial parse today)")
 					println2(c"")
 					violations = violations + 1
-			t = t + 1
 		a = a + 1
 	return violations
 
@@ -810,15 +782,13 @@ int pg_streaming_check(pg_grammar* grammar):
 
 
 int pg_rule_has_actions_or_predicates(pg_rule* rule):
-	int a = 0
-	while (a < rule.alternatives.length):
+	for a in range(rule.alternatives.length):
 		pg_alternative* alternative = rule.alternatives[a]
 		int t = 0
 		while (t < alternative.terms.length):
 			if (alternative.terms[t].kind != pg_term_kind_normal()):
 				return 1
 			t = t + 1
-		a = a + 1
 	return 0
 
 
@@ -840,13 +810,11 @@ int pg_action_safety_check(pg_grammar* grammar):
 	if (grammar.mode == pg_grammar_mode_streaming()):
 		return 0
 	int violations = 0
-	int r = 0
-	while (r < grammar.rules.length):
+	for r in range(grammar.rules.length):
 		pg_rule* rule = grammar.rules[r]
 		if (pg_rule_has_actions_or_predicates(rule)):
 			print2(c"parser_generator: rule ")
 			print2(rule.name)
 			println2(c": actions ({ code }) and predicates (&{ expr }) require 'mode streaming' -- AST mode has no commit point to run them at exactly once")
 			violations = violations + 1
-		r = r + 1
 	return violations

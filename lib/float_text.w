@@ -19,13 +19,11 @@ char* float_text[T](T f):
 	s[pos] = '.'
 	pos = pos + 1
 	T frac = f - whole
-	int i = 0
-	while (i < 6):
+	for i in range(6):
 		frac = frac * 10.0
 		int digit = frac
 		s[pos] = digit + '0'
 		pos = pos + 1
 		frac = frac - digit
-		i = i + 1
 	s[pos] = 0
 	return s

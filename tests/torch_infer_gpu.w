@@ -143,13 +143,11 @@ int main(int argc, int argv):
 	while (i < n_test):
 		int best = 0
 		float bestv = lt.data[i * classes]
-		int j = 1
-		while (j < classes):
+		for j in range(1, classes):
 			float v = lt.data[i * classes + j]
 			if (v > bestv):
 				bestv = v
 				best = j
-			j = j + 1
 		if (best == test_labels.data[i]):
 			correct = correct + 1
 		i = i + 1

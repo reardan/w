@@ -597,11 +597,9 @@ int x509_parse_spki(asn1* r, x509_cert* c):
 			return 0
 		c.ec_qx = malloc(32)
 		c.ec_qy = malloc(32)
-		int i = 0
-		while (i < 32):
+		for i in range(32):
 			c.ec_qx[i] = r.data[ks + 1 + i]
 			c.ec_qy[i] = r.data[ks + 33 + i]
-			i = i + 1
 		c.key_type = X509_KEY_EC_P256()
 	else:
 		c.key_type = X509_KEY_UNSUPPORTED()
@@ -664,12 +662,10 @@ int x509_parse_ext_key_usage(x509_cert* c, char* data, int start, int len):
 	if (nbits > 9):
 		nbits = 9    # decipherOnly (bit 8) is the last defined bit
 	int ku = 0
-	int i = 0
-	while (i < nbits):
+	for i in range(nbits):
 		int b = (data[s + 1 + i / 8] >> (7 - i % 8)) & 1
 		if (b != 0):
 			ku = ku | (1 << i)
-		i = i + 1
 	c.has_key_usage = 1
 	c.key_usage = ku
 	return 1
@@ -709,12 +705,10 @@ int x509_valid_dns_name_bytes(char* data, int start, int len):
 		return 0
 	if (len > 253):
 		return 0
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		int ch = data[start + i] & 255
 		if ((ch < 33) || (ch > 126)):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -1042,12 +1036,10 @@ struct pem_block:
 void pem_blocks_free(list[pem_block*] blocks):
 	if (blocks == 0):
 		return
-	int i = 0
-	while (i < blocks.length):
+	for i in range(blocks.length):
 		pem_block* b = blocks[i]
 		free(b.data)
 		free(cast(char*, b))
-		i = i + 1
 	list_free[pem_block*](blocks)
 
 
@@ -1063,11 +1055,9 @@ int pem_line_is(char* text, int start, int line_end, char* marker):
 	int ml = strlen(marker)
 	if (e - start != ml):
 		return 0
-	int i = 0
-	while (i < ml):
+	for i in range(ml):
 		if ((text[start + i] & 255) != (marker[i] & 255)):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -1252,11 +1242,9 @@ int x509_lower_char(int c):
 
 # Case-insensitive equality of hostname[hs..hs+n) and pattern[ps..ps+n).
 int x509_labels_equal_ci(char* a, int as, char* b, int bs, int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (x509_lower_char(a[as + i] & 255) != x509_lower_char(b[bs + i] & 255)):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -1434,10 +1422,8 @@ int x509_der_int_from_be(char* be, int len, char* out):
 	if ((be[start] & 0x80) != 0):
 		out[0] = 0
 		pos = 1
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		out[pos + i] = be[start + i]
-		i = i + 1
 	return pos + n
 
 
@@ -1537,11 +1523,9 @@ int x509_check_signature(x509_cert* child, x509_cert* issuer):
 int x509_names_equal(x509_cert* a, int a_start, int a_len, x509_cert* b, int b_start, int b_len):
 	if (a_len != b_len):
 		return 0
-	int i = 0
-	while (i < a_len):
+	for i in range(a_len):
 		if ((a.der[a_start + i] & 255) != (b.der[b_start + i] & 255)):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -1634,8 +1618,7 @@ int x509_verify_chain(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store*
 	while (searching != 0):
 		int below = chain.length - 1
 		# 1) a trust anchor whose subject matches current's issuer
-		int ai = 0
-		while (ai < store.certs.length):
+		for ai in range(store.certs.length):
 			x509_cert* anchor = store.certs[ai]
 			if (x509_names_equal(anchor, anchor.subject_start, anchor.subject_len, current, current.issuer_start, current.issuer_len) != 0):
 				char* fail = x509_issuer_check(anchor, below, now_day, now_sec, 1)
@@ -1647,7 +1630,6 @@ int x509_verify_chain(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store*
 					verified = 1
 					searching = 0
 					break
-			ai = ai + 1
 		if (searching == 0):
 			break
 		# 2) an intermediate from the extras pile

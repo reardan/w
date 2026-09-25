@@ -517,10 +517,8 @@ int ufcs_call(int type):
 	if (declared_return >= 0):
 		if (type_num_args(declared_return) > 0):
 			int words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
-			int j = 0
-			while (j < words):
+			for j in range(words):
 				push_eax()
-				j = j + 1
 			stack_pos = stack_pos + words
 			has_return_buffer = 1
 	push_slot()

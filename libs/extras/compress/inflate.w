@@ -235,10 +235,8 @@ int inf_get_bit(winflate_ctx* c):
 # the field's low bit.
 int inf_get_bits(winflate_ctx* c, int n):
 	int v = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		v = v | (inf_get_bit(c) << i)
-		i = i + 1
 	return v
 
 
@@ -326,13 +324,11 @@ void inf_copy_match(winflate_ctx* c, int length, int distance):
 	if ((distance <= 0) || (distance > c.out.length)):
 		c.status = INFLATE_ERR_BAD_DISTANCE()
 		return
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		if (c.status != 0):
 			return
 		int b = c.out.data[c.out.length - distance] & 255
 		inf_emit_byte(c, b)
-		i = i + 1
 
 
 /* RFC 1951 §3.2.5 / §3.2.7 constant tables */
@@ -579,22 +575,18 @@ void inf_dynamic_block(winflate_ctx* c):
 				if (c.status == 0):
 					c.status = INFLATE_ERR_BAD_HUFFMAN()
 				break
-			int k = 0
-			while (k < rep):
+			for k in range(rep):
 				lengths[i] = prev
 				i = i + 1
-				k = k + 1
 		else if (sym == 17):
 			int rep = inf_get_bits(c, 3) + 3
 			if ((c.status != 0) || (i + rep > total)):
 				if (c.status == 0):
 					c.status = INFLATE_ERR_BAD_HUFFMAN()
 				break
-			int k = 0
-			while (k < rep):
+			for k in range(rep):
 				lengths[i] = 0
 				i = i + 1
-				k = k + 1
 			prev = 0
 		else:
 			int rep = inf_get_bits(c, 7) + 11
@@ -602,11 +594,9 @@ void inf_dynamic_block(winflate_ctx* c):
 				if (c.status == 0):
 					c.status = INFLATE_ERR_BAD_HUFFMAN()
 				break
-			int k = 0
-			while (k < rep):
+			for k in range(rep):
 				lengths[i] = 0
 				i = i + 1
-				k = k + 1
 			prev = 0
 	wh_free(cl_huff)
 	if (c.status != 0):

@@ -30,13 +30,11 @@ int table_frame(ui_context* ctx, ui_rect area, ui_table_state* st, int row_count
 	drawn[0] = 0
 	ui_begin(ctx, 320, 240)
 	ui_table_begin(ctx, area, headers, &widths[0], 2, st)
-	int row = 0
-	while (row < row_count):
+	for row in range(row_count):
 		if (ui_table_row(ctx, st, row)):
 			drawn[0] = drawn[0] + 1
 			ui_table_cell(ctx, st, c"alpha")
 			ui_table_cell(ctx, st, c"12")
-		row = row + 1
 	int picked = ui_table_end(ctx, st)
 	ui_end(ctx)
 	free(cast(char*, headers))

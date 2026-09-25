@@ -73,11 +73,9 @@ int raft_wire_size(raft_msg* m):
 		return n + 1 + 1
 	if (m.type == raft_msg_append()):
 		n = n + 8 + 8 + 8 + 4
-		int i = 0
-		while (i < m.entries.length):
+		for i in range(m.entries.length):
 			raft_entry* e = m.entries[i]
 			n = n + 1 + 8 + 4 + e.command_len
-			i = i + 1
 		return n
 	if (m.type == raft_msg_append_reply()):
 		return n + 1 + 8
@@ -110,19 +108,15 @@ void raft_wire_encode(raft_msg* m, char* buf):
 		u64_save_le(buf + off + 16, m.leader_commit)
 		store_le32(buf + off + 24, m.entries.length)
 		off = off + 28
-		int i = 0
-		while (i < m.entries.length):
+		for i in range(m.entries.length):
 			raft_entry* e = m.entries[i]
 			int cmd_len = e.command_len
 			buf[off] = e.kind
 			u64_save_le(buf + off + 1, e.term)
 			store_le32(buf + off + 9, cmd_len)
-			int j = 0
-			while (j < cmd_len):
+			for j in range(cmd_len):
 				buf[off + 13 + j] = e.command[j]
-				j = j + 1
 			off = off + 13 + cmd_len
-			i = i + 1
 		return
 	if (m.type == raft_msg_append_reply()):
 		buf[off] = m.success
@@ -140,10 +134,8 @@ void raft_wire_encode(raft_msg* m, char* buf):
 			coff = coff + 4
 			ci = ci + 1
 		store_le32(buf + coff, m.snap_len)
-		int sb = 0
-		while (sb < m.snap_len):
+		for sb in range(m.snap_len):
 			buf[coff + 4 + sb] = m.snap_data[sb]
-			sb = sb + 1
 		return
 	assert1(0)
 
@@ -200,11 +192,9 @@ raft_msg* raft_wire_decode(char* buf, int len):
 			raft_msg_free(m)
 			return 0
 		int coff = off + 28
-		int ci = 0
-		while (ci < ccount):
+		for ci in range(ccount):
 			m.snap_config.push(load_le32(buf + coff))
 			coff = coff + 4
-			ci = ci + 1
 		if (len - coff < 4):
 			raft_msg_free(m)
 			return 0
@@ -229,8 +219,7 @@ raft_msg* raft_wire_decode(char* buf, int len):
 		return 0
 	off = off + 28
 	u64* eterm = u64_new()
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		if (len - off < 13):
 			u64_free(eterm)
 			raft_msg_free(m)
@@ -252,7 +241,6 @@ raft_msg* raft_wire_decode(char* buf, int len):
 			return 0
 		m.entries.push(raft_entry_new_kind(eterm, buf + off + 13, cmd_len, kind))
 		off = off + 13 + cmd_len
-		i = i + 1
 	u64_free(eterm)
 	if (off != len):
 		raft_msg_free(m)

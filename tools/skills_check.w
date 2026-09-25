@@ -138,10 +138,8 @@ void skills_scan_line(char* doc, int line_no, char* line):
 			if (has_letter):
 				int len = i - start
 				char* token = malloc(len + 1)
-				int k = 0
-				while (k < len):
+				for k in range(len):
 					token[k] = line[start + k]
-					k = k + 1
 				token[len] = 0
 				if (skills_help_has_token(token) == 0):
 					skills_missing(doc, line_no, token)
@@ -167,10 +165,8 @@ void skills_scan_doc(char* doc):
 		if ((ch == 10) || (ch == 0)):
 			int len = i - start
 			char* line = malloc(len + 1)
-			int k = 0
-			while (k < len):
+			for k in range(len):
 				line[k] = text[start + k]
-				k = k + 1
 			line[len] = 0
 			skills_scan_line(doc, line_no, line)
 			free(line)
@@ -195,10 +191,8 @@ void skills_check_core():
 			i = i + 1
 		int len = i - start
 		char* token = malloc(len + 1)
-		int k = 0
-		while (k < len):
+		for k in range(len):
 			token[k] = core[start + k]
-			k = k + 1
 		token[len] = 0
 		if (skills_help_has_token(token) == 0):
 			skills_missing(c"<core flag list>", 0, token)
@@ -219,11 +213,9 @@ int main(int argc, int argv):
 		print_error(c"'\x0a")
 		return 1
 	skills_check_core()
-	int a = 2
-	while (a < argc):
+	for a in range(2, argc):
 		char** doc_arg = argv + a * __word_size__
 		skills_scan_doc(*doc_arg)
-		a = a + 1
 	if (skills_failures > 0):
 		print_error(c"skills_check: FAIL (")
 		print_error(itoa(skills_failures))

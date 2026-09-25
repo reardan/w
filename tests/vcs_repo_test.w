@@ -93,10 +93,8 @@ void test_repo_content_and_binary():
 	# Only the first REPO_BINARY_SNIFF_LEN() bytes are sniffed.
 	int n = REPO_BINARY_SNIFF_LEN() + 2
 	char* big = malloc(n)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		big[i] = 'x'
-		i = i + 1
 	big[n - 1] = 0
 	assert_equal(0, repo_is_binaryish(vrt_blob(big, n)))
 

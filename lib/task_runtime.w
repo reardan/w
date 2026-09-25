@@ -7,10 +7,8 @@ on different threads. Linux x86/x64 only: it builds on lib/thread.w
 task), neither of which exists on the other targets yet.
 
 	task_runtime* rt = task_runtime_new(4)
-	int i = 0
-	while (i < 100):
+	for i in range(100):
 		task_runtime_spawn(rt, handle_job(i))   # round-robin over workers
-		i = i + 1
 	task_runtime_run(rt)                        # until every task is done
 	task_runtime_free(rt)
 
@@ -503,8 +501,7 @@ task_runtime* task_runtime_new(int nthreads):
 	if (nthreads <= 0):
 		nthreads = 4
 	task_runtime* rt = new task_runtime(nthreads, new list[task_runtime_worker*], 0, 0, 0)
-	int i = 0
-	while (i < nthreads):
+	for i in range(nthreads):
 		task_runtime_worker* w = new task_runtime_worker()
 		w.rt = cast(void*, rt)
 		w.index = i
@@ -517,7 +514,6 @@ task_runtime* task_runtime_new(int nthreads):
 		w.remote.counter = &rt.outstanding
 		w.thread = 0
 		rt.workers.push(w)
-		i = i + 1
 	return rt
 
 
@@ -594,14 +590,12 @@ int task_runtime_run(task_runtime* rt):
 
 
 void task_runtime_free(task_runtime* rt):
-	int i = 0
-	while (i < rt.nthreads):
+	for i in range(rt.nthreads):
 		task_runtime_worker* w = rt.workers[i]
 		task_scheduler* s = w.sched
 		task_remote_free(w.remote)
 		s.remote = 0
 		task_scheduler_free(s)
 		free(cast(void*, w))
-		i = i + 1
 	list_free[task_runtime_worker*](rt.workers)
 	free(cast(void*, rt))

@@ -30,25 +30,19 @@ int main():
 		char cc = i * 5 - 100
 		int16 ss = i * 1000 - 20000
 		int acc = 0
-		int j = 0
-		while (j < 3):
+		for j in range(3):
 			acc = acc + cc + ss
 			cc = cc + 100
-			j = j + 1
 		out[i] = acc
 	gpu_sync()
-	int i2 = 0
-	while (i2 < n):
+	for i2 in range(n):
 		char ch = i2 * 5 - 100
 		int16 sh = i2 * 1000 - 20000
 		int acc2 = 0
-		int j2 = 0
-		while (j2 < 3):
+		for j2 in range(3):
 			acc2 = acc2 + ch + sh
 			ch = ch + 100
-			j2 = j2 + 1
 		assert_equal(acc2, out[i2])
-		i2 = i2 + 1
 	# Captured pointer reassigned in the body: the capture cell is
 	# written, so it must keep its .local slot. The +8 is a raw byte
 	# step (T* + int never scales), i.e. one 8-byte int per iteration.
@@ -59,11 +53,9 @@ int main():
 		k = k + 1
 	int* wp = base
 	gpu for int t in range(1):
-		int q = 0
-		while (q < 8):
+		for q in range(8):
 			*wp = q + 7
 			wp = wp + 8
-			q = q + 1
 	gpu_sync()
 	k = 0
 	while (k < 8):

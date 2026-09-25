@@ -82,11 +82,9 @@ int malloc_debug_env_check():
 	while ((i < n) && (found == 0)):
 		if (i + needle_len <= n):
 			int matches = 1
-			int j = 0
-			while (j < needle_len):
+			for j in range(needle_len):
 				if (buf[i + j] != needle[j]):
 					matches = 0
-				j = j + 1
 			if (matches):
 				found = 1
 		while ((i < n) && (buf[i] != 0)):

@@ -46,12 +46,10 @@ void test_rfc5869_case2():
 	char* ikm = malloc(80)
 	char* salt = malloc(80)
 	char* info = malloc(80)
-	int i = 0
-	while (i < 80):
+	for i in range(80):
 		ikm[i] = i
 		salt[i] = 96 + i
 		info[i] = (176 + i) & 255
-		i = i + 1
 	char* prk = malloc(32)
 	hkdf_extract(WHASH_SHA256(), salt, 80, ikm, 80, prk)
 	hkdft_assert_bytes(c"06a6b88c5853361a06104c9ceb35b45cef760014904671014a193f40c15fc244", prk, 32)
@@ -100,10 +98,8 @@ void test_hkdf_sha384():
 
 void test_hkdf_expand_bounds():
 	char* prk = malloc(32)
-	int i = 0
-	while (i < 32):
+	for i in range(32):
 		prk[i] = i
-		i = i + 1
 	char* okm = malloc(32)
 	# 255 * 32 = 8160 is the SHA-256 ceiling; one past it must fail.
 	assert_equal(0, hkdf_expand(WHASH_SHA256(), prk, 32, c"", 0, okm, 8161))
@@ -130,10 +126,8 @@ void test_rfc8448_key_schedule():
 	char* sh = hex_bytes(hkdft_rfc8448_server_hello())
 	char* transcript = malloc(286)
 	mem_copy(transcript, ch, 196)
-	int i = 0
-	while (i < 90):
+	for i in range(90):
 		transcript[196 + i] = sh[i]
-		i = i + 1
 	free(sh)
 	free(ch)
 	char* th = malloc(32)

@@ -122,10 +122,8 @@ string string_from_bytes(char* data, int length):
 	char* out = descriptor + 2 * __word_size__
 	save_word(descriptor, cast(int, out))
 	save_word(descriptor + __word_size__, length)
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		out[i] = data[i]
-		i = i + 1
 	out[length] = 0
 	return cast(string, cast(int, descriptor))
 
@@ -155,10 +153,8 @@ char* cstr(string s):
 # first interior NUL.
 char* cstr_clone(string s):
 	char* out = malloc(s.length + 1)
-	int i = 0
-	while (i < s.length):
+	for i in range(s.length):
 		out[i] = s.data[i]
-		i = i + 1
 	out[s.length] = 0
 	return out
 

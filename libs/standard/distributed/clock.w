@@ -151,8 +151,7 @@ vclock* vclock_load(char* buf):
 	int n = load_le32(buf)
 	assert1(n >= 0)
 	u64* counter = u64_new()
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int off = 4 + 12 * i
 		int node = load_le32(buf + off)
 		assert1(node >= 0)
@@ -160,7 +159,6 @@ vclock* vclock_load(char* buf):
 		int c = u64_to_int(counter)
 		if (c != 0):
 			v.counters[node] = c
-		i = i + 1
 	u64_free(counter)
 	return v
 

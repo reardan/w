@@ -348,10 +348,8 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 		# one contiguous block above the return address: re-push copies
 		# of the fixed argument words so the block it sees is contiguous.
 		int fixed_words = fixed_words_end - s - 1
-		int j = 1
-		while (j <= fixed_words):
+		for j in range(1, fixed_words + 1):
 			push_slot_copy(s + 1 + j)
-			j = j + 1
 		# The variadic slice parameter: a pointer to the descriptor
 		lea_eax_esp_plus((stack_pos - descriptor_slot) << word_size_log2)
 		push_slot()
@@ -361,11 +359,9 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 	# calls have no symbol to read the defaults from).
 	if ((w_variadic_fixed < 0) && (callee_sym >= 0) && (expected_args > passed_args)):
 		int missing_all_defaulted = 1
-		int check_index = passed_args
-		while (check_index < expected_args):
+		for check_index in range(passed_args, expected_args):
 			if (sym_param_has_default(callee_sym, check_index) == 0):
 				missing_all_defaulted = 0
-			check_index = check_index + 1
 		if (missing_all_defaulted):
 			while (passed_args < expected_args):
 				mov_eax_int(sym_param_default(callee_sym, passed_args))
@@ -640,10 +636,8 @@ int postfix_expr():
 				if (declared_return >= 0):
 					if (type_num_args(declared_return) > 0):
 						int words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
-						int j = 0
-						while (j < words):
+						for j in range(words):
 							push_eax()
-							j = j + 1
 						stack_pos = stack_pos + words
 						s = stack_pos
 						has_return_buffer = 1
@@ -788,10 +782,8 @@ int postfix_expr():
 						if (declared_return >= 0):
 							if (type_num_args(declared_return) > 0):
 								return_words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
-								int j = 0
-								while (j < return_words):
+								for j in range(return_words):
 									push_eax()
-									j = j + 1
 								stack_pos = stack_pos + return_words
 								has_return_buffer = 1
 

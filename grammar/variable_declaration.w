@@ -89,10 +89,8 @@ int inferred_declaration():
 			lea_eax_esp_plus(0)
 			init_array_field_descriptors(type)
 		return 1
-	int i = 0
-	while (i < size):
+	for i in range(size):
 		push_eax()
-		i = i + 1
 	stack_pos = stack_pos + size
 	return 1
 
@@ -142,10 +140,8 @@ int variable_declaration():
 				return type
 		if (type_is_array(type) | type_has_array_field(type)):
 			mov_eax_int(0)
-		int i = 0
-		while (i < size):
+		for i in range(size):
 			push_eax()
-			i = i + 1
 		stack_pos = stack_pos + size
 		if (type_is_array(type)):
 			lea_eax_esp_plus(2 * word_size)

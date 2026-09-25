@@ -364,8 +364,7 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 
 	# Weekday row.
 	float32 wr_h = ui_calendar_weekday_row_h(ctx)
-	int col = 0
-	while (col < 7):
+	for col in range(7):
 		ui_rect wc = ui_rect_new(r.x + s * cast(float32, col), r.y + s, s, wr_h)
 		char* wname = time_weekday_name((col + st.first_weekday) % 7)
 		char[3] wd
@@ -373,7 +372,6 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 		wd[1] = wname[1]
 		wd[2] = 0
 		ui_draw_text_centered(ctx.rndr, wc, &wd[0], scale, ctx.theme.text_muted)
-		col = col + 1
 
 	# Days.
 	int have_range = 0

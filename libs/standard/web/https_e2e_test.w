@@ -134,12 +134,10 @@ void test_https_keep_alive_reuse():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		tls_conn* tc = hs_child_accept(listener)
-		int k = 0
-		while (k < 2):
+		for k in range(2):
 			hs_child_read_request(tc)
 			char* resp = c"HTTP/1.1 200 OK\x0d\x0aContent-Length: 3\x0d\x0a\x0d\x0aabc"
 			tls_write(tc, resp, strlen(resp))
-			k = k + 1
 		hs_child_wait_close(tc)
 		exit(0)
 

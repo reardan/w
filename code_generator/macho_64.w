@@ -121,10 +121,8 @@ void macho_sym_add(char* name, int address):
 	macho_sym_count = macho_sym_count + 1
 	macho_str_buf[macho_str_size] = '_'
 	int n = strlen(name)
-	int i = 0
-	while (i <= n):
+	for i in range(n + 1):
 		macho_str_buf[macho_str_size + 1 + i] = name[i]
-		i = i + 1
 	macho_str_size = macho_str_size + n + 2
 
 
@@ -446,18 +444,12 @@ void macho_finish_arm64():
 	# separate data buffer, then the bind stream, then alignment zeros) and
 	# hash it into the CodeDirectory.
 	char* img = malloc(code_limit)
-	int p = 0
-	while (p < text_size):
+	for p in range(text_size):
 		img[p] = code[p]
-		p = p + 1
-	int di = 0
-	while (di < data_size_padded):
+	for di in range(data_size_padded):
 		img[text_size + di] = data[di]
-		di = di + 1
-	int zi = linkedit_fileoff
-	while (zi < code_limit):
+	for zi in range(linkedit_fileoff, code_limit):
 		img[zi] = 0
-		zi = zi + 1
 	int bi = 0
 	while (bi < macho_bind_size):
 		img[linkedit_fileoff + bi] = macho_bind_buf[bi]
@@ -475,10 +467,8 @@ void macho_finish_arm64():
 	# still zero, so identical inputs give identical UUIDs.
 	char* digest = malloc(32)
 	sha256(img, code_limit, digest)
-	int ui = 0
-	while (ui < 16):
+	for ui in range(16):
 		img[macho_uuid_pos + ui] = digest[ui]
-		ui = ui + 1
 	free(digest)
 
 	macho_build_signature(img, code_limit, text_size, ident)

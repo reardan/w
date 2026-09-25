@@ -800,8 +800,7 @@ void at_print_registers():
 # installed to at_mem_readable/at_mem_read below), so this is the same
 # call sequence the in-process debugger uses for 'x'/'st'.
 void at_examine(int addr, int count):
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		int slot = addr + i * __word_size__
 		dbg_print_hex(slot)
 		print(c": ")
@@ -814,7 +813,6 @@ void at_examine(int addr, int count):
 			print(c"  ")
 			print(dbg_function_name(at_to_v(v)))
 		put_char(10)
-		i = i + 1
 
 
 void at_print_stack():

@@ -48,10 +48,8 @@ void test_file_stat_blocks_counts_allocated_space():
 	# catch a wrong statx offset (which would read a timestamp-sized
 	# garbage word), loose enough for any sane allocation policy.
 	char* content = malloc(8193)
-	int i = 0
-	while (i < 8192):
+	for i in range(8192):
 		content[i] = 'x'
-		i = i + 1
 	content[8192] = 0
 	st_write(path, content)
 	free(content)

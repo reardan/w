@@ -226,10 +226,8 @@ void crash_report(int sig, int context):
 	# from the frame-pointer chain (heuristic scan where it breaks).
 	st_write_frame(pc)
 	int n = st_unwind(pc, ctx_esp(context), ctx_reg(context, sigcontext_ebp()), crash_pcs, crash_frames_max())
-	int k = 0
-	while (k < n):
+	for k in range(n):
 		st_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
-		k = k + 1
 	if (n >= crash_frames_max()):
 		st_write_cstr(c"  ... trace truncated\n")
 	if (st_unwind_exact == 0):
@@ -256,10 +254,8 @@ void crash_report(int sig, int context):
 void crash_dfl_act_ensure():
 	if (crash_dfl_act == 0):
 		crash_dfl_act = malloc(5 * __word_size__)
-		int i = 0
-		while (i < 5):
+		for i in range(5):
 			crash_dfl_act[i] = 0
-			i = i + 1
 
 
 # --- darwin (arm64_darwin) ---
@@ -273,8 +269,7 @@ int crash_darwin_reg(int mcontext, int k):
 void crash_write_darwin_registers(int mcontext):
 	st_write_cstr(c"registers:")
 	char* digits = c"0123456789"
-	int k = 0
-	while (k < 34):
+	for k in range(34):
 		if ((k & 3) == 0):
 			st_write_cstr(c"\n ")
 		st_write_cstr(c" ")
@@ -298,7 +293,6 @@ void crash_write_darwin_registers(int mcontext):
 			st_write_hex(st_int32(mcontext + 16 + 33 * 8))
 		else:
 			st_write_hex(crash_darwin_reg(mcontext, k))
-		k = k + 1
 	st_write_cstr(c"\n")
 
 
@@ -349,10 +343,8 @@ void crash_report_darwin(int sig, int ucontext):
 	if (st_is_return(lr) && (st_func_entry(pc) != st_func_entry(lr - 1))):
 		if ((n == 0) || (st_word(cast(int, crash_pcs)) != lr - 1)):
 			st_write_frame(lr - 1)
-	int k = 0
-	while (k < n):
+	for k in range(n):
 		st_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
-		k = k + 1
 	if (n >= crash_frames_max()):
 		st_write_cstr(c"  ... trace truncated\n")
 	if (st_unwind_exact == 0):
@@ -439,8 +431,7 @@ int crash_win_reg_offset(int k):
 
 void crash_write_win_registers(int context):
 	st_write_cstr(c"registers:")
-	int k = 0
-	while (k < 18):
+	for k in range(18):
 		if ((k & 3) == 0):
 			st_write_cstr(c"\n ")
 		st_write_cstr(c" ")
@@ -456,7 +447,6 @@ void crash_write_win_registers(int context):
 			crash_write_hex32(st_int32(context + 68))
 		else:
 			st_write_hex(st_word(context + crash_win_reg_offset(k)))
-		k = k + 1
 	st_write_cstr(c"\n")
 
 
@@ -496,10 +486,8 @@ int crash_report_win(int pointers):
 	st_write_cstr(c"stack trace (most recent call first):\n")
 	st_write_frame(pc)
 	int n = st_unwind(pc, st_word(context + 152), st_word(context + 160), crash_pcs, crash_frames_max())
-	int k = 0
-	while (k < n):
+	for k in range(n):
 		st_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
-		k = k + 1
 	if (n >= crash_frames_max()):
 		st_write_cstr(c"  ... trace truncated\n")
 	if (st_unwind_exact == 0):

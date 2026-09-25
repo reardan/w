@@ -9,10 +9,8 @@ import lib.file
 
 
 generator int counter(int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		yield i
-		i = i + 1
 
 
 # Block locals between the loop's hidden slots and the return stress the
@@ -40,11 +38,9 @@ int nested_return_value(int n):
 # frees the enclosing generator.
 int return_through_inner_while(int n):
 	for int x in counter(n):
-		int i = 0
-		while (i < 10):
+		for i in range(10):
 			if ((x == 1) && (i == 3)):
 				return x * 10 + i
-			i = i + 1
 	return 0 - 1
 
 

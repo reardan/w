@@ -11,10 +11,8 @@ import lib.lib
 # Returns a malloc'd string the caller may free.
 char* path_clone_range(char* start, int length):
 	char* result = malloc(length + 1)
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		result[i] = start[i]
-		i = i + 1
 	result[length] = 0
 	return result
 

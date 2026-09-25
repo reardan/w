@@ -211,10 +211,8 @@ void ui_textarea_type(ui_textarea_state* st, int ch):
 	int offset = ui_textarea_caret_offset(st)
 	char[4] bytes
 	int n = ui_utf8_encode(&bytes[0], ch)
-	int k = 0
-	while (k < n):
+	for k in range(n):
 		ui_text_buffer_insert(&st.buf, offset + k, bytes[k] & 255)
-		k = k + 1
 	ui_textarea_set_caret(st, offset + n)
 	st.caret_goal_col = st.caret_col
 
@@ -329,8 +327,7 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 	int sel_end = ui_textarea_sel_end(st)
 	int has_sel = ui_textarea_has_selection(st)
 
-	int line = first
-	while (line < last):
+	for line in range(first, last):
 		float32 ly = origin_y + cast(float32, line) * line_h
 		int start = ui_text_buffer_line_start(&st.buf, line)
 		int len = ui_text_buffer_line_length(&st.buf, line)
@@ -349,7 +346,6 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 				float32 hw = cast(float32, ui_text_prefix_width(text, to, scale) - ui_text_prefix_width(text, from, scale))
 				ui_render_rect(ctx.rndr, ui_rect_new(hx, ly, hw, line_h), ctx.theme.accent_hot)
 		ui_draw_text_n(ctx.rndr, origin_x, ly, text, len, scale, ui_text_color(ctx))
-		line = line + 1
 
 	if ((ctx.focus == id) && (ctx.disabled == 0)):
 		int cstart = ui_text_buffer_line_start(&st.buf, st.caret_line)

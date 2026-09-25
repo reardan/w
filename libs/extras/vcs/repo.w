@@ -68,14 +68,12 @@ list[char*] repo_split_path(char* path):
 	list[char*] parts = new list[char*]
 	int n = strlen(path)
 	int start = 0
-	int i = 0
-	while (i <= n):
+	for i in range(n + 1):
 		int at_sep = (i == n) || (path[i] == '/')
 		if (at_sep):
 			if (i > start):
 				parts.push(path_clone_range(path + start, i - start))
 			start = i + 1
-		i = i + 1
 	return parts
 
 
@@ -192,11 +190,9 @@ int repo_is_binaryish(wcas_object* o):
 	int n = o.length
 	if (n > REPO_BINARY_SNIFF_LEN()):
 		n = REPO_BINARY_SNIFF_LEN()
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (o.data[i] == 0):
 			return 1
-		i = i + 1
 	return 0
 
 

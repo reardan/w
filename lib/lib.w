@@ -84,13 +84,11 @@ int utf8_scan(char* s, int avail, int* cp):
 		return 0
 	if (need >= avail):
 		return 0
-	int j = 1
-	while (j <= need):
+	for j in range(1, need + 1):
 		int d = s[j] & 255
 		if ((d < 128) || (d > 191)):
 			return 0
 		value = (value << 6) | (d & 63)
-		j = j + 1
 	if ((value < min) || (value > 1114111) || ((value >= 55296) && (value <= 57343))):
 		return 0
 	*cp = value
@@ -252,12 +250,10 @@ int from_hex(char* s):
 
 int ip4_from_string(char* ips):
 	int ip4 = 0
-	int i = 0
-	while (i < 4):
+	for i in range(4):
 		int b = atoi(ips)
 		ip4 = (ip4 << 8) + b
 		ips = ips + intstrlen(b) + 1
-		i = i + 1
 	return ip4
 
 
@@ -593,13 +589,11 @@ void print_n(char *s, int n):
 
 # Debugging:
 void print_words(int addr, int count):
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		print(hex(addr))
 		print(c": ")
 		println(hex(*addr))
 		addr = addr + __word_size__
-		i = i + 1
 
 
 # /usr/include/asm-generic/errno-base.h

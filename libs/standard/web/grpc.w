@@ -1124,12 +1124,10 @@ int grpc_server_set_compression(grpc_server* s, char* encoding):
 
 
 void grpc_server_free(grpc_server* s):
-	int i = 0
-	while (i < s.methods.length):
+	for i in range(s.methods.length):
 		grpc_method* m = s.methods[i]
 		free(m.path)
 		free(m)
-		i = i + 1
 	list_free[grpc_method*](s.methods)
 	if (s.send_encoding != 0):
 		free(s.send_encoding)
@@ -1389,12 +1387,10 @@ int grpc_call_finish(grpc_call* call):
 
 
 grpc_method* grpc_find_method(grpc_server* srv, char* path):
-	int i = 0
-	while (i < srv.methods.length):
+	for i in range(srv.methods.length):
 		grpc_method* m = srv.methods[i]
 		if (strcmp(m.path, path) == 0):
 			return m
-		i = i + 1
 	return 0
 
 

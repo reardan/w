@@ -104,8 +104,7 @@ char** env_copy_with(char** base, char* name, char* value):
 	char* new_entry = env_make_entry(name, value)
 	int replaced = 0
 	int out = 0
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		char* entry = env_entry_at(base, i)
 		if (env_match_name(entry, name) >= 0):
 			save_word(vector + out * __word_size__, cast(int, new_entry))
@@ -113,7 +112,6 @@ char** env_copy_with(char** base, char* name, char* value):
 		else:
 			save_word(vector + out * __word_size__, cast(int, entry))
 		out = out + 1
-		i = i + 1
 	if (replaced == 0):
 		save_word(vector + out * __word_size__, cast(int, new_entry))
 		out = out + 1

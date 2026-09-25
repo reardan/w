@@ -48,10 +48,8 @@ int pg_token_hidden_channel():
 
 char* pg_substr(char* input, int start, int length):
 	char* text = malloc(length + 1)
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		text[i] = input[start + i]
-		i = i + 1
 	text[length] = 0
 	return text
 

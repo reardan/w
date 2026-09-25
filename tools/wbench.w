@@ -65,8 +65,7 @@ bench_result* bench_run(char* compiler, char* source, char* out_path, int runs):
 	r.calls = -1
 	r.visits = -1
 	r.failure = c"?"
-	int i = 0
-	while (i < runs):
+	for i in range(runs):
 		char** full = strv_new(6)
 		strv_set(full, 0, compiler)
 		strv_set(full, 1, c"--quiet")
@@ -96,7 +95,6 @@ bench_result* bench_run(char* compiler, char* source, char* out_path, int runs):
 		if (r.visits < 0):
 			r.failure = c"no --stats counters in the compiler's stderr"
 			return r
-		i = i + 1
 	r.ok = 1
 	return r
 
@@ -125,8 +123,7 @@ void bench_generate(char* path, int n):
 	asserts(c"wbench: could not write the generated workload", fd >= 0)
 	char* head = c"int f0(int a):\x0a\treturn a\x0a"
 	write(fd, head, strlen(head))
-	int i = 1
-	while (i < n):
+	for i in range(1, n):
 		char* a = strjoin(c"int f", itoa(i))
 		char* b = strjoin(a, c"(int a):\x0a\treturn f")
 		char* d = strjoin(b, itoa(i - 1))
@@ -136,7 +133,6 @@ void bench_generate(char* path, int n):
 		free(b)
 		free(d)
 		free(body)
-		i = i + 1
 	char* tail = c"int main():\x0a\treturn 0\x0a"
 	write(fd, tail, strlen(tail))
 	close(fd)

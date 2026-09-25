@@ -15,12 +15,10 @@ void raft_test_free_msgs(list[raft_msg*] out):
 
 
 raft_msg* raft_test_find_to(list[raft_msg*] out, int to):
-	int i = 0
-	while (i < out.length):
+	for i in range(out.length):
 		raft_msg* m = out[i]
 		if (m.to == to):
 			return m
-		i = i + 1
 	assert1(0)
 	return 0
 
@@ -332,13 +330,11 @@ void test_append_walkback_converges():
 	assert_equal(0, out.length)
 	# the logs converged entry by entry
 	assert_equal(2, raft_log_length(n2))
-	int i = 1
-	while (i <= 2):
+	for i in range(1, 2 + 1):
 		raft_entry* mine = raft_log_at(n1, i)
 		raft_entry* theirs = raft_log_at(n2, i)
 		assert_equal(1, u64_eq(mine.term, theirs.term))
 		assert_strings_equal(mine.command, theirs.command)
-		i = i + 1
 	# term-1 entries alone must not commit under the term-2 leader
 	assert_equal(0, raft_commit_int(n1))
 	raft_free(n1)
@@ -721,8 +717,7 @@ void test_randomized_timeouts_differ():
 	list[raft_msg*] out = new list[raft_msg*]
 	int fire_a = 0 - 1
 	int fire_b = 0 - 1
-	int t = 0
-	while (t <= 250):
+	for t in range(250 + 1):
 		raft_tick(a, t, out)
 		raft_test_free_msgs(out)
 		if (fire_a < 0 && raft_state(a) == raft_candidate()):
@@ -731,7 +726,6 @@ void test_randomized_timeouts_differ():
 		raft_test_free_msgs(out)
 		if (fire_b < 0 && raft_state(b) == raft_candidate()):
 			fire_b = t
-		t = t + 1
 	assert1(fire_a >= 100 && fire_a <= 200)
 	assert1(fire_b >= 100 && fire_b <= 200)
 	assert1(fire_a != fire_b)
@@ -1086,10 +1080,8 @@ int raft_test_snap_term_int(raft* r):
 # Bytewise blob comparison — snapshot blobs are binary, never strcmp'd.
 void raft_test_assert_blob(char* want, int want_len, char* got, int got_len):
 	assert_equal(want_len, got_len)
-	int i = 0
-	while (i < want_len):
+	for i in range(want_len):
 		assert_equal(want[i] & 255, got[i] & 255)
-		i = i + 1
 
 
 void test_take_snapshot_compacts():

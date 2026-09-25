@@ -381,10 +381,8 @@ int cf_build_ids_match():
 # Lowercase hex of n bytes at addr (malloc'd).
 char* cf_id_hex(int addr, int n):
 	char* s = malloc(n * 2 + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		hex_put_byte(&s[i * 2], st_byte(addr + i))
-		i = i + 1
 	s[n * 2] = 0
 	return s
 
@@ -595,8 +593,7 @@ int cf_call_site(int v):
 
 int cf_scan(int sp, char* out, int max):
 	int found = 0
-	int i = 0
-	while (i < 65536):
+	for i in range(65536):
 		int slot = sp + i * cf_wsize
 		int v = cf_core_word(slot)
 		if (cf_read_ok == 0):
@@ -617,7 +614,6 @@ int cf_scan(int sp, char* out, int max):
 					if (e != 0):
 						if (st_cstr_eq(st_entry_name(e), c"main")):
 							return found
-		i = i + 1
 	return found
 
 
@@ -827,14 +823,12 @@ char* cf_hex(int v):
 	char* s = malloc(digits + 3)
 	s[0] = '0'
 	s[1] = 'x'
-	int i = 0
-	while (i < digits):
+	for i in range(digits):
 		int nibble = (v >> ((digits - 1 - i) * 4)) & 15
 		if (nibble < 10):
 			s[2 + i] = '0' + nibble
 		else:
 			s[2 + i] = 'a' + nibble - 10
-		i = i + 1
 	s[digits + 2] = 0
 	return s
 

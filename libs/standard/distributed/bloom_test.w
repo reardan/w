@@ -22,12 +22,10 @@ char* bloom_test_other(int i):
 # The shared fixture: m=4096 bits, k=5 probes, key0..key49 added.
 bloom_filter* bloom_test_loaded():
 	bloom_filter* b = bloom_new(4096, 5)
-	int i = 0
-	while (i < 50):
+	for i in range(50):
 		char* key = bloom_test_key(i)
 		bloom_add(b, key)
 		free(key)
-		i = i + 1
 	return b
 
 
@@ -47,24 +45,20 @@ void test_new_filter_is_empty():
 void test_no_false_negatives():
 	bloom_filter* b = bloom_test_loaded()
 	assert_equal(50, bloom_item_count(b))
-	int i = 0
-	while (i < 50):
+	for i in range(50):
 		char* key = bloom_test_key(i)
 		assert_equal(1, bloom_maybe_contains(b, key))
 		free(key)
-		i = i + 1
 	bloom_free(b)
 
 
 void test_absent_keys_mostly_reject():
 	bloom_filter* b = bloom_test_loaded()
 	int false_positives = 0
-	int i = 0
-	while (i < 100):
+	for i in range(100):
 		char* key = bloom_test_other(i)
 		false_positives = false_positives + bloom_maybe_contains(b, key)
 		free(key)
-		i = i + 1
 	# generous structural bound: 50 keys in 4096 bits with k=5 gives a
 	# theoretical false-positive rate well under 1e-5
 	assert1(false_positives < 10)

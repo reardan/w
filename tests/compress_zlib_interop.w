@@ -187,8 +187,7 @@ char* czi_read_file(char* path, int* out_len):
 # Writes payload_<name>.bin plus w_<name>_<tag>.zlib/.gz for every
 # payload at every level.
 void czi_compress(char* dir, int count, char** names, char** datas, int* lens):
-	int p = 0
-	while (p < count):
+	for p in range(count):
 		char* payload_path = czi_path3(dir, c"payload_", names[p], c".bin")
 		czi_write_file(payload_path, datas[p], lens[p])
 		free(payload_path)
@@ -207,7 +206,6 @@ void czi_compress(char* dir, int count, char** names, char** datas, int* lens):
 			free(gpath)
 			gzip_result_free(g)
 			li = li + 1
-		p = p + 1
 
 
 int czi_check(char* kind, char* name, char* got, int got_len, char* want, int want_len):
@@ -216,12 +214,10 @@ int czi_check(char* kind, char* name, char* got, int got_len, char* want, int wa
 	if (got_len != want_len):
 		println2(c": length mismatch")
 		return 0
-	int i = 0
-	while (i < want_len):
+	for i in range(want_len):
 		if ((got[i] & 255) != (want[i] & 255)):
 			println2(c": byte mismatch")
 			return 0
-		i = i + 1
 	println2(c": OK")
 	return 1
 
@@ -233,8 +229,7 @@ int czi_check(char* kind, char* name, char* got, int got_len, char* want, int wa
 # exit).
 int czi_decompress(char* dir, int count, char** names, char** datas, int* lens):
 	int ok = 1
-	int p = 0
-	while (p < count):
+	for p in range(count):
 		char* zpath = czi_path3(dir, c"py_", names[p], c".zlib")
 		int zlen = 0
 		char* zdata = czi_read_file(zpath, &zlen)
@@ -270,7 +265,6 @@ int czi_decompress(char* dir, int count, char** names, char** datas, int* lens):
 			gzip_result_free(go)
 		result_free[gzip_result*](gr)
 		free(gdata)
-		p = p + 1
 
 	return ok
 

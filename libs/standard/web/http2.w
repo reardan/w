@@ -904,12 +904,10 @@ int h2_conn_error(h2_conn* c, int code, char* why):
 
 
 h2_stream* h2_find_stream(h2_conn* c, int id):
-	int i = 0
-	while (i < c.streams.length):
+	for i in range(c.streams.length):
 		h2_stream* s = c.streams[i]
 		if (s.id == id):
 			return s
-		i = i + 1
 	return 0
 
 
@@ -962,13 +960,11 @@ int h2_stream_active(h2_stream* s):
 
 int h2_active_count(h2_conn* c, int locally_initiated):
 	int n = 0
-	int i = 0
-	while (i < c.streams.length):
+	for i in range(c.streams.length):
 		h2_stream* s = c.streams[i]
 		int mine = ((s.id & 1) == 1) != (c.is_server != 0)
 		if ((h2_stream_active(s) != 0) && (mine == (locally_initiated != 0))):
 			n = n + 1
-		i = i + 1
 	return n
 
 
@@ -1046,15 +1042,12 @@ int h2_name_is(hpack_header* h, char* name):
 # connection-specific fields, te only "trailers". 1 when valid.
 int h2_valid_fields(list[hpack_header*] l, char* allowed_pseudo):
 	int seen_regular = 0
-	int i = 0
-	while (i < l.length):
+	for i in range(l.length):
 		hpack_header* h = l[i]
-		int k = 0
-		while (k < h.name_len):
+		for k in range(h.name_len):
 			int ch = h.name[k] & 255
 			if ((ch >= 'A') && (ch <= 'Z')):
 				return 0
-			k = k + 1
 		if (h2_is_pseudo(h) != 0):
 			if (seen_regular != 0):
 				return 0
@@ -1073,7 +1066,6 @@ int h2_valid_fields(list[hpack_header*] l, char* allowed_pseudo):
 				return 0
 			if ((h2_name_is(h, c"te") != 0) && (strcmp(h.value, c"trailers") != 0)):
 				return 0
-		i = i + 1
 	return 1
 
 
@@ -1122,12 +1114,10 @@ int h2_parse_status(list[hpack_header*] l):
 	if (strlen(v) != 3):
 		return 0
 	int n = 0
-	int i = 0
-	while (i < 3):
+	for i in range(3):
 		if ((v[i] < '0') || (v[i] > '9')):
 			return 0
 		n = n * 10 + (v[i] - '0')
-		i = i + 1
 	if (n < 100):
 		return 0
 	return n
@@ -1407,14 +1397,12 @@ int h2_on_goaway(h2_conn* c, h2_frame* f):
 	if (c.goaway_debug != 0):
 		free(c.goaway_debug)
 	c.goaway_debug = mem_dup(f.payload + 8, f.length - 8)
-	int i = 0
-	while (i < c.streams.length):
+	for i in range(c.streams.length):
 		h2_stream* s = c.streams[i]
 		int mine = ((s.id & 1) == 1) != (c.is_server != 0)
 		if ((mine != 0) && (s.id > last) && (h2_stream_active(s) != 0)):
 			s.refused = 1
 			s.state = h2_state_closed()
-		i = i + 1
 	return 0
 
 
@@ -1668,13 +1656,11 @@ void h2_close(h2_conn* c):
 char* h2_lower_copy(char* s):
 	int n = strlen(s)
 	char* out = malloc(n + 1)
-	int i = 0
-	while (i <= n):
+	for i in range(n + 1):
 		int ch = s[i] & 255
 		if ((ch >= 'A') && (ch <= 'Z')):
 			ch = ch + 32
 		out[i] = ch
-		i = i + 1
 	return out
 
 
@@ -1682,15 +1668,13 @@ char* h2_lower_copy(char* s):
 void h2_append_extra(list[hpack_header*] l, list[hpack_header*] extra):
 	if (extra == 0):
 		return
-	int i = 0
-	while (i < extra.length):
+	for i in range(extra.length):
 		hpack_header* h = extra[i]
 		char* name = h2_lower_copy(h.name)
 		hpack_header* copy = hpack_header_new(name, strlen(name), h.value, h.value_len)
 		copy.sensitive = h.sensitive
 		l.push(copy)
 		free(name)
-		i = i + 1
 
 
 # Opens a stream and sends the request HEADERS. Waits (pumping) while
@@ -1768,13 +1752,11 @@ h2_stream* h2_request(h2_conn* c, char* method, char* scheme, char* authority, c
 # that was not handed out yet. 0 when the connection ends.
 h2_stream* h2_server_next_request(h2_conn* c):
 	while (1):
-		int i = 0
-		while (i < c.streams.length):
+		for i in range(c.streams.length):
 			h2_stream* s = c.streams[i]
 			if ((s.delivered == 0) && (s.end_received != 0) && (s.reset_code < 0)):
 				s.delivered = 1
 				return s
-			i = i + 1
 		if (h2_pump(c) != 0):
 			return 0
 	return 0

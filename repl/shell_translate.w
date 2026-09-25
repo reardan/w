@@ -580,8 +580,7 @@ char* shell_translate_session_call(list[char*] words, list[int] kinds, int requi
 	string_builder* out = string_new()
 	string_append(out, words[0])
 	string_append(out, c"(")
-	int i = 0
-	while (i < given):
+	for i in range(given):
 		if (i > 0):
 			string_append(out, c", ")
 		int kind = variadic_kind
@@ -590,7 +589,6 @@ char* shell_translate_session_call(list[char*] words, list[int] kinds, int requi
 		if (shell_translate_append_arg(out, words[i + 1], kind) == 0):
 			string_free(out)
 			return 0
-		i = i + 1
 	string_append(out, c")")
 	char* s = out.data
 	free(out)

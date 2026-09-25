@@ -217,19 +217,15 @@ void delta_ops_push_copy(delta_ops* ops, int offset, int length):
 
 int delta_window_sum_a(char* data, int start, int length):
 	int a = 0
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		a = a + (data[start + i] & 255)
-		i = i + 1
 	return a & 65535
 
 
 int delta_window_sum_b(char* data, int start, int length):
 	int b = 0
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		b = b + ((length - i) * (data[start + i] & 255))
-		i = i + 1
 	return b & 65535
 
 
@@ -360,12 +356,10 @@ int delta_find_char(char* data, int end, int start, int ch):
 int delta_valid_nonneg_integer(char* data, int start, int end):
 	if (start >= end):
 		return 0
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		int c = data[i] & 255
 		if ((c < '0') || (c > '9')):
 			return 0
-		i = i + 1
 	return 1
 
 

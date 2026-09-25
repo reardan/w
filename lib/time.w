@@ -114,15 +114,13 @@ char* time_weekday_name(int weekday):
 # Month 1..12 whose English name starts with the three letters at s
 # (any case), or -1.
 int time_month_from_abbrev(char* s):
-	int m = 1
-	while (m <= 12):
+	for m in range(1, 12 + 1):
 		char* name = time_month_name(m)
 		int i = 0
 		while ((i < 3) && (((s[i] | 32) & 255) == (name[i] | 32))):
 			i = i + 1
 		if (i == 3):
 			return m
-		m = m + 1
 	return 0 - 1
 
 

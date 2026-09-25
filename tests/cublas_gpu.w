@@ -35,19 +35,16 @@ float64 fabs64(float64 x):
 
 # Deterministic small values in [-1, 1) so FP32 sums stay well-conditioned.
 void fill_pattern(float* p, int n, int seed):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int v = (i * 37 + seed * 101) % 211
 		p[i] = cast(float, v - 105) / 105.0
-		i = i + 1
 
 
 # Row-major reference: C = alpha * op(A) op(B) + beta * C0 in float64.
 # ta/tb as in cublas_sgemm_rm; lda/ldb are the stored row pitches.
 float64 ref_elem(int ta, int tb, int i, int j, int k, float* a, int lda, float* b, int ldb):
 	float64 acc = 0.0
-	int p = 0
-	while (p < k):
+	for p in range(k):
 		float av = 0.0
 		if (ta == 0):
 			av = a[i * lda + p]
@@ -59,15 +56,13 @@ float64 ref_elem(int ta, int tb, int i, int j, int k, float* a, int lda, float* 
 		else:
 			bv = b[j * ldb + p]
 		acc = acc + cast(float64, av) * cast(float64, bv)
-		p = p + 1
 	return acc
 
 
 # Max |got - want| over the m x n output against the reference.
 float64 max_err(int ta, int tb, int m, int n, int k, float alpha, float* a, int lda, float* b, int ldb, float beta, float* c0, float* c):
 	float64 worst = 0.0
-	int i = 0
-	while (i < m):
+	for i in range(m):
 		int j = 0
 		while (j < n):
 			float64 want = cast(float64, alpha) * ref_elem(ta, tb, i, j, k, a, lda, b, ldb) + cast(float64, beta) * cast(float64, c0[i * n + j])
@@ -75,7 +70,6 @@ float64 max_err(int ta, int tb, int m, int n, int k, float alpha, float* a, int 
 			if (d > worst):
 				worst = d
 			j = j + 1
-		i = i + 1
 	return worst
 
 
@@ -146,10 +140,8 @@ int check_dgemm():
 		int j = 0
 		while (j < n):
 			float64 want = 0.0
-			int p = 0
-			while (p < k):
+			for p in range(k):
 				want = want + a[i * k + p] * b[p * n + j]
-				p = p + 1
 			float64 d = fabs64(c[i * n + j] - want)
 			if (d > worst):
 				worst = d
@@ -176,10 +168,8 @@ int check_tensor_hook():
 	fill_pattern(b.data, k * n, 6)
 	fill_pattern(bt.data, k * n, 7)
 	float* zero = cast(float*, malloc(m * n * 4))
-	int i = 0
-	while (i < m * n):
+	for i in range(m * n):
 		zero[i] = 0.0
-		i = i + 1
 	int ok = 1
 	tensor_matmul2(&out, &a, &b)
 	tensor_sync()
@@ -211,10 +201,8 @@ int bench_us(tensor* out, tensor* a, tensor* b, int reps):
 	tensor_matmul2(out, a, b)
 	tensor_sync()
 	int t0 = now_us()
-	int r = 0
-	while (r < reps):
+	for r in range(reps):
 		tensor_matmul2(out, a, b)
-		r = r + 1
 	tensor_sync()
 	return (now_us() - t0) / reps
 

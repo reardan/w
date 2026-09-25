@@ -47,19 +47,15 @@ int fixture_frame(ui_context* ctx, ui_tree_state* st, int32* open, ui_rect area)
 	int activated = 0 - 1
 	ui_begin(ctx, 320, 240)
 	ui_tree_begin(ctx, area, st)
-	int d = 0
-	while (d < 2):
+	for d in range(2):
 		if (ui_tree_node(ctx, st, fixture_folder(d), &open[d])):
-			int f = 0
-			while (f < 2):
+			for f in range(2):
 				# Read the walk index before the call: ui_tree_leaf
 				# advances it.
 				int at = st.walk_index
 				if (ui_tree_leaf(ctx, st, fixture_file(d, f))):
 					activated = at
-				f = f + 1
 			ui_tree_node_end(ctx, st)
-		d = d + 1
 	ui_tree_end(ctx, st)
 	ui_end(ctx)
 	return activated

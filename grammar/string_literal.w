@@ -11,10 +11,8 @@ int string_hex_digit(int c):
 
 int string_hex_value(int start, int count):
 	int value = 0
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		value = (value << 4) + string_hex_digit(token[start + i])
-		i = i + 1
 	return value
 
 
@@ -72,13 +70,11 @@ int string_utf8_decode(int i, int n):
 		return -1
 	if (i + need >= n):
 		return -2
-	int j = 1
-	while (j <= need):
+	for j in range(1, need + 1):
 		int d = token[i + j] & 255
 		if ((d < 128) || (d > 191)):
 			return -3
 		codepoint = (codepoint << 6) | (d & 63)
-		j = j + 1
 	if (((need == 2) && (codepoint < 2048)) || ((need == 3) && (codepoint < 65536))):
 		return -4
 	utf8_decoded_length = need + 1
@@ -260,10 +256,8 @@ void arm64_emit_utf8_string_descriptor(int i):
 # address is materialized through an ordinary address slot.
 void wasm_emit_utf8_string_descriptor(int i):
 	int data_address = emit_data_zeros(i + 1)
-	int j = 0
-	while (j <= i):
+	for j in range(i + 1):
 		data[(data_address - data_offset) + j] = token[j]
-		j = j + 1
 	int desc_vaddr = emit_data_zeros(2 * word_size)
 	save_i(data + (desc_vaddr - data_offset), data_address, word_size)
 	save_i(data + (desc_vaddr - data_offset + word_size), i, word_size)
@@ -329,10 +323,8 @@ void be_emit_inline_cstr(int len, char* s):
 		# data segment + plain constant address (no chain: the address is
 		# already final)
 		int addr = emit_data_zeros(len + 1)
-		int j = 0
-		while (j <= len):
+		for j in range(len + 1):
 			data[(addr - data_offset) + j] = s[j]
-			j = j + 1
 		wasm_mov_eax_int(addr)
 		return
 	if (target_isa == 1):

@@ -35,10 +35,8 @@ void test_gzip_roundtrip():
 void test_gzip_roundtrip_fast_and_best():
 	int n = 4096
 	char* src = malloc(n)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		src[i] = 'a' + (i % 7)
-		i = i + 1
 	gzip_result* fast = gzip_compress(src, n, DEFLATE_LEVEL_FAST())
 	gzip_result* fout = result_expect[gzip_result*](gzip_decompress(fast.data, fast.length, 0))
 	assert_equal(n, fout.length)
@@ -149,10 +147,8 @@ void test_gzip_unsupported_method():
 	char* d = c"\x1f\x8b\x08\x00\x00\x00\x00\x00\x00\x03\x4b\xaf\xca\x2c\x50\x28\x2f\x4a\x2c\x28\x48\x2d\x52\x28\xca\x2f\xcd\x4b\x51\x28\x29\x02\x0a\x95\xa4\x16\x97\x28\xa4\x24\x96\x24\x2a\x98\x99\x5b\x58\x1a\x00\x00\xfb\x36\x52\xdf\x27\x00\x00\x00"
 	int len = 58
 	char* bad = malloc(len)
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		bad[i] = d[i]
-		i = i + 1
 	bad[2] = 9    # CM: not deflate
 	wresult[gzip_result*]* r = gzip_decompress(bad, len, 0)
 	assert1(result_is_error[gzip_result*](r))

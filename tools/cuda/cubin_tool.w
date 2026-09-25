@@ -162,10 +162,8 @@ int cubin_compile(char* wv2, int argv, int argc, char* src, char* out, char* ext
 	args.push(wv2)
 	args.push(c"x64")
 	args.push(c"--quiet")
-	int i = 5
-	while (i < argc):
+	for i in range(5, argc):
 		args.push(cubin_arg(argv, i))
-		i = i + 1
 	args.push(src)
 	args.push(c"-o")
 	args.push(out)
@@ -208,11 +206,9 @@ int cubin_build(int argc, int argv):
 
 # 1 when the len bytes at s equal those at prefix.
 int cubin_bytes_equal(char* s, char* prefix, int len):
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		if (s[i] != prefix[i]):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -232,10 +228,8 @@ list[char*] cubin_entries(char* text):
 				end = end + 1
 			if ((end > start) && (text[end] == '(')):
 				string_builder* name = string_new()
-				int j = start
-				while (j < end):
+				for j in range(start, end):
 					string_append_char(name, text[j])
-					j = j + 1
 				names.push(name.data)
 			i = end
 		else:
@@ -316,10 +310,8 @@ int cubin_file_contains(char* path, char* needle):
 	char* buf = malloc(65536)
 	int n = read(fd, buf, 65536)
 	while (n > 0):
-		int i = 0
-		while (i < n):
+		for i in range(n):
 			string_append_char(data, buf[i])
-			i = i + 1
 		n = read(fd, buf, 65536)
 	free(buf)
 	close(fd)
@@ -334,8 +326,7 @@ int cubin_file_contains(char* path, char* needle):
 
 int cubin_scan(int argc, int argv):
 	int failed = 0
-	int i = 2
-	while (i < argc):
+	for i in range(2, argc):
 		char* path = cubin_arg(argv, i)
 		int found = cubin_file_contains(path, c"W_FAKE_CUBIN")
 		if (found < 0):
@@ -345,7 +336,6 @@ int cubin_scan(int argc, int argv):
 			println(cstr(f"{path}: marker"))
 		else:
 			println(cstr(f"{path}: no marker"))
-		i = i + 1
 	return failed
 
 

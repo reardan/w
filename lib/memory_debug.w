@@ -259,10 +259,8 @@ char* debug_realloc(void* old, int oldlen, int newlen):
 			debug_fatal(c"realloc() oldlen does not match the tracked allocation size", cast(int, old))
 	char* grown = debug_malloc(newlen)
 	char* src = old
-	int i = 0
-	while (i < oldlen):
+	for i in range(oldlen):
 		grown[i] = src[i]
-		i = i + 1
 	debug_free(old)
 	return grown
 
@@ -281,8 +279,7 @@ int debug_alloc_report_leaks():
 	int leaked = 0
 	int leaked_bytes = 0
 	int n = debug_tbl_count
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (debug_tbl_freed[i] == 0):
 			st_write_cstr(c"memory_debug: leaked ")
 			st_write_dec(debug_tbl_size[i])
@@ -291,7 +288,6 @@ int debug_alloc_report_leaks():
 			st_write_cstr(c"\x0a")
 			leaked = leaked + 1
 			leaked_bytes = leaked_bytes + debug_tbl_size[i]
-		i = i + 1
 	if (leaked > 0):
 		st_write_cstr(c"memory_debug: ")
 		st_write_dec(leaked)

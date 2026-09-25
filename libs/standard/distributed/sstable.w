@@ -279,8 +279,7 @@ sstable* sstable_open(char* path):
 	s.flags = new list[int]
 	s.bloom = bl
 	int off = 16 + bloom_len
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		# All length checks subtract from the remaining byte budget so
 		# a huge corrupt length cannot overflow past the bound.
 		int remaining = size - off
@@ -322,7 +321,6 @@ sstable* sstable_open(char* path):
 			sstable_close(s)
 			return 0
 		off = off + 9 + key_len + val_len
-		i = i + 1
 	return s
 
 

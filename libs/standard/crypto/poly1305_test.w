@@ -59,8 +59,7 @@ void test_incremental_chunking():
 	char* msg = hex_bytes(c"43727970746f6772617068696320466f72756d2052657365617263682047726f7570")
 	int n = strlen(c"43727970746f6772617068696320466f72756d2052657365617263682047726f7570") / 2
 	char* tag = malloc(16)
-	int chunk = 1
-	while (chunk <= 19):
+	for chunk in range(1, 19 + 1, 6):
 		poly1305* st = poly1305_new(key)
 		int off = 0
 		while (off < n):
@@ -74,7 +73,6 @@ void test_incremental_chunking():
 		char* got = hex_encode(tag, 16)
 		assert_strings_equal(c"a8061dc1305136c6c22b8baf0c0127a9", got)
 		free(got)
-		chunk = chunk + 6
 	free(tag)
 	free(msg)
 	free(key)

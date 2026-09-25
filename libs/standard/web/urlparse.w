@@ -124,8 +124,7 @@ URL* url_parse(char* text):
 			free(scheme)
 			return 0
 		port = 0
-		int p = digit_start
-		while (p < authority_end):
+		for p in range(digit_start, authority_end):
 			int d = text[p] & 255
 			if ((d < '0') || (d > '9')):
 				free(scheme)
@@ -134,7 +133,6 @@ URL* url_parse(char* text):
 			if (port > 65535):
 				free(scheme)
 				return 0
-			p = p + 1
 		if (port == 0):
 			free(scheme)
 			return 0

@@ -75,13 +75,11 @@ char** env_without(char** base, char* name):
 	int count = env_vector_count(base)
 	char* vector = malloc((count + 1) * __word_size__)
 	int out = 0
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		char* entry = env_entry_at(base, i)
 		if (env_match_name(entry, name) < 0):
 			save_word(vector + out * __word_size__, cast(int, entry))
 			out = out + 1
-		i = i + 1
 	save_word(vector + out * __word_size__, 0)
 	return cast(char**, vector)
 

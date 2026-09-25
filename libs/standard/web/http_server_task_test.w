@@ -163,10 +163,8 @@ void test_server_and_clients_share_a_scheduler():
 	list[int] ok = new list[int]
 	task_scheduler* sched = task_scheduler_new()
 	task* server = task_spawn(sched, server_accept_task(s, 0))
-	int i = 0
-	while (i < 8):
+	for i in range(8):
 		task_spawn(sched, htt_client(port, c"/in-process", ok))
-		i = i + 1
 	task_spawn(sched, htt_stop_when_done(server, ok, 8))
 	assert_equal(0, task_run(sched))
 	assert_equal(8, ok.length)
@@ -204,10 +202,8 @@ void htt_clients_in_tasks(char* scheme, int with_tls, int clients):
 	list[int] ok = new list[int]
 	task_scheduler* sched = task_scheduler_new()
 	task* server = task_spawn(sched, server_accept_task(s, 0))
-	int i = 0
-	while (i < clients):
+	for i in range(clients):
 		task_spawn_sized(sched, htt_http_request_task(url, ok), server_task_stack_bytes())
-		i = i + 1
 	task_spawn(sched, htt_stop_when_done(server, ok, clients))
 	assert_equal(0, task_run(sched))
 	assert_equal(clients, ok.length)
@@ -243,12 +239,10 @@ void test_threaded_server_serves_concurrently():
 	char* partial = c"GET /slow HTTP/1.1\x0d\x0a"
 	socket_send(stalled, partial, strlen(partial), msg_nosignal())
 	char* url = net_test_url(c"http", port, c"/threaded")
-	int i = 0
-	while (i < 4):
+	for i in range(4):
 		char* body = htt_get(url)
 		assert_strings_equal(c"/threaded", body)
 		free(body)
-		i = i + 1
 	free(url)
 	char* rest = c"Host: x\x0d\x0aConnection: close\x0d\x0a\x0d\x0a"
 	socket_send(stalled, rest, strlen(rest), msg_nosignal())

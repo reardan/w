@@ -29,12 +29,10 @@ void tl_worker(void* arg):
 	# a fresh thread starts from zero, whatever main stored
 	slot[0] = tl_counter
 	slot[1] = tl_rec.a + tl_rec.b
-	int i = 0
-	while (i < 100000):
+	for i in range(100000):
 		tl_counter = tl_counter + 1
 		tl_rec.a = tl_rec.a + 2
 		tl_rec.b = tl_counter
-		i = i + 1
 	tl_addr = &tl_counter
 	slot[2] = tl_counter
 	slot[3] = tl_rec.a
@@ -84,10 +82,8 @@ void test_workers_get_private_zeroed_copies():
 		assert_equal(200000, s[3])
 		assert_equal(100000, s[4])
 		asserts(c"worker saw the main thread's address", s[5] != cast(int, main_addr))
-		int j = 0
-		while (j < i):
+		for j in range(i):
 			asserts(c"two workers shared a thread_local", s[5] != slots[j * 6 + 5])
-			j = j + 1
 		i = i + 1
 	# the main thread's copy is untouched by all of that
 	assert_equal(1234, tl_counter)
@@ -99,10 +95,8 @@ void test_workers_get_private_zeroed_copies():
 # survives from one parallel_for call to the next on the same worker.
 void tl_pool_chunk(int start, int end, void* arg):
 	int* out = cast(int*, arg)
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		tl_counter = tl_counter + 1
-		i = i + 1
 	out[start] = tl_counter
 
 

@@ -31,10 +31,8 @@ int signal_restorer
 
 void signal_thunk_emit(int n, char* bytes):
 	char* p = cast(char*, signal_thunk_page + signal_thunk_pos)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		p[i] = bytes[i]
-		i = i + 1
 	signal_thunk_pos = signal_thunk_pos + n
 
 

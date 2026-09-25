@@ -37,10 +37,8 @@ char* alpnt_key_path():
 
 
 void alpnt_fill(char* buf, int n, int seed):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		buf[i] = (seed + i * 7 + (i >> 3)) & 255
-		i = i + 1
 
 
 # 1 if two optional C strings are equal (both 0 counts as equal).
@@ -117,10 +115,8 @@ char* alpnt_wrap_handshake(char* msg, int mlen, int* out_len):
 	rec[2] = 3
 	rec[3] = (mlen >> 8) & 255
 	rec[4] = mlen & 255
-	int i = 0
-	while (i < mlen):
+	for i in range(mlen):
 		rec[5 + i] = msg[i]
-		i = i + 1
 	*out_len = 5 + mlen
 	return rec
 

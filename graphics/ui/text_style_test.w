@@ -147,12 +147,10 @@ void test_runtime_strike_matches_embedded():
 			asserts(c"a glyph of its own", loaded.y != baked.y || loaded.x != baked.x)
 			int y = 0
 			while (y < loaded.h):
-				int x = 0
-				while (x < loaded.w):
+				for x in range(loaded.w):
 					int a = atlas[(baked.y + y) * w + baked.x + x] & 255
 					int b = atlas[(loaded.y + y) * w + loaded.x + x] & 255
 					asserts(c"same coverage", a == b)
-					x = x + 1
 				y = y + 1
 		ch = ch + 1
 	free(atlas)

@@ -497,12 +497,10 @@ int ftp_read_line(ftp_client* c, string_builder* line):
 # Reply code of a line that starts with three digits (first 1-5), else
 # -1. *sep receives the fourth byte (' ', '-', or 0 at end of line).
 int ftp_line_code(char* line, int* sep):
-	int i = 0
-	while (i < 3):
+	for i in range(3):
 		int ch = line[i] & 255
 		if ((ch < '0') || (ch > '9')):
 			return (-1)
-		i = i + 1
 	int first = (line[0] & 255) - '0'
 	if ((first < 1) || (first > 5)):
 		return (-1)
@@ -946,10 +944,8 @@ char* ftp_mdtm(ftp_client* c, char* path):
 		ftp_fail(c, ftp_error_protocol())
 		return 0
 	char* stamp = malloc(end - 4 + 1)
-	int i = 4
-	while (i < end):
+	for i in range(4, end):
 		stamp[i - 4] = text[i]
-		i = i + 1
 	stamp[end - 4] = 0
 	return stamp
 

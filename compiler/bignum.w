@@ -212,11 +212,9 @@ int bignum_get_bit(int n, int bit):
 int bignum_is_power_of_two(int n, int bit):
 	if (bignum_bit_length(n) != bit + 1):
 		return 0
-	int i = 0
-	while (i < bit):
+	for i in range(bit):
 		if (bignum_get_bit(n, i)):
 			return 0
-		i = i + 1
 	return bignum_get_bit(n, bit)
 
 

@@ -133,10 +133,8 @@ char* process_which(char* name):
 # A vector with room for capacity entries, every slot NULL.
 char** strv_new(int capacity):
 	char* vector = malloc((capacity + 1) * __word_size__)
-	int i = 0
-	while (i <= capacity):
+	for i in range(capacity + 1):
 		save_word(vector + i * __word_size__, 0)
-		i = i + 1
 	return cast(char**, vector)
 
 

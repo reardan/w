@@ -137,10 +137,8 @@ int wrun_exec(list[char*] argv):
 
 # Appends argv[from..argc) to out.
 void wrun_push_rest(list[char*] out, char** argv, int argc, int from):
-	int i = from
-	while (i < argc):
+	for i in range(from, argc):
 		out.push(argv[i])
-		i = i + 1
 
 
 # Appends text's whitespace-separated words to out.
@@ -203,10 +201,8 @@ char* wrun_wasm_host(char* self):
 	if (slashes < 2):
 		return c"tools/run_wasm.mjs"
 	char* root = malloc(cut + 1)
-	int i = 0
-	while (i < cut):
+	for i in range(cut):
 		root[i] = self[i]
-		i = i + 1
 	root[cut] = 0
 	if ((cut == 0) || (strcmp(root, c".") == 0)):
 		if (cut == 0):

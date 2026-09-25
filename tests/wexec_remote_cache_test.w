@@ -83,10 +83,8 @@ char* wrct_extract_id(char* path):
 char* wrct_bytes_dup(char* data, int start, int end):
 	int n = end - start
 	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		out[i] = data[start + i]
-		i = i + 1
 	out[n] = 0
 	return out
 

@@ -523,11 +523,9 @@ void run_all_cases(int jobs):
 	int total = cases.length
 	list[char*] texts = new list[char*]
 	list[int] done = new list[int]
-	int i = 0
-	while (i < total):
+	for i in range(total):
 		texts.push(0)
 		done.push(0)
-		i = i + 1
 	list[process*] kids = new list[process*]
 	list[int] owner = new list[int]
 	int next = 0

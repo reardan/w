@@ -227,11 +227,9 @@ int __w_gpu_driver():
 	int bytes = __w_gpu_device_total * 8 + 8
 	__w_gpu_ctxs = malloc(bytes)
 	__w_gpu_modules = malloc(bytes)
-	int i = 0
-	while (i < bytes):
+	for i in range(0, bytes, 8):
 		save_i(__w_gpu_ctxs + i, 0, 8)
 		save_i(__w_gpu_modules + i, 0, 8)
-		i = i + 8
 	__w_gpu_driver_state = 1
 	return 0
 
@@ -464,10 +462,8 @@ void __w_gpu_launch_raw(char* name, int grid, int block, char* vals, int count):
 	__w_gpu_init()
 	int f = __w_gpu_kernel_handle(name)
 	char* params = malloc(count * 8 + 8)
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		save_ptr(params + i * 8, cast(int, vals) + (count - 1 - i) * 8)
-		i = i + 1
 	__w_gpu_check(cuLaunchKernel(f, grid, 1, 1, block, 1, 1, 0, 0, params, 0), c"cuLaunchKernel")
 	free(params)
 

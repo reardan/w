@@ -80,10 +80,8 @@ int string_equals(string_builder* s, char* c):
 # through embedded NUL bytes, so it can carry string descriptor contents.
 void string_append_bytes(string_builder* s, char* data, int length):
 	string_reserve(s, length)
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		s.data[s.length + i] = data[i]
-		i = i + 1
 	s.length = s.length + length
 	s.data[s.length] = 0
 
@@ -141,10 +139,8 @@ string __w_template_finish(string_builder* s):
 
 
 void __w_template_copy(char* dst, char* src, int length):
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		dst[i] = src[i]
-		i = i + 1
 
 
 # Encode codepoint c as UTF-8 at out (negative values: one raw byte);
@@ -183,11 +179,9 @@ void __w_template_pad(string_builder* s, char* text, int length, int width, int 
 	int fill = flags >> 8
 	int align = flags & 255
 	int columns = 0
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		if ((text[i] & 192) != 128):
 			columns = columns + 1
-		i = i + 1
 	int pad = width - columns
 	if (pad < 0):
 		pad = 0

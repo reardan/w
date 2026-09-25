@@ -90,14 +90,12 @@ void ui_table_begin(ui_context* ctx, ui_rect area, char** headers, int32* col_wi
 	# Header: outside the body's clip, so it does not scroll.
 	ui_rect header = ui_rect_new(area.x, area.y, area.w, row_h)
 	ui_draw_rrect(ctx.rndr, header, cast(float32, ctx.theme.radius_small), ctx.theme.widget)
-	int i = 0
-	while (i < col_count):
+	for i in range(col_count):
 		float32 cx = header.x + ui_table_col_x(st, i)
 		float32 cw = cast(float32, col_widths[i])
 		ui_clip_push(ctx.rndr, ui_rect_new(cx, header.y, cw, row_h))
 		ui_draw_text(ctx.rndr, cx + pad, header.y + (row_h - cast(float32, ui_text_height(scale))) * 0.5, headers[i], scale, ctx.theme.text_muted)
 		ui_clip_pop(ctx.rndr)
-		i = i + 1
 	ui_render_rect(ctx.rndr, ui_rect_new(area.x, area.y + row_h, area.w, 1.0), ctx.theme.border)
 
 	ui_rect body = ui_rect_new(area.x, area.y + row_h + 1.0, area.w, area.h - row_h - 1.0)

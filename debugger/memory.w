@@ -113,8 +113,7 @@ void dbg_print_string_preview(int addr):
 	if (dbg_mem_readable(addr, 1) == 0):
 		return;
 	print(c" \x22")
-	int i = 0
-	while (i < 64):
+	for i in range(64):
 		if (dbg_mem_readable(addr + i, 1) == 0):
 			print(c"\x22...")
 			return;
@@ -126,5 +125,4 @@ void dbg_print_string_preview(int addr):
 			print(c"\x22...")
 			return;
 		put_char(c)
-		i = i + 1
 	print(c"\x22...")

@@ -63,10 +63,8 @@ const int dbg_eval_scratch_size = 8192
 void dbg_eval_copy(int from, int to, int n):
 	char* src = cast(char*, from)
 	char* dst = cast(char*, to)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		dst[i] = src[i]
-		i = i + 1
 
 
 # Bind every local and argument visible at the stop as a defined global

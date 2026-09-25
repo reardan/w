@@ -570,25 +570,21 @@ int smtp_word_is(char* text, int start, int end, char* word):
 	int n = strlen(word)
 	if (end - start != n):
 		return 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (smtp_upper(text[start + i] & 255) != (word[i] & 255)):
 			return 0
-		i = i + 1
 	return 1
 
 
 int smtp_parse_decimal(char* text, int start, int end):
 	int v = 0
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		int ch = text[i] & 255
 		if (smtp_is_digit(ch) == 0):
 			return 0
 		if (v > 200000000):
 			return 2000000000
 		v = v * 10 + (ch - '0')
-		i = i + 1
 	return v
 
 
@@ -608,10 +604,8 @@ void smtp_note_auth_mechs(smtp_client* c, char* text, int start, int end):
 				c.auth_login = 1
 			if (mechs.length > 0):
 				string_append_char(mechs, ' ')
-			int k = ws
-			while (k < i):
+			for k in range(ws, i):
 				string_append_char(mechs, smtp_upper(text[k] & 255))
-				k = k + 1
 	free(c.auth_mechs)
 	c.auth_mechs = mechs.data
 	free(cast(char*, mechs))
@@ -920,11 +914,9 @@ int smtp_rcpt_to(smtp_client* c, char* addr):
 
 
 int smtp_has_8bit(char* data, int len):
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		if ((data[i] & 255) >= 128):
 			return 1
-		i = i + 1
 	return 0
 
 
@@ -1303,11 +1295,9 @@ char* smtp_random_hex(int nbytes):
 	if (random_bytes(raw, nbytes) == 0):
 		smtp_random_counter = smtp_random_counter + 1
 		int seed = time_now() * 31 + time_monotonic_ms() + smtp_random_counter * 7919
-		int i = 0
-		while (i < nbytes):
+		for i in range(nbytes):
 			seed = seed * 1103515245 + 12345
 			raw[i] = (seed >> 16) & 255
-			i = i + 1
 	char* out = hex_encode(raw, nbytes)
 	free(raw)
 	return out
@@ -1522,12 +1512,10 @@ int smtp_valid_boundary(char* b):
 	int n = strlen(b)
 	if ((n == 0) || (n > 70)):
 		return 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int ch = b[i] & 255
 		if ((ch <= 32) || (ch >= 127) || (ch == '"')):
 			return 0
-		i = i + 1
 	return 1
 
 
@@ -1536,12 +1524,10 @@ int smtp_valid_msgid(char* id):
 	int n = strlen(id)
 	if ((n < 3) || (n > 250) || (id[0] != '<') || (id[n - 1] != '>')):
 		return 0
-	int i = 1
-	while (i < n - 1):
+	for i in range(1, n - 1):
 		int ch = id[i] & 255
 		if ((ch <= 32) || (ch >= 127) || (ch == '<') || (ch == '>')):
 			return 0
-		i = i + 1
 	return 1
 
 

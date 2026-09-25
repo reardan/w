@@ -195,25 +195,21 @@ void le_write(char* s):
 
 # Buffer text with tabs expanded to 4 spaces (display only).
 void le_write_expanded(char* buf, int from, int to):
-	int i = from
-	while (i < to):
+	for i in range(from, to):
 		if (buf[i] == 9):
 			le_write(c"    ")
 		else:
 			put_char(buf[i])
-		i = i + 1
 
 
 # Display columns occupied by buf[from..to).
 int le_display_width(char* buf, int from, int to):
 	int w = 0
-	int i = from
-	while (i < to):
+	for i in range(from, to):
 		if (buf[i] == 9):
 			w = w + 4
 		else:
 			w = w + 1
-		i = i + 1
 	return w
 
 
@@ -434,14 +430,12 @@ int le_candidates_common_len(char* out, int count):
 		return 0
 	char* first = cast(char*, load_word(out))
 	int common = strlen(first)
-	int k = 1
-	while (k < count):
+	for k in range(1, count):
 		char* cand = cast(char*, load_word(out + k * __word_size__))
 		int j = 0
 		while ((j < common) && (cand[j] == first[j])):
 			j = j + 1
 		common = j
-		k = k + 1
 	return common
 
 
@@ -472,10 +466,8 @@ void le_list_candidates(char* out, int count):
 		char* name = cast(char*, load_word(out + i * __word_size__))
 		le_write(name)
 		int pad = width - strlen(name)
-		int p = 0
-		while (p < pad):
+		for p in range(pad):
 			put_char(' ')
-			p = p + 1
 		i = i + 1
 		if ((i % cols) == 0):
 			put_char(10)
@@ -500,10 +492,8 @@ int le_try_complete(char* buf, int size):
 	int start = le_ident_start(buf, le_pos)
 	int prefix_len = le_pos - start
 	char* prefix = malloc(prefix_len + 1)
-	int i = 0
-	while (i < prefix_len):
+	for i in range(prefix_len):
 		prefix[i] = buf[start + i]
-		i = i + 1
 	prefix[prefix_len] = 0
 
 	int capacity = le_complete_capacity()
@@ -516,10 +506,8 @@ int le_try_complete(char* buf, int size):
 	# has room to spare (the ceiling only guards against a hook that
 	# always claims a full buffer).
 	while ((count == capacity) && (capacity < 65536)):
-		int k = 0
-		while (k < count):
+		for k in range(count):
 			free(cast(char*, load_word(out + k * __word_size__)))
-			k = k + 1
 		free(out)
 		capacity = capacity * 2
 		out = malloc(capacity * __word_size__)
@@ -534,18 +522,14 @@ int le_try_complete(char* buf, int size):
 	if (common > prefix_len):
 		char* first = cast(char*, load_word(out))
 		int extra = common - prefix_len
-		int n = 0
-		while (n < extra):
+		for n in range(extra):
 			le_insert_char(buf, size, first[prefix_len + n])
-			n = n + 1
 
 	if (count > 1):
 		le_list_candidates(out, count)
 
-	int c = 0
-	while (c < count):
+	for c in range(count):
 		free(cast(char*, load_word(out + c * __word_size__)))
-		c = c + 1
 	free(out)
 	free(prefix)
 	return 1

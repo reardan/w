@@ -36,10 +36,8 @@ import libs.extras.vcs.delta
 
 char* vcdt_repeat(int ch, int n):
 	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		out[i] = ch
-		i = i + 1
 	out[n] = 0
 	return out
 
@@ -55,8 +53,7 @@ int vcdt_count_kind(delta_ops* ops, int kind):
 int vcdt_ops_equal(delta_ops* a, delta_ops* b):
 	if (a.items.length != b.items.length):
 		return 0
-	int i = 0
-	while (i < a.items.length):
+	for i in range(a.items.length):
 		delta_op* x = a.items[i]
 		delta_op* y = b.items[i]
 		if (x.kind != y.kind):
@@ -72,7 +69,6 @@ int vcdt_ops_equal(delta_ops* a, delta_ops* b):
 				if (x.literal[j] != y.literal[j]):
 					return 0
 				j = j + 1
-		i = i + 1
 	return 1
 
 
@@ -387,10 +383,8 @@ void vcdt_track(char* id):
 # it, built from a single repeated character.
 char* vcdt_fake_id(int ch):
 	char* id = malloc(65)
-	int i = 0
-	while (i < 64):
+	for i in range(64):
 		id[i] = ch
-		i = i + 1
 	id[64] = 0
 	return id
 
@@ -494,8 +488,7 @@ void test_delta_chain_depth_bound():
 	int prev_len = 200
 
 	int reset_seen = 0
-	int step = 1
-	while (step <= 20):
+	for step in range(1, 20 + 1):
 		string_builder* sb = string_new()
 		string_append_bytes(sb, prev_data, prev_len)
 		string_append(sb, c"-x")
@@ -525,7 +518,6 @@ void test_delta_chain_depth_bound():
 		prev_id = next_id
 		prev_data = next_data
 		prev_len = next_len
-		step = step + 1
 
 	assert_equal(1, reset_seen)
 	free(prev_id)

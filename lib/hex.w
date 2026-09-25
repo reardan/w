@@ -37,10 +37,8 @@ char* hex_encode(char* data, int len):
 	if (len < 0):
 		len = 0
 	char* out = malloc(len * 2 + 1)
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		hex_put_byte(&out[i * 2], data[i] & 255)
-		i = i + 1
 	out[len * 2] = 0
 	return out
 
@@ -55,15 +53,13 @@ char* hex_decode(char* text, int len, int* out_len):
 	if ((len % 2) != 0):
 		return 0
 	char* out = malloc(len / 2 + 1)
-	int i = 0
-	while (i < len):
+	for i in range(0, len, 2):
 		int hi = hex_decode_char(text[i] & 255)
 		int lo = hex_decode_char(text[i + 1] & 255)
 		if ((hi < 0) || (lo < 0)):
 			free(out)
 			return 0
 		out[i / 2] = (hi << 4) | lo
-		i = i + 2
 	out[len / 2] = 0
 	*out_len = len / 2
 	return out
@@ -72,10 +68,8 @@ char* hex_decode(char* text, int len, int* out_len):
 # Decodes the 2 * n hex characters at text into n bytes at out, with no
 # validation and no allocation (fixed-size vectors and constants).
 void hex_decode_into(char* text, char* out, int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		out[i] = (hex_decode_char(text[i * 2] & 255) << 4) | hex_decode_char(text[i * 2 + 1] & 255)
-		i = i + 1
 
 
 # Decodes the hex digits of a NUL-terminated string, skipping every
@@ -88,8 +82,7 @@ char* hex_decode_loose(char* text, int* out_len):
 	char* out = malloc(len / 2 + 1)
 	int n = 0
 	int hi = 0 - 1
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		int v = hex_decode_char(text[i] & 255)
 		if (v >= 0):
 			if (hi < 0):
@@ -98,7 +91,6 @@ char* hex_decode_loose(char* text, int* out_len):
 				out[n] = (hi << 4) | v
 				n = n + 1
 				hi = 0 - 1
-		i = i + 1
 	out[n] = 0
 	*out_len = n
 	return out

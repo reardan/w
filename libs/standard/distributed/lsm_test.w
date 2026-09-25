@@ -93,10 +93,8 @@ char* lt_pad_key(char* stem, int i, int digits):
 	assert1(n <= digits)
 	char* suffix = malloc(digits + 1)
 	mem_fill(suffix, '0', digits - n)
-	int j = 0
-	while (j < n):
+	for j in range(n):
 		suffix[digits - n + j] = num[j]
-		j = j + 1
 	suffix[digits] = 0
 	char* key = strjoin(stem, suffix)
 	free(suffix)
@@ -610,8 +608,7 @@ void test_binary_values_all_tiers():
 # "v" + key; every third key must be gone.
 void lt_verify_stress(lsm* l):
 	int* n = lt_len_out()
-	int j = 0
-	while (j < 200):
+	for j in range(200):
 		char* key = lt_pad_key(c"key", j, 3)
 		if (j % 3 == 0):
 			n[0] = 99
@@ -626,7 +623,6 @@ void lt_verify_stress(lsm* l):
 			free(got)
 			free(want)
 		free(key)
-		j = j + 1
 	free(cast(char*, n))
 
 
@@ -818,10 +814,8 @@ void test_export_import_roundtrip():
 	assert_equal(3, lsm_total_entries(l2))
 	char* exported2 = lsm_export(l2, n)
 	assert_equal(elen, n[0])
-	int i = 0
-	while (i < elen):
+	for i in range(elen):
 		assert_equal(exported[i] & 255, exported2[i] & 255)
-		i = i + 1
 	free(exported2)
 	free(exported)
 	free(cast(char*, n))

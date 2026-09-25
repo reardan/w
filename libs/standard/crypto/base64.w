@@ -110,14 +110,12 @@ char* base64_decode(char* text, int len, int* out_len):
 		if ((i + 4 == len) && (pad > 0)):
 			chars = 4 - pad
 		int v = 0
-		int j = 0
-		while (j < chars):
+		for j in range(chars):
 			int d = base64_decode_char(text[i + j] & 255)
 			if (d < 0):
 				free(out)
 				return 0
 			v = (v << 6) | d
-			j = j + 1
 		if (chars == 4):
 			out[o] = (v >> 16) & 255
 			out[o + 1] = (v >> 8) & 255

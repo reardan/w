@@ -364,12 +364,10 @@ wresult[commit_object*]* commit_parse(char* data, int length):
 	commit_object* co = new commit_object
 	co.tree_id = path_clone_range(data + lay.tree_start, lay.tree_end - lay.tree_start)
 	co.parent_ids = new list[char*]
-	int i = 0
-	while (i < lay.parent_starts.length):
+	for i in range(lay.parent_starts.length):
 		int ps = lay.parent_starts[i]
 		int pe = lay.parent_ends[i]
 		co.parent_ids.push(path_clone_range(data + ps, pe - ps))
-		i = i + 1
 	co.author = path_clone_range(data + lay.author_start, lay.author_end - lay.author_start)
 	char* ts_str = path_clone_range(data + lay.timestamp_start, lay.timestamp_end - lay.timestamp_start)
 	co.timestamp = atoi(ts_str)
@@ -489,11 +487,9 @@ int ref_valid_name(char* name):
 		return 0
 	if (mem_starts_with(name, len, 0, c"tmp_")):
 		return 0
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		if (ref_valid_name_char(name[i] & 255) == 0):
 			return 0
-		i = i + 1
 	return 1
 
 

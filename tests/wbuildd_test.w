@@ -143,8 +143,7 @@ int wbt_status_int(char* key):
 # bin/wtest shares bin/.wtest_deps_cache with the daemon's background
 # prewarm; comparisons wait for it so the cache file has one writer.
 void wbt_wait_prewarm_idle():
-	int waited = 0
-	while (waited < 300000):
+	for waited in range(0, 300000, 100):
 		json_value* v = wbt_status()
 		json_value* state = json_object_get(v, c"prewarm")
 		int idle = strcmp(state.string_value, c"idle") == 0
@@ -152,7 +151,6 @@ void wbt_wait_prewarm_idle():
 		if (idle):
 			return
 		process_sleep_ms(100)
-		waited = waited + 100
 	asserts(c"prewarm never went idle", 0)
 
 
@@ -186,10 +184,8 @@ char* wbt_stderr_without_cache_progress(char* text):
 		char* line = &text[i]
 		int progress = starts_with(line, c"wtest: building import-closure cache") || starts_with(line, c"wtest: import-closure cache: ")
 		if (progress == 0):
-			int k = i
-			while (k < end):
+			for k in range(i, end):
 				string_append_char(out, text[k])
-				k = k + 1
 			if (text[end] == 10):
 				string_append_char(out, 10)
 		if (text[end] == 10):
@@ -272,15 +268,13 @@ void wbt_compare_all():
 # miss is retried a few times before it counts as a failure.
 void wbt_expect_memo_hit():
 	char* args = strjoin(c"--require-daemon ", wbt_args2(c"check --json ", c"a.w"))
-	int attempt = 0
-	while (attempt < 10):
+	for attempt in range(10):
 		process_result_free(wbt_client_run(args))
 		int before = wbt_status_int(c"hits")
 		process_result_free(wbt_client_run(args))
 		if (wbt_status_int(c"hits") > before):
 			assert1(wbt_status_int(c"cached_entries") > 0)
 			return
-		attempt = attempt + 1
 	asserts(c"a repeated query was never answered from the memo", 0)
 
 

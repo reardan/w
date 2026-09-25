@@ -38,10 +38,8 @@ float central_diff(float f_plus, float f_minus, float h):
 
 float ref_chain(tensor* a, tensor* b, tensor* c):
 	float total = 0.0
-	int i = 0
-	while (i < a.len):
+	for i in range(a.len):
 		total = total + (a.data[i] + b.data[i]) * c.data[i]
-		i = i + 1
 	return total
 
 
@@ -117,10 +115,8 @@ int check_chain():
 
 float ref_add_scalar(tensor* a, tensor* w, float k):
 	float total = 0.0
-	int i = 0
-	while (i < a.len):
+	for i in range(a.len):
 		total = total + (a.data[i] + k) * w.data[i]
-		i = i + 1
 	return total
 
 
@@ -169,10 +165,8 @@ int check_add_scalar():
 
 float ref_mul_scalar(tensor* a, float k):
 	float total = 0.0
-	int i = 0
-	while (i < a.len):
+	for i in range(a.len):
 		total = total + a.data[i] * k
-		i = i + 1
 	return total
 
 
@@ -215,10 +209,8 @@ int check_mul_scalar():
 
 float ref_sum(tensor* a):
 	float total = 0.0
-	int i = 0
-	while (i < a.len):
+	for i in range(a.len):
 		total = total + a.data[i]
-		i = i + 1
 	return total
 
 
@@ -260,13 +252,11 @@ int check_sum():
 
 float ref_relu(tensor* a, tensor* w):
 	float total = 0.0
-	int i = 0
-	while (i < a.len):
+	for i in range(a.len):
 		float x = a.data[i]
 		if (x < 0.0):
 			x = 0.0
 		total = total + x * w.data[i]
-		i = i + 1
 	return total
 
 
@@ -319,18 +309,12 @@ int check_relu():
 
 float ref_matmul(tensor* a, tensor* b, tensor* w, int m, int k, int n):
 	float total = 0.0
-	int i = 0
-	while (i < m):
-		int j = 0
-		while (j < n):
+	for i in range(m):
+		for j in range(n):
 			float acc = 0.0
-			int p = 0
-			while (p < k):
+			for p in range(k):
 				acc = acc + a.data[i * k + p] * b.data[p * n + j]
-				p = p + 1
 			total = total + acc * w.data[i * n + j]
-			j = j + 1
-		i = i + 1
 	return total
 
 
@@ -402,13 +386,9 @@ int check_matmul():
 
 float ref_add_row(tensor* a, tensor* r, tensor* w, int m, int n):
 	float total = 0.0
-	int i = 0
-	while (i < m):
-		int j = 0
-		while (j < n):
+	for i in range(m):
+		for j in range(n):
 			total = total + (a.data[i * n + j] + r.data[j]) * w.data[i * n + j]
-			j = j + 1
-		i = i + 1
 	return total
 
 
@@ -476,8 +456,7 @@ int check_add_row():
 
 float ref_softmax_ce(tensor* logits, ndi* labels, int batch, int classes):
 	float total = 0.0
-	int i = 0
-	while (i < batch):
+	for i in range(batch):
 		float m = logits.data[i * classes]
 		int j = 1
 		while (j < classes):
@@ -493,7 +472,6 @@ float ref_softmax_ce(tensor* logits, ndi* labels, int batch, int classes):
 		int lbl = labels.data[i]
 		float p_lbl = fexp(logits.data[i * classes + lbl] - m) / rowsum
 		total = total - flog(p_lbl)
-		i = i + 1
 	return total / cast(float, batch)
 
 
@@ -544,14 +522,12 @@ int check_softmax_ce():
 
 float ref_accum(tensor* x):
 	float total = 0.0
-	int i = 0
-	while (i < x.len):
+	for i in range(x.len):
 		float v = x.data[i]
 		float r = v
 		if (r < 0.0):
 			r = 0.0
 		total = total + 2.0 * v + r
-		i = i + 1
 	return total
 
 
@@ -600,18 +576,12 @@ int check_accum():
 
 float ref_matmul_nt(tensor* a, tensor* b, tensor* w, int m, int k, int n):
 	float total = 0.0
-	int i = 0
-	while (i < m):
-		int j = 0
-		while (j < n):
+	for i in range(m):
+		for j in range(n):
 			float acc = 0.0
-			int l = 0
-			while (l < k):
+			for l in range(k):
 				acc = acc + a.data[i * k + l] * b.data[j * k + l]
-				l = l + 1
 			total = total + acc * w.data[i * n + j]
-			j = j + 1
-		i = i + 1
 	return total
 
 
@@ -684,8 +654,7 @@ int check_matmul_nt():
 float ref_layernorm(tensor* x, tensor* gamma, tensor* beta, tensor* w, int m, int n):
 	float total = 0.0
 	float fn = cast(float, n)
-	int i = 0
-	while (i < m):
+	for i in range(m):
 		float mean = 0.0
 		int j = 0
 		while (j < n):
@@ -704,7 +673,6 @@ float ref_layernorm(tensor* x, tensor* gamma, tensor* beta, tensor* w, int m, in
 			float ln = gamma.data[j] * ((x.data[i * n + j] - mean) * rstd) + beta.data[j]
 			total = total + ln * w.data[i * n + j]
 			j = j + 1
-		i = i + 1
 	return total
 
 
@@ -850,13 +818,9 @@ int check_softmax_causal():
 
 float ref_embedding(tensor* table, ndi* ids, tensor* w, int n, int dim):
 	float total = 0.0
-	int i = 0
-	while (i < n):
-		int j = 0
-		while (j < dim):
+	for i in range(n):
+		for j in range(dim):
 			total = total + table.data[ids.data[i] * dim + j] * w.data[i * dim + j]
-			j = j + 1
-		i = i + 1
 	return total
 
 

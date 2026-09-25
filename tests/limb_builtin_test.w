@@ -100,12 +100,10 @@ void test_carry_chain_ripple():
 	limbs[1] = m
 	limbs[2] = m
 	int carry = 1
-	int i = 0
-	while (i < 3):
+	for i in range(3):
 		int c = 0
 		limbs[i] = add_carry(limbs[i], carry, &c)
 		carry = c
-		i = i + 1
 	assert_equal(0, limbs[0])
 	assert_equal(0, limbs[1])
 	assert_equal(0, limbs[2])
@@ -122,8 +120,7 @@ void mul_limbs_3x3(int* a, int* b, int* out):
 		i = i + 1
 	i = 0
 	while (i < 3):
-		int j = 0
-		while (j < 3):
+		for j in range(3):
 			int hi = 0
 			int lo = mul_wide(a[i], b[j], &hi)
 			int c = 0
@@ -140,7 +137,6 @@ void mul_limbs_3x3(int* a, int* b, int* out):
 				# leaves out[k] below 0xffffffff
 				c = c1 + c2
 				k = k + 1
-			j = j + 1
 		i = i + 1
 
 

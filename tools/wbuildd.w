@@ -1063,10 +1063,8 @@ int wbd_conn_fill(wbd_conn* c):
 	int* got = malloc(8 * __word_size__)
 	int count = 0
 	int n = unix_recv_fds(c.fd, r.buffer + r.length, r.capacity - r.length, got, 8, &count)
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		c.fds.push(got[i])
-		i = i + 1
 	free(cast(char*, got))
 	if (n > 0):
 		r.length = r.length + n
@@ -1235,11 +1233,9 @@ void wbd_build_child(int* fds, list[char*] args, char** envp, int mask, int repo
 	dup2(fds[2], 2)
 	# Nothing of the daemon's (listener, inotify, other clients' sockets
 	# and build pipes) may leak into the build.
-	int fd = 3
-	while (fd < 1024):
+	for fd in range(3, 1024):
 		if (fd != report_fd):
 			close(fd)
-		fd = fd + 1
 	if (mask >= 0):
 		wbd_umask(mask)
 	environ_ptr = cast(int, envp)
@@ -1763,15 +1759,13 @@ int wbd_stop_main():
 		return 0
 	json_free(result)
 	# Wait until the listener is gone so a following 'start' binds cleanly.
-	int waited = 0
-	while (waited < 10000):
+	for waited in range(0, 10000, 50):
 		int fd = wbd_connect()
 		if (fd < 0):
 			wbd_out(c"wbuildd: stopped\n")
 			return 0
 		close(fd)
 		process_sleep_ms(50)
-		waited = waited + 50
 	wbd_err(c"wbuildd: daemon did not stop within 10s\n")
 	return 1
 
@@ -1829,8 +1823,7 @@ int wbd_start_main(char* argv0, wbd_serve_options* o):
 	if (p == 0):
 		wbd_err(c"wbuildd: cannot spawn the daemon\n")
 		return 1
-	int waited = 0
-	while (waited < 15000):
+	for waited in range(0, 15000, 50):
 		int fd = wbd_connect()
 		if (fd >= 0):
 			close(fd)
@@ -1847,7 +1840,6 @@ int wbd_start_main(char* argv0, wbd_serve_options* o):
 			wbd_err2(c"wbuildd: daemon exited during startup; see ", o.log_path)
 			return 1
 		process_sleep_ms(50)
-		waited = waited + 50
 	wbd_err(c"wbuildd: daemon did not answer within 15s\n")
 	return 1
 
@@ -1897,8 +1889,7 @@ int wbd_connect_client():
 	process* p = wbd_spawn_daemon(wbd_argv0, o)
 	if (p == 0):
 		return -1
-	int waited = 0
-	while (waited < 15000):
+	for waited in range(0, 15000, 20):
 		fd = wbd_connect()
 		if (fd >= 0):
 			return fd
@@ -1907,7 +1898,6 @@ int wbd_connect_client():
 			# (see the log): one last look, then fall back.
 			return wbd_connect()
 		process_sleep_ms(20)
-		waited = waited + 20
 	return -1
 
 
@@ -1928,12 +1918,10 @@ int wbd_build_main(list[char*] args):
 	char* tool = c"bin/wexec"
 	if (wbd_no_daemon):
 		return wbd_oneshot(tool, 0, args, 0)
-	int k = 0
-	while (k < 3):
+	for k in range(3):
 		# F_GETFD: all three standard descriptors must exist to be passed.
 		if (sys_fcntl(k, 1, 0) < 0):
 			return wbd_unreachable(c"a standard descriptor is closed", tool, 0, args, 0)
-		k = k + 1
 	int fd = wbd_connect_client()
 	if (fd < 0):
 		return wbd_unreachable(c"no daemon is listening", tool, 0, args, 0)

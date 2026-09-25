@@ -137,14 +137,12 @@ void crash_build_id():
 		# into it, code_generator/macho_64.w).
 		int lc = st_base + 32
 		int ncmds = st_int32(st_base + 16)
-		int k = 0
-		while (k < ncmds):
+		for k in range(ncmds):
 			if (st_int32(lc) == 27):
 				cd_id_addr = lc + 8
 				cd_id_size = 16
 				return;
 			lc = lc + st_int32(lc + 4)
-			k = k + 1
 		return;
 	int b = st_base
 	int phoff = 0
@@ -385,10 +383,8 @@ int cd_note(int off, char* name, int namesz, int descsz, int ntype):
 	cd_put32(off, namesz)
 	cd_put32(off + 4, descsz)
 	cd_put32(off + 8, ntype)
-	int i = 0
-	while (i < namesz):
+	for i in range(namesz):
 		cd_put8(off + 12 + i, name[i])
-		i = i + 1
 	return off + 12 + (namesz + 3) / 4 * 4
 
 
@@ -636,12 +632,10 @@ int crash_dump_write(int sig, int context):
 		reg_off = 112
 		nregs = 27
 	cd_put32(d + pid_off, getpid())
-	int r = 0
-	while (r < nregs):
+	for r in range(nregs):
 		int roff = cd_reg_off(r)
 		if (roff != -3):
 			cd_putw(d + reg_off + r * __word_size__, cd_reg(context, roff))
-		r = r + 1
 	# NT_SIGINFO
 	d = cd_note(d + (cd_prstatus_size() + 3) / 4 * 4, c"CORE", 5, 128, 0x53494749)
 	cd_put32(d, sig)

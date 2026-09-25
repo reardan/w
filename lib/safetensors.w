@@ -105,14 +105,12 @@ ndf* st_get(st_file* f, char* name):
 
 
 void st_free(st_file* f):
-	int i = 0
-	while (i < f.tensors.length):
+	for i in range(f.tensors.length):
 		st_tensor* entry = f.tensors[i]
 		if (entry.owned):
 			free(entry.t.data.data)
 		free(entry.name)
 		free(entry)
-		i = i + 1
 	list_free[st_tensor*](f.tensors)
 	map_free[char*, st_tensor*](f.by_name)
 	free(f)
@@ -292,8 +290,7 @@ int st_load_tensor(st_file* f, char* name, json_value* meta, string_builder* dat
 	int n2 = 1
 	int n3 = 1
 	int elements = 1
-	int j = 0
-	while (j < rank):
+	for j in range(rank):
 		json_value* d = json_array_get(shape_v, j)
 		if ((d.type != json_type_int()) || (d.int_value <= 0)):
 			println2(f"safetensors: tensor '{name}' has a non-positive or non-integer shape dimension")
@@ -307,7 +304,6 @@ int st_load_tensor(st_file* f, char* name, json_value* meta, string_builder* dat
 			n2 = d.int_value
 		else:
 			n3 = d.int_value
-		j = j + 1
 
 	json_value* offsets_v = json_object_get(meta, c"data_offsets")
 	if ((offsets_v == 0) || (offsets_v.type != json_type_array()) || (json_array_length(offsets_v) != 2)):

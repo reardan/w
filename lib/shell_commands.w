@@ -165,13 +165,11 @@ void shell_commands_mode_string(int mode, char* out):
 	if (kind == FILE_S_IFLNK()):
 		out[0] = 'l'
 	char* letters = c"rwxrwxrwx"
-	int i = 0
-	while (i < 9):
+	for i in range(9):
 		if (mode & (256 >> i)):
 			out[i + 1] = letters[i]
 		else:
 			out[i + 1] = '-'
-		i = i + 1
 	out[10] = 0
 
 
@@ -409,8 +407,7 @@ int shell_commands_wc(char* path, bool count_lines, bool count_words, bool count
 	int lines = 0
 	int words = 0
 	int in_word = 0
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		char ch = text[i]
 		if (ch == 10):
 			lines = lines + 1
@@ -420,7 +417,6 @@ int shell_commands_wc(char* path, bool count_lines, bool count_words, bool count
 			if (in_word == 0):
 				words = words + 1
 			in_word = 1
-		i = i + 1
 	if (show_lines):
 		char* s = itoa(lines)
 		print(s)

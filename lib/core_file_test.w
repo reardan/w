@@ -12,10 +12,8 @@ int core_test_wsize():
 
 
 void core_test_put(char* buf, int off, int v, int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		buf[off + i] = (v >> (i * 8)) & 255
-		i = i + 1
 
 
 void core_test_putw(char* buf, int off, int v):

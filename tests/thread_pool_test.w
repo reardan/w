@@ -31,17 +31,13 @@ int[40] nested_buffer
 
 void pool_fill_cb(int chunk_start, int chunk_end, void* arg):
 	int base = cast(int, arg)
-	int i = chunk_start
-	while (i < chunk_end):
+	for i in range(chunk_start, chunk_end):
 		pool_buffer[i] = i * 7 + base
-		i = i + 1
 
 
 void pool_check_range(int start, int end, int base):
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		assert_equal(i * 7 + base, pool_buffer[i])
-		i = i + 1
 
 
 # The spawn-cost case: 1000 parallel_for calls in a loop reuse the
@@ -51,11 +47,9 @@ void pool_check_range(int start, int end, int base):
 # provably never grew past the first call's nthreads - 1.
 void test_pool_reused_across_calls():
 	thread_pool_shutdown()
-	int it = 0
-	while (it < 1000):
+	for it in range(1000):
 		parallel_for(0, 48, 4, pool_fill_cb, cast(void*, it))
 		pool_check_range(0, 48, it)
-		it = it + 1
 	assert_equal(3, thread_pool_size)
 	thread_pool_shutdown()
 	assert_equal(0, thread_pool_size)
@@ -92,31 +86,25 @@ void test_pool_lazy_recreate_after_shutdown():
 # leaks would exhaust a 32-bit address space over enough cycles) and
 # the pool restarts cleanly each time.
 void test_pool_init_shutdown_cycles():
-	int cycle = 0
-	while (cycle < 40):
+	for cycle in range(40):
 		assert_equal(2, thread_pool_init(2))
 		parallel_for(0, 8, 3, pool_fill_cb, cast(void*, cycle))
 		pool_check_range(0, 8, cycle)
 		thread_pool_shutdown()
 		assert_equal(0, thread_pool_size)
-		cycle = cycle + 1
 
 
 void nested_inner_cb(int chunk_start, int chunk_end, void* arg):
-	int i = chunk_start
-	while (i < chunk_end):
+	for i in range(chunk_start, chunk_end):
 		nested_buffer[i] = i * 3 + 1
-		i = i + 1
 
 
 # Runs on the main thread for outer chunk 0 (its nested call takes
 # the spawn fallback while the pool is busy) and on pool workers for
 # outer chunks 1..3 (their nested calls run serially in place).
 void nested_outer_cb(int chunk_start, int chunk_end, void* arg):
-	int c = chunk_start
-	while (c < chunk_end):
+	for c in range(chunk_start, chunk_end):
 		parallel_for(c * 10, c * 10 + 10, 2, nested_inner_cb, arg)
-		c = c + 1
 
 
 void test_pool_nested_parallel_for():
@@ -134,13 +122,11 @@ void test_pool_nested_parallel_for():
 
 
 void pool_mutex_cb(int chunk_start, int chunk_end, void* arg):
-	int i = chunk_start
-	while (i < chunk_end):
+	for i in range(chunk_start, chunk_end):
 		mutex_lock(pool_mutex)
 		# non-atomic read-modify-write, safe only under the lock
 		pool_locked_count = pool_locked_count + 1
 		mutex_unlock(pool_mutex)
-		i = i + 1
 
 
 # Pool workers and the calling thread contend on one wmutex inside
@@ -151,10 +137,8 @@ void test_pool_mutex_interplay():
 	pool_mutex = new wmutex()
 	mutex_init(pool_mutex)
 	pool_locked_count = 0
-	int it = 0
-	while (it < 25):
+	for it in range(25):
 		parallel_for(0, 4000, 4, pool_mutex_cb, cast(void*, 0))
-		it = it + 1
 	assert_equal(25 * 4000, pool_locked_count)
 	free(cast(void*, pool_mutex))
 	thread_pool_shutdown()

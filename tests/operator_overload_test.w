@@ -332,10 +332,8 @@ void oo_defer_capture():
 # Generator whose yields run an operator use on dereferenced struct
 # POINTER parameters: (*pa) * (*pb) is the vec3 dot product.
 generator int oo_dots(vec3* pa, vec3* pb, int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		yield cast(int, (*pa) * (*pb))
-		i = i + 1
 
 
 # 'operator' is a keyword only in definition-name position: this

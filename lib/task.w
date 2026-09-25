@@ -860,12 +860,10 @@ int task_group_cancel(task_group* g):
 	g.cancelled = 1
 	int count = 0
 	task_scheduler* s = g.sched
-	int i = 0
-	while (i < s.tasks.length):
+	for i in range(s.tasks.length):
 		task* t = s.tasks[i]
 		if ((cast(task_group*, t.group) == g) && (t.state != task_state_done())):
 			count = count + task_cancel(t)
-		i = i + 1
 	return count
 
 
@@ -936,8 +934,7 @@ void task_dump_fd(task_scheduler* s, int fd):
 	write_string(fd, c" active, ")
 	write_string(fd, itoa(s.ready.length))
 	write_string(fd, c" ready\x0a")
-	int i = 0
-	while (i < s.tasks.length):
+	for i in range(s.tasks.length):
 		task* t = s.tasks[i]
 		write_string(fd, c"  #")
 		write_string(fd, itoa(t.id))
@@ -958,7 +955,6 @@ void task_dump_fd(task_scheduler* s, int fd):
 			write_string(fd, itoa(t.deadline_ms - time_monotonic_ms()))
 			write_string(fd, c"ms]")
 		write_string(fd, c"\x0a")
-		i = i + 1
 
 
 void task_dump(task_scheduler* s):

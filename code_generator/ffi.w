@@ -104,8 +104,7 @@ char* ffi_assign_slots(int n, char* classes, int max_gp):
 	ffi_fp_used = 0
 	ffi_stack_count = 0
 	ffi_spilled_float = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int slot = 0 - 1
 		if (ffi_arg_class(classes, i) == 0):
 			if (gp_count < max_gp):
@@ -120,7 +119,6 @@ char* ffi_assign_slots(int n, char* classes, int max_gp):
 			if (ffi_arg_class(classes, i) != 0):
 				ffi_spilled_float = 1
 		save_int(slots + (i << 2), slot)
-		i = i + 1
 	return slots
 
 

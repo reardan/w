@@ -150,10 +150,8 @@ char* wst_object_url(int port, char* id):
 
 char* wst_zero_id():
 	char* id = malloc(65)
-	int i = 0
-	while (i < 64):
+	for i in range(64):
 		id[i] = '0'
-		i = i + 1
 	id[64] = 0
 	return id
 

@@ -244,10 +244,8 @@ void test_mode_int():
 
 	# enough distinct keys to force map growth past the initial capacity
 	list[int] wide = new list[int]
-	int i = 0
-	while (i < 100):
+	for i in range(100):
 		wide.push(i % 37)
-		i = i + 1
 	# 0 through 25 appear three times, 26 through 36 twice: 0 is first
 	assert_equal(0, stats_mode_int(wide))
 	wide.push(17)

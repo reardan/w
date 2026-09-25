@@ -34,14 +34,12 @@ void x64pb_expect_bytes(char* label, char* got, int got_len, char* want, int wan
 		print2(c" want=")
 		println2(itoa(want_len))
 		exit(1)
-	int i = 0
-	while (i < want_len):
+	for i in range(want_len):
 		if ((got[i] & 255) != (want[i] & 255)):
 			print2(label)
 			print2(c": byte mismatch at offset ")
 			println2(itoa(i))
 			exit(1)
-		i = i + 1
 
 
 void test_zigzag64_native_pairs():
