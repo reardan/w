@@ -763,21 +763,6 @@ int commit_load_uint16(char* p):
 	return (p[0] & 255) + ((p[1] & 255) << 8)
 
 
-# Insertion sort: getdents order depends on filesystem state, and
-# ref_list's result must not (tools/wexec.w's wexec_sort_strings does
-# the same, for the same reason).
-void commit_sort_strings(list[char*] items):
-	int i = 1
-	while (i < items.length):
-		char* value = items[i]
-		int j = i - 1
-		while ((j >= 0) && (strcmp(items[j], value) > 0)):
-			items[j + 1] = items[j]
-			j = j - 1
-		items[j + 1] = value
-		i = i + 1
-
-
 # All ref names currently under refs/heads/, sorted. Uses the legacy
 # getdents(2) record layout (see the header comment): correct on x86/x64
 # (this module's tested targets), not yet correct on arm64, and not
@@ -809,7 +794,7 @@ wresult[list[char*]]* ref_list(wrefs* r):
 		n = getdents(fd, buffer, buffer_size)
 	free(buffer)
 	close(fd)
-	commit_sort_strings(names)
+	names.sort()   # getdents order depends on filesystem state; the result must not
 	return result_new_ok[list[char*]](names)
 
 

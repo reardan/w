@@ -130,11 +130,8 @@ void vclock_save(vclock* v, char* buf):
 	for int node, int c in v.counters:
 		if (c != 0):
 			assert1(node >= 0)
-			# insertion sort ascending by node id
-			int pos = 0
-			while (pos < nodes.length && nodes[pos] < node):
-				pos = pos + 1
-			nodes.insert(pos, node)
+			nodes.push(node)
+	nodes.sort()   # ascending by node id
 	store_le32(buf, nodes.length)
 	u64* counter = u64_new()
 	int i = 0

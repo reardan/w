@@ -92,8 +92,9 @@ blocking loop and was rejected for now: it ties the target to newer
 engines, and the inverted shape matches the backend's existing "no
 stack switching" stance (the same reason generators are out of scope).
 
-- `graphics/gl_web.w` declares the same core-GL extern surface as
-  `gl_linux.w` minus GLX. The JS glue (`tools/web/webgl_env.mjs`) maps
+- `graphics/gl_web.w` binds the same core-GL extern surface as
+  `gl_linux.w` minus GLX (both import `graphics/gl_core.w` after their
+  own `c_lib` line). The JS glue (`tools/web/webgl_env.mjs`) maps
   it onto WebGL2: a handle table for GL objects (WebGL handles are JS
   objects, native GL's are ints), fresh memory views per call
   (`memory.grow` detaches ArrayBuffers), strings decoded/encoded
@@ -142,7 +143,7 @@ the fixpoint never caught them:
 ## Deferred
 
 - Textures, element-array demos, and the rest of the GL surface —
-  extend `gl_web.w`/`gl_linux.w` and the glue together as consumers
+  extend `gl_core.w` and the glue together as consumers
   appear.
 - Keyboard/mouse callback events (state polling covers the demos; event
   callbacks are D2-ready when wanted).

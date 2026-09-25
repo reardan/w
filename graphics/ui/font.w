@@ -27,6 +27,8 @@ upload lives in graphics.ui.render.
 import lib.lib
 import lib.ttf
 import lib.rle
+import lib.mem
+import libs.standard.crypto.base64
 import graphics.ui.font_data
 import lib.bytes
 
@@ -187,42 +189,6 @@ ui_font_state ui_font_st
 int ui_font_init();
 
 
-# Decode standard base64 text into out (which must hold length / 4 * 3
-# bytes). Returns the bytes written.
-int ui_font_base64_value(int c):
-	if ((c >= 'A') && (c <= 'Z')):
-		return c - 'A'
-	if ((c >= 'a') && (c <= 'z')):
-		return c - 'a' + 26
-	if ((c >= '0') && (c <= '9')):
-		return c - '0' + 52
-	if (c == '+'):
-		return 62
-	if (c == '/'):
-		return 63
-	return 0 - 1
-
-
-int ui_font_base64_decode(char* text, int length, char* out):
-	int n = 0
-	int i = 0
-	while (i + 3 < length):
-		int a = ui_font_base64_value(text[i] & 255)
-		int b = ui_font_base64_value(text[i + 1] & 255)
-		int c = ui_font_base64_value(text[i + 2] & 255)
-		int d = ui_font_base64_value(text[i + 3] & 255)
-		out[n] = (a << 2) | (b >> 4)
-		n = n + 1
-		if (c >= 0):
-			out[n] = ((b & 15) << 4) | (c >> 2)
-			n = n + 1
-		if (d >= 0):
-			out[n] = ((c & 3) << 6) | d
-			n = n + 1
-		i = i + 4
-	return n
-
-
 # The ttf_font of a face, decoding an embedded default on first use.
 # Returns 0 for an unknown face.
 ttf_font* ui_font_face_font(int face):
@@ -240,7 +206,12 @@ ttf_font* ui_font_face_font(int face):
 	int k = 0
 	while (k < ui_font_face_chunk_count(face)):
 		char* chunk = ui_font_face_chunk(face, k)
-		n = n + ui_font_base64_decode(chunk, strlen(chunk), &data[n])
+		int m = 0
+		char* part = base64_decode(chunk, strlen(chunk), &m)
+		if (n + m <= size):
+			mem_copy(data + n, part, m)
+		n = n + m
+		free(part)
 		k = k + 1
 	ttf_font* font = cast(ttf_font*, malloc(sizeof(ttf_font)))
 	if ((n != size) || (ttf_load_bytes(font, data, size) == 0)):

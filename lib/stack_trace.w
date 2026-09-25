@@ -936,6 +936,27 @@ char* stack_trace_file(int pc):
 	return cast(char*, 0)
 
 
+# One "  at name (file:line)" trace line for code address addr (the
+# name falls back to the hex address, the location is omitted when no
+# line entry covers it). Shared by print_stack_trace and lib/crash.w.
+void st_write_frame(int addr):
+	st_write_cstr(c"  at ")
+	int e = st_func_entry(addr)
+	if (e != 0):
+		st_write_cstr(cast(char*, st_entry_name(e)))
+	else:
+		st_write_hex(addr)
+	if (st_line_lookup(addr)):
+		st_write_cstr(c" (")
+		int fname = st_file_name(st_file_found)
+		if (fname != 0):
+			st_write_cstr(cast(char*, fname))
+			st_write_cstr(c":")
+		st_write_dec(st_line_found)
+		st_write_cstr(c")")
+	st_write_cstr(c"\n")
+
+
 # Write a symbolized stack trace of the calling thread to stderr, or
 # nothing when no frames can be recovered.
 void print_stack_trace():
@@ -956,20 +977,6 @@ void print_stack_trace():
 	int k = 0
 	while (k < n):
 		int addr = st_word(cast(int, pcs) + k * __word_size__)
-		st_write_cstr(c"  at ")
-		int e = st_func_entry(addr)
-		if (e != 0):
-			st_write_cstr(cast(char*, st_entry_name(e)))
-		else:
-			st_write_hex(addr)
-		if (st_line_lookup(addr)):
-			st_write_cstr(c" (")
-			int fname = st_file_name(st_file_found)
-			if (fname != 0):
-				st_write_cstr(cast(char*, fname))
-				st_write_cstr(c":")
-			st_write_dec(st_line_found)
-			st_write_cstr(c")")
-		st_write_cstr(c"\n")
+		st_write_frame(addr)
 		k = k + 1
 	free(pcs)
