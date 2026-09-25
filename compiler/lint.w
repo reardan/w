@@ -17,7 +17,7 @@ Two families:
   the Unicode rules of issue #460: bidi controls anywhere in the file
   (Trojan Source), identifiers mixing Latin/Greek/Cyrillic letters, and
   identifiers that differ from another name in the file only by
-  lookalike letters (lint_unicode_line).
+  lookalike letters (lint_scan_line).
 - Semantic rules, hooked into the single-pass grammar: unused locals
   (lint_scope_exit), code after return/break/continue/goto
   (lint_unreachable_check), a local shadowing another local or a
@@ -372,39 +372,6 @@ char* lint_read_file(char* path):
 	return buffer
 
 
-# Lexical state at the end of src[start, end) given the state at its
-# start: 0 code, 1 inside a /* */ comment, 2 inside a string literal. A
-# '#' comment or an unterminated char literal ends the line in state 0.
-int lint_scan_line(char* src, int start, int end, int state):
-	int j = start
-	while (j < end):
-		int c = src[j]
-		if (state == 1):
-			if ((c == '*') && (j + 1 < end) && (src[j + 1] == '/')):
-				state = 0
-				j = j + 1
-		else if (state == 2):
-			if (c == 92):
-				j = j + 1
-			else if (c == '"'):
-				state = 0
-		else if (c == '#'):
-			return 0
-		else if (c == '"'):
-			state = 2
-		else if (c == 39):
-			j = j + 1
-			while ((j < end) && (src[j] != 39)):
-				if (src[j] == 92):
-					j = j + 1
-				j = j + 1
-		else if ((c == '/') && (j + 1 < end) && (src[j + 1] == '*')):
-			state = 1
-			j = j + 1
-		j = j + 1
-	return state
-
-
 # Display width of src[start, end): tabs advance to the next multiple of
 # lint_tab_width(), UTF-8 continuation bytes take no column.
 int lint_line_width(char* src, int start, int end):
@@ -648,18 +615,27 @@ void lint_bidi_report(char* src, int start, int pos, int cp, int line, int state
 		lint_end()
 
 
-# Walk one line with lint_scan_line's lexical states: report bidi
-# controls anywhere on it, and hand every identifier in code to
-# lint_identifier. Only lines holding a byte >= 0x80 can trip a rule,
-# but every line's identifiers are recorded as confusable references.
-void lint_unicode_line(char* src, int start, int end, int state, int line):
+# Reports a bidi control whose sequence starts at src[j] (state: where
+# on the line it sits, lint_scan_line's numbering).
+void lint_bidi_check(char* src, int start, int j, int end, int line, int state):
+	int cp = lint_decode(src, j, end)
+	if (lint_is_bidi_control(cp)):
+		lint_bidi_report(src, start, j, cp, line, state)
+
+
+# Lexical state at the end of src[start, end) given the state at its
+# start: 0 code, 1 inside a /* */ comment, 2 inside a string literal. A
+# '#' comment or an unterminated char literal ends the line in state 0.
+# With report set the walk also reports bidi controls anywhere on the
+# line and hands every identifier in code to lint_identifier. Only lines
+# holding a byte >= 0x80 can trip a rule, but every line's identifiers
+# are recorded as confusable references.
+int lint_scan_line(char* src, int start, int end, int state, int line, int report):
 	int j = start
 	while (j < end):
 		int c = src[j] & 255
-		if (c >= 128):
-			int cp = lint_decode(src, j, end)
-			if (lint_is_bidi_control(cp)):
-				lint_bidi_report(src, start, j, cp, line, state)
+		if (report && (c >= 128)):
+			lint_bidi_check(src, start, j, end, line, state)
 		if (state == 1):
 			if ((c == '*') && (j + 1 < end) && (src[j + 1] == '/')):
 				state = 0
@@ -671,30 +647,26 @@ void lint_unicode_line(char* src, int start, int end, int state, int line):
 				state = 0
 		else if (c == '#'):
 			# The rest of the line is a comment
-			state = 1
 			j = j + 1
-			while (j < end):
+			while (report && (j < end)):
 				if ((src[j] & 128) != 0):
-					int comment_cp = lint_decode(src, j, end)
-					if (lint_is_bidi_control(comment_cp)):
-						lint_bidi_report(src, start, j, comment_cp, line, 1)
+					lint_bidi_check(src, start, j, end, line, 1)
 				j = j + 1
+			return 0
 		else if (c == '"'):
 			state = 2
 		else if (c == 39):
 			j = j + 1
 			while ((j < end) && (src[j] != 39)):
-				if ((src[j] & 128) != 0):
-					int char_cp = lint_decode(src, j, end)
-					if (lint_is_bidi_control(char_cp)):
-						lint_bidi_report(src, start, j, char_cp, line, 2)
+				if (report && ((src[j] & 128) != 0)):
+					lint_bidi_check(src, start, j, end, line, 2)
 				if (src[j] == 92):
 					j = j + 1
 				j = j + 1
 		else if ((c == '/') && (j + 1 < end) && (src[j + 1] == '*')):
 			state = 1
 			j = j + 1
-		else if (is_ident_start_byte(c)):
+		else if (report && is_ident_start_byte(c)):
 			int s = j
 			int in_name = 1
 			while ((j < end) && in_name):
@@ -711,10 +683,11 @@ void lint_unicode_line(char* src, int start, int end, int state, int line):
 			else:
 				lint_identifier(src, s, j, line, lint_codepoint_column(src, start, s))
 				j = j - 1
-		else if (('0' <= c) && (c <= '9')):
+		else if (report && ('0' <= c) && (c <= '9')):
 			while ((j + 1 < end) && is_ident_part_byte(src[j + 1])):
 				j = j + 1
 		j = j + 1
+	return state
 
 
 # Count of fixes lint_text_file applied to the current buffer, and
@@ -792,8 +765,8 @@ void lint_text_file(char* path):
 			cr = 1
 		int start_state = state
 		if (lint_mode && (lint_contains(src + start, content_end - start, c"nolint") == 0)):
-			lint_unicode_line(src, start, content_end, start_state, line)
-		state = lint_scan_line(src, start, content_end, state)
+			lint_scan_line(src, start, content_end, start_state, line, 1)
+		state = lint_scan_line(src, start, content_end, state, 0, 0)
 		# Inside a multi-line string literal, or opted out: copied verbatim
 		int verbatim = (start_state == 2) || lint_contains(src + start, content_end - start, c"nolint")
 		int blank = (verbatim == 0) && (start_state == 0) && lint_is_blank(src, start, content_end)
