@@ -134,7 +134,7 @@ Scope decisions for this wave
   this an acceptable MVP, and it keeps wvc.w from re-deriving a
   path-into-tree walk for the one-sided case too (tree_diff already
   expands one-sided subtrees itself; duplicating that here for a content
-  dump did not seem worth it this wave). wvc_lookup_blob's failures are
+  dump did not seem worth it this wave). repo_lookup_blob's failures are
   soft (the path-level line still prints; only the content hunk is
   skipped) so one bad lookup cannot blank out the rest of the report.
 - `status` and `snapshot` both go through libs/extras/vcs/index.w's
@@ -172,39 +172,12 @@ import libs.extras.vcs.dag
 import libs.extras.vcs.merge3
 import libs.extras.vcs.sync
 import libs.extras.vcs.pack
+import libs.extras.vcs.repo
 import libs.standard.web.http_server
-
-
-char* WVC_META_DIR_NAME():
-	return c".wvc"
-
-
-char* WVC_DEFAULT_REF():
-	return c"main"
 
 
 char* WVC_DEFAULT_AUTHOR():
 	return c"wvc"
-
-
-char* wvc_meta_dir(char* dir):
-	return path_join(dir, WVC_META_DIR_NAME())
-
-
-# "<meta>/index" -- libs/extras/vcs/index.w's persisted dirstate
-# (INDEX_FILE_NAME()).
-char* wvc_index_path(char* meta):
-	return path_join(meta, INDEX_FILE_NAME())
-
-
-# Exact-name-at-every-depth ignore list tree_snapshot expects: our own
-# metadata directory, and build output (the same "bin" example
-# tree.w's own header comment uses).
-list[char*] wvc_ignore_list():
-	list[char*] ignore = new list[char*]
-	ignore.push(WVC_META_DIR_NAME())
-	ignore.push(c"bin")
-	return ignore
 
 
 void wvc_usage():
@@ -267,75 +240,6 @@ wrefs* wvc_open_refs(char* meta):
 	return wvc_unwrap[wrefs*](refs_open(meta), c"cannot open refs (did you run 'wvc init'?)")
 
 
-int wvc_status_char(int status):
-	if (status == TREE_ADDED()):
-		return 'A'
-	if (status == TREE_REMOVED()):
-		return 'D'
-	return 'M'
-
-
-# Splits a tree_diff path ("a/b/c.txt", tree.w's '/'-joined form) into
-# its components. No leading/trailing separators occur in practice (see
-# tree_diff's header comment: prefixes are built by path_join from "",
-# which never adds a leading slash), but empty segments are skipped
-# defensively rather than trusted.
-list[char*] wvc_split_path(char* path):
-	list[char*] parts = new list[char*]
-	int n = strlen(path)
-	int start = 0
-	int i = 0
-	while (i <= n):
-		int at_sep = (i == n) || (path[i] == '/')
-		if (at_sep):
-			if (i > start):
-				parts.push(path_clone_range(path + start, i - start))
-			start = i + 1
-		i = i + 1
-	return parts
-
-
-# Walks from a root tree id down to `path`'s blob id. Returns -2 (ENOENT)
-# when any component is missing along the way, -22 for an empty path;
-# otherwise tree_get's own errors. Callers that only want a nice-to-have
-# (wvc_diff_modified) treat any error here as "skip the content diff",
-# not fatal.
-wresult[char*]* wvc_lookup_blob(wcas* store, char* root_id, char* path):
-	list[char*] parts = wvc_split_path(path)
-	char* current_id = strclone(root_id)
-	int err = 0
-	if (parts.length == 0):
-		err = -22
-	int i = 0
-	while ((i < parts.length) && (err == 0)):
-		wresult[wtree*]* t_r = tree_get(store, current_id)
-		if (result_is_error[wtree*](t_r)):
-			err = result_code[wtree*](t_r)
-			result_free[wtree*](t_r)
-		else:
-			wtree* t = result_value[wtree*](t_r)
-			result_free[wtree*](t_r)
-			char* want = parts[i]
-			tree_entry* found = 0
-			for tree_entry* e in t.entries:
-				if (strcmp(e.name, want) == 0):
-					found = e
-			if (found == 0):
-				err = -2
-			else:
-				free(current_id)
-				current_id = strclone(found.id)
-			tree_free(t)
-		i = i + 1
-	for char* p in parts:
-		free(p)
-	list_free[char*](parts)
-	if (err != 0):
-		free(current_id)
-		return result_new_error[char*](err)
-	return result_new_ok[char*](current_id)
-
-
 # A rev is either a 64-hex commit id already, or a ref name to resolve.
 char* wvc_resolve_rev(wcas* store, wrefs* refs, char* rev):
 	if (cas_valid_id(rev)):
@@ -378,216 +282,11 @@ void wvc_dag_insert_ancestors(dag* d, wcas* store, map[char*, int] visited, char
 	commit_free(co)
 
 
-# Resolves the blob id at `path` under `tree_id`, or 0 for "not present"
-# -- 0 for a 0 tree_id (no tree at all), and 0 (rather than propagating
-# the error) for any lookup failure, since a merge's per-path plan needs
-# a soft "maybe present" query on each of three sides independently, not
-# wvc_lookup_blob's fail-fast error surface.
-char* wvc_maybe_blob_id(wcas* store, char* tree_id, char* path):
-	if (tree_id == 0):
-		return 0
-	wresult[char*]* r = wvc_lookup_blob(store, tree_id, path)
-	if (result_is_error[char*](r)):
-		result_free[char*](r)
-		return 0
-	char* id = result_value[char*](r)
-	result_free[char*](r)
-	return id
-
-
-# Resolves the blob at `path` under `tree_id` AND confirms it is really
-# a "blob" object (not a "tree" -- a tree_diff entry naming a whole
-# added/removed directory resolves its OWN path to a tree id, which
-# this rejects rather than misreading as file content; the directory's
-# individual files already appear as their own separate tree_diff
-# entries, so skipping the directory-level entry here loses nothing).
-# Returns 0 for "not present or not a file"; the caller owns the result
-# and releases it with cas_object_free.
-wcas_object* wvc_maybe_blob(wcas* store, char* tree_id, char* path):
-	char* id = wvc_maybe_blob_id(store, tree_id, path)
-	if (id == 0):
-		return 0
-	wresult[wcas_object*]* r = cas_get(store, id)
-	free(id)
-	if (result_is_error[wcas_object*](r)):
-		result_free[wcas_object*](r)
-		return 0
-	wcas_object* o = result_value[wcas_object*](r)
-	result_free[wcas_object*](r)
-	if (strcmp(o.object_type, c"blob") != 0):
-		cas_object_free(o)
-		return 0
-	return o
-
-
-# Byte-for-byte content equality, treating "both absent" (0, 0) as equal
-# and "one absent" as never equal.
-int wvc_blob_content_equal(wcas_object* a, wcas_object* b):
-	if ((a == 0) && (b == 0)):
-		return 1
-	if ((a == 0) || (b == 0)):
-		return 0
-	if (a.length != b.length):
-		return 0
-	int i = 0
-	while (i < a.length):
-		if (a.data[i] != b.data[i]):
-			return 0
-		i = i + 1
-	return 1
-
-
-int WVC_BINARY_SNIFF_LEN():
-	return 8000
-
-
-# Git's own binary-detection heuristic: a NUL byte anywhere in the first
-# WVC_BINARY_SNIFF_LEN() bytes. 0 (absent) is never binary-ish -- there
-# is no content to sniff.
-int wvc_is_binaryish(wcas_object* o):
-	if (o == 0):
-		return 0
-	int n = o.length
-	if (n > WVC_BINARY_SNIFF_LEN()):
-		n = WVC_BINARY_SNIFF_LEN()
-	int i = 0
-	while (i < n):
-		if (o.data[i] == 0):
-			return 1
-		i = i + 1
-	return 0
-
-
-# Union of the two change lists' paths, deduplicated and sorted
-# (tree_name_compare -- tree.w's canonical byte-wise order, the same one
-# index.w and tree.w themselves sort by). Returned pointers are borrowed
-# from the tree_change entries themselves; the caller must keep
-# `ours_changes`/`theirs_changes` alive for as long as the result is in
-# use, and only needs to list_free the returned list itself.
-list[char*] wvc_merge_collect_paths(list[tree_change*] ours_changes, list[tree_change*] theirs_changes):
-	map[char*, int] seen = new map[char*, int]
-	list[char*] paths = new list[char*]
-	for tree_change* c in ours_changes:
-		if ((c.path in seen) == 0):
-			seen[c.path] = 1
-			paths.push(c.path)
-	for tree_change* c in theirs_changes:
-		if ((c.path in seen) == 0):
-			seen[c.path] = 1
-			paths.push(c.path)
-	map_free[char*, int](seen)
-	paths.sort_by(tree_name_compare)
-	return paths
-
-
-# Creates every missing ancestor directory of `dir`/`rel_path` (all but
-# the final path component -- the file itself), the same '/'-split-and-
-# join approach wvc_split_path already gives every other path-walking
-# helper in this file. Ignores EEXIST; a real mkdir failure surfaces
-# later as the write that actually needs the directory failing instead.
-void wvc_ensure_parent_dirs(char* dir, char* rel_path):
-	list[char*] parts = wvc_split_path(rel_path)
-	char* current = strclone(dir)
-	int i = 0
-	while (i < (parts.length - 1)):
-		char* next = path_join(current, parts[i])
-		free(current)
-		current = next
-		mkdir(current, 493)
-		i = i + 1
-	free(current)
-	for char* p in parts:
-		free(p)
-	list_free[char*](parts)
-
-
-# Writes `obj`'s raw bytes (length-framed, so embedded NUL bytes in
-# binary content survive -- unlike file_write_text's strlen-based write)
-# to <dir>/rel_path, creating any missing parent directories first.
-void wvc_write_file_bytes(char* dir, char* rel_path, wcas_object* obj):
-	wvc_ensure_parent_dirs(dir, rel_path)
-	char* full_path = path_join(dir, rel_path)
-	wstream* out = stream_open_write(full_path)
-	free(full_path)
-	if (out == 0):
-		return
-	stream_write(out, obj.data, obj.length)
-	stream_close(out)
-
-
-# Removes <dir>/rel_path if present; a missing file is not an error (the
-# caller may be reconciling a delete against a working tree that's
-# already in the target state).
-void wvc_remove_file(char* dir, char* rel_path):
-	char* full_path = path_join(dir, rel_path)
-	unlink(full_path)
-	free(full_path)
-
-
 void wvc_report_conflict(wstream* out, char* kind, char* path):
 	stream_write_cstr(out, c"CONFLICT (")
 	stream_write_cstr(out, kind)
 	stream_write_cstr(out, c"): ")
 	stream_write_line(out, path)
-
-
-# Nice-to-have content diff for one TREE_MODIFIED path (see the header
-# comment): resolves both sides' blob ids by walking the two trees, and
-# renders a unified diff if the content actually differs. Any failure
-# along the way (path not found the way tree_diff itself found it -- it
-# can't happen without the object store changing under us, but this
-# reuses cas_get's own error surface rather than asserting) just skips
-# the content hunk; the path-level "M <path>" line the caller already
-# printed still stands.
-void wvc_diff_modified(wcas* store, char* tree_a, char* tree_b, char* path, wstream* out):
-	wresult[char*]* old_id_r = wvc_lookup_blob(store, tree_a, path)
-	wresult[char*]* new_id_r = wvc_lookup_blob(store, tree_b, path)
-	# Extract each side independently (not gated on the OTHER side also
-	# being ok): if only one lookup fails, the other's owned payload
-	# still needs freeing below rather than leaking.
-	char* old_blob_id = 0
-	char* new_blob_id = 0
-	if (result_is_ok[char*](old_id_r)):
-		old_blob_id = result_value[char*](old_id_r)
-	if (result_is_ok[char*](new_id_r)):
-		new_blob_id = result_value[char*](new_id_r)
-	result_free[char*](old_id_r)
-	result_free[char*](new_id_r)
-	if ((old_blob_id == 0) || (new_blob_id == 0)):
-		if (old_blob_id != 0):
-			free(old_blob_id)
-		if (new_blob_id != 0):
-			free(new_blob_id)
-		return
-
-	wresult[wcas_object*]* old_obj_r = cas_get(store, old_blob_id)
-	wresult[wcas_object*]* new_obj_r = cas_get(store, new_blob_id)
-	wcas_object* old_obj = 0
-	wcas_object* new_obj = 0
-	if (result_is_ok[wcas_object*](old_obj_r)):
-		old_obj = result_value[wcas_object*](old_obj_r)
-	if (result_is_ok[wcas_object*](new_obj_r)):
-		new_obj = result_value[wcas_object*](new_obj_r)
-	result_free[wcas_object*](old_obj_r)
-	result_free[wcas_object*](new_obj_r)
-	free(old_blob_id)
-	free(new_blob_id)
-	if ((old_obj != 0) && (new_obj != 0)):
-		diff_result* d = diff_text(old_obj.data, new_obj.data, diff_default_context())
-		if (diff_is_identical(d) == 0):
-			string_builder* a_label = string_new()
-			string_append(a_label, c"a/")
-			string_append(a_label, path)
-			string_builder* b_label = string_new()
-			string_append(b_label, c"b/")
-			string_append(b_label, path)
-			diff_render_unified(out, a_label.data, b_label.data, d)
-			string_free(a_label)
-			string_free(b_label)
-	if (old_obj != 0):
-		cas_object_free(old_obj)
-	if (new_obj != 0):
-		cas_object_free(new_obj)
 
 
 /* Subcommands */
@@ -607,7 +306,7 @@ int wvc_cmd_init(int argc, int argv):
 	if ((mkdir_err < 0) && (mkdir_err != -17)):
 		wvc_fail(c"cannot create directory", mkdir_err)
 
-	char* meta = wvc_meta_dir(dir)
+	char* meta = repo_meta_dir(dir)
 	wcas* store = wvc_open_store(meta)
 	wrefs* refs = wvc_open_refs(meta)
 
@@ -655,7 +354,7 @@ int wvc_cmd_snapshot(int argc, int argv):
 		wvc_usage()
 		return 2
 
-	char* meta = wvc_meta_dir(dir)
+	char* meta = repo_meta_dir(dir)
 	wcas* store = wvc_open_store(meta)
 	wrefs* refs = wvc_open_refs(meta)
 
@@ -665,14 +364,14 @@ int wvc_cmd_snapshot(int argc, int argv):
 	# every file, the first time a repo has no index yet (prev = 0
 	# degrades index_refresh to tree_snapshot's own behavior exactly,
 	# see index.w's header comment).
-	char* index_path = wvc_index_path(meta)
+	char* index_path = repo_index_path(meta)
 	wresult[windex*]* prev_index_r = index_read(index_path)
 	windex* prev_index = 0
 	if (result_is_ok[windex*](prev_index_r)):
 		prev_index = result_value[windex*](prev_index_r)
 	result_free[windex*](prev_index_r)
 
-	list[char*] ignore = wvc_ignore_list()
+	list[char*] ignore = repo_ignore_list()
 	index_refresh_result* refreshed = wvc_unwrap[index_refresh_result*](index_refresh(store, dir, ignore, prev_index), c"snapshot failed")
 	list_free[char*](ignore)
 	if (prev_index != 0):
@@ -682,19 +381,19 @@ int wvc_cmd_snapshot(int argc, int argv):
 	free(refreshed)
 
 	list[char*] parent_ids = new list[char*]
-	int have_parent = ref_exists(refs, WVC_DEFAULT_REF())
+	int have_parent = ref_exists(refs, REPO_DEFAULT_REF())
 	char* parent_id = 0
 	if (have_parent):
-		parent_id = wvc_unwrap[char*](ref_read(refs, WVC_DEFAULT_REF()), c"cannot read current ref")
+		parent_id = wvc_unwrap[char*](ref_read(refs, REPO_DEFAULT_REF()), c"cannot read current ref")
 		parent_ids.push(parent_id)
 
 	commit_object* co = wvc_unwrap[commit_object*](commit_new(tree_id, parent_ids, author, time_now(), message, strlen(message)), c"invalid commit")
 	char* commit_id = wvc_unwrap[char*](commit_store(store, co), c"cannot store commit")
 
 	if (have_parent):
-		wvc_unwrap[int](ref_update(refs, WVC_DEFAULT_REF(), commit_id, message), c"cannot update ref")
+		wvc_unwrap[int](ref_update(refs, REPO_DEFAULT_REF(), commit_id, message), c"cannot update ref")
 	else:
-		wvc_unwrap[int](ref_create(refs, WVC_DEFAULT_REF(), commit_id, message), c"cannot create ref")
+		wvc_unwrap[int](ref_create(refs, REPO_DEFAULT_REF(), commit_id, message), c"cannot create ref")
 
 	# Persist the refreshed dirstate. Best-effort: the commit above is
 	# already durable, so a write failure here (e.g. a full disk) must
@@ -723,12 +422,12 @@ int wvc_cmd_snapshot(int argc, int argv):
 
 
 int wvc_cmd_log(int argc, int argv):
-	char* ref_name = WVC_DEFAULT_REF()
+	char* ref_name = REPO_DEFAULT_REF()
 	if (argc >= 3):
 		char** arg = argv + 2 * __word_size__
 		ref_name = *arg
 
-	char* meta = wvc_meta_dir(c".")
+	char* meta = repo_meta_dir(c".")
 	wcas* store = wvc_open_store(meta)
 	wrefs* refs = wvc_open_refs(meta)
 
@@ -811,7 +510,7 @@ int wvc_cmd_diff(int argc, int argv):
 	char* rev_a = *a_arg
 	char* rev_b = *b_arg
 
-	char* meta = wvc_meta_dir(c".")
+	char* meta = repo_meta_dir(c".")
 	wcas* store = wvc_open_store(meta)
 	wrefs* refs = wvc_open_refs(meta)
 
@@ -825,11 +524,11 @@ int wvc_cmd_diff(int argc, int argv):
 
 	wstream* out = stdout_writer()
 	for tree_change* c in changes:
-		stream_write_byte(out, wvc_status_char(c.status))
+		stream_write_byte(out, repo_status_char(c.status))
 		stream_write_byte(out, ' ')
 		stream_write_line(out, c.path)
 		if (c.status == TREE_MODIFIED()):
-			wvc_diff_modified(store, ca.tree_id, cb.tree_id, c.path, out)
+			repo_diff_modified(store, ca.tree_id, cb.tree_id, c.path, out)
 	stream_flush(out)
 
 	tree_changes_free(changes)
@@ -851,20 +550,20 @@ int wvc_cmd_status(int argc, int argv):
 	char** arg = argv + 2 * __word_size__
 	char* dir = *arg
 
-	char* meta = wvc_meta_dir(dir)
+	char* meta = repo_meta_dir(dir)
 	wcas* store = wvc_open_store(meta)
 	wrefs* refs = wvc_open_refs(meta)
 
 	char* old_tree_id = 0
-	if (ref_exists(refs, WVC_DEFAULT_REF())):
-		char* head_id = wvc_unwrap[char*](ref_read(refs, WVC_DEFAULT_REF()), c"cannot read current ref")
+	if (ref_exists(refs, REPO_DEFAULT_REF())):
+		char* head_id = wvc_unwrap[char*](ref_read(refs, REPO_DEFAULT_REF()), c"cannot read current ref")
 		commit_object* co = wvc_unwrap[commit_object*](commit_load(store, head_id), c"cannot load current commit")
 		old_tree_id = strclone(co.tree_id)
 		commit_free(co)
 		free(head_id)
 
-	list[char*] ignore = wvc_ignore_list()
-	char* index_path = wvc_index_path(meta)
+	list[char*] ignore = repo_ignore_list()
+	char* index_path = repo_index_path(meta)
 	wresult[windex*]* prev_index_r = index_read(index_path)
 	char* new_tree_id = 0
 	windex* fresh_index = 0
@@ -898,7 +597,7 @@ int wvc_cmd_status(int argc, int argv):
 		stream_write_line(out, c"nothing to snapshot, working tree clean")
 	else:
 		for tree_change* c in changes:
-			stream_write_byte(out, wvc_status_char(c.status))
+			stream_write_byte(out, repo_status_char(c.status))
 			stream_write_byte(out, ' ')
 			stream_write_line(out, c.path)
 	stream_flush(out)
@@ -963,12 +662,12 @@ int wvc_cmd_merge(int argc, int argv):
 		return 2
 
 	char* dir = c"."
-	char* meta = wvc_meta_dir(dir)
+	char* meta = repo_meta_dir(dir)
 	wcas* store = wvc_open_store(meta)
 	wrefs* refs = wvc_open_refs(meta)
 	wstream* out = stdout_writer()
 
-	wresult[char*]* head_r = ref_read(refs, WVC_DEFAULT_REF())
+	wresult[char*]* head_r = ref_read(refs, REPO_DEFAULT_REF())
 	if (result_is_error[char*](head_r)):
 		int code = result_code[char*](head_r)
 		result_free[char*](head_r)
@@ -1035,15 +734,15 @@ int wvc_cmd_merge(int argc, int argv):
 	list[tree_change*] theirs_changes = new list[tree_change*]
 	wvc_unwrap[int](tree_diff(store, base_co.tree_id, other_co.tree_id, theirs_changes), c"merge: diff against merge-base (theirs) failed")
 
-	list[char*] paths = wvc_merge_collect_paths(ours_changes, theirs_changes)
+	list[char*] paths = repo_merge_collect_paths(ours_changes, theirs_changes)
 	int conflicts = 0
 	for char* path in paths:
-		wcas_object* base_obj = wvc_maybe_blob(store, base_co.tree_id, path)
-		wcas_object* ours_obj = wvc_maybe_blob(store, head_co.tree_id, path)
-		wcas_object* theirs_obj = wvc_maybe_blob(store, other_co.tree_id, path)
+		wcas_object* base_obj = repo_maybe_blob(store, base_co.tree_id, path)
+		wcas_object* ours_obj = repo_maybe_blob(store, head_co.tree_id, path)
+		wcas_object* theirs_obj = repo_maybe_blob(store, other_co.tree_id, path)
 
-		int ours_changed = wvc_blob_content_equal(base_obj, ours_obj) == 0
-		int theirs_changed = wvc_blob_content_equal(base_obj, theirs_obj) == 0
+		int ours_changed = repo_blob_content_equal(base_obj, ours_obj) == 0
+		int theirs_changed = repo_blob_content_equal(base_obj, theirs_obj) == 0
 
 		if ((ours_changed == 0) && (theirs_changed == 0)):
 			# Neither side names a real content change at this path (a
@@ -1053,17 +752,17 @@ int wvc_cmd_merge(int argc, int argv):
 		else if (ours_changed == 0):
 			# Only theirs changed: apply cleanly.
 			if (theirs_obj == 0):
-				wvc_remove_file(dir, path)
+				repo_remove_file(dir, path)
 			else:
-				wvc_write_file_bytes(dir, path, theirs_obj)
+				repo_write_file_bytes(dir, path, theirs_obj)
 		else if (theirs_changed == 0):
 			# Only ours changed: keep -- already on disk, no write.
 			int noop = 1
-		else if (wvc_blob_content_equal(ours_obj, theirs_obj)):
+		else if (repo_blob_content_equal(ours_obj, theirs_obj)):
 			# Both changed identically (including both deleting):
 			# coalesce.
 			if (ours_obj == 0):
-				wvc_remove_file(dir, path)
+				repo_remove_file(dir, path)
 		else if ((ours_obj == 0) || (theirs_obj == 0)):
 			# Modify/delete conflict: no third text to line-merge
 			# against. Keep whichever side still has content (git's own
@@ -1072,8 +771,8 @@ int wvc_cmd_merge(int argc, int argv):
 			conflicts = conflicts + 1
 			wvc_report_conflict(out, c"modify/delete", path)
 			if (ours_obj == 0):
-				wvc_write_file_bytes(dir, path, theirs_obj)
-		else if (wvc_is_binaryish(base_obj) || wvc_is_binaryish(ours_obj) || wvc_is_binaryish(theirs_obj)):
+				repo_write_file_bytes(dir, path, theirs_obj)
+		else if (repo_is_binaryish(base_obj) || repo_is_binaryish(ours_obj) || repo_is_binaryish(theirs_obj)):
 			# Binary-ish: conflict wholesale, leave ours' content in
 			# place untouched -- never interleave binary bytes with
 			# text markers.
@@ -1084,7 +783,7 @@ int wvc_cmd_merge(int argc, int argv):
 			if (base_obj != 0):
 				base_text = base_obj.data
 			merge3_text_result* mr = merge3_merge_text(base_text, ours_obj.data, theirs_obj.data, 0, 0)
-			wvc_ensure_parent_dirs(dir, path)
+			repo_ensure_parent_dirs(dir, path)
 			char* full_path = path_join(dir, path)
 			file_write_text(full_path, mr.text)
 			free(full_path)
@@ -1106,8 +805,8 @@ int wvc_cmd_merge(int argc, int argv):
 		stream_flush(out)
 		result = 1
 	else:
-		list[char*] ignore = wvc_ignore_list()
-		char* index_path = wvc_index_path(meta)
+		list[char*] ignore = repo_ignore_list()
+		char* index_path = repo_index_path(meta)
 		wresult[windex*]* prev_index_r = index_read(index_path)
 		windex* prev_index = 0
 		if (result_is_ok[windex*](prev_index_r)):
@@ -1137,7 +836,7 @@ int wvc_cmd_merge(int argc, int argv):
 
 		commit_object* mco = wvc_unwrap[commit_object*](commit_new(new_tree_id, parent_ids, author, time_now(), final_message, strlen(final_message)), c"invalid merge commit")
 		char* commit_id = wvc_unwrap[char*](commit_store(store, mco), c"cannot store merge commit")
-		wvc_unwrap[int](ref_update(refs, WVC_DEFAULT_REF(), commit_id, final_message), c"cannot update ref")
+		wvc_unwrap[int](ref_update(refs, REPO_DEFAULT_REF(), commit_id, final_message), c"cannot update ref")
 
 		wresult[int]* index_written = index_write(new_index, index_path)
 		result_free[int](index_written)
@@ -1214,7 +913,7 @@ int wvc_cmd_serve(int argc, int argv):
 		wvc_usage()
 		return 2
 
-	char* meta = wvc_meta_dir(root)
+	char* meta = repo_meta_dir(root)
 	wcas* store = wvc_open_store(meta)
 	wrefs* refs = wvc_open_refs(meta)
 	free(meta)
@@ -1254,7 +953,7 @@ int wvc_cmd_serve(int argc, int argv):
 
 int wvc_cmd_pull(int argc, int argv):
 	char* url = 0
-	char* ref_name = WVC_DEFAULT_REF()
+	char* ref_name = REPO_DEFAULT_REF()
 	if (argc >= 3):
 		char** arg = argv + 2 * __word_size__
 		url = *arg
@@ -1265,7 +964,7 @@ int wvc_cmd_pull(int argc, int argv):
 		wvc_usage()
 		return 2
 
-	char* meta = wvc_meta_dir(c".")
+	char* meta = repo_meta_dir(c".")
 	wcas* store = wvc_open_store(meta)
 	wrefs* refs = wvc_open_refs(meta)
 	free(meta)
@@ -1280,7 +979,7 @@ int wvc_cmd_pull(int argc, int argv):
 
 int wvc_cmd_push(int argc, int argv):
 	char* url = 0
-	char* ref_name = WVC_DEFAULT_REF()
+	char* ref_name = REPO_DEFAULT_REF()
 	if (argc >= 3):
 		char** arg = argv + 2 * __word_size__
 		url = *arg
@@ -1291,7 +990,7 @@ int wvc_cmd_push(int argc, int argv):
 		wvc_usage()
 		return 2
 
-	char* meta = wvc_meta_dir(c".")
+	char* meta = repo_meta_dir(c".")
 	wcas* store = wvc_open_store(meta)
 	wrefs* refs = wvc_open_refs(meta)
 	free(meta)
@@ -1326,7 +1025,7 @@ int wvc_cmd_pack(int argc, int argv):
 	if (dir == 0):
 		dir = c"."
 
-	char* meta = wvc_meta_dir(dir)
+	char* meta = repo_meta_dir(dir)
 	wcas* store = wvc_open_store(meta)
 	pack_stats* st = wvc_unwrap[pack_stats*](pack_store_loose(store, prune), c"pack failed")
 
@@ -1362,7 +1061,7 @@ int wvc_cmd_unpack(int argc, int argv):
 		char** arg = argv + 2 * __word_size__
 		dir = *arg
 
-	char* meta = wvc_meta_dir(dir)
+	char* meta = repo_meta_dir(dir)
 	wcas* store = wvc_open_store(meta)
 	pack_stats* st = wvc_unwrap[pack_stats*](pack_unpack_all(store), c"unpack failed")
 
