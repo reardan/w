@@ -18,6 +18,7 @@
 # Element positions come back as (start, len) offsets into the same buffer,
 # so nested structures are parsed by pointing a new reader at the content.
 import lib.lib
+import lib.mem
 
 
 # ---- universal tags (and the X.509 context tags built from them) -------------
@@ -302,11 +303,4 @@ int asn1_read_bitstring_bytes(asn1* r, int* out_start, int* out_len):
 
 # Do the element bytes at (start, len) equal the len2 bytes at want?
 int asn1_bytes_equal(char* data, int start, int len, char* want, int len2):
-	if (len != len2):
-		return 0
-	int i = 0
-	while (i < len):
-		if ((data[start + i] & 255) != (want[i] & 255)):
-			return 0
-		i = i + 1
-	return 1
+	return (len == len2) && mem_eq(data + start, want, len)

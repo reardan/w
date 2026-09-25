@@ -128,6 +128,7 @@ import libs.standard.web.connection
 import libs.standard.web.http_client
 import libs.standard.web.urlparse
 import libs.standard.net.tls
+import lib.mem
 
 
 # One parsed request. target is the raw request-target off the request
@@ -325,38 +326,23 @@ int server_error_to_status(int code):
    handlers are likely to use; anything else falls back to its class. */
 
 char* server_status_text(int status):
-	if (status == 200):
-		return c"OK"
-	if (status == 201):
-		return c"Created"
-	if (status == 204):
-		return c"No Content"
-	if (status == 301):
-		return c"Moved Permanently"
-	if (status == 302):
-		return c"Found"
-	if (status == 304):
-		return c"Not Modified"
-	if (status == 400):
-		return c"Bad Request"
-	if (status == 404):
-		return c"Not Found"
-	if (status == 405):
-		return c"Method Not Allowed"
-	if (status == 408):
-		return c"Request Timeout"
-	if (status == 411):
-		return c"Length Required"
-	if (status == 413):
-		return c"Payload Too Large"
-	if (status == 431):
-		return c"Request Header Fields Too Large"
-	if (status == 500):
-		return c"Internal Server Error"
-	if (status == 501):
-		return c"Not Implemented"
-	if (status == 503):
-		return c"Service Unavailable"
+	switch (status):
+		case 200: return c"OK"
+		case 201: return c"Created"
+		case 204: return c"No Content"
+		case 301: return c"Moved Permanently"
+		case 302: return c"Found"
+		case 304: return c"Not Modified"
+		case 400: return c"Bad Request"
+		case 404: return c"Not Found"
+		case 405: return c"Method Not Allowed"
+		case 408: return c"Request Timeout"
+		case 411: return c"Length Required"
+		case 413: return c"Payload Too Large"
+		case 431: return c"Request Header Fields Too Large"
+		case 500: return c"Internal Server Error"
+		case 501: return c"Not Implemented"
+		case 503: return c"Service Unavailable"
 	if (status < 300):
 		return c"OK"
 	if (status < 400):
@@ -440,19 +426,13 @@ int server_request_wants_keep_alive(ServerRequest* req):
 /* ServerResponse */
 
 ServerResponse* server_response_new(int status):
-	ServerResponse* resp = new ServerResponse()
-	resp.status = status
-	resp.headers = new list[http_header*]
-	resp.body = 0
-	resp.body_len = 0
+	ServerResponse* resp = new ServerResponse(status, new list[http_header*], 0, 0)
 	return resp
 
 
 # Appends a response header; name and value are copied.
 void server_response_add_header(ServerResponse* resp, char* name, char* value):
-	http_header* h = new http_header()
-	h.name = strclone(name)
-	h.value = strclone(value)
+	http_header* h = new http_header(strclone(name), strclone(value))
 	resp.headers.push(h)
 
 
@@ -472,12 +452,7 @@ void server_response_set_body(ServerResponse* resp, char* body, int body_len):
 		resp.body = strclone(c"")
 		resp.body_len = 0
 		return
-	char* copy = malloc(body_len + 1)
-	int i = 0
-	while (i < body_len):
-		copy[i] = body[i]
-		i = i + 1
-	copy[body_len] = 0
+	char* copy = mem_dup(body, body_len)
 	resp.body = copy
 	resp.body_len = body_len
 
@@ -496,10 +471,7 @@ void server_response_append_body(ServerResponse* resp, char* body, int body_len)
 		return
 	int old_len = resp.body_len
 	char* combined = malloc(old_len + body_len + 1)
-	int i = 0
-	while (i < old_len):
-		combined[i] = resp.body[i]
-		i = i + 1
+	mem_copy(combined, resp.body, old_len)
 	int j = 0
 	while (j < body_len):
 		combined[old_len + j] = body[j]

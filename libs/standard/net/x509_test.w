@@ -15,6 +15,7 @@ import lib.container
 import libs.standard.crypto.base64
 import libs.standard.net.asn1
 import libs.standard.net.x509
+import lib.mem
 
 
 # Fixed verification instants (see fixture README).
@@ -70,10 +71,7 @@ char* xt_load_der(char* name, int* out_len):
 	asserts(c"expected one PEM block", blocks.length == 1)
 	pem_block* b = blocks[0]
 	char* der = malloc(b.len)
-	int i = 0
-	while (i < b.len):
-		der[i] = b.data[i]
-		i = i + 1
+	mem_copy(der, b.data, b.len)
 	*out_len = b.len
 	pem_blocks_free(blocks)
 	return der
@@ -401,12 +399,7 @@ void test_truncated_and_mangled_der():
 	asserts(c"truncated head", x509_parse(der, 3) == 0)
 	asserts(c"empty", x509_parse(der, 0) == 0)
 	# Trailing garbage after the certificate fails.
-	char* padded = malloc(len + 1)
-	int i = 0
-	while (i < len):
-		padded[i] = der[i]
-		i = i + 1
-	padded[len] = 0
+	char* padded = mem_dup(der, len)
 	asserts(c"trailing garbage", x509_parse(padded, len + 1) == 0)
 	free(padded)
 	# Mangle the outer tag and the outer length.
@@ -551,17 +544,17 @@ void test_hostname_rules():
 
 
 void test_time_parsing():
-	assert_equal(0, x509_days_from_civil(1970, 1, 1))
-	assert_equal(24855, x509_days_from_civil(2038, 1, 19))
-	assert_equal(29220, x509_days_from_civil(2050, 1, 1))
+	assert_equal(0, time_days_from_civil(1970, 1, 1))
+	assert_equal(24855, time_days_from_civil(2038, 1, 19))
+	assert_equal(29220, time_days_from_civil(2050, 1, 1))
 	int day = 0
 	int sec = 0
 	# UTCTime pivot: 49 -> 2049, 50 -> 1950.
 	assert_equal(1, x509_parse_time(c"491231235959Z", 0, 13, ASN1_UTCTIME(), &day, &sec))
-	assert_equal(x509_days_from_civil(2049, 12, 31), day)
+	assert_equal(time_days_from_civil(2049, 12, 31), day)
 	assert_equal(86399, sec)
 	assert_equal(1, x509_parse_time(c"500101000000Z", 0, 13, ASN1_UTCTIME(), &day, &sec))
-	assert_equal(x509_days_from_civil(1950, 1, 1), day)
+	assert_equal(time_days_from_civil(1950, 1, 1), day)
 	# GeneralizedTime.
 	assert_equal(1, x509_parse_time(c"20500101000000Z", 0, 15, ASN1_GENERALIZEDTIME(), &day, &sec))
 	assert_equal(29220, day)
@@ -686,10 +679,7 @@ void test_ec_private_key_loading():
 	int wlen = 0
 	char* wtmp = hex_decode(XT_KEY_D_HEX(), 64, &wlen)
 	assert_equal(32, wlen)
-	int i = 0
-	while (i < 32):
-		want[i] = wtmp[i]
-		i = i + 1
+	mem_copy(want, wtmp, 32)
 	free(wtmp)
 	char* d1 = malloc(32)
 	char* d2 = malloc(32)
@@ -698,7 +688,7 @@ void test_ec_private_key_loading():
 	assert_equal(1, x509_load_ec_private_key(p8, strlen(p8), d1))
 	char* s1 = xt_read_fixture(c"key_p256_sec1.pem")
 	assert_equal(1, x509_load_ec_private_key(s1, strlen(s1), d2))
-	i = 0
+	int i = 0
 	while (i < 32):
 		assert_equal(want[i] & 255, d1[i] & 255)
 		assert_equal(d1[i] & 255, d2[i] & 255)

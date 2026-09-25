@@ -135,6 +135,8 @@ import lib.poll
 import libs.standard.net.dns
 import libs.standard.net.tls
 import libs.standard.web.hpack
+import lib.bytes
+import lib.mem
 
 
 /* Constants */
@@ -256,35 +258,22 @@ int h2_error_http_1_1_required():
 
 
 char* h2_error_string(int code):
-	if (code == 0):
-		return c"NO_ERROR"
-	if (code == 1):
-		return c"PROTOCOL_ERROR"
-	if (code == 2):
-		return c"INTERNAL_ERROR"
-	if (code == 3):
-		return c"FLOW_CONTROL_ERROR"
-	if (code == 4):
-		return c"SETTINGS_TIMEOUT"
-	if (code == 5):
-		return c"STREAM_CLOSED"
-	if (code == 6):
-		return c"FRAME_SIZE_ERROR"
-	if (code == 7):
-		return c"REFUSED_STREAM"
-	if (code == 8):
-		return c"CANCEL"
-	if (code == 9):
-		return c"COMPRESSION_ERROR"
-	if (code == 10):
-		return c"CONNECT_ERROR"
-	if (code == 11):
-		return c"ENHANCE_YOUR_CALM"
-	if (code == 12):
-		return c"INADEQUATE_SECURITY"
-	if (code == 13):
-		return c"HTTP_1_1_REQUIRED"
-	return c"UNKNOWN_ERROR"
+	switch (code):
+		case 0: return c"NO_ERROR"
+		case 1: return c"PROTOCOL_ERROR"
+		case 2: return c"INTERNAL_ERROR"
+		case 3: return c"FLOW_CONTROL_ERROR"
+		case 4: return c"SETTINGS_TIMEOUT"
+		case 5: return c"STREAM_CLOSED"
+		case 6: return c"FRAME_SIZE_ERROR"
+		case 7: return c"REFUSED_STREAM"
+		case 8: return c"CANCEL"
+		case 9: return c"COMPRESSION_ERROR"
+		case 10: return c"CONNECT_ERROR"
+		case 11: return c"ENHANCE_YOUR_CALM"
+		case 12: return c"INADEQUATE_SECURITY"
+		case 13: return c"HTTP_1_1_REQUIRED"
+		default: return c"UNKNOWN_ERROR"
 
 
 int h2_settings_header_table_size():
@@ -447,37 +436,9 @@ int h2_contains(char* hay, char* needle);
 
 /* Byte helpers */
 
-int h2_get_u24(char* p):
-	return ((p[0] & 255) << 16) | ((p[1] & 255) << 8) | (p[2] & 255)
-
-
 # 31-bit value with the high (reserved) bit masked off.
 int h2_get_u31(char* p):
 	return ((p[0] & 127) << 24) | ((p[1] & 255) << 16) | ((p[2] & 255) << 8) | (p[3] & 255)
-
-
-int h2_get_u16(char* p):
-	return ((p[0] & 255) << 8) | (p[1] & 255)
-
-
-void h2_put_u32(char* p, int v):
-	p[0] = (v >> 24) & 255
-	p[1] = (v >> 16) & 255
-	p[2] = (v >> 8) & 255
-	p[3] = v & 255
-
-
-void h2_put_u24(char* p, int v):
-	p[0] = (v >> 16) & 255
-	p[1] = (v >> 8) & 255
-	p[2] = v & 255
-
-
-void h2_copy(char* dst, char* src, int n):
-	int i = 0
-	while (i < n):
-		dst[i] = src[i]
-		i = i + 1
 
 
 int h2_min(int a, int b):
@@ -513,11 +474,11 @@ int h2_fd_read_exact(int fd, char* p, int n):
 # of 9 + len bytes.
 char* h2_frame_encode(int type, int flags, int stream_id, char* payload, int len):
 	char* buf = malloc(9 + len)
-	h2_put_u24(buf, len)
+	store_be24(buf, len)
 	buf[3] = type
 	buf[4] = flags
-	h2_put_u32(buf + 5, stream_id)
-	h2_copy(buf + 9, payload, len)
+	store_be32(buf + 5, stream_id)
+	mem_copy(buf + 9, payload, len)
 	return buf
 
 
@@ -533,7 +494,7 @@ int h2_raw_read_frame(int fd, h2_frame* f):
 	if (h2_fd_read_exact(fd, head, 9) == 0):
 		free(head)
 		return 0
-	f.length = h2_get_u24(head)
+	f.length = load_be24(head)
 	f.type = head[3] & 255
 	f.flags = head[4] & 255
 	f.stream_id = h2_get_u31(head + 5)
@@ -651,7 +612,7 @@ int h2_conn_has_pending(h2_conn* c):
 	if (c.dead != 0):
 		return 0
 	int buffered = c.rend - c.rstart
-	if ((buffered >= 9) && (buffered >= 9 + h2_get_u24(c.rbuf + c.rstart))):
+	if ((buffered >= 9) && (buffered >= 9 + load_be24(c.rbuf + c.rstart))):
 		return 1
 	if ((c.tls != 0) && (c.tls.app_pos < c.tls.app_len)):
 		return 1
@@ -680,16 +641,16 @@ int h2_send_settings(h2_conn* c):
 	char* p = malloc(24)
 	p[0] = 0
 	p[1] = h2_settings_enable_push()
-	h2_put_u32(p + 2, 0)
+	store_be32(p + 2, 0)
 	p[6] = 0
 	p[7] = h2_settings_max_concurrent_streams()
-	h2_put_u32(p + 8, c.local_max_concurrent)
+	store_be32(p + 8, c.local_max_concurrent)
 	p[12] = 0
 	p[13] = h2_settings_initial_window_size()
-	h2_put_u32(p + 14, c.local_initial_window)
+	store_be32(p + 14, c.local_initial_window)
 	p[18] = 0
 	p[19] = h2_settings_max_header_list_size()
-	h2_put_u32(p + 20, c.local_max_header_list)
+	store_be32(p + 20, c.local_max_header_list)
 	int rc = h2_write_frame(c, h2_frame_settings(), 0, 0, p, 24)
 	free(p)
 	if (rc != 0):
@@ -701,7 +662,7 @@ int h2_send_window_update(h2_conn* c, int stream_id, int inc):
 	if (inc <= 0):
 		return 0
 	char* p = malloc(4)
-	h2_put_u32(p, inc)
+	store_be32(p, inc)
 	int rc = h2_write_frame(c, h2_frame_window_update(), 0, stream_id, p, 4)
 	free(p)
 	if (rc != 0):
@@ -895,10 +856,7 @@ int h2_fill(h2_conn* c, int n):
 	while (c.rend - c.rstart < n):
 		if (c.rstart > 0):
 			int have = c.rend - c.rstart
-			int i = 0
-			while (i < have):
-				c.rbuf[i] = c.rbuf[c.rstart + i]
-				i = i + 1
+			mem_copy(c.rbuf, c.rbuf + c.rstart, have)
 			c.rstart = 0
 			c.rend = have
 		if (n > c.rcap):
@@ -928,9 +886,9 @@ void h2_send_goaway(h2_conn* c, int code, char* debug):
 	if (debug != 0):
 		dlen = strlen(debug)
 	char* p = malloc(8 + dlen)
-	h2_put_u32(p, c.last_peer_stream_id)
-	h2_put_u32(p + 4, code)
-	h2_copy(p + 8, debug, dlen)
+	store_be32(p, c.last_peer_stream_id)
+	store_be32(p + 4, code)
+	mem_copy(p + 8, debug, dlen)
 	h2_write_frame(c, h2_frame_goaway(), 0, 0, p, 8 + dlen)
 	free(p)
 
@@ -957,7 +915,7 @@ h2_stream* h2_find_stream(h2_conn* c, int id):
 
 int h2_write_rst(h2_conn* c, int stream_id, int code):
 	char* p = malloc(4)
-	h2_put_u32(p, code)
+	store_be32(p, code)
 	int rc = h2_write_frame(c, h2_frame_rst_stream(), 0, stream_id, p, 4)
 	free(p)
 	return rc
@@ -1388,7 +1346,7 @@ int h2_on_settings(h2_conn* c, h2_frame* f):
 		return h2_conn_error(c, h2_error_frame_size(), c"SETTINGS length")
 	int pos = 0
 	while (pos < f.length):
-		int id = h2_get_u16(f.payload + pos)
+		int id = load_be16(f.payload + pos)
 		int high = f.payload[pos + 2] & 128
 		int v = h2_get_u31(f.payload + pos + 2)
 		if (high != 0):
@@ -1448,7 +1406,7 @@ int h2_on_goaway(h2_conn* c, h2_frame* f):
 	c.goaway_code = h2_get_u31(f.payload + 4)
 	if (c.goaway_debug != 0):
 		free(c.goaway_debug)
-	c.goaway_debug = hpack_copy_bytes(f.payload + 8, f.length - 8)
+	c.goaway_debug = mem_dup(f.payload + 8, f.length - 8)
 	int i = 0
 	while (i < c.streams.length):
 		h2_stream* s = c.streams[i]
@@ -1547,7 +1505,7 @@ int h2_pump(h2_conn* c):
 	if (rc != 0):
 		return rc
 	char* head = c.rbuf + c.rstart
-	int len = h2_get_u24(head)
+	int len = load_be24(head)
 	if (len > c.local_max_frame):
 		return h2_conn_error(c, h2_error_frame_size(), c"frame too large")
 	rc = h2_fill(c, 9 + len)
@@ -1667,8 +1625,8 @@ void h2_goaway(h2_conn* c, int code):
 int h2_ping(h2_conn* c):
 	char* p = malloc(8)
 	c.ping_sent = c.ping_sent + 1
-	h2_put_u32(p, 0)
-	h2_put_u32(p + 4, c.ping_sent)
+	store_be32(p, 0)
+	store_be32(p + 4, c.ping_sent)
 	int rc = h2_write_frame(c, h2_frame_ping(), 0, 0, p, 8)
 	free(p)
 	if (rc != 0):

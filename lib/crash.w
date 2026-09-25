@@ -129,26 +129,6 @@ char* crash_signal_name(int sig):
 	return c"unknown"
 
 
-# One "  at name (file:line)" trace line; mirrors print_stack_trace's
-# per-frame output (lib/stack_trace.w) so both traces read the same.
-void crash_write_frame(int addr):
-	st_write_cstr(c"  at ")
-	int e = st_func_entry(addr)
-	if (e != 0):
-		st_write_cstr(cast(char*, st_entry_name(e)))
-	else:
-		st_write_hex(addr)
-	if (st_line_lookup(addr)):
-		st_write_cstr(c" (")
-		int fname = st_file_name(st_file_found)
-		if (fname != 0):
-			st_write_cstr(cast(char*, fname))
-			st_write_cstr(c":")
-		st_write_dec(st_line_found)
-		st_write_cstr(c")")
-	st_write_cstr(c"\n")
-
-
 # Register display order (same as wcore and wdbg attach mode):
 # eax ebx ecx edx esi edi ebp esp [r8..r15] eip eflags.
 int crash_reg_count():
@@ -244,11 +224,11 @@ void crash_report(int sig, int context):
 	st_write_cstr(c"stack trace (most recent call first):\n")
 	# The innermost frame is the faulting pc itself; older frames come
 	# from the frame-pointer chain (heuristic scan where it breaks).
-	crash_write_frame(pc)
+	st_write_frame(pc)
 	int n = st_unwind(pc, ctx_esp(context), ctx_reg(context, sigcontext_ebp()), crash_pcs, crash_frames_max())
 	int k = 0
 	while (k < n):
-		crash_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
+		st_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
 		k = k + 1
 	if (n >= crash_frames_max()):
 		st_write_cstr(c"  ... trace truncated\n")
@@ -358,7 +338,7 @@ void crash_report_darwin(int sig, int ucontext):
 		crash_write_darwin_uuid()
 		st_write_cstr(c"\n")
 	st_write_cstr(c"stack trace (most recent call first):\n")
-	crash_write_frame(pc)
+	st_write_frame(pc)
 	# W functions keep a frame chain on the W stack (x28): [x29] is the
 	# caller's x29, [x29 + 8] the return address. A fault in an asm
 	# stub, or in a prologue before its stp, leaves its return address
@@ -368,10 +348,10 @@ void crash_report_darwin(int sig, int ucontext):
 	int lr = st_code_address(crash_darwin_reg(mcontext, 30))
 	if (st_is_return(lr) && (st_func_entry(pc) != st_func_entry(lr - 1))):
 		if ((n == 0) || (st_word(cast(int, crash_pcs)) != lr - 1)):
-			crash_write_frame(lr - 1)
+			st_write_frame(lr - 1)
 	int k = 0
 	while (k < n):
-		crash_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
+		st_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
 		k = k + 1
 	if (n >= crash_frames_max()):
 		st_write_cstr(c"  ... trace truncated\n")
@@ -514,11 +494,11 @@ int crash_report_win(int pointers):
 	st_write_cstr(c"\n")
 	crash_write_win_registers(context)
 	st_write_cstr(c"stack trace (most recent call first):\n")
-	crash_write_frame(pc)
+	st_write_frame(pc)
 	int n = st_unwind(pc, st_word(context + 152), st_word(context + 160), crash_pcs, crash_frames_max())
 	int k = 0
 	while (k < n):
-		crash_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
+		st_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
 		k = k + 1
 	if (n >= crash_frames_max()):
 		st_write_cstr(c"  ... trace truncated\n")

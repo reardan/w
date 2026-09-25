@@ -107,6 +107,8 @@ import lib.assert
 import libs.standard.distributed.wal
 import libs.standard.distributed.memtable
 import libs.standard.distributed.sstable
+import lib.bytes
+import lib.mem
 
 
 struct lsm:
@@ -138,17 +140,6 @@ int lsm_tag_add_table():
 
 # ---- small helpers ----------------------------------------------------------
 
-# Malloc'd copy of len bytes with a convenience NUL appended.
-char* lsm_copy_bytes(char* src, int len):
-	char* dst = malloc(len + 1)
-	int i = 0
-	while (i < len):
-		dst[i] = src[i]
-		i = i + 1
-	dst[len] = 0
-	return dst
-
-
 # "<prefix>.sst<seq>", malloc'd; caller frees (or hands to table_paths).
 char* lsm_table_path(char* prefix, int seq):
 	char* num = itoa(seq)
@@ -164,7 +155,7 @@ char* lsm_table_path(char* prefix, int seq):
 int lsm_manifest_append_table(wal* mlog, int seq):
 	char* rec = malloc(5)
 	rec[0] = lsm_tag_add_table()
-	wal_put_le32(rec + 1, seq)
+	store_le32(rec + 1, seq)
 	int ok = wal_append(mlog, rec, 5)
 	free(rec)
 	return ok
@@ -177,18 +168,18 @@ void lsm_replay_data_record(memtable* m, char* p, int len):
 	int tag = p[0] & 255
 	if (tag == lsm_tag_put()):
 		assert1(len >= 9)
-		int key_len = wal_get_le32(p + 1)
-		int val_len = wal_get_le32(p + 5)
+		int key_len = load_le32(p + 1)
+		int val_len = load_le32(p + 5)
 		assert1(key_len >= 0 && val_len >= 0 && len == 9 + key_len + val_len)
-		char* key = lsm_copy_bytes(p + 9, key_len)
+		char* key = mem_dup(p + 9, key_len)
 		memtable_put(m, key, p + 9 + key_len, val_len)
 		free(key)
 		return
 	if (tag == lsm_tag_delete()):
 		assert1(len >= 5)
-		int dkey_len = wal_get_le32(p + 1)
+		int dkey_len = load_le32(p + 1)
 		assert1(dkey_len >= 0 && len == 5 + dkey_len)
-		char* dkey = lsm_copy_bytes(p + 5, dkey_len)
+		char* dkey = mem_dup(p + 5, dkey_len)
 		memtable_delete(m, dkey)
 		free(dkey)
 		return
@@ -205,7 +196,7 @@ void lsm_replay_data_record(memtable* m, char* p, int len):
 # corrupt table that is not the last manifest entry), with everything
 # that was opened closed again.
 lsm* lsm_open(char* prefix, int memtable_limit_bytes):
-	char* own_prefix = lsm_copy_bytes(prefix, strlen(prefix))
+	char* own_prefix = mem_dup(prefix, strlen(prefix))
 	char* wpath = strjoin(own_prefix, c".wal")
 	char* mpath = strjoin(own_prefix, c".manifest")
 	wal* mlog = wal_open(mpath)
@@ -223,7 +214,7 @@ lsm* lsm_open(char* prefix, int memtable_limit_bytes):
 	char* mp = wal_read_next(mrd, len_out)
 	while (mp != 0):
 		if (len_out[0] == 5 && (mp[0] & 255) == lsm_tag_add_table()):
-			seqs.push(wal_get_le32(mp + 1))
+			seqs.push(load_le32(mp + 1))
 		else:
 			fail = 1
 		free(mp)
@@ -395,8 +386,8 @@ int lsm_put(lsm* l, char* key, char* value, int value_len):
 	int key_len = strlen(key)
 	char* rec = malloc(9 + key_len + value_len)
 	rec[0] = lsm_tag_put()
-	wal_put_le32(rec + 1, key_len)
-	wal_put_le32(rec + 5, value_len)
+	store_le32(rec + 1, key_len)
+	store_le32(rec + 5, value_len)
 	int i = 0
 	while (i < key_len):
 		rec[9 + i] = key[i]
@@ -421,7 +412,7 @@ int lsm_delete(lsm* l, char* key):
 	int key_len = strlen(key)
 	char* rec = malloc(5 + key_len)
 	rec[0] = lsm_tag_delete()
-	wal_put_le32(rec + 1, key_len)
+	store_le32(rec + 1, key_len)
 	int i = 0
 	while (i < key_len):
 		rec[5 + i] = key[i]
@@ -450,7 +441,7 @@ char* lsm_get(lsm* l, char* key, int* len_out):
 	int state = memtable_get(l.mem, key, value_out, vlen)
 	if (state == 1):
 		# memtable values are borrowed; copy for the uniform contract
-		result = lsm_copy_bytes(value_out[0], vlen[0])
+		result = mem_dup(value_out[0], vlen[0])
 		len_out[0] = vlen[0]
 		decided = 1
 	if (state == 2):
@@ -611,7 +602,7 @@ char* lsm_export_value_at(lsm* l, int src, int i, int* len_out):
 	if (src < l.tables.length):
 		return sstable_value_at(l.tables[src], i, len_out)
 	char* borrowed = memtable_value_at(l.mem, i, len_out)
-	return lsm_copy_bytes(borrowed, len_out[0])
+	return mem_dup(borrowed, len_out[0])
 
 
 # Full-scan export: the same k-way merge lsm_compact runs across every
@@ -650,7 +641,7 @@ char* lsm_export(lsm* l, int* len_out):
 		else:
 			if (lsm_export_tombstone_at(l, best, cursors[best]) == 0):
 				char* val = lsm_export_value_at(l, best, cursors[best], vl)
-				keys.push(lsm_copy_bytes(best_key, strlen(best_key)))
+				keys.push(mem_dup(best_key, strlen(best_key)))
 				vals.push(val)
 				vlens.push(vl[0])
 			# advance every cursor sitting on this key: the winner and
@@ -672,21 +663,21 @@ char* lsm_export(lsm* l, int* len_out):
 	buf[1] = 83   # S
 	buf[2] = 77   # M
 	buf[3] = 88   # X
-	wal_put_le32(buf + 4, lsm_export_version())
-	wal_put_le32(buf + 8, keys.length)
+	store_le32(buf + 4, lsm_export_version())
+	store_le32(buf + 8, keys.length)
 	int off = 12
 	i = 0
 	while (i < keys.length):
 		char* k = keys[i]
 		int klen = strlen(k)
-		wal_put_le32(buf + off, klen)
+		store_le32(buf + off, klen)
 		off = off + 4
 		int j = 0
 		while (j < klen):
 			buf[off + j] = k[j]
 			j = j + 1
 		off = off + klen
-		wal_put_le32(buf + off, vlens[i])
+		store_le32(buf + off, vlens[i])
 		off = off + 4
 		char* v = vals[i]
 		j = 0
@@ -743,9 +734,9 @@ int lsm_import(lsm* l, char* blob, int len):
 		return 0
 	if ((blob[0] & 255) != 76 || (blob[1] & 255) != 83 || (blob[2] & 255) != 77 || (blob[3] & 255) != 88):
 		return 0
-	if (wal_get_le32(blob + 4) != lsm_export_version()):
+	if (load_le32(blob + 4) != lsm_export_version()):
 		return 0
-	int count = wal_get_le32(blob + 8)
+	int count = load_le32(blob + 8)
 	if (count < 0):
 		return 0
 	list[int] key_off = new list[int]
@@ -757,7 +748,7 @@ int lsm_import(lsm* l, char* blob, int len):
 	while (i < count):
 		if (len - off < 4):
 			return 0
-		int klen = wal_get_le32(blob + off)
+		int klen = load_le32(blob + off)
 		if (klen < 0 || klen > len - off - 4):
 			return 0
 		key_off.push(off + 4)
@@ -765,7 +756,7 @@ int lsm_import(lsm* l, char* blob, int len):
 		off = off + 4 + klen
 		if (len - off < 4):
 			return 0
-		int vlen = wal_get_le32(blob + off)
+		int vlen = load_le32(blob + off)
 		if (vlen < 0 || vlen > len - off - 4):
 			return 0
 		val_off.push(off + 4)
@@ -778,7 +769,7 @@ int lsm_import(lsm* l, char* blob, int len):
 		return 0
 	i = 0
 	while (i < count):
-		char* key = lsm_copy_bytes(blob + key_off[i], key_len[i])
+		char* key = mem_dup(blob + key_off[i], key_len[i])
 		int ok = lsm_put(l, key, blob + val_off[i], val_len[i])
 		free(key)
 		if (ok == 0):

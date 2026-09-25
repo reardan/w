@@ -55,12 +55,7 @@ int retry_retryable_default(int status):
 # Sensible defaults: up to 5 attempts, 1s base doubling to a 32s cap,
 # with full jitter enabled.
 retry_policy* retry_policy_default():
-	retry_policy* p = new retry_policy()
-	p.max_attempts = 5
-	p.base_delay_ms = 1000
-	p.max_delay_ms = 32000
-	p.jitter = 1
-	p.retryable = retry_retryable_default
+	retry_policy* p = new retry_policy(5, 1000, 32000, 1, retry_retryable_default)
 	return p
 
 
@@ -141,12 +136,6 @@ int retry_is_alpha(int c):
 	return 0
 
 
-int retry_lower(int c):
-	if ((c >= 'A') && (c <= 'Z')):
-		return c + 32
-	return c
-
-
 void retry_skip_ws(char* s, int* pos):
 	int p = *pos
 	while ((s[p] == ' ') || (s[p] == 9)):
@@ -171,39 +160,6 @@ int retry_read_uint(char* s, int* pos, int* out):
 	return p - start
 
 
-# Maps a 3-letter English month abbreviation at s[at..at+2] to 1..12, or
-# -1 when it is not a month name.
-int retry_month_index(char* s, int at):
-	int a = retry_lower(s[at] & 255)
-	int b = retry_lower(s[at + 1] & 255)
-	int c = retry_lower(s[at + 2] & 255)
-	if ((a == 'j') && (b == 'a') && (c == 'n')):
-		return 1
-	if ((a == 'f') && (b == 'e') && (c == 'b')):
-		return 2
-	if ((a == 'm') && (b == 'a') && (c == 'r')):
-		return 3
-	if ((a == 'a') && (b == 'p') && (c == 'r')):
-		return 4
-	if ((a == 'm') && (b == 'a') && (c == 'y')):
-		return 5
-	if ((a == 'j') && (b == 'u') && (c == 'n')):
-		return 6
-	if ((a == 'j') && (b == 'u') && (c == 'l')):
-		return 7
-	if ((a == 'a') && (b == 'u') && (c == 'g')):
-		return 8
-	if ((a == 's') && (b == 'e') && (c == 'p')):
-		return 9
-	if ((a == 'o') && (b == 'c') && (c == 't')):
-		return 10
-	if ((a == 'n') && (b == 'o') && (c == 'v')):
-		return 11
-	if ((a == 'd') && (b == 'e') && (c == 'c')):
-		return 12
-	return (-1)
-
-
 # Reads a 3-letter month at *pos, advancing past it. Returns 1..12 or -1.
 int retry_read_month(char* s, int* pos):
 	int p = *pos
@@ -213,7 +169,7 @@ int retry_read_month(char* s, int* pos):
 		return (-1)
 	if (retry_is_alpha(s[p + 2] & 255) == 0):
 		return (-1)
-	int m = retry_month_index(s, p)
+	int m = time_month_from_abbrev(s + p)
 	if (m < 0):
 		return (-1)
 	*pos = p + 3
@@ -245,22 +201,6 @@ int retry_read_time(char* s, int* pos, int* hh, int* mm, int* ss):
 	return 1
 
 
-# Days from the Unix epoch (1970-01-01) to a valid Gregorian y/m/d, by
-# Howard Hinnant's civil-to-days formula. Correct for the positive years
-# HTTP dates carry.
-int retry_days_from_civil(int y, int m, int d):
-	if (m <= 2):
-		y = y - 1
-	int era = y / 400
-	int yoe = y - era * 400
-	int mp = m + 9
-	if (m > 2):
-		mp = m - 3
-	int doy = (153 * mp + 2) / 5 + d - 1
-	int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
-	return era * 146097 + doe - 719468
-
-
 # Assembles validated fields into Unix seconds, or -1 when out of range
 # or before the epoch.
 int retry_fields_to_unix(int year, int month, int day, int hh, int mm, int ss):
@@ -279,7 +219,7 @@ int retry_fields_to_unix(int year, int month, int day, int hh, int mm, int ss):
 		ss = 59
 	if (year < 1970):
 		return (-1)
-	int days = retry_days_from_civil(year, month, day)
+	int days = time_days_from_civil(year, month, day)
 	if (days < 0):
 		return (-1)
 	return days * 86400 + hh * 3600 + mm * 60 + ss

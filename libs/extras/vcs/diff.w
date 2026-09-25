@@ -116,9 +116,7 @@ struct diff_input:
 
 
 diff_input* diff_read_text(char* text):
-	diff_input* input = new diff_input()
-	input.lines = diff_split_lines(text)
-	input.no_newline = diff_missing_newline(text)
+	diff_input* input = new diff_input(diff_split_lines(text), diff_missing_newline(text))
 	return input
 
 
@@ -233,10 +231,7 @@ list[diff_op*] diff_myers_ops(list[char*] old_lines, int old_no_nl, list[char*] 
 		int prev_y = prev_x - prev_k
 
 		while ((x > prev_x) && (y > prev_y)):
-			diff_op* eq = new diff_op()
-			eq.kind = DIFF_EQUAL()
-			eq.old_index = x - 1
-			eq.new_index = y - 1
+			diff_op* eq = new diff_op(DIFF_EQUAL(), x - 1, y - 1)
 			rev.push(eq)
 			x = x - 1
 			y = y - 1
@@ -297,12 +292,7 @@ list[diff_range_op*] diff_coalesce_ops(list[diff_op*] ops):
 			else:
 				new_pos = new_pos + 1
 			j = j + 1
-		diff_range_op* r = new diff_range_op()
-		r.kind = kind
-		r.old_start = old_start
-		r.old_end = old_pos
-		r.new_start = new_start
-		r.new_end = new_pos
+		diff_range_op* r = new diff_range_op(kind, old_start, old_pos, new_start, new_pos)
 		result.push(r)
 		i = j
 	return result
@@ -365,8 +355,7 @@ diff_hunk* diff_group_to_hunk(list[diff_range_op*] group, list[char*] old_lines,
 # (adjacent changes within 2*context lines of each other share a hunk)
 # -- ports Python difflib.SequenceMatcher.get_grouped_opcodes.
 diff_result* diff_lines(list[char*] old_lines, int old_no_nl, list[char*] new_lines, int new_no_nl, int context):
-	diff_result* result = new diff_result()
-	result.hunks = new list[diff_hunk*]
+	diff_result* result = new diff_result(new list[diff_hunk*])
 
 	list[diff_op*] ops = diff_myers_ops(old_lines, old_no_nl, new_lines, new_no_nl)
 	list[diff_range_op*] codes = diff_coalesce_ops(ops)
@@ -440,9 +429,7 @@ struct diff_apply_result:
 
 
 diff_apply_result* diff_apply(list[char*] old_lines, int old_no_nl, diff_result* result):
-	diff_apply_result* out = new diff_apply_result()
-	out.lines = new list[char*]
-	out.no_newline = old_no_nl
+	diff_apply_result* out = new diff_apply_result(new list[char*], old_no_nl)
 
 	int old_pos = 0
 	for diff_hunk* hunk in result.hunks:

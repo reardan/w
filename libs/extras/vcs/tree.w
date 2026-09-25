@@ -142,8 +142,7 @@ struct wtree:
 
 
 wtree* tree_new():
-	wtree* t = new wtree
-	t.entries = new list[tree_entry*]
+	wtree* t = new wtree(new list[tree_entry*])
 	return t
 
 
@@ -229,10 +228,7 @@ tree_entry* tree_entry_new(char* name, int mode, char* id):
 		return 0
 	if (cas_valid_id(id) == 0):
 		return 0
-	tree_entry* e = new tree_entry
-	e.name = strclone(name)
-	e.mode = mode
-	e.id = strclone(id)
+	tree_entry* e = new tree_entry(strclone(name), mode, strclone(id))
 	return e
 
 
@@ -367,10 +363,7 @@ wresult[wtree*]* tree_get(wcas* s, char* id):
 				if (valid && (prev != 0)):
 					valid = tree_name_compare(prev, name) < 0
 				if (valid):
-					tree_entry* e = new tree_entry
-					e.name = name
-					e.mode = mode
-					e.id = entry_id
+					tree_entry* e = new tree_entry(name, mode, entry_id)
 					entry_id = 0
 					t.entries.push(e)
 					prev = name
@@ -498,9 +491,7 @@ void tree_changes_free(list[tree_change*] changes):
 
 
 void tree_change_push(list[tree_change*] out, char* path, int status):
-	tree_change* c = new tree_change
-	c.path = path
-	c.status = status
+	tree_change* c = new tree_change(path, status)
 	out.push(c)
 
 

@@ -9,20 +9,8 @@ hashlib. Issue #195, plan 11 phase 4.
 */
 import lib.testing
 import libs.standard.crypto.sha2
-
-
-# Format len digest bytes as a lowercase hex string (malloc'd).
-char* sha2t_hex(char* digest, int len):
-	char* out = malloc(len * 2 + 1)
-	char* digits = c"0123456789abcdef"
-	int i = 0
-	while (i < len):
-		int b = digest[i] & 255
-		out[i * 2] = digits[(b >> 4) & 15]
-		out[i * 2 + 1] = digits[b & 15]
-		i = i + 1
-	out[len * 2] = 0
-	return out
+import lib.hex
+import lib.mem
 
 
 # One-shot digest of data as hex.
@@ -30,7 +18,7 @@ char* sha2t_digest_hex(int alg, char* data, int len):
 	int ds = whash_digest_size(alg)
 	char* digest = malloc(ds)
 	whash_oneshot(alg, data, len, digest)
-	char* hex = sha2t_hex(digest, ds)
+	char* hex = hex_encode(digest, ds)
 	free(digest)
 	return hex
 
@@ -55,10 +43,7 @@ void test_sha384_block_boundaries():
 	# field: 111 fits one padded block, 112 forces a second, 128 is an
 	# exact block, 129 spills into a new one.
 	char* a129 = malloc(129)
-	int i = 0
-	while (i < 129):
-		a129[i] = 'a'
-		i = i + 1
+	mem_fill(a129, 'a', 129)
 	sha2t_check(WHASH_SHA384(), a129, 111, c"3c37955051cb5c3026f94d551d5b5e2ac38d572ae4e07172085fed81f8466b8f90dc23a8ffcdea0b8d8e58e8fdacc80a")
 	sha2t_check(WHASH_SHA384(), a129, 112, c"187d4e07cb306103c69967bf544d0dfbe9042577599c73c330abc0cb64c61236d5ed565ee19119d8c31779a38f791fcd")
 	sha2t_check(WHASH_SHA384(), a129, 127, c"9bd06b1763c2cf7aef40e795dc65bc96d59c41b537f3ad72ebdefd485476b5717c1aeb37c327fe9c1831b12b9efd08ae")
@@ -73,10 +58,7 @@ void test_sha384_million_a():
 	int n = 1000000
 	int chunk = 100000
 	char* big = malloc(chunk)
-	int i = 0
-	while (i < chunk):
-		big[i] = 'a'
-		i = i + 1
+	mem_fill(big, 'a', chunk)
 	whash* h = whash_new(WHASH_SHA384())
 	int fed = 0
 	while (fed < n):
@@ -84,7 +66,7 @@ void test_sha384_million_a():
 		fed = fed + chunk
 	char* digest = malloc(48)
 	whash_final(h, digest)
-	char* got = sha2t_hex(digest, 48)
+	char* got = hex_encode(digest, 48)
 	assert_strings_equal(c"9d0e1809716474cb086e834e310a4a1ced149e9c00f248527972cec5704c2a5b07b8b3dc38ecc4ebae97ddd87f3d8985", got)
 	free(got)
 	free(digest)
@@ -121,7 +103,7 @@ void sha2t_check_streaming(int alg, char* data, int len, int step):
 	int ds = whash_digest_size(alg)
 	char* digest = malloc(ds)
 	whash_final(h, digest)
-	char* got = sha2t_hex(digest, ds)
+	char* got = hex_encode(digest, ds)
 	char* want = sha2t_digest_hex(alg, data, len)
 	assert_strings_equal(want, got)
 	free(want)
@@ -147,12 +129,12 @@ void test_final_is_nondestructive():
 	whash_update(h, c"abc", 3)
 	char* digest = malloc(48)
 	whash_final(h, digest)
-	char* got = sha2t_hex(digest, 48)
+	char* got = hex_encode(digest, 48)
 	assert_strings_equal(c"cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7", got)
 	free(got)
 	whash_update(h, c"def", 3)
 	whash_final(h, digest)
-	got = sha2t_hex(digest, 48)
+	got = hex_encode(digest, 48)
 	assert_strings_equal(c"c6a4c65b227e7387b9c3e839d44869c4cfca3ef583dea64117859b808c1e3d8ae689e1e314eeef52a6ffe22681aa11f5", got)
 	free(got)
 	free(digest)
@@ -167,19 +149,19 @@ void test_clone_and_reset():
 	whash_update(c, c"def", 3)
 	char* digest = malloc(48)
 	whash_final(c, digest)
-	char* got = sha2t_hex(digest, 48)
+	char* got = hex_encode(digest, 48)
 	assert_strings_equal(c"c6a4c65b227e7387b9c3e839d44869c4cfca3ef583dea64117859b808c1e3d8ae689e1e314eeef52a6ffe22681aa11f5", got)
 	free(got)
 	whash_free(c)
 	# The original still holds only "abc".
 	whash_final(h, digest)
-	got = sha2t_hex(digest, 48)
+	got = hex_encode(digest, 48)
 	assert_strings_equal(c"cb00753f45a35e8bb5a03d699ac65007272c32ab0eded1631a8b605a43ff5bed8086072ba1e7cc2358baeca134c825a7", got)
 	free(got)
 	# Reset rewinds to the empty message.
 	whash_reset(h)
 	whash_final(h, digest)
-	got = sha2t_hex(digest, 48)
+	got = hex_encode(digest, 48)
 	assert_strings_equal(c"38b060a751ac96384cd9327eb1b1e36a21fdb71114be07434c0cc7bf63f6e1da274edebfe76f65fbd51ad2f14898b95b", got)
 	free(got)
 	free(digest)

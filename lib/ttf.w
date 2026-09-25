@@ -24,6 +24,8 @@ metrics — bearing_x (left edge relative to the pen), bearing_top
 import lib.lib
 import lib.stream
 import structures.string
+import lib.bytes
+import lib.mem
 
 
 struct ttf_font:
@@ -1078,21 +1080,6 @@ int ttf_fill(ttf_outline* o, ttf_bitmap* out):
 # graphics/ui/font_data.w small enough to compile into every UI program.
 
 
-void ttf_put16(string_builder* b, int v):
-	string_append_char(b, (v >> 8) & 255)
-	string_append_char(b, v & 255)
-
-
-void ttf_put32(string_builder* b, int v):
-	ttf_put16(b, (v >> 16) & 65535)
-	ttf_put16(b, v & 65535)
-
-
-void ttf_set16(char* p, int off, int v):
-	p[off] = (v >> 8) & 255
-	p[off + 1] = v & 255
-
-
 # Append bytes [off, off + length) of the font.
 void ttf_put_range(string_builder* b, ttf_font* f, int off, int length):
 	int i = 0
@@ -1168,7 +1155,7 @@ void ttf_subset_glyph(string_builder* b, ttf_font* f, int old, int* new_id):
 		int head = 10 + contours * 2
 		int instructions = ttf_u16(f, off + head)
 		ttf_put_range(b, f, off, head)
-		ttf_put16(b, 0)
+		string_append_be16(b, 0)
 		int rest = head + 2 + instructions
 		if (rest < length):
 			ttf_put_range(b, f, off + rest, length - rest)
@@ -1181,8 +1168,8 @@ void ttf_subset_glyph(string_builder* b, ttf_font* f, int old, int* new_id):
 		int flags = ttf_u16(f, pos)
 		int size = ttf_component_size(flags)
 		# Drop WE_HAVE_INSTRUCTIONS (0x100): the instructions are gone.
-		ttf_put16(b, flags & (65535 - 256))
-		ttf_put16(b, new_id[ttf_u16(f, pos + 2)])
+		string_append_be16(b, flags & (65535 - 256))
+		string_append_be16(b, new_id[ttf_u16(f, pos + 2)])
 		ttf_put_range(b, f, pos + 4, size - 4)
 		pos = pos + size
 		more = flags & 32
@@ -1219,10 +1206,7 @@ int ttf_checksum(char* data, int length):
 char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	int n = f.glyph_count
 	char* keep = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		keep[i] = 0
-		i = i + 1
+	mem_fill(keep, 0, n)
 	keep[0] = 1
 	int total = 0
 	int r = 0
@@ -1250,7 +1234,7 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	int* new_id = cast(int*, malloc((n + 1) * __word_size__))
 	int* old_id = cast(int*, malloc((n + 1) * __word_size__))
 	int count = 0
-	i = 0
+	int i = 0
 	while (i < n):
 		new_id[i] = 0
 		if (keep[i]):
@@ -1264,16 +1248,16 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	string_builder* loca = string_new()
 	i = 0
 	while (i < count):
-		ttf_put32(loca, glyf.length)
+		string_append_be32(loca, glyf.length)
 		ttf_subset_glyph(glyf, f, old_id[i], new_id)
 		i = i + 1
-	ttf_put32(loca, glyf.length)
+	string_append_be32(loca, glyf.length)
 
 	string_builder* hmtx = string_new()
 	i = 0
 	while (i < count):
-		ttf_put16(hmtx, ttf_advance_units(f, old_id[i]))
-		ttf_put16(hmtx, ttf_lsb_units(f, old_id[i]) & 65535)
+		string_append_be16(hmtx, ttf_advance_units(f, old_id[i]))
+		string_append_be16(hmtx, ttf_lsb_units(f, old_id[i]) & 65535)
 		i = i + 1
 
 	# cmap: one format-12 subtable (Windows, full Unicode), grouping
@@ -1285,22 +1269,22 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 		int j = i
 		while ((j + 1 < mapped) && (cps[j + 1] == cps[j] + 1) && (new_id[gids[j + 1]] == new_id[gids[j]] + 1)):
 			j = j + 1
-		ttf_put32(groups, cps[i])
-		ttf_put32(groups, cps[j])
-		ttf_put32(groups, new_id[gids[i]])
+		string_append_be32(groups, cps[i])
+		string_append_be32(groups, cps[j])
+		string_append_be32(groups, new_id[gids[i]])
 		group_count = group_count + 1
 		i = j + 1
 	string_builder* cmap = string_new()
-	ttf_put16(cmap, 0)
-	ttf_put16(cmap, 1)
-	ttf_put16(cmap, 3)
-	ttf_put16(cmap, 10)
-	ttf_put32(cmap, 12)
-	ttf_put16(cmap, 12)
-	ttf_put16(cmap, 0)
-	ttf_put32(cmap, 16 + groups.length)
-	ttf_put32(cmap, 0)
-	ttf_put32(cmap, group_count)
+	string_append_be16(cmap, 0)
+	string_append_be16(cmap, 1)
+	string_append_be16(cmap, 3)
+	string_append_be16(cmap, 10)
+	string_append_be32(cmap, 12)
+	string_append_be16(cmap, 12)
+	string_append_be16(cmap, 0)
+	string_append_be32(cmap, 16 + groups.length)
+	string_append_be32(cmap, 0)
+	string_append_be32(cmap, group_count)
 	string_append_bytes(cmap, groups.data, groups.length)
 
 	# kern: every kept pair the source kerns (GPOS or kern), flattened
@@ -1318,9 +1302,9 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 			int v = ttf_kern_units(f, old_id[left], old_id[right])
 			if (v != 0):
 				if (pair_count < max_pairs):
-					ttf_put16(pairs, left)
-					ttf_put16(pairs, right)
-					ttf_put16(pairs, v & 65535)
+					string_append_be16(pairs, left)
+					string_append_be16(pairs, right)
+					string_append_be16(pairs, v & 65535)
 					pair_count = pair_count + 1
 				else:
 					dropped = dropped + 1
@@ -1329,12 +1313,12 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	if (dropped > 0):
 		print_error(c"ttf_subset: kern pairs past the format-0 limit were dropped\n")
 	string_builder* kern = string_new()
-	ttf_put16(kern, 0)
-	ttf_put16(kern, 1)
-	ttf_put16(kern, 0)
-	ttf_put16(kern, 14 + pairs.length)
-	ttf_put16(kern, 1)
-	ttf_put16(kern, pair_count)
+	string_append_be16(kern, 0)
+	string_append_be16(kern, 1)
+	string_append_be16(kern, 0)
+	string_append_be16(kern, 14 + pairs.length)
+	string_append_be16(kern, 1)
+	string_append_be16(kern, pair_count)
 	int search = 1
 	int selector = 0
 	while (search * 2 <= pair_count):
@@ -1342,9 +1326,9 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 		selector = selector + 1
 	if (pair_count == 0):
 		search = 0
-	ttf_put16(kern, search * 6)
-	ttf_put16(kern, selector)
-	ttf_put16(kern, pair_count * 6 - search * 6)
+	string_append_be16(kern, search * 6)
+	string_append_be16(kern, selector)
+	string_append_be16(kern, pair_count * 6 - search * 6)
 	string_append_bytes(kern, pairs.data, pairs.length)
 
 	# Copied tables, patched: head (long loca, no checksum adjustment),
@@ -1352,15 +1336,15 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	int head_at = ttf_table(f, c"head")
 	string_builder* head = string_new()
 	ttf_put_range(head, f, head_at, 54)
-	ttf_set16(head.data, 8, 0)
-	ttf_set16(head.data, 10, 0)
-	ttf_set16(head.data, 50, 1)
+	store_be16(head.data + 8, 0)
+	store_be16(head.data + 10, 0)
+	store_be16(head.data + 50, 1)
 	string_builder* hhea = string_new()
 	ttf_put_range(hhea, f, ttf_table(f, c"hhea"), 36)
-	ttf_set16(hhea.data, 34, count)
+	store_be16(hhea.data + 34, count)
 	string_builder* maxp = string_new()
 	ttf_put_range(maxp, f, ttf_table(f, c"maxp"), ttf_table_length(f, c"maxp"))
-	ttf_set16(maxp.data, 4, count)
+	store_be16(maxp.data + 4, count)
 	string_builder* os2 = string_new()
 	ttf_put_range(os2, f, ttf_table(f, c"OS/2"), ttf_table_length(f, c"OS/2"))
 	string_builder* post = string_new()
@@ -1372,8 +1356,8 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 		while (i < 32):
 			string_append_char(post, 0)
 			i = i + 1
-	ttf_set16(post.data, 0, 3)
-	ttf_set16(post.data, 2, 0)
+	store_be16(post.data + 0, 3)
+	store_be16(post.data + 2, 0)
 
 	# Table directory, tags in sorted (byte) order. An absent OS/2
 	# leaves a zero-length entry out.
@@ -1413,24 +1397,24 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	table_count = table_count + 1
 
 	string_builder* out = string_new()
-	ttf_put32(out, 65536)
-	ttf_put16(out, table_count)
+	string_append_be32(out, 65536)
+	string_append_be16(out, table_count)
 	int tsearch = 1
 	int tselector = 0
 	while (tsearch * 2 <= table_count):
 		tsearch = tsearch * 2
 		tselector = tselector + 1
-	ttf_put16(out, tsearch * 16)
-	ttf_put16(out, tselector)
-	ttf_put16(out, table_count * 16 - tsearch * 16)
+	string_append_be16(out, tsearch * 16)
+	string_append_be16(out, tselector)
+	string_append_be16(out, table_count * 16 - tsearch * 16)
 	int offset = 12 + table_count * 16
 	int t = 0
 	while (t < table_count):
 		string_builder* tb = tables[t]
 		string_append_bytes(out, tags[t], 4)
-		ttf_put32(out, ttf_checksum(tb.data, tb.length))
-		ttf_put32(out, offset)
-		ttf_put32(out, tb.length)
+		string_append_be32(out, ttf_checksum(tb.data, tb.length))
+		string_append_be32(out, offset)
+		string_append_be32(out, tb.length)
 		offset = offset + (tb.length + 3) / 4 * 4
 		t = t + 1
 	t = 0

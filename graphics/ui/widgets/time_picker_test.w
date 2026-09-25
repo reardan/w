@@ -11,39 +11,7 @@ import graphics.ui.rect
 import graphics.ui.theme
 import graphics.ui.render
 import graphics.ui.widgets
-
-
-void setup(ui_renderer* r, ui_theme* theme, ui_context* ctx):
-	ui_render_init_headless(r)
-	ui_theme_light(theme)
-	ui_context_init(ctx, r, theme)
-
-
-void feed_click(ui_context* ctx, int x, int y):
-	gfx_event press
-	press.kind = GFX_EVENT_MOUSE_DOWN
-	press.code = 1
-	press.x = x
-	press.y = y
-	press.mods = 0
-	ui_feed_event(ctx, &press)
-	gfx_event release
-	release.kind = GFX_EVENT_MOUSE_UP
-	release.code = 1
-	release.x = x
-	release.y = y
-	release.mods = 0
-	ui_feed_event(ctx, &release)
-
-
-void feed_char(ui_context* ctx, int code):
-	gfx_event e
-	e.kind = GFX_EVENT_CHAR
-	e.code = code
-	e.x = 0
-	e.y = 0
-	e.mods = 0
-	ui_feed_event(ctx, &e)
+import graphics.ui.testing
 
 
 ui_rect field_rect(ui_context* ctx):
@@ -53,7 +21,7 @@ ui_rect field_rect(ui_context* ctx):
 
 void click_field(ui_context* ctx):
 	ui_rect f = field_rect(ctx)
-	feed_click(ctx, cast(int, f.x + 20.0), cast(int, f.y + f.h * 0.5))
+	ui_test_click(ctx, cast(int, f.x + 20.0), cast(int, f.y + f.h * 0.5))
 
 
 # Row i (0 = From, 1 = To) of the open popover.
@@ -65,7 +33,7 @@ ui_rect row_rect(ui_context* ctx, int i):
 
 
 void click_rect(ui_context* ctx, ui_rect b):
-	feed_click(ctx, cast(int, b.x + b.w * 0.5), cast(int, b.y + b.h * 0.5))
+	ui_test_click(ctx, cast(int, b.x + b.w * 0.5), cast(int, b.y + b.h * 0.5))
 
 
 # Click a spinner button: row 0 = From, 1 = To; minutes 0 = the hour
@@ -128,123 +96,115 @@ void test_the_field_text():
 
 
 void test_spinners_change_each_end():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_time_range_state st
 	ui_time_range_init(&st)
 	int32 start = 9 * 60
 	int32 end = 17 * 60
 	int32 bg = 0
 
-	assert_equal(0, time_frame(&ctx, &st, &start, &end, &bg))
-	click_field(&ctx)
-	assert_equal(0, time_frame(&ctx, &st, &start, &end, &bg))
+	assert_equal(0, time_frame(ctx, &st, &start, &end, &bg))
+	click_field(ctx)
+	assert_equal(0, time_frame(ctx, &st, &start, &end, &bg))
 	assert_equal(1, st.open)
 	assert_equal(1, ctx.popup_depth)
 
-	click_spin(&ctx, 0, 0, 1)
-	assert_equal(1, time_frame(&ctx, &st, &start, &end, &bg))
+	click_spin(ctx, 0, 0, 1)
+	assert_equal(1, time_frame(ctx, &st, &start, &end, &bg))
 	assert_equal(10 * 60, start)
 	assert_equal(1, st.open)
 
-	click_spin(&ctx, 0, 1, 1)
-	assert_equal(1, time_frame(&ctx, &st, &start, &end, &bg))
+	click_spin(ctx, 0, 1, 1)
+	assert_equal(1, time_frame(ctx, &st, &start, &end, &bg))
 	assert_equal(10 * 60 + 5, start)
 
 	# Minutes wrap without carrying into the hour: 17:00 - 5 is 17:55.
-	click_spin(&ctx, 1, 1, -1)
-	assert_equal(1, time_frame(&ctx, &st, &start, &end, &bg))
+	click_spin(ctx, 1, 1, -1)
+	assert_equal(1, time_frame(ctx, &st, &start, &end, &bg))
 	assert_equal(17 * 60 + 55, end)
 
-	click_spin(&ctx, 1, 0, -1)
-	time_frame(&ctx, &st, &start, &end, &bg)
+	click_spin(ctx, 1, 0, -1)
+	time_frame(ctx, &st, &start, &end, &bg)
 	assert_equal(16 * 60 + 55, end)
 
 	# A frame with no clicks changes nothing.
-	assert_equal(0, time_frame(&ctx, &st, &start, &end, &bg))
+	assert_equal(0, time_frame(ctx, &st, &start, &end, &bg))
 	assert_equal(0, bg)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # Hours wrap at midnight, and an end pushed before the start is kept as
 # an overnight range rather than clamped.
 void test_hours_wrap_into_an_overnight_range():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_time_range_state st
 	ui_time_range_init(&st)
 	int32 start = 22 * 60
 	int32 end = 23 * 60 + 30
 	int32 bg = 0
 
-	click_field(&ctx)
-	time_frame(&ctx, &st, &start, &end, &bg)
-	click_spin(&ctx, 1, 0, 1)
-	assert_equal(1, time_frame(&ctx, &st, &start, &end, &bg))
+	click_field(ctx)
+	time_frame(ctx, &st, &start, &end, &bg)
+	click_spin(ctx, 1, 0, 1)
+	assert_equal(1, time_frame(ctx, &st, &start, &end, &bg))
 	assert_equal(30, end)
 	assert_equal(22 * 60, start)
 	assert_equal(150, ui_time_range_minutes(start, end))
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 void test_escape_return_and_outside_presses_close():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_time_range_state st
 	ui_time_range_init(&st)
 	int32 start = 9 * 60
 	int32 end = 17 * 60
 	int32 bg = 0
 
-	click_field(&ctx)
-	time_frame(&ctx, &st, &start, &end, &bg)
-	feed_char(&ctx, 27)
-	time_frame(&ctx, &st, &start, &end, &bg)
+	click_field(ctx)
+	time_frame(ctx, &st, &start, &end, &bg)
+	ui_test_char(ctx, 27)
+	time_frame(ctx, &st, &start, &end, &bg)
 	assert_equal(0, st.open)
 	assert_equal(0, ctx.popup_depth)
 
-	click_field(&ctx)
-	time_frame(&ctx, &st, &start, &end, &bg)
-	feed_char(&ctx, 13)
-	time_frame(&ctx, &st, &start, &end, &bg)
+	click_field(ctx)
+	time_frame(ctx, &st, &start, &end, &bg)
+	ui_test_char(ctx, 13)
+	time_frame(ctx, &st, &start, &end, &bg)
 	assert_equal(0, st.open)
 	assert_equal(0, ctx.popup_depth)
 
-	click_field(&ctx)
-	time_frame(&ctx, &st, &start, &end, &bg)
-	feed_click(&ctx, 390, 390)
-	assert_equal(0, time_frame(&ctx, &st, &start, &end, &bg))
+	click_field(ctx)
+	time_frame(ctx, &st, &start, &end, &bg)
+	ui_test_click(ctx, 390, 390)
+	assert_equal(0, time_frame(ctx, &st, &start, &end, &bg))
 	assert_equal(0, st.open)
 	assert_equal(0, bg)
 	assert_equal(9 * 60, start)
 	assert_equal(17 * 60, end)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # Open or closed, the picker takes the same ids, so the button after it
 # keeps its id.
 void test_ids_do_not_shift_when_it_opens():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_time_range_state st
 	ui_time_range_init(&st)
 	int32 start = 0
 	int32 end = 0
 	int32 bg = 0
 
-	time_frame(&ctx, &st, &start, &end, &bg)
+	time_frame(ctx, &st, &start, &end, &bg)
 	int closed_ids = ctx.next_id
-	click_field(&ctx)
-	time_frame(&ctx, &st, &start, &end, &bg)
+	click_field(ctx)
+	time_frame(ctx, &st, &start, &end, &bg)
 	assert_equal(1, st.open)
 	assert_equal(closed_ids, ctx.next_id)
 	assert_equal(2 + ui_time_range_ids(), closed_ids)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)

@@ -17,41 +17,10 @@ import libs.standard.web.connection
 import libs.standard.web.http_server
 import libs.standard.web.http_client
 import libs.standard.net.tls
+import libs.standard.web.testing
 
 
 /* ---- shared helpers ---- */
-
-char* hst_url(int port, char* path):
-	string_builder* out = string_new()
-	string_append(out, c"http://127.0.0.1:")
-	string_append_int(out, port)
-	string_append(out, path)
-	char* text = out.data
-	free(out)
-	return text
-
-
-char* hst_https_url(int port, char* path):
-	string_builder* out = string_new()
-	string_append(out, c"https://127.0.0.1:")
-	string_append_int(out, port)
-	string_append(out, path)
-	char* text = out.data
-	free(out)
-	return text
-
-
-int hst_contains(char* hay, char* needle):
-	int i = 0
-	while (hay[i] != 0):
-		int j = 0
-		while ((needle[j] != 0) && (hay[i + j] == needle[j])):
-			j = j + 1
-		if (needle[j] == 0):
-			return 1
-		i = i + 1
-	return 0
-
 
 # Binds on 127.0.0.1 with a kernel-assigned port; the caller forks
 # afterwards so the child inherits the already-bound listener.
@@ -69,15 +38,6 @@ ServerContext* hst_new_server(server_handler_fn* handler):
 	s.timeout_ms = 60000
 	asserts(c"server bind", server_context_bind(s) != 0)
 	return s
-
-
-# Drops the client's cached keep-alive connection (so it never leaks
-# into the next test), reaps the child, and asserts it exited cleanly.
-void hst_finish(int pid):
-	http_client_close_idle()
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	asserts(c"server child exited cleanly", status == 0)
 
 
 /* ---- handlers (plain functions -- W has no closures) ---- */
@@ -125,7 +85,7 @@ void test_http_get_round_trip():
 	server_context_close(s)
 	server_context_free(s)
 
-	char* target = hst_url(port, c"/hi")
+	char* target = net_test_url(c"http", port, c"/hi")
 	http_req* req = http_req_new(c"GET", target)
 	http_req_add_header(req, c"Connection", c"close")
 	http_response* resp = http_request(req)
@@ -136,7 +96,7 @@ void test_http_get_round_trip():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hst_finish(pid)
+	web_test_finish(pid, -1)
 
 
 # POST with a Content-Length-delimited body: the server parses and
@@ -152,7 +112,7 @@ void test_http_post_with_body():
 	server_context_close(s)
 	server_context_free(s)
 
-	char* target = hst_url(port, c"/echo")
+	char* target = net_test_url(c"http", port, c"/echo")
 	http_req* req = http_req_new(c"POST", target)
 	http_req_add_header(req, c"Connection", c"close")
 	char* body = c"the quick brown fox jumps over the lazy dog"
@@ -166,7 +126,7 @@ void test_http_post_with_body():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hst_finish(pid)
+	web_test_finish(pid, -1)
 
 
 # A chunked request body: http_client.w has no chunked-request encoder,
@@ -217,10 +177,10 @@ void test_http_chunked_request_body():
 	free(buf)
 	close(fd)
 
-	asserts(c"chunked response status", hst_contains(resp_text.data, c"HTTP/1.1 200") != 0)
-	asserts(c"chunked body reassembled", hst_contains(resp_text.data, c"Hello World") != 0)
+	asserts(c"chunked response status", net_test_contains(resp_text.data, c"HTTP/1.1 200") != 0)
+	asserts(c"chunked body reassembled", net_test_contains(resp_text.data, c"Hello World") != 0)
 	string_free(resp_text)
-	hst_finish(pid)
+	web_test_finish(pid, -1)
 
 
 # Two GETs over one accepted connection: the client's default
@@ -240,7 +200,7 @@ void test_http_keep_alive_two_requests():
 	server_context_close(s)
 	server_context_free(s)
 
-	char* target = hst_url(port, c"/count")
+	char* target = net_test_url(c"http", port, c"/count")
 	http_req* req1 = http_req_new(c"GET", target)
 	http_response* r1 = http_request(req1)
 	assert_equal(0, r1.error)
@@ -258,7 +218,7 @@ void test_http_keep_alive_two_requests():
 	http_response_free(r2)
 	http_req_free(req2)
 	free(target)
-	hst_finish(pid)
+	web_test_finish(pid, -1)
 
 
 # https:// through the same ServerContext, TLS enabled via
@@ -282,7 +242,7 @@ void test_https_get_round_trip():
 	server_context_close(s)
 	server_context_free(s)
 
-	char* target = hst_https_url(port, c"/hi")
+	char* target = net_test_url(c"https", port, c"/hi")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
 	req.tls_handshake_timeout_ms = 60000
@@ -294,4 +254,4 @@ void test_https_get_round_trip():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hst_finish(pid)
+	web_test_finish(pid, -1)

@@ -21,6 +21,7 @@ import lib.lib
 import lib.memory
 import lib.assert
 import libs.standard.distributed.u64
+import lib.bytes
 
 
 # ---- vector clocks ----------------------------------------------------------
@@ -30,8 +31,7 @@ struct vclock:
 
 
 vclock* vclock_new():
-	vclock* v = new vclock()
-	v.counters = new map[int, int]
+	vclock* v = new vclock(new map[int, int])
 	return v
 
 
@@ -123,34 +123,20 @@ int vclock_wire_size(vclock* v):
 	return 4 + 12 * n
 
 
-void vclock_wire_u32(char* p, int v):
-	p[0] = v
-	p[1] = v >> 8
-	p[2] = v >> 16
-	p[3] = v >> 24
-
-
-int vclock_wire_read_u32(char* p):
-	return (p[0] & 255) | ((p[1] & 255) << 8) | ((p[2] & 255) << 16) | ((p[3] & 255) << 24)
-
-
 # Serializes v into buf, which must hold vclock_wire_size(v) bytes.
 void vclock_save(vclock* v, char* buf):
 	list[int] nodes = new list[int]
 	for int node, int c in v.counters:
 		if (c != 0):
 			assert1(node >= 0)
-			# insertion sort ascending by node id
-			int pos = 0
-			while (pos < nodes.length && nodes[pos] < node):
-				pos = pos + 1
-			nodes.insert(pos, node)
-	vclock_wire_u32(buf, nodes.length)
+			nodes.push(node)
+	nodes.sort()   # ascending by node id
+	store_le32(buf, nodes.length)
 	u64* counter = u64_new()
 	int i = 0
 	while (i < nodes.length):
 		int off = 4 + 12 * i
-		vclock_wire_u32(buf + off, nodes[i])
+		store_le32(buf + off, nodes[i])
 		u64_set_int(counter, vclock_get(v, nodes[i]))
 		u64_save_le(buf + off + 4, counter)
 		i = i + 1
@@ -162,13 +148,13 @@ void vclock_save(vclock* v, char* buf):
 # ids (corrupt or future-format input).
 vclock* vclock_load(char* buf):
 	vclock* v = vclock_new()
-	int n = vclock_wire_read_u32(buf)
+	int n = load_le32(buf)
 	assert1(n >= 0)
 	u64* counter = u64_new()
 	int i = 0
 	while (i < n):
 		int off = 4 + 12 * i
-		int node = vclock_wire_read_u32(buf + off)
+		int node = load_le32(buf + off)
 		assert1(node >= 0)
 		u64_load_le(counter, buf + off + 4)
 		int c = u64_to_int(counter)
@@ -192,8 +178,7 @@ struct lamport_clock:
 
 
 lamport_clock* lamport_new():
-	lamport_clock* c = new lamport_clock()
-	c.t = 0
+	lamport_clock* c = new lamport_clock(0)
 	return c
 
 
@@ -244,9 +229,7 @@ struct hlc:
 
 
 hlc* hlc_new():
-	hlc* h = new hlc()
-	h.l = u64_new()
-	h.c = 0
+	hlc* h = new hlc(u64_new(), 0)
 	return h
 
 

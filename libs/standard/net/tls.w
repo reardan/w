@@ -92,6 +92,9 @@ import libs.standard.crypto.random
 import libs.standard.crypto.rsa_verify
 import libs.standard.crypto.ecdsa_p256
 import libs.standard.net.x509
+import lib.bytes
+import structures.string
+import lib.mem
 
 
 # ---- protocol constants -------------------------------------------------------
@@ -288,112 +291,12 @@ int TLS_AEAD_TAG_LEN():
 	return 16
 
 
-# ---- growable byte buffer -----------------------------------------------------
-
-struct wbuf:
-	char* data
-	int len
-	int cap
-
-
-wbuf* wbuf_new(int cap):
-	if (cap < 16):
-		cap = 16
-	wbuf* b = new wbuf()
-	b.data = malloc(cap)
-	b.len = 0
-	b.cap = cap
-	return b
-
-
-void wbuf_free(wbuf* b):
-	if (b == 0):
-		return
-	if (b.data != 0):
-		free(b.data)
-	free(cast(char*, b))
-
-
-void wbuf_reserve(wbuf* b, int extra):
-	int needed = b.len + extra
-	if (needed <= b.cap):
-		return
-	int newcap = b.cap * 2
-	while (newcap < needed):
-		newcap = newcap * 2
-	b.data = realloc(b.data, b.cap, newcap)
-	b.cap = newcap
-
-
-void wbuf_u8(wbuf* b, int v):
-	wbuf_reserve(b, 1)
-	b.data[b.len] = v & 255
-	b.len = b.len + 1
-
-
-void wbuf_u16(wbuf* b, int v):
-	wbuf_reserve(b, 2)
-	b.data[b.len] = (v >> 8) & 255
-	b.data[b.len + 1] = v & 255
-	b.len = b.len + 2
-
-
-void wbuf_u24(wbuf* b, int v):
-	wbuf_reserve(b, 3)
-	b.data[b.len] = (v >> 16) & 255
-	b.data[b.len + 1] = (v >> 8) & 255
-	b.data[b.len + 2] = v & 255
-	b.len = b.len + 3
-
-
-void wbuf_bytes(wbuf* b, char* src, int n):
-	if (n <= 0):
-		return
-	wbuf_reserve(b, n)
-	int i = 0
-	while (i < n):
-		b.data[b.len + i] = src[i]
-		i = i + 1
-	b.len = b.len + n
-
-
-# Backpatch a 2- or 3-byte length placeholder written earlier at pos with
-# the number of content bytes that followed it.
-void wbuf_set_u16(wbuf* b, int pos, int v):
-	b.data[pos] = (v >> 8) & 255
-	b.data[pos + 1] = v & 255
-
-
-void wbuf_set_u24(wbuf* b, int pos, int v):
-	b.data[pos] = (v >> 16) & 255
-	b.data[pos + 1] = (v >> 8) & 255
-	b.data[pos + 2] = v & 255
-
-
 # ---- little byte helpers ------------------------------------------------------
-
-int tls_rd_u16(char* p):
-	return ((p[0] & 255) << 8) | (p[1] & 255)
-
-
-int tls_rd_u24(char* p):
-	return ((p[0] & 255) << 16) | ((p[1] & 255) << 8) | (p[2] & 255)
-
 
 void tls_wipe(char* p, int len):
 	if (p == 0):
 		return
-	int i = 0
-	while (i < len):
-		p[i] = 0
-		i = i + 1
-
-
-void tls_copy(char* dst, char* src, int n):
-	int i = 0
-	while (i < n):
-		dst[i] = src[i]
-		i = i + 1
+	mem_fill(p, 0, len)
 
 
 # ---- AEAD nonce (reusable by #203) --------------------------------------------
@@ -499,23 +402,23 @@ char* tls_alpn_encode(char* protos, int* out_len):
 	int n = strlen(protos)
 	if (n == 0):
 		return 0
-	wbuf* b = wbuf_new(n + 1)
+	string_builder* b = string_new_sized(n + 1)
 	int start = 0
 	int i = 0
 	while (i <= n):
 		if ((i == n) || (protos[i] == ',')):
 			int nl = i - start
 			if ((nl <= 0) || (nl > 255)):
-				wbuf_free(b)
+				string_free(b)
 				return 0
-			wbuf_u8(b, nl)
-			wbuf_bytes(b, protos + start, nl)
+			string_append_char(b, nl)
+			string_append_bytes(b, protos + start, nl)
 			start = i + 1
 		i = i + 1
-	char* out = malloc(b.len)
-	tls_copy(out, b.data, b.len)
-	*out_len = b.len
-	wbuf_free(b)
+	char* out = malloc(b.length)
+	mem_copy(out, b.data, b.length)
+	*out_len = b.length
+	string_free(b)
 	return out
 
 
@@ -662,9 +565,9 @@ char* tls_server_last_error(tls_server_config* c):
 struct tls_conn:
 	int fd                # socket fd, or -1 for the in-memory harness
 	int use_mem
-	wbuf* mem_in          # in-memory input (server bytes), for tests
+	string_builder* mem_in          # in-memory input (server bytes), for tests
 	int mem_in_pos
-	wbuf* mem_out         # captured client output, for tests
+	string_builder* mem_out         # captured client output, for tests
 	int hash_alg
 	int digest_size
 	whash* transcript
@@ -686,7 +589,7 @@ struct tls_conn:
 	char* c_ap_secret     # client_application_traffic_secret (our write secret)
 	char* s_ap_secret     # server_application_traffic_secret (our read secret)
 	# handshake message reassembly
-	wbuf* hs_buf
+	string_builder* hs_buf
 	int hs_pos
 	# decrypted application bytes not yet returned by tls_read
 	char* app_buf
@@ -718,8 +621,8 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	c.mem_in_pos = 0
 	c.mem_out = 0
 	if (use_mem != 0):
-		c.mem_in = wbuf_new(256)
-		c.mem_out = wbuf_new(256)
+		c.mem_in = string_new_sized(256)
+		c.mem_out = string_new_sized(256)
 	c.hash_alg = WHASH_SHA256()
 	c.digest_size = whash_digest_size(c.hash_alg)
 	c.transcript = whash_new(c.hash_alg)
@@ -745,7 +648,7 @@ tls_conn* tls_conn_new(int fd, int use_mem, tls_config* cfg):
 	tls_wipe(c.s_hs_secret, c.digest_size)
 	tls_wipe(c.c_ap_secret, c.digest_size)
 	tls_wipe(c.s_ap_secret, c.digest_size)
-	c.hs_buf = wbuf_new(512)
+	c.hs_buf = string_new_sized(512)
 	c.hs_pos = 0
 	c.app_buf = 0
 	c.app_len = 0
@@ -782,11 +685,11 @@ void tls_conn_free(tls_conn* c):
 	if (c.transcript != 0):
 		whash_free(c.transcript)
 	if (c.hs_buf != 0):
-		wbuf_free(c.hs_buf)
+		string_free(c.hs_buf)
 	if (c.mem_in != 0):
-		wbuf_free(c.mem_in)
+		string_free(c.mem_in)
 	if (c.mem_out != 0):
-		wbuf_free(c.mem_out)
+		string_free(c.mem_out)
 	if (c.app_buf != 0):
 		tls_wipe(c.app_buf, c.app_len)
 		free(c.app_buf)
@@ -807,9 +710,7 @@ char* tls_alpn_selected(tls_conn* c):
 void tls_set_alpn_selected(tls_conn* c, char* name, int n):
 	if (c.alpn != 0):
 		free(c.alpn)
-	c.alpn = malloc(n + 1)
-	tls_copy(c.alpn, name, n)
-	c.alpn[n] = 0
+	c.alpn = mem_dup(name, n)
 
 
 void tls_fail(tls_conn* c, char* msg):
@@ -827,9 +728,9 @@ int tls_io_recv_full(tls_conn* c, char* buf, int n):
 	if (n <= 0):
 		return 1
 	if (c.use_mem != 0):
-		if (c.mem_in_pos + n > c.mem_in.len):
+		if (c.mem_in_pos + n > c.mem_in.length):
 			return 0
-		tls_copy(buf, c.mem_in.data + c.mem_in_pos, n)
+		mem_copy(buf, c.mem_in.data + c.mem_in_pos, n)
 		c.mem_in_pos = c.mem_in_pos + n
 		return 1
 	int got = 0
@@ -856,7 +757,7 @@ int tls_io_send_all(tls_conn* c, char* buf, int n):
 	if (n <= 0):
 		return 1
 	if (c.use_mem != 0):
-		wbuf_bytes(c.mem_out, buf, n)
+		string_append_bytes(c.mem_out, buf, n)
 		return 1
 	int sent = 0
 	while (sent < n):
@@ -895,8 +796,7 @@ int tls_send_record(tls_conn* c, int ct, char* payload, int len, int encrypted):
 		phdr[0] = ct & 255
 		phdr[1] = 3
 		phdr[2] = 3
-		phdr[3] = (len >> 8) & 255
-		phdr[4] = len & 255
+		store_be16(phdr + 3, len)
 		int pok = tls_io_send_all(c, phdr, 5)
 		free(phdr)
 		if (pok == 0):
@@ -912,11 +812,10 @@ int tls_send_record(tls_conn* c, int ct, char* payload, int len, int encrypted):
 	hdr[0] = TLS_CT_APPLICATION_DATA()
 	hdr[1] = 3
 	hdr[2] = 3
-	hdr[3] = (rec_len >> 8) & 255
-	hdr[4] = rec_len & 255
+	store_be16(hdr + 3, rec_len)
 
 	char* inner = malloc(inner_len)
-	tls_copy(inner, payload, len)
+	mem_copy(inner, payload, len)
 	inner[len] = ct & 255
 
 	char* nonce = malloc(TLS_AEAD_IV_LEN())
@@ -970,7 +869,7 @@ int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 			free(hdr)
 			return 0
 		int rtype = hdr[0] & 255
-		int rlen = tls_rd_u16(hdr + 3)
+		int rlen = load_be16(hdr + 3)
 		if (rlen > TLS_MAX_CIPHERTEXT()):
 			free(hdr)
 			tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
@@ -1030,7 +929,7 @@ int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 				tls_fail(c, c"tls: plaintext too long")
 				return 0
 			char* out = malloc(data_len + 1)
-			tls_copy(out, plain, data_len)
+			mem_copy(out, plain, data_len)
 			tls_wipe(plain, ct_len)
 			free(plain)
 			*out_type = inner_type
@@ -1047,7 +946,7 @@ int tls_recv_record(tls_conn* c, int* out_type, char** out_data, int* out_len):
 				tls_fail(c, c"tls: application_data before keys")
 				return 0
 			char* out = malloc(rlen + 1)
-			tls_copy(out, body, rlen)
+			mem_copy(out, body, rlen)
 			free(hdr)
 			free(body)
 			*out_type = rtype
@@ -1081,16 +980,13 @@ int tls_next_hs_msg(tls_conn* c, int* out_type, char** out_msg, int* out_len):
 	while (1 == 1):
 		# Compact consumed bytes so hs_buf can't grow without bound.
 		if (c.hs_pos > 0):
-			int rem = c.hs_buf.len - c.hs_pos
-			int i = 0
-			while (i < rem):
-				c.hs_buf.data[i] = c.hs_buf.data[c.hs_pos + i]
-				i = i + 1
-			c.hs_buf.len = rem
+			int rem = c.hs_buf.length - c.hs_pos
+			mem_copy(c.hs_buf.data, c.hs_buf.data + c.hs_pos, rem)
+			c.hs_buf.length = rem
 			c.hs_pos = 0
-		int avail = c.hs_buf.len - c.hs_pos
+		int avail = c.hs_buf.length - c.hs_pos
 		if (avail >= 4):
-			int mlen = tls_rd_u24(c.hs_buf.data + c.hs_pos + 1)
+			int mlen = load_be24(c.hs_buf.data + c.hs_pos + 1)
 			if (mlen > TLS_MAX_HANDSHAKE()):
 				tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
 				tls_fail(c, c"tls: handshake message too long")
@@ -1108,7 +1004,7 @@ int tls_next_hs_msg(tls_conn* c, int* out_type, char** out_msg, int* out_len):
 		if (tls_recv_record(c, &rtype, &data, &dlen) == 0):
 			return 0
 		if (rtype == TLS_CT_HANDSHAKE()):
-			wbuf_bytes(c.hs_buf, data, dlen)
+			string_append_bytes(c.hs_buf, data, dlen)
 			free(data)
 		else if (rtype == TLS_CT_ALERT()):
 			tls_handle_alert(c, data, dlen)
@@ -1138,80 +1034,80 @@ char* tls_build_client_hello(char* server_name, char* random, char* session_id, 
 # Same, additionally offering the ALPN ProtocolNameList body (alpn, alpn_len)
 # when alpn != 0 (RFC 7301 section 3.1).
 char* tls_build_client_hello_alpn(char* server_name, char* random, char* session_id, char* pubkey, char* alpn, int alpn_len, int* out_len):
-	wbuf* b = wbuf_new(256)
-	wbuf_u8(b, TLS_HS_CLIENT_HELLO())
-	int lenpos = b.len
-	wbuf_u24(b, 0)                       # body length placeholder
-	int body_start = b.len
+	string_builder* b = string_new_sized(256)
+	string_append_char(b, TLS_HS_CLIENT_HELLO())
+	int lenpos = b.length
+	string_append_be24(b, 0)                       # body length placeholder
+	int body_start = b.length
 
-	wbuf_u16(b, 0x0303)                  # legacy_version
-	wbuf_bytes(b, random, 32)            # random
-	wbuf_u8(b, 32)                       # legacy_session_id length
-	wbuf_bytes(b, session_id, 32)        # legacy_session_id
-	wbuf_u16(b, 2)                       # cipher_suites length
-	wbuf_u16(b, TLS_SUITE_CHACHA20_POLY1305_SHA256())
-	wbuf_u8(b, 1)                        # legacy_compression_methods length
-	wbuf_u8(b, 0)                        # null compression
+	string_append_be16(b, 0x0303)                  # legacy_version
+	string_append_bytes(b, random, 32)            # random
+	string_append_char(b, 32)                       # legacy_session_id length
+	string_append_bytes(b, session_id, 32)        # legacy_session_id
+	string_append_be16(b, 2)                       # cipher_suites length
+	string_append_be16(b, TLS_SUITE_CHACHA20_POLY1305_SHA256())
+	string_append_char(b, 1)                        # legacy_compression_methods length
+	string_append_char(b, 0)                        # null compression
 
-	int extpos = b.len
-	wbuf_u16(b, 0)                       # extensions length placeholder
-	int ext_start = b.len
+	int extpos = b.length
+	string_append_be16(b, 0)                       # extensions length placeholder
+	int ext_start = b.length
 
 	# server_name (SNI)
 	int nlen = strlen(server_name)
-	wbuf_u16(b, TLS_EXT_SERVER_NAME())
-	wbuf_u16(b, nlen + 5)                # ext_data length
-	wbuf_u16(b, nlen + 3)                # ServerNameList length
-	wbuf_u8(b, 0)                        # name_type = host_name
-	wbuf_u16(b, nlen)                    # HostName length
-	wbuf_bytes(b, server_name, nlen)
+	string_append_be16(b, TLS_EXT_SERVER_NAME())
+	string_append_be16(b, nlen + 5)                # ext_data length
+	string_append_be16(b, nlen + 3)                # ServerNameList length
+	string_append_char(b, 0)                        # name_type = host_name
+	string_append_be16(b, nlen)                    # HostName length
+	string_append_bytes(b, server_name, nlen)
 
 	# supported_versions = TLS 1.3
-	wbuf_u16(b, TLS_EXT_SUPPORTED_VERSIONS())
-	wbuf_u16(b, 3)
-	wbuf_u8(b, 2)                        # list length (bytes)
-	wbuf_u16(b, 0x0304)
+	string_append_be16(b, TLS_EXT_SUPPORTED_VERSIONS())
+	string_append_be16(b, 3)
+	string_append_char(b, 2)                        # list length (bytes)
+	string_append_be16(b, 0x0304)
 
 	# supported_groups = x25519
-	wbuf_u16(b, TLS_EXT_SUPPORTED_GROUPS())
-	wbuf_u16(b, 4)
-	wbuf_u16(b, 2)
-	wbuf_u16(b, TLS_GROUP_X25519())
+	string_append_be16(b, TLS_EXT_SUPPORTED_GROUPS())
+	string_append_be16(b, 4)
+	string_append_be16(b, 2)
+	string_append_be16(b, TLS_GROUP_X25519())
 
 	# signature_algorithms
-	wbuf_u16(b, TLS_EXT_SIGNATURE_ALGORITHMS())
-	wbuf_u16(b, 12)
-	wbuf_u16(b, 10)                      # list length
-	wbuf_u16(b, TLS_SIG_ECDSA_SECP256R1_SHA256())
-	wbuf_u16(b, TLS_SIG_RSA_PSS_RSAE_SHA256())
-	wbuf_u16(b, TLS_SIG_RSA_PSS_RSAE_SHA384())
-	wbuf_u16(b, TLS_SIG_RSA_PKCS1_SHA256())
-	wbuf_u16(b, TLS_SIG_RSA_PKCS1_SHA384())
+	string_append_be16(b, TLS_EXT_SIGNATURE_ALGORITHMS())
+	string_append_be16(b, 12)
+	string_append_be16(b, 10)                      # list length
+	string_append_be16(b, TLS_SIG_ECDSA_SECP256R1_SHA256())
+	string_append_be16(b, TLS_SIG_RSA_PSS_RSAE_SHA256())
+	string_append_be16(b, TLS_SIG_RSA_PSS_RSAE_SHA384())
+	string_append_be16(b, TLS_SIG_RSA_PKCS1_SHA256())
+	string_append_be16(b, TLS_SIG_RSA_PKCS1_SHA384())
 
 	# key_share: one x25519 entry
-	wbuf_u16(b, TLS_EXT_KEY_SHARE())
-	wbuf_u16(b, 38)                      # ext_data length
-	wbuf_u16(b, 36)                      # client_shares length
-	wbuf_u16(b, TLS_GROUP_X25519())
-	wbuf_u16(b, 32)                      # key_exchange length
-	wbuf_bytes(b, pubkey, 32)
+	string_append_be16(b, TLS_EXT_KEY_SHARE())
+	string_append_be16(b, 38)                      # ext_data length
+	string_append_be16(b, 36)                      # client_shares length
+	string_append_be16(b, TLS_GROUP_X25519())
+	string_append_be16(b, 32)                      # key_exchange length
+	string_append_bytes(b, pubkey, 32)
 
 	# application_layer_protocol_negotiation
 	if ((alpn != 0) && (alpn_len > 0)):
-		wbuf_u16(b, TLS_EXT_ALPN())
-		wbuf_u16(b, alpn_len + 2)
-		wbuf_u16(b, alpn_len)
-		wbuf_bytes(b, alpn, alpn_len)
+		string_append_be16(b, TLS_EXT_ALPN())
+		string_append_be16(b, alpn_len + 2)
+		string_append_be16(b, alpn_len)
+		string_append_bytes(b, alpn, alpn_len)
 
-	int ext_len = b.len - ext_start
-	wbuf_set_u16(b, extpos, ext_len)
-	int body_len = b.len - body_start
-	wbuf_set_u24(b, lenpos, body_len)
+	int ext_len = b.length - ext_start
+	store_be16(b.data + extpos, ext_len)
+	int body_len = b.length - body_start
+	store_be24(b.data + lenpos, body_len)
 
-	char* out = malloc(b.len)
-	tls_copy(out, b.data, b.len)
-	*out_len = b.len
-	wbuf_free(b)
+	char* out = malloc(b.length)
+	mem_copy(out, b.data, b.length)
+	*out_len = b.length
+	string_free(b)
 	return out
 
 
@@ -1244,7 +1140,7 @@ int tls_parse_server_hello(tls_conn* c, char* msg, int len, char* out_pub):
 	if (pos + sid_len + 3 > len):
 		return 0
 	pos = pos + sid_len                  # legacy_session_id_echo
-	int suite = tls_rd_u16(msg + pos)
+	int suite = load_be16(msg + pos)
 	pos = pos + 2
 	if (suite != TLS_SUITE_CHACHA20_POLY1305_SHA256()):
 		int allow = 0
@@ -1257,7 +1153,7 @@ int tls_parse_server_hello(tls_conn* c, char* msg, int len, char* out_pub):
 		return 0
 	if (pos + 2 > len):
 		return 0
-	int ext_total = tls_rd_u16(msg + pos)
+	int ext_total = load_be16(msg + pos)
 	pos = pos + 2
 	int ext_end = pos + ext_total
 	if (ext_end > len):
@@ -1265,29 +1161,29 @@ int tls_parse_server_hello(tls_conn* c, char* msg, int len, char* out_pub):
 	int have_key_share = 0
 	int have_version = 0
 	while (pos + 4 <= ext_end):
-		int etype = tls_rd_u16(msg + pos)
-		int elen = tls_rd_u16(msg + pos + 2)
+		int etype = load_be16(msg + pos)
+		int elen = load_be16(msg + pos + 2)
 		pos = pos + 4
 		if (pos + elen > ext_end):
 			return 0
 		if (etype == TLS_EXT_SUPPORTED_VERSIONS()):
 			if (elen != 2):
 				return 0
-			if (tls_rd_u16(msg + pos) != 0x0304):
+			if (load_be16(msg + pos) != 0x0304):
 				return 0
 			have_version = 1
 		else if (etype == TLS_EXT_KEY_SHARE()):
 			if (elen < 4):
 				return 0
-			int group = tls_rd_u16(msg + pos)
-			int klen = tls_rd_u16(msg + pos + 2)
+			int group = load_be16(msg + pos)
+			int klen = load_be16(msg + pos + 2)
 			if (group != TLS_GROUP_X25519()):
 				return 0
 			if (klen != 32):
 				return 0
 			if (4 + 32 > elen):
 				return 0
-			tls_copy(out_pub, msg + pos + 4, 32)
+			mem_copy(out_pub, msg + pos + 4, 32)
 			have_key_share = 1
 		pos = pos + elen
 	if (have_version == 0):
@@ -1306,16 +1202,13 @@ char* tls_certverify_content(char* transcript_hash, int th_len, int* out_len):
 	int clen = strlen(ctx)
 	int total = 64 + clen + 1 + th_len
 	char* out = malloc(total)
+	mem_fill(out, 0x20, 64)
 	int i = 0
-	while (i < 64):
-		out[i] = 0x20
-		i = i + 1
-	i = 0
 	while (i < clen):
 		out[64 + i] = ctx[i]
 		i = i + 1
 	out[64 + clen] = 0
-	tls_copy(out + 64 + clen + 1, transcript_hash, th_len)
+	mem_copy(out + 64 + clen + 1, transcript_hash, th_len)
 	*out_len = total
 	return out
 
@@ -1433,13 +1326,13 @@ list[x509_cert*] tls_parse_certificate(char* msg, int len):
 	pos = pos + ctx_len
 	if (pos + 3 > len):
 		return certs
-	int list_len = tls_rd_u24(msg + pos)
+	int list_len = load_be24(msg + pos)
 	pos = pos + 3
 	int list_end = pos + list_len
 	if (list_end > len):
 		return certs
 	while (pos + 3 <= list_end):
-		int clen = tls_rd_u24(msg + pos)
+		int clen = load_be24(msg + pos)
 		pos = pos + 3
 		if (pos + clen > list_end):
 			return certs
@@ -1449,7 +1342,7 @@ list[x509_cert*] tls_parse_certificate(char* msg, int len):
 		pos = pos + clen
 		if (pos + 2 > list_end):
 			return certs
-		int ext_len = tls_rd_u16(msg + pos)
+		int ext_len = load_be16(msg + pos)
 		pos = pos + 2
 		pos = pos + ext_len
 	return certs
@@ -1519,7 +1412,7 @@ int tls_client_parse_ee(tls_conn* c, char* msg, int len):
 		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
 		tls_fail(c, c"tls: malformed EncryptedExtensions")
 		return 0
-	int ext_total = tls_rd_u16(msg + 4)
+	int ext_total = load_be16(msg + 4)
 	if (6 + ext_total != len):
 		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
 		tls_fail(c, c"tls: malformed EncryptedExtensions")
@@ -1531,8 +1424,8 @@ int tls_client_parse_ee(tls_conn* c, char* msg, int len):
 			tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
 			tls_fail(c, c"tls: malformed EncryptedExtensions")
 			return 0
-		int etype = tls_rd_u16(msg + pos)
-		int elen = tls_rd_u16(msg + pos + 2)
+		int etype = load_be16(msg + pos)
+		int elen = load_be16(msg + pos + 2)
 		pos = pos + 4
 		if (pos + elen > len):
 			tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
@@ -1558,7 +1451,7 @@ int tls_client_parse_ee(tls_conn* c, char* msg, int len):
 				tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
 				tls_fail(c, c"tls: malformed ALPN selection")
 				return 0
-			int list_len = tls_rd_u16(msg + pos)
+			int list_len = load_be16(msg + pos)
 			int nlen = msg[pos + 2] & 255
 			if ((list_len != elen - 2) || (nlen == 0) || (1 + nlen != list_len)):
 				tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
@@ -1624,8 +1517,8 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 		tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
 		tls_fail(c, c"tls: short CertificateVerify")
 		return 0
-	int sig_scheme = tls_rd_u16(msg + 4)
-	int sig_len = tls_rd_u16(msg + 6)
+	int sig_scheme = load_be16(msg + 4)
+	int sig_len = load_be16(msg + 6)
 	if (8 + sig_len > mlen):
 		free(th_cert)
 		tls_free_cert_list(certs)
@@ -1634,7 +1527,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 		return 0
 	# Copy the signature out before hs_buf can move.
 	char* sig = malloc(sig_len)
-	tls_copy(sig, msg + 8, sig_len)
+	mem_copy(sig, msg + 8, sig_len)
 	int cvok = tls_verify_certverify(certs[0], sig_scheme, sig, sig_len, th_cert, ds)
 	free(sig)
 	free(th_cert)
@@ -1679,7 +1572,7 @@ int tls_read_server_flight(tls_conn* c, char* server_name, char* th_ch_sf):
 	char* expected = malloc(ds)
 	hmac_compute(c.hash_alg, fkey, ds, th_cv, ds, expected)
 	char* got = malloc(ds)
-	tls_copy(got, msg + 4, ds)
+	mem_copy(got, msg + 4, ds)
 	int fin_ok = hmac_equal(expected, got, ds)
 	tls_wipe(fkey, ds)
 	free(fkey)
@@ -1716,7 +1609,7 @@ void tls_install_write_keys(tls_conn* c, char* secret):
 int tls_gen_priv(tls_conn* c, char* priv):
 	if (c.cfg != 0):
 		if (c.cfg.test_priv != 0):
-			tls_copy(priv, c.cfg.test_priv, 32)
+			mem_copy(priv, c.cfg.test_priv, 32)
 			return 1
 	return random_bytes(priv, 32)
 
@@ -1848,7 +1741,7 @@ int tls_do_handshake(tls_conn* c, char* server_name):
 	fin[1] = 0
 	fin[2] = 0
 	fin[3] = ds
-	tls_copy(fin + 4, cvd, ds)
+	mem_copy(fin + 4, cvd, ds)
 	free(cvd)
 	int fsent = tls_send_record(c, TLS_CT_HANDSHAKE(), fin, 4 + ds, 1)
 	free(fin)
@@ -1893,7 +1786,7 @@ tls_conn* tls_connect(int sockfd, char* server_name, tls_config* cfg):
 # captured. Not part of the public API.
 tls_conn* tls_connect_mem(char* server_flight, int flen, char* server_name, tls_config* cfg):
 	tls_conn* c = tls_conn_new(0 - 1, 1, cfg)
-	wbuf_bytes(c.mem_in, server_flight, flen)
+	string_append_bytes(c.mem_in, server_flight, flen)
 	if (tls_do_handshake(c, server_name) == 0):
 		tls_conn_free(c)
 		return 0
@@ -1902,16 +1795,16 @@ tls_conn* tls_connect_mem(char* server_flight, int flen, char* server_name, tls_
 
 # Append more server bytes to an in-memory connection (tests).
 void tls_mem_feed(tls_conn* c, char* data, int len):
-	wbuf_bytes(c.mem_in, data, len)
+	string_append_bytes(c.mem_in, data, len)
 
 
 # Take the captured client output, clearing the buffer (tests). Returns a
 # malloc'd copy; *out_len gets its length.
 char* tls_mem_take_output(tls_conn* c, int* out_len):
-	int n = c.mem_out.len
+	int n = c.mem_out.length
 	char* out = malloc(n + 1)
-	tls_copy(out, c.mem_out.data, n)
-	c.mem_out.len = 0
+	mem_copy(out, c.mem_out.data, n)
+	c.mem_out.length = 0
 	*out_len = n
 	return out
 
@@ -1921,7 +1814,7 @@ char* tls_mem_take_output(tls_conn* c, int* out_len):
 void tls_update_secret(int alg, char* secret, int ds):
 	char* next = malloc(ds)
 	tls13_hkdf_expand_label(alg, secret, c"traffic upd", 11, c"", 0, next, ds)
-	tls_copy(secret, next, ds)
+	mem_copy(secret, next, ds)
 	tls_wipe(next, ds)
 	free(next)
 
@@ -1973,7 +1866,7 @@ int tls_read(tls_conn* c, char* buf, int len):
 		int n = len
 		if (n > avail):
 			n = avail
-		tls_copy(buf, c.app_buf + c.app_pos, n)
+		mem_copy(buf, c.app_buf + c.app_pos, n)
 		c.app_pos = c.app_pos + n
 		if (c.app_pos >= c.app_len):
 			tls_wipe(c.app_buf, c.app_len)
@@ -2004,7 +1897,7 @@ int tls_read(tls_conn* c, char* buf, int len):
 				int n = len
 				if (n > dlen):
 					n = dlen
-				tls_copy(buf, c.app_buf, n)
+				mem_copy(buf, c.app_buf, n)
 				c.app_pos = n
 				if (c.app_pos >= c.app_len):
 					tls_wipe(c.app_buf, c.app_len)
@@ -2089,7 +1982,7 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 	if (pos + 2 + 32 + 1 > len):
 		return 0
 	pos = pos + 2
-	tls_copy(out_random, msg + pos, 32)
+	mem_copy(out_random, msg + pos, 32)
 	pos = pos + 32
 	int sid_len = msg[pos] & 255
 	pos = pos + 1
@@ -2098,13 +1991,13 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 	if (pos + sid_len > len):
 		return 0
 	if (sid_len > 0):
-		tls_copy(out_sid, msg + pos, sid_len)
+		mem_copy(out_sid, msg + pos, sid_len)
 	*out_sid_len = sid_len
 	pos = pos + sid_len
 	# cipher_suites
 	if (pos + 2 > len):
 		return 0
-	int cs_len = tls_rd_u16(msg + pos)
+	int cs_len = load_be16(msg + pos)
 	pos = pos + 2
 	if (pos + cs_len > len):
 		return 0
@@ -2112,7 +2005,7 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 		return 0
 	int cs_end = pos + cs_len
 	while (pos + 2 <= cs_end):
-		if (tls_rd_u16(msg + pos) == TLS_SUITE_CHACHA20_POLY1305_SHA256()):
+		if (load_be16(msg + pos) == TLS_SUITE_CHACHA20_POLY1305_SHA256()):
 			*have_chacha = 1
 		pos = pos + 2
 	pos = cs_end
@@ -2129,14 +2022,14 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 		return 1
 	if (pos + 2 > len):
 		return 0
-	int ext_total = tls_rd_u16(msg + pos)
+	int ext_total = load_be16(msg + pos)
 	pos = pos + 2
 	int ext_end = pos + ext_total
 	if (ext_end > len):
 		return 0
 	while (pos + 4 <= ext_end):
-		int etype = tls_rd_u16(msg + pos)
-		int elen = tls_rd_u16(msg + pos + 2)
+		int etype = load_be16(msg + pos)
+		int elen = load_be16(msg + pos + 2)
 		pos = pos + 4
 		if (pos + elen > ext_end):
 			return 0
@@ -2147,35 +2040,35 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 					int vp = pos + 1
 					int ve = pos + 1 + vl
 					while (vp + 2 <= ve):
-						if (tls_rd_u16(msg + vp) == 0x0304):
+						if (load_be16(msg + vp) == 0x0304):
 							*have_tls13 = 1
 						vp = vp + 2
 		else if (etype == TLS_EXT_KEY_SHARE()):
 			if (elen >= 2):
-				int ksl = tls_rd_u16(msg + pos)
+				int ksl = load_be16(msg + pos)
 				if (2 + ksl <= elen):
 					int kp = pos + 2
 					int ke = pos + 2 + ksl
 					while (kp + 4 <= ke):
-						int grp = tls_rd_u16(msg + kp)
-						int kxl = tls_rd_u16(msg + kp + 2)
+						int grp = load_be16(msg + kp)
+						int kxl = load_be16(msg + kp + 2)
 						kp = kp + 4
 						if (kp + kxl > ke):
 							return 0
 						if (grp == TLS_GROUP_X25519()):
 							if (kxl == 32):
 								if (*have_x25519 == 0):
-									tls_copy(out_pub, msg + kp, 32)
+									mem_copy(out_pub, msg + kp, 32)
 									*have_x25519 = 1
 						kp = kp + kxl
 		else if (etype == TLS_EXT_SIGNATURE_ALGORITHMS()):
 			if (elen >= 2):
-				int sl = tls_rd_u16(msg + pos)
+				int sl = load_be16(msg + pos)
 				if (2 + sl <= elen):
 					int sp = pos + 2
 					int se = pos + 2 + sl
 					while (sp + 2 <= se):
-						if (tls_rd_u16(msg + sp) == TLS_SIG_ECDSA_SECP256R1_SHA256()):
+						if (load_be16(msg + sp) == TLS_SIG_ECDSA_SECP256R1_SHA256()):
 							*have_ecdsa = 1
 						sp = sp + 2
 		pos = pos + elen
@@ -2188,39 +2081,39 @@ int tls_parse_client_hello(char* msg, int len, char* out_random, char* out_sid, 
 # legacy_session_id, supported_versions=TLS 1.3, and an X25519 key_share
 # carrying server_pub. Returns a malloc'd handshake message; *out_len its len.
 char* tls_build_server_hello(char* random, char* sid, int sid_len, char* server_pub, int* out_len):
-	wbuf* b = wbuf_new(128)
-	wbuf_u8(b, TLS_HS_SERVER_HELLO())
-	int lenpos = b.len
-	wbuf_u24(b, 0)                        # body length placeholder
-	int body_start = b.len
-	wbuf_u16(b, 0x0303)                   # legacy_version
-	wbuf_bytes(b, random, 32)             # random
-	wbuf_u8(b, sid_len)                   # legacy_session_id_echo length
+	string_builder* b = string_new_sized(128)
+	string_append_char(b, TLS_HS_SERVER_HELLO())
+	int lenpos = b.length
+	string_append_be24(b, 0)                        # body length placeholder
+	int body_start = b.length
+	string_append_be16(b, 0x0303)                   # legacy_version
+	string_append_bytes(b, random, 32)             # random
+	string_append_char(b, sid_len)                   # legacy_session_id_echo length
 	if (sid_len > 0):
-		wbuf_bytes(b, sid, sid_len)
-	wbuf_u16(b, TLS_SUITE_CHACHA20_POLY1305_SHA256())
-	wbuf_u8(b, 0)                         # legacy_compression_method = null
-	int extpos = b.len
-	wbuf_u16(b, 0)                        # extensions length placeholder
-	int ext_start = b.len
+		string_append_bytes(b, sid, sid_len)
+	string_append_be16(b, TLS_SUITE_CHACHA20_POLY1305_SHA256())
+	string_append_char(b, 0)                         # legacy_compression_method = null
+	int extpos = b.length
+	string_append_be16(b, 0)                        # extensions length placeholder
+	int ext_start = b.length
 	# supported_versions = TLS 1.3
-	wbuf_u16(b, TLS_EXT_SUPPORTED_VERSIONS())
-	wbuf_u16(b, 2)
-	wbuf_u16(b, 0x0304)
+	string_append_be16(b, TLS_EXT_SUPPORTED_VERSIONS())
+	string_append_be16(b, 2)
+	string_append_be16(b, 0x0304)
 	# key_share: one x25519 entry
-	wbuf_u16(b, TLS_EXT_KEY_SHARE())
-	wbuf_u16(b, 36)                       # ext_data length
-	wbuf_u16(b, TLS_GROUP_X25519())
-	wbuf_u16(b, 32)                       # key_exchange length
-	wbuf_bytes(b, server_pub, 32)
-	int ext_len = b.len - ext_start
-	wbuf_set_u16(b, extpos, ext_len)
-	int body_len = b.len - body_start
-	wbuf_set_u24(b, lenpos, body_len)
-	char* out = malloc(b.len)
-	tls_copy(out, b.data, b.len)
-	*out_len = b.len
-	wbuf_free(b)
+	string_append_be16(b, TLS_EXT_KEY_SHARE())
+	string_append_be16(b, 36)                       # ext_data length
+	string_append_be16(b, TLS_GROUP_X25519())
+	string_append_be16(b, 32)                       # key_exchange length
+	string_append_bytes(b, server_pub, 32)
+	int ext_len = b.length - ext_start
+	store_be16(b.data + extpos, ext_len)
+	int body_len = b.length - body_start
+	store_be24(b.data + lenpos, body_len)
+	char* out = malloc(b.length)
+	mem_copy(out, b.data, b.length)
+	*out_len = b.length
+	string_free(b)
 	return out
 
 
@@ -2245,19 +2138,19 @@ char* tls_build_encrypted_extensions_alpn(char* proto, int* out_len):
 	if (proto == 0):
 		return tls_build_encrypted_extensions(out_len)
 	int n = strlen(proto)
-	wbuf* b = wbuf_new(16 + n)
-	wbuf_u8(b, TLS_HS_ENCRYPTED_EXTENSIONS())
-	wbuf_u24(b, 2 + 4 + 2 + 1 + n)       # body length
-	wbuf_u16(b, 4 + 2 + 1 + n)           # extensions length
-	wbuf_u16(b, TLS_EXT_ALPN())
-	wbuf_u16(b, 2 + 1 + n)               # ext_data length
-	wbuf_u16(b, 1 + n)                   # ProtocolNameList length
-	wbuf_u8(b, n)
-	wbuf_bytes(b, proto, n)
-	char* out = malloc(b.len)
-	tls_copy(out, b.data, b.len)
-	*out_len = b.len
-	wbuf_free(b)
+	string_builder* b = string_new_sized(16 + n)
+	string_append_char(b, TLS_HS_ENCRYPTED_EXTENSIONS())
+	string_append_be24(b, 2 + 4 + 2 + 1 + n)       # body length
+	string_append_be16(b, 4 + 2 + 1 + n)           # extensions length
+	string_append_be16(b, TLS_EXT_ALPN())
+	string_append_be16(b, 2 + 1 + n)               # ext_data length
+	string_append_be16(b, 1 + n)                   # ProtocolNameList length
+	string_append_char(b, n)
+	string_append_bytes(b, proto, n)
+	char* out = malloc(b.length)
+	mem_copy(out, b.data, b.length)
+	*out_len = b.length
+	string_free(b)
 	return out
 
 
@@ -2265,28 +2158,28 @@ char* tls_build_encrypted_extensions_alpn(char* proto, int* out_len):
 # (leaf-first): empty request context, then each cert as a 3-byte-length entry
 # with empty per-cert extensions. Returns a malloc'd message; *out_len its len.
 char* tls_build_certificate(list[pem_block*] certs, int* out_len):
-	wbuf* b = wbuf_new(512)
-	wbuf_u8(b, TLS_HS_CERTIFICATE())
-	int lenpos = b.len
-	wbuf_u24(b, 0)                        # body length placeholder
-	int body_start = b.len
-	wbuf_u8(b, 0)                         # certificate_request_context length = 0
-	int listpos = b.len
-	wbuf_u24(b, 0)                        # certificate_list length placeholder
-	int list_start = b.len
+	string_builder* b = string_new_sized(512)
+	string_append_char(b, TLS_HS_CERTIFICATE())
+	int lenpos = b.length
+	string_append_be24(b, 0)                        # body length placeholder
+	int body_start = b.length
+	string_append_char(b, 0)                         # certificate_request_context length = 0
+	int listpos = b.length
+	string_append_be24(b, 0)                        # certificate_list length placeholder
+	int list_start = b.length
 	int i = 0
 	while (i < certs.length):
 		pem_block* blk = certs[i]
-		wbuf_u24(b, blk.len)              # cert_data length
-		wbuf_bytes(b, blk.data, blk.len)
-		wbuf_u16(b, 0)                    # per-certificate extensions length = 0
+		string_append_be24(b, blk.len)              # cert_data length
+		string_append_bytes(b, blk.data, blk.len)
+		string_append_be16(b, 0)                    # per-certificate extensions length = 0
 		i = i + 1
-	wbuf_set_u24(b, listpos, b.len - list_start)
-	wbuf_set_u24(b, lenpos, b.len - body_start)
-	char* out = malloc(b.len)
-	tls_copy(out, b.data, b.len)
-	*out_len = b.len
-	wbuf_free(b)
+	store_be24(b.data + listpos, b.length - list_start)
+	store_be24(b.data + lenpos, b.length - body_start)
+	char* out = malloc(b.length)
+	mem_copy(out, b.data, b.length)
+	*out_len = b.length
+	string_free(b)
 	return out
 
 
@@ -2315,20 +2208,20 @@ char* tls_build_certverify(char* server_d, char* th_cert, int th_len, int* out_l
 	x509_ecdsa_sig_raw_to_der(r, s, der, &der_len)
 	free(r)
 	free(s)
-	wbuf* b = wbuf_new(96)
-	wbuf_u8(b, TLS_HS_CERTIFICATE_VERIFY())
-	int lenpos = b.len
-	wbuf_u24(b, 0)                        # body length placeholder
-	int body_start = b.len
-	wbuf_u16(b, TLS_SIG_ECDSA_SECP256R1_SHA256())
-	wbuf_u16(b, der_len)
-	wbuf_bytes(b, der, der_len)
+	string_builder* b = string_new_sized(96)
+	string_append_char(b, TLS_HS_CERTIFICATE_VERIFY())
+	int lenpos = b.length
+	string_append_be24(b, 0)                        # body length placeholder
+	int body_start = b.length
+	string_append_be16(b, TLS_SIG_ECDSA_SECP256R1_SHA256())
+	string_append_be16(b, der_len)
+	string_append_bytes(b, der, der_len)
 	free(der)
-	wbuf_set_u24(b, lenpos, b.len - body_start)
-	char* out = malloc(b.len)
-	tls_copy(out, b.data, b.len)
-	*out_len = b.len
-	wbuf_free(b)
+	store_be24(b.data + lenpos, b.length - body_start)
+	char* out = malloc(b.length)
+	mem_copy(out, b.data, b.length)
+	*out_len = b.length
+	string_free(b)
 	return out
 
 
@@ -2339,7 +2232,7 @@ char* tls_build_certverify(char* server_d, char* th_cert, int th_len, int* out_l
 int tls_server_gen_priv(tls_conn* c, char* priv):
 	if (c.scfg != 0):
 		if (c.scfg.test_priv != 0):
-			tls_copy(priv, c.scfg.test_priv, 32)
+			mem_copy(priv, c.scfg.test_priv, 32)
 			return 1
 	return random_bytes(priv, 32)
 
@@ -2348,7 +2241,7 @@ int tls_server_gen_priv(tls_conn* c, char* priv):
 int tls_server_gen_random(tls_conn* c, char* rnd):
 	if (c.scfg != 0):
 		if (c.scfg.test_random != 0):
-			tls_copy(rnd, c.scfg.test_random, 32)
+			mem_copy(rnd, c.scfg.test_random, 32)
 			return 1
 	return random_bytes(rnd, 32)
 
@@ -2422,21 +2315,21 @@ int tls_server_select_alpn(tls_conn* c, char* msg, int len):
 	pos = pos + 1 + (msg[pos] & 255)
 	if (pos + 2 > len):
 		return 1
-	pos = pos + 2 + tls_rd_u16(msg + pos)
+	pos = pos + 2 + load_be16(msg + pos)
 	if (pos + 1 > len):
 		return 1
 	pos = pos + 1 + (msg[pos] & 255)
 	char* offered = 0
 	int offered_len = 0
 	if (pos + 2 <= len):
-		int ext_end = pos + 2 + tls_rd_u16(msg + pos)
+		int ext_end = pos + 2 + load_be16(msg + pos)
 		pos = pos + 2
 		if (ext_end > len):
 			ext_end = len
 		int scanning = 1
 		while ((scanning != 0) && (pos + 4 <= ext_end)):
-			int etype = tls_rd_u16(msg + pos)
-			int elen = tls_rd_u16(msg + pos + 2)
+			int etype = load_be16(msg + pos)
+			int elen = load_be16(msg + pos + 2)
 			pos = pos + 4
 			if (pos + elen > ext_end):
 				scanning = 0
@@ -2444,7 +2337,7 @@ int tls_server_select_alpn(tls_conn* c, char* msg, int len):
 				if (etype == TLS_EXT_ALPN()):
 					int ll = 0
 					if (elen >= 2):
-						ll = tls_rd_u16(msg + pos)
+						ll = load_be16(msg + pos)
 					if ((elen < 2) || (ll != elen - 2) || (tls_alpn_list_valid(msg + pos + 2, ll) == 0)):
 						tls_send_alert(c, TLS_ALERT_FATAL(), TLS_ALERT_DECODE_ERROR())
 						tls_fail(c, c"tls: malformed ALPN extension")
@@ -2693,7 +2586,7 @@ int tls_server_do_handshake(tls_conn* c):
 	fin[1] = 0
 	fin[2] = 0
 	fin[3] = ds
-	tls_copy(fin + 4, svd, ds)
+	mem_copy(fin + 4, svd, ds)
 	free(svd)
 	whash_update(c.transcript, fin, 4 + ds)
 	int fsent = tls_send_record(c, TLS_CT_HANDSHAKE(), fin, 4 + ds, 1)
@@ -2740,7 +2633,7 @@ int tls_server_do_handshake(tls_conn* c):
 		tls_fail(c, c"tls: bad client Finished length")
 		return 0
 	char* got = malloc(ds)
-	tls_copy(got, msg + 4, ds)
+	mem_copy(got, msg + 4, ds)
 	int finok = hmac_equal(expected, got, ds)
 	free(expected)
 	free(got)
@@ -2777,7 +2670,7 @@ tls_conn* tls_accept_mem(char* client_flight, int flen, tls_server_config* cfg):
 	tls_conn* c = tls_conn_new(0 - 1, 1, 0)
 	c.is_server = 1
 	c.scfg = cfg
-	wbuf_bytes(c.mem_in, client_flight, flen)
+	string_append_bytes(c.mem_in, client_flight, flen)
 	if (tls_server_do_handshake(c) == 0):
 		tls_conn_free(c)
 		return 0

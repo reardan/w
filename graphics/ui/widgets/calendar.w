@@ -148,49 +148,6 @@ void ui_date_format(ui_date* d, char* out):
 	out[10] = 0
 
 
-char* ui_month_name(int month):
-	if (month == 1):
-		return c"January"
-	if (month == 2):
-		return c"February"
-	if (month == 3):
-		return c"March"
-	if (month == 4):
-		return c"April"
-	if (month == 5):
-		return c"May"
-	if (month == 6):
-		return c"June"
-	if (month == 7):
-		return c"July"
-	if (month == 8):
-		return c"August"
-	if (month == 9):
-		return c"September"
-	if (month == 10):
-		return c"October"
-	if (month == 11):
-		return c"November"
-	return c"December"
-
-
-# Two-letter weekday heading, 0 = Sunday.
-char* ui_weekday_short(int weekday):
-	if (weekday == 0):
-		return c"Su"
-	if (weekday == 1):
-		return c"Mo"
-	if (weekday == 2):
-		return c"Tu"
-	if (weekday == 3):
-		return c"We"
-	if (weekday == 4):
-		return c"Th"
-	if (weekday == 5):
-		return c"Fr"
-	return c"Sa"
-
-
 # The month on show, and which weekday the grid's first column is.
 struct ui_calendar_state:
 	int32 year
@@ -395,7 +352,7 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 	ui_render_mask(ctx.rndr, pc, ui_mask_chevron_right(), 1, 0, ui_text_color(ctx))
 	ui_render_mask(ctx.rndr, nc, ui_mask_chevron_right(), 0, 0, ui_text_color(ctx))
 	char[32] title
-	char* name = ui_month_name(st.month)
+	char* name = time_month_name(st.month)
 	int n = 0
 	while (name[n] != 0):
 		title[n] = name[n]
@@ -410,7 +367,12 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 	int col = 0
 	while (col < 7):
 		ui_rect wc = ui_rect_new(r.x + s * cast(float32, col), r.y + s, s, wr_h)
-		ui_draw_text_centered(ctx.rndr, wc, ui_weekday_short((col + st.first_weekday) % 7), scale, ctx.theme.text_muted)
+		char* wname = time_weekday_name((col + st.first_weekday) % 7)
+		char[3] wd
+		wd[0] = wname[0]
+		wd[1] = wname[1]
+		wd[2] = 0
+		ui_draw_text_centered(ctx.rndr, wc, &wd[0], scale, ctx.theme.text_muted)
 		col = col + 1
 
 	# Days.

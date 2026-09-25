@@ -67,6 +67,7 @@ import lib.assert
 import libs.standard.distributed.raft
 import libs.standard.distributed.lsm
 import libs.standard.distributed.raft_tcp
+import lib.mem
 
 
 # ---- validity -----------------------------------------------------------------
@@ -169,17 +170,6 @@ char* kv_encode_delete(char* key):
 
 # ---- applying -------------------------------------------------------------------
 
-# Malloc'd NUL-terminated copy of len bytes starting at src.
-char* kv_copy_range(char* src, int len):
-	char* dst = malloc(len + 1)
-	int i = 0
-	while (i < len):
-		dst[i] = src[i]
-		i = i + 1
-	dst[len] = 0
-	return dst
-
-
 # Parse one raft command (exactly command_len bytes — never NUL-scanned,
 # so a value with an embedded NUL is examined in full) and apply it to
 # the store. Returns 1 when applied, 0 when the command is malformed
@@ -211,13 +201,13 @@ int kv_apply_command(lsm* store, char* command, int command_len):
 	if (tag == 'D'):
 		if (sep >= 0 || rest_len == 0):
 			return 0   # delete carries exactly one non-empty field
-		char* key = kv_copy_range(rest, rest_len)
+		char* key = mem_dup(rest, rest_len)
 		int ok = lsm_delete(store, key)
 		free(key)
 		return ok
 	if (sep <= 0):
 		return 0   # put needs a separator and a non-empty key
-	char* key = kv_copy_range(rest, sep)
+	char* key = mem_dup(rest, sep)
 	int ok = lsm_put(store, key, rest + sep + 1, rest_len - sep - 1)
 	free(key)
 	return ok

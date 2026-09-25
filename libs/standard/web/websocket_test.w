@@ -31,40 +31,16 @@ import libs.standard.web.http_server
 import libs.standard.web.websocket
 import libs.extras.compress.deflate
 import libs.extras.compress.inflate
+import libs.standard.net.testing
+import lib.hex
+import lib.mem
 
 
 /* ---- helpers ---- */
 
-# Bytes of a hex string like "81 05 48" (spaces ignored) into a malloc'd
-# buffer; *out_len receives the count.
-char* wst_hex(char* text, int* out_len):
-	int n = strlen(text)
-	char* out = malloc(n / 2 + 1)
-	int count = 0
-	int i = 0
-	int high = (-1)
-	while (i < n):
-		int ch = text[i] & 255
-		int v = (-1)
-		if ((ch >= '0') && (ch <= '9')):
-			v = ch - '0'
-		else if ((ch >= 'a') && (ch <= 'f')):
-			v = ch - 'a' + 10
-		if (v >= 0):
-			if (high < 0):
-				high = v
-			else:
-				out[count] = (high << 4) | v
-				count = count + 1
-				high = (-1)
-		i = i + 1
-	*out_len = count
-	return out
-
-
 void wst_assert_bytes(char* label, char* expected_hex, char* actual, int actual_len):
 	int n = 0
-	char* expected = wst_hex(expected_hex, &n)
+	char* expected = hex_decode_loose(expected_hex, &n)
 	if (n != actual_len):
 		print_string(label, c": length mismatch")
 		assert_equal(n, actual_len)
@@ -83,7 +59,7 @@ void wst_expect_encoding(char* label, int fin, int opcode, char* payload, int le
 	char* mask = 0
 	int mask_len = 0
 	if (mask_hex != 0):
-		mask = wst_hex(mask_hex, &mask_len)
+		mask = hex_decode_loose(mask_hex, &mask_len)
 	asserts(label, ws_frame_encode(out, fin, opcode, payload, len, mask) == 1)
 	wst_assert_bytes(label, expected_hex, out.data, out.length)
 	if (mask != 0):
@@ -94,7 +70,7 @@ void wst_expect_encoding(char* label, int fin, int opcode, char* payload, int le
 # Decodes the RFC bytes and checks the frame fields + payload text.
 void wst_expect_decoding(char* label, char* frame_hex, int fin, int opcode, int masked, char* payload_text):
 	int n = 0
-	char* buf = wst_hex(frame_hex, &n)
+	char* buf = hex_decode_loose(frame_hex, &n)
 	ws_frame f
 	int used = ws_frame_decode(buf, n, &f, 1000)
 	if (used != n):
@@ -112,10 +88,7 @@ void wst_expect_decoding(char* label, char* frame_hex, int fin, int opcode, int 
 	int k = 0
 	while (k < n):
 		char* copy = malloc(n)
-		int j = 0
-		while (j < n):
-			copy[j] = buf[j]
-			j = j + 1
+		mem_copy(copy, buf, n)
 		ws_frame g
 		assert_equal(0, ws_frame_decode(copy, k, &g, 1000))
 		free(copy)
@@ -125,7 +98,7 @@ void wst_expect_decoding(char* label, char* frame_hex, int fin, int opcode, int 
 
 int wst_decode_hex(char* frame_hex, int max_payload):
 	int n = 0
-	char* buf = wst_hex(frame_hex, &n)
+	char* buf = hex_decode_loose(frame_hex, &n)
 	ws_frame f
 	int r = ws_frame_decode(buf, n, &f, max_payload)
 	free(buf)
@@ -141,21 +114,6 @@ void wst_pair(int* fds):
 	socket_set_send_timeout(fds[1], 10000)
 
 
-void wst_wait_ok(int pid):
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	asserts(c"peer child exited cleanly", status == 0)
-
-
-void wst_send_all(int fd, char* data, int n):
-	int total = 0
-	while (total < n):
-		int got = socket_send(fd, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			return
-		total = total + got
-
-
 /* ---- SHA-1 opt-in ---- */
 
 void wst_fake_compress(int* state, char* block):
@@ -163,10 +121,7 @@ void wst_fake_compress(int* state, char* block):
 
 
 void wst_fake_iv(int* state):
-	int i = 0
-	while (i < 5):
-		state[i] = 0
-		i = i + 1
+	mem_fill(state, 0, 5)
 
 
 void test_ws_sha1_opt_in_fails_closed():
@@ -452,7 +407,7 @@ void test_ws_session_echo_and_close():
 	asserts(c"no sends after close", ws_send_text(c, c"late", 4) == 0)
 	asserts(c"no recv after close", ws_recv(c) == 0)
 	ws_conn_free(c)
-	wst_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 void test_ws_session_server_initiated_close():
@@ -466,7 +421,7 @@ void test_ws_session_server_initiated_close():
 	# Our echo already went out; ws_close just reports the handshake done.
 	assert_equal(1, ws_close(c, 1000, 0))
 	ws_conn_free(c)
-	wst_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 /* ---- peer protocol violations, scripted byte for byte ---- */
@@ -476,7 +431,7 @@ void test_ws_session_server_initiated_close():
 # (masked iff the side under test is a client). expect_code 0 means the
 # peer just hangs up after writing.
 void wst_raw_peer_bytes(int fd, char* raw, int n, int tested_is_client, int expect_code):
-	wst_send_all(fd, raw, n)
+	net_test_send_all(fd, raw, n)
 	if (expect_code == 0):
 		close(fd)
 		exit(0)
@@ -513,7 +468,7 @@ void wst_raw_peer_bytes(int fd, char* raw, int n, int tested_is_client, int expe
 
 void wst_raw_peer(int fd, char* raw_hex, int tested_is_client, int expect_code):
 	int n = 0
-	char* raw = wst_hex(raw_hex, &n)
+	char* raw = hex_decode_loose(raw_hex, &n)
 	wst_raw_peer_bytes(fd, raw, n, tested_is_client, expect_code)
 
 
@@ -564,7 +519,7 @@ void wst_violation_bytes(char* label, int tested_is_client, int max_message, ws_
 
 void wst_violation(char* label, int tested_is_client, int max_message, char* raw_hex, int expect_error, int expect_code):
 	int n = 0
-	char* raw = wst_hex(raw_hex, &n)
+	char* raw = hex_decode_loose(raw_hex, &n)
 	wst_violation_bytes(label, tested_is_client, max_message, 0, raw, n, 0, expect_error, expect_code)
 	free(raw)
 
@@ -606,8 +561,8 @@ void test_ws_client_accepts_close_without_status():
 		# A data message, then an empty close; expect an empty masked
 		# close echoed back.
 		int n = 0
-		char* raw = wst_hex(c"81 02 6f 6b 88 00", &n)
-		wst_send_all(fds[1], raw, n)
+		char* raw = hex_decode_loose(c"81 02 6f 6b 88 00", &n)
+		net_test_send_all(fds[1], raw, n)
 		char* buf = malloc(64)
 		int have = 0
 		while (have < 6):
@@ -628,7 +583,7 @@ void test_ws_client_accepts_close_without_status():
 	assert_equal(ws_error_closed(), ws_conn_error(c))
 	assert_equal(ws_close_no_status(), c.peer_close_code)
 	ws_conn_free(c)
-	wst_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 /* ---- server upgrade validation through http_server.w routes ---- */
@@ -642,39 +597,6 @@ ServerResponse* wst_unused_handler(ServerRequest* req, void* context):
 void wst_ws_route(RequestContext* rc, void* user_data):
 	ws_conn* c = ws_accept(rc, 0)
 	ws_conn_free(c)
-
-
-# Sends one raw request to port and returns everything the server says
-# before closing (malloc'd).
-char* wst_raw_exchange(int port, char* request):
-	int fd = socket_tcp_ipv4()
-	asserts(c"socket", fd >= 0)
-	socket_set_recv_timeout(fd, 10000)
-	asserts(c"connect", socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), port) >= 0)
-	wst_send_all(fd, request, strlen(request))
-	string_builder* out = string_new()
-	char* buf = malloc(1024)
-	int got = read(fd, buf, 1024)
-	while (got > 0):
-		string_append_bytes(out, buf, got)
-		got = read(fd, buf, 1024)
-	free(buf)
-	close(fd)
-	char* text = out.data
-	free(out)
-	return text
-
-
-int wst_contains(char* hay, char* needle):
-	int i = 0
-	while (hay[i] != 0):
-		int j = 0
-		while ((needle[j] != 0) && (hay[i + j] == needle[j])):
-			j = j + 1
-		if (needle[j] == 0):
-			return 1
-		i = i + 1
-	return 0
 
 
 char* wst_upgrade_request(char* version, char* key):
@@ -695,8 +617,8 @@ char* wst_upgrade_request(char* version, char* key):
 
 
 void wst_expect_status(int port, char* request, char* status_line):
-	char* reply = wst_raw_exchange(port, request)
-	if (wst_contains(reply, status_line) == 0):
+	char* reply = net_test_exchange(port, request)
+	if (net_test_contains(reply, status_line) == 0):
 		print_string(c"reply: ", reply)
 		asserts(status_line, 0)
 	free(reply)
@@ -717,9 +639,9 @@ void test_ws_server_upgrade_validation():
 	server_context_close(s)
 	char* key = c"dGhlIHNhbXBsZSBub25jZQ=="
 	# Unsupported version: 426 advertising version 13.
-	char* reply = wst_raw_exchange(port, wst_upgrade_request(c"8", key))
-	asserts(c"426", wst_contains(reply, c"HTTP/1.1 426 Upgrade Required") != 0)
-	asserts(c"version hint", wst_contains(reply, c"Sec-WebSocket-Version: 13") != 0)
+	char* reply = net_test_exchange(port, wst_upgrade_request(c"8", key))
+	asserts(c"426", net_test_contains(reply, c"HTTP/1.1 426 Upgrade Required") != 0)
+	asserts(c"version hint", net_test_contains(reply, c"Sec-WebSocket-Version: 13") != 0)
 	free(reply)
 	wst_expect_status(port, wst_upgrade_request(c"13", 0), c"HTTP/1.1 400 ")
 	# The key must be base64 of exactly 16 bytes.
@@ -727,7 +649,7 @@ void test_ws_server_upgrade_validation():
 	wst_expect_status(port, strclone(c"GET /ws HTTP/1.1\x0d\x0aHost: h\x0d\x0a\x0d\x0a"), c"HTTP/1.1 400 ")
 	# Well-formed, but SHA-1 was never opted into: fail closed.
 	wst_expect_status(port, wst_upgrade_request(c"13", key), c"HTTP/1.1 500 ")
-	wst_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 /* ---- permessage-deflate (RFC 7692) ---- */
@@ -797,7 +719,7 @@ void wst_expect_compressed(ws_conn* c, char* label, char* text, char* expected_h
 # Inflates the RFC payload on c and compares with text.
 void wst_expect_decompressed(ws_conn* c, char* label, char* payload_hex, char* text):
 	int n = 0
-	char* z = wst_hex(payload_hex, &n)
+	char* z = hex_decode_loose(payload_hex, &n)
 	int out_len = 0
 	char* out = ws_pmd_decompress(c, z, n, &out_len)
 	asserts(label, out != 0)
@@ -842,7 +764,7 @@ void test_ws_deflate_rfc7692_examples():
 	# 7.2.3.1 as a whole frame: RSV1 + text, unmasked.
 	string_builder* out = string_new()
 	int n = 0
-	char* z = wst_hex(c"f2 48 cd c9 c9 07 00", &n)
+	char* z = hex_decode_loose(c"f2 48 cd c9 c9 07 00", &n)
 	assert_equal(1, ws_frame_encode_rsv(out, 1, 4, ws_op_text(), z, n, 0))
 	wst_assert_bytes(c"rsv1 frame", c"c1 07 f2 48 cd c9 c9 07 00", out.data, out.length)
 	free(z)
@@ -851,7 +773,7 @@ void test_ws_deflate_rfc7692_examples():
 
 int wst_parse_rsv(char* frame_hex, int rsv_allowed):
 	int n = 0
-	char* h = wst_hex(frame_hex, &n)
+	char* h = hex_decode_loose(frame_hex, &n)
 	ws_frame f
 	int r = ws_parse_header_rsv(h, n, &f, 1000, rsv_allowed)
 	free(h)
@@ -1045,7 +967,7 @@ void wst_compressed_session(ws_deflate_config* cfg):
 	wst_expect_text(c, c"pinged")
 	assert_equal(1, ws_close(c, 1000, c"bye"))
 	ws_conn_free(c)
-	wst_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 void test_ws_deflate_session_context_takeover():
@@ -1103,7 +1025,7 @@ void test_ws_deflate_frames_on_the_wire():
 	assert_equal(128, buf[1] & 128)
 	asserts(c"compressed", (buf[1] & 127) < n)
 	assert_equal((buf[1] & 127) + 6, got)
-	wst_send_all(fds[0], buf, got)
+	net_test_send_all(fds[0], buf, got)
 	wst_expect_text(server, text)
 	# Server to client: unmasked RSV1 binary; the second copy is a
 	# back-reference into the first (context takeover), so it is tiny.
@@ -1112,7 +1034,7 @@ void test_ws_deflate_frames_on_the_wire():
 	assert_equal(194, buf[0] & 255)
 	assert_equal(0, buf[1] & 128)
 	int first_len = buf[1] & 127
-	wst_send_all(fds[1], buf, got)
+	net_test_send_all(fds[1], buf, got)
 	ws_message* m = wst_recv_ok(client)
 	assert_equal(n, m.len)
 	ws_message_free(m)
@@ -1120,7 +1042,7 @@ void test_ws_deflate_frames_on_the_wire():
 	got = wst_read_some(fds[0], buf, 256)
 	asserts(c"shared window", (buf[1] & 127) < first_len)
 	asserts(c"tiny", (buf[1] & 127) <= 8)
-	wst_send_all(fds[1], buf, got)
+	net_test_send_all(fds[1], buf, got)
 	m = wst_recv_ok(client)
 	assert_equal(n, m.len)
 	assert_strings_equal(text, m.data)
@@ -1133,7 +1055,7 @@ void test_ws_deflate_frames_on_the_wire():
 
 void wst_z_violation(char* label, ws_deflate_config* cfg, int max_message, char* raw_hex, int messages, int expect_error, int expect_code):
 	int n = 0
-	char* raw = wst_hex(raw_hex, &n)
+	char* raw = hex_decode_loose(raw_hex, &n)
 	wst_violation_bytes(label, 1, max_message, cfg, raw, n, messages, expect_error, expect_code)
 	free(raw)
 

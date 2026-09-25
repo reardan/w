@@ -60,6 +60,7 @@ import structures.string
 import structures.w_list
 import libs.extras.protobuf.varint
 import libs.extras.protobuf.wire
+import lib.mem
 
 
 # ---- field kinds ------------------------------------------------------
@@ -524,19 +525,13 @@ int pb_decode_scalar_field(int kind, char* data, int length, char* out_addr, int
 	if (kind == PB_KIND_FIXED32()):
 		if (length < 4):
 			return PB_ERR_TRUNCATED()
-		int i = 0
-		while (i < 4):
-			out_addr[i] = data[i]
-			i = i + 1
+		mem_copy(out_addr, data, 4)
 		consumed_out[0] = 4
 		return 0
 	if (kind == PB_KIND_FIXED64()):
 		if (length < 8):
 			return PB_ERR_TRUNCATED()
-		int i = 0
-		while (i < 8):
-			out_addr[i] = data[i]
-			i = i + 1
+		mem_copy(out_addr, data, 8)
 		consumed_out[0] = 8
 		return 0
 	if ((kind == PB_KIND_INT64()) || (kind == PB_KIND_UINT64())):
@@ -590,12 +585,7 @@ int pb_decode_bytes_field(char* data, int length, char* out_addr, int* consumed_
 	# round-trips correctly (the caller must use b.data/b.length, not
 	# strlen); a STRING field with no embedded NUL additionally becomes
 	# safe to pass to ordinary C-string helpers.
-	char* copy = malloc(blen + 1)
-	int i = 0
-	while (i < blen):
-		copy[i] = data[n + i]
-		i = i + 1
-	copy[blen] = 0
+	char* copy = mem_dup(data + n, blen)
 	# proto3 last-one-wins for duplicate string/bytes occurrences: free
 	# the copy an earlier occurrence of this field stored before
 	# replacing it. b.data here is only ever null (first occurrence into
@@ -642,10 +632,7 @@ int pb_decode_message_field(pb_message_desc* nested, char* data, int length, cha
 		buf = cast(char*, existing)
 	else:
 		buf = malloc(nested.struct_size)
-		int i = 0
-		while (i < nested.struct_size):
-			buf[i] = 0
-			i = i + 1
+		mem_fill(buf, 0, nested.struct_size)
 		# Attach before decoding: if the nested decode fails midway,
 		# the partially-filled submessage stays reachable from the
 		# caller's struct, so pb_decode_into's error-path
@@ -791,10 +778,7 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 		if (depth >= PB_MAX_DECODE_DEPTH()):
 			return PB_ERR_DEPTH_EXCEEDED()
 		char* buf = malloc(nested.struct_size)
-		int i = 0
-		while (i < nested.struct_size):
-			buf[i] = 0
-			i = i + 1
+		mem_fill(buf, 0, nested.struct_size)
 		int code = pb_decode_into_depth(nested, data + n, mlen, buf, depth + 1)
 		if (code != 0):
 			# The staging buffer is not yet reachable from `out`, so the
@@ -817,10 +801,7 @@ int pb_decode_repeated(pb_field_desc* f, int wire_type, char* data, int length, 
 		# (only indexing and argument decay reach the data), so a
 		# struct-view write here would clobber the header instead.
 		char[16] slot
-		int zi = 0
-		while (zi < 16):
-			slot[zi] = 0
-			zi = zi + 1
+		mem_fill[char](slot, 0, 16)
 		int consumed = 0
 		int code = pb_decode_bytes_field(data, length, slot, &consumed)
 		if (code != 0):
@@ -958,10 +939,7 @@ void pb_bytes_free(pb_bytes* b):
 # point only at heap memory it owns, or with free() otherwise.
 char* pb_message_new(pb_message_desc* desc):
 	char* out = malloc(desc.struct_size)
-	int i = 0
-	while (i < desc.struct_size):
-		out[i] = 0
-		i = i + 1
+	mem_fill(out, 0, desc.struct_size)
 	return out
 
 

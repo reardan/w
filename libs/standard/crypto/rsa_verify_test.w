@@ -12,26 +12,14 @@
 import lib.testing
 import lib.sha256
 import libs.standard.crypto.rsa_verify
-
-
-int tr_hexval(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
-	return 0
+import lib.hex
 
 
 # Decode an even-length big-endian hex string; returns the byte length.
 int tr_hex(char* h, char* out):
-	int l = strlen(h)
-	int i = 0
-	while (i < l / 2):
-		out[i] = (tr_hexval(h[i * 2]) << 4) | tr_hexval(h[i * 2 + 1])
-		i = i + 1
-	return l / 2
+	int n = strlen(h) / 2
+	hex_decode_into(h, out, n)
+	return n
 
 
 char* TR_N():

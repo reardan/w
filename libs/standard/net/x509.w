@@ -43,6 +43,8 @@ import libs.standard.crypto.base64
 import libs.standard.crypto.rsa_verify
 import libs.standard.crypto.ecdsa_p256
 import libs.standard.net.asn1
+import lib.time
+import lib.mem
 
 
 # ---- constants ----------------------------------------------------------------
@@ -237,36 +239,6 @@ void x509_cert_free(x509_cert* c):
 
 # ---- date handling -------------------------------------------------------------
 
-# Days since 1970-01-01 for a proleptic-Gregorian date (Hinnant's
-# days-from-civil; exact for every year this module accepts).
-int x509_days_from_civil(int y, int m, int d):
-	if (m <= 2):
-		y = y - 1
-	int era = y / 400
-	int yoe = y - era * 400
-	int mp = m + 9
-	if (m > 2):
-		mp = m - 3
-	int doy = (153 * mp + 2) / 5 + d - 1
-	int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
-	return era * 146097 + doe - 719468
-
-
-int x509_days_in_month(int y, int m):
-	if (m == 2):
-		int leap = 0
-		if (y % 4 == 0):
-			leap = 1
-		if (y % 100 == 0):
-			leap = 0
-		if (y % 400 == 0):
-			leap = 1
-		return 28 + leap
-	if ((m == 4) || (m == 6) || (m == 9) || (m == 11)):
-		return 30
-	return 31
-
-
 # Split a non-negative unix timestamp into (days since epoch, seconds in day).
 void x509_unix_to_day_sec(int unix_time, int* out_day, int* out_sec):
 	*out_day = unix_time / 86400
@@ -321,7 +293,7 @@ int x509_parse_time(char* data, int start, int len, int tag, int* out_day, int* 
 		return 0
 	if (day < 1):
 		return 0
-	if (day > x509_days_in_month(year, month)):
+	if (day > time_days_in_month(year, month)):
 		return 0
 	if ((hour < 0) || (hour > 23)):
 		return 0
@@ -329,7 +301,7 @@ int x509_parse_time(char* data, int start, int len, int tag, int* out_day, int* 
 		return 0
 	if ((second < 0) || (second > 59)):
 		return 0
-	*out_day = x509_days_from_civil(year, month, day)
+	*out_day = time_days_from_civil(year, month, day)
 	*out_sec = hour * 3600 + minute * 60 + second
 	return 1
 
@@ -770,12 +742,7 @@ int x509_parse_ext_san(x509_cert* c, char* data, int start, int len):
 			# dNSName IA5String
 			if (x509_valid_dns_name_bytes(data, gs, gl) == 0):
 				return 0
-			char* name = malloc(gl + 1)
-			int i = 0
-			while (i < gl):
-				name[i] = data[gs + i]
-				i = i + 1
-			name[gl] = 0
+			char* name = mem_dup(data + gs, gl)
 			c.san_dns.push(name)
 		count = count + 1
 	if (count == 0):
@@ -1025,10 +992,7 @@ x509_cert* x509_parse(char* der, int len):
 		return 0
 	x509_cert* c = new x509_cert()
 	c.der = malloc(len)
-	int i = 0
-	while (i < len):
-		c.der[i] = der[i]
-		i = i + 1
+	mem_copy(c.der, der, len)
 	c.der_len = len
 	c.tbs_start = 0
 	c.tbs_len = 0
@@ -1146,9 +1110,7 @@ list[pem_block*] pem_decode_blocks(char* text, int len, char* label):
 					int dlen = 0
 					char* decoded = base64_decode(b64, b64len, &dlen)
 					if (decoded != 0):
-						pem_block* blk = new pem_block()
-						blk.data = decoded
-						blk.len = dlen
+						pem_block* blk = new pem_block(decoded, dlen)
 						blocks.push(blk)
 				in_block = 0
 			else:
@@ -1206,8 +1168,7 @@ struct x509_trust_store:
 
 
 x509_trust_store* x509_store_new():
-	x509_trust_store* s = new x509_trust_store()
-	s.certs = new list[x509_cert*]
+	x509_trust_store* s = new x509_trust_store(new list[x509_cert*])
 	return s
 
 
@@ -1246,19 +1207,14 @@ int x509_store_add_pem_file(x509_trust_store* s, char* path):
 
 
 char* x509_default_bundle_path(int i):
-	if (i == 0):
-		return c"/etc/ssl/certs/ca-certificates.crt"
-	if (i == 1):
-		return c"/etc/pki/tls/certs/ca-bundle.crt"
-	if (i == 2):
-		return c"/etc/ssl/ca-bundle.pem"
-	if (i == 3):
-		return c"/etc/pki/tls/cacert.pem"
-	if (i == 4):
-		return c"/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
-	if (i == 5):
-		return c"/etc/ssl/cert.pem"
-	return 0
+	switch (i):
+		case 0: return c"/etc/ssl/certs/ca-certificates.crt"
+		case 1: return c"/etc/pki/tls/certs/ca-bundle.crt"
+		case 2: return c"/etc/ssl/ca-bundle.pem"
+		case 3: return c"/etc/pki/tls/cacert.pem"
+		case 4: return c"/etc/pki/ca-trust/extracted/pem/tls-ca-bundle.pem"
+		case 5: return c"/etc/ssl/cert.pem"
+		default: return 0
 
 
 # Load the system trust store. Priority: the override_path argument, then
@@ -1742,10 +1698,7 @@ int x509_verify_chain(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store*
 # ---- EC private key loading (TLS server role) -------------------------------------------
 
 void x509_wipe(char* p, int len):
-	int i = 0
-	while (i < len):
-		p[i] = 0
-		i = i + 1
+	mem_fill(p, 0, len)
 
 
 # Parse a SEC1 ECPrivateKey structure (RFC 5915) at data[start, end):
@@ -1839,10 +1792,7 @@ int x509_parse_sec1_key(char* data, int start, int end, int require_params, char
 					ok = 0
 				i = i + 1
 	if (ok != 0):
-		i = 0
-		while (i < 32):
-			out_d32[i] = d32[i]
-			i = i + 1
+		mem_copy(out_d32, d32, 32)
 	x509_wipe(d32, 32)
 	free(d32)
 	free(qx)

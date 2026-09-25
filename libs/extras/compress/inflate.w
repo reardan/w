@@ -74,6 +74,7 @@ not import this package. deflate.w's deflate_window is the encoder.
 import lib.memory
 import lib.result
 import structures.string
+import lib.mem
 
 
 int INFLATE_OK():
@@ -515,10 +516,7 @@ whuff* inf_fixed_litlen_table():
 whuff* inf_fixed_dist_table():
 	if (inf_fixed_dist_cache == 0):
 		int* lengths = cast(int*, malloc(32 * __word_size__))
-		int i = 0
-		while (i < 32):
-			lengths[i] = 5
-			i = i + 1
+		mem_fill(lengths, 5, 32)
 		whuff* h = wh_new(32)
 		wh_construct(h, lengths, 32)
 		free(lengths)
@@ -542,11 +540,8 @@ void inf_dynamic_block(winflate_ctx* c):
 		return
 
 	int* cl_lengths = cast(int*, malloc(19 * __word_size__))
+	mem_fill(cl_lengths, 0, 19)
 	int i = 0
-	while (i < 19):
-		cl_lengths[i] = 0
-		i = i + 1
-	i = 0
 	while (i < hclen):
 		cl_lengths[inf_clc_order(i)] = inf_get_bits(c, 3)
 		i = i + 1
@@ -696,9 +691,7 @@ wresult[inflate_result*]* inflate_ex(char* data, int length, int max_output, int
 		free(c)
 		return result_new_error[inflate_result*](status)
 
-	inflate_result* r = new inflate_result
-	r.data = c.out.data
-	r.length = c.out.length
+	inflate_result* r = new inflate_result(c.out.data, c.out.length)
 	free(c.out)
 	free(c)
 	return result_new_ok[inflate_result*](r)
@@ -746,12 +739,7 @@ char* inflate_window(char* data, int length, char* window, int window_len, int m
 		free(c)
 		return 0
 	int n = c.out.length - c.base
-	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = c.out.data[c.base + i]
-		i = i + 1
-	out[n] = 0
+	char* out = mem_dup(c.out.data + c.base, n)
 	*out_len = n
 	string_free(c.out)
 	free(c)

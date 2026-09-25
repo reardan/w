@@ -81,11 +81,7 @@ int ring_vnode_point(char* node_id, int vnode):
 
 hash_ring* ring_new(int vnodes_per_node):
 	assert1(vnodes_per_node >= 1)
-	hash_ring* r = new hash_ring()
-	r.vnodes_per_node = vnodes_per_node
-	r.points = new list[int]
-	r.owners = new list[char*]
-	r.nodes = new list[char*]
+	hash_ring* r = new hash_ring(vnodes_per_node, new list[int], new list[char*], new list[char*])
 	return r
 
 

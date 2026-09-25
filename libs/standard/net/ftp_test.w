@@ -14,38 +14,8 @@ import lib.net
 import lib.str
 import structures.string
 import libs.standard.net.ftp
-
-
-void ftp_test_assert_ok(char* name, int result):
-	if (result < 0):
-		print_string(name, c" failed")
-		translate_syscall_failure(result)
-		exit(1)
-
-
-int ftp_test_contains(char* hay, char* needle):
-	int i = 0
-	while (hay[i] != 0):
-		int j = 0
-		while ((needle[j] != 0) && (hay[i + j] == needle[j])):
-			j = j + 1
-		if (needle[j] == 0):
-			return 1
-		i = i + 1
-	return 0
-
-
-# Listener on 127.0.0.1 with a kernel-assigned port.
-int ftp_test_listen(int* out_port):
-	int listener = socket_tcp_ipv4()
-	ftp_test_assert_ok(c"tcp socket", listener)
-	ftp_test_assert_ok(c"reuseaddr", socket_set_reuseaddr(listener))
-	ftp_test_assert_ok(c"bind", socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0))
-	ftp_test_assert_ok(c"listen", socket_listen(listener, 8))
-	sockaddr_in bound
-	ftp_test_assert_ok(c"getsockname", socket_getsockname_ipv4(listener, &bound))
-	*out_port = net_htons(bound.port)
-	return listener
+import lib.mem
+import libs.standard.net.testing
 
 
 # Deterministic binary payload containing NUL, CR and LF bytes.
@@ -61,15 +31,6 @@ char* ftp_test_big_payload(int n):
 
 int ftp_test_big_size():
 	return 200000
-
-
-int ftp_test_bytes_equal(char* a, char* b, int n):
-	int i = 0
-	while (i < n):
-		if (a[i] != b[i]):
-			return 0
-		i = i + 1
-	return 1
 
 
 /* Scripted fixture server (runs in the forked child) */
@@ -88,18 +49,9 @@ struct ftp_srv:
 	int stored_len
 
 
-void ftp_srv_send_all(int fd, char* data, int n):
-	int total = 0
-	while (total < n):
-		int got = socket_send(fd, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			return
-		total = total + got
-
-
 void ftp_srv_reply(ftp_srv* s, char* text):
-	ftp_srv_send_all(s.ctrl, text, strlen(text))
-	ftp_srv_send_all(s.ctrl, c"\x0d\x0a", 2)
+	net_test_send_all(s.ctrl, text, strlen(text))
+	net_test_send_all(s.ctrl, c"\x0d\x0a", 2)
 
 
 # Reads one CRLF command line into a fresh string; 0 on EOF.
@@ -129,7 +81,7 @@ int ftp_srv_open_data(ftp_srv* s):
 	if (s.data_listener >= 0):
 		close(s.data_listener)
 	int port = 0
-	s.data_listener = ftp_test_listen(&port)
+	s.data_listener = net_test_listen(&port)
 	return port
 
 
@@ -189,7 +141,7 @@ char* ftp_srv_file(ftp_srv* s, char* name, int* out_len):
 
 void ftp_srv_handle(ftp_srv* s, char* verb, char* arg):
 	# Anything that smells of the CRLF-injection payload is fatal.
-	if ((ftp_test_contains(verb, c"EVIL") != 0) || (ftp_test_contains(arg, c"EVIL") != 0)):
+	if ((net_test_contains(verb, c"EVIL") != 0) || (net_test_contains(arg, c"EVIL") != 0)):
 		s.bad = 3
 	if (strcmp(verb, c"USER") == 0):
 		if (s.user != 0):
@@ -378,7 +330,7 @@ void ftp_srv_run(int listener, int epsv_ok):
 
 
 int ftp_test_spawn(int* out_port, int epsv_ok, int* out_listener):
-	int listener = ftp_test_listen(out_port)
+	int listener = net_test_listen(out_port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -386,14 +338,6 @@ int ftp_test_spawn(int* out_port, int epsv_ok, int* out_listener):
 		exit(0)
 	*out_listener = listener
 	return pid
-
-
-# Waits for the fixture child and asserts it exited cleanly.
-void ftp_test_finish(int pid, int listener):
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	close(listener)
-	assert_equal(0, status)
 
 
 /* Wire-free parser coverage */
@@ -472,13 +416,13 @@ void test_ftp_error_strings():
 
 # Client attached to one end of a socketpair; fds[1] is the "server".
 ftp_client* ftp_test_pair_client(int* fds, int timeout_ms):
-	ftp_test_assert_ok(c"socketpair", socket_pair(fds))
+	net_test_assert_ok(c"socketpair", socket_pair(fds))
 	socket_set_recv_timeout(fds[0], timeout_ms)
 	return ftp_attach(fds[0], ip4_from_string(c"127.0.0.1"), timeout_ms)
 
 
 void ftp_test_feed(int fd, char* text):
-	ftp_srv_send_all(fd, text, strlen(text))
+	net_test_send_all(fd, text, strlen(text))
 
 
 void test_ftp_reply_multiline():
@@ -525,10 +469,7 @@ void test_ftp_reply_line_cap():
 	ftp_client* c = ftp_test_pair_client(fds, 2000)
 	int n = ftp_max_line() + 100
 	char* big = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		big[i] = 'x'
-		i = i + 1
+	mem_fill(big, 'x', n)
 	big[0] = '2'
 	big[1] = '0'
 	big[2] = '0'
@@ -575,7 +516,7 @@ void test_ftp_session_epsv():
 	ftp_client* c = ftp_connect(c"127.0.0.1", port, 5000)
 	assert_equal(0, c.error)
 	assert_equal(220, c.reply_code)
-	asserts(c"greeting text", ftp_test_contains(c.reply_text.data, c"123 other code, not the end") != 0)
+	asserts(c"greeting text", net_test_contains(c.reply_text.data, c"123 other code, not the end") != 0)
 
 	# Wrong password: a 530 reply leaves the session usable.
 	assert_equal(0, ftp_login(c, c"alice", c"wrong"))
@@ -612,7 +553,7 @@ void test_ftp_session_epsv():
 	int n = 0
 	char* listing = ftp_list(c, 0, &n)
 	assert_equal(0, c.error)
-	asserts(c"LIST content", ftp_test_contains(listing, c"-rw-r--r-- 1 ftp ftp 13 Sep 25 12:00 hello.txt\x0d\x0a") != 0)
+	asserts(c"LIST content", net_test_contains(listing, c"-rw-r--r-- 1 ftp ftp 13 Sep 25 12:00 hello.txt\x0d\x0a") != 0)
 	assert_equal(strlen(listing), n)
 	assert_equal(226, c.reply_code)
 	free(listing)
@@ -620,7 +561,7 @@ void test_ftp_session_epsv():
 	assert_strings_equal(c"hello.txt\x0d\x0abig.bin\x0d\x0a", listing)
 	free(listing)
 	listing = ftp_mlsd(c, 0, &n)
-	asserts(c"MLSD content", ftp_test_contains(listing, c"type=file;size=13; hello.txt") != 0)
+	asserts(c"MLSD content", net_test_contains(listing, c"type=file;size=13; hello.txt") != 0)
 	free(listing)
 	# A 550 in place of the 150 preliminary reply.
 	asserts(c"LIST of missing dir", ftp_list(c, c"missing", &n) == 0)
@@ -634,7 +575,7 @@ void test_ftp_session_epsv():
 	body = ftp_retr(c, c"big.bin", &n)
 	assert_equal(ftp_test_big_size(), n)
 	char* want = ftp_test_big_payload(ftp_test_big_size())
-	assert_equal(1, ftp_test_bytes_equal(want, body, n))
+	assert_equal(1, mem_eq(want, body, n))
 	free(body)
 	asserts(c"RETR missing", ftp_retr(c, c"nope.txt", &n) == 0)
 	assert_equal(550, c.reply_code)
@@ -647,7 +588,7 @@ void test_ftp_session_epsv():
 	assert_equal(ftp_test_big_size(), ftp_size(c, c"upload.bin"))
 	body = ftp_retr(c, c"upload.bin", &n)
 	assert_equal(ftp_test_big_size(), n)
-	assert_equal(1, ftp_test_bytes_equal(want, body, n))
+	assert_equal(1, mem_eq(want, body, n))
 	free(body)
 	assert_equal(0, ftp_stor(c, c"denied.bin", c"x", 1))
 	assert_equal(553, c.reply_code)
@@ -657,11 +598,11 @@ void test_ftp_session_epsv():
 
 	# RETR streamed into a descriptor.
 	int* pair = malloc(2 * __word_size__)
-	ftp_test_assert_ok(c"socketpair", socket_pair(pair))
+	net_test_assert_ok(c"socketpair", socket_pair(pair))
 	assert_equal(13, ftp_retr_fd(c, c"hello.txt", pair[1]))
 	char* got = malloc(32)
 	assert_equal(13, read(pair[0], got, 32))
-	assert_equal(1, ftp_test_bytes_equal(c"Hello, FTP!\x0d\x0a", got, 13))
+	assert_equal(1, mem_eq(c"Hello, FTP!\x0d\x0a", got, 13))
 	free(got)
 	close(pair[0])
 	close(pair[1])
@@ -680,7 +621,7 @@ void test_ftp_session_epsv():
 	assert_equal(221, c.reply_code)
 	assert_equal(0, ftp_noop(c))
 	ftp_close(c)
-	ftp_test_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 void test_ftp_session_pasv_fallback():
@@ -709,7 +650,7 @@ void test_ftp_session_pasv_fallback():
 	assert_equal(1, ftp_quit(c))
 	ftp_close(c)
 	# The child exits 4 if EPSV was retried after the first 500.
-	ftp_test_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 void test_ftp_pasv_only_mode():
@@ -725,7 +666,7 @@ void test_ftp_pasv_only_mode():
 	free(body)
 	assert_equal(1, ftp_quit(c))
 	ftp_close(c)
-	ftp_test_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 void test_ftp_crlf_injection_rejected():
@@ -762,13 +703,13 @@ void test_ftp_crlf_injection_rejected():
 	assert_equal(1, ftp_quit(c))
 	ftp_close(c)
 	# The child exits 3 if any EVIL command arrived.
-	ftp_test_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 void test_ftp_connect_failures():
 	# Nothing listens on a just-closed ephemeral port.
 	int port = 0
-	int listener = ftp_test_listen(&port)
+	int listener = net_test_listen(&port)
 	close(listener)
 	ftp_client* c = ftp_connect(c"127.0.0.1", port, 2000)
 	assert_equal(ftp_error_connect(), c.error)

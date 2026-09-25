@@ -106,6 +106,7 @@ wrapper lives in libs/extras/vcs/__arch__/ (x86, x64, arm64,
 arm64_darwin -- win64 and wasm are unsupported for now).
 */
 import lib.lib
+import lib.hex
 import lib.path
 import lib.result
 import lib.stream
@@ -114,6 +115,7 @@ import libs.standard.crypto.sha2
 import libs.extras.compress.deflate
 import libs.extras.compress.zlib
 import libs.extras.vcs.__arch__.fsops
+import lib.mem
 
 
 # Error code for an object whose stored bytes do not match the
@@ -257,16 +259,7 @@ int cas_valid_id(char* id):
 
 # 32 raw digest bytes -> malloc'd 64-char lowercase hex string.
 char* cas_hex_encode(char* digest):
-	char* digits = c"0123456789abcdef"
-	char* out = malloc(65)
-	int i = 0
-	while (i < 32):
-		int b = digest[i] & 255
-		out[i * 2] = digits[(b >> 4) & 15]
-		out[i * 2 + 1] = digits[b & 15]
-		i = i + 1
-	out[64] = 0
-	return out
+	return hex_encode(digest, 32)
 
 
 # The git-style object header "<type> <len>\0" as a string_builder
@@ -367,13 +360,7 @@ wresult[wcas*]* cas_open(char* root):
 	if ((err < 0) && (err != -17)):
 		free(objects)
 		return result_new_error[wcas*](err)
-	wcas* s = new wcas
-	s.root = strclone(root)
-	s.objects = objects
-	s.fallback_state = 0
-	s.fallback_load = 0
-	s.fallback_has = 0
-	s.fallback_close = 0
+	wcas* s = new wcas(strclone(root), objects, 0, 0, 0, 0)
 	return result_new_ok[wcas*](s)
 
 
@@ -603,16 +590,10 @@ wresult[wcas_object*]* cas_parse_framed(char* bytes, int total):
 
 	wcas_object* o = new wcas_object
 	o.object_type = malloc(tag_len + 1)
-	int j = 0
-	while (j < tag_len):
-		o.object_type[j] = bytes[j]
-		j = j + 1
+	mem_copy(o.object_type, bytes, tag_len)
 	o.object_type[tag_len] = 0
 	o.data = malloc(declared + 1)
-	j = 0
-	while (j < declared):
-		o.data[j] = bytes[i + j]
-		j = j + 1
+	mem_copy(o.data, bytes + i, declared)
 	o.data[declared] = 0
 	o.length = declared
 	return result_new_ok[wcas_object*](o)

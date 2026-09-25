@@ -192,6 +192,9 @@ import structures.string
 import libs.standard.web.hpack
 import libs.standard.web.http2
 import libs.standard.web.codec
+import lib.hex
+import lib.bytes
+import lib.mem
 
 
 /* Status codes */
@@ -265,41 +268,25 @@ int grpc_status_unauthenticated():
 
 
 char* grpc_status_name(int code):
-	if (code == 0):
-		return c"OK"
-	if (code == 1):
-		return c"CANCELLED"
-	if (code == 2):
-		return c"UNKNOWN"
-	if (code == 3):
-		return c"INVALID_ARGUMENT"
-	if (code == 4):
-		return c"DEADLINE_EXCEEDED"
-	if (code == 5):
-		return c"NOT_FOUND"
-	if (code == 6):
-		return c"ALREADY_EXISTS"
-	if (code == 7):
-		return c"PERMISSION_DENIED"
-	if (code == 8):
-		return c"RESOURCE_EXHAUSTED"
-	if (code == 9):
-		return c"FAILED_PRECONDITION"
-	if (code == 10):
-		return c"ABORTED"
-	if (code == 11):
-		return c"OUT_OF_RANGE"
-	if (code == 12):
-		return c"UNIMPLEMENTED"
-	if (code == 13):
-		return c"INTERNAL"
-	if (code == 14):
-		return c"UNAVAILABLE"
-	if (code == 15):
-		return c"DATA_LOSS"
-	if (code == 16):
-		return c"UNAUTHENTICATED"
-	return c"UNKNOWN"
+	switch (code):
+		case 0: return c"OK"
+		case 1: return c"CANCELLED"
+		case 2: return c"UNKNOWN"
+		case 3: return c"INVALID_ARGUMENT"
+		case 4: return c"DEADLINE_EXCEEDED"
+		case 5: return c"NOT_FOUND"
+		case 6: return c"ALREADY_EXISTS"
+		case 7: return c"PERMISSION_DENIED"
+		case 8: return c"RESOURCE_EXHAUSTED"
+		case 9: return c"FAILED_PRECONDITION"
+		case 10: return c"ABORTED"
+		case 11: return c"OUT_OF_RANGE"
+		case 12: return c"UNIMPLEMENTED"
+		case 13: return c"INTERNAL"
+		case 14: return c"UNAVAILABLE"
+		case 15: return c"DATA_LOSS"
+		case 16: return c"UNAUTHENTICATED"
+		default: return c"UNKNOWN"
 
 
 # Default cap on one message (the common gRPC receive default, 4 MiB).
@@ -308,15 +295,6 @@ int grpc_default_max_message():
 
 
 /* Message framing */
-
-void grpc_frame_message(string_builder* out, char* msg, int len):
-	string_append_char(out, 0)
-	string_append_char(out, (len >> 24) & 255)
-	string_append_char(out, (len >> 16) & 255)
-	string_append_char(out, (len >> 8) & 255)
-	string_append_char(out, len & 255)
-	string_append_bytes(out, msg, len)
-
 
 # Parses a whole body of exactly one uncompressed length-prefixed
 # message (a compressed flag is UNIMPLEMENTED here; streams with a
@@ -340,7 +318,7 @@ int grpc_unframe_message(char* body, int len, int max, char** out, int* out_len)
 		return grpc_status_resource_exhausted()
 	if (n != len - 5):
 		return grpc_status_internal()
-	*out = hpack_copy_bytes(body + 5, n)
+	*out = mem_dup(body + 5, n)
 	*out_len = n
 	return grpc_status_ok()
 
@@ -348,11 +326,12 @@ int grpc_unframe_message(char* body, int len, int max, char** out, int* out_len)
 # Appends one length-prefixed message with the given compressed flag.
 void grpc_frame_message_flag(string_builder* out, int flag, char* msg, int len):
 	string_append_char(out, flag)
-	string_append_char(out, (len >> 24) & 255)
-	string_append_char(out, (len >> 16) & 255)
-	string_append_char(out, (len >> 8) & 255)
-	string_append_char(out, len & 255)
+	string_append_be32(out, len)
 	string_append_bytes(out, msg, len)
+
+
+void grpc_frame_message(string_builder* out, char* msg, int len):
+	grpc_frame_message_flag(out, 0, msg, len)
 
 
 # Frames msg for a message stream whose grpc-encoding is encoding:
@@ -375,10 +354,7 @@ int grpc_encode_message(string_builder* out, char* encoding, char* msg, int len)
 # Drops the first n bytes of a receive buffer.
 void grpc_consume(string_builder* buf, int n):
 	int rest = buf.length - n
-	int i = 0
-	while (i < rest):
-		buf.data[i] = buf.data[n + i]
-		i = i + 1
+	mem_copy(buf.data, buf.data + n, rest)
 	buf.length = rest
 	buf.data[rest] = 0
 
@@ -412,7 +388,7 @@ int grpc_take_message(string_builder* buf, char* encoding, int max, char** out, 
 	if (buf.length < 5 + n):
 		return 0
 	if (flag == 0):
-		*out = hpack_copy_bytes(p + 5, n)
+		*out = mem_dup(p + 5, n)
 		*out_len = n
 		grpc_consume(buf, 5 + n)
 		return 1
@@ -440,22 +416,6 @@ int grpc_take_message(string_builder* buf, char* encoding, int max, char** out, 
 
 /* grpc-message percent-encoding */
 
-int grpc_hex_digit(int v):
-	if (v < 10):
-		return '0' + v
-	return 'A' + v - 10
-
-
-int grpc_hex_value(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
-	return (-1)
-
-
 # Bytes outside printable ASCII (0x20-0x7E), and '%' itself, become %XX.
 char* grpc_percent_encode(char* s):
 	string_builder* out = string_new()
@@ -464,8 +424,8 @@ char* grpc_percent_encode(char* s):
 		int c = s[i] & 255
 		if ((c < 32) || (c > 126) || (c == '%')):
 			string_append_char(out, '%')
-			string_append_char(out, grpc_hex_digit(c >> 4))
-			string_append_char(out, grpc_hex_digit(c & 15))
+			string_append_char(out, hex_digit_upper(c >> 4))
+			string_append_char(out, hex_digit_upper(c & 15))
 		else:
 			string_append_char(out, c)
 		i = i + 1
@@ -483,8 +443,8 @@ char* grpc_percent_decode(char* s):
 		int c = s[i] & 255
 		if (c == '%'):
 			if (s[i + 1] != 0):
-				int hi = grpc_hex_value(s[i + 1] & 255)
-				int lo = grpc_hex_value(s[i + 2] & 255)
+				int hi = hex_decode_char(s[i + 1] & 255)
+				int lo = hex_decode_char(s[i + 2] & 255)
 				if ((hi >= 0) && (lo >= 0)):
 					string_append_char(out, (hi << 4) | lo)
 					i = i + 3
@@ -1135,19 +1095,12 @@ struct grpc_server:
 
 
 grpc_server* grpc_server_new():
-	grpc_server* s = new grpc_server()
-	s.methods = new list[grpc_method*]
-	s.max_message = grpc_default_max_message()
-	s.send_encoding = 0
+	grpc_server* s = new grpc_server(new list[grpc_method*], grpc_default_max_message(), 0)
 	return s
 
 
 void grpc_server_add(grpc_server* s, char* path, grpc_unary_handler_fn* handler, void* user_data, int streaming):
-	grpc_method* m = new grpc_method()
-	m.path = strclone(path)
-	m.handler = handler
-	m.user_data = user_data
-	m.streaming = streaming
+	grpc_method* m = new grpc_method(strclone(path), handler, user_data, streaming)
 	s.methods.push(m)
 
 
@@ -1186,7 +1139,7 @@ void grpc_server_free(grpc_server* s):
 void grpc_call_reply(grpc_call* call, char* msg, int len):
 	if (call.response != 0):
 		free(call.response)
-	call.response = hpack_copy_bytes(msg, len)
+	call.response = mem_dup(msg, len)
 	call.response_len = len
 	call.has_response = 1
 	call.status = grpc_status_ok()

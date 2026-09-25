@@ -1,6 +1,8 @@
 # wbuild: x64
 import lib.testing
 import libs.standard.distributed.raft_wire
+import lib.bytes
+import lib.mem
 
 
 raft_msg* rw_roundtrip(raft_msg* m):
@@ -225,10 +227,7 @@ void test_decode_rejects_malformed():
 	assert_equal(0, cast(int, raft_wire_decode(buf, 16)))
 	# trailing garbage
 	char* big = malloc(size + 1)
-	int i = 0
-	while (i < size):
-		big[i] = buf[i]
-		i = i + 1
+	mem_copy(big, buf, size)
 	big[size] = 99
 	assert_equal(0, cast(int, raft_wire_decode(big, size + 1)))
 	# unknown type
@@ -237,7 +236,7 @@ void test_decode_rejects_malformed():
 	buf[0] = raft_msg_append()
 	# entry cmd_len overrunning the buffer (offset +9: 1 kind byte + 8
 	# term bytes ahead of cmd_len — issue #319's per-entry kind field)
-	raft_wire_u32(buf + 17 + 28 + 9, 1000)
+	store_le32(buf + 17 + 28 + 9, 1000)
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
 	free(big)
 	free(buf)
@@ -328,18 +327,15 @@ void test_install_snapshot_malformed():
 	assert_equal(0, cast(int, raft_wire_decode(buf, 17 + 27)))
 	# trailing garbage byte
 	char* big = malloc(size + 1)
-	int i = 0
-	while (i < size):
-		big[i] = buf[i]
-		i = i + 1
+	mem_copy(big, buf, size)
 	big[size] = 7
 	assert_equal(0, cast(int, raft_wire_decode(big, size + 1)))
 	# huge snap_len overrunning the buffer (offset +28: past config_count,
 	# which is 0/empty here — issue #319 moved snap_len past it)
-	raft_wire_u32(buf + 17 + 28, 100000)
+	store_le32(buf + 17 + 28, 100000)
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
 	# negative snap_len
-	raft_wire_u32(buf + 17 + 28, 0 - 4)
+	store_le32(buf + 17 + 28, 0 - 4)
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
 	free(big)
 	free(buf)
@@ -458,9 +454,9 @@ void test_decode_rejects_bad_config_count():
 	char* buf = malloc(size)
 	raft_wire_encode(m, buf)
 	# config_count sits at 17 + 24 (no config in this message)
-	raft_wire_u32(buf + 17 + 24, 100000)
+	store_le32(buf + 17 + 24, 100000)
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
-	raft_wire_u32(buf + 17 + 24, 0 - 1)
+	store_le32(buf + 17 + 24, 0 - 1)
 	assert_equal(0, cast(int, raft_wire_decode(buf, size)))
 	free(buf)
 	raft_msg_free(m)

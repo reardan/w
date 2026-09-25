@@ -39,6 +39,8 @@ import lib.stream
 import lib.container
 import structures.string
 import structures.json
+import lib.bytes
+import lib.mem
 
 
 struct st_tensor:
@@ -53,9 +55,7 @@ struct st_file:
 
 
 st_file* st_new():
-	st_file* f = new st_file()
-	f.tensors = new list[st_tensor*]
-	f.by_name = new map[char*, st_tensor*]
+	st_file* f = new st_file(new list[st_tensor*], new map[char*, st_tensor*])
 	return f
 
 
@@ -125,10 +125,7 @@ void st_free(st_file* f):
 # approach 2^32, so the high 4 bytes are always 0; the low bytes are
 # assembled with masking, matching lib/sha256.w's byte-write precedent.
 void st_write_u64_header_len(char* out, int n):
-	out[0] = n & 255
-	out[1] = (n >> 8) & 255
-	out[2] = (n >> 16) & 255
-	out[3] = (n >> 24) & 255
+	store_le32(out, n)
 	out[4] = 0
 	out[5] = 0
 	out[6] = 0
@@ -219,13 +216,6 @@ int st_save(char* path, st_file* f):
 ##################################### load #####################################
 
 
-void st_copy_bytes(char* dst, char* src, int n):
-	int i = 0
-	while (i < n):
-		dst[i] = src[i]
-		i = i + 1
-
-
 # Assembles the little-endian u64 header length from raw bytes, masking
 # each byte per lib/sha256.w precedent. Returns -1 (never a valid
 # length) when the value does not fit: bytes 4..7 nonzero means the
@@ -238,7 +228,7 @@ void st_copy_bytes(char* dst, char* src, int n):
 int st_read_header_len(char* b):
 	if (((b[4] & 255) != 0) || ((b[5] & 255) != 0) || ((b[6] & 255) != 0) || ((b[7] & 255) != 0)):
 		return -1
-	int lo = (b[0] & 255) | ((b[1] & 255) << 8) | ((b[2] & 255) << 16) | ((b[3] & 255) << 24)
+	int lo = load_le32(b)
 	if ((__word_size__ == 4) && (lo < 0)):
 		return -1
 	return lo
@@ -347,7 +337,7 @@ int st_load_tensor(st_file* f, char* name, json_value* meta, string_builder* dat
 	used_end.push(end)
 
 	ndf t = st_ndf_new(rank, n0, n1, n2, n3)
-	st_copy_bytes(cast(char*, t.data.data), data.data + begin, end - begin)
+	mem_copy(cast(char*, t.data.data), data.data + begin, end - begin)
 	st_insert(f, strclone(name), t, 1)
 	return 1
 

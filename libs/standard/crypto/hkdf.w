@@ -17,6 +17,8 @@ tls13_hkdf_expand_label directly with the digest as context.
 import lib.memory
 import libs.standard.crypto.sha2
 import libs.standard.crypto.hmac
+import lib.bytes
+import lib.mem
 
 
 # HKDF-Extract(salt, IKM) -> PRK (digest_size bytes at out_prk). A zero
@@ -28,10 +30,7 @@ void hkdf_extract(int alg, char* salt, int salt_len, char* ikm, int ikm_len, cha
 		return
 	int ds = whash_digest_size(alg)
 	char* zeros = malloc(ds)
-	int i = 0
-	while (i < ds):
-		zeros[i] = 0
-		i = i + 1
+	mem_fill(zeros, 0, ds)
 	hmac_compute(alg, zeros, ds, ikm, ikm_len, out_prk)
 	free(zeros)
 
@@ -68,10 +67,7 @@ int hkdf_expand(int alg, char* prk, int prk_len, char* info, int info_len, char*
 			i = i + 1
 		produced = produced + take
 		round = round + 1
-	int j = 0
-	while (j < ds):
-		t[j] = 0
-		j = j + 1
+	mem_fill(t, 0, ds)
 	free(counter)
 	free(t)
 	hmac_free(m)
@@ -93,8 +89,7 @@ int tls13_hkdf_expand_label(int alg, char* secret, char* label, int label_len, c
 	int prefixed_len = label_len + 6
 	int info_len = 2 + 1 + prefixed_len + 1 + context_len
 	char* info = malloc(info_len)
-	info[0] = (out_len >> 8) & 255
-	info[1] = out_len & 255
+	store_be16(info, out_len)
 	info[2] = prefixed_len
 	int pos = 3
 	int i = 0

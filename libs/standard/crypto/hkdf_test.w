@@ -13,48 +13,20 @@ import lib.testing
 import libs.standard.crypto.sha2
 import libs.standard.crypto.hmac
 import libs.standard.crypto.hkdf
-
-
-char* hkdft_hex(char* data, int len):
-	char* out = malloc(len * 2 + 1)
-	char* digits = c"0123456789abcdef"
-	int i = 0
-	while (i < len):
-		int b = data[i] & 255
-		out[i * 2] = digits[(b >> 4) & 15]
-		out[i * 2 + 1] = digits[b & 15]
-		i = i + 1
-	out[len * 2] = 0
-	return out
-
-
-int hkdft_nibble(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	return c - 'a' + 10
-
-
-char* hkdft_unhex(char* hex):
-	int n = strlen(hex) / 2
-	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = (hkdft_nibble(hex[i * 2] & 255) << 4) | hkdft_nibble(hex[i * 2 + 1] & 255)
-		i = i + 1
-	out[n] = 0
-	return out
+import lib.hex
+import lib.mem
 
 
 void hkdft_assert_bytes(char* want_hex, char* got, int len):
-	char* got_hex = hkdft_hex(got, len)
+	char* got_hex = hex_encode(got, len)
 	assert_strings_equal(want_hex, got_hex)
 	free(got_hex)
 
 
 void test_rfc5869_case1():
-	char* ikm = hkdft_unhex(c"0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b")
-	char* salt = hkdft_unhex(c"000102030405060708090a0b0c")
-	char* info = hkdft_unhex(c"f0f1f2f3f4f5f6f7f8f9")
+	char* ikm = hex_bytes(c"0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b")
+	char* salt = hex_bytes(c"000102030405060708090a0b0c")
+	char* info = hex_bytes(c"f0f1f2f3f4f5f6f7f8f9")
 	char* prk = malloc(32)
 	hkdf_extract(WHASH_SHA256(), salt, 13, ikm, 22, prk)
 	hkdft_assert_bytes(c"077709362c2e32df0ddc3f0dc47bba6390b6c73bb50f9c3122ec844ad7c2b3e5", prk, 32)
@@ -95,7 +67,7 @@ void test_rfc5869_case2():
 
 void test_rfc5869_case3():
 	# Zero-length salt and info.
-	char* ikm = hkdft_unhex(c"0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b")
+	char* ikm = hex_bytes(c"0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b")
 	char* prk = malloc(32)
 	hkdf_extract(WHASH_SHA256(), c"", 0, ikm, 22, prk)
 	hkdft_assert_bytes(c"19ef24a32c717b167f33a91d6f648bdf96596776afdb6377ac434c1c293ccb04", prk, 32)
@@ -110,9 +82,9 @@ void test_rfc5869_case3():
 void test_hkdf_sha384():
 	# Case-1-shaped inputs under SHA-384; expected values computed with
 	# a reference implementation (Python hmac/hashlib).
-	char* ikm = hkdft_unhex(c"0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b")
-	char* salt = hkdft_unhex(c"000102030405060708090a0b0c")
-	char* info = hkdft_unhex(c"f0f1f2f3f4f5f6f7f8f9")
+	char* ikm = hex_bytes(c"0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b")
+	char* salt = hex_bytes(c"000102030405060708090a0b0c")
+	char* info = hex_bytes(c"f0f1f2f3f4f5f6f7f8f9")
 	char* prk = malloc(48)
 	hkdf_extract(WHASH_SHA384(), salt, 13, ikm, 22, prk)
 	hkdft_assert_bytes(c"704b39990779ce1dc548052c7dc39f303570dd13fb39f7acc564680bef80e8dec70ee9a7e1f3e293ef68eceb072a5ade", prk, 48)
@@ -154,14 +126,11 @@ char* hkdft_rfc8448_server_hello():
 void test_rfc8448_key_schedule():
 	int alg = WHASH_SHA256()
 	# transcript = ClientHello || ServerHello (196 + 90 bytes).
-	char* ch = hkdft_unhex(hkdft_rfc8448_client_hello())
-	char* sh = hkdft_unhex(hkdft_rfc8448_server_hello())
+	char* ch = hex_bytes(hkdft_rfc8448_client_hello())
+	char* sh = hex_bytes(hkdft_rfc8448_server_hello())
 	char* transcript = malloc(286)
+	mem_copy(transcript, ch, 196)
 	int i = 0
-	while (i < 196):
-		transcript[i] = ch[i]
-		i = i + 1
-	i = 0
 	while (i < 90):
 		transcript[196 + i] = sh[i]
 		i = i + 1
@@ -173,10 +142,7 @@ void test_rfc8448_key_schedule():
 
 	# early_secret = HKDF-Extract(salt="", IKM=32 zero bytes)
 	char* zeros = malloc(32)
-	i = 0
-	while (i < 32):
-		zeros[i] = 0
-		i = i + 1
+	mem_fill(zeros, 0, 32)
 	char* early = malloc(32)
 	hkdf_extract(alg, c"", 0, zeros, 32, early)
 	hkdft_assert_bytes(c"33ad0a1c607ec03b09e6cd9893680ce210adf300aa1f2660e1b22e10f170f92a", early, 32)
@@ -187,7 +153,7 @@ void test_rfc8448_key_schedule():
 	hkdft_assert_bytes(c"6f2615a108c702c5678f54fc9dbab69716c076189c48250cebeac3576c3611ba", derived, 32)
 
 	# handshake_secret = HKDF-Extract(derived, X25519 shared secret).
-	char* ecdhe = hkdft_unhex(c"8bd4054fb55b9d63fdfbacf9f04b9f0d35e6d63f537563efd46272900f89492d")
+	char* ecdhe = hex_bytes(c"8bd4054fb55b9d63fdfbacf9f04b9f0d35e6d63f537563efd46272900f89492d")
 	char* hs = malloc(32)
 	hkdf_extract(alg, derived, 32, ecdhe, 32, hs)
 	hkdft_assert_bytes(c"1dc826e93606aa6fdc0aadc12f741b01046aa6b99f691ed221a9f0ca043fbeac", hs, 32)
@@ -224,10 +190,7 @@ void test_rfc8448_key_schedule():
 
 	# Label bounds: prefixed label must fit one length byte.
 	char* big_label = malloc(251)
-	i = 0
-	while (i < 250):
-		big_label[i] = 'x'
-		i = i + 1
+	mem_fill(big_label, 'x', 250)
 	big_label[250] = 0
 	assert_equal(0, tls13_hkdf_expand_label(alg, hs, big_label, 250, c"", 0, chts2, 32))
 	assert_equal(1, tls13_hkdf_expand_label(alg, hs, big_label, 249, c"", 0, chts2, 32))

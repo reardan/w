@@ -60,6 +60,7 @@ import graphics.ui.widgets.state
 import graphics.ui.widgets.layout
 import graphics.ui.widgets.context
 import graphics.ui.widgets.scroll
+import lib.mem
 
 
 # Deepest nesting the parent index tracks. Deeper rows still draw and
@@ -111,10 +112,7 @@ void ui_tree_init(ui_tree_state* st):
 	st.tree_id = 0
 	st.pending_nav = 0
 	st.pending_enter = 0
-	int i = 0
-	while (i < ui_tree_max_depth()):
-		st.parent_of_depth[i] = 0 - 1
-		i = i + 1
+	mem_fill[int32](st.parent_of_depth, 0 - 1, ui_tree_max_depth())
 	st.body_x = 0.0
 	st.body_y = 0.0
 	st.body_w = 0.0

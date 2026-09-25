@@ -24,6 +24,7 @@ Index arithmetic goes through &line_starts[n], never line_starts + n —
 T* + int is an unscaled byte offset for every pointee width.
 */
 import lib.lib
+import lib.mem
 
 
 int ui_text_buffer_min_capacity():
@@ -115,10 +116,7 @@ void ui_text_buffer_set(ui_text_buffer* b, char* s):
 	ui_text_buffer_reserve(b, len)
 	if (len + 1 > b.capacity):
 		len = b.capacity - 1
-	int i = 0
-	while (i < len):
-		b.data[i] = s[i]
-		i = i + 1
+	mem_copy(b.data, s, len)
 	b.data[len] = 0
 	b.length = len
 	ui_text_buffer_reindex(b)

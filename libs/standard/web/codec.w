@@ -55,6 +55,7 @@
 # Names compare ASCII case-insensitively (content-coding tokens are
 # case-insensitive, RFC 9110 section 8.4.1).
 import lib.lib
+import lib.mem
 
 
 int codec_ok():
@@ -203,21 +204,11 @@ int codec_list_contains(char* hdr, char* name):
 	return 0
 
 
-char* codec_copy(char* in, int len):
-	char* out = malloc(len + 1)
-	int i = 0
-	while (i < len):
-		out[i] = in[i]
-		i = i + 1
-	out[len] = 0
-	return out
-
-
 int codec_compress(char* name, char* in, int len, char** out, int* out_len):
 	*out = 0
 	*out_len = 0
 	if (codec_is_identity(name) != 0):
-		*out = codec_copy(in, len)
+		*out = mem_dup(in, len)
 		*out_len = len
 		return codec_ok()
 	codec_entry* e = codec_find(name)
@@ -232,7 +223,7 @@ int codec_decompress(char* name, char* in, int len, int max, char** out, int* ou
 	if (codec_is_identity(name) != 0):
 		if ((max > 0) && (len > max)):
 			return codec_err_too_large()
-		*out = codec_copy(in, len)
+		*out = mem_dup(in, len)
 		*out_len = len
 		return codec_ok()
 	codec_entry* e = codec_find(name)

@@ -198,25 +198,17 @@ int gfx_cocoa_mods(int flags):
 # The NAV code for an AppKit function-key character (NSUpArrowFunctionKey
 # U+F700 and its private-use neighbours), or 0.
 int gfx_cocoa_nav(int cp):
-	if (cp == 0xf702):
-		return GFX_NAV_LEFT
-	if (cp == 0xf703):
-		return GFX_NAV_RIGHT
-	if (cp == 0xf700):
-		return GFX_NAV_UP
-	if (cp == 0xf701):
-		return GFX_NAV_DOWN
-	if (cp == 0xf729):
-		return GFX_NAV_HOME
-	if (cp == 0xf72b):
-		return GFX_NAV_END
-	if (cp == 0xf72c):
-		return GFX_NAV_PAGE_UP
-	if (cp == 0xf72d):
-		return GFX_NAV_PAGE_DOWN
-	if (cp == 0xf728):
-		return GFX_NAV_DELETE
-	return 0
+	switch (cp):
+		case 0xf702: return GFX_NAV_LEFT
+		case 0xf703: return GFX_NAV_RIGHT
+		case 0xf700: return GFX_NAV_UP
+		case 0xf701: return GFX_NAV_DOWN
+		case 0xf729: return GFX_NAV_HOME
+		case 0xf72b: return GFX_NAV_END
+		case 0xf72c: return GFX_NAV_PAGE_UP
+		case 0xf72d: return GFX_NAV_PAGE_DOWN
+		case 0xf728: return GFX_NAV_DELETE
+		default: return 0
 
 
 # The GFX_EVENT_CHAR code for one character of a key event, or 0 when it
@@ -243,28 +235,11 @@ int gfx_cocoa_char(int cp):
 # Decode the UTF-8 codepoint at s[i] into cp[0]; returns the index of the
 # next one. Malformed bytes decode as themselves, one byte at a time.
 int gfx_cocoa_utf8_next(char* s, int i, int* cp):
-	int b = s[i] & 255
-	int n = 0
-	int value = b
-	if ((b & 0xe0) == 0xc0):
-		n = 1
-		value = b & 0x1f
-	else if ((b & 0xf0) == 0xe0):
-		n = 2
-		value = b & 0x0f
-	else if ((b & 0xf8) == 0xf0):
-		n = 3
-		value = b & 0x07
-	int k = 1
-	while (k <= n):
-		int c = s[i + k] & 255
-		if ((c & 0xc0) != 0x80):
-			cp[0] = b
-			return i + 1
-		value = (value << 6) | (c & 0x3f)
-		k = k + 1
-	cp[0] = value
-	return i + n + 1
+	int n = utf8_scan(s + i, 4, cp)
+	if (n == 0):
+		cp[0] = s[i] & 255
+		return i + 1
+	return i + n
 
 
 # Fold one scroll delta (hundredths of a line, or of a point when the

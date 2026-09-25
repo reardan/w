@@ -73,14 +73,11 @@ int rx_is_alnum(int c):
 # (those spellings are reserved for future class shorthands).
 int rx_escape_char(char* pattern, int pp):
 	int c = pattern[pp + 1] & 255
-	if (c == 0):
-		return -1
-	if (c == 't'):
-		return 9
-	if (c == 'n'):
-		return 10
-	if (c == 'r'):
-		return 13
+	switch (c):
+		case 0: return -1
+		case 't': return 9
+		case 'n': return 10
+		case 'r': return 13
 	if (rx_is_alnum(c)):
 		return -1
 	return c

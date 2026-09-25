@@ -242,8 +242,7 @@ generator int quick_sleeper(order_log2* log):
 
 
 void test_process_wait_does_not_block_other_tasks():
-	order_log2* log = new order_log2()
-	log.entries = new list[int]
+	order_log2* log = new order_log2(new list[int])
 
 	task_scheduler* s = task_scheduler_new()
 	task_spawn(s, run_sleep_process(log))

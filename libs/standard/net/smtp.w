@@ -89,6 +89,7 @@ import libs.standard.crypto.base64
 import libs.standard.crypto.random
 import libs.standard.net.dns
 import libs.standard.net.tls
+import lib.mem
 
 
 /* Constants */
@@ -512,10 +513,7 @@ int smtp_send_line(smtp_client* c, char* line, int max_with_crlf):
 		return smtp_fail(c, smtp_error_invalid(), c"smtp: command line contains CR/LF or is too long")
 	int n = strlen(line)
 	char* buf = malloc(n + 3)
-	int i = 0
-	while (i < n):
-		buf[i] = line[i]
-		i = i + 1
+	mem_copy(buf, line, n)
 	buf[n] = 13
 	buf[n + 1] = 10
 	buf[n + 2] = 0
@@ -804,10 +802,7 @@ int smtp_sasl_send(smtp_client* c, char* prefix, char* data, int len):
 		free(b64)
 	int code = smtp_command_limit(c, line, smtp_max_auth_line())
 	int n = strlen(line)
-	int i = 0
-	while (i < n):
-		line[i] = 0
-		i = i + 1
+	mem_fill(line, 0, n)
 	free(line)
 	return code
 
@@ -842,10 +837,7 @@ int smtp_auth_plain(smtp_client* c, char* user, char* pass):
 		raw[2 + ul + i] = pass[i]
 		i = i + 1
 	int code = smtp_sasl_send(c, c"AUTH PLAIN ", raw, n)
-	i = 0
-	while (i < n):
-		raw[i] = 0
-		i = i + 1
+	mem_fill(raw, 0, n)
 	free(raw)
 	if (code == 235):
 		return 1
@@ -1270,16 +1262,6 @@ char* smtp_encode_word(char* text):
 	return result
 
 
-char* smtp_day_name(int weekday):
-	char* names = c"SunMonTueWedThuFriSat"
-	return substring(names, weekday * 3, weekday * 3 + 3)
-
-
-char* smtp_month_name(int month):
-	char* names = c"JanFebMarAprMayJunJulAugSepOctNovDec"
-	return substring(names, (month - 1) * 3, (month - 1) * 3 + 3)
-
-
 void smtp_append_2(string_builder* out, int v):
 	string_append_char(out, '0' + (v / 10) % 10)
 	string_append_char(out, '0' + v % 10)
@@ -1292,13 +1274,11 @@ char* smtp_format_date(int unix_time):
 	date_time dt
 	time_utc_from_unix(unix_time, &dt)
 	string_builder* out = string_new()
-	char* day = smtp_day_name(dt.weekday)
-	char* mon = smtp_month_name(dt.month)
-	string_append(out, day)
+	string_append_bytes(out, time_weekday_name(dt.weekday), 3)
 	string_append(out, c", ")
 	string_append_int(out, dt.day)
 	string_append_char(out, ' ')
-	string_append(out, mon)
+	string_append_bytes(out, time_month_name(dt.month), 3)
 	string_append_char(out, ' ')
 	string_append_int(out, dt.year)
 	string_append_char(out, ' ')
@@ -1308,8 +1288,6 @@ char* smtp_format_date(int unix_time):
 	string_append_char(out, ':')
 	smtp_append_2(out, dt.second)
 	string_append(out, c" +0000")
-	free(day)
-	free(mon)
 	char* result = out.data
 	free(cast(char*, out))
 	return result

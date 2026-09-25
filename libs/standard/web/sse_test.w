@@ -12,89 +12,20 @@ import lib.time
 import structures.string
 import libs.standard.web.http_client
 import libs.standard.web.sse
-
-
-void sse_test_assert_ok(char* name, int result):
-	if (result < 0):
-		print_string(name, c" failed")
-		translate_syscall_failure(result)
-		exit(1)
+import libs.standard.web.testing
+import lib.mem
 
 
 /* Fixture server helpers */
 
-# Listener on 127.0.0.1 with a kernel-assigned port.
-int sse_test_listen(int* out_port):
-	int listener = socket_tcp_ipv4()
-	sse_test_assert_ok(c"tcp socket", listener)
-	sse_test_assert_ok(c"reuseaddr", socket_set_reuseaddr(listener))
-	sse_test_assert_ok(c"bind", socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0))
-	sse_test_assert_ok(c"listen", socket_listen(listener, 8))
-	sockaddr_in bound
-	sse_test_assert_ok(c"getsockname", socket_getsockname_ipv4(listener, &bound))
-	*out_port = net_htons(bound.port)
-	return listener
-
-
-char* sse_test_url(int port, char* path):
-	string_builder* out = string_new()
-	string_append(out, c"http://127.0.0.1:")
-	string_append_int(out, port)
-	string_append(out, path)
-	char* text = out.data
-	free(out)
-	return text
-
-
-# SIGPIPE-proof send: an early client close must not kill the child.
-void sse_test_send_all(int conn, char* data, int n):
-	int total = 0
-	while (total < n):
-		int got = socket_send(conn, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			return
-		total = total + got
-
-
-void sse_test_send_text(int conn, char* text):
-	sse_test_send_all(conn, text, strlen(text))
-
-
 void sse_test_send_builder(int conn, string_builder* b):
-	sse_test_send_all(conn, b.data, b.length)
-
-
-# Consumes the request head (up to the terminating CRLFCRLF) so the child
-# can start responding.
-void sse_child_read_request(int conn):
-	char* buf = malloc(8192)
-	int total = 0
-	int done = 0
-	while (done == 0):
-		int got = read(conn, buf + total, 8191 - total)
-		if (got <= 0):
-			done = 1
-		else:
-			total = total + got
-			int i = 0
-			while (i + 3 < total):
-				if ((buf[i] == 13) && (buf[i + 1] == 10)):
-					if ((buf[i + 2] == 13) && (buf[i + 3] == 10)):
-						done = 1
-						i = total
-					else:
-						i = i + 1
-				else:
-					i = i + 1
-			if (total >= 8191):
-				done = 1
-	free(buf)
+	net_test_send_all(conn, b.data, b.length)
 
 
 # Standard SSE response head: no Content-Length, so the client frames the
 # body by connection close.
 void sse_child_send_head(int conn):
-	sse_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aContent-Type: text/event-stream\x0d\x0aConnection: close\x0d\x0a\x0d\x0a")
+	net_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aContent-Type: text/event-stream\x0d\x0aConnection: close\x0d\x0a\x0d\x0a")
 
 
 /* Parent-side driver */
@@ -121,10 +52,7 @@ void sse_test_close(sse_test_conn* c, int pid, int listener):
 	http_stream_close(c.s)
 	http_req_free(c.req)
 	free(c)
-	http_client_close_idle()
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	close(listener)
+	web_test_finish(pid, listener)
 
 
 # Asserts the next event's type and data, then frees it. Tests that also
@@ -141,20 +69,20 @@ void sse_expect(sse_reader* r, char* want_event, char* want_data):
 
 void test_sse_basic_fields():
 	int port = 0
-	int listener = sse_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		sse_child_read_request(conn)
+		net_test_read_head(conn)
 		sse_child_send_head(conn)
-		sse_test_send_text(conn, c"event: greeting\ndata: hello world\n\n")
+		net_test_send_text(conn, c"event: greeting\ndata: hello world\n\n")
 		close(conn)
 		exit(0)
 
-	char* target = sse_test_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	sse_test_conn* c = sse_test_open(target)
 	sse_event* ev = sse_next(c.r)
 	asserts(c"no event", ev != 0)
@@ -172,23 +100,23 @@ void test_sse_basic_fields():
 
 void test_sse_leading_space_stripping():
 	int port = 0
-	int listener = sse_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		sse_child_read_request(conn)
+		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# One optional space is stripped; a second space is data.
-		sse_test_send_text(conn, c"data: withspace\n\n")
-		sse_test_send_text(conn, c"data:nospace\n\n")
-		sse_test_send_text(conn, c"data:  twospaces\n\n")
+		net_test_send_text(conn, c"data: withspace\n\n")
+		net_test_send_text(conn, c"data:nospace\n\n")
+		net_test_send_text(conn, c"data:  twospaces\n\n")
 		close(conn)
 		exit(0)
 
-	char* target = sse_test_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	sse_test_conn* c = sse_test_open(target)
 	sse_expect(c.r, c"message", c"withspace")
 	sse_expect(c.r, c"message", c"nospace")
@@ -201,22 +129,22 @@ void test_sse_leading_space_stripping():
 
 void test_sse_multiline_data():
 	int port = 0
-	int listener = sse_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		sse_child_read_request(conn)
+		net_test_read_head(conn)
 		sse_child_send_head(conn)
-		sse_test_send_text(conn, c"data: line1\ndata: line2\ndata: line3\n\n")
+		net_test_send_text(conn, c"data: line1\ndata: line2\ndata: line3\n\n")
 		# An empty data line contributes just a newline.
-		sse_test_send_text(conn, c"data\ndata: tail\n\n")
+		net_test_send_text(conn, c"data\ndata: tail\n\n")
 		close(conn)
 		exit(0)
 
-	char* target = sse_test_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	sse_test_conn* c = sse_test_open(target)
 	sse_expect(c.r, c"message", c"line1\nline2\nline3")
 	# "data" with no colon -> empty value; joined "\ntail".
@@ -228,21 +156,21 @@ void test_sse_multiline_data():
 
 void test_sse_comment_keepalive():
 	int port = 0
-	int listener = sse_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		sse_child_read_request(conn)
+		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# A bare-colon keep-alive, a comment, then the real event.
-		sse_test_send_text(conn, c":\n: keep-alive ping\ndata: after-comment\n\n")
+		net_test_send_text(conn, c":\n: keep-alive ping\ndata: after-comment\n\n")
 		close(conn)
 		exit(0)
 
-	char* target = sse_test_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	sse_test_conn* c = sse_test_open(target)
 	sse_expect(c.r, c"message", c"after-comment")
 	asserts(c"expected EOF", sse_next(c.r) == 0)
@@ -252,22 +180,22 @@ void test_sse_comment_keepalive():
 
 void test_sse_retry_field():
 	int port = 0
-	int listener = sse_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		sse_child_read_request(conn)
+		net_test_read_head(conn)
 		sse_child_send_head(conn)
-		sse_test_send_text(conn, c"retry: 7000\ndata: a\n\n")
+		net_test_send_text(conn, c"retry: 7000\ndata: a\n\n")
 		# A non-numeric retry is ignored; the delay stays 7000.
-		sse_test_send_text(conn, c"retry: notanumber\ndata: b\n\n")
+		net_test_send_text(conn, c"retry: notanumber\ndata: b\n\n")
 		close(conn)
 		exit(0)
 
-	char* target = sse_test_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	sse_test_conn* c = sse_test_open(target)
 	sse_event* ev = sse_next(c.r)
 	asserts(c"no event", ev != 0)
@@ -287,14 +215,14 @@ void test_sse_retry_field():
 
 void test_sse_id_and_nul():
 	int port = 0
-	int listener = sse_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		sse_child_read_request(conn)
+		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		string_builder* body = string_new()
 		string_append(body, c"id: 42\ndata: a\n\n")
@@ -309,7 +237,7 @@ void test_sse_id_and_nul():
 		close(conn)
 		exit(0)
 
-	char* target = sse_test_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	sse_test_conn* c = sse_test_open(target)
 	sse_event* ev = sse_next(c.r)
 	asserts(c"no event", ev != 0)
@@ -336,23 +264,23 @@ void test_sse_id_and_nul():
 
 void test_sse_cr_lf_crlf_endings():
 	int port = 0
-	int listener = sse_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		sse_child_read_request(conn)
+		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# CR-only, LF-only, and CRLF line/terminator styles.
-		sse_test_send_text(conn, c"data: cr\x0d\x0d")
-		sse_test_send_text(conn, c"data: lf\x0a\x0a")
-		sse_test_send_text(conn, c"data: crlf\x0d\x0a\x0d\x0a")
+		net_test_send_text(conn, c"data: cr\x0d\x0d")
+		net_test_send_text(conn, c"data: lf\x0a\x0a")
+		net_test_send_text(conn, c"data: crlf\x0d\x0a\x0d\x0a")
 		close(conn)
 		exit(0)
 
-	char* target = sse_test_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	sse_test_conn* c = sse_test_open(target)
 	sse_expect(c.r, c"message", c"cr")
 	sse_expect(c.r, c"message", c"lf")
@@ -364,14 +292,14 @@ void test_sse_cr_lf_crlf_endings():
 
 void test_sse_bom_stripping():
 	int port = 0
-	int listener = sse_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		sse_child_read_request(conn)
+		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		string_builder* body = string_new()
 		# A single leading UTF-8 BOM (EF BB BF) before the first field.
@@ -384,7 +312,7 @@ void test_sse_bom_stripping():
 		close(conn)
 		exit(0)
 
-	char* target = sse_test_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	sse_test_conn* c = sse_test_open(target)
 	# If the BOM were not stripped, "event" would not parse.
 	sse_expect(c.r, c"boms", c"ok")
@@ -395,22 +323,22 @@ void test_sse_bom_stripping():
 
 void test_sse_blank_line_dispatch():
 	int port = 0
-	int listener = sse_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		sse_child_read_request(conn)
+		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# An event with only "event:" and no data must NOT dispatch, and
 		# must reset the event type. Only the second block fires.
-		sse_test_send_text(conn, c"event: ping\n\ndata: real\n\n")
+		net_test_send_text(conn, c"event: ping\n\ndata: real\n\n")
 		close(conn)
 		exit(0)
 
-	char* target = sse_test_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	sse_test_conn* c = sse_test_open(target)
 	# The event-only block was skipped and its type discarded, so this
 	# fires as the default "message" type.
@@ -422,35 +350,35 @@ void test_sse_blank_line_dispatch():
 
 void test_sse_split_across_reads():
 	int port = 0
-	int listener = sse_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		sse_child_read_request(conn)
+		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# Dribble with sleeps so each piece surfaces as its own read: a
 		# line split mid-token, an event split at the blank line, and a
 		# CRLF split across the read boundary.
-		sse_test_send_text(conn, c"data: hel")
+		net_test_send_text(conn, c"data: hel")
 		sleep_ms(20)
-		sse_test_send_text(conn, c"lo\nda")
+		net_test_send_text(conn, c"lo\nda")
 		sleep_ms(20)
-		sse_test_send_text(conn, c"ta: world\n")
+		net_test_send_text(conn, c"ta: world\n")
 		sleep_ms(20)
-		sse_test_send_text(conn, c"\n")
+		net_test_send_text(conn, c"\n")
 		sleep_ms(20)
-		sse_test_send_text(conn, c"data: second\n\n")
+		net_test_send_text(conn, c"data: second\n\n")
 		sleep_ms(20)
-		sse_test_send_text(conn, c"data: split\x0d")
+		net_test_send_text(conn, c"data: split\x0d")
 		sleep_ms(20)
-		sse_test_send_text(conn, c"\x0a\x0d\x0a")
+		net_test_send_text(conn, c"\x0a\x0d\x0a")
 		close(conn)
 		exit(0)
 
-	char* target = sse_test_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	sse_test_conn* c = sse_test_open(target)
 	sse_expect(c.r, c"message", c"hello\nworld")
 	sse_expect(c.r, c"message", c"second")
@@ -463,30 +391,27 @@ void test_sse_split_across_reads():
 
 void test_sse_buffer_overflow_fails_closed():
 	int port = 0
-	int listener = sse_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		sse_child_read_request(conn)
+		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# One line larger than the 1 MiB line cap, with no terminator.
 		char* chunk = malloc(65536)
-		int i = 0
-		while (i < 65536):
-			chunk[i] = 'x'
-			i = i + 1
+		mem_fill(chunk, 'x', 65536)
 		int sent = 0
 		while (sent < 1245184):
-			sse_test_send_all(conn, chunk, 65536)
+			net_test_send_all(conn, chunk, 65536)
 			sent = sent + 65536
 		free(chunk)
 		close(conn)
 		exit(0)
 
-	char* target = sse_test_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	sse_test_conn* c = sse_test_open(target)
 	# The oversized line trips the cap: no event, overflow error.
 	asserts(c"overflow should yield no event", sse_next(c.r) == 0)
@@ -497,22 +422,22 @@ void test_sse_buffer_overflow_fails_closed():
 
 void test_sse_stream_error_distinct_from_eof():
 	int port = 0
-	int listener = sse_test_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
 		if (conn < 0):
 			exit(1)
-		sse_child_read_request(conn)
+		net_test_read_head(conn)
 		# Promise 100 body bytes but deliver 14 then hang up: the stream
 		# read fails mid-body.
-		sse_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aContent-Type: text/event-stream\x0d\x0aContent-Length: 100\x0d\x0a\x0d\x0a")
-		sse_test_send_text(conn, c"data: partial\n")
+		net_test_send_text(conn, c"HTTP/1.1 200 OK\x0d\x0aContent-Type: text/event-stream\x0d\x0aContent-Length: 100\x0d\x0a\x0d\x0a")
+		net_test_send_text(conn, c"data: partial\n")
 		close(conn)
 		exit(0)
 
-	char* target = sse_test_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	sse_test_conn* c = sse_test_open(target)
 	# No complete event arrives; the truncation surfaces as a stream
 	# error, distinct from a clean EOF.

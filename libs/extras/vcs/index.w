@@ -115,6 +115,7 @@ import structures.string
 import libs.extras.vcs.cas
 import libs.extras.vcs.tree
 import libs.extras.vcs.__arch__.fsops
+import lib.mem
 
 
 # Error code for a stored index whose bytes do not parse as this
@@ -151,9 +152,7 @@ struct windex:
 
 
 windex* index_new():
-	windex* idx = new windex
-	idx.write_time = 0
-	idx.entries = new list[index_entry*]
+	windex* idx = new windex(0, new list[index_entry*])
 	return idx
 
 
@@ -262,18 +261,6 @@ int index_find_newline(char* data, int length, int start):
 	return index_find_char(data, length, start, 10)
 
 
-int index_starts_with(char* data, int length, int offset, char* prefix):
-	int n = strlen(prefix)
-	if ((offset + n) > length):
-		return 0
-	int i = 0
-	while (i < n):
-		if (data[offset + i] != prefix[i]):
-			return 0
-		i = i + 1
-	return 1
-
-
 int index_valid_integer(char* data, int start, int end):
 	if (start >= end):
 		return 0
@@ -304,11 +291,11 @@ int index_parse_integer(char* data, int start, int end):
 # unstorable path, or entries out of order -- is INDEX_ERR_MALFORMED.
 wresult[windex*]* index_parse(char* data, int length):
 	int pos = 0
-	if (index_starts_with(data, length, pos, c"index 1\n") == 0):
+	if (mem_starts_with(data, length, pos, c"index 1\n") == 0):
 		return result_new_error[windex*](INDEX_ERR_MALFORMED())
 	pos = pos + strlen(c"index 1\n")
 
-	if (index_starts_with(data, length, pos, c"write_time ") == 0):
+	if (mem_starts_with(data, length, pos, c"write_time ") == 0):
 		return result_new_error[windex*](INDEX_ERR_MALFORMED())
 	pos = pos + strlen(c"write_time ")
 	int wt_end = index_find_newline(data, length, pos)
@@ -322,7 +309,7 @@ wresult[windex*]* index_parse(char* data, int length):
 	char* prev_path = 0
 	int valid = 1
 	while (valid && (pos < length)):
-		if (index_starts_with(data, length, pos, c"entry ") == 0):
+		if (mem_starts_with(data, length, pos, c"entry ") == 0):
 			valid = 0
 			break
 		pos = pos + strlen(c"entry ")
@@ -610,14 +597,10 @@ wresult[index_refresh_result*]* index_refresh_at(wcas* s, char* dir, list[char*]
 	char* tree_id = result_value[char*](root)
 	result_free[char*](root)
 
-	windex* new_index = new windex
-	new_index.write_time = now
-	new_index.entries = out_entries
+	windex* new_index = new windex(now, out_entries)
 	new_index.entries.sort_by(index_entry_compare)
 
-	index_refresh_result* rr = new index_refresh_result
-	rr.tree_id = tree_id
-	rr.index = new_index
+	index_refresh_result* rr = new index_refresh_result(tree_id, new_index)
 	return result_new_ok[index_refresh_result*](rr)
 
 

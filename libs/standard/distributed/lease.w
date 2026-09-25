@@ -60,10 +60,7 @@ struct lease_table:
 
 lease_table* lease_table_new(int ttl_ms):
 	assert1(ttl_ms >= 1)
-	lease_table* t = new lease_table()
-	t.leases = new map[int, lease*]
-	t.next_epoch = u64_new_int(1)
-	t.ttl_ms = ttl_ms
+	lease_table* t = new lease_table(new map[int, lease*], u64_new_int(1), ttl_ms)
 	return t
 
 
@@ -118,12 +115,7 @@ int lease_acquire(lease_table* t, int resource, int holder, int now_ms, u64* epo
 		if (l.holder != holder):
 			return 0
 	if (l == 0):
-		l = new lease()
-		l.resource = resource
-		l.holder = holder
-		l.epoch = u64_new()
-		l.expires_at = now_ms
-		l.held = 0
+		l = new lease(resource, holder, u64_new(), now_ms, 0)
 		t.leases[resource] = l
 	l.holder = holder
 	u64_copy(l.epoch, t.next_epoch)

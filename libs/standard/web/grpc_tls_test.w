@@ -27,6 +27,7 @@ import libs.standard.web.http2
 import libs.standard.web.codec
 import libs.standard.web.grpc
 import libs.extras.compress.codecs
+import libs.standard.web.testing
 
 
 /* Helpers */
@@ -150,49 +151,6 @@ void gt_stats(grpc_call* call, void* user_data):
 
 /* Fixture plumbing */
 
-char* gt_cert_path():
-	return c"libs/standard/net/tls_fixtures/server_p256_cert.pem"
-
-
-char* gt_key_path():
-	return c"libs/standard/net/tls_fixtures/server_p256_key.pem"
-
-
-tls_server_config* gt_server_config():
-	tls_server_config* scfg = tls_server_config_new()
-	scfg.cert_chain_path = gt_cert_path()
-	scfg.key_path = gt_key_path()
-	return scfg
-
-
-tls_config* gt_client_config():
-	tls_config* cfg = tls_config_new()
-	cfg.insecure_skip_verify = 1
-	return cfg
-
-
-int gt_listen(int* out_port):
-	int listener = socket_tcp_ipv4()
-	asserts(c"socket", listener >= 0)
-	socket_set_reuseaddr(listener)
-	asserts(c"bind", socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0) >= 0)
-	asserts(c"listen", socket_listen(listener, 8) >= 0)
-	sockaddr_in bound
-	socket_getsockname_ipv4(listener, &bound)
-	*out_port = net_htons(bound.port)
-	return listener
-
-
-void gt_finish(int pid, int listener):
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	close(listener)
-	if (status != 0):
-		print2(c"fixture child status: ")
-		println2(itoa(status))
-	assert_equal(0, status)
-
-
 void gt_server_child(int listener):
 	int fd = socket_accept_connection(listener)
 	if (fd < 0):
@@ -205,7 +163,7 @@ void gt_server_child(int listener):
 	grpc_server_register_stream(srv, c"/t.S/Echo", gt_echo, 0)
 	grpc_server_register_stream(srv, c"/t.S/Ticker", gt_ticker, 0)
 	grpc_server_register(srv, c"/t.S/Stats", gt_stats, 0)
-	int err = grpc_server_serve_conn_tls(srv, fd, gt_server_config())
+	int err = grpc_server_serve_conn_tls(srv, fd, web_test_server_config())
 	grpc_server_free(srv)
 	exit(err)
 
@@ -255,12 +213,12 @@ int gt_stats_call(grpc_channel* ch):
 void test_grpc_tls_end_to_end():
 	compress_codecs_register()
 	int port = 0
-	int listener = gt_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		gt_server_child(listener)
-	tls_config* cfg = gt_client_config()
+	tls_config* cfg = web_test_client_config()
 	grpc_channel* ch = grpc_channel_open_tls(c"127.0.0.1", port, 10000, c"test.w.example", cfg)
 	asserts(c"grpc_channel_open_tls failed", ch != 0)
 	asserts(c"channel runs over TLS", ch.conn.tls != 0)
@@ -360,14 +318,14 @@ void test_grpc_tls_end_to_end():
 
 	grpc_channel_close(ch)
 	tls_config_free(cfg)
-	gt_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 # A client that offers only http/1.1: the TLS handshake fails and
 # grpc_server_serve_conn_tls reports PROTOCOL_ERROR.
 void test_grpc_tls_server_requires_h2():
 	int port = 0
-	int listener = gt_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -376,7 +334,7 @@ void test_grpc_tls_server_requires_h2():
 			exit(80)
 		socket_set_recv_timeout(sfd, 20000)
 		grpc_server* srv = grpc_server_new()
-		int err = grpc_server_serve_conn_tls(srv, sfd, gt_server_config())
+		int err = grpc_server_serve_conn_tls(srv, sfd, web_test_server_config())
 		grpc_server_free(srv)
 		if (err != h2_error_protocol()):
 			exit(81)
@@ -385,10 +343,10 @@ void test_grpc_tls_server_requires_h2():
 	asserts(c"socket", fd >= 0)
 	socket_set_recv_timeout(fd, 10000)
 	asserts(c"connect", socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), port) >= 0)
-	tls_config* cfg = gt_client_config()
+	tls_config* cfg = web_test_client_config()
 	tls_config_set_alpn(cfg, c"http/1.1")
 	tls_conn* t = tls_connect(fd, c"test.w.example", cfg)
 	asserts(c"handshake must fail", t == 0)
 	close(fd)
 	tls_config_free(cfg)
-	gt_finish(pid, listener)
+	net_test_finish(pid, listener)

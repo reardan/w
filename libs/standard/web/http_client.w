@@ -64,8 +64,10 @@ import lib.stream
 import lib.container
 import structures.string
 import libs.standard.web.urlparse
+import libs.standard.web.connection
 import libs.standard.net.dns
 import libs.standard.net.tls
+import lib.mem
 
 
 struct http_header:
@@ -115,26 +117,10 @@ struct http_response:
 	char* error_message
 
 
-# Buffered reader over one socket. For plaintext the socket is
-# nonblocking (poll timeouts); for https tls is non-null, the socket is
-# blocking with SO_RCVTIMEO/SO_SNDTIMEO, and all I/O routes through
-# tls_read/tls_write. tls_cfg owns the config the tls_conn borrows (freed
-# with it); tls_insecure records the verify posture for the idle cache key.
-struct http_conn:
-	int fd
-	wstream* reader
-	int timeout_ms
-	int error
-	int received_any
-	tls_conn* tls
-	tls_config* tls_cfg
-	int tls_insecure
-
-
 # Streaming response: status and headers are parsed eagerly by
 # http_open, the body is pulled incrementally with http_stream_read.
 struct http_stream:
-	http_conn* conn
+	ConnectionContext* conn
 	http_response* resp
 	int body_mode
 	int body_remaining
@@ -438,9 +424,7 @@ http_req* http_req_new(char* method, char* url):
 # Appends a request header; name and value are copied. Validation
 # happens when the request is sent (http_error_bad_header).
 void http_req_add_header(http_req* req, char* name, char* value):
-	http_header* h = new http_header()
-	h.name = strclone(name)
-	h.value = strclone(value)
+	http_header* h = new http_header(strclone(name), strclone(value))
 	req.headers.push(h)
 
 
@@ -458,13 +442,7 @@ void http_req_free(http_req* req):
 /* Responses */
 
 http_response* http_response_new():
-	http_response* resp = new http_response()
-	resp.status = 0
-	resp.headers = new map[char*, char*]
-	resp.body = 0
-	resp.body_len = 0
-	resp.error = 0
-	resp.error_message = c""
+	http_response* resp = new http_response(0, new map[char*, char*], 0, 0, 0, c"")
 	return resp
 
 
@@ -578,32 +556,15 @@ void http_cache_put(char* host, int port, int is_tls, int insecure, int fd, tls_
 	http_idle_tls_cfg = cfg
 
 
-/* Connection: nonblocking socket + buffered reader + poll timeouts */
+/* Connection: libs/standard/web/connection.w in client mode */
 
-http_conn* http_conn_new(int fd, int timeout_ms):
-	http_conn* c = new http_conn()
-	c.fd = fd
-	c.reader = stream_reader(fd)
-	c.timeout_ms = timeout_ms
-	c.error = 0
-	c.received_any = 0
-	c.tls = 0
-	c.tls_cfg = 0
-	c.tls_insecure = 0
-	return c
-
-
-void http_conn_destroy(http_conn* c):
-	# tls_close sends close_notify over the fd and wipes/frees the keys,
-	# so it must run before the fd is closed. The owning config outlives
-	# the tls_conn (which only borrows it), so free it here too.
-	if (c.tls != 0):
-		tls_close(c.tls)
-	if (c.tls_cfg != 0):
-		tls_config_free(c.tls_cfg)
-	close(c.fd)
-	stream_free(c.reader)
-	free(c)
+# A client-mode ConnectionContext over a freshly connected socket: the
+# plaintext socket stays nonblocking (io_poll timeouts); for https the
+# caller attaches tls (blocking socket with SO_RCVTIMEO/SO_SNDTIMEO, or
+# task-parked), tls_cfg (owned, freed with it) and tls_insecure (the
+# verify posture, for the idle cache key). c.error takes http_error_*.
+ConnectionContext* http_conn_new(int fd, int timeout_ms):
+	return connection_context_client(fd, timeout_ms, http_error_recv(), http_error_send(), http_error_timeout())
 
 
 # Builds a per-connection tls_config from a request's TLS knobs. The
@@ -617,183 +578,6 @@ tls_config* http_build_tls_config(http_req* req):
 		cfg.has_now_unix = 1
 		cfg.now_unix = req.tls_now_unix
 	return cfg
-
-
-# Refills the reader buffer from the socket, waiting up to timeout_ms.
-# Returns 1 when bytes are buffered, 0 on EOF, -1 on error or timeout
-# (c.error set).
-int http_conn_fill(http_conn* c):
-	wstream* r = c.reader
-	if (r.position < r.limit):
-		return 1
-	if (r.eof != 0):
-		return 0
-	r.position = 0
-	r.limit = 0
-	if (c.tls != 0):
-		# Blocking read bounded by SO_RCVTIMEO (armed at connect time).
-		# tls_read drains its own buffered plaintext first, so no read
-		# waits on a record that already arrived. 0 = clean close_notify
-		# EOF, <0 = error: a broken connection is a protocol failure,
-		# otherwise a timed-out (SO_RCVTIMEO) or reset read.
-		int tcount = tls_read(c.tls, r.buffer, r.capacity)
-		if (tcount > 0):
-			r.limit = tcount
-			c.received_any = 1
-			return 1
-		if (tcount == 0):
-			r.eof = 1
-			return 0
-		if (c.tls.broken != 0):
-			c.error = http_error_recv()
-		else:
-			c.error = http_error_timeout()
-		return (-1)
-	while (1):
-		int count = socket_recv(c.fd, r.buffer, r.capacity, 0)
-		if (count > 0):
-			r.limit = count
-			c.received_any = 1
-			return 1
-		if (count == 0):
-			r.eof = 1
-			return 0
-		if ((count != (0 - net_eagain())) & (count != (0 - 4))):
-			# Hard receive error (EINTR, -4, retries instead).
-			c.error = http_error_recv()
-			return (-1)
-		int ready = io_poll(c.fd, poll_in(), c.timeout_ms)
-		if (ready == 0):
-			c.error = http_error_timeout()
-			return (-1)
-		if (ready < 0):
-			if (ready != (0 - 4)):
-				c.error = http_error_recv()
-				return (-1)
-
-
-# Next byte, or -1 on EOF/error (EOF leaves c.error at 0).
-int http_conn_read_byte(http_conn* c):
-	int state = http_conn_fill(c)
-	if (state <= 0):
-		return (-1)
-	wstream* r = c.reader
-	int b = r.buffer[r.position] & 255
-	r.position = r.position + 1
-	return b
-
-
-# Reads up to want bytes (at least 1 unless the stream ends). Returns
-# the count, 0 on EOF, -1 on error (c.error set).
-int http_conn_read(http_conn* c, char* out, int want):
-	int state = http_conn_fill(c)
-	if (state <= 0):
-		return state
-	wstream* r = c.reader
-	int n = r.limit - r.position
-	if (n > want):
-		n = want
-	int i = 0
-	while (i < n):
-		out[i] = r.buffer[r.position + i]
-		i = i + 1
-	r.position = r.position + n
-	return n
-
-
-# Reads one line, accepting CRLF or bare LF and stripping both.
-# Returns 1 on a line, 0 on EOF before any byte, -1 on error: c.error
-# is oversize_error when the line exceeds http_max_header_line(),
-# stays 0 for EOF mid-line (caller picks the code), or is already set
-# by the transport.
-int http_conn_read_line(http_conn* c, string_builder* line, int oversize_error):
-	string_clear(line)
-	while (1):
-		int b = http_conn_read_byte(c)
-		if (b < 0):
-			if (c.error != 0):
-				return (-1)
-			if (line.length == 0):
-				return 0
-			return (-1)
-		if (b == 10):
-			if (line.length > 0):
-				if (line.data[line.length - 1] == 13):
-					line.length = line.length - 1
-					line.data[line.length] = 0
-			return 1
-		if (line.length >= http_max_header_line()):
-			c.error = oversize_error
-			return (-1)
-		string_append_char(line, b)
-
-
-# Sends all n bytes, polling for writability as needed. Returns 1, or
-# 0 with c.error set.
-int http_conn_write_all(http_conn* c, char* data, int n):
-	if (c.tls != 0):
-		# tls_write sends every byte (fragmenting to the record cap) or
-		# returns -1. The send is bounded by SO_SNDTIMEO on the socket.
-		if (n <= 0):
-			return 1
-		int wrote = tls_write(c.tls, data, n)
-		if (wrote == n):
-			return 1
-		c.error = http_error_send()
-		return 0
-	int total = 0
-	while (total < n):
-		int count = socket_send(c.fd, data + total, n - total, msg_nosignal())
-		if (count > 0):
-			total = total + count
-		else if (count == 0):
-			c.error = http_error_send()
-			return 0
-		else if ((count == (0 - net_eagain())) | (count == (0 - 4))):
-			int ready = io_poll(c.fd, poll_out(), c.timeout_ms)
-			if (ready == 0):
-				c.error = http_error_timeout()
-				return 0
-			if (ready < 0):
-				if (ready != (0 - 4)):
-					c.error = http_error_send()
-					return 0
-		else:
-			c.error = http_error_send()
-			return 0
-	return 1
-
-
-# Nonblocking connect with a poll timeout. Returns the socket, or the
-# negated http_error_* code.
-int http_connect_fd(int ip, int port, int timeout_ms):
-	int fd = socket_tcp_ipv4()
-	if (fd < 0):
-		return 0 - http_error_connect()
-	if (socket_set_nonblocking(fd) < 0):
-		close(fd)
-		return 0 - http_error_connect()
-	# SIGPIPE suppression on targets without MSG_NOSIGNAL (Darwin).
-	socket_set_nosigpipe(fd)
-	int rc = socket_connect_ipv4(fd, ip, port)
-	if (rc < 0):
-		if (rc != (0 - net_einprogress())):
-			close(fd)
-			return 0 - http_error_connect()
-		int ready = io_poll(fd, poll_out(), timeout_ms)
-		if (ready == 0):
-			close(fd)
-			return 0 - http_error_timeout()
-		if (ready < 0):
-			close(fd)
-			return 0 - http_error_connect()
-		if ((ready & (poll_err() | poll_hup())) != 0):
-			close(fd)
-			return 0 - http_error_connect()
-		if ((ready & poll_out()) == 0):
-			close(fd)
-			return 0 - http_error_connect()
-	return fd
 
 
 /* Request validation and writing */
@@ -857,7 +641,7 @@ int http_req_allows_reuse(http_req* req):
 
 
 # Writes the request head and body. Returns 1, or 0 with c.error set.
-int http_send_request(http_conn* c, http_req* req, URL* u, char* method, int include_body):
+int http_send_request(ConnectionContext* c, http_req* req, URL* u, char* method, int include_body):
 	string_builder* out = string_new()
 	string_append(out, method)
 	string_append_char(out, ' ')
@@ -900,7 +684,7 @@ int http_send_request(http_conn* c, http_req* req, URL* u, char* method, int inc
 	string_append(out, c"\x0d\x0a")
 	if (with_body != 0):
 		string_append_bytes(out, req.body, req.body_len)
-	int ok = http_conn_write_all(c, out.data, out.length)
+	int ok = connection_context_write_all(c, out.data, out.length)
 	string_free(out)
 	return ok
 
@@ -991,11 +775,11 @@ int http_store_header(http_response* resp, char* line, int length):
 # 1xx responses. Returns 1 on success, 0 on error (resp.error set),
 # -1 when the connection yielded no bytes at all (stale keep-alive
 # candidate; resp.error left for the caller).
-int http_read_head(http_conn* c, http_response* resp, int* out_minor):
+int http_read_head(ConnectionContext* c, http_response* resp, int* out_minor):
 	string_builder* line = string_new()
 	int rounds = 0
 	while (1):
-		int got = http_conn_read_line(c, line, http_error_headers_too_large())
+		int got = connection_context_read_line(c, line, http_error_headers_too_large())
 		if (got <= 0):
 			int no_bytes = 0
 			if (c.received_any == 0):
@@ -1023,7 +807,7 @@ int http_read_head(http_conn* c, http_response* resp, int* out_minor):
 		int total = 0
 		int in_block = 1
 		while (in_block != 0):
-			got = http_conn_read_line(c, line, http_error_headers_too_large())
+			got = connection_context_read_line(c, line, http_error_headers_too_large())
 			if (got <= 0):
 				if (c.error != 0):
 					http_response_set_error(resp, c.error)
@@ -1123,7 +907,7 @@ http_response* http_stream_headers(http_stream* s):
 # fully consumed under keep-alive with no buffered leftovers, closed
 # otherwise.
 void http_stream_release_conn(http_stream* s):
-	http_conn* c = s.conn
+	ConnectionContext* c = s.conn
 	if (c == 0):
 		return
 	s.conn = 0
@@ -1148,7 +932,7 @@ void http_stream_release_conn(http_stream* s):
 		stream_free(c.reader)
 		free(c)
 	else:
-		http_conn_destroy(c)
+		connection_context_destroy(c)
 
 
 # Decides body framing from the response (RFC 9112 6.3). Returns 1, or
@@ -1196,7 +980,7 @@ int http_stream_read_length(http_stream* s, char* out, int cap):
 	int want = cap
 	if (want > s.body_remaining):
 		want = s.body_remaining
-	int got = http_conn_read(s.conn, out, want)
+	int got = connection_context_read(s.conn, out, want)
 	if (got < 0):
 		http_stream_fail(s, s.conn.error)
 		return (-1)
@@ -1211,7 +995,7 @@ int http_stream_read_length(http_stream* s, char* out, int cap):
 
 
 int http_stream_read_close(http_stream* s, char* out, int cap):
-	int got = http_conn_read(s.conn, out, cap)
+	int got = connection_context_read(s.conn, out, cap)
 	if (got < 0):
 		http_stream_fail(s, s.conn.error)
 		return (-1)
@@ -1222,16 +1006,6 @@ int http_stream_read_close(http_stream* s, char* out, int cap):
 	return got
 
 
-# The CRLF that terminates each chunk's data (bare LF tolerated).
-int http_conn_expect_crlf(http_conn* c):
-	int b = http_conn_read_byte(c)
-	if (b == 13):
-		b = http_conn_read_byte(c)
-	if (b != 10):
-		return 0
-	return 1
-
-
 # Chunk-size line: hex digits, then optional spaces and an optional
 # ";extensions" tail which is ignored. Returns the size, or -1 when
 # malformed or over http_max_chunk_size().
@@ -1239,8 +1013,8 @@ int http_parse_chunk_size(char* line):
 	int value = 0
 	int digits = 0
 	int i = 0
-	while (url_is_hex_digit(line[i] & 255) != 0):
-		value = value * 16 + url_hex_digit_value(line[i] & 255)
+	while (hex_decode_char(line[i] & 255) >= 0):
+		value = value * 16 + hex_decode_char(line[i] & 255)
 		digits = digits + 1
 		if (value > http_max_chunk_size()):
 			return (-1)
@@ -1260,7 +1034,7 @@ int http_stream_consume_trailers(http_stream* s):
 	string_builder* line = string_new()
 	int total = 0
 	while (1):
-		int got = http_conn_read_line(s.conn, line, http_error_headers_too_large())
+		int got = connection_context_read_line(s.conn, line, http_error_headers_too_large())
 		if (got <= 0):
 			if (s.conn.error != 0):
 				http_stream_fail(s, s.conn.error)
@@ -1285,7 +1059,7 @@ int http_stream_read_chunked(http_stream* s, char* out, int cap):
 			int want = cap
 			if (want > s.body_remaining):
 				want = s.body_remaining
-			int got = http_conn_read(s.conn, out, want)
+			int got = connection_context_read(s.conn, out, want)
 			if (got < 0):
 				http_stream_fail(s, s.conn.error)
 				return (-1)
@@ -1296,14 +1070,14 @@ int http_stream_read_chunked(http_stream* s, char* out, int cap):
 			return got
 		# At a chunk boundary: read the next chunk-size line.
 		if (s.chunk_first == 0):
-			if (http_conn_expect_crlf(s.conn) == 0):
+			if (connection_context_expect_crlf(s.conn) == 0):
 				if (s.conn.error != 0):
 					http_stream_fail(s, s.conn.error)
 				else:
 					http_stream_fail(s, http_error_bad_chunk())
 				return (-1)
 		string_builder* line = string_new()
-		int got_line = http_conn_read_line(s.conn, line, http_error_bad_chunk())
+		int got_line = connection_context_read_line(s.conn, line, http_error_bad_chunk())
 		if (got_line <= 0):
 			if (s.conn.error != 0):
 				http_stream_fail(s, s.conn.error)
@@ -1396,9 +1170,9 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 		if (dns_resolve_ipv4(u.host, &ip) == 0):
 			http_stream_fail(s, http_error_dns())
 			return 0
-		fd = http_connect_fd(ip, u.port, timeout)
+		fd = net_connect_timeout(ip, u.port, timeout)
 		if (fd < 0):
-			http_stream_fail(s, 0 - fd)
+			http_stream_fail(s, fd == -2 ? http_error_timeout() : http_error_connect())
 			return 0
 		if (is_tls != 0):
 			# Outside a task net/tls.w uses blocking socket I/O: switch off
@@ -1429,14 +1203,14 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 			tls.io_timeout_ms = timeout
 			socket_set_recv_timeout(fd, timeout)
 			socket_set_send_timeout(fd, timeout)
-	http_conn* c = http_conn_new(fd, timeout)
+	ConnectionContext* c = http_conn_new(fd, timeout)
 	c.tls = tls
 	c.tls_cfg = tls_cfg
 	c.tls_insecure = insecure
 	if (http_send_request(c, req, u, method, include_body) == 0):
 		int send_error = c.error
 		int send_received = c.received_any
-		http_conn_destroy(c)
+		connection_context_destroy(c)
 		if ((from_cache != 0) && (send_received == 0) & (send_error == http_error_send())):
 			*out_stale = 1
 			return 0
@@ -1446,7 +1220,7 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 	int head = http_read_head(c, s.resp, &minor)
 	if (head < 0):
 		int head_error = c.error
-		http_conn_destroy(c)
+		connection_context_destroy(c)
 		if (from_cache != 0):
 			*out_stale = 1
 			return 0
@@ -1457,7 +1231,7 @@ int http_open_attempt(http_stream* s, http_req* req, URL* u, char* method, int i
 		return 0
 	if (head == 0):
 		s.error = s.resp.error
-		http_conn_destroy(c)
+		connection_context_destroy(c)
 		return 0
 	s.conn = c
 	s.cache_host = strclone(u.host)

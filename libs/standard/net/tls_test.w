@@ -38,54 +38,22 @@ import lib.memory
 import libs.standard.crypto.sha2
 import libs.standard.crypto.chacha20poly1305
 import libs.standard.net.tls
+import lib.hex
+import lib.mem
 
 
 # ---- hex helpers --------------------------------------------------------------
 
-int tlst_nibble(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	return c - 'a' + 10
-
-
-char* tlst_unhex(char* hex, int* out_len):
-	int n = strlen(hex) / 2
-	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = (tlst_nibble(hex[i * 2] & 255) << 4) | tlst_nibble(hex[i * 2 + 1] & 255)
-		i = i + 1
-	out[n] = 0
-	*out_len = n
-	return out
-
-
-char* tlst_hex(char* data, int len):
-	char* out = malloc(len * 2 + 1)
-	char* digits = c"0123456789abcdef"
-	int i = 0
-	while (i < len):
-		int b = data[i] & 255
-		out[i * 2] = digits[(b >> 4) & 15]
-		out[i * 2 + 1] = digits[b & 15]
-		i = i + 1
-	out[len * 2] = 0
-	return out
-
-
 void tlst_assert_hex(char* want_hex, char* got, int got_len):
-	char* got_hex = tlst_hex(got, got_len)
+	char* got_hex = hex_encode(got, got_len)
 	assert_strings_equal(want_hex, got_hex)
 	free(got_hex)
 
 
 char* tlst_concat(char* a, int alen, char* b, int blen, int* out_len):
 	char* out = malloc(alen + blen)
+	mem_copy(out, a, alen)
 	int i = 0
-	while (i < alen):
-		out[i] = a[i]
-		i = i + 1
-	i = 0
 	while (i < blen):
 		out[alen + i] = b[i]
 		i = i + 1
@@ -96,7 +64,7 @@ char* tlst_concat(char* a, int alen, char* b, int blen, int* out_len):
 # Derive the ChaCha20 record key (32) + iv (12) for a traffic secret (hex).
 void tlst_keys_from_secret(char* secret_hex, char* out_key, char* out_iv):
 	int slen = 0
-	char* secret = tlst_unhex(secret_hex, &slen)
+	char* secret = hex_decode_loose(secret_hex, &slen)
 	tls_derive_traffic_keys(WHASH_SHA256(), secret, out_key, out_iv)
 	free(secret)
 
@@ -114,17 +82,14 @@ char* tlst_enc_record(char* key, char* iv, int seq_hi, int seq_lo, char* plain, 
 	rec[3] = (rec_len >> 8) & 255
 	rec[4] = rec_len & 255
 	char* inner = malloc(inner_len)
-	int i = 0
-	while (i < plain_len):
-		inner[i] = plain[i]
-		i = i + 1
+	mem_copy(inner, plain, plain_len)
 	inner[plain_len] = inner_ct & 255
 	char* nonce = malloc(12)
 	tls_nonce(iv, seq_hi, seq_lo, nonce)
 	char* ct = malloc(inner_len)
 	char* tag = malloc(16)
 	chacha20poly1305_seal(key, nonce, rec, 5, inner, inner_len, ct, tag)
-	i = 0
+	int i = 0
 	while (i < inner_len):
 		rec[5 + i] = ct[i]
 		i = i + 1
@@ -154,10 +119,7 @@ int tlst_dec_record(char* key, char* iv, int seq_hi, int seq_lo, char* rec, int 
 	while ((p >= 0) && (plain[p] == 0)):
 		p = p - 1
 	int inner_type = plain[p] & 255
-	int i = 0
-	while (i < p):
-		out_plain[i] = plain[i]
-		i = i + 1
+	mem_copy(out_plain, plain, p)
 	*out_len = p
 	free(nonce)
 	free(plain)
@@ -213,7 +175,7 @@ char* rfc_app_plain_hex():
 # after sealing (pass -1 for none).
 char* tlst_build_server_bytes(int tamper_off, int tamper_val, int ct_tamper_off, int* out_len):
 	int sh_len = 0
-	char* sh = tlst_unhex(rfc_server_hello_hex(), &sh_len)
+	char* sh = hex_decode_loose(rfc_server_hello_hex(), &sh_len)
 	char* sh_rec = malloc(5 + sh_len)
 	sh_rec[0] = 22
 	sh_rec[1] = 3
@@ -227,7 +189,7 @@ char* tlst_build_server_bytes(int tamper_off, int tamper_val, int ct_tamper_off,
 	int sh_rec_len = 5 + sh_len
 
 	int flen = 0
-	char* flight = tlst_unhex(rfc_flight_plain_hex(), &flen)
+	char* flight = hex_decode_loose(rfc_flight_plain_hex(), &flen)
 	if (tamper_off >= 0):
 		flight[tamper_off] = tamper_val & 255
 	char* key = malloc(32)
@@ -267,9 +229,9 @@ tls_config* tlst_replay_config(char* ch, int ch_len, char* priv):
 
 void test_rfc8448_full_handshake():
 	int ch_len = 0
-	char* ch = tlst_unhex(rfc_client_hello_hex(), &ch_len)
+	char* ch = hex_decode_loose(rfc_client_hello_hex(), &ch_len)
 	int priv_len = 0
-	char* priv = tlst_unhex(rfc_client_priv_hex(), &priv_len)
+	char* priv = hex_decode_loose(rfc_client_priv_hex(), &priv_len)
 	tls_config* cfg = tlst_replay_config(ch, ch_len, priv)
 
 	int sb_len = 0
@@ -321,9 +283,9 @@ void test_rfc8448_full_handshake():
 # keyed from the RFC application traffic secrets (round-trip plaintext).
 void test_rfc8448_application_data():
 	int ch_len = 0
-	char* ch = tlst_unhex(rfc_client_hello_hex(), &ch_len)
+	char* ch = hex_decode_loose(rfc_client_hello_hex(), &ch_len)
 	int priv_len = 0
-	char* priv = tlst_unhex(rfc_client_priv_hex(), &priv_len)
+	char* priv = hex_decode_loose(rfc_client_priv_hex(), &priv_len)
 	tls_config* cfg = tlst_replay_config(ch, ch_len, priv)
 	int sb_len = 0
 	char* server_bytes = tlst_build_server_bytes(0 - 1, 0, 0 - 1, &sb_len)
@@ -335,7 +297,7 @@ void test_rfc8448_application_data():
 	free(junk)
 
 	int app_len = 0
-	char* app_plain = tlst_unhex(rfc_app_plain_hex(), &app_len)
+	char* app_plain = hex_decode_loose(rfc_app_plain_hex(), &app_len)
 	char* s_ap_key = malloc(32)
 	char* s_ap_iv = malloc(12)
 	tlst_keys_from_secret(rfc_s_ap_hex(), s_ap_key, s_ap_iv)
@@ -407,7 +369,7 @@ void test_rfc8448_application_data():
 
 void test_nonce_construction():
 	int iv_len = 0
-	char* iv = tlst_unhex(c"5d313eb2671276ee13000b30", &iv_len)
+	char* iv = hex_decode_loose(c"5d313eb2671276ee13000b30", &iv_len)
 	char* out = malloc(12)
 	# seq 0 => nonce == iv.
 	tls_nonce(iv, 0, 0, out)
@@ -449,7 +411,7 @@ void test_record_roundtrip():
 	asserts(c"tls: recv record", tls_recv_record(c, &rtype, &data, &dlen) != 0)
 	assert_equal(TLS_CT_APPLICATION_DATA(), rtype)
 	assert_equal(mlen, dlen)
-	char* want = tlst_hex(msg, mlen)
+	char* want = hex_encode(msg, mlen)
 	tlst_assert_hex(want, data, dlen)
 	free(want)
 	free(data)
@@ -501,7 +463,7 @@ void test_fragmented_handshake():
 	asserts(c"tls: reassemble", tls_next_hs_msg(c, &htype, &hmsg, &hlen) != 0)
 	assert_equal(8, htype)
 	assert_equal(20, hlen)
-	char* want = tlst_hex(m, 20)
+	char* want = hex_encode(m, 20)
 	tlst_assert_hex(want, hmsg, hlen)
 	free(want)
 
@@ -539,14 +501,14 @@ void test_max_length_enforced():
 # A single flipped byte in the server Finished verify_data must fail closed.
 void test_bad_server_finished():
 	int ch_len = 0
-	char* ch = tlst_unhex(rfc_client_hello_hex(), &ch_len)
+	char* ch = hex_decode_loose(rfc_client_hello_hex(), &ch_len)
 	int priv_len = 0
-	char* priv = tlst_unhex(rfc_client_priv_hex(), &priv_len)
+	char* priv = hex_decode_loose(rfc_client_priv_hex(), &priv_len)
 	tls_config* cfg = tlst_replay_config(ch, ch_len, priv)
 	# The server Finished verify_data is the last 32 bytes of the flight
 	# plaintext; flip its last byte.
 	int flen = 0
-	char* flight = tlst_unhex(rfc_flight_plain_hex(), &flen)
+	char* flight = hex_decode_loose(rfc_flight_plain_hex(), &flen)
 	int off = flen - 1
 	free(flight)
 	int sb_len = 0
@@ -562,9 +524,9 @@ void test_bad_server_finished():
 # Flipping a ciphertext byte in the flight record must trip bad_record_mac.
 void test_tampered_record():
 	int ch_len = 0
-	char* ch = tlst_unhex(rfc_client_hello_hex(), &ch_len)
+	char* ch = hex_decode_loose(rfc_client_hello_hex(), &ch_len)
 	int priv_len = 0
-	char* priv = tlst_unhex(rfc_client_priv_hex(), &priv_len)
+	char* priv = hex_decode_loose(rfc_client_priv_hex(), &priv_len)
 	tls_config* cfg = tlst_replay_config(ch, ch_len, priv)
 	# frec index 25 is inside the ciphertext (past the 5-byte header).
 	int sb_len = 0
@@ -581,9 +543,9 @@ void test_tampered_record():
 # insecure_skip_verify (the signature is checked independently of the chain).
 void test_bad_certverify():
 	int ch_len = 0
-	char* ch = tlst_unhex(rfc_client_hello_hex(), &ch_len)
+	char* ch = hex_decode_loose(rfc_client_hello_hex(), &ch_len)
 	int priv_len = 0
-	char* priv = tlst_unhex(rfc_client_priv_hex(), &priv_len)
+	char* priv = hex_decode_loose(rfc_client_priv_hex(), &priv_len)
 	tls_config* cfg = tlst_replay_config(ch, ch_len, priv)
 	# EE (4 + 0x24 = 40) + Certificate (4 + 0x1b9 = 445) + CertVerify header (4)
 	# + scheme (2) + siglen (2) = 493; +10 lands inside the signature.
@@ -602,9 +564,9 @@ void test_bad_certverify():
 # not chain to any system trust anchor, so the handshake fails closed.
 void test_chain_verification_fails():
 	int ch_len = 0
-	char* ch = tlst_unhex(rfc_client_hello_hex(), &ch_len)
+	char* ch = hex_decode_loose(rfc_client_hello_hex(), &ch_len)
 	int priv_len = 0
-	char* priv = tlst_unhex(rfc_client_priv_hex(), &priv_len)
+	char* priv = hex_decode_loose(rfc_client_priv_hex(), &priv_len)
 	tls_config* cfg = tls_config_new()
 	cfg.insecure_skip_verify = 0        # verification ON
 	cfg.test_accept_any_cipher = 1
@@ -626,9 +588,9 @@ void test_chain_verification_fails():
 # A fatal alert in place of the ServerHello tears the handshake down cleanly.
 void test_fatal_alert():
 	int ch_len = 0
-	char* ch = tlst_unhex(rfc_client_hello_hex(), &ch_len)
+	char* ch = hex_decode_loose(rfc_client_hello_hex(), &ch_len)
 	int priv_len = 0
-	char* priv = tlst_unhex(rfc_client_priv_hex(), &priv_len)
+	char* priv = hex_decode_loose(rfc_client_priv_hex(), &priv_len)
 	tls_config* cfg = tlst_replay_config(ch, ch_len, priv)
 	# Plaintext alert record: level fatal (2), description handshake_failure (40).
 	char* alert = malloc(7)
@@ -652,9 +614,9 @@ void test_fatal_alert():
 # test_accept_any_cipher): our client offers only TLS_CHACHA20_POLY1305_SHA256.
 void test_non_chacha_suite_rejected():
 	int ch_len = 0
-	char* ch = tlst_unhex(rfc_client_hello_hex(), &ch_len)
+	char* ch = hex_decode_loose(rfc_client_hello_hex(), &ch_len)
 	int priv_len = 0
-	char* priv = tlst_unhex(rfc_client_priv_hex(), &priv_len)
+	char* priv = hex_decode_loose(rfc_client_priv_hex(), &priv_len)
 	tls_config* cfg = tls_config_new()
 	cfg.insecure_skip_verify = 1
 	cfg.test_priv = priv
@@ -695,7 +657,7 @@ void test_client_hello_build():
 	# legacy_version 0x0303 at offset 4.
 	assert_equal(0x0303, ((ch[4] & 255) << 8) | (ch[5] & 255))
 	# The 32-byte pubkey is the last extension's key_exchange -> last 32 bytes.
-	char* want = tlst_hex(pub, 32)
+	char* want = hex_encode(pub, 32)
 	tlst_assert_hex(want, ch + len - 32, 32)
 	free(want)
 	# cipher_suites: length at 71..72, the single suite 0x1303 at 73..74.

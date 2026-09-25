@@ -18,6 +18,8 @@ the plaintext buffer.
 import lib.memory
 import libs.standard.crypto.chacha20
 import libs.standard.crypto.poly1305
+import lib.bytes
+import lib.mem
 
 
 # Derive the one-time Poly1305 key for (key, nonce): the first 32 bytes of
@@ -29,10 +31,7 @@ void poly1305_key_gen(char* key, char* nonce, char* out):
 	while (i < 32):
 		out[i] = block[i] & 255
 		i = i + 1
-	i = 0
-	while (i < 64):
-		block[i] = 0
-		i = i + 1
+	mem_fill(block, 0, 64)
 	free(block)
 
 
@@ -54,10 +53,7 @@ int chacha20poly1305_tag_equal(char* a, char* b):
 void chacha20poly1305_mac(char* polykey, char* aad, int aad_len, char* ct, int ct_len, char* out):
 	poly1305* st = poly1305_new(polykey)
 	char* zeros = malloc(16)
-	int i = 0
-	while (i < 16):
-		zeros[i] = 0
-		i = i + 1
+	mem_fill(zeros, 0, 16)
 
 	poly1305_update(st, aad, aad_len)
 	int rem = aad_len % 16
@@ -69,18 +65,9 @@ void chacha20poly1305_mac(char* polykey, char* aad, int aad_len, char* ct, int c
 		poly1305_update(st, zeros, 16 - rem)
 
 	char* lens = malloc(16)
-	i = 0
-	while (i < 16):
-		lens[i] = 0
-		i = i + 1
-	lens[0] = aad_len & 255
-	lens[1] = (aad_len >> 8) & 255
-	lens[2] = (aad_len >> 16) & 255
-	lens[3] = (aad_len >> 24) & 255
-	lens[8] = ct_len & 255
-	lens[9] = (ct_len >> 8) & 255
-	lens[10] = (ct_len >> 16) & 255
-	lens[11] = (ct_len >> 24) & 255
+	mem_fill(lens, 0, 16)
+	store_le32(lens, aad_len)
+	store_le32(lens + 8, ct_len)
 	poly1305_update(st, lens, 16)
 	poly1305_finish(st, out)
 	poly1305_free(st)
@@ -96,10 +83,7 @@ void chacha20poly1305_seal(char* key, char* nonce, char* aad, int aad_len, char*
 	poly1305_key_gen(key, nonce, polykey)
 	chacha20_xor(key, 1, nonce, plain, len, ct_out)
 	chacha20poly1305_mac(polykey, aad, aad_len, ct_out, len, tag_out)
-	int i = 0
-	while (i < 32):
-		polykey[i] = 0
-		i = i + 1
+	mem_fill(polykey, 0, 32)
 	free(polykey)
 
 
@@ -113,22 +97,13 @@ int chacha20poly1305_open(char* key, char* nonce, char* aad, int aad_len, char* 
 	poly1305_key_gen(key, nonce, polykey)
 	chacha20poly1305_mac(polykey, aad, aad_len, ct, len, expected)
 	int ok = chacha20poly1305_tag_equal(expected, tag)
-	int i = 0
-	while (i < 16):
-		expected[i] = 0
-		i = i + 1
+	mem_fill(expected, 0, 16)
 	free(expected)
 	if (ok == 0):
-		i = 0
-		while (i < 32):
-			polykey[i] = 0
-			i = i + 1
+		mem_fill(polykey, 0, 32)
 		free(polykey)
 		return 0
 	chacha20_xor(key, 1, nonce, ct, len, plain_out)
-	i = 0
-	while (i < 32):
-		polykey[i] = 0
-		i = i + 1
+	mem_fill(polykey, 0, 32)
 	free(polykey)
 	return 1

@@ -21,29 +21,10 @@ import libs.standard.web.http_server
 import libs.standard.web.http_client
 import libs.standard.web.sse
 import libs.standard.net.tls
+import libs.standard.web.testing
 
 
 /* ---- shared helpers ---- */
-
-char* hrt_url(int port, char* path):
-	string_builder* out = string_new()
-	string_append(out, c"http://127.0.0.1:")
-	string_append_int(out, port)
-	string_append(out, path)
-	char* text = out.data
-	free(out)
-	return text
-
-
-char* hrt_https_url(int port, char* path):
-	string_builder* out = string_new()
-	string_append(out, c"https://127.0.0.1:")
-	string_append_int(out, port)
-	string_append(out, path)
-	char* text = out.data
-	free(out)
-	return text
-
 
 # A handler function pointer is required even for a ServerContext that
 # only ever dispatches through server_route (server_serve_connection
@@ -63,13 +44,6 @@ ServerContext* hrt_new_server():
 	s.timeout_ms = 60000
 	asserts(c"server bind", server_context_bind(s) != 0)
 	return s
-
-
-void hrt_finish(int pid):
-	http_client_close_idle()
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	asserts(c"server child exited cleanly", status == 0)
 
 
 /* ---- route handlers (plain functions -- W has no closures) ---- */
@@ -193,7 +167,7 @@ void test_request_context_basic_round_trip():
 	server_context_close(s)
 	server_context_free(s)
 
-	char* target = hrt_url(port, c"/hi")
+	char* target = net_test_url(c"http", port, c"/hi")
 	http_req* req = http_req_new(c"GET", target)
 	http_req_add_header(req, c"Connection", c"close")
 	http_response* resp = http_request(req)
@@ -204,7 +178,7 @@ void test_request_context_basic_round_trip():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hrt_finish(pid)
+	web_test_finish(pid, -1)
 
 
 void test_request_context_method_path_header_body():
@@ -219,7 +193,7 @@ void test_request_context_method_path_header_body():
 	server_context_close(s)
 	server_context_free(s)
 
-	char* target = hrt_url(port, c"/echo")
+	char* target = net_test_url(c"http", port, c"/echo")
 	http_req* req = http_req_new(c"POST", target)
 	http_req_add_header(req, c"Connection", c"close")
 	http_req_add_header(req, c"X-Echo", c"marker")
@@ -233,7 +207,7 @@ void test_request_context_method_path_header_body():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hrt_finish(pid)
+	web_test_finish(pid, -1)
 
 
 void test_request_context_url_and_query_param():
@@ -248,7 +222,7 @@ void test_request_context_url_and_query_param():
 	server_context_close(s)
 	server_context_free(s)
 
-	char* target = hrt_url(port, c"/search?q=hello%20world&x=1")
+	char* target = net_test_url(c"http", port, c"/search?q=hello%20world&x=1")
 	http_req* req = http_req_new(c"GET", target)
 	http_req_add_header(req, c"Connection", c"close")
 	http_response* resp = http_request(req)
@@ -258,7 +232,7 @@ void test_request_context_url_and_query_param():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hrt_finish(pid)
+	web_test_finish(pid, -1)
 
 
 void test_request_context_json_shortcut():
@@ -273,7 +247,7 @@ void test_request_context_json_shortcut():
 	server_context_close(s)
 	server_context_free(s)
 
-	char* target = hrt_url(port, c"/api")
+	char* target = net_test_url(c"http", port, c"/api")
 	http_req* req = http_req_new(c"GET", target)
 	http_req_add_header(req, c"Connection", c"close")
 	http_response* resp = http_request(req)
@@ -284,7 +258,7 @@ void test_request_context_json_shortcut():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hrt_finish(pid)
+	web_test_finish(pid, -1)
 
 
 /* ---- tests: routing dispatch + 404 ---- */
@@ -306,7 +280,7 @@ void test_routing_exact_prefix_and_404():
 	server_context_free(s)
 
 	# Exact match.
-	char* t1 = hrt_url(port, c"/exact")
+	char* t1 = net_test_url(c"http", port, c"/exact")
 	http_req* r1 = http_req_new(c"GET", t1)
 	http_response* resp1 = http_request(r1)
 	assert_equal(200, resp1.status)
@@ -316,7 +290,7 @@ void test_routing_exact_prefix_and_404():
 	free(t1)
 
 	# Prefix match: "/prefix/*" matches anything under "/prefix/".
-	char* t2 = hrt_url(port, c"/prefix/anything/deeper")
+	char* t2 = net_test_url(c"http", port, c"/prefix/anything/deeper")
 	http_req* r2 = http_req_new(c"GET", t2)
 	http_response* resp2 = http_request(r2)
 	assert_equal(200, resp2.status)
@@ -326,7 +300,7 @@ void test_routing_exact_prefix_and_404():
 	free(t2)
 
 	# "/prefixX" does not start with "/prefix/" -- no route matches.
-	char* t3 = hrt_url(port, c"/prefixX")
+	char* t3 = net_test_url(c"http", port, c"/prefixX")
 	http_req* r3 = http_req_new(c"GET", t3)
 	http_response* resp3 = http_request(r3)
 	assert_equal(404, resp3.status)
@@ -336,7 +310,7 @@ void test_routing_exact_prefix_and_404():
 	free(t3)
 
 	# An entirely unregistered path also 404s.
-	char* t4 = hrt_url(port, c"/nope")
+	char* t4 = net_test_url(c"http", port, c"/nope")
 	http_req* req4 = http_req_new(c"GET", t4)
 	http_req_add_header(req4, c"Connection", c"close")
 	http_response* resp4 = http_request(req4)
@@ -345,7 +319,7 @@ void test_routing_exact_prefix_and_404():
 	http_req_free(req4)
 	free(t4)
 
-	hrt_finish(pid)
+	web_test_finish(pid, -1)
 
 
 void test_routing_method_exact_and_wildcard():
@@ -364,7 +338,7 @@ void test_routing_method_exact_and_wildcard():
 	server_context_free(s)
 
 	# GET matches the exact-method route.
-	char* t1 = hrt_url(port, c"/only-get")
+	char* t1 = net_test_url(c"http", port, c"/only-get")
 	http_req* r1 = http_req_new(c"GET", t1)
 	http_response* resp1 = http_request(r1)
 	assert_equal(200, resp1.status)
@@ -374,7 +348,7 @@ void test_routing_method_exact_and_wildcard():
 	free(t1)
 
 	# POST to a GET-only route matches nothing -- 404.
-	char* t2 = hrt_url(port, c"/only-get")
+	char* t2 = net_test_url(c"http", port, c"/only-get")
 	http_req* r2 = http_req_new(c"POST", t2)
 	http_req_add_header(r2, c"Connection", c"close")
 	http_response* resp2 = http_request(r2)
@@ -384,7 +358,7 @@ void test_routing_method_exact_and_wildcard():
 	free(t2)
 
 	# "*" matches any method.
-	char* t3 = hrt_url(port, c"/any")
+	char* t3 = net_test_url(c"http", port, c"/any")
 	http_req* r3 = http_req_new(c"DELETE", t3)
 	http_req_add_header(r3, c"Connection", c"close")
 	http_response* resp3 = http_request(r3)
@@ -394,7 +368,7 @@ void test_routing_method_exact_and_wildcard():
 	http_req_free(r3)
 	free(t3)
 
-	hrt_finish(pid)
+	web_test_finish(pid, -1)
 
 
 /* ---- tests: streaming ---- */
@@ -415,7 +389,7 @@ void test_streaming_chunked_round_trip():
 	server_context_close(s)
 	server_context_free(s)
 
-	char* target = hrt_url(port, c"/stream")
+	char* target = net_test_url(c"http", port, c"/stream")
 	http_req* req = http_req_new(c"GET", target)
 	http_req_add_header(req, c"Connection", c"close")
 	http_response* resp = http_request(req)
@@ -426,7 +400,7 @@ void test_streaming_chunked_round_trip():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hrt_finish(pid)
+	web_test_finish(pid, -1)
 
 
 # A stream that begins but never writes a body byte still closes out
@@ -443,7 +417,7 @@ void test_streaming_empty_body():
 	server_context_close(s)
 	server_context_free(s)
 
-	char* target = hrt_url(port, c"/empty-stream")
+	char* target = net_test_url(c"http", port, c"/empty-stream")
 	http_req* req = http_req_new(c"GET", target)
 	http_req_add_header(req, c"Connection", c"close")
 	http_response* resp = http_request(req)
@@ -453,7 +427,7 @@ void test_streaming_empty_body():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hrt_finish(pid)
+	web_test_finish(pid, -1)
 
 
 # See hrt_handler_sse's comment: sse.w has no server/writer half, so
@@ -474,7 +448,7 @@ void test_sse_streaming_handler():
 	server_context_close(s)
 	server_context_free(s)
 
-	char* target = hrt_url(port, c"/events")
+	char* target = net_test_url(c"http", port, c"/events")
 	http_req* req = http_req_new(c"GET", target)
 	http_stream* st = http_open(req)
 	http_response* head = http_stream_headers(st)
@@ -503,7 +477,7 @@ void test_sse_streaming_handler():
 	http_stream_close(st)
 	http_req_free(req)
 	free(target)
-	hrt_finish(pid)
+	web_test_finish(pid, -1)
 
 
 /* ---- tests: https through the RequestContext/routing path ---- */
@@ -529,7 +503,7 @@ void test_https_request_context_round_trip():
 	server_context_close(s)
 	server_context_free(s)
 
-	char* target = hrt_https_url(port, c"/hi")
+	char* target = net_test_url(c"https", port, c"/hi")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
 	req.tls_handshake_timeout_ms = 60000
@@ -542,4 +516,4 @@ void test_https_request_context_round_trip():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hrt_finish(pid)
+	web_test_finish(pid, -1)

@@ -178,7 +178,7 @@ char* alpnt_server_output(char* chrec, int chrec_len, char* server_protos, int r
 	tls_conn* s = tls_conn_new(0 - 1, 1, 0)
 	s.is_server = 1
 	s.scfg = scfg
-	wbuf_bytes(s.mem_in, chrec, chrec_len)
+	string_append_bytes(s.mem_in, chrec, chrec_len)
 	tls_server_do_handshake(s)
 	char* out = tls_mem_take_output(s, out_len)
 	*out_err = tls_server_last_error(scfg)

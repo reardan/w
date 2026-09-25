@@ -41,6 +41,7 @@ double/int64-family fields generate fine but, like the message keyword,
 compile only for 8-byte-word targets.
 */
 import lib.lib
+import lib.hex
 import lib.file
 import structures.string
 import libs.extras.parser_generator.runtime
@@ -206,14 +207,7 @@ int pc_parse_int(char* text):
 		return -1
 	int value = 0
 	while (text[i] != 0):
-		int c = text[i]
-		int digit = -1
-		if ((c >= '0') && (c <= '9')):
-			digit = c - '0'
-		else if ((c >= 'a') && (c <= 'f')):
-			digit = c - 'a' + 10
-		else if ((c >= 'A') && (c <= 'F')):
-			digit = c - 'A' + 10
+		int digit = hex_decode_char(text[i])
 		if ((digit < 0) || (digit >= base)):
 			return -1
 		if (value > (536870911 - digit) / base):
@@ -786,9 +780,7 @@ proto_codegen_result* proto_to_w(char* input, char* filename):
 # module proto_to_w writes for it (a/b.proto -> a.b_pb, see
 # pc_import_module), so import paths and W module paths share a root.
 proto_codegen_result* proto_to_w_with_roots(char* input, char* filename, list[char*] roots):
-	proto_codegen_result* result = new proto_codegen_result()
-	result.source = 0
-	result.errors = new list[char*]
+	proto_codegen_result* result = new proto_codegen_result(0, new list[char*])
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_ast_node* root = protoidl_parse(input, filename, diagnostics)
 	if ((root == 0) || (pg_diagnostics_count(diagnostics) != 0)):

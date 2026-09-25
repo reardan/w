@@ -78,6 +78,7 @@ the decoder.
 import lib.memory
 import structures.string
 import libs.extras.compress.inflate
+import lib.mem
 
 
 int DEFLATE_LEVEL_STORED():
@@ -253,10 +254,7 @@ dfl_tokens* dfl_tokenize_from(char* data, int length, int start, int max_chain, 
 	t.count = 0
 
 	int* head = cast(int*, malloc(dfl_hash_size() * __word_size__))
-	int i = 0
-	while (i < dfl_hash_size()):
-		head[i] = -1
-		i = i + 1
+	mem_fill(head, -1, dfl_hash_size())
 	int* prev = cast(int*, malloc(length * __word_size__))
 	int h = 0
 	while (h < start):
@@ -373,13 +371,10 @@ void dfl_dist_symbol(int dist, int* out_sym, int* out_extra_bits, int* out_extra
 # producing the initial histogram.
 int* dfl_build_lengths(int* freq, int n, int max_bits):
 	int* length = cast(int*, malloc(n * __word_size__))
-	int i = 0
-	while (i < n):
-		length[i] = 0
-		i = i + 1
+	mem_fill(length, 0, n)
 	int* used = cast(int*, malloc(n * __word_size__))
 	int nused = 0
-	i = 0
+	int i = 0
 	while (i < n):
 		if (freq[i] > 0):
 			used[nused] = i
@@ -471,10 +466,7 @@ int* dfl_build_lengths(int* freq, int n, int max_bits):
 	if (hist_size < max_bits + 2):
 		hist_size = max_bits + 2
 	int* bl_count = cast(int*, malloc(hist_size * __word_size__))
-	i = 0
-	while (i < hist_size):
-		bl_count[i] = 0
-		i = i + 1
+	mem_fill(bl_count, 0, hist_size)
 	int maxdepth = 0
 	i = 0
 	while (i < nused):
@@ -593,10 +585,7 @@ void dfl_init_fixed_tables():
 		ll[i] = 8
 		i = i + 1
 	int* d = cast(int*, malloc(32 * __word_size__))
-	i = 0
-	while (i < 32):
-		d[i] = 5
-		i = i + 1
+	mem_fill(d, 5, 32)
 	dfl_fixed_litlen_lengths_cache = ll
 	dfl_fixed_dist_lengths_cache = d
 	dfl_fixed_litlen_codes_cache = dfl_build_codes(ll, 288, 15)
@@ -638,10 +627,7 @@ struct dfl_bits:
 
 
 dfl_bits* dfl_bits_new():
-	dfl_bits* w = new dfl_bits
-	w.out = string_new()
-	w.cur_byte = 0
-	w.cur_nbits = 0
+	dfl_bits* w = new dfl_bits(string_new(), 0, 0)
 	return w
 
 
@@ -787,15 +773,9 @@ void dfl_emit_stored_range(dfl_bits* w, char* data, int offset, int len, int is_
 # Literal/length (288) and distance (30) symbol frequencies over tokens
 # [start,end), plus the one EOB symbol every block ends with.
 void dfl_count_freqs(dfl_tokens* t, int start, int end, int* freq_ll, int* freq_d):
-	int i = 0
-	while (i < 288):
-		freq_ll[i] = 0
-		i = i + 1
-	i = 0
-	while (i < 30):
-		freq_d[i] = 0
-		i = i + 1
-	i = start
+	mem_fill(freq_ll, 0, 288)
+	mem_fill(freq_d, 0, 30)
+	int i = start
 	while (i < end):
 		int len = t.len[i]
 		int dist = t.dist[i]
@@ -889,11 +869,7 @@ dfl_cltoks* dfl_build_cl_tokens(int* lengths, int total):
 					count = count + 1
 					remaining = remaining - chunk
 		i = i + runlen
-	dfl_cltoks* t = new dfl_cltoks
-	t.sym = sym
-	t.extra_val = extra_val
-	t.extra_bits = extra_bits
-	t.count = count
+	dfl_cltoks* t = new dfl_cltoks(sym, extra_val, extra_bits, count)
 	return t
 
 
@@ -960,10 +936,7 @@ dfl_dyn* dfl_dyn_build(dfl_tokens* t, int start, int end):
 
 	int total = hlit + hdist
 	int* combined = cast(int*, malloc(total * __word_size__))
-	i = 0
-	while (i < hlit):
-		combined[i] = dy.ll_lengths[i]
-		i = i + 1
+	mem_copy(combined, dy.ll_lengths, hlit)
 	i = 0
 	while (i < hdist):
 		combined[hlit + i] = dy.d_lengths[i]
@@ -972,10 +945,7 @@ dfl_dyn* dfl_dyn_build(dfl_tokens* t, int start, int end):
 	dy.cl = dfl_build_cl_tokens(combined, total)
 	free(combined)
 	int* cl_freq = cast(int*, malloc(19 * __word_size__))
-	i = 0
-	while (i < 19):
-		cl_freq[i] = 0
-		i = i + 1
+	mem_fill(cl_freq, 0, 19)
 	i = 0
 	while (i < dy.cl.count):
 		cl_freq[dy.cl.sym[i]] = cl_freq[dy.cl.sym[i]] + 1
@@ -1100,9 +1070,7 @@ deflate_result* deflate(char* data, int length, int level):
 		char* out_data = out.data
 		int out_length = out.length
 		free(out)
-		deflate_result* r = new deflate_result
-		r.data = out_data
-		r.length = out_length
+		deflate_result* r = new deflate_result(out_data, out_length)
 		return r
 
 	int max_chain = dfl_max_chain_fast()
@@ -1144,9 +1112,7 @@ deflate_result* deflate(char* data, int length, int level):
 	free(t.len)
 	free(t.dist)
 	free(t)
-	deflate_result* r = new deflate_result
-	r.data = out_data
-	r.length = out_length
+	deflate_result* r = new deflate_result(out_data, out_length)
 	return r
 
 
@@ -1180,11 +1146,8 @@ char* deflate_window(char* data, int length, char* window, int window_len, int w
 	if (length > 0):
 		int total = window_len + length
 		char* combined = malloc(total)
+		mem_copy(combined, window, window_len)
 		int i = 0
-		while (i < window_len):
-			combined[i] = window[i]
-			i = i + 1
-		i = 0
 		while (i < length):
 			combined[window_len + i] = data[i]
 			i = i + 1

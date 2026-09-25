@@ -9,14 +9,18 @@
 # #204: socket_set_recv_timeout/socket_set_send_timeout bound every wait
 # so a stalled peer can never wedge the server), plus an optional TLS
 # transport wired by libs/standard/net/tls.w's server role (tls_accept).
-# Unlike http_client.w's http_conn -- which keeps the plaintext path
-# nonblocking (poll-driven, to support its nonblocking connect) and only
-# the https path blocking -- a ConnectionContext is always blocking:
+# A server ConnectionContext is always blocking:
 # server_context_accept_loop() completes accept()/tls_accept() before a
 # ConnectionContext exists, so there is no connect step to interleave,
 # and one blocking-with-timeout code path serves both http and https
 # identically (the caller passes tls == 0 for plain, or the tls_conn*
 # from tls_accept).
+#
+# Client mode (connection_context_client, used by http_client.w and the
+# websocket handshake): the plaintext socket stays nonblocking from its
+# connect and every EAGAIN/EINTR waits in io_poll (a poll error other
+# than EINTR is an I/O error), and c.error takes the caller's error
+# codes instead of connection_error_*.
 #
 # Task mode (docs/projects/async.md): http_server.w's
 # server_context_serve_tasks hands in NON-blocking sockets and runs each
@@ -37,6 +41,7 @@
 #
 # Public API:
 #   ConnectionContext* connection_context_new(int fd, int timeout_ms, tls_conn* tls)
+#   ConnectionContext* connection_context_client(int fd, int timeout_ms, int error_recv, int error_send, int error_timeout)
 #   void connection_context_set_peer(ConnectionContext* c, int ip, int port)
 #   void connection_context_destroy(ConnectionContext* c)
 #   int connection_context_read_byte(ConnectionContext* c)
@@ -53,6 +58,7 @@ import lib.io_wait
 import lib.stream
 import structures.string
 import libs.standard.net.tls
+import lib.mem
 
 
 # One accepted connection. reader is a buffered reader over fd; tls is 0
@@ -63,6 +69,10 @@ import libs.standard.net.tls
 # in lib/net.w). keep_alive is server_context's running verdict on
 # whether to read another request off this connection after the current
 # response -- request parsing and response writing both update it.
+# tls_cfg is an owned client TLS config (the tls_conn borrows it; destroy
+# frees it after tls_close) and tls_insecure the client's verify posture.
+# client_waits selects client-mode waits (see the module doc) and
+# error_recv/error_send/error_timeout are the codes c.error takes.
 struct ConnectionContext:
 	int fd
 	wstream* reader
@@ -73,6 +83,12 @@ struct ConnectionContext:
 	int peer_ip
 	int peer_port
 	int keep_alive
+	tls_config* tls_cfg
+	int tls_insecure
+	int client_waits
+	int error_recv
+	int error_send
+	int error_timeout
 
 
 int connection_error_none():
@@ -130,8 +146,26 @@ ConnectionContext* connection_context_new(int fd, int timeout_ms, tls_conn* tls)
 	c.peer_ip = 0
 	c.peer_port = 0
 	c.keep_alive = 1
+	c.tls_cfg = 0
+	c.tls_insecure = 0
+	c.client_waits = 0
+	c.error_recv = connection_error_recv()
+	c.error_send = connection_error_send()
+	c.error_timeout = connection_error_timeout()
 	if (tls != 0):
 		tls.io_timeout_ms = timeout_ms
+	return c
+
+
+# A client-mode connection over a freshly connected (nonblocking) fd;
+# the caller attaches tls/tls_cfg for https. c.error takes the given
+# codes.
+ConnectionContext* connection_context_client(int fd, int timeout_ms, int error_recv, int error_send, int error_timeout):
+	ConnectionContext* c = connection_context_new(fd, timeout_ms, 0)
+	c.client_waits = 1
+	c.error_recv = error_recv
+	c.error_send = error_send
+	c.error_timeout = error_timeout
 	return c
 
 
@@ -141,23 +175,50 @@ void connection_context_set_peer(ConnectionContext* c, int ip, int port):
 
 
 # Closes the transport (TLS gets a close_notify and its keys wiped, via
-# tls_close, before the fd closes) and releases the reader.
+# tls_close, before the fd closes; the owned config, which the tls_conn
+# only borrows, goes after it) and releases the reader.
 void connection_context_destroy(ConnectionContext* c):
 	if (c == 0):
 		return
 	if (c.tls != 0):
 		tls_close(c.tls)
+	if (c.tls_cfg != 0):
+		tls_config_free(c.tls_cfg)
 	close(c.fd)
 	stream_free(c.reader)
 	free(c)
 
 
-# Refills the reader buffer from the socket/TLS record layer, blocking up
-# to timeout_ms (SO_RCVTIMEO / TLS read timeout). Returns 1 when bytes
-# are buffered, 0 on EOF, -1 on error or timeout (c.error set). Mirrors
-# http_client.w's http_conn_fill, but always blocking (see the module
-# doc): no poll loop is needed because the timeout is a socket option,
-# not a connect-style wait.
+# After a socket_recv/socket_send result rc < 0: waits for events and
+# returns 0 to retry, or the error code to fail with. Server mode
+# retries EINTR at once and parks a task on EAGAIN (a non-blocking fd
+# inside a task waits up to timeout_ms; a blocking fd's SO_RCVTIMEO
+# expiry, or any wait failure, is a timeout). Client mode polls on
+# EAGAIN and EINTR alike (see the module doc).
+int connection_context_wait(ConnectionContext* c, int rc, int events, int io_error):
+	int eagain = rc == (0 - net_eagain())
+	if (c.client_waits == 0):
+		if (rc == (0 - 4)):
+			return 0
+		if (eagain == 0):
+			return io_error
+		if (io_wait(c.fd, events, c.timeout_ms) < 0):
+			return c.error_timeout
+		return 0
+	if ((eagain == 0) && (rc != (0 - 4))):
+		return io_error
+	int ready = io_poll(c.fd, events, c.timeout_ms)
+	if (ready == 0):
+		return c.error_timeout
+	if ((ready < 0) && (ready != (0 - 4))):
+		return io_error
+	return 0
+
+
+# Refills the reader buffer from the socket/TLS record layer, waiting up
+# to timeout_ms (SO_RCVTIMEO / TLS read timeout / connection_context_wait).
+# Returns 1 when bytes are buffered, 0 on EOF, -1 on error or timeout
+# (c.error set).
 int connection_context_fill(ConnectionContext* c):
 	wstream* r = c.reader
 	if (r.position < r.limit):
@@ -176,9 +237,9 @@ int connection_context_fill(ConnectionContext* c):
 			r.eof = 1
 			return 0
 		if (c.tls.broken != 0):
-			c.error = connection_error_recv()
+			c.error = c.error_recv
 		else:
-			c.error = connection_error_timeout()
+			c.error = c.error_timeout
 		return (-1)
 	while (1):
 		int count = socket_recv(c.fd, r.buffer, r.capacity, 0)
@@ -189,18 +250,9 @@ int connection_context_fill(ConnectionContext* c):
 		if (count == 0):
 			r.eof = 1
 			return 0
-		if (count == (0 - 4)):
-			# EINTR: retry the same recv.
-			pass
-		else if (count == (0 - net_eagain())):
-			# A non-blocking fd inside a task parks until readable (up to
-			# timeout_ms); a blocking fd's SO_RCVTIMEO expiry, or any wait
-			# failure, is a timeout.
-			if (io_wait(c.fd, poll_in(), c.timeout_ms) < 0):
-				c.error = connection_error_timeout()
-				return (-1)
-		else:
-			c.error = connection_error_recv()
+		int failed = connection_context_wait(c, count, poll_in(), c.error_recv)
+		if (failed != 0):
+			c.error = failed
 			return (-1)
 
 
@@ -225,10 +277,7 @@ int connection_context_read(ConnectionContext* c, char* out, int want):
 	int n = r.limit - r.position
 	if (n > want):
 		n = want
-	int i = 0
-	while (i < n):
-		out[i] = r.buffer[r.position + i]
-		i = i + 1
+	mem_copy(out, r.buffer + r.position, n)
 	r.position = r.position + n
 	return n
 
@@ -273,7 +322,7 @@ int connection_context_read_line(ConnectionContext* c, string_builder* line, int
 
 
 # The CRLF that terminates each chunk's data in a chunked body (bare LF
-# tolerated), mirroring http_client.w's http_conn_expect_crlf.
+# tolerated).
 int connection_context_expect_crlf(ConnectionContext* c):
 	int b = connection_context_read_byte(c)
 	if (b == 13):
@@ -283,8 +332,8 @@ int connection_context_expect_crlf(ConnectionContext* c):
 	return 1
 
 
-# Sends all n bytes, blocking up to SO_SNDTIMEO. Returns 1, or 0 with
-# c.error set.
+# Sends all n bytes, waiting up to timeout_ms per stall. Returns 1, or 0
+# with c.error set.
 int connection_context_write_all(ConnectionContext* c, char* data, int n):
 	if (c.tls != 0):
 		if (n <= 0):
@@ -292,7 +341,7 @@ int connection_context_write_all(ConnectionContext* c, char* data, int n):
 		int wrote = tls_write(c.tls, data, n)
 		if (wrote == n):
 			return 1
-		c.error = connection_error_send()
+		c.error = c.error_send
 		return 0
 	int total = 0
 	while (total < n):
@@ -300,16 +349,11 @@ int connection_context_write_all(ConnectionContext* c, char* data, int n):
 		if (count > 0):
 			total = total + count
 		else if (count == 0):
-			c.error = connection_error_send()
+			c.error = c.error_send
 			return 0
-		else if (count == (0 - 4)):
-			# EINTR: retry the same send.
-			pass
-		else if (count == (0 - net_eagain())):
-			if (io_wait(c.fd, poll_out(), c.timeout_ms) < 0):
-				c.error = connection_error_timeout()
-				return 0
 		else:
-			c.error = connection_error_send()
-			return 0
+			int failed = connection_context_wait(c, count, poll_out(), c.error_send)
+			if (failed != 0):
+				c.error = failed
+				return 0
 	return 1

@@ -64,8 +64,10 @@ reachability-query loop quadratic; one malloc'd scratch buffer, reused
 forever, removes that allocation from the hot path entirely.
 */
 import lib.lib
+import lib.hex
 import lib.assert
 import structures.bitset
+import lib.mem
 
 
 # Every id dag.w accepts or returns is exactly this many bytes.
@@ -87,9 +89,7 @@ struct dag:
 
 
 dag* dag_new():
-	dag* d = new dag()
-	d.by_hex = new map[char*, dag_node*]
-	d.by_seq = new list[dag_node*]
+	dag* d = new dag(new map[char*, dag_node*], new list[dag_node*])
 	return d
 
 
@@ -100,12 +100,7 @@ int dag_count(dag* d):
 
 # Byte-for-byte equality of two DAG_ID_SIZE() ids.
 int dag_id_equal(char* a, char* b):
-	int i = 0
-	while (i < DAG_ID_SIZE()):
-		if (a[i] != b[i]):
-			return 0
-		i = i + 1
-	return 1
+	return mem_eq(a, b, DAG_ID_SIZE())
 
 
 # Lazily-allocated, reused-forever scratch buffer for dag_hex_key: see
@@ -120,12 +115,9 @@ char* dag_hex_scratch
 char* dag_hex_key(char* id):
 	if (dag_hex_scratch == 0):
 		dag_hex_scratch = malloc(DAG_ID_SIZE() * 2 + 1)
-	char* digits = c"0123456789abcdef"
 	int i = 0
 	while (i < DAG_ID_SIZE()):
-		int b = id[i] & 255
-		dag_hex_scratch[i * 2] = digits[(b >> 4) & 15]
-		dag_hex_scratch[i * 2 + 1] = digits[b & 15]
+		hex_put_byte(&dag_hex_scratch[i * 2], id[i] & 255)
 		i = i + 1
 	dag_hex_scratch[DAG_ID_SIZE() * 2] = 0
 	return dag_hex_scratch
@@ -159,10 +151,7 @@ int dag_add_node(dag* d, char* id, list[char*] parent_ids):
 	assert1(dag_find_node(d, id) == 0)
 	dag_node* node = new dag_node()
 	node.id = malloc(DAG_ID_SIZE())
-	int i = 0
-	while (i < DAG_ID_SIZE()):
-		node.id[i] = id[i]
-		i = i + 1
+	mem_copy(node.id, id, DAG_ID_SIZE())
 	node.parents = new list[dag_node*]
 	int max_parent_gen = -1
 	for char* pid in parent_ids:
@@ -319,10 +308,7 @@ list[char*] dag_merge_base(dag* d, char* a_id, char* b_id):
 
 	int n = dag_count(d)
 	int* flags = malloc(n * __word_size__)
-	int i = 0
-	while (i < n):
-		flags[i] = 0
-		i = i + 1
+	mem_fill(flags, 0, n)
 
 	list[dag_node*] frontier = new list[dag_node*]
 	flags[a.seq] = flags[a.seq] | dag_mb_parent1()

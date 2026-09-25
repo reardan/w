@@ -21,6 +21,8 @@ import libs.extras.protobuf.message
 import libs.standard.web.hpack
 import libs.standard.web.http2
 import libs.standard.web.grpc
+import libs.standard.web.testing
+import lib.mem
 
 
 /* Protobuf message types */
@@ -60,10 +62,7 @@ char* gt_encode(char* text, int count, int* out_len):
 # Decodes into a zeroed gt_hello; asserts success.
 gt_hello* gt_decode(char* data, int len):
 	char* buf = malloc(gt_hello_desc.struct_size)
-	int i = 0
-	while (i < gt_hello_desc.struct_size):
-		buf[i] = 0
-		i = i + 1
+	mem_fill(buf, 0, gt_hello_desc.struct_size)
 	assert_equal(0, pb_decode_into(&gt_hello_desc, data, len, buf))
 	return cast(gt_hello*, buf)
 
@@ -115,28 +114,6 @@ void gt_slow(grpc_call* call, void* user_data):
 
 
 /* Fixture plumbing */
-
-int gt_listen(int* out_port):
-	int listener = socket_tcp_ipv4()
-	asserts(c"socket", listener >= 0)
-	socket_set_reuseaddr(listener)
-	asserts(c"bind", socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0) >= 0)
-	asserts(c"listen", socket_listen(listener, 8) >= 0)
-	sockaddr_in bound
-	socket_getsockname_ipv4(listener, &bound)
-	*out_port = net_htons(bound.port)
-	return listener
-
-
-void gt_finish(int pid, int listener):
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	close(listener)
-	if (status != 0):
-		print2(c"fixture child status: ")
-		println2(itoa(status))
-	assert_equal(0, status)
-
 
 void gt_server_child(int listener):
 	gt_desc_init()
@@ -275,7 +252,7 @@ void test_grpc_protobuf_round_trip():
 void test_grpc_unary_end_to_end():
 	gt_desc_init()
 	int port = 0
-	int listener = gt_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -355,23 +332,10 @@ void test_grpc_unary_end_to_end():
 	hpack_headers_free(h)
 
 	grpc_channel_close(ch)
-	gt_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 /* Scripted server: client-side status mapping */
-
-int gt_raw_accept(int listener):
-	int fd = socket_accept_connection(listener)
-	if (fd < 0):
-		exit(90)
-	socket_set_recv_timeout(fd, 10000)
-	char* pre = malloc(24)
-	if (h2_fd_read_exact(fd, pre, 24) == 0):
-		exit(91)
-	free(pre)
-	h2_raw_write_frame(fd, h2_frame_settings(), 0, 0, 0, 0)
-	return fd
-
 
 # Reads until a HEADERS frame on the given stream (DATA and control
 # frames are skipped).
@@ -395,11 +359,11 @@ void gt_raw_send_headers(int fd, hpack_encoder* e, int stream, list[hpack_header
 
 void test_grpc_client_status_mapping():
 	int port = 0
-	int listener = gt_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int fd = gt_raw_accept(listener)
+		int fd = h2_test_raw_accept(listener, 0, 0)
 		hpack_encoder* e = hpack_encoder_new(4096)
 		# Stream 1: HTTP 503 -> UNAVAILABLE.
 		gt_raw_wait_headers(fd, 1)
@@ -446,4 +410,4 @@ void test_grpc_client_status_mapping():
 	assert_equal(grpc_status_unknown(), r.status)
 	grpc_result_free(r)
 	grpc_channel_close(ch)
-	gt_finish(pid, listener)
+	net_test_finish(pid, listener)

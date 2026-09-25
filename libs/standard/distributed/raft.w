@@ -120,7 +120,7 @@ only -- no joint consensus, matching how etcd ships this):
     dedicated field is the only collision-proof design. The 5-byte
     command payload (op byte + node id, little-endian u32) is
     otherwise just as opaque/binary-safe as any other command --
-    raft_copy_blob, the wire and the wal handle it identically to a
+    mem_dup, the wire and the wal handle it identically to a
     client command, just carrying a `kind` alongside it.
   - APPLY ON APPEND, not on commit: "a server always uses the latest
     configuration in its log, regardless of whether that entry is
@@ -207,6 +207,8 @@ import lib.assert
 import libs.standard.distributed.u64
 import libs.standard.distributed.monotime
 import libs.standard.distributed.prng
+import lib.bytes
+import lib.mem
 
 
 # ---- states -----------------------------------------------------------------
@@ -247,18 +249,6 @@ int raft_msg_install_snapshot():
 
 # ---- log entries -------------------------------------------------------------
 
-# Malloc'd copy of len blob bytes (binary-safe; a trailing NUL is
-# added for convenience but is not part of the blob).
-char* raft_copy_blob(char* data, int len):
-	char* p = malloc(len + 1)
-	int i = 0
-	while (i < len):
-		p[i] = data[i]
-		i = i + 1
-	p[len] = 0
-	return p
-
-
 struct raft_entry:
 	u64* term         # entry owns this
 	char* command     # entry-owned copy; opaque bytes, may contain NUL
@@ -284,16 +274,12 @@ int raft_entry_kind_config():
 
 # Clones term and COPIES command_len bytes out of command into a fresh
 # entry-owned buffer (plus one trailing convenience NUL not counted in
-# command_len, matching raft_copy_blob's snapshot-blob convention) —
+# command_len, matching mem_dup's snapshot-blob convention) —
 # the caller's buffer is untouched and may be freed or reused the
 # instant this returns. command bytes are opaque: no NUL assumptions.
 raft_entry* raft_entry_new_kind(u64* term, char* command, int command_len, int kind):
 	assert1(command_len >= 0)
-	raft_entry* e = new raft_entry()
-	e.term = u64_clone(term)
-	e.command = raft_copy_blob(command, command_len)
-	e.command_len = command_len
-	e.kind = kind
+	raft_entry* e = new raft_entry(u64_clone(term), mem_dup(command, command_len), command_len, kind)
 	return e
 
 
@@ -641,7 +627,7 @@ int raft_config_op_remove():
 
 
 # 5-byte config-entry command: op byte + node id (little-endian u32).
-# Malloc'd; caller frees (matching raft_copy_blob's plain-buffer
+# Malloc'd; caller frees (matching mem_dup's plain-buffer
 # convention — command_len is always exactly 5 for these).
 char* raft_config_encode(int op, int id):
 	char* cmd = malloc(5)
@@ -656,7 +642,7 @@ char* raft_config_encode(int op, int id):
 void raft_config_decode(char* command, int command_len, int* op_out, int* id_out):
 	assert1(command_len == 5)
 	op_out[0] = command[0] & 255
-	id_out[0] = (command[1] & 255) | ((command[2] & 255) << 8) | ((command[3] & 255) << 16) | ((command[4] & 255) << 24)
+	id_out[0] = load_le32(command + 1)
 
 
 # Reconcile next_index/match_index against the CURRENT r.peers: insert
@@ -848,7 +834,7 @@ raft_msg* raft_make_install_snapshot(raft* r, int peer):
 	u64_copy(m.prev_log_index, r.snap_last_index)
 	u64_copy(m.prev_log_term, r.snap_last_term)
 	u64_copy(m.leader_commit, r.commit_index)
-	m.snap_data = raft_copy_blob(r.snap_data, r.snap_len)
+	m.snap_data = mem_dup(r.snap_data, r.snap_len)
 	m.snap_len = r.snap_len
 	m.snap_config = raft_clone_int_list(r.snap_config)
 	return m
@@ -1297,11 +1283,11 @@ void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_ms
 	u64_copy(r.last_applied, m.prev_log_index)
 	if (r.snap_data != 0):
 		free(r.snap_data)
-	r.snap_data = raft_copy_blob(m.snap_data, m.snap_len)
+	r.snap_data = mem_dup(m.snap_data, m.snap_len)
 	r.snap_len = m.snap_len
 	if (r.pending_snap_data != 0):
 		free(r.pending_snap_data)
-	r.pending_snap_data = raft_copy_blob(m.snap_data, m.snap_len)
+	r.pending_snap_data = mem_dup(m.snap_data, m.snap_len)
 	r.pending_snap_len = m.snap_len
 	u64_copy(r.pending_snap_index, m.prev_log_index)
 	reply.success = 1
@@ -1471,7 +1457,7 @@ int raft_take_snapshot(raft* r, char* data, int len):
 	r.snap_config = raft_full_config_at_last_applied(r)
 	if (r.snap_data != 0):
 		free(r.snap_data)
-	r.snap_data = raft_copy_blob(data, len)
+	r.snap_data = mem_dup(data, len)
 	r.snap_len = len
 	int drop = applied - base
 	list[raft_entry*] kept = new list[raft_entry*]
@@ -1562,6 +1548,16 @@ int raft_log_length(raft* r):
 
 void raft_commit_index(raft* r, u64* out):
 	u64_copy(out, r.commit_index)
+
+
+# Host-int views of the current term and commit index (asserted to fit;
+# see raft_u64_as_int). raft_snap_base is the snapshot index's.
+int raft_term_int(raft* r):
+	return raft_u64_as_int(r.current_term)
+
+
+int raft_commit_int(raft* r):
+	return raft_u64_as_int(r.commit_index)
 
 
 # 1-based conceptual index; the returned pointer is borrowed. Asserts

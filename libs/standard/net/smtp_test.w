@@ -15,6 +15,8 @@ import lib.net
 import structures.string
 import libs.standard.net.tls
 import libs.standard.net.smtp
+import libs.standard.net.testing
+import lib.mem
 
 
 /* Helpers */
@@ -31,13 +33,6 @@ char* fx_crlf(char* text):
 	char* result = out.data
 	free(cast(char*, out))
 	return result
-
-
-void fx_assert_ok(char* what, int rc):
-	if (rc < 0):
-		print_string(what, c" failed")
-		translate_syscall_failure(rc)
-		exit(1)
 
 
 /* Scripted SMTP fixture server */
@@ -94,12 +89,7 @@ void fx_write(smtp_fx_io* io, char* data, int n):
 	if (io.tls != 0):
 		tls_write(io.tls, data, n)
 		return
-	int total = 0
-	while (total < n):
-		int got = socket_send(io.fd, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			return
-		total = total + got
+	net_test_send_all(io.fd, data, n)
 
 
 # Copies the next '|'-separated reply from script into resp (LF turned
@@ -132,12 +122,7 @@ void fx_child(int listener, int pipe_fd, char* script, int implicit_tls):
 	int conn = socket_accept_connection(listener)
 	close(listener)
 	string_builder* tr = string_new()
-	smtp_fx_io* io = new smtp_fx_io()
-	io.fd = conn
-	io.tls = 0
-	io.buf = malloc(4096)
-	io.pos = 0
-	io.len = 0
+	smtp_fx_io* io = new smtp_fx_io(conn, 0, malloc(4096), 0, 0)
 	int alive = 1
 	if (implicit_tls != 0):
 		io.tls = fx_tls_accept(conn)
@@ -187,17 +172,10 @@ void fx_child(int listener, int pipe_fd, char* script, int implicit_tls):
 
 smtp_fx* fx_start_mode(char* script, int implicit_tls):
 	smtp_fx* fx = new smtp_fx()
-	int listener = socket_tcp_ipv4()
-	fx_assert_ok(c"socket", listener)
-	fx_assert_ok(c"reuseaddr", socket_set_reuseaddr(listener))
-	fx_assert_ok(c"bind", socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0))
-	fx_assert_ok(c"listen", socket_listen(listener, 4))
-	sockaddr_in bound
-	fx_assert_ok(c"getsockname", socket_getsockname_ipv4(listener, &bound))
+	int listener = net_test_listen(&fx.port)
 	fx.listener = listener
-	fx.port = net_htons(bound.port)
 	int* fds = malloc(__word_size__ * 2)
-	fx_assert_ok(c"socketpair", socket_pair(fds))
+	net_test_assert_ok(c"socketpair", socket_pair(fds))
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -218,29 +196,21 @@ smtp_fx* fx_start(char* script):
 # from hanging).
 smtp_client* fx_client(smtp_fx* fx, char* server_name):
 	int fd = socket_tcp_ipv4()
-	fx_assert_ok(c"client socket", fd)
+	net_test_assert_ok(c"client socket", fd)
 	socket_set_recv_timeout(fd, 20000)
-	fx_assert_ok(c"connect", socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), fx.port))
+	net_test_assert_ok(c"connect", socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), fx.port))
 	return smtp_client_from_fd(fd, server_name)
 
 
 # Waits for the child and returns everything it recorded.
 char* fx_finish(smtp_fx* fx):
-	string_builder* out = string_new()
-	char* buf = malloc(1024)
-	int got = read(fx.pipe_fd, buf, 1024)
-	while (got > 0):
-		string_append_bytes(out, buf, got)
-		got = read(fx.pipe_fd, buf, 1024)
-	free(buf)
+	char* result = net_test_read_all(fx.pipe_fd)
 	close(fx.pipe_fd)
 	int status = 0
 	wait4(fx.pid, &status, 0, 0)
 	close(fx.listener)
 	free(cast(char*, fx))
 	asserts(c"fixture child failed", status == 0)
-	char* result = out.data
-	free(cast(char*, out))
 	return result
 
 
@@ -303,10 +273,7 @@ void test_smtp_dot_stuff():
 	free(out)
 	# 998 octets is the limit; 999 fails closed.
 	char* longline = malloc(1001)
-	int i = 0
-	while (i < 999):
-		longline[i] = 'a'
-		i = i + 1
+	mem_fill(longline, 'a', 999)
 	longline[999] = 0
 	asserts(c"999-octet line accepted", smtp_dot_stuff(longline, 999, &n) == 0)
 	out = smtp_dot_stuff(longline, 998, &n)
@@ -639,10 +606,7 @@ void test_smtp_rejections():
 	assert_strings_equal(c"5.7.1 spam\n5.7.1 rejected", smtp_last_reply(c))
 	# Over the advertised SIZE: refused locally, nothing sent.
 	char* big = malloc(201)
-	int i = 0
-	while (i < 200):
-		big[i] = 'a'
-		i = i + 1
+	mem_fill(big, 'a', 200)
 	big[200] = 0
 	assert_equal(0, smtp_send(c, c"a@x.test", one, big, 200))
 	assert_equal(smtp_error_too_large(), smtp_error(c))
@@ -688,10 +652,7 @@ void test_smtp_injection_rejected():
 	string_free(s)
 	# A 1000-octet text line fails before DATA is sent.
 	char* longline = malloc(1001)
-	i = 0
-	while (i < 1000):
-		longline[i] = 'a'
-		i = i + 1
+	mem_fill(longline, 'a', 1000)
 	longline[1000] = 0
 	assert_equal(0, smtp_data(c, longline, 1000))
 	assert_equal(smtp_error_too_large(), smtp_error(c))

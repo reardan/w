@@ -31,37 +31,12 @@ import libs.standard.web.websocket
 import libs.x.unsafe.sha1
 import libs.extras.compress.deflate
 import libs.extras.compress.inflate
+import libs.standard.net.testing
 
 
 void wsh_opt_in():
 	assert_equal(1, ws_use_sha1(WHASH_SHA1()))
 	assert_equal(1, ws_use_deflate(deflate_window, inflate_window))
-
-
-char* wsh_url(char* scheme, int port, char* path):
-	string_builder* out = string_new()
-	string_append(out, scheme)
-	string_append(out, c"://127.0.0.1:")
-	string_append_int(out, port)
-	string_append(out, path)
-	char* text = out.data
-	free(out)
-	return text
-
-
-void wsh_wait_ok(int pid):
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	asserts(c"server child exited cleanly", status == 0)
-
-
-void wsh_send_all(int fd, char* data, int n):
-	int total = 0
-	while (total < n):
-		int got = socket_send(fd, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			return
-		total = total + got
 
 
 /* ---- accept key ---- */
@@ -186,7 +161,7 @@ void wsh_expect_echo(ws_conn* c, int opcode, char* data, int len):
 void test_ws_loopback_handshake_and_echo():
 	int pid = 0
 	int port = wsh_start_server(0, 2, &pid)
-	char* url = wsh_url(c"ws", port, c"/echo")
+	char* url = net_test_url(c"ws", port, c"/echo")
 
 	ws_conn* c = ws_connect(url)
 	if (ws_conn_error(c) != 0):
@@ -233,13 +208,13 @@ void test_ws_loopback_handshake_and_echo():
 	http_req_free(req)
 
 	free(url)
-	wsh_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 void test_wss_loopback_handshake_and_echo():
 	int pid = 0
 	int port = wsh_start_server(1, 1, &pid)
-	char* url = wsh_url(c"wss", port, c"/echo")
+	char* url = net_test_url(c"wss", port, c"/echo")
 	http_req* req = http_req_new(c"GET", url)
 	# Loopback fixture cert: skip chain/hostname checks (never the
 	# handshake signature or Finished MAC); the pure-W server's ECDSA
@@ -256,7 +231,7 @@ void test_wss_loopback_handshake_and_echo():
 	ws_conn_free(c)
 	http_req_free(req)
 	free(url)
-	wsh_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 /* ---- client validation of bad 101 responses ---- */
@@ -287,14 +262,6 @@ char* wsh_read_key(int conn):
 		i = i + 1
 	string_free(head)
 	return 0
-
-
-void wsh_drain(int conn):
-	char* scratch = malloc(1024)
-	int got = read(conn, scratch, 1024)
-	while (got > 0):
-		got = read(conn, scratch, 1024)
-	free(scratch)
 
 
 # Scenario ids for the raw fixture server.
@@ -390,11 +357,11 @@ void wsh_raw_server(int listener):
 		if (scenario == wsh_pmd_ok_with_early_frame()):
 			# RFC 7692 7.2.3.1 "Hello", compressed, then a close.
 			string_append_bytes(out, c"\xc1\x07\xf2\x48\xcd\xc9\xc9\x07\x00\x88\x02\x03\xe8", 13)
-		wsh_send_all(conn, out.data, out.length)
+		net_test_send_all(conn, out.data, out.length)
 		string_free(out)
 		free(accept)
 		free(key)
-		wsh_drain(conn)
+		net_test_drain(conn)
 		close(conn)
 		scenario = scenario + 1
 	exit(0)
@@ -421,7 +388,7 @@ void test_ws_client_validates_handshake_response():
 	asserts(c"fork", pid >= 0)
 	if (pid == 0):
 		wsh_raw_server(listener)
-	char* url = wsh_url(c"ws", port, c"/")
+	char* url = net_test_url(c"ws", port, c"/")
 
 	ws_conn* c = ws_connect(url)
 	assert_equal(ws_error_none(), ws_conn_error(c))
@@ -466,7 +433,7 @@ void test_ws_client_validates_handshake_response():
 	free(cfg)
 	free(url)
 	close(listener)
-	wsh_wait_ok(pid)
+	net_test_finish(pid, -1)
 
 
 /* ---- permessage-deflate end to end ---- */
@@ -474,7 +441,7 @@ void test_ws_client_validates_handshake_response():
 # One compressed session against path under the client preferences cfg;
 # expect_active says whether the server should have accepted.
 void wsh_deflate_session(int port, char* path, ws_deflate_config* cfg, int expect_active):
-	char* url = wsh_url(c"ws", port, path)
+	char* url = net_test_url(c"ws", port, path)
 	http_req* req = http_req_new(c"GET", url)
 	ws_conn* c = ws_open_deflate(req, cfg)
 	if (ws_conn_error(c) != 0):
@@ -512,7 +479,7 @@ void test_ws_deflate_loopback_sessions():
 	# A server without a policy declines; the session is uncompressed.
 	wsh_deflate_session(port, c"/echo", plain, 0)
 	# Compression off (ws_open) against a deflate route: nothing offered.
-	char* url = wsh_url(c"ws", port, c"/z")
+	char* url = net_test_url(c"ws", port, c"/z")
 	ws_conn* c = ws_connect(url)
 	assert_equal(ws_error_none(), ws_conn_error(c))
 	assert_equal(0, ws_compression_active(c))
@@ -522,7 +489,7 @@ void test_ws_deflate_loopback_sessions():
 	free(url)
 	# An invalid client config never reaches the network.
 	ws_deflate_config* bad = wsh_cfg(0, 0, 0, 16)
-	url = wsh_url(c"ws", port, c"/z")
+	url = net_test_url(c"ws", port, c"/z")
 	http_req* req = http_req_new(c"GET", url)
 	c = ws_open_deflate(req, bad)
 	assert_equal(ws_error_bad_request(), ws_conn_error(c))
@@ -532,38 +499,7 @@ void test_ws_deflate_loopback_sessions():
 	free(bad)
 	free(strict)
 	free(plain)
-	wsh_wait_ok(pid)
-
-
-char* wsh_raw_exchange(int port, char* request):
-	int fd = socket_tcp_ipv4()
-	asserts(c"socket", fd >= 0)
-	socket_set_recv_timeout(fd, 10000)
-	asserts(c"connect", socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), port) >= 0)
-	wsh_send_all(fd, request, strlen(request))
-	string_builder* out = string_new()
-	char* buf = malloc(1024)
-	int got = read(fd, buf, 1024)
-	while (got > 0):
-		string_append_bytes(out, buf, got)
-		got = read(fd, buf, 1024)
-	free(buf)
-	close(fd)
-	char* text = out.data
-	free(out)
-	return text
-
-
-int wsh_contains(char* hay, char* needle):
-	int i = 0
-	while (hay[i] != 0):
-		int j = 0
-		while ((needle[j] != 0) && (hay[i + j] == needle[j])):
-			j = j + 1
-		if (needle[j] == 0):
-			return 1
-		i = i + 1
-	return 0
+	net_test_finish(pid, -1)
 
 
 # The raw 101 for an upgrade to /zstrict offering `offer`; a masked,
@@ -573,9 +509,9 @@ char* wsh_offer_reply(int port, char* offer):
 	string_append(out, c"GET /zstrict HTTP/1.1\x0d\x0aHost: 127.0.0.1\x0d\x0aUpgrade: websocket\x0d\x0aConnection: Upgrade\x0d\x0aSec-WebSocket-Version: 13\x0d\x0aSec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==\x0d\x0aSec-WebSocket-Extensions: ")
 	string_append(out, offer)
 	string_append(out, c"\x0d\x0a\x0d\x0a\x88\x80\x01\x02\x03\x04")
-	char* reply = wsh_raw_exchange(port, out.data)
+	char* reply = net_test_exchange(port, out.data)
 	string_free(out)
-	asserts(c"upgraded", wsh_contains(reply, c"HTTP/1.1 101 Switching Protocols") != 0)
+	asserts(c"upgraded", net_test_contains(reply, c"HTTP/1.1 101 Switching Protocols") != 0)
 	return reply
 
 
@@ -583,16 +519,16 @@ void test_ws_deflate_server_response_headers():
 	int pid = 0
 	int port = wsh_start_server(0, 4, &pid)
 	char* reply = wsh_offer_reply(port, c"permessage-deflate; client_max_window_bits")
-	asserts(c"accepted", wsh_contains(reply, c"Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover; server_max_window_bits=10; client_max_window_bits=9\x0d\x0a") != 0)
+	asserts(c"accepted", net_test_contains(reply, c"Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover; server_max_window_bits=10; client_max_window_bits=9\x0d\x0a") != 0)
 	free(reply)
 	reply = wsh_offer_reply(port, c"permessage-deflate; server_max_window_bits=8")
-	asserts(c"accepted, narrower", wsh_contains(reply, c"Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover; server_max_window_bits=8\x0d\x0a") != 0)
+	asserts(c"accepted, narrower", net_test_contains(reply, c"Sec-WebSocket-Extensions: permessage-deflate; server_no_context_takeover; client_no_context_takeover; server_max_window_bits=8\x0d\x0a") != 0)
 	free(reply)
 	# Invalid offers are declined but the upgrade still happens.
 	reply = wsh_offer_reply(port, c"permessage-deflate; server_max_window_bits=99")
-	asserts(c"declined", wsh_contains(reply, c"Sec-WebSocket-Extensions") == 0)
+	asserts(c"declined", net_test_contains(reply, c"Sec-WebSocket-Extensions") == 0)
 	free(reply)
 	reply = wsh_offer_reply(port, c"permessage-deflate; client_no_context_takeover; client_no_context_takeover")
-	asserts(c"declined duplicate", wsh_contains(reply, c"Sec-WebSocket-Extensions") == 0)
+	asserts(c"declined duplicate", net_test_contains(reply, c"Sec-WebSocket-Extensions") == 0)
 	free(reply)
-	wsh_wait_ok(pid)
+	net_test_finish(pid, -1)

@@ -4,16 +4,7 @@
 # helpers, no hex module dependency per the phase-6 scope rules).
 import lib.testing
 import libs.standard.crypto.bignum
-
-
-int t_hexval(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
-	return 0
+import lib.hex
 
 
 # Parse a big-endian hex string into out; returns the byte length. Handles an
@@ -24,11 +15,11 @@ int t_hex_to_bytes(char* h, char* out):
 	int hi = 0
 	int oi = 0
 	if ((l & 1) == 1):
-		out[0] = t_hexval(h[0])
+		out[0] = hex_decode_char(h[0])
 		hi = 1
 		oi = 1
 	while (hi < l):
-		out[oi] = (t_hexval(h[hi]) << 4) | t_hexval(h[hi + 1])
+		out[oi] = (hex_decode_char(h[hi]) << 4) | hex_decode_char(h[hi + 1])
 		hi = hi + 2
 		oi = oi + 1
 	return nbytes
@@ -261,16 +252,12 @@ int t_rand():
 # qhat correction (0, 1, B/2 - 1, B/2, B - 1) plus uniform limbs.
 int t_rand_limb():
 	int k = t_rand() % 8
-	if (k == 0):
-		return 0
-	if (k == 1):
-		return 1
-	if (k == 2):
-		return 16383
-	if (k == 3):
-		return 16384
-	if (k == 4):
-		return 32767
+	switch (k):
+		case 0: return 0
+		case 1: return 1
+		case 2: return 16383
+		case 3: return 16384
+		case 4: return 32767
 	return t_rand()
 
 

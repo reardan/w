@@ -30,6 +30,7 @@ only through its low 32 bits, and right shifts go through sha256_shr.
 import lib.memory
 import lib.sha256
 import libs.standard.crypto.sha2
+import lib.bytes
 
 
 # whash extension id for MD5 (extension ids start at 100; see the
@@ -64,11 +65,6 @@ int* md5_iv_table():
 # round r (RFC 1321 section 3.4).
 char* md5_s_table():
 	return c"\x07\x0c\x11\x16\x05\x09\x0e\x14\x04\x0b\x10\x17\x06\x0a\x0f\x15"
-
-
-# Little-endian load of a 32-bit word, masked per lib/sha256.w.
-int md5_le32(char* p):
-	return ((p[0] & 255) | ((p[1] & 255) << 8) | ((p[2] & 255) << 16) | ((p[3] & 255) << 24)) & sha256_mask32()
 
 
 # Rotate a 32-bit word left by n (1 <= n <= 31).
@@ -111,7 +107,7 @@ void md5_block(int* state, char* block):
 	int* m = cast(int*, malloc(16 * __word_size__))
 	int i = 0
 	while (i < 16):
-		m[i] = md5_le32(block + i * 4)
+		m[i] = load_le32(block + i * 4)
 		i = i + 1
 
 	int a = state[0]

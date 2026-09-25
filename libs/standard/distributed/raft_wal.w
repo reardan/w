@@ -103,6 +103,7 @@ import lib.assert
 import libs.standard.distributed.u64
 import libs.standard.distributed.wal
 import libs.standard.distributed.raft
+import lib.bytes
 
 
 # ---- record tags --------------------------------------------------------------
@@ -152,17 +153,6 @@ int raft_wal_decode_vote(int wire):
 	return wire - 1
 
 
-char* raft_wal_copy_string(char* s):
-	int n = strlen(s)
-	char* p = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		p[i] = s[i]
-		i = i + 1
-	p[n] = 0
-	return p
-
-
 # ---- shadow replay ----------------------------------------------------------------
 
 # Fold one persisted record into the shadow. Payload layouts are
@@ -173,18 +163,18 @@ void raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 	if (tag == raft_wal_tag_state()):
 		assert1(len == 13)
 		u64_load_le(rw.term, p + 1)
-		rw.voted_for = raft_wal_decode_vote(wal_get_le32(p + 9))
+		rw.voted_for = raft_wal_decode_vote(load_le32(p + 9))
 		return
 	if (tag == raft_wal_tag_append()):
 		assert1(len >= 14)
-		assert1(wal_get_le32(p + 10) == len - 14)
+		assert1(load_le32(p + 10) == len - 14)
 		u64* t = u64_new()
 		u64_load_le(t, p + 2)
 		rw.entry_terms.push(t)
 		return
 	if (tag == raft_wal_tag_truncate()):
 		assert1(len == 5)
-		int keep = wal_get_le32(p + 1)
+		int keep = load_le32(p + 1)
 		assert1(keep >= 0 && keep <= rw.entry_terms.length)
 		while (rw.entry_terms.length > keep):
 			u64* dropped = rw.entry_terms.pop()
@@ -194,11 +184,11 @@ void raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 		assert1(len >= 25)
 		u64_load_le(rw.snap_index, p + 1)
 		u64_load_le(rw.snap_term, p + 9)
-		int ccount = wal_get_le32(p + 17)
+		int ccount = load_le32(p + 17)
 		assert1(ccount >= 0)
 		int coff = 21 + 4 * ccount
 		assert1(len >= coff + 4)
-		assert1(wal_get_le32(p + coff) == len - coff - 4)
+		assert1(load_le32(p + coff) == len - coff - 4)
 		# the snapshot covers (and a rewrite drops) every prior entry
 		while (rw.entry_terms.length > 0):
 			u64* gone = rw.entry_terms.pop()
@@ -214,7 +204,7 @@ void raft_wal_shadow_apply(raft_wal* rw, char* p, int len):
 # issued after recovery only appends genuine changes. Returns 0 when
 # wal_open fails (unopenable path, foreign or corrupt header).
 raft_wal* raft_wal_open(char* path):
-	char* own = raft_wal_copy_string(path)
+	char* own = strclone(path)
 	wal* w = wal_open(own)
 	if (cast(int, w) == 0):
 		free(own)
@@ -300,7 +290,7 @@ void raft_wal_put_state(raft_wal* rw, raft* r):
 	char* srec = malloc(13)
 	srec[0] = raft_wal_tag_state()
 	u64_save_le(srec + 1, r.current_term)
-	wal_put_le32(srec + 9, raft_wal_encode_vote(r.voted_for))
+	store_le32(srec + 9, raft_wal_encode_vote(r.voted_for))
 	raft_wal_put_record(rw, srec, 13)
 	free(srec)
 	u64_copy(rw.term, r.current_term)
@@ -317,7 +307,7 @@ void raft_wal_put_append(raft_wal* rw, raft* r, int i):
 	arec[0] = raft_wal_tag_append()
 	arec[1] = e.kind
 	u64_save_le(arec + 2, e.term)
-	wal_put_le32(arec + 10, cmd_len)
+	store_le32(arec + 10, cmd_len)
 	int k = 0
 	while (k < cmd_len):
 		arec[14 + k] = e.command[k]
@@ -341,12 +331,12 @@ int raft_wal_rewrite(raft_wal* rw, raft* r):
 	nrec[0] = raft_wal_tag_snapshot()
 	u64_save_le(nrec + 1, r.snap_last_index)
 	u64_save_le(nrec + 9, r.snap_last_term)
-	wal_put_le32(nrec + 17, ccount)
+	store_le32(nrec + 17, ccount)
 	int ci = 0
 	while (ci < ccount):
-		wal_put_le32(nrec + 21 + 4 * ci, r.snap_config[ci])
+		store_le32(nrec + 21 + 4 * ci, r.snap_config[ci])
 		ci = ci + 1
-	wal_put_le32(nrec + coff, blob_len)
+	store_le32(nrec + coff, blob_len)
 	int b = 0
 	while (b < blob_len):
 		nrec[coff + 4 + b] = r.snap_data[b]
@@ -391,7 +381,7 @@ int raft_wal_sync(raft_wal* rw, raft* r):
 	if (rw.entry_terms.length > agree):
 		char* trec = malloc(5)
 		trec[0] = raft_wal_tag_truncate()
-		wal_put_le32(trec + 1, agree)
+		store_le32(trec + 1, agree)
 		raft_wal_put_record(rw, trec, 5)
 		free(trec)
 		while (rw.entry_terms.length > agree):
@@ -420,12 +410,12 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 	if (tag == raft_wal_tag_state()):
 		assert1(len == 13)
 		u64_load_le(r.current_term, p + 1)
-		r.voted_for = raft_wal_decode_vote(wal_get_le32(p + 9))
+		r.voted_for = raft_wal_decode_vote(load_le32(p + 9))
 		return
 	if (tag == raft_wal_tag_append()):
 		assert1(len >= 14)
 		int kind = p[1] & 255
-		int cmd_len = wal_get_le32(p + 10)
+		int cmd_len = load_le32(p + 10)
 		assert1(cmd_len == len - 14)
 		u64* t = u64_new()
 		u64_load_le(t, p + 2)
@@ -439,7 +429,7 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		return
 	if (tag == raft_wal_tag_truncate()):
 		assert1(len == 5)
-		int keep = wal_get_le32(p + 1)
+		int keep = load_le32(p + 1)
 		assert1(keep >= 0 && keep <= r.log.length)
 		# §4.1 membership rollback (raft.w header): keep is a count above
 		# the snapshot base, so the conceptual index bound truncation
@@ -460,11 +450,11 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		# in both the raft's own snapshot slot and the pending slot —
 		# the application re-installs it before applying anything.
 		assert1(len >= 25)
-		int ccount = wal_get_le32(p + 17)
+		int ccount = load_le32(p + 17)
 		assert1(ccount >= 0)
 		int coff = 21 + 4 * ccount
 		assert1(len >= coff + 4)
-		int blob_len = wal_get_le32(p + coff)
+		int blob_len = load_le32(p + coff)
 		assert1(blob_len == len - coff - 4)
 		while (r.log.length > 0):
 			raft_entry* covered = r.log.pop()
@@ -474,18 +464,18 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		list[int] cfg = new list[int]
 		int ci = 0
 		while (ci < ccount):
-			cfg.push(wal_get_le32(p + 21 + 4 * ci))
+			cfg.push(load_le32(p + 21 + 4 * ci))
 			ci = ci + 1
 		raft_adopt_snapshot_config(r, cfg)
 		u64_copy(r.commit_index, r.snap_last_index)
 		u64_copy(r.last_applied, r.snap_last_index)
 		if (r.snap_data != 0):
 			free(r.snap_data)
-		r.snap_data = raft_copy_blob(p + coff + 4, blob_len)
+		r.snap_data = mem_dup(p + coff + 4, blob_len)
 		r.snap_len = blob_len
 		if (r.pending_snap_data != 0):
 			free(r.pending_snap_data)
-		r.pending_snap_data = raft_copy_blob(p + coff + 4, blob_len)
+		r.pending_snap_data = mem_dup(p + coff + 4, blob_len)
 		r.pending_snap_len = blob_len
 		u64_copy(r.pending_snap_index, r.snap_last_index)
 		return

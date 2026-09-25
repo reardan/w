@@ -11,46 +11,7 @@ import graphics.ui.rect
 import graphics.ui.theme
 import graphics.ui.render
 import graphics.ui.widgets
-
-
-void setup(ui_renderer* r, ui_theme* theme, ui_context* ctx):
-	ui_render_init_headless(r)
-	ui_theme_light(theme)
-	ui_context_init(ctx, r, theme)
-
-
-void feed_click(ui_context* ctx, int x, int y):
-	gfx_event press
-	press.kind = GFX_EVENT_MOUSE_DOWN
-	press.code = 1
-	press.x = x
-	press.y = y
-	press.mods = 0
-	ui_feed_event(ctx, &press)
-	gfx_event release
-	release.kind = GFX_EVENT_MOUSE_UP
-	release.code = 1
-	release.x = x
-	release.y = y
-	release.mods = 0
-	ui_feed_event(ctx, &release)
-
-
-void feed_char(ui_context* ctx, int code):
-	gfx_event e
-	e.kind = GFX_EVENT_CHAR
-	e.code = code
-	e.x = 0
-	e.y = 0
-	e.mods = 0
-	ui_feed_event(ctx, &e)
-
-
-void feed_text(ui_context* ctx, char* s):
-	int i = 0
-	while (s[i] != 0):
-		feed_char(ctx, s[i])
-		i = i + 1
+import graphics.ui.testing
 
 
 char** fruit():
@@ -101,10 +62,8 @@ void test_matching_is_a_case_insensitive_substring():
 # Opening focuses the filter, which sits inside the popover's scope, and
 # typing there reaches it: the whole reason the widget needs nesting.
 void test_the_filter_inside_the_popover_takes_input():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	char** items = fruit()
 	int32 selected = 0
 	int32 open = 0
@@ -115,35 +74,33 @@ void test_the_filter_inside_the_popover_takes_input():
 	ui_textbox_init(&other)
 	search_frame f
 
-	feed_click(&ctx, 20, 20)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_click(ctx, 20, 20)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(1, open)
 	assert_equal(1, ctx.popup_depth)
 	assert_equal(2, ctx.focus)
 	assert_equal(0, query.length)
-	asserts(c"drew on the popup layer", r.layer_vert_count[UI_LAYER_POPUP] > 0)
+	asserts(c"drew on the popup layer", fx.r.layer_vert_count[UI_LAYER_POPUP] > 0)
 
-	feed_text(&ctx, c"ch")
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_text(ctx, c"ch")
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	asserts(c"typed into the filter", strcmp(&query.text[0], c"ch") == 0)
 	assert_equal(0, other.length)
 	assert_equal(1, open)
 
 	# Clicking the filter itself keeps the list open and the focus.
-	feed_click(&ctx, 60, 68)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_click(ctx, 60, 68)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(1, open)
 	assert_equal(2, ctx.focus)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # Pressing a filtered row picks it — the first row is the first match,
 # not the first item — and closes, releasing the filter's focus.
 void test_pressing_a_match_picks_and_closes():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	char** items = fruit()
 	int32 selected = 0
 	int32 open = 0
@@ -153,12 +110,12 @@ void test_pressing_a_match_picks_and_closes():
 	ui_textbox_init(&other)
 	search_frame f
 
-	feed_click(&ctx, 20, 20)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
-	feed_text(&ctx, c"rr")
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
-	feed_click(&ctx, 40, 100)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_click(ctx, 20, 20)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_text(ctx, c"rr")
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_click(ctx, 40, 100)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(1, f.changed)
 	assert_equal(2, selected)
 	assert_equal(0, open)
@@ -167,19 +124,17 @@ void test_pressing_a_match_picks_and_closes():
 
 	# Typing now goes nowhere: the textbox after the dropdown did not
 	# inherit the filter's focus.
-	feed_text(&ctx, c"x")
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_text(ctx, c"x")
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(0, other.length)
 	assert_equal(0, f.changed)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # Return in the filter picks the first match.
 void test_return_picks_the_first_match():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	char** items = fruit()
 	int32 selected = 0
 	int32 open = 0
@@ -189,24 +144,22 @@ void test_return_picks_the_first_match():
 	ui_textbox_init(&other)
 	search_frame f
 
-	feed_click(&ctx, 20, 20)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
-	feed_text(&ctx, c"AN")
-	feed_char(&ctx, 13)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_click(ctx, 20, 20)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_text(ctx, c"AN")
+	ui_test_char(ctx, 13)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(1, f.changed)
 	assert_equal(1, selected)
 	assert_equal(0, open)
 	assert_equal(0, f.after_submit)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # Return with nothing matching picks nothing and leaves the list open.
 void test_return_with_no_match_keeps_it_open():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	char** items = fruit()
 	int32 selected = 1
 	int32 open = 0
@@ -216,34 +169,32 @@ void test_return_with_no_match_keeps_it_open():
 	ui_textbox_init(&other)
 	search_frame f
 
-	feed_click(&ctx, 20, 20)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
-	feed_text(&ctx, c"zz")
-	feed_char(&ctx, 13)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_click(ctx, 20, 20)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_text(ctx, c"zz")
+	ui_test_char(ctx, 13)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(0, f.changed)
 	assert_equal(1, selected)
 	assert_equal(1, open)
 
 	# Picking the already-selected item closes without a change edge.
-	feed_char(&ctx, 8)
-	feed_char(&ctx, 8)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
-	feed_click(&ctx, 40, 140)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_char(ctx, 8)
+	ui_test_char(ctx, 8)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_click(ctx, 40, 140)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(0, f.changed)
 	assert_equal(1, selected)
 	assert_equal(0, open)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # A press outside and escape both close without a change, releasing
 # the filter's focus; reopening starts from an empty query.
 void test_closing_without_a_pick():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	char** items = fruit()
 	int32 selected = 0
 	int32 open = 0
@@ -253,36 +204,34 @@ void test_closing_without_a_pick():
 	ui_textbox_init(&other)
 	search_frame f
 
-	feed_click(&ctx, 20, 20)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
-	feed_text(&ctx, c"b")
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
-	feed_click(&ctx, 300, 220)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_click(ctx, 20, 20)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_text(ctx, c"b")
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_click(ctx, 300, 220)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(0, open)
 	assert_equal(0, f.changed)
 	assert_equal(0, ctx.focus)
 	assert_equal(0, ctx.popup_depth)
 
-	feed_click(&ctx, 20, 20)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_click(ctx, 20, 20)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(1, open)
 	assert_equal(0, query.length)
-	feed_char(&ctx, 27)
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	ui_test_char(ctx, 27)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(0, open)
 	assert_equal(0, ctx.focus)
 	assert_equal(0, ctx.popup_depth)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # The dropdown takes two ids open or closed, and leaves the scope,
 # layer and layout depth where it found them.
 void test_ids_and_bracket_are_stable():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	char** items = fruit()
 	int32 selected = 0
 	int32 open = 0
@@ -292,13 +241,13 @@ void test_ids_and_bracket_are_stable():
 	ui_textbox_init(&other)
 	search_frame f
 
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(3, f.ids_used)
 	open = 1
-	run_frame(&ctx, items, &selected, &open, &query, &other, &f)
+	run_frame(ctx, items, &selected, &open, &query, &other, &f)
 	assert_equal(3, f.ids_used)
 	assert_equal(1, ctx.layout_depth)
 	assert_equal(0, ctx.scope)
 	assert_equal(0, ctx.bracket_depth)
-	assert_equal(UI_LAYER_BASE, r.layer)
-	ui_render_destroy(&r)
+	assert_equal(UI_LAYER_BASE, fx.r.layer)
+	ui_render_destroy(&fx.r)

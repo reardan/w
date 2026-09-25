@@ -9,51 +9,20 @@ import lib.lib
 import lib.memory
 import lib.testing
 import libs.standard.crypto.chacha20
+import lib.hex
 
 
 # --- test-local hex helpers (vectors are embedded as lowercase hex) ---
 
 
-int cc_nibble(int ch):
-	if (ch >= '0' && ch <= '9'):
-		return ch - '0'
-	return ch - 'a' + 10
-
-
-# Decode a lowercase hex string into malloc'd bytes (length = strlen/2).
-char* cc_decode(char* hex):
-	int n = strlen(hex) / 2
-	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = cc_nibble(hex[i * 2] & 255) * 16 + cc_nibble(hex[i * 2 + 1] & 255)
-		i = i + 1
-	out[n] = 0
-	return out
-
-
-# Encode bytes as a lowercase hex string (malloc'd, NUL-terminated).
-char* cc_hex(char* data, int len):
-	char* digits = c"0123456789abcdef"
-	char* out = malloc(len * 2 + 1)
-	int i = 0
-	while (i < len):
-		int b = data[i] & 255
-		out[i * 2] = digits[(b >> 4) & 15]
-		out[i * 2 + 1] = digits[b & 15]
-		i = i + 1
-	out[len * 2] = 0
-	return out
-
-
 # Run chacha20_block(key, counter, nonce) and compare the 64 keystream
 # bytes against want_hex.
 void cc_check_block(char* key_hex, char* nonce_hex, int counter, char* want_hex):
-	char* key = cc_decode(key_hex)
-	char* nonce = cc_decode(nonce_hex)
+	char* key = hex_bytes(key_hex)
+	char* nonce = hex_bytes(nonce_hex)
 	char* out = malloc(64)
 	chacha20_block(key, counter, nonce, out)
-	char* got = cc_hex(out, 64)
+	char* got = hex_encode(out, 64)
 	assert_strings_equal(want_hex, got)
 	free(got)
 	free(out)
@@ -65,16 +34,16 @@ void cc_check_block(char* key_hex, char* nonce_hex, int counter, char* want_hex)
 # check the round trip (encryption and decryption are the same XOR).
 void cc_check_xor(char* key_hex, char* nonce_hex, int counter, char* pt_hex, char* ct_hex):
 	int n = strlen(pt_hex) / 2
-	char* key = cc_decode(key_hex)
-	char* nonce = cc_decode(nonce_hex)
-	char* pt = cc_decode(pt_hex)
+	char* key = hex_bytes(key_hex)
+	char* nonce = hex_bytes(nonce_hex)
+	char* pt = hex_bytes(pt_hex)
 	char* out = malloc(n + 1)
 	chacha20_xor(key, counter, nonce, pt, n, out)
-	char* got = cc_hex(out, n)
+	char* got = hex_encode(out, n)
 	assert_strings_equal(ct_hex, got)
 	free(got)
 	chacha20_xor(key, counter, nonce, out, n, out)
-	got = cc_hex(out, n)
+	got = hex_encode(out, n)
 	assert_strings_equal(pt_hex, got)
 	free(got)
 	free(out)

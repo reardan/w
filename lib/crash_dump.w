@@ -39,6 +39,7 @@ seed-era syntax only.
 */
 import lib.stack_trace
 import debugger.sigcontext
+import lib.hex
 
 
 char* cd_template   /* W_CRASH_DUMP value, 0 = dumps disabled */
@@ -259,20 +260,12 @@ void cd_resolve_path():
 	cd_path[o] = 0
 
 
-int cd_hex_digit(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	return -1
-
-
 int cd_pos
 
 int cd_parse_hex():
 	int v = 0
 	while (1):
-		int d = cd_hex_digit(cd_maps[cd_pos] & 255)
+		int d = hex_decode_char(cd_maps[cd_pos] & 255)
 		if (d < 0):
 			return v
 		v = (v << 4) | d

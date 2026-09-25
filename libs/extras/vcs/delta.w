@@ -139,6 +139,7 @@ import lib.path
 import lib.result
 import structures.string
 import libs.extras.vcs.cas
+import lib.mem
 
 
 /* Tunable constants */
@@ -201,26 +202,13 @@ void delta_ops_free(delta_ops* ops):
 
 
 void delta_ops_push_insert(delta_ops* ops, char* bytes, int length):
-	char* literal = malloc(length + 1)
-	int i = 0
-	while (i < length):
-		literal[i] = bytes[i]
-		i = i + 1
-	literal[length] = 0
-	delta_op* op = new delta_op
-	op.kind = DELTA_OP_INSERT()
-	op.offset = 0
-	op.length = length
-	op.literal = literal
+	char* literal = mem_dup(bytes, length)
+	delta_op* op = new delta_op(DELTA_OP_INSERT(), 0, length, literal)
 	ops.items.push(op)
 
 
 void delta_ops_push_copy(delta_ops* ops, int offset, int length):
-	delta_op* op = new delta_op
-	op.kind = DELTA_OP_COPY()
-	op.offset = offset
-	op.length = length
-	op.literal = 0
+	delta_op* op = new delta_op(DELTA_OP_COPY(), offset, length, 0)
 	ops.items.push(op)
 
 
@@ -247,15 +235,6 @@ int delta_window_sum_b(char* data, int start, int length):
 
 int delta_combine(int a, int b):
 	return a | (b << 16)
-
-
-int delta_bytes_equal(char* base, int base_off, char* target, int target_off, int length):
-	int i = 0
-	while (i < length):
-		if (base[base_off + i] != target[target_off + i]):
-			return 0
-		i = i + 1
-	return 1
 
 
 /* Diff: base + target -> ops (pure, no CAS involvement) */
@@ -290,8 +269,7 @@ void delta_free_index(map[int, list[int]] table):
 # succeeds and always round-trips, even when base_length or
 # target_length is 0 -- an unindexable base just yields one big INSERT.
 delta_ops* delta_diff(char* base, int base_length, char* target, int target_length):
-	delta_ops* result = new delta_ops
-	result.items = new list[delta_op*]
+	delta_ops* result = new delta_ops(new list[delta_op*])
 
 	int block = DELTA_BLOCK_SIZE()
 	map[int, list[int]] table = delta_build_index(base, base_length, block)
@@ -315,7 +293,7 @@ delta_ops* delta_diff(char* base, int base_length, char* target, int target_leng
 			int cs = delta_combine(a, b)
 			if (cs in table):
 				for int cand in table[cs]:
-					if (delta_bytes_equal(base, cand, target, i, block)):
+					if (mem_eq(base + cand, target + i, block)):
 						int ext = block
 						while (((cand + ext) < base_length) && ((i + ext) < target_length) && (base[cand + ext] == target[i + ext])):
 							ext = ext + 1
@@ -397,8 +375,7 @@ int delta_valid_nonneg_integer(char* data, int start, int end):
 # pure decimal digits, a missing separator/newline before EOF, or an
 # INSERT claiming more literal bytes than remain in the buffer.
 wresult[delta_ops*]* delta_decode_ops(char* data, int length):
-	delta_ops* ops = new delta_ops
-	ops.items = new list[delta_op*]
+	delta_ops* ops = new delta_ops(new list[delta_op*])
 	int i = 0
 	while (i < length):
 		int tag = data[i] & 255
@@ -480,9 +457,7 @@ wresult[delta_apply_result*]* delta_apply_ops(char* base, int base_length, delta
 		else:
 			string_free(out)
 			return result_new_error[delta_apply_result*](DELTA_ERR_MALFORMED())
-	delta_apply_result* r = new delta_apply_result
-	r.data = out.data
-	r.length = out.length
+	delta_apply_result* r = new delta_apply_result(out.data, out.length)
 	free(out)
 	return result_new_ok[delta_apply_result*](r)
 
@@ -543,20 +518,6 @@ string_builder* delta_encode_chain(char* base_id, char* logical_type, int depth,
 	return s
 
 
-# True when data[offset .. offset+strlen(prefix)) equals prefix, without
-# reading past `length` (mirrors commit.w's commit_starts_with).
-int delta_starts_with(char* data, int length, int offset, char* prefix):
-	int n = strlen(prefix)
-	if ((offset + n) > length):
-		return 0
-	int i = 0
-	while (i < n):
-		if (data[offset + i] != prefix[i]):
-			return 0
-		i = i + 1
-	return 1
-
-
 int delta_valid_hex_slice(char* data, int start, int end):
 	if ((end - start) != 64):
 		return 0
@@ -587,7 +548,7 @@ delta_chain_layout* delta_scan_chain(char* data, int length):
 	lay.valid = 0
 
 	int pos = 0
-	if (delta_starts_with(data, length, pos, c"base ") == 0):
+	if (mem_starts_with(data, length, pos, c"base ") == 0):
 		return lay
 	pos = pos + strlen(c"base ")
 	int base_end = delta_find_char(data, length, pos, 10)
@@ -597,7 +558,7 @@ delta_chain_layout* delta_scan_chain(char* data, int length):
 	lay.base_end = base_end
 	pos = base_end + 1
 
-	if (delta_starts_with(data, length, pos, c"type ") == 0):
+	if (mem_starts_with(data, length, pos, c"type ") == 0):
 		return lay
 	pos = pos + strlen(c"type ")
 	int type_end = delta_find_char(data, length, pos, 10)
@@ -607,7 +568,7 @@ delta_chain_layout* delta_scan_chain(char* data, int length):
 	lay.type_end = type_end
 	pos = type_end + 1
 
-	if (delta_starts_with(data, length, pos, c"depth ") == 0):
+	if (mem_starts_with(data, length, pos, c"depth ") == 0):
 		return lay
 	pos = pos + strlen(c"depth ")
 	int depth_end = delta_find_char(data, length, pos, 10)
@@ -617,7 +578,7 @@ delta_chain_layout* delta_scan_chain(char* data, int length):
 	lay.depth_end = depth_end
 	pos = depth_end + 1
 
-	if (delta_starts_with(data, length, pos, c"length ") == 0):
+	if (mem_starts_with(data, length, pos, c"length ") == 0):
 		return lay
 	pos = pos + strlen(c"length ")
 	int length_end = delta_find_char(data, length, pos, 10)
@@ -724,10 +685,7 @@ wresult[wcas_object*]* delta_resolve(wcas* s, char* id, int hops_remaining):
 	if (mismatch):
 		delta_apply_result_free(ar)
 	else:
-		resolved = new wcas_object
-		resolved.object_type = strclone(chain.logical_type)
-		resolved.data = ar.data
-		resolved.length = ar.length
+		resolved = new wcas_object(strclone(chain.logical_type), ar.data, ar.length)
 		free(ar)
 	delta_chain_free(chain)
 	if (mismatch):

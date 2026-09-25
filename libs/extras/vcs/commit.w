@@ -137,6 +137,7 @@ import lib.container
 import structures.string
 import libs.extras.vcs.cas
 import libs.extras.vcs.__arch__.fsops
+import lib.mem
 
 
 /* Errors, constants */
@@ -161,10 +162,7 @@ char* commit_zero_id_cache
 char* REF_ZERO_ID():
 	if (commit_zero_id_cache == 0):
 		char* z = malloc(65)
-		int i = 0
-		while (i < 64):
-			z[i] = '0'
-			i = i + 1
+		mem_fill(z, '0', 64)
 		z[64] = 0
 		commit_zero_id_cache = z
 	return commit_zero_id_cache
@@ -222,21 +220,6 @@ string_builder* commit_encode(commit_object* co):
 	string_append_char(s, 10)
 	string_append_bytes(s, co.message, co.message_length)
 	return s
-
-
-# True when data[offset .. offset+strlen(prefix)) equals prefix, without
-# reading past `length` (a header keyword straddling EOF is rejected
-# rather than read out of bounds).
-int commit_starts_with(char* data, int length, int offset, char* prefix):
-	int n = strlen(prefix)
-	if ((offset + n) > length):
-		return 0
-	int i = 0
-	while (i < n):
-		if (data[offset + i] != prefix[i]):
-			return 0
-		i = i + 1
-	return 1
 
 
 # Index of the first `ch` byte at or after `start`, within [0, end); or
@@ -313,7 +296,7 @@ commit_layout* commit_scan(char* data, int length):
 	lay.parent_ends = new list[int]
 
 	int pos = 0
-	if (commit_starts_with(data, length, pos, c"tree ") == 0):
+	if (mem_starts_with(data, length, pos, c"tree ") == 0):
 		return lay
 	pos = pos + strlen(c"tree ")
 	int tree_end = commit_find_newline(data, length, pos)
@@ -325,7 +308,7 @@ commit_layout* commit_scan(char* data, int length):
 	lay.tree_end = tree_end
 	pos = tree_end + 1
 
-	while (commit_starts_with(data, length, pos, c"parent ")):
+	while (mem_starts_with(data, length, pos, c"parent ")):
 		int pstart = pos + strlen(c"parent ")
 		int pend = commit_find_newline(data, length, pstart)
 		if (pend >= length):
@@ -336,7 +319,7 @@ commit_layout* commit_scan(char* data, int length):
 		lay.parent_ends.push(pend)
 		pos = pend + 1
 
-	if (commit_starts_with(data, length, pos, c"author ") == 0):
+	if (mem_starts_with(data, length, pos, c"author ") == 0):
 		return lay
 	int astart = pos + strlen(c"author ")
 	int aend = commit_find_newline(data, length, astart)
@@ -346,7 +329,7 @@ commit_layout* commit_scan(char* data, int length):
 	lay.author_end = aend
 	pos = aend + 1
 
-	if (commit_starts_with(data, length, pos, c"timestamp ") == 0):
+	if (mem_starts_with(data, length, pos, c"timestamp ") == 0):
 		return lay
 	int tstart = pos + strlen(c"timestamp ")
 	int tend = commit_find_newline(data, length, tstart)
@@ -392,12 +375,7 @@ wresult[commit_object*]* commit_parse(char* data, int length):
 	co.timestamp = atoi(ts_str)
 	free(ts_str)
 	co.message_length = length - lay.message_start
-	co.message = malloc(co.message_length + 1)
-	int j = 0
-	while (j < co.message_length):
-		co.message[j] = data[lay.message_start + j]
-		j = j + 1
-	co.message[co.message_length] = 0
+	co.message = mem_dup(data + lay.message_start, co.message_length)
 
 	list_free[int](lay.parent_starts)
 	list_free[int](lay.parent_ends)
@@ -432,12 +410,7 @@ wresult[commit_object*]* commit_new(char* tree_id, list[char*] parent_ids, char*
 		raw_author = c""
 	co.author = commit_single_line(raw_author)
 	co.timestamp = timestamp
-	co.message = malloc(message_length + 1)
-	int i = 0
-	while (i < message_length):
-		co.message[i] = message[i]
-		i = i + 1
-	co.message[message_length] = 0
+	co.message = mem_dup(message, message_length)
 	co.message_length = message_length
 	return result_new_ok[commit_object*](co)
 
@@ -514,7 +487,7 @@ int ref_valid_name(char* name):
 		return 0
 	if ((name[0] == '.') || (name[len - 1] == '.')):
 		return 0
-	if (commit_starts_with(name, len, 0, c"tmp_")):
+	if (mem_starts_with(name, len, 0, c"tmp_")):
 		return 0
 	int i = 0
 	while (i < len):
@@ -549,10 +522,7 @@ wresult[wrefs*]* refs_open(char* root):
 		free(logs_dir)
 		return result_new_error[wrefs*](err)
 
-	wrefs* r = new wrefs
-	r.root = strclone(root)
-	r.heads_dir = heads_dir
-	r.logs_dir = logs_dir
+	wrefs* r = new wrefs(strclone(root), heads_dir, logs_dir)
 	return result_new_ok[wrefs*](r)
 
 
@@ -762,21 +732,6 @@ int commit_load_uint16(char* p):
 	return (p[0] & 255) + ((p[1] & 255) << 8)
 
 
-# Insertion sort: getdents order depends on filesystem state, and
-# ref_list's result must not (tools/wexec.w's wexec_sort_strings does
-# the same, for the same reason).
-void commit_sort_strings(list[char*] items):
-	int i = 1
-	while (i < items.length):
-		char* value = items[i]
-		int j = i - 1
-		while ((j >= 0) && (strcmp(items[j], value) > 0)):
-			items[j + 1] = items[j]
-			j = j - 1
-		items[j + 1] = value
-		i = i + 1
-
-
 # All ref names currently under refs/heads/, sorted. Uses the legacy
 # getdents(2) record layout (see the header comment): correct on x86/x64
 # (this module's tested targets), not yet correct on arm64, and not
@@ -808,7 +763,7 @@ wresult[list[char*]]* ref_list(wrefs* r):
 		n = getdents(fd, buffer, buffer_size)
 	free(buffer)
 	close(fd)
-	commit_sort_strings(names)
+	names.sort()   # getdents order depends on filesystem state; the result must not
 	return result_new_ok[list[char*]](names)
 
 

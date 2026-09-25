@@ -28,6 +28,7 @@ import libs.standard.web.http2
 import libs.standard.web.codec
 import libs.standard.web.grpc
 import libs.extras.compress.codecs
+import libs.standard.web.testing
 
 
 /* Helpers */
@@ -205,28 +206,6 @@ void gs_bomb(grpc_call* call, void* user_data):
 
 /* Fixture plumbing */
 
-int gs_listen(int* out_port):
-	int listener = socket_tcp_ipv4()
-	asserts(c"socket", listener >= 0)
-	socket_set_reuseaddr(listener)
-	asserts(c"bind", socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0) >= 0)
-	asserts(c"listen", socket_listen(listener, 8) >= 0)
-	sockaddr_in bound
-	socket_getsockname_ipv4(listener, &bound)
-	*out_port = net_htons(bound.port)
-	return listener
-
-
-void gs_finish(int pid, int listener):
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	close(listener)
-	if (status != 0):
-		print2(c"fixture child status: ")
-		println2(itoa(status))
-	assert_equal(0, status)
-
-
 void gs_server_child(int listener):
 	int fd = socket_accept_connection(listener)
 	if (fd < 0):
@@ -247,7 +226,7 @@ void gs_server_child(int listener):
 
 
 int gs_fork_server(int* out_port, int* out_listener):
-	int listener = gs_listen(out_port)
+	int listener = net_test_listen(out_port)
 	*out_listener = listener
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
@@ -379,13 +358,13 @@ void gs_ping_pong(grpc_channel* ch, int rounds, char* want_encoding):
 /* Fake coding for the mismatch test (registered in the client only) */
 
 int gs_fake_encode(char* in, int len, char** out, int* out_len):
-	*out = hpack_copy_bytes(in, len)
+	*out = mem_dup(in, len)
 	*out_len = len
 	return codec_ok()
 
 
 int gs_fake_decode(char* in, int len, int max, char** out, int* out_len):
-	*out = hpack_copy_bytes(in, len)
+	*out = mem_dup(in, len)
 	*out_len = len
 	return codec_ok()
 
@@ -632,7 +611,7 @@ void test_grpc_streaming_end_to_end():
 	grpc_result_free(r)
 
 	grpc_channel_close(ch)
-	gs_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 # The client compresses with a coding the server does not have.
@@ -666,23 +645,10 @@ void test_grpc_encoding_mismatch():
 	assert_strings_equal(c"echo:ok", r.response)
 	grpc_result_free(r)
 	grpc_channel_close(ch)
-	gs_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 /* Scripted server: client-side coding errors */
-
-int gs_raw_accept(int listener):
-	int fd = socket_accept_connection(listener)
-	if (fd < 0):
-		exit(90)
-	socket_set_recv_timeout(fd, 10000)
-	char* pre = malloc(24)
-	if (h2_fd_read_exact(fd, pre, 24) == 0):
-		exit(91)
-	free(pre)
-	h2_raw_write_frame(fd, h2_frame_settings(), 0, 0, 0, 0)
-	return fd
-
 
 void gs_raw_wait_headers(int fd, int stream):
 	h2_frame f
@@ -729,11 +695,11 @@ void gs_raw_response(int fd, hpack_encoder* e, int stream, char* encoding, char*
 void test_grpc_client_coding_errors():
 	compress_codecs_register()
 	int port = 0
-	int listener = gs_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int fd = gs_raw_accept(listener)
+		int fd = h2_test_raw_accept(listener, 0, 0)
 		hpack_encoder* e = hpack_encoder_new(4096)
 		gs_raw_response(fd, e, 1, c"x-bogus", c"abc", 3)
 		gs_raw_response(fd, e, 3, 0, c"abc", 3)
@@ -757,4 +723,4 @@ void test_grpc_client_coding_errors():
 	assert_strings_equal(c"corrupt compressed message", r.message)
 	grpc_result_free(r)
 	grpc_channel_close(ch)
-	gs_finish(pid, listener)
+	net_test_finish(pid, listener)

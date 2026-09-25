@@ -17,6 +17,7 @@ checker validates the declared tree, it cannot pin what the compiler sees.
 import lib.lib
 import lib.file
 import structures.string
+import lib.mem
 
 
 struct wmeta_version:
@@ -79,12 +80,7 @@ list[char*] wmeta_split_words(char* line):
 		while ((line[i] != 0) && (line[i] != ' ') && (line[i] != 9)):
 			i = i + 1
 		int n = i - start
-		char* word = malloc(n + 1)
-		int j = 0
-		while (j < n):
-			word[j] = line[start + j]
-			j = j + 1
-		word[n] = 0
+		char* word = mem_dup(line + start, n)
 		words.push(word)
 	return words
 
@@ -172,10 +168,7 @@ wmeta_version* wmeta_parse_version(char* s):
 		return 0
 	if (s[wmeta_scan_pos] != 0):
 		return 0
-	wmeta_version* v = new wmeta_version
-	v.major = major
-	v.minor = minor
-	v.patch = patch
+	wmeta_version* v = new wmeta_version(major, minor, patch)
 	return v
 
 
@@ -197,9 +190,7 @@ wmeta_constraint* wmeta_parse_constraint(char* s):
 	wmeta_version* v = wmeta_parse_version(rest)
 	if (v == 0):
 		return 0
-	wmeta_constraint* c = new wmeta_constraint
-	c.kind = kind
-	c.version = v
+	wmeta_constraint* c = new wmeta_constraint(kind, v)
 	return c
 
 
@@ -304,10 +295,7 @@ void wmeta_parse_dep_entry(wmeta_check* check, wmeta_package* pkg, list[char*] w
 	if (valid == 0):
 		wmeta_error2(check, pkg.meta_path, c"invalid dependency entry: expected '", c"<package> <constraint> [path <relative-path>]", c"'")
 		return
-	wmeta_dep* dep = new wmeta_dep
-	dep.name = words[0]
-	dep.constraint = words[1]
-	dep.path = 0
+	wmeta_dep* dep = new wmeta_dep(words[0], words[1], 0)
 	if (words.length == 4):
 		dep.path = words[3]
 	pkg.deps.push(dep)
@@ -556,9 +544,7 @@ void wmeta_check_module_ownership(wmeta_check* check):
 # Entry point for tools: load the package graph rooted at meta_path and
 # run every validation. The caller inspects check.errors.
 wmeta_check* wmeta_check_file(char* meta_path):
-	wmeta_check* check = new wmeta_check
-	check.packages = new list[wmeta_package*]
-	check.errors = new list[char*]
+	wmeta_check* check = new wmeta_check(new list[wmeta_package*], new list[char*])
 	wmeta_load(check, meta_path)
 	wmeta_check_module_ownership(check)
 	return check

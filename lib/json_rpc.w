@@ -326,10 +326,7 @@ void jsonrpc_listener_on_readable(int fd, int revents, void* ctx):
 # Accepts JSON-RPC clients from a listening socket on the loop. The
 # returned listener is owned by the caller; free it after the loop stops.
 jsonrpc_listener* jsonrpc_serve_listener(jsonrpc_server* s, event_loop* loop, int listen_fd):
-	jsonrpc_listener* listener = new jsonrpc_listener()
-	listener.server = s
-	listener.loop = loop
-	listener.fd = listen_fd
+	jsonrpc_listener* listener = new jsonrpc_listener(s, loop, listen_fd)
 	s.running = 1
 	event_loop_add_fd(loop, listen_fd, poll_in(), jsonrpc_listener_on_readable, cast(void*, listener))
 	return listener

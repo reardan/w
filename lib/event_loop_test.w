@@ -169,10 +169,7 @@ void test_timeout_fires_when_peer_is_silent():
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 
 	event_loop* loop = loop_test_new()
-	loop_test_timeout* state = new loop_test_timeout()
-	state.timed_out = 0
-	state.fd = fds[1]
-	state.loop = loop
+	loop_test_timeout* state = new loop_test_timeout(0, fds[1], loop)
 
 	event_loop_add_fd(loop, fds[1], poll_in(), loop_test_unexpected_read, cast(void*, state))
 	event_loop_add_timer(loop, 30, loop_test_on_timeout, cast(void*, state))
@@ -249,11 +246,7 @@ void test_two_watches_share_an_fd():
 	int* fds = malloc(__word_size__ * 2)
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	event_loop* loop = loop_test_new()
-	loop_test_pair* p = new loop_test_pair()
-	p.in_revents = 0
-	p.out_revents = 0
-	p.calls = 0
-	p.loop = loop
+	loop_test_pair* p = new loop_test_pair(0, 0, 0, loop)
 	event_loop_add_watch(loop, fds[1], poll_in(), loop_test_record_in, cast(void*, p))
 	event_watch* out = event_loop_add_watch(loop, fds[1], poll_out(), loop_test_record_out, cast(void*, p))
 	assert_equal(4, write(fds[0], c"ping", 4))
@@ -376,9 +369,7 @@ void loop_test_log_timer(int timer_id, void* ctx):
 # order (ties in arming order).
 void test_many_timers_fire_in_order():
 	event_loop* loop = loop_test_new()
-	loop_test_timer_log* log = new loop_test_timer_log()
-	log.fired = new list[int]
-	log.due = new list[int]
+	loop_test_timer_log* log = new loop_test_timer_log(new list[int], new list[int])
 	list[int] ids = new list[int]
 	int i = 0
 	while (i < 300):

@@ -37,6 +37,7 @@ Design notes: docs/projects/graphics.md
 import lib.lib
 import graphics.gl
 import graphics.event
+import lib.mem
 
 
 c_lib "user32.dll"
@@ -126,25 +127,17 @@ void gfx_win32_push(gfx_window* win, int kind, int code, int mods):
 
 # Portable NAV code for a Win32 virtual-key code, or 0.
 int gfx_win32_nav(int vk):
-	if (vk == 37):
-		return GFX_NAV_LEFT
-	if (vk == 39):
-		return GFX_NAV_RIGHT
-	if (vk == 36):
-		return GFX_NAV_HOME
-	if (vk == 35):
-		return GFX_NAV_END
-	if (vk == 38):
-		return GFX_NAV_UP
-	if (vk == 40):
-		return GFX_NAV_DOWN
-	if (vk == 33):
-		return GFX_NAV_PAGE_UP
-	if (vk == 34):
-		return GFX_NAV_PAGE_DOWN
-	if (vk == 46):
-		return GFX_NAV_DELETE
-	return 0
+	switch (vk):
+		case 37: return GFX_NAV_LEFT
+		case 39: return GFX_NAV_RIGHT
+		case 36: return GFX_NAV_HOME
+		case 35: return GFX_NAV_END
+		case 38: return GFX_NAV_UP
+		case 40: return GFX_NAV_DOWN
+		case 33: return GFX_NAV_PAGE_UP
+		case 34: return GFX_NAV_PAGE_DOWN
+		case 46: return GFX_NAV_DELETE
+		default: return 0
 
 
 void gfx_win32_button(gfx_window* win, int button, int down, int lparam):
@@ -253,10 +246,7 @@ int gfx_win32_register_class(int instance):
 	if (proc == 0):
 		return 0
 	char* wc = malloc(80)
-	int i = 0
-	while (i < 80):
-		wc[i] = 0
-		i = i + 1
+	mem_fill(wc, 0, 80)
 	save_int32(wc, 80)                    /* cbSize */
 	save_int32(wc + 4, 35)                /* CS_OWNDC | CS_HREDRAW | CS_VREDRAW */
 	save_int64(wc + 8, proc)              /* lpfnWndProc */
@@ -275,10 +265,7 @@ int gfx_win32_register_class(int instance):
 # depth and 8-bit stencil buffer.
 char* gfx_win32_pixel_format():
 	char* pfd = malloc(40)
-	int i = 0
-	while (i < 40):
-		pfd[i] = 0
-		i = i + 1
+	mem_fill(pfd, 0, 40)
 	save_int16(pfd, 40)          /* nSize */
 	save_int16(pfd + 2, 1)       /* nVersion */
 	save_int32(pfd + 4, 37)      /* PFD_DRAW_TO_WINDOW | PFD_SUPPORT_OPENGL | PFD_DOUBLEBUFFER */
