@@ -575,6 +575,9 @@ current state:
 			http/https server framework (libs/standard/web/connection.w +
 				http_server.w: ServerContext accept loop, RequestContext/
 				routing, keep-alive, HTTPS via tls_accept; issue #235)
+			websocket client + server, ws:// and wss:// (libs/standard/web/
+				websocket.w, RFC 6455; the app opts into SHA-1 with
+				ws_use_sha1; issue #436)
 
 	web ui:
 		editor

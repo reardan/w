@@ -2119,6 +2119,7 @@
 				"for_infer_64_test",
 				"format_64_test",
 				"framing_64_test",
+				"ftp_64_test",
 				"generator_64_test",
 				"generator_return_free_64_test",
 				"generics_64_test",
@@ -2147,8 +2148,11 @@
 				"graphics_ui_toast_test",
 				"graphics_ui_tree_test",
 				"graphics_ui_widgets_test",
+				"grpc_64_test",
 				"hash_table_64_test",
 				"heap_64_test",
+				"hpack_64_test",
+				"http2_64_test",
 				"http_client_64_test",
 				"http_server_64_test",
 				"http_server_route_64_test",
@@ -2234,6 +2238,7 @@
 				"shell_commands_64_test",
 				"sim_64_test",
 				"sizeof_64_test",
+				"smtp_64_test",
 				"sse_64_test",
 				"sstable_64_test",
 				"stack_trace_64_test",
@@ -2270,6 +2275,8 @@
 				"wal_64_test",
 				"wbuild_arch_only_test",
 				"wbuild_directive_64_test",
+				"websocket_64_test",
+				"websocket_sha1_64_test",
 				"window_64_test",
 				"x64_c_import_bitfield_test",
 				"x64_c_import_knr_test",
@@ -2754,6 +2761,7 @@
 				"for_test",
 				"format_test",
 				"framing_test",
+				"ftp_test",
 				"generator_return_free_test",
 				"getchar_checked_test",
 				"goto_test",
@@ -2761,10 +2769,13 @@
 				"graphics_event_test",
 				"graphics_ui_buffer_test",
 				"graphics_ui_core_test",
+				"grpc_test",
 				"hash_table_test",
 				"heap_test",
 				"hkdf_test",
 				"hmac_test",
+				"hpack_test",
+				"http2_test",
 				"http_client_test",
 				"http_server_route_test",
 				"http_server_test",
@@ -2856,6 +2867,7 @@
 				"shell_test",
 				"sim_test",
 				"sizeof_test",
+				"smtp_test",
 				"sse_test",
 				"sstable_test",
 				"stack_trace_test",
@@ -2897,6 +2909,8 @@
 				"wbuild_directive_test",
 				"wbuild_platform_test",
 				"wbuildgen_directive_errors_test",
+				"websocket_sha1_test",
+				"websocket_test",
 				"window_test",
 				"wvc_pack_e2e_test",
 				"x25519_test",
@@ -4297,6 +4311,26 @@
 			]
 		},
 		{
+			"name": "ftp_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/ftp_test.w"],
+			"outputs": ["bin/ftp_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/ftp_test.w", "-o", "bin/ftp_64_test"]},
+				{"cmd": ["bin/ftp_64_test"]}
+			]
+		},
+		{
+			"name": "ftp_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/ftp_test.w"],
+			"outputs": ["bin/ftp_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/ftp_test.w", "-o", "bin/ftp_test"]},
+				{"cmd": ["bin/ftp_test"]}
+			]
+		},
+		{
 			"name": "generator_64_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/generator_test.w"],
@@ -4694,6 +4728,26 @@
 			]
 		},
 		{
+			"name": "grpc_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/grpc_test.w"],
+			"outputs": ["bin/grpc_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/grpc_test.w", "-o", "bin/grpc_64_test"]},
+				{"cmd": ["bin/grpc_64_test"]}
+			]
+		},
+		{
+			"name": "grpc_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/grpc_test.w"],
+			"outputs": ["bin/grpc_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/grpc_test.w", "-o", "bin/grpc_test"]},
+				{"cmd": ["bin/grpc_test"]}
+			]
+		},
+		{
 			"name": "hash_table_64_test",
 			"deps": ["wv2"],
 			"inputs": ["structures/hash_table_test.w"],
@@ -4771,6 +4825,46 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "libs/standard/crypto/hmac_test.w", "-o", "bin/hmac_test"]},
 				{"cmd": ["bin/hmac_test"]}
+			]
+		},
+		{
+			"name": "hpack_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/hpack_test.w"],
+			"outputs": ["bin/hpack_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/hpack_test.w", "-o", "bin/hpack_64_test"]},
+				{"cmd": ["bin/hpack_64_test"]}
+			]
+		},
+		{
+			"name": "hpack_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/hpack_test.w"],
+			"outputs": ["bin/hpack_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/hpack_test.w", "-o", "bin/hpack_test"]},
+				{"cmd": ["bin/hpack_test"]}
+			]
+		},
+		{
+			"name": "http2_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http2_test.w"],
+			"outputs": ["bin/http2_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/http2_test.w", "-o", "bin/http2_64_test"]},
+				{"cmd": ["bin/http2_64_test"]}
+			]
+		},
+		{
+			"name": "http2_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/http2_test.w"],
+			"outputs": ["bin/http2_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/http2_test.w", "-o", "bin/http2_test"]},
+				{"cmd": ["bin/http2_test"]}
 			]
 		},
 		{
@@ -6743,6 +6837,26 @@
 			]
 		},
 		{
+			"name": "smtp_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/smtp_test.w"],
+			"outputs": ["bin/smtp_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/smtp_test.w", "-o", "bin/smtp_64_test"]},
+				{"cmd": ["bin/smtp_64_test"]}
+			]
+		},
+		{
+			"name": "smtp_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/smtp_test.w"],
+			"outputs": ["bin/smtp_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/smtp_test.w", "-o", "bin/smtp_test"]},
+				{"cmd": ["bin/smtp_test"]}
+			]
+		},
+		{
 			"name": "sse_64_test",
 			"deps": ["wv2"],
 			"inputs": ["libs/standard/web/sse_test.w"],
@@ -7669,6 +7783,46 @@
 				{"cmd": ["bin/wcloc", "--by-file", "tests/cloc/sample"], "expect_stdout": ["path                            files    blank  comment     code    tokens", "tests/cloc/sample/sub/leaf.w        1        1        3        3        11", "tests/cloc/sample/top.w             1        0        1        2         7", "total                               2        1        4        5        18"]},
 				{"cmd": ["bin/wcloc", "tests/cloc/sample/top.w", "tests/cloc/no_such_dir"], "expect_status": 2, "expect_stdout": "tests/cloc/sample/top.w        1        0        1        2         7", "expect_stderr": "wcloc: cannot access 'tests/cloc/no_such_dir'"},
 				{"cmd": ["bin/wcloc", "--bogus"], "expect_status": 2, "expect_stderr": "usage: wcloc [--by-file] [--json] [path ...]"}
+			]
+		},
+		{
+			"name": "websocket_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/websocket_test.w"],
+			"outputs": ["bin/websocket_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/websocket_test.w", "-o", "bin/websocket_64_test"]},
+				{"cmd": ["bin/websocket_64_test"]}
+			]
+		},
+		{
+			"name": "websocket_sha1_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/x/unsafe/websocket_sha1_test.w"],
+			"outputs": ["bin/websocket_sha1_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/x/unsafe/websocket_sha1_test.w", "-o", "bin/websocket_sha1_64_test"]},
+				{"cmd": ["bin/websocket_sha1_64_test"]}
+			]
+		},
+		{
+			"name": "websocket_sha1_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/x/unsafe/websocket_sha1_test.w"],
+			"outputs": ["bin/websocket_sha1_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/x/unsafe/websocket_sha1_test.w", "-o", "bin/websocket_sha1_test"]},
+				{"cmd": ["bin/websocket_sha1_test"]}
+			]
+		},
+		{
+			"name": "websocket_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/websocket_test.w"],
+			"outputs": ["bin/websocket_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/websocket_test.w", "-o", "bin/websocket_test"]},
+				{"cmd": ["bin/websocket_test"]}
 			]
 		},
 		{
