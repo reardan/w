@@ -28,7 +28,7 @@ int bump(int n):
 
 int slow_step(int n):
 	# The fixed 7000000 call-site offset makes bump's n distinguishable
-	# from slow_step's n at the same stop, so attach_test.sh's frame
+	# from slow_step's n at the same stop, so tools/attach_e2e.w's frame
 	# selection case can assert 'up; p n' really addresses the caller's
 	# slot (the two frames' n used to hold the same value, which hid
 	# frame-base regressions). Undone on return, so attach_counter still

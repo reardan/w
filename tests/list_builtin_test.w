@@ -1,4 +1,12 @@
 # wbuild: x64
+# wbuild: step="bin/wv2 tests/list_builtin_warning_fixture.w -o bin/list_builtin_warning_fixture" expect_stderr="warning: list push type mismatch: expected 'int', got 'char*'" expect_stderr="warning: assignment type mismatch: expected 'int', got 'char*'" expect_stderr="warning: initialization type mismatch: expected 'list[int]', got 'list[char*]'" expect_stderr="warning: for loop variable type mismatch: expected 'char*', got 'int'" expect_stderr="warning: list literal element type mismatch: expected 'char*', got 'int'"
+# wbuild: step="bin/wv2 tests/list_array_element_error_fixture.w -o bin/list_array_element_error_fixture" expect_fail expect_stderr="list element type cannot be a fixed-size array"
+# wbuild: step="bin/wv2 tests/list_array_field_error_fixture.w -o bin/list_array_field_error_fixture" expect_fail expect_stderr="list element type cannot contain fixed-size array fields"
+# wbuild: step="bin/wv2 tests/list_field_error_fixture.w -o bin/list_field_error_fixture" expect_fail expect_stderr="list field 'append' not found"
+# wbuild: step="bin/wv2 tests/list_pop_empty_fixture.w -o bin/list_pop_empty_fixture"
+# wbuild: step="bin/list_pop_empty_fixture" expect_fail
+# wbuild: step="bin/wv2 tests/list_index_bounds_fixture.w -o bin/list_index_bounds_fixture"
+# wbuild: step="bin/list_index_bounds_fixture" expect_fail
 import lib.testing
 
 

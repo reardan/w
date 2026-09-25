@@ -1,4 +1,6 @@
 # wbuild: x64 group=arm64_smoke_test@arm64
+# wbuild: step="bin/wv2 tests/yield_outside_generator_error_fixture.w -o bin/yield_outside_generator_error_fixture" expect_fail expect_stderr="'yield' outside of a generator body"
+# wbuild: step="bin/wv2 tests/generator_return_value_error_fixture.w -o bin/generator_return_value_error_fixture" expect_fail expect_stderr="generators cannot return a value; use yield"
 import lib.testing
 import lib.generator
 

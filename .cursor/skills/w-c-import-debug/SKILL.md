@@ -52,7 +52,7 @@ W body *uses* every imported shape, so an import regression fails the
 compile. The fixture's header comment carries `# expect_stderr:` /
 `# reject_stderr:` / `# expect_fail` directives asserted by
 `bin/wfixture`, plus `# wbuild: fixture_group=c_import_torture_test`
-to join the group; run `./wbuild manifest` to regenerate `build.json`,
+to join the group (the generated manifest picks it up on the next run),
 then `./wbuild c_import_torture_test`.
 
 ## Env-blocked targets and their substitutes

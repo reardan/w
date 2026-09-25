@@ -18,6 +18,47 @@ direction 4b and the cross-commit queries built on it — is therefore
 is directions 1, 4a, and 3, all of which key purely off the current
 working tree's content and need no versioning story at all.
 
+## Status, 2026-09-25 (issue #323 stage 2, PR #467)
+
+What changed since the survey below, in the order it landed:
+
+- **No committed manifest.** `build.json` is gone. bin/wexec, bin/wtest
+  and bin/wtest_map_check import the generator
+  (`tools/wbuildgen_lib.w`, through `tools/manifest_source.w`) and
+  build the manifest in memory at startup, which takes about 0.2s.
+  `./wbuild manifest` writes a copy to `bin/build.json` for reading;
+  `./wbuild manifest_check` fails when generation fails.
+  `tools/merge_manifest.sh` is deleted, and `./wbuild test_changed` no
+  longer diffs a baseline manifest. The darwin and win64 executors,
+  whose directory walk the generator cannot parse, load
+  `build.base.json`'s own targets. If generation fails, wexec falls
+  back to those targets too, so an old binary can always rebuild
+  itself. wbuild reseeds an executor that cannot load the manifest at
+  all.
+- **Multi-step tests as directives.** `# wbuild: step="cmd args"`
+  appends a step after the run step, and the fields after it on the
+  line (`expect_fail`, `expect_stdout=`/`expect_stderr=`,
+  `reject_stdout=`/`reject_stderr=`, `timeout=`, `stdin=`,
+  `stdout_file=`) decorate that step. Twenty bucket-L targets moved
+  into their sources, and the generated manifest was byte-identical
+  target for target.
+- **Umbrellas are tags.** Hand-written targets and tool targets say
+  `"tags": ["tests"]`, and umbrellas list only other umbrellas. Fixture
+  groups now join `tests` automatically. The hand-kept lists had
+  dropped nine fixture-group suites, which never ran until this change.
+- **Shell scripts.** `parser_generator_w_batches.sh` is now
+  `tools/parser_generator_w_batches.w`. `attach_test.sh` is now
+  `tools/attach_e2e.w`.
+
+Still hand-written in `build.base.json`: the bootstrap chain (bucket
+A), the tool binaries (C), and the multi-step targets whose primary
+step is not a scan-directory `*_test.w` compile+run. That last group
+includes diagnostics suites driven from fixtures (`check_json_test`,
+`symbols_test`, ...), x64-only step sequences, and compiler/ and
+grammar/ unit tests. Extending `step=` to those needs either a source
+to carry the directives (a fixture, via its `.wbuild` sidecar) or
+scanning compiler/ and grammar/.
+
 ## Where the system stands today
 
 The shape is already good — a Ninja-like two-layer split that most
@@ -393,14 +434,23 @@ the bound in place of the external `timeout(1)`. `openssl_interop_test`'s
 moved from bucket E to bucket L below, same reasoning as
 `compress_zlib_interop_test`.
 
+`tools/attach_test.sh` (the end-to-end test of wdbg's `--attach` mode)
+was ported to `tools/attach_e2e.w` (2026-09): the same cases and
+assertions, but every fixture and wdbg invocation is spawned through
+`lib.process` with an argv vector (no `/bin/sh`, no `timeout(1)` — the
+per-wdbg ceiling is `process_run`'s own timeout, still overridable with
+`ATTACH_TEST_TIMEOUT=<seconds>` and still reported with the distinct
+"FAIL (wdbg timed out ...)" banner). `attach_test`'s `build.base.json`
+entry now compiles and runs that binary after the four fixture compiles,
+so it moved from bucket E to bucket L below.
+
 | Script | Invoked by (`build.base.json`) | #323 blocker |
 |---|---|---|
 | `tools/run_arm64.sh` | `build_arm64`, `arm64_smoke_test`, `pac_full_test_arm64`, `pac_corrupt_test_arm64`, plus every generated `arch=arm64` twin | qemu-user-static / native-exec wrapper — a cross-arch execution shim is likely permanent (Bazel/Buck2 keep an equivalent runner); revisit only if `lib.process` grows emulator-aware exec. |
 | `tools/run_wasm.sh` | `build_wasm`, `wasm_smoke_test`, plus every wasm run step | Wraps `wasmtime`/`node`; same "permanent execution shim" reasoning as `run_arm64.sh`. (The former bucket-G side blocker is gone: wbuildgen's `arch=`/`arch_only=`/`group=` all take `wasm` since 2026-07-28 and emit this wrapper.) |
 | `tools/web/run_node.sh` | `wasm_extern_test`, `wasm_webgl_test` | Wraps `node` to run `tools/web/*.mjs` harnesses; the harnesses themselves are non-W, so this sits outside the ".w sources" model regardless of the shell wrapper. |
-| `tools/attach_test.sh` | `attach_test` | ptrace-based debugger-attach test. Needs porting onto the in-repo ptrace machinery (`debugger/`) as a W test harness — natural to revisit alongside #123's attach phases. |
-| `tools/parser_generator_w_batches.sh` | `parser_generator_w_test` | Batches/diffs parser-generator output across the tracked `.w` corpus. Needs porting to a W batch-diff tool, or folding into `tools/parser_generator.w` itself. |
-| `tools/merge_manifest.sh` | *(not referenced — opt-in git merge driver, see its own header)* | Exists specifically to resolve `build.json` merge conflicts by regeneration; irrelevant once `build.json` is retired. Until then it's outside the wexec-driven graph entirely (local git config, not a manifest step). |
+| ~~`tools/parser_generator_w_batches.sh`~~ | `parser_generator_w_test` | Ported to `tools/parser_generator_w_batches.w` (2026-09-25). |
+| ~~`tools/merge_manifest.sh`~~ | *(not referenced)* | Deleted with `build.json` (2026-09-25): there is no committed manifest left to conflict. |
 | `tools/mac/run_darwin_tests.sh` | *(not referenced — invoked by hand per `AGENTS.md`/`CLAUDE.md`)* | Developer-invoked native Mach-O test runner; Mac-only, never a manifest target. Out of scope for #323's manifest-capture model. |
 | `tools/mac/wdev.sh` | *(not referenced — invoked by hand)* | Docker `w-dev` container wrapper for the agent/dev workflow. Same "out of scope" reasoning as `run_darwin_tests.sh`. |
 | `archive.sh` (repo root) | `update`, `update_win`, `update_darwin` | Archives the current seed before promotion (`docs/release.md`). Tightly coupled to seed bootstrap (inventory bucket A below); runs before any freshly-built compiler is trustworthy, so it is unlikely to become a W program before the bootstrap chain itself is redesigned. |
@@ -521,9 +571,9 @@ optimistic for 7 of the 21; see below.**
   `ai_tooling_next_steps.md`'s Build-manifest entry for the exact
   directive spellings and the arm64_darwin-bundle residue.
 
-**E. Shell-wrapped, bespoke logic — 13.** `missing_file_test`,
+**E. Shell-wrapped, bespoke logic — 12.** `missing_file_test`,
 `parser_generator_w_test`, `wtest_map_test`, `unsafe_import_test`,
-`debug_test`, `debug_test_x64`, `attach_test`, `repl_test`,
+`debug_test`, `debug_test_x64`, `repl_test`,
 `repl_test_x64`, `wasm_extern_test`, `wasm_webgl_test`, `pac_flag_test`,
 `pac_corrupt_test_arm64`. Blocker: each step is a real `sh -c` one-liner
 or external script (subprocess probing, ptrace attach, PTY scripting via
@@ -720,7 +770,7 @@ Bucket K is now empty; bucket C (the tool binaries themselves) stays
 hand-written by design, and is what the new mode's deps derivation
 resolves against.
 
-**L. Multi-step pipelines — 44.** `float_reference_test`,
+**L. Multi-step pipelines — 45.** `float_reference_test`,
 `string_utf8_test`, `container_trap_test`, `memory_debug_fault_test`,
 `strict_mode_test`, `check_json_test`, `check_roots_test`,
 `check_imports_test`, `symbols_test`, `deps_test`,
@@ -739,7 +789,9 @@ two compile steps + two run steps with `expect_stdout`, no shell
 involved any more — same shape as `switch_test`'s "several `.w` fixtures
 compiled and run in sequence"), `openssl_interop_test` (ported off its
 shell wrapper by task 4e, same shape: two compile steps + two run steps
-with `expect_stdout`). Blocker: each
+with `expect_stdout`), `attach_test` (ported off `tools/attach_test.sh`:
+four fixture compiles, then `tools/attach_e2e.w` compiled and run with
+`expect_stdout`). Blocker: each
 chains more than a single compile+run — a second reference binary
 (`float_reference_test`'s `cc`-compiled C oracle), several independent
 diagnostic invocations with separate `expect_*` assertions

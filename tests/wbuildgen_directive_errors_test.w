@@ -35,7 +35,14 @@ directive-gap closures:
   products are self-satisfied), and the misuse shapes (a hand-declared
   "deps", an unknown entry key, a bin/-prefixed command word nothing
   produces, an entry name still hand-written in "targets") are hard
-  errors.
+  errors;
+- step="cmd args" appends an extra step after the default-arch run
+  step, decorated by the fields that follow it on its line, turns the
+  target into a FORCE target, and rejects unknown fields, two steps on
+  one line, and sources with no default-arch target;
+- a base target's "tags" puts it in the named umbrellas (ahead of the
+  generated members) and never reaches the manifest, and a tag naming
+  no umbrella is a hard error.
 */
 # wbuild: tool=tools/wbuildgen.w
 import lib.testing
@@ -399,6 +406,81 @@ void test_tool_targets_reject_hand_written_duplicate():
 	process_result* r = wdet_run(dir)
 	assert1(r.status != 0)
 	wdet_assert_contains(r.stderr_text, c"\"tool_targets\" entry is still hand-written in build.base.json's \"targets\" (delete the hand-written entry): mytool")
+	process_result_free(r)
+
+
+void test_step_directive_shape():
+	char* dir = wdet_case_dir(c"step")
+	wdet_write(dir, c"tests/steppy_test.w", c"# wbuild: x64\n# wbuild: step=\"bin/wv2 tests/bad_fixture.w -o bin/bad_fixture\" expect_fail expect_stderr=\"boom\" expect_stderr=\"bang\"\n# wbuild: step=\"cat\" stdin=\"a\\nb\" stdout_file=bin/gen.w timeout=500 reject_stdout=\"nope\"\nint main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert_equal(0, r.status)
+	process_result_free(r)
+	char* out_path = path_join(dir, c"out.json")
+	char* out = file_read_text(out_path)
+	assert1(out != 0)
+	# The extra steps follow the run step, each carrying only the fields
+	# after its own step= token; repeated expectations use the array form.
+	wdet_assert_contains(out, c"{\"cmd\": [\"bin/steppy_test\"]},\n\t\t\t\t{\"cmd\": [\"bin/wv2\", \"tests/bad_fixture.w\", \"-o\", \"bin/bad_fixture\"], \"expect_fail\": true, \"expect_stderr\": [\"boom\", \"bang\"]},")
+	wdet_assert_contains(out, c"{\"cmd\": [\"cat\"], \"stdin\": \"a\\nb\", \"stdout_file\": \"bin/gen.w\", \"timeout_ms\": 500, \"reject_stdout\": \"nope\"}")
+	# A step= target reruns every time (no cache inputs/outputs), but
+	# its x64 twin, which the steps do not touch, keeps both.
+	wdet_assert_lacks(out, c"\"inputs\": [\"tests/steppy_test.w\"],\n\t\t\t\"outputs\": [\"bin/steppy_test\"]")
+	wdet_assert_contains(out, c"\"outputs\": [\"bin/steppy_64_test\"]")
+	free(out)
+	free(out_path)
+
+
+void test_step_rejects_unknown_field():
+	char* dir = wdet_case_dir(c"step_field")
+	wdet_write(dir, c"tests/field_test.w", c"# wbuild: step=\"cat\" x64\nint main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"not a 'step=' field")
+	process_result_free(r)
+
+
+void test_step_rejects_two_per_line():
+	char* dir = wdet_case_dir(c"step_twice")
+	wdet_write(dir, c"tests/twice_test.w", c"# wbuild: step=\"cat\" step=\"cat\"\nint main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"one 'step=' per '# wbuild:' line")
+	process_result_free(r)
+
+
+void test_step_rejects_arch_only():
+	char* dir = wdet_case_dir(c"step_arch_only")
+	wdet_write(dir, c"tests/only_test.w", c"# wbuild: arch_only=x64\n# wbuild: step=\"cat\"\nint main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"'step=' needs a generated default-arch target")
+	process_result_free(r)
+
+
+void test_tags_join_umbrellas():
+	char* dir = wdet_case_dir(c"tags")
+	wdet_write(dir, c"base.json", c"{\n\t\"targets\": [\n\t\t{\n\t\t\t\"name\": \"hand\",\n\t\t\t\"tags\": [\"tests\"],\n\t\t\t\"steps\": [{\"cmd\": [\"true\"]}]\n\t\t},\n\t\t{\n\t\t\t\"name\": \"tests\",\n\t\t\t\"deps\": [\"tests_x64\"]\n\t\t},\n\t\t{\n\t\t\t\"name\": \"tests_x64\",\n\t\t\t\"deps\": []\n\t\t}\n\t]\n}\n")
+	wdet_write(dir, c"tests/auto_test.w", c"int main():\n\treturn 0\n")
+	process_result* r = wdet_run(dir)
+	assert_equal(0, r.status)
+	process_result_free(r)
+	char* out_path = path_join(dir, c"out.json")
+	char* out = file_read_text(out_path)
+	assert1(out != 0)
+	# The tagged hand-written target joins first, then the generated
+	# one; "tags" itself is generator input and never reaches wexec.
+	wdet_assert_contains(out, c"\"name\": \"tests\",\n\t\t\t\"deps\": [\n\t\t\t\t\"tests_x64\",\n\t\t\t\t\"hand\",\n\t\t\t\t\"auto_test\"\n\t\t\t]")
+	wdet_assert_lacks(out, c"\"tags\"")
+	free(out)
+	free(out_path)
+
+
+void test_tags_reject_unknown_umbrella():
+	char* dir = wdet_case_dir(c"tags_unknown")
+	wdet_write(dir, c"base.json", c"{\n\t\"targets\": [\n\t\t{\n\t\t\t\"name\": \"hand\",\n\t\t\t\"tags\": [\"testz\"],\n\t\t\t\"steps\": [{\"cmd\": [\"true\"]}]\n\t\t},\n\t\t{\n\t\t\t\"name\": \"tests\",\n\t\t\t\"deps\": []\n\t\t}\n\t]\n}\n")
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	wdet_assert_contains(r.stderr_text, c"\"tags\" of hand names an unknown umbrella (a step-less build.base.json target): testz")
 	process_result_free(r)
 
 

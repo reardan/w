@@ -1,7 +1,8 @@
 /*
 wexec: the W-native build executor — the replacement for the old Makefile.
 
-wexec reads a static JSON manifest (build.json by default) describing
+wexec reads a static JSON manifest (by default generated in memory from
+build.base.json and the source tree, tools/manifest_source.w) describing
 build/test targets, resolves their dependency DAG depth-first, and runs
 each target's steps as child processes via lib.process. It deliberately
 knows nothing about W itself: the manifest spells out every command, so
@@ -149,6 +150,7 @@ import structures.json
 import tools.__arch__.wexec_platform
 import tools.__arch__.wexec_remote_http
 import tools.wexec_trace
+import tools.manifest_source
 
 
 json_value* wexec_manifest
@@ -2772,10 +2774,30 @@ void wexec_make_dirs():
 		i = i + 1
 
 
+# path = 0 is the default manifest: generated in memory from
+# build.base.json and the source tree (tools/manifest_source.w). The
+# generator walks directories with Linux-layout getdents, so where that
+# does not hold (darwin, win64; see wexec_dirents_supported) only
+# build.base.json's own targets are loaded -- the darwin/win64
+# toolchain targets those executors run all live there.
 int wexec_load_manifest(char* path):
-	char* text = file_read_text(path)
+	int scan_tree = wexec_dirents_supported() && (os_windows() == 0)
+	char* text = manifest_source_text(path, scan_tree)
+	if ((text == 0) && (path == 0) && scan_tree && (strcmp(manifest_source_label, c"build.base.json") == 0)):
+		# A source-tree directive this binary's generator predates (the
+		# tree grew new '# wbuild:' vocabulary since bin/wexec was
+		# built) must not stop wbuild from rebuilding wexec itself, so
+		# fall back to build.base.json's own targets, where wv2, wexec
+		# and the rest of the toolchain live. Test targets are then
+		# unknown, next to the generator's error printed above.
+		wexec_error(c"manifest generation failed; loading build.base.json's targets only")
+		text = manifest_source_text(path, 0)
+	path = manifest_source_label
 	if (text == 0):
-		wexec_error2(c"cannot read manifest ", path)
+		if (strcmp(path, c"build.base.json") == 0):
+			wexec_error(c"cannot generate the manifest from build.base.json")
+		else:
+			wexec_error2(c"cannot read manifest ", path)
 		return 1
 	wexec_manifest = json_parse(text)
 	free(text)
@@ -3352,7 +3374,7 @@ void wexec_on_termination(int sig):
 
 int main(int argc, int argv):
 	wexec_jobs = 0
-	char* manifest_path = c"build.json"
+	char* manifest_path = 0
 	list[char*] requested = new list[char*]
 	int list_only = 0
 	int list_json = 0

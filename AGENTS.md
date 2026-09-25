@@ -9,25 +9,28 @@ pinned 32-bit x86 ELF seed binary `./w`, which `./wbuild` downloads from GitHub
 Releases per the sha256 pins in `SEEDS` when it is missing.
 
 ### Build / test / run
-Standard commands live in `build.json` (targets, not duplicated here):
+Standard commands live in `build.base.json` (targets, not duplicated here):
 - `./wbuild build` — bootstrap the compiler (`bin/wv2..wv5`).
 - `./wbuild verify` — self-host fixpoint check (`wv3 == wv4 == wv5`); the key regression guard.
 - `./wbuild tests` — full suite (includes `verify`, x64 tests, REPL, debugger, stdlib, structures).
 - `./wbuild wdbg` — build the in-process debugger (`bin/wdbg`).
 - `./bin/wv2 repl.w -o bin/repl && ./bin/repl` — build and launch the interactive REPL.
 
-`./wbuild` is backed by `tools/wexec.w` + `build.json` (see
+`./wbuild` is backed by `tools/wexec.w` and the generated manifest (see
 `docs/projects/wexec.md`): target list via `./wbuild --list`, independent
 targets run in parallel (`-j N` overrides the CPU-count default), toolchain
 targets are content-hash-cached (`--no-cache` forces reruns; stamps live in
-`bin/.wexec_cache/`, `rm -rf bin` resets everything). `build.json` is
-generated, not hand-edited: `./wbuild manifest` rebuilds it from the
-hand-maintained `build.base.json` plus every conventional `*_test.w`
-source (a `# wbuild: x64` directive in the source adds the 64-bit twin),
-and `./wbuild manifest_check` (in `tests`) fails on drift. To add a plain
-test: create the `_test.w` file and run `./wbuild manifest`; only tests
-with irregular steps or expectations get hand-written targets in
-`build.base.json`. Interactive
+`bin/.wexec_cache/`, `rm -rf bin` resets everything). The manifest is
+not committed: bin/wexec and bin/wtest generate it in memory on every run
+from the hand-maintained `build.base.json` plus every conventional
+`*_test.w` source (a `# wbuild: x64` directive in the source adds the
+64-bit twin). `./wbuild manifest` writes a copy to `bin/build.json` for
+reading, and `./wbuild manifest_check` (in `tests`) fails when generation
+fails. To add a test: create the `_test.w` file; expectations and extra
+steps are `# wbuild:` directives in it (`expect_stdout=`,
+`step="cmd args" expect_fail ...`; vocabulary in `tools/wbuildgen_lib.w`),
+so hand-written `build.base.json` targets are only for shapes no source
+owns (toolchain, bootstrap). Interactive
 conveniences (debuggers, `stap` traces, hand-testing servers) are manual
 one-liners, listed in README's "Build, verify, test" section — wexec
 captures step stdio, so it cannot host a live prompt or a
@@ -49,7 +52,7 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
 2. **Pick tests from the diff**, don't guess:
    `git diff --name-only HEAD | ./bin/wtest changed` prints the focused build
    targets (`./wbuild wtest` builds it; `./wbuild test_changed` runs them directly).
-   Selection is manifest-driven: wtest parses `build.json` and unions targets
+   Selection is manifest-driven: wtest generates the manifest and unions targets
    whose steps name a changed path with targets whose compile roots
    transitively import a changed `.w` file (`bin/wv2 deps` closures, cached
    in `bin/.wtest_deps_cache` — the first run after a build can take
@@ -91,6 +94,14 @@ Use the toolchain's structured tools instead of raw compile/test cycles:
    language-behavior questions** by piping entries + `:quit` into `./bin/repl`,
    and **debug runtime failures** by scripting `./bin/wdbg` over stdin rather
    than adding print statements.
+5. **Optional warm daemon (Linux x86/x64)**: `bin/wbuildd start` (build it
+   with `./wbuild wbuildd`) keeps check/deps/symbols answers and the
+   `wtest` closure cache warm, invalidated by inotify. Then
+   `bin/wbuildd check --json <file>`, `bin/wbuildd deps|symbols ...` and
+   `git diff --name-only HEAD | bin/wbuildd changed` print exactly what the
+   `bin/wv2`/`bin/wtest` commands print; with no daemon running (or
+   `WBUILDD=0`) they just run the one-shot command. `bin/wbuildd status`
+   / `stop` manage it; see `docs/projects/wbuildd.md`.
 
 Detailed how-tos live in `.cursor/skills/` (`w-check-diagnostics`,
 `w-select-tests`, `w-debug-wdbg`, `w-repl-explore`); path-scoped guardrails in

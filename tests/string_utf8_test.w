@@ -1,3 +1,8 @@
+# wbuild: step="bin/wv2 tests/string_utf8_invalid_fixture.w -o bin/string_utf8_invalid_fixture" expect_fail expect_stderr="invalid UTF-8 string literal"
+# wbuild: step="bin/wv2 tests/string_utf8_invalid_cstr_fixture.w -o bin/string_utf8_invalid_cstr_fixture"
+# wbuild: step="bin/string_utf8_invalid_cstr_fixture" expect_fail expect_stderr="invalid UTF-8 c string"
+# wbuild: step="bin/wv2 tests/string_utf8_invalid_cstr_arg_fixture.w -o bin/string_utf8_invalid_cstr_arg_fixture"
+# wbuild: step="bin/string_utf8_invalid_cstr_arg_fixture" expect_fail expect_stderr="invalid UTF-8 c string"
 import lib.testing
 import lib.utf8
 

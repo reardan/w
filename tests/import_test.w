@@ -1,3 +1,5 @@
+# wbuild: step="bin/wv2 tests/import_alias_wrong_module_error_fixture.w -o bin/import_alias_wrong_module_error_fixture" expect_fail expect_stderr="symbol 'local_helper' is not defined in module imported as 'sub'"
+# wbuild: step="bin/wv2 tests/import_alias_duplicate_error_fixture.w -o bin/import_alias_duplicate_error_fixture" expect_fail expect_stderr="duplicate import alias: 'sub'"
 /*
 
 Long Term how to do these tests:

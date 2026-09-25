@@ -1,8 +1,8 @@
 /*
 wtest: map changed paths to focused build targets.
 
-Selection is manifest-driven: build.json (the same manifest wexec runs)
-is parsed at startup, so the target registry can never drift from the
+Selection is manifest-driven: the manifest wexec runs is generated
+(tools/manifest_source.w) and parsed at startup, so the target registry can never drift from the
 build. For a changed path P the emitted targets are the union of:
 
   (a) literal references — every runnable target one of whose steps
@@ -139,7 +139,7 @@ build. For a changed path P the emitted targets are the union of:
         changed path.
       - *_test.w under a wbuildgen scan directory -> manifest_check:
         conventional test sources are generator inputs, so adding or
-        deleting one must regenerate build.json.
+        deleting one must still generate cleanly.
       - docs/, *.md, *.txt, .cursor/ -> nothing, except tests/asm/*.txt
         (the corpus fixtures), which the tests/asm/ rule above still
         covers despite the extension.
@@ -207,7 +207,7 @@ through that pipeline. An empty selection is a no-op, matching
 'xargs -r's behavior on empty input: no child is spawned. wtest exits
 with the child's status (0 on success).
 
--f overrides the manifest path (default build.json) for both selection
+-f overrides the manifest (default: generated in memory) for both selection
 and, under --run, execution. It exists mainly for isolated testing
 (tests/wtest/): pointing wtest at a throwaway manifest lets --run be
 exercised without ever selecting a real target that itself shells out to
@@ -451,6 +451,7 @@ import lib.process
 import lib.stream
 import structures.string
 import structures.json
+import tools.manifest_source
 
 
 json_value* wtest_manifest
@@ -615,22 +616,29 @@ char* wtest_get_string(json_value* object, char* key):
 	return value.string_value
 
 
+# wtest_manifest_path = 0 (no -f) generates the manifest in memory
+# exactly as bin/wexec does (tools/manifest_source.w), so selection and
+# execution always agree on the target set.
 int wtest_load_manifest():
-	char* text = file_read_text(wtest_manifest_path)
+	char* text = manifest_source_text(wtest_manifest_path, 1)
+	char* label = manifest_source_label
 	if (text == 0):
-		wtest_error(c"cannot read ", wtest_manifest_path)
+		if (strcmp(label, c"build.base.json") == 0):
+			wtest_error(c"cannot generate the manifest from ", label)
+		else:
+			wtest_error(c"cannot read ", label)
 		return 1
 	wtest_manifest = json_parse(text)
 	free(text)
 	if (wtest_manifest == 0):
-		wtest_error(c"manifest is not valid JSON: ", wtest_manifest_path)
+		wtest_error(c"manifest is not valid JSON: ", label)
 		return 1
 	json_value* targets = json_object_get(wtest_manifest, c"targets")
 	if (targets == 0):
-		wtest_error(c"manifest has no targets array: ", wtest_manifest_path)
+		wtest_error(c"manifest has no targets array: ", label)
 		return 1
 	if (targets.type != json_type_array()):
-		wtest_error(c"manifest targets is not an array: ", wtest_manifest_path)
+		wtest_error(c"manifest targets is not an array: ", label)
 		return 1
 	wtest_target_names = new list[char*]
 	wtest_target_defs = new map[char*, json_value*]
@@ -2746,7 +2754,7 @@ int wtest_map_residue(char* path, int is_w, int exists):
 		matched = 1
 	if (is_w && ends_with(path, c"_test.w") && wtest_scan_dir_path(path)):
 		# Conventional test sources are wbuildgen inputs: adding, deleting
-		# or renaming one must regenerate build.json (manifest_check).
+		# or renaming one must still generate cleanly (manifest_check).
 		wtest_add(path, c"manifest_check")
 		matched = 1
 	return matched
@@ -3704,7 +3712,7 @@ int wtest_run_selected():
 			selected.push(name)
 	if (selected.length == 0):
 		return 0
-	int custom_manifest = strcmp(wtest_manifest_path, c"build.json") != 0
+	int custom_manifest = wtest_manifest_path != 0
 	int prefix = 1
 	if (custom_manifest):
 		prefix = 3
@@ -3965,7 +3973,7 @@ int wtest_archs_check(char* path):
 int wtest_archs_main(int argc, int argv):
 	int check_flag = 0
 	list[char*] paths = new list[char*]
-	wtest_manifest_path = c"build.json"
+	wtest_manifest_path = 0
 	int i = 2
 	while (i < argc):
 		char** arg = argv + i * __word_size__
@@ -4167,7 +4175,7 @@ void wtest_why_cache_section(char* id, wstream* out):
 # whenever a story was printed (a failed root is an ordinary, reported
 # state, mirroring 'wtest cache'); 1 only on argument/manifest errors.
 int wtest_why_main(int argc, int argv):
-	wtest_manifest_path = c"build.json"
+	wtest_manifest_path = 0
 	char* arch = 0
 	char* path = 0
 	int i = 2
@@ -4337,7 +4345,7 @@ int wtest_why_main(int argc, int argv):
 # ordinary, reported state — counted in the summary, selection falls
 # back to literal matching for it — not a warming failure.
 int wtest_cache_main(int argc, int argv):
-	wtest_manifest_path = c"build.json"
+	wtest_manifest_path = 0
 	int i = 2
 	while (i < argc):
 		char** arg = argv + i * __word_size__
@@ -4416,7 +4424,7 @@ int main(int argc, int argv):
 	if ((strcmp(*command, c"changed") != 0) && (for_mode == 0)):
 		wtest_usage()
 		return 1
-	wtest_manifest_path = c"build.json"
+	wtest_manifest_path = 0
 	# A first pass just for the manifest flags: both manifests must be
 	# loaded before selection starts below, but "-f"/"--base-manifest"
 	# may appear anywhere after "changed" (mirroring bin/wexec's own

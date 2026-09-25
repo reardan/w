@@ -3,7 +3,7 @@
 Status: **implemented** (within scope) — read-only inspection, execution
 control, locals/frames, restricted expression evaluation and hardware
 watchpoints have all landed (`debugger/attach.w` + `debugger/attach_eval.w`,
-`wdbg --attach <pid> [file.w]`, tests in `tools/attach_test.sh` / the
+`wdbg --attach <pid> [file.w]`, tests in `tools/attach_e2e.w` / the
 `attach_test` build target). Phase 2's target-access seam is complete for
 both memory (`debugger/memory.w`) and registers (`debugger/registers.w`);
 phase 5's locals/args/frame selection, phase 3's x86-64 symbolization,
@@ -123,7 +123,7 @@ same capability. Phase 2 has since built that seam for both halves:
   `at_write_word` — no new ptrace semantics) and routes `at_examine` (the
   `x`/`st` commands) and `at_set_command` (`set`) through the shared entry
   points instead of calling `at_read_word`/`at_write_word` directly, so
-  `attach_test.sh`'s cases exercise the ptrace side of the same seam the
+  `tools/attach_e2e.w`'s cases exercise the ptrace side of the same seam the
   in-process debugger uses. Breakpoint byte-patching
   (`debugger/breakpoints.w`) and eval's in-process locals-binding copy
   (`debugger/eval.w`'s `dbg_eval_copy`) are deliberately untouched: they
@@ -293,7 +293,7 @@ regenerate the tables, without executing the result.
   check only compared the first 32 bytes — the shared runtime entry stub,
   identical across nearly every W binary — which never actually caught a
   source mismatch; comparing the full image against `/proc/<pid>/exe`
-  fixed that, and `tools/attach_test.sh`'s "mismatched source" cases guard
+  fixed that, and `tools/attach_e2e.w`'s "mismatched source" cases guard
   against the regression.)
 - `--attach <pid>` without a source file is legal and gives raw-address
   mode only.
@@ -401,12 +401,12 @@ and must not use syntax newer than the seed.
   attached to a 64-bit-compiled copy of the fixture
   (`bin/attach_target64`), so symbolization, register dumps and
   locals/frames are all verified for both word sizes, not just x86.
-- Mismatch path (**done**): `tools/attach_test.sh`'s "mismatched source"
+- Mismatch path (**done**): `tools/attach_e2e.w`'s "mismatched source"
   cases attach with a different, unrelated source file (`tests/debug_fixture.w`
   against the running `attach_target` fixture) and assert both the
-  degradation diagnostic and the raw-mode fallback banner — the shell
-  harness's `grep -qF` is the freeze on that text, same convention as the
-  rest of the suite.
+  degradation diagnostic and the raw-mode fallback banner — the
+  harness's substring match is the freeze on that text, same convention
+  as the rest of the suite.
 - Execution control (**done**, phase 4): `next` steps over `bump` from
   `slow_step`'s call-site line and lands on `slow_step`'s own following
   statement; `step` from the same line lands inside `bump` instead;
@@ -427,11 +427,12 @@ and must not use syntax newer than the seed.
   the exit code — a regression that skipped the byte restore would show up
   here as a crash or a signal-terminated exit instead of the clean one. x64
   twin included.
-- Hardened (2026-07-25): every wdbg invocation in `tools/attach_test.sh`
-  runs under `timeout 30`, so an execution-control regression that
-  leaves wdbg blocked in `wait4` fails instead of hanging CI; the
+- Hardened (2026-07-25): every wdbg invocation in the attach harness
+  (then `tools/attach_test.sh`, now `tools/attach_e2e.w`) runs under a
+  timeout (30s then, 120s now, `ATTACH_TEST_TIMEOUT` overrides), so an
+  execution-control regression that leaves wdbg blocked in `wait4` fails instead of hanging CI; the
   breakpoint re-arm cases count TWO distinct `hit breakpoint 1` stops on
-  both arches (a single `grep -qF` was already satisfied by the first
+  both arches (a single substring match was already satisfied by the first
   stop, so a `continue` re-arm regression used to pass); the
   frame-selection cases assert `p n` at frame 0 and after `up` differ by
   exactly the fixture's fixed `7000000` call-site offset (both frames'
@@ -439,7 +440,7 @@ and must not use syntax newer than the seed.
   `frame x` case freezes the new non-numeric-argument diagnostic.
 - Restricted eval + hardware watchpoints (2026-07-28): the fixture
   initializes a struct value (`attach_pair`), a struct pointer to it and
-  a heap int array before its spin loop, so `tools/attach_test.sh` can
+  a heap int array before its spin loop, so `tools/attach_e2e.w` can
   assert field reads (value and through the pointer), `*deref`, scaled
   indexing, arithmetic combining two lvalue reads, `set` through a field
   (verified by re-reading it), and the function-call rejection

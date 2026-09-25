@@ -21,7 +21,7 @@ overrides the parallelism, `--no-cache` forces reruns).
 
 ## Interpreting the mapping
 
-Selection is manifest-driven: `bin/wtest` parses `build.json` at runtime,
+Selection is manifest-driven: `bin/wtest` generates the manifest at runtime,
 so a target is selected when (a) one of its steps names the changed path
 (fixtures, grammars, scripts, data files) or (b) one of its compile
 roots' transitive import closures contains the changed `.w` file
@@ -43,7 +43,7 @@ cover what the import graph cannot see:
 - Docs (`docs/`, `*.md`, `*.txt`) and `.cursor/` map to nothing.
 - Paths nothing knows about fall back to the full `tests` umbrella.
 
-A new test target in `build.json` is picked up automatically — its steps
+A new test target in the manifest is picked up automatically — its steps
 name the test file. Add a residue rule in `tools/test_map.w` only for
 coupling the import graph cannot see (run-time data files,
 non-default-arch modules).

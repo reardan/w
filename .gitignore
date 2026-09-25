@@ -8,6 +8,7 @@ log/*.core
 
 # ./wbuild manifest's atomic-rewrite staging file (tools/wbuildgen.w);
 # only left behind if wbuildgen dies between write and rename.
+/build.json
 /build.json.tmp
 
 # Seed binaries: downloaded from GitHub Releases per ./SEEDS, or locally

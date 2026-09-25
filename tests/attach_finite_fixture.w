@@ -1,11 +1,11 @@
-# A debuggee that terminates on its own, for attach_test.sh's detach case:
+# A debuggee that terminates on its own, for tools/attach_e2e.w's detach case:
 # unlike attach_target_fixture.w's forever loop (needed so every other case
 # can kill -9 it without worrying about a race against natural exit), this
 # one proves 'detach' truly restores every patched breakpoint byte and
 # leaves the target able to run to completion and produce its normal
 # output/exit code, not just "no longer traced". The 150ms sleep between
 # iterations keeps total runtime short (~1s for 6 iterations) while
-# comfortably outliving attach_test.sh's 0.4s post-fork settle delay.
+# comfortably outliving tools/attach_e2e.w's 0.4s post-fork settle delay.
 import lib.lib
 import lib.time
 
