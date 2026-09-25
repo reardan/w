@@ -1,6 +1,7 @@
 /*
 Where bin/wexec, bin/wtest and bin/wtest_map_check get their build
-manifest (issue #323: the manifest is not committed).
+manifest (issue #323: the manifest is not committed); tools/manifest_json.w
+parses it.
 
 With no -f override, the manifest is generated in memory from
 build.base.json plus the source tree (tools/wbuildgen_lib.w), so it can
@@ -11,6 +12,7 @@ An explicit -f path is always read as a file.
 import lib.lib
 import lib.file
 import tools.wbuildgen_lib
+import tools.manifest_json
 
 
 # The name to use for the manifest in diagnostics: the -f path, or

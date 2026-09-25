@@ -274,6 +274,7 @@ import lib.stream
 import structures.string
 import structures.json
 import lib.dir
+import tools.manifest_json
 
 
 json_value* wbg_base                     # parsed build.base.json
@@ -341,15 +342,6 @@ void wbg_usage():
 	wstream* err = stderr_writer()
 	stream_write_line(err, c"usage: wbuildgen [--check] [--base build.base.json] [--out build.json]")
 	stream_flush(err)
-
-
-char* wbg_get_string(json_value* object, char* key):
-	json_value* value = json_object_get(object, key)
-	if (value == 0):
-		return 0
-	if (value.type != json_type_string()):
-		return 0
-	return value.string_value
 
 
 # Recursively collect every regular file under path (lib/dir.w's
@@ -805,8 +797,8 @@ char* wbg_target_binary_path(json_value* target):
 	if ((steps == 0) || (steps.type != json_type_array()) || (json_array_length(steps) == 0)):
 		return 0
 	json_value* first = json_array_get(steps, 0)
-	json_value* cmd = json_object_get(first, c"cmd")
-	if ((cmd == 0) || (cmd.type != json_type_array())):
+	json_value* cmd = jfield_array(first, c"cmd")
+	if (cmd == 0):
 		return 0
 	int i = 0
 	while (i < json_array_length(cmd)):
@@ -857,8 +849,8 @@ json_value* wbg_find_target_by_source(char* src_path):
 json_value* wbg_find_target_by_output(char* binary):
 	for char* name in wbg_base_names:
 		json_value* target = wbg_base_targets[name]
-		json_value* outputs = json_object_get(target, c"outputs")
-		if ((outputs == 0) || (outputs.type != json_type_array())):
+		json_value* outputs = jfield_array(target, c"outputs")
+		if (outputs == 0):
 			continue
 		int i = 0
 		while (i < json_array_length(outputs)):
@@ -876,7 +868,7 @@ char* wbg_resolve_tool_name(char* src_path):
 	json_value* target = wbg_find_target_by_source(src_path)
 	if (target == 0):
 		return 0
-	return wbg_get_string(target, c"name")
+	return jfield_string(target, c"name")
 
 
 # A token after 'step=' on the same line: one of the step's own fields.
@@ -1612,58 +1604,34 @@ int wbg_load_base(char* path):
 	if (text == 0):
 		wbg_error2(c"cannot read base manifest ", path)
 		return 1
-	wbg_base = json_parse(text)
+	manifest* m = manifest_parse(text, path, 1)
 	free(text)
-	if (wbg_base == 0):
-		wbg_error2(c"base manifest is not valid JSON: ", path)
+	if (m == 0):
+		wbg_error(manifest_parse_error)
 		return 1
-	if (wbg_base.type != json_type_object()):
-		wbg_error2(c"base manifest root must be a JSON object: ", path)
-		return 1
-	json_value* targets = json_object_get(wbg_base, c"targets")
-	if (targets == 0):
-		wbg_error2(c"base manifest has no \"targets\" array: ", path)
-		return 1
-	if (targets.type != json_type_array()):
-		wbg_error2(c"\"targets\" must be an array: ", path)
-		return 1
-
-	wbg_base_targets = new map[char*, json_value*]
-	wbg_base_names = new list[char*]
+	wbg_base = m.root
+	wbg_base_targets = m.by_name
+	wbg_base_names = m.names
+	free(m)
 	wbg_tag_umbrellas = new list[char*]
 	wbg_tag_members = new list[char*]
 	wbg_pinned = new map[char*, int]
-	int i = 0
-	while (i < json_array_length(targets)):
-		json_value* target = json_array_get(targets, i)
-		if (target.type != json_type_object()):
-			wbg_error2(c"every target must be a JSON object: ", path)
-			return 1
-		char* name = wbg_get_string(target, c"name")
-		if (name == 0):
-			wbg_error2(c"target without a \"name\" string: ", path)
-			return 1
-		if (name in wbg_base_targets):
-			wbg_error2(c"duplicate base target ", name)
-			return 1
-		wbg_base_targets[name] = target
-		wbg_base_names.push(name)
+	for char* name in wbg_base_names:
+		json_value* target = wbg_base_targets[name]
 		if (wbg_collect_tags(name, target)):
 			return 1
 		# Deps of step-less (umbrella) targets pin their members: a
 		# generated name listed there keeps that hand-chosen placement
 		# instead of being auto-appended to its conventional umbrella.
 		if (json_object_has(target, c"steps") == 0):
-			json_value* deps = json_object_get(target, c"deps")
+			json_value* deps = jfield_array(target, c"deps")
 			if (deps != 0):
-				if (deps.type == json_type_array()):
-					int d = 0
-					while (d < json_array_length(deps)):
-						json_value* dep = json_array_get(deps, d)
-						if (dep.type == json_type_string()):
-							wbg_pinned[dep.string_value] = 1
-						d = d + 1
-		i = i + 1
+				int d = 0
+				while (d < json_array_length(deps)):
+					json_value* dep = json_array_get(deps, d)
+					if (dep.type == json_type_string()):
+						wbg_pinned[dep.string_value] = 1
+					d = d + 1
 
 	wbg_exclude = new map[char*, int]
 	wbg_tool_targets_json = 0
@@ -2051,9 +2019,9 @@ void wbg_sort_generated():
 	int i = 1
 	while (i < wbg_generated.length):
 		json_value* value = wbg_generated[i]
-		char* name = wbg_get_string(value, c"name")
+		char* name = jfield_string(value, c"name")
 		int j = i - 1
-		while ((j >= 0) && (strcmp(wbg_get_string(wbg_generated[j], c"name"), name) > 0)):
+		while ((j >= 0) && (strcmp(jfield_string(wbg_generated[j], c"name"), name) > 0)):
 			wbg_generated[j + 1] = wbg_generated[j]
 			j = j - 1
 		wbg_generated[j + 1] = value
@@ -2376,7 +2344,7 @@ int wbg_tool_derive_deps(char* name, json_value* steps, map[char*, int] produced
 			if ((word in produced) == 0):
 				json_value* producer = wbg_find_target_by_output(word)
 				if (producer != 0):
-					char* dep = wbg_get_string(producer, c"name")
+					char* dep = jfield_string(producer, c"name")
 					if ((dep in dep_seen) == 0):
 						dep_seen[dep] = 1
 						dep_names.push(dep)
@@ -2398,7 +2366,7 @@ int wbg_expand_tool_target(json_value* entry):
 	if (entry.type != json_type_object()):
 		wbg_error(c"\"tool_targets\" entries must be objects")
 		return 1
-	char* name = wbg_get_string(entry, c"name")
+	char* name = jfield_string(entry, c"name")
 	if (name == 0):
 		wbg_error(c"\"tool_targets\" entry without a \"name\" string")
 		return 1
@@ -2791,7 +2759,7 @@ int wbg_scan():
 		if (wfixture_target == 0):
 			wbg_error(c"'fixture_group=' targets need a build.base.json target compiling tools/wfixture.w")
 			return 1
-		char* wfixture_name = wbg_get_string(wfixture_target, c"name")
+		char* wfixture_name = jfield_string(wfixture_target, c"name")
 		char* wfixture_bin = wbg_target_binary_path(wfixture_target)
 		if (wfixture_bin == 0):
 			wbg_error2(c"cannot determine wfixture's output binary from target ", wfixture_name)
@@ -3034,7 +3002,7 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 		int i = 0
 		while (i < json_array_length(old_targets)):
 			json_value* target = json_array_get(old_targets, i)
-			char* name = wbg_get_string(target, c"name")
+			char* name = jfield_string(target, c"name")
 			if (name != 0):
 				old_defs[name] = json_stringify(target)
 			i = i + 1
@@ -3042,7 +3010,7 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 		i = 0
 		while (i < json_array_length(new_targets)):
 			json_value* target = json_array_get(new_targets, i)
-			char* name = wbg_get_string(target, c"name")
+			char* name = jfield_string(target, c"name")
 			if (name != 0):
 				new_names[name] = 1
 				char* old_def = old_defs.get(name, 0)

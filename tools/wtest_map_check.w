@@ -164,29 +164,16 @@ int check_load_manifest():
 	if (text == 0):
 		check_error(c"cannot read ", label)
 		return 1
-	json_value* manifest = json_parse(text)
+	manifest* m = manifest_parse(text, label, 0)
 	free(text)
-	if (manifest == 0):
-		check_error(c"manifest is not valid JSON: ", label)
+	if (m == 0):
+		check_error(manifest_parse_error, c"")
 		return 1
-	json_value* targets = json_object_get(manifest, c"targets")
-	if (targets == 0):
-		check_error(c"manifest has no targets array: ", label)
-		return 1
-	if (targets.type != json_type_array()):
-		check_error(c"manifest targets is not an array: ", label)
-		return 1
-	check_target_names = new list[char*]
+	check_target_names = m.names
 	check_target_index = new map[char*, int]
 	int i = 0
-	while (i < json_array_length(targets)):
-		json_value* target = json_array_get(targets, i)
-		if (target.type == json_type_object()):
-			json_value* name = json_object_get(target, c"name")
-			if (name != 0):
-				if (name.type == json_type_string()):
-					check_target_names.push(name.string_value)
-					check_target_index[name.string_value] = check_target_names.length
+	while (i < check_target_names.length):
+		check_target_index[check_target_names[i]] = i + 1
 		i = i + 1
 	return 0
 

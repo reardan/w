@@ -733,8 +733,8 @@ list[char*] wbd_request_args(json_value* params, char** why):
 	if ((cwd == 0) || (cwd.type != json_type_string()) || (strcmp(cwd.string_value, wbd_root) != 0)):
 		*why = c"client working directory differs from the daemon's root"
 		return 0
-	json_value* args = json_object_get(params, c"args")
-	if ((args == 0) || (args.type != json_type_array())):
+	json_value* args = jfield_array(params, c"args")
+	if (args == 0):
 		*why = c"args must be an array"
 		return 0
 	list[char*] out = new list[char*]
@@ -1295,8 +1295,8 @@ void wbd_start_build(wbd_conn* c, json_value* message):
 	if (c.building || (c.fds.length != 3)):
 		wbd_build_refuse(c, id, c"a build needs the client's stdin, stdout and stderr descriptors")
 		return
-	json_value* env = json_object_get(params, c"env")
-	if ((env == 0) || (env.type != json_type_array())):
+	json_value* env = jfield_array(params, c"env")
+	if (env == 0):
 		wbd_build_refuse(c, id, c"env must be an array")
 		return
 	char** envp = strv_new(json_array_length(env))
@@ -1706,13 +1706,6 @@ int wbd_query(char* method, char* tool, char* sub, list[char*] args):
 	return code
 
 
-int wbd_json_int(json_value* object, char* key):
-	json_value* v = json_object_get(object, key)
-	if ((v == 0) || (v.type != json_type_int())):
-		return 0
-	return v.int_value
-
-
 int wbd_status_main(list[char*] args):
 	int as_json = 0
 	for char* a in args:
@@ -1731,7 +1724,7 @@ int wbd_status_main(list[char*] args):
 		return 0
 	string_builder* s = string_new()
 	string_append(s, c"wbuildd: running (pid ")
-	string_append_int(s, wbd_json_int(result, c"pid"))
+	string_append_int(s, jfield_int(result, c"pid", 0))
 	string_append(s, c")\nroot: ")
 	json_value* root = json_object_get(result, c"root")
 	if ((root != 0) && (root.type == json_type_string())):
@@ -1739,19 +1732,19 @@ int wbd_status_main(list[char*] args):
 	string_append(s, c"\nsocket: ")
 	string_append(s, wbd_socket_path)
 	string_append(s, c"\nuptime_ms: ")
-	string_append_int(s, wbd_json_int(result, c"uptime_ms"))
+	string_append_int(s, jfield_int(result, c"uptime_ms", 0))
 	string_append(s, c"\ncached_entries: ")
-	string_append_int(s, wbd_json_int(result, c"cached_entries"))
+	string_append_int(s, jfield_int(result, c"cached_entries", 0))
 	string_append(s, c"\nrequests: ")
-	string_append_int(s, wbd_json_int(result, c"requests"))
+	string_append_int(s, jfield_int(result, c"requests", 0))
 	string_append(s, c"\nhits: ")
-	string_append_int(s, wbd_json_int(result, c"hits"))
+	string_append_int(s, jfield_int(result, c"hits", 0))
 	string_append(s, c"\nmisses: ")
-	string_append_int(s, wbd_json_int(result, c"misses"))
+	string_append_int(s, jfield_int(result, c"misses", 0))
 	string_append(s, c"\ninvalidations: ")
-	string_append_int(s, wbd_json_int(result, c"invalidations"))
+	string_append_int(s, jfield_int(result, c"invalidations", 0))
 	string_append(s, c"\nwatched_dirs: ")
-	string_append_int(s, wbd_json_int(result, c"watched_dirs"))
+	string_append_int(s, jfield_int(result, c"watched_dirs", 0))
 	string_append(s, c"\nprewarm: ")
 	json_value* prewarm = json_object_get(result, c"prewarm")
 	if ((prewarm != 0) && (prewarm.type == json_type_string())):
@@ -2003,7 +1996,7 @@ int wbd_build_main(list[char*] args):
 		json_value* method = json_object_get(message, c"method")
 		if ((method != 0) && (method.type == json_type_string()) && (strcmp(method.string_value, c"build_started") == 0)):
 			json_value* started_params = json_object_get(message, c"params")
-			wbd_build_pid = wbd_json_int(started_params, c"pid")
+			wbd_build_pid = jfield_int(started_params, c"pid", 0)
 			if (started == 0):
 				started = 1
 				wexec_install_termination_handler(cast(int, wbd_forward_signal))

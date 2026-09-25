@@ -155,6 +155,7 @@ import tools.__arch__.wexec_platform
 import tools.__arch__.wexec_remote_http
 import tools.wexec_trace
 import tools.manifest_source
+import tools.manifest_json
 import lib.str
 import lib.dir
 
@@ -214,17 +215,6 @@ void wexec_usage():
 	stream_flush(err)
 
 
-/* JSON field accessors tolerating absent keys. */
-
-char* wexec_get_string(json_value* object, char* key):
-	json_value* value = json_object_get(object, key)
-	if (value == 0):
-		return 0
-	if (value.type != json_type_string()):
-		return 0
-	return value.string_value
-
-
 int wexec_step_timeout_loaded
 int wexec_step_timeout_default
 
@@ -254,20 +244,7 @@ int wexec_default_step_timeout_ms():
 # (0 or negative = this step opts out of timeouts entirely); an absent
 # field falls back to the default above.
 int wexec_step_timeout_ms(json_value* step):
-	json_value* value = json_object_get(step, c"timeout_ms")
-	if (value != 0):
-		if (value.type == json_type_int()):
-			return value.int_value
-	return wexec_default_step_timeout_ms()
-
-
-int wexec_get_flag(json_value* object, char* key):
-	json_value* value = json_object_get(object, key)
-	if (value == 0):
-		return 0
-	if ((value.type == json_type_bool()) | (value.type == json_type_int())):
-		return value.int_value != 0
-	return 0
+	return jfield_int(step, c"timeout_ms", wexec_default_step_timeout_ms())
 
 
 /* Content-hash caching.
@@ -835,10 +812,8 @@ wexec_deps_entry* wexec_deps_lookup(char* arch, char* root):
 # lists. Dependency targets' roots are not collected — their closures are
 # already chained in through the dependency cache keys.
 void wexec_deps_collect_roots(json_value* target, list[char*] archs, list[char*] roots):
-	json_value* steps = json_object_get(target, c"steps")
+	json_value* steps = jfield_array(target, c"steps")
 	if (steps == 0):
-		return
-	if (steps.type != json_type_array()):
 		return
 	int s = 0
 	while (s < json_array_length(steps)):
@@ -846,10 +821,8 @@ void wexec_deps_collect_roots(json_value* target, list[char*] archs, list[char*]
 		s = s + 1
 		if (step.type != json_type_object()):
 			continue
-		json_value* cmd = json_object_get(step, c"cmd")
+		json_value* cmd = jfield_array(step, c"cmd")
 		if (cmd == 0):
-			continue
-		if (cmd.type != json_type_array()):
 			continue
 		int n = json_array_length(cmd)
 		if (n < 2):
@@ -1058,10 +1031,8 @@ char* wexec_resolve_direct_file(char* arch, char* path):
 # (no "inputs" declared, or a dependency without a key of its own).
 # Dependencies must have finished before this is called.
 char* wexec_cache_key(char* name, json_value* target):
-	json_value* inputs = json_object_get(target, c"inputs")
+	json_value* inputs = jfield_array(target, c"inputs")
 	if (inputs == 0):
-		return 0
-	if (inputs.type != json_type_array()):
 		return 0
 
 	wexec_hash h
@@ -1070,18 +1041,17 @@ char* wexec_cache_key(char* name, json_value* target):
 	wexec_hash_cstr(&h, definition)
 	free(definition)
 
-	json_value* deps = json_object_get(target, c"deps")
+	json_value* deps = jfield_array(target, c"deps")
 	if (deps != 0):
-		if (deps.type == json_type_array()):
-			int i = 0
-			while (i < json_array_length(deps)):
-				json_value* dep = json_array_get(deps, i)
-				if (dep.type == json_type_string()):
-					char* dep_key = wexec_keys.get(dep.string_value, 0)
-					if (dep_key == 0):
-						return 0
-					wexec_hash_cstr(&h, dep_key)
-				i = i + 1
+		int i = 0
+		while (i < json_array_length(deps)):
+			json_value* dep = json_array_get(deps, i)
+			if (dep.type == json_type_string()):
+				char* dep_key = wexec_keys.get(dep.string_value, 0)
+				if (dep_key == 0):
+					return 0
+				wexec_hash_cstr(&h, dep_key)
+			i = i + 1
 
 	# Deps-driven keys: hash each compile root's import closure. A root
 	# that fails 'bin/wv2 deps' disables closure keying for the whole
@@ -1154,18 +1124,17 @@ int wexec_cache_fresh(char* name, char* key, json_value* target):
 	free(stamp)
 	if (same == 0):
 		return 0
-	json_value* outputs = json_object_get(target, c"outputs")
+	json_value* outputs = jfield_array(target, c"outputs")
 	if (outputs != 0):
-		if (outputs.type == json_type_array()):
-			int i = 0
-			while (i < json_array_length(outputs)):
-				json_value* output = json_array_get(outputs, i)
-				if (output.type == json_type_string()):
-					int fd = open(output.string_value, 0, 0)
-					if (fd < 0):
-						return 0
-					close(fd)
-				i = i + 1
+		int i = 0
+		while (i < json_array_length(outputs)):
+			json_value* output = json_array_get(outputs, i)
+			if (output.type == json_type_string()):
+				int fd = open(output.string_value, 0, 0)
+				if (fd < 0):
+					return 0
+				close(fd)
+			i = i + 1
 	return 1
 
 
@@ -1193,19 +1162,12 @@ so silently disables caching for everything downstream of it, with no
 diagnostic at build time. */
 
 int wexec_target_declares_inputs(json_value* target):
-	json_value* inputs = json_object_get(target, c"inputs")
-	if (inputs == 0):
-		return 0
-	if (inputs.type != json_type_array()):
-		return 0
-	return 1
+	return jfield_array(target, c"inputs") != 0
 
 
 int wexec_target_dep_count(json_value* target):
-	json_value* deps = json_object_get(target, c"deps")
+	json_value* deps = jfield_array(target, c"deps")
 	if (deps == 0):
-		return 0
-	if (deps.type != json_type_array()):
 		return 0
 	return json_array_length(deps)
 
@@ -1250,18 +1212,17 @@ int wexec_explain_find_broken(char* start, list[char*] chain_out):
 					node = parent.get(node, 0)
 				wexec_reverse_strings(chain_out)
 				return 1
-		json_value* deps = json_object_get(cur_target, c"deps")
+		json_value* deps = jfield_array(cur_target, c"deps")
 		if (deps != 0):
-			if (deps.type == json_type_array()):
-				int i = 0
-				while (i < json_array_length(deps)):
-					json_value* dep = json_array_get(deps, i)
-					if (dep.type == json_type_string()):
-						if (seen.get(dep.string_value, 0) == 0):
-							seen[dep.string_value] = 1
-							parent[dep.string_value] = cur
-							queue.push(dep.string_value)
-					i = i + 1
+			int i = 0
+			while (i < json_array_length(deps)):
+				json_value* dep = json_array_get(deps, i)
+				if (dep.type == json_type_string()):
+					if (seen.get(dep.string_value, 0) == 0):
+						seen[dep.string_value] = 1
+						parent[dep.string_value] = cur
+						queue.push(dep.string_value)
+				i = i + 1
 	return 0
 
 
@@ -1446,7 +1407,7 @@ void wexec_emit_output(process_result* result):
 # it makes a green run look broken (wexec_test's intentional-failure
 # fixtures print "wexec: error: ..." into a passing suite log).
 int wexec_step_expects_failure(json_value* step):
-	if (wexec_get_flag(step, c"expect_fail") || wexec_get_flag(step, c"expect_signal")):
+	if (jfield_flag(step, c"expect_fail") || jfield_flag(step, c"expect_signal")):
 		return 1
 	json_value* wanted = json_object_get(step, c"expect_status")
 	if (wanted != 0):
@@ -1638,12 +1599,12 @@ int wexec_check_status(char* target_name, int step_index, json_value* step, proc
 			wexec_step_error(target_name, step_index, cstr(f"command exited {result.status}, expected status {wanted.int_value}"))
 			return 1
 		return 0
-	if (wexec_get_flag(step, c"expect_signal")):
+	if (jfield_flag(step, c"expect_signal")):
 		if (result.status < 129):
 			wexec_step_error(target_name, step_index, cstr(f"command was expected to die from a signal (status 129-255) but exited {result.status}"))
 			return 1
 		return 0
-	if (wexec_get_flag(step, c"expect_fail")):
+	if (jfield_flag(step, c"expect_fail")):
 		if (result.status == 0):
 			wexec_step_error(target_name, step_index, c"command was expected to fail but exited 0")
 			return 1
@@ -1704,7 +1665,7 @@ int wexec_check_expectation(char* target_name, int step_index, json_value* step,
 # "stdout_file" / "stderr_file": save the captured stream to a path,
 # the manifest's version of a "> file" shell redirect.
 int wexec_write_capture(char* target_name, int step_index, json_value* step, char* key, char* data, int length):
-	char* path = wexec_get_string(step, key)
+	char* path = jfield_string(step, key)
 	if (path == 0):
 		return 0
 	# 577 = O_WRONLY | O_CREAT | O_TRUNC, 420 = rw-r--r--
@@ -1955,13 +1916,13 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 			argv = native
 	wexec_echo_command(argv, count)
 	char* program = wexec_resolve_program(strv_get(argv, 0))
-	char* stdin_text = wexec_get_string(step, c"stdin")
+	char* stdin_text = jfield_string(step, c"stdin")
 	int timeout_ms = wexec_step_timeout_ms(step)
 	spawn_options* opts = wexec_step_spawn_options(target_name, step_index, step)
 	if (opts == 0):
 		free(cast(char*, argv))
 		return 1
-	char* cwd = wexec_get_string(step, c"cwd")
+	char* cwd = jfield_string(step, c"cwd")
 	if (cwd != 0):
 		program = wexec_absolute_program(program)
 	process_result* result = process_run(program, argv, opts, stdin_text, timeout_ms)
@@ -2076,8 +2037,8 @@ void wexec_gen_load_outputs():
 	json_value* umbrella = wexec_targets.get(c"generated", 0)
 	if (umbrella == 0):
 		return
-	json_value* deps = json_object_get(umbrella, c"deps")
-	if ((deps == 0) || (deps.type != json_type_array())):
+	json_value* deps = jfield_array(umbrella, c"deps")
+	if (deps == 0):
 		return
 	int i = 0
 	while (i < json_array_length(deps)):
@@ -2272,10 +2233,8 @@ void wexec_remote_warn(char* detail):
 
 
 int wexec_target_has_outputs(json_value* target):
-	json_value* outputs = json_object_get(target, c"outputs")
+	json_value* outputs = jfield_array(target, c"outputs")
 	if (outputs == 0):
-		return 0
-	if (outputs.type != json_type_array()):
 		return 0
 	return json_array_length(outputs) > 0
 
@@ -2416,10 +2375,8 @@ char* wexec_read_file_bytes(char* path, int* out_len):
 # just ran should always have its outputs present, but a push is
 # best-effort and never worth failing the build over.
 char* wexec_bundle_build(json_value* target, int* out_len):
-	json_value* outputs = json_object_get(target, c"outputs")
+	json_value* outputs = jfield_array(target, c"outputs")
 	if (outputs == 0):
-		return 0
-	if (outputs.type != json_type_array()):
 		return 0
 	int n = json_array_length(outputs)
 	if (n == 0):
@@ -2988,10 +2945,8 @@ int wexec_execute(list[char*] requested):
 
 
 void wexec_make_dirs():
-	json_value* dirs = json_object_get(wexec_manifest, c"dirs")
+	json_value* dirs = jfield_array(wexec_manifest, c"dirs")
 	if (dirs == 0):
-		return
-	if (dirs.type != json_type_array()):
 		return
 	int i = 0
 	while (i < json_array_length(dirs)):
@@ -3036,8 +2991,9 @@ int wexec_load_manifest(char* path):
 		wexec_error(c"manifest generation failed; loading build.base.json's targets only")
 		text = manifest_source_text(path, 0)
 	path = manifest_source_label
+	manifest* m = 0
 	if (warm):
-		wexec_manifest = wexec_warm_manifest
+		m = manifest_from_json(wexec_warm_manifest, path, 1)
 	else:
 		if (text == 0):
 			if (strcmp(path, c"build.base.json") == 0):
@@ -3045,48 +3001,23 @@ int wexec_load_manifest(char* path):
 			else:
 				wexec_error2(c"cannot read manifest ", path)
 			return 1
-		wexec_manifest = json_parse(text)
+		m = manifest_parse(text, path, 1)
 		free(text)
-	if (wexec_manifest == 0):
-		wexec_error2(c"manifest is not valid JSON: ", path)
+	if (m == 0):
+		wexec_error(manifest_parse_error)
 		return 1
-	if (wexec_manifest.type != json_type_object()):
-		wexec_error2(c"manifest root must be a JSON object: ", path)
-		return 1
-	json_value* targets = json_object_get(wexec_manifest, c"targets")
-	if (targets == 0):
-		wexec_error2(c"manifest has no \"targets\" array: ", path)
-		return 1
-	if (targets.type != json_type_array()):
-		wexec_error2(c"\"targets\" must be an array: ", path)
-		return 1
-
-	wexec_targets = new map[char*, json_value*]
+	wexec_manifest = m.root
+	wexec_targets = m.by_name
+	wexec_names = m.names
+	free(m)
 	wexec_states = new map[char*, int]
 	wexec_keys = new map[char*, char*]
 	wexec_started = new map[char*, int]
 	wexec_finished = new map[char*, int]
-	wexec_names = new list[char*]
 	wexec_closure = new list[char*]
 	wexec_broken = new map[char*, int]
 	wexec_failed_list = new list[char*]
 	wexec_skipped_list = new list[char*]
-	int i = 0
-	while (i < json_array_length(targets)):
-		json_value* target = json_array_get(targets, i)
-		if (target.type != json_type_object()):
-			wexec_error2(c"every target must be a JSON object: ", path)
-			return 1
-		char* name = wexec_get_string(target, c"name")
-		if (name == 0):
-			wexec_error2(c"target without a \"name\" string: ", path)
-			return 1
-		if (name in wexec_targets):
-			wexec_error2(c"duplicate target ", name)
-			return 1
-		wexec_targets[name] = target
-		wexec_names.push(name)
-		i = i + 1
 	wexec_make_dirs()
 	return 0
 
@@ -3186,10 +3117,8 @@ void wexec_load_generate_exclude():
 		return
 	if (generate.type != json_type_object()):
 		return
-	json_value* exclude = json_object_get(generate, c"exclude")
+	json_value* exclude = jfield_array(generate, c"exclude")
 	if (exclude == 0):
-		return
-	if (exclude.type != json_type_array()):
 		return
 	int i = 0
 	while (i < json_array_length(exclude)):
@@ -3208,10 +3137,8 @@ int wexec_roots_in_generate_exclude(list[char*] roots):
 
 
 int wexec_step_shells_out(json_value* step):
-	json_value* cmd = json_object_get(step, c"cmd")
+	json_value* cmd = jfield_array(step, c"cmd")
 	if (cmd == 0):
-		return 0
-	if (cmd.type != json_type_array()):
 		return 0
 	if (json_array_length(cmd) < 1):
 		return 0
@@ -3230,10 +3157,8 @@ int wexec_step_shells_out(json_value* step):
 # binary; those steps have no argv-visible relationship to the files
 # they actually touch, unlike a plain "bin/wv2 root.w -o out" step.
 int wexec_target_shells_out(json_value* target):
-	json_value* steps = json_object_get(target, c"steps")
+	json_value* steps = jfield_array(target, c"steps")
 	if (steps == 0):
-		return 0
-	if (steps.type != json_type_array()):
 		return 0
 	int i = 0
 	while (i < json_array_length(steps)):
@@ -3255,15 +3180,14 @@ void wexec_list_json_one(wstream* out, char* name):
 			step_count = json_array_length(steps)
 
 	list[char*] deps = new list[char*]
-	json_value* deps_value = json_object_get(target, c"deps")
+	json_value* deps_value = jfield_array(target, c"deps")
 	if (deps_value != 0):
-		if (deps_value.type == json_type_array()):
-			int i = 0
-			while (i < json_array_length(deps_value)):
-				json_value* dep = json_array_get(deps_value, i)
-				if (dep.type == json_type_string()):
-					deps.push(dep.string_value)
-				i = i + 1
+		int i = 0
+		while (i < json_array_length(deps_value)):
+			json_value* dep = json_array_get(deps_value, i)
+			if (dep.type == json_type_string()):
+				deps.push(dep.string_value)
+			i = i + 1
 
 	list[char*] archs = new list[char*]
 	list[char*] roots = new list[char*]
@@ -3372,26 +3296,25 @@ void wexec_trace_add_blob_lines(map[char*, int] dest, char* blob):
 
 map[char*, int] wexec_trace_collect_declared(json_value* target):
 	map[char*, int] declared = new map[char*, int]
-	json_value* inputs = json_object_get(target, c"inputs")
+	json_value* inputs = jfield_array(target, c"inputs")
 	if (inputs != 0):
-		if (inputs.type == json_type_array()):
-			int i = 0
-			while (i < json_array_length(inputs)):
-				json_value* entry = json_array_get(inputs, i)
-				if (entry.type == json_type_string()):
-					char* path = entry.string_value
-					int n = strlen(path)
-					if ((n > 0) && (path[n - 1] == '/')):
-						char* dir = strclone(path)
-						dir[n - 1] = 0
-						list[char*] walked = new list[char*]
-						wexec_collect_dir(dir, walked)
-						for char* found in walked:
-							declared[found] = 1
-						free(dir)
-					else:
-						declared[path] = 1
-				i = i + 1
+		int i = 0
+		while (i < json_array_length(inputs)):
+			json_value* entry = json_array_get(inputs, i)
+			if (entry.type == json_type_string()):
+				char* path = entry.string_value
+				int n = strlen(path)
+				if ((n > 0) && (path[n - 1] == '/')):
+					char* dir = strclone(path)
+					dir[n - 1] = 0
+					list[char*] walked = new list[char*]
+					wexec_collect_dir(dir, walked)
+					for char* found in walked:
+						declared[found] = 1
+					free(dir)
+				else:
+					declared[path] = 1
+			i = i + 1
 	if (wexec_deps_usable()):
 		list[char*] archs = new list[char*]
 		list[char*] roots = new list[char*]

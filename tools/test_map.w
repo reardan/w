@@ -587,15 +587,6 @@ int wtest_file_exists(char* path):
 
 /* Manifest loading (the read-only subset of tools/wexec.w's parser). */
 
-char* wtest_get_string(json_value* object, char* key):
-	json_value* value = json_object_get(object, key)
-	if (value == 0):
-		return 0
-	if (value.type != json_type_string()):
-		return 0
-	return value.string_value
-
-
 # wtest_manifest_path = 0 (no -f) generates the manifest in memory
 # exactly as bin/wexec does (tools/manifest_source.w), so selection and
 # execution always agree on the target set.
@@ -608,20 +599,15 @@ int wtest_load_manifest():
 		else:
 			wtest_error(c"cannot read ", label)
 		return 1
-	wtest_manifest = json_parse(text)
+	manifest* m = manifest_parse(text, label, 0)
 	free(text)
-	if (wtest_manifest == 0):
-		wtest_error(c"manifest is not valid JSON: ", label)
+	if (m == 0):
+		wtest_error(manifest_parse_error, c"")
 		return 1
-	json_value* targets = json_object_get(wtest_manifest, c"targets")
-	if (targets == 0):
-		wtest_error(c"manifest has no targets array: ", label)
-		return 1
-	if (targets.type != json_type_array()):
-		wtest_error(c"manifest targets is not an array: ", label)
-		return 1
-	wtest_target_names = new list[char*]
-	wtest_target_defs = new map[char*, json_value*]
+	wtest_manifest = m.root
+	wtest_target_names = m.names
+	wtest_target_defs = m.by_name
+	free(m)
 	wtest_enabled = new map[char*, int]
 	wtest_never_emit = new map[char*, int]
 	wtest_never_emit[c"update"] = 1
@@ -637,15 +623,6 @@ int wtest_load_manifest():
 	# alone is the drift gate; 'manifest' is the fix a failing gate tells
 	# the caller to run.
 	wtest_never_emit[c"manifest"] = 1
-	int i = 0
-	while (i < json_array_length(targets)):
-		json_value* target = json_array_get(targets, i)
-		if (target.type == json_type_object()):
-			char* name = wtest_get_string(target, c"name")
-			if (name != 0):
-				wtest_target_defs[name] = target
-				wtest_target_names.push(name)
-		i = i + 1
 	return 0
 
 
@@ -653,12 +630,7 @@ json_value* wtest_target_steps(char* name):
 	json_value* target = wtest_target_defs.get(name, 0)
 	if (target == 0):
 		return 0
-	json_value* steps = json_object_get(target, c"steps")
-	if (steps == 0):
-		return 0
-	if (steps.type != json_type_array()):
-		return 0
-	return steps
+	return jfield_array(target, c"steps")
 
 
 # A target participates in literal/closure selection when it has steps
@@ -688,19 +660,18 @@ void wtest_add(char* path, char* target):
 int wtest_step_mentions(json_value* step, char* path, int path_has_slash):
 	if (step.type != json_type_object()):
 		return 0
-	json_value* cmd = json_object_get(step, c"cmd")
+	json_value* cmd = jfield_array(step, c"cmd")
 	if (cmd != 0):
-		if (cmd.type == json_type_array()):
-			int i = 0
-			while (i < json_array_length(cmd)):
-				json_value* piece = json_array_get(cmd, i)
-				if (piece.type == json_type_string()):
-					if (strcmp(piece.string_value, path) == 0):
-						return 1
-					if (path_has_slash && contains(piece.string_value, path)):
-						return 1
-				i = i + 1
-	char* stdin_text = wtest_get_string(step, c"stdin")
+		int i = 0
+		while (i < json_array_length(cmd)):
+			json_value* piece = json_array_get(cmd, i)
+			if (piece.type == json_type_string()):
+				if (strcmp(piece.string_value, path) == 0):
+					return 1
+				if (path_has_slash && contains(piece.string_value, path)):
+					return 1
+			i = i + 1
+	char* stdin_text = jfield_string(step, c"stdin")
 	if (stdin_text != 0):
 		if (contains(stdin_text, path)):
 			return 1
@@ -726,10 +697,8 @@ int wtest_target_data_mentions(char* name, char* path):
 	json_value* target = wtest_target_defs.get(name, 0)
 	if (target == 0):
 		return 0
-	json_value* data = json_object_get(target, c"data")
+	json_value* data = jfield_array(target, c"data")
 	if (data == 0):
-		return 0
-	if (data.type != json_type_array()):
 		return 0
 	int i = 0
 	while (i < json_array_length(data)):
@@ -838,10 +807,8 @@ void wtest_collect_own_roots(char* name, list[char*] out):
 		s = s + 1
 		if (step.type != json_type_object()):
 			continue
-		json_value* cmd = json_object_get(step, c"cmd")
+		json_value* cmd = jfield_array(step, c"cmd")
 		if (cmd == 0):
-			continue
-		if (cmd.type != json_type_array()):
 			continue
 		int n = json_array_length(cmd)
 		if (n < 2):
@@ -895,15 +862,14 @@ void wtest_collect_target_roots(char* name, list[char*] out):
 		if (target == 0):
 			continue
 		wtest_collect_own_roots(current, out)
-		json_value* deps = json_object_get(target, c"deps")
+		json_value* deps = jfield_array(target, c"deps")
 		if (deps != 0):
-			if (deps.type == json_type_array()):
-				int i = 0
-				while (i < json_array_length(deps)):
-					json_value* dep = json_array_get(deps, i)
-					if (dep.type == json_type_string()):
-						stack.push(dep.string_value)
-					i = i + 1
+			int i = 0
+			while (i < json_array_length(deps)):
+				json_value* dep = json_array_get(deps, i)
+				if (dep.type == json_type_string()):
+					stack.push(dep.string_value)
+				i = i + 1
 
 
 void wtest_ensure_roots():
@@ -1975,9 +1941,9 @@ map[char*, char*] wtest_defhash_collect(char* file_path):
 				else if (rec.type != json_type_object()):
 					failed = 1
 				else:
-					char* name = wtest_get_string(rec, c"name")
-					char* kind = wtest_get_string(rec, c"kind")
-					char* hash = wtest_get_string(rec, c"hash")
+					char* name = jfield_string(rec, c"name")
+					char* kind = jfield_string(rec, c"kind")
+					char* hash = jfield_string(rec, c"hash")
 					if ((name == 0) || (kind == 0) || (hash == 0)):
 						failed = 1
 					else:
@@ -2331,10 +2297,8 @@ int wtest_scan_dir_path(char* path):
 
 # The step's cmd as a nonempty all-string array, or 0.
 json_value* wtest_step_cmd(json_value* step):
-	json_value* cmd = json_object_get(step, c"cmd")
+	json_value* cmd = jfield_array(step, c"cmd")
 	if (cmd == 0):
-		return 0
-	if (cmd.type != json_type_array()):
 		return 0
 	int n = json_array_length(cmd)
 	if (n == 0):
@@ -3038,10 +3002,8 @@ char* wtest_target_runnable_reason(char* name):
 char* wtest_step_unavailable_reason(json_value* step):
 	if (step.type != json_type_object()):
 		return 0
-	json_value* cmd = json_object_get(step, c"cmd")
+	json_value* cmd = jfield_array(step, c"cmd")
 	if (cmd == 0):
-		return 0
-	if (cmd.type != json_type_array()):
 		return 0
 	int n = json_array_length(cmd)
 	if (n == 0):
@@ -3194,10 +3156,8 @@ int wtest_umbrella_target(char* name):
 	if (steps != 0):
 		if (json_array_length(steps) > 0):
 			return 0
-	json_value* deps = json_object_get(target, c"deps")
+	json_value* deps = jfield_array(target, c"deps")
 	if (deps == 0):
-		return 0
-	if (deps.type != json_type_array()):
 		return 0
 	if (json_array_length(deps) == 0):
 		return 0
@@ -3224,10 +3184,8 @@ int wtest_deps_cover_dropped(char* name, map[char*, int] visited):
 	json_value* target = wtest_target_defs.get(name, 0)
 	if (target == 0):
 		return 0
-	json_value* deps = json_object_get(target, c"deps")
+	json_value* deps = jfield_array(target, c"deps")
 	if (deps == 0):
-		return 0
-	if (deps.type != json_type_array()):
 		return 0
 	int i = 0
 	while (i < json_array_length(deps)):
