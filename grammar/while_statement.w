@@ -46,7 +46,9 @@ int while_statement():
 	# if not expression: leave the loop
 	int outer_condition = condition_context
 	condition_context = 1
+	lint_condition_begin()
 	promote(expression())
+	lint_condition_end()
 	condition_context = outer_condition
 	be_br_zero_discard(loop_break_chain)
 

@@ -80,6 +80,7 @@ int inferred_declaration():
 	# initializer, so the initializer cannot reference the new name and
 	# the recorded slot index needs no post-expression fixup.
 	sym_declare(name, type, 'L', stack_pos, 1)
+	lint_track_local(table_pos - symbol_data_size())
 	free(name)
 	pointer_indirection = 0
 	int size = type_stack_words(type)
@@ -110,6 +111,8 @@ int variable_declaration():
 	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here() | (import_alias_type_ahead(0) >= 0)):
 		# println2("variable_declaration()")
 		int type = typed_identifier()
+		lint_track_local(last_declared_symbol)
+		lint_check_shadow()
 		int has_initializer = 0
 		int type2 = -1
 		# = expression

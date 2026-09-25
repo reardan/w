@@ -114,8 +114,10 @@ working in this repo.
   the program under test with the env var rather than a full-suite sweep of
   every `*_test` binary — large tests under debug alloc can peg the CPU for
   minutes.
-- There is **no separate linter**. "Lint" is the compiler's own type/style warnings,
-  asserted by the `warning_test` target. Compile-diagnostic fixtures carry their
+- There is **no separate linter binary**. The compiler's own type/style warnings are
+  always on and asserted by the `warning_test` target; `w check --lint` adds opt-in
+  lint rules for the named files and `w check --fix` rewrites their whitespace
+  issues in place (docs/projects/lint.md, asserted by `lint_test`). Compile-diagnostic fixtures carry their
   expected messages as `# expect_stderr:`-style directive lines in their own header
   comments, run by `bin/wfixture` (`tools/wfixture.w`); see the header of that tool
   for the directive syntax.

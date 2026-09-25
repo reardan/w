@@ -154,7 +154,9 @@ void if_statement_tail():
 	condition_context = 1
 	int p1 = be_ctrl_block() /* ends after the whole if/elif/else */
 	int p2 = be_ctrl_block() /* ends at the elif/else branch */
+	lint_condition_begin()
 	promote(expression())
+	lint_condition_end()
 	condition_context = outer_condition
 	be_br_zero_discard(p2)
 	enclosing_tab_level = if_tab_level
@@ -208,6 +210,9 @@ void statement():
 	stmt_nesting_depth = stmt_nesting_depth + 1
 	if (stmt_nesting_depth > 200):
 		error(c"statement nesting too deep")
+	# Set by the return/break/continue/goto arms below; published through
+	# lint_last_stmt_jumps at the bottom (compiler/lint.w, unreachable)
+	int jumps = 0
 
 	# DWARF line info: the code emitted next belongs to this source line
 	debug_line_note(stack_pos)
@@ -218,13 +223,17 @@ void statement():
 		int s = stack_pos
 		int is_function_body = defer_function_body_pending
 		defer_function_body_pending = 0
+		int brace_after_jump = 0
 		while (accept(c"}") == 0):
+			lint_unreachable_check(brace_after_jump)
 			statement()
+			brace_after_jump = lint_last_stmt_jumps
 		# The function body block closing is the fall-through exit: run
 		# the deferred statements (LIFO) while the body's locals are
 		# still in scope
 		if (is_function_body):
 			defer_emit_all()
+		lint_scope_exit(n)
 		table_pos = n
 		be_pop(stack_pos - s)
 		stack_pos = s
@@ -249,13 +258,17 @@ void statement():
 		if (same_line == 0):
 			# An un-indented next line means the block is empty (like 'pass')
 			if (start_tab_level > block_tab_level):
+				int after_jump = 0
 				while(start_tab_level <= tab_level):
+					lint_unreachable_check(after_jump)
 					statement()
+					after_jump = lint_last_stmt_jumps
 		# The function body block closing is the fall-through exit: run
 		# the deferred statements (LIFO) while the body's locals are
 		# still in scope
 		if (is_function_body):
 			defer_emit_all()
+		lint_scope_exit(n)
 		table_pos = n
 		print_int_v1(c"ending stack_pos: ", stack_pos)
 		be_pop(stack_pos - s)
@@ -277,6 +290,7 @@ void statement():
 	# 'break' targets the innermost breakable construct: a switch when
 	# break_in_switch is set (grammar/while_statement.w), a loop otherwise
 	else if (accept(c"break")):
+		jumps = 1
 		expect_or_newline(c";")
 		if ((loop_depth == 0) && (switch_depth == 0)):
 			error(c"'break' outside of a loop or switch")
@@ -291,9 +305,11 @@ void statement():
 				be_pop(stack_pos - loop_stack_pos)
 			be_br(loop_break_chain)
 
-	else if (goto_statement()) {}
+	else if (goto_statement()):
+		jumps = 1
 
 	else if (accept(c"continue")):
+		jumps = 1
 		expect_or_newline(c";")
 		if (loop_depth == 0):
 			error(c"'continue' outside of a loop")
@@ -302,6 +318,7 @@ void statement():
 		be_br(loop_continue_chain)
 
 	else if (accept(c"return")):
+		jumps = 1
 		# Each 'gpu for' iteration is one GPU thread: there is no host
 		# frame to return from inside the outlined body.
 		if (in_gpu_for_body):
@@ -405,3 +422,4 @@ void statement():
 	# chain above falls through to here (none of them return early), so
 	# this single decrement is reached on every normal exit.
 	stmt_nesting_depth = stmt_nesting_depth - 1
+	lint_last_stmt_jumps = jumps
