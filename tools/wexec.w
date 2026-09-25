@@ -145,7 +145,6 @@ import lib.lib
 import lib.env
 import lib.file
 import lib.process
-import lib.sha256
 import lib.stat
 import lib.stream
 import lib.utf8
@@ -156,6 +155,7 @@ import tools.__arch__.wexec_remote_http
 import tools.wexec_trace
 import tools.manifest_source
 import tools.manifest_json
+import tools.deps_cache
 import lib.str
 import lib.dir
 
@@ -265,122 +265,18 @@ The digest widened from a 32-hex-char pair of rolling hashes to a
 computed key: it degrades to a plain cache miss (an ordinary rebuild),
 never an error. */
 
-struct wexec_hash:
-	int* state          # 8 running 32-bit words: SHA-256 h[0..7]
-	char* block          # 64-byte pending block, not yet compressed
-	int block_len        # bytes buffered in block, 0..63
-	int total_len        # total bytes hashed so far
-
-
-# Streams bytes through lib.sha256's block compressor (sha256_block) 64
-# bytes at a time, instead of buffering a target's whole definition plus
-# every input file before hashing once. lib/sha256.w is seed-compiled
-# and is not modified here — only its already-public building blocks
-# (sha256_h0_table/sha256_be32/sha256_put_be32/sha256_mask32/
-# sha256_block) are reused, mirroring what sha256()'s own tail handling
-# does, applied incrementally instead of over one flat buffer.
-void wexec_hash_init(wexec_hash* h):
-	h.state = cast(int*, malloc(8 * __word_size__))
-	char* h0 = sha256_h0_table()
-	int i = 0
-	while (i < 8):
-		h.state[i] = sha256_be32(h0 + i * 4)
-		i = i + 1
-	h.block = malloc(64)
-	h.block_len = 0
-	h.total_len = 0
-
-
-void wexec_hash_bytes(wexec_hash* h, char* data, int n):
-	h.total_len = h.total_len + n
-	int i = 0
-	while (i < n):
-		h.block[h.block_len] = data[i]
-		h.block_len = h.block_len + 1
-		if (h.block_len == 64):
-			sha256_block(h.state, h.block)
-			h.block_len = 0
-		i = i + 1
-
-
-# Strings never contain NUL, so a trailing 0 byte keeps consecutive
-# strings from colliding with their concatenation.
-void wexec_hash_cstr(wexec_hash* h, char* text):
-	wexec_hash_bytes(h, text, strlen(text))
-	char zero = 0
-	wexec_hash_bytes(h, &zero, 1)
-
-
-void wexec_hash_file(wexec_hash* h, char* path):
+void wexec_hash_file(deps_hash* h, char* path):
 	int fd = open(path, 0, 0)
 	if (fd < 0):
-		wexec_hash_cstr(h, c"<missing input>")
+		deps_hash_cstr(h, c"<missing input>")
 		return
 	char* buffer = malloc(4096)
 	int n = read(fd, buffer, 4096)
 	while (n > 0):
-		wexec_hash_bytes(h, buffer, n)
+		deps_hash_bytes(h, buffer, n)
 		n = read(fd, buffer, 4096)
 	free(buffer)
 	close(fd)
-
-
-void wexec_append_hex_byte(string_builder* s, int value):
-	int hi = (value >> 4) & 15
-	int lo = value & 15
-	if (hi < 10):
-		string_append_char(s, '0' + hi)
-	else:
-		string_append_char(s, 'a' + hi - 10)
-	if (lo < 10):
-		string_append_char(s, '0' + lo)
-	else:
-		string_append_char(s, 'a' + lo - 10)
-
-
-# Finalize: pad the trailing partial block exactly as sha256()'s own tail
-# handling does (0x80 terminator, zero pad, 64-bit big-endian bit
-# length), compress it, then hex-encode all 32 digest bytes — 64 hex
-# characters, twice the old two-int rolling hash's 32.
-char* wexec_hash_hex(wexec_hash* h):
-	char* tail = malloc(128)
-	int j = 0
-	while (j < 128):
-		tail[j] = 0
-		j = j + 1
-	j = 0
-	while (j < h.block_len):
-		tail[j] = h.block[j]
-		j = j + 1
-	tail[h.block_len] = 128 /* 0x80 */
-	int blocks = 1
-	if (h.block_len >= 56):
-		blocks = 2
-	int bitlen_pos = blocks * 64 - 8
-	sha256_put_be32(tail + bitlen_pos, (h.total_len >> 29) & sha256_mask32())
-	sha256_put_be32(tail + bitlen_pos + 4, (h.total_len << 3) & sha256_mask32())
-	sha256_block(h.state, tail)
-	if (blocks == 2):
-		sha256_block(h.state, tail + 64)
-	free(tail)
-
-	char* digest = malloc(32)
-	int i = 0
-	while (i < 8):
-		sha256_put_be32(digest + i * 4, h.state[i])
-		i = i + 1
-
-	string_builder* s = string_new()
-	i = 0
-	while (i < 32):
-		wexec_append_hex_byte(s, digest[i] & 255)
-		i = i + 1
-	free(digest)
-	free(h.state)
-	free(h.block)
-	char* text = s.data
-	free(s)
-	return text
 
 
 int wexec_load_uint16(char* p):
@@ -488,93 +384,21 @@ target cacheable that was not already opted in, because targets like
 parser_generator_w_test depend on out-of-graph state (every tracked .w)
 that no closure can see.
 
-Closures are cached in bin/.wexec_deps_cache — the bin/.wtest_deps_cache
-format with a leading target-selector column:
+Closures are cached in bin/.wexec_deps_cache (tools/deps_cache.w, the
+record format bin/wtest's cache uses too, SHA-256 digests here). A
+record is reused while re-hashing its closure files reproduces its
+digest. A root that fails to compile is cached as a failure keyed on
+the root file's own content only, and retried once that changes; a
+target with a failed root keeps the pre-closure key (declared inputs,
+.w files included), so targets that compile intentionally-broken
+fixtures behave exactly as before. Records are validated lazily, only
+for roots the requested targets actually compile; the cache file is
+rewritten after a run that recomputed anything, preserving untouched
+records. When bin/wv2 does not exist, closures are skipped entirely and
+every target keeps its pre-closure key. */
 
-  R <arch> <root>
-  H <combined content hash over the closure's (path, content) pairs>
-  F <closure file> (one line per file, in deps output order)
-
-An entry is reused while re-hashing every F file reproduces H. A root
-that fails to compile is cached as
-
-  X <arch> <root>
-  H <content hash of the root file itself>
-
-and retried once the root's own content changes; a target with a failed
-root keeps the pre-closure key (declared inputs, .w files included), so
-targets that compile intentionally-broken fixtures behave exactly as
-before. Entries are validated lazily, only for roots the requested
-targets actually compile; the cache file is rewritten after a run that
-recomputed anything, preserving untouched entries verbatim. When bin/wv2
-does not exist, closures are skipped entirely and every target keeps its
-pre-closure key. */
-
-struct wexec_deps_entry:
-	char* arch          # selector word; "x86" for the default target
-	char* root
-	int failed          # 'X' record: the root did not compile
-	int checked         # validated or recomputed during this run
-	char* digest        # the H line value
-	char* blob          # newline-guarded closure file list, 0 when failed
-
-
-list[wexec_deps_entry*] wexec_deps_entries
-map[char*, wexec_deps_entry*] wexec_deps_index   # "<arch> <root>" -> entry
-map[char*, char*] wexec_file_hashes              # path -> content hash memo
-int wexec_deps_loaded
-int wexec_deps_dirty
 int wexec_deps_probed
 int wexec_deps_wv2_ok
-
-
-# Content hash of one file, memoized. Missing files hash to a sentinel
-# that can never match a stored digest, so deletions invalidate entries.
-char* wexec_file_hash(char* path):
-	if (wexec_file_hashes == 0):
-		wexec_file_hashes = new map[char*, char*]
-	char* cached = wexec_file_hashes.get(path, 0)
-	if (cached != 0):
-		return cached
-	char* digest = c"<missing>"
-	int fd = open(path, 0, 0)
-	if (fd >= 0):
-		wexec_hash h
-		wexec_hash_init(&h)
-		int buffer_size = 65536
-		char* buffer = malloc(buffer_size)
-		int n = read(fd, buffer, buffer_size)
-		while (n > 0):
-			wexec_hash_bytes(&h, buffer, n)
-			n = read(fd, buffer, buffer_size)
-		free(buffer)
-		close(fd)
-		digest = wexec_hash_hex(&h)
-	wexec_file_hashes[path] = digest
-	return digest
-
-
-# Combined digest over (path, content hash) of every file in a closure
-# blob, in order.
-char* wexec_deps_digest(char* blob):
-	wexec_hash h
-	wexec_hash_init(&h)
-	string_builder* line = string_new()
-	int i = 0
-	while (blob[i] != 0):
-		if (blob[i] == 10):
-			if (line.length > 0):
-				wexec_hash_cstr(&h, line.data)
-				wexec_hash_cstr(&h, wexec_file_hash(line.data))
-				string_clear(line)
-		else:
-			string_append_char(line, blob[i])
-		i = i + 1
-	if (line.length > 0):
-		wexec_hash_cstr(&h, line.data)
-		wexec_hash_cstr(&h, wexec_file_hash(line.data))
-	string_free(line)
-	return wexec_hash_hex(&h)
 
 
 # Closures need bin/wv2; without it (a manifest run before any build)
@@ -603,207 +427,24 @@ int wexec_selector_word(char* word):
 	return 0
 
 
-char* wexec_deps_entry_key(char* arch, char* root):
-	string_builder* s = string_new()
-	string_append(s, arch)
-	string_append_char(s, ' ')
-	string_append(s, root)
-	char* key = s.data
-	free(s)
-	return key
-
-
-void wexec_deps_store(char* arch, char* root, wexec_deps_entry* entry):
-	entry.arch = arch
-	entry.root = root
-	wexec_deps_entries.push(entry)
-	char* key = wexec_deps_entry_key(arch, root)
-	wexec_deps_index[key] = entry
-	free(key)
-
-
-# Finalize one parsed cache-file record. The record key is
-# "<arch> <root>"; a record without the arch column (or a duplicate) is
-# dropped, so caches written by older executors simply recompute.
-void wexec_deps_load_entry(int kind, char* record, char* digest, string_builder* blob):
-	if ((record == 0) || (digest == 0)):
-		return
-	int space = 0
-	int i = 0
-	while (record[i] != 0):
-		if ((record[i] == ' ') && (space == 0)):
-			space = i
-		i = i + 1
-	if (space == 0):
-		return
-	char* arch = strclone(record)
-	arch[space] = 0
-	char* root = strclone(record + space + 1)
-	char* key = wexec_deps_entry_key(arch, root)
-	wexec_deps_entry* existing = wexec_deps_index.get(key, 0)
-	free(key)
-	if (existing != 0):
-		return
-	wexec_deps_entry* entry = new wexec_deps_entry()
-	entry.failed = kind == 2
-	entry.checked = 0
-	entry.digest = digest
-	entry.blob = 0
-	if (kind == 1):
-		if (blob != 0):
-			entry.blob = blob.data
-	wexec_deps_store(arch, root, entry)
-
-
-void wexec_deps_load():
-	if (wexec_deps_loaded):
-		return
-	wexec_deps_loaded = 1
-	wexec_deps_entries = new list[wexec_deps_entry*]
-	wexec_deps_index = new map[char*, wexec_deps_entry*]
-	char* text = file_read_text(c"bin/.wexec_deps_cache")
-	if (text == 0):
-		return
-	int kind = 0
-	char* record = 0
-	char* digest = 0
-	string_builder* blob = 0
-	string_builder* line = string_new()
-	int i = 0
-	int at_end = 0
-	while (at_end == 0):
-		int c = text[i]
-		if (c == 0):
-			at_end = 1
-		if ((c == 10) || (c == 0)):
-			char* entry = line.data
-			if (starts_with(entry, c"R ") | starts_with(entry, c"X ")):
-				wexec_deps_load_entry(kind, record, digest, blob)
-				kind = 1
-				if (entry[0] == 'X'):
-					kind = 2
-				record = strclone(entry + 2)
-				digest = 0
-				blob = string_new()
-				string_append_char(blob, 10)
-			else if (starts_with(entry, c"H ")):
-				digest = strclone(entry + 2)
-			else if (starts_with(entry, c"F ")):
-				if (blob != 0):
-					string_append(blob, entry + 2)
-					string_append_char(blob, 10)
-			string_clear(line)
-		else:
-			string_append_char(line, c)
-		i = i + 1
-	wexec_deps_load_entry(kind, record, digest, blob)
-	string_free(line)
-	free(text)
-
-
-void wexec_deps_save():
-	if (wexec_deps_dirty == 0):
-		return
-	wexec_deps_dirty = 0
-	string_builder* out = string_new()
-	for wexec_deps_entry* entry in wexec_deps_entries:
-		if (entry.failed):
-			string_append(out, c"X ")
-		else:
-			string_append(out, c"R ")
-		string_append(out, entry.arch)
-		string_append_char(out, ' ')
-		string_append(out, entry.root)
-		string_append_char(out, 10)
-		string_append(out, c"H ")
-		string_append(out, entry.digest)
-		string_append_char(out, 10)
-		if (entry.blob != 0):
-			string_builder* line = string_new()
-			int j = 0
-			while (entry.blob[j] != 0):
-				if (entry.blob[j] == 10):
-					if (line.length > 0):
-						string_append(out, c"F ")
-						string_append(out, line.data)
-						string_append_char(out, 10)
-						string_clear(line)
-				else:
-					string_append_char(line, entry.blob[j])
-				j = j + 1
-			string_free(line)
-	mkdir(c"bin", 493)
-	file_write_text(c"bin/.wexec_deps_cache", out.data)
-	string_free(out)
-
-
-# Run 'bin/wv2 deps [selector] <root>'; returns a newline-guarded closure
-# blob, or 0 when the root does not compile for that target.
-char* wexec_deps_run(char* arch, char* root):
-	int is_default = strcmp(arch, c"x86") == 0
-	int count = 4
-	if (is_default):
-		count = 3
-	char** argv = strv_new(count)
-	strv_set(argv, 0, c"bin/wv2")
-	strv_set(argv, 1, c"deps")
-	if (is_default):
-		strv_set(argv, 2, root)
-	else:
-		strv_set(argv, 2, arch)
-		strv_set(argv, 3, root)
-	process_result* result = process_run(c"bin/wv2", argv, 0, 0, 120000)
-	free(cast(char*, argv))
-	if (result == 0):
-		return 0
-	if (result.status != 0):
-		process_result_free(result)
-		return 0
-	string_builder* blob = string_new()
-	string_append_char(blob, 10)
-	string_append(blob, result.stdout_text)
-	if (blob.data[blob.length - 1] != 10):
-		string_append_char(blob, 10)
-	process_result_free(result)
-	char* text = blob.data
-	free(blob)
-	return text
-
-
 # The closure entry for one (arch, root), validated against current file
-# contents or recomputed. entry.failed marks a root that did not compile.
-wexec_deps_entry* wexec_deps_lookup(char* arch, char* root):
-	wexec_deps_load()
-	char* key = wexec_deps_entry_key(arch, root)
-	wexec_deps_entry* entry = wexec_deps_index.get(key, 0)
-	free(key)
-	if (entry != 0):
-		if (entry.checked):
-			return entry
-		if (entry.failed):
-			if (strcmp(wexec_file_hash(root), entry.digest) == 0):
-				entry.checked = 1
-				return entry
-		else if (entry.blob != 0):
-			char* digest = wexec_deps_digest(entry.blob)
-			if (strcmp(digest, entry.digest) == 0):
-				entry.checked = 1
-				entry.digest = digest
-				return entry
-	char* blob = wexec_deps_run(arch, root)
-	if (entry == 0):
-		entry = new wexec_deps_entry()
-		wexec_deps_store(strclone(arch), strclone(root), entry)
-	entry.checked = 1
-	wexec_deps_dirty = 1
-	if (blob == 0):
-		entry.failed = 1
-		entry.blob = 0
-		entry.digest = wexec_file_hash(entry.root)
-	else:
-		entry.failed = 0
-		entry.blob = blob
-		entry.digest = wexec_deps_digest(blob)
+# contents or recomputed. entry.failed marks a root that did not
+# compile; every failure is cached, keyed on the root's own content
+# (a fixture that stays broken stays cheap).
+deps_entry* wexec_deps_lookup(char* arch, char* root):
+	char* id = deps_id(arch, root)
+	deps_entry* entry = deps_cache_find(id)
+	if ((entry != 0) && deps_entry_valid(entry, 0)):
+		free(id)
+		return entry
+	char* blob = 0
+	process_result* result = deps_run(id, 120000)
+	if (result != 0):
+		if (result.status == 0):
+			blob = deps_blob(result.stdout_text)
+		process_result_free(result)
+	entry = deps_cache_record(id, blob)
+	free(id)
 	return entry
 
 
@@ -1035,10 +676,10 @@ char* wexec_cache_key(char* name, json_value* target):
 	if (inputs == 0):
 		return 0
 
-	wexec_hash h
-	wexec_hash_init(&h)
+	deps_hash h
+	deps_hash_init(&h, 1)
 	char* definition = json_stringify(target)
-	wexec_hash_cstr(&h, definition)
+	deps_hash_cstr(&h, definition)
 	free(definition)
 
 	json_value* deps = jfield_array(target, c"deps")
@@ -1050,7 +691,7 @@ char* wexec_cache_key(char* name, json_value* target):
 				char* dep_key = wexec_keys.get(dep.string_value, 0)
 				if (dep_key == 0):
 					return 0
-				wexec_hash_cstr(&h, dep_key)
+				deps_hash_cstr(&h, dep_key)
 			i = i + 1
 
 	# Deps-driven keys: hash each compile root's import closure. A root
@@ -1064,17 +705,17 @@ char* wexec_cache_key(char* name, json_value* target):
 	int closures = root_paths.length > 0
 	int r = 0
 	while (r < root_paths.length):
-		wexec_deps_entry* closure_entry = wexec_deps_lookup(root_archs[r], root_paths[r])
+		deps_entry* closure_entry = wexec_deps_lookup(root_archs[r], root_paths[r])
 		if (closure_entry.failed):
 			closures = 0
 		r = r + 1
 	if (closures):
 		r = 0
 		while (r < root_paths.length):
-			wexec_deps_entry* keyed_entry = wexec_deps_lookup(root_archs[r], root_paths[r])
-			wexec_hash_cstr(&h, root_archs[r])
-			wexec_hash_cstr(&h, root_paths[r])
-			wexec_hash_cstr(&h, keyed_entry.digest)
+			deps_entry* keyed_entry = wexec_deps_lookup(root_archs[r], root_paths[r])
+			deps_hash_cstr(&h, root_archs[r])
+			deps_hash_cstr(&h, root_paths[r])
+			deps_hash_cstr(&h, keyed_entry.digest)
 			r = r + 1
 
 	list[char*] files = new list[char*]
@@ -1108,9 +749,9 @@ char* wexec_cache_key(char* name, json_value* target):
 		i = i + 1
 	wexec_sort_strings(files)
 	for char* path in files:
-		wexec_hash_cstr(&h, path)
+		deps_hash_cstr(&h, path)
 		wexec_hash_file(&h, path)
-	return wexec_hash_hex(&h)
+	return deps_hash_hex(&h)
 
 
 # A cache hit needs a matching stamp and every declared output present.
@@ -3197,9 +2838,9 @@ void wexec_list_json_one(wstream* out, char* name):
 	while (r < roots.length):
 		char* tagged = roots[r]
 		if (strcmp(archs[r], c"x86") != 0):
-			# Same "<arch> <root>" spelling wexec_deps_entry_key uses for
+			# Same "<arch> <root>" spelling deps_id uses for
 			# bin/.wexec_deps_cache records, so a reader can cross-reference.
-			tagged = wexec_deps_entry_key(archs[r], roots[r])
+			tagged = deps_id(archs[r], roots[r])
 		compile_roots.push(tagged)
 		r = r + 1
 
@@ -3272,9 +2913,8 @@ dependency's cache key is opaque here just as it is in wexec_cache_key);
 only this target's own declared inputs and its own steps' compile
 roots count. */
 
-# Splits a deps-closure blob (wexec_deps_run's newline-guarded format,
-# also walked by wexec_deps_save) into individual file paths, adding
-# each to `set`. Cloned since the blob's own storage is reused/rewritten
+# Splits a deps-closure blob (deps_blob's newline-guarded format) into
+# individual file paths, adding each to `set`. Cloned since the blob's own storage is reused/rewritten
 # elsewhere (bin/.wexec_deps_cache saves), unlike the "inputs" strings
 # below, which point straight into the parsed manifest and outlive this
 # call already.
@@ -3322,7 +2962,7 @@ map[char*, int] wexec_trace_collect_declared(json_value* target):
 		int r = 0
 		while (r < roots.length):
 			declared[roots[r]] = 1
-			wexec_deps_entry* entry = wexec_deps_lookup(archs[r], roots[r])
+			deps_entry* entry = wexec_deps_lookup(archs[r], roots[r])
 			if ((entry.failed == 0) && (entry.blob != 0)):
 				wexec_trace_add_blob_lines(declared, entry.blob)
 			r = r + 1
@@ -3544,6 +3184,8 @@ void wexec_on_termination(int sig):
 # The whole executor behind bin/wexec (tools/wexec_main.w is its entry
 # point; tools/wbuildd.w's build RPC runs it in a forked child).
 int wexec_main(int argc, int argv):
+	deps_cache_path = c"bin/.wexec_deps_cache"
+	deps_cache_sha = 1
 	wexec_jobs = 0
 	char* manifest_path = 0
 	list[char*] requested = new list[char*]
@@ -3672,7 +3314,8 @@ int wexec_main(int argc, int argv):
 	# Cache keys (and any recomputed import closures) are computed in
 	# the parent only, so the closure cache is saved here once, after
 	# the run — on failure too, so a red run still keeps its deps work.
-	wexec_deps_save()
+	if (deps_dirty):
+		deps_cache_save()
 	if (failed):
 		return 1
 	wexec_report_ok()

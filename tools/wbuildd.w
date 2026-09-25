@@ -48,7 +48,7 @@ lib/unix_fds.w), environment, umask and arguments. Output therefore
 streams live, byte for byte what 'bin/wexec ARGS' prints, and the exit
 status is the child's. The child starts from the daemon's warm state:
 the generated default manifest, already parsed, and the content hashes
-of every file an earlier build hashed (wexec_file_hash, which backs the
+of every file an earlier build hashed (deps_file_hash, which backs the
 import-closure checks of the deps-driven cache keys). Cache keys, stamps
 and bin/.wexec_deps_cache are wexec's own, unchanged, so a daemon build
 and a one-shot build agree on every hit. The client forwards SIGINT/
@@ -367,13 +367,13 @@ int wbd_hash_path_ok(char* path):
 void wbd_hashes_clear():
 	wbd_seq = wbd_seq + 1
 	wbd_clear_seq = wbd_seq
-	wexec_file_hashes = new map[char*, char*]
+	deps_file_hashes = new map[char*, char*]
 	wbd_hash_sig = new map[char*, char*]
 
 
 void wbd_hash_forget(char* path):
 	wbd_seq = wbd_seq + 1
-	wexec_file_hashes.remove(path)
+	deps_file_hashes.remove(path)
 	wbd_hash_sig.remove(path)
 	if (wbd_builds_active > 0):
 		wbd_touched[strclone(path)] = wbd_seq
@@ -385,10 +385,10 @@ void wbd_hashes_forget_under(char* dir):
 	char* prefix = strjoin(dir, c"/")
 	if (dir[0] == 0):
 		prefix = strclone(c"")
-	list[char*] paths = wexec_file_hashes.keys()
+	list[char*] paths = deps_file_hashes.keys()
 	for char* path in paths:
 		if (starts_with(path, prefix)):
-			wexec_file_hashes.remove(path)
+			deps_file_hashes.remove(path)
 			wbd_hash_sig.remove(path)
 	if (wbd_builds_active > 0):
 		wbd_touched_dirs.push(prefix)
@@ -420,12 +420,12 @@ void wbd_manifest_drop():
 # Before a build forks: re-stat every warm hash and drop the ones whose
 # file changed without an inotify event reaching us.
 void wbd_hashes_revalidate():
-	list[char*] paths = wexec_file_hashes.keys()
+	list[char*] paths = deps_file_hashes.keys()
 	for char* path in paths:
 		char* sig = wbd_file_sig(path)
 		char* known = wbd_hash_sig.get(path, 0)
 		if ((known == 0) || (strcmp(known, sig) != 0)):
-			wexec_file_hashes.remove(path)
+			deps_file_hashes.remove(path)
 			wbd_hash_sig.remove(path)
 		free(sig)
 
@@ -997,7 +997,7 @@ json_value* wbd_handle_status(json_value* params, void* ctx):
 	json_object_set(result, c"prewarm_runs", json_int(wbd_prewarm_runs))
 	json_object_set(result, c"builds", json_int(wbd_builds_done))
 	json_object_set(result, c"builds_active", json_int(wbd_builds_active))
-	json_object_set(result, c"warm_hashes", json_int(wexec_file_hashes.length))
+	json_object_set(result, c"warm_hashes", json_int(deps_file_hashes.length))
 	json_object_set(result, c"hashes_merged", json_int(wbd_hashes_merged))
 	json_object_set(result, c"warm_manifest", json_bool(wexec_warm_manifest != 0))
 	return result
@@ -1248,7 +1248,7 @@ void wbd_build_child(int* fds, list[char*] args, char** envp, int mask, int repo
 	int status = wexec_main(args.length + 1, cast(int, argv))
 	json_value* report = json_object()
 	json_value* hashes = json_object()
-	for char* path, char* digest in wexec_file_hashes:
+	for char* path, char* digest in deps_file_hashes:
 		if (wbd_hash_path_ok(path)):
 			json_object_set(hashes, path, json_string(digest))
 	json_object_set(report, c"hashes", hashes)
@@ -1378,9 +1378,9 @@ void wbd_merge_report(wbd_build* b, json_value* report):
 				continue
 			if (wbd_touched_since(path, b.fork_seq)):
 				continue
-			if (path in wexec_file_hashes):
+			if (path in deps_file_hashes):
 				continue
-			wexec_file_hashes[strclone(path)] = strclone(wbd_json_text(digest))
+			deps_file_hashes[strclone(path)] = strclone(wbd_json_text(digest))
 			wbd_hash_sig[strclone(path)] = wbd_file_sig(path)
 			wbd_hashes_merged = wbd_hashes_merged + 1
 	json_value* manifest = json_object_get(report, c"manifest")

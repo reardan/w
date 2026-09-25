@@ -444,6 +444,7 @@ import lib.str
 import structures.string
 import structures.json
 import tools.manifest_source
+import tools.deps_cache
 
 
 json_value* wtest_manifest
@@ -458,12 +459,9 @@ list[char*] wtest_pair_roots
 list[char*] wtest_pair_targets
 list[char*] wtest_roots              # deduplicated root ids
 
-# root id -> closure blob ("\n" + one path per line + trailing "\n");
-# parallel lists. A root whose deps run failed stores 0.
-list[char*] wtest_closure_roots
-list[char*] wtest_closure_blobs
-
-map[char*, char*] wtest_file_hashes  # path -> content hash hex (memo)
+# Closures live in tools/deps_cache.w's store (root id -> entry),
+# loaded by wtest_cache_load.
+int wtest_cache_loaded
 
 int wtest_verbose
 int wtest_run_flag
@@ -492,35 +490,14 @@ int wtest_ldcache_length
 # refuse an umbrella that would reintroduce one (header comment); 0
 # until the filter drops something.
 map[char*, int] wtest_unavailable_dropped
-# root id -> extra cache lines ('V <bin/wv2 hash>', optionally
-# 'M <missing import>' and 'E <stderr first line>') for a PERSISTABLE
-# deps failure; a failed root with no entry here (bin/wv2 missing,
-# spawn failure) is memoized for this run only and never written to
-# the cache file.
-map[char*, char*] wtest_failure_meta
-# Set by wtest_run_deps when the failure it just returned 0 for is
-# persistable (see wtest_failure_meta); 0 otherwise.
-char* wtest_last_failure_meta
-# root id -> one-line human-readable failure detail for the most
-# recent failed deps run of ANY flavor (compile stderr, timeout
-# marker, spawn failure). Run-local; for persistable compile failures
-# the same line also rides the cache entry's 'E ' line, so it survives
-# across runs for the aggregate warning and 'wtest why'.
-map[char*, char*] wtest_failure_lines
-# Set by wtest_run_deps on EVERY failure path (unlike
-# wtest_last_failure_meta, which only persistable failures carry).
+# Set by wtest_run_deps for the failure it just returned 0 for: 1 when
+# it is persistable (bin/wv2 was present to fail), the import the
+# compile reported missing (or 0), and the one-line detail of ANY
+# failure flavor (compile stderr, timeout marker, spawn failure),
+# which wtest_closure_compute moves onto the store entry.
+int wtest_last_failure_persist
+char* wtest_last_failure_missing
 char* wtest_last_failure_line
-# root id -> the bin/wv2 content hash a SUCCESSFUL closure was
-# computed under (set on live computes and restored from a cache
-# entry's informational 'V ' line): 'wtest why' reports it, and
-# wtest_cache_save carries it forward so a revalidated entry keeps
-# the hash of the compiler that actually computed it.
-map[char*, char*] wtest_closure_vhash
-# root id -> that entry's raw text in bin/.wtest_deps_cache as this
-# process loaded it, so wtest_cache_save can tell an entry another
-# process wrote since (keep it) from one this process read and dropped
-# as stale (drop it).
-map[char*, char*] wtest_cache_loaded_chunks
 # Seed-closure root ids whose fallback warning already printed this
 # run, so per-path wtest_seed_graph calls warn once per arch.
 map[char*, int] wtest_seed_warned
@@ -530,7 +507,6 @@ map[char*, int] wtest_seed_warned
 int wtest_defhash_clean_count
 char* wtest_manifest_path
 int wtest_closures_ready
-int wtest_mask32
 # Resolved 'bin/wv2 deps' shell-out budget in ms; 0 until first read
 # (wtest_deps_budget_ms).
 int wtest_deps_budget
@@ -899,8 +875,9 @@ void wtest_ensure_roots():
 
 /* Closure computation, memoized per run and cached across runs.
 
-The cache file (bin/.wtest_deps_cache) stores one entry per root id
-("<arch> <root>", see wtest_root_id):
+The cache file (bin/.wtest_deps_cache; tools/deps_cache.w holds the
+format, loading, hashing and saving it shares with bin/wexec) stores
+one entry per root id ("<arch> <root>", see wtest_root_id):
   R <arch> <root>
   H <combined content hash of every file in the closure>
   V <content hash of the bin/wv2 that computed it>   (informational)
@@ -937,128 +914,29 @@ and retried next run. Entries without an arch column, or 'X' entries
 without a V line — caches written by older wtest builds — fail to
 parse and simply recompute. */
 
-int wtest_mask32_value():
-	if (__word_size__ == 8):
-		int high = 1 << 16
-		return high * high - 1
-	return -1
+# Load the cache, keeping only records that still validate (the
+# header comment's failure rules: check_compiler), so a stale entry
+# simply recomputes. Idempotent.
+void wtest_cache_load():
+	if (wtest_cache_loaded):
+		return
+	wtest_cache_loaded = 1
+	deps_cache_validate_all(1)
 
 
-struct wtest_hash:
-	int h1
-	int h2
-
-
-void wtest_hash_init(wtest_hash* h):
-	h.h1 = -2128831035 & wtest_mask32
-	h.h2 = 1000003
-
-
-void wtest_hash_bytes(wtest_hash* h, char* data, int n):
-	int i = 0
-	while (i < n):
-		int value = data[i] & 255
-		h.h1 = (h.h1 * 16777619 + value) & wtest_mask32
-		h.h2 = (h.h2 * 1000003 + value) & wtest_mask32
-		i = i + 1
-
-
-void wtest_hash_cstr(wtest_hash* h, char* text):
-	wtest_hash_bytes(h, text, strlen(text))
-	char zero = 0
-	wtest_hash_bytes(h, &zero, 1)
-
-
-void wtest_append_hex(string_builder* s, int value):
-	int shift = 28
-	while (shift >= 0):
-		int nibble = (value >> shift) & 15
-		if (nibble < 10):
-			string_append_char(s, '0' + nibble)
-		else:
-			string_append_char(s, 'a' + nibble - 10)
-		shift = shift - 4
-
-
-char* wtest_hash_hex(wtest_hash* h):
-	string_builder* s = string_new()
-	wtest_append_hex(s, h.h1)
-	wtest_append_hex(s, h.h2)
-	char* text = s.data
-	free(s)
-	return text
-
-
-# Content hash of one file, memoized. Missing files hash to a sentinel
-# that can never match a stored digest, so deletions invalidate entries.
-char* wtest_file_hash(char* path):
-	if (wtest_file_hashes == 0):
-		wtest_file_hashes = new map[char*, char*]
-	char* cached = wtest_file_hashes.get(path, 0)
-	if (cached != 0):
-		return cached
-	char* digest = c"<missing>"
-	int fd = open(path, 0, 0)
-	if (fd >= 0):
-		wtest_hash h
-		wtest_hash_init(&h)
-		int buffer_size = 65536
-		char* buffer = malloc(buffer_size)
-		int n = read(fd, buffer, buffer_size)
-		while (n > 0):
-			wtest_hash_bytes(&h, buffer, n)
-			n = read(fd, buffer, buffer_size)
-		free(buffer)
-		close(fd)
-		digest = wtest_hash_hex(&h)
-	wtest_file_hashes[path] = digest
-	return digest
-
-
-# Combined digest over (path, content hash) of every file in a closure
-# blob, in order.
-char* wtest_closure_digest(char* blob):
-	wtest_hash h
-	wtest_hash_init(&h)
-	string_builder* line = string_new()
-	int i = 0
-	while (blob[i] != 0):
-		if (blob[i] == 10):
-			if (line.length > 0):
-				wtest_hash_cstr(&h, line.data)
-				wtest_hash_cstr(&h, wtest_file_hash(line.data))
-				string_clear(line)
-		else:
-			string_append_char(line, blob[i])
-		i = i + 1
-	if (line.length > 0):
-		wtest_hash_cstr(&h, line.data)
-		wtest_hash_cstr(&h, wtest_file_hash(line.data))
-	string_free(line)
-	return wtest_hash_hex(&h)
-
-
-void wtest_closure_store(char* root, char* blob):
-	wtest_closure_roots.push(root)
-	wtest_closure_blobs.push(blob)
-
-
+# The closure blob of a root id this run knows (0 for a failure or an
+# unknown root); every entry in the store is valid (wtest_cache_load).
 char* wtest_closure_get(char* root):
-	int i = 0
-	while (i < wtest_closure_roots.length):
-		if (strcmp(wtest_closure_roots[i], root) == 0):
-			return wtest_closure_blobs[i]
-		i = i + 1
-	return 0
+	wtest_cache_load()
+	deps_entry* e = deps_cache_find(root)
+	if (e == 0):
+		return 0
+	return e.blob
 
 
 int wtest_closure_known(char* root):
-	int i = 0
-	while (i < wtest_closure_roots.length):
-		if (strcmp(wtest_closure_roots[i], root) == 0):
-			return 1
-		i = i + 1
-	return 0
+	wtest_cache_load()
+	return deps_cache_find(root) != 0
 
 
 # The import path a failed compile's stderr reports missing, or 0.
@@ -1091,9 +969,9 @@ char* wtest_missing_import(char* stderr_text):
 
 
 # The first non-empty line of a failed deps run's stderr (cloned), or
-# 0 when there is none: the one-line failure detail wtest_failure_lines
-# records and a persistable failure's 'E ' cache line carries. One line
-# is enough — the compiler stops at its first error — and keeping it
+# 0 when there is none: the one-line failure detail a failed store
+# entry records and a persistable failure's 'E ' cache line carries.
+# One line is enough — the compiler stops at its first error — and keeping it
 # single-line means it can ride the line-oriented cache format as-is.
 char* wtest_stderr_first_line(char* stderr_text):
 	int i = 0
@@ -1153,45 +1031,24 @@ void wtest_deps_shellout_warn(char* what, char* id, char* tail):
 # timeout is load, not content), and a still-timed-out root is a
 # NON-persistable failure. On a failure that is safe to cache (bin/wv2
 # was present and the compile really exited nonzero, rather than a
-# missing/broken toolchain or a timeout), wtest_last_failure_meta
-# carries the extra validation lines the cache entry needs (header
-# comment above wtest_cache_load); otherwise it is 0 and the failure
-# must not be persisted. Every failure path prints one stderr line
-# naming the root.
+# missing/broken toolchain or a timeout), wtest_last_failure_persist
+# is set and wtest_last_failure_missing names the import the compile
+# reported missing, if any (header comment above wtest_cache_load);
+# otherwise the failure must not be persisted. Every failure path
+# prints one stderr line naming the root and leaves its one-line
+# detail in wtest_last_failure_line.
 char* wtest_run_deps(char* id):
-	wtest_last_failure_meta = 0
+	wtest_last_failure_persist = 0
+	wtest_last_failure_missing = 0
 	wtest_last_failure_line = 0
-	char* arch = strclone(id)
-	char* root = 0
-	int i = 0
-	while ((arch[i] != 0) && (root == 0)):
-		if (arch[i] == ' '):
-			arch[i] = 0
-			root = arch + i + 1
-		i = i + 1
-	if (root == 0):
-		free(arch)
+	if (deps_id_root(id) == 0):
 		return 0
-	int is_default = strcmp(arch, c"x86") == 0
-	int count = 4
-	if (is_default):
-		count = 3
-	char** argv = strv_new(count)
-	strv_set(argv, 0, c"bin/wv2")
-	strv_set(argv, 1, c"deps")
-	if (is_default):
-		strv_set(argv, 2, root)
-	else:
-		strv_set(argv, 2, arch)
-		strv_set(argv, 3, root)
 	int budget = wtest_deps_budget_ms()
-	process_result* result = process_run(c"bin/wv2", argv, 0, 0, budget)
+	process_result* result = deps_run(id, budget)
 	if ((result != 0) && (result.status == process_status_timeout())):
 		wtest_deps_shellout_warn(c"timed out", id, c"; retrying once")
 		process_result_free(result)
-		result = process_run(c"bin/wv2", argv, 0, 0, budget)
-	free(cast(char*, argv))
-	free(arch)
+		result = deps_run(id, budget)
 	if (result == 0):
 		wtest_deps_shellout_warn(c"failed", id, c" (could not run bin/wv2)")
 		wtest_last_failure_line = c"could not run bin/wv2 (spawn failure; never cached)"
@@ -1228,315 +1085,58 @@ char* wtest_run_deps(char* id):
 		# informational (never validated): the recorded stderr detail,
 		# so 'wtest why' can report the reason across runs.
 		if (wtest_file_exists(c"bin/wv2")):
-			string_builder* meta = string_new()
-			string_append(meta, c"V ")
-			string_append(meta, wtest_file_hash(c"bin/wv2"))
-			string_append_char(meta, 10)
-			char* missing = wtest_missing_import(result.stderr_text)
-			if (missing != 0):
-				string_append(meta, c"M ")
-				string_append(meta, missing)
-				string_append_char(meta, 10)
-				free(missing)
-			string_append(meta, c"E ")
-			string_append(meta, detail)
-			string_append_char(meta, 10)
-			wtest_last_failure_meta = meta.data
-			free(meta)
+			wtest_last_failure_persist = 1
+			wtest_last_failure_missing = wtest_missing_import(result.stderr_text)
 		process_result_free(result)
 		return 0
-	string_builder* blob = string_new()
-	string_append_char(blob, 10)
-	string_append(blob, result.stdout_text)
-	if (blob.length > 0):
-		if (blob.data[blob.length - 1] != 10):
-			string_append_char(blob, 10)
+	char* text = deps_blob(result.stdout_text)
 	process_result_free(result)
-	char* text = blob.data
-	free(blob)
 	return text
 
 
 # Compute one root's closure via wtest_run_deps and record it in the
 # store, keeping the failure-persistence bookkeeping in one place: a
-# persistable failure's validation lines move from
-# wtest_last_failure_meta into wtest_failure_meta so wtest_cache_save
-# writes them; a non-persistable one stays a run-local memo. Either
-# way the one-line failure detail lands in wtest_failure_lines (the
-# named aggregate warning and 'wtest why' read it), and a SUCCESS
-# records the computing bin/wv2's hash for the cache's informational
-# 'V ' line.
+# persistable failure keeps its validation fields (V, and M when the
+# compile named a missing import) and is saved; a non-persistable one
+# stays a run-local memo. Either way the one-line failure detail rides
+# the entry (the named aggregate warning and 'wtest why' read it, and a
+# saved failure's 'E ' line carries it), and a SUCCESS records the
+# computing bin/wv2's hash for the cache's informational 'V ' line.
 char* wtest_closure_compute(char* root):
+	wtest_cache_load()
 	char* blob = wtest_run_deps(root)
-	wtest_closure_store(root, blob)
-	if ((blob == 0) && (wtest_last_failure_meta != 0)):
-		if (wtest_failure_meta == 0):
-			wtest_failure_meta = new map[char*, char*]
-		wtest_failure_meta[root] = wtest_last_failure_meta
-	if ((blob == 0) && (wtest_last_failure_line != 0)):
-		if (wtest_failure_lines == 0):
-			wtest_failure_lines = new map[char*, char*]
-		wtest_failure_lines[root] = wtest_last_failure_line
+	deps_entry* e = deps_cache_record(root, blob)
 	if (blob != 0):
-		if (wtest_closure_vhash == 0):
-			wtest_closure_vhash = new map[char*, char*]
-		wtest_closure_vhash[root] = wtest_file_hash(c"bin/wv2")
-	return blob
+		e.vhash = deps_file_hash(c"bin/wv2")
+		return blob
+	e.detail = wtest_last_failure_line
+	e.keep = wtest_last_failure_persist
+	if (e.keep):
+		e.vhash = deps_file_hash(c"bin/wv2")
+		e.missing = wtest_last_failure_missing
+	return 0
 
 
-# Finalize one parsed cache entry: keep it only when it still
-# validates (header comment above wtest_cache_load). kind 1 = success
-# ('R'): the closure digest must match. kind 2 = failure ('X'): the
-# root's own hash, the recorded bin/wv2 hash (V) and — when present —
-# the recorded missing import (M) still being absent must ALL hold;
-# anything else (including a legacy entry with no V line, or a
-# pre-arch-column id) is silently dropped and recomputes, so a stale
-# failure can never pin a rule. 'detail' (the 'E ' stderr line) and a
-# success entry's 'V ' line are informational only — never validated,
-# just carried into the run-local maps for 'wtest why' and re-saved.
-void wtest_cache_entry(int kind, char* root, char* expected, char* vhash, char* missing, char* detail, string_builder* blob):
-	if ((root == 0) || (expected == 0)):
-		return
-	if (kind == 1):
-		if (blob != 0):
-			if (strcmp(wtest_closure_digest(blob.data), expected) == 0):
-				wtest_closure_store(root, blob.data)
-				if (vhash != 0):
-					if (wtest_closure_vhash == 0):
-						wtest_closure_vhash = new map[char*, char*]
-					wtest_closure_vhash[root] = vhash
-	if (kind == 2):
-		char* path = wtest_root_id_path(root)
-		if ((path == 0) || (vhash == 0)):
-			return
-		if (strcmp(wtest_file_hash(path), expected) != 0):
-			return
-		if (strcmp(wtest_file_hash(c"bin/wv2"), vhash) != 0):
-			return
-		if ((missing != 0) && wtest_file_exists(missing)):
-			return
-		wtest_closure_store(root, 0)
-		string_builder* meta = string_new()
-		string_append(meta, c"V ")
-		string_append(meta, vhash)
-		string_append_char(meta, 10)
-		if (missing != 0):
-			string_append(meta, c"M ")
-			string_append(meta, missing)
-			string_append_char(meta, 10)
-		if (detail != 0):
-			string_append(meta, c"E ")
-			string_append(meta, detail)
-			string_append_char(meta, 10)
-		if (wtest_failure_meta == 0):
-			wtest_failure_meta = new map[char*, char*]
-		wtest_failure_meta[root] = meta.data
-		free(meta)
-		if (detail != 0):
-			if (wtest_failure_lines == 0):
-				wtest_failure_lines = new map[char*, char*]
-			wtest_failure_lines[root] = detail
-
-
-# Split cache text into entries: each starts at an 'R ' or 'X ' line
-# and runs to the next one. roots[i] is the entry's root id, chunks[i]
-# its raw text including the trailing newline.
-void wtest_cache_chunks(char* text, list[char*] roots, list[char*] chunks):
-	int i = 0
-	int start = -1
-	while (1):
-		int line_start = (i == 0) || (text[i - 1] == 10)
-		int at_end = text[i] == 0
-		int header = 0
-		if (line_start && (at_end == 0)):
-			header = ((text[i] == 'R') || (text[i] == 'X')) && (text[i + 1] == ' ')
-		if ((header || at_end) && (start >= 0)):
-			string_builder* chunk = string_new()
-			string_append_bytes(chunk, &text[start], i - start)
-			if ((chunk.length > 0) && (chunk.data[chunk.length - 1] != 10)):
-				string_append_char(chunk, 10)
-			int e = 2
-			while ((chunk.data[e] != 10) && (chunk.data[e] != 0)):
-				e = e + 1
-			roots.push(substring(chunk.data, 2, e))
-			chunks.push(chunk.data)
-			free(chunk)
-			start = -1
-		if (at_end):
-			return
-		if (header):
-			start = i
-		i = i + 1
-
-
-# Load cache entries whose content hashes still match; anything stale
-# or unparseable is simply dropped (deps re-runs for it).
-void wtest_cache_load():
-	char* text = file_read_text(c"bin/.wtest_deps_cache")
-	if (text == 0):
-		return
-	list[char*] loaded_roots = new list[char*]
-	list[char*] loaded_chunks = new list[char*]
-	wtest_cache_chunks(text, loaded_roots, loaded_chunks)
-	if (wtest_cache_loaded_chunks == 0):
-		wtest_cache_loaded_chunks = new map[char*, char*]
-	int li = 0
-	while (li < loaded_roots.length):
-		wtest_cache_loaded_chunks[loaded_roots[li]] = loaded_chunks[li]
-		li = li + 1
-	int kind = 0
-	char* root = 0
-	char* expected = 0
-	char* vhash = 0
-	char* missing = 0
-	char* detail = 0
-	string_builder* blob = 0
-	string_builder* line = string_new()
-	int i = 0
-	int at_end = 0
-	while (at_end == 0):
-		int c = text[i]
-		if (c == 0):
-			at_end = 1
-		if ((c == 10) || (c == 0)):
-			char* entry = line.data
-			if (starts_with(entry, c"R ") | starts_with(entry, c"X ")):
-				wtest_cache_entry(kind, root, expected, vhash, missing, detail, blob)
-				kind = 1
-				if (entry[0] == 'X'):
-					kind = 2
-				root = strclone(entry + 2)
-				expected = 0
-				vhash = 0
-				missing = 0
-				detail = 0
-				blob = string_new()
-				string_append_char(blob, 10)
-			else if (starts_with(entry, c"H ")):
-				expected = strclone(entry + 2)
-			else if (starts_with(entry, c"V ")):
-				vhash = strclone(entry + 2)
-			else if (starts_with(entry, c"M ")):
-				missing = strclone(entry + 2)
-			else if (starts_with(entry, c"E ")):
-				detail = strclone(entry + 2)
-			else if (starts_with(entry, c"F ")):
-				if (blob != 0):
-					string_append(blob, entry + 2)
-					string_append_char(blob, 10)
-			string_clear(line)
-		else:
-			string_append_char(line, c)
-		i = i + 1
-	wtest_cache_entry(kind, root, expected, vhash, missing, detail, blob)
-	string_free(line)
-	free(text)
+# The one-line detail of a root's recorded failure, or 0.
+char* wtest_failure_line(char* root):
+	wtest_cache_load()
+	deps_entry* e = deps_cache_find(root)
+	if ((e == 0) || (e.failed == 0)):
+		return 0
+	return e.detail
 
 
 # Concurrent wtest runs (wbuildd, one-shot runs, parallel suite
-# targets) each save the whole cache from their own memory, so a plain
-# rewrite drops the roots another run stored after this one loaded —
-# wbuildd_test's pre-warmed root went cold again under suite load.
-# Before writing, carry over every on-disk entry for a root this run
-# holds no closure for, unless it is the very entry this run loaded
-# and rejected as stale. A write landing between this re-read and the
-# rename can still be lost; that window is a few syscalls wide.
-void wtest_cache_merge_disk(string_builder* out):
-	char* text = file_read_text(c"bin/.wtest_deps_cache")
-	if (text == 0):
-		return
-	map[char*, int] mine = new map[char*, int]
-	int i = 0
-	while (i < wtest_closure_roots.length):
-		mine[wtest_closure_roots[i]] = 1
-		i = i + 1
-	list[char*] roots = new list[char*]
-	list[char*] chunks = new list[char*]
-	wtest_cache_chunks(text, roots, chunks)
-	i = 0
-	while (i < roots.length):
-		int keep = mine.get(roots[i], 0) == 0
-		if (keep && (wtest_cache_loaded_chunks != 0)):
-			char* seen = wtest_cache_loaded_chunks.get(roots[i], 0)
-			if ((seen != 0) && (strcmp(seen, chunks[i]) == 0)):
-				keep = 0
-		if (keep):
-			string_append(out, chunks[i])
-		i = i + 1
-	free(text)
-
-
+# targets) each save the whole cache, so deps_cache_save carries over
+# the records another run stored after this one loaded, unless it is
+# the very record this run loaded and rejected as stale (wbuildd_test's
+# pre-warmed root went cold again under suite load without that), and
+# replaces the file by rename (a reader that caught a truncate-then-
+# write mid-way saw a root as uncomputed). A write landing between the
+# re-read and the rename can still be lost; that window is a few
+# syscalls wide.
 void wtest_cache_save():
-	string_builder* out = string_new()
-	int i = 0
-	while (i < wtest_closure_roots.length):
-		char* blob = wtest_closure_blobs[i]
-		if (blob == 0):
-			# Failed root: persist only a failure whose validation meta
-			# was recorded (a real compile failure with bin/wv2
-			# present); a toolchain-missing failure is this run's memo
-			# only, so it is retried next run instead of pinning
-			# anything (header comment above wtest_cache_load).
-			char* meta = 0
-			if (wtest_failure_meta != 0):
-				meta = wtest_failure_meta.get(wtest_closure_roots[i], 0)
-			if (meta != 0):
-				string_append(out, c"X ")
-				string_append(out, wtest_closure_roots[i])
-				string_append_char(out, 10)
-				string_append(out, c"H ")
-				string_append(out, wtest_file_hash(wtest_root_id_path(wtest_closure_roots[i])))
-				string_append_char(out, 10)
-				string_append(out, meta)
-		else:
-			string_append(out, c"R ")
-			string_append(out, wtest_closure_roots[i])
-			string_append_char(out, 10)
-			string_append(out, c"H ")
-			string_append(out, wtest_closure_digest(blob))
-			string_append_char(out, 10)
-			# Informational only (never validated): the bin/wv2 this
-			# closure was computed under, reported by 'wtest why'. A
-			# closure restored from an older cache without one simply
-			# stays without one.
-			char* vhash = 0
-			if (wtest_closure_vhash != 0):
-				vhash = wtest_closure_vhash.get(wtest_closure_roots[i], 0)
-			if (vhash != 0):
-				string_append(out, c"V ")
-				string_append(out, vhash)
-				string_append_char(out, 10)
-			string_builder* line = string_new()
-			int j = 0
-			while (blob[j] != 0):
-				if (blob[j] == 10):
-					if (line.length > 0):
-						string_append(out, c"F ")
-						string_append(out, line.data)
-						string_append_char(out, 10)
-						string_clear(line)
-				else:
-					string_append_char(line, blob[j])
-				j = j + 1
-			string_free(line)
-		i = i + 1
-	wtest_cache_merge_disk(out)
-	mkdir(c"bin", 493)
-	# Write a private temp file and rename it into place: wbuildd and
-	# one-shot wtest runs read and rewrite this cache concurrently, and a
-	# reader that caught a truncate-then-write mid-way saw a root as
-	# uncomputed (wbuildd_test's one-shot/daemon stderr comparison
-	# failed under suite load with a spurious "building import-closure
-	# cache" line).
-	string_builder* tmp = string_new()
-	string_append(tmp, c"bin/.wtest_deps_cache.")
-	string_append(tmp, itoa(getpid()))
-	string_append(tmp, c".tmp")
-	if (file_write_text(tmp.data, out.data)):
-		if (rename(tmp.data, c"bin/.wtest_deps_cache") < 0):
-			unlink(tmp.data)
-	string_free(tmp)
-	string_free(out)
+	deps_cache_save()
 
 
 # Append a duration in seconds as '<n>s', or '<n>m' from two minutes
@@ -1649,9 +1249,7 @@ void wtest_compute_closures(list[char*] roots):
 		# One representative failure reason (the compiler stops at its
 		# first error, so one line is the whole story for that root),
 		# plus the pointer to the full per-root explanation.
-		char* first_detail = 0
-		if (wtest_failure_lines != 0):
-			first_detail = wtest_failure_lines.get(failed_roots[0], 0)
+		char* first_detail = wtest_failure_line(failed_roots[0])
 		if (first_detail != 0):
 			string_builder* sample = string_new()
 			string_append(sample, c"wtest: warning: e.g. root '")
@@ -1673,10 +1271,7 @@ void wtest_ensure_closures():
 	# (wtest_seed_closure) loads the cache lazily before rule (b) ever
 	# runs. Re-initializing here would leak its w.w entries and re-read
 	# the cache file for nothing (mirrors wtest_archs_ensure_closures).
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	wtest_compute_closures(wtest_roots)
 
 
@@ -2208,10 +1803,7 @@ void wtest_seed_warn(char* arch, char* id):
 
 
 char* wtest_seed_closure(char* arch):
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	char* id = wtest_root_id(arch, c"w.w")
 	if (wtest_closure_known(id)):
 		char* known = wtest_closure_get(id)
@@ -2688,10 +2280,7 @@ int wtest_source_needs(char* path):
 # recorded as a compile failure) falls back to the root file alone —
 # the pre-closure behavior, positive evidence only.
 int wtest_closure_needs(char* arch, char* root):
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	char* id = wtest_root_id(arch, root)
 	char* blob = wtest_closure_get(id)
 	free(id)
@@ -2754,10 +2343,7 @@ void wtest_sonames_collect(char* path, map[char*, int] seen, list[char*] out):
 list[char*] wtest_closure_sonames(char* arch, char* root):
 	list[char*] out = new list[char*]
 	map[char*, int] seen = new map[char*, int]
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	char* id = wtest_root_id(arch, root)
 	char* blob = wtest_closure_get(id)
 	free(id)
@@ -3420,9 +3006,9 @@ void wtest_archs_ensure_roots():
 				wtest_archs_roots.push(root)
 
 
-# Shares its closure storage (wtest_closure_roots/blobs) and on-disk
-# cache (bin/.wtest_deps_cache, via wtest_closure_get/known/store and
-# wtest_cache_load/save) with the standard changed/for machinery: a
+# Shares its closure storage and on-disk cache (bin/.wtest_deps_cache,
+# via wtest_closure_get/known/compute and wtest_cache_load/save) with
+# the standard changed/for machinery: a
 # root both sides care about (almost all of them -- archs' root set is
 # a superset) is only ever run through 'bin/wv2 deps' once, whichever
 # command hits it first.
@@ -3431,10 +3017,7 @@ void wtest_archs_ensure_closures():
 		return
 	wtest_archs_closures_ready = 1
 	wtest_archs_ensure_roots()
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	wtest_compute_closures(wtest_archs_roots)
 
 
@@ -3667,56 +3250,24 @@ void wtest_why_cache_section(char* id, wstream* out):
 	if (text == 0):
 		stream_write_line(out, c"cache: no bin/.wtest_deps_cache (cold; 'bin/wv2 deps' runs on the next selection)")
 		return
-	int kind = 0
-	int in_match = 0
-	int found = 0
-	char* expected = 0
-	char* vhash = 0
-	char* missing = 0
-	char* detail = 0
-	int files = 0
-	string_builder* blob = string_new()
-	string_append_char(blob, 10)
-	string_builder* line = string_new()
-	int i = 0
-	int at_end = 0
-	while (at_end == 0):
-		int c = text[i]
-		if (c == 0):
-			at_end = 1
-		if ((c == 10) || (c == 0)):
-			char* entry = line.data
-			if (starts_with(entry, c"R ") | starts_with(entry, c"X ")):
-				in_match = 0
-				if (strcmp(entry + 2, id) == 0):
-					found = 1
-					in_match = 1
-					kind = 1
-					if (entry[0] == 'X'):
-						kind = 2
-			else if (in_match):
-				if (starts_with(entry, c"H ")):
-					expected = strclone(entry + 2)
-				else if (starts_with(entry, c"V ")):
-					vhash = strclone(entry + 2)
-				else if (starts_with(entry, c"M ")):
-					missing = strclone(entry + 2)
-				else if (starts_with(entry, c"E ")):
-					detail = strclone(entry + 2)
-				else if (starts_with(entry, c"F ")):
-					files = files + 1
-					string_append(blob, entry + 2)
-					string_append_char(blob, 10)
-			string_clear(line)
-		else:
-			string_append_char(line, c)
-		i = i + 1
-	string_free(line)
+	deps_entry* e = 0
+	for deps_entry* record in deps_cache_parse(text):
+		if (strcmp(record.id, id) == 0):
+			e = record
 	free(text)
-	if (found == 0):
+	if (e == 0):
 		stream_write_line(out, c"cache: no entry for this root (never computed, or the last failure was non-persistable: timeouts, spawn failures and bin/wv2-missing runs are never cached)")
-		string_free(blob)
 		return
+	int kind = 1
+	if (e.failed):
+		kind = 2
+	char* expected = e.digest
+	char* vhash = e.vhash
+	char* missing = e.missing
+	char* detail = e.detail
+	int files = 0
+	if (e.blob != 0):
+		files = wtest_closure_count(e.blob)
 	if (kind == 1):
 		string_builder* s = string_new()
 		string_append(s, c"cache: success entry (")
@@ -3728,7 +3279,7 @@ void wtest_why_cache_section(char* id, wstream* out):
 			string_builder* v = string_new()
 			string_append(v, c"  computed under bin/wv2 ")
 			string_append(v, vhash)
-			if (strcmp(wtest_file_hash(c"bin/wv2"), vhash) == 0):
+			if (strcmp(deps_file_hash(c"bin/wv2"), vhash) == 0):
 				string_append(v, c" (current bin/wv2: same)")
 			else:
 				string_append(v, c" (current bin/wv2 differs; the closure stays valid while its file contents do)")
@@ -3736,7 +3287,7 @@ void wtest_why_cache_section(char* id, wstream* out):
 			string_free(v)
 		int valid = 0
 		if (expected != 0):
-			if (strcmp(wtest_closure_digest(blob.data), expected) == 0):
+			if (strcmp(deps_digest(e.blob), expected) == 0):
 				valid = 1
 		if (valid):
 			stream_write_line(out, c"  status: valid -- rule (b) closure selection is live for this root")
@@ -3748,7 +3299,7 @@ void wtest_why_cache_section(char* id, wstream* out):
 		char* root_path = wtest_root_id_path(id)
 		int root_same = 0
 		if ((expected != 0) && (root_path != 0)):
-			if (strcmp(wtest_file_hash(root_path), expected) == 0):
+			if (strcmp(deps_file_hash(root_path), expected) == 0):
 				root_same = 1
 		if (root_same):
 			stream_write_line(out, c"  root content: unchanged since the failure")
@@ -3759,7 +3310,7 @@ void wtest_why_cache_section(char* id, wstream* out):
 			string_builder* v = string_new()
 			string_append(v, c"  recorded under bin/wv2 ")
 			string_append(v, vhash)
-			if (strcmp(wtest_file_hash(c"bin/wv2"), vhash) == 0):
+			if (strcmp(deps_file_hash(c"bin/wv2"), vhash) == 0):
 				string_append(v, c" (current: same)")
 			else:
 				valid = 0
@@ -3791,7 +3342,6 @@ void wtest_why_cache_section(char* id, wstream* out):
 			stream_write_line(out, c"  status: valid -- rule (b) is disabled for this root; its targets select via literal/residue rules only")
 		else:
 			stream_write_line(out, c"  status: stale -- 'bin/wv2 deps' re-runs on the next selection")
-	string_free(blob)
 
 
 # 'wtest why [<arch>] <file.w> [-f manifest.json]' (header comment):
@@ -3870,10 +3420,7 @@ int wtest_why_main(int argc, int argv):
 	# cached success or failure holds exactly as a selection would see
 	# it; anything else is computed NOW and saved, so a 'why' also
 	# warms the cache (mirroring wtest_seed_closure).
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	if (wtest_closure_known(id)):
 		char* cached = wtest_closure_get(id)
 		if (cached != 0):
@@ -3898,9 +3445,7 @@ int wtest_why_main(int argc, int argv):
 		else:
 			string_builder* c3 = string_new()
 			string_append(c3, c"closure: unavailable -- live 'bin/wv2 deps' run failed: ")
-			char* live_detail = 0
-			if (wtest_failure_lines != 0):
-				live_detail = wtest_failure_lines.get(id, 0)
+			char* live_detail = wtest_failure_line(id)
 			if (live_detail != 0):
 				string_append(c3, live_detail)
 			else:
@@ -3992,10 +3537,7 @@ int wtest_cache_main(int argc, int argv):
 		wtest_error(c"cannot warm the deps cache: ", c"bin/wv2 not found (run a build first)")
 		return 1
 	wtest_archs_ensure_roots()
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	list[char*] roots = new list[char*]
 	roots.push(wtest_root_id(c"x86", c"w.w"))
 	list[char*] arch_words = new list[char*]
@@ -4035,7 +3577,7 @@ int wtest_cache_main(int argc, int argv):
 
 
 int main(int argc, int argv):
-	wtest_mask32 = wtest_mask32_value()
+	deps_cache_path = c"bin/.wtest_deps_cache"
 	if (argc < 2):
 		wtest_usage()
 		return 1
