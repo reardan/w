@@ -225,7 +225,13 @@ Implemented and covered by tests:
   `continue` targets the enclosing loop), `break`, `continue`, `return`,
   `debugger` (emits `int3`), and Go-style `defer <call>` (function-scoped,
   LIFO at every exit; the deferred expression is re-emitted at each exit
-  point, so it is evaluated at exit time — see `docs/projects/defer.md`).
+  point, so it is evaluated at exit time — see `docs/projects/defer.md`),
+  and C-style `goto name` with function-scoped `name:` labels written at
+  the indentation of the statements around them (native targets only;
+  jumps out of or into blocks pop or reserve the locals involved — see
+  `grammar/goto_statement.w`). `setjmp`/`longjmp` are runtime stubs in
+  every native program; `lib/setjmp.w` has the `jmp_buf` type and the
+  contract.
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).

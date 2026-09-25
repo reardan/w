@@ -2,6 +2,7 @@ import code_generator.code_emitter
 
 
 void sym_define_declare_global_function(char* name); /* defined in symbol_table */
+void sym_stub_alias(char* name); /* defined in symbol_table */
 void sym_define_declare_global_function_arity(char* name, int num_args); /* defined in symbol_table */
 
 void define_asm_functions():
@@ -32,6 +33,8 @@ void define_asm_functions():
 	# repl_setjmp(buf): save return address, caller esp and ebp into the
 	# 12-byte buffer, then return 0. repl_longjmp resumes here returning 1.
 	sym_define_declare_global_function(c"repl_setjmp")
+	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
+	sym_stub_alias(c"setjmp")
 	# mov eax,[esp+4] ; mov ecx,[esp] ; mov [eax],ecx ; lea ecx,[esp+4] ;
 	# mov [eax+4],ecx ; mov [eax+8],ebp ; xor eax,eax ; ret
 	emit(20, c"\x8b\x44\x24\x04\x8b\x0c\x24\x89\x08\x8d\x4c\x24\x04\x89\x48\x04\x89\x68\x08\x31")
@@ -41,6 +44,8 @@ void define_asm_functions():
 	# by repl_setjmp with val in eax. Like all stubs, the first argument
 	# sits at the highest stack offset.
 	sym_define_declare_global_function(c"repl_longjmp")
+	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
+	sym_stub_alias(c"longjmp")
 	# mov eax,[esp+4] ; mov ecx,[esp+8] ; mov esp,[ecx+4] ; mov ebp,[ecx+8] ; jmp [ecx]
 	emit(16, c"\x8b\x44\x24\x04\x8b\x4c\x24\x08\x8b\x61\x04\x8b\x69\x08\xff\x21")
 

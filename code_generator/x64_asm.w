@@ -2,6 +2,7 @@ import code_generator.code_emitter
 
 
 void sym_define_declare_global_function(char* name); /* defined in symbol_table */
+void sym_stub_alias(char* name); /* defined in symbol_table */
 void sym_define_declare_global_function_arity(char* name, int num_args); /* defined in symbol_table */
 
 
@@ -39,6 +40,8 @@ void define_asm_functions_x64_portable():
 	# live values in callee-saved registers across calls, so rsp/rbp are
 	# all that must survive.
 	sym_define_declare_global_function(c"repl_setjmp")
+	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
+	sym_stub_alias(c"setjmp")
 	# mov rax,[rsp+8] ; mov rcx,[rsp] ; mov [rax],rcx ; lea rcx,[rsp+8] ;
 	# mov [rax+8],rcx ; mov [rax+16],rbp ; xor eax,eax ; ret
 	emit(20, c"\x48\x8b\x44\x24\x08\x48\x8b\x0c\x24\x48\x89\x08\x48\x8d\x4c\x24\x08\x48\x89\x48")
@@ -48,6 +51,8 @@ void define_asm_functions_x64_portable():
 	# saved by repl_setjmp with val in rax. Like all stubs, the first
 	# argument sits at the highest stack offset.
 	sym_define_declare_global_function(c"repl_longjmp")
+	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
+	sym_stub_alias(c"longjmp")
 	# mov rax,[rsp+8] ; mov rcx,[rsp+16] ; mov rsp,[rcx+8] ; mov rbp,[rcx+16] ; jmp [rcx]
 	emit(20, c"\x48\x8b\x44\x24\x08\x48\x8b\x4c\x24\x10\x48\x8b\x61\x08\x48\x8b\x69\x10\xff\x21")
 

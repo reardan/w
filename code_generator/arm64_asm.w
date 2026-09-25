@@ -15,6 +15,7 @@ import code_generator.code_emitter
 
 
 void sym_define_declare_global_function(char* name); /* defined in symbol_table */
+void sym_stub_alias(char* name); /* defined in symbol_table */
 void sym_define_declare_global_function_arity(char* name, int num_args); /* defined in symbol_table */
 void a64(int w);                                     /* defined in arm64.w */
 
@@ -125,6 +126,8 @@ void define_asm_functions_arm64():
 	# buffer address as discriminator (arm64.md D6), so a scribbled or
 	# replayed buffer fails authentication in repl_longjmp.
 	sym_define_declare_global_function(c"repl_setjmp")
+	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
+	sym_stub_alias(c"setjmp")
 	a64(op(0xf9, 0x400389))   # ldr x9,[x28]  (buf)
 	if (arm64_pac == 2):
 		a64(op(0xda, 0xc1013e))   # pacia x30, x9
@@ -137,6 +140,8 @@ void define_asm_functions_arm64():
 	# repl_longjmp(buf, val): restore the saved state and branch back to the
 	# repl_setjmp call site with val in x0.
 	sym_define_declare_global_function(c"repl_longjmp")
+	# Public C-style name for the same stub (lib/setjmp.w, issue #435)
+	sym_stub_alias(c"longjmp")
 	a64(op(0xf9, 0x400380))   # ldr x0,[x28,#0]  (val)
 	a64(op(0xf9, 0x400789))   # ldr x9,[x28,#8]  (buf)
 	a64(op(0xf9, 0x40013e))   # ldr x30,[x9,#0]
