@@ -9,7 +9,10 @@ zero-argument, so this module passes the argument through a handoff
 global: thread_spawn stores the wthread* in thread_spawn_handoff,
 clones thread_entry, and futex-waits until the child has copied the
 pointer and acknowledged; only then can the next spawn reuse the
-global. Joining futex-waits (no CPU spinning) on the thread's `done`
+global. A spawn lock (thread_spawn_lock_word, a futex word taken with
+atomic_cas) serializes that handoff, so any thread may spawn -- the
+task runtime's workers spawn helpers while the main thread is still
+starting other workers (lib/task_runtime.w). Joining futex-waits (no CPU spinning) on the thread's `done`
 word, which the worker sets and futex-wakes when its function returns.
 Other targets stay unsupported: arm64 has no thread_create stub yet and
 Darwin threads need bsdthread_create (see threads.md staging).
@@ -145,6 +148,7 @@ struct wthread:
 # blocks on the ack before returning, so spawns are serialized.
 wthread* thread_spawn_handoff
 int thread_spawn_ack
+int thread_spawn_lock_word    # 0 free, 1 held: guards the two handoff words
 
 
 # FUTEX_WAIT | FUTEX_PRIVATE_FLAG: these futexes are only ever shared
@@ -237,8 +241,22 @@ void thread_entry():
 	thread_exit(0)
 
 
+# Take/release the spawn lock: atomic_cas to acquire, futex-wait while
+# held. The waiter passes the value it saw (1), so a release between
+# the failed cas and the syscall returns EAGAIN instead of sleeping.
+void thread_spawn_lock():
+	while (atomic_cas(&thread_spawn_lock_word, 0, 1) != 0):
+		sys_futex(cast(int, &thread_spawn_lock_word), thread_futex_wait_op(), 1, 0)
+
+
+void thread_spawn_unlock():
+	thread_spawn_lock_word = 0
+	thread_wake_word(&thread_spawn_lock_word)
+
+
 # Start func(arg) on a new thread. Returns a handle for thread_join,
-# or 0 when clone fails. Main thread only.
+# or 0 when clone fails. Any thread may spawn; each handle is joined by
+# exactly one thread.
 wthread* thread_spawn(thread_fn* func, void* arg):
 	# Before the first clone, while this is the only thread: from here
 	# on malloc/free/realloc are per-thread (lib/thread_heap.w).
@@ -250,14 +268,17 @@ wthread* thread_spawn(thread_fn* func, void* arg):
 	t.done = 0
 	t.stack_base = 0
 	t.exited = 1
+	thread_spawn_lock()
 	thread_spawn_handoff = t
 	thread_spawn_ack = 0
 	int tid = thread_create(thread_entry)
 	if (tid <= 0):
+		thread_spawn_unlock()
 		free(cast(void*, t))
 		return 0
 	t.tid = tid
 	thread_wait_word(&thread_spawn_ack)
+	thread_spawn_unlock()
 	return t
 
 
@@ -287,8 +308,8 @@ struct thread_chunk_task:
 
 
 void thread_chunk_main(void* p):
-	thread_chunk_task* task = cast(thread_chunk_task*, p)
-	task.func(task.chunk_start, task.chunk_end, task.arg)
+	thread_chunk_task* chunk = cast(thread_chunk_task*, p)
+	chunk.func(chunk.chunk_start, chunk.chunk_end, chunk.arg)
 
 
 # Start offset of chunk k when len elements split n ways: the first
@@ -322,19 +343,19 @@ void parallel_for_spawn(int start, int end, int nthreads, parallel_for_fn* func,
 	list[thread_chunk_task*] tasks = new list[thread_chunk_task*]
 	int k = 1
 	while (k < nthreads):
-		thread_chunk_task* task = new thread_chunk_task()
-		task.func = func
-		task.chunk_start = start + thread_chunk_offset(len, nthreads, k)
-		task.chunk_end = start + thread_chunk_offset(len, nthreads, k + 1)
-		task.arg = arg
-		wthread* t = thread_spawn(thread_chunk_main, cast(void*, task))
+		thread_chunk_task* chunk = new thread_chunk_task()
+		chunk.func = func
+		chunk.chunk_start = start + thread_chunk_offset(len, nthreads, k)
+		chunk.chunk_end = start + thread_chunk_offset(len, nthreads, k + 1)
+		chunk.arg = arg
+		wthread* t = thread_spawn(thread_chunk_main, cast(void*, chunk))
 		if (t == 0):
 			# clone failed: run this chunk on the calling thread
-			func(task.chunk_start, task.chunk_end, arg)
-			free(cast(void*, task))
+			func(chunk.chunk_start, chunk.chunk_end, arg)
+			free(cast(void*, chunk))
 		else:
 			workers.push(t)
-			tasks.push(task)
+			tasks.push(chunk)
 		k = k + 1
 	func(start, start + thread_chunk_offset(len, nthreads, 1), arg)
 	for wthread* t in workers:

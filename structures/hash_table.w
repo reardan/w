@@ -61,6 +61,7 @@ struct __w_hash_table:
 	int order_tail    # last inserted live slot, -1 when empty
 	int default_kind  # missing-key policy: __w_hash_default_* (0 = trap)
 	int default_value # stored word / factory address / container descriptor
+	int deleted       # tombstone slots (state 2); they count toward the load
 
 
 # Bytes per value slot. Scalar values (value_size <= word) keep the
@@ -239,9 +240,10 @@ void __w_hash_order_unlink(__w_hash_table* table, int i):
 __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 	if (capacity < 16):
 		capacity = 16
-	__w_hash_table* table = malloc(13 * __word_size__)
+	__w_hash_table* table = malloc(14 * __word_size__)
 	table.capacity = capacity
 	table.count = 0
+	table.deleted = 0
 	table.key_kind = key_kind
 	table.value_size = value_size
 	table.default_kind = __w_hash_default_none()
@@ -273,13 +275,15 @@ int __w_hash_table_slot(__w_hash_table* table, int key):
 	int mask = table.capacity - 1
 	int i = __w_hash_key_hash(table.key_kind, key) & mask
 	int first_deleted = -1
-	while (table.states[i] != 0):
+	int probes = 0
+	while ((table.states[i] != 0) && (probes < table.capacity)):
 		if (table.states[i] == 1):
 			if (__w_hash_key_equal(table.key_kind, table.keys[i], key)):
 				return i
 		else if (first_deleted < 0):
 			first_deleted = i
 		i = (i + 1) & mask
+		probes = probes + 1
 	if (first_deleted >= 0):
 		return first_deleted
 	return i
@@ -297,7 +301,8 @@ void __w_hash_table_move_owned(__w_hash_table* table, int key, char* value_src):
 	__w_hash_value_copy(__w_hash_value_addr(table, i), value_src, __w_hash_slot_size(table))
 
 
-void __w_hash_table_grow(__w_hash_table* table):
+# Rebuild the table at new_capacity, dropping every tombstone.
+void __w_hash_table_rehash(__w_hash_table* table, int new_capacity):
 	int old_capacity = table.capacity
 	int* old_keys = table.keys
 	int* old_values = table.values
@@ -307,8 +312,9 @@ void __w_hash_table_grow(__w_hash_table* table):
 	int old_head = table.order_head
 	int slot_size = __w_hash_slot_size(table)
 
-	table.capacity = old_capacity * 2
+	table.capacity = new_capacity
 	table.count = 0
+	table.deleted = 0
 	table.keys = malloc(table.capacity * __word_size__)
 	table.values = malloc(table.capacity * slot_size)
 	table.states = malloc(table.capacity)
@@ -339,6 +345,18 @@ void __w_hash_table_grow(__w_hash_table* table):
 	free(old_prev)
 
 
+# Keep live + tombstone slots under 3/4 of the capacity: grow when live
+# keys fill it, rehash in place when tombstones from add/remove churn
+# do (probing needs empty slots to terminate quickly).
+void __w_hash_table_reserve_one(__w_hash_table* table):
+	if ((table.count + table.deleted) * 4 < table.capacity * 3):
+		return
+	if (table.deleted > table.count):
+		__w_hash_table_rehash(table, table.capacity)
+	else:
+		__w_hash_table_rehash(table, table.capacity * 2)
+
+
 __w_hash_table* __w_map_new(int key_kind, int value_size):
 	return __w_hash_table_new(key_kind, value_size, 16)
 
@@ -347,10 +365,11 @@ __w_hash_table* __w_map_new(int key_kind, int value_size):
 # A new key joins the tail of the insertion-order chain; an existing key
 # keeps its position.
 int __w_map_insert_slot(__w_hash_table* table, int key):
-	if (table.count * 4 >= table.capacity * 3):
-		__w_hash_table_grow(table)
+	__w_hash_table_reserve_one(table)
 	int i = __w_hash_table_slot(table, key)
 	if (table.states[i] != 1):
+		if (table.states[i] == 2):
+			table.deleted = table.deleted - 1
 		table.states[i] = 1
 		table.keys[i] = __w_hash_key_clone(table.key_kind, key)
 		table.count = table.count + 1
@@ -507,6 +526,7 @@ int __w_map_remove(__w_hash_table* table, int key):
 		j = j + 1
 	table.states[i] = 2
 	table.count = table.count - 1
+	table.deleted = table.deleted + 1
 	__w_hash_order_unlink(table, i)
 	return 1
 

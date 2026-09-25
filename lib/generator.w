@@ -13,7 +13,14 @@ into the body and yield switches back. The compiler lowers:
 The 64KB stack (vs the 4MB thread stack) keeps hundreds of live
 generators viable; it is munmap'd automatically when the body finishes
 (observed by gen_next) or by gen_free when a generator is abandoned
-early. gen_free also releases the object itself.
+early. gen_free also releases the object itself. gen_set_stack_size
+moves a not-yet-started generator onto a bigger (or smaller) stack,
+which is how lib/task.w's task_spawn_sized gives deep call chains room.
+
+Every stack sits above a PROT_NONE guard region, so running off the
+bottom faults at once instead of silently corrupting whatever mapping
+happens to lie below (where the target cannot protect pages, such as
+wasm, the guard is plain unused memory).
 
 gen_switch is an asm stub emitted by code_generator/x86_asm.w /
 x64_asm.w: it saves the callee-saved registers and esp on the current
@@ -28,7 +35,8 @@ struct generator:
 	int caller_esp     # stack pointer to switch back to (consumer side)
 	int value          # last yielded word
 	int done           # 1 once the body returned / fell off the end
-	int stack_base     # mmap base, 0 once the stack was released
+	int stack_base     # mmap base (guard included), 0 once released
+	int stack_size     # usable bytes above the guard
 
 
 int __w_gen_stack_size():
@@ -41,6 +49,43 @@ int __w_gen_stack_size():
 # stack pointer that segfaults on first use with no diagnostic at all.
 int __w_gen_mmap_failed(int addr):
 	return (addr < 0) && (addr > -4096)
+
+
+# PROT_NONE region below every stack. 16KB covers the largest page size
+# of any supported target (arm64 darwin), so the protected range stays
+# page-aligned everywhere.
+int __w_gen_guard_size():
+	return 16384
+
+
+# Total mapping for a stack with size usable bytes.
+int __w_gen_mapping_size(int size):
+	return size + __w_gen_guard_size()
+
+
+# Maps size usable bytes plus the guard; returns the mapping base.
+# Exits with a diagnostic when mmap fails.
+int __w_gen_map_stack(int size):
+	# mmap(addr=0, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS)
+	int base = mmap(0, __w_gen_mapping_size(size), 3, 34)
+	if (__w_gen_mmap_failed(base)):
+		st_write_cstr(c"generator: out of memory (coroutine stack mmap failed)\x0a")
+		exit(1)
+	# Best effort: targets without page protection report failure and
+	# keep an unprotected (but still unused) guard region.
+	mprotect(base, __w_gen_guard_size(), 0)
+	return base
+
+
+# Top of the usable stack (one past its highest byte).
+int __w_gen_stack_top(generator* g):
+	return g.stack_base + __w_gen_mapping_size(g.stack_size)
+
+
+void __w_gen_release_stack(generator* g):
+	if (g.stack_base != 0):
+		munmap(g.stack_base, __w_gen_mapping_size(g.stack_size))
+		g.stack_base = 0
 
 
 # Words gen_switch pushes before saving the stack pointer: 4 callee-saved
@@ -68,13 +113,9 @@ generator* __w_gen_create(int fn, int* argv, int argc):
 	g.value = 0
 	g.done = 0
 	int size = __w_gen_stack_size()
-	# mmap(addr=0, size, PROT_READ|PROT_WRITE, MAP_PRIVATE|MAP_ANONYMOUS)
-	int base = mmap(0, size, 3, 34)
-	if (__w_gen_mmap_failed(base)):
-		st_write_cstr(c"generator: out of memory (coroutine stack mmap failed)\x0a")
-		exit(1)
-	g.stack_base = base
-	int* top = cast(int*, base + size)
+	g.stack_base = __w_gen_map_stack(size)
+	g.stack_size = size
+	int* top = cast(int*, __w_gen_stack_top(g))
 
 	# Highest addresses first: the declared arguments in call order
 	# (argument 1 at the highest address), exactly like a real call.
@@ -96,8 +137,41 @@ generator* __w_gen_create(int fn, int* argv, int argc):
 	while (j < regs):
 		top[0 - (argc + 4 + j)] = 0
 		j = j + 1
-	g.resume_esp = base + size - ((argc + 3 + regs) * __word_size__)
+	g.resume_esp = __w_gen_stack_top(g) - ((argc + 3 + regs) * __word_size__)
 	return g
+
+
+# Move a generator that has not started yet onto a fresh stack with
+# size usable bytes (rounded up to 4KB). Its initial frame holds only
+# copied argument words, the object pointer, the entry address and
+# zeroed register slots -- nothing that points into the old stack -- so
+# copying it to the top of the new stack is a complete move. Returns 1,
+# or 0 when the generator already ran (its frames may hold pointers
+# into the current stack, so it cannot move).
+int gen_set_stack_size(generator* g, int size):
+	if ((g.done != 0) || (g.caller_esp != 0) || (g.stack_base == 0)):
+		return 0
+	size = (size + 4095) & (0 - 4096)
+	if (size < 8192):
+		size = 8192
+	int old_top = __w_gen_stack_top(g)
+	int used = old_top - g.resume_esp
+	int old_base = g.stack_base
+	int old_size = g.stack_size
+	int base = __w_gen_map_stack(size)
+	g.stack_base = base
+	g.stack_size = size
+	int new_top = __w_gen_stack_top(g)
+	int* from = cast(int*, old_top - used)
+	int* to = cast(int*, new_top - used)
+	int words = used / __word_size__
+	int i = 0
+	while (i < words):
+		to[i] = from[i]
+		i = i + 1
+	g.resume_esp = new_top - used
+	munmap(old_base, __w_gen_mapping_size(old_size))
+	return 1
 
 
 # Called by the compiler's yield lowering, on the generator's stack.
@@ -124,9 +198,7 @@ int gen_next(generator* g):
 	if (g.done):
 		# The body just finished: release its stack now (it could not
 		# munmap the stack it was running on).
-		if (g.stack_base != 0):
-			munmap(g.stack_base, __w_gen_stack_size())
-			g.stack_base = 0
+		__w_gen_release_stack(g)
 		return 0
 	return 1
 
@@ -144,9 +216,7 @@ int gen_done(generator* g):
 void gen_free(generator* g):
 	if (g == 0):
 		return;
-	if (g.stack_base != 0):
-		munmap(g.stack_base, __w_gen_stack_size())
-		g.stack_base = 0
+	__w_gen_release_stack(g)
 	free(cast(void*, g))
 
 

@@ -418,3 +418,32 @@ void exit(int error_code):
 # exit: terminates only the calling thread.
 void thread_exit(int error_code):
 	syscall(93, error_code, 0, 0)
+
+
+/* epoll and eventfd (lib/event_loop.w's readiness backend, lib/task_runtime.w's
+   cross-thread wakeups). epoll_event is {u32 events; u64 data}: naturally aligned (16 bytes) on arm64. */
+
+int epoll_event_bytes():
+	return 16
+
+
+# Byte offset of the u64 data field inside one epoll_event.
+int epoll_event_data_offset():
+	return 8
+
+
+int epoll_create1(int flags):
+	return syscall(20, flags, 0, 0)
+
+
+int epoll_ctl(int epfd, int op, int fd, int event):
+	return syscall7(21, epfd, op, fd, event, 0, 0)
+
+
+# arm64 has no epoll_wait: epoll_pwait (22) with a null sigmask.
+int epoll_wait(int epfd, int events, int maxevents, int timeout_ms):
+	return syscall7(22, epfd, events, maxevents, timeout_ms, 0, 8)
+
+
+int eventfd2(int initval, int flags):
+	return syscall(19, initval, flags, 0)

@@ -18,6 +18,13 @@
 # identically (the caller passes tls == 0 for plain, or the tls_conn*
 # from tls_accept).
 #
+# Task mode (docs/projects/async.md): http_server.w's
+# server_context_serve_tasks hands in NON-blocking sockets and runs each
+# connection in its own task. The same code paths then see EAGAIN and
+# park the task through lib/io_wait.w (up to timeout_ms per wait)
+# instead of blocking the thread; outside a task io_wait fails at once,
+# so the blocking behavior above is unchanged.
+#
 # NAMING: ConnectionContext, and libs/standard/web/http_server.w's
 # ServerContext/ServerRequest/ServerResponse, use PascalCase -- a
 # deliberate departure from the codebase's lowercase_snake_case
@@ -41,6 +48,8 @@
 #   int connection_error_*()  /  char* connection_error_string(int code)
 import lib.lib
 import lib.net
+import lib.poll
+import lib.io_wait
 import lib.stream
 import structures.string
 import libs.standard.net.tls
@@ -121,6 +130,8 @@ ConnectionContext* connection_context_new(int fd, int timeout_ms, tls_conn* tls)
 	c.peer_ip = 0
 	c.peer_port = 0
 	c.keep_alive = 1
+	if (tls != 0):
+		tls.io_timeout_ms = timeout_ms
 	return c
 
 
@@ -182,8 +193,12 @@ int connection_context_fill(ConnectionContext* c):
 			# EINTR: retry the same recv.
 			pass
 		else if (count == (0 - net_eagain())):
-			c.error = connection_error_timeout()
-			return (-1)
+			# A non-blocking fd inside a task parks until readable (up to
+			# timeout_ms); a blocking fd's SO_RCVTIMEO expiry, or any wait
+			# failure, is a timeout.
+			if (io_wait(c.fd, poll_in(), c.timeout_ms) < 0):
+				c.error = connection_error_timeout()
+				return (-1)
 		else:
 			c.error = connection_error_recv()
 			return (-1)
@@ -291,8 +306,9 @@ int connection_context_write_all(ConnectionContext* c, char* data, int n):
 			# EINTR: retry the same send.
 			pass
 		else if (count == (0 - net_eagain())):
-			c.error = connection_error_timeout()
-			return 0
+			if (io_wait(c.fd, poll_out(), c.timeout_ms) < 0):
+				c.error = connection_error_timeout()
+				return 0
 		else:
 			c.error = connection_error_send()
 			return 0

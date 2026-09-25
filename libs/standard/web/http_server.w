@@ -8,16 +8,17 @@
 # both http and https depending only on whether ServerContext was given
 # a cert/key.
 #
-# Concurrency: v1 is single-threaded sequential accept -- one connection
-# is fully served (including every keep-alive request on it) before the
-# next is accepted. lib/thread.w's kernel threads exist but forbid
-# allocation in worker functions (MVP constraint, see its module doc),
-# which rules out a plain thread-per-connection model without a bigger
-# redesign; lib/event_loop.w's poll(2) loop could drive a concurrent,
-# non-blocking version of this accept loop, but that needs the request
-# parser and handler contract to become resumable (callback/coroutine
-# style) instead of the straight-line blocking code below. Neither is
-# in scope here -- see docs/projects/ for a future concurrency phase.
+# Concurrency: server_context_accept_loop is single-threaded sequential
+# accept -- one connection is fully served (including every keep-alive
+# request on it) before the next is accepted. server_context_serve_tasks
+# serves connections concurrently on the task runtime (lib/task.w,
+# docs/projects/async.md): one task per connection, non-blocking
+# sockets, and the same straight-line parser and handlers -- the
+# connection and TLS layers park the connection's task through
+# lib/io_wait.w instead of blocking the thread. Handlers then interleave
+# at I/O points (and may use task awaits themselves), so a handler that
+# blocks the thread or burns CPU stalls every connection; hand such work
+# to task_spawn_blocking (lib/task_runtime.w) or a worker process.
 #
 # Request parsing mirrors http_client.w's response parser (issue #200)
 # wherever the shapes line up: header lines share http_store_header_into,
@@ -85,6 +86,8 @@
 #   int server_context_bind(ServerContext* s)          0 on failure (s.error set)
 #   int server_context_port(ServerContext* s)           the bound port (for port 0 binds)
 #   int server_context_accept_loop(ServerContext* s, int max_connections)  connections served
+#   int server_context_serve_tasks(ServerContext* s, int max_connections)  same, concurrently
+#   generator int server_accept_task(ServerContext* s, int max_connections)  the task behind it
 #   void server_context_close(ServerContext* s)
 #   void server_context_free(ServerContext* s)
 #   void server_route(ServerContext* s, char* method, char* pattern, request_handler_fn* handler, void* user_data)
@@ -119,6 +122,8 @@ import lib.str
 import lib.net
 import lib.container
 import structures.string
+import lib.task
+import lib.task_io
 import libs.standard.web.connection
 import libs.standard.web.http_client
 import libs.standard.web.urlparse
@@ -1307,4 +1312,69 @@ int server_context_accept_loop(ServerContext* s, int max_connections):
 		connection_context_set_peer(c, net_htonl(peer.ip_address), net_htons(peer.port))
 		server_serve_connection(s, c)
 		served = served + 1
+	return served
+
+
+# Usable stack for a connection task. The TLS handshake (X.509 parsing,
+# signature checks) runs inside it, far deeper than the 64KB default.
+int server_task_stack_bytes():
+	return 512 * 1024
+
+
+# One accepted connection served inside its own task. fd is already
+# non-blocking; the TLS handshake gets the same per-wait timeout as
+# every later read and write.
+generator int server_connection_task(ServerContext* s, int fd, int peer_ip, int peer_port):
+	tls_conn* tls = 0
+	if (s.is_tls != 0):
+		task_deadline_scope handshake
+		task_deadline_enter(&handshake, s.timeout_ms)
+		tls = tls_accept(fd, s.tls_cfg)
+		task_deadline_exit(&handshake)
+		if (tls == 0):
+			close(fd)
+			return
+	ConnectionContext* c = connection_context_new(fd, s.timeout_ms, tls)
+	connection_context_set_peer(c, peer_ip, peer_port)
+	server_serve_connection(s, c)
+
+
+# The accept loop as a task: accepts connections (max_connections <= 0:
+# forever) and serves each in its own task, all owned by one task
+# group, so returning means every connection finished. Spawn it on
+# your own scheduler to run the server beside other tasks; cancelling
+# it closes the accept loop and cancels every open connection. Finishes
+# with the number of connections accepted.
+generator int server_accept_task(ServerContext* s, int max_connections):
+	socket_set_nonblocking(s.listener_fd)
+	task_group* g = task_group_here()
+	int served = 0
+	while ((max_connections <= 0) || (served < max_connections)):
+		sockaddr_in peer
+		int conn = task_accept_from(s.listener_fd, &peer)
+		if (conn < 0):
+			if ((conn == task_err_cancelled()) || (conn == task_err_timed_out())):
+				break
+			if ((conn == -4) || (conn == -103) || (conn == -24) || (conn == -23)):
+				# EINTR, ECONNABORTED, EMFILE/ENFILE: keep serving (the
+				# fd-exhaustion cases recover as connections close).
+				task_sleep_ms(1)
+				continue
+			break
+		task_group_spawn_sized(g, server_connection_task(s, conn, net_htonl(peer.ip_address), net_htons(peer.port)), server_task_stack_bytes())
+		served = served + 1
+	task_group_wait(g)
+	task_group_free(g)
+	task_finish(served)
+
+
+# Serve connections concurrently on a fresh task scheduler until
+# max_connections were accepted and served (<= 0: forever). Returns the
+# number of connections accepted.
+int server_context_serve_tasks(ServerContext* s, int max_connections):
+	task_scheduler* sched = task_scheduler_new()
+	task* acceptor = task_spawn(sched, server_accept_task(s, max_connections))
+	task_run(sched)
+	int served = task_result(acceptor)
+	task_scheduler_free(sched)
 	return served
