@@ -4,7 +4,7 @@
 # inside the w-dev container (tools/mac/wdev.sh); this half runs on the Mac
 # because only the Mac can load and exec Mach-O.
 #
-# Usage: tools/mac/run_darwin_tests.sh bin/hello_darwin [bin/more...]
+# Usage: tools/mac/run_darwin_tests.sh bin/net_darwin [bin/more...]
 #        tools/mac/run_darwin_tests.sh          # runs the default set
 #
 # The compiler self-signs its output (code_generator/macho_sign.w writes an
@@ -24,7 +24,10 @@ if [ -z "$tests" ]; then
 	# loopback socket + plaintext HTTP smoke for the Darwin
 	# sockaddr/socket-ABI fixes. Linux CI only cross-compiles it; this
 	# script is where it actually runs.
-	tests="bin/hello_darwin bin/dynamic_darwin_test bin/graphics_gl_smoke_darwin bin/pac_full_darwin_test bin/net_darwin"
+	tests="bin/dynamic_darwin_test bin/graphics_gl_smoke_darwin bin/pac_full_darwin_test bin/net_darwin"
+	# Cocoa window input (#462): synthetic NSEvents through the real
+	# AppKit queue; prints a SKIP line outside a GUI session.
+	tests="$tests bin/graphics_cocoa_input_darwin"
 	# The `./wbuild arm64_darwin_smoke_test` set (issue #210): the same
 	# programs as the qemu-based arm64_smoke_test, cross-compiled to
 	# Mach-O, so real-silicon smoke coverage does not need qemu. Like

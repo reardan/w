@@ -10,7 +10,10 @@ classes, selectors and objects all travel as word-sized W ints.
 HARD RULE: never bind a struct-RETURNING selector (frame,
 locationInWindow, contentRectForFrameRect:, ...). Those return through
 x8/HFA conventions the shim does not model; this backend avoids every
-such selector by design. Struct ARGUMENTS are fine when flattened:
+such selector by design; when a struct value is needed, read it through
+key-value coding — [obj valueForKey:@"locationInWindow"] boxes it in an
+NSValue and [value getValue:buf size:n] copies it out (see
+graphics.window_cocoa's mouse tracking). Struct ARGUMENTS are fine when flattened:
 an NSRect argument is an HFA of 4 doubles, which lands in v0-v3 exactly
 like 4 scalar float64 parameters (objc_msg_rect3 below relies on this).
 Narrow returns (BOOL, unsigned short) arrive with garbage in the high
@@ -38,6 +41,8 @@ extern int objc_msg2(int receiver, int selector, int a, int b) = "objc_msgSend"
 extern int objc_msg4(int receiver, int selector, int a, int b, int c, int d) = "objc_msgSend"
 # initWithContentRect:styleMask:backing:defer: — NSRect in v0-v3, the
 # three integer arguments after the receiver+selector in x2-x4.
+# A double-returning selector (scrollingDeltaY): the result arrives in d0.
+extern float64 objc_msg_f64(int receiver, int selector) = "objc_msgSend"
 extern int objc_msg_rect3(int receiver, int selector, float64 x, float64 y, float64 w, float64 h, int a, int b, int c) = "objc_msgSend"
 
 c_lib "/System/Library/Frameworks/AppKit.framework/Versions/C/AppKit"
