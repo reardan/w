@@ -13,7 +13,8 @@ have been written without any one of them.
 
 Focus works like ui_textbox's: clicking inside claims ctx.focus, and
 the focused textarea drains the frame's CHAR and NAV queues. Printable
-ASCII inserts, backspace and delete remove, return inserts a newline.
+characters insert as UTF-8, backspace and delete remove whole
+characters, return inserts a newline.
 Arrows, page up/down, home/end move the caret; with shift held they
 extend the selection from its anchor, and with ctrl held home/end go to
 the ends of the buffer.
@@ -147,6 +148,10 @@ void ui_textarea_move_line(ui_textarea_state* st, int delta):
 		st.caret_col = st.caret_goal_col
 	else:
 		st.caret_col = len
+	# goal_col counts bytes: never land inside a multi-byte character.
+	char* text = &st.buf.data[ui_text_buffer_line_start(&st.buf, line)]
+	while ((st.caret_col > 0) && ((text[st.caret_col] & 192) == 128)):
+		st.caret_col = st.caret_col - 1
 
 
 # Apply one NAV code. goal_col survives vertical motion and is reset by
@@ -161,7 +166,8 @@ void ui_textarea_nav(ui_textarea_state* st, int nav, int mods, int page_lines):
 		if (ui_textarea_delete_selection(st) == 0):
 			int at = ui_textarea_caret_offset(st)
 			if (at < st.buf.length):
-				ui_text_buffer_delete(&st.buf, at, 1)
+				int cp = 0
+				ui_text_buffer_delete(&st.buf, at, ui_utf8_next(st.buf.data, at, &cp) - at)
 				ui_textarea_set_caret(st, at)
 		st.caret_goal_col = st.caret_col
 		return
@@ -169,11 +175,12 @@ void ui_textarea_nav(ui_textarea_state* st, int nav, int mods, int page_lines):
 	int offset = ui_textarea_caret_offset(st)
 	if (nav == GFX_NAV_LEFT):
 		if (offset > 0):
-			ui_textarea_set_caret(st, offset - 1)
+			ui_textarea_set_caret(st, ui_utf8_prev(st.buf.data, offset))
 		st.caret_goal_col = st.caret_col
 	else if (nav == GFX_NAV_RIGHT):
 		if (offset < st.buf.length):
-			ui_textarea_set_caret(st, offset + 1)
+			int cp2 = 0
+			ui_textarea_set_caret(st, ui_utf8_next(st.buf.data, offset, &cp2))
 		st.caret_goal_col = st.caret_col
 	else if (nav == GFX_NAV_HOME):
 		if (ctrl):
@@ -197,12 +204,18 @@ void ui_textarea_nav(ui_textarea_state* st, int nav, int mods, int page_lines):
 		ui_textarea_move_line(st, page_lines)
 
 
-# Insert one typed character, replacing any selection first.
+# Insert one typed character (a codepoint, as UTF-8), replacing any
+# selection first.
 void ui_textarea_type(ui_textarea_state* st, int ch):
 	ui_textarea_delete_selection(st)
 	int offset = ui_textarea_caret_offset(st)
-	ui_text_buffer_insert(&st.buf, offset, ch)
-	ui_textarea_set_caret(st, offset + 1)
+	char[4] bytes
+	int n = ui_utf8_encode(&bytes[0], ch)
+	int k = 0
+	while (k < n):
+		ui_text_buffer_insert(&st.buf, offset + k, bytes[k] & 255)
+		k = k + 1
+	ui_textarea_set_caret(st, offset + n)
 	st.caret_goal_col = st.caret_col
 
 
@@ -213,8 +226,9 @@ void ui_textarea_backspace(ui_textarea_state* st):
 	int offset = ui_textarea_caret_offset(st)
 	if (offset == 0):
 		return
-	ui_text_buffer_delete(&st.buf, offset - 1, 1)
-	ui_textarea_set_caret(st, offset - 1)
+	int from = ui_utf8_prev(st.buf.data, offset)
+	ui_text_buffer_delete(&st.buf, from, offset - from)
+	ui_textarea_set_caret(st, from)
 	st.caret_goal_col = st.caret_col
 
 
@@ -268,7 +282,7 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 		int i = 0
 		while (i < ctx.char_count):
 			int ch = ctx.chars[i]
-			if ((ch >= 32) && (ch <= 126)):
+			if (ui_utf8_is_text(ch)):
 				ui_textarea_type(st, ch)
 				changed = 1
 			else if (ch == 9):
@@ -334,11 +348,7 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 				float32 hx = origin_x + cast(float32, ui_text_prefix_width(text, from, scale))
 				float32 hw = cast(float32, ui_text_prefix_width(text, to, scale) - ui_text_prefix_width(text, from, scale))
 				ui_render_rect(ctx.rndr, ui_rect_new(hx, ly, hw, line_h), ctx.theme.accent_hot)
-		int col = 0
-		float32 pen = origin_x
-		while (col < len):
-			pen = pen + cast(float32, ui_render_glyph(ctx.rndr, pen, ly, text[col] & 255, scale, ui_text_color(ctx)))
-			col = col + 1
+		ui_draw_text_n(ctx.rndr, origin_x, ly, text, len, scale, ui_text_color(ctx))
 		line = line + 1
 
 	if ((ctx.focus == id) && (ctx.disabled == 0)):

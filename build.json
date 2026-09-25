@@ -2142,6 +2142,7 @@
 				"graphics_ui_splitter_test",
 				"graphics_ui_table_test",
 				"graphics_ui_tabs_test",
+				"graphics_ui_text_font_test",
 				"graphics_ui_text_style_test",
 				"graphics_ui_textarea_test",
 				"graphics_ui_toast_test",
@@ -4639,6 +4640,16 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "graphics/ui/widgets/tabs_test.w", "-o", "bin/graphics_ui_tabs_test"]},
 				{"cmd": ["bin/graphics_ui_tabs_test"]}
+			]
+		},
+		{
+			"name": "graphics_ui_text_font_test",
+			"deps": ["wv2"],
+			"inputs": ["graphics/ui/text_font_test.w"],
+			"outputs": ["bin/graphics_ui_text_font_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "graphics/ui/text_font_test.w", "-o", "bin/graphics_ui_text_font_test"]},
+				{"cmd": ["bin/graphics_ui_text_font_test"]}
 			]
 		},
 		{

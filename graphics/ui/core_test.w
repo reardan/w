@@ -124,16 +124,20 @@ void test_ocean_theme_is_not_grayscale():
 
 void test_glyph_metrics():
 	# 'A' has ink and a plausible body advance; space is inkless but
-	# still advances; out-of-range maps to space.
+	# still advances; a control character draws nothing at all; Latin-1
+	# past ASCII has real glyphs.
 	ui_glyph a = ui_font_glyph(0, 'A')
 	asserts(c"A has ink", (a.w > 0) && (a.h > 0))
 	asserts(c"A advance plausible", (a.advance >= 9) && (a.advance <= 13))
 	ui_glyph sp = ui_font_glyph(0, ' ')
 	assert_equal(0, sp.w)
 	asserts(c"space advances", sp.advance > 0)
-	ui_glyph mapped = ui_font_glyph(0, 200)
-	assert_equal(sp.advance, mapped.advance)
-	assert_equal(0, mapped.w)
+	ui_glyph control = ui_font_glyph(0, 7)
+	assert_equal(0, control.advance)
+	assert_equal(0, control.w)
+	ui_glyph e_grave = ui_font_glyph(0, 200)
+	asserts(c"E grave has ink", e_grave.w > 0)
+	assert_equal(ui_font_glyph(0, 'E').advance, e_grave.advance)
 	# The title strike is a larger bold face: at least as wide.
 	ui_glyph title_a = ui_font_glyph(1, 'A')
 	asserts(c"title A wider", title_a.advance > a.advance)

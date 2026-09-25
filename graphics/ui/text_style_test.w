@@ -1,8 +1,9 @@
 # Headless unit tests for text styles and runtime fonts (issue #379):
 # underline/strikethrough lines at the face's decoration metrics,
-# italic's baseline shear, and ui_font_load_ttf strikes matching the
-# baked atlas glyph for glyph — all through ui_render_init_headless,
-# no GL context or display. Runs from the repo root (it loads the
+# italic's baseline shear for a face with no italic, and
+# ui_font_load_ttf strikes matching the embedded default glyph for
+# glyph — all through ui_render_init_headless, no GL context or
+# display. Runs from the repo root (it loads the
 # committed tools/ui faces).
 # x64-only: the renderer imports graphics.gl/graphics.window, which
 # link libGL/libX11 on the 64-bit Linux targets.
@@ -82,19 +83,22 @@ void test_underline_and_strikethrough_combine():
 	ui_render_destroy(&r)
 
 
-# Italic keeps the glyph's texels and advance, and leans the quad
-# about the baseline: the top edge moves right by skew * its height
-# above the baseline, the bottom edge by skew * its own (negative
-# below the baseline).
+# A face with no italic companion (a loaded file, unpaired) gets a
+# synthetic oblique: italic keeps the glyph's texels and advance, and
+# leans the quad about the baseline — the top edge moves right by
+# skew * its height above the baseline, the bottom edge by skew * its
+# own (negative below the baseline).
 void test_italic_shears_about_the_baseline():
+	int strike = ui_font_load_ttf(c"tools/ui/LiberationSans-Regular.ttf", 16)
+	assert_equal(0 - 1, ui_font_strike_italic(strike))
 	ui_renderer r
 	ui_render_init_headless(&r)
 	ui_render_begin(&r, 320, 240)
-	ui_draw_text_styled(&r, 50.0, 60.0, c"p", 2, UI_TEXT_ITALIC, ui_gray(0.0))
+	ui_draw_text_strike(&r, 50.0, 60.0, c"p", strike, UI_TEXT_ITALIC, ui_gray(0.0))
 	assert_equal(1, quads(&r))
-	ui_glyph g = ui_font_glyph(0, 'p')
+	ui_glyph g = ui_font_glyph(strike, 'p')
 	float32 skew = ui_text_italic_skew()
-	float32 baseline = 60.0 + cast(float32, ui_font_ascent(0))
+	float32 baseline = 60.0 + cast(float32, ui_font_ascent(strike))
 	float32 gx = 50.0 + cast(float32, g.bearing_x)
 	float32 gy = baseline - cast(float32, g.bearing_top)
 	float32 gy1 = gy + cast(float32, g.h)
@@ -104,27 +108,32 @@ void test_italic_shears_about_the_baseline():
 	# 'p' descends: its bottom edge sits left of the upright position.
 	asserts(c"descender leans back", vert(&r, 5, 0) < gx)
 	asserts(c"same texels", vert(&r, 0, 2) == ui_render_u(g.x))
-	asserts(c"layout unchanged", ui_text_width(c"p", 2) == g.advance)
+	asserts(c"layout unchanged", ui_text_width_styled(c"p", strike, UI_TEXT_ITALIC) == g.advance)
 	ui_render_destroy(&r)
 
 
 # Loading the committed Regular face at 16 ppem at run time reproduces
-# the baked body strike exactly: same rasterizer, same coverage boost.
-void test_runtime_strike_matches_baked():
-	int generation = ui_font_atlas_generation()
-	int rows = ui_font_atlas_rows()
+# the embedded body strike exactly: the subset keeps the outlines, and
+# both go through the same rasterizer and coverage boost.
+void test_runtime_strike_matches_embedded():
 	int strike = ui_font_load_ttf(c"tools/ui/LiberationSans-Regular.ttf", 16)
-	asserts(c"runtime strike id follows the baked ones", strike >= ui_font_strike_count())
-	assert_equal(generation + 1, ui_font_atlas_generation())
-	asserts(c"atlas grew", ui_font_atlas_rows() > rows)
+	asserts(c"runtime strike id follows the defaults", strike >= ui_font_strike_count())
 	assert_equal(ui_font_ascent(0), ui_font_strike_ascent(strike))
 	assert_equal(ui_font_descent(0), ui_font_strike_descent(strike))
-	assert_equal(ui_font_baked_underline_top(0), ui_font_underline_top(strike))
-	assert_equal(ui_font_baked_strikeout_top(0), ui_font_strikeout_top(strike))
+	# Glyphs rasterize on first use, each growing the atlas.
+	int generation = ui_font_atlas_generation()
+	ui_font_glyph(strike, 'Q')
+	assert_equal(generation + 1, ui_font_atlas_generation())
 
+	# Rasterize both strikes before snapshotting the atlas.
+	int ch = 32
+	while (ch <= 126):
+		ui_font_glyph(0, ch)
+		ui_font_glyph(strike, ch)
+		ch = ch + 1
 	char* atlas = ui_font_build_atlas()
 	int w = ui_font_atlas_w()
-	int ch = 32
+	ch = 32
 	while (ch <= 126):
 		ui_glyph baked = ui_font_glyph(0, ch)
 		ui_glyph loaded = ui_font_glyph(strike, ch)
@@ -135,6 +144,7 @@ void test_runtime_strike_matches_baked():
 		asserts(c"same bearing_top", baked.bearing_top == loaded.bearing_top)
 		if (loaded.w > 0):
 			asserts(c"packed below the baked rows", loaded.y >= ui_font_atlas_h())
+			asserts(c"a glyph of its own", loaded.y != baked.y || loaded.x != baked.x)
 			int y = 0
 			while (y < loaded.h):
 				int x = 0
@@ -162,6 +172,7 @@ void test_runtime_strike_draws():
 	assert_equal(2, quads(&r))
 	ui_glyph g = ui_font_glyph(strike, 'W')
 	asserts(c"bigger than the title strike", g.h > ui_font_glyph(1, 'W').h)
+	ui_render_end(&r)
 	asserts(c"v over the grown atlas", vert(&r, 0, 3) == cast(float32, g.y) / cast(float32, ui_font_atlas_rows()))
 	asserts(c"inside the atlas", vert(&r, 2, 3) <= 1.0)
 	ui_render_destroy(&r)
@@ -187,7 +198,7 @@ void test_bad_runtime_load_changes_nothing():
 	assert_equal(generation, ui_font_atlas_generation())
 	assert_equal(rows, ui_font_atlas_rows())
 	assert_equal(total, ui_font_strike_total())
-	# An unknown strike id falls back to a baked strike rather than
-	# reading past the runtime table.
+	# An unknown strike id falls back to the body strike rather than
+	# reading past the strike table.
 	ui_glyph g = ui_font_glyph(total + 3, 'A')
-	assert_equal(ui_font_glyph(1, 'A').advance, g.advance)
+	assert_equal(ui_font_glyph(0, 'A').advance, g.advance)
