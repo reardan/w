@@ -45,8 +45,7 @@ void for_iter_callee(char* fn_name):
 		return;
 	int inst = generic_inst_lookup(fn_name)
 	if (inst < 0):
-		diag_part(fn_name)
-		error(c" is not defined")
+		error2(fn_name, c" is not defined")
 	generic_inst_emit_callee(inst)
 
 
@@ -244,14 +243,12 @@ void for_iter_require_struct_pointer(int container_type):
 	if (type_get_pointer_level(container_type) != 1):
 		diag_part(c"type '")
 		print_error_type(container_type)
-		diag_part(c"' is not iterable: ")
-		error(c"expected a pointer to a container struct")
+		error2(c"' is not iterable: ", c"expected a pointer to a container struct")
 	int base_type = type_lookup_previous_pointer(container_type)
 	if ((base_type < 0) | (type_num_args(base_type) == 0)):
 		diag_part(c"type '")
 		print_error_type(container_type)
-		diag_part(c"' is not iterable: ")
-		error(c"expected a pointer to a container struct")
+		error2(c"' is not iterable: ", c"expected a pointer to a container struct")
 
 
 # The "in range" body of for_statement; "for", the loop variable and
@@ -714,9 +711,7 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	if (is_enumerate):
 		expect(c")")
 		if (type_is_list(container_type) == 0):
-			diag_part(c"enumerate requires a list, got '")
-			print_error_type(container_type)
-			error(c"'")
+			error_type(c"enumerate requires a list, got '", container_type, c"'")
 		if (value_var == 0):
 			error(c"enumerate requires two loop variables: for i, x in enumerate(l)")
 	if (infer_name != 0):

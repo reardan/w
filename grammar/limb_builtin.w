@@ -66,10 +66,7 @@ void limb_builtin_check_argument(char* name, int arg_index, int param_type, int 
 	diag_part(name)
 	diag_part(c"' argument ")
 	diag_part(itoa(arg_index + 1))
-	diag_part(c" type mismatch: expected '")
-	print_error_type(param_type)
-	diag_part(c"', got '")
-	print_error_type(arg_type)
+	diag_expected_got(c" type mismatch: expected '", param_type, arg_type)
 	warning(c"'")
 
 
@@ -114,6 +111,5 @@ int limb_builtin_expr():
 		else:
 			alu_add_carry()
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in ")
-		error(name)
+		error2(c"')' expected in ", name)
 	return type_value(int_type)

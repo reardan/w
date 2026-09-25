@@ -494,9 +494,7 @@ void sym_define_global_at(int current_symbol, int v):
 	int j
 	int t = current_symbol
 	if (table[t + 1] != 'U'):
-		diag_part(c"symbol redefined: '")
-		diag_part(last_global_declaration)
-		error(c"'")
+		error3(c"symbol redefined: '", last_global_declaration, c"'")
 	# A defining occurrence is more useful than a bare forward declaration
 	# for navigation (w symbols --json / windex/wlsp go-to-definition): a
 	# prototype like lib.w's 'int main(int argc, int argv);' would
@@ -751,9 +749,7 @@ void sym_not_found_error(char* s):
 	diag_part(token)
 	if (repl_recovery == 0):
 		if (sym_defined_later_in_file(s)):
-			diag_part(c"': declared later in this file -- forward-declare it with a prototype ('type ")
-			diag_part(s)
-			error(c"(params);') before this point")
+			error3(c"': declared later in this file -- forward-declare it with a prototype ('type ", s, c"(params);') before this point")
 	error(c"'")
 
 

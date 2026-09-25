@@ -148,10 +148,7 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 		diag_part(callee_name)
 		diag_part(c"' argument ")
 		diag_part(itoa(arg_index + 1))
-		diag_part(c" type mismatch: expected '")
-		print_error_type(param_type)
-		diag_part(c"', got '")
-		print_error_type(arg_type)
+		diag_expected_got(c" type mismatch: expected '", param_type, arg_type)
 		warning(c"'")
 
 
@@ -243,10 +240,7 @@ void parse_variadic_element_argument(char* callee_name, int element_type, int ar
 		diag_part(callee_name)
 		diag_part(c"' argument ")
 		diag_part(itoa(arg_index + 1))
-		diag_part(c" type mismatch: expected '")
-		print_error_type(element_type)
-		diag_part(c"', got '")
-		print_error_type(arg_type)
+		diag_expected_got(c" type mismatch: expected '", element_type, arg_type)
 		warning(c"'")
 	coerce_call_argument(element_type, arg_type)
 	push_slot()
@@ -333,9 +327,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 			diag_part(c"warning: function '")
 			diag_part(callee_name)
 			diag_part(c"' expects at least ")
-			diag_part(itoa(w_variadic_fixed))
-			diag_part(c" arguments, got ")
-			warning(itoa(passed_args - variadic_values))
+			warning3(itoa(w_variadic_fixed), c" arguments, got ", itoa(passed_args - variadic_values))
 		if (fixed_words_end < 0):
 			fixed_words_end = stack_pos
 		# The variadic values were pushed left to right, so they sit in
@@ -445,9 +437,7 @@ int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int dec
 		diag_part(c"warning: function '")
 		diag_part(callee_name)
 		diag_part(c"' expects at least ")
-		diag_part(itoa(fixed_args))
-		diag_part(c" arguments, got ")
-		warning(itoa(passed_args))
+		warning3(itoa(fixed_args), c" arguments, got ", itoa(passed_args))
 	if (callee_name != 0):
 		free(callee_name)
 
@@ -491,11 +481,7 @@ int postfix_expr():
 				stack_pos = stack_pos + 1
 				int map_elem_map_slot = stack_pos
 				int want_key_type = type_map_key_type(map_type)
-				int got_key_type = expression()
-				got_key_type = promote(got_key_type)
-				coerce(want_key_type, got_key_type)
-				if (types_compatible_with_expression(want_key_type, got_key_type) == 0):
-					warn_type_mismatch(c"map key", want_key_type, got_key_type)
+				int got_key_type = parse_coerced(want_key_type, c"map key")
 				push_eax()
 				stack_pos = stack_pos + 1
 				int map_elem_key_slot = stack_pos
@@ -703,9 +689,7 @@ int postfix_expr():
 					get_token()
 					type = hash_free_suffix(type)
 				else:
-					diag_part(c"hash container field '")
-					diag_part(token)
-					error(c"' not found")
+					error3(c"hash container field '", token, c"' not found")
 			else if (type_is_list(type)):
 				if (peek(c"length")):
 					get_token()
@@ -771,9 +755,7 @@ int postfix_expr():
 					get_token()
 					type = list_scan_suffix(type, c"__w_list_index", c"list index")
 				else:
-					diag_part(c"list field '")
-					diag_part(token)
-					error(c"' not found")
+					error3(c"list field '", token, c"' not found")
 			else if (type_is_buffer(type)):
 				if (peek(c"length")):
 					get_token()
@@ -788,9 +770,7 @@ int postfix_expr():
 					type = type_get_next_pointer(element_type)
 					expression_lhs_readonly = 1
 				else:
-					diag_part(c"buffer field '")
-					diag_part(token)
-					error(c"' not found")
+					error3(c"buffer field '", token, c"' not found")
 			else:
 				# A pending map read whose value is a struct must emit the
 				# get call now so eax holds the stored struct's address.
@@ -851,9 +831,7 @@ int postfix_expr():
 						# the import.
 						if (ci_is_bit_field_access(member_type)):
 							if (ci_bit_field_unit_size(member_type) == 0):
-								diag_part(c"struct field '")
-								diag_part(member_name)
-								error(c"' is an imported C bit-field that spans more than a word on this target; member access is not supported")
+								error3(c"struct field '", member_name, c"' is an imported C bit-field that spans more than a word on this target; member access is not supported")
 							add_eax_int32(ci_bit_field_unit_offset(member_type))
 						else:
 							# Return right side field type instead of struct pointer
@@ -862,9 +840,7 @@ int postfix_expr():
 						# Use child type insted of struct type:
 						type = member_type
 						if (type < 0):
-							diag_part(c"child field not found: '")
-							diag_part(itoa(type))
-							error(c"")
+							error3(c"child field not found: '", itoa(type), c"")
 						if (verbosity >= 1):
 							print2(itoa(line_number))
 							print_string0(c": using child type: ", type_get_name(type))
@@ -884,9 +860,7 @@ int postfix_expr():
 							diag_part(type_get_name(type))
 							diag_part(c".")
 							diag_part(member_name)
-							diag_part(c"' not found; expected function '")
-							diag_part(method_symbol)
-							error(c"'")
+							error3(c"' not found; expected function '", method_symbol, c"'")
 
 						int expected_args = sym_num_args(callee)
 						int callee_sym = -1
@@ -948,9 +922,7 @@ int postfix_expr():
 						# will lex again after the jump back
 						if (repl_recovery == 0):
 							token = member_name
-						diag_part(c"struct field '")
-						diag_part(member_name)
-						error(c"' not found")
+						error3(c"struct field '", member_name, c"' not found")
 					free(member_name)
 
 				else:
@@ -961,9 +933,7 @@ int postfix_expr():
 					# through a garbage receiver and crashed at runtime.
 					diag_part(c"member '")
 					diag_part(token)
-					diag_part(c"' on non-struct type '")
-					print_error_type(type)
-					error(c"'")
+					error_type(c"' on non-struct type '", type, c"'")
 
 		# expr? : unwrap a wresult[T]* or propagate the error to the
 		# caller (see result_propagate_suffix in grammar/statement.w).

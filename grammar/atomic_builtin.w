@@ -152,8 +152,7 @@ int atomic_builtin_expr():
 			else:
 				alu_atomic_add()
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in ")
-		error(name)
+		error2(c"')' expected in ", name)
 	if (flavor == 2):
 		return float32_value_type
 	return type_value(int_type)

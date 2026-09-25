@@ -61,9 +61,7 @@ int increment_op():
 # '++x'/'--x', which lexes as one token since #103.
 void increment_expression_error():
 	diag_part(c"'")
-	diag_part(token)
-	diag_part(c"' is a statement and cannot be used inside an expression")
-	error(c"")
+	error3(token, c"' is a statement and cannot be used inside an expression", c"")
 
 
 # Shared lowering for both statement forms. The operand has been parsed

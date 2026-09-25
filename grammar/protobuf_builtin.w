@@ -175,8 +175,7 @@ void protobuf_message_store(int type_index, char* info):
 int protobuf_require_runtime(char* what):
 	int t = type_lookup(c"pb_bytes")
 	if ((t < 0) || (type_lookup(c"pb_message_desc") < 0)):
-		diag_part(what)
-		error(c" requires 'import libs.extras.protobuf.message'")
+		error2(what, c" requires 'import libs.extras.protobuf.message'")
 	return t
 
 
@@ -188,9 +187,7 @@ int protobuf_lookup_builtin_type(char* name):
 
 void protobuf_require_wide_word(char* name):
 	if (word_size != 8):
-		diag_part(c"protobuf field type '")
-		diag_part(name)
-		error(c"' needs a 64-bit target (x64 or arm64)")
+		error3(c"protobuf field type '", name, c"' needs a 64-bit target (x64 or arm64)")
 
 
 # Scalar protobuf kind for a field type word, or 0 when the word is not
@@ -271,9 +268,7 @@ int protobuf_message_field(int message_type, char* info, int field_index):
 	else:
 		int named = type_lookup(type_word)
 		if (named < 0):
-			diag_part(c"unknown protobuf field type '")
-			diag_part(type_word)
-			error(c"'")
+			error3(c"unknown protobuf field type '", type_word, c"'")
 		# The message being declared may refer to itself (a tree
 		# node's children): the singular form is a pointer, the
 		# repeated form a list, so neither needs the finished size.
@@ -287,9 +282,7 @@ int protobuf_message_field(int message_type, char* info, int field_index):
 			if (repeated):
 				storage = named
 		else:
-			diag_part(c"unsupported protobuf field type '")
-			diag_part(type_word)
-			error(c"'")
+			error3(c"unsupported protobuf field type '", type_word, c"'")
 	if (repeated):
 		elem_kind = kind
 		kind = protobuf_kind_repeated()
@@ -298,9 +291,7 @@ int protobuf_message_field(int message_type, char* info, int field_index):
 	char* field_name = strclone(token)
 	get_token()
 	if (accept(c"=") == 0):
-		diag_part(c"protobuf field '")
-		diag_part(field_name)
-		error(c"' needs a field number: '= N'")
+		error3(c"protobuf field '", field_name, c"' needs a field number: '= N'")
 	int number = 0
 	if ((token[0] == '0') && (token[1] == 'x')):
 		int_literal_width_check()
@@ -317,9 +308,7 @@ int protobuf_message_field(int message_type, char* info, int field_index):
 	int i = 0
 	while (i < field_index):
 		if (load_int(info + 4 + i * 12) == number):
-			diag_part(c"duplicate protobuf field number in message '")
-			diag_part(type_get_name(message_type))
-			error(c"'")
+			error3(c"duplicate protobuf field number in message '", type_get_name(message_type), c"'")
 		i = i + 1
 	get_token()
 	type_add_arg(message_type, field_name, storage)
@@ -436,13 +425,9 @@ void protobuf_collect_pending(int message_type):
 		return;
 	char* info = protobuf_message_info(message_type)
 	if (info == 0):
-		diag_part(c"'")
-		diag_part(type_get_name(message_type))
-		error(c"' is not a protobuf message")
+		error3(c"'", type_get_name(message_type), c"' is not a protobuf message")
 	if (load_int(info) < 0):
-		diag_part(c"protobuf message '")
-		diag_part(type_get_name(message_type))
-		error(c"' is declared but never defined")
+		error3(c"protobuf message '", type_get_name(message_type), c"' is declared but never defined")
 	assert1(protobuf_pending_count < 400)
 	save_int(protobuf_pending_types + protobuf_pending_count * 4, message_type)
 	protobuf_pending_count = protobuf_pending_count + 1
@@ -581,9 +566,7 @@ int protobuf_descriptor(int message_type):
 # pushed at arg_slot .. arg_slot + arg_count - 1; the result stays in eax.
 void protobuf_emit_call(char* fn_name, int desc_address, int arg_slot, int arg_count):
 	if (sym_lookup(fn_name) < 0):
-		diag_part(c"protobuf runtime function '")
-		diag_part(fn_name)
-		error(c"' is not defined; import libs.extras.protobuf.message")
+		error3(c"protobuf runtime function '", fn_name, c"' is not defined; import libs.extras.protobuf.message")
 	int s = rt_call_begin(fn_name)
 	push_slot_int(desc_address)
 	int i = 0

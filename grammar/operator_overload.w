@@ -180,9 +180,7 @@ char* operator_definition(int decl_type):
 	if (token[1] != 0):
 		overloadable = 0
 	if (overloadable == 0):
-		diag_part(c"operator '")
-		diag_part(token)
-		error(c"' cannot be overloaded")
+		error3(c"operator '", token, c"' cannot be overloaded")
 	get_token()
 	expect(c"(")
 	# Pre-scan the parameter types to build the mangled name, then
@@ -279,9 +277,7 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 		diag_part(spelling)
 		diag_part(c"' for operands '")
 		diag_part(left_name)
-		diag_part(c"', '")
-		diag_part(right_name)
-		error(c"'")
+		error3(c"', '", right_name, c"'")
 	free(left_name)
 	free(right_name)
 	int declared_return = load_int(table + callee + 6)

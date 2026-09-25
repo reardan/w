@@ -1,6 +1,9 @@
 int expression();
 int promote(int type);
 void coerce(int want, int got);
+void coerce_checked(int want, int got, char* context);
+int parse_coerced(int want, char* context);
+void error_type(char* prefix, int type_index, char* suffix);
 int types_compatible_with_expression(int want, int got);
 void warn_type_mismatch(char* context, int want, int got);
 int compound_assign_apply(int op, int left_type, int right_type);
@@ -129,9 +132,7 @@ void hash_map_default_suffix(int type):
 			if (value_is_container | (type_get_pointer_level(value_canonical) > 0)):
 				error(c"map default for a container or pointer value type must be a factory function")
 			default_kind = 1
-			coerce(value_type, got)
-			if (types_compatible_with_expression(value_type, got) == 0):
-				warn_type_mismatch(c"map default", value_type, got)
+			coerce_checked(value_type, got, c"map default")
 	expect(c")")
 	int value_slot = push_slot()
 	int s = rt_call_begin(c"__w_map_set_default")
@@ -173,11 +174,7 @@ int hash_finish_pending_assignment():
 	int saved_map_type = hash_index_map_type
 	hash_index_pending = 0
 	int value_type = type_map_value_type(hash_index_map_type)
-	int got_type = expression()
-	got_type = promote(got_type)
-	coerce(value_type, got_type)
-	if (types_compatible_with_expression(value_type, got_type) == 0):
-		warn_type_mismatch(c"map assignment", value_type, got_type)
+	int got_type = parse_coerced(value_type, c"map assignment")
 	int value_slot = push_slot()
 	hash_index_base_stack = saved_base_stack
 	hash_index_map_slot = saved_map_slot
@@ -232,9 +229,7 @@ int hash_finish_pending_compound(int op):
 	if (var_binary_operands(left_type, right_type)):
 		error(c"compound assignment does not support var operands")
 	int result_type = compound_assign_apply(op, left_type, right_type)
-	coerce(value_type, result_type)
-	if (types_compatible_with_expression(value_type, result_type) == 0):
-		warn_type_mismatch(c"map assignment", value_type, result_type)
+	coerce_checked(value_type, result_type, c"map assignment")
 
 	# Store back through the same map/key slots.
 	int value_slot = push_slot()
@@ -272,11 +267,7 @@ void hash_key_call_suffix(int type, char* fn_name, char* context):
 	int base_stack = stack_pos
 	int container_slot = push_slot()
 	expect(c"(")
-	int got_type = expression()
-	got_type = promote(got_type)
-	coerce(key_type, got_type)
-	if (types_compatible_with_expression(key_type, got_type) == 0):
-		warn_type_mismatch(context, key_type, got_type)
+	int got_type = parse_coerced(key_type, context)
 	expect(c")")
 	int key_slot = push_slot()
 	int s = rt_call_begin(fn_name)
@@ -346,18 +337,10 @@ int hash_map_add_suffix(int type):
 	int base_stack = stack_pos
 	int container_slot = push_slot()
 	expect(c"(")
-	int got_type = expression()
-	got_type = promote(got_type)
-	coerce(key_type, got_type)
-	if (types_compatible_with_expression(key_type, got_type) == 0):
-		warn_type_mismatch(c"map add key", key_type, got_type)
+	int got_type = parse_coerced(key_type, c"map add key")
 	int key_slot = push_slot()
 	if (accept(c",")):
-		int delta_got = expression()
-		delta_got = promote(delta_got)
-		coerce(value_type, delta_got)
-		if (types_compatible_with_expression(value_type, delta_got) == 0):
-			warn_type_mismatch(c"map add delta", value_type, delta_got)
+		int delta_got = parse_coerced(value_type, c"map add delta")
 	else:
 		mov_eax_int(1)
 		if (value_kind):
@@ -439,21 +422,13 @@ int hash_get_suffix(int type):
 	int base_stack = stack_pos
 	int container_slot = push_slot()
 	expect(c"(")
-	int got_type = expression()
-	got_type = promote(got_type)
-	coerce(key_type, got_type)
-	if (types_compatible_with_expression(key_type, got_type) == 0):
-		warn_type_mismatch(c"map get key", key_type, got_type)
+	int got_type = parse_coerced(key_type, c"map get key")
 	int key_slot = push_slot()
 	int has_default = 0
 	int default_slot = 0
 	if (accept(c",")):
 		has_default = 1
-		int default_got = expression()
-		default_got = promote(default_got)
-		coerce(value_type, default_got)
-		if (types_compatible_with_expression(value_type, default_got) == 0):
-			warn_type_mismatch(c"map get default", value_type, default_got)
+		int default_got = parse_coerced(value_type, c"map get default")
 		default_slot = push_slot()
 	expect(c")")
 

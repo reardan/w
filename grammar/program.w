@@ -58,9 +58,7 @@ int parse_constant_literal(char* what, char* name):
 				diag_part(c" '")
 				diag_part(name)
 				diag_part(c"'")
-			diag_part(c" must be a compile-time constant, got '")
-			diag_part(token)
-			error(c"'")
+			error3(c" must be a compile-time constant, got '", token, c"'")
 		if (target_isa == 2):
 			value = load_int32(data + (load_int(table + t + 2) - data_offset))
 		else:
@@ -293,9 +291,7 @@ void global_initializer_check_type(char* name, int type):
 		return;
 	diag_part(c"cannot initialize global '")
 	diag_part(name)
-	diag_part(c"' of type '")
-	print_error_type(type)
-	error(c"' at its declaration; assign it inside a function")
+	error_type(c"' of type '", type, c"' at its declaration; assign it inside a function")
 
 
 # 'int x = 5' at file scope: a global declaration carrying a compile-time

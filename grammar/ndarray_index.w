@@ -47,6 +47,9 @@ tests/ until a SEEDS bump (docs/release.md).
 int expression();
 int promote(int type);
 void coerce(int want, int got);
+void coerce_checked(int want, int got, char* context);
+int parse_coerced(int want, char* context);
+void error_type(char* prefix, int type_index, char* suffix);
 int types_compatible_with_expression(int want, int got);
 void warn_type_mismatch(char* context, int want, int got);
 void print_error_type(int type_index);
@@ -121,9 +124,7 @@ int ndarray_accessor_sym(char* op):
 	char* name = ndarray_accessor_name(op)
 	int sym = sym_lookup(name)
 	if (sym < 0):
-		diag_part(c"ndarray index requires accessor '")
-		diag_part(name)
-		error(c"' in scope")
+		error3(c"ndarray index requires accessor '", name, c"' in scope")
 	free(name)
 	return sym
 
@@ -133,9 +134,7 @@ int ndarray_accessor_sym(char* op):
 # call would.
 void ndarray_check_index(int got_type):
 	int int_type = type_lookup(c"int")
-	coerce(int_type, got_type)
-	if (types_compatible_with_expression(int_type, got_type) == 0):
-		warn_type_mismatch(c"ndarray index", int_type, got_type)
+	coerce_checked(int_type, got_type, c"ndarray index")
 
 
 # Push the parked receiver and index slots as call arguments, oldest
@@ -158,9 +157,7 @@ void nd_push_index_args(int recv_slot, int slot0, int slot1, int slot2, int slot
 int ndarray_index_suffix(int type, int recv_slot, int first_index_type):
 	int nd_struct = ndarray_index_struct(type)
 	if (nd_struct < 0):
-		diag_part(c"comma-separated indexing requires an ndarray or matrix (ndf, ndi, ndf64 or matrix), got '")
-		print_error_type(type)
-		error(c"'")
+		error_type(c"comma-separated indexing requires an ndarray or matrix (ndf, ndi, ndf64 or matrix), got '", type, c"'")
 	ndarray_check_index(first_index_type)
 	int slot0 = push_slot()
 	int slot1 = 0
@@ -235,9 +232,7 @@ int nd_finish_pending_assignment():
 	int got_type = expression()
 	got_type = promote(got_type)
 	if (value_type >= 0):
-		coerce(value_type, got_type)
-		if (types_compatible_with_expression(value_type, got_type) == 0):
-			warn_type_mismatch(c"ndarray assignment", value_type, got_type)
+		coerce_checked(value_type, got_type, c"ndarray assignment")
 	int value_slot = push_slot()
 	sym_get_value(set_name)
 	free(set_name)
@@ -286,9 +281,7 @@ int nd_finish_pending_compound(int op):
 	if (var_binary_operands(left_type, right_type)):
 		error(c"compound assignment does not support var operands")
 	int result_type = compound_assign_apply(op, left_type, right_type)
-	coerce(value_type, result_type)
-	if (types_compatible_with_expression(value_type, result_type) == 0):
-		warn_type_mismatch(c"ndarray assignment", value_type, result_type)
+	coerce_checked(value_type, result_type, c"ndarray assignment")
 
 	# Store back through the same receiver/index slots.
 	int value_slot = push_slot()

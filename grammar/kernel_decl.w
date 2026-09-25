@@ -323,9 +323,7 @@ int launch_statement():
 	if (kernel_sym >= 0):
 		is_kernel = sym_is_kernel(kernel_sym)
 	if (is_kernel == 0):
-		diag_part(c"'")
-		diag_part(token)
-		error(c"' is not a kernel")
+		error3(c"'", token, c"' is not a kernel")
 	char* kernel_name = strclone(token)
 	get_token()
 
@@ -370,9 +368,7 @@ int launch_statement():
 		diag_part(c"kernel '")
 		diag_part(kernel_name)
 		diag_part(c"' expects ")
-		diag_part(itoa(expected_args))
-		diag_part(c" arguments, got ")
-		error(itoa(passed))
+		error3(itoa(expected_args), c" arguments, got ", itoa(passed))
 
 	launch_emit_runtime_call(kernel_name, base, passed)
 	pop_to(base)

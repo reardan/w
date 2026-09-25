@@ -31,18 +31,10 @@ void hash_literal_parse_map_entry(int container_type, int container_slot):
 	int base_stack = stack_pos
 	int key_type = type_map_key_type(container_type)
 	int value_type = type_map_value_type(container_type)
-	int got_key_type = expression()
-	got_key_type = promote(got_key_type)
-	coerce(key_type, got_key_type)
-	if (types_compatible_with_expression(key_type, got_key_type) == 0):
-		warn_type_mismatch(c"map literal key", key_type, got_key_type)
+	int got_key_type = parse_coerced(key_type, c"map literal key")
 	int key_slot = push_slot()
 	expect(c":")
-	int got_value_type = expression()
-	got_value_type = promote(got_value_type)
-	coerce(value_type, got_value_type)
-	if (types_compatible_with_expression(value_type, got_value_type) == 0):
-		warn_type_mismatch(c"map literal value", value_type, got_value_type)
+	int got_value_type = parse_coerced(value_type, c"map literal value")
 	int value_slot = push_slot()
 	int value_is_struct = (type_num_args(value_type) > 0) & (type_num_args(type_real(got_value_type)) > 0)
 	hash_literal_call_map_set(container_slot, key_slot, value_slot, value_is_struct)
@@ -52,11 +44,7 @@ void hash_literal_parse_map_entry(int container_type, int container_slot):
 void hash_literal_parse_set_entry(int container_type, int container_slot):
 	int base_stack = stack_pos
 	int key_type = type_set_key_type(container_type)
-	int got_key_type = expression()
-	got_key_type = promote(got_key_type)
-	coerce(key_type, got_key_type)
-	if (types_compatible_with_expression(key_type, got_key_type) == 0):
-		warn_type_mismatch(c"set literal key", key_type, got_key_type)
+	int got_key_type = parse_coerced(key_type, c"set literal key")
 	int key_slot = push_slot()
 	hash_literal_call_set_add(container_slot, key_slot)
 	pop_to(base_stack)
@@ -255,8 +243,7 @@ int primary_expr():
 		type = string_value_type
 
 	else:
-		diag_part(c"Could not find a valid primary expression, token: ")
-		error(token)
+		error2(c"Could not find a valid primary expression, token: ", token)
 
 	get_token()
 	return type

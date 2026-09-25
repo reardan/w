@@ -163,15 +163,11 @@ void wasm_export_add(int sym, char* name, int n_params, char* classes, int ret_k
 	if (wasm_export_count >= wasm_export_max()):
 		error(c"too many exported functions")
 	if (wasm_export_name_reserved(name)):
-		diag_part(c"export name '")
-		diag_part(name)
-		error(c"' collides with a reserved module export")
+		error3(c"export name '", name, c"' collides with a reserved module export")
 	int e = 0
 	while (e < wasm_export_count):
 		if (strcmp(cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__)), name) == 0):
-			diag_part(c"function '")
-			diag_part(name)
-			error(c"' is already exported")
+			error3(c"function '", name, c"' is already exported")
 		e = e + 1
 	char* classes_copy = malloc(n_params + 1)
 	int i = 0
@@ -210,9 +206,7 @@ void wasm_emit_export_wrappers():
 		int sym = load_i(wasm_export_syms + e * 4, 4)
 		char* name = cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__))
 		if (sym_decl_visibility(sym) != 'D'):
-			diag_part(c"exported function '")
-			diag_part(name)
-			error(c"' is never defined")
+			error3(c"exported function '", name, c"' is never defined")
 		int callee = wasm_num_imports() + sym_value_at(sym) - 1
 		int n = load_i(wasm_export_nparams + e * 4, 4)
 		char* classes = cast(char*, load_i(wasm_export_classes + e * __word_size__, __word_size__))

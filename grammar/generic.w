@@ -136,9 +136,7 @@ int generic_def_lookup(char* name, int kind):
 
 int generic_def_add(char* name, int kind, char* file_path, int offset, int line, int column, int param_count, int param_names):
 	if (generic_def_lookup(name, kind) >= 0):
-		diag_part(c"generic '")
-		diag_part(name)
-		error(c"' redefined")
+		error3(c"generic '", name, c"' redefined")
 	if (cast(int, generic_defs) == 0):
 		generic_defs = new list[generic_def_record]
 	generic_def_record rec
@@ -354,9 +352,7 @@ void generic_reparse_start(int def):
 	char* path = generic_def_file(def)
 	file = open(path, 0, 511)
 	if (file < 0):
-		diag_part(c"cannot reopen generic definition file '")
-		diag_part(path)
-		error(c"'")
+		error3(c"cannot reopen generic definition file '", path, c"'")
 	filename = path
 	getchar_reset(file)
 	getchar_seek(file, generic_def_offset(def))
@@ -416,9 +412,7 @@ int generic_parse_param_names(int params_out):
 		int c0 = token[0]
 		int is_ident = is_ident_start_byte(c0)
 		if (is_ident == 0):
-			diag_part(c"type parameter name expected, found '")
-			diag_part(token)
-			error(c"'")
+			error3(c"type parameter name expected, found '", token, c"'")
 		if (n >= generic_max_params()):
 			error(c"too many type parameters")
 		save_ptr(params_out + n * __word_size__, cast(int, strclone(token)))
@@ -443,16 +437,12 @@ int generic_parse_type_args(int args_out, int def):
 		n = n + 1
 		more = accept(c",")
 	if (peek(c"]") == 0):
-		diag_part(c"']' expected in type argument list, found '")
-		diag_part(token)
-		error(c"'")
+		error3(c"']' expected in type argument list, found '", token, c"'")
 	if (n != generic_def_param_count(def)):
 		diag_part(c"wrong number of type arguments for generic '")
 		diag_part(generic_def_name(def))
 		diag_part(c"': expected ")
-		diag_part(itoa(generic_def_param_count(def)))
-		diag_part(c", got ")
-		error(itoa(n))
+		error3(itoa(generic_def_param_count(def)), c", got ", itoa(n))
 	return n
 
 
@@ -589,9 +579,7 @@ int generic_declaration_scan_generic_return():
 		int params = cast(int, malloc(generic_max_params() * __word_size__))
 		int n = generic_parse_param_names(params)
 		if (peek(c"(") == 0):
-			diag_part(c"'(' expected after the type parameter list of generic '")
-			diag_part(fname)
-			error(c"'")
+			error3(c"'(' expected after the type parameter list of generic '", fname, c"'")
 		generic_def_add(fname, 0, strclone(filename), first_offset, first_line - 1, first_column - 1, n, params)
 		free(cast(char*, load_ptr(save + 11 * __word_size__)))
 		free(save)
@@ -645,9 +633,7 @@ int generic_declaration_scan():
 		int params = cast(int, malloc(generic_max_params() * __word_size__))
 		int n = generic_parse_param_names(params)
 		if (peek(c"(") == 0):
-			diag_part(c"'(' expected after the type parameter list of generic '")
-			diag_part(fname)
-			error(c"'")
+			error3(c"'(' expected after the type parameter list of generic '", fname, c"'")
 		generic_def_add(fname, 0, strclone(filename), first_offset, first_line - 1, first_column - 1, n, params)
 		free(first)
 		generic_skip_definition()
@@ -663,9 +649,7 @@ int generic_declaration_scan():
 	int type = type_lookup(first)
 	if (type < 0):
 		type_suggest_names(first)
-		diag_part(c"unknown type name: '")
-		diag_part(first)
-		error(c"'")
+		error3(c"unknown type name: '", first, c"'")
 	int checked_type = type_unqualified(type)
 	if ((checked_type == float64_type) && (word_size != 8)):
 		error(c"float64 requires the x64 target")
@@ -942,9 +926,7 @@ void generic_infer_pointer_error(int def, int param, int arg_type, int arg_index
 	diag_part(generic_def_param_name(def, param))
 	diag_part(c"' from argument ")
 	diag_part(itoa(arg_index + 1))
-	diag_part(c": expected a pointer, got '")
-	print_error_type(arg_type)
-	error(c"'")
+	error_type(c": expected a pointer, got '", arg_type, c"'")
 
 
 # Bind type parameter 'param' from an argument of the promoted type
@@ -963,9 +945,7 @@ void generic_infer_bind(int def, char* bound, int param, int depth, int arg_type
 		generic_infer_error_prefix(def)
 		diag_part(c"cannot infer type parameter '")
 		diag_part(generic_def_param_name(def, param))
-		diag_part(c"' from argument ")
-		diag_part(itoa(arg_index + 1))
-		error(c": a bare function name has no value type; use explicit type arguments")
+		error3(c"' from argument ", itoa(arg_index + 1), c": a bare function name has no value type; use explicit type arguments")
 	int stripped = generic_infer_declarable(arg_type)
 	int level = 0
 	while (level < depth):
@@ -985,9 +965,7 @@ void generic_infer_bind(int def, char* bound, int param, int depth, int arg_type
 		diag_part(generic_def_param_name(def, param))
 		diag_part(c"': '")
 		print_error_type(existing)
-		diag_part(c"' vs '")
-		print_error_type(stripped)
-		error(c"'")
+		error_type(c"' vs '", stripped, c"'")
 
 
 # A concrete (non-generic) parameter shape: the same check and coercion
@@ -999,10 +977,7 @@ void generic_infer_check_concrete(int def, int param_type, int arg_index, int ar
 		diag_part(generic_def_name(def))
 		diag_part(c"' argument ")
 		diag_part(itoa(arg_index + 1))
-		diag_part(c" type mismatch: expected '")
-		print_error_type(param_type)
-		diag_part(c"', got '")
-		print_error_type(arg_type)
+		diag_expected_got(c" type mismatch: expected '", param_type, arg_type)
 		warning(c"'")
 	coerce_call_argument(param_type, arg_type)
 
@@ -1053,18 +1028,14 @@ int generic_call_infer_expr(int def):
 			passed = passed + 1
 			more = accept(c",")
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in call to generic '")
-		diag_part(generic_def_name(def))
-		error(c"'")
+		error3(c"')' expected in call to generic '", generic_def_name(def), c"'")
 	i = 0
 	while (i < n):
 		if (load_ptr(bound + i * __word_size__) < 0):
 			generic_infer_error_prefix(def)
 			diag_part(c"cannot infer type argument '")
 			diag_part(generic_def_param_name(def, i))
-			diag_part(c"'; use explicit type arguments, e.g. '")
-			diag_part(generic_def_name(def))
-			error(c"[int](...)'")
+			error3(c"'; use explicit type arguments, e.g. '", generic_def_name(def), c"[int](...)'")
 		i = i + 1
 	int args = cast(int, malloc(generic_max_params() * __word_size__))
 	i = 0
@@ -1082,17 +1053,13 @@ int generic_call_infer_expr(int def):
 			# buffer can be pushed below them (the explicit syntax
 			# pushes it before the arguments)
 			generic_infer_error_prefix(def)
-			diag_part(c"inferred call returns a struct by value; use explicit type arguments, e.g. '")
-			diag_part(generic_def_name(def))
-			error(c"[int](...)'")
+			error3(c"inferred call returns a struct by value; use explicit type arguments, e.g. '", generic_def_name(def), c"[int](...)'")
 	int expected = type_function_param_count(sig)
 	if (passed != expected):
 		diag_part(c"warning: function '")
 		diag_part(generic_inst_mangled(inst))
 		diag_part(c"' expects ")
-		diag_part(itoa(expected))
-		diag_part(c" arguments, got ")
-		warning(itoa(passed))
+		warning3(itoa(expected), c" arguments, got ", itoa(passed))
 	# opaque-shape arguments get their check against the now-concrete
 	# signature (type-parameter shapes match by construction; concrete
 	# shapes were checked while parsing)
@@ -1154,9 +1121,7 @@ int generic_call_expr():
 	if (nextc != '['):
 		diag_part(c"generic function '")
 		diag_part(token)
-		diag_part(c"' requires explicit type arguments, e.g. '")
-		diag_part(token)
-		error(c"[int](...)'")
+		error3(c"' requires explicit type arguments, e.g. '", token, c"[int](...)'")
 	get_token()
 	int args = cast(int, malloc(generic_max_params() * __word_size__))
 	int arg_count = generic_parse_type_args(args, def)
@@ -1196,9 +1161,7 @@ void generic_instantiate_function(int inst):
 	expect(c"(")
 	function_definition(current_symbol)
 	if (table[current_symbol + 1] != 'D'):
-		diag_part(c"generic function '")
-		diag_part(generic_def_name(def))
-		error(c"' has no body")
+		error3(c"generic function '", generic_def_name(def), c"' has no body")
 	int address = load_int(table + current_symbol + 2)
 	close(file)
 	free(generic_subst_swap(old_subst))
@@ -1278,9 +1241,7 @@ int generic_forward_call_expr():
 		arg_count = arg_count + 1
 		more = accept(c",")
 	if (peek(c"]") == 0):
-		diag_part(c"']' expected in type argument list, found '")
-		diag_part(token)
-		error(c"'")
+		error3(c"']' expected in type argument list, found '", token, c"'")
 	# a chain slot for this call; merged into the instantiation's chain
 	# once the definition is known
 	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
@@ -1308,9 +1269,7 @@ void generic_forward_error(int f, char* message):
 	diag_part(message)
 	diag_part(c" (called at ")
 	diag_part(generic_forwards[f].call_file)
-	diag_part(c":")
-	diag_part(itoa(generic_forwards[f].call_line))
-	error(c")")
+	error3(c":", itoa(generic_forwards[f].call_line), c")")
 
 
 # Append the forward record's chain to the instantiation's chain: walk

@@ -150,9 +150,7 @@ int struct_value_ctor_expr():
 			diag_part(c"warning: ")
 			diag_part(type_get_name(base))
 			diag_part(c" constructor expects ")
-			diag_part(itoa(type_num_args(base)))
-			diag_part(c" arguments, got ")
-			warning(itoa(field_index))
+			warning3(itoa(type_num_args(base)), c" arguments, got ", itoa(field_index))
 	pop_eax_slot()
 	return type_value(base)
 
@@ -333,9 +331,7 @@ int unary_expression_operand():
 			base = type_lookup(token)
 			if (base < 0):
 				type_suggest_names(token)
-				diag_part(c"unknown type after new: '")
-				diag_part(token)
-				error(c"'")
+				error3(c"unknown type after new: '", token, c"'")
 		get_token()
 		if (accept(c"[")):
 			int element_size = type_get_size(base)
@@ -444,9 +440,7 @@ int unary_expression_operand():
 					diag_part(c"warning: new ")
 					diag_part(type_get_name(base))
 					diag_part(c" expects ")
-					diag_part(itoa(type_num_args(base)))
-					diag_part(c" arguments, got ")
-					warning(itoa(field_index))
+					warning3(itoa(type_num_args(base)), c" arguments, got ", itoa(field_index))
 				pop_eax_slot()
 
 		# eax holds the allocation's address; the expression's type is the

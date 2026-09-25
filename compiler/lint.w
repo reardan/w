@@ -230,9 +230,7 @@ void lint_scope_exit(int n):
 			sym_index_lint[p] = 0
 			int t = sym_index_offset(p)
 			if (lint_begin(sym_decl_line(t), sym_decl_column(t), c"unused-local")):
-				diag_part(c"warning: local variable '")
-				diag_part(&table[sym_index_name_start(p)])
-				warning(c"' is never used [unused-local]")
+				warning3(c"warning: local variable '", &table[sym_index_name_start(p)], c"' is never used [unused-local]")
 				lint_end()
 		p = p - 1
 
@@ -343,9 +341,7 @@ void lint_self_assign_end(char* name, int rhs_tokens, int line, int column):
 		return
 	if (rhs_tokens == 1):
 		if (lint_begin(line, column, c"self-assign")):
-			diag_part(c"warning: '")
-			diag_part(name)
-			warning(c"' is assigned to itself [self-assign]")
+			warning3(c"warning: '", name, c"' is assigned to itself [self-assign]")
 			lint_end()
 	free(name)
 
@@ -618,9 +614,7 @@ void lint_identifier(char* src, int s, int e, int line, int column):
 			diag_part(name)
 			diag_part(c"' mixes ")
 			diag_part(lint_script_name(first_script))
-			diag_part(c" and ")
-			diag_part(lint_script_name(second_script))
-			warning(c" letters [mixed-script]")
+			warning3(c" and ", lint_script_name(second_script), c" letters [mixed-script]")
 			lint_end()
 	if (skeleton in lint_skeleton_spelling):
 		char* other = cast(char*, lint_skeleton_spelling[skeleton])
@@ -632,9 +626,7 @@ void lint_identifier(char* src, int s, int e, int line, int column):
 				diag_part(name)
 				diag_part(c"' looks like '")
 				diag_part(other)
-				diag_part(c"' from line ")
-				diag_part(itoa(lint_skeleton_line[skeleton]))
-				warning(c" but is a different name [confusable]")
+				warning3(c"' from line ", itoa(lint_skeleton_line[skeleton]), c" but is a different name [confusable]")
 				lint_end()
 		free(skeleton)
 	else:
@@ -858,9 +850,7 @@ void lint_text_file(char* path):
 				if (lint_begin(line, lint_line_limit + 1, c"line-too-long")):
 					diag_part(c"warning: line is ")
 					diag_part(itoa(line_width))
-					diag_part(c" columns wide (limit ")
-					diag_part(itoa(lint_line_limit))
-					warning(c") [line-too-long]")
+					warning3(c" columns wide (limit ", itoa(lint_line_limit), c") [line-too-long]")
 					lint_end()
 		if (keep):
 			if (indent_width >= 0):

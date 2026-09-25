@@ -310,9 +310,7 @@ int compile_relative_path(char* fn):
 	if ((import_current_spelling != 0) && import_spelling_path_shaped(import_current_spelling)):
 		diag_part(c"cannot locate '")
 		diag_part(import_current_spelling)
-		diag_part(c"': import paths are dotted module names, not file paths; try 'import ")
-		diag_part(import_spelling_dotted(import_current_spelling))
-		error(c"'")
+		error3(c"': import paths are dotted module names, not file paths; try 'import ", import_spelling_dotted(import_current_spelling), c"'")
 		return 0
 	diag_part(c"cannot locate '")
 	diag_part(fn)
@@ -355,9 +353,7 @@ int compile_input_file(char* path):
 		if (result):
 			return 1
 	missing_file_reset(path)
-	diag_part(c"no such file: '")
-	diag_part(path)
-	error(c"'")
+	error3(c"no such file: '", path, c"'")
 	return 0
 
 

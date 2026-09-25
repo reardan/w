@@ -69,6 +69,5 @@ int gpu_math_builtin_expr():
 	else:
 		ptx_gpu_log()
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in ")
-		error(name)
+		error2(c"')' expected in ", name)
 	return float32_value_type

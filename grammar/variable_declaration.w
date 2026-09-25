@@ -13,15 +13,11 @@ int inferred_storage_type(char* name, int got):
 	if (got == 3):
 		return type_lookup(c"int")
 	if (got == 4):
-		diag_part(c"cannot infer a type for '")
-		diag_part(name)
-		error(c"' from a bare function name")
+		error3(c"cannot infer a type for '", name, c"' from a bare function name")
 	int t = generic_infer_declarable(type_real(got))
 	t = type_unqualified(t)
 	if ((type_get_size(t) == 0) & (type_num_args(t) == 0)):
-		diag_part(c"cannot infer a type for '")
-		diag_part(name)
-		error(c"' from a void expression")
+		error3(c"cannot infer a type for '", name, c"' from a void expression")
 	return t
 
 
@@ -38,9 +34,7 @@ void inferred_redeclaration_check(char* name):
 		return;
 	int visibility = table[existing + 1]
 	if ((visibility == 'L') || (visibility == 'A')):
-		diag_part(c"':=' redeclares '")
-		diag_part(name)
-		error(c"'; use '=' to assign, or a typed declaration to shadow")
+		error3(c"':=' redeclares '", name, c"'; use '=' to assign, or a typed declaration to shadow")
 
 
 /*
@@ -122,9 +116,7 @@ int variable_declaration():
 				error(c"fixed array initializer is not implemented")
 			type2 = expression()
 			type2 = promote(type2)
-			coerce(type, type2)
-			if (types_compatible_with_expression(type, type2) == 0):
-				warn_type_mismatch(c"initialization", type, type2)
+			coerce_checked(type, type2, c"initialization")
 			# Level 1: this is a per-declaration developer trace like its
 			# siblings (promote(), sym_declare(), ...), not part of the
 			# user-facing -v level 0 output (which -v now reaches).

@@ -102,14 +102,10 @@ int result_propagate_suffix(int type):
 	type = promote(type)
 	int base = result_propagate_struct(type)
 	if (base < 0):
-		diag_part(c"'?' requires a wresult[...]* operand, got '")
-		print_error_type(type)
-		error(c"'")
+		error_type(c"'?' requires a wresult[...]* operand, got '", type, c"'")
 	int declared_type = load_int(table + current_function_symbol + 6)
 	if (result_propagate_struct(declared_type) < 0):
-		diag_part(c"'?' requires the enclosing function to return a wresult[...]*, got '")
-		print_error_type(declared_type)
-		error(c"'")
+		error_type(c"'?' requires the enclosing function to return a wresult[...]*, got '", declared_type, c"'")
 	int payload_type = type_get_field_type(base, c"value")
 	if (payload_type < 0):
 		error(c"'?' operand struct has no 'value' field")
@@ -330,9 +326,7 @@ void statement():
 					warn_type_mismatch(c"return", declared_type, return_type)
 				copy_struct_return_value(declared_type)
 			else:
-				coerce(declared_type, return_type)
-				if (types_compatible_with_expression(declared_type, return_type) == 0):
-					warn_type_mismatch(c"return", declared_type, return_type)
+				coerce_checked(declared_type, return_type, c"return")
 		expect_or_newline(c";")
 		if (in_generator_body):
 			# Free the suspended generators of enclosing for-in loops
@@ -359,9 +353,7 @@ void statement():
 		int yield_type = expression()
 		yield_type = promote(yield_type)
 		int declared_yield_type = load_int(table + current_function_symbol + 6)
-		coerce(declared_yield_type, yield_type)
-		if (types_compatible_with_expression(declared_yield_type, yield_type) == 0):
-			warn_type_mismatch(c"yield", declared_yield_type, yield_type)
+		coerce_checked(declared_yield_type, yield_type, c"yield")
 		expect_or_newline(c";")
 		emit_generator_yield_call()
 

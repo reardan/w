@@ -98,6 +98,5 @@ int bit_builtin_expr():
 	else:
 		alu_ctz32()
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in ")
-		error(name)
+		error2(c"')' expected in ", name)
 	return type_value(int_type)

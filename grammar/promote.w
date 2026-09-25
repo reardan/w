@@ -165,6 +165,22 @@ void print_error_type(int type_index):
 		diag_part(c"*")
 
 
+# error(): prefix, the type's name, suffix.
+void error_type(char* prefix, int type_index, char* suffix):
+	diag_part(prefix)
+	print_error_type(type_index)
+	error(suffix)
+
+
+# Writes lead, then "<want>', got '<got>" (lead ends in "expected '");
+# the caller finishes the message.
+void diag_expected_got(char* lead, int want, int got):
+	diag_part(lead)
+	print_error_type(want)
+	diag_part(c"', got '")
+	print_error_type(got)
+
+
 # The 'gpu' pointer qualifier's diagnostics (docs/projects/cuda.md
 # "Execution notes (gpu pointer qualifier)"). Crossing the host/device
 # pointer boundary without a cast() is an ERROR, not the usual mismatch
@@ -174,10 +190,7 @@ void print_error_type(int type_index):
 # already written the construct ("initialization", "function 'f'
 # argument 2", ...) with diag_part.
 void gpu_domain_error_tail(int want, int got):
-	diag_part(c" mixes gpu and host pointers: expected '")
-	print_error_type(want)
-	diag_part(c"', got '")
-	print_error_type(got)
+	diag_expected_got(c" mixes gpu and host pointers: expected '", want, got)
 	error(c"'; use cast() to cross the host/device boundary")
 
 
@@ -210,10 +223,7 @@ void warn_type_mismatch(char* context, int want, int got):
 	gpu_domain_check(context, want, got)
 	diag_part(c"warning: ")
 	diag_part(context)
-	diag_part(c" type mismatch: expected '")
-	print_error_type(want)
-	diag_part(c"', got '")
-	print_error_type(got)
+	diag_expected_got(c" type mismatch: expected '", want, got)
 	warning(c"'")
 
 
@@ -436,6 +446,21 @@ void coerce(int want, int got):
 	if ((got_kind == 2) & (type_get_pointer_level(want) == 0)):
 		movq_xmm0_rax()
 		cvttsd2si_rax_xmm0()
+
+
+# coerce(), then the usual mismatch warning naming the construct.
+void coerce_checked(int want, int got, char* context):
+	coerce(want, got)
+	if (types_compatible_with_expression(want, got) == 0):
+		warn_type_mismatch(context, want, got)
+
+
+# Parses an expression and coerces it to want (coerce_checked); returns
+# the expression's own type.
+int parse_coerced(int want, char* context):
+	int got = promote(expression())
+	coerce_checked(want, got, context)
+	return got
 
 
 # Conversions requested with cast(T, x). Casts silence the compatibility

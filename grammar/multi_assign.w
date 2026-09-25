@@ -133,9 +133,7 @@ int multi_assign(int first_type):
 		expr_nesting_depth = expr_nesting_depth - 1
 		if (rhs_count < lhs_count):
 			int want = multi_assign_lhs_types[rhs_count]
-			coerce(want, got)
-			if (types_compatible_with_expression(want, got) == 0):
-				warn_type_mismatch(c"assignment", want, got)
+			coerce_checked(want, got, c"assignment")
 		multi_assign_reserve(rhs_count + 1)
 		push_slot()
 		multi_assign_rhs_slots[rhs_count] = stack_pos
@@ -145,9 +143,7 @@ int multi_assign(int first_type):
 	if (rhs_count != lhs_count):
 		diag_part(c"multi-assignment arity mismatch: ")
 		diag_part(itoa(lhs_count))
-		diag_part(c" targets but ")
-		diag_part(itoa(rhs_count))
-		error(c" values")
+		error3(c" targets but ", itoa(rhs_count), c" values")
 
 	# Store phase, left to right. Slots are read esp-relative through
 	# their recorded stack_pos: a call inside a later element may have
