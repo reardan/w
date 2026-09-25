@@ -461,6 +461,7 @@ import lib.env
 import lib.file
 import lib.process
 import lib.stream
+import lib.str
 import structures.string
 import structures.json
 import tools.manifest_source
@@ -536,6 +537,11 @@ char* wtest_last_failure_line
 # wtest_cache_save carries it forward so a revalidated entry keeps
 # the hash of the compiler that actually computed it.
 map[char*, char*] wtest_closure_vhash
+# root id -> that entry's raw text in bin/.wtest_deps_cache as this
+# process loaded it, so wtest_cache_save can tell an entry another
+# process wrote since (keep it) from one this process read and dropped
+# as stale (drop it).
+map[char*, char*] wtest_cache_loaded_chunks
 # Seed-closure root ids whose fallback warning already printed this
 # run, so per-path wtest_seed_graph calls warn once per arch.
 map[char*, int] wtest_seed_warned
@@ -1421,12 +1427,52 @@ void wtest_cache_entry(int kind, char* root, char* expected, char* vhash, char* 
 			wtest_failure_lines[root] = detail
 
 
+# Split cache text into entries: each starts at an 'R ' or 'X ' line
+# and runs to the next one. roots[i] is the entry's root id, chunks[i]
+# its raw text including the trailing newline.
+void wtest_cache_chunks(char* text, list[char*] roots, list[char*] chunks):
+	int i = 0
+	int start = -1
+	while (1):
+		int line_start = (i == 0) || (text[i - 1] == 10)
+		int at_end = text[i] == 0
+		int header = 0
+		if (line_start && (at_end == 0)):
+			header = ((text[i] == 'R') || (text[i] == 'X')) && (text[i + 1] == ' ')
+		if ((header || at_end) && (start >= 0)):
+			string_builder* chunk = string_new()
+			string_append_bytes(chunk, &text[start], i - start)
+			if ((chunk.length > 0) && (chunk.data[chunk.length - 1] != 10)):
+				string_append_char(chunk, 10)
+			int e = 2
+			while ((chunk.data[e] != 10) && (chunk.data[e] != 0)):
+				e = e + 1
+			roots.push(substring(chunk.data, 2, e))
+			chunks.push(chunk.data)
+			free(chunk)
+			start = -1
+		if (at_end):
+			return
+		if (header):
+			start = i
+		i = i + 1
+
+
 # Load cache entries whose content hashes still match; anything stale
 # or unparseable is simply dropped (deps re-runs for it).
 void wtest_cache_load():
 	char* text = file_read_text(c"bin/.wtest_deps_cache")
 	if (text == 0):
 		return
+	list[char*] loaded_roots = new list[char*]
+	list[char*] loaded_chunks = new list[char*]
+	wtest_cache_chunks(text, loaded_roots, loaded_chunks)
+	if (wtest_cache_loaded_chunks == 0):
+		wtest_cache_loaded_chunks = new map[char*, char*]
+	int li = 0
+	while (li < loaded_roots.length):
+		wtest_cache_loaded_chunks[loaded_roots[li]] = loaded_chunks[li]
+		li = li + 1
 	int kind = 0
 	char* root = 0
 	char* expected = 0
@@ -1473,6 +1519,39 @@ void wtest_cache_load():
 		i = i + 1
 	wtest_cache_entry(kind, root, expected, vhash, missing, detail, blob)
 	string_free(line)
+	free(text)
+
+
+# Concurrent wtest runs (wbuildd, one-shot runs, parallel suite
+# targets) each save the whole cache from their own memory, so a plain
+# rewrite drops the roots another run stored after this one loaded —
+# wbuildd_test's pre-warmed root went cold again under suite load.
+# Before writing, carry over every on-disk entry for a root this run
+# holds no closure for, unless it is the very entry this run loaded
+# and rejected as stale. A write landing between this re-read and the
+# rename can still be lost; that window is a few syscalls wide.
+void wtest_cache_merge_disk(string_builder* out):
+	char* text = file_read_text(c"bin/.wtest_deps_cache")
+	if (text == 0):
+		return
+	map[char*, int] mine = new map[char*, int]
+	int i = 0
+	while (i < wtest_closure_roots.length):
+		mine[wtest_closure_roots[i]] = 1
+		i = i + 1
+	list[char*] roots = new list[char*]
+	list[char*] chunks = new list[char*]
+	wtest_cache_chunks(text, roots, chunks)
+	i = 0
+	while (i < roots.length):
+		int keep = mine.get(roots[i], 0) == 0
+		if (keep && (wtest_cache_loaded_chunks != 0)):
+			char* seen = wtest_cache_loaded_chunks.get(roots[i], 0)
+			if ((seen != 0) && (strcmp(seen, chunks[i]) == 0)):
+				keep = 0
+		if (keep):
+			string_append(out, chunks[i])
+		i = i + 1
 	free(text)
 
 
@@ -1530,6 +1609,7 @@ void wtest_cache_save():
 				j = j + 1
 			string_free(line)
 		i = i + 1
+	wtest_cache_merge_disk(out)
 	mkdir(c"bin", 493)
 	# Write a private temp file and rename it into place: wbuildd and
 	# one-shot wtest runs read and rewrite this cache concurrently, and a

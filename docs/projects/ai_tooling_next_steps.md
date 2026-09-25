@@ -321,6 +321,17 @@ is a queue, not an archive.
   second resolver free to diverge from the real one. See
   `docs/projects/compiler_performance.md` sections 8 and 9.
 
+- **Fixed (2026-09-25): concurrent wtest runs lost each other's cache
+  entries.** Every wtest process saved `bin/.wtest_deps_cache` from its
+  own in-memory copy, so a run that loaded the cache before another run
+  stored a root wrote that root back out. Under full-suite load this
+  made `wbuildd_test` fail intermittently: the root it pre-warmed went
+  cold again, and the one-shot printed "building import-closure cache"
+  while the daemon did not. The #499 temp-file rename stopped torn
+  reads but not these lost updates. `wtest_cache_save` now re-reads the
+  file and carries over entries for roots it holds nothing for, except
+  the exact entries it loaded and rejected as stale.
+
 ## Build manifest (`tools/wbuildgen.w`)
 
 - **Shipped (2026-07-29): the "invoke a tool as the whole target"
