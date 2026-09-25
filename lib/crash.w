@@ -65,11 +65,19 @@ dump is written (W_CRASH_DUMP writes ELF cores only).
 Installation is opt-in - import this file and call
 crash_handler_install() from main - and is a silent no-op when
 W_CRASH_TRACE=0 is set in the environment, or when the running image
-is neither a Linux x86/x64 ELF nor an arm64 Mach-O with readable
-symbols (arm64 Linux has no sigcontext accessors here; PE carries no
-symbol sections). The
+is neither a Linux x86/x64 ELF, a win64 PE, nor an arm64 Mach-O with
+readable symbols (arm64 Linux has no sigcontext accessors here). The
 compiler driver (w.w) and the test runner main (lib/testing.w) install
 it, so compiler crashes and crashing tests report symbolized traces.
+
+Windows (win64): the same report, from a vectored exception handler
+(win_crash_filter_install in lib/__arch__/win64/syscalls.w) entered
+through a C -> W callback thunk -- the NTSTATUS code and name
+(EXCEPTION_ACCESS_VIOLATION, ...), the reading/writing address of an
+access violation, the CONTEXT registers and the frame-pointer trace
+symbolized from the PE's embedded symbol table. The handler returns
+EXCEPTION_CONTINUE_SEARCH, so the process still dies with the original
+exception code; W_CRASH_DUMP writes nothing there.
 
 Handler safety: everything the handler path needs is preallocated by
 crash_handler_install() (the frame buffer, the SIG_DFL sigaction, and
@@ -374,6 +382,154 @@ void crash_report_darwin(int sig, int ucontext):
 	st_write_cstr(c"\n")
 
 
+# --- Windows (win64) ---
+# The vectored exception handler, entered through a win_callback thunk
+# with the EXCEPTION_POINTERS address: {EXCEPTION_RECORD*, CONTEXT*}.
+# EXCEPTION_RECORD: ExceptionCode (u32) at +0, ExceptionAddress at +16,
+# NumberParameters at +24, ExceptionInformation[] at +32. The x64
+# CONTEXT keeps EFlags (u32) at +0x44, rax..r15 from +0x78 in encoding
+# order (rax rcx rdx rbx rsp rbp rsi rdi r8..r15) and rip at +0xf8.
+
+char* crash_win_exception_name(int code):
+	if (code == -1073741819):   /* 0xC0000005 */
+		return c"EXCEPTION_ACCESS_VIOLATION"
+	if (code == -1073741676):   /* 0xC0000094 */
+		return c"EXCEPTION_INT_DIVIDE_BY_ZERO"
+	if (code == -1073741675):   /* 0xC0000095 */
+		return c"EXCEPTION_INT_OVERFLOW"
+	if (code == -1073741795):   /* 0xC000001D */
+		return c"EXCEPTION_ILLEGAL_INSTRUCTION"
+	if (code == -1073741674):   /* 0xC0000096 */
+		return c"EXCEPTION_PRIV_INSTRUCTION"
+	if (code == -1073741571):   /* 0xC00000FD */
+		return c"EXCEPTION_STACK_OVERFLOW"
+	if (code == -2147483645):   /* 0x80000003 */
+		return c"EXCEPTION_BREAKPOINT"
+	if (code == -2147483646):   /* 0x80000002 */
+		return c"EXCEPTION_DATATYPE_MISALIGNMENT"
+	if (code == -1073741818):   /* 0xC0000006 */
+		return c"EXCEPTION_IN_PAGE_ERROR"
+	return c"unknown exception"
+
+
+int crash_win_is_fatal(int code):
+	if ((code == -1073741819) || (code == -1073741676) || (code == -1073741675)):
+		return 1
+	if ((code == -1073741795) || (code == -1073741674) || (code == -1073741571)):
+		return 1
+	if ((code == -2147483646) || (code == -1073741818)):  /* misaligned, 0xC0000006 in-page error */
+		return 1
+	return 0
+
+
+void crash_write_hex32(int v):
+	char* digits = c"0123456789abcdef"
+	st_write_cstr(c"0x")
+	int i = 7
+	while (i >= 0):
+		write(2, &digits[(v >> (i * 4)) & 15], 1)
+		i = i - 1
+
+
+# CONTEXT offset of display register k (crash_reg_name order: rax rbx
+# rcx rdx rsi rdi rbp rsp r8..r15 rip eflags).
+int crash_win_reg_offset(int k):
+	if (k == 16):
+		return 248
+	if (k >= 8):
+		return 184 + (k - 8) * 8
+	# rax rbx rcx rdx rsi rdi rbp rsp -> CONTEXT slots 0 3 1 2 6 7 5 4
+	int slot = k
+	if (k == 1):
+		slot = 3
+	else if (k == 2):
+		slot = 1
+	else if (k == 3):
+		slot = 2
+	else if (k == 4):
+		slot = 6
+	else if (k == 5):
+		slot = 7
+	else if (k == 6):
+		slot = 5
+	else if (k == 7):
+		slot = 4
+	return 120 + slot * 8
+
+
+void crash_write_win_registers(int context):
+	st_write_cstr(c"registers:")
+	int k = 0
+	while (k < 18):
+		if ((k & 3) == 0):
+			st_write_cstr(c"\n ")
+		st_write_cstr(c" ")
+		char* name = crash_reg_name(k)
+		int n = 3
+		if (name[2] == 'l'):
+			n = 6
+		if (name[2] == ' '):
+			n = 2
+		write(2, name, n)
+		st_write_cstr(c"=")
+		if (k == 17):
+			crash_write_hex32(st_int32(context + 68))
+		else:
+			st_write_hex(st_word(context + crash_win_reg_offset(k)))
+		k = k + 1
+	st_write_cstr(c"\n")
+
+
+# Returns EXCEPTION_CONTINUE_SEARCH (0): with no handler of its own the
+# W program's fault then goes unhandled and Windows terminates the
+# process with the original exception code, exactly as without the
+# filter -- the report is purely additive on stderr.
+int crash_report_win(int pointers):
+	if (crash_active):
+		return 0
+	int record = st_word(pointers)
+	int context = st_word(pointers + 8)
+	int code = load_int32(cast(char*, record)) /* sign-extended: NTSTATUS codes are negative */
+	# A vectored handler sees every first-chance exception, including
+	# benign ones (OutputDebugString, thread naming, C++ throws inside
+	# system DLLs): report only the fatal hardware faults.
+	if (crash_win_is_fatal(code) == 0):
+		return 0
+	crash_active = 1
+	int pc = st_word(context + 248)
+	st_write_cstr(c"fatal exception: ")
+	crash_write_hex32(code)
+	st_write_cstr(c" (")
+	st_write_cstr(crash_win_exception_name(code))
+	st_write_cstr(c"), pc=")
+	st_write_hex(pc)
+	if ((code == -1073741819) && (st_int32(record + 24) >= 2)):
+		if (st_word(record + 32) == 1):
+			st_write_cstr(c", writing address ")
+		else if (st_word(record + 32) == 8):
+			st_write_cstr(c", executing address ")
+		else:
+			st_write_cstr(c", reading address ")
+		st_write_hex(st_word(record + 40))
+	st_write_cstr(c"\n")
+	crash_write_win_registers(context)
+	st_write_cstr(c"stack trace (most recent call first):\n")
+	crash_write_frame(pc)
+	int n = st_unwind(pc, st_word(context + 152), st_word(context + 160), crash_pcs, crash_frames_max())
+	int k = 0
+	while (k < n):
+		crash_write_frame(st_word(cast(int, crash_pcs) + k * __word_size__))
+		k = k + 1
+	if (n >= crash_frames_max()):
+		st_write_cstr(c"  ... trace truncated\n")
+	if (st_unwind_exact == 0):
+		st_write_cstr(c"note: part of the trace is heuristic (return-address scan): frames can be missing or stale\n")
+	st_write_cstr(c"terminating with exception ")
+	crash_write_hex32(code)
+	st_write_cstr(c"\n")
+	return 0
+
+
 # Install the darwin handlers through signal_trampoline (found by name:
 # see rt_sigaction in lib/__arch__/arm64_darwin/syscalls.w). Skipped on
 # arm64e (--pac=full) images: there the kernel authenticates sa_tramp as
@@ -400,7 +556,7 @@ void crash_install_darwin():
 		ss[0] = alt
 		ss[1] = alt_size
 		ss[2] = 0
-		if (syscall(53, cast(int, &ss[0]), 0, 0) != 0):
+		if (sys_sigaltstack(cast(int, &ss[0]), 0) != 0):
 			return;
 	else:
 		return;
@@ -442,6 +598,10 @@ void crash_handler_install():
 	stack_trace_collect(crash_pcs, 1)
 	st_scratch_ensure()
 	if (st_state != 1):
+		return;
+	if (os_windows()):
+		if (win_crash_filter_install(cast(int, crash_report_win))):
+			crash_installed = 1
 		return;
 	if (st_macho):
 		if (st_machine == 183):

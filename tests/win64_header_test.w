@@ -1,25 +1,28 @@
 /*
-Structural W^X check for the win64 PE backend (docs/projects/wx_split.md
-Stage A). Wine -- the project's win64 CI proxy -- does not enforce HVCI's
-W^X rule, so a green wine run cannot prove the section split holds. This
-test inspects the emitted bytes instead: it parses the PE section table
-of bin/win64_wx_section_input.exe (compiled from tests/win64_hello.w by
-the build target's first step) and asserts the properties HVCI needs:
+Structural check of the win64 PE backend's output, in plain W so it
+runs the same on Linux and natively on Windows (no objdump, no wine).
+It parses bin/win64_header_input.exe (compiled from tests/win64_hello.w
+by the build target's first step): the PE32+ console header, the
+.text/.data sections, the kernel32.dll!ExitProcess import, IAT slots
+pre-filled from the lookup table (Windows leaves zero slots unbound),
+and the embedded symbol header stack traces read.
+
+It also carries the W^X layout gate (docs/projects/wx_split.md Stage A).
+Wine does not enforce HVCI's W^X rule, so a green wine run cannot prove
+the section split holds; the bytes are asserted directly instead:
 
 - no section is both WRITE and EXECUTE,
 - the entry point lies in an executable, non-writable section,
 - every import descriptor's FirstThunk (IAT slot) lies in a writable,
   non-executable section, so the loader's bind writes never target an
   executable page.
-
-Runs as a normal Linux test; no wine or objdump involved.
 */
 import lib.testing
 import lib.assert
 
 
 char* wxs_path():
-	return c"bin/win64_wx_section_input.exe"
+	return c"bin/win64_header_input.exe"
 
 
 # The whole image, read once and cached; wxs_size() is its length.
@@ -189,3 +192,85 @@ void test_iat_slots_in_writable_section():
 		checked = checked + 1
 		desc = desc + 20
 	asserts(c"at least one import descriptor checked", checked > 0)
+
+
+# 1 when the NUL-terminated string at file offset off equals s.
+int wxs_cstr_at(int off, char* s):
+	int i = 0
+	while (s[i] != 0):
+		if (wxs_u8(off + i) != (s[i] & 255)):
+			return 0
+		i = i + 1
+	return wxs_u8(off + i) == 0
+
+
+# Index of the section named name (8-byte, NUL-padded field), or -1.
+int wxs_section_named(char* name):
+	int i = 0
+	while (i < wxs_section_count()):
+		if (wxs_cstr_at(wxs_section_off(i), name)):
+			return i
+		i = i + 1
+	return 0 - 1
+
+
+void test_optional_header_is_pe32_plus():
+	assert_equal(523, wxs_u16(wxs_opt_off()))   # 0x20b
+	assert_equal(3, wxs_u16(wxs_opt_off() + 68))  # subsystem: console
+
+
+# .text is read-execute code, .data read-write data (what objdump -h
+# printed as "READONLY, CODE" and ".data").
+void test_text_and_data_sections():
+	int text = wxs_section_named(c".text")
+	int data = wxs_section_named(c".data")
+	asserts(c".text section exists", text >= 0)
+	asserts(c".data section exists", data >= 0)
+	int text_flags = wxs_u32(wxs_section_off(text) + 36)
+	asserts(c".text is CODE", (text_flags >> 5) & 1)
+	asserts(c".text is READ", (text_flags >> 30) & 1)
+	asserts(c".text is executable", wxs_sect_exec(text))
+	asserts(c".text is not writable", wxs_sect_write(text) == 0)
+	asserts(c".data is writable", wxs_sect_write(data))
+
+
+# Every import is named in the directory, and kernel32.dll!ExitProcess
+# (the entry stub's own import) is among them.
+void test_imports_name_kernel32_exit_process():
+	int desc = wxs_rva_to_file(wxs_u32(wxs_opt_off() + 120))
+	int found = 0
+	while (wxs_u32(desc) != 0 || wxs_u32(desc + 12) != 0 || wxs_u32(desc + 16) != 0):
+		int dll = wxs_rva_to_file(wxs_u32(desc + 12))
+		int hint_name = wxs_rva_to_file(wxs_u32(wxs_rva_to_file(wxs_u32(desc))))
+		if (wxs_cstr_at(dll, c"kernel32.dll") && wxs_cstr_at(hint_name + 2, c"ExitProcess")):
+			found = 1
+		desc = desc + 20
+	asserts(c"kernel32.dll!ExitProcess is imported", found)
+
+
+# The on-disk IAT must mirror the lookup table: Windows walks the IAT
+# and stops at the first zero slot, so a zero-filled slot is never bound
+# and every call through it jumps to address 0.
+void test_iat_slots_prefilled_from_ilt():
+	int desc = wxs_rva_to_file(wxs_u32(wxs_opt_off() + 120))
+	while (wxs_u32(desc) != 0 || wxs_u32(desc + 12) != 0 || wxs_u32(desc + 16) != 0):
+		int ilt = wxs_rva_to_file(wxs_u32(desc))
+		int iat = wxs_rva_to_file(wxs_u32(desc + 16))
+		asserts(c"IAT slot is not zero", wxs_u32(iat) != 0)
+		asserts(c"IAT slot equals its ILT entry", wxs_u32(iat) == wxs_u32(ilt))
+		asserts(c"IAT slot high half equals its ILT entry", wxs_u32(iat + 4) == wxs_u32(ilt + 4))
+		desc = desc + 20
+
+
+# Stack traces and crash reports symbolize win64 frames through a
+# stand-in ELF64 header at the start of .text (code_generator/pe_64.w)
+# carrying the .symtab/.debug_line section table.
+void test_embedded_symbol_header():
+	int text = wxs_section_named(c".text")
+	int base = wxs_sect_rawptr(text)
+	asserts(c"ELF magic at the start of .text", wxs_u32(base) == 1179403647)  # 0x464c457f
+	assert_equal(2, wxs_u8(base + 4))      # ELFCLASS64
+	assert_equal(62, wxs_u16(base + 18))   # EM_X86_64
+	asserts(c"section headers present", wxs_u16(base + 60) >= 7)
+	int shoff = wxs_u32(base + 40)
+	asserts(c"section table inside the file", base + shoff + 64 * wxs_u16(base + 60) <= wxs_length)

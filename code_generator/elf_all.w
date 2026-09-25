@@ -28,6 +28,14 @@ void elf_dyn_patch_phdr(int index, int type, int flags, int off, int size, int a
 
 int build_id_note_pos   /* file offset of the note, 0 = not emitted */
 
+# File offset of the ELF header the debugging symbols hang off: 0 for
+# the ELF targets, where it is the image's own header. The PE writer
+# embeds a stand-in ELF64 header at the start of .text (pe_start_64) so
+# emit_debugging_symbols can reuse the ELF section layout unchanged;
+# e_shoff and every sh_offset are then relative to that header, which
+# is where lib/stack_trace.w finds it walking down from a code address.
+int debug_elf_origin
+
 
 # Index of the PT_NOTE program header; slots 0-1 are the text and data
 # loads and 2-4 are reserved for the dynamic-linking headers.

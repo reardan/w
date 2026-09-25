@@ -45,8 +45,12 @@ range, the nlist symbol table the Mach-O writer puts in __LINKEDIT
 (which dyld maps too), and the DWARF line table in __TEXT,__debug_line,
 whose addresses are linked vmaddrs (st_line_lookup unslides pc), so
 darwin frames carry file:line like ELF ones. Return addresses signed
-by pointer authentication are stripped to their address bits first. On targets
-without symbols (PE), collection returns no frames and
+by pointer authentication are stripped to their address bits first.
+PE images (win64) carry the same ELF section table and DWARF behind a
+stand-in ELF64 header at the start of .text (code_generator/pe_64.w),
+which this walk meets before the "MZ" page, so win64 frames symbolize
+like Linux ones; mincore is emulated there with VirtualQuery. On
+targets without symbols, collection returns no frames and
 print_stack_trace() is a silent no-op, so the trap paths that call it
 stay safe everywhere.
 
@@ -66,10 +70,10 @@ int st_state
 int st_base           /* image base = address of the ELF or Mach-O header */
 int st_macho          /* 1 when the image is Mach-O */
 int st_slide          /* Mach-O: runtime minus linked addresses */
-int st_text_lo        /* Mach-O: __text start (ELF .text starts at st_base) */
+int st_text_lo        /* .text start address (ELF: the .text sh_addr) */
 int st_machine        /* e_machine: 3 x86, 62 x86-64, 183 arm64 */
 int st_class          /* 1 = ELFCLASS32, 2 = ELFCLASS64 */
-int st_text_hi        /* .text end; .text starts at st_base */
+int st_text_hi        /* .text end; 0 when unknown (lib/core_file.w's on-disk images) */
 int st_symtab_lo      /* first .symtab entry */
 int st_symtab_count
 int st_symtab_entsize
@@ -372,7 +376,8 @@ void st_init(int pc):
 			if (link < shnum):
 				st_strtab_lo = base + st_sh_word(table + link * shentsize, 16, 24)
 		else if (st_cstr_eq(name_addr, c".text")):
-			st_text_hi = st_sh_word(header, 12, 16) + st_sh_word(header, 20, 32)
+			st_text_lo = st_sh_word(header, 12, 16)
+			st_text_hi = st_text_lo + st_sh_word(header, 20, 32)
 			text_seen = 1
 		else if (st_cstr_eq(name_addr, c".debug_line")):
 			st_dline_lo = base + st_sh_word(header, 16, 24)
@@ -750,6 +755,13 @@ int st_line_lookup(int pc):
 		return 0
 	if (st_dline_lo == 0):
 		return 0
+	# A pc outside our own code (a system DLL frame, a JIT thunk) must
+	# not borrow the line of the last row below it. Skipped when the
+	# text range is unknown: wcore points these globals at an on-disk
+	# binary through lib/core_file.w, which leaves st_text_hi at 0.
+	if (st_text_hi != 0):
+		if ((pc < st_text_lo) || (pc >= st_text_hi)):
+			return 0
 	# Mach-O line tables hold linked vmaddrs: compare unslid.
 	if (st_macho):
 		pc = pc - st_slide
@@ -872,7 +884,7 @@ int st_collect_from(int pc, int sp, int fp, char* out, int max):
 # recent call first, starting with the caller of this function. Each
 # value points inside the calling statement, ready for
 # stack_trace_symbol/line/file. Returns the number collected: 0 when
-# the binary carries no readable symbols (Mach-O, PE) or the stack
+# the binary carries no readable symbols or the stack
 # cannot be unwound.
 int stack_trace_collect(char* out, int max):
 	if (st_jmp_buf == 0):

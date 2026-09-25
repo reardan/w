@@ -56,7 +56,11 @@ FFI bindings through `c_lib` + `extern` (link-time dynamic linking, see
   per-target binding through `graphics/__arch__/<target>/gl_native.w`:
   the Linux targets import `graphics.gl_linux` (libGL.so.1, which also
   exports GLX), arm64_darwin binds the OpenGL framework with the same
-  core-GL extern names. Shaders are compiled from GLSL source strings
+  core-GL extern names, and win64 imports `graphics.gl_win32`:
+  opengl32.dll's GL 1.1 exports bind as externs, the GL 2+ entry points
+  are same-named W wrappers resolved through `wglGetProcAddress` and
+  called through `win_c_function` trampolines (which pass float32
+  arguments in the xmm registers too). Shaders are compiled from GLSL source strings
   at runtime via `gl_compile_shader` / `gl_link_program` /
   `gl_create_program` (no shader file loader yet — string shaders by
   design for now). Portable sources join their bodies (valid GLSL 130
@@ -75,8 +79,10 @@ The high-level entry point:
 `graphics.window` dispatches to the target's backend through
 `graphics/__arch__/<target>/window_native.w`: x64/arm64 →
 `graphics.window_x11`, arm64_darwin → `graphics.window_cocoa`,
-x86/win64 → `graphics.window_stub` (open reports the gap and returns
-0). On X11, `gfx_window_open` picks a double-buffered RGBA GLX visual,
+win64 → `graphics.window_win32` (Win32 window + WGL legacy context,
+compatibility profile so GLSL 130 compiles; the window procedure is a W
+function behind a `win_callback` thunk), x86 → `graphics.window_stub`
+(open reports the gap and returns 0). On X11, `gfx_window_open` picks a double-buffered RGBA GLX visual,
 creates the window, registers WM_DELETE_WINDOW and makes a GL context
 current; `gfx_window_poll` drains the X event queue and tracks
 close/resize, last keycode, pointer position and button mask.

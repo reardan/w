@@ -88,6 +88,13 @@ Contract notes for other backends building on the registry:
   reaches the function through that slot, so backends never have to move
   or rewrite code at finish time.
 
+On disk every IAT slot holds its hint/name RVA, mirroring the lookup
+table, until the loader overwrites it. This is required, not cosmetic:
+the Windows loader walks the IAT itself and stops at the first zero
+slot, so zero-filled slots are silently never bound and the first
+kernel32 call jumps to address 0 (Wine binds them anyway, which is how
+the bug hid).
+
 Because extern slots are emitted inline next to their shims (scattered
 through the image), the PE writer emits **one import descriptor per
 import**: each descriptor's lookup table holds a single name and its
@@ -134,7 +141,23 @@ mapping exists:
 - `linux_time` converts `GetSystemTimeAsFileTime` to the Unix epoch;
   `clock_gettime` uses the performance counter; `nanosleep` → `Sleep`.
 - `exit` → `ExitProcess`; `getpid` → `GetCurrentProcessId`.
-- Primitives with no win64 implementation yet (fork/execve/wait4, pipe,
+- `sys_mincore` is emulated with `VirtualQuery` (committed, readable
+  pages), which is what lets `lib/stack_trace.w` probe memory safely.
+- The environment vector comes from `GetEnvironmentStringsA` (hidden
+  `=C:` drive entries skipped), and `lib/env.w` matches names
+  case-insensitively on Windows (`Path` is `PATH`).
+- A read-only `open` passes `FILE_FLAG_BACKUP_SEMANTICS`, so opening a
+  directory succeeds as it does on Linux (existence probes rely on it).
+- `win_callback(fn, nargs)` builds a Microsoft-x64-ABI thunk that calls
+  the W function `fn` (saving the Win64 callee-saved registers, pushing
+  rcx/rdx/r8/r9 and the stack arguments W-style): window procedures and
+  exception handlers are W functions. `win_c_function(sym, nargs,
+  ret32)` is the reverse, a W-callable trampoline for a C function
+  pointer from `GetProcAddress`/`wglGetProcAddress`; it loads every
+  register argument into both its GP and xmm register, so float32
+  arguments pass correctly. Both live in executable pages that are only
+  writable while a thunk is being written.
+- Primitives with no win64 implementation yet (fork/execve/wait4,
   poll, ioctl, signals, getdents, ...) return -1 so modules that merely
   mention them still compile. Sockets are deliberately absent: `lib/net.w`
   does not compile on win64.
@@ -153,19 +176,43 @@ not emitted on win64.
   on it.
 - The `win64` CLI flag (`compiler/compiler.w`) selects `word_size = 8`,
   `target_isa = 0`, `target_os = 2`.
-- ELF section headers / DWARF (`emit_debugging_symbols`) are skipped for
-  PE output; CodeView/PDB debug info is future work, and `lib/testing.w`
-  (which introspects the running ELF image) does not work on win64 yet —
-  win64 tests use plain `main` + prints.
+- Debug info: `emit_debugging_symbols` writes the same ELF section
+  table, `.symtab` and DWARF `.debug_line` into `.text` as on Linux,
+  behind a stand-in ELF64 header that `pe_start_64` places page-aligned
+  at the start of `.text` (`debug_elf_origin` makes e_shoff and every
+  sh_offset relative to it). `lib/stack_trace.w` meets that header
+  walking down from any code address, so `print_stack_trace()` and
+  crash reports show `function (file:line)` frames on Windows.
+  CodeView/PDB (for WinDbg/Visual Studio) is still future work.
+- Crash reports: `crash_handler_install()` (`lib/crash.w`, installed by
+  the compiler driver and `lib/testing.w`) registers a vectored
+  exception handler. `SetUnhandledExceptionFilter` does not work for W
+  code: without `.pdata` unwind info the frame-based dispatcher cannot
+  unwind through W frames to the top-level filter and the process dies
+  without calling it. The handler reports only fatal hardware
+  exceptions (access violation, divide by zero, illegal instruction,
+  stack overflow, ...) and returns `EXCEPTION_CONTINUE_SEARCH`.
+- `lib/testing.w` works on win64 (tests are discovered at compile time).
+- Graphics: `graphics.window` opens a Win32 window with a WGL context
+  (`graphics/window_win32.w`, `graphics/gl_win32.w`); see
+  `docs/projects/graphics.md`.
 
 ## Testing
 
 - `./wbuild tests_win64` = `win64_header_test`
-  (objdump structural check, no Wine needed) + `win64_hello_test` +
+  (plain-W structural check of the emitted PE: PE32+ header, R+X
+  `.text` / R+W `.data`, the kernel32 import, IAT slots pre-filled from
+  the lookup table, the embedded symbol header; no Wine or binutils
+  needed, also part of `tests`) + `win64_hello_test` +
   `win64_smoke_test` (heap growth, strings, file round trip, map/list
   builtins, generators, time) + `dynamic_test_win64` (msvcrt `_getpid`
   vs `GetCurrentProcessId`, variadic `printf` with on-stack args and a
   promoted float, `sqrt` float ABI).
+- Natively on Windows, `wbuild.cmd tests_win64` and `wbuild.cmd
+  verify_win` run the same targets without Wine (wexec runs targets
+  serially there, since there is no fork). The GL window is checked by
+  running `graphics/gl_smoke_test.w` / `gl_texture_test.w` compiled
+  with `win64` on a desktop session.
 - Wine is the CI/dev proxy for Windows; on Cursor Cloud it should be
   baked into the VM snapshot like qemu (see AGENTS.md).
 - Regression guards: `./wbuild verify`, `verify_x64`, `verify_arm64` and the
@@ -179,8 +226,8 @@ not emitted on win64.
 - **`.reloc` + ASLR**, LARGE_ADDRESS_AWARE, and `__imp_` data imports.
   (W^X `.text`/`.data` sections landed — `docs/projects/wx_split.md`
   Stage A.)
-- **CodeView/PDB debug info** and a PE-aware `lib/testing.w` harness
-  (PE export table or a custom symbol section).
+- **CodeView/PDB debug info** for native debuggers (the runtime's own
+  traces already symbolize through the embedded ELF tables).
 - **Threads, sockets, process spawning** over WinAPI
   (`CreateThread`, Winsock, `CreateProcessA`).
 - **Self-hosting on Windows**: the compiler itself runs on Windows with
@@ -198,6 +245,17 @@ not emitted on win64.
   `lib/__arch__/win64/syscalls.w`; the non-win64 syscall modules carry
   linkable stubs for that Win32 surface (the mirror image of the win64
   module's Unix-primitive stubs), so Linux/darwin builds are unaffected.
+  wexec on Windows runs targets inline one at a time (no fork),
+  treats the manifest's seed-driven `wv2` target as satisfied by
+  `bin\wv2.exe`, compiles untargeted `bin/wv2 f.w -o bin/tool` host-tool
+  steps for win64 (`bin/tool.exe`, e.g. the generated-source
+  generators), supplies `echo`/`cmp` when PATH has neither, and walks
+  the source tree with FindFirstFileA so the generated manifest has
+  every target. `wbuild.cmd` promotes the refreshed `wv2_win` /
+  `wexec_win` outputs to `bin\wv2.exe` / `bin\wexec.exe`. The pinned
+  v0.1.0 `w.exe` seed predates the IAT pre-fill fix and crashes on
+  Windows hosts that bind strictly (it runs under Wine); a cold
+  bootstrap on such a host needs a seed released after the fix.
   Known limits: `process_run` on Windows writes stdin up front (a child
   that fills its output pipes before reading a >4KB stdin can deadlock)
   and `spawn_options.env` is ignored by `CreateProcessA` (child inherits

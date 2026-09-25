@@ -41,6 +41,13 @@ extern int GetCurrentProcess()
 extern int FindFirstFileA(char* pattern, char* find_data)
 extern int FindNextFileA(int handle, char* find_data)
 extern int FindClose(int handle)
+extern int VirtualQuery(int addr, char* info, int length)
+extern char* GetEnvironmentStringsA()
+extern int AddVectoredExceptionHandler(int first, int handler)
+extern int FlushInstructionCache(int process, int addr, int size)
+extern int GetModuleHandleA(char* name)
+extern int LoadLibraryA(char* name)
+extern int GetProcAddress(int module, char* name)
 
 
 /* File IO: */
@@ -75,7 +82,13 @@ int open(char *filename, int mode, int permissions):
 	else if (mode & 512):
 		creation = 5 /* TRUNCATE_EXISTING */
 	/* share read+write, no security attributes, normal attributes */
-	int handle = CreateFileA(filename, access, 3, 0, creation, 128, 0)
+	int flags = 128
+	if (rw == 0):
+		# FILE_FLAG_BACKUP_SEMANTICS lets a read-only open succeed on a
+		# directory, as open(dir, O_RDONLY) does on Linux (existence
+		# probes rely on it); reads from such a handle simply fail.
+		flags = flags + 33554432
+	int handle = CreateFileA(filename, access, 3, 0, creation, flags, 0)
 	if (handle == -1):
 		return -1
 	return handle
@@ -415,6 +428,252 @@ int os_windows():
 	return 1
 
 
+/* C -> W callbacks */
+
+# Page of generated thunks and the fill position inside it.
+int win_thunk_page
+int win_thunk_used
+
+
+void win_thunk_byte(char* p, int k, int v):
+	p[k] = v
+
+
+/*
+Returns the address of a Microsoft-x64-ABI function that forwards its
+first nargs arguments (up to 16, all word-sized integers or pointers) to
+the W function at fn and returns fn's result in rax. This is how Win32
+calls back into W: window procedures, exception filters, thread starts.
+
+W functions take their arguments pushed on the stack in declaration
+order (the caller pops them) and may clobber any register, so the thunk
+saves every Win64 callee-saved general register, pushes rcx, rdx, r8,
+r9 and then the caller's stack arguments (above the 32-byte shadow
+space) in order, calls fn, and restores:
+
+	push rbp ; mov rbp,rsp ; push rbx,rsi,rdi,r12..r15
+	push rcx ; push rdx ; push r8 ; push r9          (first nargs of them)
+	push qword [rbp+48+8k]                            (args 4..nargs-1)
+	mov rax,fn ; call rax
+	lea rsp,[rbp-56] ; pop r15..r12,rdi,rsi,rbx ; pop rbp ; ret
+
+Float arguments/results and xmm6-xmm15 are not handled (W code never
+touches the callee-saved xmm registers). Thunks live in read-execute
+pages, flipped writable only while a new thunk is written. Returns 0
+when fn is 0 or nargs is out of range.
+*/
+int win_callback(int fn, int nargs):
+	if ((fn == 0) || (nargs < 0) || (nargs > 16)):
+		return 0
+	int size = 64 + nargs * 7
+	if ((win_thunk_page == 0) || (win_thunk_used + size > 4096)):
+		win_thunk_page = VirtualAlloc(0, 4096, 12288, 4) /* commit, PAGE_READWRITE */
+		if (win_thunk_page == 0):
+			return 0
+		win_thunk_used = 0
+	else:
+		int old = 0
+		VirtualProtect(win_thunk_page, 4096, 4, &old)
+	int start = win_thunk_page + win_thunk_used
+	char* p = cast(char*, start)
+	int k = 0
+	win_thunk_byte(p, 0, 85)        /* push rbp */
+	win_thunk_byte(p, 1, 72)        /* mov rbp,rsp */
+	win_thunk_byte(p, 2, 137)
+	win_thunk_byte(p, 3, 229)
+	win_thunk_byte(p, 4, 83)        /* push rbx */
+	win_thunk_byte(p, 5, 86)        /* push rsi */
+	win_thunk_byte(p, 6, 87)        /* push rdi */
+	win_thunk_byte(p, 7, 65)        /* push r12 */
+	win_thunk_byte(p, 8, 84)
+	win_thunk_byte(p, 9, 65)        /* push r13 */
+	win_thunk_byte(p, 10, 85)
+	win_thunk_byte(p, 11, 65)       /* push r14 */
+	win_thunk_byte(p, 12, 86)
+	win_thunk_byte(p, 13, 65)       /* push r15 */
+	win_thunk_byte(p, 14, 87)
+	k = 15
+	if (nargs > 0):
+		win_thunk_byte(p, k, 81)    /* push rcx */
+		k = k + 1
+	if (nargs > 1):
+		win_thunk_byte(p, k, 82)    /* push rdx */
+		k = k + 1
+	if (nargs > 2):
+		win_thunk_byte(p, k, 65)    /* push r8 */
+		win_thunk_byte(p, k + 1, 80)
+		k = k + 2
+	if (nargs > 3):
+		win_thunk_byte(p, k, 65)    /* push r9 */
+		win_thunk_byte(p, k + 1, 81)
+		k = k + 2
+	int i = 4
+	while (i < nargs):
+		win_thunk_byte(p, k, 255)   /* push qword [rbp+disp32] */
+		win_thunk_byte(p, k + 1, 181)
+		save_int32(p + k + 2, 48 + (i - 4) * 8)
+		k = k + 6
+		i = i + 1
+	win_thunk_byte(p, k, 72)        /* mov rax,imm64 */
+	win_thunk_byte(p, k + 1, 184)
+	save_int64(p + k + 2, fn)
+	k = k + 10
+	win_thunk_byte(p, k, 255)       /* call rax */
+	win_thunk_byte(p, k + 1, 208)
+	k = k + 2
+	win_thunk_byte(p, k, 72)        /* lea rsp,[rbp-56] */
+	win_thunk_byte(p, k + 1, 141)
+	win_thunk_byte(p, k + 2, 101)
+	win_thunk_byte(p, k + 3, 200)
+	k = k + 4
+	win_thunk_byte(p, k, 65)        /* pop r15 */
+	win_thunk_byte(p, k + 1, 95)
+	win_thunk_byte(p, k + 2, 65)    /* pop r14 */
+	win_thunk_byte(p, k + 3, 94)
+	win_thunk_byte(p, k + 4, 65)    /* pop r13 */
+	win_thunk_byte(p, k + 5, 93)
+	win_thunk_byte(p, k + 6, 65)    /* pop r12 */
+	win_thunk_byte(p, k + 7, 92)
+	win_thunk_byte(p, k + 8, 95)    /* pop rdi */
+	win_thunk_byte(p, k + 9, 94)    /* pop rsi */
+	win_thunk_byte(p, k + 10, 91)   /* pop rbx */
+	win_thunk_byte(p, k + 11, 93)   /* pop rbp */
+	win_thunk_byte(p, k + 12, 195)  /* ret */
+	k = k + 13
+	win_thunk_used = win_thunk_used + ((k + 15) & -16)
+	int prev = 0
+	VirtualProtect(win_thunk_page, 4096, 32, &prev) /* PAGE_EXECUTE_READ */
+	FlushInstructionCache(GetCurrentProcess(), start, k)
+	return start
+
+
+/*
+The opposite direction: returns a W-callable address that forwards its
+nargs word arguments (up to 16) to the Microsoft-x64-ABI function at sym
+-- for C function pointers only known at run time (GetProcAddress,
+wglGetProcAddress), which extern cannot bind. The Windows counterpart
+of lib/dlcall.w's System V dl_trampoline:
+
+	push rbp ; mov rbp,rsp ; and rsp,-16 ; sub rsp,frame
+	mov rax,[rbp+off(i)] ; mov [rsp+32+8(i-4)],rax   (args 4..nargs-1)
+	mov rcx/rdx/r8/r9,[rbp+off(i)] ; movq xmm_i,<same> (args 0..3)
+	mov rax,sym ; call rax
+	[movsxd rax,eax] ; leave ; ret
+
+where off(i) = 16 + 8*(nargs-1-i) is W's slot for argument i. Every
+register argument is loaded into both its GP and its xmm register (the
+win64 convention is positional), so float32/float64 arguments work
+when the W function-pointer type declares them as such: the callee
+reads the low bits of the xmm register, as with emit_c_abi_call_win64.
+ret32 = 1 sign-extends a 32-bit C int result (GLint -1 stays -1);
+float results are not supported. Returns 0 when sym is 0 or nargs is
+out of range.
+*/
+int win_c_function(int sym, int nargs, int ret32):
+	if ((sym == 0) || (nargs < 0) || (nargs > 16)):
+		return 0
+	int size = 48 + nargs * 18
+	if ((win_thunk_page == 0) || (win_thunk_used + size > 4096)):
+		win_thunk_page = VirtualAlloc(0, 4096, 12288, 4) /* commit, PAGE_READWRITE */
+		if (win_thunk_page == 0):
+			return 0
+		win_thunk_used = 0
+	else:
+		int old = 0
+		VirtualProtect(win_thunk_page, 4096, 4, &old)
+	int start = win_thunk_page + win_thunk_used
+	char* p = cast(char*, start)
+	int stack_args = 0
+	if (nargs > 4):
+		stack_args = nargs - 4
+	int frame = 32 + stack_args * 8
+	if ((frame & 15) != 0):
+		frame = frame + 8
+	win_thunk_byte(p, 0, 85)        /* push rbp */
+	win_thunk_byte(p, 1, 72)        /* mov rbp,rsp */
+	win_thunk_byte(p, 2, 137)
+	win_thunk_byte(p, 3, 229)
+	win_thunk_byte(p, 4, 72)        /* and rsp,-16 */
+	win_thunk_byte(p, 5, 131)
+	win_thunk_byte(p, 6, 228)
+	win_thunk_byte(p, 7, 240)
+	win_thunk_byte(p, 8, 72)        /* sub rsp,imm32 */
+	win_thunk_byte(p, 9, 129)
+	win_thunk_byte(p, 10, 236)
+	save_int32(p + 11, frame)
+	int k = 15
+	int i = 4
+	while (i < nargs):
+		win_thunk_byte(p, k, 72)    /* mov rax,[rbp+disp32] */
+		win_thunk_byte(p, k + 1, 139)
+		win_thunk_byte(p, k + 2, 133)
+		save_int32(p + k + 3, 16 + (nargs - 1 - i) * 8)
+		win_thunk_byte(p, k + 7, 72)    /* mov [rsp+disp32],rax */
+		win_thunk_byte(p, k + 8, 137)
+		win_thunk_byte(p, k + 9, 132)
+		win_thunk_byte(p, k + 10, 36)
+		save_int32(p + k + 11, 32 + (i - 4) * 8)
+		k = k + 15
+		i = i + 1
+	# REX prefix, ModRM of mov reg,[rbp+disp32] and of movq xmm_i,reg
+	# for rcx/xmm0, rdx/xmm1, r8/xmm2, r9/xmm3.
+	char* rex = c"\x48\x48\x4c\x4c"
+	char* modrm = c"\x8d\x95\x85\x8d"
+	char* movq_rex = c"\x48\x48\x49\x49"
+	char* movq_modrm = c"\xc1\xca\xd0\xd9"
+	i = 0
+	while ((i < nargs) && (i < 4)):
+		win_thunk_byte(p, k, rex[i])
+		win_thunk_byte(p, k + 1, 139)
+		win_thunk_byte(p, k + 2, modrm[i])
+		save_int32(p + k + 3, 16 + (nargs - 1 - i) * 8)
+		win_thunk_byte(p, k + 7, 102)   /* movq xmm_i,reg: 66 REX.W 0f 6e /r */
+		win_thunk_byte(p, k + 8, movq_rex[i])
+		win_thunk_byte(p, k + 9, 15)
+		win_thunk_byte(p, k + 10, 110)
+		win_thunk_byte(p, k + 11, movq_modrm[i])
+		k = k + 12
+		i = i + 1
+	win_thunk_byte(p, k, 72)        /* mov rax,imm64 */
+	win_thunk_byte(p, k + 1, 184)
+	save_int64(p + k + 2, sym)
+	k = k + 10
+	win_thunk_byte(p, k, 255)       /* call rax */
+	win_thunk_byte(p, k + 1, 208)
+	k = k + 2
+	if (ret32):
+		win_thunk_byte(p, k, 72)    /* movsxd rax,eax */
+		win_thunk_byte(p, k + 1, 99)
+		win_thunk_byte(p, k + 2, 192)
+		k = k + 3
+	win_thunk_byte(p, k, 201)       /* leave */
+	win_thunk_byte(p, k + 1, 195)   /* ret */
+	k = k + 2
+	win_thunk_used = win_thunk_used + ((k + 15) & -16)
+	int prev = 0
+	VirtualProtect(win_thunk_page, 4096, 32, &prev) /* PAGE_EXECUTE_READ */
+	FlushInstructionCache(GetCurrentProcess(), start, k)
+	return start
+
+# Install handler (a W function taking the EXCEPTION_POINTERS address
+# and returning an EXCEPTION_* disposition) as a first vectored
+# exception handler. Returns 1 on success. lib/crash.w uses it for
+# symbolized crash reports; the other targets' stubs return 0.
+# SetUnhandledExceptionFilter would be the natural hook, but W code
+# carries no .pdata unwind info, so the frame-based dispatcher cannot
+# unwind through W frames to the thread's top-level filter and the
+# process dies without calling it. Vectored handlers run before any
+# unwinding, so they see every exception; the handler must pass the
+# ones it does not own through (EXCEPTION_CONTINUE_SEARCH).
+int win_crash_filter_install(int handler):
+	int thunk = win_callback(handler, 1)
+	if (thunk == 0):
+		return 0
+	if (AddVectoredExceptionHandler(1, thunk) == 0):
+		return 0
+	return 1
+
+
 # ptrace has no win64 equivalent; the stub keeps the debugger's attach
 # module linkable (attach mode is Linux x86/x86-64 only).
 int sys_ptrace(int request, int pid, int addr, int data):
@@ -441,11 +700,49 @@ int poll(int* fds, int nfds, int timeout_ms):
 	return -1
 
 
+# One MEMORY_BASIC_INFORMATION (48 bytes on x64) for sys_mincore, allocated
+# up front (the crash path calls sys_mincore and must not allocate).
+char* win_mbi_buffer
+
+
+char* win_mbi_scratch():
+	if (win_mbi_buffer == 0):
+		win_mbi_buffer = cast(char*, mmap(0, 4096, 3, 34))
+	return win_mbi_buffer
+
+
+# mincore(2) stand-in over VirtualQuery: 0 when every page of
+# [addr, addr + length) is committed and readable, -12 (-ENOMEM, what
+# Linux returns for an unmapped range) otherwise. vec is not filled in:
+# the callers (lib/stack_trace.w, debugger/memory.w) only use it as a
+# fault-free "is this mapped?" probe.
 int sys_mincore(int addr, int length, int vec):
-	return -1
+	char* info = win_mbi_scratch()
+	int p = addr - (addr & 4095)
+	int end = addr + length
+	while (p < end):
+		if (VirtualQuery(p, info, 48) == 0):
+			return -12
+		int state = load_int32(info + 32)
+		int protect = load_int32(info + 36)
+		if (state != 4096): /* MEM_COMMIT */
+			return -12
+		# PAGE_NOACCESS (1) and PAGE_GUARD (0x100) pages fault on read.
+		if ((protect & 1) || (protect & 256)):
+			return -12
+		int region_end = load_int64(info) + load_int64(info + 24)
+		if (region_end <= p):
+			return -12
+		p = region_end
+	return 0
+
 
 
 int rt_sigaction(int signum, int* act, int* oldact):
+	return -1
+
+
+int sys_sigaltstack(int ss, int old_ss):
 	return -1
 
 
@@ -460,20 +757,35 @@ int _main(int argc, int argv);
 
 # Splits the command line the way everything expects argv: arguments are
 # separated by spaces/tabs, double quotes group words. (The full
-# CommandLineToArgvW backslash rules are not implemented.)
+# CommandLineToArgvW backslash rules are not implemented.) The
+# environment vector after argv's terminator points into the process
+# environment block (GetEnvironmentStringsA: NAME=value entries, each
+# NUL-terminated, the block ending in an empty entry),
+# skipping the hidden "=C:=C:\..." per-drive entries.
 int _win_start(int stub_argc, int stub_argv):
 	char* cmd = GetCommandLineA()
 	int len = 0
 	while (cmd[len] != 0):
 		len = len + 1
+	char* env = GetEnvironmentStringsA()
+	int env_count = 0
+	if (env != 0):
+		int e = 0
+		while (env[e] != 0):
+			if (env[e] != '='):
+				env_count = env_count + 1
+			while (env[e] != 0):
+				e = e + 1
+			e = e + 1
 	# Worst case one argument per two characters; the block holds the
-	# argv array, a null environment vector, then the unquoted copy.
+	# argv array, the environment vector, then the unquoted copy.
 	int max_args = len / 2 + 2
-	int block = mmap(0, (max_args + 2) * 8 + len + 1, 3, 34)
+	int slots = max_args + env_count + 2
+	int block = mmap(0, slots * 8 + len + 1, 3, 34)
 	if (block < 0):
 		return _main(stub_argc, stub_argv)
 	char** argv = cast(char**, block)
-	char* buf = cast(char*, block + (max_args + 2) * 8)
+	char* buf = cast(char*, block + slots * 8)
 	int argc = 0
 	int i = 0
 	int b = 0
@@ -498,5 +810,15 @@ int _win_start(int stub_argc, int stub_argv):
 		buf[b] = 0
 		b = b + 1
 	argv[argc] = cast(char*, 0)
-	argv[argc + 1] = cast(char*, 0) /* empty environment vector */
+	int n = argc + 1
+	if (env != 0):
+		int e2 = 0
+		while (env[e2] != 0):
+			if (env[e2] != '='):
+				argv[n] = env + e2
+				n = n + 1
+			while (env[e2] != 0):
+				e2 = e2 + 1
+			e2 = e2 + 1
+	argv[n] = cast(char*, 0)
 	return _main(argc, cast(int, argv))

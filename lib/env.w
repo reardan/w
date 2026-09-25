@@ -41,13 +41,25 @@ char* env_at(int i):
 	return env_entry_at(env_current(), i)
 
 
+int env_ascii_lower(int c):
+	if ((c >= 'A') && (c <= 'Z')):
+		return c + 32
+	return c
+
+
 # When entry starts with "name=", returns the index of the character after
 # '='; otherwise returns -1.
+# Windows environment names are case-insensitive ("Path" is PATH), so
+# the comparison folds ASCII case there.
 int env_match_name(char* entry, char* name):
+	int fold = os_windows()
 	int i = 0
 	while (name[i] != 0):
 		if (entry[i] != name[i]):
-			return -1
+			if (fold == 0):
+				return -1
+			if (env_ascii_lower(entry[i]) != env_ascii_lower(name[i])):
+				return -1
 		i = i + 1
 	if (entry[i] != '='):
 		return -1

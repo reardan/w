@@ -147,6 +147,6 @@ void elf_finish_64():
 
 
 void elf_save_section_info_64(int header_addr, int num_sections, int string_index):
-	save_int64(code + 40, header_addr) /* e_shoff */
-	save_i(code + 60, num_sections, 2) /* e_shnum */
-	save_i(code + 62, string_index, 2) /* e_shstrndx */
+	save_int64(code + debug_elf_origin + 40, header_addr - debug_elf_origin) /* e_shoff */
+	save_i(code + debug_elf_origin + 60, num_sections, 2) /* e_shnum */
+	save_i(code + debug_elf_origin + 62, string_index, 2) /* e_shstrndx */

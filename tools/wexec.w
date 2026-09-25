@@ -1833,6 +1833,124 @@ int wexec_write_capture(char* target_name, int step_index, json_value* step, cha
 	return 0
 
 
+char* wexec_read_file_bytes(char* path, int* out_len);
+
+
+process_result* wexec_builtin_result(int status, string_builder* out):
+	process_result* result = new process_result()
+	result.status = status
+	result.stdout_length = out.length
+	result.stdout_text = out.data
+	free(out)
+	result.stderr_text = malloc(1)
+	result.stderr_text[0] = 0
+	result.stderr_length = 0
+	return result
+
+
+# Windows fallbacks for the two POSIX utilities the manifest's win64
+# targets step through (verify_win: cmp, echo) when a plain Windows
+# PATH has neither -- echo is a cmd.exe builtin, not a program, and cmp
+# ships only with Git's usr/bin. Returns 0 for any other command, which
+# keeps the ordinary "failed to spawn command" diagnostic.
+process_result* wexec_windows_builtin(char** argv, int count):
+	char* name = strv_get(argv, 0)
+	string_builder* out = string_new()
+	if (strcmp(name, c"echo") == 0):
+		int i = 1
+		while (i < count):
+			if (i > 1):
+				string_append_char(out, ' ')
+			string_append(out, strv_get(argv, i))
+			i = i + 1
+		string_append_char(out, 10)
+		return wexec_builtin_result(0, out)
+	if ((strcmp(name, c"cmp") == 0) && (count == 3)):
+		int alen = 0
+		int blen = 0
+		char* a = wexec_read_file_bytes(strv_get(argv, 1), &alen)
+		char* b = wexec_read_file_bytes(strv_get(argv, 2), &blen)
+		int status = 0
+		if ((a == 0) || (b == 0)):
+			string_append(out, c"cmp: cannot read input\n")
+			status = 2
+		else:
+			int k = 0
+			while ((k < alen) && (k < blen) && (a[k] == b[k])):
+				k = k + 1
+			if ((k < alen) && (k < blen)):
+				string_append(out, strv_get(argv, 1))
+				string_append_char(out, ' ')
+				string_append(out, strv_get(argv, 2))
+				string_append(out, c" differ: byte ")
+				string_append_int(out, k + 1)
+				string_append_char(out, 10)
+				status = 1
+			else if (alen != blen):
+				string_append(out, c"cmp: EOF on ")
+				if (alen < blen):
+					string_append(out, strv_get(argv, 1))
+				else:
+					string_append(out, strv_get(argv, 2))
+				string_append_char(out, 10)
+				status = 1
+		if (a != 0):
+			free(a)
+		if (b != 0):
+			free(b)
+		return wexec_builtin_result(status, out)
+	string_free(out)
+	return 0
+
+
+int wexec_is_target_selector(char* arg):
+	if ((strcmp(arg, c"x64") == 0) || (strcmp(arg, c"arm64") == 0) || (strcmp(arg, c"arm64_darwin") == 0)):
+		return 1
+	return (strcmp(arg, c"win64") == 0) || (strcmp(arg, c"wasm") == 0)
+
+
+# Windows: manifest steps compile host tools with a bare 'bin/wv2 f.w -o
+# bin/tool' (the default target is the 32-bit Linux ELF) and then run
+# bin/tool -- the generator targets every run builds first, among
+# others. The native target on Windows is win64, so such a compile gets
+# the win64 selector and a '.exe' output name (a later 'bin/tool' step
+# resolves to it through the .exe fallback). Compiles that name a
+# target keep it, except that a win64 output also gains '.exe'. Returns
+# argv itself when nothing changes, else a fresh vector (*count
+# updated).
+char** wexec_windows_native_step(char** argv, int* count):
+	char* program = strv_get(argv, 0)
+	if ((strcmp(program, c"bin/wv2") != 0) && (strcmp(program, c"bin/wv2.exe") != 0)):
+		return argv
+	int n = *count
+	int insert = 1
+	if (n > 1):
+		if (wexec_is_target_selector(strv_get(argv, 1))):
+			insert = 0
+			if (strcmp(strv_get(argv, 1), c"win64") != 0):
+				return argv
+	char** out = strv_new(n + insert)
+	strv_set(out, 0, program)
+	int j = 1
+	if (insert):
+		strv_set(out, 1, c"win64")
+		j = 2
+	int i = 1
+	while (i < n):
+		char* arg = strv_get(argv, i)
+		if ((i > 1) && (strcmp(strv_get(argv, i - 1), c"-o") == 0) && (ends_with(arg, c".exe") == 0)):
+			string_builder* exe = string_new()
+			string_append(exe, arg)
+			string_append(exe, c".exe")
+			arg = exe.data
+			free(exe)
+		strv_set(out, j, arg)
+		j = j + 1
+		i = i + 1
+	*count = n + insert
+	return out
+
+
 int wexec_run_step(char* target_name, int step_index, json_value* step):
 	if (step.type != json_type_object()):
 		wexec_step_error(target_name, step_index, c"step is not a JSON object")
@@ -1871,11 +1989,18 @@ int wexec_run_step(char* target_name, int step_index, json_value* step):
 		strv_set(argv, i, piece.string_value)
 		i = i + 1
 
+	if (os_windows()):
+		char** native = wexec_windows_native_step(argv, &count)
+		if (native != argv):
+			free(cast(char*, argv))
+			argv = native
 	wexec_echo_command(argv, count)
 	char* program = wexec_resolve_program(strv_get(argv, 0))
 	char* stdin_text = wexec_get_string(step, c"stdin")
 	int timeout_ms = wexec_step_timeout_ms(step)
 	process_result* result = process_run(program, argv, 0, stdin_text, timeout_ms)
+	if ((result == 0) && os_windows()):
+		result = wexec_windows_builtin(argv, count)
 	free(cast(char*, argv))
 	if (result == 0):
 		wexec_step_error(target_name, step_index, c"failed to spawn command")
@@ -2483,6 +2608,41 @@ void wexec_live_worker_remove(int pid):
 		i = i + 1
 
 
+# 1 when wbuild.cmd's bootstrapped compiler bin\wv2.exe exists.
+int wexec_windows_compiler_present():
+	int fd = open(c"bin/wv2.exe", 0, 0)
+	if (fd < 0):
+		return 0
+	close(fd)
+	return 1
+
+
+# Windows has no fork(): run the target's steps in this process, one
+# target at a time (an effective -j1), with output going straight to our
+# own stdout/stderr. Returns 0 on success, -1 on failure (wexec_execute
+# then treats it like a spawn failure: fail-fast, or poison dependents
+# under --keep-going).
+int wexec_launch_inline(char* name, char* key, json_value* target):
+	wexec_print_target_header(name, c"")
+	int rc = wexec_run_steps(name, target)
+	if (rc == 0):
+		wexec_mark_finished(name, key)
+		wexec_cache_remote_push_if_enabled(name, key)
+		return 0
+	if (wexec_keep_going == 0):
+		string_builder* fail_line = string_new()
+		string_append(fail_line, c"wexec: failed: ")
+		string_append(fail_line, name)
+		string_append(fail_line, c" (exit status ")
+		string_append_int(fail_line, rc)
+		string_append(fail_line, c")")
+		wstream* fail_err = stderr_writer()
+		stream_write_line(fail_err, fail_line.data)
+		stream_flush(fail_err)
+		string_free(fail_line)
+	return -1
+
+
 # Launch one target. Returns 0 when the target completed inline (cache
 # hit or no steps), 1 when a worker was forked, -1 on spawn failure.
 int wexec_launch(char* name, list[wexec_worker*] workers):
@@ -2504,6 +2664,15 @@ int wexec_launch(char* name, list[wexec_worker*] workers):
 		wexec_print_target_header(name, c"")
 		wexec_mark_finished(name, key)
 		return 0
+	if (os_windows()):
+		if ((strcmp(name, c"wv2") == 0) && wexec_windows_compiler_present()):
+			# The "wv2" target runs the Linux seed ./w; on Windows
+			# wbuild.cmd owns the compiler instead (bin\wv2.exe from the
+			# w.exe seed), and manifest steps naming bin/wv2 resolve to it.
+			wexec_print_target_header(name, c" (bin/wv2.exe, bootstrapped by wbuild.cmd)")
+			wexec_mark_finished(name, 0)
+			return 0
+		return wexec_launch_inline(name, key, target)
 
 	int out_read = -1
 	int out_write = -1
@@ -2869,12 +3038,13 @@ void wexec_make_dirs():
 
 # path = 0 is the default manifest: generated in memory from
 # build.base.json and the source tree (tools/manifest_source.w). The
-# generator walks directories with Linux-layout getdents, so where that
-# does not hold (darwin, win64; see wexec_dirents_supported) only
-# build.base.json's own targets are loaded -- the darwin/win64
-# toolchain targets those executors run all live there.
+# generator walks directories with Linux-layout getdents, or with
+# FindFirstFileA on Windows; where neither holds (darwin; see
+# wexec_dirents_supported) only build.base.json's own targets are
+# loaded -- the darwin toolchain targets that executor runs all live
+# there.
 int wexec_load_manifest(char* path):
-	int scan_tree = wexec_dirents_supported() && (os_windows() == 0)
+	int scan_tree = wexec_dirents_supported() || os_windows()
 	char* text = manifest_source_text(path, scan_tree)
 	if ((text == 0) && (path == 0) && scan_tree && (strcmp(manifest_source_label, c"build.base.json") == 0)):
 		# A source-tree directive this binary's generator predates (the
