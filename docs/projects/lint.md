@@ -41,6 +41,17 @@ behavior and the message text.
 | `leading-blank-lines` | blank lines at the start of the file | yes |
 | `trailing-blank-lines` | blank lines at the end of the file | yes |
 | `line-too-long` | a line wider than `--line-length` columns (default 120, tabs count as 4) | no |
+| `bidi-control` | a bidi embedding, override or isolate control (U+202A-U+202E, U+2066-U+2069) or U+061C anywhere in the file, comments and string literals included: the Trojan Source reordering (CVE-2021-42574) | no |
+| `mixed-script` | an identifier mixing Latin, Greek and Cyrillic letters (`nаme` with a Cyrillic `а`) | no |
+| `confusable` | an identifier that differs from an earlier name in the same file only by Greek/Cyrillic letters that look Latin (`рath` vs `path`) | no |
+
+The three Unicode rules (issue #460) scan the raw text like the
+whitespace rules. The lookalike table in `compiler/lint.w`
+(`lint_confusable_table`) covers the practical Greek and Cyrillic
+twins of Latin letters, not the full Unicode confusables data, and
+`confusable` compares names across the whole file rather than per
+scope. Identifiers written entirely in one non-Latin script with no
+Latin twin (`данные`, `ζωή`) never trip either rule.
 
 `--fix` also repairs the two always-on style warnings: a line indented
 with spaces is re-indented with one tab per four columns (a leftover of

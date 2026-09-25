@@ -952,15 +952,24 @@ void pb_bytes_free(pb_bytes* b):
 	free(cast(char*, b))
 
 
-# Decodes into a fresh zeroed struct of desc.struct_size bytes; 0 when
-# the input is malformed (nothing leaks). Free the result with
-# pb_free_message. from_proto(T, data, length) lowers to this.
-char* pb_from_data(pb_message_desc* desc, char* data, int length):
+# A fresh zero-initialized message ('new T' does not zero, and every
+# field of a message is encoded): cast(T*, pb_message_new(
+# proto_descriptor(T))). Free it with pb_free_message once the fields
+# point only at heap memory it owns, or with free() otherwise.
+char* pb_message_new(pb_message_desc* desc):
 	char* out = malloc(desc.struct_size)
 	int i = 0
 	while (i < desc.struct_size):
 		out[i] = 0
 		i = i + 1
+	return out
+
+
+# Decodes into a fresh zeroed struct of desc.struct_size bytes; 0 when
+# the input is malformed (nothing leaks). Free the result with
+# pb_free_message. from_proto(T, data, length) lowers to this.
+char* pb_from_data(pb_message_desc* desc, char* data, int length):
+	char* out = pb_message_new(desc)
 	if (pb_decode_into(desc, data, length, out) != 0):
 		free(out)
 		return cast(char*, 0)

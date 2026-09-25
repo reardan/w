@@ -1,0 +1,20 @@
+{
+	"targets": [
+		{
+			"name": "gen",
+			"steps": [
+				{"cmd": ["touch", "bin/wexec_generated_marker"]}
+			]
+		},
+		{
+			"name": "generated",
+			"deps": ["gen"]
+		},
+		{
+			"name": "user",
+			"steps": [
+				{"cmd": ["test", "-f", "bin/wexec_generated_marker"]}
+			]
+		}
+	]
+}

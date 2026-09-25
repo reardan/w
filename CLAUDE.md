@@ -94,7 +94,11 @@ composes with the arch selectors (`./bin/wv2 x64 deps file.w` or
 
 Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
 (`./bin/wv2 ...`) need `mkdir -p bin` (or `./wbuild build`) first if you see
-`bin/...: No such file or directory`.
+`bin/...: No such file or directory`. Likewise `lib/grapheme_data.w` and
+`graphics/ui/font_data.w` are generated, not committed (issue #323):
+their generator targets are tagged `generated`, and every `./wbuild`
+run builds that umbrella first, so a hand-run compile of anything that
+imports them needs one `./wbuild` first.
 
 ## Architecture
 

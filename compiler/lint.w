@@ -13,7 +13,11 @@ Two families:
 - Text rules, run over the raw bytes of each root before it compiles
   (lint_text_file below): trailing whitespace, CRLF line endings, runs
   of more than two blank lines, blank lines at the start or end of the
-  file, and lines wider than --line-length columns (120 by default).
+  file, lines wider than --line-length columns (120 by default), and
+  the Unicode rules of issue #460: bidi controls anywhere in the file
+  (Trojan Source), identifiers mixing Latin/Greek/Cyrillic letters, and
+  identifiers that differ from another name in the file only by
+  lookalike letters (lint_unicode_line).
 - Semantic rules, hooked into the single-pass grammar: unused locals
   (lint_scope_exit), code after return/break/continue/goto
   (lint_unreachable_check), a local shadowing another local or a
@@ -429,6 +433,298 @@ int lint_is_blank(char* src, int start, int end):
 	return 1
 
 
+# --- Unicode rules (issue #460) -----------------------------------------
+
+# Codepoint at src[j] (NUL-free UTF-8, end-exclusive); its byte length
+# lands in lint_decode_length. A malformed sequence decodes as its lead
+# byte, one byte long.
+int lint_decode_length
+
+
+int lint_decode(char* src, int j, int end):
+	int c = src[j] & 255
+	lint_decode_length = 1
+	int extra = 0
+	if ((c & 224) == 192):
+		extra = 1
+		c = c & 31
+	else if ((c & 240) == 224):
+		extra = 2
+		c = c & 15
+	else if ((c & 248) == 240):
+		extra = 3
+		c = c & 7
+	if (j + extra >= end + 1):
+		return src[j] & 255
+	int k = 1
+	while (k <= extra):
+		int b = src[j + k] & 255
+		if ((b & 192) != 128):
+			return src[j] & 255
+		c = (c << 6) | (b & 63)
+		k = k + 1
+	lint_decode_length = extra + 1
+	return c
+
+
+# Bidi embedding/override/isolate controls and the Arabic letter mark:
+# the characters CVE-2021-42574 ("Trojan Source") reorders a line with
+int lint_is_bidi_control(int cp):
+	if ((cp >= 8234) && (cp <= 8238)):
+		return 1
+	if ((cp >= 8294) && (cp <= 8297)):
+		return 1
+	return cp == 1564
+
+
+# 1 Latin, 2 Greek, 3 Cyrillic, 0 anything else (digits, '_', other
+# scripts): the lookalike-prone scripts the mixed-script rule separates
+int lint_script(int cp):
+	if ((('a' <= cp) && (cp <= 'z')) || (('A' <= cp) && (cp <= 'Z'))):
+		return 1
+	if ((cp >= 192) && (cp <= 591) && (cp != 215) && (cp != 247)):
+		return 1
+	if ((cp >= 880) && (cp <= 1023)):
+		return 2
+	if ((cp >= 1024) && (cp <= 1279)):
+		return 3
+	return 0
+
+
+char* lint_script_name(int script):
+	if (script == 1):
+		return c"Latin"
+	if (script == 2):
+		return c"Greek"
+	return c"Cyrillic"
+
+
+# Greek and Cyrillic letters that render like a Latin letter, as
+# "<4 hex digits><latin letter>" entries; not the full Unicode
+# confusables data, just the practical lookalikes
+char* lint_confusable_cache
+
+
+char* lint_confusable_table():
+	if (lint_confusable_cache == 0):
+		char* cyrillic = c"0430a0435e043Eo0440p0441c0443y0445x0456i0458j0455s04BBh"
+		cyrillic = strjoin(cyrillic, c"0410A0412B0415E041AK041CM041DH041EO0420P0421C0422T0425X0406I0408J0405S")
+		char* greek = c"0391A0392B0395E0396Z0397H0399I039AK039CM039DN039FO03A1P03A4T03A5Y03A7X"
+		greek = strjoin(greek, c"03BFo03BDv03B9i03C1p")
+		lint_confusable_cache = strjoin(cyrillic, greek)
+	return lint_confusable_cache
+
+
+int lint_hex_digit(int c):
+	if (('0' <= c) && (c <= '9')):
+		return c - '0'
+	return c - 'A' + 10
+
+
+# The Latin letter cp is confusable with, or 0
+int lint_confusable_ascii(int cp):
+	char* table = lint_confusable_table()
+	int i = 0
+	while (table[i] != 0):
+		int v = 0
+		int d = 0
+		while (d < 4):
+			v = (v << 4) | lint_hex_digit(table[i + d])
+			d = d + 1
+		if (v == cp):
+			return table[i + 4]
+		i = i + 5
+	return 0
+
+
+# Per-file state of the confusable rule: skeleton -> first spelling (a
+# char* stored as an int) and its line, plus the spellings already reported
+map[char*, int] lint_skeleton_spelling
+map[char*, int] lint_skeleton_line
+map[char*, int] lint_unicode_warned
+
+
+void lint_unicode_reset():
+	lint_skeleton_spelling = new map[char*, int]
+	lint_skeleton_line = new map[char*, int]
+	lint_unicode_warned = new map[char*, int]
+
+
+# 1-based codepoint column of src[pos] on the line starting at start,
+# matching the compiler's own diagnostic columns
+int lint_codepoint_column(char* src, int start, int pos):
+	int column = 1
+	int j = start
+	while (j < pos):
+		if ((src[j] & 192) != 128):
+			column = column + 1
+		j = j + 1
+	return column
+
+
+char* lint_substring(char* src, int start, int end):
+	char* out = malloc(end - start + 1)
+	int j = 0
+	while (start + j < end):
+		out[j] = src[start + j]
+		j = j + 1
+	out[j] = 0
+	return out
+
+
+# mixed-script and confusable checks for the identifier src[s, e)
+void lint_identifier(char* src, int s, int e, int line, int column):
+	int ascii = 1
+	int j = s
+	while (j < e):
+		if ((src[j] & 128) != 0):
+			ascii = 0
+		j = j + 1
+	char* name = lint_substring(src, s, e)
+	# Skeleton: every lookalike letter replaced by its Latin twin
+	char* skeleton = malloc(e - s + 1)
+	int k = 0
+	int first_script = 0
+	int second_script = 0
+	j = s
+	while (j < e):
+		int cp = lint_decode(src, j, e)
+		int length = lint_decode_length
+		int script = lint_script(cp)
+		if (script != 0):
+			if (first_script == 0):
+				first_script = script
+			else if ((script != first_script) && (second_script == 0)):
+				second_script = script
+		int twin = 0
+		if (ascii == 0):
+			twin = lint_confusable_ascii(cp)
+		if (twin != 0):
+			skeleton[k] = twin
+			k = k + 1
+		else:
+			int b = 0
+			while (b < length):
+				skeleton[k] = src[j + b]
+				k = k + 1
+				b = b + 1
+		j = j + length
+	skeleton[k] = 0
+	char* mixed_key = strjoin(c"mixed:", name)
+	if ((second_script != 0) && ((mixed_key in lint_unicode_warned) == 0)):
+		lint_unicode_warned[mixed_key] = 1
+		if (lint_begin(line, column, c"mixed-script")):
+			diag_part(c"warning: identifier '")
+			diag_part(name)
+			diag_part(c"' mixes ")
+			diag_part(lint_script_name(first_script))
+			diag_part(c" and ")
+			diag_part(lint_script_name(second_script))
+			warning(c" letters [mixed-script]")
+			lint_end()
+	if (skeleton in lint_skeleton_spelling):
+		char* other = cast(char*, lint_skeleton_spelling[skeleton])
+		char* confusable_key = strjoin(c"confusable:", name)
+		if ((strcmp(other, name) != 0) && ((confusable_key in lint_unicode_warned) == 0)):
+			lint_unicode_warned[confusable_key] = 1
+			if (lint_begin(line, column, c"confusable")):
+				diag_part(c"warning: identifier '")
+				diag_part(name)
+				diag_part(c"' looks like '")
+				diag_part(other)
+				diag_part(c"' from line ")
+				diag_part(itoa(lint_skeleton_line[skeleton]))
+				warning(c" but is a different name [confusable]")
+				lint_end()
+		free(skeleton)
+	else:
+		lint_skeleton_spelling[skeleton] = cast(int, strclone(name))
+		lint_skeleton_line[skeleton] = line
+	free(name)
+
+
+void lint_bidi_report(char* src, int start, int pos, int cp, int line, int state):
+	if (lint_begin(line, lint_codepoint_column(src, start, pos), c"bidi-control")):
+		diag_part(c"warning: bidirectional control character U+")
+		diag_part(ident_codepoint_hex(cp))
+		if (state == 1):
+			diag_part(c" in a comment")
+		else if (state == 2):
+			diag_part(c" in a string literal")
+		diag_part(c" can make this line display differently from how it compiles")
+		warning(c" (Trojan Source) [bidi-control]")
+		lint_end()
+
+
+# Walk one line with lint_scan_line's lexical states: report bidi
+# controls anywhere on it, and hand every identifier in code to
+# lint_identifier. Only lines holding a byte >= 0x80 can trip a rule,
+# but every line's identifiers are recorded as confusable references.
+void lint_unicode_line(char* src, int start, int end, int state, int line):
+	int j = start
+	while (j < end):
+		int c = src[j] & 255
+		if (c >= 128):
+			int cp = lint_decode(src, j, end)
+			if (lint_is_bidi_control(cp)):
+				lint_bidi_report(src, start, j, cp, line, state)
+		if (state == 1):
+			if ((c == '*') && (j + 1 < end) && (src[j + 1] == '/')):
+				state = 0
+				j = j + 1
+		else if (state == 2):
+			if (c == 92):
+				j = j + 1
+			else if (c == '"'):
+				state = 0
+		else if (c == '#'):
+			# The rest of the line is a comment
+			state = 1
+			j = j + 1
+			while (j < end):
+				if ((src[j] & 128) != 0):
+					int comment_cp = lint_decode(src, j, end)
+					if (lint_is_bidi_control(comment_cp)):
+						lint_bidi_report(src, start, j, comment_cp, line, 1)
+				j = j + 1
+		else if (c == '"'):
+			state = 2
+		else if (c == 39):
+			j = j + 1
+			while ((j < end) && (src[j] != 39)):
+				if ((src[j] & 128) != 0):
+					int char_cp = lint_decode(src, j, end)
+					if (lint_is_bidi_control(char_cp)):
+						lint_bidi_report(src, start, j, char_cp, line, 2)
+				if (src[j] == 92):
+					j = j + 1
+				j = j + 1
+		else if ((c == '/') && (j + 1 < end) && (src[j + 1] == '*')):
+			state = 1
+			j = j + 1
+		else if (is_ident_start_byte(c)):
+			int s = j
+			int in_name = 1
+			while ((j < end) && in_name):
+				if (is_utf8_lead_byte(src[j])):
+					lint_decode(src, j, end)
+					j = j + lint_decode_length
+				else if (is_ident_part_byte(src[j])):
+					j = j + 1
+				else:
+					in_name = 0
+			# 'c"..."' / 's"..."' / 'f"..."' prefixes open a string instead
+			if ((j < end) && (src[j] == '"') && (j - s == 1)):
+				j = j - 1
+			else:
+				lint_identifier(src, s, j, line, lint_codepoint_column(src, start, s))
+				j = j - 1
+		else if (('0' <= c) && (c <= '9')):
+			while ((j + 1 < end) && is_ident_part_byte(src[j + 1])):
+				j = j + 1
+		j = j + 1
+
+
 # Count of fixes lint_text_file applied to the current buffer, and
 # whether the text pass may report (lint_mode) at all
 int lint_text_fixes
@@ -473,6 +769,7 @@ void lint_text_file(char* path):
 	char* out = malloc(n + 2)
 	int o = 0
 	lint_text_fixes = 0
+	lint_unicode_reset()
 
 	# Findings print against this file with no source-context block (the
 	# compile has not opened it yet)
@@ -502,6 +799,8 @@ void lint_text_file(char* path):
 			content_end = content_end - 1
 			cr = 1
 		int start_state = state
+		if (lint_mode && (lint_contains(src + start, content_end - start, c"nolint") == 0)):
+			lint_unicode_line(src, start, content_end, start_state, line)
 		state = lint_scan_line(src, start, content_end, state)
 		# Inside a multi-line string literal, or opted out: copied verbatim
 		int verbatim = (start_state == 2) || lint_contains(src + start, content_end - start, c"nolint")

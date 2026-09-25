@@ -493,11 +493,12 @@ Where it lives:
 
 Still open, deliberately:
 
-- Cross-script confusables (Cyrillic `а` vs Latin `a`): not detected,
-  same posture as Go. A `--strict` warning would be the natural home.
-- Trojan Source in comments and string literals: bidi controls are
-  rejected in identifiers only. A warning for U+202A-U+202E /
-  U+2066-U+2069 anywhere in a source file is a small, separate change.
+- ~~Cross-script confusables (Cyrillic `а` vs Latin `a`): not detected.~~
+  Done as opt-in lint rules (issue #460): `w check --lint` reports
+  `[mixed-script]` and `[confusable]` identifiers (docs/projects/lint.md).
+- ~~Trojan Source in comments and string literals.~~ Done as the
+  `[bidi-control]` lint rule: `w check --lint` flags U+202A-U+202E,
+  U+2066-U+2069 and U+061C anywhere in the file (issue #460).
 - ~~The debugger's expression reader still reads ASCII names only.~~
   Done: `debugger/wdbg.w`'s `dbg_is_identifier` and
   `debugger/attach_eval.w`'s `aev_is_ident_char` accept UTF-8 lead and
