@@ -132,6 +132,44 @@ void test_closing_a_tab_does_not_select_it():
 	ui_render_destroy(&r)
 
 
+# A press on the cross released on a later frame still closes: the tab
+# around the cross must not take the press over in between.
+void test_a_slow_click_on_the_cross_still_closes():
+	ui_renderer r
+	ui_theme theme
+	ui_context ctx
+	setup(&r, &theme, &ctx)
+	ui_tab_state st
+	ui_tab_init(&st)
+	int32 active
+	active = 0
+
+	tabs_frame(&ctx, &st, &active, 3, strip_area())
+	float32 first_w = ui_tab_width(&ctx, tab_label(0), 1)
+	float32 second_w = ui_tab_width(&ctx, tab_label(1), 1)
+	int close_x = cast(int, first_w + second_w - ui_tab_close_size() * 0.5 - cast(float32, ctx.theme.pad) * 0.5)
+
+	gfx_event press
+	press.kind = GFX_EVENT_MOUSE_DOWN
+	press.code = 1
+	press.x = close_x
+	press.y = 14
+	press.mods = 0
+	ui_feed_event(&ctx, &press)
+	assert_equal(0 - 1, tabs_frame(&ctx, &st, &active, 3, strip_area()))
+
+	gfx_event release
+	release.kind = GFX_EVENT_MOUSE_UP
+	release.code = 1
+	release.x = close_x
+	release.y = 14
+	release.mods = 0
+	ui_feed_event(&ctx, &release)
+	assert_equal(1, tabs_frame(&ctx, &st, &active, 3, strip_area()))
+	asserts(c"the slow close left the active tab alone", active == 0)
+	ui_render_destroy(&r)
+
+
 # Tab width is text-derived but bounded at both ends, so a one-letter
 # name still gives a clickable target and a long path cannot eat the
 # whole strip.
