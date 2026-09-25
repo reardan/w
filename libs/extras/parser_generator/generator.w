@@ -728,10 +728,16 @@ void pg_lexgen_bytes_add(char* bytes, int lo, int hi):
 # These mirror the helpers in libs/extras/parser_generator/lexer.w; an
 # unknown helper never prunes, so dispatch stays a pure optimization.
 void pg_lexgen_builtin_first_bytes(char* bytes, char* matcher):
-	if ((strcmp(matcher, c"letters") == 0) | (strcmp(matcher, c"identifier") == 0)):
+	if (strcmp(matcher, c"letters") == 0):
 		pg_lexgen_bytes_add(bytes, 'a', 'z')
 		pg_lexgen_bytes_add(bytes, 'A', 'Z')
 		pg_lexgen_bytes_add(bytes, '_', '_')
+	else if (strcmp(matcher, c"identifier") == 0):
+		pg_lexgen_bytes_add(bytes, 'a', 'z')
+		pg_lexgen_bytes_add(bytes, 'A', 'Z')
+		pg_lexgen_bytes_add(bytes, '_', '_')
+		# UTF-8 lead bytes: pg_lexer_is_ident_start accepts them (#287)
+		pg_lexgen_bytes_add(bytes, 194, 244)
 	else if ((strcmp(matcher, c"digits") == 0) | (strcmp(matcher, c"number") == 0)):
 		pg_lexgen_bytes_add(bytes, '0', '9')
 	else if (strcmp(matcher, c"c_number") == 0):
