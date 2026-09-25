@@ -1,24 +1,26 @@
 # Async Design: tasks, awaitable I/O and a single-threaded scheduler
 
-Status: phases 1-4 are implemented, all as library code — the compiler,
-grammar and seed are untouched. The runtime (task struct, scheduler,
-`task_spawn`/`task_go`/`task_run`, `task_await_fd[_timeout]`,
-`task_sleep_ms`, `task_yield_now`, `task_finish`/`task_result`/
-`task_join`, cancellation-as-resume `task_cancel`, deadlock detection)
-lives in `lib/task.w`; awaitable I/O (`task_read`, `task_read_exact`,
-`task_write_all`, `task_accept`, `task_connect_ipv4`) and the worker-
-process escape hatch (`task_process_run`) in `lib/task_io.w`. Tests:
-`lib/task_test.w` and `lib/task_io_test.w` (`task_test`,
-`task_io_test` + `_64` variants in `build.json`).
-The phase-4 proof-by-comparison example is
-`examples/web/task_echo_server.w` (per-connection tasks speaking
-Content-Length framing; run it bare for an in-process demo,
-`--serve` for a real server on 127.0.0.1:7777). Phase 5 (syntax) is
-deferred as planned; the load-bearing mechanism (suspension from
-arbitrary call depth via `__w_gen_yield` plus the runtime-owned
-current-task global) is validated on both targets by
-`test_suspension_at_arbitrary_depth` — see "Suspension at depth"
-below.
+Status: phases 1-4 are implemented, plus the September 2026 expansion
+(stages 1-6 in "Expansion" below): guard-paged sized stacks,
+channels/select/locks, task groups and deadlines, the HTTP(S) stack on
+tasks, an epoll backend, and a multi-threaded runtime. Phase 5 (syntax)
+is still deferred. Everything is library code; the compiler, grammar
+and seed are untouched.
+
+| module | provides |
+|---|---|
+| `lib/task.w` | scheduler, spawn/go/join/cancel, fd waits, sleep, deadlines, task groups, wait queues, `task_dump` |
+| `lib/task_chan.w` | `task_chan` (buffered / rendezvous, close) and `task_select` |
+| `lib/task_sync.w` | `task_mutex`, `task_semaphore`, `task_event` |
+| `lib/task_io.w` | `task_read`/`task_write_all`/`task_accept[_from]`/`task_connect_ipv4`, `task_process_run` |
+| `lib/io_wait.w` | `io_wait`/`io_poll`: how protocol libraries park the calling task without importing the scheduler |
+| `lib/task_runtime.w` | thread-per-core runtime, `task_xchan`, `task_spawn_blocking` (Linux x86/x64) |
+| `lib/event_loop.w` | epoll (Linux) or poll backend, heap-ordered timers |
+
+Tests: `task_test`, `task_chan_test`, `task_sync_test`, `task_io_test`,
+`task_runtime_test`, `event_loop_test`, `http_server_task_test` (each
+with a `_64` twin). Examples: `examples/web/task_echo_server.w`,
+`examples/web/task_bench.w`.
 
 ## Problem statement
 
@@ -311,18 +313,90 @@ depend only on 1. Phase 4 depends on 2 (and 3 for timeouts). Nothing
 here touches the seed, `compiler/`, `grammar/` or `code_generator/`
 until/unless phase 5 chooses syntax.
 
+## Expansion (September 2026)
+
+A review against Python asyncio, Tokio and smol found the core sound
+(stackful tasks avoid function coloring; cancellation-as-resume runs
+cleanup, unlike drop-cancellation) but the toolkit thin and nothing
+real running on it. Six stages followed, each shipped with tests.
+
+1. **Core hardening.** Every generator stack sits above a 16KB
+   `PROT_NONE` guard, so an overflow faults instead of corrupting the
+   neighbouring mapping. `gen_set_stack_size` moves a not-yet-started
+   generator onto a bigger stack (its initial frame holds no pointers
+   into itself), which `task_spawn_sized` / `task_group_spawn_sized`
+   use. The run queue is a deque, fd watches are removed by handle
+   (two tasks may wait on one fd), tasks can be detached (reclaimed on
+   completion), joined by any number of tasks, named, and listed with
+   `task_dump`.
+2. **One park/wake path.** Every await registers what it waits on
+   (an fd watch, a timer, waiters on wait queues) and parks; `task_wake`
+   undoes all of it, so whichever event comes first wins and nothing
+   stale is left behind. Wait queues are intrusive lists of
+   `task_waiter`s living on the parked task's stack. Channels, select,
+   the mutex, semaphore and event, joins and group waits are all
+   "register waiters, park, read the waiter's status".
+3. **Structured concurrency and deadlines.** `task_deadline_enter` /
+   `_exit` bound every await in scope (nested scopes keep the nearer
+   deadline; `task_go` and group children inherit it). A `task_group`
+   owns its children: `task_group_wait` returns the first failure
+   after cancelling the siblings, and a waiter that is itself cancelled
+   or times out cancels the group and still waits the children out, so
+   no child outlives the wait (Trio's nursery rule). Children are
+   reclaimed as they finish, which keeps long-running accept loops
+   bounded.
+4. **The web stack on tasks.** Instead of rewriting the protocol code,
+   its lowest I/O layer learned to park: on `EAGAIN`, `tls.w`'s record
+   I/O, `connection.w`, `http_client.w` and `dns.w` call
+   `io_wait`/`io_poll` (lib/io_wait.w). Inside a task that parks the
+   task; outside, it fails at once (`io_wait`) or polls (`io_poll`), so
+   blocking callers behave exactly as before. `server_context_serve_tasks`
+   / `server_accept_task` serve one task per connection in a group, with
+   the TLS handshake under a deadline scope; HTTP and HTTPS clients work
+   from tasks too.
+5. **Scaling the loop.** `lib/event_loop.w` uses level-triggered epoll
+   on Linux (poll elsewhere, or via `event_loop_new_poll`), syncing
+   interest per fd and dropping a registration eagerly when its last
+   watch goes (so a close plus fd-number reuse cannot leave a stale
+   cached mask). Regular files and closed fds, which epoll refuses, get
+   the revents poll would report. Timers are a heap with an id map.
+   With 2,000 idle parked tasks, 5,000 round trips take ~0.6s on epoll
+   against ~6.7s on poll (`examples/web/task_bench.w`).
+6. **Threads.** `lib/task_runtime.w` runs one scheduler per worker
+   thread. Spawns and wakes cross threads through a per-scheduler
+   inbox (a mutex-guarded list plus an eventfd the loop watches); tasks
+   never migrate, so a task may keep pointers into its own stack and
+   use thread-unsafe per-worker state. The current task becomes
+   `thread_local` once the runtime is installed (lib/task.w reaches it
+   through hooks, so it still compiles for every target).
+   `task_xchan` is a mutex-protected channel whose parked peers are
+   woken through their own worker's inbox; a wake carries the park
+   sequence number it was meant for, so a wake that lost a race with a
+   timeout is ignored. `task_spawn_blocking` runs a function on a
+   helper thread while only the calling task waits.
+   `http_server_threads.w` serves plain HTTP on N workers; HTTPS stays
+   on one thread for now because the handshake's bignum/P-256 scratch
+   values are module globals.
+
+Found and fixed along the way: the built-in map never reclaimed
+tombstones (add/remove churn eventually made a missing-key probe loop
+forever), and `thread_spawn`'s handoff globals raced when two threads
+spawned at once.
+
+Follow-ups: per-call crypto scratch (then multi-threaded HTTPS);
+work-stealing, if per-worker imbalance shows up in practice (tasks that
+read `thread_local`s would need a rule before they may migrate);
+kqueue for darwin; `task_runtime` on arm64 once threads and TLS land
+there; the `task` declaration marker (phase 5).
+
 ## Non-goals (and what would change them)
 
-- **Multi-threaded scheduling** (Go/Tokio-style M:N). Prerequisites
-  were atomics with defined semantics, a futex-based mutex, a
-  thread-safe allocator, TLS for per-worker state and a thread
-  lifecycle with a real join. All of them have since landed for Linux
-  x86/x64 (docs/projects/threads.md, docs/projects/thread_local.md),
-  so this is now a design choice rather than a blocked one. The task/loop
-  API here is deliberately shaped so a future multi-threaded scheduler
-  could slot underneath without changing task code.
-- **io_uring / epoll**. poll(2) is O(n) per iteration but n is small
-  and the loop already exists; swapping the readiness backend inside
-  `lib/event_loop.w` later is invisible to tasks.
+- **Work-stealing M:N scheduling** (Go/Tokio-style). The
+  thread-per-core runtime (stage 6) covers multi-core use; stealing
+  would need a migration rule for tasks that use `thread_local`
+  state and is only worth it if imbalance shows up.
+- **io_uring**. epoll (stage 5) removed the O(n) poll scan; a
+  completion-based backend would change the readiness model the
+  protocol libraries rely on.
 - **Closures / callbacks sugar**. Orthogonal language work; tasks are
   the answer to callback pain here.
