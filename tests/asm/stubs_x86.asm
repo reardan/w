@@ -289,6 +289,40 @@ func stack_create
 	pop ebp
 	ret
 
+# __w_tls_size(): the thread_local block size (imm32 patched at finish;
+# docs/projects/thread_local.md).
+func __w_tls_size
+	mov eax,0
+	ret
+
+# __w_tls_set(block): block[0] = block, then set_thread_area with a flat
+# descriptor based at block, reusing the GDT entry the inherited fs
+# selector names (-1: the kernel picks one), and load fs with it.
+func __w_tls_set
+	push ebx
+	mov ecx,[esp+8]
+	mov [ecx],ecx
+	sub esp,0x10
+	db 0x66, 0x8c, 0xe0	# mov ax,fs
+	movzx eax,ax
+	db 0xc1, 0xe8, 0x03	# shr eax,3
+	jne .+7	# fs already names an entry (spawned thread)
+	mov eax,-1
+	mov [esp],eax	# user_desc.entry_number
+	mov [esp+4],ecx	# base_addr
+	db 0xc7, 0x44, 0x24, 0x08, 0xff, 0xff, 0x0f, 0x00	# mov dword [esp+8],0xfffff: limit (pages)
+	db 0xc7, 0x44, 0x24, 0x0c, 0x51, 0x00, 0x00, 0x00	# mov dword [esp+12],0x51: seg_32bit | limit_in_pages | useable
+	mov ebx,esp
+	mov eax,0xf3	# set_thread_area
+	int 0x80
+	mov eax,[esp]
+	db 0xc1, 0xe0, 0x03	# shl eax,3
+	or eax,3
+	db 0x8e, 0xe0	# mov fs,ax
+	add esp,0x10
+	pop ebx
+	ret
+
 func function_call
 	mov eax,[esp+4]
 	jmp eax

@@ -314,13 +314,11 @@ until/unless phase 5 chooses syntax.
 ## Non-goals (and what would change them)
 
 - **Multi-threaded scheduling** (Go/Tokio-style M:N). Prerequisites
-  are real and currently absent: atomics with defined semantics
-  (compiler work: `lock cmpxchg`/`xadd` emission), a futex-based
-  mutex, a thread-safe allocator (today: global free list in
-  `lib/memory.w`, racy `brk` growth), TLS for per-worker state, and a
-  thread lifecycle beyond the raw `clone` stub in
-  `code_generator/x86_asm.w` (no join; `tests/threading_test.w`
-  spin-waits on a shared global — itself a data race). The task/loop
+  were atomics with defined semantics, a futex-based mutex, a
+  thread-safe allocator, TLS for per-worker state and a thread
+  lifecycle with a real join. All of them have since landed for Linux
+  x86/x64 (docs/projects/threads.md, docs/projects/thread_local.md),
+  so this is now a design choice rather than a blocked one. The task/loop
   API here is deliberately shaped so a future multi-threaded scheduler
   could slot underneath without changing task code.
 - **io_uring / epoll**. poll(2) is O(n) per iteration but n is small

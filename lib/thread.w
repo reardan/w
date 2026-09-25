@@ -74,15 +74,16 @@ holder.
 Constraints (MVP; see threads.md for staging):
 - Only the main thread may call thread_spawn, thread_join,
   parallel_for, thread_pool_init and thread_pool_shutdown: the handoff
-  and pool globals and the brk heap allocator are unsynchronized. Two
+  and pool globals are unsynchronized. Two
   nested parallel_for cases are sanctioned: a chunk callback running
   on the main thread (chunk 0) may call parallel_for again (it takes
   the spawn path while the pool is busy), and a callback on a pool
   worker may too (its chunks run serially in place, same boundaries).
   Never call thread_pool_shutdown from a callback.
-- Worker functions must not allocate (malloc/new/list/map/print
-  formatting) or spawn; they compute into memory the caller provided.
-  Allocate wmutex/wcond instances on the main thread too.
+- Worker functions may allocate (malloc/new/list/map/strings/print
+  formatting): from the first thread_spawn on, every spawned thread
+  allocates from its own heap and any thread may free any block
+  (lib/thread_heap.w). They must not spawn.
 - thread_join frees the handle: join each handle exactly once, and
   read any wthread fields (tid, stack_base) before joining.
 - cond_wait can wake spuriously (any bump wakes every parked
@@ -120,6 +121,7 @@ thread; a pool that cannot be created at all falls back to the
 spawn-per-chunk path, whose own clone-failure fallback is inline.
 */
 import lib.lib
+import lib.thread_heap
 
 
 # Worker body: fn(arg).
@@ -209,6 +211,16 @@ void thread_entry():
 	# computation recovers it.
 	int stack_end = (cast(int, &t) + 4095) & ~4095
 	t.stack_base = stack_end - thread_stack_size()
+	# thread_local globals (docs/projects/thread_local.md): this thread's
+	# zeroed TLS block is the bottom of its own stack mapping (mmap
+	# zero-fills it; the compiler caps the block at 1MB of the 4MB), so
+	# it needs no allocation and thread_join's munmap reclaims it. Done
+	# before anything that could touch a thread_local.
+	if (__w_tls_size() > 0):
+		__w_tls_set(t.stack_base)
+	# This thread's own heap (lib/thread_heap.w): its mallocs never
+	# touch another thread's allocator state.
+	thread_heap_attach()
 	# Arm the kernel's exit signal before the ack so it is armed before
 	# thread_join can possibly run: on this thread's exit the kernel
 	# stores 0 to t.exited and futex-wakes it, after the thread's last
@@ -217,6 +229,9 @@ void thread_entry():
 	thread_spawn_ack = 1
 	thread_wake_word(&thread_spawn_ack)
 	t.func(t.arg)
+	# Hand the heap to the next thread spawned; blocks it still owns
+	# stay valid and can be freed from any thread.
+	thread_heap_detach()
 	t.done = 1
 	thread_wake_word(&t.done)
 	thread_exit(0)
@@ -225,6 +240,9 @@ void thread_entry():
 # Start func(arg) on a new thread. Returns a handle for thread_join,
 # or 0 when clone fails. Main thread only.
 wthread* thread_spawn(thread_fn* func, void* arg):
+	# Before the first clone, while this is the only thread: from here
+	# on malloc/free/realloc are per-thread (lib/thread_heap.w).
+	thread_heap_install()
 	wthread* t = new wthread()
 	t.tid = 0
 	t.func = func

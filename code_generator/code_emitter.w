@@ -55,6 +55,15 @@ int entry_optional
 int phdr_table_pos
 int entry_call_disp_pos
 
+# Thread-local storage (docs/projects/thread_local.md). tls_size is the
+# byte size of the per-thread block every 'thread_local' global lives
+# in: word 0 is the block's self pointer (gs:[0] on x64, fs:[0] on x86), variables
+# follow at the offsets grammar/program.w assigns. tls_size_patch_pos is
+# the code offset of the imm32 inside the __w_tls_size stub, patched with
+# the final size when the executable is finished (0 = no stub emitted).
+int tls_size
+int tls_size_patch_pos
+
 
 void resize_code(int n):
 	if (code_size <= codepos + n):
