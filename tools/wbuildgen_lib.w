@@ -2249,8 +2249,12 @@ void wbg_tool_self_outputs(json_value* entry, map[char*, int] produced):
 # (first-seen order, deduped); self-produced paths add nothing. A
 # command word (cmd[0]) under bin/ that resolves to neither is a hard
 # error — a typoed tool path fails the manifest run, not the build.
-# Non-command elements that resolve to nothing are fine (fixture
-# paths, flags, scratch outputs).
+# Without the tree scan (the darwin/win64 executors, see wbg_generate)
+# the producers that '# wbuild: binary=' directives define are not
+# loaded, so an unresolved tool is expected there and skipped: the
+# entry is kept without that dependency, and the Linux run, which
+# scans, still catches a typo. Non-command elements that resolve to
+# nothing are fine (fixture paths, flags, scratch outputs).
 int wbg_tool_derive_deps(char* name, json_value* steps, map[char*, int] produced, list[char*] dep_names):
 	map[char*, int] dep_seen = new map[char*, int]
 	int s = 0
@@ -2266,7 +2270,7 @@ int wbg_tool_derive_deps(char* name, json_value* steps, map[char*, int] produced
 					if ((dep in dep_seen) == 0):
 						dep_seen[dep] = 1
 						dep_names.push(dep)
-				else if ((j == 0) && starts_with(word, c"bin/")):
+				else if ((j == 0) && starts_with(word, c"bin/") && wbg_scan_tree):
 					string_builder* message = string_new()
 					string_append(message, c"\"tool_targets\" entry '")
 					string_append(message, name)
