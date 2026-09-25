@@ -22,6 +22,11 @@ struct ui_textbox_state:
 	char[128] text
 	int32 length
 	int32 caret
+	# The touched state validated fields key their errors on: 0 while
+	# pristine, 1 once typing has changed the text, 2 once the field
+	# has then lost focus. Set only by ui_textbox's own editing, so a
+	# ui_textbox_set prefill does not count as the user's edit.
+	int32 edited
 
 
 int ui_textbox_capacity():
@@ -32,6 +37,7 @@ void ui_textbox_init(ui_textbox_state* st):
 	st.text[0] = 0
 	st.length = 0
 	st.caret = 0
+	st.edited = 0
 
 
 void ui_textbox_set(ui_textbox_state* st, char* s):
@@ -82,6 +88,11 @@ void ui_textbox_backspace(ui_textbox_state* st):
 	st.text[st.length] = 0
 
 
+void ui_textbox_mark_edited(ui_textbox_state* st):
+	if (st.edited == 0):
+		st.edited = 1
+
+
 # Single-line text input over caller-owned state. Clicking focuses it
 # (the caret lands at the nearest glyph boundary to the click); the
 # focused textbox consumes the frame's CHAR/NAV queues — printable
@@ -117,8 +128,10 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 			int ch = ctx.chars[i]
 			if (ui_utf8_is_text(ch)):
 				ui_textbox_insert(st, ch)
+				ui_textbox_mark_edited(st)
 			else if (ch == 8):
 				ui_textbox_backspace(st)
+				ui_textbox_mark_edited(st)
 			else if (ch == 13):
 				submitted = 1
 			else if (ch == 27):
@@ -137,6 +150,11 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 			else if (nav == GFX_NAV_END):
 				st.caret = st.length
 			i = i + 1
+	# Edited and no longer focused, however focus left (a press
+	# elsewhere, escape, another widget claiming it): the field is
+	# touched from here on.
+	if ((st.edited == 1) && (ctx.focus != id)):
+		st.edited = 2
 
 	# Material filled field: a rounded tonal fill with a 2px baseline
 	# that turns into the focus color while focused.

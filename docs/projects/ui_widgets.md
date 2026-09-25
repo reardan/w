@@ -31,7 +31,9 @@ closed, and §9.3 answers the open question 3 below
 reproducible via `graphics/ui/demo.w --shell [--menu]`).
 
 **Round 3 resumes §6's staging with Form** (§10, implemented
-2026-09-25); Chips, then the fields and date/time groups, follow.
+2026-09-25). **Round 4 finishes the issue's list** (§11, 2026-09-25):
+Chips, Email, Dropdown multi-select and search, and the date/time
+family. Every item in §2's table now ships.
 
 ## 0. The finding, up front
 
@@ -712,3 +714,115 @@ focused field after the form keeps its focus — the id-drift hazard of
 
 A new `error` color token carries the failure color in all three
 presets; it is the first token added since the theme shipped.
+
+## 11. Round 4: the rest of the list
+
+Implemented 2026-09-25 (`ui_widgets_plan.md` stages 18-21). With this
+round every item in §2 ships. Module and API detail is in each module's
+header comment; this section records the decisions.
+
+### 11.1 Chips (`chips.w`)
+
+A chip row is a walk, like the tab strip: `ui_chips_begin(ctx, &st,
+area)`, then `ui_chip` (filter chip, toggles an `int32*`) or
+`ui_chip_removable` (input chip with the round-2 cross; its `selected`
+may be 0 for a plain tag), then `ui_chips_end`. Chips flow left to
+right and wrap at the area's width; only `area.h` is ignored — the row
+grows downward and `ui_chips_end` claims the covered extent, so a scroll
+region around it sizes itself, and a caller stacking it in the normal
+flow sizes it from `st.height` with the usual one-frame lag. A selected
+filter chip does not change width (the check slot is always reserved),
+so toggling never re-wraps the row under the pointer. Every chip takes
+two ids unconditionally.
+
+The cross lies inside the chip, so the body's `ui_click_behavior`
+re-claims a press that landed on it; the chip hands `active`/`hot`
+back. Tabs had the same hazard — a press on a tab's cross released a
+frame later selected the tab instead of closing it — and is fixed in
+this round the same way, with a regression test.
+
+### 11.2 Email (`email.w`)
+
+`ui_email_check(&tb, msg)` is a Form validator (§10): the message when
+the address is malformed, 0 otherwise, and an empty field counts as
+valid so it composes with `ui_form_required`. The shape rule is
+deliberately pragmatic: one `@`, a non-empty local part, a dotted
+domain with no empty labels, no whitespace or control bytes; bytes
+>= 0x80 pass, so UTF-8 addresses are accepted.
+
+`ui_email` is a textbox that shows the error baseline on its own once
+the field has been *edited and left*. That "touched" notion is general,
+so it lives on `ui_textbox_state` as `edited` (0 untouched, 1 typed in,
+2 typed in and then left) rather than on the email widget;
+`ui_textbox_set` does not count as an edit, so a prefilled bad value
+does not open in red. Standalone email draws only the baseline — the
+message text is Form's, via `ui_form_error`.
+
+### 11.3 Dropdown multi-select and search
+
+Both are new functions on `ui_popover_begin`; `ui_dropdown` itself is
+untouched (§9.5's reasoning still holds).
+
+- `ui_dropdown_multi` takes a per-item `int32* checked` and stays open
+  while rows toggle; the header summarises as "first +N" or a
+  placeholder.
+- `ui_dropdown_search` puts a `ui_textbox` filter at the top of the
+  popover, focused on open and cleared on each open. Items match by
+  case-insensitive ASCII substring; return picks the first match. This
+  is the case §2 said needed nested popups, and the test proves the
+  textbox inside the popover gets the frame's characters while one
+  outside does not. Its filter's id is reserved open or closed, and
+  focus is released on close so the next widget cannot inherit it. The
+  surface is sized for every item, not the current matches, so it does
+  not jump while typing.
+
+The opening press is consumed in both: otherwise the popover sees the
+header press as a press outside itself and closes on the frame it
+opened.
+
+### 11.4 Dates and times
+
+**`lib/time.w` gains the inverse** §4.7 asked for:
+`time_days_from_civil` (Hinnant's algorithm, correct before 1970),
+`time_weekday_from_civil` / `time_weekday_from_days` (0 = Sunday, as
+`date_time.weekday`), and `time_unix_from_utc`. The test round-trips
+every day from 1970 to 2038-01-19 through `time_utc_from_unix`.
+
+**Calendar** (`calendar.w`) is a 6x7 grid, always — six rows is the
+maximum a month needs, so the widget's height never changes. The page
+on show (`ui_calendar_state {year, month, first_weekday}`) is caller
+state separate from the selection (`ui_date {year, month, day}`, day 0
+= unset); Monday-first weeks are one field. Neighbouring months' days
+are muted but clickable and turn the page. Today is an argument, never
+a clock read (§9.3). Focused, arrows move a day or a week and page
+up/down a month.
+
+**Date Picker** and **Date Range Picker** (`date_picker.w`) are a
+field that opens the grid in a popover. In the range picker the
+caller's start and end change together only when the range is
+complete; the half-chosen anchor lives in picker state and is dropped
+if the popover closes, and a backwards pick is swapped.
+
+**Time Range Picker** (`time_picker.w`) stores minutes since midnight
+and opens two hour/minute spinner rows; minutes snap to the caller's
+step and each spinner wraps within its own unit. The two ends are
+independent: an end before the start is an overnight range, shown with
+a trailing "+1", because clamping start <= end fights the wrap-around.
+
+Every one of these reserves a fixed number of ids per frame whether its
+popover is open or not (calendar 3, date pickers 4, time picker 9), so
+opening a picker never shifts the ids — and focus — of what follows.
+
+### 11.5 Found along the way
+
+- **x64 struct assignment overruns a 12-byte struct.** Assigning a
+  whole `{int32, int32, int32}` struct on x64 writes 16 bytes,
+  clobbering the next field (`h.x = v` zeroes `h.open`); 32-bit is
+  correct. `ui_date_copy` copies field by field to route around it.
+  A compiler bug, not fixed here.
+- **`wasm_ui_test` fails on `main`** ("glyph-atlas uploads: want 1,
+  got 2") since the themed-fonts work; not caused by this round, and
+  outside the `tests` umbrella.
+
+Still open, and not in the issue's list: keyboard navigation inside
+the two new dropdowns, and scrolling for long option lists.
