@@ -9,6 +9,8 @@ int var_binary_operands(int left_type, int right_type);
 int list_element_slot_size(int element_type);
 int list_callback_return_type(int got); /* defined in list_builtin */
 int cm_call(int type, char* helper, char* bytes_helper, int want, char* ctx, int arg1, int arg2, int extra, int result); /* defined in list_builtin */
+int ufcs_callee(char* name); /* defined in list_builtin */
+int ufcs_call(int type); /* defined in list_builtin */
 
 
 int hash_index_pending
@@ -500,6 +502,8 @@ int hash_method(int type):
 		return hash_get_suffix(type)
 	if (accept(c"free")):
 		return cm_call(type, c"__w_map_free", 0, key_type, 0, 0, 0, -1, 0)
+	if ((nextc == '(') && (ufcs_callee(token) >= 0)):
+		return ufcs_call(type)
 	diag_part(c"hash container field '")
 	diag_part(token)
 	error(c"' not found")

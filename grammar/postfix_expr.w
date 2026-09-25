@@ -725,6 +725,8 @@ int postfix_expr():
 					int element_type = buffer_element_type(type)
 					type = type_get_next_pointer(element_type)
 					expression_lhs_readonly = 1
+				else if ((nextc == '(') && (ufcs_callee(token) >= 0)):
+					type = ufcs_call(type)
 				else:
 					diag_part(c"buffer field '")
 					diag_part(token)
@@ -817,6 +819,9 @@ int postfix_expr():
 						char* prefix = strjoin(type_get_name(type), c"_")
 						char* method_symbol = strjoin(prefix, member_name)
 						free(prefix)
+						if ((sym_lookup(method_symbol) < 0) && ufcs_struct_receiver(member_name, type)):
+							free(method_symbol)
+							method_symbol = strclone(member_name)
 						int callee = sym_lookup(method_symbol)
 						if (callee < 0):
 							diag_part(c"struct method '")
@@ -898,6 +903,10 @@ int postfix_expr():
 						error(c"' not found")
 					free(member_name)
 
+				else if ((nextc == '(') && (ufcs_callee(token) >= 0)):
+					if (receiver_was_value):
+						type = type_value(type)
+					type = ufcs_call(type)
 				else:
 					# cc500 heritage: '.member' on a non-struct expression
 					# used to be silently ignored, so a typo'd field or a

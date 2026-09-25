@@ -14,6 +14,9 @@ grammar/hash_builtin.w (hash_push_stack_slot, hash_call_finish).
 int expression();
 int inferred_storage_type(char* name, int got); /* defined in variable_declaration */
 void for_iter_call(char* fn_name, int container_slot, int cursor_slot); /* defined in for_statement */
+int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym, int signature_type, char* callee_name, int declared_return, int passed_args, int has_return_buffer, int w_variadic_fixed); /* defined in postfix_expr */
+void check_call_argument(int callee, int signature_type, char* callee_name, int arg_index, int arg_type); /* defined in postfix_expr */
+void push_call_argument(int arg_type); /* defined in postfix_expr */
 
 
 int list_literal_type
@@ -532,6 +535,86 @@ int list_it_method(int type):
 	return result
 
 
+/*
+Uniform call syntax (golf ergonomics wave 5): x.f(args) calls the free
+function f(x, args) when nothing else claims the member -- a struct's
+field or T_f method, a built-in list/map/set pseudo-method -- so it is
+only reached where '.f(' used to be an error and never changes the
+meaning of a program that compiled before. f must be a plain function
+(not a local fn pointer, generator or C variadic) with at least one
+parameter; a struct receiver additionally needs f's first parameter
+to be a pointer to the struct (the receiver is passed by address, like
+the method sugar's &p).
+*/
+int ufcs_callee(char* name):
+	int callee = sym_lookup(name)
+	if (callee < 0):
+		return 0 - 1
+	if ((table[callee + 1] == 'L') || (table[callee + 1] == 'A')):
+		return 0 - 1
+	if ((sym_num_args(callee) < 1) || sym_is_generator(callee) || (sym_variadic_fixed_args(callee) >= 0)):
+		return 0 - 1
+	return callee
+
+
+int ufcs_struct_receiver(char* name, int struct_type):
+	int callee = ufcs_callee(name)
+	if (callee < 0):
+		return 0
+	int param = sym_param_type(callee, 0)
+	if ((param < 0) || (type_get_pointer_level(param) != 1)):
+		return 0
+	return type_canonical(type_lookup_previous_pointer(param)) == type_canonical(struct_type)
+
+
+# The function name is the current token with '(' next; the receiver
+# (value or lvalue) is in eax. Emits f(receiver, args...) exactly like
+# the struct method sugar with the receiver as the hidden first argument.
+int ufcs_call(int type):
+	type = promote(type)
+	char* name = strclone(token)
+	get_token()
+	int callee = sym_lookup(name)
+	int expected_args = sym_num_args(callee)
+	int declared_return = load_int(table + callee + 6)
+	int has_return_buffer = 0
+	if (declared_return >= 0):
+		if (type_num_args(declared_return) > 0):
+			int words = (type_get_size(declared_return) + word_size - 1) >> word_size_log2
+			int j = 0
+			while (j < words):
+				push_eax()
+				j = j + 1
+			stack_pos = stack_pos + words
+			has_return_buffer = 1
+	push_eax()
+	stack_pos = stack_pos + 1
+	sym_get_value(name)
+	int s = stack_pos
+	push_eax()
+	stack_pos = stack_pos + 1
+	if (has_return_buffer):
+		lea_eax_esp_plus(2 << word_size_log2)
+		push_eax()
+		stack_pos = stack_pos + 1
+		mov_eax_esp_plus(2 << word_size_log2)
+	else:
+		mov_eax_esp_plus(1 << word_size_log2)
+	check_call_argument(callee, 0 - 1, name, 0, type)
+	int param_type = sym_param_type(callee, 0)
+	if (param_type >= 0):
+		coerce(param_type, type)
+	push_call_argument(type)
+	expect(c"(")
+	int result = parse_call_suffix(4, s, expected_args, callee, 0 - 1, name, declared_return, 1, has_return_buffer, sym_w_variadic_fixed_args(callee))
+	be_pop(1)
+	stack_pos = stack_pos - 1
+	if (has_return_buffer):
+		lea_eax_esp_plus(0)
+		result = type_value(declared_return)
+	return result
+
+
 # list[T] pseudo-methods; the method name is the current token.
 #   push/insert/remove/pop/clear/free   stack and deque operations
 #   sort/sorted, sort_by/sorted_by      in place / new list; int-like
@@ -609,6 +692,8 @@ int list_method(int type):
 		return cm_call(type, c"__w_list_count", 0, element_type, c"list count", 1, 0, list_scalar_kind(element_type, c"list count"), 3)
 	if (accept(c"index")):
 		return cm_call(type, c"__w_list_index", 0, element_type, c"list index", 1, 0, list_scalar_kind(element_type, c"list index"), 3)
+	if ((nextc == '(') && (ufcs_callee(token) >= 0)):
+		return ufcs_call(type)
 	diag_part(c"list field '")
 	diag_part(token)
 	error(c"' not found")
