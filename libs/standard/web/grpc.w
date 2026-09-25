@@ -192,6 +192,7 @@ import structures.string
 import libs.standard.web.hpack
 import libs.standard.web.http2
 import libs.standard.web.codec
+import lib.hex
 
 
 /* Status codes */
@@ -440,22 +441,6 @@ int grpc_take_message(string_builder* buf, char* encoding, int max, char** out, 
 
 /* grpc-message percent-encoding */
 
-int grpc_hex_digit(int v):
-	if (v < 10):
-		return '0' + v
-	return 'A' + v - 10
-
-
-int grpc_hex_value(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
-	return (-1)
-
-
 # Bytes outside printable ASCII (0x20-0x7E), and '%' itself, become %XX.
 char* grpc_percent_encode(char* s):
 	string_builder* out = string_new()
@@ -464,8 +449,8 @@ char* grpc_percent_encode(char* s):
 		int c = s[i] & 255
 		if ((c < 32) || (c > 126) || (c == '%')):
 			string_append_char(out, '%')
-			string_append_char(out, grpc_hex_digit(c >> 4))
-			string_append_char(out, grpc_hex_digit(c & 15))
+			string_append_char(out, hex_digit_upper(c >> 4))
+			string_append_char(out, hex_digit_upper(c & 15))
 		else:
 			string_append_char(out, c)
 		i = i + 1
@@ -483,8 +468,8 @@ char* grpc_percent_decode(char* s):
 		int c = s[i] & 255
 		if (c == '%'):
 			if (s[i + 1] != 0):
-				int hi = grpc_hex_value(s[i + 1] & 255)
-				int lo = grpc_hex_value(s[i + 2] & 255)
+				int hi = hex_decode_char(s[i + 1] & 255)
+				int lo = hex_decode_char(s[i + 2] & 255)
 				if ((hi >= 0) && (lo >= 0)):
 					string_append_char(out, (hi << 4) | lo)
 					i = i + 3

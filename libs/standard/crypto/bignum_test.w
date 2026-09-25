@@ -4,16 +4,7 @@
 # helpers, no hex module dependency per the phase-6 scope rules).
 import lib.testing
 import libs.standard.crypto.bignum
-
-
-int t_hexval(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
-	return 0
+import lib.hex
 
 
 # Parse a big-endian hex string into out; returns the byte length. Handles an
@@ -24,11 +15,11 @@ int t_hex_to_bytes(char* h, char* out):
 	int hi = 0
 	int oi = 0
 	if ((l & 1) == 1):
-		out[0] = t_hexval(h[0])
+		out[0] = hex_decode_char(h[0])
 		hi = 1
 		oi = 1
 	while (hi < l):
-		out[oi] = (t_hexval(h[hi]) << 4) | t_hexval(h[hi + 1])
+		out[oi] = (hex_decode_char(h[hi]) << 4) | hex_decode_char(h[hi + 1])
 		hi = hi + 2
 		oi = oi + 1
 	return nbytes

@@ -7,6 +7,7 @@ This should only be functions that are highly common and every application requi
 */
 import lib.linux
 import lib.memory
+import lib.hex
 
 
 void exit(int);
@@ -213,45 +214,13 @@ int intstrlen(int i):
 
 # Returns a malloc'd string the caller may free.
 char* hex(int v):
-	char* s = malloc(12)
-	s[0] = '0'
-	s[1] = 'x'
-	s[10] = 0
-	int i = 7
-	int digit
-	while (i >= 0):
-		digit = (v & 15)
-		if (digit < 10):
-			digit = digit + '0'
-		else:
-			digit = digit - 10 + 'a'
-		s[i + 2] = digit
-		v = v >> 4
-		i = i - 1
-	return s
+	return hex_fixed(v, 8)
 
 
 # Like hex() but shows all 16 digits on a 64-bit target, so addresses
 # above 4GB (e.g. the process stack) display in full.
 char* hex_word(int v):
-	if (__word_size__ != 8):
-		return hex(v)
-	char* s = malloc(20)
-	s[0] = '0'
-	s[1] = 'x'
-	s[18] = 0
-	int i = 15
-	int digit
-	while (i >= 0):
-		digit = (v & 15)
-		if (digit < 10):
-			digit = digit + '0'
-		else:
-			digit = digit - 10 + 'a'
-		s[i + 2] = digit
-		v = v >> 4
-		i = i - 1
-	return s
+	return hex_fixed(v, __word_size__ * 2)
 
 
 int from_hex(char* s):
@@ -260,12 +229,9 @@ int from_hex(char* s):
 	int i = 0
 	int ch = s[i]
 	while ((ch != 0) && (i < 18)):
-		if (ch >= '0' && ch <= '9'):
-			result = (result << 4) + ch - '0'
-		else if(ch >= 'a' && ch <= 'f'):
-			result = (result << 4) + ch - 'a' + 10
-		else if(ch >= 'A' && ch <= 'F'):
-			result = (result << 4) + ch - 'A' + 10
+		int d = hex_decode_char(ch)
+		if (d >= 0):
+			result = (result << 4) + d
 		i = i + 1
 		ch = s[i]
 	return result

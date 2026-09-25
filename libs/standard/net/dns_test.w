@@ -9,35 +9,7 @@ import lib.file
 import lib.net
 import libs.standard.net.dns
 import libs.standard.net.testing
-
-
-# Decodes "12 34 ab ..." (lowercase hex pairs, whitespace ignored)
-# into malloc'd bytes.
-char* dns_test_bytes(char* hex_text, int* out_len):
-	char* bytes = malloc(strlen(hex_text) / 2 + 1)
-	int count = 0
-	int have_high = 0
-	int high = 0
-	int i = 0
-	while (hex_text[i] != 0):
-		int c = hex_text[i] & 255
-		int digit = 0 - 1
-		if ((c >= '0') && (c <= '9')):
-			digit = c - '0'
-		if ((c >= 'a') && (c <= 'f')):
-			digit = c - 'a' + 10
-		if (digit >= 0):
-			if (have_high == 0):
-				high = digit
-				have_high = 1
-			else:
-				bytes[count] = high * 16 + digit
-				count = count + 1
-				have_high = 0
-		i = i + 1
-	asserts(c"odd hex digit count in fixture", have_high == 0)
-	*out_len = count
-	return bytes
+import lib.hex
 
 
 void dns_test_assert_bytes_equal(char* want, char* got, int length):
@@ -107,14 +79,14 @@ char* dns_test_build_cname_chain(int cname_count, int* out_len):
 # A well-formed response to the example.com A query, id 0x1234, with
 # one compressed A answer 93.184.216.34.
 char* dns_test_response_a(int* out_len):
-	return dns_test_bytes(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 04 5d b8 d8 22", out_len)
+	return hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 04 5d b8 d8 22", out_len)
 
 
 void test_dns_build_query_encoding():
 	char* out = malloc(512)
 	int length = dns_build_query(c"example.com", 0x1234, out, 512)
 	int want_len = 0
-	char* want = dns_test_bytes(c"12 34 01 00 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &want_len)
+	char* want = hex_decode_loose(c"12 34 01 00 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &want_len)
 	assert_equal(want_len, length)
 	dns_test_assert_bytes_equal(want, out, want_len)
 
@@ -189,7 +161,7 @@ void test_dns_parse_response_cname_chain():
 	# question), then an A record for the CNAME target via a pointer
 	# into the first answer's rdata.
 	int length = 0
-	char* msg = dns_test_bytes(c"12 34 81 80 00 01 00 02 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 05 00 01 00 00 00 3c 00 06 03 63 64 6e c0 0c c0 29 00 01 00 01 00 00 00 3c 00 04 05 06 07 08", &length)
+	char* msg = hex_decode_loose(c"12 34 81 80 00 01 00 02 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 05 00 01 00 00 00 3c 00 06 03 63 64 6e c0 0c c0 29 00 01 00 01 00 00 00 3c 00 04 05 06 07 08", &length)
 	int ip = 0
 	assert_equal(dns_result_ok(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	assert_equal_hex(0x05060708, ip)
@@ -212,7 +184,7 @@ void test_dns_parse_response_cname_depth_limit():
 
 void test_dns_parse_response_truncation_bit():
 	int length = 0
-	char* msg = dns_test_bytes(c"12 34 83 80 00 00 00 00 00 00 00 00", &length)
+	char* msg = hex_decode_loose(c"12 34 83 80 00 00 00 00 00 00 00 00", &length)
 	int ip = 0
 	assert_equal(dns_result_truncated(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
@@ -223,7 +195,7 @@ void test_dns_parse_response_header_negatives():
 	int length = 0
 
 	# Shorter than a header.
-	char* msg = dns_test_bytes(c"12 34 81 80", &length)
+	char* msg = hex_decode_loose(c"12 34 81 80", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
@@ -235,22 +207,22 @@ void test_dns_parse_response_header_negatives():
 	free(msg)
 
 	# QR clear: a query, not a response.
-	msg = dns_test_bytes(c"12 34 01 00 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
+	msg = hex_decode_loose(c"12 34 01 00 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Non-zero opcode.
-	msg = dns_test_bytes(c"12 34 89 80 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
+	msg = hex_decode_loose(c"12 34 89 80 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# RCODE 3 (NXDOMAIN).
-	msg = dns_test_bytes(c"12 34 81 83 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
+	msg = hex_decode_loose(c"12 34 81 83 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# QDCOUNT != 1.
-	msg = dns_test_bytes(c"12 34 81 80 00 02 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
+	msg = hex_decode_loose(c"12 34 81 80 00 02 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
@@ -260,23 +232,23 @@ void test_dns_parse_response_malformed_names():
 	int length = 0
 
 	# Question name is a compression pointer to itself.
-	char* msg = dns_test_bytes(c"12 34 81 80 00 01 00 00 00 00 00 00 c0 0c 00 01 00 01", &length)
+	char* msg = hex_decode_loose(c"12 34 81 80 00 01 00 00 00 00 00 00 c0 0c 00 01 00 01", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Answer name is a label/pointer cycle: "a" then a pointer back to
 	# the same label, looping forever without the hop cap.
-	msg = dns_test_bytes(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 01 61 c0 1d 00 01 00 01 00 00 00 3c 00 04 01 02 03 04", &length)
+	msg = hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 01 61 c0 1d 00 01 00 01 00 00 00 3c 00 04 01 02 03 04", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Label length runs past the end of the message.
-	msg = dns_test_bytes(c"12 34 81 80 00 01 00 00 00 00 00 00 3f 61 61", &length)
+	msg = hex_decode_loose(c"12 34 81 80 00 01 00 00 00 00 00 00 3f 61 61", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Reserved label tag 0x40.
-	msg = dns_test_bytes(c"12 34 81 80 00 01 00 00 00 00 00 00 40 61 00 00 01 00 01", &length)
+	msg = hex_decode_loose(c"12 34 81 80 00 01 00 00 00 00 00 00 40 61 00 00 01 00 01", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
@@ -286,22 +258,22 @@ void test_dns_parse_response_malformed_records():
 	int length = 0
 
 	# RDLENGTH runs past the end of the message.
-	char* msg = dns_test_bytes(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 20 5d b8 d8 22", &length)
+	char* msg = hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 20 5d b8 d8 22", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# An A record whose RDLENGTH is not 4.
-	msg = dns_test_bytes(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 05 5d b8 d8 22 00", &length)
+	msg = hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 05 5d b8 d8 22 00", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# An answer for an unrelated name is skipped, leaving no result.
-	msg = dns_test_bytes(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 03 77 77 77 c0 0c 00 01 00 01 00 00 00 3c 00 04 05 06 07 08", &length)
+	msg = hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 03 77 77 77 c0 0c 00 01 00 01 00 00 00 3c 00 04 05 06 07 08", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# NOERROR with no answers resolves nothing.
-	msg = dns_test_bytes(c"12 34 81 80 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
+	msg = hex_decode_loose(c"12 34 81 80 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
 	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 

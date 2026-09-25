@@ -1239,8 +1239,8 @@ int http_parse_chunk_size(char* line):
 	int value = 0
 	int digits = 0
 	int i = 0
-	while (url_is_hex_digit(line[i] & 255) != 0):
-		value = value * 16 + url_hex_digit_value(line[i] & 255)
+	while (hex_decode_char(line[i] & 255) >= 0):
+		value = value * 16 + hex_decode_char(line[i] & 255)
 		digits = digits + 1
 		if (value > http_max_chunk_size()):
 			return (-1)

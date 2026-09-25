@@ -9,13 +9,15 @@ excessive padding, and encodings whose unused trailing bits are not zero
 default for the certificate and key material this module feeds).
 
 hex encodes to lowercase and decodes either case, rejecting odd lengths
-and non-hex characters.
+and non-hex characters (the codec lives in lib/hex.w; importing this
+module keeps providing it).
 
 All returned buffers are malloc'd, NUL-terminated one byte past the
 payload, and owned by the caller (free() them). Decoders return 0 and set
 *out_len to 0 on invalid input, so callers can fail closed.
 */
 import lib.memory
+import lib.hex
 
 
 char* base64_alphabet():
@@ -143,56 +145,4 @@ char* base64_decode(char* text, int len, int* out_len):
 		i = i + 4
 	out[o] = 0
 	*out_len = o
-	return out
-
-
-# Encodes len bytes at data as 2 * len lowercase hex characters. Returns
-# a malloc'd NUL-terminated string.
-char* hex_encode(char* data, int len):
-	if (len < 0):
-		len = 0
-	char* digits = c"0123456789abcdef"
-	char* out = malloc(len * 2 + 1)
-	int i = 0
-	while (i < len):
-		int b = data[i] & 255
-		out[i * 2] = digits[(b >> 4) & 15]
-		out[i * 2 + 1] = digits[b & 15]
-		i = i + 1
-	out[len * 2] = 0
-	return out
-
-
-# The 0..15 value of one hex digit (either case), or -1.
-int hex_decode_char(int ch):
-	if ((ch >= '0') && (ch <= '9')):
-		return ch - '0'
-	if ((ch >= 'a') && (ch <= 'f')):
-		return ch - 'a' + 10
-	if ((ch >= 'A') && (ch <= 'F')):
-		return ch - 'A' + 10
-	return -1
-
-
-# Decodes len hex characters. Returns a malloc'd buffer with a NUL one
-# byte past the payload and stores the decoded byte count in *out_len;
-# returns 0 (with *out_len = 0) on odd lengths or non-hex characters.
-char* hex_decode(char* text, int len, int* out_len):
-	*out_len = 0
-	if (len < 0):
-		return 0
-	if ((len % 2) != 0):
-		return 0
-	char* out = malloc(len / 2 + 1)
-	int i = 0
-	while (i < len):
-		int hi = hex_decode_char(text[i] & 255)
-		int lo = hex_decode_char(text[i + 1] & 255)
-		if ((hi < 0) || (lo < 0)):
-			free(out)
-			return 0
-		out[i / 2] = (hi << 4) | lo
-		i = i + 2
-	out[len / 2] = 0
-	*out_len = len / 2
 	return out

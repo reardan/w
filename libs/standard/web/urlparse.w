@@ -27,6 +27,7 @@
 import lib.lib
 import lib.str
 import structures.string
+import lib.hex
 
 
 # Parsed absolute URL. Every char* field is malloc'd, owned by the URL,
@@ -55,30 +56,6 @@ int url_lower_char(int c):
 	if ((c >= 'A') && (c <= 'Z')):
 		return c + 32
 	return c
-
-
-int url_is_hex_digit(int c):
-	if ((c >= '0') && (c <= '9')):
-		return 1
-	if ((c >= 'a') && (c <= 'f')):
-		return 1
-	if ((c >= 'A') && (c <= 'F')):
-		return 1
-	return 0
-
-
-int url_hex_digit_value(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	return c - 'A' + 10
-
-
-int url_hex_digit_upper(int value):
-	if (value < 10):
-		return value + '0'
-	return value - 10 + 'A'
 
 
 # Bytes [start, end) of text as a new lowercased C string.
@@ -250,8 +227,8 @@ char* url_quote(char* text):
 			string_append_char(out, c)
 		else:
 			string_append_char(out, '%')
-			string_append_char(out, url_hex_digit_upper(c >> 4))
-			string_append_char(out, url_hex_digit_upper(c & 15))
+			string_append_char(out, hex_digit_upper(c >> 4))
+			string_append_char(out, hex_digit_upper(c & 15))
 		i = i + 1
 	char* result = out.data
 	free(out)
@@ -268,15 +245,14 @@ char* url_unquote(char* text):
 	while (text[i] != 0):
 		int c = text[i] & 255
 		if (c == '%'):
-			int hi = text[i + 1] & 255
-			if (url_is_hex_digit(hi) == 0):
+			int hi = hex_decode_char(text[i + 1] & 255)
+			int lo = 0 - 1
+			if (hi >= 0):
+				lo = hex_decode_char(text[i + 2] & 255)
+			if (lo < 0):
 				string_free(out)
 				return 0
-			int lo = text[i + 2] & 255
-			if (url_is_hex_digit(lo) == 0):
-				string_free(out)
-				return 0
-			int decoded = url_hex_digit_value(hi) * 16 + url_hex_digit_value(lo)
+			int decoded = hi * 16 + lo
 			if (decoded == 0):
 				string_free(out)
 				return 0

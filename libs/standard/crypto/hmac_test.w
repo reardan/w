@@ -8,37 +8,7 @@ constant-time comparison helper. Issue #195, plan 11 phase 4.
 import lib.testing
 import libs.standard.crypto.sha2
 import libs.standard.crypto.hmac
-
-
-char* hmact_hex(char* mac, int len):
-	char* out = malloc(len * 2 + 1)
-	char* digits = c"0123456789abcdef"
-	int i = 0
-	while (i < len):
-		int b = mac[i] & 255
-		out[i * 2] = digits[(b >> 4) & 15]
-		out[i * 2 + 1] = digits[b & 15]
-		i = i + 1
-	out[len * 2] = 0
-	return out
-
-
-int hmact_nibble(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	return c - 'a' + 10
-
-
-# Decode a lowercase hex string into malloc'd bytes (strlen(hex)/2 long).
-char* hmact_unhex(char* hex):
-	int n = strlen(hex) / 2
-	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = (hmact_nibble(hex[i * 2] & 255) << 4) | hmact_nibble(hex[i * 2 + 1] & 255)
-		i = i + 1
-	out[n] = 0
-	return out
+import lib.hex
 
 
 # Check one RFC 4231 case for one algorithm, comparing the first
@@ -46,14 +16,14 @@ char* hmact_unhex(char* hex):
 void hmact_check(int alg, char* key, int key_len, char* data, int data_len, int trunc_len, char* want_hex):
 	char* mac = malloc(whash_digest_size(alg))
 	hmac_compute(alg, key, key_len, data, data_len, mac)
-	char* got = hmact_hex(mac, trunc_len)
+	char* got = hex_encode(mac, trunc_len)
 	assert_strings_equal(want_hex, got)
 	free(got)
 	free(mac)
 
 
 void test_rfc4231_case1():
-	char* key = hmact_unhex(c"0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b")
+	char* key = hex_bytes(c"0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b")
 	hmact_check(WHASH_SHA256(), key, 20, c"Hi There", 8, 32, c"b0344c61d8db38535ca8afceaf0bf12b881dc200c9833da726e9376c2e32cff7")
 	hmact_check(WHASH_SHA384(), key, 20, c"Hi There", 8, 48, c"afd03944d84895626b0825f4ab46907f15f9dadbe4101ec682aa034c7cebc59cfaea9ea9076ede7f4af152e8b2fa9cb6")
 	free(key)
@@ -68,7 +38,7 @@ void test_rfc4231_case2():
 
 
 void test_rfc4231_case3():
-	char* key = hmact_unhex(c"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+	char* key = hex_bytes(c"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
 	char* data = malloc(50)
 	int i = 0
 	while (i < 50):
@@ -81,7 +51,7 @@ void test_rfc4231_case3():
 
 
 void test_rfc4231_case4():
-	char* key = hmact_unhex(c"0102030405060708090a0b0c0d0e0f10111213141516171819")
+	char* key = hex_bytes(c"0102030405060708090a0b0c0d0e0f10111213141516171819")
 	char* data = malloc(50)
 	int i = 0
 	while (i < 50):
@@ -95,7 +65,7 @@ void test_rfc4231_case4():
 
 void test_rfc4231_case5():
 	# RFC 4231 publishes this MAC truncated to 128 bits.
-	char* key = hmact_unhex(c"0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c")
+	char* key = hex_bytes(c"0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c0c")
 	char* data = c"Test With Truncation"
 	hmact_check(WHASH_SHA256(), key, 20, data, 20, 16, c"a3b6167473100ee06e0c796c2955552b")
 	hmact_check(WHASH_SHA384(), key, 20, data, 20, 16, c"3abf34c3503b2a23a46efc619baef897")
@@ -138,7 +108,7 @@ void test_streaming_and_reset():
 		i = i + 1
 	char* mac = malloc(32)
 	hmac_final(m, mac)
-	char* got = hmact_hex(mac, 32)
+	char* got = hex_encode(mac, 32)
 	assert_strings_equal(c"5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843", got)
 	free(got)
 	# Reset and MAC different data with the same key (case 1's key
@@ -146,7 +116,7 @@ void test_streaming_and_reset():
 	hmac_reset(m)
 	hmac_update(m, data, 28)
 	hmac_final(m, mac)
-	got = hmact_hex(mac, 32)
+	got = hex_encode(mac, 32)
 	assert_strings_equal(c"5bdcc146bf60754e6a042426089575c75a003f089d2739839dec58b964ec3843", got)
 	free(got)
 	free(mac)
@@ -154,10 +124,10 @@ void test_streaming_and_reset():
 
 
 void test_constant_time_equal():
-	char* a = hmact_unhex(c"00112233445566778899aabbccddeeff")
-	char* b = hmact_unhex(c"00112233445566778899aabbccddeeff")
-	char* c = hmact_unhex(c"00112233445566778899aabbccddeefe")
-	char* d = hmact_unhex(c"80112233445566778899aabbccddeeff")
+	char* a = hex_bytes(c"00112233445566778899aabbccddeeff")
+	char* b = hex_bytes(c"00112233445566778899aabbccddeeff")
+	char* c = hex_bytes(c"00112233445566778899aabbccddeefe")
+	char* d = hex_bytes(c"80112233445566778899aabbccddeeff")
 	assert_equal(1, hmac_equal(a, b, 16))
 	# Difference in the last byte only.
 	assert_equal(0, hmac_equal(a, c, 16))

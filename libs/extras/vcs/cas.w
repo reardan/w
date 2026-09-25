@@ -106,6 +106,7 @@ wrapper lives in libs/extras/vcs/__arch__/ (x86, x64, arm64,
 arm64_darwin -- win64 and wasm are unsupported for now).
 */
 import lib.lib
+import lib.hex
 import lib.path
 import lib.result
 import lib.stream
@@ -257,16 +258,7 @@ int cas_valid_id(char* id):
 
 # 32 raw digest bytes -> malloc'd 64-char lowercase hex string.
 char* cas_hex_encode(char* digest):
-	char* digits = c"0123456789abcdef"
-	char* out = malloc(65)
-	int i = 0
-	while (i < 32):
-		int b = digest[i] & 255
-		out[i * 2] = digits[(b >> 4) & 15]
-		out[i * 2 + 1] = digits[b & 15]
-		i = i + 1
-	out[64] = 0
-	return out
+	return hex_encode(digest, 32)
 
 
 # The git-style object header "<type> <len>\0" as a string_builder

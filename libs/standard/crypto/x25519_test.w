@@ -10,40 +10,11 @@ Hellman exchange, and low-order point rejection (all-zero output).
 import lib.lib
 import lib.assert
 import libs.standard.crypto.x25519
-
-
-int x25519_test_nibble(int ch):
-	if ((ch >= '0') && (ch <= '9')):
-		return ch - '0'
-	return ch - 'a' + 10
-
-
-# Decode 2*len lowercase hex chars into len bytes at out.
-void x25519_test_unhex(char* hex, char* out, int len):
-	int i = 0
-	while (i < len):
-		int hi = x25519_test_nibble(hex[i * 2] & 255)
-		int lo = x25519_test_nibble(hex[i * 2 + 1] & 255)
-		out[i] = (hi << 4) | lo
-		i = i + 1
-
-
-# Format 32 bytes as a 64-char lowercase hex string (malloc'd).
-char* x25519_test_hex32(char* data):
-	char* out = malloc(65)
-	char* digits = c"0123456789abcdef"
-	int i = 0
-	while (i < 32):
-		int b = data[i] & 255
-		out[i * 2] = digits[(b >> 4) & 15]
-		out[i * 2 + 1] = digits[b & 15]
-		i = i + 1
-	out[64] = 0
-	return out
+import lib.hex
 
 
 void x25519_test_check32(char* want_hex, char* got):
-	char* got_hex = x25519_test_hex32(got)
+	char* got_hex = hex_encode(got, 32)
 	assert_strings_equal(want_hex, got_hex)
 	free(got_hex)
 
@@ -53,8 +24,8 @@ void test_rfc7748_vector1():
 	char* k = malloc(32)
 	char* u = malloc(32)
 	char* r = malloc(32)
-	x25519_test_unhex(c"a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4", k, 32)
-	x25519_test_unhex(c"e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c", u, 32)
+	hex_decode_into(c"a546e36bf0527c9d3b16154b82465edd62144c0ac1fc5a18506a2244ba449ac4", k, 32)
+	hex_decode_into(c"e6db6867583030db3594c1a424b15f7c726624ec26b3353b10a903a6d0ab1c4c", u, 32)
 	assert_equal(0, x25519_scalarmult(r, k, u))
 	x25519_test_check32(c"c3da55379de9c6908e94ea4df28d084f32eccf03491c71f754b4075577a28552", r)
 	free(k)
@@ -67,8 +38,8 @@ void test_rfc7748_vector2():
 	char* k = malloc(32)
 	char* u = malloc(32)
 	char* r = malloc(32)
-	x25519_test_unhex(c"4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d", k, 32)
-	x25519_test_unhex(c"e5210f12786811d3f4b7959d0538ae2c31dbe7106fc03c3efc4cd549c715a493", u, 32)
+	hex_decode_into(c"4b66e9d4d1b4673c5ad22691957d6af5c11b6421e0ea01d42ca4169e7918ba0d", k, 32)
+	hex_decode_into(c"e5210f12786811d3f4b7959d0538ae2c31dbe7106fc03c3efc4cd549c715a493", u, 32)
 	assert_equal(0, x25519_scalarmult(r, k, u))
 	x25519_test_check32(c"95cbde9476e8907d7aade45cb4b873f88b595a68799fa152e6f8f7647aac7957", r)
 	free(k)
@@ -82,8 +53,8 @@ void test_iterated(int iterations, char* want_hex):
 	char* k = malloc(32)
 	char* u = malloc(32)
 	char* r = malloc(32)
-	x25519_test_unhex(c"0900000000000000000000000000000000000000000000000000000000000000", k, 32)
-	x25519_test_unhex(c"0900000000000000000000000000000000000000000000000000000000000000", u, 32)
+	hex_decode_into(c"0900000000000000000000000000000000000000000000000000000000000000", k, 32)
+	hex_decode_into(c"0900000000000000000000000000000000000000000000000000000000000000", u, 32)
 	int i = 0
 	while (i < iterations):
 		assert_equal(0, x25519_scalarmult(r, k, u))
@@ -108,8 +79,8 @@ void test_dh_rfc7748():
 	char* bob_pub = malloc(32)
 	char* shared_a = malloc(32)
 	char* shared_b = malloc(32)
-	x25519_test_unhex(c"77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", alice_priv, 32)
-	x25519_test_unhex(c"5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb", bob_priv, 32)
+	hex_decode_into(c"77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", alice_priv, 32)
+	hex_decode_into(c"5dab087e624a8a4b79e17f8b83800ee66f3bb1292618b6fd1c2f8b27ff88e0eb", bob_priv, 32)
 
 	assert_equal(0, x25519_scalarmult_base(alice_pub, alice_priv))
 	x25519_test_check32(c"8520f0098930a754748b7ddcb43ef75a0dbf3a0d26381af4eba4a98eaa9b4e6a", alice_pub)
@@ -135,7 +106,7 @@ void test_low_order_rejection():
 	char* k = malloc(32)
 	char* u = malloc(32)
 	char* r = malloc(32)
-	x25519_test_unhex(c"77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", k, 32)
+	hex_decode_into(c"77076d0a7318a57d3c16c17251b26645df4c2f87ebc0992ab177fba51db92c2a", k, 32)
 	int i = 0
 	while (i < 32):
 		u[i] = 0

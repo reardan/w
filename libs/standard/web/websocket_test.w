@@ -32,40 +32,14 @@ import libs.standard.web.websocket
 import libs.extras.compress.deflate
 import libs.extras.compress.inflate
 import libs.standard.net.testing
+import lib.hex
 
 
 /* ---- helpers ---- */
 
-# Bytes of a hex string like "81 05 48" (spaces ignored) into a malloc'd
-# buffer; *out_len receives the count.
-char* wst_hex(char* text, int* out_len):
-	int n = strlen(text)
-	char* out = malloc(n / 2 + 1)
-	int count = 0
-	int i = 0
-	int high = (-1)
-	while (i < n):
-		int ch = text[i] & 255
-		int v = (-1)
-		if ((ch >= '0') && (ch <= '9')):
-			v = ch - '0'
-		else if ((ch >= 'a') && (ch <= 'f')):
-			v = ch - 'a' + 10
-		if (v >= 0):
-			if (high < 0):
-				high = v
-			else:
-				out[count] = (high << 4) | v
-				count = count + 1
-				high = (-1)
-		i = i + 1
-	*out_len = count
-	return out
-
-
 void wst_assert_bytes(char* label, char* expected_hex, char* actual, int actual_len):
 	int n = 0
-	char* expected = wst_hex(expected_hex, &n)
+	char* expected = hex_decode_loose(expected_hex, &n)
 	if (n != actual_len):
 		print_string(label, c": length mismatch")
 		assert_equal(n, actual_len)
@@ -84,7 +58,7 @@ void wst_expect_encoding(char* label, int fin, int opcode, char* payload, int le
 	char* mask = 0
 	int mask_len = 0
 	if (mask_hex != 0):
-		mask = wst_hex(mask_hex, &mask_len)
+		mask = hex_decode_loose(mask_hex, &mask_len)
 	asserts(label, ws_frame_encode(out, fin, opcode, payload, len, mask) == 1)
 	wst_assert_bytes(label, expected_hex, out.data, out.length)
 	if (mask != 0):
@@ -95,7 +69,7 @@ void wst_expect_encoding(char* label, int fin, int opcode, char* payload, int le
 # Decodes the RFC bytes and checks the frame fields + payload text.
 void wst_expect_decoding(char* label, char* frame_hex, int fin, int opcode, int masked, char* payload_text):
 	int n = 0
-	char* buf = wst_hex(frame_hex, &n)
+	char* buf = hex_decode_loose(frame_hex, &n)
 	ws_frame f
 	int used = ws_frame_decode(buf, n, &f, 1000)
 	if (used != n):
@@ -126,7 +100,7 @@ void wst_expect_decoding(char* label, char* frame_hex, int fin, int opcode, int 
 
 int wst_decode_hex(char* frame_hex, int max_payload):
 	int n = 0
-	char* buf = wst_hex(frame_hex, &n)
+	char* buf = hex_decode_loose(frame_hex, &n)
 	ws_frame f
 	int r = ws_frame_decode(buf, n, &f, max_payload)
 	free(buf)
@@ -499,7 +473,7 @@ void wst_raw_peer_bytes(int fd, char* raw, int n, int tested_is_client, int expe
 
 void wst_raw_peer(int fd, char* raw_hex, int tested_is_client, int expect_code):
 	int n = 0
-	char* raw = wst_hex(raw_hex, &n)
+	char* raw = hex_decode_loose(raw_hex, &n)
 	wst_raw_peer_bytes(fd, raw, n, tested_is_client, expect_code)
 
 
@@ -550,7 +524,7 @@ void wst_violation_bytes(char* label, int tested_is_client, int max_message, ws_
 
 void wst_violation(char* label, int tested_is_client, int max_message, char* raw_hex, int expect_error, int expect_code):
 	int n = 0
-	char* raw = wst_hex(raw_hex, &n)
+	char* raw = hex_decode_loose(raw_hex, &n)
 	wst_violation_bytes(label, tested_is_client, max_message, 0, raw, n, 0, expect_error, expect_code)
 	free(raw)
 
@@ -592,7 +566,7 @@ void test_ws_client_accepts_close_without_status():
 		# A data message, then an empty close; expect an empty masked
 		# close echoed back.
 		int n = 0
-		char* raw = wst_hex(c"81 02 6f 6b 88 00", &n)
+		char* raw = hex_decode_loose(c"81 02 6f 6b 88 00", &n)
 		net_test_send_all(fds[1], raw, n)
 		char* buf = malloc(64)
 		int have = 0
@@ -750,7 +724,7 @@ void wst_expect_compressed(ws_conn* c, char* label, char* text, char* expected_h
 # Inflates the RFC payload on c and compares with text.
 void wst_expect_decompressed(ws_conn* c, char* label, char* payload_hex, char* text):
 	int n = 0
-	char* z = wst_hex(payload_hex, &n)
+	char* z = hex_decode_loose(payload_hex, &n)
 	int out_len = 0
 	char* out = ws_pmd_decompress(c, z, n, &out_len)
 	asserts(label, out != 0)
@@ -795,7 +769,7 @@ void test_ws_deflate_rfc7692_examples():
 	# 7.2.3.1 as a whole frame: RSV1 + text, unmasked.
 	string_builder* out = string_new()
 	int n = 0
-	char* z = wst_hex(c"f2 48 cd c9 c9 07 00", &n)
+	char* z = hex_decode_loose(c"f2 48 cd c9 c9 07 00", &n)
 	assert_equal(1, ws_frame_encode_rsv(out, 1, 4, ws_op_text(), z, n, 0))
 	wst_assert_bytes(c"rsv1 frame", c"c1 07 f2 48 cd c9 c9 07 00", out.data, out.length)
 	free(z)
@@ -804,7 +778,7 @@ void test_ws_deflate_rfc7692_examples():
 
 int wst_parse_rsv(char* frame_hex, int rsv_allowed):
 	int n = 0
-	char* h = wst_hex(frame_hex, &n)
+	char* h = hex_decode_loose(frame_hex, &n)
 	ws_frame f
 	int r = ws_parse_header_rsv(h, n, &f, 1000, rsv_allowed)
 	free(h)
@@ -1086,7 +1060,7 @@ void test_ws_deflate_frames_on_the_wire():
 
 void wst_z_violation(char* label, ws_deflate_config* cfg, int max_message, char* raw_hex, int messages, int expect_error, int expect_code):
 	int n = 0
-	char* raw = wst_hex(raw_hex, &n)
+	char* raw = hex_decode_loose(raw_hex, &n)
 	wst_violation_bytes(label, 1, max_message, cfg, raw, n, messages, expect_error, expect_code)
 	free(raw)
 

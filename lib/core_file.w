@@ -21,6 +21,7 @@ and repoints the st_* globals of lib/stack_trace.w, like the tool it came
 from; it is a leaf library (not in the seed's import graph).
 */
 import lib.lib
+import lib.hex
 import lib.stack_trace
 
 
@@ -382,9 +383,7 @@ char* cf_id_hex(int addr, int n):
 	char* s = malloc(n * 2 + 1)
 	int i = 0
 	while (i < n):
-		int b = st_byte(addr + i)
-		s[i * 2] = c"0123456789abcdef"[b >> 4]
-		s[i * 2 + 1] = c"0123456789abcdef"[b & 15]
+		hex_put_byte(&s[i * 2], st_byte(addr + i))
 		i = i + 1
 	s[n * 2] = 0
 	return s

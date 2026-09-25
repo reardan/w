@@ -22,6 +22,7 @@ import lib.lib
 import lib.memory
 import lib.sha256
 import libs.standard.crypto.bignum
+import lib.hex
 
 
 # ---- curve constants (loaded once) ------------------------------------------
@@ -52,16 +53,6 @@ bignum* PA_RY
 bignum* PA_RZ
 
 
-int p256_hexval(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
-	return 0
-
-
 # Load a 64-hex-digit (32-byte) big-endian constant into dst.
 void p256_load_hex(bignum* dst, char* h):
 	int l = strlen(h)
@@ -69,11 +60,11 @@ void p256_load_hex(bignum* dst, char* h):
 	int hi = 0
 	int oi = 0
 	if ((l & 1) == 1):
-		buf[0] = p256_hexval(h[0])
+		buf[0] = hex_decode_char(h[0])
 		hi = 1
 		oi = 1
 	while (hi < l):
-		buf[oi] = (p256_hexval(h[hi]) << 4) | p256_hexval(h[hi + 1])
+		buf[oi] = (hex_decode_char(h[hi]) << 4) | hex_decode_char(h[hi + 1])
 		hi = hi + 2
 		oi = oi + 1
 	bignum_from_bytes(dst, buf, oi)

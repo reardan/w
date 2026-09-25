@@ -64,6 +64,7 @@ reachability-query loop quadratic; one malloc'd scratch buffer, reused
 forever, removes that allocation from the hot path entirely.
 */
 import lib.lib
+import lib.hex
 import lib.assert
 import structures.bitset
 
@@ -120,12 +121,9 @@ char* dag_hex_scratch
 char* dag_hex_key(char* id):
 	if (dag_hex_scratch == 0):
 		dag_hex_scratch = malloc(DAG_ID_SIZE() * 2 + 1)
-	char* digits = c"0123456789abcdef"
 	int i = 0
 	while (i < DAG_ID_SIZE()):
-		int b = id[i] & 255
-		dag_hex_scratch[i * 2] = digits[(b >> 4) & 15]
-		dag_hex_scratch[i * 2 + 1] = digits[b & 15]
+		hex_put_byte(&dag_hex_scratch[i * 2], id[i] & 255)
 		i = i + 1
 	dag_hex_scratch[DAG_ID_SIZE() * 2] = 0
 	return dag_hex_scratch

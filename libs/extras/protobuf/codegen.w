@@ -41,6 +41,7 @@ double/int64-family fields generate fine but, like the message keyword,
 compile only for 8-byte-word targets.
 */
 import lib.lib
+import lib.hex
 import lib.file
 import structures.string
 import libs.extras.parser_generator.runtime
@@ -206,14 +207,7 @@ int pc_parse_int(char* text):
 		return -1
 	int value = 0
 	while (text[i] != 0):
-		int c = text[i]
-		int digit = -1
-		if ((c >= '0') && (c <= '9')):
-			digit = c - '0'
-		else if ((c >= 'a') && (c <= 'f')):
-			digit = c - 'a' + 10
-		else if ((c >= 'A') && (c <= 'F')):
-			digit = c - 'A' + 10
+		int digit = hex_decode_char(text[i])
 		if ((digit < 0) || (digit >= base)):
 			return -1
 		if (value > (536870911 - digit) / base):

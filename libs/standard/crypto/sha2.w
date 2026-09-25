@@ -31,6 +31,7 @@ anything else under libs/standard — importing their namespace.
 */
 import lib.memory
 import lib.sha256
+import lib.hex
 
 
 # Algorithm identifiers for the whash interface. Ids below 100 are
@@ -217,18 +218,12 @@ int sha2_ssig1_lo(int hi, int lo):
    carries bit 31 (see lib/sha256.w's portability note). */
 
 
-int sha2_hex_nibble(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	return c - 'a' + 10
-
-
 # Parse 8 lowercase hex chars into one masked 32-bit word.
 int sha2_hex32(char* s):
 	int v = 0
 	int i = 0
 	while (i < 8):
-		v = (v << 4) | sha2_hex_nibble(s[i] & 255)
+		v = (v << 4) | hex_decode_char(s[i] & 255)
 		i = i + 1
 	return v & sha256_mask32()
 

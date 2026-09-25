@@ -26,6 +26,7 @@ The wire format is 8 little-endian bytes — byte-compatible with
 save_int64 output on 64-bit hosts for values < 2^63.
 */
 import lib.lib
+import lib.hex
 import lib.memory
 import lib.assert
 
@@ -291,11 +292,8 @@ void u64_load_le(u64* a, char* p):
 # ---- formatting -------------------------------------------------------------
 
 void u64_hex4(char* s, int off, int v):
-	char* digits = c"0123456789abcdef"
-	s[off] = digits[(v >> 12) & 15]
-	s[off + 1] = digits[(v >> 8) & 15]
-	s[off + 2] = digits[(v >> 4) & 15]
-	s[off + 3] = digits[v & 15]
+	hex_put_byte(&s[off], (v >> 8) & 255)
+	hex_put_byte(&s[off + 2], v & 255)
 
 
 # 16 lowercase hex digits, malloc'd and NUL-terminated; caller frees.

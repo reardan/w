@@ -11,41 +11,12 @@ import lib.testing
 import lib.container
 import structures.string
 import libs.standard.web.hpack
-
-
-int hpack_test_hexval(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
-	return (-1)
-
-
-# Decodes a hex string (spaces ignored) into a fresh buffer.
-char* hpack_test_unhex(char* text, int* out_len):
-	char* out = malloc(strlen(text) / 2 + 1)
-	int n = 0
-	int i = 0
-	int hi = (-1)
-	while (text[i] != 0):
-		int v = hpack_test_hexval(text[i] & 255)
-		if (v >= 0):
-			if (hi < 0):
-				hi = v
-			else:
-				out[n] = (hi << 4) | v
-				n = n + 1
-				hi = (-1)
-		i = i + 1
-	*out_len = n
-	return out
+import lib.hex
 
 
 void hpack_test_expect_bytes(char* label, string_builder* got, char* want_hex):
 	int want_len = 0
-	char* want = hpack_test_unhex(want_hex, &want_len)
+	char* want = hex_decode_loose(want_hex, &want_len)
 	int ok = 1
 	if (got.length != want_len):
 		ok = 0
@@ -117,7 +88,7 @@ void hpack_test_expect_table(hpack_table* t, char* spec, int size):
 # Decodes one block, compares fields and the resulting table.
 void hpack_test_decode_step(hpack_decoder* d, char* block_hex, char* fields, char* table, int size):
 	int len = 0
-	char* block = hpack_test_unhex(block_hex, &len)
+	char* block = hex_decode_loose(block_hex, &len)
 	list[hpack_header*] out = hpack_headers_new()
 	assert_equal(0, hpack_decode(d, block, len, out))
 	hpack_test_expect_headers(out, fields)
@@ -138,7 +109,7 @@ void hpack_test_encode_step(hpack_encoder* e, char* fields, char* want_hex, char
 
 int hpack_test_decode_rc(hpack_decoder* d, char* block_hex):
 	int len = 0
-	char* block = hpack_test_unhex(block_hex, &len)
+	char* block = hex_decode_loose(block_hex, &len)
 	list[hpack_header*] out = hpack_headers_new()
 	int rc = hpack_decode(d, block, len, out)
 	hpack_headers_free(out)
@@ -161,7 +132,7 @@ void test_hpack_integer_examples():
 	string_free(out)
 
 	int len = 0
-	char* p = hpack_test_unhex(c"1f9a0a", &len)
+	char* p = hex_decode_loose(c"1f9a0a", &len)
 	int pos = 0
 	int v = 0
 	assert_equal(1, hpack_decode_int(p, len, &pos, 5, &v))
@@ -172,12 +143,12 @@ void test_hpack_integer_examples():
 	assert_equal(0, hpack_decode_int(p, 2, &pos, 5, &v))
 	free(p)
 	# More than four continuation bytes fails closed.
-	p = hpack_test_unhex(c"1fffffffff0f", &len)
+	p = hex_decode_loose(c"1fffffffff0f", &len)
 	pos = 0
 	assert_equal(0, hpack_decode_int(p, len, &pos, 5, &v))
 	free(p)
 	# Four continuation bytes are fine.
-	p = hpack_test_unhex(c"1fffffff7f", &len)
+	p = hex_decode_loose(c"1fffffff7f", &len)
 	pos = 0
 	assert_equal(1, hpack_decode_int(p, len, &pos, 5, &v))
 	assert_equal(31 + 268435455, v)
@@ -234,21 +205,21 @@ void test_hpack_huffman_rejects_bad_padding():
 	int dlen = 0
 	int len = 0
 	# "www.example.com" decodes.
-	char* p = hpack_test_unhex(c"f1e3c2e5f23a6ba0ab90f4ff", &len)
+	char* p = hex_decode_loose(c"f1e3c2e5f23a6ba0ab90f4ff", &len)
 	char* ok = hpack_huffman_decode(p, len, 100, &dlen)
 	assert_strings_equal(c"www.example.com", ok)
 	free(ok)
 	free(p)
 	# 'a' (00011) padded with zeros instead of ones.
-	p = hpack_test_unhex(c"18", &len)
+	p = hex_decode_loose(c"18", &len)
 	asserts(c"zero padding accepted", hpack_huffman_decode(p, len, 100, &dlen) == 0)
 	free(p)
 	# 'a' then a whole byte of ones: padding longer than 7 bits.
-	p = hpack_test_unhex(c"1fff", &len)
+	p = hex_decode_loose(c"1fff", &len)
 	asserts(c"long padding accepted", hpack_huffman_decode(p, len, 100, &dlen) == 0)
 	free(p)
 	# An explicit EOS symbol (30 ones) followed by 2 padding ones.
-	p = hpack_test_unhex(c"ffffffff", &len)
+	p = hex_decode_loose(c"ffffffff", &len)
 	asserts(c"EOS accepted", hpack_huffman_decode(p, len, 100, &dlen) == 0)
 	free(p)
 
@@ -279,7 +250,7 @@ void test_hpack_c2_literal_without_indexing():
 void test_hpack_c2_never_indexed():
 	hpack_decoder* d = hpack_decoder_new(4096)
 	int len = 0
-	char* block = hpack_test_unhex(c"1008 7061 7373 776f 7264 0673 6563 7265 74", &len)
+	char* block = hex_decode_loose(c"1008 7061 7373 776f 7264 0673 6563 7265 74", &len)
 	list[hpack_header*] out = hpack_headers_new()
 	assert_equal(0, hpack_decode(d, block, len, out))
 	hpack_test_expect_headers(out, c"password|secret\n")
