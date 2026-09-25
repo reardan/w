@@ -11,39 +11,7 @@ import graphics.ui.rect
 import graphics.ui.theme
 import graphics.ui.render
 import graphics.ui.widgets
-
-
-void setup(ui_renderer* r, ui_theme* theme, ui_context* ctx):
-	ui_render_init_headless(r)
-	ui_theme_light(theme)
-	ui_context_init(ctx, r, theme)
-
-
-void feed_click(ui_context* ctx, int x, int y):
-	gfx_event press
-	press.kind = GFX_EVENT_MOUSE_DOWN
-	press.code = 1
-	press.x = x
-	press.y = y
-	press.mods = 0
-	ui_feed_event(ctx, &press)
-	gfx_event release
-	release.kind = GFX_EVENT_MOUSE_UP
-	release.code = 1
-	release.x = x
-	release.y = y
-	release.mods = 0
-	ui_feed_event(ctx, &release)
-
-
-void feed_nav(ui_context* ctx, int code):
-	gfx_event e
-	e.kind = GFX_EVENT_NAV
-	e.code = code
-	e.x = 0
-	e.y = 0
-	e.mods = 0
-	ui_feed_event(ctx, &e)
+import graphics.ui.testing
 
 
 void assert_date(ui_date* d, int year, int month, int day):
@@ -61,7 +29,7 @@ ui_rect calendar_rect(ui_context* ctx):
 
 void click_cell(ui_context* ctx, int cell):
 	ui_rect c = ui_calendar_cell_rect(ctx, calendar_rect(ctx), cell)
-	feed_click(ctx, cast(int, c.x + c.w * 0.5), cast(int, c.y + c.h * 0.5))
+	ui_test_click(ctx, cast(int, c.x + c.w * 0.5), cast(int, c.y + c.h * 0.5))
 
 
 int calendar_frame(ui_context* ctx, ui_calendar_state* st, ui_date* selected, ui_date* today):
@@ -187,37 +155,33 @@ void test_date_arithmetic():
 
 # The header arrows turn the page, across the year end too.
 void test_the_arrows_page_months():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_calendar_state st
 	ui_calendar_init(&st, 2026, 12)
 	ui_date sel
 	ui_date_clear(&sel)
 
-	ui_rect cal = calendar_rect(&ctx)
-	float32 s = ui_calendar_cell_size(&ctx)
-	feed_click(&ctx, cast(int, cal.x + cal.w - s * 0.5), cast(int, cal.y + s * 0.5))
-	assert_equal(0, calendar_frame(&ctx, &st, &sel, 0))
+	ui_rect cal = calendar_rect(ctx)
+	float32 s = ui_calendar_cell_size(ctx)
+	ui_test_click(ctx, cast(int, cal.x + cal.w - s * 0.5), cast(int, cal.y + s * 0.5))
+	assert_equal(0, calendar_frame(ctx, &st, &sel, 0))
 	assert_equal(2027, st.year)
 	assert_equal(1, st.month)
 
-	feed_click(&ctx, cast(int, cal.x + s * 0.5), cast(int, cal.y + s * 0.5))
-	calendar_frame(&ctx, &st, &sel, 0)
-	feed_click(&ctx, cast(int, cal.x + s * 0.5), cast(int, cal.y + s * 0.5))
-	calendar_frame(&ctx, &st, &sel, 0)
+	ui_test_click(ctx, cast(int, cal.x + s * 0.5), cast(int, cal.y + s * 0.5))
+	calendar_frame(ctx, &st, &sel, 0)
+	ui_test_click(ctx, cast(int, cal.x + s * 0.5), cast(int, cal.y + s * 0.5))
+	calendar_frame(ctx, &st, &sel, 0)
 	assert_equal(2026, st.year)
 	assert_equal(11, st.month)
 	assert_equal(0, ui_date_is_set(&sel))
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 void test_clicking_a_day_selects_it():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_calendar_state st
 	ui_calendar_init(&st, 2026, 9)
 	ui_date sel
@@ -226,157 +190,135 @@ void test_clicking_a_day_selects_it():
 	ui_date_set(&today, 2026, 9, 25)
 
 	# A frame with nothing happening changes nothing.
-	assert_equal(0, calendar_frame(&ctx, &st, &sel, &today))
+	assert_equal(0, calendar_frame(ctx, &st, &sel, &today))
 
 	# Cell 2 + 14 is September 15th.
-	click_cell(&ctx, 16)
-	assert_equal(1, calendar_frame(&ctx, &st, &sel, &today))
+	click_cell(ctx, 16)
+	assert_equal(1, calendar_frame(ctx, &st, &sel, &today))
 	assert_date(&sel, 2026, 9, 15)
 
 	# Clicking it again is not a change.
-	click_cell(&ctx, 16)
-	assert_equal(0, calendar_frame(&ctx, &st, &sel, &today))
-	ui_render_destroy(&r)
+	click_cell(ctx, 16)
+	assert_equal(0, calendar_frame(ctx, &st, &sel, &today))
+	ui_render_destroy(&fx.r)
 
 
 # A muted day of the next month selects it and turns the page there.
 void test_clicking_a_trailing_day_turns_the_page():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_calendar_state st
 	ui_calendar_init(&st, 2026, 12)
 	ui_date sel
 	ui_date_clear(&sel)
 
 	# December 2026 starts on a Tuesday; cell 41 is January 9th.
-	click_cell(&ctx, 41)
-	assert_equal(1, calendar_frame(&ctx, &st, &sel, 0))
+	click_cell(ctx, 41)
+	assert_equal(1, calendar_frame(ctx, &st, &sel, 0))
 	assert_date(&sel, 2027, 1, 9)
 	assert_equal(2027, st.year)
 	assert_equal(1, st.month)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # A press on one day released over another is no click.
 void test_a_drag_between_days_selects_nothing():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_calendar_state st
 	ui_calendar_init(&st, 2026, 9)
 	ui_date sel
 	ui_date_clear(&sel)
-	ui_rect a = ui_calendar_cell_rect(&ctx, calendar_rect(&ctx), 10)
-	ui_rect b = ui_calendar_cell_rect(&ctx, calendar_rect(&ctx), 11)
+	ui_rect a = ui_calendar_cell_rect(ctx, calendar_rect(ctx), 10)
+	ui_rect b = ui_calendar_cell_rect(ctx, calendar_rect(ctx), 11)
 
-	gfx_event press
-	press.kind = GFX_EVENT_MOUSE_DOWN
-	press.code = 1
-	press.x = cast(int, a.x + 4.0)
-	press.y = cast(int, a.y + 4.0)
-	press.mods = 0
-	ui_feed_event(&ctx, &press)
-	gfx_event release
-	release.kind = GFX_EVENT_MOUSE_UP
-	release.code = 1
-	release.x = cast(int, b.x + 4.0)
-	release.y = cast(int, b.y + 4.0)
-	release.mods = 0
-	ui_feed_event(&ctx, &release)
-	assert_equal(0, calendar_frame(&ctx, &st, &sel, 0))
+	ui_test_event(ctx, GFX_EVENT_MOUSE_DOWN, 1, cast(int, a.x + 4.0), cast(int, a.y + 4.0), 0)
+	ui_test_event(ctx, GFX_EVENT_MOUSE_UP, 1, cast(int, b.x + 4.0), cast(int, b.y + 4.0), 0)
+	assert_equal(0, calendar_frame(ctx, &st, &sel, 0))
 	assert_equal(0, ui_date_is_set(&sel))
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # After a click the grid holds focus: arrows move by days and weeks,
 # page keys by months, and the page follows the selection.
 void test_the_keyboard_moves_the_selection():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_calendar_state st
 	ui_calendar_init(&st, 2026, 9)
 	ui_date sel
 	ui_date_clear(&sel)
 
 	# September 30th is cell 31.
-	click_cell(&ctx, 31)
-	calendar_frame(&ctx, &st, &sel, 0)
+	click_cell(ctx, 31)
+	calendar_frame(ctx, &st, &sel, 0)
 	assert_date(&sel, 2026, 9, 30)
 
-	feed_nav(&ctx, GFX_NAV_RIGHT)
-	assert_equal(1, calendar_frame(&ctx, &st, &sel, 0))
+	ui_test_nav(ctx, GFX_NAV_RIGHT)
+	assert_equal(1, calendar_frame(ctx, &st, &sel, 0))
 	assert_date(&sel, 2026, 10, 1)
 	assert_equal(10, st.month)
 
-	feed_nav(&ctx, GFX_NAV_UP)
-	calendar_frame(&ctx, &st, &sel, 0)
+	ui_test_nav(ctx, GFX_NAV_UP)
+	calendar_frame(ctx, &st, &sel, 0)
 	assert_date(&sel, 2026, 9, 24)
 	assert_equal(9, st.month)
 
-	feed_nav(&ctx, GFX_NAV_PAGE_DOWN)
-	feed_nav(&ctx, GFX_NAV_PAGE_DOWN)
-	feed_nav(&ctx, GFX_NAV_PAGE_DOWN)
-	feed_nav(&ctx, GFX_NAV_PAGE_DOWN)
-	calendar_frame(&ctx, &st, &sel, 0)
+	ui_test_nav(ctx, GFX_NAV_PAGE_DOWN)
+	ui_test_nav(ctx, GFX_NAV_PAGE_DOWN)
+	ui_test_nav(ctx, GFX_NAV_PAGE_DOWN)
+	ui_test_nav(ctx, GFX_NAV_PAGE_DOWN)
+	calendar_frame(ctx, &st, &sel, 0)
 	assert_date(&sel, 2027, 1, 24)
 	assert_equal(2027, st.year)
 
 	# A click elsewhere drops focus, and the keys stop.
-	feed_click(&ctx, 390, 390)
-	calendar_frame(&ctx, &st, &sel, 0)
-	feed_nav(&ctx, GFX_NAV_LEFT)
-	assert_equal(0, calendar_frame(&ctx, &st, &sel, 0))
+	ui_test_click(ctx, 390, 390)
+	calendar_frame(ctx, &st, &sel, 0)
+	ui_test_nav(ctx, GFX_NAV_LEFT)
+	assert_equal(0, calendar_frame(ctx, &st, &sel, 0))
 	assert_date(&sel, 2027, 1, 24)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # The calendar always takes the same ids and one layout slot, whatever
 # month it shows.
 void test_ids_and_layout_are_fixed():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_calendar_state st
 	ui_calendar_init(&st, 2026, 2)
 	ui_date sel
 	ui_date_clear(&sel)
 
-	ui_begin(&ctx, 400, 400)
-	ui_calendar(&ctx, &st, &sel, 0)
+	ui_begin(ctx, 400, 400)
+	ui_calendar(ctx, &st, &sel, 0)
 	assert_equal(1 + ui_calendar_ids(), ctx.next_id)
-	float32 bottom = ui_layout_top(&ctx).cursor_y
-	ui_end(&ctx)
+	float32 bottom = ui_layout_top(ctx).cursor_y
+	ui_end(ctx)
 
 	ui_calendar_init(&st, 2026, 8)
-	ui_begin(&ctx, 400, 400)
-	ui_calendar(&ctx, &st, &sel, 0)
+	ui_begin(ctx, 400, 400)
+	ui_calendar(ctx, &st, &sel, 0)
 	assert_equal(1 + ui_calendar_ids(), ctx.next_id)
-	asserts(c"same height every month", ui_layout_top(&ctx).cursor_y == bottom)
-	ui_end(&ctx)
-	ui_render_destroy(&r)
+	asserts(c"same height every month", ui_layout_top(ctx).cursor_y == bottom)
+	ui_end(ctx)
+	ui_render_destroy(&fx.r)
 
 
 # Inside a disabled scope nothing selects.
 void test_disabled_is_inert():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_calendar_state st
 	ui_calendar_init(&st, 2026, 9)
 	ui_date sel
 	ui_date_clear(&sel)
-	click_cell(&ctx, 16)
-	ui_begin(&ctx, 400, 400)
-	ui_disable(&ctx, 1)
-	assert_equal(0, ui_calendar(&ctx, &st, &sel, 0))
-	ui_disable(&ctx, 0)
-	ui_end(&ctx)
+	click_cell(ctx, 16)
+	ui_begin(ctx, 400, 400)
+	ui_disable(ctx, 1)
+	assert_equal(0, ui_calendar(ctx, &st, &sel, 0))
+	ui_disable(ctx, 0)
+	ui_end(ctx)
 	assert_equal(0, ui_date_is_set(&sel))
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)

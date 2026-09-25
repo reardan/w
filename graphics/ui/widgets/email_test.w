@@ -11,46 +11,7 @@ import graphics.ui.rect
 import graphics.ui.theme
 import graphics.ui.render
 import graphics.ui.widgets
-
-
-void setup(ui_renderer* r, ui_theme* theme, ui_context* ctx):
-	ui_render_init_headless(r)
-	ui_theme_light(theme)
-	ui_context_init(ctx, r, theme)
-
-
-void feed_click(ui_context* ctx, int x, int y):
-	gfx_event press
-	press.kind = GFX_EVENT_MOUSE_DOWN
-	press.code = 1
-	press.x = x
-	press.y = y
-	press.mods = 0
-	ui_feed_event(ctx, &press)
-	gfx_event release
-	release.kind = GFX_EVENT_MOUSE_UP
-	release.code = 1
-	release.x = x
-	release.y = y
-	release.mods = 0
-	ui_feed_event(ctx, &release)
-
-
-void feed_char(ui_context* ctx, int code):
-	gfx_event e
-	e.kind = GFX_EVENT_CHAR
-	e.code = code
-	e.x = 0
-	e.y = 0
-	e.mods = 0
-	ui_feed_event(ctx, &e)
-
-
-void feed_text(ui_context* ctx, char* s):
-	int i = 0
-	while (s[i] != 0):
-		feed_char(ctx, s[i])
-		i = i + 1
+import graphics.ui.testing
 
 
 # One frame holding just the email field at the first row (8, 8, 200,
@@ -118,134 +79,124 @@ void test_check_follows_the_form_convention():
 # A prefilled bad value is not the user's mistake: no inline error
 # until they have edited the field and left it.
 void test_error_waits_for_edit_and_blur():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_textbox_state st
 	ui_textbox_init(&st)
 	ui_textbox_set(&st, c"nope")
 
-	email_frame(&ctx, &st)
+	email_frame(ctx, &st)
 	assert_equal(0, st.edited)
 	assert_equal(0, ui_email_showing_error(&st))
-	assert_equal(0, error_verts(&r, &ctx, &st))
+	assert_equal(0, error_verts(&fx.r, ctx, &st))
 
 	# Focus and type: edited, but still focused, so no error yet.
-	feed_click(&ctx, 100, 20)
-	email_frame(&ctx, &st)
+	ui_test_click(ctx, 100, 20)
+	email_frame(ctx, &st)
 	asserts(c"focused", ctx.focus != 0)
-	feed_text(&ctx, c"x")
-	email_frame(&ctx, &st)
+	ui_test_text(ctx, c"x")
+	email_frame(ctx, &st)
 	assert_equal(1, st.edited)
 	assert_equal(0, ui_email_showing_error(&st))
 
 	# A press elsewhere drops focus: now touched, and invalid shows.
-	feed_click(&ctx, 300, 200)
-	email_frame(&ctx, &st)
+	ui_test_click(ctx, 300, 200)
+	email_frame(ctx, &st)
 	assert_equal(0, ctx.focus)
 	assert_equal(2, st.edited)
 	assert_equal(1, ui_email_showing_error(&st))
-	asserts(c"the error baseline drew", error_verts(&r, &ctx, &st) > 0)
-	ui_render_destroy(&r)
+	asserts(c"the error baseline drew", error_verts(&fx.r, ctx, &st) > 0)
+	ui_render_destroy(&fx.r)
 
 
 # Once touched the error is live: it clears as soon as the address is
 # fixed, without another blur.
 void test_error_clears_live_when_fixed():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_textbox_state st
 	ui_textbox_init(&st)
 
-	feed_click(&ctx, 100, 20)
-	email_frame(&ctx, &st)
-	feed_text(&ctx, c"ada")
-	email_frame(&ctx, &st)
+	ui_test_click(ctx, 100, 20)
+	email_frame(ctx, &st)
+	ui_test_text(ctx, c"ada")
+	email_frame(ctx, &st)
 	# Escape also leaves the field, and that counts as a blur.
-	feed_char(&ctx, 27)
-	email_frame(&ctx, &st)
+	ui_test_char(ctx, 27)
+	email_frame(ctx, &st)
 	assert_equal(0, ctx.focus)
 	assert_equal(1, ui_email_showing_error(&st))
 
-	feed_click(&ctx, 190, 20)
-	email_frame(&ctx, &st)
-	feed_text(&ctx, c"@example.com")
-	email_frame(&ctx, &st)
+	ui_test_click(ctx, 190, 20)
+	email_frame(ctx, &st)
+	ui_test_text(ctx, c"@example.com")
+	email_frame(ctx, &st)
 	asserts(c"still focused", ctx.focus != 0)
 	asserts(c"typed", strcmp(&st.text[0], c"ada@example.com") == 0)
 	assert_equal(0, ui_email_showing_error(&st))
-	assert_equal(0, error_verts(&r, &ctx, &st))
-	ui_render_destroy(&r)
+	assert_equal(0, error_verts(&fx.r, ctx, &st))
+	ui_render_destroy(&fx.r)
 
 
 # Clearing a touched field is not an email error: blank is Form's
 # required rule to judge.
 void test_a_cleared_field_shows_no_error():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_textbox_state st
 	ui_textbox_init(&st)
 
-	feed_click(&ctx, 100, 20)
-	email_frame(&ctx, &st)
-	feed_text(&ctx, c"q")
-	feed_char(&ctx, 8)
-	email_frame(&ctx, &st)
-	feed_click(&ctx, 300, 200)
-	email_frame(&ctx, &st)
+	ui_test_click(ctx, 100, 20)
+	email_frame(ctx, &st)
+	ui_test_text(ctx, c"q")
+	ui_test_char(ctx, 8)
+	email_frame(ctx, &st)
+	ui_test_click(ctx, 300, 200)
+	email_frame(ctx, &st)
 	assert_equal(2, st.edited)
 	assert_equal(0, st.length)
 	assert_equal(0, ui_email_showing_error(&st))
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # Return is the textbox's submit edge, passed straight through, valid
 # or not — refusing it is the form's job.
 void test_return_is_the_submit_edge():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_textbox_state st
 	ui_textbox_init(&st)
 
-	feed_click(&ctx, 100, 20)
-	email_frame(&ctx, &st)
-	feed_text(&ctx, c"bad")
-	feed_char(&ctx, 13)
-	assert_equal(1, email_frame(&ctx, &st))
-	assert_equal(0, email_frame(&ctx, &st))
-	ui_render_destroy(&r)
+	ui_test_click(ctx, 100, 20)
+	email_frame(ctx, &st)
+	ui_test_text(ctx, c"bad")
+	ui_test_char(ctx, 13)
+	assert_equal(1, email_frame(ctx, &st))
+	assert_equal(0, email_frame(ctx, &st))
+	ui_render_destroy(&fx.r)
 
 
 # A disabled email field is inert and draws no error.
 void test_disabled_field_draws_no_error():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_textbox_state st
 	ui_textbox_init(&st)
 	ui_textbox_set(&st, c"bad")
 	st.edited = 2
 
-	ui_begin(&ctx, 320, 240)
-	ui_disable(&ctx, 1)
-	ui_textbox(&ctx, 200.0, &st)
-	int plain = r.layer_vert_count[UI_LAYER_BASE]
-	ui_end(&ctx)
-	ui_begin(&ctx, 320, 240)
-	ui_email(&ctx, 200.0, &st)
-	int with_email = r.layer_vert_count[UI_LAYER_BASE]
-	ui_disable(&ctx, 0)
-	ui_end(&ctx)
+	ui_begin(ctx, 320, 240)
+	ui_disable(ctx, 1)
+	ui_textbox(ctx, 200.0, &st)
+	int plain = fx.r.layer_vert_count[UI_LAYER_BASE]
+	ui_end(ctx)
+	ui_begin(ctx, 320, 240)
+	ui_email(ctx, 200.0, &st)
+	int with_email = fx.r.layer_vert_count[UI_LAYER_BASE]
+	ui_disable(ctx, 0)
+	ui_end(ctx)
 	assert_equal(plain, with_email)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # What one frame of the test form did.
@@ -277,62 +228,58 @@ void form_frame_run(ui_context* ctx, ui_form_state* form, ui_textbox_state* emai
 # An optional email field: blank submits, a bad address is refused, a
 # good one goes through.
 void test_inside_a_form():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_form_state form
 	ui_form_init(&form)
 	ui_textbox_state email
 	ui_textbox_init(&email)
 	form_frame f
 
-	form_frame_run(&ctx, &form, &email, 0, &f)
+	form_frame_run(ctx, &form, &email, 0, &f)
 	assert_equal(1, f.email_valid)
-	feed_click(&ctx, 130, 66)
-	form_frame_run(&ctx, &form, &email, 0, &f)
+	ui_test_click(ctx, 130, 66)
+	form_frame_run(ctx, &form, &email, 0, &f)
 	assert_equal(1, f.submitted)
 
 	# Type a bad address and press return in the field: refused.
-	feed_click(&ctx, 130, 26)
-	form_frame_run(&ctx, &form, &email, 0, &f)
-	feed_text(&ctx, c"ada@")
-	feed_char(&ctx, 13)
-	form_frame_run(&ctx, &form, &email, 0, &f)
+	ui_test_click(ctx, 130, 26)
+	form_frame_run(ctx, &form, &email, 0, &f)
+	ui_test_text(ctx, c"ada@")
+	ui_test_char(ctx, 13)
+	form_frame_run(ctx, &form, &email, 0, &f)
 	assert_equal(0, f.submitted)
 	assert_equal(0, f.email_valid)
 	assert_equal(1, form.invalid)
 
 	# Finish the address; return now submits.
-	feed_text(&ctx, c"example.com")
-	feed_char(&ctx, 13)
-	form_frame_run(&ctx, &form, &email, 0, &f)
+	ui_test_text(ctx, c"example.com")
+	ui_test_char(ctx, 13)
+	form_frame_run(ctx, &form, &email, 0, &f)
 	assert_equal(1, f.email_valid)
 	assert_equal(1, f.submitted)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 # Composed with ui_form_required, blank is refused too.
 void test_required_email_in_a_form():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_form_state form
 	ui_form_init(&form)
 	ui_textbox_state email
 	ui_textbox_init(&email)
 	form_frame f
 
-	form_frame_run(&ctx, &form, &email, 1, &f)
+	form_frame_run(ctx, &form, &email, 1, &f)
 	assert_equal(0, f.email_valid)
-	feed_click(&ctx, 130, 66)
-	form_frame_run(&ctx, &form, &email, 1, &f)
+	ui_test_click(ctx, 130, 66)
+	form_frame_run(ctx, &form, &email, 1, &f)
 	assert_equal(0, f.submitted)
 	assert_equal(1, form.show_errors)
 
 	ui_textbox_set(&email, c"ada@example.com")
-	form_frame_run(&ctx, &form, &email, 1, &f)
+	form_frame_run(ctx, &form, &email, 1, &f)
 	assert_equal(1, f.email_valid)
 	assert_equal(0, form.invalid)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)

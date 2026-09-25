@@ -16,6 +16,7 @@ import graphics.ui.font
 import graphics.ui.render
 import graphics.ui.text
 import graphics.ui.widgets
+import graphics.ui.testing
 
 
 float32 vert(ui_renderer* r, int index, int field):
@@ -25,49 +26,6 @@ float32 vert(ui_renderer* r, int index, int field):
 # Quads in the base layer (6 vertices each).
 int quads(ui_renderer* r):
 	return r.layer_vert_count[UI_LAYER_BASE] / 6
-
-
-void setup(ui_renderer* r, ui_theme* theme, ui_context* ctx):
-	ui_render_init_headless(r)
-	ui_theme_light(theme)
-	ui_context_init(ctx, r, theme)
-
-
-void feed_char(ui_context* ctx, int code):
-	gfx_event e
-	e.kind = GFX_EVENT_CHAR
-	e.code = code
-	e.x = 0
-	e.y = 0
-	e.mods = 0
-	ui_feed_event(ctx, &e)
-
-
-void feed_nav(ui_context* ctx, int code):
-	gfx_event e
-	e.kind = GFX_EVENT_NAV
-	e.code = code
-	e.x = 0
-	e.y = 0
-	e.mods = 0
-	ui_feed_event(ctx, &e)
-
-
-void feed_click(ui_context* ctx, int x, int y):
-	gfx_event press
-	press.kind = GFX_EVENT_MOUSE_DOWN
-	press.code = 1
-	press.x = x
-	press.y = y
-	press.mods = 0
-	ui_feed_event(ctx, &press)
-	gfx_event release
-	release.kind = GFX_EVENT_MOUSE_UP
-	release.code = 1
-	release.x = x
-	release.y = y
-	release.mods = 0
-	ui_feed_event(ctx, &release)
 
 
 # ---- UTF-8 ------------------------------------------------------------
@@ -274,73 +232,69 @@ void test_atlas_grows_mid_frame():
 # ui_theme_use_font points every widget at another face and size: they
 # measure and draw with it, and widget_height grows to fit.
 void test_widgets_use_a_loaded_font():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	int face = ui_font_face_load_ttf(c"tools/ui/LiberationSans-Bold.ttf")
-	int strike = ui_theme_use_font(&theme, face, 30)
+	int strike = ui_theme_use_font(&fx.theme, face, 30)
 	asserts(c"strike made", strike >= 0)
-	assert_equal(strike, ui_font_strike_from_scale(theme.text_scale))
-	assert_equal(ui_text_height_strike(strike), ui_text_height(theme.text_scale))
-	asserts(c"taller widgets", theme.widget_height >= ui_text_height_strike(strike) + theme.pad * 2)
-	ui_begin(&ctx, 640, 480)
-	ui_label(&ctx, c"W")
-	ui_end(&ctx)
-	assert_equal(1, quads(&r))
+	assert_equal(strike, ui_font_strike_from_scale(fx.theme.text_scale))
+	assert_equal(ui_text_height_strike(strike), ui_text_height(fx.theme.text_scale))
+	asserts(c"taller widgets", fx.theme.widget_height >= ui_text_height_strike(strike) + fx.theme.pad * 2)
+	ui_begin(ctx, 640, 480)
+	ui_label(ctx, c"W")
+	ui_end(ctx)
+	assert_equal(1, quads(&fx.r))
 	ui_glyph w = ui_font_glyph(strike, 'W')
-	asserts(c"label drew the loaded glyph", vert(&r, 0, 2) == ui_render_u(w.x))
-	asserts(c"at the loaded size", vert(&r, 2, 1) - vert(&r, 0, 1) == cast(float32, w.h))
+	asserts(c"label drew the loaded glyph", vert(&fx.r, 0, 2) == ui_render_u(w.x))
+	asserts(c"at the loaded size", vert(&fx.r, 2, 1) - vert(&fx.r, 0, 1) == cast(float32, w.h))
 	# Too-small sizes leave the theme alone.
-	int scale = theme.text_scale
-	assert_equal(0 - 1, ui_theme_use_font(&theme, face, 2))
-	assert_equal(scale, theme.text_scale)
-	ui_render_destroy(&r)
+	int scale = fx.theme.text_scale
+	assert_equal(0 - 1, ui_theme_use_font(&fx.theme, face, 2))
+	assert_equal(scale, fx.theme.text_scale)
+	ui_render_destroy(&fx.r)
 
 
 # The textbox takes typed codepoints as UTF-8 and edits whole
 # characters.
 void test_textbox_edits_utf8():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_textbox_state tb
 	ui_textbox_init(&tb)
-	feed_click(&ctx, 20, 20)
-	ui_begin(&ctx, 320, 240)
-	ui_textbox(&ctx, 200.0, &tb)
-	ui_end(&ctx)
-	feed_char(&ctx, 'a')
-	feed_char(&ctx, 233)
-	feed_char(&ctx, 937)
-	ui_begin(&ctx, 320, 240)
-	ui_textbox(&ctx, 200.0, &tb)
-	ui_end(&ctx)
+	ui_test_click(ctx, 20, 20)
+	ui_begin(ctx, 320, 240)
+	ui_textbox(ctx, 200.0, &tb)
+	ui_end(ctx)
+	ui_test_char(ctx, 'a')
+	ui_test_char(ctx, 233)
+	ui_test_char(ctx, 937)
+	ui_begin(ctx, 320, 240)
+	ui_textbox(ctx, 200.0, &tb)
+	ui_end(ctx)
 	# a (1) + é (2) + Ω (2) bytes.
 	assert_equal(5, tb.length)
 	assert_equal(5, tb.caret)
 	asserts(c"utf-8 text", strcmp(&tb.text[0], c"a\xc3\xa9\xce\xa9") == 0)
 	# Left steps over Ω whole; backspace then deletes é whole (a frame
 	# apart: the textbox drains characters before navigation).
-	feed_nav(&ctx, GFX_NAV_LEFT)
-	ui_begin(&ctx, 320, 240)
-	ui_textbox(&ctx, 200.0, &tb)
-	ui_end(&ctx)
+	ui_test_nav(ctx, GFX_NAV_LEFT)
+	ui_begin(ctx, 320, 240)
+	ui_textbox(ctx, 200.0, &tb)
+	ui_end(ctx)
 	assert_equal(3, tb.caret)
-	feed_char(&ctx, 8)
-	ui_begin(&ctx, 320, 240)
-	ui_textbox(&ctx, 200.0, &tb)
-	ui_end(&ctx)
+	ui_test_char(ctx, 8)
+	ui_begin(ctx, 320, 240)
+	ui_textbox(ctx, 200.0, &tb)
+	ui_end(ctx)
 	asserts(c"deleted e-acute", strcmp(&tb.text[0], c"a\xce\xa9") == 0)
 	assert_equal(1, tb.caret)
 	# C1 controls are not text.
-	feed_char(&ctx, 150)
-	ui_begin(&ctx, 320, 240)
-	ui_textbox(&ctx, 200.0, &tb)
-	ui_end(&ctx)
+	ui_test_char(ctx, 150)
+	ui_begin(ctx, 320, 240)
+	ui_textbox(ctx, 200.0, &tb)
+	ui_end(ctx)
 	assert_equal(3, tb.length)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
 
 
 void textarea_frame(ui_context* ctx, ui_textarea_state* st):
@@ -352,28 +306,26 @@ void textarea_frame(ui_context* ctx, ui_textarea_state* st):
 # The textarea does the same over its buffer (a frame per step: it
 # drains characters before navigation).
 void test_textarea_edits_utf8():
-	ui_renderer r
-	ui_theme theme
-	ui_context ctx
-	setup(&r, &theme, &ctx)
+	ui_fixture fx
+	ui_context* ctx = ui_fixture_init(&fx)
 	ui_textarea_state st
 	ui_textarea_init(&st)
 	ui_textarea_set(&st, c"\xc3\xa9t\xc3\xa9")
-	feed_click(&ctx, 12, 12)
-	textarea_frame(&ctx, &st)
+	ui_test_click(ctx, 12, 12)
+	textarea_frame(ctx, &st)
 	ui_textarea_set_caret(&st, 0)
-	feed_nav(&ctx, GFX_NAV_RIGHT)
-	textarea_frame(&ctx, &st)
+	ui_test_nav(ctx, GFX_NAV_RIGHT)
+	textarea_frame(ctx, &st)
 	assert_equal(2, ui_textarea_caret_offset(&st))
-	feed_char(&ctx, 1046)
-	textarea_frame(&ctx, &st)
+	ui_test_char(ctx, 1046)
+	textarea_frame(ctx, &st)
 	asserts(c"inserted after the first character", strcmp(st.buf.data, c"\xc3\xa9\xd0\x96t\xc3\xa9") == 0)
 	assert_equal(4, ui_textarea_caret_offset(&st))
-	feed_nav(&ctx, GFX_NAV_DELETE)
-	textarea_frame(&ctx, &st)
-	feed_char(&ctx, 8)
-	textarea_frame(&ctx, &st)
+	ui_test_nav(ctx, GFX_NAV_DELETE)
+	textarea_frame(ctx, &st)
+	ui_test_char(ctx, 8)
+	textarea_frame(ctx, &st)
 	asserts(c"deleted whole characters", strcmp(st.buf.data, c"\xc3\xa9\xc3\xa9") == 0)
 	assert_equal(2, ui_textarea_caret_offset(&st))
 	ui_textarea_free(&st)
-	ui_render_destroy(&r)
+	ui_render_destroy(&fx.r)
