@@ -804,6 +804,15 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		insn.length = d.pos - start
 		return insn.length
 
+	# grp2 r/m32, imm8 (0xc1)
+	if (op == 0xc1):
+		int modrm = asm_x86_u8(d)
+		insn.mnemonic = asm_x86_grp2_mnemonic((modrm >> 3) & 7)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), d.opsize)
+		asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
+		insn.length = d.pos - start
+		return insn.length
+
 	# grp2 r/m32, cl (0xd3) and r/m32, 1 (0xd1)
 	if (op == 0xd1 || op == 0xd3):
 		int modrm = asm_x86_u8(d)

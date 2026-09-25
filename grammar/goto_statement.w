@@ -221,6 +221,8 @@ int labeled_statement():
 		i = i + 1
 	if (skip):
 		be_branch_patch(skip, codepos)
+	# ...nor across the label itself, past any stub emitted above
+	be_notes_reset()
 	goto_label_pos[label] = codepos
 	goto_label_stack[label] = stack_pos
 	i = goto_pending_base

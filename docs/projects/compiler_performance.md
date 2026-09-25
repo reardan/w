@@ -688,3 +688,48 @@ no folding at all** — an unfolded oracle for every assertion in it.
   growable field vector would lift the cap and shrink the average
   record, but it changes allocation on a hot path and wants its own
   measurement.
+
+## 13. Local-slot load fusion and the register shuttle (2026-09-25)
+
+Same mechanism as §12 (an emission-time note valid only while
+`note_end == codepos`), applied to the most common instruction pairs in
+the compiler's own output (`code_generator/x86.w`, x86/x64 only):
+
+- `lea eax,[esp+N]; mov eax,[eax]` — every local/argument read. The lea
+  notes itself; each loader (`promote_eax` and the int8/int16/int32/
+  uint8/uint16/uint32 extending forms, with their REX.W variants) folds
+  a current lea into one `[esp+N]` load, disp8 when it fits.
+  `mov_eax_esp_plus` also uses disp8 now.
+- `add eax,0` is not emitted, and `add_eax_int32` folds a constant offset
+  into a current lea (struct fields of a local).
+- `push eax; <one simple instruction>; pop ebx` (a binary operator whose
+  right operand is a constant or a folded local load) becomes
+  `mov ebx,eax; <instruction>`, with the load's displacement reduced by
+  one word because the push is gone.
+- `push eax; mov eax,imm; mov ecx,eax; pop eax; shl/sar eax,cl` becomes
+  `shl/sar eax,imm8` (`0xd1` for a count of 1). libs/asm's decoder and
+  encoder learned the `0xc1` group-2 form for `asm_x64_test`'s
+  encode-identity check.
+
+Every rollback goes through `peep_rollback`, which drops every note that
+ended past the new `codepos`. Notes are also cleared wherever a jump can
+land (`be_ctrl_end`, `be_ctrl_loop`, `be_blob_end`, goto labels), at every
+statement start (line table / wdbg breakpoints), and at each local's
+debug record. The region-end reset also fixes two existing miscompiles:
+before it, `(c ? 1 : 2) + 3` folded the `+ 3` into the else arm only
+(`c` true gave 1), and `if (c ? a < b : a > b)` fused the else arm's
+compare into the branch shared by both arms.
+
+| `bin/wv3` (x86) | before | after |
+| --- | --- | --- |
+| instructions (objdump) | 447,144 | 398,412 (−10.9%) |
+| file size | 1,821,404 | 1,596,164 (−12.4%) |
+| self-compile cost, same `w.w` (callgrind) | 5,566,777,686 | 4,443,199,038 (−20.2%) |
+| self-compile wall time (hyperfine -N) | 708 ms | 619 ms (1.14× faster) |
+
+x64 (`bin/wv3_64`): 448,320 → 398,969 instructions, 2,160,072 →
+1,918,488 bytes, 635 → 587 ms. Remaining sites in `bin/wv3`: 0 lea+load
+pairs (was 30,267), 254 push/pop shuttles (was 13,850; the rest have a
+multi-instruction right operand or read the pushed temporary), 0
+`add eax,0` (was 573), 0 shift-by-`cl` of a constant (was 320).
+`tests/local_load_fold_test.w` pins the behavior.
