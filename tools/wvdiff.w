@@ -1,3 +1,4 @@
+# wbuild: binary=wvdiff
 /*
 wvdiff: unified line-diff CLI, dogfooding libs/extras/vcs/diff.w's Myers
 diff and unified-format renderer (docs/projects/version_control.md,

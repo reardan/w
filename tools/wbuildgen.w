@@ -1,3 +1,4 @@
+# wbuild: binary=wbuildgen
 /*
 wbuildgen: the command-line face of tools/wbuildgen_lib.w, which holds
 the generation rules.

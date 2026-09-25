@@ -1,0 +1,2 @@
+# wbuild: target=recursion_depth_test tag=tests dep=wv2 dep=wfixture
+# wbuild: step="bin/wfixture bin/wv2 tests/expression_nesting_error_fixture.w tests/expression_nesting_clean_fixture.w tests/statement_nesting_error_fixture.w tests/statement_nesting_clean_fixture.w tests/call_nesting_error_fixture.w tests/index_nesting_error_fixture.w tests/ternary_nesting_error_fixture.w tests/ternary_nesting_clean_fixture.w tests/unary_nesting_error_fixture.w tests/assignment_nesting_error_fixture.w"

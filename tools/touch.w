@@ -1,3 +1,5 @@
+# wbuild: target=touch dep=wv2 input=tools/touch.w input=lib/stat.w output=bin/touch
+# wbuild: step="bin/wv2 tools/touch.w -o bin/touch"
 /*
 touch: update file timestamps, creating the file when missing.
 

@@ -1,0 +1,5 @@
+# wbuild: target=elf_wx_segment_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 --quiet tests/elf_wx_segment_input.w -o bin/elf_wx_segment_input32"
+# wbuild: step="bin/wv2 x64 --quiet tests/elf_wx_segment_input.w -o bin/elf_wx_segment_input64"
+# wbuild: step="bin/wv2 tests/elf_wx_segment_test.w -o bin/elf_wx_segment_test"
+# wbuild: step="bin/elf_wx_segment_test"

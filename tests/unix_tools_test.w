@@ -233,3 +233,5 @@ void test_stat_usage_error():
 	assert_equal(1, r.status)
 	assert_equal(1, utt_contains(r.stderr_text, c"usage: stat"))
 	process_result_free(r)
+# wbuild: binary=unix_tools_test tag=tests dep=stat dep=chmod dep=touch dep=readlink
+# wbuild: step="bin/unix_tools_test"

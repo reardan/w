@@ -1,0 +1,3 @@
+# wbuild: target=dynamic_test_win64 tag=tests_win64 dep=wv2
+# wbuild: step="bin/wv2 win64 tests/dynamic_test_win64.w -o bin/dynamic_test_win64.exe"
+# wbuild: step="wine bin/dynamic_test_win64.exe" expect_stdout="dynamic linking OK"

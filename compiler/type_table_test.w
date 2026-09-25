@@ -197,3 +197,6 @@ void test_types_compatible_strictness():
 	assert_equal(0, types_compatible(char_ptr, int_ptr))
 	assert_equal(0, types_compatible(void_ptr, char_ptr_ptr))
 
+# wbuild: target=type_table_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 compiler/type_table_test.w -o bin/type_table_test"
+# wbuild: step="bin/type_table_test"

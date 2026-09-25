@@ -52,3 +52,6 @@ void test_scaled_division_and_rounding():
 	bignum_free(num)
 	bignum_free(den)
 	bignum_free(rem)
+# wbuild: target=bignum_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 compiler/bignum_test.w -o bin/bignum_test"
+# wbuild: step="bin/bignum_test"

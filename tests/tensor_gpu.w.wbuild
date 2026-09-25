@@ -1,0 +1,6 @@
+# wbuild: target=tensor_compile_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 x64 tests/tensor_gpu.w -o bin/tensor_gpu_compile"
+# wbuild: target=tensor_gpu_test dep=wv2
+# wbuild: step="bin/wv2 x64 tests/tensor_gpu.w -o bin/tensor_gpu"
+# wbuild: step="bin/tensor_gpu" expect_stdout="tensor: gpu path" expect_stdout="tensor gpu OK"
+# wbuild: step="sh -c 'CUDA_VISIBLE_DEVICES= bin/tensor_gpu'" expect_stdout="tensor: cpu fallback" expect_stdout="tensor gpu OK"

@@ -842,3 +842,5 @@ void test_wvc_sync_mixed_format_store():
 	free(meta_b)
 	wst_rm_rf(a)
 	wst_rm_rf(b)
+# wbuild: binary=wvc_sync_e2e_test tag=tests dep=wvc
+# wbuild: step="bin/wvc_sync_e2e_test"

@@ -1,3 +1,6 @@
+# wbuild: target=grapheme_data dep=wv2
+# wbuild: step="bin/wv2 tools/generate_grapheme_data.w -o bin/generate_grapheme_data"
+# wbuild: step="bin/generate_grapheme_data"
 # Emits lib/grapheme_data.w from the committed Unicode Character Database
 # file tools/unicode/UnicodeData.txt.
 #

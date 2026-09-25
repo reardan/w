@@ -1,0 +1,7 @@
+# wbuild: target=check_imports_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 check --quiet tests/transitive_import_warn_fixture.w" reject_stderr="warning:"
+# wbuild: step="bin/wv2 check --imports --quiet tests/transitive_import_warn_fixture.w" expect_stderr="warning: symbol 'transitive_leaf_value' resolves through a transitive import (defined in '" expect_stderr="/tests/transitive_import_leaf.w'); import it directly"
+# wbuild: step="bin/wv2 check --imports --quiet tests/transitive_import_clean_fixture.w" reject_stderr="warning:"
+# wbuild: step="bin/wv2 check --imports --json --quiet tests/transitive_import_warn_fixture.w" stdout_file="bin/check_imports_warn.ndjson" expect_stdout="\"severity\": \"warning\"" expect_stdout="\"message\": \"symbol 'transitive_leaf_value' resolves through a transitive import (defined in '" expect_stdout="/tests/transitive_import_leaf.w'); import it directly\""
+# wbuild: step="bin/wv2 check --imports --json --quiet tests/transitive_import_clean_fixture.w" stdout_file="bin/check_imports_clean.ndjson"
+# wbuild: step="test ! -s bin/check_imports_clean.ndjson"

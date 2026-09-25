@@ -1,3 +1,5 @@
+# wbuild: target=rewrite_c_strings dep=wv2
+# wbuild: step="bin/wv2 tools/rewrite_c_string_literals.w -o bin/rewrite_c_strings"
 # Migration helper: prefix bare "..." literals with c across every
 # git-tracked .w file, skipping literals that already carry a c/s prefix
 # and the paths after c_lib / c_import (those take host library names).

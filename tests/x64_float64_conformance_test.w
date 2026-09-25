@@ -205,3 +205,6 @@ void test_float64_int_conversion_edges():
 	float64 in_range = 9223372036854774784.0    # 2^63 - 1024: exact float64, in range
 	int back = in_range
 	assert_equal_hex((1 << 63) - 1024, back)
+# wbuild: target=x64_float64_conformance_test tag=tests_x64 dep=wv2
+# wbuild: step="bin/wv2 x64 tests/x64_float64_conformance_test.w -o bin/x64_float64_conformance_test"
+# wbuild: step="bin/x64_float64_conformance_test"

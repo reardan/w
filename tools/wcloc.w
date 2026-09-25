@@ -1,3 +1,5 @@
+# wbuild: target=wcloc dep=wv2 input=tools/wcloc.w input=lib/cloc.w output=bin/wcloc
+# wbuild: step="bin/wv2 tools/wcloc.w -o bin/wcloc"
 /*
 wcloc: count lines of W code (issue #437), a cloc for .w sources built
 on lib/cloc.w.

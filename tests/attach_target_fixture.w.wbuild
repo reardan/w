@@ -1,0 +1,7 @@
+# wbuild: target=attach_test tag=tests dep=wdbg dep=wdbg_x64 input=tools/attach_e2e.w input=tests/attach_target_fixture.w input=tests/attach_finite_fixture.w input=tests/debug_fixture.w
+# wbuild: step="bin/wv2 tests/attach_target_fixture.w -o bin/attach_target"
+# wbuild: step="bin/wv2 x64 tests/attach_target_fixture.w -o bin/attach_target64"
+# wbuild: step="bin/wv2 tests/attach_finite_fixture.w -o bin/attach_finite_target"
+# wbuild: step="bin/wv2 x64 tests/attach_finite_fixture.w -o bin/attach_finite_target64"
+# wbuild: step="bin/wv2 tools/attach_e2e.w -o bin/attach_e2e"
+# wbuild: step="bin/attach_e2e" expect_stdout="attach test OK"

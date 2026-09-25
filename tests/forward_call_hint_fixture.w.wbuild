@@ -1,0 +1,2 @@
+# wbuild: target=forward_call_hint_test tag=tests dep=wv2 dep=wfixture
+# wbuild: step="bin/wfixture bin/wv2 tests/forward_call_hint_fixture.w tests/forward_call_no_hint_fixture.w"

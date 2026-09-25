@@ -1,3 +1,4 @@
+# wbuild: binary=wtest_map_check
 /*
 wtest_map_check: property checker for bin/wtest's changed-path selection.
 

@@ -1,0 +1,9 @@
+# wbuild: target=unrecognized_option_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 --bounds=xyz" expect_fail expect_stderr="unrecognized option: '--bounds=xyz'" reject_stderr="no such file"
+# wbuild: step="bin/wv2 check --bogus tests/simple.w" expect_fail expect_stderr="unrecognized option: '--bogus'" reject_stderr="no such file"
+# wbuild: step="bin/wv2 tests/simple.w --bogus -o /dev/null" expect_fail expect_stderr="unrecognized option: '--bogus'" reject_stderr="compiling 'tests/simple.w'"
+# wbuild: step="bin/wv2 check --json tests/simple.w --bogus" expect_fail expect_stdout="\"file\": \"<command-line>\"" expect_stdout="\"severity\": \"error\"" expect_stdout="\"message\": \"unrecognized option: '--bogus'\"" expect_stdout="\"token\": \"--bogus\""
+# wbuild: step="bin/wv2 --bounds=off tests/simple.w -o /dev/null"
+# wbuild: target=simple dep=wv2
+# wbuild: step="bin/wv2 tests/simple.w -o bin/simple"
+# wbuild: step="bin/simple"

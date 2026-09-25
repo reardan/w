@@ -273,3 +273,9 @@ void test_parse_all_tracked_w_files():
 	parsed_manifest_count = 0
 	assert_w_parse_manifest(c"bin/parser_generator_w_files.txt")
 	assert1(parsed_manifest_count > 0)
+# wbuild: target=parser_generator_w_test tag=tests dep=parser_generator_test
+# wbuild: step="git ls-files *.w" stdout_file="bin/parser_generator_w_files.txt"
+# wbuild: step="bin/parser_generator tests/parser_generator/w.pg -o bin/generated_w_parser.w"
+# wbuild: step="bin/wv2 tests/parser_generator/generated_w_parser_test.w -o bin/parser_generator_w_test"
+# wbuild: step="bin/wv2 tools/parser_generator_w_batches.w -o bin/parser_generator_w_batches"
+# wbuild: step="bin/parser_generator_w_batches"

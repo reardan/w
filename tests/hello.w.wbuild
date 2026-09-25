@@ -1,0 +1,7 @@
+# wbuild: target=hello tag=tests dep=wv2
+# wbuild: step="bin/wv2 tests/hello.w -o bin/hello"
+# wbuild: step="bin/hello" expect_stdout="hello, world!"
+# wbuild: target=asm_foundations_test tag=tests dep=wv2 input=libs/asm/ input=tests/asm/ input=tests/asm_foundations_test.w input=tests/hello.w
+# wbuild: step="bin/wv2 x64 tests/hello.w -o bin/asm_elf64_fixture"
+# wbuild: step="bin/wv2 tests/asm_foundations_test.w -o bin/asm_foundations_test"
+# wbuild: step="bin/asm_foundations_test"
