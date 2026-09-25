@@ -47,8 +47,8 @@ What changed since the survey below, in the order it landed:
   groups now join `tests` automatically. The hand-kept lists had
   dropped nine fixture-group suites, which never ran until this change.
 - **Shell scripts.** `parser_generator_w_batches.sh` is now
-  `tools/parser_generator_w_batches.w`. The `attach_test.sh` port has
-  its own entry in the table below.
+  `tools/parser_generator_w_batches.w`. `attach_test.sh` is now
+  `tools/attach_e2e.w`.
 
 Still hand-written in `build.base.json`: the bootstrap chain (bucket
 A), the tool binaries (C), and the multi-step targets whose primary
@@ -434,12 +434,21 @@ the bound in place of the external `timeout(1)`. `openssl_interop_test`'s
 moved from bucket E to bucket L below, same reasoning as
 `compress_zlib_interop_test`.
 
+`tools/attach_test.sh` (the end-to-end test of wdbg's `--attach` mode)
+was ported to `tools/attach_e2e.w` (2026-09): the same cases and
+assertions, but every fixture and wdbg invocation is spawned through
+`lib.process` with an argv vector (no `/bin/sh`, no `timeout(1)` — the
+per-wdbg ceiling is `process_run`'s own timeout, still overridable with
+`ATTACH_TEST_TIMEOUT=<seconds>` and still reported with the distinct
+"FAIL (wdbg timed out ...)" banner). `attach_test`'s `build.base.json`
+entry now compiles and runs that binary after the four fixture compiles,
+so it moved from bucket E to bucket L below.
+
 | Script | Invoked by (`build.base.json`) | #323 blocker |
 |---|---|---|
 | `tools/run_arm64.sh` | `build_arm64`, `arm64_smoke_test`, `pac_full_test_arm64`, `pac_corrupt_test_arm64`, plus every generated `arch=arm64` twin | qemu-user-static / native-exec wrapper — a cross-arch execution shim is likely permanent (Bazel/Buck2 keep an equivalent runner); revisit only if `lib.process` grows emulator-aware exec. |
 | `tools/run_wasm.sh` | `build_wasm`, `wasm_smoke_test`, plus every wasm run step | Wraps `wasmtime`/`node`; same "permanent execution shim" reasoning as `run_arm64.sh`. (The former bucket-G side blocker is gone: wbuildgen's `arch=`/`arch_only=`/`group=` all take `wasm` since 2026-07-28 and emit this wrapper.) |
 | `tools/web/run_node.sh` | `wasm_extern_test`, `wasm_webgl_test` | Wraps `node` to run `tools/web/*.mjs` harnesses; the harnesses themselves are non-W, so this sits outside the ".w sources" model regardless of the shell wrapper. |
-| `tools/attach_test.sh` | `attach_test` | ptrace-based debugger-attach test. Needs porting onto the in-repo ptrace machinery (`debugger/`) as a W test harness — natural to revisit alongside #123's attach phases. |
 | ~~`tools/parser_generator_w_batches.sh`~~ | `parser_generator_w_test` | Ported to `tools/parser_generator_w_batches.w` (2026-09-25). |
 | ~~`tools/merge_manifest.sh`~~ | *(not referenced)* | Deleted with `build.json` (2026-09-25): there is no committed manifest left to conflict. |
 | `tools/mac/run_darwin_tests.sh` | *(not referenced — invoked by hand per `AGENTS.md`/`CLAUDE.md`)* | Developer-invoked native Mach-O test runner; Mac-only, never a manifest target. Out of scope for #323's manifest-capture model. |
@@ -562,9 +571,9 @@ optimistic for 7 of the 21; see below.**
   `ai_tooling_next_steps.md`'s Build-manifest entry for the exact
   directive spellings and the arm64_darwin-bundle residue.
 
-**E. Shell-wrapped, bespoke logic — 13.** `missing_file_test`,
+**E. Shell-wrapped, bespoke logic — 12.** `missing_file_test`,
 `parser_generator_w_test`, `wtest_map_test`, `unsafe_import_test`,
-`debug_test`, `debug_test_x64`, `attach_test`, `repl_test`,
+`debug_test`, `debug_test_x64`, `repl_test`,
 `repl_test_x64`, `wasm_extern_test`, `wasm_webgl_test`, `pac_flag_test`,
 `pac_corrupt_test_arm64`. Blocker: each step is a real `sh -c` one-liner
 or external script (subprocess probing, ptrace attach, PTY scripting via
@@ -761,7 +770,7 @@ Bucket K is now empty; bucket C (the tool binaries themselves) stays
 hand-written by design, and is what the new mode's deps derivation
 resolves against.
 
-**L. Multi-step pipelines — 44.** `float_reference_test`,
+**L. Multi-step pipelines — 45.** `float_reference_test`,
 `string_utf8_test`, `container_trap_test`, `memory_debug_fault_test`,
 `strict_mode_test`, `check_json_test`, `check_roots_test`,
 `check_imports_test`, `symbols_test`, `deps_test`,
@@ -780,7 +789,9 @@ two compile steps + two run steps with `expect_stdout`, no shell
 involved any more — same shape as `switch_test`'s "several `.w` fixtures
 compiled and run in sequence"), `openssl_interop_test` (ported off its
 shell wrapper by task 4e, same shape: two compile steps + two run steps
-with `expect_stdout`). Blocker: each
+with `expect_stdout`), `attach_test` (ported off `tools/attach_test.sh`:
+four fixture compiles, then `tools/attach_e2e.w` compiled and run with
+`expect_stdout`). Blocker: each
 chains more than a single compile+run — a second reference binary
 (`float_reference_test`'s `cc`-compiled C oracle), several independent
 diagnostic invocations with separate `expect_*` assertions
