@@ -1,0 +1,113 @@
+parser protoidl
+
+skip LINE_COMMENT c_line_comment
+skip BLOCK_COMMENT block_comment
+skip NEWLINE newline
+skip TAB tabs
+
+token STRING = "\"" [^"\n]* "\"" | "'" [^'\n]* "'"
+token NUMBER c_number
+token IDENT identifier
+
+literal KW_SYNTAX "syntax"
+literal KW_EDITION "edition"
+literal KW_PACKAGE "package"
+literal KW_IMPORT "import"
+literal KW_PUBLIC "public"
+literal KW_WEAK "weak"
+literal KW_OPTION "option"
+literal KW_MESSAGE "message"
+literal KW_ENUM "enum"
+literal KW_SERVICE "service"
+literal KW_RPC "rpc"
+literal KW_RETURNS "returns"
+literal KW_STREAM "stream"
+literal KW_ONEOF "oneof"
+literal KW_MAP "map"
+literal KW_RESERVED "reserved"
+literal KW_EXTENSIONS "extensions"
+literal KW_EXTEND "extend"
+literal KW_TO "to"
+literal KW_MAX "max"
+literal KW_REPEATED "repeated"
+literal KW_OPTIONAL "optional"
+literal KW_REQUIRED "required"
+
+literal LBRACE "{"
+literal RBRACE "}"
+literal LPAREN "("
+literal RPAREN ")"
+literal LBRACK "["
+literal RBRACK "]"
+literal LT "<"
+literal GT ">"
+literal SEMI ";"
+literal COMMA ","
+literal DOT "."
+literal ASSIGN "="
+literal MINUS "-"
+literal PLUS "+"
+literal COLON ":"
+
+start proto
+
+rule proto = top_item* EOF
+rule top_item = syntax_decl | package_decl | import_decl | option_decl | message_decl | enum_decl | service_decl | extend_decl | empty_stmt
+rule empty_stmt = SEMI
+
+rule syntax_decl = syntax_word ASSIGN STRING SEMI
+rule syntax_word = KW_SYNTAX | KW_EDITION
+rule package_decl = KW_PACKAGE full_ident SEMI
+rule import_decl = KW_IMPORT import_modifier STRING SEMI
+rule import_modifier = KW_PUBLIC | KW_WEAK |
+
+# Options are parsed and ignored by the emitter.
+rule option_decl = KW_OPTION option_name ASSIGN constant SEMI
+rule option_name = option_name_part option_name_tail*
+rule option_name_part = ident_word | LPAREN type_name RPAREN
+rule option_name_tail = DOT option_name_part
+rule constant = sign NUMBER | STRING | full_ident | aggregate
+rule sign = MINUS | PLUS |
+rule aggregate = LBRACE aggregate_item* RBRACE
+rule aggregate_item = option_name aggregate_value aggregate_sep
+rule aggregate_value = COLON constant | aggregate | COLON aggregate
+rule aggregate_sep = COMMA | SEMI |
+
+rule message_decl = KW_MESSAGE ident_word LBRACE message_item* RBRACE
+rule message_item = message_decl | enum_decl | option_decl | oneof_decl | map_field | reserved_decl | extensions_decl | extend_decl | empty_stmt | field
+rule field = field_label type_name ident_word ASSIGN NUMBER field_options SEMI
+rule field_label = KW_REPEATED | KW_OPTIONAL | KW_REQUIRED |
+rule field_options = LBRACK field_option field_option_tail* RBRACK |
+rule field_option = option_name ASSIGN constant
+rule field_option_tail = COMMA field_option
+
+rule oneof_decl = KW_ONEOF ident_word LBRACE oneof_item* RBRACE
+rule oneof_item = option_decl | empty_stmt | oneof_field
+rule oneof_field = type_name ident_word ASSIGN NUMBER field_options SEMI
+
+rule map_field = KW_MAP LT type_name COMMA type_name GT ident_word ASSIGN NUMBER field_options SEMI
+
+rule reserved_decl = KW_RESERVED reserved_item reserved_tail* SEMI
+rule reserved_item = NUMBER range_tail | STRING | ident_word
+rule range_tail = KW_TO range_end |
+rule range_end = NUMBER | KW_MAX
+rule reserved_tail = COMMA reserved_item
+rule extensions_decl = KW_EXTENSIONS reserved_item reserved_tail* field_options SEMI
+rule extend_decl = KW_EXTEND type_name LBRACE message_item* RBRACE
+
+rule enum_decl = KW_ENUM ident_word LBRACE enum_item* RBRACE
+rule enum_item = option_decl | reserved_decl | empty_stmt | enum_value
+rule enum_value = ident_word ASSIGN sign NUMBER field_options SEMI
+
+rule service_decl = KW_SERVICE ident_word LBRACE service_item* RBRACE
+rule service_item = option_decl | empty_stmt | rpc_decl
+rule rpc_decl = KW_RPC ident_word LPAREN stream_opt type_name RPAREN KW_RETURNS LPAREN stream_opt type_name RPAREN rpc_tail
+rule stream_opt = KW_STREAM |
+rule rpc_tail = SEMI | LBRACE service_item* RBRACE
+
+# Type references and dotted names; keywords double as identifiers
+# (a field may be named 'option', a package 'map', ...).
+rule type_name = DOT full_ident | full_ident
+rule full_ident = ident_word full_ident_tail*
+rule full_ident_tail = DOT ident_word
+rule ident_word = IDENT | KW_SYNTAX | KW_EDITION | KW_PACKAGE | KW_IMPORT | KW_PUBLIC | KW_WEAK | KW_OPTION | KW_MESSAGE | KW_ENUM | KW_SERVICE | KW_RPC | KW_RETURNS | KW_STREAM | KW_ONEOF | KW_MAP | KW_RESERVED | KW_EXTENSIONS | KW_EXTEND | KW_TO | KW_MAX | KW_REPEATED | KW_OPTIONAL | KW_REQUIRED

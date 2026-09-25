@@ -22,8 +22,47 @@ touches `build.json` or any `.w` file.
   builtins. Tests: `tests/protobuf_message_test.w` (plus x64 and wasm
   twins), `tests/protobuf_message_x64_test.w` (the 64-bit kinds), and
   the `protobuf_message_error_test` fixtures.
-- **Stage 2** (`.proto` → W codegen) is still open. It should emit
-  `message` declarations.
+- **Stage 2** (`.proto` → W codegen) followed: `bin/proto_to_w
+  schema.proto -o schema_pb.w` (`tools/proto_to_w.w`) writes the
+  `message`/`enum` declarations. The IDL grammar is
+  `libs/extras/protobuf/proto.pg`, and its generated parser is committed
+  as `generated_proto_parser.w`, the same way the C importer's is. The
+  AST walk and emitter are in `libs/extras/protobuf/codegen.w`.
+  `proto_to_w_test` regenerates both the parser and
+  `tests/protobuf/sample_pb.w` and compares them against the committed
+  copies. `tests/protobuf_codegen_test.w` round-trips the generated
+  messages and covers the generator's errors.
+
+What stage 2 settled:
+
+- **Names.** W names drop the package, and nested types join with `_`
+  (`Order.Voucher` becomes `Order_Voucher`). The values of a nested
+  enum take the enclosing message's prefix (`Order_STATUS_OPEN`)
+  because W enum values share one namespace. Type references resolve
+  with protobuf scoping, from the innermost scope outward; a leading
+  `.` is absolute.
+- **Order.** Enums come first, then messages in dependency order,
+  because a W declaration must precede its use.
+- **`map<K, V>`** becomes `repeated Parent_FieldEntry` plus a synthetic
+  entry message `{K key = 1; V value = 2;}`. That is exactly the map
+  wire format, so maps work without new compiler support; the W side
+  sees a list of entries.
+- **`oneof`** members become ordinary fields, which is wire-compatible;
+  which member is set is not tracked. proto2 `required`/`optional`
+  (and proto3 `optional`) are accepted and noted in a comment. This is
+  §5's "proto2 as adapter input".
+- **Skipped.** Options, reserved ranges and extension ranges are parsed
+  and ignored. Services and `extend` blocks become a note in the
+  header.
+- **Errors** are reported as `file:line: message`. They cover
+  `float`/`double`/`sfixed32`/`sfixed64` (no runtime kind yet),
+  recursive messages (direct or through a cycle), negative enum
+  values, field numbers out of range, unknown types, and syntax
+  errors. `import` statements are recorded but not followed: generate
+  the imported file too and import its module.
+- **Construction.** Neither `new T` nor locals are zero-initialized,
+  and every field of a message is encoded, so build messages with
+  `pb_message_new(proto_descriptor(T))`.
 
 What stage 3 settled, and how it answers the §10 open questions:
 

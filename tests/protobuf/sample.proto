@@ -1,0 +1,66 @@
+// Sample schema for the .proto -> W generator (tools/proto_to_w.w).
+// tests/protobuf/sample_pb.w is its committed output.
+syntax = "proto3";
+
+package example.shop;
+
+option java_package = "com.example.shop";
+
+/* A customer order. Declared before the types it uses: the generator
+   reorders messages so every dependency comes first. */
+message Order {
+  uint32 id = 1 [deprecated = true];
+  Customer customer = 2;
+  repeated LineItem items = 3;
+  Status status = 4;
+  map<string, int32> tags = 5;
+  oneof payment {
+    string card_token = 6;
+    Voucher voucher = 7;
+  }
+  optional string note = 8;
+  reserved 9, 12 to 15;
+  reserved "legacy";
+
+  enum Status {
+    STATUS_UNKNOWN = 0;
+    STATUS_OPEN = 1;
+    STATUS_SHIPPED = 2;
+  }
+
+  message Voucher {
+    string code = 1;
+    sint32 discount = 2;
+  }
+}
+
+message Customer {
+  string name = 1;
+  bytes avatar = 2;
+  .example.shop.Address address = 3;
+  repeated string emails = 4;
+}
+
+message Address {
+  string city = 1;
+  fixed32 zip = 2;
+  Country country = 3;
+}
+
+message LineItem {
+  string sku = 1;
+  uint32 quantity = 2;
+  bool gift = 3;
+  repeated sint32 adjustments = 4;
+}
+
+enum Country {
+  COUNTRY_UNSPECIFIED = 0;
+  COUNTRY_NO = 47;
+  COUNTRY_US = 0x1;
+}
+
+service Shop {
+  rpc Place(Order) returns (Order);
+  rpc Watch(stream Order) returns (stream Order) {}
+}
