@@ -65,17 +65,8 @@ void test_char_pointer_stride_one():
 	assert_equal('o', *back_two)
 
 
-# No sizeof operator in W (see lib/ptr.w's ptr_diff), so recover a
-# struct's stride the same way: compare where index 1 lands.
-int sizeof_triple():
-	triple* probe = cast(triple*, malloc(__word_size__ * 8))
-	int stride = cast(int, &probe[1]) - cast(int, probe)
-	free(probe)
-	return stride
-
-
 void test_struct_pointer_scales():
-	triple* arr = cast(triple*, malloc(sizeof_triple() * 3))
+	triple* arr = cast(triple*, malloc(sizeof(triple) * 3))
 	arr[0].a = 1
 	arr[0].b = 2
 	arr[0].c = 3

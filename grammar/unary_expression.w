@@ -294,6 +294,18 @@ int unary_expression_operand():
 		coerce_explicit(want, type)
 		expect(c")")
 		return type_value(want)
+	else if (accept(c"sizeof")):
+		# sizeof(type-name): the type's size in bytes as a compile-time
+		# int constant, C-style (issue #434). Struct sizes include
+		# padding, pointers are word-sized, so 'malloc(n * sizeof(T))'
+		# matches what '&p[n]' indexing strides by. Only type names are
+		# accepted: a single-pass compiler cannot size an expression
+		# without emitting its code.
+		expect(c"(")
+		int sized = type_name()
+		expect(c")")
+		mov_eax_int(type_get_size(sized))
+		return 3
 	else if (accept(c"new")):
 		# new type-name — allocates sizeof(type) and yields a type*.
 		# new type-name ( args ) also initializes the struct's fields from
