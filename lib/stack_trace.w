@@ -41,11 +41,11 @@ found by walking down one page at a time from a code address (the
 image is contiguous, so the walk cannot skip past the header). Mach-O
 images (arm64_darwin) are found the same way; their load commands give
 the ASLR slide (the mapped header minus __TEXT's vmaddr), the __text
-range, and the nlist symbol table the Mach-O writer puts in __LINKEDIT,
-which dyld maps too. Mach-O has no line table yet, so darwin frames
-carry function names only. arm64 keeps no frame chain, so its traces
-always come from the scan; return addresses signed by pointer
-authentication are stripped to their address bits first. On targets
+range, the nlist symbol table the Mach-O writer puts in __LINKEDIT
+(which dyld maps too), and the DWARF line table in __TEXT,__debug_line,
+whose addresses are linked vmaddrs (st_line_lookup unslides pc), so
+darwin frames carry file:line like ELF ones. Return addresses signed
+by pointer authentication are stripped to their address bits first. On targets
 without symbols (PE), collection returns no frames and
 print_stack_trace() is a silent no-op, so the trap paths that call it
 stay safe everywhere.
@@ -247,6 +247,8 @@ void st_init_macho(int base):
 	int text_vm = 0
 	int sect_addr = 0
 	int sect_size = 0
+	int dline_addr = 0
+	int dline_size = 0
 	int linkedit_vm = 0
 	int linkedit_off = 0
 	int symoff = 0
@@ -262,10 +264,20 @@ void st_init_macho(int base):
 		if (cmd == 25):  /* LC_SEGMENT_64 */
 			if (st_cstr_eq(lc + 8, c"__TEXT")):
 				text_vm = st_word(lc + 24)
-				if (st_int32(lc + 64) > 0):
-					if (st_cstr_eq(lc + 72, c"__text")):
-						sect_addr = st_word(lc + 72 + 32)
-						sect_size = st_word(lc + 72 + 40)
+				# Sections (80 bytes each) follow the 72-byte
+				# command: __text, and __debug_line (the DWARF line
+				# table, addresses as linked vmaddrs).
+				int nsects = st_int32(lc + 64)
+				int k = 0
+				while (k < nsects):
+					int sect = lc + 72 + k * 80
+					if (st_cstr_eq(sect, c"__text")):
+						sect_addr = st_word(sect + 32)
+						sect_size = st_word(sect + 40)
+					else if (st_cstr_eq(sect, c"__debug_line")):
+						dline_addr = st_word(sect + 32)
+						dline_size = st_word(sect + 40)
+					k = k + 1
 			else if (st_cstr_eq(lc + 8, c"__LINKEDIT")):
 				linkedit_vm = st_word(lc + 24)
 				linkedit_off = st_word(lc + 40)
@@ -290,6 +302,10 @@ void st_init_macho(int base):
 	if (st_range_readable(st_symtab_lo, nsyms * 16) == 0):
 		return;
 	st_dline_lo = 0
+	if (dline_size > 0):
+		if (st_range_readable(dline_addr + st_slide, dline_size)):
+			st_dline_lo = dline_addr + st_slide
+			st_dline_size = dline_size
 	st_base = base
 	st_state = 1
 
@@ -734,6 +750,9 @@ int st_line_lookup(int pc):
 		return 0
 	if (st_dline_lo == 0):
 		return 0
+	# Mach-O line tables hold linked vmaddrs: compare unslid.
+	if (st_macho):
+		pc = pc - st_slide
 	int unit_length = st_int32(st_dline_lo)
 	if ((unit_length < 16) || (unit_length + 4 > st_dline_size)):
 		return 0

@@ -52,6 +52,9 @@ void error(char *s);                 /* diagnostics.w */
 void define_asm_functions_arm64();   /* arm64_asm.w */
 void a64(int w);                     /* arm64.w */
 void macho_collect_symbols();       /* symbol_table.w */
+void debug_line_emit();             /* dwarf.w */
+void debug_info_emit_at(int text_start, int text_end); /* dwarf.w */
+void debug_abbrev_emit();           /* dwarf.w */
 void arm64_entry_rebase_stub();      /* elf_arm64.w */
 void arm64_emit_rebase_table();      /* elf_arm64.w */
 int sym_address(char *s);            /* symbol_table.w */
@@ -132,6 +135,31 @@ void macho_segname(char *s):
 	emit_zeros(16 - n)
 
 
+# An S_ATTR_DEBUG section header in __TEXT; addr/size/offset are
+# patched by macho_debug_section_patch in finish.
+void macho_debug_section(char* name):
+	macho_segname(name)
+	macho_segname(c"__TEXT")
+	emit_int64(0)                   /* addr, patched */
+	emit_int64(0)                   /* size, patched */
+	emit_int32(0)                   /* offset, patched */
+	emit_int32(0)                   /* align: 2^0 */
+	emit_int32(0)                   /* reloff */
+	emit_int32(0)                   /* nreloc */
+	emit_int32(op(0x02, 0x000000))  /* S_ATTR_DEBUG */
+	emit_zeros(12)                  /* reserved1-3 */
+
+
+# Point section `index` (0 = __text) at [start, codepos) of the file,
+# which __TEXT maps at 0x100000000 + offset.
+void macho_debug_section_patch(int index, int start):
+	int sect = macho_text_seg_pos + 72 + index * 80
+	save_int64(code + sect + 32, start)               /* addr lo */
+	save_int32(code + sect + 36, 1)                   /* addr hi */
+	save_int64(code + sect + 40, codepos - start)     /* size */
+	save_int32(code + sect + 48, start)               /* offset */
+
+
 # LC_SEGMENT_64 (cmd 0x19, 72 bytes, no sections — the kernel, dyld and
 # codesign only read segments). vmaddr/vmsize/fileoff/filesize are int64s
 # emitted as lo/hi int32 pairs; size fields left 0 here are patched in
@@ -183,7 +211,7 @@ void macho_start_arm64():
 		emit_int32(0)               /* cpusubtype CPU_SUBTYPE_ARM64_ALL */
 	emit_int32(2)                   /* filetype MH_EXECUTE */
 	emit_int32(11)                  /* ncmds */
-	emit_int32(632)                 /* sizeofcmds: 4*72+80+24+80+32+24+24+24+56 */
+	emit_int32(872)                 /* sizeofcmds: 4*72+4*80+24+80+32+24+24+24+56 */
 	emit_int32(op(0x00, 0x200085))  /* flags MH_NOUNDEFS | MH_DYLDLINK
 	                                   | MH_TWOLEVEL | MH_PIE; without
 	                                   MH_DYLDLINK the process is killed
@@ -197,10 +225,15 @@ void macho_start_arm64():
 	# r-x (Apple Silicon refuses w+x). Sizes patched in finish.
 	macho_text_seg_pos = codepos
 	macho_segment_64(c"__TEXT", 0, 1, 0, 0, 5)
-	# One section, __text, spanning the code after the headerpad: symbols
-	# need a section to belong to (n_sect). Range patched in finish.
-	save_int32(code + macho_text_seg_pos + 4, 152)  /* cmdsize: 72 + 80 */
-	save_int32(code + macho_text_seg_pos + 64, 1)   /* nsects */
+	# Four sections, all ranges patched in finish: __text spans the code
+	# after the headerpad (symbols need a section to belong to, n_sect
+	# 1); __debug_line, __debug_info and __debug_abbrev hold the DWARF
+	# line table and its compile unit, appended after the code inside
+	# __TEXT so dyld maps them and the signature covers them.
+	# lib/stack_trace.w finds __debug_line by name for file:line in
+	# traces; lldb uses all three.
+	save_int32(code + macho_text_seg_pos + 4, 392)  /* cmdsize: 72 + 4*80 */
+	save_int32(code + macho_text_seg_pos + 64, 4)   /* nsects */
 	macho_segname(c"__text")
 	macho_segname(c"__TEXT")
 	emit_int64(0)                   /* addr, patched */
@@ -211,6 +244,9 @@ void macho_start_arm64():
 	emit_int32(0)                   /* nreloc */
 	emit_int32(op(0x80, 0x000400))  /* S_ATTR_PURE_INSTRUCTIONS | S_ATTR_SOME_INSTRUCTIONS */
 	emit_zeros(12)                  /* reserved1-3 */
+	macho_debug_section(c"__debug_line")
+	macho_debug_section(c"__debug_info")
+	macho_debug_section(c"__debug_abbrev")
 
 	# __DATA: rw globals + rebase table, exactly 16 MB above __TEXT to
 	# match the nominal data_offset - code_offset distance.
@@ -334,6 +370,18 @@ void macho_finish_arm64():
 	save_int32(code + macho_text_seg_pos + 72 + 36, 1)                     /* addr hi */
 	save_int64(code + macho_text_seg_pos + 72 + 40, codepos - macho_text_start)  /* size */
 	save_int32(code + macho_text_seg_pos + 72 + 48, macho_text_start)      /* offset */
+
+	# The DWARF line table and its compile unit, right after the code.
+	int text_end = codepos
+	int debug_start = codepos
+	debug_line_emit()
+	macho_debug_section_patch(1, debug_start)
+	debug_start = codepos
+	debug_info_emit_at(macho_text_start, text_end)
+	macho_debug_section_patch(2, debug_start)
+	debug_start = codepos
+	debug_abbrev_emit()
+	macho_debug_section_patch(3, debug_start)
 
 	# Pad the text to a page boundary; __DATA's file offset must be
 	# page-congruent with its vmaddr (both end up 16 KB-aligned).
