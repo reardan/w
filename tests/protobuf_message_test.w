@@ -283,6 +283,64 @@ void test_descriptor_and_wresult_api():
 	free(buf)
 
 
+# Recursive messages: a self reference needs nothing extra; two
+# messages that refer to each other need a forward declaration.
+message pbm_tree:
+	int32 value = 1
+	pbm_tree parent = 2
+	repeated pbm_tree children = 3
+
+
+message pbm_pong
+
+
+message pbm_ping:
+	pbm_pong pong = 1
+	float ratio = 2
+	sfixed32 delta = 3
+
+
+message pbm_pong:
+	pbm_ping ping = 1
+	int32 hops = 2
+
+
+void test_recursive_messages_and_float():
+	pbm_tree* root = cast(pbm_tree*, pb_message_new(proto_descriptor(pbm_tree)))
+	root.value = 1
+	root.children = new list[pbm_tree]
+	pbm_tree* child = cast(pbm_tree*, pb_message_new(proto_descriptor(pbm_tree)))
+	child.value = 2
+	root.children.push(*child)
+	pbm_tree* up = cast(pbm_tree*, pb_message_new(proto_descriptor(pbm_tree)))
+	up.value = 7
+	root.parent = up
+	pb_bytes* w = to_proto(root)
+	pbm_tree* back = from_proto(pbm_tree, w)
+	assert_equal(1, back.value)
+	assert_equal(7, back.parent.value)
+	assert_equal(2, back.children[0].value)
+	pb_free_message(proto_descriptor(pbm_tree), cast(char*, back))
+	pb_bytes_free(w)
+
+	pbm_ping* ping = cast(pbm_ping*, pb_message_new(proto_descriptor(pbm_ping)))
+	pbm_pong* pong = cast(pbm_pong*, pb_message_new(proto_descriptor(pbm_pong)))
+	pong.hops = 3
+	ping.pong = pong
+	ping.ratio = 1.5
+	ping.delta = -1
+	w = to_proto(ping)
+	# pong(1){hops=3}, ratio(2) float 1.5 = 00 00 c0 3f,
+	# delta(3) sfixed32 -1 = ff ff ff ff.
+	pbm_expect_bytes(c"pbm_ping", w, c"\x0a\x02\x10\x03\x15\x00\x00\xc0\x3f\x1d\xff\xff\xff\xff", 14)
+	pbm_ping* pback = from_proto(pbm_ping, w)
+	assert_equal(3, pback.pong.hops)
+	assert1(pback.ratio == 1.5)
+	assert_equal(-1, pback.delta)
+	pb_free_message(proto_descriptor(pbm_ping), cast(char*, pback))
+	pb_bytes_free(w)
+
+
 void test_empty_message():
 	pbm_empty e
 	e.unused = 0
@@ -320,6 +378,7 @@ int main():
 	test_unknown_fields_are_skipped()
 	test_malformed_input_decodes_to_null()
 	test_descriptor_and_wresult_api()
+	test_recursive_messages_and_float()
 	test_empty_message()
 	println(c"protobuf message tests OK")
 	return 0

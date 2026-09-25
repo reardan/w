@@ -63,6 +63,8 @@ void test_generated_messages_round_trip():
 	item.gift = true
 	item.adjustments = new list[int32]
 	item.adjustments.push(-1)
+	item.weight = 0.5
+	item.offset = -7
 	order.items.push(*item)
 	order.status = Order_STATUS_SHIPPED
 	order.tags = new list[Order_TagsEntry]
@@ -75,6 +77,20 @@ void test_generated_messages_round_trip():
 	voucher.discount = -5
 	order.voucher = voucher
 	pbc_set(&order.note, c"hi")
+	Money* total = cast(Money*, pb_message_new(proto_descriptor(Money)))
+	pbc_set(&total.currency, c"NOK")
+	total.cents = 1250
+	order.total = total
+	Category* root = cast(Category*, pb_message_new(proto_descriptor(Category)))
+	pbc_set(&root.name, c"root")
+	Category* leaf = cast(Category*, pb_message_new(proto_descriptor(Category)))
+	pbc_set(&leaf.name, c"leaf")
+	leaf.parent = root
+	leaf.children = new list[Category]
+	Category* grandchild = cast(Category*, pb_message_new(proto_descriptor(Category)))
+	pbc_set(&grandchild.name, c"gc")
+	leaf.children.push(*grandchild)
+	order.category = leaf
 
 	pb_bytes* w = to_proto(order)
 	Order* back = from_proto(Order, w)
@@ -98,6 +114,13 @@ void test_generated_messages_round_trip():
 	assert_equal(-5, back.voucher.discount)
 	assert_equal(0, cast(int, back.card_token.data))
 	assert_strings_equal(c"hi", back.note.data)
+	assert_strings_equal(c"NOK", back.total.currency.data)
+	assert_equal(1250, back.total.cents)
+	assert_strings_equal(c"leaf", back.category.name.data)
+	assert_strings_equal(c"root", back.category.parent.name.data)
+	assert_strings_equal(c"gc", back.category.children[0].name.data)
+	assert1(back.items[0].weight == 0.5)
+	assert_equal(-7, back.items[0].offset)
 	pb_free_message(proto_descriptor(Order), cast(char*, back))
 	pb_bytes_free(w)
 
@@ -137,6 +160,25 @@ void pbc_expect_contains(char* haystack, char* needle):
 		exit(1)
 
 
+void test_mutually_recursive_messages():
+	Ping* ping = cast(Ping*, pb_message_new(proto_descriptor(Ping)))
+	Pong* pong = cast(Pong*, pb_message_new(proto_descriptor(Pong)))
+	Ping* inner = cast(Ping*, pb_message_new(proto_descriptor(Ping)))
+	pong.hops = 2
+	pong.ping = inner
+	ping.pong = pong
+	pb_bytes* w = to_proto(ping)
+	# ping{pong(1){ping(1){} hops(2)=2}}: the empty inner Ping still
+	# encodes as a present, zero-length submessage.
+	pbc_expect_bytes(c"ping", w, c"\x0a\x04\x0a\x00\x10\x02", 6)
+	Ping* back = from_proto(Ping, w)
+	assert_equal(2, back.pong.hops)
+	assert1(back.pong.ping != 0)
+	assert_equal(0, cast(int, back.pong.ping.pong))
+	pb_free_message(proto_descriptor(Ping), cast(char*, back))
+	pb_bytes_free(w)
+
+
 void test_generator_output_shape():
 	char* w = pbc_generate(c"syntax = \"proto3\";\nmessage A { B b = 1; }\nmessage B { int32 x = 1; }\n")
 	assert1(w != 0)
@@ -148,12 +190,17 @@ void test_generator_output_shape():
 	pbc_expect_contains(w, c"\tB b = 1\n")
 	pbc_expect_contains(w, c"import libs.extras.protobuf.message\n")
 
+	# A cycle gets one forward declaration; a self reference needs none.
+	char* cyc = pbc_generate(c"message A { B b = 1; A self = 2; }\nmessage B { A a = 1; double d = 2; }\n")
+	assert1(cyc != 0)
+	pbc_expect_contains(cyc, c"\nmessage A\n")
+	pbc_expect_contains(cyc, c"\tA self = 2\n")
+	pbc_expect_contains(cyc, c"\tdouble d = 2\n")
+
 
 void test_generator_errors():
-	pbc_expect_contains(pbc_first_error(c"message A { double d = 1; }"), c"t.proto:1: protobuf type not supported yet: 'double'")
 	pbc_expect_contains(pbc_first_error(c"message A {\n  Missing m = 1;\n}"), c"t.proto:2: unknown type 'Missing'")
-	pbc_expect_contains(pbc_first_error(c"message A { A self = 1; }"), c"recursive messages are not supported yet:")
-	pbc_expect_contains(pbc_first_error(c"message A { B b = 1; }\nmessage B { A a = 1; }"), c"recursive messages are not supported yet:")
+	pbc_expect_contains(pbc_first_error(c"import \"no/such.proto\";\nmessage A { int32 x = 1; }"), c"t.proto:1: cannot find imported file 'no/such.proto'")
 	pbc_expect_contains(pbc_first_error(c"message A { int32 x = 0; }"), c"field number must be between 1 and 536870911")
 	pbc_expect_contains(pbc_first_error(c"enum E { NEG = -1; }"), c"negative enum values are not supported yet")
 	pbc_expect_contains(pbc_first_error(c"message A { int32 x = 1 }"), c"t.proto:1: syntax error")
@@ -162,6 +209,7 @@ void test_generator_errors():
 int main():
 	test_generated_messages_round_trip()
 	test_map_entries_match_the_wire_format()
+	test_mutually_recursive_messages()
 	test_generator_output_shape()
 	test_generator_errors()
 	println(c"protobuf codegen tests OK")
