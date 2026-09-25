@@ -343,7 +343,10 @@ current state:
 			darwin crash reports and symbols (issue #378): the Mach-O
 				writer emits an nlist symbol table (one __TEXT,__text
 				section; nm/atos/lldb name W functions) and a content-hash
-				LC_UUID; lib/stack_trace.w reads the mapped Mach-O image;
+				LC_UUID, plus the DWARF line table and its compile unit
+				as __TEXT,__debug_line/__debug_info/__debug_abbrev
+				(file:line in traces, lldb source lines);
+				lib/stack_trace.w reads the mapped Mach-O image;
 				crash_handler_install() reports SIGSEGV/SIGBUS/SIGILL/
 				SIGFPE/SIGTRAP on arm64_darwin through the compiler's
 				signal_trampoline stub (darwin rt_sigaction is real),
@@ -500,8 +503,7 @@ current state:
 				though x86/x64 code now keeps a frame-pointer chain (crash
 				traces, stack_trace_collect and wcore walk it), so an older
 				frame's base can be unknown (locals unaddressable)
-			darwin crash traces: function names only (Mach-O has no
-				line table yet); no crash handler on arm64e (--pac=full)
+			darwin crash traces: no crash handler on arm64e (--pac=full)
 				images (needs a signed sa_tramp: name signal_trampoline
 				once SEEDS pins a release with it); arm64 Linux still has
 				no crash handler (no sigcontext accessors)

@@ -259,7 +259,16 @@ void debug_line_emit():
 		emit_int8(0)
 		emit_int8(1 + word_size)
 		emit_int8(2)
-		emit_target_word(cur_address + code_offset)
+		if (target_os == 1):
+			# Mach-O: the table rides in __TEXT,__debug_line
+			# (code_generator/macho_64.w), so it carries real vmaddrs:
+			# __TEXT maps at 0x100000000 with file offset 0, making
+			# the address the code offset in the low word and 1 in
+			# the high word (as for the nlist values).
+			emit_int32(cur_address)
+			emit_int32(1)
+		else:
+			emit_target_word(cur_address + code_offset)
 
 		i = 0
 		while (i < debug_line_count):
@@ -307,8 +316,10 @@ void debug_abbrev_emit():
 	emit_int8(0) /* end of abbreviations */
 
 
-# .debug_info: a single compile unit pointing at the line table.
-void debug_info_emit(int text_end):
+# .debug_info: a single compile unit pointing at the line table. On
+# Mach-O the unit starts at code offset text_start (where __text
+# begins); ELF units start at the image base and ignore it.
+void debug_info_emit_at(int text_start, int text_end):
 	int unit_start = codepos
 	emit_int32(0) /* unit_length, patched below */
 	emit_int16(2) /* DWARF version 2 */
@@ -321,7 +332,19 @@ void debug_info_emit(int text_end):
 	emit_string(unit_name) /* DW_AT_name */
 	emit_int32(0) /* DW_AT_stmt_list: offset 0 in .debug_line */
 	/* DW_FORM_addr fields are address_size (= target word size) wide */
-	emit_target_word(code_offset) /* DW_AT_low_pc */
-	emit_target_word(text_end + code_offset) /* DW_AT_high_pc */
+	if (target_os == 1):
+		# Mach-O vmaddrs (see debug_line_emit): __TEXT at 0x100000000,
+		# so text_start / text_end are the code offsets, high word 1.
+		emit_int32(text_start) /* DW_AT_low_pc */
+		emit_int32(1)
+		emit_int32(text_end) /* DW_AT_high_pc */
+		emit_int32(1)
+	else:
+		emit_target_word(code_offset) /* DW_AT_low_pc */
+		emit_target_word(text_end + code_offset) /* DW_AT_high_pc */
 	emit_uleb(0) /* end of children */
 	save_int(code + unit_start, codepos - unit_start - 4)
+
+
+void debug_info_emit(int text_end):
+	debug_info_emit_at(0, text_end)

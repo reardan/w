@@ -54,8 +54,8 @@ macOS (arm64_darwin): the same report, from the darwin ucontext -
 x0..x28, fp, lr, sp, pc and cpsr, the faulting address from the
 exception state, and the image's LC_UUID where ELF prints its build-id.
 SIGTRAP (W's brk traps) and SIGBUS (10 on darwin) are covered too.
-Frames carry function names only (Mach-O has no line table yet); the
-trace follows the arm64 frame chain (x29 on the W stack), exact like
+Frames carry function names and file:line (from __TEXT,__debug_line);
+the trace follows the arm64 frame chain (x29 on the W stack), exact like
 x86/x64. Handlers enter through the compiler's
 signal_trampoline stub, found by name in the image's symbol table; an
 image built by a compiler without the stub, or an arm64e (--pac=full)

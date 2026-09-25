@@ -8,13 +8,14 @@ tools/mac/run_darwin_tests.sh:
   of the same chain. The faulting frame holds a live decoy: a genuine
   return address into the decoy functions, which the old return-address scan
   reported as a frame. The runner expects both traces to name every
-  level, no decoy frame and no heuristic note (the walk follows the
-  frame chain), the report's register and uuid lines, and death by
-  SIGSEGV.
+  level with its file:line (so line numbers below are asserted: keep
+  them stable or update tools/mac/run_darwin_tests.sh), no decoy frame
+  and no heuristic note (the walk follows the frame chain), the
+  report's register and uuid lines, and death by SIGSEGV.
 - bin/crash_darwin_pac_fixture (--pac=full, arm64e): the same program.
-  print_stack_trace() must still name every level (stacked return
-  addresses are signed and must be stripped), and no fatal-signal
-  report may appear: the handler is not installed on arm64e images
+  print_stack_trace() must still name every level with file:line
+  (stacked return addresses are signed and must be stripped), and no
+  fatal-signal report may appear: the handler is not installed on arm64e images
   (see crash_install_darwin).
 */
 # wbuild: target=crash_darwin tag=tests dep=wv2
