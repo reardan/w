@@ -180,75 +180,9 @@ void asm_x86_modrm_gp(asm_x86_dec* d, asm_operand* reg, asm_operand* rm):
 
 ############################### opcode groups ################################
 
-char* asm_x86_grp1_mnemonic(int reg):
-	if (reg == 0):
-		return c"add"
-	if (reg == 1):
-		return c"or"
-	if (reg == 2):
-		return c"adc"
-	if (reg == 3):
-		return c"sbb"
-	if (reg == 4):
-		return c"and"
-	if (reg == 5):
-		return c"sub"
-	if (reg == 6):
-		return c"xor"
-	return c"cmp"
-
-
-char* asm_x86_grp2_mnemonic(int reg):
-	if (reg == 0):
-		return c"rol"
-	if (reg == 1):
-		return c"ror"
-	if (reg == 2):
-		return c"rcl"
-	if (reg == 3):
-		return c"rcr"
-	if (reg == 4):
-		return c"shl"
-	if (reg == 5):
-		return c"shr"
-	if (reg == 7):
-		return c"sar"
-	return c"sal"
-
-
-# 0x70+cc / 0x0f80+cc / 0x0f90+cc condition suffixes.
+# 0x70+cc / 0x0f80+cc / 0x0f90+cc condition suffixes (cc is 0..15).
 char* asm_x86_cc(int cc):
-	if (cc == 0):
-		return c"o"
-	if (cc == 1):
-		return c"no"
-	if (cc == 2):
-		return c"b"
-	if (cc == 3):
-		return c"ae"
-	if (cc == 4):
-		return c"e"
-	if (cc == 5):
-		return c"ne"
-	if (cc == 6):
-		return c"be"
-	if (cc == 7):
-		return c"a"
-	if (cc == 8):
-		return c"s"
-	if (cc == 9):
-		return c"ns"
-	if (cc == 10):
-		return c"p"
-	if (cc == 11):
-		return c"np"
-	if (cc == 12):
-		return c"l"
-	if (cc == 13):
-		return c"ge"
-	if (cc == 14):
-		return c"le"
-	return c"g"
+	return asm_name_slot(asm_x86_cc_table(), 3, 16, cc)
 
 
 char* asm_x86_concat(char* a, char* b):
@@ -287,35 +221,6 @@ void asm_x86_rel_target(asm_insn* insn, asm_x86_dec* d, int rel):
 	insn.branch_target = insn.address + target
 
 
-################################ SSE opcodes #################################
-
-# f2/f3 0f xx scalar-float ALU: returns the mnemonic or 0.
-char* asm_x86_sse_alu(int rep, int op):
-	if (op == 0x58):
-		if (rep == 0xf2):
-			return c"addsd"
-		return c"addss"
-	if (op == 0x59):
-		if (rep == 0xf2):
-			return c"mulsd"
-		return c"mulss"
-	if (op == 0x5c):
-		if (rep == 0xf2):
-			return c"subsd"
-		return c"subss"
-	if (op == 0x5e):
-		if (rep == 0xf2):
-			return c"divsd"
-		return c"divss"
-	if (op == 0x5a):
-		if (rep == 0xf2):
-			return c"cvtsd2ss"
-		return c"cvtss2sd"
-	return 0
-
-
-char* asm_x86_grp8_mnemonic(int ext);
-
 # Decode a 0f-prefixed opcode. Returns bytes consumed for the whole
 # instruction, or 0 if unrecognized (caller emits .byte).
 int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
@@ -330,7 +235,7 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 	if (op == 0xba):
 		int modrm = asm_x86_u8(d)
 		int ext = (modrm >> 3) & 7
-		char* g8 = asm_x86_grp8_mnemonic(ext)
+		char* g8 = asm_x86_group_name(8, ext)
 		if (cast(int, g8) == 0):
 			return 0
 		insn.mnemonic = g8
@@ -459,7 +364,7 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 		return d.pos - start
 
 	# scalar-float ALU (add/mul/sub/div/cvt between ss/sd)
-	char* sse = asm_x86_sse_alu(d.rep, op)
+	char* sse = asm_name_slot(asm_x86_sse_table(d.rep), 9, 7, op - 0x58)
 	if (cast(int, sse) != 0):
 		insn.mnemonic = sse
 		int modrm = asm_x86_u8(d)
@@ -475,8 +380,6 @@ int asm_x86_decode_0f(asm_x86_dec* d, asm_insn* insn, int start):
 # Defined below; the single-pass compiler needs them declared before use.
 int asm_x86_unknown(asm_insn* insn, char* bytes);
 int asm_x86_decode_vex(asm_x86_dec* d, asm_insn* insn, char* bytes, int length, int start);
-char* asm_x86_grp3_mnemonic(int ext);
-char* asm_x86_grp5_mnemonic(int ext);
 
 # ALU r/m,r and eax,imm families share opcode column layout: the low
 # three bits of the base opcode select the form.
@@ -486,26 +389,6 @@ int asm_x86_alu_base(int op):
 		if (col <= 5):
 			return op - col
 	return -1
-
-
-char* asm_x86_alu_mnemonic(int base):
-	if (base == 0x00):
-		return c"add"
-	if (base == 0x08):
-		return c"or"
-	if (base == 0x10):
-		return c"adc"
-	if (base == 0x18):
-		return c"sbb"
-	if (base == 0x20):
-		return c"and"
-	if (base == 0x28):
-		return c"sub"
-	if (base == 0x30):
-		return c"xor"
-	if (base == 0x38):
-		return c"cmp"
-	return 0
 
 
 # Decode one instruction at bytes[0..length) with virtual address
@@ -585,7 +468,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	# ALU r/m,r ; r,r/m ; al/eax,imm
 	int base = asm_x86_alu_base(op)
 	if (base >= 0):
-		char* mnemonic = asm_x86_alu_mnemonic(base)
+		char* mnemonic = asm_x86_group_name(1, base >> 3)
 		int col = op - base
 		if (col == 0):
 			# r/m8, r8
@@ -698,7 +581,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	# grp1 r/m32, imm32 (0x81) and r/m32, imm8 (0x83)
 	if (op == 0x81 || op == 0x83):
 		int modrm = asm_x86_u8(d)
-		insn.mnemonic = asm_x86_grp1_mnemonic((modrm >> 3) & 7)
+		insn.mnemonic = asm_x86_group_name(1, (modrm >> 3) & 7)
 		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), d.opsize)
 		if (op == 0x81):
 			if (d.opsize == 2):
@@ -807,7 +690,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	# grp2 r/m32, imm8 (0xc1)
 	if (op == 0xc1):
 		int modrm = asm_x86_u8(d)
-		insn.mnemonic = asm_x86_grp2_mnemonic((modrm >> 3) & 7)
+		insn.mnemonic = asm_x86_group_name(2, (modrm >> 3) & 7)
 		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), d.opsize)
 		asm_x86_set_imm(&insn.op2, asm_x86_u8(d), 1)
 		insn.length = d.pos - start
@@ -816,7 +699,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	# grp2 r/m32, cl (0xd3) and r/m32, 1 (0xd1)
 	if (op == 0xd1 || op == 0xd3):
 		int modrm = asm_x86_u8(d)
-		insn.mnemonic = asm_x86_grp2_mnemonic((modrm >> 3) & 7)
+		insn.mnemonic = asm_x86_group_name(2, (modrm >> 3) & 7)
 		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP(), d.opsize)
 		if (op == 0xd3):
 			asm_x86_set_reg(&insn.op2, ASM_RCLASS_GP(), 1, 1)
@@ -876,7 +759,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 			size = 1
 		int modrm = asm_x86_u8(d)
 		int ext = (modrm >> 3) & 7
-		char* mnemonic = asm_x86_grp3_mnemonic(ext)
+		char* mnemonic = asm_x86_group_name(3, ext)
 		if (cast(int, mnemonic) == 0):
 			return asm_x86_unknown(insn, bytes)
 		insn.mnemonic = mnemonic
@@ -896,7 +779,7 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	if (op == 0xff):
 		int modrm = asm_x86_u8(d)
 		int ext = (modrm >> 3) & 7
-		char* mnemonic = asm_x86_grp5_mnemonic(ext)
+		char* mnemonic = asm_x86_group_name(5, ext)
 		if (cast(int, mnemonic) == 0):
 			return asm_x86_unknown(insn, bytes)
 		insn.mnemonic = mnemonic
@@ -919,51 +802,6 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 		return insn.length
 
 	return asm_x86_unknown(insn, bytes)
-
-
-char* asm_x86_grp3_mnemonic(int ext):
-	if (ext == 0):
-		return c"test"
-	if (ext == 2):
-		return c"not"
-	if (ext == 3):
-		return c"neg"
-	if (ext == 4):
-		return c"mul"
-	if (ext == 5):
-		return c"imul"
-	if (ext == 6):
-		return c"div"
-	if (ext == 7):
-		return c"idiv"
-	return 0
-
-
-# 0f ba /ext bit-test-with-imm8 group (bt/bts/btr/btc use ext 4/5/6/7).
-char* asm_x86_grp8_mnemonic(int ext):
-	if (ext == 4):
-		return c"bt"
-	if (ext == 5):
-		return c"bts"
-	if (ext == 6):
-		return c"btr"
-	if (ext == 7):
-		return c"btc"
-	return 0
-
-
-char* asm_x86_grp5_mnemonic(int ext):
-	if (ext == 0):
-		return c"inc"
-	if (ext == 1):
-		return c"dec"
-	if (ext == 2):
-		return c"call"
-	if (ext == 4):
-		return c"jmp"
-	if (ext == 6):
-		return c"push"
-	return 0
 
 
 # One unknown byte -> `.byte 0xNN`, length 1, so callers keep walking.
