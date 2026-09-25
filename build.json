@@ -2163,6 +2163,7 @@
 				"graphics_ui_tree_test",
 				"graphics_ui_widgets_test",
 				"grpc_64_test",
+				"grpc_stream_64_test",
 				"hash_table_64_test",
 				"heap_64_test",
 				"hpack_64_test",
@@ -2787,6 +2788,7 @@
 				"graphics_event_test",
 				"graphics_ui_buffer_test",
 				"graphics_ui_core_test",
+				"grpc_stream_test",
 				"grpc_test",
 				"hash_table_test",
 				"heap_test",
@@ -4785,6 +4787,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "libs/standard/web/grpc_test.w", "-o", "bin/grpc_64_test"]},
 				{"cmd": ["bin/grpc_64_test"]}
+			]
+		},
+		{
+			"name": "grpc_stream_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/grpc_stream_test.w"],
+			"outputs": ["bin/grpc_stream_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/web/grpc_stream_test.w", "-o", "bin/grpc_stream_64_test"]},
+				{"cmd": ["bin/grpc_stream_64_test"]}
+			]
+		},
+		{
+			"name": "grpc_stream_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/web/grpc_stream_test.w"],
+			"outputs": ["bin/grpc_stream_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/web/grpc_stream_test.w", "-o", "bin/grpc_stream_test"]},
+				{"cmd": ["bin/grpc_stream_test"]}
 			]
 		},
 		{
