@@ -454,22 +454,13 @@ void wvct_rm_rf(char* path):
 # commit with a single parent, `parent_commit_id`. Returns the malloc'd
 # 64-hex commit id.
 char* wvct_build_sibling_commit(wcas* store, char* parent_commit_id, char* content_dir, char* message):
-	wresult[char*]* tree_r = tree_snapshot(store, content_dir, 0)
-	assert1(result_is_ok[char*](tree_r))
-	char* tree_id = result_value[char*](tree_r)
-	result_free[char*](tree_r)
+	char* tree_id = result_expect[char*](tree_snapshot(store, content_dir, 0))
 
 	list[char*] parents = new list[char*]
 	parents.push(parent_commit_id)
-	wresult[commit_object*]* co_r = commit_new(tree_id, parents, c"wvc-test", time_now(), message, strlen(message))
-	assert1(result_is_ok[commit_object*](co_r))
-	commit_object* co = result_value[commit_object*](co_r)
-	result_free[commit_object*](co_r)
+	commit_object* co = result_expect[commit_object*](commit_new(tree_id, parents, c"wvc-test", time_now(), message, strlen(message)))
 
-	wresult[char*]* stored_r = commit_store(store, co)
-	assert1(result_is_ok[char*](stored_r))
-	char* commit_id = result_value[char*](stored_r)
-	result_free[char*](stored_r)
+	char* commit_id = result_expect[char*](commit_store(store, co))
 
 	commit_free(co)
 	list_free[char*](parents)
@@ -478,18 +469,12 @@ char* wvct_build_sibling_commit(wcas* store, char* parent_commit_id, char* conte
 
 
 wcas* wvct_open_store_direct(char* meta):
-	wresult[wcas*]* r = cas_open(meta)
-	assert1(result_is_ok[wcas*](r))
-	wcas* store = result_value[wcas*](r)
-	result_free[wcas*](r)
+	wcas* store = result_expect[wcas*](cas_open(meta))
 	return store
 
 
 commit_object* wvct_load_commit_direct(wcas* store, char* commit_id):
-	wresult[commit_object*]* r = commit_load(store, commit_id)
-	assert1(result_is_ok[commit_object*](r))
-	commit_object* co = result_value[commit_object*](r)
-	result_free[commit_object*](r)
+	commit_object* co = result_expect[commit_object*](commit_load(store, commit_id))
 	return co
 
 

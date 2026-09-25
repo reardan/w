@@ -19,10 +19,7 @@ void test_zlib_roundtrip():
 	char* src = c"round trip through zlib_compress and zlib_decompress"
 	int len = strlen(src)
 	zlib_result* c = zlib_compress(src, len, DEFLATE_LEVEL_STORED())
-	wresult[zlib_result*]* r = zlib_decompress(c.data, c.length, 0)
-	assert1(result_is_ok[zlib_result*](r))
-	zlib_result* out = result_value[zlib_result*](r)
-	result_free[zlib_result*](r)
+	zlib_result* out = result_expect[zlib_result*](zlib_decompress(c.data, c.length, 0))
 	assert_equal(len, out.length)
 	assert_strings_equal(src, out.data)
 	zlib_result_free(out)
@@ -43,10 +40,7 @@ void test_zlib_roundtrip_fast_and_best():
 		src[i] = 'a' + (i % 7)
 		i = i + 1
 	zlib_result* fast = zlib_compress(src, n, DEFLATE_LEVEL_FAST())
-	wresult[zlib_result*]* fr = zlib_decompress(fast.data, fast.length, 0)
-	assert1(result_is_ok[zlib_result*](fr))
-	zlib_result* fout = result_value[zlib_result*](fr)
-	result_free[zlib_result*](fr)
+	zlib_result* fout = result_expect[zlib_result*](zlib_decompress(fast.data, fast.length, 0))
 	assert_equal(n, fout.length)
 	assert1(fast.length < n)
 	int j = 0
@@ -57,10 +51,7 @@ void test_zlib_roundtrip_fast_and_best():
 	zlib_result_free(fast)
 
 	zlib_result* best = zlib_compress(src, n, DEFLATE_LEVEL_BEST())
-	wresult[zlib_result*]* br = zlib_decompress(best.data, best.length, 0)
-	assert1(result_is_ok[zlib_result*](br))
-	zlib_result* bout = result_value[zlib_result*](br)
-	result_free[zlib_result*](br)
+	zlib_result* bout = result_expect[zlib_result*](zlib_decompress(best.data, best.length, 0))
 	assert_equal(n, bout.length)
 	assert1(best.length < n)
 	j = 0
@@ -105,10 +96,7 @@ void test_zlib_header_flevel_tracks_level():
 
 void test_zlib_decompress_real_zlib_output():
 	# python3: zlib.compress(b"zlib wrapper round trip test data 12345", 6)
-	wresult[zlib_result*]* r = zlib_decompress(c"\x78\x9c\xab\xca\xc9\x4c\x52\x28\x2f\x4a\x2c\x28\x48\x2d\x52\x28\xca\x2f\xcd\x4b\x51\x28\x29\xca\x2c\x50\x28\x49\x2d\x2e\x51\x48\x49\x2c\x49\x54\x30\x34\x32\x36\x31\x05\x00\x27\xdb\x0d\xb3", 47, 0)
-	assert1(result_is_ok[zlib_result*](r))
-	zlib_result* out = result_value[zlib_result*](r)
-	result_free[zlib_result*](r)
+	zlib_result* out = result_expect[zlib_result*](zlib_decompress(c"\x78\x9c\xab\xca\xc9\x4c\x52\x28\x2f\x4a\x2c\x28\x48\x2d\x52\x28\xca\x2f\xcd\x4b\x51\x28\x29\xca\x2c\x50\x28\x49\x2d\x2e\x51\x48\x49\x2c\x49\x54\x30\x34\x32\x36\x31\x05\x00\x27\xdb\x0d\xb3", 47, 0))
 	assert_strings_equal(c"zlib wrapper round trip test data 12345", out.data)
 	zlib_result_free(out)
 

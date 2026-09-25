@@ -16,6 +16,7 @@ Payload policy: keep T word-sized (int, pointers, char, bool). See
 docs/error_results.txt.
 */
 import lib.lib
+import lib.assert
 
 
 struct wresult[T]:
@@ -90,5 +91,15 @@ void result_free[T](wresult[T]* r):
 
 T result_take_or[T](wresult[T]* r, T fallback):
 	T value = result_unwrap_or[T](r, fallback)
+	result_free[T](r)
+	return value
+
+
+# The payload of a result that must be ok (asserting so), freeing r --
+# the unwrap tests and tools use when an error is a bug, not a case to
+# handle.
+T result_expect[T](wresult[T]* r):
+	assert1(result_is_ok[T](r))
+	T value = r.value
 	result_free[T](r)
 	return value

@@ -135,10 +135,7 @@ char* wvcp_run_ok(list[char*] args, char* cwd):
 
 # The store's loose ids, sorted (owned list of owned ids).
 list[char*] wvcp_loose_ids(wcas* s):
-	wresult[list[char*]]* r = pack_loose_ids(s)
-	assert1(result_is_ok[list[char*]](r))
-	list[char*] ids = result_value[list[char*]](r)
-	result_free[list[char*]](r)
+	list[char*] ids = result_expect[list[char*]](pack_loose_ids(s))
 	ids.sort_by(strcmp)
 	return ids
 
@@ -181,10 +178,7 @@ void test_wvc_pack_unpack_end_to_end():
 
 	# Baseline: every loose id and its exact on-disk file bytes.
 	char* meta = path_join(dir, c".wvc")
-	wresult[wcas*]* store_r = cas_open(meta)
-	assert1(result_is_ok[wcas*](store_r))
-	wcas* store = result_value[wcas*](store_r)
-	result_free[wcas*](store_r)
+	wcas* store = result_expect[wcas*](cas_open(meta))
 	list[char*] before_ids = wvcp_loose_ids(store)
 	assert1(before_ids.length > 0)
 	list[string_builder*] before_bytes = new list[string_builder*]

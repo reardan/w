@@ -72,10 +72,7 @@ char* vcpt_root():
 
 
 wcas* vcpt_open():
-	wresult[wcas*]* r = cas_open(vcpt_root())
-	assert1(result_is_ok[wcas*](r))
-	wcas* s = result_value[wcas*](r)
-	result_free[wcas*](r)
+	wcas* s = result_expect[wcas*](cas_open(vcpt_root()))
 	return s
 
 
@@ -151,10 +148,7 @@ string_builder* vcpt_target_content():
 
 
 char* vcpt_put_blob(wcas* s, char* data, int length):
-	wresult[char*]* r = cas_put(s, c"blob", data, length)
-	assert1(result_is_ok[char*](r))
-	char* id = result_value[char*](r)
-	result_free[char*](r)
+	char* id = result_expect[char*](cas_put(s, c"blob", data, length))
 	return id
 
 
@@ -191,10 +185,7 @@ void test_pack_populate_store():
 
 	# The build-cache species: a keyed put whose id is not the hash of
 	# its bytes.
-	wresult[char*]* raw_r = cas_put_raw(s, VCPT_RAW_KEY(), c"out", VCPT_RAW_CONTENT(), strlen(VCPT_RAW_CONTENT()))
-	assert1(result_is_ok[char*](raw_r))
-	vcpt_raw_id = result_value[char*](raw_r)
-	result_free[char*](raw_r)
+	vcpt_raw_id = result_expect[char*](cas_put_raw(s, VCPT_RAW_KEY(), c"out", VCPT_RAW_CONTENT(), strlen(VCPT_RAW_CONTENT())))
 	vcpt_ids.push(vcpt_raw_id)
 
 	# The delta species: stored payload is a "delta" chain, id is the
@@ -203,10 +194,7 @@ void test_pack_populate_store():
 	vcpt_base_id = vcpt_put_blob(s, base.data, base.length)
 	vcpt_ids.push(vcpt_base_id)
 	string_builder* target = vcpt_target_content()
-	wresult[char*]* delta_r = cas_put_delta(s, vcpt_base_id, c"blob", target.data, target.length)
-	assert1(result_is_ok[char*](delta_r))
-	vcpt_delta_id = result_value[char*](delta_r)
-	result_free[char*](delta_r)
+	vcpt_delta_id = result_expect[char*](cas_put_delta(s, vcpt_base_id, c"blob", target.data, target.length))
 	vcpt_ids.push(vcpt_delta_id)
 	string_free(base)
 	string_free(target)
@@ -221,10 +209,7 @@ void test_pack_store_prune_and_read_through():
 	wcas* s = vcpt_open()
 	pack_attach(s)
 
-	wresult[pack_stats*]* st_r = pack_store_loose(s, 1)
-	assert1(result_is_ok[pack_stats*](st_r))
-	pack_stats* st = result_value[pack_stats*](st_r)
-	result_free[pack_stats*](st_r)
+	pack_stats* st = result_expect[pack_stats*](pack_store_loose(s, 1))
 	assert_equal(vcpt_ids.length, st.objects)
 	assert_equal(1, st.packs)
 	assert1(st.pack_path != 0)
@@ -318,10 +303,7 @@ void test_pack_unpack_round_trip():
 	wcas* s = vcpt_open()
 	pack_attach(s)
 
-	wresult[pack_stats*]* st_r = pack_unpack_all(s)
-	assert1(result_is_ok[pack_stats*](st_r))
-	pack_stats* st = result_value[pack_stats*](st_r)
-	result_free[pack_stats*](st_r)
+	pack_stats* st = result_expect[pack_stats*](pack_unpack_all(s))
 	assert_equal(vcpt_ids.length, st.objects)
 	assert_equal(1, st.packs)
 	pack_stats_free(st)
@@ -340,19 +322,13 @@ void test_pack_unpack_round_trip():
 	# Re-packing the identical object population reproduces the exact
 	# same pack file (name = sha256 of its own deterministic bytes),
 	# then a second unpack restores the loose store for cleanup.
-	wresult[pack_stats*]* again_r = pack_store_loose(s, 0)
-	assert1(result_is_ok[pack_stats*](again_r))
-	pack_stats* again = result_value[pack_stats*](again_r)
-	result_free[pack_stats*](again_r)
+	pack_stats* again = result_expect[pack_stats*](pack_store_loose(s, 0))
 	assert_strings_equal(vcpt_pack_path, again.pack_path)
 	pack_stats_free(again)
 	# No prune was requested: the loose copies must all still be there.
 	for char* id in vcpt_ids:
 		assert_equal(1, vcpt_loose_exists(s, id))
-	wresult[pack_stats*]* redo_r = pack_unpack_all(s)
-	assert1(result_is_ok[pack_stats*](redo_r))
-	pack_stats_free(result_value[pack_stats*](redo_r))
-	result_free[pack_stats*](redo_r)
+	pack_stats_free(result_expect[pack_stats*](pack_unpack_all(s)))
 
 	cas_close(s)
 
@@ -419,10 +395,7 @@ char* vcp2_root():
 
 
 wcas* vcp2_open():
-	wresult[wcas*]* r = cas_open(vcp2_root())
-	assert1(result_is_ok[wcas*](r))
-	wcas* s = result_value[wcas*](r)
-	result_free[wcas*](r)
+	wcas* s = result_expect[wcas*](cas_open(vcp2_root()))
 	return s
 
 
@@ -497,10 +470,7 @@ void test_pack_v2_deltify_smaller_and_read_through():
 		vcp2_loose_total = vcp2_loose_total + loose.length
 		vcp2_loose_bytes.push(loose)
 
-	wresult[pack_stats*]* st_r = pack_store_loose(s, 1)
-	assert1(result_is_ok[pack_stats*](st_r))
-	pack_stats* st = result_value[pack_stats*](st_r)
-	result_free[pack_stats*](st_r)
+	pack_stats* st = result_expect[pack_stats*](pack_store_loose(s, 1))
 	assert_equal(VCP2_VERSIONS(), st.objects)
 	assert_equal(1, st.packs)
 	vcp2_pack_path = strclone(st.pack_path)
@@ -531,10 +501,7 @@ void test_pack_v2_deltify_smaller_and_read_through():
 		assert_equal(0, vcpt_loose_exists(s, id))
 		assert_equal(1, cas_has(s, id))
 		string_builder* want = vcp2_version_content(k)
-		wresult[wcas_object*]* got = cas_get(s, id)
-		assert1(result_is_ok[wcas_object*](got))
-		wcas_object* obj = result_value[wcas_object*](got)
-		result_free[wcas_object*](got)
+		wcas_object* obj = result_expect[wcas_object*](cas_get(s, id))
 		assert_strings_equal(c"blob", obj.object_type)
 		vcpt_assert_bytes_equal(want.data, want.length, obj.data, obj.length)
 		cas_object_free(obj)
@@ -548,10 +515,7 @@ void test_pack_v2_unpack_round_trip_and_determinism():
 	wcas* s = vcp2_open()
 	pack_attach(s)
 
-	wresult[pack_stats*]* st_r = pack_unpack_all(s)
-	assert1(result_is_ok[pack_stats*](st_r))
-	pack_stats* st = result_value[pack_stats*](st_r)
-	result_free[pack_stats*](st_r)
+	pack_stats* st = result_expect[pack_stats*](pack_unpack_all(s))
 	assert_equal(VCP2_VERSIONS(), st.objects)
 	assert_equal(1, st.packs)
 	pack_stats_free(st)
@@ -570,16 +534,10 @@ void test_pack_v2_unpack_round_trip_and_determinism():
 	# Determinism: re-packing the identical object set reproduces the
 	# exact same pack file (name = sha256 of its own bytes), delta
 	# pairing included; a final unpack restores the loose store.
-	wresult[pack_stats*]* again_r = pack_store_loose(s, 0)
-	assert1(result_is_ok[pack_stats*](again_r))
-	pack_stats* again = result_value[pack_stats*](again_r)
-	result_free[pack_stats*](again_r)
+	pack_stats* again = result_expect[pack_stats*](pack_store_loose(s, 0))
 	assert_strings_equal(vcp2_pack_path, again.pack_path)
 	pack_stats_free(again)
-	wresult[pack_stats*]* redo_r = pack_unpack_all(s)
-	assert1(result_is_ok[pack_stats*](redo_r))
-	pack_stats_free(result_value[pack_stats*](redo_r))
-	result_free[pack_stats*](redo_r)
+	pack_stats_free(result_expect[pack_stats*](pack_unpack_all(s)))
 	cas_close(s)
 
 
@@ -623,19 +581,13 @@ void test_pack_v1_read_compat():
 	assert_equal(0, vcs_unlink(obj_path))
 	free(obj_path)
 	assert_equal(1, cas_has(s, vcp2_compat_id))
-	wresult[wcas_object*]* got = cas_get(s, vcp2_compat_id)
-	assert1(result_is_ok[wcas_object*](got))
-	wcas_object* obj = result_value[wcas_object*](got)
-	result_free[wcas_object*](got)
+	wcas_object* obj = result_expect[wcas_object*](cas_get(s, vcp2_compat_id))
 	assert_strings_equal(c"blob", obj.object_type)
 	vcpt_assert_bytes_equal(content, strlen(content), obj.data, obj.length)
 	cas_object_free(obj)
 
 	# Unpack restores the identical loose file and removes the v1 pack.
-	wresult[pack_stats*]* st_r = pack_unpack_all(s)
-	assert1(result_is_ok[pack_stats*](st_r))
-	pack_stats* st = result_value[pack_stats*](st_r)
-	result_free[pack_stats*](st_r)
+	pack_stats* st = result_expect[pack_stats*](pack_unpack_all(s))
 	assert_equal(1, st.objects)
 	assert_equal(1, st.packs)
 	pack_stats_free(st)

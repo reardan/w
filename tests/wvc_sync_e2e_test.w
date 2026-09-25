@@ -715,15 +715,9 @@ void test_wvc_sync_mixed_format_store():
 	wst_rewrite_as_legacy(a, blob_id, c"blob", content_a, content_a_len)
 
 	char* meta_a = path_join(a, c".wvc")
-	wresult[wcas*]* store_a_r = cas_open(meta_a)
-	assert1(result_is_ok[wcas*](store_a_r))
-	wcas* store_a = result_value[wcas*](store_a_r)
-	result_free[wcas*](store_a_r)
+	wcas* store_a = result_expect[wcas*](cas_open(meta_a))
 	assert_equal(1, cas_verify(store_a, blob_id))
-	wresult[wcas_object*]* local_check_r = cas_get(store_a, blob_id)
-	assert1(result_is_ok[wcas_object*](local_check_r))
-	wcas_object* local_check = result_value[wcas_object*](local_check_r)
-	result_free[wcas_object*](local_check_r)
+	wcas_object* local_check = result_expect[wcas_object*](cas_get(store_a, blob_id))
 	assert_strings_equal(content_a, local_check.data)
 	cas_object_free(local_check)
 	cas_close(store_a)
@@ -758,15 +752,9 @@ void test_wvc_sync_mixed_format_store():
 	# object now exists on both sides under two different on-disk
 	# encodings, and both read back identically.
 	char* meta_b = path_join(b, c".wvc")
-	wresult[wcas*]* store_b_r = cas_open(meta_b)
-	assert1(result_is_ok[wcas*](store_b_r))
-	wcas* store_b = result_value[wcas*](store_b_r)
-	result_free[wcas*](store_b_r)
+	wcas* store_b = result_expect[wcas*](cas_open(meta_b))
 	assert_equal(1, cas_verify(store_b, blob_id))
-	wresult[wcas_object*]* fetched_r = cas_get(store_b, blob_id)
-	assert1(result_is_ok[wcas_object*](fetched_r))
-	wcas_object* fetched = result_value[wcas_object*](fetched_r)
-	result_free[wcas_object*](fetched_r)
+	wcas_object* fetched = result_expect[wcas_object*](cas_get(store_b, blob_id))
 	assert_strings_equal(content_a, fetched.data)
 	cas_object_free(fetched)
 
@@ -818,15 +806,9 @@ void test_wvc_sync_mixed_format_store():
 	# A's store, off the network entirely now, has the pushed blob --
 	# uploaded from B's legacy-format on-disk bytes, stored via
 	# cas_put_raw in A's current encoding.
-	wresult[wcas*]* store_a2_r = cas_open(meta_a)
-	assert1(result_is_ok[wcas*](store_a2_r))
-	wcas* store_a2 = result_value[wcas*](store_a2_r)
-	result_free[wcas*](store_a2_r)
+	wcas* store_a2 = result_expect[wcas*](cas_open(meta_a))
 	assert_equal(1, cas_verify(store_a2, blob_id_b))
-	wresult[wcas_object*]* pushed_r = cas_get(store_a2, blob_id_b)
-	assert1(result_is_ok[wcas_object*](pushed_r))
-	wcas_object* pushed = result_value[wcas_object*](pushed_r)
-	result_free[wcas_object*](pushed_r)
+	wcas_object* pushed = result_expect[wcas_object*](cas_get(store_a2, blob_id_b))
 	assert_strings_equal(content_b, pushed.data)
 	cas_object_free(pushed)
 	cas_close(store_a2)

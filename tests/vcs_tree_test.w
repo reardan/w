@@ -57,10 +57,7 @@ char* vtt_work():
 
 
 wcas* vtt_open():
-	wresult[wcas*]* r = cas_open(vtt_root())
-	assert1(result_is_ok[wcas*](r))
-	wcas* s = result_value[wcas*](r)
-	result_free[wcas*](r)
+	wcas* s = result_expect[wcas*](cas_open(vtt_root()))
 	return s
 
 
@@ -93,28 +90,19 @@ void vtt_write(char* dir, char* name, char* contents):
 
 
 char* vtt_snapshot(wcas* s, char* path, list[char*] ignore):
-	wresult[char*]* r = tree_snapshot(s, path, ignore)
-	assert1(result_is_ok[char*](r))
-	char* id = result_value[char*](r)
-	result_free[char*](r)
+	char* id = result_expect[char*](tree_snapshot(s, path, ignore))
 	return id
 
 
 wtree* vtt_get(wcas* s, char* id):
-	wresult[wtree*]* r = tree_get(s, id)
-	assert1(result_is_ok[wtree*](r))
-	wtree* t = result_value[wtree*](r)
-	result_free[wtree*](r)
+	wtree* t = result_expect[wtree*](tree_get(s, id))
 	return t
 
 
 # Runs tree_diff, asserts success and the expected change count.
 list[tree_change*] vtt_diff(wcas* s, char* old_id, char* new_id, int expected):
 	list[tree_change*] out = new list[tree_change*]
-	wresult[int]* r = tree_diff(s, old_id, new_id, out)
-	assert1(result_is_ok[int](r))
-	assert_equal(expected, result_value[int](r))
-	result_free[int](r)
+	assert_equal(expected, result_expect[int](tree_diff(s, old_id, new_id, out)))
 	assert_equal(expected, out.length)
 	return out
 
@@ -231,10 +219,7 @@ void test_tree_put_get_roundtrip():
 	wtree* t = tree_new()
 	assert_equal(0, tree_add(t, c"zz", TREE_MODE_DIR(), id_b))
 	assert_equal(0, tree_add(t, c"aa.txt", TREE_MODE_FILE(), id_a))
-	wresult[char*]* put = tree_put(s, t)
-	assert1(result_is_ok[char*](put))
-	char* id = result_value[char*](put)
-	result_free[char*](put)
+	char* id = result_expect[char*](tree_put(s, t))
 	assert_equal(1, cas_has(s, id))
 	assert_equal(1, cas_verify(s, id))
 
@@ -250,10 +235,7 @@ void test_tree_put_get_roundtrip():
 	tree_free(got)
 
 	# A blob is not a tree: wrong type tag reports corruption.
-	wresult[char*]* blob = cas_put(s, c"blob", c"not a tree", 10)
-	assert1(result_is_ok[char*](blob))
-	char* blob_id = result_value[char*](blob)
-	result_free[char*](blob)
+	char* blob_id = result_expect[char*](cas_put(s, c"blob", c"not a tree", 10))
 	wresult[wtree*]* not_tree = tree_get(s, blob_id)
 	assert1(result_is_error[wtree*](not_tree))
 	assert_equal(CAS_ERR_CORRUPT(), result_code[wtree*](not_tree))
@@ -279,10 +261,7 @@ void test_tree_put_get_roundtrip():
 	string_append(unsorted, c" zz\n100644 ")
 	string_append(unsorted, id_a)
 	string_append(unsorted, c" aa\n")
-	wresult[char*]* stored = cas_put(s, c"tree", unsorted.data, unsorted.length)
-	assert1(result_is_ok[char*](stored))
-	char* unsorted_id = result_value[char*](stored)
-	result_free[char*](stored)
+	char* unsorted_id = result_expect[char*](cas_put(s, c"tree", unsorted.data, unsorted.length))
 	wresult[wtree*]* rejected = tree_get(s, unsorted_id)
 	assert1(result_is_error[wtree*](rejected))
 	assert_equal(CAS_ERR_CORRUPT(), result_code[wtree*](rejected))
@@ -291,10 +270,7 @@ void test_tree_put_get_roundtrip():
 	free(unsorted_id)
 
 	# ...and lines that do not parse at all.
-	wresult[char*]* junk = cas_put(s, c"tree", c"no format here\n", 15)
-	assert1(result_is_ok[char*](junk))
-	char* junk_id = result_value[char*](junk)
-	result_free[char*](junk)
+	char* junk_id = result_expect[char*](cas_put(s, c"tree", c"no format here\n", 15))
 	wresult[wtree*]* garbage = tree_get(s, junk_id)
 	assert1(result_is_error[wtree*](garbage))
 	assert_equal(CAS_ERR_CORRUPT(), result_code[wtree*](garbage))
@@ -568,14 +544,8 @@ void test_tree_diff_kind_and_mode_changes():
 	assert_equal(0, tree_add(plain, c"tool", TREE_MODE_FILE(), blob))
 	wtree* exec = tree_new()
 	assert_equal(0, tree_add(exec, c"tool", TREE_MODE_EXEC(), blob))
-	wresult[char*]* p1 = tree_put(s, plain)
-	assert1(result_is_ok[char*](p1))
-	char* plain_id = result_value[char*](p1)
-	result_free[char*](p1)
-	wresult[char*]* p2 = tree_put(s, exec)
-	assert1(result_is_ok[char*](p2))
-	char* exec_id = result_value[char*](p2)
-	result_free[char*](p2)
+	char* plain_id = result_expect[char*](tree_put(s, plain))
+	char* exec_id = result_expect[char*](tree_put(s, exec))
 	assert1(strcmp(plain_id, exec_id) != 0)
 	list[tree_change*] flipped = vtt_diff(s, plain_id, exec_id, 1)
 	vtt_assert_change(flipped, 0, c"tool", TREE_MODIFIED())
@@ -617,14 +587,8 @@ void test_tree_diff_skips_equal_subtrees():
 	wtree* r2 = tree_new()
 	assert_equal(0, tree_add(r2, c"data", TREE_MODE_FILE(), blob2))
 	assert_equal(0, tree_add(r2, c"shared", TREE_MODE_DIR(), shared_id))
-	wresult[char*]* pr1 = tree_put(s, r1)
-	assert1(result_is_ok[char*](pr1))
-	char* r1_id = result_value[char*](pr1)
-	result_free[char*](pr1)
-	wresult[char*]* pr2 = tree_put(s, r2)
-	assert1(result_is_ok[char*](pr2))
-	char* r2_id = result_value[char*](pr2)
-	result_free[char*](pr2)
+	char* r1_id = result_expect[char*](tree_put(s, r1))
+	char* r2_id = result_expect[char*](tree_put(s, r2))
 
 	list[tree_change*] changes = vtt_diff(s, r1_id, r2_id, 1)
 	vtt_assert_change(changes, 0, c"data", TREE_MODIFIED())
@@ -637,10 +601,7 @@ void test_tree_diff_skips_equal_subtrees():
 	wtree* r3 = tree_new()
 	assert_equal(0, tree_add(r3, c"data", TREE_MODE_FILE(), blob1))
 	assert_equal(0, tree_add(r3, c"shared", TREE_MODE_DIR(), other_id))
-	wresult[char*]* pr3 = tree_put(s, r3)
-	assert1(result_is_ok[char*](pr3))
-	char* r3_id = result_value[char*](pr3)
-	result_free[char*](pr3)
+	char* r3_id = result_expect[char*](tree_put(s, r3))
 	list[tree_change*] out = new list[tree_change*]
 	wresult[int]* denied = tree_diff(s, r1_id, r3_id, out)
 	assert1(result_is_error[int](denied))

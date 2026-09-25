@@ -124,14 +124,8 @@ void test_repo_write_lookup_remove():
 	# Write through missing parents, then snapshot and look the blobs up.
 	repo_write_file_bytes(vrt_work(), c"dir/sub/f.bin", vrt_blob(c"a\x00b", 3))
 	repo_write_file_bytes(vrt_work(), c"top.txt", vrt_blob(c"top", 3))
-	wresult[wcas*]* sr = cas_open(vrt_root())
-	assert1(result_is_ok[wcas*](sr))
-	wcas* store = result_value[wcas*](sr)
-	result_free[wcas*](sr)
-	wresult[char*]* tr = tree_snapshot(store, vrt_work(), repo_ignore_list())
-	assert1(result_is_ok[char*](tr))
-	char* root_id = result_value[char*](tr)
-	result_free[char*](tr)
+	wcas* store = result_expect[wcas*](cas_open(vrt_root()))
+	char* root_id = result_expect[char*](tree_snapshot(store, vrt_work(), repo_ignore_list()))
 
 	wcas_object* f = repo_maybe_blob(store, root_id, c"dir/sub/f.bin")
 	assert1(f != 0)
