@@ -106,8 +106,31 @@ char* asm_stub_slice(char* line, int start, int end):
 
 # Assemble one instruction line for arch into b. Returns the number of
 # bytes appended, or -1 when the parser/encoder rejects the text.
+# 'db 0x66, 0x8c, 0xe0': raw bytes, for the few stub instructions the
+# text assemblers cannot encode (segment-register moves, shift by an
+# immediate other than 1, a store of an immediate to memory).
+int asm_stub_raw_bytes(char* text, asm_buffer* b):
+	int n = 0
+	int i = 3
+	while (text[i] != 0):
+		while (text[i] == ' ' || text[i] == ','):
+			i = i + 1
+		if (text[i] == 0):
+			return n
+		int start = i
+		while (text[i] != 0 && text[i] != ',' && text[i] != ' '):
+			i = i + 1
+		char* tok = asm_stub_slice(text, start, i)
+		asm_buffer_byte(b, asm_parse_number(tok) & 255)
+		free(tok)
+		n = n + 1
+	return n
+
+
 int asm_stub_assemble_line(int arch, char* text, asm_buffer* b):
 	asm_insn insn
+	if (starts_with(text, c"db ")):
+		return asm_stub_raw_bytes(text, b)
 	if (arch == ASM_STUB_ARM64()):
 		if (asm_arm64_parse(text, &insn) == 0):
 			return -1

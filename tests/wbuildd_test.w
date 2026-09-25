@@ -163,6 +163,36 @@ void wbt_report(char* what, char* label, char* want, char* got):
 	println(got)
 
 
+# stderr minus bin/wtest's import-closure cache progress lines ("wtest:
+# building import-closure cache..." and "wtest: import-closure cache:
+# N/M roots computed..."). Whether a root is cold depends on timing, not
+# on the answer: the daemon's own prewarm (bin/wtest cache) can rewrite
+# bin/.wtest_deps_cache between the warm-up below and the compared runs,
+# because an edit's inotify event can reach the daemon after
+# wbt_wait_prewarm_idle has already seen it idle. Every other stderr
+# byte is still compared.
+char* wbt_stderr_without_cache_progress(char* text):
+	string_builder* out = string_new()
+	int i = 0
+	while (text[i] != 0):
+		int end = i
+		while ((text[end] != 0) && (text[end] != 10)):
+			end = end + 1
+		char* line = &text[i]
+		int progress = starts_with(line, c"wtest: building import-closure cache") || starts_with(line, c"wtest: import-closure cache: ")
+		if (progress == 0):
+			int k = i
+			while (k < end):
+				string_append_char(out, text[k])
+				k = k + 1
+			if (text[end] == 10):
+				string_append_char(out, 10)
+		if (text[end] == 10):
+			end = end + 1
+		i = end
+	return out.data
+
+
 # The gate: daemon answer == one-shot answer, byte for byte. tool is
 # "bin/wv2" or "bin/wtest"; args start with the subcommand word, which
 # is the same for both sides (check/deps/symbols/changed). Returns the
@@ -190,8 +220,13 @@ char* wbt_compare(char* tool, char* args, char* stdin_text):
 	if (strcmp(oneshot.stdout_text, daemon.stdout_text) != 0):
 		wbt_report(c"stdout", args, oneshot.stdout_text, daemon.stdout_text)
 		asserts(c"daemon stdout differs from the one-shot command", 0)
-	if (strcmp(oneshot.stderr_text, daemon.stderr_text) != 0):
-		wbt_report(c"stderr", args, oneshot.stderr_text, daemon.stderr_text)
+	char* want_err = oneshot.stderr_text
+	char* got_err = daemon.stderr_text
+	if (strcmp(tool, c"bin/wtest") == 0):
+		want_err = wbt_stderr_without_cache_progress(want_err)
+		got_err = wbt_stderr_without_cache_progress(got_err)
+	if (strcmp(want_err, got_err) != 0):
+		wbt_report(c"stderr", args, want_err, got_err)
 		asserts(c"daemon stderr differs from the one-shot command", 0)
 	if (oneshot.status != daemon.status):
 		print_int(c"one-shot status: ", oneshot.status)

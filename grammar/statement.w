@@ -213,7 +213,10 @@ void statement():
 	# lint_last_stmt_jumps at the bottom (compiler/lint.w, unreachable)
 	int jumps = 0
 
-	# DWARF line info: the code emitted next belongs to this source line
+	# DWARF line info: the code emitted next belongs to this source line.
+	# The line table and wdbg breakpoints address the statement's first
+	# byte, so no emission-time fold may reach back across it.
+	be_notes_reset()
 	debug_line_note(stack_pos)
 
 	# { statement-list-opt }

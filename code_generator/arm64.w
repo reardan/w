@@ -18,9 +18,13 @@ ldr x0,[x28],#8.
 A64 has no hardware call stack: bl/blr leave the return address in x30.
 To keep the x86 argument-addressing math (which counts a return-address
 slot) unchanged, every W function's prologue pushes x30 onto the x28 stack
-(be_function_prologue) and the epilogue pops it (ret()). Return addresses
-are signed with PAC (pacia x30,x28) using the W stack pointer as the
-modifier, and authenticated before return (autia) — the --pac=ret model.
+together with the caller's x29 and points x29 at the pair - a frame
+chain like x86's push ebp ; mov ebp,esp (be_function_prologue) - and the
+epilogue unwinds through it (be_return in x86.w). Frameless code (asm
+stubs, generator bodies) pushes nothing and returns with ret(). Return
+addresses are signed with PAC (pacia x30,x28) using the W stack pointer
+at entry as the modifier, and authenticated before return (autia) — the
+--pac=ret model.
 
 All instructions are 4 bytes, emitted little-endian via emit_int32. Every
 encoding here was checked against binutils' assembler output.
@@ -34,6 +38,7 @@ import code_generator.code_emitter
 
 void error(char *s);       /* from diagnostics.w */
 void emit_x64_opcode();    /* from x86.w (used on the x86 path of be_lea) */
+void lea_eax_esp_plus(int v);   /* from x86.w (the x86 path of be_lea_acc_wstack) */
 void sym_define_global(int current_symbol);          /* symbol_table.w */
 void sym_define_global_at(int current_symbol, int v);
 int sym_declare_global(char *s, int type, int symtype);
@@ -420,8 +425,29 @@ int be_addr_slot_read(int pos):
 
 
 # Leave the address of the W-stack slot at byte offset k in the accumulator.
-# On x86 this reproduces lea_eax_esp_plus(0) followed by patching the disp32
-# to k (byte-identical to the original sym_get_value sequence).
+# Accumulator = address of the current thread's copy of a thread_local
+# global at byte offset k in the TLS block (docs/projects/thread_local.md).
+# The register is the one libc leaves alone -- gs on x64, fs on x86 -- so
+# thread_local also works in programs that load libc. The block's word 0
+# holds its own address, so one segment-relative load
+# plus an add yields a plain pointer that loads, stores and '&' treat
+# like any other global's address. x86 family only: grammar/program.w
+# rejects thread_local declarations on every other target.
+void be_tls_address(int k):
+	if (word_size == 8):
+		# mov rax,gs:[0] ; add rax,imm32
+		emit(9, c"\x65\x48\x8b\x04\x25\x00\x00\x00\x00")
+		emit(2, c"\x48\x05")
+	else:
+		# mov eax,fs:[0] ; add eax,imm32
+		emit(6, c"\x64\xa1\x00\x00\x00\x00")
+		emit(1, c"\x05")
+	emit_int(0)
+	save_int32(code + codepos - 4, k)
+
+
+# On x86 this is lea_eax_esp_plus(k), which also notes the lea so a load
+# that follows can fold it (code_generator/x86.w, local-slot load fusion).
 void be_lea_acc_wstack(int k):
 	if (target_isa == 3):
 		ptx_lea_ax_sp(k)
@@ -432,10 +458,7 @@ void be_lea_acc_wstack(int k):
 	if (target_isa == 1):
 		arm64_lea_eax_esp_plus(k)
 		return
-	emit_x64_opcode()
-	emit(3, c"\x8d\x84\x24")
-	emit_int(0)
-	save_int(code + codepos - 4, k)
+	lea_eax_esp_plus(k)
 
 
 # Patch a recorded branch site to the current position (or a given target).
@@ -498,14 +521,15 @@ int be_function_define_declare(char* name):
 
 
 # 1 while compiling the body of a function whose prologue pushed a
-# frame pointer (x86/x64: push ebp ; mov ebp,esp). The saved frame
-# pointer is one extra W stack word above the return-address slot, so
-# the grammar counts it in stack_pos (be_frame_words) and every return
-# unwinds with 'leave' (be_return in x86.w) instead of popping
-# stack_pos words. The chain [ebp] -> caller's ebp, [ebp + word] ->
-# return address lets lib/stack_trace.w walk every frame exactly.
-# Functions without this prologue (generator bodies, REPL entries, asm
-# stubs) leave ebp untouched. arm64 keeps no frame chain (yet).
+# frame pointer (x86/x64: push ebp ; mov ebp,esp; arm64: stp x29,x30
+# onto the W stack ; mov x29,x28). The saved frame pointer is one extra
+# W stack word above the return-address slot, so the grammar counts it
+# in stack_pos (be_frame_words) and every return unwinds through the
+# frame (be_return in x86.w: 'leave' on x86/x64, mov x28,x29 ; ldp on
+# arm64) instead of popping stack_pos words. The chain [fp] -> caller's
+# fp, [fp + word] -> return address lets lib/stack_trace.w walk every
+# frame exactly. Functions without this prologue (generator bodies,
+# REPL entries, asm stubs) leave the frame pointer untouched.
 int be_frame_active
 
 
@@ -529,9 +553,15 @@ void be_function_prologue():
 		wasm_function_begin()
 		return
 	if (target_isa == 1):
+		# Sign x30 with the W stack pointer at entry; the framed return
+		# pops back to that same x28 before autia.
 		if (arm64_pac):
 			a64(op(0xda, 0xc1039e))   # pacia x30, x28
-		a64(op(0xf8, 0x1f8f9e))   # str x30, [x28, #-8]!
+		# [x28] = caller's x29, [x28 + 8] = return address: the same
+		# [fp] / [fp + word] layout as x86's push ebp.
+		a64(op(0xa9, 0xbf7b9d))   # stp x29, x30, [x28, #-16]!
+		a64(op(0xaa, 0x1c03fd))   # mov x29, x28
+		be_frame_active = 1
 		return
 	if (target_isa == 0):
 		emit(1, c"\x55")   # push ebp / push rbp

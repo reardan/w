@@ -37,7 +37,8 @@ without the handler - the report is purely additive on stderr.
 Accuracy: the innermost frame comes from the faulting pc and is always
 real. Older frames come from lib/stack_trace.w's st_unwind, which
 follows the frame-pointer chain the compiler maintains on x86/x64
-(push ebp ; mov ebp,esp in every function): exact, every frame in
+(push ebp ; mov ebp,esp in every function) and arm64 (stp x29,x30 onto
+the W stack ; mov x29,x28): exact, every frame in
 order, up to main. When the chain is broken (a corrupted stack, or an
 image without frame pointers) the rest of the trace falls back to the
 heuristic return-address scan, where a caller can be missing and a
@@ -53,9 +54,9 @@ macOS (arm64_darwin): the same report, from the darwin ucontext -
 x0..x28, fp, lr, sp, pc and cpsr, the faulting address from the
 exception state, and the image's LC_UUID where ELF prints its build-id.
 SIGTRAP (W's brk traps) and SIGBUS (10 on darwin) are covered too.
-Frames carry function names only (Mach-O has no line table yet), and
-the trace always comes from the scan (arm64 keeps no frame chain), so
-it ends with the heuristic note. Handlers enter through the compiler's
+Frames carry function names and file:line (from __TEXT,__debug_line);
+the trace follows the arm64 frame chain (x29 on the W stack), exact like
+x86/x64. Handlers enter through the compiler's
 signal_trampoline stub, found by name in the image's symbol table; an
 image built by a compiler without the stub, or an arm64e (--pac=full)
 image, gets no handler (see crash_install_darwin). No crash
@@ -358,12 +359,12 @@ void crash_report_darwin(int sig, int ucontext):
 		st_write_cstr(c"\n")
 	st_write_cstr(c"stack trace (most recent call first):\n")
 	crash_write_frame(pc)
-	# W functions push their return address onto the W stack (x28), so
-	# the scan starts there. A fault in an asm stub, which pushes
-	# nothing, leaves its return address only in lr: lead with it
-	# when the scan does not.
+	# W functions keep a frame chain on the W stack (x28): [x29] is the
+	# caller's x29, [x29 + 8] the return address. A fault in an asm
+	# stub, or in a prologue before its stp, leaves its return address
+	# only in lr: lead with it when the walk does not.
 	int w_sp = crash_darwin_reg(mcontext, 28)
-	int n = st_unwind(pc, w_sp, 0, crash_pcs, crash_frames_max())
+	int n = st_unwind(pc, w_sp, crash_darwin_reg(mcontext, 29), crash_pcs, crash_frames_max())
 	int lr = st_code_address(crash_darwin_reg(mcontext, 30))
 	if (st_is_return(lr) && (st_func_entry(pc) != st_func_entry(lr - 1))):
 		if ((n == 0) || (st_word(cast(int, crash_pcs)) != lr - 1)):
@@ -374,7 +375,8 @@ void crash_report_darwin(int sig, int ucontext):
 		k = k + 1
 	if (n >= crash_frames_max()):
 		st_write_cstr(c"  ... trace truncated\n")
-	st_write_cstr(c"note: part of the trace is heuristic (return-address scan): frames can be missing or stale\n")
+	if (st_unwind_exact == 0):
+		st_write_cstr(c"note: part of the trace is heuristic (return-address scan): frames can be missing or stale\n")
 	st_write_cstr(c"terminating with the default action for signal ")
 	st_write_dec(sig)
 	st_write_cstr(c"\n")
@@ -541,9 +543,26 @@ void crash_install_darwin():
 	if (tramp == 0):
 		return;
 	crash_dfl_act_ensure()
+	# Deliver on an alternate stack. The entry stub starts the W stack
+	# (x28) at the initial sp and grows it down while sp stays put, so a
+	# signal frame built below sp would land on the live W frames and
+	# the handler's own W pushes would then overwrite the saved
+	# ucontext. sigaltstack (53) takes a stack_t {ss_sp, ss_size,
+	# ss_flags}.
+	int alt_size = 131072
+	int alt = mmap(0, alt_size, 3, 34) /* RW, PRIVATE|ANONYMOUS */
+	if ((alt > 0) || (alt < -4095)):
+		int[3] ss
+		ss[0] = alt
+		ss[1] = alt_size
+		ss[2] = 0
+		if (sys_sigaltstack(cast(int, &ss[0]), 0) != 0):
+			return;
+	else:
+		return;
 	int* act = malloc(5 * __word_size__)
 	act[0] = cast(int, crash_report_darwin)
-	act[1] = 0
+	act[1] = 0x08000000 /* SA_ONSTACK */
 	act[2] = tramp
 	act[3] = 0
 	act[4] = 0

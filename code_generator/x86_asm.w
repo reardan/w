@@ -113,6 +113,30 @@ void define_asm_functions():
 	/* mov edi,-1 ; mov ebp,0 ; mov eax,192 ; int 0x80 ; pop ebp ; ret */
 	emit(19, c"\xbf\xff\xff\xff\xff\xbd\x00\x00\x00\x00\xb8\xc0\x00\x00\x00\xcd\x80\x5d\xc3")
 
+	# Thread-local storage (docs/projects/thread_local.md).
+	# __w_tls_size(): the per-thread block size, patched at finish.
+	sym_define_declare_global_function(c"__w_tls_size")
+	tls_size_patch_pos = codepos + 1
+	/* mov eax,imm32 ; ret */
+	emit(6, c"\xb8\x00\x00\x00\x00\xc3")
+	# __w_tls_set(block): make block this thread's fs-based TLS block
+	# (gs stays libc's in a dynamically linked program). Writes the self
+	# pointer to block[0], then set_thread_area with the GDT entry the
+	# inherited fs selector names (-1 = let the kernel pick one, on the
+	# main thread), and loads fs with the entry's selector.
+	sym_define_declare_global_function(c"__w_tls_set")
+	/* push ebx ; mov ecx,[esp+8] ; mov [ecx],ecx ; sub esp,16 ; mov ax,fs ;
+	   movzx eax,ax ; shr eax,3 ; jnz +5 ; mov eax,-1 ;
+	   user_desc on the stack: mov [esp],eax (entry) ; mov [esp+4],ecx (base) ;
+	   mov dword [esp+8],0xfffff (limit) ; mov dword [esp+12],0x51
+	   (seg_32bit | limit_in_pages | useable) ;
+	   mov ebx,esp ; mov eax,243 (set_thread_area) ; int 0x80 ; mov eax,[esp] ;
+	   shl eax,3 ; or eax,3 ; mov fs,ax ; add esp,16 ; pop ebx ; ret */
+	emit(20, c"\x53\x8b\x4c\x24\x08\x89\x09\x83\xec\x10\x66\x8c\xe0\x0f\xb7\xc0\xc1\xe8\x03\x75")
+	emit(20, c"\x05\xb8\xff\xff\xff\xff\x89\x04\x24\x89\x4c\x24\x04\xc7\x44\x24\x08\xff\xff\x0f")
+	emit(20, c"\x00\xc7\x44\x24\x0c\x51\x00\x00\x00\x89\xe3\xb8\xf3\x00\x00\x00\xcd\x80\x8b\x04")
+	emit(16, c"\x24\xc1\xe0\x03\x0d\x03\x00\x00\x00\x8e\xe0\x83\xc4\x10\x5b\xc3")
+
 	# function_call(func_ptr)
 	sym_define_declare_global_function(c"function_call")
 	# mov eax,[esp+4]; jmp eax

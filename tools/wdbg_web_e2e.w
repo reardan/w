@@ -1,4 +1,4 @@
-# wbuild: target=wdbg_web_test tag=tests dep=wdbg_web dep=wdbg dep=wcore input=tools/wdbg_web_e2e.w input=tools/wdbg_web/ input=tests/debug_fixture.w input=tests/crash_null_deref_fixture.w
+# wbuild: target=wdbg_web_test tag=tests dep=wdbg_web dep=wdbg dep=wcore input=tools/wdbg_web_e2e.w input=tools/wdbg_web/ input=tests/debug_fixture.w input=tests/crash_null_deref_fixture.w input=tools/web/
 # wbuild: step="bin/wv2 x64 tests/crash_null_deref_fixture.w -o bin/wdbg_web_crash64"
 # wbuild: step="bin/wv2 x64 tools/wdbg_web_e2e.w -o bin/wdbg_web_e2e"
 # wbuild: step="bin/wdbg_web_e2e" expect_stdout="wdbg_web test OK"
@@ -187,10 +187,12 @@ void we_plain_http_session():
 	we_check(we_contains(http_response_header(page, c"set-cookie"), c"wdbg_code=e2ecode"), c"page sets the code cookie")
 	we_check(we_contains(http_response_header(page, c"set-cookie"), c"HttpOnly"), c"cookie is HttpOnly")
 	http_response_free(page)
-	we_check(we_status(s, c"GET", c"/app.js", 1) == 200, c"app.js served")
+	we_check(we_status(s, c"GET", c"/wdbg_bridge.mjs", 1) == 200, c"wdbg_bridge.mjs served")
+	we_check(we_status(s, c"GET", c"/web/webgl_env.mjs", 1) == 200, c"shared wasm host glue served")
+	we_check(we_status(s, c"GET", c"/wdbg_ui.wasm", 1) == 200, c"the W UI module served")
 	we_check(we_status(s, c"GET", c"/..%2f..%2fw.w", 1) == 404, c"encoded parent path -> 404")
 	we_check(we_status(s, c"GET", c"/no_such_file.js", 1) == 404, c"missing static file -> 404")
-	we_check(we_status(s, c"DELETE", c"/app.js", 1) == 405, c"non-GET static -> 405")
+	we_check(we_status(s, c"DELETE", c"/wdbg_bridge.mjs", 1) == 405, c"non-GET static -> 405")
 
 	# Initial state: stopped before main, the program's files listed.
 	char* st = we_ok(s, c"GET", c"/api/state", 0)
@@ -227,6 +229,10 @@ void we_plain_http_session():
 	we_check(we_contains(out, c"#0  main"), c"inspect backtrace")
 	we_check(we_contains(out, c"hits: 1"), c"inspect breakpoints shows the hit count")
 	free(out)
+	out = we_ok(s, c"POST", c"/api/query", c"r")
+	we_check(we_contains(out, c"eip: 0x"), c"query r returns registers")
+	free(out)
+	we_check(we_status(s, c"POST", c"/api/query", 1) == 400, c"query refuses non-inspection commands")
 	out = we_ok(s, c"POST", c"/api/cmd", c"n")
 	we_check(we_contains(out, c"debug_fixture.w:9"), c"next moves to line 9")
 	free(out)

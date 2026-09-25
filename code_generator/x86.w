@@ -3,6 +3,66 @@ void emit_x64_opcode():
 		emit(1, c"\x48")
 
 
+# Local-slot load fusion (docs/projects/optimization.md, the v0 window).
+# A local or argument read is emitted as an address materialization
+# (lea eax,[esp+N]) followed by a load through eax. lea_eax_esp_plus notes
+# the lea; a loader running while the note is still CURRENT -- nothing
+# emitted since, so lea_note_end == codepos -- rolls the lea back and
+# emits one load addressing [esp+N] directly. add_eax_int32 folds a
+# constant offset into a current lea (struct fields of a local). The
+# folded load notes itself in turn, so pop_ebx can move it into the
+# register shuttle of a binary operator, and push_eax notes every push
+# for that shuttle and for the shift-by-constant fold. Same fail-closed
+# contract as the constant and compare notes further down: any emission
+# the fold did not expect advances codepos and the note stops matching;
+# every backward codepos move and every jump target (region ends, loop
+# heads, labels, statement starts) clears the notes.
+int lea_note_start
+int lea_note_end
+int lea_note_disp
+int load_note_start
+int load_note_end
+int load_note_disp
+int load_note_oplen
+char* load_note_op
+int push_note_start
+int push_note_end
+
+void peep_rollback(int pos);
+void be_cmp_note_reset();
+void be_imm_note_reset();
+void be_notes_reset();
+
+# ModRM+SIB(+disp) for [esp+disp] with eax in the reg field; disp8 when
+# it fits.
+void emit_eax_esp_disp(int disp):
+	if ((disp >= -128) && (disp <= 127)):
+		emit(2, c"\x44\x24")
+		emit_int8(disp)
+		return
+	emit(2, c"\x84\x24")
+	emit_int32(disp)
+
+# A load of [esp+disp] into eax whose opcode bytes (prefixes included) are
+# op[0..oplen). Noted so pop_ebx can re-emit it at another displacement.
+void emit_esp_load(int oplen, char* op, int disp):
+	int start = codepos
+	emit(oplen, op)
+	emit_eax_esp_disp(disp)
+	load_note_start = start
+	load_note_end = codepos
+	load_note_disp = disp
+	load_note_op = op
+	load_note_oplen = oplen
+
+# Replace the current lea note with a direct [esp+disp] load. Callers have
+# checked the note is current (lea_note_end != 0 && == codepos).
+void lea_load_fold(int oplen, char* op):
+	int disp = lea_note_disp
+	peep_rollback(lea_note_start)
+	emit_esp_load(oplen, op, disp)
+
+
 
 ################################# x86 opcodes #################################
 # Each helper dispatches to its AArch64 twin (code_generator/arm64.w) when
@@ -57,6 +117,12 @@ void promote_eax():
 	if (target_isa == 1):
 		a64(op(0xf9, 0x400000))   # ldr x0,[x0]
 		return
+	if ((lea_note_end != 0) && (lea_note_end == codepos)):
+		if (word_size == 8):
+			lea_load_fold(2, c"\x48\x8b")
+		else:
+			lea_load_fold(1, c"\x8b")
+		return
 	emit_x64_opcode()
 	emit(2, c"\x8b\x00")
 
@@ -87,6 +153,12 @@ void promote_int8_eax():
 	if (target_isa == 1):
 		a64(op(0x39, 0x800000))   # ldrsb x0,[x0]
 		return
+	if ((lea_note_end != 0) && (lea_note_end == codepos)):
+		if (word_size == 8):
+			lea_load_fold(3, c"\x48\x0f\xbe")
+		else:
+			lea_load_fold(2, c"\x0f\xbe")
+		return
 	emit_x64_opcode() /* needed ?? */
 	emit(3, c"\x0f\xbe\x00")
 
@@ -102,6 +174,12 @@ void promote_int16_eax():
 	if (target_isa == 1):
 		a64(op(0x79, 0x800000))   # ldrsh x0,[x0]
 		return
+	if ((lea_note_end != 0) && (lea_note_end == codepos)):
+		if (word_size == 8):
+			lea_load_fold(3, c"\x48\x0f\xbf")
+		else:
+			lea_load_fold(2, c"\x0f\xbf")
+		return
 	emit_x64_opcode() /* needed ?? */
 	emit(3, c"\x0f\xbf\x00")
 
@@ -116,6 +194,12 @@ void promote_int32_eax():
 		return
 	if (target_isa == 1):
 		a64(op(0xb9, 0x800000))   # ldrsw x0,[x0]
+		return
+	if ((lea_note_end != 0) && (lea_note_end == codepos)):
+		if (word_size == 8):
+			lea_load_fold(2, c"\x48\x63")
+		else:
+			lea_load_fold(1, c"\x8b")
 		return
 	if (word_size == 8):
 		emit(3, c"\x48\x63\x00")
@@ -225,6 +309,9 @@ void be_imm_note_reset():
 	imm_note_end = 0
 	push_imm_end = 0
 	binfold_end = 0
+	lea_note_end = 0
+	load_note_end = 0
+	push_note_end = 0
 
 # True when a * b does not overflow the compiler's own word. The fold has
 # to produce the same constant whether this compiler is the 32-bit or the
@@ -270,8 +357,7 @@ void mov_eax_int(int v);
 # test binfold_end themselves, so the common unarmed path costs two global
 # reads and no call.
 void binfold_emit(int folded):
-	codepos = binfold_start
-	binfold_end = 0
+	peep_rollback(binfold_start)
 	mov_eax_int(folded)
 
 
@@ -354,6 +440,9 @@ void promote_uint8_eax():
 	if (target_isa == 1):
 		a64(op(0x39, 0x400000))   # ldrb w0,[x0]
 		return
+	if ((lea_note_end != 0) && (lea_note_end == codepos)):
+		lea_load_fold(2, c"\x0f\xb6")
+		return
 	emit(3, c"\x0f\xb6\x00")
 
 
@@ -370,6 +459,9 @@ void promote_uint32_eax():
 	if (target_isa == 1):
 		a64(op(0xb9, 0x400000))   # ldr w0,[x0]
 		return
+	if ((lea_note_end != 0) && (lea_note_end == codepos)):
+		lea_load_fold(1, c"\x8b")
+		return
 	emit(2, c"\x8b\x00")
 
 
@@ -384,6 +476,9 @@ void promote_uint16_eax():
 		return
 	if (target_isa == 1):
 		a64(op(0x79, 0x400000))   # ldrh w0,[x0]
+		return
+	if ((lea_note_end != 0) && (lea_note_end == codepos)):
+		lea_load_fold(2, c"\x0f\xb7")
 		return
 	emit(3, c"\x0f\xb7\x00")
 
@@ -424,8 +519,19 @@ void add_eax_int32(int v):
 	if ((imm_note_end != 0) && (imm_note_end == codepos)):
 		if (fold_add_fits(imm_note_value, v)):
 			int folded = imm_note_value + v
-			codepos = imm_note_start
+			peep_rollback(imm_note_start)
 			mov_eax_int(folded)
+			return
+	# Adding zero is a no-op; emitting nothing also keeps a current lea
+	# or constant note current for the load that usually follows.
+	if (v == 0):
+		return
+	# A constant offset from a local's address: fold it into the lea.
+	if ((lea_note_end != 0) && (lea_note_end == codepos)):
+		if (fold_add_fits(lea_note_disp, v)):
+			int disp = lea_note_disp + v
+			peep_rollback(lea_note_start)
+			lea_eax_esp_plus(disp)
 			return
 	emit_x64_opcode()
 	emit(1, c"\x05") /* \x2d add eax,... */
@@ -446,7 +552,7 @@ void imul_eax_int32(int v):
 	if ((imm_note_end != 0) && (imm_note_end == codepos)):
 		if (fold_mul_fits(imm_note_value, v)):
 			int folded = imm_note_value * v
-			codepos = imm_note_start
+			peep_rollback(imm_note_start)
 			mov_eax_int(folded)
 			return
 	emit_x64_opcode()
@@ -526,7 +632,9 @@ void push_eax():
 		carried = 1
 	int start = imm_note_start
 	int value = imm_note_value
+	push_note_start = codepos
 	emit(1, c"\x50")
+	push_note_end = codepos
 	push_imm_end = 0
 	if (carried):
 		push_imm_start = start
@@ -568,6 +676,33 @@ void pop_ebx():
 	int left = push_imm_value
 	int right = imm_note_value
 	int start = push_imm_start
+	# Register shuttle: 'push eax; <one simple instruction>; pop ebx' --
+	# the right operand a constant or a folded local load emitted directly
+	# after the push -- becomes 'mov ebx,eax; <instruction>'. Without the
+	# push the local's esp displacement shrinks by one word; a load of the
+	# pushed temporary itself (disp < word_size) is left alone.
+	if ((armed == 0) && (push_note_end != 0)):
+		if ((imm_note_end != 0) && (imm_note_end == codepos) && (imm_note_start == push_note_end)):
+			peep_rollback(push_note_start)
+			emit_x64_opcode()
+			emit(2, c"\x89\xc3") /* mov ebx,eax */
+			mov_eax_int(right)
+			imm_note_end = 0
+			push_imm_end = 0
+			binfold_end = 0
+			return
+		if ((load_note_end != 0) && (load_note_end == codepos) && (load_note_start == push_note_end) && (load_note_disp >= word_size)):
+			int disp = load_note_disp - word_size
+			int oplen = load_note_oplen
+			char* op = load_note_op
+			peep_rollback(push_note_start)
+			emit_x64_opcode()
+			emit(2, c"\x89\xc3") /* mov ebx,eax */
+			emit_esp_load(oplen, op, disp)
+			imm_note_end = 0
+			push_imm_end = 0
+			binfold_end = 0
+			return
 	emit(1, c"\x5b")
 	imm_note_end = 0
 	push_imm_end = 0
@@ -618,9 +753,13 @@ void lea_eax_esp_plus(int v):
 	if (target_isa == 1):
 		arm64_lea_eax_esp_plus(v)
 		return
+	int start = codepos
 	emit_x64_opcode()
 	emit(3, c"\x8d\x84\x24")
 	emit_int(v)
+	lea_note_start = start
+	lea_note_end = codepos
+	lea_note_disp = v
 
 
 /* mov eax,[esp+op(0x12, 0x345678)] */
@@ -635,8 +774,8 @@ void mov_eax_esp_plus(int v):
 		arm64_ldr_reg_wsp(0, v)
 		return
 	emit_x64_opcode()
-	emit(3, c"\x8b\x84\x24")
-	emit_int(v)
+	emit(1, c"\x8b")
+	emit_eax_esp_disp(v)
 
 
 /* mov ebx,[esp] */
@@ -800,6 +939,7 @@ void be_blob_end(int p):
 	# The blob holds unaligned bytes; realign so the jump lands on an
 	# instruction boundary (a no-op on x86).
 	be_align_code()
+	be_notes_reset()
 	be_branch_patch(p, codepos)
 
 
@@ -860,6 +1000,7 @@ int be_ctrl_block():
 	return ctrl_stack_pos - 1
 
 int be_ctrl_loop():
+	be_notes_reset()
 	ctrl_stack_reserve()
 	ctrl_kind_stack[ctrl_stack_pos] = 1
 	ctrl_val_stack[ctrl_stack_pos] = codepos
@@ -944,6 +1085,34 @@ int cmp_fuse_cc
 void be_cmp_note_reset():
 	cmp_fuse_end = 0
 
+# Move codepos back to pos (a fold consuming the instructions after it)
+# and drop every note that ended past pos: those notes described the
+# bytes being discarded, and a stale end could otherwise alias a later
+# codepos. Every fold's rollback goes through here.
+void peep_rollback(int pos):
+	codepos = pos
+	if (imm_note_end > pos):
+		imm_note_end = 0
+	if (push_imm_end > pos):
+		push_imm_end = 0
+	if (binfold_end > pos):
+		binfold_end = 0
+	if (cmp_fuse_end > pos):
+		cmp_fuse_end = 0
+	if (lea_note_end > pos):
+		lea_note_end = 0
+	if (load_note_end > pos):
+		load_note_end = 0
+	if (push_note_end > pos):
+		push_note_end = 0
+
+# A jump target is about to be placed at codepos: no fold may reach back
+# across it (a branch patched to land here would then point into, or
+# past, the rewritten bytes).
+void be_notes_reset():
+	be_cmp_note_reset()
+	be_imm_note_reset()
+
 # jCC rel32 threading region h's chain protocol (the two cases of
 # be_br_zero). x86 family only: callers have already checked target_isa.
 void be_br_cc(int jcc_opcode, int h):
@@ -972,7 +1141,7 @@ int jcc_invert(int jcc_opcode):
 # subtracting 0x10.
 void be_br_zero_discard(int h):
 	if ((target_isa == 0) && (cmp_fuse_end != 0) && (cmp_fuse_end == codepos)):
-		codepos = cmp_fuse_start
+		peep_rollback(cmp_fuse_start)
 		# this branch is taken when the condition is false: invert
 		be_br_cc(jcc_invert(cmp_fuse_cc - 0x10), h)
 		cmp_fuse_end = 0
@@ -981,7 +1150,7 @@ void be_br_zero_discard(int h):
 
 void be_br_nonzero_discard(int h):
 	if ((target_isa == 0) && (cmp_fuse_end != 0) && (cmp_fuse_end == codepos)):
-		codepos = cmp_fuse_start
+		peep_rollback(cmp_fuse_start)
 		be_br_cc(cmp_fuse_cc - 0x10, h)
 		cmp_fuse_end = 0
 		return
@@ -991,6 +1160,7 @@ void be_br_nonzero_discard(int h):
 # chain to the current position (their merge point); loop regions have
 # nothing to patch.
 void be_ctrl_end(int h):
+	be_notes_reset()
 	ctrl_stack_pos = ctrl_stack_pos - 1
 	if (target_isa == 3):
 		# Forward regions place their merge label here; backward regions
@@ -1173,6 +1343,33 @@ void alu_imod():
 	emit(2, c"\x89\xd0")
 
 
+# Shift by a constant: 'push eax; mov eax,imm; mov ecx,eax; pop eax;
+# shX eax,cl' becomes 'shX eax,imm8' when the count's mov directly
+# follows the push. The count is masked by the hardware exactly as cl
+# would be (5 bits, 6 with REX.W), so the low byte is all that matters.
+# A count of 1 uses the two-byte 0xd1 form.
+# modrm_ext is the ModRM byte selecting the operation on eax (0xe0 shl,
+# 0xf8 sar).
+int shift_imm_fold(int modrm_ext):
+	if ((imm_note_end == 0) || (imm_note_end != codepos)):
+		return 0
+	if ((push_note_end == 0) || (push_note_end != imm_note_start)):
+		return 0
+	int count = imm_note_value & 255
+	peep_rollback(push_note_start)
+	emit_x64_opcode()
+	if (count == 1):
+		# The shorter by-one form (0xd1), which is also what the in-tree
+		# assembler (libs/asm) picks for a count of 1.
+		emit_int8(0xd1)
+		emit_int8(modrm_ext)
+		return 1
+	emit_int8(0xc1)
+	emit_int8(modrm_ext)
+	emit_int8(count)
+	return 1
+
+
 /* mov %eax,%ecx ; pop %eax ; shl %cl,%eax */
 void alu_shl():
 	if (target_isa == 3):
@@ -1184,6 +1381,8 @@ void alu_shl():
 	if (target_isa == 1):
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8
 		a64(op(0x9a, 0xc02120))   # lslv x0,x9,x0
+		return
+	if (shift_imm_fold(0xe0)):
 		return
 	emit(2, c"\x89\xc1")
 	emit(1, c"\x58")
@@ -1202,6 +1401,8 @@ void alu_sar():
 	if (target_isa == 1):
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8
 		a64(op(0x9a, 0xc02920))   # asrv x0,x9,x0
+		return
+	if (shift_imm_fold(0xf8)):
 		return
 	emit(2, c"\x89\xc1")
 	emit(1, c"\x58")
@@ -1738,11 +1939,26 @@ void ret():
 		return
 	emit(1, c"\xc3") /* ret */
 
+# Framed arm64 return: x28 = x29 drops the body's words, the pair pop
+# restores the caller's x29 and the return address and leaves x28 as it
+# was at entry, which is the modifier the prologue signed x30 with.
+void be_arm64_frame_return():
+	a64(op(0xaa, 0x1d03fc))   # mov x28, x29
+	a64(op(0xa8, 0xc17b9d))   # ldp x29, x30, [x28], #16
+	if (arm64_pac):
+		a64(op(0xda, 0xc1139e))   # autia x30, x28
+	a64(op(0xd6, 0x5f03c0))   # ret
+
+
 # Function return from a body holding stack_words W stack words above
-# the return-address slot: a framed x86/x64 function unwinds with
-# 'leave' (esp = ebp ; pop ebp), exact whatever stack_words is;
-# everything else pops the words, as before frame pointers.
+# the return-address slot: a framed function unwinds through its frame
+# pointer ('leave' on x86/x64, be_arm64_frame_return on arm64), exact
+# whatever stack_words is; everything else pops the words, as before
+# frame pointers.
 void be_return(int stack_words):
+	if (be_frame_active && (target_isa == 1)):
+		be_arm64_frame_return()
+		return
 	if ((target_isa == 0) && be_frame_active):
 		emit(1, c"\xc9") /* leave */
 	else:
@@ -1751,9 +1967,13 @@ void be_return(int stack_words):
 
 
 # Return from a body that holds nothing on the W stack beyond its
-# frame: 'leave ; ret' in a framed x86/x64 function, a bare ret
-# otherwise (function fall-through ends, synthesized accessors).
+# frame: 'leave ; ret' in a framed x86/x64 function, the frame return on
+# arm64, a bare ret otherwise (function fall-through ends, synthesized
+# accessors).
 void be_return_bare():
+	if (be_frame_active && (target_isa == 1)):
+		be_arm64_frame_return()
+		return
 	if ((target_isa == 0) && be_frame_active):
 		emit(1, c"\xc9") /* leave */
 	ret()

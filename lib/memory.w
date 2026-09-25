@@ -103,22 +103,59 @@ void malloc_init_mode():
 			malloc_debug_mode = 1
 
 
-void* malloc(int size):
+# Thread hooks (lib/thread_heap.w, docs/projects/thread_local.md
+# "Allocator"): 0 until lib/thread.w's first thread_spawn installs
+# per-thread heaps, so a program that never spawns pays one null check
+# per call. The hooks route the main thread back to the *_backend
+# functions below. Plain ints called as functions, like the compiler's
+# repl_call_site_hook, so this seed-compiled file needs no newer syntax.
+int malloc_hook_malloc
+int malloc_hook_free
+int malloc_hook_realloc
+
+
+# Main thread only, before any second thread exists (the stores are
+# plain).
+void malloc_hook_set(int m, int f, int r):
+	malloc_hook_malloc = m
+	malloc_hook_free = f
+	malloc_hook_realloc = r
+
+
+void* malloc_backend(int size):
 	malloc_init_mode()
 	if (malloc_debug_mode):
 		return debug_malloc(size)
 	return freelist_malloc(size)
 
 
-int free(void* mem_address):
+int malloc_backend_free(void* mem_address):
 	malloc_init_mode()
 	if (malloc_debug_mode):
 		return debug_free(mem_address)
 	return freelist_free(mem_address)
 
 
-char *realloc(void* old, int oldlen, int newlen):
+char* malloc_backend_realloc(void* old, int oldlen, int newlen):
 	malloc_init_mode()
 	if (malloc_debug_mode):
 		return debug_realloc(old, oldlen, newlen)
 	return freelist_realloc(old, oldlen, newlen)
+
+
+void* malloc(int size):
+	if (malloc_hook_malloc != 0):
+		return cast(void*, malloc_hook_malloc(size))
+	return malloc_backend(size)
+
+
+int free(void* mem_address):
+	if (malloc_hook_free != 0):
+		return malloc_hook_free(mem_address)
+	return malloc_backend_free(mem_address)
+
+
+char *realloc(void* old, int oldlen, int newlen):
+	if (malloc_hook_realloc != 0):
+		return cast(char*, malloc_hook_realloc(old, oldlen, newlen))
+	return malloc_backend_realloc(old, oldlen, newlen)

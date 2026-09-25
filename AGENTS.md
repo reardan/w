@@ -178,7 +178,7 @@ working in this repo.
 - `./wbuild tests` includes targets whose binaries are **32-bit dynamically linked**
  and need the i386 loader/libc (`/lib/ld-linux.so.2`, `libc6:i386`): `dynamic_test`,
  `c_import_test`, `c_import_errno_test`, `c_import_libc_test`, `float_abi_test`,
- `varargs_test`, and `extern_data_test`. In the
+ `varargs_test`, `extern_data_test`, and `thread_local_dynamic_test`. In the
  Cursor Cloud environment this is **baked into the VM snapshot** (installed once during
  environment setup), so `./wbuild tests` runs out of the box; the minimal update script
  intentionally does not reinstall it (an apt step on every startup would be a network

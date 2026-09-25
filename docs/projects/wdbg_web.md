@@ -1,7 +1,9 @@
 # wdbg_web: a browser front end for wdbg (issue #98)
 
 Status: v1 landed (tools/wdbg_web.w, tools/wdbg_web/, `./wbuild wdbg_web`,
-tested by `wdbg_web_test`).
+tested by `wdbg_web_test`). v2 replaced the HTML/JS page with a W front end
+(tools/wdbg_ui.w compiled to wasm, drawn with graphics/ui), laid out after
+OllyDbg; tested by `wdbg_ui_test`.
 
 ## Usage
 
@@ -21,11 +23,44 @@ for the program (full list in the tool's header comment).
 
 ```
 browser  --https/JSON-->  bin/wdbg_web (x64)  --pipes-->  bin/wdbg prog.w
-  tools/wdbg_web/*          poll(2) loop                  unchanged text
-  (static HTML/JS)          http_server.w routing         command loop
-                            tls.w server role
-                            selfsigned.w cert
+  bin/wdbg_ui.wasm          poll(2) loop                  unchanged text
+  (tools/wdbg_ui.w,         http_server.w routing         command loop
+   graphics/ui + WebGL)     tls.w server role
+  index.html: canvas,       selfsigned.w cert
+  input, fetch bridge
 ```
+
+- **The UI is a W program.** tools/wdbg_ui.w compiles to wasm
+  (`./wbuild wdbg_ui`, a dep of `wdbg_web`, output bin/wdbg_ui.wasm) and
+  draws everything itself with graphics/ui on a full-window WebGL2
+  canvas. tools/wdbg_web/index.html is only host glue: it sizes the
+  canvas, queues input events, and supplies the `wdbg` import module
+  (tools/wdbg_web/wdbg_bridge.mjs). A wasm module cannot block on
+  fetch, so HTTP is a polled handle: `wdbg_http_start` returns an id,
+  the UI checks `wdbg_http_status` each frame and reads the body once it
+  is done; the UI keeps one request in flight and queues the rest. The
+  server serves the module at /wdbg_ui.wasm (`--ui` overrides the path)
+  and the shared wasm glue (tools/web/) under /web/.
+- **Layout: OllyDbg 1.x.** Toolbar (Restart, Run F9, Into F7, Over F8,
+  Till return Ctrl+F9, Insn, and the view letters L C K B S), an MDI
+  caption, the view, the command line, and a status bar with the yellow
+  Paused box. The CPU view has OllyDbg's four panes: disassembly
+  (address, hex bytes, instruction; the EIP row inverted), registers
+  with flag bits plus locals and arguments (changed values red), the
+  hex/ASCII dump, and the stack (ESP/EBP marked). S is the source view
+  (file list, red breakpoint line numbers, the current line yellow; F2
+  or a double-click toggles a breakpoint), L the log (wdbg's own
+  output), K the call stack, B the breakpoints. Alt+letter switches
+  views; typed text goes to the command line, which takes any wdbg
+  command plus OllyDbg's `D <addr>` to move the dump. Text is drawn in
+  fixed cells so columns line up even though the bundled font is
+  proportional.
+- **`/api/query`.** The CPU panes need `r`, `st`, `disas` and `x`
+  output without it landing in the program-output stream the log shows,
+  so `/api/query` runs one inspection-only command (x, disas, p, bt, l,
+  r, st, i) and returns its text; `/api/inspect` also carries
+  `registers`, `stack` and `disas` now. Hex bytes for the disassembly
+  come from an `x` word dump over the function's address range.
 
 - **Transport: wdbg's own text protocol.** The issue weighed a new
   structured protocol against reusing the stdin/stdout loop behind a
@@ -78,8 +113,10 @@ browser  --https/JSON-->  bin/wdbg_web (x64)  --pipes-->  bin/wdbg prog.w
   task per connection and replace this tool's hand-rolled poll loop.
   It would not speed up the TLS handshake, which is CPU-bound pure-W
   P-256/X25519 math, not I/O.
-- **A W/wasm UI.** The page is plain HTML/JS. The wasm + UI framework
-  path (tools/web/) could replace it on top of the same API.
+- **More OllyDbg.** Address breakpoints and run-to-cursor in the CPU
+  view need wdbg address breakpoints; memory map (M), threads (T) and
+  patching are not there. A monospace face in graphics/ui would replace
+  the fixed-cell drawing.
 - **Structured wdbg output.** Parsing text is adequate for the panes;
   a `--json` mode in wdbg itself would remove the guessing and serve the
   MCP/DAP wrapper as well.

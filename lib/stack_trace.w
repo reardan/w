@@ -8,15 +8,19 @@ stderr:
 	  at middle (tests/stack_trace_test.w:12)
 	  at main (tests/stack_trace_test.w:20)
 
-Unwinding on x86/x64 follows the frame-pointer chain: every compiled
-function opens with push ebp ; mov ebp,esp (be_function_prologue in
-code_generator/arm64.w), so [ebp] is the caller's ebp and [ebp + word]
-the return address, and the walk (st_chain) is exact - every frame, in
-order, nothing stale. The chain ends at main, at a zero ebp (process or
+Unwinding follows the frame-pointer chain: every compiled function
+opens with push ebp ; mov ebp,esp on x86/x64, and with stp x29,x30,
+[x28,#-16]! ; mov x29,x28 on arm64 - the frame lives on the W stack
+(be_function_prologue in code_generator/arm64.w) - so [ebp] is the
+caller's ebp and [ebp + word] the return address, and the walk
+(st_chain) is exact - every frame, in order, nothing stale. On arm64 a
+call leaves the return address in x30, so a frameless stub or a
+function stopped inside its prologue is missing from the chain; the
+crash report adds that frame from the saved x30. The chain ends at main, at a zero ebp (process or
 thread start), or where it stops looking like a chain (ebp not
 increasing, unmapped, or a return address that is not a call site);
-from there, and on images without frame pointers (arm64, or a binary
-built by a pre-frame-pointer compiler such as the seed), unwinding
+from there, and on images without frame pointers (a binary built by a
+pre-frame-pointer compiler such as the seed), unwinding
 falls back to the in-process debugger's return-address heuristic
 (debugger/wdbg.w dbg_frames_compute, st_scan here): scan stack words
 upward from the stack pointer and keep values that point into a
@@ -37,17 +41,18 @@ found by walking down one page at a time from a code address (the
 image is contiguous, so the walk cannot skip past the header). Mach-O
 images (arm64_darwin) are found the same way; their load commands give
 the ASLR slide (the mapped header minus __TEXT's vmaddr), the __text
-range, and the nlist symbol table the Mach-O writer puts in __LINKEDIT,
-which dyld maps too. Mach-O has no line table yet, so darwin frames
-carry function names only. arm64 keeps no frame chain, so its traces
-always come from the scan; return addresses signed by pointer
-authentication are stripped to their address bits first. PE images
-(win64) carry the same ELF section table and DWARF behind a stand-in
-ELF64 header at the start of .text (code_generator/pe_64.w), which this
-walk meets before the "MZ" page, so win64 frames symbolize like Linux
-ones; mincore is emulated there with VirtualQuery. On targets without
-symbols, collection returns no frames and print_stack_trace() is a
-silent no-op, so the trap paths that call it stay safe everywhere.
+range, the nlist symbol table the Mach-O writer puts in __LINKEDIT
+(which dyld maps too), and the DWARF line table in __TEXT,__debug_line,
+whose addresses are linked vmaddrs (st_line_lookup unslides pc), so
+darwin frames carry file:line like ELF ones. Return addresses signed
+by pointer authentication are stripped to their address bits first.
+PE images (win64) carry the same ELF section table and DWARF behind a
+stand-in ELF64 header at the start of .text (code_generator/pe_64.w),
+which this walk meets before the "MZ" page, so win64 frames symbolize
+like Linux ones; mincore is emulated there with VirtualQuery. On
+targets without symbols, collection returns no frames and
+print_stack_trace() is a silent no-op, so the trap paths that call it
+stay safe everywhere.
 
 Every probe of not-known-mapped memory goes through mincore() first
 (the trick from debugger/memory.w), so scanning past the top of the
@@ -246,6 +251,8 @@ void st_init_macho(int base):
 	int text_vm = 0
 	int sect_addr = 0
 	int sect_size = 0
+	int dline_addr = 0
+	int dline_size = 0
 	int linkedit_vm = 0
 	int linkedit_off = 0
 	int symoff = 0
@@ -261,10 +268,20 @@ void st_init_macho(int base):
 		if (cmd == 25):  /* LC_SEGMENT_64 */
 			if (st_cstr_eq(lc + 8, c"__TEXT")):
 				text_vm = st_word(lc + 24)
-				if (st_int32(lc + 64) > 0):
-					if (st_cstr_eq(lc + 72, c"__text")):
-						sect_addr = st_word(lc + 72 + 32)
-						sect_size = st_word(lc + 72 + 40)
+				# Sections (80 bytes each) follow the 72-byte
+				# command: __text, and __debug_line (the DWARF line
+				# table, addresses as linked vmaddrs).
+				int nsects = st_int32(lc + 64)
+				int k = 0
+				while (k < nsects):
+					int sect = lc + 72 + k * 80
+					if (st_cstr_eq(sect, c"__text")):
+						sect_addr = st_word(sect + 32)
+						sect_size = st_word(sect + 40)
+					else if (st_cstr_eq(sect, c"__debug_line")):
+						dline_addr = st_word(sect + 32)
+						dline_size = st_word(sect + 40)
+					k = k + 1
 			else if (st_cstr_eq(lc + 8, c"__LINKEDIT")):
 				linkedit_vm = st_word(lc + 24)
 				linkedit_off = st_word(lc + 40)
@@ -289,6 +306,10 @@ void st_init_macho(int base):
 	if (st_range_readable(st_symtab_lo, nsyms * 16) == 0):
 		return;
 	st_dline_lo = 0
+	if (dline_size > 0):
+		if (st_range_readable(dline_addr + st_slide, dline_size)):
+			st_dline_lo = dline_addr + st_slide
+			st_dline_size = dline_size
 	st_base = base
 	st_state = 1
 
@@ -518,8 +539,18 @@ int st_entry_value(int e):
 
 
 # Length of the frame-pointer prologue at a function entry (x86:
-# 55 89 e5, x64: 55 48 89 e5), 0 when the function has none.
+# 55 89 e5, x64: 55 48 89 e5, arm64: [pacia x30,x28 ;] stp x29,x30,
+# [x28,#-16]! ; mov x29,x28), 0 when the function has none.
 int st_prologue_len(int addr):
+	if (st_machine == 183):
+		int k = 0
+		if (st_int32(addr) == ((218 << 24) | 12649374)):  /* pacia x30, x28: 0xdac1039e */
+			k = 4
+		if (st_int32(addr + k) != ((169 << 24) | 12549021)):  /* stp x29, x30, [x28, #-16]!: 0xa9bf7b9d */
+			return 0
+		if (st_int32(addr + k + 4) != ((170 << 24) | 1836029)):  /* mov x29, x28: 0xaa1c03fd */
+			return 0
+		return k + 8
 	if (st_byte(addr) != 85):
 		return 0
 	if (st_class == 2):
@@ -537,9 +568,9 @@ int st_prologue_len(int addr):
 int st_uses_frame_pointers():
 	if (st_state != 1):
 		return 0
-	if ((st_machine != 3) && (st_machine != 62)):
+	if ((st_machine != 3) && (st_machine != 62) && (st_machine != 183)):
 		return 0
-	return st_prologue_len(cast(int, st_prologue_len)) > 0
+	return st_prologue_len(st_code_address(cast(int, st_prologue_len))) > 0
 
 
 # 1 when v is a plausible return address: inside a defined function
@@ -583,7 +614,7 @@ int st_chain(int fp, char* out, int found, int max, int fallback_sp, int skip_en
 		else if (st_range_readable(fp, 2 * __word_size__) == 0):
 			broken = 1
 		else:
-			int v = st_word(fp + __word_size__)
+			int v = st_code_address(st_word(fp + __word_size__))
 			if (st_is_return(v) == 0):
 				broken = 1
 			else:
@@ -629,6 +660,22 @@ int st_unwind(int pc, int sp, int fp, char* out, int max):
 	int plen = st_prologue_len(entry)
 	int found = 0
 	int ret_slot = 0
+	if (st_machine == 183):
+		# arm64 calls leave the return address in x30, not on the
+		# stack, so a frameless stub (or a function stopped before its
+		# stp) is not on the chain at all: x29 is still the caller's,
+		# and the chain from it starts at the caller's caller. The
+		# crash report adds the x30 frame itself. Once the stp has run
+		# (pc at the mov), [x28 + 8] holds the return address.
+		if ((plen != 0) && (pc == entry + plen - 4)):
+			int v2 = st_code_address(st_word(sp + 8))
+			if (st_is_return(v2)):
+				st_out_set(out, 0, v2 - 1)
+				found = 1
+				if (st_is_main_frame(v2 - 1)):
+					st_unwind_exact = 1
+					return found
+		return st_chain(fp, out, found, max, sp, 0)
 	if (plen == 0):
 		# Frameless function: ebp still belongs to its caller, whose
 		# frame the chain covers; find this one's return address by
@@ -709,8 +756,14 @@ int st_line_lookup(int pc):
 		return 0
 	# A pc outside our own code (a system DLL frame, a JIT thunk) must
 	# not borrow the line of the last row below it.
-	if ((pc < st_base) || (pc >= st_text_hi)):
+	int text_lo = st_base
+	if (st_macho):
+		text_lo = st_text_lo
+	if ((pc < text_lo) || (pc >= st_text_hi)):
 		return 0
+	# Mach-O line tables hold linked vmaddrs: compare unslid.
+	if (st_macho):
+		pc = pc - st_slide
 	int unit_length = st_int32(st_dline_lo)
 	if ((unit_length < 16) || (unit_length + 4 > st_dline_size)):
 		return 0

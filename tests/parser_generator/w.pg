@@ -88,6 +88,9 @@ literal KW_GPU "gpu"
 # type or symbol named 'export' keeps the identifier meaning), so it is
 # also listed in name_token below.
 literal KW_EXPORT "export"
+# 'thread_local' is contextual in the compiler too (grammar/program.w;
+# docs/projects/thread_local.md), so it is also listed in name_token.
+literal KW_THREAD_LOCAL "thread_local"
 
 literal ELLIPSIS "..."
 literal SHL_ASSIGN "<<="
@@ -153,12 +156,12 @@ rule program = separator* top_item* EOF
 rule separator = NEWLINE
 rule top_item = declaration separator* | statement separator*
 
-rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | kernel_decl | export_decl | message_decl | operator_def | function_decl | global_decl
+rule declaration = import_decl | c_lib_decl | extern_decl | inline_asm_decl | asm_decl | struct_decl | union_decl | enum_decl | type_alias_decl | generator_decl | kernel_decl | export_decl | thread_local_decl | message_decl | operator_def | function_decl | global_decl
 rule import_decl = KW_IMPORT dotted_name import_alias_opt
 rule import_alias_opt = KW_AS name_token |
 rule dotted_name = name_token dotted_tail*
 rule dotted_tail = DOT name_token
-rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_ELIF | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT | KW_DEFER | KW_GOTO | KW_OPERATOR | KW_KERNEL | KW_LAUNCH | KW_GPU | KW_EXPORT
+rule name_token = IDENT | KW_AS | KW_IMPORT | KW_STRUCT | KW_UNION | KW_ENUM | KW_TYPE | KW_EXTERN | KW_C_LIB | KW_IF | KW_ELSE | KW_ELIF | KW_WHILE | KW_FOR | KW_IN | KW_RANGE | KW_RETURN | KW_BREAK | KW_CONTINUE | KW_PASS | KW_DEBUGGER | KW_NEW | KW_CONST | KW_INT | KW_CHAR | KW_VOID | KW_STRING | KW_ASM | KW_INLINE | KW_FN | KW_BOOL | KW_UINT | KW_CAST | KW_TRUE | KW_FALSE | KW_MAP | KW_SET | KW_LIST | KW_GENERATOR | KW_YIELD | KW_VAR | KW_SWITCH | KW_CASE | KW_DEFAULT | KW_DEFER | KW_GOTO | KW_OPERATOR | KW_KERNEL | KW_LAUNCH | KW_GPU | KW_EXPORT | KW_THREAD_LOCAL
 rule c_lib_decl = KW_C_LIB STRING
 rule extern_decl = KW_EXTERN type_ref IDENT LPAREN extern_param_list RPAREN extern_alias | KW_EXTERN type_ref IDENT
 rule extern_alias = ASSIGN STRING |
@@ -194,6 +197,11 @@ rule message_number = ASSIGN NUMBER |
 # wasm real-signature exports: 'export' marks a function definition
 # (grammar/program.w; docs/projects/wasm_backend.md stage 5)
 rule export_decl = KW_EXPORT function_decl
+# thread_local globals (grammar/program.w; docs/projects/thread_local.md).
+# The function and initializer spellings are compile errors, parse-only
+# here so their fixtures (tests/thread_local_*_error_fixture.w) parse.
+rule thread_local_decl = KW_THREAD_LOCAL thread_local_body
+rule thread_local_body = function_decl | global_decl
 rule function_decl = type_ref name_token generic_opt LPAREN param_list RPAREN function_body
 # Operator overloading v1 (docs/projects/operator_overloading.md): the
 # compiler only accepts the arith_op spellings; EQ_EQ is parse-only so

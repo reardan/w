@@ -145,3 +145,19 @@ func stack_create
 	mov eax,9	# mmap
 	syscall
 	ret
+
+# __w_tls_size(): the thread_local block size (imm32 patched at finish;
+# docs/projects/thread_local.md).
+func __w_tls_size
+	mov eax,0
+	ret
+
+# __w_tls_set(block): block[0] = block, then make block this thread's gs
+# base (fs stays libc's): arch_prctl(ARCH_SET_GS, block).
+func __w_tls_set
+	mov rsi,[rsp+8]
+	mov [rsi],rsi
+	mov edi,0x1001	# ARCH_SET_GS
+	mov eax,0x9e	# arch_prctl
+	syscall
+	ret

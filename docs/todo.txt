@@ -321,6 +321,16 @@ current state:
 				the return-address scan is only the broken-chain fallback;
 				stack_trace_chain_test / crash_trace_test assert exact
 				deep traces past a decoy return address on the stack
+			arm64 frame-pointer chain (issue #378): arm64 and arm64_darwin
+				functions open with stp x29,x30,[x28,#-16]! ; mov x29,x28
+				(the frame lives on the W stack, the saved x29 counts as
+				one W stack word like ebp) and return through mov x28,x29
+				; ldp ; autia; lib/stack_trace.w walks the chain, darwin
+				crash reports are exact (crash handlers run on a
+				sigaltstack: the kernel's signal frame would otherwise
+				land on the W stack), and lldb's bt follows W frames
+				natively on the Mac; stack_trace_chain_arm64 (qemu) and
+				the crash_darwin fixtures assert exact traces past a decoy
 			W-generated crash dumps (lib/crash_dump.w, issue #378): the
 				fatal-signal report also prints all registers and the
 				image's build-id; with W_CRASH_DUMP=<path> ("%p" = pid) the
@@ -333,7 +343,10 @@ current state:
 			darwin crash reports and symbols (issue #378): the Mach-O
 				writer emits an nlist symbol table (one __TEXT,__text
 				section; nm/atos/lldb name W functions) and a content-hash
-				LC_UUID; lib/stack_trace.w reads the mapped Mach-O image;
+				LC_UUID, plus the DWARF line table and its compile unit
+				as __TEXT,__debug_line/__debug_info/__debug_abbrev
+				(file:line in traces, lldb source lines);
+				lib/stack_trace.w reads the mapped Mach-O image;
 				crash_handler_install() reports SIGSEGV/SIGBUS/SIGILL/
 				SIGFPE/SIGTRAP on arm64_darwin through the compiler's
 				signal_trampoline stub (darwin rt_sigaction is real),
@@ -489,10 +502,8 @@ current state:
 			wdbg's backtrace is still heuristic (return-address scan) even
 				though x86/x64 code now keeps a frame-pointer chain (crash
 				traces, stack_trace_collect and wcore walk it), so an older
-				frame's base can be unknown (locals unaddressable); arm64
-				keeps no frame chain
-			darwin crash traces: function names only (Mach-O has no
-				line table yet); no crash handler on arm64e (--pac=full)
+				frame's base can be unknown (locals unaddressable)
+			darwin crash traces: no crash handler on arm64e (--pac=full)
 				images (needs a signed sa_tramp: name signal_trampoline
 				once SEEDS pins a release with it); arm64 Linux still has
 				no crash handler (no sigcontext accessors)
@@ -501,9 +512,12 @@ current state:
 		threading:
 			lib/thread.w (spawn/join/parallel_for dispatching to a
 				persistent worker pool, join-time stack reclamation,
-				wmutex/wcond, host atomic_add/atomic_cas intrinsics) is
+				wmutex/wcond, host atomic_add/atomic_cas intrinsics,
+				per-thread heaps so workers may allocate) is
 				Linux x86/x64 only; arm64/darwin/win64/wasm ports are
 				staged in docs/projects/threads.md
+			thread_local globals: Linux x86/x64 only (no initializers
+				or fixed arrays yet; docs/projects/thread_local.md)
 		webassembly:
 			json builtins, generators, c_import/extern FFI, REPL and wdbg
 				are not supported on the wasm target
@@ -647,5 +661,5 @@ current state:
 			shell execute syscall
 			fork
 		debugger information
-		w debugger (tools/wdbg_web.w: https UI over wdbg, issue #98)
+		w debugger (tools/wdbg_web.w: https server over wdbg; tools/wdbg_ui.w: OllyDbg-style W/wasm UI, issue #98)
 

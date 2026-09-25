@@ -742,6 +742,10 @@ int rt_sigaction(int signum, int* act, int* oldact):
 	return -1
 
 
+int sys_sigaltstack(int ss, int old_ss):
+	return -1
+
+
 /* Startup */
 
 # The PE entry stub calls _win_start (see code_generator/pe_64.w), which

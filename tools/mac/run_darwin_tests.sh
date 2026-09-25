@@ -76,7 +76,7 @@ for t in $must_die; do
 		fail=1
 	fi
 done
-# The crash_darwin fixtures: each prints a print_stack_trace() trace and
+# The crash_darwin fixtures: each prints an exact print_stack_trace() trace and
 # then dies of SIGSEGV. The plain build must also print the full crash
 # report; the --pac=full (arm64e) build must not, since the handler is
 # not installed there (lib/crash.w crash_install_darwin).
@@ -104,9 +104,14 @@ if [ -n "$crash_fixtures" ]; then
 		rm -f "$t.run"
 		ok=1
 		[ "$rc" -eq 139 ] || { echo "run_darwin_tests: $t: want exit 139 (SIGSEGV), got $rc" >&2; ok=0; }
-		has_lines "$out" "stack trace (most recent call first):" "  at crash_bottom" "  at crash_middle" "  at crash_top" "  at main" "traced" || ok=0
+		# Frames carry file:line from the __TEXT,__debug_line table; the
+		# path prefix is whatever the compile saw, so match its tail.
+		has_lines "$out" "stack trace (most recent call first):" "  at crash_bottom (" "crash_darwin_fixture.w:44)" "  at crash_middle (" "crash_darwin_fixture.w:51)" "  at crash_top (" "crash_darwin_fixture.w:55)" "  at main (" "crash_darwin_fixture.w:61)" "traced" || ok=0
 		if [ "$t" = bin/crash_darwin_fixture ]; then
-			has_lines "$out" "traced" "fatal signal: SIGSEGV (invalid memory reference)" "faulting address 0x0000000000000010" "  x28=" "uuid: " "  at crash_bottom" "  at crash_middle" "  at crash_top" "  at main" "terminating with the default action for signal 11" || ok=0
+			has_lines "$out" "traced" "fatal signal: SIGSEGV (invalid memory reference)" "faulting address 0x0000000000000010" "  x28=" "uuid: " "  at crash_bottom (" "crash_darwin_fixture.w:47)" "  at crash_middle (" "crash_darwin_fixture.w:51)" "  at crash_top (" "crash_darwin_fixture.w:55)" "  at main (" "crash_darwin_fixture.w:63)" "terminating with the default action for signal 11" || ok=0
+			# The frame chain (x29 on the W stack) makes the walk exact.
+			case "$out" in *"trace is heuristic"*) echo "run_darwin_tests: $t: crash trace fell back to the heuristic scan" >&2; ok=0 ;; esac
+			case "$out" in *"at decoy_"*) echo "run_darwin_tests: $t: crash trace reported the decoy return address" >&2; ok=0 ;; esac
 		else
 			case "$out" in *"fatal signal"*) echo "run_darwin_tests: $t: arm64e image printed a crash report" >&2; ok=0 ;; esac
 		fi

@@ -570,8 +570,14 @@ int asm_x86_encode(asm_buffer* b, asm_insn* insn):
 		asm_enc_rex(b, is64, asm_enc_w(insn.op1.size), g2, &insn.op1)
 		if (insn.op2.kind == ASM_OP_REG()):
 			asm_buffer_byte(b, 0xd3)
-		else:
+		else if (insn.op2.imm == 1):
 			asm_buffer_byte(b, 0xd1)
+		else:
+			# r/m, imm8 (0xc1); a count of 1 takes the shorter 0xd1 form
+			asm_buffer_byte(b, 0xc1)
+			asm_enc_modrm(b, g2, &insn.op1, is64)
+			asm_buffer_byte(b, insn.op2.imm & 255)
+			return b.length - start
 		asm_enc_modrm(b, g2, &insn.op1, is64)
 		return b.length - start
 

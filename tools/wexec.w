@@ -544,17 +544,33 @@ void wexec_sort_strings(list[char*] files):
 # direct-file UX's synthesized names (below), which embed a source path
 # and so may contain '/' -- escaped here rather than by nesting
 # directories under bin/.wexec_cache/, so the stamp stays a flat file.
-char* wexec_stamp_path(char* name):
-	string_builder* s = string_new()
-	string_append(s, c"bin/.wexec_cache/")
+#
+# Stamps from a '-f' manifest are prefixed with that manifest's escaped
+# path and '__': the wexec test fixtures run against the real bin/ and
+# reuse real target names (tests/wexec/direct_file.json defines its own
+# 'wv2'), and an unprefixed fixture stamp overwrote the real one, so the
+# next ./wbuild after a suite run rebuilt bin/wv2 from the seed.
+char* wexec_stamp_manifest   # escaped '-f' path, 0 for the default manifest
+
+
+void wexec_stamp_append_escaped(string_builder* s, char* text):
 	int i = 0
-	while (name[i] != 0):
-		char c = name[i]
+	while (text[i] != 0):
+		char c = text[i]
 		if ((c == '/') || (c == ':') || (c == 92)):
 			string_append_char(s, '_')
 		else:
 			string_append_char(s, c)
 		i = i + 1
+
+
+char* wexec_stamp_path(char* name):
+	string_builder* s = string_new()
+	string_append(s, c"bin/.wexec_cache/")
+	if (wexec_stamp_manifest != 0):
+		wexec_stamp_append_escaped(s, wexec_stamp_manifest)
+		string_append(s, c"__")
+	wexec_stamp_append_escaped(s, name)
 	char* path = s.data
 	free(s)
 	return path
@@ -3638,6 +3654,7 @@ int main(int argc, int argv):
 				return 1
 			char** value = argv + i * __word_size__
 			manifest_path = *value
+			wexec_stamp_manifest = manifest_path
 		else if (strcmp(*arg, c"--list") == 0):
 			list_only = 1
 		else if (strcmp(*arg, c"--json") == 0):

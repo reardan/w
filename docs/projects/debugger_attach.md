@@ -419,8 +419,10 @@ and must not use syntax newer than the seed.
   kills the fixture with `-9` after detaching, which would never notice a
   leftover `int3` byte (the process is gone either way). A dedicated
   fixture, `tests/attach_finite_fixture.w`, loops a small, fixed number of
-  times (`sleep_ms` between iterations so it reliably outlives the
-  harness's post-fork settle delay without a long test) and then exits on
+  times (`sleep_ms` between iterations so it reliably outlives wdbg's
+  recompile-and-attach after the fixture's `attach_ready` line, which the
+  harness waits for instead of a fixed settle delay since 2026-09-25,
+  without a long test) and then exits on
   its own with a distinct final `println` and exit code. The test breaks
   at `bump`, continues to hit it once, detaches, and `wait`s for the real
   process (not `kill -9`) to finish, asserting both the final output and

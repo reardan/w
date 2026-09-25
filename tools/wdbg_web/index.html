@@ -1,50 +1,128 @@
 <!doctype html>
+<!-- Host page for the wdbg_web UI. The debugger front end itself is a W
+     program, tools/wdbg_ui.w, compiled to wasm (/wdbg_ui.wasm) and drawn
+     with graphics/ui over WebGL2. This page only sizes the canvas, feeds it
+     input events, and provides the "wdbg" import module (HTTP to this
+     server as polled handles, wdbg_bridge.mjs). -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>wdbg</title>
-<link rel="stylesheet" href="style.css">
+<style>
+  html, body { margin: 0; height: 100%; overflow: hidden; background: #d4d0c8; }
+  canvas { display: block; outline: none; }
+  #err { position: fixed; left: 8px; bottom: 8px; color: #a00; font: 13px monospace; white-space: pre-wrap; }
+</style>
 </head>
 <body>
-<header>
-	<span class="brand">wdbg</span>
-	<span id="program" class="program"></span>
-	<span id="state" class="state">connecting</span>
-	<nav id="controls">
-		<button data-cmd="c" title="Continue (F5)">Continue</button>
-		<button data-cmd="n" title="Step over (F10)">Next</button>
-		<button data-cmd="s" title="Step into (F11)">Step</button>
-		<button data-cmd="fin" title="Step out (Shift+F11)">Finish</button>
-		<button data-cmd="si" title="One machine instruction">Step insn</button>
-		<button id="restart" title="Kill and start again">Restart</button>
-	</nav>
-</header>
-<main>
-	<section id="source-pane">
-		<div class="pane-head">
-			<select id="file-picker" aria-label="Source file"></select>
-			<span id="where" class="where"></span>
-		</div>
-		<div id="source" class="source" tabindex="0"></div>
-	</section>
-	<aside id="side">
-		<details open><summary>Locals</summary><table id="locals" class="vars"></table></details>
-		<details open><summary>Arguments</summary><table id="args" class="vars"></table></details>
-		<details open><summary>Backtrace</summary><ol id="backtrace" class="frames"></ol></details>
-		<details open><summary>Breakpoints</summary><ul id="breakpoints" class="list"></ul></details>
-		<details><summary>Watchpoints</summary><pre id="watchpoints" class="raw"></pre></details>
-		<details id="core-panel" hidden open><summary>Core dump</summary><div id="core"></div></details>
-	</aside>
-	<section id="console-pane">
-		<div class="pane-head">Console <span class="hint">any wdbg command: p x, b file.w:12, condition 1 i &gt; 3, watch x, disas, help</span></div>
-		<pre id="console" class="console"></pre>
-		<form id="console-form" autocomplete="off">
-			<span class="prompt">wdbg&gt;</span>
-			<input id="console-input" spellcheck="false" aria-label="wdbg command">
-		</form>
-	</section>
-</main>
-<script src="app.js"></script>
+<canvas id="canvas" tabindex="0"></canvas>
+<div id="err"></div>
+<script type="module">
+import { makeEnv } from '/web/webgl_env.mjs';
+import { makeWasi } from '/web/wasi_lite.mjs';
+import { makeWdbgBridge } from './wdbg_bridge.mjs';
+
+const errPane = document.getElementById('err');
+const fail = (text) => { errPane.textContent += text + '\n'; };
+
+// The access code arrives once as ?code=; the server also sets an HttpOnly
+// cookie. Keep it for this tab and drop it from the address bar.
+const params = new URLSearchParams(location.search);
+let code = params.get('code') ?? sessionStorage.getItem('wdbg_code') ?? '';
+if (params.has('code')) {
+  sessionStorage.setItem('wdbg_code', code);
+  history.replaceState(null, '', location.pathname);
+}
+
+const canvas = document.getElementById('canvas');
+const gl = canvas.getContext('webgl2', { antialias: false });
+if (!gl) fail('this browser has no WebGL2 context');
+const fit = () => { canvas.width = innerWidth; canvas.height = innerHeight; };
+fit();
+addEventListener('resize', fit);
+canvas.focus();
+
+// Input queue drained by gfx_host_next_event (kinds and codes as in
+// graphics/event.w; see tools/web/index.html).
+const state = { mouseX: 0, mouseY: 0, mouseButtons: 0, lastKeycode: 0 };
+const events = [];
+const push = (kind, code, x, y, mods) => { if (events.length < 256) events.push({ kind, code, x, y, mods }); };
+const modsOf = (e) => (e.shiftKey ? 1 : 0) | (e.ctrlKey ? 2 : 0) | (e.altKey ? 4 : 0) | (e.metaKey ? 8 : 0);
+const buttonOf = (e) => (e.button === 0 ? 1 : e.button === 1 ? 2 : e.button === 2 ? 3 : 0);
+const charOf = (e) => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return 0;
+  if (e.key.length === 1) { const c = e.key.charCodeAt(0); return c >= 32 && c < 127 ? c : 0; }
+  return { Backspace: 8, Tab: 9, Enter: 13, Escape: 27 }[e.key] ?? 0;
+};
+const NAV = { ArrowLeft: 1, ArrowRight: 2, Home: 3, End: 4, ArrowUp: 5, ArrowDown: 6, PageUp: 7, PageDown: 8, Delete: 9 };
+
+canvas.addEventListener('mousemove', (e) => { state.mouseX = e.offsetX; state.mouseY = e.offsetY; });
+canvas.addEventListener('mousedown', (e) => {
+  canvas.focus();
+  state.mouseButtons |= 1 << e.button;
+  const b = buttonOf(e);
+  if (b) push(4, b, e.offsetX, e.offsetY, modsOf(e));
+});
+addEventListener('mouseup', (e) => {
+  state.mouseButtons &= ~(1 << e.button);
+  const b = buttonOf(e);
+  if (b) push(5, b, state.mouseX, state.mouseY, modsOf(e));
+});
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+canvas.addEventListener('keydown', (e) => {
+  // Function keys, Alt+letter view switches, Tab and the navigation keys
+  // belong to the debugger.
+  if (/^F\d+$/.test(e.key) || e.altKey || e.key === 'Tab' || e.key === 'Backspace' || NAV[e.key]) e.preventDefault();
+  state.lastKeycode = e.keyCode;
+  const mods = modsOf(e);
+  push(1, e.keyCode, state.mouseX, state.mouseY, mods);
+  const c = charOf(e);
+  if (c) push(3, c, state.mouseX, state.mouseY, mods);
+  if (NAV[e.key]) push(7, NAV[e.key], state.mouseX, state.mouseY, mods);
+});
+canvas.addEventListener('keyup', (e) => push(2, e.keyCode, state.mouseX, state.mouseY, modsOf(e)));
+canvas.addEventListener('wheel', (e) => {
+  if (e.deltaY) push(6, e.deltaY < 0 ? 1 : -1, e.offsetX, e.offsetY, modsOf(e));
+  e.preventDefault();
+}, { passive: false });
+
+let frameCallback = 0;
+const host = {
+  canvasInit: (title) => { document.title = title; return gl ? 1 : 0; },
+  pollState: () => ({
+    width: canvas.width, height: canvas.height, shouldClose: 0,
+    mouseX: state.mouseX, mouseY: state.mouseY,
+    mouseButtons: state.mouseButtons, lastKeycode: state.lastKeycode,
+  }),
+  setFrameCallback: (i) => { frameCallback = i; },
+  nextEvent: () => events.shift() ?? null,
+};
+
+let instance = null;
+const memory = () => instance.exports.memory;
+const wasi = makeWasi({
+  memory,
+  onWrite: (fd, text) => (fd === 2 ? console.error : console.log)(text.replace(/\n$/, '')),
+});
+try {
+  const wasm = await WebAssembly.compileStreaming(fetch('/wdbg_ui.wasm'));
+  instance = await WebAssembly.instantiate(wasm, {
+    wasi_snapshot_preview1: wasi.imports,
+    env: makeEnv({ memory, gl, host }),
+    wdbg: makeWdbgBridge({ memory, code }),
+  });
+  wasi.runStart(instance);
+  const table = instance.exports.table;
+  const tick = () => {
+    table.get(frameCallback)();
+    if (instance.exports.ax.value !== 0) requestAnimationFrame(tick);
+  };
+  if (frameCallback) requestAnimationFrame(tick);
+} catch (e) {
+  fail(String(e));
+  throw e;
+}
+</script>
 </body>
 </html>

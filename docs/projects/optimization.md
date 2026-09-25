@@ -50,6 +50,15 @@ the compiler emits. x86/x64 only, like §1.3. `tests/const_fold_test.w`
 pins it, and passes identically under the pinned seed, which does no
 folding — an unfolded oracle for every assertion.
 
+**Update 2026-09-25**: the same mechanism now covers §1.1's remaining
+cost and most of §1.2 without a post-pass: a local read's `lea` folds
+into the load that follows, and a binary operator whose right operand is
+one simple instruction (a constant or a folded local load) moves the
+left operand to `ebx` instead of pushing it, rewriting that one load's
+displacement. Shifts by a constant use the immediate form. Details and
+measurements in `compiler_performance.md` §13 (`bin/wv3` −10.9%
+instructions, self-compile −20% instructions executed).
+
 Original assessment follows. Answers issue #110 verbatim: "Optimization pass - either from the
 generated code (v0), or additional passes of the AST (v2)." Companion to
 `docs/projects/compilation_model.md` (#338/#337 — the AST/artifact

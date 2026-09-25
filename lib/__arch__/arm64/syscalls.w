@@ -243,6 +243,11 @@ int win_crash_filter_install(int handler):
 	return 0
 
 
+# sigaltstack is only wired up where lib/crash.w uses it (arm64_darwin).
+int sys_sigaltstack(int ss, int old_ss):
+	return -1
+
+
 # Win32 API surface used by the os_windows()-guarded paths in shared
 # modules (lib/process.w's CreateProcessA spawning, tools/wexec.w's
 # FindFirstFileA directory walk). Those paths never run on this target;

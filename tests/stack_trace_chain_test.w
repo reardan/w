@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: x64 arch=arm64
 /*
 Frame-pointer unwinding (lib/stack_trace.w st_chain, issue #378): a
 deep, alternating recursion must come back from stack_trace_collect as

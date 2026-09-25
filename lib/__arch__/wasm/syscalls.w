@@ -356,6 +356,11 @@ int win_crash_filter_install(int handler):
 	return 0
 
 
+# sigaltstack is only wired up where lib/crash.w uses it (arm64_darwin).
+int sys_sigaltstack(int ss, int old_ss):
+	return -1
+
+
 int sys_ptrace(int request, int pid, int addr, int data):
 	return -1
 

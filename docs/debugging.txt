@@ -179,9 +179,9 @@ Runtime stack traces (lib/stack_trace.w):
 	.debug_line included - as one PT_LOAD segment, and the ELF header
 	is found by walking pages down from a code address. Mach-O images
 	(arm64_darwin) are found the same way: their load commands give the
-	ASLR slide, __text and the nlist symbol table in __LINKEDIT, so
-	darwin frames carry function names (no file:line yet: Mach-O has no
-	line table). arm64 return addresses signed by pointer
+	ASLR slide, __text, the nlist symbol table in __LINKEDIT and the
+	DWARF line table in __TEXT,__debug_line, so darwin frames carry
+	function names and file:line. arm64 return addresses signed by pointer
 	authentication are stripped to their address bits. PE binaries
 	carry no symbols, so they collect zero frames and print nothing: the
 	trap paths stay safe everywhere.
@@ -189,7 +189,10 @@ Runtime stack traces (lib/stack_trace.w):
 	The Mach-O symbol table also serves Apple's tools: nm, atos and
 	lldb name W functions, and lldb's `memory read -fA $x28` symbolizes
 	the W stack (lldb's bt stops at frame 0: arm64 keeps no frame
-	chain). LC_UUID is a content hash of the image, like ELF's
+	chain). The DWARF sections (__TEXT,__debug_line/__debug_info/
+	__debug_abbrev: one compile unit, like the ELF writers') give lldb
+	source lines ("crash_bottom at crash_darwin_fixture.w:30") and
+	`dwarfdump --debug-line` the table. LC_UUID is a content hash of the image, like ELF's
 	build-id, and matches `dwarfdump --uuid`.
 
 	./wbuild stack_trace_test (and stack_trace_64_test) assert the
