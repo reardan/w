@@ -253,6 +253,11 @@ cc|int3
 # --- ret ---
 c3|ret
 
+# --- function frame (be_function_prologue / be_return) ---
+55|push ebp
+89e5|mov ebp,esp
+c9|leave
+
 ##################################################################
 # code_generator/x86_asm.w  (define_asm_functions runtime stubs)
 ##################################################################

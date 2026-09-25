@@ -298,6 +298,15 @@ current state:
 				first file page, which kernel cores keep by default, and
 				wcore refuses a binary whose build-id differs from the
 				core's copy (warns and continues when the core has none)
+			frame-pointer unwinding (issue #378): x86/x64 functions open
+				with push ebp ; mov ebp,esp and return through leave (the
+				saved ebp counts as one W stack word), and the asm stubs
+				that borrow ebp save it; lib/stack_trace.w st_unwind walks
+				the chain for crash reports and stack_trace_collect, wcore
+				walks it in cores (JSON trace_exact), gdb's bt follows it;
+				the return-address scan is only the broken-chain fallback;
+				stack_trace_chain_test / crash_trace_test assert exact
+				deep traces past a decoy return address on the stack
 			W-generated crash dumps (lib/crash_dump.w, issue #378): the
 				fatal-signal report also prints all registers and the
 				image's build-id; with W_CRASH_DUMP=<path> ("%p" = pid) the
@@ -452,8 +461,11 @@ current state:
 			new initializes fields from arguments but does not run user constructors
 			struct values with fixed-array fields are copied and returned by value
 		debugging:
-			backtrace is heuristic (return-address scan, no frame pointers),
-				so an older frame's base can be unknown (locals unaddressable)
+			wdbg's backtrace is still heuristic (return-address scan) even
+				though x86/x64 code now keeps a frame-pointer chain (crash
+				traces, stack_trace_collect and wcore walk it), so an older
+				frame's base can be unknown (locals unaddressable); arm64
+				keeps no frame chain
 			watchpoints are software (statement-granularity single-step
 				scan): large slowdown while any exist
 		threading:

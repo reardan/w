@@ -86,12 +86,16 @@ void define_asm_functions_x64():
 	# thread_create(func): clone with a fresh 4MB stack whose top slot
 	# holds func, so the child's fall-through "ret" jumps straight into
 	# func (the x64 twin of the x86 stub; docs/projects/threads.md).
-	# The call +0x1f targets stack_create, emitted immediately after.
+	# The call +0x25 targets stack_create, emitted immediately after.
+	# The child zeroes rbp so its frame-pointer chain ends at the thread
+	# function instead of running into the parent's frames.
 	sym_define_declare_global_function(c"thread_create")
 	/* call stack_create ; lea rcx,[rax+0x3ffff0] ; mov rdx,[rsp+8] ; mov [rcx],rdx */
-	emit(20, c"\xe8\x1f\x00\x00\x00\x48\x8d\x88\xf0\xff\x3f\x00\x48\x8b\x54\x24\x08\x48\x89\x11")
-	/* mov edi,CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO ; mov rsi,rcx ; mov eax,56 ; syscall ; ret */
-	emit(16, c"\xbf\x00\x8f\x01\x80\x48\x89\xce\xb8\x38\x00\x00\x00\x0f\x05\xc3")
+	emit(20, c"\xe8\x25\x00\x00\x00\x48\x8d\x88\xf0\xff\x3f\x00\x48\x8b\x54\x24\x08\x48\x89\x11")
+	/* mov edi,CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO ; mov rsi,rcx ; mov eax,56 ; syscall ;
+	   test eax,eax ; jne +2 (parent) ; xor ebp,ebp (child) ; ret */
+	emit(20, c"\xbf\x00\x8f\x01\x80\x48\x89\xce\xb8\x38\x00\x00\x00\x0f\x05\x85\xc0\x75\x02\x31")
+	emit(2, c"\xed\xc3")
 
 	# stack_create(): mmap(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)
 	sym_define_declare_global_function(c"stack_create")

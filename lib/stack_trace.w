@@ -8,14 +8,26 @@ stderr:
 	  at middle (tests/stack_trace_test.w:12)
 	  at main (tests/stack_trace_test.w:20)
 
-Unwinding uses the in-process debugger's return-address heuristic
-(debugger/wdbg.w dbg_frames_compute): scan stack words upward from the
-current stack pointer and keep values that point into a defined
-function's code and whose preceding bytes decode as one of the
-compiler's call forms. There are no frame pointers to follow; the
-calling convention keeps return addresses on the W stack (x86/x64: the
-machine stack, arm64: the x28 data stack) and the repl_setjmp stub
-hands us that pointer on every target.
+Unwinding on x86/x64 follows the frame-pointer chain: every compiled
+function opens with push ebp ; mov ebp,esp (be_function_prologue in
+code_generator/arm64.w), so [ebp] is the caller's ebp and [ebp + word]
+the return address, and the walk (st_chain) is exact - every frame, in
+order, nothing stale. The chain ends at main, at a zero ebp (process or
+thread start), or where it stops looking like a chain (ebp not
+increasing, unmapped, or a return address that is not a call site);
+from there, and on images without frame pointers (arm64, or a binary
+built by a pre-frame-pointer compiler such as the seed), unwinding
+falls back to the in-process debugger's return-address heuristic
+(debugger/wdbg.w dbg_frames_compute, st_scan here): scan stack words
+upward from the stack pointer and keep values that point into a
+defined function's code and whose preceding bytes decode as one of the
+compiler's call forms. st_unwind_exact reports which one produced the
+last trace. Functions compiled without the prologue (asm stubs,
+generator bodies, REPL entries) keep the caller's ebp: a fault inside
+one is resolved by scanning for its return address first, but such a
+function in the middle of the chain hides the frame that called it.
+The repl_setjmp stub hands the collectors pc, sp and ebp on every
+target.
 
 Symbols come from the running binary itself. The ELF targets map the
 whole output file - including the .symtab, string table and DWARF
@@ -375,6 +387,162 @@ int st_scan(int sp, char* out, int max, int skip_entry):
 	return found
 
 
+# 1 when the last st_unwind / st_chain walk followed an intact
+# frame-pointer chain to its end (main or a zero ebp); 0 when any part
+# of the trace came from the heuristic scan.
+int st_unwind_exact
+int st_chain_fp       /* last frame pointer st_chain accepted, 0 = none */
+
+
+# Symbol value (entry address) of a symbol table entry.
+int st_entry_value(int e):
+	if (st_class == 1):
+		return st_int32(e + 4)
+	return st_word(e + 8)
+
+
+# Length of the frame-pointer prologue at a function entry (x86:
+# 55 89 e5, x64: 55 48 89 e5), 0 when the function has none.
+int st_prologue_len(int addr):
+	if (st_byte(addr) != 85):
+		return 0
+	if (st_class == 2):
+		if ((st_byte(addr + 1) == 72) && (st_byte(addr + 2) == 137) && (st_byte(addr + 3) == 229)):
+			return 4
+		return 0
+	if ((st_byte(addr + 1) == 137) && (st_byte(addr + 2) == 229)):
+		return 3
+	return 0
+
+
+# 1 when the running image keeps frame-pointer chains. The whole image
+# comes from one compiler, so probing one of this file's own functions
+# answers for all of them.
+int st_uses_frame_pointers():
+	if (st_state != 1):
+		return 0
+	if ((st_machine != 3) && (st_machine != 62)):
+		return 0
+	return st_prologue_len(cast(int, st_prologue_len)) > 0
+
+
+# 1 when v is a plausible return address: inside a defined function
+# and right after one of the compiler's call forms.
+int st_is_return(int v):
+	if ((v <= st_base) || (v >= st_text_hi)):
+		return 0
+	if (st_call_site(v) == 0):
+		return 0
+	return st_func_entry(v - 1) != 0
+
+
+void st_out_set(char* out, int k, int v):
+	int* slot_out = cast(int*, out + k * __word_size__)
+	slot_out[0] = v
+
+
+int st_is_main_frame(int v):
+	int e = st_func_entry(v)
+	if (e == 0):
+		return 0
+	return st_cstr_eq(st_entry_name(e), c"main")
+
+
+# Follow the frame-pointer chain from fp, appending return addresses
+# (minus one, like st_scan) to out after the found entries already
+# there. Stops at main, a zero fp, or max. When the chain breaks, the
+# rest of the trace comes from st_scan above the last accepted frame
+# (or from fallback_sp, dropping hits in skip_entry's function, when
+# none was accepted) and st_unwind_exact
+# drops to 0. Returns the new count.
+int st_chain(int fp, char* out, int found, int max, int fallback_sp, int skip_entry):
+	st_chain_fp = 0
+	int broken = 0
+	while ((found < max) && (broken == 0)):
+		if (fp == 0):
+			st_unwind_exact = 1
+			return found
+		if ((fp & (__word_size__ - 1)) != 0):
+			broken = 1
+		else if (st_range_readable(fp, 2 * __word_size__) == 0):
+			broken = 1
+		else:
+			int v = st_word(fp + __word_size__)
+			if (st_is_return(v) == 0):
+				broken = 1
+			else:
+				st_out_set(out, found, v - 1)
+				found = found + 1
+				st_chain_fp = fp
+				if (st_is_main_frame(v - 1)):
+					st_unwind_exact = 1
+					return found
+				int next = st_word(fp)
+				if ((next != 0) && (next <= fp)):
+					broken = 1
+				fp = next
+	if (broken == 0):
+		st_unwind_exact = 1
+		return found
+	st_unwind_exact = 0
+	if (st_chain_fp == 0):
+		return found + st_scan(fallback_sp, out + found * __word_size__, max - found, skip_entry)
+	int from = st_chain_fp + 2 * __word_size__
+	return found + st_scan(from, out + found * __word_size__, max - found, 0)
+
+
+# Callers of the code stopped at pc with stack pointer sp and frame
+# pointer fp (a signal context), most recent first, each minus one
+# like st_scan. Exact on frame-pointer images (st_unwind_exact = 1),
+# the heuristic scan otherwise. The trace ends at main.
+int st_unwind(int pc, int sp, int fp, char* out, int max):
+	st_unwind_exact = 0
+	if (st_state != 1):
+		return 0
+	if (st_uses_frame_pointers() == 0):
+		return st_scan(sp, out, max, 0)
+	int e = st_func_entry(pc)
+	if (e == 0):
+		return st_scan(sp, out, max, 0)
+	if (st_cstr_eq(st_entry_name(e), c"main")):
+		st_unwind_exact = 1
+		return 0
+	if (max <= 0):
+		return 0
+	int entry = st_entry_value(e)
+	int plen = st_prologue_len(entry)
+	int found = 0
+	int ret_slot = 0
+	if (plen == 0):
+		# Frameless function: ebp still belongs to its caller, whose
+		# frame the chain covers; find this one's return address by
+		# scanning (exact enough: it is the first call site above sp).
+		found = st_scan(sp, out, 1, 0)
+		if (found == 0):
+			return 0
+		if (st_is_main_frame(st_word(cast(int, out)))):
+			return found
+		found = st_chain(fp, out, found, max, sp, 0)
+		st_unwind_exact = 0
+		return found
+	if (pc == entry):
+		ret_slot = sp  /* before push ebp */
+	else if (pc < entry + plen):
+		ret_slot = sp + __word_size__  /* after push ebp, before mov */
+	if (ret_slot != 0):
+		if (st_range_readable(ret_slot, __word_size__) == 0):
+			return 0
+		int v = st_word(ret_slot)
+		if (st_is_return(v) == 0):
+			return st_scan(sp, out, max, 0)
+		st_out_set(out, 0, v - 1)
+		found = 1
+		if (st_is_main_frame(v - 1)):
+			st_unwind_exact = 1
+			return found
+	return st_chain(fp, out, found, max, sp, 0)
+
+
 int st_uleb():
 	int result = 0
 	int shift = 0
@@ -524,6 +692,18 @@ int st_file_name(int index):
 	return 0
 
 
+# The collectors' unwind: pc, sp and fp are what repl_setjmp recorded
+# inside a collector (its return address into the collector, and the
+# collector's own sp and ebp). The collector's ebp starts the chain at
+# its caller; without frame pointers the scan skips the collector's
+# own stale slots instead.
+int st_collect_from(int pc, int sp, int fp, char* out, int max):
+	st_unwind_exact = 0
+	if (st_uses_frame_pointers()):
+		return st_chain(fp, out, 0, max, sp, st_func_entry(pc))
+	return st_scan(sp, out, max, st_func_entry(pc))
+
+
 ############################ public API ############################
 
 # Fill out (word-sized slots) with up to max stack addresses, most
@@ -538,9 +718,10 @@ int stack_trace_collect(char* out, int max):
 	repl_setjmp(st_jmp_buf)
 	int pc = st_word(cast(int, st_jmp_buf))
 	int sp = st_word(cast(int, st_jmp_buf) + __word_size__)
+	int fp = st_word(cast(int, st_jmp_buf) + 2 * __word_size__)
 	if (st_state == 0):
 		st_init(pc)
-	return st_scan(sp, out, max, st_func_entry(pc))
+	return st_collect_from(pc, sp, fp, out, max)
 
 
 # Name of the defined function whose code contains pc, or 0.
@@ -573,10 +754,11 @@ void print_stack_trace():
 	repl_setjmp(st_jmp_buf)
 	int pc = st_word(cast(int, st_jmp_buf))
 	int sp = st_word(cast(int, st_jmp_buf) + __word_size__)
+	int fp = st_word(cast(int, st_jmp_buf) + 2 * __word_size__)
 	if (st_state == 0):
 		st_init(pc)
 	char* pcs = malloc(64 * __word_size__)
-	int n = st_scan(sp, pcs, 64, st_func_entry(pc))
+	int n = st_collect_from(pc, sp, fp, pcs, 64)
 	if (n == 0):
 		free(pcs)
 		return;

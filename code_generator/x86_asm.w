@@ -13,9 +13,12 @@ void define_asm_functions():
 	emit(19, c"\x8b\x44\x24\x10\x8b\x5c\x24\x0c\x8b\x4c\x24\x08\x8b\x54\x24\x04\xcd\x80\xc3")
 
 	sym_define_declare_global_function_arity(c"syscall7", 7)
-	/* mov eax,[esp+28] ; mov ebx,[esp+24] ; mov ecx,[esp+20] ; mov edx,[esp+16] ; mov esi,[esp+12] ; mov edi,[esp+8] ; mov ebp,[esp+4] ; int 0x80 ; ret */
-	emit(20, c"\x8b\x44\x24\x1c\x8b\x5c\x24\x18\x8b\x4c\x24\x14\x8b\x54\x24\x10\x8b\x74\x24\x0c")
-	emit(11, c"\x8b\x7c\x24\x08\x8b\x6c\x24\x04\xcd\x80\xc3")
+	# The sixth syscall argument travels in ebp, which W code keeps as
+	# its frame pointer (be_function_prologue): save it around the call.
+	/* push ebp ; mov eax,[esp+32] ; mov ebx,[esp+28] ; mov ecx,[esp+24] ; mov edx,[esp+20] ; mov esi,[esp+16] ; mov edi,[esp+12] ; mov ebp,[esp+8] ; int 0x80 ; pop ebp ; ret */
+	emit(19, c"\x55\x8b\x44\x24\x20\x8b\x5c\x24\x1c\x8b\x4c\x24\x18\x8b\x54\x24\x14\x8b\x74")
+	emit(13, c"\x24\x10\x8b\x7c\x24\x0c\x8b\x6c\x24\x08\xcd\x80\x5d")
+	emit(1, c"\xc3")
 
 	# debug
 	sym_define_declare_global_function(c"get_context")
@@ -70,8 +73,10 @@ void define_asm_functions():
 	sym_define_declare_global_function(c"socket")
 	emit(35, c"\x8b\x44\x24\x04\x8b\x5c\x24\x08\x8b\x4c\x24\x0c\x50\x53\x51\x89\xe1\xb8\x66\x00\x00\x00\xbb\x01\x00\x00\x00\x31\xd2\xcd\x80\x83\xc4\x0c\xc3")
 
+	# Uses ebp as its own frame base: saved and restored (push ebp ...
+	# pop ebp) because W code keeps its frame pointer there.
 	sym_define_declare_global_function(c"connect")
-	emit(55, c"\x89\xe5\x8b\x55\x0c\x8b\x45\x08\x8b\x5d\x04\x0f\xc8\x50\x0f\xcb\xb1\x10\xd3\xfb\x66\x53\xbb\x02\x00\x00\x00\x66\x53\x89\xe1\x6a\x10\x51\x52\x89\xe1\xb8\x66\x00\x00\x00\xbb\x03\x00\x00\x00\xcd\x80\x83\xc4\x14\x89\xd0\xc3")
+	emit(57, c"\x55\x89\xe5\x8b\x55\x10\x8b\x45\x0c\x8b\x5d\x08\x0f\xc8\x50\x0f\xcb\xb1\x10\xd3\xfb\x66\x53\xbb\x02\x00\x00\x00\x66\x53\x89\xe1\x6a\x10\x51\x52\x89\xe1\xb8\x66\x00\x00\x00\xbb\x03\x00\x00\x00\xcd\x80\x83\xc4\x14\x89\xd0\x5d\xc3")
 
 	sym_define_declare_global_function(c"setsockopt")
 	emit(30, c"\x8b\x54\x24\x04\x6a\x04\x54\x6a\x02\x6a\x01\x52\x89\xe1\xb8\x66\x00\x00\x00\xbb\x0e\x00\x00\x00\xcd\x80\x83\xc4\x14\xc3")
@@ -88,18 +93,25 @@ void define_asm_functions():
 	# thread_i386.s
 	# thread_create(func): clone with a fresh 4MB stack whose top slot holds func,
 	# so the child's fall-through "ret" jumps straight into func.
-	# The call +25 targets stack_create, which is emitted immediately after.
+	# The call +31 targets stack_create, which is emitted immediately after.
+	# The child zeroes ebp so its frame-pointer chain ends at the thread
+	# function instead of running into the parent's frames.
 	sym_define_declare_global_function(c"thread_create")
 	/* call stack_create ; lea ecx,[eax+0x3ffff0] ; mov edx,[esp+4] ; mov [ecx],edx */
-	emit(17, c"\xe8\x19\x00\x00\x00\x8d\x88\xf0\xff\x3f\x00\x8b\x54\x24\x04\x89\x11")
-	/* mov ebx,CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO ; mov eax,120 ; int 0x80 ; ret */
-	emit(13, c"\xbb\x00\x8f\x01\x80\xb8\x78\x00\x00\x00\xcd\x80\xc3")
+	emit(17, c"\xe8\x1f\x00\x00\x00\x8d\x88\xf0\xff\x3f\x00\x8b\x54\x24\x04\x89\x11")
+	/* mov ebx,CLONE_VM|FS|FILES|SIGHAND|PARENT|THREAD|IO ; mov eax,120 ; int 0x80 ;
+	   test eax,eax ; jne +2 (parent) ; xor ebp,ebp (child) ; ret */
+	emit(18, c"\xbb\x00\x8f\x01\x80\xb8\x78\x00\x00\x00\xcd\x80\x85\xc0\x75\x02\x31\xed")
+	emit(1, c"\xc3")
 
 	# stack_create(): mmap2(0, 4MB, RW, PRIVATE|ANONYMOUS|GROWSDOWN, -1, 0)
+	# The offset argument travels in ebp, the caller's frame pointer:
+	# saved and restored around the syscall.
 	sym_define_declare_global_function(c"stack_create")
+	emit(1, c"\x55") /* push ebp */
 	emit(20, c"\xbb\x00\x00\x00\x00\xb9\x00\x00\x40\x00\xba\x03\x00\x00\x00\xbe\x22\x01\x00\x00")
-	/* mov edi,-1 ; mov ebp,0 ; mov eax,192 ; int 0x80 ; ret */
-	emit(18, c"\xbf\xff\xff\xff\xff\xbd\x00\x00\x00\x00\xb8\xc0\x00\x00\x00\xcd\x80\xc3")
+	/* mov edi,-1 ; mov ebp,0 ; mov eax,192 ; int 0x80 ; pop ebp ; ret */
+	emit(19, c"\xbf\xff\xff\xff\xff\xbd\x00\x00\x00\x00\xb8\xc0\x00\x00\x00\xcd\x80\x5d\xc3")
 
 	# function_call(func_ptr)
 	sym_define_declare_global_function(c"function_call")

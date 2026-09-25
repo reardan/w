@@ -32,6 +32,7 @@ void error(char *s);                    /* compiler/tokenizer.w */
 int sym_lookup(char *s);                /* compiler/symbol_table.w */
 int be_function_define_declare(char* name);   /* code_generator/arm64.w */
 void be_function_prologue();
+void be_return_bare(); /* x86.w */
 void be_function_epilogue();
 void ret();                             /* code_generator/x86.w */
 void be_emit_inline_cstr(int len, char* s);   /* grammar/string_literal.w */
@@ -1869,7 +1870,7 @@ void ptx_finish_module():
 			be_function_define_declare(c"__w_ptx_module")
 			be_function_prologue()
 			be_emit_inline_cstr(0, c"")
-			ret()
+			be_return_bare()
 			be_function_epilogue()
 		return;
 	ptx_emit_to_module = 1
@@ -1886,5 +1887,5 @@ void ptx_finish_module():
 	be_function_define_declare(c"__w_ptx_module")
 	be_function_prologue()
 	be_emit_inline_cstr(text_len, ptx_module_buf)
-	ret()
+	be_return_bare()
 	be_function_epilogue()

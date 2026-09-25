@@ -294,7 +294,7 @@ int bp_resolve_target(char* arg, int current_file):
 				print(c"not a function: ")
 				println(arg)
 				return 0
-			return dbg_sym_address(f)
+			return dbg_body_start(dbg_sym_address(f), dbg_sym_size(f))
 
 	int line = atoi(line_text)
 	if (line <= 0):

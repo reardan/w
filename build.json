@@ -247,7 +247,9 @@
 				{"cmd": ["bin/wv2", "tests/crash_null_deref_fixture.w", "-o", "bin/crash_null_deref_fixture"]},
 				{"cmd": ["bin/crash_null_deref_fixture"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGSEGV (invalid memory reference)", "faulting address 0x00000000", "registers:", "build-id: ", "stack trace (most recent call first):", "at crash_deep (", "at crash_mid (", "at main (", "crash_null_deref_fixture.w:", "terminating with the default action for signal 11"]},
 				{"cmd": ["bin/wv2", "tests/crash_div_zero_fixture.w", "-o", "bin/crash_div_zero_fixture"]},
-				{"cmd": ["bin/crash_div_zero_fixture"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGFPE (arithmetic exception)", "stack trace (most recent call first):", "at crash_divide (", "at main (", "crash_div_zero_fixture.w:", "terminating with the default action for signal 8"]}
+				{"cmd": ["bin/crash_div_zero_fixture"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGFPE (arithmetic exception)", "stack trace (most recent call first):", "at crash_divide (", "at main (", "crash_div_zero_fixture.w:", "terminating with the default action for signal 8"]},
+				{"cmd": ["bin/wv2", "tests/crash_deep_chain_fixture.w", "-o", "bin/crash_deep_chain_fixture"]},
+				{"cmd": ["bin/crash_deep_chain_fixture"], "expect_fail": true, "expect_stderr": ["stack trace (most recent call first):\n  at crash_level6 (", "crash_deep_chain_fixture.w:29)\n  at crash_level5 (", "crash_deep_chain_fixture.w:33)\n  at crash_level4 (", "crash_deep_chain_fixture.w:37)\n  at crash_level3 (", "crash_deep_chain_fixture.w:41)\n  at crash_level2 (", "crash_deep_chain_fixture.w:45)\n  at crash_level1 (", "crash_deep_chain_fixture.w:49)\n  at main (", "crash_deep_chain_fixture.w:55)\nterminating with the default action for signal 11"], "reject_stderr": "heuristic"}
 			]
 		},
 		{
@@ -257,7 +259,9 @@
 				{"cmd": ["bin/wv2", "x64", "tests/crash_null_deref_fixture.w", "-o", "bin/crash_null_deref_fixture64"]},
 				{"cmd": ["bin/crash_null_deref_fixture64"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGSEGV (invalid memory reference)", "faulting address 0x00000000", "registers:", "build-id: ", "stack trace (most recent call first):", "at crash_deep (", "at crash_mid (", "at main (", "crash_null_deref_fixture.w:", "terminating with the default action for signal 11"]},
 				{"cmd": ["bin/wv2", "x64", "tests/crash_div_zero_fixture.w", "-o", "bin/crash_div_zero_fixture64"]},
-				{"cmd": ["bin/crash_div_zero_fixture64"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGFPE (arithmetic exception)", "stack trace (most recent call first):", "at crash_divide (", "at main (", "crash_div_zero_fixture.w:", "terminating with the default action for signal 8"]}
+				{"cmd": ["bin/crash_div_zero_fixture64"], "expect_fail": true, "expect_stderr": ["fatal signal: SIGFPE (arithmetic exception)", "stack trace (most recent call first):", "at crash_divide (", "at main (", "crash_div_zero_fixture.w:", "terminating with the default action for signal 8"]},
+				{"cmd": ["bin/wv2", "x64", "tests/crash_deep_chain_fixture.w", "-o", "bin/crash_deep_chain_fixture64"]},
+				{"cmd": ["bin/crash_deep_chain_fixture64"], "expect_fail": true, "expect_stderr": ["stack trace (most recent call first):\n  at crash_level6 (", "crash_deep_chain_fixture.w:29)\n  at crash_level5 (", "crash_deep_chain_fixture.w:33)\n  at crash_level4 (", "crash_deep_chain_fixture.w:37)\n  at crash_level3 (", "crash_deep_chain_fixture.w:41)\n  at crash_level2 (", "crash_deep_chain_fixture.w:45)\n  at crash_level1 (", "crash_deep_chain_fixture.w:49)\n  at main (", "crash_deep_chain_fixture.w:55)\nterminating with the default action for signal 11"], "reject_stderr": "heuristic"}
 			]
 		},
 		{
@@ -2297,6 +2301,7 @@
 				"sse_64_test",
 				"sstable_64_test",
 				"stack_trace_64_test",
+				"stack_trace_chain_64_test",
 				"stat_64_test",
 				"stats_64_test",
 				"stream_64_test",
@@ -2932,6 +2937,7 @@
 				"smtp_test",
 				"sse_test",
 				"sstable_test",
+				"stack_trace_chain_test",
 				"stack_trace_test",
 				"stat_test",
 				"stats_test",
@@ -7146,6 +7152,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "x64", "tests/stack_trace_test.w", "-o", "bin/stack_trace_64_test"]},
 				{"cmd": ["bin/stack_trace_64_test"]}
+			]
+		},
+		{
+			"name": "stack_trace_chain_64_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/stack_trace_chain_test.w"],
+			"outputs": ["bin/stack_trace_chain_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "tests/stack_trace_chain_test.w", "-o", "bin/stack_trace_chain_64_test"]},
+				{"cmd": ["bin/stack_trace_chain_64_test"]}
+			]
+		},
+		{
+			"name": "stack_trace_chain_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/stack_trace_chain_test.w"],
+			"outputs": ["bin/stack_trace_chain_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tests/stack_trace_chain_test.w", "-o", "bin/stack_trace_chain_test"]},
+				{"cmd": ["bin/stack_trace_chain_test"]}
 			]
 		},
 		{

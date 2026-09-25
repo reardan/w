@@ -1738,4 +1738,24 @@ void ret():
 		return
 	emit(1, c"\xc3") /* ret */
 
+# Function return from a body holding stack_words W stack words above
+# the return-address slot: a framed x86/x64 function unwinds with
+# 'leave' (esp = ebp ; pop ebp), exact whatever stack_words is;
+# everything else pops the words, as before frame pointers.
+void be_return(int stack_words):
+	if ((target_isa == 0) && be_frame_active):
+		emit(1, c"\xc9") /* leave */
+	else:
+		be_pop(stack_words)
+	ret()
+
+
+# Return from a body that holds nothing on the W stack beyond its
+# frame: 'leave ; ret' in a framed x86/x64 function, a bare ret
+# otherwise (function fall-through ends, synthesized accessors).
+void be_return_bare():
+	if ((target_isa == 0) && be_frame_active):
+		emit(1, c"\xc9") /* leave */
+	ret()
+
 ############################## end of x86 opcodes ##############################
