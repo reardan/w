@@ -1,5 +1,5 @@
 # Scripted Ctrl-R incremental history search, end to end under a real
-# pty (tools/pty_test.py; the repl_pty_test target runs this against a
+# pty (tools/pty_drive.w; the repl_pty_test target runs this against a
 # fresh bin/repl_pty build with HOME pointed at a scratch dir so
 # ~/.w_history stays untouched).
 #

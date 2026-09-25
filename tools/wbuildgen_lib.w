@@ -47,11 +47,13 @@ Generation rules:
   twins X_arm64 / X_win64 (repeatable — e.g. `x64 arch=arm64` yields
   three targets from one source), mirroring the existing hand-written
   arm64/win64 test idiom byte for byte: `bin/wv2 arm64|win64
-  dir/X_test.w -o bin/X_arm64|bin/X_win64.exe`, then `sh
-  tools/run_arm64.sh bin/X_arm64` or `wine bin/X_win64.exe`.
+  dir/X_test.w -o bin/X_arm64|bin/X_win64.exe`, then `bin/wrun arm64
+  bin/X_arm64` or `wine bin/X_win64.exe`.
   `arch=wasm` yields the run-capable twin X_wasm: compiled with the
-  `wasm` selector, run wrapped in `sh tools/run_wasm.sh` (wasmtime, or
-  node's built-in WASI — see tools/run_wasm.sh). `arch=arm64_darwin`
+  `wasm` selector, run wrapped in `bin/wrun wasm` (wasmtime, or node's
+  built-in WASI — see tools/wrun.w). The arm64 and wasm twins add the
+  `wrun` target (tools/wrun.w's `binary=wrun`) to their deps, after
+  "wv2". `arch=arm64_darwin`
   yields a compile-only twin X_darwin (Mach-O cross-compiled on Linux,
   matching graphics_darwin/pac_darwin — no run step; execution rides
   tools/mac/run_darwin_tests.sh on a Mac). Run-step directives
@@ -450,9 +452,9 @@ vocabulary:
   x64                      also generate the X_64_test twin
   arch=x64                 keyed spelling of the same flag
   arch=arm64               also generate the X_arm64 twin: compiled
-                           with `arm64`, run wrapped in `sh
-                           tools/run_arm64.sh` (qemu, or native on an
-                           arm64 Linux host — see tools/run_arm64.sh)
+                           with `arm64`, run wrapped in `bin/wrun
+                           arm64` (qemu, or native on an arm64 Linux
+                           host — see tools/wrun.w); deps gain "wrun"
   arch=win64               also generate the X_win64 twin: compiled
                            with `win64` to bin/X_win64.exe, run wrapped
                            in `wine` (present or not, the target's
@@ -465,9 +467,9 @@ vocabulary:
                            running needs a Mac (tools/mac/
                            run_darwin_tests.sh)
   arch=wasm                also generate the X_wasm twin: compiled
-                           with `wasm`, run wrapped in `sh
-                           tools/run_wasm.sh` (wasmtime, or node's
-                           built-in WASI — see tools/run_wasm.sh)
+                           with `wasm`, run wrapped in `bin/wrun
+                           wasm` (wasmtime, or node's built-in WASI —
+                           see tools/wrun.w); deps gain "wrun"
   arch_only=<arch>         the source is <arch>-only (x64, arm64,
                            win64, arm64_darwin, wasm): the one
                            generated target keeps the basename-derived
@@ -1742,17 +1744,23 @@ json_value* wbg_compile_cmd(char* src, int arch, char* binary):
 
 
 # The runner prefix of a run-capable arch's run step: arm64 and wasm
-# shell through their runner scripts, win64 through wine; x64 and the
+# exec through bin/wrun (tools/wrun.w), win64 through wine; x64 and the
 # default arch run the binary directly.
 void wbg_run_wrapper(json_value* run_cmd, int arch):
 	if (arch == wbg_arch_arm64()):
-		json_array_push(run_cmd, json_string(c"sh"))
-		json_array_push(run_cmd, json_string(c"tools/run_arm64.sh"))
+		json_array_push(run_cmd, json_string(c"bin/wrun"))
+		json_array_push(run_cmd, json_string(c"arm64"))
 	else if (arch == wbg_arch_wasm()):
-		json_array_push(run_cmd, json_string(c"sh"))
-		json_array_push(run_cmd, json_string(c"tools/run_wasm.sh"))
+		json_array_push(run_cmd, json_string(c"bin/wrun"))
+		json_array_push(run_cmd, json_string(c"wasm"))
 	else if (arch == wbg_arch_win64()):
 		json_array_push(run_cmd, json_string(c"wine"))
+
+
+# True when arch's run steps go through bin/wrun (wbg_run_wrapper), so
+# the target also depends on the `wrun` target that builds it.
+int wbg_arch_uses_wrun(int arch):
+	return (arch == wbg_arch_arm64()) || (arch == wbg_arch_wasm())
 
 
 # stdin/expect/timeout decoration from the current directive state,
@@ -1781,6 +1789,9 @@ json_value* wbg_make_target(char* name, char* src, int arch):
 	json_object_set(target, c"name", json_string(name))
 	json_value* deps = json_array()
 	json_array_push(deps, json_string(c"wv2"))
+	# compile_fail generates no run step, so no runner dependency.
+	if (wbg_arch_uses_wrun(arch) && (wbg_dir_compile_fail == 0)):
+		json_array_push(deps, json_string(c"wrun"))
 	for char* tool_name in wbg_dir_tool:
 		json_array_push(deps, json_string(tool_name))
 	json_object_set(target, c"deps", deps)
@@ -2101,6 +2112,8 @@ json_value* wbg_make_group_target(wbg_group* g):
 	json_object_set(target, c"name", json_string(g.name))
 	json_value* deps = json_array()
 	json_array_push(deps, json_string(c"wv2"))
+	if (wbg_arch_uses_wrun(g.arch)):
+		json_array_push(deps, json_string(c"wrun"))
 	for char* tool_name in g.tools:
 		json_array_push(deps, json_string(tool_name))
 	json_object_set(target, c"deps", deps)

@@ -18,7 +18,7 @@ compile with `--strict`, so any warning fails the build), and
 
 ## Local promotion: `./wbuild update`
 
-`./wbuild update` archives the current seed (`archive.sh` -> `old/`)
+`./wbuild update` archives the current seed (`tools/promote_seed.w` -> `old/`)
 and promotes the `bin/wv3` fixpoint onto `./w` (`update_darwin` /
 `update_win` do the same for the other seeds). Rules:
 

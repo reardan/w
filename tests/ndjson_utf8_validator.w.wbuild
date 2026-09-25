@@ -1,1 +1,17 @@
 # wbuild: binary=ndjson_utf8_validator
+# wbuild: target=check_json_utf8_test tag=tests dep=wv2 dep=ndjson_utf8_validator data=tests/diagnostic_inputs/check_json_utf8_string.w.txt data=tests/diagnostic_inputs/check_json_utf8_ident.w.txt data=tests/diagnostic_inputs/check_json_utf8_column.w.txt
+# wbuild: step="cp tests/diagnostic_inputs/check_json_utf8_string.w.txt bin/check_json_utf8_string.w"
+# wbuild: step="bin/wv2 check --json --quiet bin/check_json_utf8_string.w" stdout_file=bin/check_json_utf8_string.ndjson expect_fail expect_stdout="\"message\": \"invalid UTF-8 string literal\"" expect_stdout="\\u00ff" expect_stdout="\\u00fe"
+# wbuild: step="bin/ndjson_utf8_validator bin/check_json_utf8_string.ndjson" expect_stdout="ndjson utf8 validator OK"
+# wbuild: step="cp tests/diagnostic_inputs/check_json_utf8_ident.w.txt bin/check_json_utf8_ident.w"
+# wbuild: step="bin/wv2 check --json --quiet bin/check_json_utf8_ident.w" stdout_file=bin/check_json_utf8_ident.ndjson expect_fail expect_stdout="\\u00c3"
+# wbuild: step="bin/ndjson_utf8_validator bin/check_json_utf8_ident.ndjson" expect_stdout="ndjson utf8 validator OK"
+# wbuild: step="cp tests/diagnostic_inputs/check_json_utf8_column.w.txt bin/check_json_utf8_column.w"
+# wbuild: step="bin/wv2 check --json --quiet bin/check_json_utf8_column.w" stdout_file=bin/check_json_utf8_column.ndjson expect_fail expect_stdout="\"line\": 2, \"column\": 19" expect_stdout="\"message\": \"';' expected, found 'x'\""
+# wbuild: step="bin/ndjson_utf8_validator bin/check_json_utf8_column.ndjson" expect_stdout="ndjson utf8 validator OK"
+# wbuild: target=utf8_bom_test tag=tests dep=wv2 dep=ndjson_utf8_validator data=tests/diagnostic_inputs/utf8_bom.w.txt
+# wbuild: step="cp tests/diagnostic_inputs/utf8_bom.w.txt bin/utf8_bom_fixture.w"
+# wbuild: step="bin/wv2 bin/utf8_bom_fixture.w -o bin/utf8_bom_fixture"
+# wbuild: step="bin/utf8_bom_fixture" expect_stdout="bom ok"
+# wbuild: step="bin/wv2 check --json --quiet bin/utf8_bom_fixture.w" stdout_file=bin/utf8_bom_check.ndjson
+# wbuild: step="test ! -s bin/utf8_bom_check.ndjson"

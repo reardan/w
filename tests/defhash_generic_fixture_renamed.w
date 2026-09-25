@@ -1,7 +1,7 @@
 # Renamed twin of defhash_generic_fixture.w for defhash_test:
 # defhash_generic_fixture_max is renamed to defhash_generic_fixture_maxval
 # (definition and use site), otherwise identical to the baseline.
-# build.base.json's defhash_test entry asserts the recorded NAME SET
+# tools/defhash_e2e.w (defhash_test) asserts the recorded NAME SET
 # differs from the baseline's (the old name absent, the new name
 # present) even though the untouched definitions' hashes are unchanged --
 # a rename is exactly the case a name-set comparison must catch that a

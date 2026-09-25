@@ -1,0 +1,3 @@
+import lib/no_such_module
+int main():
+	return 0

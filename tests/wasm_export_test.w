@@ -46,11 +46,11 @@ int main(int argc, int argv):
 	assert_equal(1, y == 6.0)
 	println(c"wasm export test: main OK")
 	return 0
-# wbuild: target=wasm_export_test dep=wv2
+# wbuild: target=wasm_export_test dep=wv2 dep=wrun
 # wbuild: step="bin/wv2 wasm tests/wasm_export_test.w -o bin/wasm_export_test"
-# wbuild: step="sh tools/web/run_node.sh tools/web/run_export_test.mjs bin/wasm_export_test"
+# wbuild: step="bin/wrun node tools/web/run_export_test.mjs bin/wasm_export_test"
 # wbuild: step="bin/wv2 wasm --wasm-acc=globals tests/wasm_export_test.w -o bin/wasm_export_test_globals"
-# wbuild: step="sh tools/web/run_node.sh tools/web/run_export_test.mjs bin/wasm_export_test_globals"
+# wbuild: step="bin/wrun node tools/web/run_export_test.mjs bin/wasm_export_test_globals"
 # wbuild: step="bin/wv2 wasm tests/wasm_export_variadic_fixture.w -o bin/wasm_export_variadic_fixture" expect_fail expect_stderr="cannot export a variadic function"
 # wbuild: step="bin/wv2 wasm tests/wasm_export_struct_fixture.w -o bin/wasm_export_struct_fixture" expect_fail expect_stderr="exported function parameters must be single words"
 # wbuild: step="bin/wv2 wasm tests/wasm_export_undefined_fixture.w -o bin/wasm_export_undefined_fixture" expect_fail expect_stderr="exported function 'missing' is never defined"

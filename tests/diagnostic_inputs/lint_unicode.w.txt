@@ -1,0 +1,10 @@
+import lib.lib
+
+
+int main():
+	int path = 1
+	int рath = 2
+	int nаme = 3
+	char* s = c"a‮b"
+	# ⁦ comment ؜
+	return path + рath + nаme + s[0]

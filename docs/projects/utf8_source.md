@@ -29,12 +29,12 @@ open follow-ups. Stage 1 choices, as landed:
 - **Tests** (§5 items 1-6): `tests/utf8_source_test.w` (+ generated x64
   twin) covers raw UTF-8 in line/block comments, `"..."`/`s"..."`
   literals, f-string chunks, and codepoint iteration.
-  `check_json_utf8_test` and `utf8_bom_test` (hand-written
-  `build.base.json` targets) generate their fixtures at test time with
-  `printf` into `bin/` — invalid-UTF-8 and BOM bytes are deliberately
-  not committed as tracked `.w` files, so `parser_generator_w_test`
-  (which parses every tracked `.w` file) and the metadata gates never
-  see them. `tests/ndjson_utf8_validator.w` asserts every captured
+  `check_json_utf8_test` and `utf8_bom_test` (source-owned targets in
+  `tests/ndjson_utf8_validator.w.wbuild`) copy their byte-exact inputs
+  from `tests/diagnostic_inputs/*.w.txt` into `bin/*.w` at test time —
+  invalid-UTF-8 and BOM bytes are deliberately not committed as tracked
+  `.w` files, so `parser_generator_w_test` (which parses every tracked
+  `.w` file) and the metadata gates never see them. `tests/ndjson_utf8_validator.w` asserts every captured
   NDJSON line is valid UTF-8, parses as JSON (`structures/json.w`), and
   carries the seven documented diagnostic fields. The column fixture
   asserts `"column": 19` for the §3 probe (byte column would be 25).

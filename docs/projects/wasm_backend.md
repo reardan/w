@@ -16,7 +16,7 @@ representation to per-function locals — the 2026-08 notes at the end;
 the generated smoke slice. Remaining: wasm64, deferred until engines
 make it boring). `w wasm file.w -o out.wasm` compiles
 to a wasm32 + WASI module that runs under wasmtime or Node's built-in
-WASI (`tools/run_wasm.sh` picks whichever is installed). The structured
+WASI (`bin/wrun wasm`, from `tools/wrun.w`, picks whichever is installed). The structured
 control-flow layer (D3) landed first as a byte-inert refactor across all
 native targets; the emitter (`code_generator/wasm.w`), module writer
 (`wasm_module.w`), WASI stub layer, and `lib/__arch__/wasm/` runtime are
@@ -404,7 +404,7 @@ at any stage.
   compiler is an ordinary 32-bit W program that opens files, allocates,
   and writes an output — all in WASI's vocabulary. `verify_wasm`:
   `bin/wv2 wasm w.w -o bin/wv2_wasm`, then run `wv2_wasm` under
-  wasmtime (`tools/run_wasm.sh`, the `run_arm64.sh` analog, with
+  wasmtime (`bin/wrun wasm`, the `bin/wrun arm64` analog, with
   `--dir .`) compiling `w.w` to `bin/wv3_wasm`; `cmp` byte-identical.
   As with `verify_x64`, the first comparison also proves the emitted
   bytes are independent of the host stage.
@@ -514,7 +514,7 @@ at any stage.
   descriptor blobs lived in the code stream); Stage 5 moved them to the
   data segment (see below). Generators, threads, REPL, wdbg, and
   `c_lib`/`extern`/`c_import` are absent or trap as planned (D7).
-- Runner: `tools/run_wasm.sh` (wasmtime, else `tools/run_wasm.mjs` on
+- Runner: `bin/wrun wasm` (`tools/wrun.w`; wasmtime, else `tools/run_wasm.mjs` on
   Node ≥ 20). Targets: `build_wasm`, `verify_wasm`, `wasm_smoke_test`
   in `build.base.json`, outside the default `tests` umbrella like the
   qemu-bound arm64 targets.
@@ -616,8 +616,8 @@ at any stage.
   bin/wv2 --quiet wasm --wasm-acc=globals w.w -o bin/wv2_wasm_g
   bin/wv2 --quiet wasm --wasm-acc=locals  w.w -o bin/wv2_wasm_l
   wc -c bin/wv2_wasm_g bin/wv2_wasm_l
-  time sh tools/run_wasm.sh bin/wv2_wasm_g --quiet wasm w.w -o bin/out_g
-  time sh tools/run_wasm.sh bin/wv2_wasm_l --quiet wasm w.w -o bin/out_l
+  time bin/wrun wasm bin/wv2_wasm_g --quiet wasm w.w -o bin/out_g
+  time bin/wrun wasm bin/wv2_wasm_l --quiet wasm w.w -o bin/out_l
   cmp bin/out_g bin/out_l   # host-mode-independent output, byte-identical
   ```
 

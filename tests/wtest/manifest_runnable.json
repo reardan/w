@@ -91,14 +91,28 @@
 			"name": "rn_shc_arm64",
 			"steps": [
 				{"cmd": ["true", "widget/runnable.dat"]},
-				{"cmd": ["sh", "-c", "sh tools/run_arm64.sh bin/rn_shc_arm64; test $? -ge 128"]}
+				{"cmd": ["sh", "-c", "bin/wrun arm64 bin/rn_shc_arm64; test $? -ge 128"]}
 			]
 		},
 		{
 			"name": "rn_shc_wasm",
 			"steps": [
 				{"cmd": ["true", "widget/runnable.dat"]},
-				{"cmd": ["sh", "-c", "sh tools/run_wasm.sh bin/rn_shc_wasm.wasm"]}
+				{"cmd": ["sh", "-c", "bin/wrun wasm bin/rn_shc_wasm.wasm"]}
+			]
+		},
+		{
+			"name": "rn_wrun_arm64",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wrun", "arm64", "bin/rn_wrun_arm64"]}
+			]
+		},
+		{
+			"name": "rn_wrun_wasm",
+			"steps": [
+				{"cmd": ["true", "widget/runnable.dat"]},
+				{"cmd": ["bin/wrun", "wasm", "bin/rn_wrun_wasm.wasm"]}
 			]
 		}
 	]

@@ -30,7 +30,7 @@ int wasi_memory_size();
 
 
 # The first preopened directory (WASI convention: fds 0-2 are stdio, 3 is
-# the first preopen — "." under tools/run_wasm.sh).
+# the first preopen — "." under bin/wrun wasm).
 int wasi_preopen_fd():
 	return 3
 

@@ -18,7 +18,7 @@ directive-gap closures:
   and a *_fixture.w carrying non-fixture_group directives with no
   fixture_group=, are hard errors instead of silent no-ops;
 - wasm is a recognized arch (compile with the wasm selector, run
-  through 'sh tools/run_wasm.sh');
+  through 'bin/wrun wasm', with the wrun target added to its deps);
 - flags= injects extra compiler arguments between the arch selector
   and the source path of every generated compile command;
 - group=<target>@<arch> collects several sources' compile+run pairs
@@ -222,7 +222,8 @@ void test_wasm_arch_shape():
 	# Compiled with the wasm selector, run through the wasm runner
 	# wrapper, no default 32-bit twin.
 	wdet_assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"wasm\", \"tests/wasmy_test.w\", \"-o\", \"bin/wasmy_test\"]")
-	wdet_assert_contains(out, c"\"cmd\": [\"sh\", \"tools/run_wasm.sh\", \"bin/wasmy_test\"]")
+	wdet_assert_contains(out, c"\"cmd\": [\"bin/wrun\", \"wasm\", \"bin/wasmy_test\"]")
+	wdet_assert_contains(out, c"\"deps\": [\"wv2\", \"wrun\"]")
 	wdet_assert_lacks(out, c"[\"bin/wv2\", \"tests/wasmy_test.w\"")
 	free(out)
 	free(out_path)
@@ -239,7 +240,7 @@ void test_flags_in_compile_command():
 	assert1(out != 0)
 	# flags= lands between the arch selector and the source path.
 	wdet_assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"arm64\", \"--pac=full\", \"tests/flagy_test.w\", \"-o\", \"bin/flagy_test\"]")
-	wdet_assert_contains(out, c"\"cmd\": [\"sh\", \"tools/run_arm64.sh\", \"bin/flagy_test\"]")
+	wdet_assert_contains(out, c"\"cmd\": [\"bin/wrun\", \"arm64\", \"bin/flagy_test\"]")
 	free(out)
 	free(out_path)
 
