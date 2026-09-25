@@ -314,6 +314,116 @@ copies (`__w_list_copy`) and reuses the in-place sorts. Float lists
 stay with lib/stats.w's `stats_sorted`; the rejection message is
 pinned by list_sorted_error_test.
 
+## Wave 5: it-expressions, script helpers, named fields, UFCS
+
+### Table-driven container methods (grammar/list_builtin.w)
+
+The list/map/set pseudo-methods that lower to one runtime call
+(`helper(container, args..., [constant])`) are rows in `list_method` /
+`hash_method` driving one engine, `cm_call`: argument kinds (element
+value with struct-bytes variant, index, callback, map callback, reduce
+init), a trailing constant (sort kind, element slot size) and a result
+kind. It replaced a suffix function per method plus a 30-arm dispatch
+ladder in grammar/postfix_expr.w; the emitted bytes of every existing
+program are unchanged (checked by compiling every method-using test and
+the previous compiler sources with the old and new compiler).
+`m.get`, `m.add`, map defaults and `l[i]`/slices keep their own
+lowerings.
+
+### it-expressions (grammar/list_builtin.w, structures/w_list.w)
+
+Decision: an expression argument, not a closure. W has no lambdas
+(issue #107), and a closure would need captured-environment machinery
+the single-pass compiler does not have. Instead a list method argument
+that mentions the identifier `it` is compiled as an INLINE loop in the
+current function, so the enclosing function's locals are visible for
+free:
+
+	println(ints().filter(it % 2 == 0).map(it * it).sum())
+	people.sort_by(it.age)
+	m := lines().map(split(it))
+
+- Detection is a token scan-ahead to the matching `)` (the `:=`
+  save/seek/restore trick) looking for `it` outside member position
+  (`x.it` does not count; f-string embedded expressions do). A user
+  variable named `it` in scope keeps the ordinary meaning, so
+  `l.count(it)` with a local `it` still counts that value; the hidden
+  binding of an outer it-expression does not block an inner one, which
+  rebinds `it` for its own argument.
+- `it` is a hidden local of the element type (struct elements as
+  element pointers, the for-in rule), declared for the argument only.
+- One loop shape serves every method: the expression's values are
+  pushed into a "keys" list — created lazily, because its element type
+  is only known after the expression has been parsed — and one runtime
+  helper finishes: `map` returns the keys, `filter` keeps the elements
+  with nonzero keys, `count`/`any`/`all`/`index` summarize their
+  truthiness (`__w_list_truth`), `sum`/`min`/`max` aggregate them,
+  `sort_by`/`sorted_by` sort by them (stable; int-like keys as signed
+  words, char* by contents — the `sort` rule), `min_by`/`max_by` return
+  the first element with the extreme key as an lvalue like `l[i]`.
+- Key-based `sort_by` is the deliberate choice over a two-name
+  comparator expression: the comparator form needs two bindings and an
+  insertion sort emitted inline around the expression, while keys cover
+  the common cases with one loop. Comparator functions keep working
+  through the existing callback form.
+- Every element is evaluated — no short-circuit in `any`/`all`/`index`.
+- The named-function / fn-pointer forms and the `count(x)`/`index(x)`
+  value forms are unchanged; `min_by`/`max_by` exist only as
+  it-expressions. Diagnostics (struct-valued expressions, non-scalar
+  conditions, non-sortable keys) are pinned by `list_it_error_test`.
+
+`l.reversed()` is the non-mutating reverse (a row in the table).
+
+### Script helpers (structures/prelude.w, grammar/print_builtin.w)
+
+`lines()` (stdin lines without newlines; a final newline adds no empty
+line), `words()` (whitespace-separated stdin tokens), `split(s)`
+(whitespace runs, empty pieces dropped — Python's `s.split()`),
+`split(s, ch)` (every occurrence, empties kept) and `join(l, sep)` are
+import-free under the input()-helper rule: the bare name resolves to a
+private `__w_` prelude helper only when no user symbol shadows it.
+`split` accepts a `char*` or `string`; `join` accepts lists of `char*`
+or `string` pieces and a `char*` or `string` separator. The helpers
+are deliberately private names (`__w_lines`, ...): the public
+`input`/`read_all`/`ints` names already collide with same-named user
+functions once the prelude is imported ("symbol redefined"), which new
+helpers should not repeat. lib/str.w's `split` gained the same
+whitespace default (`char delimiter = 0`), so programs that import it
+get `split(s)` too.
+
+### Named-field construction (grammar/unary_expression.w)
+
+`new T(y: 2, x: 1)` and the value constructor `T(x: 1)` fill fields by
+name in any order. The named form zeroes the object first, so omitted
+fields read 0; positional and named arguments do not mix. Detection is
+an identifier directly followed by `:` at an argument start, which no
+expression can begin with. Both constructors now share one argument
+loop (`ctor_field_args`); positional constructors emit identical bytes.
+There is no separate stack struct literal syntax — `T(...)` is it.
+
+### Uniform call syntax (grammar/list_builtin.w, postfix_expr.w)
+
+`x.f(args)` calls the free function `f(x, args)`, but only where `.f(`
+used to be an error: no struct field or `T_f` method, no built-in
+list/map/set pseudo-method, or a receiver that has no members at all
+(scalars, pointers, strings, buffers). Existing programs therefore
+keep their meaning. Struct receivers pass by address, exactly like the
+method sugar, so `f`'s first parameter must be a pointer to the struct;
+a by-value parameter keeps the "struct method not found" error. Only
+plain functions qualify (not local fn pointers, generators, generic
+templates or C variadics), and prelude helpers are not UFCS targets:
+`s.split()` needs lib/str.w imported.
+
+### Not done: lambdas
+
+A non-capturing expression lambda (`fn(int a, int b) -> int: a - b`)
+would have to be compiled as its own function at the next top-level
+boundary (the generic-instantiation deferral: record the span, emit the
+address through a backpatch chain, re-parse later), which needs an
+expression-bodied variant of `function_definition` and the drivers'
+top-level hook. it-expressions cover the single-element cases inline,
+so this stays open (issue #107).
+
 ## Acceptance
 
 - `./wbuild verify` — self-host fixpoint (wv3 == wv4 == wv5) with every

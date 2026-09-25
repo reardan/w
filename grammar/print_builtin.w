@@ -42,7 +42,7 @@ char* print_chains
 
 
 int print_helper_count():
-	return 16
+	return 20
 
 
 char* print_fn_name(int i):
@@ -78,7 +78,15 @@ char* print_fn_name(int i):
 		return c"__w_print_char"
 	if (i == 14):
 		return c"__w_any"
-	return c"__w_all"
+	if (i == 15):
+		return c"__w_all"
+	if (i == 16):
+		return c"__w_lines"
+	if (i == 17):
+		return c"__w_words"
+	if (i == 18):
+		return c"__w_split"
+	return c"__w_join"
 
 
 # Leave helper i's address in eax: directly when the runtime module is
@@ -261,6 +269,10 @@ int prelude_input_helper():
 		return 7
 	if (peek(c"ints")):
 		return 8
+	if (peek(c"lines")):
+		return 16
+	if (peek(c"words")):
+		return 17
 	return -1
 
 
@@ -290,6 +302,9 @@ int prelude_input_expr():
 	hash_call_finish(s)
 	if (helper == 8):
 		return type_value(type_get_list(type_lookup(c"int")))
+	if (helper >= 16):
+		# lines() / words(): the pieces as C strings
+		return type_value(type_get_list(type_lookup_pointer(c"char", 1)))
 	if (helper == 6):
 		# input() returns the line as a UTF-8 string (issue #360)
 		return type_value(type_lookup(c"string"))
@@ -324,10 +339,22 @@ int prelude_seq_helper():
 	return -1
 
 
+# Prelude string helper index for the current token, or -1: bare
+# split(s[, ch]) / join(l, sep) lower to __w_split/__w_join in
+# structures/prelude.w, shadowed by user symbols (lib/str.w's split and
+# join win once imported) exactly like max/min/abs.
+int prelude_str_helper():
+	if (peek(c"split")):
+		return 18
+	if (peek(c"join")):
+		return 19
+	return -1
+
+
 int prelude_math_ready():
 	if (nextc != '('):
 		return 0
-	if ((prelude_math_helper() < 0) && (prelude_seq_helper() < 0) && (peek(c"len") == 0)):
+	if ((prelude_math_helper() < 0) && (prelude_seq_helper() < 0) && (peek(c"len") == 0) && (prelude_str_helper() < 0)):
 		return 0
 	if (sym_lookup(token) >= 0):
 		return 0
@@ -525,11 +552,93 @@ int prelude_math_call_expr(int helper):
 	return type_value(type_lookup(c"int"))
 
 
-# Entry for the primary_expr branch: routes len and any/all separately
-# from the max/min/abs runtime helpers.
+# 3 for a string, 2 for a char*, 0 for anything else.
+int prelude_text_kind(int got):
+	if (got < -1):
+		got = type_real(got)
+	if ((got == 3) || (got == 4)):
+		return 0
+	int t = type_unqualified(got)
+	if (type_is_string(t)):
+		return 3
+	if (type_is_char_pointer(t)):
+		return 2
+	return 0
+
+
+void prelude_str_unsupported(char* fn_name, char* what, int got):
+	diag_part(c"prelude '")
+	diag_part(fn_name)
+	diag_part(what)
+	print_error_type(got)
+	error(c"'")
+
+
+# split(s) / split(s, ch) (s a char* or string; no ch = whitespace
+# runs, empty pieces dropped) and join(l, sep) (l a list of char* or
+# string) with no user symbol of that name in scope. Leaves ')' current
+# for primary_expr's trailing get_token().
+int prelude_str_expr(int helper):
+	char* fn_name = strclone(token)
+	get_token()
+	expect(c"(")
+	int base_stack = stack_pos
+	print_builtin_needed = 1
+	print_emit_helper_address(helper)
+	push_eax()
+	stack_pos = stack_pos + 1
+	int got = promote(expression())
+	int kind = 0
+	if (helper == 18):
+		kind = prelude_text_kind(got)
+		if (kind == 0):
+			prelude_str_unsupported(fn_name, c"' argument must be a char* or string: '", got)
+		push_eax()
+		stack_pos = stack_pos + 1
+		mov_eax_int(kind == 3)
+		push_eax()
+		stack_pos = stack_pos + 1
+		if (accept(c",")):
+			got = promote(expression())
+			prelude_math_require_int(fn_name, got)
+		else:
+			mov_eax_int(0)
+	else:
+		if (type_is_list(type_unqualified(got))):
+			kind = prelude_text_kind(type_list_element_type(type_unqualified(got)))
+		if (kind == 0):
+			prelude_str_unsupported(fn_name, c"' argument must be a list of char* or string: '", got)
+		push_eax()
+		stack_pos = stack_pos + 1
+		expect(c",")
+		got = promote(expression())
+		int sep_kind = prelude_text_kind(got)
+		if (sep_kind == 0):
+			prelude_str_unsupported(fn_name, c"' separator must be a char* or string: '", got)
+		push_eax()
+		stack_pos = stack_pos + 1
+		# flags: bit 0 string pieces, bit 1 string separator
+		mov_eax_int((kind == 3) | ((sep_kind == 3) << 1))
+	push_eax()
+	stack_pos = stack_pos + 1
+	if (peek(c")") == 0):
+		diag_part(c"')' expected in prelude '")
+		diag_part(fn_name)
+		error(c"'")
+	hash_call_finish(base_stack)
+	free(fn_name)
+	if (helper == 18):
+		return type_value(type_get_list(type_lookup_pointer(c"char", 1)))
+	return type_value(type_lookup_pointer(c"char", 1))
+
+
+# Entry for the primary_expr branch: routes len, any/all and split/join
+# separately from the max/min/abs runtime helpers.
 int prelude_math_expr():
 	if (peek(c"len")):
 		return prelude_len_expr()
+	if (prelude_str_helper() >= 0):
+		return prelude_str_expr(prelude_str_helper())
 	if (prelude_seq_helper() >= 0):
 		return prelude_seq_expr(prelude_seq_helper())
 	return prelude_math_call_expr(prelude_math_helper())
