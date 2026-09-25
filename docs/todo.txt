@@ -133,6 +133,14 @@ current state:
 				structures/json.w numbers carry float64 precision there via
 				structures/__arch__/<arch>/json_float64.w; still a compile
 				error on 4-byte words, where the type itself is)
+		type <=> protobuf (issue #16 stage 3):
+			contextual 'message Name:' declarations with proto3 field
+				spellings and '= N' field numbers (grammar/protobuf_builtin.w)
+			to_proto(msg) / from_proto(T, bytes) / from_proto(T, data, len) /
+				proto_descriptor(T); descriptors emitted like to_json's, runtime
+				is libs/extras/protobuf/message.w (design: docs/projects/protobuf.md)
+			missing: .proto -> W codegen (stage 2), float/double/sfixed kinds,
+				map<K, V> fields, oneof, self-recursive messages
 		expressions:
 			&& and || short-circuit expressions
 			! unary operator

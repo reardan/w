@@ -393,6 +393,10 @@ int script_declaration_keyword():
 		return 1
 	if (peek(c"extern") | peek(c"c_lib") | peek(c"c_import")):
 		return 1
+	# 'message Name:' (grammar/protobuf_builtin.w), unless shadowed
+	if (peek(c"message") & (nextc == ' ')):
+		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
+			return 1
 	if (peek(c"generator") & (nextc != '*')):
 		return 1
 	# 'kernel name(...)' is a declaration unless a user type or symbol
@@ -541,6 +545,8 @@ void program():
 			while(enum_declaration()):
 				parsed_declaration = 1
 				print_int_v1(c"enum_declaration=1", 1)
+			while(message_declaration()):
+				parsed_declaration = 1
 
 		# Shared-library declarations (c_lib / extern)
 		while (extern_statement()) {}

@@ -304,6 +304,11 @@ int pb_element_size(pb_value_desc* elem):
 	if (kind == PB_KIND_MESSAGE()):
 		pb_message_desc* nested = cast(pb_message_desc*, elem.aux)
 		return nested.struct_size
+	# A scalar element's aux, when set, is its explicit storage width:
+	# compiler-emitted descriptors (grammar/protobuf_builtin.w) store
+	# `repeated bool` as list[bool], one byte per element.
+	if (elem.aux != 0):
+		return elem.aux
 	return 4
 
 
@@ -848,6 +853,16 @@ int pb_decode_one(pb_field_desc* f, int wire_type, char* data, int length, char*
 		return pb_decode_bytes_field(data, length, out_addr, consumed_out)
 	if (wire_type != pb_kind_wire_type(kind)):
 		return pb_skip_or_error(data, length, wire_type, consumed_out)
+	if (kind == PB_KIND_BOOL()):
+		# pb_decode_scalar_field writes a BOOL's full 4-byte element
+		# width; a singular bool field may be a one-byte W bool (the
+		# message keyword's storage), so stage it and store one byte.
+		char[8] slot
+		int code = pb_decode_scalar_field(kind, data, length, slot, consumed_out)
+		if (code != 0):
+			return code
+		out_addr[0] = slot[0]
+		return 0
 	return pb_decode_scalar_field(kind, data, length, out_addr, consumed_out)
 
 
@@ -915,3 +930,54 @@ wresult[char*]* pb_decode(pb_message_desc* desc, char* data, int length, char* o
 	if (code != 0):
 		return result_new_error[char*](code)
 	return result_new_ok[char*](out)
+
+
+# ---- whole-message helpers (the to_proto/from_proto builtins) -------------
+
+# Encodes a message into a fresh heap pb_bytes (free with pb_bytes_free).
+# to_proto(x) lowers to this with the compiler-emitted descriptor
+# (grammar/protobuf_builtin.w).
+pb_bytes* pb_to_bytes(pb_message_desc* desc, char* addr):
+	pb_bytes* b = cast(pb_bytes*, malloc(2 * __word_size__))
+	int length = 0
+	b.data = pb_encode(desc, addr, &length)
+	b.length = length
+	return b
+
+
+void pb_bytes_free(pb_bytes* b):
+	if (cast(int, b) == 0):
+		return
+	free(b.data)
+	free(cast(char*, b))
+
+
+# Decodes into a fresh zeroed struct of desc.struct_size bytes; 0 when
+# the input is malformed (nothing leaks). Free the result with
+# pb_free_message. from_proto(T, data, length) lowers to this.
+char* pb_from_data(pb_message_desc* desc, char* data, int length):
+	char* out = malloc(desc.struct_size)
+	int i = 0
+	while (i < desc.struct_size):
+		out[i] = 0
+		i = i + 1
+	if (pb_decode_into(desc, data, length, out) != 0):
+		free(out)
+		return cast(char*, 0)
+	return out
+
+
+# from_proto(T, bytes) lowers to this; a null pb_bytes* decodes to 0.
+char* pb_from_bytes(pb_message_desc* desc, pb_bytes* b):
+	if (cast(int, b) == 0):
+		return cast(char*, 0)
+	return pb_from_data(desc, b.data, b.length)
+
+
+# Frees a message returned by pb_from_data/pb_from_bytes (from_proto):
+# everything it owns, then the struct itself.
+void pb_free_message(pb_message_desc* desc, char* msg):
+	if (cast(int, msg) == 0):
+		return
+	pb_free_decoded(desc, msg)
+	free(msg)
