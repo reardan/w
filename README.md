@@ -396,7 +396,9 @@ seeds — is `docs/release.md`.
   (`cuda_smoke`, `cuda_test`, `tensor_gpu_test`). `threading_test` covers the raw x86 `thread_create`
   builtin; `lib/thread.w` (spawn/join/`parallel_for`, Linux x86/x64,
   docs/projects/threads.md) is covered on both targets by
-  `thread_test`/`parallel_for_test` and their `_64` twins.
+  `thread_test`/`parallel_for_test` and their `_64` twins. `thread_local`
+  globals (per-thread copies via gs on x64 and fs on x86, docs/projects/thread_local.md) are
+  covered by `thread_local_test`/`thread_local_64_test`.
 
 ## Tooling for agents
 

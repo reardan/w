@@ -521,6 +521,57 @@ void script_main():
 	table_pos = n
 
 
+# 1 when a thread_local of this type would need storage initialized at
+# startup: a fixed array's {data, length} header points into the
+# variable's own storage, which differs per thread. Scalars, pointers and
+# structs of them are all-zero at startup, which is what a fresh TLS
+# block holds.
+int thread_local_type_needs_init(int type):
+	if (type_is_array(type)):
+		return 1
+	int i = 0
+	while (i < type_num_args(type)):
+		if (thread_local_type_needs_init(type_get_field_type_at(type, i))):
+			return 1
+		i = i + 1
+	return 0
+
+
+# 'thread_local type name' at top level (docs/projects/thread_local.md):
+# every thread gets its own zero-initialized copy. The variable's
+# symbol value is its byte offset in the per-thread TLS block (word 0 is
+# the block's self pointer); sym_get_value turns it into an address
+# through gs (x64) / fs (x86), the register libc leaves alone. The main thread's block lives in the data
+# segment and is installed by the entry thunk elf_finish_entry_patch
+# emits; lib/thread.w installs one per spawned thread.
+void thread_local_declaration():
+	if ((target_isa != 0) || (target_os != 0)):
+		error(c"thread_local is only supported on the x86 and x64 Linux targets")
+	if (data_split == 0):
+		error(c"thread_local is not supported in the REPL or debugger")
+	int start = token_start_offset
+	int decl_type = type_name()
+	if (thread_local_type_needs_init(decl_type)):
+		error(c"thread_local fixed arrays are not supported; use a pointer")
+	char* name = strclone(token)
+	int line = diag_token_line
+	int column = diag_token_column
+	int current_symbol = sym_declare_global(token, decl_type, 1)
+	get_token()
+	if (peek(c"(")):
+		error(c"thread_local applies to variables, not functions")
+	if (peek(c"=")):
+		error(c"thread_local variables cannot have an initializer; they start zeroed")
+	accept(c";")
+	if (tls_size == 0):
+		tls_size = word_size  /* word 0: the block's self pointer */
+	int offset = tls_size
+	tls_size = tls_size + global_storage_size(decl_type)
+	sym_define_global_at(current_symbol, offset)
+	sym_set_thread_local(current_symbol)
+	defhash_note(name, c"global", decl_file_index(), line, column, start, token_start_offset)
+
+
 void program():
 	int current_symbol
 	while (token[0]):
@@ -578,6 +629,14 @@ void program():
 		# 'defer' is only meaningful inside a function body
 		if (peek(c"defer")):
 			error(c"'defer' outside of a function")
+
+		# 'thread_local type name': contextual like 'kernel', so a type
+		# or symbol named thread_local keeps the identifier meaning.
+		if (peek(c"thread_local")):
+			if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
+				get_token()
+				thread_local_declaration()
+				continue;
 
 		# generator declarations: "generator type-name identifier (".
 		# "generator*" is the struct type in a variable declaration, so

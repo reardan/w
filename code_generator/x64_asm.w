@@ -104,4 +104,18 @@ void define_asm_functions_x64():
 	/* ... ; pop r8 ; xor r9,r9 ; mov eax,9 ; syscall ; ret */
 	emit(14, c"\xff\x41\x58\x4d\x31\xc9\xb8\x09\x00\x00\x00\x0f\x05\xc3")
 
+	# Thread-local storage (docs/projects/thread_local.md).
+	# __w_tls_size(): the per-thread block size, patched at finish.
+	sym_define_declare_global_function(c"__w_tls_size")
+	tls_size_patch_pos = codepos + 1
+	/* mov eax,imm32 ; ret */
+	emit(6, c"\xb8\x00\x00\x00\x00\xc3")
+	# __w_tls_set(block): write the self pointer to block[0] and make
+	# block this thread's gs base (fs stays libc's in a dynamically
+	# linked program): arch_prctl(ARCH_SET_GS, block).
+	sym_define_declare_global_function(c"__w_tls_set")
+	/* mov rsi,[rsp+8] ; mov [rsi],rsi ; mov edi,0x1001 ; mov eax,158 ; syscall ; ret */
+	emit(20, c"\x48\x8b\x74\x24\x08\x48\x89\x36\xbf\x01\x10\x00\x00\xb8\x9e\x00\x00\x00\x0f\x05")
+	emit(1, c"\xc3")
+
 	define_asm_functions_x64_portable()

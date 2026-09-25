@@ -119,6 +119,42 @@ void elf_start():
 	define_asm_functions()
 
 
+# Thread-local storage (docs/projects/thread_local.md): once every
+# thread_local is declared, patch the final block size into the
+# __w_tls_size stub, reserve the main thread's block in the data segment
+# and emit the entry thunk the entry stub calls instead of _main:
+#	push block ; call __w_tls_set ; add esp,word ; jmp _main
+# The jmp keeps the entry stub's return address and argument in place,
+# so _main sees exactly the frame it would have without the thunk.
+# Returns the thunk's address for the entry call patch.
+int elf_emit_tls_entry_thunk(int main_addr):
+	if (tls_size > 1048576):
+		error(c"thread_local storage exceeds 1MB")
+	if (tls_size_patch_pos == 0):
+		error(c"thread_local: no __w_tls_size stub on this target")
+	tls_size = (tls_size + 15) & (0 - 16)
+	save_int32(code + tls_size_patch_pos, tls_size)
+	while ((datapos & 15) != 0):
+		emit_data_zeros(1)
+	int block = emit_data_zeros(tls_size)
+	int set_addr = sym_address(c"__w_tls_set")
+	int thunk = code_offset + codepos
+	emit(1, c"\x68")  /* push imm32 */
+	emit_int(0)
+	save_int32(code + codepos - 4, block)
+	emit(1, c"\xe8")  /* call __w_tls_set */
+	emit_int(0)
+	save_int32(code + codepos - 4, set_addr - code_offset - codepos)
+	if (word_size == 8):
+		emit(4, c"\x48\x83\xc4\x08")  /* add rsp,8 */
+	else:
+		emit(3, c"\x83\xc4\x04")  /* add esp,4 */
+	emit(1, c"\xe9")  /* jmp _main */
+	emit_int(0)
+	save_int32(code + codepos - 4, main_addr - code_offset - codepos)
+	return thunk
+
+
 # Shared elf_finish head for the 32- and 64-bit writers: the codepos
 # trace, the dynamic-section append, and the entry-point call patch
 # (rel32 to _main, falling back to main). The width-specific PT_LOAD
@@ -145,6 +181,8 @@ void elf_finish_entry_patch():
 		if (entry_optional):
 			return
 		error(c"Failed to find a _main() function. Did you import lib/testing?")
+	if (tls_size > 0):
+		t = elf_emit_tls_entry_thunk(t)
 	# rel32 = target - address of the instruction after the 5-byte call
 	t = t - code_offset - entry_call_disp_pos - 4
 
