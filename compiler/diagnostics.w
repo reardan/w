@@ -80,8 +80,7 @@ int diag_suggest_best_distance
 char* diag_suggest_rows
 
 
-int diag_suggest_max_length():
-	return 64
+const int diag_suggest_max_length = 64
 
 
 void diag_suggest_begin(char* name):
@@ -89,7 +88,7 @@ void diag_suggest_begin(char* name):
 	diag_suggest_best = 0
 	diag_suggest_best_distance = 1000
 	if (diag_suggest_rows == 0):
-		diag_suggest_rows = malloc(3 * (diag_suggest_max_length() + 1))
+		diag_suggest_rows = malloc(3 * (diag_suggest_max_length + 1))
 
 
 int diag_lower(int c):
@@ -105,12 +104,12 @@ int diag_min(int a, int b):
 
 
 # Edit distance between a and b (lengths n and m, both at most
-# diag_suggest_max_length()); rows are one byte per cell, which the
+# diag_suggest_max_length); rows are one byte per cell, which the
 # length cap keeps in range. Returns 0 for a case-only difference.
 int diag_edit_distance(char* a, int n, char* b, int m):
 	char* prev2 = diag_suggest_rows
-	char* prev = diag_suggest_rows + (diag_suggest_max_length() + 1)
-	char* row = diag_suggest_rows + 2 * (diag_suggest_max_length() + 1)
+	char* prev = diag_suggest_rows + (diag_suggest_max_length + 1)
+	char* row = diag_suggest_rows + 2 * (diag_suggest_max_length + 1)
 	int j = 0
 	while (j <= m):
 		prev[j] = j
@@ -152,7 +151,7 @@ void diag_suggest_consider(char* candidate):
 	int m = strlen(candidate)
 	if ((n == 0) || (m == 0)):
 		return
-	if ((n > diag_suggest_max_length()) || (m > diag_suggest_max_length())):
+	if ((n > diag_suggest_max_length) || (m > diag_suggest_max_length)):
 		return
 	int limit = n
 	if (limit < 3):
@@ -234,14 +233,21 @@ void diag_write_cstr(char* s):
 		i = i + 1
 
 
-# Length (2-4, lead byte included) of the well-formed UTF-8 sequence
-# starting at s[i], or 0 when the bytes there are not well-formed UTF-8
-# (an invalid lead byte, a lone/missing continuation byte, an overlong
-# encoding, a surrogate, or a codepoint past U+10FFFF). Mirrors
-# lib/utf8.w's utf8_validate_bytes, reimplemented locally because this
-# module stays dependency-free. Truncation at the terminating NUL fails
-# the continuation-range check, so the scan never reads past it.
-int diag_utf8_sequence_length(char* s, int i):
+# The codepoint of the multi-byte UTF-8 sequence starting at s[i], with
+# its byte length (2-4, lead byte included) in utf8_decode_length; or -1
+# with utf8_decode_length 0 when the bytes there are not a well-formed
+# sequence: an ASCII or invalid lead byte, a lone/missing continuation
+# byte, or an overlong encoding. Surrogates and codepoints past U+10FFFF
+# decode normally, for callers to reject with their own diagnostics.
+# Mirrors lib/utf8.w's utf8_validate_bytes, reimplemented locally
+# because this module stays dependency-free. Truncation at the
+# terminating NUL fails the continuation-range check, so the scan never
+# reads past it.
+int utf8_decode_length
+
+
+int utf8_decode_at(char* s, int i):
+	utf8_decode_length = 0
 	int c = s[i] & 255
 	int need = 0
 	int codepoint = 0
@@ -255,23 +261,25 @@ int diag_utf8_sequence_length(char* s, int i):
 		need = 3
 		codepoint = c & 7
 	else:
-		return 0
-	int j = 1
-	while (j <= need):
+		return -1
+	for j in range(1, need + 1):
 		int d = s[i + j] & 255
 		if ((d < 128) || (d > 191)):
-			return 0
+			return -1
 		codepoint = (codepoint << 6) | (d & 63)
-		j = j + 1
-	if ((need == 2) && (codepoint < 2048)):
+	if (((need == 2) && (codepoint < 2048)) || ((need == 3) && (codepoint < 65536))):
+		return -1
+	utf8_decode_length = need + 1
+	return codepoint
+
+
+# Length of the well-formed UTF-8 sequence at s[i] (utf8_decode_at), or
+# 0 when it is malformed, a surrogate or past U+10FFFF.
+int diag_utf8_sequence_length(char* s, int i):
+	int codepoint = utf8_decode_at(s, i)
+	if (((codepoint >= 55296) && (codepoint <= 57343)) || (codepoint > 1114111)):
 		return 0
-	if ((need == 3) && (codepoint < 65536)):
-		return 0
-	if ((codepoint >= 55296) && (codepoint <= 57343)):
-		return 0
-	if (codepoint > 1114111):
-		return 0
-	return need + 1
+	return utf8_decode_length
 
 
 void diag_write_json_string(char* s):

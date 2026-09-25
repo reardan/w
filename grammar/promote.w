@@ -57,16 +57,13 @@ void bit_field_load_unit(int unit_size):
 # so wide masks must not be computed in host arithmetic (the CLAUDE.md
 # bit-31 literal gotcha, lib/sha256.w precedent).
 void bit_field_emit_mask(int width, int shift):
-	mov_eax_int(1)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot_int(1)
 	mov_eax_int(width)
 	alu_shl()
 	stack_pos = stack_pos - 1
 	add_eax_int32(-1)
 	if (shift > 0):
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		mov_eax_int(shift)
 		alu_shl()
 		stack_pos = stack_pos - 1
@@ -87,30 +84,25 @@ int bit_field_promote(int type):
 	bit_field_load_unit(ci_bit_field_unit_size(type))
 	if (ci_bit_field_is_signed(type)):
 		if (reg_bits - bit_offset - width > 0):
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			mov_eax_int(reg_bits - bit_offset - width)
 			alu_shl()
 			stack_pos = stack_pos - 1
 		if (reg_bits - width > 0):
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			mov_eax_int(reg_bits - width)
 			alu_sar()
 			stack_pos = stack_pos - 1
 	else:
 		if (bit_offset > 0):
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			mov_eax_int(bit_offset)
 			alu_sar()
 			stack_pos = stack_pos - 1
 		if (width < reg_bits):
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			bit_field_emit_mask(width, 0)
-			pop_ebx()
-			stack_pos = stack_pos - 1
+			pop_ebx_slot()
 			alu_and()
 	return type_lookup(c"int")
 
@@ -132,33 +124,25 @@ void bit_field_assign_store(int type):
 		return;
 	push_ebx()
 	stack_pos = stack_pos + 1
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	if (bit_offset > 0):
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		mov_eax_int(bit_offset)
 		alu_shl()
 		stack_pos = stack_pos - 1
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	bit_field_emit_mask(width, bit_offset)
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	alu_and()  # eax = positioned field bits
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	bit_field_emit_mask(width, bit_offset)
 	not_eax()  # eax = ~(mask << bit_offset)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(3 * word_size)  # the saved unit address
 	bit_field_load_unit(unit_size)
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	alu_and()  # unit with the field's bits cleared
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	alu_or()  # merged unit
 	mov_ebx_esp_plus(word_size)  # the saved unit address
 	if (unit_size == 1):
@@ -169,10 +153,8 @@ void bit_field_assign_store(int type):
 		store_ebx_int32()
 	else:
 		store_ebx_word()
-	pop_eax()  # the incoming value: assignment's result
-	stack_pos = stack_pos - 1
-	pop_ebx()  # drop the saved address
-	stack_pos = stack_pos - 1
+	pop_eax_slot()  # the incoming value: assignment's result
+	pop_ebx_slot()  # drop the saved address
 
 
 # Print a type's name followed by its pointer stars, e.g. "char**"
@@ -181,6 +163,22 @@ void print_error_type(int type_index):
 	diag_part(type_get_name(type_index))
 	for int i in range(type_get_pointer_level(type_index)):
 		diag_part(c"*")
+
+
+# error(): prefix, the type's name, suffix.
+void error_type(char* prefix, int type_index, char* suffix):
+	diag_part(prefix)
+	print_error_type(type_index)
+	error(suffix)
+
+
+# Writes lead, then "<want>', got '<got>" (lead ends in "expected '");
+# the caller finishes the message.
+void diag_expected_got(char* lead, int want, int got):
+	diag_part(lead)
+	print_error_type(want)
+	diag_part(c"', got '")
+	print_error_type(got)
 
 
 # The 'gpu' pointer qualifier's diagnostics (docs/projects/cuda.md
@@ -192,10 +190,7 @@ void print_error_type(int type_index):
 # already written the construct ("initialization", "function 'f'
 # argument 2", ...) with diag_part.
 void gpu_domain_error_tail(int want, int got):
-	diag_part(c" mixes gpu and host pointers: expected '")
-	print_error_type(want)
-	diag_part(c"', got '")
-	print_error_type(got)
+	diag_expected_got(c" mixes gpu and host pointers: expected '", want, got)
 	error(c"'; use cast() to cross the host/device boundary")
 
 
@@ -228,10 +223,7 @@ void warn_type_mismatch(char* context, int want, int got):
 	gpu_domain_check(context, want, got)
 	diag_part(c"warning: ")
 	diag_part(context)
-	diag_part(c" type mismatch: expected '")
-	print_error_type(want)
-	diag_part(c"', got '")
-	print_error_type(got)
+	diag_expected_got(c" type mismatch: expected '", want, got)
 	warning(c"'")
 
 
@@ -272,20 +264,15 @@ int types_compatible_with_expression(int want, int got):
 
 
 void coerce_cstr_to_string():
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	sym_get_value(c"str_from_cstr")
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(word_size)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(word_size)
 	call_eax()
-	be_pop(2)
-	stack_pos = stack_pos - 2
-	be_pop(1)
-	stack_pos = stack_pos - 1
+	drop_slots(2)
+	drop_slots(1)
 
 
 void coerce_cstr_to_string_call_arg():
@@ -342,7 +329,7 @@ int promote(int type):
 		return type_get_slice_value(type_get_element_type(type))
 	if (type_num_args(type) > 0): /* struct: keep the address */
 		return type
-	if (type_get_kind(type) == type_kind_slice()):
+	if (type_get_kind(type) == type_kind_slice):
 		promote_eax()
 		return type_get_slice_value(type_get_element_type(type))
 	if (type == string_type):
@@ -461,6 +448,21 @@ void coerce(int want, int got):
 		cvttsd2si_rax_xmm0()
 
 
+# coerce(), then the usual mismatch warning naming the construct.
+void coerce_checked(int want, int got, char* context):
+	coerce(want, got)
+	if (types_compatible_with_expression(want, got) == 0):
+		warn_type_mismatch(context, want, got)
+
+
+# Parses an expression and coerces it to want (coerce_checked); returns
+# the expression's own type.
+int parse_coerced(int want, char* context):
+	int got = promote(expression())
+	coerce_checked(want, got, context)
+	return got
+
+
 # Conversions requested with cast(T, x). Casts silence the compatibility
 # warnings but still reject conversions that cannot round-trip: address-sized
 # values (pointers, function addresses and decayed array/slice values) only
@@ -473,7 +475,7 @@ void coerce_explicit(int want, int got):
 	int got_address_sized = type_get_pointer_level(got_real) > 0
 	if (got_real == 4):
 		got_address_sized = 1
-	int got_decays = type_get_kind(got_real) == type_kind_slice_value()
+	int got_decays = type_get_kind(got_real) == type_kind_slice_value
 	if (got_decays):
 		got_address_sized = 1
 	if (got_address_sized & (type_get_pointer_level(want_real) == 0)):

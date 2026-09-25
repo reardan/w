@@ -99,9 +99,7 @@ void goto_scope_end(int outer_label_base, int outer_pending_base):
 	while (i < goto_pending_count):
 		int label = goto_pending_label[i]
 		if (label >= 0):
-			diag_part(c"goto to undefined label '")
-			diag_part(goto_label_names[label])
-			error(c"'")
+			error3(c"goto to undefined label '", goto_label_names[label], c"'")
 		i = i + 1
 	i = goto_label_base
 	while (i < goto_label_count):
@@ -197,9 +195,7 @@ int labeled_statement():
 	goto_check_target()
 	int label = goto_label_intern(name)
 	if (goto_label_pos[label] >= 0):
-		diag_part(c"duplicate label '")
-		diag_part(name)
-		error(c"'")
+		error3(c"duplicate label '", name, c"'")
 	free(name)
 	# A jump lands here: no constant/compare fold may reach back across it
 	be_cmp_note_reset()

@@ -13,12 +13,8 @@ import code_generator.integer
 import lib.lib
 
 
-int dyn_max_libs():
-	return 64
-
-
-int dyn_max_imports():
-	return 4096
+const int dyn_max_libs = 64
+const int dyn_max_imports = 4096
 
 
 # Sonames requested with c_lib (each becomes a DT_NEEDED entry).
@@ -46,13 +42,13 @@ char* dyn_import_lib
 
 void dyn_init():
 	if (dyn_lib_names == 0):
-		dyn_lib_names = malloc(dyn_max_libs() * word_size)
-		dyn_import_names = malloc(dyn_max_imports() * word_size)
-		dyn_import_got = malloc(dyn_max_imports() * word_size)
-		dyn_import_binding = malloc(dyn_max_imports() * 4)
-		dyn_import_symtype = malloc(dyn_max_imports() * 4)
-		dyn_import_size = malloc(dyn_max_imports() * 4)
-		dyn_import_lib = malloc(dyn_max_imports() * 4)
+		dyn_lib_names = malloc(dyn_max_libs * word_size)
+		dyn_import_names = malloc(dyn_max_imports * word_size)
+		dyn_import_got = malloc(dyn_max_imports * word_size)
+		dyn_import_binding = malloc(dyn_max_imports * 4)
+		dyn_import_symtype = malloc(dyn_max_imports * 4)
+		dyn_import_size = malloc(dyn_max_imports * 4)
+		dyn_import_lib = malloc(dyn_max_imports * 4)
 
 
 int dyn_has_imports():
@@ -88,7 +84,7 @@ int dyn_emit_import_slot():
 
 void dyn_add_lib(char* soname):
 	dyn_init()
-	if (dyn_lib_count >= dyn_max_libs()):
+	if (dyn_lib_count >= dyn_max_libs):
 		error(c"too many c_lib entries")
 	save_i(dyn_lib_names + dyn_lib_count * word_size, cast(int, strclone(soname)), word_size)
 	dyn_lib_count = dyn_lib_count + 1
@@ -101,7 +97,7 @@ char* dyn_lib_name(int i):
 # Returns the import's index, which is also its .dynsym index minus one.
 int dyn_add_import(char* name, int got_vaddr):
 	dyn_init()
-	if (dyn_import_count >= dyn_max_imports()):
+	if (dyn_import_count >= dyn_max_imports):
 		error(c"too many extern imports")
 	save_i(dyn_import_names + dyn_import_count * word_size, cast(int, strclone(name)), word_size)
 	save_i(dyn_import_got + dyn_import_count * word_size, got_vaddr, word_size)

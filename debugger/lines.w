@@ -9,6 +9,7 @@ absolute - code_offset).
 */
 import compiler.compiler
 import debugger.memory
+import debugger.common
 
 
 # Index of the last line entry at or before rel, or -1.
@@ -197,9 +198,7 @@ void dbg_print_file_line(int addr):
 		return;
 	print(dbg_file_name(dbg_line_file(i)))
 	print(c":")
-	char* digits = itoa(dbg_line_line(i))
-	print(digits)
-	free(digits)
+	dbg_print_dec(dbg_line_line(i))
 
 
 # Print source lines [first, last] of a file with line numbers, marking
@@ -222,9 +221,7 @@ void dbg_print_source_range(char* path, int first, int last, int current):
 				print(c"-> ")
 			else:
 				print(c"   ")
-			char* digits = itoa(line)
-			print(digits)
-			free(digits)
+			dbg_print_dec(line)
 			print(c"\x09")
 		while ((c != 10) && (c != -1)):
 			if (line >= first):

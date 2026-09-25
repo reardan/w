@@ -13,65 +13,41 @@ void hash_literal_call_map_set(int container_slot, int key_slot, int value_slot,
 	else:
 		sym_get_value(c"__w_map_set")
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(container_slot)
-	hash_push_stack_slot(key_slot)
-	hash_push_stack_slot(value_slot)
-	hash_call_finish(s)
+	push_slot()
+	push_slot_copy(container_slot)
+	push_slot_copy(key_slot)
+	push_slot_copy(value_slot)
+	rt_call_end(s)
 
 
 void hash_literal_call_set_add(int container_slot, int key_slot):
-	sym_get_value(c"__w_set_add")
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(container_slot)
-	hash_push_stack_slot(key_slot)
-	hash_call_finish(s)
+	int s = rt_call_begin(c"__w_set_add")
+	push_slot_copy(container_slot)
+	push_slot_copy(key_slot)
+	rt_call_end(s)
 
 
 void hash_literal_parse_map_entry(int container_type, int container_slot):
 	int base_stack = stack_pos
 	int key_type = type_map_key_type(container_type)
 	int value_type = type_map_value_type(container_type)
-	int got_key_type = expression()
-	got_key_type = promote(got_key_type)
-	coerce(key_type, got_key_type)
-	if (types_compatible_with_expression(key_type, got_key_type) == 0):
-		warn_type_mismatch(c"map literal key", key_type, got_key_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int key_slot = stack_pos
+	int got_key_type = parse_coerced(key_type, c"map literal key")
+	int key_slot = push_slot()
 	expect(c":")
-	int got_value_type = expression()
-	got_value_type = promote(got_value_type)
-	coerce(value_type, got_value_type)
-	if (types_compatible_with_expression(value_type, got_value_type) == 0):
-		warn_type_mismatch(c"map literal value", value_type, got_value_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
+	int got_value_type = parse_coerced(value_type, c"map literal value")
+	int value_slot = push_slot()
 	int value_is_struct = (type_num_args(value_type) > 0) & (type_num_args(type_real(got_value_type)) > 0)
 	hash_literal_call_map_set(container_slot, key_slot, value_slot, value_is_struct)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	pop_to(base_stack)
 
 
 void hash_literal_parse_set_entry(int container_type, int container_slot):
 	int base_stack = stack_pos
 	int key_type = type_set_key_type(container_type)
-	int got_key_type = expression()
-	got_key_type = promote(got_key_type)
-	coerce(key_type, got_key_type)
-	if (types_compatible_with_expression(key_type, got_key_type) == 0):
-		warn_type_mismatch(c"set literal key", key_type, got_key_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int key_slot = stack_pos
+	int got_key_type = parse_coerced(key_type, c"set literal key")
+	int key_slot = push_slot()
 	hash_literal_call_set_add(container_slot, key_slot)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	pop_to(base_stack)
 
 
 int hash_typed_literal():
@@ -82,9 +58,7 @@ int hash_typed_literal():
 		return 0
 	expect(c"{")
 	hash_emit_new_container(container_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
+	int container_slot = push_slot()
 	if (peek(c"}") == 0):
 		if (type_is_map(container_type)):
 			hash_literal_parse_map_entry(container_type, container_slot)
@@ -99,8 +73,7 @@ int hash_typed_literal():
 				hash_literal_parse_set_entry(container_type, container_slot)
 	if (peek(c"}") == 0):
 		error(c"'}' expected in hash literal")
-	pop_eax()
-	stack_pos = stack_pos - 1
+	pop_eax_slot()
 	hash_literal_type = type_value(container_type)
 	return 1
 
@@ -153,8 +126,9 @@ int primary_expr():
 	else if (c_char_pointer_literal()):
 		type = type_value(type_lookup_pointer(c"char", 1))
 
+	# "..." and f"..." literals decay to char* (string_literal_type)
 	else if (template_string_literal()):
-		type = string_value_type
+		type = string_literal_type
 
 	else if (hash_typed_literal()):
 		type = hash_literal_type
@@ -267,11 +241,10 @@ int primary_expr():
 		type = 3 /* constant */
 
 	else if (char_pointer_literal()):
-		type = string_value_type
+		type = string_literal_type
 
 	else:
-		diag_part(c"Could not find a valid primary expression, token: ")
-		error(token)
+		error2(c"Could not find a valid primary expression, token: ", token)
 
 	get_token()
 	return type

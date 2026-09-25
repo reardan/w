@@ -97,15 +97,14 @@ char* gpu_capture_names    # per-slot host symbol name (owned strclone)
 char* gpu_capture_syms     # per-slot host symbol table offset (-1 = bound)
 
 
-int gpu_capture_limit():
-	return 32
+const int gpu_capture_limit = 32
 
 
 # Start a fresh capture set with slot 0 = the range bound.
 void gpu_capture_reset():
 	if (gpu_capture_names == 0):
-		gpu_capture_names = malloc(gpu_capture_limit() * __word_size__)
-		gpu_capture_syms = malloc(gpu_capture_limit() * 4)
+		gpu_capture_names = malloc(gpu_capture_limit * __word_size__)
+		gpu_capture_syms = malloc(gpu_capture_limit * 4)
 	int i = 0
 	while (i < gpu_capture_count):
 		char* name = cast(char*, load_ptr(gpu_capture_names + i * __word_size__))
@@ -138,7 +137,7 @@ int gpu_capture_slot(int t, char* name):
 		if (load_int(gpu_capture_syms + i * 4) == t):
 			return i
 		i = i + 1
-	if (gpu_capture_count >= gpu_capture_limit()):
+	if (gpu_capture_count >= gpu_capture_limit):
 		error(c"too many variables captured in 'gpu for'")
 	save_ptr(gpu_capture_names + gpu_capture_count * __word_size__, cast(int, strclone(name)))
 	save_int(gpu_capture_syms + gpu_capture_count * 4, t)
@@ -220,7 +219,7 @@ void kernel_function_definition(int current_symbol, char* kernel_name):
 			error(c"kernel parameters must be word-sized")
 		if (type_num_args(type_real(type)) > 0):
 			error(c"kernel parameters must be word-sized")
-		if (param_count <= sym_max_param_slots()):
+		if (param_count <= sym_max_param_slots):
 			save_int(table + current_symbol + 22 + (param_count << 2), type)
 		# The parameter's value: ld.param into the accumulator, then an
 		# ordinary local declaration at the slot about to be pushed.
@@ -231,8 +230,7 @@ void kernel_function_definition(int current_symbol, char* kernel_name):
 			get_token()
 		if (accept(c"=")):
 			error(c"kernel parameters cannot have default values")
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		accept(c",") /* ignore trailing comma */
 
 	save_int(table + current_symbol + 22, param_count)
@@ -282,23 +280,17 @@ that uses them is in flight).
 # cell, so argument i lives at vals + (count-1-i)*8.
 void launch_emit_runtime_call(char* kernel_name, int base, int passed):
 	sym_get_value(c"__w_gpu_launch_raw")
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	be_emit_inline_cstr(strlen(kernel_name), kernel_name)
-	push_eax() /* arg 1: name */
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus((stack_pos - (base + 1)) << word_size_log2)
-	push_eax() /* arg 2: grid */
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus((stack_pos - (base + 2)) << word_size_log2)
-	push_eax() /* arg 3: block */
-	stack_pos = stack_pos + 1
+	push_slot() /* arg 1: name */
+	load_slot(base + 1)
+	push_slot() /* arg 2: grid */
+	load_slot(base + 2)
+	push_slot() /* arg 3: block */
 	lea_eax_esp_plus((stack_pos - (base + 2 + passed)) << word_size_log2)
-	push_eax() /* arg 4: vals (the last argument cell) */
-	stack_pos = stack_pos + 1
+	push_slot() /* arg 4: vals (the last argument cell) */
 	mov_eax_int(passed)
-	push_eax() /* arg 5: count */
-	stack_pos = stack_pos + 1
+	push_slot() /* arg 5: count */
 	mov_eax_esp_plus(5 << word_size_log2)
 	call_eax()
 
@@ -330,9 +322,7 @@ int launch_statement():
 	if (kernel_sym >= 0):
 		is_kernel = sym_is_kernel(kernel_sym)
 	if (is_kernel == 0):
-		diag_part(c"'")
-		diag_part(token)
-		error(c"' is not a kernel")
+		error3(c"'", token, c"' is not a kernel")
 	char* kernel_name = strclone(token)
 	get_token()
 
@@ -340,12 +330,10 @@ int launch_statement():
 	expect(c"[")
 	int int_type = type_lookup(c"int")
 	coerce(int_type, promote(expression()))
-	push_eax() /* grid */
-	stack_pos = stack_pos + 1
+	push_slot() /* grid */
 	expect(c",")
 	coerce(int_type, promote(expression()))
-	push_eax() /* block */
-	stack_pos = stack_pos + 1
+	push_slot() /* block */
 	expect(c"]")
 
 	expect(c"(")
@@ -358,8 +346,7 @@ int launch_statement():
 		int param_type = sym_param_type(kernel_sym, passed)
 		if (param_type >= 0):
 			coerce_call_argument(param_type, arg_type)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		passed = passed + 1
 		while (accept(c",")):
 			arg_type = promote(expression())
@@ -369,8 +356,7 @@ int launch_statement():
 			int loop_param_type = sym_param_type(kernel_sym, passed)
 			if (loop_param_type >= 0):
 				coerce_call_argument(loop_param_type, arg_type)
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			passed = passed + 1
 		expect(c")")
 
@@ -381,12 +367,9 @@ int launch_statement():
 		diag_part(c"kernel '")
 		diag_part(kernel_name)
 		diag_part(c"' expects ")
-		diag_part(itoa(expected_args))
-		diag_part(c" arguments, got ")
-		error(itoa(passed))
+		error3(itoa(expected_args), c" arguments, got ", itoa(passed))
 
 	launch_emit_runtime_call(kernel_name, base, passed)
-	be_pop(stack_pos - base)
-	stack_pos = base
+	pop_to(base)
 	free(kernel_name)
 	return 1

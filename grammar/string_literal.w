@@ -44,6 +44,47 @@ int string_append_utf8(int out, int codepoint):
 	return out + 4
 
 
+# Decode the UTF-8 sequence at token[i] (n bytes of text): returns the
+# codepoint and sets utf8_decoded_length, or a negative error -- -1 bad
+# lead byte, -2 truncated, -3 bad continuation byte, -4 overlong. The
+# surrogate and range checks stay with the callers, whose messages
+# differ. Shared by char literals and string-literal validation.
+int utf8_decoded_length
+
+
+int string_utf8_decode(int i, int n):
+	int c = token[i] & 255
+	utf8_decoded_length = 1
+	if (c < 128):
+		return c
+	int need = 0
+	int codepoint = 0
+	if ((c >= 194) && (c <= 223)):
+		need = 1
+		codepoint = c & 31
+	else if ((c >= 224) && (c <= 239)):
+		need = 2
+		codepoint = c & 15
+	else if ((c >= 240) && (c <= 244)):
+		need = 3
+		codepoint = c & 7
+	else:
+		return -1
+	if (i + need >= n):
+		return -2
+	int j = 1
+	while (j <= need):
+		int d = token[i + j] & 255
+		if ((d < 128) || (d > 191)):
+			return -3
+		codepoint = (codepoint << 6) | (d & 63)
+		j = j + 1
+	if (((need == 2) && (codepoint < 2048)) || ((need == 3) && (codepoint < 65536))):
+		return -4
+	utf8_decoded_length = need + 1
+	return codepoint
+
+
 # Map a simple backslash-escape character to its byte value: \n \t \r \0,
 # plus the identity escapes for backslash and both quotes. Returns -1 for
 # anything unrecognized; string literals keep the character literally
@@ -91,50 +132,19 @@ int char_literal_value():
 		else:
 			value = escape_char_value(e)
 			if (value < 0):
-				diag_part(c"unknown escape in char literal: ")
-				error(token)
+				error2(c"unknown escape in char literal: ", token)
 			end = 3
 	else:
-		int lead = token[1] & 255
-		if (lead < 128):
-			value = lead
-			end = 2
-		else:
-			int need = 0
-			if ((lead >= 194) && (lead <= 223)):
-				need = 1
-				value = lead & 31
-			else if ((lead >= 224) && (lead <= 239)):
-				need = 2
-				value = lead & 15
-			else if ((lead >= 240) && (lead <= 244)):
-				need = 3
-				value = lead & 7
-			else:
-				diag_part(c"invalid UTF-8 char literal: ")
-				error(token)
-			int i = 1
-			while (i <= need):
-				int d = token[1 + i] & 255
-				if ((d < 128) || (d > 191)):
-					diag_part(c"invalid UTF-8 char literal: ")
-					error(token)
-				value = (value << 6) | (d & 63)
-				i = i + 1
-			if ((need == 2) && (value < 2048)):
-				diag_part(c"invalid UTF-8 char literal: ")
-				error(token)
-			if ((need == 3) && (value < 65536)):
-				diag_part(c"invalid UTF-8 char literal: ")
-				error(token)
-			end = 2 + need
+		value = string_utf8_decode(1, strlen(token))
+		if (value < 0):
+			error2(c"invalid UTF-8 char literal: ", token)
+		end = 1 + utf8_decoded_length
 	if ((value >= 55296) && (value <= 57343)):
 		error(c"invalid unicode surrogate")
 	if (value > 1114111):
 		error(c"unicode codepoint out of range")
 	if ((token[end] != 39) || (token[end + 1] != 0)):
-		diag_part(c"multi-character char literal: ")
-		error(token)
+		error2(c"multi-character char literal: ", token)
 	return value
 
 
@@ -185,43 +195,20 @@ int process_prefixed_string_literal():
 void validate_utf8_literal(int n):
 	int i = 0
 	while (i < n):
-		int c = token[i] & 255
-		int need = 0
-		int codepoint = 0
-		if (c < 128):
-			i = i + 1
-		else if ((c >= 194) && (c <= 223)):
-			need = 1
-			codepoint = c & 31
-		else if ((c >= 224) && (c <= 239)):
-			need = 2
-			codepoint = c & 15
-		else if ((c >= 240) && (c <= 244)):
-			need = 3
-			codepoint = c & 7
-		else:
+		int codepoint = string_utf8_decode(i, n)
+		if (codepoint == -1):
 			error(c"invalid UTF-8 string literal")
-		if (need > 0):
-			if (i + need >= n):
-				error(c"truncated UTF-8 string literal")
-			int j = 1
-			while (j <= need):
-				int d = token[i + j] & 255
-				if ((d < 128) || (d > 191)):
-					error(c"invalid UTF-8 continuation byte")
-				codepoint = (codepoint << 6) | (d & 63)
-				j = j + 1
-			if ((need == 1) && (codepoint < 128)):
-				error(c"overlong UTF-8 string literal")
-			if ((need == 2) && (codepoint < 2048)):
-				error(c"overlong UTF-8 string literal")
-			if ((need == 3) && (codepoint < 65536)):
-				error(c"overlong UTF-8 string literal")
-			if ((codepoint >= 55296) && (codepoint <= 57343)):
-				error(c"invalid UTF-8 surrogate")
-			if (codepoint > 1114111):
-				error(c"UTF-8 codepoint out of range")
-			i = i + need + 1
+		if (codepoint == -2):
+			error(c"truncated UTF-8 string literal")
+		if (codepoint == -3):
+			error(c"invalid UTF-8 continuation byte")
+		if (codepoint == -4):
+			error(c"overlong UTF-8 string literal")
+		if ((codepoint >= 55296) && (codepoint <= 57343)):
+			error(c"invalid UTF-8 surrogate")
+		if (codepoint > 1114111):
+			error(c"UTF-8 codepoint out of range")
+		i = i + utf8_decoded_length
 
 
 # like a char_pointer_literal()

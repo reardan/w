@@ -193,10 +193,6 @@ char* __w_list_pop_addr(__w_list* list):
 	return list.items + list.length * list.element_size
 
 
-int __w_list_length(__w_list* list):
-	return list.length
-
-
 void __w_list_clear(__w_list* list):
 	list.length = 0
 
@@ -551,6 +547,109 @@ int __w_list_index(__w_list* list, int value, int kind):
 			return i
 		i = i + 1
 	return 0 - 1
+
+
+# it-expression support (l.map(it * 2), l.filter(it > 0), ...; see
+# list_it_method in grammar/list_builtin.w). The compiler evaluates the
+# expression inline for every element and collects the results into a
+# "keys" list whose element size is only known once the expression has
+# been parsed, so the list is created lazily on the first push and by
+# __w_list_or_new after the loop (an empty source list). The trailing
+# helpers then combine the source list with its keys.
+__w_list* __w_list_or_new(__w_list* list, int element_size):
+	if (cast(int, list) == 0):
+		return __w_list_new(element_size)
+	return list
+
+
+__w_list* __w_list_push_lazy(__w_list* list, int value, int element_size):
+	list = __w_list_or_new(list, element_size)
+	__w_list_push(list, value)
+	return list
+
+
+# The elements whose key is nonzero, in order (any element size).
+__w_list* __w_list_filter_keys(__w_list* list, __w_list* keys):
+	__w_list* result = __w_list_new(list.element_size)
+	int i = 0
+	while (i < list.length):
+		if (__w_list_load_word(keys.items + i * keys.element_size, keys.element_size)):
+			__w_list_push_bytes(result, list.items + i * list.element_size)
+		i = i + 1
+	return result
+
+
+# Truthiness summary of the keys: mode 0 counts the nonzero keys, 1 is
+# any (0/1), 2 all (0/1), 3 the first nonzero index or -1.
+int __w_list_truth(__w_list* keys, int mode):
+	int total = 0
+	int i = 0
+	while (i < keys.length):
+		if (__w_list_load_word(keys.items + i * keys.element_size, keys.element_size)):
+			if (mode == 3):
+				return i
+			total = total + 1
+		i = i + 1
+	if (mode == 1):
+		return total > 0
+	if (mode == 2):
+		return total == keys.length
+	if (mode == 3):
+		return 0 - 1
+	return total
+
+
+# Stable in-place insertion sort of list by its parallel keys (kind as
+# in __w_list_compare_values); keys are reordered alongside.
+void __w_list_sort_keys(__w_list* list, __w_list* keys, int kind):
+	char* temp = malloc(list.element_size)
+	int i = 1
+	while (i < list.length):
+		int key = __w_list_load_word(keys.items + i * keys.element_size, keys.element_size)
+		__w_list_copy_bytes(temp, list.items + i * list.element_size, list.element_size)
+		int j = i - 1
+		while (j >= 0):
+			int other = __w_list_load_word(keys.items + j * keys.element_size, keys.element_size)
+			if (__w_list_compare_values(other, key, kind) <= 0):
+				break
+			__w_list_store_word(keys.items + (j + 1) * keys.element_size, keys.element_size, other)
+			__w_list_copy_bytes(list.items + (j + 1) * list.element_size, list.items + j * list.element_size, list.element_size)
+			j = j - 1
+		__w_list_store_word(keys.items + (j + 1) * keys.element_size, keys.element_size, key)
+		__w_list_copy_bytes(list.items + (j + 1) * list.element_size, temp, list.element_size)
+		i = i + 1
+	free(temp)
+
+
+__w_list* __w_list_sorted_keys(__w_list* list, __w_list* keys, int kind):
+	__w_list* result = __w_list_copy(list)
+	__w_list_sort_keys(result, keys, kind)
+	return result
+
+
+# Index of the first smallest (flags bit 2 clear) or first largest key;
+# the low bits are the compare kind. Traps on an empty list.
+int __w_list_best_key(__w_list* keys, int flags):
+	if (keys.length == 0):
+		__w_trap(c"min_by/max_by on empty list")
+	int kind = flags & 3
+	int best = 0
+	int i = 1
+	while (i < keys.length):
+		int c = __w_list_compare_values(__w_list_load_word(keys.items + i * keys.element_size, keys.element_size), __w_list_load_word(keys.items + best * keys.element_size, keys.element_size), kind)
+		if (flags & 4):
+			c = 0 - c
+		if (c < 0):
+			best = i
+		i = i + 1
+	return best
+
+
+# Non-mutating reversal (l.reversed()).
+__w_list* __w_list_reversed(__w_list* list):
+	__w_list* result = __w_list_copy(list)
+	__w_list_reverse(result)
+	return result
 
 
 # Releases the backing storage and the header. Element POINTERS are not

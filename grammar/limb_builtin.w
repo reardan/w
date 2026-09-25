@@ -66,10 +66,7 @@ void limb_builtin_check_argument(char* name, int arg_index, int param_type, int 
 	diag_part(name)
 	diag_part(c"' argument ")
 	diag_part(itoa(arg_index + 1))
-	diag_part(c" type mismatch: expected '")
-	print_error_type(param_type)
-	diag_part(c"', got '")
-	print_error_type(arg_type)
+	diag_expected_got(c" type mismatch: expected '", param_type, arg_type)
 	warning(c"'")
 
 
@@ -91,17 +88,14 @@ int limb_builtin_expr():
 	get_token()
 	expect(c"(")
 	limb_builtin_int_argument(name, 0, int_type)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	expect(c",")
 	limb_builtin_int_argument(name, 1, int_type)
 	if (kind == 1):
-		pop_ebx()
-		stack_pos = stack_pos - 1
+		pop_ebx_slot()
 		alu_mul_hi()
 	else:
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		expect(c",")
 		int pointer_type = type_get_next_pointer(int_type)
 		int got = expression()
@@ -117,6 +111,5 @@ int limb_builtin_expr():
 		else:
 			alu_add_carry()
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in ")
-		error(name)
+		error2(c"')' expected in ", name)
 	return type_value(int_type)

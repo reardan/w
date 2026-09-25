@@ -185,13 +185,13 @@ void test_duplicate_keys_last_wins():
 
 
 void test_nesting_depth_limit():
-	char* under = json_nested_array_text(json_max_depth())
+	char* under = json_nested_array_text(json_max_depth)
 	json_value* root = json_parse(under)
 	assert1(root != 0)
 	json_free(root)
 	free(under)
 
-	char* over = json_nested_array_text(json_max_depth() + 1)
+	char* over = json_nested_array_text(json_max_depth + 1)
 	assert_json_parse_fails(over)
 	free(over)
 

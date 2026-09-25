@@ -41,6 +41,7 @@ This file is compiled by the committed seed: seed-known syntax only.
 */
 
 import code_generator.wasm
+import code_generator.image
 
 int sym_declare_global(char *s, int type, int symtype); /* symbol_table */
 void sym_define_global_at(int current_symbol, int v);   /* symbol_table */
@@ -70,8 +71,7 @@ int wasm_num_imports():
 # parameter class array (ffi.w classes: 0 = i32 word/pointer, 1 = f32),
 # and the result kind (0 = none, 1 = i32, 2 = f32).
 
-int wasm_extern_max():
-	return 1024
+const int wasm_extern_max = 1024
 
 char* wasm_extern_modules
 char* wasm_extern_names
@@ -84,11 +84,11 @@ void wasm_extern_init():
 		# Host pointer arrays stride by __word_size__, not the target's
 		# word_size (an x64 host compiling wasm would truncate the
 		# pointers to 4 bytes otherwise — the wasm_func_names lesson).
-		wasm_extern_modules = malloc(wasm_extern_max() * __word_size__)
-		wasm_extern_names = malloc(wasm_extern_max() * __word_size__)
-		wasm_extern_classes = malloc(wasm_extern_max() * __word_size__)
-		wasm_extern_nparams = malloc(wasm_extern_max() * 4)
-		wasm_extern_rets = malloc(wasm_extern_max() * 4)
+		wasm_extern_modules = malloc(wasm_extern_max * __word_size__)
+		wasm_extern_names = malloc(wasm_extern_max * __word_size__)
+		wasm_extern_classes = malloc(wasm_extern_max * __word_size__)
+		wasm_extern_nparams = malloc(wasm_extern_max * 4)
+		wasm_extern_rets = malloc(wasm_extern_max * 4)
 
 # Register one extern import and return its function index. Imports
 # precede defined functions in the wasm function index space, and W code
@@ -96,7 +96,7 @@ void wasm_extern_init():
 # index), so the index is final the moment the extern is declared.
 int wasm_extern_add(char* module, char* name, int n_params, char* classes, int ret_kind):
 	wasm_extern_init()
-	if (wasm_extern_count >= wasm_extern_max()):
+	if (wasm_extern_count >= wasm_extern_max):
 		error(c"too many extern imports")
 	char* classes_copy = malloc(n_params + 1)
 	int i = 0
@@ -124,8 +124,7 @@ int wasm_extern_add(char* module, char* name, int n_params, char* classes, int r
 # conventions (classes: 0 = i32 word/pointer, 1 = f32; result kind:
 # 0 = none, 1 = i32, 2 = f32).
 
-int wasm_export_max():
-	return 1024
+const int wasm_export_max = 1024
 
 char* wasm_export_syms
 char* wasm_export_names
@@ -136,11 +135,11 @@ int wasm_export_count
 
 void wasm_export_init():
 	if (wasm_export_syms == 0):
-		wasm_export_syms = malloc(wasm_export_max() * 4)
-		wasm_export_names = malloc(wasm_export_max() * __word_size__)
-		wasm_export_classes = malloc(wasm_export_max() * __word_size__)
-		wasm_export_nparams = malloc(wasm_export_max() * 4)
-		wasm_export_rets = malloc(wasm_export_max() * 4)
+		wasm_export_syms = malloc(wasm_export_max * 4)
+		wasm_export_names = malloc(wasm_export_max * __word_size__)
+		wasm_export_classes = malloc(wasm_export_max * __word_size__)
+		wasm_export_nparams = malloc(wasm_export_max * 4)
+		wasm_export_rets = malloc(wasm_export_max * 4)
 
 # The four names wasm_finish always exports.
 int wasm_export_name_reserved(char* name):
@@ -160,18 +159,14 @@ int wasm_export_name_reserved(char* name):
 # checked here, where the registry lives.
 void wasm_export_add(int sym, char* name, int n_params, char* classes, int ret_kind):
 	wasm_export_init()
-	if (wasm_export_count >= wasm_export_max()):
+	if (wasm_export_count >= wasm_export_max):
 		error(c"too many exported functions")
 	if (wasm_export_name_reserved(name)):
-		diag_part(c"export name '")
-		diag_part(name)
-		error(c"' collides with a reserved module export")
+		error3(c"export name '", name, c"' collides with a reserved module export")
 	int e = 0
 	while (e < wasm_export_count):
 		if (strcmp(cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__)), name) == 0):
-			diag_part(c"function '")
-			diag_part(name)
-			error(c"' is already exported")
+			error3(c"function '", name, c"' is already exported")
 		e = e + 1
 	char* classes_copy = malloc(n_params + 1)
 	int i = 0
@@ -210,9 +205,7 @@ void wasm_emit_export_wrappers():
 		int sym = load_i(wasm_export_syms + e * 4, 4)
 		char* name = cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__))
 		if (sym_decl_visibility(sym) != 'D'):
-			diag_part(c"exported function '")
-			diag_part(name)
-			error(c"' is never defined")
+			error3(c"exported function '", name, c"' is never defined")
 		int callee = wasm_num_imports() + sym_value_at(sym) - 1
 		int n = load_i(wasm_export_nparams + e * 4, 4)
 		char* classes = cast(char*, load_i(wasm_export_classes + e * __word_size__, __word_size__))
@@ -640,18 +633,7 @@ void wasm_finish():
 	# Entry selection, mirroring the PE writer: __w_wasm_start (the WASI
 	# runtime startup, which rebuilds real argc/argv) when _main exists
 	# for it to chain to; otherwise _main / main directly.
-	int t = 0
-	if (sym_address(c"_main") != 0):
-		t = sym_address(c"__w_wasm_start")
-	if (t == 0):
-		t = sym_address(c"_main")
-	if (t == 0):
-		t = sym_address(c"main")
-	if (t == 0):
-		# 'w check' on a main-less library module: not an error, and the
-		# entry slot stays unpatched (the output is discarded)
-		if (entry_optional == 0):
-			error(c"Failed to find a _main() function. Did you import lib/testing?")
+	int t = entry_symbol(c"__w_wasm_start")
 	if (t != 0):
 		wasm_addr_slot_write(wasm_entry_slot_pos, t)
 

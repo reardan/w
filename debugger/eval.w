@@ -56,12 +56,8 @@ char* dbg_eval_bound_sym
 int dbg_eval_bound_count
 
 
-int dbg_eval_bound_max():
-	return 128
-
-
-int dbg_eval_scratch_size():
-	return 8192
+const int dbg_eval_bound_max = 128
+const int dbg_eval_scratch_size = 8192
 
 
 void dbg_eval_copy(int from, int to, int n):
@@ -85,11 +81,11 @@ void dbg_eval_bind_locals(int stop_addr, int esp):
 	if (dbg_frame_ok == 0):
 		return;
 	if (dbg_eval_scratch == 0):
-		dbg_eval_scratch = malloc(dbg_eval_scratch_size())
-		dbg_eval_bound_from = malloc(dbg_eval_bound_max() * __word_size__)
-		dbg_eval_bound_to = malloc(dbg_eval_bound_max() * __word_size__)
-		dbg_eval_bound_size = malloc(dbg_eval_bound_max() * 4)
-		dbg_eval_bound_sym = malloc(dbg_eval_bound_max() * 4)
+		dbg_eval_scratch = malloc(dbg_eval_scratch_size)
+		dbg_eval_bound_from = malloc(dbg_eval_bound_max * __word_size__)
+		dbg_eval_bound_to = malloc(dbg_eval_bound_max * __word_size__)
+		dbg_eval_bound_size = malloc(dbg_eval_bound_max * 4)
+		dbg_eval_bound_sym = malloc(dbg_eval_bound_max * 4)
 	int rel = stop_addr - code_offset
 	int saved_indirection = pointer_indirection
 	int used = 0
@@ -102,7 +98,7 @@ void dbg_eval_bind_locals(int stop_addr, int esp):
 				# struct value: whole object, rounded up to words
 				size = (type_get_size(type) + __word_size__ - 1) / __word_size__ * __word_size__
 			int addr = dbg_local_runtime_addr(i, esp)
-			if ((used + size <= dbg_eval_scratch_size()) & (dbg_eval_bound_count < dbg_eval_bound_max())):
+			if ((used + size <= dbg_eval_scratch_size) && (dbg_eval_bound_count < dbg_eval_bound_max)):
 				if (dbg_mem_readable(addr, size)):
 					int slot = cast(int, dbg_eval_scratch) + used
 					dbg_eval_copy(addr, slot, size)

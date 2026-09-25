@@ -327,35 +327,15 @@ void arm64_bounds_branch(int cond, int link):
 	a64(op(0x54, 0x000000) | cond | (((link >> 2) & 0x7ffff) << 5))
 
 
-void arm64_bounds_branch_eax_negative(int link):
-	a64(op(0xf1, 0x00001f))   # cmp x0, #0
-	arm64_bounds_branch(11, link)   # b.lt
-
-
-void arm64_bounds_branch_ebx_negative(int link):
-	a64(op(0xf1, 0x00003f))   # cmp x1, #0
-	arm64_bounds_branch(11, link)   # b.lt
-
-
-void arm64_bounds_branch_ebx_greater_eax(int link):
-	a64(op(0xeb, 0x00003f))   # cmp x1, x0
-	arm64_bounds_branch(12, link)   # b.gt
-
-
-void arm64_bounds_skip_ebx_less_eax(int link):
-	a64(op(0xeb, 0x00003f))   # cmp x1, x0
-	arm64_bounds_branch(11, link)   # b.lt
-
-
-void arm64_bounds_skip_ebx_less_equal_eax(int link):
-	a64(op(0xeb, 0x00003f))   # cmp x1, x0
-	arm64_bounds_branch(13, link)   # b.le
-
-
-void arm64_bounds_skip_eax_less_equal_int32(int limit, int link):
-	arm64_load_scratch(9, limit)
-	a64(op(0xeb, 0x09001f))   # cmp x0, x9
-	arm64_bounds_branch(13, link)   # b.le
+# The compare of a be_bounds_branch kind (x86.w), then b.lt/b.gt/b.le.
+void arm64_bounds_branch_kind(int kind, int limit, int link):
+	if (kind == BOUNDS_EAX_NEG): a64(op(0xf1, 0x00001f))   # cmp x0, #0
+	elif (kind == BOUNDS_EBX_NEG): a64(op(0xf1, 0x00003f))   # cmp x1, #0
+	elif (kind == BOUNDS_EAX_LE_LIMIT):
+		arm64_load_scratch(9, limit)
+		a64(op(0xeb, 0x09001f))   # cmp x0, x9
+	else: a64(op(0xeb, 0x00003f))   # cmp x1, x0
+	arm64_bounds_branch(11 + bounds_relation(kind), link)
 
 
 ############################## abstractions #################################
@@ -381,14 +361,11 @@ int arm64_pac
 # convention the old contiguous 4-byte cell used (the "cell" is now the
 # add instruction, with the adrp one word before it).
 void be_addr_slot_emit():
-	if (target_isa == 2):
-		wasm_addr_slot_emit()
-		return
-	if (target_isa == 1):
+	if (target_isa == 2): wasm_addr_slot_emit()
+	elif (target_isa == 1):
 		a64(op(0x90, 0x000000))   # adrp x0, . (page immediate patched)
 		a64(op(0x91, 0x000000))   # add x0, x0, #0 (pageoff patched)
-		return
-	emit(5, c"\xb8....")   # mov $imm32,%eax
+	else: emit(5, c"\xb8....")   # mov $imm32,%eax
 
 
 # Store value v (a vaddr, or a backpatch-chain link, both < 2^31) into
@@ -426,20 +403,14 @@ int arm64_addr_slot_read(int pos):
 # original save_int/load_int accesses; on arm64 the value is
 # reassembled from the adrp+add immediates.
 void be_addr_slot_write(int pos, int v):
-	if (target_isa == 2):
-		wasm_addr_slot_write(pos, v)
-		return
-	if (target_isa == 1):
-		arm64_addr_slot_write(pos, v)
-		return
-	save_int(code + pos, v)
+	if (target_isa == 2): wasm_addr_slot_write(pos, v)
+	elif (target_isa == 1): arm64_addr_slot_write(pos, v)
+	else: save_int(code + pos, v)
 
 
 int be_addr_slot_read(int pos):
-	if (target_isa == 2):
-		return wasm_addr_slot_read(pos)
-	if (target_isa == 1):
-		return arm64_addr_slot_read(pos)
+	if (target_isa == 2): return wasm_addr_slot_read(pos)
+	if (target_isa == 1): return arm64_addr_slot_read(pos)
 	return load_int(code + pos)
 
 
@@ -468,29 +439,20 @@ void be_tls_address(int k):
 # On x86 this is lea_eax_esp_plus(k), which also notes the lea so a load
 # that follows can fold it (code_generator/x86.w, local-slot load fusion).
 void be_lea_acc_wstack(int k):
-	if (target_isa == 3):
-		ptx_lea_ax_sp(k)
-		return
-	if (target_isa == 2):
-		wasm_lea_eax_esp_plus(k)
-		return
-	if (target_isa == 1):
-		arm64_lea_eax_esp_plus(k)
-		return
-	lea_eax_esp_plus(k)
+	if (target_isa == 3): ptx_lea_ax_sp(k)
+	elif (target_isa == 2): wasm_lea_eax_esp_plus(k)
+	elif (target_isa == 1): arm64_lea_eax_esp_plus(k)
+	else: lea_eax_esp_plus(k)
 
 
 # Patch a recorded branch site to the current position (or a given target).
 void be_branch_patch(int site, int target):
-	if (target_isa == 1):
-		arm64_branch_patch(site, target)
-		return
-	save_int32(code + site - 4, target - site)
+	if (target_isa == 1): arm64_branch_patch(site, target)
+	else: save_int32(code + site - 4, target - site)
 
 
 int be_branch_link_get(int site):
-	if (target_isa == 1):
-		return arm64_branch_link_get(site)
+	if (target_isa == 1): return arm64_branch_link_get(site)
 	return load_int32(code + site - 4)
 
 
@@ -526,8 +488,7 @@ void be_function_define(int current_symbol, char* name):
 	if (target_isa == 2):
 		sym_define_global_at(current_symbol, wasm_func_count + 1)
 		wasm_func_name_note(wasm_func_count + 1, name)
-		return
-	sym_define_global(current_symbol)
+	else: sym_define_global(current_symbol)
 
 
 # declare + define in one step (runtime-synthesized functions like
@@ -568,10 +529,8 @@ void be_function_epilogue():
 
 void be_function_prologue():
 	be_frame_active = 0
-	if (target_isa == 2):
-		wasm_function_begin()
-		return
-	if (target_isa == 1):
+	if (target_isa == 2): wasm_function_begin()
+	elif (target_isa == 1):
 		# Sign x30 with the W stack pointer at entry; the framed return
 		# pops back to that same x28 before autia.
 		if (arm64_pac):
@@ -581,8 +540,7 @@ void be_function_prologue():
 		a64(op(0xa9, 0xbf7b9d))   # stp x29, x30, [x28, #-16]!
 		a64(op(0xaa, 0x1c03fd))   # mov x29, x28
 		be_frame_active = 1
-		return
-	if (target_isa == 0):
+	elif (target_isa == 0):
 		emit(1, c"\x55")   # push ebp / push rbp
 		emit_x64_opcode()
 		emit(2, c"\x89\xe5")   # mov ebp,esp / mov rbp,rsp

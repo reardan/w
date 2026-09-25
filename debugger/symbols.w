@@ -36,10 +36,6 @@ int dbg_sym_type(int name_offset):
 	return load_int(table + dbg_sym_data(name_offset) + 6)
 
 
-int dbg_sym_visibility(int name_offset):
-	return table[dbg_sym_data(name_offset) + 1]
-
-
 # Name offset of the defined function whose code contains the absolute
 # address, or -1. Asm runtime stubs record no length and are not found.
 # The smallest containing span wins: a REPL entry function's recorded
@@ -133,9 +129,7 @@ void dbg_print_functions():
 				print(h)
 				free(h)
 				print(c"  ")
-				char* digits = itoa(load_int(table + t + 14))
-				print(digits)
-				free(digits)
+				dbg_print_dec(load_int(table + t + 14))
 				print(c"\x09")
 				println(str_from_cstr(table + name_offset))
 		t = next_token(t)

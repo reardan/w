@@ -71,8 +71,7 @@ int gpu_shared_builtin_expr():
 		ptx_barrier()
 		mov_eax_int(0)
 		if (peek(c")") == 0):
-			diag_part(c"')' expected in ")
-			error(name)
+			error2(c"')' expected in ", name)
 		return type_value(type_lookup(c"int"))
 
 	# gpu_shared_f32: the element count must be a positive decimal
@@ -101,8 +100,7 @@ int gpu_shared_builtin_expr():
 
 	ptx_shared_f32(n)
 	if (peek(c")") == 0):
-		diag_part(c"')' expected in ")
-		error(name)
+		error2(c"')' expected in ", name)
 	int ptr_type = type_lookup_pointer(c"float", 1)
 	if (ptr_type < 0):
 		ptr_type = type_push_pointer(c"float", word_size, 1)

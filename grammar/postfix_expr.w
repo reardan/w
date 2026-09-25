@@ -1,6 +1,5 @@
 int expression_lhs_readonly
 
-int extern_max_params();
 int ffi_type_class(int type);
 int ffi_push_promoted_float32();
 int ci_is_bit_field_access(int type_index); /* defined in libs/extras/c_import/importer */
@@ -51,18 +50,16 @@ void buffer_bounds_check():
 	# eax = index, stack top = the buffer descriptor. Load the length
 	# first so the trap block can report both values; the descriptor is
 	# valid whatever the index is.
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(word_size)
 	add_eax_int32(word_size)
 	promote_eax()
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	# ebx = index, eax = length: trap unless 0 <= index < length
 	int h_in_bounds = be_ctrl_block()
 	int h_trap = be_ctrl_block()
-	bounds_branch_ebx_negative(h_trap)
-	bounds_skip_ebx_less_eax(h_in_bounds)
+	be_bounds_branch(BOUNDS_EBX_NEG, 0, h_trap)
+	be_bounds_branch(BOUNDS_EBX_LT_EAX, 0, h_in_bounds)
 	be_ctrl_end(h_trap)
 	bounds_trap_call(c"__w_bounds_trap")
 	be_ctrl_end(h_in_bounds)
@@ -82,13 +79,13 @@ void buffer_range_bounds_check():
 	int h_ordered = be_ctrl_block()
 	int h_trap = be_ctrl_block()
 	mov_ebx_esp_plus(word_size)
-	bounds_branch_ebx_negative(h_trap)
+	be_bounds_branch(BOUNDS_EBX_NEG, 0, h_trap)
 	mov_ebx_esp_plus(0)
-	bounds_branch_ebx_negative(h_trap)
-	bounds_branch_ebx_greater_eax(h_trap)
+	be_bounds_branch(BOUNDS_EBX_NEG, 0, h_trap)
+	be_bounds_branch(BOUNDS_EBX_GT_EAX, 0, h_trap)
 	mov_eax_esp_plus(0)
 	mov_ebx_esp_plus(word_size)
-	bounds_skip_ebx_less_equal_eax(h_ordered)
+	be_bounds_branch(BOUNDS_EBX_LE_EAX, 0, h_ordered)
 	be_ctrl_end(h_trap)
 	bounds_trap_call(c"__w_bounds_trap")
 	be_ctrl_end(h_ordered)
@@ -99,18 +96,13 @@ void buffer_push_range_descriptor(int base_type, int start_was_omitted):
 	int element_size = type_get_size(element_type)
 	# stack top before this helper: end, start, descriptor
 	sym_get_value(c"malloc")
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_int(2 * word_size)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
+	push_slot_int(2 * word_size)
 	mov_eax_esp_plus(word_size)
 	call_eax()
-	be_pop(2)
-	stack_pos = stack_pos - 2
+	drop_slots(2)
 
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	mov_eax_esp_plus(2 * word_size)
 	mov_ebx_esp_plus(word_size)
 	alu_sub()
@@ -127,10 +119,8 @@ void buffer_push_range_descriptor(int base_type, int start_was_omitted):
 	mov_ebx_esp()
 	store_ebx_word()
 
-	pop_eax()
-	stack_pos = stack_pos - 1
-	be_pop(3)
-	stack_pos = stack_pos - 3
+	pop_eax_slot()
+	drop_slots(3)
 
 
 # Warn when a call argument's type conflicts with the callee's declared
@@ -157,10 +147,7 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 		diag_part(callee_name)
 		diag_part(c"' argument ")
 		diag_part(itoa(arg_index + 1))
-		diag_part(c" type mismatch: expected '")
-		print_error_type(param_type)
-		diag_part(c"', got '")
-		print_error_type(arg_type)
+		diag_expected_got(c" type mismatch: expected '", param_type, arg_type)
 		warning(c"'")
 
 
@@ -208,8 +195,7 @@ void push_call_argument_compact(int arg_type, int leaked_words):
 			mov_eax_esp_plus(i << word_size_log2)
 			store_stack_var((i + leaked_words) << word_size_log2)
 			i = i - 1
-		be_pop(leaked_words)
-		stack_pos = stack_pos - leaked_words
+		drop_slots(leaked_words)
 	if (is_struct):
 		if (type_has_array_field(arg_type)):
 			lea_eax_esp_plus(0)
@@ -253,14 +239,10 @@ void parse_variadic_element_argument(char* callee_name, int element_type, int ar
 		diag_part(callee_name)
 		diag_part(c"' argument ")
 		diag_part(itoa(arg_index + 1))
-		diag_part(c" type mismatch: expected '")
-		print_error_type(element_type)
-		diag_part(c"', got '")
-		print_error_type(arg_type)
+		diag_expected_got(c" type mismatch: expected '", element_type, arg_type)
 		warning(c"'")
 	coerce_call_argument(element_type, arg_type)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 
 
 # Finish a call whose callee and arguments are already pushed: the arity
@@ -294,14 +276,13 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 	if (callee_name != 0):
 		free(callee_name)
 
-	mov_eax_esp_plus((stack_pos - s - 1) << word_size_log2)
+	load_slot(s + 1)
 
 	# A function's address is its value; other callees hold a pointer
 	if (callee_type != 4):
 		promote(callee_type)
 	call_eax()
-	be_pop(stack_pos - s)
-	stack_pos = s
+	pop_to(s)
 	int type = 3  # call results are plain values
 	last_call_return_type = declared_return
 	last_call_end = codepos
@@ -345,9 +326,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 			diag_part(c"warning: function '")
 			diag_part(callee_name)
 			diag_part(c"' expects at least ")
-			diag_part(itoa(w_variadic_fixed))
-			diag_part(c" arguments, got ")
-			warning(itoa(passed_args - variadic_values))
+			warning3(itoa(w_variadic_fixed), c" arguments, got ", itoa(passed_args - variadic_values))
 		if (fixed_words_end < 0):
 			fixed_words_end = stack_pos
 		# The variadic values were pushed left to right, so they sit in
@@ -361,13 +340,9 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 			store_ebx_stack_var(i << word_size_log2)
 			i = i + 1
 		# Push the {data, length} slice descriptor just below the values
-		mov_eax_int(variadic_values)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot_int(variadic_values)
 		lea_eax_esp_plus(word_size)
-		push_eax()
-		stack_pos = stack_pos + 1
-		int descriptor_slot = stack_pos
+		int descriptor_slot = push_slot()
 		# The values and descriptor sit between the fixed arguments and
 		# the slice argument, but the callee addresses its parameters as
 		# one contiguous block above the return address: re-push copies
@@ -375,14 +350,11 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 		int fixed_words = fixed_words_end - s - 1
 		int j = 1
 		while (j <= fixed_words):
-			mov_eax_esp_plus((stack_pos - (s + 1 + j)) << word_size_log2)
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot_copy(s + 1 + j)
 			j = j + 1
 		# The variadic slice parameter: a pointer to the descriptor
 		lea_eax_esp_plus((stack_pos - descriptor_slot) << word_size_log2)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 
 	# Missing trailing arguments whose parameters all carry defaults are
 	# filled in with the recorded constants (direct calls only: indirect
@@ -422,25 +394,22 @@ int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_a
 		if (param_type >= 0):
 			coerce_call_argument(param_type, arg_type)
 			arg_class = ffi_type_class(param_type)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		return arg_class
 	# Variadic tail: C default argument promotions
-	if (type_get_kind(type_unqualified(arg_type)) == type_kind_slice_value()):
-		# Arrays and slices decay unconditionally in a C variadic tail,
+	if ((type_get_kind(type_unqualified(arg_type)) == type_kind_slice_value) || (type_unqualified(arg_type) == string_literal_type)):
+		# Arrays, slices and "..." literals decay unconditionally in a C variadic tail,
 		# exactly like C: load the descriptor's first word so the callee
 		# receives the data pointer, not the descriptor's address.
 		promote_eax()
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		return 0
 	int kind = type_float_kind(arg_type)
 	if (kind == 1):
 		# The promoted float64 spans two 32-bit stack words on x86
 		stack_pos = stack_pos + ffi_push_promoted_float32()
 		return 2
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	if (kind == 2):
 		return 2
 	return 0
@@ -451,13 +420,13 @@ int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_a
 # calls because the float argument classes differ per call site (on x64
 # they select xmm registers and set al).
 int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int declared_return, int fixed_args):
-	char* arg_classes = malloc(extern_max_params())
+	char* arg_classes = malloc(extern_max_params)
 	int passed_args = 0
 	if (accept(c")") == 0):
 		arg_classes[passed_args] = parse_variadic_call_argument(callee_sym, callee_name, passed_args, fixed_args)
 		passed_args = passed_args + 1
 		while (accept(c",")):
-			if (passed_args >= extern_max_params()):
+			if (passed_args >= extern_max_params):
 				error(c"too many arguments in variadic call")
 			arg_classes[passed_args] = parse_variadic_call_argument(callee_sym, callee_name, passed_args, fixed_args)
 			passed_args = passed_args + 1
@@ -467,16 +436,13 @@ int parse_variadic_call_suffix(int s, int callee_sym, char* callee_name, int dec
 		diag_part(c"warning: function '")
 		diag_part(callee_name)
 		diag_part(c"' expects at least ")
-		diag_part(itoa(fixed_args))
-		diag_part(c" arguments, got ")
-		warning(itoa(passed_args))
+		warning3(itoa(fixed_args), c" arguments, got ", itoa(passed_args))
 	if (callee_name != 0):
 		free(callee_name)
 
 	emit_ffi_call_inline(passed_args, arg_classes, ffi_type_class(declared_return), sym_got_vaddr(callee_sym))
 	free(arg_classes)
-	be_pop(stack_pos - s)
-	stack_pos = s
+	pop_to(s)
 	int type = 3  # call results are plain values
 	last_call_return_type = declared_return
 	last_call_end = codepos
@@ -510,18 +476,10 @@ int postfix_expr():
 				# map read (chained h[k1][k2]) pops the read's hidden
 				# stack slots (list_index_suffix precedent)
 				type = promote(type)
-				push_eax()
-				stack_pos = stack_pos + 1
-				int map_elem_map_slot = stack_pos
+				int map_elem_map_slot = push_slot()
 				int want_key_type = type_map_key_type(map_type)
-				int got_key_type = expression()
-				got_key_type = promote(got_key_type)
-				coerce(want_key_type, got_key_type)
-				if (types_compatible_with_expression(want_key_type, got_key_type) == 0):
-					warn_type_mismatch(c"map key", want_key_type, got_key_type)
-				push_eax()
-				stack_pos = stack_pos + 1
-				int map_elem_key_slot = stack_pos
+				int got_key_type = parse_coerced(want_key_type, c"map key")
+				int map_elem_key_slot = push_slot()
 				expect(c"]")
 				# Commit the pending state only now: the key expression
 				# above may itself have parked and finalized a nested
@@ -539,11 +497,8 @@ int postfix_expr():
 			else if (type_is_buffer(type)):
 				type = promote(type)
 				if (accept(c":")):
-					push_eax()
-					stack_pos = stack_pos + 1
-					mov_eax_int(0)
-					push_eax()
-					stack_pos = stack_pos + 1
+					push_slot()
+					push_slot_int(0)
 					if (accept(c"]")):
 						mov_eax_esp_plus(word_size)
 						add_eax_int32(word_size)
@@ -551,21 +506,18 @@ int postfix_expr():
 					else:
 						promote(expression())
 						expect(c"]")
-					push_eax()
-					stack_pos = stack_pos + 1
+					push_slot()
 					buffer_range_bounds_check()
 					buffer_push_range_descriptor(type, 1)
 					type = buffer_result_type(type)
 					expression_lhs_readonly = 1
 				else:
-					push_eax()
-					stack_pos = stack_pos + 1
+					push_slot()
 					int element_type = buffer_element_type(type)
 					int element_size = type_get_size(element_type)
 					promote(expression())
 					if (accept(c":")):
-						push_eax()
-						stack_pos = stack_pos + 1
+						push_slot()
 						if (accept(c"]")):
 							mov_eax_esp_plus(word_size)
 							add_eax_int32(word_size)
@@ -573,8 +525,7 @@ int postfix_expr():
 						else:
 							promote(expression())
 							expect(c"]")
-						push_eax()
-						stack_pos = stack_pos + 1
+						push_slot()
 						buffer_range_bounds_check()
 						buffer_push_range_descriptor(type, 0)
 						type = buffer_result_type(type)
@@ -696,133 +647,37 @@ int postfix_expr():
 						stack_pos = stack_pos + words
 						s = stack_pos
 						has_return_buffer = 1
-				push_eax()
-				stack_pos = stack_pos + 1
+				push_slot()
 				if (has_return_buffer):
 					lea_eax_esp_plus(word_size)
-					push_eax()
-					stack_pos = stack_pos + 1
+					push_slot()
 				type = parse_call_suffix(type, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 0, has_return_buffer, w_variadic_fixed)
 
 		else if (accept(c".")):
 			expression_lhs_readonly = 0
-			if (type_is_map(type) | type_is_set(type)):
-				if (peek(c"length")):
-					get_token()
-					type = promote(type)
-					add_eax_int32(word_size)
-					type = type_lookup(c"int")
-					expression_lhs_readonly = 1
-				else if (peek(c"remove")):
-					get_token()
-					type = hash_remove_suffix(type)
-				else if (peek(c"add") & type_is_set(type)):
-					get_token()
-					type = hash_set_add_suffix(type)
-				else if (peek(c"add") & type_is_map(type)):
-					get_token()
-					type = hash_map_add_suffix(type)
-				else if (peek(c"keys")):
-					get_token()
-					type = hash_keys_suffix(type)
-				else if (peek(c"values") & type_is_map(type)):
-					get_token()
-					type = hash_values_suffix(type)
-				else if (peek(c"get") & type_is_map(type)):
-					get_token()
-					type = hash_get_suffix(type)
-				else if (peek(c"free")):
-					get_token()
-					type = hash_free_suffix(type)
-				else:
-					diag_part(c"hash container field '")
-					diag_part(token)
-					error(c"' not found")
+			# Built-in containers and buffers share the length word at
+			# container + word_size
+			if ((type_is_map(type) | type_is_set(type) | type_is_list(type) | type_is_buffer(type)) && peek(c"length")):
+				get_token()
+				type = promote(type)
+				add_eax_int32(word_size)
+				type = type_lookup(c"int")
+				expression_lhs_readonly = 1
+			else if (type_is_map(type) | type_is_set(type)):
+				type = hash_method(type)
 			else if (type_is_list(type)):
-				if (peek(c"length")):
-					get_token()
-					type = promote(type)
-					add_eax_int32(word_size)
-					type = type_lookup(c"int")
-					expression_lhs_readonly = 1
-				else if (peek(c"push")):
-					get_token()
-					type = list_push_suffix(type)
-				else if (peek(c"pop")):
-					get_token()
-					type = list_pop_suffix(type)
-				else if (peek(c"insert")):
-					get_token()
-					type = list_insert_suffix(type)
-				else if (peek(c"remove")):
-					get_token()
-					type = list_remove_suffix(type)
-				else if (peek(c"clear")):
-					get_token()
-					type = list_clear_suffix(type)
-				else if (peek(c"free")):
-					get_token()
-					type = list_free_suffix(type)
-				else if (peek(c"sort")):
-					get_token()
-					type = list_sort_suffix(type)
-				else if (peek(c"sort_by")):
-					get_token()
-					type = list_sort_by_suffix(type)
-				else if (peek(c"sorted")):
-					get_token()
-					type = list_sorted_suffix(type)
-				else if (peek(c"sorted_by")):
-					get_token()
-					type = list_sorted_by_suffix(type)
-				else if (peek(c"map")):
-					get_token()
-					type = list_map_suffix(type)
-				else if (peek(c"filter")):
-					get_token()
-					type = list_filter_suffix(type)
-				else if (peek(c"reduce")):
-					get_token()
-					type = list_reduce_suffix(type)
-				else if (peek(c"sum")):
-					get_token()
-					type = list_aggregate_suffix(type, c"__w_list_sum", c"sum", type_lookup(c"int"))
-				else if (peek(c"min")):
-					get_token()
-					type = list_aggregate_suffix(type, c"__w_list_min", c"min", type_list_element_type(type_unqualified(type)))
-				else if (peek(c"max")):
-					get_token()
-					type = list_aggregate_suffix(type, c"__w_list_max", c"max", type_list_element_type(type_unqualified(type)))
-				else if (peek(c"reverse")):
-					get_token()
-					type = list_reverse_suffix(type)
-				else if (peek(c"count")):
-					get_token()
-					type = list_scan_suffix(type, c"__w_list_count", c"list count")
-				else if (peek(c"index")):
-					get_token()
-					type = list_scan_suffix(type, c"__w_list_index", c"list index")
-				else:
-					diag_part(c"list field '")
-					diag_part(token)
-					error(c"' not found")
+				type = list_method(type)
 			else if (type_is_buffer(type)):
-				if (peek(c"length")):
-					get_token()
-					type = promote(type)
-					add_eax_int32(word_size)
-					type = type_lookup(c"int")
-					expression_lhs_readonly = 1
-				else if (peek(c"data")):
+				if (peek(c"data")):
 					get_token()
 					type = promote(type)
 					int element_type = buffer_element_type(type)
 					type = type_get_next_pointer(element_type)
 					expression_lhs_readonly = 1
+				else if ((nextc == '(') && (ufcs_callee(token) >= 0)):
+					type = ufcs_call(type)
 				else:
-					diag_part(c"buffer field '")
-					diag_part(token)
-					error(c"' not found")
+					error3(c"buffer field '", token, c"' not found")
 			else:
 				# A pending map read whose value is a struct must emit the
 				# get call now so eax holds the stored struct's address.
@@ -883,9 +738,7 @@ int postfix_expr():
 						# the import.
 						if (ci_is_bit_field_access(member_type)):
 							if (ci_bit_field_unit_size(member_type) == 0):
-								diag_part(c"struct field '")
-								diag_part(member_name)
-								error(c"' is an imported C bit-field that spans more than a word on this target; member access is not supported")
+								error3(c"struct field '", member_name, c"' is an imported C bit-field that spans more than a word on this target; member access is not supported")
 							add_eax_int32(ci_bit_field_unit_offset(member_type))
 						else:
 							# Return right side field type instead of struct pointer
@@ -894,9 +747,7 @@ int postfix_expr():
 						# Use child type insted of struct type:
 						type = member_type
 						if (type < 0):
-							diag_part(c"child field not found: '")
-							diag_part(itoa(type))
-							error(c"")
+							error3(c"child field not found: '", itoa(type), c"")
 						if (verbosity >= 1):
 							print2(itoa(line_number))
 							print_string0(c": using child type: ", type_get_name(type))
@@ -904,22 +755,22 @@ int postfix_expr():
 						if (receiver_struct_value_words > 0):
 							if (type_num_args(type) == 0):
 								type = promote(type)
-								be_pop(receiver_struct_value_words)
-								stack_pos = stack_pos - receiver_struct_value_words
+								drop_slots(receiver_struct_value_words)
 								type = type_value(type)
 					else if (peek(c"(")):
 						char* prefix = strjoin(type_get_name(type), c"_")
 						char* method_symbol = strjoin(prefix, member_name)
 						free(prefix)
+						if ((sym_lookup(method_symbol) < 0) && ufcs_struct_receiver(member_name, type)):
+							free(method_symbol)
+							method_symbol = strclone(member_name)
 						int callee = sym_lookup(method_symbol)
 						if (callee < 0):
 							diag_part(c"struct method '")
 							diag_part(type_get_name(type))
 							diag_part(c".")
 							diag_part(member_name)
-							diag_part(c"' not found; expected function '")
-							diag_part(method_symbol)
-							error(c"'")
+							error3(c"' not found; expected function '", method_symbol, c"'")
 
 						int expected_args = sym_num_args(callee)
 						int callee_sym = -1
@@ -946,16 +797,11 @@ int postfix_expr():
 
 						# Save the receiver address while resolving the method
 						# symbol, then push it as the hidden first source argument.
-						push_eax()
-						stack_pos = stack_pos + 1
-						sym_get_value(method_symbol)
-						int s = stack_pos
-						push_eax()
-						stack_pos = stack_pos + 1
+						push_slot()
+						int s = rt_call_begin(method_symbol)
 						if (has_return_buffer):
 							lea_eax_esp_plus(2 << word_size_log2)
-							push_eax()
-							stack_pos = stack_pos + 1
+							push_slot()
 						if (has_return_buffer):
 							mov_eax_esp_plus(2 << word_size_log2)
 						else:
@@ -971,8 +817,7 @@ int postfix_expr():
 
 						accept(c"(")
 						type = parse_call_suffix(4, s, expected_args, callee_sym, signature_type, callee_name, declared_return, 1, has_return_buffer, w_variadic_fixed)
-						be_pop(1)
-						stack_pos = stack_pos - 1
+						drop_slots(1)
 						if (has_return_buffer):
 							lea_eax_esp_plus(0)
 							type = type_value(declared_return)
@@ -987,11 +832,13 @@ int postfix_expr():
 						# will lex again after the jump back
 						if (repl_recovery == 0):
 							token = member_name
-						diag_part(c"struct field '")
-						diag_part(member_name)
-						error(c"' not found")
+						error3(c"struct field '", member_name, c"' not found")
 					free(member_name)
 
+				else if ((nextc == '(') && (ufcs_callee(token) >= 0)):
+					if (receiver_was_value):
+						type = type_value(type)
+					type = ufcs_call(type)
 				else:
 					# cc500 heritage: '.member' on a non-struct expression
 					# used to be silently ignored, so a typo'd field or a
@@ -1000,9 +847,7 @@ int postfix_expr():
 					# through a garbage receiver and crashed at runtime.
 					diag_part(c"member '")
 					diag_part(token)
-					diag_part(c"' on non-struct type '")
-					print_error_type(type)
-					error(c"'")
+					error_type(c"' on non-struct type '", type, c"'")
 
 		# expr? : unwrap a wresult[T]* or propagate the error to the
 		# caller (see result_propagate_suffix in grammar/statement.w).

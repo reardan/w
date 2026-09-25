@@ -268,8 +268,7 @@ int json_is_digit(int c):
 	return (c >= '0') & (c <= '9')
 
 
-int json_max_depth():
-	return 128
+const int json_max_depth = 128
 
 
 # Native int limits, computed by shifting a 1 into the sign bit so the
@@ -682,12 +681,12 @@ json_value* json_parse_value(json_parser* p, int depth):
 	json_skip_ws(p)
 	int c = p.input[p.index]
 	if (c == '{'):
-		if (depth >= json_max_depth()):
+		if (depth >= json_max_depth):
 			json_fail(p)
 			return 0
 		return json_parse_object(p, depth + 1)
 	if (c == '['):
-		if (depth >= json_max_depth()):
+		if (depth >= json_max_depth):
 			json_fail(p)
 			return 0
 		return json_parse_array(p, depth + 1)
@@ -770,44 +769,14 @@ void json_append_escaped_string(string_builder* out, char* text):
 # notation outside that range. Non-finite values have no JSON spelling
 # and serialize as null. Values carrying float64 bits never reach this:
 # json_append_value routes them to the per-target json_f64_append.
-void json_append_float(string_builder* out, float f):
-	int bits = json_float_bits(f)
-	if ((bits & 0x7f800000) == 0x7f800000):
-		string_append(out, c"null")
-		return
-	if ((bits & 0x7fffffff) == 0):
-		string_append(out, c"0.0")
-		return
-	if (bits < 0):
-		string_append_char(out, '-')
-		f = -f
-
-	# Scale so the 9 significant digits sit in the integer d, tracking
-	# the decimal exponent e of the leading digit
-	int e = 8
-	while (f >= 1000000000.0):
-		f = f / 10.0
-		e = e + 1
-	while (f < 100000000.0):
-		f = f * 10.0
-		e = e - 1
-	int d = f + 0.5
-	if (d >= 1000000000):
-		d = d / 10
-		e = e + 1
-
-	char* digits = malloc(10)
-	int i = 8
-	while (i >= 0):
-		digits[i] = '0' + d % 10
-		d = d / 10
-		i = i - 1
-	digits[9] = 0
-	int n = 9
-	while ((n > 1) && (digits[n - 1] == '0')):
-		n = n - 1
-
-	if ((e < -4) || (e > 14)):
+# Spell the significant digits digits[0 .. n) (trailing zeros already
+# trimmed), leading digit at decimal exponent e: scientific when e is
+# below -4 or above sci_above, otherwise plain, keeping a trailing .0 on
+# whole values so they re-parse as floats. Shared with the float64
+# formatter (structures/json_float64_impl.w).
+void json_append_digits(string_builder* out, char* digits, int n, int e, int sci_above):
+	int i = 0
+	if ((e < -4) || (e > sci_above)):
 		# scientific: d.ddde±x (no fraction part for a single digit —
 		# JSON requires at least one digit after a '.')
 		string_append_char(out, digits[0])
@@ -848,6 +817,46 @@ void json_append_float(string_builder* out, float f):
 		while (i < n):
 			string_append_char(out, digits[i])
 			i = i + 1
+
+
+void json_append_float(string_builder* out, float f):
+	int bits = json_float_bits(f)
+	if ((bits & 0x7f800000) == 0x7f800000):
+		string_append(out, c"null")
+		return
+	if ((bits & 0x7fffffff) == 0):
+		string_append(out, c"0.0")
+		return
+	if (bits < 0):
+		string_append_char(out, '-')
+		f = -f
+
+	# Scale so the 9 significant digits sit in the integer d, tracking
+	# the decimal exponent e of the leading digit
+	int e = 8
+	while (f >= 1000000000.0):
+		f = f / 10.0
+		e = e + 1
+	while (f < 100000000.0):
+		f = f * 10.0
+		e = e - 1
+	int d = f + 0.5
+	if (d >= 1000000000):
+		d = d / 10
+		e = e + 1
+
+	char* digits = malloc(10)
+	int i = 8
+	while (i >= 0):
+		digits[i] = '0' + d % 10
+		d = d / 10
+		i = i - 1
+	digits[9] = 0
+	int n = 9
+	while ((n > 1) && (digits[n - 1] == '0')):
+		n = n - 1
+
+	json_append_digits(out, digits, n, e, 14)
 	free(digits)
 
 

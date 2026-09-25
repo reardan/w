@@ -72,6 +72,10 @@ int type_kind_enum
 int type_kind_const
 int string_type
 int string_value_type
+# A "..." or f"..." literal's value: a string value whose data is known
+# to be NUL-terminated, so it also decays to char* (type_decays_to_pointer).
+# Same name and kind as string_value_type; only identity tells them apart.
+int string_literal_type
 int var_type
 int var_value_type
 
@@ -168,51 +172,36 @@ int type_push_pointer(char* name, int size, int pointer_level):
 	return new_type_index
 
 
-int type_push_size(char* name, int size):
+# Appends a record: name, total size, kind (0 for a plain struct), the
+# alias/const/element/key type and fn_return_type (an array's length, a
+# map's value type). Returns its index.
+int type_push_composite(char* name, int size, int kind, int target, int extra):
 	type_rec* new_type = type_alloc()
 	new_type.name = name
 	new_type.num_fields = 0
 	new_type.total_size = size
 	new_type.pointer_level = 0
-	new_type.alias_target = -1
-	new_type.kind = 0
-	new_type.fn_return_type = -1
+	new_type.alias_target = target
+	new_type.kind = kind
+	new_type.fn_return_type = extra
 	new_type.fn_param_count = -1
 	int new_type_index = type_records.length
 	type_records.push(cast(int, new_type))
 	return new_type_index
 
 
-int type_kind_array():
-	return 6
+int type_push_size(char* name, int size):
+	return type_push_composite(name, size, 0, -1, -1)
 
 
-int type_kind_slice():
-	return 7
-
-
-int type_kind_string():
-	return 8
-
-
-int type_kind_slice_value():
-	return 9
-
-
-int type_kind_map():
-	return 10
-
-
-int type_kind_set():
-	return 11
-
-
-int type_kind_list():
-	return 12
-
-
-int type_kind_var():
-	return 13
+const int type_kind_array = 6
+const int type_kind_slice = 7
+const int type_kind_string = 8
+const int type_kind_slice_value = 9
+const int type_kind_map = 10
+const int type_kind_set = 11
+const int type_kind_list = 12
+const int type_kind_var = 13
 
 
 char* type_make_array_name(int element_type, int length):
@@ -278,96 +267,32 @@ int type_array_element_offset():
 
 
 int type_push_array(int element_type, int length):
-	type_rec* new_type = type_alloc()
-	new_type.name = type_make_array_name(element_type, length)
-	new_type.num_fields = 0
-	new_type.total_size = (2 * word_size) + (length * type_get_size(element_type))
-	new_type.pointer_level = 0
-	new_type.alias_target = element_type
-	new_type.kind = type_kind_array()
-	new_type.fn_return_type = length
-	new_type.fn_param_count = -1
-	int new_type_index = type_records.length
-	type_records.push(cast(int, new_type))
-	return new_type_index
+	int size = (2 * word_size) + (length * type_get_size(element_type))
+	return type_push_composite(type_make_array_name(element_type, length), size, type_kind_array, element_type, length)
 
 
 int type_push_slice(int element_type):
-	type_rec* new_type = type_alloc()
-	new_type.name = type_make_slice_name(element_type)
-	new_type.num_fields = 0
-	new_type.total_size = word_size
-	new_type.pointer_level = 0
-	new_type.alias_target = element_type
-	new_type.kind = type_kind_slice()
-	new_type.fn_return_type = -1
-	new_type.fn_param_count = -1
-	int new_type_index = type_records.length
-	type_records.push(cast(int, new_type))
-	return new_type_index
+	return type_push_composite(type_make_slice_name(element_type), word_size, type_kind_slice, element_type, -1)
 
 
 int type_push_slice_value(int element_type):
-	type_rec* new_type = type_alloc()
 	char* storage_name = type_make_slice_name(element_type)
 	char* name = strjoin(storage_name, c" value")
 	free(storage_name)
-	new_type.name = name
-	new_type.num_fields = 0
-	new_type.total_size = 0
-	new_type.pointer_level = 0
-	new_type.alias_target = element_type
-	new_type.kind = type_kind_slice_value()
-	new_type.fn_return_type = -1
-	new_type.fn_param_count = -1
-	int new_type_index = type_records.length
-	type_records.push(cast(int, new_type))
-	return new_type_index
+	return type_push_composite(name, 0, type_kind_slice_value, element_type, -1)
 
 
 int type_push_map(int key_type, int value_type):
-	type_rec* new_type = type_alloc()
-	new_type.name = type_make_map_name(key_type, value_type)
-	new_type.num_fields = 0
-	new_type.total_size = word_size
-	new_type.pointer_level = 0
-	new_type.alias_target = type_canonical(key_type)
-	new_type.kind = type_kind_map()
-	new_type.fn_return_type = type_canonical(value_type)
-	new_type.fn_param_count = -1
-	int new_type_index = type_records.length
-	type_records.push(cast(int, new_type))
-	return new_type_index
+	int value = type_canonical(value_type)
+	return type_push_composite(type_make_map_name(key_type, value_type), word_size, type_kind_map, type_canonical(key_type), value)
 
 
 int type_push_set(int key_type):
-	type_rec* new_type = type_alloc()
-	new_type.name = type_make_set_name(key_type)
-	new_type.num_fields = 0
-	new_type.total_size = word_size
-	new_type.pointer_level = 0
-	new_type.alias_target = type_canonical(key_type)
-	new_type.kind = type_kind_set()
-	new_type.fn_return_type = -1
-	new_type.fn_param_count = -1
-	int new_type_index = type_records.length
-	type_records.push(cast(int, new_type))
-	return new_type_index
+	return type_push_composite(type_make_set_name(key_type), word_size, type_kind_set, type_canonical(key_type), -1)
 
 
 int type_push_list(int element_type):
-	type_rec* new_type = type_alloc()
-	new_type.name = type_make_list_name(element_type)
-	new_type.num_fields = 0
-	new_type.total_size = word_size
-	new_type.pointer_level = 0
-	new_type.alias_target = type_canonical(element_type)
-	new_type.kind = type_kind_list()
-	new_type.fn_return_type = -1
-	new_type.fn_param_count = -1
-	int new_type_index = type_records.length
-	type_records.push(cast(int, new_type))
-	return new_type_index
+	return type_push_composite(type_make_list_name(element_type), word_size, type_kind_list, type_canonical(element_type), -1)
 
 
 int type_push(char* name):
@@ -542,8 +467,7 @@ int type_lookup_const(int target):
 # look at the raw record: an lvalue typed G addresses device global
 # memory (ld.global/st.global on device, a diagnostic on the host), and
 # pointer compatibility compares the "gpu " name prefix.
-int type_kind_gpu():
-	return 20
+const int type_kind_gpu = 20
 
 
 # 1 when type_index (raw, value or not) is a gpu-object lvalue record.
@@ -672,16 +596,16 @@ int type_get_array_length(int type_index):
 
 
 int type_is_array(int type_index):
-	return type_get_kind(type_index) == type_kind_array()
+	return type_get_kind(type_index) == type_kind_array
 
 
 int type_is_slice(int type_index):
 	int kind = type_get_kind(type_index)
-	return (kind == type_kind_slice()) | (kind == type_kind_slice_value())
+	return (kind == type_kind_slice) | (kind == type_kind_slice_value)
 
 
 int type_is_string(int type_index):
-	return type_get_kind(type_index) == type_kind_string()
+	return type_get_kind(type_index) == type_kind_string
 
 
 int type_is_char(int type_index):
@@ -703,19 +627,19 @@ int type_is_char_pointer(int type_index):
 
 
 int type_is_map(int type_index):
-	return type_get_kind(type_index) == type_kind_map()
+	return type_get_kind(type_index) == type_kind_map
 
 
 int type_is_set(int type_index):
-	return type_get_kind(type_index) == type_kind_set()
+	return type_get_kind(type_index) == type_kind_set
 
 
 int type_is_list(int type_index):
-	return type_get_kind(type_index) == type_kind_list()
+	return type_get_kind(type_index) == type_kind_list
 
 
 int type_is_var(int type_index):
-	return type_get_kind(type_index) == type_kind_var()
+	return type_get_kind(type_index) == type_kind_var
 
 
 int type_is_buffer(int type_index):
@@ -814,87 +738,54 @@ int type_function_param_type(int type_index, int i):
 	return t.fn_param_types[i]
 
 
-int type_lookup_array(int element_type, int array_length):
-	element_type = type_canonical(element_type)
+# The first record of the given kind whose canonical alias_target is
+# target -- and, for an array, whose length (fn_return_type) is extra;
+# for a map, whose canonical value type (fn_return_type) is extra. The
+# kind is tested alone first: '&' does not short-circuit, and for other
+# kinds these slots may hold a non-type value (an array keeps its length
+# in fn_return_type), which must never reach type_canonical() as a type
+# index.
+int type_lookup_composite(int kind, int target, int extra):
+	target = type_canonical(target)
 	int i = 0
 	while (i < type_records.length):
 		type_rec* t = cast(type_rec*, type_records[i])
-		# Kind first, in its own test, exactly as type_lookup_slice below
-		# explains: '&' does not short-circuit, so the original reached
-		# type_canonical() with slot 204 of every record whatever its
-		# kind -- the very thing that comment warns must never happen.
-		if (t.kind == type_kind_array()):
-			if (t.fn_return_type == array_length):
-				if (type_canonical(t.alias_target) == element_type):
+		if (t.kind == kind):
+			if (type_canonical(t.alias_target) == target):
+				if (kind == type_kind_array):
+					if (t.fn_return_type == extra):
+						return i
+				else if (kind == type_kind_map):
+					if (type_canonical(t.fn_return_type) == extra):
+						return i
+				else:
 					return i
 		i = i + 1
 	return -1
 
 
+int type_lookup_array(int element_type, int array_length):
+	return type_lookup_composite(type_kind_array, element_type, array_length)
+
+
 int type_lookup_slice(int element_type):
-	element_type = type_canonical(element_type)
-	int i = 0
-	while (i < type_records.length):
-		type_rec* t = cast(type_rec*, type_records[i])
-		# Check the kind alone first: '&' does not short-circuit, and for
-		# other kinds slot 204/206 may hold a non-type value (an array
-		# entry keeps its length in slot 206), which must never reach
-		# type_canonical() as a type index.
-		if (t.kind == type_kind_slice()):
-			if (type_canonical(t.alias_target) == element_type):
-				return i
-		i = i + 1
-	return -1
+	return type_lookup_composite(type_kind_slice, element_type, -1)
 
 
 int type_lookup_slice_value(int element_type):
-	element_type = type_canonical(element_type)
-	int i = 0
-	while (i < type_records.length):
-		type_rec* t = cast(type_rec*, type_records[i])
-		if (t.kind == type_kind_slice_value()):
-			if (type_canonical(t.alias_target) == element_type):
-				return i
-		i = i + 1
-	return -1
+	return type_lookup_composite(type_kind_slice_value, element_type, -1)
 
 
 int type_lookup_map(int key_type, int value_type):
-	key_type = type_canonical(key_type)
-	value_type = type_canonical(value_type)
-	int i = 0
-	while (i < type_records.length):
-		type_rec* t = cast(type_rec*, type_records[i])
-		if (t.kind == type_kind_map()):
-			if ((type_canonical(t.alias_target) == key_type) &
-					(type_canonical(t.fn_return_type) == value_type)):
-				return i
-		i = i + 1
-	return -1
+	return type_lookup_composite(type_kind_map, key_type, type_canonical(value_type))
 
 
 int type_lookup_set(int key_type):
-	key_type = type_canonical(key_type)
-	int i = 0
-	while (i < type_records.length):
-		type_rec* t = cast(type_rec*, type_records[i])
-		if (t.kind == type_kind_set()):
-			if (type_canonical(t.alias_target) == key_type):
-				return i
-		i = i + 1
-	return -1
+	return type_lookup_composite(type_kind_set, key_type, -1)
 
 
 int type_lookup_list(int element_type):
-	element_type = type_canonical(element_type)
-	int i = 0
-	while (i < type_records.length):
-		type_rec* t = cast(type_rec*, type_records[i])
-		if (t.kind == type_kind_list()):
-			if (type_canonical(t.alias_target) == element_type):
-				return i
-		i = i + 1
-	return -1
+	return type_lookup_composite(type_kind_list, element_type, -1)
 
 
 int type_get_slice(int element_type):
@@ -1141,12 +1032,15 @@ int types_compatible(int want, int got):
 # Return 1 when 'got' is a slice VALUE (a promoted array or slice
 # expression: eax holds the {data, length} descriptor's address) that
 # decays to the pointer type 'want'. Decay targets are the element type's
-# own pointer (char[] -> char*, char*[] -> char**) and void*. coerce()
-# performs the decay by loading the descriptor's first word, turning the
-# descriptor address into the data pointer.
+# own pointer (char[] -> char*, char*[] -> char**) and void*. A string
+# literal (string_literal_type) decays the same way to char* only.
+# coerce() performs the decay by loading the descriptor's first word,
+# turning the descriptor address into the data pointer.
 int type_decays_to_pointer(int want, int got):
 	got = type_unqualified(got)
-	if (type_get_kind(got) != type_kind_slice_value()):
+	if (got == string_literal_type):
+		return (want >= 0) && type_is_char_pointer(type_unqualified(want))
+	if (type_get_kind(got) != type_kind_slice_value):
 		return 0
 	want = type_unqualified(want)
 	if (want < 0):
@@ -1470,17 +1364,19 @@ void push_basic_types():
 	float32_value_type = type_push_size(c"float32 value", 0)
 	float64_value_type = type_push_size(c"float64 value", 0)
 	string_type = type_push_size(c"string", word_size)
-	type_set_kind(string_type, type_kind_string())
+	type_set_kind(string_type, type_kind_string)
 	string_value_type = type_push_size(c"string value", 0)
-	type_set_kind(string_value_type, type_kind_string())
+	type_set_kind(string_value_type, type_kind_string)
+	string_literal_type = type_push_size(c"string value", 0)
+	type_set_kind(string_literal_type, type_kind_string)
 
 	# Dynamic 'var': one word holding a pointer to a heap-allocated
 	# tagged box (structures/w_dynamic.w). The value pseudo-type follows
 	# the string convention: eax already holds the box pointer.
 	var_type = type_push_size(c"var", word_size)
-	type_set_kind(var_type, type_kind_var())
+	type_set_kind(var_type, type_kind_var)
 	var_value_type = type_push_size(c"var value", 0)
-	type_set_kind(var_value_type, type_kind_var())
+	type_set_kind(var_value_type, type_kind_var)
 
 	# Common pointer types; type_name() creates any others on demand
 	type_push_pointer(c"int", word_size, 1)
