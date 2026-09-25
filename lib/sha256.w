@@ -43,7 +43,7 @@ void sha256_put_be32(char* p, int v):
 
 
 int sha256_xor(int a, int b):
-	return (a | b) - (a & b)
+	return a ^ b
 
 
 # Logical shift right of a 32-bit word: mask away the (arithmetic) sign
@@ -91,19 +91,44 @@ int sha256_small_sigma1(int x):
 	return sha256_xor(sha256_xor(sha256_rotr(x, 17), sha256_rotr(x, 19)), sha256_shr(x, 10))
 
 
-# Compress one 64-byte block into the eight-word state h[0..7].
-void sha256_block(int* h, char* block):
-	char* k = sha256_k_table()
-	int* w = cast(int*, malloc(64 * __word_size__))
+# Round constants as words, decoded once from sha256_k_table().
+int* sha256_k_words
+
+
+int* sha256_k():
+	if (sha256_k_words == 0):
+		char* k = sha256_k_table()
+		sha256_k_words = cast(int*, malloc(64 * __word_size__))
+		int i = 0
+		while (i < 64):
+			sha256_k_words[i] = sha256_be32(k + i * 4)
+			i = i + 1
+	return sha256_k_words
+
+
+# Compress one 64-byte block into the eight-word state h[0..7], using
+# w (64 words) as the message schedule. The rotations are written out
+# inline rather than through sha256_rotr/sha256_xor: this runs over every
+# byte of every binary the compiler emits (the ELF build-id), and the
+# per-operation calls made it ~40% of a self-compile. Each rotr(x, n) is
+# ((x >> n) & low_(32-n)_bits) | (x << (32 - n)), with the low-bit mask
+# written as a literal (never bit 31, so no sign-extension gotcha) so a
+# 32-bit host's arithmetic shift cannot smear the sign in; the final
+# & mask trims the 64-bit hosts back to 32 bits.
+void sha256_block_w(int* h, char* block, int* w):
+	int* k = sha256_k()
 	int mask = sha256_mask32()
 
 	int i = 0
 	while (i < 16):
-		w[i] = sha256_be32(block + i * 4)
+		char* p = block + i * 4
+		w[i] = (((p[0] & 255) << 24) | ((p[1] & 255) << 16) | ((p[2] & 255) << 8) | (p[3] & 255)) & mask
 		i = i + 1
 	while (i < 64):
-		int s0 = sha256_small_sigma0(w[i - 15])
-		int s1 = sha256_small_sigma1(w[i - 2])
+		int x = w[i - 15]
+		int s0 = (((x >> 7) & 0x1ffffff) | (x << 25)) ^ (((x >> 18) & 0x3fff) | (x << 14)) ^ ((x >> 3) & 0x1fffffff)
+		int y = w[i - 2]
+		int s1 = (((y >> 17) & 0x7fff) | (y << 15)) ^ (((y >> 19) & 0x1fff) | (y << 13)) ^ ((y >> 10) & 0x3fffff)
 		w[i] = (w[i - 16] + s0 + w[i - 7] + s1) & mask
 		i = i + 1
 
@@ -118,8 +143,12 @@ void sha256_block(int* h, char* block):
 
 	i = 0
 	while (i < 64):
-		int t1 = (hh + sha256_big_sigma1(e) + sha256_ch(e, f, g) + sha256_be32(k + i * 4) + w[i]) & mask
-		int t2 = (sha256_big_sigma0(a) + sha256_maj(a, b, c)) & mask
+		int bs1 = (((e >> 6) & 0x3ffffff) | (e << 26)) ^ (((e >> 11) & 0x1fffff) | (e << 21)) ^ (((e >> 25) & 0x7f) | (e << 7))
+		int ch = (e & f) ^ ((e ^ mask) & g)
+		int t1 = (hh + (bs1 & mask) + ch + k[i] + w[i]) & mask
+		int bs0 = (((a >> 2) & 0x3fffffff) | (a << 30)) ^ (((a >> 13) & 0x7ffff) | (a << 19)) ^ (((a >> 22) & 0x3ff) | (a << 10))
+		int maj = (a & b) ^ (a & c) ^ (b & c)
+		int t2 = ((bs0 & mask) + maj) & mask
 		hh = g
 		g = f
 		f = e
@@ -138,6 +167,12 @@ void sha256_block(int* h, char* block):
 	h[5] = (h[5] + f) & mask
 	h[6] = (h[6] + g) & mask
 	h[7] = (h[7] + hh) & mask
+
+
+# Compress one 64-byte block into the eight-word state h[0..7].
+void sha256_block(int* h, char* block):
+	int* w = cast(int*, malloc(64 * __word_size__))
+	sha256_block_w(h, block, w)
 	free(w)
 
 
@@ -150,10 +185,11 @@ void sha256(char* data, int len, char* out):
 		h[i] = sha256_be32(h0 + i * 4)
 		i = i + 1
 
+	int* w = cast(int*, malloc(64 * __word_size__))
 	int full = len / 64
 	i = 0
 	while (i < full):
-		sha256_block(h, data + i * 64)
+		sha256_block_w(h, data + i * 64, w)
 		i = i + 1
 
 	# Final block(s): the remaining bytes, a 0x80 terminator, zero padding
@@ -179,10 +215,11 @@ void sha256(char* data, int len, char* out):
 	sha256_put_be32(tail + bitlen_pos, (len >> 29) & sha256_mask32())
 	sha256_put_be32(tail + bitlen_pos + 4, (len << 3) & sha256_mask32())
 
-	sha256_block(h, tail)
+	sha256_block_w(h, tail, w)
 	if (blocks == 2):
-		sha256_block(h, tail + 64)
+		sha256_block_w(h, tail + 64, w)
 	free(tail)
+	free(w)
 
 	i = 0
 	while (i < 8):
