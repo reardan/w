@@ -4169,6 +4169,16 @@
 			]
 		},
 		{
+			"name": "float_nan_compare_test",
+			"deps": ["wv2"],
+			"inputs": ["tests/float_nan_compare_test.w"],
+			"outputs": ["bin/float_nan_compare_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "arm64", "tests/float_nan_compare_test.w", "-o", "bin/float_nan_compare_test"]},
+				{"cmd": ["sh", "tools/run_arm64.sh", "bin/float_nan_compare_test"]}
+			]
+		},
+		{
 			"name": "float_test",
 			"deps": ["wv2"],
 			"inputs": ["tests/float_test.w"],

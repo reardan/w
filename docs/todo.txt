@@ -85,7 +85,8 @@ current state:
 			struct values return by value and can feed field access / method receivers
 		float:
 			float/float32 arithmetic, comparisons, coercions, params and returns work on the default target
-			float64 literals, arithmetic, formatting and returns work on x64
+			float64 literals, arithmetic, formatting and returns work on 8-byte-word targets (x64, win64, arm64, gpu)
+			NaN comparisons follow IEEE-754 on arm64 and wasm (float_nan_compare_test); the x86 family keeps its documented ucomis divergence
 			x64 tests also cover float32 narrowing from a float64 literal
 			float output is diff-tested against C reference output
 			TestFloat-derived conformance vectors cover float32 (both
@@ -93,7 +94,7 @@ current state:
 				docs/projects/float_testing.md)
 			float16 storage/conversion works on the x86 family (F16C
 				hardware instructions; design: docs/projects/float.md)
-			bfloat16 and float16 on arm64/wasm remain future work
+			bfloat16, float16 on arm64/wasm/gpu, and debugger float display remain future work
 		built-in map/set:
 			map[K, V] and set[K] types
 			new map/set allocation, typed literals, indexing, assignment and in-membership

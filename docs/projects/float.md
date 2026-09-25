@@ -1,79 +1,91 @@
 # Floating Point Support (float32 / float64 / float16)
 
-Current status and design notes for IEEE-754 floating point in W. Companion to
-the GPU work: the type names and kind helpers chosen here map 1:1 onto PTX
-`.f32`/`.f64`/`.f16` for the planned
-`code_generator/ptx.w` (see `docs/projects/cuda.md`, Stage 2, and its open
-question "Float support: W's type table today is integer/pointer-centric").
+IEEE-754 floating point in W: what ships today, per target, and the design
+record of how it was built. Issue #17 tracks the remaining gaps.
 
-**Status: float32/float64 implemented and covered by `./wbuild tests`, including
-TestFloat-derived edge-case conformance vectors (NaN propagation, signed
-zeros, subnormal arithmetic, infinities, rounding at precision boundaries,
-exact-comparison semantics, int<->float conversion edges) in
-`tests/float_conformance_test.w` (float32, x86 + x64) and
-`tests/x64_float64_conformance_test.w` (float64, x64-only); float16
-storage/conversion is also implemented (x86 family only: the default 32-bit
-target and x64) and covered by `tests/float16_test.w`. bfloat16 remains
-deferred. See "Known MVP semantic differences" below for every divergence
-from strict IEEE-754 this conformance pass confirmed.**
+## Status
 
-Implemented today:
+**float32 and float64 are landed and covered by `./wbuild tests`.** float32
+is a full arithmetic type on every backend; float64 is a full arithmetic type
+on every 64-bit-word target and a clean compile error ("float64 requires the
+x64 target") on the 32-bit ones. float16 is a storage-only type on the x86
+family. bfloat16 is not implemented (see "Still open" below).
 
-- `float`/`float32` arithmetic, comparisons, unary minus, int<->float
-  conversions, params/returns, fields and pointers on the default 32-bit target.
-- `float64` literals, arithmetic, comparisons, conversions, params/returns and
-  formatting on the x64 target.
-- x64 float32 narrowing from a float64 literal.
-- `float16` as a declarable, storage-only 2-byte type on the x86 family
-  (default 32-bit target and x64; gated on `target_isa == 0`): variable,
-  struct-field, and array storage; load widens to float32 (F16C
-  `vcvtph2ps`, zero-extended so bit patterns above 0x7FFF survive) and
-  store narrows from float32 (F16C `vcvtps2ph`, round-to-nearest-even);
-  all arithmetic/comparisons happen on the widened float32 value. Verified
-  by `tests/float16_test.w`: exact round-trips (including max normal
-  65504.0 and smallest normal 2^-14), round-to-nearest-even on
-  non-representable and exact-tie values, overflow to infinity, subnormals,
-  signed zero, +-inf, quiet-NaN bit preservation, struct fields, array
-  elements, int<->float16 conversion, and comparisons/unary minus. `float16`
-  raises a clean compile error ("`<target>`: float16 is not implemented") on
-  arm64 and wasm (`code_generator/sse.w`) — not yet ported to those targets.
-- Decimal literals with exponent forms and exact-bit regression tests.
-- Differential checks against a C reference program for float32 and float64.
-- `ftoa` and x64 `f64toa` formatting helpers.
+| Target | float32 | float64 | float16 |
+| --- | --- | --- | --- |
+| x86 (default 32-bit) | yes | compile error | yes (F16C) |
+| x64 Linux, win64 | yes | yes | yes (F16C) |
+| arm64 Linux, arm64_darwin | yes | yes | compile error |
+| wasm32 | yes | compile error | compile error |
+| gpu (PTX kernel bodies) | yes | yes | compile error |
+
+The float64 gate is the word size (`grammar/type_name.w`), not the ISA; the
+float16 gate is the ISA (`code_generator/sse.w` rejects it on arm64, wasm and
+gpu with "`<target>`: float16 is not implemented").
+
+What works on the supported targets:
+
+- Literals: decimal literals with exponent forms (`1e5`, `1.5e-3`, `2E+10`),
+  parsed exactly with integer-only bignum arithmetic (`compiler/bignum.w`,
+  `grammar/float_literal.w`). A bare literal is float64 on 8-byte-word
+  targets and float32 on 4-byte-word targets.
+- Arithmetic (`+ - * /`), comparisons, unary minus, compound assignment, and
+  int<->float and float32<->float64 coercions at assignment, declaration,
+  return, argument and constructor sites.
+- Float params and returns, struct fields, pointers and arrays, `map[K,
+  float]` values and `m.add` accumulation, JSON codec fields.
 - Floating-point ABI for imported C functions (`extern` and `c_import`):
-  xmm argument/return registers on x64, x87 `st(0)` returns on x86, and
-  float32→float64 promotion for variadic calls (`printf("%f", x)`). See
-  `code_generator/ffi.w` and `float_abi_test` / `varargs_test`.
+  xmm argument/return registers on x64, x87 `st(0)` returns on x86, the
+  AAPCS64 s/d registers on arm64, and float32->float64 promotion for
+  variadic calls (`printf("%f", x)`). See `code_generator/ffi.w`.
+- Libraries: `ftoa` (`lib/format.w`) and `f64toa` (`lib/float64_format.w`);
+  `lib/fmath.w` (float32) and `lib/fmath64.w` (float64) provide bit casts,
+  `fabs`, `ffloor`, `fsqrt`, and the exp/log/pow/trig family with measured
+  ulp bounds against glibc goldens.
+- float16 on the x86 family (gated on `target_isa == 0`): variable,
+  struct-field and array storage; load widens to float32 (F16C `vcvtph2ps`,
+  zero-extended so bit patterns above 0x7FFF survive) and store narrows from
+  float32 (F16C `vcvtps2ph`, round-to-nearest-even); all arithmetic and
+  comparisons happen on the widened float32 value. Requires an F16C-capable
+  CPU (Ivy Bridge/Zen or newer, 2012+), with no software fallback.
 
-Still deferred:
+Test contract (x86 and x64 unless noted, all in the `tests` umbrella):
 
-- `float16` on arm64 and wasm targets (compile error today).
-- `bfloat16` (likely tied to the GPU/PTX track).
-- x64 debugger float display, since `wdbg` is still x86-only.
+- `float_test`, `float_literal_test`, `x64_float_test`: literals (including
+  exact bit patterns), arithmetic, comparisons, conversions, calls, fields.
+- `float_reference_test`: differential check against a C reference program
+  for float32 and float64.
+- `float_conformance_test` / `float_conformance_64_test` (float32) and
+  `x64_float64_conformance_test` (float64): TestFloat-derived edge-case
+  vectors for NaN propagation, signed zeros, subnormals, infinities,
+  rounding at precision boundaries, exact-comparison semantics and
+  int<->float conversion edges. See `docs/projects/float_testing.md`.
+- `float16_test` / `float16_64_test`: exact round-trips (including max normal
+  65504.0 and smallest normal 2^-14), round-to-nearest-even on
+  non-representable and tie values, overflow to infinity, subnormals, signed
+  zero, +-inf, quiet-NaN bit preservation, fields, arrays, conversions and
+  comparisons.
+- `fmath_test` / `fmath_64_test`, `x64_fmath64_test`: the math libraries.
+- `float_abi_test` (plus `float_abi_test_x64`, `varargs_test`): the C ABI.
+- `map_float_test`, `x64_map_float64_test`, `x64_json_float64_test`:
+  container and JSON coverage.
+- `gpu_ptx_emit_test`: the PTX float32/float64 lowering, checked by
+  inspecting the emitted module (no GPU needed).
 
-The milestone sections below are the implementation history/design record. Treat
-the status bullets above and `float_test`, `float_reference_test`,
-`x64_float_test`, `float16_test`, `float_conformance_test`
-(`float_conformance_64_test` on x64), and `x64_float64_conformance_test`
-as the current support contract.
+Outside the default umbrella: `float_abi_test_arm64` and
+`float_nan_compare_test` run arm64 binaries under qemu, and
+`wasm_smoke_test` runs `float_test` under a WASI runtime. The conformance vectors themselves are only run on x86
+and x64, because several of them pin x86-specific results (see "Target
+differences" below).
 
-## Scope
+Still open (issue #17):
 
-- **float32 and float64** as full arithmetic types; **float16 as an
-  implemented storage-only type** (2-byte load/store, all math in float32)
-  on the x86 family — the default 32-bit target and x64. bfloat16 is
-  deferred to the GPU/PTX backend.
-- **float64 is x64-only**: on the 32-bit target it is a clean compile error
-  (one-word stack slots cannot hold 8 bytes). float32 works on both targets;
-  float16 also works on both (it needs no 8-byte slot) but is a clean
-  compile error on arm64 and wasm, where the F16C conversion opcodes have
-  no port yet.
-- **Exact literals**: decimal literals parse to full target precision with
-  integer-only bignum arithmetic (no float detour, no double rounding on the
-  32-bit target) and support exponent syntax (`1e5`, `1.5e-3`, `2E+10`).
-- **Library float formatting**: `ftoa` and x64 `f64toa` helpers exist. Debugger
-  float decoding remains future work (`wdbg` is x86-only today, so float64
-  decoding also waits for the x64 wdbg port).
+- `float16` on arm64, wasm and gpu (compile error today).
+- `bfloat16`, whose scope is tied to the GPU/PTX track (issue #28).
+- Debugger float display. Neither `wdbg` (x86) nor `wdbg64` (x64) decodes
+  float values today; the `f` stack-decode command sketched in Milestone 7
+  was never built (`f` is bound to `frame`). This is not blocked on a
+  debugger port, since `wdbg64` exists.
 
 ## Core design: float bits ride the existing integer pipeline
 
@@ -98,18 +110,31 @@ returns, struct fields, and `float*` indexing work with no ABI changes. Unary
 minus is a sign-bit flip on the integer bits (`xor eax, 0x80000000` for
 float32, `btc rax, 63` for float64).
 
-## Bootstrap constraint (shapes several milestones)
+The other backends reuse the same shape through the dispatching helpers in
+`code_generator/sse.w`: arm64 moves the bits into `s0`/`s1` or `d0`/`d1` with
+`fmov` and uses the scalar FP instructions, wasm reinterprets the bits as
+`f32` (`f32.reinterpret_i32`) around each operation, and the gpu target lowers
+to PTX `.f32`/`.f64` registers.
 
-The compiler's own sources are compiled by the old seed binary `./w`, which
-has no float support — so nothing in the compiler's import graph (`w.w` ->
+## Bootstrap constraint (shaped several milestones)
+
+When float support was built, the compiler's own sources were compiled by a
+seed binary `./w` with no float support, so nothing in the compiler's import graph (`w.w` ->
 `compiler.compiler` -> `codegen` + `grammar` + `lib.lib` + ...) may use float
 syntax or float math. Literal parsing therefore uses integer-only arithmetic,
 and the compiler always runs as a **32-bit process** (`./bin/wv2` is 32-bit
 even when targeting x64 with the `x64` flag), so `int` is 4 bytes inside the
-compiler regardless of target. Test files, the debugger, and lib modules not
-imported by `w.w` are compiled by the freshly built `wv2`, so they may freely
-use the new float features (`lib.format` is only imported by its own test, so
-`ftoa` can live there or in a new `lib/float_format.w`).
+compiler regardless of target. Both still hold today: the compiler source
+uses no float syntax, and literal parsing stays integer-only. Test files, the
+debugger, and lib modules outside `w.w`'s import graph are compiled by the
+freshly built `wv2`, so they use float freely.
+
+## Implementation record
+
+The milestones below are the plan float support was built from, kept as the
+design record. All of them landed as described except where a note says
+otherwise; the "Status" section above is the current contract.
+
 
 ## Milestone 1 — Type table (`compiler/type_table.w`)
 
@@ -309,9 +334,12 @@ words on request:
 - `debugger/debugger.w`: extend `wdbg_print_registers` / `wdbg_print_stack`
   output with a float32 decoding column (hex bits stay primary), or add an
   `f` command that re-prints the 16 stack words decoded as float32. Covered
-  by `debug_test`'s expected-output check. `wdbg` is x86-only today
-  (`docs/todo.txt` limitations), so float64 decoding is deferred to the
-  x64 wdbg port.
+  by `debug_test`'s expected-output check.
+
+**Not landed:** only the `ftoa`/`f64toa` half of this milestone shipped.
+`debugger/` has no float decoding on any target, and `f` is bound to
+`frame`. The x64 debugger (`bin/wdbg64`, `debug_test_x64`) now exists, so
+float32 and float64 display are both unblocked; see "Still open" above.
 
 ## Milestone 8 — Tests and library
 
@@ -357,7 +385,7 @@ words on request:
 - build.json: `float_test`, `bignum_test`, `x64_float_test` targets, added to
   the `tests:` umbrella.
 
-## Milestone 9 — Verify, docs, commit
+## Milestone 9 — Verify, docs, commit (done)
 
 - `./wbuild build verify tests` — the self-host fixpoint (`wv3 == wv4 == wv5`)
   must still hold since the compiler source itself uses no float syntax
@@ -371,14 +399,15 @@ words on request:
   literals, dispatch, conversions, debugger, tests) once everything is
   verified.
 
-## GPU forward-compatibility (no code now)
+## GPU backend
 
 `float32`/`float64`/`float16` names and the `type_is_float` kind helper map
-1:1 onto PTX `.f32`/`.f64`/`.f16` for the planned `code_generator/ptx.w`
-(`docs/projects/cuda.md` Stage 2); float16's storage-only,
-compute-in-float32 semantics match PTX's common `.f16` usage pattern.
-`bfloat16` will be added when that backend lands. Nothing GPU-specific is
-built in this pass.
+1:1 onto PTX `.f32`/`.f64`/`.f16`. `code_generator/ptx.w` has since landed
+(`docs/projects/cuda.md`), and kernel bodies support float32 and float64
+arithmetic, conversions and ordered compares, plus `atomic_add` on
+`float32*`. float16 is still a compile error there. float16's storage-only,
+compute-in-float32 semantics match PTX's common `.f16` usage pattern, and
+`bfloat16` scope is tied to this backend (issue #28).
 
 ## Known MVP semantic differences (documented, not blocking)
 
@@ -386,10 +415,14 @@ Verified empirically (issue #17 conformance expansion) against this
 compiler's SSE-based float32/float64 codegen (`code_generator/sse.w`) by
 the TestFloat-derived vector suites `tests/float_conformance_test.w`
 (float32, x86 + x64) and `tests/x64_float64_conformance_test.w`
-(float64, x64-only); see `docs/projects/float_testing.md` for the design
+(float64, x64); see `docs/projects/float_testing.md` for the design
 rationale behind hand-picking vectors instead of vendoring TestFloat.
+Everything in this list describes the x86 family (default 32-bit target,
+x64, win64); "Target differences" below says where arm64, wasm and gpu
+behave differently.
 
-- **NaN comparisons diverge from IEEE-754 in both directions.**
+- **NaN comparisons diverge from IEEE-754 in both directions on the x86
+  family.**
   `ucomiss`/`ucomisd` report "unordered" with ZF=1, the same flag
   combination as "equal", and the compiler's `==`/`!=` lowering only
   checks ZF (not the parity flag hardware also sets to distinguish the
@@ -420,8 +453,8 @@ rationale behind hand-picking vectors instead of vendoring TestFloat.
   trapping or to read sticky exception flags.
 - **Bare decimal float literals change width across targets, and that
   width sticks unless something coerces it back down.** Per Milestone
-  4, an untyped literal like `1.0` is float64 on x64 but float32 on the
-  default target ("literal type follows the target, like C's
+  4, an untyped literal like `1.0` is float64 on 8-byte-word targets
+  (x64, win64, arm64) but float32 on the default target and wasm ("literal type follows the target, like C's
   double-by-default"). `coerce()` narrows a float64 result back to a
   variable's declared float32 width at assignment, declaration, return
   and call-argument sites (Milestone 6) — but comparison operators are
@@ -459,7 +492,7 @@ rationale behind hand-picking vectors instead of vendoring TestFloat.
   one target and overflow on the other.
 - Calls through untyped function pointers lose float return-type
   information (the result is treated as an int at coerce sites).
-- On x64, a literal stored into a `float32` goes decimal→float64→float32;
+- On 8-byte-word targets, a literal stored into a `float32` goes decimal→float64→float32;
   double rounding differs from direct decimal→float32 only in pathological
   halfway cases.
 - `float*` and `float32*` are distinct pointer types, so mixing them warns.
@@ -469,14 +502,42 @@ rationale behind hand-picking vectors instead of vendoring TestFloat.
   instructions, not a software conversion routine, so this is a hard
   requirement, not just a performance note; see also the README.md
   floating-point bullet.)
-- `float16` is a clean compile error on arm64 and wasm (no F16C-equivalent
-  port yet); see the status bullets at the top of this document.
-- `bfloat16` deferred to the GPU backend; no hex-float syntax; no
-  `.5`-style literals without a leading digit.
+- `float16` is a clean compile error on arm64, wasm and gpu (no
+  F16C-equivalent port yet); see "Status" at the top of this document.
+- `bfloat16` is not implemented (scope tied to the GPU track, issue #28);
+  no hex-float syntax; no `.5`-style literals without a leading digit.
 
-## Not a compiler bug, but a related library gap found via this testing
+### Target differences
 
-`itoa(int n)` (`lib/lib.w`) prints the wrong string for the minimum
+arm64, wasm and gpu share the design above but not every x86 quirk.
+The x86, arm64 and wasm columns were checked by compiling the same probe
+program for each target and running it (arm64 under qemu, wasm under node's
+WASI). The gpu column is read from the PTX `ptx.w` emits (`setp.<cc>` with
+the ordered condition names, `cvt.rzi`) and the PTX ISA's definition of
+those instructions, not from a run:
+
+| Behavior | x86 family | arm64 | wasm | gpu |
+| --- | --- | --- | --- | --- |
+| `nan == nan` / `nan != nan` | true / false | false / true | false / true | false / false |
+| `<`, `<=`, `>`, `>=` with a NaN | false | false | false | false |
+| float -> int out of range | `INT_MIN` sentinel | saturates | saturates | saturates |
+| NaN -> int | `INT_MIN` sentinel | 0 | 0 | 0 |
+| invalid op (`0/0`) result | `0xffc00000` | `0x7fc00000` | host-dependent | not checked |
+
+So arm64 and wasm follow IEEE-754 for NaN comparisons. arm64 gets there by
+mapping the `>`/`>=` lowering to the signed `gt`/`ge` conditions, which read
+an unordered `fcmp` as false (`float_nan_compare_test`); before that fix every
+ordered comparison with a NaN was true on arm64. The gpu target's `!=` uses
+PTX's ordered `ne`, so `nan != nan` is false there. The float->int saturation
+comes from `fcvtzs` on arm64 and `i32.trunc_sat_f32_s` on wasm. The default
+NaN differs in sign: x86 produces the negative "QNaN floating-point
+indefinite", arm64 the positive default NaN, and the wasm spec leaves the
+sign and payload of a generated NaN to the host, so the conformance vectors
+that pin these bits only run on x86 and x64.
+
+## Library gap found via this testing (since fixed)
+
+`itoa(int n)` (`lib/lib.w`) used to print the wrong string for the minimum
 representable integer (`INT_MIN`, `0x80000000` on the default target,
 `0x8000000000000000` on x64): `itoa` negates via `n = 0 - n`, which
 overflows back to the same negative value for `INT_MIN` in two's
@@ -488,9 +549,10 @@ since `cvttss2si`/`cvttsd2si` return exactly this bit pattern (the
 target-width-independent library bug unrelated to float codegen (the
 comparison-based logic in `lib/assert.w`'s `assert_equal` is unaffected
 since it compares with `!=`, not by printing); logged in
-`docs/projects/ai_tooling_next_steps.md` rather than fixed here, since
-fixing it is out of scope for this conformance-testing pass. The new
-conformance tests route around it by asserting bit patterns via
+`docs/projects/ai_tooling_next_steps.md` rather than fixed in that pass.
+`itoa` now extracts digits from the still-negative value instead of
+negating it first, so `INT_MIN` prints correctly on both word sizes. The
+conformance tests still route around it by asserting bit patterns via
 `assert_equal_hex` (which uses `hex()`, unaffected) instead of
 `itoa()`-based assertions wherever an `INT_MIN`-shaped value is in
 play.
