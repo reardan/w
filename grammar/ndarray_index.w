@@ -10,7 +10,8 @@ Typed-builtin lowering, following the map/list builtin precedent
 overloading and no new descriptor kind. The '[' handler in
 grammar/postfix_expr.w dispatches here when a ',' follows the first
 index expression and the indexed expression's static type is one of
-the lib/ndarray.w / lib/ndarray64.w structs -- ndf, ndi or ndf64, as a
+the lib/ndarray.w / lib/ndarray64.w structs -- ndf, ndi or ndf64 -- or
+lib/matrix.w's matrix (2 indices, matrix_at2/matrix_set2), as a
 value, an lvalue or a single pointer (either way eax holds the
 struct's address, which is exactly the accessors' ndX* receiver).
 
@@ -71,7 +72,7 @@ int nd_index_struct
 
 
 # The ndarray struct type behind an indexable expression: 'type' is an
-# ndf/ndi/ndf64 struct (value or lvalue) or a single pointer to one.
+# ndf/ndi/ndf64/matrix struct (value or lvalue) or a single pointer to one.
 # Returns the struct's type index, or -1 when the comma-index sugar
 # does not apply.
 int ndarray_index_struct(int type):
@@ -98,6 +99,8 @@ int ndarray_index_struct(int type):
 	if (strcmp(name, c"ndi") == 0):
 		return t
 	if (strcmp(name, c"ndf64") == 0):
+		return t
+	if (strcmp(name, c"matrix") == 0):
 		return t
 	return -1
 
@@ -155,7 +158,7 @@ void nd_push_index_args(int recv_slot, int slot0, int slot1, int slot2, int slot
 int ndarray_index_suffix(int type, int recv_slot, int first_index_type):
 	int nd_struct = ndarray_index_struct(type)
 	if (nd_struct < 0):
-		diag_part(c"comma-separated indexing requires an ndarray (ndf, ndi or ndf64), got '")
+		diag_part(c"comma-separated indexing requires an ndarray or matrix (ndf, ndi, ndf64 or matrix), got '")
 		print_error_type(type)
 		error(c"'")
 	ndarray_check_index(first_index_type)

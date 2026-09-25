@@ -258,6 +258,15 @@ per-axis asserts — so the sugar and the explicit `atN`/`setN` calls
 are interchangeable (asserted by `tests/ndarray_index_test.w` + the
 64-bit twin and `tests/x64_ndarray64_index_test.w`).
 
+The same lowering also accepts `lib/matrix.w`'s `matrix` (2 indices
+only, lowering to `matrix_at2`/`matrix_set2`). `matrix` is the
+dedicated linear-algebra type issue #27 asked for: the same row-major
+layout as a rank-2 `ndf` (`matrix_as_ndf` wraps one with no copy), plus
+the allocating operator arithmetic this doc keeps out of ndarray
+(`a + b`, `a * b` as the matrix product, scalar `*` and `/`),
+transpose, pow, det, inverse and solve. Tests: `tests/matrix_test.w`
+and its 64-bit twin.
+
 Semantics and limits:
 
 - **The comma is the trigger.** 2-4 indices select `at2/set2` ..
