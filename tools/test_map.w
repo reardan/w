@@ -68,11 +68,10 @@ build. For a changed path P the emitted targets are the union of:
         fails), the rule fails OPEN to the hard-coded prefix floor —
         w.w / grammar.w / codegen.w and compiler/ grammar/
         code_generator/ paths (wtest_compiler_tree) — never narrower
-        than the historical behavior, SAYS SO with a one-line stderr
-        warning, and never persists the failure (it used to be cached
-        against w.w's content hash, which silently pinned the rule to
-        the prefix floor until w.w itself changed even after bin/wv2
-        reappeared — the 2026-07-28 residue). Only that prefix floor skips
+        than that floor, SAYS SO with a one-line stderr warning, and
+        never persists the failure (a cached one would pin the rule to
+        the prefix floor until w.w itself changed, even after bin/wv2
+        reappeared). Only that prefix floor skips
         rule (b) (closure selection for compiler internals would
         degenerate; w.w is excluded as a closure root for the same
         reason); the derived remainder keeps its closure selection, so
@@ -91,20 +90,19 @@ build. For a changed path P the emitted targets are the union of:
         invisible to rule (b) since w.w is an excluded root).
       - every changed .w file that exists -> parser_generator_w_test:
         that target parses every tracked .w file, so any .w change can
-        break it (PR #151 escaped the old per-directory rule).
+        break it.
       - lib/ structures/ libs/ paths, and every deleted (missing) .w
         path anywhere -> metadata_check: package.wmeta declares module
-        trees that must resolve to files (#145 escaped the old rules).
+        trees that must resolve to files.
         A deleted .w additionally -> tests, because importers of a
         deleted module no longer compile, so their closures cannot be
         computed.
-      - (the former lib/__arch__/ and graphics/ rules are retired: the
-        per-arch closures of rule (b) see those modules exactly where
-        a target compiles them. An arch module no target compiles at
-        all — e.g. lib/__arch__/win64/socket_abi.w while nothing links
-        net on win64 — selects only metadata_check and
-        parser_generator_w_test, which is also exactly its current
-        test coverage.)
+      - lib/__arch__/ and graphics/ modules need no rule: rule (b)'s
+        per-arch closures see them exactly where a target compiles
+        them. One no target compiles at all (e.g. lib/__arch__/win64/
+        socket_abi.w while nothing links net on win64) selects only
+        metadata_check and parser_generator_w_test, which is exactly
+        its test coverage.
       - tests/asm/ -> the asm suite (including the asm_fuzz_* property/
         fuzz targets, which sample the same tests/asm/corpus_*.txt
         fixtures): the .txt corpora are read at run time, not
@@ -291,11 +289,11 @@ apply, so a comment/formatting-only edit stops recommending every
 importer without under-selecting the fixed rules. It fails OPEN: a path
 new to HEAD, a git or 'bin/wv2 defhash' error, or an actual
 addition/removal/hash change in the recorded definitions all fall back
-to the ordinary closure scan for that path instead. Selection without
---defhash is unchanged byte-for-byte. When the path list arrives on
-stdin and one or more paths compare byte-identical between HEAD and the
-worktree, a warning goes to stderr suggesting the ranged form: 'git
-diff --name-only main..HEAD | wtest changed --defhash' after committing
+to the ordinary closure scan for that path instead. When the path
+list arrives on stdin and one or more paths compare byte-identical
+between HEAD and the worktree, a warning goes to stderr suggesting the
+ranged form: 'git diff --name-only main..HEAD | wtest changed
+--defhash' after committing
 is a footgun — every piped path reads unchanged against the worktree,
 so closure selection silently skips all of them
 (wtest_defhash_clean_warning; stdout selection is untouched).
@@ -303,18 +301,10 @@ so closure selection silently skips all of them
 a range is active; see wtest_range_left / wtest_range_right and
 wtest_defhash_unchanged's left_rev/right_is_worktree.)
 
-Generic and operator-overload definitions are covered by 'bin/wv2
-defhash' itself now (wave plan C task 4f: grammar/generic.w,
-grammar/operator_overload.w both call defhash_note), so the name-set
-and per-name hash comparison above already catches a real edit to one --
-no separate textual pre-check is needed. Earlier (task 2g) this function
-also ran a textual 'risky-shaped content' scan (the literal word
-'operator', or an identifier directly followed by a bracket of
-uppercase-led names) that forced a fallback on ANY file merely
-containing those shapes, comment-only edits included, as a stand-in for
-the coverage gap; it has been removed now that the gap is closed
-(git history has it, tools/test_map.w, if a similar stand-in is ever
-needed for some future defhash blind spot).
+Generic and operator-overload definitions are recorded by 'bin/wv2
+defhash' too (grammar/generic.w and grammar/operator_overload.w call
+defhash_note), so the comparison above catches a real edit to one with
+no textual pre-check.
 
 Commit-ranged selection (issue #251 direction 4b; 'changed' only, not
 'for'): a single positional argument containing '..' is a git revision
@@ -366,9 +356,7 @@ over-select, never under-select. An invalid revision on either side is
 a hard error (wtest exits 1 before any selection is printed) rather
 than a silent fallback, unlike --defhash's per-file fail-open: a bad
 range means the whole invocation is meaningless, not just one file's
-precision. Without a range argument, 'changed' (and 'for', which never
-looks for one)
-behave byte-for-byte as before.
+precision.
 
 The first 'changed' invocation to touch an import closure (rule b) after
 a build, or after bin/.wtest_deps_cache is otherwise missing or fully
@@ -890,9 +878,9 @@ caches written after a new one is added) stay readable in both
 directions without a format-marker bump.
 
 Failures are cached conservatively, so a transient environment problem
-can never pin a rule (the 2026-07-28 residue: a 'deps w.w' failure
-cached while bin/wv2 was merely missing silently kept the seed-graph
-rule on its prefix floor until w.w itself changed). A root whose
+can never pin a rule (a 'deps w.w' failure cached while bin/wv2 was
+merely missing would keep the seed-graph rule on its prefix floor
+until w.w itself changed). A root whose
 compile failed with bin/wv2 PRESENT is cached as
   X <arch> <root>
   H <content hash of the root file itself>
@@ -908,11 +896,11 @@ bin/wv2 missing (or a spawn failure) is never written at all, and
 neither is a deps run that TIMED OUT (after its one immediate retry,
 see wtest_run_deps): a timeout says nothing about the root's content,
 only about this machine's load, so persisting it under the root's
-hash pinned per-arch verify selection until the root changed (the
-2026-07-29 U4/U5 residue). Both are memoized for the current run only
-and retried next run. Entries without an arch column, or 'X' entries
-without a V line — caches written by older wtest builds — fail to
-parse and simply recompute. */
+hash would pin per-arch verify selection until the root changed. Both
+are memoized for the current run only and retried next run. Entries
+without an arch column, or 'X' entries without a V line — caches
+written by older wtest builds — are dropped on load and simply
+recompute. */
 
 # Load the cache, keeping only records that still validate (the
 # header comment's failure rules: check_compiler), so a stale entry
@@ -1602,11 +1590,9 @@ char* wtest_import_signature(char* text):
 # are provably unchanged between the comparison's two sides), 0
 # otherwise -- fail open in every other case, per the header comment.
 # Generic and operator-overload definitions are recorded by 'bin/wv2
-# defhash' itself now (wave plan C task 4f), so no separate textual
-# pre-check is needed here any more (task 2g's
-# wtest_defhash_risky_text, removed). Outside a commit range the two
-# sides are HEAD (left) and the worktree (right), exactly as before
-# wtest_range_* existed; inside one they are the range's resolved
+# defhash' itself, so no textual pre-check is needed. Outside a commit
+# range the two sides are HEAD (left) and the worktree (right); inside
+# one they are the range's resolved
 # left/right endpoints (header comment, "Commit-ranged selection") --
 # rev-vs-rev content instead of HEAD-vs-worktree. wtest_note calls make
 # the decision visible under --verbose without adding new output
@@ -1768,7 +1754,7 @@ int wtest_compiler_tree(char* path):
 # single 'bin/wv2 deps [arch] w.w' shell-out, checkpointed
 # immediately. Returns 0 when deps fails (bin/wv2 missing, or w.w
 # mid-edit broken) — callers fail open to wtest_compiler_tree's
-# prefix floor, never silently narrower than the historical rule, and
+# prefix floor, never silently narrower than that floor, and
 # the fallback is ANNOUNCED on stderr (once per arch per run — the
 # store memoizes the 0). The failure itself is only persisted under
 # the conservative X-entry validation (header comment above

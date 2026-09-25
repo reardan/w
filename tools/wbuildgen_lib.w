@@ -143,9 +143,9 @@ Generation rules:
   a step-less base target's deps. Hand-written base targets and tool
   targets join umbrellas through their own "tags" field (see
   wbg_collect_tags), so the umbrellas' "deps" in build.base.json list
-  only other umbrellas (tests includes tests_x64). Before tags, the
-  umbrella member lists were maintained by hand, and nine fixture-group
-  suites had silently dropped out of "tests". Generated arm64 and wasm twins join no umbrella:
+  only other umbrellas (tests includes tests_x64): a hand-maintained
+  member list is how suites silently drop out of "tests". Generated
+  arm64 and wasm twins join no umbrella:
   like the hand-written arm64/wasm run targets they mirror
   (build_arm64, dynamic_test_arm64, build_wasm, ...), they need qemu
   or a wasm runtime and stay individually invoked.
@@ -532,7 +532,7 @@ vocabulary:
                            cwd=<dir>, with wexec's own per-step
                            meanings. This is the multi-step
                            shape (a test plus the diagnostic fixtures
-                           it drives) that used to need a hand-written
+                           it drives) without a hand-written
                            build.base.json target. A target with step=
                            lines declares no cache "inputs" (its extra
                            steps can read anything, so like the
@@ -2534,11 +2534,10 @@ int wbg_scan():
 			fixture_groups[wbg_dir_fixture_group].push(strclone(src))
 			continue
 		if (is_test == 0):
-			# A fixture is not a test target, so a fixture carrying
-			# '# wbuild:' directives without 'fixture_group=' used to be
-			# skipped with the directives silently unhonored (e.g. a
-			# stray '# wbuild: x64' line doing nothing) — a hard error
-			# now, same as any other directive nothing generated honors.
+			# A fixture is not a test target, so '# wbuild:' directives
+			# on it without 'fixture_group=' would go silently unhonored
+			# (e.g. a stray '# wbuild: x64' line doing nothing): a hard
+			# error, same as any other directive nothing generated honors.
 			int stray = wbg_dir_x64 | wbg_dir_arm64 | wbg_dir_win64 | wbg_dir_arm64_darwin | wbg_dir_wasm | (wbg_dir_arch_only != 0) | wbg_dir_expect_fail | wbg_dir_compile_fail | (wbg_dir_timeout_ms > 0) | (wbg_dir_stdin != 0) | (wbg_dir_expect_stdout.length > 0) | (wbg_dir_expect_stderr.length > 0) | (wbg_dir_extra_compile.length > 0) | (wbg_dir_data.length > 0) | (wbg_dir_names.length > 0) | (wbg_dir_argvs.length > 0) | (wbg_dir_tool.length > 0) | (wbg_dir_flags.length > 0) | (wbg_dir_group_names.length > 0) | wbg_dir_group_only | (wbg_dir_steps.length > 0)
 			if (stray):
 				wbg_error2(c"'# wbuild:' directives on a fixture need 'fixture_group=' (a fixture is not a test target): ", src)
@@ -2990,9 +2989,8 @@ void wbg_report_drift(char* out_path, char* current, char* rendered):
 	int reported = 0
 	if (committed == 0):
 		# A committed manifest that does not even parse (a torn write
-		# from before 'manifest' renamed atomically, or a hand edit) is
-		# its own failure mode; it used to fall through to the
-		# "formatting only" line below, which mislabeled it.
+		# or a hand edit) is its own failure mode, not the "formatting
+		# only" case below.
 		wbg_error2(c"committed manifest failed to parse: ", out_path)
 		reported = 1
 	if ((committed != 0) && (fresh != 0)):
