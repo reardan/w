@@ -292,6 +292,12 @@ current state:
 				first file page, which kernel cores keep by default, and
 				wcore refuses a binary whose build-id differs from the
 				core's copy (warns and continues when the core has none)
+			line counting (tools/wcloc.w, ./wbuild wcloc, issue #437):
+				bin/wcloc [--by-file] [--json] [path ...] counts .w files'
+				blank/comment/code lines (cloc's rules) and lexical tokens,
+				grouped per top-level directory by default; the counting
+				core is lib/cloc.w, whose token count matches the
+				compiler's own tokenizer on every lexable file in the tree
 		library and data structures:
 			malloc/free/realloc as a library module (lib/memory.w)
 			list
