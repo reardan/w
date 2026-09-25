@@ -401,6 +401,60 @@ performance-oriented API.
   path needs no `gpu_sync()`. A program with no kernels (memory API only)
   gets an empty embedded module and the runtime skips `cuModuleLoadData`.
 
+## Execution notes (runtime: device selection + errors)
+
+All in `lib/cuda.w`; no compiler change.
+
+- **Device selection**: `gpu_device_count()` never exits (cuInit +
+  cuDeviceGetCount; 0 when the driver fails or sees no device, e.g.
+  `CUDA_VISIBLE_DEVICES=`). Lazy init uses ordinal 0, or
+  `W_GPU_DEVICE=<n>` when set and non-empty. `gpu_set_device(n)` may be
+  called at any time — before first use or to switch later — and is lazy:
+  it records the ordinal, and the next GPU call creates that device's
+  context (cuCtxCreate + JIT module load) on first use or makes the
+  existing one current (cuCtxSetCurrent). Contexts and modules are kept
+  per ordinal for the life of the process, and the kernel-handle cache is
+  keyed by (name, device), so switching back and forth is correct and
+  cheap. `gpu_get_device()` reports the current ordinal (-1 if none is
+  usable). Out-of-range ordinals are fatal with a clear message
+  (`cuda error: gpu_set_device(4): device ordinal 4 is out of range: 1
+  CUDA device(s) visible (valid: 0..0)`, likewise for a bad or
+  non-numeric `W_GPU_DEVICE`); `gpu_try_set_device(n)` returns
+  CUDA_ERROR_INVALID_DEVICE (101) instead. `gpu_available()` now probes
+  the selected ordinal; a bad `W_GPU_DEVICE` reads as unavailable (with a
+  stderr note), so the tensor CPU fallback still applies.
+- **Per-device caveats**: allocations, copies, frees, launches and
+  `gpu_sync()` act on the device current when they run (every entry point
+  now calls the init/make-current check, which is one load on the fast
+  path). Free and copy a buffer with its owning device current; peer
+  access and multi-device streams are not wired. The runtime assumes one
+  host thread (contexts are current per thread). Only single-GPU hardware
+  was available, so the multi-device switch was exercised as
+  device 0 → device count-1 → device 0 on one GPU.
+- **Errors**: the plain API still exits, but the message now names the
+  code: `cuda error 2 CUDA_ERROR_OUT_OF_MEMORY (out of memory) at
+  cuMemAlloc` (cuGetErrorName/cuGetErrorString). Non-exiting variants:
+  `gpu_try_alloc`/`gpu_try_device_alloc` (0 on failure),
+  `gpu_try_memcpy_to`/`gpu_try_memcpy_from`/`gpu_try_free`/`gpu_try_sync`/
+  `gpu_try_set_device` (return the CUresult). Every failing call records
+  its code for `gpu_last_error()` — a peek, not reset by later successes;
+  `gpu_clear_error()` resets. `gpu_error_name(code)`/`gpu_error_string(code)`
+  fall back to `CUDA_ERROR_UNKNOWN_CODE` / "unrecognized CUresult code".
+  Try variants never exit even when init fails (no driver device → 100
+  CUDA_ERROR_NO_DEVICE). Launches stay fatal on launch-configuration
+  errors, but a kernel fault is async: it is reported by the next
+  `gpu_try_sync()`/`gpu_sync()` or blocking copy, and sticky errors such
+  as CUDA_ERROR_ILLEGAL_ADDRESS (700) leave that context unusable.
+- **Tests**: `cuda_runtime_gpu_test` (opt-in, `tests/cuda_runtime_gpu.w`
+  + sidecar) checks count ≥ 1, set_device(0) + launch, device switching,
+  a 1 PiB try-alloc returning 0 with CUDA_ERROR_OUT_OF_MEMORY and the
+  program continuing (copies, launches), an async fault surfacing at
+  `gpu_try_sync`, the fatal set_device/OOM/`W_GPU_DEVICE` messages, and a
+  `CUDA_VISIBLE_DEVICES=` step where count is 0 and every try variant
+  fails gracefully. `cuda_runtime_compile_test` (in `tests`) only
+  compiles it: running any lib.cuda program needs libcuda.so.1 at load
+  time, which default CI machines lack.
+
 ## Open questions
 
 - CI on machines without an NVIDIA GPU: `./wbuild cuda_smoke` needs a driver and a
