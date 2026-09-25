@@ -285,6 +285,12 @@ current state:
 				fixture under ulimit -c on both word sizes and processes
 				the real kernel cores, skipping cleanly when
 				core_pattern is piped or cores cannot appear
+			line counting (tools/wcloc.w, ./wbuild wcloc, issue #437):
+				bin/wcloc [--by-file] [--json] [path ...] counts .w files'
+				blank/comment/code lines (cloc's rules) and lexical tokens,
+				grouped per top-level directory by default; the counting
+				core is lib/cloc.w, whose token count matches the
+				compiler's own tokenizer on every lexable file in the tree
 		library and data structures:
 			malloc/free/realloc as a library module (lib/memory.w)
 			list

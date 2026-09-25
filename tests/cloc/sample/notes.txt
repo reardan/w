@@ -1,0 +1,1 @@
+Not W source: wcloc_test checks that only .w files are counted.

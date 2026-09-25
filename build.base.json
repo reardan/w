@@ -46,6 +46,24 @@
 				]
 			},
 			{
+				"name": "wcloc_test",
+				"steps": [
+					{"cmd": ["bin/wcloc", "--json", "tests/cloc/sample"], "expect_stdout": [
+						"{\"kind\": \"group\", \"path\": \"tests/cloc/sample/sub\", \"files\": 1, \"blank\": 1, \"comment\": 3, \"code\": 3, \"tokens\": 11}",
+						"{\"kind\": \"group\", \"path\": \"tests/cloc/sample\", \"files\": 1, \"blank\": 0, \"comment\": 1, \"code\": 2, \"tokens\": 7}",
+						"{\"kind\": \"total\", \"files\": 2, \"blank\": 1, \"comment\": 4, \"code\": 5, \"tokens\": 18}"
+					]},
+					{"cmd": ["bin/wcloc", "--by-file", "tests/cloc/sample"], "expect_stdout": [
+						"path                            files    blank  comment     code    tokens",
+						"tests/cloc/sample/sub/leaf.w        1        1        3        3        11",
+						"tests/cloc/sample/top.w             1        0        1        2         7",
+						"total                               2        1        4        5        18"
+					]},
+					{"cmd": ["bin/wcloc", "tests/cloc/sample/top.w", "tests/cloc/no_such_dir"], "expect_status": 2, "expect_stdout": "tests/cloc/sample/top.w        1        0        1        2         7", "expect_stderr": "wcloc: cannot access 'tests/cloc/no_such_dir'"},
+					{"cmd": ["bin/wcloc", "--bogus"], "expect_status": 2, "expect_stderr": "usage: wcloc [--by-file] [--json] [path ...]"}
+				]
+			},
+			{
 				"name": "wexec_keep_going_test",
 				"steps": [
 					{"cmd": ["bin/wexec", "-f", "tests/wexec/keep_going.json", "-j", "2", "--keep-going", "boom", "standalone", "needs_boom", "needs_needs_boom"], "expect_fail": true, "expect_stdout": "standalone ran", "reject_stdout": "needs_boom ran", "expect_stderr": ["wexec: failed: boom", "wexec: skipped: needs_boom (dependency failed)", "wexec: skipped: needs_needs_boom (dependency failed)", "wexec: keep-going: 1 failed, 2 skipped, 1 succeeded (of 4 targets)"], "reject_stderr": "stopped early"},
@@ -1185,6 +1203,15 @@
 				{"cmd": ["bin/wmeta", "check", "tests/metadata/bad_constraint/package.wmeta"], "expect_fail": true, "expect_stderr": "does not satisfy constraint ^2.0.0"},
 				{"cmd": ["bin/wmeta", "check", "tests/metadata/collision/package.wmeta"], "expect_fail": true, "expect_stderr": "top-level module path 'net' claimed by packages"},
 				{"cmd": ["bin/wmeta", "check", "tests/metadata/no_such_dir/package.wmeta"], "expect_fail": true, "expect_stderr": "cannot read package.wmeta"}
+			]
+		},
+		{
+			"name": "wcloc",
+			"deps": ["wv2"],
+			"inputs": ["tools/wcloc.w", "lib/cloc.w"],
+			"outputs": ["bin/wcloc"],
+			"steps": [
+				{"cmd": ["bin/wv2", "tools/wcloc.w", "-o", "bin/wcloc"]}
 			]
 		},
 		{
@@ -2528,6 +2555,7 @@
 				"metadata_check",
 				"metadata_test",
 				"wvdiff_test",
+				"wcloc_test",
 				"unix_tools_test",
 				"wvc_e2e_test",
 				"wvc_sync_e2e_test",
