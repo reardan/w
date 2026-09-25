@@ -337,7 +337,9 @@ current state:
 			matrix type (lib/matrix.w, issue #27: 2-D float matrix on
 				the ndarray layout with + - * / operators, methods,
 				m[i, j] sugar, transpose/pow/det/inverse/solve, zero-copy
-				matrix_as_ndf)
+				matrix_as_ndf; MATLAB-parity construction, elementwise,
+				reductions/norms and lu/chol/qr/eig_sym/svd/rank/pinv/cond;
+				missing: non-symmetric eig, expm, sparse)
 			shell helpers (lib/shell.w: sh(cmd), run(argv), cd, env get/set
 				on top of lib/process.w/lib/env.w)
 			compression (libs/extras/compress/: CRC-32, Adler-32, a
