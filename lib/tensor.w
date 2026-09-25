@@ -575,9 +575,17 @@ void tensor_row_max_into(tensor* out, tensor* a):
 # the same order and agree bit-for-bit.
 
 
-# out = a @ b: ta stages a[row, t*16+tx], tb stages b[t*16+ty, col];
-# both loads are tx-contiguous in global memory (coalesced).
-kernel tensor_matmul_tiled_kernel(float* a, float* b, float* out, int m, int kd, int n):
+# One kernel serves all three variants through element strides: the
+# (m x kd) left operand reads a[row * a_rs + k * a_ks] and the (kd x n)
+# right operand b[k * b_ks + col * b_cs], so
+#   out = a @ b   (a: m x kd, b: kd x n):  a_rs = kd, a_ks = 1, b_ks = n, b_cs = 1
+#   out = aT @ b  (a: kd x m, b: kd x n):  a_rs = 1, a_ks = m, b_ks = n, b_cs = 1
+#   out = a @ bT  (a: m x kd, b: n x kd):  a_rs = kd, a_ks = 1, b_ks = 1, b_cs = kd
+# The plain product's loads are tx-contiguous in global memory
+# (coalesced); the transposed operand of tn/nt walks with stride m or kd
+# between tx neighbors -- uncoalesced, but the 16x reuse from shared
+# staging still dominates the naive kernel's per-element k-loop.
+kernel tensor_matmul_tiled_kernel(float* a, float* b, float* out, int m, int kd, int n, int a_rs, int a_ks, int b_ks, int b_cs):
 	float* ta = gpu_shared_f32(256)
 	float* tb = gpu_shared_f32(256)
 	int tid = thread_idx()
@@ -596,98 +604,13 @@ kernel tensor_matmul_tiled_kernel(float* a, float* b, float* out, int m, int kd,
 		float av = 0.0
 		if (row < m):
 			if (ak < kd):
-				av = a[row * kd + ak]
+				av = a[row * a_rs + ak * a_ks]
 		ta[ty * 16 + tx] = av
 		int bk = t * 16 + ty
 		float bv = 0.0
 		if (bk < kd):
 			if (col < n):
-				bv = b[bk * n + col]
-		tb[ty * 16 + tx] = bv
-		gpu_barrier()
-		int q = 0
-		while (q < 16):
-			acc = acc + ta[ty * 16 + q] * tb[q * 16 + tx]
-			q = q + 1
-		gpu_barrier()
-		t = t + 1
-	if (row < m):
-		if (col < n):
-			out[row * n + col] = acc
-
-
-# out = aT @ b for a (kd, m): the a-tile load reads a[ak * m + row]
-# (column-major walk of a, stride m between tx neighbors -- uncoalesced,
-# but the 16x reuse from shared staging still dominates the naive
-# kernel's per-element k-loop).
-kernel tensor_matmul_tn_tiled_kernel(float* a, float* b, float* out, int m, int kd, int n):
-	float* ta = gpu_shared_f32(256)
-	float* tb = gpu_shared_f32(256)
-	int tid = thread_idx()
-	int tx = tid % 16
-	int ty = tid / 16
-	int nbx = (n + 15) / 16
-	int bx = block_idx() % nbx
-	int by = block_idx() / nbx
-	int row = by * 16 + ty
-	int col = bx * 16 + tx
-	float acc = 0.0
-	int nt = (kd + 15) / 16
-	int t = 0
-	while (t < nt):
-		int ak = t * 16 + tx
-		float av = 0.0
-		if (row < m):
-			if (ak < kd):
-				av = a[ak * m + row]
-		ta[ty * 16 + tx] = av
-		int bk = t * 16 + ty
-		float bv = 0.0
-		if (bk < kd):
-			if (col < n):
-				bv = b[bk * n + col]
-		tb[ty * 16 + tx] = bv
-		gpu_barrier()
-		int q = 0
-		while (q < 16):
-			acc = acc + ta[ty * 16 + q] * tb[q * 16 + tx]
-			q = q + 1
-		gpu_barrier()
-		t = t + 1
-	if (row < m):
-		if (col < n):
-			out[row * n + col] = acc
-
-
-# out = a @ bT for b (n, kd): the b-tile load reads b[col * kd + bk]
-# (row-major walk of b's rows as output columns; stride kd between tx
-# neighbors -- same tradeoff as the tn a-tile).
-kernel tensor_matmul_nt_tiled_kernel(float* a, float* b, float* out, int m, int kd, int n):
-	float* ta = gpu_shared_f32(256)
-	float* tb = gpu_shared_f32(256)
-	int tid = thread_idx()
-	int tx = tid % 16
-	int ty = tid / 16
-	int nbx = (n + 15) / 16
-	int bx = block_idx() % nbx
-	int by = block_idx() / nbx
-	int row = by * 16 + ty
-	int col = bx * 16 + tx
-	float acc = 0.0
-	int nt = (kd + 15) / 16
-	int t = 0
-	while (t < nt):
-		int ak = t * 16 + tx
-		float av = 0.0
-		if (row < m):
-			if (ak < kd):
-				av = a[row * kd + ak]
-		ta[ty * 16 + tx] = av
-		int bk = t * 16 + ty
-		float bv = 0.0
-		if (bk < kd):
-			if (col < n):
-				bv = b[col * kd + bk]
+				bv = b[bk * b_ks + col * b_cs]
 		tb[ty * 16 + tx] = bv
 		gpu_barrier()
 		int q = 0
@@ -739,7 +662,7 @@ void tensor_matmul2(tensor* out, tensor* a, tensor* b):
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
 		if (tensor_matmul_hooked(0, pa, pb, po, m, kd, n) == 0):
-			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
+			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, kd, 1, n, 1)
 	else:
 		int i = 0
 		while (i < m):
@@ -759,7 +682,7 @@ void tensor_matmul2(tensor* out, tensor* a, tensor* b):
 # sum_p a[p,i]*b[p,j]. The backward pass of tensor_matmul2 needs exactly
 # this shape (dW = xT @ dout for a linear layer), and forming an actual
 # transpose would cost an extra full copy, so this walks a's columns
-# directly instead. GPU path: the tn tiled kernel above.
+# directly instead. GPU path: the tiled kernel above with a transposed.
 void tensor_matmul2_tn(tensor* out, tensor* a, tensor* b):
 	asserts(c"tensor_matmul2_tn: rank must be 2", a.rank == 2 && b.rank == 2 && out.rank == 2)
 	asserts(c"tensor_matmul2_tn: shared dimension must match", a.n0 == b.n0)
@@ -773,7 +696,7 @@ void tensor_matmul2_tn(tensor* out, tensor* a, tensor* b):
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
 		if (tensor_matmul_hooked(1, pa, pb, po, m, kd, n) == 0):
-			launch tensor_matmul_tn_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
+			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, 1, m, n, 1)
 	else:
 		int i = 0
 		while (i < m):
@@ -793,7 +716,7 @@ void tensor_matmul2_tn(tensor* out, tensor* a, tensor* b):
 # sum_p a[i,p]*b[j,p]. The forward pass of a linear layer wants this
 # shape directly (y = x @ WT with W stored (out_features, in_features),
 # torch's convention), and the backward pass needs it again for
-# dx = dout @ W. GPU path: the nt tiled kernel above.
+# dx = dout @ W. GPU path: the tiled kernel above with b transposed.
 void tensor_matmul2_nt(tensor* out, tensor* a, tensor* b):
 	asserts(c"tensor_matmul2_nt: rank must be 2", a.rank == 2 && b.rank == 2 && out.rank == 2)
 	asserts(c"tensor_matmul2_nt: shared dimension must match", a.n1 == b.n1)
@@ -807,7 +730,7 @@ void tensor_matmul2_nt(tensor* out, tensor* a, tensor* b):
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
 		if (tensor_matmul_hooked(2, pa, pb, po, m, kd, n) == 0):
-			launch tensor_matmul_nt_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
+			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, kd, 1, 1, kd)
 	else:
 		int i = 0
 		while (i < m):
