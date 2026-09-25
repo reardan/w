@@ -2,8 +2,8 @@
 Runtime-stub corpus check (issues #170, #207). The runtime stubs in
 code_generator/{x86,x64,arm64}_asm.w are assembly text, assembled
 through libs/asm on every compile (code_generator/asm_text.w). This test
-reads those files back, assembles every literal x86_asm(c"...") /
-x64_asm(c"...") / a64_asm(c"...") line the same way, and asserts that
+reads those files back, assembles every instruction of each literal
+x86_asm(c"...") / x64_asm(c"...") / a64_asm(c"...") line the same way, and asserts that
 the text and its bytes appear as an entry of the arch's
 tests/asm/corpus_*.txt. So every stub instruction is also covered by the
 corpus decode/encode round-trips (asm_x86_disasm_test, asm_x86_asm_test,
@@ -71,6 +71,31 @@ int stubs_bytes_equal(char* a, int a_length, char* b, int b_length):
 	return 1
 
 
+# Assemble one stub instruction and look its text and bytes up in the
+# corpus; a miss is reported in corpus format.
+void stubs_check_one(char* path, int index, int arch, list[asm_corpus_entry] corpus, char* corpus_path, char* text):
+	asm_buffer* b = stubs_assemble(arch, path, index, text)
+	int found = 0
+	int i = 0
+	while (i < corpus.length && found == 0):
+		asm_corpus_entry entry = corpus[i]
+		if (strcmp(entry.text, text) == 0):
+			if (stubs_bytes_equal(entry.bytes, entry.length, b.data, b.length)):
+				found = 1
+		i = i + 1
+	if (found == 0):
+		print2(path)
+		print2(c":")
+		print2(itoa(index))
+		print2(c": stub instruction not in ")
+		print2(corpus_path)
+		print2(c": ")
+		print2(asm_hex_encode(b.data, b.length))
+		print2(c"|")
+		println2(text)
+		stubs_missing = stubs_missing + 1
+
+
 # Check every literal `<call>(c"...")` line of path against corpus.
 # Returns the number of stub instructions checked.
 int stubs_check(char* path, char* call, int arch, char* corpus_path):
@@ -102,35 +127,28 @@ int stubs_check(char* path, char* call, int arch, char* corpus_path):
 		int end = at
 		while (line[end] != 0 && line[end] != 34):
 			end = end + 1
-		char* text = malloc(end - at + 1)
-		int k = 0
-		while (at + k < end):
-			text[k] = line[at + k]
-			k = k + 1
-		text[k] = 0
-		if (starts_with(text, c"db ")):
-			continue
-		asm_buffer* b = stubs_assemble(arch, path, index, text)
-		int found = 0
-		int i = 0
-		while (i < corpus.length && found == 0):
-			asm_corpus_entry entry = corpus[i]
-			if (strcmp(entry.text, text) == 0):
-				if (stubs_bytes_equal(entry.bytes, entry.length, b.data, b.length)):
-					found = 1
-			i = i + 1
-		if (found == 0):
-			print2(path)
-			print2(c":")
-			print2(itoa(index))
-			print2(c": stub instruction not in ")
-			print2(corpus_path)
-			print2(c": ")
-			print2(asm_hex_encode(b.data, b.length))
-			print2(c"|")
-			println2(text)
-			stubs_missing = stubs_missing + 1
-		checked = checked + 1
+		# A stub line may hold several ';'-separated instructions
+		# (code_generator/asm_text.w, asm_text_lines).
+		while (at < end):
+			while (line[at] == ' '):
+				at = at + 1
+			int stop = at
+			while (stop < end && line[stop] != ';'):
+				stop = stop + 1
+			int last = stop
+			while (last > at && line[last - 1] == ' '):
+				last = last - 1
+			char* text = malloc(last - at + 1)
+			int k = 0
+			while (at + k < last):
+				text[k] = line[at + k]
+				k = k + 1
+			text[k] = 0
+			at = stop + 1
+			if (starts_with(text, c"db ")):
+				continue
+			stubs_check_one(path, index, arch, corpus, corpus_path, text)
+			checked = checked + 1
 	return checked
 
 

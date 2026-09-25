@@ -50,29 +50,22 @@ char* gpu_for_kernel_name():
 # or end - start in the two-argument form.
 void gpu_for_emit_runtime_call(char* kernel_name, int base, int count, int has_start):
 	sym_get_value(c"__w_gpu_launch")
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	be_emit_inline_cstr(strlen(kernel_name), kernel_name)
-	push_eax() /* arg 1: name */
-	stack_pos = stack_pos + 1
+	push_slot() /* arg 1: name */
 	if (has_start):
-		mov_eax_esp_plus((stack_pos - (base + 2)) << word_size_log2) /* end */
-		push_eax()
-		stack_pos = stack_pos + 1
-		mov_eax_esp_plus((stack_pos - (base + 1)) << word_size_log2) /* start */
-		pop_ebx()
-		stack_pos = stack_pos - 1
+		load_slot(base + 2) /* end */
+		push_slot()
+		load_slot(base + 1) /* start */
+		pop_ebx_slot()
 		alu_sub() /* end - start */
 	else:
-		mov_eax_esp_plus((stack_pos - (base + 1)) << word_size_log2) /* end */
-	push_eax() /* arg 2: n */
-	stack_pos = stack_pos + 1
+		load_slot(base + 1) /* end */
+	push_slot() /* arg 2: n */
 	lea_eax_esp_plus((stack_pos - (base + count)) << word_size_log2)
-	push_eax() /* arg 3: vals (the last capture cell) */
-	stack_pos = stack_pos + 1
+	push_slot() /* arg 3: vals (the last capture cell) */
 	mov_eax_int(count)
-	push_eax() /* arg 4: count */
-	stack_pos = stack_pos + 1
+	push_slot() /* arg 4: count */
 	mov_eax_esp_plus(4 << word_size_log2)
 	call_eax()
 
@@ -121,15 +114,13 @@ int gpu_for_statement():
 	int has_parens = accept(c"(")
 	int has_start = 0
 	coerce(int_type, promote(expression()))
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	if (accept(c",")):
 		has_start = 1
 		coerce(int_type, promote(expression()))
 		if (accept(c",")):
 			error(c"'gpu for' supports only range(end) and range(start, end)")
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 	if (has_parens):
 		expect(c")")
 
@@ -146,41 +137,32 @@ int gpu_for_statement():
 
 	# i = block_idx() * block_dim() + thread_idx() [+ start]
 	ptx_special_reg(2)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	ptx_special_reg(3)
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	alu_imul()
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	ptx_special_reg(1)
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	alu_add()
 	if (has_start):
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		ptx_lea_ax_bp_minus(1 << word_size_log2) /* capture slot 0: start */
 		promote_eax()
-		pop_ebx()
-		stack_pos = stack_pos - 1
+		pop_ebx_slot()
 		alu_add()
 	sym_declare(var_name, int_type, 'L', stack_pos, 1)
 	pointer_indirection = 0
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	free(var_name)
 
 	# Compiler-inserted guard: threads past the bound do nothing
 	int h_guard = be_ctrl_block()
 	mov_eax_esp_plus(0) /* i */
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	ptx_lea_ax_bp_minus((1 + has_start) << word_size_log2) /* the bound */
 	promote_eax()
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	alu_cmp_set(0x9c) /* setl: i < bound */
 	be_br_zero(h_guard)
 
@@ -189,7 +171,7 @@ int gpu_for_statement():
 
 	be_ctrl_end(h_guard)
 	ret()
-	ptx_kernel_end(gpu_capture_count, gpu_capture_limit() << word_size_log2)
+	ptx_kernel_end(gpu_capture_count, gpu_capture_limit << word_size_log2)
 	in_gpu_for_body = 0
 	device_mode_exit()
 	table_pos = n
@@ -199,11 +181,9 @@ int gpu_for_statement():
 	int k = 1 + has_start
 	while (k < gpu_capture_count):
 		promote(sym_get_value(gpu_capture_name(k)))
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		k = k + 1
 	gpu_for_emit_runtime_call(launch_name, base, gpu_capture_count, has_start)
-	be_pop(stack_pos - base)
-	stack_pos = base
+	pop_to(base)
 	free(launch_name)
 	return 1

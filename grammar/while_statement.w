@@ -25,23 +25,41 @@ int break_in_switch
 int enclosing_tab_level
 
 
+# Enter a loop context for break/continue: saves the outer context
+# (returned for loop_leave) and opens the exit region that the failed
+# condition and 'break' land after. The caller opens the loop region and
+# sets loop_continue_chain.
+int* loop_enter():
+	int* outer = cast(int*, malloc(4 * __word_size__))
+	outer[0] = loop_break_chain
+	outer[1] = loop_continue_chain
+	outer[2] = loop_stack_pos
+	outer[3] = break_in_switch
+	loop_break_chain = be_ctrl_block()
+	loop_stack_pos = stack_pos
+	break_in_switch = 0
+	loop_depth = loop_depth + 1
+	return outer
+
+
+void loop_leave(int* outer):
+	loop_break_chain = outer[0]
+	loop_continue_chain = outer[1]
+	loop_stack_pos = outer[2]
+	break_in_switch = outer[3]
+	loop_depth = loop_depth - 1
+	free(outer)
+
+
 # while ( expression ) statement — parentheses are optional before ':'
 int while_statement():
 	if (accept(c"while") == 0):
 		return 0
 
 	int while_tab_level = tab_level
-	int outer_break = loop_break_chain
-	int outer_continue = loop_continue_chain
-	int outer_stack = loop_stack_pos
-	int outer_in_switch = break_in_switch
-	# Exit region: the failed condition and 'break' land after the loop.
+	int* outer = loop_enter()
 	# Loop region: the back edge and 'continue' re-test the condition.
-	loop_break_chain = be_ctrl_block()
 	loop_continue_chain = be_ctrl_loop()
-	loop_stack_pos = stack_pos
-	break_in_switch = 0
-	loop_depth = loop_depth + 1
 
 	# if not expression: leave the loop
 	int outer_condition = condition_context
@@ -60,10 +78,6 @@ int while_statement():
 	be_ctrl_end(loop_continue_chain)
 	be_ctrl_end(loop_break_chain)
 
-	loop_break_chain = outer_break
-	loop_continue_chain = outer_continue
-	loop_stack_pos = outer_stack
-	break_in_switch = outer_in_switch
-	loop_depth = loop_depth - 1
+	loop_leave(outer)
 
 	return 1

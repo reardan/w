@@ -94,9 +94,7 @@ int json_codec_kind(int t):
 		# JSON object keys are strings, so K must be char* or string
 		# (hash key kinds 2 and 3); the value recursion validates V.
 		if (hash_key_kind_for_type(type_map_key_type(t)) == 1):
-			diag_part(c"to_json/from_json map fields need char* or string keys: '")
-			diag_part(type_get_name(t))
-			error(c"'")
+			error3(c"to_json/from_json map fields need char* or string keys: '", type_get_name(t), c"'")
 		json_codec_kind(type_map_value_type(t))
 		return 8
 	if (type_is_set(t)):
@@ -262,8 +260,7 @@ int json_codec_descriptor(int struct_type):
 
 void json_codec_require_json_import(char* builtin_name):
 	if (type_lookup(c"json_value") < 0):
-		diag_part(builtin_name)
-		error(c" requires 'import structures.json'")
+		error2(builtin_name, c" requires 'import structures.json'")
 
 
 # Call helper i (0 encode, 1 decode) with (descriptor, arg), the
@@ -274,13 +271,10 @@ void json_codec_emit_call(int helper, int desc_address, int arg_slot):
 		json_codec_rt = lazy_runtime_new(c"structures.json_codec", c"__w_json_encode __w_json_decode")
 	lazy_emit_helper(json_codec_rt, helper)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_int(desc_address)
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(arg_slot)
-	hash_call_finish(s)
+	push_slot()
+	push_slot_int(desc_address)
+	push_slot_copy(arg_slot)
+	rt_call_end(s)
 
 
 # to_json(expr): 'to_json' is the current token. Leaves ')' current for
@@ -305,13 +299,10 @@ int json_to_json_expr():
 	if (type_get_kind(t) == type_kind_union):
 		error(c"to_json does not support unions")
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int arg_slot = stack_pos
+	int arg_slot = push_slot()
 	int desc_address = json_codec_descriptor(t)
 	json_codec_emit_call(0, desc_address, arg_slot)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	pop_to(base_stack)
 	return type_value(type_get_next_pointer(type_lookup(c"json_value")))
 
 
@@ -338,12 +329,9 @@ int json_from_json_expr():
 	if (types_compatible_with_expression(want, got) == 0):
 		warn_type_mismatch(c"from_json value", want, got)
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int arg_slot = stack_pos
+	int arg_slot = push_slot()
 	json_codec_emit_call(1, desc_address, arg_slot)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	pop_to(base_stack)
 	return type_value(type_get_next_pointer(t))
 
 

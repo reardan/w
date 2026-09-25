@@ -41,6 +41,8 @@ significant bits is built at runtime from shifts or multiplies.
 import lib.lib
 import structures.string
 
+void json_append_digits(string_builder* out, char* digits, int n, int e, int sci_above); /* structures/json.w */
+
 
 # Reinterpret helpers, private copies rather than an import of
 # lib.fmath64: imports merge into one flat namespace, and pulling the
@@ -455,45 +457,5 @@ void json_f64_append(string_builder* out, int bits):
 	while ((n > 1) && (digits[n - 1] == '0')):
 		n = n - 1
 
-	if ((e10 < -4) || (e10 > 16)):
-		# scientific: d.ddde±x (no fraction part for a single digit --
-		# JSON requires at least one digit after a '.')
-		string_append_char(out, digits[0])
-		if (n > 1):
-			string_append_char(out, '.')
-			i = 1
-			while (i < n):
-				string_append_char(out, digits[i])
-				i = i + 1
-		string_append_char(out, 'e')
-		string_append_int(out, e10)
-	else if (e10 < 0):
-		string_append(out, c"0.")
-		i = -1
-		while (i > e10):
-			string_append_char(out, '0')
-			i = i - 1
-		i = 0
-		while (i < n):
-			string_append_char(out, digits[i])
-			i = i + 1
-	else if (e10 >= n - 1):
-		i = 0
-		while (i < n):
-			string_append_char(out, digits[i])
-			i = i + 1
-		i = n - 1
-		while (i < e10):
-			string_append_char(out, '0')
-			i = i + 1
-		string_append(out, c".0")
-	else:
-		i = 0
-		while (i <= e10):
-			string_append_char(out, digits[i])
-			i = i + 1
-		string_append_char(out, '.')
-		while (i < n):
-			string_append_char(out, digits[i])
-			i = i + 1
+	json_append_digits(out, digits, n, e10, 16)
 	free(digits)

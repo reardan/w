@@ -164,7 +164,7 @@ json_value* __w_json_encode_map(int aux, char* addr):
 	while (__w_map_iter_done(table, cursor) == 0):
 		int key = __w_map_iter_key(table, cursor)
 		json_value* member = __w_json_encode_field(vkind, vsize, vaux, __w_map_iter_value_addr(table, cursor))
-		if (table.key_kind == __w_hash_key_string()):
+		if (table.key_kind == __w_hash_key_string):
 			char* copy = __w_json_cstr_from_string(key)
 			json_object_set(obj, copy, member)
 			free(copy)
@@ -308,7 +308,7 @@ int __w_json_decode_map(int size, int aux, json_value* v, char* addr):
 				j = j + 1
 			if (__w_json_decode_field(vkind, vsize, vaux, member, slot) == 0):
 				ok = 0
-			else if (key_kind == __w_hash_key_string()):
+			else if (key_kind == __w_hash_key_string):
 				# Temporary descriptor over the JSON key's bytes; the
 				# map clones descriptor and bytes on insert.
 				string skey = str_from_cstr(member_key)

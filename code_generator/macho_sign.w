@@ -46,12 +46,8 @@ int macho_sig_cap
 
 # CodeDirectory version 0x20400 (adds the exec-segment fields the arm64
 # kernel requires), SHA-256, code-signing page size = the 16 KB VM page.
-int macho_cd_page_log2():
-	return 14
-
-
-int macho_cd_hash_size():
-	return 32
+const int macho_cd_page_log2 = 14
+const int macho_cd_hash_size = 32
 
 
 int macho_cd_special_slots():
@@ -63,9 +59,9 @@ int macho_cd_special_slots():
 # on file content, so macho_finish_arm64 can size LC_CODE_SIGNATURE and
 # __LINKEDIT before the hashes exist.
 int macho_sig_length(int code_limit, char* ident):
-	int page = 1 << macho_cd_page_log2()
+	int page = 1 << macho_cd_page_log2
 	int n_code_slots = (code_limit + page - 1) / page
-	int hash_size = macho_cd_hash_size()
+	int hash_size = macho_cd_hash_size
 	int ident_len = strlen(ident) + 1
 	int cd_length = 88 + ident_len + macho_cd_special_slots() * hash_size + n_code_slots * hash_size
 	# SuperBlob header (12) + 3 index entries (24) + CD + Requirements (12)
@@ -117,10 +113,10 @@ void macho_build_signature(char* img, int code_limit, int text_size, char* ident
 	macho_sig_cap = 0
 	macho_sig_size = 0
 
-	int page = 1 << macho_cd_page_log2()
+	int page = 1 << macho_cd_page_log2
 	int n_code_slots = (code_limit + page - 1) / page
 	int n_special = macho_cd_special_slots()
-	int hash_size = macho_cd_hash_size()
+	int hash_size = macho_cd_hash_size
 	int ident_len = strlen(ident) + 1
 
 	# Empty CSMAGIC_REQUIREMENTS SuperBlob (12 bytes); its SHA-256 fills
@@ -170,7 +166,7 @@ void macho_build_signature(char* img, int code_limit, int text_size, char* ident
 	macho_sig_int8(hash_size)
 	macho_sig_int8(2)                    /* hashType SHA-256 */
 	macho_sig_int8(0)                    /* platform */
-	macho_sig_int8(macho_cd_page_log2())
+	macho_sig_int8(macho_cd_page_log2)
 	macho_sig_be32(0)                    /* spare2 */
 	macho_sig_be32(0)                    /* scatterOffset (v0x20100) */
 	macho_sig_be32(0)                    /* teamOffset (v0x20200) */

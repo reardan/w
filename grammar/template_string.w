@@ -122,9 +122,7 @@ int template_spec_is_align(int c):
 
 void template_spec_error(char* why):
 	diag_part(c"invalid template string format spec '")
-	diag_part(token)
-	diag_part(c"': ")
-	error(why)
+	error3(token, c"': ", why)
 
 
 # Read the raw format spec after the ':' that follows an embedded
@@ -234,21 +232,15 @@ void template_emit_chunk_append(int length, int builder_slot):
 	int base_stack = stack_pos
 	token[length] = 0
 	be_emit_inline_cstr(length, token)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int data_slot = stack_pos
+	int data_slot = push_slot()
 	template_emit_helper_address(1)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(builder_slot)
-	hash_push_stack_slot(data_slot)
-	mov_eax_int(length)
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	push_slot()
+	push_slot_copy(builder_slot)
+	push_slot_copy(data_slot)
+	push_slot_int(length)
+	rt_call_end(s)
+	pop_to(base_stack)
 
 
 # The float64 formatter lives in its own on-demand module: float64 is
@@ -287,9 +279,7 @@ void template_emit_value_append(int got, int builder_slot):
 	if (vc == VC_VAR):
 		var_emit_to_cstr()
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
+	int value_slot = push_slot()
 	if ((template_spec_present == 0) && (kind < 8)):
 		# plain helper: 2 char*, 3 int-like, 4 string
 		int helper = 3
@@ -305,33 +295,23 @@ void template_emit_value_append(int got, int builder_slot):
 	else:
 		template_emit_helper_address(6)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(builder_slot)
-	hash_push_stack_slot(value_slot)
+	push_slot()
+	push_slot_copy(builder_slot)
+	push_slot_copy(value_slot)
 	if (template_spec_present || (kind >= 8)):
 		if (kind < 8):
-			mov_eax_int(kind)
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot_int(kind)
 		# numbers align right by default, text left (Python's rule)
 		int align = template_spec_align
 		if (align == 0):
 			align = '>'
 			if ((kind == 6) || (kind == 7)):
 				align = '<'
-		mov_eax_int(template_spec_width)
-		push_eax()
-		stack_pos = stack_pos + 1
-		mov_eax_int(template_spec_precision)
-		push_eax()
-		stack_pos = stack_pos + 1
-		mov_eax_int((template_spec_fill << 8) | align)
-		push_eax()
-		stack_pos = stack_pos + 1
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+		push_slot_int(template_spec_width)
+		push_slot_int(template_spec_precision)
+		push_slot_int((template_spec_fill << 8) | align)
+	rt_call_end(s)
+	pop_to(base_stack)
 
 
 # f"..." template string literal. The current token is the opening chunk
@@ -348,12 +328,9 @@ int template_string_literal():
 	# builder = __w_template_new()
 	template_emit_helper_address(0)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_call_finish(s)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int builder_slot = stack_pos
+	push_slot()
+	rt_call_end(s)
+	int builder_slot = push_slot()
 
 	int start = 2
 	int done = 0
@@ -383,12 +360,10 @@ int template_string_literal():
 	# result = __w_template_finish(builder)
 	template_emit_helper_address(5)
 	s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(builder_slot)
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	push_slot()
+	push_slot_copy(builder_slot)
+	rt_call_end(s)
+	pop_to(base_stack)
 	return 1
 
 

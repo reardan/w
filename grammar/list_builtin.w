@@ -8,8 +8,8 @@ leaves the element's ADDRESS in eax, so element reads and writes flow
 through the normal lvalue machinery with the element type's own width; no
 pending-lvalue state is needed, unlike map indexing.
 
-The call emission reuses the callee-first stack layout helpers from
-grammar/hash_builtin.w (hash_push_stack_slot, hash_call_finish).
+The call emission uses the callee-first stack layout helpers in
+grammar/stack_slot.w (rt_call_begin, push_slot_copy, rt_call_end).
 */
 int expression();
 int inferred_storage_type(char* name, int got); /* defined in variable_declaration */
@@ -31,14 +31,9 @@ int list_element_slot_size(int element_type):
 
 
 void list_emit_new_container(int type):
-	sym_get_value(c"__w_list_new")
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_int(list_element_slot_size(type_list_element_type(type)))
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_call_finish(s)
+	int s = rt_call_begin(c"__w_list_new")
+	push_slot_int(list_element_slot_size(type_list_element_type(type)))
+	rt_call_end(s)
 
 
 # l[start:end] / l[start:] / l[:end] / l[:]: the ':' has been consumed
@@ -58,22 +53,14 @@ int list_slice_suffix(int element_type, int base_stack, int list_slot, int start
 		promote(expression())
 		has_end = 1
 	expect(c"]")
-	push_eax()
-	stack_pos = stack_pos + 1
-	int end_slot = stack_pos
-	sym_get_value(c"__w_list_slice")
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(list_slot)
-	hash_push_stack_slot(start_slot)
-	hash_push_stack_slot(end_slot)
-	mov_eax_int(has_end)
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	int end_slot = push_slot()
+	int s = rt_call_begin(c"__w_list_slice")
+	push_slot_copy(list_slot)
+	push_slot_copy(start_slot)
+	push_slot_copy(end_slot)
+	push_slot_int(has_end)
+	rt_call_end(s)
+	pop_to(base_stack)
 	return type_value(type_get_list(type_canonical(element_type)))
 
 
@@ -87,31 +74,21 @@ int list_index_suffix(int type):
 	# (e.g. table[key][0]) pops the read's hidden stack slots
 	promote(type)
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int list_slot = stack_pos
+	int list_slot = push_slot()
 	if (accept(c":")):
 		# l[:end] / l[:]: the omitted start is 0
-		mov_eax_int(0)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot_int(0)
 		return list_slice_suffix(element_type, base_stack, list_slot, stack_pos)
 	promote(expression())
-	push_eax()
-	stack_pos = stack_pos + 1
-	int index_slot = stack_pos
+	int index_slot = push_slot()
 	if (accept(c":")):
 		return list_slice_suffix(element_type, base_stack, list_slot, index_slot)
 	expect(c"]")
-	sym_get_value(c"__w_list_addr")
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(list_slot)
-	hash_push_stack_slot(index_slot)
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	int s = rt_call_begin(c"__w_list_addr")
+	push_slot_copy(list_slot)
+	push_slot_copy(index_slot)
+	rt_call_end(s)
+	pop_to(base_stack)
 	return element_type
 
 
@@ -125,9 +102,7 @@ int list_scalar_kind(int element_type, char* what):
 			type_is_array(t) | type_is_slice(t)):
 		diag_part(c"list ")
 		diag_part(what)
-		diag_part(c" requires int-like or char* elements, got '")
-		print_error_type(element_type)
-		error(c"'")
+		error_type(c" requires int-like or char* elements, got '", element_type, c"'")
 	return hash_key_kind_for_type(t)
 
 
@@ -139,9 +114,7 @@ void list_require_scalar_elements(int element_type, char* what):
 			type_is_array(t) | type_is_slice(t)):
 		diag_part(c"list ")
 		diag_part(what)
-		diag_part(c" requires scalar elements, got '")
-		print_error_type(element_type)
-		error(c"'")
+		error_type(c" requires scalar elements, got '", element_type, c"'")
 
 
 # Callback arguments must be a named function (type 4) or a value
@@ -153,9 +126,7 @@ void list_check_callback(int got, char* what):
 		return;
 	diag_part(c"list ")
 	diag_part(what)
-	diag_part(c" expects a function, got '")
-	print_error_type(got)
-	error(c"'")
+	error_type(c" expects a function, got '", got, c"'")
 
 
 # Declared return type of the callback just parsed (type in got, its
@@ -211,9 +182,7 @@ int cm_out_result
 int cm_arg(int kind, int want, char* ctx):
 	int got = promote(expression())
 	if (kind == 1):
-		coerce(want, got)
-		if (types_compatible_with_expression(want, got) == 0):
-			warn_type_mismatch(ctx, want, got)
+		coerce_checked(want, got, ctx)
 		cm_out_extra = type_num_args(type_real(got)) > 0
 	else if (kind == 3):
 		list_check_callback(got, ctx)
@@ -230,8 +199,7 @@ int cm_arg(int kind, int want, char* ctx):
 		if (type_num_args(result_type) > 0):
 			error(c"list reduce init must be a scalar value")
 		cm_out_result = type_value(result_type)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	return stack_pos
 
 
@@ -253,9 +221,7 @@ int cm_result_type(int result, int element_type):
 int cm_call(int type, char* helper, char* bytes_helper, int want, char* ctx, int arg1, int arg2, int extra, int result):
 	promote(type)
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
+	int container_slot = push_slot()
 	# kind-4/5 arguments fix the result type themselves (value types are
 	# negative, so the flag is separate)
 	int result_type = 0
@@ -280,22 +246,16 @@ int cm_call(int type, char* helper, char* bytes_helper, int want, char* ctx, int
 			result_type = cm_out_result
 			has_result_type = 1
 	expect(c")")
-	sym_get_value(helper)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(container_slot)
+	int s = rt_call_begin(helper)
+	push_slot_copy(container_slot)
 	if (slot1 != 0):
-		hash_push_stack_slot(slot1)
+		push_slot_copy(slot1)
 	if (slot2 != 0):
-		hash_push_stack_slot(slot2)
+		push_slot_copy(slot2)
 	if (extra >= 0):
-		mov_eax_int(extra)
-		push_eax()
-		stack_pos = stack_pos + 1
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+		push_slot_int(extra)
+	rt_call_end(s)
+	pop_to(base_stack)
 	if (has_result_type):
 		return result_type
 	return cm_result_type(result, want)
@@ -394,26 +354,19 @@ int list_it_argument():
 # helper(slot_a[, slot_b][, constant]) with the result in eax; absent
 # slots are 0, an absent constant is -1.
 void list_it_call(char* helper, int slot_a, int slot_b, int constant):
-	sym_get_value(helper)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(slot_a)
+	int s = rt_call_begin(helper)
+	push_slot_copy(slot_a)
 	if (slot_b != 0):
-		hash_push_stack_slot(slot_b)
+		push_slot_copy(slot_b)
 	if (constant >= 0):
-		mov_eax_int(constant)
-		push_eax()
-		stack_pos = stack_pos + 1
-	hash_call_finish(s)
+		push_slot_int(constant)
+	rt_call_end(s)
 
 
 void list_it_reject(char* method, char* what, int got):
 	diag_part(c"list ")
 	diag_part(method)
-	diag_part(what)
-	print_error_type(got)
-	error(c"'")
+	error_type(what, got, c"'")
 
 
 # The method name is the current token and list_it_argument() said its
@@ -430,37 +383,26 @@ int list_it_method(int type):
 		value_fn = c"__w_list_addr"
 	promote(type)
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int list_slot = stack_pos
+	int list_slot = push_slot()
 	mov_eax_int(0)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int cursor_slot = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int keys_slot = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int it_slot = stack_pos
+	int cursor_slot = push_slot()
+	int keys_slot = push_slot()
+	int it_slot = push_slot()
 	int table_mark = table_pos
 	int outer_active = list_it_active
 	pointer_indirection = 0
 	sym_declare(c"it", it_type, 'L', it_slot - 1, 1)
-	list_it_active = table_pos - symbol_data_size()
+	list_it_active = table_pos - symbol_data_size
 	expect(c"(")
 
 	# for each element: it = element; keys.push(expression)
 	int exit = be_ctrl_block()
 	int top = be_ctrl_loop()
-	mov_eax_esp_plus((stack_pos - cursor_slot) << word_size_log2)
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus((stack_pos - list_slot) << word_size_log2)
+	push_slot_copy(cursor_slot)
+	load_slot(list_slot)
 	add_eax_int32(word_size)
 	promote_eax()
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	alu_cmp_set(0x9c) /* setl: cursor < length */
 	be_br_zero_discard(exit)
 	for_iter_call(value_fn, list_slot, cursor_slot)
@@ -470,12 +412,10 @@ int list_it_method(int type):
 	if ((type_num_args(key_type) > 0) | type_is_array(key_type) | type_is_slice(key_type)):
 		list_it_reject(method, c" expression must be a scalar value, got '", got)
 	int key_size = list_element_slot_size(key_type)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	list_it_call(c"__w_list_push_lazy", keys_slot, stack_pos, key_size)
 	store_stack_var((stack_pos - keys_slot) << word_size_log2)
-	be_pop(1)
-	stack_pos = stack_pos - 1
+	drop_slots(1)
 	inc_dword_esp_plus((stack_pos - cursor_slot) << word_size_log2)
 	be_br(top)
 	be_ctrl_end(top)
@@ -507,9 +447,7 @@ int list_it_method(int type):
 		int kind = list_scalar_kind(key_type, what)
 		free(what)
 		if ((mode <= 8) && (kind != 1)):
-			diag_part(c"list ")
-			diag_part(method)
-			error(c" requires int-like elements")
+			error3(c"list ", method, c" requires int-like elements")
 		if (mode <= 8):
 			char* helper = strjoin(c"__w_list_", method)
 			list_it_call(helper, keys_slot, 0, -1)
@@ -525,12 +463,10 @@ int list_it_method(int type):
 			result = type_value(type_get_list(type_canonical(element_type)))
 		else:
 			list_it_call(c"__w_list_best_key", keys_slot, 0, kind | ((mode - 11) << 2))
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			list_it_call(c"__w_list_addr", list_slot, stack_pos, -1)
 			result = element_type
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	pop_to(base_stack)
 	free(method)
 	return result
 
@@ -587,16 +523,11 @@ int ufcs_call(int type):
 				j = j + 1
 			stack_pos = stack_pos + words
 			has_return_buffer = 1
-	push_eax()
-	stack_pos = stack_pos + 1
-	sym_get_value(name)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
+	int s = rt_call_begin(name)
 	if (has_return_buffer):
 		lea_eax_esp_plus(2 << word_size_log2)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		mov_eax_esp_plus(2 << word_size_log2)
 	else:
 		mov_eax_esp_plus(1 << word_size_log2)
@@ -607,8 +538,7 @@ int ufcs_call(int type):
 	push_call_argument(type)
 	expect(c"(")
 	int result = parse_call_suffix(4, s, expected_args, callee, 0 - 1, name, declared_return, 1, has_return_buffer, sym_w_variadic_fixed_args(callee))
-	be_pop(1)
-	stack_pos = stack_pos - 1
+	drop_slots(1)
 	if (has_return_buffer):
 		lea_eax_esp_plus(0)
 		result = type_value(declared_return)
@@ -673,9 +603,7 @@ int list_method(int type):
 		char* what = strclone(token)
 		get_token()
 		if (list_scalar_kind(element_type, what) != 1):
-			diag_part(c"list ")
-			diag_part(what)
-			error(c" requires int-like elements")
+			error3(c"list ", what, c" requires int-like elements")
 		char* helper = strjoin(c"__w_list_", what)
 		int result = 1
 		if (what[1] == 'u'):
@@ -694,35 +622,25 @@ int list_method(int type):
 		return cm_call(type, c"__w_list_index", 0, element_type, c"list index", 1, 0, list_scalar_kind(element_type, c"list index"), 3)
 	if ((nextc == '(') && (ufcs_callee(token) >= 0)):
 		return ufcs_call(type)
-	diag_part(c"list field '")
-	diag_part(token)
-	error(c"' not found")
+	error3(c"list field '", token, c"' not found")
 	return 0
 
 
 void list_literal_parse_entry(int container_type, int container_slot):
 	int base_stack = stack_pos
 	int element_type = type_list_element_type(container_type)
-	int got_type = expression()
-	got_type = promote(got_type)
-	coerce(element_type, got_type)
-	if (types_compatible_with_expression(element_type, got_type) == 0):
-		warn_type_mismatch(c"list literal element", element_type, got_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int value_slot = stack_pos
+	int got_type = parse_coerced(element_type, c"list literal element")
+	int value_slot = push_slot()
 	if ((type_num_args(element_type) > 0) & (type_num_args(type_real(got_type)) > 0)):
 		sym_get_value(c"__w_list_push_bytes")
 	else:
 		sym_get_value(c"__w_list_push")
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	hash_push_stack_slot(container_slot)
-	hash_push_stack_slot(value_slot)
-	hash_call_finish(s)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	push_slot()
+	push_slot_copy(container_slot)
+	push_slot_copy(value_slot)
+	rt_call_end(s)
+	pop_to(base_stack)
 
 
 int list_typed_literal():
@@ -731,9 +649,7 @@ int list_typed_literal():
 	int container_type = type_name()
 	expect(c"{")
 	list_emit_new_container(container_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
+	int container_slot = push_slot()
 	if (peek(c"}") == 0):
 		list_literal_parse_entry(container_type, container_slot)
 		while (accept(c",")):
@@ -742,7 +658,6 @@ int list_typed_literal():
 			list_literal_parse_entry(container_type, container_slot)
 	if (peek(c"}") == 0):
 		error(c"'}' expected in list literal")
-	pop_eax()
-	stack_pos = stack_pos - 1
+	pop_eax_slot()
 	list_literal_type = type_value(container_type)
 	return 1

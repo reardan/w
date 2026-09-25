@@ -86,8 +86,7 @@ void define_asm_functions_arm64():
 		# syscall_fork(): fork (2). On success x1 is 0 in the parent and
 		# 1 in the child; fold to the child-sees-0 contract.
 		sym_define_declare_global_function(c"syscall_fork")
-		a64_asm(c"movz x16,#2")
-		a64_asm(c"svc #0x80")
+		a64_asm(c"movz x16,#2; svc #0x80")
 		a64_asm(c"b.cc .+12")   # success
 		a64_asm(c"neg x0,x0")   # error: return -errno
 		a64_asm(c"ret")
@@ -100,14 +99,10 @@ void define_asm_functions_arm64():
 		# targets and return 0 (or -errno).
 		sym_define_declare_global_function(c"syscall_pipe")
 		a64_asm(c"ldr x9,[x28]")   # fds
-		a64_asm(c"movz x16,#42")
-		a64_asm(c"svc #0x80")
+		a64_asm(c"movz x16,#42; svc #0x80")
 		a64_asm(c"b.cc .+12")   # success
 		a64_asm(c"neg x0,x0")   # error: return -errno
-		a64_asm(c"ret")
-		a64_asm(c"stp w0,w1,[x9]")
-		a64_asm(c"movz x0,#0")
-		a64_asm(c"ret")
+		a64_asm(c"ret; stp w0,w1,[x9]; movz x0,#0; ret")
 
 		# signal_trampoline: the sa_tramp of every W signal handler
 		# (rt_sigaction, lib/__arch__/arm64_darwin/syscalls.w). XNU
@@ -119,8 +114,7 @@ void define_asm_functions_arm64():
 		# sigreturn arguments wait on the C stack, which W code never
 		# touches. Never returns; brk if sigreturn fails.
 		sym_define_declare_global_function(c"signal_trampoline")
-		a64_asm(c"stp x1,x4,[sp,#-32]!")
-		a64_asm(c"str x5,[sp,#16]")
+		a64_asm(c"stp x1,x4,[sp,#-32]!; str x5,[sp,#16]")
 		a64_asm(c"str x0,[x28,#-8]!")   # callee slot
 		a64_asm(c"str x2,[x28,#-8]!")   # sig
 		a64_asm(c"str x4,[x28,#-8]!")   # ucontext
@@ -134,8 +128,7 @@ void define_asm_functions_arm64():
 		a64_asm(c"ldr x2,[sp,#16]")   # token
 		a64_asm(c"add sp,sp,#32")
 		a64_asm(c"movz x16,#184")   # sigreturn
-		a64_asm(c"svc #0x80")
-		a64_asm(c"brk #1")
+		a64_asm(c"svc #0x80; brk #1")
 
 	# get_context(ctx): store x0..x30 into the 31-slot context struct.
 	# x9 (loaded first) holds the pointer; it is scratch anyway.
@@ -168,15 +161,10 @@ void define_asm_functions_arm64():
 	a64_asm(c"ldr x9,[x28]")   # buf
 	if (arm64_pac == 2):
 		# Sign a copy: x30 itself must stay plain for the ret below.
-		a64_asm(c"mov x10,x30")
-		a64_asm(c"pacia x10,x9")
-		a64_asm(c"str x10,[x9]")
+		a64_asm(c"mov x10,x30; pacia x10,x9; str x10,[x9]")
 	else:
 		a64_asm(c"str x30,[x9]")
-	a64_asm(c"str x28,[x9,#8]")
-	a64_asm(c"str x29,[x9,#16]")
-	a64_asm(c"movz x0,#0")
-	a64_asm(c"ret")
+	a64_asm(c"str x28,[x9,#8]; str x29,[x9,#16]; movz x0,#0; ret")
 
 	# repl_longjmp(buf, val): restore the saved state and branch back to the
 	# repl_setjmp call site with val in x0.
@@ -188,9 +176,7 @@ void define_asm_functions_arm64():
 	a64_asm(c"ldr x30,[x9]")
 	if (arm64_pac == 2):
 		a64_asm(c"autia x30,x9")
-	a64_asm(c"ldr x28,[x9,#8]")
-	a64_asm(c"ldr x29,[x9,#16]")
-	a64_asm(c"ret")
+	a64_asm(c"ldr x28,[x9,#8]; ldr x29,[x9,#16]; ret")
 
 	# gen_switch(int* save_wsp_here, int restore_wsp): the generator context
 	# switch (docs/projects/iteration.md), AArch64 flavor. W keeps no live

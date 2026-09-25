@@ -90,12 +90,11 @@ void sym_stats_dump():
 	print_error(c"\x0a")
 
 
-int symbol_data_size():
-	return 146
+const int symbol_data_size = 146
 
 
 int next_token(int t):
-	return t + symbol_data_size()
+	return t + symbol_data_size
 
 
 int sym_index_offset(int i):
@@ -260,10 +259,6 @@ void sym_info(int symbol):
 	print_error(c")\x0a")
 
 
-void sym_last_info():
-	sym_info(table_pos - symbol_data_size())
-	
-
 # Returns the table offset of the symbol's data block, or -1 when not found.
 # 0 is a valid offset (the first declared symbol), so callers must test for < 0.
 # Newest-first scan of the offset index. Superseded by the name index in
@@ -326,17 +321,6 @@ int sym_symtype(char *s):
 	if (t < 0):
 		return 0
 	return load_int(table + t + 10)
-
-
-int sym_type(char *s):
-	int t = sym_lookup(s)
-	if (t < 0):
-		return 0
-	return load_int(table + t + 6)
-
-
-void sym_print_info(char *s):
-	sym_info(sym_lookup(s))
 
 
 # Registered index of the file currently being parsed, or -1 when no source
@@ -472,7 +456,7 @@ int sym_declare_global(char *s, int type, int symtype):
 	int current_symbol = sym_lookup(s)
 	if (current_symbol < 0):
 		sym_declare(s, type, 'U', code_offset, symtype)
-		current_symbol = table_pos - symbol_data_size()
+		current_symbol = table_pos - symbol_data_size
 	else if (sym_decl_file_index(current_symbol) < 0):
 		# Forward-referenced symbol (e.g. 'main' pre-declared by be_start):
 		# this explicit declaration is the real source location
@@ -489,14 +473,38 @@ int sym_declare_global(char *s, int type, int symtype):
 # slots in `code`) to v and mark the symbol defined. v is a code address for
 # functions and read-only globals, or a data-segment address for mutable
 # globals under the W^X split (Stage 3).
+# Address-slot backpatch chains, the encoding of 'U' symbols (patched
+# by sym_define_global_at below), generic instantiations and the lazy
+# runtime helpers (grammar/generic.w, grammar/lazy_runtime.w): each slot
+# holds the previous slot's absolute address and code_offset ends the
+# chain; a head of 0 is an empty chain.
+# Emit an address slot linked onto the chain whose head is `head`
+# (0 = empty) and return the new head. The slot is signed for pac=full.
+int addr_chain_link(int head):
+	if (head == 0):
+		head = code_offset
+	be_addr_slot_emit() /* mov $n,%eax (x86) / adrp+add pair (arm64) */
+	be_addr_slot_write(codepos - 4, head)
+	int slot = codepos + code_offset - 4
+	be_code_ptr_sign()
+	return slot
+
+
+# Write `value` into every slot of the chain whose head is `head`.
+void addr_chain_patch(int head, int value):
+	if (head == 0):
+		return;
+	int p = head - code_offset
+	while (p):
+		int next = be_addr_slot_read(p) - code_offset
+		be_addr_slot_write(p, value)
+		p = next
+
+
 void sym_define_global_at(int current_symbol, int v):
-	int i
-	int j
 	int t = current_symbol
 	if (table[t + 1] != 'U'):
-		diag_part(c"symbol redefined: '")
-		diag_part(last_global_declaration)
-		error(c"'")
+		error3(c"symbol redefined: '", last_global_declaration, c"'")
 	# A defining occurrence is more useful than a bare forward declaration
 	# for navigation (w symbols --json / windex/wlsp go-to-definition): a
 	# prototype like lib.w's 'int main(int argc, int argv);' would
@@ -508,11 +516,7 @@ void sym_define_global_at(int current_symbol, int v):
 	# declaration path that bypasses sym_declare_global) leaves it alone.
 	if (sym_last_declared_offset == current_symbol):
 		sym_set_decl_location(current_symbol, decl_file_index(), sym_last_declared_line, sym_last_declared_column)
-	i = load_int(table + t + 2) - code_offset
-	while (i):
-		j = be_addr_slot_read(i) - code_offset
-		be_addr_slot_write(i, v)
-		i = j
+	addr_chain_patch(load_int(table + t + 2), v)
 
 	table[t + 1] = 'D'
 	save_int(table + t + 2, v)
@@ -605,8 +609,12 @@ void sym_set_thread_local(int t):
 
 
 # Parameter type slots per symbol; arguments past the limit are unchecked.
-int sym_max_param_slots():
-	return 10
+const int sym_max_param_slots = 10
+
+# Parameters an extern (C) function may declare; its per-call argument
+# class buffers are this size. Used by grammar/postfix_expr.w,
+# grammar/extern_statement.w and the C importer.
+const int extern_max_params = 255
 
 
 # Parameter defaults: bit i of the mask is set when parameter i (0-based)
@@ -614,7 +622,7 @@ int sym_max_param_slots():
 # slot. Only the first 10 parameters can have defaults (same limit as the
 # declared-type slots).
 int sym_param_has_default(int t, int i):
-	if (i >= sym_max_param_slots()):
+	if (i >= sym_max_param_slots):
 		return 0
 	return (load_int(table + t + 86) >> i) & 1
 
@@ -640,7 +648,7 @@ int sym_param_type(int t, int i):
 		return -1
 	if (i >= num_args):
 		return -1
-	if (i >= sym_max_param_slots()):
+	if (i >= sym_max_param_slots):
 		return -1
 	return load_int(table + t + 26 + (i << 2))
 
@@ -751,9 +759,7 @@ void sym_not_found_error(char* s):
 	diag_part(token)
 	if (repl_recovery == 0):
 		if (sym_defined_later_in_file(s)):
-			diag_part(c"': declared later in this file -- forward-declare it with a prototype ('type ")
-			diag_part(s)
-			error(c"(params);') before this point")
+			error3(c"': declared later in this file -- forward-declare it with a prototype ('type ", s, c"(params);') before this point")
 	error(c"'")
 
 
@@ -897,8 +903,8 @@ void sym_define_declare_global_function_arity(char* name, int num_args):
 	sym_define_global(t)
 	save_int(table + t + 22, num_args)
 	int slots = num_args
-	if (slots > sym_max_param_slots()):
-		slots = sym_max_param_slots()
+	if (slots > sym_max_param_slots):
+		slots = sym_max_param_slots
 	int i = 0
 	while (i < slots):
 		save_int(table + t + 26 + (i << 2), -1)

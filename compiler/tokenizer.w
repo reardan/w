@@ -121,8 +121,7 @@ are not what the current fd would deliver), the fd cannot produce the
 line (closed, read error, EOF before the line), or the line overflows
 the collection buffer.
 */
-int diag_context_capacity():
-	return 512
+const int diag_context_capacity = 512
 
 
 char* diag_context_buffer
@@ -145,14 +144,14 @@ int diag_context_collect():
 			scan_line = scan_line + 1
 		c = getchar(file)
 	if (diag_context_buffer == 0):
-		diag_context_buffer = malloc(diag_context_capacity() + 1)
+		diag_context_buffer = malloc(diag_context_capacity + 1)
 	int length = 0
 	int failed = 0
 	if (c < 0):
 		# EOF (or a read error) before the line's first character
 		failed = 1
 	while ((failed == 0) && (c >= 0) && (c != 10)):
-		if (length >= diag_context_capacity()):
+		if (length >= diag_context_capacity):
 			failed = 1
 		else:
 			diag_context_buffer[length] = c
@@ -418,6 +417,25 @@ void error(char *s):
 	exit(1)
 
 
+# error()/warning() with the message's leading parts (diag_part) given
+# as arguments.
+void error2(char* a, char* b):
+	diag_part(a)
+	error(b)
+
+
+void error3(char* a, char* b, char* c):
+	diag_part(a)
+	diag_part(b)
+	error(c)
+
+
+void warning3(char* a, char* b, char* c):
+	diag_part(a)
+	diag_part(b)
+	warning(c)
+
+
 int getc():
 	# Inline fast path of lib/lib.w's getchar_checked(): take the next
 	# byte straight from the per-fd buffer while it is non-empty, and
@@ -449,9 +467,7 @@ int getc():
 		# compiler/compiler.w's missing_file_reset, #190)
 		if (token == 0):
 			token = filename
-		diag_part(c"read error while reading '")
-		diag_part(filename)
-		error(c"'")
+		error3(c"read error while reading '", filename, c"'")
 	# EOF consumes nothing, so the offset only advances for real bytes
 	if (c != -1):
 		byte_offset = byte_offset + 1
@@ -636,9 +652,7 @@ void take_utf8_ident_char():
 		diag_part(c"identifier '")
 		diag_part(token)
 		diag_part(c"' contains ")
-		diag_part(why)
-		diag_part(c": U+")
-		error(ident_codepoint_hex(cp))
+		error3(why, c": U+", ident_codepoint_hex(cp))
 
 
 # Byte class table for take_ident_run(), filled once from the
@@ -939,23 +953,12 @@ int accept(char *s):
 		return 0
 
 
-int accept_newline(char *s):
-	if(peek(s) | token_newline):
-		get_token()
-		return 1
-
-	else:
-		return 0
-
-
 void expect(char *s):
 	if (accept(s) == 0):
 		diag_part(c"'")
 		diag_part(s)
 		diag_part(c"' expected, found '")
-		diag_part(token)
-		diag_part(c"'")
-		error(c"")
+		error3(token, c"'", c"")
 
 
 void expect_or_newline(char *s):
@@ -964,6 +967,4 @@ void expect_or_newline(char *s):
 		diag_part(c"'")
 		diag_part(s)
 		diag_part(c"' expected, found '")
-		diag_part(token)
-		diag_part(c"'")
-		error(c"")
+		error3(token, c"'", c"")

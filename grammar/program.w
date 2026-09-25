@@ -52,8 +52,7 @@ void const_error_prefix():
 
 void const_error(char* why):
 	const_error_prefix()
-	diag_part(c": ")
-	error(why)
+	error2(c": ", why)
 
 
 # 32-bit two's-complement range check on a 64-bit host (always true on
@@ -101,9 +100,7 @@ int const_symbol_value(int t):
 				return v
 			return load_int32(p)
 	const_error_prefix()
-	diag_part(c" must be a compile-time constant, got '")
-	diag_part(token)
-	error(c"'")
+	error3(c" must be a compile-time constant, got '", token, c"'")
 	return 0
 
 
@@ -292,6 +289,21 @@ int parse_constant_default():
 	return value
 
 
+# Records the constant after a parameter's '=' (already consumed) as the
+# default of parameter param_count (1-based) of the function at
+# current_symbol; returns the new saw_default (1). The first default of
+# a declaration replaces any recorded earlier (a definition overrides
+# its prototype).
+int param_default_record(int current_symbol, int param_count, int saw_default):
+	if (param_count > sym_max_param_slots):
+		error(c"default values are only supported on the first 10 parameters")
+	int default_value = parse_constant_default()
+	if (saw_default == 0):
+		sym_clear_param_defaults(current_symbol)
+	sym_set_param_default(current_symbol, param_count - 1, default_value)
+	return 1
+
+
 # Parses "parameter-list ) [; | body]" for the function symbol at table
 # offset current_symbol; the opening "(" has already been consumed.
 # Shared by program() and the REPL's entry dispatcher.
@@ -321,7 +333,7 @@ void function_definition(int current_symbol):
 			expect(c".")
 			if (saw_default):
 				error(c"a variadic parameter cannot follow parameters with default values")
-			if (param_count > sym_max_param_slots()):
+			if (param_count > sym_max_param_slots):
 				error(c"variadic functions support at most 10 parameters")
 			int elem = type_unqualified(type)
 			if ((type_num_args(elem) > 0) | type_is_array(elem) | type_is_slice(elem) |
@@ -335,7 +347,7 @@ void function_definition(int current_symbol):
 		if (type_is_array(type)):
 			error(c"fixed array parameter is not implemented; use T[] instead")
 		# Record the declared type so call sites can check arguments
-		if (param_count <= sym_max_param_slots()):
+		if (param_count <= sym_max_param_slots):
 			save_int(table + current_symbol + 22 + (param_count << 2), type)
 		/* this seems stupid, you could just have (typename) with no identifier */
 		if (peek(c")") == 0):
@@ -357,15 +369,7 @@ void function_definition(int current_symbol):
 				error(c"a variadic parameter cannot have a default value")
 			if (type_is_var(type_unqualified(type))):
 				error(c"default values are not supported on var parameters")
-			if (param_count > sym_max_param_slots()):
-				error(c"default values are only supported on the first 10 parameters")
-			int default_value = parse_constant_default()
-			if (saw_default == 0):
-				# This declaration's defaults replace any recorded earlier
-				# (a definition overrides its prototype)
-				sym_clear_param_defaults(current_symbol)
-			saw_default = 1
-			sym_set_param_default(current_symbol, param_count - 1, default_value)
+			saw_default = param_default_record(current_symbol, param_count, saw_default)
 		else if (saw_default):
 			error(c"parameter without a default follows a parameter with a default")
 
@@ -506,9 +510,7 @@ void global_initializer_check_type(char* name, int type):
 		return;
 	diag_part(c"cannot initialize global '")
 	diag_part(name)
-	diag_part(c"' of type '")
-	print_error_type(type)
-	error(c"' at its declaration; assign it inside a function")
+	error_type(c"' of type '", type, c"' at its declaration; assign it inside a function")
 
 
 # 'int x = 5' at file scope: a global declaration carrying a compile-time
@@ -655,7 +657,7 @@ void export_function_note(int t, char* name, int ret_type):
 	if (sym_w_variadic_fixed_args(t) >= 0):
 		error(c"cannot export a variadic function")
 	int n = sym_num_args(t)
-	if (n > sym_max_param_slots()):
+	if (n > sym_max_param_slots):
 		error(c"exported functions support at most 10 parameters")
 	if ((type_num_args(ret_type) > 0) & (type_get_pointer_level(ret_type) == 0)):
 		error(c"cannot export a function returning a struct by value")

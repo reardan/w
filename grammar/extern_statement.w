@@ -37,10 +37,6 @@ import code_generator.dynamic_registry
 import code_generator.ffi
 
 
-int extern_max_params():
-	return 255
-
-
 int extern_statement():
 	if (accept(c"c_lib")):
 		if ((token[0] != '"') && (((token[0] != 'c') || (token[1] != '"')))):
@@ -109,7 +105,7 @@ int extern_statement():
 		int saved_table = table_pos
 		int param_count = 0
 		int is_variadic = 0
-		char* param_classes = malloc(extern_max_params())
+		char* param_classes = malloc(extern_max_params)
 		int ret_class = ffi_type_class(ret_type)
 		if ((ret_class == 2) && (word_size != 8)):
 			error(c"float64 requires the x64 target")
@@ -123,14 +119,14 @@ int extern_statement():
 				expect(c")")
 				break
 			param_count = param_count + 1
-			if (param_count > extern_max_params()):
+			if (param_count > extern_max_params):
 				error(c"too many extern parameters")
 			int ptype = type_name()
 			int ptype_class = ffi_type_class(ptype)
 			if ((ptype_class == 2) && (word_size != 8)):
 				error(c"float64 requires the x64 target")
 			param_classes[param_count - 1] = ptype_class
-			if (param_count <= sym_max_param_slots()):
+			if (param_count <= sym_max_param_slots):
 				save_int(table + sym + 22 + (param_count << 2), ptype)
 			# Skip the optional parameter name
 			if (peek(c")") == 0):

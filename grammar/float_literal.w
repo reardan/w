@@ -33,11 +33,10 @@ int parse_exponent_part(int i):
 	return exponent * sign
 
 
-int float32_bits_from_token():
-	int mantissa = bignum_new()
-	int denominator = bignum_new()
+# Scans the decimal literal in token into the exact ratio
+# mantissa / denominator (two fresh bignums, denominator a power of 10).
+void float_decimal_ratio(int mantissa, int denominator):
 	bignum_set_u32(denominator, 1)
-
 	int i = 0
 	int frac_digits = 0
 	int saw_dot = 0
@@ -64,6 +63,12 @@ int float32_bits_from_token():
 		bignum_mul_pow10(mantissa, exponent)
 	else:
 		bignum_mul_pow10(denominator, 0 - exponent)
+
+
+int float32_bits_from_token():
+	int mantissa = bignum_new()
+	int denominator = bignum_new()
+	float_decimal_ratio(mantissa, denominator)
 
 	if (bignum_is_zero(mantissa)):
 		bignum_free(mantissa)
@@ -111,34 +116,7 @@ int float32_bits_from_token():
 void float64_bits_from_token():
 	int mantissa = bignum_new()
 	int denominator = bignum_new()
-	bignum_set_u32(denominator, 1)
-
-	int i = 0
-	int frac_digits = 0
-	int saw_dot = 0
-	int exponent = 0
-	while (token[i]):
-		if ((token[i] >= '0') && (token[i] <= '9')):
-			bignum_mul_small(mantissa, 10)
-			bignum_add_small(mantissa, token[i] - '0')
-			if (saw_dot):
-				frac_digits = frac_digits + 1
-		else if (token[i] == '.'):
-			if (saw_dot):
-				error(c"invalid float literal")
-			saw_dot = 1
-		else if ((token[i] == 'e') || (token[i] == 'E')):
-			exponent = parse_exponent_part(i + 1)
-			i = strlen(token) - 1
-		else:
-			error(c"invalid float literal")
-		i = i + 1
-
-	exponent = exponent - frac_digits
-	if (exponent >= 0):
-		bignum_mul_pow10(mantissa, exponent)
-	else:
-		bignum_mul_pow10(denominator, 0 - exponent)
+	float_decimal_ratio(mantissa, denominator)
 
 	float64_literal_lo = 0
 	float64_literal_hi = 0

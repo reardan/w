@@ -106,8 +106,7 @@ int multi_assign(int first_type):
 		multi_assign_check_target(type)
 		multi_assign_reserve(lhs_count + 1)
 		multi_assign_lhs_types[lhs_count] = type
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		multi_assign_lhs_slots[lhs_count] = stack_pos
 		lhs_count = lhs_count + 1
 		if (accept(c",") == 0):
@@ -134,12 +133,9 @@ int multi_assign(int first_type):
 		expr_nesting_depth = expr_nesting_depth - 1
 		if (rhs_count < lhs_count):
 			int want = multi_assign_lhs_types[rhs_count]
-			coerce(want, got)
-			if (types_compatible_with_expression(want, got) == 0):
-				warn_type_mismatch(c"assignment", want, got)
+			coerce_checked(want, got, c"assignment")
 		multi_assign_reserve(rhs_count + 1)
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		multi_assign_rhs_slots[rhs_count] = stack_pos
 		rhs_count = rhs_count + 1
 		if (accept(c",") == 0):
@@ -147,9 +143,7 @@ int multi_assign(int first_type):
 	if (rhs_count != lhs_count):
 		diag_part(c"multi-assignment arity mismatch: ")
 		diag_part(itoa(lhs_count))
-		diag_part(c" targets but ")
-		diag_part(itoa(rhs_count))
-		error(c" values")
+		error3(c" targets but ", itoa(rhs_count), c" values")
 
 	# Store phase, left to right. Slots are read esp-relative through
 	# their recorded stack_pos: a call inside a later element may have
@@ -165,6 +159,5 @@ int multi_assign(int first_type):
 	# Unlike '=' (whose result can point into a buried struct-return
 	# buffer), nothing of this statement's value points into the parked
 	# span once the stores ran: pop all of it, buried words included.
-	be_pop(stack_pos - entry_stack)
-	stack_pos = entry_stack
+	pop_to(entry_stack)
 	return type_value(multi_assign_lhs_types[lhs_count - 1])

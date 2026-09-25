@@ -1,15 +1,14 @@
-int bignum_limb_count():
-	return 96
+const int bignum_limb_count = 96
 
 
 int bignum_size():
-	return 4 + bignum_limb_count() * 4
+	return 4 + bignum_limb_count * 4
 
 
 void bignum_clear(int n):
 	save_int(cast(char*, n), 1)
 	int i = 0
-	while (i < bignum_limb_count()):
+	while (i < bignum_limb_count):
 		save_int(n + 4 + i * 4, 0)
 		i = i + 1
 
@@ -61,7 +60,7 @@ void bignum_set_u32(int n, int value):
 
 void bignum_copy(int dst, int src):
 	int i = 0
-	while (i < bignum_limb_count()):
+	while (i < bignum_limb_count):
 		bignum_set_limb(dst, i, bignum_limb(src, i))
 		i = i + 1
 	bignum_set_length(dst, bignum_length(src))
@@ -75,7 +74,7 @@ void bignum_add_small(int n, int add):
 	int carry = add
 	int i = 0
 	while (carry != 0):
-		if (i >= bignum_limb_count()):
+		if (i >= bignum_limb_count):
 			error(c"bignum overflow")
 		int value = bignum_limb(n, i) + carry
 		bignum_set_limb(n, i, value & 0xffff)
@@ -96,7 +95,7 @@ int bignum_bits_32_51(int n):
 
 void bignum_set_bit(int n, int bit):
 	int limb = bit / 16
-	if (limb >= bignum_limb_count()):
+	if (limb >= bignum_limb_count):
 		error(c"bignum overflow")
 	int value = bignum_limb(n, limb) | (1 << (bit % 16))
 	bignum_set_limb(n, limb, value)
@@ -114,7 +113,7 @@ void bignum_mul_small(int n, int mul):
 		carry = value >> 16
 		i = i + 1
 	while (carry != 0):
-		if (i >= bignum_limb_count()):
+		if (i >= bignum_limb_count):
 			error(c"bignum overflow")
 		bignum_set_limb(n, i, carry & 0xffff)
 		carry = carry >> 16
@@ -139,7 +138,7 @@ void bignum_shl1(int n):
 		carry = value >> 16
 		i = i + 1
 	if (carry != 0):
-		if (i >= bignum_limb_count()):
+		if (i >= bignum_limb_count):
 			error(c"bignum overflow")
 		bignum_set_limb(n, i, carry)
 		i = i + 1

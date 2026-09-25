@@ -74,9 +74,7 @@ int ctor_field_args(int base):
 			target = type_get_arg(base, name)
 			if (target < 0):
 				type_suggest_fields(name, base)
-				diag_part(c"struct field '")
-				diag_part(name)
-				error(c"' not found")
+				error3(c"struct field '", name, c"' not found")
 			free(name)
 			get_token()
 			expect(c":")
@@ -86,8 +84,7 @@ int ctor_field_args(int base):
 		arg_type = promote(arg_type)
 		new_store_field(base, target, arg_type, stack_pos - arg_entry)
 		if (stack_pos > arg_entry):
-			be_pop(stack_pos - arg_entry)
-			stack_pos = arg_entry
+			pop_to(arg_entry)
 		field_index = field_index + 1
 		if (accept(c",") == 0):
 			if (named):
@@ -174,8 +171,7 @@ int struct_value_ctor_expr():
 		init_array_field_descriptors(base)
 	# Park the temp's address below the buffer while the field
 	# initializers run, mirroring the 'new' constructor path.
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	if (peek(c")") == 0):
 		int field_index = ctor_field_args(base)
 		if (peek(c")") == 0):
@@ -184,11 +180,8 @@ int struct_value_ctor_expr():
 			diag_part(c"warning: ")
 			diag_part(type_get_name(base))
 			diag_part(c" constructor expects ")
-			diag_part(itoa(type_num_args(base)))
-			diag_part(c" arguments, got ")
-			warning(itoa(field_index))
-	pop_eax()
-	stack_pos = stack_pos - 1
+			warning3(itoa(type_num_args(base)), c" arguments, got ", itoa(field_index))
+	pop_eax_slot()
 	return type_value(base)
 
 
@@ -322,7 +315,7 @@ int unary_expression_operand():
 		# far from the bug. Warn instead of changing codegen so the
 		# descriptor address keeps a spelling (issue: ai_tooling_next_steps
 		# 2026-07-25 protobuf hardening).
-		if ((type_get_kind(type_unqualified(type)) == type_kind_slice_value()) &
+		if ((type_get_kind(type_unqualified(type)) == type_kind_slice_value) &
 				(type_get_pointer_level(type_unqualified(want)) > 0) &
 				(type_decays_to_pointer(want, type) == 0)):
 			warning(c"warning: cast of array to pointer addresses the array header, not its data; index or let it decay instead")
@@ -368,9 +361,7 @@ int unary_expression_operand():
 			base = type_lookup(token)
 			if (base < 0):
 				type_suggest_names(token)
-				diag_part(c"unknown type after new: '")
-				diag_part(token)
-				error(c"'")
+				error3(c"unknown type after new: '", token, c"'")
 		get_token()
 		if (accept(c"[")):
 			int element_size = type_get_size(base)
@@ -388,8 +379,8 @@ int unary_expression_operand():
 				int alloc_limit = 1073741823 / element_size
 				int h_in_bounds = be_ctrl_block()
 				int h_trap = be_ctrl_block()
-				bounds_branch_eax_negative(h_trap)
-				bounds_skip_eax_less_equal_int32(alloc_limit, h_in_bounds)
+				be_bounds_branch(BOUNDS_EAX_NEG, 0, h_trap)
+				be_bounds_branch(BOUNDS_EAX_LE_LIMIT, alloc_limit, h_in_bounds)
 				be_ctrl_end(h_trap)
 				push_eax()
 				mov_eax_int(alloc_limit)
@@ -397,27 +388,22 @@ int unary_expression_operand():
 				bounds_trap_call(c"__w_alloc_trap")
 				be_ctrl_end(h_in_bounds)
 			expect(c"]")
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 
 			# malloc(2 * word_size + length * sizeof(base))
 			sym_get_value(c"malloc")
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			mov_eax_esp_plus(word_size)
 			if (element_size > 1):
 				imul_eax_int32(element_size)
 			add_eax_int32(2 * word_size)
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			mov_eax_esp_plus(word_size)
 			call_eax()
-			be_pop(2)
-			stack_pos = stack_pos - 2
+			drop_slots(2)
 
 			# descriptor.data = descriptor + header
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			add_eax_int32(2 * word_size)
 			mov_ebx_esp()
 			store_ebx_word()
@@ -432,35 +418,26 @@ int unary_expression_operand():
 			mov_eax_esp_plus(word_size)
 			if (element_size > 1):
 				imul_eax_int32(element_size)
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			mov_eax_esp_plus(word_size)
 			add_eax_int32(2 * word_size)
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			zero_stack_count_bytes()
-			be_pop(2)
-			stack_pos = stack_pos - 2
+			drop_slots(2)
 
-			pop_eax()
-			stack_pos = stack_pos - 1
-			be_pop(1)
-			stack_pos = stack_pos - 1
+			pop_eax_slot()
+			drop_slots(1)
 			return type_get_slice_value(base)
 
 		int has_parens = accept(c"(")
 
 		# malloc(size), using the same callee-first stack layout as postfix calls
 		sym_get_value(c"malloc")
-		push_eax()
-		stack_pos = stack_pos + 1
-		mov_eax_int(type_get_size(base))
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
+		push_slot_int(type_get_size(base))
 		mov_eax_esp_plus(1 << word_size_log2)
 		call_eax()
-		be_pop(2)
-		stack_pos = stack_pos - 2
+		drop_slots(2)
 		if (type_has_array_field(base)):
 			zero_runtime_object(type_get_size(base))
 			init_array_field_descriptors(base)
@@ -469,19 +446,15 @@ int unary_expression_operand():
 			if (accept(c")") == 0):
 				# Keep the allocation address on the stack while the
 				# field initializers run
-				push_eax()
-				stack_pos = stack_pos + 1
+				push_slot()
 				int field_index = ctor_field_args(base)
 				expect(c")")
 				if ((field_index >= 0) && (field_index != type_num_args(base))):
 					diag_part(c"warning: new ")
 					diag_part(type_get_name(base))
 					diag_part(c" expects ")
-					diag_part(itoa(type_num_args(base)))
-					diag_part(c" arguments, got ")
-					warning(itoa(field_index))
-				pop_eax()
-				stack_pos = stack_pos - 1
+					warning3(itoa(type_num_args(base)), c" arguments, got ", itoa(field_index))
+				pop_eax_slot()
 
 		# eax holds the allocation's address; the expression's type is the
 		# pointer to the allocated type, so mismatched stores warn.

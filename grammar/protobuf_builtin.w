@@ -80,56 +80,19 @@ int protobuf_desc_count
 
 
 # PB_KIND_* values (libs/extras/protobuf/message.w)
-int protobuf_kind_int32():
-	return 1
-
-
-int protobuf_kind_int64():
-	return 2
-
-
-int protobuf_kind_uint32():
-	return 3
-
-
-int protobuf_kind_uint64():
-	return 4
-
-
-int protobuf_kind_sint32():
-	return 5
-
-
-int protobuf_kind_sint64():
-	return 6
-
-
-int protobuf_kind_bool():
-	return 7
-
-
-int protobuf_kind_fixed32():
-	return 8
-
-
-int protobuf_kind_fixed64():
-	return 9
-
-
-int protobuf_kind_string():
-	return 10
-
-
-int protobuf_kind_bytes():
-	return 11
-
-
-int protobuf_kind_message():
-	return 12
-
-
-int protobuf_kind_repeated():
-	return 13
+const int protobuf_kind_int32 = 1
+const int protobuf_kind_int64 = 2
+const int protobuf_kind_uint32 = 3
+const int protobuf_kind_uint64 = 4
+const int protobuf_kind_sint32 = 5
+const int protobuf_kind_sint64 = 6
+const int protobuf_kind_bool = 7
+const int protobuf_kind_fixed32 = 8
+const int protobuf_kind_fixed64 = 9
+const int protobuf_kind_string = 10
+const int protobuf_kind_bytes = 11
+const int protobuf_kind_message = 12
+const int protobuf_kind_repeated = 13
 
 
 int protobuf_message_index(int type_index):
@@ -175,8 +138,7 @@ void protobuf_message_store(int type_index, char* info):
 int protobuf_require_runtime(char* what):
 	int t = type_lookup(c"pb_bytes")
 	if ((t < 0) || (type_lookup(c"pb_message_desc") < 0)):
-		diag_part(what)
-		error(c" requires 'import libs.extras.protobuf.message'")
+		error2(what, c" requires 'import libs.extras.protobuf.message'")
 	return t
 
 
@@ -188,42 +150,40 @@ int protobuf_lookup_builtin_type(char* name):
 
 void protobuf_require_wide_word(char* name):
 	if (word_size != 8):
-		diag_part(c"protobuf field type '")
-		diag_part(name)
-		error(c"' needs a 64-bit target (x64 or arm64)")
+		error3(c"protobuf field type '", name, c"' needs a 64-bit target (x64 or arm64)")
 
 
 # Scalar protobuf kind for a field type word, or 0 when the word is not
 # a scalar spelling (it may still name an enum or another message).
 int protobuf_scalar_kind(char* name):
 	if (strcmp(name, c"int32") == 0):
-		return protobuf_kind_int32()
+		return protobuf_kind_int32
 	if (strcmp(name, c"sint32") == 0):
-		return protobuf_kind_sint32()
+		return protobuf_kind_sint32
 	if (strcmp(name, c"uint32") == 0):
-		return protobuf_kind_uint32()
+		return protobuf_kind_uint32
 	if (strcmp(name, c"fixed32") == 0):
-		return protobuf_kind_fixed32()
+		return protobuf_kind_fixed32
 	if (strcmp(name, c"int64") == 0):
-		return protobuf_kind_int64()
+		return protobuf_kind_int64
 	if (strcmp(name, c"sint64") == 0):
-		return protobuf_kind_sint64()
+		return protobuf_kind_sint64
 	if (strcmp(name, c"uint64") == 0):
-		return protobuf_kind_uint64()
+		return protobuf_kind_uint64
 	if (strcmp(name, c"fixed64") == 0):
-		return protobuf_kind_fixed64()
+		return protobuf_kind_fixed64
 	if (strcmp(name, c"bool") == 0):
-		return protobuf_kind_bool()
+		return protobuf_kind_bool
 	if (strcmp(name, c"string") == 0):
-		return protobuf_kind_string()
+		return protobuf_kind_string
 	if (strcmp(name, c"bytes") == 0):
-		return protobuf_kind_bytes()
+		return protobuf_kind_bytes
 	# float/sfixed32 and double/sfixed64 share FIXED32/FIXED64's wire
 	# form (raw little-endian bits); only the W storage type differs.
 	if ((strcmp(name, c"float") == 0) || (strcmp(name, c"sfixed32") == 0)):
-		return protobuf_kind_fixed32()
+		return protobuf_kind_fixed32
 	if ((strcmp(name, c"double") == 0) || (strcmp(name, c"sfixed64") == 0)):
-		return protobuf_kind_fixed64()
+		return protobuf_kind_fixed64
 	return 0
 
 
@@ -239,17 +199,17 @@ int protobuf_scalar_storage(int kind, char* name):
 	if (strcmp(name, c"sfixed64") == 0):
 		protobuf_require_wide_word(name)
 		return protobuf_lookup_builtin_type(c"int64")
-	if ((kind == protobuf_kind_int32()) || (kind == protobuf_kind_sint32())):
+	if ((kind == protobuf_kind_int32) || (kind == protobuf_kind_sint32)):
 		return protobuf_lookup_builtin_type(c"int32")
-	if ((kind == protobuf_kind_uint32()) || (kind == protobuf_kind_fixed32())):
+	if ((kind == protobuf_kind_uint32) || (kind == protobuf_kind_fixed32)):
 		return protobuf_lookup_builtin_type(c"uint32")
-	if ((kind == protobuf_kind_int64()) || (kind == protobuf_kind_sint64())):
+	if ((kind == protobuf_kind_int64) || (kind == protobuf_kind_sint64)):
 		protobuf_require_wide_word(name)
 		return protobuf_lookup_builtin_type(c"int64")
-	if ((kind == protobuf_kind_uint64()) || (kind == protobuf_kind_fixed64())):
+	if ((kind == protobuf_kind_uint64) || (kind == protobuf_kind_fixed64)):
 		protobuf_require_wide_word(name)
 		return protobuf_lookup_builtin_type(c"uint64")
-	if (kind == protobuf_kind_bool()):
+	if (kind == protobuf_kind_bool):
 		return bool_type
 	return protobuf_lookup_builtin_type(c"pb_bytes")
 
@@ -271,36 +231,30 @@ int protobuf_message_field(int message_type, char* info, int field_index):
 	else:
 		int named = type_lookup(type_word)
 		if (named < 0):
-			diag_part(c"unknown protobuf field type '")
-			diag_part(type_word)
-			error(c"'")
+			error3(c"unknown protobuf field type '", type_word, c"'")
 		# The message being declared may refer to itself (a tree
 		# node's children): the singular form is a pointer, the
 		# repeated form a list, so neither needs the finished size.
 		int is_self = type_canonical(named) == type_canonical(message_type)
 		if (type_get_kind(named) == type_kind_enum):
-			kind = protobuf_kind_int32()
+			kind = protobuf_kind_int32
 			storage = named
 		else if (is_self || protobuf_is_message(named)):
-			kind = protobuf_kind_message()
+			kind = protobuf_kind_message
 			storage = type_get_next_pointer(named)
 			if (repeated):
 				storage = named
 		else:
-			diag_part(c"unsupported protobuf field type '")
-			diag_part(type_word)
-			error(c"'")
+			error3(c"unsupported protobuf field type '", type_word, c"'")
 	if (repeated):
 		elem_kind = kind
-		kind = protobuf_kind_repeated()
+		kind = protobuf_kind_repeated
 		storage = type_get_list(storage)
 	get_token()
 	char* field_name = strclone(token)
 	get_token()
 	if (accept(c"=") == 0):
-		diag_part(c"protobuf field '")
-		diag_part(field_name)
-		error(c"' needs a field number: '= N'")
+		error3(c"protobuf field '", field_name, c"' needs a field number: '= N'")
 	int number = 0
 	if ((token[0] == '0') && (token[1] == 'x')):
 		int_literal_width_check()
@@ -317,9 +271,7 @@ int protobuf_message_field(int message_type, char* info, int field_index):
 	int i = 0
 	while (i < field_index):
 		if (load_int(info + 4 + i * 12) == number):
-			diag_part(c"duplicate protobuf field number in message '")
-			diag_part(type_get_name(message_type))
-			error(c"'")
+			error3(c"duplicate protobuf field number in message '", type_get_name(message_type), c"'")
 		i = i + 1
 	get_token()
 	type_add_arg(message_type, field_name, storage)
@@ -406,7 +358,7 @@ void protobuf_desc_store(int type_index, int address):
 # The message type a MESSAGE or repeated-MESSAGE field refers to.
 int protobuf_field_message_type(int field_type, int kind):
 	field_type = type_unqualified(field_type)
-	if (kind == protobuf_kind_repeated()):
+	if (kind == protobuf_kind_repeated):
 		return type_list_element_type(field_type)
 	return type_lookup_previous_pointer(field_type)
 
@@ -436,13 +388,9 @@ void protobuf_collect_pending(int message_type):
 		return;
 	char* info = protobuf_message_info(message_type)
 	if (info == 0):
-		diag_part(c"'")
-		diag_part(type_get_name(message_type))
-		error(c"' is not a protobuf message")
+		error3(c"'", type_get_name(message_type), c"' is not a protobuf message")
 	if (load_int(info) < 0):
-		diag_part(c"protobuf message '")
-		diag_part(type_get_name(message_type))
-		error(c"' is declared but never defined")
+		error3(c"protobuf message '", type_get_name(message_type), c"' is declared but never defined")
 	assert1(protobuf_pending_count < 400)
 	save_int(protobuf_pending_types + protobuf_pending_count * 4, message_type)
 	protobuf_pending_count = protobuf_pending_count + 1
@@ -451,7 +399,7 @@ void protobuf_collect_pending(int message_type):
 	while (i < n):
 		int kind = load_int(info + 8 + i * 12)
 		int elem_kind = load_int(info + 12 + i * 12)
-		if ((kind == protobuf_kind_message()) || (elem_kind == protobuf_kind_message())):
+		if ((kind == protobuf_kind_message) || (elem_kind == protobuf_kind_message)):
 			protobuf_collect_pending(protobuf_field_message_type(type_get_field_type_at(message_type, i), kind))
 		i = i + 1
 
@@ -461,7 +409,7 @@ int protobuf_repeated_count(char* info):
 	int r = 0
 	int i = 0
 	while (i < n):
-		if (load_int(info + 8 + i * 12) == protobuf_kind_repeated()):
+		if (load_int(info + 8 + i * 12) == protobuf_kind_repeated):
 			r = r + 1
 		i = i + 1
 	return r
@@ -494,13 +442,13 @@ void protobuf_emit_section(int message_type):
 		int kind = load_int(info + 8 + i * 12)
 		int elem_kind = load_int(info + 12 + i * 12)
 		int aux = 0
-		if (kind == protobuf_kind_message()):
+		if (kind == protobuf_kind_message):
 			aux = protobuf_desc_lookup(type_canonical(protobuf_field_message_type(field_type, kind)))
-		if (kind == protobuf_kind_repeated()):
+		if (kind == protobuf_kind_repeated):
 			int elem_aux = 0
-			if (elem_kind == protobuf_kind_message()):
+			if (elem_kind == protobuf_kind_message):
 				elem_aux = protobuf_desc_lookup(type_canonical(protobuf_field_message_type(field_type, kind)))
-			if (elem_kind == protobuf_kind_bool()):
+			if (elem_kind == protobuf_kind_bool):
 				elem_aux = type_get_size(bool_type)
 			aux = code_offset + codepos
 			emit_target_word(elem_kind)
@@ -581,21 +529,14 @@ int protobuf_descriptor(int message_type):
 # pushed at arg_slot .. arg_slot + arg_count - 1; the result stays in eax.
 void protobuf_emit_call(char* fn_name, int desc_address, int arg_slot, int arg_count):
 	if (sym_lookup(fn_name) < 0):
-		diag_part(c"protobuf runtime function '")
-		diag_part(fn_name)
-		error(c"' is not defined; import libs.extras.protobuf.message")
-	sym_get_value(fn_name)
-	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_int(desc_address)
-	push_eax()
-	stack_pos = stack_pos + 1
+		error3(c"protobuf runtime function '", fn_name, c"' is not defined; import libs.extras.protobuf.message")
+	int s = rt_call_begin(fn_name)
+	push_slot_int(desc_address)
 	int i = 0
 	while (i < arg_count):
-		hash_push_stack_slot(arg_slot + i)
+		push_slot_copy(arg_slot + i)
 		i = i + 1
-	hash_call_finish(s)
+	rt_call_end(s)
 
 
 # The message type named by a message value or single-level pointer
@@ -625,13 +566,10 @@ int protobuf_to_proto_expr():
 	got = promote(got)
 	int t = protobuf_message_of_expression(got)
 	int base_stack = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	int arg_slot = stack_pos
+	int arg_slot = push_slot()
 	int desc_address = protobuf_descriptor(t)
 	protobuf_emit_call(c"pb_to_bytes", desc_address, arg_slot, 1)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	pop_to(base_stack)
 	return type_value(type_get_next_pointer(bytes_type))
 
 
@@ -650,9 +588,7 @@ int protobuf_from_proto_expr():
 	int desc_address = protobuf_descriptor(t)
 	int base_stack = stack_pos
 	int got = promote(expression())
-	push_eax()
-	stack_pos = stack_pos + 1
-	int arg_slot = stack_pos
+	int arg_slot = push_slot()
 	char* fn_name = c"pb_from_bytes"
 	int arg_count = 1
 	if (accept(c",")):
@@ -660,8 +596,7 @@ int protobuf_from_proto_expr():
 		if (types_compatible_with_expression(want_data, got) == 0):
 			warn_type_mismatch(c"from_proto data", want_data, got)
 		promote(expression())
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		fn_name = c"pb_from_data"
 		arg_count = 2
 	else:
@@ -671,8 +606,7 @@ int protobuf_from_proto_expr():
 	if (peek(c")") == 0):
 		error(c"')' expected in from_proto")
 	protobuf_emit_call(fn_name, desc_address, arg_slot, arg_count)
-	be_pop(stack_pos - base_stack)
-	stack_pos = base_stack
+	pop_to(base_stack)
 	return type_value(type_get_next_pointer(t))
 
 

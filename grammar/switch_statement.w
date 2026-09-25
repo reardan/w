@@ -48,9 +48,7 @@ int switch_statement():
 	int scrutinee_class = value_class(scrutinee_type)
 	if ((value_class_is_int_like(scrutinee_class) == 0) && (scrutinee_class != VC_STRING) && (scrutinee_class != VC_CSTR)):
 		value_type_error(c"switch expression must be an int-like value, a string or a char*, got", scrutinee_type)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int scrutinee_slot = stack_pos
+	int scrutinee_slot = push_slot()
 
 	expect(c":")
 	if ((token_newline == 0) && (token[0] != 0)):
@@ -81,16 +79,13 @@ int switch_statement():
 			int h_body = be_ctrl_block()
 			int more = 1
 			while (more):
-				mov_eax_esp_plus((stack_pos - scrutinee_slot) << word_size_log2)
-				push_eax()
-				stack_pos = stack_pos + 1
+				push_slot_copy(scrutinee_slot)
 				int value_type = promote(expression())
 				if (types_compatible_with_expression(scrutinee_type, value_type) == 0):
 					warn_type_mismatch(c"case", scrutinee_type, value_type)
 				if (type_decays_to_pointer(scrutinee_type, value_type)):
 					promote_eax()
-				pop_ebx()
-				stack_pos = stack_pos - 1
+				pop_ebx_slot()
 				# text scrutinees compare contents against text values;
 				# a constant case (a null check) stays a word compare
 				int value_class_got = value_class(value_type)
@@ -129,7 +124,6 @@ int switch_statement():
 	switch_depth = switch_depth - 1
 
 	# Discard the hidden scrutinee slot
-	be_pop(1)
-	stack_pos = stack_pos - 1
+	drop_slots(1)
 
 	return 1
