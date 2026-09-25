@@ -5,7 +5,51 @@
 # this asserts the inferred twin matches its behavior shape for shape.
 import lib.testing
 import lib.utf8
-import structures.array_list
+
+
+# A minimal user-defined int container: for-in lowers to its
+# int_list_iter_begin/done/next/value cursor functions.
+struct int_list:
+	int length
+	int capacity
+	int* items
+
+
+int_list* int_list_new():
+	int_list* l = new int_list
+	l.length = 0
+	l.capacity = 8
+	l.items = cast(int*, malloc(8 * __word_size__))
+	return l
+
+
+void int_list_push(int_list* l, int value):
+	if (l.length == l.capacity):
+		l.items = cast(int*, realloc(l.items, l.capacity * __word_size__, 2 * l.capacity * __word_size__))
+		l.capacity = 2 * l.capacity
+	l.items[l.length] = value
+	l.length = l.length + 1
+
+
+void int_list_free(int_list* l):
+	free(l.items)
+	free(l)
+
+
+int int_list_iter_begin(int_list* l):
+	return 0
+
+
+int int_list_iter_done(int_list* l, int cursor):
+	return cursor >= l.length
+
+
+int int_list_iter_next(int_list* l, int cursor):
+	return cursor + 1
+
+
+int int_list_iter_value(int_list* l, int cursor):
+	return l.items[cursor]
 
 
 struct fi_point:
@@ -134,14 +178,14 @@ void test_infer_array_slice():
 
 
 void test_infer_custom_container():
-	array_list* a = array_list_new()
-	array_list_push(a, 4)
-	array_list_push(a, 5)
+	int_list* a = int_list_new()
+	int_list_push(a, 4)
+	int_list_push(a, 5)
 	int total = 0
 	for x in a:
 		total += x
 	assert_equal(9, total)
-	array_list_free(a)
+	int_list_free(a)
 
 
 void test_infer_nested_and_break_continue():

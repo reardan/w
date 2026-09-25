@@ -86,7 +86,6 @@ modules:
 	lib.wmeta
 	lib.__arch__.context
 	lib.__arch__.syscalls
-	structures.array_list
 	structures.deque
 	structures.hash_table
 	structures.heap
