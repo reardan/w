@@ -2232,6 +2232,7 @@
 				"shell_commands_64_test",
 				"sim_64_test",
 				"sizeof_64_test",
+				"smtp_64_test",
 				"sse_64_test",
 				"sstable_64_test",
 				"stack_trace_64_test",
@@ -2851,6 +2852,7 @@
 				"shell_test",
 				"sim_test",
 				"sizeof_test",
+				"smtp_test",
 				"sse_test",
 				"sstable_test",
 				"stack_trace_test",
@@ -6677,6 +6679,26 @@
 			"steps": [
 				{"cmd": ["bin/wv2", "tests/sizeof_test.w", "-o", "bin/sizeof_test"]},
 				{"cmd": ["bin/sizeof_test"]}
+			]
+		},
+		{
+			"name": "smtp_64_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/smtp_test.w"],
+			"outputs": ["bin/smtp_64_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "x64", "libs/standard/net/smtp_test.w", "-o", "bin/smtp_64_test"]},
+				{"cmd": ["bin/smtp_64_test"]}
+			]
+		},
+		{
+			"name": "smtp_test",
+			"deps": ["wv2"],
+			"inputs": ["libs/standard/net/smtp_test.w"],
+			"outputs": ["bin/smtp_test"],
+			"steps": [
+				{"cmd": ["bin/wv2", "libs/standard/net/smtp_test.w", "-o", "bin/smtp_test"]},
+				{"cmd": ["bin/smtp_test"]}
 			]
 		},
 		{
