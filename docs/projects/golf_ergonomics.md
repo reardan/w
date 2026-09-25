@@ -314,6 +314,27 @@ copies (`__w_list_copy`) and reuses the in-place sorts. Float lists
 stay with lib/stats.w's `stats_sorted`; the rejection message is
 pinned by list_sorted_error_test.
 
+### String comparison and switch (grammar/equality_expr.w, grammar/switch_statement.w)
+
+`==` / `!=` with two `string` operands (variables, `"..."` literals,
+f-strings) compare contents through `__w_string_equal` in the
+always-imported container runtime (structures/hash_table.w): lengths
+first, then bytes; a null descriptor equals only null. A string
+against the constant 0 stays a null check, and `char* == char*` keeps
+its pointer semantics (null checks and identity are used everywhere).
+A repo-wide audit (every tracked `.w` compiled with a temporary
+diagnostic on the new path) found no existing `string == string` site,
+so no identity comparison changed meaning.
+
+`switch` follows the same rule: a `string` scrutinee compares string
+case values by contents, and a `char*` scrutinee compares `char*` and
+`"..."` case values with a null-safe strcmp (`__w_cstr_equal`), while a
+constant case (`case 0:`) stays a word compare. Scrutinees other than
+int-likes, strings and `char*` (non-char pointers, structs, containers,
+functions) used to compile and match only by identity; they are now
+"switch expression must be an int-like value, a string or a char*, got
+'T'" (the float/var/word-size errors are unchanged).
+
 ## Acceptance
 
 - `./wbuild verify` — self-host fixpoint (wv3 == wv4 == wv5) with every
