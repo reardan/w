@@ -57,8 +57,7 @@ int rand_mask31():
 # libs/standard/distributed/prng.w's prng_new).
 void rand_init(rand_state* r, int seed):
 	r.state = seed & rand_mask32()
-	if (r.state == 0):
-		r.state = 305419896   # 0x12345678
+	if (r.state == 0): r.state = 305419896   # 0x12345678
 	r.gaussian_cache = 0.0
 	r.gaussian_has_cache = 0
 
@@ -90,8 +89,7 @@ int rand_below(rand_state* r, int n):
 	int rem = (rand_mask31() % n + 1) % n
 	while (1):
 		int v = rand_next31(r)
-		if ((rem == 0) || (v <= rand_mask31() - rem)):
-			return v % n
+		if ((rem == 0) || (v <= rand_mask31() - rem)): return v % n
 
 
 # float32 in [0, 1): the top 24 bits of a next31 draw (next31 >> 7,

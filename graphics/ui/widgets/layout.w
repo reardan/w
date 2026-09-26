@@ -37,15 +37,13 @@ void ui_layout_reset(ui_layout* lo, ui_rect area):
 # A push past ui_layout_max_depth is dropped; ui_region_pop refuses to
 # pop the root, so a dropped push and its matching pop still balance.
 void ui_region_push(ui_context* ctx, ui_rect area):
-	if (ctx.layout_depth >= ui_layout_max_depth()):
-		return
+	if (ctx.layout_depth >= ui_layout_max_depth): return
 	ui_layout_reset(&ctx.layout_stack[ctx.layout_depth], area)
 	ctx.layout_depth = ctx.layout_depth + 1
 
 
 void ui_region_pop(ui_context* ctx):
-	if (ctx.layout_depth <= 1):
-		return
+	if (ctx.layout_depth <= 1): return
 	ctx.layout_depth = ctx.layout_depth - 1
 
 
@@ -64,11 +62,9 @@ ui_rect ui_region_content(ui_context* ctx):
 void ui_region_claim(ui_context* ctx, ui_rect r):
 	ui_layout* lo = ui_layout_top(ctx)
 	float32 right = r.x + r.w - lo.bounds.x
-	if (right > lo.content_w):
-		lo.content_w = right
+	if (right > lo.content_w): lo.content_w = right
 	float32 bottom = r.y + r.h - lo.bounds.y
-	if (bottom > lo.content_h):
-		lo.content_h = bottom
+	if (bottom > lo.content_h): lo.content_h = bottom
 
 
 # Place the next widget on the same row as the previous one.

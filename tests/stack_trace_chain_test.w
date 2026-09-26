@@ -69,11 +69,9 @@ int main(int argc, int argv):
 	asserts(c"the trace came from the frame-pointer chain", st_unwind_exact == 1)
 	assert_strings_equal(c"chain_leaf", stack_trace_symbol(frame_at(0)))
 	assert_strings_equal(c"chain_a", stack_trace_symbol(frame_at(1)))
-	int k = 0
-	while (k < depth):
+	for k in range(depth):
 		assert_strings_equal(c"chain_b", stack_trace_symbol(frame_at(2 + 2 * k)))
 		assert_strings_equal(c"chain_a", stack_trace_symbol(frame_at(3 + 2 * k)))
-		k = k + 1
 	assert_strings_equal(c"main", stack_trace_symbol(frame_at(expected - 1)))
 	# the call statements: chain_a's leaf and recursive calls, chain_b's call
 	assert_equal(46, stack_trace_line(frame_at(1)))

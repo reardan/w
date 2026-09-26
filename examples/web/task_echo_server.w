@@ -26,16 +26,13 @@ int loopback_ip():
 char* task_frame_read_message(frame_reader* r, int* length_out):
 	char* body = frame_take_buffered_message(r, length_out)
 	while (body == 0):
-		if (r.error):
-			return 0
-		int revents = task_await_fd(r.fd, poll_in())
-		if (revents < 0):
-			return 0
+		if (r.error): return 0
+		int revents = task_await_fd(r.fd, poll_in)
+		if (revents < 0): return 0
 		int count = frame_reader_fill(r)
 		if (count == 0):
 			# EOF: clean if nothing was buffered, truncated otherwise.
-			if (r.offset < r.length):
-				r.error = 1
+			if (r.offset < r.length): r.error = 1
 			return 0
 		if ((count < 0) && (count != -11)): /* EAGAIN just polls again */
 			r.error = 1
@@ -63,12 +60,9 @@ int task_frame_write_message(int fd, char* body, int length):
 
 
 void uppercase_ascii(char* text, int length):
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		int b = text[i] & 255
-		if ((b >= 'a') && (b <= 'z')):
-			text[i] = b - 32
-		i = i + 1
+		if ((b >= 'a') && (b <= 'z')): text[i] = b - 32
 
 
 # One task per connection: read a frame, uppercase it, write it back,
@@ -81,13 +75,11 @@ generator int echo_connection(int fd):
 	while (1):
 		int length = 0
 		char* body = task_frame_read_message(reader, &length)
-		if (body == 0):
-			break
+		if (body == 0): break
 		uppercase_ascii(body, length)
 		int written = task_frame_write_message(fd, body, length)
 		free(body)
-		if (written < 0):
-			break
+		if (written < 0): break
 		handled = handled + 1
 	frame_reader_free(reader)
 	close(fd)
@@ -99,8 +91,7 @@ generator int echo_acceptor(int listen_fd, int connection_count):
 	int accepted = 0
 	while ((connection_count < 0) || (accepted < connection_count)):
 		int fd = task_accept(listen_fd)
-		if (fd < 0):
-			break
+		if (fd < 0): break
 		task_go(echo_connection(fd))
 		accepted = accepted + 1
 	task_finish(accepted)
@@ -136,14 +127,11 @@ generator int demo_client(int port, int id, char* message):
 	int failures = 0
 	int length = strlen(message)
 	frame_reader* reader = frame_reader_new(fd)
-	int round = 0
-	while (round < 2):
-		if (task_frame_write_message(fd, message, length) < 0):
-			failures = failures + 1
+	for round in range(2):
+		if (task_frame_write_message(fd, message, length) < 0): failures = failures + 1
 		int reply_length = 0
 		char* reply = task_frame_read_message(reader, &reply_length)
-		if (reply == 0):
-			failures = failures + 1
+		if (reply == 0): failures = failures + 1
 		else:
 			print(c"client ")
 			print(itoa(id))
@@ -151,7 +139,6 @@ generator int demo_client(int port, int id, char* message):
 			print(reply)
 			print(c"\n")
 			free(reply)
-		round = round + 1
 	frame_reader_free(reader)
 	close(fd)
 	task_finish(failures)
@@ -192,14 +179,12 @@ int run_server():
 	int err = task_run(s)
 	task_scheduler_free(s)
 	close(listen_fd)
-	if (err < 0):
-		return 1
+	if (err < 0): return 1
 	return 0
 
 
 int main(int argc, int argv):
 	if (argc > 1):
 		char** arg = argv + __word_size__
-		if (strcmp(*arg, c"--serve") == 0):
-			return run_server()
+		if (strcmp(*arg, c"--serve") == 0): return run_server()
 	return run_demo()

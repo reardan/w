@@ -3,8 +3,7 @@
 # convention as this directory's syscalls.w statx.
 
 
-int STATFS_BUF_SIZE():
-	return 128
+const int STATFS_BUF_SIZE = 128
 
 
 int statfs_fill(char* path, char* buf, int* out):

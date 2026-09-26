@@ -39,62 +39,7 @@ import structures.string
 import libs.standard.web.http_client
 import libs.standard.web.sse
 import libs.standard.net.tls
-
-
-# ---- shared helpers -----------------------------------------------------------
-
-char* hs_cert_path():
-	return c"libs/standard/net/tls_fixtures/server_p256_cert.pem"
-
-
-char* hs_key_path():
-	return c"libs/standard/net/tls_fixtures/server_p256_key.pem"
-
-
-# Listener on 127.0.0.1 with a kernel-assigned port (returned via out_port).
-int hs_listen(int* out_port):
-	int listener = socket_tcp_ipv4()
-	if (listener < 0):
-		exit(31)
-	socket_set_reuseaddr(listener)
-	if (socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0) < 0):
-		exit(32)
-	if (socket_listen(listener, 8) < 0):
-		exit(33)
-	sockaddr_in bound
-	if (socket_getsockname_ipv4(listener, &bound) < 0):
-		exit(34)
-	*out_port = net_htons(bound.port)
-	return listener
-
-
-char* hs_scheme_url(char* scheme, int port, char* path):
-	string_builder* out = string_new()
-	string_append(out, scheme)
-	string_append(out, c"://127.0.0.1:")
-	string_append_int(out, port)
-	string_append(out, path)
-	char* text = out.data
-	free(out)
-	return text
-
-
-char* hs_url(int port, char* path):
-	return hs_scheme_url(c"https", port, path)
-
-
-char* hs_http_url(int port, char* path):
-	return hs_scheme_url(c"http", port, path)
-
-
-# Offset just past the CRLFCRLF that ends a request head, or -1.
-int hs_head_end(char* buf, int total):
-	int i = 0
-	while (i + 3 < total):
-		if ((buf[i] == 13) && (buf[i + 1] == 10) && (buf[i + 2] == 13) && (buf[i + 3] == 10)):
-			return i + 4
-		i = i + 1
-	return (-1)
+import libs.standard.web.testing
 
 
 # ---- (child) server-side helpers ----------------------------------------------
@@ -109,16 +54,11 @@ int hs_head_end(char* buf, int total):
 # abort (exit 22) and a client-side http_error_tls flake.
 tls_conn* hs_child_accept(int listener):
 	int conn = socket_accept_connection(listener)
-	if (conn < 0):
-		exit(21)
+	if (conn < 0): exit(21)
 	socket_set_recv_timeout(conn, 60000)
 	socket_set_send_timeout(conn, 60000)
-	tls_server_config* scfg = tls_server_config_new()
-	scfg.cert_chain_path = hs_cert_path()
-	scfg.key_path = hs_key_path()
-	tls_conn* tc = tls_accept(conn, scfg)
-	if (tc == 0):
-		exit(22)
+	tls_conn* tc = tls_accept(conn, web_test_server_config())
+	if (tc == 0): exit(22)
 	return tc
 
 
@@ -126,58 +66,12 @@ tls_conn* hs_child_accept(int listener):
 void hs_child_read_request(tls_conn* tc):
 	char* buf = malloc(8192)
 	int total = 0
-	int done = 0
-	while (done == 0):
-		if (total >= 8192):
-			done = 1
-		else:
-			int got = tls_read(tc, buf + total, 8192 - total)
-			if (got <= 0):
-				done = 1
-			else:
-				total = total + got
-				if (hs_head_end(buf, total) >= 0):
-					done = 1
+	while (total < 8192):
+		int got = tls_read(tc, buf + total, 8192 - total)
+		if (got <= 0): break
+		total = total + got
+		if (net_test_head_end(buf, total) >= 0): break
 	free(buf)
-
-
-# Same over a raw (plaintext) socket.
-void hs_child_read_request_raw(int conn):
-	char* buf = malloc(8192)
-	int total = 0
-	int done = 0
-	while (done == 0):
-		if (total >= 8192):
-			done = 1
-		else:
-			int got = read(conn, buf + total, 8192 - total)
-			if (got <= 0):
-				done = 1
-			else:
-				total = total + got
-				if (hs_head_end(buf, total) >= 0):
-					done = 1
-	free(buf)
-
-
-# Send every byte over a raw socket (best effort; SIGPIPE-proof).
-void hs_send_all_raw(int conn, char* data, int n):
-	int total = 0
-	while (total < n):
-		int got = socket_send(conn, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			total = n
-		else:
-			total = total + got
-
-
-# Drain a raw socket until the peer closes (or the recv timeout fires).
-void hs_drain_raw(int conn):
-	char* d = malloc(1024)
-	int got = read(conn, d, 1024)
-	while (got > 0):
-		got = read(conn, d, 1024)
-	free(d)
 
 
 # (child) After serving, wait for the client's close_notify (returns 0) so
@@ -189,25 +83,13 @@ void hs_child_wait_close(tls_conn* tc):
 	tls_close(tc)
 
 
-# ---- (parent) reaping ---------------------------------------------------------
-
-# Drop the cached keep-alive connection (so it never leaks into the next
-# test), reap the child, and assert it exited cleanly.
-void hs_finish(int pid, int listener):
-	http_client_close_idle()
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	close(listener)
-	asserts(c"server child exited cleanly", status == 0)
-
-
 # ---- tests --------------------------------------------------------------------
 
 # A full GET over TLS: status line, headers, and a Content-Length body all
 # survive the round trip through url_parse -> tls_connect -> request/response.
 void test_https_loopback_get():
 	int port = 0
-	int listener = hs_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -218,7 +100,7 @@ void test_https_loopback_get():
 		hs_child_wait_close(tc)
 		exit(0)
 
-	char* target = hs_url(port, c"/hi")
+	char* target = net_test_url(c"https", port, c"/hi")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
 	# 60s handshake wedge guard (see the header): both sides' pure-W
@@ -234,7 +116,7 @@ void test_https_loopback_get():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hs_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 # Two GETs to the same https origin: the second reuses the cached TLS
@@ -243,21 +125,19 @@ void test_https_loopback_get():
 # cache on scheme+host+port).
 void test_https_keep_alive_reuse():
 	int port = 0
-	int listener = hs_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		tls_conn* tc = hs_child_accept(listener)
-		int k = 0
-		while (k < 2):
+		for k in range(2):
 			hs_child_read_request(tc)
 			char* resp = c"HTTP/1.1 200 OK\x0d\x0aContent-Length: 3\x0d\x0a\x0d\x0aabc"
 			tls_write(tc, resp, strlen(resp))
-			k = k + 1
 		hs_child_wait_close(tc)
 		exit(0)
 
-	char* target = hs_url(port, c"/keep")
+	char* target = net_test_url(c"https", port, c"/keep")
 	http_req* req1 = http_req_new(c"GET", target)
 	req1.tls_insecure_skip_verify = 1
 	req1.tls_handshake_timeout_ms = 60000
@@ -278,14 +158,14 @@ void test_https_keep_alive_reuse():
 	http_response_free(r2)
 	http_req_free(req2)
 	free(target)
-	hs_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 # SSE composed over TLS: the server streams event-stream records, the client
 # opens an https stream and sse_open/sse_next consume events incrementally.
 void test_https_sse_over_tls():
 	int port = 0
-	int listener = hs_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -302,7 +182,7 @@ void test_https_sse_over_tls():
 		tls_close(tc)
 		exit(0)
 
-	char* target = hs_url(port, c"/events")
+	char* target = net_test_url(c"https", port, c"/events")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
 	req.tls_handshake_timeout_ms = 60000
@@ -331,39 +211,38 @@ void test_https_sse_over_tls():
 
 	sse_event* ev4 = sse_next(r)
 	asserts(c"sse stream ends", ev4 == 0)
-	assert_equal(sse_error_none(), sse_reader_error(r))
+	assert_equal(sse_error_none, sse_reader_error(r))
 
 	sse_reader_free(r)
 	http_stream_close(st)
 	http_req_free(req)
 	free(target)
-	hs_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 # An http:// request that 302-redirects to an https:// URL: the client must
 # switch transport from plaintext to TLS across the hop.
 void test_https_cross_scheme_redirect():
 	int plain_port = 0
-	int plain_listener = hs_listen(&plain_port)
+	int plain_listener = net_test_listen(&plain_port)
 	int tls_port = 0
-	int tls_listener = hs_listen(&tls_port)
+	int tls_listener = net_test_listen(&tls_port)
 
 	int pid_a = fork()
 	asserts(c"fork failed", pid_a >= 0)
 	if (pid_a == 0):
 		close(tls_listener)
 		int conn = socket_accept_connection(plain_listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		socket_set_recv_timeout(conn, 60000)
-		hs_child_read_request_raw(conn)
+		net_test_read_head(conn)
 		string_builder* redirect = string_new()
 		string_append(redirect, c"HTTP/1.1 302 Found\x0d\x0aLocation: https://127.0.0.1:")
 		string_append_int(redirect, tls_port)
 		string_append(redirect, c"/final\x0d\x0aContent-Length: 0\x0d\x0a\x0d\x0a")
-		hs_send_all_raw(conn, redirect.data, redirect.length)
+		net_test_send_all(conn, redirect.data, redirect.length)
 		string_free(redirect)
-		hs_drain_raw(conn)
+		net_test_drain(conn)
 		close(conn)
 		exit(0)
 
@@ -378,7 +257,7 @@ void test_https_cross_scheme_redirect():
 		hs_child_wait_close(tc)
 		exit(0)
 
-	char* target = hs_http_url(plain_port, c"/start")
+	char* target = net_test_url(c"http", plain_port, c"/start")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
 	req.tls_handshake_timeout_ms = 60000
@@ -408,9 +287,9 @@ void test_https_cross_scheme_redirect():
 # mishandle into a TLS error instead of a connect failure.
 void test_https_connect_timeout():
 	int port = 0
-	int listener = hs_listen(&port)
+	int listener = net_test_listen(&port)
 	close(listener)
-	char* target = hs_url(port, c"/x")
+	char* target = net_test_url(c"https", port, c"/x")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
 	req.timeout_ms = 500
@@ -419,10 +298,8 @@ void test_https_connect_timeout():
 	int elapsed = time_monotonic_ms() - started
 	assert_equal(0, resp.status)
 	int bounded_error = 0
-	if (resp.error == http_error_timeout()):
-		bounded_error = 1
-	if (resp.error == http_error_connect()):
-		bounded_error = 1
+	if (resp.error == http_error_timeout): bounded_error = 1
+	if (resp.error == http_error_connect): bounded_error = 1
 	asserts(c"connect fails bounded", bounded_error != 0)
 	# Upper bound: proves we did not hang on the 30s default. Generous
 	# because a loaded machine deschedules us.
@@ -437,30 +314,29 @@ void test_https_connect_timeout():
 # (no response to wait for, so no slow crypto is involved).
 void test_https_handshake_timeout():
 	int port = 0
-	int listener = hs_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		# Wedge guard only: must outlast the client's pre-ClientHello key
 		# generation plus its 500ms wait, even under suite load.
 		socket_set_recv_timeout(conn, 60000)
 		# Read the ClientHello but never handshake; stall until the client
 		# gives up and closes.
-		hs_drain_raw(conn)
+		net_test_drain(conn)
 		close(conn)
 		exit(0)
 
-	char* target = hs_url(port, c"/hs")
+	char* target = net_test_url(c"https", port, c"/hs")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
 	req.tls_handshake_timeout_ms = 500
 	int started = time_monotonic_ms()
 	http_response* resp = http_request(req)
 	int elapsed = time_monotonic_ms() - started
-	assert_equal(http_error_tls(), resp.error)
+	assert_equal(http_error_tls, resp.error)
 	assert_equal(0, resp.status)
 	asserts(c"handshake timeout too early", elapsed >= 300)
 	# Elapsed includes the client's own X25519 keygen CPU time, which a
@@ -470,7 +346,7 @@ void test_https_handshake_timeout():
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hs_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 # The header read times out when the server completes the handshake but
@@ -478,7 +354,7 @@ void test_https_handshake_timeout():
 # pure-W) handshake finish; timeout_ms then bounds the header read.
 void test_https_header_timeout():
 	int port = 0
-	int listener = hs_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -488,25 +364,25 @@ void test_https_header_timeout():
 		hs_child_wait_close(tc)
 		exit(0)
 
-	char* target = hs_url(port, c"/slow")
+	char* target = net_test_url(c"https", port, c"/slow")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
 	req.tls_handshake_timeout_ms = 60000
 	req.timeout_ms = 500
 	http_response* resp = http_request(req)
-	assert_equal(http_error_timeout(), resp.error)
+	assert_equal(http_error_timeout, resp.error)
 	assert_equal(0, resp.status)
 	http_response_free(resp)
 	http_req_free(req)
 	free(target)
-	hs_finish(pid, listener)
+	web_test_finish(pid, listener)
 
 
 # The idle-stream read times out mid-stream: the server sends one event then
 # stalls, and the next sse_next surfaces the timeout without hanging.
 void test_https_idle_stream_timeout():
 	int port = 0
-	int listener = hs_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
@@ -520,7 +396,7 @@ void test_https_idle_stream_timeout():
 		hs_child_wait_close(tc)
 		exit(0)
 
-	char* target = hs_url(port, c"/drip")
+	char* target = net_test_url(c"https", port, c"/drip")
 	http_req* req = http_req_new(c"GET", target)
 	req.tls_insecure_skip_verify = 1
 	req.tls_handshake_timeout_ms = 60000
@@ -538,11 +414,11 @@ void test_https_idle_stream_timeout():
 
 	sse_event* ev2 = sse_next(r)
 	asserts(c"stalled stream yields no event", ev2 == 0)
-	assert_equal(sse_error_stream(), sse_reader_error(r))
-	assert_equal(http_error_timeout(), head.error)
+	assert_equal(sse_error_stream, sse_reader_error(r))
+	assert_equal(http_error_timeout, head.error)
 
 	sse_reader_free(r)
 	http_stream_close(st)
 	http_req_free(req)
 	free(target)
-	hs_finish(pid, listener)
+	web_test_finish(pid, listener)

@@ -21,25 +21,14 @@ import lib.stream
 import structures.string
 
 
-int ASM_ELF_CLASS32():
-	return 1
-
-
-int ASM_ELF_CLASS64():
-	return 2
+const int ASM_ELF_CLASS32 = 1
+const int ASM_ELF_CLASS64 = 2
 
 
 # e_machine values
-int ASM_EM_386():
-	return 3
-
-
-int ASM_EM_X86_64():
-	return 62
-
-
-int ASM_EM_AARCH64():
-	return 183
+const int ASM_EM_386 = 3
+const int ASM_EM_X86_64 = 62
+const int ASM_EM_AARCH64 = 183
 
 
 struct asm_symbol:
@@ -75,7 +64,7 @@ int asm_read_u32(char* data, int offset):
 # 64-bit form is zero (see the header comment).
 int asm_read_word(char* data, int offset, int elf_class):
 	int low = asm_read_u32(data, offset)
-	if (elf_class == ASM_ELF_CLASS64()):
+	if (elf_class == ASM_ELF_CLASS64):
 		if (asm_read_u32(data, offset + 4) != 0):
 			println2(c"asm_binary: 64-bit field exceeds 32 bits")
 			exit(1)
@@ -84,8 +73,7 @@ int asm_read_word(char* data, int offset, int elf_class):
 
 char* asm_binary_read_file(char* path, int* length_out):
 	wstream* in = stream_open_read(path)
-	if (in == 0):
-		return 0
+	if (in == 0): return 0
 	string_builder* contents = string_new()
 	stream_read_all(in, contents)
 	stream_close(in)
@@ -100,18 +88,15 @@ char* asm_binary_read_file(char* path, int* length_out):
 # encoding in a whole file image).
 int asm_find_bytes4(char* data, int length, int b0, int b1, int b2, int b3):
 	int limit = length - 4
-	int i = 0
-	while (i <= limit):
+	for i in range(limit + 1):
 		if ((data[i] & 255) == b0 && (data[i + 1] & 255) == b1 && (data[i + 2] & 255) == b2 && (data[i + 3] & 255) == b3):
 			return 1
-		i = i + 1
 	return 0
 
 
 # 1 when data[offset..offset+4) holds exactly b0..b3.
 int asm_bytes_match4_at(char* data, int length, int offset, int b0, int b1, int b2, int b3):
-	if (length < offset + 4):
-		return 0
+	if (length < offset + 4): return 0
 	return (data[offset] & 255) == b0 && (data[offset + 1] & 255) == b1 && (data[offset + 2] & 255) == b2 && (data[offset + 3] & 255) == b3
 
 
@@ -134,12 +119,9 @@ as a test failure.
 asm_binary* asm_binary_open(char* path):
 	int length = 0
 	char* data = asm_binary_read_file(path, &length)
-	if (cast(int, data) == 0):
-		return 0
-	if (length < 52):
-		return 0
-	if (asm_read_u8(data, 0) != 127 | data[1] != 'E' | data[2] != 'L' | data[3] != 'F'):
-		return 0
+	if (cast(int, data) == 0): return 0
+	if (length < 52): return 0
+	if (asm_read_u8(data, 0) != 127 | data[1] != 'E' | data[2] != 'L' | data[3] != 'F'): return 0
 	asm_binary* binary = cast(asm_binary*, malloc(8 * __word_size__))
 	binary.data = data
 	binary.length = length
@@ -151,7 +133,7 @@ asm_binary* asm_binary_open(char* path):
 	binary.symbols = new list[asm_symbol]
 
 	# Header field offsets differ by class.
-	int is64 = binary.elf_class == ASM_ELF_CLASS64()
+	int is64 = binary.elf_class == ASM_ELF_CLASS64
 	int shoff_at = 32
 	int shentsize_at = 46
 	int shnum_at = 48
@@ -189,8 +171,7 @@ asm_binary* asm_binary_open(char* path):
 	int symtab_offset = 0
 	int symtab_size = 0
 	int strtab_offset = 0
-	int index = 0
-	while (index < shnum):
+	for index in range(shnum):
 		int header = shoff + index * shentsize
 		int name_index = asm_read_u32(data, header)
 		int section_type = asm_read_u32(data, header + 4)
@@ -206,7 +187,6 @@ asm_binary* asm_binary_open(char* path):
 			int link = asm_read_u32(data, header + sh_link_at)
 			int link_header = shoff + link * shentsize
 			strtab_offset = asm_read_word(data, link_header + sh_offset_at, binary.elf_class)
-		index = index + 1
 	if (binary.text_size == 0):
 		println2(c"asm_binary: no .text section")
 		exit(1)
@@ -214,8 +194,7 @@ asm_binary* asm_binary_open(char* path):
 	# Symbol table (optional: stripped binaries have none).
 	if (symtab_offset != 0):
 		int count = symtab_size / sh_entsize
-		int i = 0
-		while (i < count):
+		for i in range(count):
 			int entry = symtab_offset + i * sh_entsize
 			int name_at = asm_read_u32(data, entry)
 			int value = 0
@@ -232,7 +211,6 @@ asm_binary* asm_binary_open(char* path):
 				sym.value = value
 				sym.size = size
 				binary.symbols.push(sym)
-			i = i + 1
 	return binary
 
 
@@ -243,21 +221,17 @@ char* asm_binary_text(asm_binary* binary):
 
 # Symbol covering the given virtual address, or -1.
 int asm_binary_symbol_at(asm_binary* binary, int address):
-	int i = 0
-	while (i < binary.symbols.length):
+	for i in range(binary.symbols.length):
 		asm_symbol sym = binary.symbols[i]
 		if (address >= sym.value && address < sym.value + sym.size):
 			return i
-		i = i + 1
 	return -1
 
 
 # Named symbol's index, or -1.
 int asm_binary_symbol_named(asm_binary* binary, char* name):
-	int i = 0
-	while (i < binary.symbols.length):
+	for i in range(binary.symbols.length):
 		asm_symbol sym = binary.symbols[i]
 		if (strcmp(sym.name, name) == 0):
 			return i
-		i = i + 1
 	return -1

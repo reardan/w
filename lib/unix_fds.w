@@ -20,20 +20,16 @@ words, and struct cmsghdr is {size_t len, int level, int type} followed
 by the descriptors at the next word boundary.
 */
 import lib.lib
+import lib.mem
 
 
-int unix_fds_sol_socket():
-	return 1
-
-
-int unix_fds_scm_rights():
-	return 1
+const int unix_fds_sol_socket = 1
+const int unix_fds_scm_rights = 1
 
 
 # MSG_CMSG_CLOEXEC: received descriptors do not leak into programs the
 # receiver later execs.
-int unix_fds_msg_cmsg_cloexec():
-	return 1073741824
+const int unix_fds_msg_cmsg_cloexec = 1073741824
 
 
 int unix_fds_align(int n):
@@ -72,17 +68,11 @@ char* unix_fds_iovec(char* data, int n):
 int unix_send_fds(int sock, char* data, int n, int* fds, int count):
 	int space = unix_fds_cmsg_space(count)
 	char* control = malloc(space)
-	int i = 0
-	while (i < space):
-		control[i] = 0
-		i = i + 1
+	mem_fill(control, 0, space)
 	save_word(control, unix_fds_cmsg_data_offset() + count * 4)
-	save_int(control + __word_size__, unix_fds_sol_socket())
-	save_int(control + __word_size__ + 4, unix_fds_scm_rights())
-	i = 0
-	while (i < count):
-		save_int(control + unix_fds_cmsg_data_offset() + i * 4, fds[i])
-		i = i + 1
+	save_int(control + __word_size__, unix_fds_sol_socket)
+	save_int(control + __word_size__ + 4, unix_fds_scm_rights)
+	for i in range(count): save_int(control + unix_fds_cmsg_data_offset() + i * 4, fds[i])
 	char* iov = unix_fds_iovec(data, n)
 	char* msg = unix_fds_msghdr(iov, control, space)
 	int sent = sys_sendmsg(sock, cast(int, msg), 0)
@@ -98,20 +88,18 @@ int unix_recv_fds(int sock, char* buf, int cap, int* fds_out, int max, int* coun
 	char* control = malloc(space)
 	char* iov = unix_fds_iovec(buf, cap)
 	char* msg = unix_fds_msghdr(iov, control, space)
-	int got = sys_recvmsg(sock, cast(int, msg), unix_fds_msg_cmsg_cloexec())
+	int got = sys_recvmsg(sock, cast(int, msg), unix_fds_msg_cmsg_cloexec)
 	if (got >= 0):
 		int control_length = load_word(msg + 5 * __word_size__)
 		int off = 0
 		while (off + unix_fds_cmsg_data_offset() <= control_length):
 			int length = load_word(control + off)
-			if (length < unix_fds_cmsg_data_offset()):
-				break
+			if (length < unix_fds_cmsg_data_offset()): break
 			int level = load_int32(control + off + __word_size__)
 			int kind = load_int32(control + off + __word_size__ + 4)
-			if ((level == unix_fds_sol_socket()) && (kind == unix_fds_scm_rights())):
+			if ((level == unix_fds_sol_socket) && (kind == unix_fds_scm_rights)):
 				int n = (length - unix_fds_cmsg_data_offset()) / 4
-				int i = 0
-				while (i < n):
+				for i in range(n):
 					int fd = load_int32(control + off + unix_fds_cmsg_data_offset() + i * 4)
 					if (*count_out < max):
 						fds_out[*count_out] = fd
@@ -119,7 +107,6 @@ int unix_recv_fds(int sock, char* buf, int cap, int* fds_out, int max, int* coun
 					else:
 						# More than the caller has room for: never leak.
 						close(fd)
-					i = i + 1
 			off = off + unix_fds_align(length)
 	free(msg)
 	free(iov)

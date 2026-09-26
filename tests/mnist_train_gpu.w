@@ -29,16 +29,11 @@ import lib.mnist
 # managed buffer and the matching labels into lb. Plain host-side loops:
 # tensor data is CUDA managed memory, so the next GPU op sees the writes.
 void load_batch(tensor* x, ndi* lb, ndf* flat, ndi* labels, int start, int batch, int dims):
-	int r = 0
-	while (r < batch):
+	for r in range(batch):
 		int src = (start + r) * dims
 		int dst = r * dims
-		int j = 0
-		while (j < dims):
-			x.data[dst + j] = flat.data[src + j]
-			j = j + 1
+		for j in range(dims): x.data[dst + j] = flat.data[src + j]
 		lb.data[r] = labels.data[start + r]
-		r = r + 1
 
 
 # linear -> relu -> linear.
@@ -54,25 +49,20 @@ tensor* mlp_forward(ag_tape* t, nn_linear* l1, nn_linear* l2, tensor* x):
 float accuracy(tensor* logits, ndi* labels, int n, int classes):
 	tensor_sync()
 	int correct = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int best = 0
 		float bestv = logits.data[i * classes]
-		int j = 1
-		while (j < classes):
+		for j in range(1, classes):
 			float v = logits.data[i * classes + j]
 			if (v > bestv):
 				bestv = v
 				best = j
-			j = j + 1
-		if (best == labels.data[i]):
-			correct = correct + 1
-		i = i + 1
+		if (best == labels.data[i]): correct = correct + 1
 	return cast(float, correct) / cast(float, n)
 
 
 int load_or_die(int rc, char* what):
-	if (rc != MNIST_OK()):
+	if (rc != MNIST_OK):
 		print(c"mnist train: FAILED loading ")
 		print(what)
 		print(c": ")
@@ -82,10 +72,8 @@ int load_or_die(int rc, char* what):
 
 
 int main(int argc, int argv):
-	if (gpu_available()):
-		println(c"mnist: gpu path")
-	else:
-		println(c"mnist: cpu fallback")
+	if (gpu_available()): println(c"mnist: gpu path")
+	else: println(c"mnist: cpu fallback")
 
 	ndf train_images
 	ndi train_labels
@@ -120,11 +108,9 @@ int main(int argc, int argv):
 	ag_tape* t = ag_tape_new()
 
 	int steps_per_epoch = n_train / batch
-	int epoch = 0
-	while (epoch < epochs):
+	for epoch in range(epochs):
 		float epoch_loss = 0.0
-		int step = 0
-		while (step < steps_per_epoch):
+		for step in range(steps_per_epoch):
 			load_batch(&x, &lb, &train_flat, &train_labels, step * batch, batch, dims)
 			tensor* logits = mlp_forward(t, &l1, &l2, &x)
 			tensor* loss = ag_softmax_ce(t, logits, &lb)
@@ -133,10 +119,8 @@ int main(int argc, int argv):
 			nn_linear_sgd_step(t, &l1, lr)
 			nn_linear_sgd_step(t, &l2, lr)
 			ag_tape_reset(t)
-			step = step + 1
 		print(c"epoch loss ")
 		println(ftoa(epoch_loss / cast(float, steps_per_epoch)))
-		epoch = epoch + 1
 
 	# Held-out evaluation: one forward pass over the full t10k set.
 	int n_test = test_flat.n0

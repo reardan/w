@@ -21,6 +21,8 @@ import libs.extras.protobuf.message
 import libs.standard.web.hpack
 import libs.standard.web.http2
 import libs.standard.web.grpc
+import libs.standard.web.testing
+import lib.mem
 
 
 /* Protobuf message types */
@@ -37,7 +39,7 @@ pb_message_desc gt_hello_desc
 void gt_desc_init():
 	gt_hello m
 	gt_hello_fields[0].number = 1
-	gt_hello_fields[0].kind = PB_KIND_STRING()
+	gt_hello_fields[0].kind = PB_KIND_STRING
 	gt_hello_fields[0].offset = cast(int, &m.text) - cast(int, &m)
 	gt_hello_fields[0].aux = 0
 	gt_hello_fields[1].number = 2
@@ -60,10 +62,7 @@ char* gt_encode(char* text, int count, int* out_len):
 # Decodes into a zeroed gt_hello; asserts success.
 gt_hello* gt_decode(char* data, int len):
 	char* buf = malloc(gt_hello_desc.struct_size)
-	int i = 0
-	while (i < gt_hello_desc.struct_size):
-		buf[i] = 0
-		i = i + 1
+	mem_fill(buf, 0, gt_hello_desc.struct_size)
 	assert_equal(0, pb_decode_into(&gt_hello_desc, data, len, buf))
 	return cast(gt_hello*, buf)
 
@@ -81,8 +80,7 @@ void gt_say_hello(grpc_call* call, void* user_data):
 	grpc_call_add_header(call, c"x-handler", c"hello")
 	grpc_call_add_trailer(call, c"x-trailer", c"t")
 	char* echo = grpc_call_metadata(call, c"x-client")
-	if (echo != 0):
-		grpc_call_add_trailer(call, c"x-client-echo", echo)
+	if (echo != 0): grpc_call_add_trailer(call, c"x-client-echo", echo)
 	free(out)
 	string_free(sb)
 	free(req.text.data)
@@ -91,11 +89,11 @@ void gt_say_hello(grpc_call* call, void* user_data):
 
 void gt_fail(grpc_call* call, void* user_data):
 	call.headers_first = 1
-	grpc_call_fail(call, grpc_status_not_found(), c"no such user: caf\xc3\xa9 100%")
+	grpc_call_fail(call, grpc_status_not_found, c"no such user: caf\xc3\xa9 100%")
 
 
 void gt_deny(grpc_call* call, void* user_data):
-	grpc_call_fail(call, grpc_status_permission_denied(), c"denied")
+	grpc_call_fail(call, grpc_status_permission_denied, c"denied")
 
 
 # Replies with the timeout the server parsed from grpc-timeout.
@@ -116,33 +114,10 @@ void gt_slow(grpc_call* call, void* user_data):
 
 /* Fixture plumbing */
 
-int gt_listen(int* out_port):
-	int listener = socket_tcp_ipv4()
-	asserts(c"socket", listener >= 0)
-	socket_set_reuseaddr(listener)
-	asserts(c"bind", socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0) >= 0)
-	asserts(c"listen", socket_listen(listener, 8) >= 0)
-	sockaddr_in bound
-	socket_getsockname_ipv4(listener, &bound)
-	*out_port = net_htons(bound.port)
-	return listener
-
-
-void gt_finish(int pid, int listener):
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	close(listener)
-	if (status != 0):
-		print2(c"fixture child status: ")
-		println2(itoa(status))
-	assert_equal(0, status)
-
-
 void gt_server_child(int listener):
 	gt_desc_init()
 	int fd = socket_accept_connection(listener)
-	if (fd < 0):
-		exit(70)
+	if (fd < 0): exit(70)
 	grpc_server* srv = grpc_server_new()
 	grpc_server_register(srv, c"/test.Greeter/SayHello", gt_say_hello, 0)
 	grpc_server_register(srv, c"/test.Greeter/Fail", gt_fail, 0)
@@ -168,22 +143,22 @@ grpc_result* gt_call_hello(grpc_channel* ch, char* name, int count):
 /* Wire-free checks */
 
 void test_grpc_status_names_and_mapping():
-	assert_strings_equal(c"OK", grpc_status_name(grpc_status_ok()))
+	assert_strings_equal(c"OK", grpc_status_name(grpc_status_ok))
 	assert_strings_equal(c"DEADLINE_EXCEEDED", grpc_status_name(4))
-	assert_strings_equal(c"UNAUTHENTICATED", grpc_status_name(grpc_status_unauthenticated()))
-	assert_equal(16, grpc_status_unauthenticated())
-	assert_equal(grpc_status_unimplemented(), grpc_status_from_http(404))
-	assert_equal(grpc_status_unavailable(), grpc_status_from_http(503))
-	assert_equal(grpc_status_unauthenticated(), grpc_status_from_http(401))
-	assert_equal(grpc_status_unknown(), grpc_status_from_http(415))
-	assert_equal(grpc_status_unavailable(), grpc_status_from_h2_error(h2_error_refused_stream()))
-	assert_equal(grpc_status_cancelled(), grpc_status_from_h2_error(h2_error_cancel()))
-	assert_equal(grpc_status_resource_exhausted(), grpc_status_from_h2_error(h2_error_enhance_your_calm()))
-	assert_equal(grpc_status_internal(), grpc_status_from_h2_error(h2_error_protocol()))
+	assert_strings_equal(c"UNAUTHENTICATED", grpc_status_name(grpc_status_unauthenticated))
+	assert_equal(16, grpc_status_unauthenticated)
+	assert_equal(grpc_status_unimplemented, grpc_status_from_http(404))
+	assert_equal(grpc_status_unavailable, grpc_status_from_http(503))
+	assert_equal(grpc_status_unauthenticated, grpc_status_from_http(401))
+	assert_equal(grpc_status_unknown, grpc_status_from_http(415))
+	assert_equal(grpc_status_unavailable, grpc_status_from_h2_error(h2_error_refused_stream))
+	assert_equal(grpc_status_cancelled, grpc_status_from_h2_error(h2_error_cancel))
+	assert_equal(grpc_status_resource_exhausted, grpc_status_from_h2_error(h2_error_enhance_your_calm))
+	assert_equal(grpc_status_internal, grpc_status_from_h2_error(h2_error_protocol))
 	assert_equal(5, grpc_parse_status(c"5"))
 	assert_equal(16, grpc_parse_status(c"16"))
-	assert_equal(grpc_status_unknown(), grpc_parse_status(c"17"))
-	assert_equal(grpc_status_unknown(), grpc_parse_status(c"x"))
+	assert_equal(grpc_status_unknown, grpc_parse_status(c"17"))
+	assert_equal(grpc_status_unknown, grpc_parse_status(c"x"))
 
 
 void test_grpc_percent_encoding():
@@ -239,20 +214,20 @@ void test_grpc_message_framing():
 	assert_equal(3, sb.data[4])
 	char* msg = 0
 	int len = 0
-	assert_equal(grpc_status_ok(), grpc_unframe_message(sb.data, sb.length, 100, &msg, &len))
+	assert_equal(grpc_status_ok, grpc_unframe_message(sb.data, sb.length, 100, &msg, &len))
 	assert_equal(3, len)
 	assert_equal(150 - 256, msg[1])
 	free(msg)
 	# Too large for the cap.
-	assert_equal(grpc_status_resource_exhausted(), grpc_unframe_message(sb.data, sb.length, 2, &msg, &len))
+	assert_equal(grpc_status_resource_exhausted, grpc_unframe_message(sb.data, sb.length, 2, &msg, &len))
 	# Truncated, and trailing bytes (a second message).
-	assert_equal(grpc_status_internal(), grpc_unframe_message(sb.data, 7, 100, &msg, &len))
+	assert_equal(grpc_status_internal, grpc_unframe_message(sb.data, 7, 100, &msg, &len))
 	string_append_bytes(sb, c"\x00\x00\x00\x00\x00", 5)
-	assert_equal(grpc_status_internal(), grpc_unframe_message(sb.data, sb.length, 100, &msg, &len))
+	assert_equal(grpc_status_internal, grpc_unframe_message(sb.data, sb.length, 100, &msg, &len))
 	# Compressed flag without negotiated compression.
 	sb.data[0] = 1
-	assert_equal(grpc_status_unimplemented(), grpc_unframe_message(sb.data, 8, 100, &msg, &len))
-	assert_equal(grpc_status_internal(), grpc_unframe_message(sb.data, 3, 100, &msg, &len))
+	assert_equal(grpc_status_unimplemented, grpc_unframe_message(sb.data, 8, 100, &msg, &len))
+	assert_equal(grpc_status_internal, grpc_unframe_message(sb.data, 3, 100, &msg, &len))
 	string_free(sb)
 
 
@@ -275,17 +250,16 @@ void test_grpc_protobuf_round_trip():
 void test_grpc_unary_end_to_end():
 	gt_desc_init()
 	int port = 0
-	int listener = gt_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
-	if (pid == 0):
-		gt_server_child(listener)
+	if (pid == 0): gt_server_child(listener)
 	grpc_channel* ch = grpc_channel_open(c"127.0.0.1", port, 10000)
 	asserts(c"channel open failed", ch != 0)
 
 	# Unary success with metadata both ways.
 	grpc_result* r = gt_call_hello(ch, c"W", 41)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	assert_equal(200, r.http_status)
 	gt_hello* reply = gt_decode(r.response, r.response_len)
 	assert_strings_equal(c"Hello, W", reply.text.data)
@@ -301,7 +275,7 @@ void test_grpc_unary_end_to_end():
 
 	# Error status after response headers (headers + trailers frames).
 	r = grpc_unary_call(ch, c"/test.Greeter/Fail", 0, 0, 0, 0)
-	assert_equal(grpc_status_not_found(), r.status)
+	assert_equal(grpc_status_not_found, r.status)
 	assert_strings_equal(c"no such user: caf\xc3\xa9 100%", r.message)
 	asserts(c"expected separate trailers", r.trailers != 0)
 	assert_strings_equal(c"no such user: caf%C3%A9 100%25", grpc_result_trailer(r, c"grpc-message"))
@@ -310,7 +284,7 @@ void test_grpc_unary_end_to_end():
 
 	# Trailers-only error.
 	r = grpc_unary_call(ch, c"/test.Greeter/Deny", 0, 0, 0, 0)
-	assert_equal(grpc_status_permission_denied(), r.status)
+	assert_equal(grpc_status_permission_denied, r.status)
 	assert_strings_equal(c"denied", r.message)
 	asserts(c"trailers-only expected", r.trailers == 0)
 	assert_strings_equal(c"7", grpc_result_header(r, c"grpc-status"))
@@ -318,13 +292,13 @@ void test_grpc_unary_end_to_end():
 
 	# Unknown method: UNIMPLEMENTED, trailers-only.
 	r = grpc_unary_call(ch, c"/test.Greeter/Nope", 0, 0, 0, 0)
-	assert_equal(grpc_status_unimplemented(), r.status)
+	assert_equal(grpc_status_unimplemented, r.status)
 	assert_strings_equal(c"unknown method /test.Greeter/Nope", r.message)
 	grpc_result_free(r)
 
 	# grpc-timeout reaches the server.
 	r = grpc_unary_call(ch, c"/test.Greeter/Deadline", 0, 0, 0, 5000)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	reply = gt_decode(r.response, r.response_len)
 	assert_equal(5000, reply.count)
 	free(reply.text.data)
@@ -334,11 +308,11 @@ void test_grpc_unary_end_to_end():
 	# A deadline that expires: DEADLINE_EXCEEDED, connection reusable.
 	int start = time_monotonic_ms()
 	r = grpc_unary_call(ch, c"/test.Greeter/Slow", 0, 0, 0, 200)
-	assert_equal(grpc_status_deadline_exceeded(), r.status)
+	assert_equal(grpc_status_deadline_exceeded, r.status)
 	asserts(c"deadline returned too late", time_monotonic_ms() - start < 700)
 	grpc_result_free(r)
 	r = gt_call_hello(ch, c"again", 1)
-	assert_equal(grpc_status_ok(), r.status)
+	assert_equal(grpc_status_ok, r.status)
 	reply = gt_decode(r.response, r.response_len)
 	assert_strings_equal(c"Hello, again", reply.text.data)
 	free(reply.text.data)
@@ -355,95 +329,79 @@ void test_grpc_unary_end_to_end():
 	hpack_headers_free(h)
 
 	grpc_channel_close(ch)
-	gt_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 /* Scripted server: client-side status mapping */
-
-int gt_raw_accept(int listener):
-	int fd = socket_accept_connection(listener)
-	if (fd < 0):
-		exit(90)
-	socket_set_recv_timeout(fd, 10000)
-	char* pre = malloc(24)
-	if (h2_fd_read_exact(fd, pre, 24) == 0):
-		exit(91)
-	free(pre)
-	h2_raw_write_frame(fd, h2_frame_settings(), 0, 0, 0, 0)
-	return fd
-
 
 # Reads until a HEADERS frame on the given stream (DATA and control
 # frames are skipped).
 void gt_raw_wait_headers(int fd, int stream):
 	h2_frame f
 	while (1):
-		if (h2_raw_read_frame(fd, &f) == 0):
-			exit(92)
-		int done = (f.type == h2_frame_headers()) && (f.stream_id == stream)
+		if (h2_raw_read_frame(fd, &f) == 0): exit(92)
+		int done = (f.type == h2_frame_headers) && (f.stream_id == stream)
 		free(f.payload)
-		if (done != 0):
-			return
+		if (done != 0): return
 
 
 void gt_raw_send_headers(int fd, hpack_encoder* e, int stream, list[hpack_header*] l, int flags):
 	string_builder* sb = string_new()
 	hpack_encode(e, l, sb)
-	h2_raw_write_frame(fd, h2_frame_headers(), flags | h2_flag_end_headers(), stream, sb.data, sb.length)
+	h2_raw_write_frame(fd, h2_frame_headers, flags | h2_flag_end_headers, stream, sb.data, sb.length)
 	string_free(sb)
 
 
 void test_grpc_client_status_mapping():
 	int port = 0
-	int listener = gt_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
-		int fd = gt_raw_accept(listener)
+		int fd = h2_test_raw_accept(listener, 0, 0)
 		hpack_encoder* e = hpack_encoder_new(4096)
 		# Stream 1: HTTP 503 -> UNAVAILABLE.
 		gt_raw_wait_headers(fd, 1)
 		list[hpack_header*] l = hpack_headers_new()
 		hpack_headers_add(l, c":status", c"503")
-		gt_raw_send_headers(fd, e, 1, l, h2_flag_end_stream())
+		gt_raw_send_headers(fd, e, 1, l, h2_flag_end_stream)
 		hpack_headers_free(l)
 		# Stream 3: 200 + gRPC content-type but no grpc-status.
 		gt_raw_wait_headers(fd, 3)
 		l = hpack_headers_new()
 		hpack_headers_add(l, c":status", c"200")
 		hpack_headers_add(l, c"content-type", c"application/grpc")
-		gt_raw_send_headers(fd, e, 3, l, h2_flag_end_stream())
+		gt_raw_send_headers(fd, e, 3, l, h2_flag_end_stream)
 		hpack_headers_free(l)
 		# Stream 5: refused.
 		gt_raw_wait_headers(fd, 5)
-		h2_raw_write_frame(fd, h2_frame_rst_stream(), 0, 5, c"\x00\x00\x00\x07", 4)
+		h2_raw_write_frame(fd, h2_frame_rst_stream, 0, 5, c"\x00\x00\x00\x07", 4)
 		# Stream 7: wrong content-type.
 		gt_raw_wait_headers(fd, 7)
 		l = hpack_headers_new()
 		hpack_headers_add(l, c":status", c"200")
 		hpack_headers_add(l, c"content-type", c"text/html")
-		gt_raw_send_headers(fd, e, 7, l, h2_flag_end_stream())
+		gt_raw_send_headers(fd, e, 7, l, h2_flag_end_stream)
 		hpack_headers_free(l)
 		char* scratch = malloc(256)
-		while (read(fd, scratch, 256) > 0):
-			scratch[0] = 0
+		while (read(fd, scratch, 256) > 0): scratch[0] = 0
 		exit(0)
 	grpc_channel* ch = grpc_channel_open(c"127.0.0.1", port, 10000)
 	asserts(c"channel open failed", ch != 0)
 	grpc_result* r = grpc_unary_call(ch, c"/x.Y/Z", c"", 0, 0, 0)
-	assert_equal(grpc_status_unavailable(), r.status)
+	assert_equal(grpc_status_unavailable, r.status)
 	assert_equal(503, r.http_status)
 	assert_strings_equal(c"HTTP status 503", r.message)
 	grpc_result_free(r)
 	r = grpc_unary_call(ch, c"/x.Y/Z", c"", 0, 0, 0)
-	assert_equal(grpc_status_internal(), r.status)
+	assert_equal(grpc_status_internal, r.status)
 	assert_strings_equal(c"missing grpc-status", r.message)
 	grpc_result_free(r)
 	r = grpc_unary_call(ch, c"/x.Y/Z", c"", 0, 0, 0)
-	assert_equal(grpc_status_unavailable(), r.status)
+	assert_equal(grpc_status_unavailable, r.status)
 	grpc_result_free(r)
 	r = grpc_unary_call(ch, c"/x.Y/Z", c"", 0, 0, 0)
-	assert_equal(grpc_status_unknown(), r.status)
+	assert_equal(grpc_status_unknown, r.status)
 	grpc_result_free(r)
 	grpc_channel_close(ch)
-	gt_finish(pid, listener)
+	net_test_finish(pid, listener)

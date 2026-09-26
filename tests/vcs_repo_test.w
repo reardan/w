@@ -13,6 +13,7 @@ Fixture and store roots are pid-scoped under bin/ so the 32- and 64-bit
 twins can run in parallel; the last test removes everything it created.
 */
 import lib.testing
+import lib.dir
 import libs.extras.vcs.cas
 import libs.extras.vcs.tree
 import libs.extras.vcs.repo
@@ -31,8 +32,7 @@ char* vrt_scoped(char* prefix):
 
 char* vrt_root_cache
 char* vrt_root():
-	if (vrt_root_cache == 0):
-		vrt_root_cache = vrt_scoped(c"bin/vcs_repo_test_")
+	if (vrt_root_cache == 0): vrt_root_cache = vrt_scoped(c"bin/vcs_repo_test_")
 	return vrt_root_cache
 
 
@@ -90,12 +90,9 @@ void test_repo_content_and_binary():
 	assert_equal(0, repo_is_binaryish(a))
 	assert_equal(1, repo_is_binaryish(vrt_blob(c"ab\x00cd", 5)))
 	# Only the first REPO_BINARY_SNIFF_LEN() bytes are sniffed.
-	int n = REPO_BINARY_SNIFF_LEN() + 2
+	int n = REPO_BINARY_SNIFF_LEN + 2
 	char* big = malloc(n)
-	int i = 0
-	while (i < n):
-		big[i] = 'x'
-		i = i + 1
+	for i in range(n): big[i] = 'x'
 	big[n - 1] = 0
 	assert_equal(0, repo_is_binaryish(vrt_blob(big, n)))
 
@@ -124,14 +121,8 @@ void test_repo_write_lookup_remove():
 	# Write through missing parents, then snapshot and look the blobs up.
 	repo_write_file_bytes(vrt_work(), c"dir/sub/f.bin", vrt_blob(c"a\x00b", 3))
 	repo_write_file_bytes(vrt_work(), c"top.txt", vrt_blob(c"top", 3))
-	wresult[wcas*]* sr = cas_open(vrt_root())
-	assert1(result_is_ok[wcas*](sr))
-	wcas* store = result_value[wcas*](sr)
-	result_free[wcas*](sr)
-	wresult[char*]* tr = tree_snapshot(store, vrt_work(), repo_ignore_list())
-	assert1(result_is_ok[char*](tr))
-	char* root_id = result_value[char*](tr)
-	result_free[char*](tr)
+	wcas* store = result_expect[wcas*](cas_open(vrt_root()))
+	char* root_id = result_expect[char*](tree_snapshot(store, vrt_work(), repo_ignore_list()))
 
 	wcas_object* f = repo_maybe_blob(store, root_id, c"dir/sub/f.bin")
 	assert1(f != 0)
@@ -153,45 +144,6 @@ void test_repo_write_lookup_remove():
 	repo_remove_file(vrt_work(), c"not-there.txt")
 
 
-# Recursively deletes a directory: collect this level's names first
-# (deleting while iterating a getdents cursor is unreliable), then
-# remove children before the directory itself.
-void vrt_remove_all(char* path):
-	int fd = open(path, 65536, 0)
-	if (fd < 0):
-		return
-	list[char*] names = new list[char*]
-	list[int] kinds = new list[int]
-	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* record = buffer + off
-			int reclen = (record[2 * __word_size__] & 255) + ((record[2 * __word_size__ + 1] & 255) << 8)
-			char* entry_name = record + 2 * __word_size__ + 2
-			int kind = record[reclen - 1] & 255
-			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
-				names.push(strclone(entry_name))
-				kinds.push(kind)
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
-	int i = 0
-	while (i < names.length):
-		char* child = path_join(path, names[i])
-		if (kinds[i] == 4):
-			vrt_remove_all(child)
-			rmdir(child)
-		else:
-			vcs_unlink(child)
-		free(child)
-		free(names[i])
-		i = i + 1
-
-
 # Runs last: the files repo_remove_file deleted leave only the empty
 # parents repo_write_file_bytes created, and the object store.
 void test_repo_cleanup():
@@ -200,5 +152,5 @@ void test_repo_cleanup():
 	char* dir = path_join(vrt_work(), c"dir")
 	assert_equal(0, rmdir(dir))
 	assert_equal(0, rmdir(vrt_work()))
-	vrt_remove_all(vrt_root())
-	assert_equal(0, rmdir(vrt_root()))
+	assert_equal(0, dir_remove_all(vrt_root()))
+	assert_equal(0, path_exists(vrt_root()))

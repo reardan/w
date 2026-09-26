@@ -36,7 +36,7 @@ int net_smoke_listen(int* out_port):
 	net_smoke_assert_ok(c"getsockname", socket_getsockname_ipv4(listener, &bound))
 	# The kernel filled this sockaddr_in: the portable family accessor
 	# must see AF_INET on every target layout.
-	assert_equal(af_inet(), sockaddr_in_family(&bound))
+	assert_equal(af_inet, sockaddr_in_family(&bound))
 	*out_port = net_htons(bound.port)
 	return listener
 
@@ -50,14 +50,11 @@ void test_tcp_sockaddr_round_trip():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		char* buf = malloc(16)
 		int got = read(conn, buf, 4)
-		if (got != 4):
-			exit(1)
-		if (socket_send(conn, buf, got, msg_nosignal()) != got):
-			exit(1)
+		if (got != 4): exit(1)
+		if (socket_send(conn, buf, got, msg_nosignal()) != got): exit(1)
 		close(conn)
 		exit(0)
 
@@ -96,7 +93,7 @@ void test_udp_recvfrom_sockaddr():
 	int received = socket_recv_from_ipv4(receiver, got, 16, 0, &from)
 	assert_equal(4, received)
 	# Kernel-filled sender address parses on this target's layout.
-	assert_equal(af_inet(), sockaddr_in_family(&from))
+	assert_equal(af_inet, sockaddr_in_family(&from))
 	assert_equal_hex(loopback, net_htonl(from.ip_address))
 	free(got)
 	close(sender)
@@ -124,16 +121,13 @@ void test_http_get_loopback():
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int conn = socket_accept_connection(listener)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		char* buf = malloc(4096)
-		if (read(conn, buf, 4095) <= 0):
-			exit(1)
+		if (read(conn, buf, 4095) <= 0): exit(1)
 		char* response = c"HTTP/1.1 200 OK\x0d\x0aContent-Length: 12\x0d\x0a\x0d\x0asmoke passed"
 		socket_send(conn, response, strlen(response), msg_nosignal())
 		char* scratch = malloc(64)
-		while (read(conn, scratch, 64) > 0):
-			scratch[0] = 0
+		while (read(conn, scratch, 64) > 0): scratch[0] = 0
 		exit(0)
 
 	string_builder* target = string_new()

@@ -56,37 +56,30 @@ import tests.asm_fuzz_prng
 
 
 int asm_fuzz_bytes4_equal(char* a, char* b):
-	int i = 0
-	while (i < 4):
-		if ((a[i] & 255) != (b[i] & 255)):
-			return 1 == 2
-		i = i + 1
+	for i in range(4):
+		if ((a[i] & 255) != (b[i] & 255)): return 1 == 2
 	return 1
 
 
 void asm_fuzz_arm64_mutate_operand(asm_operand* op):
-	if (op.kind == ASM_OP_REG()):
-		if (op.reg != 31):
-			op.reg = fuzz_range(31)
+	if (op.kind == ASM_OP_REG):
+		if (op.reg != 31): op.reg = fuzz_range(31)
 		return
-	if (op.kind == ASM_OP_IMM()):
+	if (op.kind == ASM_OP_IMM):
 		# A conservative 12-bit unsigned range: exactly legal for add/sub/cmp
 		# immediates, and a legal subset of movz/movk/svc/brk's wider fields.
 		op.imm = fuzz_range(4096)
 		return
-	if (op.kind == ASM_OP_MEM()):
+	if (op.kind == ASM_OP_MEM):
 		if (op.disp_size == ARM64_ADDR_PCREL()):
 			# Literal-pool / pc-relative load: address-derived, leave it be.
 			return
-		if (op.base >= 0):
-			op.base = fuzz_range(31)
+		if (op.base >= 0): op.base = fuzz_range(31)
 		if (op.disp_size == ARM64_ADDR_REG()):
-			if (op.index >= 0):
-				op.index = fuzz_range(31)
+			if (op.index >= 0): op.index = fuzz_range(31)
 			return
 		int width = op.size
-		if (width != 4 && width != 8):
-			width = 8
+		if (width != 4 && width != 8): width = 8
 		op.disp = fuzz_range(32) * width
 
 
@@ -221,8 +214,7 @@ void test_arm64_opaque_raw_roundtrip():
 	int madd_count = 0
 	int msub_count = 0
 	int fp_count = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int which = fuzz_range(3)
 		int w = 0
 		char* want_mnemonic = c"fp"
@@ -233,10 +225,8 @@ void test_arm64_opaque_raw_roundtrip():
 			int rn = fuzz_range(32)
 			int rd = fuzz_range(32)
 			w = asm_fuzz_arm64_build_dp3(sf, rm, which, ra, rn, rd)
-			if (which == 0):
-				want_mnemonic = c"madd"
-			else:
-				want_mnemonic = c"msub"
+			if (which == 0): want_mnemonic = c"madd"
+			else: want_mnemonic = c"msub"
 		else:
 			int low24 = fuzz_next() & ((1 << 24) - 1)
 			w = asm_fuzz_arm64_build_fp(low24)
@@ -273,15 +263,11 @@ void test_arm64_opaque_raw_roundtrip():
 			println2(asm_hex_encode(eb.data, eb.length))
 			exit(1)
 
-		if (which == 0):
-			madd_count = madd_count + 1
-		else if (which == 1):
-			msub_count = msub_count + 1
-		else:
-			fp_count = fp_count + 1
+		if (which == 0): madd_count = madd_count + 1
+		else if (which == 1): msub_count = msub_count + 1
+		else: fp_count = fp_count + 1
 		asm_buffer_free(wb)
 		asm_buffer_free(eb)
-		i = i + 1
 	print2(c"arm64 opaque-form raw round trip: madd=")
 	print2(itoa(madd_count))
 	print2(c" msub=")

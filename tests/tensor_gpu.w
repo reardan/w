@@ -23,8 +23,7 @@ import lib.tensor
 # |a - b| <= eps, without pulling in fmath.
 int feq(float a, float b, float eps):
 	float d = a - b
-	if (d < 0.0):
-		d = 0.0 - d
+	if (d < 0.0): d = 0.0 - d
 	return d <= eps
 
 
@@ -47,16 +46,14 @@ int check_elementwise():
 	tensor_sync()
 	i = 0
 	while (i < 1000):
-		if (feq(r.data[i], ha.data[i] + hb.data[i], 0.0001) == 0):
-			return 0
+		if (feq(r.data[i], ha.data[i] + hb.data[i], 0.0001) == 0): return 0
 		i = i + 1
 
 	tensor_mul_into(&r, &a, &b)
 	tensor_sync()
 	i = 0
 	while (i < 1000):
-		if (feq(r.data[i], ha.data[i] * hb.data[i], 0.01) == 0):
-			return 0
+		if (feq(r.data[i], ha.data[i] * hb.data[i], 0.01) == 0): return 0
 		i = i + 1
 
 	tensor_mul_scalar_into(&r, &a, 3.0)
@@ -64,8 +61,7 @@ int check_elementwise():
 	tensor_sync()
 	i = 0
 	while (i < 1000):
-		if (feq(r.data[i], ha.data[i] * 3.0 + 7.0, 0.01) == 0):
-			return 0
+		if (feq(r.data[i], ha.data[i] * 3.0 + 7.0, 0.01) == 0): return 0
 		i = i + 1
 
 	# relu: negatives clamp to zero, positives pass through
@@ -74,18 +70,14 @@ int check_elementwise():
 	i = 0
 	while (i < 1000):
 		float want = ha.data[i]
-		if (want < 0.0):
-			want = 0.0
-		if (feq(r.data[i], want, 0.0001) == 0):
-			return 0
+		if (want < 0.0): want = 0.0
+		if (feq(r.data[i], want, 0.0001) == 0): return 0
 		i = i + 1
 
 	# round-trip back to an ndf
 	ndf back = tensor_to_ndf(&r)
-	if (feq(ndf_at1(&back, 0), 0.0, 0.0001) == 0):
-		return 0
-	if (feq(ndf_at1(&back, 999), 499.0, 0.0001) == 0):
-		return 0
+	if (feq(ndf_at1(&back, 0), 0.0, 0.0001) == 0): return 0
+	if (feq(ndf_at1(&back, 999), 499.0, 0.0001) == 0): return 0
 
 	tensor_free(&a)
 	tensor_free(&b)
@@ -99,10 +91,7 @@ int check_sum():
 	# accumulation order varies — a tight tolerance still holds.
 	int n = 3000
 	tensor t = tensor_new1(n)
-	int i = 0
-	while (i < n):
-		t.data[i] = cast(float, i + 1)
-		i = i + 1
+	for i in range(n): t.data[i] = cast(float, i + 1)
 	float got = tensor_sum(&t)
 	float want = cast(float, n * (n + 1) / 2)
 	tensor_free(&t)
@@ -137,8 +126,7 @@ int check_matmul():
 
 	i = 0
 	while (i < m * n):
-		if (feq(r.data[i], want.data[i], 0.001) == 0):
-			return 0
+		if (feq(r.data[i], want.data[i], 0.001) == 0): return 0
 		i = i + 1
 	tensor_free(&a)
 	tensor_free(&b)
@@ -164,8 +152,7 @@ int check_sub_axpy():
 	tensor_sync()
 	i = 0
 	while (i < n):
-		if (feq(r.data[i], ha.data[i] - hb.data[i], 0.0001) == 0):
-			return 0
+		if (feq(r.data[i], ha.data[i] - hb.data[i], 0.0001) == 0): return 0
 		i = i + 1
 
 	# axpy: y += s*x, in place. Start y as a copy of a.
@@ -175,8 +162,7 @@ int check_sub_axpy():
 	tensor_sync()
 	i = 0
 	while (i < n):
-		if (feq(y.data[i], ha.data[i] + s * hb.data[i], 0.001) == 0):
-			return 0
+		if (feq(y.data[i], ha.data[i] + s * hb.data[i], 0.001) == 0): return 0
 		i = i + 1
 
 	tensor_free(&a)
@@ -205,10 +191,8 @@ int check_relu_grad():
 	i = 0
 	while (i < n):
 		float want = 0.0
-		if (ha.data[i] > 0.0):
-			want = hd.data[i]
-		if (feq(r.data[i], want, 0.0001) == 0):
-			return 0
+		if (ha.data[i] > 0.0): want = hd.data[i]
+		if (feq(r.data[i], want, 0.0001) == 0): return 0
 		i = i + 1
 
 	tensor_free(&a)
@@ -242,8 +226,7 @@ int check_add_row():
 		int j = 0
 		while (j < n):
 			float want = ha.data[i * n + j] + hr.data[j]
-			if (feq(out.data[i * n + j], want, 0.0001) == 0):
-				return 0
+			if (feq(out.data[i * n + j], want, 0.0001) == 0): return 0
 			j = j + 1
 		i = i + 1
 
@@ -275,29 +258,18 @@ int check_row_col_reductions():
 	while (i < m):
 		float want = 0.0
 		float best = ha.data[i * n]
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			float v = ha.data[i * n + j]
 			want = want + v
-			if (v > best):
-				best = v
-			j = j + 1
-		if (feq(rsum.data[i], want, 0.001) == 0):
-			return 0
-		if (feq(rmax.data[i], best, 0.0001) == 0):
-			return 0
+			if (v > best): best = v
+		if (feq(rsum.data[i], want, 0.001) == 0): return 0
+		if (feq(rmax.data[i], best, 0.0001) == 0): return 0
 		i = i + 1
 
-	int j2 = 0
-	while (j2 < n):
+	for j2 in range(n):
 		float want2 = 0.0
-		int i2 = 0
-		while (i2 < m):
-			want2 = want2 + ha.data[i2 * n + j2]
-			i2 = i2 + 1
-		if (feq(csum.data[j2], want2, 0.001) == 0):
-			return 0
-		j2 = j2 + 1
+		for i2 in range(m): want2 = want2 + ha.data[i2 * n + j2]
+		if (feq(csum.data[j2], want2, 0.001) == 0): return 0
 
 	tensor_free(&a)
 	tensor_free(&rsum)
@@ -334,17 +306,11 @@ int check_matmul_multitile():
 	# same product.
 	i = 0
 	while (i < m):
-		int j = 0
-		while (j < kd):
-			ndf_set2(&hat, j, i, ndf_at2(&ha, i, j))
-			j = j + 1
+		for j in range(kd): ndf_set2(&hat, j, i, ndf_at2(&ha, i, j))
 		i = i + 1
 	i = 0
 	while (i < kd):
-		int j2 = 0
-		while (j2 < n):
-			ndf_set2(&hbt, j2, i, ndf_at2(&hb, i, j2))
-			j2 = j2 + 1
+		for j2 in range(n): ndf_set2(&hbt, j2, i, ndf_at2(&hb, i, j2))
 		i = i + 1
 	ndf want = ndf_new2(m, n)
 	ndf_matmul2(&want, &ha, &hb)
@@ -360,22 +326,19 @@ int check_matmul_multitile():
 	tensor_sync()
 	i = 0
 	while (i < m * n):
-		if (feq(r.data[i], want.data[i], 0.001) == 0):
-			ok = 0
+		if (feq(r.data[i], want.data[i], 0.001) == 0): ok = 0
 		i = i + 1
 	tensor_matmul2_tn(&r, &at, &b)
 	tensor_sync()
 	i = 0
 	while (i < m * n):
-		if (feq(r.data[i], want.data[i], 0.001) == 0):
-			ok = 0
+		if (feq(r.data[i], want.data[i], 0.001) == 0): ok = 0
 		i = i + 1
 	tensor_matmul2_nt(&r, &a, &bt)
 	tensor_sync()
 	i = 0
 	while (i < m * n):
-		if (feq(r.data[i], want.data[i], 0.001) == 0):
-			ok = 0
+		if (feq(r.data[i], want.data[i], 0.001) == 0): ok = 0
 		i = i + 1
 
 	tensor_free(&a)
@@ -413,12 +376,8 @@ int check_matmul_variants():
 		int col = 0
 		while (col < n):
 			float want = 0.0
-			int p = 0
-			while (p < k):
-				want = want + ha.data[p * m + row] * hb.data[p * n + col]
-				p = p + 1
-			if (feq(r.data[row * n + col], want, 0.001) == 0):
-				return 0
+			for p in range(k): want = want + ha.data[p * m + row] * hb.data[p * n + col]
+			if (feq(r.data[row * n + col], want, 0.001) == 0): return 0
 			col = col + 1
 		row = row + 1
 
@@ -449,12 +408,8 @@ int check_matmul_variants():
 		int col2 = 0
 		while (col2 < n):
 			float want2 = 0.0
-			int p2 = 0
-			while (p2 < k):
-				want2 = want2 + hc.data[row * k + p2] * hd.data[col2 * k + p2]
-				p2 = p2 + 1
-			if (feq(r2.data[row * n + col2], want2, 0.001) == 0):
-				return 0
+			for p2 in range(k): want2 = want2 + hc.data[row * k + p2] * hd.data[col2 * k + p2]
+			if (feq(r2.data[row * n + col2], want2, 0.001) == 0): return 0
 			col2 = col2 + 1
 		row = row + 1
 
@@ -482,18 +437,15 @@ int check_randn():
 		varsum = varsum + d * d
 		i = i + 1
 	float variance = varsum / cast(float, n)
-	if (feq(mean, 0.0, 0.05) == 0):
-		return 0
-	if (feq(variance, 1.0, 0.15) == 0):
-		return 0
+	if (feq(mean, 0.0, 0.05) == 0): return 0
+	if (feq(variance, 1.0, 0.15) == 0): return 0
 
 	# determinism: identical seed reproduces the exact same sequence
 	tensor t2 = tensor_new1(n)
 	tensor_randn(&t2, 42, 0.0, 1.0)
 	i = 0
 	while (i < n):
-		if (feq(t.data[i], t2.data[i], 0.0000001) == 0):
-			return 0
+		if (feq(t.data[i], t2.data[i], 0.0000001) == 0): return 0
 		i = i + 1
 
 	# a different seed must not reproduce the same sequence
@@ -502,11 +454,9 @@ int check_randn():
 	int differs = 0
 	i = 0
 	while (i < n):
-		if (feq(t.data[i], t3.data[i], 0.0000001) == 0):
-			differs = 1
+		if (feq(t.data[i], t3.data[i], 0.0000001) == 0): differs = 1
 		i = i + 1
-	if (differs == 0):
-		return 0
+	if (differs == 0): return 0
 
 	# non-trivial mean/stddev arguments scale and shift correctly
 	tensor t4 = tensor_new1(n)
@@ -524,10 +474,8 @@ int check_randn():
 		varsum4 = varsum4 + d4 * d4
 		i = i + 1
 	float variance4 = varsum4 / cast(float, n)
-	if (feq(mean4, 5.0, 0.1) == 0):
-		return 0
-	if (feq(variance4, 4.0, 0.6) == 0):
-		return 0
+	if (feq(mean4, 5.0, 0.1) == 0): return 0
+	if (feq(variance4, 4.0, 0.6) == 0): return 0
 
 	tensor_free(&t)
 	tensor_free(&t2)
@@ -537,10 +485,8 @@ int check_randn():
 
 
 int main(int argc, int argv):
-	if (gpu_available()):
-		println(c"tensor: gpu path")
-	else:
-		println(c"tensor: cpu fallback")
+	if (gpu_available()): println(c"tensor: gpu path")
+	else: println(c"tensor: cpu fallback")
 	if (check_elementwise() == 0):
 		println(c"tensor gpu: FAILED (elementwise)")
 		return 1

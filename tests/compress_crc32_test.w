@@ -36,12 +36,10 @@ void test_crc32_incremental_matches_oneshot():
 	# Splitting at every possible boundary should agree with the one-shot
 	# digest of the whole string.
 	char* s = c"123456789"
-	int i = 0
-	while (i <= 9):
+	for i in range(9 + 1):
 		int a = crc32_update(0, s, i)
 		int b = crc32_update(a, s + i, 9 - i)
 		assert_equal(crc32t_known_answer(), b)
-		i = i + 1
 
 
 void test_crc32_negative_length_clamps_to_zero():

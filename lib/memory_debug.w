@@ -45,8 +45,7 @@ import lib.linux
 import lib.stack_trace
 
 
-int debug_page_size():
-	return 4096
+const int debug_page_size = 4096
 
 
 # Freed-but-still-mapped quarantine budget. ~32 MiB keeps recent UAFs
@@ -82,11 +81,9 @@ int debug_tbl_mmap_failed(int addr):
 
 
 void debug_tbl_ensure_capacity():
-	if (debug_tbl_count < debug_tbl_capacity):
-		return
+	if (debug_tbl_count < debug_tbl_capacity): return
 	int new_capacity = 4096
-	if (debug_tbl_capacity > 0):
-		new_capacity = debug_tbl_capacity * 2
+	if (debug_tbl_capacity > 0): new_capacity = debug_tbl_capacity * 2
 	int bytes = new_capacity * __word_size__
 	int flags = 34 /* MAP_PRIVATE|MAP_ANONYMOUS */
 	int r_ptr = mmap(0, bytes, 3, flags)
@@ -187,17 +184,15 @@ void debug_fatal(char* message, int addr):
 
 
 int debug_pages_for(int size):
-	int page = debug_page_size()
+	int page = debug_page_size
 	int pages = (size + page - 1) >> 12
-	if (pages < 1):
-		pages = 1
+	if (pages < 1): pages = 1
 	return pages
 
 
 void* debug_malloc(int size):
-	if (size < 1):
-		size = 1
-	int page = debug_page_size()
+	if (size < 1): size = 1
+	int page = debug_page_size
 	int payload_pages = debug_pages_for(size)
 	int payload_size = payload_pages * page
 	int region_size = payload_size + page
@@ -229,14 +224,11 @@ void* debug_malloc(int size):
 # regions when over budget so the process does not wedge on VMA/address
 # space exhaustion.
 int debug_free(void* mem_address):
-	if (mem_address == 0):
-		return 0
+	if (mem_address == 0): return 0
 	int ptr = cast(int, mem_address)
 	int idx = debug_tbl_find(ptr)
-	if (idx < 0):
-		debug_fatal(c"free() called on a pointer the debug allocator never returned", ptr)
-	if (debug_tbl_freed[idx]):
-		debug_fatal(c"double free() detected", ptr)
+	if (idx < 0): debug_fatal(c"free() called on a pointer the debug allocator never returned", ptr)
+	if (debug_tbl_freed[idx]): debug_fatal(c"double free() detected", ptr)
 	mprotect(debug_tbl_region[idx], debug_tbl_region_size[idx], 0)
 	debug_tbl_freed[idx] = 1
 	debug_quarantine_bytes = debug_quarantine_bytes + debug_tbl_region_size[idx]
@@ -259,10 +251,7 @@ char* debug_realloc(void* old, int oldlen, int newlen):
 			debug_fatal(c"realloc() oldlen does not match the tracked allocation size", cast(int, old))
 	char* grown = debug_malloc(newlen)
 	char* src = old
-	int i = 0
-	while (i < oldlen):
-		grown[i] = src[i]
-		i = i + 1
+	for i in range(oldlen): grown[i] = src[i]
 	debug_free(old)
 	return grown
 
@@ -281,8 +270,7 @@ int debug_alloc_report_leaks():
 	int leaked = 0
 	int leaked_bytes = 0
 	int n = debug_tbl_count
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if (debug_tbl_freed[i] == 0):
 			st_write_cstr(c"memory_debug: leaked ")
 			st_write_dec(debug_tbl_size[i])
@@ -291,7 +279,6 @@ int debug_alloc_report_leaks():
 			st_write_cstr(c"\x0a")
 			leaked = leaked + 1
 			leaked_bytes = leaked_bytes + debug_tbl_size[i]
-		i = i + 1
 	if (leaked > 0):
 		st_write_cstr(c"memory_debug: ")
 		st_write_dec(leaked)

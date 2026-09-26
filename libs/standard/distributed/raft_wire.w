@@ -60,37 +60,23 @@ import lib.memory
 import lib.assert
 import libs.standard.distributed.u64
 import libs.standard.distributed.raft
-
-
-void raft_wire_u32(char* p, int v):
-	p[0] = v
-	p[1] = v >> 8
-	p[2] = v >> 16
-	p[3] = v >> 24
-
-
-int raft_wire_read_u32(char* p):
-	return (p[0] & 255) | ((p[1] & 255) << 8) | ((p[2] & 255) << 16) | ((p[3] & 255) << 24)
+import lib.bytes
+import lib.mem
 
 
 # Encoded size of m in bytes.
 int raft_wire_size(raft_msg* m):
 	int n = 1 + 4 + 4 + 8
-	if (m.type == raft_msg_vote_req()):
-		return n + 8 + 8 + 1
-	if (m.type == raft_msg_vote_reply()):
-		return n + 1 + 1
-	if (m.type == raft_msg_append()):
+	if (m.type == raft_msg_vote_req): return n + 8 + 8 + 1
+	if (m.type == raft_msg_vote_reply): return n + 1 + 1
+	if (m.type == raft_msg_append):
 		n = n + 8 + 8 + 8 + 4
-		int i = 0
-		while (i < m.entries.length):
+		for i in range(m.entries.length):
 			raft_entry* e = m.entries[i]
 			n = n + 1 + 8 + 4 + e.command_len
-			i = i + 1
 		return n
-	if (m.type == raft_msg_append_reply()):
-		return n + 1 + 8
-	if (m.type == raft_msg_install_snapshot()):
+	if (m.type == raft_msg_append_reply): return n + 1 + 8
+	if (m.type == raft_msg_install_snapshot):
 		return n + 8 + 8 + 8 + 4 + 4 * m.snap_config.length + 4 + m.snap_len
 	assert1(0)
 	return 0
@@ -100,59 +86,51 @@ int raft_wire_size(raft_msg* m):
 void raft_wire_encode(raft_msg* m, char* buf):
 	assert1(m.from >= 0 && m.to >= 0)
 	buf[0] = m.type
-	raft_wire_u32(buf + 1, m.from)
-	raft_wire_u32(buf + 5, m.to)
+	store_le32(buf + 1, m.from)
+	store_le32(buf + 5, m.to)
 	u64_save_le(buf + 9, m.term)
 	int off = 17
-	if (m.type == raft_msg_vote_req()):
+	if (m.type == raft_msg_vote_req):
 		u64_save_le(buf + off, m.last_log_index)
 		u64_save_le(buf + off + 8, m.last_log_term)
 		buf[off + 16] = m.prevote
 		return
-	if (m.type == raft_msg_vote_reply()):
+	if (m.type == raft_msg_vote_reply):
 		buf[off] = m.vote_granted
 		buf[off + 1] = m.prevote
 		return
-	if (m.type == raft_msg_append()):
+	if (m.type == raft_msg_append):
 		u64_save_le(buf + off, m.prev_log_index)
 		u64_save_le(buf + off + 8, m.prev_log_term)
 		u64_save_le(buf + off + 16, m.leader_commit)
-		raft_wire_u32(buf + off + 24, m.entries.length)
+		store_le32(buf + off + 24, m.entries.length)
 		off = off + 28
-		int i = 0
-		while (i < m.entries.length):
+		for i in range(m.entries.length):
 			raft_entry* e = m.entries[i]
 			int cmd_len = e.command_len
 			buf[off] = e.kind
 			u64_save_le(buf + off + 1, e.term)
-			raft_wire_u32(buf + off + 9, cmd_len)
-			int j = 0
-			while (j < cmd_len):
-				buf[off + 13 + j] = e.command[j]
-				j = j + 1
+			store_le32(buf + off + 9, cmd_len)
+			for j in range(cmd_len): buf[off + 13 + j] = e.command[j]
 			off = off + 13 + cmd_len
-			i = i + 1
 		return
-	if (m.type == raft_msg_append_reply()):
+	if (m.type == raft_msg_append_reply):
 		buf[off] = m.success
 		u64_save_le(buf + off + 1, m.match_index)
 		return
-	if (m.type == raft_msg_install_snapshot()):
+	if (m.type == raft_msg_install_snapshot):
 		u64_save_le(buf + off, m.prev_log_index)
 		u64_save_le(buf + off + 8, m.prev_log_term)
 		u64_save_le(buf + off + 16, m.leader_commit)
-		raft_wire_u32(buf + off + 24, m.snap_config.length)
+		store_le32(buf + off + 24, m.snap_config.length)
 		int coff = off + 28
 		int ci = 0
 		while (ci < m.snap_config.length):
-			raft_wire_u32(buf + coff, m.snap_config[ci])
+			store_le32(buf + coff, m.snap_config[ci])
 			coff = coff + 4
 			ci = ci + 1
-		raft_wire_u32(buf + coff, m.snap_len)
-		int sb = 0
-		while (sb < m.snap_len):
-			buf[coff + 4 + sb] = m.snap_data[sb]
-			sb = sb + 1
+		store_le32(buf + coff, m.snap_len)
+		for sb in range(m.snap_len): buf[coff + 4 + sb] = m.snap_data[sb]
 		return
 	assert1(0)
 
@@ -161,21 +139,19 @@ void raft_wire_encode(raft_msg* m, char* buf):
 # raft_msg_free). Returns 0 on any malformed input: unknown type,
 # short buffer, negative or overrunning lengths, trailing bytes.
 raft_msg* raft_wire_decode(char* buf, int len):
-	if (len < 17):
-		return 0
+	if (len < 17): return 0
 	int type = buf[0] & 255
-	if (type != raft_msg_vote_req() && type != raft_msg_vote_reply() && type != raft_msg_append() && type != raft_msg_append_reply() && type != raft_msg_install_snapshot()):
+	if (type != raft_msg_vote_req && type != raft_msg_vote_reply && type != raft_msg_append && type != raft_msg_append_reply && type != raft_msg_install_snapshot):
 		return 0
-	int from = raft_wire_read_u32(buf + 1)
-	int to = raft_wire_read_u32(buf + 5)
-	if (from < 0 || to < 0):
-		return 0
+	int from = load_le32(buf + 1)
+	int to = load_le32(buf + 5)
+	if (from < 0 || to < 0): return 0
 	u64* term = u64_new()
 	u64_load_le(term, buf + 9)
 	raft_msg* m = raft_msg_new(type, from, to, term)
 	u64_free(term)
 	int off = 17
-	if (type == raft_msg_vote_req()):
+	if (type == raft_msg_vote_req):
 		if (len != off + 17):
 			raft_msg_free(m)
 			return 0
@@ -183,50 +159,43 @@ raft_msg* raft_wire_decode(char* buf, int len):
 		u64_load_le(m.last_log_term, buf + off + 8)
 		m.prevote = buf[off + 16] & 255
 		return m
-	if (type == raft_msg_vote_reply()):
+	if (type == raft_msg_vote_reply):
 		if (len != off + 2):
 			raft_msg_free(m)
 			return 0
 		m.vote_granted = buf[off] & 255
 		m.prevote = buf[off + 1] & 255
 		return m
-	if (type == raft_msg_append_reply()):
+	if (type == raft_msg_append_reply):
 		if (len != off + 9):
 			raft_msg_free(m)
 			return 0
 		m.success = buf[off] & 255
 		u64_load_le(m.match_index, buf + off + 1)
 		return m
-	if (type == raft_msg_install_snapshot()):
+	if (type == raft_msg_install_snapshot):
 		if (len < off + 28):
 			raft_msg_free(m)
 			return 0
 		u64_load_le(m.prev_log_index, buf + off)
 		u64_load_le(m.prev_log_term, buf + off + 8)
 		u64_load_le(m.leader_commit, buf + off + 16)
-		int ccount = raft_wire_read_u32(buf + off + 24)
+		int ccount = load_le32(buf + off + 24)
 		if (ccount < 0 || ccount > (len - off - 28) / 4):
 			raft_msg_free(m)
 			return 0
 		int coff = off + 28
-		int ci = 0
-		while (ci < ccount):
-			m.snap_config.push(raft_wire_read_u32(buf + coff))
+		for ci in range(ccount):
+			m.snap_config.push(load_le32(buf + coff))
 			coff = coff + 4
-			ci = ci + 1
 		if (len - coff < 4):
 			raft_msg_free(m)
 			return 0
-		int blen = raft_wire_read_u32(buf + coff)
+		int blen = load_le32(buf + coff)
 		if (blen < 0 || blen != len - coff - 4):
 			raft_msg_free(m)
 			return 0
-		char* blob = malloc(blen + 1)
-		int bi = 0
-		while (bi < blen):
-			blob[bi] = buf[coff + 4 + bi]
-			bi = bi + 1
-		blob[blen] = 0
+		char* blob = mem_dup(buf + (coff + 4), blen)
 		m.snap_data = blob
 		m.snap_len = blen
 		return m
@@ -237,14 +206,13 @@ raft_msg* raft_wire_decode(char* buf, int len):
 	u64_load_le(m.prev_log_index, buf + off)
 	u64_load_le(m.prev_log_term, buf + off + 8)
 	u64_load_le(m.leader_commit, buf + off + 16)
-	int count = raft_wire_read_u32(buf + off + 24)
+	int count = load_le32(buf + off + 24)
 	if (count < 0):
 		raft_msg_free(m)
 		return 0
 	off = off + 28
 	u64* eterm = u64_new()
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		if (len - off < 13):
 			u64_free(eterm)
 			raft_msg_free(m)
@@ -255,7 +223,7 @@ raft_msg* raft_wire_decode(char* buf, int len):
 			raft_msg_free(m)
 			return 0
 		u64_load_le(eterm, buf + off + 1)
-		int cmd_len = raft_wire_read_u32(buf + off + 9)
+		int cmd_len = load_le32(buf + off + 9)
 		if (cmd_len < 0 || cmd_len > len - off - 13):
 			u64_free(eterm)
 			raft_msg_free(m)
@@ -266,7 +234,6 @@ raft_msg* raft_wire_decode(char* buf, int len):
 			return 0
 		m.entries.push(raft_entry_new_kind(eterm, buf + off + 13, cmd_len, kind))
 		off = off + 13 + cmd_len
-		i = i + 1
 	u64_free(eterm)
 	if (off != len):
 		raft_msg_free(m)

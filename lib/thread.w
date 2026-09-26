@@ -153,13 +153,11 @@ int thread_spawn_lock_word    # 0 free, 1 held: guards the two handoff words
 
 # FUTEX_WAIT | FUTEX_PRIVATE_FLAG: these futexes are only ever shared
 # between CLONE_VM threads of one process.
-int thread_futex_wait_op():
-	return 128
+const int thread_futex_wait_op = 128
 
 
 # FUTEX_WAKE | FUTEX_PRIVATE_FLAG.
-int thread_futex_wake_op():
-	return 129
+const int thread_futex_wake_op = 129
 
 
 # Block until *word becomes nonzero. The kernel re-checks the word
@@ -167,14 +165,13 @@ int thread_futex_wake_op():
 # makes the syscall return immediately (EAGAIN); spurious wakeups
 # re-loop.
 void thread_wait_word(int* word):
-	while (*word == 0):
-		sys_futex(cast(int, word), thread_futex_wait_op(), 0, 0)
+	while (*word == 0): sys_futex(cast(int, word), thread_futex_wait_op, 0, 0)
 
 
 # Wake one waiter blocked on word (a no-op when nobody waits yet; the
 # waiter's re-check in thread_wait_word covers that window).
 void thread_wake_word(int* word):
-	sys_futex(cast(int, word), thread_futex_wake_op(), 1, 0)
+	sys_futex(cast(int, word), thread_futex_wake_op, 1, 0)
 
 
 # Block until *word becomes zero: thread_wait_word in the other
@@ -198,8 +195,7 @@ void thread_wait_word_clear(int* word):
 
 # Size of the stack thread_create mmaps for each worker
 # (code_generator/{x86,x64}_asm.w stack_create): 4MB.
-int thread_stack_size():
-	return 4194304
+const int thread_stack_size = 4194304
 
 
 # The zero-argument clone entry. Runs on the fresh 4MB stack; it must
@@ -214,14 +210,13 @@ void thread_entry():
 	# base itself is only page-aligned, so only this top-relative
 	# computation recovers it.
 	int stack_end = (cast(int, &t) + 4095) & ~4095
-	t.stack_base = stack_end - thread_stack_size()
+	t.stack_base = stack_end - thread_stack_size
 	# thread_local globals (docs/projects/thread_local.md): this thread's
 	# zeroed TLS block is the bottom of its own stack mapping (mmap
 	# zero-fills it; the compiler caps the block at 1MB of the 4MB), so
 	# it needs no allocation and thread_join's munmap reclaims it. Done
 	# before anything that could touch a thread_local.
-	if (__w_tls_size() > 0):
-		__w_tls_set(t.stack_base)
+	if (__w_tls_size() > 0): __w_tls_set(t.stack_base)
 	# This thread's own heap (lib/thread_heap.w): its mallocs never
 	# touch another thread's allocator state.
 	thread_heap_attach()
@@ -246,7 +241,7 @@ void thread_entry():
 # the failed cas and the syscall returns EAGAIN instead of sleeping.
 void thread_spawn_lock():
 	while (atomic_cas(&thread_spawn_lock_word, 0, 1) != 0):
-		sys_futex(cast(int, &thread_spawn_lock_word), thread_futex_wait_op(), 1, 0)
+		sys_futex(cast(int, &thread_spawn_lock_word), thread_futex_wait_op, 1, 0)
 
 
 void thread_spawn_unlock():
@@ -261,13 +256,7 @@ wthread* thread_spawn(thread_fn* func, void* arg):
 	# Before the first clone, while this is the only thread: from here
 	# on malloc/free/realloc are per-thread (lib/thread_heap.w).
 	thread_heap_install()
-	wthread* t = new wthread()
-	t.tid = 0
-	t.func = func
-	t.arg = arg
-	t.done = 0
-	t.stack_base = 0
-	t.exited = 1
+	wthread* t = new wthread(0, func, arg, 0, 0, 1)
 	thread_spawn_lock()
 	thread_spawn_handoff = t
 	thread_spawn_ack = 0
@@ -289,12 +278,10 @@ wthread* thread_spawn(thread_fn* func, void* arg):
 # provably off its stack first. t is dangling after a 0 return: join
 # each handle exactly once. Returns 0, or -1 for a null handle.
 int thread_join(wthread* t):
-	if (t == 0):
-		return 0 - 1
+	if (t == 0): return 0 - 1
 	thread_wait_word(&t.done)
 	thread_wait_word_clear(&t.exited)
-	if (t.stack_base != 0):
-		munmap(t.stack_base, thread_stack_size())
+	if (t.stack_base != 0): munmap(t.stack_base, thread_stack_size)
 	free(cast(void*, t))
 	return 0
 
@@ -317,8 +304,7 @@ void thread_chunk_main(void* p):
 # (it is bounded by len), unlike the k * len / n formulation.
 int thread_chunk_offset(int len, int n, int k):
 	int extra = k
-	if (extra > len % n):
-		extra = len % n
+	if (extra > len % n): extra = len % n
 	return k * (len / n) + extra
 
 
@@ -332,10 +318,8 @@ int thread_chunk_offset(int len, int n, int k):
 # calling thread are identical to the pooled path.
 void parallel_for_spawn(int start, int end, int nthreads, parallel_for_fn* func, void* arg):
 	int len = end - start
-	if (len <= 0):
-		return
-	if (nthreads > len):
-		nthreads = len
+	if (len <= 0): return
+	if (nthreads > len): nthreads = len
 	if (nthreads <= 1):
 		func(start, end, arg)
 		return
@@ -358,11 +342,9 @@ void parallel_for_spawn(int start, int end, int nthreads, parallel_for_fn* func,
 			tasks.push(chunk)
 		k = k + 1
 	func(start, start + thread_chunk_offset(len, nthreads, 1), arg)
-	for wthread* t in workers:
-		thread_join(t)
+	for wthread* t in workers: thread_join(t)
 	# joined workers are done reading their task boxes
-	for thread_chunk_task* task in tasks:
-		free(cast(void*, task))
+	for thread_chunk_task* task in tasks: free(cast(void*, task))
 	__w_list_free(cast(__w_list*, workers))
 	__w_list_free(cast(__w_list*, tasks))
 
@@ -419,23 +401,19 @@ void thread_pool_worker(void* p):
 		# The kernel re-checks the word atomically, so a bump between
 		# the load and the syscall returns immediately (EAGAIN) - the
 		# wake cannot be lost; a spurious wake just re-loops.
-		while (slot.go == seen):
-			sys_futex(cast(int, &slot.go), thread_futex_wait_op(), seen, 0)
+		while (slot.go == seen): sys_futex(cast(int, &slot.go), thread_futex_wait_op, seen, 0)
 		seen = slot.go
 		parallel_for_fn* func = slot.func
-		if (cast(int, func) == 0):
-			return
+		if (cast(int, func) == 0): return
 		void* arg = slot.arg
 		int job_start = slot.job_start
 		int job_len = slot.job_len
 		int job_chunks = slot.job_chunks
 		int chunk_hi = slot.chunk_hi
-		int k = slot.chunk_lo
-		while (k < chunk_hi):
+		for k in range(slot.chunk_lo, chunk_hi):
 			int c0 = job_start + thread_chunk_offset(job_len, job_chunks, k)
 			int c1 = job_start + thread_chunk_offset(job_len, job_chunks, k + 1)
 			func(c0, c1, arg)
-			k = k + 1
 		slot.done = 1
 		thread_wake_word(&slot.done)
 
@@ -499,8 +477,7 @@ int thread_pool_on_worker():
 	int w = 0
 	while (w < thread_pool_size):
 		int off = here - thread_pool_slots[w].stack_lo
-		if (off >= 0 && off < thread_stack_size()):
-			return 1
+		if (off >= 0 && off < thread_stack_size): return 1
 		w = w + 1
 	return 0
 
@@ -541,10 +518,8 @@ void thread_pool_shutdown():
 # place.
 void parallel_for(int start, int end, int nthreads, parallel_for_fn* func, void* arg):
 	int len = end - start
-	if (len <= 0):
-		return
-	if (nthreads > len):
-		nthreads = len
+	if (len <= 0): return
+	if (nthreads > len): nthreads = len
 	if (nthreads <= 1):
 		func(start, end, arg)
 		return
@@ -565,16 +540,14 @@ void parallel_for(int start, int end, int nthreads, parallel_for_fn* func, void*
 		parallel_for_spawn(start, end, nthreads, func, arg)
 		return
 	int want = nthreads - 1
-	if (thread_pool_cap != 0 && want > thread_pool_cap):
-		want = thread_pool_cap
+	if (thread_pool_cap != 0 && want > thread_pool_cap): want = thread_pool_cap
 	int nworkers = thread_pool_ensure(want)
 	if (nworkers == 0):
 		# No pool at all (first clone failed): the spawn path, which
 		# itself degrades to inline chunks when clones keep failing.
 		parallel_for_spawn(start, end, nthreads, func, arg)
 		return
-	if (nworkers > nthreads - 1):
-		nworkers = nthreads - 1
+	if (nworkers > nthreads - 1): nworkers = nthreads - 1
 	thread_pool_busy = 1
 	# Post chunks 1..nthreads-1 as balanced contiguous spans: worker w
 	# takes span w of the same deterministic split over chunk indices
@@ -624,7 +597,7 @@ void mutex_lock(wmutex* m):
 		# fails (EAGAIN) and the wake cannot be lost; a spurious wake
 		# just re-loops.
 		if ((c == 2) || (atomic_cas(&m.word, 1, 2) != 0)):
-			sys_futex(cast(int, &m.word), thread_futex_wait_op(), 2, 0)
+			sys_futex(cast(int, &m.word), thread_futex_wait_op, 2, 0)
 		# Retake as 0 -> 2, not 0 -> 1: other waiters may still be
 		# parked, and only state 2 makes the eventual unlock wake them.
 		c = atomic_cas(&m.word, 0, 2)
@@ -661,7 +634,7 @@ void cond_init(wcond* c):
 void cond_wait(wcond* c, wmutex* m):
 	int observed = c.seq
 	mutex_unlock(m)
-	sys_futex(cast(int, &c.seq), thread_futex_wait_op(), observed, 0)
+	sys_futex(cast(int, &c.seq), thread_futex_wait_op, observed, 0)
 	mutex_lock(m)
 
 
@@ -674,4 +647,4 @@ void cond_signal(wcond* c):
 # Wake every waiter.
 void cond_broadcast(wcond* c):
 	atomic_add(&c.seq, 1)
-	sys_futex(cast(int, &c.seq), thread_futex_wake_op(), 0x7fffffff, 0)
+	sys_futex(cast(int, &c.seq), thread_futex_wake_op, 0x7fffffff, 0)

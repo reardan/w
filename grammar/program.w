@@ -20,54 +20,238 @@
 void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset);
 
 
-# Decode the compile-time constant at the current token: an integer
-# literal (decimal or hex, optionally negated), a char literal, or a
-# named enum constant (whose int32 value was already emitted into the
-# image at the constant's address). Anything else is rejected, with
-# `what` naming the construct in the diagnostic. Leaves the token after
-# the constant current.
-int parse_constant_literal(char* what, char* name):
-	int negative = 0
+# Compile-time constant expressions: global initializers, parameter
+# defaults and enum values. The C integer-constant-expression subset
+#
+#   or    := xor ('|' xor)*          xor   := and ('^' and)*
+#   and   := shift ('&' shift)*      shift := add (('<<' | '>>') add)*
+#   add   := mul (('+' | '-') mul)*  mul   := unary (('*' | '/' | '%') unary)*
+#   unary := ('-' | '+' | '~') unary | primary
+#   primary := int literal (decimal, hex, binary) | char literal
+#            | true | false | enum constant | const-qualified global
+#            | sizeof(T) | __word_size__ | '(' or ')'
+#
+# folds in 32-bit signed arithmetic (the int-literal convention, so a
+# 32- and a 64-bit-hosted compiler agree): a result that does not fit,
+# a shift count outside 0..31 and division by zero are errors. A
+# binary operator on a new line ends the expression (the next
+# declaration or script statement starts there). const_what/const_name
+# name the construct in diagnostics.
+char* const_what
+char* const_name
+int const_paren_depth
+
+
+void const_error_prefix():
+	diag_part(const_what)
+	if (const_name):
+		diag_part(c" '")
+		diag_part(const_name)
+		diag_part(c"'")
+
+
+void const_error(char* why):
+	const_error_prefix()
+	error2(c": ", why)
+
+
+# 32-bit two's-complement range check on a 64-bit host (always true on
+# a 32-bit host, where the sign checks below catch the wrap).
+int const_fits32(int v):
+	return (v >= -2147483647 - 1) && (v <= 2147483647)
+
+
+int const_checked(int v, int overflowed):
+	if (overflowed || (const_fits32(v) == 0)): const_error(c"constant expression overflows 32 bits")
+	return v
+
+
+# The int32 stored at a defined enum constant's or const global's
+# address (the enum declaration and write_global_initial_value put
+# them there), or error when the symbol is neither.
+int const_symbol_value(int t):
+	int is_object = 0
+	if (t >= 0): is_object = (table[t + 1] == 'D') && (load_int(table + t + 10) == 1)
+	if (is_object):
+		int type = load_int(table + t + 6)
+		int addr = load_int(table + t + 2)
+		if (type_get_kind(type) == type_kind_enum):
+			# in the code stream on the native targets, in the data
+			# segment on wasm (enum_declaration.w)
+			if (target_isa == 2): return load_int32(data + (addr - data_offset))
+			return load_int32(code + addr - code_offset)
+		int t_real = type_unqualified(type)
+		if (type_is_const(type) && (value_class(t_real) == VC_INT)):
+			char* p = code + addr - code_offset
+			if (data_split): p = data + (addr - data_offset)
+			int size = type_get_size(t_real)
+			if (size == 1):
+				if (type_is_unsigned_fixed(t_real)): return p[0] & 255
+				return p[0]
+			if (size == 2):
+				int v = (p[0] & 255) | (p[1] << 8)
+				if (type_is_unsigned_fixed(t_real)): return v & 65535
+				return v
+			return load_int32(p)
+	const_error_prefix()
+	error3(c" must be a compile-time constant, got '", token, c"'")
+	return 0
+
+
+int const_or();
+
+
+int const_primary():
 	int value = 0
-	if (accept(c"-")):
-		negative = 1
+	if (accept(c"(")):
+		const_paren_depth = const_paren_depth + 1
+		value = const_or()
+		const_paren_depth = const_paren_depth - 1
+		if (peek(c")") == 0): const_error(c"')' expected in constant expression")
+	else if (accept(c"sizeof")):
+		expect(c"(")
+		value = type_get_size(type_name())
+		if (peek(c")") == 0): const_error(c"')' expected after sizeof type")
+	else if (peek(c"__word_size__")): value = word_size
+	else if (peek(c"true")): value = 1
+	else if (peek(c"false")): value = 0
 	# char literal e.g. 'c', '\n' or '\x41'; grammar/string_literal.w
 	# decodes and validates the token
-	if (token[0] == 39):
-		value = char_literal_value()
-	else if ((token[0] == '0') && (token[1] == 'x')):
+	else if (token[0] == 39): value = char_literal_value()
+	else if ((token[0] == '0') && ((token[1] == 'x') || (token[1] == 'b'))):
 		int_literal_width_check()
-		value = int_literal_wrap32(from_hex(token + 2))
+		if (token[1] == 'x'): value = from_hex(token + 2)
+		else:
+			int i = 2
+			while (token[i]):
+				value = (value << 1) + token[i] - '0'
+				i = i + 1
+		value = int_literal_wrap32(value)
 	else if (('0' <= token[0]) && (token[0] <= '9')):
 		int_literal_decimal_check()
 		value = int_literal_wrap32(atoi(token))
-	else:
-		# A named enum constant: a defined global object of an enum type.
-		# Its value is the int32 the enum declaration emitted at its address
-		# — in the code stream on the native targets, in the data segment
-		# on wasm (enum_declaration.w).
-		int t = sym_lookup(token)
-		int is_enum_constant = 0
-		if (t >= 0):
-			if ((table[t + 1] == 'D') & (load_int(table + t + 10) == 1)):
-				if (type_get_kind(load_int(table + t + 6)) == type_kind_enum):
-					is_enum_constant = 1
-		if (is_enum_constant == 0):
-			diag_part(what)
-			if (name):
-				diag_part(c" '")
-				diag_part(name)
-				diag_part(c"'")
-			diag_part(c" must be a compile-time constant, got '")
-			diag_part(token)
-			error(c"'")
-		if (target_isa == 2):
-			value = load_int32(data + (load_int(table + t + 2) - data_offset))
-		else:
-			value = load_int32(code + load_int(table + t + 2) - code_offset)
+	else: value = const_symbol_value(sym_lookup(token))
 	get_token()
-	if (negative):
-		value = 0 - value
+	return value
+
+
+int const_unary():
+	if (accept(c"-")):
+		int v = const_unary()
+		return const_checked(0 - v, (v != 0) && (v == 0 - v))
+	if (accept(c"+")): return const_unary()
+	if (accept(c"~")): return ~const_unary()
+	return const_primary()
+
+
+# 1 when the current token is binary operator op and continues the
+# expression (not the start of the next line outside parentheses).
+int const_binary(char* op):
+	if (token_newline && (const_paren_depth == 0)): return 0
+	return accept(op)
+
+
+int const_min32():
+	return -2147483647 - 1
+
+
+int const_mul():
+	int a = const_unary()
+	while (1):
+		int b
+		if (const_binary(c"*")):
+			b = const_unary()
+			int r = a * b
+			# r / a never runs as MIN / -1, which traps on a 32-bit host
+			int overflowed = 0
+			if (a != 0):
+				if (((a == -1) && (b == const_min32())) || ((b == -1) && (a == const_min32()))):
+					overflowed = 1
+				else: overflowed = r / a != b
+			a = const_checked(r, overflowed)
+		else if (const_binary(c"/")):
+			b = const_unary()
+			if (b == 0): const_error(c"division by zero in constant expression")
+			a = const_checked(a / b, (a == const_min32()) && (b == -1))
+		else if (const_binary(c"%")):
+			b = const_unary()
+			if (b == 0): const_error(c"division by zero in constant expression")
+			if (b == -1): a = 0
+			else: a = a % b
+		else:
+			return a
+
+
+int const_add():
+	int a = const_mul()
+	while (1):
+		int b
+		int r
+		if (const_binary(c"+")):
+			b = const_mul()
+			r = a + b
+			a = const_checked(r, ((a ^ r) & (b ^ r)) < 0)
+		else if (const_binary(c"-")):
+			b = const_mul()
+			r = a - b
+			a = const_checked(r, ((a ^ b) & (a ^ r)) < 0)
+		else:
+			return a
+
+
+int const_shift_count():
+	int n = const_add()
+	if ((n < 0) || (n > 31)): const_error(c"shift count must be 0..31 in a constant expression")
+	return n
+
+
+int const_shift():
+	int a = const_add()
+	while (1):
+		int n
+		if (const_binary(c"<<")):
+			n = const_shift_count()
+			int r = a << n
+			a = const_checked(r, (r >> n) != a)
+		else if (const_binary(c">>")):
+			n = const_shift_count()
+			a = a >> n
+		else:
+			return a
+
+
+int const_and():
+	int a = const_shift()
+	while (const_binary(c"&")): a = a & const_shift()
+	return a
+
+
+int const_xor():
+	int a = const_and()
+	while (const_binary(c"^")): a = a ^ const_and()
+	return a
+
+
+int const_or():
+	int a = const_xor()
+	while (const_binary(c"|")): a = a | const_xor()
+	return a
+
+
+# Parse and fold the constant expression at the current token; `what`
+# (and `name`, when nonzero) name the construct in diagnostics. Leaves
+# the token after the expression current.
+int parse_constant_literal(char* what, char* name):
+	char* outer_what = const_what
+	char* outer_name = const_name
+	int outer_depth = const_paren_depth
+	const_what = what
+	const_name = name
+	const_paren_depth = 0
+	int value = const_or()
+	const_what = outer_what
+	const_name = outer_name
+	const_paren_depth = outer_depth
 	return value
 
 
@@ -77,6 +261,20 @@ int parse_constant_default():
 	if ((peek(c",") == 0) & (peek(c")") == 0)):
 		error(c"default value for parameter must be a single compile-time constant")
 	return value
+
+
+# Records the constant after a parameter's '=' (already consumed) as the
+# default of parameter param_count (1-based) of the function at
+# current_symbol; returns the new saw_default (1). The first default of
+# a declaration replaces any recorded earlier (a definition overrides
+# its prototype).
+int param_default_record(int current_symbol, int param_count, int saw_default):
+	if (param_count > sym_max_param_slots):
+		error(c"default values are only supported on the first 10 parameters")
+	int default_value = parse_constant_default()
+	if (saw_default == 0): sym_clear_param_defaults(current_symbol)
+	sym_set_param_default(current_symbol, param_count - 1, default_value)
+	return 1
 
 
 # Parses "parameter-list ) [; | body]" for the function symbol at table
@@ -89,15 +287,13 @@ void function_definition(int current_symbol):
 	# param_count counts declared parameters for arity checks.
 	number_of_args = 0
 	int declared_return_type = load_int(table + current_symbol + 6)
-	if (type_num_args(declared_return_type) > 0):
-		number_of_args = 1
+	if (type_num_args(declared_return_type) > 0): number_of_args = 1
 	int param_count = 0
 	int saw_default = 0
 	int is_w_variadic = 0
 	int function_start = codepos /* keep track of start for length comp */
 	while (accept(c")") == 0):
-		if (is_w_variadic):
-			error(c"variadic parameter must be the last parameter")
+		if (is_w_variadic): error(c"variadic parameter must be the last parameter")
 		param_count = param_count + 1
 		number_of_args = number_of_args + 1
 		int type = type_name()
@@ -108,21 +304,20 @@ void function_definition(int current_symbol):
 			expect(c".")
 			if (saw_default):
 				error(c"a variadic parameter cannot follow parameters with default values")
-			if (param_count > sym_max_param_slots()):
+			if (param_count > sym_max_param_slots):
 				error(c"variadic functions support at most 10 parameters")
 			int elem = type_unqualified(type)
 			if ((type_num_args(elem) > 0) | type_is_array(elem) | type_is_slice(elem) |
 					type_is_map(elem) | type_is_set(elem) | type_is_list(elem) |
 					(type_get_size(elem) != word_size)):
 				error(c"variadic parameter element type must be word-sized")
-			if (type_is_var(elem)):
-				error(c"variadic parameter element type cannot be var")
+			if (type_is_var(elem)): error(c"variadic parameter element type cannot be var")
 			type = type_get_slice(type)
 			is_w_variadic = 1
 		if (type_is_array(type)):
 			error(c"fixed array parameter is not implemented; use T[] instead")
 		# Record the declared type so call sites can check arguments
-		if (param_count <= sym_max_param_slots()):
+		if (param_count <= sym_max_param_slots):
 			save_int(table + current_symbol + 22 + (param_count << 2), type)
 		/* this seems stupid, you could just have (typename) with no identifier */
 		if (peek(c")") == 0):
@@ -133,26 +328,16 @@ void function_definition(int current_symbol):
 		# A by-value aggregate occupies several stack words; later
 		# parameters address past all of them
 		int arg_words = type_stack_words(type)
-		if (arg_words > 1):
-			number_of_args = number_of_args + arg_words - 1
+		if (arg_words > 1): number_of_args = number_of_args + arg_words - 1
 
 		# "= constant" records a default; call sites push it for missing
 		# trailing arguments. Once one parameter has a default, all that
 		# follow must too.
 		if (accept(c"=")):
-			if (is_w_variadic):
-				error(c"a variadic parameter cannot have a default value")
+			if (is_w_variadic): error(c"a variadic parameter cannot have a default value")
 			if (type_is_var(type_unqualified(type))):
 				error(c"default values are not supported on var parameters")
-			if (param_count > sym_max_param_slots()):
-				error(c"default values are only supported on the first 10 parameters")
-			int default_value = parse_constant_default()
-			if (saw_default == 0):
-				# This declaration's defaults replace any recorded earlier
-				# (a definition overrides its prototype)
-				sym_clear_param_defaults(current_symbol)
-			saw_default = 1
-			sym_set_param_default(current_symbol, param_count - 1, default_value)
+			saw_default = param_default_record(current_symbol, param_count, saw_default)
 		else if (saw_default):
 			error(c"parameter without a default follows a parameter with a default")
 
@@ -161,10 +346,8 @@ void function_definition(int current_symbol):
 	# Record the arity for call-site checks (definitions overwrite
 	# whatever an earlier prototype recorded)
 	save_int(table + current_symbol + 22, param_count)
-	if (is_w_variadic):
-		sym_set_w_variadic(current_symbol, param_count - 1)
-	else:
-		sym_set_w_variadic(current_symbol, -1)
+	if (is_w_variadic): sym_set_w_variadic(current_symbol, param_count - 1)
+	else: sym_set_w_variadic(current_symbol, -1)
 
 	if (accept(c";") == 0):
 		be_function_define(current_symbol, last_global_declaration)
@@ -210,8 +393,7 @@ void emit_data_global_storage(int type, int base_vaddr);
 int global_storage_size(int type):
 	int bytes = word_size
 	int declared_size = type_get_size(type)
-	if ((type_num_args(type) > 0) | (declared_size > word_size)):
-		bytes = declared_size
+	if ((type_num_args(type) > 0) | (declared_size > word_size)): bytes = declared_size
 	return ((bytes + word_size - 1) >> word_size_log2) << word_size_log2
 
 
@@ -267,10 +449,8 @@ void write_global_initial_value(int current_symbol, int type, int value):
 	int declared_size = type_get_size(type)
 	if ((type_get_pointer_level(type) == 0) & (declared_size > 0) & (declared_size < word_size)):
 		bytes = declared_size
-	if (data_split):
-		save_i(data + (addr - data_offset), value, bytes)
-	else:
-		save_i(code + (addr - code_offset), value, bytes)
+	if (data_split): save_i(data + (addr - data_offset), value, bytes)
+	else: save_i(code + (addr - code_offset), value, bytes)
 
 
 # Reject value shapes whose storage is not a single scalar word: their
@@ -279,23 +459,15 @@ void write_global_initial_value(int current_symbol, int type, int value):
 void global_initializer_check_type(char* name, int type):
 	int t = type_canonical(type)
 	int ok = 1
-	if (type_num_args(t) > 0):
-		ok = 0
-	if (type_is_array(t) | type_is_slice(t)):
-		ok = 0
-	if (type_is_map(t) | type_is_set(t) | type_is_list(t)):
-		ok = 0
-	if (type_is_string(t)):
-		ok = 0
-	if (type_float_kind(t)):
-		ok = 0
-	if (ok):
-		return;
+	if (type_num_args(t) > 0): ok = 0
+	if (type_is_array(t) | type_is_slice(t)): ok = 0
+	if (type_is_map(t) | type_is_set(t) | type_is_list(t)): ok = 0
+	if (type_is_string(t)): ok = 0
+	if (type_float_kind(t)): ok = 0
+	if (ok): return;
 	diag_part(c"cannot initialize global '")
 	diag_part(name)
-	diag_part(c"' of type '")
-	print_error_type(type)
-	error(c"' at its declaration; assign it inside a function")
+	error_type(c"' of type '", type, c"' at its declaration; assign it inside a function")
 
 
 # 'int x = 5' at file scope: a global declaration carrying a compile-time
@@ -329,8 +501,7 @@ void emit_global_type_storage(int type):
 		while (i < type_num_args(type)):
 			emit_global_type_storage(type_get_field_type_at(type, i))
 			i = i + 1
-	else:
-		emit_zeros(type_get_size(type))
+	else: emit_zeros(type_get_size(type))
 
 
 # 1 when the current top-level token cannot open a declaration, so it
@@ -342,24 +513,16 @@ void emit_global_type_storage(int type):
 # 'T identity[T](T x)'). Statement keywords, calls, assignments and
 # 'name :=' declarations all fall through to script mode.
 int script_statement_starts_here():
-	if (peek(c"const")):
-		return 0
-	if (peek(c"map") & (nextc == '[')):
-		return 0
-	if (peek(c"set") & (nextc == '[')):
-		return 0
-	if (peek(c"list") & (nextc == '[')):
-		return 0
-	if (type_lookup(token) >= 0):
-		return 0
-	if (generic_type_starts_here()):
-		return 0
+	if (peek(c"const")): return 0
+	if (peek(c"map") & (nextc == '[')): return 0
+	if (peek(c"set") & (nextc == '[')): return 0
+	if (peek(c"list") & (nextc == '[')): return 0
+	if (type_lookup(token) >= 0): return 0
+	if (generic_type_starts_here()): return 0
 	# 'alias.TypeName name' opens a declaration through the qualified
 	# type spelling (grammar/import_statement.w)
-	if (import_alias_type_ahead(0) >= 0):
-		return 0
-	if (peek(c"generator") & (nextc != '*')):
-		return 0
+	if (import_alias_type_ahead(0) >= 0): return 0
+	if (peek(c"generator") & (nextc != '*')): return 0
 	# Statement keywords are never declaration starts
 	if (peek(c"if") | peek(c"while") | peek(c"for") | peek(c"switch") |
 			peek(c"return") | peek(c"break") | peek(c"continue") | peek(c"yield") |
@@ -367,8 +530,7 @@ int script_statement_starts_here():
 		return 1
 	int c0 = token[0]
 	int is_ident = is_ident_start_byte(c0)
-	if (is_ident == 0):
-		return 1
+	if (is_ident == 0): return 1
 	# 'name name' or 'name * name' is the shape of a declaration whose
 	# type this pass cannot know yet (a generic definition's return type
 	# parameter); no statement juxtaposes two identifiers, so scan one
@@ -380,8 +542,7 @@ int script_statement_starts_here():
 	int next_is_ident = is_ident_start_byte(c1)
 	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
-	if (next_is_ident):
-		return 0
+	if (next_is_ident): return 0
 	return 1
 
 
@@ -389,22 +550,17 @@ int script_statement_starts_here():
 # after the first top-level statement with a clear error instead of the
 # confusing expression-parse failure they would produce.
 int script_declaration_keyword():
-	if (peek(c"import") | peek(c"struct") | peek(c"union") | peek(c"enum")):
-		return 1
-	if (peek(c"extern") | peek(c"c_lib") | peek(c"c_import")):
-		return 1
+	if (peek(c"import") | peek(c"struct") | peek(c"union") | peek(c"enum")): return 1
+	if (peek(c"extern") | peek(c"c_lib") | peek(c"c_import")): return 1
 	# 'message Name:' (grammar/protobuf_builtin.w), unless shadowed
 	if (peek(c"message") & (nextc == ' ')):
-		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
-			return 1
-	if (peek(c"generator") & (nextc != '*')):
-		return 1
+		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)): return 1
+	if (peek(c"generator") & (nextc != '*')): return 1
 	# 'kernel name(...)' is a declaration unless a user type or symbol
 	# named 'kernel' shadows the marker (e.g. 'kernel = 5' assigning to
 	# a global of that name stays a statement).
 	if (peek(c"kernel")):
-		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
-			return 1
+		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)): return 1
 	return 0
 
 
@@ -413,8 +569,7 @@ int script_declaration_keyword():
 # statement; the scan-ahead gives it a clear diagnostic instead of the
 # statement parser's confusing "';' expected, found '('".
 int script_function_definition_ahead():
-	if ((peek(c"const") | (type_lookup(token) >= 0) | generic_type_starts_here()) == 0):
-		return 0
+	if ((peek(c"const") | (type_lookup(token) >= 0) | generic_type_starts_here()) == 0): return 0
 	char* save = generic_reparse_save()
 	get_token()
 	while (accept(c"*")) {}
@@ -422,8 +577,7 @@ int script_function_definition_ahead():
 	int next_is_ident = is_ident_start_byte(c1)
 	int is_definition = 0
 	if (next_is_ident):
-		if (nextc == '('):
-			is_definition = 1
+		if (nextc == '('): is_definition = 1
 	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
 	return is_definition
@@ -437,31 +591,23 @@ int script_function_definition_ahead():
 # (code_generator/wasm_module.w). The native targets have no
 # per-function export surface, so the marker is a no-op there.
 void export_function_note(int t, char* name, int ret_type):
-	if (target_isa != 2):
-		return;
-	if (sym_w_variadic_fixed_args(t) >= 0):
-		error(c"cannot export a variadic function")
+	if (target_isa != 2): return;
+	if (sym_w_variadic_fixed_args(t) >= 0): error(c"cannot export a variadic function")
 	int n = sym_num_args(t)
-	if (n > sym_max_param_slots()):
-		error(c"exported functions support at most 10 parameters")
+	if (n > sym_max_param_slots): error(c"exported functions support at most 10 parameters")
 	if ((type_num_args(ret_type) > 0) & (type_get_pointer_level(ret_type) == 0)):
 		error(c"cannot export a function returning a struct by value")
 	int ret_kind = 1
-	if (ffi_type_class(ret_type) == 1):
-		ret_kind = 2
+	if (ffi_type_class(ret_type) == 1): ret_kind = 2
 	if (type_get_pointer_level(ret_type) == 0):
-		if (strcmp(type_get_name(ret_type), c"void") == 0):
-			ret_kind = 0
+		if (strcmp(type_get_name(ret_type), c"void") == 0): ret_kind = 0
 	char* classes = malloc(n + 1)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int ptype = sym_param_type(t, i)
 		if (type_stack_words(ptype) != 1):
 			error(c"exported function parameters must be single words")
 		classes[i] = 0
-		if (ffi_type_class(ptype) == 1):
-			classes[i] = 1
-		i = i + 1
+		if (ffi_type_class(ptype) == 1): classes[i] = 1
 	wasm_export_add(t, name, n, classes, ret_kind)
 	free(classes)
 
@@ -527,12 +673,10 @@ void script_main():
 # structs of them are all-zero at startup, which is what a fresh TLS
 # block holds.
 int thread_local_type_needs_init(int type):
-	if (type_is_array(type)):
-		return 1
+	if (type_is_array(type)): return 1
 	int i = 0
 	while (i < type_num_args(type)):
-		if (thread_local_type_needs_init(type_get_field_type_at(type, i))):
-			return 1
+		if (thread_local_type_needs_init(type_get_field_type_at(type, i))): return 1
 		i = i + 1
 	return 0
 
@@ -547,8 +691,7 @@ int thread_local_type_needs_init(int type):
 void thread_local_declaration():
 	if ((target_isa != 0) || (target_os != 0)):
 		error(c"thread_local is only supported on the x86 and x64 Linux targets")
-	if (data_split == 0):
-		error(c"thread_local is not supported in the REPL or debugger")
+	if (data_split == 0): error(c"thread_local is not supported in the REPL or debugger")
 	int start = token_start_offset
 	int decl_type = type_name()
 	if (thread_local_type_needs_init(decl_type)):
@@ -558,10 +701,8 @@ void thread_local_declaration():
 	int column = diag_token_column
 	int current_symbol = sym_declare_global(token, decl_type, 1)
 	get_token()
-	if (peek(c"(")):
-		error(c"thread_local applies to variables, not functions")
-	if (peek(c"=")):
-		error(c"thread_local variables cannot have an initializer; they start zeroed")
+	if (peek(c"(")): error(c"thread_local applies to variables, not functions")
+	if (peek(c"=")): error(c"thread_local variables cannot have an initializer; they start zeroed")
 	accept(c";")
 	if (tls_size == 0):
 		tls_size = word_size  /* word 0: the block's self pointer */
@@ -585,8 +726,7 @@ void program():
 		int parsed_declaration = 1
 		while (parsed_declaration):
 			parsed_declaration = 0
-			while(type_alias_declaration()):
-				parsed_declaration = 1
+			while(type_alias_declaration()): parsed_declaration = 1
 			while(struct_declaration()):
 				parsed_declaration = 1
 				print_int_v1(c"struct_declaration=1", 1)
@@ -596,22 +736,18 @@ void program():
 			while(enum_declaration()):
 				parsed_declaration = 1
 				print_int_v1(c"enum_declaration=1", 1)
-			while(message_declaration()):
-				parsed_declaration = 1
+			while(message_declaration()): parsed_declaration = 1
 
 		# Shared-library declarations (c_lib / extern). Anything may follow
 		# an extern block, so go around again: a type alias or struct right
 		# after the last extern would otherwise reach the function/global
 		# declaration parser below ("unknown type name: 'type'").
 		int parsed_extern = 0
-		while (extern_statement()):
-			parsed_extern = 1
-		if (parsed_extern):
-			continue
+		while (extern_statement()): parsed_extern = 1
+		if (parsed_extern): continue
 
 		# Imports/structs may have consumed the rest of the file
-		if (token[0] == 0):
-			return;
+		if (token[0] == 0): return;
 
 		# 'export' marks the next function definition as a host-callable
 		# module export with its real typed signature on the wasm target
@@ -634,8 +770,7 @@ void program():
 			return;
 
 		# 'defer' is only meaningful inside a function body
-		if (peek(c"defer")):
-			error(c"'defer' outside of a function")
+		if (peek(c"defer")): error(c"'defer' outside of a function")
 
 		# 'thread_local type name': contextual like 'kernel', so a type
 		# or symbol named thread_local keeps the identifier meaning.
@@ -676,15 +811,13 @@ void program():
 		# scanned tokens are rebuilt into generic_scanned_type and the
 		# declared name is the current token (see grammar/generic.w).
 		if (generic_declaration_scan()):
-			if (export_pending):
-				error(c"'export' is not supported on generic functions")
+			if (export_pending): error(c"'export' is not supported on generic functions")
 			continue;
 
 		# Now global variables + functions
 		# TODO: variables THEN functions, not both
 		int decl_type = generic_scanned_type
-		if (decl_type < 0):
-			decl_type = type_name()
+		if (decl_type < 0): decl_type = type_name()
 		# defhash (docs/projects/build_system_next.md 4a): name/line/column
 		# of the plain declaration below; the 'operator' overload branch
 		# sets its own (wave plan C task 4f) since the real declared
@@ -702,8 +835,7 @@ void program():
 			defhash_column = diag_token_column
 			get_token()
 			if (operator_definition_starts_here()):
-				if (export_pending):
-					error(c"'export' is not supported on operator overloads")
+				if (export_pending): error(c"'export' is not supported on operator overloads")
 				char* defhash_op_name = operator_definition(decl_type)
 				defhash_note(defhash_op_name, c"operator", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 				continue;
@@ -715,8 +847,7 @@ void program():
 			current_symbol = sym_declare_global(token, decl_type, 1)
 			get_token()
 		if (accept(c";")):
-			if (export_pending):
-				error(c"only functions can be exported")
+			if (export_pending): error(c"only functions can be exported")
 			define_global_variable(current_symbol, decl_type)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
@@ -725,29 +856,25 @@ void program():
 			function_definition(current_symbol)
 			if (export_pending):
 				char* export_name = defhash_name
-				if (export_name == 0):
-					export_name = c"operator"
+				if (export_name == 0): export_name = c"operator"
 				export_function_note(current_symbol, export_name, decl_type)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"function", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 		else if (accept(c"=")):
-			if (export_pending):
-				error(c"only functions can be exported")
+			if (export_pending): error(c"only functions can be exported")
 			define_global_variable(current_symbol, decl_type)
 			# defhash_name is 0 only on the 'operator' branch above,
 			# which declared that literal name
 			char* init_name = defhash_name
-			if (init_name == 0):
-				init_name = c"operator"
+			if (init_name == 0): init_name = c"operator"
 			global_initializer(init_name, current_symbol, decl_type)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 		else:
 			/*error(8)*/
-			if (export_pending):
-				error(c"only functions can be exported")
+			if (export_pending): error(c"only functions can be exported")
 			define_global_variable(current_symbol, decl_type)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)

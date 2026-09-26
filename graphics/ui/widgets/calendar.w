@@ -7,8 +7,7 @@ graphics.ui.widgets.calendar: a month grid (docs/projects/ui_widgets.md
 	ui_date picked
 	ui_date_clear(&picked)
 	...
-	if (ui_calendar(ctx, &cal, &picked, &today)):
-		use(picked)
+	if (ui_calendar(ctx, &cal, &picked, &today)): use(picked)
 
 A header (month name and year between previous/next arrows), a weekday
 row, and a fixed 6x7 grid of days: six rows always fit, since a month
@@ -66,10 +65,8 @@ void ui_date_clear(ui_date* d):
 
 
 int ui_date_is_set(ui_date* d):
-	if (d == 0):
-		return 0
-	if (d.day == 0):
-		return 0
+	if (d == 0): return 0
+	if (d.day == 0): return 0
 	return 1
 
 
@@ -93,8 +90,7 @@ int ui_date_compare(ui_date* a, ui_date* b):
 
 
 int ui_date_equal(ui_date* a, ui_date* b):
-	if ((a.year == b.year) && (a.month == b.month) && (a.day == b.day)):
-		return 1
+	if ((a.year == b.year) && (a.month == b.month) && (a.day == b.day)): return 1
 	return 0
 
 
@@ -134,8 +130,7 @@ void ui_date_add_months(ui_date* d, int n):
 	d.year = y
 	d.month = mi + 1
 	int dim = time_days_in_month(d.year, d.month)
-	if (d.day > dim):
-		d.day = dim
+	if (d.day > dim): d.day = dim
 
 
 # Write d as "YYYY-MM-DD" plus a NUL into out (11 bytes).
@@ -146,49 +141,6 @@ void ui_date_format(ui_date* d, char* out):
 	out[7] = '-'
 	time_write_2_digits(&out[8], d.day)
 	out[10] = 0
-
-
-char* ui_month_name(int month):
-	if (month == 1):
-		return c"January"
-	if (month == 2):
-		return c"February"
-	if (month == 3):
-		return c"March"
-	if (month == 4):
-		return c"April"
-	if (month == 5):
-		return c"May"
-	if (month == 6):
-		return c"June"
-	if (month == 7):
-		return c"July"
-	if (month == 8):
-		return c"August"
-	if (month == 9):
-		return c"September"
-	if (month == 10):
-		return c"October"
-	if (month == 11):
-		return c"November"
-	return c"December"
-
-
-# Two-letter weekday heading, 0 = Sunday.
-char* ui_weekday_short(int weekday):
-	if (weekday == 0):
-		return c"Su"
-	if (weekday == 1):
-		return c"Mo"
-	if (weekday == 2):
-		return c"Tu"
-	if (weekday == 3):
-		return c"We"
-	if (weekday == 4):
-		return c"Th"
-	if (weekday == 5):
-		return c"Fr"
-	return c"Sa"
 
 
 # The month on show, and which weekday the grid's first column is.
@@ -218,8 +170,7 @@ void ui_calendar_show(ui_calendar_state* st, ui_date* d):
 	st.month = d.month
 
 
-int ui_calendar_cells():
-	return 42
+const int ui_calendar_cells = 42
 
 
 # Cells before the 1st of the shown month, 0..6.
@@ -240,8 +191,7 @@ int ui_calendar_cell_of(ui_calendar_state* st, ui_date* d):
 	ui_date first
 	ui_calendar_cell_date(st, 0, &first)
 	int cell = ui_date_days(d) - ui_date_days(&first)
-	if ((cell < 0) || (cell >= ui_calendar_cells())):
-		return -1
+	if ((cell < 0) || (cell >= ui_calendar_cells)): return -1
 	return cell
 
 
@@ -277,20 +227,16 @@ ui_rect ui_calendar_cell_rect(ui_context* ctx, ui_rect r, int cell):
 # The cell under a point, or -1.
 int ui_calendar_cell_at(ui_context* ctx, ui_rect r, int x, int y):
 	ui_rect g = ui_calendar_grid_rect(ctx, r)
-	if (ui_rect_contains(g, cast(float32, x), cast(float32, y)) == 0):
-		return -1
+	if (ui_rect_contains(g, cast(float32, x), cast(float32, y)) == 0): return -1
 	float32 s = ui_calendar_cell_size(ctx)
 	int col = cast(int, (cast(float32, x) - g.x) / s)
 	int row = cast(int, (cast(float32, y) - g.y) / s)
-	if (col > 6):
-		col = 6
-	if (row > 5):
-		row = 5
+	if (col > 6): col = 6
+	if (row > 5): row = 5
 	return row * 7 + col
 
 
-int ui_calendar_ids():
-	return 3
+const int ui_calendar_ids = 3
 
 
 # What ui_calendar_grid reports.
@@ -320,10 +266,8 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 	# Header arrows: a click turns the page.
 	ui_rect prev = ui_rect_new(r.x, r.y, s, s)
 	ui_rect next = ui_rect_new(r.x + r.w - s, r.y, s, s)
-	if (ui_click_behavior(ctx, prev_id, prev)):
-		ui_calendar_show_month(st, -1)
-	if (ui_click_behavior(ctx, next_id, next)):
-		ui_calendar_show_month(st, 1)
+	if (ui_click_behavior(ctx, prev_id, prev)): ui_calendar_show_month(st, -1)
+	if (ui_click_behavior(ctx, next_id, next)): ui_calendar_show_month(st, 1)
 
 	# The grid is one id: the click is a release over the same cell the
 	# press landed in.
@@ -331,10 +275,8 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 	int grid_click = ui_click_behavior(ctx, grid_id, g)
 	if (ctx.input.mouse_pressed && (ui_scope_blocked(ctx) == 0) && (ctx.disabled == 0)):
 		if (ui_rect_contains(g, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
-			if (cursor != 0):
-				ctx.focus = grid_id
-		else if (ctx.focus == grid_id):
-			ctx.focus = 0
+			if (cursor != 0): ctx.focus = grid_id
+		else if (ctx.focus == grid_id): ctx.focus = 0
 	if (grid_click):
 		int cell = ui_calendar_cell_at(ctx, r, ctx.input.mouse_x, ctx.input.mouse_y)
 		if ((cell >= 0) && (cell == ui_calendar_cell_at(ctx, r, ctx.input.press_x, ctx.input.press_y))):
@@ -346,8 +288,7 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 	if ((cursor != 0) && (ctx.focus == grid_id) && (result == UI_CALENDAR_NONE)):
 		ui_date c
 		ui_date_copy(&c, cursor)
-		if (ui_date_is_set(&c) == 0):
-			ui_date_set(&c, st.year, st.month, 1)
+		if (ui_date_is_set(&c) == 0): ui_date_set(&c, st.year, st.month, 1)
 		int moved = 0
 		int i = 0
 		while (i < ctx.nav_count):
@@ -380,8 +321,7 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 			if (ctx.chars[i] == 13):
 				ui_date_copy(picked, &c)
 				result = UI_CALENDAR_COMMIT
-			else if (ctx.chars[i] == 27):
-				ctx.focus = 0
+			else if (ctx.chars[i] == 27): ctx.focus = 0
 			i = i + 1
 
 	# Header: arrows either side of "Month YYYY".
@@ -392,10 +332,10 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 		ui_draw_rrect(ctx.rndr, ui_rect_inset(prev, 2.0), s * 0.5, ctx.theme.widget_hot)
 	if (ctx.hot == next_id):
 		ui_draw_rrect(ctx.rndr, ui_rect_inset(next, 2.0), s * 0.5, ctx.theme.widget_hot)
-	ui_render_mask(ctx.rndr, pc, ui_mask_chevron_right(), 1, 0, ui_text_color(ctx))
-	ui_render_mask(ctx.rndr, nc, ui_mask_chevron_right(), 0, 0, ui_text_color(ctx))
+	ui_render_mask(ctx.rndr, pc, ui_mask_chevron_right, 1, 0, ui_text_color(ctx))
+	ui_render_mask(ctx.rndr, nc, ui_mask_chevron_right, 0, 0, ui_text_color(ctx))
 	char[32] title
-	char* name = ui_month_name(st.month)
+	char* name = time_month_name(st.month)
 	int n = 0
 	while (name[n] != 0):
 		title[n] = name[n]
@@ -407,11 +347,14 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 
 	# Weekday row.
 	float32 wr_h = ui_calendar_weekday_row_h(ctx)
-	int col = 0
-	while (col < 7):
+	for col in range(7):
 		ui_rect wc = ui_rect_new(r.x + s * cast(float32, col), r.y + s, s, wr_h)
-		ui_draw_text_centered(ctx.rndr, wc, ui_weekday_short((col + st.first_weekday) % 7), scale, ctx.theme.text_muted)
-		col = col + 1
+		char* wname = time_weekday_name((col + st.first_weekday) % 7)
+		char[3] wd
+		wd[0] = wname[0]
+		wd[1] = wname[1]
+		wd[2] = 0
+		ui_draw_text_centered(ctx.rndr, wc, &wd[0], scale, ctx.theme.text_muted)
 
 	# Days.
 	int have_range = 0
@@ -426,16 +369,13 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 			lo = hi
 			hi = t
 	int sel = -1
-	if (ui_date_is_set(selected)):
-		sel = ui_date_days(selected)
+	if (ui_date_is_set(selected)): sel = ui_date_days(selected)
 	int now = -1
 	int have_today = ui_date_is_set(today)
-	if (have_today):
-		now = ui_date_days(today)
+	if (have_today): now = ui_date_days(today)
 	int cur = -1
 	if ((cursor != 0) && (ctx.focus == grid_id)):
-		if (ui_date_is_set(cursor)):
-			cur = ui_date_days(cursor)
+		if (ui_date_is_set(cursor)): cur = ui_date_days(cursor)
 	int hover = -1
 	if ((ctx.hot == grid_id) && (ctx.disabled == 0)):
 		hover = ui_calendar_cell_at(ctx, r, ctx.input.mouse_x, ctx.input.mouse_y)
@@ -443,17 +383,15 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 	ui_date d
 	char[4] num
 	int cell = 0
-	while (cell < ui_calendar_cells()):
+	while (cell < ui_calendar_cells):
 		ui_calendar_cell_date(st, cell, &d)
 		int days = ui_date_days(&d)
 		ui_rect cr = ui_calendar_cell_rect(ctx, r, cell)
 		ui_rect dot = ui_rect_inset(cr, 2.0)
 		int in_month = 0
-		if (d.month == st.month):
-			in_month = 1
+		if (d.month == st.month): in_month = 1
 		ui_color ink = ctx.theme.text_muted
-		if (in_month):
-			ink = ui_text_color(ctx)
+		if (in_month): ink = ui_text_color(ctx)
 		if (have_range && (days >= lo) && (days <= hi)):
 			# A band through the range, its ends rounded off by the
 			# endpoint discs drawn over it.
@@ -461,12 +399,9 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 		if ((have_range && ((days == lo) || (days == hi))) || (days == sel)):
 			ui_draw_rrect(ctx.rndr, dot, dot.h * 0.5, ctx.theme.accent)
 			ink = ctx.theme.on_accent
-		else if (cell == hover):
-			ui_draw_rrect(ctx.rndr, dot, dot.h * 0.5, ctx.theme.widget_hot)
-		if (have_today && (days == now)):
-			ui_draw_ring(ctx.rndr, dot, ctx.theme.accent)
-		if (days == cur):
-			ui_draw_ring(ctx.rndr, cr, ctx.theme.focus)
+		else if (cell == hover): ui_draw_rrect(ctx.rndr, dot, dot.h * 0.5, ctx.theme.widget_hot)
+		if (have_today && (days == now)): ui_draw_ring(ctx.rndr, dot, ctx.theme.accent)
+		if (days == cur): ui_draw_ring(ctx.rndr, cr, ctx.theme.focus)
 		if (d.day >= 10):
 			num[0] = '0' + d.day / 10
 			num[1] = '0' + d.day % 10
@@ -484,7 +419,7 @@ int ui_calendar_grid(ui_context* ctx, int base_id, ui_rect r, ui_calendar_state*
 # frame *selected changes. today (may be 0) is ringed.
 int ui_calendar(ui_context* ctx, ui_calendar_state* st, ui_date* selected, ui_date* today):
 	int base = ctx.next_id
-	ctx.next_id = ctx.next_id + ui_calendar_ids()
+	ctx.next_id = ctx.next_id + ui_calendar_ids
 	ui_rect r = ui_layout_next(ctx, ui_calendar_width(ctx), ui_calendar_height(ctx))
 	ui_date picked
 	ui_date_clear(&picked)

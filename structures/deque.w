@@ -52,8 +52,7 @@ void deque_index_trap(char* what, int index, int length):
 
 
 deque[T]* deque_new_sized[T](int capacity):
-	if (capacity < 4):
-		capacity = 4
+	if (capacity < 4): capacity = 4
 	# four word-sized fields on every instantiation (payload policy)
 	deque[T]* d = cast(deque[T]*, malloc(4 * __word_size__))
 	d.capacity = capacity
@@ -71,8 +70,7 @@ deque[T]* deque_new[T]():
 # public accessors guard first.
 int deque_physical[T](deque[T]* d, int i):
 	int p = d.head + i
-	if (p >= d.capacity):
-		p = p - d.capacity
+	if (p >= d.capacity): p = p - d.capacity
 	return p
 
 
@@ -91,49 +89,41 @@ void deque_grow[T](deque[T]* d):
 
 
 void deque_push_back[T](deque[T]* d, T value):
-	if (d.length == d.capacity):
-		deque_grow[T](d)
+	if (d.length == d.capacity): deque_grow[T](d)
 	d.items[deque_physical[T](d, d.length)] = value
 	d.length = d.length + 1
 
 
 void deque_push_front[T](deque[T]* d, T value):
-	if (d.length == d.capacity):
-		deque_grow[T](d)
+	if (d.length == d.capacity): deque_grow[T](d)
 	int h = d.head - 1
-	if (h < 0):
-		h = d.capacity - 1
+	if (h < 0): h = d.capacity - 1
 	d.head = h
 	d.items[h] = value
 	d.length = d.length + 1
 
 
 T deque_peek_front[T](deque[T]* d):
-	if (d.length == 0):
-		deque_trap(c"peek_front on empty deque")
+	if (d.length == 0): deque_trap(c"peek_front on empty deque")
 	return d.items[d.head]
 
 
 T deque_peek_back[T](deque[T]* d):
-	if (d.length == 0):
-		deque_trap(c"peek_back on empty deque")
+	if (d.length == 0): deque_trap(c"peek_back on empty deque")
 	return d.items[deque_physical[T](d, d.length - 1)]
 
 
 T deque_pop_front[T](deque[T]* d):
-	if (d.length == 0):
-		deque_trap(c"pop_front on empty deque")
+	if (d.length == 0): deque_trap(c"pop_front on empty deque")
 	T value = d.items[d.head]
 	d.head = d.head + 1
-	if (d.head >= d.capacity):
-		d.head = 0
+	if (d.head >= d.capacity): d.head = 0
 	d.length = d.length - 1
 	return value
 
 
 T deque_pop_back[T](deque[T]* d):
-	if (d.length == 0):
-		deque_trap(c"pop_back on empty deque")
+	if (d.length == 0): deque_trap(c"pop_back on empty deque")
 	d.length = d.length - 1
 	return d.items[deque_physical[T](d, d.length)]
 
@@ -178,6 +168,5 @@ int deque_iter_next[T](deque[T]* d, int cursor):
 
 
 T deque_iter_value[T](deque[T]* d, int cursor):
-	if (cursor >= d.length):
-		deque_index_trap(c"deque iterator out of range", cursor, d.length)
+	if (cursor >= d.length): deque_index_trap(c"deque iterator out of range", cursor, d.length)
 	return d.items[deque_physical[T](d, cursor)]

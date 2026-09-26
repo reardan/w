@@ -39,12 +39,9 @@ char* print_dirent(char* buf):
 	char* type_ptr = buf + length - 1
 	int type = type_ptr[0]
 	print2(c", type: ")
-	if (type == 4):
-		print2(c"D")
-	else if (type == 8):
-		print2(c"F")
-	else:
-		print_int0(c"", type)
+	if (type == 4): print2(c"D")
+	else if (type == 8): print2(c"F")
+	else: print_int0(c"", type)
 	print_string(c", name: ", dirent_name(buf))
 	return buf + length
 
@@ -56,8 +53,7 @@ void read_directory(int file):
 	print_int(c"dents_result: ", dents_result)
 	translate_syscall_failure(dents_result)
 	char* cur = buf
-	while (cur < (buf + dents_result)):
-		cur = print_dirent(cur)
+	while (cur < (buf + dents_result)): cur = print_dirent(cur)
 	println2(c"")
 	free(buf)
 
@@ -73,8 +69,7 @@ void print_ent(char* buf, int length):
 		print_color_bg(dirent_name(buf), 31, 44)
 	else if (type == 8): /* file */
 		print_color(dirent_name(buf), 33)
-	else:
-		print2(dirent_name(buf))
+	else: print2(dirent_name(buf))
 	print2(c" ")
 
 
@@ -88,8 +83,7 @@ int print_dirent_ls(char* buf, int should_print):
 	int length = dirent_reclen(buf)
 	int str_length = strlen(dirent_name(buf))
 
-	if (str_length > ls_longest_filename):
-		ls_longest_filename = str_length
+	if (str_length > ls_longest_filename): ls_longest_filename = str_length
 
 	if (should_print == 0):
 		return length
@@ -109,8 +103,7 @@ int print_dirent_ls(char* buf, int should_print):
 void print_dirents(char* buf, int byte_count, int should_print):
 	int index = 0
 	ls_column = 0
-	while (index < byte_count):
-		index = index + print_dirent_ls(buf + index, should_print)
+	while (index < byte_count): index = index + print_dirent_ls(buf + index, should_print)
 	println2(c"")
 
 

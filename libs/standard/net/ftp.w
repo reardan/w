@@ -127,7 +127,6 @@
 #     users "anonymous" and "ftp" are always allowed.
 import lib.lib
 import lib.net
-import lib.poll
 import structures.string
 import libs.standard.net.dns
 import libs.standard.net.tls
@@ -159,44 +158,27 @@ struct ftp_client:
 
 /* Limits and error codes */
 
-int ftp_default_port():
-	return 21
-
-
-int ftp_default_timeout_ms():
-	return 30000
+const int ftp_default_port = 21
+const int ftp_default_timeout_ms = 30000
 
 
 # Longest control-connection line accepted (excluding CRLF).
-int ftp_max_line():
-	return 8192
+const int ftp_max_line = 8192
 
 
 # Most lines accepted in one (multi-line) reply.
-int ftp_max_reply_lines():
-	return 1024
+const int ftp_max_reply_lines = 1024
 
 
 # Longest user-supplied command argument.
-int ftp_max_argument():
-	return 4096
+const int ftp_max_argument = 4096
 
 
 # Default cap on a buffered data transfer (LIST/NLST/MLSD/RETR).
-int ftp_default_max_transfer():
-	return 67108864
-
-
-int ftp_error_none():
-	return 0
-
-
-int ftp_error_connect():
-	return 1
-
-
-int ftp_error_timeout():
-	return 2
+const int ftp_default_max_transfer = 67108864
+const int ftp_error_none = 0
+const int ftp_error_connect = 1
+const int ftp_error_timeout = 2
 
 
 # Control or data connection failed or closed unexpectedly.
@@ -225,8 +207,7 @@ int ftp_error_reply():
 	return 7
 
 
-int ftp_error_resolve():
-	return 8
+const int ftp_error_resolve = 8
 
 
 # TLS handshake (control or data connection) failed; ftp_tls_error(c)
@@ -236,58 +217,36 @@ int ftp_error_tls():
 
 
 # The server refused AUTH TLS (reply in c.reply_code / c.reply_text).
-int ftp_error_tls_refused():
-	return 10
+const int ftp_error_tls_refused = 10
 
 
 # ftp_login refused to send credentials over an unencrypted connection.
-int ftp_error_insecure():
-	return 11
-
-
-int ftp_security_none():
-	return 0
+const int ftp_error_insecure = 11
+const int ftp_security_none = 0
 
 
 # RFC 4217: plaintext greeting, then AUTH TLS.
-int ftp_security_explicit():
-	return 1
+const int ftp_security_explicit = 1
 
 
 # TLS from the first byte ("ftps", port 990).
-int ftp_security_implicit():
-	return 2
-
-
-int ftp_default_implicit_port():
-	return 990
+const int ftp_security_implicit = 2
+const int ftp_default_implicit_port = 990
 
 
 char* ftp_error_string(int code):
-	if (code == ftp_error_none()):
-		return c""
-	if (code == ftp_error_connect()):
-		return c"connect failed"
-	if (code == ftp_error_timeout()):
-		return c"timed out"
-	if (code == ftp_error_io()):
-		return c"connection error"
-	if (code == ftp_error_protocol()):
-		return c"malformed server reply"
-	if (code == ftp_error_overflow()):
-		return c"reply or transfer too large"
-	if (code == ftp_error_bad_argument()):
-		return c"invalid argument"
-	if (code == ftp_error_reply()):
-		return c"unexpected server reply"
-	if (code == ftp_error_resolve()):
-		return c"host lookup failed"
-	if (code == ftp_error_tls()):
-		return c"TLS handshake failed"
-	if (code == ftp_error_tls_refused()):
-		return c"server refused AUTH TLS"
-	if (code == ftp_error_insecure()):
-		return c"refusing to send credentials without TLS"
+	if (code == ftp_error_none): return c""
+	if (code == ftp_error_connect): return c"connect failed"
+	if (code == ftp_error_timeout): return c"timed out"
+	if (code == ftp_error_io()): return c"connection error"
+	if (code == ftp_error_protocol()): return c"malformed server reply"
+	if (code == ftp_error_overflow()): return c"reply or transfer too large"
+	if (code == ftp_error_bad_argument()): return c"invalid argument"
+	if (code == ftp_error_reply()): return c"unexpected server reply"
+	if (code == ftp_error_resolve): return c"host lookup failed"
+	if (code == ftp_error_tls()): return c"TLS handshake failed"
+	if (code == ftp_error_tls_refused): return c"server refused AUTH TLS"
+	if (code == ftp_error_insecure): return c"refusing to send credentials without TLS"
 	return c"unknown error"
 
 
@@ -297,8 +256,7 @@ int ftp_ok(ftp_client* c):
 
 # Records the first error only, so the root cause survives cleanup.
 int ftp_fail(ftp_client* c, int code):
-	if (c.error == 0):
-		c.error = code
+	if (c.error == 0): c.error = code
 	return 0
 
 
@@ -344,67 +302,42 @@ void ftp_set_epsv(ftp_client* c, int enabled):
 # 1 when text is a safe single command argument: non-empty, at most
 # ftp_max_argument() bytes, and free of CR and LF.
 int ftp_valid_argument(char* text):
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	int i = 0
 	while (text[i] != 0):
 		int ch = text[i] & 255
-		if ((ch == 13) || (ch == 10)):
-			return 0
+		if ((ch == 13) || (ch == 10)): return 0
 		i = i + 1
-		if (i > ftp_max_argument()):
-			return 0
+		if (i > ftp_max_argument): return 0
 	return i > 0
 
 
 # Verbs are 1-8 ASCII letters.
 int ftp_valid_verb(char* verb):
-	if (verb == 0):
-		return 0
+	if (verb == 0): return 0
 	int i = 0
 	while (verb[i] != 0):
 		int ch = verb[i] & 255
 		int upper = (ch >= 'A') && (ch <= 'Z')
 		int lower = (ch >= 'a') && (ch <= 'z')
-		if ((upper == 0) && (lower == 0)):
-			return 0
+		if ((upper == 0) && (lower == 0)): return 0
 		i = i + 1
-		if (i > 8):
-			return 0
+		if (i > 8): return 0
 	return i > 0
 
 
 /* Socket plumbing */
 
-# Nonblocking connect bounded by timeout_ms, then back to blocking with
+# lib/net.w's net_connect_timeout, then back to blocking with
 # SO_RCVTIMEO/SO_SNDTIMEO armed. Returns the fd, or the negated
 # ftp_error_* code.
 int ftp_connect_fd(int ip, int port, int timeout_ms):
-	int fd = socket_tcp_ipv4()
-	if (fd < 0):
-		return 0 - ftp_error_connect()
-	if (socket_set_nonblocking(fd) < 0):
-		close(fd)
-		return 0 - ftp_error_connect()
-	socket_set_nosigpipe(fd)
-	int rc = socket_connect_ipv4(fd, ip, port)
-	if (rc < 0):
-		if (rc != (0 - net_einprogress())):
-			close(fd)
-			return 0 - ftp_error_connect()
-		int ready = poll_single(fd, poll_out(), timeout_ms)
-		if (ready == 0):
-			close(fd)
-			return 0 - ftp_error_timeout()
-		if (ready < 0):
-			close(fd)
-			return 0 - ftp_error_connect()
-		if ((ready & (poll_err() | poll_hup())) != 0):
-			close(fd)
-			return 0 - ftp_error_connect()
+	int fd = net_connect_timeout(ip, port, timeout_ms)
+	if (fd == -2): return 0 - ftp_error_timeout
+	if (fd < 0): return 0 - ftp_error_connect
 	if (socket_set_blocking(fd) < 0):
 		close(fd)
-		return 0 - ftp_error_connect()
+		return 0 - ftp_error_connect
 	socket_set_recv_timeout(fd, timeout_ms)
 	socket_set_send_timeout(fd, timeout_ms)
 	return fd
@@ -413,7 +346,7 @@ int ftp_connect_fd(int ip, int port, int timeout_ms):
 # Maps a negative recv/send result to an error code.
 int ftp_io_error_code(int rc):
 	if (rc == (0 - net_eagain())):
-		return ftp_error_timeout()
+		return ftp_error_timeout
 	return ftp_error_io()
 
 
@@ -422,10 +355,8 @@ int ftp_send_all(int fd, char* data, int n, int* err):
 	int total = 0
 	while (total < n):
 		int got = socket_send(fd, data + total, n - total, msg_nosignal())
-		if (got > 0):
-			total = total + got
-		else if (got == (0 - 4)):
-			got = 0
+		if (got > 0): total = total + got
+		else if (got == (0 - 4)): got = 0
 		else if (got == 0):
 			*err = ftp_error_io()
 			return 0
@@ -451,7 +382,7 @@ ftp_client* ftp_attach(int fd, int peer_ip, int timeout_ms):
 	c.rpos = 0
 	c.rlen = 0
 	c.use_epsv = 1
-	c.max_transfer = ftp_default_max_transfer()
+	c.max_transfer = ftp_default_max_transfer
 	c.broken = 0
 	c.tls = 0
 	c.tls_cfg = 0
@@ -462,31 +393,25 @@ ftp_client* ftp_attach(int fd, int peer_ip, int timeout_ms):
 	c.pbsz_done = 0
 	c.allow_insecure_login = 0
 	c.data_tls = 0
-	if (fd < 0):
-		c.broken = 1
+	if (fd < 0): c.broken = 1
 	return c
 
 
 # Next control byte, or -1 with c.error set.
 int ftp_read_byte(ftp_client* c):
 	if (c.rpos >= c.rlen):
-		if (c.ctrl_fd < 0):
-			return ftp_break_neg(c, ftp_error_io())
+		if (c.ctrl_fd < 0): return ftp_break_neg(c, ftp_error_io())
 		int got = 0
 		if (c.tls != 0):
 			# tls_read: 0 = close_notify, -1 = error (including a
 			# SO_RCVTIMEO expiry, which tls.w cannot tell apart).
 			got = tls_read(c.tls, c.rbuf, 4096)
-			if (got < 0):
-				return ftp_break_neg(c, ftp_error_io())
+			if (got < 0): return ftp_break_neg(c, ftp_error_io())
 		else:
 			got = socket_recv(c.ctrl_fd, c.rbuf, 4096, 0)
-			while (got == (0 - 4)):
-				got = socket_recv(c.ctrl_fd, c.rbuf, 4096, 0)
-		if (got == 0):
-			return ftp_break_neg(c, ftp_error_io())
-		if (got < 0):
-			return ftp_break_neg(c, ftp_io_error_code(got))
+			while (got == (0 - 4)): got = socket_recv(c.ctrl_fd, c.rbuf, 4096, 0)
+		if (got == 0): return ftp_break_neg(c, ftp_error_io())
+		if (got < 0): return ftp_break_neg(c, ftp_io_error_code(got))
 		c.rpos = 0
 		c.rlen = got
 	int b = c.rbuf[c.rpos] & 255
@@ -500,30 +425,24 @@ int ftp_read_line(ftp_client* c, string_builder* line):
 	string_clear(line)
 	while (1):
 		int b = ftp_read_byte(c)
-		if (b < 0):
-			return 0
+		if (b < 0): return 0
 		if (b == 10):
 			if ((line.length > 0) && (line.data[line.length - 1] == 13)):
 				line.length = line.length - 1
 				line.data[line.length] = 0
 			return 1
-		if (line.length >= ftp_max_line()):
-			return ftp_break(c, ftp_error_overflow())
+		if (line.length >= ftp_max_line): return ftp_break(c, ftp_error_overflow())
 		string_append_char(line, b)
 
 
 # Reply code of a line that starts with three digits (first 1-5), else
 # -1. *sep receives the fourth byte (' ', '-', or 0 at end of line).
 int ftp_line_code(char* line, int* sep):
-	int i = 0
-	while (i < 3):
+	for i in range(3):
 		int ch = line[i] & 255
-		if ((ch < '0') || (ch > '9')):
-			return (-1)
-		i = i + 1
+		if ((ch < '0') || (ch > '9')): return (-1)
 	int first = (line[0] & 255) - '0'
-	if ((first < 1) || (first > 5)):
-		return (-1)
+	if ((first < 1) || (first > 5)): return (-1)
 	*sep = line[3] & 255
 	return ((line[0] & 255) - '0') * 100 + ((line[1] & 255) - '0') * 10 + (line[2] & 255) - '0'
 
@@ -534,8 +453,7 @@ int ftp_line_code(char* line, int* sep):
 int ftp_read_reply(ftp_client* c):
 	c.reply_code = 0
 	string_clear(c.reply_text)
-	if (c.broken != 0):
-		return ftp_fail_neg(c, ftp_error_io())
+	if (c.broken != 0): return ftp_fail_neg(c, ftp_error_io())
 	string_builder* line = string_new()
 	if (ftp_read_line(c, line) == 0):
 		string_free(line)
@@ -550,7 +468,7 @@ int ftp_read_reply(ftp_client* c):
 		int lines = 1
 		int done = 0
 		while (done == 0):
-			if (lines >= ftp_max_reply_lines()):
+			if (lines >= ftp_max_reply_lines):
 				string_free(line)
 				return ftp_break_neg(c, ftp_error_overflow())
 			if (ftp_read_line(c, line) == 0):
@@ -570,12 +488,9 @@ int ftp_read_reply(ftp_client* c):
 # Sends "VERB[ arg]\r\n" after validating both. Returns 1, or 0 with
 # c.error set (nothing is sent on a validation failure).
 int ftp_send_command(ftp_client* c, char* verb, char* arg):
-	if (ftp_begin_op(c) == 0):
-		return 0
-	if (ftp_valid_verb(verb) == 0):
-		return ftp_fail(c, ftp_error_bad_argument())
-	if ((arg != 0) && (ftp_valid_argument(arg) == 0)):
-		return ftp_fail(c, ftp_error_bad_argument())
+	if (ftp_begin_op(c) == 0): return 0
+	if (ftp_valid_verb(verb) == 0): return ftp_fail(c, ftp_error_bad_argument())
+	if ((arg != 0) && (ftp_valid_argument(arg) == 0)): return ftp_fail(c, ftp_error_bad_argument())
 	string_builder* out = string_new()
 	string_append(out, verb)
 	if (arg != 0):
@@ -588,19 +503,16 @@ int ftp_send_command(ftp_client* c, char* verb, char* arg):
 		if (tls_write(c.tls, out.data, out.length) != out.length):
 			ok = 0
 			err = ftp_error_io()
-	else:
-		ok = ftp_send_all(c.ctrl_fd, out.data, out.length, &err)
+	else: ok = ftp_send_all(c.ctrl_fd, out.data, out.length, &err)
 	string_free(out)
-	if (ok == 0):
-		return ftp_break(c, err)
+	if (ok == 0): return ftp_break(c, err)
 	return 1
 
 
 # Raw command: sends it and returns the reply code, or -1 on a
 # transport/validation failure. A 4xx/5xx reply is NOT an error here.
 int ftp_command(ftp_client* c, char* verb, char* arg):
-	if (ftp_send_command(c, verb, arg) == 0):
-		return (-1)
+	if (ftp_send_command(c, verb, arg) == 0): return (-1)
 	return ftp_read_reply(c)
 
 
@@ -608,10 +520,8 @@ int ftp_command(ftp_client* c, char* verb, char* arg):
 # 3 = 3xx). Returns 1, or 0 with c.error set.
 int ftp_expect(ftp_client* c, char* verb, char* arg, int want_class):
 	int code = ftp_command(c, verb, arg)
-	if (code < 0):
-		return 0
-	if (code / 100 != want_class):
-		return ftp_fail(c, ftp_error_reply())
+	if (code < 0): return 0
+	if (code / 100 != want_class): return ftp_fail(c, ftp_error_reply())
 	return 1
 
 
@@ -620,11 +530,9 @@ int ftp_expect(ftp_client* c, char* verb, char* arg, int want_class):
 # argument; ftp_attach leaves it unset (no SNI, and a trust-store
 # config then fails hostname verification unless it skips it).
 void ftp_set_server_name(ftp_client* c, char* name):
-	if (c.server_name != 0):
-		free(c.server_name)
+	if (c.server_name != 0): free(c.server_name)
 	c.server_name = 0
-	if (name != 0):
-		c.server_name = strclone(name)
+	if (name != 0): c.server_name = strclone(name)
 
 
 # Permits a non-anonymous ftp_login over an unencrypted, non-loopback
@@ -636,8 +544,7 @@ void ftp_set_allow_insecure_login(ftp_client* c, int allow):
 # tls.w's description of the last TLS failure, or "".
 char* ftp_tls_error(ftp_client* c):
 	char* why = tls_last_error(c.tls_cfg)
-	if (why == 0):
-		return c""
+	if (why == 0): return c""
 	return why
 
 
@@ -645,8 +552,7 @@ char* ftp_tls_error(ftp_client* c):
 # config for the control and every data connection.
 void ftp_use_tls_config(ftp_client* c, tls_config* cfg):
 	if (cfg == 0):
-		if (c.tls_cfg != 0):
-			return
+		if (c.tls_cfg != 0): return
 		c.tls_cfg = tls_config_new()
 		c.tls_cfg_owned = 1
 		return
@@ -657,8 +563,7 @@ void ftp_use_tls_config(ftp_client* c, tls_config* cfg):
 
 
 char* ftp_tls_name(ftp_client* c):
-	if (c.server_name == 0):
-		return c""
+	if (c.server_name == 0): return c""
 	return c.server_name
 
 
@@ -667,8 +572,7 @@ char* ftp_tls_name(ftp_client* c):
 int ftp_wrap_control(ftp_client* c, tls_config* cfg):
 	ftp_use_tls_config(c, cfg)
 	c.tls = tls_connect(c.ctrl_fd, ftp_tls_name(c), c.tls_cfg)
-	if (c.tls == 0):
-		return ftp_break(c, ftp_error_tls())
+	if (c.tls == 0): return ftp_break(c, ftp_error_tls())
 	# RFC 4217 section 9: data protection defaults to Private once the
 	# control connection is protected (sent lazily, see ftp_prot).
 	c.prot_want = 1
@@ -684,15 +588,11 @@ int ftp_wrap_control(ftp_client* c, tls_config* cfg):
 # still usable in plaintext; the caller decides), ftp_error_protocol
 # (injected plaintext; broken) or ftp_error_tls (broken).
 int ftp_auth_tls(ftp_client* c, tls_config* cfg):
-	if (ftp_begin_op(c) == 0):
-		return 0
-	if (c.tls != 0):
-		return ftp_fail(c, ftp_error_bad_argument())
+	if (ftp_begin_op(c) == 0): return 0
+	if (c.tls != 0): return ftp_fail(c, ftp_error_bad_argument())
 	int code = ftp_command(c, c"AUTH", c"TLS")
-	if (code < 0):
-		return 0
-	if (code != 234):
-		return ftp_fail(c, ftp_error_tls_refused())
+	if (code < 0): return 0
+	if (code != 234): return ftp_fail(c, ftp_error_tls_refused)
 	if (c.rpos < c.rlen):
 		# Anything already buffered was sent in the clear after the 234
 		# and must not be read as if it came over TLS.
@@ -705,12 +605,9 @@ int ftp_auth_tls(ftp_client* c, tls_config* cfg):
 # minutes". Returns 1, or 0 with the session broken.
 int ftp_read_greeting(ftp_client* c):
 	int code = ftp_read_reply(c)
-	while ((code >= 100) && (code < 200)):
-		code = ftp_read_reply(c)
-	if (code < 0):
-		return 0
-	if (code != 220):
-		return ftp_break(c, ftp_error_reply())
+	while ((code >= 100) && (code < 200)): code = ftp_read_reply(c)
+	if (code < 0): return 0
+	if (code != 220): return ftp_break(c, ftp_error_reply())
 	return 1
 
 
@@ -724,11 +621,11 @@ ftp_client* ftp_connect_tls(char* host, int port, int security, tls_config* cfg,
 	ftp_client* c = ftp_attach(-1, 0, timeout_ms)
 	int ip = 0
 	if ((host == 0) || (dns_resolve_ipv4(host, &ip) == 0)):
-		ftp_fail(c, ftp_error_resolve())
+		ftp_fail(c, ftp_error_resolve)
 		return c
 	ftp_set_server_name(c, host)
 	c.peer_ip = ip
-	if ((security != ftp_security_none()) && (security != ftp_security_explicit()) && (security != ftp_security_implicit())):
+	if ((security != ftp_security_none) && (security != ftp_security_explicit) && (security != ftp_security_implicit)):
 		ftp_fail(c, ftp_error_bad_argument())
 		return c
 	int fd = ftp_connect_fd(ip, port, timeout_ms)
@@ -737,12 +634,12 @@ ftp_client* ftp_connect_tls(char* host, int port, int security, tls_config* cfg,
 		return c
 	c.ctrl_fd = fd
 	c.broken = 0
-	if (security == ftp_security_implicit()):
+	if (security == ftp_security_implicit):
 		if (ftp_wrap_control(c, cfg) == 0):
 			return c
 	if (ftp_read_greeting(c) == 0):
 		return c
-	if (security == ftp_security_explicit()):
+	if (security == ftp_security_explicit):
 		if (ftp_auth_tls(c, cfg) == 0):
 			# TLS was requested: never continue in plaintext.
 			c.broken = 1
@@ -750,23 +647,18 @@ ftp_client* ftp_connect_tls(char* host, int port, int security, tls_config* cfg,
 
 
 ftp_client* ftp_connect(char* host, int port, int timeout_ms):
-	return ftp_connect_tls(host, port, ftp_security_none(), 0, timeout_ms)
+	return ftp_connect_tls(host, port, ftp_security_none, 0, timeout_ms)
 
 
 void ftp_close(ftp_client* c):
-	if (c == 0):
-		return
-	if (c.data_tls != 0):
-		tls_conn_free(c.data_tls)
+	if (c == 0): return
+	if (c.data_tls != 0): tls_conn_free(c.data_tls)
 	if (c.tls != 0):
 		# tls_close sends close_notify unless the TLS layer is broken.
 		tls_close(c.tls)
-	if (c.ctrl_fd >= 0):
-		close(c.ctrl_fd)
-	if (c.tls_cfg_owned != 0):
-		tls_config_free(c.tls_cfg)
-	if (c.server_name != 0):
-		free(c.server_name)
+	if (c.ctrl_fd >= 0): close(c.ctrl_fd)
+	if (c.tls_cfg_owned != 0): tls_config_free(c.tls_cfg)
+	if (c.server_name != 0): free(c.server_name)
 	string_free(c.reply_text)
 	free(c.rbuf)
 	free(c)
@@ -776,14 +668,11 @@ void ftp_close(ftp_client* c):
 
 # 1 for the conventional anonymous user names (case-insensitive).
 int ftp_is_anonymous_user(char* user):
-	if (user == 0):
-		return 0
+	if (user == 0): return 0
 	char* want = c"anonymous"
-	if (((user[0] & 255) | 32) == 'f'):
-		want = c"ftp"
+	if (((user[0] & 255) | 32) == 'f'): want = c"ftp"
 	int i = 0
-	while ((want[i] != 0) && (((user[i] & 255) | 32) == (want[i] & 255))):
-		i = i + 1
+	while ((want[i] != 0) && (((user[i] & 255) | 32) == (want[i] & 255))): i = i + 1
 	return (want[i] == 0) && (user[i] == 0)
 
 
@@ -793,15 +682,12 @@ int ftp_peer_is_loopback(ftp_client* c):
 
 
 int ftp_login(ftp_client* c, char* user, char* password):
-	if (ftp_begin_op(c) == 0):
-		return 0
+	if (ftp_begin_op(c) == 0): return 0
 	if ((c.tls == 0) && (c.allow_insecure_login == 0) && (ftp_peer_is_loopback(c) == 0) && (ftp_is_anonymous_user(user) == 0)):
-		return ftp_fail(c, ftp_error_insecure())
+		return ftp_fail(c, ftp_error_insecure)
 	int code = ftp_command(c, c"USER", user)
-	if (code < 0):
-		return 0
-	if (code == 230):
-		return 1
+	if (code < 0): return 0
+	if (code == 230): return 1
 	if (code != 331):
 		# 332 (account required) is not supported.
 		return ftp_fail(c, ftp_error_reply())
@@ -844,14 +730,12 @@ int ftp_delete(ftp_client* c, char* path):
 
 
 int ftp_rename(ftp_client* c, char* from, char* to):
-	if (ftp_begin_op(c) == 0):
-		return 0
+	if (ftp_begin_op(c) == 0): return 0
 	# Validate both before sending RNFR so a bad target never leaves a
 	# dangling rename-from on the server.
 	if ((ftp_valid_argument(from) == 0) || (ftp_valid_argument(to) == 0)):
 		return ftp_fail(c, ftp_error_bad_argument())
-	if (ftp_expect(c, c"RNFR", from, 3) == 0):
-		return 0
+	if (ftp_expect(c, c"RNFR", from, 3) == 0): return 0
 	return ftp_expect(c, c"RNTO", to, 2)
 
 
@@ -871,10 +755,8 @@ int ftp_quit(ftp_client* c):
 # "" as an escaped quote. Returns a fresh string, or 0 when malformed.
 char* ftp_parse_pwd_reply(char* text):
 	int i = 0
-	while ((text[i] != 0) && (text[i] != '"')):
-		i = i + 1
-	if (text[i] != '"'):
-		return 0
+	while ((text[i] != 0) && (text[i] != '"')): i = i + 1
+	if (text[i] != '"'): return 0
 	i = i + 1
 	string_builder* out = string_new()
 	while (1):
@@ -896,11 +778,9 @@ char* ftp_parse_pwd_reply(char* text):
 
 
 char* ftp_pwd(ftp_client* c):
-	if (ftp_expect(c, c"PWD", 0, 2) == 0):
-		return 0
+	if (ftp_expect(c, c"PWD", 0, 2) == 0): return 0
 	char* dir = ftp_parse_pwd_reply(c.reply_text.data)
-	if (dir == 0):
-		ftp_fail(c, ftp_error_protocol())
+	if (dir == 0): ftp_fail(c, ftp_error_protocol())
 	return dir
 
 
@@ -918,37 +798,30 @@ int ftp_parse_decimal(char* text, int at):
 	int limit = ftp_int_max()
 	while ((text[at] != 0) && (text[at] != ' ') && (text[at] != 10)):
 		int ch = text[at] & 255
-		if ((ch < '0') || (ch > '9')):
-			return (-1)
+		if ((ch < '0') || (ch > '9')): return (-1)
 		int d = ch - '0'
-		if (value > (limit - d) / 10):
-			return (-1)
+		if (value > (limit - d) / 10): return (-1)
 		value = value * 10 + d
 		digits = digits + 1
 		at = at + 1
-	if (digits == 0):
-		return (-1)
+	if (digits == 0): return (-1)
 	return value
 
 
 # SIZE (RFC 3659): the transfer size in bytes, or -1 (c.error set).
 int ftp_size(ftp_client* c, char* path):
-	if (ftp_expect(c, c"SIZE", path, 2) == 0):
-		return (-1)
+	if (ftp_expect(c, c"SIZE", path, 2) == 0): return (-1)
 	char* text = c.reply_text.data
-	if ((c.reply_code != 213) || (text[3] != ' ')):
-		return ftp_fail_neg(c, ftp_error_protocol())
+	if ((c.reply_code != 213) || (text[3] != ' ')): return ftp_fail_neg(c, ftp_error_protocol())
 	int value = ftp_parse_decimal(text, 4)
-	if (value < 0):
-		ftp_fail(c, ftp_error_protocol())
+	if (value < 0): ftp_fail(c, ftp_error_protocol())
 	return value
 
 
 # MDTM (RFC 3659): the "YYYYMMDDHHMMSS[.sss]" UTC timestamp as a fresh
 # string, or 0 (c.error set).
 char* ftp_mdtm(ftp_client* c, char* path):
-	if (ftp_expect(c, c"MDTM", path, 2) == 0):
-		return 0
+	if (ftp_expect(c, c"MDTM", path, 2) == 0): return 0
 	char* text = c.reply_text.data
 	if ((c.reply_code != 213) || (text[3] != ' ')):
 		ftp_fail(c, ftp_error_protocol())
@@ -964,10 +837,7 @@ char* ftp_mdtm(ftp_client* c, char* path):
 		ftp_fail(c, ftp_error_protocol())
 		return 0
 	char* stamp = malloc(end - 4 + 1)
-	int i = 4
-	while (i < end):
-		stamp[i - 4] = text[i]
-		i = i + 1
+	for i in range(4, end): stamp[i - 4] = text[i]
 	stamp[end - 4] = 0
 	return stamp
 
@@ -977,28 +847,21 @@ char* ftp_mdtm(ftp_client* c, char* path):
 # Port from a 229 reply "... (<d><d><d>port<d>)" (RFC 2428), or -1.
 int ftp_parse_epsv_reply(char* text):
 	int i = 0
-	while ((text[i] != 0) && (text[i] != '(')):
-		i = i + 1
-	if (text[i] != '('):
-		return (-1)
+	while ((text[i] != 0) && (text[i] != '(')): i = i + 1
+	if (text[i] != '('): return (-1)
 	int d = text[i + 1] & 255
-	if ((d < 33) || (d > 126) || ((d >= '0') && (d <= '9'))):
-		return (-1)
-	if (((text[i + 2] & 255) != d) || ((text[i + 3] & 255) != d)):
-		return (-1)
+	if ((d < 33) || (d > 126) || ((d >= '0') && (d <= '9'))): return (-1)
+	if (((text[i + 2] & 255) != d) || ((text[i + 3] & 255) != d)): return (-1)
 	int at = i + 4
 	int port = 0
 	int digits = 0
 	while (((text[at] & 255) >= '0') && ((text[at] & 255) <= '9')):
 		port = port * 10 + (text[at] & 255) - '0'
 		digits = digits + 1
-		if (digits > 5):
-			return (-1)
+		if (digits > 5): return (-1)
 		at = at + 1
-	if ((digits == 0) || ((text[at] & 255) != d) || (text[at + 1] != ')')):
-		return (-1)
-	if ((port < 1) || (port > 65535)):
-		return (-1)
+	if ((digits == 0) || ((text[at] & 255) != d) || (text[at + 1] != ')')): return (-1)
+	if ((port < 1) || (port > 65535)): return (-1)
 	return port
 
 
@@ -1009,10 +872,8 @@ int ftp_parse_epsv_reply(char* text):
 int ftp_parse_pasv_reply(char* text, int* out_host):
 	# Skip the reply code, then find the first digit of h1.
 	int i = 0
-	while (((text[i] & 255) >= '0') && ((text[i] & 255) <= '9')):
-		i = i + 1
-	while ((text[i] != 0) && (((text[i] & 255) < '0') || ((text[i] & 255) > '9'))):
-		i = i + 1
+	while (((text[i] & 255) >= '0') && ((text[i] & 255) <= '9')): i = i + 1
+	while ((text[i] != 0) && (((text[i] & 255) < '0') || ((text[i] & 255) > '9'))): i = i + 1
 	int host = 0
 	int port = 0
 	int field = 0
@@ -1022,22 +883,16 @@ int ftp_parse_pasv_reply(char* text, int* out_host):
 		while (((text[i] & 255) >= '0') && ((text[i] & 255) <= '9')):
 			value = value * 10 + (text[i] & 255) - '0'
 			digits = digits + 1
-			if (digits > 3):
-				return (-1)
+			if (digits > 3): return (-1)
 			i = i + 1
-		if ((digits == 0) || (value > 255)):
-			return (-1)
-		if (field < 4):
-			host = (host << 8) | value
-		else:
-			port = (port << 8) | value
+		if ((digits == 0) || (value > 255)): return (-1)
+		if (field < 4): host = (host << 8) | value
+		else: port = (port << 8) | value
 		field = field + 1
 		if (field < 6):
-			if (text[i] != ','):
-				return (-1)
+			if (text[i] != ','): return (-1)
 			i = i + 1
-	if (port == 0):
-		return (-1)
+	if (port == 0): return (-1)
 	*out_host = host
 	return port
 
@@ -1048,30 +903,23 @@ int ftp_open_passive(ftp_client* c):
 	int port = (-1)
 	if (c.use_epsv != 0):
 		int code = ftp_command(c, c"EPSV", 0)
-		if (code < 0):
-			return (-1)
+		if (code < 0): return (-1)
 		if (code == 229):
 			port = ftp_parse_epsv_reply(c.reply_text.data)
-			if (port < 0):
-				return ftp_fail_neg(c, ftp_error_protocol())
+			if (port < 0): return ftp_fail_neg(c, ftp_error_protocol())
 		else if (code / 100 == 5):
 			# Not understood: fall back to PASV for the whole session.
 			c.use_epsv = 0
-		else:
-			return ftp_fail_neg(c, ftp_error_reply())
+		else: return ftp_fail_neg(c, ftp_error_reply())
 	if (port < 0):
 		int code2 = ftp_command(c, c"PASV", 0)
-		if (code2 < 0):
-			return (-1)
-		if (code2 != 227):
-			return ftp_fail_neg(c, ftp_error_reply())
+		if (code2 < 0): return (-1)
+		if (code2 != 227): return ftp_fail_neg(c, ftp_error_reply())
 		int advertised = 0
 		port = ftp_parse_pasv_reply(c.reply_text.data, &advertised)
-		if (port < 0):
-			return ftp_fail_neg(c, ftp_error_protocol())
+		if (port < 0): return ftp_fail_neg(c, ftp_error_protocol())
 	int fd = ftp_connect_fd(c.peer_ip, port, c.timeout_ms)
-	if (fd < 0):
-		return ftp_fail_neg(c, 0 - fd)
+	if (fd < 0): return ftp_fail_neg(c, 0 - fd)
 	return fd
 
 
@@ -1082,20 +930,16 @@ int ftp_open_passive(ftp_client* c):
 # wanted level is already in force (a plain session with PROT C wanted
 # sends nothing at all). Returns 1, or 0 with c.error set.
 int ftp_sync_prot(ftp_client* c):
-	if (c.prot_want == c.prot_have):
-		return 1
+	if (c.prot_want == c.prot_have): return 1
 	if (c.tls == 0):
 		# PROT P needs a protected control connection; never fall back.
 		return ftp_fail(c, ftp_error_tls())
 	if (c.pbsz_done == 0):
-		if (ftp_expect(c, c"PBSZ", c"0", 2) == 0):
-			return 0
+		if (ftp_expect(c, c"PBSZ", c"0", 2) == 0): return 0
 		c.pbsz_done = 1
 	char* level = c"C"
-	if (c.prot_want != 0):
-		level = c"P"
-	if (ftp_expect(c, c"PROT", level, 2) == 0):
-		return 0
+	if (c.prot_want != 0): level = c"P"
+	if (ftp_expect(c, c"PROT", level, 2) == 0): return 0
 	c.prot_have = c.prot_want
 	return 1
 
@@ -1105,8 +949,7 @@ int ftp_sync_prot(ftp_client* c):
 # c.error set (ftp_error_tls when Private is asked for on a session
 # without TLS; ftp_error_reply when the server rejects it).
 int ftp_prot(ftp_client* c, int private):
-	if (ftp_begin_op(c) == 0):
-		return 0
+	if (ftp_begin_op(c) == 0): return 0
 	c.prot_want = private != 0
 	return ftp_sync_prot(c)
 
@@ -1123,18 +966,15 @@ int ftp_data_recv(ftp_client* c, int fd, char* buf, int n):
 			return 0 - ftp_error_io()
 		return got
 	int raw = socket_recv(fd, buf, n, 0)
-	while (raw == (0 - 4)):
-		raw = socket_recv(fd, buf, n, 0)
-	if (raw < 0):
-		return 0 - ftp_io_error_code(raw)
+	while (raw == (0 - 4)): raw = socket_recv(fd, buf, n, 0)
+	if (raw < 0): return 0 - ftp_io_error_code(raw)
 	return raw
 
 
 # Sends all n bytes on a data connection. Returns 1, or 0 with *err set.
 int ftp_data_send_all(ftp_client* c, int fd, char* data, int n, int* err):
 	if (c.data_tls != 0):
-		if (n == 0):
-			return 1
+		if (n == 0): return 1
 		if (tls_write(c.data_tls, data, n) != n):
 			*err = ftp_error_io()
 			return 0
@@ -1156,16 +996,13 @@ void ftp_data_close(ftp_client* c, int fd):
 # TLS handshake on it succeeded; c.data_tls holds that session), else
 # -1 (data connection closed, c.error set).
 int ftp_begin_transfer(ftp_client* c, char* verb, char* arg):
-	if (ftp_begin_op(c) == 0):
-		return (-1)
+	if (ftp_begin_op(c) == 0): return (-1)
 	# Validate before EPSV/PASV so a bad argument sends nothing at all.
 	if ((arg != 0) && (ftp_valid_argument(arg) == 0)):
 		return ftp_fail_neg(c, ftp_error_bad_argument())
-	if (ftp_sync_prot(c) == 0):
-		return (-1)
+	if (ftp_sync_prot(c) == 0): return (-1)
 	int fd = ftp_open_passive(c)
-	if (fd < 0):
-		return (-1)
+	if (fd < 0): return (-1)
 	int code = ftp_command(c, verb, arg)
 	if (code < 0):
 		close(fd)
@@ -1190,10 +1027,8 @@ int ftp_begin_transfer(ftp_client* c, char* verb, char* arg):
 # Reads the completion reply after the data connection is done.
 int ftp_finish_transfer(ftp_client* c):
 	int code = ftp_read_reply(c)
-	if (code < 0):
-		return 0
-	if (code / 100 != 2):
-		return ftp_fail(c, ftp_error_reply())
+	if (code < 0): return 0
+	if (code / 100 != 2): return ftp_fail(c, ftp_error_reply())
 	return 1
 
 
@@ -1202,15 +1037,13 @@ int ftp_finish_transfer(ftp_client* c):
 char* ftp_download(ftp_client* c, char* verb, char* path, int* out_len):
 	*out_len = 0
 	int fd = ftp_begin_transfer(c, verb, path)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	string_builder* out = string_new()
 	char* chunk = malloc(16384)
 	int failed = 0
 	while (1):
 		int got = ftp_data_recv(c, fd, chunk, 16384)
-		if (got == 0):
-			break
+		if (got == 0): break
 		else if (got < 0):
 			failed = 0 - got
 			break
@@ -1253,8 +1086,7 @@ char* ftp_mlsd(ftp_client* c, char* path, int* out_len):
 
 char* ftp_retr(ftp_client* c, char* path, int* out_len):
 	*out_len = 0
-	if (ftp_begin_op(c) == 0):
-		return 0
+	if (ftp_begin_op(c) == 0): return 0
 	if (path == 0):
 		ftp_fail(c, ftp_error_bad_argument())
 		return 0
@@ -1264,30 +1096,23 @@ char* ftp_retr(ftp_client* c, char* path, int* out_len):
 # Streams RETR path into fd (no size cap). Returns the byte count, or
 # -1 with c.error set.
 int ftp_retr_fd(ftp_client* c, char* path, int out_fd):
-	if (ftp_begin_op(c) == 0):
-		return (-1)
-	if (path == 0):
-		return ftp_fail_neg(c, ftp_error_bad_argument())
+	if (ftp_begin_op(c) == 0): return (-1)
+	if (path == 0): return ftp_fail_neg(c, ftp_error_bad_argument())
 	int fd = ftp_begin_transfer(c, c"RETR", path)
-	if (fd < 0):
-		return (-1)
+	if (fd < 0): return (-1)
 	char* chunk = malloc(16384)
 	int total = 0
 	int failed = 0
 	while (failed == 0):
 		int got = ftp_data_recv(c, fd, chunk, 16384)
-		if (got == 0):
-			break
-		if (got < 0):
-			failed = 0 - got
+		if (got == 0): break
+		if (got < 0): failed = 0 - got
 		else:
 			int written = 0
 			while ((written < got) && (failed == 0)):
 				int w = write(out_fd, chunk + written, got - written)
-				if (w <= 0):
-					failed = ftp_error_io()
-				else:
-					written = written + w
+				if (w <= 0): failed = ftp_error_io()
+				else: written = written + w
 			total = total + got
 	free(chunk)
 	ftp_data_close(c, fd)
@@ -1296,20 +1121,17 @@ int ftp_retr_fd(ftp_client* c, char* path, int out_fd):
 		c.error = 0
 		ftp_fail(c, failed)
 		return (-1)
-	if (ftp_finish_transfer(c) == 0):
-		return (-1)
+	if (ftp_finish_transfer(c) == 0): return (-1)
 	return total
 
 
 # Uploads len bytes with verb (STOR/APPE). Returns 1, or 0 with c.error.
 int ftp_upload(ftp_client* c, char* verb, char* path, char* data, int len):
-	if (ftp_begin_op(c) == 0):
-		return 0
+	if (ftp_begin_op(c) == 0): return 0
 	if ((path == 0) || (len < 0) || ((data == 0) && (len > 0))):
 		return ftp_fail(c, ftp_error_bad_argument())
 	int fd = ftp_begin_transfer(c, verb, path)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	int err = 0
 	int ok = ftp_data_send_all(c, fd, data, len, &err)
 	# Closing the data connection is the end-of-file marker in stream mode.

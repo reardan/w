@@ -26,8 +26,10 @@ The wire format is 8 little-endian bytes — byte-compatible with
 save_int64 output on 64-bit hosts for values < 2^63.
 */
 import lib.lib
+import lib.hex
 import lib.memory
 import lib.assert
+import lib.bytes
 
 
 struct u64:
@@ -40,11 +42,7 @@ struct u64:
 # ---- construction -----------------------------------------------------------
 
 u64* u64_new():
-	u64* a = new u64()
-	a.w0 = 0
-	a.w1 = 0
-	a.w2 = 0
-	a.w3 = 0
+	u64* a = new u64(0, 0, 0, 0)
 	return a
 
 
@@ -121,10 +119,8 @@ int u64_hi32(u64* a):
 # 1 when the value is exactly representable as a non-negative int on
 # every target (i.e. it fits 31 bits).
 int u64_fits_int(u64* a):
-	if (a.w3 != 0 || a.w2 != 0):
-		return 0
-	if (a.w1 >= 32768):
-		return 0
+	if (a.w3 != 0 || a.w2 != 0): return 0
+	if (a.w1 >= 32768): return 0
 	return 1
 
 
@@ -138,14 +134,12 @@ int u64_to_int(u64* a):
 # ---- comparison -------------------------------------------------------------
 
 int u64_is_zero(u64* a):
-	if (a.w0 == 0 && a.w1 == 0 && a.w2 == 0 && a.w3 == 0):
-		return 1
+	if (a.w0 == 0 && a.w1 == 0 && a.w2 == 0 && a.w3 == 0): return 1
 	return 0
 
 
 int u64_eq(u64* a, u64* b):
-	if (a.w0 == b.w0 && a.w1 == b.w1 && a.w2 == b.w2 && a.w3 == b.w3):
-		return 1
+	if (a.w0 == b.w0 && a.w1 == b.w1 && a.w2 == b.w2 && a.w3 == b.w3): return 1
 	return 0
 
 
@@ -153,28 +147,23 @@ int u64_eq(u64* a, u64* b):
 # always in [0, 0xffff], so plain int comparison is correct everywhere.
 int u64_cmp(u64* a, u64* b):
 	if (a.w3 != b.w3):
-		if (a.w3 < b.w3):
-			return 0 - 1
+		if (a.w3 < b.w3): return 0 - 1
 		return 1
 	if (a.w2 != b.w2):
-		if (a.w2 < b.w2):
-			return 0 - 1
+		if (a.w2 < b.w2): return 0 - 1
 		return 1
 	if (a.w1 != b.w1):
-		if (a.w1 < b.w1):
-			return 0 - 1
+		if (a.w1 < b.w1): return 0 - 1
 		return 1
 	if (a.w0 != b.w0):
-		if (a.w0 < b.w0):
-			return 0 - 1
+		if (a.w0 < b.w0): return 0 - 1
 		return 1
 	return 0
 
 
 # a = max(a, b), the merge step of logical clocks.
 void u64_max(u64* a, u64* b):
-	if (u64_cmp(a, b) < 0):
-		u64_copy(a, b)
+	if (u64_cmp(a, b) < 0): u64_copy(a, b)
 
 
 # ---- arithmetic (mod 2^64) --------------------------------------------------
@@ -193,8 +182,7 @@ void u64_add(u64* a, u64* b):
 # a += v for a small non-negative host int (v < 2^31 on every target).
 void u64_add_int(u64* a, int v):
 	assert1(v >= 0)
-	if (__word_size__ == 8):
-		assert1((v >> 31) == 0)
+	if (__word_size__ == 8): assert1((v >> 31) == 0)
 	int c = a.w0 + (v & 65535)
 	a.w0 = c & 65535
 	c = (c >> 16) + a.w1 + ((v >> 16) & 65535)
@@ -220,8 +208,7 @@ int u64_sub(u64* a, u64* b):
 	a.w2 = d & 65535
 	d = (d >> 16) + a.w3 - b.w3
 	a.w3 = d & 65535
-	if ((d >> 16) != 0):
-		return 1
+	if ((d >> 16) != 0): return 1
 	return 0
 
 
@@ -271,31 +258,24 @@ void u64_shr(u64* a, int k):
 
 # 8 little-endian bytes.
 void u64_save_le(char* p, u64* a):
-	p[0] = a.w0
-	p[1] = a.w0 >> 8
-	p[2] = a.w1
-	p[3] = a.w1 >> 8
-	p[4] = a.w2
-	p[5] = a.w2 >> 8
-	p[6] = a.w3
-	p[7] = a.w3 >> 8
+	store_le16(p, a.w0)
+	store_le16(p + 2, a.w1)
+	store_le16(p + 4, a.w2)
+	store_le16(p + 6, a.w3)
 
 
 void u64_load_le(u64* a, char* p):
-	a.w0 = (p[0] & 255) | ((p[1] & 255) << 8)
-	a.w1 = (p[2] & 255) | ((p[3] & 255) << 8)
-	a.w2 = (p[4] & 255) | ((p[5] & 255) << 8)
-	a.w3 = (p[6] & 255) | ((p[7] & 255) << 8)
+	a.w0 = load_le16(p)
+	a.w1 = load_le16(p + 2)
+	a.w2 = load_le16(p + 4)
+	a.w3 = load_le16(p + 6)
 
 
 # ---- formatting -------------------------------------------------------------
 
 void u64_hex4(char* s, int off, int v):
-	char* digits = c"0123456789abcdef"
-	s[off] = digits[(v >> 12) & 15]
-	s[off + 1] = digits[(v >> 8) & 15]
-	s[off + 2] = digits[(v >> 4) & 15]
-	s[off + 3] = digits[v & 15]
+	hex_put_byte(&s[off], (v >> 8) & 255)
+	hex_put_byte(&s[off + 2], v & 255)
 
 
 # 16 lowercase hex digits, malloc'd and NUL-terminated; caller frees.
@@ -339,10 +319,7 @@ char* u64_to_dec(u64* a):
 		tmp[n] = 48
 		n = n + 1
 	char* s = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		s[i] = tmp[n - 1 - i]
-		i = i + 1
+	for i in range(n): s[i] = tmp[n - 1 - i]
 	s[n] = 0
 	free(tmp)
 	return s

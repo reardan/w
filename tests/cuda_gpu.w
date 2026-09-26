@@ -11,8 +11,7 @@ import lib.fmath
 
 kernel saxpy(float32* y, float32* x, float32 a, int n):
 	int i = block_idx() * block_dim() + thread_idx()
-	if i < n:
-		y[i] = a * x[i] + y[i]
+	if i < n: y[i] = a * x[i] + y[i]
 
 
 # gpu_exp/gpu_log (docs/projects/torch.md Workstream E): device
@@ -43,8 +42,7 @@ int gpu_for_vector_add(int n):
 	int ok = 1
 	i = 0
 	while (i < n):
-		if (c[i] != 3 * i + 7):
-			ok = 0
+		if (c[i] != 3 * i + 7): ok = 0
 		i = i + 1
 	gpu_free(cast(char*, a))
 	gpu_free(cast(char*, b))
@@ -58,10 +56,7 @@ int gpu_for_vector_add(int n):
 int atomic_reduce(int n):
 	int* cells = cast(int*, gpu_alloc(3 * 8))
 	int* data = cast(int*, gpu_alloc(n * 8))
-	int i = 0
-	while (i < n):
-		data[i] = i + 1
-		i = i + 1
+	for i in range(n): data[i] = i + 1
 	cells[0] = 0
 	cells[1] = 1 << 30
 	cells[2] = 0 - (1 << 30)
@@ -79,12 +74,9 @@ int atomic_reduce(int n):
 	gpu_sync()
 
 	int ok = 1
-	if (cells[0] != n * (n + 1) / 2):
-		ok = 0
-	if (cells[1] != 1):
-		ok = 0
-	if (cells[2] != n):
-		ok = 0
+	if (cells[0] != n * (n + 1) / 2): ok = 0
+	if (cells[1] != 1): ok = 0
+	if (cells[2] != n): ok = 0
 	gpu_free(cast(char*, cells))
 	gpu_free(cast(char*, data))
 	return ok
@@ -126,8 +118,7 @@ int device_bits_check(int n):
 	int ok = 1
 	i = 0
 	while (i < n):
-		if (v[i] != bits_mix(i * 40503 + 12345)):
-			ok = 0
+		if (v[i] != bits_mix(i * 40503 + 12345)): ok = 0
 		i = i + 1
 	gpu_free(cast(char*, v))
 	return ok
@@ -149,12 +140,10 @@ int range_offset_check(int n):
 	int ok = 1
 	i = 0
 	while (i < 100):
-		if (c[i] != 0 - 1):
-			ok = 0
+		if (c[i] != 0 - 1): ok = 0
 		i = i + 1
 	while (i < n):
-		if (c[i] != 2 * i):
-			ok = 0
+		if (c[i] != 2 * i): ok = 0
 		i = i + 1
 	gpu_free(cast(char*, c))
 	return ok
@@ -182,8 +171,7 @@ int explicit_memory_check(int n):
 	int ok = 1
 	i = 0
 	while (i < n):
-		if (host_out[i] != (7 * i + 3) * 2):
-			ok = 0
+		if (host_out[i] != (7 * i + 3) * 2): ok = 0
 		i = i + 1
 	gpu_free(cast(char*, dev))
 	free(cast(char*, host_in))
@@ -209,8 +197,7 @@ int saxpy_launch(int n):
 	i = 0
 	while (i < n):
 		float32 want = cast(float32, 3 * i + 2)
-		if (y[i] != want):
-			ok = 0
+		if (y[i] != want): ok = 0
 		i = i + 1
 	gpu_free(cast(char*, x))
 	gpu_free(cast(char*, y))
@@ -228,30 +215,25 @@ kernel shared_reduce(float* p, float32* out, int n):
 	int tid = thread_idx()
 	int gid = block_idx() * block_dim() + tid
 	float v = 0.0
-	if (gid < n):
-		v = p[gid]
+	if (gid < n): v = p[gid]
 	buf[tid] = v
 	gpu_barrier()
 	int s = 128
 	while (s > 0):
-		if (tid < s):
-			buf[tid] = buf[tid] + buf[tid + s]
+		if (tid < s): buf[tid] = buf[tid] + buf[tid + s]
 		gpu_barrier()
 		s = s / 2
-	if (tid == 0):
-		atomic_add(out, buf[0])
+	if (tid == 0): atomic_add(out, buf[0])
 
 
 int shared_reduce_check(int n):
 	float* p = cast(float*, gpu_alloc(n * 4))
 	float32* acc = cast(float32*, gpu_alloc(4))
 	float want = 0.0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		float v = cast(float, i % 8) * 0.25
 		p[i] = v
 		want = want + v
-		i = i + 1
 	acc[0] = 0.0
 
 	int threads = 256
@@ -260,8 +242,7 @@ int shared_reduce_check(int n):
 	gpu_sync()
 
 	int ok = 1
-	if (acc[0] != want):
-		ok = 0
+	if (acc[0] != want): ok = 0
 	gpu_free(cast(char*, p))
 	gpu_free(cast(char*, acc))
 	return ok
@@ -298,16 +279,12 @@ int transcendental_check(int n):
 	while (i < n):
 		float32 want_e = fexp(xe[i])
 		float32 err_e = fabs(ye[i] - want_e)
-		if (fabs(want_e) > one):
-			err_e = err_e / fabs(want_e)
-		if (err_e > rel_tol):
-			ok = 0
+		if (fabs(want_e) > one): err_e = err_e / fabs(want_e)
+		if (err_e > rel_tol): ok = 0
 		float32 want_l = flog(xl[i])
 		float32 err_l = fabs(yl[i] - want_l)
-		if (fabs(want_l) > one):
-			err_l = err_l / fabs(want_l)
-		if (err_l > rel_tol):
-			ok = 0
+		if (fabs(want_l) > one): err_l = err_l / fabs(want_l)
+		if (err_l > rel_tol): ok = 0
 		i = i + 1
 	gpu_free(cast(char*, xe))
 	gpu_free(cast(char*, ye))

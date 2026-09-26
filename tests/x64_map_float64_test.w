@@ -117,8 +117,7 @@ void test_map_float64_iteration_keeps_full_precision():
 	m[1] = 1.5
 	m[2] = 0.1
 	float64 sum = 0.0
-	for int k, float64 v in m:
-		sum = sum + v
+	for int k, float64 v in m: sum = sum + v
 	assert_f64_bits(cast(int, 0x9999999a), 0x3ff99999, sum)
 
 

@@ -35,8 +35,7 @@ void task_mutex_free(task_mutex* m):
 
 # 1 when the lock was free and is now held, 0 otherwise. Never parks.
 int task_mutex_try_lock(task_mutex* m):
-	if (m.locked):
-		return 0
+	if (m.locked): return 0
 	m.locked = 1
 	return 1
 
@@ -52,8 +51,7 @@ int task_mutex_lock_timeout(task_mutex* m, int timeout_ms):
 	task_waiter w
 	task_waiter_init(&w, t)
 	int r = task_park_on(&m.waiters, &w, timeout_ms)
-	if (w.status == task_waiter_completed()):
-		return 0
+	if (w.status == task_waiter_completed): return 0
 	return r
 
 
@@ -65,7 +63,7 @@ int task_mutex_lock(task_mutex* m):
 void task_mutex_unlock(task_mutex* m):
 	task_waiter* w = task_wait_queue_first(&m.waiters)
 	if (cast(int, w) != 0):
-		task_waiter_fire(w, task_waiter_completed(), 0)
+		task_waiter_fire(w, task_waiter_completed, 0)
 		return
 	m.locked = 0
 
@@ -106,8 +104,7 @@ int task_semaphore_acquire_timeout(task_semaphore* sem, int timeout_ms):
 	task_waiter w
 	task_waiter_init(&w, t)
 	int r = task_park_on(&sem.waiters, &w, timeout_ms)
-	if (w.status == task_waiter_completed()):
-		return 0
+	if (w.status == task_waiter_completed): return 0
 	return r
 
 
@@ -119,7 +116,7 @@ int task_semaphore_acquire(task_semaphore* sem):
 void task_semaphore_release(task_semaphore* sem):
 	task_waiter* w = task_wait_queue_first(&sem.waiters)
 	if (cast(int, w) != 0):
-		task_waiter_fire(w, task_waiter_completed(), 0)
+		task_waiter_fire(w, task_waiter_completed, 0)
 		return
 	sem.permits = sem.permits + 1
 
@@ -145,7 +142,7 @@ void task_event_free(task_event* e):
 # Set the flag and wake every waiter. Stays set until task_event_clear.
 void task_event_set(task_event* e):
 	e.set = 1
-	task_wait_queue_fire_all(&e.waiters, task_waiter_completed(), 0)
+	task_wait_queue_fire_all(&e.waiters, task_waiter_completed, 0)
 
 
 void task_event_clear(task_event* e):
@@ -158,8 +155,7 @@ int task_event_is_set(task_event* e):
 
 # Wait until the flag is set. Returns 0 or an error.
 int task_event_wait_timeout(task_event* e, int timeout_ms):
-	if (e.set):
-		return 0
+	if (e.set): return 0
 	task* t = task_current()
 	int err = task_park_check(t)
 	if (err < 0):
@@ -167,8 +163,7 @@ int task_event_wait_timeout(task_event* e, int timeout_ms):
 	task_waiter w
 	task_waiter_init(&w, t)
 	int r = task_park_on(&e.waiters, &w, timeout_ms)
-	if (w.status == task_waiter_completed()):
-		return 0
+	if (w.status == task_waiter_completed): return 0
 	return r
 
 

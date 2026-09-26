@@ -43,6 +43,7 @@ data_offset - code_offset (16 MB) above __TEXT's, so PC-relative distances
 computed from the nominal bases match the mapped image.
 */
 import code_generator.code_emitter
+import code_generator.image
 import code_generator.macho_dynamic
 import code_generator.macho_sign
 import lib.sha256
@@ -63,8 +64,7 @@ int strlen(char *s);
 
 # Mach-O segments load on 16 KB pages (arm64 macOS); file offsets and
 # vmaddrs must stay congruent modulo this.
-int macho_page_size():
-	return 16384
+const int macho_page_size = 16384
 
 
 # File positions of the __TEXT / __DATA / __LINKEDIT segment commands and
@@ -106,8 +106,7 @@ void macho_symbols_begin(int cap):
 # Addresses outside the finished text are skipped.
 void macho_sym_add(char* name, int address):
 	int offset = address - base_code_offset
-	if ((offset < macho_text_start) || (offset >= macho_text_limit)):
-		return
+	if ((offset < macho_text_start) || (offset >= macho_text_limit)): return
 	char* entry = macho_sym_buf + macho_sym_count * 16
 	save_int32(entry, macho_str_size)  /* n_strx */
 	entry[4] = 14                      /* n_type N_SECT */
@@ -121,10 +120,7 @@ void macho_sym_add(char* name, int address):
 	macho_sym_count = macho_sym_count + 1
 	macho_str_buf[macho_str_size] = '_'
 	int n = strlen(name)
-	int i = 0
-	while (i <= n):
-		macho_str_buf[macho_str_size + 1 + i] = name[i]
-		i = i + 1
+	for i in range(n + 1): macho_str_buf[macho_str_size + 1 + i] = name[i]
 	macho_str_size = macho_str_size + n + 2
 
 
@@ -185,15 +181,9 @@ void macho_start_arm64():
 	# symbol addressing, the data split and the rebase machinery behave
 	# identically (see the file comment for why this may differ from the
 	# header's 0x100000000).
-	base_code_offset = 134512640 /* 0x08048000 */
-	code_offset = base_code_offset
-
-	# The read-write data segment loads 16 MB above the image, matching
-	# elf_start_arm64; global-variable storage is emitted here.
-	data_offset = base_code_offset + 16777216 /* +0x1000000 */
-	datapos = 0
-	data_size = 4096
-	data = malloc(data_size)
+	# The read-write data segment loads 16 MB above the image (image_begin),
+	# matching elf_start_arm64.
+	image_begin(134512640) /* 0x08048000 */
 
 	# mach_header_64
 	emit_int32(op(0xfe, 0xedfacf))  /* magic MH_MAGIC_64 */
@@ -349,20 +339,7 @@ void macho_finish_arm64():
 	# data cell it lists has been reserved.
 	arm64_emit_rebase_table()
 
-	int t = sym_address(c"_main")
-	if (t == 0):
-		t = sym_address(c"main")
-	if (t == 0):
-		# 'w check' on a main-less library module: not an error, and the
-		# entry bl stays unpatched (the output is discarded)
-		if (entry_optional == 0):
-			error(c"Failed to find a _main() function. Did you import lib/testing?")
-
-	if (t != 0):
-		# Patch the bl: imm26 = (target - bl_vaddr) / 4.
-		int bl_vaddr = code_offset + arm64_entry_bl_pos
-		int offset = t - bl_vaddr
-		save_int32(code + arm64_entry_bl_pos, op(0x94, 0x000000) | ((offset >> 2) & op(0x03, 0xffffff)))
+	arm64_patch_entry_bl(entry_symbol(0))
 
 	# __text: from the entry stub to the end of the code.
 	macho_text_limit = codepos
@@ -385,14 +362,12 @@ void macho_finish_arm64():
 
 	# Pad the text to a page boundary; __DATA's file offset must be
 	# page-congruent with its vmaddr (both end up 16 KB-aligned).
-	while ((codepos % macho_page_size()) != 0):
-		emit_int8(0)
+	while ((codepos % macho_page_size) != 0): emit_int8(0)
 	int text_size = codepos
 
 	# Pad the data segment to a page as well, so __LINKEDIT starts aligned.
-	int data_pad = datapos % macho_page_size()
-	if (data_pad != 0):
-		emit_data_zeros(macho_page_size() - data_pad)
+	int data_pad = datapos % macho_page_size
+	if (data_pad != 0): emit_data_zeros(macho_page_size - data_pad)
 	int data_size_padded = datapos
 
 	# Imports (c_lib / extern): append their load commands into the
@@ -456,8 +431,8 @@ void macho_finish_arm64():
 
 	# __LINKEDIT now spans the bind stream + alignment pad + signature.
 	int linkedit_filesize = code_limit + sig_size - linkedit_fileoff
-	int linkedit_vm = linkedit_filesize + macho_page_size() - 1
-	linkedit_vm = linkedit_vm - (linkedit_vm % macho_page_size())
+	int linkedit_vm = linkedit_filesize + macho_page_size - 1
+	linkedit_vm = linkedit_vm - (linkedit_vm % macho_page_size)
 	save_int64(code + macho_linkedit_seg_pos + 32, linkedit_vm)          /* vmsize */
 	save_int64(code + macho_linkedit_seg_pos + 48, linkedit_filesize)    /* filesize */
 
@@ -465,18 +440,9 @@ void macho_finish_arm64():
 	# separate data buffer, then the bind stream, then alignment zeros) and
 	# hash it into the CodeDirectory.
 	char* img = malloc(code_limit)
-	int p = 0
-	while (p < text_size):
-		img[p] = code[p]
-		p = p + 1
-	int di = 0
-	while (di < data_size_padded):
-		img[text_size + di] = data[di]
-		di = di + 1
-	int zi = linkedit_fileoff
-	while (zi < code_limit):
-		img[zi] = 0
-		zi = zi + 1
+	for p in range(text_size): img[p] = code[p]
+	for di in range(data_size_padded): img[text_size + di] = data[di]
+	for zi in range(linkedit_fileoff, code_limit): img[zi] = 0
 	int bi = 0
 	while (bi < macho_bind_size):
 		img[linkedit_fileoff + bi] = macho_bind_buf[bi]
@@ -494,16 +460,12 @@ void macho_finish_arm64():
 	# still zero, so identical inputs give identical UUIDs.
 	char* digest = malloc(32)
 	sha256(img, code_limit, digest)
-	int ui = 0
-	while (ui < 16):
-		img[macho_uuid_pos + ui] = digest[ui]
-		ui = ui + 1
+	for ui in range(16): img[macho_uuid_pos + ui] = digest[ui]
 	free(digest)
 
 	macho_build_signature(img, code_limit, text_size, ident)
 
-	if (write(output_fd, img, code_limit) != code_limit):
-		error(c"could not write output file")
+	if (write(output_fd, img, code_limit) != code_limit): error(c"could not write output file")
 	if (write(output_fd, macho_sig_buf, macho_sig_size) != macho_sig_size):
 		error(c"could not write output file")
 	free(img)

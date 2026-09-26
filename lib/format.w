@@ -7,33 +7,11 @@ fixed-arity cases; all of them funnel into vfprintf with a word array.
 */
 import lib.lib
 import lib.assert
+import lib.float_text
 
 
 char* ftoa(float f):
-	char* s = malloc(64)
-	int pos = 0
-	if (f < 0.0):
-		s[pos] = '-'
-		pos = pos + 1
-		f = -f
-	int whole = f
-	char* whole_digits = itoa(whole)
-	strcpy(s + pos, whole_digits)
-	free(whole_digits)
-	pos = strlen(s)
-	s[pos] = '.'
-	pos = pos + 1
-	float frac = f - whole
-	int i = 0
-	while (i < 6):
-		frac = frac * 10.0
-		int digit = frac
-		s[pos] = digit + '0'
-		pos = pos + 1
-		frac = frac - digit
-		i = i + 1
-	s[pos] = 0
-	return s
+	return float_text[float](f)
 
 
 # Print fmt to fd, pulling one word from args for each verb.
@@ -44,8 +22,7 @@ void vfprintf(int fd, char* fmt, int* args, int num_args):
 		if ((fmt[i] == '%') && (fmt[i + 1] != 0)):
 			int verb = fmt[i + 1]
 			i = i + 2
-			if (verb == '%'):
-				putc(fd, '%')
+			if (verb == '%'): putc(fd, '%')
 			else:
 				asserts(c"printf: more verbs than arguments", used < num_args)
 				int value = args[used]
@@ -61,8 +38,7 @@ void vfprintf(int fd, char* fmt, int* args, int num_args):
 				else if (verb == 's'):
 					char* text = cast(char*, value)
 					write(fd, text, strlen(text))
-				else if (verb == 'c'):
-					putc(fd, value)
+				else if (verb == 'c'): putc(fd, value)
 				else:
 					# Unknown verb: print it verbatim
 					putc(fd, '%')

@@ -107,6 +107,8 @@ import lib.assert
 import libs.standard.distributed.wal
 import libs.standard.distributed.memtable
 import libs.standard.distributed.sstable
+import lib.bytes
+import lib.mem
 
 
 struct lsm:
@@ -124,30 +126,12 @@ struct lsm:
 
 # ---- record tags ------------------------------------------------------------
 
-int lsm_tag_put():
-	return 1
-
-
-int lsm_tag_delete():
-	return 2
-
-
-int lsm_tag_add_table():
-	return 1
+const int lsm_tag_put = 1
+const int lsm_tag_delete = 2
+const int lsm_tag_add_table = 1
 
 
 # ---- small helpers ----------------------------------------------------------
-
-# Malloc'd copy of len bytes with a convenience NUL appended.
-char* lsm_copy_bytes(char* src, int len):
-	char* dst = malloc(len + 1)
-	int i = 0
-	while (i < len):
-		dst[i] = src[i]
-		i = i + 1
-	dst[len] = 0
-	return dst
-
 
 # "<prefix>.sst<seq>", malloc'd; caller frees (or hands to table_paths).
 char* lsm_table_path(char* prefix, int seq):
@@ -163,8 +147,8 @@ char* lsm_table_path(char* prefix, int seq):
 # wal_append's result (1 ok, 0 short write).
 int lsm_manifest_append_table(wal* mlog, int seq):
 	char* rec = malloc(5)
-	rec[0] = lsm_tag_add_table()
-	wal_put_le32(rec + 1, seq)
+	rec[0] = lsm_tag_add_table
+	store_le32(rec + 1, seq)
 	int ok = wal_append(mlog, rec, 5)
 	free(rec)
 	return ok
@@ -175,20 +159,20 @@ int lsm_manifest_append_table(wal* mlog, int seq):
 # payload here means a foreign writer — asserted, not tolerated.
 void lsm_replay_data_record(memtable* m, char* p, int len):
 	int tag = p[0] & 255
-	if (tag == lsm_tag_put()):
+	if (tag == lsm_tag_put):
 		assert1(len >= 9)
-		int key_len = wal_get_le32(p + 1)
-		int val_len = wal_get_le32(p + 5)
+		int key_len = load_le32(p + 1)
+		int val_len = load_le32(p + 5)
 		assert1(key_len >= 0 && val_len >= 0 && len == 9 + key_len + val_len)
-		char* key = lsm_copy_bytes(p + 9, key_len)
+		char* key = mem_dup(p + 9, key_len)
 		memtable_put(m, key, p + 9 + key_len, val_len)
 		free(key)
 		return
-	if (tag == lsm_tag_delete()):
+	if (tag == lsm_tag_delete):
 		assert1(len >= 5)
-		int dkey_len = wal_get_le32(p + 1)
+		int dkey_len = load_le32(p + 1)
 		assert1(dkey_len >= 0 && len == 5 + dkey_len)
-		char* dkey = lsm_copy_bytes(p + 5, dkey_len)
+		char* dkey = mem_dup(p + 5, dkey_len)
 		memtable_delete(m, dkey)
 		free(dkey)
 		return
@@ -205,7 +189,7 @@ void lsm_replay_data_record(memtable* m, char* p, int len):
 # corrupt table that is not the last manifest entry), with everything
 # that was opened closed again.
 lsm* lsm_open(char* prefix, int memtable_limit_bytes):
-	char* own_prefix = lsm_copy_bytes(prefix, strlen(prefix))
+	char* own_prefix = mem_dup(prefix, strlen(prefix))
 	char* wpath = strjoin(own_prefix, c".wal")
 	char* mpath = strjoin(own_prefix, c".manifest")
 	wal* mlog = wal_open(mpath)
@@ -222,10 +206,8 @@ lsm* lsm_open(char* prefix, int memtable_limit_bytes):
 	assert1(cast(int, mrd) != 0)
 	char* mp = wal_read_next(mrd, len_out)
 	while (mp != 0):
-		if (len_out[0] == 5 && (mp[0] & 255) == lsm_tag_add_table()):
-			seqs.push(wal_get_le32(mp + 1))
-		else:
-			fail = 1
+		if (len_out[0] == 5 && (mp[0] & 255) == lsm_tag_add_table): seqs.push(load_le32(mp + 1))
+		else: fail = 1
 		free(mp)
 		mp = wal_read_next(mrd, len_out)
 	wal_reader_close(mrd)
@@ -239,10 +221,8 @@ lsm* lsm_open(char* prefix, int memtable_limit_bytes):
 		sstable* t = sstable_open(tpath)
 		if (cast(int, t) == 0):
 			free(tpath)
-			if (i == seqs.length - 1):
-				dropped = 1
-			else:
-				fail = 1
+			if (i == seqs.length - 1): dropped = 1
+			else: fail = 1
 		else:
 			tables.push(t)
 			table_paths.push(tpath)
@@ -258,12 +238,10 @@ lsm* lsm_open(char* prefix, int memtable_limit_bytes):
 	# result is ignored: the crash may have happened before the table
 	# file ever existed, and a leaked orphan is harmless.
 	if (fail == 0 && dropped == 1):
-		if (wal_reset(mlog) == 0):
-			fail = 1
+		if (wal_reset(mlog) == 0): fail = 1
 		i = 0
 		while (i < tables.length && fail == 0):
-			if (lsm_manifest_append_table(mlog, seqs[i]) == 0):
-				fail = 1
+			if (lsm_manifest_append_table(mlog, seqs[i]) == 0): fail = 1
 			i = i + 1
 		if (fail == 0):
 			char* dangling = lsm_table_path(own_prefix, seqs[seqs.length - 1])
@@ -274,15 +252,13 @@ lsm* lsm_open(char* prefix, int memtable_limit_bytes):
 	int next_seq = 1
 	i = 0
 	while (i < seqs.length):
-		if (seqs[i] >= next_seq):
-			next_seq = seqs[i] + 1
+		if (seqs[i] >= next_seq): next_seq = seqs[i] + 1
 		i = i + 1
 	# 5. data wal
 	wal* dlog = 0
 	if (fail == 0):
 		dlog = wal_open(wpath)
-		if (cast(int, dlog) == 0):
-			fail = 1
+		if (cast(int, dlog) == 0): fail = 1
 	if (fail == 1):
 		i = 0
 		while (i < tables.length):
@@ -349,23 +325,19 @@ void lsm_close(lsm* l):
 # no-op returning 1. Returns 0 on any I/O failure.
 int lsm_flush(lsm* l):
 	int count = memtable_count(l.mem)
-	if (count == 0):
-		return 1
+	if (count == 0): return 1
 	char* path = lsm_table_path(l.prefix, l.next_seq)
 	sstable_writer* w = sstable_writer_new(path)
 	if (cast(int, w) == 0):
 		free(path)
 		return 0
 	int* len_out = cast(int*, malloc(__word_size__))
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		char* key = memtable_key_at(l.mem, i)
-		if (memtable_is_tombstone_at(l.mem, i)):
-			sstable_writer_add(w, key, cast(char*, 0), 0, 1)
+		if (memtable_is_tombstone_at(l.mem, i)): sstable_writer_add(w, key, cast(char*, 0), 0, 1)
 		else:
 			char* val = memtable_value_at(l.mem, i, len_out)
 			sstable_writer_add(w, key, val, len_out[0], 0)
-		i = i + 1
 	free(cast(char*, len_out))
 	if (sstable_writer_finish(w) == 0):
 		free(path)
@@ -376,11 +348,9 @@ int lsm_flush(lsm* l):
 		return 0
 	l.tables.push(t)
 	l.table_paths.push(path)
-	if (lsm_manifest_append_table(l.manifest, l.next_seq) == 0):
-		return 0
+	if (lsm_manifest_append_table(l.manifest, l.next_seq) == 0): return 0
 	l.next_seq = l.next_seq + 1
-	if (wal_reset(l.log) == 0):
-		return 0
+	if (wal_reset(l.log) == 0): return 0
 	memtable_clear(l.mem)
 	return 1
 
@@ -394,9 +364,9 @@ int lsm_put(lsm* l, char* key, char* value, int value_len):
 	assert1(value_len >= 0)
 	int key_len = strlen(key)
 	char* rec = malloc(9 + key_len + value_len)
-	rec[0] = lsm_tag_put()
-	wal_put_le32(rec + 1, key_len)
-	wal_put_le32(rec + 5, value_len)
+	rec[0] = lsm_tag_put
+	store_le32(rec + 1, key_len)
+	store_le32(rec + 5, value_len)
 	int i = 0
 	while (i < key_len):
 		rec[9 + i] = key[i]
@@ -407,11 +377,9 @@ int lsm_put(lsm* l, char* key, char* value, int value_len):
 		i = i + 1
 	int ok = wal_append(l.log, rec, 9 + key_len + value_len)
 	free(rec)
-	if (ok == 0):
-		return 0
+	if (ok == 0): return 0
 	memtable_put(l.mem, key, value, value_len)
-	if (memtable_bytes(l.mem) > l.memtable_limit_bytes):
-		return lsm_flush(l)
+	if (memtable_bytes(l.mem) > l.memtable_limit_bytes): return lsm_flush(l)
 	return 1
 
 
@@ -420,19 +388,14 @@ int lsm_put(lsm* l, char* key, char* value, int value_len):
 int lsm_delete(lsm* l, char* key):
 	int key_len = strlen(key)
 	char* rec = malloc(5 + key_len)
-	rec[0] = lsm_tag_delete()
-	wal_put_le32(rec + 1, key_len)
-	int i = 0
-	while (i < key_len):
-		rec[5 + i] = key[i]
-		i = i + 1
+	rec[0] = lsm_tag_delete
+	store_le32(rec + 1, key_len)
+	for i in range(key_len): rec[5 + i] = key[i]
 	int ok = wal_append(l.log, rec, 5 + key_len)
 	free(rec)
-	if (ok == 0):
-		return 0
+	if (ok == 0): return 0
 	memtable_delete(l.mem, key)
-	if (memtable_bytes(l.mem) > l.memtable_limit_bytes):
-		return lsm_flush(l)
+	if (memtable_bytes(l.mem) > l.memtable_limit_bytes): return lsm_flush(l)
 	return 1
 
 
@@ -450,11 +413,10 @@ char* lsm_get(lsm* l, char* key, int* len_out):
 	int state = memtable_get(l.mem, key, value_out, vlen)
 	if (state == 1):
 		# memtable values are borrowed; copy for the uniform contract
-		result = lsm_copy_bytes(value_out[0], vlen[0])
+		result = mem_dup(value_out[0], vlen[0])
 		len_out[0] = vlen[0]
 		decided = 1
-	if (state == 2):
-		decided = 1
+	if (state == 2): decided = 1
 	if (decided == 0):
 		int i = l.tables.length - 1
 		while (i >= 0 && decided == 0):
@@ -464,11 +426,9 @@ char* lsm_get(lsm* l, char* key, int* len_out):
 				result = value_out[0]
 				len_out[0] = vlen[0]
 				decided = 1
-			if (state == 2):
-				decided = 1
+			if (state == 2): decided = 1
 			i = i - 1
-	if (result == 0):
-		len_out[0] = 0
+	if (result == 0): len_out[0] = 0
 	free(cast(char*, value_out))
 	free(cast(char*, vlen))
 	return result
@@ -484,8 +444,7 @@ char* lsm_get(lsm* l, char* key, int* len_out):
 # Returns 1 (no-op when there are no tables), 0 on I/O failure.
 int lsm_compact(lsm* l):
 	int n = l.tables.length
-	if (n == 0):
-		return 1
+	if (n == 0): return 1
 	char* path = lsm_table_path(l.prefix, l.next_seq)
 	sstable_writer* w = sstable_writer_new(path)
 	if (cast(int, w) == 0):
@@ -512,8 +471,7 @@ int lsm_compact(lsm* l):
 					best = i
 					best_key = k
 			i = i + 1
-		if (best < 0):
-			merging = 0
+		if (best < 0): merging = 0
 		else:
 			sstable* winner = l.tables[best]
 			if (sstable_is_tombstone_at(winner, cursors[best]) == 0):
@@ -560,14 +518,11 @@ int lsm_compact(lsm* l):
 	# manifest no longer references, never lose data; failed unlinks
 	# are ignored for the same reason.
 	int ok = 1
-	if (wal_reset(l.manifest) == 0):
-		ok = 0
-	if (ok == 1 && lsm_manifest_append_table(l.manifest, seq) == 0):
-		ok = 0
+	if (wal_reset(l.manifest) == 0): ok = 0
+	if (ok == 1 && lsm_manifest_append_table(l.manifest, seq) == 0): ok = 0
 	i = 0
 	while (i < old_paths.length):
-		if (ok == 1):
-			unlink(old_paths[i])
+		if (ok == 1): unlink(old_paths[i])
 		free(old_paths[i])
 		i = i + 1
 	return ok
@@ -575,8 +530,7 @@ int lsm_compact(lsm* l):
 
 # ---- export / import (full-scan snapshot surface, issue #314) ---------------
 
-int lsm_export_version():
-	return 1
+const int lsm_export_version = 1
 
 
 # Merge-source count: every table plus the memtable, which is always
@@ -586,20 +540,17 @@ int lsm_export_sources(lsm* l):
 
 
 int lsm_export_count_at(lsm* l, int src):
-	if (src < l.tables.length):
-		return sstable_count(l.tables[src])
+	if (src < l.tables.length): return sstable_count(l.tables[src])
 	return memtable_count(l.mem)
 
 
 char* lsm_export_key_at(lsm* l, int src, int i):
-	if (src < l.tables.length):
-		return sstable_key_at(l.tables[src], i)
+	if (src < l.tables.length): return sstable_key_at(l.tables[src], i)
 	return memtable_key_at(l.mem, i)
 
 
 int lsm_export_tombstone_at(lsm* l, int src, int i):
-	if (src < l.tables.length):
-		return sstable_is_tombstone_at(l.tables[src], i)
+	if (src < l.tables.length): return sstable_is_tombstone_at(l.tables[src], i)
 	return memtable_is_tombstone_at(l.mem, i)
 
 
@@ -608,10 +559,9 @@ int lsm_export_tombstone_at(lsm* l, int src, int i):
 # it is copied here too, letting the merge loop below free every
 # collected value uniformly.
 char* lsm_export_value_at(lsm* l, int src, int i, int* len_out):
-	if (src < l.tables.length):
-		return sstable_value_at(l.tables[src], i, len_out)
+	if (src < l.tables.length): return sstable_value_at(l.tables[src], i, len_out)
 	char* borrowed = memtable_value_at(l.mem, i, len_out)
-	return lsm_copy_bytes(borrowed, len_out[0])
+	return mem_dup(borrowed, len_out[0])
 
 
 # Full-scan export: the same k-way merge lsm_compact runs across every
@@ -645,12 +595,11 @@ char* lsm_export(lsm* l, int* len_out):
 					best = i
 					best_key = k
 			i = i + 1
-		if (best < 0):
-			merging = 0
+		if (best < 0): merging = 0
 		else:
 			if (lsm_export_tombstone_at(l, best, cursors[best]) == 0):
 				char* val = lsm_export_value_at(l, best, cursors[best], vl)
-				keys.push(lsm_copy_bytes(best_key, strlen(best_key)))
+				keys.push(mem_dup(best_key, strlen(best_key)))
 				vals.push(val)
 				vlens.push(vl[0])
 			# advance every cursor sitting on this key: the winner and
@@ -672,21 +621,21 @@ char* lsm_export(lsm* l, int* len_out):
 	buf[1] = 83   # S
 	buf[2] = 77   # M
 	buf[3] = 88   # X
-	wal_put_le32(buf + 4, lsm_export_version())
-	wal_put_le32(buf + 8, keys.length)
+	store_le32(buf + 4, lsm_export_version)
+	store_le32(buf + 8, keys.length)
 	int off = 12
 	i = 0
 	while (i < keys.length):
 		char* k = keys[i]
 		int klen = strlen(k)
-		wal_put_le32(buf + off, klen)
+		store_le32(buf + off, klen)
 		off = off + 4
 		int j = 0
 		while (j < klen):
 			buf[off + j] = k[j]
 			j = j + 1
 		off = off + klen
-		wal_put_le32(buf + off, vlens[i])
+		store_le32(buf + off, vlens[i])
 		off = off + 4
 		char* v = vals[i]
 		j = 0
@@ -710,8 +659,7 @@ char* lsm_export(lsm* l, int* len_out):
 # this after fully validating the incoming blob, so a failure here is
 # a bare-disk problem, not a bad snapshot.
 int lsm_clear(lsm* l):
-	if (wal_reset(l.manifest) == 0):
-		return 0
+	if (wal_reset(l.manifest) == 0): return 0
 	int i = 0
 	while (i < l.tables.length):
 		sstable_close(l.tables[i])
@@ -723,8 +671,7 @@ int lsm_clear(lsm* l):
 		i = i + 1
 	l.tables = new list[sstable*]
 	l.table_paths = new list[char*]
-	if (wal_reset(l.log) == 0):
-		return 0
+	if (wal_reset(l.log) == 0): return 0
 	memtable_clear(l.mem)
 	return 1
 
@@ -739,15 +686,12 @@ int lsm_clear(lsm* l):
 # handoff: kv_state.w's kv_install_snapshot calls this with the blob
 # raft_take_pending_snapshot hands the state machine.
 int lsm_import(lsm* l, char* blob, int len):
-	if (len < 12):
-		return 0
+	if (len < 12): return 0
 	if ((blob[0] & 255) != 76 || (blob[1] & 255) != 83 || (blob[2] & 255) != 77 || (blob[3] & 255) != 88):
 		return 0
-	if (wal_get_le32(blob + 4) != lsm_export_version()):
-		return 0
-	int count = wal_get_le32(blob + 8)
-	if (count < 0):
-		return 0
+	if (load_le32(blob + 4) != lsm_export_version): return 0
+	int count = load_le32(blob + 8)
+	if (count < 0): return 0
 	list[int] key_off = new list[int]
 	list[int] key_len = new list[int]
 	list[int] val_off = new list[int]
@@ -755,34 +699,27 @@ int lsm_import(lsm* l, char* blob, int len):
 	int off = 12
 	int i = 0
 	while (i < count):
-		if (len - off < 4):
-			return 0
-		int klen = wal_get_le32(blob + off)
-		if (klen < 0 || klen > len - off - 4):
-			return 0
+		if (len - off < 4): return 0
+		int klen = load_le32(blob + off)
+		if (klen < 0 || klen > len - off - 4): return 0
 		key_off.push(off + 4)
 		key_len.push(klen)
 		off = off + 4 + klen
-		if (len - off < 4):
-			return 0
-		int vlen = wal_get_le32(blob + off)
-		if (vlen < 0 || vlen > len - off - 4):
-			return 0
+		if (len - off < 4): return 0
+		int vlen = load_le32(blob + off)
+		if (vlen < 0 || vlen > len - off - 4): return 0
 		val_off.push(off + 4)
 		val_len.push(vlen)
 		off = off + 4 + vlen
 		i = i + 1
-	if (off != len):
-		return 0
-	if (lsm_clear(l) == 0):
-		return 0
+	if (off != len): return 0
+	if (lsm_clear(l) == 0): return 0
 	i = 0
 	while (i < count):
-		char* key = lsm_copy_bytes(blob + key_off[i], key_len[i])
+		char* key = mem_dup(blob + key_off[i], key_len[i])
 		int ok = lsm_put(l, key, blob + val_off[i], val_len[i])
 		free(key)
-		if (ok == 0):
-			return 0
+		if (ok == 0): return 0
 		i = i + 1
 	return 1
 
@@ -805,9 +742,7 @@ int lsm_memtable_bytes(lsm* l):
 # resolved (compaction shrinks this; reads do not).
 int lsm_total_entries(lsm* l):
 	int total = memtable_count(l.mem)
-	int i = 0
-	while (i < l.tables.length):
+	for i in range(l.tables.length):
 		sstable* t = l.tables[i]
 		total = total + sstable_count(t)
-		i = i + 1
 	return total

@@ -11,10 +11,7 @@ import lib.lib
 # Returns a malloc'd string the caller may free.
 char* path_clone_range(char* start, int length):
 	char* result = malloc(length + 1)
-	int i = 0
-	while (i < length):
-		result[i] = start[i]
-		i = i + 1
+	for i in range(length): result[i] = start[i]
 	result[length] = 0
 	return result
 
@@ -23,12 +20,9 @@ char* path_clone_range(char* start, int length):
 char* path_join(char* left, char* right):
 	int left_length = strlen(left)
 	int right_length = strlen(right)
-	if (right_length == 0):
-		return strclone(left)
-	if (right[0] == '/'):
-		return strclone(right)
-	if (left_length == 0):
-		return strclone(right)
+	if (right_length == 0): return strclone(left)
+	if (right[0] == '/'): return strclone(right)
+	if (left_length == 0): return strclone(right)
 
 	int needs_slash = left[left_length - 1] != '/'
 	char* result = malloc(left_length + right_length + needs_slash + 1)
@@ -44,19 +38,15 @@ char* path_join(char* left, char* right):
 # Returns a malloc'd string the caller may free.
 char* path_basename(char* path):
 	int length = strlen(path)
-	if (length == 0):
-		return strclone(c".")
+	if (length == 0): return strclone(c".")
 
-	while ((length > 1) && (path[length - 1] == '/')):
-		length = length - 1
+	while ((length > 1) && (path[length - 1] == '/')): length = length - 1
 
-	if ((length == 1) && (path[0] == '/')):
-		return strclone(c"/")
+	if ((length == 1) && (path[0] == '/')): return strclone(c"/")
 
 	int end = length
 	int start = end - 1
-	while ((start >= 0) && (path[start] != '/')):
-		start = start - 1
+	while ((start >= 0) && (path[start] != '/')): start = start - 1
 	start = start + 1
 	return path_clone_range(path + start, end - start)
 
@@ -64,34 +54,26 @@ char* path_basename(char* path):
 # Returns a malloc'd string the caller may free.
 char* path_dirname(char* path):
 	int length = strlen(path)
-	if (length == 0):
-		return strclone(c".")
+	if (length == 0): return strclone(c".")
 
-	while ((length > 1) && (path[length - 1] == '/')):
-		length = length - 1
+	while ((length > 1) && (path[length - 1] == '/')): length = length - 1
 
-	if ((length == 1) && (path[0] == '/')):
-		return strclone(c"/")
+	if ((length == 1) && (path[0] == '/')): return strclone(c"/")
 
 	int slash = length - 1
-	while ((slash >= 0) && (path[slash] != '/')):
-		slash = slash - 1
+	while ((slash >= 0) && (path[slash] != '/')): slash = slash - 1
 
-	if (slash < 0):
-		return strclone(c".")
+	if (slash < 0): return strclone(c".")
 
-	while ((slash > 0) && (path[slash - 1] == '/')):
-		slash = slash - 1
+	while ((slash > 0) && (path[slash - 1] == '/')): slash = slash - 1
 
-	if (slash == 0):
-		return strclone(c"/")
+	if (slash == 0): return strclone(c"/")
 
 	return path_clone_range(path, slash)
 
 
 int path_exists(char* path):
 	int file = open(path, 2048, 0)
-	if (file < 0):
-		return 0
+	if (file < 0): return 0
 	close(file)
 	return 1

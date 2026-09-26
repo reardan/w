@@ -24,6 +24,8 @@ metrics — bearing_x (left edge relative to the pen), bearing_top
 import lib.lib
 import lib.stream
 import structures.string
+import lib.bytes
+import lib.mem
 
 
 struct ttf_font:
@@ -53,8 +55,7 @@ struct ttf_font:
 # Out-of-range reads yield 0: a truncated file degrades to a failed
 # load or an empty glyph instead of reading past the blob.
 int ttf_u8(ttf_font* f, int off):
-	if ((off < 0) || (off >= f.size)):
-		return 0
+	if ((off < 0) || (off >= f.size)): return 0
 	return f.data[off] & 255
 
 
@@ -64,8 +65,7 @@ int ttf_u16(ttf_font* f, int off):
 
 int ttf_s16(ttf_font* f, int off):
 	int v = ttf_u16(f, off)
-	if (v >= 32768):
-		v = v - 65536
+	if (v >= 32768): v = v - 65536
 	return v
 
 
@@ -77,28 +77,23 @@ int ttf_u32(ttf_font* f, int off):
 # inside the blob.
 int ttf_table(ttf_font* f, char* tag):
 	int count = ttf_u16(f, 4)
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		int rec = 12 + i * 16
 		if ((ttf_u8(f, rec) == tag[0]) && (ttf_u8(f, rec + 1) == tag[1]) && (ttf_u8(f, rec + 2) == tag[2]) && (ttf_u8(f, rec + 3) == tag[3])):
 			int off = ttf_u32(f, rec + 8)
 			int length = ttf_u32(f, rec + 12)
-			if ((off <= 0) || (length < 0) || (off > f.size - length)):
-				return 0
+			if ((off <= 0) || (length < 0) || (off > f.size - length)): return 0
 			return off
-		i = i + 1
 	return 0
 
 
 # Byte length of a table by tag, or 0 when absent.
 int ttf_table_length(ttf_font* f, char* tag):
 	int count = ttf_u16(f, 4)
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		int rec = 12 + i * 16
 		if ((ttf_u8(f, rec) == tag[0]) && (ttf_u8(f, rec + 1) == tag[1]) && (ttf_u8(f, rec + 2) == tag[2]) && (ttf_u8(f, rec + 3) == tag[3])):
 			return ttf_u32(f, rec + 12)
-		i = i + 1
 	return 0
 
 
@@ -130,8 +125,7 @@ void ttf_index_kerning(ttf_font* f);
 int ttf_load(ttf_font* f, char* path):
 	int size = 0
 	char* data = ttf_read_file(path, &size)
-	if (data == 0):
-		return 0
+	if (data == 0): return 0
 	if (ttf_load_bytes(f, data, size) == 0):
 		free(data)
 		f.data = 0
@@ -198,15 +192,11 @@ int ttf_load_bytes(ttf_font* f, char* data, int size):
 	# Prefer a format-12 subtable (full Unicode); keep the first format-4
 	# one for the BMP.
 	int subtables = ttf_u16(f, cmap + 2)
-	int i = 0
-	while (i < subtables):
+	for i in range(subtables):
 		int sub = cmap + ttf_u32(f, cmap + 4 + i * 8 + 4)
 		int format = ttf_u16(f, sub)
-		if ((format == 4) && (f.cmap4 == 0)):
-			f.cmap4 = sub
-		if ((format == 12) && (f.cmap12 == 0)):
-			f.cmap12 = sub
-		i = i + 1
+		if ((format == 4) && (f.cmap4 == 0)): f.cmap4 = sub
+		if ((format == 12) && (f.cmap12 == 0)): f.cmap12 = sub
 	if ((f.cmap4 == 0) && (f.cmap12 == 0)):
 		print_error(c"ttf: no format-4 or format-12 cmap subtable\n")
 		return 0
@@ -241,8 +231,7 @@ void ttf_index_kerning(ttf_font* f):
 			sub = sub + length
 			t = t + 1
 	int gpos = ttf_table(f, c"GPOS")
-	if (gpos == 0):
-		return
+	if (gpos == 0): return
 	int features = gpos + ttf_u16(f, gpos + 6)
 	f.gpos_lookup_list = gpos + ttf_u16(f, gpos + 8)
 	# The first 'kern' feature record: scripts list their own records,
@@ -269,20 +258,14 @@ int ttf_coverage(ttf_font* f, int cov, int gid):
 			int g = ttf_u16(f, cov + 4 + mid * 2)
 			if (g == gid):
 				return mid
-			if (g < gid):
-				lo = mid + 1
-			else:
-				hi = mid - 1
+			if (g < gid): lo = mid + 1
+			else: hi = mid - 1
 		else if (format == 2):
 			int rec = cov + 4 + mid * 6
-			if (gid < ttf_u16(f, rec)):
-				hi = mid - 1
-			else if (gid > ttf_u16(f, rec + 2)):
-				lo = mid + 1
-			else:
-				return ttf_u16(f, rec + 4) + gid - ttf_u16(f, rec)
-		else:
-			return 0 - 1
+			if (gid < ttf_u16(f, rec)): hi = mid - 1
+			else if (gid > ttf_u16(f, rec + 2)): lo = mid + 1
+			else: return ttf_u16(f, rec + 4) + gid - ttf_u16(f, rec)
+		else: return 0 - 1
 	return 0 - 1
 
 
@@ -292,42 +275,33 @@ int ttf_class(ttf_font* f, int def, int gid):
 	if (format == 1):
 		int start = ttf_u16(f, def + 2)
 		int n = ttf_u16(f, def + 4)
-		if ((gid < start) || (gid >= start + n)):
-			return 0
+		if ((gid < start) || (gid >= start + n)): return 0
 		return ttf_u16(f, def + 6 + (gid - start) * 2)
-	if (format != 2):
-		return 0
+	if (format != 2): return 0
 	int count = ttf_u16(f, def + 2)
 	int lo = 0
 	int hi = count - 1
 	while (lo <= hi):
 		int mid = (lo + hi) / 2
 		int rec = def + 4 + mid * 6
-		if (gid < ttf_u16(f, rec)):
-			hi = mid - 1
-		else if (gid > ttf_u16(f, rec + 2)):
-			lo = mid + 1
-		else:
-			return ttf_u16(f, rec + 4)
+		if (gid < ttf_u16(f, rec)): hi = mid - 1
+		else if (gid > ttf_u16(f, rec + 2)): lo = mid + 1
+		else: return ttf_u16(f, rec + 4)
 	return 0
 
 
 # Bytes in a ValueRecord of the given ValueFormat: two per set bit.
 int ttf_value_size(int format):
 	int size = 0
-	int bit = 0
-	while (bit < 8):
-		if (format & (1 << bit)):
-			size = size + 2
-		bit = bit + 1
+	for bit in range(8):
+		if (format & (1 << bit)): size = size + 2
 	return size
 
 
 # The XAdvance field of a ValueRecord at rec, or 0 when the format has
 # none (placement-only adjustments do not move the pen).
 int ttf_value_x_advance(ttf_font* f, int rec, int format):
-	if ((format & 4) == 0):
-		return 0
+	if ((format & 4) == 0): return 0
 	return ttf_s16(f, rec + ttf_value_size(format & 3))
 
 
@@ -337,15 +311,13 @@ int ttf_pair_pos(ttf_font* f, int sub, int left, int right, int* matched):
 	matched[0] = 0
 	int format = ttf_u16(f, sub)
 	int index = ttf_coverage(f, sub + ttf_u16(f, sub + 2), left)
-	if (index < 0):
-		return 0
+	if (index < 0): return 0
 	int vf1 = ttf_u16(f, sub + 4)
 	int vf2 = ttf_u16(f, sub + 6)
 	int size1 = ttf_value_size(vf1)
 	int size2 = ttf_value_size(vf2)
 	if (format == 1):
-		if (index >= ttf_u16(f, sub + 8)):
-			return 0
+		if (index >= ttf_u16(f, sub + 8)): return 0
 		int set = sub + ttf_u16(f, sub + 10 + index * 2)
 		int n = ttf_u16(f, set)
 		int stride = 2 + size1 + size2
@@ -358,18 +330,15 @@ int ttf_pair_pos(ttf_font* f, int sub, int left, int right, int* matched):
 			if (g == right):
 				matched[0] = 1
 				return ttf_value_x_advance(f, rec + 2, vf1)
-			if (g < right):
-				lo = mid + 1
-			else:
-				hi = mid - 1
+			if (g < right): lo = mid + 1
+			else: hi = mid - 1
 		return 0
 	if (format == 2):
 		int c1 = ttf_class(f, sub + ttf_u16(f, sub + 8), left)
 		int c2 = ttf_class(f, sub + ttf_u16(f, sub + 10), right)
 		int class1_count = ttf_u16(f, sub + 12)
 		int class2_count = ttf_u16(f, sub + 14)
-		if ((c1 >= class1_count) || (c2 >= class2_count)):
-			return 0
+		if ((c1 >= class1_count) || (c2 >= class2_count)): return 0
 		matched[0] = 1
 		int rec2 = sub + 16 + (c1 * class2_count + c2) * (size1 + size2)
 		return ttf_value_x_advance(f, rec2, vf1)
@@ -386,8 +355,7 @@ int ttf_kern_units(ttf_font* f, int left, int right):
 		int lookups = f.gpos_lookup_list
 		int lookup_count = ttf_u16(f, lookups)
 		int n = ttf_u16(f, f.gpos_feature + 2)
-		int i = 0
-		while (i < n):
+		for i in range(n):
 			int index = ttf_u16(f, f.gpos_feature + 4 + i * 2)
 			if (index >= lookup_count):
 				return total
@@ -404,16 +372,12 @@ int ttf_kern_units(ttf_font* f, int left, int right):
 					sub_type = ttf_u16(f, sub + 2)
 					sub = sub + ttf_u32(f, sub + 4)
 				int matched = 0
-				if (sub_type == 2):
-					total = total + ttf_pair_pos(f, sub, left, right, &matched)
+				if (sub_type == 2): total = total + ttf_pair_pos(f, sub, left, right, &matched)
 				# The first subtable that applies ends the lookup.
-				if (matched):
-					s = subs
+				if (matched): s = subs
 				s = s + 1
-			i = i + 1
 		return total
-	if (f.kern == 0):
-		return 0
+	if (f.kern == 0): return 0
 	int key = left * 65536 + right
 	int lo = 0
 	int hi = f.kern_pairs - 1
@@ -421,20 +385,16 @@ int ttf_kern_units(ttf_font* f, int left, int right):
 		int mid = (lo + hi) / 2
 		int rec = f.kern + 8 + mid * 6
 		int k = ttf_u16(f, rec) * 65536 + ttf_u16(f, rec + 2)
-		if (k == key):
-			return ttf_s16(f, rec + 4)
-		if (k < key):
-			lo = mid + 1
-		else:
-			hi = mid - 1
+		if (k == key): return ttf_s16(f, rec + 4)
+		if (k < key): lo = mid + 1
+		else: hi = mid - 1
 	return 0
 
 
 # Release the bytes ttf_load read. Not for ttf_load_bytes fonts, whose
 # bytes belong to the caller.
 void ttf_free(ttf_font* f):
-	if (f.data != 0):
-		free(f.data)
+	if (f.data != 0): free(f.data)
 	f.data = 0
 	f.size = 0
 
@@ -444,62 +404,50 @@ void ttf_free(ttf_font* f):
 int ttf_glyph_id_12(ttf_font* f, int code):
 	int sub = f.cmap12
 	int groups = ttf_u32(f, sub + 12)
-	int i = 0
-	while (i < groups):
+	for i in range(groups):
 		int rec = sub + 16 + i * 12
 		int start = ttf_u32(f, rec)
 		int end = ttf_u32(f, rec + 4)
-		if ((code >= start) && (code <= end)):
-			return ttf_u32(f, rec + 8) + (code - start)
-		i = i + 1
+		if ((code >= start) && (code <= end)): return ttf_u32(f, rec + 8) + (code - start)
 	return 0
 
 
 # Glyph id for a codepoint (0 = .notdef): format 12 when present, else
 # format 4.
 int ttf_glyph_id(ttf_font* f, int code):
-	if (f.cmap12 != 0):
-		return ttf_glyph_id_12(f, code)
+	if (f.cmap12 != 0): return ttf_glyph_id_12(f, code)
 	int sub = f.cmap4
-	if (code > 65535):
-		return 0
+	if (code > 65535): return 0
 	int segs = ttf_u16(f, sub + 6) / 2
 	int ends = sub + 14
 	int starts = sub + 16 + segs * 2
 	int deltas = sub + 16 + segs * 4
 	int range_offsets = sub + 16 + segs * 6
-	int i = 0
-	while (i < segs):
+	for i in range(segs):
 		if (code <= ttf_u16(f, ends + i * 2)):
 			int start = ttf_u16(f, starts + i * 2)
-			if (code < start):
-				return 0
+			if (code < start): return 0
 			int delta = ttf_u16(f, deltas + i * 2)
 			int range_offset = ttf_u16(f, range_offsets + i * 2)
-			if (range_offset == 0):
-				return (code + delta) & 65535
+			if (range_offset == 0): return (code + delta) & 65535
 			int addr = range_offsets + i * 2 + range_offset + (code - start) * 2
 			int gid = ttf_u16(f, addr)
-			if (gid == 0):
-				return 0
+			if (gid == 0): return 0
 			return (gid + delta) & 65535
-		i = i + 1
 	return 0
 
 
 # Advance width in font units.
 int ttf_advance_units(ttf_font* f, int gid):
 	int index = gid
-	if (index >= f.num_hmetrics):
-		index = f.num_hmetrics - 1
+	if (index >= f.num_hmetrics): index = f.num_hmetrics - 1
 	return ttf_u16(f, f.hmtx + index * 4)
 
 
 # Round font units to pixels at the given ppem (half-up).
 int ttf_scale_round(ttf_font* f, int ppem, int units):
 	int scaled = units * ppem * 2 / f.upem
-	if (scaled >= 0):
-		return (scaled + 1) / 2
+	if (scaled >= 0): return (scaled + 1) / 2
 	return 0 - ((1 - scaled) / 2)
 
 
@@ -508,15 +456,13 @@ int ttf_scale_round(ttf_font* f, int ppem, int units):
 # negative, above it) and its thickness (at least one pixel).
 int ttf_underline_top(ttf_font* f, int ppem):
 	int top = 0 - ttf_scale_round(f, ppem, f.underline_pos)
-	if (top < 1):
-		top = 1
+	if (top < 1): top = 1
 	return top
 
 
 int ttf_underline_thickness(ttf_font* f, int ppem):
 	int thick = ttf_scale_round(f, ppem, f.underline_thick)
-	if (thick < 1):
-		thick = 1
+	if (thick < 1): thick = 1
 	return thick
 
 
@@ -526,8 +472,7 @@ int ttf_strikeout_top(ttf_font* f, int ppem):
 
 int ttf_strikeout_thickness(ttf_font* f, int ppem):
 	int thick = ttf_scale_round(f, ppem, f.strike_thick)
-	if (thick < 1):
-		thick = 1
+	if (thick < 1): thick = 1
 	return thick
 
 
@@ -539,8 +484,7 @@ int ttf_boost_coverage(int v):
 
 
 int ttf_glyf_offset(ttf_font* f, int gid):
-	if (f.loc_long):
-		return ttf_u32(f, f.loca + gid * 4)
+	if (f.loc_long): return ttf_u32(f, f.loca + gid * 4)
 	return ttf_u16(f, f.loca + gid * 2) * 2
 
 
@@ -555,15 +499,13 @@ struct ttf_bitmap:
 
 int ttf_floor(float32 v):
 	int t = cast(int, v)
-	if (cast(float32, t) > v):
-		t = t - 1
+	if (cast(float32, t) > v): t = t - 1
 	return t
 
 
 int ttf_ceil(float32 v):
 	int t = cast(int, v)
-	if (cast(float32, t) < v):
-		t = t + 1
+	if (cast(float32, t) < v): t = t + 1
 	return t
 
 
@@ -604,8 +546,7 @@ void ttf_outline_push(ttf_outline* o, float32 x0, float32 y0, float32 x1, float3
 void ttf_outline_quad(ttf_outline* o, float32 x0, float32 y0, float32 cx, float32 cy, float32 x1, float32 y1):
 	float32 px = x0
 	float32 py = y0
-	int i = 1
-	while (i <= 8):
+	for i in range(1, 8 + 1):
 		float32 t = cast(float32, i) / 8.0
 		float32 u = 1.0 - t
 		float32 qx = u * u * x0 + 2.0 * u * t * cx + t * t * x1
@@ -613,7 +554,6 @@ void ttf_outline_quad(ttf_outline* o, float32 x0, float32 y0, float32 cx, float3
 		ttf_outline_push(o, px, py, qx, qy)
 		px = qx
 		py = qy
-		i = i + 1
 
 
 void ttf_render_contour(ttf_outline* o, char* flags, float32* px, float32* py, int start, int n);
@@ -682,10 +622,8 @@ int ttf_add_simple(ttf_font* f, ttf_outline* o, int off, int contours, ttf_xform
 		if (flag2 & 2):
 			int dx = ttf_u8(f, pos)
 			pos = pos + 1
-			if (flag2 & 16):
-				value = value + dx
-			else:
-				value = value - dx
+			if (flag2 & 16): value = value + dx
+			else: value = value - dx
 		else if ((flag2 & 16) == 0):
 			value = value + ttf_s16(f, pos)
 			pos = pos + 2
@@ -698,10 +636,8 @@ int ttf_add_simple(ttf_font* f, ttf_outline* o, int off, int contours, ttf_xform
 		if (flag3 & 4):
 			int dy = ttf_u8(f, pos)
 			pos = pos + 1
-			if (flag3 & 32):
-				value = value + dy
-			else:
-				value = value - dy
+			if (flag3 & 32): value = value + dy
+			else: value = value - dy
 		else if ((flag3 & 32) == 0):
 			value = value + ttf_s16(f, pos)
 			pos = pos + 2
@@ -723,14 +659,11 @@ int ttf_add_simple(ttf_font* f, ttf_outline* o, int off, int contours, ttf_xform
 		i = i + 1
 
 	int start = 0
-	int c = 0
-	while (c < contours):
+	for c in range(contours):
 		int end = contour_end[c]
 		int n = end - start + 1
-		if (n >= 2):
-			ttf_render_contour(o, flags, px, py, start, n)
+		if (n >= 2): ttf_render_contour(o, flags, px, py, start, n)
 		start = end + 1
-		c = c + 1
 
 	free(cast(char*, contour_end))
 	free(flags)
@@ -759,10 +692,8 @@ int ttf_add_composite(ttf_font* f, ttf_outline* o, int off, ttf_xform* m, int de
 		else:
 			arg1 = ttf_u8(f, pos)
 			arg2 = ttf_u8(f, pos + 1)
-			if (arg1 >= 128):
-				arg1 = arg1 - 256
-			if (arg2 >= 128):
-				arg2 = arg2 - 256
+			if (arg1 >= 128): arg1 = arg1 - 256
+			if (arg2 >= 128): arg2 = arg2 - 256
 			pos = pos + 2
 		if ((flags & 2) == 0):
 			print_error(c"ttf: point-matched composite components are not supported\n")
@@ -796,8 +727,7 @@ int ttf_add_composite(ttf_font* f, ttf_outline* o, int off, ttf_xform* m, int de
 		both.d = m.b * local.c + m.d * local.d
 		both.dx = m.a * local.dx + m.c * local.dy + m.dx
 		both.dy = m.b * local.dx + m.d * local.dy + m.dy
-		if (ttf_add_glyph(f, o, component, &both, depth + 1) == 0):
-			return 0
+		if (ttf_add_glyph(f, o, component, &both, depth + 1) == 0): return 0
 		more = flags & 32
 	return 1
 
@@ -813,12 +743,10 @@ int ttf_add_glyph(ttf_font* f, ttf_outline* o, int gid, ttf_xform* m, int depth)
 		return 0
 	int off = ttf_glyf_offset(f, gid)
 	int next = ttf_glyf_offset(f, gid + 1)
-	if (off == next):
-		return 1
+	if (off == next): return 1
 	off = f.glyf + off
 	int contours = ttf_s16(f, off)
-	if (contours < 0):
-		return ttf_add_composite(f, o, off, m, depth)
+	if (contours < 0): return ttf_add_composite(f, o, off, m, depth)
 	return ttf_add_simple(f, o, off, contours, m)
 
 
@@ -854,8 +782,7 @@ int ttf_rasterize_skewed(ttf_font* f, int gid, int ppem, float32 skew, ttf_bitma
 	identity.dy = 0.0
 
 	int ok = ttf_add_glyph(f, &outline, gid, &identity, 0)
-	if (ok):
-		ok = ttf_fill(&outline, out)
+	if (ok): ok = ttf_fill(&outline, out)
 	free(cast(char*, outline.xs0))
 	free(cast(char*, outline.ys0))
 	free(cast(char*, outline.xs1))
@@ -916,8 +843,7 @@ void ttf_render_contour(ttf_outline* o, char* flags, float32* px, float32* py, i
 			if (have_ctrl):
 				ttf_outline_quad(o, cur_x, cur_y, ctrl_x, ctrl_y, x, y)
 				have_ctrl = 0
-			else:
-				ttf_outline_push(o, cur_x, cur_y, x, y)
+			else: ttf_outline_push(o, cur_x, cur_y, x, y)
 			cur_x = x
 			cur_y = y
 		else:
@@ -934,17 +860,14 @@ void ttf_render_contour(ttf_outline* o, char* flags, float32* px, float32* py, i
 			have_ctrl = 1
 		step = step + 1
 	# Close back to the start point.
-	if (have_ctrl):
-		ttf_outline_quad(o, cur_x, cur_y, ctrl_x, ctrl_y, sx, sy)
-	else if ((cur_x != sx) || (cur_y != sy)):
-		ttf_outline_push(o, cur_x, cur_y, sx, sy)
+	if (have_ctrl): ttf_outline_quad(o, cur_x, cur_y, ctrl_x, ctrl_y, sx, sy)
+	else if ((cur_x != sx) || (cur_y != sy)): ttf_outline_push(o, cur_x, cur_y, sx, sy)
 
 
 # Scanline-fill the flattened outline: per subsample row, gather the
 # non-zero-winding crossing intervals and accumulate 4x4 coverage.
 int ttf_fill(ttf_outline* o, ttf_bitmap* out):
-	if (o.count == 0):
-		return 1
+	if (o.count == 0): return 1
 	if (o.overflow):
 		print_error(c"ttf: outline segment cap exceeded\n")
 		return 0
@@ -954,22 +877,14 @@ int ttf_fill(ttf_outline* o, ttf_bitmap* out):
 	float32 max_y = o.ys0[0]
 	int i = 0
 	while (i < o.count):
-		if (o.xs0[i] < min_x):
-			min_x = o.xs0[i]
-		if (o.xs0[i] > max_x):
-			max_x = o.xs0[i]
-		if (o.xs1[i] < min_x):
-			min_x = o.xs1[i]
-		if (o.xs1[i] > max_x):
-			max_x = o.xs1[i]
-		if (o.ys0[i] < min_y):
-			min_y = o.ys0[i]
-		if (o.ys0[i] > max_y):
-			max_y = o.ys0[i]
-		if (o.ys1[i] < min_y):
-			min_y = o.ys1[i]
-		if (o.ys1[i] > max_y):
-			max_y = o.ys1[i]
+		if (o.xs0[i] < min_x): min_x = o.xs0[i]
+		if (o.xs0[i] > max_x): max_x = o.xs0[i]
+		if (o.xs1[i] < min_x): min_x = o.xs1[i]
+		if (o.xs1[i] > max_x): max_x = o.xs1[i]
+		if (o.ys0[i] < min_y): min_y = o.ys0[i]
+		if (o.ys0[i] > max_y): max_y = o.ys0[i]
+		if (o.ys1[i] < min_y): min_y = o.ys1[i]
+		if (o.ys1[i] > max_y): max_y = o.ys1[i]
 		i = i + 1
 
 	int left = ttf_floor(min_x) - 1
@@ -993,8 +908,7 @@ int ttf_fill(ttf_outline* o, ttf_bitmap* out):
 	int* cross_dir = cast(int*, malloc(256 * __word_size__))
 
 	int sub_rows = h * 4
-	int row = 0
-	while (row < sub_rows):
+	for row in range(sub_rows):
 		float32 y = cast(float32, top) + (cast(float32, row) + 0.5) / 4.0
 		int crossings = 0
 		i = 0
@@ -1002,10 +916,8 @@ int ttf_fill(ttf_outline* o, ttf_bitmap* out):
 			float32 y0 = o.ys0[i]
 			float32 y1 = o.ys1[i]
 			int dir = 0
-			if ((y0 <= y) && (y1 > y)):
-				dir = 1
-			else if ((y1 <= y) && (y0 > y)):
-				dir = 0 - 1
+			if ((y0 <= y) && (y1 > y)): dir = 1
+			else if ((y1 <= y) && (y0 > y)): dir = 0 - 1
 			if ((dir != 0) && (crossings < 256)):
 				float32 t = (y - y0) / (y1 - y0)
 				cross_x[crossings] = o.xs0[i] + t * (o.xs1[i] - o.xs0[i])
@@ -1039,16 +951,10 @@ int ttf_fill(ttf_outline* o, ttf_bitmap* out):
 				float32 xb = cross_x[i + 1] - cast(float32, left)
 				int s0 = ttf_ceil(xa * 4.0 - 0.5)
 				int s1 = ttf_ceil(xb * 4.0 - 0.5) - 1
-				if (s0 < 0):
-					s0 = 0
-				if (s1 > w * 4 - 1):
-					s1 = w * 4 - 1
-				int s = s0
-				while (s <= s1):
-					acc[row_base + s / 4] = acc[row_base + s / 4] + 1
-					s = s + 1
+				if (s0 < 0): s0 = 0
+				if (s1 > w * 4 - 1): s1 = w * 4 - 1
+				for s in range(s0, s1 + 1): acc[row_base + s / 4] = acc[row_base + s / 4] + 1
 			i = i + 1
-		row = row + 1
 
 	free(cast(char*, cross_x))
 	free(cast(char*, cross_dir))
@@ -1057,8 +963,7 @@ int ttf_fill(ttf_outline* o, ttf_bitmap* out):
 	i = 0
 	while (i < w * h):
 		int coverage = acc[i] * 255 / 16
-		if (coverage > 255):
-			coverage = 255
+		if (coverage > 255): coverage = 255
 		out.pixels[i] = coverage
 		i = i + 1
 	free(cast(char*, acc))
@@ -1078,32 +983,13 @@ int ttf_fill(ttf_outline* o, ttf_bitmap* out):
 # graphics/ui/font_data.w small enough to compile into every UI program.
 
 
-void ttf_put16(string_builder* b, int v):
-	string_append_char(b, (v >> 8) & 255)
-	string_append_char(b, v & 255)
-
-
-void ttf_put32(string_builder* b, int v):
-	ttf_put16(b, (v >> 16) & 65535)
-	ttf_put16(b, v & 65535)
-
-
-void ttf_set16(char* p, int off, int v):
-	p[off] = (v >> 8) & 255
-	p[off + 1] = v & 255
-
-
 # Append bytes [off, off + length) of the font.
 void ttf_put_range(string_builder* b, ttf_font* f, int off, int length):
-	int i = 0
-	while (i < length):
-		string_append_char(b, ttf_u8(f, off + i))
-		i = i + 1
+	for i in range(length): string_append_char(b, ttf_u8(f, off + i))
 
 
 void ttf_pad4(string_builder* b):
-	while (b.length % 4 != 0):
-		string_append_char(b, 0)
+	while (b.length % 4 != 0): string_append_char(b, 0)
 
 
 # glyf bytes of gid: offset (absolute) in off[0], length returned.
@@ -1111,8 +997,7 @@ int ttf_glyph_span(ttf_font* f, int gid, int* off):
 	int start = ttf_glyf_offset(f, gid)
 	int end = ttf_glyf_offset(f, gid + 1)
 	off[0] = f.glyf + start
-	if (end < start):
-		return 0
+	if (end < start): return 0
 	return end - start
 
 
@@ -1120,16 +1005,11 @@ int ttf_glyph_span(ttf_font* f, int gid, int* off):
 # (flags, glyph index, the two args, and its transform).
 int ttf_component_size(int flags):
 	int size = 4
-	if (flags & 1):
-		size = size + 4
-	else:
-		size = size + 2
-	if (flags & 8):
-		size = size + 2
-	else if (flags & 64):
-		size = size + 4
-	else if (flags & 128):
-		size = size + 8
+	if (flags & 1): size = size + 4
+	else: size = size + 2
+	if (flags & 8): size = size + 2
+	else if (flags & 64): size = size + 4
+	else if (flags & 128): size = size + 8
 	return size
 
 
@@ -1161,17 +1041,15 @@ void ttf_subset_closure(ttf_font* f, char* keep):
 void ttf_subset_glyph(string_builder* b, ttf_font* f, int old, int* new_id):
 	int off = 0
 	int length = ttf_glyph_span(f, old, &off)
-	if (length == 0):
-		return
+	if (length == 0): return
 	int contours = ttf_s16(f, off)
 	if (contours >= 0):
 		int head = 10 + contours * 2
 		int instructions = ttf_u16(f, off + head)
 		ttf_put_range(b, f, off, head)
-		ttf_put16(b, 0)
+		string_append_be16(b, 0)
 		int rest = head + 2 + instructions
-		if (rest < length):
-			ttf_put_range(b, f, off + rest, length - rest)
+		if (rest < length): ttf_put_range(b, f, off + rest, length - rest)
 		ttf_pad4(b)
 		return
 	ttf_put_range(b, f, off, 10)
@@ -1181,8 +1059,8 @@ void ttf_subset_glyph(string_builder* b, ttf_font* f, int old, int* new_id):
 		int flags = ttf_u16(f, pos)
 		int size = ttf_component_size(flags)
 		# Drop WE_HAVE_INSTRUCTIONS (0x100): the instructions are gone.
-		ttf_put16(b, flags & (65535 - 256))
-		ttf_put16(b, new_id[ttf_u16(f, pos + 2)])
+		string_append_be16(b, flags & (65535 - 256))
+		string_append_be16(b, new_id[ttf_u16(f, pos + 2)])
 		ttf_put_range(b, f, pos + 4, size - 4)
 		pos = pos + size
 		more = flags & 32
@@ -1191,24 +1069,18 @@ void ttf_subset_glyph(string_builder* b, ttf_font* f, int old, int* new_id):
 
 # Left side bearing of gid from hmtx (font units).
 int ttf_lsb_units(ttf_font* f, int gid):
-	if (gid < f.num_hmetrics):
-		return ttf_s16(f, f.hmtx + gid * 4 + 2)
+	if (gid < f.num_hmetrics): return ttf_s16(f, f.hmtx + gid * 4 + 2)
 	return ttf_s16(f, f.hmtx + f.num_hmetrics * 4 + (gid - f.num_hmetrics) * 2)
 
 
 int ttf_checksum(char* data, int length):
 	int sum = 0
-	int i = 0
-	while (i < length):
+	for i in range(0, length, 4):
 		int word = 0
-		int k = 0
-		while (k < 4):
+		for k in range(4):
 			word = word << 8
-			if (i + k < length):
-				word = word | (data[i + k] & 255)
-			k = k + 1
+			if (i + k < length): word = word | (data[i + k] & 255)
 		sum = sum + word
-		i = i + 4
 	return sum
 
 
@@ -1219,10 +1091,7 @@ int ttf_checksum(char* data, int length):
 char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	int n = f.glyph_count
 	char* keep = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		keep[i] = 0
-		i = i + 1
+	mem_fill(keep, 0, n)
 	keep[0] = 1
 	int total = 0
 	int r = 0
@@ -1250,7 +1119,7 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	int* new_id = cast(int*, malloc((n + 1) * __word_size__))
 	int* old_id = cast(int*, malloc((n + 1) * __word_size__))
 	int count = 0
-	i = 0
+	int i = 0
 	while (i < n):
 		new_id[i] = 0
 		if (keep[i]):
@@ -1264,16 +1133,16 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	string_builder* loca = string_new()
 	i = 0
 	while (i < count):
-		ttf_put32(loca, glyf.length)
+		string_append_be32(loca, glyf.length)
 		ttf_subset_glyph(glyf, f, old_id[i], new_id)
 		i = i + 1
-	ttf_put32(loca, glyf.length)
+	string_append_be32(loca, glyf.length)
 
 	string_builder* hmtx = string_new()
 	i = 0
 	while (i < count):
-		ttf_put16(hmtx, ttf_advance_units(f, old_id[i]))
-		ttf_put16(hmtx, ttf_lsb_units(f, old_id[i]) & 65535)
+		string_append_be16(hmtx, ttf_advance_units(f, old_id[i]))
+		string_append_be16(hmtx, ttf_lsb_units(f, old_id[i]) & 65535)
 		i = i + 1
 
 	# cmap: one format-12 subtable (Windows, full Unicode), grouping
@@ -1285,22 +1154,22 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 		int j = i
 		while ((j + 1 < mapped) && (cps[j + 1] == cps[j] + 1) && (new_id[gids[j + 1]] == new_id[gids[j]] + 1)):
 			j = j + 1
-		ttf_put32(groups, cps[i])
-		ttf_put32(groups, cps[j])
-		ttf_put32(groups, new_id[gids[i]])
+		string_append_be32(groups, cps[i])
+		string_append_be32(groups, cps[j])
+		string_append_be32(groups, new_id[gids[i]])
 		group_count = group_count + 1
 		i = j + 1
 	string_builder* cmap = string_new()
-	ttf_put16(cmap, 0)
-	ttf_put16(cmap, 1)
-	ttf_put16(cmap, 3)
-	ttf_put16(cmap, 10)
-	ttf_put32(cmap, 12)
-	ttf_put16(cmap, 12)
-	ttf_put16(cmap, 0)
-	ttf_put32(cmap, 16 + groups.length)
-	ttf_put32(cmap, 0)
-	ttf_put32(cmap, group_count)
+	string_append_be16(cmap, 0)
+	string_append_be16(cmap, 1)
+	string_append_be16(cmap, 3)
+	string_append_be16(cmap, 10)
+	string_append_be32(cmap, 12)
+	string_append_be16(cmap, 12)
+	string_append_be16(cmap, 0)
+	string_append_be32(cmap, 16 + groups.length)
+	string_append_be32(cmap, 0)
+	string_append_be32(cmap, group_count)
 	string_append_bytes(cmap, groups.data, groups.length)
 
 	# kern: every kept pair the source kerns (GPOS or kern), flattened
@@ -1313,38 +1182,33 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	int dropped = 0
 	int left = 1
 	while (left < count):
-		int right = 1
-		while (right < count):
+		for right in range(1, count):
 			int v = ttf_kern_units(f, old_id[left], old_id[right])
 			if (v != 0):
 				if (pair_count < max_pairs):
-					ttf_put16(pairs, left)
-					ttf_put16(pairs, right)
-					ttf_put16(pairs, v & 65535)
+					string_append_be16(pairs, left)
+					string_append_be16(pairs, right)
+					string_append_be16(pairs, v & 65535)
 					pair_count = pair_count + 1
-				else:
-					dropped = dropped + 1
-			right = right + 1
+				else: dropped = dropped + 1
 		left = left + 1
-	if (dropped > 0):
-		print_error(c"ttf_subset: kern pairs past the format-0 limit were dropped\n")
+	if (dropped > 0): print_error(c"ttf_subset: kern pairs past the format-0 limit were dropped\n")
 	string_builder* kern = string_new()
-	ttf_put16(kern, 0)
-	ttf_put16(kern, 1)
-	ttf_put16(kern, 0)
-	ttf_put16(kern, 14 + pairs.length)
-	ttf_put16(kern, 1)
-	ttf_put16(kern, pair_count)
+	string_append_be16(kern, 0)
+	string_append_be16(kern, 1)
+	string_append_be16(kern, 0)
+	string_append_be16(kern, 14 + pairs.length)
+	string_append_be16(kern, 1)
+	string_append_be16(kern, pair_count)
 	int search = 1
 	int selector = 0
 	while (search * 2 <= pair_count):
 		search = search * 2
 		selector = selector + 1
-	if (pair_count == 0):
-		search = 0
-	ttf_put16(kern, search * 6)
-	ttf_put16(kern, selector)
-	ttf_put16(kern, pair_count * 6 - search * 6)
+	if (pair_count == 0): search = 0
+	string_append_be16(kern, search * 6)
+	string_append_be16(kern, selector)
+	string_append_be16(kern, pair_count * 6 - search * 6)
 	string_append_bytes(kern, pairs.data, pairs.length)
 
 	# Copied tables, patched: head (long loca, no checksum adjustment),
@@ -1352,28 +1216,27 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	int head_at = ttf_table(f, c"head")
 	string_builder* head = string_new()
 	ttf_put_range(head, f, head_at, 54)
-	ttf_set16(head.data, 8, 0)
-	ttf_set16(head.data, 10, 0)
-	ttf_set16(head.data, 50, 1)
+	store_be16(head.data + 8, 0)
+	store_be16(head.data + 10, 0)
+	store_be16(head.data + 50, 1)
 	string_builder* hhea = string_new()
 	ttf_put_range(hhea, f, ttf_table(f, c"hhea"), 36)
-	ttf_set16(hhea.data, 34, count)
+	store_be16(hhea.data + 34, count)
 	string_builder* maxp = string_new()
 	ttf_put_range(maxp, f, ttf_table(f, c"maxp"), ttf_table_length(f, c"maxp"))
-	ttf_set16(maxp.data, 4, count)
+	store_be16(maxp.data + 4, count)
 	string_builder* os2 = string_new()
 	ttf_put_range(os2, f, ttf_table(f, c"OS/2"), ttf_table_length(f, c"OS/2"))
 	string_builder* post = string_new()
 	int post_at = ttf_table(f, c"post")
-	if (post_at != 0):
-		ttf_put_range(post, f, post_at, 32)
+	if (post_at != 0): ttf_put_range(post, f, post_at, 32)
 	else:
 		i = 0
 		while (i < 32):
 			string_append_char(post, 0)
 			i = i + 1
-	ttf_set16(post.data, 0, 3)
-	ttf_set16(post.data, 2, 0)
+	store_be16(post.data + 0, 3)
+	store_be16(post.data + 2, 0)
 
 	# Table directory, tags in sorted (byte) order. An absent OS/2
 	# leaves a zero-length entry out.
@@ -1413,24 +1276,24 @@ char* ttf_subset(ttf_font* f, int* ranges, int range_count, int* size):
 	table_count = table_count + 1
 
 	string_builder* out = string_new()
-	ttf_put32(out, 65536)
-	ttf_put16(out, table_count)
+	string_append_be32(out, 65536)
+	string_append_be16(out, table_count)
 	int tsearch = 1
 	int tselector = 0
 	while (tsearch * 2 <= table_count):
 		tsearch = tsearch * 2
 		tselector = tselector + 1
-	ttf_put16(out, tsearch * 16)
-	ttf_put16(out, tselector)
-	ttf_put16(out, table_count * 16 - tsearch * 16)
+	string_append_be16(out, tsearch * 16)
+	string_append_be16(out, tselector)
+	string_append_be16(out, table_count * 16 - tsearch * 16)
 	int offset = 12 + table_count * 16
 	int t = 0
 	while (t < table_count):
 		string_builder* tb = tables[t]
 		string_append_bytes(out, tags[t], 4)
-		ttf_put32(out, ttf_checksum(tb.data, tb.length))
-		ttf_put32(out, offset)
-		ttf_put32(out, tb.length)
+		string_append_be32(out, ttf_checksum(tb.data, tb.length))
+		string_append_be32(out, offset)
+		string_append_be32(out, tb.length)
 		offset = offset + (tb.length + 3) / 4 * 4
 		t = t + 1
 	t = 0

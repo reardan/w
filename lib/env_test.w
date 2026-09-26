@@ -27,11 +27,9 @@ void test_env_get_ignores_prefix_matches():
 void test_env_count_and_at_walk_the_vector():
 	int count = env_count()
 	assert1(count > 0)
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		char* entry = env_at(i)
 		assert1(entry != 0)
-		i = i + 1
 	assert1(env_at(count) == 0)
 	assert1(env_at(-1) == 0)
 
@@ -45,8 +43,7 @@ void test_env_copy_with_appends_new_name():
 	while (env_entry_at(modified, i) != 0):
 		char* entry = env_entry_at(modified, i)
 		int value_index = env_match_name(entry, c"W_ENV_TEST_ADDED")
-		if (value_index >= 0):
-			found = entry + value_index
+		if (value_index >= 0): found = entry + value_index
 		i = i + 1
 	assert1(found != 0)
 	assert_strings_equal(c"added-value", found)

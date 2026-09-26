@@ -28,21 +28,15 @@ int arm64_parse_peek(arm64_parse* p):
 
 
 void arm64_parse_skip_spaces(arm64_parse* p):
-	while (p.text[p.pos] == ' '):
-		p.pos = p.pos + 1
+	while (p.text[p.pos] == ' '): p.pos = p.pos + 1
 
 
 int arm64_ident_char(int c):
-	if (c >= 'a' && c <= 'z'):
-		return 1
-	if (c >= 'A' && c <= 'Z'):
-		return 1
-	if (c >= '0' && c <= '9'):
-		return 1
-	if (c == '_'):
-		return 1
-	if (c == '.'):
-		return 1
+	if (c >= 'a' && c <= 'z'): return 1
+	if (c >= 'A' && c <= 'Z'): return 1
+	if (c >= '0' && c <= '9'): return 1
+	if (c == '_'): return 1
+	if (c == '.'): return 1
 	return 1 == 2
 
 
@@ -50,14 +44,10 @@ int arm64_ident_char(int c):
 char* arm64_parse_ident(arm64_parse* p):
 	arm64_parse_skip_spaces(p)
 	int start = p.pos
-	while (arm64_ident_char(p.text[p.pos])):
-		p.pos = p.pos + 1
+	while (arm64_ident_char(p.text[p.pos])): p.pos = p.pos + 1
 	int n = p.pos - start
 	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = p.text[start + i]
-		i = i + 1
+	for i in range(n): out[i] = p.text[start + i]
 	out[n] = 0
 	return out
 
@@ -83,7 +73,7 @@ int arm64_parse_number(arm64_parse* p):
 
 # Parse a [ ... ] memory operand into op.
 void arm64_parse_mem(arm64_parse* p, asm_operand* op):
-	op.kind = ASM_OP_MEM()
+	op.kind = ASM_OP_MEM
 	op.base = -1
 	op.index = -1
 	op.disp = 0
@@ -92,10 +82,8 @@ void arm64_parse_mem(arm64_parse* p, asm_operand* op):
 	p.pos = p.pos + 1   # consume '['
 	arm64_parse_skip_spaces(p)
 	char* base = arm64_parse_ident(p)
-	if (strcmp(base, c"pc") == 0):
-		op.disp_size = ARM64_ADDR_PCREL()
-	else:
-		op.base = asm_reg_number(asm_reg_lookup_arm64(base))
+	if (strcmp(base, c"pc") == 0): op.disp_size = ARM64_ADDR_PCREL()
+	else: op.base = asm_reg_number(asm_reg_lookup_arm64(base))
 	arm64_parse_skip_spaces(p)
 	if (arm64_parse_peek(p) == ','):
 		p.pos = p.pos + 1
@@ -104,8 +92,7 @@ void arm64_parse_mem(arm64_parse* p, asm_operand* op):
 			p.pos = p.pos + 1
 			op.disp = arm64_parse_number(p)
 			arm64_parse_skip_spaces(p)
-			if (arm64_parse_peek(p) == ']'):
-				p.pos = p.pos + 1
+			if (arm64_parse_peek(p) == ']'): p.pos = p.pos + 1
 			if (arm64_parse_peek(p) == '!'):
 				p.pos = p.pos + 1
 				op.disp_size = ARM64_ADDR_PRE()
@@ -114,8 +101,7 @@ void arm64_parse_mem(arm64_parse* p, asm_operand* op):
 			op.index = asm_reg_number(asm_reg_lookup_arm64(idx))
 			op.disp_size = ARM64_ADDR_REG()
 			arm64_parse_skip_spaces(p)
-			if (arm64_parse_peek(p) == ']'):
-				p.pos = p.pos + 1
+			if (arm64_parse_peek(p) == ']'): p.pos = p.pos + 1
 		return
 	if (arm64_parse_peek(p) == ']'):
 		p.pos = p.pos + 1
@@ -124,8 +110,7 @@ void arm64_parse_mem(arm64_parse* p, asm_operand* op):
 			# post-index [Xn],#imm
 			p.pos = p.pos + 1
 			arm64_parse_skip_spaces(p)
-			if (arm64_parse_peek(p) == '#'):
-				p.pos = p.pos + 1
+			if (arm64_parse_peek(p) == '#'): p.pos = p.pos + 1
 			op.disp = arm64_parse_number(p)
 			op.disp_size = ARM64_ADDR_POST()
 
@@ -140,7 +125,7 @@ void arm64_parse_operand(arm64_parse* p, asm_insn* insn, asm_operand* op):
 		return
 	if (c == '#'):
 		p.pos = p.pos + 1
-		op.kind = ASM_OP_IMM()
+		op.kind = ASM_OP_IMM
 		op.imm = arm64_parse_number(p)
 		op.scale = 0   # movz/movk hw (no lsl parsed => 0), not the x86 default 1
 		return
@@ -151,9 +136,8 @@ void arm64_parse_operand(arm64_parse* p, asm_insn* insn, asm_operand* op):
 		if (arm64_parse_peek(p) == '+'):
 			p.pos = p.pos + 1
 			offset = arm64_parse_number(p)
-		else if (arm64_parse_peek(p) == '-'):
-			offset = arm64_parse_number(p)
-		op.kind = ASM_OP_LABEL()
+		else if (arm64_parse_peek(p) == '-'): offset = arm64_parse_number(p)
+		op.kind = ASM_OP_LABEL
 		op.label = arm64_dotlabel(offset)
 		op.imm = offset
 		insn.branch_target = insn.address + offset
@@ -161,27 +145,27 @@ void arm64_parse_operand(arm64_parse* p, asm_insn* insn, asm_operand* op):
 	char* tok = arm64_parse_ident(p)
 	int reg = asm_reg_lookup_arm64(tok)
 	if (reg >= 0):
-		op.kind = ASM_OP_REG()
-		op.rclass = ASM_RCLASS_GP()
+		op.kind = ASM_OP_REG
+		op.rclass = ASM_RCLASS_GP
 		op.reg = asm_reg_number(reg)
 		op.size = asm_reg_size(reg)
 		return
 	# condition name (cset x0,eq)
 	int cond = arm64_cond_lookup_cset(tok)
 	if (cond >= 0):
-		op.kind = ASM_OP_LABEL()
+		op.kind = ASM_OP_LABEL
 		op.label = tok
 		op.imm = cond
 		return
 	# bare label fallback
-	op.kind = ASM_OP_LABEL()
+	op.kind = ASM_OP_LABEL
 	op.label = tok
 
 
 # Parse a whole A64 instruction line into insn. Returns 1 on success.
 int asm_arm64_parse(char* line, asm_insn* insn):
 	asm_insn_clear(insn)
-	insn.arch = ASM_ARCH_ARM64()
+	insn.arch = ASM_ARCH_ARM64
 	arm64_parse parse
 	parse.text = line
 	parse.pos = 0
@@ -189,21 +173,15 @@ int asm_arm64_parse(char* line, asm_insn* insn):
 
 	# mnemonic: up to the first space
 	int start = p.pos
-	while (p.text[p.pos] != 0 && p.text[p.pos] != ' '):
-		p.pos = p.pos + 1
+	while (p.text[p.pos] != 0 && p.text[p.pos] != ' '): p.pos = p.pos + 1
 	int n = p.pos - start
 	char* mn = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		mn[i] = p.text[start + i]
-		i = i + 1
+	for i in range(n): mn[i] = p.text[start + i]
 	mn[n] = 0
 	insn.mnemonic = mn
-	if (mn[0] == 0):
-		return 1 == 2
+	if (mn[0] == 0): return 1 == 2
 	arm64_parse_skip_spaces(p)
-	if (arm64_parse_peek(p) == 0):
-		return 1
+	if (arm64_parse_peek(p) == 0): return 1
 	arm64_parse_operand(p, insn, &insn.op1)
 	arm64_parse_skip_spaces(p)
 	if (arm64_parse_peek(p) == ','):

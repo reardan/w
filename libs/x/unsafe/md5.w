@@ -30,12 +30,12 @@ only through its low 32 bits, and right shifts go through sha256_shr.
 import lib.memory
 import lib.sha256
 import libs.standard.crypto.sha2
+import lib.bytes
 
 
 # whash extension id for MD5 (extension ids start at 100; see the
 # registry in libs/standard/crypto/sha2.w).
-int md5_alg_id():
-	return 100
+const int md5_alg_id = 100
 
 
 int* md5_t_cache
@@ -55,8 +55,7 @@ int* md5_iv_cache
 
 # Initial state A, B, C, D (RFC 1321 section 3.3), as word values.
 int* md5_iv_table():
-	if (md5_iv_cache == 0):
-		md5_iv_cache = sha2_parse_words(c"67452301efcdab8998badcfe10325476", 4)
+	if (md5_iv_cache == 0): md5_iv_cache = sha2_parse_words(c"67452301efcdab8998badcfe10325476", 4)
 	return md5_iv_cache
 
 
@@ -64,11 +63,6 @@ int* md5_iv_table():
 # round r (RFC 1321 section 3.4).
 char* md5_s_table():
 	return c"\x07\x0c\x11\x16\x05\x09\x0e\x14\x04\x0b\x10\x17\x06\x0a\x0f\x15"
-
-
-# Little-endian load of a 32-bit word, masked per lib/sha256.w.
-int md5_le32(char* p):
-	return ((p[0] & 255) | ((p[1] & 255) << 8) | ((p[2] & 255) << 16) | ((p[3] & 255) << 24)) & sha256_mask32()
 
 
 # Rotate a 32-bit word left by n (1 <= n <= 31).
@@ -80,12 +74,9 @@ int md5_rotl(int x, int n):
 # are choose functions, so lib/sha256.w's ch applies; H is parity; I is
 # c xor (b or not d).
 int md5_round_f(int i, int b, int c, int d):
-	if (i < 16):
-		return sha256_ch(b, c, d)
-	if (i < 32):
-		return sha256_ch(d, b, c)
-	if (i < 48):
-		return (b ^ c ^ d) & sha256_mask32()
+	if (i < 16): return sha256_ch(b, c, d)
+	if (i < 32): return sha256_ch(d, b, c)
+	if (i < 48): return (b ^ c ^ d) & sha256_mask32()
 	int mask = sha256_mask32()
 	int not_d = mask - (d & mask)
 	return (c ^ (b | not_d)) & mask
@@ -95,10 +86,8 @@ int md5_round_f(int i, int b, int c, int d):
 int md5_round_g(int i):
 	if (i < 16):
 		return i
-	if (i < 32):
-		return (i * 5 + 1) & 15
-	if (i < 48):
-		return (i * 3 + 5) & 15
+	if (i < 32): return (i * 5 + 1) & 15
+	if (i < 48): return (i * 3 + 5) & 15
 	return (i * 7) & 15
 
 
@@ -111,7 +100,7 @@ void md5_block(int* state, char* block):
 	int* m = cast(int*, malloc(16 * __word_size__))
 	int i = 0
 	while (i < 16):
-		m[i] = md5_le32(block + i * 4)
+		m[i] = load_le32(block + i * 4)
 		i = i + 1
 
 	int a = state[0]
@@ -148,8 +137,8 @@ void md5_load_iv(int* state):
 # first use (16-byte digest, 64-byte block, 4 state words, little-endian
 # trailer and output) and returns its id.
 int WHASH_MD5():
-	whash_register(md5_alg_id(), 16, 64, 4, 1, md5_block, md5_load_iv)
-	return md5_alg_id()
+	whash_register(md5_alg_id, 16, 64, 4, 1, md5_block, md5_load_iv)
+	return md5_alg_id
 
 
 # One-shot MD5: digest of len bytes at data into out (16 bytes).

@@ -33,10 +33,11 @@ import lib.memory
 import lib.assert
 import lib.framing
 import lib.sha256
+import lib.bytes
+import lib.mem
 
 
-int wal_version():
-	return 1
+const int wal_version = 1
 
 
 # Records larger than this are treated as corruption on scan and
@@ -60,28 +61,11 @@ struct wal_reader:
 
 # ---- record encoding --------------------------------------------------------
 
-void wal_put_le32(char* p, int v):
-	p[0] = v
-	p[1] = v >> 8
-	p[2] = v >> 16
-	p[3] = v >> 24
-
-
-int wal_get_le32(char* p):
-	return (p[0] & 255) | ((p[1] & 255) << 8) | ((p[2] & 255) << 16) | ((p[3] & 255) << 24)
-
-
 # Checksum of (length bytes || payload): first 4 bytes of sha256, raw.
 void wal_checksum(char* len_bytes, char* payload, int len, char* out4):
 	char* buf = malloc(4 + len)
-	int i = 0
-	while (i < 4):
-		buf[i] = len_bytes[i]
-		i = i + 1
-	i = 0
-	while (i < len):
-		buf[4 + i] = payload[i]
-		i = i + 1
+	mem_copy(buf, len_bytes, 4)
+	for i in range(len): buf[4 + i] = payload[i]
 	char* digest = malloc(32)
 	sha256(buf, 4 + len, digest)
 	out4[0] = digest[0]
@@ -101,7 +85,7 @@ char* wal_scan_record(int fd, int off, int* len_out):
 	if (read_exact(fd, hdr, 8) != 8):
 		free(hdr)
 		return 0
-	int len = wal_get_le32(hdr)
+	int len = load_le32(hdr)
 	if (len < 0 || len > wal_max_record()):
 		free(hdr)
 		return 0
@@ -113,11 +97,8 @@ char* wal_scan_record(int fd, int off, int* len_out):
 	char* sum = malloc(4)
 	wal_checksum(hdr, payload, len, sum)
 	int ok = 1
-	int i = 0
-	while (i < 4):
-		if ((sum[i] & 255) != (hdr[4 + i] & 255)):
-			ok = 0
-		i = i + 1
+	for i in range(4):
+		if ((sum[i] & 255) != (hdr[4 + i] & 255)): ok = 0
 	free(sum)
 	free(hdr)
 	if (ok == 0):
@@ -136,12 +117,11 @@ int wal_write_header(int fd):
 	hdr[1] = 76    # L
 	hdr[2] = 79    # O
 	hdr[3] = 71    # G
-	wal_put_le32(hdr + 4, wal_version())
+	store_le32(hdr + 4, wal_version)
 	seek(fd, 0, 0)
 	int n = write_all(fd, hdr, 8)
 	free(hdr)
-	if (n != 8):
-		return 0
+	if (n != 8): return 0
 	return 1
 
 
@@ -151,8 +131,7 @@ int wal_write_header(int fd):
 # corrupt header.
 wal* wal_open(char* path):
 	int fd = open_or_create(path, 2, 420)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	int size = file_size(fd)
 	if (size == 0):
 		if (wal_write_header(fd) == 0):
@@ -164,23 +143,17 @@ wal* wal_open(char* path):
 		int got = read_exact(fd, hdr, 8)
 		int ok = 0
 		if (got == 8 && (hdr[0] & 255) == 87 && (hdr[1] & 255) == 76 && (hdr[2] & 255) == 79 && (hdr[3] & 255) == 71):
-			if (wal_get_le32(hdr + 4) == wal_version()):
-				ok = 1
+			if (load_le32(hdr + 4) == wal_version): ok = 1
 		free(hdr)
 		if (ok == 0):
 			close(fd)
 			return 0
-	wal* w = new wal()
-	w.fd = fd
-	w.path = path
-	w.append_off = 8
-	w.record_count = 0
+	wal* w = new wal(fd, path, 8, 0)
 	int* len_out = cast(int*, malloc(__word_size__))
 	int scanning = 1
 	while (scanning):
 		char* payload = wal_scan_record(fd, w.append_off, len_out)
-		if (payload == 0):
-			scanning = 0
+		if (payload == 0): scanning = 0
 		else:
 			free(payload)
 			w.append_off = w.append_off + 8 + len_out[0]
@@ -209,17 +182,13 @@ int wal_append(wal* w, char* payload, int len):
 	assert1(len >= 0)
 	assert1(len <= wal_max_record())
 	char* rec = malloc(8 + len)
-	wal_put_le32(rec, len)
+	store_le32(rec, len)
 	wal_checksum(rec, payload, len, rec + 4)
-	int i = 0
-	while (i < len):
-		rec[8 + i] = payload[i]
-		i = i + 1
+	for i in range(len): rec[8 + i] = payload[i]
 	seek(w.fd, w.append_off, 0)
 	int n = write_all(w.fd, rec, 8 + len)
 	free(rec)
-	if (n != 8 + len):
-		return 0
+	if (n != 8 + len): return 0
 	w.append_off = w.append_off + 8 + len
 	w.record_count = w.record_count + 1
 	return 1
@@ -230,8 +199,7 @@ int wal_append(wal* w, char* payload, int len):
 # to fcntl F_FULLFSYNC. Returns 1 on success, 0 when the kernel
 # reports the flush failed.
 int wal_sync(wal* w):
-	if (fsync(w.fd) < 0):
-		return 0
+	if (fsync(w.fd) < 0): return 0
 	return 1
 
 
@@ -240,15 +208,12 @@ int wal_sync(wal* w):
 int wal_reset(wal* w):
 	close(w.fd)
 	int fd = create_file(w.path, 420)   # creat(2): truncates, write-only
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	int ok = wal_write_header(fd)
 	close(fd)
-	if (ok == 0):
-		return 0
+	if (ok == 0): return 0
 	w.fd = open(w.path, 2, 0)
-	if (w.fd < 0):
-		return 0
+	if (w.fd < 0): return 0
 	w.append_off = 8
 	w.record_count = 0
 	return 1
@@ -260,12 +225,8 @@ int wal_reset(wal* w):
 # Iteration ends at the first invalid record, mirroring recovery.
 wal_reader* wal_reader_open(char* path):
 	int fd = open(path, 0, 0)
-	if (fd < 0):
-		return 0
-	wal_reader* rd = new wal_reader()
-	rd.fd = fd
-	rd.off = 8
-	rd.done = 0
+	if (fd < 0): return 0
+	wal_reader* rd = new wal_reader(fd, 8, 0)
 	char* hdr = malloc(8)
 	int got = read_exact(fd, hdr, 8)
 	if (got != 8 || (hdr[0] & 255) != 87 || (hdr[1] & 255) != 76 || (hdr[2] & 255) != 79 || (hdr[3] & 255) != 71):
@@ -277,8 +238,7 @@ wal_reader* wal_reader_open(char* path):
 # Next payload as a malloc'd buffer (NUL-terminated for convenience;
 # length via len_out), or 0 at the end of the valid prefix.
 char* wal_read_next(wal_reader* rd, int* len_out):
-	if (rd.done):
-		return 0
+	if (rd.done): return 0
 	char* payload = wal_scan_record(rd.fd, rd.off, len_out)
 	if (payload == 0):
 		rd.done = 1

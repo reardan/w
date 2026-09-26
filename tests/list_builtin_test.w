@@ -52,32 +52,27 @@ void test_list_literal():
 
 void test_list_growth():
 	list[int] l = new list[int]
-	for int i in range(1000):
-		l.push(i)
+	for int i in range(1000): l.push(i)
 	assert_equal(1000, l.length)
 	assert_equal(0, l[0])
 	assert_equal(999, l[999])
 	int sum = 0
-	for int v in l:
-		sum = sum + v
+	for int v in l: sum = sum + v
 	assert_equal(499500, sum)
 
 
 void test_list_iteration():
 	list[int] l = list[int]{1, 2, 3, 4, 5}
 	int sum = 0
-	for int x in l:
-		sum = sum + x
+	for int x in l: sum = sum + x
 	assert_equal(15, sum)
 
 
 void test_list_iteration_break_continue():
 	int acc = 0
 	for int v in list[int]{1, 2, 3, 4, 5}:
-		if (v == 2):
-			continue
-		if (v == 5):
-			break
+		if (v == 2): continue
+		if (v == 5): break
 		acc = acc + v
 	assert_equal(8, acc)
 
@@ -113,8 +108,7 @@ void test_list_bool_elements():
 	list[bool] flags = list[bool]{true, false, true}
 	int on = 0
 	for bool b in flags:
-		if (b):
-			on = on + 1
+		if (b): on = on + 1
 	assert_equal(2, on)
 
 
@@ -135,22 +129,19 @@ void test_nested_lists():
 	assert_equal(5, grid[1][2])
 	int total = 0
 	for list[int] row in grid:
-		for int x in row:
-			total = total + x
+		for int x in row: total = total + x
 	assert_equal(15, total)
 
 
 list[int] list_test_make_evens(int n):
 	list[int] result = new list[int]
-	for int i in range(n):
-		result.push(i * 2)
+	for int i in range(n): result.push(i * 2)
 	return result
 
 
 int list_test_sum(list[int] l):
 	int total = 0
-	for int x in l:
-		total = total + x
+	for int x in l: total = total + x
 	return total
 
 
@@ -263,12 +254,10 @@ void test_list_struct_iteration_yields_addresses():
 	b.y = 20
 	list[list_test_point] pts = list[list_test_point]{a, b}
 	int sum = 0
-	for list_test_point* pp in pts:
-		sum = sum + pp.x
+	for list_test_point* pp in pts: sum = sum + pp.x
 	assert_equal(3, sum)
 	# in-place mutation through the iteration pointer
-	for list_test_point* pm in pts:
-		pm.y = pm.y + 1
+	for list_test_point* pm in pts: pm.y = pm.y + 1
 	assert_equal(11, pts[0].y)
 	assert_equal(21, pts[1].y)
 

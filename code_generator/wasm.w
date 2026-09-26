@@ -72,10 +72,8 @@ int wasm_func_names_cap
 void wasm_func_name_note(int table_index, char* name):
 	if (table_index >= wasm_func_names_cap):
 		int new_cap = wasm_func_names_cap * 2
-		if (new_cap < 256):
-			new_cap = 256
-		if (new_cap <= table_index):
-			new_cap = table_index + 256
+		if (new_cap < 256): new_cap = 256
+		if (new_cap <= table_index): new_cap = table_index + 256
 		# Host pointer array: element width is __word_size__, not 4
 		# (x64 host compiling wasm used to pass the wrong oldlen).
 		wasm_func_names = cast(char**, realloc(cast(char*, wasm_func_names), wasm_func_names_cap * __word_size__, new_cap * __word_size__))
@@ -92,8 +90,7 @@ void wasm_leb(int v):
 		int b = v & 0x7f
 		# Logical shift: W's >> is arithmetic, so mask after shifting.
 		v = (v >> 7) & 0x1ffffff
-		if (v):
-			emit_int8(b | 0x80)
+		if (v): emit_int8(b | 0x80)
 		else:
 			emit_int8(b)
 			return
@@ -109,8 +106,7 @@ void wasm_leb5(int v):
 	emit_int8(((v >> 14) & 0x7f) | 0x80)
 	emit_int8(((v >> 21) & 0x7f) | 0x80)
 	int top = (v >> 28) & 0x0f
-	if (top & 0x08):
-		top = top | 0x70
+	if (top & 0x08): top = top | 0x70
 	emit_int8(top)
 
 # Overwrite the padded 5-byte LEB128 at buffer offset pos with v.
@@ -120,8 +116,7 @@ void wasm_leb5_patch(int pos, int v):
 	code[pos + 2] = ((v >> 14) & 0x7f) | 0x80
 	code[pos + 3] = ((v >> 21) & 0x7f) | 0x80
 	int top = (v >> 28) & 0x0f
-	if (top & 0x08):
-		top = top | 0x70
+	if (top & 0x08): top = top | 0x70
 	code[pos + 4] = top
 
 # Read the 32-bit value stored in a padded 5-byte LEB128 at buffer offset
@@ -184,8 +179,7 @@ int* wasm_dcall_sites   # padded call immediates to rebase at finish
 int wasm_dcall_count
 int wasm_dcall_cap
 
-int wasm_cand_max():
-	return 64
+const int wasm_cand_max = 64
 
 void wasm_cand_reset():
 	wasm_cand_count = 0
@@ -201,15 +195,13 @@ void wasm_cand_trim():
 	while (wasm_cand_count):
 		if (wasm_cand_depth[wasm_cand_count - 1] > wasm_depth):
 			wasm_cand_count = wasm_cand_count - 1
-		else:
-			return
+		else: return
 
 void wasm_cand_add(int depth, int table_index):
 	if (wasm_cand_depth == 0):
-		wasm_cand_depth = cast(int*, malloc(wasm_cand_max() * __word_size__))
-		wasm_cand_index = cast(int*, malloc(wasm_cand_max() * __word_size__))
-	if (wasm_cand_count >= wasm_cand_max()):
-		return
+		wasm_cand_depth = cast(int*, malloc(wasm_cand_max * __word_size__))
+		wasm_cand_index = cast(int*, malloc(wasm_cand_max * __word_size__))
+	if (wasm_cand_count >= wasm_cand_max): return
 	wasm_cand_depth[wasm_cand_count] = depth
 	wasm_cand_index[wasm_cand_count] = table_index
 	wasm_cand_count = wasm_cand_count + 1
@@ -247,8 +239,7 @@ void wasm_call_target_note(int table_index):
 void wasm_dcall_note(int pos):
 	if (wasm_dcall_count >= wasm_dcall_cap):
 		int new_cap = wasm_dcall_cap * 2
-		if (new_cap < 1024):
-			new_cap = 1024
+		if (new_cap < 1024): new_cap = 1024
 		wasm_dcall_sites = cast(int*, realloc(cast(char*, wasm_dcall_sites), wasm_dcall_cap * __word_size__, new_cap * __word_size__))
 		wasm_dcall_cap = new_cap
 	wasm_dcall_sites[wasm_dcall_count] = pos
@@ -291,8 +282,7 @@ void wasm_blob_end():
 	# Keep the data cursor word-aligned for the storage emitted after the
 	# blob (unaligned i32 accesses are legal on wasm, but tidy layout is
 	# free here).
-	while (codepos & 3):
-		emit_int8(0)
+	while (codepos & 3): emit_int8(0)
 	data = code
 	data_size = code_size
 	datapos = codepos
@@ -383,8 +373,7 @@ void wasm_set_bx():
 # candidates whose slots just died.
 void wasm_sp_add(int bytes):
 	wasm_depth = wasm_depth - (bytes >> 2)
-	if (bytes > 0):
-		wasm_cand_trim()
+	if (bytes > 0): wasm_cand_trim()
 	wasm_global_get(0)
 	wasm_i32_const(bytes)
 	wasm_op(0x6a)   # i32.add
@@ -402,11 +391,9 @@ void wasm_push_eax():
 	# defined-function note means the new W-stack slot holds that table
 	# index as a constant — record the candidate.
 	int noted = 0
-	if (wasm_note_pos == codepos):
-		noted = 1
+	if (wasm_note_pos == codepos): noted = 1
 	wasm_push_reg(1)
-	if (noted):
-		wasm_cand_add(wasm_depth, wasm_note_index)
+	if (noted): wasm_cand_add(wasm_depth, wasm_note_index)
 	wasm_note_pos = 0 - 1
 
 void wasm_push_ebx():
@@ -512,8 +499,7 @@ void wasm_promote_eax_op(int load_opcode):
 	int align = 2
 	if (load_opcode != 0x28):
 		align = 0
-		if ((load_opcode == 0x2e) || (load_opcode == 0x2f)):
-			align = 1
+		if ((load_opcode == 0x2e) || (load_opcode == 0x2f)): align = 1
 	wasm_load_op(load_opcode, align, 0)
 	wasm_set_ax()
 
@@ -528,10 +514,8 @@ void wasm_store_ebx_op(int store_opcode):
 	wasm_get_bx()
 	wasm_get_ax()
 	int align = 2
-	if (store_opcode == 0x3a):
-		align = 0
-	if (store_opcode == 0x3b):
-		align = 1
+	if (store_opcode == 0x3a): align = 0
+	if (store_opcode == 0x3b): align = 1
 	wasm_load_op(store_opcode, align, 0)
 
 # $ax = $sp + v. Taking a W-stack slot's address means it can be written
@@ -618,24 +602,15 @@ void wasm_add_stack_word_int32(int offset, int v):
 # Map an x86 setcc opcode to the i32 comparison with (left, right) operand
 # order; alu_cmp_set applies it as (bx CC ax), alu_test_set as (ax CC 0).
 int wasm_cmp_opcode(int setcc_opcode):
-	if (setcc_opcode == 0x94):
-		return 0x46   # sete  -> i32.eq
-	if (setcc_opcode == 0x95):
-		return 0x47   # setne -> i32.ne
-	if (setcc_opcode == 0x9c):
-		return 0x48   # setl  -> i32.lt_s
-	if (setcc_opcode == 0x9d):
-		return 0x4e   # setge -> i32.ge_s
-	if (setcc_opcode == 0x9e):
-		return 0x4c   # setle -> i32.le_s
-	if (setcc_opcode == 0x9f):
-		return 0x4a   # setg  -> i32.gt_s
-	if (setcc_opcode == 0x92):
-		return 0x49   # setb  -> i32.lt_u
-	if (setcc_opcode == 0x93):
-		return 0x4f   # setae -> i32.ge_u
-	if (setcc_opcode == 0x96):
-		return 0x4d   # setbe -> i32.le_u
+	if (setcc_opcode == 0x94): return 0x46   # sete  -> i32.eq
+	if (setcc_opcode == 0x95): return 0x47   # setne -> i32.ne
+	if (setcc_opcode == 0x9c): return 0x48   # setl  -> i32.lt_s
+	if (setcc_opcode == 0x9d): return 0x4e   # setge -> i32.ge_s
+	if (setcc_opcode == 0x9e): return 0x4c   # setle -> i32.le_s
+	if (setcc_opcode == 0x9f): return 0x4a   # setg  -> i32.gt_s
+	if (setcc_opcode == 0x92): return 0x49   # setb  -> i32.lt_u
+	if (setcc_opcode == 0x93): return 0x4f   # setae -> i32.ge_u
+	if (setcc_opcode == 0x96): return 0x4d   # setbe -> i32.le_u
 	return 0x4b       # seta (0x97) -> i32.gt_u
 
 # $ax = ($bx CC $ax) as 0/1
@@ -775,18 +750,12 @@ void wasm_f32_arith(int opcode):
 void wasm_setcc_f32(int setcc_opcode):
 	wasm_reg_get(5)
 	wasm_reg_get(6)
-	if (setcc_opcode == 0x94):
-		wasm_op(0x5b)   # sete  -> f32.eq
-	else if (setcc_opcode == 0x95):
-		wasm_op(0x5c)   # setne -> f32.ne
-	else if (setcc_opcode == 0x92):
-		wasm_op(0x5d)   # setb  -> f32.lt
-	else if (setcc_opcode == 0x96):
-		wasm_op(0x5f)   # setbe -> f32.le
-	else if (setcc_opcode == 0x93):
-		wasm_op(0x60)   # setae -> f32.ge
-	else:
-		wasm_op(0x5e)   # seta (0x97) -> f32.gt
+	if (setcc_opcode == 0x94): wasm_op(0x5b)   # sete  -> f32.eq
+	else if (setcc_opcode == 0x95): wasm_op(0x5c)   # setne -> f32.ne
+	else if (setcc_opcode == 0x92): wasm_op(0x5d)   # setb  -> f32.lt
+	else if (setcc_opcode == 0x96): wasm_op(0x5f)   # setbe -> f32.le
+	else if (setcc_opcode == 0x93): wasm_op(0x60)   # setae -> f32.ge
+	else: wasm_op(0x5e)   # seta (0x97) -> f32.gt
 	wasm_set_ax()
 
 # $f<xmm> = f32.convert_i32_s($ax or $bx)
@@ -824,23 +793,14 @@ void wasm_ctrl_end():
 	wasm_cand_drop_all()
 	emit_int8(0x0b)
 
-void wasm_br(int depth):
+# br (cond 0), or br_if on ($ax == 0) (cond 1) / ($ax != 0) (cond 2)
+void wasm_br_on(int cond, int depth):
 	wasm_cand_drop_all()
-	emit_int8(0x0c)
-	wasm_leb(depth)
-
-# br_if on ($ax == 0) / ($ax != 0)
-void wasm_br_zero(int depth):
-	wasm_cand_drop_all()
-	wasm_get_ax()
-	wasm_op(0x45)   # i32.eqz
-	emit_int8(0x0d)
-	wasm_leb(depth)
-
-void wasm_br_nonzero(int depth):
-	wasm_cand_drop_all()
-	wasm_get_ax()
-	emit_int8(0x0d)
+	if (cond == 0): emit_int8(0x0c)
+	else:
+		wasm_get_ax()
+		if (cond == 1): wasm_op(0x45)   # i32.eqz
+		emit_int8(0x0d)
 	wasm_leb(depth)
 
 # Bounds checks: compare + br_if into region h at the given depth.
@@ -849,40 +809,14 @@ void wasm_bounds_br_if(int depth):
 	emit_int8(0x0d)
 	wasm_leb(depth)
 
-void wasm_bounds_branch_eax_negative(int depth):
-	wasm_get_ax()
-	wasm_i32_const(0)
-	wasm_op(0x48)   # i32.lt_s
-	wasm_bounds_br_if(depth)
-
-void wasm_bounds_branch_ebx_negative(int depth):
-	wasm_get_bx()
-	wasm_i32_const(0)
-	wasm_op(0x48)
-	wasm_bounds_br_if(depth)
-
-void wasm_bounds_branch_ebx_greater_eax(int depth):
-	wasm_get_bx()
-	wasm_get_ax()
-	wasm_op(0x4a)   # i32.gt_s
-	wasm_bounds_br_if(depth)
-
-void wasm_bounds_skip_ebx_less_eax(int depth):
-	wasm_get_bx()
-	wasm_get_ax()
-	wasm_op(0x48)   # i32.lt_s
-	wasm_bounds_br_if(depth)
-
-void wasm_bounds_skip_ebx_less_equal_eax(int depth):
-	wasm_get_bx()
-	wasm_get_ax()
-	wasm_op(0x4c)   # i32.le_s
-	wasm_bounds_br_if(depth)
-
-void wasm_bounds_skip_eax_less_equal_int32(int limit, int depth):
-	wasm_get_ax()
-	wasm_i32_const(limit)
-	wasm_op(0x4c)   # i32.le_s
+# Operands and signed compare of a be_bounds_branch kind (x86.w).
+void wasm_bounds_branch(int kind, int limit, int depth):
+	if ((kind == BOUNDS_EAX_NEG) || (kind == BOUNDS_EAX_LE_LIMIT)): wasm_get_ax()
+	else: wasm_get_bx()
+	if (kind <= BOUNDS_EBX_NEG): wasm_i32_const(0)
+	elif (kind == BOUNDS_EAX_LE_LIMIT): wasm_i32_const(limit)
+	else: wasm_get_ax()
+	wasm_op(0x48 + 2 * bounds_relation(kind))   # i32.lt_s / gt_s / le_s
 	wasm_bounds_br_if(depth)
 
 ########################## functions and address slots ########################
@@ -905,8 +839,7 @@ void wasm_function_begin():
 		emit_int8(0x7e)   # $t64 (i64)
 		emit_int8(2)
 		emit_int8(0x7d)   # $f0, $f1 (f32)
-	else:
-		emit_int8(0)   # no locals
+	else: emit_int8(0)   # no locals
 	wasm_sp_add(0 - 4)
 	# Fresh direct-call state per body: the depth counter restarts at the
 	# prologue's post-reserve level.

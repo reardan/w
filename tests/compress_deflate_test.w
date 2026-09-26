@@ -32,14 +32,12 @@ void dt_roundtrip(char* label, char* data, int len):
 		print2(label)
 		println2(c": roundtrip length mismatch")
 		exit(1)
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		if ((o.data[i] & 255) != (data[i] & 255)):
 			print2(label)
 			print2(c": roundtrip byte mismatch at offset ")
 			println2(itoa(i))
 			exit(1)
-		i = i + 1
 	inflate_result_free(o)
 	deflate_result_free(d)
 
@@ -68,10 +66,7 @@ void test_deflate_small_input_roundtrips():
 void test_deflate_binary_payload_roundtrips():
 	int n = 512
 	char* buf = malloc(n)
-	int i = 0
-	while (i < n):
-		buf[i] = i & 255
-		i = i + 1
+	for i in range(n): buf[i] = i & 255
 	dt_roundtrip(c"binary 0..511", buf, n)
 	free(buf)
 
@@ -82,10 +77,7 @@ void test_deflate_chains_stored_blocks_over_65535_bytes():
 	# correctly non-final except the last.
 	int n = 70000
 	char* buf = malloc(n)
-	int i = 0
-	while (i < n):
-		buf[i] = (i * 7 + (i >> 3)) & 255
-		i = i + 1
+	for i in range(n): buf[i] = (i * 7 + (i >> 3)) & 255
 	deflate_result* d = deflate(buf, n, DEFLATE_LEVEL_STORED())
 	# Two chained blocks: 65535 bytes then 4465 bytes, 5-byte header each.
 	assert_equal(2 * 5 + n, d.length)
@@ -128,14 +120,12 @@ void dt_roundtrip_level(char* label, char* data, int len, int level):
 		print2(c" want=")
 		println2(itoa(len))
 		exit(1)
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		if ((o.data[i] & 255) != (data[i] & 255)):
 			print2(label)
 			print2(c": roundtrip byte mismatch at offset ")
 			println2(itoa(i))
 			exit(1)
-		i = i + 1
 	inflate_result_free(o)
 	deflate_result_free(d)
 
@@ -156,10 +146,7 @@ void test_deflate_fast_and_best_roundtrip_empty_and_tiny():
 void test_deflate_fast_and_best_roundtrip_binary_payload():
 	int n = 512
 	char* buf = malloc(n)
-	int i = 0
-	while (i < n):
-		buf[i] = i & 255
-		i = i + 1
+	for i in range(n): buf[i] = i & 255
 	dt_roundtrip_all_levels(c"binary 0..511", buf, n)
 	free(buf)
 
@@ -170,10 +157,7 @@ void test_deflate_fast_and_best_roundtrip_binary_payload():
 void test_deflate_fast_and_best_compress_highly_repetitive_data():
 	int n = 20000
 	char* buf = malloc(n)
-	int i = 0
-	while (i < n):
-		buf[i] = 'a' + (i % 4)
-		i = i + 1
+	for i in range(n): buf[i] = 'a' + (i % 4)
 	deflate_result* stored = deflate(buf, n, DEFLATE_LEVEL_STORED())
 	deflate_result* fast = deflate(buf, n, DEFLATE_LEVEL_FAST())
 	deflate_result* best = deflate(buf, n, DEFLATE_LEVEL_BEST())
@@ -198,10 +182,7 @@ void test_deflate_fast_and_best_roundtrip_incompressible_random_data():
 	char* buf = malloc(n)
 	rand_state rs
 	rand_init(&rs, 1234)
-	int i = 0
-	while (i < n):
-		buf[i] = rand_next31(&rs) & 255
-		i = i + 1
+	for i in range(n): buf[i] = rand_next31(&rs) & 255
 	dt_roundtrip_level(c"random/fast", buf, n, DEFLATE_LEVEL_FAST())
 	dt_roundtrip_level(c"random/best", buf, n, DEFLATE_LEVEL_BEST())
 	free(buf)
@@ -216,10 +197,7 @@ void test_deflate_incompressible_does_not_expand():
 	char* buf = malloc(n)
 	rand_state rs
 	rand_init(&rs, 4242)
-	int i = 0
-	while (i < n):
-		buf[i] = rand_next31(&rs) & 255
-		i = i + 1
+	for i in range(n): buf[i] = rand_next31(&rs) & 255
 	# 100000 bytes of input splits into 4 blocks of at most ~32768 bytes
 	# each: allow 5 bytes of stored framing per block plus 1 byte slack.
 	int cap = n + 4 * 5 + 1
@@ -240,10 +218,7 @@ void test_deflate_incompressible_does_not_expand():
 void test_deflate_all_same_byte_run():
 	int n = 65536
 	char* buf = malloc(n)
-	int i = 0
-	while (i < n):
-		buf[i] = 'x'
-		i = i + 1
+	for i in range(n): buf[i] = 'x'
 	deflate_result* fast = deflate(buf, n, DEFLATE_LEVEL_FAST())
 	deflate_result* best = deflate(buf, n, DEFLATE_LEVEL_BEST())
 	asserts(c"fast must collapse an all-same-byte run below 1/100th", fast.length < n / 100)
@@ -275,10 +250,8 @@ void test_deflate_mixed_compressible_and_incompressible():
 	rand_init(&rs, 777)
 	int i = 0
 	while (i < n):
-		if (i < n / 2):
-			buf[i] = 'a' + (i % 7)
-		else:
-			buf[i] = rand_next31(&rs) & 255
+		if (i < n / 2): buf[i] = 'a' + (i % 7)
+		else: buf[i] = rand_next31(&rs) & 255
 		i = i + 1
 	deflate_result* fast = deflate(buf, n, DEFLATE_LEVEL_FAST())
 	deflate_result* best = deflate(buf, n, DEFLATE_LEVEL_BEST())
@@ -295,15 +268,11 @@ void test_deflate_mixed_compressible_and_incompressible():
 
 void dt_boundary_case(int n, rand_state* rs):
 	char* buf = malloc(n)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		# A mix of pseudo-random bytes and a repeating pattern so both
 		# literals and back-references straddle the boundary.
-		if ((i % 5) == 0):
-			buf[i] = rand_next31(rs) & 255
-		else:
-			buf[i] = (i * 3) & 255
-		i = i + 1
+		if ((i % 5) == 0): buf[i] = rand_next31(rs) & 255
+		else: buf[i] = (i * 3) & 255
 	dt_roundtrip_level(c"boundary/fast", buf, n, DEFLATE_LEVEL_FAST())
 	dt_roundtrip_level(c"boundary/best", buf, n, DEFLATE_LEVEL_BEST())
 	free(buf)
@@ -383,16 +352,14 @@ void dt_window_expect(char* label, char* z, int zlen, char* window, int window_l
 		print2(c": inflate_window failed: ")
 		println2(inflate_error_string(err))
 		exit(1)
-	assert_equal(INFLATE_OK(), err)
+	assert_equal(INFLATE_OK, err)
 	assert_equal(len, n)
 	assert_equal(0, out[n])
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		if ((out[i] & 255) != (data[i] & 255)):
 			print2(label)
 			println2(c": byte mismatch")
 			exit(1)
-		i = i + 1
 	free(out)
 
 
@@ -420,7 +387,7 @@ void test_deflate_window_sync_flush_shape():
 		assert_equal(255, z[n - 1] & 255)
 		wresult[inflate_result*]* r = inflate(z, n, 0)
 		asserts(c"no final block", result_is_error[inflate_result*](r))
-		assert_equal(INFLATE_ERR_TRUNCATED(), result_code[inflate_result*](r))
+		assert_equal(INFLATE_ERR_TRUNCATED, result_code[inflate_result*](r))
 		dt_window_expect(c"sync piece", z, n, 0, 0, c"hello hello hello", 17)
 		free(z)
 		level = level + 1
@@ -434,20 +401,15 @@ void test_deflate_window_stream_of_pieces():
 	# further back.
 	int total = 5 * 20000
 	char* all = malloc(total)
-	int i = 0
-	while (i < total):
-		all[i] = ((i / 3) * 7 + ((i >> 10) & 15)) & 255
-		i = i + 1
+	for i in range(total): all[i] = ((i / 3) * 7 + ((i >> 10) & 15)) & 255
 	int* bits = malloc(3 * __word_size__)
 	bits[0] = 8
 	bits[1] = 12
 	bits[2] = 15
-	int b = 0
-	while (b < 3):
+	for b in range(3):
 		int level = 0
 		while (level <= DEFLATE_LEVEL_BEST()):
-			int piece = 0
-			while (piece < 5):
+			for piece in range(5):
 				char* data = &all[piece * 20000]
 				char* window = all
 				int window_len = piece * 20000
@@ -458,9 +420,7 @@ void test_deflate_window_stream_of_pieces():
 				if (window_len > limit):
 					dt_window_expect(c"piece, trimmed window", z, n, &all[window_len - limit], limit, data, 20000)
 				free(z)
-				piece = piece + 1
 			level = level + 1
-		b = b + 1
 	free(bits)
 	free(all)
 
@@ -477,14 +437,14 @@ void test_inflate_window_edges():
 	# The same reference without the window points before the output.
 	out = inflate_window(c"\xf2\x00\x11\x00\x00\x00\x00\xff\xff", 9, 0, 0, 0, &n, &err)
 	asserts(c"no window", out == 0)
-	assert_equal(INFLATE_ERR_BAD_DISTANCE(), err)
+	assert_equal(INFLATE_ERR_BAD_DISTANCE, err)
 	# max_output caps new output only, however large the window.
 	out = inflate_window(c"\xf2\x00\x11\x00\x00\x00\x00\xff\xff", 9, c"Hello", 5, 5, &n, &err)
 	assert_equal(5, n)
 	free(out)
 	out = inflate_window(c"\xf2\x00\x11\x00\x00\x00\x00\xff\xff", 9, c"Hello", 5, 4, &n, &err)
 	asserts(c"capped", out == 0)
-	assert_equal(INFLATE_ERR_TOO_LARGE(), err)
+	assert_equal(INFLATE_ERR_TOO_LARGE, err)
 	assert_equal(0, n)
 	# A BFINAL block ends decoding; what follows is ignored.
 	out = inflate_window(c"\xf3\x48\xcd\xc9\xc9\x07\x00\x00\x00\x00\xff\xff", 12, 0, 0, 0, &n, &err)
@@ -493,9 +453,9 @@ void test_inflate_window_edges():
 	# Input ending mid-block is still truncation.
 	out = inflate_window(c"\xf2\x48\xcd", 3, 0, 0, 0, &n, &err)
 	asserts(c"truncated", out == 0)
-	assert_equal(INFLATE_ERR_TRUNCATED(), err)
+	assert_equal(INFLATE_ERR_TRUNCATED, err)
 	# Empty input is an empty piece.
 	out = inflate_window(c"", 0, 0, 0, 0, &n, &err)
 	assert_equal(0, n)
-	assert_equal(INFLATE_OK(), err)
+	assert_equal(INFLATE_OK, err)
 	free(out)

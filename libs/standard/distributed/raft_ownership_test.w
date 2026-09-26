@@ -3,7 +3,7 @@
 /*
 Command-ownership regression (issue #315): raft_propose COPIES the
 caller's command bytes into a fresh, entry-owned buffer
-(raft_entry_new -> raft_copy_blob), and raft_entry_free releases that
+(raft_entry_new -> mem_dup), and raft_entry_free releases that
 copy. So (1) mutating or freeing the caller's buffer immediately after
 append must never corrupt the log, and (2) tearing an entry (or the
 whole raft) down must free the copy with no leak.
@@ -59,7 +59,7 @@ raft* rot_leader():
 	raft_start(r, 0)
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 300, out)
-	asserts(c"single-node cluster ticks straight to leader", raft_state(r) == raft_leader())
+	asserts(c"single-node cluster ticks straight to leader", raft_state(r) == raft_leader)
 	asserts(c"single-node win emits no messages", out.length == 0)
 	return r
 
@@ -90,8 +90,7 @@ int main():
 	buf[2] = 'p'
 	buf[3] = 9
 	asserts(c"propose accepted", raft_propose(r, buf, 4, 10, out) == 1)
-	while (out.length > 0):
-		raft_msg_free(out.pop())
+	while (out.length > 0): raft_msg_free(out.pop())
 
 	# mutate the caller's buffer immediately: the log entry must be
 	# unaffected, because raft_entry_new copied command_len bytes out

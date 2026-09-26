@@ -31,8 +31,7 @@ float float_from_bits(int bits):
 # (docs/projects/float.md), so f != f cannot detect NaN.
 int fis_nan(float f):
 	int bits = float_bits(f)
-	if ((bits & 0x7f800000) != 0x7f800000):
-		return 0
+	if ((bits & 0x7f800000) != 0x7f800000): return 0
 	return (bits & 0x007fffff) != 0
 
 
@@ -47,8 +46,7 @@ float fabs(float f):
 float ffloor(float f):
 	int truncated = f
 	float whole = truncated
-	if (f < whole):
-		return whole - 1.0
+	if (f < whole): return whole - 1.0
 	return whole
 
 
@@ -61,8 +59,7 @@ float fmod2(float a, float b):
 # Newton-Raphson square root seeded by an exponent-halving bit trick;
 # three iterations reach full float32 precision. 0.0 for f <= 0.0.
 float fsqrt(float f):
-	if (f <= 0.0):
-		return 0.0
+	if (f <= 0.0): return 0.0
 	int bits = float_bits(f) & 0x7fffffff
 	float guess = float_from_bits(0x1fbd1df5 + (bits >> 1))
 	guess = 0.5 * (guess + f / guess)
@@ -127,14 +124,12 @@ float fexp2_poly(float t):
 # also goes through a final float multiply so results straddling the
 # largest finite float round to +inf exactly like the hardware would.
 float fexp2_scale(float p, int n):
-	if (n > 128):
-		return float_from_bits(0x7f800000)
+	if (n > 128): return float_from_bits(0x7f800000)
 	if (n == 128):
 		float two = 2.0
 		return float_from_bits(float_bits(p) + (127 << 23)) * two
 	if (n < -125):
-		if (n < -151):
-			return 0.0
+		if (n < -151): return 0.0
 		float tiny = float_from_bits(0x1f800000)    # 2^-64
 		return float_from_bits(float_bits(p) + ((n + 64) << 23)) * tiny
 	return float_from_bits(float_bits(p) + (n << 23))
@@ -148,11 +143,9 @@ float fexp2(float x):
 	if (fis_nan(x)):
 		return x
 	float top = 130.0
-	if (x > top):
-		return float_from_bits(0x7f800000)
+	if (x > top): return float_from_bits(0x7f800000)
 	float bottom = -152.0
-	if (x < bottom):
-		return 0.0
+	if (x < bottom): return 0.0
 	float half = 0.5
 	float fn = ffloor(x + half)
 	int n = fn
@@ -169,11 +162,9 @@ float fexp(float x):
 	if (fis_nan(x)):
 		return x
 	float top = 89.0
-	if (x > top):
-		return float_from_bits(0x7f800000)
+	if (x > top): return float_from_bits(0x7f800000)
 	float bottom = -105.0
-	if (x < bottom):
-		return 0.0
+	if (x < bottom): return 0.0
 	float l2eh = float_from_bits(0x3fb8a000)    # log2(e) top 12 bits
 	float l2el = float_from_bits(0x39a3b296)    # log2(e) - l2eh
 	float l2e = float_from_bits(0x3fb8aa3b)    # log2(e) rounded
@@ -344,61 +335,47 @@ float fpow(float x, float y):
 		if (ax == one):
 			return one
 		int bigger = 0
-		if (ax > one):
-			bigger = 1
+		if (ax > one): bigger = 1
 		if (y > 0.0):
-			if (bigger):
-				return float_from_bits(0x7f800000)
+			if (bigger): return float_from_bits(0x7f800000)
 			return 0.0
-		if (bigger):
-			return 0.0
+		if (bigger): return 0.0
 		return float_from_bits(0x7f800000)
 	# y integer parity: 0 = not an integer, 1 = odd, 2 = even
 	int yint = 0
 	float ay = fabs(y)
 	float two24 = float_from_bits(0x4b800000)    # 2^24
-	if (ay >= two24):
-		yint = 2    # every float >= 2^24 in magnitude is an even integer
+	if (ay >= two24): yint = 2    # every float >= 2^24 in magnitude is an even integer
 	else:
 		float fy = ffloor(y)
 		if (fy == y):
 			float half = 0.5
 			float fh = fy * half
-			if (ffloor(fh) == fh):
-				yint = 2
-			else:
-				yint = 1
+			if (ffloor(fh) == fh): yint = 2
+			else: yint = 1
 	if (x == 0.0):
 		# +-0 base: result is 0 or inf by y's sign, negative only for
 		# -0 with odd integer y
 		int neg = 0
-		if (xbits < 0 && yint == 1):
-			neg = 1
+		if (xbits < 0 && yint == 1): neg = 1
 		if (y > 0.0):
-			if (neg):
-				return float_from_bits(cast(int, 0x80000000))
+			if (neg): return float_from_bits(cast(int, 0x80000000))
 			return 0.0
-		if (neg):
-			return float_from_bits(cast(int, 0xff800000))
+		if (neg): return float_from_bits(cast(int, 0xff800000))
 		return float_from_bits(0x7f800000)
 	if ((xbits & 0x7fffffff) == 0x7f800000):
 		# +-inf base, mirroring the zero rules
 		int neg = 0
-		if (xbits < 0 && yint == 1):
-			neg = 1
+		if (xbits < 0 && yint == 1): neg = 1
 		if (y > 0.0):
-			if (neg):
-				return float_from_bits(cast(int, 0xff800000))
+			if (neg): return float_from_bits(cast(int, 0xff800000))
 			return float_from_bits(0x7f800000)
-		if (neg):
-			return float_from_bits(cast(int, 0x80000000))
+		if (neg): return float_from_bits(cast(int, 0x80000000))
 		return 0.0
 	int sgn = 0
 	if (xbits < 0):
-		if (yint == 0):
-			return float_from_bits(0x7fc00000)
-		if (yint == 1):
-			sgn = 1
+		if (yint == 0): return float_from_bits(0x7fc00000)
+		if (yint == 1): sgn = 1
 	float t1 = 0.0
 	float t2 = 0.0
 	flog2_pair(ax, &t1, &t2)
@@ -409,21 +386,18 @@ float fpow(float x, float y):
 	float z = ph + pl
 	float ztop = 130.0
 	if (z > ztop):
-		if (sgn):
-			return float_from_bits(cast(int, 0xff800000))
+		if (sgn): return float_from_bits(cast(int, 0xff800000))
 		return float_from_bits(0x7f800000)
 	float zbottom = -152.0
 	if (z < zbottom):
-		if (sgn):
-			return float_from_bits(cast(int, 0x80000000))
+		if (sgn): return float_from_bits(cast(int, 0x80000000))
 		return 0.0
 	float half2 = 0.5
 	float fn = ffloor(z + half2)
 	int n = fn
 	float t = (ph - fn) + pl
 	float res = fexp2_scale(fexp2_poly(t), n)
-	if (sgn):
-		return -res
+	if (sgn): return -res
 	return res
 
 
@@ -485,18 +459,14 @@ float fsin(float x):
 	if (fis_nan(x)):
 		return x
 	int ab = float_bits(x) & 0x7fffffff
-	if (ab == 0x7f800000):
-		return float_from_bits(0x7fc00000)
+	if (ab == 0x7f800000): return float_from_bits(0x7fc00000)
 	if (ab < 0x39800000):
 		return x
 	float r = 0.0
 	int q = ftrig_reduce(x, &r)
-	if (q == 0):
-		return fsin_poly(r)
-	if (q == 1):
-		return fcos_poly(r)
-	if (q == 2):
-		return -fsin_poly(r)
+	if (q == 0): return fsin_poly(r)
+	if (q == 1): return fcos_poly(r)
+	if (q == 2): return -fsin_poly(r)
 	return -fcos_poly(r)
 
 
@@ -507,16 +477,12 @@ float fcos(float x):
 	if (fis_nan(x)):
 		return x
 	int ab = float_bits(x) & 0x7fffffff
-	if (ab == 0x7f800000):
-		return float_from_bits(0x7fc00000)
+	if (ab == 0x7f800000): return float_from_bits(0x7fc00000)
 	float r = 0.0
 	int q = ftrig_reduce(x, &r)
-	if (q == 0):
-		return fcos_poly(r)
-	if (q == 1):
-		return -fsin_poly(r)
-	if (q == 2):
-		return -fcos_poly(r)
+	if (q == 0): return fcos_poly(r)
+	if (q == 1): return -fsin_poly(r)
+	if (q == 2): return -fcos_poly(r)
 	return fsin_poly(r)
 
 
@@ -530,14 +496,12 @@ float ftan(float x):
 	if (fis_nan(x)):
 		return x
 	int ab = float_bits(x) & 0x7fffffff
-	if (ab == 0x7f800000):
-		return float_from_bits(0x7fc00000)
+	if (ab == 0x7f800000): return float_from_bits(0x7fc00000)
 	if (ab < 0x39800000):
 		return x
 	float r = 0.0
 	int q = ftrig_reduce(x, &r)
-	if (q == 0 || q == 2):
-		return fsin_poly(r) / fcos_poly(r)
+	if (q == 0 || q == 2): return fsin_poly(r) / fcos_poly(r)
 	return -(fcos_poly(r) / fsin_poly(r))
 
 
@@ -550,13 +514,11 @@ float fatan(float x):
 	if (fis_nan(x)):
 		return x
 	int sgn = 0
-	if (float_bits(x) < 0):
-		sgn = 1
+	if (float_bits(x) < 0): sgn = 1
 	float ax = fabs(x)
 	float pio2 = float_from_bits(0x3fc90fdb)
 	if (float_bits(ax) == 0x7f800000):
-		if (sgn):
-			return -pio2
+		if (sgn): return -pio2
 		return pio2
 	float t3p8 = float_from_bits(0x401a827a)    # tan(3pi/8)
 	float tp8 = float_from_bits(0x3ed413cd)    # tan(pi/8)
@@ -577,8 +539,7 @@ float fatan(float x):
 	float z = w * w
 	float p = a0 + z * (a1 + z * (a2 + z * (a3 + z * a4)))
 	float res = base + (w + (z * w) * p)
-	if (sgn):
-		return -res
+	if (sgn): return -res
 	return res
 
 
@@ -598,51 +559,39 @@ float fatan2(float y, float x):
 	int xbits = float_bits(x)
 	int ybits = float_bits(y)
 	int sy = 0
-	if (ybits < 0):
-		sy = 1
+	if (ybits < 0): sy = 1
 	float pi = float_from_bits(0x40490fdb)
 	float pio2 = float_from_bits(0x3fc90fdb)
 	int x_inf = 0
-	if ((xbits & 0x7fffffff) == 0x7f800000):
-		x_inf = 1
+	if ((xbits & 0x7fffffff) == 0x7f800000): x_inf = 1
 	int y_inf = 0
-	if ((ybits & 0x7fffffff) == 0x7f800000):
-		y_inf = 1
+	if ((ybits & 0x7fffffff) == 0x7f800000): y_inf = 1
 	if (y_inf):
 		float base = pio2
 		if (x_inf):
-			if (xbits < 0):
-				base = float_from_bits(0x4016cbe4)    # 3pi/4
-			else:
-				base = float_from_bits(0x3f490fdb)    # pi/4
-		if (sy):
-			return -base
+			if (xbits < 0): base = float_from_bits(0x4016cbe4)    # 3pi/4
+			else: base = float_from_bits(0x3f490fdb)    # pi/4
+		if (sy): return -base
 		return base
 	if (x_inf):
 		if (xbits < 0):
-			if (sy):
-				return -pi
+			if (sy): return -pi
 			return pi
-		if (sy):
-			return float_from_bits(cast(int, 0x80000000))
+		if (sy): return float_from_bits(cast(int, 0x80000000))
 		return 0.0
 	if (y == 0.0):
 		if (x < 0.0 || xbits < 0):
-			if (sy):
-				return -pi
+			if (sy): return -pi
 			return pi
 		return y
 	if (x == 0.0):
-		if (sy):
-			return -pio2
+		if (sy): return -pio2
 		return pio2
-	if (x > 0.0):
-		return fatan(y / x)
+	if (x > 0.0): return fatan(y / x)
 	float m = fatan(fabs(y / x))
 	float pi_lo = float_from_bits(cast(int, 0xb3bbbd2e))    # pi - pi_hi
 	float res = (pi - m) + pi_lo
-	if (sy):
-		return -res
+	if (sy): return -res
 	return res
 
 
@@ -668,12 +617,10 @@ float fasin(float x):
 	if (fis_nan(x)):
 		return x
 	int sgn = 0
-	if (float_bits(x) < 0):
-		sgn = 1
+	if (float_bits(x) < 0): sgn = 1
 	float ax = fabs(x)
 	float one = 1.0
-	if (ax > one):
-		return float_from_bits(0x7fc00000)
+	if (ax > one): return float_from_bits(0x7fc00000)
 	float half = 0.5
 	float res = 0.0
 	if (ax <= half):
@@ -687,8 +634,7 @@ float fasin(float x):
 		float pio2lo = float_from_bits(cast(int, 0xb33bbd2e))
 		float two = 2.0
 		res = (pio2hi - two * t) + pio2lo
-	if (sgn):
-		return -res
+	if (sgn): return -res
 	return res
 
 
@@ -701,12 +647,10 @@ float facos(float x):
 	if (fis_nan(x)):
 		return x
 	int sgn = 0
-	if (float_bits(x) < 0):
-		sgn = 1
+	if (float_bits(x) < 0): sgn = 1
 	float ax = fabs(x)
 	float one = 1.0
-	if (ax > one):
-		return float_from_bits(0x7fc00000)
+	if (ax > one): return float_from_bits(0x7fc00000)
 	float half = 0.5
 	if (ax <= half):
 		float z = x * x

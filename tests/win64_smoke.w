@@ -16,21 +16,17 @@ void check(char* label, int ok):
 # Generators run on a private mmap'd (VirtualAlloc) stack switched by the
 # shared gen_switch stub.
 generator int count_up(int limit):
-	int i = 0
-	while (i < limit):
+	for i in range(limit):
 		yield i
-		i = i + 1
 
 
 int main(int argc, char** argv):
 	# Heap: many allocations so brk growth (committed VirtualAlloc pages)
 	# gets exercised past the first 64KB chunk.
-	int i = 0
-	while (i < 200):
+	for i in range(200):
 		char* chunk = malloc(1000)
 		chunk[999] = 42
 		free(chunk)
-		i = i + 1
 	check(c"heap", 1)
 
 	# Strings and formatting.
@@ -69,8 +65,7 @@ int main(int argc, char** argv):
 
 	# Generators (gen_switch + mmap'd stacks).
 	int total = 0
-	for int v in count_up(5):
-		total = total + v
+	for int v in count_up(5): total = total + v
 	check(c"generator", total == 10)
 
 	# Time: the Unix epoch conversion should land after 2020-01-01 and

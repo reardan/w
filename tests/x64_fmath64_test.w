@@ -51,8 +51,7 @@ void assert_float64_close(int want_lo, int want_hi, float64 got, int max_ulp):
 	int want_bits = (want_hi << 32) | (want_lo & mask32)
 	int got_bits = (got_hi << 32) | (got_lo & mask32)
 	int diff = want_bits - got_bits
-	if (diff < 0):
-		diff = 0 - diff
+	if (diff < 0): diff = 0 - diff
 	if (diff > max_ulp):
 		print2(c"Assertion failed: fsqrt64 ulp diff too large. want_hi=")
 		print2(hex(want_hi))
@@ -73,8 +72,7 @@ void assert_float64_close(int want_lo, int want_hi, float64 got, int max_ulp):
 # subtracting two mapped patterns is a true ulp distance even across the
 # +-0 boundary. Never fed NaNs -- those are asserted bit-exactly.
 int f64_ord(int bits):
-	if (bits < 0):
-		return 0 - (bits & ((1 << 63) - 1))
+	if (bits < 0): return 0 - (bits & ((1 << 63) - 1))
 	return bits
 
 
@@ -86,8 +84,7 @@ void assert_f64_ulp(int want_lo, int want_hi, float64 got, int max_ulp):
 	int mask32 = (1 << 32) - 1
 	int want_bits = (want_hi << 32) | (want_lo & mask32)
 	int diff = f64_ord(want_bits) - f64_ord(float64_bits(got))
-	if (diff < 0):
-		diff = 0 - diff
+	if (diff < 0): diff = 0 - diff
 	if (diff > max_ulp):
 		print2(c"Assertion failed: f64 ulp diff too large. want=")
 		print2(hex_word(want_bits))
@@ -103,8 +100,7 @@ void assert_f64_ulp(int want_lo, int want_hi, float64 got, int max_ulp):
 # checks where both sides went through the library.
 void assert_f64_close2(float64 want, float64 got, int max_ulp):
 	int diff = f64_ord(float64_bits(want)) - f64_ord(float64_bits(got))
-	if (diff < 0):
-		diff = 0 - diff
+	if (diff < 0): diff = 0 - diff
 	if (diff > max_ulp):
 		print2(c"Assertion failed: f64 identity diff too large. want=")
 		print2(hex_word(float64_bits(want)))

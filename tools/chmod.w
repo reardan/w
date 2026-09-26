@@ -36,8 +36,7 @@ int main(int argc, int argv):
 		stream_flush(err)
 		return 1
 	int failed = 0
-	int i = 2
-	while (i < argc):
+	for i in range(2, argc):
 		char** path_slot = argv + i * __word_size__
 		char* path = *path_slot
 		int err = file_chmod(path, mode)
@@ -50,5 +49,4 @@ int main(int argc, int argv):
 			stream_write_line(err_out, c"")
 			stream_flush(err_out)
 			failed = 1
-		i = i + 1
 	return failed

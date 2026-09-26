@@ -7,12 +7,10 @@ import lib.sha256
 char* sha256_hex(char* digest):
 	char* out = malloc(65)
 	char* digits = c"0123456789abcdef"
-	int i = 0
-	while (i < 32):
+	for i in range(32):
 		int b = digest[i] & 255
 		out[i * 2] = digits[(b >> 4) & 15]
 		out[i * 2 + 1] = digits[b & 15]
-		i = i + 1
 	out[64] = 0
 	return out
 
@@ -40,10 +38,7 @@ int main(int argc, int argv):
 	# 1,000,000 'a' repeated — the classic long-message NIST vector.
 	int n = 1000000
 	char* big = malloc(n)
-	int i = 0
-	while (i < n):
-		big[i] = 'a'
-		i = i + 1
+	for i in range(n): big[i] = 'a'
 	assert_strings_equal(c"cdc76e5c9914fb9281a1c7e284d73e67f1809a48a497200e046d39ccc7112cd0", hash_hex(big, n))
 
 	println(c"sha256: all vectors passed")

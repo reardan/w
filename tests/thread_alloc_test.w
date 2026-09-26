@@ -20,18 +20,12 @@ int churn_ok
 
 
 void stamp(int* p, int words, int tag):
-	int i = 0
-	while (i < words):
-		p[i] = tag + i
-		i = i + 1
+	for i in range(words): p[i] = tag + i
 
 
 int stamped(int* p, int words, int tag):
-	int i = 0
-	while (i < words):
-		if (p[i] != tag + i):
-			return 0
-		i = i + 1
+	for i in range(words):
+		if (p[i] != tag + i): return 0
 	return 1
 
 
@@ -51,14 +45,12 @@ void churn_worker(void* arg):
 		seed = (seed * 1103515245 + 12345) & 0x7fffffff
 		int k = seed % slots
 		if (live[k] != 0):
-			if (stamped(live[k], sizes[k], id * 100000 + k) == 0):
-				ok = 0
+			if (stamped(live[k], sizes[k], id * 100000 + k) == 0): ok = 0
 			free(cast(void*, live[k]))
 			live[k] = cast(int*, 0)
 		else:
 			int words = 1 + (seed >> 8) % 300
-			if ((seed & 1023) == 0):
-				words = 20000   # past the small bins
+			if ((seed & 1023) == 0): words = 20000   # past the small bins
 			live[k] = cast(int*, malloc(words * __word_size__))
 			sizes[k] = words
 			stamp(live[k], words, id * 100000 + k)
@@ -66,14 +58,12 @@ void churn_worker(void* arg):
 	i = 0
 	while (i < slots):
 		if (live[i] != 0):
-			if (stamped(live[i], sizes[i], id * 100000 + i) == 0):
-				ok = 0
+			if (stamped(live[i], sizes[i], id * 100000 + i) == 0): ok = 0
 			free(cast(void*, live[i]))
 		i = i + 1
 	free(cast(void*, live))
 	free(cast(void*, sizes))
-	if (ok):
-		atomic_add(&churn_ok, 1)
+	if (ok): atomic_add(&churn_ok, 1)
 
 
 void test_concurrent_malloc_free_churn():
@@ -87,13 +77,11 @@ void test_concurrent_malloc_free_churn():
 		i = i + 1
 	# the main thread churns its own heap at the same time
 	int* scratch = cast(int*, 0)
-	int j = 0
-	while (j < 5000):
+	for j in range(5000):
 		scratch = cast(int*, malloc((j % 40 + 1) * __word_size__))
 		stamp(scratch, j % 40 + 1, j)
 		assert_equal(1, stamped(scratch, j % 40 + 1, j))
 		free(cast(void*, scratch))
-		j = j + 1
 	i = 0
 	while (i < n):
 		assert_equal(0, thread_join(threads[i]))
@@ -115,11 +103,9 @@ void build_worker(void* arg):
 	build_job* job = cast(build_job*, arg)
 	list[int] values = new list[int]
 	map[int, int] squares = new map[int, int]
-	int i = 0
-	while (i < 5000):
+	for i in range(5000):
 		values.push(i * job.id)
 		squares[i] = i * i
-		i = i + 1
 	job.values = values
 	job.squares = squares
 	job.label = strjoin(strjoin(c"worker ", itoa(job.id)), strjoin(c" built ", itoa(values.length)))
@@ -164,8 +150,7 @@ void consume_worker(void* arg):
 		# wait for slot i to be filled
 		while (atomic_add(&handoff_ring[i % 64 + 64], 0) == 0) {}
 		int* p = cast(int*, handoff_ring[i % 64])
-		if (stamped(p, 8, i) == 0):
-			ok = 0
+		if (stamped(p, 8, i) == 0): ok = 0
 		free(cast(void*, p))
 		handoff_ring[i % 64 + 64] = 0
 		i = i + 1
@@ -174,22 +159,17 @@ void consume_worker(void* arg):
 
 void produce_worker(void* arg):
 	int n = cast(int, arg)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		while (atomic_add(&handoff_ring[i % 64 + 64], 0) != 0) {}
 		int* p = cast(int*, malloc(8 * __word_size__))
 		stamp(p, 8, i)
 		handoff_ring[i % 64] = cast(int, p)
 		atomic_add(&handoff_ring[i % 64 + 64], 1)
-		i = i + 1
 
 
 void test_blocks_cross_threads():
 	handoff_ring = cast(int*, malloc(128 * __word_size__))
-	int i = 0
-	while (i < 128):
-		handoff_ring[i] = 0
-		i = i + 1
+	for i in range(128): handoff_ring[i] = 0
 	handoff_done = 0
 	int n = 20000
 	wthread* c = thread_spawn(consume_worker, cast(void*, n))
@@ -208,44 +188,31 @@ void test_blocks_cross_threads():
 	assert_equal(0, thread_join(c))
 	assert_equal(1, handoff_done)
 	# main keeps allocating: the drained block is reusable
-	int k = 0
-	while (k < 100):
-		free(malloc(16 * __word_size__))
-		k = k + 1
+	for k in range(100): free(malloc(16 * __word_size__))
 
 
 # Heaps are abandoned at exit and adopted by later threads, so a long
 # spawn/join loop does not grow memory without bound.
 void small_alloc_worker(void* arg):
-	int i = 0
-	while (i < 200):
-		free(malloc(64))
-		i = i + 1
+	for i in range(200): free(malloc(64))
 	# leave one block behind: the adopter inherits it
 	malloc(32)
 
 
 void test_spawn_join_cycles_reuse_heaps():
-	int i = 0
-	while (i < 300):
+	for i in range(300):
 		wthread* t = thread_spawn(small_alloc_worker, cast(void*, 0))
 		asserts(c"thread_spawn failed", cast(int, t) != 0)
 		assert_equal(0, thread_join(t))
-		i = i + 1
 
 
 # parallel_for callbacks allocate on pool workers.
 void pf_alloc_chunk(int start, int end, void* arg):
 	int* out = cast(int*, arg)
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		list[int] tmp = new list[int]
-		int j = 0
-		while (j < 100):
-			tmp.push(j)
-			j = j + 1
+		for j in range(100): tmp.push(j)
 		out[i] = tmp.length + tmp[99]
-		i = i + 1
 
 
 void test_parallel_for_callbacks_allocate():
@@ -253,8 +220,5 @@ void test_parallel_for_callbacks_allocate():
 	int* out = cast(int*, malloc(n * __word_size__))
 	parallel_for(0, n, 4, pf_alloc_chunk, cast(void*, out))
 	parallel_for(0, n, 4, pf_alloc_chunk, cast(void*, out))
-	int i = 0
-	while (i < n):
-		assert_equal(199, out[i])
-		i = i + 1
+	for i in range(n): assert_equal(199, out[i])
 	thread_pool_shutdown()

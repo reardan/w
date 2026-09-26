@@ -27,10 +27,8 @@ int pac_desc(int a, int b):
 
 
 generator int pac_counter(int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		yield i
-		i = i + 1
 
 
 int pac_apply(pac_binop* f, int a, int b):
@@ -62,8 +60,7 @@ int main(int argc, int argv):
 	# discriminator, matching the seeded entry from __w_gen_create)
 	int sum = 0
 	generator* c = pac_counter(5)
-	while (gen_next(c)):
-		sum = sum + gen_value(c)
+	while (gen_next(c)): sum = sum + gen_value(c)
 	gen_free(c)
 	assert_equal(10, sum)
 

@@ -62,8 +62,7 @@ void ui_table_init(ui_table_state* st):
 
 
 int ui_table_row_height(ui_context* ctx, ui_table_state* st):
-	if (st.row_height > 0):
-		return st.row_height
+	if (st.row_height > 0): return st.row_height
 	return ctx.theme.widget_height
 
 
@@ -90,14 +89,12 @@ void ui_table_begin(ui_context* ctx, ui_rect area, char** headers, int32* col_wi
 	# Header: outside the body's clip, so it does not scroll.
 	ui_rect header = ui_rect_new(area.x, area.y, area.w, row_h)
 	ui_draw_rrect(ctx.rndr, header, cast(float32, ctx.theme.radius_small), ctx.theme.widget)
-	int i = 0
-	while (i < col_count):
+	for i in range(col_count):
 		float32 cx = header.x + ui_table_col_x(st, i)
 		float32 cw = cast(float32, col_widths[i])
 		ui_clip_push(ctx.rndr, ui_rect_new(cx, header.y, cw, row_h))
 		ui_draw_text(ctx.rndr, cx + pad, header.y + (row_h - cast(float32, ui_text_height(scale))) * 0.5, headers[i], scale, ctx.theme.text_muted)
 		ui_clip_pop(ctx.rndr)
-		i = i + 1
 	ui_render_rect(ctx.rndr, ui_rect_new(area.x, area.y + row_h, area.w, 1.0), ctx.theme.border)
 
 	ui_rect body = ui_rect_new(area.x, area.y + row_h + 1.0, area.w, area.h - row_h - 1.0)
@@ -124,10 +121,8 @@ int ui_table_row(ui_context* ctx, ui_table_state* st, int row_index):
 	# Visibility in content space, against the viewport the last frame
 	# measured.
 	float32 top = row_h * cast(float32, row_index)
-	if (top + row_h <= st.scroll.offset_y):
-		return 0
-	if (top >= st.scroll.offset_y + st.scroll.view_h):
-		return 0
+	if (top + row_h <= st.scroll.offset_y): return 0
+	if (top >= st.scroll.offset_y + st.scroll.view_h): return 0
 
 	int id = ctx.next_id
 	ctx.next_id = ctx.next_id + 1
@@ -135,10 +130,8 @@ int ui_table_row(ui_context* ctx, ui_table_state* st, int row_index):
 		if (st.selected != row_index):
 			st.selected = row_index
 			st.changed = 1
-	if (st.selected == row_index):
-		ui_render_rect(ctx.rndr, row, ctx.theme.widget_active)
-	else if (ctx.hot == id):
-		ui_render_rect(ctx.rndr, row, ctx.theme.widget_hot)
+	if (st.selected == row_index): ui_render_rect(ctx.rndr, row, ctx.theme.widget_active)
+	else if (ctx.hot == id): ui_render_rect(ctx.rndr, row, ctx.theme.widget_hot)
 	else if ((row_index & 1) == 1):
 		# Zebra striping: every other row gets the tonal fill.
 		ui_render_rect(ctx.rndr, row, ctx.theme.widget)
@@ -150,8 +143,7 @@ int ui_table_row(ui_context* ctx, ui_table_state* st, int row_index):
 void ui_table_cell(ui_context* ctx, ui_table_state* st, char* text):
 	int col = st.cell_index
 	st.cell_index = st.cell_index + 1
-	if (col >= st.col_count):
-		return
+	if (col >= st.col_count): return
 	float32 cx = st.row_rect.x + ui_table_col_x(st, col)
 	float32 cw = cast(float32, st.col_widths[col])
 	int scale = ctx.theme.text_scale
@@ -166,6 +158,5 @@ void ui_table_cell(ui_context* ctx, ui_table_state* st, char* text):
 # changed, -1 otherwise.
 int ui_table_end(ui_context* ctx, ui_table_state* st):
 	ui_scroll_end(ctx, &st.scroll)
-	if (st.changed):
-		return st.selected
+	if (st.changed): return st.selected
 	return 0 - 1

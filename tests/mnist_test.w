@@ -30,27 +30,22 @@ void write_u32_be(wstream* out, int v):
 # k = image*20 + row*5 + col.
 void write_mnist_images_fixture(char* path):
 	wstream* out = stream_open_write(path)
-	write_u32_be(out, MNIST_MAGIC_IMAGES())
+	write_u32_be(out, MNIST_MAGIC_IMAGES)
 	write_u32_be(out, 3)
 	write_u32_be(out, 4)
 	write_u32_be(out, 5)
-	int i = 0
-	while (i < 60):
+	for i in range(60):
 		int v = 0
-		if (i == 0):
-			v = 255       # (image 0, row 0, col 0)
-		if (i == 7):
-			v = 128       # (image 0, row 1, col 2)
-		if (i == 59):
-			v = 200       # (image 2, row 3, col 4) -- last byte in the file
+		if (i == 0): v = 255       # (image 0, row 0, col 0)
+		if (i == 7): v = 128       # (image 0, row 1, col 2)
+		if (i == 59): v = 200       # (image 2, row 3, col 4) -- last byte in the file
 		stream_write_byte(out, v)
-		i = i + 1
 	stream_close(out)
 
 
 void write_mnist_labels_fixture(char* path):
 	wstream* out = stream_open_write(path)
-	write_u32_be(out, MNIST_MAGIC_LABELS())
+	write_u32_be(out, MNIST_MAGIC_LABELS)
 	write_u32_be(out, 3)
 	stream_write_byte(out, 7)
 	stream_write_byte(out, 3)
@@ -65,7 +60,7 @@ void test_mnist_load_images():
 	write_mnist_images_fixture(c"bin/mnist_test_images.idx")
 	ndf images
 	int rc = mnist_load_images(c"bin/mnist_test_images.idx", &images)
-	assert_equal(MNIST_OK(), rc)
+	assert_equal(MNIST_OK, rc)
 	assert_equal(3, images.rank)
 	assert_equal(3, images.n0)
 	assert_equal(4, images.n1)
@@ -81,7 +76,7 @@ void test_mnist_load_labels():
 	write_mnist_labels_fixture(c"bin/mnist_test_labels.idx")
 	ndi labels
 	int rc = mnist_load_labels(c"bin/mnist_test_labels.idx", &labels)
-	assert_equal(MNIST_OK(), rc)
+	assert_equal(MNIST_OK, rc)
 	assert_equal(1, labels.rank)
 	assert_equal(3, labels.n0)
 	assert_equal(7, ndi_at1(&labels, 0))
@@ -92,7 +87,7 @@ void test_mnist_load_labels():
 void test_mnist_flatten_images():
 	write_mnist_images_fixture(c"bin/mnist_test_flatten.idx")
 	ndf images
-	assert_equal(MNIST_OK(), mnist_load_images(c"bin/mnist_test_flatten.idx", &images))
+	assert_equal(MNIST_OK, mnist_load_images(c"bin/mnist_test_flatten.idx", &images))
 	ndf flat = mnist_flatten_images(&images)
 	assert_equal(2, flat.rank)
 	assert_equal(3, flat.n0)
@@ -111,32 +106,32 @@ void test_mnist_flatten_images():
 void test_mnist_load_images_missing_file():
 	ndf images
 	int rc = mnist_load_images(c"bin/mnist_test_missing_11aa.idx", &images)
-	assert_equal(MNIST_ERR_OPEN(), rc)
+	assert_equal(MNIST_ERR_OPEN, rc)
 
 
 void test_mnist_load_images_bad_magic():
 	wstream* out = stream_open_write(c"bin/mnist_test_bad_magic.idx")
-	write_u32_be(out, MNIST_MAGIC_LABELS())
+	write_u32_be(out, MNIST_MAGIC_LABELS)
 	stream_close(out)
 	ndf images
 	int rc = mnist_load_images(c"bin/mnist_test_bad_magic.idx", &images)
-	assert_equal(MNIST_ERR_BAD_MAGIC(), rc)
+	assert_equal(MNIST_ERR_BAD_MAGIC, rc)
 
 
 void test_mnist_load_images_truncated_header():
 	wstream* out = stream_open_write(c"bin/mnist_test_truncated_header.idx")
-	write_u32_be(out, MNIST_MAGIC_IMAGES())
+	write_u32_be(out, MNIST_MAGIC_IMAGES)
 	write_u32_be(out, 3)
 	# rows/cols dimensions missing entirely
 	stream_close(out)
 	ndf images
 	int rc = mnist_load_images(c"bin/mnist_test_truncated_header.idx", &images)
-	assert_equal(MNIST_ERR_TRUNCATED(), rc)
+	assert_equal(MNIST_ERR_TRUNCATED, rc)
 
 
 void test_mnist_load_images_truncated_pixels():
 	wstream* out = stream_open_write(c"bin/mnist_test_truncated_pixels.idx")
-	write_u32_be(out, MNIST_MAGIC_IMAGES())
+	write_u32_be(out, MNIST_MAGIC_IMAGES)
 	write_u32_be(out, 1)
 	write_u32_be(out, 2)
 	write_u32_be(out, 2)
@@ -146,19 +141,19 @@ void test_mnist_load_images_truncated_pixels():
 	stream_close(out)
 	ndf images
 	int rc = mnist_load_images(c"bin/mnist_test_truncated_pixels.idx", &images)
-	assert_equal(MNIST_ERR_TRUNCATED(), rc)
+	assert_equal(MNIST_ERR_TRUNCATED, rc)
 
 
 void test_mnist_load_labels_bad_magic():
 	wstream* out = stream_open_write(c"bin/mnist_test_labels_bad_magic.idx")
-	write_u32_be(out, MNIST_MAGIC_IMAGES())
+	write_u32_be(out, MNIST_MAGIC_IMAGES)
 	stream_close(out)
 	ndi labels
 	int rc = mnist_load_labels(c"bin/mnist_test_labels_bad_magic.idx", &labels)
-	assert_equal(MNIST_ERR_BAD_MAGIC(), rc)
+	assert_equal(MNIST_ERR_BAD_MAGIC, rc)
 
 
 void test_mnist_load_labels_missing_file():
 	ndi labels
 	int rc = mnist_load_labels(c"bin/mnist_test_labels_missing_11aa.idx", &labels)
-	assert_equal(MNIST_ERR_OPEN(), rc)
+	assert_equal(MNIST_ERR_OPEN, rc)

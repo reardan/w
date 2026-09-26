@@ -4,3 +4,4 @@
 # expect_stderr: unsupported len argument type: 'int'
 n := 5
 println(len(n))
+# wbuild: fixture_group=prelude_math_error_test

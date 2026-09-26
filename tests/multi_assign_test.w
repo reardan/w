@@ -39,10 +39,7 @@ void test_rhs_evaluates_before_stores():
 void test_fibonacci_loop():
 	int a = 0
 	int b = 1
-	int i = 0
-	while (i < 10):
-		a, b = b, a + b
-		i = i + 1
+	for i in range(10): a, b = b, a + b
 	assert_equal(55, a)
 	assert_equal(89, b)
 

@@ -84,8 +84,7 @@ no-op for programs that import nothing, keeping the static image
 byte-identical.
 */
 void macho_emit_dynamic(int text_size, int data_size_padded):
-	if ((dyn_lib_count == 0) & (dyn_has_imports() == 0)):
-		return
+	if ((dyn_lib_count == 0) & (dyn_has_imports() == 0)): return
 
 	macho_lc_pos = macho_pad_pos
 	int added_cmds = 0
@@ -95,14 +94,12 @@ void macho_emit_dynamic(int text_size, int data_size_padded):
 	# LC_LOAD_DYLIB appended here, numbered upward from 2 in load-command
 	# order (MH_TWOLEVEL binds name lookups to their ordinal's image).
 	char* ordinals = 0
-	if (dyn_lib_count > 0):
-		ordinals = malloc(dyn_lib_count * 4)
+	if (dyn_lib_count > 0): ordinals = malloc(dyn_lib_count * 4)
 	int next_ordinal = 2
 	int i = 0
 	while (i < dyn_lib_count):
 		char* path = dyn_lib_name(i)
-		if (strcmp(path, c"/usr/lib/libSystem.B.dylib") == 0):
-			save_i(ordinals + i * 4, 1, 4)
+		if (strcmp(path, c"/usr/lib/libSystem.B.dylib") == 0): save_i(ordinals + i * 4, 1, 4)
 		else:
 			save_i(ordinals + i * 4, next_ordinal, 4)
 			next_ordinal = next_ordinal + 1
@@ -114,10 +111,7 @@ void macho_emit_dynamic(int text_size, int data_size_padded):
 			macho_lc_int32(2)       /* timestamp */
 			macho_lc_int32(65536)   /* current version 1.0.0 */
 			macho_lc_int32(65536)   /* compatibility version 1.0.0 */
-			int ci = 0
-			while (ci < len):
-				code[macho_lc_pos + ci] = path[ci]
-				ci = ci + 1
+			for ci in range(len): code[macho_lc_pos + ci] = path[ci]
 			macho_lc_pos = macho_lc_pos + (cmdsize - 24)  /* NUL + pad stay zero */
 			added_cmds = added_cmds + 1
 		i = i + 1
@@ -137,8 +131,7 @@ void macho_emit_dynamic(int text_size, int data_size_padded):
 		while (i < dyn_import_count):
 			int lib = dyn_import_get_lib(i)
 			int ordinal = 1  /* extern before any c_lib: libSystem */
-			if (lib >= 0):
-				ordinal = load_i(ordinals + lib * 4, 4)
+			if (lib >= 0): ordinal = load_i(ordinals + lib * 4, 4)
 			if (ordinal <= 15):
 				macho_bw_int8(16 | ordinal)  /* SET_DYLIB_ORDINAL_IMM */
 			else:
@@ -179,8 +172,7 @@ void macho_emit_dynamic(int text_size, int data_size_padded):
 	# Patch ncmds / sizeofcmds for the appended commands. Leave 16
 	# headerpad bytes for macho_finish's LC_CODE_SIGNATURE.
 	int used = macho_lc_pos - macho_pad_pos
-	if (used > macho_pad_size - 16):
-		error(c"Mach-O load commands overflow the headerpad")
+	if (used > macho_pad_size - 16): error(c"Mach-O load commands overflow the headerpad")
 	if (added_cmds > 0):
 		save_int32(code + 16, load_int32(code + 16) + added_cmds)
 		save_int32(code + 20, load_int32(code + 20) + used)
@@ -188,5 +180,4 @@ void macho_emit_dynamic(int text_size, int data_size_padded):
 	# LC_CODE_SIGNATURE (macho_sign.w) appends after whatever we used.
 	macho_lc_end = macho_lc_pos
 
-	if (ordinals != 0):
-		free(ordinals)
+	if (ordinals != 0): free(ordinals)

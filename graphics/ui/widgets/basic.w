@@ -42,8 +42,7 @@ int ui_button(ui_context* ctx, char* label):
 	if (ctx.disabled):
 		fill = ctx.theme.disabled_widget
 		ink = ctx.theme.disabled_text
-	else if ((ctx.active == id) || (ctx.hot == id)):
-		fill = ctx.theme.accent_hot
+	else if ((ctx.active == id) || (ctx.hot == id)): fill = ctx.theme.accent_hot
 	ui_draw_rrect(ctx.rndr, r, r.h * 0.5, fill)
 	ui_draw_text_centered(ctx.rndr, r, label, scale, ink)
 	return clicked

@@ -39,26 +39,18 @@ void gpu_target_check():
 # Intrinsic index for the current token: 1 thread_idx, 2 block_idx,
 # 3 block_dim, 4 grid_dim; 0 when the token is not an intrinsic name.
 int gpu_builtin_kind():
-	if (peek(c"thread_idx")):
-		return 1
-	if (peek(c"block_idx")):
-		return 2
-	if (peek(c"block_dim")):
-		return 3
-	if (peek(c"grid_dim")):
-		return 4
+	if (peek(c"thread_idx")): return 1
+	if (peek(c"block_idx")): return 2
+	if (peek(c"block_dim")): return 3
+	if (peek(c"grid_dim")): return 4
 	return 0
 
 
 int gpu_builtin_ready():
-	if (target_isa != 3):
-		return 0
-	if (nextc != '('):
-		return 0
-	if (gpu_builtin_kind() == 0):
-		return 0
-	if (sym_lookup(token) >= 0):
-		return 0
+	if (target_isa != 3): return 0
+	if (nextc != '('): return 0
+	if (gpu_builtin_kind() == 0): return 0
+	if (sym_lookup(token) >= 0): return 0
 	return 1
 
 
@@ -69,7 +61,6 @@ int gpu_builtin_expr():
 	int kind = gpu_builtin_kind()
 	get_token()
 	expect(c"(")
-	if (peek(c")") == 0):
-		error(c"gpu builtins take no arguments")
+	if (peek(c")") == 0): error(c"gpu builtins take no arguments")
 	ptx_special_reg(kind)
 	return 3 /* constant: the value is already in the accumulator */

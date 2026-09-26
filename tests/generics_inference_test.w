@@ -121,8 +121,7 @@ void test_nested_inference():
 void test_inference_in_expressions():
 	assert_equal(13, 3 + max(4, 5) * 2)
 	int total = 0
-	for int i in range(3):
-		total = total + max(i, 1)
+	for int i in range(3): total = total + max(i, 1)
 	assert_equal(4, total)
 
 

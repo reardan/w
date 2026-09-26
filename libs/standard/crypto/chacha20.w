@@ -18,6 +18,8 @@ constants, and no branch or memory index ever depends on key, nonce, or
 keystream material.
 */
 import lib.memory
+import lib.bytes
+import lib.mem
 
 
 int chacha20_mask32():
@@ -34,17 +36,6 @@ int chacha20_shr(int x, int n):
 # Rotate a 32-bit word left by n (1 <= n <= 31).
 int chacha20_rotl(int x, int n):
 	return ((x << n) | chacha20_shr(x, 32 - n)) & chacha20_mask32()
-
-
-int chacha20_le32(char* p):
-	return ((p[0] & 255) | ((p[1] & 255) << 8) | ((p[2] & 255) << 16) | ((p[3] & 255) << 24)) & chacha20_mask32()
-
-
-void chacha20_put_le32(char* p, int v):
-	p[0] = v & 255
-	p[1] = (v >> 8) & 255
-	p[2] = (v >> 16) & 255
-	p[3] = (v >> 24) & 255
 
 
 # One quarter round on state words a, b, c, d (indices are compile-time
@@ -68,25 +59,19 @@ void chacha20_init_state(int* s, char* key, int counter, char* nonce):
 	s[1] = 0x3320646e
 	s[2] = 0x79622d32
 	s[3] = 0x6b206574
-	int i = 0
-	while (i < 8):
-		s[4 + i] = chacha20_le32(key + i * 4)
-		i = i + 1
+	for i in range(8): s[4 + i] = load_le32(key + i * 4)
 	s[12] = counter & chacha20_mask32()
-	s[13] = chacha20_le32(nonce)
-	s[14] = chacha20_le32(nonce + 4)
-	s[15] = chacha20_le32(nonce + 8)
+	s[13] = load_le32(nonce)
+	s[14] = load_le32(nonce + 4)
+	s[15] = load_le32(nonce + 8)
 
 
 # Run 20 rounds over a copy of state s (using w as scratch), add the
 # original state back in, and serialize the 64-byte keystream block.
 void chacha20_core(int* s, int* w, char* out):
 	int mask = chacha20_mask32()
+	mem_copy(w, s, 16)
 	int i = 0
-	while (i < 16):
-		w[i] = s[i]
-		i = i + 1
-	i = 0
 	while (i < 10):
 		chacha20_quarter(w, 0, 4, 8, 12)
 		chacha20_quarter(w, 1, 5, 9, 13)
@@ -99,7 +84,7 @@ void chacha20_core(int* s, int* w, char* out):
 		i = i + 1
 	i = 0
 	while (i < 16):
-		chacha20_put_le32(out + i * 4, (w[i] + s[i]) & mask)
+		store_le32(out + i * 4, (w[i] + s[i]) & mask)
 		i = i + 1
 
 
@@ -129,18 +114,14 @@ void chacha20_xor(char* key, int counter, char* nonce, char* data, int len, char
 		chacha20_core(s, w, ks)
 		s[12] = (s[12] + 1) & chacha20_mask32()
 		int n = len - off
-		if (n > 64):
-			n = 64
+		if (n > 64): n = 64
 		i = 0
 		while (i < n):
 			out[off + i] = (data[off + i] ^ ks[i]) & 255
 			i = i + 1
 		off = off + 64
 	# Keystream bytes are secret; scrub before returning the buffer.
-	i = 0
-	while (i < 64):
-		ks[i] = 0
-		i = i + 1
+	mem_fill(ks, 0, 64)
 	free(ks)
 	free(w)
 	free(s)

@@ -28,13 +28,13 @@ global file state and turns malformed input into a fatal compile
 error, while a counter has to keep going over any file. Malformed
 input (an unterminated literal or comment) is counted up to EOF.
 
-cloc_collect walks directories with getdents, so it is Linux-only like
-the rest of the stdlib's directory walkers (lib/shell_commands.w's du).
+cloc_collect walks directories with lib/dir.w.
 */
 import lib.lib
 import lib.file
 import lib.path
 import lib.stat
+import lib.dir
 
 
 struct cloc_counts:
@@ -52,8 +52,7 @@ int CLOC_CODE():
 	return 0
 
 
-int CLOC_TEMPLATE():
-	return 1
+const int CLOC_TEMPLATE = 1
 
 
 int CLOC_STACK_MAX():
@@ -105,25 +104,20 @@ int cloc_is_relational_char(int ch):
 int cloc_skip_quoted(char* text, int length, int i, int quote, int* newlines):
 	while (i < length):
 		int ch = text[i]
-		if (ch == quote):
-			return i + 1
+		if (ch == quote): return i + 1
 		if ((ch == 92) && (i + 1 < length)):
 			i = i + 1
 			ch = text[i]
-		if ((ch == 10) && (i + 1 < length)):
-			newlines[0] = newlines[0] + 1
+		if ((ch == 10) && (i + 1 < length)): newlines[0] = newlines[0] + 1
 		i = i + 1
 	return length
 
 
 # Classify the line that just ended and reset the per-line flags.
 void cloc_end_line(cloc_counts* out, int has_code, int has_comment):
-	if (has_code):
-		out.code = out.code + 1
-	else if (has_comment):
-		out.comment = out.comment + 1
-	else:
-		out.blank = out.blank + 1
+	if (has_code): out.code = out.code + 1
+	else if (has_comment): out.comment = out.comment + 1
+	else: out.blank = out.blank + 1
 
 
 # Count one file's text (length bytes) into out: files goes up by one
@@ -157,9 +151,8 @@ void cloc_scan_text(char* text, int length, cloc_counts* out):
 			if ((ch == '*') && (i + 1 < length) && (text[i + 1] == '/')):
 				in_block = 0
 				i = i + 2
-			else:
-				i = i + 1
-		else if (kinds[top] == CLOC_TEMPLATE()):
+			else: i = i + 1
+		else if (kinds[top] == CLOC_TEMPLATE):
 			# Inside an f-string's literal text: '{{' and '}}' are
 			# escaped braces, a lone '{' opens an embedded expression.
 			line_started = 1
@@ -168,29 +161,24 @@ void cloc_scan_text(char* text, int length, cloc_counts* out):
 				top = top - 1
 				i = i + 1
 			else if ((ch == '{') || (ch == '}')):
-				if ((i + 1 < length) && (text[i + 1] == ch)):
-					i = i + 2
+				if ((i + 1 < length) && (text[i + 1] == ch)): i = i + 2
 				else if ((ch == '{') && (top + 1 < CLOC_STACK_MAX())):
 					top = top + 1
 					kinds[top] = CLOC_CODE()
 					depths[top] = 0
 					i = i + 1
-				else:
-					i = i + 1
+				else: i = i + 1
 			else if ((ch == 92) && (i + 1 < length)):
-				if (text[i + 1] == 10):
-					cloc_end_line(out, 1, 0)
+				if (text[i + 1] == 10): cloc_end_line(out, 1, 0)
 				i = i + 2
-			else:
-				i = i + 1
+			else: i = i + 1
 		else if (cloc_is_space(ch)):
 			line_started = 1
 			i = i + 1
 		else if (ch == '#'):
 			line_started = 1
 			has_comment = 1
-			while ((i < length) && (text[i] != 10)):
-				i = i + 1
+			while ((i < length) && (text[i] != 10)): i = i + 1
 		else if ((ch == '/') && (i + 1 < length) && (text[i + 1] == '*')):
 			line_started = 1
 			has_comment = 1
@@ -202,8 +190,7 @@ void cloc_scan_text(char* text, int length, cloc_counts* out):
 			out.tokens = out.tokens + 1
 			if (cloc_is_word_char(ch)):
 				int start = i
-				while ((i < length) && cloc_is_word_char(text[i])):
-					i = i + 1
+				while ((i < length) && cloc_is_word_char(text[i])): i = i + 1
 				int run = i - start
 				int prefix = text[start]
 				if ((run == 1) && (i < length) && (text[i] == '"') &&
@@ -216,7 +203,7 @@ void cloc_scan_text(char* text, int length, cloc_counts* out):
 				else if ((run == 1) && (i < length) && (text[i] == '"') && (prefix == 'f')):
 					if (top + 1 < CLOC_STACK_MAX()):
 						top = top + 1
-						kinds[top] = CLOC_TEMPLATE()
+						kinds[top] = CLOC_TEMPLATE
 						depths[top] = 0
 					i = i + 1
 				else if (('0' <= prefix) && (prefix <= '9')):
@@ -224,15 +211,13 @@ void cloc_scan_text(char* text, int length, cloc_counts* out):
 					# exponent; hex tokens never take an exponent sign.
 					if ((i < length) && (text[i] == '.')):
 						i = i + 1
-						while ((i < length) && cloc_is_word_char(text[i])):
-							i = i + 1
+						while ((i < length) && cloc_is_word_char(text[i])): i = i + 1
 					int last = text[i - 1]
 					int is_hex = (run > 1) && ((text[start + 1] == 'x') || (text[start + 1] == 'X'))
 					if ((is_hex == 0) && ((last == 'e') || (last == 'E')) && (i < length) &&
 							((text[i] == '+') || (text[i] == '-'))):
 						i = i + 1
-						while ((i < length) && ('0' <= text[i]) && (text[i] <= '9')):
-							i = i + 1
+						while ((i < length) && ('0' <= text[i]) && (text[i] <= '9')): i = i + 1
 			else if ((ch == '"') || (ch == 39)):
 				newlines = 0
 				i = cloc_skip_quoted(text, length, i + 1, ch, &newlines)
@@ -240,17 +225,13 @@ void cloc_scan_text(char* text, int length, cloc_counts* out):
 					cloc_end_line(out, 1, 0)
 					newlines = newlines - 1
 			else if (cloc_is_relational_char(ch)):
-				while ((i < length) && cloc_is_relational_char(text[i])):
-					i = i + 1
+				while ((i < length) && cloc_is_relational_char(text[i])): i = i + 1
 			else if ((ch == '+') || (ch == '-') || (ch == '*') || (ch == '%') ||
 					(ch == '^') || (ch == '/')):
 				i = i + 1
-				if ((i < length) && (text[i] == '=')):
-					i = i + 1
-				else if ((i < length) && ((ch == '+') || (ch == '-')) && (text[i] == ch)):
-					i = i + 1
-			else if ((ch == ':') && (i + 1 < length) && (text[i + 1] == '=')):
-				i = i + 2
+				if ((i < length) && (text[i] == '=')): i = i + 1
+				else if ((i < length) && ((ch == '+') || (ch == '-')) && (text[i] == ch)): i = i + 1
+			else if ((ch == ':') && (i + 1 < length) && (text[i + 1] == '=')): i = i + 2
 			else if ((ch == '{') && (top > 0)):
 				depths[top] = depths[top] + 1
 				i = i + 1
@@ -260,13 +241,10 @@ void cloc_scan_text(char* text, int length, cloc_counts* out):
 					# tokenizer folds this '}' into the next literal
 					# chunk's token, which this token already counts.
 					top = top - 1
-				else:
-					depths[top] = depths[top] - 1
+				else: depths[top] = depths[top] - 1
 				i = i + 1
-			else:
-				i = i + 1
-	if (line_started):
-		cloc_end_line(out, has_code, has_comment)
+			else: i = i + 1
+	if (line_started): cloc_end_line(out, has_code, has_comment)
 	free(kinds)
 	free(depths)
 
@@ -275,31 +253,10 @@ void cloc_scan_text(char* text, int length, cloc_counts* out):
 # read (out is left untouched).
 int cloc_scan_file(char* path, cloc_counts* out):
 	char* text = file_read_text(path)
-	if (text == 0):
-		return -1
+	if (text == 0): return -1
 	cloc_scan_text(text, strlen(text), out)
 	free(text)
 	return 0
-
-
-# d_reclen is a little-endian 16-bit field two words into each getdents
-# record (the same layout lib/shell_commands.w reads).
-int cloc_load_uint16(char* p):
-	return (p[0] & 255) + ((p[1] & 255) << 8)
-
-
-# Insertion sort, so the walk order (and so the output) does not depend
-# on getdents' filesystem-dependent order.
-void cloc_sort_strings(list[char*] items):
-	int i = 1
-	while (i < items.length):
-		char* value = items[i]
-		int j = i - 1
-		while ((j >= 0) && (strcmp(items[j], value) > 0)):
-			items[j + 1] = items[j]
-			j = j - 1
-		items[j + 1] = value
-		i = i + 1
 
 
 # Directory entries cloc_collect skips: hidden entries ('.git', ...)
@@ -312,25 +269,13 @@ int cloc_skip_entry(char* name):
 # list when it cannot be opened.
 list[char*] cloc_dir_entries(char* path):
 	list[char*] names = new list[char*]
-	int fd = open(path, 65536, 0) /* 65536 = O_DIRECTORY */
-	if (fd < 0):
+	list[char*] all = dir_names(path)
+	if (all == 0):
 		return names
-	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* entry = buffer + off
-			int reclen = cloc_load_uint16(entry + 2 * __word_size__)
-			char* entry_name = entry + 2 * __word_size__ + 2
-			off = off + reclen
-			if (cloc_skip_entry(entry_name) == 0):
-				names.push(strclone(entry_name))
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
-	cloc_sort_strings(names)
+	for char* name in all:
+		if (cloc_skip_entry(name)): free(name)
+		else: names.push(name)
+	list_free[char*](all)
 	return names
 
 
@@ -340,8 +285,7 @@ list[char*] cloc_dir_entries(char* path):
 # directories. Returns -1 when path does not exist, else 0.
 int cloc_collect(char* path, list[char*] out):
 	file_stat st
-	if (file_lstat_path(path, &st) != 0):
-		return -1
+	if (file_lstat_path(path, &st) != 0): return -1
 	if (file_is_dir(&st) == 0):
 		out.push(strclone(path))
 		return 0
@@ -351,10 +295,8 @@ int cloc_collect(char* path, list[char*] out):
 		char* child = path_join(path, names[i])
 		file_stat child_st
 		if (file_lstat_path(child, &child_st) == 0):
-			if (file_is_dir(&child_st)):
-				cloc_collect(child, out)
-			else if (file_is_reg(&child_st) && ends_with(child, c".w")):
-				out.push(strclone(child))
+			if (file_is_dir(&child_st)): cloc_collect(child, out)
+			else if (file_is_reg(&child_st) && ends_with(child, c".w")): out.push(strclone(child))
 		free(child)
 		free(names[i])
 		i = i + 1
@@ -375,18 +317,12 @@ struct cloc_row:
 # path_join).
 char* cloc_group_path(char* root, char* file):
 	int start = strlen(root)
-	if ((start > 0) && (root[start - 1] != '/')):
-		start = start + 1
+	if ((start > 0) && (root[start - 1] != '/')): start = start + 1
 	int end = start
-	while ((file[end] != 0) && (file[end] != '/')):
-		end = end + 1
-	if (file[end] == 0):
-		return strclone(root)
+	while ((file[end] != 0) && (file[end] != '/')): end = end + 1
+	if (file[end] == 0): return strclone(root)
 	char* group = malloc(end + 1)
-	int i = 0
-	while (i < end):
-		group[i] = file[i]
-		i = i + 1
+	for i in range(end): group[i] = file[i]
 	group[end] = 0
 	return group
 
@@ -404,8 +340,7 @@ cloc_row* cloc_new_row(char* path, int is_file):
 # ".") walks "." and cloc_collect joins every result as "./x"; showing
 # "x" reads the way the tree is usually named.
 char* cloc_display_path(char* path):
-	if ((path[0] == '.') && (path[1] == '/') && (path[2] != 0)):
-		return strclone(path + 2)
+	if ((path[0] == '.') && (path[1] == '/') && (path[2] != 0)): return strclone(path + 2)
 	return strclone(path)
 
 
@@ -413,8 +348,7 @@ char* cloc_display_path(char* path):
 cloc_row* cloc_find_row(list[cloc_row*] rows, int first, char* key):
 	int i = first
 	while (i < rows.length):
-		if (strcmp(rows[i].path, key) == 0):
-			return rows[i]
+		if (strcmp(rows[i].path, key) == 0): return rows[i]
 		i = i + 1
 	return 0
 
@@ -427,8 +361,7 @@ cloc_row* cloc_find_row(list[cloc_row*] rows, int first, char* key):
 # path does not exist.
 int cloc_count_path(char* path, int by_file, list[cloc_row*] rows, list[char*] unreadable):
 	list[char*] files = new list[char*]
-	if (cloc_collect(path, files) != 0):
-		return -1
+	if (cloc_collect(path, files) != 0): return -1
 	int path_is_file = (files.length == 1) && (strcmp(files[0], path) == 0)
 	int first = rows.length
 	int i = 0
@@ -436,8 +369,7 @@ int cloc_count_path(char* path, int by_file, list[cloc_row*] rows, list[char*] u
 		char* file = files[i]
 		char* raw = 0
 		int is_file = 1
-		if (by_file || path_is_file):
-			raw = strclone(file)
+		if (by_file || path_is_file): raw = strclone(file)
 		else:
 			raw = cloc_group_path(path, file)
 			is_file = 0
@@ -447,14 +379,12 @@ int cloc_count_path(char* path, int by_file, list[cloc_row*] rows, list[char*] u
 		if (row == 0):
 			row = cloc_new_row(key, is_file)
 			rows.push(row)
-		else:
-			free(key)
+		else: free(key)
 		cloc_counts counts
 		cloc_counts_clear(&counts)
 		if (cloc_scan_file(file, &counts) == 0):
 			cloc_counts_add(row.counts, &counts)
 			free(file)
-		else:
-			unreadable.push(file)
+		else: unreadable.push(file)
 		i = i + 1
 	return 0

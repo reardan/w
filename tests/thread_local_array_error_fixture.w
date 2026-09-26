@@ -6,3 +6,4 @@ thread_local int[4] cells
 
 int main():
 	return 0
+# wbuild: fixture_group=thread_local_error_test

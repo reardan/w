@@ -6,11 +6,9 @@ submit button that refuses to fire while any field reports an error.
 
 	ui_form_begin(ctx, &form, area, 96.0)
 	ui_form_row(ctx, &form, c"Name")
-	if (ui_textbox(ctx, ui_form_field_width(ctx, &form), &name)):
-		ui_form_request_submit(&form)
+	if (ui_textbox(ctx, ui_form_field_width(ctx, &form), &name)): ui_form_request_submit(&form)
 	ui_form_error(ctx, &form, ui_form_required(&name, c"Name is required"))
-	if (ui_form_submit(ctx, &form, c"Save")):
-		save()
+	if (ui_form_submit(ctx, &form, c"Save")): save()
 	ui_form_end(ctx, &form)
 
 The convention is that a field's validity is the caller's to compute
@@ -97,11 +95,9 @@ void ui_form_row(ui_context* ctx, ui_form_state* st, char* label):
 # invalid field gets an error-colored baseline over its own and the
 # message on a row of its own beneath it, in the field column.
 int ui_form_error(ui_context* ctx, ui_form_state* st, char* msg):
-	if (msg == 0):
-		return 1
+	if (msg == 0): return 1
 	st.invalid = st.invalid + 1
-	if (st.show_errors == 0):
-		return 0
+	if (st.show_errors == 0): return 0
 	ui_layout* lo = ui_layout_top(ctx)
 	float32 gap = cast(float32, ctx.theme.gap)
 	# The field was the last widget placed: it ends at last_right, and
@@ -138,12 +134,9 @@ int ui_form_submit(ui_context* ctx, ui_form_state* st, char* label):
 	ui_layout_next(ctx, st.label_w, cast(float32, ctx.theme.widget_height))
 	ui_same_line(ctx)
 	int attempt = ui_button(ctx, label)
-	if (st.requested && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)):
-		attempt = 1
+	if (st.requested && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)): attempt = 1
 	st.requested = 0
-	if (attempt == 0):
-		return 0
+	if (attempt == 0): return 0
 	st.show_errors = 1
-	if (st.invalid > 0):
-		return 0
+	if (st.invalid > 0): return 0
 	return 1

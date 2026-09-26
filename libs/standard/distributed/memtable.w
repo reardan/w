@@ -28,6 +28,7 @@ threshold trigger, not an allocator audit.
 import lib.lib
 import lib.memory
 import lib.assert
+import lib.mem
 
 
 struct memtable:
@@ -39,12 +40,7 @@ struct memtable:
 
 
 memtable* memtable_new():
-	memtable* m = new memtable()
-	m.keys = new list[char*]
-	m.values = new list[char*]
-	m.value_lens = new list[int]
-	m.tombstones = new list[int]
-	m.bytes = 0
+	memtable* m = new memtable(new list[char*], new list[char*], new list[int], new list[int], 0)
 	return m
 
 
@@ -52,8 +48,7 @@ void memtable_clear(memtable* m):
 	int i = 0
 	while (i < m.keys.length):
 		free(m.keys[i])
-		if (cast(int, m.values[i]) != 0):
-			free(m.values[i])
+		if (cast(int, m.values[i]) != 0): free(m.values[i])
 		i = i + 1
 	m.keys = new list[char*]
 	m.values = new list[char*]
@@ -66,8 +61,7 @@ void memtable_free(memtable* m):
 	int i = 0
 	while (i < m.keys.length):
 		free(m.keys[i])
-		if (cast(int, m.values[i]) != 0):
-			free(m.values[i])
+		if (cast(int, m.values[i]) != 0): free(m.values[i])
 		i = i + 1
 	free(m)
 
@@ -90,21 +84,9 @@ int memtable_find(memtable* m, char* key):
 		int c = strcmp(m.keys[mid], key)
 		if (c == 0):
 			return mid
-		if (c < 0):
-			lo = mid + 1
-		else:
-			hi = mid
+		if (c < 0): lo = mid + 1
+		else: hi = mid
 	return 0 - lo - 1
-
-
-char* memtable_copy_bytes(char* src, int len):
-	char* dst = malloc(len + 1)
-	int i = 0
-	while (i < len):
-		dst[i] = src[i]
-		i = i + 1
-	dst[len] = 0
-	return dst
 
 
 void memtable_store(memtable* m, char* key, char* value, int value_len, int tombstone):
@@ -113,24 +95,23 @@ void memtable_store(memtable* m, char* key, char* value, int value_len, int tomb
 	if (idx >= 0):
 		# replace in place
 		m.bytes = m.bytes - m.value_lens[idx]
-		if (cast(int, m.values[idx]) != 0):
-			free(m.values[idx])
+		if (cast(int, m.values[idx]) != 0): free(m.values[idx])
 		if (tombstone):
 			m.values[idx] = cast(char*, 0)
 			m.value_lens[idx] = 0
 		else:
-			m.values[idx] = memtable_copy_bytes(value, value_len)
+			m.values[idx] = mem_dup(value, value_len)
 			m.value_lens[idx] = value_len
 			m.bytes = m.bytes + value_len
 		m.tombstones[idx] = tombstone
 		return
 	int pos = 0 - idx - 1
-	m.keys.insert(pos, memtable_copy_bytes(key, strlen(key)))
+	m.keys.insert(pos, mem_dup(key, strlen(key)))
 	if (tombstone):
 		m.values.insert(pos, cast(char*, 0))
 		m.value_lens.insert(pos, 0)
 	else:
-		m.values.insert(pos, memtable_copy_bytes(value, value_len))
+		m.values.insert(pos, mem_dup(value, value_len))
 		m.value_lens.insert(pos, value_len)
 	m.tombstones.insert(pos, tombstone)
 	m.bytes = m.bytes + strlen(key) + value_len
@@ -151,10 +132,8 @@ void memtable_delete(memtable* m, char* key):
 # return 1; the value pointer is borrowed.
 int memtable_get(memtable* m, char* key, char** value_out, int* len_out):
 	int idx = memtable_find(m, key)
-	if (idx < 0):
-		return 0
-	if (m.tombstones[idx]):
-		return 2
+	if (idx < 0): return 0
+	if (m.tombstones[idx]): return 2
 	value_out[0] = m.values[idx]
 	len_out[0] = m.value_lens[idx]
 	return 1

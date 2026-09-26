@@ -53,77 +53,14 @@ directive-gap closures:
 # wbuild: tool=tools/wbuildgen.w
 import lib.testing
 import lib.process
+import tests.tool_e2e
 import lib.path
 import lib.file
 import structures.string
 
 
-char* wdet_root_cache
-char* wdet_root():
-	if (wdet_root_cache == 0):
-		char* buf = malloc(4096)
-		int n = getcwd(buf, 4096)
-		assert1(n > 0)
-		wdet_root_cache = buf
-	return wdet_root_cache
-
-
-char* wdet_bin_cache
-char* wdet_bin():
-	if (wdet_bin_cache == 0):
-		wdet_bin_cache = path_join(wdet_root(), c"bin/wbuildgen")
-	return wdet_bin_cache
-
-
-char* wdet_dir_cache
 char* wdet_dir():
-	if (wdet_dir_cache == 0):
-		string_builder* p = string_new()
-		string_append(p, c"bin/wbuildgen_directive_errors_test_")
-		string_append_int(p, getpid())
-		wdet_dir_cache = p.data
-		free(p)
-	return wdet_dir_cache
-
-
-int wdet_index_of(char* haystack, char* needle):
-	int hl = strlen(haystack)
-	int nl = strlen(needle)
-	if (nl == 0):
-		return 0
-	int i = 0
-	while ((i + nl) <= hl):
-		int j = 0
-		while ((j < nl) && (haystack[i + j] == needle[j])):
-			j = j + 1
-		if (j == nl):
-			return i
-		i = i + 1
-	return -1
-
-
-void wdet_assert_contains(char* haystack, char* needle):
-	int found = wdet_index_of(haystack, needle) >= 0
-	if (found == 0):
-		wstream* err = stderr_writer()
-		stream_write_cstr(err, c"expected to find '")
-		stream_write_cstr(err, needle)
-		stream_write_cstr(err, c"' in: ")
-		stream_write_line(err, haystack)
-		stream_flush(err)
-	assert1(found)
-
-
-void wdet_assert_lacks(char* haystack, char* needle):
-	int found = wdet_index_of(haystack, needle) >= 0
-	if (found):
-		wstream* err = stderr_writer()
-		stream_write_cstr(err, c"expected NOT to find '")
-		stream_write_cstr(err, needle)
-		stream_write_cstr(err, c"' in: ")
-		stream_write_line(err, haystack)
-		stream_flush(err)
-	assert1(found == 0)
+	return tool_scratch(c"wbuildgen_directive_errors_test_")
 
 
 # A fresh scratch tree bin/..._<pid>/<case>/ with a tests/ subdirectory
@@ -159,11 +96,19 @@ process_result* wdet_run(char* dir):
 	strv_set(argv, 2, c"base.json")
 	strv_set(argv, 3, c"--out")
 	strv_set(argv, 4, c"out.json")
-	process_result* r = process_run(wdet_bin(), argv, opts, 0, 20000)
+	process_result* r = process_run(tool_bin(c"wbuildgen"), argv, opts, 0, 20000)
 	assert1(r != 0)
 	free(opts)
 	free(cast(void*, argv))
 	return r
+
+
+# wbuildgen in dir must fail, naming want on stderr.
+void wdet_expect_error(char* dir, char* want):
+	process_result* r = wdet_run(dir)
+	assert1(r.status != 0)
+	assert_contains(r.stderr_text, want)
+	process_result_free(r)
 
 
 void test_arch_only_single_target():
@@ -178,16 +123,16 @@ void test_arch_only_single_target():
 	assert1(out != 0)
 	# The one generated target compiles with the x64 selector under the
 	# basename-derived name...
-	wdet_assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"x64\", \"tests/solo_test.w\", \"-o\", \"bin/solo_test\"]")
+	assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"x64\", \"tests/solo_test.w\", \"-o\", \"bin/solo_test\"]")
 	# ...no default 32-bit twin exists...
-	wdet_assert_lacks(out, c"[\"bin/wv2\", \"tests/solo_test.w\"")
+	assert_lacks(out, c"[\"bin/wv2\", \"tests/solo_test.w\"")
 	# ...it joins the x64 umbrella, not the 32-bit one...
-	wdet_assert_contains(out, c"\"name\": \"tests_x64\",\n\t\t\t\"deps\": [\n\t\t\t\t\"solo_test\"\n\t\t\t]")
+	assert_contains(out, c"\"name\": \"tests_x64\",\n\t\t\t\"deps\": [\n\t\t\t\t\"solo_test\"\n\t\t\t]")
 	# ...the .w deps= value lands in wtest's "data" and the cache
 	# "inputs" (alongside the source), and the binary in "outputs".
-	wdet_assert_contains(out, c"\"data\": [\"tests/rt_data.w\"]")
-	wdet_assert_contains(out, c"\"inputs\": [\"tests/solo_test.w\", \"tests/rt_data.w\"]")
-	wdet_assert_contains(out, c"\"outputs\": [\"bin/solo_test\"]")
+	assert_contains(out, c"\"data\": [\"tests/rt_data.w\"]")
+	assert_contains(out, c"\"inputs\": [\"tests/solo_test.w\", \"tests/rt_data.w\"]")
+	assert_contains(out, c"\"outputs\": [\"bin/solo_test\"]")
 	free(out)
 	free(out_path)
 
@@ -195,19 +140,13 @@ void test_arch_only_single_target():
 void test_arch_only_rejects_twin_flags():
 	char* dir = wdet_case_dir(c"arch_only_combo")
 	wdet_write(dir, c"tests/combo_test.w", c"# wbuild: arch_only=x64 x64\nint main():\n\treturn 0\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"'arch_only=' replaces the default target and cannot combine with 'x64'/'arch=' twin directives")
-	process_result_free(r)
+	wdet_expect_error(dir, c"'arch_only=' replaces the default target and cannot combine with 'x64'/'arch=' twin directives")
 
 
 void test_arch_only_rejects_bad_value():
 	char* dir = wdet_case_dir(c"arch_only_value")
 	wdet_write(dir, c"tests/value_test.w", c"# wbuild: arch_only=riscv\nint main():\n\treturn 0\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"unsupported '# wbuild:' arch_only")
-	process_result_free(r)
+	wdet_expect_error(dir, c"unsupported '# wbuild:' arch_only")
 
 
 void test_wasm_arch_shape():
@@ -221,10 +160,10 @@ void test_wasm_arch_shape():
 	assert1(out != 0)
 	# Compiled with the wasm selector, run through the wasm runner
 	# wrapper, no default 32-bit twin.
-	wdet_assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"wasm\", \"tests/wasmy_test.w\", \"-o\", \"bin/wasmy_test\"]")
-	wdet_assert_contains(out, c"\"cmd\": [\"bin/wrun\", \"wasm\", \"bin/wasmy_test\"]")
-	wdet_assert_contains(out, c"\"deps\": [\"wv2\", \"wrun\"]")
-	wdet_assert_lacks(out, c"[\"bin/wv2\", \"tests/wasmy_test.w\"")
+	assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"wasm\", \"tests/wasmy_test.w\", \"-o\", \"bin/wasmy_test\"]")
+	assert_contains(out, c"\"cmd\": [\"bin/wrun\", \"wasm\", \"bin/wasmy_test\"]")
+	assert_contains(out, c"\"deps\": [\"wv2\", \"wrun\"]")
+	assert_lacks(out, c"[\"bin/wv2\", \"tests/wasmy_test.w\"")
 	free(out)
 	free(out_path)
 
@@ -239,8 +178,8 @@ void test_flags_in_compile_command():
 	char* out = file_read_text(out_path)
 	assert1(out != 0)
 	# flags= lands between the arch selector and the source path.
-	wdet_assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"arm64\", \"--pac=full\", \"tests/flagy_test.w\", \"-o\", \"bin/flagy_test\"]")
-	wdet_assert_contains(out, c"\"cmd\": [\"bin/wrun\", \"arm64\", \"bin/flagy_test\"]")
+	assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"arm64\", \"--pac=full\", \"tests/flagy_test.w\", \"-o\", \"bin/flagy_test\"]")
+	assert_contains(out, c"\"cmd\": [\"bin/wrun\", \"arm64\", \"bin/flagy_test\"]")
 	free(out)
 	free(out_path)
 
@@ -259,19 +198,19 @@ void test_group_aggregate():
 	# binaries splice the arch in before _test), a member's own
 	# run-field directive decorates only its own run step, and the
 	# shared epilogue closes the target.
-	wdet_assert_contains(out, c"\"name\": \"combo_test_x64\"")
-	wdet_assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"x64\", \"tests/alpha_test.w\", \"-o\", \"bin/alpha_x64_test\"]")
-	wdet_assert_contains(out, c"{\"cmd\": [\"bin/alpha_x64_test\"], \"expect_stdout\": \"alpha OK\"}")
-	wdet_assert_contains(out, c"{\"cmd\": [\"bin/beta_x64_test\"]}")
-	wdet_assert_contains(out, c"\"cmd\": [\"echo\", \"combo_test_x64 OK\"]")
-	wdet_assert_contains(out, c"\"inputs\": [\"tests/alpha_test.w\", \"tests/beta_test.w\"]")
-	wdet_assert_contains(out, c"\"outputs\": [\"bin/alpha_x64_test\", \"bin/beta_x64_test\"]")
+	assert_contains(out, c"\"name\": \"combo_test_x64\"")
+	assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"x64\", \"tests/alpha_test.w\", \"-o\", \"bin/alpha_x64_test\"]")
+	assert_contains(out, c"{\"cmd\": [\"bin/alpha_x64_test\"], \"expect_stdout\": \"alpha OK\"}")
+	assert_contains(out, c"{\"cmd\": [\"bin/beta_x64_test\"]}")
+	assert_contains(out, c"\"cmd\": [\"echo\", \"combo_test_x64 OK\"]")
+	assert_contains(out, c"\"inputs\": [\"tests/alpha_test.w\", \"tests/beta_test.w\"]")
+	assert_contains(out, c"\"outputs\": [\"bin/alpha_x64_test\", \"bin/beta_x64_test\"]")
 	# alpha keeps its standalone default target; group_only beta does
 	# not get one.
-	wdet_assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"tests/alpha_test.w\", \"-o\", \"bin/alpha_test\"]")
-	wdet_assert_lacks(out, c"\"bin/wv2\", \"tests/beta_test.w\"")
+	assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"tests/alpha_test.w\", \"-o\", \"bin/alpha_test\"]")
+	assert_lacks(out, c"\"bin/wv2\", \"tests/beta_test.w\"")
 	# The x64 aggregate joins the x64 umbrella.
-	wdet_assert_contains(out, c"\"name\": \"tests_x64\",\n\t\t\t\"deps\": [\n\t\t\t\t\"combo_test_x64\"\n\t\t\t]")
+	assert_contains(out, c"\"name\": \"tests_x64\",\n\t\t\t\"deps\": [\n\t\t\t\t\"combo_test_x64\"\n\t\t\t]")
 	free(out)
 	free(out_path)
 
@@ -279,57 +218,39 @@ void test_group_aggregate():
 void test_group_only_needs_group():
 	char* dir = wdet_case_dir(c"group_only_alone")
 	wdet_write(dir, c"tests/lonely_test.w", c"# wbuild: group_only\nint main():\n\treturn 0\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"'group_only' needs at least one 'group=' membership: tests/lonely_test.w")
-	process_result_free(r)
+	wdet_expect_error(dir, c"'group_only' needs at least one 'group=' membership: tests/lonely_test.w")
 
 
 void test_group_only_rejects_standalone_directives():
 	char* dir = wdet_case_dir(c"group_only_combo")
 	wdet_write(dir, c"tests/mixed_test.w", c"# wbuild: group_only group=combo_test_x64@x64 x64\nint main():\n\treturn 0\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"'group_only' suppresses every standalone target")
-	process_result_free(r)
+	wdet_expect_error(dir, c"'group_only' suppresses every standalone target")
 
 
 void test_group_rejects_missing_arch():
 	char* dir = wdet_case_dir(c"group_value")
 	wdet_write(dir, c"tests/tagless_test.w", c"# wbuild: group=combo_test\nint main():\n\treturn 0\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"'group=' needs '<target>@<arch>'")
-	process_result_free(r)
+	wdet_expect_error(dir, c"'group=' needs '<target>@<arch>'")
 
 
 void test_group_rejects_arch_mismatch():
 	char* dir = wdet_case_dir(c"group_arch_mismatch")
 	wdet_write(dir, c"tests/first_test.w", c"# wbuild: group=combo_smoke_test@arm64\nint main():\n\treturn 0\n")
 	wdet_write(dir, c"tests/second_test.w", c"# wbuild: group=combo_smoke_test@wasm\nint main():\n\treturn 0\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"'group=' members disagree on the group's arch: tests/second_test.w")
-	process_result_free(r)
+	wdet_expect_error(dir, c"'group=' members disagree on the group's arch: tests/second_test.w")
 
 
 void test_sidecar_and_inline_is_an_error():
 	char* dir = wdet_case_dir(c"sidecar_inline")
 	wdet_write(dir, c"tests/dup_test.w", c"# wbuild: x64\nint main():\n\treturn 0\n")
 	wdet_write(dir, c"tests/dup_test.w.wbuild", c"# wbuild: x64\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"'# wbuild:' lines in both the source and its '.wbuild' sidecar (keep exactly one): tests/dup_test.w")
-	process_result_free(r)
+	wdet_expect_error(dir, c"'# wbuild:' lines in both the source and its '.wbuild' sidecar (keep exactly one): tests/dup_test.w")
 
 
 void test_fixture_stray_directives_are_an_error():
 	char* dir = wdet_case_dir(c"stray_fixture")
 	wdet_write(dir, c"tests/stray_fixture.w", c"# wbuild: x64\nint main():\n\treturn 0\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"'# wbuild:' directives on a fixture need 'fixture_group=' (a fixture is not a test target): tests/stray_fixture.w")
-	process_result_free(r)
+	wdet_expect_error(dir, c"'# wbuild:' directives on a fixture need 'fixture_group=' (a fixture is not a test target): tests/stray_fixture.w")
 
 
 # A base manifest with one staged tool target (compiles to a .stage
@@ -362,12 +283,12 @@ void test_tool_targets_generate():
 	# "deps" is derived from the step command via the declared output
 	# (bin/mytool is produced as bin/mytool.stage + mv), inserted right
 	# after "name"; the step passes through verbatim.
-	wdet_assert_contains(out, c"\"name\": \"mytool_check\",\n\t\t\t\"deps\": [\"mytool\"],\n\t\t\t\"steps\"")
-	wdet_assert_contains(out, c"{\"cmd\": [\"bin/mytool\", \"--check\"], \"expect_stdout\": \"ok\"}")
+	assert_contains(out, c"\"name\": \"mytool_check\",\n\t\t\t\"deps\": [\"mytool\"],\n\t\t\t\"steps\"")
+	assert_contains(out, c"{\"cmd\": [\"bin/mytool\", \"--check\"], \"expect_stdout\": \"ok\"}")
 	# gate's own first step produces bin/gate_bin, so running it derives
 	# nothing: no "deps" key at all, and "inputs" passes through.
-	wdet_assert_contains(out, c"\"name\": \"gate\",\n\t\t\t\"inputs\": [\"w\"]")
-	wdet_assert_contains(out, c"{\"cmd\": [\"bin/gate_bin\"]}")
+	assert_contains(out, c"\"name\": \"gate\",\n\t\t\t\"inputs\": [\"w\"]")
+	assert_contains(out, c"{\"cmd\": [\"bin/gate_bin\"]}")
 	free(out)
 	free(out_path)
 
@@ -377,10 +298,7 @@ void test_tool_targets_reject_declared_deps():
 	char* base = wdet_tool_base(c"\t\t\t{\"name\": \"declared\", \"deps\": [\"mytool\"], \"steps\": [{\"cmd\": [\"bin/mytool\"]}]}")
 	wdet_write(dir, c"base.json", base)
 	free(base)
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"\"tool_targets\" entries must not declare \"deps\" (derived from the step commands): declared")
-	process_result_free(r)
+	wdet_expect_error(dir, c"\"tool_targets\" entries must not declare \"deps\" (derived from the step commands): declared")
 
 
 void test_tool_targets_reject_unknown_key():
@@ -388,10 +306,7 @@ void test_tool_targets_reject_unknown_key():
 	char* base = wdet_tool_base(c"\t\t\t{\"name\": \"keyed\", \"extra\": 1, \"steps\": [{\"cmd\": [\"bin/mytool\"]}]}")
 	wdet_write(dir, c"base.json", base)
 	free(base)
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"unknown \"tool_targets\" entry key 'extra' in keyed")
-	process_result_free(r)
+	wdet_expect_error(dir, c"unknown \"tool_targets\" entry key 'extra' in keyed")
 
 
 void test_tool_targets_reject_unresolved_command():
@@ -399,10 +314,7 @@ void test_tool_targets_reject_unresolved_command():
 	char* base = wdet_tool_base(c"\t\t\t{\"name\": \"typo_check\", \"steps\": [{\"cmd\": [\"bin/nosuch\", \"--check\"]}]}")
 	wdet_write(dir, c"base.json", base)
 	free(base)
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"\"tool_targets\" entry 'typo_check': step command is not the output of any base target (or of an earlier step): bin/nosuch")
-	process_result_free(r)
+	wdet_expect_error(dir, c"\"tool_targets\" entry 'typo_check': step command is not the output of any base target (or of an earlier step): bin/nosuch")
 
 
 void test_tool_targets_reject_hand_written_duplicate():
@@ -410,10 +322,7 @@ void test_tool_targets_reject_hand_written_duplicate():
 	char* base = wdet_tool_base(c"\t\t\t{\"name\": \"mytool\", \"steps\": [{\"cmd\": [\"bin/mytool\"]}]}")
 	wdet_write(dir, c"base.json", base)
 	free(base)
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"\"tool_targets\" entry is still hand-written in build.base.json's \"targets\" (delete the hand-written entry): mytool")
-	process_result_free(r)
+	wdet_expect_error(dir, c"\"tool_targets\" entry is still hand-written in build.base.json's \"targets\" (delete the hand-written entry): mytool")
 
 
 void test_step_directive_shape():
@@ -427,12 +336,12 @@ void test_step_directive_shape():
 	assert1(out != 0)
 	# The extra steps follow the run step, each carrying only the fields
 	# after its own step= token; repeated expectations use the array form.
-	wdet_assert_contains(out, c"{\"cmd\": [\"bin/steppy_test\"]},\n\t\t\t\t{\"cmd\": [\"bin/wv2\", \"tests/bad_fixture.w\", \"-o\", \"bin/bad_fixture\"], \"expect_fail\": true, \"expect_stderr\": [\"boom\", \"bang\"]},")
-	wdet_assert_contains(out, c"{\"cmd\": [\"cat\"], \"stdin\": \"a\\nb\", \"stdout_file\": \"bin/gen.w\", \"timeout_ms\": 500, \"reject_stdout\": \"nope\"}")
+	assert_contains(out, c"{\"cmd\": [\"bin/steppy_test\"]},\n\t\t\t\t{\"cmd\": [\"bin/wv2\", \"tests/bad_fixture.w\", \"-o\", \"bin/bad_fixture\"], \"expect_fail\": true, \"expect_stderr\": [\"boom\", \"bang\"]},")
+	assert_contains(out, c"{\"cmd\": [\"cat\"], \"stdin\": \"a\\nb\", \"stdout_file\": \"bin/gen.w\", \"timeout_ms\": 500, \"reject_stdout\": \"nope\"}")
 	# A step= target reruns every time (no cache inputs/outputs), but
 	# its x64 twin, which the steps do not touch, keeps both.
-	wdet_assert_lacks(out, c"\"inputs\": [\"tests/steppy_test.w\"],\n\t\t\t\"outputs\": [\"bin/steppy_test\"]")
-	wdet_assert_contains(out, c"\"outputs\": [\"bin/steppy_64_test\"]")
+	assert_lacks(out, c"\"inputs\": [\"tests/steppy_test.w\"],\n\t\t\t\"outputs\": [\"bin/steppy_test\"]")
+	assert_contains(out, c"\"outputs\": [\"bin/steppy_64_test\"]")
 	free(out)
 	free(out_path)
 
@@ -440,28 +349,19 @@ void test_step_directive_shape():
 void test_step_rejects_unknown_field():
 	char* dir = wdet_case_dir(c"step_field")
 	wdet_write(dir, c"tests/field_test.w", c"# wbuild: step=\"cat\" x64\nint main():\n\treturn 0\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"not a 'step=' field")
-	process_result_free(r)
+	wdet_expect_error(dir, c"not a 'step=' field")
 
 
 void test_step_rejects_two_per_line():
 	char* dir = wdet_case_dir(c"step_twice")
 	wdet_write(dir, c"tests/twice_test.w", c"# wbuild: step=\"cat\" step=\"cat\"\nint main():\n\treturn 0\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"one 'step=' per '# wbuild:' line")
-	process_result_free(r)
+	wdet_expect_error(dir, c"one 'step=' per '# wbuild:' line")
 
 
 void test_step_rejects_arch_only():
 	char* dir = wdet_case_dir(c"step_arch_only")
 	wdet_write(dir, c"tests/only_test.w", c"# wbuild: arch_only=x64\n# wbuild: step=\"cat\"\nint main():\n\treturn 0\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"'step=' needs a generated default-arch target")
-	process_result_free(r)
+	wdet_expect_error(dir, c"'step=' needs a generated default-arch target")
 
 
 void test_tags_join_umbrellas():
@@ -476,8 +376,8 @@ void test_tags_join_umbrellas():
 	assert1(out != 0)
 	# The tagged hand-written target joins first, then the generated
 	# one; "tags" itself is generator input and never reaches wexec.
-	wdet_assert_contains(out, c"\"name\": \"tests\",\n\t\t\t\"deps\": [\n\t\t\t\t\"tests_x64\",\n\t\t\t\t\"hand\",\n\t\t\t\t\"auto_test\"\n\t\t\t]")
-	wdet_assert_lacks(out, c"\"tags\"")
+	assert_contains(out, c"\"name\": \"tests\",\n\t\t\t\"deps\": [\n\t\t\t\t\"tests_x64\",\n\t\t\t\t\"hand\",\n\t\t\t\t\"auto_test\"\n\t\t\t]")
+	assert_lacks(out, c"\"tags\"")
 	free(out)
 	free(out_path)
 
@@ -485,10 +385,7 @@ void test_tags_join_umbrellas():
 void test_tags_reject_unknown_umbrella():
 	char* dir = wdet_case_dir(c"tags_unknown")
 	wdet_write(dir, c"base.json", c"{\n\t\"targets\": [\n\t\t{\n\t\t\t\"name\": \"hand\",\n\t\t\t\"tags\": [\"testz\"],\n\t\t\t\"steps\": [{\"cmd\": [\"true\"]}]\n\t\t},\n\t\t{\n\t\t\t\"name\": \"tests\",\n\t\t\t\"deps\": []\n\t\t}\n\t]\n}\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"\"tags\" of hand names an unknown umbrella (a step-less build.base.json target): testz")
-	process_result_free(r)
+	wdet_expect_error(dir, c"\"tags\" of hand names an unknown umbrella (a step-less build.base.json target): testz")
 
 
 void test_binary_target_shape():
@@ -503,10 +400,10 @@ void test_binary_target_shape():
 	# binary= implies the wv2 dep, the source input and the bin/<name>
 	# output, and compiles through a staged copy; the step= line after
 	# it keeps single-quoted words whole and '' as an empty argument.
-	wdet_assert_contains(out, c"\"name\": \"mytool\",\n\t\t\t\"deps\": [\"wv2\", \"tests_x64\"],\n\t\t\t\"inputs\": [\"tests/mytool.w\"],\n\t\t\t\"outputs\": [\"bin/mytool\"],")
-	wdet_assert_contains(out, c"{\"cmd\": [\"bin/wv2\", \"x64\", \"tests/mytool.w\", \"-o\", \"bin/mytool.stage\"]},\n\t\t\t\t{\"cmd\": [\"mv\", \"bin/mytool.stage\", \"bin/mytool\"]},\n\t\t\t\t{\"cmd\": [\"bin/mytool\", \"--check\", \"two words\", \"\"], \"expect_status\": 3, \"stderr_file\": \"bin/e.txt\"}")
-	wdet_assert_contains(out, c"\"name\": \"tests\",\n\t\t\t\"deps\": [\n\t\t\t\t\"mytool\"\n\t\t\t]")
-	wdet_assert_lacks(out, c"\"tags\"")
+	assert_contains(out, c"\"name\": \"mytool\",\n\t\t\t\"deps\": [\"wv2\", \"tests_x64\"],\n\t\t\t\"inputs\": [\"tests/mytool.w\"],\n\t\t\t\"outputs\": [\"bin/mytool\"],")
+	assert_contains(out, c"{\"cmd\": [\"bin/wv2\", \"x64\", \"tests/mytool.w\", \"-o\", \"bin/mytool.stage\"]},\n\t\t\t\t{\"cmd\": [\"mv\", \"bin/mytool.stage\", \"bin/mytool\"]},\n\t\t\t\t{\"cmd\": [\"bin/mytool\", \"--check\", \"two words\", \"\"], \"expect_status\": 3, \"stderr_file\": \"bin/e.txt\"}")
+	assert_contains(out, c"\"name\": \"tests\",\n\t\t\t\"deps\": [\n\t\t\t\t\"mytool\"\n\t\t\t]")
+	assert_lacks(out, c"\"tags\"")
 	free(out)
 	free(out_path)
 
@@ -522,8 +419,8 @@ void test_target_after_test_directives():
 	assert1(out != 0)
 	# target= spells everything out (no implied deps), and its step=
 	# lines never leak into the source's own conventional test target.
-	wdet_assert_contains(out, c"\"name\": \"spelled\",\n\t\t\t\"inputs\": [\"tests/spelled_test.w\"],\n\t\t\t\"outputs\": [\"bin/spelled.txt\"],\n\t\t\t\"steps\": [\n\t\t\t\t{\"cmd\": [\"true\"]}\n\t\t\t]")
-	wdet_assert_contains(out, c"{\"cmd\": [\"bin/spelled_test\"], \"expect_stdout\": \"hi\"}\n\t\t\t]")
+	assert_contains(out, c"\"name\": \"spelled\",\n\t\t\t\"inputs\": [\"tests/spelled_test.w\"],\n\t\t\t\"outputs\": [\"bin/spelled.txt\"],\n\t\t\t\"steps\": [\n\t\t\t\t{\"cmd\": [\"true\"]}\n\t\t\t]")
+	assert_contains(out, c"{\"cmd\": [\"bin/spelled_test\"], \"expect_stdout\": \"hi\"}\n\t\t\t]")
 	free(out)
 	free(out_path)
 
@@ -531,45 +428,26 @@ void test_target_after_test_directives():
 void test_target_rejects_duplicate_name():
 	char* dir = wdet_case_dir(c"target_dup")
 	wdet_write(dir, c"tests/dup.w", c"# wbuild: target=tests\n# wbuild: step=\"true\"\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"target 'tests' is defined both in tests/dup.w and in build.base.json (or twice in sources)")
-	process_result_free(r)
+	wdet_expect_error(dir, c"target 'tests' is defined both in tests/dup.w and in build.base.json (or twice in sources)")
 
 
 void test_target_rejects_no_steps():
 	char* dir = wdet_case_dir(c"target_empty")
 	wdet_write(dir, c"tests/empty.w", c"# wbuild: target=empty tag=tests\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"source-owned target has no steps (add step= lines after it): empty")
-	process_result_free(r)
+	wdet_expect_error(dir, c"source-owned target has no steps (add step= lines after it): empty")
 
 
 void test_target_rejects_misplaced_fields():
 	char* dir = wdet_case_dir(c"target_fields")
 	wdet_write(dir, c"tests/staged.w", c"# wbuild: target=staged staged\n# wbuild: step=\"true\"\n")
-	process_result* r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"'staged' only applies to 'binary=': 'staged' in tests/staged.w")
-	process_result_free(r)
+	wdet_expect_error(dir, c"'staged' only applies to 'binary=': 'staged' in tests/staged.w")
 	dir = wdet_case_dir(c"target_midline")
 	wdet_write(dir, c"tests/midline.w", c"# wbuild: tag=tests target=late\n# wbuild: step=\"true\"\n")
-	r = wdet_run(dir)
-	assert1(r.status != 0)
-	wdet_assert_contains(r.stderr_text, c"'target='/'binary=' must start its own '# wbuild:' line: 'late' in tests/midline.w")
-	process_result_free(r)
+	wdet_expect_error(dir, c"'target='/'binary=' must start its own '# wbuild:' line: 'late' in tests/midline.w")
 
 
 void test_cleanup():
 	# Best-effort removal of the pid-scoped scratch root; a leftover
 	# tree only wastes bin/ space (bin/ is gitignored and never walked
 	# by the real manifest run).
-	char** argv = strv_new(3)
-	strv_set(argv, 0, c"/bin/rm")
-	strv_set(argv, 1, c"-rf")
-	strv_set(argv, 2, wdet_dir())
-	process_result* r = process_run(c"/bin/rm", argv, 0, 0, 10000)
-	if (r != 0):
-		process_result_free(r)
-	free(cast(void*, argv))
+	dir_remove_all(wdet_dir())

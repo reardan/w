@@ -1,7 +1,7 @@
 # wbuild: binary=pac_flag_check
 /*
 pac_flag_check: W replacement for tools/pac_flag_check.sh (issue: bucket E
-script retirement, docs/projects/sonnet_wave_plan_2026_07c.md task 2f).
+script retirement).
 
 Asserts the --pac=off|ret|full arm64 code-generation flag (docs/projects/
 arm64.md) by inspecting compiled binaries: x86 hosts have no aarch64

@@ -14,11 +14,9 @@ import code_generator.integer
 
 # The pre-optimization implementations, kept verbatim as the oracle.
 void ref_save_i(char* p, int v, int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		p[i] = v
 		v = v >> 8
-		i = i + 1
 
 
 int ref_load_i(char* p, int n):
@@ -31,8 +29,7 @@ int ref_load_i(char* p, int n):
 
 int ref_load_int32(char* p):
 	int result = ref_load_i(p, 4)
-	if (__word_size__ == 8):
-		result = (result << 32) >> 32
+	if (__word_size__ == 8): result = (result << 32) >> 32
 	return result
 
 
@@ -50,22 +47,18 @@ int next_rand():
 # the same offset, then compared byte for byte -- so a store that is too
 # wide shows up as a neighbour mismatch, not just a wrong value.
 void poison(char* p, int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		p[i] = 0 - 86 /* 0xaa */
-		i = i + 1
 
 
 void assert_same_bytes(char* a, char* b, int n, char* what):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		if ((a[i] & 255) != (b[i] & 255)):
 			print(what)
 			print(c": byte mismatch at offset ")
 			print_int(c"", i)
 			print(c"\x0a")
 			assert_equal(a[i] & 255, b[i] & 255)
-		i = i + 1
 
 
 void test_accessors_match_the_byte_loops():

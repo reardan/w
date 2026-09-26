@@ -29,28 +29,10 @@ directory is a pid-scoped directory under bin/.
 */
 import lib.lib
 import lib.env
-import lib.process
-import lib.path
-import lib.str
-import lib.shell_commands
-import structures.string
+import tools.wtest_scratch
 
 
 char* MANIFEST
-char* EMPTY_DIR
-
-
-void err_out(char* s):
-	write(2, s, strlen(s))
-
-
-void fail(char* msg):
-	err_out(c"wtest_runnable_scratch_test: FAIL: ")
-	err_out(msg)
-	err_out(c"\n")
-	if (EMPTY_DIR != 0):
-		shell_commands_rm_one(EMPTY_DIR, 1, 1)
-	exit(1)
 
 
 struct wtest_out:
@@ -75,8 +57,7 @@ wtest_out* run_wtest(char** envp, char* flag, list[char*] paths):
 	process_result* r = process_run(c"bin/wtest", argv, opts, 0, 0)
 	free(opts)
 	free(cast(void*, argv))
-	if (r == 0):
-		fail(c"could not spawn bin/wtest")
+	if (r == 0): fail(c"could not spawn bin/wtest")
 	wtest_out* o = new wtest_out()
 	o.out = r.stdout_text
 	o.err = r.stderr_text
@@ -89,47 +70,8 @@ list[char*] marker():
 	return paths
 
 
-# grep -qx: some line of text equals line exactly.
-int has_line(char* text, char* line):
-	int n = strlen(line)
-	int i = 0
-	while (text[i] != 0):
-		int j = 0
-		while ((j < n) && (text[i + j] == line[j])):
-			j = j + 1
-		if ((j == n) && ((text[i + j] == 10) || (text[i + j] == 0))):
-			return 1
-		while ((text[i] != 0) && (text[i] != 10)):
-			i = i + 1
-		if (text[i] == 10):
-			i = i + 1
-	return 0
-
-
-int contains(char* haystack, char* needle):
-	return index_of(haystack, needle) >= 0
-
-
-# command -v <name>: some PATH entry holds it.
-int on_path(char* name):
-	char* p = env_get(c"PATH")
-	if (p == 0):
-		return 0
-	list[char*] dirs = split(p, ':')
-	int i = 0
-	while (i < dirs.length):
-		if (strlen(dirs[i]) > 0):
-			char* candidate = path_join(dirs[i], name)
-			int found = path_exists(candidate)
-			free(candidate)
-			if (found):
-				return 1
-		i = i + 1
-	return 0
-
-
 int has_gpu():
-	return path_exists(c"/dev/nvidiactl") || path_exists(c"/dev/nvidia0") || on_path(c"nvidia-smi")
+	return path_exists(c"/dev/nvidiactl") || path_exists(c"/dev/nvidia0") || (process_which(c"nvidia-smi") != 0)
 
 
 # Copy of the current environment without any "name=" entry.
@@ -138,20 +80,18 @@ char** env_without(char* name):
 	int count = env_vector_count(base)
 	char** v = strv_new(count)
 	int out = 0
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		char* entry = env_entry_at(base, i)
 		if (env_match_name(entry, name) < 0):
 			strv_set(v, out, entry)
 			out = out + 1
-		i = i + 1
 	return v
 
 
 int main(int argc, char** argv):
-	if (path_exists(c"bin/wtest") == 0):
-		err_out(c"wtest_runnable_scratch_test: bin/wtest must be built first\n")
-		return 1
+	# The scratch directory is the empty PATH entry of the runner probes.
+	sc_init(c"wtest_runnable_scratch_test", c"wtest_runnable_e2e_")
+	sc_require(c"bin/wtest")
 	MANIFEST = c"tests/wtest/manifest_runnable.json"
 	int has32 = path_exists(c"/lib/ld-linux.so.2")
 	int has64 = path_exists(c"/lib64/ld-linux-x86-64.so.2")
@@ -165,17 +105,8 @@ int main(int argc, char** argv):
 	list[char*] keep = split(c"rn_dyn32 rn_dyn64 rn_gpu rn_static rn_compile_only rn_dyn_imp rn_gpu_imp rn_plain_imp rn_broken_imp rn_dyn_missing rn_cuda_clib", ' ')
 	int k = 0
 	while (k < keep.length):
-		if (has_line(o.out, keep[k]) == 0):
-			fail(strjoin(c"--available dropped ", keep[k]))
+		if (has_line(o.out, keep[k]) == 0): fail(strjoin(c"--available dropped ", keep[k]))
 		k = k + 1
-
-	string_builder* d = string_new()
-	string_append(d, c"bin/wtest_runnable_e2e_")
-	string_append_int(d, getpid())
-	EMPTY_DIR = d.data
-	shell_commands_rm_one(EMPTY_DIR, 1, 1)
-	if (shell_commands_mkdir_one(EMPTY_DIR, 1) != 0):
-		fail(c"cannot create the empty PATH directory")
 
 	o = run_wtest(0, c"--runnable-here", marker())
 	char* out = o.out
@@ -183,8 +114,7 @@ int main(int argc, char** argv):
 
 	# A statically linked run target and a compile-only target are
 	# runnable on every host.
-	if (has_line(out, c"rn_static") == 0):
-		fail(c"--runnable-here dropped the static target")
+	if (has_line(out, c"rn_static") == 0): fail(c"--runnable-here dropped the static target")
 	if (has_line(out, c"rn_compile_only") == 0):
 		fail(c"--runnable-here dropped the compile-only target")
 
@@ -211,13 +141,10 @@ int main(int argc, char** argv):
 
 	# GPU run target (root imports lib.cuda): needs the NVIDIA driver.
 	if (gpu):
-		if (has_line(out, c"rn_gpu") == 0):
-			fail(c"host has an NVIDIA GPU but rn_gpu was dropped")
+		if (has_line(out, c"rn_gpu") == 0): fail(c"host has an NVIDIA GPU but rn_gpu was dropped")
 	else:
-		if (has_line(out, c"rn_gpu")):
-			fail(c"no NVIDIA GPU on this host but rn_gpu was kept")
-		if (contains(err, c"no NVIDIA GPU") == 0):
-			fail(c"drop reason did not name the missing GPU")
+		if (has_line(out, c"rn_gpu")): fail(c"no NVIDIA GPU on this host but rn_gpu was kept")
+		if (contains(err, c"no NVIDIA GPU") == 0): fail(c"drop reason did not name the missing GPU")
 
 	# The soname probe (ai_tooling_next_steps.md 2026-08-04):
 	# dyn_missing.w names a library NO host has, so rn_dyn_missing is
@@ -297,7 +224,7 @@ int main(int argc, char** argv):
 	# controlling the evidence the filter reads: an empty PATH removes
 	# qemu, wasmtime and node (QEMU_ARM64 unset), while a set QEMU_ARM64
 	# is itself positive evidence the arm64 runner works.
-	char** bare = env_copy_with(env_without(c"QEMU_ARM64"), c"PATH", EMPTY_DIR)
+	char** bare = env_copy_with(env_without(c"QEMU_ARM64"), c"PATH", sc_dir)
 	o = run_wtest(bare, c"--available", marker())
 	out = o.out
 	err = o.err
@@ -321,6 +248,4 @@ int main(int argc, char** argv):
 	if (has_line(o.out, c"rn_wrun_arm64") == 0):
 		fail(c"QEMU_ARM64 set but the bin/wrun arm64 runner target was dropped")
 
-	shell_commands_rm_one(EMPTY_DIR, 1, 1)
-	write(1, c"wtest_runnable_scratch_test: OK\n", 32)
-	return 0
+	return sc_ok()

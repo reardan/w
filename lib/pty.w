@@ -28,8 +28,7 @@ int pty_open_flags():
 
 
 int pty_setsid():
-	if (__word_size__ == 8):
-		return syscall(112, 0, 0, 0)
+	if (__word_size__ == 8): return syscall(112, 0, 0, 0)
 	return syscall(66, 0, 0, 0)
 
 
@@ -77,6 +76,5 @@ int pty_login_tty(int slave):
 	dup2(slave, 0)
 	dup2(slave, 1)
 	dup2(slave, 2)
-	if (slave > 2):
-		close(slave)
+	if (slave > 2): close(slave)
 	return 0

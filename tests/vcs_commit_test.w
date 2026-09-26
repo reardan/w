@@ -32,8 +32,7 @@ import libs.extras.vcs.cas
 
 char* vcst_pid_suffix_cache
 char* vcst_pid_suffix():
-	if (vcst_pid_suffix_cache == 0):
-		vcst_pid_suffix_cache = itoa(getpid())
+	if (vcst_pid_suffix_cache == 0): vcst_pid_suffix_cache = itoa(getpid())
 	return vcst_pid_suffix_cache
 
 
@@ -50,46 +49,34 @@ char* vcst_named_root(char* label):
 
 char* vcst_cas_root_cache
 char* vcst_cas_root():
-	if (vcst_cas_root_cache == 0):
-		vcst_cas_root_cache = vcst_named_root(c"cas")
+	if (vcst_cas_root_cache == 0): vcst_cas_root_cache = vcst_named_root(c"cas")
 	return vcst_cas_root_cache
 
 
 char* vcst_refs_root_cache
 char* vcst_refs_root():
-	if (vcst_refs_root_cache == 0):
-		vcst_refs_root_cache = vcst_named_root(c"refs")
+	if (vcst_refs_root_cache == 0): vcst_refs_root_cache = vcst_named_root(c"refs")
 	return vcst_refs_root_cache
 
 
 char* vcst_reflist_root_cache
 char* vcst_reflist_root():
-	if (vcst_reflist_root_cache == 0):
-		vcst_reflist_root_cache = vcst_named_root(c"reflist")
+	if (vcst_reflist_root_cache == 0): vcst_reflist_root_cache = vcst_named_root(c"reflist")
 	return vcst_reflist_root_cache
 
 
 wcas* vcst_open_cas():
-	wresult[wcas*]* r = cas_open(vcst_cas_root())
-	assert1(result_is_ok[wcas*](r))
-	wcas* s = result_value[wcas*](r)
-	result_free[wcas*](r)
+	wcas* s = result_expect[wcas*](cas_open(vcst_cas_root()))
 	return s
 
 
 wrefs* vcst_open_refs():
-	wresult[wrefs*]* r = refs_open(vcst_refs_root())
-	assert1(result_is_ok[wrefs*](r))
-	wrefs* rf = result_value[wrefs*](r)
-	result_free[wrefs*](r)
+	wrefs* rf = result_expect[wrefs*](refs_open(vcst_refs_root()))
 	return rf
 
 
 wrefs* vcst_open_reflist():
-	wresult[wrefs*]* r = refs_open(vcst_reflist_root())
-	assert1(result_is_ok[wrefs*](r))
-	wrefs* rf = result_value[wrefs*](r)
-	result_free[wrefs*](r)
+	wrefs* rf = result_expect[wrefs*](refs_open(vcst_reflist_root()))
 	return rf
 
 
@@ -97,16 +84,14 @@ wrefs* vcst_open_reflist():
 # cleanup test can remove exactly what was created.
 list[char*] vcst_commit_ids
 void vcst_track_commit(char* id):
-	if (vcst_commit_ids == 0):
-		vcst_commit_ids = new list[char*]
+	if (vcst_commit_ids == 0): vcst_commit_ids = new list[char*]
 	vcst_commit_ids.push(strclone(id))
 
 
 # Every ref name created under vcst_refs_root() during the run.
 list[char*] vcst_ref_names
 void vcst_track_ref(char* name):
-	if (vcst_ref_names == 0):
-		vcst_ref_names = new list[char*]
+	if (vcst_ref_names == 0): vcst_ref_names = new list[char*]
 	vcst_ref_names.push(strclone(name))
 
 
@@ -124,16 +109,10 @@ void test_commit_roundtrip_no_parents():
 	char* tree_id = vcst_fake_id(c"tree-0-parents")
 	list[char*] parents = new list[char*]
 	char* msg = c"initial commit"
-	wresult[commit_object*]* built = commit_new(tree_id, parents, c"Ada Lovelace", 1000, msg, strlen(msg))
-	assert1(result_is_ok[commit_object*](built))
-	commit_object* co = result_value[commit_object*](built)
-	result_free[commit_object*](built)
+	commit_object* co = result_expect[commit_object*](commit_new(tree_id, parents, c"Ada Lovelace", 1000, msg, strlen(msg)))
 
 	string_builder* encoded = commit_encode(co)
-	wresult[commit_object*]* parsed = commit_parse(encoded.data, encoded.length)
-	assert1(result_is_ok[commit_object*](parsed))
-	commit_object* back = result_value[commit_object*](parsed)
-	result_free[commit_object*](parsed)
+	commit_object* back = result_expect[commit_object*](commit_parse(encoded.data, encoded.length))
 
 	assert_strings_equal(tree_id, back.tree_id)
 	assert_equal(0, back.parent_ids.length)
@@ -154,16 +133,10 @@ void test_commit_roundtrip_one_parent():
 	list[char*] parents = new list[char*]
 	parents.push(parent_id)
 	char* msg = c"second commit"
-	wresult[commit_object*]* built = commit_new(tree_id, parents, c"Bell Labs", 2000, msg, strlen(msg))
-	assert1(result_is_ok[commit_object*](built))
-	commit_object* co = result_value[commit_object*](built)
-	result_free[commit_object*](built)
+	commit_object* co = result_expect[commit_object*](commit_new(tree_id, parents, c"Bell Labs", 2000, msg, strlen(msg)))
 
 	string_builder* encoded = commit_encode(co)
-	wresult[commit_object*]* parsed = commit_parse(encoded.data, encoded.length)
-	assert1(result_is_ok[commit_object*](parsed))
-	commit_object* back = result_value[commit_object*](parsed)
-	result_free[commit_object*](parsed)
+	commit_object* back = result_expect[commit_object*](commit_parse(encoded.data, encoded.length))
 
 	assert_strings_equal(tree_id, back.tree_id)
 	assert_equal(1, back.parent_ids.length)
@@ -187,16 +160,10 @@ void test_commit_roundtrip_two_parents():
 	parents.push(parent_a)
 	parents.push(parent_b)
 	char* msg = c"merge commit"
-	wresult[commit_object*]* built = commit_new(tree_id, parents, c"Merge Bot", 3000, msg, strlen(msg))
-	assert1(result_is_ok[commit_object*](built))
-	commit_object* co = result_value[commit_object*](built)
-	result_free[commit_object*](built)
+	commit_object* co = result_expect[commit_object*](commit_new(tree_id, parents, c"Merge Bot", 3000, msg, strlen(msg)))
 
 	string_builder* encoded = commit_encode(co)
-	wresult[commit_object*]* parsed = commit_parse(encoded.data, encoded.length)
-	assert1(result_is_ok[commit_object*](parsed))
-	commit_object* back = result_value[commit_object*](parsed)
-	result_free[commit_object*](parsed)
+	commit_object* back = result_expect[commit_object*](commit_parse(encoded.data, encoded.length))
 
 	assert_strings_equal(tree_id, back.tree_id)
 	assert_equal(2, back.parent_ids.length)
@@ -225,16 +192,10 @@ void test_commit_roundtrip_multiline_message():
 	string_append(message, c"Body paragraph two.\n\n")
 	string_append(message, c"Trailer: ok\n")
 
-	wresult[commit_object*]* built = commit_new(tree_id, parents, c"Author", 4000, message.data, message.length)
-	assert1(result_is_ok[commit_object*](built))
-	commit_object* co = result_value[commit_object*](built)
-	result_free[commit_object*](built)
+	commit_object* co = result_expect[commit_object*](commit_new(tree_id, parents, c"Author", 4000, message.data, message.length))
 
 	string_builder* encoded = commit_encode(co)
-	wresult[commit_object*]* parsed = commit_parse(encoded.data, encoded.length)
-	assert1(result_is_ok[commit_object*](parsed))
-	commit_object* back = result_value[commit_object*](parsed)
-	result_free[commit_object*](parsed)
+	commit_object* back = result_expect[commit_object*](commit_parse(encoded.data, encoded.length))
 
 	assert_equal(message.length, back.message_length)
 	assert_strings_equal(message.data, back.message)
@@ -265,16 +226,10 @@ void test_commit_message_with_header_lookalike_lines():
 	string_append(message, c"\n")
 	string_append(message, c"Still part of the message.\n")
 
-	wresult[commit_object*]* built = commit_new(tree_id, parents, c"Real Author", 42, message.data, message.length)
-	assert1(result_is_ok[commit_object*](built))
-	commit_object* co = result_value[commit_object*](built)
-	result_free[commit_object*](built)
+	commit_object* co = result_expect[commit_object*](commit_new(tree_id, parents, c"Real Author", 42, message.data, message.length))
 
 	string_builder* encoded = commit_encode(co)
-	wresult[commit_object*]* parsed = commit_parse(encoded.data, encoded.length)
-	assert1(result_is_ok[commit_object*](parsed))
-	commit_object* back = result_value[commit_object*](parsed)
-	result_free[commit_object*](parsed)
+	commit_object* back = result_expect[commit_object*](commit_parse(encoded.data, encoded.length))
 
 	# The outer commit's real fields are unaffected by the message's
 	# header-shaped lines.
@@ -318,23 +273,14 @@ void test_commit_store_load_via_cas():
 	char* tree_id = vcst_fake_id(c"integration-tree")
 	list[char*] parents = new list[char*]
 	char* msg = c"first"
-	wresult[commit_object*]* built = commit_new(tree_id, parents, c"Grace Hopper", 500, msg, strlen(msg))
-	assert1(result_is_ok[commit_object*](built))
-	commit_object* co = result_value[commit_object*](built)
-	result_free[commit_object*](built)
+	commit_object* co = result_expect[commit_object*](commit_new(tree_id, parents, c"Grace Hopper", 500, msg, strlen(msg)))
 
-	wresult[char*]* stored = commit_store(store, co)
-	assert1(result_is_ok[char*](stored))
-	char* id = result_value[char*](stored)
-	result_free[char*](stored)
+	char* id = result_expect[char*](commit_store(store, co))
 	vcst_track_commit(id)
 	assert1(cas_valid_id(id));
 	assert_equal(1, cas_has(store, id))
 
-	wresult[commit_object*]* loaded = commit_load(store, id)
-	assert1(result_is_ok[commit_object*](loaded))
-	commit_object* back = result_value[commit_object*](loaded)
-	result_free[commit_object*](loaded)
+	commit_object* back = result_expect[commit_object*](commit_load(store, id))
 	assert_strings_equal(tree_id, back.tree_id)
 	assert_strings_equal(c"Grace Hopper", back.author)
 	assert_equal(500, back.timestamp)
@@ -350,10 +296,7 @@ void test_commit_store_load_via_cas():
 void test_commit_load_wrong_type():
 	wcas* store = vcst_open_cas()
 	char* payload = c"not a commit"
-	wresult[char*]* put = cas_put(store, c"blob", payload, strlen(payload))
-	assert1(result_is_ok[char*](put))
-	char* id = result_value[char*](put)
-	result_free[char*](put)
+	char* id = result_expect[char*](cas_put(store, c"blob", payload, strlen(payload)))
 	vcst_track_commit(id)
 
 	wresult[commit_object*]* loaded = commit_load(store, id)
@@ -463,10 +406,7 @@ void test_refs_create_read_update():
 	vcst_track_ref(c"main")
 	assert_equal(1, ref_exists(refs, c"main"))
 
-	wresult[char*]* read1 = ref_read(refs, c"main")
-	assert1(result_is_ok[char*](read1))
-	char* got1 = result_value[char*](read1)
-	result_free[char*](read1)
+	char* got1 = result_expect[char*](ref_read(refs, c"main"))
 	assert_strings_equal(id1, got1)
 	free(got1)
 
@@ -474,10 +414,7 @@ void test_refs_create_read_update():
 	assert1(result_is_ok[int](updated))
 	result_free[int](updated)
 
-	wresult[char*]* read2 = ref_read(refs, c"main")
-	assert1(result_is_ok[char*](read2))
-	char* got2 = result_value[char*](read2)
-	result_free[char*](read2)
+	char* got2 = result_expect[char*](ref_read(refs, c"main"))
 	assert_strings_equal(id2, got2)
 	free(got2)
 
@@ -600,10 +537,7 @@ void test_reflog_append_ordering():
 	vcst_track_commit(commit3)
 
 	# Before any create/update, the reflog is empty -- not an error.
-	wresult[list[reflog_entry*]]* before = reflog_read(refs, c"history")
-	assert1(result_is_ok[list[reflog_entry*]](before))
-	assert_equal(0, result_value[list[reflog_entry*]](before).length)
-	result_free[list[reflog_entry*]](before)
+	assert_equal(0, result_expect[list[reflog_entry*]](reflog_read(refs, c"history")).length)
 
 	wresult[int]* c1r = ref_create(refs, c"history", commit1, c"commit: c1")
 	assert1(result_is_ok[int](c1r))
@@ -640,8 +574,7 @@ void test_reflog_append_ordering():
 	assert1(entries[0].timestamp <= entries[1].timestamp)
 	assert1(entries[1].timestamp <= entries[2].timestamp)
 
-	for reflog_entry* e in entries:
-		reflog_entry_free(e)
+	for reflog_entry* e in entries: reflog_entry_free(e)
 	list_free[reflog_entry*](entries)
 	result_free[list[reflog_entry*]](after)
 
@@ -706,8 +639,7 @@ void test_ref_list_returns_sorted_names():
 	assert_strings_equal(c"main", names[1])
 	assert_strings_equal(c"release-1.0", names[2])
 
-	for char* n in names:
-		free(n)
+	for char* n in names: free(n)
 	list_free[char*](names)
 	result_free[list[char*]](listed)
 

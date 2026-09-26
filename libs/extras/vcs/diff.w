@@ -37,16 +37,9 @@ int DIFF_EQUAL():
 	return 0
 
 
-int DIFF_DELETE():
-	return 1
-
-
-int DIFF_INSERT():
-	return 2
-
-
-int diff_default_context():
-	return 3
+const int DIFF_DELETE = 1
+const int DIFF_INSERT = 2
+const int diff_default_context = 3
 
 
 # One rendered line of a hunk: EQUAL (context, present in both files),
@@ -81,10 +74,8 @@ int diff_is_identical(diff_result* result):
 # file's last line has no trailing newline.
 int diff_missing_newline(char* text):
 	int n = strlen(text)
-	if (n == 0):
-		return 0
-	if (text[n - 1] == 10):
-		return 0
+	if (n == 0): return 0
+	if (text[n - 1] == 10): return 0
 	return 1
 
 
@@ -95,17 +86,13 @@ list[char*] diff_split_lines(char* text):
 	list[char*] lines = new list[char*]
 	int n = strlen(text)
 	string_builder* line = string_new()
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		char c = text[i]
 		if (c == 10):
 			lines.push(strclone(line.data))
 			string_clear(line)
-		else:
-			string_append_char(line, c)
-		i = i + 1
-	if (line.length > 0):
-		lines.push(strclone(line.data))
+		else: string_append_char(line, c)
+	if (line.length > 0): lines.push(strclone(line.data))
 	string_free(line)
 	return lines
 
@@ -116,9 +103,7 @@ struct diff_input:
 
 
 diff_input* diff_read_text(char* text):
-	diff_input* input = new diff_input()
-	input.lines = diff_split_lines(text)
-	input.no_newline = diff_missing_newline(text)
+	diff_input* input = new diff_input(diff_split_lines(text), diff_missing_newline(text))
 	return input
 
 
@@ -136,21 +121,17 @@ struct diff_op:
 # than the same text followed by '\n', even though the split text is
 # equal.
 int diff_lines_equal(list[char*] old_lines, int old_no_nl, list[char*] new_lines, int new_no_nl, int i, int j):
-	if (strcmp(old_lines[i], new_lines[j]) != 0):
-		return 0
+	if (strcmp(old_lines[i], new_lines[j]) != 0): return 0
 	int old_last = i == (old_lines.length - 1)
 	int new_last = j == (new_lines.length - 1)
 	if (old_last && new_last):
-		if (old_no_nl == new_no_nl):
-			return 1
+		if (old_no_nl == new_no_nl): return 1
 		return 0
 	if (old_last):
-		if (old_no_nl == 0):
-			return 1
+		if (old_no_nl == 0): return 1
 		return 0
 	if (new_last):
-		if (new_no_nl == 0):
-			return 1
+		if (new_no_nl == 0): return 1
 		return 0
 	return 1
 
@@ -169,8 +150,7 @@ list[diff_op*] diff_myers_ops(list[char*] old_lines, int old_no_nl, list[char*] 
 	int width = 2 * max_d + 1
 
 	list[int] v = new list[int]
-	for int i in range(width):
-		v.push(0)
+	for int i in range(width): v.push(0)
 	v[offset + 1] = 0
 
 	list[list[int]] trace = new list[list[int]]
@@ -178,35 +158,27 @@ list[diff_op*] diff_myers_ops(list[char*] old_lines, int old_no_nl, list[char*] 
 
 	for int d in range(max_d + 1):
 		list[int] snapshot = new list[int]
-		for int i in range(width):
-			snapshot.push(v[i])
+		for int i in range(width): snapshot.push(v[i])
 		trace.push(snapshot)
 
 		int k = 0 - d
 		while (k <= d):
 			int x = 0
 			int go_down = 0
-			if (k == (0 - d)):
-				go_down = 1
-			else if (k == d):
-				go_down = 0
-			else if (v[offset + k - 1] < v[offset + k + 1]):
-				go_down = 1
-			if (go_down):
-				x = v[offset + k + 1]
-			else:
-				x = v[offset + k - 1] + 1
+			if (k == (0 - d)): go_down = 1
+			else if (k == d): go_down = 0
+			else if (v[offset + k - 1] < v[offset + k + 1]): go_down = 1
+			if (go_down): x = v[offset + k + 1]
+			else: x = v[offset + k - 1] + 1
 			int y = x - k
 			while ((x < n) && (y < m) && diff_lines_equal(old_lines, old_no_nl, new_lines, new_no_nl, x, y)):
 				x = x + 1
 				y = y + 1
 			v[offset + k] = x
-			if ((x >= n) && (y >= m)):
-				found_d = d
+			if ((x >= n) && (y >= m)): found_d = d
 			k = k + 2
 
-		if (found_d >= 0):
-			break
+		if (found_d >= 0): break
 
 	# Backtrack from (n, m) to (0, 0) through the saved trace, collecting
 	# ops in reverse order, then reverse them back into forward order.
@@ -219,24 +191,16 @@ list[diff_op*] diff_myers_ops(list[char*] old_lines, int old_no_nl, list[char*] 
 		int k = x - y
 		int prev_k = 0
 		int go_down = 0
-		if (k == (0 - d)):
-			go_down = 1
-		else if (k == d):
-			go_down = 0
-		else if (tv[offset + k - 1] < tv[offset + k + 1]):
-			go_down = 1
-		if (go_down):
-			prev_k = k + 1
-		else:
-			prev_k = k - 1
+		if (k == (0 - d)): go_down = 1
+		else if (k == d): go_down = 0
+		else if (tv[offset + k - 1] < tv[offset + k + 1]): go_down = 1
+		if (go_down): prev_k = k + 1
+		else: prev_k = k - 1
 		int prev_x = tv[offset + prev_k]
 		int prev_y = prev_x - prev_k
 
 		while ((x > prev_x) && (y > prev_y)):
-			diff_op* eq = new diff_op()
-			eq.kind = DIFF_EQUAL()
-			eq.old_index = x - 1
-			eq.new_index = y - 1
+			diff_op* eq = new diff_op(DIFF_EQUAL(), x - 1, y - 1)
 			rev.push(eq)
 			x = x - 1
 			y = y - 1
@@ -244,11 +208,11 @@ list[diff_op*] diff_myers_ops(list[char*] old_lines, int old_no_nl, list[char*] 
 		if (d > 0):
 			diff_op* step = new diff_op()
 			if (x == prev_x):
-				step.kind = DIFF_INSERT()
+				step.kind = DIFF_INSERT
 				step.old_index = -1
 				step.new_index = prev_y
 			else:
-				step.kind = DIFF_DELETE()
+				step.kind = DIFF_DELETE
 				step.old_index = prev_x
 				step.new_index = -1
 			rev.push(step)
@@ -292,17 +256,10 @@ list[diff_range_op*] diff_coalesce_ops(list[diff_op*] ops):
 			if (kind == DIFF_EQUAL()):
 				old_pos = old_pos + 1
 				new_pos = new_pos + 1
-			else if (kind == DIFF_DELETE()):
-				old_pos = old_pos + 1
-			else:
-				new_pos = new_pos + 1
+			else if (kind == DIFF_DELETE): old_pos = old_pos + 1
+			else: new_pos = new_pos + 1
 			j = j + 1
-		diff_range_op* r = new diff_range_op()
-		r.kind = kind
-		r.old_start = old_start
-		r.old_end = old_pos
-		r.new_start = new_start
-		r.new_end = new_pos
+		diff_range_op* r = new diff_range_op(kind, old_start, old_pos, new_start, new_pos)
 		result.push(r)
 		i = j
 	return result
@@ -311,10 +268,8 @@ list[diff_range_op*] diff_coalesce_ops(list[diff_op*] ops):
 # 1 when 'index' is the last line of the file that 'lines'/'no_nl'
 # describe, and that file has no trailing newline.
 int diff_missing_at(list[char*] lines, int no_nl, int index):
-	if (no_nl == 0):
-		return 0
-	if (index != (lines.length - 1)):
-		return 0
+	if (no_nl == 0): return 0
+	if (index != (lines.length - 1)): return 0
 	return 1
 
 
@@ -338,11 +293,11 @@ diff_hunk* diff_group_to_hunk(list[diff_range_op*] group, list[char*] old_lines,
 				dl.no_newline = diff_missing_at(old_lines, old_no_nl, i)
 				hunk.lines.push(dl)
 				i = i + 1
-		else if (code.kind == DIFF_DELETE()):
+		else if (code.kind == DIFF_DELETE):
 			int i = code.old_start
 			while (i < code.old_end):
 				diff_line* dl = new diff_line()
-				dl.kind = DIFF_DELETE()
+				dl.kind = DIFF_DELETE
 				dl.text = old_lines[i]
 				dl.no_newline = diff_missing_at(old_lines, old_no_nl, i)
 				hunk.lines.push(dl)
@@ -351,7 +306,7 @@ diff_hunk* diff_group_to_hunk(list[diff_range_op*] group, list[char*] old_lines,
 			int j = code.new_start
 			while (j < code.new_end):
 				diff_line* dl = new diff_line()
-				dl.kind = DIFF_INSERT()
+				dl.kind = DIFF_INSERT
 				dl.text = new_lines[j]
 				dl.no_newline = diff_missing_at(new_lines, new_no_nl, j)
 				hunk.lines.push(dl)
@@ -365,8 +320,7 @@ diff_hunk* diff_group_to_hunk(list[diff_range_op*] group, list[char*] old_lines,
 # (adjacent changes within 2*context lines of each other share a hunk)
 # -- ports Python difflib.SequenceMatcher.get_grouped_opcodes.
 diff_result* diff_lines(list[char*] old_lines, int old_no_nl, list[char*] new_lines, int new_no_nl, int context):
-	diff_result* result = new diff_result()
-	result.hunks = new list[diff_hunk*]
+	diff_result* result = new diff_result(new list[diff_hunk*])
 
 	list[diff_op*] ops = diff_myers_ops(old_lines, old_no_nl, new_lines, new_no_nl)
 	list[diff_range_op*] codes = diff_coalesce_ops(ops)
@@ -407,14 +361,11 @@ diff_result* diff_lines(list[char*] old_lines, int old_no_nl, list[char*] new_li
 			tail.new_start = max(code.new_start, code.new_end - context)
 			tail.new_end = code.new_end
 			group.push(tail)
-		else:
-			group.push(code)
+		else: group.push(code)
 
 	int emit_last = 1
-	if (group.length == 0):
-		emit_last = 0
-	else if ((group.length == 1) && (group[0].kind == DIFF_EQUAL())):
-		emit_last = 0
+	if (group.length == 0): emit_last = 0
+	else if ((group.length == 1) && (group[0].kind == DIFF_EQUAL())): emit_last = 0
 	if (emit_last):
 		result.hunks.push(diff_group_to_hunk(group, old_lines, old_no_nl, new_lines, new_no_nl))
 
@@ -440,9 +391,7 @@ struct diff_apply_result:
 
 
 diff_apply_result* diff_apply(list[char*] old_lines, int old_no_nl, diff_result* result):
-	diff_apply_result* out = new diff_apply_result()
-	out.lines = new list[char*]
-	out.no_newline = old_no_nl
+	diff_apply_result* out = new diff_apply_result(new list[char*], old_no_nl)
 
 	int old_pos = 0
 	for diff_hunk* hunk in result.hunks:
@@ -451,13 +400,11 @@ diff_apply_result* diff_apply(list[char*] old_lines, int old_no_nl, diff_result*
 			out.no_newline = diff_missing_at(old_lines, old_no_nl, old_pos)
 			old_pos = old_pos + 1
 		for diff_line* dl in hunk.lines:
-			if (dl.kind == DIFF_DELETE()):
-				old_pos = old_pos + 1
+			if (dl.kind == DIFF_DELETE): old_pos = old_pos + 1
 			else:
 				out.lines.push(dl.text)
 				out.no_newline = dl.no_newline
-				if (dl.kind == DIFF_EQUAL()):
-					old_pos = old_pos + 1
+				if (dl.kind == DIFF_EQUAL()): old_pos = old_pos + 1
 
 	while (old_pos < old_lines.length):
 		out.lines.push(old_lines[old_pos])
@@ -476,10 +423,8 @@ char* diff_join_lines(list[char*] lines, int no_newline):
 		string_append(s, lines[i])
 		int is_last = i == (lines.length - 1)
 		int suppress_newline = 0
-		if (is_last && (no_newline != 0)):
-			suppress_newline = 1
-		if (suppress_newline == 0):
-			string_append_char(s, 10)
+		if (is_last && (no_newline != 0)): suppress_newline = 1
+		if (suppress_newline == 0): string_append_char(s, 10)
 		i = i + 1
 	char* text = s.data
 	free(s)
@@ -494,8 +439,7 @@ char* diff_join_lines(list[char*] lines, int no_newline):
 char* diff_format_range(int start0, int len):
 	string_builder* s = string_new()
 	int shown_start = start0
-	if (len > 0):
-		shown_start = start0 + 1
+	if (len > 0): shown_start = start0 + 1
 	string_append_int(s, shown_start)
 	if (len != 1):
 		string_append(s, c",")
@@ -536,12 +480,9 @@ char* diff_render_unified_text(char* old_label, char* new_label, diff_result* re
 			string_append_char(s, 10)
 
 			for diff_line* dl in hunk.lines:
-				if (dl.kind == DIFF_EQUAL()):
-					string_append_char(s, ' ')
-				else if (dl.kind == DIFF_DELETE()):
-					string_append_char(s, '-')
-				else:
-					string_append_char(s, '+')
+				if (dl.kind == DIFF_EQUAL()): string_append_char(s, ' ')
+				else if (dl.kind == DIFF_DELETE): string_append_char(s, '-')
+				else: string_append_char(s, '+')
 				string_append(s, dl.text)
 				string_append_char(s, 10)
 				if (dl.no_newline != 0):

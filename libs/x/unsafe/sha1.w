@@ -30,12 +30,12 @@ its low 32 bits, and right shifts go through sha256_shr.
 import lib.memory
 import lib.sha256
 import libs.standard.crypto.sha2
+import lib.mem
 
 
 # whash extension id for SHA-1 (extension ids start at 100; see the
 # registry in libs/standard/crypto/sha2.w).
-int sha1_alg_id():
-	return 101
+const int sha1_alg_id = 101
 
 
 int* sha1_k_cache
@@ -44,8 +44,7 @@ int* sha1_k_cache
 # The four round constants K (FIPS 180-4 section 4.2.1), parsed from hex
 # text so no literal carries bit 31.
 int* sha1_k_table():
-	if (sha1_k_cache == 0):
-		sha1_k_cache = sha2_parse_words(c"5a8279996ed9eba18f1bbcdcca62c1d6", 4)
+	if (sha1_k_cache == 0): sha1_k_cache = sha2_parse_words(c"5a8279996ed9eba18f1bbcdcca62c1d6", 4)
 	return sha1_k_cache
 
 
@@ -67,21 +66,16 @@ int sha1_rotl(int x, int n):
 # f_t for round i (FIPS 180-4 section 4.1.1): Ch, Parity, Maj, Parity —
 # lib/sha256.w's ch and maj apply directly.
 int sha1_round_f(int i, int b, int c, int d):
-	if (i < 20):
-		return sha256_ch(b, c, d)
-	if ((i >= 40) && (i < 60)):
-		return sha256_maj(b, c, d)
+	if (i < 20): return sha256_ch(b, c, d)
+	if ((i >= 40) && (i < 60)): return sha256_maj(b, c, d)
 	return (b ^ c ^ d) & sha256_mask32()
 
 
 # K_t for round i.
 int sha1_round_k(int i, int* k):
-	if (i < 20):
-		return k[0]
-	if (i < 40):
-		return k[1]
-	if (i < 60):
-		return k[2]
+	if (i < 20): return k[0]
+	if (i < 40): return k[1]
+	if (i < 60): return k[2]
 	return k[3]
 
 
@@ -126,18 +120,15 @@ void sha1_block(int* state, char* block):
 # whash_iv_fn: load the initial state.
 void sha1_load_iv(int* state):
 	int* iv = sha1_iv_table()
-	int i = 0
-	while (i < 5):
-		state[i] = iv[i]
-		i = i + 1
+	mem_copy(state, iv, 5)
 
 
 # whash algorithm descriptor: registers SHA-1 with the whash dispatcher
 # on first use (20-byte digest, 64-byte block, 5 state words, big-endian
 # like the rest of the SHA family) and returns its id.
 int WHASH_SHA1():
-	whash_register(sha1_alg_id(), 20, 64, 5, 0, sha1_block, sha1_load_iv)
-	return sha1_alg_id()
+	whash_register(sha1_alg_id, 20, 64, 5, 0, sha1_block, sha1_load_iv)
+	return sha1_alg_id
 
 
 # One-shot SHA-1: digest of len bytes at data into out (20 bytes).

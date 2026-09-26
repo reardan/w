@@ -47,52 +47,11 @@ import lib.poll
 import lib.process
 import structures.string
 import libs.standard.net.tls
+import lib.dir
 
 
 int osl_io_timeout_ms():
 	return 10000
-
-
-# First PATH entry where name opens for read (mirrors
-# tests/compress_zlib_interop.w's czi_find_on_path / tools/wexec.w's
-# wexec_resolve_program: an existence check, not a strict executable-bit
-# check -- accepted there too, see docs/projects/ai_tooling_next_steps.md).
-# process_spawn execs directly without a PATH search, so callers need the
-# resolved path this returns. Returns a malloc'd absolute path, or 0 when
-# name is nowhere on PATH.
-char* osl_find_on_path(char* name):
-	char* path = env_get(c"PATH")
-	int win = os_windows()
-	char path_sep = ':'
-	if (win):
-		path_sep = ';'
-	if (path == 0):
-		if (win):
-			path = c"C:/Windows/System32"
-		else:
-			path = c"/usr/bin:/bin"
-	string_builder* candidate = string_new()
-	int p = 0
-	int at_end = 0
-	char* found = 0
-	while ((at_end == 0) && (found == 0)):
-		string_clear(candidate)
-		while ((path[p] != path_sep) && (path[p] != 0)):
-			string_append_char(candidate, path[p])
-			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length > 0):
-			string_append_char(candidate, '/')
-			string_append(candidate, name)
-			int fd = open(candidate.data, 0, 0)
-			if (fd >= 0):
-				close(fd)
-				found = strclone(candidate.data)
-	string_free(candidate)
-	return found
 
 
 # Ask the kernel for a currently free TCP port (bind 0, read it back,
@@ -100,8 +59,7 @@ char* osl_find_on_path(char* name):
 # within the bounded timeouts instead of hanging it.
 int osl_free_port():
 	int fd = socket_tcp_ipv4()
-	if (fd < 0):
-		return -1
+	if (fd < 0): return -1
 	if (socket_bind_ipv4(fd, ip4_from_string(c"127.0.0.1"), 0) < 0):
 		close(fd)
 		return -1
@@ -122,42 +80,35 @@ int osl_fail(process* p, char* msg, char* detail):
 		print(detail)
 	print(c"\x0a")
 	if (p != 0):
-		process_kill(p, sigkill())
+		process_kill(p, sigkill)
 		process_wait_or_kill(p, osl_io_timeout_ms())
 		process_free(p)
 	return 0
 
 
 int osl_bytes_equal(char* a, char* b, int n):
-	int i = 0
-	while (i < n):
-		if (a[i] != b[i]):
-			return 0
-		i = i + 1
+	for i in range(n):
+		if (a[i] != b[i]): return 0
 	return 1
 
 
 # Connect to 127.0.0.1:port, retrying while the just-spawned server boots.
 # Bounded: ~5s of attempts, then -1.
 int osl_connect_retry(int port):
-	int tries = 0
-	while (tries < 100):
+	for tries in range(100):
 		int fd = socket_tcp_ipv4()
-		if (fd < 0):
-			return -1
+		if (fd < 0): return -1
 		if (socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), port) >= 0):
 			return fd
 		close(fd)
 		process_sleep_ms(50)
-		tries = tries + 1
 	return -1
 
 
 # Direction 1: our tls_connect client against `openssl s_server -rev`.
 int osl_client_direction(char* openssl_bin, char* cert, char* key):
 	int port = osl_free_port()
-	if (port <= 0):
-		return osl_fail(0, c"client: no free port", 0)
+	if (port <= 0): return osl_fail(0, c"client: no free port", 0)
 
 	char** sargv = strv_new(12)
 	strv_set(sargv, 0, c"openssl")
@@ -174,17 +125,15 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 	strv_set(sargv, 11, c"-quiet")
 
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_pipe()
-	opts.stdout_mode = process_null()
-	opts.stderr_mode = process_null()
+	opts.stdin_mode = process_pipe
+	opts.stdout_mode = process_null
+	opts.stderr_mode = process_null
 	process* p = process_spawn(openssl_bin, sargv, opts)
 	free(opts)
-	if (p == 0):
-		return osl_fail(0, c"client: spawn s_server failed", 0)
+	if (p == 0): return osl_fail(0, c"client: spawn s_server failed", 0)
 
 	int fd = osl_connect_retry(port)
-	if (fd < 0):
-		return osl_fail(p, c"client: connect to s_server failed", 0)
+	if (fd < 0): return osl_fail(p, c"client: connect to s_server failed", 0)
 	# Bound every blocking send/recv inside the handshake and after it.
 	socket_set_recv_timeout(fd, osl_io_timeout_ms())
 	socket_set_send_timeout(fd, osl_io_timeout_ms())
@@ -207,15 +156,13 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 	int got = tls_read(conn, buf, 64)
 	char* want = c"gnip\x0a"   # -rev echoes the line reversed
 	int ok = 0
-	if (got == strlen(want)):
-		ok = osl_bytes_equal(buf, want, got)
+	if (got == strlen(want)): ok = osl_bytes_equal(buf, want, got)
 	free(buf)
 	tls_close(conn)
 	tls_config_free(cfg)
 	close(fd)
-	if (ok == 0):
-		return osl_fail(p, c"client: bad -rev echo payload", 0)
-	process_kill(p, sigterm())
+	if (ok == 0): return osl_fail(p, c"client: bad -rev echo payload", 0)
+	process_kill(p, sigterm)
 	process_wait_or_kill(p, osl_io_timeout_ms())
 	process_free(p)
 	return 1
@@ -224,8 +171,7 @@ int osl_client_direction(char* openssl_bin, char* cert, char* key):
 # Direction 2: our tls_accept server against `openssl s_client`.
 int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	int lfd = socket_tcp_ipv4()
-	if (lfd < 0):
-		return osl_fail(0, c"server: socket failed", 0)
+	if (lfd < 0): return osl_fail(0, c"server: socket failed", 0)
 	socket_set_reuseaddr(lfd)
 	if (socket_bind_ipv4(lfd, ip4_from_string(c"127.0.0.1"), 0) < 0):
 		close(lfd)
@@ -249,9 +195,9 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	strv_set(sargv, 6, c"-quiet")
 
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_pipe()
-	opts.stdout_mode = process_pipe()
-	opts.stderr_mode = process_null()
+	opts.stdin_mode = process_pipe
+	opts.stdout_mode = process_pipe
+	opts.stderr_mode = process_null
 	process* p = process_spawn(openssl_bin, sargv, opts)
 	free(opts)
 	if (p == 0):
@@ -260,8 +206,7 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 
 	int cfd = socket_accept_connection(lfd)
 	close(lfd)
-	if (cfd < 0):
-		return osl_fail(p, c"server: accept failed (timeout?)", 0)
+	if (cfd < 0): return osl_fail(p, c"server: accept failed (timeout?)", 0)
 	socket_set_recv_timeout(cfd, osl_io_timeout_ms())
 	socket_set_send_timeout(cfd, osl_io_timeout_ms())
 
@@ -282,8 +227,7 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 	char* buf = malloc(64)
 	int got = tls_read(conn, buf, 64)
 	int ok = 0
-	if (got == strlen(pong)):
-		ok = osl_bytes_equal(buf, pong, got)
+	if (got == strlen(pong)): ok = osl_bytes_equal(buf, pong, got)
 	if (ok == 0):
 		free(buf)
 		tls_close(conn)
@@ -300,34 +244,18 @@ int osl_server_direction(char* openssl_bin, char* cert, char* key):
 		close(cfd)
 		return osl_fail(p, c"server: tls_write failed", 0)
 	ok = 0
-	if (poll_single(p.stdout_fd, poll_in(), osl_io_timeout_ms()) > 0):
+	if (poll_single(p.stdout_fd, poll_in, osl_io_timeout_ms()) > 0):
 		got = read(p.stdout_fd, buf, 64)
-		if (got == strlen(ping)):
-			ok = osl_bytes_equal(buf, ping, got)
+		if (got == strlen(ping)): ok = osl_bytes_equal(buf, ping, got)
 	free(buf)
 	tls_close(conn)
 	tls_server_config_free(scfg)
 	close(cfd)
-	if (ok == 0):
-		return osl_fail(p, c"server: s_client did not echo our line", 0)
-	process_kill(p, sigterm())
+	if (ok == 0): return osl_fail(p, c"server: s_client did not echo our line", 0)
+	process_kill(p, sigterm)
 	process_wait_or_kill(p, osl_io_timeout_ms())
 	process_free(p)
 	return 1
-
-
-# Best-effort recursive delete via the real /bin/rm -- mirrors
-# tests/compress_zlib_interop.w's czi_rm_rf and the pid-scoped scratch-dir
-# cleanup tests/wvc_e2e_test.w already uses.
-void osl_rm_rf(char* dir):
-	char** argv = strv_new(3)
-	strv_set(argv, 0, c"/bin/rm")
-	strv_set(argv, 1, c"-rf")
-	strv_set(argv, 2, dir)
-	process_result* r = process_run(c"/bin/rm", argv, 0, 0, 10000)
-	if (r != 0):
-		process_result_free(r)
-	free(cast(void*, argv))
 
 
 # Generate a throwaway self-signed ECDSA P-256 cert into cert/key (the only
@@ -360,12 +288,10 @@ int osl_generate_cert(char* openssl_bin, char* cert, char* key):
 
 	process_result* pr = process_run(openssl_bin, argv, 0, 0, 30000)
 	free(cast(void*, argv))
-	if (pr == 0):
-		return osl_fail(0, c"cert generation: spawn failed", 0)
+	if (pr == 0): return osl_fail(0, c"cert generation: spawn failed", 0)
 	if (pr.status != 0):
 		char* detail = 0
-		if (pr.stderr_length > 0):
-			detail = pr.stderr_text
+		if (pr.stderr_length > 0): detail = pr.stderr_text
 		int r = osl_fail(0, c"cert generation failed", detail)
 		process_result_free(pr)
 		return r
@@ -374,7 +300,7 @@ int osl_generate_cert(char* openssl_bin, char* cert, char* key):
 
 
 int main():
-	char* openssl_bin = osl_find_on_path(c"openssl")
+	char* openssl_bin = process_which(c"openssl")
 	if (openssl_bin == 0):
 		println(c"openssl interop OK (skipped: no openssl on PATH)")
 		return 0
@@ -386,7 +312,7 @@ int main():
 	free(dirb)
 
 	# Best-effort cleanup from a previous failed run.
-	osl_rm_rf(dir)
+	dir_remove_all(dir)
 	if (mkdir(dir, 493) != 0):
 		print2(c"cannot create scratch dir: ")
 		println2(dir)
@@ -398,19 +324,16 @@ int main():
 
 	int ok = osl_generate_cert(openssl_bin, cert, key)
 	if (ok != 0):
-		if (osl_client_direction(openssl_bin, cert, key) == 0):
-			ok = 0
+		if (osl_client_direction(openssl_bin, cert, key) == 0): ok = 0
 	if (ok != 0):
-		if (osl_server_direction(openssl_bin, cert, key) == 0):
-			ok = 0
+		if (osl_server_direction(openssl_bin, cert, key) == 0): ok = 0
 
 	free(cert)
 	free(key)
-	osl_rm_rf(dir)
+	dir_remove_all(dir)
 	free(dir)
 	free(openssl_bin)
 
-	if (ok == 0):
-		return 1
+	if (ok == 0): return 1
 	print(c"openssl interop OK\x0a")
 	return 0

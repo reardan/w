@@ -18,3 +18,4 @@ int cross_line_call_is_absorbed():
 
 int main():
 	return cross_line_call_is_absorbed()
+# wbuild: fixture_group=warning_test

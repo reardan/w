@@ -77,8 +77,7 @@ void tensor_fill(tensor* t, float v);
 # semantics (tensor_sum, tensor_to_ndf, tensor_free, tensor_randn) sync
 # internally, as does ag_backward's exit.
 void tensor_sync():
-	if (gpu_available()):
-		gpu_sync()
+	if (gpu_available()): gpu_sync()
 
 
 ##### construction #####
@@ -99,10 +98,7 @@ tensor tensor_make(int rank, int n0, int n1, int n2, int n3):
 		t.data = cast(float*, malloc(n * 4))
 		t.on_gpu = 0
 	float* p = t.data
-	int i = 0
-	while (i < n):
-		p[i] = 0.0
-		i = i + 1
+	for i in range(n): p[i] = 0.0
 	return t
 
 
@@ -138,10 +134,7 @@ void tensor_randn(tensor* t, int seed, float mean, float stddev):
 	rand_init(&r, seed)
 	float* p = t.data
 	int n = t.len
-	int i = 0
-	while (i < n):
-		p[i] = rand_gaussian_scaled(&r, mean, stddev)
-		i = i + 1
+	for i in range(n): p[i] = rand_gaussian_scaled(&r, mean, stddev)
 
 
 void tensor_free(tensor* t):
@@ -150,8 +143,7 @@ void tensor_free(tensor* t):
 		# managed memory in use by a kernel is undefined.
 		tensor_sync()
 		gpu_free(cast(char*, t.data))
-	else:
-		free(cast(char*, t.data))
+	else: free(cast(char*, t.data))
 	t.data = cast(float*, 0)
 	t.len = 0
 
@@ -162,24 +154,17 @@ void tensor_free(tensor* t):
 tensor tensor_from_ndf(ndf* a):
 	tensor t = tensor_make(a.rank, a.n0, a.n1, a.n2, a.n3)
 	float* p = t.data
-	int i = 0
-	while (i < a.data.length):
-		p[i] = a.data[i]
-		i = i + 1
+	for i in range(a.data.length): p[i] = a.data[i]
 	return t
 
 
 ndf tensor_to_ndf(tensor* t):
 	tensor_sync()
 	ndf a
-	if (t.rank == 1):
-		a = ndf_new1(t.n0)
-	else if (t.rank == 2):
-		a = ndf_new2(t.n0, t.n1)
-	else if (t.rank == 3):
-		a = ndf_new3(t.n0, t.n1, t.n2)
-	else:
-		a = ndf_new4(t.n0, t.n1, t.n2, t.n3)
+	if (t.rank == 1): a = ndf_new1(t.n0)
+	else if (t.rank == 2): a = ndf_new2(t.n0, t.n1)
+	else if (t.rank == 3): a = ndf_new3(t.n0, t.n1, t.n2)
+	else: a = ndf_new4(t.n0, t.n1, t.n2, t.n3)
 	float* p = t.data
 	int i = 0
 	while (i < a.data.length):
@@ -216,10 +201,7 @@ void tensor_fill(tensor* t, float v):
 		gpu for int i in range(n):
 			p[i] = v
 	else:
-		int j = 0
-		while (j < n):
-			p[j] = v
-			j = j + 1
+		for j in range(n): p[j] = v
 
 
 void tensor_add_into(tensor* out, tensor* a, tensor* b):
@@ -233,10 +215,7 @@ void tensor_add_into(tensor* out, tensor* a, tensor* b):
 		gpu for int i in range(n):
 			po[i] = pa[i] + pb[i]
 	else:
-		int j = 0
-		while (j < n):
-			po[j] = pa[j] + pb[j]
-			j = j + 1
+		for j in range(n): po[j] = pa[j] + pb[j]
 
 
 void tensor_sub_into(tensor* out, tensor* a, tensor* b):
@@ -250,10 +229,7 @@ void tensor_sub_into(tensor* out, tensor* a, tensor* b):
 		gpu for int i in range(n):
 			po[i] = pa[i] - pb[i]
 	else:
-		int j = 0
-		while (j < n):
-			po[j] = pa[j] - pb[j]
-			j = j + 1
+		for j in range(n): po[j] = pa[j] - pb[j]
 
 
 void tensor_mul_into(tensor* out, tensor* a, tensor* b):
@@ -267,10 +243,7 @@ void tensor_mul_into(tensor* out, tensor* a, tensor* b):
 		gpu for int i in range(n):
 			po[i] = pa[i] * pb[i]
 	else:
-		int j = 0
-		while (j < n):
-			po[j] = pa[j] * pb[j]
-			j = j + 1
+		for j in range(n): po[j] = pa[j] * pb[j]
 
 
 void tensor_add_scalar_into(tensor* out, tensor* a, float s):
@@ -282,10 +255,7 @@ void tensor_add_scalar_into(tensor* out, tensor* a, float s):
 		gpu for int i in range(n):
 			po[i] = pa[i] + s
 	else:
-		int j = 0
-		while (j < n):
-			po[j] = pa[j] + s
-			j = j + 1
+		for j in range(n): po[j] = pa[j] + s
 
 
 void tensor_mul_scalar_into(tensor* out, tensor* a, float s):
@@ -297,10 +267,7 @@ void tensor_mul_scalar_into(tensor* out, tensor* a, float s):
 		gpu for int i in range(n):
 			po[i] = pa[i] * s
 	else:
-		int j = 0
-		while (j < n):
-			po[j] = pa[j] * s
-			j = j + 1
+		for j in range(n): po[j] = pa[j] * s
 
 
 # y += s*x, in place -- the SGD update primitive (torch's axpy_/add_).
@@ -315,10 +282,7 @@ void tensor_axpy_into(tensor* y, float s, tensor* x):
 		gpu for int i in range(n):
 			py[i] = py[i] + s * px[i]
 	else:
-		int j = 0
-		while (j < n):
-			py[j] = py[j] + s * px[j]
-			j = j + 1
+		for j in range(n): py[j] = py[j] + s * px[j]
 
 
 void tensor_relu_into(tensor* out, tensor* a):
@@ -330,18 +294,13 @@ void tensor_relu_into(tensor* out, tensor* a):
 		gpu for int i in range(n):
 			float x = pa[i]
 			float r = 0.0
-			if (x > 0.0):
-				r = x
+			if (x > 0.0): r = x
 			po[i] = r
 	else:
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			float y = pa[j]
-			if (y > 0.0):
-				po[j] = y
-			else:
-				po[j] = 0.0
-			j = j + 1
+			if (y > 0.0): po[j] = y
+			else: po[j] = 0.0
 
 
 # ReLU backward: out = dout where the *forward* input a was positive,
@@ -360,18 +319,13 @@ void tensor_relu_grad_into(tensor* out, tensor* a, tensor* dout):
 		gpu for int i in range(n):
 			float x = pa[i]
 			float g = 0.0
-			if (x > 0.0):
-				g = pd[i]
+			if (x > 0.0): g = pd[i]
 			po[i] = g
 	else:
-		int j = 0
-		while (j < n):
+		for j in range(n):
 			float x2 = pa[j]
-			if (x2 > 0.0):
-				po[j] = pd[j]
-			else:
-				po[j] = 0.0
-			j = j + 1
+			if (x2 > 0.0): po[j] = pd[j]
+			else: po[j] = 0.0
 
 
 ##### broadcast ops (bias add) #####
@@ -398,10 +352,7 @@ void tensor_add_row_into(tensor* out, tensor* a, tensor* r):
 			int col = idx % width
 			po[idx] = pa[idx] + pr[col]
 	else:
-		int j = 0
-		while (j < total):
-			po[j] = pa[j] + pr[j % width]
-			j = j + 1
+		for j in range(total): po[j] = pa[j] + pr[j % width]
 
 
 ##### reduction (torch.md Stage 1 atomics, Stage 4 block staging) #####
@@ -417,18 +368,15 @@ kernel tensor_sum_kernel(float* p, float32* acc, int n):
 	int tid = thread_idx()
 	int gid = block_idx() * block_dim() + tid
 	float v = 0.0
-	if (gid < n):
-		v = p[gid]
+	if (gid < n): v = p[gid]
 	buf[tid] = v
 	gpu_barrier()
 	int s = 128
 	while (s > 0):
-		if (tid < s):
-			buf[tid] = buf[tid] + buf[tid + s]
+		if (tid < s): buf[tid] = buf[tid] + buf[tid + s]
 		gpu_barrier()
 		s = s / 2
-	if (tid == 0):
-		atomic_add(acc, buf[0])
+	if (tid == 0): atomic_add(acc, buf[0])
 
 
 # Sum of every element. The result depends on addition order on both
@@ -449,10 +397,7 @@ float tensor_sum(tensor* t):
 		gpu_free(cast(char*, acc))
 		return s
 	float total = 0.0
-	int j = 0
-	while (j < n):
-		total = total + p[j]
-		j = j + 1
+	for j in range(n): total = total + p[j]
 	return total
 
 
@@ -476,21 +421,13 @@ void tensor_col_sum_into(tensor* out, tensor* a):
 	if (tensor_gpu2(out, a)):
 		gpu for int j in range(n):
 			float acc = 0.0
-			int i = 0
-			while (i < m):
-				acc = acc + pa[i * n + j]
-				i = i + 1
+			for i in range(m): acc = acc + pa[i * n + j]
 			po[j] = acc
 	else:
-		int j2 = 0
-		while (j2 < n):
+		for j2 in range(n):
 			float acc2 = 0.0
-			int i2 = 0
-			while (i2 < m):
-				acc2 = acc2 + pa[i2 * n + j2]
-				i2 = i2 + 1
+			for i2 in range(m): acc2 = acc2 + pa[i2 * n + j2]
 			po[j2] = acc2
-			j2 = j2 + 1
 
 
 # out[i] = sum_j a[i,j] for rank-2 a (m, n). One thread per row, looping
@@ -506,21 +443,13 @@ void tensor_row_sum_into(tensor* out, tensor* a):
 	if (tensor_gpu2(out, a)):
 		gpu for int i in range(m):
 			float acc = 0.0
-			int j = 0
-			while (j < n):
-				acc = acc + pa[i * n + j]
-				j = j + 1
+			for j in range(n): acc = acc + pa[i * n + j]
 			po[i] = acc
 	else:
-		int i2 = 0
-		while (i2 < m):
+		for i2 in range(m):
 			float acc2 = 0.0
-			int j2 = 0
-			while (j2 < n):
-				acc2 = acc2 + pa[i2 * n + j2]
-				j2 = j2 + 1
+			for j2 in range(n): acc2 = acc2 + pa[i2 * n + j2]
 			po[i2] = acc2
-			i2 = i2 + 1
 
 
 # out[i] = max_j a[i,j] for rank-2 a (m, n) -- softmax numerical
@@ -538,25 +467,17 @@ void tensor_row_max_into(tensor* out, tensor* a):
 	if (tensor_gpu2(out, a)):
 		gpu for int i in range(m):
 			float best = pa[i * n]
-			int j = 1
-			while (j < n):
+			for j in range(1, n):
 				float v = pa[i * n + j]
-				if (v > best):
-					best = v
-				j = j + 1
+				if (v > best): best = v
 			po[i] = best
 	else:
-		int i2 = 0
-		while (i2 < m):
+		for i2 in range(m):
 			float best2 = pa[i2 * n]
-			int j2 = 1
-			while (j2 < n):
+			for j2 in range(1, n):
 				float v2 = pa[i2 * n + j2]
-				if (v2 > best2):
-					best2 = v2
-				j2 = j2 + 1
+				if (v2 > best2): best2 = v2
 			po[i2] = best2
-			i2 = i2 + 1
 
 
 ##### matmul (torch.md Stage 3 naive CPU path, Stage 4 tiled GPU path) #####
@@ -575,9 +496,17 @@ void tensor_row_max_into(tensor* out, tensor* a):
 # the same order and agree bit-for-bit.
 
 
-# out = a @ b: ta stages a[row, t*16+tx], tb stages b[t*16+ty, col];
-# both loads are tx-contiguous in global memory (coalesced).
-kernel tensor_matmul_tiled_kernel(float* a, float* b, float* out, int m, int kd, int n):
+# One kernel serves all three variants through element strides: the
+# (m x kd) left operand reads a[row * a_rs + k * a_ks] and the (kd x n)
+# right operand b[k * b_ks + col * b_cs], so
+#   out = a @ b   (a: m x kd, b: kd x n):  a_rs = kd, a_ks = 1, b_ks = n, b_cs = 1
+#   out = aT @ b  (a: kd x m, b: kd x n):  a_rs = 1, a_ks = m, b_ks = n, b_cs = 1
+#   out = a @ bT  (a: m x kd, b: n x kd):  a_rs = kd, a_ks = 1, b_ks = 1, b_cs = kd
+# The plain product's loads are tx-contiguous in global memory
+# (coalesced); the transposed operand of tn/nt walks with stride m or kd
+# between tx neighbors -- uncoalesced, but the 16x reuse from shared
+# staging still dominates the naive kernel's per-element k-loop.
+kernel tensor_matmul_tiled_kernel(float* a, float* b, float* out, int m, int kd, int n, int a_rs, int a_ks, int b_ks, int b_cs):
 	float* ta = gpu_shared_f32(256)
 	float* tb = gpu_shared_f32(256)
 	int tid = thread_idx()
@@ -590,115 +519,22 @@ kernel tensor_matmul_tiled_kernel(float* a, float* b, float* out, int m, int kd,
 	int col = bx * 16 + tx
 	float acc = 0.0
 	int nt = (kd + 15) / 16
-	int t = 0
-	while (t < nt):
+	for t in range(nt):
 		int ak = t * 16 + tx
 		float av = 0.0
 		if (row < m):
-			if (ak < kd):
-				av = a[row * kd + ak]
+			if (ak < kd): av = a[row * a_rs + ak * a_ks]
 		ta[ty * 16 + tx] = av
 		int bk = t * 16 + ty
 		float bv = 0.0
 		if (bk < kd):
-			if (col < n):
-				bv = b[bk * n + col]
+			if (col < n): bv = b[bk * b_ks + col * b_cs]
 		tb[ty * 16 + tx] = bv
 		gpu_barrier()
-		int q = 0
-		while (q < 16):
-			acc = acc + ta[ty * 16 + q] * tb[q * 16 + tx]
-			q = q + 1
+		for q in range(16): acc = acc + ta[ty * 16 + q] * tb[q * 16 + tx]
 		gpu_barrier()
-		t = t + 1
 	if (row < m):
-		if (col < n):
-			out[row * n + col] = acc
-
-
-# out = aT @ b for a (kd, m): the a-tile load reads a[ak * m + row]
-# (column-major walk of a, stride m between tx neighbors -- uncoalesced,
-# but the 16x reuse from shared staging still dominates the naive
-# kernel's per-element k-loop).
-kernel tensor_matmul_tn_tiled_kernel(float* a, float* b, float* out, int m, int kd, int n):
-	float* ta = gpu_shared_f32(256)
-	float* tb = gpu_shared_f32(256)
-	int tid = thread_idx()
-	int tx = tid % 16
-	int ty = tid / 16
-	int nbx = (n + 15) / 16
-	int bx = block_idx() % nbx
-	int by = block_idx() / nbx
-	int row = by * 16 + ty
-	int col = bx * 16 + tx
-	float acc = 0.0
-	int nt = (kd + 15) / 16
-	int t = 0
-	while (t < nt):
-		int ak = t * 16 + tx
-		float av = 0.0
-		if (row < m):
-			if (ak < kd):
-				av = a[ak * m + row]
-		ta[ty * 16 + tx] = av
-		int bk = t * 16 + ty
-		float bv = 0.0
-		if (bk < kd):
-			if (col < n):
-				bv = b[bk * n + col]
-		tb[ty * 16 + tx] = bv
-		gpu_barrier()
-		int q = 0
-		while (q < 16):
-			acc = acc + ta[ty * 16 + q] * tb[q * 16 + tx]
-			q = q + 1
-		gpu_barrier()
-		t = t + 1
-	if (row < m):
-		if (col < n):
-			out[row * n + col] = acc
-
-
-# out = a @ bT for b (n, kd): the b-tile load reads b[col * kd + bk]
-# (row-major walk of b's rows as output columns; stride kd between tx
-# neighbors -- same tradeoff as the tn a-tile).
-kernel tensor_matmul_nt_tiled_kernel(float* a, float* b, float* out, int m, int kd, int n):
-	float* ta = gpu_shared_f32(256)
-	float* tb = gpu_shared_f32(256)
-	int tid = thread_idx()
-	int tx = tid % 16
-	int ty = tid / 16
-	int nbx = (n + 15) / 16
-	int bx = block_idx() % nbx
-	int by = block_idx() / nbx
-	int row = by * 16 + ty
-	int col = bx * 16 + tx
-	float acc = 0.0
-	int nt = (kd + 15) / 16
-	int t = 0
-	while (t < nt):
-		int ak = t * 16 + tx
-		float av = 0.0
-		if (row < m):
-			if (ak < kd):
-				av = a[row * kd + ak]
-		ta[ty * 16 + tx] = av
-		int bk = t * 16 + ty
-		float bv = 0.0
-		if (bk < kd):
-			if (col < n):
-				bv = b[col * kd + bk]
-		tb[ty * 16 + tx] = bv
-		gpu_barrier()
-		int q = 0
-		while (q < 16):
-			acc = acc + ta[ty * 16 + q] * tb[q * 16 + tx]
-			q = q + 1
-		gpu_barrier()
-		t = t + 1
-	if (row < m):
-		if (col < n):
-			out[row * n + col] = acc
+		if (col < n): out[row * n + col] = acc
 
 
 # Optional matmul accelerator. Null (the default) unless a program opts
@@ -713,8 +549,7 @@ tensor_matmul_fn* tensor_matmul_hook
 
 
 int tensor_matmul_hooked(int op, float* pa, float* pb, float* po, int m, int kd, int n):
-	if (cast(int, tensor_matmul_hook) == 0):
-		return 0
+	if (cast(int, tensor_matmul_hook) == 0): return 0
 	return tensor_matmul_hook(op, pa, pb, po, m, kd, n)
 
 
@@ -739,27 +574,20 @@ void tensor_matmul2(tensor* out, tensor* a, tensor* b):
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
 		if (tensor_matmul_hooked(0, pa, pb, po, m, kd, n) == 0):
-			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
+			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, kd, 1, n, 1)
 	else:
-		int i = 0
-		while (i < m):
-			int j = 0
-			while (j < n):
+		for i in range(m):
+			for j in range(n):
 				float sum = 0.0
-				int k2 = 0
-				while (k2 < kd):
-					sum = sum + pa[i * kd + k2] * pb[k2 * n + j]
-					k2 = k2 + 1
+				for k2 in range(kd): sum = sum + pa[i * kd + k2] * pb[k2 * n + j]
 				po[i * n + j] = sum
-				j = j + 1
-			i = i + 1
 
 
 # out = aT @ b for a (k, m), b (k, n), out (m, n) -- i.e. out[i,j] =
 # sum_p a[p,i]*b[p,j]. The backward pass of tensor_matmul2 needs exactly
 # this shape (dW = xT @ dout for a linear layer), and forming an actual
 # transpose would cost an extra full copy, so this walks a's columns
-# directly instead. GPU path: the tn tiled kernel above.
+# directly instead. GPU path: the tiled kernel above with a transposed.
 void tensor_matmul2_tn(tensor* out, tensor* a, tensor* b):
 	asserts(c"tensor_matmul2_tn: rank must be 2", a.rank == 2 && b.rank == 2 && out.rank == 2)
 	asserts(c"tensor_matmul2_tn: shared dimension must match", a.n0 == b.n0)
@@ -773,27 +601,20 @@ void tensor_matmul2_tn(tensor* out, tensor* a, tensor* b):
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
 		if (tensor_matmul_hooked(1, pa, pb, po, m, kd, n) == 0):
-			launch tensor_matmul_tn_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
+			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, 1, m, n, 1)
 	else:
-		int i = 0
-		while (i < m):
-			int j = 0
-			while (j < n):
+		for i in range(m):
+			for j in range(n):
 				float sum = 0.0
-				int p2 = 0
-				while (p2 < kd):
-					sum = sum + pa[p2 * m + i] * pb[p2 * n + j]
-					p2 = p2 + 1
+				for p2 in range(kd): sum = sum + pa[p2 * m + i] * pb[p2 * n + j]
 				po[i * n + j] = sum
-				j = j + 1
-			i = i + 1
 
 
 # out = a @ bT for a (m, k), b (n, k), out (m, n) -- i.e. out[i,j] =
 # sum_p a[i,p]*b[j,p]. The forward pass of a linear layer wants this
 # shape directly (y = x @ WT with W stored (out_features, in_features),
 # torch's convention), and the backward pass needs it again for
-# dx = dout @ W. GPU path: the nt tiled kernel above.
+# dx = dout @ W. GPU path: the tiled kernel above with b transposed.
 void tensor_matmul2_nt(tensor* out, tensor* a, tensor* b):
 	asserts(c"tensor_matmul2_nt: rank must be 2", a.rank == 2 && b.rank == 2 && out.rank == 2)
 	asserts(c"tensor_matmul2_nt: shared dimension must match", a.n1 == b.n1)
@@ -807,17 +628,10 @@ void tensor_matmul2_nt(tensor* out, tensor* a, tensor* b):
 	float* pb = b.data
 	if (tensor_gpu3(out, a, b)):
 		if (tensor_matmul_hooked(2, pa, pb, po, m, kd, n) == 0):
-			launch tensor_matmul_nt_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n)
+			launch tensor_matmul_tiled_kernel[tensor_matmul_blocks(m, n), 256](pa, pb, po, m, kd, n, kd, 1, 1, kd)
 	else:
-		int i = 0
-		while (i < m):
-			int j = 0
-			while (j < n):
+		for i in range(m):
+			for j in range(n):
 				float sum = 0.0
-				int p2 = 0
-				while (p2 < kd):
-					sum = sum + pa[i * kd + p2] * pb[j * kd + p2]
-					p2 = p2 + 1
+				for p2 in range(kd): sum = sum + pa[i * kd + p2] * pb[j * kd + p2]
 				po[i * n + j] = sum
-				j = j + 1
-			i = i + 1

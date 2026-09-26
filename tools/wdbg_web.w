@@ -120,23 +120,16 @@ int ww_max_requests
 int ww_requests_served
 
 
-int ww_state_none():
-	return 0
-int ww_state_stopped():
-	return 1
-int ww_state_running():
-	return 2
-int ww_state_exited():
-	return 3
+const int ww_state_none = 0
+const int ww_state_stopped = 1
+const int ww_state_running = 2
+const int ww_state_exited = 3
 
 
 char* ww_state_name(int st):
-	if (st == ww_state_stopped()):
-		return c"stopped"
-	if (st == ww_state_running()):
-		return c"running"
-	if (st == ww_state_exited()):
-		return c"exited"
+	if (st == ww_state_stopped): return c"stopped"
+	if (st == ww_state_running): return c"running"
+	if (st == ww_state_exited): return c"exited"
 	return c"none"
 
 
@@ -153,8 +146,7 @@ char* ww_core_json          # wcore --json output (--core mode), or 0
 
 
 # The largest amount of unread program output kept; older bytes are dropped.
-int ww_out_cap():
-	return 1048576
+const int ww_out_cap = 1048576
 
 
 char* ww_prompt():
@@ -163,8 +155,8 @@ char* ww_prompt():
 
 void ww_out_append(char* data, int n):
 	string_append_bytes(ww_out, data, n)
-	if (ww_out.length > ww_out_cap()):
-		int drop = ww_out.length - ww_out_cap() / 2
+	if (ww_out.length > ww_out_cap):
+		int drop = ww_out.length - ww_out_cap / 2
 		string_builder* kept = string_new()
 		string_append(kept, c"[... earlier output dropped ...]\n")
 		string_append_bytes(kept, ww_out.data + drop, ww_out.length - drop)
@@ -175,10 +167,8 @@ void ww_out_append(char* data, int n):
 # If the buffered output ends with wdbg's prompt, strip it and report 1.
 int ww_out_take_prompt():
 	int plen = strlen(ww_prompt())
-	if (ww_out.length < plen):
-		return 0
-	if (ends_with(ww_out.data, ww_prompt()) == 0):
-		return 0
+	if (ww_out.length < plen): return 0
+	if (ends_with(ww_out.data, ww_prompt()) == 0): return 0
 	ww_out.length = ww_out.length - plen
 	ww_out.data[ww_out.length] = 0
 	return 1
@@ -192,13 +182,11 @@ char* ww_out_drain():
 
 
 void ww_close_fd(int fd):
-	if (fd >= 0):
-		close(fd)
+	if (fd >= 0): close(fd)
 
 
 void ww_session_reap():
-	if (ww_proc == 0):
-		return
+	if (ww_proc == 0): return
 	ww_close_fd(ww_proc.stdin_fd)
 	ww_close_fd(ww_proc.stdout_fd)
 	ww_close_fd(ww_proc.stderr_fd)
@@ -214,18 +202,16 @@ void ww_session_reap():
 	string_free(note)
 	process_free(ww_proc)
 	ww_proc = 0
-	ww_state = ww_state_exited()
+	ww_state = ww_state_exited
 
 
 # Read whatever one of wdbg's pipes has. Returns the byte count, 0 at EOF.
 int ww_read_pipe(int fd):
 	char* buf = malloc(4096)
 	int n = read(fd, buf, 4096)
-	if (n > 0):
-		ww_out_append(buf, n)
+	if (n > 0): ww_out_append(buf, n)
 	free(buf)
-	if (n < 0):
-		return 0
+	if (n < 0): return 0
 	return n
 
 
@@ -233,30 +219,26 @@ int ww_read_pipe(int fd):
 # as wdbg prompts (state becomes stopped) or exits. A timeout of 0 just
 # drains what is already there.
 void ww_pump(int timeout_ms):
-	if (ww_proc == 0):
-		return
+	if (ww_proc == 0): return
 	int deadline = process_monotonic_ms() + timeout_ms
 	while (ww_proc != 0):
 		int wait = deadline - process_monotonic_ms()
-		if (wait < 0):
-			wait = 0
+		if (wait < 0): wait = 0
 		pollfd* fds = pollfd_new_array(2)
-		pollfd_set(fds, 0, ww_proc.stdout_fd, poll_in())
-		pollfd_set(fds, 1, ww_proc.stderr_fd, poll_in())
+		pollfd_set(fds, 0, ww_proc.stdout_fd, poll_in)
+		pollfd_set(fds, 1, ww_proc.stderr_fd, poll_in)
 		int nready = poll_wait(fds, 2, wait)
 		int out_ev = pollfd_at(fds, 0).revents
 		int err_ev = pollfd_at(fds, 1).revents
 		free(cast(char*, fds))
-		if (nready <= 0):
-			return
-		if (err_ev != 0):
-			ww_read_pipe(ww_proc.stderr_fd)
+		if (nready <= 0): return
+		if (err_ev != 0): ww_read_pipe(ww_proc.stderr_fd)
 		if (out_ev != 0):
 			if (ww_read_pipe(ww_proc.stdout_fd) == 0):
 				ww_session_reap()
 				return
 			if (ww_out_take_prompt()):
-				ww_state = ww_state_stopped()
+				ww_state = ww_state_stopped
 				return
 
 
@@ -266,7 +248,7 @@ void ww_send_command(char* line, int timeout_ms):
 	string_append_char(cmd, 10)
 	write(ww_proc.stdin_fd, cmd.data, cmd.length)
 	string_free(cmd)
-	ww_state = ww_state_running()
+	ww_state = ww_state_running
 	ww_pump(timeout_ms)
 
 
@@ -282,15 +264,12 @@ char* ww_query(char* line):
 
 
 void ww_load_files():
-	if (ww_files.length > 0):
-		return
-	if (ww_state != ww_state_stopped()):
-		return
+	if (ww_files.length > 0): return
+	if (ww_state != ww_state_stopped): return
 	char* text = ww_query(c"i files")
 	list[char*] lines = split(text, 10)
 	for char* ln in lines:
-		if (starts_with(ln, c"/")):
-			ww_files.push(strclone(ln))
+		if (starts_with(ln, c"/")): ww_files.push(strclone(ln))
 		free(ln)
 	list_free[char*](lines)
 	free(text)
@@ -312,11 +291,9 @@ int ww_session_start():
 	list[char*] args = new list[char*]
 	args.push(ww_wdbg_path)
 	args.push(ww_program)
-	if (ww_break_start):
-		args.push(c"--break_start")
+	if (ww_break_start): args.push(c"--break_start")
 	args.push(c"--break_end")
-	for char* a in ww_program_args:
-		args.push(a)
+	for char* a in ww_program_args: args.push(a)
 	char** argv = strv_new(args.length + 1)
 	int i = 0
 	while (i < args.length):
@@ -324,17 +301,17 @@ int ww_session_start():
 		i = i + 1
 	strv_set(argv, args.length, 0)
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_pipe()
-	opts.stdout_mode = process_pipe()
-	opts.stderr_mode = process_pipe()
+	opts.stdin_mode = process_pipe
+	opts.stdout_mode = process_pipe
+	opts.stderr_mode = process_pipe
 	ww_proc = process_spawn(ww_wdbg_path, argv, opts)
 	free(cast(char*, opts))
 	free(cast(char*, argv))
 	list_free[char*](args)
 	if (ww_proc == 0):
-		ww_state = ww_state_none()
+		ww_state = ww_state_none
 		return 0
-	ww_state = ww_state_running()
+	ww_state = ww_state_running
 	# Compiling the program in-process takes a moment; wait for the
 	# first stop (or exit) so the page starts with a real state.
 	ww_pump(60000)
@@ -343,9 +320,8 @@ int ww_session_start():
 
 
 void ww_session_kill():
-	if (ww_proc == 0):
-		return
-	process_kill(ww_proc, sigkill())
+	if (ww_proc == 0): return
+	process_kill(ww_proc, sigkill)
 	ww_session_reap()
 
 
@@ -357,17 +333,13 @@ void ww_core_collect_files():
 	while (at >= 0):
 		p = p + at + strlen(key)
 		int n = 0
-		while ((p[n] != 0) && (p[n] != '"') && (p[n] != 92)):
-			n = n + 1
+		while ((p[n] != 0) && (p[n] != '"') && (p[n] != 92)): n = n + 1
 		char* f = substring(p, 0, n)
 		int seen = 0
 		for char* g in ww_files:
-			if (strcmp(g, f) == 0):
-				seen = 1
-		if (seen):
-			free(f)
-		else:
-			ww_files.push(f)
+			if (strcmp(g, f) == 0): seen = 1
+		if (seen): free(f)
+		else: ww_files.push(f)
 		at = index_of(p, key)
 
 
@@ -376,8 +348,7 @@ void ww_run_core():
 	args.push(ww_wcore_path)
 	args.push(c"--json")
 	args.push(ww_core_path)
-	if (ww_binary_path != 0):
-		args.push(ww_binary_path)
+	if (ww_binary_path != 0): args.push(ww_binary_path)
 	char** argv = strv_new(args.length + 1)
 	int i = 0
 	while (i < args.length):
@@ -391,8 +362,7 @@ void ww_run_core():
 		ww_core_json = strclone(c"{\"error\": \"could not run wcore\"}")
 		return
 	string_builder* sb = string_new()
-	if ((r.status == 0) && (strlen(r.stdout_text) > 0)):
-		string_append(sb, r.stdout_text)
+	if ((r.status == 0) && (strlen(r.stdout_text) > 0)): string_append(sb, r.stdout_text)
 	else:
 		string_append(sb, c"{\"error\": ")
 		ww_json_string(sb, r.stderr_text)
@@ -406,8 +376,7 @@ void ww_run_core():
 # ---- JSON / HTTP helpers -------------------------------------------------------
 
 int ww_hex_digit(int v):
-	if (v < 10):
-		return '0' + v
+	if (v < 10): return '0' + v
 	return 'a' + v - 10
 
 
@@ -416,29 +385,22 @@ void ww_json_string(string_builder* s, char* text):
 	int i = 0
 	while (text[i] != 0):
 		int ch = text[i] & 255
-		if (ch == '"'):
-			string_append(s, c"\\\"")
-		else if (ch == 92):
-			string_append(s, c"\\\\")
-		else if (ch == 10):
-			string_append(s, c"\\n")
-		else if (ch == 9):
-			string_append(s, c"\\t")
+		if (ch == '"'): string_append(s, c"\\\"")
+		else if (ch == 92): string_append(s, c"\\\\")
+		else if (ch == 10): string_append(s, c"\\n")
+		else if (ch == 9): string_append(s, c"\\t")
 		else if (ch < 32):
 			string_append(s, c"\\u00")
 			string_append_char(s, ww_hex_digit(ch >> 4))
 			string_append_char(s, ww_hex_digit(ch & 15))
-		else if (ch == 127):
-			string_append(s, c"\\u007f")
-		else:
-			string_append_char(s, ch)
+		else if (ch == 127): string_append(s, c"\\u007f")
+		else: string_append_char(s, ch)
 		i = i + 1
 	string_append_char(s, '"')
 
 
 void ww_json_field(string_builder* s, char* name, char* value, int comma):
-	if (comma):
-		string_append(s, c", ")
+	if (comma): string_append(s, c", ")
 	ww_json_string(s, name)
 	string_append(s, c": ")
 	ww_json_string(s, value)
@@ -460,40 +422,28 @@ void ww_reply_error(RequestContext* rc, int status, char* message):
 
 # Constant-time comparison of a presented code with the real one.
 int ww_code_matches(char* given):
-	if (given == 0):
-		return 0
+	if (given == 0): return 0
 	int n = strlen(ww_code)
-	if (strlen(given) != n):
-		return 0
+	if (strlen(given) != n): return 0
 	int diff = 0
-	int i = 0
-	while (i < n):
-		diff = diff | ((given[i] ^ ww_code[i]) & 255)
-		i = i + 1
+	for i in range(n): diff = diff | ((given[i] ^ ww_code[i]) & 255)
 	return diff == 0
 
 
 # The value of cookie name in a Cookie header, malloc'd, or 0.
 char* ww_cookie_value(char* header, char* name):
-	if (header == 0):
-		return 0
+	if (header == 0): return 0
 	int nlen = strlen(name)
 	int i = 0
 	while (header[i] != 0):
-		while ((header[i] == ' ') || (header[i] == ';')):
-			i = i + 1
+		while ((header[i] == ' ') || (header[i] == ';')): i = i + 1
 		int start = i
-		while ((header[i] != 0) && (header[i] != ';')):
-			i = i + 1
+		while ((header[i] != 0) && (header[i] != ';')): i = i + 1
 		if ((i - start > nlen) && (header[start + nlen] == '=')):
 			int same = 1
-			int k = 0
-			while (k < nlen):
-				if (header[start + k] != name[k]):
-					same = 0
-				k = k + 1
-			if (same):
-				return substring(header, start + nlen + 1, i)
+			for k in range(nlen):
+				if (header[start + k] != name[k]): same = 0
+			if (same): return substring(header, start + nlen + 1, i)
 	return 0
 
 
@@ -501,48 +451,36 @@ char* ww_cookie_value(char* header, char* name):
 int ww_authorized(RequestContext* rc):
 	char* q = request_query_param(rc, c"code")
 	int ok = ww_code_matches(q)
-	if (q != 0):
-		free(q)
-	if (ok):
-		return 1
-	if (ww_code_matches(request_context_header(rc, c"x-wdbg-code"))):
-		return 1
+	if (q != 0): free(q)
+	if (ok): return 1
+	if (ww_code_matches(request_context_header(rc, c"x-wdbg-code"))): return 1
 	char* ck = ww_cookie_value(request_context_header(rc, c"cookie"), c"wdbg_code")
 	ok = ww_code_matches(ck)
-	if (ck != 0):
-		free(ck)
+	if (ck != 0): free(ck)
 	return ok
 
 
 char* ww_content_type(char* path):
-	if (ends_with(path, c".html")):
-		return c"text/html; charset=utf-8"
+	if (ends_with(path, c".html")): return c"text/html; charset=utf-8"
 	if (ends_with(path, c".js") || ends_with(path, c".mjs")):
 		return c"text/javascript; charset=utf-8"
-	if (ends_with(path, c".css")):
-		return c"text/css; charset=utf-8"
-	if (ends_with(path, c".svg")):
-		return c"image/svg+xml"
-	if (ends_with(path, c".png")):
-		return c"image/png"
-	if (ends_with(path, c".wasm")):
-		return c"application/wasm"
-	if (ends_with(path, c".json")):
-		return c"application/json"
+	if (ends_with(path, c".css")): return c"text/css; charset=utf-8"
+	if (ends_with(path, c".svg")): return c"image/svg+xml"
+	if (ends_with(path, c".png")): return c"image/png"
+	if (ends_with(path, c".wasm")): return c"application/wasm"
+	if (ends_with(path, c".json")): return c"application/json"
 	return c"application/octet-stream"
 
 
 # A static path is served only when every character is from a small
 # safe set and it never names a parent directory.
 int ww_safe_static_path(char* p):
-	if (index_of(p, c"..") >= 0):
-		return 0
+	if (index_of(p, c"..") >= 0): return 0
 	int i = 0
 	while (p[i] != 0):
 		int ch = p[i]
 		int ok = isalnum(ch) || (ch == '/') || (ch == '.') || (ch == '_') || (ch == '-')
-		if (ok == 0):
-			return 0
+		if (ok == 0): return 0
 		i = i + 1
 	return 1
 
@@ -551,8 +489,7 @@ int ww_safe_static_path(char* p):
 # *out_len), or 0.
 char* ww_read_file(char* path, int* out_len):
 	int fd = open(path, 0, 0)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	string_builder* sb = string_new()
 	char* buf = malloc(65536)
 	int n = read(fd, buf, 65536)
@@ -569,8 +506,7 @@ char* ww_read_file(char* path, int* out_len):
 
 void ww_serve_static(RequestContext* rc, char* path):
 	char* rel = path
-	if (strcmp(path, c"/") == 0):
-		rel = c"/index.html"
+	if (strcmp(path, c"/") == 0): rel = c"/index.html"
 	if (ww_safe_static_path(rel) == 0):
 		request_context_text(rc, 404, c"not found\n")
 		return
@@ -578,12 +514,9 @@ void ww_serve_static(RequestContext* rc, char* path):
 	# binary), the shared wasm host glue under /web/ (tools/web), and
 	# the page itself (tools/wdbg_web).
 	char* full = 0
-	if (strcmp(rel, c"/wdbg_ui.wasm") == 0):
-		full = strclone(ww_ui_wasm_path)
-	else if (starts_with(rel, c"/web/")):
-		full = strjoin(ww_web_dir, rel + 4)
-	else:
-		full = strjoin(ww_static_dir, rel)
+	if (strcmp(rel, c"/wdbg_ui.wasm") == 0): full = strclone(ww_ui_wasm_path)
+	else if (starts_with(rel, c"/web/")): full = strjoin(ww_web_dir, rel + 4)
+	else: full = strjoin(ww_static_dir, rel)
 	int len = 0
 	char* data = ww_read_file(full, &len)
 	if (data == 0):
@@ -606,19 +539,15 @@ void ww_api_state(RequestContext* rc):
 	string_append(s, c"{")
 	ww_json_field(s, c"state", ww_state_name(ww_state), 0)
 	char* prog = ww_program
-	if (prog == 0):
-		prog = c""
+	if (prog == 0): prog = c""
 	ww_json_field(s, c"program", prog, 1)
 	string_append(s, c", \"has_core\": ")
-	if (ww_core_json != 0):
-		string_append(s, c"true")
-	else:
-		string_append(s, c"false")
+	if (ww_core_json != 0): string_append(s, c"true")
+	else: string_append(s, c"false")
 	string_append(s, c", \"files\": [")
 	int i = 0
 	while (i < ww_files.length):
-		if (i > 0):
-			string_append(s, c", ")
+		if (i > 0): string_append(s, c", ")
 		ww_json_string(s, ww_files[i])
 		i = i + 1
 	string_append(s, c"]}")
@@ -637,15 +566,14 @@ void ww_reply_state_output(RequestContext* rc):
 
 
 void ww_api_cmd(RequestContext* rc):
-	if (ww_state != ww_state_stopped()):
+	if (ww_state != ww_state_stopped):
 		ww_reply_error(rc, 409, c"the debugger is not stopped at a prompt")
 		return
 	# One line only: anything after the first newline is ignored, so a
 	# request cannot smuggle a second command into wdbg.
 	char* body = request_context_body(rc)
 	int n = 0
-	while ((body[n] != 0) && (body[n] != 10) && (body[n] != 13)):
-		n = n + 1
+	while ((body[n] != 0) && (body[n] != 10) && (body[n] != 13)): n = n + 1
 	char* line = substring(body, 0, n)
 	ww_send_command(line, 2000)
 	free(line)
@@ -665,7 +593,7 @@ void ww_inspect_field(string_builder* s, char* name, char* cmd, int comma):
 
 
 void ww_api_inspect(RequestContext* rc):
-	if (ww_state != ww_state_stopped()):
+	if (ww_state != ww_state_stopped):
 		ww_reply_error(rc, 409, c"the debugger is not stopped at a prompt")
 		return
 	string_builder* s = string_new()
@@ -689,13 +617,11 @@ int ww_query_allowed(char* line):
 	char* words = c"x disas p print bt backtrace l list r registers st stack i info"
 	list[char*] allowed = split(words, ' ')
 	int n = 0
-	while ((line[n] != 0) && (line[n] != ' ')):
-		n = n + 1
+	while ((line[n] != 0) && (line[n] != ' ')): n = n + 1
 	char* first = substring(line, 0, n)
 	int ok = 0
 	for char* w in allowed:
-		if (strcmp(w, first) == 0):
-			ok = 1
+		if (strcmp(w, first) == 0): ok = 1
 		free(w)
 	list_free[char*](allowed)
 	free(first)
@@ -706,13 +632,12 @@ int ww_query_allowed(char* line):
 # mixing it into the program-output stream /api/cmd and /api/poll carry
 # (the W UI's memory dump and code-bytes panes use this).
 void ww_api_query(RequestContext* rc):
-	if (ww_state != ww_state_stopped()):
+	if (ww_state != ww_state_stopped):
 		ww_reply_error(rc, 409, c"the debugger is not stopped at a prompt")
 		return
 	char* body = request_context_body(rc)
 	int n = 0
-	while ((body[n] != 0) && (body[n] != 10) && (body[n] != 13)):
-		n = n + 1
+	while ((body[n] != 0) && (body[n] != 10) && (body[n] != 13)): n = n + 1
 	char* line = substring(body, 0, n)
 	if (ww_query_allowed(line) == 0):
 		free(line)
@@ -736,10 +661,8 @@ void ww_api_source(RequestContext* rc):
 		return
 	int allowed = 0
 	for char* f in ww_files:
-		if (strcmp(f, file) == 0):
-			allowed = 1
-	if ((ww_program != 0) && (strcmp(file, ww_program) == 0)):
-		allowed = 1
+		if (strcmp(f, file) == 0): allowed = 1
+	if ((ww_program != 0) && (strcmp(file, ww_program) == 0)): allowed = 1
 	if (allowed == 0):
 		free(file)
 		ww_reply_error(rc, 403, c"not one of the program's source files")
@@ -786,8 +709,7 @@ void ww_handle(RequestContext* rc, void* user_data):
 	string_builder* cookie = string_from(c"wdbg_code=")
 	string_append(cookie, ww_code)
 	string_append(cookie, c"; Path=/; HttpOnly; SameSite=Strict")
-	if (ww_use_tls):
-		string_append(cookie, c"; Secure")
+	if (ww_use_tls): string_append(cookie, c"; Secure")
 	request_context_set_header(rc, c"Set-Cookie", cookie.data)
 	string_free(cookie)
 	request_context_set_header(rc, c"X-Content-Type-Options", c"nosniff")
@@ -795,29 +717,18 @@ void ww_handle(RequestContext* rc, void* user_data):
 	int is_get = strcmp(method, c"GET") == 0
 	int is_post = strcmp(method, c"POST") == 0
 	if (starts_with(path, c"/api/") == 0):
-		if (is_get):
-			ww_serve_static(rc, path)
-		else:
-			ww_reply_error(rc, 405, c"method not allowed")
+		if (is_get): ww_serve_static(rc, path)
+		else: ww_reply_error(rc, 405, c"method not allowed")
 		return
-	if (is_get && (strcmp(path, c"/api/state") == 0)):
-		ww_api_state(rc)
-	else if (is_post && (strcmp(path, c"/api/cmd") == 0)):
-		ww_api_cmd(rc)
-	else if (is_get && (strcmp(path, c"/api/poll") == 0)):
-		ww_api_poll(rc)
-	else if (is_get && (strcmp(path, c"/api/inspect") == 0)):
-		ww_api_inspect(rc)
-	else if (is_post && (strcmp(path, c"/api/query") == 0)):
-		ww_api_query(rc)
-	else if (is_get && (strcmp(path, c"/api/source") == 0)):
-		ww_api_source(rc)
-	else if (is_post && (strcmp(path, c"/api/restart") == 0)):
-		ww_api_restart(rc)
-	else if (is_get && (strcmp(path, c"/api/core") == 0)):
-		ww_api_core(rc)
-	else:
-		ww_reply_error(rc, 404, c"no such endpoint")
+	if (is_get && (strcmp(path, c"/api/state") == 0)): ww_api_state(rc)
+	else if (is_post && (strcmp(path, c"/api/cmd") == 0)): ww_api_cmd(rc)
+	else if (is_get && (strcmp(path, c"/api/poll") == 0)): ww_api_poll(rc)
+	else if (is_get && (strcmp(path, c"/api/inspect") == 0)): ww_api_inspect(rc)
+	else if (is_post && (strcmp(path, c"/api/query") == 0)): ww_api_query(rc)
+	else if (is_get && (strcmp(path, c"/api/source") == 0)): ww_api_source(rc)
+	else if (is_post && (strcmp(path, c"/api/restart") == 0)): ww_api_restart(rc)
+	else if (is_get && (strcmp(path, c"/api/core") == 0)): ww_api_core(rc)
+	else: ww_reply_error(rc, 404, c"no such endpoint")
 
 
 # ---- the poll-driven server loop -----------------------------------------------
@@ -832,34 +743,25 @@ list[ww_conn*] ww_conns
 
 
 # Connections idle longer than this are closed.
-int ww_idle_ms():
-	return 120000
-
-
-int ww_max_conns():
-	return 32
+const int ww_idle_ms = 120000
+const int ww_max_conns = 32
 
 
 void ww_conn_close(ww_conn* k):
-	if (k.cc != 0):
-		connection_context_destroy(k.cc)
-	else:
-		close(k.fd)
+	if (k.cc != 0): connection_context_destroy(k.cc)
+	else: close(k.fd)
 	free(cast(char*, k))
 
 
 # 1 when a request's bytes are already buffered past the socket (so
 # poll would not report them).
 int ww_conn_buffered(ww_conn* k):
-	if (k.cc == 0):
-		return 0
+	if (k.cc == 0): return 0
 	wstream* r = k.cc.reader
-	if (r.position < r.limit):
-		return 1
+	if (r.position < r.limit): return 1
 	tls_conn* t = k.cc.tls
 	if (t != 0):
-		if (t.app_pos < t.app_len):
-			return 1
+		if (t.app_pos < t.app_len): return 1
 	return 0
 
 
@@ -867,8 +769,7 @@ int ww_conn_buffered(ww_conn* k):
 int ww_serve_one(ServerContext* s, ww_conn* k):
 	ConnectionContext* c = k.cc
 	ServerRequest* req = server_read_request(c)
-	if (req == 0):
-		return 0
+	if (req == 0): return 0
 	if (req.error != 0):
 		server_write_error(c, req.error)
 		server_request_free(req)
@@ -890,32 +791,27 @@ int ww_conn_ready(ServerContext* s, ww_conn* k):
 		tls_conn* tls = 0
 		if (ww_use_tls):
 			tls = tls_accept(k.fd, s.tls_cfg)
-			if (tls == 0):
-				return 0
+			if (tls == 0): return 0
 		k.cc = connection_context_new(k.fd, s.timeout_ms, tls)
 		if (ww_conn_buffered(k) == 0):
-			if (ww_use_tls):
-				return 1
+			if (ww_use_tls): return 1
 	int keep = ww_serve_one(s, k)
-	while (keep && ww_conn_buffered(k)):
-		keep = ww_serve_one(s, k)
+	while (keep && ww_conn_buffered(k)): keep = ww_serve_one(s, k)
 	return keep
 
 
 void ww_accept(ServerContext* s):
 	sockaddr_in peer
 	int fd = socket_accept_connection_from(s.listener_fd, &peer)
-	if (fd < 0):
-		return
+	if (fd < 0): return
 	socket_set_recv_timeout(fd, s.timeout_ms)
 	socket_set_send_timeout(fd, s.timeout_ms)
-	if (ww_conns.length >= ww_max_conns()):
+	if (ww_conns.length >= ww_max_conns):
 		# Make room by dropping the least recently used connection.
 		int oldest = 0
 		int i = 1
 		while (i < ww_conns.length):
-			if (ww_conns[i].last_ms < ww_conns[oldest].last_ms):
-				oldest = i
+			if (ww_conns[i].last_ms < ww_conns[oldest].last_ms): oldest = i
 			i = i + 1
 		ww_conn_close(ww_conns[oldest])
 		ww_conns.remove(oldest)
@@ -933,18 +829,17 @@ int ww_done():
 void ww_serve_forever(ServerContext* s):
 	while (ww_done() == 0):
 		int npipes = 0
-		if ((ww_proc != 0) && (ww_state == ww_state_running())):
-			npipes = 2
+		if ((ww_proc != 0) && (ww_state == ww_state_running)): npipes = 2
 		int n = 1 + ww_conns.length + npipes
 		pollfd* fds = pollfd_new_array(n)
-		pollfd_set(fds, 0, s.listener_fd, poll_in())
+		pollfd_set(fds, 0, s.listener_fd, poll_in)
 		int i = 0
 		while (i < ww_conns.length):
-			pollfd_set(fds, 1 + i, ww_conns[i].fd, poll_in())
+			pollfd_set(fds, 1 + i, ww_conns[i].fd, poll_in)
 			i = i + 1
 		if (npipes > 0):
-			pollfd_set(fds, n - 2, ww_proc.stdout_fd, poll_in())
-			pollfd_set(fds, n - 1, ww_proc.stderr_fd, poll_in())
+			pollfd_set(fds, n - 2, ww_proc.stdout_fd, poll_in)
+			pollfd_set(fds, n - 1, ww_proc.stderr_fd, poll_in)
 		int nready = poll_wait(fds, n, 1000)
 		int now = process_monotonic_ms()
 		if (nready > 0):
@@ -960,12 +855,11 @@ void ww_serve_forever(ServerContext* s):
 						ww_conn_close(ww_conns[i])
 						ww_conns.remove(i)
 				i = i - 1
-			if (pollfd_at(fds, 0).revents != 0):
-				ww_accept(s)
+			if (pollfd_at(fds, 0).revents != 0): ww_accept(s)
 		free(cast(char*, fds))
 		i = ww_conns.length - 1
 		while (i >= 0):
-			if (now - ww_conns[i].last_ms > ww_idle_ms()):
+			if (now - ww_conns[i].last_ms > ww_idle_ms):
 				ww_conn_close(ww_conns[i])
 				ww_conns.remove(i)
 			i = i - 1
@@ -993,8 +887,7 @@ void ww_ignore_sigpipe():
 
 
 char* ww_absolute(char* p):
-	if (p[0] == '/'):
-		return strclone(p)
+	if (p[0] == '/'): return strclone(p)
 	char* cwd = malloc(4096)
 	if (getcwd(cwd, 4096) <= 0):
 		free(cwd)
@@ -1027,10 +920,8 @@ int main(int argc, int argv):
 			while (i < argc):
 				ww_program_args.push(ww_arg(argv, i))
 				i = i + 1
-		else if (strcmp(a, c"--http") == 0):
-			ww_use_tls = 0
-		else if (strcmp(a, c"--no-break-start") == 0):
-			ww_break_start = 0
+		else if (strcmp(a, c"--http") == 0): ww_use_tls = 0
+		else if (strcmp(a, c"--no-break-start") == 0): ww_break_start = 0
 		else if (has_next && (strcmp(a, c"--port") == 0)):
 			i = i + 1
 			ww_port = atoi(ww_arg(argv, i))
@@ -1067,8 +958,7 @@ int main(int argc, int argv):
 		else if (has_next && (strcmp(a, c"--max-requests") == 0)):
 			i = i + 1
 			ww_max_requests = atoi(ww_arg(argv, i))
-		else if ((a[0] != '-') && (ww_program == 0)):
-			ww_program = ww_absolute(a)
+		else if ((a[0] != '-') && (ww_program == 0)): ww_program = ww_absolute(a)
 		else:
 			ww_usage()
 			return 2
@@ -1081,16 +971,11 @@ int main(int argc, int argv):
 		return 2
 
 	char* self_dir = ww_dirname_of_self()
-	if (ww_wdbg_path == 0):
-		ww_wdbg_path = path_join(self_dir, c"wdbg")
-	if (ww_wcore_path == 0):
-		ww_wcore_path = path_join(self_dir, c"wcore")
-	if (ww_static_dir == 0):
-		ww_static_dir = path_join(self_dir, c"../tools/wdbg_web")
-	if (ww_web_dir == 0):
-		ww_web_dir = path_join(ww_static_dir, c"../web")
-	if (ww_ui_wasm_path == 0):
-		ww_ui_wasm_path = path_join(self_dir, c"wdbg_ui.wasm")
+	if (ww_wdbg_path == 0): ww_wdbg_path = path_join(self_dir, c"wdbg")
+	if (ww_wcore_path == 0): ww_wcore_path = path_join(self_dir, c"wcore")
+	if (ww_static_dir == 0): ww_static_dir = path_join(self_dir, c"../tools/wdbg_web")
+	if (ww_web_dir == 0): ww_web_dir = path_join(ww_static_dir, c"../web")
+	if (ww_ui_wasm_path == 0): ww_ui_wasm_path = path_join(self_dir, c"wdbg_ui.wasm")
 	if (path_exists(ww_ui_wasm_path) == 0):
 		print2(c"wdbg_web: warning: UI module not found: ")
 		println2(ww_ui_wasm_path)
@@ -1114,8 +999,7 @@ int main(int argc, int argv):
 	ww_ignore_sigpipe()
 
 	ServerContext* s = server_context_new(ww_bind_ip, ww_port, 0, 0)
-	if (ww_use_tls):
-		server_context_set_tls(s, ww_cert_path, ww_key_path)
+	if (ww_use_tls): server_context_set_tls(s, ww_cert_path, ww_key_path)
 	if (server_context_bind(s) == 0):
 		print2(c"wdbg_web: cannot listen on ")
 		print2(ww_bind_ip)
@@ -1123,8 +1007,7 @@ int main(int argc, int argv):
 		println2(itoa(ww_port))
 		return 1
 	char* host = ww_bind_ip
-	if (strcmp(host, c"0.0.0.0") == 0):
-		host = c"127.0.0.1"
+	if (strcmp(host, c"0.0.0.0") == 0): host = c"127.0.0.1"
 	if (ww_use_tls && (ww_cert_path == 0)):
 		char* cert_pem = 0
 		char* key_pem = 0
@@ -1136,8 +1019,7 @@ int main(int argc, int argv):
 		s.tls_cfg.test_key_pem = key_pem
 		s.tls_cfg.test_key_pem_len = strlen(key_pem)
 
-	if (ww_core_path != 0):
-		ww_run_core()
+	if (ww_core_path != 0): ww_run_core()
 	if (ww_program != 0):
 		if (ww_session_start() == 0):
 			print2(c"wdbg_web: could not start ")
@@ -1145,10 +1027,8 @@ int main(int argc, int argv):
 			return 1
 
 	string_builder* url = string_new()
-	if (ww_use_tls):
-		string_append(url, c"https://")
-	else:
-		string_append(url, c"http://")
+	if (ww_use_tls): string_append(url, c"https://")
+	else: string_append(url, c"http://")
 	string_append(url, host)
 	string_append(url, c":")
 	string_append_int(url, server_context_port(s))
@@ -1156,10 +1036,8 @@ int main(int argc, int argv):
 	string_append(url, ww_code)
 	println(url.data)
 	print2(c"wdbg_web: serving ")
-	if (ww_program != 0):
-		print2(ww_program)
-	else:
-		print2(ww_core_path)
+	if (ww_program != 0): print2(ww_program)
+	else: print2(ww_core_path)
 	print2(c" -- open ")
 	println2(url.data)
 	if (ww_use_tls && (ww_cert_path == 0)):

@@ -19,8 +19,7 @@ struct gq_pair:
 # float32 loads and a store through gpu pointers.
 kernel gq_saxpy(gpu float32* y, gpu float32* x, float32 a, int n):
 	int i = block_idx() * block_dim() + thread_idx()
-	if i < n:
-		y[i] = a * x[i] + y[i]
+	if i < n: y[i] = a * x[i] + y[i]
 
 
 # int (64-bit), int32, uint8, int8 and int16 widths, a compound
@@ -50,8 +49,7 @@ kernel gq_fields(gpu gq_pair* p, int n):
 # sides; nothing proves its state space).
 kernel gq_plain(float32* y, int n):
 	int i = block_idx() * block_dim() + thread_idx()
-	if i < n:
-		y[i] = y[i] + 1.0
+	if i < n: y[i] = y[i] + 1.0
 
 
 int main(int argc, int argv):

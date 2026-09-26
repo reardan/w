@@ -22,7 +22,7 @@ void test_buffer_and_labels():
 
 	# jmp rel32 to a forward label, then the label, then ret.
 	asm_buffer_byte(b, 0xe9)
-	asm_labels_reference(labels, c"target", b.length, ASM_FIX_REL32())
+	asm_labels_reference(labels, c"target", b.length, ASM_FIX_REL32)
 	asm_buffer_int32(b, 0)
 	asm_buffer_byte(b, 0x90)
 	asm_labels_define(labels, c"target", b.length)
@@ -36,15 +36,12 @@ void test_buffer_and_labels():
 	asm_assert_bytes_equal(c"label fixup", want, 7, b.data, b.length)
 
 	# Growth: push enough bytes to force several reallocations.
-	int i = 0
-	while (i < 1000):
-		asm_buffer_byte(b, i & 255)
-		i = i + 1
+	for i in range(1000): asm_buffer_byte(b, i & 255)
 	assert_equal(1007, b.length)
 	assert_equal(999 & 255, b.data[b.length - 1] & 255)
 
 	# An unresolved fixup is reported, not silently dropped.
-	asm_labels_reference(labels, c"missing", 0, ASM_FIX_ABS32())
+	asm_labels_reference(labels, c"missing", 0, ASM_FIX_ABS32)
 	assert_equal(1, asm_labels_resolve(labels, b))
 
 
@@ -53,10 +50,10 @@ void test_insn_model():
 	asm_insn_clear(&insn)
 	assert_equal(0, asm_insn_operand_count(&insn))
 	insn.mnemonic = c"mov"
-	insn.op1.kind = ASM_OP_REG()
+	insn.op1.kind = ASM_OP_REG
 	insn.op1.reg = 0
 	insn.op1.size = 4
-	insn.op2.kind = ASM_OP_MEM()
+	insn.op2.kind = ASM_OP_MEM
 	insn.op2.base = 4
 	insn.op2.disp = 16
 	insn.op2.size = 4
@@ -72,8 +69,8 @@ void test_registers():
 	assert_equal(1, asm_reg_size(asm_reg_lookup_x86(c"cl")))
 	assert_equal(2, asm_reg_size(asm_reg_lookup_x86(c"sp")))
 	assert_equal(-1, asm_reg_lookup_x86(c"xax"))
-	assert_strings_equal(c"esp", asm_reg_name(ASM_ARCH_X86(), 4, 4))
-	assert_strings_equal(c"r9", asm_reg_name(ASM_ARCH_X64(), 9, 8))
+	assert_strings_equal(c"esp", asm_reg_name(ASM_ARCH_X86, 4, 4))
+	assert_strings_equal(c"r9", asm_reg_name(ASM_ARCH_X64, 9, 8))
 
 	assert_equal(28, asm_reg_number(asm_reg_lookup_arm64(c"x28")))
 	assert_equal(8, asm_reg_size(asm_reg_lookup_arm64(c"x28")))
@@ -81,8 +78,8 @@ void test_registers():
 	assert_equal(31, asm_reg_number(asm_reg_lookup_arm64(c"sp")))
 	assert_equal(-1, asm_reg_lookup_arm64(c"x31"))
 	assert_equal(-1, asm_reg_lookup_arm64(c"q0"))
-	assert_strings_equal(c"x28", asm_reg_name(ASM_ARCH_ARM64(), 28, 8))
-	assert_strings_equal(c"w7", asm_reg_name(ASM_ARCH_ARM64(), 7, 4))
+	assert_strings_equal(c"x28", asm_reg_name(ASM_ARCH_ARM64, 28, 8))
+	assert_strings_equal(c"w7", asm_reg_name(ASM_ARCH_ARM64, 7, 4))
 
 
 void test_hex():
@@ -105,12 +102,10 @@ void check_corpus(char* path, int minimum):
 		print2(c" entries, want at least ")
 		println2(itoa(minimum))
 		exit(1)
-	int i = 0
-	while (i < entries.length):
+	for i in range(entries.length):
 		asm_corpus_entry entry = entries[i]
 		asserts(c"corpus entry has no bytes", entry.length > 0)
 		asserts(c"corpus entry has no text", entry.text[0] != 0)
-		i = i + 1
 
 
 void test_corpus_fixtures():
@@ -122,8 +117,8 @@ void test_corpus_fixtures():
 void test_binary_reader_elf32():
 	asm_binary* binary = asm_binary_open(c"bin/wv2")
 	asserts(c"cannot open bin/wv2", cast(int, binary) != 0)
-	assert_equal(ASM_ELF_CLASS32(), binary.elf_class)
-	assert_equal(ASM_EM_386(), binary.machine)
+	assert_equal(ASM_ELF_CLASS32, binary.elf_class)
+	assert_equal(ASM_EM_386, binary.machine)
 	asserts(c"wv2 .text too small", binary.text_size > 100000)
 	asserts(c"wv2 has no symbols", binary.symbols.length > 100)
 
@@ -144,8 +139,8 @@ void test_binary_reader_elf32():
 void test_binary_reader_elf64():
 	asm_binary* binary = asm_binary_open(c"bin/asm_elf64_fixture")
 	asserts(c"cannot open bin/asm_elf64_fixture", cast(int, binary) != 0)
-	assert_equal(ASM_ELF_CLASS64(), binary.elf_class)
-	assert_equal(ASM_EM_X86_64(), binary.machine)
+	assert_equal(ASM_ELF_CLASS64, binary.elf_class)
+	assert_equal(ASM_EM_X86_64, binary.machine)
 	asserts(c"fixture .text empty", binary.text_size > 0)
 
 

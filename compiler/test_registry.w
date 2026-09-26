@@ -16,10 +16,8 @@ syntax here.
 # A discovered test: a defined zero-argument function. symbol is the
 # table offset of the name's NUL terminator, like every sym_* accessor.
 int test_registry_is_test(int symbol):
-	if (table[symbol + 1] != 'D'):
-		return 0
-	if (load_int(table + symbol + 10) != 2):
-		return 0
+	if (table[symbol + 1] != 'D'): return 0
+	if (load_int(table + symbol + 10) != 2): return 0
 	return sym_num_args(symbol) == 0
 
 
@@ -42,8 +40,7 @@ void test_registry_emit_call(char* name):
 # import, and queued generic instantiation has been compiled (the REPL
 # does not run tests and skips this).
 void test_registry_finish():
-	if (sym_lookup(c"__w_run_tests") < 0):
-		return;
+	if (sym_lookup(c"__w_run_tests") < 0): return;
 	be_function_define_declare(c"__w_test_main")
 	be_function_prologue()
 	int frame_words = be_frame_words()
@@ -53,8 +50,7 @@ void test_registry_finish():
 		char* name = table + t
 		t = t + strlen(table + t)
 		if (starts_with(name, c"test_")):
-			if (test_registry_is_test(t)):
-				test_registry_emit_call(name)
+			if (test_registry_is_test(t)): test_registry_emit_call(name)
 		t = next_token(t)
 	be_return_bare()
 	be_function_epilogue()

@@ -17,8 +17,7 @@ import lib.cuda
 
 kernel fill(int* out, int v, int n):
 	int i = block_idx() * block_dim() + thread_idx()
-	if i < n:
-		out[i] = v + i
+	if i < n: out[i] = v + i
 
 
 int failures
@@ -43,11 +42,8 @@ int launch_works(int n):
 	launch fill[(n + threads - 1) / threads, threads](out, 5, n)
 	gpu_sync()
 	int ok = 1
-	int i = 0
-	while (i < n):
-		if (out[i] != 5 + i):
-			ok = 0
-		i = i + 1
+	for i in range(n):
+		if (out[i] != 5 + i): ok = 0
 	gpu_free(cast(char*, out))
 	return ok
 
@@ -152,11 +148,8 @@ int main(int argc, int argv):
 		gpu_device_alloc(1 << 50)
 		println(c"cuda runtime: FAILED (absurd gpu_device_alloc returned)")
 		return 1
-	if (count == 0):
-		no_gpu_path()
-	else:
-		gpu_path(count)
-	if (failures != 0):
-		return 1
+	if (count == 0): no_gpu_path()
+	else: gpu_path(count)
+	if (failures != 0): return 1
 	println(c"cuda runtime OK")
 	return 0

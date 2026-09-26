@@ -13,3 +13,4 @@ struct Vector:
 
 int length_squared(Vectr* v):
 	return v.x * v.x + v.y * v.y
+# wbuild: fixture_group=error_caret_test

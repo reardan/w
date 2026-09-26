@@ -42,20 +42,16 @@ int main(int argc, int argv):
 		return 0
 
 	char* target = args_value(c"url")
-	if (target == 0):
-		target = c"https://example.com/"
+	if (target == 0): target = c"https://example.com/"
 	int max_body = 512
 	char* max_body_arg = args_value(c"max-body")
-	if (max_body_arg != 0):
-		max_body = atoi(max_body_arg)
-	if (max_body < 0):
-		max_body = 0
+	if (max_body_arg != 0): max_body = atoi(max_body_arg)
+	if (max_body < 0): max_body = 0
 
 	http_req* req = http_req_new(c"GET", target)
 	# --insecure skips chain + hostname verification (tests/dev only); the
 	# handshake signature and Finished MAC are still checked.
-	if (args_has_flag(c"insecure")):
-		req.tls_insecure_skip_verify = 1
+	if (args_has_flag(c"insecure")): req.tls_insecure_skip_verify = 1
 
 	http_response* resp = http_request(req)
 	if (resp.error != 0):
@@ -69,12 +65,10 @@ int main(int argc, int argv):
 	https_get_print_headers(resp)
 
 	int n = resp.body_len
-	if (n > max_body):
-		n = max_body
+	if (n > max_body): n = max_body
 	print_int(c"body bytes: ", resp.body_len)
 	println(c"body head:")
-	if (n > 0):
-		write(1, resp.body, n)
+	if (n > 0): write(1, resp.body, n)
 	println(c"")
 
 	http_response_free(resp)

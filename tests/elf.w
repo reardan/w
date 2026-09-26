@@ -22,28 +22,20 @@ void print_elf_header():
 	print(c"class: [")
 	print(itoa(class))
 	print(c"] ")
-	if (class == 0):
-		println(c"none")
-	else if(class == 1):
-		println(c"32 bit")
-	else if(class == 2):
-		println(c"64 bit")
-	else:
-		println(c"class not recognized")
+	if (class == 0): println(c"none")
+	else if(class == 1): println(c"32 bit")
+	else if(class == 2): println(c"64 bit")
+	else: println(c"class not recognized")
 
 	# Data encoding
 	int encoding = base[5]
 	print(c"encoding: [")
 	print(itoa(encoding))
 	print(c"] ")
-	if (encoding == 0):
-		println(c"none")
-	else if(encoding == 1):
-		println(c"least significant")
-	else if(encoding == 2):
-		println(c"most significant")
-	else:
-		println(c"encoding not recognized")
+	if (encoding == 0): println(c"none")
+	else if(encoding == 1): println(c"least significant")
+	else if(encoding == 2): println(c"most significant")
+	else: println(c"encoding not recognized")
 
 	# Get Program Header offset
 	int program_header_offset = load_int(base + 28)
@@ -86,8 +78,7 @@ void print_elf_header():
 		section_index = section_index + 1
 
 	# Process Symbol Table Entries
-	int symbol_index = 0
-	while (symbol_index < symbol_count):
+	for symbol_index in range(symbol_count):
 		int entry_size = 16 /* remove this assertion */
 		int symbol_addr = symbol_table_addr + entry_size * symbol_index
 		print_hex(c"symbol_addr: ", symbol_addr)
@@ -102,7 +93,6 @@ void print_elf_header():
 		int symbol_info = load_int(symbol_addr + 12)
 		print_hex(c"symbol_info: ", symbol_info)
 
-		symbol_index = symbol_index + 1
 
 
 int main():

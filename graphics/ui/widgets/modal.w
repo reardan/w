@@ -6,8 +6,7 @@ a modal is a popup that happens to cover the window.
 
 	if (ui_modal_begin(ctx, c"Confirm", 280.0, 160.0, &open)):
 		ui_label(ctx, c"Delete the file?")
-		if (ui_button(ctx, c"Delete")):
-			...
+		if (ui_button(ctx, c"Delete")): ...
 		ui_modal_end(ctx)
 
 ui_modal_begin returns 1 while the dialog is open, so the caller issues
@@ -69,8 +68,7 @@ int ui_modal_begin(ui_context* ctx, char* title, float32 w, float32 h, int32* op
 	# Escape closes, wherever focus is: the modal owns input while open.
 	int i = 0
 	while (i < ctx.char_count):
-		if (ctx.chars[i] == 27):
-			open[0] = 0
+		if (ctx.chars[i] == 27): open[0] = 0
 		i = i + 1
 	# So does a press on the scrim — outside the surface, inside the
 	# window — and that press is consumed so nothing behind sees it.

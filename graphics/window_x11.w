@@ -113,28 +113,22 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 # bits are not modifiers as far as widget code is concerned.
 int gfx_x11_mods(int state):
 	int mods = 0
-	if (state & 1):
-		mods = mods | GFX_MOD_SHIFT
-	if (state & 4):
-		mods = mods | GFX_MOD_CTRL
-	if (state & 8):
-		mods = mods | GFX_MOD_ALT
-	if (state & 64):
-		mods = mods | GFX_MOD_SUPER
+	if (state & 1): mods = mods | GFX_MOD_SHIFT
+	if (state & 4): mods = mods | GFX_MOD_CTRL
+	if (state & 8): mods = mods | GFX_MOD_ALT
+	if (state & 64): mods = mods | GFX_MOD_SUPER
 	return mods
 
 
 void gfx_window_handle_event(gfx_window* win, x_event* event):
 	int event_type = event.event_type
 	if (event_type == ClientMessage):
-		if (event.client.data0 == win.wm_delete_atom):
-			win.should_close = 1
+		if (event.client.data0 == win.wm_delete_atom): win.should_close = 1
 	else if (event_type == ConfigureNotify):
 		win.width = event.configure.width
 		win.height = event.configure.height
 		glViewport(0, 0, win.width, win.height)
-	else if (event_type == DestroyNotify):
-		win.should_close = 1
+	else if (event_type == DestroyNotify): win.should_close = 1
 	else if (event_type == KeyPress):
 		int mods = gfx_x11_mods(event.input.state)
 		win.last_keycode = event.input.detail
@@ -154,24 +148,15 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 		# XK_Page_Down 0xff56, XK_End 0xff57, XK_Delete 0xffff) to NAV
 		# codes.
 		int nav = 0
-		if (keysym == 0xff51):
-			nav = GFX_NAV_LEFT
-		else if (keysym == 0xff53):
-			nav = GFX_NAV_RIGHT
-		else if (keysym == 0xff50):
-			nav = GFX_NAV_HOME
-		else if (keysym == 0xff57):
-			nav = GFX_NAV_END
-		else if (keysym == 0xff52):
-			nav = GFX_NAV_UP
-		else if (keysym == 0xff54):
-			nav = GFX_NAV_DOWN
-		else if (keysym == 0xff55):
-			nav = GFX_NAV_PAGE_UP
-		else if (keysym == 0xff56):
-			nav = GFX_NAV_PAGE_DOWN
-		else if (keysym == 0xffff):
-			nav = GFX_NAV_DELETE
+		if (keysym == 0xff51): nav = GFX_NAV_LEFT
+		else if (keysym == 0xff53): nav = GFX_NAV_RIGHT
+		else if (keysym == 0xff50): nav = GFX_NAV_HOME
+		else if (keysym == 0xff57): nav = GFX_NAV_END
+		else if (keysym == 0xff52): nav = GFX_NAV_UP
+		else if (keysym == 0xff54): nav = GFX_NAV_DOWN
+		else if (keysym == 0xff55): nav = GFX_NAV_PAGE_UP
+		else if (keysym == 0xff56): nav = GFX_NAV_PAGE_DOWN
+		else if (keysym == 0xffff): nav = GFX_NAV_DELETE
 		if (nav != 0):
 			gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_NAV, nav, event.input.x, event.input.y, mods)
 	else if (event_type == KeyRelease):
@@ -212,8 +197,7 @@ int gfx_window_poll(gfx_window* win):
 		x_event event
 		XNextEvent(win.display, &event)
 		gfx_window_handle_event(win, &event)
-	if (win.should_close):
-		return 0
+	if (win.should_close): return 0
 	return 1
 
 

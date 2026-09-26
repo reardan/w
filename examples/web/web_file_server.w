@@ -7,18 +7,12 @@ void web_file_server_usage():
 
 
 char* web_file_content_type(char* path):
-	if (ends_with(path, c".html")):
-		return c"text/html"
-	if (ends_with(path, c".css")):
-		return c"text/css"
-	if (ends_with(path, c".js")):
-		return c"application/javascript"
-	if (ends_with(path, c".json")):
-		return c"application/json"
-	if (ends_with(path, c".txt")):
-		return c"text/plain"
-	if (ends_with(path, c".md")):
-		return c"text/markdown"
+	if (ends_with(path, c".html")): return c"text/html"
+	if (ends_with(path, c".css")): return c"text/css"
+	if (ends_with(path, c".js")): return c"application/javascript"
+	if (ends_with(path, c".json")): return c"application/json"
+	if (ends_with(path, c".txt")): return c"text/plain"
+	if (ends_with(path, c".md")): return c"text/markdown"
 	return c"application/octet-stream"
 
 
@@ -28,8 +22,7 @@ void web_file_write_text_response(int client, int status_code, char* reason, cha
 
 
 char* web_file_request_path(char* request):
-	if (starts_with(request, c"GET ") == 0):
-		return 0
+	if (starts_with(request, c"GET ") == 0): return 0
 
 	char* path = request + 4
 	int i = 0
@@ -43,21 +36,17 @@ char* web_file_request_path(char* request):
 
 
 int web_file_path_is_safe(char* path):
-	if (path == 0):
-		return 0
+	if (path == 0): return 0
 	int i = 0
 	while (path[i] != 0):
-		if ((path[i] == '.') && (path[i + 1] == '.')):
-			return 0
+		if ((path[i] == '.') && (path[i + 1] == '.')): return 0
 		i = i + 1
 	return 1
 
 
 char* web_file_local_path(char* request_path):
-	while (request_path[0] == '/'):
-		request_path = request_path + 1
-	if (request_path[0] == 0):
-		return c"index.html"
+	while (request_path[0] == '/'): request_path = request_path + 1
+	if (request_path[0] == 0): return c"index.html"
 	return request_path
 
 
@@ -75,16 +64,14 @@ void web_file_stream_file(int client, char* path):
 
 	http_write_response_headers(client, 200, c"OK", web_file_content_type(path), size, c"close")
 
-	char* buf = malloc(web_default_buffer_size())
+	char* buf = malloc(web_default_buffer_size)
 	int remaining = size
 	while (remaining > 0):
-		int chunk_size = web_default_buffer_size()
-		if (remaining < chunk_size):
-			chunk_size = remaining
+		int chunk_size = web_default_buffer_size
+		if (remaining < chunk_size): chunk_size = remaining
 		int read_count = read(file, buf, chunk_size)
 		web_check_syscall(c"read", read_count)
-		if (read_count == 0):
-			remaining = 0
+		if (read_count == 0): remaining = 0
 		else:
 			web_check_syscall(c"write", write(client, buf, read_count))
 			remaining = remaining - read_count
@@ -109,8 +96,8 @@ int main(int argc, int argv):
 	int client = socket_accept_connection(server)
 	web_check_syscall(c"accept", client)
 
-	char* request = malloc(web_default_buffer_size() + 1)
-	int request_bytes = read(client, request, web_default_buffer_size())
+	char* request = malloc(web_default_buffer_size + 1)
+	int request_bytes = read(client, request, web_default_buffer_size)
 	web_check_syscall(c"read", request_bytes)
 	request[request_bytes] = 0
 

@@ -31,20 +31,16 @@ struct termios:
 	int32 cc_word5
 
 
-int term_tcgets():
-	return 0x5401
-
-
-int term_tcsets():
-	return 0x5402
+const int term_tcgets = 0x5401
+const int term_tcsets = 0x5402
 
 
 int term_get(int fd, termios* t):
-	return sys_ioctl(fd, term_tcgets(), cast(int, t))
+	return sys_ioctl(fd, term_tcgets, cast(int, t))
 
 
 int term_set(int fd, termios* t):
-	return sys_ioctl(fd, term_tcsets(), cast(int, t))
+	return sys_ioctl(fd, term_tcsets, cast(int, t))
 
 
 # 1 when fd is a terminal: TCGETS only succeeds on ttys.
@@ -68,10 +64,8 @@ int term_clear_bits(int v, int mask):
 # Output processing (ONLCR) is left on so '\x0a' still prints normally.
 # Returns 1 on success (original settings saved), 0 when fd is not a tty.
 int term_raw_mode(int fd):
-	if (term_saved_state == 0):
-		term_saved_state = cast(termios*, malloc(40))
-	if (term_get(fd, term_saved_state) != 0):
-		return 0
+	if (term_saved_state == 0): term_saved_state = cast(termios*, malloc(40))
+	if (term_get(fd, term_saved_state) != 0): return 0
 	term_saved_fd = fd
 	termios raw
 	term_get(fd, &raw)
@@ -90,13 +84,11 @@ int term_raw_mode(int fd):
 
 
 void term_restore():
-	if (term_saved_state == 0):
-		return;
+	if (term_saved_state == 0): return;
 	term_set(term_saved_fd, term_saved_state)
 
 
-int term_tiocgwinsz():
-	return 0x5413
+const int term_tiocgwinsz = 0x5413
 
 
 # Terminal column count for line editors that need to know when a line
@@ -114,9 +106,8 @@ int term_get_cols(int fd):
 			return from_env
 	char* winsize = malloc(8)
 	int cols = 0
-	if (sys_ioctl(fd, term_tiocgwinsz(), cast(int, winsize)) == 0):
+	if (sys_ioctl(fd, term_tiocgwinsz, cast(int, winsize)) == 0):
 		cols = (winsize[2] & 255) | ((winsize[3] & 255) << 8)
 	free(winsize)
-	if (cols <= 0):
-		return 80
+	if (cols <= 0): return 80
 	return cols

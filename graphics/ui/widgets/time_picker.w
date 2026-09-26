@@ -7,8 +7,7 @@ minute spinners in a popover (docs/projects/ui_widgets.md §4.7, §6).
 	int32 open_at = 9 * 60
 	int32 close_at = 17 * 60
 	...
-	if (ui_time_range_picker(ctx, 180.0, &tp, &open_at, &close_at, 15)):
-		save(open_at, close_at)
+	if (ui_time_range_picker(ctx, 180.0, &tp, &open_at, &close_at, 15)): save(open_at, close_at)
 
 Times are caller-owned minutes since midnight, 0..1439. The field
 shows "HH:MM – HH:MM"; clicking it opens a popover with a From and a To
@@ -45,15 +44,13 @@ import graphics.ui.widgets.popover
 import graphics.ui.widgets.date_picker
 
 
-int ui_minutes_per_day():
-	return 1440
+const int ui_minutes_per_day = 1440
 
 
 # Minutes since midnight, wrapped into 0..1439.
 int ui_time_wrap(int minutes):
-	int m = minutes % ui_minutes_per_day()
-	if (m < 0):
-		m = m + ui_minutes_per_day()
+	int m = minutes % ui_minutes_per_day
+	if (m < 0): m = m + ui_minutes_per_day
 	return m
 
 
@@ -66,20 +63,15 @@ int ui_time_range_minutes(int start, int end):
 # One spinner step of value in 0..modulo-1, snapping to multiples of
 # step and wrapping at either end without carrying. dir is +1 or -1.
 int ui_spin_step(int value, int modulo, int step, int dir):
-	if (step < 1):
-		step = 1
+	if (step < 1): step = 1
 	int v = 0
 	if (dir > 0):
 		v = (value / step + 1) * step
-		if (v >= modulo):
-			v = 0
+		if (v >= modulo): v = 0
 	else:
-		if ((value % step) != 0):
-			v = (value / step) * step
-		else:
-			v = value - step
-		if (v < 0):
-			v = ((modulo - 1) / step) * step
+		if ((value % step) != 0): v = (value / step) * step
+		else: v = value - step
+		if (v < 0): v = ((modulo - 1) / step) * step
 	return v
 
 
@@ -110,8 +102,7 @@ void ui_time_range_format(int start, int end, char* out):
 		out[16] = '+'
 		out[17] = '1'
 		out[18] = 0
-	else:
-		out[15] = 0
+	else: out[15] = 0
 
 
 struct ui_time_range_state:
@@ -122,8 +113,7 @@ void ui_time_range_init(ui_time_range_state* st):
 	st.open = 0
 
 
-int ui_time_range_ids():
-	return 9
+const int ui_time_range_ids = 9
 
 
 # Spinner geometry: a square button either side of the value.
@@ -177,10 +167,8 @@ int ui_spinner_at(ui_context* ctx, int base_id, ui_rect row, float32 x, int valu
 	ui_rect minus = ui_spinner_minus_rect(ctx, row, x)
 	ui_rect plus = ui_spinner_plus_rect(ctx, row, x)
 	int v = value
-	if (ui_click_behavior(ctx, base_id, minus)):
-		v = ui_spin_step(v, modulo, step, -1)
-	if (ui_click_behavior(ctx, base_id + 1, plus)):
-		v = ui_spin_step(v, modulo, step, 1)
+	if (ui_click_behavior(ctx, base_id, minus)): v = ui_spin_step(v, modulo, step, -1)
+	if (ui_click_behavior(ctx, base_id + 1, plus)): v = ui_spin_step(v, modulo, step, 1)
 	ui_spinner_button_draw(ctx, base_id, minus, c"-")
 	ui_spinner_button_draw(ctx, base_id + 1, plus, c"+")
 	char[3] text
@@ -223,7 +211,7 @@ int ui_time_row(ui_context* ctx, int base_id, char* label, int32* minutes, int m
 # ...). Returns 1 on every frame a spinner changes either end.
 int ui_time_range_picker(ui_context* ctx, float32 w, ui_time_range_state* st, int32* start, int32* end, int minute_step):
 	int id = ctx.next_id
-	ctx.next_id = ctx.next_id + ui_time_range_ids()
+	ctx.next_id = ctx.next_id + ui_time_range_ids
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
 	ui_picker_field_click(ctx, id, r, &st.open)
 
@@ -233,10 +221,8 @@ int ui_time_range_picker(ui_context* ctx, float32 w, ui_time_range_state* st, in
 
 	int changed = 0
 	if (ui_popover_begin(ctx, id, r, ui_time_popover_w(ctx), ui_time_popover_h(ctx), &st.open)):
-		if (ui_time_row(ctx, id + 1, c"From", start, minute_step)):
-			changed = 1
-		if (ui_time_row(ctx, id + 5, c"To", end, minute_step)):
-			changed = 1
+		if (ui_time_row(ctx, id + 1, c"From", start, minute_step)): changed = 1
+		if (ui_time_row(ctx, id + 5, c"To", end, minute_step)): changed = 1
 		ui_popover_end(ctx)
 		# Return closes too: there is nothing to confirm, the spinners
 		# have already written through.

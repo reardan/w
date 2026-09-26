@@ -184,8 +184,7 @@ void test_compound_float():
 	f /= 7.0
 	int in_range = 0
 	if (f > 0.99):
-		if (f < 1.01):
-			in_range = 1
+		if (f < 1.01): in_range = 1
 	assert_equal(1, in_range)
 	# int rhs coerces like the plain binary operators
 	float g = 1.5
@@ -200,7 +199,6 @@ void test_compound_float():
 void test_compound_in_condition():
 	int n = 5
 	int iterations = 0
-	while ((n -= 1) > 0):
-		iterations += 1
+	while ((n -= 1) > 0): iterations += 1
 	assert_equal(4, iterations)
 	assert_equal(0, n)

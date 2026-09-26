@@ -52,12 +52,10 @@ void test_single_node_owns_everything():
 	hash_ring* r = ring_new(8)
 	assert_equal(1, ring_add_node(r, c"solo"))
 	assert_equal(1, ring_node_count(r))
-	int i = 0
-	while (i < 10):
+	for i in range(10):
 		char* key = ring_test_key(i)
 		assert_strings_equal(c"solo", ring_lookup(r, key))
 		free(key)
-		i = i + 1
 	char** out = cast(char**, malloc(3 * __word_size__))
 	assert_equal(1, ring_successors(r, c"key0", 3, out))
 	assert_strings_equal(c"solo", out[0])
@@ -76,19 +74,14 @@ void test_three_nodes_coverage_and_order_independence():
 	int alpha_keys = 0
 	int bravo_keys = 0
 	int charlie_keys = 0
-	int i = 0
-	while (i < 30):
+	for i in range(30):
 		char* key = ring_test_key(i)
 		char* owner = ring_lookup(a, key)
-		if (strcmp(owner, c"alpha") == 0):
-			alpha_keys = alpha_keys + 1
-		if (strcmp(owner, c"bravo") == 0):
-			bravo_keys = bravo_keys + 1
-		if (strcmp(owner, c"charlie") == 0):
-			charlie_keys = charlie_keys + 1
+		if (strcmp(owner, c"alpha") == 0): alpha_keys = alpha_keys + 1
+		if (strcmp(owner, c"bravo") == 0): bravo_keys = bravo_keys + 1
+		if (strcmp(owner, c"charlie") == 0): charlie_keys = charlie_keys + 1
 		assert_strings_equal(owner, ring_lookup(b, key))
 		free(key)
-		i = i + 1
 	assert_equal(30, alpha_keys + bravo_keys + charlie_keys)
 	assert1(alpha_keys >= 1)
 	assert1(bravo_keys >= 1)

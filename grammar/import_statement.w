@@ -70,16 +70,12 @@ char* import_resolve_arch(char* path):
 			char after = path[i + 8]
 			if (at_boundary & ((after == '/') || (after == 0))):
 				char* arch = c"x86"
-				if (target_os == 3):
-					arch = c"wasm"
-				else if (target_os == 2):
-					arch = c"win64"
+				if (target_os == 3): arch = c"wasm"
+				else if (target_os == 2): arch = c"win64"
 				else if (target_isa == 1):
 					arch = c"arm64"
-					if (target_os == 1):
-						arch = c"arm64_darwin"
-				else if (word_size == 8):
-					arch = c"x64"
+					if (target_os == 1): arch = c"arm64_darwin"
+				else if (word_size == 8): arch = c"x64"
 				# Room for the original path plus the inserted "/<arch>" and
 				# the terminator; the allocation is sized from strlen(arch),
 				# so longer values ("arm64_darwin") are covered.
@@ -108,8 +104,7 @@ int import_lookup(char* path):
 
 void import_register(char* path):
 	int max_imports = 1000
-	if (imported_paths == 0):
-		imported_paths = malloc(max_imports * __word_size__)
+	if (imported_paths == 0): imported_paths = malloc(max_imports * __word_size__)
 	assert1(imported_count < max_imports)
 	save_ptr(imported_paths + imported_count * __word_size__, cast(int, path))
 	imported_count = imported_count + 1
@@ -139,10 +134,7 @@ void import_alias_register(char* name, char* path):
 		import_alias_names = malloc(max_aliases * __word_size__)
 		import_alias_paths = malloc(max_aliases * __word_size__)
 	assert1(import_alias_count < max_aliases)
-	if (import_alias_lookup(name) >= 0):
-		diag_part(c"duplicate import alias: '")
-		diag_part(name)
-		error(c"'")
+	if (import_alias_lookup(name) >= 0): error3(c"duplicate import alias: '", name, c"'")
 	save_ptr(import_alias_names + import_alias_count * __word_size__, cast(int, name))
 	save_ptr(import_alias_paths + import_alias_count * __word_size__, cast(int, path))
 	import_alias_count = import_alias_count + 1
@@ -150,8 +142,7 @@ void import_alias_register(char* name, char* path):
 
 void import_plain_register(char* path):
 	int max_imports = 1000
-	if (import_plain_paths == 0):
-		import_plain_paths = malloc(max_imports * __word_size__)
+	if (import_plain_paths == 0): import_plain_paths = malloc(max_imports * __word_size__)
 	assert1(import_plain_count < max_imports)
 	save_ptr(import_plain_paths + import_plain_count * __word_size__, cast(int, path))
 	import_plain_count = import_plain_count + 1
@@ -163,8 +154,7 @@ void import_plain_register(char* path):
 int import_path_matches_file(char* module_path, char* file_path):
 	char* with_ext = strjoin(module_path, c".w")
 	int matches = 0
-	if (strcmp(with_ext, file_path) == 0):
-		matches = 1
+	if (strcmp(with_ext, file_path) == 0): matches = 1
 	else:
 		char* needle = strjoin(c"/", with_ext)
 		matches = ends_with(file_path, needle)
@@ -179,8 +169,7 @@ int import_plain_imported(char* file_path):
 	int i = import_plain_base
 	while (i < import_plain_count):
 		char* p = cast(char*, load_ptr(import_plain_paths + i * __word_size__))
-		if (import_path_matches_file(p, file_path)):
-			return 1
+		if (import_path_matches_file(p, file_path)): return 1
 		i = i + 1
 	return 0
 
@@ -189,14 +178,11 @@ int import_plain_imported(char* file_path):
 # an alias in this file: still legal (the symbol table is global), but
 # probably an oversight, so warn. Cheap when no aliases are in scope.
 void import_warn_unqualified(char* name):
-	if (import_alias_count == import_alias_base):
-		return
+	if (import_alias_count == import_alias_base): return
 	int t = sym_lookup(name)
-	if (t < 0):
-		return
+	if (t < 0): return
 	int file_index = sym_decl_file_index(t)
-	if (file_index < 0):
-		return
+	if (file_index < 0): return
 	char* file_path = debug_file_name(file_index)
 	int i = import_alias_base
 	while (i < import_alias_count):
@@ -204,9 +190,7 @@ void import_warn_unqualified(char* name):
 			if (import_plain_imported(file_path) == 0):
 				diag_part(c"warning: unqualified use of '")
 				diag_part(name)
-				diag_part(c"' from module imported as '")
-				diag_part(import_alias_name(i))
-				warning(c"'")
+				warning3(c"' from module imported as '", import_alias_name(i), c"'")
 			return;
 		i = i + 1
 
@@ -218,8 +202,7 @@ int import_in_auto_closure(char* file_path):
 	int i = 0
 	while (i < auto_import_closure_count):
 		char* p = cast(char*, load_ptr(imported_paths + i * __word_size__))
-		if (import_path_matches_file(p, file_path)):
-			return 1
+		if (import_path_matches_file(p, file_path)): return 1
 		i = i + 1
 	return 0
 
@@ -227,12 +210,10 @@ int import_in_auto_closure(char* file_path):
 # Was the module holding this compiled file imported directly (plain or
 # aliased) in the current file's scope?
 int import_directly_imported(char* file_path):
-	if (import_plain_imported(file_path)):
-		return 1
+	if (import_plain_imported(file_path)): return 1
 	int i = import_alias_base
 	while (i < import_alias_count):
-		if (import_path_matches_file(import_alias_path(i), file_path)):
-			return 1
+		if (import_path_matches_file(import_alias_path(i), file_path)): return 1
 		i = i + 1
 	return 0
 
@@ -253,8 +234,7 @@ int import_transitive_already_warned(int file_index, char* name):
 	while (i < import_transitive_warned_count):
 		int f = load_int(import_transitive_warned_files + i * 4)
 		char* n = cast(char*, load_ptr(import_transitive_warned_names + i * __word_size__))
-		if ((f == file_index) & (strcmp(n, name) == 0)):
-			return 1
+		if ((f == file_index) & (strcmp(n, name) == 0)): return 1
 		i = i + 1
 	return 0
 
@@ -285,38 +265,26 @@ void import_transitive_mark_warned(int file_index, char* name):
 # ever surface), so this returns immediately while parsing any file that
 # is itself part of the closure.
 void import_warn_transitive(char* name):
-	if (check_imports_mode == 0):
-		return
+	if (check_imports_mode == 0): return
 	int cur_index = decl_file_index()
-	if (cur_index < 0):
-		return
+	if (cur_index < 0): return
 	char* cur_file = debug_file_name(cur_index)
-	if (import_in_auto_closure(cur_file)):
-		return
+	if (import_in_auto_closure(cur_file)): return
 	int t = sym_lookup(name)
-	if (t < 0):
-		return
+	if (t < 0): return
 	int visibility = sym_decl_visibility(t)
-	if ((visibility != 'D') && (visibility != 'U')):
-		return
+	if ((visibility != 'D') && (visibility != 'U')): return
 	int file_index = sym_decl_file_index(t)
-	if (file_index < 0):
-		return
-	if (cur_index == file_index):
-		return
+	if (file_index < 0): return
+	if (cur_index == file_index): return
 	char* def_file = debug_file_name(file_index)
-	if (import_directly_imported(def_file)):
-		return
-	if (import_in_auto_closure(def_file)):
-		return
-	if (import_transitive_already_warned(cur_index, name)):
-		return
+	if (import_directly_imported(def_file)): return
+	if (import_in_auto_closure(def_file)): return
+	if (import_transitive_already_warned(cur_index, name)): return
 	import_transitive_mark_warned(cur_index, name)
 	diag_part(c"warning: symbol '")
 	diag_part(name)
-	diag_part(c"' resolves through a transitive import (defined in '")
-	diag_part(def_file)
-	warning(c"'); import it directly")
+	warning3(c"' resolves through a transitive import (defined in '", def_file, c"'); import it directly")
 
 
 # Type index of the type named `name` when it was declared in the
@@ -325,11 +293,9 @@ void import_warn_transitive(char* name):
 # never resolve through an alias.
 int import_alias_module_type(int alias_index, char* name):
 	int t = type_lookup(name)
-	if (t < 0):
-		return -1
+	if (t < 0): return -1
 	int file_index = type_decl_file_index(t)
-	if (file_index < 0):
-		return -1
+	if (file_index < 0): return -1
 	if (import_path_matches_file(import_alias_path(alias_index), debug_file_name(file_index)) == 0):
 		return -1
 	return t
@@ -347,13 +313,10 @@ int import_alias_module_type(int alias_index, char* name):
 int import_alias_type_ahead(int require_call):
 	int c = token[0]
 	int is_name = is_ident_start_byte(c)
-	if (is_name == 0):
-		return -1
-	if (nextc != '.'):
-		return -1
+	if (is_name == 0): return -1
+	if (nextc != '.'): return -1
 	int alias_index = import_alias_lookup(token)
-	if (alias_index < 0):
-		return -1
+	if (alias_index < 0): return -1
 	char* save = generic_reparse_save()
 	get_token() /* consume the alias name; the next token is the '.' */
 	int found = -1
@@ -361,8 +324,7 @@ int import_alias_type_ahead(int require_call):
 		get_token() /* consume the '.'; the member is now current */
 		found = import_alias_module_type(alias_index, token)
 		if ((found >= 0) & require_call):
-			if (nextc != '('):
-				found = -1
+			if (nextc != '('): found = -1
 	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
 	return found
@@ -380,9 +342,7 @@ int import_alias_type_member(int alias_index):
 	int c = token[0]
 	int is_name = is_ident_start_byte(c)
 	if (is_name == 0):
-		diag_part(c"identifier expected after import alias '")
-		diag_part(import_alias_name(alias_index))
-		error(c"'")
+		error3(c"identifier expected after import alias '", import_alias_name(alias_index), c"'")
 	int t = import_alias_module_type(alias_index, token)
 	if (t >= 0):
 		return t
@@ -398,14 +358,10 @@ int import_alias_type_member(int alias_index):
 		if (type_lookup(token) < 0):
 			diag_part(c"'")
 			diag_part(token)
-			diag_part(c"' is a value, not a type, in module imported as '")
-			diag_part(import_alias_name(alias_index))
-			error(c"'")
+			error3(c"' is a value, not a type, in module imported as '", import_alias_name(alias_index), c"'")
 	diag_part(c"type '")
 	diag_part(token)
-	diag_part(c"' is not defined in module imported as '")
-	diag_part(import_alias_name(alias_index))
-	error(c"'")
+	error3(c"' is not defined in module imported as '", import_alias_name(alias_index), c"'")
 	return -1
 
 
@@ -419,9 +375,7 @@ int import_alias_member(int alias_index):
 	int c = token[0]
 	int is_name = is_ident_start_byte(c)
 	if (is_name == 0):
-		diag_part(c"identifier expected after import alias '")
-		diag_part(import_alias_name(alias_index))
-		error(c"'")
+		error3(c"identifier expected after import alias '", import_alias_name(alias_index), c"'")
 	int t = sym_lookup(token)
 	int in_module = 0
 	if (t >= 0):
@@ -431,9 +385,7 @@ int import_alias_member(int alias_index):
 	if (in_module == 0):
 		diag_part(c"symbol '")
 		diag_part(token)
-		diag_part(c"' is not defined in module imported as '")
-		diag_part(import_alias_name(alias_index))
-		error(c"'")
+		error3(c"' is not defined in module imported as '", import_alias_name(alias_index), c"'")
 	strcpy(last_identifier, token)
 	return sym_get_value(token)
 
@@ -466,12 +418,10 @@ not implemented (future):
 # Was the module path spelled like a filesystem path ('lib/assert.w',
 # 'lib/assert') instead of a dotted module name ('lib.assert')?
 int import_spelling_path_shaped(char* spelling):
-	if (ends_with(spelling, c".w")):
-		return 1
+	if (ends_with(spelling, c".w")): return 1
 	int i = 0
 	while (spelling[i]):
-		if (spelling[i] == '/'):
-			return 1
+		if (spelling[i] == '/'): return 1
 		i = i + 1
 	return 0
 
@@ -540,10 +490,7 @@ void import_validate_alias(char* alias):
 		c = alias[i]
 		valid = is_ident_part_byte(c)
 		i = i + 1
-	if (valid == 0):
-		diag_part(c"invalid import alias: '")
-		diag_part(alias)
-		error(c"'")
+	if (valid == 0): error3(c"invalid import alias: '", alias, c"'")
 
 
 # Truncates a trailing '#' comment (and the spaces/tabs before it) off an
@@ -558,12 +505,10 @@ void import_strip_comment(char* line):
 		if (line[i] == '#'):
 			while (i > 0):
 				int prev = line[i - 1]
-				if ((prev != ' ') && (prev != 9)):
-					break
+				if ((prev != ' ') && (prev != 9)): break
 				i = i - 1
 			line[i] = 0
-		else:
-			i = i + 1
+		else: i = i + 1
 
 
 # Splits an optional trailing " as <alias>" clause off an import line,
@@ -585,16 +530,13 @@ char* import_split_alias(char* line):
 # 'w check --lint' (compiler/lint.w): a plain import of a module this
 # file already imports plainly adds nothing.
 void import_lint_duplicate(char* resolved, char* spelling):
-	if (lint_file_active() == 0):
-		return
+	if (lint_file_active() == 0): return
 	int i = import_plain_base
 	while (i < import_plain_count):
 		char* path = cast(char*, load_ptr(import_plain_paths + i * __word_size__))
 		if (strcmp(path, resolved) == 0):
 			if (lint_begin(line_number + 1, 1, c"duplicate-import")):
-				diag_part(c"warning: module '")
-				diag_part(spelling)
-				warning(c"' is already imported [duplicate-import]")
+				warning3(c"warning: module '", spelling, c"' is already imported [duplicate-import]")
 				lint_end()
 			return
 		i = i + 1
@@ -618,21 +560,15 @@ int import_statement():
 		if (ends_with(token, c".*")):
 			int len = strlen(token)
 			token[len - 2] = 0
-			diag_part(c"import wildcard '.*' is not supported (an import already makes the whole module visible); use 'import ")
-			diag_part(token)
-			error(c"'")
+			error3(c"import wildcard '.*' is not supported (an import already makes the whole module visible); use 'import ", token, c"'")
 
 		char* resolved = import_resolve(token)
-		if (alias == 0):
-			import_lint_duplicate(resolved, token)
+		if (alias == 0): import_lint_duplicate(resolved, token)
 
 		# compile_save clobbers nextc, so only re-read it after a compile
-		if (import_module(token)):
-			nextc = get_character()
-		if (alias != 0):
-			import_alias_register(alias, resolved)
-		else:
-			import_plain_register(resolved)
+		if (import_module(token)): nextc = get_character()
+		if (alias != 0): import_alias_register(alias, resolved)
+		else: import_plain_register(resolved)
 		get_token()
 		return 1
 	return 0

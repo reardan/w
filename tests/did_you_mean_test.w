@@ -17,8 +17,7 @@ char* suggest(char* name, char* a, char* b, char* c):
 	diag_suggest_consider(b)
 	diag_suggest_consider(c)
 	char* got = 0
-	if (diag_suggest_finish()):
-		got = strclone(diag_help_text)
+	if (diag_suggest_finish()): got = strclone(diag_help_text)
 	diag_clear_help()
 	return got
 

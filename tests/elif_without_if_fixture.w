@@ -7,3 +7,4 @@ int main():
 	elif x == 0:
 		return 1
 	return 0
+# wbuild: fixture_group=elif_error_test

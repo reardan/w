@@ -22,8 +22,7 @@ exactly one of them:
 	int got_msg = task_select_recv(&sel, messages)
 	int got_quit = task_select_recv(&sel, quit)
 	int which = task_select_wait(&sel, 1000)    # case index or error
-	if (which == got_msg):
-		... task_select_value(&sel) ...
+	if (which == got_msg): ... task_select_value(&sel) ...
 	task_select_free(&sel)
 */
 import lib.lib
@@ -43,8 +42,7 @@ struct task_chan:
 task_chan* task_chan_new(int capacity):
 	task_chan* ch = new task_chan()
 	ch.buffer = deque_new[int]()
-	if (capacity < 0):
-		capacity = 0
+	if (capacity < 0): capacity = 0
 	ch.capacity = capacity
 	ch.closed = 0
 	task_wait_queue_init(&ch.senders)
@@ -71,21 +69,20 @@ int task_chan_is_closed(task_chan* ch):
 # fail with task_err_closed(). Closing twice is harmless.
 void task_chan_close(task_chan* ch):
 	ch.closed = 1
-	task_wait_queue_fire_all(&ch.receivers, task_waiter_closed(), 0)
-	task_wait_queue_fire_all(&ch.senders, task_waiter_closed(), 0)
+	task_wait_queue_fire_all(&ch.receivers, task_waiter_closed, 0)
+	task_wait_queue_fire_all(&ch.senders, task_waiter_closed, 0)
 
 
 # Send without parking: 0 when the value was delivered or buffered,
 # task_err_would_block() when that would need a wait,
 # task_err_closed() on a closed channel.
 int task_chan_try_send(task_chan* ch, int value):
-	if (ch.closed):
-		return task_err_closed()
+	if (ch.closed): return task_err_closed()
 	task_waiter* w = task_wait_queue_first(&ch.receivers)
 	if (cast(int, w) != 0):
 		# A parked receiver means the buffer is empty: hand it over.
 		w.value = value
-		task_waiter_fire(w, task_waiter_completed(), 0)
+		task_waiter_fire(w, task_waiter_completed, 0)
 		return 0
 	if (ch.buffer.length < ch.capacity):
 		deque_push_back[int](ch.buffer, value)
@@ -102,16 +99,15 @@ int task_chan_try_recv(task_chan* ch, int* out):
 		task_waiter* s = task_wait_queue_first(&ch.senders)
 		if (cast(int, s) != 0):
 			deque_push_back[int](ch.buffer, s.value)
-			task_waiter_fire(s, task_waiter_completed(), 0)
+			task_waiter_fire(s, task_waiter_completed, 0)
 		return 1
 	task_waiter* w = task_wait_queue_first(&ch.senders)
 	if (cast(int, w) != 0):
 		# Rendezvous: take the value straight from the sender.
 		*out = w.value
-		task_waiter_fire(w, task_waiter_completed(), 0)
+		task_waiter_fire(w, task_waiter_completed, 0)
 		return 1
-	if (ch.closed):
-		return 0
+	if (ch.closed): return 0
 	return task_err_would_block()
 
 
@@ -130,10 +126,8 @@ int task_chan_send_timeout(task_chan* ch, int value, int timeout_ms):
 	task_waiter_init(&w, t)
 	w.value = value
 	r = task_park_on(&ch.senders, &w, timeout_ms)
-	if (w.status == task_waiter_completed()):
-		return 0
-	if (w.status == task_waiter_closed()):
-		return task_err_closed()
+	if (w.status == task_waiter_completed): return 0
+	if (w.status == task_waiter_closed): return task_err_closed()
 	return r
 
 
@@ -155,11 +149,10 @@ int task_chan_recv_timeout(task_chan* ch, int* out, int timeout_ms):
 	task_waiter w
 	task_waiter_init(&w, t)
 	r = task_park_on(&ch.receivers, &w, timeout_ms)
-	if (w.status == task_waiter_completed()):
+	if (w.status == task_waiter_completed):
 		*out = w.value
 		return 1
-	if (w.status == task_waiter_closed()):
-		return 0
+	if (w.status == task_waiter_closed): return 0
 	return r
 
 
@@ -169,12 +162,8 @@ int task_chan_recv(task_chan* ch, int* out):
 
 /* Select. */
 
-int task_select_kind_recv():
-	return 1
-
-
-int task_select_kind_send():
-	return 2
+const int task_select_kind_recv = 1
+const int task_select_kind_send = 2
 
 
 struct task_select_case:
@@ -215,12 +204,12 @@ int task_select_add(task_select* sel, int kind, task_chan* ch, int value):
 
 # Add a receive case; returns its index.
 int task_select_recv(task_select* sel, task_chan* ch):
-	return task_select_add(sel, task_select_kind_recv(), ch, 0)
+	return task_select_add(sel, task_select_kind_recv, ch, 0)
 
 
 # Add a send case; returns its index.
 int task_select_send(task_select* sel, task_chan* ch, int value):
-	return task_select_add(sel, task_select_kind_send(), ch, value)
+	return task_select_add(sel, task_select_kind_send, ch, value)
 
 
 # After a recv case won: the value (valid when task_select_ok is 1).
@@ -240,7 +229,7 @@ int task_select_poll(task_select* sel):
 	int i = 0
 	while (i < sel.cases.length):
 		task_select_case* c = sel.cases[i]
-		if (c.kind == task_select_kind_recv()):
+		if (c.kind == task_select_kind_recv):
 			int v = 0
 			int r = task_chan_try_recv(c.ch, &v)
 			if (r >= 0):
@@ -268,8 +257,7 @@ int task_select_wait(task_select* sel, int timeout_ms):
 	int ready = task_select_poll(sel)
 	if (ready >= 0):
 		return ready
-	if (timeout_ms == 0):
-		return task_err_would_block()
+	if (timeout_ms == 0): return task_err_would_block()
 	task* t = task_current()
 	int err = task_park_check(t)
 	if (err < 0):
@@ -280,8 +268,7 @@ int task_select_wait(task_select* sel, int timeout_ms):
 	while (i < n):
 		task_select_case* c = sel.cases[i]
 		task_waiter_init(&c.waiter, t)
-		if (c.kind == task_select_kind_recv()):
-			task_waiter_link(&c.ch.receivers, &c.waiter)
+		if (c.kind == task_select_kind_recv): task_waiter_link(&c.ch.receivers, &c.waiter)
 		else:
 			c.waiter.value = c.value
 			task_waiter_link(&c.ch.senders, &c.waiter)
@@ -289,15 +276,14 @@ int task_select_wait(task_select* sel, int timeout_ms):
 		i = i + 1
 	t.wait_many = registered
 	t.wait_count = n
-	int r = task_park(t, task_state_waiting_queue(), timeout_ms, task_err_timed_out())
+	int r = task_park(t, task_state_waiting_queue, timeout_ms, task_err_timed_out())
 	free(cast(void*, registered))
 	i = 0
 	while (i < n):
 		task_select_case* c = sel.cases[i]
-		if (c.waiter.status != task_waiter_pending()):
-			sel.ok = c.waiter.status == task_waiter_completed()
-			if (c.kind == task_select_kind_recv()):
-				sel.value = c.waiter.value
+		if (c.waiter.status != task_waiter_pending):
+			sel.ok = c.waiter.status == task_waiter_completed
+			if (c.kind == task_select_kind_recv): sel.value = c.waiter.value
 			return i
 		i = i + 1
 	return r

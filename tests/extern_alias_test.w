@@ -16,17 +16,14 @@ extern int fflush(int stream)
 
 int _main():
 	int rc = 0
-	if (libc_puts(c"extern alias puts") < 0):
-		rc = 1
-	if (libc_puts2(c"extern alias prefixed-string puts") < 0):
-		rc = 1
+	if (libc_puts(c"extern alias puts") < 0): rc = 1
+	if (libc_puts2(c"extern alias prefixed-string puts") < 0): rc = 1
 	# An aliased symbol and the plain declaration of the same function
 	# must agree.
 	if (libc_getppid() != getppid()):
 		libc_puts(c"FAIL: aliased getppid disagrees with plain getppid")
 		rc = 1
-	if (rc == 0):
-		libc_puts(c"extern alias OK")
+	if (rc == 0): libc_puts(c"extern alias OK")
 
 	fflush(0)
 	return rc

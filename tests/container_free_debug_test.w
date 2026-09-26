@@ -78,17 +78,13 @@ void cfd_round():
 		inner.push(i)
 		outer.push(inner)
 		i = i + 1
-	for list[int] inner in outer:
-		inner.free()
+	for list[int] inner in outer: inner.free()
 	outer.free()
 
 
 int main():
 	malloc_force_debug_mode()
-	int round = 0
-	while (round < 200):
-		cfd_round()
-		round = round + 1
+	for round in range(200): cfd_round()
 	asserts(c"container free churn left no leaks", debug_alloc_report_leaks() == 0)
 	println2(c"container_free_debug_test: OK")
 	return 0

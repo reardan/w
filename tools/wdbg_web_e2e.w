@@ -39,12 +39,6 @@ void we_check(int ok, char* what):
 		we_failures = we_failures + 1
 
 
-int we_contains(char* text, char* needle):
-	if (text == 0):
-		return 0
-	return index_of(text, needle) >= 0
-
-
 # One running wdbg_web instance.
 struct we_server:
 	process* p
@@ -59,8 +53,7 @@ we_server* we_start(list[char*] extra):
 	args.push(c"e2ecode")
 	args.push(c"--port")
 	args.push(c"0")
-	for char* a in extra:
-		args.push(a)
+	for char* a in extra: args.push(a)
 	char** argv = strv_new(args.length + 1)
 	int i = 0
 	while (i < args.length):
@@ -68,7 +61,7 @@ we_server* we_start(list[char*] extra):
 		i = i + 1
 	strv_set(argv, args.length, 0)
 	spawn_options* opts = spawn_options_new()
-	opts.stdout_mode = process_pipe()
+	opts.stdout_mode = process_pipe
 	process* p = process_spawn(c"bin/wdbg_web", argv, opts)
 	if (p == 0):
 		println2(c"FAIL: cannot spawn bin/wdbg_web")
@@ -84,19 +77,16 @@ we_server* we_start(list[char*] extra):
 		if (wait <= 0):
 			println2(c"FAIL: wdbg_web printed no URL")
 			exit(1)
-		if (poll_single(p.stdout_fd, poll_in(), wait) <= 0):
-			continue
+		if (poll_single(p.stdout_fd, poll_in, wait) <= 0): continue
 		if (read(p.stdout_fd, ch, 1) != 1):
 			println2(c"FAIL: wdbg_web exited before printing its URL")
 			exit(1)
-		if (ch[0] == 10):
-			done = 1
-		else:
-			string_append_char(line, ch[0])
+		if (ch[0] == 10): done = 1
+		else: string_append_char(line, ch[0])
 	free(ch)
 	print(c"url: ")
 	println(line.data)
-	we_check(we_contains(line.data, c"/?code=e2ecode"), c"URL carries the access code")
+	we_check(contains(line.data, c"/?code=e2ecode"), c"URL carries the access code")
 	we_server* s = new we_server()
 	s.p = p
 	s.base = substring(line.data, 0, index_of(line.data, c"/?code="))
@@ -105,7 +95,7 @@ we_server* we_start(list[char*] extra):
 
 
 void we_stop(we_server* s):
-	process_kill(s.p, sigkill())
+	process_kill(s.p, sigkill)
 	process_wait(s.p)
 	process_free(s.p)
 
@@ -117,10 +107,8 @@ http_response* we_request(we_server* s, char* method, char* path, char* body, in
 	req.timeout_ms = 120000
 	req.tls_handshake_timeout_ms = 120000
 	req.tls_insecure_skip_verify = 1
-	if (code_mode == 1):
-		http_req_add_header(req, c"X-Wdbg-Code", c"e2ecode")
-	if (code_mode == 2):
-		http_req_add_header(req, c"Cookie", c"other=1; wdbg_code=e2ecode")
+	if (code_mode == 1): http_req_add_header(req, c"X-Wdbg-Code", c"e2ecode")
+	if (code_mode == 2): http_req_add_header(req, c"Cookie", c"other=1; wdbg_code=e2ecode")
 	if (body != 0):
 		req.body = body
 		req.body_len = strlen(body)
@@ -183,9 +171,9 @@ void we_plain_http_session():
 	# The page, its cookie, and static path sanitizing.
 	http_response* page = we_request(s, c"GET", c"/?code=e2ecode", 0, 0)
 	we_check(page.status == 200, c"GET / -> 200")
-	we_check(we_contains(page.body, c"<title>wdbg</title>"), c"index.html served")
-	we_check(we_contains(http_response_header(page, c"set-cookie"), c"wdbg_code=e2ecode"), c"page sets the code cookie")
-	we_check(we_contains(http_response_header(page, c"set-cookie"), c"HttpOnly"), c"cookie is HttpOnly")
+	we_check(contains(page.body, c"<title>wdbg</title>"), c"index.html served")
+	we_check(contains(http_response_header(page, c"set-cookie"), c"wdbg_code=e2ecode"), c"page sets the code cookie")
+	we_check(contains(http_response_header(page, c"set-cookie"), c"HttpOnly"), c"cookie is HttpOnly")
 	http_response_free(page)
 	we_check(we_status(s, c"GET", c"/wdbg_bridge.mjs", 1) == 200, c"wdbg_bridge.mjs served")
 	we_check(we_status(s, c"GET", c"/web/webgl_env.mjs", 1) == 200, c"shared wasm host glue served")
@@ -196,16 +184,16 @@ void we_plain_http_session():
 
 	# Initial state: stopped before main, the program's files listed.
 	char* st = we_ok(s, c"GET", c"/api/state", 0)
-	we_check(we_contains(st, c"\"state\": \"stopped\""), c"session starts stopped")
-	we_check(we_contains(st, c"debug_fixture.w"), c"state lists the program")
-	we_check(we_contains(st, c"structures/prelude.w"), c"state lists imported files")
+	we_check(contains(st, c"\"state\": \"stopped\""), c"session starts stopped")
+	we_check(contains(st, c"debug_fixture.w"), c"state lists the program")
+	we_check(contains(st, c"structures/prelude.w"), c"state lists imported files")
 	free(st)
 
 	# Sources: the program's files only.
 	string_builder* src_path = string_from(c"/api/source?file=")
 	string_append(src_path, fixture)
 	char* src = we_ok(s, c"GET", src_path.data, 0)
-	we_check(we_contains(src, c"println(c\"after breakpoint\")"), c"program source served")
+	we_check(contains(src, c"println(c\"after breakpoint\")"), c"program source served")
 	free(src)
 	string_free(src_path)
 	we_check(we_status(s, c"GET", c"/api/source?file=/etc/passwd", 1) == 403, c"foreign file -> 403")
@@ -215,30 +203,30 @@ void we_plain_http_session():
 	string_append(bcmd, fixture)
 	string_append(bcmd, c":8")
 	char* out = we_ok(s, c"POST", c"/api/cmd", bcmd.data)
-	we_check(we_contains(out, c"breakpoint 1 at main"), c"b file:line sets breakpoint 1")
+	we_check(contains(out, c"breakpoint 1 at main"), c"b file:line sets breakpoint 1")
 	free(out)
 	string_free(bcmd)
 	out = we_ok(s, c"POST", c"/api/cmd", c"c")
-	we_check(we_contains(out, c"hit breakpoint 1"), c"continue hits the breakpoint")
-	we_check(we_contains(out, c"\"state\": \"stopped\""), c"stopped at the breakpoint")
+	we_check(contains(out, c"hit breakpoint 1"), c"continue hits the breakpoint")
+	we_check(contains(out, c"\"state\": \"stopped\""), c"stopped at the breakpoint")
 	free(out)
 	out = we_ok(s, c"GET", c"/api/inspect", 0)
-	we_check(we_contains(out, c"\"where\": \"main ("), c"inspect where names main")
-	we_check(we_contains(out, c"debug_fixture.w:8"), c"inspect where is line 8")
-	we_check(we_contains(out, c"x = 3"), c"inspect locals shows x = 3")
-	we_check(we_contains(out, c"#0  main"), c"inspect backtrace")
-	we_check(we_contains(out, c"hits: 1"), c"inspect breakpoints shows the hit count")
+	we_check(contains(out, c"\"where\": \"main ("), c"inspect where names main")
+	we_check(contains(out, c"debug_fixture.w:8"), c"inspect where is line 8")
+	we_check(contains(out, c"x = 3"), c"inspect locals shows x = 3")
+	we_check(contains(out, c"#0  main"), c"inspect backtrace")
+	we_check(contains(out, c"hits: 1"), c"inspect breakpoints shows the hit count")
 	free(out)
 	out = we_ok(s, c"POST", c"/api/query", c"r")
-	we_check(we_contains(out, c"eip: 0x"), c"query r returns registers")
+	we_check(contains(out, c"eip: 0x"), c"query r returns registers")
 	free(out)
 	we_check(we_status(s, c"POST", c"/api/query", 1) == 400, c"query refuses non-inspection commands")
 	out = we_ok(s, c"POST", c"/api/cmd", c"n")
-	we_check(we_contains(out, c"debug_fixture.w:9"), c"next moves to line 9")
+	we_check(contains(out, c"debug_fixture.w:9"), c"next moves to line 9")
 	free(out)
 	out = we_ok(s, c"POST", c"/api/cmd", c"p x * 2\nq")
-	we_check(we_contains(out, c"= 14"), c"print evaluates an expression")
-	we_check(we_contains(out, c"\"state\": \"stopped\""), c"a second line in the body is not run")
+	we_check(contains(out, c"= 14"), c"print evaluates an expression")
+	we_check(contains(out, c"\"state\": \"stopped\""), c"a second line in the body is not run")
 	free(out)
 	# Continue through the 'debugger' statement and the --break_end stop
 	# until the program exits, collecting everything the page would show.
@@ -248,21 +236,21 @@ void we_plain_http_session():
 	while ((exited == 0) && (rounds < 6)):
 		out = we_ok(s, c"POST", c"/api/cmd", c"c")
 		string_append(all, out)
-		exited = we_contains(out, c"\"state\": \"exited\"")
+		exited = contains(out, c"\"state\": \"exited\"")
 		free(out)
 		rounds = rounds + 1
 	out = we_ok(s, c"GET", c"/api/poll", 0)
 	string_append(all, out)
-	we_check(we_contains(out, c"\"state\": \"exited\""), c"session exits")
+	we_check(contains(out, c"\"state\": \"exited\""), c"session exits")
 	free(out)
-	we_check(we_contains(all.data, c"after breakpoint"), c"program output reaches the page")
-	we_check(we_contains(all.data, c"debuggee main returned 7"), c"program runs to completion")
+	we_check(contains(all.data, c"after breakpoint"), c"program output reaches the page")
+	we_check(contains(all.data, c"debuggee main returned 7"), c"program runs to completion")
 	string_free(all)
 	we_check(we_status(s, c"POST", c"/api/cmd", 1) == 409, c"command after exit -> 409")
 
 	# Restart brings a fresh stopped session.
 	out = we_ok(s, c"POST", c"/api/restart", c"")
-	we_check(we_contains(out, c"\"state\": \"stopped\""), c"restart stops before main again")
+	we_check(contains(out, c"\"state\": \"stopped\""), c"restart stops before main again")
 	free(out)
 	we_check(we_status(s, c"GET", c"/api/nope", 1) == 404, c"unknown endpoint -> 404")
 	we_check(we_status(s, c"GET", c"/api/core", 1) == 404, c"no core -> 404")
@@ -276,7 +264,7 @@ void we_https_session():
 	we_server* s = we_start(extra)
 	we_check(starts_with(s.base, c"https://127.0.0.1:"), c"https by default")
 	char* st = we_ok(s, c"GET", c"/api/state", 0)
-	we_check(we_contains(st, c"\"state\": \"stopped\""), c"https state")
+	we_check(contains(st, c"\"state\": \"stopped\""), c"https state")
 	free(st)
 	we_stop(s)
 
@@ -299,13 +287,13 @@ void we_core_session():
 	extra.push(dump)
 	we_server* s = we_start(extra)
 	char* st = we_ok(s, c"GET", c"/api/state", 0)
-	we_check(we_contains(st, c"\"has_core\": true"), c"core mode state")
-	we_check(we_contains(st, c"\"state\": \"none\""), c"core mode has no live session")
-	we_check(we_contains(st, c"crash_null_deref_fixture.w"), c"core frames' files are viewable")
+	we_check(contains(st, c"\"has_core\": true"), c"core mode state")
+	we_check(contains(st, c"\"state\": \"none\""), c"core mode has no live session")
+	we_check(contains(st, c"crash_null_deref_fixture.w"), c"core frames' files are viewable")
 	free(st)
 	char* core = we_ok(s, c"GET", c"/api/core", 0)
-	we_check(we_contains(core, c"\"signal_name\""), c"core report has the signal")
-	we_check(we_contains(core, c"crash_deep"), c"core report symbolizes the fault")
+	we_check(contains(core, c"\"signal_name\""), c"core report has the signal")
+	we_check(contains(core, c"crash_deep"), c"core report symbolizes the fault")
 	free(core)
 	we_stop(s)
 	unlink(dump)

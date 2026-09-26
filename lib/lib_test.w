@@ -77,12 +77,10 @@ void test_malloc_reuse_loop():
 	# A steady alloc/free cycle must not leak: the same block comes back
 	int first = cast(int, malloc(1000))
 	free(cast(void*, first))
-	int i = 0
-	while (i < 1000):
+	for i in range(1000):
 		int p = cast(int, malloc(1000))
 		assert_equal(first, p)
 		free(cast(void*, p))
-		i = i + 1
 
 
 void test_malloc_split():
@@ -315,15 +313,13 @@ void test_malloc_survives_blocked_brk():
 		int guard = mmap(guard_at, 4096, 0, 50)
 		asserts(c"guard mmap failed", guard == guard_at)
 	# Exhaust the current chunk and force several growth cycles
-	int i = 0
-	while (i < 64):
+	for i in range(64):
 		char* block = malloc(16384)
 		asserts(c"malloc returned 0 with brk blocked", block != 0)
 		block[0] = i
 		block[16383] = i + 1
 		assert_equal(i, block[0])
 		assert_equal(i + 1, block[16383])
-		i = i + 1
 
 
 void test_print_registers():

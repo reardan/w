@@ -13,22 +13,8 @@ detection, and zero-copy ndarray interop.
 
 
 float mt_abs(float f):
-	if (f < 0.0):
-		return 0.0 - f
+	if (f < 0.0): return 0.0 - f
 	return f
-
-
-# Epsilon compare: float is float32 on x86 and wider on x64, so exact
-# bit patterns after a division differ between the two builds.
-void assert_near(float want, float got):
-	if (mt_abs(want - got) > 0.0001):
-		print2(c"Assertion failed. wanted float(")
-		print2(ftoa(want))
-		print2(c") got float(")
-		print2(ftoa(got))
-		println2(c")")
-		print_stack_trace()
-		exit(1)
 
 
 void assert_matrix_near(matrix* want, matrix* got):
@@ -119,10 +105,7 @@ void test_operators():
 void test_rectangular_product():
 	# (2x3) * (3x2) -> 2x2, and the transpose shape swap.
 	float[] av = new float[6]
-	int i = 0
-	while (i < 6):
-		av[i] = i + 1
-		i = i + 1
+	for i in range(6): av[i] = i + 1
 	matrix a = matrix_from(av, 2, 3)
 	matrix t = a.transpose()
 	assert_equal(3, t.rows)

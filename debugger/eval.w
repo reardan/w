@@ -56,21 +56,14 @@ char* dbg_eval_bound_sym
 int dbg_eval_bound_count
 
 
-int dbg_eval_bound_max():
-	return 128
-
-
-int dbg_eval_scratch_size():
-	return 8192
+const int dbg_eval_bound_max = 128
+const int dbg_eval_scratch_size = 8192
 
 
 void dbg_eval_copy(int from, int to, int n):
 	char* src = cast(char*, from)
 	char* dst = cast(char*, to)
-	int i = 0
-	while (i < n):
-		dst[i] = src[i]
-		i = i + 1
+	for i in range(n): dst[i] = src[i]
 
 
 # Bind every local and argument visible at the stop as a defined global
@@ -82,14 +75,13 @@ void dbg_eval_copy(int from, int to, int n):
 void dbg_eval_bind_locals(int stop_addr, int esp):
 	dbg_eval_bound_count = 0
 	dbg_frame_compute(stop_addr)
-	if (dbg_frame_ok == 0):
-		return;
+	if (dbg_frame_ok == 0): return;
 	if (dbg_eval_scratch == 0):
-		dbg_eval_scratch = malloc(dbg_eval_scratch_size())
-		dbg_eval_bound_from = malloc(dbg_eval_bound_max() * __word_size__)
-		dbg_eval_bound_to = malloc(dbg_eval_bound_max() * __word_size__)
-		dbg_eval_bound_size = malloc(dbg_eval_bound_max() * 4)
-		dbg_eval_bound_sym = malloc(dbg_eval_bound_max() * 4)
+		dbg_eval_scratch = malloc(dbg_eval_scratch_size)
+		dbg_eval_bound_from = malloc(dbg_eval_bound_max * __word_size__)
+		dbg_eval_bound_to = malloc(dbg_eval_bound_max * __word_size__)
+		dbg_eval_bound_size = malloc(dbg_eval_bound_max * 4)
+		dbg_eval_bound_sym = malloc(dbg_eval_bound_max * 4)
 	int rel = stop_addr - code_offset
 	int saved_indirection = pointer_indirection
 	int used = 0
@@ -102,7 +94,7 @@ void dbg_eval_bind_locals(int stop_addr, int esp):
 				# struct value: whole object, rounded up to words
 				size = (type_get_size(type) + __word_size__ - 1) / __word_size__ * __word_size__
 			int addr = dbg_local_runtime_addr(i, esp)
-			if ((used + size <= dbg_eval_scratch_size()) & (dbg_eval_bound_count < dbg_eval_bound_max())):
+			if ((used + size <= dbg_eval_scratch_size) && (dbg_eval_bound_count < dbg_eval_bound_max)):
 				if (dbg_mem_readable(addr, size)):
 					int slot = cast(int, dbg_eval_scratch) + used
 					dbg_eval_copy(addr, slot, size)
@@ -148,8 +140,7 @@ void dbg_eval_unbind():
 		# live record really starts there -- a rollback may have
 		# truncated the binding away and handed those bytes to an
 		# unrelated symbol (compiler/symbol_table.w, sym_index_unbind).
-		if (sym_index_unbind(name_start)):
-			table[name_start] = 1
+		if (sym_index_unbind(name_start)): table[name_start] = 1
 		b = b + 1
 
 
@@ -222,10 +213,8 @@ int dbg_eval_call(char* expr, int stop_addr, int esp):
 	# otherwise flood the staging directory with one file per hit. (The
 	# 'repl' command's entries go through dbg_eval_entry directly and
 	# keep their files, like entries at the REPL prompt.)
-	if (repl_staged_path != 0):
-		unlink(repl_staged_path)
-	if (ok == 0):
-		return 0
+	if (repl_staged_path != 0): unlink(repl_staged_path)
+	if (ok == 0): return 0
 	dbg_eval_ok = 1
 	return dbg_eval_value
 
@@ -233,8 +222,7 @@ int dbg_eval_call(char* expr, int stop_addr, int esp):
 # Evaluate the expression at the stop and print its value.
 void dbg_eval(char* expr, int stop_addr, int esp):
 	int v = dbg_eval_call(expr, stop_addr, esp)
-	if (dbg_eval_ok == 0):
-		return;
+	if (dbg_eval_ok == 0): return;
 	print(c"= ")
 	dbg_print_int_value(v)
 	put_char(10)

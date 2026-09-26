@@ -22,6 +22,8 @@ import lib.lib
 import lib.memory
 import lib.sha256
 import libs.standard.crypto.bignum
+import lib.hex
+import lib.mem
 
 
 # ---- curve constants (loaded once) ------------------------------------------
@@ -52,16 +54,6 @@ bignum* PA_RY
 bignum* PA_RZ
 
 
-int p256_hexval(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
-	return 0
-
-
 # Load a 64-hex-digit (32-byte) big-endian constant into dst.
 void p256_load_hex(bignum* dst, char* h):
 	int l = strlen(h)
@@ -69,11 +61,11 @@ void p256_load_hex(bignum* dst, char* h):
 	int hi = 0
 	int oi = 0
 	if ((l & 1) == 1):
-		buf[0] = p256_hexval(h[0])
+		buf[0] = hex_decode_char(h[0])
 		hi = 1
 		oi = 1
 	while (hi < l):
-		buf[oi] = (p256_hexval(h[hi]) << 4) | p256_hexval(h[hi + 1])
+		buf[oi] = (hex_decode_char(h[hi]) << 4) | hex_decode_char(h[hi + 1])
 		hi = hi + 2
 		oi = oi + 1
 	bignum_from_bytes(dst, buf, oi)
@@ -81,8 +73,7 @@ void p256_load_hex(bignum* dst, char* h):
 
 
 void p256_init():
-	if (P256_INITED != 0):
-		return
+	if (P256_INITED != 0): return
 	P256_P = bignum_new()
 	P256_N = bignum_new()
 	P256_A = bignum_new()
@@ -132,8 +123,7 @@ void fp_mul(bignum* r, bignum* a, bignum* b):
 # r = (a + b) mod p, tolerates r aliasing a or b.
 void fp_add(bignum* r, bignum* a, bignum* b):
 	bignum_add(FP_S, a, b)
-	if (bignum_cmp(FP_S, P256_P) >= 0):
-		bignum_sub(FP_S, P256_P)
+	if (bignum_cmp(FP_S, P256_P) >= 0): bignum_sub(FP_S, P256_P)
 	bignum_copy(r, FP_S)
 
 
@@ -157,10 +147,7 @@ struct ec_point:
 
 
 ec_point* ec_point_new():
-	ec_point* p = new ec_point()
-	p.X = bignum_new()
-	p.Y = bignum_new()
-	p.Z = bignum_new()
+	ec_point* p = new ec_point(bignum_new(), bignum_new(), bignum_new())
 	return p
 
 
@@ -286,8 +273,7 @@ void p256_scalar_mult_vartime(ec_point* out, bignum* k, ec_point* base):
 	int i = bignum_bit_length(k) - 1
 	while (i >= 0):
 		point_add(r, r, r)
-		if (bignum_get_bit(k, i) != 0):
-			point_add(r, r, base)
+		if (bignum_get_bit(k, i) != 0): point_add(r, r, base)
 		i = i - 1
 	point_copy(out, r)
 	ec_point_free(r)
@@ -295,8 +281,7 @@ void p256_scalar_mult_vartime(ec_point* out, bignum* k, ec_point* base):
 
 # Convert projective point to affine coordinates mod p. Returns 0 for infinity.
 int p256_affine(ec_point* p, bignum* out_x, bignum* out_y):
-	if (point_is_infinity(p) != 0):
-		return 0
+	if (point_is_infinity(p) != 0): return 0
 	bignum* zi = bignum_new()
 	bignum_modinv(zi, p.Z, P256_P)
 	fp_mul(out_x, p.X, zi)
@@ -307,10 +292,8 @@ int p256_affine(ec_point* p, bignum* out_x, bignum* out_y):
 
 # Is the affine point (x, y) on the curve and in range? (public-key validation)
 int p256_on_curve(bignum* x, bignum* y):
-	if (bignum_cmp(x, P256_P) >= 0):
-		return 0
-	if (bignum_cmp(y, P256_P) >= 0):
-		return 0
+	if (bignum_cmp(x, P256_P) >= 0): return 0
+	if (bignum_cmp(y, P256_P) >= 0): return 0
 	bignum* lhs = bignum_new()
 	bignum* rhs = bignum_new()
 	bignum* t = bignum_new()
@@ -322,8 +305,7 @@ int p256_on_curve(bignum* x, bignum* y):
 	fp_sub(rhs, rhs, t)     # x^3 - 3x
 	fp_add(rhs, rhs, P256_B) # x^3 - 3x + b
 	int ok = 0
-	if (bignum_cmp(lhs, rhs) == 0):
-		ok = 1
+	if (bignum_cmp(lhs, rhs) == 0): ok = 1
 	bignum_free(lhs)
 	bignum_free(rhs)
 	bignum_free(t)
@@ -335,8 +317,7 @@ int p256_on_curve(bignum* x, bignum* y):
 # z = leftmost 256 bits of the hash as an integer (no reduction mod n here).
 void p256_hash_scalar(bignum* z, char* hash, int hashlen):
 	int use = hashlen
-	if (use > 32):
-		use = 32
+	if (use > 32): use = 32
 	bignum_from_bytes(z, hash, use)
 
 
@@ -344,20 +325,12 @@ void p256_hash_scalar(bignum* z, char* hash, int hashlen):
 
 void hmac_sha256(char* key, int keylen, char* msg, int msglen, char* out):
 	char* kb = malloc(64)
-	int i = 0
-	while (i < 64):
-		kb[i] = 0
-		i = i + 1
-	if (keylen > 64):
-		sha256(key, keylen, kb)
-	else:
-		i = 0
-		while (i < keylen):
-			kb[i] = key[i]
-			i = i + 1
+	mem_fill(kb, 0, 64)
+	if (keylen > 64): sha256(key, keylen, kb)
+	else: mem_copy(kb, key, keylen)
 	char* ipad = malloc(64 + msglen)
 	char* opad = malloc(64 + 32)
-	i = 0
+	int i = 0
 	while (i < 64):
 		int kv = kb[i] & 255
 		ipad[i] = kv ^ 54     # 0x36
@@ -390,10 +363,7 @@ struct rfc6979:
 
 # d_oct and h_oct are int2octets(privkey) and bits2octets(hash), each 32 bytes.
 rfc6979* rfc6979_new(char* d_oct, char* h_oct):
-	rfc6979* g = new rfc6979()
-	g.k = malloc(32)
-	g.v = malloc(32)
-	g.started = 0
+	rfc6979* g = new rfc6979(malloc(32), malloc(32), 0)
 	int i = 0
 	while (i < 32):
 		g.v[i] = 1
@@ -401,10 +371,7 @@ rfc6979* rfc6979_new(char* d_oct, char* h_oct):
 		i = i + 1
 	char* buf = malloc(97)
 	# K = HMAC_K(V || 0x00 || d_oct || h_oct)
-	i = 0
-	while (i < 32):
-		buf[i] = g.v[i]
-		i = i + 1
+	mem_copy(buf, g.v, 32)
 	buf[32] = 0
 	i = 0
 	while (i < 32):
@@ -414,10 +381,7 @@ rfc6979* rfc6979_new(char* d_oct, char* h_oct):
 	hmac_sha256(g.k, 32, buf, 97, g.k)
 	hmac_sha256(g.k, 32, g.v, 32, g.v)
 	# K = HMAC_K(V || 0x01 || d_oct || h_oct)
-	i = 0
-	while (i < 32):
-		buf[i] = g.v[i]
-		i = i + 1
+	mem_copy(buf, g.v, 32)
 	buf[32] = 1
 	hmac_sha256(g.k, 32, buf, 97, g.k)
 	hmac_sha256(g.k, 32, g.v, 32, g.v)
@@ -436,10 +400,7 @@ void rfc6979_free(rfc6979* g):
 void rfc6979_next(rfc6979* g, char* out):
 	if (g.started != 0):
 		char* buf = malloc(33)
-		int j = 0
-		while (j < 32):
-			buf[j] = g.v[j]
-			j = j + 1
+		mem_copy(buf, g.v, 32)
 		buf[32] = 0
 		hmac_sha256(g.k, 32, buf, 33, g.k)
 		hmac_sha256(g.k, 32, g.v, 32, g.v)
@@ -447,10 +408,7 @@ void rfc6979_next(rfc6979* g, char* out):
 	g.started = 1
 	# qlen == hlen == 256, so one HMAC block fills the 32-byte candidate.
 	hmac_sha256(g.k, 32, g.v, 32, g.v)
-	int i = 0
-	while (i < 32):
-		out[i] = g.v[i]
-		i = i + 1
+	mem_copy(out, g.v, 32)
 
 
 # ---- public API -------------------------------------------------------------
@@ -466,14 +424,10 @@ int ecdsa_p256_verify(char* qx, char* qy, char* hash, int hashlen, char* r_bytes
 	bignum_from_bytes(s, s_bytes, 32)
 	int result = 0
 	int ok = 1
-	if (bignum_is_zero(r) != 0):
-		ok = 0
-	if (bignum_cmp(r, P256_N) >= 0):
-		ok = 0
-	if (bignum_is_zero(s) != 0):
-		ok = 0
-	if (bignum_cmp(s, P256_N) >= 0):
-		ok = 0
+	if (bignum_is_zero(r) != 0): ok = 0
+	if (bignum_cmp(r, P256_N) >= 0): ok = 0
+	if (bignum_is_zero(s) != 0): ok = 0
+	if (bignum_cmp(s, P256_N) >= 0): ok = 0
 	ec_point* q = ec_point_new()
 	ec_point* g = ec_point_new()
 	ec_point* r1 = ec_point_new()
@@ -488,8 +442,7 @@ int ecdsa_p256_verify(char* qx, char* qy, char* hash, int hashlen, char* r_bytes
 	bignum* rr = bignum_new()
 	if (ok != 0):
 		p256_set_affine(q, qx, qy)
-		if (p256_on_curve(q.X, q.Y) == 0):
-			ok = 0
+		if (p256_on_curve(q.X, q.Y) == 0): ok = 0
 	if (ok != 0):
 		p256_set_generator(g)
 		p256_hash_scalar(z, hash, hashlen)
@@ -501,8 +454,7 @@ int ecdsa_p256_verify(char* qx, char* qy, char* hash, int hashlen, char* r_bytes
 		point_add(racc, r1, r2)
 		if (p256_affine(racc, xr, yr) != 0):
 			bignum_mod(rr, xr, P256_N)         # x_R mod n
-			if (bignum_cmp(rr, r) == 0):
-				result = 1
+			if (bignum_cmp(rr, r) == 0): result = 1
 	bignum_free(r)
 	bignum_free(s)
 	bignum_free(z)
@@ -560,22 +512,17 @@ int ecdsa_p256_sign(char* d_bytes, char* hash, int hashlen, char* out_r, char* o
 		guard = guard + 1
 		rfc6979_next(gen, kb)
 		bignum_from_bytes(k, kb, 32)
-		if (bignum_is_zero(k) != 0):
-			continue
-		if (bignum_cmp(k, P256_N) >= 0):
-			continue
+		if (bignum_is_zero(k) != 0): continue
+		if (bignum_cmp(k, P256_N) >= 0): continue
 		p256_scalar_mult_ct(rp, k, g)
-		if (p256_affine(rp, xr, yr) == 0):
-			continue
+		if (p256_affine(rp, xr, yr) == 0): continue
 		bignum_mod(r, xr, P256_N)              # r = x_R mod n
-		if (bignum_is_zero(r) != 0):
-			continue
+		if (bignum_is_zero(r) != 0): continue
 		bignum_modinv(kinv, k, P256_N)         # k^{-1} mod n
 		bignum_modmul(rd, r, d, P256_N)        # r*d mod n
 		bignum_addmod(zrd, zmod, rd, P256_N)   # (z + r*d) mod n
 		bignum_modmul(s, kinv, zrd, P256_N)    # s = k^{-1}(z + r*d) mod n
-		if (bignum_is_zero(s) != 0):
-			continue
+		if (bignum_is_zero(s) != 0): continue
 		bignum_to_bytes(r, out_r, 32)
 		bignum_to_bytes(s, out_s, 32)
 		result = 1

@@ -84,7 +84,7 @@ raft* kvs_leader(int seed):
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 300, out)
 	assert_equal(0, out.length)
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	return r
 
 
@@ -247,10 +247,7 @@ void test_propose_apply_loop_binary_value():
 	char* got = lsm_get(store, c"bin", n)
 	assert1(cast(int, got) != 0)
 	assert_equal(5, n[0])
-	int i = 0
-	while (i < 5):
-		assert_equal(value[i] & 255, got[i] & 255)
-		i = i + 1
+	for i in range(5): assert_equal(value[i] & 255, got[i] & 255)
 	free(got)
 	free(cast(char*, n))
 	free(value)
@@ -370,7 +367,7 @@ void test_restart_recovery_idempotent():
 	raft_start(r2, 1000)
 	raft_tick(r2, 1300, out)
 	assert_equal(0, out.length)
-	assert_equal(raft_leader(), raft_state(r2))
+	assert_equal(raft_leader, raft_state(r2))
 	assert_equal(1, kv_propose_put(r2, c"pin", c"held", 1300, out))
 	assert_equal(0, out.length)
 	# the whole log re-applies from commit 0: 4 recovered entries
@@ -440,7 +437,7 @@ void test_restart_recovery_noop_closes_gap():
 	raft_start(r2, 1000)
 	raft_tick(r2, 1300, out)
 	assert_equal(0, out.length)
-	assert_equal(raft_leader(), raft_state(r2))
+	assert_equal(raft_leader, raft_state(r2))
 	# the win appended the term-2 no-op and, single-node, committed the
 	# whole log on the spot — the commit advanced over the recovered
 	# entries WITHOUT any c"pin" proposal

@@ -68,11 +68,10 @@ build. For a changed path P the emitted targets are the union of:
         fails), the rule fails OPEN to the hard-coded prefix floor —
         w.w / grammar.w / codegen.w and compiler/ grammar/
         code_generator/ paths (wtest_compiler_tree) — never narrower
-        than the historical behavior, SAYS SO with a one-line stderr
-        warning, and never persists the failure (it used to be cached
-        against w.w's content hash, which silently pinned the rule to
-        the prefix floor until w.w itself changed even after bin/wv2
-        reappeared — the 2026-07-28 residue). Only that prefix floor skips
+        than that floor, SAYS SO with a one-line stderr warning, and
+        never persists the failure (a cached one would pin the rule to
+        the prefix floor until w.w itself changed, even after bin/wv2
+        reappeared). Only that prefix floor skips
         rule (b) (closure selection for compiler internals would
         degenerate; w.w is excluded as a closure root for the same
         reason); the derived remainder keeps its closure selection, so
@@ -91,20 +90,19 @@ build. For a changed path P the emitted targets are the union of:
         invisible to rule (b) since w.w is an excluded root).
       - every changed .w file that exists -> parser_generator_w_test:
         that target parses every tracked .w file, so any .w change can
-        break it (PR #151 escaped the old per-directory rule).
+        break it.
       - lib/ structures/ libs/ paths, and every deleted (missing) .w
         path anywhere -> metadata_check: package.wmeta declares module
-        trees that must resolve to files (#145 escaped the old rules).
+        trees that must resolve to files.
         A deleted .w additionally -> tests, because importers of a
         deleted module no longer compile, so their closures cannot be
         computed.
-      - (the former lib/__arch__/ and graphics/ rules are retired: the
-        per-arch closures of rule (b) see those modules exactly where
-        a target compiles them. An arch module no target compiles at
-        all — e.g. lib/__arch__/win64/socket_abi.w while nothing links
-        net on win64 — selects only metadata_check and
-        parser_generator_w_test, which is also exactly its current
-        test coverage.)
+      - lib/__arch__/ and graphics/ modules need no rule: rule (b)'s
+        per-arch closures see them exactly where a target compiles
+        them. One no target compiles at all (e.g. lib/__arch__/win64/
+        socket_abi.w while nothing links net on win64) selects only
+        metadata_check and parser_generator_w_test, which is exactly
+        its test coverage.
       - tests/asm/ -> the asm suite (including the asm_fuzz_* property/
         fuzz targets, which sample the same tests/asm/corpus_*.txt
         fixtures): the .txt corpora are read at run time, not
@@ -133,21 +131,7 @@ build. For a changed path P the emitted targets are the union of:
         target, whose compile root tools/wrun.w rule (b) sees.)
       - build.json / wbuild / build.base.json -> wexec_test + tests (the
         manifest drives every target); build.base.json additionally ->
-        manifest_check (it feeds bin/wbuildgen). Exception: when
-        --base-manifest supplies the committed baseline build.json and
-        the structural diff against it is EXACTLY additions, removals,
-        or in-place regenerations of wbuildgen-shaped leaf test targets
-        (plus the matching tests/tests_x64/tests_win64 membership
-        edits), a changed build.json selects just those targets +
-        manifest_check + wexec_test instead of the whole suite — the
-        "added one conventional test and reran ./wbuild manifest"
-        workflow. Anything else in the diff (a hand-written base
-        target, a toolchain step, the manifest's root members) falls
-        back to the full residue; so does a missing or unparseable
-        baseline. Under-selection is fenced twice: manifest_check is
-        always co-selected (a hand-edited build.json fails it), and a
-        build.base.json edit keeps the full residue through its own
-        changed path.
+        manifest_check (it feeds bin/wbuildgen).
       - *_test.w under a wbuildgen scan directory -> manifest_check:
         conventional test sources are generator inputs, so adding or
         deleting one must still generate cleanly.
@@ -223,12 +207,6 @@ and, under --run, execution. It exists mainly for isolated testing
 (tests/wtest/): pointing wtest at a throwaway manifest lets --run be
 exercised without ever selecting a real target that itself shells out to
 bin/wtest, which would recurse.
-
---base-manifest names the BASELINE build.json to structurally diff the
-current manifest against for the leaf-target special case above; with
-no baseline the build.json residue always selects the full suite.
-'./wbuild test_changed' extracts it with 'git show <base>:build.json';
-tests point it at fixture manifests, mirroring -f.
 
 --available drops, after normal selection, targets whose steps name a
 runner this host cannot execute — arm64 run targets (they exec through
@@ -311,11 +289,11 @@ apply, so a comment/formatting-only edit stops recommending every
 importer without under-selecting the fixed rules. It fails OPEN: a path
 new to HEAD, a git or 'bin/wv2 defhash' error, or an actual
 addition/removal/hash change in the recorded definitions all fall back
-to the ordinary closure scan for that path instead. Selection without
---defhash is unchanged byte-for-byte. When the path list arrives on
-stdin and one or more paths compare byte-identical between HEAD and the
-worktree, a warning goes to stderr suggesting the ranged form: 'git
-diff --name-only main..HEAD | wtest changed --defhash' after committing
+to the ordinary closure scan for that path instead. When the path
+list arrives on stdin and one or more paths compare byte-identical
+between HEAD and the worktree, a warning goes to stderr suggesting the
+ranged form: 'git diff --name-only main..HEAD | wtest changed
+--defhash' after committing
 is a footgun — every piped path reads unchanged against the worktree,
 so closure selection silently skips all of them
 (wtest_defhash_clean_warning; stdout selection is untouched).
@@ -323,18 +301,10 @@ so closure selection silently skips all of them
 a range is active; see wtest_range_left / wtest_range_right and
 wtest_defhash_unchanged's left_rev/right_is_worktree.)
 
-Generic and operator-overload definitions are covered by 'bin/wv2
-defhash' itself now (wave plan C task 4f: grammar/generic.w,
-grammar/operator_overload.w both call defhash_note), so the name-set
-and per-name hash comparison above already catches a real edit to one --
-no separate textual pre-check is needed. Earlier (task 2g) this function
-also ran a textual 'risky-shaped content' scan (the literal word
-'operator', or an identifier directly followed by a bracket of
-uppercase-led names) that forced a fallback on ANY file merely
-containing those shapes, comment-only edits included, as a stand-in for
-the coverage gap; it has been removed now that the gap is closed
-(git history has it, tools/test_map.w, if a similar stand-in is ever
-needed for some future defhash blind spot).
+Generic and operator-overload definitions are recorded by 'bin/wv2
+defhash' too (grammar/generic.w and grammar/operator_overload.w call
+defhash_note), so the comparison above catches a real edit to one with
+no textual pre-check.
 
 Commit-ranged selection (issue #251 direction 4b; 'changed' only, not
 'for'): a single positional argument containing '..' is a git revision
@@ -386,9 +356,7 @@ over-select, never under-select. An invalid revision on either side is
 a hard error (wtest exits 1 before any selection is printed) rather
 than a silent fallback, unlike --defhash's per-file fail-open: a bad
 range means the whole invocation is meaningless, not just one file's
-precision. Without a range argument, 'changed' (and 'for', which never
-looks for one)
-behave byte-for-byte as before.
+precision.
 
 The first 'changed' invocation to touch an import closure (rule b) after
 a build, or after bin/.wtest_deps_cache is otherwise missing or fully
@@ -464,6 +432,7 @@ import lib.str
 import structures.string
 import structures.json
 import tools.manifest_source
+import tools.deps_cache
 
 
 json_value* wtest_manifest
@@ -478,12 +447,9 @@ list[char*] wtest_pair_roots
 list[char*] wtest_pair_targets
 list[char*] wtest_roots              # deduplicated root ids
 
-# root id -> closure blob ("\n" + one path per line + trailing "\n");
-# parallel lists. A root whose deps run failed stores 0.
-list[char*] wtest_closure_roots
-list[char*] wtest_closure_blobs
-
-map[char*, char*] wtest_file_hashes  # path -> content hash hex (memo)
+# Closures live in tools/deps_cache.w's store (root id -> entry),
+# loaded by wtest_cache_load.
+int wtest_cache_loaded
 
 int wtest_verbose
 int wtest_run_flag
@@ -512,35 +478,14 @@ int wtest_ldcache_length
 # refuse an umbrella that would reintroduce one (header comment); 0
 # until the filter drops something.
 map[char*, int] wtest_unavailable_dropped
-# root id -> extra cache lines ('V <bin/wv2 hash>', optionally
-# 'M <missing import>' and 'E <stderr first line>') for a PERSISTABLE
-# deps failure; a failed root with no entry here (bin/wv2 missing,
-# spawn failure) is memoized for this run only and never written to
-# the cache file.
-map[char*, char*] wtest_failure_meta
-# Set by wtest_run_deps when the failure it just returned 0 for is
-# persistable (see wtest_failure_meta); 0 otherwise.
-char* wtest_last_failure_meta
-# root id -> one-line human-readable failure detail for the most
-# recent failed deps run of ANY flavor (compile stderr, timeout
-# marker, spawn failure). Run-local; for persistable compile failures
-# the same line also rides the cache entry's 'E ' line, so it survives
-# across runs for the aggregate warning and 'wtest why'.
-map[char*, char*] wtest_failure_lines
-# Set by wtest_run_deps on EVERY failure path (unlike
-# wtest_last_failure_meta, which only persistable failures carry).
+# Set by wtest_run_deps for the failure it just returned 0 for: 1 when
+# it is persistable (bin/wv2 was present to fail), the import the
+# compile reported missing (or 0), and the one-line detail of ANY
+# failure flavor (compile stderr, timeout marker, spawn failure),
+# which wtest_closure_compute moves onto the store entry.
+int wtest_last_failure_persist
+char* wtest_last_failure_missing
 char* wtest_last_failure_line
-# root id -> the bin/wv2 content hash a SUCCESSFUL closure was
-# computed under (set on live computes and restored from a cache
-# entry's informational 'V ' line): 'wtest why' reports it, and
-# wtest_cache_save carries it forward so a revalidated entry keeps
-# the hash of the compiler that actually computed it.
-map[char*, char*] wtest_closure_vhash
-# root id -> that entry's raw text in bin/.wtest_deps_cache as this
-# process loaded it, so wtest_cache_save can tell an entry another
-# process wrote since (keep it) from one this process read and dropped
-# as stale (drop it).
-map[char*, char*] wtest_cache_loaded_chunks
 # Seed-closure root ids whose fallback warning already printed this
 # run, so per-path wtest_seed_graph calls warn once per arch.
 map[char*, int] wtest_seed_warned
@@ -549,10 +494,7 @@ map[char*, int] wtest_seed_warned
 # signature. Feeds wtest_defhash_clean_warning for stdin-piped runs.
 int wtest_defhash_clean_count
 char* wtest_manifest_path
-char* wtest_base_manifest_path       # 0 = no --base-manifest given
-json_value* wtest_base_manifest      # parsed baseline, 0 until loaded
 int wtest_closures_ready
-int wtest_mask32
 # Resolved 'bin/wv2 deps' shell-out budget in ms; 0 until first read
 # (wtest_deps_budget_ms).
 int wtest_deps_budget
@@ -573,8 +515,8 @@ char* wtest_range_right
 
 void wtest_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...] [--defhash] [--runnable-here] [A..B | A...B | A..]")
-	stream_write_line(err, c"       wtest for <file>... [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [--defhash] [--runnable-here]")
+	stream_write_line(err, c"usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [file...] [--defhash] [--runnable-here] [A..B | A...B | A..]")
+	stream_write_line(err, c"       wtest for <file>... [--verbose] [--run] [--available] [-f manifest.json] [--defhash] [--runnable-here]")
 	stream_write_line(err, c"       wtest archs <file>... [--check] [-f manifest.json]")
 	stream_write_line(err, c"       wtest why [<arch>] <file.w> [-f manifest.json]")
 	stream_write_line(err, c"       wtest cache [-f manifest.json]")
@@ -590,8 +532,7 @@ void wtest_error(char* message, char* detail):
 
 
 void wtest_note(char* path, char* target):
-	if (wtest_verbose == 0):
-		return
+	if (wtest_verbose == 0): return
 	wstream* err = stderr_writer()
 	stream_write_cstr(err, path)
 	stream_write_cstr(err, c" -> ")
@@ -599,39 +540,14 @@ void wtest_note(char* path, char* target):
 	stream_flush(err)
 
 
-int wtest_str_contains(char* haystack, char* needle):
-	int n = strlen(needle)
-	if (n == 0):
-		return 1
-	int i = 0
-	while (haystack[i] != 0):
-		int j = 0
-		while ((j < n) && (haystack[i + j] == needle[j])):
-			j = j + 1
-		if (j == n):
-			return 1
-		i = i + 1
-	return 0
-
-
 int wtest_file_exists(char* path):
 	int fd = open(path, 0, 0)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	close(fd)
 	return 1
 
 
 /* Manifest loading (the read-only subset of tools/wexec.w's parser). */
-
-char* wtest_get_string(json_value* object, char* key):
-	json_value* value = json_object_get(object, key)
-	if (value == 0):
-		return 0
-	if (value.type != json_type_string()):
-		return 0
-	return value.string_value
-
 
 # wtest_manifest_path = 0 (no -f) generates the manifest in memory
 # exactly as bin/wexec does (tools/manifest_source.w), so selection and
@@ -642,23 +558,17 @@ int wtest_load_manifest():
 	if (text == 0):
 		if (strcmp(label, c"build.base.json") == 0):
 			wtest_error(c"cannot generate the manifest from ", label)
-		else:
-			wtest_error(c"cannot read ", label)
+		else: wtest_error(c"cannot read ", label)
 		return 1
-	wtest_manifest = json_parse(text)
+	manifest* m = manifest_parse(text, label, 0)
 	free(text)
-	if (wtest_manifest == 0):
-		wtest_error(c"manifest is not valid JSON: ", label)
+	if (m == 0):
+		wtest_error(manifest_parse_error, c"")
 		return 1
-	json_value* targets = json_object_get(wtest_manifest, c"targets")
-	if (targets == 0):
-		wtest_error(c"manifest has no targets array: ", label)
-		return 1
-	if (targets.type != json_type_array()):
-		wtest_error(c"manifest targets is not an array: ", label)
-		return 1
-	wtest_target_names = new list[char*]
-	wtest_target_defs = new map[char*, json_value*]
+	wtest_manifest = m.root
+	wtest_target_names = m.names
+	wtest_target_defs = m.by_name
+	free(m)
 	wtest_enabled = new map[char*, int]
 	wtest_never_emit = new map[char*, int]
 	wtest_never_emit[c"update"] = 1
@@ -674,101 +584,57 @@ int wtest_load_manifest():
 	# alone is the drift gate; 'manifest' is the fix a failing gate tells
 	# the caller to run.
 	wtest_never_emit[c"manifest"] = 1
-	int i = 0
-	while (i < json_array_length(targets)):
-		json_value* target = json_array_get(targets, i)
-		if (target.type == json_type_object()):
-			char* name = wtest_get_string(target, c"name")
-			if (name != 0):
-				wtest_target_defs[name] = target
-				wtest_target_names.push(name)
-		i = i + 1
-	return 0
-
-
-# The committed baseline manifest (--base-manifest), consumed only by
-# the build.json leaf-diff special case (wtest_manifest_leaf_diff). A
-# baseline the caller named but cannot be read is a loud error, like
-# -f; structural oddities inside it just fall back to the full residue.
-int wtest_load_base_manifest():
-	char* text = file_read_text(wtest_base_manifest_path)
-	if (text == 0):
-		wtest_error(c"cannot read ", wtest_base_manifest_path)
-		return 1
-	wtest_base_manifest = json_parse(text)
-	free(text)
-	if (wtest_base_manifest == 0):
-		wtest_error(c"base manifest is not valid JSON: ", wtest_base_manifest_path)
-		return 1
 	return 0
 
 
 json_value* wtest_target_steps(char* name):
 	json_value* target = wtest_target_defs.get(name, 0)
-	if (target == 0):
-		return 0
-	json_value* steps = json_object_get(target, c"steps")
-	if (steps == 0):
-		return 0
-	if (steps.type != json_type_array()):
-		return 0
-	return steps
+	if (target == 0): return 0
+	return jfield_array(target, c"steps")
 
 
 # A target participates in literal/closure selection when it has steps
 # to run and is not on the never-emit list. Aggregates (tests, ...) and
 # the seed/darwin bootstrap targets are excluded.
 int wtest_selectable(char* name):
-	if (wtest_never_emit.get(name, 0)):
-		return 0
+	if (wtest_never_emit.get(name, 0)): return 0
 	json_value* steps = wtest_target_steps(name)
-	if (steps == 0):
-		return 0
+	if (steps == 0): return 0
 	return json_array_length(steps) > 0
 
 
 void wtest_add(char* path, char* target):
 	wtest_note(path, target)
-	if (wtest_never_emit.get(target, 0)):
-		return
-	if (wtest_target_defs.get(target, 0) != 0):
-		wtest_enabled[target] = 1
-	else:
-		wtest_enabled[c"tests"] = 1
+	if (wtest_never_emit.get(target, 0)): return
+	if (wtest_target_defs.get(target, 0) != 0): wtest_enabled[target] = 1
+	else: wtest_enabled[c"tests"] = 1
 
 
 /* Rule (a): literal step references. */
 
 int wtest_step_mentions(json_value* step, char* path, int path_has_slash):
-	if (step.type != json_type_object()):
-		return 0
-	json_value* cmd = json_object_get(step, c"cmd")
+	if (step.type != json_type_object()): return 0
+	json_value* cmd = jfield_array(step, c"cmd")
 	if (cmd != 0):
-		if (cmd.type == json_type_array()):
-			int i = 0
-			while (i < json_array_length(cmd)):
-				json_value* piece = json_array_get(cmd, i)
-				if (piece.type == json_type_string()):
-					if (strcmp(piece.string_value, path) == 0):
-						return 1
-					if (path_has_slash && wtest_str_contains(piece.string_value, path)):
-						return 1
-				i = i + 1
-	char* stdin_text = wtest_get_string(step, c"stdin")
+		int i = 0
+		while (i < json_array_length(cmd)):
+			json_value* piece = json_array_get(cmd, i)
+			if (piece.type == json_type_string()):
+				if (strcmp(piece.string_value, path) == 0): return 1
+				if (path_has_slash && contains(piece.string_value, path)): return 1
+			i = i + 1
+	char* stdin_text = jfield_string(step, c"stdin")
 	if (stdin_text != 0):
-		if (wtest_str_contains(stdin_text, path)):
-			return 1
+		if (contains(stdin_text, path)): return 1
 	return 0
 
 
 int wtest_target_mentions(char* name, char* path, int path_has_slash):
 	json_value* steps = wtest_target_steps(name)
-	if (steps == 0):
-		return 0
+	if (steps == 0): return 0
 	int i = 0
 	while (i < json_array_length(steps)):
-		if (wtest_step_mentions(json_array_get(steps, i), path, path_has_slash)):
-			return 1
+		if (wtest_step_mentions(json_array_get(steps, i), path, path_has_slash)): return 1
 		i = i + 1
 	return 0
 
@@ -778,23 +644,17 @@ int wtest_target_mentions(char* name, char* path, int path_has_slash):
 # in '/' is a directory prefix, anything else an exact path.
 int wtest_target_data_mentions(char* name, char* path):
 	json_value* target = wtest_target_defs.get(name, 0)
-	if (target == 0):
-		return 0
-	json_value* data = json_object_get(target, c"data")
-	if (data == 0):
-		return 0
-	if (data.type != json_type_array()):
-		return 0
+	if (target == 0): return 0
+	json_value* data = jfield_array(target, c"data")
+	if (data == 0): return 0
 	int i = 0
 	while (i < json_array_length(data)):
 		json_value* entry = json_array_get(data, i)
 		if (entry.type == json_type_string()):
 			char* text = entry.string_value
-			if (strcmp(text, path) == 0):
-				return 1
+			if (strcmp(text, path) == 0): return 1
 			int n = strlen(text)
-			if ((n > 0) && (text[n - 1] == '/') && starts_with(path, text)):
-				return 1
+			if ((n > 0) && (text[n - 1] == '/') && starts_with(path, text)): return 1
 		i = i + 1
 	return 0
 
@@ -815,26 +675,18 @@ int wtest_map_data(char* path):
 # selecting through it would always emit everything. verify is the
 # designed gate (residue rule). grammar.w/codegen.w are its aggregators.
 int wtest_excluded_root(char* path):
-	if (strcmp(path, c"w.w") == 0):
-		return 1
-	if (strcmp(path, c"grammar.w") == 0):
-		return 1
-	if (strcmp(path, c"codegen.w") == 0):
-		return 1
+	if (strcmp(path, c"w.w") == 0): return 1
+	if (strcmp(path, c"grammar.w") == 0): return 1
+	if (strcmp(path, c"codegen.w") == 0): return 1
 	return 0
 
 
 int wtest_selector(char* word):
-	if (strcmp(word, c"x64") == 0):
-		return 1
-	if (strcmp(word, c"arm64") == 0):
-		return 1
-	if (strcmp(word, c"arm64_darwin") == 0):
-		return 1
-	if (strcmp(word, c"win64") == 0):
-		return 1
-	if (strcmp(word, c"wasm") == 0):
-		return 1
+	if (strcmp(word, c"x64") == 0): return 1
+	if (strcmp(word, c"arm64") == 0): return 1
+	if (strcmp(word, c"arm64_darwin") == 0): return 1
+	if (strcmp(word, c"win64") == 0): return 1
+	if (strcmp(word, c"wasm") == 0): return 1
 	return 0
 
 
@@ -857,8 +709,7 @@ char* wtest_root_id(char* arch, char* root):
 char* wtest_root_id_path(char* id):
 	int i = 0
 	while (id[i] != 0):
-		if (id[i] == ' '):
-			return id + i + 1
+		if (id[i] == ' '): return id + i + 1
 		i = i + 1
 	return 0
 
@@ -870,12 +721,9 @@ char* wtest_root_id_path(char* id):
 # something other than w.w with the arm64_darwin selector via a program
 # other than plain 'bin/wv2' (see 'archs' below).
 int wtest_root_program(char* program):
-	if (strcmp(program, c"bin/wv2") == 0):
-		return 1
-	if (strcmp(program, c"./w") == 0):
-		return 1
-	if (strcmp(program, c"bin/wv2_darwin") == 0):
-		return 1
+	if (strcmp(program, c"bin/wv2") == 0): return 1
+	if (strcmp(program, c"./w") == 0): return 1
+	if (strcmp(program, c"bin/wv2_darwin") == 0): return 1
 	return 0
 
 
@@ -884,42 +732,31 @@ int wtest_root_program(char* program):
 # compiles).
 void wtest_collect_own_roots(char* name, list[char*] out):
 	json_value* steps = wtest_target_steps(name)
-	if (steps == 0):
-		return
+	if (steps == 0): return
 	int s = 0
 	while (s < json_array_length(steps)):
 		json_value* step = json_array_get(steps, s)
 		s = s + 1
-		if (step.type != json_type_object()):
-			continue
-		json_value* cmd = json_object_get(step, c"cmd")
-		if (cmd == 0):
-			continue
-		if (cmd.type != json_type_array()):
-			continue
+		if (step.type != json_type_object()): continue
+		json_value* cmd = jfield_array(step, c"cmd")
+		if (cmd == 0): continue
 		int n = json_array_length(cmd)
-		if (n < 2):
-			continue
+		if (n < 2): continue
 		json_value* program = json_array_get(cmd, 0)
-		if (program.type != json_type_string()):
-			continue
-		if (wtest_root_program(program.string_value) == 0):
-			continue
+		if (program.type != json_type_string()): continue
+		if (wtest_root_program(program.string_value) == 0): continue
 		int has_output = 0
 		int i = 1
 		while (i < n):
 			json_value* piece = json_array_get(cmd, i)
 			if (piece.type == json_type_string()):
-				if (strcmp(piece.string_value, c"-o") == 0):
-					has_output = 1
+				if (strcmp(piece.string_value, c"-o") == 0): has_output = 1
 			i = i + 1
-		if (has_output == 0):
-			continue
+		if (has_output == 0): continue
 		char* arch = c"x86"
 		json_value* selector_piece = json_array_get(cmd, 1)
 		if (selector_piece.type == json_type_string()):
-			if (wtest_selector(selector_piece.string_value)):
-				arch = selector_piece.string_value
+			if (wtest_selector(selector_piece.string_value)): arch = selector_piece.string_value
 		i = 1
 		while (i < n):
 			json_value* piece = json_array_get(cmd, i)
@@ -942,40 +779,33 @@ void wtest_collect_target_roots(char* name, list[char*] out):
 	stack.push(name)
 	while (stack.length > 0):
 		char* current = stack.pop()
-		if (visited.get(current, 0)):
-			continue
+		if (visited.get(current, 0)): continue
 		visited[current] = 1
 		json_value* target = wtest_target_defs.get(current, 0)
-		if (target == 0):
-			continue
+		if (target == 0): continue
 		wtest_collect_own_roots(current, out)
-		json_value* deps = json_object_get(target, c"deps")
+		json_value* deps = jfield_array(target, c"deps")
 		if (deps != 0):
-			if (deps.type == json_type_array()):
-				int i = 0
-				while (i < json_array_length(deps)):
-					json_value* dep = json_array_get(deps, i)
-					if (dep.type == json_type_string()):
-						stack.push(dep.string_value)
-					i = i + 1
+			int i = 0
+			while (i < json_array_length(deps)):
+				json_value* dep = json_array_get(deps, i)
+				if (dep.type == json_type_string()): stack.push(dep.string_value)
+				i = i + 1
 
 
 void wtest_ensure_roots():
-	if (wtest_pair_roots != 0):
-		return
+	if (wtest_pair_roots != 0): return
 	wtest_pair_roots = new list[char*]
 	wtest_pair_targets = new list[char*]
 	wtest_roots = new list[char*]
 	map[char*, int] seen = new map[char*, int]
 	for char* name in wtest_target_names:
-		if (wtest_selectable(name) == 0):
-			continue
+		if (wtest_selectable(name) == 0): continue
 		list[char*] roots = new list[char*]
 		wtest_collect_target_roots(name, roots)
 		map[char*, int] target_seen = new map[char*, int]
 		for char* root in roots:
-			if (target_seen.get(root, 0)):
-				continue
+			if (target_seen.get(root, 0)): continue
 			target_seen[root] = 1
 			wtest_pair_roots.push(root)
 			wtest_pair_targets.push(name)
@@ -987,8 +817,9 @@ void wtest_ensure_roots():
 
 /* Closure computation, memoized per run and cached across runs.
 
-The cache file (bin/.wtest_deps_cache) stores one entry per root id
-("<arch> <root>", see wtest_root_id):
+The cache file (bin/.wtest_deps_cache; tools/deps_cache.w holds the
+format, loading, hashing and saving it shares with bin/wexec) stores
+one entry per root id ("<arch> <root>", see wtest_root_id):
   R <arch> <root>
   H <combined content hash of every file in the closure>
   V <content hash of the bin/wv2 that computed it>   (informational)
@@ -1001,9 +832,9 @@ caches written after a new one is added) stay readable in both
 directions without a format-marker bump.
 
 Failures are cached conservatively, so a transient environment problem
-can never pin a rule (the 2026-07-28 residue: a 'deps w.w' failure
-cached while bin/wv2 was merely missing silently kept the seed-graph
-rule on its prefix floor until w.w itself changed). A root whose
+can never pin a rule (a 'deps w.w' failure cached while bin/wv2 was
+merely missing would keep the seed-graph rule on its prefix floor
+until w.w itself changed). A root whose
 compile failed with bin/wv2 PRESENT is cached as
   X <arch> <root>
   H <content hash of the root file itself>
@@ -1019,134 +850,33 @@ bin/wv2 missing (or a spawn failure) is never written at all, and
 neither is a deps run that TIMED OUT (after its one immediate retry,
 see wtest_run_deps): a timeout says nothing about the root's content,
 only about this machine's load, so persisting it under the root's
-hash pinned per-arch verify selection until the root changed (the
-2026-07-29 U4/U5 residue). Both are memoized for the current run only
-and retried next run. Entries without an arch column, or 'X' entries
-without a V line — caches written by older wtest builds — fail to
-parse and simply recompute. */
+hash would pin per-arch verify selection until the root changed. Both
+are memoized for the current run only and retried next run. Entries
+without an arch column, or 'X' entries without a V line — caches
+written by older wtest builds — are dropped on load and simply
+recompute. */
 
-int wtest_mask32_value():
-	if (__word_size__ == 8):
-		int high = 1 << 16
-		return high * high - 1
-	return -1
-
-
-struct wtest_hash:
-	int h1
-	int h2
+# Load the cache, keeping only records that still validate (the
+# header comment's failure rules: check_compiler), so a stale entry
+# simply recomputes. Idempotent.
+void wtest_cache_load():
+	if (wtest_cache_loaded): return
+	wtest_cache_loaded = 1
+	deps_cache_validate_all(1)
 
 
-void wtest_hash_init(wtest_hash* h):
-	h.h1 = -2128831035 & wtest_mask32
-	h.h2 = 1000003
-
-
-void wtest_hash_bytes(wtest_hash* h, char* data, int n):
-	int i = 0
-	while (i < n):
-		int value = data[i] & 255
-		h.h1 = (h.h1 * 16777619 + value) & wtest_mask32
-		h.h2 = (h.h2 * 1000003 + value) & wtest_mask32
-		i = i + 1
-
-
-void wtest_hash_cstr(wtest_hash* h, char* text):
-	wtest_hash_bytes(h, text, strlen(text))
-	char zero = 0
-	wtest_hash_bytes(h, &zero, 1)
-
-
-void wtest_append_hex(string_builder* s, int value):
-	int shift = 28
-	while (shift >= 0):
-		int nibble = (value >> shift) & 15
-		if (nibble < 10):
-			string_append_char(s, '0' + nibble)
-		else:
-			string_append_char(s, 'a' + nibble - 10)
-		shift = shift - 4
-
-
-char* wtest_hash_hex(wtest_hash* h):
-	string_builder* s = string_new()
-	wtest_append_hex(s, h.h1)
-	wtest_append_hex(s, h.h2)
-	char* text = s.data
-	free(s)
-	return text
-
-
-# Content hash of one file, memoized. Missing files hash to a sentinel
-# that can never match a stored digest, so deletions invalidate entries.
-char* wtest_file_hash(char* path):
-	if (wtest_file_hashes == 0):
-		wtest_file_hashes = new map[char*, char*]
-	char* cached = wtest_file_hashes.get(path, 0)
-	if (cached != 0):
-		return cached
-	char* digest = c"<missing>"
-	int fd = open(path, 0, 0)
-	if (fd >= 0):
-		wtest_hash h
-		wtest_hash_init(&h)
-		int buffer_size = 65536
-		char* buffer = malloc(buffer_size)
-		int n = read(fd, buffer, buffer_size)
-		while (n > 0):
-			wtest_hash_bytes(&h, buffer, n)
-			n = read(fd, buffer, buffer_size)
-		free(buffer)
-		close(fd)
-		digest = wtest_hash_hex(&h)
-	wtest_file_hashes[path] = digest
-	return digest
-
-
-# Combined digest over (path, content hash) of every file in a closure
-# blob, in order.
-char* wtest_closure_digest(char* blob):
-	wtest_hash h
-	wtest_hash_init(&h)
-	string_builder* line = string_new()
-	int i = 0
-	while (blob[i] != 0):
-		if (blob[i] == 10):
-			if (line.length > 0):
-				wtest_hash_cstr(&h, line.data)
-				wtest_hash_cstr(&h, wtest_file_hash(line.data))
-				string_clear(line)
-		else:
-			string_append_char(line, blob[i])
-		i = i + 1
-	if (line.length > 0):
-		wtest_hash_cstr(&h, line.data)
-		wtest_hash_cstr(&h, wtest_file_hash(line.data))
-	string_free(line)
-	return wtest_hash_hex(&h)
-
-
-void wtest_closure_store(char* root, char* blob):
-	wtest_closure_roots.push(root)
-	wtest_closure_blobs.push(blob)
-
-
+# The closure blob of a root id this run knows (0 for a failure or an
+# unknown root); every entry in the store is valid (wtest_cache_load).
 char* wtest_closure_get(char* root):
-	int i = 0
-	while (i < wtest_closure_roots.length):
-		if (strcmp(wtest_closure_roots[i], root) == 0):
-			return wtest_closure_blobs[i]
-		i = i + 1
-	return 0
+	wtest_cache_load()
+	deps_entry* e = deps_cache_find(root)
+	if (e == 0): return 0
+	return e.blob
 
 
 int wtest_closure_known(char* root):
-	int i = 0
-	while (i < wtest_closure_roots.length):
-		if (strcmp(wtest_closure_roots[i], root) == 0):
-			return 1
-		i = i + 1
-	return 0
+	wtest_cache_load()
+	return deps_cache_find(root) != 0
 
 
 # The import path a failed compile's stderr reports missing, or 0.
@@ -1158,10 +888,8 @@ char* wtest_missing_import(char* stderr_text):
 	int i = 0
 	while (stderr_text[i] != 0):
 		int hit = 0
-		if (starts_with(&stderr_text[i], c"cannot locate '")):
-			hit = strlen(c"cannot locate '")
-		else if (starts_with(&stderr_text[i], c"no such file: '")):
-			hit = strlen(c"no such file: '")
+		if (starts_with(&stderr_text[i], c"cannot locate '")): hit = strlen(c"cannot locate '")
+		else if (starts_with(&stderr_text[i], c"no such file: '")): hit = strlen(c"no such file: '")
 		if (hit > 0):
 			string_builder* path = string_new()
 			int j = i + hit
@@ -1179,9 +907,9 @@ char* wtest_missing_import(char* stderr_text):
 
 
 # The first non-empty line of a failed deps run's stderr (cloned), or
-# 0 when there is none: the one-line failure detail wtest_failure_lines
-# records and a persistable failure's 'E ' cache line carries. One line
-# is enough — the compiler stops at its first error — and keeping it
+# 0 when there is none: the one-line failure detail a failed store
+# entry records and a persistable failure's 'E ' cache line carries.
+# One line is enough — the compiler stops at its first error — and keeping it
 # single-line means it can ride the line-oriented cache format as-is.
 char* wtest_stderr_first_line(char* stderr_text):
 	int i = 0
@@ -1192,8 +920,7 @@ char* wtest_stderr_first_line(char* stderr_text):
 				char* out = line.data
 				free(line)
 				return out
-		else:
-			string_append_char(line, stderr_text[i])
+		else: string_append_char(line, stderr_text[i])
 		i = i + 1
 	if (line.length > 0):
 		char* tail = line.data
@@ -1212,8 +939,7 @@ int wtest_deps_budget_ms():
 		char* override = env_get(c"WTEST_DEPS_TIMEOUT_MS")
 		if (override != 0):
 			int value = atoi(override)
-			if (value > 0):
-				wtest_deps_budget = value
+			if (value > 0): wtest_deps_budget = value
 	return wtest_deps_budget
 
 
@@ -1241,50 +967,28 @@ void wtest_deps_shellout_warn(char* what, char* id, char* tail):
 # timeout is load, not content), and a still-timed-out root is a
 # NON-persistable failure. On a failure that is safe to cache (bin/wv2
 # was present and the compile really exited nonzero, rather than a
-# missing/broken toolchain or a timeout), wtest_last_failure_meta
-# carries the extra validation lines the cache entry needs (header
-# comment above wtest_cache_load); otherwise it is 0 and the failure
-# must not be persisted. Every failure path prints one stderr line
-# naming the root.
+# missing/broken toolchain or a timeout), wtest_last_failure_persist
+# is set and wtest_last_failure_missing names the import the compile
+# reported missing, if any (header comment above wtest_cache_load);
+# otherwise the failure must not be persisted. Every failure path
+# prints one stderr line naming the root and leaves its one-line
+# detail in wtest_last_failure_line.
 char* wtest_run_deps(char* id):
-	wtest_last_failure_meta = 0
+	wtest_last_failure_persist = 0
+	wtest_last_failure_missing = 0
 	wtest_last_failure_line = 0
-	char* arch = strclone(id)
-	char* root = 0
-	int i = 0
-	while ((arch[i] != 0) && (root == 0)):
-		if (arch[i] == ' '):
-			arch[i] = 0
-			root = arch + i + 1
-		i = i + 1
-	if (root == 0):
-		free(arch)
-		return 0
-	int is_default = strcmp(arch, c"x86") == 0
-	int count = 4
-	if (is_default):
-		count = 3
-	char** argv = strv_new(count)
-	strv_set(argv, 0, c"bin/wv2")
-	strv_set(argv, 1, c"deps")
-	if (is_default):
-		strv_set(argv, 2, root)
-	else:
-		strv_set(argv, 2, arch)
-		strv_set(argv, 3, root)
+	if (deps_id_root(id) == 0): return 0
 	int budget = wtest_deps_budget_ms()
-	process_result* result = process_run(c"bin/wv2", argv, 0, 0, budget)
-	if ((result != 0) && (result.status == process_status_timeout())):
+	process_result* result = deps_run(id, budget)
+	if ((result != 0) && (result.status == process_status_timeout)):
 		wtest_deps_shellout_warn(c"timed out", id, c"; retrying once")
 		process_result_free(result)
-		result = process_run(c"bin/wv2", argv, 0, 0, budget)
-	free(cast(char*, argv))
-	free(arch)
+		result = deps_run(id, budget)
 	if (result == 0):
 		wtest_deps_shellout_warn(c"failed", id, c" (could not run bin/wv2)")
 		wtest_last_failure_line = c"could not run bin/wv2 (spawn failure; never cached)"
 		return 0
-	if (result.status == process_status_timeout()):
+	if (result.status == process_status_timeout):
 		# Never persisted (header comment above wtest_cache_load): a
 		# run-local memo only, so the next run retries instead of a
 		# stale cache entry pinning selection until the root changes.
@@ -1316,315 +1020,57 @@ char* wtest_run_deps(char* id):
 		# informational (never validated): the recorded stderr detail,
 		# so 'wtest why' can report the reason across runs.
 		if (wtest_file_exists(c"bin/wv2")):
-			string_builder* meta = string_new()
-			string_append(meta, c"V ")
-			string_append(meta, wtest_file_hash(c"bin/wv2"))
-			string_append_char(meta, 10)
-			char* missing = wtest_missing_import(result.stderr_text)
-			if (missing != 0):
-				string_append(meta, c"M ")
-				string_append(meta, missing)
-				string_append_char(meta, 10)
-				free(missing)
-			string_append(meta, c"E ")
-			string_append(meta, detail)
-			string_append_char(meta, 10)
-			wtest_last_failure_meta = meta.data
-			free(meta)
+			wtest_last_failure_persist = 1
+			wtest_last_failure_missing = wtest_missing_import(result.stderr_text)
 		process_result_free(result)
 		return 0
-	string_builder* blob = string_new()
-	string_append_char(blob, 10)
-	string_append(blob, result.stdout_text)
-	if (blob.length > 0):
-		if (blob.data[blob.length - 1] != 10):
-			string_append_char(blob, 10)
+	char* text = deps_blob(result.stdout_text)
 	process_result_free(result)
-	char* text = blob.data
-	free(blob)
 	return text
 
 
 # Compute one root's closure via wtest_run_deps and record it in the
 # store, keeping the failure-persistence bookkeeping in one place: a
-# persistable failure's validation lines move from
-# wtest_last_failure_meta into wtest_failure_meta so wtest_cache_save
-# writes them; a non-persistable one stays a run-local memo. Either
-# way the one-line failure detail lands in wtest_failure_lines (the
-# named aggregate warning and 'wtest why' read it), and a SUCCESS
-# records the computing bin/wv2's hash for the cache's informational
-# 'V ' line.
+# persistable failure keeps its validation fields (V, and M when the
+# compile named a missing import) and is saved; a non-persistable one
+# stays a run-local memo. Either way the one-line failure detail rides
+# the entry (the named aggregate warning and 'wtest why' read it, and a
+# saved failure's 'E ' line carries it), and a SUCCESS records the
+# computing bin/wv2's hash for the cache's informational 'V ' line.
 char* wtest_closure_compute(char* root):
+	wtest_cache_load()
 	char* blob = wtest_run_deps(root)
-	wtest_closure_store(root, blob)
-	if ((blob == 0) && (wtest_last_failure_meta != 0)):
-		if (wtest_failure_meta == 0):
-			wtest_failure_meta = new map[char*, char*]
-		wtest_failure_meta[root] = wtest_last_failure_meta
-	if ((blob == 0) && (wtest_last_failure_line != 0)):
-		if (wtest_failure_lines == 0):
-			wtest_failure_lines = new map[char*, char*]
-		wtest_failure_lines[root] = wtest_last_failure_line
+	deps_entry* e = deps_cache_record(root, blob)
 	if (blob != 0):
-		if (wtest_closure_vhash == 0):
-			wtest_closure_vhash = new map[char*, char*]
-		wtest_closure_vhash[root] = wtest_file_hash(c"bin/wv2")
-	return blob
+		e.vhash = deps_file_hash(c"bin/wv2")
+		return blob
+	e.detail = wtest_last_failure_line
+	e.keep = wtest_last_failure_persist
+	if (e.keep):
+		e.vhash = deps_file_hash(c"bin/wv2")
+		e.missing = wtest_last_failure_missing
+	return 0
 
 
-# Finalize one parsed cache entry: keep it only when it still
-# validates (header comment above wtest_cache_load). kind 1 = success
-# ('R'): the closure digest must match. kind 2 = failure ('X'): the
-# root's own hash, the recorded bin/wv2 hash (V) and — when present —
-# the recorded missing import (M) still being absent must ALL hold;
-# anything else (including a legacy entry with no V line, or a
-# pre-arch-column id) is silently dropped and recomputes, so a stale
-# failure can never pin a rule. 'detail' (the 'E ' stderr line) and a
-# success entry's 'V ' line are informational only — never validated,
-# just carried into the run-local maps for 'wtest why' and re-saved.
-void wtest_cache_entry(int kind, char* root, char* expected, char* vhash, char* missing, char* detail, string_builder* blob):
-	if ((root == 0) || (expected == 0)):
-		return
-	if (kind == 1):
-		if (blob != 0):
-			if (strcmp(wtest_closure_digest(blob.data), expected) == 0):
-				wtest_closure_store(root, blob.data)
-				if (vhash != 0):
-					if (wtest_closure_vhash == 0):
-						wtest_closure_vhash = new map[char*, char*]
-					wtest_closure_vhash[root] = vhash
-	if (kind == 2):
-		char* path = wtest_root_id_path(root)
-		if ((path == 0) || (vhash == 0)):
-			return
-		if (strcmp(wtest_file_hash(path), expected) != 0):
-			return
-		if (strcmp(wtest_file_hash(c"bin/wv2"), vhash) != 0):
-			return
-		if ((missing != 0) && wtest_file_exists(missing)):
-			return
-		wtest_closure_store(root, 0)
-		string_builder* meta = string_new()
-		string_append(meta, c"V ")
-		string_append(meta, vhash)
-		string_append_char(meta, 10)
-		if (missing != 0):
-			string_append(meta, c"M ")
-			string_append(meta, missing)
-			string_append_char(meta, 10)
-		if (detail != 0):
-			string_append(meta, c"E ")
-			string_append(meta, detail)
-			string_append_char(meta, 10)
-		if (wtest_failure_meta == 0):
-			wtest_failure_meta = new map[char*, char*]
-		wtest_failure_meta[root] = meta.data
-		free(meta)
-		if (detail != 0):
-			if (wtest_failure_lines == 0):
-				wtest_failure_lines = new map[char*, char*]
-			wtest_failure_lines[root] = detail
-
-
-# Split cache text into entries: each starts at an 'R ' or 'X ' line
-# and runs to the next one. roots[i] is the entry's root id, chunks[i]
-# its raw text including the trailing newline.
-void wtest_cache_chunks(char* text, list[char*] roots, list[char*] chunks):
-	int i = 0
-	int start = -1
-	while (1):
-		int line_start = (i == 0) || (text[i - 1] == 10)
-		int at_end = text[i] == 0
-		int header = 0
-		if (line_start && (at_end == 0)):
-			header = ((text[i] == 'R') || (text[i] == 'X')) && (text[i + 1] == ' ')
-		if ((header || at_end) && (start >= 0)):
-			string_builder* chunk = string_new()
-			string_append_bytes(chunk, &text[start], i - start)
-			if ((chunk.length > 0) && (chunk.data[chunk.length - 1] != 10)):
-				string_append_char(chunk, 10)
-			int e = 2
-			while ((chunk.data[e] != 10) && (chunk.data[e] != 0)):
-				e = e + 1
-			roots.push(substring(chunk.data, 2, e))
-			chunks.push(chunk.data)
-			free(chunk)
-			start = -1
-		if (at_end):
-			return
-		if (header):
-			start = i
-		i = i + 1
-
-
-# Load cache entries whose content hashes still match; anything stale
-# or unparseable is simply dropped (deps re-runs for it).
-void wtest_cache_load():
-	char* text = file_read_text(c"bin/.wtest_deps_cache")
-	if (text == 0):
-		return
-	list[char*] loaded_roots = new list[char*]
-	list[char*] loaded_chunks = new list[char*]
-	wtest_cache_chunks(text, loaded_roots, loaded_chunks)
-	if (wtest_cache_loaded_chunks == 0):
-		wtest_cache_loaded_chunks = new map[char*, char*]
-	int li = 0
-	while (li < loaded_roots.length):
-		wtest_cache_loaded_chunks[loaded_roots[li]] = loaded_chunks[li]
-		li = li + 1
-	int kind = 0
-	char* root = 0
-	char* expected = 0
-	char* vhash = 0
-	char* missing = 0
-	char* detail = 0
-	string_builder* blob = 0
-	string_builder* line = string_new()
-	int i = 0
-	int at_end = 0
-	while (at_end == 0):
-		int c = text[i]
-		if (c == 0):
-			at_end = 1
-		if ((c == 10) || (c == 0)):
-			char* entry = line.data
-			if (starts_with(entry, c"R ") | starts_with(entry, c"X ")):
-				wtest_cache_entry(kind, root, expected, vhash, missing, detail, blob)
-				kind = 1
-				if (entry[0] == 'X'):
-					kind = 2
-				root = strclone(entry + 2)
-				expected = 0
-				vhash = 0
-				missing = 0
-				detail = 0
-				blob = string_new()
-				string_append_char(blob, 10)
-			else if (starts_with(entry, c"H ")):
-				expected = strclone(entry + 2)
-			else if (starts_with(entry, c"V ")):
-				vhash = strclone(entry + 2)
-			else if (starts_with(entry, c"M ")):
-				missing = strclone(entry + 2)
-			else if (starts_with(entry, c"E ")):
-				detail = strclone(entry + 2)
-			else if (starts_with(entry, c"F ")):
-				if (blob != 0):
-					string_append(blob, entry + 2)
-					string_append_char(blob, 10)
-			string_clear(line)
-		else:
-			string_append_char(line, c)
-		i = i + 1
-	wtest_cache_entry(kind, root, expected, vhash, missing, detail, blob)
-	string_free(line)
-	free(text)
+# The one-line detail of a root's recorded failure, or 0.
+char* wtest_failure_line(char* root):
+	wtest_cache_load()
+	deps_entry* e = deps_cache_find(root)
+	if ((e == 0) || (e.failed == 0)): return 0
+	return e.detail
 
 
 # Concurrent wtest runs (wbuildd, one-shot runs, parallel suite
-# targets) each save the whole cache from their own memory, so a plain
-# rewrite drops the roots another run stored after this one loaded —
-# wbuildd_test's pre-warmed root went cold again under suite load.
-# Before writing, carry over every on-disk entry for a root this run
-# holds no closure for, unless it is the very entry this run loaded
-# and rejected as stale. A write landing between this re-read and the
-# rename can still be lost; that window is a few syscalls wide.
-void wtest_cache_merge_disk(string_builder* out):
-	char* text = file_read_text(c"bin/.wtest_deps_cache")
-	if (text == 0):
-		return
-	map[char*, int] mine = new map[char*, int]
-	int i = 0
-	while (i < wtest_closure_roots.length):
-		mine[wtest_closure_roots[i]] = 1
-		i = i + 1
-	list[char*] roots = new list[char*]
-	list[char*] chunks = new list[char*]
-	wtest_cache_chunks(text, roots, chunks)
-	i = 0
-	while (i < roots.length):
-		int keep = mine.get(roots[i], 0) == 0
-		if (keep && (wtest_cache_loaded_chunks != 0)):
-			char* seen = wtest_cache_loaded_chunks.get(roots[i], 0)
-			if ((seen != 0) && (strcmp(seen, chunks[i]) == 0)):
-				keep = 0
-		if (keep):
-			string_append(out, chunks[i])
-		i = i + 1
-	free(text)
-
-
+# targets) each save the whole cache, so deps_cache_save carries over
+# the records another run stored after this one loaded, unless it is
+# the very record this run loaded and rejected as stale (wbuildd_test's
+# pre-warmed root went cold again under suite load without that), and
+# replaces the file by rename (a reader that caught a truncate-then-
+# write mid-way saw a root as uncomputed). A write landing between the
+# re-read and the rename can still be lost; that window is a few
+# syscalls wide.
 void wtest_cache_save():
-	string_builder* out = string_new()
-	int i = 0
-	while (i < wtest_closure_roots.length):
-		char* blob = wtest_closure_blobs[i]
-		if (blob == 0):
-			# Failed root: persist only a failure whose validation meta
-			# was recorded (a real compile failure with bin/wv2
-			# present); a toolchain-missing failure is this run's memo
-			# only, so it is retried next run instead of pinning
-			# anything (header comment above wtest_cache_load).
-			char* meta = 0
-			if (wtest_failure_meta != 0):
-				meta = wtest_failure_meta.get(wtest_closure_roots[i], 0)
-			if (meta != 0):
-				string_append(out, c"X ")
-				string_append(out, wtest_closure_roots[i])
-				string_append_char(out, 10)
-				string_append(out, c"H ")
-				string_append(out, wtest_file_hash(wtest_root_id_path(wtest_closure_roots[i])))
-				string_append_char(out, 10)
-				string_append(out, meta)
-		else:
-			string_append(out, c"R ")
-			string_append(out, wtest_closure_roots[i])
-			string_append_char(out, 10)
-			string_append(out, c"H ")
-			string_append(out, wtest_closure_digest(blob))
-			string_append_char(out, 10)
-			# Informational only (never validated): the bin/wv2 this
-			# closure was computed under, reported by 'wtest why'. A
-			# closure restored from an older cache without one simply
-			# stays without one.
-			char* vhash = 0
-			if (wtest_closure_vhash != 0):
-				vhash = wtest_closure_vhash.get(wtest_closure_roots[i], 0)
-			if (vhash != 0):
-				string_append(out, c"V ")
-				string_append(out, vhash)
-				string_append_char(out, 10)
-			string_builder* line = string_new()
-			int j = 0
-			while (blob[j] != 0):
-				if (blob[j] == 10):
-					if (line.length > 0):
-						string_append(out, c"F ")
-						string_append(out, line.data)
-						string_append_char(out, 10)
-						string_clear(line)
-				else:
-					string_append_char(line, blob[j])
-				j = j + 1
-			string_free(line)
-		i = i + 1
-	wtest_cache_merge_disk(out)
-	mkdir(c"bin", 493)
-	# Write a private temp file and rename it into place: wbuildd and
-	# one-shot wtest runs read and rewrite this cache concurrently, and a
-	# reader that caught a truncate-then-write mid-way saw a root as
-	# uncomputed (wbuildd_test's one-shot/daemon stderr comparison
-	# failed under suite load with a spurious "building import-closure
-	# cache" line).
-	string_builder* tmp = string_new()
-	string_append(tmp, c"bin/.wtest_deps_cache.")
-	string_append(tmp, itoa(getpid()))
-	string_append(tmp, c".tmp")
-	if (file_write_text(tmp.data, out.data)):
-		if (rename(tmp.data, c"bin/.wtest_deps_cache") < 0):
-			unlink(tmp.data)
-	string_free(tmp)
-	string_free(out)
+	deps_cache_save()
 
 
 # Append a duration in seconds as '<n>s', or '<n>m' from two minutes
@@ -1656,17 +1102,14 @@ void wtest_append_duration(string_builder* s, int seconds):
 void wtest_compute_closures(list[char*] roots):
 	int missing = 0
 	for char* root in roots:
-		if (wtest_closure_known(root) == 0):
-			missing = missing + 1
-	if (missing == 0):
-		return
+		if (wtest_closure_known(root) == 0): missing = missing + 1
+	if (missing == 0): return
 	wstream* err = stderr_writer()
 	string_builder* banner = string_new()
 	string_append(banner, c"wtest: building import-closure cache, ")
 	string_append_int(banner, missing)
 	string_append(banner, c" root")
-	if (missing != 1):
-		string_append_char(banner, 's')
+	if (missing != 1): string_append_char(banner, 's')
 	string_append(banner, c" to compute (first run after a build; this can take several minutes)...")
 	stream_write_line(err, banner.data)
 	string_free(banner)
@@ -1702,8 +1145,7 @@ void wtest_compute_closures(list[char*] roots):
 				stream_write_line(err, progress.data)
 				string_free(progress)
 				stream_flush(err)
-	if ((done % 20) != 0):
-		wtest_cache_save()
+	if ((done % 20) != 0): wtest_cache_save()
 	if (failed > 0):
 		# Say so (header comment, rule b), and say WHICH roots: the
 		# anonymous count alone could not tell a caller whether the
@@ -1716,18 +1158,13 @@ void wtest_compute_closures(list[char*] roots):
 		string_append(note, c"wtest: warning: 'bin/wv2 deps' failed for ")
 		string_append_int(note, failed)
 		string_append(note, c" root")
-		if (failed != 1):
-			string_append_char(note, 's')
+		if (failed != 1): string_append_char(note, 's')
 		string_append(note, c"; falling back to literal matching for them: ")
 		int shown = failed_roots.length
-		if (shown > 5):
-			shown = 5
-		int k = 0
-		while (k < shown):
-			if (k > 0):
-				string_append(note, c", ")
+		if (shown > 5): shown = 5
+		for k in range(shown):
+			if (k > 0): string_append(note, c", ")
 			string_append(note, failed_roots[k])
-			k = k + 1
 		if (failed_roots.length > shown):
 			string_append(note, c" (and ")
 			string_append_int(note, failed_roots.length - shown)
@@ -1737,9 +1174,7 @@ void wtest_compute_closures(list[char*] roots):
 		# One representative failure reason (the compiler stops at its
 		# first error, so one line is the whole story for that root),
 		# plus the pointer to the full per-root explanation.
-		char* first_detail = 0
-		if (wtest_failure_lines != 0):
-			first_detail = wtest_failure_lines.get(failed_roots[0], 0)
+		char* first_detail = wtest_failure_line(failed_roots[0])
 		if (first_detail != 0):
 			string_builder* sample = string_new()
 			string_append(sample, c"wtest: warning: e.g. root '")
@@ -1753,29 +1188,24 @@ void wtest_compute_closures(list[char*] roots):
 
 
 void wtest_ensure_closures():
-	if (wtest_closures_ready):
-		return
+	if (wtest_closures_ready): return
 	wtest_closures_ready = 1
 	wtest_ensure_roots()
 	# The store may already be initialized: the seed-graph residue rule
 	# (wtest_seed_closure) loads the cache lazily before rule (b) ever
 	# runs. Re-initializing here would leak its w.w entries and re-read
 	# the cache file for nothing (mirrors wtest_archs_ensure_closures).
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	wtest_compute_closures(wtest_roots)
 
 
 int wtest_closure_contains(char* blob, char* path):
-	if (blob == 0):
-		return 0
+	if (blob == 0): return 0
 	string_builder* needle = string_new()
 	string_append_char(needle, 10)
 	string_append(needle, path)
 	string_append_char(needle, 10)
-	int found = wtest_str_contains(blob, needle.data)
+	int found = contains(blob, needle.data)
 	string_free(needle)
 	return found
 
@@ -1785,45 +1215,14 @@ comment). Everything below is only ever consulted when wtest_defhash_flag
 is set, so the default (no --defhash) selection path never runs it. */
 
 # execve does no PATH lookup (lib/process.w), so a bare command name like
-# "git" must be resolved against PATH here first -- mirrors
-# tools/wexec.w's wexec_resolve_program (and this file's own
-# wtest_path_has), minus the Windows suffix handling: git is never one of
-# the runners --available checks for, and this codebase's git-based tools
-# already assume a POSIX host. Returns 'name' unresolved when it is not
-# found (or already contains a '/'), so the caller's spawn fails cleanly
-# instead of silently doing the wrong thing.
+# "git" must be resolved against PATH here first. Returns 'name'
+# unresolved when it is not found (or already contains a '/'), so the
+# caller's spawn fails cleanly instead of silently doing the wrong thing.
 char* wtest_resolve_program(char* name):
-	int i = 0
-	while (name[i] != 0):
-		if (name[i] == '/'):
-			return name
-		i = i + 1
-	char* path = env_get(c"PATH")
-	if (path == 0):
-		path = c"/usr/bin:/bin"
-	string_builder* candidate = string_new()
-	int p = 0
-	int at_end = 0
-	int found = 0
-	while ((at_end == 0) && (found == 0)):
-		string_clear(candidate)
-		while ((path[p] != ':') && (path[p] != 0)):
-			string_append_char(candidate, path[p])
-			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length > 0):
-			string_append_char(candidate, '/')
-			string_append(candidate, name)
-			if (wtest_file_exists(candidate.data)):
-				found = 1
-	char* result = name
-	if (found):
-		result = strclone(candidate.data)
-	string_free(candidate)
-	return result
+	char* found = process_which(name)
+	if (found == 0):
+		return name
+	return found
 
 
 # 'git show <rev>:<path>' -- <path> as recorded at <rev>, with no
@@ -1845,8 +1244,7 @@ char* wtest_git_show(char* rev, char* path):
 	process_result* result = process_run(git, argv, 0, 0, 30000)
 	free(cast(char*, argv))
 	string_free(spec)
-	if (result == 0):
-		return 0
+	if (result == 0): return 0
 	if (result.status != 0):
 		process_result_free(result)
 		return 0
@@ -1883,8 +1281,7 @@ int wtest_git_exists_at(char* rev, char* path):
 	process_result* result = process_run(git, argv, 0, 0, 30000)
 	free(cast(char*, argv))
 	string_free(spec)
-	if (result == 0):
-		return 0
+	if (result == 0): return 0
 	int ok = result.status == 0
 	process_result_free(result)
 	return ok
@@ -1907,8 +1304,7 @@ int wtest_git_rev_valid(char* rev):
 	process_result* result = process_run(git, argv, 0, 0, 30000)
 	free(cast(char*, argv))
 	string_free(spec)
-	if (result == 0):
-		return 0
+	if (result == 0): return 0
 	int ok = result.status == 0
 	process_result_free(result)
 	return ok
@@ -1929,16 +1325,14 @@ char* wtest_git_merge_base(char* a, char* b):
 	strv_set(argv, 3, b)
 	process_result* result = process_run(git, argv, 0, 0, 30000)
 	free(cast(char*, argv))
-	if (result == 0):
-		return 0
+	if (result == 0): return 0
 	if (result.status != 0):
 		process_result_free(result)
 		return 0
 	char* text = strclone(result.stdout_text)
 	process_result_free(result)
 	int n = strlen(text)
-	if ((n > 0) && (text[n - 1] == 10)):
-		text[n - 1] = 0
+	if ((n > 0) && (text[n - 1] == 10)): text[n - 1] = 0
 	if (strlen(text) == 0):
 		free(text)
 		return 0
@@ -1946,7 +1340,7 @@ char* wtest_git_merge_base(char* a, char* b):
 
 
 # Index of the first '.' of the '..'/'...' run in a range spec the
-# caller has already proved (via wtest_str_contains) contains "..".
+# caller has already proved (via contains) contains "..".
 # Never returns -1 in practice for such a caller, but the sentinel is
 # kept for safety.
 int wtest_range_dot_index(char* spec):
@@ -1974,21 +1368,15 @@ int wtest_range_setup(char* spec):
 		return 1
 	int three_dot = spec[idx + 2] == '.'
 	int dots = 2
-	if (three_dot):
-		dots = 3
+	if (three_dot): dots = 3
 	string_builder* left_b = string_new()
-	int i = 0
-	while (i < idx):
-		string_append_char(left_b, spec[i])
-		i = i + 1
+	for i in range(idx): string_append_char(left_b, spec[i])
 	char* left = strclone(left_b.data)
 	string_free(left_b)
-	if (strlen(left) == 0):
-		left = c"HEAD"
+	if (strlen(left) == 0): left = c"HEAD"
 	char* right_raw = spec + idx + dots
 	char* right = 0
-	if (strlen(right_raw) > 0):
-		right = strclone(right_raw)
+	if (strlen(right_raw) > 0): right = strclone(right_raw)
 	if (wtest_git_rev_valid(left) == 0):
 		wtest_error(c"invalid revision in range: ", left)
 		return 1
@@ -2004,8 +1392,7 @@ int wtest_range_setup(char* spec):
 			wtest_error(c"no merge base for range: ", spec)
 			return 1
 		wtest_range_left = base
-	else:
-		wtest_range_left = left
+	else: wtest_range_left = left
 	wtest_range_right = right
 	wtest_range_spec = spec
 	wtest_range_active = 1
@@ -2017,10 +1404,8 @@ int wtest_range_setup(char* spec):
 # "Commit-ranged selection"): the live worktree in default mode or an
 # open range, the range's resolved right-hand commit for a closed one.
 int wtest_range_exists(char* path):
-	if (wtest_range_active == 0):
-		return wtest_file_exists(path)
-	if (wtest_range_right == 0):
-		return wtest_file_exists(path)
+	if (wtest_range_active == 0): return wtest_file_exists(path)
+	if (wtest_range_right == 0): return wtest_file_exists(path)
 	return wtest_git_exists_at(wtest_range_right, path)
 
 
@@ -2037,8 +1422,7 @@ map[char*, char*] wtest_defhash_collect(char* file_path):
 	strv_set(argv, 2, file_path)
 	process_result* result = process_run(c"bin/wv2", argv, 0, 0, 120000)
 	free(cast(char*, argv))
-	if (result == 0):
-		return 0
+	if (result == 0): return 0
 	if (result.status != 0):
 		process_result_free(result)
 		return 0
@@ -2050,21 +1434,17 @@ map[char*, char*] wtest_defhash_collect(char* file_path):
 	int failed = 0
 	while ((at_end == 0) && (failed == 0)):
 		int c = text[i]
-		if (c == 0):
-			at_end = 1
+		if (c == 0): at_end = 1
 		if ((c == 10) || (c == 0)):
 			if (line.length > 0):
 				json_value* rec = json_parse(line.data)
-				if (rec == 0):
-					failed = 1
-				else if (rec.type != json_type_object()):
-					failed = 1
+				if (rec == 0): failed = 1
+				else if (rec.type != json_type_object()): failed = 1
 				else:
-					char* name = wtest_get_string(rec, c"name")
-					char* kind = wtest_get_string(rec, c"kind")
-					char* hash = wtest_get_string(rec, c"hash")
-					if ((name == 0) || (kind == 0) || (hash == 0)):
-						failed = 1
+					char* name = jfield_string(rec, c"name")
+					char* kind = jfield_string(rec, c"kind")
+					char* hash = jfield_string(rec, c"hash")
+					if ((name == 0) || (kind == 0) || (hash == 0)): failed = 1
 					else:
 						# Key by kind+name: W permits e.g. a struct
 						# and a function with the same name, and a
@@ -2079,18 +1459,14 @@ map[char*, char*] wtest_defhash_collect(char* file_path):
 						string_append(keyb, name)
 						char* key = strclone(keyb.data)
 						string_free(keyb)
-						if (key in out):
-							failed = 1
-						else:
-							out[key] = strclone(hash)
+						if (key in out): failed = 1
+						else: out[key] = strclone(hash)
 			string_clear(line)
-		else:
-			string_append_char(line, c)
+		else: string_append_char(line, c)
 		i = i + 1
 	string_free(line)
 	process_result_free(result)
-	if (failed):
-		return 0
+	if (failed): return 0
 	return out
 
 
@@ -2111,8 +1487,7 @@ char* wtest_import_signature(char* text):
 				i = i + 1
 			string_append_char(sig, 10)
 			bol = 1
-			if (text[i] != 0):
-				i = i + 1
+			if (text[i] != 0): i = i + 1
 		else:
 			bol = (c == 10)
 			i = i + 1
@@ -2126,11 +1501,9 @@ char* wtest_import_signature(char* text):
 # are provably unchanged between the comparison's two sides), 0
 # otherwise -- fail open in every other case, per the header comment.
 # Generic and operator-overload definitions are recorded by 'bin/wv2
-# defhash' itself now (wave plan C task 4f), so no separate textual
-# pre-check is needed here any more (task 2g's
-# wtest_defhash_risky_text, removed). Outside a commit range the two
-# sides are HEAD (left) and the worktree (right), exactly as before
-# wtest_range_* existed; inside one they are the range's resolved
+# defhash' itself, so no textual pre-check is needed. Outside a commit
+# range the two sides are HEAD (left) and the worktree (right); inside
+# one they are the range's resolved
 # left/right endpoints (header comment, "Commit-ranged selection") --
 # rev-vs-rev content instead of HEAD-vs-worktree. wtest_note calls make
 # the decision visible under --verbose without adding new output
@@ -2138,16 +1511,13 @@ char* wtest_import_signature(char* text):
 int wtest_defhash_unchanged(char* path):
 	int right_is_worktree = (wtest_range_active == 0) || (wtest_range_right == 0)
 	char* right_text = 0
-	if (right_is_worktree):
-		right_text = file_read_text(path)
-	else:
-		right_text = wtest_git_show(wtest_range_right, path)
+	if (right_is_worktree): right_text = file_read_text(path)
+	else: right_text = wtest_git_show(wtest_range_right, path)
 	if (right_text == 0):
 		wtest_note(path, c"defhash: fallback (no right-hand version, or git error)")
 		return 0
 	char* left_rev = c"HEAD"
-	if (wtest_range_active):
-		left_rev = wtest_range_left
+	if (wtest_range_active): left_rev = wtest_range_left
 	char* left_text = wtest_git_show(left_rev, path)
 	if (left_text == 0):
 		free(right_text)
@@ -2228,15 +1598,11 @@ void wtest_defhash_clean_warning():
 	string_append(line, c"wtest: warning: --defhash without a range compares HEAD vs the worktree, and ")
 	string_append_int(line, wtest_defhash_clean_count)
 	string_append(line, c" piped path")
-	if (wtest_defhash_clean_count == 1):
-		string_append(line, c" is")
-	else:
-		string_append(line, c"s are")
+	if (wtest_defhash_clean_count == 1): string_append(line, c" is")
+	else: string_append(line, c"s are")
 	string_append(line, c" committed-clean vs HEAD, so closure selection skipped ")
-	if (wtest_defhash_clean_count == 1):
-		string_append(line, c"it")
-	else:
-		string_append(line, c"them")
+	if (wtest_defhash_clean_count == 1): string_append(line, c"it")
+	else: string_append(line, c"them")
 	stream_write_line(err, line.data)
 	string_free(line)
 	stream_write_line(err, c"wtest: warning: for committed changes use the ranged form: wtest changed A..B --defhash")
@@ -2251,12 +1617,9 @@ int wtest_doc_only(char* path):
 		# (including asm_fuzz_*), not documentation, despite the extension;
 		# the tests/asm/ residue rule below must see them.
 		return 0
-	if (starts_with(path, c"docs/")):
-		return 1
-	if (ends_with(path, c".md")):
-		return 1
-	if (ends_with(path, c".txt")):
-		return 1
+	if (starts_with(path, c"docs/")): return 1
+	if (ends_with(path, c".md")): return 1
+	if (ends_with(path, c".txt")): return 1
 	return 0
 
 
@@ -2269,18 +1632,12 @@ int wtest_doc_only(char* path):
 # auto-imported runtime — without ever narrowing it (header comment,
 # rule c).
 int wtest_compiler_tree(char* path):
-	if (strcmp(path, c"w.w") == 0):
-		return 1
-	if (strcmp(path, c"grammar.w") == 0):
-		return 1
-	if (strcmp(path, c"codegen.w") == 0):
-		return 1
-	if (starts_with(path, c"compiler/")):
-		return 1
-	if (starts_with(path, c"grammar/")):
-		return 1
-	if (starts_with(path, c"code_generator/")):
-		return 1
+	if (strcmp(path, c"w.w") == 0): return 1
+	if (strcmp(path, c"grammar.w") == 0): return 1
+	if (strcmp(path, c"codegen.w") == 0): return 1
+	if (starts_with(path, c"compiler/")): return 1
+	if (starts_with(path, c"grammar/")): return 1
+	if (starts_with(path, c"code_generator/")): return 1
 	return 0
 
 
@@ -2292,7 +1649,7 @@ int wtest_compiler_tree(char* path):
 # single 'bin/wv2 deps [arch] w.w' shell-out, checkpointed
 # immediately. Returns 0 when deps fails (bin/wv2 missing, or w.w
 # mid-edit broken) — callers fail open to wtest_compiler_tree's
-# prefix floor, never silently narrower than the historical rule, and
+# prefix floor, never silently narrower than that floor, and
 # the fallback is ANNOUNCED on stderr (once per arch per run — the
 # store memoizes the 0). The failure itself is only persisted under
 # the conservative X-entry validation (header comment above
@@ -2305,10 +1662,8 @@ int wtest_compiler_tree(char* path):
 # but only once per arch per run, however many changed paths consult
 # the rule.
 void wtest_seed_warn(char* arch, char* id):
-	if (wtest_seed_warned == 0):
-		wtest_seed_warned = new map[char*, int]
-	if (wtest_seed_warned.get(id, 0)):
-		return
+	if (wtest_seed_warned == 0): wtest_seed_warned = new map[char*, int]
+	if (wtest_seed_warned.get(id, 0)): return
 	# Clone the key: the known-hit caller frees its id after this call.
 	wtest_seed_warned[strclone(id)] = 1
 	wstream* err = stderr_writer()
@@ -2327,20 +1682,15 @@ void wtest_seed_warn(char* arch, char* id):
 
 
 char* wtest_seed_closure(char* arch):
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	char* id = wtest_root_id(arch, c"w.w")
 	if (wtest_closure_known(id)):
 		char* known = wtest_closure_get(id)
-		if (known == 0):
-			wtest_seed_warn(arch, id)
+		if (known == 0): wtest_seed_warn(arch, id)
 		free(id)
 		return known
 	char* blob = wtest_closure_compute(id)
-	if (blob == 0):
-		wtest_seed_warn(arch, id)
+	if (blob == 0): wtest_seed_warn(arch, id)
 	wtest_cache_save()
 	return blob
 
@@ -2352,10 +1702,8 @@ char* wtest_seed_closure(char* arch):
 # early-out keeps data/doc-file selection from ever paying the deps
 # shell-out.
 int wtest_seed_graph(char* path):
-	if (wtest_compiler_tree(path)):
-		return 1
-	if (ends_with(path, c".w") == 0):
-		return 0
+	if (wtest_compiler_tree(path)): return 1
+	if (ends_with(path, c".w") == 0): return 0
 	return wtest_closure_contains(wtest_seed_closure(c"x86"), path)
 
 
@@ -2363,8 +1711,7 @@ int wtest_seed_graph(char* path):
 # 0 for any other shape (including a bare 'lib/__arch__/<arch>' with no
 # trailing component).
 char* wtest_arch_dir_selector(char* path):
-	if (starts_with(path, c"lib/__arch__/") == 0):
-		return 0
+	if (starts_with(path, c"lib/__arch__/") == 0): return 0
 	int i = strlen(c"lib/__arch__/")
 	string_builder* s = string_new()
 	while ((path[i] != 0) && (path[i] != '/')):
@@ -2382,16 +1729,11 @@ char* wtest_arch_dir_selector(char* path):
 # is on the never-emit list (its steps execute Mach-O binaries), so
 # returning it is harmless: wtest_add drops never-emit names.
 char* wtest_arch_verify_target(char* arch):
-	if (strcmp(arch, c"x64") == 0):
-		return c"verify_x64"
-	if (strcmp(arch, c"arm64") == 0):
-		return c"verify_arm64"
-	if (strcmp(arch, c"wasm") == 0):
-		return c"verify_wasm"
-	if (strcmp(arch, c"win64") == 0):
-		return c"verify_win"
-	if (strcmp(arch, c"arm64_darwin") == 0):
-		return c"verify_darwin"
+	if (strcmp(arch, c"x64") == 0): return c"verify_x64"
+	if (strcmp(arch, c"arm64") == 0): return c"verify_arm64"
+	if (strcmp(arch, c"wasm") == 0): return c"verify_wasm"
+	if (strcmp(arch, c"win64") == 0): return c"verify_win"
+	if (strcmp(arch, c"arm64_darwin") == 0): return c"verify_darwin"
 	return 0
 
 
@@ -2399,368 +1741,25 @@ char* wtest_arch_verify_target(char* arch):
 # generation"): a *_test.w source under any of these is a generator
 # input, so manifest_check gates its addition/removal.
 int wtest_scan_dir_path(char* path):
-	if (starts_with(path, c"tests/")):
-		return 1
-	if (starts_with(path, c"lib/")):
-		return 1
-	if (starts_with(path, c"structures/")):
-		return 1
-	if (starts_with(path, c"graphics/")):
-		return 1
-	if (starts_with(path, c"libs/")):
-		return 1
-	if (starts_with(path, c"tools/")):
-		return 1
+	if (starts_with(path, c"tests/")): return 1
+	if (starts_with(path, c"lib/")): return 1
+	if (starts_with(path, c"structures/")): return 1
+	if (starts_with(path, c"graphics/")): return 1
+	if (starts_with(path, c"libs/")): return 1
+	if (starts_with(path, c"tools/")): return 1
 	return 0
-
-
-/* The build.json leaf-diff special case (--base-manifest).
-
-Adding one conventional test regenerates build.json, and the plain
-manifest residue rule then recommends the entire pre-merge suite for
-every "add one test" diff. When the caller supplies the committed
-baseline manifest, the structural diff is inspected instead: if it is
-exactly additions/removals/in-place regenerations of leaf test targets
-in the shape tools/wbuildgen.w generates (plus the matching umbrella
-membership edits), only those targets + manifest_check + wexec_test
-are selected. Every check errs toward returning 0, which keeps the
-full 'wexec_test + tests' residue — never under-select silently. */
-
-int wtest_json_equal(json_value* a, json_value* b):
-	char* left = json_stringify(a)
-	char* right = json_stringify(b)
-	int same = strcmp(left, right) == 0
-	free(left)
-	free(right)
-	return same
-
-
-# The umbrellas wbuildgen appends generated leaf targets to.
-int wtest_umbrella_name(char* name):
-	if (strcmp(name, c"tests") == 0):
-		return 1
-	if (strcmp(name, c"tests_x64") == 0):
-		return 1
-	if (strcmp(name, c"tests_win64") == 0):
-		return 1
-	return 0
-
-
-# The names wbg_make_target can produce: X_test, X_64_test (also
-# ..._test), and the X_test_{arm64,win64,darwin} platform twins.
-int wtest_leaf_name(char* name):
-	if (ends_with(name, c"_test")):
-		return 1
-	if (ends_with(name, c"_arm64")):
-		return 1
-	if (ends_with(name, c"_win64")):
-		return 1
-	if (ends_with(name, c"_darwin")):
-		return 1
-	return 0
-
-
-# A step may carry only "cmd" (compile / extra_compile steps) or "cmd"
-# plus the run-step decoration fields wbuildgen emits.
-int wtest_step_only_keys(json_value* step, int run_fields):
-	if (step.type != json_type_object()):
-		return 0
-	int ok = 1
-	for char* key, json_value* member in step.object_values:
-		if (strcmp(key, c"cmd") == 0):
-			continue
-		if (run_fields):
-			if (strcmp(key, c"stdin") == 0):
-				continue
-			if (strcmp(key, c"expect_fail") == 0):
-				continue
-			if (strcmp(key, c"expect_stdout") == 0):
-				continue
-			if (strcmp(key, c"expect_stderr") == 0):
-				continue
-			if (strcmp(key, c"timeout_ms") == 0):
-				continue
-		ok = 0
-	return ok
 
 
 # The step's cmd as a nonempty all-string array, or 0.
 json_value* wtest_step_cmd(json_value* step):
-	json_value* cmd = json_object_get(step, c"cmd")
-	if (cmd == 0):
-		return 0
-	if (cmd.type != json_type_array()):
-		return 0
+	json_value* cmd = jfield_array(step, c"cmd")
+	if (cmd == 0): return 0
 	int n = json_array_length(cmd)
-	if (n == 0):
-		return 0
-	int i = 0
-	while (i < n):
+	if (n == 0): return 0
+	for i in range(n):
 		json_value* piece = json_array_get(cmd, i)
-		if (piece.type != json_type_string()):
-			return 0
-		i = i + 1
+		if (piece.type != json_type_string()): return 0
 	return cmd
-
-
-# {"cmd": ["bin/wv2", (selector)?, ..., "src.w", ..., "-o", "bin/X"]}
-# and nothing else.
-int wtest_leaf_compile_step(json_value* step):
-	if (wtest_step_only_keys(step, 0) == 0):
-		return 0
-	json_value* cmd = wtest_step_cmd(step)
-	if (cmd == 0):
-		return 0
-	json_value* program = json_array_get(cmd, 0)
-	if (strcmp(program.string_value, c"bin/wv2") != 0):
-		return 0
-	int has_output = 0
-	int has_source = 0
-	int i = 1
-	while (i < json_array_length(cmd)):
-		json_value* piece = json_array_get(cmd, i)
-		if (strcmp(piece.string_value, c"-o") == 0):
-			has_output = 1
-		if (ends_with(piece.string_value, c".w")):
-			has_source = 1
-		i = i + 1
-	return has_output && has_source
-
-
-# A run or extra_compile step: the compiled binary (or another bin/
-# tool for extra compiles, or the bin/wrun arm64/wasm runner), or wine
-# — plus at most the decoration fields.
-int wtest_leaf_run_step(json_value* step):
-	if (wtest_step_only_keys(step, 1) == 0):
-		return 0
-	json_value* cmd = wtest_step_cmd(step)
-	if (cmd == 0):
-		return 0
-	json_value* program = json_array_get(cmd, 0)
-	if (starts_with(program.string_value, c"bin/")):
-		return 1
-	if (strcmp(program.string_value, c"wine") == 0):
-		return 1
-	return 0
-
-
-# The conventional compile(+run) shape tools/wbuildgen.w generates for
-# a leaf test target (wbg_make_target): only the keys it emits, deps
-# exactly ["wv2"] (["wv2", "wrun"] for an arm64/wasm twin), a bin/wv2
-# compile step first, decorated run /
-# extra-compile steps after. A hand-written base target that happens
-# to match is indistinguishable, which is safe: editing one requires a
-# build.base.json change, and that path keeps the full residue.
-int wtest_leaf_target(json_value* target):
-	if (target == 0):
-		return 0
-	if (target.type != json_type_object()):
-		return 0
-	int keys_ok = 1
-	for char* key, json_value* member in target.object_values:
-		if ((strcmp(key, c"name") != 0) && (strcmp(key, c"deps") != 0) && (strcmp(key, c"data") != 0) && (strcmp(key, c"steps") != 0)):
-			keys_ok = 0
-	if (keys_ok == 0):
-		return 0
-	char* name = wtest_get_string(target, c"name")
-	if (name == 0):
-		return 0
-	if (wtest_leaf_name(name) == 0):
-		return 0
-	json_value* deps = json_object_get(target, c"deps")
-	if (deps == 0):
-		return 0
-	if (deps.type != json_type_array()):
-		return 0
-	# ["wv2"], or ["wv2", "wrun"] for the arm64/wasm twins whose run
-	# step execs through bin/wrun.
-	int dep_count = json_array_length(deps)
-	if ((dep_count != 1) && (dep_count != 2)):
-		return 0
-	json_value* dep = json_array_get(deps, 0)
-	if (dep.type != json_type_string()):
-		return 0
-	if (strcmp(dep.string_value, c"wv2") != 0):
-		return 0
-	if (dep_count == 2):
-		json_value* runner_dep = json_array_get(deps, 1)
-		if (runner_dep.type != json_type_string()):
-			return 0
-		if (strcmp(runner_dep.string_value, c"wrun") != 0):
-			return 0
-	json_value* data = json_object_get(target, c"data")
-	if (data != 0):
-		if (data.type != json_type_array()):
-			return 0
-		int d = 0
-		while (d < json_array_length(data)):
-			json_value* entry = json_array_get(data, d)
-			if (entry.type != json_type_string()):
-				return 0
-			d = d + 1
-	json_value* steps = json_object_get(target, c"steps")
-	if (steps == 0):
-		return 0
-	if (steps.type != json_type_array()):
-		return 0
-	if (json_array_length(steps) == 0):
-		return 0
-	if (wtest_leaf_compile_step(json_array_get(steps, 0)) == 0):
-		return 0
-	int i = 1
-	while (i < json_array_length(steps)):
-		if (wtest_leaf_run_step(json_array_get(steps, i)) == 0):
-			return 0
-		i = i + 1
-	return 1
-
-
-# The deps array as a name set, or 0 when it is not all strings.
-map[char*, int] wtest_dep_set(json_value* deps):
-	if (deps == 0):
-		return 0
-	if (deps.type != json_type_array()):
-		return 0
-	map[char*, int] out = new map[char*, int]
-	int i = 0
-	while (i < json_array_length(deps)):
-		json_value* dep = json_array_get(deps, i)
-		if (dep.type != json_type_string()):
-			return 0
-		out[dep.string_value] = 1
-		i = i + 1
-	return out
-
-
-# An umbrella may differ from its baseline only in deps, and only by
-# entries that are exactly this diff's added/removed leaf names.
-int wtest_umbrella_diff_ok(json_value* base_target, json_value* current_target, map[char*, int] added, map[char*, int] removed):
-	int base_count = 0
-	int members_ok = 1
-	for char* key, json_value* member in base_target.object_values:
-		if (strcmp(key, c"deps") != 0):
-			base_count = base_count + 1
-			json_value* other = json_object_get(current_target, key)
-			if (other == 0):
-				members_ok = 0
-			else if (wtest_json_equal(member, other) == 0):
-				members_ok = 0
-	int current_count = 0
-	for char* current_key, json_value* current_member in current_target.object_values:
-		if (strcmp(current_key, c"deps") != 0):
-			current_count = current_count + 1
-	if ((members_ok == 0) || (base_count != current_count)):
-		return 0
-	json_value* base_deps = json_object_get(base_target, c"deps")
-	json_value* current_deps = json_object_get(current_target, c"deps")
-	map[char*, int] base_set = wtest_dep_set(base_deps)
-	map[char*, int] current_set = wtest_dep_set(current_deps)
-	if ((base_set == 0) || (current_set == 0)):
-		return 0
-	int i = 0
-	while (i < json_array_length(current_deps)):
-		json_value* gained = json_array_get(current_deps, i)
-		if ((base_set.get(gained.string_value, 0) == 0) && (added.get(gained.string_value, 0) == 0)):
-			return 0
-		i = i + 1
-	i = 0
-	while (i < json_array_length(base_deps)):
-		json_value* lost = json_array_get(base_deps, i)
-		if ((current_set.get(lost.string_value, 0) == 0) && (removed.get(lost.string_value, 0) == 0)):
-			return 0
-		i = i + 1
-	return 1
-
-
-# Root members other than "targets" (the "dirs" list, any future
-# member) must be identical; otherwise the manifest change is more
-# than a target-list regeneration.
-int wtest_manifest_roots_match():
-	int base_count = 0
-	int members_ok = 1
-	for char* key, json_value* member in wtest_base_manifest.object_values:
-		if (strcmp(key, c"targets") != 0):
-			base_count = base_count + 1
-			json_value* other = json_object_get(wtest_manifest, key)
-			if (other == 0):
-				members_ok = 0
-			else if (wtest_json_equal(member, other) == 0):
-				members_ok = 0
-	int current_count = 0
-	for char* current_key, json_value* current_member in wtest_manifest.object_values:
-		if (strcmp(current_key, c"targets") != 0):
-			current_count = current_count + 1
-	if (base_count != current_count):
-		return 0
-	return members_ok
-
-
-# The special case itself: structurally diff the current manifest
-# against the --base-manifest baseline. Returns 1 after selecting the
-# added / regenerated leaf targets + manifest_check + wexec_test, or 0
-# (having selected nothing) when there is no baseline or anything in
-# the diff is not a pure leaf-target regeneration.
-int wtest_manifest_leaf_diff(char* path):
-	if (wtest_base_manifest == 0):
-		return 0
-	if (wtest_base_manifest.type != json_type_object()):
-		return 0
-	if (wtest_manifest_roots_match() == 0):
-		return 0
-	json_value* base_targets = json_object_get(wtest_base_manifest, c"targets")
-	if (base_targets == 0):
-		return 0
-	if (base_targets.type != json_type_array()):
-		return 0
-	list[char*] base_names = new list[char*]
-	map[char*, json_value*] base_defs = new map[char*, json_value*]
-	int i = 0
-	while (i < json_array_length(base_targets)):
-		json_value* target = json_array_get(base_targets, i)
-		if (target.type == json_type_object()):
-			char* name = wtest_get_string(target, c"name")
-			if (name != 0):
-				base_defs[name] = target
-				base_names.push(name)
-		i = i + 1
-	# The added and removed name sets come first: the umbrella check
-	# below needs them complete before membership edits can be judged.
-	map[char*, int] added = new map[char*, int]
-	map[char*, int] removed = new map[char*, int]
-	list[char*] touched = new list[char*]
-	for char* added_name in wtest_target_names:
-		if (base_defs.get(added_name, 0) == 0):
-			if (wtest_leaf_target(wtest_target_defs.get(added_name, 0)) == 0):
-				return 0
-			added[added_name] = 1
-			touched.push(added_name)
-	for char* removed_name in base_names:
-		if (wtest_target_defs.get(removed_name, 0) == 0):
-			if (wtest_leaf_target(base_defs.get(removed_name, 0)) == 0):
-				return 0
-			removed[removed_name] = 1
-	# In-place differences: an umbrella gaining/losing exactly the
-	# added/removed names, or a leaf regenerated in place (a
-	# '# wbuild:' directive edit) which then selects itself. A removed
-	# target is never selected — it no longer exists to run;
-	# manifest_check covers the regeneration.
-	for char* common_name in wtest_target_names:
-		json_value* base_def = base_defs.get(common_name, 0)
-		if (base_def != 0):
-			json_value* current_def = wtest_target_defs.get(common_name, 0)
-			if (wtest_json_equal(base_def, current_def) == 0):
-				if (wtest_umbrella_name(common_name)):
-					if (wtest_umbrella_diff_ok(base_def, current_def, added, removed) == 0):
-						return 0
-				else if (wtest_leaf_target(base_def) && wtest_leaf_target(current_def)):
-					touched.push(common_name)
-				else:
-					return 0
-	for char* selected in touched:
-		wtest_add(path, selected)
-	wtest_add(path, c"manifest_check")
-	wtest_add(path, c"wexec_test")
-	return 1
 
 
 # Residue mappings (header comment, rule c). Returns 1 when any rule
@@ -2770,8 +1769,7 @@ int wtest_map_residue(char* path, int is_w, int exists):
 	if (wtest_seed_graph(path)):
 		wtest_add(path, c"verify")
 		wtest_add(path, c"self_host_warning_test")
-		if (ends_with(path, c"_asm.w")):
-			wtest_add(path, c"asm_stubs_test")
+		if (ends_with(path, c"_asm.w")): wtest_add(path, c"asm_stubs_test")
 		matched = 1
 	# An arch runtime file in that arch's own seed closure gates that
 	# arch's fixpoint (header comment, rule c): the build/verify chain's
@@ -2843,16 +1841,7 @@ int wtest_map_residue(char* path, int is_w, int exists):
 	if (starts_with(path, c"tests/metadata/")):
 		wtest_add(path, c"metadata_test")
 		matched = 1
-	if (strcmp(path, c"build.json") == 0):
-		# A regenerated manifest whose only structural change against
-		# the --base-manifest baseline is wbuildgen-shaped leaf targets
-		# selects just those (wtest_manifest_leaf_diff); anything else
-		# keeps the full residue: the manifest drives every target.
-		if (wtest_manifest_leaf_diff(path) == 0):
-			wtest_add(path, c"wexec_test")
-			wtest_add(path, c"tests")
-		matched = 1
-	if ((strcmp(path, c"wbuild") == 0) | (strcmp(path, c"build.base.json") == 0)):
+	if ((strcmp(path, c"build.json") == 0) | (strcmp(path, c"wbuild") == 0) | (strcmp(path, c"build.base.json") == 0)):
 		wtest_add(path, c"wexec_test")
 		wtest_add(path, c"tests")
 		if (strcmp(path, c"build.base.json") == 0):
@@ -2869,14 +1858,12 @@ int wtest_map_residue(char* path, int is_w, int exists):
 
 
 void wtest_map_path(char* path):
-	if (strlen(path) == 0):
-		return
+	if (strlen(path) == 0): return
 	# Declared run-time data comes before the doc-only filter: a data
 	# file may carry a doc-like extension (the tests/asm/*.txt lesson,
 	# #268), and its declaring targets must still be selected.
 	int matched = wtest_map_data(path)
-	if (wtest_doc_only(path)):
-		return
+	if (wtest_doc_only(path)): return
 	if (starts_with(path, c".cursor/")):
 		# Rules and skills are agent guidance, not code under test.
 		return
@@ -2886,11 +1873,10 @@ void wtest_map_path(char* path):
 	# closed one (header comment, "Commit-ranged selection") -- outside
 	# a range it is exactly wtest_file_exists, unchanged.
 	int exists = wtest_range_exists(path)
-	if (wtest_map_residue(path, is_w, exists)):
-		matched = 1
+	if (wtest_map_residue(path, is_w, exists)): matched = 1
 
 	# (a) literal step references
-	int path_has_slash = wtest_str_contains(path, c"/")
+	int path_has_slash = contains(path, c"/")
 	for char* name in wtest_target_names:
 		if (wtest_selectable(name)):
 			if (wtest_target_mentions(name, path, path_has_slash)):
@@ -2909,8 +1895,7 @@ void wtest_map_path(char* path):
 	# skip_closure stays 0, so this is exactly the prior unconditional scan.
 	if (is_w && exists && (wtest_compiler_tree(path) == 0)):
 		int skip_closure = 0
-		if (wtest_defhash_flag):
-			skip_closure = wtest_defhash_unchanged(path)
+		if (wtest_defhash_flag): skip_closure = wtest_defhash_unchanged(path)
 		if (skip_closure == 0):
 			wtest_ensure_closures()
 			int i = 0
@@ -2920,8 +1905,7 @@ void wtest_map_path(char* path):
 					matched = 1
 				i = i + 1
 
-	if (matched == 0):
-		wtest_add(path, c"tests")
+	if (matched == 0): wtest_add(path, c"tests")
 
 
 # 'git diff --no-renames --name-only <left> [<right>]' -- the
@@ -2945,8 +1929,7 @@ void wtest_map_path(char* path):
 # unreachable for an already-validated range, short of a deeper git
 # problem.
 int wtest_range_expand(char* spec):
-	if (wtest_range_setup(spec)):
-		return 1
+	if (wtest_range_setup(spec)): return 1
 	char* git = wtest_resolve_program(c"git")
 	char** argv = 0
 	if (wtest_range_right == 0):
@@ -2979,14 +1962,11 @@ int wtest_range_expand(char* spec):
 	int at_end = 0
 	while (at_end == 0):
 		int c = text[j]
-		if (c == 0):
-			at_end = 1
+		if (c == 0): at_end = 1
 		if ((c == 10) || (c == 0)):
-			if (line.length > 0):
-				wtest_map_path(line.data)
+			if (line.length > 0): wtest_map_path(line.data)
 			string_clear(line)
-		else:
-			string_append_char(line, c)
+		else: string_append_char(line, c)
 		j = j + 1
 	string_free(line)
 	process_result_free(result)
@@ -2995,33 +1975,12 @@ int wtest_range_expand(char* spec):
 
 /* --available: drop targets this host cannot run (header comment). */
 
-# Whether 'name' resolves to a readable file on some PATH entry (mirrors
-# tools/wexec.w's wexec_resolve_program lookup, minus the Windows/.exe
-# handling: the runners --available checks for are never Windows tools).
+# Whether 'name' resolves to a readable file on some PATH entry.
 int wtest_path_has(char* name):
-	char* path = env_get(c"PATH")
-	if (path == 0):
-		path = c"/usr/bin:/bin"
-	string_builder* candidate = string_new()
-	int p = 0
-	int at_end = 0
-	int found = 0
-	while ((at_end == 0) && (found == 0)):
-		string_clear(candidate)
-		while ((path[p] != ':') && (path[p] != 0)):
-			string_append_char(candidate, path[p])
-			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length > 0):
-			string_append_char(candidate, '/')
-			string_append(candidate, name)
-			if (wtest_file_exists(candidate.data)):
-				found = 1
-	string_free(candidate)
-	return found
+	char* found = process_which(name)
+	if (found == 0): return 0
+	free(found)
+	return 1
 
 
 # 'bin/wrun arm64' execs its argv natively on an aarch64 Linux host and
@@ -3030,8 +1989,7 @@ int wtest_path_has(char* name):
 # caller has an emulator configured, so it counts as available without a
 # PATH lookup.
 int wtest_qemu_arm64_available():
-	if (env_get(c"QEMU_ARM64") != 0):
-		return 1
+	if (env_get(c"QEMU_ARM64") != 0): return 1
 	return wtest_path_has(c"qemu-aarch64-static")
 
 
@@ -3039,8 +1997,7 @@ int wtest_qemu_arm64_available():
 # node's built-in WASI (node >= 20); either one on PATH is positive
 # evidence a wasm run step can execute.
 int wtest_wasm_runtime_available():
-	if (wtest_path_has(c"wasmtime")):
-		return 1
+	if (wtest_path_has(c"wasmtime")): return 1
 	return wtest_path_has(c"node")
 
 
@@ -3053,10 +2010,8 @@ cannot decide leaves the target alone. */
 # 'c_import "libc.so.6" c"stdio.h"') — copied out for the caller to
 # free, or 0 when the line has no complete quoted string.
 char* wtest_directive_soname(char* text, int i):
-	while ((text[i] != 0) && (text[i] != 10) && (text[i] != '"')):
-		i = i + 1
-	if (text[i] != '"'):
-		return 0
+	while ((text[i] != 0) && (text[i] != 10) && (text[i] != '"')): i = i + 1
+	if (text[i] != '"'): return 0
 	i = i + 1
 	string_builder* s = string_new()
 	while ((text[i] != 0) && (text[i] != 10) && (text[i] != '"')):
@@ -3077,8 +2032,7 @@ char* wtest_directive_soname(char* text, int i):
 # business), and libcuda* is excluded — the GPU bit covers the NVIDIA
 # driver, whose libcuda.so.1 lives wherever the installer put it.
 int wtest_soname_retained(char* soname):
-	if (wtest_str_contains(soname, c".so") == 0):
-		return 0
+	if (contains(soname, c".so") == 0): return 0
 	return starts_with(soname, c"libcuda") == 0
 
 
@@ -3097,11 +2051,9 @@ int wtest_soname_retained(char* soname):
 # lib.cuda or ...'), so the scan tracks both comment forms the
 # tokenizer knows before matching.
 int wtest_source_needs(char* path):
-	if (wtest_source_needs_memo == 0):
-		wtest_source_needs_memo = new map[char*, int]
+	if (wtest_source_needs_memo == 0): wtest_source_needs_memo = new map[char*, int]
 	int memo = wtest_source_needs_memo.get(path, 0)
-	if (memo != 0):
-		return memo - 1
+	if (memo != 0): return memo - 1
 	int needs = 0
 	string_builder* sonames = string_new()
 	char* text = file_read_text(path)
@@ -3121,8 +2073,7 @@ int wtest_source_needs(char* path):
 			else if (text[i] == '#'):
 				# Line comment: skip to the newline (kept, so bol stays
 				# accurate for the next line).
-				while ((text[i] != 0) && (text[i] != 10)):
-					i = i + 1
+				while ((text[i] != 0) && (text[i] != 10)): i = i + 1
 			else if ((text[i] == '/') && (text[i + 1] == '*')):
 				in_block = 1
 				i = i + 2
@@ -3130,26 +2081,22 @@ int wtest_source_needs(char* path):
 				if (bol):
 					if (starts_with(&text[i], c"c_lib ") || starts_with(&text[i], c"c_import ")):
 						needs = needs | 1
-						if (starts_with(&text[i], c"c_lib \"libcuda")):
-							needs = needs | 2
+						if (starts_with(&text[i], c"c_lib \"libcuda")): needs = needs | 2
 						char* soname = wtest_directive_soname(text, i)
 						if (soname != 0):
 							if (wtest_soname_retained(soname)):
 								string_append(sonames, soname)
 								string_append_char(sonames, 10)
 							free(soname)
-					if (starts_with(&text[i], c"import lib.cuda")):
-						needs = needs | 2
+					if (starts_with(&text[i], c"import lib.cuda")): needs = needs | 2
 				bol = (text[i] == 10)
 				i = i + 1
 		free(text)
 	if (sonames.length > 0):
-		if (wtest_source_sonames_memo == 0):
-			wtest_source_sonames_memo = new map[char*, char*]
+		if (wtest_source_sonames_memo == 0): wtest_source_sonames_memo = new map[char*, char*]
 		wtest_source_sonames_memo[path] = sonames.data
 		free(sonames)
-	else:
-		string_free(sonames)
+	else: string_free(sonames)
 	wtest_source_needs_memo[path] = needs + 1
 	return needs
 
@@ -3168,15 +2115,11 @@ int wtest_source_needs(char* path):
 # recorded as a compile failure) falls back to the root file alone —
 # the pre-closure behavior, positive evidence only.
 int wtest_closure_needs(char* arch, char* root):
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	char* id = wtest_root_id(arch, root)
 	char* blob = wtest_closure_get(id)
 	free(id)
-	if (blob == 0):
-		return wtest_source_needs(root)
+	if (blob == 0): return wtest_source_needs(root)
 	int needs = 0
 	string_builder* line = string_new()
 	int i = 0
@@ -3185,11 +2128,9 @@ int wtest_closure_needs(char* arch, char* root):
 			if (line.length > 0):
 				needs = needs | wtest_source_needs(line.data)
 				string_clear(line)
-		else:
-			string_append_char(line, blob[i])
+		else: string_append_char(line, blob[i])
 		i = i + 1
-	if (line.length > 0):
-		needs = needs | wtest_source_needs(line.data)
+	if (line.length > 0): needs = needs | wtest_source_needs(line.data)
 	string_free(line)
 	return needs
 
@@ -3198,30 +2139,26 @@ int wtest_closure_needs(char* arch, char* root):
 # 0. Scanning happens in wtest_source_needs; this only reads its memo.
 char* wtest_source_sonames(char* path):
 	wtest_source_needs(path)
-	if (wtest_source_sonames_memo == 0):
-		return 0
+	if (wtest_source_sonames_memo == 0): return 0
 	return wtest_source_sonames_memo.get(path, 0)
 
 
 void wtest_sonames_collect(char* path, map[char*, int] seen, list[char*] out):
 	char* sonames = wtest_source_sonames(path)
-	if (sonames == 0):
-		return
+	if (sonames == 0): return
 	string_builder* line = string_new()
 	int i = 0
 	int at_end = 0
 	while (at_end == 0):
 		int ch = sonames[i]
-		if (ch == 0):
-			at_end = 1
+		if (ch == 0): at_end = 1
 		if ((ch == 10) || (ch == 0)):
 			if (line.length > 0):
 				if (seen.get(line.data, 0) == 0):
 					seen[line.data] = 1
 					out.push(strclone(line.data))
 				string_clear(line)
-		else:
-			string_append_char(line, ch)
+		else: string_append_char(line, ch)
 		i = i + 1
 	string_free(line)
 
@@ -3234,10 +2171,7 @@ void wtest_sonames_collect(char* path, map[char*, int] seen, list[char*] out):
 list[char*] wtest_closure_sonames(char* arch, char* root):
 	list[char*] out = new list[char*]
 	map[char*, int] seen = new map[char*, int]
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	char* id = wtest_root_id(arch, root)
 	char* blob = wtest_closure_get(id)
 	free(id)
@@ -3251,11 +2185,9 @@ list[char*] wtest_closure_sonames(char* arch, char* root):
 			if (line.length > 0):
 				wtest_sonames_collect(line.data, seen, out)
 				string_clear(line)
-		else:
-			string_append_char(line, blob[i])
+		else: string_append_char(line, blob[i])
 		i = i + 1
-	if (line.length > 0):
-		wtest_sonames_collect(line.data, seen, out)
+	if (line.length > 0): wtest_sonames_collect(line.data, seen, out)
 	string_free(line)
 	return out
 
@@ -3265,15 +2197,12 @@ list[char*] wtest_closure_sonames(char* arch, char* root):
 # useless on /etc/ld.so.cache, whose entries are NUL-separated.
 int wtest_bytes_contain(char* hay, int hay_length, char* needle):
 	int n = strlen(needle)
-	if (n == 0):
-		return 1
+	if (n == 0): return 1
 	int i = 0
 	while (i + n <= hay_length):
 		int j = 0
-		while ((j < n) && (hay[i + j] == needle[j])):
-			j = j + 1
-		if (j == n):
-			return 1
+		while ((j < n) && (hay[i + j] == needle[j])): j = j + 1
+		if (j == n): return 1
 		i = i + 1
 	return 0
 
@@ -3283,12 +2212,10 @@ int wtest_bytes_contain(char* hay, int hay_length, char* needle):
 # wtest_ldcache_text at 0: the standard-dir walk is the whole probe
 # there.
 void wtest_ldcache_ensure():
-	if (wtest_ldcache_loaded):
-		return
+	if (wtest_ldcache_loaded): return
 	wtest_ldcache_loaded = 1
 	wstream* in = stream_open_read(c"/etc/ld.so.cache")
-	if (in == 0):
-		return
+	if (in == 0): return
 	string_builder* contents = string_new()
 	stream_read_all(in, contents)
 	stream_close(in)
@@ -3322,8 +2249,7 @@ int wtest_soname_in_dirs(char* arch, char* soname):
 			string_append(candidate, dir)
 			string_append_char(candidate, '/')
 			string_append(candidate, soname)
-			if (wtest_file_exists(candidate.data)):
-				found = 1
+			if (wtest_file_exists(candidate.data)): found = 1
 			string_free(candidate)
 	return found
 
@@ -3335,10 +2261,8 @@ int wtest_soname_in_dirs(char* arch, char* soname):
 # word sizes, which can only ever KEEP a target — the conservative
 # direction). An absolute c_lib path is probed as that file directly.
 int wtest_soname_available(char* arch, char* soname):
-	if (soname[0] == '/'):
-		return wtest_file_exists(soname)
-	if (wtest_soname_probe_memo == 0):
-		wtest_soname_probe_memo = new map[char*, int]
+	if (soname[0] == '/'): return wtest_file_exists(soname)
+	if (wtest_soname_probe_memo == 0): wtest_soname_probe_memo = new map[char*, int]
 	char* key = wtest_root_id(arch, soname)
 	int memo = wtest_soname_probe_memo.get(key, 0)
 	if (memo != 0):
@@ -3359,18 +2283,14 @@ int wtest_soname_available(char* arch, char* soname):
 # runner wrapper --available already checks (qemu/wine/wasm serve the
 # loader role there).
 char* wtest_arch_loader(char* arch):
-	if (strcmp(arch, c"x86") == 0):
-		return c"/lib/ld-linux.so.2"
-	if (strcmp(arch, c"x64") == 0):
-		return c"/lib64/ld-linux-x86-64.so.2"
+	if (strcmp(arch, c"x86") == 0): return c"/lib/ld-linux.so.2"
+	if (strcmp(arch, c"x64") == 0): return c"/lib64/ld-linux-x86-64.so.2"
 	return 0
 
 
 int wtest_gpu_available():
-	if (wtest_file_exists(c"/dev/nvidiactl")):
-		return 1
-	if (wtest_file_exists(c"/dev/nvidia0")):
-		return 1
+	if (wtest_file_exists(c"/dev/nvidiactl")): return 1
+	if (wtest_file_exists(c"/dev/nvidia0")): return 1
 	return wtest_path_has(c"nvidia-smi")
 
 
@@ -3386,8 +2306,7 @@ int wtest_macos_host():
 # this host.
 char* wtest_target_runnable_reason(char* name):
 	json_value* steps = wtest_target_steps(name)
-	if (steps == 0):
-		return 0
+	if (steps == 0): return 0
 	list[char*] outs = new list[char*]
 	list[char*] out_archs = new list[char*]
 	list[char*] out_srcs = new list[char*]
@@ -3395,20 +2314,16 @@ char* wtest_target_runnable_reason(char* name):
 	while (s < json_array_length(steps)):
 		json_value* step = json_array_get(steps, s)
 		s = s + 1
-		if (step.type != json_type_object()):
-			continue
+		if (step.type != json_type_object()): continue
 		json_value* cmd = wtest_step_cmd(step)
-		if (cmd == 0):
-			continue
+		if (cmd == 0): continue
 		json_value* program = json_array_get(cmd, 0)
-		if (wtest_root_program(program.string_value) == 0):
-			continue
+		if (wtest_root_program(program.string_value) == 0): continue
 		int n = json_array_length(cmd)
 		char* arch = c"x86"
 		if (n >= 2):
 			json_value* selector_piece = json_array_get(cmd, 1)
-			if (wtest_selector(selector_piece.string_value)):
-				arch = selector_piece.string_value
+			if (wtest_selector(selector_piece.string_value)): arch = selector_piece.string_value
 		char* out_path = 0
 		char* src = 0
 		int i = 1
@@ -3421,8 +2336,7 @@ char* wtest_target_runnable_reason(char* name):
 					out_path = out_piece.string_value
 				i = i + 2
 				continue
-			if ((src == 0) && ends_with(element, c".w")):
-				src = element
+			if ((src == 0) && ends_with(element, c".w")): src = element
 			i = i + 1
 		if ((out_path != 0) && (src != 0)):
 			outs.push(out_path)
@@ -3432,11 +2346,9 @@ char* wtest_target_runnable_reason(char* name):
 	while (s < json_array_length(steps)):
 		json_value* step = json_array_get(steps, s)
 		s = s + 1
-		if (step.type != json_type_object()):
-			continue
+		if (step.type != json_type_object()): continue
 		json_value* cmd = wtest_step_cmd(step)
-		if (cmd == 0):
-			continue
+		if (cmd == 0): continue
 		json_value* first = json_array_get(cmd, 0)
 		int k = 0
 		while (k < outs.length):
@@ -3480,38 +2392,28 @@ char* wtest_target_runnable_reason(char* name):
 # wrapper, a tools/mac/ script) — unrecognized programs are always left
 # alone, per the "positive evidence only" rule in the header comment.
 char* wtest_step_unavailable_reason(json_value* step):
-	if (step.type != json_type_object()):
-		return 0
-	json_value* cmd = json_object_get(step, c"cmd")
-	if (cmd == 0):
-		return 0
-	if (cmd.type != json_type_array()):
-		return 0
+	if (step.type != json_type_object()): return 0
+	json_value* cmd = jfield_array(step, c"cmd")
+	if (cmd == 0): return 0
 	int n = json_array_length(cmd)
-	if (n == 0):
-		return 0
+	if (n == 0): return 0
 	json_value* first = json_array_get(cmd, 0)
-	if (first.type != json_type_string()):
-		return 0
+	if (first.type != json_type_string()): return 0
 	char* program = first.string_value
 	if (strcmp(program, c"wine") == 0):
-		if (wtest_path_has(c"wine") == 0):
-			return c"wine not found"
+		if (wtest_path_has(c"wine") == 0): return c"wine not found"
 		return 0
 	if (strcmp(program, c"wine64") == 0):
-		if (wtest_path_has(c"wine64") == 0):
-			return c"wine64 not found"
+		if (wtest_path_has(c"wine64") == 0): return c"wine64 not found"
 		return 0
 	if (strcmp(program, c"qemu-aarch64-static") == 0):
-		if (wtest_qemu_arm64_available() == 0):
-			return c"qemu-aarch64-static not found"
+		if (wtest_qemu_arm64_available() == 0): return c"qemu-aarch64-static not found"
 		return 0
 	if ((strcmp(program, c"bin/wrun") == 0) && (n >= 2)):
 		json_value* mode = json_array_get(cmd, 1)
 		if (mode.type == json_type_string()):
 			if (strcmp(mode.string_value, c"arm64") == 0):
-				if (wtest_qemu_arm64_available() == 0):
-					return c"qemu-aarch64-static not found"
+				if (wtest_qemu_arm64_available() == 0): return c"qemu-aarch64-static not found"
 			if (strcmp(mode.string_value, c"wasm") == 0):
 				if (wtest_wasm_runtime_available() == 0):
 					return c"no wasm runtime (wasmtime or node) found"
@@ -3530,10 +2432,10 @@ char* wtest_step_unavailable_reason(json_value* step):
 				if (strcmp(second.string_value, c"-c") == 0):
 					json_value* script = json_array_get(cmd, 2)
 					if (script.type == json_type_string()):
-						if (wtest_str_contains(script.string_value, c"bin/wrun arm64")):
+						if (contains(script.string_value, c"bin/wrun arm64")):
 							if (wtest_qemu_arm64_available() == 0):
 								return c"qemu-aarch64-static not found"
-						if (wtest_str_contains(script.string_value, c"bin/wrun wasm")):
+						if (contains(script.string_value, c"bin/wrun wasm")):
 							if (wtest_wasm_runtime_available() == 0):
 								return c"no wasm runtime (wasmtime or node) found"
 		return 0
@@ -3555,16 +2457,14 @@ char* wtest_step_unavailable_reason(json_value* step):
 
 char* wtest_target_unavailable_reason(char* name):
 	json_value* steps = wtest_target_steps(name)
-	if (steps == 0):
-		return 0
+	if (steps == 0): return 0
 	int i = 0
 	while (i < json_array_length(steps)):
 		char* reason = wtest_step_unavailable_reason(json_array_get(steps, i))
 		if (reason != 0):
 			return reason
 		i = i + 1
-	if (wtest_runnable_here_flag):
-		return wtest_target_runnable_reason(name)
+	if (wtest_runnable_here_flag): return wtest_target_runnable_reason(name)
 	return 0
 
 
@@ -3579,8 +2479,7 @@ void wtest_available_report(list[char*] reasons, list[int] counts, int total):
 		string_append(line, c"wtest: dropped ")
 		string_append_int(line, counts[i])
 		string_append(line, c" unavailable target")
-		if (counts[i] != 1):
-			string_append_char(line, 's')
+		if (counts[i] != 1): string_append_char(line, 's')
 		string_append(line, c" (")
 		string_append(line, reasons[i])
 		string_append_char(line, ')')
@@ -3606,23 +2505,19 @@ void wtest_apply_available_filter():
 			char* reason = wtest_target_unavailable_reason(name)
 			if (reason != 0):
 				wtest_enabled.remove(name)
-				if (wtest_unavailable_dropped == 0):
-					wtest_unavailable_dropped = new map[char*, int]
+				if (wtest_unavailable_dropped == 0): wtest_unavailable_dropped = new map[char*, int]
 				wtest_unavailable_dropped[name] = 1
 				total = total + 1
 				int index = -1
 				int i = 0
 				while (i < reasons.length):
-					if (strcmp(reasons[i], reason) == 0):
-						index = i
+					if (strcmp(reasons[i], reason) == 0): index = i
 					i = i + 1
 				if (index == -1):
 					reasons.push(reason)
 					counts.push(1)
-				else:
-					counts[index] = counts[index] + 1
-	if (total > 0):
-		wtest_available_report(reasons, counts, total)
+				else: counts[index] = counts[index] + 1
+	if (total > 0): wtest_available_report(reasons, counts, total)
 
 
 # An umbrella target: no steps of its own and a nonempty all-string
@@ -3632,24 +2527,17 @@ void wtest_apply_available_filter():
 # the collapse below may emit one to stand in for most of its members.
 int wtest_umbrella_target(char* name):
 	json_value* target = wtest_target_defs.get(name, 0)
-	if (target == 0):
-		return 0
+	if (target == 0): return 0
 	json_value* steps = wtest_target_steps(name)
 	if (steps != 0):
-		if (json_array_length(steps) > 0):
-			return 0
-	json_value* deps = json_object_get(target, c"deps")
-	if (deps == 0):
-		return 0
-	if (deps.type != json_type_array()):
-		return 0
-	if (json_array_length(deps) == 0):
-		return 0
+		if (json_array_length(steps) > 0): return 0
+	json_value* deps = jfield_array(target, c"deps")
+	if (deps == 0): return 0
+	if (json_array_length(deps) == 0): return 0
 	int i = 0
 	while (i < json_array_length(deps)):
 		json_value* dep = json_array_get(deps, i)
-		if (dep.type != json_type_string()):
-			return 0
+		if (dep.type != json_type_string()): return 0
 		i = i + 1
 	return 1
 
@@ -3660,25 +2548,18 @@ int wtest_umbrella_target(char* name):
 # running an umbrella runs every transitive dep, dropped members
 # included. 'visited' guards cycles and reconvergence.
 int wtest_deps_cover_dropped(char* name, map[char*, int] visited):
-	if (visited.get(name, 0)):
-		return 0
+	if (visited.get(name, 0)): return 0
 	visited[name] = 1
-	if (wtest_unavailable_dropped.get(name, 0)):
-		return 1
+	if (wtest_unavailable_dropped.get(name, 0)): return 1
 	json_value* target = wtest_target_defs.get(name, 0)
-	if (target == 0):
-		return 0
-	json_value* deps = json_object_get(target, c"deps")
-	if (deps == 0):
-		return 0
-	if (deps.type != json_type_array()):
-		return 0
+	if (target == 0): return 0
+	json_value* deps = jfield_array(target, c"deps")
+	if (deps == 0): return 0
 	int i = 0
 	while (i < json_array_length(deps)):
 		json_value* dep = json_array_get(deps, i)
 		if (dep.type == json_type_string()):
-			if (wtest_deps_cover_dropped(dep.string_value, visited)):
-				return 1
+			if (wtest_deps_cover_dropped(dep.string_value, visited)): return 1
 		i = i + 1
 	return 0
 
@@ -3693,11 +2574,9 @@ int wtest_deps_cover_dropped(char* name, map[char*, int] visited):
 # when the collapse thresholds already fired, so the note never prints
 # for an ordinary small selection.
 int wtest_collapse_blocked(char* name):
-	if (wtest_unavailable_dropped == 0):
-		return 0
+	if (wtest_unavailable_dropped == 0): return 0
 	map[char*, int] visited = new map[char*, int]
-	if (wtest_deps_cover_dropped(name, visited) == 0):
-		return 0
+	if (wtest_deps_cover_dropped(name, visited) == 0): return 0
 	wstream* err = stderr_writer()
 	string_builder* line = string_new()
 	string_append(line, c"wtest: not collapsing into ")
@@ -3722,19 +2601,14 @@ void wtest_collapse_selection():
 	for char* name in wtest_target_names:
 		if (wtest_selectable(name)):
 			total = total + 1
-			if (name in wtest_enabled):
-				enabled = enabled + 1
-	if (total == 0):
-		return
-	if (enabled * 2 <= total):
-		return
+			if (name in wtest_enabled): enabled = enabled + 1
+	if (total == 0): return
+	if (enabled * 2 <= total): return
 	int collapsed = 0
 	list[char*] umbrellas = new list[char*]
 	for char* name in wtest_target_names:
-		if (wtest_never_emit.get(name, 0)):
-			continue
-		if (wtest_umbrella_target(name) == 0):
-			continue
+		if (wtest_never_emit.get(name, 0)): continue
+		if (wtest_umbrella_target(name) == 0): continue
 		json_value* target = wtest_target_defs.get(name, 0)
 		json_value* deps = json_object_get(target, c"deps")
 		int member_total = 0
@@ -3744,15 +2618,11 @@ void wtest_collapse_selection():
 			json_value* dep = json_array_get(deps, i)
 			if (wtest_selectable(dep.string_value)):
 				member_total = member_total + 1
-				if (dep.string_value in wtest_enabled):
-					member_enabled = member_enabled + 1
+				if (dep.string_value in wtest_enabled): member_enabled = member_enabled + 1
 			i = i + 1
-		if (member_enabled == 0):
-			continue
-		if (member_enabled * 2 <= member_total):
-			continue
-		if (wtest_collapse_blocked(name)):
-			continue
+		if (member_enabled == 0): continue
+		if (member_enabled * 2 <= member_total): continue
+		if (wtest_collapse_blocked(name)): continue
 		i = 0
 		while (i < json_array_length(deps)):
 			json_value* dep = json_array_get(deps, i)
@@ -3766,20 +2636,17 @@ void wtest_collapse_selection():
 			i = i + 1
 		wtest_enabled[name] = 1
 		umbrellas.push(name)
-	if (collapsed == 0):
-		return
+	if (collapsed == 0): return
 	wstream* err = stderr_writer()
 	string_builder* line = string_new()
 	string_append(line, c"wtest: collapsed ")
 	string_append_int(line, collapsed)
 	string_append(line, c" target")
-	if (collapsed != 1):
-		string_append_char(line, 's')
+	if (collapsed != 1): string_append_char(line, 's')
 	string_append(line, c" into ")
 	int u = 0
 	while (u < umbrellas.length):
-		if (u > 0):
-			string_append(line, c", ")
+		if (u > 0): string_append(line, c", ")
 		string_append(line, umbrellas[u])
 		u = u + 1
 	string_append(line, c" (selection covered ")
@@ -3820,14 +2687,11 @@ void wtest_emit_targets():
 int wtest_run_selected():
 	list[char*] selected = new list[char*]
 	for char* name in wtest_target_names:
-		if (name in wtest_enabled):
-			selected.push(name)
-	if (selected.length == 0):
-		return 0
+		if (name in wtest_enabled): selected.push(name)
+	if (selected.length == 0): return 0
 	int custom_manifest = wtest_manifest_path != 0
 	int prefix = 1
-	if (custom_manifest):
-		prefix = 3
+	if (custom_manifest): prefix = 3
 	char** argv = strv_new(prefix + selected.length)
 	strv_set(argv, 0, c"bin/wexec")
 	if (custom_manifest):
@@ -3844,8 +2708,7 @@ int wtest_run_selected():
 		return 1
 	int status = process_wait(p)
 	process_free(p)
-	if (status < 0):
-		return 1
+	if (status < 0): return 1
 	return status
 
 
@@ -3880,24 +2743,20 @@ int wtest_archs_closures_ready
 
 
 void wtest_archs_ensure_roots():
-	if (wtest_archs_pair_roots != 0):
-		return
+	if (wtest_archs_pair_roots != 0): return
 	wtest_archs_pair_roots = new list[char*]
 	wtest_archs_pair_targets = new list[char*]
 	wtest_archs_roots = new list[char*]
 	map[char*, int] seen = new map[char*, int]
 	for char* name in wtest_target_names:
 		json_value* steps = wtest_target_steps(name)
-		if (steps == 0):
-			continue
-		if (json_array_length(steps) == 0):
-			continue
+		if (steps == 0): continue
+		if (json_array_length(steps) == 0): continue
 		list[char*] roots = new list[char*]
 		wtest_collect_target_roots(name, roots)
 		map[char*, int] target_seen = new map[char*, int]
 		for char* root in roots:
-			if (target_seen.get(root, 0)):
-				continue
+			if (target_seen.get(root, 0)): continue
 			target_seen[root] = 1
 			wtest_archs_pair_roots.push(root)
 			wtest_archs_pair_targets.push(name)
@@ -3906,21 +2765,17 @@ void wtest_archs_ensure_roots():
 				wtest_archs_roots.push(root)
 
 
-# Shares its closure storage (wtest_closure_roots/blobs) and on-disk
-# cache (bin/.wtest_deps_cache, via wtest_closure_get/known/store and
-# wtest_cache_load/save) with the standard changed/for machinery: a
+# Shares its closure storage and on-disk cache (bin/.wtest_deps_cache,
+# via wtest_closure_get/known/compute and wtest_cache_load/save) with
+# the standard changed/for machinery: a
 # root both sides care about (almost all of them -- archs' root set is
 # a superset) is only ever run through 'bin/wv2 deps' once, whichever
 # command hits it first.
 void wtest_archs_ensure_closures():
-	if (wtest_archs_closures_ready):
-		return
+	if (wtest_archs_closures_ready): return
 	wtest_archs_closures_ready = 1
 	wtest_archs_ensure_roots()
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	wtest_compute_closures(wtest_archs_roots)
 
 
@@ -3933,8 +2788,7 @@ void wtest_archs_ensure_closures():
 int wtest_archs_root_matches(char* root, char* path):
 	char* root_path = wtest_root_id_path(root)
 	if (root_path != 0):
-		if (strcmp(root_path, path) == 0):
-			return 1
+		if (strcmp(root_path, path) == 0): return 1
 	return wtest_closure_contains(wtest_closure_get(root), path)
 
 
@@ -3944,8 +2798,7 @@ void wtest_archs_matches(char* path, list[char*] out_roots):
 	wtest_archs_ensure_closures()
 	map[char*, int] seen = new map[char*, int]
 	for char* root in wtest_archs_roots:
-		if (seen.get(root, 0)):
-			continue
+		if (seen.get(root, 0)): continue
 		if (wtest_archs_root_matches(root, path)):
 			seen[root] = 1
 			out_roots.push(root)
@@ -3960,8 +2813,7 @@ char* wtest_archs_targets_for(char* root):
 	int first = 1
 	while (i < wtest_archs_pair_roots.length):
 		if (strcmp(wtest_archs_pair_roots[i], root) == 0):
-			if (first == 0):
-				string_append_char(s, ',')
+			if (first == 0): string_append_char(s, ',')
 			string_append(s, wtest_archs_pair_targets[i])
 			first = 0
 		i = i + 1
@@ -3976,8 +2828,7 @@ char* wtest_archs_split_arch(char* root):
 	char* arch = strclone(root)
 	int j = 0
 	while (arch[j] != 0):
-		if (arch[j] == ' '):
-			arch[j] = 0
+		if (arch[j] == ' '): arch[j] = 0
 		j = j + 1
 	return arch
 
@@ -4029,8 +2880,7 @@ int wtest_archs_check(char* path):
 		char* rootfile = wtest_root_id_path(root)
 		int is_default = strcmp(arch, c"x86") == 0
 		int count = 3
-		if (is_default == 0):
-			count = 4
+		if (is_default == 0): count = 4
 		char** argv = strv_new(count)
 		strv_set(argv, 0, c"bin/wv2")
 		if (is_default):
@@ -4045,8 +2895,7 @@ int wtest_archs_check(char* path):
 		stream_write_cstr(out, arch)
 		stream_write_byte(out, ' ')
 		stream_write_cstr(out, rootfile)
-		if ((result != 0) && (result.status == 0)):
-			stream_write_line(out, c": OK")
+		if ((result != 0) && (result.status == 0)): stream_write_line(out, c": OK")
 		else:
 			stream_write_line(out, c": FAIL")
 			failures = failures + 1
@@ -4060,25 +2909,22 @@ int wtest_archs_check(char* path):
 							stream_write_cstr(out, c"  ")
 							stream_write_line(out, line.data)
 							string_clear(line)
-					else:
-						string_append_char(line, ch)
+					else: string_append_char(line, ch)
 					k = k + 1
 				if (line.length > 0):
 					stream_write_cstr(out, c"  ")
 					stream_write_line(out, line.data)
 				string_free(line)
-		if (result != 0):
-			process_result_free(result)
+		if (result != 0): process_result_free(result)
 		free(arch)
 	stream_flush(out)
-	if (failures > 0):
-		return 1
+	if (failures > 0): return 1
 	return 0
 
 
 # 'wtest archs <file>... [--check] [-f manifest.json]': its own small
 # argument loop rather than folding into the changed/for one below --
-# --run/--available/--defhash/--base-manifest are meaningless here (there
+# --run/--available/--defhash are meaningless here (there
 # is no selection to run or refine), and unlike 'for', a bare 'wtest
 # archs' with no file is caught by the same "no path is a usage error"
 # rule without needing stdin fallback.
@@ -4089,8 +2935,7 @@ int wtest_archs_main(int argc, int argv):
 	int i = 2
 	while (i < argc):
 		char** arg = argv + i * __word_size__
-		if (strcmp(*arg, c"--check") == 0):
-			check_flag = 1
+		if (strcmp(*arg, c"--check") == 0): check_flag = 1
 		else if (strcmp(*arg, c"-f") == 0):
 			i = i + 1
 			if (i >= argc):
@@ -4098,21 +2943,17 @@ int wtest_archs_main(int argc, int argv):
 				return 1
 			char** value = argv + i * __word_size__
 			wtest_manifest_path = *value
-		else:
-			paths.push(*arg)
+		else: paths.push(*arg)
 		i = i + 1
 	if (paths.length == 0):
 		wtest_usage()
 		return 1
-	if (wtest_load_manifest()):
-		return 1
+	if (wtest_load_manifest()): return 1
 	int failures = 0
 	for char* path in paths:
 		if (check_flag):
-			if (wtest_archs_check(path)):
-				failures = 1
-		else:
-			wtest_archs_report(path)
+			if (wtest_archs_check(path)): failures = 1
+		else: wtest_archs_report(path)
 	return failures
 
 
@@ -4120,8 +2961,7 @@ int wtest_archs_main(int argc, int argv):
 void wtest_append_file_count(string_builder* s, int n):
 	string_append_int(s, n)
 	string_append(s, c" file")
-	if (n != 1):
-		string_append_char(s, 's')
+	if (n != 1): string_append_char(s, 's')
 
 
 # Non-empty line count of a closure blob (its file count).
@@ -4130,11 +2970,9 @@ int wtest_closure_count(char* blob):
 	int in_line = 0
 	int i = 0
 	while (blob[i] != 0):
-		if (blob[i] == 10):
-			in_line = 0
+		if (blob[i] == 10): in_line = 0
 		else:
-			if (in_line == 0):
-				count = count + 1
+			if (in_line == 0): count = count + 1
 			in_line = 1
 		i = i + 1
 	return count
@@ -4153,56 +2991,21 @@ void wtest_why_cache_section(char* id, wstream* out):
 	if (text == 0):
 		stream_write_line(out, c"cache: no bin/.wtest_deps_cache (cold; 'bin/wv2 deps' runs on the next selection)")
 		return
-	int kind = 0
-	int in_match = 0
-	int found = 0
-	char* expected = 0
-	char* vhash = 0
-	char* missing = 0
-	char* detail = 0
-	int files = 0
-	string_builder* blob = string_new()
-	string_append_char(blob, 10)
-	string_builder* line = string_new()
-	int i = 0
-	int at_end = 0
-	while (at_end == 0):
-		int c = text[i]
-		if (c == 0):
-			at_end = 1
-		if ((c == 10) || (c == 0)):
-			char* entry = line.data
-			if (starts_with(entry, c"R ") | starts_with(entry, c"X ")):
-				in_match = 0
-				if (strcmp(entry + 2, id) == 0):
-					found = 1
-					in_match = 1
-					kind = 1
-					if (entry[0] == 'X'):
-						kind = 2
-			else if (in_match):
-				if (starts_with(entry, c"H ")):
-					expected = strclone(entry + 2)
-				else if (starts_with(entry, c"V ")):
-					vhash = strclone(entry + 2)
-				else if (starts_with(entry, c"M ")):
-					missing = strclone(entry + 2)
-				else if (starts_with(entry, c"E ")):
-					detail = strclone(entry + 2)
-				else if (starts_with(entry, c"F ")):
-					files = files + 1
-					string_append(blob, entry + 2)
-					string_append_char(blob, 10)
-			string_clear(line)
-		else:
-			string_append_char(line, c)
-		i = i + 1
-	string_free(line)
+	deps_entry* e = 0
+	for deps_entry* record in deps_cache_parse(text):
+		if (strcmp(record.id, id) == 0): e = record
 	free(text)
-	if (found == 0):
+	if (e == 0):
 		stream_write_line(out, c"cache: no entry for this root (never computed, or the last failure was non-persistable: timeouts, spawn failures and bin/wv2-missing runs are never cached)")
-		string_free(blob)
 		return
+	int kind = 1
+	if (e.failed): kind = 2
+	char* expected = e.digest
+	char* vhash = e.vhash
+	char* missing = e.missing
+	char* detail = e.detail
+	int files = 0
+	if (e.blob != 0): files = wtest_closure_count(e.blob)
 	if (kind == 1):
 		string_builder* s = string_new()
 		string_append(s, c"cache: success entry (")
@@ -4214,7 +3017,7 @@ void wtest_why_cache_section(char* id, wstream* out):
 			string_builder* v = string_new()
 			string_append(v, c"  computed under bin/wv2 ")
 			string_append(v, vhash)
-			if (strcmp(wtest_file_hash(c"bin/wv2"), vhash) == 0):
+			if (strcmp(deps_file_hash(c"bin/wv2"), vhash) == 0):
 				string_append(v, c" (current bin/wv2: same)")
 			else:
 				string_append(v, c" (current bin/wv2 differs; the closure stays valid while its file contents do)")
@@ -4222,8 +3025,7 @@ void wtest_why_cache_section(char* id, wstream* out):
 			string_free(v)
 		int valid = 0
 		if (expected != 0):
-			if (strcmp(wtest_closure_digest(blob.data), expected) == 0):
-				valid = 1
+			if (strcmp(deps_digest(e.blob), expected) == 0): valid = 1
 		if (valid):
 			stream_write_line(out, c"  status: valid -- rule (b) closure selection is live for this root")
 		else:
@@ -4234,10 +3036,8 @@ void wtest_why_cache_section(char* id, wstream* out):
 		char* root_path = wtest_root_id_path(id)
 		int root_same = 0
 		if ((expected != 0) && (root_path != 0)):
-			if (strcmp(wtest_file_hash(root_path), expected) == 0):
-				root_same = 1
-		if (root_same):
-			stream_write_line(out, c"  root content: unchanged since the failure")
+			if (strcmp(deps_file_hash(root_path), expected) == 0): root_same = 1
+		if (root_same): stream_write_line(out, c"  root content: unchanged since the failure")
 		else:
 			valid = 0
 			stream_write_line(out, c"  root content: changed since the failure -> retried on the next selection")
@@ -4245,7 +3045,7 @@ void wtest_why_cache_section(char* id, wstream* out):
 			string_builder* v = string_new()
 			string_append(v, c"  recorded under bin/wv2 ")
 			string_append(v, vhash)
-			if (strcmp(wtest_file_hash(c"bin/wv2"), vhash) == 0):
+			if (strcmp(deps_file_hash(c"bin/wv2"), vhash) == 0):
 				string_append(v, c" (current: same)")
 			else:
 				valid = 0
@@ -4263,8 +3063,7 @@ void wtest_why_cache_section(char* id, wstream* out):
 			if (wtest_file_exists(missing)):
 				valid = 0
 				string_append(m, c" (now present -> retried on the next selection)")
-			else:
-				string_append(m, c" (still absent)")
+			else: string_append(m, c" (still absent)")
 			stream_write_line(out, m.data)
 			string_free(m)
 		if (detail != 0):
@@ -4277,7 +3076,6 @@ void wtest_why_cache_section(char* id, wstream* out):
 			stream_write_line(out, c"  status: valid -- rule (b) is disabled for this root; its targets select via literal/residue rules only")
 		else:
 			stream_write_line(out, c"  status: stale -- 'bin/wv2 deps' re-runs on the next selection")
-	string_free(blob)
 
 
 # 'wtest why [<arch>] <file.w> [-f manifest.json]' (header comment):
@@ -4302,8 +3100,7 @@ int wtest_why_main(int argc, int argv):
 			wtest_manifest_path = *value
 		else if ((arch == 0) && (path == 0) && (wtest_selector(*arg) || (strcmp(*arg, c"x86") == 0))):
 			arch = *arg
-		else if (path == 0):
-			path = *arg
+		else if (path == 0): path = *arg
 		else:
 			wtest_usage()
 			return 1
@@ -4311,10 +3108,8 @@ int wtest_why_main(int argc, int argv):
 	if (path == 0):
 		wtest_usage()
 		return 1
-	if (arch == 0):
-		arch = c"x86"
-	if (wtest_load_manifest()):
-		return 1
+	if (arch == 0): arch = c"x86"
+	if (wtest_load_manifest()): return 1
 	char* id = wtest_root_id(arch, path)
 	wstream* out = stdout_writer()
 	string_builder* head = string_new()
@@ -4323,8 +3118,7 @@ int wtest_why_main(int argc, int argv):
 	string_append_char(head, 39)
 	stream_write_line(out, head.data)
 	string_free(head)
-	if (wtest_file_exists(path)):
-		stream_write_line(out, c"root file: present")
+	if (wtest_file_exists(path)): stream_write_line(out, c"root file: present")
 	else:
 		stream_write_line(out, c"root file: MISSING (no closure can be computed; deleted paths select via residue rules)")
 	# Owning targets, from the archs superset of rule (b)'s pairs so
@@ -4332,8 +3126,7 @@ int wtest_why_main(int argc, int argv):
 	wtest_archs_ensure_roots()
 	int owned = 0
 	for char* known_root in wtest_archs_roots:
-		if (strcmp(known_root, id) == 0):
-			owned = 1
+		if (strcmp(known_root, id) == 0): owned = 1
 	if (owned):
 		string_builder* own = string_new()
 		string_append(own, c"compile root of: ")
@@ -4347,8 +3140,7 @@ int wtest_why_main(int argc, int argv):
 	else:
 		stream_write_line(out, c"compile root of: no target in this manifest compiles this (arch, file) pair -- rule (b) never consults it")
 	wtest_why_cache_section(id, out)
-	if (wtest_file_exists(c"bin/wv2")):
-		stream_write_line(out, c"bin/wv2: present")
+	if (wtest_file_exists(c"bin/wv2")): stream_write_line(out, c"bin/wv2: present")
 	else:
 		stream_write_line(out, c"bin/wv2: MISSING -- 'bin/wv2 deps' cannot run (run a build first)")
 	stream_flush(out)
@@ -4356,10 +3148,7 @@ int wtest_why_main(int argc, int argv):
 	# cached success or failure holds exactly as a selection would see
 	# it; anything else is computed NOW and saved, so a 'why' also
 	# warms the cache (mirroring wtest_seed_closure).
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	if (wtest_closure_known(id)):
 		char* cached = wtest_closure_get(id)
 		if (cached != 0):
@@ -4369,8 +3158,7 @@ int wtest_why_main(int argc, int argv):
 			string_append(c1, c" (validated cache)")
 			stream_write_line(out, c1.data)
 			string_free(c1)
-		else:
-			stream_write_line(out, c"closure: unavailable (the cached failure above still holds)")
+		else: stream_write_line(out, c"closure: unavailable (the cached failure above still holds)")
 	else:
 		char* blob = wtest_closure_compute(id)
 		wtest_cache_save()
@@ -4384,13 +3172,9 @@ int wtest_why_main(int argc, int argv):
 		else:
 			string_builder* c3 = string_new()
 			string_append(c3, c"closure: unavailable -- live 'bin/wv2 deps' run failed: ")
-			char* live_detail = 0
-			if (wtest_failure_lines != 0):
-				live_detail = wtest_failure_lines.get(id, 0)
-			if (live_detail != 0):
-				string_append(c3, live_detail)
-			else:
-				string_append(c3, c"(no detail)")
+			char* live_detail = wtest_failure_line(id)
+			if (live_detail != 0): string_append(c3, live_detail)
+			else: string_append(c3, c"(no detail)")
 			stream_write_line(out, c3.data)
 			string_free(c3)
 	stream_flush(out)
@@ -4407,11 +3191,10 @@ int wtest_why_main(int argc, int argv):
 	stream_flush(out)
 	wtest_map_path(path)
 	wtest_ensure_roots()
-	int has_slash = wtest_str_contains(path, c"/")
+	int has_slash = contains(path, c"/")
 	int printed = 0
 	for char* name in wtest_target_names:
-		if (wtest_enabled.get(name, 0) == 0):
-			continue
+		if (wtest_enabled.get(name, 0) == 0): continue
 		string_builder* entry = string_new()
 		string_append(entry, c"  ")
 		string_append(entry, name)
@@ -4421,26 +3204,22 @@ int wtest_why_main(int argc, int argv):
 		while (j < wtest_pair_roots.length):
 			if (strcmp(wtest_pair_targets[j], name) == 0):
 				if (wtest_closure_contains(wtest_closure_get(wtest_pair_roots[j]), path)):
-					if (first == 0):
-						string_append(entry, c"; ")
+					if (first == 0): string_append(entry, c"; ")
 					string_append(entry, c"closure of root '")
 					string_append(entry, wtest_pair_roots[j])
 					string_append_char(entry, 39)
 					first = 0
 			j = j + 1
 		if (wtest_target_mentions(name, path, has_slash) || wtest_target_data_mentions(name, path)):
-			if (first == 0):
-				string_append(entry, c"; ")
+			if (first == 0): string_append(entry, c"; ")
 			string_append(entry, c"literal step reference")
 			first = 0
-		if (first):
-			string_append(entry, c"residue rule")
+		if (first): string_append(entry, c"residue rule")
 		string_append_char(entry, ')')
 		stream_write_line(out, entry.data)
 		string_free(entry)
 		printed = printed + 1
-	if (printed == 0):
-		stream_write_line(out, c"  (nothing selected)")
+	if (printed == 0): stream_write_line(out, c"  (nothing selected)")
 	stream_flush(out)
 	return 0
 
@@ -4472,16 +3251,12 @@ int wtest_cache_main(int argc, int argv):
 			wtest_usage()
 			return 1
 		i = i + 1
-	if (wtest_load_manifest()):
-		return 1
+	if (wtest_load_manifest()): return 1
 	if (wtest_file_exists(c"bin/wv2") == 0):
 		wtest_error(c"cannot warm the deps cache: ", c"bin/wv2 not found (run a build first)")
 		return 1
 	wtest_archs_ensure_roots()
-	if (wtest_closure_roots == 0):
-		wtest_closure_roots = new list[char*]
-		wtest_closure_blobs = new list[char*]
-		wtest_cache_load()
+	wtest_cache_load()
 	list[char*] roots = new list[char*]
 	roots.push(wtest_root_id(c"x86", c"w.w"))
 	list[char*] arch_words = new list[char*]
@@ -4493,17 +3268,14 @@ int wtest_cache_main(int argc, int argv):
 	for char* arch in arch_words:
 		char* arch_verify = wtest_arch_verify_target(arch)
 		if (arch_verify != 0):
-			if (wtest_target_defs.get(arch_verify, 0) != 0):
-				roots.push(wtest_root_id(arch, c"w.w"))
+			if (wtest_target_defs.get(arch_verify, 0) != 0): roots.push(wtest_root_id(arch, c"w.w"))
 	# The archs superset never contains w.w (wtest_excluded_root), so
 	# the concatenation stays duplicate-free.
-	for char* archs_root in wtest_archs_roots:
-		roots.push(archs_root)
+	for char* archs_root in wtest_archs_roots: roots.push(archs_root)
 	wtest_compute_closures(roots)
 	int failed = 0
 	for char* warmed in roots:
-		if (wtest_closure_get(warmed) == 0):
-			failed = failed + 1
+		if (wtest_closure_get(warmed) == 0): failed = failed + 1
 	wstream* out = stdout_writer()
 	string_builder* line = string_new()
 	string_append(line, c"wtest: deps cache ready (")
@@ -4521,26 +3293,22 @@ int wtest_cache_main(int argc, int argv):
 
 
 int main(int argc, int argv):
-	wtest_mask32 = wtest_mask32_value()
+	deps_cache_path = c"bin/.wtest_deps_cache"
 	if (argc < 2):
 		wtest_usage()
 		return 1
 	char** command = argv + __word_size__
 	int for_mode = strcmp(*command, c"for") == 0
-	if (strcmp(*command, c"archs") == 0):
-		return wtest_archs_main(argc, argv)
-	if (strcmp(*command, c"why") == 0):
-		return wtest_why_main(argc, argv)
-	if (strcmp(*command, c"cache") == 0):
-		return wtest_cache_main(argc, argv)
+	if (strcmp(*command, c"archs") == 0): return wtest_archs_main(argc, argv)
+	if (strcmp(*command, c"why") == 0): return wtest_why_main(argc, argv)
+	if (strcmp(*command, c"cache") == 0): return wtest_cache_main(argc, argv)
 	if ((strcmp(*command, c"changed") != 0) && (for_mode == 0)):
 		wtest_usage()
 		return 1
 	wtest_manifest_path = 0
-	# A first pass just for the manifest flags: both manifests must be
-	# loaded before selection starts below, but "-f"/"--base-manifest"
-	# may appear anywhere after "changed" (mirroring bin/wexec's own
-	# flag), so they are found ahead of the argument loop that does the
+	# A first pass just for the manifest flag: the manifest must be
+	# loaded before selection starts below, but "-f" may appear anywhere
+	# after "changed" (mirroring bin/wexec's own flag), so it is found ahead of the argument loop that does the
 	# real work. The same pass spots a commit-ranged argument (header
 	# comment, "Commit-ranged selection") -- 'changed' only, the non-flag
 	# argument containing ".." (a second one is an argument error) -- so
@@ -4559,45 +3327,26 @@ int main(int argc, int argv):
 				return 1
 			char** value = argv + pre * __word_size__
 			wtest_manifest_path = *value
-		else if (strcmp(argval, c"--base-manifest") == 0):
-			pre = pre + 1
-			if (pre >= argc):
-				wtest_usage()
-				return 1
-			char** base_value = argv + pre * __word_size__
-			wtest_base_manifest_path = *base_value
-		else if ((for_mode == 0) && (argval[0] != '-') && wtest_str_contains(argval, c"..")):
+		else if ((for_mode == 0) && (argval[0] != '-') && contains(argval, c"..")):
 			if (range_index != 0):
 				wtest_error(c"only one revision range argument is allowed, got a second: ", argval)
 				return 1
 			range_index = pre
 		pre = pre + 1
-	if (wtest_load_manifest()):
-		return 1
-	if (wtest_base_manifest_path != 0):
-		if (wtest_load_base_manifest()):
-			return 1
+	if (wtest_load_manifest()): return 1
 	int saw_file = 0
 	int i = 2
 	while (i < argc):
 		char** arg = argv + i * __word_size__
-		if (strcmp(*arg, c"--verbose") == 0):
-			wtest_verbose = 1
-		else if (strcmp(*arg, c"--run") == 0):
-			wtest_run_flag = 1
-		else if (strcmp(*arg, c"--available") == 0):
-			wtest_available_flag = 1
-		else if (strcmp(*arg, c"--runnable-here") == 0):
-			wtest_runnable_here_flag = 1
-		else if (strcmp(*arg, c"--defhash") == 0):
-			wtest_defhash_flag = 1
+		if (strcmp(*arg, c"--verbose") == 0): wtest_verbose = 1
+		else if (strcmp(*arg, c"--run") == 0): wtest_run_flag = 1
+		else if (strcmp(*arg, c"--available") == 0): wtest_available_flag = 1
+		else if (strcmp(*arg, c"--runnable-here") == 0): wtest_runnable_here_flag = 1
+		else if (strcmp(*arg, c"--defhash") == 0): wtest_defhash_flag = 1
 		else if (strcmp(*arg, c"-f") == 0):
 			i = i + 1   # value already consumed by the pre-scan above
-		else if (strcmp(*arg, c"--base-manifest") == 0):
-			i = i + 1   # value already consumed by the pre-scan above
 		else if (i == range_index):
-			if (wtest_range_expand(*arg)):
-				return 1
+			if (wtest_range_expand(*arg)): return 1
 			saw_file = 1
 		else:
 			wtest_map_path(*arg)
@@ -4612,19 +3361,15 @@ int main(int argc, int argv):
 	if ((saw_file == 0) && (for_mode == 0)):
 		wstream* in = stdin_reader()
 		string_builder* line = string_new()
-		while (stream_read_line(in, line)):
-			wtest_map_path(line.data)
+		while (stream_read_line(in, line)): wtest_map_path(line.data)
 		string_free(line)
 		# The committed-clean footgun (header comment, --defhash): only a
 		# stdin-piped path list can plausibly be a ranged diff's output,
 		# so the warning is scoped to this branch — positional paths were
 		# named deliberately, and a range argument never reads stdin.
-		if (wtest_defhash_clean_count > 0):
-			wtest_defhash_clean_warning()
-	if (wtest_available_flag || wtest_runnable_here_flag):
-		wtest_apply_available_filter()
+		if (wtest_defhash_clean_count > 0): wtest_defhash_clean_warning()
+	if (wtest_available_flag || wtest_runnable_here_flag): wtest_apply_available_filter()
 	wtest_collapse_selection()
 	wtest_emit_targets()
-	if (wtest_run_flag):
-		return wtest_run_selected()
+	if (wtest_run_flag): return wtest_run_selected()
 	return 0

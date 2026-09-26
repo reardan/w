@@ -30,42 +30,28 @@ int expression();
 # Intrinsic index for the current token: 1 shr, 2 rotl, 3 rotr,
 # 4 popcount, 5 clz, 6 ctz; 0 when the token is not an intrinsic name.
 int bit_builtin_kind():
-	if (peek(c"shr")):
-		return 1
-	if (peek(c"rotl")):
-		return 2
-	if (peek(c"rotr")):
-		return 3
-	if (peek(c"popcount")):
-		return 4
-	if (peek(c"clz")):
-		return 5
-	if (peek(c"ctz")):
-		return 6
+	if (peek(c"shr")): return 1
+	if (peek(c"rotl")): return 2
+	if (peek(c"rotr")): return 3
+	if (peek(c"popcount")): return 4
+	if (peek(c"clz")): return 5
+	if (peek(c"ctz")): return 6
 	return 0
 
 
 char* bit_builtin_name(int kind):
-	if (kind == 1):
-		return c"shr"
-	if (kind == 2):
-		return c"rotl"
-	if (kind == 3):
-		return c"rotr"
-	if (kind == 4):
-		return c"popcount"
-	if (kind == 5):
-		return c"clz"
+	if (kind == 1): return c"shr"
+	if (kind == 2): return c"rotl"
+	if (kind == 3): return c"rotr"
+	if (kind == 4): return c"popcount"
+	if (kind == 5): return c"clz"
 	return c"ctz"
 
 
 int bit_builtin_ready():
-	if (nextc != '('):
-		return 0
-	if (bit_builtin_kind() == 0):
-		return 0
-	if (sym_lookup(token) >= 0):
-		return 0
+	if (nextc != '('): return 0
+	if (bit_builtin_kind() == 0): return 0
+	if (sym_lookup(token) >= 0): return 0
 	return 1
 
 
@@ -81,25 +67,15 @@ int bit_builtin_expr():
 	expect(c"(")
 	limb_builtin_int_argument(name, 0, int_type)
 	if (kind <= 3):
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		expect(c",")
 		limb_builtin_int_argument(name, 1, int_type)
-		pop_ebx()
-		stack_pos = stack_pos - 1
-		if (kind == 1):
-			alu_shr32()
-		else if (kind == 2):
-			alu_rotl32()
-		else:
-			alu_rotr32()
-	else if (kind == 4):
-		alu_popcount32()
-	else if (kind == 5):
-		alu_clz32()
-	else:
-		alu_ctz32()
-	if (peek(c")") == 0):
-		diag_part(c"')' expected in ")
-		error(name)
+		pop_ebx_slot()
+		if (kind == 1): alu_shr32()
+		else if (kind == 2): alu_rotl32()
+		else: alu_rotr32()
+	else if (kind == 4): alu_popcount32()
+	else if (kind == 5): alu_clz32()
+	else: alu_ctz32()
+	if (peek(c")") == 0): error2(c"')' expected in ", name)
 	return type_value(int_type)

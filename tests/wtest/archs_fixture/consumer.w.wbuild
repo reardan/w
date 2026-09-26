@@ -3,7 +3,7 @@
 # wbuild: step="bin/wtest_map_check tests/wtest/map_expectations_fail.expect" expect_fail expect_stderr="wtest_map_check: FAIL" expect_stderr="selection out of manifest order (or duplicate): wv2 (-f fixture tests/wtest/manifest_order_fail.json: -f fixture manifests must mirror build.json's relative order (or add 'noorder'))"
 # wbuild: step="bin/wtest changed lib/file.w" cwd=docs expect_fail expect_stderr="wtest: error: cannot read build.json"
 # wbuild: step="bin/wtest changed docs/todo.txt" expect_stderr="wtest: 0 targets selected"
-# wbuild: step="bin/wtest" expect_fail expect_stderr="usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]"
+# wbuild: step="bin/wtest" expect_fail expect_stderr="usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [file...]"
 # wbuild: step="bin/wtest changed -f tests/wtest/manifest_unavailable.json --available widget/marker.dat" expect_stdout="custom_widget_ok" reject_stdout="custom_widget_needs_mac" expect_stderr="wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"
 # wbuild: step="bin/wtest changed -f tests/wtest/manifest_unavailable.json --runnable-here widget/marker.dat" expect_stdout="custom_widget_ok" reject_stdout="custom_widget_needs_mac" expect_stderr="wtest: dropped 1 unavailable target (tools/mac/does_not_exist.sh not found)"
 # wbuild: step="bin/wtest changed -f tests/wtest/manifest_collapse.json widget/collapse_all.dat" expect_stdout="collapse_all" reject_stdout="collapse_w1" expect_stderr="wtest: collapsed 4 targets into collapse_all (selection covered 4 of 5 selectable targets)"
@@ -16,7 +16,7 @@
 # wbuild: step="bin/wtest why -f tests/wtest/manifest_archs.json tests/wtest/archs_fixture/consumer.w" expect_stdout="wtest: why root 'x86 tests/wtest/archs_fixture/consumer.w'" expect_stdout="root file: present" expect_stdout="compile root of: archs_fixture_default,archs_fixture_default_run" expect_stdout="archs_fixture_default (closure of root 'x86 tests/wtest/archs_fixture/consumer.w'; literal step reference)"
 # wbuild: step="bin/wtest why -f tests/wtest/manifest_archs.json win64 tests/wtest/archs_fixture/consumer.w" expect_stdout="wtest: why root 'win64 tests/wtest/archs_fixture/consumer.w'" expect_stdout="compile root of: archs_fixture_win64" expect_stdout="archs_fixture_win64 (literal step reference)"
 # wbuild: target=wtest_archs_test tag=tests dep=wtest dep=wv2 data=tests/wtest/archs_fixture/ data=tests/wtest/manifest_archs.json
-# wbuild: step="bin/wtest" expect_fail expect_stderr="usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [--base-manifest base.json] [file...]"
+# wbuild: step="bin/wtest" expect_fail expect_stderr="usage: wtest changed [--verbose] [--run] [--available] [-f manifest.json] [file...]"
 # wbuild: step="bin/wtest archs" expect_fail expect_stderr="wtest archs <file>... [--check] [-f manifest.json]"
 # wbuild: step="bin/wtest archs -f tests/wtest/manifest_archs.json tests/wtest/archs_fixture/consumer.w" expect_stdout="x86 tests/wtest/archs_fixture/consumer.w -> archs_fixture_default,archs_fixture_default_run" expect_stdout="win64 tests/wtest/archs_fixture/consumer.w -> archs_fixture_win64" expect_stdout="arm64_darwin tests/wtest/archs_fixture/consumer.w -> archs_fixture_darwin"
 # wbuild: step="bin/wtest archs -f tests/wtest/manifest_archs.json tests/wtest/archs_fixture/thinglib/__arch__/x86/thing.w" expect_stdout="x86 tests/wtest/archs_fixture/consumer.w" reject_stdout="win64"

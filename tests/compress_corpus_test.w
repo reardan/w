@@ -41,14 +41,11 @@ list[compress_corpus_entry] compress_corpus_load(char* path):
 	while (index < lines.length):
 		char* line = lines[index]
 		index = index + 1
-		if (line[0] == 0):
-			continue
-		if (line[0] == '#'):
-			continue
+		if (line[0] == 0): continue
+		if (line[0] == '#'): continue
 		int bar = 0
 		int line_len = strlen(line)
-		while ((bar < line_len) && (line[bar] != '|')):
-			bar = bar + 1
+		while ((bar < line_len) && (line[bar] != '|')): bar = bar + 1
 		asserts(c"bad corpus line: missing '|'", bar < line_len)
 		int complen = 0
 		char* compressed = hex_decode(line, bar, &complen)

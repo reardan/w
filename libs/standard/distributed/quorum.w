@@ -38,10 +38,7 @@ struct quorum_config:
 
 
 quorum_config* quorum_config_new(int n, int r, int w):
-	quorum_config* cfg = new quorum_config()
-	cfg.n = n
-	cfg.r = r
-	cfg.w = w
+	quorum_config* cfg = new quorum_config(n, r, w)
 	return cfg
 
 
@@ -53,14 +50,10 @@ void quorum_config_free(quorum_config* cfg):
 # 1 <= w <= n and r + w > n, so a read quorum always intersects the
 # latest write quorum (Dynamo §4.5). n < 1 is never strict.
 int quorum_config_strict(quorum_config* cfg):
-	if (cfg.n < 1):
-		return 0
-	if (cfg.r < 1 || cfg.r > cfg.n):
-		return 0
-	if (cfg.w < 1 || cfg.w > cfg.n):
-		return 0
-	if (cfg.r + cfg.w > cfg.n):
-		return 1
+	if (cfg.n < 1): return 0
+	if (cfg.r < 1 || cfg.r > cfg.n): return 0
+	if (cfg.w < 1 || cfg.w > cfg.n): return 0
+	if (cfg.r + cfg.w > cfg.n): return 1
 	return 0
 
 
@@ -83,11 +76,7 @@ struct quorum_tally:
 
 quorum_tally* quorum_tally_new(int needed, int total):
 	assert1(needed >= 1 && needed <= total)
-	quorum_tally* t = new quorum_tally()
-	t.needed = needed
-	t.total = total
-	t.acks = 0
-	t.naks = 0
+	quorum_tally* t = new quorum_tally(needed, total, 0, 0)
 	return t
 
 
@@ -101,8 +90,7 @@ void quorum_tally_free(quorum_tally* t):
 int quorum_tally_ack(quorum_tally* t):
 	assert1(t.acks + t.naks < t.total)
 	t.acks = t.acks + 1
-	if (t.acks == t.needed):
-		return 1
+	if (t.acks == t.needed): return 1
 	return 0
 
 
@@ -112,29 +100,24 @@ int quorum_tally_ack(quorum_tally* t):
 int quorum_tally_nak(quorum_tally* t):
 	assert1(t.acks + t.naks < t.total)
 	t.naks = t.naks + 1
-	if (t.naks == t.total - t.needed + 1):
-		return 1
+	if (t.naks == t.total - t.needed + 1): return 1
 	return 0
 
 
 int quorum_tally_succeeded(quorum_tally* t):
-	if (t.acks >= t.needed):
-		return 1
+	if (t.acks >= t.needed): return 1
 	return 0
 
 
 int quorum_tally_failed(quorum_tally* t):
-	if (t.naks > t.total - t.needed):
-		return 1
+	if (t.naks > t.total - t.needed): return 1
 	return 0
 
 
 # 1 once the outcome is decided or every replica has answered.
 int quorum_tally_settled(quorum_tally* t):
-	if (quorum_tally_succeeded(t) || quorum_tally_failed(t)):
-		return 1
-	if (t.acks + t.naks == t.total):
-		return 1
+	if (quorum_tally_succeeded(t) || quorum_tally_failed(t)): return 1
+	if (t.acks + t.naks == t.total): return 1
 	return 0
 
 
@@ -161,10 +144,7 @@ struct repair_plan:
 repair_plan* quorum_read_repair(list[vclock*] versions):
 	int count = versions.length
 	assert1(count >= 1)
-	repair_plan* plan = new repair_plan()
-	plan.winner_index = 0 - 1
-	plan.conflict = 0
-	plan.stale = new list[int]
+	repair_plan* plan = new repair_plan(0 - 1, 0, new list[int])
 	# maximal[i] = 1 when no other version strictly dominates versions[i]
 	list[int] maximal = new list[int]
 	int i = 0
@@ -173,8 +153,7 @@ repair_plan* quorum_read_repair(list[vclock*] versions):
 		int is_max = 1
 		j = 0
 		while (j < count):
-			if (j != i && vclock_compare(versions[j], versions[i]) == 1):
-				is_max = 0
+			if (j != i && vclock_compare(versions[j], versions[i]) == 1): is_max = 0
 			j = j + 1
 		maximal.push(is_max)
 		i = i + 1
@@ -186,18 +165,15 @@ repair_plan* quorum_read_repair(list[vclock*] versions):
 			int dominates_all = 1
 			j = 0
 			while (j < count):
-				if (vclock_descends(versions[i], versions[j]) == 0):
-					dominates_all = 0
+				if (vclock_descends(versions[i], versions[j]) == 0): dominates_all = 0
 				j = j + 1
-			if (dominates_all):
-				winner = i
+			if (dominates_all): winner = i
 		i = i + 1
 	if (winner >= 0):
 		plan.winner_index = winner
 		j = 0
 		while (j < count):
-			if (vclock_compare(versions[winner], versions[j]) == 1):
-				plan.stale.push(j)
+			if (vclock_compare(versions[winner], versions[j]) == 1): plan.stale.push(j)
 			j = j + 1
 		return plan
 	# concurrent siblings: no winner; a replica is stale when some
@@ -208,11 +184,9 @@ repair_plan* quorum_read_repair(list[vclock*] versions):
 		int dominated = 0
 		i = 0
 		while (i < count):
-			if (maximal[i] && vclock_compare(versions[i], versions[j]) == 1):
-				dominated = 1
+			if (maximal[i] && vclock_compare(versions[i], versions[j]) == 1): dominated = 1
 			i = i + 1
-		if (dominated):
-			plan.stale.push(j)
+		if (dominated): plan.stale.push(j)
 		j = j + 1
 	return plan
 

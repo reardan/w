@@ -10,15 +10,12 @@ int greet(int base, int bonus = 5):
 
 int vsum(int... values):
 	int total = 0
-	for int v in values:
-		total = total + v
+	for int v in values: total = total + v
 	return total
 
 generator int squares(int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		yield i * i
-		i = i + 1
 
 void test_fstring_with_defaults_and_variadics():
 	string s = f"greet={greet(10)} vsum={vsum(1, 2, 3)}"
@@ -40,8 +37,7 @@ generator int gen_with_default(int n, int step = 2):
 
 void test_generator_with_default_arg():
 	int total = 0
-	for int x in gen_with_default(10):
-		total = total + x
+	for int x in gen_with_default(10): total = total + x
 	assert_equal(20, total)
 
 # Wave 2: generics + defaults + variadics + template strings combined
@@ -75,6 +71,5 @@ void test_var_with_wave1_features():
 # var flowing through a generator loop body
 void test_var_accumulates_generator_values():
 	var acc = 0
-	for int v in squares(4):
-		acc = acc + v
+	for int v in squares(4): acc = acc + v
 	assert_equal(14, acc)

@@ -12,3 +12,4 @@ c_import "libc.so.6" c"tests/c_import_error_directive_fixture.h"
 
 int main(int argc, int argv):
 	return 0
+# wbuild: fixture_group=c_import_error_directive_test

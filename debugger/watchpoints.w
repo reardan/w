@@ -19,8 +19,7 @@ import debugger.locals
 import debugger.memory
 
 
-int dbg_watch_max():
-	return 16
+const int dbg_watch_max = 16
 
 char* dbg_watch_addrs /* watched address per slot, 0 = deleted (word slots) */
 char* dbg_watch_olds  /* last seen value (word slots) */
@@ -29,11 +28,10 @@ int dbg_watch_count
 
 
 void dbg_watch_init():
-	if (dbg_watch_addrs != 0):
-		return;
-	dbg_watch_addrs = malloc(dbg_watch_max() * __word_size__)
-	dbg_watch_olds = malloc(dbg_watch_max() * __word_size__)
-	dbg_watch_texts = malloc(dbg_watch_max() * __word_size__)
+	if (dbg_watch_addrs != 0): return;
+	dbg_watch_addrs = malloc(dbg_watch_max * __word_size__)
+	dbg_watch_olds = malloc(dbg_watch_max * __word_size__)
+	dbg_watch_texts = malloc(dbg_watch_max * __word_size__)
 
 
 int dbg_watch_addr_at(int i):
@@ -54,8 +52,7 @@ int dbg_watch_live():
 	int n = 0
 	int i = 0
 	while (i < dbg_watch_count):
-		if (dbg_watch_addr_at(i) != 0):
-			n = n + 1
+		if (dbg_watch_addr_at(i) != 0): n = n + 1
 		i = i + 1
 	return n
 
@@ -63,7 +60,7 @@ int dbg_watch_live():
 # Record a watchpoint over the word at addr; returns its slot or -1.
 int dbg_watch_add(char* text, int addr):
 	dbg_watch_init()
-	if (dbg_watch_count >= dbg_watch_max()):
+	if (dbg_watch_count >= dbg_watch_max):
 		println(c"too many watchpoints")
 		return -1
 	int i = dbg_watch_count
@@ -78,15 +75,11 @@ int dbg_watch_add(char* text, int addr):
 
 void dbg_watch_describe(int i):
 	print(c"watchpoint ")
-	char* digits = itoa(i + 1)
-	print(digits)
-	free(digits)
+	dbg_print_dec(i + 1)
 	print(c": ")
 	print(str_from_cstr(dbg_watch_text_at(i)))
 	print(c" at ")
-	char* ha = hex_word(dbg_watch_addr_at(i))
-	print(ha)
-	free(ha)
+	dbg_print_hex(dbg_watch_addr_at(i))
 	print(c", value ")
 	dbg_print_int_value(dbg_watch_old_at(i))
 
@@ -111,9 +104,7 @@ int dbg_watch_check():
 void dbg_watch_report(int i):
 	int now = dbg_mem_read_word(dbg_watch_addr_at(i))
 	print(c"watchpoint ")
-	char* digits = itoa(i + 1)
-	print(digits)
-	free(digits)
+	dbg_print_dec(i + 1)
 	print(c": ")
 	print(str_from_cstr(dbg_watch_text_at(i)))
 	print(c" changed: ")
@@ -153,5 +144,4 @@ void dbg_watch_list():
 			put_char(10)
 			shown = shown + 1
 		i = i + 1
-	if (shown == 0):
-		println(c"no watchpoints set")
+	if (shown == 0): println(c"no watchpoints set")

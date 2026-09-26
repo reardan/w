@@ -15,15 +15,13 @@ import structures.string
 # may free, or 0 when the file cannot be opened.
 char* file_read_text(char* path):
 	wstream* in = stream_open_read(path)
-	if (in == 0):
-		return 0
+	if (in == 0): return 0
 	string_builder* contents = string_new()
 	# A regular file's size is only a hint (it may still grow, and pipes
 	# and /proc files report nothing useful), but reserving it lets
 	# stream_read_all read straight into the result with no regrowth.
 	int size = file_size(in.fd)
-	if (size > 0):
-		string_reserve(contents, size + in.capacity)
+	if (size > 0): string_reserve(contents, size + in.capacity)
 	stream_read_all(in, contents)
 	stream_close(in)
 	char* text = contents.data
@@ -34,8 +32,7 @@ char* file_read_text(char* path):
 # Creates or truncates the file. Returns 1 on success, 0 on failure.
 int file_write_text(char* path, char* text):
 	wstream* out = stream_open_write(path)
-	if (out == 0):
-		return 0
+	if (out == 0): return 0
 	stream_write_cstr(out, text)
 	stream_close(out)
 	return 1
@@ -45,12 +42,10 @@ int file_write_text(char* path, char* text):
 # may free, or 0 when the file cannot be opened.
 list[char*] file_read_lines(char* path):
 	wstream* in = stream_open_read(path)
-	if (in == 0):
-		return 0
+	if (in == 0): return 0
 	list[char*] lines = new list[char*]
 	string_builder* line = string_new()
-	while (stream_read_line(in, line)):
-		lines.push(strclone(line.data))
+	while (stream_read_line(in, line)): lines.push(strclone(line.data))
 	string_free(line)
 	stream_close(in)
 	return lines

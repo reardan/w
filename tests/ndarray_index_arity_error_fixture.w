@@ -9,3 +9,4 @@ int main():
 	ndf a = ndf_new4(2, 2, 2, 2)
 	float v = a[0, 0, 0, 0, 0]
 	return 0
+# wbuild: fixture_group=ndarray_index_error_test

@@ -74,50 +74,34 @@ not import this package. deflate.w's deflate_window is the encoder.
 import lib.memory
 import lib.result
 import structures.string
+import lib.mem
 
 
-int INFLATE_OK():
-	return 0
-
-
-int INFLATE_ERR_BAD_BTYPE():
-	return 1
-
-
-int INFLATE_ERR_BAD_STORED_LEN():
-	return 2
+const int INFLATE_OK = 0
+const int INFLATE_ERR_BAD_BTYPE = 1
+const int INFLATE_ERR_BAD_STORED_LEN = 2
 
 
 int INFLATE_ERR_BAD_HUFFMAN():
 	return 3
 
 
-int INFLATE_ERR_BAD_DISTANCE():
-	return 4
-
-
-int INFLATE_ERR_TRUNCATED():
-	return 5
-
-
-int INFLATE_ERR_TOO_LARGE():
-	return 6
+const int INFLATE_ERR_BAD_DISTANCE = 4
+const int INFLATE_ERR_TRUNCATED = 5
+const int INFLATE_ERR_TOO_LARGE = 6
 
 
 char* inflate_error_string(int code):
-	if (code == INFLATE_OK()):
-		return c"inflate: ok"
-	if (code == INFLATE_ERR_BAD_BTYPE()):
-		return c"inflate: reserved block type (BTYPE == 11)"
-	if (code == INFLATE_ERR_BAD_STORED_LEN()):
+	if (code == INFLATE_OK): return c"inflate: ok"
+	if (code == INFLATE_ERR_BAD_BTYPE): return c"inflate: reserved block type (BTYPE == 11)"
+	if (code == INFLATE_ERR_BAD_STORED_LEN):
 		return c"inflate: stored block NLEN is not the one's complement of LEN"
 	if (code == INFLATE_ERR_BAD_HUFFMAN()):
 		return c"inflate: over-subscribed, incomplete, or invalid Huffman code"
-	if (code == INFLATE_ERR_BAD_DISTANCE()):
+	if (code == INFLATE_ERR_BAD_DISTANCE):
 		return c"inflate: back-reference distance points before the start of output"
-	if (code == INFLATE_ERR_TRUNCATED()):
-		return c"inflate: input ended mid-block"
-	if (code == INFLATE_ERR_TOO_LARGE()):
+	if (code == INFLATE_ERR_TRUNCATED): return c"inflate: input ended mid-block"
+	if (code == INFLATE_ERR_TOO_LARGE):
 		return c"inflate: output exceeded the caller's max_output cap"
 	return c"inflate: unknown error"
 
@@ -142,13 +126,12 @@ struct whuff:
 	int* symbol
 
 
-int wh_maxbits():
-	return 15
+const int wh_maxbits = 15
 
 
 whuff* wh_new(int n):
 	whuff* h = new whuff
-	h.count = cast(int*, malloc((wh_maxbits() + 1) * __word_size__))
+	h.count = cast(int*, malloc((wh_maxbits + 1) * __word_size__))
 	h.symbol = cast(int*, malloc(n * __word_size__))
 	return h
 
@@ -165,28 +148,27 @@ void wh_free(whuff* h):
 # case the caller checks separately; see wh_build).
 int wh_construct(whuff* h, int* lengths, int n):
 	int len = 0
-	while (len <= wh_maxbits()):
+	while (len <= wh_maxbits):
 		h.count[len] = 0
 		len = len + 1
 	int symbol = 0
 	while (symbol < n):
 		h.count[lengths[symbol]] = h.count[lengths[symbol]] + 1
 		symbol = symbol + 1
-	if (h.count[0] == n):
-		return 0
+	if (h.count[0] == n): return 0
 
 	int left = 1
 	len = 1
-	while (len <= wh_maxbits()):
+	while (len <= wh_maxbits):
 		left = left * 2 - h.count[len]
 		if (left < 0):
 			return left
 		len = len + 1
 
-	int* offs = cast(int*, malloc((wh_maxbits() + 1) * __word_size__))
+	int* offs = cast(int*, malloc((wh_maxbits + 1) * __word_size__))
 	offs[1] = 0
 	len = 1
-	while (len < wh_maxbits()):
+	while (len < wh_maxbits):
 		offs[len + 1] = offs[len] + h.count[len]
 		len = len + 1
 	symbol = 0
@@ -217,10 +199,9 @@ struct winflate_ctx:
 
 
 int inf_get_bit(winflate_ctx* c):
-	if (c.status != 0):
-		return 0
+	if (c.status != 0): return 0
 	if (c.byte_pos >= c.in_length):
-		c.status = INFLATE_ERR_TRUNCATED()
+		c.status = INFLATE_ERR_TRUNCATED
 		return 0
 	int b = shr(c.in_data[c.byte_pos] & 255, c.bit_pos) & 1
 	c.bit_pos = c.bit_pos + 1
@@ -234,16 +215,12 @@ int inf_get_bit(winflate_ctx* c):
 # the field's low bit.
 int inf_get_bits(winflate_ctx* c, int n):
 	int v = 0
-	int i = 0
-	while (i < n):
-		v = v | (inf_get_bit(c) << i)
-		i = i + 1
+	for i in range(n): v = v | (inf_get_bit(c) << i)
 	return v
 
 
 void inf_align_byte(winflate_ctx* c):
-	if (c.status != 0):
-		return
+	if (c.status != 0): return
 	if (c.bit_pos != 0):
 		c.bit_pos = 0
 		c.byte_pos = c.byte_pos + 1
@@ -261,13 +238,11 @@ int wh_decode(winflate_ctx* c, whuff* h):
 	int first = 0
 	int index = 0
 	int len = 1
-	while (len <= wh_maxbits()):
+	while (len <= wh_maxbits):
 		code = code | inf_get_bit(c)
-		if (c.status != 0):
-			return -1
+		if (c.status != 0): return -1
 		int count = h.count[len]
-		if ((code - first) < count):
-			return h.symbol[index + (code - first)]
+		if ((code - first) < count): return h.symbol[index + (code - first)]
 		index = index + count
 		first = first + count
 		first = first << 1
@@ -281,8 +256,7 @@ int wh_decode(winflate_ctx* c, whuff* h):
 # to check c.status once afterwards.
 int inf_decode_symbol(winflate_ctx* c, whuff* h):
 	int sym = wh_decode(c, h)
-	if (c.status != 0):
-		return -1
+	if (c.status != 0): return -1
 	if (sym < 0):
 		c.status = INFLATE_ERR_BAD_HUFFMAN()
 		return -1
@@ -294,8 +268,7 @@ int inf_decode_symbol(winflate_ctx* c, whuff* h):
 # header comment. Sets c.status and returns 0 on any other incomplete or
 # over-subscribed table.
 int wh_build(winflate_ctx* c, whuff* h, int* lengths, int n):
-	if (c.status != 0):
-		return 0
+	if (c.status != 0): return 0
 	int left = wh_construct(h, lengths, n)
 	if (left != 0):
 		int single_short_code = n == (h.count[0] + h.count[1])
@@ -306,10 +279,9 @@ int wh_build(winflate_ctx* c, whuff* h, int* lengths, int n):
 
 
 void inf_emit_byte(winflate_ctx* c, int b):
-	if (c.status != 0):
-		return
+	if (c.status != 0): return
 	if ((c.max_output > 0) && (c.out.length - c.base >= c.max_output)):
-		c.status = INFLATE_ERR_TOO_LARGE()
+		c.status = INFLATE_ERR_TOO_LARGE
 		return
 	string_append_char(c.out, b)
 
@@ -320,18 +292,14 @@ void inf_emit_byte(winflate_ctx* c, int b):
 # appends one byte at a time rather than a bulk copy that would assume
 # non-overlapping ranges (docs/projects/compress.md §2.1).
 void inf_copy_match(winflate_ctx* c, int length, int distance):
-	if (c.status != 0):
-		return
+	if (c.status != 0): return
 	if ((distance <= 0) || (distance > c.out.length)):
-		c.status = INFLATE_ERR_BAD_DISTANCE()
+		c.status = INFLATE_ERR_BAD_DISTANCE
 		return
-	int i = 0
-	while (i < length):
-		if (c.status != 0):
-			return
+	for i in range(length):
+		if (c.status != 0): return
 		int b = c.out.data[c.out.length - distance] & 255
 		inf_emit_byte(c, b)
-		i = i + 1
 
 
 /* RFC 1951 §3.2.5 / §3.2.7 constant tables */
@@ -352,8 +320,7 @@ int* inf_parse_csv(char* s, int n):
 			i = i + 1
 		out[idx] = v
 		idx = idx + 1
-		if (s[i] == ','):
-			i = i + 1
+		if (s[i] == ','): i = i + 1
 	return out
 
 
@@ -365,8 +332,7 @@ int* inf_clc_order_cache
 
 
 void inf_init_tables():
-	if (inf_length_base_cache != 0):
-		return
+	if (inf_length_base_cache != 0): return
 	# Length symbols 257-285: base length + extra-bit count (RFC 1951
 	# §3.2.5's table, indexed by symbol - 257).
 	inf_length_base_cache = inf_parse_csv(c"3,4,5,6,7,8,9,10,11,13,15,17,19,23,27,31,35,43,51,59,67,83,99,115,131,163,195,227,258", 29)
@@ -410,8 +376,7 @@ int inf_read_length(winflate_ctx* c, int sym):
 	int idx = sym - 257
 	int extra = inf_length_extra(idx)
 	int extra_bits = 0
-	if (extra > 0):
-		extra_bits = inf_get_bits(c, extra)
+	if (extra > 0): extra_bits = inf_get_bits(c, extra)
 	return inf_length_base(idx) + extra_bits
 
 
@@ -419,8 +384,7 @@ int inf_read_length(winflate_ctx* c, int sym):
 int inf_read_distance(winflate_ctx* c, int dsym):
 	int extra = inf_dist_extra(dsym)
 	int extra_bits = 0
-	if (extra > 0):
-		extra_bits = inf_get_bits(c, extra)
+	if (extra > 0): extra_bits = inf_get_bits(c, extra)
 	return inf_dist_base(dsym) + extra_bits
 
 
@@ -432,19 +396,14 @@ int inf_read_distance(winflate_ctx* c, int dsym):
 void inf_huffman_block(winflate_ctx* c, whuff* litlen, whuff* dist):
 	while (c.status == 0):
 		int sym = inf_decode_symbol(c, litlen)
-		if (c.status != 0):
-			return
-		if (sym < 256):
-			inf_emit_byte(c, sym)
-		else if (sym == 256):
-			return
+		if (c.status != 0): return
+		if (sym < 256): inf_emit_byte(c, sym)
+		else if (sym == 256): return
 		else if (sym <= 285):
 			int length = inf_read_length(c, sym)
-			if (c.status != 0):
-				return
+			if (c.status != 0): return
 			int dsym = inf_decode_symbol(c, dist)
-			if (c.status != 0):
-				return
+			if (c.status != 0): return
 			# Distance symbols 30-31 have fixed-table codes assigned (the
 			# code space is complete) but no defined meaning -- RFC 1951
 			# §3.2.5: "will never actually occur in the compressed data."
@@ -452,8 +411,7 @@ void inf_huffman_block(winflate_ctx* c, whuff* litlen, whuff* dist):
 				c.status = INFLATE_ERR_BAD_HUFFMAN()
 				return
 			int distance = inf_read_distance(c, dsym)
-			if (c.status != 0):
-				return
+			if (c.status != 0): return
 			inf_copy_match(c, length, distance)
 		else:
 			# Symbols 286-287: assigned fixed-table codes but never used
@@ -464,22 +422,21 @@ void inf_huffman_block(winflate_ctx* c, whuff* litlen, whuff* dist):
 
 void inf_stored_block(winflate_ctx* c):
 	inf_align_byte(c)
-	if (c.status != 0):
-		return
+	if (c.status != 0): return
 	if (c.byte_pos + 4 > c.in_length):
-		c.status = INFLATE_ERR_TRUNCATED()
+		c.status = INFLATE_ERR_TRUNCATED
 		return
 	int len = (c.in_data[c.byte_pos] & 255) | ((c.in_data[c.byte_pos + 1] & 255) << 8)
 	int nlen = (c.in_data[c.byte_pos + 2] & 255) | ((c.in_data[c.byte_pos + 3] & 255) << 8)
 	c.byte_pos = c.byte_pos + 4
 	if ((len ^ 65535) != nlen):
-		c.status = INFLATE_ERR_BAD_STORED_LEN()
+		c.status = INFLATE_ERR_BAD_STORED_LEN
 		return
 	if (c.byte_pos + len > c.in_length):
-		c.status = INFLATE_ERR_TRUNCATED()
+		c.status = INFLATE_ERR_TRUNCATED
 		return
 	if ((c.max_output > 0) && (c.out.length - c.base + len > c.max_output)):
-		c.status = INFLATE_ERR_TOO_LARGE()
+		c.status = INFLATE_ERR_TOO_LARGE
 		return
 	string_append_bytes(c.out, &c.in_data[c.byte_pos], len)
 	c.byte_pos = c.byte_pos + len
@@ -515,10 +472,7 @@ whuff* inf_fixed_litlen_table():
 whuff* inf_fixed_dist_table():
 	if (inf_fixed_dist_cache == 0):
 		int* lengths = cast(int*, malloc(32 * __word_size__))
-		int i = 0
-		while (i < 32):
-			lengths[i] = 5
-			i = i + 1
+		mem_fill(lengths, 5, 32)
 		whuff* h = wh_new(32)
 		wh_construct(h, lengths, 32)
 		free(lengths)
@@ -538,15 +492,11 @@ void inf_dynamic_block(winflate_ctx* c):
 	int hlit = inf_get_bits(c, 5) + 257
 	int hdist = inf_get_bits(c, 5) + 1
 	int hclen = inf_get_bits(c, 4) + 4
-	if (c.status != 0):
-		return
+	if (c.status != 0): return
 
 	int* cl_lengths = cast(int*, malloc(19 * __word_size__))
+	mem_fill(cl_lengths, 0, 19)
 	int i = 0
-	while (i < 19):
-		cl_lengths[i] = 0
-		i = i + 1
-	i = 0
 	while (i < hclen):
 		cl_lengths[inf_clc_order(i)] = inf_get_bits(c, 3)
 		i = i + 1
@@ -566,11 +516,9 @@ void inf_dynamic_block(winflate_ctx* c):
 	i = 0
 	int prev = 0
 	while (i < total):
-		if (c.status != 0):
-			break
+		if (c.status != 0): break
 		int sym = inf_decode_symbol(c, cl_huff)
-		if (c.status != 0):
-			break
+		if (c.status != 0): break
 		if (sym < 16):
 			lengths[i] = sym
 			prev = sym
@@ -581,37 +529,28 @@ void inf_dynamic_block(winflate_ctx* c):
 				break
 			int rep = inf_get_bits(c, 2) + 3
 			if ((c.status != 0) || (i + rep > total)):
-				if (c.status == 0):
-					c.status = INFLATE_ERR_BAD_HUFFMAN()
+				if (c.status == 0): c.status = INFLATE_ERR_BAD_HUFFMAN()
 				break
-			int k = 0
-			while (k < rep):
+			for k in range(rep):
 				lengths[i] = prev
 				i = i + 1
-				k = k + 1
 		else if (sym == 17):
 			int rep = inf_get_bits(c, 3) + 3
 			if ((c.status != 0) || (i + rep > total)):
-				if (c.status == 0):
-					c.status = INFLATE_ERR_BAD_HUFFMAN()
+				if (c.status == 0): c.status = INFLATE_ERR_BAD_HUFFMAN()
 				break
-			int k = 0
-			while (k < rep):
+			for k in range(rep):
 				lengths[i] = 0
 				i = i + 1
-				k = k + 1
 			prev = 0
 		else:
 			int rep = inf_get_bits(c, 7) + 11
 			if ((c.status != 0) || (i + rep > total)):
-				if (c.status == 0):
-					c.status = INFLATE_ERR_BAD_HUFFMAN()
+				if (c.status == 0): c.status = INFLATE_ERR_BAD_HUFFMAN()
 				break
-			int k = 0
-			while (k < rep):
+			for k in range(rep):
 				lengths[i] = 0
 				i = i + 1
-				k = k + 1
 			prev = 0
 	wh_free(cl_huff)
 	if (c.status != 0):
@@ -632,8 +571,7 @@ void inf_dynamic_block(winflate_ctx* c):
 		# automatically -- no manual `* __word_size__`.
 		dist_ok = wh_build(c, dist_huff, &lengths[hlit], hdist)
 	free(lengths)
-	if ((litlen_ok != 0) && (dist_ok != 0)):
-		inf_huffman_block(c, litlen_huff, dist_huff)
+	if ((litlen_ok != 0) && (dist_ok != 0)): inf_huffman_block(c, litlen_huff, dist_huff)
 	wh_free(litlen_huff)
 	wh_free(dist_huff)
 
@@ -650,25 +588,18 @@ void inf_dynamic_block(winflate_ctx* c):
 void inf_run_blocks(winflate_ctx* c, int sync):
 	int bfinal = 0
 	while ((bfinal == 0) && (c.status == 0)):
-		if ((sync != 0) && (c.bit_pos == 0) && (c.byte_pos >= c.in_length)):
-			return
+		if ((sync != 0) && (c.bit_pos == 0) && (c.byte_pos >= c.in_length)): return
 		bfinal = inf_get_bits(c, 1)
 		int btype = inf_get_bits(c, 2)
-		if (c.status != 0):
-			break
-		if (btype == 0):
-			inf_stored_block(c)
-		else if (btype == 1):
-			inf_fixed_block(c)
-		else if (btype == 2):
-			inf_dynamic_block(c)
-		else:
-			c.status = INFLATE_ERR_BAD_BTYPE()
+		if (c.status != 0): break
+		if (btype == 0): inf_stored_block(c)
+		else if (btype == 1): inf_fixed_block(c)
+		else if (btype == 2): inf_dynamic_block(c)
+		else: c.status = INFLATE_ERR_BAD_BTYPE
 
 
 winflate_ctx* inf_ctx_new(char* data, int length, int max_output):
-	if (length < 0):
-		length = 0
+	if (length < 0): length = 0
 	winflate_ctx* c = new winflate_ctx
 	c.in_data = data
 	c.in_length = length
@@ -686,8 +617,7 @@ wresult[inflate_result*]* inflate_ex(char* data, int length, int max_output, int
 	inf_run_blocks(c, 0)
 
 	int extra_byte = 0
-	if (c.bit_pos != 0):
-		extra_byte = 1
+	if (c.bit_pos != 0): extra_byte = 1
 	*consumed = c.byte_pos + extra_byte
 
 	int status = c.status
@@ -696,9 +626,7 @@ wresult[inflate_result*]* inflate_ex(char* data, int length, int max_output, int
 		free(c)
 		return result_new_error[inflate_result*](status)
 
-	inflate_result* r = new inflate_result
-	r.data = c.out.data
-	r.length = c.out.length
+	inflate_result* r = new inflate_result(c.out.data, c.out.length)
 	free(c.out)
 	free(c)
 	return result_new_ok[inflate_result*](r)
@@ -746,12 +674,7 @@ char* inflate_window(char* data, int length, char* window, int window_len, int m
 		free(c)
 		return 0
 	int n = c.out.length - c.base
-	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = c.out.data[c.base + i]
-		i = i + 1
-	out[n] = 0
+	char* out = mem_dup(c.out.data + c.base, n)
 	*out_len = n
 	string_free(c.out)
 	free(c)

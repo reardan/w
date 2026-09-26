@@ -17,7 +17,7 @@ Two families:
   the Unicode rules of issue #460: bidi controls anywhere in the file
   (Trojan Source), identifiers mixing Latin/Greek/Cyrillic letters, and
   identifiers that differ from another name in the file only by
-  lookalike letters (lint_unicode_line).
+  lookalike letters (lint_scan_line).
 - Semantic rules, hooked into the single-pass grammar: unused locals
   (lint_scope_exit), code after return/break/continue/goto
   (lint_unreachable_check), a local shadowing another local or a
@@ -83,8 +83,7 @@ int lint_saved_diag_column
 char* lint_saved_token
 
 
-int lint_tab_width():
-	return 4
+const int lint_tab_width = 4
 
 
 # line-too-long limit in columns; --line-length=N sets it, 0 disables
@@ -94,34 +93,26 @@ int lint_line_limit
 # Called by compile_attempt once a file opens: a file opened at depth 0
 # is a command-line root.
 void lint_note_open(char* path):
-	if ((lint_mode == 0) || (lint_depth != 0) || lint_skip_root_open):
-		return
-	if (lint_root_files == 0):
-		lint_root_files = new map[char*, int]
+	if ((lint_mode == 0) || (lint_depth != 0) || lint_skip_root_open): return
+	if (lint_root_files == 0): lint_root_files = new map[char*, int]
 	lint_root_files[strclone(path)] = 1
 
 
 # A compiler-internal root: lint it where it compiles, inside w.w.
 void lint_note_internal_root(char* path):
-	if (lint_mode == 0):
-		return
-	while (starts_with(path, c"./")):
-		path = path + 2
-	if (lint_internal_roots == 0):
-		lint_internal_roots = malloc(64 * __word_size__)
-	if (lint_internal_count >= 64):
-		return
+	if (lint_mode == 0): return
+	while (starts_with(path, c"./")): path = path + 2
+	if (lint_internal_roots == 0): lint_internal_roots = malloc(64 * __word_size__)
+	if (lint_internal_count >= 64): return
 	save_ptr(lint_internal_roots + lint_internal_count * __word_size__, cast(int, strjoin(c"/", path)))
 	lint_internal_count = lint_internal_count + 1
 
 
 # Whether the tokens being parsed right now belong to a linted root.
 int lint_file_active():
-	if ((lint_mode == 0) || (filename == 0)):
-		return 0
+	if ((lint_mode == 0) || (filename == 0)): return 0
 	if ((lint_depth == 0) && (lint_root_files != 0)):
-		if (filename in lint_root_files):
-			return 1
+		if (filename in lint_root_files): return 1
 	int i = 0
 	while (i < lint_internal_count):
 		if (ends_with(filename, cast(char*, load_ptr(lint_internal_roots + i * __word_size__)))):
@@ -135,10 +126,8 @@ int lint_contains(char* s, int length, char* word):
 	int i = 0
 	while (i + word_length <= length):
 		int j = 0
-		while ((j < word_length) && (s[i + j] == word[j])):
-			j = j + 1
-		if (j == word_length):
-			return 1
+		while ((j < word_length) && (s[i + j] == word[j])): j = j + 1
+		if (j == word_length): return 1
 		i = i + 1
 	return 0
 
@@ -154,10 +143,8 @@ int lint_begin(int line, int column, char* rule):
 	key = strjoin(key, itoa(column))
 	key = strjoin(key, c":")
 	key = strjoin(key, rule)
-	if (lint_reported == 0):
-		lint_reported = new map[char*, int]
-	if (key in lint_reported):
-		return 0
+	if (lint_reported == 0): lint_reported = new map[char*, int]
+	if (key in lint_reported): return 0
 	lint_reported[key] = 1
 	lint_saved_line_number = line_number
 	lint_saved_diag_line = diag_token_line
@@ -192,47 +179,37 @@ void lint_end():
 # symbol index): start tracking whether anything references it.
 # '_'-prefixed names opt out, the usual "intentionally unused" spelling.
 void lint_track_local(int t):
-	if (lint_file_active() == 0):
-		return
+	if (lint_file_active() == 0): return
 	int p = sym_index_count - 1
-	if (p < 0):
-		return
-	if (sym_index_offset(p) != t):
-		return
+	if (p < 0): return
+	if (sym_index_offset(p) != t): return
 	if (lint_for_header):
 		sym_index_lint[p] = 3
 		return
-	if (table[t + 1] != 'L'):
-		return
-	if (table[sym_index_name_start(p)] == '_'):
-		return
+	if (table[t + 1] != 'L'): return
+	if (table[sym_index_name_start(p)] == '_'): return
 	sym_index_lint[p] = 1
 
 
 # The newest record is a loop variable: never tracked, never shadowed
 # (3 in sym_index_lint).
 void lint_mark_loop_variable():
-	if (lint_mode == 0):
-		return
+	if (lint_mode == 0): return
 	int p = sym_index_count - 1
-	if (p >= 0):
-		sym_index_lint[p] = 3
+	if (p >= 0): sym_index_lint[p] = 3
 
 
 # A block is about to truncate the symbol table back to n: report every
 # tracked local declared inside it that nothing referenced.
 void lint_scope_exit(int n):
-	if (lint_mode == 0):
-		return
+	if (lint_mode == 0): return
 	int p = sym_index_count - 1
 	while ((p >= 0) && (sym_index_offset(p) >= n)):
 		if (sym_index_lint[p] == 1):
 			sym_index_lint[p] = 0
 			int t = sym_index_offset(p)
 			if (lint_begin(sym_decl_line(t), sym_decl_column(t), c"unused-local")):
-				diag_part(c"warning: local variable '")
-				diag_part(&table[sym_index_name_start(p)])
-				warning(c"' is never used [unused-local]")
+				warning3(c"warning: local variable '", &table[sym_index_name_start(p)], c"' is never used [unused-local]")
 				lint_end()
 		p = p - 1
 
@@ -240,28 +217,21 @@ void lint_scope_exit(int n):
 # A typed local was just declared: warn when it hides a live local or
 # parameter of the same name ('x := ...' already rejects this outright).
 void lint_check_shadow():
-	if (lint_for_header || (lint_file_active() == 0)):
-		return
+	if (lint_for_header || (lint_file_active() == 0)): return
 	int p = sym_index_count - 1
-	if (p < 0):
-		return
+	if (p < 0): return
 	int t = sym_index_offset(p)
-	if (table[t + 1] != 'L'):
-		return
+	if (table[t + 1] != 'L'): return
 	int previous = load_int(sym_index_prev + p * 4)
-	if (previous < 0):
-		return
-	if (sym_index_lint[previous] == 3):
-		return
+	if (previous < 0): return
+	if (sym_index_lint[previous] == 3): return
 	int previous_t = sym_index_offset(previous)
 	int visibility = table[previous_t + 1]
-	if ((visibility != 'L') && (visibility != 'A')):
-		return
+	if ((visibility != 'L') && (visibility != 'A')): return
 	if (lint_begin(sym_decl_line(t), sym_decl_column(t), c"shadow")):
 		diag_part(c"warning: declaration of '")
 		diag_part(&table[sym_index_name_start(p)])
-		if (visibility == 'A'):
-			diag_part(c"' shadows a parameter")
+		if (visibility == 'A'): diag_part(c"' shadows a parameter")
 		else:
 			diag_part(c"' shadows a local declared on line ")
 			diag_part(itoa(sym_decl_line(previous_t)))
@@ -273,20 +243,16 @@ void lint_check_shadow():
 # statement of this block was a return/break/continue/goto. A 'name:'
 # label is a goto target, so code after it is reachable again.
 void lint_unreachable_check(int after_jump):
-	if (after_jump == 0):
-		return
-	if (lint_file_active() == 0):
-		return
-	if ((nextc == ':') && is_ident_start_byte(token[0])):
-		return
+	if (after_jump == 0): return
+	if (lint_file_active() == 0): return
+	if ((nextc == ':') && is_ident_start_byte(token[0])): return
 	if (lint_begin(diag_token_line, diag_token_column, c"unreachable")):
 		warning(c"warning: unreachable code after return/break/continue/goto [unreachable]")
 		lint_end()
 
 
 void lint_condition_begin():
-	if (lint_mode == 0):
-		return
+	if (lint_mode == 0): return
 	lint_cond_start = token_start_offset + 1
 	lint_cond_depth = expr_nesting_depth
 	lint_cond_paren_depth = 0
@@ -300,22 +266,17 @@ void lint_condition_end():
 # primary_expr is opening a '(' group whose '(' starts at group_offset:
 # when that is the condition's first token, the group is the condition.
 void lint_condition_group(int group_offset):
-	if (lint_cond_start == 0):
-		return
-	if (group_offset + 1 == lint_cond_start):
-		lint_cond_paren_depth = expr_nesting_depth + 1
+	if (lint_cond_start == 0): return
+	if (group_offset + 1 == lint_cond_start): lint_cond_paren_depth = expr_nesting_depth + 1
 
 
 # expression() just parsed an '=': warn when it is the whole condition
 # ('if x = 1', 'if (x = 1)'); '((x = 1))' and '(x = f()) != 0' stay quiet.
 void lint_check_condition_assign(int line, int column):
-	if (lint_cond_start == 0):
-		return
+	if (lint_cond_start == 0): return
 	int depth = expr_nesting_depth
-	if ((depth != lint_cond_depth) && (depth + 1 != lint_cond_paren_depth)):
-		return
-	if (lint_file_active() == 0):
-		return
+	if ((depth != lint_cond_depth) && (depth + 1 != lint_cond_paren_depth)): return
+	if (lint_file_active() == 0): return
 	if (lint_begin(line, column, c"assign-in-condition")):
 		diag_part(c"warning: assignment used as a condition; use '==' to compare, ")
 		warning(c"or wrap it in extra parentheses [assign-in-condition]")
@@ -327,25 +288,18 @@ void lint_check_condition_assign(int line, int column):
 # with that same name, returns a copy of it for lint_self_assign_end to
 # confirm; otherwise 0.
 char* lint_self_assign_begin(int lhs_tokens, char* lhs_name):
-	if ((lint_mode == 0) || (lhs_tokens != 1)):
-		return 0
-	if (is_ident_start_byte(token[0]) == 0):
-		return 0
-	if (strcmp(token, lhs_name) != 0):
-		return 0
-	if (lint_file_active() == 0):
-		return 0
+	if ((lint_mode == 0) || (lhs_tokens != 1)): return 0
+	if (is_ident_start_byte(token[0]) == 0): return 0
+	if (strcmp(token, lhs_name) != 0): return 0
+	if (lint_file_active() == 0): return 0
 	return strclone(token)
 
 
 void lint_self_assign_end(char* name, int rhs_tokens, int line, int column):
-	if (name == 0):
-		return
+	if (name == 0): return
 	if (rhs_tokens == 1):
 		if (lint_begin(line, column, c"self-assign")):
-			diag_part(c"warning: '")
-			diag_part(name)
-			warning(c"' is assigned to itself [self-assign]")
+			warning3(c"warning: '", name, c"' is assigned to itself [self-assign]")
 			lint_end()
 	free(name)
 
@@ -356,8 +310,7 @@ void lint_self_assign_end(char* name, int rhs_tokens, int line, int column):
 # lint_text_length), or 0 when it cannot be read.
 char* lint_read_file(char* path):
 	int fd = open(path, 0, 0)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	int size = file_size(fd)
 	if (size < 0):
 		close(fd)
@@ -366,70 +319,28 @@ char* lint_read_file(char* path):
 	int got = 0
 	while (got < size):
 		int n = read(fd, buffer + got, size - got)
-		if (n <= 0):
-			size = got
-		else:
-			got = got + n
+		if (n <= 0): size = got
+		else: got = got + n
 	close(fd)
 	buffer[got] = 0
 	lint_text_length = got
 	return buffer
 
 
-# Lexical state at the end of src[start, end) given the state at its
-# start: 0 code, 1 inside a /* */ comment, 2 inside a string literal. A
-# '#' comment or an unterminated char literal ends the line in state 0.
-int lint_scan_line(char* src, int start, int end, int state):
-	int j = start
-	while (j < end):
-		int c = src[j]
-		if (state == 1):
-			if ((c == '*') && (j + 1 < end) && (src[j + 1] == '/')):
-				state = 0
-				j = j + 1
-		else if (state == 2):
-			if (c == 92):
-				j = j + 1
-			else if (c == '"'):
-				state = 0
-		else if (c == '#'):
-			return 0
-		else if (c == '"'):
-			state = 2
-		else if (c == 39):
-			j = j + 1
-			while ((j < end) && (src[j] != 39)):
-				if (src[j] == 92):
-					j = j + 1
-				j = j + 1
-		else if ((c == '/') && (j + 1 < end) && (src[j + 1] == '*')):
-			state = 1
-			j = j + 1
-		j = j + 1
-	return state
-
-
 # Display width of src[start, end): tabs advance to the next multiple of
-# lint_tab_width(), UTF-8 continuation bytes take no column.
+# lint_tab_width, UTF-8 continuation bytes take no column.
 int lint_line_width(char* src, int start, int end):
 	int width = 0
-	int j = start
-	while (j < end):
+	for j in range(start, end):
 		int c = src[j] & 255
-		if (c == 9):
-			width = width + lint_tab_width() - width % lint_tab_width()
-		else if ((c & 192) != 128):
-			width = width + 1
-		j = j + 1
+		if (c == 9): width = width + lint_tab_width - width % lint_tab_width
+		else if ((c & 192) != 128): width = width + 1
 	return width
 
 
 int lint_is_blank(char* src, int start, int end):
-	int j = start
-	while (j < end):
-		if ((src[j] != ' ') && (src[j] != 9)):
-			return 0
-		j = j + 1
+	for j in range(start, end):
+		if ((src[j] != ' ') && (src[j] != 9)): return 0
 	return 1
 
 
@@ -454,15 +365,11 @@ int lint_decode(char* src, int j, int end):
 	else if ((c & 248) == 240):
 		extra = 3
 		c = c & 7
-	if (j + extra >= end + 1):
-		return src[j] & 255
-	int k = 1
-	while (k <= extra):
+	if (j + extra >= end + 1): return src[j] & 255
+	for k in range(1, extra + 1):
 		int b = src[j + k] & 255
-		if ((b & 192) != 128):
-			return src[j] & 255
+		if ((b & 192) != 128): return src[j] & 255
 		c = (c << 6) | (b & 63)
-		k = k + 1
 	lint_decode_length = extra + 1
 	return c
 
@@ -470,32 +377,24 @@ int lint_decode(char* src, int j, int end):
 # Bidi embedding/override/isolate controls and the Arabic letter mark:
 # the characters CVE-2021-42574 ("Trojan Source") reorders a line with
 int lint_is_bidi_control(int cp):
-	if ((cp >= 8234) && (cp <= 8238)):
-		return 1
-	if ((cp >= 8294) && (cp <= 8297)):
-		return 1
+	if ((cp >= 8234) && (cp <= 8238)): return 1
+	if ((cp >= 8294) && (cp <= 8297)): return 1
 	return cp == 1564
 
 
 # 1 Latin, 2 Greek, 3 Cyrillic, 0 anything else (digits, '_', other
 # scripts): the lookalike-prone scripts the mixed-script rule separates
 int lint_script(int cp):
-	if ((('a' <= cp) && (cp <= 'z')) || (('A' <= cp) && (cp <= 'Z'))):
-		return 1
-	if ((cp >= 192) && (cp <= 591) && (cp != 215) && (cp != 247)):
-		return 1
-	if ((cp >= 880) && (cp <= 1023)):
-		return 2
-	if ((cp >= 1024) && (cp <= 1279)):
-		return 3
+	if ((('a' <= cp) && (cp <= 'z')) || (('A' <= cp) && (cp <= 'Z'))): return 1
+	if ((cp >= 192) && (cp <= 591) && (cp != 215) && (cp != 247)): return 1
+	if ((cp >= 880) && (cp <= 1023)): return 2
+	if ((cp >= 1024) && (cp <= 1279)): return 3
 	return 0
 
 
 char* lint_script_name(int script):
-	if (script == 1):
-		return c"Latin"
-	if (script == 2):
-		return c"Greek"
+	if (script == 1): return c"Latin"
+	if (script == 2): return c"Greek"
 	return c"Cyrillic"
 
 
@@ -516,8 +415,7 @@ char* lint_confusable_table():
 
 
 int lint_hex_digit(int c):
-	if (('0' <= c) && (c <= '9')):
-		return c - '0'
+	if (('0' <= c) && (c <= '9')): return c - '0'
 	return c - 'A' + 10
 
 
@@ -527,12 +425,8 @@ int lint_confusable_ascii(int cp):
 	int i = 0
 	while (table[i] != 0):
 		int v = 0
-		int d = 0
-		while (d < 4):
-			v = (v << 4) | lint_hex_digit(table[i + d])
-			d = d + 1
-		if (v == cp):
-			return table[i + 4]
+		for d in range(4): v = (v << 4) | lint_hex_digit(table[i + d])
+		if (v == cp): return table[i + 4]
 		i = i + 5
 	return 0
 
@@ -554,11 +448,8 @@ void lint_unicode_reset():
 # matching the compiler's own diagnostic columns
 int lint_codepoint_column(char* src, int start, int pos):
 	int column = 1
-	int j = start
-	while (j < pos):
-		if ((src[j] & 192) != 128):
-			column = column + 1
-		j = j + 1
+	for j in range(start, pos):
+		if ((src[j] & 192) != 128): column = column + 1
 	return column
 
 
@@ -577,8 +468,7 @@ void lint_identifier(char* src, int s, int e, int line, int column):
 	int ascii = 1
 	int j = s
 	while (j < e):
-		if ((src[j] & 128) != 0):
-			ascii = 0
+		if ((src[j] & 128) != 0): ascii = 0
 		j = j + 1
 	char* name = lint_substring(src, s, e)
 	# Skeleton: every lookalike letter replaced by its Latin twin
@@ -592,22 +482,17 @@ void lint_identifier(char* src, int s, int e, int line, int column):
 		int length = lint_decode_length
 		int script = lint_script(cp)
 		if (script != 0):
-			if (first_script == 0):
-				first_script = script
-			else if ((script != first_script) && (second_script == 0)):
-				second_script = script
+			if (first_script == 0): first_script = script
+			else if ((script != first_script) && (second_script == 0)): second_script = script
 		int twin = 0
-		if (ascii == 0):
-			twin = lint_confusable_ascii(cp)
+		if (ascii == 0): twin = lint_confusable_ascii(cp)
 		if (twin != 0):
 			skeleton[k] = twin
 			k = k + 1
 		else:
-			int b = 0
-			while (b < length):
+			for b in range(length):
 				skeleton[k] = src[j + b]
 				k = k + 1
-				b = b + 1
 		j = j + length
 	skeleton[k] = 0
 	char* mixed_key = strjoin(c"mixed:", name)
@@ -618,9 +503,7 @@ void lint_identifier(char* src, int s, int e, int line, int column):
 			diag_part(name)
 			diag_part(c"' mixes ")
 			diag_part(lint_script_name(first_script))
-			diag_part(c" and ")
-			diag_part(lint_script_name(second_script))
-			warning(c" letters [mixed-script]")
+			warning3(c" and ", lint_script_name(second_script), c" letters [mixed-script]")
 			lint_end()
 	if (skeleton in lint_skeleton_spelling):
 		char* other = cast(char*, lint_skeleton_spelling[skeleton])
@@ -632,9 +515,7 @@ void lint_identifier(char* src, int s, int e, int line, int column):
 				diag_part(name)
 				diag_part(c"' looks like '")
 				diag_part(other)
-				diag_part(c"' from line ")
-				diag_part(itoa(lint_skeleton_line[skeleton]))
-				warning(c" but is a different name [confusable]")
+				warning3(c"' from line ", itoa(lint_skeleton_line[skeleton]), c" but is a different name [confusable]")
 				lint_end()
 		free(skeleton)
 	else:
@@ -647,82 +528,74 @@ void lint_bidi_report(char* src, int start, int pos, int cp, int line, int state
 	if (lint_begin(line, lint_codepoint_column(src, start, pos), c"bidi-control")):
 		diag_part(c"warning: bidirectional control character U+")
 		diag_part(ident_codepoint_hex(cp))
-		if (state == 1):
-			diag_part(c" in a comment")
-		else if (state == 2):
-			diag_part(c" in a string literal")
+		if (state == 1): diag_part(c" in a comment")
+		else if (state == 2): diag_part(c" in a string literal")
 		diag_part(c" can make this line display differently from how it compiles")
 		warning(c" (Trojan Source) [bidi-control]")
 		lint_end()
 
 
-# Walk one line with lint_scan_line's lexical states: report bidi
-# controls anywhere on it, and hand every identifier in code to
-# lint_identifier. Only lines holding a byte >= 0x80 can trip a rule,
-# but every line's identifiers are recorded as confusable references.
-void lint_unicode_line(char* src, int start, int end, int state, int line):
+# Reports a bidi control whose sequence starts at src[j] (state: where
+# on the line it sits, lint_scan_line's numbering).
+void lint_bidi_check(char* src, int start, int j, int end, int line, int state):
+	int cp = lint_decode(src, j, end)
+	if (lint_is_bidi_control(cp)): lint_bidi_report(src, start, j, cp, line, state)
+
+
+# Lexical state at the end of src[start, end) given the state at its
+# start: 0 code, 1 inside a /* */ comment, 2 inside a string literal. A
+# '#' comment or an unterminated char literal ends the line in state 0.
+# With report set the walk also reports bidi controls anywhere on the
+# line and hands every identifier in code to lint_identifier. Only lines
+# holding a byte >= 0x80 can trip a rule, but every line's identifiers
+# are recorded as confusable references.
+int lint_scan_line(char* src, int start, int end, int state, int line, int report):
 	int j = start
 	while (j < end):
 		int c = src[j] & 255
-		if (c >= 128):
-			int cp = lint_decode(src, j, end)
-			if (lint_is_bidi_control(cp)):
-				lint_bidi_report(src, start, j, cp, line, state)
+		if (report && (c >= 128)): lint_bidi_check(src, start, j, end, line, state)
 		if (state == 1):
 			if ((c == '*') && (j + 1 < end) && (src[j + 1] == '/')):
 				state = 0
 				j = j + 1
 		else if (state == 2):
-			if (c == 92):
-				j = j + 1
-			else if (c == '"'):
-				state = 0
+			if (c == 92): j = j + 1
+			else if (c == '"'): state = 0
 		else if (c == '#'):
 			# The rest of the line is a comment
-			state = 1
 			j = j + 1
-			while (j < end):
-				if ((src[j] & 128) != 0):
-					int comment_cp = lint_decode(src, j, end)
-					if (lint_is_bidi_control(comment_cp)):
-						lint_bidi_report(src, start, j, comment_cp, line, 1)
+			while (report && (j < end)):
+				if ((src[j] & 128) != 0): lint_bidi_check(src, start, j, end, line, 1)
 				j = j + 1
-		else if (c == '"'):
-			state = 2
+			return 0
+		else if (c == '"'): state = 2
 		else if (c == 39):
 			j = j + 1
 			while ((j < end) && (src[j] != 39)):
-				if ((src[j] & 128) != 0):
-					int char_cp = lint_decode(src, j, end)
-					if (lint_is_bidi_control(char_cp)):
-						lint_bidi_report(src, start, j, char_cp, line, 2)
-				if (src[j] == 92):
-					j = j + 1
+				if (report && ((src[j] & 128) != 0)): lint_bidi_check(src, start, j, end, line, 2)
+				if (src[j] == 92): j = j + 1
 				j = j + 1
 		else if ((c == '/') && (j + 1 < end) && (src[j + 1] == '*')):
 			state = 1
 			j = j + 1
-		else if (is_ident_start_byte(c)):
+		else if (report && is_ident_start_byte(c)):
 			int s = j
 			int in_name = 1
 			while ((j < end) && in_name):
 				if (is_utf8_lead_byte(src[j])):
 					lint_decode(src, j, end)
 					j = j + lint_decode_length
-				else if (is_ident_part_byte(src[j])):
-					j = j + 1
-				else:
-					in_name = 0
+				else if (is_ident_part_byte(src[j])): j = j + 1
+				else: in_name = 0
 			# 'c"..."' / 's"..."' / 'f"..."' prefixes open a string instead
-			if ((j < end) && (src[j] == '"') && (j - s == 1)):
-				j = j - 1
+			if ((j < end) && (src[j] == '"') && (j - s == 1)): j = j - 1
 			else:
 				lint_identifier(src, s, j, line, lint_codepoint_column(src, start, s))
 				j = j - 1
-		else if (('0' <= c) && (c <= '9')):
-			while ((j + 1 < end) && is_ident_part_byte(src[j + 1])):
-				j = j + 1
+		else if (report && ('0' <= c) && (c <= '9')):
+			while ((j + 1 < end) && is_ident_part_byte(src[j + 1])): j = j + 1
 		j = j + 1
+	return state
 
 
 # Count of fixes lint_text_file applied to the current buffer, and
@@ -736,8 +609,7 @@ void lint_text_report(int line, int column, char* message, int fixable):
 	if (fixable && lint_fix_mode):
 		lint_text_fixes = lint_text_fixes + 1
 		return
-	if (lint_mode == 0):
-		return
+	if (lint_mode == 0): return
 	if (lint_begin(line, column, message)):
 		warning(message)
 		lint_end()
@@ -746,8 +618,7 @@ void lint_text_report(int line, int column, char* message, int fixable):
 int lint_write_file(char* path, char* text, int length):
 	/* O_WRONLY|O_CREAT|O_TRUNC; an existing file keeps its mode */
 	int fd = open(path, 577, 420)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	int done = 0
 	while (done < length):
 		int n = write(fd, text + done, length - done)
@@ -763,8 +634,7 @@ int lint_write_file(char* path, char* text, int length):
 # Runs before the root compiles, so a fixed file is what gets checked.
 void lint_text_file(char* path):
 	char* src = lint_read_file(path)
-	if (src == 0):
-		return
+	if (src == 0): return
 	int n = lint_text_length
 	char* out = malloc(n + 2)
 	int o = 0
@@ -790,8 +660,7 @@ void lint_text_file(char* path):
 	while (i < n):
 		int start = i
 		int end = i
-		while ((end < n) && (src[end] != 10)):
-			end = end + 1
+		while ((end < n) && (src[end] != 10)): end = end + 1
 		int has_newline = end < n
 		int content_end = end
 		int cr = 0
@@ -800,8 +669,8 @@ void lint_text_file(char* path):
 			cr = 1
 		int start_state = state
 		if (lint_mode && (lint_contains(src + start, content_end - start, c"nolint") == 0)):
-			lint_unicode_line(src, start, content_end, start_state, line)
-		state = lint_scan_line(src, start, content_end, state)
+			lint_scan_line(src, start, content_end, start_state, line, 1)
+		state = lint_scan_line(src, start, content_end, state, 0, 0)
 		# Inside a multi-line string literal, or opted out: copied verbatim
 		int verbatim = (start_state == 2) || lint_contains(src + start, content_end - start, c"nolint")
 		int blank = (verbatim == 0) && (start_state == 0) && lint_is_blank(src, start, content_end)
@@ -820,8 +689,7 @@ void lint_text_file(char* path):
 				blank_run = blank_run + 1
 				if (blank_run == 3):
 					lint_text_report(line, 1, c"warning: more than two consecutive blank lines [blank-lines]", 1)
-				if (blank_run >= 3):
-					keep = lint_fix_mode == 0
+				if (blank_run >= 3): keep = lint_fix_mode == 0
 		else:
 			seen_code = 1
 			blank_run = 0
@@ -834,22 +702,20 @@ void lint_text_file(char* path):
 				if (text_end < content_end):
 					int column = lint_line_width(src, start, text_end) + 1
 					lint_text_report(line, column, c"warning: trailing whitespace [trailing-whitespace]", 1)
-					if (lint_fix_mode == 0):
-						text_end = content_end
+					if (lint_fix_mode == 0): text_end = content_end
 			if (cr):
 				if (crlf_reported == 0):
 					crlf_reported = 1
 					lint_text_report(line, 1, c"warning: file uses CRLF line endings [crlf]", 1)
-				if (lint_fix_mode && (state != 2)):
-					keep_cr = 0
+				if (lint_fix_mode && (state != 2)): keep_cr = 0
 			# Space indentation (the compiler itself warns about it):
-			# re-indent with a tab per lint_tab_width() columns
+			# re-indent with a tab per lint_tab_width columns
 			if (lint_fix_mode && (start_state == 0) && (blank == 0) && (src[start] == ' ')):
 				int indent_end = start
 				while ((indent_end < text_end) && ((src[indent_end] == ' ') || (src[indent_end] == 9))):
 					indent_end = indent_end + 1
 				int width = lint_line_width(src, start, indent_end)
-				if (width >= lint_tab_width()):
+				if (width >= lint_tab_width):
 					lint_text_fixes = lint_text_fixes + 1
 					indent_width = width
 					body = indent_end
@@ -858,27 +724,23 @@ void lint_text_file(char* path):
 				if (lint_begin(line, lint_line_limit + 1, c"line-too-long")):
 					diag_part(c"warning: line is ")
 					diag_part(itoa(line_width))
-					diag_part(c" columns wide (limit ")
-					diag_part(itoa(lint_line_limit))
-					warning(c") [line-too-long]")
+					warning3(c" columns wide (limit ", itoa(lint_line_limit), c") [line-too-long]")
 					lint_end()
 		if (keep):
 			if (indent_width >= 0):
 				int k = 0
-				while (k < indent_width / lint_tab_width()):
+				while (k < indent_width / lint_tab_width):
 					out[o] = 9
 					o = o + 1
 					k = k + 1
 				k = 0
-				while (k < indent_width % lint_tab_width()):
+				while (k < indent_width % lint_tab_width):
 					out[o] = ' '
 					o = o + 1
 					k = k + 1
-			int j = body
-			while (j < text_end):
+			for j in range(body, text_end):
 				out[o] = src[j]
 				o = o + 1
-				j = j + 1
 			if (keep_cr):
 				out[o] = 13
 				o = o + 1
@@ -890,18 +752,15 @@ void lint_text_file(char* path):
 				lint_text_fixes = lint_text_fixes + 1
 				out[o] = 10
 				o = o + 1
-		if (blank == 0):
-			last_code_end = o
+		if (blank == 0): last_code_end = o
 		i = end
-		if (has_newline):
-			i = i + 1
+		if (has_newline): i = i + 1
 		line = line + 1
 
 	# Blank lines at the end of the file
 	if (seen_code && (line - 1 > last_code_line)):
 		lint_text_report(last_code_line + 1, 1, c"warning: blank lines at end of file [trailing-blank-lines]", 1)
-		if (lint_fix_mode):
-			o = last_code_end
+		if (lint_fix_mode): o = last_code_end
 
 	filename = saved_filename
 	file = saved_file
@@ -910,8 +769,7 @@ void lint_text_file(char* path):
 		int changed = o != n
 		int k = 0
 		while ((changed == 0) && (k < o)):
-			if (out[k] != src[k]):
-				changed = 1
+			if (out[k] != src[k]): changed = 1
 			k = k + 1
 		if (changed):
 			if (lint_write_file(path, out, o) == 0):

@@ -4,13 +4,10 @@
 # resolution (bin/wexec, x86 Linux).
 
 
-# 1 when wexec_collect_dir can produce a real directory listing on this
-# platform: its getdents parsing assumes the classic Linux dirent
-# layout, which is exactly this target's own, so directory inputs hash
-# correctly here. The arm64_darwin sibling returns 0 (Darwin
-# getdirentries64 records use a different layout -- see the NOTE in
-# lib/__arch__/arm64_darwin/syscalls.w), making wexec warn and treat
-# directory inputs as empty instead of silently misparsing them.
+# 1 when wexec_collect_dir's listing (lib/dir.w) is trusted on this
+# platform, so directory inputs hash correctly here. The arm64_darwin
+# sibling returns 0 until its getdirentries64 decoding is checked on a
+# Mac, making wexec warn and treat directory inputs as empty.
 int wexec_dirents_supported():
 	return 1
 
@@ -25,8 +22,7 @@ timeouts and child cleanup"). */
 # frame's return address at the vdso sigreturn trampoline, see the
 # rt_sigaction note in lib/__arch__/x86/syscalls.w and
 # wdbg_install_handler in debugger/wdbg.w).
-int wexec_process_groups_supported():
-	return 1
+const int wexec_process_groups_supported = 1
 
 
 # setpgid(0, 0) (i386 syscall 57): make the calling process the leader

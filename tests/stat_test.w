@@ -48,10 +48,7 @@ void test_file_stat_blocks_counts_allocated_space():
 	# catch a wrong statx offset (which would read a timestamp-sized
 	# garbage word), loose enough for any sane allocation policy.
 	char* content = malloc(8193)
-	int i = 0
-	while (i < 8192):
-		content[i] = 'x'
-		i = i + 1
+	for i in range(8192): content[i] = 'x'
 	content[8192] = 0
 	st_write(path, content)
 	free(content)
@@ -163,7 +160,7 @@ void test_file_mode_octal_and_parse():
 	assert_strings_equal(c"0644", file_mode_octal(420))
 	assert_strings_equal(c"4755", file_mode_octal(2541))
 	# Only the low 12 bits: the file-type bits are dropped.
-	assert_strings_equal(c"0755", file_mode_octal(FILE_S_IFDIR() | 493))
+	assert_strings_equal(c"0755", file_mode_octal(FILE_S_IFDIR | 493))
 	assert_equal(420, file_mode_parse_octal(c"644"))
 	assert_equal(420, file_mode_parse_octal(c"0644"))
 	assert_equal(-1, file_mode_parse_octal(c""))

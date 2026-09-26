@@ -11,10 +11,10 @@ in once:
 
 Compression uses DEFLATE_LEVEL_FAST (real LZ77 + Huffman). Decompression
 passes the caller's cap straight to inflate's max_output, so an
-over-expanding stream fails with codec_err_too_large() the moment it
+over-expanding stream fails with codec_err_too_large the moment it
 crosses the cap -- the output is never materialized past it. Every other
 decode failure (bad header, checksum, truncated or corrupt stream) is
-codec_err_corrupt().
+codec_err_corrupt.
 */
 import lib.memory
 import lib.result
@@ -26,9 +26,9 @@ import libs.standard.web.codec
 
 
 int compress_codec_status(int code):
-	if (code == INFLATE_ERR_TOO_LARGE()):
-		return codec_err_too_large()
-	return codec_err_corrupt()
+	if (code == INFLATE_ERR_TOO_LARGE):
+		return codec_err_too_large
+	return codec_err_corrupt
 
 
 int compress_codec_gzip_encode(char* in, int len, char** out, int* out_len):
@@ -36,7 +36,7 @@ int compress_codec_gzip_encode(char* in, int len, char** out, int* out_len):
 	*out = r.data
 	*out_len = r.length
 	free(r)
-	return codec_ok()
+	return codec_ok
 
 
 int compress_codec_gzip_decode(char* in, int len, int max, char** out, int* out_len):
@@ -52,7 +52,7 @@ int compress_codec_gzip_decode(char* in, int len, int max, char** out, int* out_
 	*out = r.data
 	*out_len = r.length
 	free(r)
-	return codec_ok()
+	return codec_ok
 
 
 int compress_codec_deflate_encode(char* in, int len, char** out, int* out_len):
@@ -60,7 +60,7 @@ int compress_codec_deflate_encode(char* in, int len, char** out, int* out_len):
 	*out = r.data
 	*out_len = r.length
 	free(r)
-	return codec_ok()
+	return codec_ok
 
 
 int compress_codec_deflate_decode(char* in, int len, int max, char** out, int* out_len):
@@ -76,7 +76,7 @@ int compress_codec_deflate_decode(char* in, int len, int max, char** out, int* o
 	*out = r.data
 	*out_len = r.length
 	free(r)
-	return codec_ok()
+	return codec_ok
 
 
 # Registers "gzip" then "deflate" (that order is the advertised

@@ -34,85 +34,36 @@ struct file_stat:
 	int dev
 
 
-int FILE_STATX_BUF_SIZE():
-	return 256
-
-
-int FILE_STATX_BASIC_STATS():
-	return 2047
+const int FILE_STATX_BUF_SIZE = 256
+const int FILE_STATX_BASIC_STATS = 2047
 
 
 # struct statx field offsets (verified against linux/stat.h).
-int FILE_STATX_NLINK_OFFSET():
-	return 16
-
-
-int FILE_STATX_UID_OFFSET():
-	return 20
-
-
-int FILE_STATX_GID_OFFSET():
-	return 24
-
-
-int FILE_STATX_MODE_OFFSET():
-	return 28
-
-
-int FILE_STATX_INO_OFFSET():
-	return 32
-
-
-int FILE_STATX_SIZE_OFFSET():
-	return 40
+const int FILE_STATX_NLINK_OFFSET = 16
+const int FILE_STATX_UID_OFFSET = 20
+const int FILE_STATX_GID_OFFSET = 24
+const int FILE_STATX_MODE_OFFSET = 28
+const int FILE_STATX_INO_OFFSET = 32
+const int FILE_STATX_SIZE_OFFSET = 40
 
 
 # stx_blocks: allocated 512-byte blocks (the figure du(1) sums), u64 at
 # offset 48 -- read as the low word like size/ino, the same accepted
 # 32-bit limit the module header documents.
-int FILE_STATX_BLOCKS_OFFSET():
-	return 48
-
-
-int FILE_STATX_ATIME_OFFSET():
-	return 64
-
-
-int FILE_STATX_CTIME_OFFSET():
-	return 96
-
-
-int FILE_STATX_MTIME_OFFSET():
-	return 112
-
-
-int FILE_STATX_DEV_MAJOR_OFFSET():
-	return 136
-
-
-int FILE_STATX_DEV_MINOR_OFFSET():
-	return 140
+const int FILE_STATX_BLOCKS_OFFSET = 48
+const int FILE_STATX_ATIME_OFFSET = 64
+const int FILE_STATX_CTIME_OFFSET = 96
+const int FILE_STATX_MTIME_OFFSET = 112
+const int FILE_STATX_DEV_MAJOR_OFFSET = 136
+const int FILE_STATX_DEV_MINOR_OFFSET = 140
 
 
 # S_IFMT / type bits from the st_mode word.
-int FILE_S_IFMT():
-	return 61440
-
-
-int FILE_S_IFREG():
-	return 32768
-
-
-int FILE_S_IFDIR():
-	return 16384
-
-
-int FILE_S_IFLNK():
-	return 40960
-
-
-int FILE_MODE_PERM_MASK():
-	return 511
+const int FILE_S_IFMT = 61440
+const int FILE_S_IFREG = 32768
+const int FILE_S_IFDIR = 16384
+const int FILE_S_IFLNK = 40960
+const int FILE_MODE_PERM_MASK = 511
 
 
 # Pack major/minor into a single word (traditional low-8-minor makedev).
@@ -124,26 +75,25 @@ int file_stat_makedev(int major, int minor):
 # Fills `out` from a successful statx buffer. mode is u16 at offset 28;
 # load_int then mask so the adjacent spare halfword is ignored.
 void file_stat_from_statx(char* buf, file_stat* out):
-	out.mode = load_int(buf + FILE_STATX_MODE_OFFSET()) & 65535
-	out.nlink = load_int(buf + FILE_STATX_NLINK_OFFSET())
-	out.uid = load_int(buf + FILE_STATX_UID_OFFSET())
-	out.gid = load_int(buf + FILE_STATX_GID_OFFSET())
-	out.ino = load_word(buf + FILE_STATX_INO_OFFSET())
-	out.size = load_word(buf + FILE_STATX_SIZE_OFFSET())
-	out.blocks = load_word(buf + FILE_STATX_BLOCKS_OFFSET())
-	out.atime = load_word(buf + FILE_STATX_ATIME_OFFSET())
-	out.ctime = load_word(buf + FILE_STATX_CTIME_OFFSET())
-	out.mtime = load_word(buf + FILE_STATX_MTIME_OFFSET())
-	int major = load_int(buf + FILE_STATX_DEV_MAJOR_OFFSET())
-	int minor = load_int(buf + FILE_STATX_DEV_MINOR_OFFSET())
+	out.mode = load_int(buf + FILE_STATX_MODE_OFFSET) & 65535
+	out.nlink = load_int(buf + FILE_STATX_NLINK_OFFSET)
+	out.uid = load_int(buf + FILE_STATX_UID_OFFSET)
+	out.gid = load_int(buf + FILE_STATX_GID_OFFSET)
+	out.ino = load_word(buf + FILE_STATX_INO_OFFSET)
+	out.size = load_word(buf + FILE_STATX_SIZE_OFFSET)
+	out.blocks = load_word(buf + FILE_STATX_BLOCKS_OFFSET)
+	out.atime = load_word(buf + FILE_STATX_ATIME_OFFSET)
+	out.ctime = load_word(buf + FILE_STATX_CTIME_OFFSET)
+	out.mtime = load_word(buf + FILE_STATX_MTIME_OFFSET)
+	int major = load_int(buf + FILE_STATX_DEV_MAJOR_OFFSET)
+	int minor = load_int(buf + FILE_STATX_DEV_MINOR_OFFSET)
 	out.dev = file_stat_makedev(major, minor)
 
 
 int file_statx_fill(char* path, int flags, file_stat* out):
-	char* buf = malloc(FILE_STATX_BUF_SIZE())
-	int err = statx(path, flags, FILE_STATX_BASIC_STATS(), buf)
-	if (err == 0):
-		file_stat_from_statx(buf, out)
+	char* buf = malloc(FILE_STATX_BUF_SIZE)
+	int err = statx(path, flags, FILE_STATX_BASIC_STATS, buf)
+	if (err == 0): file_stat_from_statx(buf, out)
 	free(buf)
 	return err
 
@@ -156,23 +106,23 @@ int file_stat_path(char* path, file_stat* out):
 
 # Do not follow symlinks (lstat(2) behavior).
 int file_lstat_path(char* path, file_stat* out):
-	return file_statx_fill(path, at_symlink_nofollow(), out)
+	return file_statx_fill(path, at_symlink_nofollow, out)
 
 
 int file_is_reg(file_stat* st):
-	return (st.mode & FILE_S_IFMT()) == FILE_S_IFREG()
+	return (st.mode & FILE_S_IFMT) == FILE_S_IFREG
 
 
 int file_is_dir(file_stat* st):
-	return (st.mode & FILE_S_IFMT()) == FILE_S_IFDIR()
+	return (st.mode & FILE_S_IFMT) == FILE_S_IFDIR
 
 
 int file_is_lnk(file_stat* st):
-	return (st.mode & FILE_S_IFMT()) == FILE_S_IFLNK()
+	return (st.mode & FILE_S_IFMT) == FILE_S_IFLNK
 
 
 int file_mode_perm(file_stat* st):
-	return st.mode & FILE_MODE_PERM_MASK()
+	return st.mode & FILE_MODE_PERM_MASK
 
 
 # The permission bits of mode (low 12 bits: setuid/setgid/sticky and
@@ -192,16 +142,13 @@ char* file_mode_octal(int mode):
 # Parse an octal mode string like "644" or "0644". Returns the value,
 # or -1 for an empty string or any non-octal digit.
 int file_mode_parse_octal(char* s):
-	if (s == 0):
-		return -1
-	if (s[0] == 0):
-		return -1
+	if (s == 0): return -1
+	if (s[0] == 0): return -1
 	int result = 0
 	int i = 0
 	while (s[i]):
 		int d = s[i] - '0'
-		if ((d < 0) || (d > 7)):
-			return -1
+		if ((d < 0) || (d > 7)): return -1
 		result = result * 8 + d
 		i = i + 1
 	return result
@@ -210,12 +157,9 @@ int file_mode_parse_octal(char* s):
 # A short name for the file type: "regular file", "directory",
 # "symbolic link" or "other".
 char* file_type_name(file_stat* st):
-	if (file_is_reg(st)):
-		return c"regular file"
-	if (file_is_dir(st)):
-		return c"directory"
-	if (file_is_lnk(st)):
-		return c"symbolic link"
+	if (file_is_reg(st)): return c"regular file"
+	if (file_is_dir(st)): return c"directory"
+	if (file_is_lnk(st)): return c"symbolic link"
 	return c"other"
 
 
@@ -228,8 +172,7 @@ int file_chmod(char* path, int mode):
 # via create_file's 420 = 0644 default used elsewhere in the tree).
 int file_touch(char* path, int create_if_missing):
 	int err = utimensat(path, 0, 0)
-	if (err == 0):
-		return 0
+	if (err == 0): return 0
 	if ((create_if_missing == 0) || (err != (0 - 2))):
 		return err
 	# ENOENT: create then stamp.
@@ -273,8 +216,7 @@ int file_readlink(char* path, char* buf, int size):
 	int n = readlink(path, buf, size)
 	if (n < 0):
 		return n
-	if (n < size):
-		buf[n] = 0
+	if (n < size): buf[n] = 0
 	return n
 
 
@@ -300,7 +242,7 @@ struct file_fs_stat:
 
 
 int file_statfs(char* path, file_fs_stat* out):
-	char* buf = malloc(STATFS_BUF_SIZE())
+	char* buf = malloc(STATFS_BUF_SIZE)
 	int* fields = cast(int*, malloc(6 * __word_size__))
 	int err = statfs_fill(path, buf, fields)
 	if (err == 0):

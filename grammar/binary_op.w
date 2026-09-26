@@ -4,8 +4,7 @@
 # joins two of these inside an if/while condition: such guards read as
 # logical and do not short-circuit.
 int operand_is_bool_lvalue(int type):
-	if (type_is_value(type)):
-		return 0
+	if (type_is_value(type)): return 0
 	return type_unqualified(type) == bool_type
 
 
@@ -32,10 +31,8 @@ int check_bool_ops_mode
 # is what gates the DEFAULT warning down to the semantics-preserving
 # subset.
 int operand_is_bool_condition(int type):
-	if (operand_is_bool_lvalue(type)):
-		return 1
-	if (type_is_value(type) == 0):
-		return 0
+	if (operand_is_bool_lvalue(type)): return 1
+	if (type_is_value(type) == 0): return 0
 	return type_unqualified(type) == bool_type
 
 
@@ -83,8 +80,7 @@ void warn_bool_bitwise_at(char* message, int op_line_number, int op_diag_token_l
 
 int binary1(int type):
 	type = promote(type)
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	return type
 
 
@@ -101,15 +97,13 @@ int binary2_finish(int type):
 # the right operand and pop the left one first.
 int binary2_finish_pop(int type):
 	promote(type)
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	return 3
 
 
 int binary2_promote_pop(int type):
 	type = promote(type)
-	pop_ebx()
-	stack_pos = stack_pos - 1
+	pop_ebx_slot()
 	return type
 
 
@@ -127,62 +121,37 @@ int float_binary_result_type(int kind):
 void float_load_xmm(int xmm, int reg, int type, int kind):
 	int operand_kind = type_float_kind(type)
 	if (kind == 2):
-		if (operand_kind == 2):
-			movq_xmm(xmm, reg)
+		if (operand_kind == 2): movq_xmm(xmm, reg)
 		else if (operand_kind == 1):
 			movd_xmm(xmm, reg)
 			cvtss2sd_xmm(xmm)
-		else:
-			cvtsi2sd_xmm(xmm, reg)
+		else: cvtsi2sd_xmm(xmm, reg)
 	else:
-		if (operand_kind == 1):
-			movd_xmm(xmm, reg)
-		else:
-			cvtsi2ss_xmm(xmm, reg)
+		if (operand_kind == 1): movd_xmm(xmm, reg)
+		else: cvtsi2ss_xmm(xmm, reg)
 
 
 int float_binary_arithmetic(int left_type, int right_type, int op):
 	int kind = binary_float_kind(left_type, right_type)
-	if (kind == 0):
-		return 0
+	if (kind == 0): return 0
 	float_load_xmm(0, 1, left_type, kind)
 	float_load_xmm(1, 0, right_type, kind)
-	if (kind == 2):
-		if (op == '+'):
-			addsd()
-		else if (op == '-'):
-			subsd()
-		else if (op == '*'):
-			mulsd()
-		else if (op == '/'):
-			divsd()
-		movq_rax_xmm0()
-	else:
-		if (op == '+'):
-			addss()
-		else if (op == '-'):
-			subss()
-		else if (op == '*'):
-			mulss()
-		else if (op == '/'):
-			divss()
-		movd_eax_xmm0()
+	float_arith(op, kind == 2)
+	if (kind == 2): movq_rax_xmm0()
+	else: movd_eax_xmm0()
 	return float_binary_result_type(kind)
 
 
 int float_binary_compare(int left_type, int right_type, int setcc_opcode, int swap):
 	int kind = binary_float_kind(left_type, right_type)
-	if (kind == 0):
-		return 0
+	if (kind == 0): return 0
 	if (swap):
 		float_load_xmm(0, 0, right_type, kind)
 		float_load_xmm(1, 1, left_type, kind)
 	else:
 		float_load_xmm(0, 1, left_type, kind)
 		float_load_xmm(1, 0, right_type, kind)
-	if (kind == 2):
-		ucomisd()
-	else:
-		ucomiss()
+	if (kind == 2): ucomisd()
+	else: ucomiss()
 	setcc_movzx_eax(setcc_opcode)
 	return type_value(bool_type)

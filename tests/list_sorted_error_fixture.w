@@ -5,3 +5,4 @@
 l := list[float32]{1.5, 0.5}
 s := l.sorted()
 println(len(s))
+# wbuild: fixture_group=list_sorted_error_test

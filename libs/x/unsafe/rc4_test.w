@@ -8,47 +8,17 @@ rc4_reset, and the xor helper's encrypt/decrypt round trip. Issue #209.
 import lib.testing
 import lib.memory
 import libs.x.unsafe.rc4
-
-
-# Format len bytes as a lowercase hex string (malloc'd).
-char* rc4t_hex(char* data, int len):
-	char* out = malloc(len * 2 + 1)
-	char* digits = c"0123456789abcdef"
-	int i = 0
-	while (i < len):
-		int b = data[i] & 255
-		out[i * 2] = digits[(b >> 4) & 15]
-		out[i * 2 + 1] = digits[b & 15]
-		i = i + 1
-	out[len * 2] = 0
-	return out
-
-
-int rc4t_nibble(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	return c - 'a' + 10
-
-
-# Decode a lowercase hex string into malloc'd bytes (strlen(hex)/2 long).
-char* rc4t_unhex(char* hex):
-	int n = strlen(hex) / 2
-	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = (rc4t_nibble(hex[i * 2] & 255) << 4) | rc4t_nibble(hex[i * 2 + 1] & 255)
-		i = i + 1
-	out[n] = 0
-	return out
+import lib.hex
+import lib.mem
 
 
 # Check 16 keystream bytes at stream offset `off` for the hex key.
 void rc4t_check_at(char* key_hex, int off, char* want_hex):
-	char* key = rc4t_unhex(key_hex)
+	char* key = hex_bytes(key_hex)
 	rc4* r = rc4_new(key, strlen(key_hex) / 2)
 	char* ks = malloc(off + 16)
 	rc4_keystream(r, ks, off + 16)
-	char* got = rc4t_hex(ks + off, 16)
+	char* got = hex_encode(ks + off, 16)
 	assert_strings_equal(want_hex, got)
 	free(got)
 	free(ks)
@@ -87,7 +57,7 @@ void test_rc4_rfc6229_key256():
 
 void test_rc4_chunked_matches_oneshot():
 	# Drawing the keystream in ragged chunks must equal one big draw.
-	char* key = rc4t_unhex(c"0102030405060708090a0b0c0d0e0f10")
+	char* key = hex_bytes(c"0102030405060708090a0b0c0d0e0f10")
 	rc4* a = rc4_new(key, 16)
 	rc4* b = rc4_new(key, 16)
 	char* one = malloc(272)
@@ -97,13 +67,12 @@ void test_rc4_chunked_matches_oneshot():
 	int step = 1
 	while (pos < 272):
 		int take = step
-		if (pos + take > 272):
-			take = 272 - pos
+		if (pos + take > 272): take = 272 - pos
 		rc4_keystream(b, many + pos, take)
 		pos = pos + take
 		step = step + 3
-	char* want = rc4t_hex(one, 272)
-	char* got = rc4t_hex(many, 272)
+	char* want = hex_encode(one, 272)
+	char* got = hex_encode(many, 272)
 	assert_strings_equal(want, got)
 	free(got)
 	free(want)
@@ -116,20 +85,20 @@ void test_rc4_chunked_matches_oneshot():
 
 void test_rc4_reset_reuse():
 	# Rekeying an existing instance restarts the keystream exactly.
-	char* key = rc4t_unhex(c"0102030405")
+	char* key = hex_bytes(c"0102030405")
 	rc4* r = rc4_new(key, 5)
 	char* ks = malloc(64)
 	rc4_keystream(r, ks, 64)
 	rc4_reset(r, key, 5)
 	rc4_keystream(r, ks, 16)
-	char* got = rc4t_hex(ks, 16)
+	char* got = hex_encode(ks, 16)
 	assert_strings_equal(c"b2396305f03dc027ccc3524a0a1118a8", got)
 	free(got)
 	# Rekeying with a different key switches streams.
-	char* key2 = rc4t_unhex(c"01020304050607")
+	char* key2 = hex_bytes(c"01020304050607")
 	rc4_reset(r, key2, 7)
 	rc4_keystream(r, ks, 16)
-	got = rc4t_hex(ks, 16)
+	got = hex_encode(ks, 16)
 	assert_strings_equal(c"293f02d47f37c9b633f2af5285feb46b", got)
 	free(got)
 	free(key2)
@@ -143,16 +112,13 @@ void test_rc4_process_roundtrip():
 	# the same key restores the plaintext, in place.
 	char* plain = c"Attack at dawn"
 	char* buf = malloc(15)
-	int i = 0
-	while (i < 14):
-		buf[i] = plain[i]
-		i = i + 1
+	mem_copy(buf, plain, 14)
 	buf[14] = 0
 	rc4* r = rc4_new(c"Secret", 6)
 	rc4_process(r, buf, buf, 14)
 	rc4_free(r)
 	# Ciphertext cross-checked against an independent implementation.
-	char* got = rc4t_hex(buf, 14)
+	char* got = hex_encode(buf, 14)
 	assert_strings_equal(c"45a01f645fc35b383552544b9bf5", got)
 	free(got)
 	r = rc4_new(c"Secret", 6)

@@ -81,11 +81,7 @@ int ring_vnode_point(char* node_id, int vnode):
 
 hash_ring* ring_new(int vnodes_per_node):
 	assert1(vnodes_per_node >= 1)
-	hash_ring* r = new hash_ring()
-	r.vnodes_per_node = vnodes_per_node
-	r.points = new list[int]
-	r.owners = new list[char*]
-	r.nodes = new list[char*]
+	hash_ring* r = new hash_ring(vnodes_per_node, new list[int], new list[char*], new list[char*])
 	return r
 
 
@@ -103,8 +99,7 @@ int ring_node_count(hash_ring* r):
 int ring_has_node(hash_ring* r, char* node_id):
 	int i = 0
 	while (i < r.nodes.length):
-		if (strcmp(r.nodes[i], node_id) == 0):
-			return 1
+		if (strcmp(r.nodes[i], node_id) == 0): return 1
 		i = i + 1
 	return 0
 
@@ -116,17 +111,14 @@ int ring_find_index(hash_ring* r, int p):
 	int hi = r.points.length
 	while (lo < hi):
 		int mid = (lo + hi) / 2
-		if (r.points[mid] < p):
-			lo = mid + 1
-		else:
-			hi = mid
+		if (r.points[mid] < p): lo = mid + 1
+		else: hi = mid
 	return lo
 
 
 # 1 = added, 0 = node_id already a member (ring unchanged).
 int ring_add_node(hash_ring* r, char* node_id):
-	if (ring_has_node(r, node_id)):
-		return 0
+	if (ring_has_node(r, node_id)): return 0
 	r.nodes.push(node_id)
 	int v = 0
 	while (v < r.vnodes_per_node):
@@ -154,8 +146,7 @@ int ring_remove_node(hash_ring* r, char* node_id):
 			found = 1
 			break
 		i = i + 1
-	if (found == 0):
-		return 0
+	if (found == 0): return 0
 	i = r.points.length - 1
 	while (i >= 0):
 		if (strcmp(r.owners[i], node_id) == 0):
@@ -169,11 +160,9 @@ int ring_remove_node(hash_ring* r, char* node_id):
 # key's point, wrapping to the smallest point. 0 when the ring is
 # empty.
 char* ring_lookup(hash_ring* r, char* key):
-	if (r.points.length == 0):
-		return 0
+	if (r.points.length == 0): return 0
 	int idx = ring_find_index(r, ring_key_point(key))
-	if (idx >= r.points.length):
-		idx = 0
+	if (idx >= r.points.length): idx = 0
 	return r.owners[idx]
 
 
@@ -183,27 +172,22 @@ char* ring_lookup(hash_ring* r, char* key):
 # count); out[0] is ring_lookup's owner. 0 when the ring is empty.
 int ring_successors(hash_ring* r, char* key, int n, char** out):
 	assert1(n >= 0)
-	if (r.points.length == 0 || n == 0):
-		return 0
+	if (r.points.length == 0 || n == 0): return 0
 	int idx = ring_find_index(r, ring_key_point(key))
-	if (idx >= r.points.length):
-		idx = 0
+	if (idx >= r.points.length): idx = 0
 	int count = 0
 	int steps = 0
 	while (steps < r.points.length && count < n):
 		char* owner = r.owners[idx]
 		int seen = 0
-		int j = 0
-		while (j < count):
+		for j in range(count):
 			if (strcmp(out[j], owner) == 0):
 				seen = 1
 				break
-			j = j + 1
 		if (seen == 0):
 			out[count] = owner
 			count = count + 1
 		idx = idx + 1
-		if (idx >= r.points.length):
-			idx = 0
+		if (idx >= r.points.length): idx = 0
 		steps = steps + 1
 	return count

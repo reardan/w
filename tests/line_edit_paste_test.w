@@ -214,8 +214,7 @@ void test_paste_consume_drops_only_the_untouched_seed():
 	# with the pasted text's own indentation.
 	le_set_line(buf, 64, c"\x09")
 	le_seed_len = 1
-	if (le_seed_text != 0):
-		free(le_seed_text)
+	if (le_seed_text != 0): free(le_seed_text)
 	le_seed_text = strclone(c"\x09")
 	letest_preload(c"x\x1b[201~")
 	assert_equal(0, le_paste_consume(buf, 64))
@@ -272,10 +271,8 @@ int letest_complete_hook(char* prefix, char* out, int capacity):
 	while ((count < total) && (count < capacity)):
 		char* num = itoa(count)
 		char* name = 0
-		if (count < 64):
-			name = strjoin(c"prefix_aa", num)
-		else:
-			name = strjoin(c"prefix_b", num)
+		if (count < 64): name = strjoin(c"prefix_aa", num)
+		else: name = strjoin(c"prefix_b", num)
 		save_word(out + count * __word_size__, cast(int, name))
 		free(num)
 		count = count + 1

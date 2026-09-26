@@ -27,8 +27,7 @@ int main(int argc, int argv):
 		touch_usage()
 		return 1
 	int failed = 0
-	int i = 1
-	while (i < argc):
+	for i in range(1, argc):
 		char** path_slot = argv + i * __word_size__
 		char* path = *path_slot
 		if (path[0] == '-'):
@@ -44,5 +43,4 @@ int main(int argc, int argv):
 			stream_write_line(err_out, c"")
 			stream_flush(err_out)
 			failed = 1
-		i = i + 1
 	return failed

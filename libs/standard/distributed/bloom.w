@@ -55,11 +55,7 @@ bloom_filter* bloom_new(int m, int k):
 	assert1(m <= (1 << 24))
 	assert1(k >= 1)
 	assert1(k <= 16)
-	bloom_filter* b = new bloom_filter()
-	b.m = m
-	b.k = k
-	b.bits = bitset_new(m)
-	b.items = 0
+	bloom_filter* b = new bloom_filter(m, k, bitset_new(m), 0)
 	return b
 
 
@@ -93,8 +89,7 @@ void bloom_add(bloom_filter* b, char* key):
 	while (i < b.k):
 		bitset_set(b.bits, idx)
 		idx = idx + step
-		if (idx >= b.m):
-			idx = idx - b.m
+		if (idx >= b.m): idx = idx - b.m
 		i = i + 1
 	b.items = b.items + 1
 
@@ -109,11 +104,9 @@ int bloom_maybe_contains(bloom_filter* b, char* key):
 	free(probe)
 	int i = 0
 	while (i < b.k):
-		if (bitset_get(b.bits, idx) == 0):
-			return 0
+		if (bitset_get(b.bits, idx) == 0): return 0
 		idx = idx + step
-		if (idx >= b.m):
-			idx = idx - b.m
+		if (idx >= b.m): idx = idx - b.m
 		i = i + 1
 	return 1
 

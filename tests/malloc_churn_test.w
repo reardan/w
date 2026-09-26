@@ -84,8 +84,7 @@ void mixed_churn(int slots, int ops):
 	while (i < slots):
 		ptrs[i] = 0
 		i = i + 1
-	int op = 0
-	while (op < ops):
+	for op in range(ops):
 		int slot = lcg_next() % slots
 		if (ptrs[slot] != 0):
 			char* p = cast(char*, ptrs[slot])
@@ -99,18 +98,13 @@ void mixed_churn(int slots, int ops):
 			# Mostly small blocks, every eighth op a large one: keeps
 			# many size classes live at once.
 			int size = 8 + lcg_next() % 200
-			if ((op & 7) == 0):
-				size = 1024 + lcg_next() % 4096
+			if ((op & 7) == 0): size = 1024 + lcg_next() % 4096
 			char* fresh = malloc(size)
 			int tag = lcg_next() & 255
-			int j = 0
-			while (j < size):
-				fresh[j] = (tag + j) & 255
-				j = j + 1
+			for j in range(size): fresh[j] = (tag + j) & 255
 			ptrs[slot] = cast(int, fresh)
 			sizes[slot] = size
 			tags[slot] = tag
-		op = op + 1
 	# Verify and release the survivors.
 	i = 0
 	while (i < slots):

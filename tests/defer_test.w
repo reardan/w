@@ -77,10 +77,8 @@ void test_defer_before_early_return():
 
 int three_returns(int n):
 	defer mark(7)
-	if (n == 1):
-		return 100
-	if (n == 2):
-		return 200
+	if (n == 1): return 100
+	if (n == 2): return 200
 	return 300
 
 
@@ -161,8 +159,7 @@ void loop_body(int i):
 
 void test_defer_in_function_called_in_loop():
 	trace = 0
-	for int i in range(1, 4):
-		loop_body(i)
+	for int i in range(1, 4): loop_body(i)
 	assert_equal(123, trace)
 
 
@@ -219,14 +216,12 @@ int close_counted(int fd):
 
 int first_byte_of(char* path):
 	int fd = open(path, 0, 0)
-	if (fd < 0):
-		return 0 - 1
+	if (fd < 0): return 0 - 1
 	defer close_counted(fd)
 	char* buf = malloc(4)
 	int n = read(fd, buf, 1)
 	int result = 0 - 1
-	if (n == 1):
-		result = buf[0]
+	if (n == 1): result = buf[0]
 	free(buf)
 	return result
 

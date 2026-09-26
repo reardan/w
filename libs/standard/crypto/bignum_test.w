@@ -4,16 +4,7 @@
 # helpers, no hex module dependency per the phase-6 scope rules).
 import lib.testing
 import libs.standard.crypto.bignum
-
-
-int t_hexval(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
-	return 0
+import lib.hex
 
 
 # Parse a big-endian hex string into out; returns the byte length. Handles an
@@ -24,11 +15,11 @@ int t_hex_to_bytes(char* h, char* out):
 	int hi = 0
 	int oi = 0
 	if ((l & 1) == 1):
-		out[0] = t_hexval(h[0])
+		out[0] = hex_decode_char(h[0])
 		hi = 1
 		oi = 1
 	while (hi < l):
-		out[oi] = (t_hexval(h[hi]) << 4) | t_hexval(h[hi + 1])
+		out[oi] = (hex_decode_char(h[hi]) << 4) | hex_decode_char(h[hi + 1])
 		hi = hi + 2
 		oi = oi + 1
 	return nbytes
@@ -96,13 +87,10 @@ void test_carry_across_limbs():
 	t_assert_eq_hex(r, c"8000")             # 32768 = 2^15
 	# A chain of all-ones limbs: 2^45 - 1 plus 1 = 2^45, three limbs roll over.
 	bignum_set_u32(a, 0)
-	int i = 0
-	while (i < 45):
+	for i in range(45):
 		bignum_shl1(a)
 		a.limbs[0] = a.limbs[0] | 1
-		if (a.n == 0):
-			a.n = 1
-		i = i + 1
+		if (a.n == 0): a.n = 1
 	bignum_add(r, a, one)
 	t_assert_eq_hex(r, c"200000000000")     # 2^45
 	bignum_free(a)
@@ -238,8 +226,7 @@ void t_divmod_bitserial(bignum* a, bignum* m, bignum* q, bignum* r):
 		bignum_shl1(r)
 		if (bignum_get_bit(a, i) != 0):
 			r.limbs[0] = r.limbs[0] | 1
-			if (r.n == 0):
-				r.n = 1
+			if (r.n == 0): r.n = 1
 		if (bignum_cmp(r, m) >= 0):
 			bignum_sub(r, m)
 			bignum_set_bit(q, i)
@@ -261,16 +248,12 @@ int t_rand():
 # qhat correction (0, 1, B/2 - 1, B/2, B - 1) plus uniform limbs.
 int t_rand_limb():
 	int k = t_rand() % 8
-	if (k == 0):
-		return 0
-	if (k == 1):
-		return 1
-	if (k == 2):
-		return 16383
-	if (k == 3):
-		return 16384
-	if (k == 4):
-		return 32767
+	switch (k):
+		case 0: return 0
+		case 1: return 1
+		case 2: return 16383
+		case 3: return 16384
+		case 4: return 32767
 	return t_rand()
 
 
@@ -278,15 +261,10 @@ int t_rand_limb():
 # small_top is set, kept small so normalization shifts by many bits.
 void t_rand_bignum(bignum* x, int n, int small_top):
 	bignum_set_zero(x)
-	int i = 0
-	while (i < n):
-		x.limbs[i] = t_rand_limb()
-		i = i + 1
+	for i in range(n): x.limbs[i] = t_rand_limb()
 	if (n > 0):
-		if (small_top != 0):
-			x.limbs[n - 1] = 1 + (t_rand() % 7)
-		elif (x.limbs[n - 1] == 0):
-			x.limbs[n - 1] = 1 + t_rand()
+		if (small_top != 0): x.limbs[n - 1] = 1 + (t_rand() % 7)
+		elif (x.limbs[n - 1] == 0): x.limbs[n - 1] = 1 + t_rand()
 	x.n = n
 	bignum_normalize(x)
 
@@ -310,11 +288,11 @@ void t_check_divmod(bignum* a, bignum* m):
 	assert_equal(0 - 1, bignum_cmp(r, m))
 	# Limbs above n must stay zero (the representation invariant).
 	int i = q.n
-	while (i < BIGNUM_CAP()):
+	while (i < BIGNUM_CAP):
 		assert_equal(0, q.limbs[i])
 		i = i + 1
 	i = r.n
-	while (i < BIGNUM_CAP()):
+	while (i < BIGNUM_CAP):
 		assert_equal(0, r.limbs[i])
 		i = i + 1
 	bignum_mul(back, q, m)
@@ -339,14 +317,12 @@ void test_divmod_random_vs_bitserial():
 	T_RNG = 20260925
 	bignum* a = bignum_new()
 	bignum* m = bignum_new()
-	int iter = 0
-	while (iter < 1500):
+	for iter in range(1500):
 		int mn = 1 + (t_rand() % 20)
 		int an = t_rand() % 42
 		t_rand_bignum(m, mn, (iter / 3) % 2)
 		t_rand_bignum(a, an, 0)
 		t_check_divmod(a, m)
-		iter = iter + 1
 	bignum_free(a)
 	bignum_free(m)
 
@@ -356,8 +332,7 @@ void test_divmod_edges():
 	bignum* a = bignum_new()
 	bignum* m = bignum_new()
 	bignum* t = bignum_new()
-	int iter = 0
-	while (iter < 60):
+	for iter in range(60):
 		int mn = 1 + (iter % 12)
 		t_rand_bignum(m, mn, iter % 2)
 		# a == 0
@@ -379,7 +354,6 @@ void test_divmod_edges():
 		bignum_mul(a, m, m)
 		bignum_sub_small(a, 1)
 		t_check_divmod(a, m)
-		iter = iter + 1
 	# Divisor one: q = a, r = 0.
 	bignum_set_u32(m, 1)
 	t_rand_bignum(a, 30, 0)

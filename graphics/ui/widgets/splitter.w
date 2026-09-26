@@ -61,8 +61,7 @@ float32 ui_split_min(ui_context* ctx, float32 configured):
 void ui_split(ui_context* ctx, ui_rect area, int vertical, ui_split_state* st, ui_rect* a, ui_rect* b):
 	float32 handle = ui_split_handle()
 	float32 extent = area.h
-	if (vertical):
-		extent = area.w
+	if (vertical): extent = area.w
 
 	float32 min_a = ui_split_min(ctx, st.min_a)
 	float32 min_b = ui_split_min(ctx, st.min_b)
@@ -70,28 +69,21 @@ void ui_split(ui_context* ctx, ui_rect area, int vertical, ui_split_state* st, u
 	# for: this is the only bound that is always satisfiable, so every
 	# other one is taken against it.
 	float32 limit = extent - handle
-	if (limit < 0.0):
-		limit = 0.0
+	if (limit < 0.0): limit = 0.0
 	float32 max_pos = extent - min_b - handle
-	if (max_pos > limit):
-		max_pos = limit
+	if (max_pos > limit): max_pos = limit
 	float32 min_pos = min_a
-	if (min_pos > limit):
-		min_pos = limit
+	if (min_pos > limit): min_pos = limit
 	# An area too small to honour both minimums leaves max_pos below
 	# min_pos — an inverted range, which a naive clamp turns into a
 	# negative pane width. Resolve it towards pane a: it ends up cramped
 	# and b collapses to nothing, but neither is nonsensical.
-	if (max_pos < min_pos):
-		max_pos = min_pos
-	if (st.pos < min_pos):
-		st.pos = min_pos
-	if (st.pos > max_pos):
-		st.pos = max_pos
+	if (max_pos < min_pos): max_pos = min_pos
+	if (st.pos < min_pos): st.pos = min_pos
+	if (st.pos > max_pos): st.pos = max_pos
 
 	ui_rect divider = ui_rect_new(area.x + st.pos, area.y, handle, area.h)
-	if (vertical == 0):
-		divider = ui_rect_new(area.x, area.y + st.pos, area.w, handle)
+	if (vertical == 0): divider = ui_rect_new(area.x, area.y + st.pos, area.w, handle)
 
 	# One id per splitter, taken unconditionally — the whole point of
 	# the round-2 scroll fix is that a widget's id cost must not depend
@@ -106,33 +98,25 @@ void ui_split(ui_context* ctx, ui_rect area, int vertical, ui_split_state* st, u
 					# Remember where inside the handle the press landed, so
 					# the divider does not jump to centre itself under the
 					# pointer on the first frame of a drag.
-					if (vertical):
-						st.drag_grab = cast(float32, ctx.input.press_x) - divider.x
-					else:
-						st.drag_grab = cast(float32, ctx.input.press_y) - divider.y
+					if (vertical): st.drag_grab = cast(float32, ctx.input.press_x) - divider.x
+					else: st.drag_grab = cast(float32, ctx.input.press_y) - divider.y
 			if (st.drag_id == id):
 				if (ctx.input.mouse_down):
 					float32 want = cast(float32, ctx.input.mouse_y) - area.y - st.drag_grab
-					if (vertical):
-						want = cast(float32, ctx.input.mouse_x) - area.x - st.drag_grab
-					if (want < min_pos):
-						want = min_pos
-					if (want > max_pos):
-						want = max_pos
+					if (vertical): want = cast(float32, ctx.input.mouse_x) - area.x - st.drag_grab
+					if (want < min_pos): want = min_pos
+					if (want > max_pos): want = max_pos
 					st.pos = want
 					divider = ui_rect_new(area.x + st.pos, area.y, handle, area.h)
 					if (vertical == 0):
 						divider = ui_rect_new(area.x, area.y + st.pos, area.w, handle)
-				else:
-					st.drag_id = 0
+				else: st.drag_id = 0
 
 	# A hairline down the middle of the grab area: the divider reads as
 	# a seam, not as a widget, until you are dragging it.
 	ui_color line = ctx.theme.border
-	if (st.drag_id == id):
-		line = ctx.theme.text_muted
-	else if (ctx.disabled):
-		line = ctx.theme.disabled_widget
+	if (st.drag_id == id): line = ctx.theme.text_muted
+	else if (ctx.disabled): line = ctx.theme.disabled_widget
 	if (vertical):
 		ui_render_rect(ctx.rndr, ui_rect_new(divider.x + handle * 0.5 - 0.5, divider.y, 1.0, divider.h), line)
 	else:

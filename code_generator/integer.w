@@ -13,15 +13,6 @@ we will have to use 'uint' as the filename and 'int' in the code
 
 */
 
-##################  Integer Type Information ##################
-
-void push_all_integer_types():
-	# todo: 64, 128, 256, 512, 1024, 2048, 4096
-	# 8, 16, 32
-	# int, uint
-	int name_index = 0
-
-
 ##################  BIG ENDIAN (CPU) => LITTLE ENDIAN (MEM) ##################
 #
 # Every target is little-endian, so an n-byte field at p is exactly what a
@@ -50,11 +41,9 @@ void save_i(char* p, int v, int n):
 	if (n == 1):
 		p[0] = v
 		return
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		p[i] = v
 		v = v >> 8
-		i = i + 1
 
 
 # On a 32-bit host this keeps the byte loop's sign-fill of the upper four
@@ -83,14 +72,10 @@ void save_int(char *p, int v):
 
 
 int load_i(char* p, int n):
-	if (n == __word_size__):
-		return *cast(int*, p)
-	if (n == 4):
-		return *cast(uint32*, p)
-	if (n == 2):
-		return *cast(uint16*, p)
-	if (n == 1):
-		return *cast(uint8*, p)
+	if (n == __word_size__): return *cast(int*, p)
+	if (n == 4): return *cast(uint32*, p)
+	if (n == 2): return *cast(uint16*, p)
+	if (n == 1): return *cast(uint8*, p)
 	int result = 0
 	while (n > 0):
 		result = (result << 8) + (p[n - 1] & 255)

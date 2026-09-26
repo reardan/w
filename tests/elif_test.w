@@ -7,34 +7,25 @@ import lib.assert
 
 
 int classify(int x):
-	if x < 0:
-		return -1
-	elif x == 0:
-		return 0
-	elif x < 10:
-		return 1
-	else:
-		return 2
+	if x < 0: return -1
+	elif x == 0: return 0
+	elif x < 10: return 1
+	else: return 2
 
 
 # elif without a trailing else: no branch taken leaves the value alone
 int no_else(int x):
 	r := 0
-	if x == 1:
-		r = 10
-	elif x == 2:
-		r = 20
-	elif x == 3:
-		r = 30
+	if x == 1: r = 10
+	elif x == 2: r = 20
+	elif x == 3: r = 30
 	return r
 
 
 # Parenthesized conditions work like they do for if
 int with_parens(int x):
-	if (x == 1):
-		return 100
-	elif (x == 2):
-		return 200
+	if (x == 1): return 100
+	elif (x == 2): return 200
 	return 0
 
 
@@ -50,12 +41,9 @@ int same_line(int x):
 # if/elif chain closes before the outer elif
 int nested(int a, int b):
 	if a:
-		if b:
-			return 3
-		elif a > 1:
-			return 2
-	elif b:
-		return 1
+		if b: return 3
+		elif a > 1: return 2
+	elif b: return 1
 	return 0
 
 
@@ -68,10 +56,8 @@ int bump():
 
 
 int short_circuit(int x):
-	if x == 1:
-		return 1
-	elif bump():
-		return 2
+	if x == 1: return 1
+	elif bump(): return 2
 	return 3
 
 
@@ -109,18 +95,12 @@ int main():
 	# A long chain: every branch lands where it should
 	total := 0
 	for i in range(6):
-		if i == 0:
-			total += 1
-		elif i == 1:
-			total += 10
-		elif i == 2:
-			total += 100
-		elif i == 3:
-			total += 1000
-		elif i == 4:
-			total += 10000
-		else:
-			total += 100000
+		if i == 0: total += 1
+		elif i == 1: total += 10
+		elif i == 2: total += 100
+		elif i == 3: total += 1000
+		elif i == 4: total += 10000
+		else: total += 100000
 	assert_equal(111111, total)
 
 	println(c"elif_test passed")

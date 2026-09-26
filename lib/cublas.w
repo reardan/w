@@ -75,12 +75,9 @@ int* __cublas_args          # 14 argument words, reused per call
 # the unversioned dev symlink.
 char* __cublas_open():
 	char* h = dl_open(c"libcublas.so.12")
-	if (h == 0):
-		h = dl_open(c"libcublas.so.13")
-	if (h == 0):
-		h = dl_open(c"libcublas.so.11")
-	if (h == 0):
-		h = dl_open(c"libcublas.so")
+	if (h == 0): h = dl_open(c"libcublas.so.13")
+	if (h == 0): h = dl_open(c"libcublas.so.11")
+	if (h == 0): h = dl_open(c"libcublas.so")
 	return h
 
 
@@ -98,13 +95,10 @@ int cublas_init():
 	if (__cublas_state != 0):
 		return __cublas_state == 1
 	__cublas_state = 2
-	if (__word_size__ != 8):
-		return 0
-	if (gpu_available() == 0):
-		return 0
+	if (__word_size__ != 8): return 0
+	if (gpu_available() == 0): return 0
 	__cublas_lib = __cublas_open()
-	if (__cublas_lib == 0):
-		return 0
+	if (__cublas_lib == 0): return 0
 	__cublas_create = cast(cublas_fn1*, __cublas_bind(1, c"cublasCreate_v2"))
 	__cublas_destroy = cast(cublas_fn1*, __cublas_bind(1, c"cublasDestroy_v2"))
 	__cublas_get_version = cast(cublas_fn2*, __cublas_bind(2, c"cublasGetVersion_v2"))
@@ -133,13 +127,11 @@ int cublas_available():
 
 
 int cublas_version():
-	if (cublas_init() == 0):
-		return 0
+	if (cublas_init() == 0): return 0
 	char* cell = malloc(8)
 	save_i(cell, 0, 8)
 	int v = 0
-	if (__cublas_get_version(__cublas_handle, cell) == 0):
-		v = load_i(cell, 4)
+	if (__cublas_get_version(__cublas_handle, cell) == 0): v = load_i(cell, 4)
 	free(cell)
 	return v
 
@@ -175,8 +167,7 @@ int __cublas_gemm(int stub, int transa, int transb, int m, int n, int k, char* a
 # and so do m and n. Returns the cublasStatus_t, or 1
 # (CUBLAS_STATUS_NOT_INITIALIZED) when cuBLAS is unavailable.
 int cublas_sgemm_rm(int transa, int transb, int m, int n, int k, float alpha, float* a, int lda, float* b, int ldb, float beta, float* c, int ldc):
-	if (cublas_init() == 0):
-		return 1
+	if (cublas_init() == 0): return 1
 	float* s = cast(float*, __cublas_scalars)
 	s[0] = alpha
 	s[4] = beta
@@ -184,8 +175,7 @@ int cublas_sgemm_rm(int transa, int transb, int m, int n, int k, float alpha, fl
 
 
 int cublas_dgemm_rm(int transa, int transb, int m, int n, int k, float64 alpha, float64* a, int lda, float64* b, int ldb, float64 beta, float64* c, int ldc):
-	if (cublas_init() == 0):
-		return 1
+	if (cublas_init() == 0): return 1
 	float64* s = cast(float64*, __cublas_scalars)
 	s[0] = alpha
 	s[2] = beta

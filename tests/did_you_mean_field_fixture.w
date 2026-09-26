@@ -19,3 +19,4 @@ int main():
 	s.start = 0
 	s.length = 4
 	return s.start + s.lenght
+# wbuild: fixture_group=error_caret_test

@@ -28,8 +28,7 @@ import graphics.ui.widgets.context
 
 
 # Pixels one wheel notch scrolls.
-int ui_scroll_notch():
-	return 48
+const int ui_scroll_notch = 48
 
 
 # Thickness of the scrollbar drawn inside the viewport's right edge.
@@ -71,24 +70,20 @@ void ui_scroll_init(ui_scroll_state* st):
 # scroll at all.
 float32 ui_scroll_max(ui_scroll_state* st):
 	float32 max = st.content_h - st.view_h
-	if (max < 0.0):
-		return 0.0
+	if (max < 0.0): return 0.0
 	return max
 
 
 # 1 when the last measured content did not fit the viewport.
 int ui_scroll_overflows(ui_scroll_state* st):
-	if (ui_scroll_max(st) > 0.0):
-		return 1
+	if (ui_scroll_max(st) > 0.0): return 1
 	return 0
 
 
 void ui_scroll_clamp(ui_scroll_state* st):
 	float32 max = ui_scroll_max(st)
-	if (st.offset_y > max):
-		st.offset_y = max
-	if (st.offset_y < 0.0):
-		st.offset_y = 0.0
+	if (st.offset_y > max): st.offset_y = max
+	if (st.offset_y < 0.0): st.offset_y = 0.0
 
 
 # Scroll to a given offset, clamped to the measured content.
@@ -100,10 +95,8 @@ void ui_scroll_to(ui_scroll_state* st, float32 offset_y):
 # Bring a band of content space into view with the smallest move that
 # does it — what a caret or a selected row needs after keyboard motion.
 void ui_scroll_reveal(ui_scroll_state* st, float32 top, float32 height):
-	if (top < st.offset_y):
-		st.offset_y = top
-	else if (top + height > st.offset_y + st.view_h):
-		st.offset_y = top + height - st.view_h
+	if (top < st.offset_y): st.offset_y = top
+	else if (top + height > st.offset_y + st.view_h): st.offset_y = top + height - st.view_h
 	ui_scroll_clamp(st)
 
 
@@ -135,7 +128,7 @@ void ui_scroll_end(ui_context* ctx, ui_scroll_state* st):
 	if (ctx.input.scroll_y != 0):
 		if (ui_rect_contains(area, cast(float32, ctx.input.scroll_at_x), cast(float32, ctx.input.scroll_at_y))):
 			if (ui_scroll_overflows(st)):
-				st.offset_y = st.offset_y - cast(float32, ctx.input.scroll_y * ui_scroll_notch())
+				st.offset_y = st.offset_y - cast(float32, ctx.input.scroll_y * ui_scroll_notch)
 				ctx.input.scroll_y = 0
 	ui_scroll_clamp(st)
 
@@ -156,15 +149,12 @@ void ui_scroll_end(ui_context* ctx, ui_scroll_state* st):
 	float32 track_x = area.x + area.w - bar_w - 2.0
 	float32 frac = st.view_h / st.content_h
 	float32 thumb_h = area.h * frac
-	if (thumb_h < 24.0):
-		thumb_h = 24.0
-	if (thumb_h > area.h):
-		thumb_h = area.h
+	if (thumb_h < 24.0): thumb_h = 24.0
+	if (thumb_h > area.h): thumb_h = area.h
 	float32 travel = area.h - thumb_h
 	float32 max = ui_scroll_max(st)
 	float32 thumb_y = area.y
-	if (max > 0.0):
-		thumb_y = area.y + travel * (st.offset_y / max)
+	if (max > 0.0): thumb_y = area.y + travel * (st.offset_y / max)
 	ui_rect thumb = ui_rect_new(track_x, thumb_y, bar_w, thumb_h)
 
 	# Dragging the thumb, on the same press/active model as every other
@@ -182,10 +172,8 @@ void ui_scroll_end(ui_context* ctx, ui_scroll_state* st):
 						float32 want = cast(float32, ctx.input.mouse_y) - st.drag_grab_y - area.y
 						st.offset_y = max * (want / travel)
 						ui_scroll_clamp(st)
-				else:
-					st.drag_id = 0
+				else: st.drag_id = 0
 
 	ui_color bar = ctx.theme.border
-	if (st.drag_id == id):
-		bar = ctx.theme.text_muted
+	if (st.drag_id == id): bar = ctx.theme.text_muted
 	ui_draw_rrect(ctx.rndr, thumb, bar_w * 0.5, bar)

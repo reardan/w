@@ -50,43 +50,31 @@ int sigcontext_eax():
 		return 104 /* rax */
 	return 44
 int sigcontext_trapno():
-	if (__word_size__ == 8):
-		return 160
+	if (__word_size__ == 8): return 160
 	return 48
 int sigcontext_err():
-	if (__word_size__ == 8):
-		return 152
+	if (__word_size__ == 8): return 152
 	return 52
 int sigcontext_eip():
 	if (__word_size__ == 8):
 		return 128 /* rip */
 	return 56
 int sigcontext_eflags():
-	if (__word_size__ == 8):
-		return 136
+	if (__word_size__ == 8): return 136
 	return 64
 # Fault address of the last page fault (only meaningful for SIGSEGV)
 int sigcontext_cr2():
-	if (__word_size__ == 8):
-		return 176
+	if (__word_size__ == 8): return 176
 	return 84
 # x64-only: r8..r15 sit at the start of the 64-bit sigcontext
-int sigcontext_r8():
-	return 0
-int sigcontext_r9():
-	return 8
-int sigcontext_r10():
-	return 16
-int sigcontext_r11():
-	return 24
-int sigcontext_r12():
-	return 32
-int sigcontext_r13():
-	return 40
-int sigcontext_r14():
-	return 48
-int sigcontext_r15():
-	return 56
+const int sigcontext_r8 = 0
+const int sigcontext_r9 = 8
+const int sigcontext_r10 = 16
+const int sigcontext_r11 = 24
+const int sigcontext_r12 = 32
+const int sigcontext_r13 = 40
+const int sigcontext_r14 = 48
+const int sigcontext_r15 = 56
 
 
 # Registers are word-sized fields: 4 bytes on i386, 8 on x86-64.
@@ -127,5 +115,4 @@ void ctx_set_trap_flag(int context):
 void ctx_clear_trap_flag(int context):
 	int flags = ctx_eflags(context)
 	# eflags & ~0x100 without a bitwise-not operator on constants
-	if (flags & 256):
-		save_word(context + sigcontext_eflags(), flags - 256)
+	if (flags & 256): save_word(context + sigcontext_eflags(), flags - 256)

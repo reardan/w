@@ -32,8 +32,7 @@ struct __w_var_box:
 
 
 int __w_var_tag_of(__w_var_box* b):
-	if (cast(int, b) == 0):
-		return 0
+	if (cast(int, b) == 0): return 0
 	return b.tag
 
 
@@ -45,12 +44,9 @@ int __w_var_tag(void* v):
 
 
 char* __w_var_tag_name(int tag):
-	if (tag == 1):
-		return c"int"
-	if (tag == 2):
-		return c"char*"
-	if (tag == 3):
-		return c"string"
+	if (tag == 1): return c"int"
+	if (tag == 2): return c"char*"
+	if (tag == 3): return c"string"
 	return c"null"
 
 
@@ -99,16 +95,12 @@ __w_var_box* __w_var_box_str(string s):
 
 
 int __w_var_unbox_int(__w_var_box* b):
-	if (__w_var_tag_of(b) != 1):
-		__w_var_type_error(c"int", __w_var_tag_of(b))
+	if (__w_var_tag_of(b) != 1): __w_var_type_error(c"int", __w_var_tag_of(b))
 	return b.payload
 
 
 void __w_var_copy_bytes(char* dst, char* src, int count):
-	int i = 0
-	while (i < count):
-		dst[i] = src[i]
-		i = i + 1
+	for i in range(count): dst[i] = src[i]
 
 
 # NUL-terminated copy of length bytes at data.
@@ -123,10 +115,8 @@ char* __w_var_cstr_from_data(int data, int length):
 # fresh NUL-terminated copy of the string's bytes.
 char* __w_var_unbox_cstr(__w_var_box* b):
 	int tag = __w_var_tag_of(b)
-	if (tag == 2):
-		return cast(char*, b.payload)
-	if (tag == 3):
-		return __w_var_cstr_from_data(b.payload, b.payload2)
+	if (tag == 2): return cast(char*, b.payload)
+	if (tag == 3): return __w_var_cstr_from_data(b.payload, b.payload2)
 	__w_var_type_error(c"char*", tag)
 	return 0
 
@@ -135,10 +125,8 @@ char* __w_var_unbox_cstr(__w_var_box* b):
 # the stored bytes; tag 2 measures the C string.
 string __w_var_unbox_str(__w_var_box* b):
 	int tag = __w_var_tag_of(b)
-	if (tag == 2):
-		return str_from_cstr(cast(char*, b.payload))
-	if (tag != 3):
-		__w_var_type_error(c"string", tag)
+	if (tag == 2): return str_from_cstr(cast(char*, b.payload))
+	if (tag != 3): __w_var_type_error(c"string", tag)
 	char* descriptor = malloc(2 * __word_size__)
 	save_word(descriptor, b.payload)
 	save_word(descriptor + __word_size__, b.payload2)
@@ -152,8 +140,7 @@ int __w_var_is_text(__w_var_box* b):
 
 
 int __w_var_text_length(__w_var_box* b):
-	if (b.tag == 2):
-		return strlen(cast(char*, b.payload))
+	if (b.tag == 2): return strlen(cast(char*, b.payload))
 	return b.payload2
 
 
@@ -169,8 +156,7 @@ __w_var_box* __w_var_concat(__w_var_box* a, __w_var_box* b):
 
 # '+': int addition, or concatenation when both operands are text
 __w_var_box* __w_var_add(__w_var_box* a, __w_var_box* b):
-	if (__w_var_is_text(a) & __w_var_is_text(b)):
-		return __w_var_concat(a, b)
+	if (__w_var_is_text(a) & __w_var_is_text(b)): return __w_var_concat(a, b)
 	if ((__w_var_tag_of(a) == 1) & (__w_var_tag_of(b) == 1)):
 		return __w_var_alloc(1, a.payload + b.payload, 0)
 	__w_var_binary_error(c"+", a, b)
@@ -204,22 +190,16 @@ __w_var_box* __w_var_div(__w_var_box* a, __w_var_box* b):
 int __w_var_eq(__w_var_box* a, __w_var_box* b):
 	int a_tag = __w_var_tag_of(a)
 	int b_tag = __w_var_tag_of(b)
-	if ((a_tag == 0) && (b_tag == 0)):
-		return 1
-	if ((a_tag == 1) && (b_tag == 1)):
-		return a.payload == b.payload
+	if ((a_tag == 0) && (b_tag == 0)): return 1
+	if ((a_tag == 1) && (b_tag == 1)): return a.payload == b.payload
 	if (__w_var_is_text(a) & __w_var_is_text(b)):
 		int a_length = __w_var_text_length(a)
 		int b_length = __w_var_text_length(b)
-		if (a_length != b_length):
-			return 0
+		if (a_length != b_length): return 0
 		char* a_data = cast(char*, a.payload)
 		char* b_data = cast(char*, b.payload)
-		int i = 0
-		while (i < a_length):
-			if (a_data[i] != b_data[i]):
-				return 0
-			i = i + 1
+		for i in range(a_length):
+			if (a_data[i] != b_data[i]): return 0
 		return 1
 	return 0
 
@@ -227,10 +207,8 @@ int __w_var_eq(__w_var_box* a, __w_var_box* b):
 # Ordering: ints only, -1/0/1; anything else traps
 int __w_var_cmp(__w_var_box* a, __w_var_box* b):
 	if ((__w_var_tag_of(a) == 1) & (__w_var_tag_of(b) == 1)):
-		if (a.payload < b.payload):
-			return -1
-		if (a.payload > b.payload):
-			return 1
+		if (a.payload < b.payload): return -1
+		if (a.payload > b.payload): return 1
 		return 0
 	__w_var_binary_error(c"ordering", a, b)
 	return 0
@@ -242,12 +220,9 @@ int __w_var_cmp(__w_var_box* a, __w_var_box* b):
 char* __w_var_to_cstr(void* v):
 	__w_var_box* b = cast(__w_var_box*, cast(int, v))
 	int tag = __w_var_tag_of(b)
-	if (tag == 1):
-		return itoa(b.payload)
-	if (tag == 2):
-		return cast(char*, b.payload)
-	if (tag == 3):
-		return __w_var_cstr_from_data(b.payload, b.payload2)
+	if (tag == 1): return itoa(b.payload)
+	if (tag == 2): return cast(char*, b.payload)
+	if (tag == 3): return __w_var_cstr_from_data(b.payload, b.payload2)
 	return c"null"
 
 

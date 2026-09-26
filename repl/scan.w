@@ -42,13 +42,10 @@ void repl_scan_line(char* s):
 		else if (repl_scan_string):
 			if (c == 92):
 				# A backslash escapes the next character (if any)
-				if (s[i + 1]):
-					i = i + 1
-			else if (c == repl_scan_string):
-				repl_scan_string = 0
+				if (s[i + 1]): i = i + 1
+			else if (c == repl_scan_string): repl_scan_string = 0
 			repl_scan_last_char = c
-		else if (c == '#'):
-			return;
+		else if (c == '#'): return;
 		else if ((c == '/') && (s[i + 1] == '*')):
 			repl_scan_comment = 1
 			i = i + 1
@@ -56,12 +53,9 @@ void repl_scan_line(char* s):
 			repl_scan_string = c
 			repl_scan_last_char = c
 		else:
-			if ((c == '(') || (c == '[') || (c == '{')):
-				repl_scan_depth = repl_scan_depth + 1
-			if ((c == ')') || (c == ']') || (c == '}')):
-				repl_scan_depth = repl_scan_depth - 1
-			if ((c != ' ') && (c != 9)):
-				repl_scan_last_char = c
+			if ((c == '(') || (c == '[') || (c == '{')): repl_scan_depth = repl_scan_depth + 1
+			if ((c == ')') || (c == ']') || (c == '}')): repl_scan_depth = repl_scan_depth - 1
+			if ((c != ' ') && (c != 9)): repl_scan_last_char = c
 		i = i + 1
 
 

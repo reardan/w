@@ -14,8 +14,7 @@ reconstruction, plus rank, pinv, cond and norm2.
 
 
 float ml_abs(float f):
-	if (f < 0.0):
-		return 0.0 - f
+	if (f < 0.0): return 0.0 - f
 	return f
 
 
@@ -28,10 +27,6 @@ void assert_near_tol(float want, float got, float tol):
 		println2(c")")
 		print_stack_trace()
 		exit(1)
-
-
-void assert_near(float want, float got):
-	assert_near_tol(want, got, 0.0001)
 
 
 void assert_matrix_near_tol(matrix* want, matrix* got, float tol):
@@ -243,10 +238,7 @@ void test_chol():
 
 void test_qr():
 	float[] vals = new float[12]
-	int i = 0
-	while (i < 12):
-		vals[i] = (i * 7) % 5 + i / 3
-		i = i + 1
+	for i in range(12): vals[i] = (i * 7) % 5 + i / 3
 	matrix a = matrix_from(vals, 4, 3)
 	matrix q
 	matrix r

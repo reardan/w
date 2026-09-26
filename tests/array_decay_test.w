@@ -19,18 +19,12 @@ int[4] global_cells
 
 
 void fill_bytes(char* dst, int n):
-	int i = 0
-	while (i < n):
-		dst[i] = 'a' + i
-		i = i + 1
+	for i in range(n): dst[i] = 'a' + i
 
 
 int sum_words(int* values, int n):
 	int total = 0
-	int i = 0
-	while (i < n):
-		total = total + values[i]
-		i = i + 1
+	for i in range(n): total = total + values[i]
 	return total
 
 
@@ -158,10 +152,8 @@ void test_switch_case_decay():
 	char* p = buf
 	int matched = 0
 	switch (p):
-		case buf:
-			matched = 1
-		default:
-			matched = 2
+		case buf: matched = 1
+		default: matched = 2
 	assert_equal(1, matched)
 
 

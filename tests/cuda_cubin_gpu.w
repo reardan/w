@@ -11,8 +11,7 @@ import lib.cuda
 
 kernel scale_add(float32* y, float32* x, float32 a, int n):
 	int i = block_idx() * block_dim() + thread_idx()
-	if i < n:
-		y[i] = a * x[i] + y[i]
+	if i < n: y[i] = a * x[i] + y[i]
 
 
 int main():
@@ -36,19 +35,15 @@ int main():
 	i = 0
 	while (i < n):
 		float32 want = 2 * i + 1
-		if (y[i] != want):
-			ok = 0
-		if (z[i] != i * 3 + 1):
-			ok = 0
+		if (y[i] != want): ok = 0
+		if (z[i] != i * 3 + 1): ok = 0
 		i = i + 1
 	int src = gpu_module_source()
 	if (ok == 0):
 		println(c"cuda cubin FAILED: wrong results")
 		return 1
-	if (src == 2):
-		println(c"cuda cubin OK source=cubin")
-	else if (src == 1):
-		println(c"cuda cubin OK source=ptx")
+	if (src == 2): println(c"cuda cubin OK source=cubin")
+	else if (src == 1): println(c"cuda cubin OK source=ptx")
 	else:
 		println(c"cuda cubin FAILED: no module loaded")
 		return 1

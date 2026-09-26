@@ -31,8 +31,7 @@ struct timespec:
 	int nanoseconds
 
 
-int clock_monotonic():
-	return 1
+const int clock_monotonic = 1
 
 
 # Milliseconds from the monotonic clock (time since boot). The product
@@ -40,7 +39,7 @@ int clock_monotonic():
 # measurements such as timeouts.
 int time_monotonic_ms():
 	timespec ts
-	int err = sys_clock_gettime(clock_monotonic(), cast(int, &ts))
+	int err = sys_clock_gettime(clock_monotonic, cast(int, &ts))
 	if (err < 0):
 		return err
 	return ts.seconds * 1000 + ts.nanoseconds / 1000000
@@ -55,29 +54,66 @@ void sleep_ms(int ms):
 
 
 int time_is_leap_year(int year):
-	if ((year % 4) != 0):
-		return 0
-	if ((year % 100) != 0):
-		return 1
-	if ((year % 400) == 0):
-		return 1
+	if ((year % 4) != 0): return 0
+	if ((year % 100) != 0): return 1
+	if ((year % 400) == 0): return 1
 	return 0
 
 
 int time_days_in_year(int year):
-	if (time_is_leap_year(year)):
-		return 366
+	if (time_is_leap_year(year)): return 366
 	return 365
 
 
 int time_days_in_month(int year, int month):
 	if (month == 2):
-		if (time_is_leap_year(year)):
-			return 29
+		if (time_is_leap_year(year)): return 29
 		return 28
-	if ((month == 4) || (month == 6) || (month == 9) || (month == 11)):
-		return 30
+	if ((month == 4) || (month == 6) || (month == 9) || (month == 11)): return 30
 	return 31
+
+
+# English month name for 1..12 ("January"); the first three letters are
+# the RFC 5322 / HTTP-date abbreviation.
+char* time_month_name(int month):
+	switch (month):
+		case 1: return c"January"
+		case 2: return c"February"
+		case 3: return c"March"
+		case 4: return c"April"
+		case 5: return c"May"
+		case 6: return c"June"
+		case 7: return c"July"
+		case 8: return c"August"
+		case 9: return c"September"
+		case 10: return c"October"
+		case 11: return c"November"
+		default: return c"December"
+
+
+# English weekday name, 0 = Sunday through 6 = Saturday (date_time.weekday
+# numbering); the first three letters are the RFC 5322 abbreviation.
+char* time_weekday_name(int weekday):
+	switch (weekday):
+		case 0: return c"Sunday"
+		case 1: return c"Monday"
+		case 2: return c"Tuesday"
+		case 3: return c"Wednesday"
+		case 4: return c"Thursday"
+		case 5: return c"Friday"
+		default: return c"Saturday"
+
+
+# Month 1..12 whose English name starts with the three letters at s
+# (any case), or -1.
+int time_month_from_abbrev(char* s):
+	for m in range(1, 12 + 1):
+		char* name = time_month_name(m)
+		int i = 0
+		while ((i < 3) && (((s[i] | 32) & 255) == (name[i] | 32))): i = i + 1
+		if (i == 3):
+			return m
+	return 0 - 1
 
 
 # Converts non-negative Unix timestamps to UTC; negative inputs assert loudly.
@@ -173,15 +209,12 @@ char* time_format_unix_utc(int timestamp):
 # Days since 1970-01-01 (negative before it) of year-month-day.
 int time_days_from_civil(int year, int month, int day):
 	int y = year
-	if (month <= 2):
-		y = y - 1
+	if (month <= 2): y = y - 1
 	int era = y / 400
-	if (y < 0):
-		era = (y - 399) / 400
+	if (y < 0): era = (y - 399) / 400
 	int yoe = y - era * 400
 	int mp = month - 3
-	if (month <= 2):
-		mp = month + 9
+	if (month <= 2): mp = month + 9
 	int doy = (153 * mp + 2) / 5 + day - 1
 	int doe = yoe * 365 + yoe / 4 - yoe / 100 + doy
 	return era * 146097 + doe - 719468

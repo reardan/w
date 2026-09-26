@@ -21,8 +21,7 @@ void http_client_print_json_summary(char* body):
 
 		json_value* status = json_object_get(root, c"status")
 		if (status != 0):
-			if (status.type == json_type_string()):
-				print_string(c"status: ", status.string_value)
+			if (status.type == json_type_string()): print_string(c"status: ", status.string_value)
 
 		json_value* request_bytes = json_object_get(root, c"request_bytes")
 		if (request_bytes != 0):
@@ -44,7 +43,7 @@ int main(int argc, int argv):
 
 	int sock = web_connect_ipv4(ip, port)
 	web_write_get_request(sock, host, path)
-	char* response = web_read_all(sock, web_default_buffer_size())
+	char* response = web_read_all(sock, web_default_buffer_size)
 	close(sock)
 
 	println(c"raw response:")

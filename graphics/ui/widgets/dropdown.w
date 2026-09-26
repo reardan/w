@@ -39,8 +39,7 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 		if (ctx.input.mouse_pressed):
 			if (ui_rect_contains(list, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
 				int pick = (ctx.input.press_y - cast(int, list.y)) / ctx.theme.widget_height
-				if (pick >= item_count):
-					pick = item_count - 1
+				if (pick >= item_count): pick = item_count - 1
 				if (selected[0] != pick):
 					selected[0] = pick
 					changed = 1
@@ -63,14 +62,12 @@ int ui_dropdown(ui_context* ctx, float32 w, char** items, int item_count, int32*
 		ui_popup_begin(ctx, id, list_rect, UI_LAYER_POPUP)
 		ui_draw_shadow(ctx.rndr, list_rect, ctx.theme.shadow)
 		ui_draw_rrect(ctx.rndr, list_rect, cast(float32, ctx.theme.radius), ctx.theme.surface)
-		int i = 0
-		while (i < item_count):
+		for i in range(item_count):
 			ui_rect row = ui_rect_new(list_rect.x, list_rect.y + row_h * cast(float32, i), list_rect.w, row_h)
 			if (ui_rect_contains(row, cast(float32, ctx.input.mouse_x), cast(float32, ctx.input.mouse_y))):
 				ui_draw_rrect(ctx.rndr, ui_rect_inset(row, 2.0), cast(float32, ctx.theme.radius_small), ctx.theme.widget_hot)
 			if (i == selected[0]):
 				ui_draw_rrect(ctx.rndr, ui_rect_new(row.x + 3.0, row.y + 7.0, 4.0, row.h - 14.0), 2.0, ctx.theme.accent)
 			ui_draw_text(ctx.rndr, row.x + cast(float32, ctx.theme.pad + 4), row.y + (row.h - cast(float32, ui_text_height(scale))) * 0.5, items[i], scale, ctx.theme.text)
-			i = i + 1
 		ui_popup_end(ctx)
 	return changed

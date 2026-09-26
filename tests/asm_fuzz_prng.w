@@ -39,8 +39,7 @@ int fuzz_rng_state
 
 void fuzz_seed(int seed):
 	fuzz_rng_state = seed
-	if (fuzz_rng_state == 0):
-		fuzz_rng_state = 1
+	if (fuzz_rng_state == 0): fuzz_rng_state = 1
 
 
 # Logical (unmasked-sign) right shift: an arithmetic '>>' smears the sign
@@ -77,9 +76,7 @@ int fuzz_range(int bound):
 # integer, else ASM_FUZZ_DEFAULT_ITERS().
 int asm_fuzz_iterations():
 	char* v = env_get(c"W_ASM_FUZZ_ITERS")
-	if (v == 0):
-		return ASM_FUZZ_DEFAULT_ITERS()
+	if (v == 0): return ASM_FUZZ_DEFAULT_ITERS()
 	int n = atoi(v)
-	if (n <= 0):
-		return ASM_FUZZ_DEFAULT_ITERS()
+	if (n <= 0): return ASM_FUZZ_DEFAULT_ITERS()
 	return n

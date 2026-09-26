@@ -19,6 +19,7 @@ bin/ so the 32- and 64-bit twins (and a parallel wvc_index_e2e run) never
 collide; the final test removes everything this run created.
 */
 import lib.testing
+import lib.dir
 import libs.extras.vcs.cas
 import libs.extras.vcs.tree
 import libs.extras.vcs.index
@@ -52,10 +53,7 @@ char* vit_work():
 
 
 wcas* vit_open():
-	wresult[wcas*]* r = cas_open(vit_root())
-	assert1(result_is_ok[wcas*](r))
-	wcas* s = result_value[wcas*](r)
-	result_free[wcas*](r)
+	wcas* s = result_expect[wcas*](cas_open(vit_root()))
 	return s
 
 
@@ -76,10 +74,7 @@ void vit_write(char* dir, char* name, char* contents):
 
 char* vit_fake_id(int digit):
 	char* id = malloc(65)
-	int i = 0
-	while (i < 64):
-		id[i] = digit
-		i = i + 1
+	for i in range(64): id[i] = digit
 	id[64] = 0
 	return id
 
@@ -94,26 +89,17 @@ index_entry* vit_entry(char* path, int size, int mtime, char* blob_id):
 
 
 wtree* vit_get(wcas* s, char* id):
-	wresult[wtree*]* r = tree_get(s, id)
-	assert1(result_is_ok[wtree*](r))
-	wtree* t = result_value[wtree*](r)
-	result_free[wtree*](r)
+	wtree* t = result_expect[wtree*](tree_get(s, id))
 	return t
 
 
 char* vit_snapshot(wcas* s, char* path, list[char*] ignore):
-	wresult[char*]* r = tree_snapshot(s, path, ignore)
-	assert1(result_is_ok[char*](r))
-	char* id = result_value[char*](r)
-	result_free[char*](r)
+	char* id = result_expect[char*](tree_snapshot(s, path, ignore))
 	return id
 
 
 index_refresh_result* vit_refresh(wcas* s, char* dir, list[char*] ignore, windex* prev):
-	wresult[index_refresh_result*]* r = index_refresh(s, dir, ignore, prev)
-	assert1(result_is_ok[index_refresh_result*](r))
-	index_refresh_result* rr = result_value[index_refresh_result*](r)
-	result_free[index_refresh_result*](r)
+	index_refresh_result* rr = result_expect[index_refresh_result*](index_refresh(s, dir, ignore, prev))
 	return rr
 
 
@@ -127,10 +113,7 @@ void test_index_encode_parse_roundtrip():
 	idx.entries.push(vit_entry(c"a.txt", 10, 100, id_a))
 
 	string_builder* enc = index_encode(idx)
-	wresult[windex*]* parsed_r = index_parse(enc.data, enc.length)
-	assert1(result_is_ok[windex*](parsed_r))
-	windex* parsed = result_value[windex*](parsed_r)
-	result_free[windex*](parsed_r)
+	windex* parsed = result_expect[windex*](index_parse(enc.data, enc.length))
 
 	assert_equal(12345, parsed.write_time)
 	assert_equal(2, parsed.entries.length)
@@ -212,10 +195,7 @@ void test_index_parse_rejects_malformed():
 
 	# A well-formed, empty index (no entries) is valid.
 	char* empty = c"index 1\nwrite_time 42\n"
-	wresult[windex*]* r6 = index_parse(empty, strlen(empty))
-	assert1(result_is_ok[windex*](r6))
-	windex* e = result_value[windex*](r6)
-	result_free[windex*](r6)
+	windex* e = result_expect[windex*](index_parse(empty, strlen(empty)))
 	assert_equal(42, e.write_time)
 	assert_equal(0, e.entries.length)
 	index_free(e)
@@ -235,10 +215,7 @@ void test_index_write_read_roundtrip():
 	assert1(result_is_ok[int](w))
 	result_free[int](w)
 
-	wresult[windex*]* r = index_read(path)
-	assert1(result_is_ok[windex*](r))
-	windex* got = result_value[windex*](r)
-	result_free[windex*](r)
+	windex* got = result_expect[windex*](index_read(path))
 	assert_equal(999, got.write_time)
 	assert_equal(1, got.entries.length)
 	assert_strings_equal(c"dir/inner file.txt", got.entries[0].path)
@@ -253,10 +230,7 @@ void test_index_write_read_roundtrip():
 	wresult[int]* w2 = index_write(idx2, path)
 	assert1(result_is_ok[int](w2))
 	result_free[int](w2)
-	wresult[windex*]* r2 = index_read(path)
-	assert1(result_is_ok[windex*](r2))
-	windex* got2 = result_value[windex*](r2)
-	result_free[windex*](r2)
+	windex* got2 = result_expect[windex*](index_read(path))
 	assert_equal(1000, got2.write_time)
 	assert_equal(0, got2.entries.length)
 
@@ -426,10 +400,7 @@ void test_index_refresh_reuses_cache_and_reports_only_changed():
 	# Status-shaped correctness: diffing old vs. new tree reports
 	# EXACTLY the one touched path.
 	list[tree_change*] changes = new list[tree_change*]
-	wresult[int]* diffed = tree_diff(s, first.tree_id, second.tree_id, changes)
-	assert1(result_is_ok[int](diffed))
-	assert_equal(1, result_value[int](diffed))
-	result_free[int](diffed)
+	assert_equal(1, result_expect[int](tree_diff(s, first.tree_id, second.tree_id, changes)))
 	assert_equal(1, changes.length)
 	assert_strings_equal(c"b.txt", changes[0].path)
 	assert_equal(TREE_MODIFIED(), changes[0].status)
@@ -484,47 +455,8 @@ void test_index_refresh_ignore_list_and_dropped_files():
 	cas_close(s)
 
 
-# Recursively deletes a fixture/store directory (vcs_tree_test.w's
-# vtt_remove_all, duplicated here since it is test-local plumbing, not
-# library code).
-void vit_remove_all(char* path):
-	int fd = open(path, 65536, 0)
-	if (fd < 0):
-		return
-	list[char*] names = new list[char*]
-	list[int] kinds = new list[int]
-	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* record = buffer + off
-			int reclen = (record[2 * __word_size__] & 255) + ((record[2 * __word_size__ + 1] & 255) << 8)
-			char* entry_name = record + 2 * __word_size__ + 2
-			int kind = record[reclen - 1] & 255
-			if ((strcmp(entry_name, c".") != 0) && (strcmp(entry_name, c"..") != 0)):
-				names.push(strclone(entry_name))
-				kinds.push(kind)
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
-	int i = 0
-	while (i < names.length):
-		char* child = path_join(path, names[i])
-		if (kinds[i] == 4):
-			vit_remove_all(child)
-			rmdir(child)
-		else:
-			vcs_unlink(child)
-		free(child)
-		free(names[i])
-		i = i + 1
-
-
 void test_index_cleanup():
-	vit_remove_all(vit_work())
-	assert_equal(0, rmdir(vit_work()))
-	vit_remove_all(vit_root())
-	assert_equal(0, rmdir(vit_root()))
+	assert_equal(0, dir_remove_all(vit_work()))
+	assert_equal(0, path_exists(vit_work()))
+	assert_equal(0, dir_remove_all(vit_root()))
+	assert_equal(0, path_exists(vit_root()))

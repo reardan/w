@@ -26,8 +26,7 @@ int mono_delta_ms(int now, int then):
 
 # 1 when timestamp a is earlier than timestamp b.
 int mono_before(int a, int b):
-	if (mono_delta_ms(a, b) < 0):
-		return 1
+	if (mono_delta_ms(a, b) < 0): return 1
 	return 0
 
 
@@ -40,14 +39,12 @@ int mono_deadline(int now, int timeout_ms):
 
 # 1 once now has reached or passed the deadline.
 int mono_expired(int now, int deadline):
-	if (mono_delta_ms(now, deadline) >= 0):
-		return 1
+	if (mono_delta_ms(now, deadline) >= 0): return 1
 	return 0
 
 
 # Milliseconds still to run before the deadline, clamped at 0.
 int mono_remaining_ms(int now, int deadline):
 	int d = mono_delta_ms(deadline, now)
-	if (d < 0):
-		return 0
+	if (d < 0): return 0
 	return d

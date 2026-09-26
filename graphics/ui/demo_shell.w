@@ -40,29 +40,24 @@ import graphics.ui.font
 import graphics.ui.render
 import graphics.ui.text
 import graphics.ui.widgets
+import lib.mem
 
 
 # How many documents the shell knows about. Two folders' worth, with the
 # second folder's files sharing the same tab strip.
-int ui_shell_doc_count():
-	return 5
-
-
-int ui_shell_folder_count():
-	return 2
+const int ui_shell_doc_count = 5
+const int ui_shell_folder_count = 2
 
 
 char* ui_shell_folder_name(int folder):
-	if (folder == 0):
-		return c"src"
+	if (folder == 0): return c"src"
 	return c"docs"
 
 
 # Files per folder: src has three, docs has two, and their document ids
 # run 0..4 in that order.
 int ui_shell_folder_files(int folder):
-	if (folder == 0):
-		return 3
+	if (folder == 0): return 3
 	return 2
 
 
@@ -73,29 +68,23 @@ int ui_shell_doc_id(int folder, int index):
 
 
 char* ui_shell_doc_name(int doc):
-	if (doc == 0):
-		return c"tree.w"
-	if (doc == 1):
-		return c"tabs.w"
-	if (doc == 2):
-		return c"toast.w"
-	if (doc == 3):
-		return c"ui_widgets.md"
-	return c"README.md"
+	switch (doc):
+		case 0: return c"tree.w"
+		case 1: return c"tabs.w"
+		case 2: return c"toast.w"
+		case 3: return c"ui_widgets.md"
+		default: return c"README.md"
 
 
 # Placeholder contents, so the editor pane shows something per document
 # and switching tabs visibly changes it.
 char* ui_shell_doc_body(int doc):
-	if (doc == 0):
-		return c"# tree.w\n\nThe caller's recursion is the tree walk.\nA collapsed subtree costs nothing because\nthe caller simply does not recurse into it.\n\nLeft collapses, then ascends to the parent.\nRight expands, then descends to the first child."
-	if (doc == 1):
-		return c"# tabs.w\n\nThe close affordance is hit-tested before\nthe tab and consumes the click, so closing a\nbackground tab never first drags it into focus."
-	if (doc == 2):
-		return c"# toast.w\n\nThe widget holds no clock: the time comes in\nas an argument. UI code should not read clocks.\n\nDraws on UI_LAYER_TOP, takes no input."
-	if (doc == 3):
-		return c"# Widget expansion\n\nRound 1: clipping, layers, regions, scroll,\na text buffer, and Modal/Table/Textarea.\n\nRound 2: the editor shell."
-	return c"# W\n\nA small, self-hosting compiled language.\nC-like semantics, Python-like syntax.\n\nThe compiler is written in W."
+	switch (doc):
+		case 0: return c"# tree.w\n\nThe caller's recursion is the tree walk.\nA collapsed subtree costs nothing because\nthe caller simply does not recurse into it.\n\nLeft collapses, then ascends to the parent.\nRight expands, then descends to the first child."
+		case 1: return c"# tabs.w\n\nThe close affordance is hit-tested before\nthe tab and consumes the click, so closing a\nbackground tab never first drags it into focus."
+		case 2: return c"# toast.w\n\nThe widget holds no clock: the time comes in\nas an argument. UI code should not read clocks.\n\nDraws on UI_LAYER_TOP, takes no input."
+		case 3: return c"# Widget expansion\n\nRound 1: clipping, layers, regions, scroll,\na text buffer, and Modal/Table/Textarea.\n\nRound 2: the editor shell."
+		default: return c"# W\n\nA small, self-hosting compiled language.\nC-like semantics, Python-like syntax.\n\nThe compiler is written in W."
 
 
 struct ui_shell_state:
@@ -128,10 +117,7 @@ void ui_shell_init(ui_shell_state* st):
 	ui_textarea_init(&st.editor)
 	st.folder_open[0] = 1
 	st.folder_open[1] = 0
-	int i = 0
-	while (i < ui_shell_doc_count()):
-		st.open_docs[i] = 0
-		i = i + 1
+	mem_fill[int32](st.open_docs, 0, ui_shell_doc_count)
 	st.open_count = 0
 	st.active_tab = 0
 	st.loaded_doc = 0 - 1
@@ -146,25 +132,21 @@ void ui_shell_open_doc(ui_shell_state* st, int doc):
 			st.active_tab = i
 			return
 		i = i + 1
-	if (st.open_count >= ui_shell_doc_count()):
-		return
+	if (st.open_count >= ui_shell_doc_count): return
 	st.open_docs[st.open_count] = doc
 	st.active_tab = st.open_count
 	st.open_count = st.open_count + 1
 
 
 void ui_shell_close_tab(ui_shell_state* st, int index):
-	if ((index < 0) || (index >= st.open_count)):
-		return
+	if ((index < 0) || (index >= st.open_count)): return
 	int i = index
 	while (i + 1 < st.open_count):
 		st.open_docs[i] = st.open_docs[i + 1]
 		i = i + 1
 	st.open_count = st.open_count - 1
-	if (st.active_tab >= st.open_count):
-		st.active_tab = st.open_count - 1
-	if (st.active_tab < 0):
-		st.active_tab = 0
+	if (st.active_tab >= st.open_count): st.active_tab = st.open_count - 1
+	if (st.active_tab < 0): st.active_tab = 0
 	# The editor is showing a document that may no longer be the active
 	# one; force a reload on the next frame.
 	st.loaded_doc = 0 - 1
@@ -193,13 +175,12 @@ void ui_shell_body(ui_context* ctx, ui_shell_state* st, int now_ms):
 	ui_render_rect(ctx.rndr, sidebar, ctx.theme.background)
 	ui_tree_begin(ctx, sidebar, &st.tree)
 	int folder = 0
-	while (folder < ui_shell_folder_count()):
+	while (folder < ui_shell_folder_count):
 		if (ui_tree_node(ctx, &st.tree, ui_shell_folder_name(folder), &st.folder_open[folder])):
 			int f = 0
 			while (f < ui_shell_folder_files(folder)):
 				int doc = ui_shell_doc_id(folder, f)
-				if (ui_tree_leaf(ctx, &st.tree, ui_shell_doc_name(doc))):
-					ui_shell_open_doc(st, doc)
+				if (ui_tree_leaf(ctx, &st.tree, ui_shell_doc_name(doc))): ui_shell_open_doc(st, doc)
 				f = f + 1
 			ui_tree_node_end(ctx, &st.tree)
 		folder = folder + 1
@@ -214,8 +195,7 @@ void ui_shell_body(ui_context* ctx, ui_shell_state* st, int now_ms):
 		ui_tab(ctx, &st.tabs, ui_shell_doc_name(st.open_docs[t]), 1)
 		t = t + 1
 	int closed = ui_tabs_end(ctx, &st.tabs)
-	if (closed >= 0):
-		ui_shell_close_tab(st, closed)
+	if (closed >= 0): ui_shell_close_tab(st, closed)
 
 	if (st.open_count > 0):
 		int doc = st.open_docs[st.active_tab]

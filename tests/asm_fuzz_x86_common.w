@@ -71,32 +71,24 @@ import tests.asm_fuzz_prng
 int asm_fuzz_has_sequence(char* text):
 	int i = 0
 	while (text[i] != 0):
-		if (text[i] == ' ' && text[i + 1] == ';' && text[i + 2] == ' '):
-			return 1
+		if (text[i] == ' ' && text[i + 1] == ';' && text[i + 2] == ' '): return 1
 		i = i + 1
 	return 1 == 2
 
 
 int asm_fuzz_bytes_equal(char* a, int an, char* b, int bn):
-	if (an != bn):
-		return 1 == 2
-	int i = 0
-	while (i < an):
-		if ((a[i] & 255) != (b[i] & 255)):
-			return 1 == 2
-		i = i + 1
+	if (an != bn): return 1 == 2
+	for i in range(an):
+		if ((a[i] & 255) != (b[i] & 255)): return 1 == 2
 	return 1
 
 
 # Re-pick a scale factor from the legal SIB set {1,2,4,8}.
 int asm_fuzz_pick_scale():
 	int s = fuzz_range(4)
-	if (s == 0):
-		return 1
-	if (s == 1):
-		return 2
-	if (s == 2):
-		return 4
+	if (s == 0): return 1
+	if (s == 1): return 2
+	if (s == 2): return 4
 	return 8
 
 
@@ -104,8 +96,7 @@ int asm_fuzz_pick_scale():
 # isn't a sized reg/mem operand at all (imm/label operands carry no width
 # of their own here).
 int asm_fuzz_operand_pin_size(asm_operand* op):
-	if (op.kind == ASM_OP_REG() | op.kind == ASM_OP_MEM()):
-		return op.size
+	if (op.kind == ASM_OP_REG || op.kind == ASM_OP_MEM): return op.size
 	return -1
 
 
@@ -138,8 +129,7 @@ int asm_fuzz_insn_width(asm_insn* insn, asm_operand* target):
 	s = asm_fuzz_operand_pin_size(&insn.op3)
 	if (s > 0):
 		return s
-	if (target.size > 0):
-		return target.size
+	if (target.size > 0): return target.size
 	return ASM_FUZZ_WIDTH_UNKNOWN()
 
 
@@ -151,11 +141,10 @@ int asm_fuzz_insn_width(asm_insn* insn, asm_operand* target):
 # form, which is exactly the kind of per-mnemonic knowledge this driver
 # avoids needing.
 void asm_fuzz_mutate_operand(asm_insn* insn, asm_operand* op, int reg_limit):
-	if (op.kind == ASM_OP_REG()):
-		if (op.rclass == ASM_RCLASS_GP()):
-			op.reg = fuzz_range(reg_limit)
+	if (op.kind == ASM_OP_REG):
+		if (op.rclass == ASM_RCLASS_GP): op.reg = fuzz_range(reg_limit)
 		return
-	if (op.kind == ASM_OP_IMM()):
+	if (op.kind == ASM_OP_IMM):
 		int width = asm_fuzz_insn_width(insn, op)
 		if (width == ASM_FUZZ_WIDTH_UNKNOWN() | width == 1):
 			# Byte immediates are not uniformly sign-extended by this
@@ -173,19 +162,16 @@ void asm_fuzz_mutate_operand(asm_insn* insn, asm_operand* op, int reg_limit):
 			op.imm_hi = fuzz_next()
 		else if (width == 2):
 			int v = fuzz_next() & 65535
-			if (v >= 32768):
-				v = v - 65536
+			if (v >= 32768): v = v - 65536
 			op.imm = v
-		else:
-			op.imm = fuzz_next()
+		else: op.imm = fuzz_next()
 		return
-	if (op.kind == ASM_OP_MEM()):
-		if (op.base == ASM_BASE_RIP()):
+	if (op.kind == ASM_OP_MEM):
+		if (op.base == ASM_BASE_RIP):
 			# x64 [rip+disp32]: keep the sentinel, only the displacement varies.
 			op.disp = fuzz_next()
 			return
-		if (op.base >= 0):
-			op.base = fuzz_range(reg_limit)
+		if (op.base >= 0): op.base = fuzz_range(reg_limit)
 		if (op.index >= 0):
 			op.index = fuzz_range(reg_limit)
 			op.scale = asm_fuzz_pick_scale()

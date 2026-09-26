@@ -239,8 +239,7 @@ void test_merge_points(int c):
 	assert_equal(want_first + 1, (c ? a : b) + 1)
 	assert_equal(want_first << 2, (c ? a : b) << 2)
 	int r = 0
-	if (c ? (a < b) : (a > b)):
-		r = 1
+	if (c ? (a < b) : (a > b)): r = 1
 	assert_equal(want_lt, r)
 	fold_pair p
 	p.first = a
@@ -260,8 +259,7 @@ void test_loops():
 		n = n + 1
 	assert_equal(45, total)
 	int acc = 1
-	for i in range(5):
-		acc = acc * 2 + i
+	for i in range(5): acc = acc * 2 + i
 	assert_equal(58, acc)
 
 

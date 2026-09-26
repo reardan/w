@@ -24,3 +24,4 @@ int main():
 	v.z = 3.0
 	vec3 r = v + 1
 	return 0
+# wbuild: fixture_group=operator_overload_error_test

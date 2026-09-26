@@ -22,79 +22,24 @@ import structures.string
 import libs.standard.net.tls
 import libs.standard.web.hpack
 import libs.standard.web.http2
+import libs.standard.web.testing
 
 
 /* Fixture plumbing */
-
-char* h2s_cert_path():
-	return c"libs/standard/net/tls_fixtures/server_p256_cert.pem"
-
-
-char* h2s_key_path():
-	return c"libs/standard/net/tls_fixtures/server_p256_key.pem"
-
-
-int h2s_listen(int* out_port):
-	int listener = socket_tcp_ipv4()
-	asserts(c"socket", listener >= 0)
-	socket_set_reuseaddr(listener)
-	asserts(c"bind", socket_bind_ipv4(listener, ip4_from_string(c"127.0.0.1"), 0) >= 0)
-	asserts(c"listen", socket_listen(listener, 8) >= 0)
-	sockaddr_in bound
-	socket_getsockname_ipv4(listener, &bound)
-	*out_port = net_htons(bound.port)
-	return listener
-
-
-char* h2s_authority(int port):
-	string_builder* sb = string_new()
-	string_append(sb, c"test.w.example:")
-	string_append_int(sb, port)
-	char* out = sb.data
-	free(sb)
-	return out
-
-
-void h2s_finish(int pid, int listener):
-	int status = 0
-	wait4(pid, &status, 0, 0)
-	close(listener)
-	if (status != 0):
-		print2(c"fixture child status: ")
-		println2(itoa(status))
-	assert_equal(0, status)
-
-
-tls_server_config* h2s_server_config():
-	tls_server_config* scfg = tls_server_config_new()
-	scfg.cert_chain_path = h2s_cert_path()
-	scfg.key_path = h2s_key_path()
-	return scfg
-
-
-tls_config* h2s_client_config():
-	tls_config* cfg = tls_config_new()
-	cfg.insecure_skip_verify = 1
-	return cfg
-
 
 /* The W h2 server over TLS against the W client */
 
 void h2s_server_child(int listener):
 	int fd = socket_accept_connection(listener)
-	if (fd < 0):
-		exit(80)
+	if (fd < 0): exit(80)
 	socket_set_recv_timeout(fd, 20000)
 	socket_set_send_timeout(fd, 20000)
-	h2_conn* c = h2_accept_tls(fd, h2s_server_config())
-	if (c == 0):
-		exit(81)
-	if (c.tls == 0):
-		exit(82)
+	h2_conn* c = h2_accept_tls(fd, web_test_server_config())
+	if (c == 0): exit(81)
+	if (c.tls == 0): exit(82)
 	while (1):
 		h2_stream* s = h2_server_next_request(c)
-		if (s == 0):
-			break
+		if (s == 0): break
 		char* method = h2_stream_header(s, c":method")
 		char* path = h2_stream_header(s, c":path")
 		list[hpack_header*] extra = hpack_headers_new()
@@ -126,13 +71,12 @@ void h2s_server_child(int listener):
 
 void test_h2_tls_client_and_server():
 	int port = 0
-	int listener = h2s_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
-	if (pid == 0):
-		h2s_server_child(listener)
-	char* auth = h2s_authority(port)
-	tls_config* cfg = h2s_client_config()
+	if (pid == 0): h2s_server_child(listener)
+	char* auth = net_test_authority(c"test.w.example", port)
+	tls_config* cfg = web_test_client_config()
 	h2_conn* c = h2_connect_tls(c"127.0.0.1", port, 10000, c"test.w.example", cfg)
 	asserts(c"h2_connect_tls failed", c != 0)
 	asserts(c"connection runs over TLS", c.tls != 0)
@@ -202,7 +146,7 @@ void test_h2_tls_client_and_server():
 	assert_equal(0, c.error)
 	h2_close(c)
 	tls_config_free(cfg)
-	h2s_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 /* Refusals */
@@ -212,62 +156,55 @@ void test_h2_tls_client_and_server():
 # the preface. The child then sees close_notify (clean EOF).
 void test_h2_tls_client_refuses_server_without_h2():
 	int port = 0
-	int listener = h2s_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int fd = socket_accept_connection(listener)
-		if (fd < 0):
-			exit(80)
+		if (fd < 0): exit(80)
 		socket_set_recv_timeout(fd, 20000)
-		tls_server_config* scfg = h2s_server_config()
+		tls_server_config* scfg = web_test_server_config()
 		tls_server_config_set_alpn(scfg, c"http/1.1", 0)
 		tls_conn* t = tls_accept(fd, scfg)
-		if (t == 0):
-			exit(81)
-		if (tls_alpn_selected(t) != 0):
-			exit(82)
+		if (t == 0): exit(81)
+		if (tls_alpn_selected(t) != 0): exit(82)
 		char* buf = malloc(64)
-		if (tls_read(t, buf, 64) != 0):
-			exit(83)
+		if (tls_read(t, buf, 64) != 0): exit(83)
 		tls_close(t)
 		close(fd)
 		exit(0)
-	tls_config* cfg = h2s_client_config()
+	tls_config* cfg = web_test_client_config()
 	h2_conn* c = h2_connect_tls(c"127.0.0.1", port, 10000, c"test.w.example", cfg)
 	asserts(c"client must refuse a non-h2 session", c == 0)
 	assert_strings_equal(c"http2: server did not negotiate h2 via ALPN", tls_last_error(cfg))
 	tls_config_free(cfg)
-	h2s_finish(pid, listener)
+	net_test_finish(pid, listener)
 
 
 # A client that offers only http/1.1 gets no_application_protocol from
 # h2_accept_tls, which returns 0.
 void test_h2_tls_server_requires_h2():
 	int port = 0
-	int listener = h2s_listen(&port)
+	int listener = net_test_listen(&port)
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
 	if (pid == 0):
 		int fd = socket_accept_connection(listener)
-		if (fd < 0):
-			exit(80)
+		if (fd < 0): exit(80)
 		socket_set_recv_timeout(fd, 20000)
-		tls_server_config* scfg = h2s_server_config()
+		tls_server_config* scfg = web_test_server_config()
 		h2_conn* c = h2_accept_tls(fd, scfg)
-		if (c != 0):
-			exit(81)
-		if (strcmp(tls_server_last_error(scfg), c"tls: no common ALPN protocol") != 0):
-			exit(82)
+		if (c != 0): exit(81)
+		if (strcmp(tls_server_last_error(scfg), c"tls: no common ALPN protocol") != 0): exit(82)
 		exit(0)
 	int fd = socket_tcp_ipv4()
 	asserts(c"socket", fd >= 0)
 	socket_set_recv_timeout(fd, 10000)
 	asserts(c"connect", socket_connect_ipv4(fd, ip4_from_string(c"127.0.0.1"), port) >= 0)
-	tls_config* cfg = h2s_client_config()
+	tls_config* cfg = web_test_client_config()
 	tls_config_set_alpn(cfg, c"http/1.1")
 	tls_conn* t = tls_connect(fd, c"test.w.example", cfg)
 	asserts(c"handshake must fail", t == 0)
 	close(fd)
 	tls_config_free(cfg)
-	h2s_finish(pid, listener)
+	net_test_finish(pid, listener)

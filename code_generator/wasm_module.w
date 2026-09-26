@@ -41,6 +41,7 @@ This file is compiled by the committed seed: seed-known syntax only.
 */
 
 import code_generator.wasm
+import code_generator.image
 
 int sym_declare_global(char *s, int type, int symtype); /* symbol_table */
 void sym_define_global_at(int current_symbol, int v);   /* symbol_table */
@@ -70,8 +71,7 @@ int wasm_num_imports():
 # parameter class array (ffi.w classes: 0 = i32 word/pointer, 1 = f32),
 # and the result kind (0 = none, 1 = i32, 2 = f32).
 
-int wasm_extern_max():
-	return 1024
+const int wasm_extern_max = 1024
 
 char* wasm_extern_modules
 char* wasm_extern_names
@@ -84,11 +84,11 @@ void wasm_extern_init():
 		# Host pointer arrays stride by __word_size__, not the target's
 		# word_size (an x64 host compiling wasm would truncate the
 		# pointers to 4 bytes otherwise — the wasm_func_names lesson).
-		wasm_extern_modules = malloc(wasm_extern_max() * __word_size__)
-		wasm_extern_names = malloc(wasm_extern_max() * __word_size__)
-		wasm_extern_classes = malloc(wasm_extern_max() * __word_size__)
-		wasm_extern_nparams = malloc(wasm_extern_max() * 4)
-		wasm_extern_rets = malloc(wasm_extern_max() * 4)
+		wasm_extern_modules = malloc(wasm_extern_max * __word_size__)
+		wasm_extern_names = malloc(wasm_extern_max * __word_size__)
+		wasm_extern_classes = malloc(wasm_extern_max * __word_size__)
+		wasm_extern_nparams = malloc(wasm_extern_max * 4)
+		wasm_extern_rets = malloc(wasm_extern_max * 4)
 
 # Register one extern import and return its function index. Imports
 # precede defined functions in the wasm function index space, and W code
@@ -96,13 +96,9 @@ void wasm_extern_init():
 # index), so the index is final the moment the extern is declared.
 int wasm_extern_add(char* module, char* name, int n_params, char* classes, int ret_kind):
 	wasm_extern_init()
-	if (wasm_extern_count >= wasm_extern_max()):
-		error(c"too many extern imports")
+	if (wasm_extern_count >= wasm_extern_max): error(c"too many extern imports")
 	char* classes_copy = malloc(n_params + 1)
-	int i = 0
-	while (i < n_params):
-		classes_copy[i] = classes[i]
-		i = i + 1
+	for i in range(n_params): classes_copy[i] = classes[i]
 	save_i(wasm_extern_modules + wasm_extern_count * __word_size__, cast(int, strclone(module)), __word_size__)
 	save_i(wasm_extern_names + wasm_extern_count * __word_size__, cast(int, strclone(name)), __word_size__)
 	save_i(wasm_extern_classes + wasm_extern_count * __word_size__, cast(int, classes_copy), __word_size__)
@@ -124,8 +120,7 @@ int wasm_extern_add(char* module, char* name, int n_params, char* classes, int r
 # conventions (classes: 0 = i32 word/pointer, 1 = f32; result kind:
 # 0 = none, 1 = i32, 2 = f32).
 
-int wasm_export_max():
-	return 1024
+const int wasm_export_max = 1024
 
 char* wasm_export_syms
 char* wasm_export_names
@@ -136,22 +131,18 @@ int wasm_export_count
 
 void wasm_export_init():
 	if (wasm_export_syms == 0):
-		wasm_export_syms = malloc(wasm_export_max() * 4)
-		wasm_export_names = malloc(wasm_export_max() * __word_size__)
-		wasm_export_classes = malloc(wasm_export_max() * __word_size__)
-		wasm_export_nparams = malloc(wasm_export_max() * 4)
-		wasm_export_rets = malloc(wasm_export_max() * 4)
+		wasm_export_syms = malloc(wasm_export_max * 4)
+		wasm_export_names = malloc(wasm_export_max * __word_size__)
+		wasm_export_classes = malloc(wasm_export_max * __word_size__)
+		wasm_export_nparams = malloc(wasm_export_max * 4)
+		wasm_export_rets = malloc(wasm_export_max * 4)
 
 # The four names wasm_finish always exports.
 int wasm_export_name_reserved(char* name):
-	if (strcmp(name, c"memory") == 0):
-		return 1
-	if (strcmp(name, c"_start") == 0):
-		return 1
-	if (strcmp(name, c"table") == 0):
-		return 1
-	if (strcmp(name, c"ax") == 0):
-		return 1
+	if (strcmp(name, c"memory") == 0): return 1
+	if (strcmp(name, c"_start") == 0): return 1
+	if (strcmp(name, c"table") == 0): return 1
+	if (strcmp(name, c"ax") == 0): return 1
 	return 0
 
 # Register one 'export'-marked function, called by grammar/program.w
@@ -160,24 +151,16 @@ int wasm_export_name_reserved(char* name):
 # checked here, where the registry lives.
 void wasm_export_add(int sym, char* name, int n_params, char* classes, int ret_kind):
 	wasm_export_init()
-	if (wasm_export_count >= wasm_export_max()):
-		error(c"too many exported functions")
+	if (wasm_export_count >= wasm_export_max): error(c"too many exported functions")
 	if (wasm_export_name_reserved(name)):
-		diag_part(c"export name '")
-		diag_part(name)
-		error(c"' collides with a reserved module export")
+		error3(c"export name '", name, c"' collides with a reserved module export")
 	int e = 0
 	while (e < wasm_export_count):
 		if (strcmp(cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__)), name) == 0):
-			diag_part(c"function '")
-			diag_part(name)
-			error(c"' is already exported")
+			error3(c"function '", name, c"' is already exported")
 		e = e + 1
 	char* classes_copy = malloc(n_params + 1)
-	int i = 0
-	while (i < n_params):
-		classes_copy[i] = classes[i]
-		i = i + 1
+	for i in range(n_params): classes_copy[i] = classes[i]
 	save_i(wasm_export_syms + wasm_export_count * 4, sym, 4)
 	save_i(wasm_export_names + wasm_export_count * __word_size__, cast(int, strclone(name)), __word_size__)
 	save_i(wasm_export_classes + wasm_export_count * __word_size__, cast(int, classes_copy), __word_size__)
@@ -202,35 +185,29 @@ char* wasm_export_wrapper_tables
 # for f32 results. The uniform table + "ax" callback contract is
 # untouched: wrappers are additive.
 void wasm_emit_export_wrappers():
-	if (wasm_export_count == 0):
-		return
+	if (wasm_export_count == 0): return
 	wasm_export_wrapper_tables = malloc(wasm_export_count * 4)
 	int e = 0
 	while (e < wasm_export_count):
 		int sym = load_i(wasm_export_syms + e * 4, 4)
 		char* name = cast(char*, load_i(wasm_export_names + e * __word_size__, __word_size__))
 		if (sym_decl_visibility(sym) != 'D'):
-			diag_part(c"exported function '")
-			diag_part(name)
-			error(c"' is never defined")
+			error3(c"exported function '", name, c"' is never defined")
 		int callee = wasm_num_imports() + sym_value_at(sym) - 1
 		int n = load_i(wasm_export_nparams + e * 4, 4)
 		char* classes = cast(char*, load_i(wasm_export_classes + e * __word_size__, __word_size__))
 		wasm_function_begin()
 		save_i(wasm_export_wrapper_tables + e * 4, wasm_func_count, 4)
 		wasm_func_name_note(wasm_func_count, name)
-		int i = 0
-		while (i < n):
+		for i in range(n):
 			# push parameter i: $sp -= 4; [$sp] = its raw bits (wasm
 			# parameters are the function's first locals)
 			wasm_sp_add(0 - 4)
 			wasm_global_get(0)
 			emit_int8(0x20)   # local.get i
 			wasm_leb(i)
-			if (classes[i] == 1):
-				emit_int8(0xbc)   # i32.reinterpret_f32
+			if (classes[i] == 1): emit_int8(0xbc)   # i32.reinterpret_f32
 			wasm_load_op(0x36, 2, 0)
-			i = i + 1
 		emit_int8(0x10)   # call (the function index space is final here)
 		wasm_leb(callee)
 		# release the arguments and the prologue's reserved slot
@@ -238,8 +215,7 @@ void wasm_emit_export_wrappers():
 		int ret_kind = load_i(wasm_export_rets + e * 4, 4)
 		if (ret_kind):
 			wasm_global_get(1)   # $ax: the cross-call return channel
-			if (ret_kind == 2):
-				emit_int8(0xbe)   # f32.reinterpret_i32
+			if (ret_kind == 2): emit_int8(0xbe)   # f32.reinterpret_i32
 		wasm_function_end()
 		e = e + 1
 
@@ -297,15 +273,12 @@ void wasm_extern_stub(int sym, char* name, int funcidx, int n_params, char* clas
 	int i = 0
 	while (i < n_params):
 		wasm_stub_arg(i, n_params)
-		if (classes[i] == 1):
-			emit_int8(0xbe)   # f32.reinterpret_i32
+		if (classes[i] == 1): emit_int8(0xbe)   # f32.reinterpret_i32
 		i = i + 1
 	emit_int8(0x10)   # call the import
 	wasm_leb(funcidx)
-	if (ret_kind == 2):
-		emit_int8(0xbc)   # i32.reinterpret_f32
-	if (ret_kind):
-		wasm_set_ax()
+	if (ret_kind == 2): emit_int8(0xbc)   # i32.reinterpret_f32
+	if (ret_kind): wasm_set_ax()
 	wasm_stub_end()
 
 # The W-callable OS stubs. Emitted at be_start, before any user code, so
@@ -574,21 +547,14 @@ void wasm_import_entry(char* name, int type_index):
 void wasm_sig_type_entry(int n, char* classes, int ret_kind):
 	emit_int8(0x60)
 	wasm_leb(n)
-	int i = 0
-	while (i < n):
-		if (classes[i] == 1):
-			emit_int8(0x7d)
-		else:
-			emit_int8(0x7f)
-		i = i + 1
-	if (ret_kind == 0):
-		wasm_leb(0)
+	for i in range(n):
+		if (classes[i] == 1): emit_int8(0x7d)
+		else: emit_int8(0x7f)
+	if (ret_kind == 0): wasm_leb(0)
 	else:
 		wasm_leb(1)
-		if (ret_kind == 2):
-			emit_int8(0x7d)
-		else:
-			emit_int8(0x7f)
+		if (ret_kind == 2): emit_int8(0x7d)
+		else: emit_int8(0x7f)
 
 # The function type of user extern e: i32/f32 params from its class
 # array, then a void, i32 or f32 result. Extern e gets its own type entry
@@ -611,16 +577,11 @@ void wasm_section_end(int size_pos):
 void wasm_type_entry(int n_params, int i64_mask, int n_results):
 	emit_int8(0x60)
 	wasm_leb(n_params)
-	int i = 0
-	while (i < n_params):
-		if ((i64_mask >> i) & 1):
-			emit_int8(0x7e)
-		else:
-			emit_int8(0x7f)
-		i = i + 1
+	for i in range(n_params):
+		if ((i64_mask >> i) & 1): emit_int8(0x7e)
+		else: emit_int8(0x7f)
 	wasm_leb(n_results)
-	if (n_results):
-		emit_int8(0x7f)
+	if (n_results): emit_int8(0x7f)
 
 # one mutable global: value type vt, zero-or-constant init
 void wasm_global_entry(int vt, int init):
@@ -632,28 +593,15 @@ void wasm_global_entry(int vt, int init):
 	else if (vt == 0x7d):
 		emit_int8(0x43)   # f32.const (4 raw bytes; init is the bit pattern)
 		emit_int32(init)
-	else:
-		wasm_i32_const(init)
+	else: wasm_i32_const(init)
 	emit_int8(0x0b)
 
 void wasm_finish():
 	# Entry selection, mirroring the PE writer: __w_wasm_start (the WASI
 	# runtime startup, which rebuilds real argc/argv) when _main exists
 	# for it to chain to; otherwise _main / main directly.
-	int t = 0
-	if (sym_address(c"_main") != 0):
-		t = sym_address(c"__w_wasm_start")
-	if (t == 0):
-		t = sym_address(c"_main")
-	if (t == 0):
-		t = sym_address(c"main")
-	if (t == 0):
-		# 'w check' on a main-less library module: not an error, and the
-		# entry slot stays unpatched (the output is discarded)
-		if (entry_optional == 0):
-			error(c"Failed to find a _main() function. Did you import lib/testing?")
-	if (t != 0):
-		wasm_addr_slot_write(wasm_entry_slot_pos, t)
+	int t = entry_symbol(c"__w_wasm_start")
+	if (t != 0): wasm_addr_slot_write(wasm_entry_slot_pos, t)
 
 	# Direct-call sites (code_generator/wasm.w): each padded `call`
 	# immediate still holds the callee's TABLE index. The function index
@@ -849,8 +797,7 @@ void wasm_finish():
 		i = 1
 		while (i <= wasm_func_count):
 			if (i < wasm_func_names_cap):
-				if (wasm_func_names[i]):
-					named = named + 1
+				if (wasm_func_names[i]): named = named + 1
 			i = i + 1
 		wasm_leb(named)
 		i = 1
@@ -866,12 +813,10 @@ void wasm_finish():
 
 	if (write(output_fd, code + s1, s1_end - s1) != s1_end - s1):
 		error(c"could not write output file")
-	if (write(output_fd, code, code_end) != code_end):
-		error(c"could not write output file")
+	if (write(output_fd, code, code_end) != code_end): error(c"could not write output file")
 	if (write(output_fd, code + s2, s2_end - s2) != s2_end - s2):
 		error(c"could not write output file")
 	if (datapos):
-		if (write(output_fd, data, datapos) != datapos):
-			error(c"could not write output file")
+		if (write(output_fd, data, datapos) != datapos): error(c"could not write output file")
 	if (write(output_fd, code + s3, s3_end - s3) != s3_end - s3):
 		error(c"could not write output file")

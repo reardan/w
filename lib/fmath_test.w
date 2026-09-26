@@ -4,18 +4,6 @@ import lib.format
 import lib.fmath
 
 
-# Same tolerance as graphics/math_test.w: well within what float32
-# callers need, loose enough to absorb iteration truncation.
-void assert_near(float want, float got):
-	if (fabs(want - got) > 0.0001):
-		print2(c"Assertion failed. wanted float(")
-		print2(ftoa(want))
-		print2(c") got float(")
-		print2(ftoa(got))
-		println2(c")")
-		exit(1)
-
-
 void assert_float_bits(int want, float got):
 	assert_equal_hex(want, float_bits(got))
 
@@ -86,8 +74,7 @@ void test_fsqrt():
 # is a plain integer subtraction of their ordered bits.
 int ulp_order_bits(float f):
 	int b = float_bits(f)
-	if (b < 0):
-		return cast(int, 0x80000000) - b
+	if (b < 0): return cast(int, 0x80000000) - b
 	return b
 
 
@@ -99,8 +86,7 @@ int ulp_order_bits(float f):
 void assert_fulp(int want_bits, float got, int tol):
 	float want = float_from_bits(want_bits)
 	int d = ulp_order_bits(want) - ulp_order_bits(got)
-	if (d < 0):
-		d = 0 - d
+	if (d < 0): d = 0 - d
 	if (d > tol):
 		print2(c"Assertion failed: wanted float bits ")
 		print2(hex(want_bits))

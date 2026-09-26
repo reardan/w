@@ -40,10 +40,8 @@ int prng_mask31():
 # a fixed nonzero constant so prng_new(0) is still valid and
 # deterministic.
 prng* prng_new(int seed):
-	prng* p = new prng()
-	p.state = seed & prng_mask32()
-	if (p.state == 0):
-		p.state = 305419896   # 0x12345678
+	prng* p = new prng(seed & prng_mask32())
+	if (p.state == 0): p.state = 305419896   # 0x12345678
 	return p
 
 

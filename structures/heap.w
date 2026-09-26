@@ -50,8 +50,7 @@ void heap_trap(char* message):
 
 
 heap[T]* heap_new_sized[T](int capacity):
-	if (capacity < 4):
-		capacity = 4
+	if (capacity < 4): capacity = 4
 	# four word-sized fields on every instantiation (payload policy)
 	heap[T]* h = cast(heap[T]*, malloc(4 * __word_size__))
 	h.capacity = capacity
@@ -77,8 +76,7 @@ heap[T]* heap_new_by[T](heap_compare* compare):
 
 int heap_less[T](heap[T]* h, T a, T b):
 	heap_compare* compare = h.compare
-	if (cast(int, compare) == 0):
-		return cast(int, a) < cast(int, b)
+	if (cast(int, compare) == 0): return cast(int, a) < cast(int, b)
 	return compare(cast(int, a), cast(int, b)) < 0
 
 
@@ -86,8 +84,7 @@ void heap_ensure[T](heap[T]* h, int extra):
 	int needed = h.length + extra
 	if (needed > h.capacity):
 		int new_capacity = h.capacity * 2
-		if (new_capacity < needed):
-			new_capacity = needed
+		if (new_capacity < needed): new_capacity = needed
 		h.items = cast(T*, realloc(cast(void*, h.items), h.capacity * __word_size__, new_capacity * __word_size__))
 		h.capacity = new_capacity
 
@@ -95,8 +92,7 @@ void heap_ensure[T](heap[T]* h, int extra):
 void heap_sift_up[T](heap[T]* h, int i):
 	while (i > 0):
 		int parent = (i - 1) / 2
-		if (heap_less[T](h, h.items[i], h.items[parent]) == 0):
-			return
+		if (heap_less[T](h, h.items[i], h.items[parent]) == 0): return
 		T swap = h.items[parent]
 		h.items[parent] = h.items[i]
 		h.items[i] = swap
@@ -106,14 +102,11 @@ void heap_sift_up[T](heap[T]* h, int i):
 void heap_sift_down[T](heap[T]* h, int i):
 	while (1):
 		int smallest = 2 * i + 1
-		if (smallest >= h.length):
-			return
+		if (smallest >= h.length): return
 		int right = smallest + 1
 		if (right < h.length):
-			if (heap_less[T](h, h.items[right], h.items[smallest])):
-				smallest = right
-		if (heap_less[T](h, h.items[smallest], h.items[i]) == 0):
-			return
+			if (heap_less[T](h, h.items[right], h.items[smallest])): smallest = right
+		if (heap_less[T](h, h.items[smallest], h.items[i]) == 0): return
 		T swap = h.items[i]
 		h.items[i] = h.items[smallest]
 		h.items[smallest] = swap
@@ -128,14 +121,12 @@ void heap_push[T](heap[T]* h, T value):
 
 
 T heap_peek[T](heap[T]* h):
-	if (h.length == 0):
-		heap_trap(c"peek on empty heap")
+	if (h.length == 0): heap_trap(c"peek on empty heap")
 	return h.items[0]
 
 
 T heap_pop[T](heap[T]* h):
-	if (h.length == 0):
-		heap_trap(c"pop on empty heap")
+	if (h.length == 0): heap_trap(c"pop on empty heap")
 	T top = h.items[0]
 	h.length = h.length - 1
 	if (h.length > 0):
@@ -201,6 +192,5 @@ int heap_iter_next[T](heap[T]* h, int cursor):
 
 
 T heap_iter_value[T](heap[T]* h, int cursor):
-	if (cursor >= h.length):
-		heap_trap(c"heap iterator out of range")
+	if (cursor >= h.length): heap_trap(c"heap iterator out of range")
 	return h.items[cursor]

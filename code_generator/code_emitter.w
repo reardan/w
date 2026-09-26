@@ -74,20 +74,13 @@ void resize_code(int n):
 
 void emit(int n, char *s):
 	resize_code(n)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		code[codepos] = s[i]
 		codepos = codepos + 1
-		i = i + 1
 
 
 void emit_string(char* s):
 	emit(strlen(s) + 1, s)
-
-
-void emit_string_raw(char* s):
-	print_int(c"strlen(s)= ", strlen(s))
-	emit(strlen(s), s)
 
 
 void emit_i(int v, int n):
@@ -104,8 +97,7 @@ void emit_i(int v, int n):
 void ensure_data(int n):
 	if (data_size <= datapos + n):
 		int x = (datapos + n) << 1
-		if (x < 4096):
-			x = 4096
+		if (x < 4096): x = 4096
 		data = realloc(data, data_size, x)
 		data_size = x
 
@@ -114,11 +106,9 @@ void ensure_data(int n):
 int emit_data_zeros(int n):
 	ensure_data(n)
 	int start = datapos
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		data[datapos] = 0
 		datapos = datapos + 1
-		i = i + 1
 	return data_offset + start
 
 
@@ -150,8 +140,7 @@ void rebase_note(int vaddr):
 	int needed = (rebase_count + 1) * 8
 	if (rebase_table_size < needed):
 		int x = needed << 1
-		if (x < 4096):
-			x = 4096
+		if (x < 4096): x = 4096
 		rebase_table = realloc(rebase_table, rebase_table_size, x)
 		rebase_table_size = x
 	save_i(rebase_table + rebase_count * 8, vaddr, 8)
@@ -175,10 +164,8 @@ void emit_int64(int v):
 
 
 void emit_target_word(int v):
-	if (word_size == 8):
-		emit_int64(v)
-	else:
-		emit_int32(v)
+	if (word_size == 8): emit_int64(v)
+	else: emit_int32(v)
 
 
 void emit_int(int v):
@@ -189,3 +176,22 @@ void emit_zeros(int num):
 	while (num > 0):
 		emit_int8(0)
 		num = num - 1
+
+
+# Bounds-check kinds for be_bounds_branch (code_generator/x86.w, issue
+# #228): the index is in ebx, the length or bound in eax, and
+# BOUNDS_EAX_LE_LIMIT compares eax against an immediate limit. Each
+# branches to its region when the condition holds.
+enum BoundsKind:
+	BOUNDS_EAX_NEG        # eax < 0
+	BOUNDS_EBX_NEG        # ebx < 0
+	BOUNDS_EBX_GT_EAX     # ebx > eax
+	BOUNDS_EBX_LT_EAX     # ebx < eax
+	BOUNDS_EBX_LE_EAX     # ebx <= eax
+	BOUNDS_EAX_LE_LIMIT   # eax <= limit
+
+# The signed relation a kind tests: 0 less, 1 greater, 2 less-or-equal.
+int bounds_relation(int kind):
+	if (kind == BOUNDS_EBX_GT_EAX): return 1
+	if (kind >= BOUNDS_EBX_LE_EAX): return 2
+	return 0

@@ -10,6 +10,8 @@ import lib.file
 import lib.stat
 import lib.time
 import structures.string
+import lib.str
+import lib.dir
 
 
 char* utt_repo_root_cache
@@ -39,14 +41,7 @@ char* utt_dir():
 		utt_dir_cache = p.data
 		free(p)
 		mkdir(c"bin", 493)
-		char** rm_argv = strv_new(3)
-		strv_set(rm_argv, 0, c"/bin/rm")
-		strv_set(rm_argv, 1, c"-rf")
-		strv_set(rm_argv, 2, utt_dir_cache)
-		process_result* rm = process_run(c"/bin/rm", rm_argv, 0, 0, 10000)
-		assert1(rm != 0)
-		process_result_free(rm)
-		free(cast(void*, rm_argv))
+		assert_equal(0, dir_remove_all(utt_dir_cache))
 		assert_equal(0, mkdir(utt_dir_cache, 493))
 	return utt_dir_cache
 
@@ -70,22 +65,6 @@ process_result* utt_run(char* bin_name, list[char*] args):
 	assert1(r != 0)
 	free(cast(void*, argv))
 	return r
-
-
-int utt_contains(char* haystack, char* needle):
-	int hl = strlen(haystack)
-	int nl = strlen(needle)
-	if (nl == 0):
-		return 1
-	int i = 0
-	while ((i + nl) <= hl):
-		int j = 0
-		while ((j < nl) && (haystack[i + j] == needle[j])):
-			j = j + 1
-		if (j == nl):
-			return 1
-		i = i + 1
-	return 0
 
 
 void test_touch_creates_file():
@@ -128,9 +107,9 @@ void test_stat_prints_size_and_type():
 	args.push(path)
 	process_result* r = utt_run(c"stat", args)
 	assert_equal(0, r.status)
-	assert_equal(1, utt_contains(r.stdout_text, c"Size: 5"))
-	assert_equal(1, utt_contains(r.stdout_text, c"Type: regular file"))
-	assert_equal(1, utt_contains(r.stdout_text, c"File: "))
+	assert_equal(1, contains(r.stdout_text, c"Size: 5"))
+	assert_equal(1, contains(r.stdout_text, c"Type: regular file"))
+	assert_equal(1, contains(r.stdout_text, c"File: "))
 	process_result_free(r)
 	unlink(path)
 
@@ -147,7 +126,7 @@ void test_stat_nofollow_symlink():
 	args.push(linkpath)
 	process_result* r = utt_run(c"stat", args)
 	assert_equal(0, r.status)
-	assert_equal(1, utt_contains(r.stdout_text, c"Type: symbolic link"))
+	assert_equal(1, contains(r.stdout_text, c"Type: symbolic link"))
 	process_result_free(r)
 	unlink(linkpath)
 	unlink(target)
@@ -165,7 +144,7 @@ void test_stat_nofollow_flag_after_path():
 	args.push(c"-f")
 	process_result* r = utt_run(c"stat", args)
 	assert_equal(0, r.status)
-	assert_equal(1, utt_contains(r.stdout_text, c"Type: symbolic link"))
+	assert_equal(1, contains(r.stdout_text, c"Type: symbolic link"))
 	process_result_free(r)
 	unlink(linkpath)
 	unlink(target)
@@ -183,8 +162,8 @@ void test_stat_multiple_paths_with_leading_flag():
 	args.push(b)
 	process_result* r = utt_run(c"stat", args)
 	assert_equal(0, r.status)
-	assert_equal(1, utt_contains(r.stdout_text, c"Size: 3"))
-	assert_equal(1, utt_contains(r.stdout_text, c"Size: 2"))
+	assert_equal(1, contains(r.stdout_text, c"Size: 3"))
+	assert_equal(1, contains(r.stdout_text, c"Size: 2"))
 	process_result_free(r)
 	unlink(a)
 	unlink(b)
@@ -201,7 +180,7 @@ void test_readlink_prints_target():
 	args.push(linkpath)
 	process_result* r = utt_run(c"readlink", args)
 	assert_equal(0, r.status)
-	assert_equal(1, utt_contains(r.stdout_text, c"rl_target.txt"))
+	assert_equal(1, contains(r.stdout_text, c"rl_target.txt"))
 	process_result_free(r)
 	unlink(linkpath)
 	unlink(target)
@@ -219,7 +198,7 @@ void test_readlink_no_newline_flag_after_path():
 	args.push(c"-n")
 	process_result* r = utt_run(c"readlink", args)
 	assert_equal(0, r.status)
-	assert_equal(1, utt_contains(r.stdout_text, c"rl_target2.txt"))
+	assert_equal(1, contains(r.stdout_text, c"rl_target2.txt"))
 	assert_equal(strlen(c"rl_target2.txt"), strlen(r.stdout_text))
 	process_result_free(r)
 	unlink(linkpath)
@@ -231,7 +210,7 @@ void test_stat_usage_error():
 	args.push(c"stat")
 	process_result* r = utt_run(c"stat", args)
 	assert_equal(1, r.status)
-	assert_equal(1, utt_contains(r.stderr_text, c"usage: stat"))
+	assert_equal(1, contains(r.stderr_text, c"usage: stat"))
 	process_result_free(r)
 # wbuild: binary=unix_tools_test tag=tests dep=stat dep=chmod dep=touch dep=readlink
 # wbuild: step="bin/unix_tools_test"

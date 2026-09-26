@@ -9,3 +9,4 @@ import lib.lib
 int main():
 	int counter = 3
 	return qqqzzzx + counter
+# wbuild: fixture_group=error_caret_test

@@ -215,8 +215,17 @@ Implemented and covered by tests:
   sign-extends into the word-sized `int` on every target — `0xffffffff`
   is `-1` even on x64, so `x & 0xffffffff` never truncates; build 32-bit
   masks at runtime like `lib/sha256.w`'s `sha256_mask32`), UTF-8 `"..."`
-  literals with `\u`/`\U` escapes, and explicit legacy C strings via
-  `c"..."`.
+  literals with `\u`/`\U` escapes (a `string` that also decays to its
+  NUL-terminated `char*` wherever a `char*` is expected, so `c"..."` is
+  optional there), `==`/`!=` on two `string` values comparing contents
+  (`char*` comparisons stay pointer comparisons), f-strings with format
+  specs (`f"{n:04x} {f:.3} {name:>10} {c:c}"`, float interpolation; see
+  `docs/projects/template_strings.md`), `enum_name(e)` reflection, and
+  explicit legacy C strings via `c"..."`.
+- Compile-time constant expressions in global initializers, parameter
+  defaults and enum values: `const int PAGE = 4 * KB`,
+  `perm_all = perm_read | perm_write`, `sizeof(T)`, shifts and bit
+  operations, folded in 32-bit arithmetic with overflow errors.
 - 32-bit limb intrinsics for multi-precision arithmetic (#213):
   `mul_hi(a, b)` (high 32 bits of the unsigned 32×32 product),
   `mul_wide(a, b, &hi)` (low half returned, high half stored to `hi`) and
@@ -227,15 +236,28 @@ Implemented and covered by tests:
   lower to 1–4 instructions per backend (x86/x64 `MUL`/`ADC`, arm64
   `UMULL`); a user symbol with the same name that is defined before the
   call site takes precedence.
+- Script ergonomics, wave 5 (`docs/projects/golf_ergonomics.md`):
+  `it`-expressions for list methods, compiled as inline loops so the
+  enclosing function's locals stay visible (`l.map(it * k)`,
+  `l.filter(it % 2 == 0)`, `count`/`any`/`all`/`index`/`sum`/`min`/`max`
+  of an expression, key-based `sort_by`/`sorted_by`/`min_by`/`max_by`
+  such as `people.sort_by(it.age)`), `l.reversed()`, import-free
+  `lines()`, `words()`, `split(s)` (whitespace; `split(s, ch)` too) and
+  `join(l, sep)`, named-field construction (`new T(y: 2, x: 1)`,
+  `T(x: 1)`; omitted fields are zero), and uniform call syntax
+  (`x.f(args)` calls `f(x, args)` where no field, method or built-in
+  pseudo-method claims `.f`) — so
+  `println(ints().filter(it % 2 == 0).map(it * it).sum())` is a whole
+  program.
 - Statements: `if`/`else`, `while`, `for int i in range(start, end, step)`
   (1–3 args), `for x in <container>` over built-in lists/maps/sets and any
   struct-pointer type providing the four cursor functions
-  `T_iter_begin/done/next/value` (implemented by `array_list`,
-  `linked_list` and `hash_map`, which yields keys; see
-  `docs/projects/iteration.md`), `for int cp in string` codepoint iteration,
+  `T_iter_begin/done/next/value` (see `tests/for_container_test.w`
+  and `docs/projects/iteration.md`), `for int cp in string` codepoint iteration,
   `switch`/`case`/`default` (multi-value `case a, b:` clauses, implicit
   break with no fallthrough, `default` last; `break` exits the switch while
-  `continue` targets the enclosing loop), `break`, `continue`, `return`,
+  `continue` targets the enclosing loop; int-like, `string` and `char*`
+  scrutinees, the text ones comparing cases by contents), `break`, `continue`, `return`,
   `debugger` (emits `int3`), and Go-style `defer <call>` (function-scoped,
   LIFO at every exit; the deferred expression is re-emitted at each exit
   point, so it is evaluated at exit time — see `docs/projects/defer.md`),

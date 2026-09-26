@@ -11,28 +11,23 @@ int import_alias_type_member(int alias_index);
 # several words but must not contain fixed-array fields.
 void list_element_type_check(int element_type):
 	int checked = type_unqualified(element_type)
-	if (type_is_array(checked)):
-		error(c"list element type cannot be a fixed-size array")
-	if (type_get_size(checked) <= 0):
-		error(c"list element type must have a size")
+	if (type_is_array(checked)): error(c"list element type cannot be a fixed-size array")
+	if (type_get_size(checked) <= 0): error(c"list element type must have a size")
 	if (type_has_array_field(checked)):
 		error(c"list element type cannot contain fixed-size array fields")
 	if (type_num_args(checked) == 0):
-		if (type_stack_words(checked) != 1):
-			error(c"list element type must be word-sized")
+		if (type_stack_words(checked) != 1): error(c"list element type must be word-sized")
 
 
 # Map values share the list element storage rules, except that scalar
 # values may be any word-or-narrower type (stored in a word slot).
 void map_value_type_check(int value_type):
 	int checked = type_unqualified(value_type)
-	if (type_is_array(checked)):
-		error(c"map value type cannot be a fixed-size array")
+	if (type_is_array(checked)): error(c"map value type cannot be a fixed-size array")
 	if (type_has_array_field(checked)):
 		error(c"map value type cannot contain fixed-size array fields")
 	if (type_num_args(checked) == 0):
-		if (type_stack_words(checked) != 1):
-			error(c"map value type must be word-sized")
+		if (type_stack_words(checked) != 1): error(c"map value type must be word-sized")
 
 
 # The '[...]' suffix of a type: '[]' wraps the type in a slice, '[n]'
@@ -42,18 +37,15 @@ int type_name_array_suffix(int type):
 	while (accept(c"[")):
 		if (accept(c"]")):
 			int slice_type = type_lookup_slice(type)
-			if (slice_type < 0):
-				slice_type = type_push_slice(type)
+			if (slice_type < 0): slice_type = type_push_slice(type)
 			type = slice_type
 		else:
 			int array_length = atoi(token)
-			if (array_length <= 0):
-				error(c"array length must be positive")
+			if (array_length <= 0): error(c"array length must be positive")
 			get_token()
 			expect(c"]")
 			int array_type = type_lookup_array(type, array_length)
-			if (array_type < 0):
-				array_type = type_push_array(type, array_length)
+			if (array_type < 0): array_type = type_push_array(type, array_length)
 			type = array_type
 	return type
 
@@ -63,10 +55,8 @@ int type_name_array_suffix(int type):
 # or symbol named 'gpu' keep their meaning. The one-token lookahead uses
 # the reparse save/seek/restore trick (grammar/gpu_for.w precedent).
 int gpu_qualifier_ahead():
-	if (peek(c"gpu") == 0):
-		return 0
-	if ((type_lookup(c"gpu") >= 0) || (sym_lookup(c"gpu") >= 0)):
-		return 0
+	if (peek(c"gpu") == 0): return 0
+	if ((type_lookup(c"gpu") >= 0) || (sym_lookup(c"gpu") >= 0)): return 0
 	char* save = generic_reparse_save()
 	get_token()
 	int is_type = 0
@@ -82,13 +72,11 @@ int type_name():
 	int is_const = 0
 	int is_gpu = 0
 	pointer_indirection = 0
-	if (accept(c"const")):
-		is_const = 1
+	if (accept(c"const")): is_const = 1
 	if (gpu_qualifier_ahead()):
 		get_token()
 		is_gpu = 1
-		if (accept(c"const")):
-			is_const = 1
+		if (accept(c"const")): is_const = 1
 	if (peek(c"map") & (nextc == '[')):
 		get_token()
 		expect(c"[")
@@ -128,15 +116,12 @@ int type_name():
 		# with the same name in this position (mirroring identifier()).
 		if (nextc == '.'):
 			int alias_index = import_alias_lookup(token)
-			if (alias_index >= 0):
-				type = import_alias_type_member(alias_index)
+			if (alias_index >= 0): type = import_alias_type_member(alias_index)
 		if (type < 0):
 			type = type_lookup(token)
 			if (type < 0):
 				type_suggest_names(token)
-				diag_part(c"unknown type name: '")
-				diag_part(token)
-				error(c"'")
+				error3(c"unknown type name: '", token, c"'")
 		int checked_type = type_unqualified(type)
 		if ((checked_type == float64_type) && (word_size != 8)):
 			error(c"float64 requires the x64 target")
@@ -145,8 +130,7 @@ int type_name():
 
 		get_token()
 
-	if (is_const):
-		type = type_push_const(type)
+	if (is_const): type = type_push_const(type)
 
 	# 'gpu T*': the stars below build pointers over the gpu-object
 	# record G(T) (compiler/type_table.w, type_get_gpu), so the element
@@ -154,8 +138,7 @@ int type_name():
 	if (is_gpu):
 		if (type_get_pointer_level(type) > 0):
 			error(c"the gpu qualifier applies to the pointee type: write 'gpu T*' with a non-pointer T")
-		if (peek(c"*") == 0):
-			error(c"the gpu qualifier requires a pointer type: 'gpu T*'")
+		if (peek(c"*") == 0): error(c"the gpu qualifier requires a pointer type: 'gpu T*'")
 		type = type_get_gpu(type)
 
 	# Each '*' wraps the base type in a pointer type, created on demand.
@@ -168,8 +151,7 @@ int type_name():
 		pointer_indirection = pointer_indirection + 1
 		int next_level = type_get_pointer_level(type) + 1
 		int pointer_type = type_lookup_pointer(base_name, next_level)
-		if (pointer_type < 0):
-			pointer_type = type_push_pointer(base_name, word_size, next_level)
+		if (pointer_type < 0): pointer_type = type_push_pointer(base_name, word_size, next_level)
 		type = pointer_type
 
 	type = type_name_array_suffix(type)

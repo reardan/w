@@ -41,26 +41,17 @@ double/int64-family fields generate fine but, like the message keyword,
 compile only for 8-byte-word targets.
 */
 import lib.lib
+import lib.hex
 import lib.file
 import structures.string
 import libs.extras.parser_generator.runtime
 import libs.extras.protobuf.generated_proto_parser
 
 
-int pc_label_none():
-	return 0
-
-
-int pc_label_repeated():
-	return 1
-
-
-int pc_label_optional():
-	return 2
-
-
-int pc_label_required():
-	return 3
+const int pc_label_none = 0
+const int pc_label_repeated = 1
+const int pc_label_optional = 2
+const int pc_label_required = 3
 
 
 struct pc_field:
@@ -119,14 +110,12 @@ struct proto_codegen_result:
 # ---- AST helpers -----------------------------------------------------------
 
 int pc_is_rule(pg_ast_node* node, int kind):
-	if (node == 0):
-		return 0
+	if (node == 0): return 0
 	return (node.token == 0) && (node.kind == kind)
 
 
 int pc_is_token(pg_ast_node* node, int kind):
-	if (node == 0):
-		return 0
+	if (node == 0): return 0
 	return (node.token != 0) && (node.kind == kind)
 
 
@@ -141,14 +130,11 @@ pg_ast_node* pc_child_rule(pg_ast_node* node, int kind):
 
 
 int pc_has_token(pg_ast_node* node, int kind):
-	if (node == 0):
-		return 0
-	if (pc_is_token(node, kind)):
-		return 1
+	if (node == 0): return 0
+	if (pc_is_token(node, kind)): return 1
 	int i = 0
 	while (i < pg_ast_child_count(node)):
-		if (pc_has_token(pg_ast_child(node, i), kind)):
-			return 1
+		if (pc_has_token(pg_ast_child(node, i), kind)): return 1
 		i = i + 1
 	return 0
 
@@ -178,7 +164,7 @@ pg_ast_node* pc_number_token(pg_ast_node* node):
 	int i = 0
 	while (i < pg_ast_child_count(node)):
 		pg_ast_node* child = pg_ast_child(node, i)
-		if (pc_is_token(child, protoidl_token_NUMBER())):
+		if (pc_is_token(child, protoidl_token_NUMBER)):
 			return child
 		i = i + 1
 	return 0
@@ -186,8 +172,7 @@ pg_ast_node* pc_number_token(pg_ast_node* node):
 
 int pc_line(pg_ast_node* node):
 	pg_token* t = pg_ast_first_token(node)
-	if (t == 0):
-		return 0
+	if (t == 0): return 0
 	return t.line
 
 
@@ -202,22 +187,12 @@ int pc_parse_int(char* text):
 	else if ((text[0] == '0') && (text[1] != 0)):
 		base = 8
 		i = 1
-	if (text[i] == 0):
-		return -1
+	if (text[i] == 0): return -1
 	int value = 0
 	while (text[i] != 0):
-		int c = text[i]
-		int digit = -1
-		if ((c >= '0') && (c <= '9')):
-			digit = c - '0'
-		else if ((c >= 'a') && (c <= 'f')):
-			digit = c - 'a' + 10
-		else if ((c >= 'A') && (c <= 'F')):
-			digit = c - 'A' + 10
-		if ((digit < 0) || (digit >= base)):
-			return -1
-		if (value > (536870911 - digit) / base):
-			return -1
+		int digit = hex_decode_char(text[i])
+		if ((digit < 0) || (digit >= base)): return -1
+		if (value > (536870911 - digit) / base): return -1
 		value = value * base + digit
 		i = i + 1
 	return value
@@ -243,8 +218,7 @@ void pc_error(pc_codegen* g, int line, char* message, char* subject):
 # ---- names -------------------------------------------------------------------
 
 char* pc_join(char* scope, char* name):
-	if ((scope == 0) || (scope[0] == 0)):
-		return strclone(name)
+	if ((scope == 0) || (scope[0] == 0)): return strclone(name)
 	string_builder* s = string_new()
 	string_append(s, scope)
 	string_append(s, c".")
@@ -265,8 +239,7 @@ char* pc_w_name(pc_codegen* g, char* full_name):
 	char* name = strclone(rest)
 	int i = 0
 	while (name[i] != 0):
-		if (name[i] == '.'):
-			name[i] = '_'
+		if (name[i] == '.'): name[i] = '_'
 		i = i + 1
 	return name
 
@@ -291,11 +264,9 @@ char* pc_map_entry_name(char* field_name):
 	int i = 0
 	while (field_name[i] != 0):
 		int c = field_name[i]
-		if (c == '_'):
-			upper = 1
+		if (c == '_'): upper = 1
 		else:
-			if (upper && (c >= 'a') && (c <= 'z')):
-				c = c - 'a' + 'A'
+			if (upper && (c >= 'a') && (c <= 'z')): c = c - 'a' + 'A'
 			string_append_char(s, c)
 			upper = 0
 		i = i + 1
@@ -338,8 +309,7 @@ pc_message* pc_message_new(pc_codegen* g, char* full_name, int line):
 int pc_field_number(pc_codegen* g, pg_ast_node* node, char* field_name):
 	pg_ast_node* num = pc_number_token(node)
 	int number = -1
-	if (num != 0):
-		number = pc_parse_int(num.text)
+	if (num != 0): number = pc_parse_int(num.text)
 	if ((number < 1) || (number > 536870911)):
 		pc_error(g, pc_line(node), c"field number must be between 1 and 536870911 for field", field_name)
 		return 1
@@ -348,18 +318,18 @@ int pc_field_number(pc_codegen* g, pg_ast_node* node, char* field_name):
 
 int pc_label_of(pg_ast_node* label):
 	if (label == 0):
-		return pc_label_none()
-	if (pc_has_token(label, protoidl_token_KW_REPEATED())):
-		return pc_label_repeated()
-	if (pc_has_token(label, protoidl_token_KW_OPTIONAL())):
-		return pc_label_optional()
-	if (pc_has_token(label, protoidl_token_KW_REQUIRED())):
-		return pc_label_required()
-	return pc_label_none()
+		return pc_label_none
+	if (pc_has_token(label, protoidl_token_KW_REPEATED)):
+		return pc_label_repeated
+	if (pc_has_token(label, protoidl_token_KW_OPTIONAL)):
+		return pc_label_optional
+	if (pc_has_token(label, protoidl_token_KW_REQUIRED)):
+		return pc_label_required
+	return pc_label_none
 
 
 void pc_collect_enum(pc_codegen* g, pg_ast_node* node, char* scope, char* value_prefix):
-	char* name = pc_text(pc_child_rule(node, protoidl_ast_ident_word()))
+	char* name = pc_text(pc_child_rule(node, protoidl_ast_ident_word))
 	pc_enum* e = new pc_enum()
 	e.full_name = pc_join(scope, name)
 	e.w_name = pc_w_name(g, e.full_name)
@@ -373,29 +343,28 @@ void pc_collect_enum(pc_codegen* g, pg_ast_node* node, char* scope, char* value_
 	int i = 0
 	while (i < pg_ast_child_count(node)):
 		pg_ast_node* item = pg_ast_child(node, i)
-		pg_ast_node* value = pc_child_rule(item, protoidl_ast_enum_value())
-		if (pc_is_rule(item, protoidl_ast_enum_item()) && (value != 0)):
-			char* value_name = pc_text(pc_child_rule(value, protoidl_ast_ident_word()))
-			pg_ast_node* sign = pc_child_rule(value, protoidl_ast_sign())
+		pg_ast_node* value = pc_child_rule(item, protoidl_ast_enum_value)
+		if (pc_is_rule(item, protoidl_ast_enum_item) && (value != 0)):
+			char* value_name = pc_text(pc_child_rule(value, protoidl_ast_ident_word))
+			pg_ast_node* sign = pc_child_rule(value, protoidl_ast_sign)
 			pg_ast_node* num = pc_number_token(value)
 			int number = pc_parse_int(num.text)
-			if (pc_has_token(sign, protoidl_token_MINUS())):
+			if (pc_has_token(sign, protoidl_token_MINUS)):
 				pc_error(g, pc_line(value), c"negative enum values are not supported yet:", value_name)
 			else if (number < 0):
 				pc_error(g, pc_line(value), c"enum value must be an integer literal:", value_name)
 			e.value_names.push(value_name)
 			e.value_numbers.push(number)
 		i = i + 1
-	if (e.value_names.length == 0):
-		pc_error(g, e.line, c"enum has no values:", name)
+	if (e.value_names.length == 0): pc_error(g, e.line, c"enum has no values:", name)
 
 
 void pc_collect_message(pc_codegen* g, pg_ast_node* node, char* scope);
 
 
 void pc_collect_field(pc_codegen* g, pc_message* m, pg_ast_node* node, int label, char* oneof_name):
-	char* field_name = pc_text(pc_child_rule(node, protoidl_ast_ident_word()))
-	char* type_ref = pc_text(pc_child_rule(node, protoidl_ast_type_name()))
+	char* field_name = pc_text(pc_child_rule(node, protoidl_ast_ident_word))
+	char* type_ref = pc_text(pc_child_rule(node, protoidl_ast_type_name))
 	pc_field* f = pc_field_new(field_name, type_ref, label, pc_field_number(g, node, field_name), pc_line(node))
 	f.oneof_name = oneof_name
 	m.fields.push(f)
@@ -403,62 +372,59 @@ void pc_collect_field(pc_codegen* g, pc_message* m, pg_ast_node* node, int label
 
 # map<K, V> name = N  ->  a synthetic Entry message plus a repeated field.
 void pc_collect_map_field(pc_codegen* g, pc_message* m, pg_ast_node* node):
-	char* field_name = pc_text(pc_child_rule(node, protoidl_ast_ident_word()))
+	char* field_name = pc_text(pc_child_rule(node, protoidl_ast_ident_word))
 	char* key_type = 0
 	char* value_type = 0
 	int i = 0
 	while (i < pg_ast_child_count(node)):
 		pg_ast_node* child = pg_ast_child(node, i)
-		if (pc_is_rule(child, protoidl_ast_type_name())):
-			if (key_type == 0):
-				key_type = pc_text(child)
-			else:
-				value_type = pc_text(child)
+		if (pc_is_rule(child, protoidl_ast_type_name)):
+			if (key_type == 0): key_type = pc_text(child)
+			else: value_type = pc_text(child)
 		i = i + 1
 	int line = pc_line(node)
 	char* entry_full = pc_join(m.full_name, pc_map_entry_name(field_name))
 	pc_message* entry = pc_message_new(g, entry_full, line)
 	entry.is_map_entry = 1
-	entry.fields.push(pc_field_new(c"key", key_type, pc_label_none(), 1, line))
-	entry.fields.push(pc_field_new(c"value", value_type, pc_label_none(), 2, line))
+	entry.fields.push(pc_field_new(c"key", key_type, pc_label_none, 1, line))
+	entry.fields.push(pc_field_new(c"value", value_type, pc_label_none, 2, line))
 	# Absolute reference: the entry lives in m's scope under this name.
 	string_builder* s = string_new()
 	string_append(s, c".")
 	string_append(s, entry_full)
-	m.fields.push(pc_field_new(field_name, strclone(s.data), pc_label_repeated(), pc_field_number(g, node, field_name), line))
+	m.fields.push(pc_field_new(field_name, strclone(s.data), pc_label_repeated, pc_field_number(g, node, field_name), line))
 	string_free(s)
 
 
 void pc_collect_message(pc_codegen* g, pg_ast_node* node, char* scope):
-	char* name = pc_text(pc_child_rule(node, protoidl_ast_ident_word()))
+	char* name = pc_text(pc_child_rule(node, protoidl_ast_ident_word))
 	pc_message* m = pc_message_new(g, pc_join(scope, name), pc_line(node))
 	int i = 0
 	while (i < pg_ast_child_count(node)):
 		pg_ast_node* item = pg_ast_child(node, i)
-		if (pc_is_rule(item, protoidl_ast_message_item()) && (pg_ast_child_count(item) > 0)):
+		if (pc_is_rule(item, protoidl_ast_message_item) && (pg_ast_child_count(item) > 0)):
 			pg_ast_node* decl = pg_ast_child(item, 0)
-			if (pc_is_rule(decl, protoidl_ast_field())):
-				pc_collect_field(g, m, decl, pc_label_of(pc_child_rule(decl, protoidl_ast_field_label())), 0)
-			else if (pc_is_rule(decl, protoidl_ast_message_decl())):
+			if (pc_is_rule(decl, protoidl_ast_field)):
+				pc_collect_field(g, m, decl, pc_label_of(pc_child_rule(decl, protoidl_ast_field_label)), 0)
+			else if (pc_is_rule(decl, protoidl_ast_message_decl)):
 				pc_collect_message(g, decl, m.full_name)
-			else if (pc_is_rule(decl, protoidl_ast_enum_decl())):
+			else if (pc_is_rule(decl, protoidl_ast_enum_decl)):
 				string_builder* p = string_new()
 				string_append(p, m.w_name)
 				string_append(p, c"_")
 				pc_collect_enum(g, decl, m.full_name, strclone(p.data))
 				string_free(p)
-			else if (pc_is_rule(decl, protoidl_ast_map_field())):
-				pc_collect_map_field(g, m, decl)
-			else if (pc_is_rule(decl, protoidl_ast_oneof_decl())):
-				char* oneof_name = pc_text(pc_child_rule(decl, protoidl_ast_ident_word()))
+			else if (pc_is_rule(decl, protoidl_ast_map_field)): pc_collect_map_field(g, m, decl)
+			else if (pc_is_rule(decl, protoidl_ast_oneof_decl)):
+				char* oneof_name = pc_text(pc_child_rule(decl, protoidl_ast_ident_word))
 				int j = 0
 				while (j < pg_ast_child_count(decl)):
 					pg_ast_node* oitem = pg_ast_child(decl, j)
-					pg_ast_node* ofield = pc_child_rule(oitem, protoidl_ast_oneof_field())
-					if (pc_is_rule(oitem, protoidl_ast_oneof_item()) && (ofield != 0)):
-						pc_collect_field(g, m, ofield, pc_label_none(), oneof_name)
+					pg_ast_node* ofield = pc_child_rule(oitem, protoidl_ast_oneof_field)
+					if (pc_is_rule(oitem, protoidl_ast_oneof_item) && (ofield != 0)):
+						pc_collect_field(g, m, ofield, pc_label_none, oneof_name)
 					j = j + 1
-			else if (pc_is_rule(decl, protoidl_ast_extend_decl())):
+			else if (pc_is_rule(decl, protoidl_ast_extend_decl)):
 				g.notes.push(c"extend blocks (proto2 extensions) are not generated")
 		i = i + 1
 
@@ -472,31 +438,29 @@ void pc_collect(pc_codegen* g, pg_ast_node* root):
 	int i = 0
 	while (i < pg_ast_child_count(root)):
 		pg_ast_node* item = pg_ast_child(root, i)
-		pg_ast_node* pkg = pc_child_rule(item, protoidl_ast_package_decl())
-		if (pc_is_rule(item, protoidl_ast_top_item()) && (pkg != 0)):
-			g.package = pc_text(pc_child_rule(pkg, protoidl_ast_full_ident()))
+		pg_ast_node* pkg = pc_child_rule(item, protoidl_ast_package_decl)
+		if (pc_is_rule(item, protoidl_ast_top_item) && (pkg != 0)):
+			g.package = pc_text(pc_child_rule(pkg, protoidl_ast_full_ident))
 		i = i + 1
 	i = 0
 	while (i < pg_ast_child_count(root)):
 		pg_ast_node* item = pg_ast_child(root, i)
-		if (pc_is_rule(item, protoidl_ast_top_item()) && (pg_ast_child_count(item) > 0)):
+		if (pc_is_rule(item, protoidl_ast_top_item) && (pg_ast_child_count(item) > 0)):
 			pg_ast_node* decl = pg_ast_child(item, 0)
-			if (pc_is_rule(decl, protoidl_ast_message_decl())):
-				pc_collect_message(g, decl, g.package)
-			else if (pc_is_rule(decl, protoidl_ast_enum_decl())):
+			if (pc_is_rule(decl, protoidl_ast_message_decl)): pc_collect_message(g, decl, g.package)
+			else if (pc_is_rule(decl, protoidl_ast_enum_decl)):
 				pc_collect_enum(g, decl, g.package, c"")
-			else if (pc_is_rule(decl, protoidl_ast_import_decl())):
+			else if (pc_is_rule(decl, protoidl_ast_import_decl)):
 				pg_ast_node* path = 0
 				int j = 0
 				while (j < pg_ast_child_count(decl)):
 					pg_ast_node* child = pg_ast_child(decl, j)
-					if (pc_is_token(child, protoidl_token_STRING())):
-						path = child
+					if (pc_is_token(child, protoidl_token_STRING)): path = child
 					j = j + 1
 				pc_import(g, pc_unquote(path.text), pc_line(decl))
-			else if (pc_is_rule(decl, protoidl_ast_service_decl()) && (g.external == 0)):
+			else if (pc_is_rule(decl, protoidl_ast_service_decl) && (g.external == 0)):
 				g.notes.push(c"services are not generated (RPC is out of scope)")
-			else if (pc_is_rule(decl, protoidl_ast_extend_decl()) && (g.external == 0)):
+			else if (pc_is_rule(decl, protoidl_ast_extend_decl) && (g.external == 0)):
 				g.notes.push(c"extend blocks (proto2 extensions) are not generated")
 		i = i + 1
 
@@ -512,15 +476,10 @@ char* pc_unquote(char* text):
 char* pc_import_module(char* path):
 	string_builder* s = string_new()
 	int n = strlen(path)
-	if ((n > 6) && (strcmp(path + n - 6, c".proto") == 0)):
-		n = n - 6
-	int i = 0
-	while (i < n):
-		if (path[i] == '/'):
-			string_append_char(s, '.')
-		else:
-			string_append_char(s, path[i])
-		i = i + 1
+	if ((n > 6) && (strcmp(path + n - 6, c".proto") == 0)): n = n - 6
+	for i in range(n):
+		if (path[i] == '/'): string_append_char(s, '.')
+		else: string_append_char(s, path[i])
 	string_append(s, c"_pb")
 	char* module = strclone(s.data)
 	string_free(s)
@@ -528,8 +487,7 @@ char* pc_import_module(char* path):
 
 
 char* pc_join_path(char* root, char* path):
-	if ((root[0] == 0) || (strcmp(root, c".") == 0)):
-		return strclone(path)
+	if ((root[0] == 0) || (strcmp(root, c".") == 0)): return strclone(path)
 	string_builder* s = string_new()
 	string_append(s, root)
 	string_append(s, c"/")
@@ -544,12 +502,10 @@ char* pc_join_path(char* root, char* path):
 # by that file's own generated module. Imports are followed
 # transitively, since W imports are too.
 void pc_import(pc_codegen* g, char* path, int line):
-	if (g.external == 0):
-		g.imports.push(path)
+	if (g.external == 0): g.imports.push(path)
 	int i = 0
 	while (i < g.loaded.length):
-		if (strcmp(g.loaded[i], path) == 0):
-			return
+		if (strcmp(g.loaded[i], path) == 0): return
 		i = i + 1
 	g.loaded.push(path)
 	char* text = 0
@@ -605,8 +561,7 @@ char* pc_lookup(pc_codegen* g, char* ref, char* scope):
 		char* candidate = pc_join(s, ref)
 		if ((candidate in g.message_index) || (candidate in g.enum_index)):
 			return candidate
-		if (s[0] == 0):
-			return 0
+		if (s[0] == 0): return 0
 		s = pc_parent_scope(s)
 	return 0
 
@@ -616,12 +571,10 @@ void pc_resolve(pc_codegen* g):
 	while (i < g.messages.length):
 		pc_message* m = g.messages[i]
 		int j = 0
-		if (m.external):
-			j = m.fields.length
+		if (m.external): j = m.fields.length
 		while (j < m.fields.length):
 			pc_field* f = m.fields[j]
-			if (pc_is_scalar(f.type_ref)):
-				f.w_type = f.type_ref
+			if (pc_is_scalar(f.type_ref)): f.w_type = f.type_ref
 			else:
 				char* full = pc_lookup(g, f.type_ref, m.full_name)
 				if (full == 0):
@@ -630,8 +583,7 @@ void pc_resolve(pc_codegen* g):
 				else if (full in g.message_index):
 					f.message_dep = g.message_index[full]
 					f.w_type = g.messages[f.message_dep].w_name
-				else:
-					f.w_type = g.enums[g.enum_index[full]].w_name
+				else: f.w_type = g.enums[g.enum_index[full]].w_name
 			j = j + 1
 		i = i + 1
 
@@ -657,17 +609,14 @@ void pc_emit_enum(pc_codegen* g, pc_enum* e):
 void pc_emit_message(pc_codegen* g, pc_message* m):
 	string_builder* out = g.out
 	string_append(out, c"\n\n")
-	if (m.is_map_entry):
-		string_append(out, c"# map entry (key = 1, value = 2)\n")
+	if (m.is_map_entry): string_append(out, c"# map entry (key = 1, value = 2)\n")
 	string_append(out, c"message ")
 	string_append(out, m.w_name)
 	string_append(out, c":\n")
-	int i = 0
-	while (i < m.fields.length):
+	for i in range(m.fields.length):
 		pc_field* f = m.fields[i]
 		string_append(out, c"\t")
-		if (f.label == pc_label_repeated()):
-			string_append(out, c"repeated ")
+		if (f.label == pc_label_repeated): string_append(out, c"repeated ")
 		string_append(out, f.w_type)
 		string_append(out, c" ")
 		string_append(out, f.name)
@@ -676,12 +625,10 @@ void pc_emit_message(pc_codegen* g, pc_message* m):
 		if (f.oneof_name != 0):
 			string_append(out, c"  # oneof ")
 			string_append(out, f.oneof_name)
-		else if (f.label == pc_label_optional()):
+		else if (f.label == pc_label_optional):
 			string_append(out, c"  # optional (presence not tracked)")
-		else if (f.label == pc_label_required()):
-			string_append(out, c"  # required (not enforced)")
+		else if (f.label == pc_label_required): string_append(out, c"  # required (not enforced)")
 		string_append(out, c"\n")
-		i = i + 1
 
 
 # Depth-first so every referenced message is declared before its user.
@@ -690,20 +637,15 @@ void pc_emit_message(pc_codegen* g, pc_message* m):
 # ('message Name') ahead of every definition instead.
 void pc_visit(pc_codegen* g, int index):
 	pc_message* m = g.messages[index]
-	if (m.external):
-		return
-	if (m.state == 2):
-		return
+	if (m.external): return
+	if (m.state == 2): return
 	if (m.state == 1):
 		m.needs_forward = 1
 		return
 	m.state = 1
-	int i = 0
-	while (i < m.fields.length):
+	for i in range(m.fields.length):
 		pc_field* f = m.fields[i]
-		if ((f.message_dep >= 0) && (f.message_dep != index)):
-			pc_visit(g, f.message_dep)
-		i = i + 1
+		if ((f.message_dep >= 0) && (f.message_dep != index)): pc_visit(g, f.message_dep)
 	m.state = 2
 	pc_emit_message(g, m)
 
@@ -722,8 +664,7 @@ void pc_emit(pc_codegen* g):
 		int seen = 0
 		int j = 0
 		while (j < i):
-			if (strcmp(g.notes[j], g.notes[i]) == 0):
-				seen = 1
+			if (strcmp(g.notes[j], g.notes[i]) == 0): seen = 1
 			j = j + 1
 		if (seen == 0):
 			string_append(out, c"# note: ")
@@ -739,8 +680,7 @@ void pc_emit(pc_codegen* g):
 	string_append(out, c"import libs.extras.protobuf.message\n")
 	i = 0
 	while (i < g.enums.length):
-		if (g.enums[i].external == 0):
-			pc_emit_enum(g, g.enums[i])
+		if (g.enums[i].external == 0): pc_emit_enum(g, g.enums[i])
 		i = i + 1
 	# Definitions go to their own buffer: the visit discovers which
 	# messages need forward declarations, which come first.
@@ -786,9 +726,7 @@ proto_codegen_result* proto_to_w(char* input, char* filename):
 # module proto_to_w writes for it (a/b.proto -> a.b_pb, see
 # pc_import_module), so import paths and W module paths share a root.
 proto_codegen_result* proto_to_w_with_roots(char* input, char* filename, list[char*] roots):
-	proto_codegen_result* result = new proto_codegen_result()
-	result.source = 0
-	result.errors = new list[char*]
+	proto_codegen_result* result = new proto_codegen_result(0, new list[char*])
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_ast_node* root = protoidl_parse(input, filename, diagnostics)
 	if ((root == 0) || (pg_diagnostics_count(diagnostics) != 0)):
@@ -808,8 +746,7 @@ proto_codegen_result* proto_to_w_with_roots(char* input, char* filename, list[ch
 			result.errors.push(strclone(s.data))
 			string_free(s)
 			i = i + 1
-		if (result.errors.length == 0):
-			result.errors.push(c"syntax error")
+		if (result.errors.length == 0): result.errors.push(c"syntax error")
 		return result
 	pc_codegen* g = new pc_codegen()
 	g.filename = filename
@@ -828,8 +765,7 @@ proto_codegen_result* proto_to_w_with_roots(char* input, char* filename, list[ch
 	pc_collect(g, root)
 	g.filename = filename
 	pc_resolve(g)
-	if (g.errors.length == 0):
-		pc_emit(g)
+	if (g.errors.length == 0): pc_emit(g)
 	if (g.errors.length != 0):
 		result.errors = g.errors
 		return result

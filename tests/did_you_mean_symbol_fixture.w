@@ -19,3 +19,4 @@ int main():
 	int counter = 3
 	counter = counter + 1
 	return countr + 1
+# wbuild: fixture_group=error_caret_test

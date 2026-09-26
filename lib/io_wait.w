@@ -48,8 +48,7 @@ io_wait_active_fn* io_wait_active_hook
 
 
 int io_wait_available():
-	if (cast(int, io_wait_active_hook) == 0):
-		return 0
+	if (cast(int, io_wait_active_hook) == 0): return 0
 	return io_wait_active_hook()
 
 
@@ -57,8 +56,7 @@ int io_wait_available():
 # the revents mask, 0 on timeout (including the task's deadline), or a
 # negative errno (-ECANCELED once the task is cancelled).
 int io_poll(int fd, int events, int timeout_ms):
-	if (io_wait_available() == 0):
-		return poll_single(fd, events, timeout_ms)
+	if (io_wait_available() == 0): return poll_single(fd, events, timeout_ms)
 	int r = io_wait(fd, events, timeout_ms)
 	if (r == -110): /* ETIMEDOUT: this wait's own timeout */
 		return 0

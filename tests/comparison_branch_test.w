@@ -28,36 +28,27 @@ int count_below(int n):
 
 int sum_to(int n):
 	int total = 0
-	for i in range(n):
-		total = total + i
+	for i in range(n): total = total + i
 	return total
 
 int classify(int x):
 	switch (x):
-		case 1, 2:
-			return 10
-		case 3:
-			return 30
-		default:
-			return 99
+		case 1, 2: return 10
+		case 3: return 30
+		default: return 99
 
 int main():
 	# if / elif with each comparison operator, both branch outcomes
 	assert_equal(3, pick(3, 7))
 	assert_equal(4, pick(9, 4))
 	int ok = 0
-	if (5 <= 5):
-		ok = 1
+	if (5 <= 5): ok = 1
 	assert_equal(1, ok)
-	if (5 >= 6):
-		assert_equal(1, 0)
-	if (5 > 5):
-		assert_equal(1, 0)
-	if (5 != 5):
-		assert_equal(1, 0)
+	if (5 >= 6): assert_equal(1, 0)
+	if (5 > 5): assert_equal(1, 0)
+	if (5 != 5): assert_equal(1, 0)
 	ok = 0
-	if (5 == 5):
-		ok = 1
+	if (5 == 5): ok = 1
 	assert_equal(1, ok)
 
 	# while / for loop conditions
@@ -84,13 +75,11 @@ int main():
 	# && and || keep short-circuit order and booleanized results: the
 	# short-circuit edge must deliver the operand value, not flags
 	side_calls = 0
-	if ((2 < 1) && (side(1) == 1)):
-		assert_equal(1, 0)
+	if ((2 < 1) && (side(1) == 1)): assert_equal(1, 0)
 	assert_equal(0, side_calls)
 	side_calls = 0
 	ok = 0
-	if ((1 < 2) || (side(1) == 1)):
-		ok = 1
+	if ((1 < 2) || (side(1) == 1)): ok = 1
 	assert_equal(1, ok)
 	assert_equal(0, side_calls)
 	int v = ((3 < 2) && 7) ? 100 : 200
@@ -109,11 +98,9 @@ int main():
 	float x = 1.5
 	float y = 2.5
 	ok = 0
-	if (x < y):
-		ok = 1
+	if (x < y): ok = 1
 	assert_equal(1, ok)
-	if (y < x):
-		assert_equal(1, 0)
+	if (y < x): assert_equal(1, 0)
 
 	println(c"comparison branch test OK")
 	return 0

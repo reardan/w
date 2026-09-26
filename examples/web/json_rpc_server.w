@@ -13,16 +13,13 @@ json_value* rpc_ping(json_value* params, void* ctx):
 
 
 json_value* rpc_add(json_value* params, void* ctx):
-	if (params == 0):
-		return 0
-	if (params.type != json_type_array()):
-		return 0
+	if (params == 0): return 0
+	if (params.type != json_type_array()): return 0
 	int sum = 0
 	int i = 0
 	while (i < json_array_length(params)):
 		json_value* item = json_array_get(params, i)
-		if (item.type != json_type_int()):
-			return 0
+		if (item.type != json_type_int()): return 0
 		sum = sum + item.int_value
 		i = i + 1
 	return json_int(sum)
@@ -43,8 +40,7 @@ struct move_params:
 
 json_value* rpc_move(json_value* params, void* ctx):
 	move_params* p = from_json(move_params, params)
-	if (p == 0):
-		return 0
+	if (p == 0): return 0
 	move_params moved
 	moved.x = p.x + 1
 	moved.y = p.y + 1

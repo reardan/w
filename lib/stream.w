@@ -25,13 +25,11 @@ struct wstream:
 	int writable
 
 
-int STREAM_DEFAULT_CAPACITY():
-	return 4096
+const int STREAM_DEFAULT_CAPACITY = 4096
 
 
 wstream* stream_reader_sized(int fd, int capacity):
-	if (capacity < 1):
-		capacity = 1
+	if (capacity < 1): capacity = 1
 	wstream* s = new wstream()
 	s.fd = fd
 	s.buffer = malloc(capacity)
@@ -44,7 +42,7 @@ wstream* stream_reader_sized(int fd, int capacity):
 
 
 wstream* stream_reader(int fd):
-	return stream_reader_sized(fd, STREAM_DEFAULT_CAPACITY())
+	return stream_reader_sized(fd, STREAM_DEFAULT_CAPACITY)
 
 
 wstream* stream_writer_sized(int fd, int capacity):
@@ -54,14 +52,13 @@ wstream* stream_writer_sized(int fd, int capacity):
 
 
 wstream* stream_writer(int fd):
-	return stream_writer_sized(fd, STREAM_DEFAULT_CAPACITY())
+	return stream_writer_sized(fd, STREAM_DEFAULT_CAPACITY)
 
 
 # Returns 0 when the file cannot be opened for reading.
 wstream* stream_open_read(char* path):
 	int fd = open(path, 0, 0)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	return stream_reader(fd)
 
 
@@ -69,8 +66,7 @@ wstream* stream_open_read(char* path):
 wstream* stream_open_write(char* path):
 	# 577 = O_WRONLY | O_CREAT | O_TRUNC, 493 = rwxr-xr-x
 	int fd = open(path, 577, 493)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	return stream_writer(fd)
 
 
@@ -98,8 +94,7 @@ void stream_close(wstream* s):
 
 # Refill the buffer from the descriptor. A failed read is treated as EOF.
 void stream_fill(wstream* s):
-	if (s.eof):
-		return
+	if (s.eof): return
 	s.position = 0
 	s.limit = 0
 	int count = read(s.fd, s.buffer, s.capacity)
@@ -114,18 +109,15 @@ void stream_fill(wstream* s):
 # be masked: otherwise bytes 0x80-0xFF come back as negative ints, and
 # 0xFF in particular collides with the -1 EOF sentinel.
 int stream_peek_byte(wstream* s):
-	if (s.position >= s.limit):
-		stream_fill(s)
-	if (s.position >= s.limit):
-		return (-1)
+	if (s.position >= s.limit): stream_fill(s)
+	if (s.position >= s.limit): return (-1)
 	return s.buffer[s.position] & 255
 
 
 # Returns the next byte, or -1 at end of input.
 int stream_read_byte(wstream* s):
 	int c = stream_peek_byte(s)
-	if (c != -1):
-		s.position = s.position + 1
+	if (c != -1): s.position = s.position + 1
 	return c
 
 
@@ -160,8 +152,7 @@ int stream_read(wstream* s, char* out, int n):
 int stream_read_line(wstream* s, string_builder* line):
 	string_clear(line)
 	int c = stream_read_byte(s)
-	if (c == -1):
-		return 0
+	if (c == -1): return 0
 	while ((c != 10) && (c != -1)):
 		string_append_char(line, c)
 		c = stream_read_byte(s)
@@ -170,10 +161,7 @@ int stream_read_line(wstream* s, string_builder* line):
 
 void stream_append_bytes(string_builder* out, char* data, int n):
 	string_reserve(out, n)
-	int i = 0
-	while (i < n):
-		out.data[out.length + i] = data[i]
-		i = i + 1
+	for i in range(n): out.data[out.length + i] = data[i]
 	out.length = out.length + n
 	out.data[out.length] = 0
 
@@ -196,8 +184,7 @@ void stream_read_all(wstream* s, string_builder* out):
 			continue
 		if (s.position >= s.limit):
 			stream_fill(s)
-			if (s.position >= s.limit):
-				return
+			if (s.position >= s.limit): return
 		stream_append_bytes(out, s.buffer + s.position, s.limit - s.position)
 		s.position = s.limit
 
@@ -210,18 +197,13 @@ void stream_write(wstream* s, char* data, int n):
 		stream_flush(s)
 		write(s.fd, data, n)
 		return
-	if ((s.limit + n) > s.capacity):
-		stream_flush(s)
-	int i = 0
-	while (i < n):
-		s.buffer[s.limit + i] = data[i]
-		i = i + 1
+	if ((s.limit + n) > s.capacity): stream_flush(s)
+	for i in range(n): s.buffer[s.limit + i] = data[i]
 	s.limit = s.limit + n
 
 
 void stream_write_byte(wstream* s, int c):
-	if (s.limit >= s.capacity):
-		stream_flush(s)
+	if (s.limit >= s.capacity): stream_flush(s)
 	s.buffer[s.limit] = c
 	s.limit = s.limit + 1
 
@@ -254,20 +236,17 @@ wstream* stream_stderr
 
 
 wstream* stdin_reader():
-	if (stream_stdin == 0):
-		stream_stdin = stream_reader(0)
+	if (stream_stdin == 0): stream_stdin = stream_reader(0)
 	return stream_stdin
 
 
 wstream* stdout_writer():
-	if (stream_stdout == 0):
-		stream_stdout = stream_writer(1)
+	if (stream_stdout == 0): stream_stdout = stream_writer(1)
 	return stream_stdout
 
 
 wstream* stderr_writer():
-	if (stream_stderr == 0):
-		stream_stderr = stream_writer(2)
+	if (stream_stderr == 0): stream_stderr = stream_writer(2)
 	return stream_stderr
 
 
@@ -287,25 +266,19 @@ int frame_read(wstream* in, string_builder* body):
 		if ((line.length > 0) && (line.data[line.length - 1] == 13)):
 			line.length = line.length - 1
 			line.data[line.length] = 0
-		if (line.length == 0):
-			break
+		if (line.length == 0): break
 		if (starts_with(line.data, c"Content-Length:")):
 			char* value = line.data + 15
-			while (value[0] == ' '):
-				value = value + 1
+			while (value[0] == ' '): value = value + 1
 			length = atoi(value)
 	string_free(line)
-	if (length < 0):
-		return 0
+	if (length < 0): return 0
 	string_clear(body)
 	string_reserve(body, length)
-	int i = 0
-	while (i < length):
+	for i in range(length):
 		int c = stream_read_byte(in)
-		if (c == -1):
-			return 0
+		if (c == -1): return 0
 		string_append_char(body, c)
-		i = i + 1
 	return 1
 
 

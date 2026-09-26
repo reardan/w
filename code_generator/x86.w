@@ -1,6 +1,5 @@
 void emit_x64_opcode():
-	if (word_size == 8):
-		emit(1, c"\x48")
+	if (word_size == 8): emit(1, c"\x48")
 
 
 # Local-slot load fusion (docs/projects/optimization.md, the v0 window).
@@ -71,197 +70,122 @@ void lea_load_fold(int oplen, char* op):
 
 /* push dword 0x12 */
 void push_int8(int v):
-	if (target_isa == 3):
-		ptx_push_const(v)
-		return
-	if (target_isa == 2):
-		wasm_push_const(v)
-		return
-	if (target_isa == 1):
-		arm64_push_imm(v)
-		return
-	emit_int8(106)
-	emit_int8(v)
+	if (target_isa == 3): ptx_push_const(v)
+	elif (target_isa == 2): wasm_push_const(v)
+	elif (target_isa == 1): arm64_push_imm(v)
+	else:
+		emit_int8(106)
+		emit_int8(v)
 
 
 /* push dword op(0x12, 0x345678) */
 void push_int32(int v):
-	if (target_isa == 3):
-		ptx_push_const(v)
-		return
-	if (target_isa == 2):
-		wasm_push_const(v)
-		return
-	if (target_isa == 1):
-		arm64_push_imm(v)
-		return
-	emit_int8(104)
-	emit_int32(v)
-
-
-void push_int(int v):
-	if (target_isa == 2):
-		wasm_push_const(v)
-		return
-	push_int32(v)
+	if (target_isa == 3): ptx_push_const(v)
+	elif (target_isa == 2): wasm_push_const(v)
+	elif (target_isa == 1): arm64_push_imm(v)
+	else:
+		emit_int8(104)
+		emit_int32(v)
 
 
 /* mov eax,[eax] */
 void promote_eax():
-	if (target_isa == 3):
-		ptx_ld_ax(c".u64")
-		return
-	if (target_isa == 2):
-		wasm_promote_eax_op(0x28)
-		return
-	if (target_isa == 1):
-		a64(op(0xf9, 0x400000))   # ldr x0,[x0]
-		return
-	if ((lea_note_end != 0) && (lea_note_end == codepos)):
-		if (word_size == 8):
-			lea_load_fold(2, c"\x48\x8b")
-		else:
-			lea_load_fold(1, c"\x8b")
-		return
-	emit_x64_opcode()
-	emit(2, c"\x8b\x00")
+	if (target_isa == 3): ptx_ld_ax(c".u64")
+	elif (target_isa == 2): wasm_promote_eax_op(0x28)
+	elif (target_isa == 1): a64(op(0xf9, 0x400000))   # ldr x0,[x0]
+	else:
+		if ((lea_note_end != 0) && (lea_note_end == codepos)):
+			if (word_size == 8): lea_load_fold(2, c"\x48\x8b")
+			else: lea_load_fold(1, c"\x8b")
+			return
+		emit_x64_opcode()
+		emit(2, c"\x8b\x00")
 
 
 /* mov ebx,[ebx] */
 void promote_ebx():
-	if (target_isa == 3):
-		ptx_promote_bx()
-		return
-	if (target_isa == 2):
-		wasm_promote_ebx()
-		return
-	if (target_isa == 1):
-		a64(op(0xf9, 0x400021))   # ldr x1,[x1]
-		return
-	emit_x64_opcode()
-	emit(2, c"\x8b\x1b")
+	if (target_isa == 3): ptx_promote_bx()
+	elif (target_isa == 2): wasm_promote_ebx()
+	elif (target_isa == 1): a64(op(0xf9, 0x400021))   # ldr x1,[x1]
+	else:
+		emit_x64_opcode()
+		emit(2, c"\x8b\x1b")
 
 
 /* movsx eax, byte [eax] */
 void promote_int8_eax():
-	if (target_isa == 3):
-		ptx_ld_ax(c".s8")
-		return
-	if (target_isa == 2):
-		wasm_promote_eax_op(0x2c)
-		return
-	if (target_isa == 1):
-		a64(op(0x39, 0x800000))   # ldrsb x0,[x0]
-		return
-	if ((lea_note_end != 0) && (lea_note_end == codepos)):
-		if (word_size == 8):
-			lea_load_fold(3, c"\x48\x0f\xbe")
-		else:
-			lea_load_fold(2, c"\x0f\xbe")
-		return
-	emit_x64_opcode() /* needed ?? */
-	emit(3, c"\x0f\xbe\x00")
+	if (target_isa == 3): ptx_ld_ax(c".s8")
+	elif (target_isa == 2): wasm_promote_eax_op(0x2c)
+	elif (target_isa == 1): a64(op(0x39, 0x800000))   # ldrsb x0,[x0]
+	else:
+		if ((lea_note_end != 0) && (lea_note_end == codepos)):
+			if (word_size == 8): lea_load_fold(3, c"\x48\x0f\xbe")
+			else: lea_load_fold(2, c"\x0f\xbe")
+			return
+		emit_x64_opcode() /* needed ?? */
+		emit(3, c"\x0f\xbe\x00")
 
 
 /* movsx eax, word [eax] */
 void promote_int16_eax():
-	if (target_isa == 3):
-		ptx_ld_ax(c".s16")
-		return
-	if (target_isa == 2):
-		wasm_promote_eax_op(0x2e)
-		return
-	if (target_isa == 1):
-		a64(op(0x79, 0x800000))   # ldrsh x0,[x0]
-		return
-	if ((lea_note_end != 0) && (lea_note_end == codepos)):
-		if (word_size == 8):
-			lea_load_fold(3, c"\x48\x0f\xbf")
-		else:
-			lea_load_fold(2, c"\x0f\xbf")
-		return
-	emit_x64_opcode() /* needed ?? */
-	emit(3, c"\x0f\xbf\x00")
+	if (target_isa == 3): ptx_ld_ax(c".s16")
+	elif (target_isa == 2): wasm_promote_eax_op(0x2e)
+	elif (target_isa == 1): a64(op(0x79, 0x800000))   # ldrsh x0,[x0]
+	else:
+		if ((lea_note_end != 0) && (lea_note_end == codepos)):
+			if (word_size == 8): lea_load_fold(3, c"\x48\x0f\xbf")
+			else: lea_load_fold(2, c"\x0f\xbf")
+			return
+		emit_x64_opcode() /* needed ?? */
+		emit(3, c"\x0f\xbf\x00")
 
 
 /* x86: mov eax,[eax] ; x64: movsxd rax, dword [rax] (4-byte int32 load) */
 void promote_int32_eax():
-	if (target_isa == 3):
-		ptx_ld_ax(c".s32")
-		return
-	if (target_isa == 2):
-		wasm_promote_eax_op(0x28)
-		return
-	if (target_isa == 1):
-		a64(op(0xb9, 0x800000))   # ldrsw x0,[x0]
-		return
-	if ((lea_note_end != 0) && (lea_note_end == codepos)):
-		if (word_size == 8):
-			lea_load_fold(2, c"\x48\x63")
-		else:
-			lea_load_fold(1, c"\x8b")
-		return
-	if (word_size == 8):
-		emit(3, c"\x48\x63\x00")
+	if (target_isa == 3): ptx_ld_ax(c".s32")
+	elif (target_isa == 2): wasm_promote_eax_op(0x28)
+	elif (target_isa == 1): a64(op(0xb9, 0x800000))   # ldrsw x0,[x0]
 	else:
-		emit(2, c"\x8b\x00")
+		if ((lea_note_end != 0) && (lea_note_end == codepos)):
+			if (word_size == 8): lea_load_fold(2, c"\x48\x63")
+			else: lea_load_fold(1, c"\x8b")
+			return
+		if (word_size == 8): emit(3, c"\x48\x63\x00")
+		else: emit(2, c"\x8b\x00")
 
 
 /* mov %eax,(%ebx) */
 void store_ebx_int32():
-	if (target_isa == 3):
-		ptx_st_bx(c".u32")
-		return
-	if (target_isa == 2):
-		wasm_store_ebx_op(0x36)
-		return
-	if (target_isa == 1):
-		a64(op(0xb9, 0x000020))   # str w0,[x1]
-		return
-	emit(2, c"\x89\x03")
+	if (target_isa == 3): ptx_st_bx(c".u32")
+	elif (target_isa == 2): wasm_store_ebx_op(0x36)
+	elif (target_isa == 1): a64(op(0xb9, 0x000020))   # str w0,[x1]
+	else: emit(2, c"\x89\x03")
 
 
 /* mov [ebx],eax at the full word width (4 bytes on x86, 8 on x64) */
 void store_ebx_word():
-	if (target_isa == 3):
-		ptx_st_bx(c".u64")
-		return
-	if (target_isa == 2):
-		wasm_store_ebx_op(0x36)
-		return
-	if (target_isa == 1):
-		a64(op(0xf9, 0x000020))   # str x0,[x1]
-		return
-	emit_x64_opcode()
-	emit(2, c"\x89\x03")
+	if (target_isa == 3): ptx_st_bx(c".u64")
+	elif (target_isa == 2): wasm_store_ebx_op(0x36)
+	elif (target_isa == 1): a64(op(0xf9, 0x000020))   # str x0,[x1]
+	else:
+		emit_x64_opcode()
+		emit(2, c"\x89\x03")
 
 
 /* mov %ax,(%ebx) */
 void store_ebx_int16():
-	if (target_isa == 3):
-		ptx_st_bx(c".u16")
-		return
-	if (target_isa == 2):
-		wasm_store_ebx_op(0x3b)
-		return
-	if (target_isa == 1):
-		a64(op(0x79, 0x000020))   # strh w0,[x1]
-		return
-	emit(3, c"\x66\x89\x03")
+	if (target_isa == 3): ptx_st_bx(c".u16")
+	elif (target_isa == 2): wasm_store_ebx_op(0x3b)
+	elif (target_isa == 1): a64(op(0x79, 0x000020))   # strh w0,[x1]
+	else: emit(3, c"\x66\x89\x03")
 
 
 /* mov %al,(%ebx) */
 void store_ebx_int8():
-	if (target_isa == 3):
-		ptx_st_bx(c".u8")
-		return
-	if (target_isa == 2):
-		wasm_store_ebx_op(0x3a)
-		return
-	if (target_isa == 1):
-		a64(op(0x39, 0x000020))   # strb w0,[x1]
-		return
-	emit(2, c"\x88\x03")
+	if (target_isa == 3): ptx_st_bx(c".u8")
+	elif (target_isa == 2): wasm_store_ebx_op(0x3a)
+	elif (target_isa == 1): a64(op(0x39, 0x000020))   # strb w0,[x1]
+	else: emit(2, c"\x88\x03")
 
 
 # Constant folding (docs/projects/optimization.md's v0 window, same shape
@@ -323,31 +247,24 @@ void be_imm_note_reset():
 # -1 is rejected rather than checked: the division probe would have to
 # evaluate INT_MIN / -1, which traps on x86 rather than wrapping.
 int fold_mul_fits(int a, int b):
-	if ((a == 0) || (b == 0)):
-		return 1
-	if ((a == -1) || (b == -1)):
-		return 0
+	if ((a == 0) || (b == 0)): return 1
+	if ((a == -1) || (b == -1)): return 0
 	int p = a * b
-	if (p / b != a):
-		return 0
+	if (p / b != a): return 0
 	return p / a == b
 
 # True when a + b does not overflow the compiler's own word, same reason.
 int fold_add_fits(int a, int b):
 	int sum = a + b
-	if ((b > 0) && (sum < a)):
-		return 0
-	if ((b < 0) && (sum > a)):
-		return 0
+	if ((b > 0) && (sum < a)): return 0
+	if ((b < 0) && (sum > a)): return 0
 	return 1
 
 # True when a - b does not overflow the compiler's own word, same reason.
 int fold_sub_fits(int a, int b):
 	int diff = a - b
-	if ((b < 0) && (diff < a)):
-		return 0
-	if ((b > 0) && (diff > a)):
-		return 0
+	if ((b < 0) && (diff < a)): return 0
+	if ((b > 0) && (diff > a)): return 0
 	return 1
 
 void mov_eax_int(int v);
@@ -363,56 +280,41 @@ void binfold_emit(int folded):
 
 /* mov eax, op(0x12, 0x345678) */
 void mov_eax_int32(int v):
-	if (target_isa == 3):
-		ptx_mov_ax_int(v)
-		return
-	if (target_isa == 2):
-		wasm_mov_eax_int(v)
-		return
-	if (target_isa == 1):
-		arm64_mov_eax_int32(v)
-		return
-	emit(1, c"\xb8")
-	emit_int32(v)
+	if (target_isa == 3): ptx_mov_ax_int(v)
+	elif (target_isa == 2): wasm_mov_eax_int(v)
+	elif (target_isa == 1): arm64_mov_eax_int32(v)
+	else:
+		emit(1, c"\xb8")
+		emit_int32(v)
 
 
 /* mov rax, 0x1234567890123456 */
 void mov_rax_int64(int v):
-	if (target_isa == 3):
-		ptx_mov_ax_int(v)
-		return
-	if (target_isa == 1):
-		arm64_mov_rax_int64(v)
-		return
-	emit_x64_opcode()
-	emit(1, c"\xb8")
-	emit_int64(v)
+	if (target_isa == 3): ptx_mov_ax_int(v)
+	elif (target_isa == 1): arm64_mov_rax_int64(v)
+	else:
+		emit_x64_opcode()
+		emit(1, c"\xb8")
+		emit_int64(v)
 
 
 /* mov rax, imm64 with the immediate given as two 32-bit halves. The
    compiler itself may run as a 32-bit process, where a single int cannot
    carry a full 64-bit pattern (e.g. float64 literal bits). */
 void mov_rax_int64_halves(int lo, int hi):
-	if (target_isa == 3):
-		ptx_mov_ax_int64_halves(lo, hi)
-		return
-	if (target_isa == 1):
-		arm64_mov_rax_int64_halves(lo, hi)
-		return
-	emit(2, c"\x48\xb8")
-	emit_int32(lo)
-	emit_int32(hi)
+	if (target_isa == 3): ptx_mov_ax_int64_halves(lo, hi)
+	elif (target_isa == 1): arm64_mov_rax_int64_halves(lo, hi)
+	else:
+		emit(2, c"\x48\xb8")
+		emit_int32(lo)
+		emit_int32(hi)
 
 
 /* xor eax, imm32; on x64 this also zeroes the upper half of rax */
 void xor_eax_int32(int v):
-	if (target_isa == 3):
-		ptx_xor_ax_int32(v)
-		return
-	if (target_isa == 2):
-		wasm_ax_op_const(0x73, v)
-		return
-	if (target_isa == 1):
+	if (target_isa == 3): ptx_xor_ax_int32(v)
+	elif (target_isa == 2): wasm_ax_op_const(0x73, v)
+	elif (target_isa == 1):
 		# Only w9's low 32 bits reach the eor, but the scratch load spills
 		# v into an 8-byte literal, and a bit-31 value (the float sign
 		# mask) folds positive on a 64-bit host and negative on the 32-bit
@@ -420,149 +322,117 @@ void xor_eax_int32(int v):
 		# the sign-extended-32 form both hosts can represent.
 		int high = (v >> 31) & 1
 		v = v & 2147483647
-		if (high):
-			v = v - 2147483647 - 1
+		if (high): v = v - 2147483647 - 1
 		arm64_load_scratch(9, v)
 		a64(op(0x4a, 0x090000))   # eor w0,w0,w9 (zero-extends upper half)
-		return
-	emit(1, c"\x35")
-	emit_int32(v)
+	else:
+		emit(1, c"\x35")
+		emit_int32(v)
 
 
 /* movzx eax, byte [eax]: a zero-extending 8-bit load, for uint8 */
 void promote_uint8_eax():
-	if (target_isa == 3):
-		ptx_ld_ax(c".u8")
-		return
-	if (target_isa == 2):
-		wasm_promote_eax_op(0x2d)
-		return
-	if (target_isa == 1):
-		a64(op(0x39, 0x400000))   # ldrb w0,[x0]
-		return
-	if ((lea_note_end != 0) && (lea_note_end == codepos)):
-		lea_load_fold(2, c"\x0f\xb6")
-		return
-	emit(3, c"\x0f\xb6\x00")
+	if (target_isa == 3): ptx_ld_ax(c".u8")
+	elif (target_isa == 2): wasm_promote_eax_op(0x2d)
+	elif (target_isa == 1): a64(op(0x39, 0x400000))   # ldrb w0,[x0]
+	else:
+		if ((lea_note_end != 0) && (lea_note_end == codepos)):
+			lea_load_fold(2, c"\x0f\xb6")
+			return
+		emit(3, c"\x0f\xb6\x00")
 
 
 /* Zero-extending 32-bit load, for uint32: a plain 32-bit mov already
    zero-extends into rax on x64 (and is the full word on x86), where the
    promote_int32 path's movsxd would sign-extend a high-bit value. */
 void promote_uint32_eax():
-	if (target_isa == 3):
-		ptx_ld_ax(c".u32")
-		return
-	if (target_isa == 2):
-		wasm_promote_eax_op(0x28)
-		return
-	if (target_isa == 1):
-		a64(op(0xb9, 0x400000))   # ldr w0,[x0]
-		return
-	if ((lea_note_end != 0) && (lea_note_end == codepos)):
-		lea_load_fold(1, c"\x8b")
-		return
-	emit(2, c"\x8b\x00")
+	if (target_isa == 3): ptx_ld_ax(c".u32")
+	elif (target_isa == 2): wasm_promote_eax_op(0x28)
+	elif (target_isa == 1): a64(op(0xb9, 0x400000))   # ldr w0,[x0]
+	else:
+		if ((lea_note_end != 0) && (lea_note_end == codepos)):
+			lea_load_fold(1, c"\x8b")
+			return
+		emit(2, c"\x8b\x00")
 
 
 /* movzx eax, word [eax]: a zero-extending 16-bit load. The promote_int16
    path sign-extends, which would corrupt float16 bit patterns. */
 void promote_uint16_eax():
-	if (target_isa == 3):
-		ptx_ld_ax(c".u16")
-		return
-	if (target_isa == 2):
-		wasm_promote_eax_op(0x2f)
-		return
-	if (target_isa == 1):
-		a64(op(0x79, 0x400000))   # ldrh w0,[x0]
-		return
-	if ((lea_note_end != 0) && (lea_note_end == codepos)):
-		lea_load_fold(2, c"\x0f\xb7")
-		return
-	emit(3, c"\x0f\xb7\x00")
+	if (target_isa == 3): ptx_ld_ax(c".u16")
+	elif (target_isa == 2): wasm_promote_eax_op(0x2f)
+	elif (target_isa == 1): a64(op(0x79, 0x400000))   # ldrh w0,[x0]
+	else:
+		if ((lea_note_end != 0) && (lea_note_end == codepos)):
+			lea_load_fold(2, c"\x0f\xb7")
+			return
+		emit(3, c"\x0f\xb7\x00")
 
 
 /* mov eax, op(0x12, 0x345678) */
 void mov_eax_int(int v):
-	if (target_isa == 2):
-		wasm_mov_eax_int(v)
-		return
-	if (target_isa == 1):
-		arm64_mov_rax_int64(v)
-		return
-	int start = codepos
-	if (word_size == 8):
-		mov_rax_int64(v)
+	if (target_isa == 2): wasm_mov_eax_int(v)
+	elif (target_isa == 1): arm64_mov_rax_int64(v)
 	else:
-		mov_eax_int32(v)
-	# PTX also reaches here (it has no early return above) but does not
-	# advance codepos, so note it only for the x86 family. Every consumer
-	# already early-returns on the other ISAs; this keeps the invariant
-	# true where it is stated rather than only where it is enforced.
-	if (target_isa == 0):
-		imm_note_start = start
-		imm_note_end = codepos
-		imm_note_value = v
+		int start = codepos
+		if (word_size == 8): mov_rax_int64(v)
+		else: mov_eax_int32(v)
+		# PTX also reaches here (it has no early return above) but does not
+		# advance codepos, so note it only for the x86 family. Every consumer
+		# already early-returns on the other ISAs; this keeps the invariant
+		# true where it is stated rather than only where it is enforced.
+		if (target_isa == 0):
+			imm_note_start = start
+			imm_note_end = codepos
+			imm_note_value = v
 
 
 void add_eax_int32(int v):
-	if (target_isa == 3):
-		ptx_add_ax_int(v)
-		return
-	if (target_isa == 2):
-		wasm_ax_op_const(0x6a, v)
-		return
-	if (target_isa == 1):
-		arm64_add_eax_int32(v)
-		return
-	if ((imm_note_end != 0) && (imm_note_end == codepos)):
-		if (fold_add_fits(imm_note_value, v)):
-			int folded = imm_note_value + v
-			peep_rollback(imm_note_start)
-			mov_eax_int(folded)
-			return
-	# Adding zero is a no-op; emitting nothing also keeps a current lea
-	# or constant note current for the load that usually follows.
-	if (v == 0):
-		return
-	# A constant offset from a local's address: fold it into the lea.
-	if ((lea_note_end != 0) && (lea_note_end == codepos)):
-		if (fold_add_fits(lea_note_disp, v)):
-			int disp = lea_note_disp + v
-			peep_rollback(lea_note_start)
-			lea_eax_esp_plus(disp)
-			return
-	emit_x64_opcode()
-	emit(1, c"\x05") /* \x2d add eax,... */
-	emit_int32(v)
+	if (target_isa == 3): ptx_add_ax_int(v)
+	elif (target_isa == 2): wasm_ax_op_const(0x6a, v)
+	elif (target_isa == 1): arm64_add_eax_int32(v)
+	else:
+		if ((imm_note_end != 0) && (imm_note_end == codepos)):
+			if (fold_add_fits(imm_note_value, v)):
+				int folded = imm_note_value + v
+				peep_rollback(imm_note_start)
+				mov_eax_int(folded)
+				return
+		# Adding zero is a no-op; emitting nothing also keeps a current lea
+		# or constant note current for the load that usually follows.
+		if (v == 0): return
+		# A constant offset from a local's address: fold it into the lea.
+		if ((lea_note_end != 0) && (lea_note_end == codepos)):
+			if (fold_add_fits(lea_note_disp, v)):
+				int disp = lea_note_disp + v
+				peep_rollback(lea_note_start)
+				lea_eax_esp_plus(disp)
+				return
+		emit_x64_opcode()
+		emit(1, c"\x05") /* \x2d add eax,... */
+		emit_int32(v)
 
 
 /* imul eax, eax, imm32 */
 void imul_eax_int32(int v):
-	if (target_isa == 3):
-		ptx_mul_ax_int(v)
-		return
-	if (target_isa == 2):
-		wasm_ax_op_const(0x6c, v)
-		return
-	if (target_isa == 1):
-		arm64_imul_eax_int32(v)
-		return
-	if ((imm_note_end != 0) && (imm_note_end == codepos)):
-		if (fold_mul_fits(imm_note_value, v)):
-			int folded = imm_note_value * v
-			peep_rollback(imm_note_start)
-			mov_eax_int(folded)
-			return
-	emit_x64_opcode()
-	emit(2, c"\x69\xc0")
-	emit_int32(v)
+	if (target_isa == 3): ptx_mul_ax_int(v)
+	elif (target_isa == 2): wasm_ax_op_const(0x6c, v)
+	elif (target_isa == 1): arm64_imul_eax_int32(v)
+	else:
+		if ((imm_note_end != 0) && (imm_note_end == codepos)):
+			if (fold_mul_fits(imm_note_value, v)):
+				int folded = imm_note_value * v
+				peep_rollback(imm_note_start)
+				mov_eax_int(folded)
+				return
+		emit_x64_opcode()
+		emit(2, c"\x69\xc0")
+		emit_int32(v)
 
 
 # Bumped once per machine call instruction actually emitted: by this
 # function (every ordinary/indirect W call, and every builtin container
-# op routed through grammar/hash_builtin.w's hash_call_finish, operator
+# op routed through grammar/stack_slot.w's rt_call_end, operator
 # overload dispatch, generator resumption, or a 'new' allocation's
 # implicit malloc — they all funnel through call_eax) and by
 # code_generator/ffi.w's emit_ffi_call_inline (the one FFI call path
@@ -575,23 +445,22 @@ int emitted_call_count
 
 
 void call_eax():
-	if (target_isa == 3):
-		error(c"gpu code cannot call functions")
-		return
-	emitted_call_count = emitted_call_count + 1
-	if (target_isa == 2):
-		wasm_call_eax()
-		return
-	if (target_isa == 1):
-		if (arm64_pac == 2):
-			# pac=full: every W code pointer was paciza-signed at
-			# materialization (be_code_ptr_sign), so authenticate and
-			# branch. A forged pointer traps here on FPAC hardware.
-			a64(op(0xd6, 0x3f081f))   # blraaz x0
+	if (target_isa == 3): error(c"gpu code cannot call functions")
+	else:
+		emitted_call_count = emitted_call_count + 1
+		if (target_isa == 2):
+			wasm_call_eax()
 			return
-		a64(op(0xd6, 0x3f0000))   # blr x0
-		return
-	emit(2, c"\xff\xd0") /* call *%eax */
+		if (target_isa == 1):
+			if (arm64_pac == 2):
+				# pac=full: every W code pointer was paciza-signed at
+				# materialization (be_code_ptr_sign), so authenticate and
+				# branch. A forged pointer traps here on FPAC hardware.
+				a64(op(0xd6, 0x3f081f))   # blraaz x0
+				return
+			a64(op(0xd6, 0x3f0000))   # blr x0
+			return
+		emit(2, c"\xff\xd0") /* call *%eax */
 
 
 void call_relative32(int v):
@@ -600,318 +469,236 @@ void call_relative32(int v):
 
 
 void not_eax():
-	if (target_isa == 3):
-		ptx_not_ax()
-		return
-	if (target_isa == 2):
-		wasm_not_eax()
-		return
-	if (target_isa == 1):
-		a64(op(0xaa, 0x2003e0))   # mvn x0,x0
-		return
-	emit_x64_opcode()
-	emit(2, c"\xf7\xd0") /* not eax */
+	if (target_isa == 3): ptx_not_ax()
+	elif (target_isa == 2): wasm_not_eax()
+	elif (target_isa == 1): a64(op(0xaa, 0x2003e0))   # mvn x0,x0
+	else:
+		emit_x64_opcode()
+		emit(2, c"\xf7\xd0") /* not eax */
 
 
 /* push eax */
 void push_eax():
-	if (target_isa == 3):
-		ptx_push_ax()
-		return
-	if (target_isa == 2):
-		wasm_push_eax()
-		return
-	if (target_isa == 1):
-		a64(op(0xf8, 0x1f8f80))   # str x0,[x28,#-8]!
-		return
-	# Inlined rather than calling imm_note_current(): W has no inliner and
-	# this is one of the hottest emitters in the compiler. target_isa == 0
-	# is already established by the early returns above.
-	int carried = 0
-	if ((imm_note_end != 0) && (imm_note_end == codepos)):
-		carried = 1
-	int start = imm_note_start
-	int value = imm_note_value
-	push_note_start = codepos
-	emit(1, c"\x50")
-	push_note_end = codepos
-	push_imm_end = 0
-	if (carried):
-		push_imm_start = start
-		push_imm_end = codepos
-		push_imm_value = value
+	if (target_isa == 3): ptx_push_ax()
+	elif (target_isa == 2): wasm_push_eax()
+	elif (target_isa == 1): a64(op(0xf8, 0x1f8f80))   # str x0,[x28,#-8]!
+	else:
+		# Inlined rather than calling imm_note_current(): W has no inliner and
+		# this is one of the hottest emitters in the compiler. target_isa == 0
+		# is already established by the early returns above.
+		int carried = 0
+		if ((imm_note_end != 0) && (imm_note_end == codepos)): carried = 1
+		int start = imm_note_start
+		int value = imm_note_value
+		push_note_start = codepos
+		emit(1, c"\x50")
+		push_note_end = codepos
+		push_imm_end = 0
+		if (carried):
+			push_imm_start = start
+			push_imm_end = codepos
+			push_imm_value = value
 
 
 void push_ebx():
-	if (target_isa == 3):
-		ptx_push_bx()
-		return
-	if (target_isa == 2):
-		wasm_push_ebx()
-		return
-	if (target_isa == 1):
-		a64(op(0xf8, 0x1f8f81))   # str x1,[x28,#-8]!
-		return
-	emit(1, c"\x53")
+	if (target_isa == 3): ptx_push_bx()
+	elif (target_isa == 2): wasm_push_ebx()
+	elif (target_isa == 1): a64(op(0xf8, 0x1f8f81))   # str x1,[x28,#-8]!
+	else: emit(1, c"\x53")
 
 
 void pop_ebx():
-	if (target_isa == 3):
-		ptx_pop_bx()
-		return
-	if (target_isa == 2):
-		wasm_pop_ebx()
-		return
-	if (target_isa == 1):
-		a64(op(0xf8, 0x408781))   # ldr x1,[x28],#8
-		return
-	# Both operands constant, and the right one emitted EXACTLY one mov
-	# directly after the push (push_imm_end == imm_note_start) -- so the
-	# span from the left constant to here is mov, push, mov, and nothing
-	# else can be hiding in it.
-	int armed = 0
-	if ((imm_note_end != 0) && (imm_note_end == codepos)):
-		if ((push_imm_end != 0) && (push_imm_end == imm_note_start)):
-			armed = 1
-	int left = push_imm_value
-	int right = imm_note_value
-	int start = push_imm_start
-	# Register shuttle: 'push eax; <one simple instruction>; pop ebx' --
-	# the right operand a constant or a folded local load emitted directly
-	# after the push -- becomes 'mov ebx,eax; <instruction>'. Without the
-	# push the local's esp displacement shrinks by one word; a load of the
-	# pushed temporary itself (disp < word_size) is left alone.
-	if ((armed == 0) && (push_note_end != 0)):
-		if ((imm_note_end != 0) && (imm_note_end == codepos) && (imm_note_start == push_note_end)):
-			peep_rollback(push_note_start)
-			emit_x64_opcode()
-			emit(2, c"\x89\xc3") /* mov ebx,eax */
-			mov_eax_int(right)
-			imm_note_end = 0
-			push_imm_end = 0
-			binfold_end = 0
-			return
-		if ((load_note_end != 0) && (load_note_end == codepos) && (load_note_start == push_note_end) && (load_note_disp >= word_size)):
-			int disp = load_note_disp - word_size
-			int oplen = load_note_oplen
-			char* op = load_note_op
-			peep_rollback(push_note_start)
-			emit_x64_opcode()
-			emit(2, c"\x89\xc3") /* mov ebx,eax */
-			emit_esp_load(oplen, op, disp)
-			imm_note_end = 0
-			push_imm_end = 0
-			binfold_end = 0
-			return
-	emit(1, c"\x5b")
-	imm_note_end = 0
-	push_imm_end = 0
-	binfold_end = 0
-	if (armed):
-		binfold_start = start
-		binfold_end = codepos
-		binfold_left = left
-		binfold_right = right
+	if (target_isa == 3): ptx_pop_bx()
+	elif (target_isa == 2): wasm_pop_ebx()
+	elif (target_isa == 1): a64(op(0xf8, 0x408781))   # ldr x1,[x28],#8
+	else:
+		# Both operands constant, and the right one emitted EXACTLY one mov
+		# directly after the push (push_imm_end == imm_note_start) -- so the
+		# span from the left constant to here is mov, push, mov, and nothing
+		# else can be hiding in it.
+		int armed = 0
+		if ((imm_note_end != 0) && (imm_note_end == codepos)):
+			if ((push_imm_end != 0) && (push_imm_end == imm_note_start)): armed = 1
+		int left = push_imm_value
+		int right = imm_note_value
+		int start = push_imm_start
+		# Register shuttle: 'push eax; <one simple instruction>; pop ebx' --
+		# the right operand a constant or a folded local load emitted directly
+		# after the push -- becomes 'mov ebx,eax; <instruction>'. Without the
+		# push the local's esp displacement shrinks by one word; a load of the
+		# pushed temporary itself (disp < word_size) is left alone.
+		if ((armed == 0) && (push_note_end != 0)):
+			if ((imm_note_end != 0) && (imm_note_end == codepos) && (imm_note_start == push_note_end)):
+				peep_rollback(push_note_start)
+				emit_x64_opcode()
+				emit(2, c"\x89\xc3") /* mov ebx,eax */
+				mov_eax_int(right)
+				imm_note_end = 0
+				push_imm_end = 0
+				binfold_end = 0
+				return
+			if ((load_note_end != 0) && (load_note_end == codepos) && (load_note_start == push_note_end) && (load_note_disp >= word_size)):
+				int disp = load_note_disp - word_size
+				int oplen = load_note_oplen
+				char* op = load_note_op
+				peep_rollback(push_note_start)
+				emit_x64_opcode()
+				emit(2, c"\x89\xc3") /* mov ebx,eax */
+				emit_esp_load(oplen, op, disp)
+				imm_note_end = 0
+				push_imm_end = 0
+				binfold_end = 0
+				return
+		emit(1, c"\x5b")
+		imm_note_end = 0
+		push_imm_end = 0
+		binfold_end = 0
+		if (armed):
+			binfold_start = start
+			binfold_end = codepos
+			binfold_left = left
+			binfold_right = right
 
 
 void pop_eax():
-	if (target_isa == 3):
-		ptx_pop_ax()
-		return
-	if (target_isa == 2):
-		wasm_pop_eax()
-		return
-	if (target_isa == 1):
-		a64(op(0xf8, 0x408780))   # ldr x0,[x28],#8
-		return
-	emit(1, c"\x58")
+	if (target_isa == 3): ptx_pop_ax()
+	elif (target_isa == 2): wasm_pop_eax()
+	elif (target_isa == 1): a64(op(0xf8, 0x408780))   # ldr x0,[x28],#8
+	else: emit(1, c"\x58")
 
 
 /* mov eax, ebx */
 void mov_eax_ebx():
-	if (target_isa == 3):
-		ptx_mov_ax_bx()
-		return
-	if (target_isa == 2):
-		wasm_mov_eax_ebx()
-		return
-	if (target_isa == 1):
-		a64(op(0xaa, 0x0103e0))   # mov x0,x1
-		return
-	emit_x64_opcode()
-	emit(2, c"\x89\xd8")
+	if (target_isa == 3): ptx_mov_ax_bx()
+	elif (target_isa == 2): wasm_mov_eax_ebx()
+	elif (target_isa == 1): a64(op(0xaa, 0x0103e0))   # mov x0,x1
+	else:
+		emit_x64_opcode()
+		emit(2, c"\x89\xd8")
 
 
 /* lea eax,[esp+op(0x12, 0x345678)] */
 void lea_eax_esp_plus(int v):
-	if (target_isa == 3):
-		ptx_lea_ax_sp(v)
-		return
-	if (target_isa == 2):
-		wasm_lea_eax_esp_plus(v)
-		return
-	if (target_isa == 1):
-		arm64_lea_eax_esp_plus(v)
-		return
-	int start = codepos
-	emit_x64_opcode()
-	emit(3, c"\x8d\x84\x24")
-	emit_int(v)
-	lea_note_start = start
-	lea_note_end = codepos
-	lea_note_disp = v
+	if (target_isa == 3): ptx_lea_ax_sp(v)
+	elif (target_isa == 2): wasm_lea_eax_esp_plus(v)
+	elif (target_isa == 1): arm64_lea_eax_esp_plus(v)
+	else:
+		int start = codepos
+		emit_x64_opcode()
+		emit(3, c"\x8d\x84\x24")
+		emit_int(v)
+		lea_note_start = start
+		lea_note_end = codepos
+		lea_note_disp = v
 
 
 /* mov eax,[esp+op(0x12, 0x345678)] */
 void mov_eax_esp_plus(int v):
-	if (target_isa == 3):
-		ptx_ld_ax_sp(v)
-		return
-	if (target_isa == 2):
-		wasm_mov_eax_esp_plus(v)
-		return
-	if (target_isa == 1):
-		arm64_ldr_reg_wsp(0, v)
-		return
-	emit_x64_opcode()
-	emit(1, c"\x8b")
-	emit_eax_esp_disp(v)
+	if (target_isa == 3): ptx_ld_ax_sp(v)
+	elif (target_isa == 2): wasm_mov_eax_esp_plus(v)
+	elif (target_isa == 1): arm64_ldr_reg_wsp(0, v)
+	else:
+		emit_x64_opcode()
+		emit(1, c"\x8b")
+		emit_eax_esp_disp(v)
 
 
 /* mov ebx,[esp] */
 void mov_ebx_esp():
-	if (target_isa == 3):
-		ptx_ld_bx_sp(0)
-		return
-	if (target_isa == 2):
-		wasm_mov_ebx_esp()
-		return
-	if (target_isa == 1):
-		a64(op(0xf9, 0x400381))   # ldr x1,[x28]
-		return
-	emit_x64_opcode()
-	emit(3, c"\x8b\x1c\x24")
+	if (target_isa == 3): ptx_ld_bx_sp(0)
+	elif (target_isa == 2): wasm_mov_ebx_esp()
+	elif (target_isa == 1): a64(op(0xf9, 0x400381))   # ldr x1,[x28]
+	else:
+		emit_x64_opcode()
+		emit(3, c"\x8b\x1c\x24")
 
 
 /* mov ebx,[esp+op(0x12, 0x345678)] */
 void mov_ebx_esp_plus(int v):
-	if (target_isa == 3):
-		ptx_ld_bx_sp(v)
-		return
-	if (target_isa == 2):
-		wasm_mov_ebx_esp_plus(v)
-		return
-	if (target_isa == 1):
-		arm64_ldr_reg_wsp(1, v)
-		return
-	emit_x64_opcode()
-	emit(3, c"\x8b\x9c\x24")
-	emit_int(v)
+	if (target_isa == 3): ptx_ld_bx_sp(v)
+	elif (target_isa == 2): wasm_mov_ebx_esp_plus(v)
+	elif (target_isa == 1): arm64_ldr_reg_wsp(1, v)
+	else:
+		emit_x64_opcode()
+		emit(3, c"\x8b\x9c\x24")
+		emit_int(v)
 
 
 /* add ebx, op(0x12, 0x345678) */
 void add_ebx_int32(int v):
-	if (target_isa == 3):
-		ptx_add_bx_int(v)
-		return
-	if (target_isa == 2):
-		wasm_add_ebx_int(v)
-		return
-	if (target_isa == 1):
-		arm64_add_ebx_int32(v)
-		return
-	emit_x64_opcode()
-	emit(2, c"\x81\xc3")
-	emit_int32(v)
+	if (target_isa == 3): ptx_add_bx_int(v)
+	elif (target_isa == 2): wasm_add_ebx_int(v)
+	elif (target_isa == 1): arm64_add_ebx_int32(v)
+	else:
+		emit_x64_opcode()
+		emit(2, c"\x81\xc3")
+		emit_int32(v)
 
 
 /* push dword [eax+op(0x12, 0x345678)] */
 void push_eax_plus(int v):
-	if (target_isa == 3):
-		ptx_push_ax_plus(v)
-		return
-	if (target_isa == 2):
-		wasm_push_eax_plus(v)
-		return
-	if (target_isa == 1):
-		arm64_push_eax_plus(v)
-		return
-	emit(2, c"\xff\xb0")
-	emit_int32(v)
+	if (target_isa == 3): ptx_push_ax_plus(v)
+	elif (target_isa == 2): wasm_push_eax_plus(v)
+	elif (target_isa == 1): arm64_push_eax_plus(v)
+	else:
+		emit(2, c"\xff\xb0")
+		emit_int32(v)
 
 
 /* mov [esp+op(0x12, 0x345678)], eax */
 void store_stack_var(int variable_offset):
-	if (target_isa == 3):
-		ptx_st_sp_ax(variable_offset)
-		return
-	if (target_isa == 2):
-		wasm_store_stack_var(variable_offset)
-		return
-	if (target_isa == 1):
-		arm64_str_reg_wsp(0, variable_offset)
-		return
-	emit_x64_opcode()
-	emit(3, c"\x89\x84\x24")
-	emit_int(variable_offset)
+	if (target_isa == 3): ptx_st_sp_ax(variable_offset)
+	elif (target_isa == 2): wasm_store_stack_var(variable_offset)
+	elif (target_isa == 1): arm64_str_reg_wsp(0, variable_offset)
+	else:
+		emit_x64_opcode()
+		emit(3, c"\x89\x84\x24")
+		emit_int(variable_offset)
 
 
 /* mov [esp+op(0x12, 0x345678)], ebx */
 void store_ebx_stack_var(int variable_offset):
-	if (target_isa == 3):
-		ptx_st_sp_bx(variable_offset)
-		return
-	if (target_isa == 2):
-		wasm_store_ebx_stack_var(variable_offset)
-		return
-	if (target_isa == 1):
-		arm64_str_reg_wsp(1, variable_offset)
-		return
-	emit_x64_opcode()
-	emit(3, c"\x89\x9c\x24")
-	emit_int(variable_offset)
+	if (target_isa == 3): ptx_st_sp_bx(variable_offset)
+	elif (target_isa == 2): wasm_store_ebx_stack_var(variable_offset)
+	elif (target_isa == 1): arm64_str_reg_wsp(1, variable_offset)
+	else:
+		emit_x64_opcode()
+		emit(3, c"\x89\x9c\x24")
+		emit_int(variable_offset)
 
 
 /* add esp, (n * word_size) */
 void be_pop(int n):
-	if (target_isa == 3):
-		ptx_be_pop(n)
-		return
-	if (target_isa == 2):
-		wasm_be_pop(n)
-		return
-	if (target_isa == 1):
-		arm64_be_pop(n)
-		return
-	emit_x64_opcode()
-	emit(6, c"\x81\xc4....")
-	save_int(code + codepos - 4, n << word_size_log2)
+	if (target_isa == 3): ptx_be_pop(n)
+	elif (target_isa == 2): wasm_be_pop(n)
+	elif (target_isa == 1): arm64_be_pop(n)
+	else:
+		emit_x64_opcode()
+		emit(6, c"\x81\xc4....")
+		save_int(code + codepos - 4, n << word_size_log2)
 
 
 void jmp_zero_int32(int v):
-	if (target_isa == 1):
-		arm64_emit_cbz(v)   # cbz x0, <link/placeholder>
-		return
-	emit_x64_opcode()
-	emit(4, c"\x85\xc0\x0f\x84") /* test %eax,%eax ; je ... */
-	emit_int32(v)
+	if (target_isa == 1): arm64_emit_cbz(v)   # cbz x0, <link/placeholder>
+	else:
+		emit_x64_opcode()
+		emit(4, c"\x85\xc0\x0f\x84") /* test %eax,%eax ; je ... */
+		emit_int32(v)
 
 
 void jmp_nonzero_int32(int v):
-	if (target_isa == 1):
-		arm64_emit_cbnz(v)   # cbnz x0, <link/placeholder>
-		return
-	emit_x64_opcode()
-	emit(4, c"\x85\xc0\x0f\x85") /* test %eax,%eax ; jne ... */
-	emit_int32(v)
+	if (target_isa == 1): arm64_emit_cbnz(v)   # cbnz x0, <link/placeholder>
+	else:
+		emit_x64_opcode()
+		emit(4, c"\x85\xc0\x0f\x85") /* test %eax,%eax ; jne ... */
+		emit_int32(v)
 
 
 void jmp_int32(int v):
-	if (target_isa == 1):
-		arm64_emit_b(v)   # b <link/placeholder>
-		return
-	emit(1, c"\xe9") /* jmp ... */
-	emit_int32(v)
+	if (target_isa == 1): arm64_emit_b(v)   # b <link/placeholder>
+	else:
+		emit(1, c"\xe9") /* jmp ... */
+		emit_int32(v)
 
 
 ########################### inline data blob regions ##########################
@@ -933,14 +720,13 @@ int be_blob_begin():
 
 
 void be_blob_end(int p):
-	if (target_isa == 2):
-		wasm_blob_end()
-		return
-	# The blob holds unaligned bytes; realign so the jump lands on an
-	# instruction boundary (a no-op on x86).
-	be_align_code()
-	be_notes_reset()
-	be_branch_patch(p, codepos)
+	if (target_isa == 2): wasm_blob_end()
+	else:
+		# The blob holds unaligned bytes; realign so the jump lands on an
+		# instruction boundary (a no-op on x86).
+		be_align_code()
+		be_notes_reset()
+		be_branch_patch(p, codepos)
 
 
 ###################### structured control-flow regions ########################
@@ -995,8 +781,7 @@ int be_ctrl_block():
 		# The region's value is a PTX label id; its "Ln:" line lands at
 		# the merge point in be_ctrl_end.
 		ctrl_val_stack[ctrl_stack_pos - 1] = ptx_new_label()
-	if (target_isa == 2):
-		wasm_ctrl_block()
+	if (target_isa == 2): wasm_ctrl_block()
 	return ctrl_stack_pos - 1
 
 int be_ctrl_loop():
@@ -1010,8 +795,7 @@ int be_ctrl_loop():
 		int ptx_loop_label = ptx_new_label()
 		ctrl_val_stack[ctrl_stack_pos - 1] = ptx_loop_label
 		ptx_place_label(ptx_loop_label)
-	if (target_isa == 2):
-		wasm_ctrl_loop()
+	if (target_isa == 2): wasm_ctrl_loop()
 	return ctrl_stack_pos - 1
 
 # A branch site just emitted with region h's chain head in its displacement
@@ -1019,53 +803,41 @@ int be_ctrl_loop():
 # immediately). The bounds-check helpers below use this to thread their
 # condition-coded branches through the same protocol.
 void be_ctrl_link(int h):
-	if (ctrl_kind_stack[h] == 0):
-		ctrl_val_stack[h] = codepos
+	if (ctrl_kind_stack[h] == 0): ctrl_val_stack[h] = codepos
 
-# Branch unconditionally to region h.
+# The displacement field a new branch into region h starts with, and
+# the bookkeeping once it is emitted: a loop region patches the branch to
+# its start at once, a block region threads it into its patch chain.
+int be_br_link(int h):
+	if (ctrl_kind_stack[h]): return 0
+	return ctrl_val_stack[h]
+
+void be_br_linked(int h):
+	if (ctrl_kind_stack[h]): be_branch_patch(codepos, ctrl_val_stack[h])
+	else: be_ctrl_link(h)
+
+# Branch to region h always (cond 0), or when the accumulator is zero
+# (cond 1) or nonzero (cond 2).
+void be_br_on(int cond, int h):
+	if (target_isa == 3):
+		if (cond == 0): ptx_bra(ctrl_val_stack[h])
+		elif (cond == 1): ptx_bra_zero(ctrl_val_stack[h])
+		else: ptx_bra_nonzero(ctrl_val_stack[h])
+	elif (target_isa == 2): wasm_br_on(cond, ctrl_stack_pos - 1 - h)
+	else:
+		if (cond == 0): jmp_int32(be_br_link(h))
+		elif (cond == 1): jmp_zero_int32(be_br_link(h))
+		else: jmp_nonzero_int32(be_br_link(h))
+		be_br_linked(h)
+
 void be_br(int h):
-	if (target_isa == 3):
-		ptx_bra(ctrl_val_stack[h])
-		return
-	if (target_isa == 2):
-		wasm_br(ctrl_stack_pos - 1 - h)
-		return
-	if (ctrl_kind_stack[h]):
-		jmp_int32(0)
-		be_branch_patch(codepos, ctrl_val_stack[h])
-		return
-	jmp_int32(ctrl_val_stack[h])
-	be_ctrl_link(h)
+	be_br_on(0, h)
 
-# Branch to region h when the accumulator is zero.
 void be_br_zero(int h):
-	if (target_isa == 3):
-		ptx_bra_zero(ctrl_val_stack[h])
-		return
-	if (target_isa == 2):
-		wasm_br_zero(ctrl_stack_pos - 1 - h)
-		return
-	if (ctrl_kind_stack[h]):
-		jmp_zero_int32(0)
-		be_branch_patch(codepos, ctrl_val_stack[h])
-		return
-	jmp_zero_int32(ctrl_val_stack[h])
-	be_ctrl_link(h)
+	be_br_on(1, h)
 
-# Branch to region h when the accumulator is nonzero.
 void be_br_nonzero(int h):
-	if (target_isa == 3):
-		ptx_bra_nonzero(ctrl_val_stack[h])
-		return
-	if (target_isa == 2):
-		wasm_br_nonzero(ctrl_stack_pos - 1 - h)
-		return
-	if (ctrl_kind_stack[h]):
-		jmp_nonzero_int32(0)
-		be_branch_patch(codepos, ctrl_val_stack[h])
-		return
-	jmp_nonzero_int32(ctrl_val_stack[h])
-	be_ctrl_link(h)
+	be_br_on(2, h)
 
 # Comparison-branch fusion (docs/projects/optimization.md §1.3):
 # alu_cmp_set notes where its setCC+movzx materialization begins and
@@ -1091,20 +863,13 @@ void be_cmp_note_reset():
 # codepos. Every fold's rollback goes through here.
 void peep_rollback(int pos):
 	codepos = pos
-	if (imm_note_end > pos):
-		imm_note_end = 0
-	if (push_imm_end > pos):
-		push_imm_end = 0
-	if (binfold_end > pos):
-		binfold_end = 0
-	if (cmp_fuse_end > pos):
-		cmp_fuse_end = 0
-	if (lea_note_end > pos):
-		lea_note_end = 0
-	if (load_note_end > pos):
-		load_note_end = 0
-	if (push_note_end > pos):
-		push_note_end = 0
+	if (imm_note_end > pos): imm_note_end = 0
+	if (push_imm_end > pos): push_imm_end = 0
+	if (binfold_end > pos): binfold_end = 0
+	if (cmp_fuse_end > pos): cmp_fuse_end = 0
+	if (lea_note_end > pos): lea_note_end = 0
+	if (load_note_end > pos): load_note_end = 0
+	if (push_note_end > pos): push_note_end = 0
 
 # A jump target is about to be placed at codepos: no fold may reach back
 # across it (a branch patched to land here would then point into, or
@@ -1118,17 +883,12 @@ void be_notes_reset():
 void be_br_cc(int jcc_opcode, int h):
 	emit_int8(15)
 	emit_int8(jcc_opcode)
-	if (ctrl_kind_stack[h]):
-		emit_int32(0)
-		be_branch_patch(codepos, ctrl_val_stack[h])
-		return
-	emit_int32(ctrl_val_stack[h])
-	be_ctrl_link(h)
+	emit_int32(be_br_link(h))
+	be_br_linked(h)
 
 # jCC condition codes pair via the low bit (0x84 je <-> 0x85 jne, ...)
 int jcc_invert(int jcc_opcode):
-	if (jcc_opcode & 1):
-		return jcc_opcode - 1
+	if (jcc_opcode & 1): return jcc_opcode - 1
 	return jcc_opcode + 1
 
 # Discard-context twins of be_br_zero/be_br_nonzero for callers that
@@ -1165,80 +925,56 @@ void be_ctrl_end(int h):
 	if (target_isa == 3):
 		# Forward regions place their merge label here; backward regions
 		# placed theirs at the loop start.
-		if (ctrl_kind_stack[h] == 0):
-			ptx_place_label(ctrl_val_stack[h])
-		return
-	if (target_isa == 2):
-		wasm_ctrl_end()
-		return
-	if (ctrl_kind_stack[h]):
-		return
-	int chain = ctrl_val_stack[h]
-	while (chain):
-		int next_site = be_branch_link_get(chain)
-		be_branch_patch(chain, codepos)
-		chain = next_site
+		if (ctrl_kind_stack[h] == 0): ptx_place_label(ctrl_val_stack[h])
+	elif (target_isa == 2): wasm_ctrl_end()
+	else:
+		if (ctrl_kind_stack[h]): return
+		int chain = ctrl_val_stack[h]
+		while (chain):
+			int next_site = be_branch_link_get(chain)
+			be_branch_patch(chain, codepos)
+			chain = next_site
 
 
 void inc_dword_esp_plus(int v):
-	if (target_isa == 3):
-		ptx_inc_sp_slot(v)
-		return
-	if (target_isa == 2):
-		wasm_inc_dword_esp_plus(v)
-		return
-	if (target_isa == 1):
-		arm64_inc_dword_esp_plus(v)
-		return
-	emit_x64_opcode()
-	emit(3, c"\xff\x84\x24") /* inc dword[esp+op(0x12, 0x345678)] */
-	emit_int(v)
+	if (target_isa == 3): ptx_inc_sp_slot(v)
+	elif (target_isa == 2): wasm_inc_dword_esp_plus(v)
+	elif (target_isa == 1): arm64_inc_dword_esp_plus(v)
+	else:
+		emit_x64_opcode()
+		emit(3, c"\xff\x84\x24") /* inc dword[esp+op(0x12, 0x345678)] */
+		emit_int(v)
 
 
 void neg_eax():
-	if (target_isa == 3):
-		ptx_neg_ax()
-		return
-	if (target_isa == 2):
-		wasm_neg_eax()
-		return
-	if (target_isa == 1):
-		a64(op(0xcb, 0x0003e0))   # neg x0,x0
-		return
-	emit_x64_opcode()
-	emit(2, c"\xf7\xd8") /* neg %eax */
+	if (target_isa == 3): ptx_neg_ax()
+	elif (target_isa == 2): wasm_neg_eax()
+	elif (target_isa == 1): a64(op(0xcb, 0x0003e0))   # neg x0,x0
+	else:
+		emit_x64_opcode()
+		emit(2, c"\xf7\xd8") /* neg %eax */
 
 
 void add_dword_esp_plus_eax(int v):
-	if (target_isa == 3):
-		ptx_add_sp_slot_ax(v)
-		return
-	if (target_isa == 2):
-		wasm_add_dword_esp_plus_eax(v)
-		return
-	if (target_isa == 1):
-		arm64_add_dword_esp_plus_eax(v)
-		return
-	emit_x64_opcode()
-	emit(3, c"\x01\x84\x24") /* add [esp+op(0x12, 0x345678)], eax */
-	emit_int(v)
+	if (target_isa == 3): ptx_add_sp_slot_ax(v)
+	elif (target_isa == 2): wasm_add_dword_esp_plus_eax(v)
+	elif (target_isa == 1): arm64_add_dword_esp_plus_eax(v)
+	else:
+		emit_x64_opcode()
+		emit(3, c"\x01\x84\x24") /* add [esp+op(0x12, 0x345678)], eax */
+		emit_int(v)
 
 
 /* add word-sized [esp+offset], imm32 */
 void add_stack_word_int32(int offset, int v):
-	if (target_isa == 3):
-		ptx_add_sp_slot_int(offset, v)
-		return
-	if (target_isa == 2):
-		wasm_add_stack_word_int32(offset, v)
-		return
-	if (target_isa == 1):
-		arm64_add_stack_word_int32(offset, v)
-		return
-	emit_x64_opcode()
-	emit(3, c"\x81\x84\x24")
-	emit_int(offset)
-	emit_int32(v)
+	if (target_isa == 3): ptx_add_sp_slot_int(offset, v)
+	elif (target_isa == 2): wasm_add_stack_word_int32(offset, v)
+	elif (target_isa == 1): arm64_add_stack_word_int32(offset, v)
+	else:
+		emit_x64_opcode()
+		emit(3, c"\x81\x84\x24")
+		emit_int(offset)
+		emit_int32(v)
 
 
 ############################ word-width ALU helpers ############################
@@ -1247,100 +983,77 @@ void add_stack_word_int32(int offset, int v):
 
 /* add %ebx,%eax */
 void alu_add():
-	if (target_isa == 3):
-		ptx_alu_ax_bx(c"add.s64")
-		return
-	if (target_isa == 2):
-		wasm_ax_op_bx(0x6a)
-		return
-	if (target_isa == 1):
-		a64(op(0x8b, 0x010000))   # add x0,x0,x1
-		return
-	if ((binfold_end != 0) && (binfold_end == codepos)):
-		if (fold_add_fits(binfold_left, binfold_right)):
-			binfold_emit(binfold_left + binfold_right)
-			return
-	emit_x64_opcode()
-	emit(2, c"\x01\xd8")
+	if (target_isa == 3): ptx_alu_ax_bx(c"add.s64")
+	elif (target_isa == 2): wasm_ax_op_bx(0x6a)
+	elif (target_isa == 1): a64(op(0x8b, 0x010000))   # add x0,x0,x1
+	else:
+		if ((binfold_end != 0) && (binfold_end == codepos)):
+			if (fold_add_fits(binfold_left, binfold_right)):
+				binfold_emit(binfold_left + binfold_right)
+				return
+		emit_x64_opcode()
+		emit(2, c"\x01\xd8")
 
 
 /* sub %eax,%ebx ; mov %ebx,%eax */
 void alu_sub():
-	if (target_isa == 3):
-		ptx_alu_sub()
-		return
-	if (target_isa == 2):
-		wasm_bx_op_ax(0x6b)
-		return
-	if (target_isa == 1):
-		a64(op(0xcb, 0x000020))   # sub x0,x1,x0
-		return
-	if ((binfold_end != 0) && (binfold_end == codepos)):
-		if (fold_sub_fits(binfold_left, binfold_right)):
-			binfold_emit(binfold_left - binfold_right)
-			return
-	emit_x64_opcode()
-	emit(2, c"\x29\xc3")
-	emit_x64_opcode()
-	emit(2, c"\x89\xd8")
+	if (target_isa == 3): ptx_alu_sub()
+	elif (target_isa == 2): wasm_bx_op_ax(0x6b)
+	elif (target_isa == 1): a64(op(0xcb, 0x000020))   # sub x0,x1,x0
+	else:
+		if ((binfold_end != 0) && (binfold_end == codepos)):
+			if (fold_sub_fits(binfold_left, binfold_right)):
+				binfold_emit(binfold_left - binfold_right)
+				return
+		emit_x64_opcode()
+		emit(2, c"\x29\xc3")
+		emit_x64_opcode()
+		emit(2, c"\x89\xd8")
 
 
 /* imul %ebx,%eax */
 void alu_imul():
-	if (target_isa == 3):
-		ptx_alu_ax_bx(c"mul.lo.s64")
-		return
-	if (target_isa == 2):
-		wasm_ax_op_bx(0x6c)
-		return
-	if (target_isa == 1):
-		a64(op(0x9b, 0x017c00))   # mul x0,x0,x1
-		return
-	if ((binfold_end != 0) && (binfold_end == codepos)):
-		if (fold_mul_fits(binfold_left, binfold_right)):
-			binfold_emit(binfold_left * binfold_right)
-			return
-	emit_x64_opcode()
-	emit(3, c"\x0f\xaf\xc3")
+	if (target_isa == 3): ptx_alu_ax_bx(c"mul.lo.s64")
+	elif (target_isa == 2): wasm_ax_op_bx(0x6c)
+	elif (target_isa == 1): a64(op(0x9b, 0x017c00))   # mul x0,x0,x1
+	else:
+		if ((binfold_end != 0) && (binfold_end == codepos)):
+			if (fold_mul_fits(binfold_left, binfold_right)):
+				binfold_emit(binfold_left * binfold_right)
+				return
+		emit_x64_opcode()
+		emit(3, c"\x0f\xaf\xc3")
 
 
 /* mov %eax,%ebx ; pop %eax ; cdq/cqo ; idiv %ebx (quotient in eax) */
 void alu_idiv():
-	if (target_isa == 3):
-		ptx_alu_pop(c"div.s64")
-		return
-	if (target_isa == 2):
-		wasm_pop_op_ax(0x6d)
-		return
-	if (target_isa == 1):
+	if (target_isa == 3): ptx_alu_pop(c"div.s64")
+	elif (target_isa == 2): wasm_pop_op_ax(0x6d)
+	elif (target_isa == 1):
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8   (pop left operand)
 		a64(op(0x9a, 0xc00d20))   # sdiv x0,x9,x0
-		return
-	emit_x64_opcode()
-	emit(2, c"\x89\xc3")
-	emit(1, c"\x58")
-	emit_x64_opcode()
-	emit(1, c"\x99")
-	emit_x64_opcode()
-	emit(2, c"\xf7\xfb")
+	else:
+		emit_x64_opcode()
+		emit(2, c"\x89\xc3")
+		emit(1, c"\x58")
+		emit_x64_opcode()
+		emit(1, c"\x99")
+		emit_x64_opcode()
+		emit(2, c"\xf7\xfb")
 
 
 /* idiv, then mov %edx,%eax to keep the remainder */
 void alu_imod():
-	if (target_isa == 3):
-		ptx_alu_pop(c"rem.s64")
-		return
-	if (target_isa == 2):
-		wasm_pop_op_ax(0x6f)
-		return
-	if (target_isa == 1):
+	if (target_isa == 3): ptx_alu_pop(c"rem.s64")
+	elif (target_isa == 2): wasm_pop_op_ax(0x6f)
+	elif (target_isa == 1):
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8   (pop left operand)
 		a64(op(0x9a, 0xc00d2a))   # sdiv x10,x9,x0
 		a64(op(0x9b, 0x00a540))   # msub x0,x10,x0,x9  (x0 = x9 - x10*x0)
-		return
-	alu_idiv()
-	emit_x64_opcode()
-	emit(2, c"\x89\xd0")
+	else:
+		alu_idiv()
+		emit_x64_opcode()
+		emit(2, c"\x89\xd0")
 
 
 # Shift by a constant: 'push eax; mov eax,imm; mov ecx,eax; pop eax;
@@ -1351,10 +1064,8 @@ void alu_imod():
 # modrm_ext is the ModRM byte selecting the operation on eax (0xe0 shl,
 # 0xf8 sar).
 int shift_imm_fold(int modrm_ext):
-	if ((imm_note_end == 0) || (imm_note_end != codepos)):
-		return 0
-	if ((push_note_end == 0) || (push_note_end != imm_note_start)):
-		return 0
+	if ((imm_note_end == 0) || (imm_note_end != codepos)): return 0
+	if ((push_note_end == 0) || (push_note_end != imm_note_start)): return 0
 	int count = imm_note_value & 255
 	peep_rollback(push_note_start)
 	emit_x64_opcode()
@@ -1372,138 +1083,103 @@ int shift_imm_fold(int modrm_ext):
 
 /* mov %eax,%ecx ; pop %eax ; shl %cl,%eax */
 void alu_shl():
-	if (target_isa == 3):
-		ptx_alu_shift(c"shl.b64")
-		return
-	if (target_isa == 2):
-		wasm_pop_op_ax(0x74)
-		return
-	if (target_isa == 1):
+	if (target_isa == 3): ptx_alu_shift(c"shl.b64")
+	elif (target_isa == 2): wasm_pop_op_ax(0x74)
+	elif (target_isa == 1):
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8
 		a64(op(0x9a, 0xc02120))   # lslv x0,x9,x0
-		return
-	if (shift_imm_fold(0xe0)):
-		return
-	emit(2, c"\x89\xc1")
-	emit(1, c"\x58")
-	emit_x64_opcode()
-	emit(2, c"\xd3\xe0")
+	else:
+		if (shift_imm_fold(0xe0)): return
+		emit(2, c"\x89\xc1")
+		emit(1, c"\x58")
+		emit_x64_opcode()
+		emit(2, c"\xd3\xe0")
 
 
 /* mov %eax,%ecx ; pop %eax ; sar %cl,%eax */
 void alu_sar():
-	if (target_isa == 3):
-		ptx_alu_shift(c"shr.s64")
-		return
-	if (target_isa == 2):
-		wasm_pop_op_ax(0x75)
-		return
-	if (target_isa == 1):
+	if (target_isa == 3): ptx_alu_shift(c"shr.s64")
+	elif (target_isa == 2): wasm_pop_op_ax(0x75)
+	elif (target_isa == 1):
 		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8
 		a64(op(0x9a, 0xc02920))   # asrv x0,x9,x0
-		return
-	if (shift_imm_fold(0xf8)):
-		return
-	emit(2, c"\x89\xc1")
-	emit(1, c"\x58")
-	emit_x64_opcode()
-	emit(2, c"\xd3\xf8")
+	else:
+		if (shift_imm_fold(0xf8)): return
+		emit(2, c"\x89\xc1")
+		emit(1, c"\x58")
+		emit_x64_opcode()
+		emit(2, c"\xd3\xf8")
 
 
 /* and %ebx,%eax */
 void alu_and():
-	if (target_isa == 3):
-		ptx_alu_ax_bx(c"and.b64")
-		return
-	if (target_isa == 2):
-		wasm_ax_op_bx(0x71)
-		return
-	if (target_isa == 1):
-		a64(op(0x8a, 0x010000))   # and x0,x0,x1
-		return
-	if ((binfold_end != 0) && (binfold_end == codepos)):
-		binfold_emit(binfold_left & binfold_right)
-		return
-	emit_x64_opcode()
-	emit(2, c"\x21\xd8")
+	if (target_isa == 3): ptx_alu_ax_bx(c"and.b64")
+	elif (target_isa == 2): wasm_ax_op_bx(0x71)
+	elif (target_isa == 1): a64(op(0x8a, 0x010000))   # and x0,x0,x1
+	else:
+		if ((binfold_end != 0) && (binfold_end == codepos)):
+			binfold_emit(binfold_left & binfold_right)
+			return
+		emit_x64_opcode()
+		emit(2, c"\x21\xd8")
 
 
 /* or %ebx,%eax */
 void alu_or():
-	if (target_isa == 3):
-		ptx_alu_ax_bx(c"or.b64")
-		return
-	if (target_isa == 2):
-		wasm_ax_op_bx(0x72)
-		return
-	if (target_isa == 1):
-		a64(op(0xaa, 0x010000))   # orr x0,x0,x1
-		return
-	if ((binfold_end != 0) && (binfold_end == codepos)):
-		binfold_emit(binfold_left | binfold_right)
-		return
-	emit_x64_opcode()
-	emit(2, c"\x09\xd8")
+	if (target_isa == 3): ptx_alu_ax_bx(c"or.b64")
+	elif (target_isa == 2): wasm_ax_op_bx(0x72)
+	elif (target_isa == 1): a64(op(0xaa, 0x010000))   # orr x0,x0,x1
+	else:
+		if ((binfold_end != 0) && (binfold_end == codepos)):
+			binfold_emit(binfold_left | binfold_right)
+			return
+		emit_x64_opcode()
+		emit(2, c"\x09\xd8")
 
 
 /* xor %ebx,%eax */
 void alu_xor():
-	if (target_isa == 3):
-		ptx_alu_ax_bx(c"xor.b64")
-		return
-	if (target_isa == 2):
-		wasm_ax_op_bx(0x73)
-		return
-	if (target_isa == 1):
-		a64(op(0xca, 0x010000))   # eor x0,x0,x1
-		return
-	if ((binfold_end != 0) && (binfold_end == codepos)):
-		binfold_emit(binfold_left ^ binfold_right)
-		return
-	emit_x64_opcode()
-	emit(2, c"\x31\xd8")
+	if (target_isa == 3): ptx_alu_ax_bx(c"xor.b64")
+	elif (target_isa == 2): wasm_ax_op_bx(0x73)
+	elif (target_isa == 1): a64(op(0xca, 0x010000))   # eor x0,x0,x1
+	else:
+		if ((binfold_end != 0) && (binfold_end == codepos)):
+			binfold_emit(binfold_left ^ binfold_right)
+			return
+		emit_x64_opcode()
+		emit(2, c"\x31\xd8")
 
 
 /* cmp %eax,%ebx ; setCC %al ; movzbl %al,%eax
    setcc_opcode is the second setCC byte: 0x9c setl, 0x9d setge, 0x9e setle,
    0x9f setg, 0x94 sete, 0x95 setne */
 void alu_cmp_set(int setcc_opcode):
-	if (target_isa == 3):
-		ptx_alu_cmp_set(setcc_opcode)
-		return
-	if (target_isa == 2):
-		wasm_alu_cmp_set(setcc_opcode)
-		return
-	if (target_isa == 1):
-		arm64_alu_cmp_set(setcc_opcode)
-		return
-	emit_x64_opcode()
-	emit(2, c"\x39\xc3")
-	cmp_fuse_start = codepos
-	emit_int8(15)
-	emit_int8(setcc_opcode)
-	emit(4, c"\xc0\x0f\xb6\xc0")
-	cmp_fuse_end = codepos
-	cmp_fuse_cc = setcc_opcode
+	if (target_isa == 3): ptx_alu_cmp_set(setcc_opcode)
+	elif (target_isa == 2): wasm_alu_cmp_set(setcc_opcode)
+	elif (target_isa == 1): arm64_alu_cmp_set(setcc_opcode)
+	else:
+		emit_x64_opcode()
+		emit(2, c"\x39\xc3")
+		cmp_fuse_start = codepos
+		emit_int8(15)
+		emit_int8(setcc_opcode)
+		emit(4, c"\xc0\x0f\xb6\xc0")
+		cmp_fuse_end = codepos
+		cmp_fuse_cc = setcc_opcode
 
 
 /* booleanize: test %eax,%eax ; setCC %al ; movzbl %al,%eax
    setcc_opcode: 0x94 sete (logical not), 0x95 setne (truth value) */
 void alu_test_set(int setcc_opcode):
-	if (target_isa == 3):
-		ptx_alu_test_set(setcc_opcode)
-		return
-	if (target_isa == 2):
-		wasm_alu_test_set(setcc_opcode)
-		return
-	if (target_isa == 1):
-		arm64_alu_test_set(setcc_opcode)
-		return
-	emit_x64_opcode()
-	emit(2, c"\x85\xc0")
-	emit_int8(15)
-	emit_int8(setcc_opcode)
-	emit(4, c"\xc0\x0f\xb6\xc0")
+	if (target_isa == 3): ptx_alu_test_set(setcc_opcode)
+	elif (target_isa == 2): wasm_alu_test_set(setcc_opcode)
+	elif (target_isa == 1): arm64_alu_test_set(setcc_opcode)
+	else:
+		emit_x64_opcode()
+		emit(2, c"\x85\xc0")
+		emit_int8(15)
+		emit_int8(setcc_opcode)
+		emit(4, c"\xc0\x0f\xb6\xc0")
 
 
 ########################## 32-bit limb intrinsics ##########################
@@ -1520,79 +1196,62 @@ void alu_test_set(int setcc_opcode):
 
 /* mov ecx, eax at the full word width (a pointer operand) */
 void mov_ecx_eax():
-	if (target_isa == 3):
-		ptx_mov_cx_ax()
-		return
-	if (target_isa == 2):
-		wasm_mov_ecx_eax()
-		return
-	if (target_isa == 1):
-		a64(op(0xaa, 0x0003e2))   # mov x2,x0
-		return
-	emit_x64_opcode()
-	emit(2, c"\x89\xc1")
+	if (target_isa == 3): ptx_mov_cx_ax()
+	elif (target_isa == 2): wasm_mov_ecx_eax()
+	elif (target_isa == 1): a64(op(0xaa, 0x0003e2))   # mov x2,x0
+	else:
+		emit_x64_opcode()
+		emit(2, c"\x89\xc1")
 
 
 /* mul %ebx (edx:eax = eax*ebx, unsigned 32x32) ; mov %edx,%eax */
 void alu_mul_hi():
-	if (target_isa == 3):
-		ptx_alu_mul_hi()
-		return
-	if (target_isa == 2):
-		wasm_alu_mul_hi()
-		return
-	if (target_isa == 1):
+	if (target_isa == 3): ptx_alu_mul_hi()
+	elif (target_isa == 2): wasm_alu_mul_hi()
+	elif (target_isa == 1):
 		a64(op(0x9b, 0xa07c20))   # umull x0,w1,w0
 		a64(op(0xd3, 0x60fc00))   # lsr x0,x0,#32
-		return
-	emit(2, c"\xf7\xe3")
-	emit(2, c"\x89\xd0")
+	else:
+		emit(2, c"\xf7\xe3")
+		emit(2, c"\x89\xd0")
 
 
 /* mul %ebx ; mov [ecx],edx: low product half stays in eax, the high half
    is stored word-sized through the pointer in ecx */
 void alu_mul_wide():
-	if (target_isa == 3):
-		ptx_alu_mul_wide()
-		return
-	if (target_isa == 2):
-		wasm_alu_mul_wide()
-		return
-	if (target_isa == 1):
+	if (target_isa == 3): ptx_alu_mul_wide()
+	elif (target_isa == 2): wasm_alu_mul_wide()
+	elif (target_isa == 1):
 		a64(op(0x9b, 0xa07c20))   # umull x0,w1,w0
 		a64(op(0xd3, 0x60fc09))   # lsr x9,x0,#32
 		a64(op(0xf9, 0x000049))   # str x9,[x2]
 		a64(op(0x2a, 0x0003e0))   # mov w0,w0 (zero-extend the low half)
-		return
-	emit(2, c"\xf7\xe3")
-	emit_x64_opcode()
-	emit(2, c"\x89\x11")
+	else:
+		emit(2, c"\xf7\xe3")
+		emit_x64_opcode()
+		emit(2, c"\x89\x11")
 
 
 /* add %ebx,%eax (32-bit: CF = carry out of bit 31) ; mov edx,0 (flags
    preserved) ; adc edx,0 ; the carry is stored word-sized through the
    pointer in ecx and the wrapped sum stays in eax */
 void alu_add_carry():
-	if (target_isa == 3):
-		ptx_alu_add_carry()
-		return
-	if (target_isa == 2):
-		wasm_alu_add_carry()
-		return
-	if (target_isa == 1):
+	if (target_isa == 3): ptx_alu_add_carry()
+	elif (target_isa == 2): wasm_alu_add_carry()
+	elif (target_isa == 1):
 		a64(op(0x2a, 0x0003e0))   # mov w0,w0 (zero-extend the operands:
 		a64(op(0x2a, 0x0103e1))   # mov w1,w1  the sum then fits 33 bits)
 		a64(op(0x8b, 0x000020))   # add x0,x1,x0
 		a64(op(0xd3, 0x60fc09))   # lsr x9,x0,#32
 		a64(op(0xf9, 0x000049))   # str x9,[x2]
 		a64(op(0x2a, 0x0003e0))   # mov w0,w0 (keep the wrapped low half)
-		return
-	emit(2, c"\x01\xd8")
-	emit(1, c"\xba")
-	emit_int32(0)
-	emit(3, c"\x83\xd2\x00")
-	emit_x64_opcode()
-	emit(2, c"\x89\x11")
+	else:
+		emit(2, c"\x01\xd8")
+		emit(1, c"\xba")
+		emit_int32(0)
+		emit(3, c"\x83\xd2\x00")
+		emit_x64_opcode()
+		emit(2, c"\x89\x11")
 
 ####################### end of 32-bit limb intrinsics ######################
 
@@ -1651,49 +1310,35 @@ void alu_bit_operands():
 
 /* value in ebx, count in eax: shr %cl,%eax (logical right shift) */
 void alu_shr32():
-	if (target_isa == 3):
-		ptx_alu_shr32()
-		return
-	if (target_isa == 2):
-		wasm_alu_shr32()
-		return
-	if (target_isa == 1):
-		a64(op(0x1a, 0xc02420))   # lsrv w0,w1,w0 (count mod 32, zero-extends)
-		return
-	alu_bit_operands()
-	emit(2, c"\xd3\xe8")
+	if (target_isa == 3): ptx_alu_shr32()
+	elif (target_isa == 2): wasm_alu_shr32()
+	elif (target_isa == 1): a64(op(0x1a, 0xc02420))   # lsrv w0,w1,w0 (count mod 32, zero-extends)
+	else:
+		alu_bit_operands()
+		emit(2, c"\xd3\xe8")
 
 
 /* value in ebx, count in eax: rol %cl,%eax */
 void alu_rotl32():
-	if (target_isa == 3):
-		ptx_alu_rotl32()
-		return
-	if (target_isa == 2):
-		wasm_alu_rotl32()
-		return
-	if (target_isa == 1):
+	if (target_isa == 3): ptx_alu_rotl32()
+	elif (target_isa == 2): wasm_alu_rotl32()
+	elif (target_isa == 1):
 		# A64 has no rotate-left: rotl(a,n) == rotr(a, (-n) mod 32)
 		a64(op(0x4b, 0x0003e9))   # neg w9,w0
 		a64(op(0x1a, 0xc92c20))   # rorv w0,w1,w9
-		return
-	alu_bit_operands()
-	emit(2, c"\xd3\xc0")
+	else:
+		alu_bit_operands()
+		emit(2, c"\xd3\xc0")
 
 
 /* value in ebx, count in eax: ror %cl,%eax */
 void alu_rotr32():
-	if (target_isa == 3):
-		ptx_alu_rotr32()
-		return
-	if (target_isa == 2):
-		wasm_alu_rotr32()
-		return
-	if (target_isa == 1):
-		a64(op(0x1a, 0xc02c20))   # rorv w0,w1,w0
-		return
-	alu_bit_operands()
-	emit(2, c"\xd3\xc8")
+	if (target_isa == 3): ptx_alu_rotr32()
+	elif (target_isa == 2): wasm_alu_rotr32()
+	elif (target_isa == 1): a64(op(0x1a, 0xc02c20))   # rorv w0,w1,w0
+	else:
+		alu_bit_operands()
+		emit(2, c"\xd3\xc8")
 
 
 /* set-bit count of the low 32 bits of eax, via the SWAR reduction
@@ -1704,13 +1349,9 @@ void alu_rotr32():
    (POPCNT is not baseline ISA; the masks have bit 31 clear, so they are
    plain immediates) */
 void alu_popcount32():
-	if (target_isa == 3):
-		ptx_alu_popcount32()
-		return
-	if (target_isa == 2):
-		wasm_alu_popcount32()
-		return
-	if (target_isa == 1):
+	if (target_isa == 3): ptx_alu_popcount32()
+	elif (target_isa == 2): wasm_alu_popcount32()
+	elif (target_isa == 1):
 		a64(op(0x53, 0x017c09))   # lsr w9,w0,#1
 		arm64_load_scratch(10, 0x55555555)
 		a64(op(0x0a, 0x0a0129))   # and w9,w9,w10
@@ -1727,83 +1368,68 @@ void alu_popcount32():
 		arm64_load_scratch(9, 0x01010101)
 		a64(op(0x1b, 0x097c00))   # mul w0,w0,w9
 		a64(op(0x53, 0x187c00))   # lsr w0,w0,#24 (zero-extends)
-		return
-	emit(2, c"\x89\xc2")          # mov %eax,%edx
-	emit(3, c"\xc1\xea\x01")      # shr $1,%edx
-	emit(2, c"\x81\xe2")          # and $0x55555555,%edx
-	emit_int32(0x55555555)
-	emit(2, c"\x29\xd0")          # sub %edx,%eax
-	emit(2, c"\x89\xc2")          # mov %eax,%edx
-	emit(3, c"\xc1\xea\x02")      # shr $2,%edx
-	emit(1, c"\x25")              # and $0x33333333,%eax
-	emit_int32(0x33333333)
-	emit(2, c"\x81\xe2")          # and $0x33333333,%edx
-	emit_int32(0x33333333)
-	emit(2, c"\x01\xd0")          # add %edx,%eax
-	emit(2, c"\x89\xc2")          # mov %eax,%edx
-	emit(3, c"\xc1\xea\x04")      # shr $4,%edx
-	emit(2, c"\x01\xd0")          # add %edx,%eax
-	emit(1, c"\x25")              # and $0x0f0f0f0f,%eax
-	emit_int32(0x0f0f0f0f)
-	emit(2, c"\x69\xc0")          # imul $0x01010101,%eax,%eax
-	emit_int32(0x01010101)
-	emit(3, c"\xc1\xe8\x18")      # shr $24,%eax
+	else:
+		emit(2, c"\x89\xc2")          # mov %eax,%edx
+		emit(3, c"\xc1\xea\x01")      # shr $1,%edx
+		emit(2, c"\x81\xe2")          # and $0x55555555,%edx
+		emit_int32(0x55555555)
+		emit(2, c"\x29\xd0")          # sub %edx,%eax
+		emit(2, c"\x89\xc2")          # mov %eax,%edx
+		emit(3, c"\xc1\xea\x02")      # shr $2,%edx
+		emit(1, c"\x25")              # and $0x33333333,%eax
+		emit_int32(0x33333333)
+		emit(2, c"\x81\xe2")          # and $0x33333333,%edx
+		emit_int32(0x33333333)
+		emit(2, c"\x01\xd0")          # add %edx,%eax
+		emit(2, c"\x89\xc2")          # mov %eax,%edx
+		emit(3, c"\xc1\xea\x04")      # shr $4,%edx
+		emit(2, c"\x01\xd0")          # add %edx,%eax
+		emit(1, c"\x25")              # and $0x0f0f0f0f,%eax
+		emit_int32(0x0f0f0f0f)
+		emit(2, c"\x69\xc0")          # imul $0x01010101,%eax,%eax
+		emit_int32(0x01010101)
+		emit(3, c"\xc1\xe8\x18")      # shr $24,%eax
 
 
 /* leading-zero count of the low 32 bits of eax; clz(0) == 32.
    BSR leaves ZF set (and the destination undefined) on zero input, so
    the zero case branches over the 31-index conversion */
 void alu_clz32():
-	if (target_isa == 3):
-		ptx_alu_clz32()
-		return
-	if (target_isa == 2):
-		wasm_alu_clz32()
-		return
-	if (target_isa == 1):
-		a64(op(0x5a, 0xc01000))   # clz w0,w0 (clz(0) == 32 in hardware)
-		return
-	emit(3, c"\x0f\xbd\xd0")      # bsr %eax,%edx (ZF=1 when eax==0)
-	emit(1, c"\xb8")              # mov $32,%eax (flags preserved)
-	emit_int32(32)
-	emit(2, c"\x74\x05")          # jz +5 (zero input: keep the 32)
-	emit(3, c"\x83\xf2\x1f")      # xor $31,%edx (31 - highest set index)
-	emit(2, c"\x89\xd0")          # mov %edx,%eax
+	if (target_isa == 3): ptx_alu_clz32()
+	elif (target_isa == 2): wasm_alu_clz32()
+	elif (target_isa == 1): a64(op(0x5a, 0xc01000))   # clz w0,w0 (clz(0) == 32 in hardware)
+	else:
+		emit(3, c"\x0f\xbd\xd0")      # bsr %eax,%edx (ZF=1 when eax==0)
+		emit(1, c"\xb8")              # mov $32,%eax (flags preserved)
+		emit_int32(32)
+		emit(2, c"\x74\x05")          # jz +5 (zero input: keep the 32)
+		emit(3, c"\x83\xf2\x1f")      # xor $31,%edx (31 - highest set index)
+		emit(2, c"\x89\xd0")          # mov %edx,%eax
 
 
 /* trailing-zero count of the low 32 bits of eax; ctz(0) == 32.
    BSF is undefined on zero input the same way BSR is */
 void alu_ctz32():
-	if (target_isa == 3):
-		ptx_alu_ctz32()
-		return
-	if (target_isa == 2):
-		wasm_alu_ctz32()
-		return
-	if (target_isa == 1):
+	if (target_isa == 3): ptx_alu_ctz32()
+	elif (target_isa == 2): wasm_alu_ctz32()
+	elif (target_isa == 1):
 		a64(op(0x5a, 0xc00000))   # rbit w0,w0
 		a64(op(0x5a, 0xc01000))   # clz w0,w0
-		return
-	emit(3, c"\x0f\xbc\xd0")      # bsf %eax,%edx (ZF=1 when eax==0)
-	emit(1, c"\xb8")              # mov $32,%eax (flags preserved)
-	emit_int32(32)
-	emit(2, c"\x74\x02")          # jz +2 (zero input: keep the 32)
-	emit(2, c"\x89\xd0")          # mov %edx,%eax
+	else:
+		emit(3, c"\x0f\xbc\xd0")      # bsf %eax,%edx (ZF=1 when eax==0)
+		emit(1, c"\xb8")              # mov $32,%eax (flags preserved)
+		emit_int32(32)
+		emit(2, c"\x74\x02")          # jz +2 (zero input: keep the 32)
+		emit(2, c"\x89\xd0")          # mov %edx,%eax
 
 #################### end of 32-bit bit-manipulation intrinsics ####################
 
 
 void int3():
-	if (target_isa == 3):
-		ptx_trap()
-		return
-	if (target_isa == 2):
-		wasm_int3()
-		return
-	if (target_isa == 1):
-		a64(op(0xd4, 0x200000))   # brk #0
-		return
-	emit(1, c"\xcc") /* int3 */
+	if (target_isa == 3): ptx_trap()
+	elif (target_isa == 2): wasm_int3()
+	elif (target_isa == 1): a64(op(0xd4, 0x200000))   # brk #0
+	else: emit(1, c"\xcc") /* int3 */
 
 
 /* Bounds checks (issue #228): each helper emits a compare plus a
@@ -1816,128 +1442,39 @@ void int3():
    on a bare int3/brk #0. The in-bounds fall-through path clobbers only
    flags, like the old compare + skip + int3 form. */
 
-/* branch to region h when eax is negative: test eax,eax ; js rel32 */
-void bounds_branch_eax_negative(int h):
+void be_bounds_branch(int kind, int limit, int h):
 	if (target_isa == 2):
-		wasm_bounds_branch_eax_negative(ctrl_stack_pos - 1 - h)
+		wasm_bounds_branch(kind, limit, ctrl_stack_pos - 1 - h)
 		return
-	if (target_isa == 1):
-		arm64_bounds_branch_eax_negative(ctrl_val_stack[h])
-		be_ctrl_link(h)
-		return
-	emit_x64_opcode()
-	emit(2, c"\x85\xc0") /* test eax,eax */
-	emit(2, c"\x0f\x88") /* js rel32 (chain link) */
-	emit_int32(ctrl_val_stack[h])
-	be_ctrl_link(h)
-
-
-/* branch to region h when ebx is negative: test ebx,ebx ; js rel32 */
-void bounds_branch_ebx_negative(int h):
-	if (target_isa == 2):
-		wasm_bounds_branch_ebx_negative(ctrl_stack_pos - 1 - h)
-		return
-	if (target_isa == 1):
-		arm64_bounds_branch_ebx_negative(ctrl_val_stack[h])
-		be_ctrl_link(h)
-		return
-	emit_x64_opcode()
-	emit(2, c"\x85\xdb") /* test ebx,ebx */
-	emit(2, c"\x0f\x88") /* js rel32 (chain link) */
-	emit_int32(ctrl_val_stack[h])
-	be_ctrl_link(h)
-
-
-/* branch to region h when ebx > eax (signed): cmp eax,ebx ; jg rel32 */
-void bounds_branch_ebx_greater_eax(int h):
-	if (target_isa == 2):
-		wasm_bounds_branch_ebx_greater_eax(ctrl_stack_pos - 1 - h)
-		return
-	if (target_isa == 1):
-		arm64_bounds_branch_ebx_greater_eax(ctrl_val_stack[h])
-		be_ctrl_link(h)
-		return
-	emit_x64_opcode()
-	emit(2, c"\x39\xc3") /* cmp eax,ebx */
-	emit(2, c"\x0f\x8f") /* jg rel32 (chain link) */
-	emit_int32(ctrl_val_stack[h])
-	be_ctrl_link(h)
-
-
-/* branch to region h when ebx < eax (index in ebx, length in eax) */
-void bounds_skip_ebx_less_eax(int h):
-	if (target_isa == 2):
-		wasm_bounds_skip_ebx_less_eax(ctrl_stack_pos - 1 - h)
-		return
-	if (target_isa == 1):
-		arm64_bounds_skip_ebx_less_eax(ctrl_val_stack[h])
-		be_ctrl_link(h)
-		return
-	emit_x64_opcode()
-	emit(2, c"\x39\xc3") /* cmp eax,ebx */
-	emit(2, c"\x0f\x8c") /* jl rel32 (chain link) */
-	emit_int32(ctrl_val_stack[h])
-	be_ctrl_link(h)
-
-
-/* branch to region h when ebx <= eax */
-void bounds_skip_ebx_less_equal_eax(int h):
-	if (target_isa == 2):
-		wasm_bounds_skip_ebx_less_equal_eax(ctrl_stack_pos - 1 - h)
-		return
-	if (target_isa == 1):
-		arm64_bounds_skip_ebx_less_equal_eax(ctrl_val_stack[h])
-		be_ctrl_link(h)
-		return
-	emit_x64_opcode()
-	emit(2, c"\x39\xc3") /* cmp eax,ebx */
-	emit(2, c"\x0f\x8e") /* jle rel32 (chain link) */
-	emit_int32(ctrl_val_stack[h])
-	be_ctrl_link(h)
-
-
-/* branch to region h when eax <= limit */
-void bounds_skip_eax_less_equal_int32(int limit, int h):
-	if (target_isa == 2):
-		wasm_bounds_skip_eax_less_equal_int32(limit, ctrl_stack_pos - 1 - h)
-		return
-	if (target_isa == 1):
-		arm64_bounds_skip_eax_less_equal_int32(limit, ctrl_val_stack[h])
-		be_ctrl_link(h)
-		return
-	emit_x64_opcode()
-	emit(1, c"\x3d") /* cmp imm32,eax */
-	emit_int32(limit)
-	emit(2, c"\x0f\x8e") /* jle rel32 (chain link) */
-	emit_int32(ctrl_val_stack[h])
+	if (target_isa == 1): arm64_bounds_branch_kind(kind, limit, ctrl_val_stack[h])
+	else:
+		emit_x64_opcode()
+		if (kind == BOUNDS_EAX_NEG): emit(2, c"\x85\xc0") /* test eax,eax */
+		elif (kind == BOUNDS_EBX_NEG): emit(2, c"\x85\xdb") /* test ebx,ebx */
+		elif (kind == BOUNDS_EAX_LE_LIMIT):
+			emit(1, c"\x3d") /* cmp imm32,eax */
+			emit_int32(limit)
+		else: emit(2, c"\x39\xc3") /* cmp eax,ebx */
+		# js / js / jg / jl / jle / jle rel32 (chain link)
+		emit(2, c"\x0f\x88\x0f\x88\x0f\x8f\x0f\x8c\x0f\x8e\x0f\x8e" + 2 * kind)
+		emit_int32(ctrl_val_stack[h])
 	be_ctrl_link(h)
 
 void nop():
-	if (target_isa == 3):
-		return
-	if (target_isa == 2):
-		wasm_nop()
-		return
-	if (target_isa == 1):
-		a64(op(0xd5, 0x03201f))   # nop
-		return
-	emit(1, c"\x90") /* nop */
+	if (target_isa == 3): return
+	if (target_isa == 2): wasm_nop()
+	elif (target_isa == 1): a64(op(0xd5, 0x03201f))   # nop
+	else: emit(1, c"\x90") /* nop */
 
 
 void ret():
-	if (target_isa == 3):
-		ptx_ret()
-		return
-	if (target_isa == 2):
-		wasm_ret()
-		return
-	if (target_isa == 1):
+	if (target_isa == 3): ptx_ret()
+	elif (target_isa == 2): wasm_ret()
+	elif (target_isa == 1):
 		a64(op(0xf8, 0x40879e))   # ldr x30,[x28],#8  (pop the return-address slot)
-		if (arm64_pac):
-			a64(op(0xda, 0xc1139e))   # autia x30, x28
+		if (arm64_pac): a64(op(0xda, 0xc1139e))   # autia x30, x28
 		a64(op(0xd6, 0x5f03c0))   # ret
-		return
-	emit(1, c"\xc3") /* ret */
+	else: emit(1, c"\xc3") /* ret */
 
 # Framed arm64 return: x28 = x29 drops the body's words, the pair pop
 # restores the caller's x29 and the return address and leaves x28 as it
@@ -1945,8 +1482,7 @@ void ret():
 void be_arm64_frame_return():
 	a64(op(0xaa, 0x1d03fc))   # mov x28, x29
 	a64(op(0xa8, 0xc17b9d))   # ldp x29, x30, [x28], #16
-	if (arm64_pac):
-		a64(op(0xda, 0xc1139e))   # autia x30, x28
+	if (arm64_pac): a64(op(0xda, 0xc1139e))   # autia x30, x28
 	a64(op(0xd6, 0x5f03c0))   # ret
 
 
@@ -1961,8 +1497,7 @@ void be_return(int stack_words):
 		return
 	if ((target_isa == 0) && be_frame_active):
 		emit(1, c"\xc9") /* leave */
-	else:
-		be_pop(stack_words)
+	else: be_pop(stack_words)
 	ret()
 
 

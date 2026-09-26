@@ -48,7 +48,7 @@ lib/unix_fds.w), environment, umask and arguments. Output therefore
 streams live, byte for byte what 'bin/wexec ARGS' prints, and the exit
 status is the child's. The child starts from the daemon's warm state:
 the generated default manifest, already parsed, and the content hashes
-of every file an earlier build hashed (wexec_file_hash, which backs the
+of every file an earlier build hashed (deps_file_hash, which backs the
 import-closure checks of the deps-driven cache keys). Cache keys, stamps
 and bin/.wexec_deps_cache are wexec's own, unchanged, so a daemon build
 and a one-shot build agree on every hit. The client forwards SIGINT/
@@ -129,10 +129,11 @@ import lib.unix_fds
 import structures.string
 import structures.json
 import tools.wexec
+import lib.str
+import lib.dir
 
 
-int wbd_protocol():
-	return 2
+const int wbd_protocol = 2
 
 
 /* ---- small helpers ---- */
@@ -156,38 +157,15 @@ char* wbd_arg(int argv, int i):
 	return *slot
 
 
-int wbd_prefix_eq(char* a, char* b, int n):
-	int i = 0
-	while (i < n):
-		if (a[i] != b[i]):
-			return 0
-		if (a[i] == 0):
-			return 0
-		i = i + 1
-	return 1
-
-
-int wbd_contains(char* text, char* needle):
-	int n = strlen(needle)
-	int i = 0
-	while (text[i] != 0):
-		if (wbd_prefix_eq(text + i, needle, n)):
-			return 1
-		i = i + 1
-	return 0
-
-
 # "./x/./y" style prefixes are stripped so closure entries and event
 # paths compare as the plain repo-relative spelling bin/wv2 deps prints.
 char* wbd_strip_dot(char* path):
-	while ((path[0] == '.') && (path[1] == '/')):
-		path = path + 2
+	while ((path[0] == '.') && (path[1] == '/')): path = path + 2
 	return path
 
 
 char* wbd_join(char* dir, char* name):
-	if (dir[0] == 0):
-		return strclone(name)
+	if (dir[0] == 0): return strclone(name)
 	string_builder* s = string_new()
 	string_append(s, dir)
 	string_append_char(s, '/')
@@ -200,34 +178,26 @@ char* wbd_join(char* dir, char* name):
 char* wbd_cwd():
 	char* buf = malloc(4096)
 	int n = getcwd(buf, 4096)
-	if (n < 0):
-		buf[0] = 0
+	if (n < 0): buf[0] = 0
 	return buf
 
 
 int wbd_is_arch_word(char* word):
-	if (strcmp(word, c"x64") == 0):
-		return 1
-	if (strcmp(word, c"arm64") == 0):
-		return 1
-	if (strcmp(word, c"arm64_darwin") == 0):
-		return 1
-	if (strcmp(word, c"win64") == 0):
-		return 1
-	if (strcmp(word, c"wasm") == 0):
-		return 1
+	if (strcmp(word, c"x64") == 0): return 1
+	if (strcmp(word, c"arm64") == 0): return 1
+	if (strcmp(word, c"arm64_darwin") == 0): return 1
+	if (strcmp(word, c"win64") == 0): return 1
+	if (strcmp(word, c"wasm") == 0): return 1
 	return 0
 
 
 # sub = 0: no subcommand word (bin/wexec takes its arguments directly).
 char** wbd_argv_from(char* tool, char* sub, list[char*] args):
 	int first = 2
-	if (sub == 0):
-		first = 1
+	if (sub == 0): first = 1
 	char** argv = strv_new(args.length + first)
 	strv_set(argv, 0, tool)
-	if (sub != 0):
-		strv_set(argv, 1, sub)
+	if (sub != 0): strv_set(argv, 1, sub)
 	int i = 0
 	while (i < args.length):
 		strv_set(argv, i + first, args[i])
@@ -314,49 +284,26 @@ char* wbd_manifest_stderr          # what generating the warm manifest printed
 
 
 int wbd_watch_mask():
-	return IN_MODIFY() | IN_CLOSE_WRITE() | IN_MOVED_FROM() | IN_MOVED_TO() | IN_CREATE() | IN_DELETE() | IN_DELETE_SELF() | IN_MOVE_SELF()
-
-
-int wbd_load_uint16(char* p):
-	return (p[0] & 255) + ((p[1] & 255) << 8)
+	return IN_MODIFY | IN_CLOSE_WRITE | IN_MOVED_FROM() | IN_MOVED_TO() | IN_CREATE | IN_DELETE | IN_DELETE_SELF() | IN_MOVE_SELF
 
 
 # Adds a watch for rel ("" = the root) and, recursively, every
-# non-dot subdirectory under it (the same getdents record walk
-# tools/wbuildgen.w uses).
+# non-dot subdirectory under it.
 void wbd_watch_tree(char* rel):
 	char* path = rel
-	if (rel[0] == 0):
-		path = c"."
-	int wd = inotify_add_watch(wbd_inotify_fd, path, wbd_watch_mask() | IN_ONLYDIR())
-	if (wd < 0):
-		return
-	if ((wd in wbd_watch_dirs) == 0):
-		wbd_watch_count = wbd_watch_count + 1
+	if (rel[0] == 0): path = c"."
+	int wd = inotify_add_watch(wbd_inotify_fd, path, wbd_watch_mask() | IN_ONLYDIR)
+	if (wd < 0): return
+	if ((wd in wbd_watch_dirs) == 0): wbd_watch_count = wbd_watch_count + 1
 	wbd_watch_dirs[wd] = strclone(rel)
-	# 65536 = O_DIRECTORY
-	int fd = open(path, 65536, 0)
-	if (fd < 0):
-		return
-	int buffer_size = 32768
-	char* buffer = malloc(buffer_size)
-	list[char*] children = new list[char*]
-	int n = getdents(fd, buffer, buffer_size)
-	while (n > 0):
-		int off = 0
-		while (off < n):
-			char* entry = buffer + off
-			int reclen = wbd_load_uint16(entry + 2 * __word_size__)
-			char* entry_name = entry + 2 * __word_size__ + 2
-			int kind = entry[reclen - 1] & 255
-			if ((kind == 4) && (entry_name[0] != '.')):
-				children.push(wbd_join(rel, entry_name))
-			off = off + reclen
-		n = getdents(fd, buffer, buffer_size)
-	free(buffer)
-	close(fd)
-	for char* child in children:
-		wbd_watch_tree(child)
+	list[dir_entry*] entries = dir_read(path)
+	if (entries == 0): return
+	for dir_entry* e in entries:
+		if ((e.kind == DIR_KIND_DIR) && (e.name[0] != '.')):
+			char* child = wbd_join(rel, e.name)
+			wbd_watch_tree(child)
+			free(child)
+	dir_entries_free(entries)
 
 
 void wbd_on_inotify(int fd, int revents, void* ctx);
@@ -368,23 +315,23 @@ void wbd_begin_stop();
 # A statx-based identity of a file's current content: size, inode,
 # mtime and ctime (seconds and nanoseconds), or "-" when it is missing.
 char* wbd_file_sig(char* path):
-	char* buf = malloc(FILE_STATX_BUF_SIZE())
-	int err = statx(path, 0, FILE_STATX_BASIC_STATS(), buf)
+	char* buf = malloc(FILE_STATX_BUF_SIZE)
+	int err = statx(path, 0, FILE_STATX_BASIC_STATS, buf)
 	if (err != 0):
 		free(buf)
 		return strclone(c"-")
 	string_builder* s = string_new()
-	string_append_int(s, load_word(buf + FILE_STATX_SIZE_OFFSET()))
+	string_append_int(s, load_word(buf + FILE_STATX_SIZE_OFFSET))
 	string_append_char(s, ':')
-	string_append_int(s, load_word(buf + FILE_STATX_INO_OFFSET()))
+	string_append_int(s, load_word(buf + FILE_STATX_INO_OFFSET))
 	string_append_char(s, ':')
-	string_append_int(s, load_word(buf + FILE_STATX_MTIME_OFFSET()))
+	string_append_int(s, load_word(buf + FILE_STATX_MTIME_OFFSET))
 	string_append_char(s, '.')
-	string_append_int(s, load_int32(buf + FILE_STATX_MTIME_OFFSET() + 8))
+	string_append_int(s, load_int32(buf + FILE_STATX_MTIME_OFFSET + 8))
 	string_append_char(s, ':')
-	string_append_int(s, load_word(buf + FILE_STATX_CTIME_OFFSET()))
+	string_append_int(s, load_word(buf + FILE_STATX_CTIME_OFFSET))
 	string_append_char(s, '.')
-	string_append_int(s, load_int32(buf + FILE_STATX_CTIME_OFFSET() + 8))
+	string_append_int(s, load_int32(buf + FILE_STATX_CTIME_OFFSET + 8))
 	free(buf)
 	char* sig = s.data
 	free(s)
@@ -395,54 +342,47 @@ char* wbd_file_sig(char* path):
 # nothing absolute, nothing reaching out with '..', nothing under an
 # unwatched dot directory, and one spelling per file ('./x' is not).
 int wbd_hash_path_ok(char* path):
-	if ((path[0] == 0) || (path[0] == '/') || (path[0] == '.')):
-		return 0
-	if (wbd_contains(path, c"..") || wbd_contains(path, c"/.") || wbd_contains(path, c"//")):
-		return 0
+	if ((path[0] == 0) || (path[0] == '/') || (path[0] == '.')): return 0
+	if (contains(path, c"..") || contains(path, c"/.") || contains(path, c"//")): return 0
 	return 1
 
 
 void wbd_hashes_clear():
 	wbd_seq = wbd_seq + 1
 	wbd_clear_seq = wbd_seq
-	wexec_file_hashes = new map[char*, char*]
+	deps_file_hashes = new map[char*, char*]
 	wbd_hash_sig = new map[char*, char*]
 
 
 void wbd_hash_forget(char* path):
 	wbd_seq = wbd_seq + 1
-	wexec_file_hashes.remove(path)
+	deps_file_hashes.remove(path)
 	wbd_hash_sig.remove(path)
-	if (wbd_builds_active > 0):
-		wbd_touched[strclone(path)] = wbd_seq
+	if (wbd_builds_active > 0): wbd_touched[strclone(path)] = wbd_seq
 
 
 # A directory appeared, vanished or moved: every warm hash under it goes.
 void wbd_hashes_forget_under(char* dir):
 	wbd_seq = wbd_seq + 1
 	char* prefix = strjoin(dir, c"/")
-	if (dir[0] == 0):
-		prefix = strclone(c"")
-	list[char*] paths = wexec_file_hashes.keys()
+	if (dir[0] == 0): prefix = strclone(c"")
+	list[char*] paths = deps_file_hashes.keys()
 	for char* path in paths:
 		if (starts_with(path, prefix)):
-			wexec_file_hashes.remove(path)
+			deps_file_hashes.remove(path)
 			wbd_hash_sig.remove(path)
 	if (wbd_builds_active > 0):
 		wbd_touched_dirs.push(prefix)
 		wbd_touched_dir_seqs.push(wbd_seq)
-	else:
-		free(prefix)
+	else: free(prefix)
 
 
 # Did an event since seq drop path (itself, or a directory above it)?
 int wbd_touched_since(char* path, int seq):
-	if (wbd_touched.get(path, 0) > seq):
-		return 1
+	if (wbd_touched.get(path, 0) > seq): return 1
 	int i = 0
 	while (i < wbd_touched_dirs.length):
-		if ((wbd_touched_dir_seqs[i] > seq) && starts_with(path, wbd_touched_dirs[i])):
-			return 1
+		if ((wbd_touched_dir_seqs[i] > seq) && starts_with(path, wbd_touched_dirs[i])): return 1
 		i = i + 1
 	return 0
 
@@ -458,12 +398,12 @@ void wbd_manifest_drop():
 # Before a build forks: re-stat every warm hash and drop the ones whose
 # file changed without an inotify event reaching us.
 void wbd_hashes_revalidate():
-	list[char*] paths = wexec_file_hashes.keys()
+	list[char*] paths = deps_file_hashes.keys()
 	for char* path in paths:
 		char* sig = wbd_file_sig(path)
 		char* known = wbd_hash_sig.get(path, 0)
 		if ((known == 0) || (strcmp(known, sig) != 0)):
-			wexec_file_hashes.remove(path)
+			deps_file_hashes.remove(path)
 			wbd_hash_sig.remove(path)
 		free(sig)
 
@@ -479,33 +419,28 @@ void wbd_rewatch():
 	wbd_watch_dirs = new map[int, char*]
 	wbd_watch_count = 0
 	wbd_rewatch_pending = 0
-	if (wbd_inotify_fd < 0):
-		return
+	if (wbd_inotify_fd < 0): return
 	wbd_watch_tree(c"")
-	event_loop_add_fd(wbd_loop, wbd_inotify_fd, poll_in(), wbd_on_inotify, 0)
+	event_loop_add_fd(wbd_loop, wbd_inotify_fd, poll_in, wbd_on_inotify, 0)
 
 
 void wbd_entry_free(wbd_entry* e):
 	free(e.key)
 	free(e.stdout_text)
 	free(e.stderr_text)
-	for char* p in e.closure:
-		free(p)
+	for char* p in e.closure: free(p)
 	free(cast(char*, e))
 
 
 void wbd_clear_all():
-	if (wbd_cache.length > 0):
-		wbd_invalidations = wbd_invalidations + wbd_cache.length
-	for wbd_entry* e in wbd_cache:
-		wbd_entry_free(e)
+	if (wbd_cache.length > 0): wbd_invalidations = wbd_invalidations + wbd_cache.length
+	for wbd_entry* e in wbd_cache: wbd_entry_free(e)
 	wbd_cache = new list[wbd_entry*]
 
 
 int wbd_closure_has(wbd_entry* e, char* path):
 	for char* p in e.closure:
-		if (strcmp(p, path) == 0):
-			return 1
+		if (strcmp(p, path) == 0): return 1
 	return 0
 
 
@@ -516,8 +451,7 @@ void wbd_invalidate_path(char* path):
 		if (wbd_closure_has(e, path)):
 			wbd_invalidations = wbd_invalidations + 1
 			wbd_entry_free(e)
-		else:
-			kept.push(e)
+		else: kept.push(e)
 	wbd_cache = kept
 
 
@@ -531,11 +465,9 @@ wbd_entry* wbd_lookup(char* key):
 /* ---- test_changed prewarm (bin/wtest cache -f <manifest>) ---- */
 
 int wbd_prewarm_running():
-	if (wbd_prewarm_proc == 0):
-		return 0
+	if (wbd_prewarm_proc == 0): return 0
 	int status = process_try_wait(wbd_prewarm_proc)
-	if (status == process_status_running()):
-		return 1
+	if (status == process_status_running): return 1
 	process_free(wbd_prewarm_proc)
 	wbd_prewarm_proc = 0
 	wbd_prewarm_runs = wbd_prewarm_runs + 1
@@ -543,8 +475,7 @@ int wbd_prewarm_running():
 
 
 void wbd_prewarm_wait():
-	if (wbd_prewarm_proc == 0):
-		return
+	if (wbd_prewarm_proc == 0): return
 	process_wait(wbd_prewarm_proc)
 	process_free(wbd_prewarm_proc)
 	wbd_prewarm_proc = 0
@@ -571,9 +502,9 @@ void wbd_prewarm_fire(int id, void* ctx):
 		strv_set(argv, 2, c"-f")
 		strv_set(argv, 3, wbd_prewarm_manifest)
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_null()
-	opts.stdout_mode = process_null()
-	opts.stderr_mode = process_null()
+	opts.stdin_mode = process_null
+	opts.stdout_mode = process_null
+	opts.stderr_mode = process_null
 	wbd_prewarm_proc = process_spawn(c"bin/wtest", argv, opts)
 	free(cast(char*, opts))
 	free(cast(char*, argv))
@@ -584,33 +515,27 @@ void wbd_prewarm_fire(int id, void* ctx):
 # Debounced: an editor save is often several events, a branch switch
 # hundreds; one prewarm runs after the burst settles.
 void wbd_prewarm_schedule(int delay_ms):
-	if (wbd_prewarm_enabled == 0):
-		return
-	if (wbd_prewarm_timer != 0):
-		event_loop_cancel_timer(wbd_loop, wbd_prewarm_timer)
+	if (wbd_prewarm_enabled == 0): return
+	if (wbd_prewarm_timer != 0): event_loop_cancel_timer(wbd_loop, wbd_prewarm_timer)
 	wbd_prewarm_timer = event_loop_add_timer(wbd_loop, delay_ms, wbd_prewarm_fire, 0)
 
 
 char* wbd_prewarm_state():
-	if (wbd_prewarm_enabled == 0):
-		return c"disabled"
-	if (wbd_prewarm_running()):
-		return c"running"
-	if (wbd_prewarm_timer != 0):
-		return c"pending"
+	if (wbd_prewarm_enabled == 0): return c"disabled"
+	if (wbd_prewarm_running()): return c"running"
+	if (wbd_prewarm_timer != 0): return c"pending"
 	return c"idle"
 
 
 /* ---- inotify event handling ---- */
 
 int wbd_in_bin(char* dir):
-	if (strcmp(dir, c"bin") == 0):
-		return 1
+	if (strcmp(dir, c"bin") == 0): return 1
 	return starts_with(dir, c"bin/")
 
 
 void wbd_handle_event(inotify_event* ev):
-	if (ev.mask & IN_Q_OVERFLOW()):
+	if (ev.mask & IN_Q_OVERFLOW):
 		wbd_rewatch_pending = 1
 		wbd_clear_all()
 		wbd_hashes_clear()
@@ -618,46 +543,37 @@ void wbd_handle_event(inotify_event* ev):
 		wbd_prewarm_schedule(1500)
 		return
 	char* dir = wbd_watch_dirs.get(ev.wd, 0)
-	if (dir == 0):
-		return
+	if (dir == 0): return
 	if (ev.name_length == 0):
 		# The watched directory itself went away or moved.
-		if (ev.mask & (IN_DELETE_SELF() | IN_MOVE_SELF())):
-			if (ev.mask & IN_MOVE_SELF()):
-				wbd_rewatch_pending = 1
+		if (ev.mask & (IN_DELETE_SELF() | IN_MOVE_SELF)):
+			if (ev.mask & IN_MOVE_SELF): wbd_rewatch_pending = 1
 			wbd_clear_all()
 			wbd_hashes_forget_under(dir)
-			if (wbd_in_bin(dir) == 0):
-				wbd_manifest_drop()
+			if (wbd_in_bin(dir) == 0): wbd_manifest_drop()
 		return
-	int changing = IN_CREATE() | IN_DELETE() | IN_MOVED_FROM() | IN_MOVED_TO()
-	if (ev.mask & IN_ISDIR()):
-		if (ev.name[0] == '.'):
-			return
+	int changing = IN_CREATE | IN_DELETE | IN_MOVED_FROM() | IN_MOVED_TO()
+	if (ev.mask & IN_ISDIR):
+		if (ev.name[0] == '.'): return
 		char* sub = wbd_join(dir, ev.name)
 		if (ev.mask & changing):
 			# Any path under it may have appeared or vanished (a file
 			# created in a new directory before its watch exists sends
 			# no event of its own).
 			wbd_hashes_forget_under(sub)
-			if (wbd_in_bin(dir) == 0):
-				wbd_manifest_drop()
-		if (ev.mask & IN_CREATE()):
-			wbd_watch_tree(sub)
-		if (ev.mask & (IN_MOVED_FROM() | IN_MOVED_TO())):
-			wbd_rewatch_pending = 1
+			if (wbd_in_bin(dir) == 0): wbd_manifest_drop()
+		if (ev.mask & IN_CREATE): wbd_watch_tree(sub)
+		if (ev.mask & (IN_MOVED_FROM() | IN_MOVED_TO())): wbd_rewatch_pending = 1
 		free(sub)
 		if (ev.mask & changing):
 			wbd_clear_all()
-			if (wbd_in_bin(dir) == 0):
-				wbd_prewarm_schedule(1500)
+			if (wbd_in_bin(dir) == 0): wbd_prewarm_schedule(1500)
 		return
 	int bin = wbd_in_bin(dir)
 	char* event_path = wbd_join(dir, ev.name)
 	wbd_hash_forget(event_path)
 	free(event_path)
-	if (bin == 0):
-		wbd_manifest_drop()
+	if (bin == 0): wbd_manifest_drop()
 	if (ends_with(ev.name, c".w")):
 		char* path = wbd_join(dir, ev.name)
 		if (ev.mask & changing):
@@ -665,13 +581,11 @@ void wbd_handle_event(inotify_event* ev):
 			# import resolves to anywhere, not just in closures that
 			# already named this path.
 			wbd_clear_all()
-		else:
-			wbd_invalidate_path(path)
+		else: wbd_invalidate_path(path)
 		free(path)
 		# Sources under bin/ are scratch files of tests and tools,
 		# never manifest roots worth re-warming bin/wtest for.
-		if (bin == 0):
-			wbd_prewarm_schedule(1500)
+		if (bin == 0): wbd_prewarm_schedule(1500)
 		return
 	if (bin):
 		if (strcmp(dir, c"bin") == 0):
@@ -680,20 +594,16 @@ void wbd_handle_event(inotify_event* ev):
 				wbd_prewarm_schedule(1500)
 			if (wbd_self_name != 0):
 				if (strcmp(ev.name, wbd_self_name) == 0):
-					if (ev.mask & (IN_MOVED_TO() | IN_CREATE() | IN_CLOSE_WRITE())):
-						wbd_stale = 1
+					if (ev.mask & (IN_MOVED_TO() | IN_CREATE | IN_CLOSE_WRITE)): wbd_stale = 1
 			# The build RPC runs the executor compiled into this binary;
 			# a rebuilt bin/wexec means the one-shot command it stands in
 			# for may have moved on.
 			if (strcmp(ev.name, c"wexec") == 0):
-				if (ev.mask & (IN_MOVED_TO() | IN_CREATE() | IN_CLOSE_WRITE())):
-					wbd_stale = 1
+				if (ev.mask & (IN_MOVED_TO() | IN_CREATE | IN_CLOSE_WRITE)): wbd_stale = 1
 		return
 	# C-import headers are the compiler's only non-.w inputs.
-	if (ends_with(ev.name, c".h") || ends_with(ev.name, c".c")):
-		wbd_clear_all()
-	if (strcmp(ev.name, c"build.base.json") == 0):
-		wbd_prewarm_schedule(1500)
+	if (ends_with(ev.name, c".h") || ends_with(ev.name, c".c")): wbd_clear_all()
+	if (strcmp(ev.name, c"build.base.json") == 0): wbd_prewarm_schedule(1500)
 
 
 # Reads and applies every queued event without blocking. Called from
@@ -701,21 +611,18 @@ void wbd_handle_event(inotify_event* ev):
 # an edit that finished before the request was sent is always seen
 # before the answer is chosen.
 void wbd_drain_events():
-	if (wbd_inotify_fd < 0):
-		return
-	char* buf = malloc(INOTIFY_BUF_SIZE())
+	if (wbd_inotify_fd < 0): return
+	char* buf = malloc(INOTIFY_BUF_SIZE)
 	inotify_event ev
-	int n = read(wbd_inotify_fd, buf, INOTIFY_BUF_SIZE())
+	int n = read(wbd_inotify_fd, buf, INOTIFY_BUF_SIZE)
 	while (n > 0):
 		int off = 0
 		while ((off >= 0) && (off < n)):
 			off = inotify_event_parse(buf, n, off, &ev)
-			if (off >= 0):
-				wbd_handle_event(&ev)
-		n = read(wbd_inotify_fd, buf, INOTIFY_BUF_SIZE())
+			if (off >= 0): wbd_handle_event(&ev)
+		n = read(wbd_inotify_fd, buf, INOTIFY_BUF_SIZE)
 	free(buf)
-	if (wbd_rewatch_pending):
-		wbd_rewatch()
+	if (wbd_rewatch_pending): wbd_rewatch()
 	if (wbd_stale && (wbd_stopping == 0)):
 		wbd_err(c"wbuildd: own binary (or bin/wexec) replaced; exiting once in-flight builds finish\n")
 		wbd_begin_stop()
@@ -735,8 +642,7 @@ void wbd_touch():
 # (and with no prewarm in flight) exits on its own -- the safety net a
 # test uses so a failed run cannot leave a daemon behind.
 void wbd_idle_check(int id, void* ctx):
-	if (wbd_prewarm_running() || (wbd_builds_active > 0) || wbd_stopping):
-		return
+	if (wbd_prewarm_running() || (wbd_builds_active > 0) || wbd_stopping): return
 	if (time_monotonic_ms() - wbd_last_activity_ms > wbd_idle_timeout_ms):
 		wbd_err(c"wbuildd: idle timeout; exiting\n")
 		wbd_begin_stop()
@@ -764,15 +670,15 @@ list[char*] wbd_request_args(json_value* params, char** why):
 		*why = c"params must be an object"
 		return 0
 	json_value* protocol = json_object_get(params, c"protocol")
-	if ((protocol == 0) || (protocol.type != json_type_int()) || (protocol.int_value != wbd_protocol())):
+	if ((protocol == 0) || (protocol.type != json_type_int()) || (protocol.int_value != wbd_protocol)):
 		*why = c"protocol mismatch"
 		return 0
 	json_value* cwd = json_object_get(params, c"cwd")
 	if ((cwd == 0) || (cwd.type != json_type_string()) || (strcmp(cwd.string_value, wbd_root) != 0)):
 		*why = c"client working directory differs from the daemon's root"
 		return 0
-	json_value* args = json_object_get(params, c"args")
-	if ((args == 0) || (args.type != json_type_array())):
+	json_value* args = jfield_array(params, c"args")
+	if (args == 0):
 		*why = c"args must be an array"
 		return 0
 	list[char*] out = new list[char*]
@@ -810,31 +716,24 @@ list[char*] wbd_parse_closure(char* text):
 		if ((c == 10) || (c == 0)):
 			if (line.length > 0):
 				char* p = wbd_strip_dot(line.data)
-				if ((p[0] == '/') || wbd_contains(p, c"..")):
-					ok = 0
-				else:
-					closure.push(strclone(p))
+				if ((p[0] == '/') || contains(p, c"..")): ok = 0
+				else: closure.push(strclone(p))
 			string_clear(line)
-			if (c == 0):
-				break
-		else:
-			string_append_char(line, c)
+			if (c == 0): break
+		else: string_append_char(line, c)
 		i = i + 1
 	string_free(line)
-	if ((ok == 0) || (closure.length == 0)):
-		return 0
+	if ((ok == 0) || (closure.length == 0)): return 0
 	return closure
 
 
 list[char*] wbd_clone_list(list[char*] items):
 	list[char*] copy = new list[char*]
-	for char* p in items:
-		copy.push(strclone(p))
+	for char* p in items: copy.push(strclone(p))
 	return copy
 
 
-int wbd_cache_limit():
-	return 256
+const int wbd_cache_limit = 256
 
 
 # Bounded memo: past the limit the oldest answer goes (it is only
@@ -850,8 +749,7 @@ void wbd_evict_oldest():
 
 
 void wbd_store(char* key, process_result* result, list[char*] closure):
-	if (wbd_cache.length >= wbd_cache_limit()):
-		wbd_evict_oldest()
+	if (wbd_cache.length >= wbd_cache_limit): wbd_evict_oldest()
 	wbd_entry* e = new wbd_entry()
 	e.key = key
 	e.stdout_text = strclone(result.stdout_text)
@@ -870,8 +768,7 @@ process_result* wbd_run_tool(char* tool, char* sub, list[char*] args, char* stdi
 
 int wbd_closure_has_path(list[char*] closure, char* path):
 	for char* p in closure:
-		if (strcmp(p, path) == 0):
-			return 1
+		if (strcmp(p, path) == 0): return 1
 	return 0
 
 
@@ -885,18 +782,14 @@ list[char*] wbd_closure_for(list[char*] args, char* request_key, process_result*
 	char* root = 0
 	int roots = 0
 	for char* a in args:
-		if (wbd_is_arch_word(a)):
-			arch = a
+		if (wbd_is_arch_word(a)): arch = a
 		else if ((a[0] != '-') && ends_with(a, c".w")):
 			root = a
 			roots = roots + 1
-	if (roots != 1):
-		return 0
-	if ((root[0] == '/') || wbd_contains(root, c"..")):
-		return 0
+	if (roots != 1): return 0
+	if ((root[0] == '/') || contains(root, c"..")): return 0
 	list[char*] deps_args = new list[char*]
-	if (arch != 0):
-		deps_args.push(arch)
+	if (arch != 0): deps_args.push(arch)
 	deps_args.push(root)
 	char* key = wbd_key(c"deps", deps_args)
 	wbd_entry* e = wbd_lookup(key)
@@ -908,27 +801,22 @@ list[char*] wbd_closure_for(list[char*] args, char* request_key, process_result*
 	if (strcmp(key, request_key) == 0):
 		result = request_result
 		owned = 0
-	else:
-		result = wbd_run_tool(c"bin/wv2", c"deps", deps_args, 0, 600000)
+	else: result = wbd_run_tool(c"bin/wv2", c"deps", deps_args, 0, 600000)
 	if (result == 0):
 		free(key)
 		return 0
 	list[char*] closure = 0
-	if (result.status == 0):
-		closure = wbd_parse_closure(result.stdout_text)
+	if (result.status == 0): closure = wbd_parse_closure(result.stdout_text)
 	# The root itself must be in its own closure, or a path spelling
 	# mismatch would make edits to it invisible.
 	if (closure != 0):
-		if (wbd_closure_has_path(closure, wbd_strip_dot(root)) == 0):
-			closure = 0
+		if (wbd_closure_has_path(closure, wbd_strip_dot(root)) == 0): closure = 0
 	if (closure == 0):
-		if (owned):
-			process_result_free(result)
+		if (owned): process_result_free(result)
 		free(key)
 		return 0
 	wbd_store(key, result, closure)
-	if (owned):
-		process_result_free(result)
+	if (owned): process_result_free(result)
 	return wbd_clone_list(closure)
 
 
@@ -939,8 +827,7 @@ json_value* wbd_serve_wv2(char* sub, json_value* params):
 	wbd_drain_events()
 	char* why = 0
 	list[char*] args = wbd_request_args(params, &why)
-	if (args == 0):
-		return wbd_error_result(why)
+	if (args == 0): return wbd_error_result(why)
 	for char* a in args:
 		# Anything that writes files or runs programs is not a query.
 		if (starts_with(a, c"-o") || starts_with(a, c"--ptx") || starts_with(a, c"--debug")):
@@ -965,12 +852,9 @@ json_value* wbd_serve_wv2(char* sub, json_value* params):
 	if (again == 0):
 		list[char*] closure = wbd_closure_for(args, key, result)
 		again = wbd_lookup(key)
-		if ((closure != 0) && (again == 0)):
-			wbd_store(key, result, closure)
-		else:
-			free(key)
-	else:
-		free(key)
+		if ((closure != 0) && (again == 0)): wbd_store(key, result, closure)
+		else: free(key)
+	else: free(key)
 	json_value* answer = wbd_output_result(result.stdout_text, result.stderr_text, result.status, 0)
 	process_result_free(result)
 	return answer
@@ -994,20 +878,17 @@ json_value* wbd_handle_test_changed(json_value* params, void* ctx):
 	wbd_drain_events()
 	char* why = 0
 	list[char*] args = wbd_request_args(params, &why)
-	if (args == 0):
-		return wbd_error_result(why)
+	if (args == 0): return wbd_error_result(why)
 	for char* a in args:
 		if (strcmp(a, c"--run") == 0):
 			return wbd_error_result(c"--run executes builds; not served by the read-only daemon")
 	char* stdin_text = 0
 	json_value* input = json_object_get(params, c"stdin")
-	if ((input != 0) && (input.type == json_type_string())):
-		stdin_text = input.string_value
+	if ((input != 0) && (input.type == json_type_string())): stdin_text = input.string_value
 	wbd_prewarm_wait()
 	wbd_misses = wbd_misses + 1
 	process_result* result = wbd_run_tool(c"bin/wtest", c"changed", args, stdin_text, 0)
-	if (result == 0):
-		return wbd_error_result(c"could not run bin/wtest")
+	if (result == 0): return wbd_error_result(c"could not run bin/wtest")
 	if (result.status < 0):
 		process_result_free(result)
 		return wbd_error_result(c"bin/wtest could not be waited for")
@@ -1020,7 +901,7 @@ json_value* wbd_handle_status(json_value* params, void* ctx):
 	wbd_touch()
 	wbd_drain_events()
 	json_value* result = json_object()
-	json_object_set(result, c"protocol", json_int(wbd_protocol()))
+	json_object_set(result, c"protocol", json_int(wbd_protocol))
 	json_object_set(result, c"pid", json_int(getpid()))
 	json_object_set(result, c"root", json_string(wbd_root))
 	json_object_set(result, c"socket", json_string(wbd_socket_path))
@@ -1035,7 +916,7 @@ json_value* wbd_handle_status(json_value* params, void* ctx):
 	json_object_set(result, c"prewarm_runs", json_int(wbd_prewarm_runs))
 	json_object_set(result, c"builds", json_int(wbd_builds_done))
 	json_object_set(result, c"builds_active", json_int(wbd_builds_active))
-	json_object_set(result, c"warm_hashes", json_int(wexec_file_hashes.length))
+	json_object_set(result, c"warm_hashes", json_int(deps_file_hashes.length))
 	json_object_set(result, c"hashes_merged", json_int(wbd_hashes_merged))
 	json_object_set(result, c"warm_manifest", json_bool(wexec_warm_manifest != 0))
 	return result
@@ -1057,15 +938,13 @@ void wbd_begin_stop():
 			close(wbd_listen_fd)
 			wbd_listen_fd = -1
 			unlink(wbd_socket_path)
-	if (wbd_builds_active == 0):
-		event_loop_stop(wbd_loop)
+	if (wbd_builds_active == 0): event_loop_stop(wbd_loop)
 
 
 /* ---- connections ---- */
 
 void wbd_conn_close(wbd_conn* c):
-	if (c.open == 0):
-		return
+	if (c.open == 0): return
 	c.open = 0
 	if (c.watching):
 		event_loop_remove_fd(wbd_loop, c.fd)
@@ -1073,13 +952,11 @@ void wbd_conn_close(wbd_conn* c):
 	frame_reader_free(c.reader)
 	c.reader = 0
 	close(c.fd)
-	for int fd in c.fds:
-		close(fd)
+	for int fd in c.fds: close(fd)
 	c.fds = new list[int]
 	list[wbd_conn*] kept = new list[wbd_conn*]
 	for wbd_conn* other in wbd_conns:
-		if (other != c):
-			kept.push(other)
+		if (other != c): kept.push(other)
 	wbd_conns = kept
 
 
@@ -1101,13 +978,9 @@ int wbd_conn_fill(wbd_conn* c):
 	int* got = malloc(8 * __word_size__)
 	int count = 0
 	int n = unix_recv_fds(c.fd, r.buffer + r.length, r.capacity - r.length, got, 8, &count)
-	int i = 0
-	while (i < count):
-		c.fds.push(got[i])
-		i = i + 1
+	for i in range(count): c.fds.push(got[i])
 	free(cast(char*, got))
-	if (n > 0):
-		r.length = r.length + n
+	if (n > 0): r.length = r.length + n
 	return n
 
 
@@ -1124,8 +997,7 @@ void wbd_dispatch(wbd_conn* c, char* body):
 			wbd_start_build(c, message)
 			json_free(message)
 			return
-	if (message != 0):
-		json_free(message)
+	if (message != 0): json_free(message)
 	jsonrpc_handle_body(wbd_server, body, c.fd)
 
 
@@ -1133,14 +1005,12 @@ void wbd_on_conn_readable(int fd, int revents, void* ctx):
 	wbd_conn* c = cast(wbd_conn*, ctx)
 	int count = wbd_conn_fill(c)
 	# EAGAIN (-11) / EINTR (-4): nothing to read after all.
-	if ((count == -11) || (count == -4)):
-		return
+	if ((count == -11) || (count == -4)): return
 	int drained = 0
 	while ((drained == 0) && c.open):
 		int length = 0
 		char* body = frame_take_buffered_message(c.reader, &length)
-		if (body == 0):
-			drained = 1
+		if (body == 0): drained = 1
 		else:
 			wbd_dispatch(c, body)
 			free(body)
@@ -1152,10 +1022,8 @@ void wbd_on_conn_readable(int fd, int revents, void* ctx):
 			if (c.watching):
 				event_loop_remove_fd(wbd_loop, c.fd)
 				c.watching = 0
-		else:
-			wbd_conn_close(c)
-	if (wbd_server.running == 0):
-		wbd_begin_stop()
+		else: wbd_conn_close(c)
+	if (wbd_server.running == 0): wbd_begin_stop()
 
 
 # Accepted clients stay BLOCKING with a send timeout: lib/json_rpc.w's
@@ -1164,8 +1032,7 @@ void wbd_on_conn_readable(int fd, int revents, void* ctx):
 # first EAGAIN inside write_all.
 void wbd_on_listener(int fd, int revents, void* ctx):
 	int client = socket_accept_connection(fd)
-	if (client < 0):
-		return
+	if (client < 0): return
 	socket_set_send_timeout(client, 30000)
 	wbd_conn* c = new wbd_conn()
 	c.fd = client
@@ -1175,7 +1042,7 @@ void wbd_on_listener(int fd, int revents, void* ctx):
 	c.watching = 1
 	c.building = 0
 	wbd_conns.push(c)
-	event_loop_add_fd(wbd_loop, client, poll_in(), wbd_on_conn_readable, cast(void*, c))
+	event_loop_add_fd(wbd_loop, client, poll_in, wbd_on_conn_readable, cast(void*, c))
 
 
 /* ---- build RPC ---- */
@@ -1197,8 +1064,7 @@ void wbd_sigpipe_default():
 
 
 int wbd_umask(int mask):
-	if (__word_size__ == 8):
-		return syscall(95, mask, 0, 0)
+	if (__word_size__ == 8): return syscall(95, mask, 0, 0)
 	return syscall(60, mask, 0, 0)
 
 
@@ -1217,8 +1083,7 @@ char* wbd_read_fd_text(int fd):
 
 int wbd_args_have(list[char*] args, char* flag):
 	for char* a in args:
-		if (strcmp(a, flag) == 0):
-			return 1
+		if (strcmp(a, flag) == 0): return 1
 	return 0
 
 
@@ -1229,8 +1094,7 @@ int wbd_args_have(list[char*] args, char* flag):
 # left to wexec_load_manifest, which then fails exactly as one-shot.
 # Returns the generated text when the daemon should keep it, else 0.
 char* wbd_child_manifest(list[char*] args):
-	if (wbd_args_have(args, c"-f")):
-		return 0
+	if (wbd_args_have(args, c"-f")): return 0
 	if (wexec_warm_manifest != 0):
 		if (wbd_manifest_stderr != 0):
 			write_all(2, wbd_manifest_stderr, strlen(wbd_manifest_stderr))
@@ -1239,8 +1103,7 @@ char* wbd_child_manifest(list[char*] args):
 	# O_RDWR | O_CREAT | O_TRUNC
 	int capture = open(capture_path, 2 | 64 | 512, 384)
 	unlink(capture_path)
-	if (capture < 0):
-		return 0
+	if (capture < 0): return 0
 	# F_DUPFD (0): a spare copy of fd 2 to restore afterwards.
 	int saved = sys_fcntl(2, 0, 10)
 	dup2(capture, 2)
@@ -1251,11 +1114,9 @@ char* wbd_child_manifest(list[char*] args):
 	seek(capture, 0, 0)
 	char* err_text = wbd_read_fd_text(capture)
 	close(capture)
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	json_value* parsed = json_parse(text)
-	if (parsed == 0):
-		return 0
+	if (parsed == 0): return 0
 	write_all(2, err_text, strlen(err_text))
 	wexec_warm_manifest = parsed
 	wexec_warm_manifest_label = manifest_source_label
@@ -1273,22 +1134,17 @@ void wbd_build_child(int* fds, list[char*] args, char** envp, int mask, int repo
 	dup2(fds[2], 2)
 	# Nothing of the daemon's (listener, inotify, other clients' sockets
 	# and build pipes) may leak into the build.
-	int fd = 3
-	while (fd < 1024):
-		if (fd != report_fd):
-			close(fd)
-		fd = fd + 1
-	if (mask >= 0):
-		wbd_umask(mask)
+	for fd in range(3, 1024):
+		if (fd != report_fd): close(fd)
+	if (mask >= 0): wbd_umask(mask)
 	environ_ptr = cast(int, envp)
 	char* manifest_text = wbd_child_manifest(args)
 	char** argv = wbd_argv_from(c"bin/wexec", 0, args)
 	int status = wexec_main(args.length + 1, cast(int, argv))
 	json_value* report = json_object()
 	json_value* hashes = json_object()
-	for char* path, char* digest in wexec_file_hashes:
-		if (wbd_hash_path_ok(path)):
-			json_object_set(hashes, path, json_string(digest))
+	for char* path, char* digest in deps_file_hashes:
+		if (wbd_hash_path_ok(path)): json_object_set(hashes, path, json_string(digest))
 	json_object_set(report, c"hashes", hashes)
 	if (manifest_text != 0):
 		json_object_set(report, c"manifest", json_string(manifest_text))
@@ -1308,8 +1164,7 @@ void wbd_build_reply(wbd_conn* c, json_value* id, json_value* result):
 
 void wbd_build_refuse(wbd_conn* c, json_value* id, char* why):
 	wbd_build_reply(c, json_clone(id), wbd_error_result(why))
-	for int fd in c.fds:
-		close(fd)
+	for int fd in c.fds: close(fd)
 	c.fds = new list[int]
 
 
@@ -1333,8 +1188,8 @@ void wbd_start_build(wbd_conn* c, json_value* message):
 	if (c.building || (c.fds.length != 3)):
 		wbd_build_refuse(c, id, c"a build needs the client's stdin, stdout and stderr descriptors")
 		return
-	json_value* env = json_object_get(params, c"env")
-	if ((env == 0) || (env.type != json_type_array())):
+	json_value* env = jfield_array(params, c"env")
+	if (env == 0):
 		wbd_build_refuse(c, id, c"env must be an array")
 		return
 	char** envp = strv_new(json_array_length(env))
@@ -1348,8 +1203,7 @@ void wbd_start_build(wbd_conn* c, json_value* message):
 		i = i + 1
 	int mask = -1
 	json_value* umask_value = json_object_get(params, c"umask")
-	if ((umask_value != 0) && (umask_value.type == json_type_int())):
-		mask = umask_value.int_value
+	if ((umask_value != 0) && (umask_value.type == json_type_int())): mask = umask_value.int_value
 	wbd_hashes_revalidate()
 	int report_read = 0
 	int report_write = 0
@@ -1367,12 +1221,10 @@ void wbd_start_build(wbd_conn* c, json_value* message):
 	wbd_seq = wbd_seq + 1
 	int fork_seq = wbd_seq
 	int pid = fork()
-	if (pid == 0):
-		wbd_build_child(fds, args, envp, mask, report_write)
+	if (pid == 0): wbd_build_child(fds, args, envp, mask, report_write)
 	close(report_write)
 	free(cast(char*, fds))
-	for int passed in c.fds:
-		close(passed)
+	for int passed in c.fds: close(passed)
 	c.fds = new list[int]
 	if (pid < 0):
 		close(report_read)
@@ -1387,7 +1239,7 @@ void wbd_start_build(wbd_conn* c, json_value* message):
 	b.report_fd = report_read
 	b.report = string_new()
 	b.fork_seq = fork_seq
-	event_loop_add_fd(wbd_loop, report_read, poll_in(), wbd_on_build_report, cast(void*, b))
+	event_loop_add_fd(wbd_loop, report_read, poll_in, wbd_on_build_report, cast(void*, b))
 	# Tells the client the build is running (and which process to
 	# forward its signals to): from here on it must never fall back to
 	# the one-shot command, which would run the build a second time.
@@ -1399,40 +1251,32 @@ void wbd_start_build(wbd_conn* c, json_value* message):
 
 # A JSON string's text; the parser leaves an empty string's data 0.
 char* wbd_json_text(json_value* v):
-	if (v.string_value == 0):
-		return c""
+	if (v.string_value == 0): return c""
 	return v.string_value
 
 
 # Keeps what the child learned, minus anything an inotify event
 # overtook after the fork.
 void wbd_merge_report(wbd_build* b, json_value* report):
-	if ((report == 0) || (report.type != json_type_object())):
-		return
+	if ((report == 0) || (report.type != json_type_object())): return
 	json_value* hashes = json_object_get(report, c"hashes")
 	if ((hashes != 0) && (hashes.type == json_type_object()) && (wbd_clear_seq <= b.fork_seq)):
 		for char* path, json_value* digest in hashes.object_values:
-			if ((digest.type != json_type_string()) || (wbd_hash_path_ok(path) == 0)):
-				continue
-			if (wbd_touched_since(path, b.fork_seq)):
-				continue
-			if (path in wexec_file_hashes):
-				continue
-			wexec_file_hashes[strclone(path)] = strclone(wbd_json_text(digest))
+			if ((digest.type != json_type_string()) || (wbd_hash_path_ok(path) == 0)): continue
+			if (wbd_touched_since(path, b.fork_seq)): continue
+			if (path in deps_file_hashes): continue
+			deps_file_hashes[strclone(path)] = strclone(wbd_json_text(digest))
 			wbd_hash_sig[strclone(path)] = wbd_file_sig(path)
 			wbd_hashes_merged = wbd_hashes_merged + 1
 	json_value* manifest = json_object_get(report, c"manifest")
 	json_value* label = json_object_get(report, c"manifest_label")
 	json_value* err = json_object_get(report, c"manifest_stderr")
-	if ((manifest == 0) || (label == 0) || (err == 0)):
-		return
+	if ((manifest == 0) || (label == 0) || (err == 0)): return
 	if ((manifest.type != json_type_string()) || (label.type != json_type_string()) || (err.type != json_type_string())):
 		return
-	if ((wbd_manifest_seq > b.fork_seq) || (wexec_warm_manifest != 0)):
-		return
+	if ((wbd_manifest_seq > b.fork_seq) || (wexec_warm_manifest != 0)): return
 	json_value* parsed = json_parse(manifest.string_value)
-	if (parsed == 0):
-		return
+	if (parsed == 0): return
 	wexec_warm_manifest = parsed
 	wexec_warm_manifest_label = strclone(wbd_json_text(label))
 	wbd_manifest_stderr = strclone(wbd_json_text(err))
@@ -1442,11 +1286,9 @@ void wbd_on_build_report(int fd, int revents, void* ctx):
 	wbd_build* b = cast(wbd_build*, ctx)
 	char* buf = malloc(65536)
 	int n = read(fd, buf, 65536)
-	if (n > 0):
-		string_append_bytes(b.report, buf, n)
+	if (n > 0): string_append_bytes(b.report, buf, n)
 	free(buf)
-	if ((n > 0) || (n == -11) || (n == -4)):
-		return
+	if ((n > 0) || (n == -11) || (n == -4)): return
 	# EOF: the child is exiting.
 	event_loop_remove_fd(wbd_loop, fd)
 	close(fd)
@@ -1457,8 +1299,7 @@ void wbd_on_build_report(int fd, int revents, void* ctx):
 	wbd_drain_events()
 	json_value* report = json_parse(b.report.data)
 	wbd_merge_report(b, report)
-	if (report != 0):
-		json_free(report)
+	if (report != 0): json_free(report)
 	string_free(b.report)
 	wbd_builds_active = wbd_builds_active - 1
 	wbd_builds_done = wbd_builds_done + 1
@@ -1472,8 +1313,7 @@ void wbd_on_build_report(int fd, int revents, void* ctx):
 	b.conn.building = 0
 	wbd_conn_close(b.conn)
 	wbd_touch()
-	if (wbd_stopping):
-		wbd_begin_stop()
+	if (wbd_stopping): wbd_begin_stop()
 
 
 # SIGPIPE -> SIG_IGN, so a client that disconnects mid-answer costs an
@@ -1495,15 +1335,12 @@ void wbd_ignore_sigpipe():
 char* wbd_find_self_name():
 	char* buf = malloc(4096)
 	int n = file_readlink(c"/proc/self/exe", buf, 4095)
-	if (n <= 0):
-		return 0
+	if (n <= 0): return 0
 	buf[n] = 0
 	char* bin_dir = strjoin(wbd_root, c"/bin/")
-	if (starts_with(buf, bin_dir) == 0):
-		return 0
+	if (starts_with(buf, bin_dir) == 0): return 0
 	char* name = buf + strlen(bin_dir)
-	if (wbd_contains(name, c"/")):
-		return 0
+	if (contains(name, c"/")): return 0
 	return strclone(name)
 
 
@@ -1526,10 +1363,8 @@ int wbd_serve(wbd_serve_options* o):
 	if (o.detach):
 		# setsid: leave the starting shell's session so its hangup
 		# does not take the daemon down (x86 66, x64 112).
-		if (__word_size__ == 8):
-			syscall(112, 0, 0, 0)
-		else:
-			syscall(66, 0, 0, 0)
+		if (__word_size__ == 8): syscall(112, 0, 0, 0)
+		else: syscall(66, 0, 0, 0)
 	wbd_ignore_sigpipe()
 	wbd_root = wbd_cwd()
 	wbd_started_ms = time_monotonic_ms()
@@ -1565,12 +1400,11 @@ int wbd_serve(wbd_serve_options* o):
 		unlink(wbd_socket_path)
 		return 1
 	wbd_server.running = 1
-	event_loop_add_fd(wbd_loop, listen_fd, poll_in(), wbd_on_listener, 0)
+	event_loop_add_fd(wbd_loop, listen_fd, poll_in, wbd_on_listener, 0)
 	wbd_prewarm_schedule(0)
 	wbd_idle_timeout_ms = o.idle_timeout_ms
 	wbd_touch()
-	if (wbd_idle_timeout_ms > 0):
-		event_loop_add_interval(wbd_loop, 1000, wbd_idle_check, 0)
+	if (wbd_idle_timeout_ms > 0): event_loop_add_interval(wbd_loop, 1000, wbd_idle_check, 0)
 	string_builder* banner = string_new()
 	string_append(banner, c"wbuildd: serving ")
 	string_append(banner, wbd_root)
@@ -1585,7 +1419,7 @@ int wbd_serve(wbd_serve_options* o):
 	string_free(banner)
 	event_loop_run(wbd_loop)
 	if (wbd_prewarm_proc != 0):
-		process_kill(wbd_prewarm_proc, sigterm())
+		process_kill(wbd_prewarm_proc, sigterm)
 		wbd_prewarm_wait()
 	if (wbd_listen_fd >= 0):
 		close(wbd_listen_fd)
@@ -1606,13 +1440,11 @@ int wbd_connect_client();
 # One request/response round trip on a fresh connection. Returns the
 # owned "result" member, or 0 on any transport or protocol failure.
 json_value* wbd_call(int fd, char* method, json_value* params):
-	if (jsonrpc_write_request(fd, 1, method, params) < 0):
-		return 0
+	if (jsonrpc_write_request(fd, 1, method, params) < 0): return 0
 	frame_reader* reader = frame_reader_new(fd)
 	json_value* response = jsonrpc_read_message(reader)
 	frame_reader_free(reader)
-	if (response == 0):
-		return 0
+	if (response == 0): return 0
 	if (response.type != json_type_object()):
 		json_free(response)
 		return 0
@@ -1627,8 +1459,7 @@ json_value* wbd_call(int fd, char* method, json_value* params):
 
 json_value* wbd_call_simple(char* method):
 	int fd = wbd_connect()
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	json_value* result = wbd_call(fd, method, json_object())
 	close(fd)
 	return result
@@ -1645,7 +1476,7 @@ int wbd_oneshot(char* tool, char* sub, list[char*] args, char* stdin_text):
 		wbd_err2(c"wbuildd: cannot run ", tool)
 		return 127
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_pipe()
+	opts.stdin_mode = process_pipe
 	process* p = process_spawn(tool, argv, opts)
 	if (p == 0):
 		wbd_err2(c"wbuildd: cannot run ", tool)
@@ -1661,10 +1492,8 @@ int wbd_changed_has_paths(list[char*] args):
 	int i = 0
 	while (i < args.length):
 		char* a = args[i]
-		if ((strcmp(a, c"-f") == 0) || (strcmp(a, c"--base-manifest") == 0)):
-			i = i + 1
-		else if (a[0] != '-'):
-			return 1
+		if (strcmp(a, c"-f") == 0): i = i + 1
+		else if (a[0] != '-'): return 1
 		i = i + 1
 	return 0
 
@@ -1694,8 +1523,7 @@ int wbd_unreachable(char* why, char* tool, char* sub, list[char*] args, char* st
 
 
 int wbd_query(char* method, char* tool, char* sub, list[char*] args):
-	if (wbd_no_daemon):
-		return wbd_oneshot(tool, sub, args, 0)
+	if (wbd_no_daemon): return wbd_oneshot(tool, sub, args, 0)
 	int reads_stdin = 0
 	if (strcmp(method, c"test_changed") == 0):
 		for char* a in args:
@@ -1703,22 +1531,18 @@ int wbd_query(char* method, char* tool, char* sub, list[char*] args):
 				return wbd_unreachable(c"--run is not served by the daemon", tool, sub, args, 0)
 		reads_stdin = wbd_changed_has_paths(args) == 0
 	int fd = wbd_connect_client()
-	if (fd < 0):
-		return wbd_unreachable(c"no daemon is listening", tool, sub, args, 0)
+	if (fd < 0): return wbd_unreachable(c"no daemon is listening", tool, sub, args, 0)
 	char* stdin_text = 0
-	if (reads_stdin):
-		stdin_text = wbd_read_stdin()
+	if (reads_stdin): stdin_text = wbd_read_stdin()
 	json_value* params = json_object()
-	json_object_set(params, c"protocol", json_int(wbd_protocol()))
+	json_object_set(params, c"protocol", json_int(wbd_protocol))
 	char* cwd = wbd_cwd()
 	json_object_set(params, c"cwd", json_string(cwd))
 	free(cwd)
 	json_value* list_json = json_array()
-	for char* a in args:
-		json_array_push(list_json, json_string(a))
+	for char* a in args: json_array_push(list_json, json_string(a))
 	json_object_set(params, c"args", list_json)
-	if (stdin_text != 0):
-		json_object_set(params, c"stdin", json_string(stdin_text))
+	if (stdin_text != 0): json_object_set(params, c"stdin", json_string(stdin_text))
 	# jsonrpc_write_request (inside wbd_call) frees params.
 	json_value* result = wbd_call(fd, method, params)
 	close(fd)
@@ -1727,8 +1551,7 @@ int wbd_query(char* method, char* tool, char* sub, list[char*] args):
 	json_value* error = json_object_get(result, c"error")
 	if (error != 0):
 		char* message = c"error response"
-		if (error.type == json_type_string()):
-			message = strclone(error.string_value)
+		if (error.type == json_type_string()): message = strclone(error.string_value)
 		json_free(result)
 		return wbd_unreachable(message, tool, sub, args, stdin_text)
 	json_value* out = json_object_get(result, c"stdout")
@@ -1744,18 +1567,10 @@ int wbd_query(char* method, char* tool, char* sub, list[char*] args):
 	return code
 
 
-int wbd_json_int(json_value* object, char* key):
-	json_value* v = json_object_get(object, key)
-	if ((v == 0) || (v.type != json_type_int())):
-		return 0
-	return v.int_value
-
-
 int wbd_status_main(list[char*] args):
 	int as_json = 0
 	for char* a in args:
-		if (strcmp(a, c"--json") == 0):
-			as_json = 1
+		if (strcmp(a, c"--json") == 0): as_json = 1
 	json_value* result = wbd_call_simple(c"status")
 	if (result == 0):
 		wbd_err(c"wbuildd: not running\n")
@@ -1769,27 +1584,26 @@ int wbd_status_main(list[char*] args):
 		return 0
 	string_builder* s = string_new()
 	string_append(s, c"wbuildd: running (pid ")
-	string_append_int(s, wbd_json_int(result, c"pid"))
+	string_append_int(s, jfield_int(result, c"pid", 0))
 	string_append(s, c")\nroot: ")
 	json_value* root = json_object_get(result, c"root")
-	if ((root != 0) && (root.type == json_type_string())):
-		string_append(s, root.string_value)
+	if ((root != 0) && (root.type == json_type_string())): string_append(s, root.string_value)
 	string_append(s, c"\nsocket: ")
 	string_append(s, wbd_socket_path)
 	string_append(s, c"\nuptime_ms: ")
-	string_append_int(s, wbd_json_int(result, c"uptime_ms"))
+	string_append_int(s, jfield_int(result, c"uptime_ms", 0))
 	string_append(s, c"\ncached_entries: ")
-	string_append_int(s, wbd_json_int(result, c"cached_entries"))
+	string_append_int(s, jfield_int(result, c"cached_entries", 0))
 	string_append(s, c"\nrequests: ")
-	string_append_int(s, wbd_json_int(result, c"requests"))
+	string_append_int(s, jfield_int(result, c"requests", 0))
 	string_append(s, c"\nhits: ")
-	string_append_int(s, wbd_json_int(result, c"hits"))
+	string_append_int(s, jfield_int(result, c"hits", 0))
 	string_append(s, c"\nmisses: ")
-	string_append_int(s, wbd_json_int(result, c"misses"))
+	string_append_int(s, jfield_int(result, c"misses", 0))
 	string_append(s, c"\ninvalidations: ")
-	string_append_int(s, wbd_json_int(result, c"invalidations"))
+	string_append_int(s, jfield_int(result, c"invalidations", 0))
 	string_append(s, c"\nwatched_dirs: ")
-	string_append_int(s, wbd_json_int(result, c"watched_dirs"))
+	string_append_int(s, jfield_int(result, c"watched_dirs", 0))
 	string_append(s, c"\nprewarm: ")
 	json_value* prewarm = json_object_get(result, c"prewarm")
 	if ((prewarm != 0) && (prewarm.type == json_type_string())):
@@ -1808,15 +1622,13 @@ int wbd_stop_main():
 		return 0
 	json_free(result)
 	# Wait until the listener is gone so a following 'start' binds cleanly.
-	int waited = 0
-	while (waited < 10000):
+	for waited in range(0, 10000, 50):
 		int fd = wbd_connect()
 		if (fd < 0):
 			wbd_out(c"wbuildd: stopped\n")
 			return 0
 		close(fd)
 		process_sleep_ms(50)
-		waited = waited + 50
 	wbd_err(c"wbuildd: daemon did not stop within 10s\n")
 	return 1
 
@@ -1841,8 +1653,7 @@ process* wbd_spawn_daemon(char* argv0, wbd_serve_options* o):
 	argv_list.push(c"--detach")
 	argv_list.push(c"--log")
 	argv_list.push(o.log_path)
-	if (o.prewarm == 0):
-		argv_list.push(c"--no-prewarm")
+	if (o.prewarm == 0): argv_list.push(c"--no-prewarm")
 	else if (o.prewarm_manifest != 0):
 		argv_list.push(c"--prewarm-manifest")
 		argv_list.push(o.prewarm_manifest)
@@ -1855,9 +1666,9 @@ process* wbd_spawn_daemon(char* argv0, wbd_serve_options* o):
 		strv_set(argv, i, argv_list[i])
 		i = i + 1
 	spawn_options* opts = spawn_options_new()
-	opts.stdin_mode = process_null()
-	opts.stdout_mode = process_null()
-	opts.stderr_mode = process_null()
+	opts.stdin_mode = process_null
+	opts.stdout_mode = process_null
+	opts.stderr_mode = process_null
 	process* p = process_spawn(self, argv, opts)
 	free(cast(char*, opts))
 	free(cast(char*, argv))
@@ -1874,8 +1685,7 @@ int wbd_start_main(char* argv0, wbd_serve_options* o):
 	if (p == 0):
 		wbd_err(c"wbuildd: cannot spawn the daemon\n")
 		return 1
-	int waited = 0
-	while (waited < 15000):
+	for waited in range(0, 15000, 50):
 		int fd = wbd_connect()
 		if (fd >= 0):
 			close(fd)
@@ -1888,11 +1698,10 @@ int wbd_start_main(char* argv0, wbd_serve_options* o):
 			wbd_out(s.data)
 			string_free(s)
 			return 0
-		if (process_try_wait(p) != process_status_running()):
+		if (process_try_wait(p) != process_status_running):
 			wbd_err2(c"wbuildd: daemon exited during startup; see ", o.log_path)
 			return 1
 		process_sleep_ms(50)
-		waited = waited + 50
 	wbd_err(c"wbuildd: daemon did not answer within 15s\n")
 	return 1
 
@@ -1904,15 +1713,13 @@ char* wbd_argv0
 
 
 char* wbd_default_log():
-	if (strcmp(wbd_socket_path, c"bin/.wbuildd.sock") == 0):
-		return c"bin/.wbuildd.log"
+	if (strcmp(wbd_socket_path, c"bin/.wbuildd.sock") == 0): return c"bin/.wbuildd.log"
 	return strjoin(wbd_socket_path, c".log")
 
 
 int wbd_env_is(char* name, char* value):
 	char* text = env_get(name)
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	return strcmp(text, value) == 0
 
 
@@ -1923,12 +1730,10 @@ int wbd_connect_client():
 	int fd = wbd_connect()
 	if (fd >= 0):
 		return fd
-	if (wbd_no_autostart || wbd_env_is(c"WBUILDD_AUTOSTART", c"0")):
-		return -1
+	if (wbd_no_autostart || wbd_env_is(c"WBUILDD_AUTOSTART", c"0")): return -1
 	# Only from a checkout root: never watch an arbitrary tree.
 	int probe = open(c"build.base.json", 0, 0)
-	if (probe < 0):
-		return -1
+	if (probe < 0): return -1
 	close(probe)
 	wbd_serve_options* o = new wbd_serve_options()
 	o.prewarm = wbd_env_is(c"WBUILDD_PREWARM", c"0") == 0
@@ -1937,22 +1742,18 @@ int wbd_connect_client():
 	o.detach = 1
 	o.idle_timeout_ms = 3600000
 	char* idle = env_get(c"WBUILDD_IDLE_TIMEOUT_MS")
-	if ((idle != 0) && (atoi(idle) > 0)):
-		o.idle_timeout_ms = atoi(idle)
+	if ((idle != 0) && (atoi(idle) > 0)): o.idle_timeout_ms = atoi(idle)
 	process* p = wbd_spawn_daemon(wbd_argv0, o)
-	if (p == 0):
-		return -1
-	int waited = 0
-	while (waited < 15000):
+	if (p == 0): return -1
+	for waited in range(0, 15000, 20):
 		fd = wbd_connect()
 		if (fd >= 0):
 			return fd
-		if (process_try_wait(p) != process_status_running()):
+		if (process_try_wait(p) != process_status_running):
 			# Lost a start race to another client's daemon, or failed
 			# (see the log): one last look, then fall back.
 			return wbd_connect()
 		process_sleep_ms(20)
-		waited = waited + 20
 	return -1
 
 
@@ -1963,33 +1764,27 @@ int wbd_build_pid
 # kills its workers' process groups and exits 128+signal -- the status
 # the daemon then reports back, as a one-shot run would have exited.
 void wbd_forward_signal(int sig):
-	if (wbd_build_pid > 0):
-		kill(wbd_build_pid, sig)
+	if (wbd_build_pid > 0): kill(wbd_build_pid, sig)
 
 
 # 'build ARGS' == 'bin/wexec ARGS', run by the daemon in this process's
 # own stdin/stdout/stderr.
 int wbd_build_main(list[char*] args):
 	char* tool = c"bin/wexec"
-	if (wbd_no_daemon):
-		return wbd_oneshot(tool, 0, args, 0)
-	int k = 0
-	while (k < 3):
+	if (wbd_no_daemon): return wbd_oneshot(tool, 0, args, 0)
+	for k in range(3):
 		# F_GETFD: all three standard descriptors must exist to be passed.
 		if (sys_fcntl(k, 1, 0) < 0):
 			return wbd_unreachable(c"a standard descriptor is closed", tool, 0, args, 0)
-		k = k + 1
 	int fd = wbd_connect_client()
-	if (fd < 0):
-		return wbd_unreachable(c"no daemon is listening", tool, 0, args, 0)
+	if (fd < 0): return wbd_unreachable(c"no daemon is listening", tool, 0, args, 0)
 	json_value* params = json_object()
-	json_object_set(params, c"protocol", json_int(wbd_protocol()))
+	json_object_set(params, c"protocol", json_int(wbd_protocol))
 	char* cwd = wbd_cwd()
 	json_object_set(params, c"cwd", json_string(cwd))
 	free(cwd)
 	json_value* list_json = json_array()
-	for char* a in args:
-		json_array_push(list_json, json_string(a))
+	for char* a in args: json_array_push(list_json, json_string(a))
 	json_object_set(params, c"args", list_json)
 	json_value* env = json_array()
 	char** envp = env_current()
@@ -2014,8 +1809,7 @@ int wbd_build_main(list[char*] args):
 	stdio[2] = 2
 	int sent = unix_send_fds(fd, frame.data, frame.length, stdio, 3)
 	if ((sent > 0) && (sent < frame.length)):
-		if (write_all(fd, frame.data + sent, frame.length - sent) < 0):
-			sent = -1
+		if (write_all(fd, frame.data + sent, frame.length - sent) < 0): sent = -1
 	if (sent <= 0):
 		close(fd)
 		return wbd_unreachable(c"could not send the build request", tool, 0, args, 0)
@@ -2025,30 +1819,25 @@ int wbd_build_main(list[char*] args):
 		int length = 0
 		char* message_text = frame_take_buffered_message(reader, &length)
 		if (message_text == 0):
-			if (reader.error):
-				break
+			if (reader.error): break
 			int count = frame_reader_fill(reader)
 			# EINTR: a signal was forwarded; keep waiting for the answer.
-			if (count == -4):
-				continue
-			if (count <= 0):
-				break
+			if (count == -4): continue
+			if (count <= 0): break
 			continue
 		json_value* message = json_parse(message_text)
 		free(message_text)
-		if ((message == 0) || (message.type != json_type_object())):
-			break
+		if ((message == 0) || (message.type != json_type_object())): break
 		json_value* method = json_object_get(message, c"method")
 		if ((method != 0) && (method.type == json_type_string()) && (strcmp(method.string_value, c"build_started") == 0)):
 			json_value* started_params = json_object_get(message, c"params")
-			wbd_build_pid = wbd_json_int(started_params, c"pid")
+			wbd_build_pid = jfield_int(started_params, c"pid", 0)
 			if (started == 0):
 				started = 1
 				wexec_install_termination_handler(cast(int, wbd_forward_signal))
 			continue
 		json_value* result = json_object_get(message, c"result")
-		if ((result == 0) || (result.type != json_type_object())):
-			break
+		if ((result == 0) || (result.type != json_type_object())): break
 		json_value* status = json_object_get(result, c"status")
 		if ((status != 0) && (status.type == json_type_int())):
 			close(fd)
@@ -2080,20 +1869,16 @@ int main(int argc, int argv):
 	wbd_socket_path = c"bin/.wbuildd.sock"
 	wbd_argv0 = wbd_arg(argv, 0)
 	char* env_switch = env_get(c"WBUILDD")
-	if ((env_switch != 0) && (strcmp(env_switch, c"0") == 0)):
-		wbd_no_daemon = 1
+	if ((env_switch != 0) && (strcmp(env_switch, c"0") == 0)): wbd_no_daemon = 1
 	int i = 1
 	while ((i < argc) && (wbd_arg(argv, i)[0] == '-')):
 		char* flag = wbd_arg(argv, i)
 		if ((strcmp(flag, c"--socket") == 0) && (i + 1 < argc)):
 			i = i + 1
 			wbd_socket_path = wbd_arg(argv, i)
-		else if (strcmp(flag, c"--no-daemon") == 0):
-			wbd_no_daemon = 1
-		else if (strcmp(flag, c"--require-daemon") == 0):
-			wbd_require_daemon = 1
-		else if (strcmp(flag, c"--no-autostart") == 0):
-			wbd_no_autostart = 1
+		else if (strcmp(flag, c"--no-daemon") == 0): wbd_no_daemon = 1
+		else if (strcmp(flag, c"--require-daemon") == 0): wbd_require_daemon = 1
+		else if (strcmp(flag, c"--no-autostart") == 0): wbd_no_autostart = 1
 		else:
 			wbd_usage()
 			return 2
@@ -2107,20 +1892,15 @@ int main(int argc, int argv):
 	while (i < argc):
 		rest.push(wbd_arg(argv, i))
 		i = i + 1
-	if (strcmp(command, c"check") == 0):
-		return wbd_query(c"check", c"bin/wv2", c"check", rest)
-	if (strcmp(command, c"deps") == 0):
-		return wbd_query(c"deps", c"bin/wv2", c"deps", rest)
+	if (strcmp(command, c"check") == 0): return wbd_query(c"check", c"bin/wv2", c"check", rest)
+	if (strcmp(command, c"deps") == 0): return wbd_query(c"deps", c"bin/wv2", c"deps", rest)
 	if (strcmp(command, c"symbols") == 0):
 		return wbd_query(c"symbols", c"bin/wv2", c"symbols", rest)
 	if (strcmp(command, c"changed") == 0):
 		return wbd_query(c"test_changed", c"bin/wtest", c"changed", rest)
-	if (strcmp(command, c"build") == 0):
-		return wbd_build_main(rest)
-	if (strcmp(command, c"status") == 0):
-		return wbd_status_main(rest)
-	if (strcmp(command, c"stop") == 0):
-		return wbd_stop_main()
+	if (strcmp(command, c"build") == 0): return wbd_build_main(rest)
+	if (strcmp(command, c"status") == 0): return wbd_status_main(rest)
+	if (strcmp(command, c"stop") == 0): return wbd_stop_main()
 	if ((strcmp(command, c"serve") == 0) || (strcmp(command, c"start") == 0)):
 		wbd_serve_options* o = new wbd_serve_options()
 		o.prewarm = 1
@@ -2134,24 +1914,20 @@ int main(int argc, int argv):
 			if ((strcmp(opt, c"--prewarm-manifest") == 0) && (j + 1 < rest.length)):
 				j = j + 1
 				o.prewarm_manifest = rest[j]
-			else if (strcmp(opt, c"--no-prewarm") == 0):
-				o.prewarm = 0
+			else if (strcmp(opt, c"--no-prewarm") == 0): o.prewarm = 0
 			else if ((strcmp(opt, c"--log") == 0) && (j + 1 < rest.length)):
 				j = j + 1
 				o.log_path = rest[j]
 			else if ((strcmp(opt, c"--idle-timeout-ms") == 0) && (j + 1 < rest.length)):
 				j = j + 1
 				o.idle_timeout_ms = atoi(rest[j])
-			else if (strcmp(opt, c"--detach") == 0):
-				o.detach = 1
+			else if (strcmp(opt, c"--detach") == 0): o.detach = 1
 			else:
 				wbd_usage()
 				return 2
 			j = j + 1
-		if (strcmp(command, c"serve") == 0):
-			return wbd_serve(o)
-		if (o.log_path == 0):
-			o.log_path = c"bin/.wbuildd.log"
+		if (strcmp(command, c"serve") == 0): return wbd_serve(o)
+		if (o.log_path == 0): o.log_path = c"bin/.wbuildd.log"
 		return wbd_start_main(wbd_arg(argv, 0), o)
 	wbd_usage()
 	return 2

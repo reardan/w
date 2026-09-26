@@ -24,28 +24,21 @@ generator int idle_reader(int fd):
 generator int ping(int fd, int messages):
 	char[1] b
 	b[0] = 120
-	int i = 0
-	while (i < messages):
+	for i in range(messages):
 		task_write_all(fd, &b[0], 1)
 		task_read_exact(fd, &b[0], 1)
-		i = i + 1
 
 
 generator int pong(int fd, int messages):
 	char[1] b
-	int i = 0
-	while (i < messages):
+	for i in range(messages):
 		task_read_exact(fd, &b[0], 1)
 		task_write_all(fd, &b[0], 1)
-		i = i + 1
 
 
 generator int closer(int* fds, int pairs, task* until):
 	task_join(until)
-	int i = 0
-	while (i < pairs):
-		close(fds[2 * i])
-		i = i + 1
+	for i in range(pairs): close(fds[2 * i])
 
 
 int run(int use_poll, int pairs, int messages):
@@ -88,10 +81,8 @@ int main(int argc, int argv):
 	char** args = cast(char**, argv)
 	int pairs = 2000
 	int messages = 5000
-	if (argc > 1):
-		pairs = atoi(args[1])
-	if (argc > 2):
-		messages = atoi(args[2])
+	if (argc > 1): pairs = atoi(args[1])
+	if (argc > 2): messages = atoi(args[2])
 	print(c"idle tasks: ")
 	print(itoa(pairs))
 	print(c", round trips: ")

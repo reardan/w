@@ -116,11 +116,9 @@ char* le_history_at(int i):
 # Append to the in-memory history, skipping empty lines and consecutive
 # duplicates.
 void le_history_add(char* line):
-	if (line[0] == 0):
-		return;
+	if (line[0] == 0): return;
 	if (le_history_count > 0):
-		if (strcmp(le_history_at(le_history_count - 1), line) == 0):
-			return;
+		if (strcmp(le_history_at(le_history_count - 1), line) == 0): return;
 	if (le_history_count >= le_history_capacity):
 		int old = le_history_capacity * __word_size__
 		if (le_history_capacity == 0):
@@ -137,8 +135,7 @@ void le_history_add(char* line):
 char* le_resolve_path(char* path):
 	if ((path[0] == '~') && (path[1] == '/')):
 		char* home = env_get(c"HOME")
-		if (home != 0):
-			return strjoin(home, path + 1)
+		if (home != 0): return strjoin(home, path + 1)
 	return strclone(path)
 
 
@@ -148,8 +145,7 @@ void line_edit_history_load(char* path):
 	char* resolved = le_resolve_path(path)
 	le_history_path = resolved
 	int f = open(resolved, 0, 0)
-	if (f < 0):
-		return;
+	if (f < 0): return;
 	getchar_reset(f)
 	char* line = malloc(4096)
 	int len = 0
@@ -173,17 +169,14 @@ void line_edit_history_load(char* path):
 # Record an accepted line: in-memory always, appended to the history
 # file when one was loaded. O_WRONLY|O_CREAT|O_APPEND = 1089.
 void le_history_accept(char* line):
-	if (line[0] == 0):
-		return;
+	if (line[0] == 0): return;
 	int fresh = le_history_count
 	le_history_add(line)
 	if (le_history_count == fresh):
 		return; /* duplicate of the previous entry: not re-persisted */
-	if (le_history_path == 0):
-		return;
+	if (le_history_path == 0): return;
 	int f = open(le_history_path, 1089, 420)
-	if (f < 0):
-		return;
+	if (f < 0): return;
 	write(f, line, strlen(line))
 	write(f, c"\x0a", 1)
 	close(f)
@@ -195,25 +188,17 @@ void le_write(char* s):
 
 # Buffer text with tabs expanded to 4 spaces (display only).
 void le_write_expanded(char* buf, int from, int to):
-	int i = from
-	while (i < to):
-		if (buf[i] == 9):
-			le_write(c"    ")
-		else:
-			put_char(buf[i])
-		i = i + 1
+	for i in range(from, to):
+		if (buf[i] == 9): le_write(c"    ")
+		else: put_char(buf[i])
 
 
 # Display columns occupied by buf[from..to).
 int le_display_width(char* buf, int from, int to):
 	int w = 0
-	int i = from
-	while (i < to):
-		if (buf[i] == 9):
-			w = w + 4
-		else:
-			w = w + 1
-		i = i + 1
+	for i in range(from, to):
+		if (buf[i] == 9): w = w + 4
+		else: w = w + 1
 	return w
 
 
@@ -223,15 +208,13 @@ int le_display_width(char* buf, int from, int to):
 # column is written (the cursor rests at the last column, not a phantom
 # next row), so this is (chars - 1) / cols, not chars / cols.
 int le_row_for_width(int chars, int cols):
-	if (chars <= 0):
-		return 0
+	if (chars <= 0): return 0
 	return (chars - 1) / cols
 
 
 # 1-based column the cursor rests on under the same model.
 int le_col_for_width(int chars, int cols):
-	if (chars <= 0):
-		return 1
+	if (chars <= 0): return 1
 	return (chars - 1) % cols + 1
 
 
@@ -252,8 +235,7 @@ void le_write_csi(int n, char* suffix):
 # way le_render does, or the clear starts at the cursor's row and the
 # wrapped rows above it survive as stale text.
 void le_render_search():
-	if (le_prev_rows > 1):
-		le_write_csi(le_prev_rows - 1, c"A")
+	if (le_prev_rows > 1): le_write_csi(le_prev_rows - 1, c"A")
 	put_char(13)
 	le_write(c"\x1b[J")
 	le_write(c"(reverse-i-search)'")
@@ -275,8 +257,7 @@ void le_render(char* prompt, char* buf):
 		le_render_search()
 		return;
 	int cols = term_get_cols(0)
-	if (le_prev_rows > 1):
-		le_write_csi(le_prev_rows - 1, c"A")
+	if (le_prev_rows > 1): le_write_csi(le_prev_rows - 1, c"A")
 	put_char(13)
 	le_write(c"\x1b[J") /* clear cursor to end of screen: covers wrapped rows below too */
 	le_write(prompt)
@@ -289,8 +270,7 @@ void le_render(char* prompt, char* buf):
 	int cursor_row = le_row_for_width(total_cursor, cols)
 	int cursor_col = le_col_for_width(total_cursor, cols)
 
-	if (end_row > cursor_row):
-		le_write_csi(end_row - cursor_row, c"A")
+	if (end_row > cursor_row): le_write_csi(end_row - cursor_row, c"A")
 	le_write_csi(cursor_col, c"G")
 
 	le_prev_rows = end_row + 1
@@ -308,8 +288,7 @@ void le_set_line(char* buf, int size, char* text):
 
 # Remove the character at index (a no-op past the end).
 void le_delete_at(char* buf, int index):
-	if ((index < 0) || (index >= le_len)):
-		return;
+	if ((index < 0) || (index >= le_len)): return;
 	int i = index
 	while (i < le_len - 1):
 		buf[i] = buf[i + 1]
@@ -321,8 +300,7 @@ void le_delete_at(char* buf, int index):
 # the buffer's size limit. Shared by ordinary keystrokes, pasted bytes
 # and Tab-completion's inserted characters.
 void le_insert_char(char* buf, int size, int ch):
-	if (le_len >= size - 1):
-		return;
+	if (le_len >= size - 1): return;
 	int k = le_len
 	while (k > le_pos):
 		buf[k] = buf[k - 1]
@@ -335,12 +313,10 @@ void le_insert_char(char* buf, int size, int ch):
 # Step to the previous history entry; stashes the live line on entry to
 # browsing.
 void le_browse_prev(char* buf, int size):
-	if (le_history_count == 0):
-		return;
+	if (le_history_count == 0): return;
 	if (le_browse < 0):
 		buf[le_len] = 0
-		if (le_stash != 0):
-			free(le_stash)
+		if (le_stash != 0): free(le_stash)
 		le_stash = strclone(buf)
 		le_browse = le_history_count
 	if (le_browse > 0):
@@ -351,15 +327,12 @@ void le_browse_prev(char* buf, int size):
 # Step to the next history entry; past the newest one, the stashed live
 # line comes back.
 void le_browse_next(char* buf, int size):
-	if (le_browse < 0):
-		return;
+	if (le_browse < 0): return;
 	le_browse = le_browse + 1
 	if (le_browse >= le_history_count):
 		le_browse = -1
-		if (le_stash != 0):
-			le_set_line(buf, size, le_stash)
-		else:
-			le_set_line(buf, size, c"")
+		if (le_stash != 0): le_set_line(buf, size, le_stash)
+		else: le_set_line(buf, size, c"")
 		return;
 	le_set_line(buf, size, le_history_at(le_browse))
 
@@ -396,8 +369,7 @@ int le_read_plain(char* prompt, char* buf, int size):
 	le_write(prompt)
 	int len = 0
 	int c = le_getchar()
-	if (c == -1):
-		return -1
+	if (c == -1): return -1
 	while ((c != 10) && (c != -1)):
 		if (len < size - 1):
 			buf[len] = c
@@ -421,8 +393,7 @@ int le_is_ident_char(int c):
 # independent of any editor state.
 int le_ident_start(char* buf, int pos):
 	int start = pos
-	while ((start > 0) && le_is_ident_char(buf[start - 1])):
-		start = start - 1
+	while ((start > 0) && le_is_ident_char(buf[start - 1])): start = start - 1
 	return start
 
 
@@ -430,25 +401,20 @@ int le_ident_start(char* buf, int pos):
 # strings whose pointers are packed as word-sized slots in `out`. 0 when
 # count is 0. Pure (no editor state).
 int le_candidates_common_len(char* out, int count):
-	if (count <= 0):
-		return 0
+	if (count <= 0): return 0
 	char* first = cast(char*, load_word(out))
 	int common = strlen(first)
-	int k = 1
-	while (k < count):
+	for k in range(1, count):
 		char* cand = cast(char*, load_word(out + k * __word_size__))
 		int j = 0
-		while ((j < common) && (cand[j] == first[j])):
-			j = j + 1
+		while ((j < common) && (cand[j] == first[j])): j = j + 1
 		common = j
-		k = k + 1
 	return common
 
 
 # Starting candidate-buffer capacity; le_try_complete doubles it while
 # the hook reports a full buffer, so this is a first guess, not a cap.
-int le_complete_capacity():
-	return 64
+const int le_complete_capacity = 64
 
 
 # Print candidates in simple columns below the current line; the caller's
@@ -459,28 +425,21 @@ void le_list_candidates(char* out, int count):
 	int i = 0
 	while (i < count):
 		int n = strlen(cast(char*, load_word(out + i * __word_size__)))
-		if (n > width):
-			width = n
+		if (n > width): width = n
 		i = i + 1
 	width = width + 2
 	int cols = term_get_cols(0) / width
-	if (cols < 1):
-		cols = 1
+	if (cols < 1): cols = 1
 	put_char(10)
 	i = 0
 	while (i < count):
 		char* name = cast(char*, load_word(out + i * __word_size__))
 		le_write(name)
 		int pad = width - strlen(name)
-		int p = 0
-		while (p < pad):
-			put_char(' ')
-			p = p + 1
+		for p in range(pad): put_char(' ')
 		i = i + 1
-		if ((i % cols) == 0):
-			put_char(10)
-	if ((count % cols) != 0):
-		put_char(10)
+		if ((i % cols) == 0): put_char(10)
+	if ((count % cols) != 0): put_char(10)
 	le_prev_rows = 1 /* the listing scrolled past the line; render it fresh below */
 
 
@@ -491,22 +450,16 @@ void le_list_candidates(char* out, int count):
 # hook is installed, the cursor is not just after an identifier
 # character, or the hook finds nothing.
 int le_try_complete(char* buf, int size):
-	if (le_complete_hook == 0):
-		return 0
-	if (le_pos == 0):
-		return 0
-	if (le_is_ident_char(buf[le_pos - 1]) == 0):
-		return 0
+	if (le_complete_hook == 0): return 0
+	if (le_pos == 0): return 0
+	if (le_is_ident_char(buf[le_pos - 1]) == 0): return 0
 	int start = le_ident_start(buf, le_pos)
 	int prefix_len = le_pos - start
 	char* prefix = malloc(prefix_len + 1)
-	int i = 0
-	while (i < prefix_len):
-		prefix[i] = buf[start + i]
-		i = i + 1
+	for i in range(prefix_len): prefix[i] = buf[start + i]
 	prefix[prefix_len] = 0
 
-	int capacity = le_complete_capacity()
+	int capacity = le_complete_capacity
 	char* out = malloc(capacity * __word_size__)
 	int count = le_complete_hook(prefix, out, capacity)
 	# A full buffer can mean truncation: unseen candidates would make the
@@ -516,10 +469,7 @@ int le_try_complete(char* buf, int size):
 	# has room to spare (the ceiling only guards against a hook that
 	# always claims a full buffer).
 	while ((count == capacity) && (capacity < 65536)):
-		int k = 0
-		while (k < count):
-			free(cast(char*, load_word(out + k * __word_size__)))
-			k = k + 1
+		for k in range(count): free(cast(char*, load_word(out + k * __word_size__)))
 		free(out)
 		capacity = capacity * 2
 		out = malloc(capacity * __word_size__)
@@ -534,18 +484,11 @@ int le_try_complete(char* buf, int size):
 	if (common > prefix_len):
 		char* first = cast(char*, load_word(out))
 		int extra = common - prefix_len
-		int n = 0
-		while (n < extra):
-			le_insert_char(buf, size, first[prefix_len + n])
-			n = n + 1
+		for n in range(extra): le_insert_char(buf, size, first[prefix_len + n])
 
-	if (count > 1):
-		le_list_candidates(out, count)
+	if (count > 1): le_list_candidates(out, count)
 
-	int c = 0
-	while (c < count):
-		free(cast(char*, load_word(out + c * __word_size__)))
-		c = c + 1
+	for c in range(count): free(cast(char*, load_word(out + c * __word_size__)))
 	free(out)
 	free(prefix)
 	return 1
@@ -566,8 +509,7 @@ void le_paste_mode_off():
 # after its ESC; -1 past the end. Pure.
 int le_paste_end_marker(int i):
 	char* marker = c"[201~"
-	if ((i < 0) || (i >= 5)):
-		return -1
+	if ((i < 0) || (i >= 5)): return -1
 	return marker[i]
 
 
@@ -581,8 +523,7 @@ int le_paste_match_end():
 	int n = 0
 	while (n < 5):
 		int c = le_getchar()
-		if (c == -1):
-			break
+		if (c == -1): break
 		if (c != le_paste_end_marker(n)):
 			# Deepest-pushed pops first: push the mismatching byte, then
 			# the matched prefix right to left, so later reads re-deliver
@@ -593,8 +534,7 @@ int le_paste_match_end():
 				le_pushback(le_paste_end_marker(n))
 			return 0
 		n = n + 1
-	if (n == 5):
-		return 1
+	if (n == 5): return 1
 	while (n > 0):
 		n = n - 1
 		le_pushback(le_paste_end_marker(n))
@@ -606,11 +546,9 @@ int le_paste_match_end():
 # pending 10 too, or it becomes a spurious empty accept on the next
 # read. Any other byte after a lone 13 is real content: un-read it.
 void le_paste_eat_crlf(int c):
-	if (c != 13):
-		return;
+	if (c != 13): return;
 	int next = le_getchar()
-	if ((next != 10) && (next != -1)):
-		le_pushback(next)
+	if ((next != 10) && (next != -1)): le_pushback(next)
 
 
 # 1 when buf[0..len) is exactly text's whole contents (text is
@@ -619,10 +557,8 @@ void le_paste_eat_crlf(int c):
 int le_text_equals(char* buf, int len, char* text):
 	int i = 0
 	while (i < len):
-		if (text[i] == 0):
-			return 0
-		if (buf[i] != text[i]):
-			return 0
+		if (text[i] == 0): return 0
+		if (buf[i] != text[i]): return 0
 		i = i + 1
 	return text[i] == 0
 
@@ -679,15 +615,12 @@ int line_edit_in_paste():
 # 1 when needle occurs anywhere in haystack (including haystack itself
 # when needle is empty). Pure; no substring helper exists in lib/lib.w.
 int le_str_contains(char* haystack, char* needle):
-	if (needle[0] == 0):
-		return 1
+	if (needle[0] == 0): return 1
 	int i = 0
 	while (haystack[i]):
 		int j = 0
-		while ((needle[j] != 0) && (haystack[i + j] == needle[j])):
-			j = j + 1
-		if (needle[j] == 0):
-			return 1
+		while ((needle[j] != 0) && (haystack[i + j] == needle[j])): j = j + 1
+		if (needle[j] == 0): return 1
 		i = i + 1
 	return 0
 
@@ -705,8 +638,7 @@ void le_search_end_state():
 # nothing matches.
 void le_search_refine():
 	int i = le_search_match
-	if (i > le_history_count):
-		i = le_history_count
+	if (i > le_history_count): i = le_history_count
 	while (i >= 0):
 		if ((i < le_history_count) && le_str_contains(le_history_at(i), le_search_query)):
 			le_search_match = i
@@ -717,8 +649,7 @@ void le_search_refine():
 
 # Ctrl-R again: move strictly to an older match.
 void le_search_older():
-	if (le_search_match < 0):
-		return;
+	if (le_search_match < 0): return;
 	le_search_match = le_search_match - 1
 	le_search_refine()
 
@@ -739,8 +670,7 @@ void le_search_cancel(char* buf, int size):
 
 
 void le_search_begin(char* buf):
-	if (le_search_query == 0):
-		le_search_query = malloc(256)
+	if (le_search_query == 0): le_search_query = malloc(256)
 	le_search_qlen = 0
 	le_search_query[0] = 0
 	# The edit buffer is not NUL-terminated mid-edit; terminate before
@@ -777,8 +707,7 @@ int le_search_step(char* buf, int size, int c):
 			# non-search key (the current match becomes the live buffer)
 			# and re-deliver the whole sequence, ESC first, so the
 			# ordinary dispatch loop handles the key itself.
-			if (le_search_match >= 0):
-				le_set_line(buf, size, le_history_at(le_search_match))
+			if (le_search_match >= 0): le_set_line(buf, size, le_history_at(le_search_match))
 			le_search_end_state()
 			le_pushback(c1)
 			le_pushback(27)
@@ -809,8 +738,7 @@ int le_search_step(char* buf, int size, int c):
 	# getchar_pos[0]-stepping trick assumed the byte came straight from
 	# getchar's buffer; now that reads can also come from the pushback
 	# stack, only le_pushback un-reads the right byte in every case.)
-	if (le_search_match >= 0):
-		le_set_line(buf, size, le_history_at(le_search_match))
+	if (le_search_match >= 0): le_set_line(buf, size, le_history_at(le_search_match))
 	le_search_end_state()
 	le_pushback(c)
 	return 0
@@ -824,20 +752,14 @@ int le_search_step(char* buf, int size, int c):
 # should finish the line immediately, like Enter; 0 otherwise.
 int le_escape_bracket(char* buf, int size):
 	int c2 = le_getchar()
-	if (c2 == 'A'):
-		le_browse_prev(buf, size)
-	else if (c2 == 'B'):
-		le_browse_next(buf, size)
+	if (c2 == 'A'): le_browse_prev(buf, size)
+	else if (c2 == 'B'): le_browse_next(buf, size)
 	else if (c2 == 'C'):
-		if (le_pos < le_len):
-			le_pos = le_pos + 1
+		if (le_pos < le_len): le_pos = le_pos + 1
 	else if (c2 == 'D'):
-		if (le_pos > 0):
-			le_pos = le_pos - 1
-	else if (c2 == 'H'):
-		le_pos = 0
-	else if (c2 == 'F'):
-		le_pos = le_len
+		if (le_pos > 0): le_pos = le_pos - 1
+	else if (c2 == 'H'): le_pos = 0
+	else if (c2 == 'F'): le_pos = le_len
 	else if ((c2 >= '0') && (c2 <= '9')):
 		int n = c2 - '0'
 		int c3 = le_getchar()
@@ -862,14 +784,11 @@ int le_escape_bracket(char* buf, int size):
 
 int le_escape(char* buf, int size):
 	int c1 = le_getchar()
-	if (c1 == '['):
-		return le_escape_bracket(buf, size)
+	if (c1 == '['): return le_escape_bracket(buf, size)
 	else if (c1 == 'O'): /* application-mode home/end */
 		int c2 = le_getchar()
-		if (c2 == 'H'):
-			le_pos = 0
-		else if (c2 == 'F'):
-			le_pos = le_len
+		if (c2 == 'H'): le_pos = 0
+		else if (c2 == 'F'): le_pos = le_len
 	# a lone escape (or an unknown sequence) is ignored
 	return 0
 
@@ -889,8 +808,7 @@ int le_finish_line(char* buf):
 	# one the user actually submits with Enter, still visible and
 	# editable) is. That stops a paste from flooding history with lines
 	# nobody composed at the prompt.
-	if (le_paste_active == 0):
-		le_history_accept(buf)
+	if (le_paste_active == 0): le_history_accept(buf)
 	return le_len
 
 
@@ -905,8 +823,7 @@ int le_paste_finish(char* prompt, char* buf):
 
 
 int line_edit_read(char* prompt, char* buf, int size, char* initial):
-	if (term_raw_mode(0) == 0):
-		return le_read_plain(prompt, buf, size)
+	if (term_raw_mode(0) == 0): return le_read_plain(prompt, buf, size)
 
 	le_set_line(buf, size, c"")
 	le_seed_len = 0
@@ -928,8 +845,7 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 		# consuming it before anything else so a pasted tab or an
 		# embedded blank line is handled the same way it would be if the
 		# whole paste had arrived inside one call.
-		if (le_paste_consume(buf, size)):
-			return le_paste_finish(prompt, buf)
+		if (le_paste_consume(buf, size)): return le_paste_finish(prompt, buf)
 
 	le_render(prompt, buf)
 
@@ -941,12 +857,10 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 			put_char(10)
 			return -1
 		if (le_search_active):
-			if (le_search_step(buf, size, c)):
-				return le_finish_line(buf)
+			if (le_search_step(buf, size, c)): return le_finish_line(buf)
 			le_render(prompt, buf)
 			continue
-		if ((c == 13) || (c == 10)):
-			return le_finish_line(buf)
+		if ((c == 13) || (c == 10)): return le_finish_line(buf)
 		if (c == 3): /* Ctrl-C */
 			buf[0] = 0
 			le_paste_mode_off()
@@ -970,11 +884,9 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 		else if (c == 5): /* Ctrl-E */
 			le_pos = le_len
 		else if (c == 2): /* Ctrl-B */
-			if (le_pos > 0):
-				le_pos = le_pos - 1
+			if (le_pos > 0): le_pos = le_pos - 1
 		else if (c == 6): /* Ctrl-F */
-			if (le_pos < le_len):
-				le_pos = le_pos + 1
+			if (le_pos < le_len): le_pos = le_pos + 1
 		else if (c == 11): /* Ctrl-K: kill to end */
 			le_len = le_pos
 		else if (c == 21): /* Ctrl-U: kill to start */
@@ -987,12 +899,10 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 		else if (c == 23): /* Ctrl-W: kill the word before the cursor */
 			int start = le_pos
 			while (start > 0):
-				if (buf[start - 1] != ' '):
-					break
+				if (buf[start - 1] != ' '): break
 				start = start - 1
 			while (start > 0):
-				if (buf[start - 1] == ' '):
-					break
+				if (buf[start - 1] == ' '): break
 				start = start - 1
 			int d = le_pos - start
 			if (d > 0):
@@ -1014,8 +924,7 @@ int line_edit_read(char* prompt, char* buf, int size, char* initial):
 			if (le_escape(buf, size)): /* a pasted embedded newline */
 				return le_paste_finish(prompt, buf)
 		else if (c == 9): /* Tab: complete, or insert if nothing matches */
-			if (le_try_complete(buf, size) == 0):
-				le_insert_char(buf, size, c)
+			if (le_try_complete(buf, size) == 0): le_insert_char(buf, size, c)
 		else if ((c >= 32) && (c < 127)): /* insert */
 			le_insert_char(buf, size, c)
 		le_render(prompt, buf)

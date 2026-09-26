@@ -81,8 +81,7 @@ at_val aev_error(char* msg, char* detail):
 
 
 void aev_skip_spaces():
-	while (aev_text[aev_pos] == ' '):
-		aev_pos = aev_pos + 1
+	while (aev_text[aev_pos] == ' '): aev_pos = aev_pos + 1
 
 
 # Next non-space character without consuming it (0 at end of text).
@@ -98,16 +97,11 @@ int aev_peek_char():
 # to match it byte for byte against the symbol table.
 int aev_is_ident_char(int c):
 	c = c & 255
-	if ((c >= 'a') && (c <= 'z')):
-		return 1
-	if ((c >= 'A') && (c <= 'Z')):
-		return 1
-	if ((c >= '0') && (c <= '9')):
-		return 1
-	if ((c >= 128) && (c <= 191)):
-		return 1
-	if ((c >= 194) && (c <= 244)):
-		return 1
+	if ((c >= 'a') && (c <= 'z')): return 1
+	if ((c >= 'A') && (c <= 'Z')): return 1
+	if ((c >= '0') && (c <= '9')): return 1
+	if ((c >= 128) && (c <= 191)): return 1
+	if ((c >= 194) && (c <= 244)): return 1
 	return c == '_'
 
 
@@ -116,16 +110,11 @@ int aev_is_ident_char(int c):
 char* aev_read_ident():
 	aev_skip_spaces()
 	int start = aev_pos
-	while (aev_is_ident_char(aev_text[aev_pos] & 255)):
-		aev_pos = aev_pos + 1
+	while (aev_is_ident_char(aev_text[aev_pos] & 255)): aev_pos = aev_pos + 1
 	int n = aev_pos - start
-	if (n == 0):
-		return 0
+	if (n == 0): return 0
 	char* s = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		s[i] = aev_text[start + i]
-		i = i + 1
+	for i in range(n): s[i] = aev_text[start + i]
 	s[n] = 0
 	return s
 
@@ -133,10 +122,8 @@ char* aev_read_ident():
 # 1 when the type is a struct held by value (fields inline at the lvalue
 # address), the same test locals.w and eval.w use.
 int aev_is_struct_value(int t):
-	if (t < 0):
-		return 0
-	if (type_get_pointer_level(t) != 0):
-		return 0
+	if (t < 0): return 0
+	if (type_get_pointer_level(t) != 0): return 0
 	return type_num_args(t) > 0
 
 
@@ -173,10 +160,8 @@ at_val aev_load(at_val v):
 # ptrace backend can only poke whole words, and a word-sized store over a
 # byte-sized field would clobber its neighbours.
 int aev_write(int addr, int width, int value):
-	if (dbg_mem_readable(addr, __word_size__) == 0):
-		return 0
-	if (width >= __word_size__):
-		return dbg_mem_write_word(addr, value)
+	if (dbg_mem_readable(addr, __word_size__) == 0): return 0
+	if (width >= __word_size__): return dbg_mem_write_word(addr, value)
 	int word = dbg_mem_read_word(addr)
 	int mask = (1 << (width * 8)) - 1
 	word = word - (word & mask) + (value & mask)
@@ -214,14 +199,10 @@ at_val aev_number():
 		while (1):
 			int c = aev_text[aev_pos] & 255
 			int d = -1
-			if ((c >= '0') && (c <= '9')):
-				d = c - '0'
-			else if ((c >= 'a') && (c <= 'f')):
-				d = c - 'a' + 10
-			else if ((c >= 'A') && (c <= 'F')):
-				d = c - 'A' + 10
-			if (d < 0):
-				break
+			if ((c >= '0') && (c <= '9')): d = c - '0'
+			else if ((c >= 'a') && (c <= 'f')): d = c - 'a' + 10
+			else if ((c >= 'A') && (c <= 'F')): d = c - 'A' + 10
+			if (d < 0): break
 			value = value * 16 + d
 			aev_pos = aev_pos + 1
 	else:
@@ -247,12 +228,10 @@ at_val aev_primary():
 		at_val v = aev_expr()
 		if (v.ok == 0):
 			return v
-		if (aev_peek_char() != ')'):
-			return aev_error(c"expected ')'", c"")
+		if (aev_peek_char() != ')'): return aev_error(c"expected ')'", c"")
 		aev_pos = aev_pos + 1
 		return v
-	if ((c >= '0') && (c <= '9')):
-		return aev_number()
+	if ((c >= '0') && (c <= '9')): return aev_number()
 	if (aev_is_ident_char(c)):
 		char* name = aev_read_ident()
 		if (aev_peek_char() == '('):
@@ -270,12 +249,10 @@ at_val aev_primary():
 # (grammar/postfix_expr.w).
 at_val aev_field(at_val base, char* field):
 	int t = base.vtype
-	if (t < 0):
-		return aev_error(c"no fields on an untyped value", field)
+	if (t < 0): return aev_error(c"no fields on an untyped value", field)
 	int base_addr = 0
 	if (aev_is_struct_value(t)):
-		if (base.is_lval == 0):
-			return aev_error(c"struct value has no address", field)
+		if (base.is_lval == 0): return aev_error(c"struct value has no address", field)
 		base_addr = base.addr
 	else if (type_get_pointer_level(t) > 0):
 		int element = type_lookup_previous_pointer(t)
@@ -286,11 +263,9 @@ at_val aev_field(at_val base, char* field):
 			return loaded
 		base_addr = loaded.val
 		t = element
-	else:
-		return aev_error(c"not a struct", type_get_name(t))
+	else: return aev_error(c"not a struct", type_get_name(t))
 	int ftype = type_get_field_type(t, field)
-	if (ftype < 0):
-		return aev_error(c"no such field", field)
+	if (ftype < 0): return aev_error(c"no such field", field)
 	at_val v
 	v.ok = 1
 	v.val = 0
@@ -307,22 +282,19 @@ at_val aev_index(at_val base):
 	at_val idx = aev_load(aev_expr())
 	if (idx.ok == 0):
 		return idx
-	if (aev_peek_char() != ']'):
-		return aev_error(c"expected ']'", c"")
+	if (aev_peek_char() != ']'): return aev_error(c"expected ']'", c"")
 	aev_pos = aev_pos + 1
 	int t = base.vtype
 	int element = -1
 	if (t >= 0):
-		if (type_get_pointer_level(t) == 0):
-			return aev_error(c"not indexable", type_get_name(t))
+		if (type_get_pointer_level(t) == 0): return aev_error(c"not indexable", type_get_name(t))
 		element = type_lookup_previous_pointer(t)
 	at_val loaded = aev_load(base)
 	if (loaded.ok == 0):
 		return loaded
 	int esize = __word_size__
 	if (element >= 0):
-		if (type_get_size(element) > 0):
-			esize = type_get_size(element)
+		if (type_get_size(element) > 0): esize = type_get_size(element)
 	at_val v
 	v.ok = 1
 	v.val = 0
@@ -339,8 +311,7 @@ at_val aev_postfix():
 		if (c == '.'):
 			aev_pos = aev_pos + 1
 			char* field = aev_read_ident()
-			if (field == 0):
-				return aev_error(c"expected a field name after '.'", c"")
+			if (field == 0): return aev_error(c"expected a field name after '.'", c"")
 			v = aev_field(v, field)
 			free(field)
 		else if (c == '['):
@@ -375,8 +346,7 @@ at_val aev_unary():
 		at_val v = aev_unary()
 		if (v.ok == 0):
 			return v
-		if (v.is_lval == 0):
-			return aev_error(c"cannot take the address of a computed value", c"")
+		if (v.is_lval == 0): return aev_error(c"cannot take the address of a computed value", c"")
 		at_val r
 		r.ok = 1
 		r.val = v.addr
@@ -414,14 +384,10 @@ at_val aev_term():
 		at_val right = aev_load(aev_unary())
 		if (right.ok == 0):
 			return right
-		if ((c != '*') && (right.val == 0)):
-			return aev_error(c"division by zero", c"")
-		if (c == '*'):
-			left.val = left.val * right.val
-		else if (c == '/'):
-			left.val = left.val / right.val
-		else:
-			left.val = left.val % right.val
+		if ((c != '*') && (right.val == 0)): return aev_error(c"division by zero", c"")
+		if (c == '*'): left.val = left.val * right.val
+		else if (c == '/'): left.val = left.val / right.val
+		else: left.val = left.val % right.val
 		left.vtype = -1
 		left.addr = 0
 		left.is_lval = 0
@@ -445,12 +411,9 @@ at_val aev_expr():
 		# exactly like the language itself; use [i] for scaled access.
 		int rtype = -1
 		if (left.vtype >= 0):
-			if (type_get_pointer_level(left.vtype) > 0):
-				rtype = left.vtype
-		if (c == '+'):
-			left.val = left.val + right.val
-		else:
-			left.val = left.val - right.val
+			if (type_get_pointer_level(left.vtype) > 0): rtype = left.vtype
+		if (c == '+'): left.val = left.val + right.val
+		else: left.val = left.val - right.val
 		left.vtype = rtype
 		left.addr = 0
 		left.is_lval = 0
@@ -487,9 +450,7 @@ void aev_print_result(at_val v):
 			return;
 		if (dbg_mem_readable(v.addr, __word_size__) == 0):
 			print(c"<unreadable at ")
-			char* h = hex_word(v.addr)
-			print(h)
-			free(h)
+			dbg_print_hex(v.addr)
 			print(c">")
 			return;
 		dbg_print_int_value(dbg_mem_read_word(v.addr))

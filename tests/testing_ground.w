@@ -103,28 +103,20 @@ int main_args(int argc, int argv):
 	return 0
 
 int main_strings(int argc, int argv):
-	if (starts_with(c"hi there", c"hi")):
-		println(c"it worked!!")
-	else:
-		println(c"prefix not working...")
+	if (starts_with(c"hi there", c"hi")): println(c"it worked!!")
+	else: println(c"prefix not working...")
 
-	if (strcmp(c"hi there", c"hi there")):
-		println(c"strcmp worked!")
+	if (strcmp(c"hi there", c"hi there")): println(c"strcmp worked!")
 
-	if (strcmp(c"", c"")):
-		println(c"strcmp blank worked!")
+	if (strcmp(c"", c"")): println(c"strcmp blank worked!")
 
-	if (strcmp(c"c", c"c")):
-		println(c"strcmp char worked!")
+	if (strcmp(c"c", c"c")): println(c"strcmp char worked!")
 
-	if (strcmp(c"hi there", c"hi there1")):
-		println(c"this shouldn't have worked...")
+	if (strcmp(c"hi there", c"hi there1")): println(c"this shouldn't have worked...")
 
-	if (strcmp(c"", c"h")):
-		println(c"this shouldn't have worked...")
+	if (strcmp(c"", c"h")): println(c"this shouldn't have worked...")
 
-	if (strcmp(c"a", c"")):
-		println(c"this shouldn't have worked...")
+	if (strcmp(c"a", c"")): println(c"this shouldn't have worked...")
 
 	return 0
 

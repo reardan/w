@@ -28,10 +28,7 @@ int main(int argc, int argv):
 
 	# Ordinary work is unaffected
 	int total = 0
-	int i = 0
-	while (i < 1000):
-		total = total + i
-		i = i + 1
+	for i in range(1000): total = total + i
 	assert_equal(499500, total)
 
 	# The shared symbolization machinery still resolves this call chain

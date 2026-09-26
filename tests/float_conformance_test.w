@@ -113,8 +113,7 @@ void test_float32_signed_zero_comparisons_and_truthiness():
 	# raw bit pattern (`test eax, eax`), so -0.0 (nonzero bits) is truthy
 	# even though it compares equal to 0.0.
 	int nzero_truthy = 0
-	if (nzero):
-		nzero_truthy = 1
+	if (nzero): nzero_truthy = 1
 	assert_equal(1, nzero_truthy)
 
 

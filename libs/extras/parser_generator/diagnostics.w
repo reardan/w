@@ -35,14 +35,12 @@ pg_diagnostic* pg_diagnostic_new(char* filename, int line, int column, char* mes
 
 
 void pg_diagnostics_add(pg_diagnostics* diagnostics, char* filename, int line, int column, char* message, char* expected, char* found):
-	if (diagnostics == 0):
-		return
+	if (diagnostics == 0): return
 	diagnostics.items.push(pg_diagnostic_new(filename, line, column, message, expected, found))
 
 
 int pg_diagnostics_count(pg_diagnostics* diagnostics):
-	if (diagnostics == 0):
-		return 0
+	if (diagnostics == 0): return 0
 	return diagnostics.items.length
 
 
@@ -68,8 +66,7 @@ void pg_diagnostic_print(pg_diagnostic* diagnostic):
 
 
 void pg_diagnostics_print(pg_diagnostics* diagnostics):
-	if (diagnostics == 0):
-		return
+	if (diagnostics == 0): return
 	int i = 0
 	while (i < diagnostics.items.length):
 		pg_diagnostic_print(diagnostics.items[i])
@@ -77,8 +74,7 @@ void pg_diagnostics_print(pg_diagnostics* diagnostics):
 
 
 void pg_diagnostic_free(pg_diagnostic* diagnostic):
-	if (diagnostic == 0):
-		return
+	if (diagnostic == 0): return
 	free(diagnostic.message)
 	free(diagnostic.expected)
 	free(diagnostic.found)
@@ -86,8 +82,7 @@ void pg_diagnostic_free(pg_diagnostic* diagnostic):
 
 
 void pg_diagnostics_free(pg_diagnostics* diagnostics):
-	if (diagnostics == 0):
-		return
+	if (diagnostics == 0): return
 	int i = 0
 	while (i < diagnostics.items.length):
 		pg_diagnostic_free(diagnostics.items[i])

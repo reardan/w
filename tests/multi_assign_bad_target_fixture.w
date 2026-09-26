@@ -7,3 +7,4 @@ int main():
 	int a
 	a, 3 = 1, 2
 	return 0
+# wbuild: fixture_group=multi_assign_error_test

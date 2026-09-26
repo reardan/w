@@ -42,3 +42,4 @@ int caret_error_probe(string s, int n):
 
 int main():
 	return caret_error_probe("héllo", caret_probe_undefined)
+# wbuild: fixture_group=error_caret_test

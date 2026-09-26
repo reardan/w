@@ -25,6 +25,7 @@ import lib.time
 import lib.math
 import lib.container
 import structures.heap
+import lib.mem
 
 
 # fd, revents, context
@@ -120,13 +121,12 @@ event_loop* event_loop_new_poll():
 
 
 # EPOLL_CLOEXEC
-int event_loop_epoll_cloexec():
-	return 524288
+const int event_loop_epoll_cloexec = 524288
 
 
 event_loop* event_loop_new():
 	event_loop* loop = event_loop_new_poll()
-	int epfd = epoll_create1(event_loop_epoll_cloexec())
+	int epfd = epoll_create1(event_loop_epoll_cloexec)
 	if (epfd >= 0):
 		loop.epfd = epfd
 		loop.event_capacity = 256
@@ -159,8 +159,7 @@ void event_loop_free(event_loop* loop):
 			list_free[event_watch*](slot.watches)
 			free(cast(char*, slot))
 		i = i + 1
-	if (cast(int, loop.slots) != 0):
-		free(cast(char*, loop.slots))
+	if (cast(int, loop.slots) != 0): free(cast(char*, loop.slots))
 	if (loop.epfd >= 0):
 		close(loop.epfd)
 		free(loop.events)
@@ -174,63 +173,39 @@ void event_loop_free(event_loop* loop):
 
 /* epoll interest bookkeeping. */
 
-int event_epoll_ctl_add():
-	return 1
-
-
-int event_epoll_ctl_del():
-	return 2
-
-
-int event_epoll_ctl_mod():
-	return 3
+const int event_epoll_ctl_add = 1
+const int event_epoll_ctl_del = 2
+const int event_epoll_ctl_mod = 3
 
 
 event_fd_slot* event_loop_slot(event_loop* loop, int fd):
 	if (fd >= loop.slot_capacity):
 		int capacity = loop.slot_capacity * 2
-		if (capacity < 64):
-			capacity = 64
-		while (capacity <= fd):
-			capacity = capacity * 2
+		if (capacity < 64): capacity = 64
+		while (capacity <= fd): capacity = capacity * 2
 		event_fd_slot** grown = cast(event_fd_slot**, malloc(capacity * __word_size__))
-		int i = 0
-		while (i < capacity):
-			if (i < loop.slot_capacity):
-				grown[i] = loop.slots[i]
-			else:
-				grown[i] = 0
-			i = i + 1
-		if (cast(int, loop.slots) != 0):
-			free(cast(char*, loop.slots))
+		for i in range(capacity):
+			if (i < loop.slot_capacity): grown[i] = loop.slots[i]
+			else: grown[i] = 0
+		if (cast(int, loop.slots) != 0): free(cast(char*, loop.slots))
 		loop.slots = grown
 		loop.slot_capacity = capacity
 	event_fd_slot* slot = loop.slots[fd]
 	if (cast(int, slot) == 0):
-		slot = new event_fd_slot()
-		slot.fd = fd
-		slot.registered = 0
-		slot.dirty = 0
-		slot.synthetic = 0
-		slot.live = 0
-		slot.watches = new list[event_watch*]
+		slot = new event_fd_slot(fd, 0, 0, 0, 0, new list[event_watch*])
 		loop.slots[fd] = slot
 	return slot
 
 
 event_fd_slot* event_loop_find_slot(event_loop* loop, int fd):
-	if ((fd < 0) || (fd >= loop.slot_capacity)):
-		return 0
+	if ((fd < 0) || (fd >= loop.slot_capacity)): return 0
 	return loop.slots[fd]
 
 
 int event_loop_epoll_ctl(event_loop* loop, int op, int fd, int events):
 	int size = epoll_event_bytes()
 	char* ev = malloc(size)
-	int i = 0
-	while (i < size):
-		ev[i] = 0
-		i = i + 1
+	mem_fill(ev, 0, size)
 	int* mask = cast(int*, ev)
 	mask[0] = events
 	int* data = cast(int*, ev + epoll_event_data_offset())
@@ -253,7 +228,7 @@ void event_loop_slot_watch_gone(event_loop* loop, event_fd_slot* slot):
 	slot.live = slot.live - 1
 	if (slot.live == 0):
 		if (slot.registered != 0):
-			event_loop_epoll_ctl(loop, event_epoll_ctl_del(), slot.fd, 0)
+			event_loop_epoll_ctl(loop, event_epoll_ctl_del, slot.fd, 0)
 			slot.registered = 0
 		slot.synthetic = 0
 	event_loop_mark_dirty(loop, slot)
@@ -273,25 +248,23 @@ void event_loop_sync_slot(event_loop* loop, event_fd_slot* slot):
 		else:
 			mask = mask | w.events
 			i = i + 1
-	if (slot.live == 0):
-		return
+	if (slot.live == 0): return
 	# POLLERR/POLLHUP are always reported; register at least one bit so
 	# a watch with an empty mask still hears about them.
-	int want = mask | poll_err() | poll_hup()
+	int want = mask | poll_err | poll_hup
 	if (slot.synthetic != 0):
-		slot.synthetic = (want & (poll_in() | poll_out())) | (slot.synthetic & poll_nval())
+		slot.synthetic = (want & (poll_in | poll_out)) | (slot.synthetic & poll_nval)
 		return
-	if (want == slot.registered):
-		return
+	if (want == slot.registered): return
 	int r = 0
 	if (slot.registered == 0):
-		r = event_loop_epoll_ctl(loop, event_epoll_ctl_add(), slot.fd, want)
+		r = event_loop_epoll_ctl(loop, event_epoll_ctl_add, slot.fd, want)
 		if (r == -17): /* EEXIST: still registered from a dup'd fd */
-			r = event_loop_epoll_ctl(loop, event_epoll_ctl_mod(), slot.fd, want)
+			r = event_loop_epoll_ctl(loop, event_epoll_ctl_mod, slot.fd, want)
 	else:
-		r = event_loop_epoll_ctl(loop, event_epoll_ctl_mod(), slot.fd, want)
+		r = event_loop_epoll_ctl(loop, event_epoll_ctl_mod, slot.fd, want)
 		if (r == -2): /* ENOENT: the kernel dropped it on close */
-			r = event_loop_epoll_ctl(loop, event_epoll_ctl_add(), slot.fd, want)
+			r = event_loop_epoll_ctl(loop, event_epoll_ctl_add, slot.fd, want)
 	if (r >= 0):
 		slot.registered = want
 		return
@@ -300,11 +273,10 @@ void event_loop_sync_slot(event_loop* loop, event_fd_slot* slot):
 	# Fake those revents every pass until the watches go away.
 	slot.registered = 0
 	if (r == -9): /* EBADF */
-		slot.synthetic = poll_nval()
+		slot.synthetic = poll_nval
 	else:
-		slot.synthetic = want & (poll_in() | poll_out())
-		if (slot.synthetic == 0):
-			slot.synthetic = poll_in()
+		slot.synthetic = want & (poll_in | poll_out)
+		if (slot.synthetic == 0): slot.synthetic = poll_in
 	loop.synthetic.push(slot)
 
 
@@ -321,21 +293,16 @@ void event_loop_sync(event_loop* loop):
 event_watch* event_loop_find_watch(event_loop* loop, int fd):
 	if (loop.epfd >= 0):
 		event_fd_slot* slot = event_loop_find_slot(loop, fd)
-		if (cast(int, slot) == 0):
-			return 0
-		int j = 0
-		while (j < slot.watches.length):
+		if (cast(int, slot) == 0): return 0
+		for j in range(slot.watches.length):
 			event_watch* w = slot.watches[j]
 			if (w.active):
 				return w
-			j = j + 1
 		return 0
-	int i = 0
-	while (i < loop.watches.length):
+	for i in range(loop.watches.length):
 		event_watch* watch = loop.watches[i]
 		if ((watch.fd == fd) & watch.active):
 			return watch
-		i = i + 1
 	return 0
 
 
@@ -343,21 +310,14 @@ event_watch* event_loop_find_watch(event_loop* loop, int fd):
 # (a reader and a writer task on the same socket); remove them by
 # handle with event_loop_remove_watch.
 event_watch* event_loop_add_watch(event_loop* loop, int fd, int events, event_fd_cb* callback, void* context):
-	event_watch* watch = new event_watch()
-	watch.fd = fd
-	watch.events = events
-	watch.callback = callback
-	watch.context = context
-	watch.active = 1
-	watch.pass = loop.pass
+	event_watch* watch = new event_watch(1, fd, events, callback, context, loop.pass)
 	loop.watch_count = loop.watch_count + 1
 	if (loop.epfd >= 0):
 		event_fd_slot* slot = event_loop_slot(loop, fd)
 		slot.watches.push(watch)
 		slot.live = slot.live + 1
 		event_loop_mark_dirty(loop, slot)
-	else:
-		loop.watches.push(watch)
+	else: loop.watches.push(watch)
 	return watch
 
 
@@ -368,22 +328,18 @@ void event_loop_add_fd(event_loop* loop, int fd, int events, event_fd_cb* callba
 # Removes one watch by handle; safe inside callbacks like
 # event_loop_remove_fd. The handle must not be used afterwards.
 void event_loop_remove_watch(event_loop* loop, event_watch* watch):
-	if (watch.active == 0):
-		return
+	if (watch.active == 0): return
 	watch.active = 0
 	loop.watch_count = loop.watch_count - 1
-	if (loop.epfd >= 0):
-		event_loop_slot_watch_gone(loop, event_loop_find_slot(loop, watch.fd))
+	if (loop.epfd >= 0): event_loop_slot_watch_gone(loop, event_loop_find_slot(loop, watch.fd))
 
 
 # Changes the interest mask of an existing watch.
 int event_loop_modify_fd(event_loop* loop, int fd, int events):
 	event_watch* watch = event_loop_find_watch(loop, fd)
-	if (cast(int, watch) == 0):
-		return 0
+	if (cast(int, watch) == 0): return 0
 	watch.events = events
-	if (loop.epfd >= 0):
-		event_loop_mark_dirty(loop, event_loop_find_slot(loop, fd))
+	if (loop.epfd >= 0): event_loop_mark_dirty(loop, event_loop_find_slot(loop, fd))
 	return 1
 
 
@@ -391,8 +347,7 @@ int event_loop_modify_fd(event_loop* loop, int fd, int events):
 # and physically removed after the current dispatch pass.
 int event_loop_remove_fd(event_loop* loop, int fd):
 	event_watch* watch = event_loop_find_watch(loop, fd)
-	if (cast(int, watch) == 0):
-		return 0
+	if (cast(int, watch) == 0): return 0
 	event_loop_remove_watch(loop, watch)
 	return 1
 
@@ -426,8 +381,7 @@ int event_loop_add_interval(event_loop* loop, int interval_ms, event_timer_cb* c
 
 # Returns 1 when the timer existed and was cancelled before firing.
 int event_loop_cancel_timer(event_loop* loop, int timer_id):
-	if ((timer_id in loop.timer_ids) == 0):
-		return 0
+	if ((timer_id in loop.timer_ids) == 0): return 0
 	event_timer* timer = loop.timer_ids[timer_id]
 	loop.timer_ids.remove(timer_id)
 	# Stays in the heap until it reaches the top, then is freed.
@@ -448,8 +402,7 @@ void event_loop_compact[T](event_loop* loop, list[T] entries):
 		if (entry.active == 0):
 			free(cast(char*, entry))
 			list_remove_at[T](entries, i)
-		else:
-			i = i + 1
+		else: i = i + 1
 
 
 int event_loop_active_count[T](event_loop* loop, list[T] entries):
@@ -457,8 +410,7 @@ int event_loop_active_count[T](event_loop* loop, list[T] entries):
 	int i = 0
 	while (i < entries.length):
 		event_entry* entry = cast(event_entry*, entries[i])
-		if (entry.active):
-			count = count + 1
+		if (entry.active): count = count + 1
 		i = i + 1
 	return count
 
@@ -489,11 +441,9 @@ event_timer* event_loop_first_timer(event_loop* loop):
 # wrapping 32-bit monotonic clock stays correct.
 int event_loop_next_timer_delay(event_loop* loop):
 	event_timer* timer = event_loop_first_timer(loop)
-	if (cast(int, timer) == 0):
-		return -1
+	if (cast(int, timer) == 0): return -1
 	int delay = timer.fire_at_ms - time_monotonic_ms()
-	if (delay < 0):
-		return 0
+	if (delay < 0): return 0
 	return delay
 
 
@@ -508,12 +458,9 @@ int event_loop_fire_due_timers(event_loop* loop):
 	list[event_timer*] rearm = new list[event_timer*]
 	while (1):
 		event_timer* timer = event_loop_first_timer(loop)
-		if (cast(int, timer) == 0):
-			break
-		if ((timer.fire_at_ms - now) > 0):
-			break
-		if (timer.id >= newest):
-			break
+		if (cast(int, timer) == 0): break
+		if ((timer.fire_at_ms - now) > 0): break
+		if (timer.id >= newest): break
 		heap_pop[event_timer*](loop.timer_heap)
 		if (timer.interval_ms > 0):
 			timer.fire_at_ms = now + timer.interval_ms
@@ -524,8 +471,7 @@ int event_loop_fire_due_timers(event_loop* loop):
 			loop.timer_count = loop.timer_count - 1
 		timer.callback(timer.id, timer.context)
 		fired = fired + 1
-		if (timer.interval_ms <= 0):
-			free(cast(char*, timer))
+		if (timer.interval_ms <= 0): free(cast(char*, timer))
 	int i = 0
 	while (i < rearm.length):
 		# Re-armed after the pass so an interval fires at most once per
@@ -541,10 +487,8 @@ int event_loop_wait_timeout(event_loop* loop, int max_wait_ms):
 	int timeout = max_wait_ms
 	int timer_delay = event_loop_next_timer_delay(loop)
 	if (timer_delay >= 0):
-		if (timeout < 0):
-			timeout = timer_delay
-		else:
-			timeout = min(timeout, timer_delay)
+		if (timeout < 0): timeout = timer_delay
+		else: timeout = min(timeout, timer_delay)
 	return timeout
 
 
@@ -556,35 +500,28 @@ int event_loop_run_once_poll(event_loop* loop, int max_wait_ms):
 	pollfd* fds = 0
 	if (watch_count > 0):
 		fds = pollfd_new_array(watch_count)
-		int i = 0
-		while (i < watch_count):
+		for i in range(watch_count):
 			event_watch* watch = loop.watches[i]
 			pollfd_set(fds, i, watch.fd, watch.events)
-			i = i + 1
 
 	int ready = poll_wait(fds, watch_count, timeout)
 	if (ready < 0):
-		if (cast(int, fds) != 0):
-			free(cast(char*, fds))
+		if (cast(int, fds) != 0): free(cast(char*, fds))
 		# EINTR is not an error for the loop; report zero work instead.
-		if (ready == -4):
-			return 0
+		if (ready == -4): return 0
 		return ready
 
 	int fired = event_loop_fire_due_timers(loop)
 
-	int i = 0
-	while (i < watch_count):
+	for i in range(watch_count):
 		event_watch* watch = loop.watches[i]
 		pollfd* entry = pollfd_at(fds, i)
 		int revents = entry.revents
 		if (watch.active & (revents != 0)):
 			watch.callback(watch.fd, revents, watch.context)
 			fired = fired + 1
-		i = i + 1
 
-	if (cast(int, fds) != 0):
-		free(cast(char*, fds))
+	if (cast(int, fds) != 0): free(cast(char*, fds))
 	return fired
 
 
@@ -592,17 +529,15 @@ int event_loop_run_once_poll(event_loop* loop, int max_wait_ms):
 # pass began, each seeing its own interest bits plus ERR/HUP/NVAL.
 int event_loop_dispatch_slot(event_loop* loop, event_fd_slot* slot, int revents):
 	int fired = 0
-	int always = poll_err() | poll_hup() | poll_nval()
+	int always = poll_err | poll_hup | poll_nval
 	int count = slot.watches.length
-	int j = 0
-	while (j < count):
+	for j in range(count):
 		event_watch* w = slot.watches[j]
 		if (w.active && (w.pass != loop.pass)):
 			int mine = revents & (w.events | always)
 			if (mine != 0):
 				w.callback(slot.fd, mine, w.context)
 				fired = fired + 1
-		j = j + 1
 	return fired
 
 
@@ -615,26 +550,22 @@ int event_loop_run_once_epoll(event_loop* loop, int max_wait_ms):
 		if ((slot.synthetic == 0) || (slot.live == 0)):
 			slot.synthetic = 0
 			list_remove_at[event_fd_slot*](loop.synthetic, s)
-		else:
-			s = s + 1
+		else: s = s + 1
 	event_loop_sync(loop)
 	int timeout = event_loop_wait_timeout(loop, max_wait_ms)
-	if (loop.synthetic.length > 0):
-		timeout = 0
+	if (loop.synthetic.length > 0): timeout = 0
 	loop.pass = loop.pass + 1
 
 	int ready = epoll_wait(loop.epfd, cast(int, loop.events), loop.event_capacity, timeout)
 	if (ready < 0):
-		if (ready == -4):
-			return 0
+		if (ready == -4): return 0
 		return ready
 
 	int fired = event_loop_fire_due_timers(loop)
 
 	int size = epoll_event_bytes()
 	int offset = epoll_event_data_offset()
-	int i = 0
-	while (i < ready):
+	for i in range(ready):
 		char* ev = loop.events + i * size
 		int* mask = cast(int*, ev)
 		int* data = cast(int*, ev + offset)
@@ -643,9 +574,7 @@ int event_loop_run_once_epoll(event_loop* loop, int max_wait_ms):
 		# targets; only the low poll bits matter.
 		int revents = mask[0] & 65535
 		event_fd_slot* slot = event_loop_find_slot(loop, fd)
-		if (cast(int, slot) != 0):
-			fired = fired + event_loop_dispatch_slot(loop, slot, revents)
-		i = i + 1
+		if (cast(int, slot) != 0): fired = fired + event_loop_dispatch_slot(loop, slot, revents)
 
 	s = 0
 	int synthetic_count = loop.synthetic.length
@@ -667,8 +596,7 @@ int event_loop_run_once_epoll(event_loop* loop, int max_wait_ms):
 # due sooner; -1 waits indefinitely), fires due timers, then dispatches
 # fd callbacks. Returns callbacks fired, or a negative errno.
 int event_loop_run_once(event_loop* loop, int max_wait_ms):
-	if (loop.epfd >= 0):
-		return event_loop_run_once_epoll(loop, max_wait_ms)
+	if (loop.epfd >= 0): return event_loop_run_once_epoll(loop, max_wait_ms)
 	return event_loop_run_once_poll(loop, max_wait_ms)
 
 

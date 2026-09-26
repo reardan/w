@@ -33,6 +33,7 @@ import lib.file
 import lib.env
 import structures.string
 import structures.json
+import lib.str
 
 
 char* vw_dir_cache
@@ -68,13 +69,10 @@ list[char*] vw_words(char* text):
 	while (1):
 		int c = text[i]
 		if ((c == ' ') || (c == 0)):
-			if (word.length > 0):
-				words.push(strclone(word.data))
+			if (word.length > 0): words.push(strclone(word.data))
 			string_clear(word)
-			if (c == 0):
-				break
-		else:
-			string_append_char(word, c)
+			if (c == 0): break
+		else: string_append_char(word, c)
 		i = i + 1
 	string_free(word)
 	return words
@@ -102,25 +100,21 @@ list[char*] vw_client(char* flags, char* args):
 	argv.push(c"bin/wbuildd")
 	argv.push(c"--socket")
 	argv.push(vw_path(c"d.sock"))
-	for char* w in vw_words(flags):
-		argv.push(w)
-	for char* w in vw_words(args):
-		argv.push(w)
+	for char* w in vw_words(flags): argv.push(w)
+	for char* w in vw_words(args): argv.push(w)
 	return argv
 
 
 list[char*] vw_oneshot(char* args):
 	list[char*] argv = new list[char*]
 	argv.push(c"bin/wexec")
-	for char* w in vw_words(args):
-		argv.push(w)
+	for char* w in vw_words(args): argv.push(w)
 	return argv
 
 
 json_value* vw_status():
 	process_result* r = vw_run(vw_client(c"", c"status --json"))
-	if (r.status != 0):
-		print(r.stderr_text)
+	if (r.status != 0): print(r.stderr_text)
 	assert_equal(0, r.status)
 	json_value* v = json_parse(r.stdout_text)
 	assert1(v != 0)
@@ -202,8 +196,7 @@ void vw_assert_same_file(char* cold, char* warm):
 	int same = cold_length == warm_length
 	int i = 0
 	while (same && (i < cold_length)):
-		if (a[i] != b[i]):
-			same = 0
+		if (a[i] != b[i]): same = 0
 		i = i + 1
 	if (same == 0):
 		print(c"differs from the cold build: ")
@@ -244,8 +237,7 @@ char* vw_cmd(char* words):
 	string_append_char(s, '[')
 	int first = 1
 	for char* w in vw_words(words):
-		if (first == 0):
-			string_append(s, c", ")
+		if (first == 0): string_append(s, c", ")
 		first = 0
 		string_append_char(s, '"')
 		string_append(s, w)
@@ -292,37 +284,24 @@ char* vw_manifest():
 	return text
 
 
-int vw_contains(char* text, char* needle):
-	int i = 0
-	while (text[i] != 0):
-		if (starts_with(&text[i], needle)):
-			return 1
-		i = i + 1
-	return 0
-
-
 # After the --list runs the daemon holds a warm manifest and warm
 # hashes. Under a parallel './wbuild tests' another target editing a
 # source outside bin/ legitimately drops the manifest in between, so a
 # cold answer is retried a few times before it counts as a failure.
 void vw_expect_warm():
-	int attempt = 0
-	while (attempt < 10):
+	for attempt in range(10):
 		json_value* status = vw_status()
 		int warm = json_object_get(status, c"warm_manifest").int_value && (json_object_get(status, c"warm_hashes").int_value > 0)
 		json_free(status)
-		if (warm):
-			return
+		if (warm): return
 		process_result_free(vw_run(vw_client(c"--no-autostart --require-daemon", strjoin(strjoin(c"build -f ", vw_path(c"manifest.json")), c" -j 1 vw_a"))))
 		process_result_free(vw_run(vw_client(c"--no-autostart --require-daemon", c"build --list")))
-		attempt = attempt + 1
 	asserts(c"the daemon never kept a warm manifest and warm hashes", 0)
 
 
 void vw_cleanup():
 	char* names = c"a.w bad.w helper.w manifest.json log d.sock d.sock.log a a64 wv_self bad a.cold a64.cold wv_self.cold"
-	for char* name in vw_words(names):
-		unlink(vw_path(name))
+	for char* name in vw_words(names): unlink(vw_path(name))
 	rmdir(vw_dir())
 
 
@@ -384,9 +363,9 @@ void test_verify_warm():
 	vw_write(c"helper.w", c"char* helper():\n\treturn c\"helped again\"\n")
 	process_result* edited = vw_run(vw_client(c"--no-autostart --require-daemon", strjoin(strjoin(c"build ", m), c" -j 1 vw_all")))
 	assert_equal(0, edited.status)
-	assert1(vw_contains(edited.stdout_text, c"wexec: target vw_a\n"))
-	assert1(vw_contains(edited.stdout_text, c"wexec: target vw_a64\n"))
-	assert1(vw_contains(edited.stdout_text, c"wexec: target vw_self (cached)"))
+	assert1(contains(edited.stdout_text, c"wexec: target vw_a\n"))
+	assert1(contains(edited.stdout_text, c"wexec: target vw_a64\n"))
+	assert1(contains(edited.stdout_text, c"wexec: target vw_self (cached)"))
 	process_result* recheck = vw_compare(strjoin(m, c" -j 1 vw_all"))
 	assert_equal(0, recheck.status)
 	process_result* cold_edit = vw_run(vw_oneshot(strjoin(m, c" --no-cache -j 1 vw_all")))
@@ -404,8 +383,8 @@ void test_verify_warm():
 		strv_set(v, i, a)
 		i = i + 1
 	spawn_options* quiet = spawn_options_new()
-	quiet.stdout_mode = process_null()
-	quiet.stderr_mode = process_null()
+	quiet.stdout_mode = process_null
+	quiet.stderr_mode = process_null
 	process* client = process_spawn(sleeper[0], v, quiet)
 	assert1(client != 0)
 	int waited = 0

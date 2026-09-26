@@ -24,8 +24,7 @@ void pg_source_indent(pg_source_writer* writer):
 
 void pg_source_dedent(pg_source_writer* writer):
 	writer.indent = writer.indent - 1
-	if (writer.indent < 0):
-		writer.indent = 0
+	if (writer.indent < 0): writer.indent = 0
 
 
 void pg_source_tabs(pg_source_writer* writer):
@@ -62,16 +61,11 @@ void pg_source_append_w_string(pg_source_writer* writer, char* text):
 	int i = 0
 	while (text[i]):
 		int c = text[i]
-		if (c == '"'):
-			string_append(writer.out, c"\\x22")
-		else if (c == 92):
-			string_append(writer.out, c"\\x5c")
-		else if (c == 10):
-			string_append(writer.out, c"\\x0a")
-		else if (c == 9):
-			string_append(writer.out, c"\\x09")
-		else:
-			string_append_char(writer.out, c)
+		if (c == '"'): string_append(writer.out, c"\\x22")
+		else if (c == 92): string_append(writer.out, c"\\x5c")
+		else if (c == 10): string_append(writer.out, c"\\x0a")
+		else if (c == 9): string_append(writer.out, c"\\x09")
+		else: string_append_char(writer.out, c)
 		i = i + 1
 	string_append_char(writer.out, '"')
 
@@ -89,8 +83,7 @@ char* pg_source_take(pg_source_writer* writer):
 # to lib.file after the next seed promotion (./wbuild update).
 char* pg_read_file_text(char* path):
 	wstream* in = stream_open_read(path)
-	if (in == 0):
-		return 0
+	if (in == 0): return 0
 	string_builder* contents = string_new()
 	stream_read_all(in, contents)
 	stream_close(in)
@@ -101,8 +94,7 @@ char* pg_read_file_text(char* path):
 
 int pg_write_file_text(char* path, char* text):
 	wstream* out = stream_open_write(path)
-	if (out == 0):
-		return 0
+	if (out == 0): return 0
 	stream_write_cstr(out, text)
 	stream_close(out)
 	return 1

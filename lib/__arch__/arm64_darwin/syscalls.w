@@ -84,8 +84,7 @@ int at_fdcwd():
 	return 0 - 100
 
 
-int at_symlink_nofollow():
-	return 256
+const int at_symlink_nofollow = 256
 
 
 int statx(char* path, int flags, int mask, char* buf):
@@ -158,8 +157,7 @@ int getcwd(char* buf, int size):
 # Try the full flush first and fall back to plain fsync where the
 # filesystem rejects it (e.g. ENOTSUP on SMB/NFS mounts).
 int fsync(int file):
-	if (sys_fcntl(file, 51, 0) >= 0):
-		return 0
+	if (sys_fcntl(file, 51, 0) >= 0): return 0
 	return syscall(95, file, 0, 0)
 
 # No fdatasync in the BSD table; fsync's guarantee is a superset.
@@ -173,8 +171,7 @@ int linux_time(int* out):
 	tv.tv_sec = 0
 	tv.tv_usec = 0
 	syscall(116, cast(int, &tv), 0, 0)
-	if (out != 0):
-		*out = tv.tv_sec
+	if (out != 0): *out = tv.tv_sec
 	return tv.tv_sec
 
 /* memory and threading */
@@ -267,8 +264,7 @@ int sys_clock_gettime(int clock_id, int ts):
 # ucontext on. oldact is not reported. Allocation-free: lib/crash.w
 # calls this from inside its handler.
 int rt_sigaction(int signum, int* act, int* oldact):
-	if ((act[0] != 0) && (act[2] == 0)):
-		return 0 - 38
+	if ((act[0] != 0) && (act[2] == 0)): return 0 - 38
 	int[3] nsa
 	nsa[0] = act[0]
 	nsa[1] = act[2]
@@ -318,84 +314,10 @@ int kill(int pid, int sig):
 	return syscall(37, pid, sig, 1)
 
 
-# Returns 1 when running on Windows, 0 on all other platforms.
-int os_windows():
-	return 0
-
-
-# The win64 module's C -> W callback thunks and unhandled-exception
-# filter (lib/crash.w); Windows-only, so the stubs report failure.
-int win_callback(int fn, int nargs):
-	return 0
-
-
-int win_crash_filter_install(int handler):
-	return 0
-
-
 # sigaltstack (53): ss/old_ss point at a stack_t {ss_sp, ss_size,
 # ss_flags}. lib/crash.w delivers its darwin handlers on one.
 int sys_sigaltstack(int ss, int old_ss):
 	return syscall(53, ss, old_ss, 0)
-
-
-# Win32 API surface used by the os_windows()-guarded paths in shared
-# modules (lib/process.w's CreateProcessA spawning, tools/wexec.w's
-# FindFirstFileA directory walk). Those paths never run on this target;
-# the stubs only keep the modules linkable -- the mirror image of the
-# Unix-primitive stubs at the bottom of lib/__arch__/win64/syscalls.w.
-# Each returns its Win32 failure value.
-
-int CloseHandle(int handle):
-	return 0
-
-
-int GetStdHandle(int which):
-	return -1
-
-
-int CreateFileA(char* path, int access, int share, int security, int creation, int flags, int template_file):
-	return -1
-
-
-int CreatePipe(int* read_end, int* write_end, int security, int size):
-	return 0
-
-
-int SetHandleInformation(int handle, int mask, int flags):
-	return 0
-
-
-int CreateProcessA(char* app, char* cmdline, int proc_attr, int thread_attr, int inherit_handles, int flags, int env, char* dir, char* startup_info, char* proc_info):
-	return 0
-
-
-int WaitForSingleObject(int handle, int milliseconds):
-	return -1
-
-
-int GetExitCodeProcess(int handle, int* code):
-	return 0
-
-
-int TerminateProcess(int handle, int exit_code):
-	return 0
-
-
-int PeekNamedPipe(int handle, char* buf, int buf_size, int* bytes_read, int* bytes_avail, int* bytes_left):
-	return 0
-
-
-int FindFirstFileA(char* pattern, char* find_data):
-	return -1
-
-
-int FindNextFileA(int handle, char* find_data):
-	return 0
-
-
-int FindClose(int handle):
-	return 0
 
 
 # ptrace is unsupported on Darwin here; the stub keeps the debugger's
@@ -521,3 +443,6 @@ int epoll_wait(int epfd, int events, int maxevents, int timeout_ms):
 
 int eventfd2(int initval, int flags):
 	return -38
+
+
+import lib.win32_stubs

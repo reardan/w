@@ -43,12 +43,10 @@ int ui_demo_write_ppm(char* path, int w, int h):
 	int y = h - 1
 	while (y >= 0):
 		char* src = &pixels[y * w * 4]
-		int x = 0
-		while (x < w):
+		for x in range(w):
 			row[x * 3] = src[x * 4]
 			row[x * 3 + 1] = src[x * 4 + 1]
 			row[x * 3 + 2] = src[x * 4 + 2]
-			x = x + 1
 		stream_write(out, row, w * 3)
 		y = y - 1
 	stream_close(out)
@@ -62,8 +60,7 @@ int main(int argc, int argv):
 	args_init(argc, argv)
 	int max_frames = 0
 	char* frames_value = args_value(c"frames")
-	if (frames_value != 0):
-		max_frames = atoi(frames_value)
+	if (frames_value != 0): max_frames = atoi(frames_value)
 	# --screenshot out.ppm captures the final frame (needs --frames).
 	char* shot_path = args_value(c"screenshot")
 	# --theme light|dark|ocean preselects the theme the picker would set,
@@ -85,10 +82,8 @@ int main(int argc, int argv):
 	int theme_choice = 0
 	char* theme_value = args_value(c"theme")
 	if (theme_value != 0):
-		if (strcmp(theme_value, c"dark") == 0):
-			theme_choice = 1
-		else if (strcmp(theme_value, c"ocean") == 0):
-			theme_choice = 2
+		if (strcmp(theme_value, c"dark") == 0): theme_choice = 1
+		else if (strcmp(theme_value, c"ocean") == 0): theme_choice = 2
 		else if (strcmp(theme_value, c"light") != 0):
 			print_error(c"demo: unknown --theme (want light, dark or ocean)\n")
 			return 1
@@ -99,18 +94,14 @@ int main(int argc, int argv):
 		win_w = 900
 		win_h = 600
 	gfx_window* win = gfx_window_open(c"W ui demo", win_w, win_h)
-	if (win == 0):
-		return 1
+	if (win == 0): return 1
 	ui_renderer rndr
-	if (ui_render_init(&rndr) == 0):
-		return 1
+	if (ui_render_init(&rndr) == 0): return 1
 	ui_shell_state shell_state
 	ui_shell_init(&shell_state)
 	if (shell):
-		if (theme_choice == 0):
-			ui_theme_light(&shell_state.theme)
-		else if (theme_choice == 2):
-			ui_theme_ocean(&shell_state.theme)
+		if (theme_choice == 0): ui_theme_light(&shell_state.theme)
+		else if (theme_choice == 2): ui_theme_ocean(&shell_state.theme)
 		# The shell opens with one document already up, so the editor
 		# pane is not empty in a screenshot.
 		ui_shell_open_doc(&shell_state, 0)
@@ -124,13 +115,11 @@ int main(int argc, int argv):
 	# Same single source of truth the checkbox and dropdown drive.
 	state.choice = theme_choice
 	state.dark = 0
-	if (theme_choice == 1):
-		state.dark = 1
+	if (theme_choice == 1): state.dark = 1
 	state.dialog_open = dialog
 	ui_context ctx
 	ui_context_init(&ctx, &rndr, &state.light_theme)
-	if (shell):
-		ctx.theme = &shell_state.theme
+	if (shell): ctx.theme = &shell_state.theme
 
 	int frame = 0
 	while (gfx_window_poll(win)):
@@ -140,8 +129,7 @@ int main(int argc, int argv):
 			# and the widget layer reads no clocks — so the driver
 			# supplies the time (docs/projects/ui_widgets.md §9.3).
 			ui_shell_body(&ctx, &shell_state, time_monotonic_ms())
-		else:
-			ui_demo_body(&ctx, &state)
+		else: ui_demo_body(&ctx, &state)
 		ui_end(&ctx)
 		frame = frame + 1
 		int last = (max_frames > 0) && (frame >= max_frames)
@@ -151,8 +139,7 @@ int main(int argc, int argv):
 				print_error(c"screenshot write failed\n")
 		gfx_window_swap(win)
 		sleep_ms(16)
-		if (last):
-			break
+		if (last): break
 	ui_render_destroy(&rndr)
 	gfx_window_destroy(win)
 	return 0

@@ -3,25 +3,20 @@ Arch-neutral core of the in-house assembler/disassembler libraries
 (docs/projects/assembler_disassembler.md, issue #164): the structured
 instruction/operand model that encoders, decoders, the text parser and
 the formatter all share, plus the byte buffer and label/fixup machinery
-the assembler emits through.
+the assembler emits through, and the static name tables the decoders
+and encoders share.
 
 This library is compiled directly by the committed seed as a build gate
 (asm_seed_gate): only seed-understood syntax here.
 */
 import lib.lib
+import structures.string
 
 
 # Architecture ids (asm_insn.arch, asm_binary.machine mapping)
-int ASM_ARCH_X86():
-	return 0
-
-
-int ASM_ARCH_X64():
-	return 1
-
-
-int ASM_ARCH_ARM64():
-	return 2
+const int ASM_ARCH_X86 = 0
+const int ASM_ARCH_X64 = 1
+const int ASM_ARCH_ARM64 = 2
 
 
 # Base-register sentinel for x64 RIP-relative memory ([rip+disp32]): a
@@ -30,42 +25,21 @@ int ASM_ARCH_ARM64():
 # holds a real register number >= 16), so no extra field is needed; the
 # formatter prints it as "rip" and the encoder re-emits the rm=5 (no-SIB)
 # form instead of the SIB form a genuine absolute [disp32] uses on x64.
-int ASM_BASE_RIP():
-	return 16
+const int ASM_BASE_RIP = 16
 
 
 # Register classes (asm_operand.rclass for kind reg)
-int ASM_RCLASS_GP():
-	return 0
-
-
-int ASM_RCLASS_XMM():
-	return 1
-
-
-int ASM_RCLASS_X87():
-	return 2
+const int ASM_RCLASS_GP = 0
+const int ASM_RCLASS_XMM = 1
+const int ASM_RCLASS_X87 = 2
 
 
 # Operand kinds
-int ASM_OP_NONE():
-	return 0
-
-
-int ASM_OP_REG():
-	return 1
-
-
-int ASM_OP_IMM():
-	return 2
-
-
-int ASM_OP_MEM():
-	return 3
-
-
-int ASM_OP_LABEL():
-	return 4
+const int ASM_OP_NONE = 0
+const int ASM_OP_REG = 1
+const int ASM_OP_IMM = 2
+const int ASM_OP_MEM = 3
+const int ASM_OP_LABEL = 4
 
 
 /*
@@ -94,9 +68,9 @@ struct asm_operand:
 
 
 void asm_operand_clear(asm_operand* op):
-	op.kind = ASM_OP_NONE()
+	op.kind = ASM_OP_NONE
 	op.reg = -1
-	op.rclass = ASM_RCLASS_GP()
+	op.rclass = ASM_RCLASS_GP
 	op.base = -1
 	op.index = -1
 	op.scale = 1
@@ -129,7 +103,7 @@ struct asm_insn:
 
 
 void asm_insn_clear(asm_insn* insn):
-	insn.arch = ASM_ARCH_X86()
+	insn.arch = ASM_ARCH_X86
 	insn.address = 0
 	insn.length = 0
 	insn.branch_target = -1
@@ -157,10 +131,7 @@ char* asm_hex_min(int v):
 	char* out = malloc(n + 3)
 	out[0] = '0'
 	out[1] = 'x'
-	int i = 0
-	while (i < n):
-		out[2 + i] = tmp[n - 1 - i]
-		i = i + 1
+	for i in range(n): out[2 + i] = tmp[n - 1 - i]
 	out[2 + n] = 0
 	free(tmp)
 	return out
@@ -171,73 +142,63 @@ char* asm_hex_min(int v):
 # is zero-padded to a full 8 digits so no bits are lost
 # (0x12345678, 0x90123456 -> "0x1234567890123456").
 char* asm_hex_min64(int hi, int lo):
-	if (hi == 0):
-		return asm_hex_min(lo)
+	if (hi == 0): return asm_hex_min(lo)
 	char* digits = c"0123456789abcdef"
 	char* lopart = malloc(9)
-	int i = 0
-	while (i < 8):
-		lopart[i] = digits[(lo >> ((7 - i) * 4)) & 15]
-		i = i + 1
+	for i in range(8): lopart[i] = digits[(lo >> ((7 - i) * 4)) & 15]
 	lopart[8] = 0
 	return strjoin(asm_hex_min(hi), lopart)
 
 
 int asm_insn_operand_count(asm_insn* insn):
-	if (insn.op1.kind == ASM_OP_NONE()):
-		return 0
-	if (insn.op2.kind == ASM_OP_NONE()):
-		return 1
-	if (insn.op3.kind == ASM_OP_NONE()):
-		return 2
+	if (insn.op1.kind == ASM_OP_NONE): return 0
+	if (insn.op2.kind == ASM_OP_NONE): return 1
+	if (insn.op3.kind == ASM_OP_NONE): return 2
 	return 3
+
+
+################################ name tables ##################################
+
+# A small number -> name table packed into one string literal: entry n is
+# the NUL-terminated name in the stride-byte slot at n * stride (names are
+# NUL-padded to the stride; an all-NUL slot has no name). The returned
+# names point into the literal: static, never freed.
+char* asm_name_slot(char* table, int stride, int count, int number):
+	if (number < 0 || number >= count): return 0
+	if (table[number * stride] == 0): return 0
+	return table + number * stride
+
+
+# Reverse lookup in an asm_name_slot table: the number whose slot holds
+# name, or -1.
+int asm_name_slot_find(char* table, int stride, int count, char* name):
+	for number in range(count):
+		if (table[number * stride] != 0 && strcmp(table + number * stride, name) == 0):
+			return number
+	return -1
 
 
 ################################ byte buffer ##################################
 
-struct asm_buffer:
-	int capacity
-	int length
-	char* data
+# The assembler's output bytes: a structures/string builder (capacity,
+# length, data), which also keeps data NUL-terminated.
+type asm_buffer = string_builder
 
 
 asm_buffer* asm_buffer_new():
-	# three word-sized fields: 12 bytes on x86, 24 on x64
-	asm_buffer* b = cast(asm_buffer*, malloc(3 * __word_size__))
-	b.capacity = 64
-	b.length = 0
-	b.data = malloc(b.capacity)
-	return b
+	return string_new_sized(64)
 
 
 void asm_buffer_free(asm_buffer* b):
-	free(b.data)
-	free(cast(char*, b))
-
-
-void asm_buffer_reserve(asm_buffer* b, int extra):
-	if (b.length + extra <= b.capacity):
-		return
-	int capacity = b.capacity
-	while (b.length + extra > capacity):
-		capacity = capacity * 2
-	b.data = realloc(b.data, b.capacity, capacity)
-	b.capacity = capacity
+	string_free(b)
 
 
 void asm_buffer_byte(asm_buffer* b, int v):
-	asm_buffer_reserve(b, 1)
-	b.data[b.length] = v
-	b.length = b.length + 1
+	string_append_char(b, v)
 
 
 void asm_buffer_bytes(asm_buffer* b, char* data, int n):
-	asm_buffer_reserve(b, n)
-	int i = 0
-	while (i < n):
-		b.data[b.length + i] = data[i]
-		i = i + 1
-	b.length = b.length + n
+	string_append_bytes(b, data, n)
 
 
 # Little-endian 32-bit word, the common immediate/displacement width.
@@ -259,12 +220,8 @@ void asm_buffer_patch_int32(asm_buffer* b, int position, int v):
 ############################## labels and fixups ##############################
 
 # Fixup kinds
-int ASM_FIX_REL32():
-	return 0
-
-
-int ASM_FIX_ABS32():
-	return 1
+const int ASM_FIX_REL32 = 0
+const int ASM_FIX_ABS32 = 1
 
 
 struct asm_label_record:
@@ -296,12 +253,10 @@ asm_labels* asm_labels_new():
 
 
 int asm_labels_find(asm_labels* t, char* name):
-	int i = 0
-	while (i < t.labels.length):
+	for i in range(t.labels.length):
 		asm_label_record rec = t.labels[i]
 		if (strcmp(rec.name, name) == 0):
 			return i
-		i = i + 1
 	return -1
 
 
@@ -338,11 +293,9 @@ int asm_labels_resolve(asm_labels* t, asm_buffer* b):
 		if (found >= 0):
 			asm_label_record rec = t.labels[found]
 			target = rec.position
-		if (target < 0):
-			unresolved = unresolved + 1
-		else if (fix.kind == ASM_FIX_REL32()):
+		if (target < 0): unresolved = unresolved + 1
+		else if (fix.kind == ASM_FIX_REL32):
 			asm_buffer_patch_int32(b, fix.position, target - (fix.position + 4))
-		else:
-			asm_buffer_patch_int32(b, fix.position, target)
+		else: asm_buffer_patch_int32(b, fix.position, target)
 		i = i + 1
 	return unresolved

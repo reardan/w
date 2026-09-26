@@ -13,3 +13,4 @@ c_import "libc.so.6" c"tests/c_import_missing_header_fixture_no_such.h"
 
 int main(int argc, int argv):
 	return 0
+# wbuild: fixture_group=c_import_missing_header_test

@@ -33,8 +33,8 @@ int main(int argc, int argv):
 	int client = socket_accept_connection(server)
 	web_check_syscall(c"accept", client)
 
-	char* request = malloc(web_default_buffer_size() + 1)
-	int request_bytes = read(client, request, web_default_buffer_size())
+	char* request = malloc(web_default_buffer_size + 1)
+	int request_bytes = read(client, request, web_default_buffer_size)
 	web_check_syscall(c"read", request_bytes)
 	request[request_bytes] = 0
 

@@ -9,6 +9,7 @@ absolute - code_offset).
 */
 import compiler.compiler
 import debugger.memory
+import debugger.common
 
 
 # Index of the last line entry at or before rel, or -1.
@@ -16,8 +17,7 @@ int dbg_find_line(int rel):
 	int best = -1
 	int i = 0
 	while (i < debug_line_count):
-		if (load_int(debug_line_addresses + i * 4) <= rel):
-			best = i
+		if (load_int(debug_line_addresses + i * 4) <= rel): best = i
 		else:
 			return best
 		i = i + 1
@@ -36,8 +36,7 @@ int dbg_body_start(int addr, int size):
 	while (i < debug_line_count):
 		int a = load_int(debug_line_addresses + i * 4)
 		if (a >= rel):
-			if (a < rel + size):
-				return a + code_offset
+			if (a < rel + size): return a + code_offset
 			return addr
 		i = i + 1
 	return addr
@@ -60,16 +59,14 @@ int dbg_line_stack(int i):
 
 
 char* dbg_file_name(int file_index):
-	if ((file_index < 0) || (file_index >= debug_file_count)):
-		return c"?"
+	if ((file_index < 0) || (file_index >= debug_file_count)): return c"?"
 	return cast(char*, load_ptr(debug_files + file_index * __word_size__))
 
 
 # 1 when the absolute address lies inside the debuggee's code buffer.
 int dbg_in_debuggee(int addr):
 	int rel = addr - code_offset
-	if ((rel < 0) || (rel >= codepos)):
-		return 0
+	if ((rel < 0) || (rel >= codepos)): return 0
 	return 1
 
 
@@ -110,16 +107,13 @@ int dbg_edit_distance(char* a, char* b):
 		j = 1
 		while (j <= lb):
 			int cost = 1
-			if (a[i - 1] == b[j - 1]):
-				cost = 0
+			if (a[i - 1] == b[j - 1]): cost = 0
 			int del = load_int(d + ((i - 1) * (lb + 1) + j) * 4) + 1
 			int ins = load_int(d + (i * (lb + 1) + j - 1) * 4) + 1
 			int sub = load_int(d + ((i - 1) * (lb + 1) + j - 1) * 4) + cost
 			int best = del
-			if (ins < best):
-				best = ins
-			if (sub < best):
-				best = sub
+			if (ins < best): best = ins
+			if (sub < best): best = sub
 			save_int(d + (i * (lb + 1) + j) * 4, best)
 			j = j + 1
 		i = i + 1
@@ -130,10 +124,8 @@ int dbg_edit_distance(char* a, char* b):
 
 # How many edits still count as "similar" for a name of this length.
 int dbg_similar_threshold(int len):
-	if (len <= 3):
-		return 1
-	if (len <= 6):
-		return 2
+	if (len <= 3): return 1
+	if (len <= 6): return 2
 	return 3
 
 
@@ -141,8 +133,7 @@ int dbg_similar_threshold(int len):
 char* dbg_basename(char* path):
 	int i = strlen(path)
 	while (i > 0):
-		if (path[i - 1] == '/'):
-			return path + i
+		if (path[i - 1] == '/'): return path + i
 		i = i - 1
 	return path
 
@@ -157,15 +148,12 @@ void dbg_suggest_files(char* name):
 	while (i < debug_file_count):
 		char* stored = cast(char*, load_ptr(debug_files + i * __word_size__))
 		if (dbg_edit_distance(base, dbg_basename(stored)) <= threshold):
-			if (shown == 0):
-				print(c"did you mean: ")
-			else:
-				print(c", ")
+			if (shown == 0): print(c"did you mean: ")
+			else: print(c", ")
 			print(stored)
 			shown = shown + 1
 		i = i + 1
-	if (shown > 0):
-		put_char(10)
+	if (shown > 0): put_char(10)
 
 
 # Entry index of the first statement at or after file:line, or -1 when the
@@ -197,9 +185,7 @@ void dbg_print_file_line(int addr):
 		return;
 	print(dbg_file_name(dbg_line_file(i)))
 	print(c":")
-	char* digits = itoa(dbg_line_line(i))
-	print(digits)
-	free(digits)
+	dbg_print_dec(dbg_line_line(i))
 
 
 # Print source lines [first, last] of a file with line numbers, marking
@@ -212,38 +198,28 @@ void dbg_print_source_range(char* path, int first, int last, int current):
 		println(path)
 		return;
 	getchar_reset(f)
-	if (first < 1):
-		first = 1
+	if (first < 1): first = 1
 	int line = 1
 	int c = getchar(f)
 	while ((c != -1) && (line <= last)):
 		if (line >= first):
-			if (line == current):
-				print(c"-> ")
-			else:
-				print(c"   ")
-			char* digits = itoa(line)
-			print(digits)
-			free(digits)
+			if (line == current): print(c"-> ")
+			else: print(c"   ")
+			dbg_print_dec(line)
 			print(c"\x09")
 		while ((c != 10) && (c != -1)):
-			if (line >= first):
-				put_char(c)
+			if (line >= first): put_char(c)
 			c = getchar(f)
-		if (line >= first):
-			put_char(10)
-		if (c == 10):
-			c = getchar(f)
+		if (line >= first): put_char(10)
+		if (c == 10): c = getchar(f)
 		line = line + 1
 	close(f)
 
 
 # The single source line for an absolute address, arrow included.
 void dbg_print_source_at(int addr):
-	if (dbg_in_debuggee(addr) == 0):
-		return;
+	if (dbg_in_debuggee(addr) == 0): return;
 	int i = dbg_find_line(addr - code_offset)
-	if (i < 0):
-		return;
+	if (i < 0): return;
 	int line = dbg_line_line(i)
 	dbg_print_source_range(dbg_file_name(dbg_line_file(i)), line, line, line)

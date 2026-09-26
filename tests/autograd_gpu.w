@@ -22,8 +22,7 @@ import lib.fmath
 # |a - b| <= eps, without pulling in fmath.
 int feq(float a, float b, float eps):
 	float d = a - b
-	if (d < 0.0):
-		d = 0.0 - d
+	if (d < 0.0): d = 0.0 - d
 	return d <= eps
 
 
@@ -38,10 +37,7 @@ float central_diff(float f_plus, float f_minus, float h):
 
 float ref_chain(tensor* a, tensor* b, tensor* c):
 	float total = 0.0
-	int i = 0
-	while (i < a.len):
-		total = total + (a.data[i] + b.data[i]) * c.data[i]
-		i = i + 1
+	for i in range(a.len): total = total + (a.data[i] + b.data[i]) * c.data[i]
 	return total
 
 
@@ -79,8 +75,7 @@ int check_chain():
 		a.data[i] = orig - h
 		float fm = ref_chain(&a, &b, &c)
 		a.data[i] = orig
-		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 	i = 0
 	while (i < n):
@@ -90,8 +85,7 @@ int check_chain():
 		b.data[i] = orig - h
 		float fm = ref_chain(&a, &b, &c)
 		b.data[i] = orig
-		if (feq(central_diff(fp, fm, h), gb.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), gb.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 	i = 0
 	while (i < n):
@@ -101,8 +95,7 @@ int check_chain():
 		c.data[i] = orig - h
 		float fm = ref_chain(&a, &b, &c)
 		c.data[i] = orig
-		if (feq(central_diff(fp, fm, h), gc.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), gc.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -117,10 +110,7 @@ int check_chain():
 
 float ref_add_scalar(tensor* a, tensor* w, float k):
 	float total = 0.0
-	int i = 0
-	while (i < a.len):
-		total = total + (a.data[i] + k) * w.data[i]
-		i = i + 1
+	for i in range(a.len): total = total + (a.data[i] + k) * w.data[i]
 	return total
 
 
@@ -154,8 +144,7 @@ int check_add_scalar():
 		a.data[i] = orig - h
 		float fm = ref_add_scalar(&a, &w, k)
 		a.data[i] = orig
-		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -169,10 +158,7 @@ int check_add_scalar():
 
 float ref_mul_scalar(tensor* a, float k):
 	float total = 0.0
-	int i = 0
-	while (i < a.len):
-		total = total + a.data[i] * k
-		i = i + 1
+	for i in range(a.len): total = total + a.data[i] * k
 	return total
 
 
@@ -201,8 +187,7 @@ int check_mul_scalar():
 		a.data[i] = orig - h
 		float fm = ref_mul_scalar(&a, k)
 		a.data[i] = orig
-		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -215,10 +200,7 @@ int check_mul_scalar():
 
 float ref_sum(tensor* a):
 	float total = 0.0
-	int i = 0
-	while (i < a.len):
-		total = total + a.data[i]
-		i = i + 1
+	for i in range(a.len): total = total + a.data[i]
 	return total
 
 
@@ -246,8 +228,7 @@ int check_sum():
 		a.data[i] = orig - h
 		float fm = ref_sum(&a)
 		a.data[i] = orig
-		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -260,13 +241,10 @@ int check_sum():
 
 float ref_relu(tensor* a, tensor* w):
 	float total = 0.0
-	int i = 0
-	while (i < a.len):
+	for i in range(a.len):
 		float x = a.data[i]
-		if (x < 0.0):
-			x = 0.0
+		if (x < 0.0): x = 0.0
 		total = total + x * w.data[i]
-		i = i + 1
 	return total
 
 
@@ -278,10 +256,8 @@ int check_relu():
 	while (i < n):
 		# alternate signs, magnitude >= 0.4 so h=0.01 never crosses 0
 		float mag = cast(float, i + 1) * 0.4
-		if (i % 2 == 0):
-			a.data[i] = mag
-		else:
-			a.data[i] = 0.0 - mag
+		if (i % 2 == 0): a.data[i] = mag
+		else: a.data[i] = 0.0 - mag
 		w.data[i] = cast(float, i + 1) * 0.3
 		i = i + 1
 
@@ -304,8 +280,7 @@ int check_relu():
 		a.data[i] = orig - h
 		float fm = ref_relu(&a, &w)
 		a.data[i] = orig
-		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -319,18 +294,11 @@ int check_relu():
 
 float ref_matmul(tensor* a, tensor* b, tensor* w, int m, int k, int n):
 	float total = 0.0
-	int i = 0
-	while (i < m):
-		int j = 0
-		while (j < n):
+	for i in range(m):
+		for j in range(n):
 			float acc = 0.0
-			int p = 0
-			while (p < k):
-				acc = acc + a.data[i * k + p] * b.data[p * n + j]
-				p = p + 1
+			for p in range(k): acc = acc + a.data[i * k + p] * b.data[p * n + j]
 			total = total + acc * w.data[i * n + j]
-			j = j + 1
-		i = i + 1
 	return total
 
 
@@ -375,8 +343,7 @@ int check_matmul():
 		a.data[i] = orig - h
 		float fm = ref_matmul(&a, &b, &w, m, k, n)
 		a.data[i] = orig
-		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 	i = 0
 	while (i < k * n):
@@ -386,8 +353,7 @@ int check_matmul():
 		b.data[i] = orig - h
 		float fm = ref_matmul(&a, &b, &w, m, k, n)
 		b.data[i] = orig
-		if (feq(central_diff(fp, fm, h), gb.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), gb.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -402,13 +368,8 @@ int check_matmul():
 
 float ref_add_row(tensor* a, tensor* r, tensor* w, int m, int n):
 	float total = 0.0
-	int i = 0
-	while (i < m):
-		int j = 0
-		while (j < n):
-			total = total + (a.data[i * n + j] + r.data[j]) * w.data[i * n + j]
-			j = j + 1
-		i = i + 1
+	for i in range(m):
+		for j in range(n): total = total + (a.data[i * n + j] + r.data[j]) * w.data[i * n + j]
 	return total
 
 
@@ -449,8 +410,7 @@ int check_add_row():
 		a.data[i] = orig - h
 		float fm = ref_add_row(&a, &r, &w, m, n)
 		a.data[i] = orig
-		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 	i = 0
 	while (i < n):
@@ -460,8 +420,7 @@ int check_add_row():
 		r.data[i] = orig2 - h
 		float fm2 = ref_add_row(&a, &r, &w, m, n)
 		r.data[i] = orig2
-		if (feq(central_diff(fp2, fm2, h), gr.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp2, fm2, h), gr.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -476,14 +435,12 @@ int check_add_row():
 
 float ref_softmax_ce(tensor* logits, ndi* labels, int batch, int classes):
 	float total = 0.0
-	int i = 0
-	while (i < batch):
+	for i in range(batch):
 		float m = logits.data[i * classes]
 		int j = 1
 		while (j < classes):
 			float v = logits.data[i * classes + j]
-			if (v > m):
-				m = v
+			if (v > m): m = v
 			j = j + 1
 		float rowsum = 0.0
 		j = 0
@@ -493,7 +450,6 @@ float ref_softmax_ce(tensor* logits, ndi* labels, int batch, int classes):
 		int lbl = labels.data[i]
 		float p_lbl = fexp(logits.data[i * classes + lbl] - m) / rowsum
 		total = total - flog(p_lbl)
-		i = i + 1
 	return total / cast(float, batch)
 
 
@@ -527,8 +483,7 @@ int check_softmax_ce():
 		logits.data[i] = orig - h
 		float fm = ref_softmax_ce(&logits, &labels, batch, classes)
 		logits.data[i] = orig
-		if (feq(central_diff(fp, fm, h), glog.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), glog.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -544,14 +499,11 @@ int check_softmax_ce():
 
 float ref_accum(tensor* x):
 	float total = 0.0
-	int i = 0
-	while (i < x.len):
+	for i in range(x.len):
 		float v = x.data[i]
 		float r = v
-		if (r < 0.0):
-			r = 0.0
+		if (r < 0.0): r = 0.0
 		total = total + 2.0 * v + r
-		i = i + 1
 	return total
 
 
@@ -561,10 +513,8 @@ int check_accum():
 	int i = 0
 	while (i < n):
 		float mag = cast(float, i + 1) * 0.35
-		if (i % 2 == 0):
-			x.data[i] = mag
-		else:
-			x.data[i] = 0.0 - mag
+		if (i % 2 == 0): x.data[i] = mag
+		else: x.data[i] = 0.0 - mag
 		i = i + 1
 
 	ag_tape* t = ag_tape_new()
@@ -586,8 +536,7 @@ int check_accum():
 		x.data[i] = orig - h
 		float fm = ref_accum(&x)
 		x.data[i] = orig
-		if (feq(central_diff(fp, fm, h), gx.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), gx.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -600,18 +549,11 @@ int check_accum():
 
 float ref_matmul_nt(tensor* a, tensor* b, tensor* w, int m, int k, int n):
 	float total = 0.0
-	int i = 0
-	while (i < m):
-		int j = 0
-		while (j < n):
+	for i in range(m):
+		for j in range(n):
 			float acc = 0.0
-			int l = 0
-			while (l < k):
-				acc = acc + a.data[i * k + l] * b.data[j * k + l]
-				l = l + 1
+			for l in range(k): acc = acc + a.data[i * k + l] * b.data[j * k + l]
 			total = total + acc * w.data[i * n + j]
-			j = j + 1
-		i = i + 1
 	return total
 
 
@@ -656,8 +598,7 @@ int check_matmul_nt():
 		a.data[i] = orig - h
 		float fm = ref_matmul_nt(&a, &b, &w, m, k, n)
 		a.data[i] = orig
-		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), ga.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 	i = 0
 	while (i < n * k):
@@ -667,8 +608,7 @@ int check_matmul_nt():
 		b.data[i] = orig - h
 		float fm = ref_matmul_nt(&a, &b, &w, m, k, n)
 		b.data[i] = orig
-		if (feq(central_diff(fp, fm, h), gb.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), gb.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -684,8 +624,7 @@ int check_matmul_nt():
 float ref_layernorm(tensor* x, tensor* gamma, tensor* beta, tensor* w, int m, int n):
 	float total = 0.0
 	float fn = cast(float, n)
-	int i = 0
-	while (i < m):
+	for i in range(m):
 		float mean = 0.0
 		int j = 0
 		while (j < n):
@@ -704,7 +643,6 @@ float ref_layernorm(tensor* x, tensor* gamma, tensor* beta, tensor* w, int m, in
 			float ln = gamma.data[j] * ((x.data[i * n + j] - mean) * rstd) + beta.data[j]
 			total = total + ln * w.data[i * n + j]
 			j = j + 1
-		i = i + 1
 	return total
 
 
@@ -749,8 +687,7 @@ int check_layernorm():
 		x.data[i] = orig - h
 		float fm = ref_layernorm(&x, &gamma, &beta, &w, m, n)
 		x.data[i] = orig
-		if (feq(central_diff(fp, fm, h), gx.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), gx.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 	i = 0
 	while (i < n):
@@ -760,16 +697,14 @@ int check_layernorm():
 		gamma.data[i] = orig - h
 		float fm = ref_layernorm(&x, &gamma, &beta, &w, m, n)
 		gamma.data[i] = orig
-		if (feq(central_diff(fp, fm, h), gg.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), gg.data[i], 0.05) == 0): ok = 0
 		float orig2 = beta.data[i]
 		beta.data[i] = orig2 + h
 		float fp2 = ref_layernorm(&x, &gamma, &beta, &w, m, n)
 		beta.data[i] = orig2 - h
 		float fm2 = ref_layernorm(&x, &gamma, &beta, &w, m, n)
 		beta.data[i] = orig2
-		if (feq(central_diff(fp2, fm2, h), gb2.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp2, fm2, h), gb2.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -790,8 +725,7 @@ float ref_softmax_causal(tensor* s, tensor* w, int n):
 		float m = s.data[i * n]
 		int j = 1
 		while (j <= i):
-			if (s.data[i * n + j] > m):
-				m = s.data[i * n + j]
+			if (s.data[i * n + j] > m): m = s.data[i * n + j]
 			j = j + 1
 		float rowsum = 0.0
 		j = 0
@@ -835,8 +769,7 @@ int check_softmax_causal():
 		s.data[i] = orig - h
 		float fm = ref_softmax_causal(&s, &w, n)
 		s.data[i] = orig
-		if (feq(central_diff(fp, fm, h), gs.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), gs.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -850,13 +783,8 @@ int check_softmax_causal():
 
 float ref_embedding(tensor* table, ndi* ids, tensor* w, int n, int dim):
 	float total = 0.0
-	int i = 0
-	while (i < n):
-		int j = 0
-		while (j < dim):
-			total = total + table.data[ids.data[i] * dim + j] * w.data[i * dim + j]
-			j = j + 1
-		i = i + 1
+	for i in range(n):
+		for j in range(dim): total = total + table.data[ids.data[i] * dim + j] * w.data[i * dim + j]
 	return total
 
 
@@ -900,8 +828,7 @@ int check_embedding():
 		table.data[i] = orig - h
 		float fm = ref_embedding(&table, &ids, &w, n, dim)
 		table.data[i] = orig
-		if (feq(central_diff(fp, fm, h), gt.data[i], 0.05) == 0):
-			ok = 0
+		if (feq(central_diff(fp, fm, h), gt.data[i], 0.05) == 0): ok = 0
 		i = i + 1
 
 	ag_tape_free(t)
@@ -911,10 +838,8 @@ int check_embedding():
 
 
 int main(int argc, int argv):
-	if (gpu_available()):
-		println(c"autograd: gpu path")
-	else:
-		println(c"autograd: cpu fallback")
+	if (gpu_available()): println(c"autograd: gpu path")
+	else: println(c"autograd: cpu fallback")
 	if (check_chain() == 0):
 		println(c"autograd gpu: FAILED (chain)")
 		return 1

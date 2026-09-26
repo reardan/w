@@ -42,53 +42,41 @@ int ui_email_valid(char* s):
 	int i = 0
 	while (s[i] != 0):
 		int c = s[i] & 255
-		if (c <= 32):
-			return 0
-		if (c == 127):
-			return 0
+		if (c <= 32): return 0
+		if (c == 127): return 0
 		if (c == '@'):
-			if (at >= 0):
-				return 0
+			if (at >= 0): return 0
 			at = i
 		i = i + 1
 	int n = i
-	if (at < 1):
-		return 0
+	if (at < 1): return 0
 	int dom = at + 1
-	if (dom >= n):
-		return 0
-	if ((s[dom] == '.') || (s[n - 1] == '.')):
-		return 0
+	if (dom >= n): return 0
+	if ((s[dom] == '.') || (s[n - 1] == '.')): return 0
 	int dots = 0
 	i = dom
 	while (i < n):
 		if (s[i] == '.'):
 			dots = dots + 1
-			if (s[i + 1] == '.'):
-				return 0
+			if (s[i + 1] == '.'): return 0
 		i = i + 1
-	if (dots == 0):
-		return 0
+	if (dots == 0): return 0
 	return 1
 
 
 # The validator, on Form's convention: msg when the field holds text
 # that is not an email address, 0 when it holds one or nothing.
 char* ui_email_check(ui_textbox_state* tb, char* msg):
-	if (tb.length == 0):
-		return 0
-	if (ui_email_valid(&tb.text[0])):
-		return 0
+	if (tb.length == 0): return 0
+	if (ui_email_valid(&tb.text[0])): return 0
 	return msg
 
 
 # 1 when ui_email draws its inline error for this state: the field has
 # been edited and left, and what it holds is not an address.
 int ui_email_showing_error(ui_textbox_state* tb):
-	if (tb.edited != 2):
-		return 0
-	if (ui_email_check(tb, c"invalid") == 0):
-		return 0
+	if (tb.edited != 2): return 0
+	if (ui_email_check(tb, c"invalid") == 0): return 0
 	return 1
 
 

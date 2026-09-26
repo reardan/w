@@ -39,8 +39,7 @@ int pingpong_count
 
 void mutex_worker(void* arg):
 	int n = cast(int, arg)
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		mutex_lock(counter_mutex)
 		# non-atomic read-modify-writes, safe only under the lock
 		plain_counter = plain_counter + 1
@@ -48,7 +47,6 @@ void mutex_worker(void* arg):
 		invariant_a = v
 		invariant_b = v
 		mutex_unlock(counter_mutex)
-		i = i + 1
 
 
 void test_mutex_exact_under_contention():
@@ -76,8 +74,7 @@ void test_mutex_exact_under_contention():
 
 void broadcast_worker(void* arg):
 	mutex_lock(go_mutex)
-	while (go_flag == 0):
-		cond_wait(go_cond, go_mutex)
+	while (go_flag == 0): cond_wait(go_cond, go_mutex)
 	mutex_unlock(go_mutex)
 	atomic_add(&go_acks, 1)
 
@@ -111,16 +108,13 @@ void test_cond_broadcast_releases_all_waiters():
 
 void pingpong_worker(void* arg):
 	int rounds = cast(int, arg)
-	int i = 0
-	while (i < rounds):
+	for i in range(rounds):
 		mutex_lock(go_mutex)
-		while (pingpong_turn == 0):
-			cond_wait(go_cond, go_mutex)
+		while (pingpong_turn == 0): cond_wait(go_cond, go_mutex)
 		pingpong_count = pingpong_count + 1
 		pingpong_turn = 0
 		cond_signal(go_cond)
 		mutex_unlock(go_mutex)
-		i = i + 1
 
 
 # Strict alternation driven entirely by cond_signal in both directions:
@@ -137,15 +131,12 @@ void test_cond_signal_pingpong():
 	int rounds = 1000
 	wthread* t = thread_spawn(pingpong_worker, cast(void*, rounds))
 	asserts(c"thread_spawn failed", cast(int, t) != 0)
-	int i = 0
-	while (i < rounds):
+	for i in range(rounds):
 		mutex_lock(go_mutex)
-		while (pingpong_turn == 1):
-			cond_wait(go_cond, go_mutex)
+		while (pingpong_turn == 1): cond_wait(go_cond, go_mutex)
 		pingpong_turn = 1
 		cond_signal(go_cond)
 		mutex_unlock(go_mutex)
-		i = i + 1
 	assert_equal(0, thread_join(t))
 	assert_equal(rounds, pingpong_count)
 	assert_equal(0, pingpong_turn)

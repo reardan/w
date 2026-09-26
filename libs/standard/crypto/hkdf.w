@@ -17,6 +17,8 @@ tls13_hkdf_expand_label directly with the digest as context.
 import lib.memory
 import libs.standard.crypto.sha2
 import libs.standard.crypto.hmac
+import lib.bytes
+import lib.mem
 
 
 # HKDF-Extract(salt, IKM) -> PRK (digest_size bytes at out_prk). A zero
@@ -28,10 +30,7 @@ void hkdf_extract(int alg, char* salt, int salt_len, char* ikm, int ikm_len, cha
 		return
 	int ds = whash_digest_size(alg)
 	char* zeros = malloc(ds)
-	int i = 0
-	while (i < ds):
-		zeros[i] = 0
-		i = i + 1
+	mem_fill(zeros, 0, ds)
 	hmac_compute(alg, zeros, ds, ikm, ikm_len, out_prk)
 	free(zeros)
 
@@ -42,10 +41,8 @@ void hkdf_extract(int alg, char* salt, int salt_len, char* ikm, int ikm_len, cha
 # counter under the same key via hmac_reset.
 int hkdf_expand(int alg, char* prk, int prk_len, char* info, int info_len, char* okm, int okm_len):
 	int ds = whash_digest_size(alg)
-	if ((okm_len < 0) || (okm_len > 255 * ds)):
-		return 0
-	if (okm_len == 0):
-		return 1
+	if ((okm_len < 0) || (okm_len > 255 * ds)): return 0
+	if (okm_len == 0): return 1
 	whmac* m = hmac_new(alg, prk, prk_len)
 	char* t = malloc(ds)
 	char* counter = malloc(1)
@@ -53,25 +50,17 @@ int hkdf_expand(int alg, char* prk, int prk_len, char* info, int info_len, char*
 	int round = 1
 	while (produced < okm_len):
 		hmac_reset(m)
-		if (round > 1):
-			hmac_update(m, t, ds)
+		if (round > 1): hmac_update(m, t, ds)
 		hmac_update(m, info, info_len)
 		counter[0] = round
 		hmac_update(m, counter, 1)
 		hmac_final(m, t)
 		int take = okm_len - produced
-		if (take > ds):
-			take = ds
-		int i = 0
-		while (i < take):
-			okm[produced + i] = t[i]
-			i = i + 1
+		if (take > ds): take = ds
+		for i in range(take): okm[produced + i] = t[i]
 		produced = produced + take
 		round = round + 1
-	int j = 0
-	while (j < ds):
-		t[j] = 0
-		j = j + 1
+	mem_fill(t, 0, ds)
 	free(counter)
 	free(t)
 	hmac_free(m)
@@ -85,16 +74,13 @@ int hkdf_expand(int alg, char* prk, int prk_len, char* info, int info_len, char*
 # success, 0 on out-of-range lengths (label > 249 bytes after prefixing,
 # context > 255, or out_len out of HKDF range).
 int tls13_hkdf_expand_label(int alg, char* secret, char* label, int label_len, char* context, int context_len, char* out, int out_len):
-	if ((label_len < 0) || (label_len > 249)):
-		return 0
-	if ((context_len < 0) || (context_len > 255)):
-		return 0
+	if ((label_len < 0) || (label_len > 249)): return 0
+	if ((context_len < 0) || (context_len > 255)): return 0
 	char* prefix = c"tls13 "
 	int prefixed_len = label_len + 6
 	int info_len = 2 + 1 + prefixed_len + 1 + context_len
 	char* info = malloc(info_len)
-	info[0] = (out_len >> 8) & 255
-	info[1] = out_len & 255
+	store_be16(info, out_len)
 	info[2] = prefixed_len
 	int pos = 3
 	int i = 0

@@ -28,12 +28,10 @@ void test_adler32_incremental_matches_oneshot():
 	assert_equal(adler32t_known_answer(), incremental)
 
 	char* s = c"123456789"
-	int i = 0
-	while (i <= 9):
+	for i in range(9 + 1):
 		int a = adler32_update(1, s, i)
 		int b = adler32_update(a, s + i, 9 - i)
 		assert_equal(adler32t_known_answer(), b)
-		i = i + 1
 
 
 void test_adler32_negative_length_clamps_to_zero():
@@ -48,10 +46,7 @@ void test_adler32_wraps_mod_65521():
 	# past 65521 (70000 + 1 > 65521) if the implementation forgot to mod.
 	int n = 70000
 	char* buf = malloc(n)
-	int i = 0
-	while (i < n):
-		buf[i] = 1
-		i = i + 1
+	for i in range(n): buf[i] = 1
 	int a = adler32_of(buf, n)
 	# s1 = (1 + n) mod 65521, s2 = sum_{k=1..n} s1_k mod 65521 -- just
 	# assert it is a plausible masked 32-bit value and reproducible,

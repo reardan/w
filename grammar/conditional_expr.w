@@ -31,14 +31,10 @@ int expression();
 # a representation of its own (floats, strings, vars, slices): those must
 # not be re-encoded with type_value().
 int conditional_arm_is_value(int t):
-	if ((t == 3) || (t == 4)):
-		return 1
-	if ((t == float32_value_type) || (t == float64_value_type)):
-		return 1
-	if ((t == string_value_type) || (t == var_value_type)):
-		return 1
-	if (type_get_kind(t) == type_kind_slice_value()):
-		return 1
+	if ((t == 3) || (t == 4)): return 1
+	if ((t == float32_value_type) || (t == float64_value_type)): return 1
+	if ((t == string_value_type) || (t == string_literal_type) || (t == var_value_type)): return 1
+	if (type_get_kind(t) == type_kind_slice_value): return 1
 	return 0
 
 
@@ -54,8 +50,7 @@ int conditional_expr():
 	# guard never sees the chain grow. Count each open ternary here
 	# instead; same counter, limit and message as the operand-level guard.
 	expr_nesting_depth = expr_nesting_depth + 1
-	if (expr_nesting_depth > 1000):
-		error(c"expression nesting too deep")
+	if (expr_nesting_depth > 1000): error(c"expression nesting too deep")
 	promote(type)
 	# Three regions: h_join ends at the join point, h_stub ends where the
 	# then arm's code resumes (usually also the join, but a decay stub can
@@ -74,8 +69,8 @@ int conditional_expr():
 	else_type = promote(else_type)
 	# An untyped constant then-arm takes the else arm's type ('c ? 1 : x')
 	int result = then_type
-	int then_is_slice_value = type_get_kind(type_unqualified(then_type)) == type_kind_slice_value()
-	int else_is_slice_value = type_get_kind(type_unqualified(else_type)) == type_kind_slice_value()
+	int then_is_slice_value = type_get_kind(type_unqualified(then_type)) == type_kind_slice_value
+	int else_is_slice_value = type_get_kind(type_unqualified(else_type)) == type_kind_slice_value
 	if (then_type == 3):
 		result = else_type
 		if (else_is_slice_value):
@@ -109,10 +104,12 @@ int conditional_expr():
 	if (arms_compatible == 0):
 		# 'c ? ptr : arr': coerce just decayed the else arm in-branch
 		arms_compatible = type_decays_to_pointer(type_real(result), type_real(else_type))
-	if (arms_compatible == 0):
-		warn_type_mismatch(c"conditional arms", then_type, else_type)
+	if (arms_compatible == 0): warn_type_mismatch(c"conditional arms", then_type, else_type)
 	be_ctrl_end(h_join)
 	expr_nesting_depth = expr_nesting_depth - 1
+	# Only a join of two literals keeps the literal's char* decay
+	if ((result == string_literal_type) && (else_type != string_literal_type)):
+		result = string_value_type
 	if (conditional_arm_is_value(result)):
 		return result
 	if (type_is_value(result)):

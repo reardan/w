@@ -186,15 +186,13 @@ void test_values_and_iteration_see_vivified_entries():
 	assert_equal(1, values[0])
 	assert_equal(9, values[1])
 	int total = 0
-	for char* key, int value in m:
-		total = total + value
+	for char* key, int value in m: total = total + value
 	assert_equal(10, total)
 
 
 void test_vivified_entries_survive_growth():
 	map[int, int] m = new map[int, int](1)
-	for int i in range(40):
-		m[i] += i
+	for int i in range(40): m[i] += i
 	assert_equal(40, m.length)
 	# every slot vivified to 1, then accumulated its key
 	assert_equal(1, m[0])

@@ -63,7 +63,7 @@ void test_retry_should_retry_statuses():
 	http_response_free(r200)
 
 	# A transport error (status 0) is always retryable.
-	http_response* rerr = retry_test_resp(0, http_error_connect())
+	http_response* rerr = retry_test_resp(0, http_error_connect)
 	assert_equal(1, retry_should_retry(p, 0, rerr))
 	http_response_free(rerr)
 
@@ -119,16 +119,12 @@ void test_retry_full_jitter_bounds():
 	assert_equal(4000, computed)
 	int lo = computed
 	int hi = 0
-	int i = 0
-	while (i < 300):
+	for i in range(300):
 		int d = retry_delay_ms_at(p, attempt, 0, 0)
 		asserts(c"jitter below 0", d >= 0)
 		asserts(c"jitter above computed", d <= computed)
-		if (d < lo):
-			lo = d
-		if (d > hi):
-			hi = d
-		i = i + 1
+		if (d < lo): lo = d
+		if (d > hi): hi = d
 	# Over 300 draws we should see real spread, not a constant.
 	asserts(c"jitter produced no spread", hi > lo)
 	asserts(c"jitter never near top", hi > (computed / 2))

@@ -4,44 +4,11 @@ import lib.assert
 
 int utf8_validate_bytes(char* data, int length):
 	int i = 0
+	int cp = 0
 	while (i < length):
-		int c = data[i] & 255
-		int need = 0
-		int codepoint = 0
-		if (c < 128):
-			i = i + 1
-		else if ((c >= 194) && (c <= 223)):
-			need = 1
-			codepoint = c & 31
-		else if ((c >= 224) && (c <= 239)):
-			need = 2
-			codepoint = c & 15
-		else if ((c >= 240) && (c <= 244)):
-			need = 3
-			codepoint = c & 7
-		else:
-			return 0
-		if (need > 0):
-			if (i + need >= length):
-				return 0
-			int j = 1
-			while (j <= need):
-				int d = data[i + j] & 255
-				if ((d < 128) || (d > 191)):
-					return 0
-				codepoint = (codepoint << 6) | (d & 63)
-				j = j + 1
-			if ((need == 1) && (codepoint < 128)):
-				return 0
-			if ((need == 2) && (codepoint < 2048)):
-				return 0
-			if ((need == 3) && (codepoint < 65536)):
-				return 0
-			if ((codepoint >= 55296) && (codepoint <= 57343)):
-				return 0
-			if (codepoint > 1114111):
-				return 0
-			i = i + need + 1
+		int n = utf8_scan(data + i, length - i, &cp)
+		if (n == 0): return 0
+		i = i + n
 	return 1
 
 
@@ -53,37 +20,20 @@ int utf8_next(string s, int byte_index):
 	assert1(byte_index >= 0)
 	assert1(byte_index < s.length)
 	int c = s.data[byte_index] & 255
-	if (c < 128):
-		return byte_index + 1
-	if (c < 224):
-		return byte_index + 2
-	if (c < 240):
-		return byte_index + 3
+	if (c < 128): return byte_index + 1
+	if (c < 224): return byte_index + 2
+	if (c < 240): return byte_index + 3
 	return byte_index + 4
 
 
+# The codepoint at byte_index; U+FFFD when the bytes there are not a
+# valid sequence (lib/lib.w utf8_scan).
 int utf8_decode(string s, int byte_index):
 	assert1(byte_index >= 0)
 	assert1(byte_index < s.length)
-	int c = s.data[byte_index] & 255
-	if (c < 128):
-		return c
-	int codepoint = 0
-	int need = 0
-	if (c < 224):
-		codepoint = c & 31
-		need = 1
-	else if (c < 240):
-		codepoint = c & 15
-		need = 2
-	else:
-		codepoint = c & 7
-		need = 3
-	int i = 1
-	while (i <= need):
-		codepoint = (codepoint << 6) | (s.data[byte_index + i] & 63)
-		i = i + 1
-	return codepoint
+	int cp = 0
+	if (utf8_scan(s.data + byte_index, s.length - byte_index, &cp) == 0): return 65533
+	return cp
 
 
 int utf8_encode(char* out, int codepoint):
@@ -110,10 +60,8 @@ int utf8_encode(char* out, int codepoint):
 
 
 int utf8_is_boundary(string s, int byte_index):
-	if ((byte_index < 0) || (byte_index > s.length)):
-		return 0
-	if ((byte_index == 0) || (byte_index == s.length)):
-		return 1
+	if ((byte_index < 0) || (byte_index > s.length)): return 0
+	if ((byte_index == 0) || (byte_index == s.length)): return 1
 	int c = s.data[byte_index] & 255
 	return (c < 128) | (c > 191)
 
@@ -128,35 +76,29 @@ int utf8_codepoint_count(string s):
 
 
 int utf8_equals(string a, string b):
-	if (a.length != b.length):
-		return 0
+	if (a.length != b.length): return 0
 	int i = 0
 	while (i < a.length):
-		if (a.data[i] != b.data[i]):
-			return 0
+		if (a.data[i] != b.data[i]): return 0
 		i = i + 1
 	return 1
 
 
 int string_starts_with(string s, string prefix):
-	if (prefix.length > s.length):
-		return 0
+	if (prefix.length > s.length): return 0
 	int i = 0
 	while (i < prefix.length):
-		if (s.data[i] != prefix.data[i]):
-			return 0
+		if (s.data[i] != prefix.data[i]): return 0
 		i = i + 1
 	return 1
 
 
 int string_ends_with(string s, string suffix):
-	if (suffix.length > s.length):
-		return 0
+	if (suffix.length > s.length): return 0
 	int offset = s.length - suffix.length
 	int i = 0
 	while (i < suffix.length):
-		if (s.data[offset + i] != suffix.data[i]):
-			return 0
+		if (s.data[offset + i] != suffix.data[i]): return 0
 		i = i + 1
 	return 1
 
@@ -167,10 +109,7 @@ string string_from_bytes(char* data, int length):
 	char* out = descriptor + 2 * __word_size__
 	save_word(descriptor, cast(int, out))
 	save_word(descriptor + __word_size__, length)
-	int i = 0
-	while (i < length):
-		out[i] = data[i]
-		i = i + 1
+	for i in range(length): out[i] = data[i]
 	out[length] = 0
 	return cast(string, cast(int, descriptor))
 
@@ -200,10 +139,7 @@ char* cstr(string s):
 # first interior NUL.
 char* cstr_clone(string s):
 	char* out = malloc(s.length + 1)
-	int i = 0
-	while (i < s.length):
-		out[i] = s.data[i]
-		i = i + 1
+	for i in range(s.length): out[i] = s.data[i]
 	out[s.length] = 0
 	return out
 

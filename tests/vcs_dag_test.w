@@ -18,9 +18,9 @@ import tests.asm_fuzz_prng
 
 
 char* vdt_make_id(int n):
-	char* id = malloc(DAG_ID_SIZE())
+	char* id = malloc(DAG_ID_SIZE)
 	int i = 0
-	while (i < DAG_ID_SIZE()):
+	while (i < DAG_ID_SIZE):
 		id[i] = 0
 		i = i + 1
 	id[0] = n & 255
@@ -59,8 +59,7 @@ void test_linear_chain_generations_and_topo_order():
 		char* id = vdt_make_id(i)
 		ids.push(id)
 		list[char*] parents = new list[char*]
-		if (i > 0):
-			parents.push(ids[i - 1])
+		if (i > 0): parents.push(ids[i - 1])
 		int gen = dag_add_node(d, id, parents)
 		assert_equal(i, gen)
 		i = i + 1
@@ -165,17 +164,14 @@ void test_generation_numbers_deep_chain():
 	dag* d = dag_new()
 	int n = 200
 	char* prev = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		char* id = vdt_make_id(i)
 		list[char*] parents = new list[char*]
-		if (i > 0):
-			parents.push(prev)
+		if (i > 0): parents.push(prev)
 		int gen = dag_add_node(d, id, parents)
 		assert_equal(i, gen)
 		assert_equal(i, dag_generation(d, id))
 		prev = id
-		i = i + 1
 
 
 void test_reachability_positive_and_negative():
@@ -232,12 +228,10 @@ list[bitset*] vdt_compute_all_ancestors(list[list[int]] parent_indices, int n):
 	while (i < n):
 		bitset* a = bitset_new(n)
 		list[int] pidx = parent_indices[i]
-		int j = 0
-		while (j < pidx.length):
+		for j in range(pidx.length):
 			int p = pidx[j]
 			bitset_set(a, p)
 			bitset_or(a, anc[p])
-			j = j + 1
 		anc.push(a)
 		i = i + 1
 	return anc
@@ -258,8 +252,7 @@ void test_randomized_dag_topo_and_reachability_invariants():
 		list[char*] parent_ids = new list[char*]
 		if (i > 0):
 			int max_parents = i
-			if (max_parents > VDT_FUZZ_MAX_PARENTS()):
-				max_parents = VDT_FUZZ_MAX_PARENTS()
+			if (max_parents > VDT_FUZZ_MAX_PARENTS()): max_parents = VDT_FUZZ_MAX_PARENTS()
 			int want = fuzz_range(max_parents + 1)
 			int tries = 0
 			int budget = want * 8 + 8
@@ -277,8 +270,7 @@ void test_randomized_dag_topo_and_reachability_invariants():
 		int j = 0
 		while (j < pidx.length):
 			int pgen = dag_generation(d, ids[pidx[j]])
-			if (pgen + 1 > want_gen):
-				want_gen = pgen + 1
+			if (pgen + 1 > want_gen): want_gen = pgen + 1
 			j = j + 1
 		assert_equal(want_gen, gen)
 
@@ -306,14 +298,10 @@ void test_randomized_dag_topo_and_reachability_invariants():
 	i = 0
 	while (i < n):
 		bitset* reachable = all_ancestors[i]
-		int k = 0
-		while (k < n):
+		for k in range(n):
 			int want = 0
-			if (k == i):
-				want = 1
-			else if (bitset_get(reachable, k)):
-				want = 1
+			if (k == i): want = 1
+			else if (bitset_get(reachable, k)): want = 1
 			int got = dag_is_ancestor(d, ids[k], ids[i])
 			assert_equal(want, got)
-			k = k + 1
 		i = i + 1

@@ -52,10 +52,8 @@ void stats_acc_add(stats_acc* a, float x):
 		a.min = x
 		a.max = x
 	else:
-		if (x < a.min):
-			a.min = x
-		if (x > a.max):
-			a.max = x
+		if (x < a.min): a.min = x
+		if (x > a.max): a.max = x
 	a.count = a.count + 1
 	float n = a.count
 	float delta = x - a.mean
@@ -67,8 +65,7 @@ void stats_acc_add(stats_acc* a, float x):
 # over chunks of a stream merge into the same result as one pass over
 # the whole stream.
 void stats_acc_merge(stats_acc* a, stats_acc* b):
-	if (b.count == 0):
-		return
+	if (b.count == 0): return
 	if (a.count == 0):
 		a.count = b.count
 		a.mean = b.mean
@@ -83,10 +80,8 @@ void stats_acc_merge(stats_acc* a, stats_acc* b):
 	a.m2 = a.m2 + b.m2 + delta * delta * (na * nb / n)
 	a.mean = a.mean + delta * (nb / n)
 	a.count = a.count + b.count
-	if (b.min < a.min):
-		a.min = b.min
-	if (b.max > a.max):
-		a.max = b.max
+	if (b.min < a.min): a.min = b.min
+	if (b.max > a.max): a.max = b.max
 
 
 # Population (ddof = 0) or sample (ddof = 1) variance of the samples
@@ -95,8 +90,7 @@ float stats_acc_variance(stats_acc* a, int ddof = 0):
 	asserts(c"stats: variance requires count > ddof", a.count > ddof)
 	float denom = a.count - ddof
 	float v = a.m2 / denom
-	if (v < 0.0):
-		return 0.0
+	if (v < 0.0): return 0.0
 	return v
 
 
@@ -111,16 +105,12 @@ float stats_acc_stddev(stats_acc* a, int ddof = 0):
 float stats_sum(list[float] xs):
 	float total = 0.0
 	float comp = 0.0
-	int i = 0
-	while (i < xs.length):
+	for i in range(xs.length):
 		float x = xs[i]
 		float t = total + x
-		if (fabs(total) >= fabs(x)):
-			comp = comp + ((total - t) + x)
-		else:
-			comp = comp + ((x - t) + total)
+		if (fabs(total) >= fabs(x)): comp = comp + ((total - t) + x)
+		else: comp = comp + ((x - t) + total)
 		total = t
-		i = i + 1
 	return total + comp
 
 
@@ -135,8 +125,7 @@ float stats_min(list[float] xs):
 	float best = xs[0]
 	int i = 1
 	while (i < xs.length):
-		if (xs[i] < best):
-			best = xs[i]
+		if (xs[i] < best): best = xs[i]
 		i = i + 1
 	return best
 
@@ -146,8 +135,7 @@ float stats_max(list[float] xs):
 	float best = xs[0]
 	int i = 1
 	while (i < xs.length):
-		if (xs[i] > best):
-			best = xs[i]
+		if (xs[i] > best): best = xs[i]
 		i = i + 1
 	return best
 
@@ -161,17 +149,14 @@ float stats_variance(list[float] xs, int ddof = 0):
 	float m = stats_mean(xs)
 	float s2 = 0.0
 	float comp = 0.0
-	int i = 0
-	while (i < xs.length):
+	for i in range(xs.length):
 		float d = xs[i] - m
 		s2 = s2 + d * d
 		comp = comp + d
-		i = i + 1
 	float n = xs.length
 	float denom = xs.length - ddof
 	float v = (s2 - comp * comp / n) / denom
-	if (v < 0.0):
-		return 0.0
+	if (v < 0.0): return 0.0
 	return v
 
 
@@ -186,15 +171,13 @@ void stats_sift_down(list[float] xs, int start, int n):
 	while (root * 2 + 1 < n):
 		int child = root * 2 + 1
 		# && so xs[child + 1] is never evaluated out of heap bounds
-		if ((child + 1 < n) && (xs[child] < xs[child + 1])):
-			child = child + 1
+		if ((child + 1 < n) && (xs[child] < xs[child + 1])): child = child + 1
 		if (xs[root] < xs[child]):
 			float t = xs[root]
 			xs[root] = xs[child]
 			xs[child] = t
 			root = child
-		else:
-			return
+		else: return
 
 
 # In-place ascending heapsort: O(n log n), no allocation, no recursion.
@@ -237,8 +220,7 @@ float stats_quantile_sorted(list[float] xs, float q):
 	float nm1 = xs.length - 1
 	float h = q * nm1
 	int lo = h
-	if (lo >= xs.length - 1):
-		return xs[xs.length - 1]
+	if (lo >= xs.length - 1): return xs[xs.length - 1]
 	float flo = lo
 	float frac = h - flo
 	return xs[lo] + frac * (xs[lo + 1] - xs[lo])
@@ -293,8 +275,7 @@ float stats_mode(list[float] xs):
 	int run = 1
 	int i = 1
 	while (i < tmp.length):
-		if (tmp[i] == current):
-			run = run + 1
+		if (tmp[i] == current): run = run + 1
 		else:
 			current = tmp[i]
 			run = 1

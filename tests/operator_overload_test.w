@@ -51,22 +51,8 @@ struct ivec2:
 
 
 float oo_abs(float f):
-	if (f < 0.0):
-		return 0.0 - f
+	if (f < 0.0): return 0.0 - f
 	return f
-
-
-# Same shape as graphics/math_test.w's assert_near: exact float bit
-# patterns differ between the 32-bit (float32) and x64 (float64)
-# builds, so compare within an epsilon instead.
-void assert_near(float want, float got):
-	if (oo_abs(want - got) > 0.0001):
-		print2(c"Assertion failed. wanted float(")
-		print2(ftoa(want))
-		print2(c") got float(")
-		print2(ftoa(got))
-		println2(c")")
-		exit(1)
 
 
 # Forward declaration: the definition follows further down, after
@@ -261,11 +247,9 @@ void test_operator_in_condition():
 	vec3 a = vec3(1.0, 0.0, 0.0)
 	vec3 b = vec3(2.0, 0.0, 0.0)
 	int hit = 0
-	if ((a * b) > 1.0):
-		hit = 1
+	if ((a * b) > 1.0): hit = 1
 	assert_equal(1, hit)
-	if ((a * a) > 1.5):
-		hit = 2
+	if ((a * a) > 1.5): hit = 2
 	assert_equal(1, hit)
 
 
@@ -314,8 +298,7 @@ int operator*(ivec2 a, ivec2 b):
 
 int oo_total(int... xs):
 	int total = 0
-	for int x in xs:
-		total = total + x
+	for int x in xs: total = total + x
 	return total
 
 
@@ -345,10 +328,7 @@ void oo_defer_capture():
 # Generator whose yields run an operator use on dereferenced struct
 # POINTER parameters: (*pa) * (*pb) is the vec3 dot product.
 generator int oo_dots(vec3* pa, vec3* pb, int n):
-	int i = 0
-	while (i < n):
-		yield cast(int, (*pa) * (*pb))
-		i = i + 1
+	for i in range(n): yield cast(int, (*pa) * (*pb))
 
 
 # 'operator' is a keyword only in definition-name position: this
@@ -370,8 +350,7 @@ void test_while_condition_scalar():
 	int i = 0
 	while ((a * a) < 2.0):
 		i = i + 1
-		if (i >= 3000000):
-			break
+		if (i >= 3000000): break
 	assert_equal(3000000, i)
 	# Terminating twin: the loop must also EXIT through the operator
 	# condition at a known count. g grows by (1,0,0) per pass, so
@@ -408,22 +387,19 @@ void test_short_circuit():
 	int flag = 0
 	int hit = 0
 	int canary_hi = 222
-	if (flag && ((a * a) > 1.0)):
-		hit = 1
+	if (flag && ((a * a) > 1.0)): hit = 1
 	assert_equal(0, hit)
 	assert_equal(111, canary_lo)
 	assert_equal(222, canary_hi)
 	int taken = 0
-	if (flag == 0 || ((a * a) > 100.0)):
-		taken = 1
+	if (flag == 0 || ((a * a) > 100.0)): taken = 1
 	assert_equal(1, taken)
 	assert_equal(111, canary_lo)
 	assert_equal(222, canary_hi)
 	# Evaluated twin: the right side does run when the left cannot
 	# decide. dot(a, a) = 14.
 	int both = 0
-	if (1 && ((a * a) > 10.0)):
-		both = 1
+	if (1 && ((a * a) > 10.0)): both = 1
 	assert_equal(1, both)
 
 
@@ -514,17 +490,14 @@ void test_defer_generator_switch():
 	vec3 u = vec3(1.0, 2.0, 3.0)
 	vec3 w = vec3(4.0, 5.0, 6.0)
 	int sum = 0
-	for int d in oo_dots(&u, &w, 3):
-		sum = sum + d
+	for int d in oo_dots(&u, &w, 3): sum = sum + d
 	assert_equal(96, sum)
 	ivec2 p = ivec2(7, 9)
 	ivec2 q = ivec2(4, 5)
 	int label = 0
 	switch ((p % q).x):
-		case 3:
-			label = 30
-		default:
-			label = 99
+		case 3: label = 30
+		default: label = 99
 	assert_equal(30, label)
 
 

@@ -15,8 +15,7 @@ int identifier():
 		# the same name in this position.
 		if (nextc == '.'):
 			int alias_index = import_alias_lookup(token)
-			if (alias_index >= 0):
-				return import_alias_member(alias_index)
+			if (alias_index >= 0): return import_alias_member(alias_index)
 		import_warn_unqualified(token)
 		import_warn_transitive(token)
 		strcpy(last_identifier, token)

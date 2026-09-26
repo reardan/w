@@ -31,38 +31,28 @@ void test_seed_zero_folds_to_documented_constant():
 	rand_init(&a, 0)
 	rand_state b
 	rand_init(&b, 305419896)   # 0x12345678
-	int i = 0
-	while (i < 8):
-		assert_equal(rand_next31(&b), rand_next31(&a))
-		i = i + 1
+	for i in range(8): assert_equal(rand_next31(&b), rand_next31(&a))
 
 
 void test_below_bounds():
 	rand_state r
 	rand_init(&r, 7)
-	int i = 0
-	while (i < 4000):
+	for i in range(4000):
 		int v = rand_below(&r, 100)
 		assert1(v >= 0)
 		assert1(v < 100)
-		i = i + 1
 
-	int j = 0
-	while (j < 2000):
+	for j in range(2000):
 		int v2 = rand_below(&r, 1000003)   # large, still must stay in range
 		assert1(v2 >= 0)
 		assert1(v2 < 1000003)
-		j = j + 1
 
 
 # n = 1 has exactly one outcome: always 0.
 void test_below_n_one():
 	rand_state r
 	rand_init(&r, 17)
-	int i = 0
-	while (i < 200):
-		assert_equal(0, rand_below(&r, 1))
-		i = i + 1
+	for i in range(200): assert_equal(0, rand_below(&r, 1))
 
 
 # Crude, deterministic uniformity sanity check: every bucket of a small
@@ -92,12 +82,10 @@ void test_below_uniformity():
 void test_float_range():
 	rand_state r
 	rand_init(&r, 123)
-	int i = 0
-	while (i < 5000):
+	for i in range(5000):
 		float f = rand_float(&r)
 		assert1(f >= 0.0)
 		assert1(f < 1.0)
-		i = i + 1
 
 
 # Bit-exact goldens for the first few rand_float draws off seed 42,
@@ -151,18 +139,14 @@ void test_gaussian_statistics():
 	float sumsq = 0.0
 	int pos = 0
 	int neg = 0
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		float v = rand_gaussian(&r)
 		assert1(v > -6.0)
 		assert1(v < 6.0)
-		if (v > 0.0):
-			pos = pos + 1
-		else if (v < 0.0):
-			neg = neg + 1
+		if (v > 0.0): pos = pos + 1
+		else if (v < 0.0): neg = neg + 1
 		sum = sum + v
 		sumsq = sumsq + v * v
-		i = i + 1
 	float nf = n
 	float mean = sum / nf
 	float variance = sumsq / nf - mean * mean

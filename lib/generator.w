@@ -39,8 +39,7 @@ struct generator:
 	int stack_size     # usable bytes above the guard
 
 
-int __w_gen_stack_size():
-	return 65536
+const int __w_gen_stack_size = 65536
 
 
 # mmap reports failure as a small negative (errno-shaped) value, the same
@@ -54,13 +53,12 @@ int __w_gen_mmap_failed(int addr):
 # PROT_NONE region below every stack. 16KB covers the largest page size
 # of any supported target (arm64 darwin), so the protected range stays
 # page-aligned everywhere.
-int __w_gen_guard_size():
-	return 16384
+const int __w_gen_guard_size = 16384
 
 
 # Total mapping for a stack with size usable bytes.
 int __w_gen_mapping_size(int size):
-	return size + __w_gen_guard_size()
+	return size + __w_gen_guard_size
 
 
 # Maps size usable bytes plus the guard; returns the mapping base.
@@ -73,7 +71,7 @@ int __w_gen_map_stack(int size):
 		exit(1)
 	# Best effort: targets without page protection report failure and
 	# keep an unprotected (but still unused) guard region.
-	mprotect(base, __w_gen_guard_size(), 0)
+	mprotect(base, __w_gen_guard_size, 0)
 	return base
 
 
@@ -94,10 +92,8 @@ void __w_gen_release_stack(generator* g):
 # the frame pointer (x29) beside the resume address (x30), since W keeps
 # no live values in callee-saved registers across calls.
 int __w_gen_switch_regs():
-	if (__target_isa__ == 1):
-		return 1
-	if (__word_size__ == 8):
-		return 6
+	if (__target_isa__ == 1): return 1
+	if (__word_size__ == 8): return 6
 	return 4
 
 
@@ -112,7 +108,7 @@ generator* __w_gen_create(int fn, int* argv, int argc):
 	g.caller_esp = 0
 	g.value = 0
 	g.done = 0
-	int size = __w_gen_stack_size()
+	int size = __w_gen_stack_size
 	g.stack_base = __w_gen_map_stack(size)
 	g.stack_size = size
 	int* top = cast(int*, __w_gen_stack_top(g))
@@ -149,11 +145,9 @@ generator* __w_gen_create(int fn, int* argv, int argc):
 # or 0 when the generator already ran (its frames may hold pointers
 # into the current stack, so it cannot move).
 int gen_set_stack_size(generator* g, int size):
-	if ((g.done != 0) || (g.caller_esp != 0) || (g.stack_base == 0)):
-		return 0
+	if ((g.done != 0) || (g.caller_esp != 0) || (g.stack_base == 0)): return 0
 	size = (size + 4095) & (0 - 4096)
-	if (size < 8192):
-		size = 8192
+	if (size < 8192): size = 8192
 	int old_top = __w_gen_stack_top(g)
 	int used = old_top - g.resume_esp
 	int old_base = g.stack_base
@@ -165,10 +159,7 @@ int gen_set_stack_size(generator* g, int size):
 	int* from = cast(int*, old_top - used)
 	int* to = cast(int*, new_top - used)
 	int words = used / __word_size__
-	int i = 0
-	while (i < words):
-		to[i] = from[i]
-		i = i + 1
+	for i in range(words): to[i] = from[i]
 	g.resume_esp = new_top - used
 	munmap(old_base, __w_gen_mapping_size(old_size))
 	return 1
@@ -192,8 +183,7 @@ void __w_gen_return(generator* g):
 # was yielded (read it with gen_value), 0 once the body finished.
 # Safe to keep calling after exhaustion.
 int gen_next(generator* g):
-	if (g.done):
-		return 0
+	if (g.done): return 0
 	gen_switch(&g.caller_esp, g.resume_esp)
 	if (g.done):
 		# The body just finished: release its stack now (it could not
@@ -214,8 +204,7 @@ int gen_done(generator* g):
 # Release a generator: munmap the stack (if still live, i.e. abandoned
 # before exhaustion) and free the object. Do not resume it afterwards.
 void gen_free(generator* g):
-	if (g == 0):
-		return;
+	if (g == 0): return;
 	__w_gen_release_stack(g)
 	free(cast(void*, g))
 

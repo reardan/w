@@ -12,39 +12,23 @@ struct pollfd:
 	int16 revents
 
 
-int pollfd_size():
-	return 8
-
-
-int poll_in():
-	return 1
-
-
-int poll_out():
-	return 4
-
-
-int poll_err():
-	return 8
-
-
-int poll_hup():
-	return 16
-
-
-int poll_nval():
-	return 32
+const int pollfd_size = 8
+const int poll_in = 1
+const int poll_out = 4
+const int poll_err = 8
+const int poll_hup = 16
+const int poll_nval = 32
 
 
 # Returns the pollfd at index within a contiguous array.
 pollfd* pollfd_at(pollfd* fds, int index):
-	return cast(pollfd*, cast(int, fds) + index * pollfd_size())
+	return cast(pollfd*, cast(int, fds) + index * pollfd_size)
 
 
 pollfd* pollfd_new_array(int count):
-	char* buffer = malloc(count * pollfd_size())
+	char* buffer = malloc(count * pollfd_size)
 	int i = 0
-	while (i < count * pollfd_size()):
+	while (i < count * pollfd_size):
 		buffer[i] = 0
 		i = i + 1
 	return cast(pollfd*, buffer)

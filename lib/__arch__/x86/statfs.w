@@ -16,8 +16,7 @@
 # same accepted limit lib/stat.w's header documents for statx here.
 
 
-int STATFS_BUF_SIZE():
-	return 96
+const int STATFS_BUF_SIZE = 96
 
 
 # Fill out[0..5] with bsize, blocks, bfree, bavail, files, ffree for

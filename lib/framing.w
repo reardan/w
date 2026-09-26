@@ -9,6 +9,7 @@
 # split across reads, and several messages arriving in a single read.
 import lib.lib
 import lib.memory
+import lib.mem
 
 
 # Writes all n bytes, retrying on short writes.
@@ -79,8 +80,7 @@ int frame_reader_fill(frame_reader* r):
 		r.buffer = realloc(r.buffer, r.capacity, new_capacity)
 		r.capacity = new_capacity
 	int count = read(r.fd, r.buffer + r.length, r.capacity - r.length)
-	if (count > 0):
-		r.length = r.length + count
+	if (count > 0): r.length = r.length + count
 	return count
 
 
@@ -96,8 +96,7 @@ int frame_find_header_end(frame_reader* r):
 
 
 int frame_char_lower(int c):
-	if ((c >= 'A') && (c <= 'Z')):
-		return c + 32
+	if ((c >= 'A') && (c <= 'Z')): return c + 32
 	return c
 
 
@@ -106,10 +105,8 @@ int frame_char_lower(int c):
 int frame_match_header_name(frame_reader* r, int i, int limit, char* name):
 	int j = 0
 	while (name[j] != 0):
-		if (i >= limit):
-			return 0 - 1
-		if (frame_char_lower(r.buffer[i] & 255) != (name[j] & 255)):
-			return 0 - 1
+		if (i >= limit): return 0 - 1
+		if (frame_char_lower(r.buffer[i] & 255) != (name[j] & 255)): return 0 - 1
 		i = i + 1
 		j = j + 1
 	return i
@@ -130,8 +127,7 @@ int frame_parse_content_length(frame_reader* r, int header_end):
 				value = value * 10 + r.buffer[after_name] - '0'
 				digits = digits + 1
 				after_name = after_name + 1
-			if (digits == 0):
-				return 0 - 1
+			if (digits == 0): return 0 - 1
 			return value
 		# Skip to the start of the next header line.
 		while (i < header_end):
@@ -150,23 +146,16 @@ int frame_parse_content_length(frame_reader* r, int header_end):
 char* frame_take_buffered_message(frame_reader* r, int* length_out):
 	*length_out = 0
 	int header_end = frame_find_header_end(r)
-	if (header_end < 0):
-		return 0
+	if (header_end < 0): return 0
 
 	int body_length = frame_parse_content_length(r, header_end)
 	if (body_length < 0):
 		r.error = 1
 		return 0
 
-	if (r.length - header_end < body_length):
-		return 0
+	if (r.length - header_end < body_length): return 0
 
-	char* body = malloc(body_length + 1)
-	int i = 0
-	while (i < body_length):
-		body[i] = r.buffer[header_end + i]
-		i = i + 1
-	body[body_length] = 0
+	char* body = mem_dup(r.buffer + header_end, body_length)
 	r.offset = header_end + body_length
 	*length_out = body_length
 	return body
@@ -179,16 +168,14 @@ char* frame_take_buffered_message(frame_reader* r, int* length_out):
 char* frame_read_message(frame_reader* r, int* length_out):
 	char* body = frame_take_buffered_message(r, length_out)
 	while (body == 0):
-		if (r.error):
-			return 0
+		if (r.error): return 0
 		int count = frame_reader_fill(r)
 		if (count < 0):
 			r.error = 1
 			return 0
 		if (count == 0):
 			# EOF: clean if nothing was buffered, truncated otherwise.
-			if (r.offset < r.length):
-				r.error = 1
+			if (r.offset < r.length): r.error = 1
 			return 0
 		body = frame_take_buffered_message(r, length_out)
 	return body

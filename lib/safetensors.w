@@ -39,6 +39,8 @@ import lib.stream
 import lib.container
 import structures.string
 import structures.json
+import lib.bytes
+import lib.mem
 
 
 struct st_tensor:
@@ -53,9 +55,7 @@ struct st_file:
 
 
 st_file* st_new():
-	st_file* f = new st_file()
-	f.tensors = new list[st_tensor*]
-	f.by_name = new map[char*, st_tensor*]
+	st_file* f = new st_file(new list[st_tensor*], new map[char*, st_tensor*])
 	return f
 
 
@@ -99,20 +99,16 @@ int st_has(st_file* f, char* name):
 
 ndf* st_get(st_file* f, char* name):
 	st_tensor* entry = f.by_name.get(name, 0)
-	if (entry == 0):
-		return 0
+	if (entry == 0): return 0
 	return &entry.t
 
 
 void st_free(st_file* f):
-	int i = 0
-	while (i < f.tensors.length):
+	for i in range(f.tensors.length):
 		st_tensor* entry = f.tensors[i]
-		if (entry.owned):
-			free(entry.t.data.data)
+		if (entry.owned): free(entry.t.data.data)
 		free(entry.name)
 		free(entry)
-		i = i + 1
 	list_free[st_tensor*](f.tensors)
 	map_free[char*, st_tensor*](f.by_name)
 	free(f)
@@ -125,10 +121,7 @@ void st_free(st_file* f):
 # approach 2^32, so the high 4 bytes are always 0; the low bytes are
 # assembled with masking, matching lib/sha256.w's byte-write precedent.
 void st_write_u64_header_len(char* out, int n):
-	out[0] = n & 255
-	out[1] = (n >> 8) & 255
-	out[2] = (n >> 16) & 255
-	out[3] = (n >> 24) & 255
+	store_le32(out, n)
 	out[4] = 0
 	out[5] = 0
 	out[6] = 0
@@ -136,12 +129,9 @@ void st_write_u64_header_len(char* out, int n):
 
 
 int st_shape_dim(ndf* t, int axis):
-	if (axis == 0):
-		return t.n0
-	if (axis == 1):
-		return t.n1
-	if (axis == 2):
-		return t.n2
+	if (axis == 0): return t.n0
+	if (axis == 1): return t.n1
+	if (axis == 2): return t.n2
 	return t.n3
 
 
@@ -187,8 +177,7 @@ int st_save(char* path, st_file* f):
 	int n = strlen(header_json)
 	int rem = (8 + n) % 8
 	int pad = 0
-	if (rem != 0):
-		pad = 8 - rem
+	if (rem != 0): pad = 8 - rem
 
 	wstream* out = stream_open_write(path)
 	if (out == 0):
@@ -219,13 +208,6 @@ int st_save(char* path, st_file* f):
 ##################################### load #####################################
 
 
-void st_copy_bytes(char* dst, char* src, int n):
-	int i = 0
-	while (i < n):
-		dst[i] = src[i]
-		i = i + 1
-
-
 # Assembles the little-endian u64 header length from raw bytes, masking
 # each byte per lib/sha256.w precedent. Returns -1 (never a valid
 # length) when the value does not fit: bytes 4..7 nonzero means the
@@ -238,9 +220,8 @@ void st_copy_bytes(char* dst, char* src, int n):
 int st_read_header_len(char* b):
 	if (((b[4] & 255) != 0) || ((b[5] & 255) != 0) || ((b[6] & 255) != 0) || ((b[7] & 255) != 0)):
 		return -1
-	int lo = (b[0] & 255) | ((b[1] & 255) << 8) | ((b[2] & 255) << 16) | ((b[3] & 255) << 24)
-	if ((__word_size__ == 4) && (lo < 0)):
-		return -1
+	int lo = load_le32(b)
+	if ((__word_size__ == 4) && (lo < 0)): return -1
 	return lo
 
 
@@ -259,12 +240,9 @@ int st_max_header_len():
 
 
 ndf st_ndf_new(int rank, int n0, int n1, int n2, int n3):
-	if (rank == 1):
-		return ndf_new1(n0)
-	if (rank == 2):
-		return ndf_new2(n0, n1)
-	if (rank == 3):
-		return ndf_new3(n0, n1, n2)
+	if (rank == 1): return ndf_new1(n0)
+	if (rank == 2): return ndf_new2(n0, n1)
+	if (rank == 3): return ndf_new3(n0, n1, n2)
 	return ndf_new4(n0, n1, n2, n3)
 
 
@@ -302,22 +280,16 @@ int st_load_tensor(st_file* f, char* name, json_value* meta, string_builder* dat
 	int n2 = 1
 	int n3 = 1
 	int elements = 1
-	int j = 0
-	while (j < rank):
+	for j in range(rank):
 		json_value* d = json_array_get(shape_v, j)
 		if ((d.type != json_type_int()) || (d.int_value <= 0)):
 			println2(f"safetensors: tensor '{name}' has a non-positive or non-integer shape dimension")
 			return 0
 		elements = elements * d.int_value
-		if (j == 0):
-			n0 = d.int_value
-		else if (j == 1):
-			n1 = d.int_value
-		else if (j == 2):
-			n2 = d.int_value
-		else:
-			n3 = d.int_value
-		j = j + 1
+		if (j == 0): n0 = d.int_value
+		else if (j == 1): n1 = d.int_value
+		else if (j == 2): n2 = d.int_value
+		else: n3 = d.int_value
 
 	json_value* offsets_v = json_object_get(meta, c"data_offsets")
 	if ((offsets_v == 0) || (offsets_v.type != json_type_array()) || (json_array_length(offsets_v) != 2)):
@@ -347,7 +319,7 @@ int st_load_tensor(st_file* f, char* name, json_value* meta, string_builder* dat
 	used_end.push(end)
 
 	ndf t = st_ndf_new(rank, n0, n1, n2, n3)
-	st_copy_bytes(cast(char*, t.data.data), data.data + begin, end - begin)
+	mem_copy(cast(char*, t.data.data), data.data + begin, end - begin)
 	st_insert(f, strclone(name), t, 1)
 	return 1
 
@@ -412,8 +384,7 @@ st_file* st_load(char* path):
 	for char* name, json_value* meta in header.object_values:
 		if (ok):
 			if (strcmp(name, c"__metadata__") != 0):
-				if (st_load_tensor(f, name, meta, data, used_begin, used_end) == 0):
-					ok = 0
+				if (st_load_tensor(f, name, meta, data, used_begin, used_end) == 0): ok = 0
 
 	list_free[int](used_begin)
 	list_free[int](used_end)

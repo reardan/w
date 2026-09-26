@@ -21,8 +21,7 @@ handler owns the gating logic; this file only stores the state.
 import debugger.locals
 
 
-int bp_max():
-	return 64
+const int bp_max = 64
 
 
 char* bp_addrs   /* absolute address, 0 = free slot */
@@ -37,16 +36,16 @@ int bp_used
 
 
 void bp_init():
-	bp_addrs = malloc(bp_max() * 4)
-	bp_bytes = malloc(bp_max() * 4)
-	bp_armeds = malloc(bp_max() * 4)
-	bp_temps = malloc(bp_max() * 4)
-	bp_hit_counts = malloc(bp_max() * 4)
-	bp_ignore_counts = malloc(bp_max() * 4)
-	bp_cond_exprs = malloc(bp_max() * __word_size__)
-	bp_log_exprs = malloc(bp_max() * __word_size__)
+	bp_addrs = malloc(bp_max * 4)
+	bp_bytes = malloc(bp_max * 4)
+	bp_armeds = malloc(bp_max * 4)
+	bp_temps = malloc(bp_max * 4)
+	bp_hit_counts = malloc(bp_max * 4)
+	bp_ignore_counts = malloc(bp_max * 4)
+	bp_cond_exprs = malloc(bp_max * __word_size__)
+	bp_log_exprs = malloc(bp_max * __word_size__)
 	int i = 0
-	while (i < bp_max()):
+	while (i < bp_max):
 		save_int(bp_addrs + i * 4, 0)
 		save_int(bp_hit_counts + i * 4, 0)
 		save_int(bp_ignore_counts + i * 4, 0)
@@ -90,10 +89,8 @@ void bp_set_condition(int i, char* expr):
 	if (old != 0):
 		free(old)
 		save_word(bp_cond_exprs + i * __word_size__, 0)
-	if (expr == 0):
-		return;
-	if (expr[0] == 0):
-		return;
+	if (expr == 0): return;
+	if (expr[0] == 0): return;
 	char* copy = malloc(strlen(expr) + 1)
 	strcpy(copy, expr)
 	save_word(bp_cond_exprs + i * __word_size__, cast(int, copy))
@@ -135,20 +132,16 @@ int bp_read_byte(int addr):
 
 
 void bp_arm(int i):
-	if (bp_addr(i) == 0):
-		return;
-	if (load_int(bp_armeds + i * 4)):
-		return;
+	if (bp_addr(i) == 0): return;
+	if (load_int(bp_armeds + i * 4)): return;
 	save_int(bp_bytes + i * 4, bp_read_byte(bp_addr(i)))
 	bp_write_byte(bp_addr(i), 204) /* int3 */
 	save_int(bp_armeds + i * 4, 1)
 
 
 void bp_disarm(int i):
-	if (bp_addr(i) == 0):
-		return;
-	if (load_int(bp_armeds + i * 4) == 0):
-		return;
+	if (bp_addr(i) == 0): return;
+	if (load_int(bp_armeds + i * 4) == 0): return;
 	bp_write_byte(bp_addr(i), load_int(bp_bytes + i * 4))
 	save_int(bp_armeds + i * 4, 0)
 
@@ -158,7 +151,7 @@ int bp_add(int addr, int temp):
 	if (bp_find(addr) >= 0):
 		println(c"a breakpoint is already set there")
 		return -1
-	if (bp_used >= bp_max()):
+	if (bp_used >= bp_max):
 		println(c"too many breakpoints")
 		return -1
 	if (bp_read_byte(addr) == 204):
@@ -206,15 +199,10 @@ void bp_delete_all():
 
 
 void bp_describe(int i):
-	if (bp_is_log(i)):
-		print(c"logpoint ")
-	else:
-		print(c"breakpoint ")
-	char* digits = itoa(i + 1)
-	print(digits)
-	free(digits)
-	if (bp_is_temp(i)):
-		print(c" (temporary)")
+	if (bp_is_log(i)): print(c"logpoint ")
+	else: print(c"breakpoint ")
+	dbg_print_dec(i + 1)
+	if (bp_is_temp(i)): print(c" (temporary)")
 	print(c" at ")
 	print(dbg_function_name(bp_addr(i)))
 	print(c" (")
@@ -228,14 +216,10 @@ void bp_describe(int i):
 		print(bp_log_expr(i))
 	if (bp_hits(i) > 0):
 		print(c", hits: ")
-		char* hd = itoa(bp_hits(i))
-		print(hd)
-		free(hd)
+		dbg_print_dec(bp_hits(i))
 	if (bp_ignore(i) > 0):
 		print(c", ignore: ")
-		char* id = itoa(bp_ignore(i))
-		print(id)
-		free(id)
+		dbg_print_dec(bp_ignore(i))
 
 
 void bp_list():
@@ -247,8 +231,7 @@ void bp_list():
 			put_char(10)
 			shown = shown + 1
 		i = i + 1
-	if (shown == 0):
-		println(c"no breakpoints set")
+	if (shown == 0): println(c"no breakpoints set")
 
 
 # Resolve a breakpoint target the user typed into an absolute address:
@@ -265,8 +248,7 @@ int bp_resolve_target(char* arg, int current_file):
 	int colon = -1
 	int i = 0
 	while (arg[i]):
-		if (arg[i] == ':'):
-			colon = i
+		if (arg[i] == ':'): colon = i
 		i = i + 1
 
 	int file_index = current_file

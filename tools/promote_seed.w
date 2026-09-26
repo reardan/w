@@ -19,8 +19,7 @@ import structures.string
 
 int promote_copy(char* from, char* to):
 	int in = open(from, 0, 0)
-	if (in < 0):
-		return 1
+	if (in < 0): return 1
 	# 577 = O_WRONLY | O_CREAT | O_TRUNC, 493 = rwxr-xr-x
 	int out = open(to, 577, 493)
 	if (out < 0):
@@ -33,10 +32,8 @@ int promote_copy(char* from, char* to):
 		if (write(out, buf, n) != n):
 			failed = 1
 			n = 0
-		else:
-			n = read(in, buf, 65536)
-	if (n < 0):
-		failed = 1
+		else: n = read(in, buf, 65536)
+	if (n < 0): failed = 1
 	free(buf)
 	close(in)
 	close(out)
@@ -77,28 +74,24 @@ char* promote_backup_name(char* seed):
 
 
 int main(int argc, int argv):
-	if (argc != 3):
-		promote_fail(c"usage: promote_seed <seed> <new>", c"")
+	if (argc != 3): promote_fail(c"usage: promote_seed <seed> <new>", c"")
 	char** seed_slot = argv + __word_size__
 	char* seed = *seed_slot
 	char** fresh_slot = argv + 2 * __word_size__
 	char* fresh = *fresh_slot
 	int probe = open(seed, 0, 0)
-	if (probe < 0):
-		println2(c"No existing seed to back up")
+	if (probe < 0): println2(c"No existing seed to back up")
 	else:
 		close(probe)
 		mkdir(c"old", 493)
 		char* backup = promote_backup_name(seed)
-		if (promote_copy(seed, backup)):
-			promote_fail(c"cannot back up the seed to ", backup)
+		if (promote_copy(seed, backup)): promote_fail(c"cannot back up the seed to ", backup)
 		print2(c"Backed up to ")
 		println2(backup)
 	string_builder* staged = string_new()
 	string_append(staged, seed)
 	string_append(staged, c".new")
-	if (promote_copy(fresh, staged.data)):
-		promote_fail(c"cannot copy the new seed from ", fresh)
+	if (promote_copy(fresh, staged.data)): promote_fail(c"cannot copy the new seed from ", fresh)
 	if (rename(staged.data, seed) != 0):
 		promote_fail(c"cannot rename the new seed into place: ", seed)
 	return 0

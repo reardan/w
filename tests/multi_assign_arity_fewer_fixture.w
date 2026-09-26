@@ -9,3 +9,4 @@ int main():
 	int c
 	a, b, c = 1, 2
 	return 0
+# wbuild: fixture_group=multi_assign_error_test

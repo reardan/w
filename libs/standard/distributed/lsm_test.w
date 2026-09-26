@@ -1,6 +1,8 @@
 # wbuild: x64
 import lib.testing
 import libs.standard.distributed.lsm
+import lib.bytes
+import lib.mem
 
 
 # Distinct file prefixes per target so the 32- and 64-bit test
@@ -40,8 +42,7 @@ list[char*] lt_sst_files(char* prefix):
 			char* record = buffer + off
 			int reclen = (record[2 * __word_size__] & 255) | ((record[2 * __word_size__ + 1] & 255) << 8)
 			char* entry_name = record + 2 * __word_size__ + 2
-			if (starts_with(entry_name, stem)):
-				paths.push(strjoin(c"bin/", entry_name))
+			if (starts_with(entry_name, stem)): paths.push(strjoin(c"bin/", entry_name))
 			off = off + reclen
 		n = getdents(fd, buffer, buffer_size)
 	free(buffer)
@@ -90,14 +91,8 @@ char* lt_pad_key(char* stem, int i, int digits):
 	int n = strlen(num)
 	assert1(n <= digits)
 	char* suffix = malloc(digits + 1)
-	int j = 0
-	while (j < digits - n):
-		suffix[j] = '0'
-		j = j + 1
-	j = 0
-	while (j < n):
-		suffix[digits - n + j] = num[j]
-		j = j + 1
+	mem_fill(suffix, '0', digits - n)
+	for j in range(n): suffix[digits - n + j] = num[j]
 	suffix[digits] = 0
 	char* key = strjoin(stem, suffix)
 	free(suffix)
@@ -417,7 +412,7 @@ void test_recovery_reclaims_dangling_table():
 	assert1(cast(int, mw) != 0)
 	char* rec = malloc(5)
 	rec[0] = 1
-	wal_put_le32(rec + 1, 2)
+	store_le32(rec + 1, 2)
 	assert_equal(1, wal_append(mw, rec, 5))
 	free(rec)
 	wal_close(mw)
@@ -501,7 +496,7 @@ void test_torn_flush_manifest_recovery():
 	assert_equal(1, wal_record_count(mw))
 	char* rec = malloc(5)
 	rec[0] = 1
-	wal_put_le32(rec + 1, 2)
+	store_le32(rec + 1, 2)
 	assert_equal(1, wal_append(mw, rec, 5))
 	free(rec)
 	wal_close(mw)
@@ -611,8 +606,7 @@ void test_binary_values_all_tiers():
 # "v" + key; every third key must be gone.
 void lt_verify_stress(lsm* l):
 	int* n = lt_len_out()
-	int j = 0
-	while (j < 200):
+	for j in range(200):
 		char* key = lt_pad_key(c"key", j, 3)
 		if (j % 3 == 0):
 			n[0] = 99
@@ -627,7 +621,6 @@ void lt_verify_stress(lsm* l):
 			free(got)
 			free(want)
 		free(key)
-		j = j + 1
 	free(cast(char*, n))
 
 
@@ -646,8 +639,7 @@ void test_stress_stride():
 		assert_equal(1, lsm_put(l, key, val, strlen(val)))
 		free(val)
 		free(key)
-		if (i % 20 == 19):
-			assert_equal(1, lsm_flush(l))
+		if (i % 20 == 19): assert_equal(1, lsm_flush(l))
 		i = i + 1
 	# delete every 3rd key, flushing every 16 deletes
 	int deleted = 0
@@ -658,8 +650,7 @@ void test_stress_stride():
 			assert_equal(1, lsm_delete(l, dkey))
 			free(dkey)
 			deleted = deleted + 1
-			if (deleted % 16 == 0):
-				assert_equal(1, lsm_flush(l))
+			if (deleted % 16 == 0): assert_equal(1, lsm_flush(l))
 		i = i + 1
 	assert_equal(67, deleted)
 	assert_equal(1, lsm_flush(l))
@@ -698,8 +689,8 @@ void test_export_empty_lsm():
 	assert_equal(83, blob[1] & 255)   # S
 	assert_equal(77, blob[2] & 255)   # M
 	assert_equal(88, blob[3] & 255)   # X
-	assert_equal(1, wal_get_le32(blob + 4))
-	assert_equal(0, wal_get_le32(blob + 8))
+	assert_equal(1, load_le32(blob + 4))
+	assert_equal(0, load_le32(blob + 8))
 	# importing an empty blob into a tree with existing content wipes it
 	assert_equal(1, lsm_put(l, c"gone", c"soon", 4))
 	assert_equal(1, lsm_import(l, blob, n[0]))
@@ -725,7 +716,7 @@ void test_export_tombstone_excluded():
 	assert_equal(1, lsm_delete(l, c"doomed"))
 	int* n = lt_len_out()
 	char* blob = lsm_export(l, n)
-	assert_equal(1, wal_get_le32(blob + 8))   # exactly one surviving record
+	assert_equal(1, load_le32(blob + 8))   # exactly one surviving record
 	char* prefix2 = lt_prefix(c"exptomb2")
 	lt_clean(prefix2)
 	lsm* l2 = lsm_open(prefix2, 1 << 20)
@@ -819,10 +810,7 @@ void test_export_import_roundtrip():
 	assert_equal(3, lsm_total_entries(l2))
 	char* exported2 = lsm_export(l2, n)
 	assert_equal(elen, n[0])
-	int i = 0
-	while (i < elen):
-		assert_equal(exported[i] & 255, exported2[i] & 255)
-		i = i + 1
+	for i in range(elen): assert_equal(exported[i] & 255, exported2[i] & 255)
 	free(exported2)
 	free(exported)
 	free(cast(char*, n))
@@ -851,8 +839,8 @@ void test_import_rejects_malformed_blob():
 	bad_magic[1] = 88
 	bad_magic[2] = 88
 	bad_magic[3] = 88
-	wal_put_le32(bad_magic + 4, 1)
-	wal_put_le32(bad_magic + 8, 0)
+	store_le32(bad_magic + 4, 1)
+	store_le32(bad_magic + 8, 0)
 	assert_equal(0, lsm_import(l, bad_magic, 12))
 	free(bad_magic)
 	# right magic, a record count the buffer cannot possibly hold
@@ -861,8 +849,8 @@ void test_import_rejects_malformed_blob():
 	bad_count[1] = 83
 	bad_count[2] = 77
 	bad_count[3] = 88
-	wal_put_le32(bad_count + 4, 1)
-	wal_put_le32(bad_count + 8, 5)
+	store_le32(bad_count + 4, 1)
+	store_le32(bad_count + 8, 5)
 	assert_equal(0, lsm_import(l, bad_count, 12))
 	free(bad_count)
 	# none of the rejected imports touched the tree

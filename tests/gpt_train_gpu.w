@@ -147,10 +147,8 @@ tensor* gpt_forward(ag_tape* t, ndi* ids, ndi* pos):
 			tensor* s = ag_mul_scalar(t, ag_matmul_nt(t, q, k), att_scale)
 			tensor* p2 = ag_softmax_causal(t, s)
 			tensor* o = ag_matmul(t, ag_matmul(t, p2, v), wo)
-			if (h == 0):
-				att = o
-			else:
-				att = ag_add(t, att, o)
+			if (h == 0): att = o
+			else: att = ag_add(t, att, o)
 			h = h + 1
 		x = ag_add(t, x, att)
 		tensor* g2 = nextp(t)
@@ -182,15 +180,13 @@ int vocab_size
 
 int load_corpus(char* path):
 	wstream* in = stream_open_read(path)
-	if (in == cast(wstream*, 0)):
-		return 0
+	if (in == cast(wstream*, 0)): return 0
 	# tiny-shakespeare is ~1.1MB; read in one gulp with slack.
 	int cap = 2 * 1024 * 1024
 	char* raw = malloc(cap)
 	int n = stream_read(in, raw, cap)
 	stream_close(in)
-	if (n <= 0):
-		return 0
+	if (n <= 0): return 0
 	char_to_id = new int[256]
 	id_to_char = new int[256]
 	int i = 0
@@ -220,10 +216,8 @@ int main():
 		println(c"gpt train: FAILED loading bin/shakespeare.txt (run tools/fetch_shakespeare.sh)")
 		return 1
 	int on_gpu = gpu_available()
-	if (on_gpu):
-		println(c"gpt: gpu path")
-	else:
-		println(c"gpt: cpu fallback")
+	if (on_gpu): println(c"gpt: gpu path")
+	else: println(c"gpt: cpu fallback")
 	int steps = 500
 	if (on_gpu == 0):
 		# The CPU-fallback path runs the same loop end to end but far
@@ -254,8 +248,7 @@ int main():
 
 	float first_loss = 0.0
 	float last_loss = 0.0
-	int step = 1
-	while (step <= steps):
+	for step in range(1, steps + 1):
 		int base = rand_next31(&rng) % (corpus_len - BLOCK() - 1)
 		i = 0
 		while (i < BLOCK()):
@@ -266,8 +259,7 @@ int main():
 		tensor* loss = ag_softmax_ce(t, logits, &targets)
 		ag_backward(t)
 		float lv = loss.data[0]
-		if (step == 1):
-			first_loss = lv
+		if (step == 1): first_loss = lv
 		last_loss = lv
 		if ((step == 1) || (step % 50 == 0)):
 			print(c"step ")
@@ -277,20 +269,16 @@ int main():
 		pi = 0
 		while (pi < g_params.length):
 			float wd = 0.0
-			if (g_decay[pi]):
-				wd = 0.01
+			if (g_decay[pi]): wd = 0.01
 			nn_adamw st = g_opt[pi]
 			nn_adamw_step(t, g_params[pi], &st, step, 0.001, 0.9, 0.99, 0.00000001, wd)
 			pi = pi + 1
 		ag_tape_reset(t)
-		step = step + 1
 
 	# The untrained head is ~uniform over the vocab: loss ~ ln(65) ~ 4.17.
 	asserts(c"gpt train: initial loss should sit near ln(vocab)", (first_loss > 3.0) && (first_loss < 5.0))
-	if (on_gpu):
-		asserts(c"gpt train: loss should fall below 2.6 nats", last_loss < 2.6)
-	else:
-		asserts(c"gpt train: loss should decrease", last_loss < first_loss)
+	if (on_gpu): asserts(c"gpt train: loss should fall below 2.6 nats", last_loss < 2.6)
+	else: asserts(c"gpt train: loss should decrease", last_loss < first_loss)
 
 	if (on_gpu):
 		# Greedy-sample 150 characters from a newline prime. Uses the
@@ -302,8 +290,7 @@ int main():
 		int have = 1
 		while (have <= sample_len):
 			int n2 = have
-			if (n2 > BLOCK()):
-				n2 = BLOCK()
+			if (n2 > BLOCK()): n2 = BLOCK()
 			ndi sids = ndi_new1(n2)
 			ndi spos = ndi_new1(n2)
 			i = 0
@@ -317,8 +304,7 @@ int main():
 			int best = 0
 			i = 1
 			while (i < vocab_size):
-				if (row[i] > row[best]):
-					best = i
+				if (row[i] > row[best]): best = i
 				i = i + 1
 			ctx[have] = best
 			have = have + 1

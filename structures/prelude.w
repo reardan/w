@@ -56,14 +56,12 @@ void __w_print_float32(float f):
 	s[pos] = '.'
 	pos = pos + 1
 	float frac = f - whole
-	int i = 0
-	while (i < 6):
+	for i in range(6):
 		frac = frac * 10.0
 		int digit = frac
 		s[pos] = digit + '0'
 		pos = pos + 1
 		frac = frac - digit
-		i = i + 1
 	s[pos] = 0
 	write(1, s, pos)
 	free(s)
@@ -76,15 +74,11 @@ void __w_print_list(__w_list* list, int kind):
 	__w_print_cstr(c"[")
 	int i = 0
 	while (i < list.length):
-		if (i > 0):
-			__w_print_cstr(c", ")
+		if (i > 0): __w_print_cstr(c", ")
 		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
-		if (kind == 2):
-			__w_print_cstr(cast(char*, value))
-		else if (kind == 4):
-			write_string(1, cast(string, value))
-		else:
-			__w_print_int(value)
+		if (kind == 2): __w_print_cstr(cast(char*, value))
+		else if (kind == 4): write_string(1, cast(string, value))
+		else: __w_print_int(value)
 		i = i + 1
 	__w_print_cstr(c"]")
 
@@ -107,8 +101,7 @@ int __w_min(int a, int b):
 
 
 int __w_abs(int a):
-	if (a < 0):
-		return 0 - a
+	if (a < 0): return 0 - a
 	return a
 
 
@@ -120,8 +113,7 @@ int __w_abs(int a):
 int __w_any(__w_list* list):
 	int i = 0
 	while (i < list.length):
-		if (__w_list_load_word(list.items + i * list.element_size, list.element_size)):
-			return 1
+		if (__w_list_load_word(list.items + i * list.element_size, list.element_size)): return 1
 		i = i + 1
 	return 0
 
@@ -196,10 +188,128 @@ list[int] ints():
 			while ((text[i] >= '0') && (text[i] <= '9')):
 				value = value * 10 + (text[i] - '0')
 				i = i + 1
-			if (is_negative):
-				value = 0 - value
+			if (is_negative): value = 0 - value
 			values.push(value)
-		else:
-			i = i + 1
+		else: i = i + 1
 	free(text)
 	return values
+
+
+# ---- Script helpers (golf ergonomics wave 5) ----
+# lines(), words(), split(s[, ch]) and join(l, sep) are reachable
+# without an import: the compiler resolves the bare names to these
+# private __w_ helpers only when no user symbol shadows them
+# (grammar/print_builtin.w), so programs that define or import their
+# own lines()/split()/join() (lib/str.w) never collide with the prelude.
+
+# Bytes [start, end) as a new C string.
+char* __w_piece(char* s, int start, int end):
+	char* piece = malloc(end - start + 1)
+	int i = 0
+	while (start + i < end):
+		piece[i] = s[start + i]
+		i = i + 1
+	piece[i] = 0
+	return piece
+
+
+# Pieces of s[0, length): delimiter 0 splits on runs of ASCII
+# whitespace and drops empty pieces (Python's s.split()); any other
+# byte splits on every occurrence and keeps empty pieces (lib/str.w's
+# split(s, ch) contract).
+list[char*] __w_split_bytes(char* s, int length, int delimiter):
+	list[char*] pieces = new list[char*]
+	int start = 0
+	for i in range(length + 1):
+		int is_break = i == length
+		if ((is_break == 0) && (delimiter == 0)):
+			is_break = (s[i] == ' ') || ((s[i] >= 9) && (s[i] <= 13))
+		else if (is_break == 0): is_break = s[i] == delimiter
+		if (is_break):
+			if ((delimiter != 0) || (i > start)): pieces.push(__w_piece(s, start, i))
+			start = i + 1
+	return pieces
+
+
+# split(s) / split(s, ch) for a char* (is_string 0) or string argument.
+list[char*] __w_split(int s, int is_string, int delimiter):
+	if (is_string):
+		string text = cast(string, s)
+		return __w_split_bytes(text.data, text.length, delimiter)
+	char* chars = cast(char*, s)
+	return __w_split_bytes(chars, strlen(chars), delimiter)
+
+
+# Every stdin line without its newline; a final newline does not add an
+# empty last line.
+list[char*] __w_lines():
+	char* text = read_all()
+	list[char*] pieces = __w_split_bytes(text, strlen(text), 10)
+	if (strlen(pieces[pieces.length - 1]) == 0): pieces.pop()
+	free(text)
+	return pieces
+
+
+# Every whitespace-separated token of stdin.
+list[char*] __w_words():
+	char* text = read_all()
+	list[char*] pieces = __w_split_bytes(text, strlen(text), 0)
+	free(text)
+	return pieces
+
+
+# Copies length bytes to result + out and returns the new end; a null
+# result only measures.
+int __w_join_copy(char* result, int out, char* data, int length):
+	if (cast(int, result) != 0):
+		for j in range(length): result[out + j] = data[j]
+	return out + length
+
+
+# The pieces joined with sep between them, as a new C string: one
+# measuring round, one copying. flags bit 0: the pieces are strings
+# (else char*); bit 1: sep is a string (else char*).
+char* __w_join(__w_list* parts, int sep, int flags):
+	char* sep_data = cast(char*, sep)
+	int sep_length = 0
+	if (flags & 2):
+		string sep_text = cast(string, sep)
+		sep_data = sep_text.data
+		sep_length = sep_text.length
+	else: sep_length = strlen(sep_data)
+	char* result = 0
+	for round in range(2):
+		int out = 0
+		int i = 0
+		while (i < parts.length):
+			if (i > 0): out = __w_join_copy(result, out, sep_data, sep_length)
+			int word = __w_list_load_word(parts.items + i * parts.element_size, parts.element_size)
+			if (flags & 1):
+				string text = cast(string, word)
+				out = __w_join_copy(result, out, text.data, text.length)
+			else: out = __w_join_copy(result, out, cast(char*, word), strlen(cast(char*, word)))
+			i = i + 1
+		if (round == 0): result = malloc(out + 1)
+		else: result[out] = 0
+	return result
+
+# --- enum_name ------------------------------------------------------------
+# enum_name(e) (grammar/print_builtin.w): table is the compiler-emitted
+# run of NUL-terminated "value" / "name" pairs for e's enum, ended by an
+# empty value. Returns the name inside the table, or the value's decimal
+# digits when no constant carries it.
+char* __w_enum_name(char* table, int value):
+	char* p = table
+	while (p[0] != 0):
+		int negative = p[0] == '-'
+		int i = negative
+		int v = 0
+		while (p[i] != 0):
+			v = v * 10 + p[i] - '0'
+			i = i + 1
+		if (negative): v = 0 - v
+		p = p + i + 1
+		if (v == value):
+			return p
+		p = p + strlen(p) + 1
+	return itoa(value)

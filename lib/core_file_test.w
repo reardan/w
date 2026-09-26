@@ -4,6 +4,7 @@
 # note, and one PT_LOAD standing in for dumped stack memory.
 import lib.testing
 import lib.core_file
+import lib.mem
 
 
 int core_test_wsize():
@@ -11,10 +12,7 @@ int core_test_wsize():
 
 
 void core_test_put(char* buf, int off, int v, int n):
-	int i = 0
-	while (i < n):
-		buf[off + i] = (v >> (i * 8)) & 255
-		i = i + 1
+	for i in range(n): buf[off + i] = (v >> (i * 8)) & 255
 
 
 void core_test_putw(char* buf, int off, int v):
@@ -35,18 +33,14 @@ void core_test_phdr(char* buf, int p, int type, int offset, int vaddr, int size)
 		core_test_putw(buf, p + 20, size)
 
 
-int core_test_size():
-	return 1024
+const int core_test_size = 1024
 
 
 # Lays out: header, two program headers, notes at 256, stack at 768.
 char* core_test_image():
 	int w = core_test_wsize()
-	char* buf = malloc(core_test_size())
-	int z = 0
-	while (z < core_test_size()):
-		buf[z] = 0
-		z = z + 1
+	char* buf = malloc(core_test_size)
+	mem_fill(buf, 0, core_test_size)
 	buf[0] = 127
 	buf[1] = 'E'
 	buf[2] = 'L'
@@ -104,8 +98,7 @@ char* core_test_image():
 
 
 char* core_test_path():
-	if (core_test_wsize() == 8):
-		return c"bin/core_file_test_64.core"
+	if (core_test_wsize() == 8): return c"bin/core_file_test_64.core"
 	return c"bin/core_file_test_32.core"
 
 
@@ -117,7 +110,7 @@ void core_test_write(char* path, char* data, int size):
 
 
 void test_core_file_reads_synthetic_core():
-	core_test_write(core_test_path(), core_test_image(), core_test_size())
+	core_test_write(core_test_path(), core_test_image(), core_test_size)
 	assert1(cf_load_core(core_test_path()) == 0)
 	assert_equal(core_test_wsize(), cf_wsize)
 	assert1(cf_exe_note != 0)
@@ -136,8 +129,7 @@ void test_core_file_reads_synthetic_core():
 
 void test_core_file_rejects_non_elf():
 	char* path = c"bin/core_file_test_text.core"
-	if (core_test_wsize() == 8):
-		path = c"bin/core_file_test_text_64.core"
+	if (core_test_wsize() == 8): path = c"bin/core_file_test_text_64.core"
 	core_test_write(path, c"not a core file, just some text padding it out to size", 52)
 	assert_strings_equal(c"not an ELF file:", cf_load_core(path))
 	assert_strings_equal(path, cf_error_path)

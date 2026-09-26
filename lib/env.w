@@ -22,11 +22,9 @@ char* env_entry_at(char** envp, int i):
 
 
 int env_vector_count(char** envp):
-	if (envp == 0):
-		return 0
+	if (envp == 0): return 0
 	int count = 0
-	while (env_entry_at(envp, count) != 0):
-		count = count + 1
+	while (env_entry_at(envp, count) != 0): count = count + 1
 	return count
 
 
@@ -36,14 +34,12 @@ int env_count():
 
 # The i-th "NAME=value" entry, or 0 when out of range.
 char* env_at(int i):
-	if ((i < 0) | (i >= env_count())):
-		return 0
+	if ((i < 0) | (i >= env_count())): return 0
 	return env_entry_at(env_current(), i)
 
 
 int env_ascii_lower(int c):
-	if ((c >= 'A') && (c <= 'Z')):
-		return c + 32
+	if ((c >= 'A') && (c <= 'Z')): return c + 32
 	return c
 
 
@@ -56,13 +52,10 @@ int env_match_name(char* entry, char* name):
 	int i = 0
 	while (name[i] != 0):
 		if (entry[i] != name[i]):
-			if (fold == 0):
-				return -1
-			if (env_ascii_lower(entry[i]) != env_ascii_lower(name[i])):
-				return -1
+			if (fold == 0): return -1
+			if (env_ascii_lower(entry[i]) != env_ascii_lower(name[i])): return -1
 		i = i + 1
-	if (entry[i] != '='):
-		return -1
+	if (entry[i] != '='): return -1
 	return i + 1
 
 
@@ -70,14 +63,12 @@ int env_match_name(char* entry, char* name):
 # free), or 0 when unset.
 char* env_get(char* name):
 	char** envp = env_current()
-	if (envp == 0):
-		return 0
+	if (envp == 0): return 0
 	int i = 0
 	char* entry = env_entry_at(envp, i)
 	while (entry != 0):
 		int value_index = env_match_name(entry, name)
-		if (value_index >= 0):
-			return entry + value_index
+		if (value_index >= 0): return entry + value_index
 		i = i + 1
 		entry = env_entry_at(envp, i)
 	return 0
@@ -104,16 +95,13 @@ char** env_copy_with(char** base, char* name, char* value):
 	char* new_entry = env_make_entry(name, value)
 	int replaced = 0
 	int out = 0
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		char* entry = env_entry_at(base, i)
 		if (env_match_name(entry, name) >= 0):
 			save_word(vector + out * __word_size__, cast(int, new_entry))
 			replaced = 1
-		else:
-			save_word(vector + out * __word_size__, cast(int, entry))
+		else: save_word(vector + out * __word_size__, cast(int, entry))
 		out = out + 1
-		i = i + 1
 	if (replaced == 0):
 		save_word(vector + out * __word_size__, cast(int, new_entry))
 		out = out + 1

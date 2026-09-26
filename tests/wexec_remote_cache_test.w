@@ -44,6 +44,7 @@ import lib.env
 import lib.process
 import structures.string
 import libs.extras.vcs.cas
+import lib.str
 
 
 /* ---- raw-socket CAS object server (the "shared cache" fixture) ---- */
@@ -52,19 +53,14 @@ import libs.extras.vcs.cas
 # path doesn't match that shape. Mirrors cas_object_path in reverse.
 char* wrct_extract_id(char* path):
 	char* prefix = c"/objects/"
-	if (starts_with(path, prefix) == 0):
-		return 0
+	if (starts_with(path, prefix) == 0): return 0
 	char* rest = path + strlen(prefix)
 	int i = 0
-	while ((rest[i] != 0) && (rest[i] != '/')):
-		i = i + 1
-	if (i != 2):
-		return 0
-	if (rest[i] != '/'):
-		return 0
+	while ((rest[i] != 0) && (rest[i] != '/')): i = i + 1
+	if (i != 2): return 0
+	if (rest[i] != '/'): return 0
 	char* tail = rest + i + 1
-	if (strlen(tail) != 62):
-		return 0
+	if (strlen(tail) != 62): return 0
 	string_builder* s = string_new()
 	string_append_char(s, rest[0])
 	string_append_char(s, rest[1])
@@ -82,10 +78,7 @@ char* wrct_extract_id(char* path):
 char* wrct_bytes_dup(char* data, int start, int end):
 	int n = end - start
 	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = data[start + i]
-		i = i + 1
+	for i in range(n): out[i] = data[start + i]
 	out[n] = 0
 	return out
 
@@ -112,17 +105,14 @@ int wrct_parse_content_length(char* head, int head_len):
 		int match = 1
 		while (j < n):
 			int a = head[i + j] & 255
-			if ((a >= 'A') && (a <= 'Z')):
-				a = a + 32
+			if ((a >= 'A') && (a <= 'Z')): a = a + 32
 			if (a != (needle[j] & 255)):
 				match = 0
 				j = n
-			else:
-				j = j + 1
+			else: j = j + 1
 		if (match):
 			int p = i + n
-			while ((p < head_len) && (head[p] == ' ')):
-				p = p + 1
+			while ((p < head_len) && (head[p] == ' ')): p = p + 1
 			int value = 0
 			while ((p < head_len) && (head[p] >= '0') && (head[p] <= '9')):
 				value = value * 10 + (head[p] - '0')
@@ -140,13 +130,11 @@ int wrct_read_head(int conn, string_builder* buf):
 	int done = 0
 	while (done == 0):
 		int got = read(conn, tmp, 4096)
-		if (got <= 0):
-			done = 1
+		if (got <= 0): done = 1
 		else:
 			string_append_bytes(buf, tmp, got)
 			head_end = wrct_head_end(buf.data, buf.length)
-			if (head_end >= 0):
-				done = 1
+			if (head_end >= 0): done = 1
 	free(tmp)
 	return head_end
 
@@ -155,10 +143,8 @@ void wrct_send_all(int conn, char* data, int n):
 	int total = 0
 	while (total < n):
 		int got = socket_send(conn, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			total = n
-		else:
-			total = total + got
+		if (got <= 0): total = n
+		else: total = total + got
 
 
 void wrct_respond(int conn, int status, char* status_text, char* body, int body_len):
@@ -172,8 +158,7 @@ void wrct_respond(int conn, int status, char* status_text, char* body, int body_
 	string_append(head, c"\x0d\x0a\x0d\x0a")
 	wrct_send_all(conn, head.data, head.length)
 	string_free(head)
-	if (body_len > 0):
-		wrct_send_all(conn, body, body_len)
+	if (body_len > 0): wrct_send_all(conn, body, body_len)
 
 
 # One request/response over an already-accepted connection: read the
@@ -192,13 +177,10 @@ void wrct_serve_one(int conn, wcas* store):
 	char* more = malloc(4096)
 	while (buf.length < need):
 		int want = need - buf.length
-		if (want > 4096):
-			want = 4096
+		if (want > 4096): want = 4096
 		int got = read(conn, more, want)
-		if (got <= 0):
-			need = buf.length
-		else:
-			string_append_bytes(buf, more, got)
+		if (got <= 0): need = buf.length
+		else: string_append_bytes(buf, more, got)
 	free(more)
 
 	int method_end = 0
@@ -207,18 +189,15 @@ void wrct_serve_one(int conn, wcas* store):
 	char* method = wrct_bytes_dup(buf.data, 0, method_end)
 	int path_start = method_end + 1
 	int path_end = path_start
-	while ((buf.data[path_end] != 0) && (buf.data[path_end] != ' ')):
-		path_end = path_end + 1
+	while ((buf.data[path_end] != 0) && (buf.data[path_end] != ' ')): path_end = path_end + 1
 	char* path = wrct_bytes_dup(buf.data, path_start, path_end)
 
 	int body_len = buf.length - head_end
-	if (body_len < 0):
-		body_len = 0
+	if (body_len < 0): body_len = 0
 	char* body = buf.data + head_end
 
 	char* id = wrct_extract_id(path)
-	if (id == 0):
-		wrct_respond(conn, 404, c"Not Found", c"", 0)
+	if (id == 0): wrct_respond(conn, 404, c"Not Found", c"", 0)
 	else if (strcmp(method, c"GET") == 0):
 		wresult[wcas_object*]* got_obj = cas_get(store, id)
 		if (result_is_ok[wcas_object*](got_obj) == 0):
@@ -232,17 +211,12 @@ void wrct_serve_one(int conn, wcas* store):
 	else if (strcmp(method, c"PUT") == 0):
 		wresult[char*]* put = cas_put_raw(store, id, c"wexec-bundle", body, body_len)
 		int ok = result_is_ok[char*](put)
-		if (ok):
-			free(result_value[char*](put))
+		if (ok): free(result_value[char*](put))
 		result_free[char*](put)
-		if (ok):
-			wrct_respond(conn, 200, c"OK", c"", 0)
-		else:
-			wrct_respond(conn, 500, c"Internal Server Error", c"", 0)
-	else:
-		wrct_respond(conn, 405, c"Method Not Allowed", c"", 0)
-	if (id != 0):
-		free(id)
+		if (ok): wrct_respond(conn, 200, c"OK", c"", 0)
+		else: wrct_respond(conn, 500, c"Internal Server Error", c"", 0)
+	else: wrct_respond(conn, 405, c"Method Not Allowed", c"", 0)
+	if (id != 0): free(id)
 	free(method)
 	free(path)
 	string_free(buf)
@@ -282,22 +256,9 @@ char* wrct_url(int port):
 
 int wrct_file_exists(char* path):
 	int fd = open(path, 0, 0)
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	close(fd)
 	return 1
-
-
-int wrct_contains(char* hay, char* needle):
-	int i = 0
-	while (hay[i] != 0):
-		int j = 0
-		while ((needle[j] != 0) && (hay[i + j] == needle[j])):
-			j = j + 1
-		if (needle[j] == 0):
-			return 1
-		i = i + 1
-	return 0
 
 
 # Runs 'bin/wexec -f tests/wexec/remote_cache.json remote_target' as a
@@ -312,8 +273,7 @@ process_result* wrct_run_wexec(char* url, int push):
 	strv_set(argv, 2, c"tests/wexec/remote_cache.json")
 	strv_set(argv, 3, c"remote_target")
 	char** child_env = env_copy_with(env_current(), c"W_CACHE_URL", url)
-	if (push):
-		child_env = env_copy_with(child_env, c"W_CACHE_PUSH", c"1")
+	if (push): child_env = env_copy_with(child_env, c"W_CACHE_PUSH", c"1")
 	spawn_options* opts = spawn_options_new()
 	opts.env = child_env
 	process_result* result = process_run(c"bin/wexec", argv, opts, 0, 10000)
@@ -361,8 +321,8 @@ void test_remote_cache_round_trip():
 	# for real (marker + output both appear) and the bundle is pushed.
 	process_result* r1 = wrct_run_wexec(url, 1)
 	asserts(c"phase1 exit 0", r1.status == 0)
-	asserts(c"phase1 not served from any cache", wrct_contains(r1.stdout_text, c"(cached)") == 0)
-	asserts(c"phase1 not served from remote cache", wrct_contains(r1.stdout_text, c"(remote cache)") == 0)
+	asserts(c"phase1 not served from any cache", contains(r1.stdout_text, c"(cached)") == 0)
+	asserts(c"phase1 not served from remote cache", contains(r1.stdout_text, c"(remote cache)") == 0)
 	asserts(c"phase1 marker created (steps ran)", wrct_file_exists(c"bin/wexec_remote_cache_marker.txt"))
 	asserts(c"phase1 output created", wrct_file_exists(c"bin/wexec_remote_cache_out.txt"))
 	process_result_free(r1)
@@ -373,7 +333,7 @@ void test_remote_cache_round_trip():
 	wrct_reset_local_state()
 	process_result* r2 = wrct_run_wexec(url, 0)
 	asserts(c"phase2 exit 0", r2.status == 0)
-	asserts(c"phase2 logged as remote cache", wrct_contains(r2.stdout_text, c"(remote cache)"))
+	asserts(c"phase2 logged as remote cache", contains(r2.stdout_text, c"(remote cache)"))
 	asserts(c"phase2 steps did NOT run (marker absent)", wrct_file_exists(c"bin/wexec_remote_cache_marker.txt") == 0)
 	asserts(c"phase2 output restored from bundle", wrct_file_exists(c"bin/wexec_remote_cache_out.txt"))
 	char* restored = file_read_text(c"bin/wexec_remote_cache_out.txt")
@@ -383,7 +343,7 @@ void test_remote_cache_round_trip():
 
 	# Take the server down before phase 3: kill + reap so the listening
 	# socket is provably gone (not just "probably done answering").
-	kill(pid, sigkill())
+	kill(pid, sigkill)
 	int server_status = 0
 	wait4(pid, &server_status, 0, 0)
 
@@ -395,8 +355,8 @@ void test_remote_cache_round_trip():
 	wrct_reset_local_state()
 	process_result* r3 = wrct_run_wexec(url, 0)
 	asserts(c"phase3 exit 0 (cache outage does not break the build)", r3.status == 0)
-	asserts(c"phase3 warns once about the unreachable cache", wrct_contains(r3.stderr_text, c"remote cache unreachable"))
-	asserts(c"phase3 not served from remote cache", wrct_contains(r3.stdout_text, c"(remote cache)") == 0)
+	asserts(c"phase3 warns once about the unreachable cache", contains(r3.stderr_text, c"remote cache unreachable"))
+	asserts(c"phase3 not served from remote cache", contains(r3.stdout_text, c"(remote cache)") == 0)
 	asserts(c"phase3 marker created (steps ran locally)", wrct_file_exists(c"bin/wexec_remote_cache_marker.txt"))
 	asserts(c"phase3 output created", wrct_file_exists(c"bin/wexec_remote_cache_out.txt"))
 	process_result_free(r3)

@@ -5,18 +5,6 @@ import lib.fmath
 import libs.standard.distributed.failure_detector
 
 
-# Same tolerance idiom as lib/stats_test.w: loose enough for float32
-# arithmetic, tight enough for the values asserted here.
-void assert_near(float want, float got):
-	if (fabs(want - got) > 0.0001):
-		print2(c"Assertion failed. wanted float(")
-		print2(ftoa(want))
-		print2(c") got float(")
-		print2(ftoa(got))
-		println2(c")")
-		exit(1)
-
-
 void test_no_heartbeats():
 	failure_detector* fd = fd_new(4)
 	assert_equal(0, fd_sample_count(fd))
@@ -47,11 +35,9 @@ void test_regular_heartbeats():
 	failure_detector* fd = fd_new(16)
 	# heartbeats at 1000, 1100, ..., 1900: nine intervals of 100 ms
 	int t = 1000
-	int i = 0
-	while (i < 10):
+	for i in range(10):
 		fd_heartbeat(fd, t)
 		t = t + 100
-		i = i + 1
 	assert_equal(9, fd_sample_count(fd))
 	# exact by construction: 900 / 9
 	assert1(fd_mean_interval_ms(fd) == 100.0)
@@ -106,13 +92,11 @@ void test_phi_monotonic_in_silence():
 	float prev = fd_phi(fd, 1300)
 	assert1(prev == 0.0)
 	int now = 1300
-	int i = 0
-	while (i < 10):
+	for i in range(10):
 		now = now + 250
 		float cur = fd_phi(fd, now)
 		assert1(prev < cur)
 		prev = cur
-		i = i + 1
 	fd_free(fd)
 
 

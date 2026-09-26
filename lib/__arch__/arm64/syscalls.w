@@ -9,8 +9,7 @@
 # getdents64, pipe2, dup3, ppoll, clock_gettime).
 
 # AT_FDCWD: operate relative to the current working directory.
-int arm64_at_fdcwd():
-	return 0 - 100
+const int arm64_at_fdcwd = -100
 
 
 struct arm64_timespec:
@@ -22,11 +21,11 @@ struct arm64_timespec:
 
 # openat with O_CREAT|O_WRONLY|O_TRUNC (0x241 = 577).
 int create_file(char* filename, int permissions):
-	return syscall7(56, arm64_at_fdcwd(), filename, 577, permissions, 0, 0)
+	return syscall7(56, arm64_at_fdcwd, filename, 577, permissions, 0, 0)
 
 # mode: 0 - read, 1 - write, 2 - readwrite (plus O_CREAT etc.)
 int open(char *filename, int mode, int permissions):
-	return syscall7(56, arm64_at_fdcwd(), filename, mode, permissions, 0, 0)
+	return syscall7(56, arm64_at_fdcwd, filename, mode, permissions, 0, 0)
 
 int write(int file, char* s, int length):
 	return syscall(64, file, s, length)
@@ -43,7 +42,7 @@ int seek(int file, int offset, int reference):
 
 # unlinkat with no flags removes a file.
 int unlink(char* path):
-	return syscall(35, arm64_at_fdcwd(), path, 0)
+	return syscall(35, arm64_at_fdcwd, path, 0)
 
 # fsync (82): flushes the file's data and metadata to stable storage.
 # Returns 0, or a negative errno (e.g. -9 EBADF on a closed fd).
@@ -56,15 +55,15 @@ int fdatasync(int file):
 
 # Directory syscalls:
 int mkdir(char* path, int mode):
-	return syscall7(34, arm64_at_fdcwd(), path, mode, 0, 0, 0)
+	return syscall7(34, arm64_at_fdcwd, path, mode, 0, 0, 0)
 
 # unlinkat with AT_REMOVEDIR (0x200).
 int rmdir(char* path):
-	return syscall(35, arm64_at_fdcwd(), path, 512)
+	return syscall(35, arm64_at_fdcwd, path, 512)
 
 # renameat(olddirfd, old, newdirfd, new) — both dirs AT_FDCWD.
 int rename(char* oldpath, char* newpath):
-	return syscall7(38, arm64_at_fdcwd(), oldpath, arm64_at_fdcwd(), newpath, 0, 0)
+	return syscall7(38, arm64_at_fdcwd, oldpath, arm64_at_fdcwd, newpath, 0, 0)
 
 # getdents64: note its record layout differs from the legacy getdents
 # (d_type sits right after d_reclen rather than at the record's end).
@@ -78,11 +77,10 @@ int getcwd(char* buf, int size):
 # AArch64 uses the *at forms exclusively.
 
 int at_fdcwd():
-	return arm64_at_fdcwd()
+	return arm64_at_fdcwd
 
 
-int at_symlink_nofollow():
-	return 256
+const int at_symlink_nofollow = 256
 
 
 # statx (291).
@@ -111,7 +109,7 @@ int chown(char* path, int uid, int gid):
 
 
 int lchown(char* path, int uid, int gid):
-	return fchownat(path, uid, gid, at_symlink_nofollow())
+	return fchownat(path, uid, gid, at_symlink_nofollow)
 
 
 int getuid():
@@ -138,8 +136,7 @@ int linux_time(int* out):
 	ts.tv_sec = 0
 	ts.tv_nsec = 0
 	syscall(113, 0, cast(int, &ts), 0)
-	if (out != 0):
-		*out = ts.tv_sec
+	if (out != 0): *out = ts.tv_sec
 	return ts.tv_sec
 
 /* memory and threading */
@@ -169,8 +166,7 @@ int sys_clone(int flags, int child_stack):
 # ppoll (73): fds points at an array of 8-byte pollfd records. timeout_ms
 # < 0 blocks forever; otherwise it is converted to a timespec.
 int arm64_ppoll(int fds, int nfds, int timeout_ms):
-	if (timeout_ms < 0):
-		return syscall7(73, fds, nfds, 0, 0, 8, 0)
+	if (timeout_ms < 0): return syscall7(73, fds, nfds, 0, 0, 8, 0)
 	arm64_timespec ts
 	ts.tv_sec = timeout_ms / 1000
 	ts.tv_nsec = (timeout_ms % 1000) * 1000000
@@ -228,83 +224,9 @@ int kill(int pid, int sig):
 	return syscall(129, pid, sig, 0)
 
 
-# Returns 1 when running on Windows, 0 on all other platforms.
-int os_windows():
-	return 0
-
-
-# The win64 module's C -> W callback thunks and unhandled-exception
-# filter (lib/crash.w); Windows-only, so the stubs report failure.
-int win_callback(int fn, int nargs):
-	return 0
-
-
-int win_crash_filter_install(int handler):
-	return 0
-
-
 # sigaltstack is only wired up where lib/crash.w uses it (arm64_darwin).
 int sys_sigaltstack(int ss, int old_ss):
 	return -1
-
-
-# Win32 API surface used by the os_windows()-guarded paths in shared
-# modules (lib/process.w's CreateProcessA spawning, tools/wexec.w's
-# FindFirstFileA directory walk). Those paths never run on this target;
-# the stubs only keep the modules linkable -- the mirror image of the
-# Unix-primitive stubs at the bottom of lib/__arch__/win64/syscalls.w.
-# Each returns its Win32 failure value.
-
-int CloseHandle(int handle):
-	return 0
-
-
-int GetStdHandle(int which):
-	return -1
-
-
-int CreateFileA(char* path, int access, int share, int security, int creation, int flags, int template_file):
-	return -1
-
-
-int CreatePipe(int* read_end, int* write_end, int security, int size):
-	return 0
-
-
-int SetHandleInformation(int handle, int mask, int flags):
-	return 0
-
-
-int CreateProcessA(char* app, char* cmdline, int proc_attr, int thread_attr, int inherit_handles, int flags, int env, char* dir, char* startup_info, char* proc_info):
-	return 0
-
-
-int WaitForSingleObject(int handle, int milliseconds):
-	return -1
-
-
-int GetExitCodeProcess(int handle, int* code):
-	return 0
-
-
-int TerminateProcess(int handle, int exit_code):
-	return 0
-
-
-int PeekNamedPipe(int handle, char* buf, int buf_size, int* bytes_read, int* bytes_avail, int* bytes_left):
-	return 0
-
-
-int FindFirstFileA(char* pattern, char* find_data):
-	return -1
-
-
-int FindNextFileA(int handle, char* find_data):
-	return 0
-
-
-int FindClose(int handle):
-	return 0
 
 
 # ptrace (117). Same classic ABI as x86; wdbg's attach mode only decodes
@@ -447,3 +369,6 @@ int epoll_wait(int epfd, int events, int maxevents, int timeout_ms):
 
 int eventfd2(int initval, int flags):
 	return syscall(19, initval, flags, 0)
+
+
+import lib.win32_stubs

@@ -14,3 +14,4 @@ message pbe_holder:
 int main():
 	pbe_holder* h = from_proto(pbe_holder, c"", 0)
 	return 0
+# wbuild: fixture_group=protobuf_message_error_test

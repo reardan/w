@@ -3,8 +3,7 @@ graphics.ui.widgets.dropdown_search: a dropdown with a filter field
 (docs/projects/ui_widgets.md §6, §9).
 
 	ui_textbox_state query
-	if (ui_dropdown_search(ctx, 200.0, items, n, &selected, &open, &query)):
-		load(items[selected])
+	if (ui_dropdown_search(ctx, 200.0, items, n, &selected, &open, &query)): load(items[selected])
 
 Opening shows a popover holding a ui_textbox at the top and, under it,
 the items whose label contains the query — a case-insensitive ASCII
@@ -42,34 +41,29 @@ import graphics.ui.widgets.dropdown_multi
 
 
 int ui_ascii_lower(int c):
-	if ((c >= 'A') && (c <= 'Z')):
-		return c + 32
+	if ((c >= 'A') && (c <= 'Z')): return c + 32
 	return c
 
 
 # 1 when query occurs in label, ignoring ASCII case. The empty query
 # matches everything.
 int ui_dropdown_matches(char* label, char* query):
-	if (query[0] == 0):
-		return 1
+	if (query[0] == 0): return 1
 	int i = 0
 	while (label[i] != 0):
 		int k = 0
 		while ((query[k] != 0) && (label[i + k] != 0) && (ui_ascii_lower(label[i + k]) == ui_ascii_lower(query[k]))):
 			k = k + 1
-		if (query[k] == 0):
-			return 1
+		if (query[k] == 0): return 1
 		i = i + 1
 	return 0
 
 
 # Index of the first item matching query, or -1.
 int ui_dropdown_first_match(char** items, int item_count, char* query):
-	int i = 0
-	while (i < item_count):
+	for i in range(item_count):
 		if (ui_dropdown_matches(items[i], query)):
 			return i
-		i = i + 1
 	return 0 - 1
 
 
@@ -77,8 +71,7 @@ int ui_dropdown_first_match(char** items, int item_count, char* query):
 # and the popover's pad above and below.
 float32 ui_dropdown_search_list_height(ui_context* ctx, int item_count):
 	int rows = item_count
-	if (rows < 1):
-		rows = 1
+	if (rows < 1): rows = 1
 	return cast(float32, ctx.theme.widget_height * (rows + 1) + ctx.theme.gap + ctx.theme.pad * 2)
 
 
@@ -101,23 +94,20 @@ int ui_dropdown_search(ui_context* ctx, float32 w, char** items, int item_count,
 			# As in ui_dropdown_multi: the opening press lies outside the
 			# surface and must not close it on the frame it opened.
 			ctx.input.mouse_pressed = 0
-	else:
-		ctx.hot = id
+	else: ctx.hot = id
 
 	# The filter's id, reserved open or closed.
 	int filter_id = ctx.next_id
 	int pick = 0 - 1
 	if (ui_popover_begin(ctx, id, r, r.w, ui_dropdown_search_list_height(ctx, item_count), open)):
-		if (opened):
-			ctx.focus = filter_id
+		if (opened): ctx.focus = filter_id
 		ui_layout* lo = ui_layout_top(ctx)
 		float32 inner_w = lo.bounds.w
 		int submitted = ui_textbox(ctx, inner_w, query)
 		# Rows sit flush under the filter, one row pitch apart.
 		float32 y = lo.cursor_y
 		int shown = 0
-		int i = 0
-		while (i < item_count):
+		for i in range(item_count):
 			if (ui_dropdown_matches(items[i], &query.text[0])):
 				ui_rect row = ui_rect_new(lo.bounds.x, y, inner_w, row_h)
 				if (ctx.input.mouse_pressed && ui_rect_contains(row, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
@@ -130,7 +120,6 @@ int ui_dropdown_search(ui_context* ctx, float32 w, char** items, int item_count,
 				ui_region_claim(ctx, row)
 				y = y + row_h
 				shown = shown + 1
-			i = i + 1
 		if (shown == 0):
 			ui_rect none = ui_rect_new(lo.bounds.x, y, inner_w, row_h)
 			ui_draw_text(ctx.rndr, none.x + cast(float32, ctx.theme.pad + 4), none.y + (none.h - cast(float32, ui_text_height(scale))) * 0.5, c"No matches", scale, ctx.theme.text_muted)
@@ -146,13 +135,10 @@ int ui_dropdown_search(ui_context* ctx, float32 w, char** items, int item_count,
 			# The picking press is spent: widgets after this call are
 			# live again this frame and must not also act on it.
 			ctx.input.mouse_pressed = 0
-	else:
-		ctx.next_id = ctx.next_id + 1
-	if ((open[0] == 0) && (ctx.focus == filter_id)):
-		ctx.focus = 0
+	else: ctx.next_id = ctx.next_id + 1
+	if ((open[0] == 0) && (ctx.focus == filter_id)): ctx.focus = 0
 
 	char* text = c""
-	if ((selected[0] >= 0) && (selected[0] < item_count)):
-		text = items[selected[0]]
+	if ((selected[0] >= 0) && (selected[0] < item_count)): text = items[selected[0]]
 	ui_dropdown_draw_header(ctx, id, r, text, ui_text_color(ctx))
 	return changed

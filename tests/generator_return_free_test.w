@@ -9,10 +9,8 @@ import lib.file
 
 
 generator int counter(int n):
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		yield i
-		i = i + 1
 
 
 # Block locals between the loop's hidden slots and the return stress the
@@ -31,8 +29,7 @@ int first_value_plus(int n):
 int nested_return_value(int n):
 	for int x in counter(n):
 		for int y in counter(n):
-			if (y == 1):
-				return x * 100 + y
+			if (y == 1): return x * 100 + y
 	return 0 - 1
 
 
@@ -40,11 +37,8 @@ int nested_return_value(int n):
 # frees the enclosing generator.
 int return_through_inner_while(int n):
 	for int x in counter(n):
-		int i = 0
-		while (i < 10):
-			if ((x == 1) && (i == 3)):
-				return x * 10 + i
-			i = i + 1
+		for i in range(10):
+			if ((x == 1) && (i == 3)): return x * 10 + i
 	return 0 - 1
 
 
@@ -60,8 +54,7 @@ void bump_side_effect():
 int return_with_defer(int n):
 	defer bump_side_effect()
 	for int x in counter(n):
-		if (x == 1):
-			return x + 40
+		if (x == 1): return x + 40
 	return 0 - 1
 
 
@@ -69,21 +62,18 @@ int return_with_defer(int n):
 # generator must free the inner one before finishing.
 generator int early_pairs(int n):
 	for int x in counter(n):
-		if (x == 2):
-			return
+		if (x == 2): return
 		yield x * 2
 
 
 int consume_early_pairs(int n):
 	int sum = 0
-	for int v in early_pairs(n):
-		sum = sum + v
+	for int v in early_pairs(n): sum = sum + v
 	return sum
 
 
 wresult[int]* find_number(int key):
-	if (key < 0):
-		return result_new_error[int](-2)
+	if (key < 0): return result_new_error[int](-2)
 	return result_new_ok[int](key * 10)
 
 
@@ -100,8 +90,7 @@ wresult[int]* pick_number(int n, int key):
 int pick_number_code(int n, int key):
 	wresult[int]* r = pick_number(n, key)
 	int code = result_code[int](r)
-	if (result_is_ok[int](r)):
-		code = result_value[int](r)
+	if (result_is_ok[int](r)): code = result_value[int](r)
 	result_free[int](r)
 	return code
 

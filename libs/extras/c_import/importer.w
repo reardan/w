@@ -56,7 +56,6 @@ struct ci_struct_layout:
 	int max_align
 
 
-int extern_max_params();
 
 
 # Session state shared by every c_import statement in one compilation.
@@ -97,7 +96,7 @@ void ci_session_init():
 		ci_bit_field_widths = new map[int, int]
 		ci_bit_field_signs = new map[int, int]
 		ci_bit_field_unit_sizes = new map[int, int]
-		ci_param_classes = malloc(extern_max_params())
+		ci_param_classes = malloc(extern_max_params)
 
 
 int ci_type_from_specs(pg_ast_node* specs);
@@ -108,14 +107,12 @@ int ci_eval_const(pg_ast_node* node);
 
 
 int ci_is_ast(pg_ast_node* node, int kind):
-	if (node == 0):
-		return 0
+	if (node == 0): return 0
 	return (node.token == 0) & (node.kind == kind)
 
 
 int ci_is_token(pg_ast_node* node, int kind):
-	if (node == 0):
-		return 0
+	if (node == 0): return 0
 	return (node.token != 0) & (node.kind == kind)
 
 
@@ -140,8 +137,7 @@ pg_ast_node* ci_child_token(pg_ast_node* node, int kind):
 
 
 pg_ast_node* ci_find_ast(pg_ast_node* node, int kind):
-	if (node == 0):
-		return 0
+	if (node == 0): return 0
 	if (ci_is_ast(node, kind)):
 		return node
 	int i = 0
@@ -154,8 +150,7 @@ pg_ast_node* ci_find_ast(pg_ast_node* node, int kind):
 
 
 pg_ast_node* ci_find_token(pg_ast_node* node, int kind):
-	if (node == 0):
-		return 0
+	if (node == 0): return 0
 	if (ci_is_token(node, kind)):
 		return node
 	int i = 0
@@ -172,11 +167,9 @@ int ci_has_token(pg_ast_node* node, int kind):
 
 
 int ci_count_token(pg_ast_node* node, int kind):
-	if (node == 0):
-		return 0
+	if (node == 0): return 0
 	int count = 0
-	if (ci_is_token(node, kind)):
-		count = 1
+	if (ci_is_token(node, kind)): count = 1
 	int i = 0
 	while (i < pg_ast_child_count(node)):
 		count = count + ci_count_token(pg_ast_child(node, i), kind)
@@ -185,10 +178,8 @@ int ci_count_token(pg_ast_node* node, int kind):
 
 
 int ci_is_header_control(int c):
-	if ((c <= 0) || (c >= 32)):
-		return 0
-	if ((c == 9) || (c == 10) || (c == 13)):
-		return 0
+	if ((c <= 0) || (c >= 32)): return 0
+	if ((c == 9) || (c == 10) || (c == 13)): return 0
 	return 1
 
 
@@ -201,43 +192,27 @@ int ci_is_ident_part_char(int c):
 
 
 int ci_known_noop_header_ident(char* name):
-	if (strcmp(name, c"__BEGIN_DECLS") == 0):
-		return 1
-	if (strcmp(name, c"__END_DECLS") == 0):
-		return 1
-	if (strcmp(name, c"__THROW") == 0):
-		return 1
-	if (strcmp(name, c"__THROWNL") == 0):
-		return 1
-	if (strcmp(name, c"__nonnull") == 0):
-		return 1
-	if (strcmp(name, c"__attribute__") == 0):
-		return 1
-	if (strcmp(name, c"__attribute_malloc__") == 0):
-		return 1
-	if (strcmp(name, c"__wur") == 0):
-		return 1
-	if (strcmp(name, c"__restrict") == 0):
-		return 1
-	if (strcmp(name, c"__extension__") == 0):
-		return 1
-	if (strcmp(name, c"__attr_dealloc") == 0):
-		return 1
-	if (strcmp(name, c"__attr_dealloc_fclose") == 0):
-		return 1
-	if (strcmp(name, c"__attr_access") == 0):
-		return 1
-	if (strcmp(name, c"__fortified_attr_access") == 0):
-		return 1
+	if (strcmp(name, c"__BEGIN_DECLS") == 0): return 1
+	if (strcmp(name, c"__END_DECLS") == 0): return 1
+	if (strcmp(name, c"__THROW") == 0): return 1
+	if (strcmp(name, c"__THROWNL") == 0): return 1
+	if (strcmp(name, c"__nonnull") == 0): return 1
+	if (strcmp(name, c"__attribute__") == 0): return 1
+	if (strcmp(name, c"__attribute_malloc__") == 0): return 1
+	if (strcmp(name, c"__wur") == 0): return 1
+	if (strcmp(name, c"__restrict") == 0): return 1
+	if (strcmp(name, c"__extension__") == 0): return 1
+	if (strcmp(name, c"__attr_dealloc") == 0): return 1
+	if (strcmp(name, c"__attr_dealloc_fclose") == 0): return 1
+	if (strcmp(name, c"__attr_access") == 0): return 1
+	if (strcmp(name, c"__fortified_attr_access") == 0): return 1
 	return 0
 
 
 void ci_append_header_space_span(string_builder* out, char* source, int start, int end):
 	while (start < end):
-		if (source[start] == 10):
-			string_append_char(out, 10)
-		else:
-			string_append_char(out, ' ')
+		if (source[start] == 10): string_append_char(out, 10)
+		else: string_append_char(out, ' ')
 		start = start + 1
 
 
@@ -250,8 +225,7 @@ int ci_skip_quoted_header_text(char* source, int index):
 			if (source[index] == 0):
 				return index
 		index = index + 1
-	if (source[index] == quote):
-		index = index + 1
+	if (source[index] == quote): index = index + 1
 	return index
 
 
@@ -263,12 +237,10 @@ int ci_skip_balanced_header_parens(char* source, int index):
 		if ((source[index] == '"') || (source[index] == 39)):
 			index = ci_skip_quoted_header_text(source, index)
 		else:
-			if (source[index] == '('):
-				depth = depth + 1
+			if (source[index] == '('): depth = depth + 1
 			else if (source[index] == ')'):
 				depth = depth - 1
-				if (depth == 0):
-					return index + 1
+				if (depth == 0): return index + 1
 			index = index + 1
 	return index
 
@@ -281,8 +253,7 @@ int ci_skip_inline_header_space(char* source, int index):
 
 int ci_prepare_known_header_ident_end(char* source, int index):
 	int end = index
-	while (ci_is_ident_part_char(source[end])):
-		end = end + 1
+	while (ci_is_ident_part_char(source[end])): end = end + 1
 	int saved = source[end]
 	source[end] = 0
 	int is_known = ci_known_noop_header_ident(source + index)
@@ -290,8 +261,7 @@ int ci_prepare_known_header_ident_end(char* source, int index):
 	if (is_known == 0):
 		return index
 	int args = ci_skip_inline_header_space(source, end)
-	if (source[args] == '('):
-		return ci_skip_balanced_header_parens(source, args)
+	if (source[args] == '('): return ci_skip_balanced_header_parens(source, args)
 	return end
 
 
@@ -300,16 +270,13 @@ char* ci_prepare_header_source(char* source):
 	int i = 0
 	while (source[i] != 0):
 		int end = i
-		if (ci_is_ident_start_char(source[i])):
-			end = ci_prepare_known_header_ident_end(source, i)
+		if (ci_is_ident_start_char(source[i])): end = ci_prepare_known_header_ident_end(source, i)
 		if (end != i):
 			ci_append_header_space_span(out, source, i, end)
 			i = end
 		else:
-			if (ci_is_header_control(source[i])):
-				string_append_char(out, ' ')
-			else:
-				string_append_char(out, source[i])
+			if (ci_is_header_control(source[i])): string_append_char(out, ' ')
+			else: string_append_char(out, source[i])
 			i = i + 1
 	char* prepared = out.data
 	free(out)
@@ -347,25 +314,21 @@ void ci_set_type_alignment(int type_index, int alignment):
 
 int ci_pow2_alignment(int size):
 	int a = 1
-	while (((a + a) <= size) && ((a + a) <= word_size)):
-		a = a + a
+	while (((a + a) <= size) && ((a + a) <= word_size)): a = a + a
 	return a
 
 
 int ci_type_alignment(int type_index):
 	type_index = type_unqualified(type_index)
-	if (type_index < 0):
-		return 1
+	if (type_index < 0): return 1
 	if (type_get_pointer_level(type_index) > 0):
 		return word_size
 	int recorded = 0
-	if (type_index in ci_type_alignments):
-		recorded = ci_type_alignments[type_index]
+	if (type_index in ci_type_alignments): recorded = ci_type_alignments[type_index]
 	if (recorded != 0):
 		return recorded
 	int size = type_get_size(type_index)
-	if (size <= 0):
-		return 1
+	if (size <= 0): return 1
 	return ci_pow2_alignment(size)
 
 
@@ -395,114 +358,43 @@ char* ci_unique_name(char* prefix):
 # descend, so an anonymous struct body's field names are not mistaken for
 # the tag name.
 char* ci_direct_ident(pg_ast_node* node):
-	pg_ast_node* ident = ci_child_token(node, clang_token_IDENT())
-	if (ident == 0):
-		return 0
+	pg_ast_node* ident = ci_child_token(node, clang_token_IDENT)
+	if (ident == 0): return 0
 	return ident.text
 
 
 char* ci_first_ident(pg_ast_node* node):
-	pg_ast_node* ident = ci_find_token(node, clang_token_IDENT())
-	if (ident == 0):
-		return 0
+	pg_ast_node* ident = ci_find_token(node, clang_token_IDENT)
+	if (ident == 0): return 0
 	return ident.text
 
 
 pg_ast_node* ci_declaration_specs(pg_ast_node* node):
-	pg_ast_node* specs = ci_child_ast(node, clang_ast_declaration_specifiers())
-	if (specs == 0):
-		specs = ci_child_ast(node, clang_ast_typedef_name_declaration_specifiers())
+	pg_ast_node* specs = ci_child_ast(node, clang_ast_declaration_specifiers)
+	if (specs == 0): specs = ci_child_ast(node, clang_ast_typedef_name_declaration_specifiers)
 	return specs
 
 
 pg_ast_node* ci_qualifier_specs(pg_ast_node* node):
-	pg_ast_node* specs = ci_child_ast(node, clang_ast_specifier_qualifier_list())
-	if (specs == 0):
-		specs = ci_child_ast(node, clang_ast_typedef_name_specifier_qualifier_list())
+	pg_ast_node* specs = ci_child_ast(node, clang_ast_specifier_qualifier_list)
+	if (specs == 0): specs = ci_child_ast(node, clang_ast_typedef_name_specifier_qualifier_list)
 	return specs
 
 
 /* ---------- constant expression evaluation ---------- */
 
 
-int ci_hex_digit(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
-	return -1
-
-
-# Integer constants: decimal, hex, octal; integer suffixes are ignored.
-int ci_parse_number_text(char* text):
-	int base = 10
-	int i = 0
-	if (text[0] == '0'):
-		if ((text[1] == 'x') || (text[1] == 'X')):
-			base = 16
-			i = 2
-		else if (text[1] != 0):
-			base = 8
-			i = 1
-	int value = 0
-	while (text[i] != 0):
-		int digit = -1
-		if (base == 16):
-			digit = ci_hex_digit(text[i])
-		else if ((text[i] >= '0') && (text[i] <= '9')):
-			digit = text[i] - '0'
-		if ((digit < 0) || (digit >= base)):
-			return value
-		value = value * base + digit
-		i = i + 1
-	return value
-
-
-int ci_char_escape_value(int c):
-	if (c == 'n'):
-		return 10
-	if (c == 't'):
-		return 9
-	if (c == 'r'):
-		return 13
-	if (c == '0'):
-		return 0
-	return c
-
-
-int ci_parse_char_text(char* text):
-	int i = 0
-	while ((text[i] != 0) && (text[i] != 39)):
-		i = i + 1
-	if (text[i] == 0):
-		return 0
-	i = i + 1
-	if (text[i] == 92):
-		return ci_char_escape_value(text[i + 1])
-	return text[i]
-
-
 int ci_binary_op_precedence(char* op):
-	if (strcmp(op, c"||") == 0):
-		return 1
-	if (strcmp(op, c"&&") == 0):
-		return 2
-	if (strcmp(op, c"|") == 0):
-		return 3
-	if (strcmp(op, c"^") == 0):
-		return 4
-	if (strcmp(op, c"&") == 0):
-		return 5
-	if ((strcmp(op, c"==") == 0) | (strcmp(op, c"!=") == 0)):
-		return 6
+	if (strcmp(op, c"||") == 0): return 1
+	if (strcmp(op, c"&&") == 0): return 2
+	if (strcmp(op, c"|") == 0): return 3
+	if (strcmp(op, c"^") == 0): return 4
+	if (strcmp(op, c"&") == 0): return 5
+	if ((strcmp(op, c"==") == 0) | (strcmp(op, c"!=") == 0)): return 6
 	if ((strcmp(op, c"<") == 0) | (strcmp(op, c">") == 0) | (strcmp(op, c"<=") == 0) | (strcmp(op, c">=") == 0)):
 		return 7
-	if ((strcmp(op, c"<<") == 0) | (strcmp(op, c">>") == 0)):
-		return 8
-	if ((strcmp(op, c"+") == 0) | (strcmp(op, c"-") == 0)):
-		return 9
+	if ((strcmp(op, c"<<") == 0) | (strcmp(op, c">>") == 0)): return 8
+	if ((strcmp(op, c"+") == 0) | (strcmp(op, c"-") == 0)): return 9
 	return 10
 
 
@@ -511,45 +403,29 @@ int ci_xor_value(int left, int right):
 
 
 int ci_apply_binary_op(char* op, int left, int right):
-	if (strcmp(op, c"||") == 0):
-		return (left != 0) | (right != 0)
-	if (strcmp(op, c"&&") == 0):
-		return (left != 0) & (right != 0)
-	if (strcmp(op, c"|") == 0):
-		return left | right
-	if (strcmp(op, c"^") == 0):
-		return ci_xor_value(left, right)
-	if (strcmp(op, c"&") == 0):
-		return left & right
+	if (strcmp(op, c"||") == 0): return (left != 0) | (right != 0)
+	if (strcmp(op, c"&&") == 0): return (left != 0) & (right != 0)
+	if (strcmp(op, c"|") == 0): return left | right
+	if (strcmp(op, c"^") == 0): return ci_xor_value(left, right)
+	if (strcmp(op, c"&") == 0): return left & right
 	if (strcmp(op, c"==") == 0):
 		return left == right
-	if (strcmp(op, c"!=") == 0):
-		return left != right
-	if (strcmp(op, c"<") == 0):
-		return left < right
-	if (strcmp(op, c">") == 0):
-		return left > right
-	if (strcmp(op, c"<=") == 0):
-		return left <= right
-	if (strcmp(op, c">=") == 0):
-		return left >= right
-	if (strcmp(op, c"<<") == 0):
-		return left << right
-	if (strcmp(op, c">>") == 0):
-		return left >> right
-	if (strcmp(op, c"+") == 0):
-		return left + right
-	if (strcmp(op, c"-") == 0):
-		return left - right
+	if (strcmp(op, c"!=") == 0): return left != right
+	if (strcmp(op, c"<") == 0): return left < right
+	if (strcmp(op, c">") == 0): return left > right
+	if (strcmp(op, c"<=") == 0): return left <= right
+	if (strcmp(op, c">=") == 0): return left >= right
+	if (strcmp(op, c"<<") == 0): return left << right
+	if (strcmp(op, c">>") == 0): return left >> right
+	if (strcmp(op, c"+") == 0): return left + right
+	if (strcmp(op, c"-") == 0): return left - right
 	if (strcmp(op, c"*") == 0):
 		return left * right
 	if (strcmp(op, c"/") == 0):
-		if (right == 0):
-			return 0
+		if (right == 0): return 0
 		return left / right
 	if (strcmp(op, c"%") == 0):
-		if (right == 0):
-			return 0
+		if (right == 0): return 0
 		return left % right
 	return 0
 
@@ -566,16 +442,14 @@ int ci_eval_binary(pg_ast_node* node):
 	int op_top = 0
 	save_int(values, ci_eval_const(pg_ast_child(node, 0)))
 	value_top = 1
-	int i = 1
-	while (i < count):
+	for i in range(1, count):
 		pg_ast_node* tail = pg_ast_child(node, i)
-		pg_ast_node* op_node = ci_child_ast(tail, clang_ast_binary_operator())
+		pg_ast_node* op_node = ci_child_ast(tail, clang_ast_binary_operator)
 		pg_ast_node* op_token = pg_ast_child(op_node, 0)
 		char* op = op_token.text
 		int precedence = ci_binary_op_precedence(op)
 		while (op_top > 0):
-			if (load_int(precedences + ((op_top - 1) << 2)) < precedence):
-				break
+			if (load_int(precedences + ((op_top - 1) << 2)) < precedence): break
 			int right = load_int(values + ((value_top - 1) << 2))
 			int left = load_int(values + ((value_top - 2) << 2))
 			value_top = value_top - 2
@@ -585,10 +459,9 @@ int ci_eval_binary(pg_ast_node* node):
 		save_i(ops + op_top * word_size, cast(int, op), word_size)
 		save_int(precedences + (op_top << 2), precedence)
 		op_top = op_top + 1
-		int operand = ci_eval_const(ci_child_ast(tail, clang_ast_unary_expression()))
+		int operand = ci_eval_const(ci_child_ast(tail, clang_ast_unary_expression))
 		save_int(values + (value_top << 2), operand)
 		value_top = value_top + 1
-		i = i + 1
 	while (op_top > 0):
 		int right = load_int(values + ((value_top - 1) << 2))
 		int left = load_int(values + ((value_top - 2) << 2))
@@ -606,57 +479,48 @@ int ci_eval_binary(pg_ast_node* node):
 # Best-effort type resolution for sizeof/cast operands; returns -1 instead
 # of erroring so unknown names collapse to 0.
 int ci_try_type_from_name(char* name):
-	if (name == 0):
-		return -1
+	if (name == 0): return -1
 	return type_lookup(name)
 
 
 int ci_abstract_is_pointer(pg_ast_node* abstract):
-	if (abstract == 0):
-		return 0
-	if (ci_child_ast(abstract, clang_ast_pointer()) != 0):
-		return 1
+	if (abstract == 0): return 0
+	if (ci_child_ast(abstract, clang_ast_pointer) != 0): return 1
 	return 0
 
 
 int ci_eval_sizeof_type(pg_ast_node* type_name):
-	pg_ast_node* abstract = ci_child_ast(type_name, clang_ast_abstract_declarator())
+	pg_ast_node* abstract = ci_child_ast(type_name, clang_ast_abstract_declarator)
 	if (ci_abstract_is_pointer(abstract)):
 		return word_size
 	pg_ast_node* specs = ci_qualifier_specs(type_name)
-	pg_ast_node* typedef_spec = ci_find_ast(specs, clang_ast_typedef_name_specifier())
+	pg_ast_node* typedef_spec = ci_find_ast(specs, clang_ast_typedef_name_specifier)
 	if (typedef_spec != 0):
 		int named = ci_try_type_from_name(ci_first_ident(typedef_spec))
-		if (named < 0):
-			return 0
+		if (named < 0): return 0
 		return type_get_size(named)
 	return type_get_size(ci_type_from_specs(specs))
 
 
 int ci_eval_sizeof(pg_ast_node* node):
-	pg_ast_node* type_name = ci_child_ast(node, clang_ast_type_name())
-	if (type_name != 0):
-		return ci_eval_sizeof_type(type_name)
+	pg_ast_node* type_name = ci_child_ast(node, clang_ast_type_name)
+	if (type_name != 0): return ci_eval_sizeof_type(type_name)
 	# sizeof expr: only "sizeof (type_alias)" shapes are resolvable here
-	pg_ast_node* ident = ci_find_token(node, clang_token_IDENT())
+	pg_ast_node* ident = ci_find_token(node, clang_token_IDENT)
 	if (ident != 0):
 		int named = ci_try_type_from_name(ident.text)
-		if (named >= 0):
-			return type_get_size(named)
+		if (named >= 0): return type_get_size(named)
 	return word_size
 
 
 int ci_eval_unary(pg_ast_node* node):
 	pg_ast_node* first = pg_ast_child(node, 0)
-	if (ci_is_token(first, clang_token_KW_SIZEOF())):
-		return ci_eval_sizeof(node)
-	if (ci_is_ast(first, clang_ast_unary_operator())):
+	if (ci_is_token(first, clang_token_KW_SIZEOF)): return ci_eval_sizeof(node)
+	if (ci_is_ast(first, clang_ast_unary_operator)):
 		pg_ast_node* op_token = pg_ast_child(first, 0)
 		int value = ci_eval_const(pg_ast_child(node, 1))
-		if (strcmp(op_token.text, c"-") == 0):
-			return 0 - value
-		if (strcmp(op_token.text, c"~") == 0):
-			return 0 - value - 1
+		if (strcmp(op_token.text, c"-") == 0): return 0 - value
+		if (strcmp(op_token.text, c"~") == 0): return 0 - value - 1
 		if (strcmp(op_token.text, c"!") == 0):
 			return value == 0
 		return value
@@ -668,11 +532,9 @@ int ci_eval_unary(pg_ast_node* node):
 char* ci_expr_single_ident(pg_ast_node* node):
 	while (node != 0):
 		if (node.token != 0):
-			if (node.kind == clang_token_IDENT()):
-				return node.text
+			if (node.kind == clang_token_IDENT): return node.text
 			return 0
-		if (pg_ast_child_count(node) != 1):
-			return 0
+		if (pg_ast_child_count(node) != 1): return 0
 		node = pg_ast_child(node, 0)
 	return 0
 
@@ -684,92 +546,74 @@ int ci_eval_postfix(pg_ast_node* node):
 	pg_ast_node* primary = pg_ast_child(node, 0)
 	if (pg_ast_child_count(node) > 1):
 		pg_ast_node* tail = pg_ast_child(node, 1)
-		pg_ast_node* expr = ci_child_ast(primary, clang_ast_expression())
-		pg_ast_node* args = ci_child_ast(tail, clang_ast_argument_expression_list())
+		pg_ast_node* expr = ci_child_ast(primary, clang_ast_expression)
+		pg_ast_node* args = ci_child_ast(tail, clang_ast_argument_expression_list)
 		if ((expr != 0) && (args != 0)):
 			char* name = ci_expr_single_ident(expr)
 			if (name != 0):
-				if (ci_try_type_from_name(name) >= 0):
-					return ci_eval_const(pg_ast_child(args, 0))
+				if (ci_try_type_from_name(name) >= 0): return ci_eval_const(pg_ast_child(args, 0))
 	return ci_eval_const(primary)
 
 
 # .get(key, default) is not supported by the seed compiler this file is
 # transitively compiled by (see ci_session_init); `in` + indexing instead.
 int ci_const_value(char* name):
-	if (name in ci_const_values):
-		return ci_const_values[name]
+	if (name in ci_const_values): return ci_const_values[name]
 	return 0
 
 
 int ci_eval_primary(pg_ast_node* node):
 	pg_ast_node* first = pg_ast_child(node, 0)
-	if (ci_is_token(first, clang_token_NUMBER())):
-		return ci_parse_number_text(first.text)
-	if (ci_is_token(first, clang_token_CHAR_LITERAL())):
-		return ci_parse_char_text(first.text)
-	if (ci_is_token(first, clang_token_IDENT())):
-		return ci_const_value(first.text)
-	pg_ast_node* expr = ci_child_ast(node, clang_ast_expression())
-	if (expr != 0):
-		return ci_eval_const(expr)
+	if (ci_is_token(first, clang_token_NUMBER)): return cpp_expr_parse_number(first.text)
+	if (ci_is_token(first, clang_token_CHAR_LITERAL)): return cpp_expr_parse_char(first.text)
+	if (ci_is_token(first, clang_token_IDENT)): return ci_const_value(first.text)
+	pg_ast_node* expr = ci_child_ast(node, clang_ast_expression)
+	if (expr != 0): return ci_eval_const(expr)
 	return 0
 
 
 int ci_eval_conditional(pg_ast_node* node):
 	int value = ci_eval_const(pg_ast_child(node, 0))
-	pg_ast_node* tail = ci_child_ast(node, clang_ast_conditional_tail())
+	pg_ast_node* tail = ci_child_ast(node, clang_ast_conditional_tail)
 	if (tail == 0):
 		return value
-	if (value != 0):
-		return ci_eval_const(ci_child_ast(tail, clang_ast_expression()))
-	return ci_eval_const(ci_child_ast(tail, clang_ast_conditional_expression()))
+	if (value != 0): return ci_eval_const(ci_child_ast(tail, clang_ast_expression))
+	return ci_eval_const(ci_child_ast(tail, clang_ast_conditional_expression))
 
 
 int ci_eval_const(pg_ast_node* node):
-	if (node == 0):
-		return 0
+	if (node == 0): return 0
 	if (node.token != 0):
-		if (node.kind == clang_token_NUMBER()):
-			return ci_parse_number_text(node.text)
-		if (node.kind == clang_token_CHAR_LITERAL()):
-			return ci_parse_char_text(node.text)
-		if (node.kind == clang_token_IDENT()):
-			return ci_const_value(node.text)
+		if (node.kind == clang_token_NUMBER): return cpp_expr_parse_number(node.text)
+		if (node.kind == clang_token_CHAR_LITERAL): return cpp_expr_parse_char(node.text)
+		if (node.kind == clang_token_IDENT): return ci_const_value(node.text)
 		return 0
-	if (node.kind == clang_ast_binary_expression()):
-		return ci_eval_binary(node)
-	if (node.kind == clang_ast_conditional_expression()):
-		return ci_eval_conditional(node)
-	if (node.kind == clang_ast_unary_expression()):
-		return ci_eval_unary(node)
-	if (node.kind == clang_ast_postfix_expression()):
-		return ci_eval_postfix(node)
-	if (node.kind == clang_ast_primary_expression()):
-		return ci_eval_primary(node)
-	if (node.kind == clang_ast_cast_expression()):
-		return ci_eval_const(ci_child_ast(node, clang_ast_unary_expression()))
-	if (node.kind == clang_ast_expression()):
+	if (node.kind == clang_ast_binary_expression): return ci_eval_binary(node)
+	if (node.kind == clang_ast_conditional_expression): return ci_eval_conditional(node)
+	if (node.kind == clang_ast_unary_expression): return ci_eval_unary(node)
+	if (node.kind == clang_ast_postfix_expression): return ci_eval_postfix(node)
+	if (node.kind == clang_ast_primary_expression): return ci_eval_primary(node)
+	if (node.kind == clang_ast_cast_expression):
+		return ci_eval_const(ci_child_ast(node, clang_ast_unary_expression))
+	if (node.kind == clang_ast_expression):
 		int count = pg_ast_child_count(node)
 		if (count > 1):
 			pg_ast_node* last_tail = pg_ast_child(node, count - 1)
-			return ci_eval_const(ci_child_ast(last_tail, clang_ast_assignment_expression()))
+			return ci_eval_const(ci_child_ast(last_tail, clang_ast_assignment_expression))
 		return ci_eval_const(pg_ast_child(node, 0))
 	# constant_expression, enum_value, assignment_expression, expression_tail:
 	# evaluate the last expression-shaped child
 	int i = pg_ast_child_count(node) - 1
 	while (i >= 0):
 		pg_ast_node* child = pg_ast_child(node, i)
-		if (child.token == 0):
-			return ci_eval_const(child)
+		if (child.token == 0): return ci_eval_const(child)
 		i = i - 1
 	return 0
 
 
 int ci_constant_int(pg_ast_node* node):
-	pg_ast_node* expr = ci_find_ast(node, clang_ast_constant_expression())
-	if (expr != 0):
-		return ci_eval_const(expr)
+	pg_ast_node* expr = ci_find_ast(node, clang_ast_constant_expression)
+	if (expr != 0): return ci_eval_const(expr)
 	return ci_eval_const(node)
 
 
@@ -777,42 +621,32 @@ int ci_constant_int(pg_ast_node* node):
 
 
 int ci_primitive_type(pg_ast_node* specs):
-	if (ci_has_token(specs, clang_token_KW_VOID())):
-		return ci_lookup_type(c"void")
-	if (ci_has_token(specs, clang_token_KW_DOUBLE())):
-		return ci_lookup_type(c"float64")
-	if (ci_has_token(specs, clang_token_KW_FLOAT())):
-		return ci_lookup_type(c"float32")
-	if (ci_has_token(specs, clang_token_KW_CHAR())):
-		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-			return ci_lookup_type(c"uint8")
+	if (ci_has_token(specs, clang_token_KW_VOID)): return ci_lookup_type(c"void")
+	if (ci_has_token(specs, clang_token_KW_DOUBLE)): return ci_lookup_type(c"float64")
+	if (ci_has_token(specs, clang_token_KW_FLOAT)): return ci_lookup_type(c"float32")
+	if (ci_has_token(specs, clang_token_KW_CHAR)):
+		if (ci_has_token(specs, clang_token_KW_UNSIGNED)): return ci_lookup_type(c"uint8")
 		return ci_lookup_type(c"char")
-	if (ci_has_token(specs, clang_token_KW_SHORT())):
-		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-			return ci_lookup_type(c"uint16")
+	if (ci_has_token(specs, clang_token_KW_SHORT)):
+		if (ci_has_token(specs, clang_token_KW_UNSIGNED)): return ci_lookup_type(c"uint16")
 		return ci_lookup_type(c"int16")
-	if (ci_count_token(specs, clang_token_KW_LONG()) > 1):
-		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-			return ci_lookup_type(c"uint64")
+	if (ci_count_token(specs, clang_token_KW_LONG) > 1):
+		if (ci_has_token(specs, clang_token_KW_UNSIGNED)): return ci_lookup_type(c"uint64")
 		return ci_lookup_type(c"int64")
 	# C 'long' follows the target word (ILP32/LP64); C 'int' is always 32-bit
-	if (ci_has_token(specs, clang_token_KW_LONG())):
-		if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-			return ci_lookup_type(c"uint")
+	if (ci_has_token(specs, clang_token_KW_LONG)):
+		if (ci_has_token(specs, clang_token_KW_UNSIGNED)): return ci_lookup_type(c"uint")
 		return ci_lookup_type(c"int")
-	if (ci_has_token(specs, clang_token_KW_UNSIGNED())):
-		return ci_lookup_type(c"uint32")
-	if (ci_has_token(specs, clang_token_KW_INT()) | ci_has_token(specs, clang_token_KW_SIGNED())):
+	if (ci_has_token(specs, clang_token_KW_UNSIGNED)): return ci_lookup_type(c"uint32")
+	if (ci_has_token(specs, clang_token_KW_INT) | ci_has_token(specs, clang_token_KW_SIGNED)):
 		return ci_lookup_type(c"int32")
 	return ci_lookup_type(c"int")
 
 
 void ci_struct_pad_to(int type_index, int* offset, int alignment):
-	if (alignment <= 1):
-		return
+	if (alignment <= 1): return
 	int rem = *offset % alignment
-	if (rem == 0):
-		return
+	if (rem == 0): return
 	int pad = alignment - rem
 	type_add_arg(type_index, ci_unique_name(c"__ci_pad_"), ci_filler_type(pad))
 	*offset = *offset + pad
@@ -832,14 +666,10 @@ int ci_struct_has_field_room(int type_index):
 # unsigned (the overwhelmingly common case).
 int ci_bit_field_type_is_signed(int field_type):
 	field_type = type_unqualified(field_type)
-	if (type_is_unsigned_fixed(field_type)):
-		return 0
-	if (field_type == uint64_type):
-		return 0
-	if (field_type == type_lookup(c"uint")):
-		return 0
-	if (type_get_kind(field_type) == type_kind_enum):
-		return 0
+	if (type_is_unsigned_fixed(field_type)): return 0
+	if (field_type == uint64_type): return 0
+	if (field_type == type_lookup(c"uint")): return 0
+	if (type_get_kind(field_type) == type_kind_enum): return 0
 	return 1
 
 
@@ -858,11 +688,9 @@ int ci_bit_field_type_is_signed(int field_type):
 # than a word can load.
 int ci_bit_field_access_type(int field_type, int bit_start, int width):
 	int alignment = ci_type_alignment(field_type)
-	if (alignment < 1):
-		alignment = 1
+	if (alignment < 1): alignment = 1
 	int unit_size = type_get_size(field_type)
-	if (unit_size < alignment):
-		unit_size = alignment
+	if (unit_size < alignment): unit_size = alignment
 	int unit_offset = 0
 	int bit_offset = 0
 	int bit_end = bit_start + width
@@ -870,8 +698,7 @@ int ci_bit_field_access_type(int field_type, int bit_start, int width):
 	if (unit_size <= word_size):
 		unit_offset = (bit_start / (unit_size * 8)) * unit_size
 		bit_offset = bit_start - unit_offset * 8
-	else if (width > w_bits):
-		unit_size = 0
+	else if (width > w_bits): unit_size = 0
 	else if ((bit_start / w_bits) == ((bit_end - 1) / w_bits)):
 		unit_size = word_size
 		unit_offset = (bit_start / w_bits) * word_size
@@ -880,8 +707,7 @@ int ci_bit_field_access_type(int field_type, int bit_start, int width):
 		unit_size = word_size
 		unit_offset = bit_start / 8
 		bit_offset = bit_start - unit_offset * 8
-	else:
-		unit_size = 0
+	else: unit_size = 0
 	int access = type_push_size(ci_unique_name(c"__ci_bit_field_"), 0)
 	ci_set_type_alignment(access, 1)
 	ci_bit_field_unit_offsets[access] = unit_offset
@@ -898,12 +724,9 @@ int ci_bit_field_access_type(int field_type, int bit_start, int width):
 # first c_import statement, so programs without imports answer without
 # a hash lookup.
 int ci_is_bit_field_access(int type_index):
-	if (ci_bit_field_widths == 0):
-		return 0
-	if (type_index < 0):
-		return 0
-	if (type_unqualified(type_index) in ci_bit_field_widths):
-		return 1
+	if (ci_bit_field_widths == 0): return 0
+	if (type_index < 0): return 0
+	if (type_unqualified(type_index) in ci_bit_field_widths): return 1
 	return 0
 
 
@@ -949,10 +772,8 @@ void ci_layout_flush_bits(ci_struct_layout* layout):
 void ci_struct_add_field(ci_struct_layout* layout, char* name, int field_type):
 	int alignment = ci_type_alignment(field_type)
 	int size = type_get_size(field_type)
-	if (alignment > layout.max_align):
-		layout.max_align = alignment
-	if (ci_struct_has_field_room(layout.type_index) == 0):
-		return
+	if (alignment > layout.max_align): layout.max_align = alignment
+	if (ci_struct_has_field_room(layout.type_index) == 0): return
 	if (layout.is_union == 0):
 		ci_layout_flush_bits(layout)
 		ci_struct_pad_to(layout.type_index, &layout.offset, alignment)
@@ -976,17 +797,13 @@ void ci_struct_add_field(ci_struct_layout* layout, char* name, int field_type):
 # filler fields.
 void ci_layout_bit_field(ci_struct_layout* layout, char* name, int field_type, int width):
 	int alignment = ci_type_alignment(field_type)
-	if (alignment < 1):
-		alignment = 1
+	if (alignment < 1): alignment = 1
 	int align_bits = alignment * 8
 	int size_bits = type_get_size(field_type) * 8
-	if (size_bits < align_bits):
-		size_bits = align_bits
-	if (width < 0):
-		width = 0
+	if (size_bits < align_bits): size_bits = align_bits
+	if (width < 0): width = 0
 	if ((name != 0) && (width > 0)):
-		if (alignment > layout.max_align):
-			layout.max_align = alignment
+		if (alignment > layout.max_align): layout.max_align = alignment
 	if (layout.is_union):
 		# each union member starts at offset 0: the field contributes
 		# its occupied bytes to the union size (rounded up to the union
@@ -1015,7 +832,7 @@ int ci_import_struct(pg_ast_node* specifier):
 		name = ci_unique_name(c"__ci_anon_")
 		is_named = 0
 	int existing = type_lookup(name)
-	pg_ast_node* body = ci_child_ast(specifier, clang_ast_struct_body())
+	pg_ast_node* body = ci_child_ast(specifier, clang_ast_struct_body)
 	if ((existing >= 0) && (body == 0)):
 		return existing
 	if (existing >= 0):
@@ -1025,11 +842,9 @@ int ci_import_struct(pg_ast_node* specifier):
 	int type_index = existing
 	if (type_index < 0):
 		type_index = type_push_size(strclone(name), 0)
-		if (is_named & (sym_lookup(name) < 0)):
-			sym_declare_global(name, type_index, 1)
-	int is_union = ci_has_token(ci_child_ast(specifier, clang_ast_struct_or_union()), clang_token_KW_UNION())
-	if (is_union):
-		type_set_kind(type_index, type_kind_union)
+		if (is_named & (sym_lookup(name) < 0)): sym_declare_global(name, type_index, 1)
+	int is_union = ci_has_token(ci_child_ast(specifier, clang_ast_struct_or_union), clang_token_KW_UNION)
+	if (is_union): type_set_kind(type_index, type_kind_union)
 	if (body != 0):
 		ci_struct_layout* layout = new ci_struct_layout()
 		layout.type_index = type_index
@@ -1040,15 +855,14 @@ int ci_import_struct(pg_ast_node* specifier):
 		int i = 0
 		while (i < pg_ast_child_count(body)):
 			pg_ast_node* field_decl = pg_ast_child(body, i)
-			if (ci_is_ast(field_decl, clang_ast_struct_declaration())):
+			if (ci_is_ast(field_decl, clang_ast_struct_declaration)):
 				pg_ast_node* field_specs = ci_qualifier_specs(field_decl)
 				int field_base = ci_type_from_specs(field_specs)
-				pg_ast_node* list = ci_child_ast(field_decl, clang_ast_struct_declarator_list())
+				pg_ast_node* list = ci_child_ast(field_decl, clang_ast_struct_declarator_list)
 				if (list == 0):
 					# anonymous member: embed the aggregate unnamed
 					ci_struct_add_field(layout, ci_unique_name(c"__ci_anon_member_"), field_base)
-				else:
-					ci_import_struct_declarator_list(layout, field_base, list)
+				else: ci_import_struct_declarator_list(layout, field_base, list)
 			i = i + 1
 		# trailing padding so arrays of this struct lay out like C
 		if (is_union):
@@ -1056,8 +870,7 @@ int ci_import_struct(pg_ast_node* specifier):
 			int rounded = union_size
 			if (layout.max_align > 1):
 				int rem = union_size % layout.max_align
-				if (rem != 0):
-					rounded = union_size + layout.max_align - rem
+				if (rem != 0): rounded = union_size + layout.max_align - rem
 			if (rounded > union_size):
 				type_add_arg(type_index, ci_unique_name(c"__ci_pad_"), ci_filler_type(rounded))
 		else:
@@ -1078,30 +891,26 @@ int ci_import_enum(pg_ast_node* specifier):
 	if (type_index < 0):
 		type_index = type_push_size(strclone(name), 4)
 		type_set_kind(type_index, type_kind_enum)
-		if (is_named & (sym_lookup(name) < 0)):
-			sym_declare_global(name, type_index, 1)
-	pg_ast_node* body = ci_child_ast(specifier, clang_ast_enum_body())
+		if (is_named & (sym_lookup(name) < 0)): sym_declare_global(name, type_index, 1)
+	pg_ast_node* body = ci_child_ast(specifier, clang_ast_enum_body)
 	if (body != 0):
 		int value = 0
 		int i = 0
 		while (i < pg_ast_child_count(body)):
 			pg_ast_node* enumerator = pg_ast_child(body, i)
-			if (ci_is_ast(enumerator, clang_ast_enumerator_list()) | ci_is_ast(enumerator, clang_ast_enumerator_tail())):
+			if (ci_is_ast(enumerator, clang_ast_enumerator_list) | ci_is_ast(enumerator, clang_ast_enumerator_tail)):
 				value = ci_import_enumerators(enumerator, type_index, value)
 			i = i + 1
 	return type_index
 
 
 int ci_type_from_specs(pg_ast_node* specs):
-	pg_ast_node* struct_spec = ci_find_ast(specs, clang_ast_struct_or_union_specifier())
-	if (struct_spec != 0):
-		return ci_import_struct(struct_spec)
-	pg_ast_node* enum_spec = ci_find_ast(specs, clang_ast_enum_specifier())
-	if (enum_spec != 0):
-		return ci_import_enum(enum_spec)
-	pg_ast_node* typedef_name = ci_find_token(specs, clang_token_IDENT())
-	if (typedef_name != 0):
-		return ci_lookup_type(typedef_name.text)
+	pg_ast_node* struct_spec = ci_find_ast(specs, clang_ast_struct_or_union_specifier)
+	if (struct_spec != 0): return ci_import_struct(struct_spec)
+	pg_ast_node* enum_spec = ci_find_ast(specs, clang_ast_enum_specifier)
+	if (enum_spec != 0): return ci_import_enum(enum_spec)
+	pg_ast_node* typedef_name = ci_find_token(specs, clang_token_IDENT)
+	if (typedef_name != 0): return ci_lookup_type(typedef_name.text)
 	return ci_primitive_type(specs)
 
 
@@ -1109,15 +918,13 @@ int ci_type_from_specs(pg_ast_node* specs):
 
 
 int ci_tail_is_parameter_list(pg_ast_node* tail):
-	if (ci_child_ast(tail, clang_ast_parameter_type_list()) != 0):
-		return 1
-	if (ci_child_ast(tail, clang_ast_identifier_list()) != 0):
-		return 1
-	return ci_is_token(pg_ast_child(tail, 0), clang_token_LPAREN())
+	if (ci_child_ast(tail, clang_ast_parameter_type_list) != 0): return 1
+	if (ci_child_ast(tail, clang_ast_identifier_list) != 0): return 1
+	return ci_is_token(pg_ast_child(tail, 0), clang_token_LPAREN)
 
 
 int ci_tail_is_array(pg_ast_node* tail):
-	return ci_is_token(pg_ast_child(tail, 0), clang_token_LBRACK())
+	return ci_is_token(pg_ast_child(tail, 0), clang_token_LBRACK)
 
 
 ci_declarator_info* ci_read_declarator(int base_type, pg_ast_node* declarator):
@@ -1132,37 +939,31 @@ ci_declarator_info* ci_read_declarator(int base_type, pg_ast_node* declarator):
 	int pointers = 0
 	pg_ast_node* current = declarator
 	while (current != 0):
-		pointers = pointers + ci_count_token(ci_child_ast(current, clang_ast_pointer()), clang_token_STAR())
-		pg_ast_node* direct = ci_child_ast(current, clang_ast_direct_declarator())
-		if (direct == 0):
-			break
-		pg_ast_node* nested = ci_child_ast(direct, clang_ast_declarator())
+		pointers = pointers + ci_count_token(ci_child_ast(current, clang_ast_pointer), clang_token_STAR)
+		pg_ast_node* direct = ci_child_ast(current, clang_ast_direct_declarator)
+		if (direct == 0): break
+		pg_ast_node* nested = ci_child_ast(direct, clang_ast_declarator)
 		int has_params = 0
 		int i = 0
 		while (i < pg_ast_child_count(direct)):
 			pg_ast_node* child = pg_ast_child(direct, i)
-			if (ci_is_token(child, clang_token_IDENT())):
-				info.name = child.text
-			else if (ci_is_ast(child, clang_ast_direct_declarator_tail())):
+			if (ci_is_token(child, clang_token_IDENT)): info.name = child.text
+			else if (ci_is_ast(child, clang_ast_direct_declarator_tail)):
 				if (ci_tail_is_parameter_list(child)):
 					has_params = 1
 					if (info.params == 0):
-						info.params = ci_child_ast(child, clang_ast_parameter_type_list())
+						info.params = ci_child_ast(child, clang_ast_parameter_type_list)
 				else if (ci_tail_is_array(child)):
 					info.has_array = 1
-					pg_ast_node* length_expr = ci_child_ast(child, clang_ast_constant_expression())
-					if (length_expr == 0):
-						info.array_length = 0
-					else:
-						info.array_length = info.array_length * ci_eval_const(length_expr)
+					pg_ast_node* length_expr = ci_child_ast(child, clang_ast_constant_expression)
+					if (length_expr == 0): info.array_length = 0
+					else: info.array_length = info.array_length * ci_eval_const(length_expr)
 			i = i + 1
 		if (nested != 0):
-			if (has_params):
-				info.is_function_pointer = 1
+			if (has_params): info.is_function_pointer = 1
 			current = nested
 		else:
-			if (has_params):
-				info.is_function = 1
+			if (has_params): info.is_function = 1
 			current = 0
 	if (info.is_function_pointer):
 		info.type = ci_void_pointer_type()
@@ -1174,53 +975,48 @@ ci_declarator_info* ci_read_declarator(int base_type, pg_ast_node* declarator):
 
 
 int ci_abstract_declarator_type(int base_type, pg_ast_node* abstract):
-	int pointers = ci_count_token(ci_child_ast(abstract, clang_ast_pointer()), clang_token_STAR())
-	pg_ast_node* direct = ci_child_ast(abstract, clang_ast_direct_abstract_declarator())
+	int pointers = ci_count_token(ci_child_ast(abstract, clang_ast_pointer), clang_token_STAR)
+	pg_ast_node* direct = ci_child_ast(abstract, clang_ast_direct_abstract_declarator)
 	if (direct != 0):
 		int i = 0
 		while (i < pg_ast_child_count(direct)):
 			pg_ast_node* child = pg_ast_child(direct, i)
-			if (ci_is_ast(child, clang_ast_direct_abstract_declarator_tail())):
-				if (ci_child_ast(child, clang_ast_parameter_type_list()) != 0):
+			if (ci_is_ast(child, clang_ast_direct_abstract_declarator_tail)):
+				if (ci_child_ast(child, clang_ast_parameter_type_list) != 0):
 					return ci_void_pointer_type()
-				if (ci_is_token(pg_ast_child(child, 0), clang_token_LPAREN())):
+				if (ci_is_token(pg_ast_child(child, 0), clang_token_LPAREN)):
 					return ci_void_pointer_type()
-				if (ci_is_token(pg_ast_child(child, 0), clang_token_LBRACK())):
+				if (ci_is_token(pg_ast_child(child, 0), clang_token_LBRACK)):
 					# arrays decay to pointers in parameter position
 					pointers = pointers + 1
 			i = i + 1
-		if (ci_child_ast(direct, clang_ast_abstract_declarator()) != 0):
-			return ci_void_pointer_type()
+		if (ci_child_ast(direct, clang_ast_abstract_declarator) != 0): return ci_void_pointer_type()
 	return ci_apply_pointers(base_type, pointers)
 
 
 int ci_parameter_type(pg_ast_node* parameter):
 	pg_ast_node* specs = ci_declaration_specs(parameter)
 	int type = ci_type_from_specs(specs)
-	pg_ast_node* param_declarator = ci_child_ast(parameter, clang_ast_parameter_declarator())
+	pg_ast_node* param_declarator = ci_child_ast(parameter, clang_ast_parameter_declarator)
 	if (param_declarator == 0):
 		return type
-	pg_ast_node* declarator = ci_child_ast(param_declarator, clang_ast_declarator())
+	pg_ast_node* declarator = ci_child_ast(param_declarator, clang_ast_declarator)
 	if (declarator != 0):
 		ci_declarator_info* dinfo = ci_read_declarator(type, declarator)
 		int result = dinfo.type
-		if (dinfo.is_function | dinfo.is_function_pointer):
-			result = ci_void_pointer_type()
-		else if (dinfo.has_array):
-			result = type_get_next_pointer(result)
+		if (dinfo.is_function | dinfo.is_function_pointer): result = ci_void_pointer_type()
+		else if (dinfo.has_array): result = type_get_next_pointer(result)
 		free(dinfo)
 		return result
-	pg_ast_node* abstract = ci_child_ast(param_declarator, clang_ast_abstract_declarator())
-	if (abstract != 0):
-		return ci_abstract_declarator_type(type, abstract)
+	pg_ast_node* abstract = ci_child_ast(param_declarator, clang_ast_abstract_declarator)
+	if (abstract != 0): return ci_abstract_declarator_type(type, abstract)
 	return type
 
 
 int ci_parameter_is_void_only(pg_ast_node* parameter):
 	pg_ast_node* specs = ci_declaration_specs(parameter)
-	if (ci_has_token(specs, clang_token_KW_VOID()) == 0):
-		return 0
-	return ci_child_ast(parameter, clang_ast_parameter_declarator()) == 0
+	if (ci_has_token(specs, clang_token_KW_VOID) == 0): return 0
+	return ci_child_ast(parameter, clang_ast_parameter_declarator) == 0
 
 
 int ci_lower_params_from(pg_ast_node* params, int sym, int start_count):
@@ -1229,26 +1025,24 @@ int ci_lower_params_from(pg_ast_node* params, int sym, int start_count):
 	int i = 0
 	while (i < pg_ast_child_count(params)):
 		pg_ast_node* parameter = pg_ast_child(params, i)
-		if (ci_is_ast(parameter, clang_ast_parameter_declaration())):
-			if ((param_count == 0) & ci_parameter_is_void_only(parameter)):
-				void_only = 1
+		if (ci_is_ast(parameter, clang_ast_parameter_declaration)):
+			if ((param_count == 0) & ci_parameter_is_void_only(parameter)): void_only = 1
 			else:
 				int ptype = ci_parameter_type(parameter)
 				param_count = param_count + 1
-				if (param_count <= extern_max_params()):
+				if (param_count <= extern_max_params):
 					ci_param_classes[param_count - 1] = ffi_type_class(ptype)
-				if (param_count <= sym_max_param_slots()):
+				if (param_count <= sym_max_param_slots):
 					save_int(table + sym + 22 + (param_count << 2), ptype)
 		else if (parameter.token == 0):
 			param_count = ci_lower_params_from(parameter, sym, param_count)
 		i = i + 1
-	if ((start_count == 0) & void_only):
-		return 0
+	if ((start_count == 0) & void_only): return 0
 	return param_count
 
 
 int ci_params_have_ellipsis(pg_ast_node* params):
-	return ci_find_ast(params, clang_ast_parameter_ellipsis()) != 0
+	return ci_find_ast(params, clang_ast_parameter_ellipsis) != 0
 
 
 # The x86-32 target has no float64 support (see coerce()), so functions
@@ -1257,23 +1051,18 @@ int ci_params_have_float64(pg_ast_node* params):
 	int i = 0
 	while (i < pg_ast_child_count(params)):
 		pg_ast_node* parameter = pg_ast_child(params, i)
-		if (ci_is_ast(parameter, clang_ast_parameter_declaration())):
-			if (ffi_type_class(ci_parameter_type(parameter)) == 2):
-				return 1
+		if (ci_is_ast(parameter, clang_ast_parameter_declaration)):
+			if (ffi_type_class(ci_parameter_type(parameter)) == 2): return 1
 		else if (parameter.token == 0):
-			if (ci_params_have_float64(parameter)):
-				return 1
+			if (ci_params_have_float64(parameter)): return 1
 		i = i + 1
 	return 0
 
 
 int ci_signature_needs_x64(int ret_type, pg_ast_node* params):
-	if (word_size == 8):
-		return 0
-	if (ffi_type_class(ret_type) == 2):
-		return 1
-	if (params == 0):
-		return 0
+	if (word_size == 8): return 0
+	if (ffi_type_class(ret_type) == 2): return 1
+	if (params == 0): return 0
 	return ci_params_have_float64(params)
 
 
@@ -1284,16 +1073,12 @@ int ci_signature_needs_x64(int ret_type, pg_ast_node* params):
 # known type of that name (typedefs are already registered by the time
 # declarations are imported).
 int ci_parameter_is_knr_ident(pg_ast_node* parameter):
-	if (ci_child_ast(parameter, clang_ast_parameter_declarator()) != 0):
-		return 0
-	pg_ast_node* specs = ci_child_ast(parameter, clang_ast_typedef_name_declaration_specifiers())
-	if (specs == 0):
-		return 0
-	if (pg_ast_child_count(specs) != 1):
-		return 0
+	if (ci_child_ast(parameter, clang_ast_parameter_declarator) != 0): return 0
+	pg_ast_node* specs = ci_child_ast(parameter, clang_ast_typedef_name_declaration_specifiers)
+	if (specs == 0): return 0
+	if (pg_ast_child_count(specs) != 1): return 0
 	char* name = ci_first_ident(specs)
-	if (name == 0):
-		return 0
+	if (name == 0): return 0
 	return type_lookup(name) < 0
 
 
@@ -1304,12 +1089,10 @@ void ci_count_knr_params(pg_ast_node* params, int* total, int* knr):
 	int i = 0
 	while (i < pg_ast_child_count(params)):
 		pg_ast_node* parameter = pg_ast_child(params, i)
-		if (ci_is_ast(parameter, clang_ast_parameter_declaration())):
+		if (ci_is_ast(parameter, clang_ast_parameter_declaration)):
 			*total = *total + 1
-			if (ci_parameter_is_knr_ident(parameter)):
-				*knr = *knr + 1
-		else if (parameter.token == 0):
-			ci_count_knr_params(parameter, total, knr)
+			if (ci_parameter_is_knr_ident(parameter)): *knr = *knr + 1
+		else if (parameter.token == 0): ci_count_knr_params(parameter, total, knr)
 		i = i + 1
 
 
@@ -1348,8 +1131,7 @@ void ci_emit_constant(int value):
 void ci_lower_extern_function(char* name, int ret_type, pg_ast_node* params, int is_variadic):
 	int sym = sym_declare_global(name, ret_type, 2)
 	int param_count = 0
-	if (params != 0):
-		param_count = ci_lower_params_from(params, sym, 0)
+	if (params != 0): param_count = ci_lower_params_from(params, sym, 0)
 	save_int(table + sym + 22, param_count)
 	int got_vaddr = dyn_emit_import_slot()
 	dyn_add_import_weak(name, got_vaddr)
@@ -1388,8 +1170,7 @@ void ci_import_data_array(ci_declarator_info* info):
 # libc initializes at runtime startup (environ, ...) keep their static
 # initial value: W's entry stub never runs __libc_start_main.
 void ci_import_data_object(ci_declarator_info* info):
-	if (info.name in ci_imported_functions):
-		return
+	if (info.name in ci_imported_functions): return
 	ci_imported_functions[info.name] = 1
 	if (sym_lookup(info.name) >= 0):
 		ci_skip_extern_function(info.name, c"symbol already defined")
@@ -1407,15 +1188,13 @@ void ci_import_data_object(ci_declarator_info* info):
 	# shape as grammar/extern_statement.w (docs/projects/wx_split.md).
 	if (data_split):
 		int pad = datapos & (word_size - 1)
-		if (pad != 0):
-			emit_data_zeros(word_size - pad)
+		if (pad != 0): emit_data_zeros(word_size - pad)
 		int copy_vaddr = emit_data_zeros(size)
 		sym_define_global_at(sym, copy_vaddr)
 		save_int(table + sym + 14, size)
 		dyn_add_import_data(info.name, copy_vaddr, size, 1)
 	else:
-		while ((codepos % word_size) != 0):
-			emit_int8(0)
+		while ((codepos % word_size) != 0): emit_int8(0)
 		sym_define_global(sym)
 		save_int(table + sym + 14, size)
 		dyn_add_import_data(info.name, code_offset + codepos, size, 1)
@@ -1425,16 +1204,13 @@ void ci_import_data_object(ci_declarator_info* info):
 # Declared in headers but provided by the compiler, not exported by libc;
 # importing them would leave unresolvable dynamic relocations.
 int ci_is_compiler_builtin(char* name):
-	if (strcmp(name, c"alloca") == 0):
-		return 1
-	if (starts_with(name, c"__builtin_")):
-		return 1
+	if (strcmp(name, c"alloca") == 0): return 1
+	if (starts_with(name, c"__builtin_")): return 1
 	return 0
 
 
 void ci_import_function(char* name, int ret_type, pg_ast_node* params, int is_variadic):
-	if (name in ci_imported_functions):
-		return
+	if (name in ci_imported_functions): return
 	ci_imported_functions[name] = 1
 	if (ci_is_compiler_builtin(name)):
 		ci_skip_extern_function(name, c"compiler builtin")
@@ -1449,11 +1225,10 @@ void ci_import_function(char* name, int ret_type, pg_ast_node* params, int is_va
 
 
 int ci_import_enumerators(pg_ast_node* node, int enum_type, int value):
-	if (ci_is_ast(node, clang_ast_enumerator())):
+	if (ci_is_ast(node, clang_ast_enumerator)):
 		char* name = ci_direct_ident(node)
-		pg_ast_node* enum_value = ci_child_ast(node, clang_ast_enum_value())
-		if (enum_value != 0):
-			value = ci_constant_int(enum_value)
+		pg_ast_node* enum_value = ci_child_ast(node, clang_ast_enum_value)
+		if (enum_value != 0): value = ci_constant_int(enum_value)
 		ci_const_values[name] = value
 		if (sym_lookup(name) < 0):
 			int current_symbol = sym_declare_global(name, enum_type, 1)
@@ -1468,20 +1243,17 @@ int ci_import_enumerators(pg_ast_node* node, int enum_type, int value):
 
 
 void ci_import_struct_declarator_list(ci_struct_layout* layout, int base_type, pg_ast_node* node):
-	if (node == 0):
-		return
-	if (ci_is_ast(node, clang_ast_struct_declarator())):
-		pg_ast_node* declarator = ci_child_ast(node, clang_ast_declarator())
-		pg_ast_node* bit_field = ci_child_ast(node, clang_ast_bit_field())
+	if (node == 0): return
+	if (ci_is_ast(node, clang_ast_struct_declarator)):
+		pg_ast_node* declarator = ci_child_ast(node, clang_ast_declarator)
+		pg_ast_node* bit_field = ci_child_ast(node, clang_ast_bit_field)
 		if (bit_field != 0):
 			# named or unnamed bit-field: bit-granular SysV allocation
 			char* field_name = 0
-			if (declarator != 0):
-				field_name = ci_first_ident(declarator)
+			if (declarator != 0): field_name = ci_first_ident(declarator)
 			ci_layout_bit_field(layout, field_name, base_type, ci_constant_int(bit_field))
 			return
-		if (declarator == 0):
-			return
+		if (declarator == 0): return
 		ci_declarator_info* info = ci_read_declarator(base_type, declarator)
 		if (info.has_array):
 			int element = info.type
@@ -1489,8 +1261,7 @@ void ci_import_struct_declarator_list(ci_struct_layout* layout, int base_type, p
 			int total = info.array_length * element_size
 			if (total > 0):
 				int alignment = ci_type_alignment(element)
-				if (alignment > layout.max_align):
-					layout.max_align = alignment
+				if (alignment > layout.max_align): layout.max_align = alignment
 				if (ci_struct_has_field_room(layout.type_index)):
 					if (layout.is_union == 0):
 						ci_layout_flush_bits(layout)
@@ -1505,8 +1276,7 @@ void ci_import_struct_declarator_list(ci_struct_layout* layout, int base_type, p
 					if (layout.is_union == 0):
 						layout.offset = layout.offset + total
 						layout.bit_pos = layout.offset * 8
-		else:
-			ci_struct_add_field(layout, strclone(info.name), info.type)
+		else: ci_struct_add_field(layout, strclone(info.name), info.type)
 		free(info)
 		return
 	int i = 0
@@ -1516,8 +1286,7 @@ void ci_import_struct_declarator_list(ci_struct_layout* layout, int base_type, p
 
 
 void ci_import_typedef(ci_decl_info* decl, ci_declarator_info* info):
-	if (info.name == 0):
-		return
+	if (info.name == 0): return
 	if (type_lookup(info.name) >= 0):
 		# typedef redefinition (or clash with a W type): first wins
 		return
@@ -1526,8 +1295,7 @@ void ci_import_typedef(ci_decl_info* decl, ci_declarator_info* info):
 		return
 	if (info.has_array):
 		int total = info.array_length * type_get_size(info.type)
-		if (total <= 0):
-			total = word_size
+		if (total <= 0): total = word_size
 		int named = type_push_size(strclone(info.name), total)
 		ci_set_type_alignment(named, ci_type_alignment(info.type))
 		return
@@ -1536,14 +1304,12 @@ void ci_import_typedef(ci_decl_info* decl, ci_declarator_info* info):
 
 
 void ci_import_init_declarators(ci_decl_info* decl, pg_ast_node* node):
-	if (node == 0):
-		return
-	if (ci_is_ast(node, clang_ast_init_declarator())):
-		pg_ast_node* declarator = ci_child_ast(node, clang_ast_declarator())
+	if (node == 0): return
+	if (ci_is_ast(node, clang_ast_init_declarator)):
+		pg_ast_node* declarator = ci_child_ast(node, clang_ast_declarator)
 		ci_declarator_info* info = ci_read_declarator(decl.base_type, declarator)
 		if (info.name != 0):
-			if (decl.is_typedef):
-				ci_import_typedef(decl, info)
+			if (decl.is_typedef): ci_import_typedef(decl, info)
 			else if (info.is_function):
 				if (decl.is_static | decl.is_inline):
 					ci_skip_extern_function(info.name, c"static/inline function")
@@ -1558,8 +1324,7 @@ void ci_import_init_declarators(ci_decl_info* decl, pg_ast_node* node):
 				else:
 					ci_import_function(info.name, info.type, info.params, ci_params_have_ellipsis(info.params))
 			else if (info.is_function_pointer == 0):
-				if (decl.is_extern):
-					ci_import_data_object(info)
+				if (decl.is_extern): ci_import_data_object(info)
 		free(info)
 		return
 	int i = 0
@@ -1571,17 +1336,17 @@ void ci_import_init_declarators(ci_decl_info* decl, pg_ast_node* node):
 ci_decl_info* ci_read_decl_info(pg_ast_node* declaration):
 	pg_ast_node* specs = ci_declaration_specs(declaration)
 	ci_decl_info* decl = new ci_decl_info()
-	decl.is_typedef = ci_has_token(specs, clang_token_KW_TYPEDEF())
-	decl.is_extern = ci_has_token(specs, clang_token_KW_EXTERN())
-	decl.is_static = ci_has_token(specs, clang_token_KW_STATIC())
-	decl.is_inline = ci_has_token(specs, clang_token_KW_INLINE())
+	decl.is_typedef = ci_has_token(specs, clang_token_KW_TYPEDEF)
+	decl.is_extern = ci_has_token(specs, clang_token_KW_EXTERN)
+	decl.is_static = ci_has_token(specs, clang_token_KW_STATIC)
+	decl.is_inline = ci_has_token(specs, clang_token_KW_INLINE)
 	decl.base_type = ci_type_from_specs(specs)
 	return decl
 
 
 void ci_import_declaration(pg_ast_node* declaration):
 	ci_decl_info* decl = ci_read_decl_info(declaration)
-	pg_ast_node* list = ci_child_ast(declaration, clang_ast_init_declarator_list())
+	pg_ast_node* list = ci_child_ast(declaration, clang_ast_init_declarator_list)
 	ci_import_init_declarators(decl, list)
 	free(decl)
 
@@ -1589,9 +1354,8 @@ void ci_import_declaration(pg_ast_node* declaration):
 void ci_import_translation_unit(pg_ast_node* root):
 	int i = 0
 	while (i < pg_ast_child_count(root)):
-		pg_ast_node* declaration = ci_child_ast(pg_ast_child(root, i), clang_ast_declaration())
-		if (declaration != 0):
-			ci_import_declaration(declaration)
+		pg_ast_node* declaration = ci_child_ast(pg_ast_child(root, i), clang_ast_declaration)
+		if (declaration != 0): ci_import_declaration(declaration)
 		i = i + 1
 
 
@@ -1599,97 +1363,59 @@ void ci_import_translation_unit(pg_ast_node* root):
 
 
 int ci_macro_public_constant_name(char* name):
-	if ((name[0] < 'A') || (name[0] > 'Z')):
-		return 0
-	if (sym_lookup(name) >= 0):
-		return 0
-	if (type_lookup(name) >= 0):
-		return 0
+	if ((name[0] < 'A') || (name[0] > 'Z')): return 0
+	if (sym_lookup(name) >= 0): return 0
+	if (type_lookup(name) >= 0): return 0
 	return 1
 
 
 int ci_macro_token_allowed_in_int_expr(cpp_token* token):
-	if (token.kind == cpp_token_number()):
-		return 1
-	if (token.kind == cpp_token_char()):
-		return 1
-	if (token.kind != cpp_token_punct()):
-		return 0
-	if (strcmp(token.text, c"(") == 0):
-		return 1
-	if (strcmp(token.text, c")") == 0):
-		return 1
-	if (strcmp(token.text, c"?") == 0):
-		return 1
-	if (strcmp(token.text, c":") == 0):
-		return 1
-	if (strcmp(token.text, c"+") == 0):
-		return 1
-	if (strcmp(token.text, c"-") == 0):
-		return 1
-	if (strcmp(token.text, c"*") == 0):
-		return 1
-	if (strcmp(token.text, c"/") == 0):
-		return 1
-	if (strcmp(token.text, c"%") == 0):
-		return 1
-	if (strcmp(token.text, c"<<") == 0):
-		return 1
-	if (strcmp(token.text, c">>") == 0):
-		return 1
-	if (strcmp(token.text, c"<") == 0):
-		return 1
-	if (strcmp(token.text, c">") == 0):
-		return 1
-	if (strcmp(token.text, c"<=") == 0):
-		return 1
-	if (strcmp(token.text, c">=") == 0):
-		return 1
-	if (strcmp(token.text, c"==") == 0):
-		return 1
-	if (strcmp(token.text, c"!=") == 0):
-		return 1
-	if (strcmp(token.text, c"&") == 0):
-		return 1
-	if (strcmp(token.text, c"^") == 0):
-		return 1
-	if (strcmp(token.text, c"|") == 0):
-		return 1
-	if (strcmp(token.text, c"&&") == 0):
-		return 1
-	if (strcmp(token.text, c"||") == 0):
-		return 1
-	if (strcmp(token.text, c"!") == 0):
-		return 1
-	if (strcmp(token.text, c"~") == 0):
-		return 1
+	if (token.kind == cpp_token_number()): return 1
+	if (token.kind == cpp_token_char()): return 1
+	if (token.kind != cpp_token_punct()): return 0
+	if (strcmp(token.text, c"(") == 0): return 1
+	if (strcmp(token.text, c")") == 0): return 1
+	if (strcmp(token.text, c"?") == 0): return 1
+	if (strcmp(token.text, c":") == 0): return 1
+	if (strcmp(token.text, c"+") == 0): return 1
+	if (strcmp(token.text, c"-") == 0): return 1
+	if (strcmp(token.text, c"*") == 0): return 1
+	if (strcmp(token.text, c"/") == 0): return 1
+	if (strcmp(token.text, c"%") == 0): return 1
+	if (strcmp(token.text, c"<<") == 0): return 1
+	if (strcmp(token.text, c">>") == 0): return 1
+	if (strcmp(token.text, c"<") == 0): return 1
+	if (strcmp(token.text, c">") == 0): return 1
+	if (strcmp(token.text, c"<=") == 0): return 1
+	if (strcmp(token.text, c">=") == 0): return 1
+	if (strcmp(token.text, c"==") == 0): return 1
+	if (strcmp(token.text, c"!=") == 0): return 1
+	if (strcmp(token.text, c"&") == 0): return 1
+	if (strcmp(token.text, c"^") == 0): return 1
+	if (strcmp(token.text, c"|") == 0): return 1
+	if (strcmp(token.text, c"&&") == 0): return 1
+	if (strcmp(token.text, c"||") == 0): return 1
+	if (strcmp(token.text, c"!") == 0): return 1
+	if (strcmp(token.text, c"~") == 0): return 1
 	return 0
 
 
 int ci_macro_body_is_integer_expr(map[char*, cpp_macro*] macros, cpp_macro* macro):
-	if (macro == 0):
-		return 0
-	if (macro.is_function):
-		return 0
-	if (macro.builtin != cpp_macro_builtin_none()):
-		return 0
+	if (macro == 0): return 0
+	if (macro.is_function): return 0
+	if (macro.builtin != cpp_macro_builtin_none()): return 0
 	cpp_token* expanded = cpp_expand_tokens(macros, cpp_process_paste(cpp_token_clone_list(macro.body)))
-	if (expanded == 0):
-		return 0
+	if (expanded == 0): return 0
 	while (expanded != 0):
-		if (expanded.kind == cpp_token_eof()):
-			return 1
-		if (ci_macro_token_allowed_in_int_expr(expanded) == 0):
-			return 0
+		if (expanded.kind == cpp_token_eof()): return 1
+		if (ci_macro_token_allowed_in_int_expr(expanded) == 0): return 0
 		expanded = expanded.next
 	return 1
 
 
 void ci_export_macro_constant(map[char*, cpp_macro*] macros, char* name, cpp_macro* macro):
-	if (ci_macro_public_constant_name(name) == 0):
-		return
-	if (ci_macro_body_is_integer_expr(macros, macro) == 0):
-		return
+	if (ci_macro_public_constant_name(name) == 0): return
+	if (ci_macro_body_is_integer_expr(macros, macro) == 0): return
 	int value = cpp_eval_if_expr(macros, cpp_process_paste(cpp_token_clone_list(macro.body)))
 	ci_const_values[name] = value
 	int current_symbol = sym_declare_global(name, ci_lookup_type(c"int"), 1)

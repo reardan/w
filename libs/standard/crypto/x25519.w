@@ -57,24 +57,19 @@ selects. No branch or memory index depends on secret data.
 Not thread-safe concerns: none; all state is local (malloc/free per call).
 */
 import lib.memory
+import lib.mem
 
 
 # --- field element helpers -------------------------------------------------
 
 int* x25519_fe_new():
 	int* h = cast(int*, malloc(20 * __word_size__))
-	int k = 0
-	while (k < 20):
-		h[k] = 0
-		k = k + 1
+	mem_fill(h, 0, 20)
 	return h
 
 
 void x25519_fe_copy(int* out, int* a):
-	int k = 0
-	while (k < 20):
-		out[k] = a[k]
-		k = k + 1
+	mem_copy(out, a, 20)
 
 
 # One carry pass: reduce every limb to [0, 8191], then fold the carry out
@@ -82,12 +77,10 @@ void x25519_fe_copy(int* out, int* a):
 # Precondition |h[k]| < 2^31 - 2^18 so v = h[k] + carry cannot overflow.
 void x25519_fe_carry(int* h):
 	int carry = 0
-	int k = 0
-	while (k < 20):
+	for k in range(20):
 		int v = h[k] + carry
 		h[k] = v & 8191
 		carry = v >> 13
-		k = k + 1
 	h[0] = h[0] + 608 * carry
 
 
@@ -95,18 +88,12 @@ void x25519_fe_carry(int* h):
 # give |a[k] + b[k]| <= 18814, and the carry pass returns to the at-rest
 # bound (see the module header).
 void x25519_fe_add(int* out, int* a, int* b):
-	int k = 0
-	while (k < 20):
-		out[k] = a[k] + b[k]
-		k = k + 1
+	for k in range(20): out[k] = a[k] + b[k]
 	x25519_fe_carry(out)
 
 
 void x25519_fe_sub(int* out, int* a, int* b):
-	int k = 0
-	while (k < 20):
-		out[k] = a[k] - b[k]
-		k = k + 1
+	for k in range(20): out[k] = a[k] - b[k]
 	x25519_fe_carry(out)
 
 
@@ -139,18 +126,10 @@ void x25519_fe_reduce(int* out, int* t):
 # through a scratch buffer, so out may alias a or b.
 void x25519_fe_mul(int* out, int* a, int* b):
 	int* t = cast(int*, malloc(39 * __word_size__))
-	int k = 0
-	while (k < 39):
-		t[k] = 0
-		k = k + 1
-	int i = 0
-	while (i < 20):
+	mem_fill(t, 0, 39)
+	for i in range(20):
 		int ai = a[i]
-		int j = 0
-		while (j < 20):
-			t[i + j] = t[i + j] + ai * b[j]
-			j = j + 1
-		i = i + 1
+		for j in range(20): t[i + j] = t[i + j] + ai * b[j]
 	x25519_fe_reduce(out, t)
 	free(t)
 
@@ -161,19 +140,11 @@ void x25519_fe_mul(int* out, int* a, int* b):
 # 2 * (a[i] * a[j]) <= 2 * 9407^2 < 2^28 also fits.
 void x25519_fe_sq(int* out, int* a):
 	int* t = cast(int*, malloc(39 * __word_size__))
-	int k = 0
-	while (k < 39):
-		t[k] = 0
-		k = k + 1
-	int i = 0
-	while (i < 20):
+	mem_fill(t, 0, 39)
+	for i in range(20):
 		int ai = a[i]
 		t[i + i] = t[i + i] + ai * ai
-		int j = i + 1
-		while (j < 20):
-			t[i + j] = t[i + j] + 2 * (ai * a[j])
-			j = j + 1
-		i = i + 1
+		for j in range(i + 1, 20): t[i + j] = t[i + j] + 2 * (ai * a[j])
 	x25519_fe_reduce(out, t)
 	free(t)
 
@@ -182,10 +153,7 @@ void x25519_fe_sq(int* out, int* a):
 # 9407 * 121665 = 1,144,502,655 < 2^31; two carry passes restore the
 # at-rest bound.
 void x25519_fe_mul121665(int* out, int* a):
-	int k = 0
-	while (k < 20):
-		out[k] = a[k] * 121665
-		k = k + 1
+	for k in range(20): out[k] = a[k] * 121665
 	x25519_fe_carry(out)
 	x25519_fe_carry(out)
 
@@ -195,37 +163,27 @@ void x25519_fe_mul121665(int* out, int* a):
 # no-op otherwise, with no data-dependent branch.
 void x25519_fe_cswap(int* f, int* g, int b):
 	int mask = 0 - b
-	int k = 0
-	while (k < 20):
+	for k in range(20):
 		int x = mask & (f[k] ^ g[k])
 		f[k] = f[k] ^ x
 		g[k] = g[k] ^ x
-		k = k + 1
 
 
 # Load a little-endian 32-byte u-coordinate. Bit 255 is masked off, as
 # RFC 7748 section 5 requires for X25519 inputs. Limbs land in [0, 8191].
 void x25519_fe_frombytes(int* h, char* s):
-	int k = 0
-	while (k < 20):
-		h[k] = 0
-		k = k + 1
-	int bit = 0
-	while (bit < 255):
+	mem_fill(h, 0, 20)
+	for bit in range(255):
 		int v = ((s[bit >> 3] & 255) >> (bit & 7)) & 1
 		int q = bit / 13
 		h[q] = h[q] | (v << (bit - q * 13))
-		bit = bit + 1
 
 
 # Fill pd with the base-2^13 digits of p = 2^255 - 19: adding 19 to
 # [8173, 8191 x 18, 255] carries through to exactly 2^8 * 2^247 = 2^255.
 void x25519_fe_p_digits(int* pd):
 	pd[0] = 8173
-	int k = 1
-	while (k < 19):
-		pd[k] = 8191
-		k = k + 1
+	for k in range(1, 19): pd[k] = 8191
 	pd[19] = 255
 
 
@@ -263,8 +221,7 @@ void x25519_fe_tobytes(char* s, int* h):
 
 	# Two constant-time conditional subtractions of p.
 	int* m = cast(int*, malloc(20 * __word_size__))
-	int rep = 0
-	while (rep < 2):
+	for rep in range(2):
 		int borrow = 0
 		k = 0
 		while (k < 20):
@@ -280,20 +237,14 @@ void x25519_fe_tobytes(char* s, int* h):
 			int x = mask & (h[k] ^ m[k])
 			h[k] = h[k] ^ x
 			k = k + 1
-		rep = rep + 1
 	free(m)
 	free(pd)
 
-	k = 0
-	while (k < 32):
-		s[k] = 0
-		k = k + 1
-	int bit = 0
-	while (bit < 255):
+	mem_fill(s, 0, 32)
+	for bit in range(255):
 		int q = bit / 13
 		int v = (h[q] >> (bit - q * 13)) & 1
 		s[bit >> 3] = s[bit >> 3] | (v << (bit & 7))
-		bit = bit + 1
 
 
 # out = z^(p-2) = z^-1 mod p (Fermat). p-2 = 2^255 - 21 has every bit of
@@ -306,8 +257,7 @@ void x25519_fe_invert(int* out, int* z):
 	int i = 253
 	while (i >= 0):
 		x25519_fe_sq(c, c)
-		if ((i != 2) && (i != 4)):
-			x25519_fe_mul(c, c, z)
+		if ((i != 2) && (i != 4)): x25519_fe_mul(c, c, z)
 		i = i - 1
 	x25519_fe_copy(out, c)
 	free(c)
@@ -330,10 +280,7 @@ void x25519_clamp(char* k):
 # order input point); the zero check ORs the output bytes, constant-time.
 int x25519_scalarmult(char* out, char* scalar, char* point):
 	char* e = malloc(32)
-	int i = 0
-	while (i < 32):
-		e[i] = scalar[i]
-		i = i + 1
+	mem_copy(e, scalar, 32)
 	x25519_clamp(e)
 
 	int* x1 = x25519_fe_new()
@@ -393,10 +340,7 @@ int x25519_scalarmult(char* out, char* scalar, char* point):
 	x25519_fe_tobytes(out, x2)
 
 	# Wipe the clamped private scalar before releasing it.
-	i = 0
-	while (i < 32):
-		e[i] = 0
-		i = i + 1
+	mem_fill(e, 0, 32)
 	free(e)
 	free(x1)
 	free(x2)
@@ -416,12 +360,8 @@ int x25519_scalarmult(char* out, char* scalar, char* point):
 
 	# Low-order point rejection: an all-zero shared secret is an error.
 	int acc = 0
-	i = 0
-	while (i < 32):
-		acc = acc | (out[i] & 255)
-		i = i + 1
-	if (acc == 0):
-		return -1
+	for i in range(32): acc = acc | (out[i] & 255)
+	if (acc == 0): return -1
 	return 0
 
 
@@ -431,10 +371,7 @@ int x25519_scalarmult(char* out, char* scalar, char* point):
 int x25519_scalarmult_base(char* out, char* scalar):
 	char* base = malloc(32)
 	base[0] = 9
-	int i = 1
-	while (i < 32):
-		base[i] = 0
-		i = i + 1
+	for i in range(1, 32): base[i] = 0
 	int result = x25519_scalarmult(out, scalar, base)
 	free(base)
 	return result

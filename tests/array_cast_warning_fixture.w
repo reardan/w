@@ -35,3 +35,4 @@ int main():
 	total = total + cast(int, header) + cast(int, depth) + cast(int, ok_ptr)
 	total = total + cast(int, ok_elem) + cast(int, ok_decay)
 	return total
+# wbuild: fixture_group=warning_test

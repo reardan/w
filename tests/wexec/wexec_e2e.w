@@ -37,6 +37,7 @@ import lib.process
 import lib.path
 import lib.file
 import lib.str
+import lib.dir
 
 
 char* self_path
@@ -48,19 +49,8 @@ void err(char* s):
 	write(2, s, strlen(s))
 
 
-void rm_rf(char* path):
-	char** argv = strv_new(3)
-	strv_set(argv, 0, c"/bin/rm")
-	strv_set(argv, 1, c"-rf")
-	strv_set(argv, 2, path)
-	process_result* r = process_run(c"/bin/rm", argv, 0, 0, 60000)
-	if (r != 0):
-		process_result_free(r)
-
-
 void cleanup():
-	for char* p in cleanup_paths:
-		rm_rf(p)
+	for char* p in cleanup_paths: dir_remove_all(p)
 
 
 void fail(char* msg):
@@ -74,8 +64,7 @@ void fail(char* msg):
 
 
 int has(char* text, char* needle):
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	return index_of(text, needle) >= 0
 
 
@@ -84,13 +73,11 @@ char** env_without(char** base, char* name):
 	int count = env_vector_count(base)
 	char* vector = malloc((count + 1) * __word_size__)
 	int out = 0
-	int i = 0
-	while (i < count):
+	for i in range(count):
 		char* entry = env_entry_at(base, i)
 		if (env_match_name(entry, name) < 0):
 			save_word(vector + out * __word_size__, cast(int, entry))
 			out = out + 1
-		i = i + 1
 	save_word(vector + out * __word_size__, 0)
 	return cast(char**, vector)
 
@@ -100,8 +87,7 @@ char** env_without(char** base, char* name):
 # it (the reentrant path).
 char** lock_env(char* lock_file, int held):
 	char** env = env_without(env_current(), c"WEXEC_LOCK_HELD")
-	if (held):
-		env = env_copy_with(env, c"WEXEC_LOCK_HELD", c"1")
+	if (held): env = env_copy_with(env, c"WEXEC_LOCK_HELD", c"1")
 	return env_copy_with(env, c"WEXEC_LOCK_FILE", lock_file)
 
 
@@ -123,10 +109,8 @@ char** wexec_argv(char* manifest, char* target):
 
 process_result* run_wexec(char* manifest, char* target, char** env):
 	process_result* r = process_run(c"bin/wexec", wexec_argv(manifest, target), env_opts(env), 0, 120000)
-	if (r == 0):
-		fail(c"could not spawn bin/wexec")
-	if (r.status == process_status_timeout()):
-		fail(strjoin(c"bin/wexec timed out running ", target))
+	if (r == 0): fail(c"could not spawn bin/wexec")
+	if (r.status == process_status_timeout): fail(strjoin(c"bin/wexec timed out running ", target))
 	return r
 
 
@@ -142,18 +126,12 @@ void show(process_result* r):
 # substring (0 = none).
 void check(char* what, process_result* r, int want_ok, char* out1, char* out2, char* err1, char* reject_err):
 	int ok = 1
-	if (want_ok && (r.status != 0)):
-		ok = 0
-	if ((want_ok == 0) && (r.status == 0)):
-		ok = 0
-	if ((out1 != 0) && (has(r.stdout_text, out1) == 0)):
-		ok = 0
-	if ((out2 != 0) && (has(r.stdout_text, out2) == 0)):
-		ok = 0
-	if ((err1 != 0) && (has(r.stderr_text, err1) == 0)):
-		ok = 0
-	if ((reject_err != 0) && has(r.stderr_text, reject_err)):
-		ok = 0
+	if (want_ok && (r.status != 0)): ok = 0
+	if ((want_ok == 0) && (r.status == 0)): ok = 0
+	if ((out1 != 0) && (has(r.stdout_text, out1) == 0)): ok = 0
+	if ((out2 != 0) && (has(r.stdout_text, out2) == 0)): ok = 0
+	if ((err1 != 0) && (has(r.stderr_text, err1) == 0)): ok = 0
+	if ((reject_err != 0) && has(r.stderr_text, reject_err)): ok = 0
 	if (ok == 0):
 		show(r)
 		fail(what)
@@ -161,31 +139,26 @@ void check(char* what, process_result* r, int want_ok, char* out1, char* out2, c
 
 
 void write_file(char* path, char* text):
-	if (file_write_text(path, text) == 0):
-		fail(strjoin(c"cannot write ", path))
+	if (file_write_text(path, text) == 0): fail(strjoin(c"cannot write ", path))
 
 
 # A readable but NOT executable file (lib/file.w creates files with the
 # executable bits set, so clear them explicitly).
 void write_plain_file(char* path, char* text):
 	write_file(path, text)
-	if (chmod(path, 420) < 0):
-		fail(strjoin(c"cannot chmod ", path))
+	if (chmod(path, 420) < 0): fail(strjoin(c"cannot chmod ", path))
 
 
 # Writes length raw bytes (the ELF fixture carries NULs).
 void write_bytes(char* path, char* data, int length):
 	int fd = open(path, 577, 420)
-	if (fd < 0):
-		fail(strjoin(c"cannot create ", path))
-	if (write(fd, data, length) != length):
-		fail(strjoin(c"short write to ", path))
+	if (fd < 0): fail(strjoin(c"cannot create ", path))
+	if (write(fd, data, length) != length): fail(strjoin(c"short write to ", path))
 	close(fd)
 
 
 void make_executable(char* path):
-	if (chmod(path, 493) < 0):
-		fail(strjoin(c"cannot chmod ", path))
+	if (chmod(path, 493) < 0): fail(strjoin(c"cannot chmod ", path))
 
 
 # cp keeps the source's executable mode.
@@ -195,8 +168,7 @@ void copy_self(char* dest):
 	strv_set(argv, 1, self_path)
 	strv_set(argv, 2, dest)
 	process_result* r = process_run(c"/bin/cp", argv, 0, 0, 60000)
-	if ((r == 0) || (r.status != 0)):
-		fail(strjoin(c"cannot copy the driver to ", dest))
+	if ((r == 0) || (r.status != 0)): fail(strjoin(c"cannot copy the driver to ", dest))
 	process_result_free(r)
 	make_executable(dest)
 
@@ -211,7 +183,7 @@ skipped (the old wexec_test PATH=... steps). */
 void mode_xok():
 	char* dir = scratch(c"wexec_xok_")
 	cleanup_paths.push(dir)
-	rm_rf(dir)
+	dir_remove_all(dir)
 	char* shadow = path_join(dir, c"shadow")
 	char* real = path_join(dir, c"real")
 	mkdir(dir, 493)
@@ -221,8 +193,7 @@ void mode_xok():
 	copy_self(path_join(real, c"wexec_xok_probe"))
 	write_plain_file(path_join(shadow, c"wexec_xok_unusable"), c"not a program\n")
 	char* old_path = env_get(c"PATH")
-	if (old_path == 0):
-		old_path = c"/usr/bin:/bin"
+	if (old_path == 0): old_path = c"/usr/bin:/bin"
 	char* new_path = strjoin(strjoin(strjoin(shadow, c":"), strjoin(real, c":")), old_path)
 	char** env = env_copy_with(env_current(), c"PATH", new_path)
 
@@ -245,8 +216,7 @@ void mode_lock():
 	# A live holder (pid 1 always exists) refuses the run and keeps the lock.
 	write_file(lock, c"1")
 	check(c"live lock holder was not refused", run_wexec(manifest, c"noop", env), 0, 0, 0, strjoin(strjoin(c"wexec: another build is running in this directory (pid 1); remove ", lock), c" if stale"), 0)
-	if (path_exists(lock) == 0):
-		fail(c"a refused run removed the other holder's lock")
+	if (path_exists(lock) == 0): fail(c"a refused run removed the other holder's lock")
 	unlink(lock)
 
 	# A dead holder's pid (a reaped child) is a stale lock: reclaimed,
@@ -255,15 +225,13 @@ void mode_lock():
 	strv_set(argv, 0, self_path)
 	strv_set(argv, 1, c"exit0")
 	process* p = process_spawn(self_path, argv, 0)
-	if (p == 0):
-		fail(c"could not spawn the dead-pid child")
+	if (p == 0): fail(c"could not spawn the dead-pid child")
 	int dead_pid = p.pid
 	process_wait(p)
 	process_free(p)
 	write_file(lock, itoa(dead_pid))
 	check(c"stale lock was not reclaimed", run_wexec(manifest, c"noop", env), 1, c"lock scratch target ran", c"wexec: OK (1 targets)", 0, 0)
-	if (path_exists(lock)):
-		fail(c"lock not released after a successful run")
+	if (path_exists(lock)): fail(c"lock not released after a successful run")
 
 	# Acquire + release twice in a row.
 	check(c"first fresh-lock run failed", run_wexec(manifest, c"noop", env), 1, c"wexec: OK (1 targets)", 0, 0, 0)
@@ -273,8 +241,7 @@ void mode_lock():
 	# the (live-held) lock file alone.
 	write_file(lock, c"1")
 	check(c"reentrant run did not bypass the lock", run_wexec(manifest, c"noop", lock_env(lock, 1)), 1, c"wexec: OK (1 targets)", 0, 0, 0)
-	if (path_exists(lock) == 0):
-		fail(c"reentrant run touched the held lock")
+	if (path_exists(lock) == 0): fail(c"reentrant run touched the held lock")
 	unlink(lock)
 
 
@@ -291,27 +258,22 @@ void mode_timeout():
 # 1 when pid no longer runs: /proc/<pid>/stat unreadable, or a zombie.
 int pid_gone(int pid):
 	char* stat = file_read_text(strjoin(strjoin(c"/proc/", itoa(pid)), c"/stat"))
-	if (stat == 0):
-		return 1
+	if (stat == 0): return 1
 	# The state letter follows "pid (comm) ", and comm may hold spaces.
 	int close_paren = -1
 	int i = 0
 	while (stat[i] != 0):
-		if (stat[i] == ')'):
-			close_paren = i
+		if (stat[i] == ')'): close_paren = i
 		i = i + 1
-	if (close_paren < 0):
-		return 0
+	if (close_paren < 0): return 0
 	return stat[close_paren + 2] == 'Z'
 
 
 int read_pid_file(char* path):
 	char* text = file_read_text(path)
-	if (text == 0):
-		fail(strjoin(c"fixture never wrote ", path))
+	if (text == 0): fail(strjoin(c"fixture never wrote ", path))
 	int pid = atoi(text)
-	if (pid <= 0):
-		fail(strjoin(c"no pid in ", path))
+	if (pid <= 0): fail(strjoin(c"no pid in ", path))
 	return pid
 
 
@@ -337,21 +299,19 @@ void mode_group_kill():
 		fail(c"the leaked background grandchild survived the step timeout")
 
 	spawn_options* opts = env_opts(lock_env(lock2, 0))
-	opts.stdout_mode = process_null()
-	opts.stderr_mode = process_null()
+	opts.stdout_mode = process_null
+	opts.stderr_mode = process_null
 	process* p = process_spawn(c"bin/wexec", wexec_argv(manifest, c"term_hang"), opts)
-	if (p == 0):
-		fail(c"could not spawn bin/wexec term_hang")
-	if (process_wait_timeout(p, 600) != process_status_timeout()):
+	if (p == 0): fail(c"could not spawn bin/wexec term_hang")
+	if (process_wait_timeout(p, 600) != process_status_timeout):
 		fail(c"term_hang finished before SIGTERM (expected it to hang)")
-	process_kill(p, sigterm())
+	process_kill(p, sigterm)
 	process_wait(p)
 	process_free(p)
 	process_sleep_ms(500)
 	if (pid_gone(read_pid_file(term_pid)) == 0):
 		fail(c"SIGTERM to wexec left the running step alive")
-	if (path_exists(lock2)):
-		fail(c"SIGTERM to wexec left its lock file behind")
+	if (path_exists(lock2)): fail(c"SIGTERM to wexec left its lock file behind")
 	unlink(leak_pid)
 	unlink(term_pid)
 
@@ -411,14 +371,12 @@ int main(int argc, char** argv):
 	if (strcmp(base, c"wexec_xok_probe") == 0):
 		println(c"xok probe: real executable ran")
 		return 0
-	if (strcmp(base, c"exits_127") == 0):
-		return 127
+	if (strcmp(base, c"exits_127") == 0): return 127
 	if (argc < 2):
 		err(c"usage: wexec_e2e xok|lock|timeout|group_kill|exec_diag_setup\n")
 		return 2
 	mode_name = argv[1]
-	if (strcmp(mode_name, c"exit0") == 0):
-		return 0
+	if (strcmp(mode_name, c"exit0") == 0): return 0
 	if (strcmp(mode_name, c"sleep") == 0):
 		process_sleep_ms(30000)
 		return 0
@@ -429,8 +387,7 @@ int main(int argc, char** argv):
 		strv_set(sleeper, 0, self_path)
 		strv_set(sleeper, 1, c"sleep")
 		process* bg = process_spawn(self_path, sleeper, 0)
-		if (bg == 0):
-			return 1
+		if (bg == 0): return 1
 		write_file(argv[2], itoa(bg.pid))
 		process_sleep_ms(30000)
 		return 0
@@ -439,18 +396,12 @@ int main(int argc, char** argv):
 		write_file(argv[2], itoa(getpid()))
 		process_sleep_ms(30000)
 		return 0
-	if (strcmp(mode_name, c"xok") == 0):
-		mode_xok()
-	else if (strcmp(mode_name, c"lock") == 0):
-		mode_lock()
-	else if (strcmp(mode_name, c"timeout") == 0):
-		mode_timeout()
-	else if (strcmp(mode_name, c"group_kill") == 0):
-		mode_group_kill()
-	else if (strcmp(mode_name, c"exec_diag_setup") == 0):
-		mode_exec_diag_setup()
-	else:
-		fail(c"unknown mode")
+	if (strcmp(mode_name, c"xok") == 0): mode_xok()
+	else if (strcmp(mode_name, c"lock") == 0): mode_lock()
+	else if (strcmp(mode_name, c"timeout") == 0): mode_timeout()
+	else if (strcmp(mode_name, c"group_kill") == 0): mode_group_kill()
+	else if (strcmp(mode_name, c"exec_diag_setup") == 0): mode_exec_diag_setup()
+	else: fail(c"unknown mode")
 	cleanup()
 	println(strjoin(strjoin(c"wexec_", mode_name), c": OK"))
 	return 0

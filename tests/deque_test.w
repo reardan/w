@@ -70,20 +70,16 @@ void test_wraparound_growth():
 	deque_push_back[int](d, 7)
 	deque_push_back[int](d, 8)
 	assert_equal(6, d.length)
-	for int i in range(6):
-		assert_equal(i + 3, deque_get[int](d, i))
-	for int i in range(6):
-		assert_equal(i + 3, deque_pop_front[int](d))
+	for int i in range(6): assert_equal(i + 3, deque_get[int](d, i))
+	for int i in range(6): assert_equal(i + 3, deque_pop_front[int](d))
 	deque_free[int](d)
 
 
 void test_growth_from_front_pushes():
 	deque[int]* d = deque_new_sized[int](4)
-	for int i in range(50):
-		deque_push_front[int](d, i)
+	for int i in range(50): deque_push_front[int](d, i)
 	assert_equal(50, d.length)
-	for int i in range(50):
-		assert_equal(49 - i, deque_pop_front[int](d))
+	for int i in range(50): assert_equal(49 - i, deque_pop_front[int](d))
 	deque_free[int](d)
 
 
@@ -131,17 +127,13 @@ void test_iteration_front_to_back():
 void test_iteration_empty_break_continue():
 	deque[int]* d = deque_new[int]()
 	int count = 0
-	for int x in d:
-		count = count + 1
+	for int x in d: count = count + 1
 	assert_equal(0, count)
-	for int i in range(6):
-		deque_push_back[int](d, i)
+	for int i in range(6): deque_push_back[int](d, i)
 	int sum = 0
 	for int x in d:
-		if (x == 5):
-			break
-		if (x % 2):
-			continue
+		if (x == 5): break
+		if (x % 2): continue
 		sum = sum + x
 	assert_equal(6, sum) /* 0 + 2 + 4 */
 	deque_free[int](d)
@@ -152,8 +144,7 @@ void test_iteration_inferred_variable():
 	deque_push_back[char*](d, c"cherry")
 	deque_push_front[char*](d, c"fig")
 	int letters = 0
-	for s in d:
-		letters = letters + strlen(s)
+	for s in d: letters = letters + strlen(s)
 	assert_equal(9, letters)
 	assert_strings_equal(c"fig", deque_pop_front[char*](d))
 	assert_strings_equal(c"cherry", deque_pop_back[char*](d))
@@ -169,15 +160,12 @@ list[int] swm(list[int] nums, int k):
 	int i = 0
 	while (i < nums.length):
 		if (window.length > 0):
-			if (deque_peek_front[int](window) <= i - k):
-				deque_pop_front[int](window)
+			if (deque_peek_front[int](window) <= i - k): deque_pop_front[int](window)
 		while (window.length > 0):
-			if (nums[deque_peek_back[int](window)] >= nums[i]):
-				break
+			if (nums[deque_peek_back[int](window)] >= nums[i]): break
 			deque_pop_back[int](window)
 		deque_push_back[int](window, i)
-		if (i >= k - 1):
-			result.push(nums[deque_peek_front[int](window)])
+		if (i >= k - 1): result.push(nums[deque_peek_front[int](window)])
 		i = i + 1
 	deque_free[int](window)
 	return result

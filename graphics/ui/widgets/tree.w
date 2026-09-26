@@ -8,8 +8,7 @@ the editor shell's sidebar (docs/projects/ui_widgets.md §9.2).
 		if (ui_tree_node(ctx, &st, dir_name(d), &dir_open[d])):
 			int f = 0
 			while (f < file_count(d)):
-				if (ui_tree_leaf(ctx, &st, file_name(d, f))):
-					open_file(d, f)
+				if (ui_tree_leaf(ctx, &st, file_name(d, f))): open_file(d, f)
 				f = f + 1
 			ui_tree_node_end(ctx, &st)
 		d = d + 1
@@ -60,14 +59,14 @@ import graphics.ui.widgets.state
 import graphics.ui.widgets.layout
 import graphics.ui.widgets.context
 import graphics.ui.widgets.scroll
+import lib.mem
 
 
 # Deepest nesting the parent index tracks. Deeper rows still draw and
 # still navigate up and down; only "left ascends to the parent" stops
 # working past it, which is the documented fixed-capacity convention
 # ui_context.chars and the popup stack already use.
-int ui_tree_max_depth():
-	return 32
+const int ui_tree_max_depth = 32
 
 
 # Width of the disclosure marker's column. Leaves reserve it too, so a
@@ -111,24 +110,19 @@ void ui_tree_init(ui_tree_state* st):
 	st.tree_id = 0
 	st.pending_nav = 0
 	st.pending_enter = 0
-	int i = 0
-	while (i < ui_tree_max_depth()):
-		st.parent_of_depth[i] = 0 - 1
-		i = i + 1
+	mem_fill[int32](st.parent_of_depth, 0 - 1, ui_tree_max_depth)
 	st.body_x = 0.0
 	st.body_y = 0.0
 	st.body_w = 0.0
 
 
 int ui_tree_row_height(ui_context* ctx, ui_tree_state* st):
-	if (st.row_height > 0):
-		return st.row_height
+	if (st.row_height > 0): return st.row_height
 	return ctx.theme.widget_height
 
 
 float32 ui_tree_indent(ui_context* ctx, ui_tree_state* st):
-	if (st.indent > 0):
-		return cast(float32, st.indent)
+	if (st.indent > 0): return cast(float32, st.indent)
 	return cast(float32, ctx.theme.unit) * 2.0
 
 
@@ -153,47 +147,37 @@ void ui_tree_begin(ui_context* ctx, ui_rect area, ui_tree_state* st):
 	if (ctx.input.mouse_pressed && (ui_scope_blocked(ctx) == 0) && (ctx.disabled == 0)):
 		if (ui_rect_contains(area, cast(float32, ctx.input.press_x), cast(float32, ctx.input.press_y))):
 			ctx.focus = id
-		else if (ctx.focus == id):
-			ctx.focus = 0
+		else if (ctx.focus == id): ctx.focus = 0
 
 	if ((ctx.focus == id) && (ctx.disabled == 0)):
 		int i = 0
 		while (i < ctx.char_count):
 			# Return arrives as a CHAR, not a NAV — there is no
 			# GFX_NAV_ENTER — so activation is drained from both queues.
-			if (ctx.chars[i] == 13):
-				st.pending_enter = 1
-			else if (ctx.chars[i] == 27):
-				ctx.focus = 0
+			if (ctx.chars[i] == 13): st.pending_enter = 1
+			else if (ctx.chars[i] == 27): ctx.focus = 0
 			i = i + 1
 		i = 0
 		while (i < ctx.nav_count):
 			int nav = ctx.navs[i]
 			if (nav == GFX_NAV_UP):
-				if (st.focused > 0):
-					st.focused = st.focused - 1
-				else if (st.row_count > 0):
-					st.focused = 0
+				if (st.focused > 0): st.focused = st.focused - 1
+				else if (st.row_count > 0): st.focused = 0
 			else if (nav == GFX_NAV_DOWN):
-				if (st.focused + 1 < st.row_count):
-					st.focused = st.focused + 1
+				if (st.focused + 1 < st.row_count): st.focused = st.focused + 1
 			else if (nav == GFX_NAV_HOME):
-				if (st.row_count > 0):
-					st.focused = 0
-			else if (nav == GFX_NAV_END):
-				st.focused = st.row_count - 1
+				if (st.row_count > 0): st.focused = 0
+			else if (nav == GFX_NAV_END): st.focused = st.row_count - 1
 			else:
 				# LEFT and RIGHT need the focused node's own `open`
 				# pointer, which only exists partway through the walk.
-				if ((nav == GFX_NAV_LEFT) || (nav == GFX_NAV_RIGHT)):
-					st.pending_nav = nav
+				if ((nav == GFX_NAV_LEFT) || (nav == GFX_NAV_RIGHT)): st.pending_nav = nav
 			i = i + 1
 
 	float32 row_h = cast(float32, ui_tree_row_height(ctx, st))
 	# Keep the cursor in view. Up/down are already applied, so the common
 	# case is exact; left/right land one frame later.
-	if (st.focused >= 0):
-		ui_scroll_reveal(&st.scroll, cast(float32, st.focused) * row_h, row_h)
+	if (st.focused >= 0): ui_scroll_reveal(&st.scroll, cast(float32, st.focused) * row_h, row_h)
 
 	ui_scroll_begin(ctx, area, &st.scroll)
 	ui_layout* lo = ui_layout_top(ctx)
@@ -206,10 +190,8 @@ void ui_tree_begin(ui_context* ctx, ui_rect area, ui_tree_state* st):
 # measured? Content-space test, exactly ui_table_row's.
 int ui_tree_row_visible(ui_tree_state* st, float32 row_h, int index):
 	float32 top = row_h * cast(float32, index)
-	if (top + row_h <= st.scroll.offset_y):
-		return 0
-	if (top >= st.scroll.offset_y + st.scroll.view_h):
-		return 0
+	if (top + row_h <= st.scroll.offset_y): return 0
+	if (top >= st.scroll.offset_y + st.scroll.view_h): return 0
 	return 1
 
 
@@ -229,8 +211,7 @@ int ui_tree_row(ui_context* ctx, ui_tree_state* st, char* label, int is_node, in
 	# Taken for every row, visible or not — see the module header.
 	int id = ctx.next_id
 	ctx.next_id = ctx.next_id + 1
-	if (ui_tree_row_visible(st, row_h, index) == 0):
-		return 0
+	if (ui_tree_row_visible(st, row_h, index) == 0): return 0
 
 	int clicked = ui_click_behavior(ctx, id, row)
 	if (clicked):
@@ -240,10 +221,8 @@ int ui_tree_row(ui_context* ctx, ui_tree_state* st, char* label, int is_node, in
 		st.focused = index
 		ctx.focus = st.tree_id
 
-	if (st.selected == index):
-		ui_render_rect(ctx.rndr, row, ctx.theme.widget_active)
-	else if (ctx.hot == id):
-		ui_render_rect(ctx.rndr, row, ctx.theme.widget_hot)
+	if (st.selected == index): ui_render_rect(ctx.rndr, row, ctx.theme.widget_active)
+	else if (ctx.hot == id): ui_render_rect(ctx.rndr, row, ctx.theme.widget_hot)
 	# The keyboard cursor is drawn even when it is not the selection, so
 	# arrowing around without pressing Enter is visible.
 	if ((st.focused == index) && (ctx.focus == st.tree_id) && (st.selected != index)):
@@ -253,10 +232,8 @@ int ui_tree_row(ui_context* ctx, ui_tree_state* st, char* label, int is_node, in
 	float32 x = row.x + cast(float32, ctx.theme.pad) + ui_tree_indent(ctx, st) * cast(float32, st.depth)
 	if (is_node):
 		ui_rect chev = ui_rect_new(x, row.y + (row_h - marker) * 0.5, marker, marker)
-		if (expanded):
-			ui_draw_chevron(ctx.rndr, chev, ctx.theme.text_muted)
-		else:
-			ui_draw_chevron_right(ctx.rndr, chev, ctx.theme.text_muted)
+		if (expanded): ui_draw_chevron(ctx.rndr, chev, ctx.theme.text_muted)
+		else: ui_draw_chevron_right(ctx.rndr, chev, ctx.theme.text_muted)
 
 	int scale = ctx.theme.text_scale
 	float32 tx = x + marker + 4.0
@@ -274,41 +251,33 @@ int ui_tree_row(ui_context* ctx, ui_tree_state* st, char* label, int is_node, in
 # nothing — the ui_modal_begin contract.
 int ui_tree_node(ui_context* ctx, ui_tree_state* st, char* label, int32* open):
 	int index = st.walk_index
-	if (st.depth < ui_tree_max_depth()):
-		st.parent_of_depth[st.depth] = index
+	if (st.depth < ui_tree_max_depth): st.parent_of_depth[st.depth] = index
 
 	# Left and right are resolved here, where this node's own expansion
 	# state is addressable, rather than guessed at in ui_tree_begin.
 	if ((index == st.focused) && (st.pending_nav != 0)):
 		if (st.pending_nav == GFX_NAV_RIGHT):
-			if (open[0] == 0):
-				open[0] = 1
+			if (open[0] == 0): open[0] = 1
 			else:
 				# Already open: descend to the first child, which is
 				# always the very next row in the walk.
 				st.focused = index + 1
 		else:
-			if (open[0]):
-				open[0] = 0
-			else if (st.depth > 0):
-				st.focused = st.parent_of_depth[st.depth - 1]
+			if (open[0]): open[0] = 0
+			else if (st.depth > 0): st.focused = st.parent_of_depth[st.depth - 1]
 		st.pending_nav = 0
 
 	if (ui_tree_row(ctx, st, label, 1, open[0])):
 		# A click anywhere on a folder row toggles it, chevron or label.
-		if (open[0]):
-			open[0] = 0
-		else:
-			open[0] = 1
-	if (open[0] == 0):
-		return 0
+		if (open[0]): open[0] = 0
+		else: open[0] = 1
+	if (open[0] == 0): return 0
 	st.depth = st.depth + 1
 	return 1
 
 
 void ui_tree_node_end(ui_context* ctx, ui_tree_state* st):
-	if (st.depth > 0):
-		st.depth = st.depth - 1
+	if (st.depth > 0): st.depth = st.depth - 1
 
 
 # A row without children. Returns 1 on the frame it is activated, by a
@@ -320,11 +289,9 @@ int ui_tree_leaf(ui_context* ctx, ui_tree_state* st, char* label):
 	if (index == st.focused):
 		if (st.pending_nav == GFX_NAV_LEFT):
 			# A leaf has nothing to collapse, so left always ascends.
-			if (st.depth > 0):
-				st.focused = st.parent_of_depth[st.depth - 1]
+			if (st.depth > 0): st.focused = st.parent_of_depth[st.depth - 1]
 			st.pending_nav = 0
-		else if (st.pending_nav == GFX_NAV_RIGHT):
-			st.pending_nav = 0
+		else if (st.pending_nav == GFX_NAV_RIGHT): st.pending_nav = 0
 		if (st.pending_enter):
 			st.pending_enter = 0
 			activated = 1
@@ -332,10 +299,8 @@ int ui_tree_leaf(ui_context* ctx, ui_tree_state* st, char* label):
 				st.selected = index
 				st.changed = 1
 
-	if (ui_tree_row(ctx, st, label, 0, 0)):
-		activated = 1
-	if (activated):
-		st.activated = 1
+	if (ui_tree_row(ctx, st, label, 0, 0)): activated = 1
+	if (activated): st.activated = 1
 	return activated
 
 
@@ -346,11 +311,8 @@ int ui_tree_end(ui_context* ctx, ui_tree_state* st):
 	st.row_count = st.walk_index
 	# The walk may have shrunk under the cursor — a node collapsing
 	# takes its children with it.
-	if (st.focused >= st.row_count):
-		st.focused = st.row_count - 1
-	if (st.selected >= st.row_count):
-		st.selected = st.row_count - 1
+	if (st.focused >= st.row_count): st.focused = st.row_count - 1
+	if (st.selected >= st.row_count): st.selected = st.row_count - 1
 	st.depth = 0
-	if (st.changed || st.activated):
-		return 1
+	if (st.changed || st.activated): return 1
 	return 0

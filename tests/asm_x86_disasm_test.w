@@ -40,10 +40,8 @@ char* asm_disasm_sequence(char* bytes, int length):
 		asm_insn insn
 		int n = asm_x86_decode(bytes + pos, length - pos, pos, 4, &insn)
 		char* piece = asm_format(&insn)
-		if (cast(int, out) == 0):
-			out = piece
-		else:
-			out = strjoin(out, strjoin(c" ; ", piece))
+		if (cast(int, out) == 0): out = piece
+		else: out = strjoin(out, strjoin(c" ; ", piece))
 		pos = pos + n
 	return out
 
@@ -81,17 +79,15 @@ void test_corpus_roundtrip():
 # mnemonic — zero `.byte` fallbacks proves the decoder covers everything
 # the compiler emits.
 int asm_test_in_text(asm_binary* binary, int value):
-	if (value < binary.text_vaddr):
-		return 0
-	if (value >= binary.text_vaddr + binary.text_size):
-		return 0
+	if (value < binary.text_vaddr): return 0
+	if (value >= binary.text_vaddr + binary.text_size): return 0
 	return 1
 
 
 void test_zero_unknown_wv2():
 	asm_binary* binary = asm_binary_open(c"bin/wv2")
 	asserts(c"cannot open bin/wv2", cast(int, binary) != 0)
-	assert_equal(ASM_ELF_CLASS32(), binary.elf_class)
+	assert_equal(ASM_ELF_CLASS32, binary.elf_class)
 	char* text = asm_binary_text(binary)
 	int functions = 0
 	int count = 0
@@ -100,10 +96,8 @@ void test_zero_unknown_wv2():
 	while (i < binary.symbols.length):
 		asm_symbol sym = binary.symbols[i]
 		i = i + 1
-		if (sym.size <= 0):
-			continue
-		if (asm_test_in_text(binary, sym.value) == 0):
-			continue
+		if (sym.size <= 0): continue
+		if (asm_test_in_text(binary, sym.value) == 0): continue
 		functions = functions + 1
 		int func_off = sym.value - binary.text_vaddr
 		int pos = 0

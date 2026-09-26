@@ -14,6 +14,7 @@ import graphics.ui.text
 import graphics.ui.widgets.state
 import graphics.ui.widgets.layout
 import graphics.ui.widgets.context
+import lib.mem
 
 
 # Caller-owned single-line text buffer for ui_textbox. text stays
@@ -29,8 +30,7 @@ struct ui_textbox_state:
 	int32 edited
 
 
-int ui_textbox_capacity():
-	return 127
+const int ui_textbox_capacity = 127
 
 
 void ui_textbox_init(ui_textbox_state* st):
@@ -42,12 +42,8 @@ void ui_textbox_init(ui_textbox_state* st):
 
 void ui_textbox_set(ui_textbox_state* st, char* s):
 	int len = strlen(s)
-	if (len > ui_textbox_capacity()):
-		len = ui_textbox_capacity()
-	int i = 0
-	while (i < len):
-		st.text[i] = s[i]
-		i = i + 1
+	if (len > ui_textbox_capacity): len = ui_textbox_capacity
+	mem_copy[char](st.text, s, len)
 	st.text[len] = 0
 	st.length = len
 	st.caret = len
@@ -58,16 +54,12 @@ void ui_textbox_set(ui_textbox_state* st, char* s):
 void ui_textbox_insert(ui_textbox_state* st, int ch):
 	char[4] bytes
 	int n = ui_utf8_encode(&bytes[0], ch)
-	if (st.length + n > ui_textbox_capacity()):
-		return
+	if (st.length + n > ui_textbox_capacity): return
 	int i = st.length - 1
 	while (i >= st.caret):
 		st.text[i + n] = st.text[i]
 		i = i - 1
-	int k = 0
-	while (k < n):
-		st.text[st.caret + k] = bytes[k]
-		k = k + 1
+	for k in range(n): st.text[st.caret + k] = bytes[k]
 	st.length = st.length + n
 	st.caret = st.caret + n
 	st.text[st.length] = 0
@@ -75,8 +67,7 @@ void ui_textbox_insert(ui_textbox_state* st, int ch):
 
 # Delete the whole character before the caret.
 void ui_textbox_backspace(ui_textbox_state* st):
-	if (st.caret == 0):
-		return
+	if (st.caret == 0): return
 	int from = ui_utf8_prev(&st.text[0], st.caret)
 	int n = st.caret - from
 	int i = from
@@ -89,8 +80,7 @@ void ui_textbox_backspace(ui_textbox_state* st):
 
 
 void ui_textbox_mark_edited(ui_textbox_state* st):
-	if (st.edited == 0):
-		st.edited = 1
+	if (st.edited == 0): st.edited = 1
 
 
 # Single-line text input over caller-owned state. Clicking focuses it
@@ -118,8 +108,7 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 			# Proportional caret: the nearest glyph boundary to the
 			# click.
 			st.caret = ui_text_caret_from_x(&st.text[0], scale, ctx.input.press_x - cast(int, text_x))
-		else if (ctx.focus == id):
-			ctx.focus = 0
+		else if (ctx.focus == id): ctx.focus = 0
 
 	int submitted = 0
 	if (ctx.focus == id):
@@ -132,10 +121,8 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 			else if (ch == 8):
 				ui_textbox_backspace(st)
 				ui_textbox_mark_edited(st)
-			else if (ch == 13):
-				submitted = 1
-			else if (ch == 27):
-				ctx.focus = 0
+			else if (ch == 13): submitted = 1
+			else if (ch == 27): ctx.focus = 0
 			i = i + 1
 		i = 0
 		while (i < ctx.nav_count):
@@ -145,23 +132,19 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 			else if ((nav == GFX_NAV_RIGHT) && (st.caret < st.length)):
 				int cp = 0
 				st.caret = ui_utf8_next(&st.text[0], st.caret, &cp)
-			else if (nav == GFX_NAV_HOME):
-				st.caret = 0
-			else if (nav == GFX_NAV_END):
-				st.caret = st.length
+			else if (nav == GFX_NAV_HOME): st.caret = 0
+			else if (nav == GFX_NAV_END): st.caret = st.length
 			i = i + 1
 	# Edited and no longer focused, however focus left (a press
 	# elsewhere, escape, another widget claiming it): the field is
 	# touched from here on.
-	if ((st.edited == 1) && (ctx.focus != id)):
-		st.edited = 2
+	if ((st.edited == 1) && (ctx.focus != id)): st.edited = 2
 
 	# Material filled field: a rounded tonal fill with a 2px baseline
 	# that turns into the focus color while focused.
 	ui_color field_fill = ctx.theme.widget
 	ui_color line = ctx.theme.border
-	if (ctx.focus == id):
-		line = ctx.theme.focus
+	if (ctx.focus == id): line = ctx.theme.focus
 	if (ctx.disabled):
 		field_fill = ctx.theme.disabled_widget
 		line = ctx.theme.disabled_widget
@@ -175,7 +158,6 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 	ui_draw_text_n(ctx.rndr, text_x, ty, &st.text[0], shown, scale, ui_text_color(ctx))
 	if (ctx.focus == id):
 		int caret_w = ui_text_prefix_width(&st.text[0], st.caret, scale)
-		if (caret_w > fit_w):
-			caret_w = fit_w
+		if (caret_w > fit_w): caret_w = fit_w
 		ui_render_rect(ctx.rndr, ui_rect_new(text_x + cast(float32, caret_w) - 1.0, r.y + 6.0, 2.0, r.h - 12.0), ctx.theme.text)
 	return submitted

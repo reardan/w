@@ -11,51 +11,20 @@ import lib.lib
 import lib.memory
 import lib.testing
 import libs.standard.crypto.poly1305
+import lib.hex
 
 
 # --- test-local hex helpers (vectors are embedded as lowercase hex) ---
 
 
-int pt_nibble(int ch):
-	if (ch >= '0' && ch <= '9'):
-		return ch - '0'
-	return ch - 'a' + 10
-
-
-# Decode a lowercase hex string into malloc'd bytes (length = strlen/2).
-char* pt_decode(char* hex):
-	int n = strlen(hex) / 2
-	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = pt_nibble(hex[i * 2] & 255) * 16 + pt_nibble(hex[i * 2 + 1] & 255)
-		i = i + 1
-	out[n] = 0
-	return out
-
-
-# Encode bytes as a lowercase hex string (malloc'd, NUL-terminated).
-char* pt_hex(char* data, int len):
-	char* digits = c"0123456789abcdef"
-	char* out = malloc(len * 2 + 1)
-	int i = 0
-	while (i < len):
-		int b = data[i] & 255
-		out[i * 2] = digits[(b >> 4) & 15]
-		out[i * 2 + 1] = digits[b & 15]
-		i = i + 1
-	out[len * 2] = 0
-	return out
-
-
 # One-shot MAC of msg_hex under key_hex must equal want_hex.
 void pt_check_mac(char* key_hex, char* msg_hex, char* want_hex):
-	char* key = pt_decode(key_hex)
-	char* msg = pt_decode(msg_hex)
+	char* key = hex_bytes(key_hex)
+	char* msg = hex_bytes(msg_hex)
 	int n = strlen(msg_hex) / 2
 	char* tag = malloc(16)
 	poly1305_mac(msg, n, key, tag)
-	char* got = pt_hex(tag, 16)
+	char* got = hex_encode(tag, 16)
 	assert_strings_equal(want_hex, got)
 	free(got)
 	free(tag)
@@ -86,26 +55,23 @@ void test_rfc8439_a3_macs():
 # Incremental updates must match the one-shot MAC regardless of how the
 # message is chunked (exercises the partial-block buffer).
 void test_incremental_chunking():
-	char* key = pt_decode(c"85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b")
-	char* msg = pt_decode(c"43727970746f6772617068696320466f72756d2052657365617263682047726f7570")
+	char* key = hex_bytes(c"85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b")
+	char* msg = hex_bytes(c"43727970746f6772617068696320466f72756d2052657365617263682047726f7570")
 	int n = strlen(c"43727970746f6772617068696320466f72756d2052657365617263682047726f7570") / 2
 	char* tag = malloc(16)
-	int chunk = 1
-	while (chunk <= 19):
+	for chunk in range(1, 19 + 1, 6):
 		poly1305* st = poly1305_new(key)
 		int off = 0
 		while (off < n):
 			int step = chunk
-			if (n - off < step):
-				step = n - off
+			if (n - off < step): step = n - off
 			poly1305_update(st, msg + off, step)
 			off = off + step
 		poly1305_finish(st, tag)
 		poly1305_free(st)
-		char* got = pt_hex(tag, 16)
+		char* got = hex_encode(tag, 16)
 		assert_strings_equal(c"a8061dc1305136c6c22b8baf0c0127a9", got)
 		free(got)
-		chunk = chunk + 6
 	free(tag)
 	free(msg)
 	free(key)

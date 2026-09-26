@@ -32,8 +32,7 @@ int main(int argc, int argv):
 		return 1
 	char* input_path = args_positional(0)
 	char* output_path = args_value(c"o")
-	if (output_path == 0):
-		output_path = args_value(c"output")
+	if (output_path == 0): output_path = args_value(c"output")
 	if (output_path == 0):
 		parser_generator_usage()
 		return 1
@@ -47,8 +46,7 @@ int main(int argc, int argv):
 	if ((grammar == 0) | (pg_diagnostics_count(diagnostics) > 0)):
 		pg_diagnostics_print(diagnostics)
 		return 1
-	if (args_has_flag(c"report")):
-		pg_report_dispatch(grammar)
+	if (args_has_flag(c"report")): pg_report_dispatch(grammar)
 	char* source = pg_generate_parser(grammar)
 	if (source == 0):
 		print2(c"parser_generator: ")

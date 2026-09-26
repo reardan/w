@@ -20,9 +20,9 @@ void test_sockaddr_in_init():
 	sockaddr_in addr
 	sockaddr_in_init(&addr, ip4_from_string(c"127.0.0.1"), 7777)
 	# Raw Linux layout: the leading 16-bit field is sin_family itself.
-	assert_equal(af_inet(), addr.family)
+	assert_equal(af_inet, addr.family)
 	# The layout-independent accessor agrees (issue #200 darwin audit).
-	assert_equal(af_inet(), sockaddr_in_family(&addr))
+	assert_equal(af_inet, sockaddr_in_family(&addr))
 	assert_equal_hex(24862, addr.port)
 	assert_equal_hex(16777343, addr.ip_address)
 	assert_equal(0, addr.zero1)
@@ -179,8 +179,8 @@ void test_udp_recvfrom_loopback():
 	assert_equal(strlen(message), received)
 	got[received] = 0
 	assert_strings_equal(message, got)
-	assert_equal(af_inet(), from_addr.family)
-	assert_equal(af_inet(), sockaddr_in_family(&from_addr))
+	assert_equal(af_inet, from_addr.family)
+	assert_equal(af_inet, sockaddr_in_family(&from_addr))
 
 	close(sender)
 	close(receiver)

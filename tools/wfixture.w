@@ -67,6 +67,7 @@ import lib.file
 import lib.process
 import lib.stream
 import structures.string
+import lib.str
 
 
 list[char*] wfixture_expects   # expect_stderr needles, in directive order
@@ -98,23 +99,6 @@ void wfixture_note2(char* fixture, char* message, char* detail):
 	string_append(s, detail)
 	wfixture_note(fixture, s.data)
 	string_free(s)
-
-
-# Same substring semantics as wexec_str_contains in tools/wexec.w: a
-# plain byte-wise search, and an empty needle always matches.
-int wfixture_str_contains(char* haystack, char* needle):
-	int n = strlen(needle)
-	if (n == 0):
-		return 1
-	int i = 0
-	while (haystack[i] != 0):
-		int j = 0
-		while ((j < n) && (haystack[i + j] == needle[j])):
-			j = j + 1
-		if (j == n):
-			return 1
-		i = i + 1
-	return 0
 
 
 # Parse one header line. Returns 0 on success, 1 on a malformed
@@ -229,37 +213,12 @@ char* wfixture_output_path(char* fixture):
 
 
 # execve does no PATH lookup, so a compiler name without a slash must
-# be resolved here (same as wexec_resolve_program in tools/wexec.w).
+# be resolved here; name itself when nothing on PATH matches.
 char* wfixture_resolve_program(char* name):
-	int i = 0
-	while (name[i] != 0):
-		if (name[i] == '/'):
-			return name
-		i = i + 1
-	char* path = env_get(c"PATH")
-	if (path == 0):
-		path = c"/usr/bin:/bin"
-	string_builder* candidate = string_new()
-	int p = 0
-	int at_end = 0
-	while (at_end == 0):
-		string_clear(candidate)
-		while ((path[p] != ':') && (path[p] != 0)):
-			string_append_char(candidate, path[p])
-			p = p + 1
-		if (path[p] == 0):
-			at_end = 1
-		else:
-			p = p + 1
-		if (candidate.length > 0):
-			string_append_char(candidate, '/')
-			string_append(candidate, name)
-			int fd = open(candidate.data, 0, 0)
-			if (fd >= 0):
-				close(fd)
-				return candidate.data
-	string_free(candidate)
-	return name
+	char* found = process_which(name)
+	if (found == 0):
+		return name
+	return found
 
 
 void wfixture_echo_command(char* compiler, char* fixture, char* out_path):
@@ -299,11 +258,11 @@ int wfixture_check(char* fixture, process_result* result):
 			string_free(s)
 			failures = failures + 1
 	for char* needle in wfixture_expects:
-		if (wfixture_str_contains(result.stderr_text, needle) == 0):
+		if (contains(result.stderr_text, needle) == 0):
 			wfixture_note2(fixture, c"expected stderr to contain: ", needle)
 			failures = failures + 1
 	for char* needle in wfixture_rejects:
-		if (wfixture_str_contains(result.stderr_text, needle)):
+		if (contains(result.stderr_text, needle)):
 			wfixture_note2(fixture, c"expected stderr to not contain: ", needle)
 			failures = failures + 1
 	return failures

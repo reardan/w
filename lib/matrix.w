@@ -79,8 +79,7 @@ float matrix_singular_eps():
 
 
 float matrix_fabs(float f):
-	if (f < 0.0):
-		return 0.0 - f
+	if (f < 0.0): return 0.0 - f
 	return f
 
 
@@ -117,10 +116,7 @@ matrix matrix_full(int rows, int cols, float v):
 # The n x n identity.
 matrix matrix_identity(int n):
 	matrix m = matrix_new(n, n)
-	int i = 0
-	while (i < n):
-		m.data[i * n + i] = 1.0
-		i = i + 1
+	for i in range(n): m.data[i * n + i] = 1.0
 	return m
 
 
@@ -167,10 +163,7 @@ matrix matrix_column(float[] data):
 
 matrix matrix_copy(matrix* m):
 	matrix r = matrix_new(m.rows, m.cols)
-	int i = 0
-	while (i < m.data.length):
-		r.data[i] = m.data[i]
-		i = i + 1
+	for i in range(m.data.length): r.data[i] = m.data[i]
 	return r
 
 
@@ -244,20 +237,14 @@ int matrix_same_shape(matrix* a, matrix* b):
 matrix matrix_row(matrix* m, int i):
 	asserts(c"matrix_row: index out of range", i >= 0 && i < m.rows)
 	matrix r = matrix_new(1, m.cols)
-	int j = 0
-	while (j < m.cols):
-		r.data[j] = m.data[i * m.cols + j]
-		j = j + 1
+	for j in range(m.cols): r.data[j] = m.data[i * m.cols + j]
 	return r
 
 
 matrix matrix_col(matrix* m, int j):
 	asserts(c"matrix_col: index out of range", j >= 0 && j < m.cols)
 	matrix r = matrix_new(m.rows, 1)
-	int i = 0
-	while (i < m.rows):
-		r.data[i] = m.data[i * m.cols + j]
-		i = i + 1
+	for i in range(m.rows): r.data[i] = m.data[i * m.cols + j]
 	return r
 
 
@@ -269,35 +256,23 @@ matrix matrix_col(matrix* m, int j):
 
 void matrix_add_into(matrix* out, matrix* a, matrix* b):
 	asserts(c"matrix_add: shape mismatch", matrix_same_shape(a, b) && matrix_same_shape(out, a))
-	int i = 0
-	while (i < a.data.length):
-		out.data[i] = a.data[i] + b.data[i]
-		i = i + 1
+	for i in range(a.data.length): out.data[i] = a.data[i] + b.data[i]
 
 
 void matrix_sub_into(matrix* out, matrix* a, matrix* b):
 	asserts(c"matrix_sub: shape mismatch", matrix_same_shape(a, b) && matrix_same_shape(out, a))
-	int i = 0
-	while (i < a.data.length):
-		out.data[i] = a.data[i] - b.data[i]
-		i = i + 1
+	for i in range(a.data.length): out.data[i] = a.data[i] - b.data[i]
 
 
 void matrix_scale_into(matrix* out, matrix* a, float s):
 	asserts(c"matrix_scale: shape mismatch", matrix_same_shape(out, a))
-	int i = 0
-	while (i < a.data.length):
-		out.data[i] = a.data[i] * s
-		i = i + 1
+	for i in range(a.data.length): out.data[i] = a.data[i] * s
 
 
 # Elementwise (Hadamard) product.
 void matrix_hadamard_into(matrix* out, matrix* a, matrix* b):
 	asserts(c"matrix_hadamard: shape mismatch", matrix_same_shape(a, b) && matrix_same_shape(out, a))
-	int i = 0
-	while (i < a.data.length):
-		out.data[i] = a.data[i] * b.data[i]
-		i = i + 1
+	for i in range(a.data.length): out.data[i] = a.data[i] * b.data[i]
 
 
 # out = a * b (matrix product), a is m x k, b is k x n, out is m x n.
@@ -307,15 +282,10 @@ void matrix_matmul_into(matrix* out, matrix* a, matrix* b):
 	asserts(c"matrix_mul: output must not alias an input", out.data.data != a.data.data && out.data.data != b.data.data)
 	int i = 0
 	while (i < a.rows):
-		int j = 0
-		while (j < b.cols):
+		for j in range(b.cols):
 			float sum = 0.0
-			int k = 0
-			while (k < a.cols):
-				sum = sum + a.data[i * a.cols + k] * b.data[k * b.cols + j]
-				k = k + 1
+			for k in range(a.cols): sum = sum + a.data[i * a.cols + k] * b.data[k * b.cols + j]
 			out.data[i * out.cols + j] = sum
-			j = j + 1
 		i = i + 1
 
 
@@ -357,10 +327,7 @@ matrix matrix_transpose(matrix* m):
 	matrix r = matrix_new(m.cols, m.rows)
 	int i = 0
 	while (i < m.rows):
-		int j = 0
-		while (j < m.cols):
-			r.data[j * r.cols + i] = m.data[i * m.cols + j]
-			j = j + 1
+		for j in range(m.cols): r.data[j * r.cols + i] = m.data[i * m.cols + j]
 		i = i + 1
 	return r
 
@@ -419,19 +386,13 @@ matrix operator/(matrix a, float s):
 float matrix_trace(matrix* m):
 	asserts(c"matrix_trace: matrix must be square", matrix_is_square(m))
 	float sum = 0.0
-	int i = 0
-	while (i < m.rows):
-		sum = sum + m.data[i * m.cols + i]
-		i = i + 1
+	for i in range(m.rows): sum = sum + m.data[i * m.cols + i]
 	return sum
 
 
 float matrix_sum(matrix* m):
 	float sum = 0.0
-	int i = 0
-	while (i < m.data.length):
-		sum = sum + m.data[i]
-		i = i + 1
+	for i in range(m.data.length): sum = sum + m.data[i]
 	return sum
 
 
@@ -440,8 +401,7 @@ float matrix_max_abs(matrix* m):
 	int i = 0
 	while (i < m.data.length):
 		float v = matrix_fabs(m.data[i])
-		if (v > best):
-			best = v
+		if (v > best): best = v
 		i = i + 1
 	return best
 
@@ -449,24 +409,20 @@ float matrix_max_abs(matrix* m):
 # 1 when every element of a and b differs by at most tol (and the
 # shapes match), else 0.
 int matrix_near(matrix* a, matrix* b, float tol):
-	if (matrix_same_shape(a, b) == 0):
-		return 0
+	if (matrix_same_shape(a, b) == 0): return 0
 	int i = 0
 	while (i < a.data.length):
-		if (matrix_fabs(a.data[i] - b.data[i]) > tol):
-			return 0
+		if (matrix_fabs(a.data[i] - b.data[i]) > tol): return 0
 		i = i + 1
 	return 1
 
 
 # 1 when the shapes match and every element is exactly equal.
 int matrix_equal(matrix* a, matrix* b):
-	if (matrix_same_shape(a, b) == 0):
-		return 0
+	if (matrix_same_shape(a, b) == 0): return 0
 	int i = 0
 	while (i < a.data.length):
-		if (a.data[i] != b.data[i]):
-			return 0
+		if (a.data[i] != b.data[i]): return 0
 		i = i + 1
 	return 1
 
@@ -476,8 +432,7 @@ int matrix_equal(matrix* a, matrix* b):
 
 # Swap rows r1 and r2 of m in place.
 void matrix_swap_rows(matrix* m, int r1, int r2):
-	if (r1 == r2):
-		return
+	if (r1 == r2): return
 	int j = 0
 	while (j < m.cols):
 		float t = m.data[r1 * m.cols + j]
@@ -522,10 +477,7 @@ float matrix_det(matrix* m):
 		int r = col + 1
 		while (r < n):
 			float f = a.data[r * n + col] / pivot
-			int j = col
-			while (j < n):
-				a.data[r * n + j] = a.data[r * n + j] - f * a.data[col * n + j]
-				j = j + 1
+			for j in range(col, n): a.data[r * n + j] = a.data[r * n + j] - f * a.data[col * n + j]
 			r = r + 1
 		col = col + 1
 	matrix_free(&a)
@@ -543,10 +495,7 @@ int matrix_solve_into(matrix* out, matrix* a, matrix* b):
 	int n = a.rows
 	int k = b.cols
 	matrix l = matrix_copy(a)
-	int i = 0
-	while (i < b.data.length):
-		out.data[i] = b.data[i]
-		i = i + 1
+	for i in range(b.data.length): out.data[i] = b.data[i]
 	float eps = matrix_singular_eps() * matrix_max_abs(a)
 	int col = 0
 	while (col < n):
@@ -638,10 +587,7 @@ matrix matrix_linspace(float a, float b, int n):
 	asserts(c"matrix_linspace: need at least 2 points", n >= 2)
 	matrix m = matrix_new(1, n)
 	float step = (b - a) / (n - 1)
-	int i = 0
-	while (i < n):
-		m.data[i] = a + step * i
-		i = i + 1
+	for i in range(n): m.data[i] = a + step * i
 	m.data[n - 1] = b
 	return m
 
@@ -651,23 +597,16 @@ matrix matrix_diag(matrix* v):
 	asserts(c"matrix_diag: argument must be a vector", v.rows == 1 || v.cols == 1)
 	int n = v.data.length
 	matrix m = matrix_new(n, n)
-	int i = 0
-	while (i < n):
-		m.data[i * n + i] = v.data[i]
-		i = i + 1
+	for i in range(n): m.data[i * n + i] = v.data[i]
 	return m
 
 
 # The main diagonal of m as a column vector.
 matrix matrix_diag_of(matrix* m):
 	int n = m.rows
-	if (m.cols < n):
-		n = m.cols
+	if (m.cols < n): n = m.cols
 	matrix d = matrix_new(n, 1)
-	int i = 0
-	while (i < n):
-		d.data[i] = m.data[i * m.cols + i]
-		i = i + 1
+	for i in range(n): d.data[i] = m.data[i * m.cols + i]
 	return d
 
 
@@ -686,10 +625,7 @@ void matrix_set_block(matrix* m, int r0, int c0, matrix* src):
 	asserts(c"matrix_set_block: block out of range", r0 >= 0 && c0 >= 0 && r0 + src.rows <= m.rows && c0 + src.cols <= m.cols)
 	int i = 0
 	while (i < src.rows):
-		int j = 0
-		while (j < src.cols):
-			m.data[(r0 + i) * m.cols + c0 + j] = src.data[i * src.cols + j]
-			j = j + 1
+		for j in range(src.cols): m.data[(r0 + i) * m.cols + c0 + j] = src.data[i * src.cols + j]
 		i = i + 1
 
 
@@ -730,13 +666,8 @@ matrix matrix_vcat(matrix* a, matrix* b):
 matrix matrix_repmat(matrix* m, int rn, int cn):
 	asserts(c"matrix_repmat: counts must be positive", rn > 0 && cn > 0)
 	matrix r = matrix_new(m.rows * rn, m.cols * cn)
-	int i = 0
-	while (i < rn):
-		int j = 0
-		while (j < cn):
-			matrix_set_block(&r, i * m.rows, j * m.cols, m)
-			j = j + 1
-		i = i + 1
+	for i in range(rn):
+		for j in range(cn): matrix_set_block(&r, i * m.rows, j * m.cols, m)
 	return r
 
 
@@ -745,11 +676,8 @@ matrix matrix_triu(matrix* m, int k):
 	matrix r = matrix_copy(m)
 	int i = 0
 	while (i < m.rows):
-		int j = 0
-		while (j < m.cols):
-			if (j - i < k):
-				r.data[i * m.cols + j] = 0.0
-			j = j + 1
+		for j in range(m.cols):
+			if (j - i < k): r.data[i * m.cols + j] = 0.0
 		i = i + 1
 	return r
 
@@ -759,11 +687,8 @@ matrix matrix_tril(matrix* m, int k):
 	matrix r = matrix_copy(m)
 	int i = 0
 	while (i < m.rows):
-		int j = 0
-		while (j < m.cols):
-			if (j - i > k):
-				r.data[i * m.cols + j] = 0.0
-			j = j + 1
+		for j in range(m.cols):
+			if (j - i > k): r.data[i * m.cols + j] = 0.0
 		i = i + 1
 	return r
 
@@ -802,10 +727,7 @@ matrix matrix_map(matrix* m, matrix_map_fn* fn):
 matrix matrix_ediv(matrix* a, matrix* b):
 	asserts(c"matrix_ediv: shape mismatch", matrix_same_shape(a, b))
 	matrix r = matrix_new(a.rows, a.cols)
-	int i = 0
-	while (i < a.data.length):
-		r.data[i] = a.data[i] / b.data[i]
-		i = i + 1
+	for i in range(a.data.length): r.data[i] = a.data[i] / b.data[i]
 	return r
 
 
@@ -842,10 +764,7 @@ matrix matrix_neg(matrix* m):
 
 matrix matrix_add_scalar(matrix* m, float s):
 	matrix r = matrix_new(m.rows, m.cols)
-	int i = 0
-	while (i < m.data.length):
-		r.data[i] = m.data[i] + s
-		i = i + 1
+	for i in range(m.data.length): r.data[i] = m.data[i] + s
 	return r
 
 
@@ -879,19 +798,13 @@ matrix operator-(float s, matrix a):
 matrix matrix_sum_dim(matrix* m, int dim):
 	asserts(c"matrix_sum_dim: dim must be 1 or 2", dim == 1 || dim == 2)
 	matrix r
-	if (dim == 1):
-		r = matrix_new(1, m.cols)
-	else:
-		r = matrix_new(m.rows, 1)
+	if (dim == 1): r = matrix_new(1, m.cols)
+	else: r = matrix_new(m.rows, 1)
 	int i = 0
 	while (i < m.rows):
-		int j = 0
-		while (j < m.cols):
-			if (dim == 1):
-				r.data[j] = r.data[j] + m.data[i * m.cols + j]
-			else:
-				r.data[i] = r.data[i] + m.data[i * m.cols + j]
-			j = j + 1
+		for j in range(m.cols):
+			if (dim == 1): r.data[j] = r.data[j] + m.data[i * m.cols + j]
+			else: r.data[i] = r.data[i] + m.data[i * m.cols + j]
 		i = i + 1
 	return r
 
@@ -900,8 +813,7 @@ matrix matrix_sum_dim(matrix* m, int dim):
 matrix matrix_mean_dim(matrix* m, int dim):
 	matrix r = matrix_sum_dim(m, dim)
 	int n = m.cols
-	if (dim == 1):
-		n = m.rows
+	if (dim == 1): n = m.rows
 	matrix_scale_into(&r, &r, 1.0 / n)
 	return r
 
@@ -917,10 +829,8 @@ int matrix_arg_extreme(matrix* m, int want_max):
 	int best = 0
 	int i = 1
 	while (i < m.data.length):
-		if (want_max && m.data[i] > m.data[best]):
-			best = i
-		if ((want_max == 0) && m.data[i] < m.data[best]):
-			best = i
+		if (want_max && m.data[i] > m.data[best]): best = i
+		if ((want_max == 0) && m.data[i] < m.data[best]): best = i
 		i = i + 1
 	return best
 
@@ -948,10 +858,7 @@ float matrix_dot(matrix* a, matrix* b):
 	asserts(c"matrix_dot: arguments must be vectors", (a.rows == 1 || a.cols == 1) && (b.rows == 1 || b.cols == 1))
 	asserts(c"matrix_dot: lengths must match", a.data.length == b.data.length)
 	float sum = 0.0
-	int i = 0
-	while (i < a.data.length):
-		sum = sum + a.data[i] * b.data[i]
-		i = i + 1
+	for i in range(a.data.length): sum = sum + a.data[i] * b.data[i]
 	return sum
 
 
@@ -969,10 +876,7 @@ matrix matrix_cross(matrix* a, matrix* b):
 # 2-norm of a vector).
 float matrix_norm_fro(matrix* m):
 	float sum = 0.0
-	int i = 0
-	while (i < m.data.length):
-		sum = sum + m.data[i] * m.data[i]
-		i = i + 1
+	for i in range(m.data.length): sum = sum + m.data[i] * m.data[i]
 	return fsqrt(sum)
 
 
@@ -986,8 +890,7 @@ float matrix_norm1(matrix* m):
 		while (i < m.rows):
 			sum = sum + fabs(m.data[i * m.cols + j])
 			i = i + 1
-		if (sum > best):
-			best = sum
+		if (sum > best): best = sum
 		j = j + 1
 	return best
 
@@ -1002,8 +905,7 @@ float matrix_norm_inf(matrix* m):
 		while (j < m.cols):
 			sum = sum + fabs(m.data[i * m.cols + j])
 			j = j + 1
-		if (sum > best):
-			best = sum
+		if (sum > best): best = sum
 		i = i + 1
 	return best
 
@@ -1017,8 +919,7 @@ float matrix_norm_inf(matrix* m):
 
 # Sign with sign(0) == 1, for Householder / Jacobi rotations.
 float matrix_sign1(float x):
-	if (x < 0.0):
-		return -1.0
+	if (x < 0.0): return -1.0
 	return 1.0
 
 
@@ -1040,24 +941,18 @@ int matrix_lu(matrix* a, matrix* l, matrix* u, matrix* p):
 			matrix_swap_rows(&w, piv, k)
 			matrix_swap_rows(&pm, piv, k)
 			# swap the already-computed multipliers (columns < k)
-			int j = 0
-			while (j < k):
+			for j in range(k):
 				float t = lm.data[k * n + j]
 				lm.data[k * n + j] = lm.data[piv * n + j]
 				lm.data[piv * n + j] = t
-				j = j + 1
 		float pivot = w.data[k * n + k]
-		if (fabs(pivot) <= eps):
-			ok = 0
+		if (fabs(pivot) <= eps): ok = 0
 		else:
 			int i = k + 1
 			while (i < n):
 				float f = w.data[i * n + k] / pivot
 				lm.data[i * n + k] = f
-				int j = k
-				while (j < n):
-					w.data[i * n + j] = w.data[i * n + j] - f * w.data[k * n + j]
-					j = j + 1
+				for j in range(k, n): w.data[i * n + j] = w.data[i * n + j] - f * w.data[k * n + j]
 				w.data[i * n + k] = 0.0
 				i = i + 1
 		k = k + 1
@@ -1086,15 +981,13 @@ int matrix_chol(matrix* a, matrix* r):
 			return 0
 		float d = fsqrt(s)
 		rm.data[j * n + j] = d
-		int i = j + 1
-		while (i < n):
+		for i in range(j + 1, n):
 			float t = a.data[j * n + i]
 			k = 0
 			while (k < j):
 				t = t - rm.data[k * n + j] * rm.data[k * n + i]
 				k = k + 1
 			rm.data[j * n + i] = t / d
-			i = i + 1
 		j = j + 1
 	*r = rm
 	return 1
@@ -1109,10 +1002,8 @@ void matrix_qr(matrix* a, matrix* q, matrix* r):
 	matrix qm = matrix_identity(m)
 	float[] v = new float[m]
 	int steps = n
-	if (m - 1 < steps):
-		steps = m - 1
-	int k = 0
-	while (k < steps):
+	if (m - 1 < steps): steps = m - 1
+	for k in range(steps):
 		float norm = 0.0
 		int i = k
 		while (i < m):
@@ -1125,14 +1016,12 @@ void matrix_qr(matrix* a, matrix* q, matrix* r):
 			i = k
 			while (i < m):
 				v[i] = rm.data[i * n + k]
-				if (i == k):
-					v[i] = v[i] - alpha
+				if (i == k): v[i] = v[i] - alpha
 				vv = vv + v[i] * v[i]
 				i = i + 1
 			if (vv > 0.0):
 				# R = H * R, columns k.. (earlier columns are already zero below k)
-				int j = k
-				while (j < n):
+				for j in range(k, n):
 					float s = 0.0
 					i = k
 					while (i < m):
@@ -1143,7 +1032,6 @@ void matrix_qr(matrix* a, matrix* q, matrix* r):
 					while (i < m):
 						rm.data[i * n + j] = rm.data[i * n + j] - f * v[i]
 						i = i + 1
-					j = j + 1
 				# Q = Q * H
 				int row = 0
 				while (row < m):
@@ -1162,7 +1050,6 @@ void matrix_qr(matrix* a, matrix* q, matrix* r):
 				while (i < m):
 					rm.data[i * n + k] = 0.0
 					i = i + 1
-		k = k + 1
 	array_free[float](v)
 	*q = qm
 	*r = rm
@@ -1170,8 +1057,7 @@ void matrix_qr(matrix* a, matrix* q, matrix* r):
 
 # Swap columns c1 and c2 of m in place.
 void matrix_swap_cols(matrix* m, int c1, int c2):
-	if (c1 == c2):
-		return
+	if (c1 == c2): return
 	int i = 0
 	while (i < m.rows):
 		float t = m.data[i * m.cols + c1]
@@ -1187,13 +1073,9 @@ void matrix_sort_pairs(matrix* vals, matrix* cols, int descending):
 	int i = 0
 	while (i < n):
 		int best = i
-		int j = i + 1
-		while (j < n):
-			if (descending && vals.data[j] > vals.data[best]):
-				best = j
-			if ((descending == 0) && vals.data[j] < vals.data[best]):
-				best = j
-			j = j + 1
+		for j in range(i + 1, n):
+			if (descending && vals.data[j] > vals.data[best]): best = j
+			if ((descending == 0) && vals.data[j] < vals.data[best]): best = j
 		if (best != i):
 			float t = vals.data[i]
 			vals.data[i] = vals.data[best]
@@ -1206,8 +1088,7 @@ void matrix_sort_pairs(matrix* vals, matrix* cols, int descending):
 # the smaller-angle root; guards zeta^2 overflow.
 float matrix_jacobi_t(float zeta):
 	float az = fabs(zeta)
-	if (az > 1000000000.0):
-		return 0.5 / zeta
+	if (az > 1000000000.0): return 0.5 / zeta
 	return matrix_sign1(zeta) / (az + fsqrt(1.0 + zeta * zeta))
 
 
@@ -1224,18 +1105,13 @@ void matrix_eig_sym(matrix* a, matrix* values, matrix* vectors):
 	matrix_free(&t)
 	matrix w = matrix_copy(a)
 	matrix v = matrix_identity(n)
-	int sweep = 0
-	while (sweep < 60):
+	for sweep in range(60):
 		float off = 0.0
 		int p = 0
 		while (p < n):
-			int q = p + 1
-			while (q < n):
-				off = off + w.data[p * n + q] * w.data[p * n + q]
-				q = q + 1
+			for q in range(p + 1, n): off = off + w.data[p * n + q] * w.data[p * n + q]
 			p = p + 1
-		if (off == 0.0):
-			break
+		if (off == 0.0): break
 		p = 0
 		while (p < n):
 			int q = p + 1
@@ -1274,7 +1150,6 @@ void matrix_eig_sym(matrix* a, matrix* values, matrix* vectors):
 						k = k + 1
 				q = q + 1
 			p = p + 1
-		sweep = sweep + 1
 	matrix vals = matrix_diag_of(&w)
 	matrix_free(&w)
 	matrix_sort_pairs(&vals, &v, 0)
@@ -1298,8 +1173,7 @@ void matrix_svd(matrix* a, matrix* u, matrix* s, matrix* v):
 	int n = a.cols
 	matrix um = matrix_copy(a)
 	matrix vm = matrix_identity(n)
-	int sweep = 0
-	while (sweep < 60):
+	for sweep in range(60):
 		int rotated = 0
 		int p = 0
 		while (p < n):
@@ -1337,9 +1211,7 @@ void matrix_svd(matrix* a, matrix* u, matrix* s, matrix* v):
 						i = i + 1
 				q = q + 1
 			p = p + 1
-		if (rotated == 0):
-			break
-		sweep = sweep + 1
+		if (rotated == 0): break
 	matrix sv = matrix_new(n, 1)
 	int j = 0
 	while (j < n):
@@ -1352,10 +1224,8 @@ void matrix_svd(matrix* a, matrix* u, matrix* s, matrix* v):
 		sv.data[j] = norm
 		i = 0
 		while (i < m):
-			if (norm > 0.0):
-				um.data[i * n + j] = um.data[i * n + j] / norm
-			else:
-				um.data[i * n + j] = 0.0
+			if (norm > 0.0): um.data[i * n + j] = um.data[i * n + j] / norm
+			else: um.data[i * n + j] = 0.0
 			i = i + 1
 		j = j + 1
 	# sort descending, permuting U's and V's columns together
@@ -1364,8 +1234,7 @@ void matrix_svd(matrix* a, matrix* u, matrix* s, matrix* v):
 		int best = i
 		j = i + 1
 		while (j < n):
-			if (sv.data[j] > sv.data[best]):
-				best = j
+			if (sv.data[j] > sv.data[best]): best = j
 			j = j + 1
 		if (best != i):
 			float t = sv.data[i]
@@ -1394,8 +1263,7 @@ matrix matrix_singular_values(matrix* a):
 # max(rows, cols) * s_max * the float32-scaled singularity threshold.
 float matrix_svd_tol(matrix* a, matrix* s):
 	int big = a.rows
-	if (a.cols > big):
-		big = a.cols
+	if (a.cols > big): big = a.cols
 	return big * s.data[0] * matrix_singular_eps() * 10.0
 
 
@@ -1405,8 +1273,7 @@ int matrix_rank(matrix* a):
 	int r = 0
 	int i = 0
 	while (i < s.data.length):
-		if (s.data[i] > tol):
-			r = r + 1
+		if (s.data[i] > tol): r = r + 1
 		i = i + 1
 	matrix_free(&s)
 	return r
@@ -1425,8 +1292,7 @@ float matrix_cond(matrix* a):
 	matrix s = matrix_singular_values(a)
 	float smin = s.data[s.data.length - 1]
 	float r = float_from_bits(0x7f800000)    # +inf
-	if (smin > 0.0):
-		r = s.data[0] / smin
+	if (smin > 0.0): r = s.data[0] / smin
 	matrix_free(&s)
 	return r
 
@@ -1441,19 +1307,15 @@ matrix matrix_pinv(matrix* a):
 	float tol = matrix_svd_tol(a, &s)
 	int k = s.data.length
 	matrix r = matrix_new(a.cols, a.rows)
-	int c = 0
-	while (c < k):
+	for c in range(k):
 		if (s.data[c] > tol):
 			float inv = 1.0 / s.data[c]
 			int i = 0
 			while (i < a.cols):
 				float vi = v.data[i * v.cols + c] * inv
-				int j = 0
-				while (j < a.rows):
+				for j in range(a.rows):
 					r.data[i * r.cols + j] = r.data[i * r.cols + j] + vi * u.data[j * u.cols + c]
-					j = j + 1
 				i = i + 1
-		c = c + 1
 	matrix_free(&u)
 	matrix_free(&s)
 	matrix_free(&v)
@@ -1470,8 +1332,7 @@ void matrix_print(matrix* m):
 		print(c"[")
 		int j = 0
 		while (j < m.cols):
-			if (j > 0):
-				print(c" ")
+			if (j > 0): print(c" ")
 			char* s = ftoa(m.data[i * m.cols + j])
 			print(s)
 			free(s)

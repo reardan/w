@@ -22,7 +22,7 @@ void test_short_form_header():
 	int start = 0
 	int len = 0
 	assert_equal(1, asn1_next(&r, &tag, &start, &len))
-	assert_equal(ASN1_INTEGER(), tag)
+	assert_equal(ASN1_INTEGER, tag)
 	assert_equal(2, start)
 	assert_equal(1, len)
 	assert_equal(1, asn1_done(&r))
@@ -35,10 +35,7 @@ void test_long_form_minimal():
 	b[0] = 48
 	b[1] = 129    # 0x81
 	b[2] = 128    # length 128
-	int i = 0
-	while (i < 128):
-		b[3 + i] = 0
-		i = i + 1
+	for i in range(128): b[3 + i] = 0
 	asn1 r
 	ta_init(&r, b, 131)
 	int tag = 0
@@ -57,10 +54,7 @@ void test_long_form_non_minimal_rejected():
 	b[0] = 48
 	b[1] = 129
 	b[2] = 127
-	int i = 0
-	while (i < 127):
-		b[3 + i] = 0
-		i = i + 1
+	for i in range(127): b[3 + i] = 0
 	asn1 r
 	ta_init(&r, b, 130)
 	int tag = 0
@@ -172,7 +166,7 @@ void test_expect_and_skip():
 	assert_equal(1, asn1_done(&r))
 	asn1 inner
 	asn1_init(&inner, b, s, s + l)
-	assert_equal(ASN1_INTEGER(), asn1_peek(&inner))
+	assert_equal(ASN1_INTEGER, asn1_peek(&inner))
 	assert_equal(1, asn1_skip(&inner))
 	int v = 0
 	assert_equal(1, asn1_read_boolean(&inner, &v))

@@ -1,6 +1,5 @@
 /*
-for type-name identifier in range args :
-	{ statement }
+for type-name identifier in range args : { statement }
 
 range forms (parentheses optional):
 	range end
@@ -10,8 +9,7 @@ range forms (parentheses optional):
 
 All range arguments are evaluated once, up front, into hidden stack slots.
 
-for type-name identifier in expression :
-	{ statement }
+for type-name identifier in expression : { statement }
 
 Container iteration via the cursor protocol (docs/projects/iteration.md):
 the iterable must be a pointer to a struct type T whose module provides
@@ -44,9 +42,7 @@ void for_iter_callee(char* fn_name):
 		sym_get_value(fn_name)
 		return;
 	int inst = generic_inst_lookup(fn_name)
-	if (inst < 0):
-		diag_part(fn_name)
-		error(c" is not defined")
+	if (inst < 0): error2(fn_name, c" is not defined")
 	generic_inst_emit_callee(inst)
 
 
@@ -56,19 +52,10 @@ void for_iter_callee(char* fn_name):
 void for_iter_call(char* fn_name, int container_slot, int cursor_slot):
 	for_iter_callee(fn_name)
 	int s = stack_pos
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus((stack_pos - container_slot) << word_size_log2)
-	push_eax()
-	stack_pos = stack_pos + 1
-	if (cursor_slot != 0):
-		mov_eax_esp_plus((stack_pos - cursor_slot) << word_size_log2)
-		push_eax()
-		stack_pos = stack_pos + 1
-	mov_eax_esp_plus((stack_pos - s - 1) << word_size_log2)
-	call_eax()
-	be_pop(stack_pos - s)
-	stack_pos = s
+	push_slot()
+	push_slot_copy(container_slot)
+	if (cursor_slot != 0): push_slot_copy(cursor_slot)
+	rt_call_end(s)
 
 
 void for_iter_error_prefix(char* container_name, char* fn_name):
@@ -141,8 +128,7 @@ int for_iter_generic_split(char* name):
 int for_iter_generic_arg(char* container_name, int dollar):
 	char* arg_name = strclone(container_name + dollar + 1)
 	int n = 0
-	while (arg_name[n]):
-		n = n + 1
+	while (arg_name[n]): n = n + 1
 	int stars = 0
 	while ((n > 0) && (arg_name[n - 1] == '*')):
 		n = n - 1
@@ -150,8 +136,7 @@ int for_iter_generic_arg(char* container_name, int dollar):
 		stars = stars + 1
 	int arg_type = type_lookup(arg_name)
 	free(arg_name)
-	if (arg_type < 0):
-		return -1
+	if (arg_type < 0): return -1
 	while (stars > 0):
 		arg_type = type_get_next_pointer(arg_type)
 		stars = stars - 1
@@ -192,7 +177,7 @@ char* for_iter_generic_require(char* container_name, char* what, int expected_ar
 		# the ordinary symbol checks apply
 		for_iter_require(container_name, mangled, expected_args, container_type)
 		return mangled
-	char* args = malloc(generic_max_params() * __word_size__)
+	char* args = malloc(generic_max_params * __word_size__)
 	save_ptr(args, arg_type)
 	int inst = generic_inst_intern(def, cast(int, args), 1, strclone(mangled))
 	int sig = generic_inst_signature(inst)
@@ -239,10 +224,9 @@ int for_iter_generic_value_type(int container_type):
 	int symbol = sym_lookup(mangled)
 	if (symbol >= 0):
 		free(mangled)
-		if (load_int(table + symbol + 10) == 2):
-			return load_int(table + symbol + 6)
+		if (load_int(table + symbol + 10) == 2): return load_int(table + symbol + 6)
 		return type_lookup(c"int")
-	char* args = malloc(generic_max_params() * __word_size__)
+	char* args = malloc(generic_max_params * __word_size__)
 	save_ptr(args, arg_type)
 	int inst = generic_inst_intern(def, cast(int, args), 1, mangled)
 	return type_unqualified(type_function_return(generic_inst_signature(inst)))
@@ -252,14 +236,12 @@ void for_iter_require_struct_pointer(int container_type):
 	if (type_get_pointer_level(container_type) != 1):
 		diag_part(c"type '")
 		print_error_type(container_type)
-		diag_part(c"' is not iterable: ")
-		error(c"expected a pointer to a container struct")
+		error2(c"' is not iterable: ", c"expected a pointer to a container struct")
 	int base_type = type_lookup_previous_pointer(container_type)
 	if ((base_type < 0) | (type_num_args(base_type) == 0)):
 		diag_part(c"type '")
 		print_error_type(container_type)
-		diag_part(c"' is not iterable: ")
-		error(c"expected a pointer to a container struct")
+		error2(c"' is not iterable: ", c"expected a pointer to a container struct")
 
 
 # The "in range" body of for_statement; "for", the loop variable and
@@ -269,43 +251,29 @@ void for_range_loop(int for_var, int for_tab_level):
 	int has_parens = accept(c"(")
 	int num_range_args = 1
 	promote(expression())
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	while (accept(c",")):
 		promote(expression())
-		push_eax()
-		stack_pos = stack_pos + 1
+		push_slot()
 		num_range_args = num_range_args + 1
-	if (has_parens):
-		expect(c")")
-	if (num_range_args > 3):
-		error(c"range() takes 1-3 arguments")
+	if (has_parens): expect(c")")
+	if (num_range_args > 3): error(c"range() takes 1-3 arguments")
 
 	# With 2+ arguments the first one is the start: copy it into the loop var
 	int end_slot = for_var + 1
 	if (num_range_args >= 2):
 		end_slot = for_var + 2
-		mov_eax_esp_plus((stack_pos - (for_var + 1)) << word_size_log2)
+		load_slot(for_var + 1)
 		store_stack_var((stack_pos - for_var) << word_size_log2)
 
 	# Enter a new loop context for break/continue
-	int outer_break = loop_break_chain
-	int outer_continue = loop_continue_chain
-	int outer_stack = loop_stack_pos
-	int outer_in_switch = break_in_switch
-	# Exit region: the failed condition and 'break' land after the loop.
+	int* outer = loop_enter()
 	# Loop region: the back edge re-tests the condition.
-	loop_break_chain = be_ctrl_block()
 	int h_top = be_ctrl_loop()
-	loop_stack_pos = stack_pos
-	break_in_switch = 0
-	loop_depth = loop_depth + 1
 
 	# condition: loop var < end
-	mov_eax_esp_plus((stack_pos - for_var) << word_size_log2)
-	push_eax()
-	stack_pos = stack_pos + 1
-	mov_eax_esp_plus((stack_pos - end_slot) << word_size_log2)
+	push_slot_copy(for_var)
+	load_slot(end_slot)
 	pop_ebx()
 	alu_cmp_set(0x9c) /* setl: loop var < end */
 	stack_pos = stack_pos - 1
@@ -321,10 +289,9 @@ void for_range_loop(int for_var, int for_tab_level):
 	/* increment: by 1, or by the step argument */
 	be_ctrl_end(loop_continue_chain)
 	if (num_range_args == 3):
-		mov_eax_esp_plus((stack_pos - (for_var + 3)) << word_size_log2)
+		load_slot(for_var + 3)
 		add_dword_esp_plus_eax((stack_pos - for_var) << word_size_log2)
-	else:
-		inc_dword_esp_plus((stack_pos - for_var) << word_size_log2)
+	else: inc_dword_esp_plus((stack_pos - for_var) << word_size_log2)
 
 	/* jmp back to condition */
 	be_br(h_top)
@@ -333,15 +300,10 @@ void for_range_loop(int for_var, int for_tab_level):
 	# break exits here; continue ran the increment first
 	be_ctrl_end(loop_break_chain)
 
-	loop_break_chain = outer_break
-	loop_continue_chain = outer_continue
-	loop_stack_pos = outer_stack
-	break_in_switch = outer_in_switch
-	loop_depth = loop_depth - 1
+	loop_leave(outer)
 
 	# Discard the hidden range slots (the loop variable itself stays)
-	be_pop(num_range_args)
-	stack_pos = stack_pos - num_range_args
+	drop_slots(num_range_args)
 
 
 /*
@@ -366,8 +328,7 @@ list[for_cleanup_record] for_cleanups
 
 
 int for_cleanup_count():
-	if (cast(int, for_cleanups) == 0):
-		return 0
+	if (cast(int, for_cleanups) == 0): return 0
 	return for_cleanups.length
 
 
@@ -375,15 +336,13 @@ int for_cleanup_count():
 # capacity (the defer_truncate trick — list[T]'s '.length' is read-only
 # at the language level).
 void for_cleanup_truncate(int n):
-	if (cast(int, for_cleanups) == 0):
-		return;
+	if (cast(int, for_cleanups) == 0): return;
 	__w_list* raw = cast(__w_list*, for_cleanups)
 	raw.length = n
 
 
 void for_cleanup_push(char* free_fn, int container_slot):
-	if (cast(int, for_cleanups) == 0):
-		for_cleanups = new list[for_cleanup_record]
+	if (cast(int, for_cleanups) == 0): for_cleanups = new list[for_cleanup_record]
 	for_cleanup_record rec
 	rec.free_fn = free_fn
 	rec.container_slot = container_slot
@@ -404,13 +363,10 @@ void for_cleanup_emit_all():
 # around the free calls so they cannot clobber it, mirroring
 # defer_emit_returning (grammar/defer.w).
 void for_cleanup_emit_returning():
-	if (for_cleanup_count() == 0):
-		return;
-	push_eax()
-	stack_pos = stack_pos + 1
+	if (for_cleanup_count() == 0): return;
+	push_slot()
 	for_cleanup_emit_all()
-	pop_eax()
-	stack_pos = stack_pos - 1
+	pop_eax_slot()
 
 
 # Emit the cursor-loop scaffold shared by every for-in container shape:
@@ -440,31 +396,18 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		int element_type, int value_coerce_type,
 		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type):
 	# hidden slot: the container pointer
-	push_eax()
-	stack_pos = stack_pos + 1
-	int container_slot = stack_pos
+	int container_slot = push_slot()
 
 	# hidden slot: the cursor
-	if (begin_fn != 0):
-		for_iter_call(begin_fn, container_slot, 0)
-	else:
-		mov_eax_int(0)
-	push_eax()
-	stack_pos = stack_pos + 1
-	int cursor_slot = stack_pos
+	if (begin_fn != 0): for_iter_call(begin_fn, container_slot, 0)
+	else: mov_eax_int(0)
+	int cursor_slot = push_slot()
 
 	# Enter a new loop context for break/continue
-	int outer_break = loop_break_chain
-	int outer_continue = loop_continue_chain
-	int outer_stack = loop_stack_pos
-	int outer_in_switch = break_in_switch
-	# Exit region: the done-check and 'break' land after the loop (where
-	# free_fn releases the container). Loop region: the back edge re-tests.
-	loop_break_chain = be_ctrl_block()
+	# The exit region is where free_fn releases the container.
+	int* outer = loop_enter()
+	# Loop region: the back edge re-tests.
 	int h_top = be_ctrl_loop()
-	loop_stack_pos = stack_pos
-	break_in_switch = 0
-	loop_depth = loop_depth + 1
 
 	# condition: exit once done_fn(container, cursor) is true, or once
 	# the index cursor reaches the length word
@@ -472,14 +415,11 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		for_iter_call(done_fn, container_slot, cursor_slot)
 		be_br_nonzero_discard(loop_break_chain)
 	else:
-		mov_eax_esp_plus((stack_pos - cursor_slot) << word_size_log2)
-		push_eax()
-		stack_pos = stack_pos + 1
-		mov_eax_esp_plus((stack_pos - container_slot) << word_size_log2)
+		push_slot_copy(cursor_slot)
+		load_slot(container_slot)
 		add_eax_int32(word_size)
 		promote_eax()
-		pop_ebx()
-		stack_pos = stack_pos - 1
+		pop_ebx_slot()
 		alu_cmp_set(0x9c) /* setl: cursor < length */
 		be_br_zero_discard(loop_break_chain)
 
@@ -489,23 +429,18 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	# loop var = value_fn(container, cursor), or the slice element at
 	# data + cursor * element_size
 	int extracted_type = value_coerce_type
-	if (value_fn != 0):
-		for_iter_call(value_fn, container_slot, cursor_slot)
+	if (value_fn != 0): for_iter_call(value_fn, container_slot, cursor_slot)
 	else:
-		mov_eax_esp_plus((stack_pos - container_slot) << word_size_log2)
+		load_slot(container_slot)
 		promote_eax() /* the descriptor's data pointer */
-		push_eax()
-		stack_pos = stack_pos + 1
-		mov_eax_esp_plus((stack_pos - cursor_slot) << word_size_log2)
+		push_slot()
+		load_slot(cursor_slot)
 		int element_size = type_get_size(element_type)
-		if (element_size > 1):
-			imul_eax_int32(element_size)
-		pop_ebx()
-		stack_pos = stack_pos - 1
+		if (element_size > 1): imul_eax_int32(element_size)
+		pop_ebx_slot()
 		alu_add()
 		extracted_type = promote(element_type)
-	if (extracted_type != -1):
-		coerce(loop_var_type, extracted_type)
+	if (extracted_type != -1): coerce(loop_var_type, extracted_type)
 	store_stack_var((stack_pos - for_var) << word_size_log2)
 
 	if (value_var != 0):
@@ -516,15 +451,13 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	# While the body parses, 'return' (grammar/statement.w) must know
 	# about this loop's live resource so it can free it before leaving
 	# the function; the record is popped once the body is done
-	if (free_fn != 0):
-		for_cleanup_push(free_fn, container_slot)
+	if (free_fn != 0): for_cleanup_push(free_fn, container_slot)
 
 	/* ':' scoping + child scope statements */
 	enclosing_tab_level = for_tab_level
 	statement()
 
-	if (free_fn != 0):
-		for_cleanup_truncate(for_cleanup_count() - 1)
+	if (free_fn != 0): for_cleanup_truncate(for_cleanup_count() - 1)
 
 	# step (continue lands here): cursor = next_fn(container, cursor),
 	# or an in-place index increment
@@ -532,8 +465,7 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	if (next_fn != 0):
 		for_iter_call(next_fn, container_slot, cursor_slot)
 		store_stack_var((stack_pos - cursor_slot) << word_size_log2)
-	else:
-		inc_dword_esp_plus((stack_pos - cursor_slot) << word_size_log2)
+	else: inc_dword_esp_plus((stack_pos - cursor_slot) << word_size_log2)
 
 	/* jmp back to condition */
 	be_br(h_top)
@@ -542,34 +474,26 @@ void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	# Both exit edges (done and break) land here: release the container
 	# before falling through
 	be_ctrl_end(loop_break_chain)
-	if (free_fn != 0):
-		for_iter_call(free_fn, container_slot, 0)
+	if (free_fn != 0): for_iter_call(free_fn, container_slot, 0)
 
-	loop_break_chain = outer_break
-	loop_continue_chain = outer_continue
-	loop_stack_pos = outer_stack
-	break_in_switch = outer_in_switch
-	loop_depth = loop_depth - 1
+	loop_leave(outer)
 
 	# Discard the hidden container and cursor slots (the loop variable stays)
-	be_pop(2)
-	stack_pos = stack_pos - 2
+	drop_slots(2)
 
 
 # value_var is 0 for the one-variable form; otherwise it anchors the
 # stack slot of the value loop variable in "for K key, V value in map".
 void for_hash_container_loop(int for_var, int for_tab_level, int loop_var_type, int container_type, int value_var, int value_var_type):
 	int key_type = type_set_key_type(container_type)
-	if (type_is_map(container_type)):
-		key_type = type_map_key_type(container_type)
+	if (type_is_map(container_type)): key_type = type_map_key_type(container_type)
 	if (types_compatible_with_expression(loop_var_type, key_type) == 0):
 		warn_type_mismatch(c"for loop variable", loop_var_type, key_type)
 
 	char* value_call = c"__w_map_iter_value"
 	int loop_value_type = -1
 	if (value_var != 0):
-		if (type_is_map(container_type) == 0):
-			error(c"sets have no values: use one loop variable")
+		if (type_is_map(container_type) == 0): error(c"sets have no values: use one loop variable")
 		loop_value_type = type_map_value_type(container_type)
 		# Struct values cannot fit the word-sized loop variable; yield
 		# each stored value's address instead: for K k, point* p in m
@@ -660,12 +584,10 @@ void for_string_loop(int for_var, int for_tab_level, int loop_var_type):
 char* for_infer_name(char* msg):
 	int c0 = token[0]
 	int is_ident = is_ident_start_byte(c0)
-	if (is_ident == 0):
-		error(msg)
+	if (is_ident == 0): error(msg)
 	char* name = strclone(token)
 	get_token()
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	return name
 
 
@@ -687,19 +609,15 @@ void for_infer_declare(char* name, int slot, int type):
 # container yields its value accessor's declared return type when one
 # is in scope; otherwise int (for_iter_require reports the real error).
 int for_infer_var_type(int container_type):
-	if (type_is_map(container_type)):
-		return type_map_key_type(container_type)
-	if (type_is_set(container_type)):
-		return type_set_key_type(container_type)
+	if (type_is_map(container_type)): return type_map_key_type(container_type)
+	if (type_is_set(container_type)): return type_set_key_type(container_type)
 	if (type_is_list(container_type)):
 		int element_type = type_list_element_type(container_type)
-		if (type_num_args(element_type) > 0):
-			return type_get_next_pointer(element_type)
+		if (type_num_args(element_type) > 0): return type_get_next_pointer(element_type)
 		return element_type
 	if (type_is_slice(container_type)):
 		return type_unqualified(type_get_element_type(container_type))
-	if (type_is_string(container_type)):
-		return type_lookup(c"int")
+	if (type_is_string(container_type)): return type_lookup(c"int")
 	if (type_get_pointer_level(container_type) == 1):
 		if (for_iter_generic_split(type_get_name(container_type)) >= 0):
 			return for_iter_generic_value_type(container_type)
@@ -707,8 +625,7 @@ int for_infer_var_type(int container_type):
 		int symbol = sym_lookup(value_name)
 		free(value_name)
 		if (symbol >= 0):
-			if (load_int(table + symbol + 10) == 2):
-				return load_int(table + symbol + 6)
+			if (load_int(table + symbol + 10) == 2): return load_int(table + symbol + 6)
 	return type_lookup(c"int")
 
 
@@ -740,16 +657,13 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	if (is_enumerate):
 		expect(c")")
 		if (type_is_list(container_type) == 0):
-			diag_part(c"enumerate requires a list, got '")
-			print_error_type(container_type)
-			error(c"'")
+			error_type(c"enumerate requires a list, got '", container_type, c"'")
 		if (value_var == 0):
 			error(c"enumerate requires two loop variables: for i, x in enumerate(l)")
 	if (infer_name != 0):
 		loop_var_type = for_infer_var_type(container_type)
 		# Two-variable list iteration binds the element index first
-		if (type_is_list(container_type) && (value_var != 0)):
-			loop_var_type = type_lookup(c"int")
+		if (type_is_list(container_type) && (value_var != 0)): loop_var_type = type_lookup(c"int")
 		for_infer_declare(infer_name, for_var, loop_var_type)
 	if (infer_name2 != 0):
 		int inferred_value_type = type_lookup(c"int")
@@ -773,8 +687,7 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	if (type_is_list(container_type)):
 		for_list_loop(for_var, for_tab_level, loop_var_type, container_type, value_var, value_var_type)
 		return;
-	if (value_var != 0):
-		error(c"only maps and lists support two loop variables")
+	if (value_var != 0): error(c"only maps and lists support two loop variables")
 	if (type_is_slice(container_type)):
 		for_slice_loop(for_var, for_tab_level, loop_var_type, container_type)
 		return;
@@ -789,8 +702,7 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 	# suspended generator's stack. 'return' (and '?') bypass those edges;
 	# they free through the for_cleanup registry above instead.
 	char* free_name = 0
-	if (strcmp(container_name, c"generator") == 0):
-		free_name = c"gen_free"
+	if (strcmp(container_name, c"generator") == 0): free_name = c"gen_free"
 	char* begin_name = 0
 	char* done_name = 0
 	char* next_name = 0
@@ -827,8 +739,7 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 
 
 int for_statement():
-	if (accept(c"for") == 0):
-		return 0
+	if (accept(c"for") == 0): return 0
 
 	int for_tab_level = tab_level
 
@@ -843,8 +754,7 @@ int for_statement():
 		# from the range/container (docs/projects/golf_ergonomics.md)
 		infer_name = for_infer_name(c"type not found in for_statement loop variable")
 		type = type_lookup(c"int")
-	else if (type_stack_words(type) != 1):
-		error(c"for loop variable must be a word-sized type")
+	else if (type_stack_words(type) != 1): error(c"for loop variable must be a word-sized type")
 	int for_var = stack_pos
 
 	# Optional second loop variable: for K key, V value in map
@@ -864,11 +774,9 @@ int for_statement():
 
 	expect(c"in")
 	if (accept(c"range")):
-		if (value_var != 0):
-			error(c"range iteration takes one loop variable")
+		if (value_var != 0): error(c"range iteration takes one loop variable")
 		# An inferred range loop variable is always int
-		if (infer_name != 0):
-			for_infer_declare(infer_name, for_var, type_lookup(c"int"))
+		if (infer_name != 0): for_infer_declare(infer_name, for_var, type_lookup(c"int"))
 		for_range_loop(for_var, for_tab_level)
 	else:
 		for_container_loop(for_var, for_tab_level, type, value_var, value_type, infer_name, infer_name2)

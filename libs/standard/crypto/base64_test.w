@@ -3,13 +3,6 @@ import lib.testing
 import libs.standard.crypto.base64
 
 
-void assert_bytes_equal(char* want, char* got, int len):
-	int i = 0
-	while (i < len):
-		assert_equal(want[i] & 255, got[i] & 255)
-		i = i + 1
-
-
 # One encode + decode round-trip against a known text vector.
 void check_base64_vector(char* plain, char* encoded):
 	int plain_len = strlen(plain)
@@ -51,10 +44,7 @@ void test_base64_rfc4648_vectors():
 void test_base64_binary_roundtrip():
 	int n = 256
 	char* data = malloc(n)
-	int i = 0
-	while (i < n):
-		data[i] = i & 255
-		i = i + 1
+	for i in range(n): data[i] = i & 255
 	char* encoded = base64_encode(data, n)
 	assert_equal(base64_encoded_length(n), strlen(encoded))
 	int decoded_len = 0
@@ -146,10 +136,7 @@ void test_hex_decode_both_cases():
 void test_hex_binary_roundtrip():
 	int n = 256
 	char* data = malloc(n)
-	int i = 0
-	while (i < n):
-		data[i] = i & 255
-		i = i + 1
+	for i in range(n): data[i] = i & 255
 	char* encoded = hex_encode(data, n)
 	assert_equal(2 * n, strlen(encoded))
 	int decoded_len = 0

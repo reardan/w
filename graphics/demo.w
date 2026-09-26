@@ -21,12 +21,10 @@ int main(int argc, int argv):
 	args_init(argc, argv)
 	int max_frames = 0
 	char* frames_value = args_value(c"frames")
-	if (frames_value != 0):
-		max_frames = atoi(frames_value)
+	if (frames_value != 0): max_frames = atoi(frames_value)
 
 	gfx_window* win = gfx_window_open(c"W graphics demo", 640, 480)
-	if (win == 0):
-		return 1
+	if (win == 0): return 1
 
 	# Shader bodies valid as both GLSL 130 (GLX) and 150 (Mac core
 	# profile); the backend's gfx_shader_header() picks the version line.
@@ -75,12 +73,10 @@ int main(int argc, int argv):
 
 	while (gfx_window_poll(win)):
 		angle = angle + 0.02
-		if (angle > gfx_two_pi()):
-			angle = angle - gfx_two_pi()
+		if (angle > gfx_two_pi()): angle = angle - gfx_two_pi()
 		# Keep the triangle round on non-square windows.
 		float32 aspect = 1.0
-		if (win.height > 0):
-			aspect = cast(float32, win.width) / cast(float32, win.height)
+		if (win.height > 0): aspect = cast(float32, win.width) / cast(float32, win.height)
 		# Aspect correction applies after the rotation so the triangle
 		# keeps its shape while spinning: mvp = S(1/aspect) * R(angle).
 		mat4 aspect_scale = mat4_scale(mat4_identity(), vec3_new(1.0 / aspect, 1.0, 1.0))
@@ -94,8 +90,7 @@ int main(int argc, int argv):
 		sleep_ms(16)
 
 		frame = frame + 1
-		if ((max_frames > 0) && (frame >= max_frames)):
-			break
+		if ((max_frames > 0) && (frame >= max_frames)): break
 
 	gfx_window_destroy(win)
 	return 0

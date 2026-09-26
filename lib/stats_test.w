@@ -5,18 +5,6 @@ import lib.container
 import lib.stats
 
 
-# Same tolerance as lib/fmath_test.w: well within what float32 callers
-# need, loose enough to absorb iteration truncation.
-void assert_near(float want, float got):
-	if (fabs(want - got) > 0.0001):
-		print2(c"Assertion failed. wanted float(")
-		print2(ftoa(want))
-		print2(c") got float(")
-		print2(ftoa(got))
-		println2(c")")
-		exit(1)
-
-
 void assert_float_bits(int want, float got):
 	assert_equal_hex(want, float_bits(got))
 
@@ -137,10 +125,8 @@ void test_acc_merge():
 	int i = 0
 	while (i < xs.length):
 		whole.add(xs[i])
-		if (i < 3):
-			left.add(xs[i])
-		else:
-			right.add(xs[i])
+		if (i < 3): left.add(xs[i])
+		else: right.add(xs[i])
 		i = i + 1
 	left.merge(&right)
 	assert_equal(whole.count, left.count)
@@ -256,10 +242,7 @@ void test_mode_int():
 
 	# enough distinct keys to force map growth past the initial capacity
 	list[int] wide = new list[int]
-	int i = 0
-	while (i < 100):
-		wide.push(i % 37)
-		i = i + 1
+	for i in range(100): wide.push(i % 37)
 	# 0 through 25 appear three times, 26 through 36 twice: 0 is first
 	assert_equal(0, stats_mode_int(wide))
 	wide.push(17)

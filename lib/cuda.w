@@ -69,6 +69,7 @@ headers hide the renaming; see docs/projects/cuda.md H1).
 import lib.lib
 import lib.env
 import code_generator.integer
+import lib.mem
 
 c_lib "libcuda.so.1"
 
@@ -145,10 +146,8 @@ char* __w_gpu_cell():
 char* __w_gpu_error_text(int code, int want_name, char* fallback):
 	char* cell = __w_gpu_cell()
 	int err = 0
-	if (want_name):
-		err = cuGetErrorName(code, cell)
-	else:
-		err = cuGetErrorString(code, cell)
+	if (want_name): err = cuGetErrorName(code, cell)
+	else: err = cuGetErrorString(code, cell)
 	char* text = cast(char*, load_i(cell, 8))
 	free(cell)
 	if ((err != 0) || (text == 0)):
@@ -200,21 +199,17 @@ void __w_gpu_die(int err, char* what):
 
 
 void __w_gpu_check(int err, char* what):
-	if (__w_gpu_note(err, what) != 0):
-		__w_gpu_die(err, what)
+	if (__w_gpu_note(err, what) != 0): __w_gpu_die(err, what)
 
 
 # cuInit + device count, run once. Returns the probe's CUresult (0 =
 # driver usable, possibly with zero devices).
 int __w_gpu_driver():
-	if (__w_gpu_driver_state == 1):
-		return 0
-	if (__w_gpu_driver_state == 2):
-		return __w_gpu_note(__w_gpu_driver_err, c"cuInit")
+	if (__w_gpu_driver_state == 1): return 0
+	if (__w_gpu_driver_state == 2): return __w_gpu_note(__w_gpu_driver_err, c"cuInit")
 	char* cell = __w_gpu_cell()
 	int err = cuInit(0)
-	if (err == 0):
-		err = cuDeviceGetCount(cell)
+	if (err == 0): err = cuDeviceGetCount(cell)
 	if (err != 0):
 		free(cell)
 		__w_gpu_driver_state = 2
@@ -226,11 +221,9 @@ int __w_gpu_driver():
 	int bytes = __w_gpu_device_total * 8 + 8
 	__w_gpu_ctxs = malloc(bytes)
 	__w_gpu_modules = malloc(bytes)
-	int i = 0
-	while (i < bytes):
+	for i in range(0, bytes, 8):
 		save_i(__w_gpu_ctxs + i, 0, 8)
 		save_i(__w_gpu_modules + i, 0, 8)
-		i = i + 8
 	__w_gpu_driver_state = 1
 	return 0
 
@@ -238,8 +231,7 @@ int __w_gpu_driver():
 # Number of visible CUDA devices; 0 when the driver has none (e.g.
 # CUDA_VISIBLE_DEVICES="") or fails to initialize. Never exits.
 int gpu_device_count():
-	if (__w_gpu_driver() != 0):
-		return 0
+	if (__w_gpu_driver() != 0): return 0
 	return __w_gpu_device_total
 
 
@@ -261,8 +253,7 @@ void __w_gpu_print_range(int n):
 int __w_gpu_is_ordinal(char* s):
 	int i = 0
 	while (s[i] != 0):
-		if ((s[i] < '0') || (s[i] > '9')):
-			return 0
+		if ((s[i] < '0') || (s[i] > '9')): return 0
 		i = i + 1
 	return (i > 0) && (i <= 9)
 
@@ -275,10 +266,8 @@ int __w_gpu_choose(int loud):
 	int err = __w_gpu_driver()
 	if (err != 0):
 		return err
-	if (__w_gpu_device_chosen):
-		return 0
-	if (__w_gpu_device_total == 0):
-		return __w_gpu_note(CUDA_ERROR_NO_DEVICE, c"cuDeviceGetCount")
+	if (__w_gpu_device_chosen): return 0
+	if (__w_gpu_device_total == 0): return __w_gpu_note(CUDA_ERROR_NO_DEVICE, c"cuDeviceGetCount")
 	int n = 0
 	char* env = env_get(c"W_GPU_DEVICE")
 	if ((env != 0) && (env[0] != 0)):
@@ -324,19 +313,14 @@ int __w_gpu_load_module(char* cell, char* module_text):
 	int err = 1
 	if (n > 0):
 		char* image = malloc(n)
-		int i = 0
-		while (i < n):
-			image[i] = blob[8 + i]
-			i = i + 1
+		mem_copy(image, blob + 8, n)
 		err = cuModuleLoadData(cell, image)
 		free(image)
-		if (err == 0):
-			__w_gpu_module_source = 2
+		if (err == 0): __w_gpu_module_source = 2
 	if (err != 0):
 		save_i(cell, 0, 8)
 		err = __w_gpu_note(cuModuleLoadData(cell, module_text), c"cuModuleLoadData")
-		if (err == 0):
-			__w_gpu_module_source = 1
+		if (err == 0): __w_gpu_module_source = 1
 	return err
 
 
@@ -349,8 +333,7 @@ int gpu_module_source():
 # kernels (explicit-memory use only) has an empty module: skip the
 # load — nothing could be launched anyway. Returns a CUresult.
 int __w_gpu_try_init_loud(int loud):
-	if (__w_gpu_ready):
-		return 0
+	if (__w_gpu_ready): return 0
 	int err = __w_gpu_choose(loud)
 	if (err != 0):
 		return err
@@ -358,8 +341,7 @@ int __w_gpu_try_init_loud(int loud):
 	int ctx = load_i(ctx_slot, 8)
 	if (ctx != 0):
 		err = __w_gpu_note(cuCtxSetCurrent(ctx), c"cuCtxSetCurrent")
-		if (err == 0):
-			__w_gpu_ready = 1
+		if (err == 0): __w_gpu_ready = 1
 		return err
 	char* cell = __w_gpu_cell()
 	err = __w_gpu_note(cuDeviceGet(cell, __w_gpu_device), c"cuDeviceGet")
@@ -373,11 +355,9 @@ int __w_gpu_try_init_loud(int loud):
 		if (module_text[0] != 0):
 			save_i(cell, 0, 8)
 			err = __w_gpu_load_module(cell, module_text)
-			if (err == 0):
-				save_i(__w_gpu_modules + __w_gpu_device * 8, load_i(cell, 8), 8)
+			if (err == 0): save_i(__w_gpu_modules + __w_gpu_device * 8, load_i(cell, 8), 8)
 	free(cell)
-	if (err == 0):
-		__w_gpu_ready = 1
+	if (err == 0): __w_gpu_ready = 1
 	return err
 
 
@@ -387,11 +367,9 @@ int __w_gpu_try_init():
 
 # Fatal init for the plain API.
 void __w_gpu_init():
-	if (__w_gpu_ready):
-		return;
+	if (__w_gpu_ready): return;
 	int err = __w_gpu_try_init_loud(1)
-	if (err != 0):
-		__w_gpu_die(err, __w_gpu_last_what)
+	if (err != 0): __w_gpu_die(err, __w_gpu_last_what)
 
 
 # Select device n (0-based) for all later GPU work; see the module
@@ -404,8 +382,7 @@ int gpu_try_set_device(int n):
 		return err
 	if ((n < 0) || (n >= __w_gpu_device_total)):
 		return __w_gpu_note(CUDA_ERROR_INVALID_DEVICE, c"gpu_set_device")
-	if ((__w_gpu_device_chosen == 0) || (__w_gpu_device != n)):
-		__w_gpu_ready = 0
+	if ((__w_gpu_device_chosen == 0) || (__w_gpu_device != n)): __w_gpu_ready = 0
 	__w_gpu_device = n
 	__w_gpu_device_chosen = 1
 	return 0
@@ -419,15 +396,13 @@ void gpu_set_device(int n):
 		print_error(c"): ")
 		__w_gpu_print_range(n)
 		exit(1)
-	if (err != 0):
-		__w_gpu_die(err, c"gpu_set_device")
+	if (err != 0): __w_gpu_die(err, c"gpu_set_device")
 
 
 # The current device ordinal (resolving W_GPU_DEVICE if nothing has
 # been selected yet), or -1 when no device is usable. Never exits.
 int gpu_get_device():
-	if (__w_gpu_choose(0) != 0):
-		return 0 - 1
+	if (__w_gpu_choose(0) != 0): return 0 - 1
 	return __w_gpu_device
 
 
@@ -466,10 +441,7 @@ void __w_gpu_launch_raw(char* name, int grid, int block, char* vals, int count):
 	__w_gpu_init()
 	int f = __w_gpu_kernel_handle(name)
 	char* params = malloc(count * 8 + 8)
-	int i = 0
-	while (i < count):
-		save_ptr(params + i * 8, cast(int, vals) + (count - 1 - i) * 8)
-		i = i + 1
+	for i in range(count): save_ptr(params + i * 8, cast(int, vals) + (count - 1 - i) * 8)
 	__w_gpu_check(cuLaunchKernel(f, grid, 1, 1, block, 1, 1, 0, 0, params, 0), c"cuLaunchKernel")
 	free(params)
 
@@ -477,8 +449,7 @@ void __w_gpu_launch_raw(char* name, int grid, int block, char* vals, int count):
 # The 'gpu for' entry point: one thread per iteration, 256-thread
 # blocks, grid sized to cover n (the kernel carries the i < n guard).
 void __w_gpu_launch(char* name, int n, char* vals, int count):
-	if (n <= 0):
-		return;
+	if (n <= 0): return;
 	int block = 256
 	int grid = (n + block - 1) / block
 	__w_gpu_launch_raw(name, grid, block, vals, count)
@@ -501,8 +472,7 @@ int gpu_available():
 		__w_gpu_avail_state = 2
 		if (__w_gpu_choose(1) == 0):
 			char* dev = __w_gpu_cell()
-			if (cuDeviceGet(dev, __w_gpu_device) == 0):
-				__w_gpu_avail_state = 1
+			if (cuDeviceGet(dev, __w_gpu_device) == 0): __w_gpu_avail_state = 1
 			free(dev)
 	return __w_gpu_avail_state == 1
 
@@ -510,28 +480,24 @@ int gpu_available():
 # Managed allocation, or 0 on failure (the CUresult goes to
 # gpu_last_error). Never exits.
 char* gpu_try_alloc(int bytes):
-	if (__w_gpu_try_init() != 0):
-		return 0
+	if (__w_gpu_try_init() != 0): return 0
 	char* cell = __w_gpu_cell()
 	int err = __w_gpu_note(cuMemAllocManaged(cell, bytes, 1), c"cuMemAllocManaged")
 	int p = load_i(cell, 8)
 	free(cell)
-	if (err != 0):
-		return 0
+	if (err != 0): return 0
 	return cast(char*, p)
 
 
 # Device-only allocation, or 0 on failure (see gpu_device_alloc).
 # Never exits.
 char* gpu_try_device_alloc(int bytes):
-	if (__w_gpu_try_init() != 0):
-		return 0
+	if (__w_gpu_try_init() != 0): return 0
 	char* cell = __w_gpu_cell()
 	int err = __w_gpu_note(cuMemAlloc_v2(cell, bytes), c"cuMemAlloc")
 	int p = load_i(cell, 8)
 	free(cell)
-	if (err != 0):
-		return 0
+	if (err != 0): return 0
 	return cast(char*, p)
 
 

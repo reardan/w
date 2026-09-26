@@ -46,15 +46,11 @@ ui_rect ui_popover_place(ui_rect anchor, float32 w, float32 h, float32 vw, float
 		float32 above = anchor.y - gap - h
 		# Flip only if above is genuinely better: near the top of a short
 		# viewport both overflow, and below is the friendlier of the two.
-		if (above >= 0.0):
-			y = above
-		else if (anchor.y > vh - (anchor.y + anchor.h)):
-			y = above
+		if (above >= 0.0): y = above
+		else if (anchor.y > vh - (anchor.y + anchor.h)): y = above
 	float32 x = anchor.x
-	if (x + w > vw):
-		x = vw - w
-	if (x < 0.0):
-		x = 0.0
+	if (x + w > vw): x = vw - w
+	if (x < 0.0): x = 0.0
 	return ui_rect_new(x, y, w, h)
 
 
@@ -75,8 +71,7 @@ int ui_popover_begin(ui_context* ctx, int id, ui_rect anchor, float32 w, float32
 	# surface — consumed, so nothing behind it also sees the press.
 	int i = 0
 	while (i < ctx.char_count):
-		if (ctx.chars[i] == 27):
-			open[0] = 0
+		if (ctx.chars[i] == 27): open[0] = 0
 		i = i + 1
 	if (ctx.input.mouse_pressed):
 		float32 px = cast(float32, ctx.input.press_x)

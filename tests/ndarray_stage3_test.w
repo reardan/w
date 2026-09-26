@@ -123,14 +123,12 @@ void test_axpy_into_par_bit_identical():
 # stay inside [r0, r1) -- the doc's "no concurrent writers to the same
 # element" contract.
 void nd3_jacobi_rows(ndf* dst, ndf* src, int r0, int r1):
-	int i = r0
-	while (i < r1):
+	for i in range(r0, r1):
 		int j = 1
 		while (j < src.n1 - 1):
 			float v = 0.25 * (ndf_at2(src, i - 1, j) + ndf_at2(src, i + 1, j) + ndf_at2(src, i, j - 1) + ndf_at2(src, i, j + 1))
 			ndf_set2(dst, i, j, v)
 			j = j + 1
-		i = i + 1
 
 
 struct nd3_jacobi_ctx:
@@ -180,10 +178,7 @@ void test_sum_par_two_phase_matches_serial_chunks():
 		int r0 = thread_chunk_offset(11, nthreads, k)
 		int r1 = thread_chunk_offset(11, nthreads, k + 1)
 		float acc = 0.0
-		int i = r0 * a.s0
-		while (i < r1 * a.s0):
-			acc = acc + a.data[i]
-			i = i + 1
+		for i in range(r0 * a.s0, r1 * a.s0): acc = acc + a.data[i]
 		total = total + acc
 		k = k + 1
 	assert_feq_bits(total, ndf_sum_par(&a, nthreads))

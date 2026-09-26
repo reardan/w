@@ -103,10 +103,8 @@ void test_read_positions():
 	m[2, 3] = 7.25
 	m[1, 2] = 6.0
 	# condition, call argument, arithmetic operand
-	if (m[2, 3] > 7.0):
-		assert_feq(3.625, half(m[2, 3]))
-	else:
-		assert1(0)
+	if (m[2, 3] > 7.0): assert_feq(3.625, half(m[2, 3]))
+	else: assert1(0)
 	float sum = m[1, 2] + m[2, 3] * 2.0
 	assert_feq(20.5, sum)
 	# chained assignment yields the stored value, like plain '='

@@ -4,8 +4,7 @@
 # fields), so the field indices match that twin exactly.
 
 
-int STATFS_BUF_SIZE():
-	return 128
+const int STATFS_BUF_SIZE = 128
 
 
 # Fill out[0..5] with bsize, blocks, bfree, bavail, files, ffree for

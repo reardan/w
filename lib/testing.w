@@ -1,6 +1,21 @@
 import lib.lib
 import lib.assert
 import lib.crash
+import lib.format
+
+
+# Floats within 0.0001 of each other.
+void assert_near(float want, float got):
+	float diff = want - got
+	if (diff < 0.0): diff = 0.0 - diff
+	if (diff > 0.0001):
+		print2(c"Assertion failed. wanted float(")
+		print2(ftoa(want))
+		print2(c") got float(")
+		print2(ftoa(got))
+		println2(c")")
+		print_stack_trace()
+		exit(1)
 
 
 # Synthesized by the compiler at the end of every batch compilation that

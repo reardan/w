@@ -37,8 +37,7 @@ void asm_text_fail(char* text):
 
 
 asm_buffer* asm_text_reset():
-	if (cast(int, asm_text_buffer) == 0):
-		asm_text_buffer = asm_buffer_new()
+	if (cast(int, asm_text_buffer) == 0): asm_text_buffer = asm_buffer_new()
 	asm_text_buffer.length = 0
 	return asm_text_buffer
 
@@ -47,13 +46,10 @@ asm_buffer* asm_text_reset():
 void asm_text_raw_bytes(char* text, asm_buffer* b):
 	int i = 3
 	while (text[i] != 0):
-		while (text[i] == ' ' || text[i] == ','):
-			i = i + 1
-		if (text[i] == 0):
-			return
+		while (text[i] == ' ' || text[i] == ','): i = i + 1
+		if (text[i] == 0): return
 		int start = i
-		while (text[i] != 0 && text[i] != ',' && text[i] != ' '):
-			i = i + 1
+		while (text[i] != 0 && text[i] != ',' && text[i] != ' '): i = i + 1
 		char* tok = malloc(i - start + 1)
 		int j = 0
 		while (start + j < i):
@@ -68,35 +64,57 @@ void asm_text_raw_bytes(char* text, asm_buffer* b):
 # and emit its bytes.
 void asm_text_x86_family(int arch, char* text):
 	asm_buffer* b = asm_text_reset()
-	if (starts_with(text, c"db ")):
-		asm_text_raw_bytes(text, b)
+	if (starts_with(text, c"db ")): asm_text_raw_bytes(text, b)
 	else:
 		asm_insn insn
-		if (asm_x86_parse(text, arch, &insn) == 0):
-			asm_text_fail(text)
-		if (asm_x86_encode(b, &insn) <= 0):
-			asm_text_fail(text)
-	if (b.length == 0):
-		asm_text_fail(text)
+		if (asm_x86_parse(text, arch, &insn) == 0): asm_text_fail(text)
+		if (asm_x86_encode(b, &insn) <= 0): asm_text_fail(text)
+	if (b.length == 0): asm_text_fail(text)
 	emit(b.length, b.data)
-
-
-# One 32-bit x86 instruction.
-void x86_asm(char* text):
-	asm_text_x86_family(ASM_ARCH_X86(), text)
-
-
-# One x86-64 instruction.
-void x64_asm(char* text):
-	asm_text_x86_family(ASM_ARCH_X64(), text)
 
 
 # One A64 instruction (a little-endian 32-bit word).
-void a64_asm(char* text):
+void asm_text_a64(char* text):
 	asm_buffer* b = asm_text_reset()
 	asm_insn insn
-	if (asm_arm64_parse(text, &insn) == 0):
-		asm_text_fail(text)
-	if (asm_arm64_encode(b, &insn) != 4):
-		asm_text_fail(text)
+	if (asm_arm64_parse(text, &insn) == 0): asm_text_fail(text)
+	if (asm_arm64_encode(b, &insn) != 4): asm_text_fail(text)
 	emit(b.length, b.data)
+
+
+# Assemble a stub line of one or more instructions separated by ';'
+# for arch (ASM_ARCH_X86(), ASM_ARCH_X64() or ASM_ARCH_ARM64()).
+void asm_text_lines(int arch, char* text):
+	int start = 0
+	int i = 0
+	while (1):
+		if ((text[i] == ';') || (text[i] == 0)):
+			while (text[start] == ' '): start = start + 1
+			char* one = malloc(i - start + 1)
+			int j = 0
+			while (start + j < i):
+				one[j] = text[start + j]
+				j = j + 1
+			while ((j > 0) && (one[j - 1] == ' ')): j = j - 1
+			one[j] = 0
+			if (arch == ASM_ARCH_ARM64): asm_text_a64(one)
+			else: asm_text_x86_family(arch, one)
+			free(one)
+			if (text[i] == 0): return
+			start = i + 1
+		i = i + 1
+
+
+# 32-bit x86 instructions ('mov eax,1; ret').
+void x86_asm(char* text):
+	asm_text_lines(ASM_ARCH_X86, text)
+
+
+# x86-64 instructions.
+void x64_asm(char* text):
+	asm_text_lines(ASM_ARCH_X64, text)
+
+
+# A64 instructions.
+void a64_asm(char* text):
+	asm_text_lines(ASM_ARCH_ARM64, text)

@@ -281,8 +281,7 @@ void test_map_float_add_seen_by_iteration_and_snapshots():
 	assert_float_bits(0x3fc00000, vals[0])
 	assert_float_bits(0x40200000, vals[1])
 	float sum = 0.0
-	for char* k, float v in m:
-		sum = sum + v
+	for char* k, float v in m: sum = sum + v
 	assert_float_bits(0x40800000, sum)
 
 

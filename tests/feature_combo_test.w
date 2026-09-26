@@ -28,8 +28,7 @@ T biggest[T](T a, T b):
 
 
 wresult[int]* lookup(int key):
-	if (key < 0):
-		return result_new_error[int](-7)
+	if (key < 0): return result_new_error[int](-7)
 	return result_new_ok[int](key)
 
 
@@ -39,10 +38,8 @@ wresult[int]* score(int key):
 	int value = lookup(key)?
 	int total = 0
 	switch (biggest(value, 2)):
-		case 2:
-			total += 20
-		case 3, 4:
-			total += 40
+		case 2: total += 20
+		case 3, 4: total += 40
 		default:
 			total += value
 			total *= 2
@@ -85,12 +82,9 @@ int mixed_loop():
 	int total = 0
 	for int i in range(0, 4):
 		switch (i):
-			case 0, 1:
-				total += biggest(i, 1)
-			case 2:
-				continue
-			default:
-				total <<= 1
+			case 0, 1: total += biggest(i, 1)
+			case 2: continue
+			default: total <<= 1
 	return total
 
 

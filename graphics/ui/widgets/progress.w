@@ -11,10 +11,8 @@ import graphics.ui.widgets.layout
 
 # Read-only progress bar; fraction clamps to 0..1.
 void ui_progress(ui_context* ctx, float32 w, float32 fraction):
-	if (fraction < 0.0):
-		fraction = 0.0
-	if (fraction > 1.0):
-		fraction = 1.0
+	if (fraction < 0.0): fraction = 0.0
+	if (fraction > 1.0): fraction = 1.0
 	ui_rect r = ui_layout_next(ctx, w, cast(float32, ctx.theme.widget_height))
 	# A thin fully-rounded track with a matching accent fill.
 	float32 bar_h = 6.0

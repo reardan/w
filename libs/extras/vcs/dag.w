@@ -64,13 +64,14 @@ reachability-query loop quadratic; one malloc'd scratch buffer, reused
 forever, removes that allocation from the hot path entirely.
 */
 import lib.lib
+import lib.hex
 import lib.assert
 import structures.bitset
+import lib.mem
 
 
 # Every id dag.w accepts or returns is exactly this many bytes.
-int DAG_ID_SIZE():
-	return 32
+const int DAG_ID_SIZE = 32
 
 
 struct dag_node:
@@ -87,9 +88,7 @@ struct dag:
 
 
 dag* dag_new():
-	dag* d = new dag()
-	d.by_hex = new map[char*, dag_node*]
-	d.by_seq = new list[dag_node*]
+	dag* d = new dag(new map[char*, dag_node*], new list[dag_node*])
 	return d
 
 
@@ -100,12 +99,7 @@ int dag_count(dag* d):
 
 # Byte-for-byte equality of two DAG_ID_SIZE() ids.
 int dag_id_equal(char* a, char* b):
-	int i = 0
-	while (i < DAG_ID_SIZE()):
-		if (a[i] != b[i]):
-			return 0
-		i = i + 1
-	return 1
+	return mem_eq(a, b, DAG_ID_SIZE)
 
 
 # Lazily-allocated, reused-forever scratch buffer for dag_hex_key: see
@@ -118,24 +112,19 @@ char* dag_hex_scratch
 # valid only until the next dag_hex_key call (the map clones it if it is
 # used to insert); never free() it and never hold onto it.
 char* dag_hex_key(char* id):
-	if (dag_hex_scratch == 0):
-		dag_hex_scratch = malloc(DAG_ID_SIZE() * 2 + 1)
-	char* digits = c"0123456789abcdef"
+	if (dag_hex_scratch == 0): dag_hex_scratch = malloc(DAG_ID_SIZE * 2 + 1)
 	int i = 0
-	while (i < DAG_ID_SIZE()):
-		int b = id[i] & 255
-		dag_hex_scratch[i * 2] = digits[(b >> 4) & 15]
-		dag_hex_scratch[i * 2 + 1] = digits[b & 15]
+	while (i < DAG_ID_SIZE):
+		hex_put_byte(&dag_hex_scratch[i * 2], id[i] & 255)
 		i = i + 1
-	dag_hex_scratch[DAG_ID_SIZE() * 2] = 0
+	dag_hex_scratch[DAG_ID_SIZE * 2] = 0
 	return dag_hex_scratch
 
 
 dag_node* dag_find_node(dag* d, char* id):
 	char* key = dag_hex_key(id)
 	dag_node* result = 0
-	if (key in d.by_hex):
-		result = d.by_hex[key]
+	if (key in d.by_hex): result = d.by_hex[key]
 	return result
 
 
@@ -158,18 +147,14 @@ dag_node* dag_require_node(dag* d, char* id):
 int dag_add_node(dag* d, char* id, list[char*] parent_ids):
 	assert1(dag_find_node(d, id) == 0)
 	dag_node* node = new dag_node()
-	node.id = malloc(DAG_ID_SIZE())
-	int i = 0
-	while (i < DAG_ID_SIZE()):
-		node.id[i] = id[i]
-		i = i + 1
+	node.id = malloc(DAG_ID_SIZE)
+	mem_copy(node.id, id, DAG_ID_SIZE)
 	node.parents = new list[dag_node*]
 	int max_parent_gen = -1
 	for char* pid in parent_ids:
 		dag_node* p = dag_require_node(d, pid)
 		node.parents.push(p)
-		if (p.generation > max_parent_gen):
-			max_parent_gen = p.generation
+		if (p.generation > max_parent_gen): max_parent_gen = p.generation
 	node.generation = max_parent_gen + 1
 	node.seq = d.by_seq.length
 	d.by_seq.push(node)
@@ -193,8 +178,7 @@ int dag_generation(dag* d, char* id):
 list[char*] dag_parent_ids(dag* d, char* id):
 	dag_node* node = dag_require_node(d, id)
 	list[char*] result = new list[char*]
-	for dag_node* p in node.parents:
-		result.push(p.id)
+	for dag_node* p in node.parents: result.push(p.id)
 	return result
 
 
@@ -203,8 +187,7 @@ list[char*] dag_parent_ids(dag* d, char* id):
 # "loading order").
 list[char*] dag_topo_order(dag* d):
 	list[char*] result = new list[char*]
-	for dag_node* n in d.by_seq:
-		result.push(n.id)
+	for dag_node* n in d.by_seq: result.push(n.id)
 	return result
 
 
@@ -236,8 +219,7 @@ list[char*] dag_topo_order_reverse(dag* d):
 int dag_is_ancestor(dag* d, char* ancestor_id, char* descendant_id):
 	dag_node* anc = dag_require_node(d, ancestor_id)
 	dag_node* desc = dag_require_node(d, descendant_id)
-	if (dag_id_equal(anc.id, desc.id)):
-		return 1
+	if (dag_id_equal(anc.id, desc.id)): return 1
 
 	int n = dag_count(d)
 	bitset* visited = bitset_new(n)
@@ -257,8 +239,7 @@ int dag_is_ancestor(dag* d, char* ancestor_id, char* descendant_id):
 			dag_node* p = cur.parents[pi]
 			pi = pi + 1
 			if (p.generation >= anc.generation):
-				if (dag_id_equal(p.id, anc.id)):
-					result = 1
+				if (dag_id_equal(p.id, anc.id)): result = 1
 				else if (bitset_get(visited, p.seq) == 0):
 					bitset_set(visited, p.seq)
 					queue[queue_len] = p
@@ -290,16 +271,12 @@ int dag_mb_seq_cmp(dag_node* a, dag_node* b):
 # result order) is reproducible run to run.
 int dag_mb_pick_next(list[dag_node*] frontier):
 	int best = 0
-	int i = 1
-	while (i < frontier.length):
+	for i in range(1, frontier.length):
 		dag_node* cand = frontier[i]
 		dag_node* cur = frontier[best]
-		if (cand.generation > cur.generation):
-			best = i
+		if (cand.generation > cur.generation): best = i
 		else if (cand.generation == cur.generation):
-			if (cand.seq < cur.seq):
-				best = i
-		i = i + 1
+			if (cand.seq < cur.seq): best = i
 	return best
 
 
@@ -319,10 +296,7 @@ list[char*] dag_merge_base(dag* d, char* a_id, char* b_id):
 
 	int n = dag_count(d)
 	int* flags = malloc(n * __word_size__)
-	int i = 0
-	while (i < n):
-		flags[i] = 0
-		i = i + 1
+	mem_fill(flags, 0, n)
 
 	list[dag_node*] frontier = new list[dag_node*]
 	flags[a.seq] = flags[a.seq] | dag_mb_parent1()
@@ -354,6 +328,5 @@ list[char*] dag_merge_base(dag* d, char* a_id, char* b_id):
 	free(flags)
 	results.sort_by(dag_mb_seq_cmp)
 	list[char*] out = new list[char*]
-	for dag_node* r in results:
-		out.push(r.id)
+	for dag_node* r in results: out.push(r.id)
 	return out

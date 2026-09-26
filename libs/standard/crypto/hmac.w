@@ -3,7 +3,7 @@ HMAC (RFC 2104 / FIPS 198-1) over the whash interface, so the same code
 serves HMAC-SHA-256 and HMAC-SHA-384 — the two MACs the TLS 1.3 key
 schedule (plan 11, issue #195) needs.
 
-	whmac* m = hmac_new(WHASH_SHA256(), key, key_len)
+	whmac* m = hmac_new(WHASH_SHA256, key, key_len)
 	hmac_update(m, data, len)         # any number of times
 	hmac_final(m, out)                # digest_size bytes; non-destructive
 	hmac_reset(m)                     # restart with the same key
@@ -14,6 +14,7 @@ constant time (every byte is always inspected, no early exit).
 */
 import lib.memory
 import libs.standard.crypto.sha2
+import lib.mem
 
 
 struct whmac:
@@ -36,19 +37,11 @@ whmac* hmac_new(int alg, char* key, int key_len):
 	m.opad_key = malloc(m.block_size)
 
 	char* block_key = malloc(m.block_size)
-	int i = 0
-	while (i < m.block_size):
-		block_key[i] = 0
-		i = i + 1
-	if (key_len > m.block_size):
-		whash_oneshot(alg, key, key_len, block_key)
-	else:
-		i = 0
-		while (i < key_len):
-			block_key[i] = key[i]
-			i = i + 1
+	mem_fill(block_key, 0, m.block_size)
+	if (key_len > m.block_size): whash_oneshot(alg, key, key_len, block_key)
+	else: mem_copy(block_key, key, key_len)
 
-	i = 0
+	int i = 0
 	while (i < m.block_size):
 		m.ipad_key[i] = (block_key[i] & 255) ^ 54 /* 0x36 */
 		m.opad_key[i] = (block_key[i] & 255) ^ 92 /* 0x5c */
@@ -75,10 +68,7 @@ void hmac_final(whmac* m, char* out):
 	whash_update(outer, inner_digest, m.digest_size)
 	whash_final(outer, out)
 	whash_free(outer)
-	int i = 0
-	while (i < m.digest_size):
-		inner_digest[i] = 0
-		i = i + 1
+	mem_fill(inner_digest, 0, m.digest_size)
 	free(inner_digest)
 
 
@@ -114,10 +104,6 @@ void hmac_compute(int alg, char* key, int key_len, char* data, int data_len, cha
 # depend on where (or whether) the inputs differ.
 int hmac_equal(char* a, char* b, int len):
 	int diff = 0
-	int i = 0
-	while (i < len):
-		diff = diff | ((a[i] & 255) ^ (b[i] & 255))
-		i = i + 1
-	if (diff == 0):
-		return 1
+	for i in range(len): diff = diff | ((a[i] & 255) ^ (b[i] & 255))
+	if (diff == 0): return 1
 	return 0

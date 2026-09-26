@@ -1,3 +1,4 @@
+const int gfx_event_ring_ints = 320
 /*
 graphics.event: the per-frame input event queue shared by every window
 backend (docs/projects/ui_framework.md §7). The polling fields on
@@ -6,7 +7,7 @@ two key presses) that land in the same poll cycle; widgets that care
 about edges drain gfx_window_next_event instead.
 
 Each backend owns a fixed ring — a flat int32 array of
-gfx_event_ring_ints() slots plus head/tail indices appended to its own
+gfx_event_ring_ints slots plus head/tail indices appended to its own
 gfx_window struct (the struct layouts are already per-backend) — and
 implements the uniform accessor:
 
@@ -83,13 +84,10 @@ struct gfx_event:
 
 
 # Events the ring can hold minus one (tail == head means empty).
-int gfx_event_ring_capacity():
-	return 64
+const int gfx_event_ring_capacity = 64
 
 
 # int32 slots a backend's ring array needs: capacity events x 5 fields.
-int gfx_event_ring_ints():
-	return 320
 
 
 # Append one event. A full ring drops the newest event rather than
@@ -98,8 +96,7 @@ int gfx_event_ring_ints():
 void gfx_event_ring_push(int32* ring, int32* head, int32* tail, int kind, int code, int x, int y, int mods):
 	int slot = tail[0]
 	int next = (slot + 1) & 63
-	if (next == head[0]):
-		return
+	if (next == head[0]): return
 	ring[slot * 5] = kind
 	ring[slot * 5 + 1] = code
 	ring[slot * 5 + 2] = x
@@ -112,8 +109,7 @@ void gfx_event_ring_push(int32* ring, int32* head, int32* tail, int kind, int co
 # the ring is empty.
 int gfx_event_ring_next(int32* ring, int32* head, int32* tail, gfx_event* out):
 	int slot = head[0]
-	if (slot == tail[0]):
-		return 0
+	if (slot == tail[0]): return 0
 	out.kind = ring[slot * 5]
 	out.code = ring[slot * 5 + 1]
 	out.x = ring[slot * 5 + 2]

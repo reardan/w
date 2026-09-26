@@ -1,6 +1,7 @@
 # wbuild: x64
 import lib.testing
 import libs.standard.distributed.clock
+import lib.bytes
 
 
 # ---- vector clocks ----------------------------------------------------------
@@ -168,10 +169,7 @@ void test_lamport_observe_remote_ahead():
 
 void test_lamport_observe_remote_behind():
 	lamport_clock* c = lamport_new()
-	int i = 0
-	while (i < 5):
-		lamport_tick(c)
-		i = i + 1
+	for i in range(5): lamport_tick(c)
 	# t = 5, remote 1 behind: max(5, 1) + 1
 	assert_equal(6, lamport_observe(c, 1))
 	# tie: max(6, 6) + 1
@@ -359,10 +357,7 @@ void test_hlc_counter_overflow_bumps_physical():
 	u64* wall = u64_new_int(100)
 	u64* out = u64_new()
 	hlc_now(h, wall, out)   # l = 100, c = 0
-	int i = 0
-	while (i < 65535):
-		hlc_now(h, wall, out)
-		i = i + 1
+	for i in range(65535): hlc_now(h, wall, out)
 	# counter saturated
 	assert_equal(65535, out.w0)
 	assert_equal(100, hlc_test_physical(out))
@@ -436,14 +431,11 @@ void test_vclock_wire_canonical():
 	char* bb = malloc(size)
 	vclock_save(a, ba)
 	vclock_save(b, bb)
-	int i = 0
-	while (i < size):
-		assert_equal(ba[i] & 255, bb[i] & 255)
-		i = i + 1
+	for i in range(size): assert_equal(ba[i] & 255, bb[i] & 255)
 	# sorted entries: node 2 first, then 5, then 9
-	assert_equal(2, vclock_wire_read_u32(ba + 4))
-	assert_equal(5, vclock_wire_read_u32(ba + 16))
-	assert_equal(9, vclock_wire_read_u32(ba + 28))
+	assert_equal(2, load_le32(ba + 4))
+	assert_equal(5, load_le32(ba + 16))
+	assert_equal(9, load_le32(ba + 28))
 	free(ba)
 	free(bb)
 	vclock_free(a)
@@ -455,7 +447,7 @@ void test_vclock_wire_empty():
 	assert_equal(4, vclock_wire_size(v))
 	char* buf = malloc(4)
 	vclock_save(v, buf)
-	assert_equal(0, vclock_wire_read_u32(buf))
+	assert_equal(0, load_le32(buf))
 	vclock* w = vclock_load(buf)
 	assert_equal(0, vclock_compare(v, w))
 	free(buf)

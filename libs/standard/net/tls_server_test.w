@@ -38,6 +38,7 @@ import libs.standard.crypto.x25519
 import libs.standard.crypto.ecdsa_p256
 import libs.standard.net.x509
 import libs.standard.net.tls
+import lib.mem
 
 
 # ---- small helpers ------------------------------------------------------------
@@ -52,10 +53,7 @@ char* tlss_key_path():
 
 # Fill n bytes of buf with a deterministic non-trivial pattern.
 void tlss_fill(char* buf, int n, int seed):
-	int i = 0
-	while (i < n):
-		buf[i] = (seed + i * 7 + (i >> 3)) & 255
-		i = i + 1
+	for i in range(n): buf[i] = (seed + i * 7 + (i >> 3)) & 255
 
 
 int tlss_bytes_equal(char* a, char* b, int n):
@@ -75,10 +73,7 @@ char* tlss_wrap_handshake(char* msg, int mlen, int* out_len):
 	rec[2] = 3
 	rec[3] = (mlen >> 8) & 255
 	rec[4] = mlen & 255
-	int i = 0
-	while (i < mlen):
-		rec[5 + i] = msg[i]
-		i = i + 1
+	for i in range(mlen): rec[5 + i] = msg[i]
 	*out_len = 5 + mlen
 	return rec
 
@@ -98,10 +93,8 @@ tls_server_config* tlss_config_inmem():
 
 
 void tlss_config_inmem_free(tls_server_config* scfg):
-	if (scfg.test_cert_pem != 0):
-		free(scfg.test_cert_pem)
-	if (scfg.test_key_pem != 0):
-		free(scfg.test_key_pem)
+	if (scfg.test_cert_pem != 0): free(scfg.test_cert_pem)
+	if (scfg.test_key_pem != 0): free(scfg.test_key_pem)
 	tls_server_config_free(scfg)
 
 
@@ -129,7 +122,7 @@ tls_conn* tlss_run_server(char* client_flight, int flen, tls_server_config* scfg
 	tls_conn* c = tls_conn_new(0 - 1, 1, 0)
 	c.is_server = 1
 	c.scfg = scfg
-	wbuf_bytes(c.mem_in, client_flight, flen)
+	string_append_bytes(c.mem_in, client_flight, flen)
 	*out_ok = tls_server_do_handshake(c)
 	return c
 
@@ -182,7 +175,7 @@ void test_server_certverify_signature():
 	list[x509_cert*] certs = pem_decode_certs(cert_pem, strlen(cert_pem), &skipped)
 	asserts(c"one leaf parsed", certs.length == 1)
 	x509_cert* leaf = certs[0]
-	assert_equal(X509_KEY_EC_P256(), leaf.key_type)
+	assert_equal(X509_KEY_EC_P256, leaf.key_type)
 
 	char* d = malloc(32)
 	asserts(c"key loads", x509_load_ec_private_key(key_pem, strlen(key_pem), d) != 0)
@@ -201,9 +194,9 @@ void test_server_certverify_signature():
 	char* cv = tls_build_certverify(d, th, 32, &cv_len)
 	asserts(c"certverify built", cv != 0)
 	# type(1) + len(3) + scheme(2) + siglen(2) + sig
-	assert_equal(TLS_HS_CERTIFICATE_VERIFY(), cv[0] & 255)
+	assert_equal(TLS_HS_CERTIFICATE_VERIFY, cv[0] & 255)
 	int scheme = ((cv[4] & 255) << 8) | (cv[5] & 255)
-	assert_equal(TLS_SIG_ECDSA_SECP256R1_SHA256(), scheme)
+	assert_equal(TLS_SIG_ECDSA_SECP256R1_SHA256, scheme)
 	int sig_len = ((cv[6] & 255) << 8) | (cv[7] & 255)
 	assert_equal(cv_len - 8, sig_len)
 
@@ -211,7 +204,7 @@ void test_server_certverify_signature():
 	int clen = 0
 	char* content = tls_certverify_content(th, 32, &clen)
 	char* digest = malloc(32)
-	whash_oneshot(WHASH_SHA256(), content, clen, digest)
+	whash_oneshot(WHASH_SHA256, content, clen, digest)
 	free(content)
 	char* r = malloc(32)
 	char* s = malloc(32)
@@ -288,11 +281,8 @@ void test_server_client_interop_inmem():
 
 	# Pass 3: a fresh server must accept [ClientHello || clientFinished].
 	char* full = malloc(chrec_len + fin_len)
+	mem_copy(full, chrec, chrec_len)
 	int i = 0
-	while (i < chrec_len):
-		full[i] = chrec[i]
-		i = i + 1
-	i = 0
 	while (i < fin_len):
 		full[chrec_len + i] = cout[ch_rec_len + i]
 		i = i + 1
@@ -374,9 +364,9 @@ void test_server_no_chacha_rejected():
 	# Exactly one plaintext alert record: fatal handshake_failure. No
 	# handshake record (type 22) means no ServerHello / HelloRetryRequest.
 	assert_equal(7, out_len)
-	assert_equal(TLS_CT_ALERT(), out[0] & 255)
-	assert_equal(TLS_ALERT_FATAL(), out[5] & 255)
-	assert_equal(TLS_ALERT_HANDSHAKE_FAILURE(), out[6] & 255)
+	assert_equal(TLS_CT_ALERT, out[0] & 255)
+	assert_equal(TLS_ALERT_FATAL, out[5] & 255)
+	assert_equal(TLS_ALERT_HANDSHAKE_FAILURE, out[6] & 255)
 	free(out)
 	tls_conn_free(s)
 	tlss_config_inmem_free(scfg)
@@ -406,8 +396,8 @@ void test_server_no_x25519_rejected():
 	int out_len = 0
 	char* out = tls_mem_take_output(s, &out_len)
 	assert_equal(7, out_len)
-	assert_equal(TLS_CT_ALERT(), out[0] & 255)
-	assert_equal(TLS_ALERT_HANDSHAKE_FAILURE(), out[6] & 255)
+	assert_equal(TLS_CT_ALERT, out[0] & 255)
+	assert_equal(TLS_ALERT_HANDSHAKE_FAILURE, out[6] & 255)
 	free(out)
 	tls_conn_free(s)
 	tlss_config_inmem_free(scfg)
@@ -432,7 +422,7 @@ void test_server_oversized_length_field():
 	body[35] = 0xff             # cipher_suites length high byte (overflow)
 	body[36] = 0xff
 	char* msg = malloc(41)
-	msg[0] = TLS_HS_CLIENT_HELLO()
+	msg[0] = TLS_HS_CLIENT_HELLO
 	msg[1] = 0
 	msg[2] = 0
 	msg[3] = 37
@@ -450,8 +440,8 @@ void test_server_oversized_length_field():
 	asserts(c"connection broken", s.broken == 1)
 	int out_len = 0
 	char* out = tls_mem_take_output(s, &out_len)
-	assert_equal(TLS_CT_ALERT(), out[0] & 255)
-	assert_equal(TLS_ALERT_DECODE_ERROR(), out[6] & 255)
+	assert_equal(TLS_CT_ALERT, out[0] & 255)
+	assert_equal(TLS_ALERT_DECODE_ERROR, out[6] & 255)
 	free(out)
 	tls_conn_free(s)
 	tlss_config_inmem_free(scfg)
@@ -517,14 +507,8 @@ void test_server_tampered_client_finished():
 	# Assemble [ClientHello || clientFinished] and flip a ciphertext byte in
 	# the Finished record (offset 5 = first byte past the record header).
 	char* full = malloc(chrec_len + fin_len)
-	int i = 0
-	while (i < chrec_len):
-		full[i] = chrec[i]
-		i = i + 1
-	i = 0
-	while (i < fin_len):
-		full[chrec_len + i] = cout[ch_rec_len + i]
-		i = i + 1
+	mem_copy(full, chrec, chrec_len)
+	for i in range(fin_len): full[chrec_len + i] = cout[ch_rec_len + i]
 	full[chrec_len + 5] = full[chrec_len + 5] ^ 0xff
 
 	tls_server_config* scfg = tlss_config_inmem()
@@ -568,19 +552,15 @@ void test_server_loopback_fork():
 		scfg.cert_chain_path = tlss_cert_path()
 		scfg.key_path = tlss_key_path()
 		tls_conn* s = tls_accept(fds[1], scfg)
-		if (s == 0):
-			exit(11)
+		if (s == 0): exit(11)
 		char* buf = malloc(256)
 		int got = tls_read(s, buf, 256)
-		if (got <= 0):
-			exit(12)
+		if (got <= 0): exit(12)
 		# Echo a fixed response.
 		char* reply = c"pong from tls_accept"
-		if (tls_write(s, reply, strlen(reply)) != strlen(reply)):
-			exit(13)
+		if (tls_write(s, reply, strlen(reply)) != strlen(reply)): exit(13)
 		# Expect the client's close_notify (clean EOF).
-		if (tls_read(s, buf, 256) != 0):
-			exit(14)
+		if (tls_read(s, buf, 256) != 0): exit(14)
 		tls_close(s)
 		exit(0)
 

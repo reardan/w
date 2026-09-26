@@ -149,23 +149,19 @@ void test_time_weekday_from_civil():
 	assert_equal(4, time_weekday_from_civil(1776, 7, 4))
 	assert_equal(6, time_weekday_from_civil(0, 1, 1))
 	# Every weekday in a row, across the epoch.
-	int d = -10
-	while (d < 10):
+	for d in range(-10, 10):
 		assert_equal((time_weekday_from_days(d) + 1) % 7, time_weekday_from_days(d + 1))
-		d = d + 1
 
 
 # Every day from 1970 to 2038-01-19 (the 32-bit limit) round-trips through
 # time_utc_from_unix, weekday and year_day included.
 void test_time_days_from_civil_round_trips():
 	date_time dt
-	int days = 0
-	while (days < 24856):
+	for days in range(24856):
 		time_utc_from_unix(days * 86400, &dt)
 		assert_equal(days, time_days_from_civil(dt.year, dt.month, dt.day))
 		assert_equal(dt.weekday, time_weekday_from_civil(dt.year, dt.month, dt.day))
 		assert_equal(dt.year_day, time_days_from_civil(dt.year, dt.month, dt.day) - time_days_from_civil(dt.year, 1, 1) + 1)
-		days = days + 1
 
 
 void test_time_unix_from_utc():
@@ -176,11 +172,9 @@ void test_time_unix_from_utc():
 	assert_equal(0, time_unix_from_utc(&dt))
 	time_utc_from_unix(2147483647, &dt)
 	assert_equal(2147483647, time_unix_from_utc(&dt))
-	int t = 0
-	while (t < 2000000000):
+	for t in range(0, 2000000000, 12345677):
 		time_utc_from_unix(t, &dt)
 		assert_equal(t, time_unix_from_utc(&dt))
-		t = t + 12345677
 
 	# Before the epoch: 1969-12-31 23:59:59 is one second short of it.
 	dt.year = 1969

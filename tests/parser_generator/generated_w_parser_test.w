@@ -32,11 +32,10 @@ void assert_w_lex_round_trip(char* source, char* filename):
 void assert_w_parse_text(char* source, char* filename):
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_ast_node* root = wlang_parse(source, filename, diagnostics)
-	if ((root == 0) | (pg_diagnostics_count(diagnostics) != 0)):
-		pg_diagnostics_print(diagnostics)
+	if ((root == 0) | (pg_diagnostics_count(diagnostics) != 0)): pg_diagnostics_print(diagnostics)
 	assert1(root != 0)
 	assert_equal(0, pg_diagnostics_count(diagnostics))
-	assert_equal(wlang_ast_program(), root.kind)
+	assert_equal(wlang_ast_program, root.kind)
 	assert_w_lex_round_trip(source, filename)
 
 
@@ -48,8 +47,7 @@ void assert_w_parse_file(char* path):
 
 
 void parse_manifest_path(string_builder* path):
-	if (path.length == 0):
-		return
+	if (path.length == 0): return
 	assert_w_parse_file(path.data)
 
 
@@ -63,8 +61,7 @@ void assert_w_parse_manifest(char* manifest_path):
 		if (c == 10):
 			parse_manifest_path(path)
 			string_clear(path)
-		else:
-			string_append_char(path, c)
+		else: string_append_char(path, c)
 		c = getchar(file)
 	parse_manifest_path(path)
 	close(file)
@@ -74,18 +71,18 @@ void test_w_lexer_keywords_identifiers_comments_and_tabs():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_token_stream* stream = wlang_lex(c"# skip\x0aimport integer int inline asm\x0a\x09/* block */return\x0a", c"lexer.w", diagnostics)
 	assert_equal(0, pg_diagnostics_count(diagnostics))
-	assert_equal(wlang_token_NEWLINE(), pg_token_stream_la(stream, 1).kind)
-	assert_equal(wlang_token_KW_IMPORT(), pg_token_stream_la(stream, 2).kind)
-	assert_equal(wlang_token_IDENT(), pg_token_stream_la(stream, 3).kind)
+	assert_equal(wlang_token_NEWLINE, pg_token_stream_la(stream, 1).kind)
+	assert_equal(wlang_token_KW_IMPORT, pg_token_stream_la(stream, 2).kind)
+	assert_equal(wlang_token_IDENT, pg_token_stream_la(stream, 3).kind)
 	assert_strings_equal(c"integer", pg_token_stream_la(stream, 3).text)
-	assert_equal(wlang_token_KW_INT(), pg_token_stream_la(stream, 4).kind)
-	assert_equal(wlang_token_KW_INLINE(), pg_token_stream_la(stream, 5).kind)
-	assert_equal(wlang_token_KW_ASM(), pg_token_stream_la(stream, 6).kind)
-	assert_equal(wlang_token_NEWLINE(), pg_token_stream_la(stream, 7).kind)
-	assert_equal(wlang_token_TAB(), pg_token_stream_la(stream, 8).kind)
-	assert_equal(wlang_token_KW_RETURN(), pg_token_stream_la(stream, 9).kind)
-	assert_equal(wlang_token_NEWLINE(), pg_token_stream_la(stream, 10).kind)
-	assert_equal(wlang_token_EOF(), pg_token_stream_la(stream, 11).kind)
+	assert_equal(wlang_token_KW_INT, pg_token_stream_la(stream, 4).kind)
+	assert_equal(wlang_token_KW_INLINE, pg_token_stream_la(stream, 5).kind)
+	assert_equal(wlang_token_KW_ASM, pg_token_stream_la(stream, 6).kind)
+	assert_equal(wlang_token_NEWLINE, pg_token_stream_la(stream, 7).kind)
+	assert_equal(wlang_token_TAB, pg_token_stream_la(stream, 8).kind)
+	assert_equal(wlang_token_KW_RETURN, pg_token_stream_la(stream, 9).kind)
+	assert_equal(wlang_token_NEWLINE, pg_token_stream_la(stream, 10).kind)
+	assert_equal(wlang_token_EOF, pg_token_stream_la(stream, 11).kind)
 
 
 # Mid-line tabs are hidden whitespace (skip INLINE_TAB in w.pg): the
@@ -95,23 +92,23 @@ void test_w_lexer_midline_tabs_are_hidden():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_token_stream* stream = wlang_lex(c"int x = 1\x09\x09# note\x0a\x09return x\x0a", c"midtab.w", diagnostics)
 	assert_equal(0, pg_diagnostics_count(diagnostics))
-	assert_equal(wlang_token_KW_INT(), pg_token_stream_la(stream, 1).kind)
-	assert_equal(wlang_token_IDENT(), pg_token_stream_la(stream, 2).kind)
-	assert_equal(wlang_token_ASSIGN(), pg_token_stream_la(stream, 3).kind)
-	assert_equal(wlang_token_NUMBER(), pg_token_stream_la(stream, 4).kind)
+	assert_equal(wlang_token_KW_INT, pg_token_stream_la(stream, 1).kind)
+	assert_equal(wlang_token_IDENT, pg_token_stream_la(stream, 2).kind)
+	assert_equal(wlang_token_ASSIGN, pg_token_stream_la(stream, 3).kind)
+	assert_equal(wlang_token_NUMBER, pg_token_stream_la(stream, 4).kind)
 	# The mid-line tab run and the comment are hidden: the next visible
 	# token is the NEWLINE, and the line-start tab after it is still TAB
-	assert_equal(wlang_token_NEWLINE(), pg_token_stream_la(stream, 5).kind)
-	assert_equal(wlang_token_TAB(), pg_token_stream_la(stream, 6).kind)
-	assert_equal(wlang_token_KW_RETURN(), pg_token_stream_la(stream, 7).kind)
+	assert_equal(wlang_token_NEWLINE, pg_token_stream_la(stream, 5).kind)
+	assert_equal(wlang_token_TAB, pg_token_stream_la(stream, 6).kind)
+	assert_equal(wlang_token_KW_RETURN, pg_token_stream_la(stream, 7).kind)
 	# The hidden run is one INLINE_TAB token kept for losslessness
 	int i = 0
 	int inline_tab_runs = 0
 	while (i < pg_token_stream_all_count(stream)):
 		pg_token* token = pg_token_stream_all_get(stream, i)
-		if (token.kind == wlang_token_INLINE_TAB()):
+		if (token.kind == wlang_token_INLINE_TAB):
 			inline_tab_runs = inline_tab_runs + 1
-			assert_equal(pg_token_hidden_channel(), token.channel)
+			assert_equal(pg_token_hidden_channel, token.channel)
 			assert_equal(2, token.length)
 		i = i + 1
 	assert_equal(1, inline_tab_runs)
@@ -127,20 +124,20 @@ void test_w_lexer_literals_and_multi_char_operators():
 	pg_diagnostics* diagnostics = pg_diagnostics_new()
 	pg_token_stream* stream = wlang_lex(c"s\x22hi\\x0a\x22 c\x22bytes\x22 '\x5cn' 0x1f 3.25 <= >= == != << >> -> && ||", c"lexer.w", diagnostics)
 	assert_equal(0, pg_diagnostics_count(diagnostics))
-	assert_equal(wlang_token_STRING(), pg_token_stream_la(stream, 1).kind)
-	assert_equal(wlang_token_STRING(), pg_token_stream_la(stream, 2).kind)
-	assert_equal(wlang_token_CHAR_LITERAL(), pg_token_stream_la(stream, 3).kind)
-	assert_equal(wlang_token_NUMBER(), pg_token_stream_la(stream, 4).kind)
-	assert_equal(wlang_token_NUMBER(), pg_token_stream_la(stream, 5).kind)
-	assert_equal(wlang_token_LT_EQ(), pg_token_stream_la(stream, 6).kind)
-	assert_equal(wlang_token_GT_EQ(), pg_token_stream_la(stream, 7).kind)
-	assert_equal(wlang_token_EQ_EQ(), pg_token_stream_la(stream, 8).kind)
-	assert_equal(wlang_token_BANG_EQ(), pg_token_stream_la(stream, 9).kind)
-	assert_equal(wlang_token_SHIFT_LEFT(), pg_token_stream_la(stream, 10).kind)
-	assert_equal(wlang_token_SHIFT_RIGHT(), pg_token_stream_la(stream, 11).kind)
-	assert_equal(wlang_token_ARROW(), pg_token_stream_la(stream, 12).kind)
-	assert_equal(wlang_token_AND_AND(), pg_token_stream_la(stream, 13).kind)
-	assert_equal(wlang_token_OR_OR(), pg_token_stream_la(stream, 14).kind)
+	assert_equal(wlang_token_STRING, pg_token_stream_la(stream, 1).kind)
+	assert_equal(wlang_token_STRING, pg_token_stream_la(stream, 2).kind)
+	assert_equal(wlang_token_CHAR_LITERAL, pg_token_stream_la(stream, 3).kind)
+	assert_equal(wlang_token_NUMBER, pg_token_stream_la(stream, 4).kind)
+	assert_equal(wlang_token_NUMBER, pg_token_stream_la(stream, 5).kind)
+	assert_equal(wlang_token_LT_EQ, pg_token_stream_la(stream, 6).kind)
+	assert_equal(wlang_token_GT_EQ, pg_token_stream_la(stream, 7).kind)
+	assert_equal(wlang_token_EQ_EQ, pg_token_stream_la(stream, 8).kind)
+	assert_equal(wlang_token_BANG_EQ, pg_token_stream_la(stream, 9).kind)
+	assert_equal(wlang_token_SHIFT_LEFT, pg_token_stream_la(stream, 10).kind)
+	assert_equal(wlang_token_SHIFT_RIGHT, pg_token_stream_la(stream, 11).kind)
+	assert_equal(wlang_token_ARROW, pg_token_stream_la(stream, 12).kind)
+	assert_equal(wlang_token_AND_AND, pg_token_stream_la(stream, 13).kind)
+	assert_equal(wlang_token_OR_OR, pg_token_stream_la(stream, 14).kind)
 
 
 void test_parse_w_import_struct_and_function():
@@ -189,14 +186,14 @@ void test_w_lexer_keeps_comments_and_whitespace_hidden():
 	pg_token_stream* stream = wlang_lex(c"# heading\x0aint x /* mid */ = 1\x0a", c"trivia.w", diagnostics)
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	# Parser-facing stream skips the trivia entirely
-	assert_equal(wlang_token_NEWLINE(), pg_token_stream_la(stream, 1).kind)
-	assert_equal(wlang_token_KW_INT(), pg_token_stream_la(stream, 2).kind)
-	assert_equal(wlang_token_IDENT(), pg_token_stream_la(stream, 3).kind)
-	assert_equal(wlang_token_ASSIGN(), pg_token_stream_la(stream, 4).kind)
+	assert_equal(wlang_token_NEWLINE, pg_token_stream_la(stream, 1).kind)
+	assert_equal(wlang_token_KW_INT, pg_token_stream_la(stream, 2).kind)
+	assert_equal(wlang_token_IDENT, pg_token_stream_la(stream, 3).kind)
+	assert_equal(wlang_token_ASSIGN, pg_token_stream_la(stream, 4).kind)
 	# All-channel stream keeps every byte of trivia in order
 	pg_token* comment = pg_token_stream_all_get(stream, 0)
-	assert_equal(wlang_token_LINE_COMMENT(), comment.kind)
-	assert_equal(pg_token_hidden_channel(), comment.channel)
+	assert_equal(wlang_token_LINE_COMMENT, comment.kind)
+	assert_equal(pg_token_hidden_channel, comment.channel)
 	assert_strings_equal(c"# heading", comment.text)
 	assert_equal(0, comment.offset)
 	assert_equal(9, comment.length)
@@ -205,10 +202,8 @@ void test_w_lexer_keeps_comments_and_whitespace_hidden():
 	int whitespace_runs = 0
 	while (i < pg_token_stream_all_count(stream)):
 		pg_token* token = pg_token_stream_all_get(stream, i)
-		if (token.kind == wlang_token_BLOCK_COMMENT()):
-			block_comments = block_comments + 1
-		if (token.kind == pg_token_whitespace_kind()):
-			whitespace_runs = whitespace_runs + 1
+		if (token.kind == wlang_token_BLOCK_COMMENT): block_comments = block_comments + 1
+		if (token.kind == pg_token_whitespace_kind()): whitespace_runs = whitespace_runs + 1
 		i = i + 1
 	assert_equal(1, block_comments)
 	assert_equal(4, whitespace_runs)
@@ -223,12 +218,12 @@ void test_w_ast_node_spans():
 	assert_equal(0, pg_diagnostics_count(diagnostics))
 	# Root covers the first token through EOF
 	assert_equal(0, pg_ast_first_token(root).offset)
-	assert_equal(pg_token_eof_kind(), pg_ast_last_token(root).kind)
+	assert_equal(pg_token_eof_kind, pg_ast_last_token(root).kind)
 	# The function declaration spans "int" through the final NEWLINE
 	pg_ast_node* top_item = pg_ast_child(root, 0)
 	assert_strings_equal(c"int", pg_ast_first_token(top_item).text)
 	assert_equal(0, pg_ast_first_token(top_item).offset)
-	assert_equal(wlang_token_NEWLINE(), pg_ast_last_token(top_item).kind)
+	assert_equal(wlang_token_NEWLINE, pg_ast_last_token(top_item).kind)
 
 
 void test_w_parser_recovers_with_multiple_errors():
@@ -236,7 +231,7 @@ void test_w_parser_recovers_with_multiple_errors():
 	char* source = c"int ok():\x0a\x09return 0\x0a\x0a) bad1\x0a\x0a) bad2\x0a\x0aint also_ok():\x0a\x09return 1\x0a"
 	pg_ast_node* root = wlang_parse(source, c"recover.w", diagnostics)
 	assert1(root != 0)
-	assert_equal(wlang_ast_program(), root.kind)
+	assert_equal(wlang_ast_program, root.kind)
 	assert_equal(2, pg_diagnostics_count(diagnostics))
 	assert_strings_equal(c"syntax error", pg_diagnostics_get(diagnostics, 0).message)
 	assert_strings_equal(c"top_item", pg_diagnostics_get(diagnostics, 0).expected)
@@ -247,10 +242,8 @@ void test_w_parser_recovers_with_multiple_errors():
 	int top_items = 0
 	while (i < pg_ast_child_count(root)):
 		pg_ast_node* child = pg_ast_child(root, i)
-		if (child.kind == pg_ast_error_kind()):
-			error_nodes = error_nodes + 1
-		if (child.kind == wlang_ast_top_item()):
-			top_items = top_items + 1
+		if (child.kind == pg_ast_error_kind()): error_nodes = error_nodes + 1
+		if (child.kind == wlang_ast_top_item): top_items = top_items + 1
 		i = i + 1
 	assert_equal(2, error_nodes)
 	assert_equal(2, top_items)
@@ -276,8 +269,7 @@ void test_parse_all_tracked_w_files():
 	# full list is read.
 	parsed_manifest_count = 0
 	char* manifest = env_get(c"PARSER_GENERATOR_W_FILES")
-	if ((manifest == 0) || (manifest[0] == 0)):
-		manifest = c"bin/parser_generator_w_files.txt"
+	if ((manifest == 0) || (manifest[0] == 0)): manifest = c"bin/parser_generator_w_files.txt"
 	assert_w_parse_manifest(manifest)
 	assert1(parsed_manifest_count > 0)
 # wbuild: target=parser_generator_w_test tag=tests dep=parser_generator_test

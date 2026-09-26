@@ -34,14 +34,12 @@ void x64pb_expect_bytes(char* label, char* got, int got_len, char* want, int wan
 		print2(c" want=")
 		println2(itoa(want_len))
 		exit(1)
-	int i = 0
-	while (i < want_len):
+	for i in range(want_len):
 		if ((got[i] & 255) != (want[i] & 255)):
 			print2(label)
 			print2(c": byte mismatch at offset ")
 			println2(itoa(i))
 			exit(1)
-		i = i + 1
 
 
 void test_zigzag64_native_pairs():
@@ -81,15 +79,15 @@ void x64pb_wide_desc_init():
 	x64pb_wide_fields[0].offset = cast(int, &m.a) - cast(int, &m)
 	x64pb_wide_fields[0].aux = 0
 	x64pb_wide_fields[1].number = 2
-	x64pb_wide_fields[1].kind = PB_KIND_UINT64()
+	x64pb_wide_fields[1].kind = PB_KIND_UINT64
 	x64pb_wide_fields[1].offset = cast(int, &m.b) - cast(int, &m)
 	x64pb_wide_fields[1].aux = 0
 	x64pb_wide_fields[2].number = 3
-	x64pb_wide_fields[2].kind = PB_KIND_SINT64()
+	x64pb_wide_fields[2].kind = PB_KIND_SINT64
 	x64pb_wide_fields[2].offset = cast(int, &m.c) - cast(int, &m)
 	x64pb_wide_fields[2].aux = 0
 	x64pb_wide_fields[3].number = 4
-	x64pb_wide_fields[3].kind = PB_KIND_FIXED64()
+	x64pb_wide_fields[3].kind = PB_KIND_FIXED64
 	x64pb_wide_fields[3].offset = cast(int, &m.d) - cast(int, &m)
 	x64pb_wide_fields[3].aux = 0
 	x64pb_wide_desc.field_count = 4

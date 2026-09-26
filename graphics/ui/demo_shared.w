@@ -99,24 +99,18 @@ void ui_demo_init(ui_demo_state* st):
 
 # The table's rows: one per widget the round shipped.
 char* ui_demo_row_name(int row):
-	if (row == 0):
-		return c"button"
-	if (row == 1):
-		return c"checkbox"
-	if (row == 2):
-		return c"textbox"
-	if (row == 3):
-		return c"dropdown"
-	if (row == 4):
-		return c"modal"
-	if (row == 5):
-		return c"table"
-	return c"textarea"
+	switch (row):
+		case 0: return c"button"
+		case 1: return c"checkbox"
+		case 2: return c"textbox"
+		case 3: return c"dropdown"
+		case 4: return c"modal"
+		case 5: return c"table"
+		default: return c"textarea"
 
 
 char* ui_demo_row_round(int row):
-	if (row < 4):
-		return c"shipped"
+	if (row < 4): return c"shipped"
 	return c"round 1"
 
 
@@ -134,8 +128,7 @@ void ui_demo_body(ui_context* ctx, ui_demo_state* st):
 	ui_disable(ctx, 0)
 	# Two live paths into the one theme choice: the checkbox flips
 	# light<->dark, the dropdown picks any preset (ocean included).
-	if (ui_checkbox(ctx, c"dark mode", &st.dark)):
-		st.choice = st.dark
+	if (ui_checkbox(ctx, c"dark mode", &st.dark)): st.choice = st.dark
 	ui_textbox(ctx, 200.0, &st.textbox)
 	ui_radio(ctx, c"small", 0, &st.size_choice)
 	ui_same_line(ctx)
@@ -143,22 +136,18 @@ void ui_demo_body(ui_context* ctx, ui_demo_state* st):
 	ui_toggle(ctx, c"sound", &st.sound_on)
 	if (ui_dropdown(ctx, 160.0, st.choice_items, 3, &st.choice, &st.choice_open)):
 		st.dark = 0
-		if (st.choice == 1):
-			st.dark = 1
+		if (st.choice == 1): st.dark = 1
 	ui_progress(ctx, 200.0, cast(float32, st.clicks) * 0.1)
 
 	# Round 1: the modal's trigger, then the table and the edit surface.
-	if (ui_button(ctx, c"Open dialog")):
-		st.dialog_open = 1
+	if (ui_button(ctx, c"Open dialog")): st.dialog_open = 1
 	# A table one header plus four rows tall, holding seven rows — so
 	# the scroll thumb and row virtualization are both on screen.
 	ui_table_begin(ctx, ui_rect_new(8.0, 368.0, 304.0, 129.0), st.table_headers, st.table_widths, 2, &st.table)
-	int row = 0
-	while (row < 7):
+	for row in range(7):
 		if (ui_table_row(ctx, &st.table, row)):
 			ui_table_cell(ctx, &st.table, ui_demo_row_name(row))
 			ui_table_cell(ctx, &st.table, ui_demo_row_round(row))
-		row = row + 1
 	ui_table_end(ctx, &st.table)
 	ui_textarea(ctx, ui_rect_new(8.0, 505.0, 304.0, 160.0), &st.notes)
 
@@ -167,15 +156,11 @@ void ui_demo_body(ui_context* ctx, ui_demo_state* st):
 	if (ui_modal_begin(ctx, c"Dialog", 240.0, 160.0, &st.dialog_open)):
 		ui_label(ctx, c"The page behind is inert.")
 		ui_label(ctx, c"Escape or the scrim closes.")
-		if (ui_button(ctx, c"Close")):
-			st.dialog_open = 0
+		if (ui_button(ctx, c"Close")): st.dialog_open = 0
 		ui_modal_end(ctx)
 
 	# Theme swap takes effect from the next widget on; the background
 	# clear picks it up next frame.
-	if (st.choice == 2):
-		ctx.theme = &st.ocean_theme
-	else if (st.choice == 1):
-		ctx.theme = &st.dark_theme
-	else:
-		ctx.theme = &st.light_theme
+	if (st.choice == 2): ctx.theme = &st.ocean_theme
+	else if (st.choice == 1): ctx.theme = &st.dark_theme
+	else: ctx.theme = &st.light_theme

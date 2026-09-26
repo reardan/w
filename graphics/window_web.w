@@ -11,8 +11,7 @@ of a W while-loop. Programs structure as setup + frame and hand the frame
 function to gfx_window_run:
 
 	int frame():
-		if (gfx_window_poll(win) == 0):
-			return 0
+		if (gfx_window_poll(win) == 0): return 0
 		# ... glClear / draw ...
 		gfx_window_swap(win)
 		return 1
@@ -101,8 +100,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 # while the canvas should stay live.
 int gfx_window_poll(gfx_window* win):
 	gfx_host_poll_state(win)
-	if (win.should_close):
-		return 0
+	if (win.should_close): return 0
 	return 1
 
 
@@ -110,8 +108,7 @@ int gfx_window_poll(gfx_window* win):
 # events remain. Same contract as the native backends' ring drain.
 int gfx_window_next_event(gfx_window* win, gfx_event* out):
 	int32[5] fields
-	if (gfx_host_next_event(&fields[0]) == 0):
-		return 0
+	if (gfx_host_next_event(&fields[0]) == 0): return 0
 	out.kind = fields[0]
 	out.code = fields[1]
 	out.x = fields[2]

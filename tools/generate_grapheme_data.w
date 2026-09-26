@@ -14,8 +14,7 @@ import lib.stream
 import structures.string
 
 
-int gen_max_codepoint():
-	return 1114111
+const int gen_max_codepoint = 1114111
 
 
 # Update together with tools/unicode/UnicodeData.txt.
@@ -24,42 +23,32 @@ char* gen_unicode_version():
 
 
 # Derived general-category classes (0 = none of them).
-int gen_class_control():
-	return 1
-
-
-int gen_class_extend():
-	return 2
-
-
-int gen_class_spacing_mark():
-	return 3
+const int gen_class_control = 1
+const int gen_class_extend = 2
+const int gen_class_spacing_mark = 3
 
 
 # Cc/Zl/Zp are Control, Mn/Me are Extend, Mc is SpacingMark (UAX #29).
 int gen_class_for_category(char* category):
 	if (strcmp(category, c"Cc") == 0):
-		return gen_class_control()
+		return gen_class_control
 	if (strcmp(category, c"Zl") == 0):
-		return gen_class_control()
+		return gen_class_control
 	if (strcmp(category, c"Zp") == 0):
-		return gen_class_control()
+		return gen_class_control
 	if (strcmp(category, c"Mn") == 0):
-		return gen_class_extend()
+		return gen_class_extend
 	if (strcmp(category, c"Me") == 0):
-		return gen_class_extend()
+		return gen_class_extend
 	if (strcmp(category, c"Mc") == 0):
-		return gen_class_spacing_mark()
+		return gen_class_spacing_mark
 	return 0
 
 
 int gen_hex_digit(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
+	if ((c >= '0') && (c <= '9')): return c - '0'
+	if ((c >= 'a') && (c <= 'f')): return c - 'a' + 10
+	if ((c >= 'A') && (c <= 'F')): return c - 'A' + 10
 	return -1
 
 
@@ -67,16 +56,12 @@ int gen_hex_digit(int c):
 # a "<..., First>" / "<..., Last>" name pair mark a whole range assigned
 # to one category; every other line covers a single codepoint.
 char* gen_load_classes(char* path):
-	int size = gen_max_codepoint() + 1
+	int size = gen_max_codepoint + 1
 	char* classes = malloc(size)
-	int i = 0
-	while (i < size):
-		classes[i] = 0
-		i = i + 1
+	for i in range(size): classes[i] = 0
 
 	wstream* in = stream_open_read(path)
-	if (in == 0):
-		return 0
+	if (in == 0): return 0
 	string_builder* line = string_new()
 	int pending_first = -1
 	while (stream_read_line(in, line)):
@@ -90,30 +75,23 @@ char* gen_load_classes(char* path):
 		# Field 1: the character name.
 		j = j + 1
 		int name_start = j
-		while (text[j] != ';'):
-			j = j + 1
+		while (text[j] != ';'): j = j + 1
 		text[j] = 0
 		char* name = text + name_start
 		# Field 2: the general category.
 		j = j + 1
 		int category_start = j
-		while ((text[j] != ';') && (text[j] != 0)):
-			j = j + 1
+		while ((text[j] != ';') && (text[j] != 0)): j = j + 1
 		text[j] = 0
 		char* category = text + category_start
 
 		int cls = gen_class_for_category(category)
-		if (ends_with(name, c", First>")):
-			pending_first = cp
+		if (ends_with(name, c", First>")): pending_first = cp
 		else if (ends_with(name, c", Last>")):
 			if (pending_first >= 0):
-				int fill = pending_first
-				while (fill <= cp):
-					classes[fill] = cls
-					fill = fill + 1
+				for fill in range(pending_first, cp + 1): classes[fill] = cls
 			pending_first = -1
-		else:
-			classes[cp] = cls
+		else: classes[cp] = cls
 	string_free(line)
 	stream_close(in)
 	return classes
@@ -126,10 +104,9 @@ list[int] gen_ranges_for(char* classes, int cls):
 	int start = -1
 	int prev = -1
 	int cp = 0
-	while (cp <= gen_max_codepoint()):
+	while (cp <= gen_max_codepoint):
 		if (classes[cp] == cls):
-			if (start < 0):
-				start = cp
+			if (start < 0): start = cp
 			prev = cp
 		else if (start >= 0):
 			ranges.push(start)
@@ -143,10 +120,7 @@ list[int] gen_ranges_for(char* classes, int cls):
 
 
 void gen_blank_lines(wstream* out, int count):
-	int i = 0
-	while (i < count):
-		stream_write_line(out, c"")
-		i = i + 1
+	for i in range(count): stream_write_line(out, c"")
 
 
 void gen_prop_function(wstream* out, char* name, int value):
@@ -159,8 +133,7 @@ void gen_prop_function(wstream* out, char* name, int value):
 
 
 void gen_range_checks(wstream* out, list[int] ranges, char* prop):
-	int i = 0
-	while (i < ranges.length):
+	for i in range(0, ranges.length, 2):
 		int start = ranges[i]
 		int end = ranges[i + 1]
 		if (start == end):
@@ -175,7 +148,6 @@ void gen_range_checks(wstream* out, list[int] ranges, char* prop):
 			stream_write_line(out, c")):")
 		stream_write_cstr(out, c"\t\treturn ")
 		stream_write_line(out, prop)
-		i = i + 2
 
 
 # Prepend stays a compact hardcoded table: UnicodeData.txt does not carry
@@ -243,9 +215,9 @@ void gen_emit(wstream* out, char* classes):
 	stream_write_line(out, c"\tif (cp == 8205):")
 	stream_write_line(out, c"\t\treturn grapheme_prop_zwj()")
 	gen_range_checks(out, gen_prepend_ranges(), c"grapheme_prop_prepend()")
-	gen_range_checks(out, gen_ranges_for(classes, gen_class_control()), c"grapheme_prop_control()")
-	gen_range_checks(out, gen_ranges_for(classes, gen_class_extend()), c"grapheme_prop_extend()")
-	gen_range_checks(out, gen_ranges_for(classes, gen_class_spacing_mark()), c"grapheme_prop_spacing_mark()")
+	gen_range_checks(out, gen_ranges_for(classes, gen_class_control), c"grapheme_prop_control()")
+	gen_range_checks(out, gen_ranges_for(classes, gen_class_extend), c"grapheme_prop_extend()")
+	gen_range_checks(out, gen_ranges_for(classes, gen_class_spacing_mark), c"grapheme_prop_spacing_mark()")
 	stream_write_line(out, c"\tif (grapheme_in_range(cp, 4352, 4447)):")
 	stream_write_line(out, c"\t\treturn grapheme_prop_l()")
 	stream_write_line(out, c"\tif (grapheme_in_range(cp, 4448, 4519)):")

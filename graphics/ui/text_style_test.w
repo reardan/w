@@ -117,7 +117,7 @@ void test_italic_shears_about_the_baseline():
 # both go through the same rasterizer and coverage boost.
 void test_runtime_strike_matches_embedded():
 	int strike = ui_font_load_ttf(c"tools/ui/LiberationSans-Regular.ttf", 16)
-	asserts(c"runtime strike id follows the defaults", strike >= ui_font_strike_count())
+	asserts(c"runtime strike id follows the defaults", strike >= ui_font_strike_count)
 	assert_equal(ui_font_ascent(0), ui_font_strike_ascent(strike))
 	assert_equal(ui_font_descent(0), ui_font_strike_descent(strike))
 	# Glyphs rasterize on first use, each growing the atlas.
@@ -147,12 +147,10 @@ void test_runtime_strike_matches_embedded():
 			asserts(c"a glyph of its own", loaded.y != baked.y || loaded.x != baked.x)
 			int y = 0
 			while (y < loaded.h):
-				int x = 0
-				while (x < loaded.w):
+				for x in range(loaded.w):
 					int a = atlas[(baked.y + y) * w + baked.x + x] & 255
 					int b = atlas[(loaded.y + y) * w + loaded.x + x] & 255
 					asserts(c"same coverage", a == b)
-					x = x + 1
 				y = y + 1
 		ch = ch + 1
 	free(atlas)
@@ -164,7 +162,7 @@ void test_runtime_strike_matches_embedded():
 # atlas.
 void test_runtime_strike_draws():
 	int strike = ui_font_load_ttf(c"tools/ui/LiberationSans-Bold.ttf", 28)
-	asserts(c"bold loads", strike >= ui_font_strike_count())
+	asserts(c"bold loads", strike >= ui_font_strike_count)
 	ui_renderer r
 	ui_render_init_headless(&r)
 	ui_render_begin(&r, 320, 240)
@@ -183,7 +181,7 @@ void test_runtime_load_from_bytes():
 	char* data = ttf_read_file(c"tools/ui/LiberationSans-Regular.ttf", &size)
 	int strike = ui_font_load_ttf_bytes(data, size, 12)
 	free(data)
-	asserts(c"bytes load", strike >= ui_font_strike_count())
+	asserts(c"bytes load", strike >= ui_font_strike_count)
 	asserts(c"smaller than body", ui_font_glyph(strike, 'M').h < ui_font_glyph(0, 'M').h)
 
 

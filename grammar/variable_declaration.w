@@ -10,18 +10,12 @@ int import_alias_type_ahead(int require_call);
 # storage on every target); bare function names and void expressions
 # have no storage type, and the diagnostics name the variable.
 int inferred_storage_type(char* name, int got):
-	if (got == 3):
-		return type_lookup(c"int")
-	if (got == 4):
-		diag_part(c"cannot infer a type for '")
-		diag_part(name)
-		error(c"' from a bare function name")
+	if (got == 3): return type_lookup(c"int")
+	if (got == 4): error3(c"cannot infer a type for '", name, c"' from a bare function name")
 	int t = generic_infer_declarable(type_real(got))
 	t = type_unqualified(t)
 	if ((type_get_size(t) == 0) & (type_num_args(t) == 0)):
-		diag_part(c"cannot infer a type for '")
-		diag_part(name)
-		error(c"' from a void expression")
+		error3(c"cannot infer a type for '", name, c"' from a void expression")
 	return t
 
 
@@ -34,13 +28,10 @@ int inferred_storage_type(char* name, int got):
 # declarations.
 void inferred_redeclaration_check(char* name):
 	int existing = sym_lookup(name)
-	if (existing < 0):
-		return;
+	if (existing < 0): return;
 	int visibility = table[existing + 1]
 	if ((visibility == 'L') || (visibility == 'A')):
-		diag_part(c"':=' redeclares '")
-		diag_part(name)
-		error(c"'; use '=' to assign, or a typed declaration to shadow")
+		error3(c"':=' redeclares '", name, c"'; use '=' to assign, or a typed declaration to shadow")
 
 
 /*
@@ -56,11 +47,9 @@ rewind and reparse normally. Returns 1 when a declaration was parsed.
 int inferred_declaration():
 	int c0 = token[0]
 	int is_ident = is_ident_start_byte(c0)
-	if (is_ident == 0):
-		return 0
+	if (is_ident == 0): return 0
 	# ':=' can only follow directly (nextc is its ':') or after blanks
-	if ((nextc != ':') && (nextc != ' ') && (nextc != 9)):
-		return 0
+	if ((nextc != ':') && (nextc != ' ') && (nextc != 9)): return 0
 	char* name = strclone(token)
 	char* save = generic_reparse_save()
 	get_token()
@@ -80,7 +69,7 @@ int inferred_declaration():
 	# initializer, so the initializer cannot reference the new name and
 	# the recorded slot index needs no post-expression fixup.
 	sym_declare(name, type, 'L', stack_pos, 1)
-	lint_track_local(table_pos - symbol_data_size())
+	lint_track_local(table_pos - symbol_data_size)
 	free(name)
 	pointer_indirection = 0
 	int size = type_stack_words(type)
@@ -95,10 +84,7 @@ int inferred_declaration():
 			lea_eax_esp_plus(0)
 			init_array_field_descriptors(type)
 		return 1
-	int i = 0
-	while (i < size):
-		push_eax()
-		i = i + 1
+	for i in range(size): push_eax()
 	stack_pos = stack_pos + size
 	return 1
 
@@ -118,13 +104,10 @@ int variable_declaration():
 		# = expression
 		if (accept(c"=")):
 			has_initializer = 1
-			if (type_is_array(type)):
-				error(c"fixed array initializer is not implemented")
+			if (type_is_array(type)): error(c"fixed array initializer is not implemented")
 			type2 = expression()
 			type2 = promote(type2)
-			coerce(type, type2)
-			if (types_compatible_with_expression(type, type2) == 0):
-				warn_type_mismatch(c"initialization", type, type2)
+			coerce_checked(type, type2, c"initialization")
 			# Level 1: this is a per-declaration developer trace like its
 			# siblings (promote(), sym_declare(), ...), not part of the
 			# user-facing -v level 0 output (which -v now reaches).
@@ -148,12 +131,8 @@ int variable_declaration():
 					lea_eax_esp_plus(0)
 					init_array_field_descriptors(type)
 				return type
-		if (type_is_array(type) | type_has_array_field(type)):
-			mov_eax_int(0)
-		int i = 0
-		while (i < size):
-			push_eax()
-			i = i + 1
+		if (type_is_array(type) | type_has_array_field(type)): mov_eax_int(0)
+		for i in range(size): push_eax()
 		stack_pos = stack_pos + size
 		if (type_is_array(type)):
 			lea_eax_esp_plus(2 * word_size)

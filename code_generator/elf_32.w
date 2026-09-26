@@ -6,46 +6,6 @@ int sym_address(char *s);  /* from symbol_table.w */
 void elf_emit_dynamic();   /* from elf_dynamic.w */
 
 
-# Number of program headers: a read-execute text load, a read-write data
-# load (W^X, docs/projects/wx_split.md Stage C), three slots reserved
-# for PT_INTERP / PT_DYNAMIC when the program imports shared libraries
-# (they stay PT_NULL, ignored, otherwise), and the build-id PT_NOTE.
-int elf_phdr_count_32():
-	return 6
-
-
-void elf_header_32():
-	/* ElfHeader32: 36 bytes */
-	int header_size = 36 + 16
-	int program_header_size = 32
-	int section_header_size = 40
-	emit_int16(2) /* type */
-	emit_int16(3)  /* machine */
-	emit_int(1) /* version */
-	emit_int(base_code_offset + header_size + program_header_size * elf_phdr_count_32() + elf_build_id_note_size()) /* entry */
-	emit_int(header_size) /* program header offset */
-	emit_int(0) /* segment header offset */
-	emit_int(0) /* flags */
-	emit_int16(header_size) /* size of this elf header */
-	emit_int16(program_header_size) /* size per program header */
-	emit_int16(elf_phdr_count_32()) /* number of program headers */
-	emit_int16(section_header_size) /* size per section header  */
-	emit_int16(0) /* number of section headers */
-	emit_int16(0) /* section header string table index */
-
-
-/* ProgramHeader32: 32 bytes. flags: RX text = 5, RW data = 6. */
-void elf_program_header(int type, int flags):
-	emit_int(type) /* type: 0: NULL, 1: LOAD, 2: DYNAMIC, ... */
-	emit_int(0) /* offset: where in the elf file the content of this segment is located */
-	emit_int(base_code_offset) /* vaddr: where first byte will be in memory */
-	emit_int(base_code_offset) /* paddr: physical memory address, not usually used (e.g. firmware) */
-	emit_int(0) /* filesz: size of segment in file, 0=no content OVERWRITTEN in be_finish() */
-	emit_int(0) /* memsz: size of the segment in memory OVERWRITTEN in be_finish() */
-	emit_int(flags) /* flags: 0x4: R, 0x2: W, 0x1: X */
-	emit_int(4096) /* align: byte boundary e.g. 1/2/4/8/16/32/64/128/256/512/1024/2048/4096 */
-
-
 /* SectionHeader32: 40 bytes */
 void elf_section_header(int type):
 	emit_int(0) /* name: string index */
@@ -76,34 +36,7 @@ void elf_sym_table_entry(int name, int address, int size, int binding, int symty
 
 
 void elf_start():
-	base_code_offset = 134512640 /* 0x08048000 */
-	code_offset = base_code_offset
-
-	# The read-write data segment loads 16 MB above the image, clear of the
-	# code + section tables (~1.5 MB). Mutable globals, GOT slots and
-	# extern-data copy space are emitted here (data_split, set by
-	# link_impl's target reset) at data_offset+datapos, mirroring
-	# elf_arm64.w / elf_64.w.
-	data_offset = base_code_offset + 16777216 /* +0x1000000 */
-	datapos = 0
-	data_size = 4096
-	data = malloc(data_size)
-
-	/* ELF Header: 52 bytes */
-	elf_header(1)
-	elf_header_32()
-
-	# phdr[0] text (R+X), phdr[1] data (R+W, patched in elf_finish); the
-	# next three start as PT_NULL and are filled in by elf_emit_dynamic()
-	# when there are imports; the last is the build-id PT_NOTE.
-	phdr_table_pos = codepos
-	elf_program_header(1, 5)
-	elf_program_header(0, 6)
-	elf_program_header(0, 0)
-	elf_program_header(0, 0)
-	elf_program_header(0, 0)
-	elf_program_header(0, 0)
-	elf_emit_build_id_note()
+	elf_image_headers(3, 0)
 
 	/* setup command line args */
 	emit(5, c"\x8d\x44\x24\x04\x50")
@@ -128,14 +61,11 @@ void elf_start():
 # so _main sees exactly the frame it would have without the thunk.
 # Returns the thunk's address for the entry call patch.
 int elf_emit_tls_entry_thunk(int main_addr):
-	if (tls_size > 1048576):
-		error(c"thread_local storage exceeds 1MB")
-	if (tls_size_patch_pos == 0):
-		error(c"thread_local: no __w_tls_size stub on this target")
+	if (tls_size > 1048576): error(c"thread_local storage exceeds 1MB")
+	if (tls_size_patch_pos == 0): error(c"thread_local: no __w_tls_size stub on this target")
 	tls_size = (tls_size + 15) & (0 - 16)
 	save_int32(code + tls_size_patch_pos, tls_size)
-	while ((datapos & 15) != 0):
-		emit_data_zeros(1)
+	while ((datapos & 15) != 0): emit_data_zeros(1)
 	int block = emit_data_zeros(tls_size)
 	int set_addr = sym_address(c"__w_tls_set")
 	int thunk = code_offset + codepos
@@ -169,20 +99,9 @@ void elf_finish_entry_patch():
 	# headers; a no-op when nothing was imported with c_lib/extern.
 	elf_emit_dynamic()
 
-	# Store pointer to library _main()
-	int t = sym_address(c"_main")
-	# As a backup, try to use main()
-	# TODO: should we allow this?
-	if (t == 0):
-		t = sym_address(c"main")
-	if (t == 0):
-		# 'w check' on a main-less library module: not an error, and
-		# there is no entry call to patch (the output is discarded)
-		if (entry_optional):
-			return
-		error(c"Failed to find a _main() function. Did you import lib/testing?")
-	if (tls_size > 0):
-		t = elf_emit_tls_entry_thunk(t)
+	int t = entry_symbol(0)
+	if (t == 0): return
+	if (tls_size > 0): t = elf_emit_tls_entry_thunk(t)
 	# rel32 = target - address of the instruction after the 5-byte call
 	t = t - code_offset - entry_call_disp_pos - 4
 
@@ -191,29 +110,7 @@ void elf_finish_entry_patch():
 
 void elf_finish():
 	elf_finish_entry_patch()
-
-	# Text segment (phdr[0], R+X): offset 0, vaddr base, size = codepos.
-	save_int(code + phdr_table_pos + 16, codepos) /* p_filesz */
-	save_int(code + phdr_table_pos + 20, codepos) /* p_memsz */
-
-	if (datapos > 0):
-		# Place the data segment on its own file page after the code; its
-		# vaddr (data_offset) is already page-aligned and 16 MB above base,
-		# so (vaddr - file_offset) stays page-congruent as the loader
-		# requires. phdr[1] is the R+W data load.
-		int data_file_off = (codepos + 4095) & (0 - 4096)
-		int p = phdr_table_pos + 32
-		save_int(code + p + 0, 1)              /* p_type = PT_LOAD */
-		save_int(code + p + 4, data_file_off)  /* p_offset */
-		save_int(code + p + 8, data_offset)    /* p_vaddr */
-		save_int(code + p + 12, data_offset)   /* p_paddr */
-		save_int(code + p + 16, datapos)       /* p_filesz */
-		save_int(code + p + 20, datapos)       /* p_memsz */
-		# Pad the file to the data segment's page offset, then write code
-		# and data as two segments in one file.
-		while (codepos < data_file_off):
-			emit_int8(0)
-	elf_write_image()
+	elf_patch_load_segments(0)
 
 
 void elf_save_section_info_32(int header_addr, int num_sections, int string_index):

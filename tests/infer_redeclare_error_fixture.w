@@ -6,3 +6,4 @@
 x := 1
 x := 2
 println(x)
+# wbuild: fixture_group=infer_safety_test

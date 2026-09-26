@@ -10,8 +10,7 @@ import lib.testing
 
 int vw_sum(int... values):
 	int total = 0
-	for int v in values:
-		total = total + v
+	for int v in values: total = total + v
 	return total
 
 
@@ -45,8 +44,7 @@ void test_indexing_preserves_order():
 
 int vw_weighted(int factor, int offset, int... values):
 	int total = offset
-	for int v in values:
-		total = total + v * factor
+	for int v in values: total = total + v * factor
 	return total
 
 
@@ -58,8 +56,7 @@ void test_variadic_after_fixed_params():
 
 int vw_total_len(char*... parts):
 	int total = 0
-	for char* part in parts:
-		total = total + strlen(part)
+	for char* part in parts: total = total + strlen(part)
 	return total
 
 
@@ -83,15 +80,13 @@ void test_nested_variadic_calls():
 
 void test_variadic_call_in_loop():
 	int total = 0
-	for int i in range(10):
-		total = total + vw_sum(i, i, 1)
+	for int i in range(10): total = total + vw_sum(i, i, 1)
 	assert_equal(90 + 10, total)
 
 
 int vw_sum_by_index(int... values):
 	int total = 0
-	for int i in range(values.length):
-		total = total + values[i]
+	for int i in range(values.length): total = total + values[i]
 	return total
 
 
@@ -106,8 +101,7 @@ struct vw_acc:
 
 int vw_acc_add(vw_acc* self, int... values):
 	int total = self.base
-	for int v in values:
-		total = total + v
+	for int v in values: total = total + v
 	return total
 
 

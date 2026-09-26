@@ -138,14 +138,12 @@ void post_scroll(int lines):
 # this many points. Real hardware events are not rebuilt this way.
 int near(int want, int got):
 	int d = want - got
-	if (d < 0):
-		d = 0 - d
+	if (d < 0): d = 0 - d
 	return d <= 3
 
 
 void assert_near(int want, int got):
-	if (near(want, got) == 0):
-		assert_equal(want, got)
+	if (near(want, got) == 0): assert_equal(want, got)
 
 
 # Pop the next event and check its kind/code (and position when x >= 0).
@@ -157,20 +155,17 @@ void expect_event(gfx_window* win, int kind, int code, int x, int y, int mods):
 	if (x >= 0):
 		assert_near(x, e.x)
 		assert_near(y, e.y)
-	if (mods >= 0):
-		assert_equal(mods, e.mods)
+	if (mods >= 0): assert_equal(mods, e.mods)
 
 
 void drain(gfx_window* win):
 	gfx_event e
-	while (gfx_window_next_event(win, &e)):
-		e.kind = 0
+	while (gfx_window_next_event(win, &e)): e.kind = 0
 
 
 int test_window_events():
 	gfx_window* win = gfx_window_open(c"cocoa input test", 200, 150)
-	if (win == 0):
-		return 0
+	if (win == 0): return 0
 	gfx_window_poll(win)
 	drain(win)
 

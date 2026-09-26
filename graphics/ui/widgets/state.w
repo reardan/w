@@ -52,14 +52,12 @@ struct ui_layout:
 
 
 # Layout regions a frame can nest.
-int ui_layout_max_depth():
-	return 8
+const int ui_layout_max_depth = 8
 
 
 # Popups that can be open at once — a popover inside a modal, a
 # dropdown inside that.
-int ui_popup_max_depth():
-	return 4
+const int ui_popup_max_depth = 4
 
 
 struct ui_context:

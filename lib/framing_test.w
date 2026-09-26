@@ -153,10 +153,7 @@ void test_large_message_grows_buffer():
 	# Larger than the initial 1024-byte reader buffer.
 	int body_length = 3000
 	char* body = malloc(body_length + 1)
-	int i = 0
-	while (i < body_length):
-		body[i] = 'a' + (i % 26)
-		i = i + 1
+	for i in range(body_length): body[i] = 'a' + (i % 26)
 	body[body_length] = 0
 
 	int total = frame_write_message(fds[0], body, body_length)

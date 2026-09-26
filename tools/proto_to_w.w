@@ -52,8 +52,7 @@ int main(int argc, int argv):
 		return 1
 	list[char*] roots = new list[char*]
 	char* root = args_value(c"I")
-	if (root == 0):
-		root = c"."
+	if (root == 0): root = c"."
 	roots.push(root)
 	proto_codegen_result* result = proto_to_w_with_roots(input, input_path, roots)
 	if (result.source == 0):

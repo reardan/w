@@ -89,95 +89,74 @@ import libs.standard.crypto.base64
 import libs.standard.crypto.random
 import libs.standard.net.dns
 import libs.standard.net.tls
+import lib.mem
 
 
 /* Constants */
 
-int smtp_security_none():
-	return 0
-
-
-int smtp_security_starttls():
-	return 1
-
-
-int smtp_security_implicit():
-	return 2
+const int smtp_security_none = 0
+const int smtp_security_starttls = 1
+const int smtp_security_implicit = 2
 
 
 # Conventional port for a security mode: 25 (relay), 587 (submission
 # with STARTTLS), 465 (submission over implicit TLS).
 int smtp_default_port(int security):
-	if (security == smtp_security_implicit()):
-		return 465
-	if (security == smtp_security_starttls()):
-		return 587
+	if (security == smtp_security_implicit): return 465
+	if (security == smtp_security_starttls): return 587
 	return 25
 
 
-int smtp_error_none():
-	return 0
+const int smtp_error_none = 0
 
 
 # Socket or TLS read/write failed, or the peer closed. Fatal.
-int smtp_error_io():
-	return 1
+const int smtp_error_io = 1
 
 
 # Malformed or oversized reply, or plaintext injected after STARTTLS.
-int smtp_error_protocol():
-	return 2
+const int smtp_error_protocol = 2
 
 
 # The server answered with an unexpected (4xx/5xx) reply code.
-int smtp_error_rejected():
-	return 3
+const int smtp_error_rejected = 3
 
 
 # A caller argument failed validation; nothing was sent.
-int smtp_error_invalid():
-	return 4
+const int smtp_error_invalid = 4
 
 
 # TLS handshake failed (see smtp_error_message). Fatal.
-int smtp_error_tls():
-	return 5
+const int smtp_error_tls = 5
 
 
 # The server did not advertise what the call needs (STARTTLS, AUTH ...).
-int smtp_error_unsupported():
-	return 6
+const int smtp_error_unsupported = 6
 
 
 # AUTH refused locally: the channel is not encrypted (see header).
-int smtp_error_insecure():
-	return 7
+const int smtp_error_insecure = 7
 
 
 # The message exceeds the server's SIZE limit or has a line over 998
 # octets.
-int smtp_error_too_large():
-	return 8
+const int smtp_error_too_large = 8
 
 
 # Longest accepted reply line (RFC 5321 says 512; be lenient).
-int smtp_max_reply_line():
-	return 4096
+const int smtp_max_reply_line = 4096
 
 
 # Most lines accepted in one multi-line reply.
-int smtp_max_reply_lines():
-	return 256
+const int smtp_max_reply_lines = 256
 
 
 # Longest command line including CRLF (RFC 5321 4.5.3.1.4).
-int smtp_max_command_line():
-	return 512
+const int smtp_max_command_line = 512
 
 
 # Longest AUTH command / response line including CRLF (RFC 4954 4).
-int smtp_max_auth_line():
-	return 12288
+const int smtp_max_auth_line = 12288
 
 
 # Longest text line of message content, excluding CRLF (RFC 5321
@@ -187,12 +166,8 @@ int smtp_max_text_line():
 
 
 # Longest forward/reverse path content, excluding the angle brackets.
-int smtp_max_address():
-	return 254
-
-
-int smtp_read_buf_cap():
-	return 4096
+const int smtp_max_address = 254
+const int smtp_read_buf_cap = 4096
 
 
 /* Client state */
@@ -250,10 +225,9 @@ smtp_client* smtp_client_from_fd(int fd, char* server_name):
 	c.tls_cfg = 0
 	c.tls_cfg_owned = 0
 	c.server_name = 0
-	if (server_name != 0):
-		c.server_name = strclone(server_name)
+	if (server_name != 0): c.server_name = strclone(server_name)
 	c.ehlo_domain = 0
-	c.rbuf = malloc(smtp_read_buf_cap())
+	c.rbuf = malloc(smtp_read_buf_cap)
 	c.rpos = 0
 	c.rlen = 0
 	c.error = 0
@@ -264,27 +238,22 @@ smtp_client* smtp_client_from_fd(int fd, char* server_name):
 	c.auth_mechs = strclone(c"")
 	c.allow_insecure_auth = 0
 	smtp_reset_caps(c)
-	if (fd >= 0):
-		socket_set_nosigpipe(fd)
+	if (fd >= 0): socket_set_nosigpipe(fd)
 	return c
 
 
 # Sends nothing: closes the TLS session (close_notify) and the socket
 # and frees the client. Call smtp_quit first for a polite goodbye.
 void smtp_close(smtp_client* c):
-	if (c == 0):
-		return
+	if (c == 0): return
 	if (c.tls != 0):
-		if (c.broken == 0):
-			tls_close(c.tls)
-		else:
-			tls_conn_free(c.tls)
+		if (c.broken == 0): tls_close(c.tls)
+		else: tls_conn_free(c.tls)
 		c.tls = 0
 	if (c.fd >= 0):
 		close(c.fd)
 		c.fd = (-1)
-	if (c.tls_cfg_owned != 0):
-		tls_config_free(c.tls_cfg)
+	if (c.tls_cfg_owned != 0): tls_config_free(c.tls_cfg)
 	free(c.server_name)
 	free(c.ehlo_domain)
 	free(c.rbuf)
@@ -299,8 +268,7 @@ int smtp_error(smtp_client* c):
 
 # Static description of the last error ("" when none).
 char* smtp_error_message(smtp_client* c):
-	if (c.error_detail != 0):
-		return c.error_detail
+	if (c.error_detail != 0): return c.error_detail
 	return c""
 
 
@@ -322,7 +290,7 @@ void smtp_set_allow_insecure_auth(smtp_client* c, int allow):
 int smtp_fail(smtp_client* c, int code, char* detail):
 	c.error = code
 	c.error_detail = detail
-	if ((code == smtp_error_io()) || (code == smtp_error_protocol()) || (code == smtp_error_tls())):
+	if ((code == smtp_error_io) || (code == smtp_error_protocol) || (code == smtp_error_tls)):
 		c.broken = 1
 	return 0
 
@@ -330,8 +298,7 @@ int smtp_fail(smtp_client* c, int code, char* detail):
 # Common prologue of every public verb: fail fast on a dead session and
 # clear the previous per-call error.
 int smtp_begin(smtp_client* c):
-	if (c.broken != 0):
-		return 0
+	if (c.broken != 0): return 0
 	c.error = 0
 	c.error_detail = 0
 	return 1
@@ -341,31 +308,25 @@ int smtp_begin(smtp_client* c):
 
 int smtp_write_all(smtp_client* c, char* data, int n):
 	if (c.tls != 0):
-		if (n == 0):
-			return 1
+		if (n == 0): return 1
 		if (tls_write(c.tls, data, n) != n):
-			return smtp_fail(c, smtp_error_io(), c"smtp: TLS write failed")
+			return smtp_fail(c, smtp_error_io, c"smtp: TLS write failed")
 		return 1
 	int total = 0
 	while (total < n):
 		int got = socket_send(c.fd, data + total, n - total, msg_nosignal())
-		if (got <= 0):
-			return smtp_fail(c, smtp_error_io(), c"smtp: socket write failed")
+		if (got <= 0): return smtp_fail(c, smtp_error_io, c"smtp: socket write failed")
 		total = total + got
 	return 1
 
 
 # Refills the read buffer when empty. 1 = bytes available, 0 = EOF/error.
 int smtp_fill(smtp_client* c):
-	if (c.rpos < c.rlen):
-		return 1
+	if (c.rpos < c.rlen): return 1
 	int got = 0
-	if (c.tls != 0):
-		got = tls_read(c.tls, c.rbuf, smtp_read_buf_cap())
-	else:
-		got = read(c.fd, c.rbuf, smtp_read_buf_cap())
-	if (got <= 0):
-		return smtp_fail(c, smtp_error_io(), c"smtp: connection closed or read failed")
+	if (c.tls != 0): got = tls_read(c.tls, c.rbuf, smtp_read_buf_cap)
+	else: got = read(c.fd, c.rbuf, smtp_read_buf_cap)
+	if (got <= 0): return smtp_fail(c, smtp_error_io, c"smtp: connection closed or read failed")
 	c.rpos = 0
 	c.rlen = got
 	return 1
@@ -376,8 +337,7 @@ int smtp_fill(smtp_client* c):
 int smtp_read_line(smtp_client* c, string_builder* line):
 	string_clear(line)
 	while (1 == 1):
-		if (smtp_fill(c) == 0):
-			return 0
+		if (smtp_fill(c) == 0): return 0
 		int ch = c.rbuf[c.rpos] & 255
 		c.rpos = c.rpos + 1
 		if (ch == 10):
@@ -385,8 +345,8 @@ int smtp_read_line(smtp_client* c, string_builder* line):
 				line.length = line.length - 1
 				line.data[line.length] = 0
 			return 1
-		if (line.length >= smtp_max_reply_line()):
-			return smtp_fail(c, smtp_error_protocol(), c"smtp: reply line too long")
+		if (line.length >= smtp_max_reply_line):
+			return smtp_fail(c, smtp_error_protocol, c"smtp: reply line too long")
 		string_append_char(line, ch)
 	return 0
 
@@ -399,25 +359,20 @@ int smtp_is_digit(int ch):
 # '-' or end of line. Sets *code and *more (1 for a '-' continuation).
 # Returns 1, or 0 when the line is malformed.
 int smtp_parse_reply_line(char* line, int len, int* code, int* more):
-	if (len < 3):
-		return 0
+	if (len < 3): return 0
 	int d0 = line[0] & 255
 	int d1 = line[1] & 255
 	int d2 = line[2] & 255
-	if ((smtp_is_digit(d0) == 0) || (smtp_is_digit(d1) == 0) || (smtp_is_digit(d2) == 0)):
-		return 0
-	if ((d0 < '2') || (d0 > '5')):
-		return 0
+	if ((smtp_is_digit(d0) == 0) || (smtp_is_digit(d1) == 0) || (smtp_is_digit(d2) == 0)): return 0
+	if ((d0 < '2') || (d0 > '5')): return 0
 	*code = (d0 - '0') * 100 + (d1 - '0') * 10 + (d2 - '0')
 	*more = 0
-	if (len == 3):
-		return 1
+	if (len == 3): return 1
 	int sep = line[3] & 255
 	if (sep == '-'):
 		*more = 1
 		return 1
-	if (sep == ' '):
-		return 1
+	if (sep == ' '): return 1
 	return 0
 
 
@@ -438,24 +393,22 @@ int smtp_read_reply(smtp_client* c):
 		if (smtp_parse_reply_line(line.data, line.length, &this_code, &more) == 0):
 			string_free(line)
 			string_free(text)
-			smtp_fail(c, smtp_error_protocol(), c"smtp: malformed reply line")
+			smtp_fail(c, smtp_error_protocol, c"smtp: malformed reply line")
 			return (-1)
 		if ((lines > 0) && (this_code != code)):
 			string_free(line)
 			string_free(text)
-			smtp_fail(c, smtp_error_protocol(), c"smtp: inconsistent codes in multi-line reply")
+			smtp_fail(c, smtp_error_protocol, c"smtp: inconsistent codes in multi-line reply")
 			return (-1)
 		code = this_code
 		lines = lines + 1
-		if (lines > smtp_max_reply_lines()):
+		if (lines > smtp_max_reply_lines):
 			string_free(line)
 			string_free(text)
-			smtp_fail(c, smtp_error_protocol(), c"smtp: too many reply lines")
+			smtp_fail(c, smtp_error_protocol, c"smtp: too many reply lines")
 			return (-1)
-		if (lines > 1):
-			string_append_char(text, 10)
-		if (line.length > 4):
-			string_append_bytes(text, line.data + 4, line.length - 4)
+		if (lines > 1): string_append_char(text, 10)
+		if (line.length > 4): string_append_bytes(text, line.data + 4, line.length - 4)
 	string_free(line)
 	free(c.last_text)
 	c.last_text = text.data
@@ -469,39 +422,32 @@ int smtp_read_reply(smtp_client* c):
 # 1 when text is a safe single command argument: 1..max_len bytes of
 # printable ASCII without space, '<' or '>'. Rules out CR/LF injection.
 int smtp_valid_token(char* text, int max_len, int allow_empty):
-	if (text == 0):
-		return 0
+	if (text == 0): return 0
 	int n = 0
 	while (text[n] != 0):
 		int ch = text[n] & 255
-		if ((ch <= 32) || (ch >= 127) || (ch == '<') || (ch == '>')):
-			return 0
+		if ((ch <= 32) || (ch >= 127) || (ch == '<') || (ch == '>')): return 0
 		n = n + 1
-		if (n > max_len):
-			return 0
-	if ((n == 0) && (allow_empty == 0)):
-		return 0
+		if (n > max_len): return 0
+	if ((n == 0) && (allow_empty == 0)): return 0
 	return 1
 
 
 # 1 when addr is a valid (non-empty) forward-path / mailbox address.
 int smtp_valid_address(char* addr):
-	return smtp_valid_token(addr, smtp_max_address(), 0)
+	return smtp_valid_token(addr, smtp_max_address, 0)
 
 
 # 1 when line may be sent as one command: no CR, LF or NUL-truncation
 # issues and short enough with CRLF appended.
 int smtp_valid_line(char* line, int max_with_crlf):
-	if (line == 0):
-		return 0
+	if (line == 0): return 0
 	int n = 0
 	while (line[n] != 0):
 		int ch = line[n] & 255
-		if ((ch == 13) || (ch == 10)):
-			return 0
+		if ((ch == 13) || (ch == 10)): return 0
 		n = n + 1
-	if ((n == 0) || (n + 2 > max_with_crlf)):
-		return 0
+	if ((n == 0) || (n + 2 > max_with_crlf)): return 0
 	return 1
 
 
@@ -509,13 +455,10 @@ int smtp_valid_line(char* line, int max_with_crlf):
 
 int smtp_send_line(smtp_client* c, char* line, int max_with_crlf):
 	if (smtp_valid_line(line, max_with_crlf) == 0):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: command line contains CR/LF or is too long")
+		return smtp_fail(c, smtp_error_invalid, c"smtp: command line contains CR/LF or is too long")
 	int n = strlen(line)
 	char* buf = malloc(n + 3)
-	int i = 0
-	while (i < n):
-		buf[i] = line[i]
-		i = i + 1
+	mem_copy(buf, line, n)
 	buf[n] = 13
 	buf[n + 1] = 10
 	buf[n + 2] = 0
@@ -525,72 +468,57 @@ int smtp_send_line(smtp_client* c, char* line, int max_with_crlf):
 
 
 int smtp_command_limit(smtp_client* c, char* line, int max_with_crlf):
-	if (smtp_send_line(c, line, max_with_crlf) == 0):
-		return (-1)
+	if (smtp_send_line(c, line, max_with_crlf) == 0): return (-1)
 	return smtp_read_reply(c)
 
 
 # Sends one raw command line (CRLF appended) and returns the reply code,
 # or -1 when the line is invalid (CR/LF, too long) or I/O failed.
 int smtp_command(smtp_client* c, char* line):
-	if (smtp_begin(c) == 0):
-		return (-1)
-	return smtp_command_limit(c, line, smtp_max_command_line())
+	if (smtp_begin(c) == 0): return (-1)
+	return smtp_command_limit(c, line, smtp_max_command_line)
 
 
 # Maps a reply code to the verb result: 1 when it is one of the wanted
 # codes (want2 may be 0), else records a rejection.
 int smtp_expect(smtp_client* c, int code, int want1, int want2):
-	if (code < 0):
-		return 0
-	if ((code == want1) || ((want2 != 0) && (code == want2))):
-		return 1
-	return smtp_fail(c, smtp_error_rejected(), c"smtp: server rejected the command")
+	if (code < 0): return 0
+	if ((code == want1) || ((want2 != 0) && (code == want2))): return 1
+	return smtp_fail(c, smtp_error_rejected, c"smtp: server rejected the command")
 
 
 int smtp_simple(smtp_client* c, char* line, int want1, int want2):
-	if (smtp_begin(c) == 0):
-		return 0
-	return smtp_expect(c, smtp_command_limit(c, line, smtp_max_command_line()), want1, want2)
+	if (smtp_begin(c) == 0): return 0
+	return smtp_expect(c, smtp_command_limit(c, line, smtp_max_command_line), want1, want2)
 
 
 # Reads the 220 service greeting.
 int smtp_greeting(smtp_client* c):
-	if (smtp_begin(c) == 0):
-		return 0
+	if (smtp_begin(c) == 0): return 0
 	return smtp_expect(c, smtp_read_reply(c), 220, 0)
 
 
 int smtp_upper(int ch):
-	if ((ch >= 'a') && (ch <= 'z')):
-		return ch - 32
+	if ((ch >= 'a') && (ch <= 'z')): return ch - 32
 	return ch
 
 
 # Case-insensitive compare of text[start, end) with an upper-case word.
 int smtp_word_is(char* text, int start, int end, char* word):
 	int n = strlen(word)
-	if (end - start != n):
-		return 0
-	int i = 0
-	while (i < n):
-		if (smtp_upper(text[start + i] & 255) != (word[i] & 255)):
-			return 0
-		i = i + 1
+	if (end - start != n): return 0
+	for i in range(n):
+		if (smtp_upper(text[start + i] & 255) != (word[i] & 255)): return 0
 	return 1
 
 
 int smtp_parse_decimal(char* text, int start, int end):
 	int v = 0
-	int i = start
-	while (i < end):
+	for i in range(start, end):
 		int ch = text[i] & 255
-		if (smtp_is_digit(ch) == 0):
-			return 0
-		if (v > 200000000):
-			return 2000000000
+		if (smtp_is_digit(ch) == 0): return 0
+		if (v > 200000000): return 2000000000
 		v = v * 10 + (ch - '0')
-		i = i + 1
 	return v
 
 
@@ -598,22 +526,14 @@ void smtp_note_auth_mechs(smtp_client* c, char* text, int start, int end):
 	string_builder* mechs = string_from(c.auth_mechs)
 	int i = start
 	while (i < end):
-		while ((i < end) && ((text[i] & 255) == ' ')):
-			i = i + 1
+		while ((i < end) && ((text[i] & 255) == ' ')): i = i + 1
 		int ws = i
-		while ((i < end) && ((text[i] & 255) != ' ')):
-			i = i + 1
+		while ((i < end) && ((text[i] & 255) != ' ')): i = i + 1
 		if (i > ws):
-			if (smtp_word_is(text, ws, i, c"PLAIN") != 0):
-				c.auth_plain = 1
-			else if (smtp_word_is(text, ws, i, c"LOGIN") != 0):
-				c.auth_login = 1
-			if (mechs.length > 0):
-				string_append_char(mechs, ' ')
-			int k = ws
-			while (k < i):
-				string_append_char(mechs, smtp_upper(text[k] & 255))
-				k = k + 1
+			if (smtp_word_is(text, ws, i, c"PLAIN") != 0): c.auth_plain = 1
+			else if (smtp_word_is(text, ws, i, c"LOGIN") != 0): c.auth_login = 1
+			if (mechs.length > 0): string_append_char(mechs, ' ')
+			for k in range(ws, i): string_append_char(mechs, smtp_upper(text[k] & 255))
 	free(c.auth_mechs)
 	c.auth_mechs = mechs.data
 	free(cast(char*, mechs))
@@ -626,58 +546,46 @@ void smtp_parse_ehlo_caps(smtp_client* c, char* text):
 	c.esmtp = 1
 	int i = 0
 	# Skip the first line (domain + greeting).
-	while ((text[i] != 0) && (text[i] != 10)):
-		i = i + 1
+	while ((text[i] != 0) && (text[i] != 10)): i = i + 1
 	while (text[i] != 0):
 		i = i + 1
 		int ls = i
-		while ((text[i] != 0) && (text[i] != 10)):
-			i = i + 1
+		while ((text[i] != 0) && (text[i] != 10)): i = i + 1
 		int le = i
 		int ke = ls
-		while ((ke < le) && ((text[ke] & 255) != ' ') && ((text[ke] & 255) != '=')):
-			ke = ke + 1
+		while ((ke < le) && ((text[ke] & 255) != ' ') && ((text[ke] & 255) != '=')): ke = ke + 1
 		int ps = ke
-		if (ps < le):
-			ps = ps + 1
+		if (ps < le): ps = ps + 1
 		if (smtp_word_is(text, ls, ke, c"SIZE") != 0):
 			c.cap_size = 1
 			c.size_limit = smtp_parse_decimal(text, ps, le)
-		else if (smtp_word_is(text, ls, ke, c"8BITMIME") != 0):
-			c.cap_8bitmime = 1
-		else if (smtp_word_is(text, ls, ke, c"PIPELINING") != 0):
-			c.cap_pipelining = 1
-		else if (smtp_word_is(text, ls, ke, c"STARTTLS") != 0):
-			c.cap_starttls = 1
-		else if (smtp_word_is(text, ls, ke, c"SMTPUTF8") != 0):
-			c.cap_smtputf8 = 1
-		else if (smtp_word_is(text, ls, ke, c"AUTH") != 0):
-			smtp_note_auth_mechs(c, text, ps, le)
+		else if (smtp_word_is(text, ls, ke, c"8BITMIME") != 0): c.cap_8bitmime = 1
+		else if (smtp_word_is(text, ls, ke, c"PIPELINING") != 0): c.cap_pipelining = 1
+		else if (smtp_word_is(text, ls, ke, c"STARTTLS") != 0): c.cap_starttls = 1
+		else if (smtp_word_is(text, ls, ke, c"SMTPUTF8") != 0): c.cap_smtputf8 = 1
+		else if (smtp_word_is(text, ls, ke, c"AUTH") != 0): smtp_note_auth_mechs(c, text, ps, le)
 
 
 # EHLO, falling back to HELO when the server answers EHLO with 5xx.
 # Records the capabilities (all cleared after a HELO fallback).
 int smtp_ehlo(smtp_client* c, char* domain):
-	if (smtp_begin(c) == 0):
-		return 0
-	if (domain == 0):
-		domain = c"localhost"
+	if (smtp_begin(c) == 0): return 0
+	if (domain == 0): domain = c"localhost"
 	if (smtp_valid_token(domain, 255, 0) == 0):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: invalid EHLO domain")
+		return smtp_fail(c, smtp_error_invalid, c"smtp: invalid EHLO domain")
 	if (c.ehlo_domain != domain):
 		free(c.ehlo_domain)
 		c.ehlo_domain = strclone(domain)
 	char* line = strjoin(c"EHLO ", domain)
-	int code = smtp_command_limit(c, line, smtp_max_command_line())
+	int code = smtp_command_limit(c, line, smtp_max_command_line)
 	free(line)
 	if (code == 250):
 		smtp_parse_ehlo_caps(c, c.last_text)
 		return 1
-	if ((code < 500) || (code > 599)):
-		return smtp_expect(c, code, 250, 0)
+	if ((code < 500) || (code > 599)): return smtp_expect(c, code, 250, 0)
 	smtp_reset_caps(c)
 	line = strjoin(c"HELO ", domain)
-	code = smtp_command_limit(c, line, smtp_max_command_line())
+	code = smtp_command_limit(c, line, smtp_max_command_line)
 	free(line)
 	return smtp_expect(c, code, 250, 0)
 
@@ -694,14 +602,12 @@ int smtp_tls_wrap(smtp_client* c, tls_config* cfg):
 			c.tls_cfg_owned = 0
 		c.tls_cfg = cfg
 	char* name = c.server_name
-	if (name == 0):
-		name = c""
+	if (name == 0): name = c""
 	c.tls = tls_connect(c.fd, name, cfg)
 	if (c.tls == 0):
 		char* why = tls_last_error(cfg)
-		if (why == 0):
-			why = c"smtp: TLS handshake failed"
-		return smtp_fail(c, smtp_error_tls(), why)
+		if (why == 0): why = c"smtp: TLS handshake failed"
+		return smtp_fail(c, smtp_error_tls, why)
 	return 1
 
 
@@ -709,20 +615,16 @@ int smtp_tls_wrap(smtp_client* c, tls_config* cfg):
 # pipelined behind the 220, handshakes TLS (cfg 0 = default config with
 # certificate validation) and re-issues EHLO.
 int smtp_starttls(smtp_client* c, tls_config* cfg):
-	if (smtp_begin(c) == 0):
-		return 0
-	if (c.tls != 0):
-		return smtp_fail(c, smtp_error_unsupported(), c"smtp: TLS already active")
+	if (smtp_begin(c) == 0): return 0
+	if (c.tls != 0): return smtp_fail(c, smtp_error_unsupported, c"smtp: TLS already active")
 	if (c.cap_starttls == 0):
-		return smtp_fail(c, smtp_error_unsupported(), c"smtp: server does not offer STARTTLS")
-	int code = smtp_command_limit(c, c"STARTTLS", smtp_max_command_line())
-	if (smtp_expect(c, code, 220, 0) == 0):
-		return 0
+		return smtp_fail(c, smtp_error_unsupported, c"smtp: server does not offer STARTTLS")
+	int code = smtp_command_limit(c, c"STARTTLS", smtp_max_command_line)
+	if (smtp_expect(c, code, 220, 0) == 0): return 0
 	if (c.rpos < c.rlen):
-		return smtp_fail(c, smtp_error_protocol(), c"smtp: plaintext data after STARTTLS reply")
+		return smtp_fail(c, smtp_error_protocol, c"smtp: plaintext data after STARTTLS reply")
 	smtp_reset_caps(c)
-	if (smtp_tls_wrap(c, cfg) == 0):
-		return 0
+	if (smtp_tls_wrap(c, cfg) == 0): return 0
 	char* domain = strclone(c.ehlo_domain)
 	int ok = smtp_ehlo(c, domain)
 	free(domain)
@@ -734,17 +636,12 @@ int smtp_starttls(smtp_client* c, tls_config* cfg):
 # starttls; fails with smtp_error_unsupported when not offered, never
 # silently downgrading). ehlo_domain 0 means "localhost".
 int smtp_start(smtp_client* c, int security, tls_config* cfg, char* ehlo_domain):
-	if (smtp_begin(c) == 0):
-		return 0
-	if (security == smtp_security_implicit()):
-		if (smtp_tls_wrap(c, cfg) == 0):
-			return 0
-	if (smtp_greeting(c) == 0):
-		return 0
-	if (smtp_ehlo(c, ehlo_domain) == 0):
-		return 0
-	if (security == smtp_security_starttls()):
-		return smtp_starttls(c, cfg)
+	if (smtp_begin(c) == 0): return 0
+	if (security == smtp_security_implicit):
+		if (smtp_tls_wrap(c, cfg) == 0): return 0
+	if (smtp_greeting(c) == 0): return 0
+	if (smtp_ehlo(c, ehlo_domain) == 0): return 0
+	if (security == smtp_security_starttls): return smtp_starttls(c, cfg)
 	return 1
 
 
@@ -756,11 +653,11 @@ smtp_client* smtp_open(char* host, int port, int security, tls_config* cfg, char
 	smtp_client* c = smtp_client_from_fd((-1), host)
 	int ip = 0
 	if ((host == 0) || (dns_resolve_ipv4(host, &ip) == 0)):
-		smtp_fail(c, smtp_error_io(), c"smtp: cannot resolve host")
+		smtp_fail(c, smtp_error_io, c"smtp: cannot resolve host")
 		return c
 	int fd = socket_tcp_ipv4()
 	if (fd < 0):
-		smtp_fail(c, smtp_error_io(), c"smtp: socket failed")
+		smtp_fail(c, smtp_error_io, c"smtp: socket failed")
 		return c
 	c.fd = fd
 	socket_set_nosigpipe(fd)
@@ -768,15 +665,14 @@ smtp_client* smtp_open(char* host, int port, int security, tls_config* cfg, char
 		socket_set_recv_timeout(fd, timeout_ms)
 		socket_set_send_timeout(fd, timeout_ms)
 	if (socket_connect_ipv4(fd, ip, port) < 0):
-		smtp_fail(c, smtp_error_io(), c"smtp: connect failed")
+		smtp_fail(c, smtp_error_io, c"smtp: connect failed")
 		return c
 	smtp_start(c, security, cfg, ehlo_domain)
 	return c
 
 
 int smtp_is_loopback_name(char* name):
-	if (name == 0):
-		return 0
+	if (name == 0): return 0
 	if ((strcmp(name, c"localhost") == 0) || (strcmp(name, c"127.0.0.1") == 0) || (strcmp(name, c"::1") == 0)):
 		return 1
 	return 0
@@ -784,9 +680,9 @@ int smtp_is_loopback_name(char* name):
 
 int smtp_auth_allowed(smtp_client* c, int advertised):
 	if ((c.tls == 0) && (c.allow_insecure_auth == 0) && (smtp_is_loopback_name(c.server_name) == 0)):
-		return smtp_fail(c, smtp_error_insecure(), c"smtp: refusing to send credentials without TLS")
+		return smtp_fail(c, smtp_error_insecure, c"smtp: refusing to send credentials without TLS")
 	if (advertised == 0):
-		return smtp_fail(c, smtp_error_unsupported(), c"smtp: AUTH mechanism not advertised")
+		return smtp_fail(c, smtp_error_unsupported, c"smtp: AUTH mechanism not advertised")
 	return 1
 
 
@@ -802,31 +698,25 @@ int smtp_sasl_send(smtp_client* c, char* prefix, char* data, int len):
 	if (prefix != 0):
 		line = strjoin(prefix, b64)
 		free(b64)
-	int code = smtp_command_limit(c, line, smtp_max_auth_line())
+	int code = smtp_command_limit(c, line, smtp_max_auth_line)
 	int n = strlen(line)
-	int i = 0
-	while (i < n):
-		line[i] = 0
-		i = i + 1
+	mem_fill(line, 0, n)
 	free(line)
 	return code
 
 
 # If the server is still mid-exchange (334), cancel it with "*".
 void smtp_sasl_cancel(smtp_client* c, int code):
-	if (code == 334):
-		smtp_command_limit(c, c"*", smtp_max_command_line())
+	if (code == 334): smtp_command_limit(c, c"*", smtp_max_command_line)
 
 
 # AUTH PLAIN (RFC 4616) with an initial response: base64 of
 # NUL user NUL pass (empty authorization identity).
 int smtp_auth_plain(smtp_client* c, char* user, char* pass):
-	if (smtp_begin(c) == 0):
-		return 0
+	if (smtp_begin(c) == 0): return 0
 	if ((smtp_valid_credential(user) == 0) || (smtp_valid_credential(pass) == 0) || (strlen(user) == 0)):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: invalid credentials")
-	if (smtp_auth_allowed(c, c.auth_plain) == 0):
-		return 0
+		return smtp_fail(c, smtp_error_invalid, c"smtp: invalid credentials")
+	if (smtp_auth_allowed(c, c.auth_plain) == 0): return 0
 	int ul = strlen(user)
 	int pl = strlen(pass)
 	int n = ul + pl + 2
@@ -842,13 +732,9 @@ int smtp_auth_plain(smtp_client* c, char* user, char* pass):
 		raw[2 + ul + i] = pass[i]
 		i = i + 1
 	int code = smtp_sasl_send(c, c"AUTH PLAIN ", raw, n)
-	i = 0
-	while (i < n):
-		raw[i] = 0
-		i = i + 1
+	mem_fill(raw, 0, n)
 	free(raw)
-	if (code == 235):
-		return 1
+	if (code == 235): return 1
 	smtp_sasl_cancel(c, code)
 	return smtp_expect(c, code, 235, 0)
 
@@ -856,42 +742,35 @@ int smtp_auth_plain(smtp_client* c, char* user, char* pass):
 # AUTH LOGIN: "AUTH LOGIN", then base64 user and base64 password, each
 # after a 334 challenge.
 int smtp_auth_login(smtp_client* c, char* user, char* pass):
-	if (smtp_begin(c) == 0):
-		return 0
+	if (smtp_begin(c) == 0): return 0
 	if ((smtp_valid_credential(user) == 0) || (smtp_valid_credential(pass) == 0) || (strlen(user) == 0)):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: invalid credentials")
-	if (smtp_auth_allowed(c, c.auth_login) == 0):
-		return 0
-	int code = smtp_command_limit(c, c"AUTH LOGIN", smtp_max_command_line())
-	if (code != 334):
-		return smtp_expect(c, code, 334, 0)
+		return smtp_fail(c, smtp_error_invalid, c"smtp: invalid credentials")
+	if (smtp_auth_allowed(c, c.auth_login) == 0): return 0
+	int code = smtp_command_limit(c, c"AUTH LOGIN", smtp_max_command_line)
+	if (code != 334): return smtp_expect(c, code, 334, 0)
 	code = smtp_sasl_send(c, 0, user, strlen(user))
 	if (code != 334):
 		smtp_sasl_cancel(c, code)
 		return smtp_expect(c, code, 334, 0)
 	code = smtp_sasl_send(c, 0, pass, strlen(pass))
-	if (code == 235):
-		return 1
+	if (code == 235): return 1
 	smtp_sasl_cancel(c, code)
 	return smtp_expect(c, code, 235, 0)
 
 
 # Picks AUTH PLAIN when advertised, else AUTH LOGIN.
 int smtp_auth(smtp_client* c, char* user, char* pass):
-	if ((c.auth_plain == 0) && (c.auth_login != 0)):
-		return smtp_auth_login(c, user, pass)
+	if ((c.auth_plain == 0) && (c.auth_login != 0)): return smtp_auth_login(c, user, pass)
 	return smtp_auth_plain(c, user, pass)
 
 
 int smtp_mail_from_ex(smtp_client* c, char* addr, int size, int eightbit):
-	if (smtp_begin(c) == 0):
-		return 0
-	if (addr == 0):
-		addr = c""
-	if (smtp_valid_token(addr, smtp_max_address(), 1) == 0):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: invalid MAIL FROM address")
+	if (smtp_begin(c) == 0): return 0
+	if (addr == 0): addr = c""
+	if (smtp_valid_token(addr, smtp_max_address, 1) == 0):
+		return smtp_fail(c, smtp_error_invalid, c"smtp: invalid MAIL FROM address")
 	if ((c.cap_size != 0) && (c.size_limit > 0) && (size > c.size_limit)):
-		return smtp_fail(c, smtp_error_too_large(), c"smtp: message exceeds the server SIZE limit")
+		return smtp_fail(c, smtp_error_too_large, c"smtp: message exceeds the server SIZE limit")
 	string_builder* line = string_new()
 	string_append(line, c"MAIL FROM:<")
 	string_append(line, addr)
@@ -899,9 +778,8 @@ int smtp_mail_from_ex(smtp_client* c, char* addr, int size, int eightbit):
 	if ((c.cap_size != 0) && (size > 0)):
 		string_append(line, c" SIZE=")
 		string_append_int(line, size)
-	if ((eightbit != 0) && (c.cap_8bitmime != 0)):
-		string_append(line, c" BODY=8BITMIME")
-	int code = smtp_command_limit(c, line.data, smtp_max_command_line())
+	if ((eightbit != 0) && (c.cap_8bitmime != 0)): string_append(line, c" BODY=8BITMIME")
+	int code = smtp_command_limit(c, line.data, smtp_max_command_line)
 	string_free(line)
 	return smtp_expect(c, code, 250, 0)
 
@@ -914,25 +792,21 @@ int smtp_mail_from(smtp_client* c, char* addr, int size):
 
 # RCPT TO:<addr>; accepts 250 and 251.
 int smtp_rcpt_to(smtp_client* c, char* addr):
-	if (smtp_begin(c) == 0):
-		return 0
+	if (smtp_begin(c) == 0): return 0
 	if (smtp_valid_address(addr) == 0):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: invalid RCPT TO address")
+		return smtp_fail(c, smtp_error_invalid, c"smtp: invalid RCPT TO address")
 	string_builder* line = string_new()
 	string_append(line, c"RCPT TO:<")
 	string_append(line, addr)
 	string_append(line, c">")
-	int code = smtp_command_limit(c, line.data, smtp_max_command_line())
+	int code = smtp_command_limit(c, line.data, smtp_max_command_line)
 	string_free(line)
 	return smtp_expect(c, code, 250, 251)
 
 
 int smtp_has_8bit(char* data, int len):
-	int i = 0
-	while (i < len):
-		if ((data[i] & 255) >= 128):
-			return 1
-		i = i + 1
+	for i in range(len):
+		if ((data[i] & 255) >= 128): return 1
 	return 0
 
 
@@ -948,14 +822,12 @@ char* smtp_dot_stuff(char* data, int len, int* out_len):
 	while (i < len):
 		int ch = data[i] & 255
 		if ((ch == 13) || (ch == 10)):
-			if ((ch == 13) && (i + 1 < len) && ((data[i + 1] & 255) == 10)):
-				i = i + 1
+			if ((ch == 13) && (i + 1 < len) && ((data[i + 1] & 255) == 10)): i = i + 1
 			string_append_char(out, 13)
 			string_append_char(out, 10)
 			col = 0
 		else:
-			if ((col == 0) && (ch == '.')):
-				string_append_char(out, '.')
+			if ((col == 0) && (ch == '.')): string_append_char(out, '.')
 			string_append_char(out, ch)
 			col = col + 1
 			if (col > smtp_max_text_line()):
@@ -975,22 +847,19 @@ char* smtp_dot_stuff(char* data, int len, int* out_len):
 # anything is sent), expects 354, sends the content + CRLF.CRLF, and
 # expects 250.
 int smtp_data(smtp_client* c, char* msg, int len):
-	if (smtp_begin(c) == 0):
-		return 0
+	if (smtp_begin(c) == 0): return 0
 	int n = 0
 	char* stuffed = smtp_dot_stuff(msg, len, &n)
 	if (stuffed == 0):
-		return smtp_fail(c, smtp_error_too_large(), c"smtp: message line longer than 998 octets")
-	int code = smtp_command_limit(c, c"DATA", smtp_max_command_line())
+		return smtp_fail(c, smtp_error_too_large, c"smtp: message line longer than 998 octets")
+	int code = smtp_command_limit(c, c"DATA", smtp_max_command_line)
 	if (code != 354):
 		free(stuffed)
 		return smtp_expect(c, code, 354, 0)
 	int ok = smtp_write_all(c, stuffed, n)
 	free(stuffed)
-	if (ok == 0):
-		return 0
-	if (smtp_write_all(c, c".\x0d\x0a", 3) == 0):
-		return 0
+	if (ok == 0): return 0
+	if (smtp_write_all(c, c".\x0d\x0a", 3) == 0): return 0
 	return smtp_expect(c, smtp_read_reply(c), 250, 0)
 
 
@@ -1010,8 +879,7 @@ int smtp_quit(smtp_client* c):
 # After a failed transaction step, reset the server's transaction state
 # without clobbering the error that caused the failure.
 void smtp_abort_transaction(smtp_client* c):
-	if (c.broken != 0):
-		return
+	if (c.broken != 0): return
 	int err = c.error
 	char* detail = c.error_detail
 	int code = c.last_code
@@ -1023,8 +891,7 @@ void smtp_abort_transaction(smtp_client* c):
 		c.last_code = code
 		free(c.last_text)
 		c.last_text = text
-	else:
-		free(text)
+	else: free(text)
 
 
 # One mail transaction: MAIL FROM, RCPT TO for each recipient, DATA.
@@ -1033,24 +900,19 @@ void smtp_abort_transaction(smtp_client* c):
 # recipients, or DATA failed (after an accepted MAIL, RSET is issued on
 # a live session; the failing reply stays in smtp_last_code/_reply).
 int smtp_send(smtp_client* c, char* from, list[char*] rcpts, char* msg, int len):
-	if (smtp_begin(c) == 0):
-		return 0
-	if (rcpts.length == 0):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: no recipients")
+	if (smtp_begin(c) == 0): return 0
+	if (rcpts.length == 0): return smtp_fail(c, smtp_error_invalid, c"smtp: no recipients")
 	int i = 0
 	while (i < rcpts.length):
 		if (smtp_valid_address(rcpts[i]) == 0):
-			return smtp_fail(c, smtp_error_invalid(), c"smtp: invalid RCPT TO address")
+			return smtp_fail(c, smtp_error_invalid, c"smtp: invalid RCPT TO address")
 		i = i + 1
-	if (smtp_mail_from_ex(c, from, len, smtp_has_8bit(msg, len)) == 0):
-		return 0
+	if (smtp_mail_from_ex(c, from, len, smtp_has_8bit(msg, len)) == 0): return 0
 	int accepted = 0
 	i = 0
 	while (i < rcpts.length):
-		if (smtp_rcpt_to(c, rcpts[i]) != 0):
-			accepted = accepted + 1
-		else if (c.broken != 0):
-			return 0
+		if (smtp_rcpt_to(c, rcpts[i]) != 0): accepted = accepted + 1
+		else if (c.broken != 0): return 0
 		i = i + 1
 	if (accepted == 0):
 		smtp_abort_transaction(c)
@@ -1081,8 +943,7 @@ struct smtp_message:
 
 
 char* smtp_clone_or_zero(char* s):
-	if (s == 0):
-		return 0
+	if (s == 0): return 0
 	return strclone(s)
 
 
@@ -1114,8 +975,7 @@ void smtp_free_strings(list[char*] l):
 
 
 void smtp_message_free(smtp_message* m):
-	if (m == 0):
-		return
+	if (m == 0): return
 	free(m.from_addr)
 	free(m.from_name)
 	smtp_free_strings(m.to_addrs)
@@ -1208,12 +1068,10 @@ list[char*] smtp_message_recipients(smtp_message* m):
 
 
 int smtp_has_crlf(char* s):
-	if (s == 0):
-		return 0
+	if (s == 0): return 0
 	int i = 0
 	while (s[i] != 0):
-		if ((s[i] == 13) || (s[i] == 10)):
-			return 1
+		if ((s[i] == 13) || (s[i] == 10)): return 1
 		i = i + 1
 	return 0
 
@@ -1225,16 +1083,12 @@ int smtp_needs_encoding(char* s):
 	int word = 0
 	while (s[i] != 0):
 		int ch = s[i] & 255
-		if ((ch < 32) || (ch >= 127)):
-			return 1
-		if ((ch == '=') && (s[i + 1] == '?')):
-			return 1
-		if (ch == ' '):
-			word = 0
+		if ((ch < 32) || (ch >= 127)): return 1
+		if ((ch == '=') && (s[i + 1] == '?')): return 1
+		if (ch == ' '): word = 0
 		else:
 			word = word + 1
-			if (word > 70):
-				return 1
+			if (word > 70): return 1
 		i = i + 1
 	return 0
 
@@ -1250,16 +1104,12 @@ char* smtp_encode_word(char* text):
 	int start = 0
 	while (start < n):
 		int end = start + 39
-		if (end >= n):
-			end = n
+		if (end >= n): end = n
 		else:
-			while ((end > start) && (((text[end] & 255) & 192) == 128)):
-				end = end - 1
-			if (end == start):
-				end = start + 39
+			while ((end > start) && (((text[end] & 255) & 192) == 128)): end = end - 1
+			if (end == start): end = start + 39
 		char* b64 = base64_encode(text + start, end - start)
-		if (out.length > 0):
-			string_append_char(out, ' ')
+		if (out.length > 0): string_append_char(out, ' ')
 		string_append(out, c"=?UTF-8?B?")
 		string_append(out, b64)
 		string_append(out, c"?=")
@@ -1270,16 +1120,6 @@ char* smtp_encode_word(char* text):
 	return result
 
 
-char* smtp_day_name(int weekday):
-	char* names = c"SunMonTueWedThuFriSat"
-	return substring(names, weekday * 3, weekday * 3 + 3)
-
-
-char* smtp_month_name(int month):
-	char* names = c"JanFebMarAprMayJunJulAugSepOctNovDec"
-	return substring(names, (month - 1) * 3, (month - 1) * 3 + 3)
-
-
 void smtp_append_2(string_builder* out, int v):
 	string_append_char(out, '0' + (v / 10) % 10)
 	string_append_char(out, '0' + v % 10)
@@ -1287,18 +1127,15 @@ void smtp_append_2(string_builder* out, int v):
 
 # RFC 5322 date-time in UTC, e.g. "Fri, 25 Sep 2026 12:34:56 +0000".
 char* smtp_format_date(int unix_time):
-	if (unix_time < 0):
-		unix_time = 0
+	if (unix_time < 0): unix_time = 0
 	date_time dt
 	time_utc_from_unix(unix_time, &dt)
 	string_builder* out = string_new()
-	char* day = smtp_day_name(dt.weekday)
-	char* mon = smtp_month_name(dt.month)
-	string_append(out, day)
+	string_append_bytes(out, time_weekday_name(dt.weekday), 3)
 	string_append(out, c", ")
 	string_append_int(out, dt.day)
 	string_append_char(out, ' ')
-	string_append(out, mon)
+	string_append_bytes(out, time_month_name(dt.month), 3)
 	string_append_char(out, ' ')
 	string_append_int(out, dt.year)
 	string_append_char(out, ' ')
@@ -1308,8 +1145,6 @@ char* smtp_format_date(int unix_time):
 	string_append_char(out, ':')
 	smtp_append_2(out, dt.second)
 	string_append(out, c" +0000")
-	free(day)
-	free(mon)
 	char* result = out.data
 	free(cast(char*, out))
 	return result
@@ -1325,11 +1160,9 @@ char* smtp_random_hex(int nbytes):
 	if (random_bytes(raw, nbytes) == 0):
 		smtp_random_counter = smtp_random_counter + 1
 		int seed = time_now() * 31 + time_monotonic_ms() + smtp_random_counter * 7919
-		int i = 0
-		while (i < nbytes):
+		for i in range(nbytes):
 			seed = seed * 1103515245 + 12345
 			raw[i] = (seed >> 16) & 255
-			i = i + 1
 	char* out = hex_encode(raw, nbytes)
 	free(raw)
 	return out
@@ -1348,8 +1181,7 @@ int smtp_append_header(string_builder* out, char* name, char* value):
 	int first = 1
 	while (1 == 1):
 		int j = i
-		while ((j < n) && (value[j] != ' ')):
-			j = j + 1
+		while ((j < n) && (value[j] != ' ')): j = j + 1
 		int tok = j - i
 		if ((first == 0) && (tok > 0) && (line_len + 1 + tok > 78)):
 			string_append(out, c"\x0d\x0a")
@@ -1357,8 +1189,7 @@ int smtp_append_header(string_builder* out, char* name, char* value):
 		string_append_char(out, ' ')
 		string_append_bytes(out, value + i, tok)
 		line_len = line_len + 1 + tok
-		if (line_len > 998):
-			return 0
+		if (line_len > 998): return 0
 		first = 0
 		if (j >= n):
 			string_append(out, c"\x0d\x0a")
@@ -1368,17 +1199,13 @@ int smtp_append_header(string_builder* out, char* name, char* value):
 
 
 int smtp_is_atext_or_space(int ch):
-	if ((ch >= 'a') && (ch <= 'z')):
-		return 1
-	if ((ch >= 'A') && (ch <= 'Z')):
-		return 1
-	if (smtp_is_digit(ch) != 0):
-		return 1
+	if ((ch >= 'a') && (ch <= 'z')): return 1
+	if ((ch >= 'A') && (ch <= 'Z')): return 1
+	if (smtp_is_digit(ch) != 0): return 1
 	char* extra = c" !#$%&'*+-/=?^_`{|}~"
 	int i = 0
 	while (extra[i] != 0):
-		if (extra[i] == ch):
-			return 1
+		if (extra[i] == ch): return 1
 		i = i + 1
 	return 0
 
@@ -1386,12 +1213,9 @@ int smtp_is_atext_or_space(int ch):
 # "Display Name <addr>" (name quoted or RFC 2047-encoded as needed), or
 # just "addr". Returns 0 when addr or name is invalid.
 char* smtp_format_mailbox(char* addr, char* name):
-	if (smtp_valid_address(addr) == 0):
-		return 0
-	if ((name == 0) || (name[0] == 0)):
-		return strclone(addr)
-	if (smtp_has_crlf(name) != 0):
-		return 0
+	if (smtp_valid_address(addr) == 0): return 0
+	if ((name == 0) || (name[0] == 0)): return strclone(addr)
+	if (smtp_has_crlf(name) != 0): return 0
 	string_builder* out = string_new()
 	if (smtp_needs_encoding(name) != 0):
 		char* enc = smtp_encode_word(name)
@@ -1401,17 +1225,14 @@ char* smtp_format_mailbox(char* addr, char* name):
 		int plain = 1
 		int i = 0
 		while (name[i] != 0):
-			if (smtp_is_atext_or_space(name[i] & 255) == 0):
-				plain = 0
+			if (smtp_is_atext_or_space(name[i] & 255) == 0): plain = 0
 			i = i + 1
-		if (plain != 0):
-			string_append(out, name)
+		if (plain != 0): string_append(out, name)
 		else:
 			string_append_char(out, '"')
 			i = 0
 			while (name[i] != 0):
-				if ((name[i] == '"') || (name[i] == 92)):
-					string_append_char(out, 92)
+				if ((name[i] == '"') || (name[i] == 92)): string_append_char(out, 92)
 				string_append_char(out, name[i] & 255)
 				i = i + 1
 			string_append_char(out, '"')
@@ -1432,8 +1253,7 @@ char* smtp_format_mailbox_list(list[char*] addrs, list[char*] names):
 		if (mb == 0):
 			string_free(out)
 			return 0
-		if (i > 0):
-			string_append(out, c", ")
+		if (i > 0): string_append(out, c", ")
 		string_append(out, mb)
 		free(mb)
 		i = i + 1
@@ -1443,15 +1263,12 @@ char* smtp_format_mailbox_list(list[char*] addrs, list[char*] names):
 
 
 int smtp_contains(char* hay, char* needle):
-	if (hay == 0):
-		return 0
+	if (hay == 0): return 0
 	int i = 0
 	while (hay[i] != 0):
 		int j = 0
-		while ((needle[j] != 0) && (hay[i + j] == needle[j])):
-			j = j + 1
-		if (needle[j] == 0):
-			return 1
+		while ((needle[j] != 0) && (hay[i + j] == needle[j])): j = j + 1
+		if (needle[j] == 0): return 1
 		i = i + 1
 	return 0
 
@@ -1462,14 +1279,11 @@ int smtp_body_is_7bit(char* body):
 	int col = 0
 	while (body[i] != 0):
 		int ch = body[i] & 255
-		if (ch >= 128):
-			return 0
-		if ((ch == 10) || (ch == 13)):
-			col = 0
+		if (ch >= 128): return 0
+		if ((ch == 10) || (ch == 13)): col = 0
 		else:
 			col = col + 1
-			if (col > smtp_max_text_line()):
-				return 0
+			if (col > smtp_max_text_line()): return 0
 		i = i + 1
 	return 1
 
@@ -1484,16 +1298,14 @@ char* smtp_normalize_crlf(char* body, int* out_len):
 	while (i < n):
 		int ch = body[i] & 255
 		if ((ch == 13) || (ch == 10)):
-			if ((ch == 13) && (i + 1 < n) && ((body[i + 1] & 255) == 10)):
-				i = i + 1
+			if ((ch == 13) && (i + 1 < n) && ((body[i + 1] & 255) == 10)): i = i + 1
 			string_append(out, c"\x0d\x0a")
 			col = 0
 		else:
 			string_append_char(out, ch)
 			col = col + 1
 		i = i + 1
-	if (col > 0):
-		string_append(out, c"\x0d\x0a")
+	if (col > 0): string_append(out, c"\x0d\x0a")
 	*out_len = out.length
 	char* result = out.data
 	free(cast(char*, out))
@@ -1520,8 +1332,7 @@ void smtp_append_body_part(string_builder* out, char* subtype, char* body):
 	int pos = 0
 	while (pos < total):
 		int take = total - pos
-		if (take > 76):
-			take = 76
+		if (take > 76): take = 76
 		string_append_bytes(out, b64 + pos, take)
 		string_append(out, c"\x0d\x0a")
 		pos = pos + take
@@ -1532,38 +1343,28 @@ char* smtp_address_domain(char* addr):
 	int at = (-1)
 	int i = 0
 	while (addr[i] != 0):
-		if (addr[i] == '@'):
-			at = i
+		if (addr[i] == '@'): at = i
 		i = i + 1
-	if ((at < 0) || (addr[at + 1] == 0)):
-		return strclone(c"localhost")
+	if ((at < 0) || (addr[at + 1] == 0)): return strclone(c"localhost")
 	return strclone(addr + at + 1)
 
 
 int smtp_valid_boundary(char* b):
 	int n = strlen(b)
-	if ((n == 0) || (n > 70)):
-		return 0
-	int i = 0
-	while (i < n):
+	if ((n == 0) || (n > 70)): return 0
+	for i in range(n):
 		int ch = b[i] & 255
-		if ((ch <= 32) || (ch >= 127) || (ch == '"')):
-			return 0
-		i = i + 1
+		if ((ch <= 32) || (ch >= 127) || (ch == '"')): return 0
 	return 1
 
 
 # 1 for "<printable-ascii-without-spaces>" of at most 250 characters.
 int smtp_valid_msgid(char* id):
 	int n = strlen(id)
-	if ((n < 3) || (n > 250) || (id[0] != '<') || (id[n - 1] != '>')):
-		return 0
-	int i = 1
-	while (i < n - 1):
+	if ((n < 3) || (n > 250) || (id[0] != '<') || (id[n - 1] != '>')): return 0
+	for i in range(1, n - 1):
 		int ch = id[i] & 255
-		if ((ch <= 32) || (ch >= 127) || (ch == '<') || (ch == '>')):
-			return 0
-		i = i + 1
+		if ((ch <= 32) || (ch >= 127) || (ch == '<') || (ch == '>')): return 0
 	return 1
 
 
@@ -1574,26 +1375,20 @@ int smtp_valid_msgid(char* id):
 # invalid, or a header input contains CR/LF.
 char* smtp_message_build(smtp_message* m, int* out_len):
 	*out_len = 0
-	if (m.from_addr == 0):
-		return 0
-	if ((m.to_addrs.length + m.cc_addrs.length + m.bcc_addrs.length) == 0):
-		return 0
+	if (m.from_addr == 0): return 0
+	if ((m.to_addrs.length + m.cc_addrs.length + m.bcc_addrs.length) == 0): return 0
 	int i = 0
 	while (i < m.bcc_addrs.length):
-		if (smtp_valid_address(m.bcc_addrs[i]) == 0):
-			return 0
+		if (smtp_valid_address(m.bcc_addrs[i]) == 0): return 0
 		i = i + 1
-	if ((smtp_has_crlf(m.subject) != 0) || (smtp_has_crlf(m.message_id) != 0)):
-		return 0
-	if ((m.message_id != 0) && (smtp_valid_msgid(m.message_id) == 0)):
-		return 0
+	if ((smtp_has_crlf(m.subject) != 0) || (smtp_has_crlf(m.message_id) != 0)): return 0
+	if ((m.message_id != 0) && (smtp_valid_msgid(m.message_id) == 0)): return 0
 
 	string_builder* out = string_new()
 	int ok = 1
 
 	int when = m.date_unix
-	if (m.has_date == 0):
-		when = time_now()
+	if (m.has_date == 0): when = time_now()
 	char* date = smtp_format_date(when)
 	ok = ok & smtp_append_header(out, c"Date", date)
 	free(date)
@@ -1625,11 +1420,9 @@ char* smtp_message_build(smtp_message* m, int* out_len):
 			char* enc = smtp_encode_word(m.subject)
 			ok = ok & smtp_append_header(out, c"Subject", enc)
 			free(enc)
-		else:
-			ok = ok & smtp_append_header(out, c"Subject", m.subject)
+		else: ok = ok & smtp_append_header(out, c"Subject", m.subject)
 
-	if (m.message_id != 0):
-		ok = ok & smtp_append_header(out, c"Message-ID", m.message_id)
+	if (m.message_id != 0): ok = ok & smtp_append_header(out, c"Message-ID", m.message_id)
 	else:
 		char* hexid = smtp_random_hex(16)
 		char* domain = smtp_address_domain(m.from_addr)
@@ -1646,14 +1439,11 @@ char* smtp_message_build(smtp_message* m, int* out_len):
 
 	string_append(out, c"MIME-Version: 1.0\x0d\x0a")
 	char* text = m.text
-	if (text == 0):
-		text = c""
-	if (m.html == 0):
-		smtp_append_body_part(out, c"plain", text)
+	if (text == 0): text = c""
+	if (m.html == 0): smtp_append_body_part(out, c"plain", text)
 	else:
 		char* boundary = 0
-		if (m.boundary != 0):
-			boundary = strclone(m.boundary)
+		if (m.boundary != 0): boundary = strclone(m.boundary)
 		else:
 			char* hexb = smtp_random_hex(12)
 			boundary = strjoin(c"=_w_", hexb)
@@ -1690,12 +1480,10 @@ char* smtp_message_build(smtp_message* m, int* out_len):
 # its To/Cc/Bcc recipients. Returns the accepted recipient count or 0
 # (smtp_error_invalid when the message does not build).
 int smtp_send_message(smtp_client* c, smtp_message* m):
-	if (smtp_begin(c) == 0):
-		return 0
+	if (smtp_begin(c) == 0): return 0
 	int len = 0
 	char* msg = smtp_message_build(m, &len)
-	if (msg == 0):
-		return smtp_fail(c, smtp_error_invalid(), c"smtp: message failed to build")
+	if (msg == 0): return smtp_fail(c, smtp_error_invalid, c"smtp: message failed to build")
 	list[char*] rcpts = smtp_message_recipients(m)
 	int accepted = smtp_send(c, m.from_addr, rcpts, msg, len)
 	rcpts.free()

@@ -125,8 +125,7 @@ int gl_link_program(int vertex_shader, int fragment_shader):
 # Returns the program id, or 0 on any failure.
 int gl_create_program(char* vertex_source, char* fragment_source):
 	int vertex_shader = gl_compile_shader(GL_VERTEX_SHADER, vertex_source)
-	if (vertex_shader == 0):
-		return 0
+	if (vertex_shader == 0): return 0
 	int fragment_shader = gl_compile_shader(GL_FRAGMENT_SHADER, fragment_source)
 	if (fragment_shader == 0):
 		glDeleteShader(vertex_shader)

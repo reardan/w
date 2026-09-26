@@ -42,6 +42,7 @@ import compiler.compiler
 import lib.stack_trace
 import lib.utf8
 import debugger.sigcontext
+import debugger.common
 import structures.json
 import structures.json_codec
 
@@ -246,42 +247,27 @@ int repl_declare_global(char* name, int type, int symtype):
 			save_int(table + t + 18, pointer_indirection)
 			return t
 	sym_declare(name, type, 'U', code_offset, symtype)
-	return table_pos - symbol_data_size()
+	return table_pos - symbol_data_size
 
 
 # True when the current token begins a non-expression statement.
 int repl_token_is_statement():
-	if (peek(c"{")):
-		return 1
-	if (peek(c":")):
-		return 1
-	if (peek(c"if")):
-		return 1
-	if (peek(c"while")):
-		return 1
-	if (peek(c"for")):
-		return 1
-	if (peek(c"switch")):
-		return 1
-	if (peek(c"break")):
-		return 1
-	if (peek(c"continue")):
-		return 1
-	if (peek(c"return")):
-		return 1
-	if (peek(c"debugger")):
-		return 1
-	if (peek(c"pass")):
-		return 1
-	if (peek(c"raw_asm")):
-		return 1
-	if (peek(c"defer")):
-		return 1
+	if (peek(c"{")): return 1
+	if (peek(c":")): return 1
+	if (peek(c"if")): return 1
+	if (peek(c"while")): return 1
+	if (peek(c"for")): return 1
+	if (peek(c"switch")): return 1
+	if (peek(c"break")): return 1
+	if (peek(c"continue")): return 1
+	if (peek(c"return")): return 1
+	if (peek(c"debugger")): return 1
+	if (peek(c"pass")): return 1
+	if (peek(c"raw_asm")): return 1
+	if (peek(c"defer")): return 1
 	# prefix increment/decrement statement (grammar/increment.w)
-	if (peek(c"++")):
-		return 1
-	if (peek(c"--")):
-		return 1
+	if (peek(c"++")): return 1
+	if (peek(c"--")): return 1
 	return 0
 
 
@@ -293,10 +279,8 @@ int repl_token_is_statement():
 int repl_infer_declaration():
 	int c0 = token[0]
 	int is_ident = (('a' <= c0) & (c0 <= 'z')) | (('A' <= c0) & (c0 <= 'Z')) | (c0 == '_')
-	if (is_ident == 0):
-		return 0
-	if ((nextc != ':') && (nextc != ' ') && (nextc != 9)):
-		return 0
+	if (is_ident == 0): return 0
+	if ((nextc != ':') && (nextc != ' ') && (nextc != 9)): return 0
 	char* name = strclone(token)
 	char* save = generic_reparse_save()
 	get_token()
@@ -320,19 +304,13 @@ int repl_infer_declaration():
 	pointer_indirection = 0
 	# The value (or struct address) is in eax; fetch the storage address
 	# and store through it
-	push_eax()
-	stack_pos = stack_pos + 1
+	push_slot()
 	sym_get_value(name)
-	push_eax()
-	stack_pos = stack_pos + 1
-	pop_ebx()
-	stack_pos = stack_pos - 1
-	pop_eax()
-	stack_pos = stack_pos - 1
-	if (type_num_args(decl_type) > 0):
-		assign_store_struct(decl_type)
-	else:
-		assign_store(decl_type)
+	push_slot()
+	pop_ebx_slot()
+	pop_eax_slot()
+	if (type_num_args(decl_type) > 0): assign_store_struct(decl_type)
+	else: assign_store(decl_type)
 	free(name)
 	return 1
 
@@ -369,8 +347,7 @@ void repl_entry_item(int entry_symbol):
 	# type-name ...: a function definition or a persistent variable
 	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here()):
 		int decl_type = type_name()
-		if (token[0] == 0):
-			error(c"identifier expected after type name")
+		if (token[0] == 0): error(c"identifier expected after type name")
 		char* decl_name = strclone(token)
 		get_token()
 
@@ -406,8 +383,7 @@ void repl_entry_item(int entry_symbol):
 		if (accept(c"=")):
 			# compile "name = expression" into the entry function
 			sym_get_value(decl_name) /* address into eax */
-			push_eax()
-			stack_pos = stack_pos + 1
+			push_slot()
 			int value_type = expression()
 			value_type = promote(value_type)
 			# Conversions the compiler's variable_declaration also
@@ -423,8 +399,7 @@ void repl_entry_item(int entry_symbol):
 		return;
 
 	# 'name := expression': a persistent variable with an inferred type
-	if (repl_infer_declaration()):
-		return;
+	if (repl_infer_declaration()): return;
 
 	# control flow and other non-expression statements
 	if (repl_token_is_statement()):
@@ -449,10 +424,8 @@ void repl_entry_item(int entry_symbol):
 	# When the expression ends in a call, the callee's declared return
 	# type drives the echo: void stays silent, char* prints as a string
 	if ((result_type == 3) && (last_call_end == codepos)):
-		if (last_call_return_type >= 0):
-			repl_result_type = last_call_return_type
-	if (expression_is_assignment):
-		repl_result_type = -1
+		if (last_call_return_type >= 0): repl_result_type = last_call_return_type
+	if (expression_is_assignment): repl_result_type = -1
 
 
 # ---------------------------------------------------------------------------
@@ -462,90 +435,113 @@ void repl_entry_item(int entry_symbol):
 # fault long-jumps out of the entry's execution (repl_fault below), which
 # discards the faulted entry's definitions exactly like a compile error.
 
-int repl_saved_codepos
-int repl_saved_table_pos
-int repl_saved_stack_pos
-int repl_saved_loop_depth
-int repl_saved_loop_break_chain
-int repl_saved_loop_continue_chain
-int repl_saved_loop_stack_pos
-int repl_saved_switch_depth
-int repl_saved_switch_break_chain
-int repl_saved_switch_stack_pos
-int repl_saved_break_in_switch
-int repl_saved_defer_count
-int repl_saved_for_cleanup_count
-int repl_saved_number_of_args
-int repl_saved_type_count
-int repl_saved_imported_count
-int repl_saved_alias_base
-int repl_saved_alias_count
-int repl_saved_plain_base
-int repl_saved_plain_count
-int repl_saved_function_symbol
-int repl_saved_sites_count
+struct repl_state:
+	int codepos
+	int table_pos
+	int stack_pos
+	int loop_depth
+	int loop_break_chain
+	int loop_continue_chain
+	int loop_stack_pos
+	int switch_depth
+	int switch_break_chain
+	int switch_stack_pos
+	int break_in_switch
+	int defer_count
+	int for_cleanup_count
+	int number_of_args
+	int type_count
+	int imported_count
+	int alias_base
+	int alias_count
+	int plain_base
+	int plain_count
+	int function_symbol
+	int sites_count
+
+
+# The per-entry checkpoint (nested evaluations swap in their own, see
+# repl_nest_save) and the :reset snapshot below (0 until taken).
+repl_state* repl_saved
+repl_state* repl_genesis
+
+
+void repl_state_capture(repl_state* st):
+	st.codepos = codepos
+	st.table_pos = table_pos
+	st.stack_pos = stack_pos
+	st.loop_depth = loop_depth
+	st.loop_break_chain = loop_break_chain
+	st.loop_continue_chain = loop_continue_chain
+	st.loop_stack_pos = loop_stack_pos
+	st.switch_depth = switch_depth
+	st.switch_break_chain = switch_break_chain
+	st.switch_stack_pos = switch_stack_pos
+	st.break_in_switch = break_in_switch
+	st.defer_count = defer_count()
+	st.for_cleanup_count = for_cleanup_count()
+	st.number_of_args = number_of_args
+	st.type_count = type_count()
+	st.imported_count = imported_count
+	st.alias_base = import_alias_base
+	st.alias_count = import_alias_count
+	st.plain_base = import_plain_base
+	st.plain_count = import_plain_count
+	st.function_symbol = current_function_symbol
+	st.sites_count = repl_sites_count
+
+
+# Everything but current_function_symbol, which only the per-entry
+# rollback restores.
+void repl_state_restore(repl_state* st):
+	codepos = st.codepos
+	be_cmp_note_reset()
+	be_imm_note_reset()
+	table_pos = st.table_pos
+	stack_pos = st.stack_pos
+	loop_depth = st.loop_depth
+	loop_break_chain = st.loop_break_chain
+	loop_continue_chain = st.loop_continue_chain
+	loop_stack_pos = st.loop_stack_pos
+	switch_depth = st.switch_depth
+	switch_break_chain = st.switch_break_chain
+	switch_stack_pos = st.switch_stack_pos
+	break_in_switch = st.break_in_switch
+	defer_truncate(st.defer_count)
+	for_cleanup_truncate(st.for_cleanup_count)
+	number_of_args = st.number_of_args
+	type_table_truncate(st.type_count)
+	imported_count = st.imported_count
+	import_alias_base = st.alias_base
+	import_alias_count = st.alias_count
+	import_plain_base = st.plain_base
+	import_plain_count = st.plain_count
+
+
+# The parse-context flags error() can leave set when it jumps out from
+# inside a condition or cast() operand, cleared so later entries warn
+# correctly, and the pending diagnostic.
+void repl_state_clear_context():
+	pointer_indirection = 0
+	condition_context = 0
+	cast_context = 0
+	diag_clear()
 
 
 void repl_checkpoint():
-	repl_saved_codepos = codepos
-	repl_saved_table_pos = table_pos
-	repl_saved_stack_pos = stack_pos
-	repl_saved_loop_depth = loop_depth
-	repl_saved_loop_break_chain = loop_break_chain
-	repl_saved_loop_continue_chain = loop_continue_chain
-	repl_saved_loop_stack_pos = loop_stack_pos
-	repl_saved_switch_depth = switch_depth
-	repl_saved_switch_break_chain = switch_break_chain
-	repl_saved_switch_stack_pos = switch_stack_pos
-	repl_saved_break_in_switch = break_in_switch
-	repl_saved_defer_count = defer_count()
-	repl_saved_for_cleanup_count = for_cleanup_count()
-	repl_saved_number_of_args = number_of_args
-	repl_saved_type_count = type_count()
-	repl_saved_imported_count = imported_count
-	repl_saved_alias_base = import_alias_base
-	repl_saved_alias_count = import_alias_count
-	repl_saved_plain_base = import_plain_base
-	repl_saved_plain_count = import_plain_count
-	repl_saved_function_symbol = current_function_symbol
-	repl_saved_sites_count = repl_sites_count
+	if (repl_saved == 0): repl_saved = new repl_state
+	repl_state_capture(repl_saved)
 
 
 void repl_rollback():
-	codepos = repl_saved_codepos
-	be_cmp_note_reset()
-	be_imm_note_reset()
-	table_pos = repl_saved_table_pos
-	stack_pos = repl_saved_stack_pos
-	loop_depth = repl_saved_loop_depth
-	loop_break_chain = repl_saved_loop_break_chain
-	loop_continue_chain = repl_saved_loop_continue_chain
-	loop_stack_pos = repl_saved_loop_stack_pos
-	switch_depth = repl_saved_switch_depth
-	switch_break_chain = repl_saved_switch_break_chain
-	switch_stack_pos = repl_saved_switch_stack_pos
-	break_in_switch = repl_saved_break_in_switch
-	defer_truncate(repl_saved_defer_count)
-	for_cleanup_truncate(repl_saved_for_cleanup_count)
-	number_of_args = repl_saved_number_of_args
-	type_table_truncate(repl_saved_type_count)
-	imported_count = repl_saved_imported_count
-	import_alias_base = repl_saved_alias_base
-	import_alias_count = repl_saved_alias_count
-	import_plain_base = repl_saved_plain_base
-	import_plain_count = repl_saved_plain_count
-	current_function_symbol = repl_saved_function_symbol
+	repl_state_restore(repl_saved)
+	current_function_symbol = repl_saved.function_symbol
 	# Late binding (#114): the failed entry's queued patches must never
 	# apply (its definitions just rolled back), and its registered call
 	# sites sit at code offsets later entries will reuse
 	repl_discard_late_bind()
-	repl_sites_truncate(repl_saved_sites_count)
-	pointer_indirection = 0
-	# error() can jump out from inside a condition or cast() operand;
-	# clear the parse-context flags so later entries warn correctly
-	condition_context = 0
-	cast_context = 0
-	diag_clear()
+	repl_sites_truncate(repl_saved.sites_count)
+	repl_state_clear_context()
 
 
 # ---------------------------------------------------------------------------
@@ -556,54 +552,9 @@ void repl_rollback():
 # whole session back to that snapshot the same way a failed entry rolls
 # back to its pre-entry one -- just spanning every entry (and any :load)
 # since startup instead of one.
-
-int repl_genesis_codepos
-int repl_genesis_table_pos
-int repl_genesis_stack_pos
-int repl_genesis_loop_depth
-int repl_genesis_loop_break_chain
-int repl_genesis_loop_continue_chain
-int repl_genesis_loop_stack_pos
-int repl_genesis_switch_depth
-int repl_genesis_switch_break_chain
-int repl_genesis_switch_stack_pos
-int repl_genesis_break_in_switch
-int repl_genesis_defer_count
-int repl_genesis_for_cleanup_count
-int repl_genesis_number_of_args
-int repl_genesis_type_count
-int repl_genesis_imported_count
-int repl_genesis_alias_base
-int repl_genesis_alias_count
-int repl_genesis_plain_base
-int repl_genesis_plain_count
-int repl_genesis_sites_count
-int repl_genesis_taken
-
-
 void repl_genesis_checkpoint():
-	repl_genesis_codepos = codepos
-	repl_genesis_table_pos = table_pos
-	repl_genesis_stack_pos = stack_pos
-	repl_genesis_loop_depth = loop_depth
-	repl_genesis_loop_break_chain = loop_break_chain
-	repl_genesis_loop_continue_chain = loop_continue_chain
-	repl_genesis_loop_stack_pos = loop_stack_pos
-	repl_genesis_switch_depth = switch_depth
-	repl_genesis_switch_break_chain = switch_break_chain
-	repl_genesis_switch_stack_pos = switch_stack_pos
-	repl_genesis_break_in_switch = break_in_switch
-	repl_genesis_defer_count = defer_count()
-	repl_genesis_for_cleanup_count = for_cleanup_count()
-	repl_genesis_number_of_args = number_of_args
-	repl_genesis_type_count = type_count()
-	repl_genesis_imported_count = imported_count
-	repl_genesis_alias_base = import_alias_base
-	repl_genesis_alias_count = import_alias_count
-	repl_genesis_plain_base = import_plain_base
-	repl_genesis_plain_count = import_plain_count
-	repl_genesis_sites_count = repl_sites_count
-	repl_genesis_taken = 1
+	repl_genesis = new repl_state
+	repl_state_capture(repl_genesis)
 
 
 # Roll every declaration, import and late-bind site added since the
@@ -612,35 +563,10 @@ void repl_genesis_checkpoint():
 # called (nothing to reset to). Only safe between entries: no entry may
 # be mid-compile or mid-execution.
 int repl_reset_to_genesis():
-	if (repl_genesis_taken == 0):
-		return 0
-	codepos = repl_genesis_codepos
-	be_cmp_note_reset()
-	be_imm_note_reset()
-	table_pos = repl_genesis_table_pos
-	stack_pos = repl_genesis_stack_pos
-	loop_depth = repl_genesis_loop_depth
-	loop_break_chain = repl_genesis_loop_break_chain
-	loop_continue_chain = repl_genesis_loop_continue_chain
-	loop_stack_pos = repl_genesis_loop_stack_pos
-	switch_depth = repl_genesis_switch_depth
-	switch_break_chain = repl_genesis_switch_break_chain
-	switch_stack_pos = repl_genesis_switch_stack_pos
-	break_in_switch = repl_genesis_break_in_switch
-	defer_truncate(repl_genesis_defer_count)
-	for_cleanup_truncate(repl_genesis_for_cleanup_count)
-	number_of_args = repl_genesis_number_of_args
-	type_table_truncate(repl_genesis_type_count)
-	imported_count = repl_genesis_imported_count
-	import_alias_base = repl_genesis_alias_base
-	import_alias_count = repl_genesis_alias_count
-	import_plain_base = repl_genesis_plain_base
-	import_plain_count = repl_genesis_plain_count
-	repl_sites_truncate(repl_genesis_sites_count)
-	pointer_indirection = 0
-	condition_context = 0
-	cast_context = 0
-	diag_clear()
+	if (repl_genesis == 0): return 0
+	repl_state_restore(repl_genesis)
+	repl_sites_truncate(repl_genesis.sites_count)
+	repl_state_clear_context()
 	return 1
 
 
@@ -661,8 +587,7 @@ int repl_compile_entry(char* path):
 		repl_call_site_hook = 0
 		repl_rollback()
 		# The failure may have happened inside an imported file
-		if (file != repl_entry_file):
-			close(file)
+		if (file != repl_entry_file): close(file)
 		close(repl_entry_file)
 		return 0
 
@@ -703,11 +628,9 @@ int repl_compile_entry(char* path):
 	number_of_args = 0
 	defer_reset()
 	repl_result_type = -1
-	if (repl_bind_hook != 0):
-		repl_bind_hook()
+	if (repl_bind_hook != 0): repl_bind_hook()
 
-	while (token[0] != 0):
-		repl_entry_item(entry_symbol)
+	while (token[0] != 0): repl_entry_item(entry_symbol)
 
 	# The entry function's implicit end is a function exit: run any
 	# deferred statements registered by this entry (LIFO)
@@ -724,12 +647,7 @@ int repl_compile_entry(char* path):
 	# strings: the modules' functions land after the entry's ret, so
 	# they are never in the execution path. Generic instantiations
 	# requested by this entry compile here too.
-	generic_finish_instantiations()
-	json_codec_finish_import()
-	template_string_finish_import()
-	prelude_finish_import()
-	var_finish_import()
-	generic_finish_instantiations()
+	finish_on_demand_imports()
 	close(file)
 	repl_recovery = 0
 	repl_call_site_hook = 0
@@ -787,16 +705,12 @@ int* repl_fault_act
 
 void repl_fault_thunk_emit(int n, char* bytes):
 	char* p = cast(char*, repl_fault_thunk_page + repl_fault_thunk_pos)
-	int i = 0
-	while (i < n):
-		p[i] = bytes[i]
-		i = i + 1
+	for i in range(n): p[i] = bytes[i]
 	repl_fault_thunk_pos = repl_fault_thunk_pos + n
 
 
 void repl_fault_thunk_init():
-	if (repl_fault_thunk_page != 0):
-		return;
+	if (repl_fault_thunk_page != 0): return;
 	repl_fault_thunk_page = mmap(0, 4096, 7, 34) /* RWX, PRIVATE|ANONYMOUS */
 	asserts(c"mmap of signal thunk page failed", (repl_fault_thunk_page > 0) | (repl_fault_thunk_page < -4095))
 	repl_fault_restorer = repl_fault_thunk_page
@@ -823,8 +737,7 @@ int repl_fault_emit_handler_thunk(int handler):
 # sigreturn); on x86-64 {handler, flags, restorer, mask} with 8-byte
 # fields, SA_SIGINFO (4) | SA_RESTORER (0x04000000) and the thunks.
 void repl_fault_install(int signum, int handler, int flags):
-	if (repl_fault_act == 0):
-		repl_fault_act = malloc(5 * __word_size__)
+	if (repl_fault_act == 0): repl_fault_act = malloc(5 * __word_size__)
 	int* act = repl_fault_act
 	if (__word_size__ == 8):
 		repl_fault_thunk_init()
@@ -865,23 +778,19 @@ void repl_fault_restore_default(int signum):
 # calls the entry made into repl-image functions (and the prompt loop's
 # main) still symbolize. Silent no-op when the image has no symbols.
 void repl_fault_trace(int context):
-	if (st_state == 0):
-		st_init(cast(int, repl_fault_install))
+	if (st_state == 0): st_init(cast(int, repl_fault_install))
 	char* pcs = malloc(64 * __word_size__)
 	int n = st_scan(ctx_esp(context), pcs, 64, 0)
 	if (n == 0):
 		free(pcs)
 		return;
 	st_write_cstr(c"stack trace (most recent call first):\n")
-	int k = 0
-	while (k < n):
+	for k in range(n):
 		int addr = load_word(pcs + k * __word_size__)
 		st_write_cstr(c"  at ")
 		int e = st_func_entry(addr)
-		if (e != 0):
-			st_write_cstr(cast(char*, st_entry_name(e)))
-		else:
-			st_write_hex(addr)
+		if (e != 0): st_write_cstr(cast(char*, st_entry_name(e)))
+		else: st_write_hex(addr)
 		if (st_line_lookup(addr)):
 			st_write_cstr(c" (")
 			int fname = st_file_name(st_file_found)
@@ -891,7 +800,6 @@ void repl_fault_trace(int context):
 			st_write_dec(st_line_found)
 			st_write_cstr(c")")
 		st_write_cstr(c"\n")
-		k = k + 1
 	free(pcs)
 
 
@@ -904,30 +812,7 @@ void repl_fault(int sig, int context):
 		repl_fault_restore_default(sig)
 		return;
 	repl_fault_active = 0
-	print(c"runtime fault: ")
-	if (sig == 11):
-		print(c"SIGSEGV")
-	else if (sig == 4):
-		print(c"SIGILL")
-	else if (sig == 7):
-		print(c"SIGBUS")
-	else if (sig == 8):
-		print(c"SIGFPE")
-	else:
-		print(c"signal ")
-		char* digits = itoa(sig)
-		print(digits)
-		free(digits)
-	print(c" at eip=")
-	char* h = hex_word(ctx_eip(context))
-	print(h)
-	free(h)
-	if (sig == 11):
-		print(c" fault address=")
-		char* fa = hex_word(ctx_reg(context, sigcontext_cr2()))
-		print(fa)
-		free(fa)
-	put_char(10)
+	dbg_fault_banner(c"runtime fault: ", sig, context)
 	repl_fault_trace(context)
 	println(c"entry rolled back")
 	repl_longjmp(repl_fault_jump_buffer, 1)
@@ -943,8 +828,7 @@ void repl_fault_entry(int sig):
 # long-jumps out of the handler without sigreturn.
 void repl_fault_install_handlers():
 	int handler = cast(int, repl_fault_entry)
-	if (__word_size__ == 8):
-		handler = cast(int, repl_fault)
+	if (__word_size__ == 8): handler = cast(int, repl_fault)
 	repl_fault_install(4, handler, 1073741824) /* SIGILL */
 	repl_fault_install(7, handler, 1073741824) /* SIGBUS */
 	repl_fault_install(8, handler, 1073741824) /* SIGFPE */
@@ -963,71 +847,30 @@ void repl_fault_install_handlers():
 # an earlier eval is already executing.
 
 int repl_nest_size():
-	return 27 * __word_size__
+	return 7 * __word_size__
 
 
 char* repl_nest_save():
 	char* s = malloc(repl_nest_size())
-	save_word(s + 0 * __word_size__, repl_saved_codepos)
-	save_word(s + 1 * __word_size__, repl_saved_table_pos)
-	save_word(s + 2 * __word_size__, repl_saved_stack_pos)
-	save_word(s + 3 * __word_size__, repl_saved_loop_depth)
-	save_word(s + 4 * __word_size__, repl_saved_loop_break_chain)
-	save_word(s + 5 * __word_size__, repl_saved_loop_continue_chain)
-	save_word(s + 6 * __word_size__, repl_saved_loop_stack_pos)
-	save_word(s + 7 * __word_size__, repl_saved_switch_depth)
-	save_word(s + 8 * __word_size__, repl_saved_switch_break_chain)
-	save_word(s + 9 * __word_size__, repl_saved_switch_stack_pos)
-	save_word(s + 10 * __word_size__, repl_saved_break_in_switch)
-	save_word(s + 11 * __word_size__, repl_saved_defer_count)
-	save_word(s + 12 * __word_size__, repl_saved_for_cleanup_count)
-	save_word(s + 13 * __word_size__, repl_saved_number_of_args)
-	save_word(s + 14 * __word_size__, repl_saved_type_count)
-	save_word(s + 15 * __word_size__, repl_saved_imported_count)
-	save_word(s + 16 * __word_size__, repl_saved_alias_base)
-	save_word(s + 17 * __word_size__, repl_saved_alias_count)
-	save_word(s + 18 * __word_size__, repl_saved_plain_base)
-	save_word(s + 19 * __word_size__, repl_saved_plain_count)
-	save_word(s + 20 * __word_size__, repl_saved_function_symbol)
-	save_word(s + 21 * __word_size__, repl_fault_active)
-	save_word(s + 22 * __word_size__, repl_result_type)
-	save_word(s + 23 * __word_size__, repl_entry_file)
-	int i = 0
-	while (i < 3):
-		save_word(s + (24 + i) * __word_size__, load_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__))
-		i = i + 1
+	# The outer checkpoint stays put; the nested call checkpoints into its own
+	save_word(s + 0 * __word_size__, cast(int, repl_saved))
+	repl_saved = new repl_state
+	save_word(s + 1 * __word_size__, repl_fault_active)
+	save_word(s + 2 * __word_size__, repl_result_type)
+	save_word(s + 3 * __word_size__, repl_entry_file)
+	for i in range(3):
+		save_word(s + (4 + i) * __word_size__, load_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__))
 	return s
 
 
 void repl_nest_restore(char* s):
-	repl_saved_codepos = load_word(s + 0 * __word_size__)
-	repl_saved_table_pos = load_word(s + 1 * __word_size__)
-	repl_saved_stack_pos = load_word(s + 2 * __word_size__)
-	repl_saved_loop_depth = load_word(s + 3 * __word_size__)
-	repl_saved_loop_break_chain = load_word(s + 4 * __word_size__)
-	repl_saved_loop_continue_chain = load_word(s + 5 * __word_size__)
-	repl_saved_loop_stack_pos = load_word(s + 6 * __word_size__)
-	repl_saved_switch_depth = load_word(s + 7 * __word_size__)
-	repl_saved_switch_break_chain = load_word(s + 8 * __word_size__)
-	repl_saved_switch_stack_pos = load_word(s + 9 * __word_size__)
-	repl_saved_break_in_switch = load_word(s + 10 * __word_size__)
-	repl_saved_defer_count = load_word(s + 11 * __word_size__)
-	repl_saved_for_cleanup_count = load_word(s + 12 * __word_size__)
-	repl_saved_number_of_args = load_word(s + 13 * __word_size__)
-	repl_saved_type_count = load_word(s + 14 * __word_size__)
-	repl_saved_imported_count = load_word(s + 15 * __word_size__)
-	repl_saved_alias_base = load_word(s + 16 * __word_size__)
-	repl_saved_alias_count = load_word(s + 17 * __word_size__)
-	repl_saved_plain_base = load_word(s + 18 * __word_size__)
-	repl_saved_plain_count = load_word(s + 19 * __word_size__)
-	repl_saved_function_symbol = load_word(s + 20 * __word_size__)
-	repl_fault_active = load_word(s + 21 * __word_size__)
-	repl_result_type = load_word(s + 22 * __word_size__)
-	repl_entry_file = load_word(s + 23 * __word_size__)
-	int i = 0
-	while (i < 3):
-		save_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__, load_word(s + (24 + i) * __word_size__))
-		i = i + 1
+	free(repl_saved)
+	repl_saved = cast(repl_state*, load_word(s + 0 * __word_size__))
+	repl_fault_active = load_word(s + 1 * __word_size__)
+	repl_result_type = load_word(s + 2 * __word_size__)
+	repl_entry_file = load_word(s + 3 * __word_size__)
+	for i in range(3):
+		save_word(cast(char*, repl_fault_jump_buffer) + i * __word_size__, load_word(s + (4 + i) * __word_size__))
 	free(s)
 
 
@@ -1094,12 +937,10 @@ char* repl_entry_path(char* dir, int n):
 # generic instantiation re-parses recorded (file, offset) spans from
 # these files, so they must survive until then.
 void repl_remove_staging(char* dir, int file_count):
-	int i = 0
-	while (i < file_count):
+	for i in range(file_count):
 		char* path = repl_entry_path(dir, i)
 		unlink(path)
 		free(path)
-		i = i + 1
 	rmdir(dir)
 
 
@@ -1112,11 +953,9 @@ void repl_remove_staging(char* dir, int file_count):
 # session setup; an embedder that already owns its code buffer and signal
 # handlers (wdbg) calls just this before its first repl_eval().
 void repl_engine_init():
-	if (repl_jump_buffer == 0):
-		repl_jump_buffer = cast(int, malloc(3 * __word_size__))
+	if (repl_jump_buffer == 0): repl_jump_buffer = cast(int, malloc(3 * __word_size__))
 	repl_error_jump = cast(int, repl_longjmp)
-	if (repl_fault_jump_buffer == 0):
-		repl_fault_jump_buffer = cast(int, malloc(3 * __word_size__))
+	if (repl_fault_jump_buffer == 0): repl_fault_jump_buffer = cast(int, malloc(3 * __word_size__))
 
 
 # Create the session's staging directory on first use, so a session that
@@ -1126,8 +965,7 @@ void repl_engine_init():
 # running concurrently (e.g. repl_test and repl_test_x64 under a
 # parallel test runner) never collide.
 void repl_stage_init():
-	if (repl_staging_dir != 0):
-		return;
+	if (repl_staging_dir != 0): return;
 	repl_staging_dir = cstr(f"/tmp/w_repl_{getpid()}")
 	mkdir(repl_staging_dir, 511)
 
@@ -1136,27 +974,29 @@ void repl_stage_init():
 # compilation, the executable buffer the compiled entries run from, the
 # recovery jump buffers and fault handlers, the runtime stubs and
 # preloaded library modules, and the per-session staging directory.
-void repl_init():
+# The in-process compile-and-run model shared with wdbg (wdbg_main):
+# native word size, basic types, the executable buffer compiled code
+# runs from, the shared eval engine (repl_engine_init: recoverable
+# compile errors, staging directory) and the runtime support modules.
+void repl_inprocess_setup():
 	verbosity = -1
-	# The in-process model runs compiled entries directly, so the target
+	# The in-process model runs compiled code directly, so the target
 	# architecture is the one this binary was compiled for.
 	word_size = __word_size__
 	word_size_log2 = 2
-	if (word_size == 8):
-		word_size_log2 = 3
+	if (word_size == 8): word_size_log2 = 3
 	push_basic_types()
 	pointer_indirection = 0
 	last_identifier = malloc(8000)
 	last_global_declaration = malloc(8000)
 
-	# Executable buffer the compiled entries run from. code_offset makes
-	# every embedded address point into this mapping, so no relocation is
-	# needed. The codegen embeds addresses as 32-bit immediates, so on
-	# x64 the buffer must sit in the low 2GB: MAP_32BIT (0x40).
+	# code_offset makes every embedded address point into this mapping,
+	# so no relocation is needed. The codegen embeds addresses as 32-bit
+	# immediates, so on x64 the buffer must sit in the low 2GB:
+	# MAP_32BIT (0x40).
 	int buffer_size = 8388608
 	int mmap_flags = 34 /* PRIVATE|ANONYMOUS */
-	if (word_size == 8):
-		mmap_flags = 34 + 64
+	if (word_size == 8): mmap_flags = 34 + 64
 	int buffer = mmap(0, buffer_size, 7, mmap_flags) /* RWX */
 	asserts(c"mmap of code buffer failed", (buffer > 0) | (buffer < -4095))
 	code = buffer + 0
@@ -1165,30 +1005,29 @@ void repl_init():
 	be_cmp_note_reset()
 	be_imm_note_reset()
 	code_offset = buffer
-
-	# Recoverable compile errors and staging directory (repl_engine_init),
-	# plus recoverable runtime faults: a fault inside an executing entry
-	# long-jumps back into repl_eval. repl_fault_active gates the
-	# handlers, so faults anywhere else still kill the process as before.
 	repl_engine_init()
-	repl_fault_install_handlers()
 
-	# Runtime support: syscall stubs first, then the library itself.
-	# import_module (not compile_save) registers the modules, so a loaded
-	# file importing lib.lib is not compiled a second time.
-	if (word_size == 8):
-		define_asm_functions_x64()
-	else:
-		define_asm_functions()
-	# The container runtime next, exactly like link_impl and wdbg_main:
-	# built-in list/map/set lower to __w_list_*/__w_hash_* helper calls,
-	# so the first 'new list[T]' at the prompt dies in sym_get_value
-	# (with a misleading message naming the lookahead token) unless the
-	# helpers are preloaded here too. This runs once at startup, before
-	# any entry's repl_setjmp checkpoint exists, so per-entry rollback
-	# in repl_compile_entry never touches it.
+	# Runtime support: syscall stubs first, then the container runtime,
+	# exactly like link_impl: built-in list/map/set lower to
+	# __w_list_*/__w_hash_* helper calls, so the first 'new list[T]' dies
+	# in sym_get_value (with a misleading message naming the lookahead
+	# token) unless the helpers are preloaded here too. This runs once at
+	# startup, before any entry's repl_setjmp checkpoint exists, so
+	# per-entry rollback in repl_compile_entry never touches it.
+	if (word_size == 8): define_asm_functions_x64()
+	else: define_asm_functions()
 	import_module(c"structures.hash_table")
 	import_module(c"structures.w_list")
+
+
+void repl_init():
+	repl_inprocess_setup()
+	# Recoverable runtime faults: a fault inside an executing entry
+	# long-jumps back into repl_eval. repl_fault_active gates the
+	# handlers, so faults anywhere else still kill the process as before.
+	repl_fault_install_handlers()
+	# import_module (not compile_save) registers the library modules, so
+	# a loaded file importing lib.lib is not compiled a second time.
 	import_module(c"lib.lib")
 	import_module(c"lib.assert")
 
@@ -1201,8 +1040,7 @@ list[char*] repl_loaded_files
 
 
 void repl_note_loaded_file(char* path):
-	if (repl_loaded_files == 0):
-		repl_loaded_files = new list[char*]
+	if (repl_loaded_files == 0): repl_loaded_files = new list[char*]
 	repl_loaded_files.push(strclone(path))
 
 
@@ -1214,16 +1052,12 @@ void repl_note_loaded_file(char* path):
 # or "open" into a raw library call.
 int repl_session_function(char* name):
 	int t = sym_lookup(name)
-	if (t < 0):
-		return -1
-	if ((table[t + 1] != 'D') || (sym_symtype(name) != 2)):
-		return -1
+	if (t < 0): return -1
+	if ((table[t + 1] != 'D') || (sym_symtype(name) != 2)): return -1
 	int file_index = sym_decl_file_index(t)
-	if (file_index < 0):
-		return -1
+	if (file_index < 0): return -1
 	char* file = debug_file_name(file_index)
-	if (file == 0):
-		return -1
+	if (file == 0): return -1
 	if (repl_staging_dir != 0):
 		if (starts_with(file, repl_staging_dir)):
 			return t
@@ -1253,15 +1087,9 @@ int repl_load_file(char* path, int run_main, int argc, int argv):
 	# is needed.
 	repl_call_site_hook = cast(int, repl_register_call_site)
 	compile_input_file(path)
-	generic_finish_instantiations()
-	json_codec_finish_import()
-	template_string_finish_import()
-	prelude_finish_import()
-	var_finish_import()
-	generic_finish_instantiations()
+	finish_on_demand_imports()
 	repl_call_site_hook = 0
-	if (run_main == 0):
-		return 0
+	if (run_main == 0): return 0
 	int main_symbol = sym_lookup(c"main")
 	if (main_symbol >= 0):
 		if (table[main_symbol + 1] == 'D'):
@@ -1292,8 +1120,7 @@ repl_result repl_eval(char* entry_text):
 	char* nest = repl_nest_save()
 
 	repl_stage_init()
-	if (repl_staged_path != 0):
-		free(repl_staged_path)
+	if (repl_staged_path != 0): free(repl_staged_path)
 	repl_staged_path = repl_entry_path(repl_staging_dir, repl_staged_count)
 	repl_staged_count = repl_staged_count + 1
 	int out = create_file(repl_staged_path, 511)
@@ -1323,8 +1150,7 @@ repl_result repl_eval(char* entry_text):
 		return r
 	r.value = address()
 	r.echo_type = repl_result_type
-	if (repl_echo_hook != 0):
-		repl_echo_hook(r.value, repl_result_type)
+	if (repl_echo_hook != 0): repl_echo_hook(r.value, repl_result_type)
 	repl_fault_active = 0
 	# Late binding (#114): the entry compiled and ran to completion, so
 	# its function definitions are permanent -- rewrite every older call
@@ -1341,8 +1167,7 @@ repl_result repl_eval(char* entry_text):
 # instantiation re-parses recorded spans from the staged files. A no-op
 # when nothing was ever staged (the directory is created lazily).
 void repl_cleanup():
-	if (repl_staging_dir == 0):
-		return;
+	if (repl_staging_dir == 0): return;
 	repl_remove_staging(repl_staging_dir, repl_staged_count)
 
 
@@ -1372,11 +1197,8 @@ int repl_complete_names(char* prefix, char* out, int capacity):
 			# repl_declare_global) can leave the same name more than once
 			# in the table; only offer it once.
 			int dup = 0
-			int k = 0
-			while (k < count):
-				if (strcmp(cast(char*, load_word(out + k * __word_size__)), name) == 0):
-					dup = 1
-				k = k + 1
+			for k in range(count):
+				if (strcmp(cast(char*, load_word(out + k * __word_size__)), name) == 0): dup = 1
 			if (dup == 0):
 				save_word(out + count * __word_size__, cast(int, strclone(name)))
 				count = count + 1

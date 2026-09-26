@@ -67,8 +67,7 @@ int wx_u32(int off):
 # so the high half must be zero -- asserted rather than truncated.
 int wx_word(int off):
 	int v = wx_u32(off)
-	if (wx_class == 2):
-		asserts(c"field fits in 32 bits", wx_u32(off + 4) == 0)
+	if (wx_class == 2): asserts(c"field fits in 32 bits", wx_u32(off + 4) == 0)
 	return v
 
 
@@ -79,20 +78,17 @@ int wx_entry():
 
 
 int wx_phoff():
-	if (wx_class == 2):
-		return wx_word(32)
+	if (wx_class == 2): return wx_word(32)
 	return wx_u32(28)
 
 
 int wx_phentsize():
-	if (wx_class == 2):
-		return wx_u16(54)
+	if (wx_class == 2): return wx_u16(54)
 	return wx_u16(42)
 
 
 int wx_phnum():
-	if (wx_class == 2):
-		return wx_u16(56)
+	if (wx_class == 2): return wx_u16(56)
 	return wx_u16(44)
 
 
@@ -107,32 +103,27 @@ int wx_ph_type(int i):
 
 
 int wx_ph_flags(int i):
-	if (wx_class == 2):
-		return wx_u32(wx_ph_off(i) + 4)
+	if (wx_class == 2): return wx_u32(wx_ph_off(i) + 4)
 	return wx_u32(wx_ph_off(i) + 24)
 
 
 int wx_ph_offset(int i):
-	if (wx_class == 2):
-		return wx_word(wx_ph_off(i) + 8)
+	if (wx_class == 2): return wx_word(wx_ph_off(i) + 8)
 	return wx_u32(wx_ph_off(i) + 4)
 
 
 int wx_ph_vaddr(int i):
-	if (wx_class == 2):
-		return wx_word(wx_ph_off(i) + 16)
+	if (wx_class == 2): return wx_word(wx_ph_off(i) + 16)
 	return wx_u32(wx_ph_off(i) + 8)
 
 
 int wx_ph_filesz(int i):
-	if (wx_class == 2):
-		return wx_word(wx_ph_off(i) + 32)
+	if (wx_class == 2): return wx_word(wx_ph_off(i) + 32)
 	return wx_u32(wx_ph_off(i) + 16)
 
 
 int wx_ph_memsz(int i):
-	if (wx_class == 2):
-		return wx_word(wx_ph_off(i) + 40)
+	if (wx_class == 2): return wx_word(wx_ph_off(i) + 40)
 	return wx_u32(wx_ph_off(i) + 20)
 
 
@@ -153,22 +144,17 @@ int wx_ph_find(int ptype, int from):
 # load, whose file offset equals vaddr - base, so it is read in place.
 int wx_dyn_value(int tag):
 	int d = wx_ph_find(2, 0)
-	if (d < 0):
-		return 0
+	if (d < 0): return 0
 	int entsize = 8
-	if (wx_class == 2):
-		entsize = 16
+	if (wx_class == 2): entsize = 16
 	int off = wx_ph_offset(d)
 	int end = off + wx_ph_filesz(d)
 	while (off < end):
 		int t = wx_u32(off)
-		if (wx_class == 2):
-			t = wx_word(off)
-		if (t == 0):
-			return 0
+		if (wx_class == 2): t = wx_word(off)
+		if (t == 0): return 0
 		if (t == tag):
-			if (wx_class == 2):
-				return wx_word(off + 8)
+			if (wx_class == 2): return wx_word(off + 8)
 			return wx_u32(off + 4)
 		off = off + entsize
 	return 0
@@ -224,8 +210,7 @@ void wx_check_image(char* path, int expected_class):
 	int checked = 0
 	while (off < end):
 		int target = wx_u32(off)
-		if (wx_class == 2):
-			target = wx_word(off)
+		if (wx_class == 2): target = wx_word(off)
 		asserts(c"relocation targets the R+W load", target >= lo && target < hi)
 		off = off + rel_ent
 		checked = checked + 1

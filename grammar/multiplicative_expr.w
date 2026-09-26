@@ -15,24 +15,18 @@ int multiplicative_op(int type, int op):
 	if (overload_type):
 		return overload_type
 	if (var_binary_operands(left_type, right_type)):
-		if (op == '%'):
-			error(c"var operands do not support %")
-		pop_ebx()
-		stack_pos = stack_pos - 1
+		if (op == '%'): error(c"var operands do not support %")
+		pop_ebx_slot()
 		return var_binary_arithmetic(left_type, right_type, op)
 	if (binary_float_kind(left_type, right_type)):
-		if (op == '%'):
-			error(c"float operands do not support %")
-		pop_ebx()
-		stack_pos = stack_pos - 1
+		if (op == '%'): error(c"float operands do not support %")
+		pop_ebx_slot()
 		return float_binary_arithmetic(left_type, right_type, op)
 	if (op == '*'):
 		pop_ebx()
 		alu_imul()
-	else if (op == '/'):
-		alu_idiv()
-	else:
-		alu_imod()
+	else if (op == '/'): alu_idiv()
+	else: alu_imod()
 	stack_pos = stack_pos - 1
 	return 3
 
@@ -45,11 +39,9 @@ int multiplicative_expr():
 			get_token()
 			type = multiplicative_op(type, '*')
 
-		else if (accept(c"/")):
-			type = multiplicative_op(type, '/')
+		else if (accept(c"/")): type = multiplicative_op(type, '/')
 
-		else if (accept(c"%")):
-			type = multiplicative_op(type, '%')
+		else if (accept(c"%")): type = multiplicative_op(type, '%')
 
 		else:
 			return type

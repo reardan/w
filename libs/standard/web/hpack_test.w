@@ -11,48 +11,17 @@ import lib.testing
 import lib.container
 import structures.string
 import libs.standard.web.hpack
-
-
-int hpack_test_hexval(int c):
-	if ((c >= '0') && (c <= '9')):
-		return c - '0'
-	if ((c >= 'a') && (c <= 'f')):
-		return c - 'a' + 10
-	if ((c >= 'A') && (c <= 'F')):
-		return c - 'A' + 10
-	return (-1)
-
-
-# Decodes a hex string (spaces ignored) into a fresh buffer.
-char* hpack_test_unhex(char* text, int* out_len):
-	char* out = malloc(strlen(text) / 2 + 1)
-	int n = 0
-	int i = 0
-	int hi = (-1)
-	while (text[i] != 0):
-		int v = hpack_test_hexval(text[i] & 255)
-		if (v >= 0):
-			if (hi < 0):
-				hi = v
-			else:
-				out[n] = (hi << 4) | v
-				n = n + 1
-				hi = (-1)
-		i = i + 1
-	*out_len = n
-	return out
+import lib.hex
 
 
 void hpack_test_expect_bytes(char* label, string_builder* got, char* want_hex):
 	int want_len = 0
-	char* want = hpack_test_unhex(want_hex, &want_len)
+	char* want = hex_decode_loose(want_hex, &want_len)
 	int ok = 1
-	if (got.length != want_len):
-		ok = 0
+	if (got.length != want_len): ok = 0
 	int i = 0
 	while ((ok != 0) && (i < want_len)):
-		if ((got.data[i] & 255) != (want[i] & 255)):
-			ok = 0
+		if ((got.data[i] & 255) != (want[i] & 255)): ok = 0
 		i = i + 1
 	if (ok == 0):
 		print2(label)
@@ -73,13 +42,11 @@ list[hpack_header*] hpack_test_parse_spec(char* spec):
 	int pos = 0
 	while (spec[pos] != 0):
 		int ns = pos
-		while (spec[pos] != '|'):
-			pos = pos + 1
+		while (spec[pos] != '|'): pos = pos + 1
 		int ne = pos
 		pos = pos + 1
 		int vs = pos
-		while (spec[pos] != 10):
-			pos = pos + 1
+		while (spec[pos] != 10): pos = pos + 1
 		l.push(hpack_header_new(spec + ns, ne - ns, spec + vs, pos - vs))
 		pos = pos + 1
 	return l
@@ -117,7 +84,7 @@ void hpack_test_expect_table(hpack_table* t, char* spec, int size):
 # Decodes one block, compares fields and the resulting table.
 void hpack_test_decode_step(hpack_decoder* d, char* block_hex, char* fields, char* table, int size):
 	int len = 0
-	char* block = hpack_test_unhex(block_hex, &len)
+	char* block = hex_decode_loose(block_hex, &len)
 	list[hpack_header*] out = hpack_headers_new()
 	assert_equal(0, hpack_decode(d, block, len, out))
 	hpack_test_expect_headers(out, fields)
@@ -138,7 +105,7 @@ void hpack_test_encode_step(hpack_encoder* e, char* fields, char* want_hex, char
 
 int hpack_test_decode_rc(hpack_decoder* d, char* block_hex):
 	int len = 0
-	char* block = hpack_test_unhex(block_hex, &len)
+	char* block = hex_decode_loose(block_hex, &len)
 	list[hpack_header*] out = hpack_headers_new()
 	int rc = hpack_decode(d, block, len, out)
 	hpack_headers_free(out)
@@ -161,7 +128,7 @@ void test_hpack_integer_examples():
 	string_free(out)
 
 	int len = 0
-	char* p = hpack_test_unhex(c"1f9a0a", &len)
+	char* p = hex_decode_loose(c"1f9a0a", &len)
 	int pos = 0
 	int v = 0
 	assert_equal(1, hpack_decode_int(p, len, &pos, 5, &v))
@@ -172,12 +139,12 @@ void test_hpack_integer_examples():
 	assert_equal(0, hpack_decode_int(p, 2, &pos, 5, &v))
 	free(p)
 	# More than four continuation bytes fails closed.
-	p = hpack_test_unhex(c"1fffffffff0f", &len)
+	p = hex_decode_loose(c"1fffffffff0f", &len)
 	pos = 0
 	assert_equal(0, hpack_decode_int(p, len, &pos, 5, &v))
 	free(p)
 	# Four continuation bytes are fine.
-	p = hpack_test_unhex(c"1fffffff7f", &len)
+	p = hex_decode_loose(c"1fffffff7f", &len)
 	pos = 0
 	assert_equal(1, hpack_decode_int(p, len, &pos, 5, &v))
 	assert_equal(31 + 268435455, v)
@@ -234,21 +201,21 @@ void test_hpack_huffman_rejects_bad_padding():
 	int dlen = 0
 	int len = 0
 	# "www.example.com" decodes.
-	char* p = hpack_test_unhex(c"f1e3c2e5f23a6ba0ab90f4ff", &len)
+	char* p = hex_decode_loose(c"f1e3c2e5f23a6ba0ab90f4ff", &len)
 	char* ok = hpack_huffman_decode(p, len, 100, &dlen)
 	assert_strings_equal(c"www.example.com", ok)
 	free(ok)
 	free(p)
 	# 'a' (00011) padded with zeros instead of ones.
-	p = hpack_test_unhex(c"18", &len)
+	p = hex_decode_loose(c"18", &len)
 	asserts(c"zero padding accepted", hpack_huffman_decode(p, len, 100, &dlen) == 0)
 	free(p)
 	# 'a' then a whole byte of ones: padding longer than 7 bits.
-	p = hpack_test_unhex(c"1fff", &len)
+	p = hex_decode_loose(c"1fff", &len)
 	asserts(c"long padding accepted", hpack_huffman_decode(p, len, 100, &dlen) == 0)
 	free(p)
 	# An explicit EOS symbol (30 ones) followed by 2 padding ones.
-	p = hpack_test_unhex(c"ffffffff", &len)
+	p = hex_decode_loose(c"ffffffff", &len)
 	asserts(c"EOS accepted", hpack_huffman_decode(p, len, 100, &dlen) == 0)
 	free(p)
 
@@ -279,7 +246,7 @@ void test_hpack_c2_literal_without_indexing():
 void test_hpack_c2_never_indexed():
 	hpack_decoder* d = hpack_decoder_new(4096)
 	int len = 0
-	char* block = hpack_test_unhex(c"1008 7061 7373 776f 7264 0673 6563 7265 74", &len)
+	char* block = hex_decode_loose(c"1008 7061 7373 776f 7264 0673 6563 7265 74", &len)
 	list[hpack_header*] out = hpack_headers_new()
 	assert_equal(0, hpack_decode(d, block, len, out))
 	hpack_test_expect_headers(out, c"password|secret\n")
@@ -420,11 +387,11 @@ void test_hpack_size_update_decode():
 	hpack_test_decode_step(d, c"3fe11f 82", c":method|GET\n", c"", 0)
 	assert_equal(4096, d.table.max_size)
 	# Above the limit: 4097 = 3f e2 1f.
-	assert_equal(hpack_error_table_size(), hpack_test_decode_rc(d, c"3fe21f"))
+	assert_equal(hpack_error_table_size, hpack_test_decode_rc(d, c"3fe21f"))
 	hpack_decoder_free(d)
 	# A size update after a field is an error.
 	d = hpack_decoder_new(4096)
-	assert_equal(hpack_error_table_size(), hpack_test_decode_rc(d, c"82 20"))
+	assert_equal(hpack_error_table_size, hpack_test_decode_rc(d, c"82 20"))
 	hpack_decoder_free(d)
 
 
@@ -464,23 +431,23 @@ void test_hpack_eviction_on_oversized_entry():
 void test_hpack_rejects_bad_input():
 	hpack_decoder* d = hpack_decoder_new(4096)
 	# Index 0.
-	assert_equal(hpack_error_bad_index(), hpack_test_decode_rc(d, c"80"))
+	assert_equal(hpack_error_bad_index, hpack_test_decode_rc(d, c"80"))
 	# Index 62 with an empty dynamic table.
-	assert_equal(hpack_error_bad_index(), hpack_test_decode_rc(d, c"be"))
+	assert_equal(hpack_error_bad_index, hpack_test_decode_rc(d, c"be"))
 	# Literal name index out of range.
-	assert_equal(hpack_error_bad_index(), hpack_test_decode_rc(d, c"7f00 0161"))
+	assert_equal(hpack_error_bad_index, hpack_test_decode_rc(d, c"7f00 0161"))
 	# String length past the end of the block.
-	assert_equal(hpack_error_malformed(), hpack_test_decode_rc(d, c"0005 6162"))
+	assert_equal(hpack_error_malformed, hpack_test_decode_rc(d, c"0005 6162"))
 	# Value containing CR.
-	assert_equal(hpack_error_bad_field(), hpack_test_decode_rc(d, c"0001 61 01 0d"))
+	assert_equal(hpack_error_bad_field, hpack_test_decode_rc(d, c"0001 61 01 0d"))
 	# Empty name.
-	assert_equal(hpack_error_bad_field(), hpack_test_decode_rc(d, c"0000 0161"))
+	assert_equal(hpack_error_bad_field, hpack_test_decode_rc(d, c"0000 0161"))
 	hpack_decoder_free(d)
 
 	# String cap.
 	d = hpack_decoder_new(4096)
 	d.max_string = 3
-	assert_equal(hpack_error_too_large(), hpack_test_decode_rc(d, c"0004 6162 6364 0161"))
+	assert_equal(hpack_error_too_large, hpack_test_decode_rc(d, c"0004 6162 6364 0161"))
 	assert_equal(0, hpack_test_decode_rc(d, c"0003 6162 63 0161"))
 	hpack_decoder_free(d)
 
@@ -488,21 +455,20 @@ void test_hpack_rejects_bad_input():
 	d = hpack_decoder_new(4096)
 	d.max_list_size = 80
 	assert_equal(0, hpack_test_decode_rc(d, c"82 84"))
-	assert_equal(hpack_error_too_large(), hpack_test_decode_rc(d, c"82 84 86"))
+	assert_equal(hpack_error_too_large, hpack_test_decode_rc(d, c"82 84 86"))
 	hpack_decoder_free(d)
 
 	# Field count cap.
 	d = hpack_decoder_new(4096)
 	d.max_headers = 2
-	assert_equal(hpack_error_too_large(), hpack_test_decode_rc(d, c"82 84 86"))
+	assert_equal(hpack_error_too_large, hpack_test_decode_rc(d, c"82 84 86"))
 	hpack_decoder_free(d)
 
 
 void test_hpack_encode_decode_round_trip():
 	hpack_encoder* e = hpack_encoder_new(4096)
 	hpack_decoder* d = hpack_decoder_new(4096)
-	int round = 0
-	while (round < 3):
+	for round in range(3):
 		list[hpack_header*] l = hpack_headers_new()
 		hpack_headers_add(l, c":method", c"POST")
 		hpack_headers_add(l, c":scheme", c"http")
@@ -529,6 +495,5 @@ void test_hpack_encode_decode_round_trip():
 		hpack_headers_free(out)
 		hpack_headers_free(l)
 		string_free(sb)
-		round = round + 1
 	hpack_encoder_free(e)
 	hpack_decoder_free(d)

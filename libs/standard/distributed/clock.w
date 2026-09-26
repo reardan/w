@@ -21,6 +21,7 @@ import lib.lib
 import lib.memory
 import lib.assert
 import libs.standard.distributed.u64
+import lib.bytes
 
 
 # ---- vector clocks ----------------------------------------------------------
@@ -30,8 +31,7 @@ struct vclock:
 
 
 vclock* vclock_new():
-	vclock* v = new vclock()
-	v.counters = new map[int, int]
+	vclock* v = new vclock(new map[int, int])
 	return v
 
 
@@ -40,8 +40,7 @@ void vclock_free(vclock* v):
 
 
 int vclock_get(vclock* v, int node):
-	if (node in v.counters):
-		return v.counters[node]
+	if (node in v.counters): return v.counters[node]
 	return 0
 
 
@@ -54,8 +53,7 @@ void vclock_tick(vclock* v, int node):
 
 vclock* vclock_clone(vclock* v):
 	vclock* out = vclock_new()
-	for int node, int c in v.counters:
-		out.counters[node] = c
+	for int node, int c in v.counters: out.counters[node] = c
 	return out
 
 
@@ -63,8 +61,7 @@ vclock* vclock_clone(vclock* v):
 # replica's version before writing its own.
 void vclock_merge(vclock* v, vclock* other):
 	for int node, int c in other.counters:
-		if (c > vclock_get(v, node)):
-			v.counters[node] = c
+		if (c > vclock_get(v, node)): v.counters[node] = c
 
 
 # Frozen contract (see header): -1 before, 0 equal, 1 after,
@@ -74,22 +71,15 @@ int vclock_compare(vclock* a, vclock* b):
 	int b_smaller = 0
 	for int node, int c in a.counters:
 		int other = vclock_get(b, node)
-		if (c < other):
-			a_smaller = 1
-		if (c > other):
-			b_smaller = 1
+		if (c < other): a_smaller = 1
+		if (c > other): b_smaller = 1
 	for int node, int c in b.counters:
-		if (node in a.counters):
-			continue
+		if (node in a.counters): continue
 		# a implicitly has 0 here
-		if (c > 0):
-			a_smaller = 1
-	if (a_smaller && b_smaller):
-		return 2
-	if (a_smaller):
-		return 0 - 1
-	if (b_smaller):
-		return 1
+		if (c > 0): a_smaller = 1
+	if (a_smaller && b_smaller): return 2
+	if (a_smaller): return 0 - 1
+	if (b_smaller): return 1
 	return 0
 
 
@@ -97,8 +87,7 @@ int vclock_compare(vclock* a, vclock* b):
 # everything b has seen (the "obsolete version" test in read repair).
 int vclock_descends(vclock* a, vclock* b):
 	int r = vclock_compare(a, b)
-	if (r == 0 || r == 1):
-		return 1
+	if (r == 0 || r == 1): return 1
 	return 0
 
 
@@ -118,20 +107,8 @@ int vclock_descends(vclock* a, vclock* b):
 int vclock_wire_size(vclock* v):
 	int n = 0
 	for int node, int c in v.counters:
-		if (c != 0):
-			n = n + 1
+		if (c != 0): n = n + 1
 	return 4 + 12 * n
-
-
-void vclock_wire_u32(char* p, int v):
-	p[0] = v
-	p[1] = v >> 8
-	p[2] = v >> 16
-	p[3] = v >> 24
-
-
-int vclock_wire_read_u32(char* p):
-	return (p[0] & 255) | ((p[1] & 255) << 8) | ((p[2] & 255) << 16) | ((p[3] & 255) << 24)
 
 
 # Serializes v into buf, which must hold vclock_wire_size(v) bytes.
@@ -140,17 +117,14 @@ void vclock_save(vclock* v, char* buf):
 	for int node, int c in v.counters:
 		if (c != 0):
 			assert1(node >= 0)
-			# insertion sort ascending by node id
-			int pos = 0
-			while (pos < nodes.length && nodes[pos] < node):
-				pos = pos + 1
-			nodes.insert(pos, node)
-	vclock_wire_u32(buf, nodes.length)
+			nodes.push(node)
+	nodes.sort()   # ascending by node id
+	store_le32(buf, nodes.length)
 	u64* counter = u64_new()
 	int i = 0
 	while (i < nodes.length):
 		int off = 4 + 12 * i
-		vclock_wire_u32(buf + off, nodes[i])
+		store_le32(buf + off, nodes[i])
 		u64_set_int(counter, vclock_get(v, nodes[i]))
 		u64_save_le(buf + off + 4, counter)
 		i = i + 1
@@ -162,19 +136,16 @@ void vclock_save(vclock* v, char* buf):
 # ids (corrupt or future-format input).
 vclock* vclock_load(char* buf):
 	vclock* v = vclock_new()
-	int n = vclock_wire_read_u32(buf)
+	int n = load_le32(buf)
 	assert1(n >= 0)
 	u64* counter = u64_new()
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int off = 4 + 12 * i
-		int node = vclock_wire_read_u32(buf + off)
+		int node = load_le32(buf + off)
 		assert1(node >= 0)
 		u64_load_le(counter, buf + off + 4)
 		int c = u64_to_int(counter)
-		if (c != 0):
-			v.counters[node] = c
-		i = i + 1
+		if (c != 0): v.counters[node] = c
 	u64_free(counter)
 	return v
 
@@ -192,8 +163,7 @@ struct lamport_clock:
 
 
 lamport_clock* lamport_new():
-	lamport_clock* c = new lamport_clock()
-	c.t = 0
+	lamport_clock* c = new lamport_clock(0)
 	return c
 
 
@@ -216,8 +186,7 @@ int lamport_tick(lamport_clock* c):
 # both the local past and the sender's timestamp.
 int lamport_observe(lamport_clock* c, int remote):
 	assert1(remote >= 0)
-	if (remote > c.t):
-		c.t = remote
+	if (remote > c.t): c.t = remote
 	c.t = c.t + 1
 	return c.t
 
@@ -244,9 +213,7 @@ struct hlc:
 
 
 hlc* hlc_new():
-	hlc* h = new hlc()
-	h.l = u64_new()
-	h.c = 0
+	hlc* h = new hlc(u64_new(), 0)
 	return h
 
 
@@ -299,15 +266,12 @@ void hlc_observe(hlc* h, u64* wall_ms, u64* remote, u64* out):
 	int nc = 0
 	if (l_ties && r_ties):
 		nc = h.c
-		if (rc > nc):
-			nc = rc
+		if (rc > nc): nc = rc
 		nc = nc + 1
 	else:
-		if (l_ties):
-			nc = h.c + 1
+		if (l_ties): nc = h.c + 1
 		else:
-			if (r_ties):
-				nc = rc + 1
+			if (r_ties): nc = rc + 1
 	if (nc > 65535):
 		# same saturation bump as hlc_now
 		u64_inc(nl)

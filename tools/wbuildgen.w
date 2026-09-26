@@ -32,8 +32,7 @@ int main(int argc, int argv):
 	int i = 1
 	while (i < argc):
 		char** arg = argv + i * __word_size__
-		if (strcmp(*arg, c"--check") == 0):
-			check_only = 1
+		if (strcmp(*arg, c"--check") == 0): check_only = 1
 		else if (strcmp(*arg, c"--base") == 0):
 			i = i + 1
 			if (i >= argc):
@@ -55,8 +54,7 @@ int main(int argc, int argv):
 		i = i + 1
 
 	char* rendered = wbg_generate(base_path, 1)
-	if (rendered == 0):
-		return 1
+	if (rendered == 0): return 1
 
 	wstream* out = stdout_writer()
 	if (check_only & (explicit_out == 0)):
@@ -78,15 +76,12 @@ int main(int argc, int argv):
 		mkdir(c"bin", 493)
 		file_write_text(c"bin/build.json.gen", rendered)
 		wbg_error(c"regenerated manifest written to bin/build.json.gen")
-		if (current == 0):
-			wbg_error2(c"cannot read manifest ", out_path)
-		else:
-			wbg_report_drift(out_path, current, rendered)
+		if (current == 0): wbg_error2(c"cannot read manifest ", out_path)
+		else: wbg_report_drift(out_path, current, rendered)
 		return 1
 
 	# The default output lives under bin/, which a fresh checkout lacks.
-	if (explicit_out == 0):
-		mkdir(c"bin", 493)
+	if (explicit_out == 0): mkdir(c"bin", 493)
 	# Atomic rewrite: a concurrent reader must never see a torn file, so
 	# the rendered manifest lands in a sibling temp file first and
 	# rename(2) swaps it into place. The temp path is derived from

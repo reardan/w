@@ -38,8 +38,7 @@ bitset* bitset_new(int size):
 	b.size = size
 	b.words = (size + 31) >> 5
 	int alloc_words = b.words
-	if (alloc_words < 1):
-		alloc_words = 1
+	if (alloc_words < 1): alloc_words = 1
 	b.data = malloc(alloc_words * __word_size__)
 	int i = 0
 	while (i < b.words):
@@ -130,16 +129,14 @@ int bitset_count(bitset* b):
 #       ...
 #       i = bitset_next_set_bit(b, i + 1)
 int bitset_next_set_bit(bitset* b, int from):
-	if (from < 0):
-		from = 0
+	if (from < 0): from = 0
 	int w = from >> 5
 	int bit = from & 31
 	while (w < b.words):
 		# drop the bits below 'from' in the first word, then ctz finds
 		# the lowest survivor
 		int word = shr(b.data[w], bit) << bit
-		if (word != 0):
-			return (w << 5) + ctz(word)
+		if (word != 0): return (w << 5) + ctz(word)
 		w = w + 1
 		bit = 0
 	return -1

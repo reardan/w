@@ -12,8 +12,7 @@ int diag_word_size
 
 void diag_clear():
 	diag_buffer_pos = 0
-	if (diag_buffer != 0):
-		diag_buffer[0] = 0
+	if (diag_buffer != 0): diag_buffer[0] = 0
 
 
 void diag_ensure(int n):
@@ -53,14 +52,12 @@ char* diag_help_text
 
 
 void diag_set_help(char* s):
-	if (diag_help_text != 0):
-		free(diag_help_text)
+	if (diag_help_text != 0): free(diag_help_text)
 	diag_help_text = strclone(s)
 
 
 void diag_clear_help():
-	if (diag_help_text != 0):
-		free(diag_help_text)
+	if (diag_help_text != 0): free(diag_help_text)
 	diag_help_text = 0
 
 
@@ -80,21 +77,18 @@ int diag_suggest_best_distance
 char* diag_suggest_rows
 
 
-int diag_suggest_max_length():
-	return 64
+const int diag_suggest_max_length = 64
 
 
 void diag_suggest_begin(char* name):
 	diag_suggest_name = name
 	diag_suggest_best = 0
 	diag_suggest_best_distance = 1000
-	if (diag_suggest_rows == 0):
-		diag_suggest_rows = malloc(3 * (diag_suggest_max_length() + 1))
+	if (diag_suggest_rows == 0): diag_suggest_rows = malloc(3 * (diag_suggest_max_length + 1))
 
 
 int diag_lower(int c):
-	if ((c >= 'A') && (c <= 'Z')):
-		return c + 32
+	if ((c >= 'A') && (c <= 'Z')): return c + 32
 	return c
 
 
@@ -105,24 +99,22 @@ int diag_min(int a, int b):
 
 
 # Edit distance between a and b (lengths n and m, both at most
-# diag_suggest_max_length()); rows are one byte per cell, which the
+# diag_suggest_max_length); rows are one byte per cell, which the
 # length cap keeps in range. Returns 0 for a case-only difference.
 int diag_edit_distance(char* a, int n, char* b, int m):
 	char* prev2 = diag_suggest_rows
-	char* prev = diag_suggest_rows + (diag_suggest_max_length() + 1)
-	char* row = diag_suggest_rows + 2 * (diag_suggest_max_length() + 1)
+	char* prev = diag_suggest_rows + (diag_suggest_max_length + 1)
+	char* row = diag_suggest_rows + 2 * (diag_suggest_max_length + 1)
 	int j = 0
 	while (j <= m):
 		prev[j] = j
 		j = j + 1
-	int i = 1
-	while (i <= n):
+	for i in range(1, n + 1):
 		row[0] = i
 		j = 1
 		while (j <= m):
 			int cost = 1
-			if (diag_lower(a[i - 1] & 255) == diag_lower(b[j - 1] & 255)):
-				cost = 0
+			if (diag_lower(a[i - 1] & 255) == diag_lower(b[j - 1] & 255)): cost = 0
 			int best = diag_min((prev[j] & 255) + 1, (row[j - 1] & 255) + 1)
 			best = diag_min(best, (prev[j - 1] & 255) + cost)
 			if ((i > 1) && (j > 1)):
@@ -134,35 +126,26 @@ int diag_edit_distance(char* a, int n, char* b, int m):
 		prev2 = prev
 		prev = row
 		row = t
-		i = i + 1
 	return prev[m] & 255
 
 
 void diag_suggest_consider(char* candidate):
-	if ((diag_suggest_name == 0) || (candidate == 0)):
-		return
+	if ((diag_suggest_name == 0) || (candidate == 0)): return
 	char* name = diag_suggest_name
 	# Compiler-internal names ('__w_...') are only offered for a name
 	# that is itself spelled that way.
-	if ((candidate[0] == '_') && (candidate[1] == '_') && (name[0] != '_')):
-		return
-	if (strcmp(candidate, name) == 0):
-		return
+	if ((candidate[0] == '_') && (candidate[1] == '_') && (name[0] != '_')): return
+	if (strcmp(candidate, name) == 0): return
 	int n = strlen(name)
 	int m = strlen(candidate)
-	if ((n == 0) || (m == 0)):
-		return
-	if ((n > diag_suggest_max_length()) || (m > diag_suggest_max_length())):
-		return
+	if ((n == 0) || (m == 0)): return
+	if ((n > diag_suggest_max_length) || (m > diag_suggest_max_length)): return
 	int limit = n
-	if (limit < 3):
-		limit = 3
+	if (limit < 3): limit = 3
 	limit = limit / 3
 	int gap = n - m
-	if (gap < 0):
-		gap = 0 - gap
-	if (gap > limit):
-		return
+	if (gap < 0): gap = 0 - gap
+	if (gap > limit): return
 	int distance = diag_edit_distance(name, n, candidate, m)
 	if ((distance <= limit) && (distance < diag_suggest_best_distance)):
 		diag_suggest_best = candidate
@@ -186,8 +169,7 @@ int diag_suggest_finish():
 
 
 int diag_hex_digit(int value):
-	if (value < 10):
-		return value + '0'
+	if (value < 10): return value + '0'
 	return value - 10 + 'a'
 
 
@@ -227,21 +209,26 @@ void diag_flush():
 void diag_write_cstr(char* s):
 	int len = strlen(s)
 	diag_out_ensure(len)
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		diag_out_buffer[diag_out_buffer_pos] = s[i]
 		diag_out_buffer_pos = diag_out_buffer_pos + 1
-		i = i + 1
 
 
-# Length (2-4, lead byte included) of the well-formed UTF-8 sequence
-# starting at s[i], or 0 when the bytes there are not well-formed UTF-8
-# (an invalid lead byte, a lone/missing continuation byte, an overlong
-# encoding, a surrogate, or a codepoint past U+10FFFF). Mirrors
-# lib/utf8.w's utf8_validate_bytes, reimplemented locally because this
-# module stays dependency-free. Truncation at the terminating NUL fails
-# the continuation-range check, so the scan never reads past it.
-int diag_utf8_sequence_length(char* s, int i):
+# The codepoint of the multi-byte UTF-8 sequence starting at s[i], with
+# its byte length (2-4, lead byte included) in utf8_decode_length; or -1
+# with utf8_decode_length 0 when the bytes there are not a well-formed
+# sequence: an ASCII or invalid lead byte, a lone/missing continuation
+# byte, or an overlong encoding. Surrogates and codepoints past U+10FFFF
+# decode normally, for callers to reject with their own diagnostics.
+# Mirrors lib/utf8.w's utf8_validate_bytes, reimplemented locally
+# because this module stays dependency-free. Truncation at the
+# terminating NUL fails the continuation-range check, so the scan never
+# reads past it.
+int utf8_decode_length
+
+
+int utf8_decode_at(char* s, int i):
+	utf8_decode_length = 0
 	int c = s[i] & 255
 	int need = 0
 	int codepoint = 0
@@ -254,24 +241,22 @@ int diag_utf8_sequence_length(char* s, int i):
 	else if ((c >= 240) && (c <= 244)):
 		need = 3
 		codepoint = c & 7
-	else:
-		return 0
-	int j = 1
-	while (j <= need):
+	else: return -1
+	for j in range(1, need + 1):
 		int d = s[i + j] & 255
-		if ((d < 128) || (d > 191)):
-			return 0
+		if ((d < 128) || (d > 191)): return -1
 		codepoint = (codepoint << 6) | (d & 63)
-		j = j + 1
-	if ((need == 2) && (codepoint < 2048)):
-		return 0
-	if ((need == 3) && (codepoint < 65536)):
-		return 0
-	if ((codepoint >= 55296) && (codepoint <= 57343)):
-		return 0
-	if (codepoint > 1114111):
-		return 0
-	return need + 1
+	if (((need == 2) && (codepoint < 2048)) || ((need == 3) && (codepoint < 65536))): return -1
+	utf8_decode_length = need + 1
+	return codepoint
+
+
+# Length of the well-formed UTF-8 sequence at s[i] (utf8_decode_at), or
+# 0 when it is malformed, a surrogate or past U+10FFFF.
+int diag_utf8_sequence_length(char* s, int i):
+	int codepoint = utf8_decode_at(s, i)
+	if (((codepoint >= 55296) && (codepoint <= 57343)) || (codepoint > 1114111)): return 0
+	return utf8_decode_length
 
 
 void diag_write_json_string(char* s):
@@ -279,16 +264,11 @@ void diag_write_json_string(char* s):
 	int i = 0
 	while (s[i] != 0):
 		int ch = s[i] & 255
-		if (ch == '"'):
-			diag_write_cstr(c"\\\"")
-		else if (ch == 92):
-			diag_write_cstr(c"\\\\")
-		else if (ch == 10):
-			diag_write_cstr(c"\\n")
-		else if (ch == 13):
-			diag_write_cstr(c"\\r")
-		else if (ch == 9):
-			diag_write_cstr(c"\\t")
+		if (ch == '"'): diag_write_cstr(c"\\\"")
+		else if (ch == 92): diag_write_cstr(c"\\\\")
+		else if (ch == 10): diag_write_cstr(c"\\n")
+		else if (ch == 13): diag_write_cstr(c"\\r")
+		else if (ch == 9): diag_write_cstr(c"\\t")
 		else if (ch < 32):
 			diag_write_cstr(c"\\u00")
 			diag_out_char(diag_hex_digit(ch >> 4))
@@ -311,8 +291,7 @@ void diag_write_json_string(char* s):
 					i = i + 1
 					n = n - 1
 				diag_out_char(s[i] & 255)
-		else:
-			diag_out_char(ch)
+		else: diag_out_char(ch)
 		i = i + 1
 	diag_out_char('"')
 
@@ -332,18 +311,15 @@ void diag_write_json_int_field(char* name, int value):
 
 
 char* diag_strip_warning_prefix(char* message):
-	if (starts_with(message, c"warning: ")):
-		return message + 9
+	if (starts_with(message, c"warning: ")): return message + 9
 	return message
 
 
 void diag_emit(char* severity, char* file, int line, int column, char* token):
 	char* message = diag_buffer
-	if (strcmp(severity, c"warning") == 0):
-		message = diag_strip_warning_prefix(message)
+	if (strcmp(severity, c"warning") == 0): message = diag_strip_warning_prefix(message)
 	char* arch = c"x86"
-	if (diag_word_size == 8):
-		arch = c"x64"
+	if (diag_word_size == 8): arch = c"x64"
 	diag_write_cstr(c"{")
 	diag_write_json_field(c"file", file)
 	diag_write_cstr(c", ")

@@ -33,26 +33,20 @@ syntax here.
 # Intrinsic index for the current token: 1 gpu_shared_f32,
 # 2 gpu_barrier; 0 when the token is not an intrinsic name.
 int gpu_shared_builtin_kind():
-	if (peek(c"gpu_shared_f32")):
-		return 1
-	if (peek(c"gpu_barrier")):
-		return 2
+	if (peek(c"gpu_shared_f32")): return 1
+	if (peek(c"gpu_barrier")): return 2
 	return 0
 
 
 char* gpu_shared_builtin_name(int kind):
-	if (kind == 1):
-		return c"gpu_shared_f32"
+	if (kind == 1): return c"gpu_shared_f32"
 	return c"gpu_barrier"
 
 
 int gpu_shared_builtin_ready():
-	if (nextc != '('):
-		return 0
-	if (gpu_shared_builtin_kind() == 0):
-		return 0
-	if (sym_lookup(token) >= 0):
-		return 0
+	if (nextc != '('): return 0
+	if (gpu_shared_builtin_kind() == 0): return 0
+	if (sym_lookup(token) >= 0): return 0
 	return 1
 
 
@@ -62,17 +56,14 @@ int gpu_shared_builtin_ready():
 int gpu_shared_builtin_expr():
 	int kind = gpu_shared_builtin_kind()
 	char* name = gpu_shared_builtin_name(kind)
-	if (target_isa != 3):
-		error(c"gpu_shared_f32/gpu_barrier are only available in gpu code")
+	if (target_isa != 3): error(c"gpu_shared_f32/gpu_barrier are only available in gpu code")
 	get_token()
 	expect(c"(")
 
 	if (kind == 2):
 		ptx_barrier()
 		mov_eax_int(0)
-		if (peek(c")") == 0):
-			diag_part(c"')' expected in ")
-			error(name)
+		if (peek(c")") == 0): error2(c"')' expected in ", name)
 		return type_value(type_lookup(c"int"))
 
 	# gpu_shared_f32: the element count must be a positive decimal
@@ -89,8 +80,7 @@ int gpu_shared_builtin_expr():
 			error(c"gpu_shared_f32 requires a positive integer literal element count")
 		n = (n << 1) + (n << 3) + token[i] - '0'
 		i = i + 1
-	if (n == 0):
-		error(c"gpu_shared_f32 requires a positive integer literal element count")
+	if (n == 0): error(c"gpu_shared_f32 requires a positive integer literal element count")
 	# sm_52's static shared-memory limit is 48KB per block; a single
 	# over-limit array can be rejected here rather than as a driver JIT
 	# error at run time. (The cumulative multi-array total is still the
@@ -100,10 +90,7 @@ int gpu_shared_builtin_expr():
 	get_token()
 
 	ptx_shared_f32(n)
-	if (peek(c")") == 0):
-		diag_part(c"')' expected in ")
-		error(name)
+	if (peek(c")") == 0): error2(c"')' expected in ", name)
 	int ptr_type = type_lookup_pointer(c"float", 1)
-	if (ptr_type < 0):
-		ptr_type = type_push_pointer(c"float", word_size, 1)
+	if (ptr_type < 0): ptr_type = type_push_pointer(c"float", word_size, 1)
 	return type_value(ptr_type)

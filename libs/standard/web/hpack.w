@@ -62,6 +62,7 @@
 import lib.lib
 import lib.container
 import structures.string
+import lib.mem
 
 
 # One header field. name/value are owned, NUL-terminated copies.
@@ -101,101 +102,67 @@ struct hpack_encoder:
 
 /* Error codes */
 
-int hpack_error_none():
-	return 0
+const int hpack_error_none = 0
 
 
 # Truncated or malformed integer / string / representation.
-int hpack_error_malformed():
-	return 1
+const int hpack_error_malformed = 1
 
 
 # Index 0 or beyond the static + dynamic tables.
-int hpack_error_bad_index():
-	return 2
+const int hpack_error_bad_index = 2
 
 
 # Invalid Huffman data (EOS, bad padding).
-int hpack_error_huffman():
-	return 3
+const int hpack_error_huffman = 3
 
 
 # A string, the header list, or the field count exceeded a cap.
-int hpack_error_too_large():
-	return 4
+const int hpack_error_too_large = 4
 
 
 # Dynamic table size update above the limit, or not at block start.
-int hpack_error_table_size():
-	return 5
+const int hpack_error_table_size = 5
 
 
 # A field name/value containing NUL, CR or LF, or an empty name.
-int hpack_error_bad_field():
-	return 6
+const int hpack_error_bad_field = 6
 
 
 char* hpack_error_string(int code):
-	if (code == 0):
-		return c"ok"
-	if (code == 1):
-		return c"malformed header block"
-	if (code == 2):
-		return c"invalid header index"
-	if (code == 3):
-		return c"invalid huffman data"
-	if (code == 4):
-		return c"header block exceeds limits"
-	if (code == 5):
-		return c"invalid dynamic table size update"
-	if (code == 6):
-		return c"invalid header field"
-	return c"unknown hpack error"
+	switch (code):
+		case 0: return c"ok"
+		case 1: return c"malformed header block"
+		case 2: return c"invalid header index"
+		case 3: return c"invalid huffman data"
+		case 4: return c"header block exceeds limits"
+		case 5: return c"invalid dynamic table size update"
+		case 6: return c"invalid header field"
+		default: return c"unknown hpack error"
 
 
 /* Defaults */
 
-int hpack_default_table_size():
-	return 4096
-
-
-int hpack_default_max_string():
-	return 65536
-
-
-int hpack_default_max_list_size():
-	return 65536
-
-
-int hpack_default_max_headers():
-	return 256
+const int hpack_default_table_size = 4096
+const int hpack_default_max_string = 65536
+const int hpack_default_max_list_size = 65536
+const int hpack_default_max_headers = 256
 
 
 /* Header fields and lists */
 
-char* hpack_copy_bytes(char* p, int n):
-	char* out = malloc(n + 1)
-	int i = 0
-	while (i < n):
-		out[i] = p[i]
-		i = i + 1
-	out[n] = 0
-	return out
-
-
 hpack_header* hpack_header_new(char* name, int name_len, char* value, int value_len):
 	hpack_header* h = new hpack_header()
-	h.name = hpack_copy_bytes(name, name_len)
+	h.name = mem_dup(name, name_len)
 	h.name_len = name_len
-	h.value = hpack_copy_bytes(value, value_len)
+	h.value = mem_dup(value, value_len)
 	h.value_len = value_len
 	h.sensitive = 0
 	return h
 
 
 void hpack_header_free(hpack_header* h):
-	if (h == 0):
-		return
+	if (h == 0): return
 	free(h.name)
 	free(h.value)
 	free(h)
@@ -216,34 +183,22 @@ void hpack_headers_add_sensitive(list[hpack_header*] l, char* name, char* value)
 
 
 int hpack_bytes_equal(char* a, int alen, char* b, int blen):
-	if (alen != blen):
-		return 0
-	int i = 0
-	while (i < alen):
-		if (a[i] != b[i]):
-			return 0
-		i = i + 1
-	return 1
+	return (alen == blen) && mem_eq(a, b, alen)
 
 
 # First header whose name equals name exactly (HTTP/2 names are
 # lowercase on the wire), or 0.
 char* hpack_headers_get(list[hpack_header*] l, char* name):
-	if (l == 0):
-		return 0
+	if (l == 0): return 0
 	int n = strlen(name)
-	int i = 0
-	while (i < l.length):
+	for i in range(l.length):
 		hpack_header* h = l[i]
-		if (hpack_bytes_equal(h.name, h.name_len, name, n) != 0):
-			return h.value
-		i = i + 1
+		if (hpack_bytes_equal(h.name, h.name_len, name, n) != 0): return h.value
 	return 0
 
 
 void hpack_headers_free(list[hpack_header*] l):
-	if (l == 0):
-		return
+	if (l == 0): return
 	int i = 0
 	while (i < l.length):
 		hpack_header_free(l[i])
@@ -257,8 +212,7 @@ char** hpack_static_names_g
 char** hpack_static_values_g
 
 
-int hpack_static_count():
-	return 61
+const int hpack_static_count = 61
 
 
 # "name value" pairs separated by '|', one entry per ';'. Entry 1 first.
@@ -267,26 +221,21 @@ char* hpack_static_text():
 
 
 void hpack_static_init():
-	if (hpack_static_names_g != 0):
-		return
-	int n = hpack_static_count() + 1
+	if (hpack_static_names_g != 0): return
+	int n = hpack_static_count + 1
 	char** names = cast(char**, malloc(n * __word_size__))
 	char** values = cast(char**, malloc(n * __word_size__))
 	char* text = hpack_static_text()
 	int pos = 0
-	int idx = 1
-	while (idx < n):
+	for idx in range(1, n):
 		int start = pos
-		while (text[pos] != '|'):
-			pos = pos + 1
-		names[idx] = hpack_copy_bytes(text + start, pos - start)
+		while (text[pos] != '|'): pos = pos + 1
+		names[idx] = mem_dup(text + start, pos - start)
 		pos = pos + 1
 		start = pos
-		while (text[pos] != ';'):
-			pos = pos + 1
-		values[idx] = hpack_copy_bytes(text + start, pos - start)
+		while (text[pos] != ';'): pos = pos + 1
+		values[idx] = mem_dup(text + start, pos - start)
 		pos = pos + 1
-		idx = idx + 1
 	names[0] = 0
 	values[0] = 0
 	hpack_static_values_g = values
@@ -306,10 +255,7 @@ char* hpack_static_value(int index):
 /* Dynamic table */
 
 hpack_table* hpack_table_new(int max_size):
-	hpack_table* t = new hpack_table()
-	t.entries = new list[hpack_header*]
-	t.size = 0
-	t.max_size = max_size
+	hpack_table* t = new hpack_table(new list[hpack_header*], 0, max_size)
 	return t
 
 
@@ -378,8 +324,7 @@ int hpack_encode_int(string_builder* out, int first_bits, int prefix, int value)
 # or 0 when truncated or longer than 4 continuation bytes.
 int hpack_decode_int(char* p, int len, int* pos, int prefix, int* out):
 	int i = *pos
-	if (i >= len):
-		return 0
+	if (i >= len): return 0
 	int max_prefix = (1 << prefix) - 1
 	int value = (p[i] & 255) & max_prefix
 	i = i + 1
@@ -389,16 +334,13 @@ int hpack_decode_int(char* p, int len, int* pos, int prefix, int* out):
 		return 1
 	int shift = 0
 	while (1):
-		if (i >= len):
-			return 0
-		if (shift > 21):
-			return 0
+		if (i >= len): return 0
+		if (shift > 21): return 0
 		int b = p[i] & 255
 		i = i + 1
 		value = value + ((b & 127) << shift)
 		shift = shift + 7
-		if ((b & 128) == 0):
-			break
+		if ((b & 128) == 0): break
 	*out = value
 	*pos = i
 	return 1
@@ -422,8 +364,7 @@ int* hpack_huff_count_g
 # Rebuilds the canonical code: symbols sorted by (length, symbol) get
 # consecutive codes, shifting left at each length step.
 void hpack_huffman_init():
-	if (hpack_huff_code_g != 0):
-		return
+	if (hpack_huff_code_g != 0): return
 	char* lens = hpack_huffman_lengths()
 	int* code = cast(int*, malloc(257 * __word_size__))
 	int* len = cast(int*, malloc(257 * __word_size__))
@@ -444,20 +385,16 @@ void hpack_huffman_init():
 		i = i + 1
 	int next = 0
 	int n = 0
-	int L = 1
-	while (L < 32):
+	for L in range(1, 32):
 		first_code[L] = next
 		first_index[L] = n
-		int s = 0
-		while (s < 257):
+		for s in range(257):
 			if (len[s] == L):
 				code[s] = next
 				sorted[n] = s
 				next = next + 1
 				n = n + 1
-			s = s + 1
 		next = next << 1
-		L = L + 1
 	hpack_huff_len_g = len
 	hpack_huff_sorted_g = sorted
 	hpack_huff_first_code_g = first_code
@@ -480,10 +417,7 @@ int hpack_huffman_code_length(int sym):
 int hpack_huffman_length(char* s, int len):
 	hpack_huffman_init()
 	int bits = 0
-	int i = 0
-	while (i < len):
-		bits = bits + hpack_huff_len_g[s[i] & 255]
-		i = i + 1
+	for i in range(len): bits = bits + hpack_huff_len_g[s[i] & 255]
 	return (bits + 7) / 8
 
 
@@ -494,8 +428,7 @@ int hpack_huffman_encode(char* s, int len, string_builder* out):
 	int start = out.length
 	int cur = 0
 	int nbits = 0
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		int sym = s[i] & 255
 		int c = hpack_huff_code_g[sym]
 		int b = hpack_huff_len_g[sym] - 1
@@ -507,7 +440,6 @@ int hpack_huffman_encode(char* s, int len, string_builder* out):
 				cur = 0
 				nbits = 0
 			b = b - 1
-		i = i + 1
 	if (nbits > 0):
 		cur = (cur << (8 - nbits)) | ((1 << (8 - nbits)) - 1)
 		string_append_char(out, cur)
@@ -522,8 +454,7 @@ char* hpack_huffman_decode(char* p, int len, int max_out, int* out_len):
 	string_builder* out = string_new()
 	int code = 0
 	int clen = 0
-	int i = 0
-	while (i < len):
+	for i in range(len):
 		int v = p[i] & 255
 		int b = 7
 		while (b >= 0):
@@ -547,7 +478,6 @@ char* hpack_huffman_decode(char* p, int len, int max_out, int* out_len):
 					code = 0
 					clen = 0
 			b = b - 1
-		i = i + 1
 	# Padding: at most 7 bits, all ones (a prefix of EOS).
 	if (clen > 7):
 		string_free(out)
@@ -578,15 +508,15 @@ void hpack_encode_string(string_builder* out, char* s, int len, int huffman):
 # copy (length in *out_len) or 0 with *err set.
 char* hpack_decode_string(hpack_decoder* d, char* p, int len, int* pos, int* out_len, int* err):
 	if (*pos >= len):
-		*err = hpack_error_malformed()
+		*err = hpack_error_malformed
 		return 0
 	int huff = p[*pos] & 128
 	int slen = 0
 	if (hpack_decode_int(p, len, pos, 7, &slen) == 0):
-		*err = hpack_error_malformed()
+		*err = hpack_error_malformed
 		return 0
 	if (slen > len - *pos):
-		*err = hpack_error_malformed()
+		*err = hpack_error_malformed
 		return 0
 	char* result = 0
 	if (huff != 0):
@@ -594,16 +524,14 @@ char* hpack_decode_string(hpack_decoder* d, char* p, int len, int* pos, int* out
 		# decoded length is bounded by slen * 8 / 5 before decoding.
 		result = hpack_huffman_decode(p + *pos, slen, d.max_string, out_len)
 		if (result == 0):
-			if ((slen * 8) / 5 > d.max_string):
-				*err = hpack_error_too_large()
-			else:
-				*err = hpack_error_huffman()
+			if ((slen * 8) / 5 > d.max_string): *err = hpack_error_too_large
+			else: *err = hpack_error_huffman
 			return 0
 	else:
 		if (slen > d.max_string):
-			*err = hpack_error_too_large()
+			*err = hpack_error_too_large
 			return 0
-		result = hpack_copy_bytes(p + *pos, slen)
+		result = mem_dup(p + *pos, slen)
 		*out_len = slen
 	*pos = *pos + slen
 	return result
@@ -615,9 +543,9 @@ hpack_decoder* hpack_decoder_new(int max_table_size):
 	hpack_decoder* d = new hpack_decoder()
 	d.table = hpack_table_new(max_table_size)
 	d.settings_max = max_table_size
-	d.max_list_size = hpack_default_max_list_size()
-	d.max_string = hpack_default_max_string()
-	d.max_headers = hpack_default_max_headers()
+	d.max_list_size = hpack_default_max_list_size
+	d.max_string = hpack_default_max_string
+	d.max_headers = hpack_default_max_headers
 	return d
 
 
@@ -626,8 +554,7 @@ hpack_decoder* hpack_decoder_new(int max_table_size):
 # peer only once acknowledged; we shrink the table right away as well.
 void hpack_decoder_set_max_table_size(hpack_decoder* d, int n):
 	d.settings_max = n
-	if (d.table.max_size > n):
-		hpack_table_set_max(d.table, n)
+	if (d.table.max_size > n): hpack_table_set_max(d.table, n)
 
 
 void hpack_decoder_free(hpack_decoder* d):
@@ -636,31 +563,25 @@ void hpack_decoder_free(hpack_decoder* d):
 
 
 int hpack_field_ok(char* p, int n, int is_name):
-	if ((is_name != 0) && (n == 0)):
-		return 0
-	int i = 0
-	while (i < n):
+	if ((is_name != 0) && (n == 0)): return 0
+	for i in range(n):
 		int c = p[i] & 255
-		if ((c == 0) || (c == 10) || (c == 13)):
-			return 0
-		i = i + 1
+		if ((c == 0) || (c == 10) || (c == 13)): return 0
 	return 1
 
 
 # Resolves a 1-based index over static + dynamic tables. Returns 0 when
 # out of range.
 hpack_header* hpack_lookup(hpack_decoder* d, int index, hpack_header* scratch):
-	if (index <= 0):
-		return 0
-	if (index <= hpack_static_count()):
+	if (index <= 0): return 0
+	if (index <= hpack_static_count):
 		scratch.name = hpack_static_name(index)
 		scratch.name_len = strlen(scratch.name)
 		scratch.value = hpack_static_value(index)
 		scratch.value_len = strlen(scratch.value)
 		return scratch
-	int dyn = index - hpack_static_count()
-	if (dyn > hpack_table_count(d.table)):
-		return 0
+	int dyn = index - hpack_static_count
+	if (dyn > hpack_table_count(d.table)): return 0
 	return hpack_table_get(d.table, dyn)
 
 
@@ -670,18 +591,13 @@ int hpack_emit(hpack_decoder* d, list[hpack_header*] out, int* list_size, char* 
 	if ((hpack_field_ok(name, name_len, 1) == 0) || (hpack_field_ok(value, value_len, 0) == 0)):
 		free(name)
 		free(value)
-		return hpack_error_bad_field()
+		return hpack_error_bad_field
 	*list_size = *list_size + name_len + value_len + 32
 	if ((*list_size > d.max_list_size) || (out.length >= d.max_headers)):
 		free(name)
 		free(value)
-		return hpack_error_too_large()
-	hpack_header* h = new hpack_header()
-	h.name = name
-	h.name_len = name_len
-	h.value = value
-	h.value_len = value_len
-	h.sensitive = sensitive
+		return hpack_error_too_large
+	hpack_header* h = new hpack_header(name, name_len, value, value_len, sensitive)
 	out.push(h)
 	return 0
 
@@ -699,23 +615,23 @@ int hpack_decode(hpack_decoder* d, char* block, int len, list[hpack_header*] out
 		if ((b & 128) != 0):
 			int index = 0
 			if (hpack_decode_int(block, len, &pos, 7, &index) == 0):
-				return hpack_error_malformed()
+				return hpack_error_malformed
 			hpack_header* h = hpack_lookup(d, index, &scratch)
 			if (h == 0):
-				return hpack_error_bad_index()
-			int rc = hpack_emit(d, out, &list_size, hpack_copy_bytes(h.name, h.name_len), h.name_len, hpack_copy_bytes(h.value, h.value_len), h.value_len, 0)
+				return hpack_error_bad_index
+			int rc = hpack_emit(d, out, &list_size, mem_dup(h.name, h.name_len), h.name_len, mem_dup(h.value, h.value_len), h.value_len, 0)
 			if (rc != 0):
 				return rc
 			seen_field = 1
 		else if ((b & 224) == 32):
 			# Dynamic table size update: only before the first field.
 			if (seen_field != 0):
-				return hpack_error_table_size()
+				return hpack_error_table_size
 			int size = 0
 			if (hpack_decode_int(block, len, &pos, 5, &size) == 0):
-				return hpack_error_malformed()
+				return hpack_error_malformed
 			if (size > d.settings_max):
-				return hpack_error_table_size()
+				return hpack_error_table_size
 			hpack_table_set_max(d.table, size)
 		else:
 			int prefix = 4
@@ -724,21 +640,20 @@ int hpack_decode(hpack_decoder* d, char* block, int len, list[hpack_header*] out
 			if ((b & 192) == 64):
 				prefix = 6
 				add = 1
-			else if ((b & 240) == 16):
-				sensitive = 1
+			else if ((b & 240) == 16): sensitive = 1
 			else if ((b & 240) != 0):
-				return hpack_error_malformed()
+				return hpack_error_malformed
 			int name_index = 0
 			if (hpack_decode_int(block, len, &pos, prefix, &name_index) == 0):
-				return hpack_error_malformed()
+				return hpack_error_malformed
 			char* name = 0
 			int name_len = 0
 			int err = 0
 			if (name_index != 0):
 				hpack_header* nh = hpack_lookup(d, name_index, &scratch)
 				if (nh == 0):
-					return hpack_error_bad_index()
-				name = hpack_copy_bytes(nh.name, nh.name_len)
+					return hpack_error_bad_index
+				name = mem_dup(nh.name, nh.name_len)
 				name_len = nh.name_len
 			else:
 				name = hpack_decode_string(d, block, len, &pos, &name_len, &err)
@@ -749,8 +664,7 @@ int hpack_decode(hpack_decoder* d, char* block, int len, list[hpack_header*] out
 			if (value == 0):
 				free(name)
 				return err
-			if (add != 0):
-				hpack_table_add(d.table, name, name_len, value, value_len)
+			if (add != 0): hpack_table_add(d.table, name, name_len, value, value_len)
 			int rc2 = hpack_emit(d, out, &list_size, name, name_len, value, value_len, sensitive)
 			if (rc2 != 0):
 				return rc2
@@ -761,13 +675,7 @@ int hpack_decode(hpack_decoder* d, char* block, int len, list[hpack_header*] out
 /* Encoder */
 
 hpack_encoder* hpack_encoder_new(int max_table_size):
-	hpack_encoder* e = new hpack_encoder()
-	e.table = hpack_table_new(max_table_size)
-	e.cap = max_table_size
-	e.pending_min = (-1)
-	e.pending_final = (-1)
-	e.huffman = 1
-	e.indexing = 1
+	hpack_encoder* e = new hpack_encoder(hpack_table_new(max_table_size), max_table_size, (-1), (-1), 1, 1)
 	return e
 
 
@@ -775,13 +683,10 @@ hpack_encoder* hpack_encoder_new(int max_table_size):
 # min(n, its own cap) and signals the change (the smallest size seen,
 # then the final one) at the start of the next block (section 4.2).
 void hpack_encoder_set_max_table_size(hpack_encoder* e, int n):
-	if (n > e.cap):
-		n = e.cap
-	if ((e.pending_min < 0) || (n < e.pending_min)):
-		e.pending_min = n
+	if (n > e.cap): n = e.cap
+	if ((e.pending_min < 0) || (n < e.pending_min)): e.pending_min = n
 	e.pending_final = n
-	if (n < e.table.max_size):
-		hpack_table_set_max(e.table, n)
+	if (n < e.table.max_size): hpack_table_set_max(e.table, n)
 
 
 void hpack_encoder_free(hpack_encoder* e):
@@ -799,54 +704,42 @@ void hpack_find(hpack_encoder* e, hpack_header* h, int* full, int* name_only):
 	*full = 0
 	*name_only = 0
 	int i = 1
-	while (i <= hpack_static_count()):
+	while (i <= hpack_static_count):
 		if (hpack_cstr_equal(hpack_static_name(i), h.name, h.name_len) != 0):
-			if (*name_only == 0):
-				*name_only = i
+			if (*name_only == 0): *name_only = i
 			if (hpack_cstr_equal(hpack_static_value(i), h.value, h.value_len) != 0):
 				*full = i
 				return
 		i = i + 1
 	int n = hpack_table_count(e.table)
-	int j = 1
-	while (j <= n):
+	for j in range(1, n + 1):
 		hpack_header* t = hpack_table_get(e.table, j)
 		if (hpack_bytes_equal(t.name, t.name_len, h.name, h.name_len) != 0):
-			if (*name_only == 0):
-				*name_only = hpack_static_count() + j
+			if (*name_only == 0): *name_only = hpack_static_count + j
 			if (hpack_bytes_equal(t.value, t.value_len, h.value, h.value_len) != 0):
-				*full = hpack_static_count() + j
+				*full = hpack_static_count + j
 				return
-		j = j + 1
 
 
 # Appends one encoded header block for headers to out.
 void hpack_encode(hpack_encoder* e, list[hpack_header*] headers, string_builder* out):
 	if (e.pending_final >= 0):
-		if (e.pending_min < e.pending_final):
-			hpack_encode_int(out, 32, 5, e.pending_min)
+		if (e.pending_min < e.pending_final): hpack_encode_int(out, 32, 5, e.pending_min)
 		hpack_encode_int(out, 32, 5, e.pending_final)
 		hpack_table_set_max(e.table, e.pending_final)
 		e.pending_min = (-1)
 		e.pending_final = (-1)
-	int i = 0
-	while (i < headers.length):
+	for i in range(headers.length):
 		hpack_header* h = headers[i]
 		int full = 0
 		int name_only = 0
 		hpack_find(e, h, &full, &name_only)
-		if ((full != 0) && (h.sensitive == 0)):
-			hpack_encode_int(out, 128, 7, full)
+		if ((full != 0) && (h.sensitive == 0)): hpack_encode_int(out, 128, 7, full)
 		else:
-			if (h.sensitive != 0):
-				hpack_encode_int(out, 16, 4, name_only)
-			else if (e.indexing != 0):
-				hpack_encode_int(out, 64, 6, name_only)
-			else:
-				hpack_encode_int(out, 0, 4, name_only)
-			if (name_only == 0):
-				hpack_encode_string(out, h.name, h.name_len, e.huffman)
+			if (h.sensitive != 0): hpack_encode_int(out, 16, 4, name_only)
+			else if (e.indexing != 0): hpack_encode_int(out, 64, 6, name_only)
+			else: hpack_encode_int(out, 0, 4, name_only)
+			if (name_only == 0): hpack_encode_string(out, h.name, h.name_len, e.huffman)
 			hpack_encode_string(out, h.value, h.value_len, e.huffman)
 			if ((h.sensitive == 0) && (e.indexing != 0)):
 				hpack_table_add(e.table, h.name, h.name_len, h.value, h.value_len)
-		i = i + 1

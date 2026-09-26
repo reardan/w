@@ -8,49 +8,12 @@ import lib.testing
 import lib.file
 import lib.net
 import libs.standard.net.dns
-
-
-void dns_test_assert_ok(char* name, int result):
-	if (result < 0):
-		print_string(name, c" failed")
-		translate_syscall_failure(result)
-		exit(1)
-
-
-# Decodes "12 34 ab ..." (lowercase hex pairs, whitespace ignored)
-# into malloc'd bytes.
-char* dns_test_bytes(char* hex_text, int* out_len):
-	char* bytes = malloc(strlen(hex_text) / 2 + 1)
-	int count = 0
-	int have_high = 0
-	int high = 0
-	int i = 0
-	while (hex_text[i] != 0):
-		int c = hex_text[i] & 255
-		int digit = 0 - 1
-		if ((c >= '0') && (c <= '9')):
-			digit = c - '0'
-		if ((c >= 'a') && (c <= 'f')):
-			digit = c - 'a' + 10
-		if (digit >= 0):
-			if (have_high == 0):
-				high = digit
-				have_high = 1
-			else:
-				bytes[count] = high * 16 + digit
-				count = count + 1
-				have_high = 0
-		i = i + 1
-	asserts(c"odd hex digit count in fixture", have_high == 0)
-	*out_len = count
-	return bytes
+import libs.standard.net.testing
+import lib.hex
 
 
 void dns_test_assert_bytes_equal(char* want, char* got, int length):
-	int i = 0
-	while (i < length):
-		assert_equal(want[i] & 255, got[i] & 255)
-		i = i + 1
+	for i in range(length): assert_equal(want[i] & 255, got[i] & 255)
 
 
 int dns_test_put_u16(char* msg, int pos, int value):
@@ -76,8 +39,7 @@ char* dns_test_build_cname_chain(int cname_count, int* out_len):
 	pos = pos + 3
 	pos = dns_test_put_u16(msg, pos, 1)
 	pos = dns_test_put_u16(msg, pos, 1)
-	int k = 0
-	while (k < cname_count):
+	for k in range(cname_count):
 		msg[pos] = 1
 		msg[pos + 1] = 'a' + k
 		msg[pos + 2] = 0
@@ -91,7 +53,6 @@ char* dns_test_build_cname_chain(int cname_count, int* out_len):
 		msg[pos + 1] = 'a' + k + 1
 		msg[pos + 2] = 0
 		pos = pos + 3
-		k = k + 1
 	msg[pos] = 1
 	msg[pos + 1] = 'a' + cname_count
 	msg[pos + 2] = 0
@@ -113,14 +74,14 @@ char* dns_test_build_cname_chain(int cname_count, int* out_len):
 # A well-formed response to the example.com A query, id 0x1234, with
 # one compressed A answer 93.184.216.34.
 char* dns_test_response_a(int* out_len):
-	return dns_test_bytes(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 04 5d b8 d8 22", out_len)
+	return hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 04 5d b8 d8 22", out_len)
 
 
 void test_dns_build_query_encoding():
 	char* out = malloc(512)
 	int length = dns_build_query(c"example.com", 0x1234, out, 512)
 	int want_len = 0
-	char* want = dns_test_bytes(c"12 34 01 00 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &want_len)
+	char* want = hex_decode_loose(c"12 34 01 00 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &want_len)
 	assert_equal(want_len, length)
 	dns_test_assert_bytes_equal(want, out, want_len)
 
@@ -153,8 +114,7 @@ void test_dns_build_query_rejects_bad_names():
 	# Four 63-byte labels encode to 257 bytes, over the 255 cap.
 	char* long_name = malloc(260)
 	int pos = 0
-	int part = 0
-	while (part < 4):
+	for part in range(4):
 		if (part > 0):
 			long_name[pos] = '.'
 			pos = pos + 1
@@ -163,7 +123,6 @@ void test_dns_build_query_rejects_bad_names():
 			long_name[pos] = 'b'
 			pos = pos + 1
 			i = i + 1
-		part = part + 1
 	long_name[pos] = 0
 	asserts(c"oversized name accepted", dns_build_query(long_name, 1, out, 512) == 0)
 	free(long_name)
@@ -177,15 +136,15 @@ void test_dns_parse_response_a_record():
 	int length = 0
 	char* msg = dns_test_response_a(&length)
 	int ip = 0
-	assert_equal(dns_result_ok(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_ok, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	assert_equal_hex(0x5db8d822, ip)
 
 	# Name matching is case-insensitive and ignores a trailing dot.
 	ip = 0
-	assert_equal(dns_result_ok(), dns_parse_response(msg, length, 0x1234, c"EXAMPLE.COM", &ip))
+	assert_equal(dns_result_ok, dns_parse_response(msg, length, 0x1234, c"EXAMPLE.COM", &ip))
 	assert_equal_hex(0x5db8d822, ip)
 	ip = 0
-	assert_equal(dns_result_ok(), dns_parse_response(msg, length, 0x1234, c"example.com.", &ip))
+	assert_equal(dns_result_ok, dns_parse_response(msg, length, 0x1234, c"example.com.", &ip))
 	assert_equal_hex(0x5db8d822, ip)
 	free(msg)
 
@@ -195,9 +154,9 @@ void test_dns_parse_response_cname_chain():
 	# question), then an A record for the CNAME target via a pointer
 	# into the first answer's rdata.
 	int length = 0
-	char* msg = dns_test_bytes(c"12 34 81 80 00 01 00 02 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 05 00 01 00 00 00 3c 00 06 03 63 64 6e c0 0c c0 29 00 01 00 01 00 00 00 3c 00 04 05 06 07 08", &length)
+	char* msg = hex_decode_loose(c"12 34 81 80 00 01 00 02 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 05 00 01 00 00 00 3c 00 06 03 63 64 6e c0 0c c0 29 00 01 00 01 00 00 00 3c 00 04 05 06 07 08", &length)
 	int ip = 0
-	assert_equal(dns_result_ok(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_ok, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	assert_equal_hex(0x05060708, ip)
 	free(msg)
 
@@ -206,21 +165,21 @@ void test_dns_parse_response_cname_depth_limit():
 	int length = 0
 	char* msg = dns_test_build_cname_chain(8, &length)
 	int ip = 0
-	assert_equal(dns_result_ok(), dns_parse_response(msg, length, 0x1234, c"a", &ip))
+	assert_equal(dns_result_ok, dns_parse_response(msg, length, 0x1234, c"a", &ip))
 	assert_equal_hex(0x01020304, ip)
 	free(msg)
 
 	# A ninth CNAME hop exceeds dns_max_cname_depth().
 	msg = dns_test_build_cname_chain(9, &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"a", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"a", &ip))
 	free(msg)
 
 
 void test_dns_parse_response_truncation_bit():
 	int length = 0
-	char* msg = dns_test_bytes(c"12 34 83 80 00 00 00 00 00 00 00 00", &length)
+	char* msg = hex_decode_loose(c"12 34 83 80 00 00 00 00 00 00 00 00", &length)
 	int ip = 0
-	assert_equal(dns_result_truncated(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	assert_equal(dns_result_truncated, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 
@@ -229,35 +188,35 @@ void test_dns_parse_response_header_negatives():
 	int length = 0
 
 	# Shorter than a header.
-	char* msg = dns_test_bytes(c"12 34 81 80", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	char* msg = hex_decode_loose(c"12 34 81 80", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Mismatched query id.
 	msg = dns_test_response_a(&length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x9999, c"example.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x9999, c"example.com", &ip))
 	# Question name mismatch.
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"other.com", &ip))
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"other.com", &ip))
 	free(msg)
 
 	# QR clear: a query, not a response.
-	msg = dns_test_bytes(c"12 34 01 00 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	msg = hex_decode_loose(c"12 34 01 00 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Non-zero opcode.
-	msg = dns_test_bytes(c"12 34 89 80 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	msg = hex_decode_loose(c"12 34 89 80 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# RCODE 3 (NXDOMAIN).
-	msg = dns_test_bytes(c"12 34 81 83 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	msg = hex_decode_loose(c"12 34 81 83 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# QDCOUNT != 1.
-	msg = dns_test_bytes(c"12 34 81 80 00 02 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	msg = hex_decode_loose(c"12 34 81 80 00 02 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 
@@ -266,24 +225,24 @@ void test_dns_parse_response_malformed_names():
 	int length = 0
 
 	# Question name is a compression pointer to itself.
-	char* msg = dns_test_bytes(c"12 34 81 80 00 01 00 00 00 00 00 00 c0 0c 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	char* msg = hex_decode_loose(c"12 34 81 80 00 01 00 00 00 00 00 00 c0 0c 00 01 00 01", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Answer name is a label/pointer cycle: "a" then a pointer back to
 	# the same label, looping forever without the hop cap.
-	msg = dns_test_bytes(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 01 61 c0 1d 00 01 00 01 00 00 00 3c 00 04 01 02 03 04", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	msg = hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 01 61 c0 1d 00 01 00 01 00 00 00 3c 00 04 01 02 03 04", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Label length runs past the end of the message.
-	msg = dns_test_bytes(c"12 34 81 80 00 01 00 00 00 00 00 00 3f 61 61", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	msg = hex_decode_loose(c"12 34 81 80 00 01 00 00 00 00 00 00 3f 61 61", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# Reserved label tag 0x40.
-	msg = dns_test_bytes(c"12 34 81 80 00 01 00 00 00 00 00 00 40 61 00 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	msg = hex_decode_loose(c"12 34 81 80 00 01 00 00 00 00 00 00 40 61 00 00 01 00 01", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 
@@ -292,23 +251,23 @@ void test_dns_parse_response_malformed_records():
 	int length = 0
 
 	# RDLENGTH runs past the end of the message.
-	char* msg = dns_test_bytes(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 20 5d b8 d8 22", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	char* msg = hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 20 5d b8 d8 22", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# An A record whose RDLENGTH is not 4.
-	msg = dns_test_bytes(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 05 5d b8 d8 22 00", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	msg = hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 c0 0c 00 01 00 01 00 00 00 3c 00 05 5d b8 d8 22 00", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# An answer for an unrelated name is skipped, leaving no result.
-	msg = dns_test_bytes(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 03 77 77 77 c0 0c 00 01 00 01 00 00 00 3c 00 04 05 06 07 08", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	msg = hex_decode_loose(c"12 34 81 80 00 01 00 01 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01 03 77 77 77 c0 0c 00 01 00 01 00 00 00 3c 00 04 05 06 07 08", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 	# NOERROR with no answers resolves nothing.
-	msg = dns_test_bytes(c"12 34 81 80 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
-	assert_equal(dns_result_error(), dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
+	msg = hex_decode_loose(c"12 34 81 80 00 01 00 00 00 00 00 00 07 65 78 61 6d 70 6c 65 03 63 6f 6d 00 00 01 00 01", &length)
+	assert_equal(dns_result_error, dns_parse_response(msg, length, 0x1234, c"example.com", &ip))
 	free(msg)
 
 
@@ -395,11 +354,9 @@ void test_dns_resolv_conf_nameservers_file():
 
 
 void test_dns_random_id_range():
-	int i = 0
-	while (i < 8):
+	for i in range(8):
 		int id = dns_random_id()
 		asserts(c"id out of range", (id >= 0) & (id <= 65535))
-		i = i + 1
 
 
 # Blocking exact read helper for the mock server child.
@@ -407,8 +364,7 @@ int dns_test_read_exact(int file, char* buf, int want):
 	int got = 0
 	while (got < want):
 		int count = read(file, buf + got, want - got)
-		if (count <= 0):
-			return 0
+		if (count <= 0): return 0
 		got = got + count
 	return 1
 
@@ -443,10 +399,10 @@ int dns_test_mock_answer(char* buf, int query_len):
 void test_dns_query_server_mock_udp():
 	int loopback = ip4_from_string(c"127.0.0.1")
 	int server = socket_udp_ipv4()
-	dns_test_assert_ok(c"udp socket", server)
-	dns_test_assert_ok(c"udp bind", socket_bind_ipv4(server, loopback, 0))
+	net_test_assert_ok(c"udp socket", server)
+	net_test_assert_ok(c"udp bind", socket_bind_ipv4(server, loopback, 0))
 	sockaddr_in bound
-	dns_test_assert_ok(c"getsockname", socket_getsockname_ipv4(server, &bound))
+	net_test_assert_ok(c"getsockname", socket_getsockname_ipv4(server, &bound))
 	int port = net_htons(bound.port)
 
 	int pid = fork()
@@ -455,8 +411,7 @@ void test_dns_query_server_mock_udp():
 		char* buf = malloc(512)
 		sockaddr_in from
 		int received = socket_recv_from_ipv4(server, buf, 512 - 16, 0, &from)
-		if (received < 12):
-			exit(1)
+		if (received < 12): exit(1)
 		int response_len = dns_test_mock_answer(buf, received)
 		socket_send_to_ipv4(server, buf, response_len, 0, net_htonl(from.ip_address), net_htons(from.port))
 		exit(0)
@@ -475,17 +430,17 @@ void test_dns_query_server_mock_udp():
 void test_dns_query_server_mock_tcp_fallback():
 	int loopback = ip4_from_string(c"127.0.0.1")
 	int udp_server = socket_udp_ipv4()
-	dns_test_assert_ok(c"udp socket", udp_server)
-	dns_test_assert_ok(c"udp bind", socket_bind_ipv4(udp_server, loopback, 0))
+	net_test_assert_ok(c"udp socket", udp_server)
+	net_test_assert_ok(c"udp bind", socket_bind_ipv4(udp_server, loopback, 0))
 	sockaddr_in bound
-	dns_test_assert_ok(c"getsockname", socket_getsockname_ipv4(udp_server, &bound))
+	net_test_assert_ok(c"getsockname", socket_getsockname_ipv4(udp_server, &bound))
 	int port = net_htons(bound.port)
 
 	int tcp_server = socket_tcp_ipv4()
-	dns_test_assert_ok(c"tcp socket", tcp_server)
-	dns_test_assert_ok(c"tcp reuseaddr", socket_set_reuseaddr(tcp_server))
-	dns_test_assert_ok(c"tcp bind", socket_bind_ipv4(tcp_server, loopback, port))
-	dns_test_assert_ok(c"tcp listen", socket_listen(tcp_server, 1))
+	net_test_assert_ok(c"tcp socket", tcp_server)
+	net_test_assert_ok(c"tcp reuseaddr", socket_set_reuseaddr(tcp_server))
+	net_test_assert_ok(c"tcp bind", socket_bind_ipv4(tcp_server, loopback, port))
+	net_test_assert_ok(c"tcp listen", socket_listen(tcp_server, 1))
 
 	int pid = fork()
 	asserts(c"fork failed", pid >= 0)
@@ -493,32 +448,24 @@ void test_dns_query_server_mock_tcp_fallback():
 		char* buf = malloc(512)
 		sockaddr_in from
 		int received = socket_recv_from_ipv4(udp_server, buf, 512 - 16, 0, &from)
-		if (received < 12):
-			exit(1)
+		if (received < 12): exit(1)
 		# Truncated UDP reply: echo the id, set QR|TC|RD|RA.
 		char* truncated = malloc(12)
 		truncated[0] = buf[0]
 		truncated[1] = buf[1]
 		truncated[2] = 0x83
 		truncated[3] = 0x80
-		int z = 4
-		while (z < 12):
-			truncated[z] = 0
-			z = z + 1
+		for z in range(4, 12): truncated[z] = 0
 		socket_send_to_ipv4(udp_server, truncated, 12, 0, net_htonl(from.ip_address), net_htons(from.port))
 
 		# Full answer over TCP, RFC 1035 4.2.2 length-prefixed.
 		int conn = socket_accept_connection(tcp_server)
-		if (conn < 0):
-			exit(1)
+		if (conn < 0): exit(1)
 		char* prefix = malloc(2)
-		if (dns_test_read_exact(conn, prefix, 2) == 0):
-			exit(1)
+		if (dns_test_read_exact(conn, prefix, 2) == 0): exit(1)
 		int query_len = ((prefix[0] & 255) << 8) | (prefix[1] & 255)
-		if ((query_len < 12) || (query_len > 512 - 16)):
-			exit(1)
-		if (dns_test_read_exact(conn, buf, query_len) == 0):
-			exit(1)
+		if ((query_len < 12) || (query_len > 512 - 16)): exit(1)
+		if (dns_test_read_exact(conn, buf, query_len) == 0): exit(1)
 		int response_len = dns_test_mock_answer(buf, query_len)
 		prefix[0] = (response_len >> 8) & 255
 		prefix[1] = response_len & 255
@@ -541,10 +488,10 @@ void test_dns_query_server_timeout():
 	int loopback = ip4_from_string(c"127.0.0.1")
 	# A bound socket that never answers: the query must time out.
 	int silent = socket_udp_ipv4()
-	dns_test_assert_ok(c"udp socket", silent)
-	dns_test_assert_ok(c"udp bind", socket_bind_ipv4(silent, loopback, 0))
+	net_test_assert_ok(c"udp socket", silent)
+	net_test_assert_ok(c"udp bind", socket_bind_ipv4(silent, loopback, 0))
 	sockaddr_in bound
-	dns_test_assert_ok(c"getsockname", socket_getsockname_ipv4(silent, &bound))
+	net_test_assert_ok(c"getsockname", socket_getsockname_ipv4(silent, &bound))
 	int port = net_htons(bound.port)
 
 	int ip = 0

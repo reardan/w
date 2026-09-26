@@ -23,22 +23,6 @@ char* rwal_path(char* name):
 	return path
 
 
-int rwal_term_int(raft* r):
-	u64* t = u64_new()
-	raft_term(r, t)
-	int v = u64_to_int(t)
-	u64_free(t)
-	return v
-
-
-int rwal_commit_int(raft* r):
-	u64* ci = u64_new()
-	raft_commit_index(r, ci)
-	int v = u64_to_int(ci)
-	u64_free(ci)
-	return v
-
-
 int rwal_shadow_term_int(raft_wal* rw):
 	u64* t = u64_new()
 	raft_wal_shadow_term(rw, t)
@@ -90,7 +74,7 @@ void test_election_state_record():
 	list[raft_msg*] out = new list[raft_msg*]
 	raft_tick(r, 100, out)   # deadline passed: term 1, self-vote, leader
 	assert_equal(0, out.length)
-	assert_equal(raft_leader(), raft_state(r))
+	assert_equal(raft_leader, raft_state(r))
 	assert_equal(1, raft_wal_pending(rw, r))
 	assert_equal(1, raft_wal_sync(rw, r))   # one STATE record covers both
 	# the sync fsynced internally (asserted in raft_wal_sync); the fd
@@ -104,8 +88,8 @@ void test_election_state_record():
 	# recover into a fresh raft: term and vote survive, the log is empty
 	list[int] peers = new list[int]
 	raft* r2 = raft_wal_recover(rw, 1, peers, 50, 100, 10, 43)
-	assert_equal(raft_follower(), raft_state(r2))
-	assert_equal(1, rwal_term_int(r2))
+	assert_equal(raft_follower, raft_state(r2))
+	assert_equal(1, raft_term_int(r2))
 	assert_equal(1, raft_voted_for(r2))
 	assert_equal(0, raft_log_length(r2))
 	raft_free(r2)
@@ -130,7 +114,7 @@ void test_propose_recover_commit():
 	assert_equal(1, raft_propose(r, c"b", 1, 101, out))
 	assert_equal(1, raft_propose(r, c"c", 1, 102, out))
 	assert_equal(0, out.length)
-	assert_equal(3, rwal_commit_int(r))
+	assert_equal(3, raft_commit_int(r))
 	assert_equal(3, raft_wal_sync(rw, r))   # three APPEND records
 	raft_free(r)
 	raft_wal_close(rw)
@@ -146,7 +130,7 @@ void test_propose_recover_commit():
 	assert_equal(0, raft_wal_pending(rw2, r2))
 	assert_equal(0, raft_wal_sync(rw2, r2))   # recovery is already persisted
 	assert_equal(3, raft_log_length(r2))
-	assert_equal(1, rwal_term_int(r2))
+	assert_equal(1, raft_term_int(r2))
 	assert_equal(1, raft_voted_for(r2))
 	raft_entry* e1 = raft_log_at(r2, 1)
 	assert_equal(1, u64_to_int(e1.term))
@@ -158,18 +142,18 @@ void test_propose_recover_commit():
 	assert_equal(1, u64_to_int(e3.term))
 	assert_strings_equal(c"c", e3.command)
 	# volatile state re-derived from zero: nothing is committed yet
-	assert_equal(0, rwal_commit_int(r2))
+	assert_equal(0, raft_commit_int(r2))
 	assert_equal(0, raft_pending_apply(r2))
 	# the restarted node wins its single-node election again; per
 	# section 5.4.2 the recovered term-1 entries commit once a
 	# current-term entry lands, so pin one and drain the applies
 	raft_start(r2, 200)
 	raft_tick(r2, 300, out)
-	assert_equal(raft_leader(), raft_state(r2))
-	assert_equal(2, rwal_term_int(r2))
+	assert_equal(raft_leader, raft_state(r2))
+	assert_equal(2, raft_term_int(r2))
 	assert_equal(1, raft_propose(r2, c"pin", 3, 300, out))
 	assert_equal(0, out.length)
-	assert_equal(4, rwal_commit_int(r2))
+	assert_equal(4, raft_commit_int(r2))
 	raft_entry* a1 = raft_pop_apply(r2)
 	assert_strings_equal(c"a", a1.command)
 	raft_entry* a2 = raft_pop_apply(r2)
@@ -227,10 +211,7 @@ void test_binary_command_persists():
 	assert_equal(1, raft_log_length(r2))
 	raft_entry* recovered = raft_log_at(r2, 1)
 	assert_equal(6, recovered.command_len)
-	int i = 0
-	while (i < 6):
-		assert_equal(cmd[i] & 255, recovered.command[i] & 255)
-		i = i + 1
+	for i in range(6): assert_equal(cmd[i] & 255, recovered.command[i] & 255)
 	raft_free(r2)
 	raft_wal_close(rw2)
 	free(cmd)
@@ -318,7 +299,7 @@ void test_torn_tail_prefix_state():
 	list[int] peers = new list[int]
 	raft* r2 = raft_wal_recover(rw2, 1, peers, 50, 100, 10, 45)
 	assert_equal(1, raft_log_length(r2))
-	assert_equal(1, rwal_term_int(r2))
+	assert_equal(1, raft_term_int(r2))
 	assert_equal(1, raft_voted_for(r2))
 	raft_entry* e1 = raft_log_at(r2, 1)
 	assert_equal(1, u64_to_int(e1.term))
@@ -350,7 +331,7 @@ void test_vote_none_roundtrip():
 	assert_equal(0 - 1, raft_wal_shadow_voted_for(rw2))
 	list[int] peers = new list[int]
 	raft* r2 = raft_wal_recover(rw2, 1, peers, 50, 100, 10, 46)
-	assert_equal(3, rwal_term_int(r2))
+	assert_equal(3, raft_term_int(r2))
 	assert_equal(0 - 1, raft_voted_for(r2))
 	assert_equal(0, raft_log_length(r2))
 	raft_free(r2)
@@ -359,14 +340,6 @@ void test_vote_none_roundtrip():
 
 
 # ---- snapshot rewrite compacts the wal (§7) -----------------------------------------
-
-int rwal_snap_index_int(raft* r):
-	u64* v = u64_new()
-	raft_snapshot_index(r, v)
-	int n = u64_to_int(v)
-	u64_free(v)
-	return n
-
 
 int rwal_snap_term_int(raft* r):
 	u64* v = u64_new()
@@ -427,12 +400,12 @@ void test_snapshot_rewrite_compacts_wal():
 	raft* r2 = raft_wal_recover(rw2, 1, peers, 50, 100, 10, 44)
 	assert_equal(0, raft_wal_pending(rw2, r2))
 	assert_equal(0, raft_wal_sync(rw2, r2))
-	assert_equal(3, rwal_snap_index_int(r2))
+	assert_equal(3, raft_snap_base(r2))
 	assert_equal(1, rwal_snap_term_int(r2))
 	assert_equal(2, raft_log_length(r2))
 	assert_equal(5, raft_last_index(r2))
 	# the snapshot's state is committed and applied by definition
-	assert_equal(3, rwal_commit_int(r2))
+	assert_equal(3, raft_commit_int(r2))
 	assert_equal(0, raft_pending_apply(r2))
 	raft_entry* e4 = raft_log_at(r2, 4)
 	assert_equal(1, u64_to_int(e4.term))
@@ -457,8 +430,8 @@ void test_snapshot_rewrite_compacts_wal():
 	# election bumps the term, one STATE record follows
 	raft_start(r2, 200)
 	raft_tick(r2, 300, out)
-	assert_equal(raft_leader(), raft_state(r2))
-	assert_equal(2, rwal_term_int(r2))
+	assert_equal(raft_leader, raft_state(r2))
+	assert_equal(2, raft_term_int(r2))
 	assert_equal(1, raft_wal_sync(rw2, r2))
 	assert_equal(5, wal_record_count(rw2.wlog))
 	assert_equal(0, raft_wal_pending(rw2, r2))
@@ -512,12 +485,12 @@ void test_snapshot_torn_tail():
 	assert_equal(1, raft_wal_shadow_log_length(rw2))
 	list[int] peers = new list[int]
 	raft* r2 = raft_wal_recover(rw2, 1, peers, 50, 100, 10, 45)
-	assert_equal(2, rwal_snap_index_int(r2))
+	assert_equal(2, raft_snap_base(r2))
 	assert_equal(1, rwal_snap_term_int(r2))
 	assert_equal(1, raft_log_length(r2))
 	assert_equal(3, raft_last_index(r2))
-	assert_equal(2, rwal_commit_int(r2))
-	assert_equal(1, rwal_term_int(r2))
+	assert_equal(2, raft_commit_int(r2))
+	assert_equal(1, raft_term_int(r2))
 	raft_entry* e3 = raft_log_at(r2, 3)
 	assert_strings_equal(c"c", e3.command)
 	# pending blob intact through the torn tail

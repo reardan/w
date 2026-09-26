@@ -148,11 +148,11 @@ void test_glyph_metrics():
 
 void test_mask_records():
 	# Masks carry their baked sizes and pack in id order.
-	ui_glyph white = ui_font_mask(ui_mask_white())
+	ui_glyph white = ui_font_mask(ui_mask_white)
 	assert_equal(8, white.w)
-	ui_glyph corner = ui_font_mask(ui_mask_corner())
+	ui_glyph corner = ui_font_mask(ui_mask_corner)
 	assert_equal(32, corner.w)
-	ui_glyph shadow = ui_font_mask(ui_mask_shadow())
+	ui_glyph shadow = ui_font_mask(ui_mask_shadow)
 	assert_equal(48, shadow.w)
 	asserts(c"mask rects distinct", white.x != corner.x)
 
@@ -162,7 +162,7 @@ void test_atlas_decode():
 	int width = ui_font_atlas_w()
 
 	# The white mask is solid 255.
-	ui_glyph white = ui_font_mask(ui_mask_white())
+	ui_glyph white = ui_font_mask(ui_mask_white)
 	int row = 0
 	while (row < white.h):
 		int col = 0
@@ -178,34 +178,29 @@ void test_atlas_decode():
 	int partial = 0
 	row = 0
 	while (row < a.h):
-		int col2 = 0
-		while (col2 < a.w):
+		for col2 in range(a.w):
 			int value = pixels[(a.y + row) * width + a.x + col2] & 255
-			if (value == 255):
-				solid = solid + 1
-			else if (value == 0):
-				background = background + 1
-			else:
-				partial = partial + 1
-			col2 = col2 + 1
+			if (value == 255): solid = solid + 1
+			else if (value == 0): background = background + 1
+			else: partial = partial + 1
 		row = row + 1
 	asserts(c"A has solid ink", solid > 0)
 	asserts(c"A has background", background > 0)
 	asserts(c"A is antialiased", partial > 0)
 
 	# Disc mask: opaque center, transparent corner.
-	ui_glyph disc = ui_font_mask(ui_mask_disc())
+	ui_glyph disc = ui_font_mask(ui_mask_disc)
 	assert_equal(255, pixels[(disc.y + disc.h / 2) * width + disc.x + disc.w / 2] & 255)
 	assert_equal(0, pixels[disc.y * width + disc.x] & 255)
 
 	# Corner mask: opaque at the arc's center corner, transparent at
 	# the opposite one.
-	ui_glyph corner = ui_font_mask(ui_mask_corner())
+	ui_glyph corner = ui_font_mask(ui_mask_corner)
 	assert_equal(255, pixels[(corner.y + corner.h - 1) * width + corner.x + corner.w - 1] & 255)
 	assert_equal(0, pixels[corner.y * width + corner.x] & 255)
 
 	# Shadow tile: dark inner corner, faded outer corner.
-	ui_glyph shadow = ui_font_mask(ui_mask_shadow())
+	ui_glyph shadow = ui_font_mask(ui_mask_shadow)
 	assert_equal(255, pixels[(shadow.y + shadow.h - 1) * width + shadow.x + shadow.w - 1] & 255)
 	assert_equal(0, pixels[shadow.y * width + shadow.x] & 255)
 	free(pixels)

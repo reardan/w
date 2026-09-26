@@ -43,21 +43,18 @@ generator int echo_handler(int fd):
 	char* buf = malloc(256)
 	while (1):
 		int n = task_read(fd, buf, 256)
-		if (n <= 0):
-			break
+		if (n <= 0): break
 		assert_equal(n, task_write_all(fd, buf, n))
 	free(buf)
 	close(fd)
 
 
 generator int echo_server(echo_state* state, int listen_fd, int connection_count):
-	int i = 0
-	while (i < connection_count):
+	for i in range(connection_count):
 		int fd = task_accept(listen_fd)
 		asserts(c"accept failed", fd >= 0)
 		state.connections = state.connections + 1
 		task_go(echo_handler(fd))
-		i = i + 1
 
 
 generator int echo_client(echo_state* state, int id):
@@ -97,10 +94,7 @@ void test_echo_server_with_concurrent_clients():
 	assert_equal(3, state.connections)
 	assert_equal(3, state.log.length)
 	int seen = 0
-	int i = 0
-	while (i < 3):
-		seen = seen | (1 << state.log[i])
-		i = i + 1
+	for i in range(3): seen = seen | (1 << state.log[i])
 	assert_equal(2 + 4 + 8, seen)
 
 	task_scheduler_free(s)
@@ -114,15 +108,11 @@ void test_echo_server_with_concurrent_clients():
 
 generator int bulk_writer(int fd, int total):
 	char* chunk = malloc(4096)
-	int i = 0
-	while (i < 4096):
-		chunk[i] = i & 255
-		i = i + 1
+	for i in range(4096): chunk[i] = i & 255
 	int sent = 0
 	while (sent < total):
 		int n = total - sent
-		if (n > 4096):
-			n = 4096
+		if (n > 4096): n = 4096
 		assert_equal(n, task_write_all(fd, chunk, n))
 		sent = sent + n
 	free(chunk)
@@ -136,12 +126,8 @@ generator int bulk_reader(int fd):
 	int checksum = 0
 	while (1):
 		int n = task_read(fd, buf, 4096)
-		if (n <= 0):
-			break
-		int i = 0
-		while (i < n):
-			checksum = checksum + (buf[i] & 255)
-			i = i + 1
+		if (n <= 0): break
+		for i in range(n): checksum = checksum + (buf[i] & 255)
 		received = received + n
 	free(buf)
 	task_finish(received + checksum)
@@ -242,8 +228,7 @@ generator int quick_sleeper(order_log2* log):
 
 
 void test_process_wait_does_not_block_other_tasks():
-	order_log2* log = new order_log2()
-	log.entries = new list[int]
+	order_log2* log = new order_log2(new list[int])
 
 	task_scheduler* s = task_scheduler_new()
 	task_spawn(s, run_sleep_process(log))

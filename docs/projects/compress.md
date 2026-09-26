@@ -638,8 +638,7 @@ server" shipping "tarball of the target's declared outputs" over `GET`/
 gzip-compressed before upload and `GET` responses gunzipped on receipt —
 a pure transport-size win with no protocol redesign, gated the same way
 Direction 3 already commits to: "read-through only, failures fall back
-to local build" (`sonnet_wave_plan_2026_07.md`'s wave-3 task 3e
-guardrail) — a corrupt or incompatible gzip blob from the cache must
+to local build" — a corrupt or incompatible gzip blob from the cache must
 never block a build, only force a local rebuild, exactly like any other
 cache-miss path.
 

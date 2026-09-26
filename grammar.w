@@ -1,3 +1,5 @@
+import grammar.stack_slot
+import grammar.pending_element
 import grammar.hash_builtin
 import grammar.ndarray_index
 import grammar.promote
@@ -6,6 +8,7 @@ import grammar.defer
 import grammar.type_name
 import grammar.operator_overload
 import grammar.list_builtin
+import grammar.lazy_runtime
 import grammar.json_builtin
 import grammar.print_builtin
 import grammar.limb_builtin

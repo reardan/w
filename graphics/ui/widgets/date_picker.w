@@ -5,8 +5,7 @@ popover (docs/projects/ui_widgets.md §4.7, §6).
 	ui_date_picker_state dp
 	ui_date_picker_init(&dp)
 	...
-	if (ui_date_picker(ctx, 200.0, &dp, &due, &today, c"Due date")):
-		save(due)
+	if (ui_date_picker(ctx, 200.0, &dp, &due, &today, c"Due date")): save(due)
 
 Collapsed, the picker is a button-look field showing the date as
 YYYY-MM-DD, or the placeholder in the muted ink while the date is
@@ -44,14 +43,12 @@ void ui_picker_field_draw(ui_context* ctx, int id, ui_rect r, char* text, int is
 	int scale = ctx.theme.text_scale
 	ui_draw_rrect(ctx.rndr, r, cast(float32, ctx.theme.radius), ui_widget_fill(ctx, id))
 	ui_color ink = ui_text_color(ctx)
-	if (is_placeholder && (ctx.disabled == 0)):
-		ink = ctx.theme.text_muted
+	if (is_placeholder && (ctx.disabled == 0)): ink = ctx.theme.text_muted
 	float32 chev = 12.0
 	float32 pad = cast(float32, ctx.theme.pad)
 	float32 ty = r.y + (r.h - cast(float32, ui_text_height(scale))) * 0.5
 	ui_clip_push(ctx.rndr, ui_rect_new(r.x + pad, r.y, r.w - pad * 3.0 - chev, r.h))
-	if (text != 0):
-		ui_draw_text(ctx.rndr, r.x + pad, ty, text, scale, ink)
+	if (text != 0): ui_draw_text(ctx.rndr, r.x + pad, ty, text, scale, ink)
 	ui_clip_pop(ctx.rndr)
 	ui_draw_chevron(ctx.rndr, ui_rect_new(r.x + r.w - pad - chev, r.y + (r.h - chev) * 0.5, chev, chev), ctx.theme.text_muted)
 
@@ -89,10 +86,8 @@ ui_rect ui_date_picker_calendar_rect(ui_context* ctx, ui_rect field):
 
 # Page a calendar to the first set date of a, b; leave it be if neither.
 void ui_date_picker_page_to(ui_calendar_state* cal, ui_date* a, ui_date* b):
-	if (ui_date_is_set(a)):
-		ui_calendar_show(cal, a)
-	else if (ui_date_is_set(b)):
-		ui_calendar_show(cal, b)
+	if (ui_date_is_set(a)): ui_calendar_show(cal, a)
+	else if (ui_date_is_set(b)): ui_calendar_show(cal, b)
 
 
 # Close a picker's popover from inside its own body: unregister it now,
@@ -101,8 +96,7 @@ void ui_date_picker_page_to(ui_calendar_state* cal, ui_date* a, ui_date* b):
 void ui_date_picker_close(ui_context* ctx, int id, int32* open):
 	open[0] = 0
 	ui_popup_dismiss(ctx, id)
-	if (ctx.focus == id + 3):
-		ctx.focus = 0
+	if (ctx.focus == id + 3): ctx.focus = 0
 
 
 struct ui_date_picker_state:
@@ -119,7 +113,7 @@ void ui_date_picker_init(ui_date_picker_state* st):
 
 # The field ids plus the calendar's.
 int ui_date_picker_ids():
-	return 1 + ui_calendar_ids()
+	return 1 + ui_calendar_ids
 
 
 # A date field over caller-owned *value (day 0 = unset). placeholder
@@ -140,8 +134,7 @@ int ui_date_picker(ui_context* ctx, float32 w, ui_date_picker_state* st, ui_date
 	if (ui_date_is_set(value)):
 		ui_date_format(value, &text[0])
 		ui_picker_field_draw(ctx, id, r, &text[0], 0)
-	else:
-		ui_picker_field_draw(ctx, id, r, placeholder, 1)
+	else: ui_picker_field_draw(ctx, id, r, placeholder, 1)
 
 	int changed = 0
 	if (ui_popover_begin(ctx, id, r, ui_date_popover_w(ctx), ui_date_popover_h(ctx), &st.open)):
@@ -150,15 +143,13 @@ int ui_date_picker(ui_context* ctx, float32 w, ui_date_picker_state* st, ui_date
 		ui_date_clear(&picked)
 		int what = ui_calendar_grid(ctx, id + 1, cr, &st.cal, value, &st.cursor, 0, 0, today, &picked)
 		ui_popover_end(ctx)
-		if (what == UI_CALENDAR_MOVED):
-			ui_date_copy(&st.cursor, &picked)
+		if (what == UI_CALENDAR_MOVED): ui_date_copy(&st.cursor, &picked)
 		else if ((what == UI_CALENDAR_CLICKED) || (what == UI_CALENDAR_COMMIT)):
 			if (ui_date_equal(&picked, value) == 0):
 				ui_date_copy(value, &picked)
 				changed = 1
 			ui_date_picker_close(ctx, id, &st.open)
-	else if (ctx.focus == id + 3):
-		ctx.focus = 0
+	else if (ctx.focus == id + 3): ctx.focus = 0
 	return changed
 
 
@@ -166,8 +157,7 @@ int ui_date_picker(ui_context* ctx, float32 w, ui_date_picker_state* st, ui_date
 The date range picker: the same field and popover, with two anchors
 over one grid.
 
-	if (ui_date_range_picker(ctx, 260.0, &rp, &from, &to, &today, c"Dates")):
-		search(from, to)
+	if (ui_date_range_picker(ctx, 260.0, &rp, &from, &to, &today, c"Dates")): search(from, to)
 
 The first pick sets an anchor and the popover stays open; while it is
 anchored the band follows the pointer (or the keyboard cursor) to
@@ -221,8 +211,7 @@ int ui_date_range_picker(ui_context* ctx, float32 w, ui_date_range_state* st, ui
 	if (ui_date_is_set(start) && ui_date_is_set(end)):
 		ui_date_range_format(start, end, &text[0])
 		ui_picker_field_draw(ctx, id, r, &text[0], 0)
-	else:
-		ui_picker_field_draw(ctx, id, r, placeholder, 1)
+	else: ui_picker_field_draw(ctx, id, r, placeholder, 1)
 
 	int changed = 0
 	if (ui_popover_begin(ctx, id, r, ui_date_popover_w(ctx), ui_date_popover_h(ctx), &st.open)):
@@ -237,20 +226,16 @@ int ui_date_range_picker(ui_context* ctx, float32 w, ui_date_range_state* st, ui
 			ui_date_copy(&a, &st.anchor)
 			ui_date_copy(&b, &st.anchor)
 			int hover = ui_calendar_cell_at(ctx, cr, ctx.input.mouse_x, ctx.input.mouse_y)
-			if (hover >= 0):
-				ui_calendar_cell_date(&st.cal, hover, &b)
-			else if (ui_date_is_set(&st.cursor)):
-				ui_date_copy(&b, &st.cursor)
+			if (hover >= 0): ui_calendar_cell_date(&st.cal, hover, &b)
+			else if (ui_date_is_set(&st.cursor)): ui_date_copy(&b, &st.cursor)
 		ui_date picked
 		ui_date_clear(&picked)
 		int what = ui_calendar_grid(ctx, id + 1, cr, &st.cal, 0, &st.cursor, &a, &b, today, &picked)
 		ui_popover_end(ctx)
-		if (what == UI_CALENDAR_MOVED):
-			ui_date_copy(&st.cursor, &picked)
+		if (what == UI_CALENDAR_MOVED): ui_date_copy(&st.cursor, &picked)
 		else if ((what == UI_CALENDAR_CLICKED) || (what == UI_CALENDAR_COMMIT)):
 			ui_date_copy(&st.cursor, &picked)
-			if (ui_date_is_set(&st.anchor) == 0):
-				ui_date_copy(&st.anchor, &picked)
+			if (ui_date_is_set(&st.anchor) == 0): ui_date_copy(&st.anchor, &picked)
 			else:
 				if (ui_date_compare(&picked, &st.anchor) < 0):
 					ui_date_copy(start, &picked)
@@ -263,6 +248,5 @@ int ui_date_range_picker(ui_context* ctx, float32 w, ui_date_range_state* st, ui
 				ui_date_picker_close(ctx, id, &st.open)
 	else:
 		ui_date_clear(&st.anchor)
-		if (ctx.focus == id + 3):
-			ctx.focus = 0
+		if (ctx.focus == id + 3): ctx.focus = 0
 	return changed

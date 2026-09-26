@@ -77,60 +77,25 @@ import lib.fmath
 ##### op ids #####
 
 
-int ag_op_leaf():
-	return 0
-
-
-int ag_op_add():
-	return 1
-
-
-int ag_op_mul():
-	return 2
-
-
-int ag_op_add_scalar():
-	return 3
-
-
-int ag_op_mul_scalar():
-	return 4
-
-
-int ag_op_relu():
-	return 5
-
-
-int ag_op_sum():
-	return 6
-
-
-int ag_op_matmul():
-	return 7
-
-
-int ag_op_add_row():
-	return 8
+const int ag_op_leaf = 0
+const int ag_op_add = 1
+const int ag_op_mul = 2
+const int ag_op_add_scalar = 3
+const int ag_op_mul_scalar = 4
+const int ag_op_relu = 5
+const int ag_op_sum = 6
+const int ag_op_matmul = 7
+const int ag_op_add_row = 8
 
 
 int ag_op_softmax_ce():
 	return 9
 
 
-int ag_op_embedding():
-	return 10
-
-
-int ag_op_layernorm():
-	return 11
-
-
-int ag_op_softmax_causal():
-	return 12
-
-
-int ag_op_matmul_nt():
-	return 13
+const int ag_op_embedding = 10
+const int ag_op_layernorm = 11
+const int ag_op_softmax_causal = 12
+const int ag_op_matmul_nt = 13
 
 
 ##### tape #####
@@ -268,7 +233,7 @@ void ag_record(ag_tape* t, int op, tensor* out, tensor* a, tensor* b, float scal
 # Registers x (a caller-owned input or parameter) as a graph leaf so it can
 # be differentiated with respect to. The tape never allocates or frees x.
 tensor* ag_leaf(ag_tape* t, tensor* x):
-	ag_record(t, ag_op_leaf(), x, cast(tensor*, 0), cast(tensor*, 0), 0.0)
+	ag_record(t, ag_op_leaf, x, cast(tensor*, 0), cast(tensor*, 0), 0.0)
 	return x
 
 
@@ -276,8 +241,7 @@ tensor* ag_leaf(ag_tape* t, tensor* x):
 # (tensor_make already zero-fills) and cached in the tape's grads map so
 # later accumulations (and later ag_grad calls) see the same buffer.
 tensor* ag_grad(ag_tape* t, tensor* v):
-	if (v in t.grads):
-		return t.grads[v]
+	if (v in t.grads): return t.grads[v]
 	tensor* g = ag_box_like(v)
 	t.grads[v] = g
 	t.owned_grads.push(g)
@@ -302,7 +266,7 @@ tensor* ag_add(ag_tape* t, tensor* a, tensor* b):
 	tensor* out = ag_box_like(a)
 	t.owned.push(out)
 	tensor_add_into(out, a, b)
-	ag_record(t, ag_op_add(), out, a, b, 0.0)
+	ag_record(t, ag_op_add, out, a, b, 0.0)
 	return out
 
 
@@ -310,7 +274,7 @@ tensor* ag_mul(ag_tape* t, tensor* a, tensor* b):
 	tensor* out = ag_box_like(a)
 	t.owned.push(out)
 	tensor_mul_into(out, a, b)
-	ag_record(t, ag_op_mul(), out, a, b, 0.0)
+	ag_record(t, ag_op_mul, out, a, b, 0.0)
 	return out
 
 
@@ -318,7 +282,7 @@ tensor* ag_add_scalar(ag_tape* t, tensor* a, float s):
 	tensor* out = ag_box_like(a)
 	t.owned.push(out)
 	tensor_add_scalar_into(out, a, s)
-	ag_record(t, ag_op_add_scalar(), out, a, cast(tensor*, 0), s)
+	ag_record(t, ag_op_add_scalar, out, a, cast(tensor*, 0), s)
 	return out
 
 
@@ -326,7 +290,7 @@ tensor* ag_mul_scalar(ag_tape* t, tensor* a, float s):
 	tensor* out = ag_box_like(a)
 	t.owned.push(out)
 	tensor_mul_scalar_into(out, a, s)
-	ag_record(t, ag_op_mul_scalar(), out, a, cast(tensor*, 0), s)
+	ag_record(t, ag_op_mul_scalar, out, a, cast(tensor*, 0), s)
 	return out
 
 
@@ -334,7 +298,7 @@ tensor* ag_relu(ag_tape* t, tensor* a):
 	tensor* out = ag_box_like(a)
 	t.owned.push(out)
 	tensor_relu_into(out, a)
-	ag_record(t, ag_op_relu(), out, a, cast(tensor*, 0), 0.0)
+	ag_record(t, ag_op_relu, out, a, cast(tensor*, 0), 0.0)
 	return out
 
 
@@ -349,7 +313,7 @@ tensor* ag_sum(ag_tape* t, tensor* a):
 	# caller's loss.data[0] read sync-free under the async model, same
 	# as ag_softmax_ce's scalar.
 	out.data[0] = s
-	ag_record(t, ag_op_sum(), out, a, cast(tensor*, 0), 0.0)
+	ag_record(t, ag_op_sum, out, a, cast(tensor*, 0), 0.0)
 	return out
 
 
@@ -358,7 +322,7 @@ tensor* ag_matmul(ag_tape* t, tensor* a, tensor* b):
 	tensor* out = ag_box_shape(2, a.n0, b.n1, 1, 1)
 	t.owned.push(out)
 	tensor_matmul2(out, a, b)
-	ag_record(t, ag_op_matmul(), out, a, b, 0.0)
+	ag_record(t, ag_op_matmul, out, a, b, 0.0)
 	return out
 
 
@@ -372,7 +336,7 @@ tensor* ag_add_row(ag_tape* t, tensor* a, tensor* r):
 	tensor* out = ag_box_like(a)
 	t.owned.push(out)
 	tensor_add_row_into(out, a, r)
-	ag_record(t, ag_op_add_row(), out, a, r, 0.0)
+	ag_record(t, ag_op_add_row, out, a, r, 0.0)
 	return out
 
 
@@ -403,15 +367,13 @@ tensor* ag_softmax_ce(ag_tape* t, tensor* logits, ndi* labels):
 	float* plog = logits.data
 	float* pp = probs.data
 	float total = 0.0
-	int i = 0
-	while (i < batch):
+	for i in range(batch):
 		# numerically-stable softmax: subtract the row max before exp
 		float m = plog[i * classes]
 		int j = 1
 		while (j < classes):
 			float v = plog[i * classes + j]
-			if (v > m):
-				m = v
+			if (v > m): m = v
 			j = j + 1
 		float rowsum = 0.0
 		j = 0
@@ -426,7 +388,6 @@ tensor* ag_softmax_ce(ag_tape* t, tensor* logits, ndi* labels):
 			j = j + 1
 		int lbl = labels.data[i]
 		total = total - flog(pp[i * classes + lbl])
-		i = i + 1
 	float mean_loss = total / cast(float, batch)
 	tensor* out = ag_box_shape(1, 1, 1, 1, 1)
 	t.owned.push(out)
@@ -458,16 +419,11 @@ tensor* ag_embedding(ag_tape* t, tensor* table, ndi* ids):
 	tensor_sync()
 	float* ptab = table.data
 	float* pout = out.data
-	int i = 0
-	while (i < n):
+	for i in range(n):
 		int row = ids.data[i]
 		asserts(c"ag_embedding: id out of range", (row >= 0) && (row < table.n0))
-		int j = 0
-		while (j < dim):
-			pout[i * dim + j] = ptab[row * dim + j]
-			j = j + 1
-		i = i + 1
-	ag_record_saved(t, ag_op_embedding(), out, table, cast(tensor*, 0), 0.0, cast(tensor*, 0), ids)
+		for j in range(dim): pout[i * dim + j] = ptab[row * dim + j]
+	ag_record_saved(t, ag_op_embedding, out, table, cast(tensor*, 0), 0.0, cast(tensor*, 0), ids)
 	return out
 
 
@@ -491,8 +447,7 @@ tensor* ag_layernorm_core(ag_tape* t, tensor* x, tensor* gamma):
 	float* pg = gamma.data
 	float* pout2 = out.data
 	float fcols = cast(float, cols)
-	int i = 0
-	while (i < rows):
+	for i in range(rows):
 		float mean = 0.0
 		int j = 0
 		while (j < cols):
@@ -510,8 +465,7 @@ tensor* ag_layernorm_core(ag_tape* t, tensor* x, tensor* gamma):
 		while (j < cols):
 			pout2[i * cols + j] = pg[j] * ((px[i * cols + j] - mean) * rstd)
 			j = j + 1
-		i = i + 1
-	ag_record(t, ag_op_layernorm(), out, x, gamma, 0.0)
+	ag_record(t, ag_op_layernorm, out, x, gamma, 0.0)
 	return out
 
 
@@ -543,8 +497,7 @@ tensor* ag_softmax_causal(ag_tape* t, tensor* s):
 		int j = 1
 		while (j <= i):
 			float v = ps[i * n + j]
-			if (v > m):
-				m = v
+			if (v > m): m = v
 			j = j + 1
 		float rowsum = 0.0
 		j = 0
@@ -562,7 +515,7 @@ tensor* ag_softmax_causal(ag_tape* t, tensor* s):
 			pout3[i * n + j] = 0.0
 			j = j + 1
 		i = i + 1
-	ag_record(t, ag_op_softmax_causal(), out, s, cast(tensor*, 0), 0.0)
+	ag_record(t, ag_op_softmax_causal, out, s, cast(tensor*, 0), 0.0)
 	return out
 
 
@@ -576,7 +529,7 @@ tensor* ag_matmul_nt(ag_tape* t, tensor* a, tensor* b):
 	tensor* out = ag_box_shape(2, a.n0, b.n0, 1, 1)
 	t.owned.push(out)
 	tensor_matmul2_nt(out, a, b)
-	ag_record(t, ag_op_matmul_nt(), out, a, b, 0.0)
+	ag_record(t, ag_op_matmul_nt, out, a, b, 0.0)
 	return out
 
 
@@ -584,20 +537,19 @@ tensor* ag_matmul_nt(ag_tape* t, tensor* a, tensor* b):
 
 
 void ag_backward_node(ag_tape* t, ag_node* nd):
-	if (nd.op == ag_op_leaf()):
-		return
+	if (nd.op == ag_op_leaf): return
 	tensor* dout = ag_grad(t, nd.out)
-	if (nd.op == ag_op_add()):
+	if (nd.op == ag_op_add):
 		tensor* da = ag_grad(t, nd.a)
 		tensor* db = ag_grad(t, nd.b)
 		tensor_add_into(da, da, dout)
 		tensor_add_into(db, db, dout)
 		return
-	if (nd.op == ag_op_add_scalar()):
+	if (nd.op == ag_op_add_scalar):
 		tensor* da2 = ag_grad(t, nd.a)
 		tensor_add_into(da2, da2, dout)
 		return
-	if (nd.op == ag_op_mul()):
+	if (nd.op == ag_op_mul):
 		tensor* da3 = ag_grad(t, nd.a)
 		tensor* db3 = ag_grad(t, nd.b)
 		tensor* tmp = ag_box_like(nd.a)
@@ -607,21 +559,21 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		tensor_add_into(db3, db3, tmp)
 		t.owned.push(tmp)
 		return
-	if (nd.op == ag_op_mul_scalar()):
+	if (nd.op == ag_op_mul_scalar):
 		tensor* da4 = ag_grad(t, nd.a)
 		tensor* tmp2 = ag_box_like(nd.a)
 		tensor_mul_scalar_into(tmp2, dout, nd.scalar)
 		tensor_add_into(da4, da4, tmp2)
 		t.owned.push(tmp2)
 		return
-	if (nd.op == ag_op_relu()):
+	if (nd.op == ag_op_relu):
 		tensor* da5 = ag_grad(t, nd.a)
 		tensor* tmp3 = ag_box_like(nd.a)
 		tensor_relu_grad_into(tmp3, nd.a, dout)
 		tensor_add_into(da5, da5, tmp3)
 		t.owned.push(tmp3)
 		return
-	if (nd.op == ag_op_sum()):
+	if (nd.op == ag_op_sum):
 		tensor* da6 = ag_grad(t, nd.a)
 		# dout was accumulated by enqueued device ops -- drain before
 		# the host read.
@@ -629,7 +581,7 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		float g = dout.data[0]
 		tensor_add_scalar_into(da6, da6, g)
 		return
-	if (nd.op == ag_op_matmul()):
+	if (nd.op == ag_op_matmul):
 		tensor* da7 = ag_grad(t, nd.a)
 		tensor* db7 = ag_grad(t, nd.b)
 		# dA (m,k) += dOut (m,n) @ B^T (n,k), via the no-materialized-
@@ -645,7 +597,7 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		tensor_add_into(db7, db7, tmpB)
 		t.owned.push(tmpB)
 		return
-	if (nd.op == ag_op_add_row()):
+	if (nd.op == ag_op_add_row):
 		tensor* da8 = ag_grad(t, nd.a)
 		tensor* dr8 = ag_grad(t, nd.b)
 		tensor_add_into(da8, da8, dout)
@@ -670,19 +622,14 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		float invbatch = 1.0 / cast(float, batch2)
 		float* pg = dlogits.data
 		float* pp2 = nd.saved.data
-		int i2 = 0
-		while (i2 < batch2):
+		for i2 in range(batch2):
 			int lbl2 = nd.labels.data[i2]
-			int j2 = 0
-			while (j2 < classes2):
+			for j2 in range(classes2):
 				float ind = 0.0
-				if (j2 == lbl2):
-					ind = 1.0
+				if (j2 == lbl2): ind = 1.0
 				pg[i2 * classes2 + j2] = pg[i2 * classes2 + j2] + dloss * (pp2[i2 * classes2 + j2] - ind) * invbatch
-				j2 = j2 + 1
-			i2 = i2 + 1
 		return
-	if (nd.op == ag_op_embedding()):
+	if (nd.op == ag_op_embedding):
 		# d_table[ids[i], :] += dOut[i, :] -- the host scatter-add
 		# mirror of the forward gather.
 		tensor* dtab = ag_grad(t, nd.a)
@@ -691,16 +638,12 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		tensor_sync()
 		float* pdt = dtab.data
 		float* pdo = dout.data
-		int i3 = 0
-		while (i3 < n3):
+		for i3 in range(n3):
 			int row3 = nd.labels.data[i3]
-			int j3 = 0
-			while (j3 < dim3):
+			for j3 in range(dim3):
 				pdt[row3 * dim3 + j3] = pdt[row3 * dim3 + j3] + pdo[i3 * dim3 + j3]
-				j3 = j3 + 1
-			i3 = i3 + 1
 		return
-	if (nd.op == ag_op_layernorm()):
+	if (nd.op == ag_op_layernorm):
 		# out = gamma * xhat with xhat = (x - mean) * rstd. Recompute
 		# the row statistics from x (forward saved nothing):
 		#   dgamma[j] += sum_i dOut[i,j] * xhat[i,j]
@@ -717,8 +660,7 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		float* pdg9 = dg9.data
 		float* pdo9 = dout.data
 		float fcols9 = cast(float, cols9)
-		int i9 = 0
-		while (i9 < rows9):
+		for i9 in range(rows9):
 			float mean9 = 0.0
 			int j9 = 0
 			while (j9 < cols9):
@@ -750,9 +692,8 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 				float dxh2 = pdo9[i9 * cols9 + j9] * pg9[j9]
 				pdx9[i9 * cols9 + j9] = pdx9[i9 * cols9 + j9] + rstd9 * (dxh2 - s1 - xh2 * s2)
 				j9 = j9 + 1
-			i9 = i9 + 1
 		return
-	if (nd.op == ag_op_softmax_causal()):
+	if (nd.op == ag_op_softmax_causal):
 		# dS[i,j] += P[i,j] * (dP[i,j] - sum_{k<=i} P[i,k] dP[i,k]),
 		# rows independent; masked columns stay untouched (P is 0
 		# there, so their true gradient is 0).
@@ -762,8 +703,7 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 		float* pp10 = nd.out.data
 		float* pdo10 = dout.data
 		float* pds10 = ds10.data
-		int i10 = 0
-		while (i10 < n10):
+		for i10 in range(n10):
 			float dot = 0.0
 			int j10 = 0
 			while (j10 <= i10):
@@ -773,9 +713,8 @@ void ag_backward_node(ag_tape* t, ag_node* nd):
 			while (j10 <= i10):
 				pds10[i10 * n10 + j10] = pds10[i10 * n10 + j10] + pp10[i10 * n10 + j10] * (pdo10[i10 * n10 + j10] - dot)
 				j10 = j10 + 1
-			i10 = i10 + 1
 		return
-	if (nd.op == ag_op_matmul_nt()):
+	if (nd.op == ag_op_matmul_nt):
 		# out = A @ B^T: dA (m,k) += dOut (m,n) @ B (n,k);
 		# dB (n,k) += dOut^T (n,m) @ A (m,k), via matmul2_tn.
 		tensor* da11 = ag_grad(t, nd.a)

@@ -52,17 +52,13 @@ void test_backward_goto_loops():
 
 int find_pair(int target):
 	int result = -1
-	int i = 0
-	while (i < 10):
+	for i in range(10):
 		int a = i * 3
-		int j = 0
-		while (j < 10):
+		for j in range(10):
 			int b = j * 7
 			if (a + b == target):
 				result = i * 100 + j
 				goto found
-			j = j + 1
-		i = i + 1
 	found:
 	# result must still be addressable at its original slot
 	return result
@@ -189,10 +185,8 @@ int switch_goto(int v):
 		case 1:
 			out = 10
 			goto tail
-		case 2:
-			out = 20
-		default:
-			out = 30
+		case 2: out = 20
+		default: out = 30
 	out = out + 1
 	tail:
 	return out

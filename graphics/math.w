@@ -149,10 +149,8 @@ float32 gfx_sin(float32 x):
 	# Reduce to [-pi, pi]
 	float32 r = gfx_mod(x + gfx_pi(), gfx_two_pi()) - gfx_pi()
 	# Fold into [-pi/2, pi/2] where the polynomial converges fast
-	if (r > gfx_half_pi()):
-		r = gfx_pi() - r
-	else if (r < 0.0 - gfx_half_pi()):
-		r = (0.0 - gfx_pi()) - r
+	if (r > gfx_half_pi()): r = gfx_pi() - r
+	else if (r < 0.0 - gfx_half_pi()): r = (0.0 - gfx_pi()) - r
 	return gfx_sin_poly(r)
 
 
@@ -199,8 +197,7 @@ float32 vec2_length(vec2 a):
 
 vec2 vec2_normalize(vec2 a):
 	float32 len = vec2_length(a)
-	if (len == 0.0):
-		return vec2_new(0.0, 0.0)
+	if (len == 0.0): return vec2_new(0.0, 0.0)
 	return vec2_scale(a, 1.0 / len)
 
 
@@ -252,8 +249,7 @@ float32 vec3_length(vec3 a):
 
 vec3 vec3_normalize(vec3 a):
 	float32 len = vec3_length(a)
-	if (len == 0.0):
-		return vec3_new(0.0, 0.0, 0.0)
+	if (len == 0.0): return vec3_new(0.0, 0.0, 0.0)
 	return vec3_scale(a, 1.0 / len)
 
 
@@ -303,8 +299,7 @@ float32 vec4_length(vec4 a):
 
 vec4 vec4_normalize(vec4 a):
 	float32 len = vec4_length(a)
-	if (len == 0.0):
-		return vec4_new(0.0, 0.0, 0.0, 0.0)
+	if (len == 0.0): return vec4_new(0.0, 0.0, 0.0, 0.0)
 	return vec4_scale(a, 1.0 / len)
 
 
@@ -312,10 +307,7 @@ vec4 vec4_normalize(vec4 a):
 
 mat4 mat4_zero():
 	mat4 r
-	int i = 0
-	while (i < 16):
-		r.m[i] = 0.0
-		i += 1
+	for i in range(16): r.m[i] = 0.0
 	return r
 
 
@@ -334,30 +326,18 @@ float32 mat4_get(mat4 a, int row, int col):
 
 mat4 mat4_transpose(mat4 a):
 	mat4 r
-	int col = 0
-	while (col < 4):
-		int row = 0
-		while (row < 4):
-			r.m[col * 4 + row] = a.m[row * 4 + col]
-			row += 1
-		col += 1
+	for col in range(4):
+		for row in range(4): r.m[col * 4 + row] = a.m[row * 4 + col]
 	return r
 
 
 mat4 mat4_mul(mat4 a, mat4 b):
 	mat4 r
-	int col = 0
-	while (col < 4):
-		int row = 0
-		while (row < 4):
+	for col in range(4):
+		for row in range(4):
 			float32 sum = 0.0
-			int k = 0
-			while (k < 4):
-				sum = sum + a.m[k * 4 + row] * b.m[col * 4 + k]
-				k += 1
+			for k in range(4): sum = sum + a.m[k * 4 + row] * b.m[col * 4 + k]
 			r.m[col * 4 + row] = sum
-			row += 1
-		col += 1
 	return r
 
 
@@ -379,22 +359,18 @@ vec3 mat4_mul_point(mat4 a, vec3 p):
 # glm::translate(m, v): post-multiply m by a translation matrix.
 mat4 mat4_translate(mat4 a, vec3 v):
 	mat4 r = a
-	int row = 0
-	while (row < 4):
+	for row in range(4):
 		r.m[12 + row] = a.m[row] * v.x + a.m[4 + row] * v.y + a.m[8 + row] * v.z + a.m[12 + row]
-		row += 1
 	return r
 
 
 # glm::scale(m, v): post-multiply m by a nonuniform scale.
 mat4 mat4_scale(mat4 a, vec3 v):
 	mat4 r = a
-	int row = 0
-	while (row < 4):
+	for row in range(4):
 		r.m[row] = a.m[row] * v.x
 		r.m[4 + row] = a.m[4 + row] * v.y
 		r.m[8 + row] = a.m[8 + row] * v.z
-		row += 1
 	return r
 
 
@@ -499,8 +475,7 @@ float32 quat_length(quat q):
 
 quat quat_normalize(quat q):
 	float32 len = quat_length(q)
-	if (len == 0.0):
-		return quat_identity()
+	if (len == 0.0): return quat_identity()
 	float32 inv = 1.0 / len
 	return quat_new(q.x * inv, q.y * inv, q.z * inv, q.w * inv)
 

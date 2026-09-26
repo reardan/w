@@ -53,6 +53,9 @@ import lib.container
 import lib.net
 import lib.poll
 import libs.standard.distributed.raft_wire
+import lib.bytes
+import lib.mem
+import structures.string
 
 
 # Largest accepted frame payload: 1 MiB.
@@ -65,60 +68,23 @@ int rt_default_max_pending():
 	return 1 << 18
 
 
-int rt_scratch_size():
-	return 4096
+const int rt_scratch_size = 4096
 
 
 int rt_loopback():
 	return ip4_from_string(c"127.0.0.1")
 
 
-# ---- growable byte buffer -----------------------------------------------------
-
-struct rt_buf:
-	char* data
-	int cap
-	int len
-
-
-rt_buf* rt_buf_new():
-	rt_buf* b = new rt_buf()
-	b.cap = 256
-	b.data = malloc(b.cap)
-	b.len = 0
-	return b
-
-
-void rt_buf_free(rt_buf* b):
-	free(b.data)
-	free(b)
-
-
-void rt_buf_append(rt_buf* b, char* src, int n):
-	if (b.len + n > b.cap):
-		int newcap = b.cap
-		while (b.len + n > newcap):
-			newcap = newcap * 2
-		b.data = realloc(b.data, b.cap, newcap)
-		b.cap = newcap
-	int i = 0
-	while (i < n):
-		b.data[b.len + i] = src[i]
-		i = i + 1
-	b.len = b.len + n
-
+# ---- byte buffers (string_builder) ---------------------------------------------
 
 # Drops n bytes starting at off, sliding the tail down over them.
-void rt_buf_remove(rt_buf* b, int off, int n):
-	int i = off
-	while (i + n < b.len):
-		b.data[i] = b.data[i + n]
-		i = i + 1
-	b.len = b.len - n
+void rt_buf_remove(string_builder* b, int off, int n):
+	mem_copy(b.data + off, b.data + off + n, b.length - off - n)
+	b.length = b.length - n
 
 
 # Drops the first n bytes, sliding the rest to the front.
-void rt_buf_consume(rt_buf* b, int n):
+void rt_buf_consume(string_builder* b, int n):
 	rt_buf_remove(b, 0, n)
 
 
@@ -134,7 +100,7 @@ struct rt_peer:
 	int id
 	int port
 	int fd
-	rt_buf* out
+	string_builder* out
 	list[int] frame_lens
 	int head_sent
 
@@ -143,7 +109,7 @@ struct rt_peer:
 # frames can be split off.
 struct rt_conn:
 	int fd
-	rt_buf* acc
+	string_builder* acc
 
 
 struct raft_tcp:
@@ -163,17 +129,12 @@ struct raft_tcp:
 # Returns 0 when any socket setup step fails.
 raft_tcp* raft_tcp_new(int self_id, int port):
 	int fd = socket_tcp_ipv4()
-	if (fd < 0):
-		return 0
+	if (fd < 0): return 0
 	int ok = 1
-	if (socket_set_reuseaddr(fd) < 0):
-		ok = 0
-	if (ok && socket_set_nonblocking(fd) < 0):
-		ok = 0
-	if (ok && socket_bind_ipv4(fd, rt_loopback(), port) < 0):
-		ok = 0
-	if (ok && socket_listen(fd, 16) < 0):
-		ok = 0
+	if (socket_set_reuseaddr(fd) < 0): ok = 0
+	if (ok && socket_set_nonblocking(fd) < 0): ok = 0
+	if (ok && socket_bind_ipv4(fd, rt_loopback(), port) < 0): ok = 0
+	if (ok && socket_listen(fd, 16) < 0): ok = 0
 	if (ok == 0):
 		close(fd)
 		return 0
@@ -183,7 +144,7 @@ raft_tcp* raft_tcp_new(int self_id, int port):
 	t.peers = new list[rt_peer*]
 	t.conns = new list[rt_conn*]
 	t.inbox = new list[raft_msg*]
-	t.scratch = malloc(rt_scratch_size())
+	t.scratch = malloc(rt_scratch_size)
 	t.max_pending = rt_default_max_pending()
 	t.dropped = 0
 	return t
@@ -195,9 +156,8 @@ void raft_tcp_free(raft_tcp* t):
 	int i = 0
 	while (i < t.peers.length):
 		rt_peer* p = t.peers[i]
-		if (p.fd >= 0):
-			close(p.fd)
-		rt_buf_free(p.out)
+		if (p.fd >= 0): close(p.fd)
+		string_free(p.out)
 		list_free[int](p.frame_lens)
 		free(p)
 		i = i + 1
@@ -205,7 +165,7 @@ void raft_tcp_free(raft_tcp* t):
 	while (i < t.conns.length):
 		rt_conn* c = t.conns[i]
 		close(c.fd)
-		rt_buf_free(c.acc)
+		string_free(c.acc)
 		free(c)
 		i = i + 1
 	i = 0
@@ -220,12 +180,10 @@ void raft_tcp_free(raft_tcp* t):
 
 
 rt_peer* rt_find_peer(raft_tcp* t, int id):
-	int i = 0
-	while (i < t.peers.length):
+	for i in range(t.peers.length):
 		rt_peer* p = t.peers[i]
 		if (p.id == id):
 			return p
-		i = i + 1
 	return 0
 
 
@@ -236,13 +194,7 @@ void raft_tcp_add_peer(raft_tcp* t, int peer_id, int port):
 	if (cast(int, p) != 0):
 		p.port = port
 		return
-	p = new rt_peer()
-	p.id = peer_id
-	p.port = port
-	p.fd = 0 - 1
-	p.out = rt_buf_new()
-	p.frame_lens = new list[int]
-	p.head_sent = 0
+	p = new rt_peer(peer_id, port, 0 - 1, string_new_sized(256), new list[int], 0)
 	t.peers.push(p)
 
 
@@ -252,8 +204,7 @@ void raft_tcp_add_peer(raft_tcp* t, int peer_id, int port):
 # failure; the next pump retries while p.out has pending bytes.
 void rt_peer_dial(rt_peer* p):
 	int fd = socket_tcp_ipv4()
-	if (fd < 0):
-		return
+	if (fd < 0): return
 	if (socket_set_nonblocking(fd) < 0):
 		close(fd)
 		return
@@ -285,21 +236,20 @@ void rt_peer_note_sent(rt_peer* p, int n):
 
 # Writes as much pending data as the socket accepts right now.
 void rt_peer_flush(rt_peer* p):
-	int r = poll_single(p.fd, poll_out(), 0)
+	int r = poll_single(p.fd, poll_out, 0)
 	if (r <= 0):
 		# 0: still connecting or kernel buffer full; <0: transient
 		# poll failure. Either way retry on a later pump.
 		return
-	if ((r & (poll_err() | poll_hup() | poll_nval())) != 0):
+	if ((r & (poll_err | poll_hup | poll_nval)) != 0):
 		rt_peer_disconnect(p)
 		return
-	int n = socket_send(p.fd, p.out.data, p.out.len, msg_nosignal())
+	int n = socket_send(p.fd, p.out.data, p.out.length, msg_nosignal())
 	if (n > 0):
 		rt_buf_consume(p.out, n)
 		rt_peer_note_sent(p, n)
 		return
-	if (n == 0 - net_eagain() || n == 0 - 4):
-		return
+	if (n == 0 - net_eagain() || n == 0 - 4): return
 	rt_peer_disconnect(p)
 
 
@@ -313,44 +263,38 @@ void rt_peer_flush(rt_peer* p):
 # dropped — see the header.
 int raft_tcp_send(raft_tcp* t, raft_msg* m):
 	rt_peer* p = rt_find_peer(t, m.to)
-	if (cast(int, p) == 0):
-		return 0
+	if (cast(int, p) == 0): return 0
 	int size = raft_wire_size(m)
-	if (size > rt_max_frame()):
-		return 0
+	if (size > rt_max_frame()): return 0
 	int fsize = size + 4
 	if (fsize > t.max_pending):
 		# A frame that alone exceeds the cap can never be buffered:
 		# refuse it up front (same contract as oversize) without
 		# disturbing the frames already queued.
 		return 0
-	while (p.out.len + fsize > t.max_pending):
+	while (p.out.length + fsize > t.max_pending):
 		# Drop the oldest WHOLE frame. When the head frame is
 		# partially on the wire it must survive intact, so the oldest
 		# droppable frame is the one after it.
 		int idx = 0
-		if (p.head_sent > 0):
-			idx = 1
-		if (idx >= p.frame_lens.length):
-			break
+		if (p.head_sent > 0): idx = 1
+		if (idx >= p.frame_lens.length): break
 		int off = 0
-		if (idx == 1):
-			off = p.frame_lens[0] - p.head_sent
+		if (idx == 1): off = p.frame_lens[0] - p.head_sent
 		rt_buf_remove(p.out, off, p.frame_lens[idx])
 		list_remove_at[int](p.frame_lens, idx)
 		t.dropped = t.dropped + 1
-	if (p.out.len + fsize > t.max_pending):
+	if (p.out.length + fsize > t.max_pending):
 		# Only an undroppable partially-sent head remains and the new
 		# frame still does not fit.
 		return 0
 	char* tmp = malloc(fsize)
-	raft_wire_u32(tmp, size)
+	store_le32(tmp, size)
 	raft_wire_encode(m, tmp + 4)
-	rt_buf_append(p.out, tmp, fsize)
+	string_append_bytes(p.out, tmp, fsize)
 	p.frame_lens.push(fsize)
 	free(tmp)
-	if (p.fd < 0):
-		rt_peer_dial(p)
+	if (p.fd < 0): rt_peer_dial(p)
 	return 1
 
 
@@ -360,29 +304,23 @@ int raft_tcp_send(raft_tcp* t, raft_msg* m):
 void rt_pump_accept(raft_tcp* t):
 	while (1):
 		int fd = socket_accept_connection(t.listen_fd)
-		if (fd < 0):
-			return
+		if (fd < 0): return
 		if (socket_set_nonblocking(fd) < 0):
 			close(fd)
 			return
-		rt_conn* c = new rt_conn()
-		c.fd = fd
-		c.acc = rt_buf_new()
+		rt_conn* c = new rt_conn(fd, string_new_sized(256))
 		t.conns.push(c)
 
 
 # Splits complete frames out of c.acc into the inbox. Returns 1 on a
 # protocol error (oversize length or undecodable payload).
 int rt_conn_extract(raft_tcp* t, rt_conn* c):
-	while (c.acc.len >= 4):
-		int plen = raft_wire_read_u32(c.acc.data)
-		if (plen < 0 || plen > rt_max_frame()):
-			return 1
-		if (c.acc.len < plen + 4):
-			return 0
+	while (c.acc.length >= 4):
+		int plen = load_le32(c.acc.data)
+		if (plen < 0 || plen > rt_max_frame()): return 1
+		if (c.acc.length < plen + 4): return 0
 		raft_msg* m = raft_wire_decode(c.acc.data + 4, plen)
-		if (cast(int, m) == 0):
-			return 1
+		if (cast(int, m) == 0): return 1
 		t.inbox.push(m)
 		rt_buf_consume(c.acc, plen + 4)
 	return 0
@@ -392,15 +330,13 @@ int rt_conn_extract(raft_tcp* t, rt_conn* c):
 # when the connection should be closed (EOF, error, protocol error).
 int rt_conn_read(raft_tcp* t, rt_conn* c):
 	while (1):
-		int n = socket_recv(c.fd, t.scratch, rt_scratch_size(), 0)
-		if (n > 0):
-			rt_buf_append(c.acc, t.scratch, n)
+		int n = socket_recv(c.fd, t.scratch, rt_scratch_size, 0)
+		if (n > 0): string_append_bytes(c.acc, t.scratch, n)
 		else:
 			if (n == 0):
 				# EOF: partial data, if any, is dropped.
 				return 1
-			if (n == 0 - net_eagain() || n == 0 - 4):
-				break
+			if (n == 0 - net_eagain() || n == 0 - 4): break
 			return 1
 	return rt_conn_extract(t, c)
 
@@ -411,23 +347,18 @@ void rt_pump_inbound(raft_tcp* t):
 		rt_conn* c = t.conns[i]
 		if (rt_conn_read(t, c)):
 			close(c.fd)
-			rt_buf_free(c.acc)
+			string_free(c.acc)
 			free(c)
 			list_remove_at[rt_conn*](t.conns, i)
-		else:
-			i = i + 1
+		else: i = i + 1
 
 
 void rt_pump_outbound(raft_tcp* t):
-	int i = 0
-	while (i < t.peers.length):
+	for i in range(t.peers.length):
 		rt_peer* p = t.peers[i]
-		if (p.out.len > 0):
-			if (p.fd < 0):
-				rt_peer_dial(p)
-			if (p.fd >= 0):
-				rt_peer_flush(p)
-		i = i + 1
+		if (p.out.length > 0):
+			if (p.fd < 0): rt_peer_dial(p)
+			if (p.fd >= 0): rt_peer_flush(p)
 
 
 # One nonblocking progress pass: accept pending connections, flush (or
@@ -444,8 +375,7 @@ void raft_tcp_pump(raft_tcp* t):
 # Pops the next received message (caller frees with raft_msg_free) or
 # returns 0 when the inbox is empty.
 raft_msg* raft_tcp_recv(raft_tcp* t):
-	if (t.inbox.length == 0):
-		return 0
+	if (t.inbox.length == 0): return 0
 	raft_msg* m = t.inbox[0]
 	list_remove_at[raft_msg*](t.inbox, 0)
 	return m
@@ -479,9 +409,8 @@ int raft_tcp_dropped_frames(raft_tcp* t):
 # -1 for an unknown peer.
 int raft_tcp_pending_bytes(raft_tcp* t, int peer_id):
 	rt_peer* p = rt_find_peer(t, peer_id)
-	if (cast(int, p) == 0):
-		return 0 - 1
-	return p.out.len
+	if (cast(int, p) == 0): return 0 - 1
+	return p.out.length
 
 
 # Frames still (wholly or partially) buffered for peer_id, or -1 for
@@ -489,6 +418,5 @@ int raft_tcp_pending_bytes(raft_tcp* t, int peer_id):
 # byte is written.
 int raft_tcp_pending_frames(raft_tcp* t, int peer_id):
 	rt_peer* p = rt_find_peer(t, peer_id)
-	if (cast(int, p) == 0):
-		return 0 - 1
+	if (cast(int, p) == 0): return 0 - 1
 	return p.frame_lens.length

@@ -137,8 +137,7 @@ int repl_shell_commands_imported
 int repl_read_plain(char* prompt):
 	print_error(prompt)
 	int c = getchar(0)
-	if (c == -1):
-		return -1
+	if (c == -1): return -1
 	while ((c != 10) && (c != -1)):
 		string_append_char(repl_line, c)
 		c = getchar(0)
@@ -153,22 +152,18 @@ int repl_read_plain(char* prompt):
 # Ctrl-C.
 int repl_prompt_line(char* prompt, int indent):
 	string_clear(repl_line)
-	if (repl_interactive == 0):
-		return repl_read_plain(prompt)
-	if (repl_read_buffer == 0):
-		repl_read_buffer = malloc(4096)
+	if (repl_interactive == 0): return repl_read_plain(prompt)
+	if (repl_read_buffer == 0): repl_read_buffer = malloc(4096)
 	int n = 0
 	# A bracketed paste begun on an earlier physical line of this same
 	# entry is still open (line_edit_read has not seen its end marker
 	# yet): the pasted text supplies its own indentation, so seeding an
 	# auto-indent prefix on top of it would double it up (issue #276 P2).
-	if (line_edit_in_paste()):
-		indent = 0
+	if (line_edit_in_paste()): indent = 0
 	char* initial = 0
 	if (indent > 0):
 		initial = malloc(indent + 1)
-		for int t in range(indent):
-			initial[t] = 9
+		for int t in range(indent): initial[t] = 9
 		initial[indent] = 0
 	defer free(initial)
 	n = line_edit_read(prompt, repl_read_buffer, 4096, initial)
@@ -180,20 +175,17 @@ int repl_prompt_line(char* prompt, int indent):
 
 int repl_count_leading_tabs(char* s):
 	int n = 0
-	while (s[n] == 9):
-		n = n + 1
+	while (s[n] == 9): n = n + 1
 	return n
 
 
 # 1 when the line's first token is exactly word (after leading whitespace).
 int repl_first_token_is(char* s, char* word):
 	int i = 0
-	while ((s[i] == 9) || (s[i] == ' ')):
-		i = i + 1
+	while ((s[i] == 9) || (s[i] == ' ')): i = i + 1
 	int j = 0
 	while (word[j]):
-		if (s[i + j] != word[j]):
-			return 0
+		if (s[i + j] != word[j]): return 0
 		j = j + 1
 	char c = s[i + j]
 	if ((('a' <= c) && (c <= 'z')) || (('A' <= c) && (c <= 'Z')) ||
@@ -207,17 +199,14 @@ int repl_first_token_is(char* s, char* word):
 # A ':' opens a deeper level; a line that leaves its block (return,
 # break, continue, pass) comes back out one level, like Python's IDLE.
 void repl_update_indent(char* typed, int line_indent):
-	if (repl_scan_last_char == ':'):
-		repl_auto_indent = line_indent + 1
+	if (repl_scan_last_char == ':'): repl_auto_indent = line_indent + 1
 	else if (repl_scan_last_char == 0):
 		pass /* blank or comment-only line: keep the current level */
 	else if (repl_first_token_is(typed, c"return") | repl_first_token_is(typed, c"break") |
 			repl_first_token_is(typed, c"continue") | repl_first_token_is(typed, c"pass")):
 		repl_auto_indent = line_indent - 1
-		if (repl_auto_indent < 0):
-			repl_auto_indent = 0
-	else:
-		repl_auto_indent = line_indent
+		if (repl_auto_indent < 0): repl_auto_indent = 0
+	else: repl_auto_indent = line_indent
 
 
 # 1 when the line contains nothing but tabs (or is empty): the user
@@ -239,11 +228,9 @@ int repl_read_entry():
 	repl_scan_reset()
 	repl_auto_indent = 0
 	char* prompt = c"w> "
-	if (repl_shell_mode):
-		prompt = c"sh> "
+	if (repl_shell_mode): prompt = c"sh> "
 	int r = repl_prompt_line(prompt, 0)
-	if (r == -1):
-		return 0
+	if (r == -1): return 0
 	if (r == -2):
 		return 1 /* discarded: the empty entry is a no-op */
 	if (repl_line.data[0] == '!'):
@@ -271,8 +258,7 @@ int repl_read_entry():
 		# Auto-indent applies to block bodies, not bracket/string/comment
 		# continuations, and only when a person is typing
 		int indent = 0
-		if (repl_interactive & block_mode & (open_state == 0)):
-			indent = repl_auto_indent
+		if (repl_interactive & block_mode & (open_state == 0)): indent = repl_auto_indent
 		r = repl_prompt_line(c".. ", indent)
 		if (r == -1):
 			return 1 /* end of input finishes the entry */
@@ -293,8 +279,7 @@ int repl_read_entry():
 		string_append_char(repl_entry, 10)
 		string_append(repl_entry, repl_line.data)
 		repl_scan_line(repl_line.data)
-		if (repl_scan_last_char == ':'):
-			block_mode = 1
+		if (repl_scan_last_char == ':'): block_mode = 1
 		repl_update_indent(repl_line.data, repl_count_leading_tabs(repl_line.data))
 		open_state = repl_scan_open()
 	return 1
@@ -320,17 +305,13 @@ void repl_echo(int value, int type):
 		return;
 	int pointers = type_get_pointer_level(type)
 	if ((pointers == 1) & (strcmp(type_get_name(type), c"char") == 0)):
-		if (value == 0):
-			println(c"(null)")
-		else:
-			println(str_from_cstr(cast(char*, value)))
+		if (value == 0): println(c"(null)")
+		else: println(str_from_cstr(cast(char*, value)))
 		return;
 	if (type_num_args(type) > 0):
 		char* rendered = repl_echo_json(type, value)
-		if (rendered != 0):
-			println(rendered)
-		else:
-			println(hex(value))
+		if (rendered != 0): println(rendered)
+		else: println(hex(value))
 		return;
 	if ((pointers > 0) || (type == 4)):
 		println(hex(value))
@@ -347,8 +328,7 @@ void repl_echo(int value, int type):
 # followed by whitespace or the end of the string, so ":typewriter" does
 # not match ":type".
 int repl_command_is(char* entry, char* cmd):
-	if (starts_with(entry, cmd) == 0):
-		return 0
+	if (starts_with(entry, cmd) == 0): return 0
 	char c = entry[strlen(cmd)]
 	return (c == 0) | (c == ' ') | (c == 9)
 
@@ -359,8 +339,7 @@ int repl_command_is(char* entry, char* cmd):
 # repl_entry is next cleared.
 char* repl_command_arg(char* entry, char* cmd):
 	char* rest = entry + strlen(cmd)
-	while ((rest[0] == ' ') || (rest[0] == 9)):
-		rest = rest + 1
+	while ((rest[0] == ' ') || (rest[0] == 9)): rest = rest + 1
 	return rest
 
 
@@ -376,28 +355,20 @@ void repl_rtrim(char* s):
 # path's "eax already holds the value" convention) collapse to their
 # ordinary source name, and one '*' prints per pointer level.
 char* repl_type_name(int type):
-	if (type == -1):
-		return strclone(c"(no value)")
-	if (type == 0):
-		return strclone(c"void")
+	if (type == -1): return strclone(c"(no value)")
+	if (type == 0): return strclone(c"void")
 	if (type == 3): /* "constant": an untyped literal/address/call result */
 		return strclone(c"int")
-	if (type == float32_value_type):
-		return strclone(c"float32")
-	if (type == float64_value_type):
-		return strclone(c"float64")
-	if (type == var_value_type):
-		return strclone(c"var")
-	if (type_is_string(type)):
-		return strclone(c"string")
+	if (type == float32_value_type): return strclone(c"float32")
+	if (type == float64_value_type): return strclone(c"float64")
+	if (type == var_value_type): return strclone(c"var")
+	if (type_is_string(type)): return strclone(c"string")
 	char* base = strclone(type_get_name(type))
 	int pointers = type_get_pointer_level(type)
-	int i = 0
-	while (i < pointers):
+	for i in range(pointers):
 		char* starred = strjoin(base, c"*")
 		free(base)
 		base = starred
-		i = i + 1
 	return base
 
 
@@ -447,8 +418,7 @@ void repl_cmd_load(char* path):
 	save_word(argv_holder, cast(int, path))
 	int ran = repl_load_file(path, 1, 1, cast(int, argv_holder))
 	free(argv_holder)
-	if (ran == 0):
-		println(c"(loaded file defines no main; its definitions are available)")
+	if (ran == 0): println(c"(loaded file defines no main; its definitions are available)")
 
 
 # :save file -- concatenates every entry staged so far (repl/core.w keeps
@@ -498,16 +468,12 @@ void repl_handle_export(char* arg):
 		println(c"usage: !export NAME=VALUE")
 		return;
 	int i = 0
-	while ((arg[i] != 0) && (arg[i] != '=')):
-		i = i + 1
+	while ((arg[i] != 0) && (arg[i] != '=')): i = i + 1
 	if (arg[i] != '='):
 		println(c"usage: !export NAME=VALUE")
 		return;
 	char* name = malloc(i + 1)
-	int k = 0
-	while (k < i):
-		name[k] = arg[k]
-		k = k + 1
+	for k in range(i): name[k] = arg[k]
 	name[i] = 0
 	setenv(name, arg + i + 1)
 	free(name)
@@ -526,8 +492,7 @@ void repl_do_cd(char* arg):
 		if (path == 0):
 			println(c"cd: HOME not set")
 			return;
-	if (cd(path) != 0):
-		printf1(c"cd: %s: no such file or directory\n", cast(int, path))
+	if (cd(path) != 0): printf1(c"cd: %s: no such file or directory\n", cast(int, path))
 
 
 # rest is the text after the leading '!', not yet trimmed. A bare '!'
@@ -543,8 +508,7 @@ void repl_do_cd(char* arg):
 void repl_handle_bang(char* rest):
 	char* cmd = repl_command_arg(rest, c"")
 	repl_rtrim(cmd)
-	if (cmd[0] == 0):
-		return;
+	if (cmd[0] == 0): return;
 	if (repl_command_is(cmd, c"cd")):
 		repl_do_cd(repl_command_arg(cmd, c"cd"))
 		return;
@@ -571,8 +535,7 @@ void repl_cmd_sh():
 			repl_eval(c"import lib.shell_commands")
 			repl_shell_commands_imported = 1
 		println(c"shell mode on (:sh to leave, ! runs one line of W)")
-	else:
-		println(c"shell mode off")
+	else: println(c"shell mode off")
 
 
 # ---------------------------------------------------------------------------
@@ -590,13 +553,11 @@ void repl_cmd_sh():
 # trip), and duplicating that one case here is simpler than reworking
 # repl_echo, which repl_test pins closely, to serve two callers.
 char* repl_format_echo(int value, int type):
-	if (type <= 0):
-		return 0
+	if (type <= 0): return 0
 	if (type == float32_value_type):
 		float* p = cast(float*, &value)
 		return ftoa(*p)
-	if ((word_size == 8) && (type == float64_value_type)):
-		return repl_float64_to_string(value)
+	if ((word_size == 8) && (type == float64_value_type)): return repl_float64_to_string(value)
 	if (type_is_string(type)):
 		string_builder* b = string_new()
 		string_append_bytes(b, cast(char*, load_word(cast(char*, value))), load_word(value + word_size))
@@ -610,16 +571,14 @@ char* repl_format_echo(int value, int type):
 		return s
 	int pointers = type_get_pointer_level(type)
 	if ((pointers == 1) & (strcmp(type_get_name(type), c"char") == 0)):
-		if (value == 0):
-			return strclone(c"(null)")
+		if (value == 0): return strclone(c"(null)")
 		return strclone(cast(char*, value))
 	if (type_num_args(type) > 0):
 		char* rendered = repl_echo_json(type, value)
 		if (rendered != 0):
 			return rendered
 		return hex(value)
-	if ((pointers > 0) || (type == 4)):
-		return hex(value)
+	if ((pointers > 0) || (type == 4)): return hex(value)
 	return itoa(value)
 
 
@@ -694,8 +653,7 @@ int repl_eval_json(char* entry_text):
 		dup2(saved_stdout, 1)
 		output = repl_json_read_capture(cap_path)
 		unlink(cap_path)
-	if (have_saved):
-		close(saved_stdout)
+	if (have_saved): close(saved_stdout)
 	free(cap_path)
 
 	json_value* rec = json_object()
@@ -707,14 +665,10 @@ int repl_eval_json(char* entry_text):
 		json_object_set(rec, c"echo", json_string(repl_json_echo_captured))
 		free(repl_json_echo_captured)
 		repl_json_echo_captured = 0
-	else:
-		json_object_set(rec, c"echo", json_null())
-	if (r.status == 1):
-		json_object_set(rec, c"error", json_null())
-	else if (r.status == 2):
-		json_object_set(rec, c"error", json_string(c"runtime fault"))
-	else:
-		json_object_set(rec, c"error", json_string(c"compile error"))
+	else: json_object_set(rec, c"echo", json_null())
+	if (r.status == 1): json_object_set(rec, c"error", json_null())
+	else if (r.status == 2): json_object_set(rec, c"error", json_string(c"runtime fault"))
+	else: json_object_set(rec, c"error", json_string(c"compile error"))
 	char* line = json_stringify(rec)
 	json_free(rec)
 	println(line)
@@ -730,8 +684,7 @@ int repl_eval_json(char* entry_text):
 # quiet successful command; anything else prints "[exit N]" to stderr,
 # so stdout keeps only the command's own output.
 void repl_shell_report_status(int status):
-	if (status == 0):
-		return;
+	if (status == 0): return;
 	char* n = itoa(status)
 	print_error(c"[exit ")
 	print_error(n)
@@ -773,8 +726,7 @@ int repl_shell_arg_kind(int type):
 	if (type_is_char_pointer(type)):
 		return shell_arg_string
 	int t = type_canonical(type)
-	if ((t < 0) || (type_get_pointer_level(t) != 0)):
-		return -1
+	if ((t < 0) || (type_get_pointer_level(t) != 0)): return -1
 	char* name = type_get_name(t)
 	if (strcmp(name, c"bool") == 0):
 		return shell_arg_bool
@@ -796,8 +748,7 @@ char* repl_shell_session_call(int t, list[char*] words):
 	int num_args = sym_num_args(t)
 	int variadic_at = sym_w_variadic_fixed_args(t)
 	int fixed = num_args
-	if (variadic_at >= 0):
-		fixed = variadic_at
+	if (variadic_at >= 0): fixed = variadic_at
 	list[int] kinds = new list[int]
 	int required = 0
 	int variadic_kind = -1
@@ -805,43 +756,32 @@ char* repl_shell_session_call(int t, list[char*] words):
 	int i = 0
 	while (usable && (i < num_args)):
 		int param = sym_param_type(t, i)
-		if (i == fixed):
-			param = type_get_element_type(param)
+		if (i == fixed): param = type_get_element_type(param)
 		int kind = -1
-		if (param >= 0):
-			kind = repl_shell_arg_kind(param)
-		if (kind < 0):
-			usable = 0
-		else if (i == fixed):
-			variadic_kind = kind
+		if (param >= 0): kind = repl_shell_arg_kind(param)
+		if (kind < 0): usable = 0
+		else if (i == fixed): variadic_kind = kind
 		else:
 			kinds.push(kind)
-			if (sym_param_has_default(t, i) == 0):
-				required = i + 1
+			if (sym_param_has_default(t, i) == 0): required = i + 1
 		i = i + 1
 	char* call = 0
-	if (usable):
-		call = shell_translate_session_call(words, kinds, required, variadic_kind)
+	if (usable): call = shell_translate_session_call(words, kinds, required, variadic_kind)
 	if (call == 0):
 		print_error(words[0])
-		if (usable):
-			print_error(c": arguments do not fit this session's ")
-		else:
-			print_error(c": shell mode cannot pass words to this session's ")
+		if (usable): print_error(c": arguments do not fit this session's ")
+		else: print_error(c": shell mode cannot pass words to this session's ")
 		print_error(words[0])
 		print_error(c"(")
 		i = 0
 		while (i < num_args):
-			if (i > 0):
-				print_error(c", ")
+			if (i > 0): print_error(c", ")
 			int param = sym_param_type(t, i)
-			if (i == fixed):
-				param = type_get_element_type(param)
+			if (i == fixed): param = type_get_element_type(param)
 			char* shown = symbols_type_display(param)
 			print_error(shown)
 			free(shown)
-			if (i == fixed):
-				print_error(c"...")
+			if (i == fixed): print_error(c"...")
 			i = i + 1
 		println2(c")")
 	return call
@@ -863,8 +803,7 @@ char* repl_shell_session_call(int t, list[char*] words):
 # (repl_shell_report_status). Defined after repl_eval_json, which it
 # calls under --json.
 void repl_dispatch_shell_line(char* line):
-	if (line[0] == 0):
-		return;
+	if (line[0] == 0): return;
 	if (repl_command_is(line, c"cd")):
 		repl_do_cd(repl_command_arg(line, c"cd"))
 		return;
@@ -874,8 +813,7 @@ void repl_dispatch_shell_line(char* line):
 	if (shell_translate_has_meta(line) == 0):
 		list[char*] words = shell_translate_tokenize(line)
 		int t = -1
-		if (words.length > 0):
-			t = repl_session_function(words[0])
+		if (words.length > 0): t = repl_session_function(words[0])
 		if (t >= 0):
 			char* call = repl_shell_session_call(t, words)
 			shell_translate_free_words(words)
@@ -907,16 +845,14 @@ list[char*] repl_collect_e_entries():
 		if (body != 0):
 			if ((body[0] == 'e') && ((body[1] == 0) || (body[1] == '='))):
 				char* value = 0
-				if (body[1] == '='):
-					value = body + 2
+				if (body[1] == '='): value = body + 2
 				else:
 					char* next = args_get(i + 1)
 					if (next != 0):
 						if (args_flag_body(next) == 0):
 							value = next
 							i = i + 1
-				if (value != 0):
-					entries.push(value)
+				if (value != 0): entries.push(value)
 		i = i + 1
 	return entries
 
@@ -933,16 +869,13 @@ void repl_run_e_mode(list[char*] entries, int json_mode):
 	int i = 0
 	while (i < entries.length):
 		if (json_mode):
-			if (repl_eval_json(entries[i]) == 0):
-				had_error = 1
+			if (repl_eval_json(entries[i]) == 0): had_error = 1
 		else:
 			repl_result r = repl_eval(entries[i])
-			if (r.status != 1):
-				had_error = 1
+			if (r.status != 1): had_error = 1
 		i = i + 1
 	repl_cleanup()
-	if (had_error):
-		exit(1)
+	if (had_error): exit(1)
 	exit(0)
 
 
@@ -993,8 +926,7 @@ int main(int argc, int argv):
 	dbg_disas_read_fn = cast(int, dbg_disas_read_local)
 	dbg_disas_symbols = 1
 	int trap_handler = cast(int, wdbg_trap_entry)
-	if (__word_size__ == 8):
-		trap_handler = cast(int, wdbg_trap)
+	if (__word_size__ == 8): trap_handler = cast(int, wdbg_trap)
 	repl_fault_install(5, trap_handler, 1073741824) /* SIGTRAP, SA_NODEFER */
 
 	# Optional target file: compile it into the same buffer and run its
@@ -1003,14 +935,12 @@ int main(int argc, int argv):
 	int i = 1
 	while (i < args_count()):
 		if (ends_with(args_get(i), c".w")):
-			if (target == 0):
-				target = args_get(i)
+			if (target == 0): target = args_get(i)
 		i = i + 1
 	if (target != 0):
 		int run_main = args_has_flag(c"no_main") == 0
 		if (repl_load_file(target, run_main, argc, argv) == 0):
-			if (run_main):
-				println(c"(loaded file defines no main; its definitions are available)")
+			if (run_main): println(c"(loaded file defines no main; its definitions are available)")
 
 	# :reset rolls back to this point: everything above (the preloaded
 	# stdlib and an optional startup file) stays; every entry typed at
@@ -1034,8 +964,7 @@ int main(int argc, int argv):
 	# routes the same hook mechanism into an NDJSON record instead of a
 	# plain println.
 	repl_echo_hook = cast(int, repl_echo)
-	if (repl_json_mode):
-		repl_echo_hook = cast(int, repl_json_echo_hook)
+	if (repl_json_mode): repl_echo_hook = cast(int, repl_json_echo_hook)
 
 	# Tab completion (issue #276 P2): lib/line_edit.w calls this hook with
 	# the identifier prefix before the cursor; repl_complete_names walks
@@ -1053,21 +982,16 @@ int main(int argc, int argv):
 		repl_run_e_mode(e_entries, repl_json_mode)
 		return 0 /* unreachable: repl_run_e_mode always exit()s */
 
-	if (repl_interactive):
-		println(c"w repl - :quit exits, :help for help")
-	else:
-		println2(c"w repl - :quit exits, :help for help")
+	if (repl_interactive): println(c"w repl - :quit exits, :help for help")
+	else: println2(c"w repl - :quit exits, :help for help")
 
-	if (repl_interactive):
-		line_edit_history_load(c"~/.w_history")
+	if (repl_interactive): line_edit_history_load(c"~/.w_history")
 	repl_line = string_new()
 	repl_entry = string_new()
 	while (1):
 		if (repl_read_entry() == 0):
-			if (repl_interactive):
-				println(c"")
-			else:
-				println2(c"")
+			if (repl_interactive): println(c"")
+			else: println2(c"")
 			repl_cleanup()
 			exit(0)
 		if (string_equals(repl_entry, c":quit")):
@@ -1092,8 +1016,7 @@ int main(int argc, int argv):
 					repl_eval(c"import lib.shell_commands")
 					repl_shell_commands_imported = 1
 				println(c"session reset to its startup state")
-			else:
-				println(c"nothing to reset (no startup checkpoint)")
+			else: println(c"nothing to reset (no startup checkpoint)")
 			continue
 		if (string_equals(repl_entry, c":sh")):
 			repl_cmd_sh()
@@ -1110,8 +1033,7 @@ int main(int argc, int argv):
 		if (repl_command_is(repl_entry.data, c":save")):
 			repl_cmd_save(repl_command_arg(repl_entry.data, c":save"))
 			continue
-		if (repl_entry.length == 0):
-			continue
+		if (repl_entry.length == 0): continue
 		if (repl_entry.data[0] == '!'):
 			# '!' always means "the other grammar, for exactly one line"
 			# (design doc Sec 4): in W mode it escapes to a shell command
@@ -1120,12 +1042,9 @@ int main(int argc, int argv):
 			# after which the loop returns to shell-mode dispatch below.
 			if (repl_shell_mode):
 				char* w_entry = repl_entry.data + 1
-				if (repl_json_mode):
-					repl_eval_json(w_entry)
-				else:
-					repl_eval(w_entry)
-			else:
-				repl_handle_bang(repl_entry.data + 1)
+				if (repl_json_mode): repl_eval_json(w_entry)
+				else: repl_eval(w_entry)
+			else: repl_handle_bang(repl_entry.data + 1)
 			continue
 		if (repl_shell_mode):
 			repl_dispatch_shell_line(repl_entry.data)
@@ -1134,8 +1053,6 @@ int main(int argc, int argv):
 			# The tokenizer cannot recover from an unterminated string
 			println(c"unterminated string literal, entry discarded")
 			continue
-		if (repl_json_mode):
-			repl_eval_json(repl_entry.data)
-		else:
-			repl_eval(repl_entry.data)
+		if (repl_json_mode): repl_eval_json(repl_entry.data)
+		else: repl_eval(repl_entry.data)
 	return 0

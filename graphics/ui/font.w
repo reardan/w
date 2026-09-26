@@ -25,49 +25,30 @@ kerning from the face's GPOS or kern table. Pure CPU code — the GL
 upload lives in graphics.ui.render.
 */
 import lib.lib
+import lib.utf8
 import lib.ttf
 import lib.rle
+import lib.mem
+import libs.standard.crypto.base64
 import graphics.ui.font_data
+import lib.bytes
 
 
 # Mask ids in atlas bake order.
-int ui_mask_white():
-	return 0
-
-
-int ui_mask_corner():
-	return 1
-
-
-int ui_mask_disc():
-	return 2
-
-
-int ui_mask_ring():
-	return 3
-
-
-int ui_mask_check():
-	return 4
-
-
-int ui_mask_chevron():
-	return 5
-
-
-int ui_mask_shadow():
-	return 6
+const int ui_mask_white = 0
+const int ui_mask_corner = 1
+const int ui_mask_disc = 2
+const int ui_mask_ring = 3
+const int ui_mask_check = 4
+const int ui_mask_chevron = 5
+const int ui_mask_shadow = 6
 
 
 # ui_render_mask mirrors but never rotates, so the 'v' chevron above
 # cannot supply the right-pointing form a collapsed tree node needs.
 # flip_x on this one gives the left-pointing form.
-int ui_mask_chevron_right():
-	return 7
-
-
-int ui_mask_cross():
-	return 8
+const int ui_mask_chevron_right = 7
+const int ui_mask_cross = 8
 
 
 # One glyph's (or mask's) atlas rect and pixel metrics. bearing_x is
@@ -89,8 +70,8 @@ struct ui_glyph:
 
 ui_glyph ui_font_decode(char* record):
 	ui_glyph g
-	g.x = (record[0] & 255) | ((record[1] & 255) << 8)
-	g.y = (record[2] & 255) | ((record[3] & 255) << 8)
+	g.x = load_le16(record)
+	g.y = load_le16(record + 2)
 	g.w = record[4] & 255
 	g.h = record[5] & 255
 	g.advance = record[6] & 255
@@ -111,25 +92,14 @@ enum ui_font_default_face:
 	UI_FACE_BOLD_ITALIC = 3
 
 
-int ui_font_max_faces():
-	return 32
-
-
-int ui_font_max_fallbacks():
-	return 8
+const int ui_font_max_faces = 32
+const int ui_font_max_fallbacks = 8
 
 
 # Strike ids share a 32-bit cache key with the codepoint (21 bits).
-int ui_font_max_strikes():
-	return 1000
-
-
-int ui_font_min_ppem():
-	return 4
-
-
-int ui_font_max_ppem():
-	return 200
+const int ui_font_max_strikes = 1000
+const int ui_font_min_ppem = 4
+const int ui_font_max_ppem = 200
 
 
 # A face at one pixel size, with its line metrics in pixels (y-down
@@ -186,52 +156,13 @@ ui_font_state ui_font_st
 int ui_font_init();
 
 
-# Decode standard base64 text into out (which must hold length / 4 * 3
-# bytes). Returns the bytes written.
-int ui_font_base64_value(int c):
-	if ((c >= 'A') && (c <= 'Z')):
-		return c - 'A'
-	if ((c >= 'a') && (c <= 'z')):
-		return c - 'a' + 26
-	if ((c >= '0') && (c <= '9')):
-		return c - '0' + 52
-	if (c == '+'):
-		return 62
-	if (c == '/'):
-		return 63
-	return 0 - 1
-
-
-int ui_font_base64_decode(char* text, int length, char* out):
-	int n = 0
-	int i = 0
-	while (i + 3 < length):
-		int a = ui_font_base64_value(text[i] & 255)
-		int b = ui_font_base64_value(text[i + 1] & 255)
-		int c = ui_font_base64_value(text[i + 2] & 255)
-		int d = ui_font_base64_value(text[i + 3] & 255)
-		out[n] = (a << 2) | (b >> 4)
-		n = n + 1
-		if (c >= 0):
-			out[n] = ((b & 15) << 4) | (c >> 2)
-			n = n + 1
-		if (d >= 0):
-			out[n] = ((c & 3) << 6) | d
-			n = n + 1
-		i = i + 4
-	return n
-
-
 # The ttf_font of a face, decoding an embedded default on first use.
 # Returns 0 for an unknown face.
 ttf_font* ui_font_face_font(int face):
 	ui_font_init()
-	if ((face < 0) || (face >= ui_font_st.face_count)):
-		return 0
-	if (ui_font_st.fonts[face] != 0):
-		return ui_font_st.fonts[face]
-	if (face >= ui_font_face_count()):
-		return 0
+	if ((face < 0) || (face >= ui_font_st.face_count)): return 0
+	if (ui_font_st.fonts[face] != 0): return ui_font_st.fonts[face]
+	if (face >= ui_font_face_count()): return 0
 	int size = ui_font_face_size(face)
 	char* data = malloc(size + 4)
 	int chars = ui_font_face_chunk_chars()
@@ -239,7 +170,11 @@ ttf_font* ui_font_face_font(int face):
 	int k = 0
 	while (k < ui_font_face_chunk_count(face)):
 		char* chunk = ui_font_face_chunk(face, k)
-		n = n + ui_font_base64_decode(chunk, strlen(chunk), &data[n])
+		int m = 0
+		char* part = base64_decode(chunk, strlen(chunk), &m)
+		if (n + m <= size): mem_copy(data + n, part, m)
+		n = n + m
+		free(part)
 		k = k + 1
 	ttf_font* font = cast(ttf_font*, malloc(sizeof(ttf_font)))
 	if ((n != size) || (ttf_load_bytes(font, data, size) == 0)):
@@ -253,7 +188,7 @@ ttf_font* ui_font_face_font(int face):
 # the face table is full.
 int ui_font_face_add(ttf_font* font):
 	ui_font_init()
-	if (ui_font_st.face_count >= ui_font_max_faces()):
+	if (ui_font_st.face_count >= ui_font_max_faces):
 		print_error(c"graphics.ui.font: face limit reached\n")
 		return 0 - 1
 	int face = ui_font_st.face_count
@@ -281,10 +216,7 @@ int ui_font_face_load_ttf(char* path):
 # bytes are copied, so data is only read during the call.
 int ui_font_face_load_bytes(char* data, int size):
 	char* copy = malloc(size + 1)
-	int i = 0
-	while (i < size):
-		copy[i] = data[i]
-		i = i + 1
+	mem_copy(copy, data, size)
 	ttf_font* font = cast(ttf_font*, malloc(sizeof(ttf_font)))
 	if (ttf_load_bytes(font, copy, size) == 0):
 		free(copy)
@@ -302,14 +234,12 @@ int ui_font_face_load_bytes(char* data, int size):
 # Pass the face itself to mark an italic face (no further lean).
 void ui_font_face_set_italic(int face, int italic_face):
 	ui_font_init()
-	if ((face < 0) || (face >= ui_font_st.face_count)):
-		return
+	if ((face < 0) || (face >= ui_font_st.face_count)): return
 	ui_font_st.italic_of[face] = italic_face
 	# Existing strikes of face re-resolve their companion.
 	int i = 0
 	while (i < ui_font_st.strike_count):
-		if (ui_font_st.strikes[i].face == face):
-			ui_font_st.strikes[i].italic = 0 - 1
+		if (ui_font_st.strikes[i].face == face): ui_font_st.strikes[i].italic = 0 - 1
 		i = i + 1
 
 
@@ -318,7 +248,7 @@ void ui_font_face_set_italic(int face, int italic_face):
 # default Regular is always tried last.
 void ui_font_add_fallback(int face):
 	ui_font_init()
-	if ((face < 0) || (face >= ui_font_st.face_count) || (ui_font_st.fallback_count >= ui_font_max_fallbacks())):
+	if ((face < 0) || (face >= ui_font_st.face_count) || (ui_font_st.fallback_count >= ui_font_max_fallbacks)):
 		return
 	ui_font_st.fallbacks[ui_font_st.fallback_count] = face
 	ui_font_st.fallback_count = ui_font_st.fallback_count + 1
@@ -343,8 +273,7 @@ int ui_font_atlas_rows():
 # frame shares a denominator even when the atlas grows mid-frame (the
 # renderer rescales the batch when it syncs).
 int ui_font_uv_rows():
-	if (ui_font_st.uv_rows == 0):
-		ui_font_st.uv_rows = ui_font_atlas_rows()
+	if (ui_font_st.uv_rows == 0): ui_font_st.uv_rows = ui_font_atlas_rows()
 	return ui_font_st.uv_rows
 
 
@@ -358,17 +287,13 @@ int ui_font_uv_sync():
 # Make room for rows runtime rows (zero-filled). Returns 1, or 0 when
 # the allocation fails.
 int ui_font_rows_reserve(int rows):
-	if (rows <= ui_font_st.cap_rows):
-		return 1
+	if (rows <= ui_font_st.cap_rows): return 1
 	int next = ui_font_st.cap_rows * 2
-	if (next < 256):
-		next = 256
-	while (next < rows):
-		next = next * 2
+	if (next < 256): next = 256
+	while (next < rows): next = next * 2
 	int w = ui_font_atlas_w()
 	char* grown = malloc(next * w)
-	if (grown == 0):
-		return 0
+	if (grown == 0): return 0
 	int i = 0
 	while (i < ui_font_st.cap_rows * w):
 		grown[i] = ui_font_st.pixels[i]
@@ -376,8 +301,7 @@ int ui_font_rows_reserve(int rows):
 	while (i < next * w):
 		grown[i] = 0
 		i = i + 1
-	if (ui_font_st.pixels != 0):
-		free(ui_font_st.pixels)
+	if (ui_font_st.pixels != 0): free(ui_font_st.pixels)
 	ui_font_st.pixels = grown
 	ui_font_st.cap_rows = next
 	return 1
@@ -389,30 +313,24 @@ int ui_font_rows_reserve(int rows):
 # memory).
 int ui_font_rows_place(char* bitmap, int w, int h, int* x, int* y):
 	int atlas_w = ui_font_atlas_w()
-	if (w + 2 > atlas_w):
-		return 0
+	if (w + 2 > atlas_w): return 0
 	if (ui_font_st.shelf_x + w + 1 > atlas_w):
 		ui_font_st.shelf_y = ui_font_st.shelf_y + ui_font_st.shelf_h
 		ui_font_st.shelf_x = 1
 		ui_font_st.shelf_h = 0
-	if (h + 1 > ui_font_st.shelf_h):
-		ui_font_st.shelf_h = h + 1
-	if (ui_font_rows_reserve(ui_font_st.shelf_y + ui_font_st.shelf_h + 1) == 0):
-		return 0
+	if (h + 1 > ui_font_st.shelf_h): ui_font_st.shelf_h = h + 1
+	if (ui_font_rows_reserve(ui_font_st.shelf_y + ui_font_st.shelf_h + 1) == 0): return 0
 	int top = ui_font_st.shelf_y + 1
-	int row = 0
-	while (row < h):
+	for row in range(h):
 		int col = 0
 		char* dst = &ui_font_st.pixels[(top + row) * atlas_w + ui_font_st.shelf_x]
 		while (col < w):
 			dst[col] = bitmap[row * w + col]
 			col = col + 1
-		row = row + 1
 	x[0] = ui_font_st.shelf_x
 	y[0] = ui_font_atlas_h() + top
 	ui_font_st.shelf_x = ui_font_st.shelf_x + w + 1
-	if (top + h + 1 > ui_font_st.rows):
-		ui_font_st.rows = top + h + 1
+	if (top + h + 1 > ui_font_st.rows): ui_font_st.rows = top + h + 1
 	return 1
 
 
@@ -422,7 +340,7 @@ int ui_font_rows_place(char* bitmap, int w, int h, int* x, int* y):
 # an unknown face or a size outside 4..200 (after printing why).
 int ui_font_strike(int face, int ppem):
 	ui_font_init()
-	if ((ppem < ui_font_min_ppem()) || (ppem > ui_font_max_ppem())):
+	if ((ppem < ui_font_min_ppem) || (ppem > ui_font_max_ppem)):
 		print_error(c"graphics.ui.font: ppem out of range (4..200)\n")
 		return 0 - 1
 	ttf_font* font = ui_font_face_font(face)
@@ -434,7 +352,7 @@ int ui_font_strike(int face, int ppem):
 		if ((ui_font_st.strikes[i].face == face) && (ui_font_st.strikes[i].ppem == ppem)):
 			return i
 		i = i + 1
-	if (ui_font_st.strike_count >= ui_font_max_strikes()):
+	if (ui_font_st.strike_count >= ui_font_max_strikes):
 		print_error(c"graphics.ui.font: strike limit reached\n")
 		return 0 - 1
 	if (ui_font_st.strike_count >= ui_font_st.strike_cap):
@@ -459,12 +377,11 @@ int ui_font_strike(int face, int ppem):
 # Set up the default faces and the body/title strikes (0 and 1). Runs
 # once, on first use of anything here.
 int ui_font_init():
-	if (ui_font_st.ready):
-		return 1
+	if (ui_font_st.ready): return 1
 	ui_font_st.ready = 1
 	ui_font_st.face_count = ui_font_face_count()
 	int i = 0
-	while (i < ui_font_max_faces()):
+	while (i < ui_font_max_faces):
 		ui_font_st.fonts[i] = 0
 		ui_font_st.italic_of[i] = 0 - 1
 		i = i + 1
@@ -482,10 +399,7 @@ int ui_font_init():
 	ui_font_st.table_cap = 512
 	ui_font_st.keys = cast(int*, malloc(ui_font_st.table_cap * __word_size__))
 	ui_font_st.slots = cast(int*, malloc(ui_font_st.table_cap * __word_size__))
-	i = 0
-	while (i < ui_font_st.table_cap):
-		ui_font_st.keys[i] = 0 - 1
-		i = i + 1
+	mem_fill(ui_font_st.keys, 0 - 1, ui_font_st.table_cap)
 	ui_font_st.shelf_x = 1
 	ui_font_st.shelf_y = 0
 	ui_font_st.shelf_h = 0
@@ -495,8 +409,7 @@ int ui_font_init():
 
 
 # The default strikes: body text and titles.
-int ui_font_strike_count():
-	return 2
+const int ui_font_strike_count = 2
 
 
 int ui_font_strike_total():
@@ -507,8 +420,7 @@ int ui_font_strike_total():
 # A valid strike id (unknown ids read as the body strike).
 int ui_font_strike_valid(int strike):
 	ui_font_init()
-	if ((strike < 0) || (strike >= ui_font_st.strike_count)):
-		return 0
+	if ((strike < 0) || (strike >= ui_font_st.strike_count)): return 0
 	return strike
 
 
@@ -537,17 +449,14 @@ int ui_font_strike_italic(int strike):
 	if (s.italic == 0 - 1):
 		int face = ui_font_st.italic_of[s.face]
 		int found = 0 - 2
-		if (face == s.face):
-			found = strike
+		if (face == s.face): found = strike
 		else if (face >= 0):
 			found = ui_font_strike(face, s.ppem)
-			if (found < 0):
-				found = 0 - 2
+			if (found < 0): found = 0 - 2
 		# ui_font_strike may have moved the array.
 		ui_font_st.strikes[strike].italic = found
 	int italic = ui_font_st.strikes[strike].italic
-	if (italic < 0):
-		return 0 - 1
+	if (italic < 0): return 0 - 1
 	return italic
 
 
@@ -555,10 +464,8 @@ int ui_font_strike_italic(int strike):
 # strike, 3 and up the title strike, and ui_font_scale_of's encoding
 # any strike at all.
 int ui_font_strike_from_scale(int scale):
-	if (scale >= 1000):
-		return ui_font_strike_valid(scale - 1000)
-	if (scale <= 2):
-		return 0
+	if (scale >= 1000): return ui_font_strike_valid(scale - 1000)
+	if (scale <= 2): return 0
 	return 1
 
 
@@ -612,24 +519,22 @@ int ui_font_strikeout_thickness(int strike):
 # stays loaded: ui_font_strike_resized gives it at other sizes).
 # Returns the strike id, or -1 after printing why.
 int ui_font_load_ttf(char* path, int ppem):
-	if ((ppem < ui_font_min_ppem()) || (ppem > ui_font_max_ppem())):
+	if ((ppem < ui_font_min_ppem) || (ppem > ui_font_max_ppem)):
 		print_error(c"graphics.ui.font: ppem out of range (4..200)\n")
 		return 0 - 1
 	int face = ui_font_face_load_ttf(path)
-	if (face < 0):
-		return 0 - 1
+	if (face < 0): return 0 - 1
 	return ui_font_strike(face, ppem)
 
 
 # The same from font bytes in memory (data is only read during the
 # call).
 int ui_font_load_ttf_bytes(char* data, int size, int ppem):
-	if ((ppem < ui_font_min_ppem()) || (ppem > ui_font_max_ppem())):
+	if ((ppem < ui_font_min_ppem) || (ppem > ui_font_max_ppem)):
 		print_error(c"graphics.ui.font: ppem out of range (4..200)\n")
 		return 0 - 1
 	int face = ui_font_face_load_bytes(data, size)
-	if (face < 0):
-		return 0 - 1
+	if (face < 0): return 0 - 1
 	return ui_font_strike(face, ppem)
 
 
@@ -642,8 +547,7 @@ int ui_font_hash(int key, int mask):
 void ui_font_table_insert(int key, int slot):
 	int mask = ui_font_st.table_cap - 1
 	int h = ui_font_hash(key, mask)
-	while (ui_font_st.keys[h] != 0 - 1):
-		h = (h + 1) & mask
+	while (ui_font_st.keys[h] != 0 - 1): h = (h + 1) & mask
 	ui_font_st.keys[h] = key
 	ui_font_st.slots[h] = slot
 
@@ -656,15 +560,9 @@ void ui_font_table_grow():
 	ui_font_st.table_cap = old_cap * 2
 	ui_font_st.keys = cast(int*, malloc(ui_font_st.table_cap * __word_size__))
 	ui_font_st.slots = cast(int*, malloc(ui_font_st.table_cap * __word_size__))
-	int i = 0
-	while (i < ui_font_st.table_cap):
-		ui_font_st.keys[i] = 0 - 1
-		i = i + 1
-	i = 0
-	while (i < old_cap):
-		if (old_keys[i] != 0 - 1):
-			ui_font_table_insert(old_keys[i], old_slots[i])
-		i = i + 1
+	mem_fill(ui_font_st.keys, 0 - 1, ui_font_st.table_cap)
+	for i in range(old_cap):
+		if (old_keys[i] != 0 - 1): ui_font_table_insert(old_keys[i], old_slots[i])
 	free(cast(char*, old_keys))
 	free(cast(char*, old_slots))
 
@@ -746,14 +644,12 @@ ui_glyph ui_font_make_glyph(int strike, int cp):
 # The glyph for codepoint cp in strike, rasterized on first use.
 ui_glyph ui_font_glyph(int strike, int cp):
 	strike = ui_font_strike_valid(strike)
-	if ((cp < 0) || (cp > 1114111)):
-		cp = 65533
+	if ((cp < 0) || (cp > 1114111)): cp = 65533
 	int key = strike * 2097152 + cp
 	int mask = ui_font_st.table_cap - 1
 	int h = ui_font_hash(key, mask)
 	while (ui_font_st.keys[h] != 0 - 1):
-		if (ui_font_st.keys[h] == key):
-			return ui_font_st.glyphs[ui_font_st.slots[h]]
+		if (ui_font_st.keys[h] == key): return ui_font_st.glyphs[ui_font_st.slots[h]]
 		h = (h + 1) & mask
 	ui_glyph g = ui_font_make_glyph(strike, cp)
 	if (ui_font_st.glyph_count >= ui_font_st.glyph_cap):
@@ -763,8 +659,7 @@ ui_glyph ui_font_glyph(int strike, int cp):
 	int slot = ui_font_st.glyph_count
 	ui_font_st.glyphs[slot] = g
 	ui_font_st.glyph_count = slot + 1
-	if (ui_font_st.glyph_count * 2 > ui_font_st.table_cap):
-		ui_font_table_grow()
+	if (ui_font_st.glyph_count * 2 > ui_font_st.table_cap): ui_font_table_grow()
 	ui_font_table_insert(key, slot)
 	return g
 
@@ -777,8 +672,7 @@ int ui_font_kern(int strike, ui_glyph* left, ui_glyph* right):
 		return 0
 	ttf_font* font = ui_font_face_font(left.face)
 	int units = ttf_kern_units(font, left.gid, right.gid)
-	if (units == 0):
-		return 0
+	if (units == 0): return 0
 	return ttf_scale_round(font, ui_font_strike_ppem(strike), units)
 
 
@@ -789,8 +683,7 @@ ui_glyph ui_font_mask(int mask):
 # The baked mask rows, expanded once from the RLE chunk stream
 # (lib/rle.w).
 char* ui_font_baked_pixels():
-	if (ui_font_st.baked != 0):
-		return ui_font_st.baked
+	if (ui_font_st.baked != 0): return ui_font_st.baked
 	int rle_length = ui_font_rle_length()
 	char* stream = malloc(rle_length)
 	int chunk_size = ui_font_rle_chunk_size()
@@ -799,12 +692,8 @@ char* ui_font_baked_pixels():
 		char* chunk = ui_font_rle_chunk(i)
 		int base = i * chunk_size
 		int count = rle_length - base
-		if (count > chunk_size):
-			count = chunk_size
-		int j = 0
-		while (j < count):
-			stream[base + j] = chunk[j]
-			j = j + 1
+		if (count > chunk_size): count = chunk_size
+		for j in range(count): stream[base + j] = chunk[j]
 		i = i + 1
 	int total = ui_font_atlas_w() * ui_font_atlas_h()
 	char* pixels = rle_decode(stream, rle_length, malloc(total), total)
@@ -822,14 +711,8 @@ char* ui_font_build_atlas():
 	int total = ui_font_atlas_w() * ui_font_atlas_h()
 	int extra = ui_font_atlas_w() * ui_font_st.cap_rows
 	char* pixels = malloc(total + extra + 1)
-	int i = 0
-	while (i < total):
-		pixels[i] = baked[i]
-		i = i + 1
-	int e = 0
-	while (e < extra):
-		pixels[total + e] = ui_font_st.pixels[e]
-		e = e + 1
+	mem_copy(pixels, baked, total)
+	for e in range(extra): pixels[total + e] = ui_font_st.pixels[e]
 	return pixels
 
 
@@ -840,84 +723,34 @@ char* ui_font_build_atlas():
 # and surrogates read as U+FFFD and consume one byte, so every byte
 # offset still reaches the terminator.
 int ui_utf8_next(char* s, int i, int* cp):
-	int c = s[i] & 255
-	if (c < 128):
-		cp[0] = c
-		return i + 1
-	int need = 0
-	int value = 0
-	int min = 0
-	if ((c >= 194) && (c <= 223)):
-		need = 1
-		value = c & 31
-		min = 128
-	else if ((c >= 224) && (c <= 239)):
-		need = 2
-		value = c & 15
-		min = 2048
-	else if ((c >= 240) && (c <= 244)):
-		need = 3
-		value = c & 7
-		min = 65536
-	else:
+	int n = utf8_scan(s + i, 4, cp)
+	if (n == 0):
 		cp[0] = 65533
 		return i + 1
-	int j = 1
-	while (j <= need):
-		int d = s[i + j] & 255
-		if ((d < 128) || (d > 191)):
-			cp[0] = 65533
-			return i + 1
-		value = (value << 6) | (d & 63)
-		j = j + 1
-	if ((value < min) || (value > 1114111) || ((value >= 55296) && (value <= 57343))):
-		cp[0] = 65533
-		return i + 1
-	cp[0] = value
-	return i + need + 1
+	return i + n
 
 
 # Encode cp as UTF-8 into out (room for 4 bytes). Returns the byte
 # count; cp outside Unicode or a surrogate encodes U+FFFD.
 int ui_utf8_encode(char* out, int cp):
-	if ((cp < 0) || (cp > 1114111) || ((cp >= 55296) && (cp <= 57343))):
-		cp = 65533
-	if (cp < 128):
-		out[0] = cp
-		return 1
-	if (cp < 2048):
-		out[0] = 192 | (cp >> 6)
-		out[1] = 128 | (cp & 63)
-		return 2
-	if (cp < 65536):
-		out[0] = 224 | (cp >> 12)
-		out[1] = 128 | ((cp >> 6) & 63)
-		out[2] = 128 | (cp & 63)
-		return 3
-	out[0] = 240 | (cp >> 18)
-	out[1] = 128 | ((cp >> 12) & 63)
-	out[2] = 128 | ((cp >> 6) & 63)
-	out[3] = 128 | (cp & 63)
-	return 4
+	if ((cp < 0) || (cp > 1114111) || ((cp >= 55296) && (cp <= 57343))): cp = 65533
+	return utf8_encode(out, cp)
 
 
 # A typed codepoint a text field should insert: printable ASCII or any
 # non-control, non-surrogate codepoint past Latin-1's C1 block.
 int ui_utf8_is_text(int cp):
-	if ((cp >= 32) && (cp <= 126)):
-		return 1
+	if ((cp >= 32) && (cp <= 126)): return 1
 	return (cp >= 160) && (cp <= 1114111) && ((cp < 55296) || (cp > 57343))
 
 
 # Byte index of the codepoint boundary before byte i (0 at the start):
 # the caret's step left over one character.
 int ui_utf8_prev(char* s, int i):
-	if (i <= 0):
-		return 0
+	if (i <= 0): return 0
 	int j = i - 1
 	# Back over continuation bytes, at most three.
-	while ((j > 0) && (i - j < 4) && ((s[j] & 192) == 128)):
-		j = j - 1
+	while ((j > 0) && (i - j < 4) && ((s[j] & 192) == 128)): j = j - 1
 	# Only take the long step when it decodes to exactly this span.
 	int cp = 0
 	if (ui_utf8_next(s, j, &cp) == i):

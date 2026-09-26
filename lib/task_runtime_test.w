@@ -8,6 +8,7 @@ import lib.thread
 import lib.task
 import lib.task_runtime
 import lib.container
+import lib.mem
 
 
 /* Tasks spread over every worker and the run ends when all are done. */
@@ -26,10 +27,7 @@ generator int rt_note_worker(rt_record* rec, int i):
 
 void test_runtime_spreads_tasks_over_workers():
 	task_runtime* rt = task_runtime_new(4)
-	rt_record* rec = new rt_record()
-	rec.rt = rt
-	rec.worker_of = cast(int*, malloc(40 * __word_size__))
-	rec.done = 0
+	rt_record* rec = new rt_record(rt, cast(int*, malloc(40 * __word_size__)), 0)
 	int i = 0
 	while (i < 40):
 		rec.worker_of[i] = -1
@@ -38,10 +36,7 @@ void test_runtime_spreads_tasks_over_workers():
 	assert_equal(0, task_runtime_run(rt))
 	assert_equal(40, rec.done)
 	int* seen = cast(int*, malloc(4 * __word_size__))
-	i = 0
-	while (i < 4):
-		seen[i] = 0
-		i = i + 1
+	mem_fill(seen, 0, 4)
 	i = 0
 	while (i < 40):
 		int w = rec.worker_of[i]
@@ -87,9 +82,7 @@ generator int rt_branch(rt_tree* tree, int depth):
 
 void test_nested_spawns_are_awaited():
 	task_runtime* rt = task_runtime_new(3)
-	rt_tree* tree = new rt_tree()
-	tree.rt = rt
-	tree.leaves = 0
+	rt_tree* tree = new rt_tree(rt, 0)
 	task_runtime_spawn(rt, rt_branch(tree, 5))
 	assert_equal(0, task_runtime_run(rt))
 	# 2^5 depth-0 leaves plus one group leaf per inner branch (2^5 - 1).
@@ -106,10 +99,7 @@ struct rt_sum:
 
 
 generator int rt_producer(task_xchan* ch, int start, int count):
-	int i = 0
-	while (i < count):
-		assert_equal(0, task_xchan_send(ch, start + i))
-		i = i + 1
+	for i in range(count): assert_equal(0, task_xchan_send(ch, start + i))
 
 
 generator int rt_consumer(task_xchan* ch, rt_sum* sum):
@@ -120,17 +110,14 @@ generator int rt_consumer(task_xchan* ch, rt_sum* sum):
 
 
 generator int rt_close_when(task_xchan* ch, rt_sum* sum, int want):
-	while (sum.received < want):
-		task_sleep_ms(1)
+	while (sum.received < want): task_sleep_ms(1)
 	task_xchan_close(ch)
 
 
 void test_xchan_moves_values_between_workers():
 	task_runtime* rt = task_runtime_new(4)
 	task_xchan* ch = task_xchan_new(8)
-	rt_sum* sum = new rt_sum()
-	sum.total = 0
-	sum.received = 0
+	rt_sum* sum = new rt_sum(0, 0)
 	task_runtime_spawn_on(rt, 0, rt_producer(ch, 1, 1000))
 	task_runtime_spawn_on(rt, 1, rt_producer(ch, 1001, 1000))
 	task_runtime_spawn_on(rt, 2, rt_consumer(ch, sum))
@@ -201,10 +188,7 @@ void test_spawn_blocking_keeps_the_loop_running():
 int rt_sum_range(void* arg):
 	int n = cast(int, arg)
 	int total = 0
-	int i = 1
-	while (i <= n):
-		total = total + i
-		i = i + 1
+	for i in range(1, n + 1): total = total + i
 	return total
 
 

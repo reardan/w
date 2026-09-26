@@ -16,6 +16,7 @@ Payload policy: keep T word-sized (int, pointers, char, bool). See
 docs/error_results.txt.
 */
 import lib.lib
+import lib.assert
 
 
 struct wresult[T]:
@@ -57,8 +58,7 @@ wresult[T]* result_new_error[T](int code):
 # Syscall payloads are always plain ints, so this stays monomorphic.
 wresult[int]* result_new_from_syscall(int value):
 	# Linux reserves -4095..-1 (MAX_ERRNO) for syscall errors.
-	if ((value < 0) && (value > -4096)):
-		return result_new_error[int](value)
+	if ((value < 0) && (value > -4096)): return result_new_error[int](value)
 	return result_new_ok[int](value)
 
 
@@ -79,8 +79,7 @@ int result_code[T](wresult[T]* r):
 
 
 T result_unwrap_or[T](wresult[T]* r, T fallback):
-	if (result_is_ok[T](r)):
-		return r.value
+	if (result_is_ok[T](r)): return r.value
 	return fallback
 
 
@@ -90,5 +89,15 @@ void result_free[T](wresult[T]* r):
 
 T result_take_or[T](wresult[T]* r, T fallback):
 	T value = result_unwrap_or[T](r, fallback)
+	result_free[T](r)
+	return value
+
+
+# The payload of a result that must be ok (asserting so), freeing r --
+# the unwrap tests and tools use when an error is a bug, not a case to
+# handle.
+T result_expect[T](wresult[T]* r):
+	assert1(result_is_ok[T](r))
+	T value = r.value
 	result_free[T](r)
 	return value
