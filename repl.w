@@ -906,6 +906,7 @@ void repl_print_help():
 	println(c"Ctrl-R is an incremental reverse history search; a terminal's")
 	println(c"bracketed paste is inserted as one atomic block")
 	println(c"flags: -e entry evaluates one entry and exits (repeatable);")
+	println(c"--ast-expressions enables experimental grouped integer AST compilation;")
 	println(c"--json emits one JSON object per entry on stdout instead of the")
 	println(c"plain echo; --quiet routes the banner and prompts to stderr like")
 	println(c"a piped session even when stdin is a tty")
@@ -913,6 +914,7 @@ void repl_print_help():
 
 int main(int argc, int argv):
 	args_init(argc, argv)
+	ast_expressions_mode = args_has_bool_flag(c"ast-expressions")
 	repl_init()
 
 	# 'debugger' statements trap into wdbg's command loop instead of

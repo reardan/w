@@ -489,6 +489,13 @@ and `docs/projects/parser_generator.md` for the record.
   sensitive and never joins those lines, so the mismatch only
   surfaces as a `parser_generator_w_test` failure on the new test
   file, one gate late.
+- **Parenthesized arithmetic followed by a comparison in an `if` can
+  fail the PG gate.** Observed 2026-10-03 in the new AST differential
+  fixture: `if (120 / 6 / 2) != 10: return 3` compiles with `wv2` but
+  `parser_generator_w_test` rejects the fixture as `expected top_item,
+  found if`. Wrapping the whole condition, `if ((120 / 6 / 2) != 10):`,
+  passes both. Review `paren_expression_opt`'s early parenthesized
+  alternative and add a regression for binary tails after that group.
 
 ## Skills / rules upkeep
 
@@ -527,6 +534,13 @@ diff's worth of files is exactly the ergonomic win `check --json`
 exists for.
 
 ## Display-dependent gates are runnable headlessly (2026-08-09, #441 round 1)
+
+2026-10-03: a default-parallel `wbuild tests` run intermittently failed
+`graphics_ui_smoke_test` with both button/background red channels reading
+zero; the isolated retry passed without source changes. Investigate window
+readiness or interference between concurrent display tests, and consider
+serializing their execution. This was observed during the AST expression
+work with the experimental compiler option off.
 
 `graphics_ui_smoke_test` and `graphics_gl_smoke_test` SKIP with exit 0
 when no display is reachable, which is the right default but means a

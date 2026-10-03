@@ -24,8 +24,10 @@ import compiler.bignum
 import grammar.float_literal
 import grammar.string_literal
 import grammar.template_string
+import compiler.expression_ast
 import grammar.primary_expr
 import grammar.binary_op
+import code_generator.expression_ast
 import grammar.postfix_expr
 import grammar.unary_expression
 import grammar.array_field_init
@@ -62,6 +64,7 @@ import grammar.kernel_decl
 import grammar.protobuf_builtin
 import grammar.gpu_for
 import grammar.program
+import grammar.ast_expression
 
 # no idea why this is necessary:
 int grammar_no_reason_temp_var

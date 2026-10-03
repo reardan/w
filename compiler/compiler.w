@@ -566,6 +566,9 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--strict") == 0):
 		if (apply): strict_mode = 1
 		return 1
+	if (strcmp(arg, c"--ast-expressions") == 0):
+		if (apply): ast_expressions_mode = 1
+		return 1
 	if (strcmp(arg, c"--quiet") == 0):
 		if (apply): quiet_mode = 1
 		return 1
@@ -604,6 +607,7 @@ void help_shared_options():
 	println(c"  --bounds=on|off|trap  array bounds checks: on (default), off, or trap")
 	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (default: ret)")
 	println(c"  --strict              treat warnings as errors and write no output")
+	println(c"  --ast-expressions     experimental AST for grouped integer arithmetic")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
@@ -787,6 +791,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	bounds_mode = 1
 	strict_mode = 0
 	warning_count = 0
+	ast_expressions_mode = 0
+	ast_expressions_emitted = 0
 	# check/deps/symbols discard the output, so a library module without
 	# a _main is fine to analyze: the backend finishers skip the
 	# entry-call patch instead of erroring (code_generator/code_emitter.w)
@@ -1048,6 +1054,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# deps_main, symbols_main, defhash_main), so one call here covers
 	# them all.
 	if (stats_mode): sym_stats_dump()
+	if (stats_mode && ast_expressions_mode):
+		print_error(c"AST expressions: ")
+		print_error(itoa(ast_expressions_emitted))
+		print_error(c"\n")
 
 	return 0
 

@@ -343,13 +343,71 @@ or promising incremental-build speedups yet.** First profile and reduce
 whole-program linking/semantic/emission costs, and establish broader language,
 REPL and debugger parity. Cached parsing alone does not solve incremental
 compilation. The maintainer risk decision required by #489 remains separate
-from this experimental result; no production migration is made here.
+from this experimental result. The opt-in production experiment below does
+not replace the streaming compiler.
 
-## Next task
+## Task 5: first production AST expression path
 
-Task 5 is the staged production AST migration after that risk decision: retain
-seed compatibility and `verify`, start with one expression rule behind an
-opt-in path, and require differential compiler/REPL/debugger tests before each
-expansion. Pointer/aggregate-return/generic and other unsupported language
-coverage also remains work. This leaf experiment does not itself unblock a
-wholesale replacement or change GitHub issue state.
+The production compiler now has an experimental `--ast-expressions` option.
+It builds a temporary semantic tree for **parenthesized, single-line integer
+arithmetic**: decimal/hex/binary literals, unary `+`/`-`, nested parentheses,
+and binary `+`, `-`, `*`, `/`, `%` with the existing precedence and associativity.
+It is off by default. Like `--strict`, the compiler option applies to inputs
+that follow it; place it before the source path.
+
+```sh
+bin/wv2 --ast-expressions --stats program.w -o bin/program
+bin/wv2 check --json --ast-expressions program.w
+bin/repl --ast-expressions
+bin/wdbg program.w --ast-expressions
+```
+
+`--stats` includes `AST expressions: N` to establish that the experimental
+path was actually used. The REPL option applies to startup compilation and
+subsequent entries; wdbg uses it for the debuggee, expression evaluation and
+attach-mode source reconstruction. Other syntax continues through the streaming
+grammar, including identifiers, calls, floats, bitwise/logical operations,
+comments and multiline groups. An unsupported outer group may still contain
+supported inner groups. Pending lvalue/call/statement state also forces fallback.
+
+`compiler/expression_ast.w` owns a stack arena of 128 nodes with source byte
+offsets. `grammar/ast_expression.w` first inspects the tokenizer's existing
+buffer without I/O or state changes. Only a closed group whose bytes cannot
+trigger lexer diagnostics is probed. The shared tokenizer builds the AST;
+the complete changed tokenizer state, including its serial counter, is then
+restored. A successful parse replays the tokens for the existing integer
+decoding and diagnostics before `code_generator/expression_ast.w` walks the
+tree through the production backend dispatch. No executable code is emitted
+during the AST parse. The temporary tokenizer snapshot is freed before the
+diagnostic pass, and the arena unwinds with the stack on REPL error recovery.
+
+The probe is bounded to 2048 bytes, 128 nodes, 96 recursive levels and the
+current tokenizer buffer window (including one closing-token lookahead byte).
+Exceeding any bound falls back to the original grammar and its nesting guard;
+these are not new language limits. Literal decoding retains the existing
+32-bit literal ceiling/sign extension, while arithmetic uses the target word
+size. The AST adds no independent constant folder or machine-code encoder.
+
+`./wbuild ast_expression_test ast_expression_verify` checks:
+
+- Byte-identical legacy/AST images for x86, x64, ARM64 ELF, ARM64 Darwin,
+  win64 and wasm; native x86/x64 execution and both compiler host widths.
+- Matching JSON/lint diagnostics, literal limits, unsupported/malformed
+  input, missing final newlines, bounded fallback and excessive nesting;
+  matching symbols, dependencies and definition hashes.
+- REPL evaluation, reset and error recovery, plus debugger locals, source
+  locations, expression evaluation and recovery on both host widths.
+- Byte-identical compiler self-hosts with the option on/off, and repeated
+  AST-enabled fixpoints on x86 and x64. The pinned seed remains unchanged.
+
+Cross-target image comparisons do not claim runtime testing on those target
+systems. This first island also makes no performance claim: it reparses its
+accepted tokens, and production parsing is not cached or incremental.
+
+The next migration step is to represent resolved identifiers and typed unary/
+binary operands, then widen expression coverage while retaining these
+differential gates. Source ownership across modules, declarations/statements,
+multi-error production analysis, REPL checkpoints and incremental emission
+remain later work. wc2's resident caches are still confined to the leaf tool.
+This experiment does not itself authorize a wholesale replacement or change
+GitHub issue state.

@@ -1,4 +1,5 @@
 int expression();
+int ast_expression_try(int group_offset);
 int struct_value_ctor_ready(); /* defined in unary_expression */
 int struct_value_ctor_expr(); /* defined in unary_expression */
 int protobuf_to_proto_expr(); /* defined in protobuf_builtin */
@@ -201,7 +202,8 @@ int primary_expr():
 		# for every operand-position recursion. No separate counter here:
 		# a second increment would double-count each paren level and halve
 		# the effective limit.
-		type = expression()
+		if (ast_expressions_mode && ast_expression_try(group_offset)): type = 3
+		else: type = expression()
 		if (peek(c")") == 0): error(c"No closing parenthesis")
 	}
 	# char literal e.g. 'c', '\n', '\x41' or 'é' (value = Unicode codepoint);
