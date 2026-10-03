@@ -14,12 +14,13 @@ and seed are untouched.
 | `lib/task_sync.w` | `task_mutex`, `task_semaphore`, `task_event` |
 | `lib/task_io.w` | `task_read`/`task_write_all`/`task_accept[_from]`/`task_connect_ipv4`, `task_process_run` |
 | `lib/io_wait.w` | `io_wait`/`io_poll`: how protocol libraries park the calling task without importing the scheduler |
-| `lib/task_runtime.w` | thread-per-core runtime, `task_xchan`, `task_spawn_blocking` (Linux x86/x64) |
+| `lib/task_runtime.w` | thread-per-core runtime, `task_xchan`, `task_spawn_blocking`, `task_remote_call` (Linux x86/x64) |
+| `lib/executor.w` | bounded blocking-work executor: reused workers, job/byte limits, admission deadlines, join-before-return completion (Linux x86/x64) |
 | `lib/event_loop.w` | epoll (Linux) or poll backend, heap-ordered timers |
 
 Tests: `task_test`, `task_chan_test`, `task_sync_test`, `task_io_test`,
-`task_runtime_test`, `event_loop_test`, `http_server_task_test` (each
-with a `_64` twin). Examples: `examples/web/task_echo_server.w`,
+`task_runtime_test`, `executor_test`, `event_loop_test`,
+`http_server_task_test` (each with a `_64` twin). Examples: `examples/web/task_echo_server.w`,
 `examples/web/task_bench.w`.
 
 ## Problem statement
@@ -387,7 +388,124 @@ Follow-ups: per-call crypto scratch (then multi-threaded HTTPS);
 work-stealing, if per-worker imbalance shows up in practice (tasks that
 read `thread_local`s would need a rule before they may migrate);
 kqueue for darwin; `task_runtime` on arm64 once threads and TLS land
-there; the `task` declaration marker (phase 5).
+there; the `task` declaration marker (phase 5); `task_xchan`'s
+cross-thread `task_remote_wake(task, seq)` can still reach a waiter
+that a timeout or cancellation already resumed (and, for a detached
+task, reclaimed) -- it should move to a `task_remote_call`-style
+completion like the executor's.
+
+## Bounded executor (October 2026)
+
+`task_spawn_blocking` starts a thread per call and has no limit, so a
+burst of slow disk work turns into a burst of threads and unbounded
+pinned memory. `lib/executor.w` (stage W3 of
+docs/projects/reliable_services.md) is the bounded alternative; the
+helper stays for one-off calls.
+
+```
+executor* sync_ex = executor_new(c"sync", 2, 8, 8388608)   # workers, queued jobs, bytes
+executor* maint = executor_new(c"maintenance", 1, 1, 67108864)
+
+generator int commit(wal* w, char* buf, int n):
+	sync_req req                       # may live on this task's stack
+	req.fd = w.fd
+	executor_result r
+	if (executor_run(sync_ex, do_fsync, &req, n, 200, &r) != IO_OK):
+		# EXEC_OVERLOADED / EXEC_CLOSED / EXEC_TOO_LARGE / IO_TIMED_OUT /
+		# IO_CANCELLED: do_fsync never ran -- shed or retry
+		...
+	# r.value is do_fsync's result; r.cancelled says this task was
+	# cancelled while the fsync was already running
+
+executor_post(maint, compact, job, job.bytes, 0)   # try-only, detached
+...
+executor_shutdown(sync_ex, EXEC_DRAIN)
+executor_free(sync_ex)
+```
+
+**Limits.** At most `max_workers` threads, reused until shutdown (one
+starts with the executor, the rest on demand). At most `max_workers +
+max_queued` jobs are admitted (running plus queued), and the declared
+byte costs of admitted jobs (whatever buffers each pins) stay within
+`max_bytes`; a cost above `max_bytes` alone is `EXEC_TOO_LARGE`.
+Separate executors are separate capacity classes: a compaction
+saturating the maintenance executor cannot delay an fsync on the sync
+executor (`test_capacity_classes`).
+
+**Admission.** `timeout_ms` 0 is try-submit (`EXEC_OVERLOADED` at
+once). Otherwise the submitter waits FIFO for capacity up to
+`timeout_ms` (-1: none) and its task deadline -- a task parks, a plain
+thread blocks on a condvar with a futex timeout -- and gets
+`IO_TIMED_OUT` or `IO_CANCELLED` if the wait ends first. Capacity is
+handed to the head waiter directly, and try-submits are refused while
+anyone waits, so small jobs cannot starve a large one (the cost is
+head-of-line blocking by bytes, which is the point of a byte budget).
+After `executor_close` every submission is `EXEC_CLOSED`. Statuses
+reuse lib/io.w's `IO_OK`/`IO_CANCELLED`/`IO_TIMED_OUT`.
+
+**Completion contract.** `executor_run` (and `executor_wait` on a
+handle from `executor_submit`) joins before returning, so the argument
+and output buffers may live on the waiting task's stack:
+
+| the waiter is cancelled / its deadline passes... | result |
+|---|---|
+| while the job is queued | the job is removed before dispatch, never runs; `IO_CANCELLED` / `IO_TIMED_OUT`; capacity freed at once |
+| after dispatch | the function keeps running -- a blocking syscall cannot be stopped or undone -- and the wait stays shielded until it returns; then `IO_OK`, the real `value`, and `cancelled = 1`. The task's next await sees the cancellation. |
+
+`executor_detach` / `executor_post` hand the job over instead (its
+argument must then be owned by the function). Every handle is waited
+or detached once, on the thread or scheduler that submitted it, before
+`executor_free`.
+
+**Shutdown.** `executor_close(ex, EXEC_DRAIN | EXEC_CANCEL)` closes
+admission (waiting submitters get `EXEC_CLOSED`) and leaves queued
+jobs to run or completes them as `IO_CANCELLED` unrun; it never
+blocks. `executor_join` waits for running jobs and the workers' exit
+-- inside a task through `task_spawn_blocking`, so only that task
+waits and the loop keeps running. `executor_shutdown` = close + join;
+`executor_free` drains first if needed, then frees the queues.
+
+**Diagnostics.** `executor_get_stats` (queued jobs and bytes, running
+jobs and bytes = busy workers, waiting submitters, live/idle workers,
+submitted, completed, rejected, wait_expired, cancelled-before-dispatch)
+and `executor_dump_fd`. Rising `rejected`/`wait_expired` means the
+class is shedding load; `queued_bytes` near `max_bytes` means storage
+is slower than ingest.
+
+**How completions reach a task.** A worker that finishes a job posts a
+`task_remote_call` to the waiter's scheduler inbox -- the eventfd
+`task_spawn_blocking` already uses. The callback runs on the waiter's
+own thread and wakes it only if it is still parked in the park that
+expects the job. A bare `task_remote_wake(task, seq)` is not enough
+here: unlike `task_spawn_blocking`'s wait, the queued phase is
+cancellable, so the waiter may have resumed (and its task may even have
+been reclaimed) before the message is processed. Jobs are reference
+counted (owner handle, executor membership, each posted call), so a
+late callback finds the job alive and the waiter gone. The executor's
+`wmutex` guards queues and counters and is never held across a park,
+a job function or a join.
+
+**Event-loop responsiveness.** Disk and CPU work run on executor
+threads; the scheduler thread only parks and later processes one
+inbox message per completion. `test_event_loop_stays_live` makes this
+a deadlock-or-pass property instead of a timing assertion: the slow
+job blocks until a task opens a gate after ten timer ticks, so it
+could never finish if the loop stalled; a second case keeps ticking
+while a job writes and fsyncs a file twenty times. (Bounding how many
+callbacks one loop pass dispatches is lib/event_loop.w's side of
+responsiveness.)
+
+**Cross-worker ownership.** What crosses threads -- an executor
+argument, a `task_xchan` word, a runtime spawn -- should either
+transfer an owned buffer (the sender stops touching it; the receiver
+frees it, which lib/thread_heap.w allows from any thread) or share an
+immutable object with an explicit release (an `atomic_add` reference
+count; the last release frees). Pointers into a task's stack cross
+threads only under a join-before-return wait (`executor_run`,
+`task_spawn_blocking`). The channel or executor mutex supplies the
+happens-before edge for the buffer's contents; see the memory-order
+contract in docs/projects/threads.md before writing anything
+lock-free.
 
 ## Non-goals (and what would change them)
 

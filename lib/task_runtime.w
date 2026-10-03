@@ -27,6 +27,8 @@ threads:
   only the calling task until it returns: the answer for blocking
   syscalls and CPU-heavy work (it also works on a lone scheduler,
   without a task_runtime).
+- task_remote_call runs a function on a scheduler's own thread; the
+  bounded executor (lib/executor.w) delivers completions through it.
 
 Allocation from any thread is safe (per-thread heaps,
 lib/thread_heap.w), including freeing memory another thread allocated.
@@ -75,6 +77,11 @@ void task_runtime_install():
 const int task_remote_msg_spawn = 1
 const int task_remote_msg_wake = 2
 const int task_remote_msg_nop = 3
+const int task_remote_msg_call = 4
+
+
+# A function run on the scheduler's own thread (task_remote_call).
+type task_remote_call_fn = fn(void*) -> void
 
 
 struct task_remote_msg:
@@ -83,6 +90,8 @@ struct task_remote_msg:
 	task* target        # wake
 	int seq             #   the park it was meant for
 	int value           #   wake value
+	task_remote_call_fn* call   # call
+	void* context               #   its argument
 
 
 struct task_remote:
@@ -137,6 +146,8 @@ void task_remote_on_readable(int fd, int revents, void* context):
 		else if (m.kind == task_remote_msg_wake):
 			task* t = m.target
 			if ((t.park_seq == m.seq) && task_is_parked(t)): task_wake(t, m.value)
+		else if (m.kind == task_remote_msg_call):
+			m.call(m.context)
 		free(cast(void*, m))
 		i = i + 1
 	list_free[task_remote_msg*](batch)
@@ -182,14 +193,27 @@ void task_remote_free(task_remote* r):
 
 # Wake target (parked in park number seq) from any thread.
 void task_remote_wake(task_remote* r, task* target, int seq, int value):
-	task_remote_msg* m = new task_remote_msg(task_remote_msg_wake, 0, target, seq, value)
+	task_remote_msg* m = new task_remote_msg(task_remote_msg_wake, 0, target, seq, value, 0, 0)
 	task_remote_post(r, m)
 
 
 # Spawn g on r's scheduler from any thread.
 void task_remote_spawn(task_remote* r, generator* g):
-	task_remote_msg* m = new task_remote_msg(task_remote_msg_spawn, g, 0, 0, 0)
+	task_remote_msg* m = new task_remote_msg(task_remote_msg_spawn, g, 0, 0, 0, 0, 0)
 	if (cast(int, r.counter) != 0): atomic_add(r.counter, 1)
+	task_remote_post(r, m)
+
+
+# Run func(context) on r's scheduler thread, from any thread. A bare
+# task_remote_wake names its target by (task, park sequence), which is
+# only safe while that task is certain to stay parked until the message
+# arrives (task_spawn_blocking's shielded wait). A waiter that another
+# event can also wake (a cancellation, a deadline) may have resumed and
+# even finished by then; a call lets the poster hand over an object it
+# keeps alive instead, whose callback inspects the waiter on the owning
+# thread (lib/executor.w).
+void task_remote_call(task_remote* r, task_remote_call_fn* func, void* context):
+	task_remote_msg* m = new task_remote_msg(task_remote_msg_call, 0, 0, 0, 0, func, context)
 	task_remote_post(r, m)
 
 
@@ -528,7 +552,7 @@ int task_runtime_stop(task_runtime* rt):
 	if (atomic_cas(&rt.stopping, 0, 1) != 0): return 0
 	int i = 0
 	while (i < rt.nthreads):
-		task_remote_msg* m = new task_remote_msg(task_remote_msg_nop, 0, 0, 0, 0)
+		task_remote_msg* m = new task_remote_msg(task_remote_msg_nop, 0, 0, 0, 0, 0, 0)
 		task_remote_post(rt.workers[i].remote, m)
 		i = i + 1
 	return 1
