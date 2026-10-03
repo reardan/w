@@ -7,8 +7,10 @@ import lib.framing
 
 
 asm_buffer* wc2_emit(wc2_module* m):
-	wc2_node* expression = wc2_validate_executable(m)
-	if (expression == 0): return 0
+	wc2_semantics* semantic = wc2_analyze(m)
+	if (wc2_module_ok(m) == 0):
+		wc2_semantics_free(semantic)
+		return 0
 	asm_buffer* out = asm_buffer_new()
 	# ELF header (52 bytes), PT_LOAD and PT_GNU_STACK (32 bytes each).
 	for i in range(116): asm_buffer_byte(out, 0)
@@ -30,17 +32,8 @@ asm_buffer* wc2_emit(wc2_module* m):
 	save_int32(header + 84, 0x6474e551)  # PT_GNU_STACK
 	save_int32(header + 108, 6)     # PF_R | PF_W
 	save_int32(header + 112, 16)
-	# Process entry calls a real function, then exits with its return value.
-	asm_buffer_byte(out, 0xe8)
-	int call_fixup = out.length
-	asm_buffer_int32(out, 0)
-	wc2_x86(out, c"mov", 3, 0)
-	wc2_immediate(out, 0, 1)        # Linux i386 SYS_exit
-	asm_buffer_byte(out, 0xcd)
-	asm_buffer_byte(out, 0x80)
-	asm_buffer_patch_int32(out, call_fixup, out.length - call_fixup - 4)
-	wc2_emit_expression(m, expression, out)
-	wc2_x86(out, c"ret", -1, -1)
+	wc2_emit_functions(semantic, out)
+	wc2_semantics_free(semantic)
 	# Buffer growth invalidates 'header'; patch through the current buffer.
 	asm_buffer_patch_int32(out, 68, out.length)
 	asm_buffer_patch_int32(out, 72, out.length)

@@ -2,13 +2,14 @@
 # wbuild: step="bin/parser_generator tests/parser_generator/w.pg -o bin/wc2_parser.w"
 # wbuild: binary=wc2 dep=wc2_parser
 /*
-Leaf AST compiler experiment (#488): semantic AST inspection and the first
-integer-expression executable slice. See docs/projects/wc2.md.
+Leaf AST compiler experiment (#488): semantic AST inspection and native
+code generation for the documented functions/control-flow/struct subset. See docs/projects/wc2.md.
 */
 import lib.file
 import tools.wc2.lower
 import tools.wc2.dump
 import tools.wc2.emit
+import tools.wc2.load
 
 
 int main(int argc, char** argv):
@@ -27,6 +28,7 @@ int main(int argc, char** argv):
 		return 1
 	wc2_module* m = wc2_parse(source, path)
 	free(source)
+	if (compile_mode): wc2_load_imports(m)
 	int status = 1
 	if (wc2_module_ok(m) && dump_mode):
 		char* dump = wc2_dump(m)

@@ -23,6 +23,11 @@ const int wc2_call_kind = 16
 const int wc2_pass_kind = 17
 const int wc2_break_kind = 18
 const int wc2_continue_kind = 19
+const int wc2_struct_kind = 20
+const int wc2_member_kind = 21
+const int wc2_import_kind = 22
+const int wc2_named_type = 4
+const int wc2_struct_type_base = 1000
 
 # Intrinsic/declared types only. Expression inference and name binding are
 # a later pass; -1 must never be mistaken for the production type table.
@@ -44,6 +49,8 @@ struct wc2_node:
 	int type_id
 	int binding
 	char* text
+	char* type_name
+	char* filename
 	list[int] children
 
 
@@ -62,6 +69,7 @@ struct wc2_module:
 	list[wc2_node*] nodes
 	list[wc2_scope*] scopes
 	int root
+	list[wc2_module*] dependencies
 
 
 wc2_module* wc2_module_new(char* source, char* filename):
@@ -74,6 +82,7 @@ wc2_module* wc2_module_new(char* source, char* filename):
 	m.nodes = new list[wc2_node*]
 	m.scopes = new list[wc2_scope*]
 	m.root = -1
+	m.dependencies = new list[wc2_module*]
 	return m
 
 
@@ -99,6 +108,8 @@ wc2_node* wc2_node_new(wc2_module* m, int kind, int scope, pg_token* first, pg_t
 	node.type_id = wc2_unresolved_type
 	node.binding = -1
 	node.text = strclone(text)
+	node.type_name = strclone(c"")
+	node.filename = strclone(m.filename)
 	node.children = new list[int]
 	m.nodes.push(node)
 	return node
@@ -142,6 +153,9 @@ char* wc2_kind_name(int kind):
 	if (kind == wc2_pass_kind): return c"pass"
 	if (kind == wc2_break_kind): return c"break"
 	if (kind == wc2_continue_kind): return c"continue"
+	if (kind == wc2_struct_kind): return c"struct"
+	if (kind == wc2_member_kind): return c"member"
+	if (kind == wc2_import_kind): return c"import"
 	return c"unknown"
 
 
@@ -149,6 +163,8 @@ void wc2_module_free(wc2_module* m):
 	if (m == 0): return
 	for wc2_node* node in m.nodes:
 		free(node.text)
+		free(node.type_name)
+		free(node.filename)
 		__w_list_free(cast(__w_list*, node.children))
 		free(node)
 	for wc2_scope* scope in m.scopes:
@@ -156,6 +172,8 @@ void wc2_module_free(wc2_module* m):
 		free(scope)
 	__w_list_free(cast(__w_list*, m.nodes))
 	__w_list_free(cast(__w_list*, m.scopes))
+	for wc2_module* dependency in m.dependencies: wc2_module_free(dependency)
+	__w_list_free(cast(__w_list*, m.dependencies))
 	# Tree leaves borrow token pointers; diagnostics borrow the filename.
 	# The stream owns reachable AND abandoned PG nodes (opt-in at parse).
 	pg_token_stream_free(m.tokens)

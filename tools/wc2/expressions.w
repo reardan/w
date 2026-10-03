@@ -143,8 +143,8 @@ wc2_node* wc2_lower_expression(wc2_module* m, pg_ast_node* syntax, int scope, in
 			pg_ast_node* tail = syntax.children[i]
 			pg_token* op = wc2_part(tail, c"assign_op").first_token
 			if (left == 0): return 0
-			if (left.kind != wc2_name_kind):
-				wc2_error(m, op, c"wc2: assignment requires a name target in this subset")
+			if ((left.kind != wc2_name_kind) && (left.kind != wc2_member_kind)):
+				wc2_error(m, op, c"wc2: assignment requires a variable or field target")
 				return 0
 			wc2_node* right = wc2_lower_expression(m, wc2_part(tail, c"assignment"), scope, depth + 1)
 			left = wc2_join(m, wc2_assignment_kind, scope, op, left, right)
@@ -164,6 +164,12 @@ wc2_node* wc2_lower_expression(wc2_module* m, pg_ast_node* syntax, int scope, in
 		for i in range(1, syntax.children.length):
 			pg_ast_node* tail = syntax.children[i]
 			pg_ast_node* args = wc2_part(tail, c"arg_list")
+			if (strcmp(tail.first_token.text, c".") == 0):
+				if (value == 0): return 0
+				wc2_node* member = wc2_node_new(m, wc2_member_kind, scope, first, tail.last_token, tail.last_token.text)
+				wc2_add(member, value)
+				value = member
+				continue
 			if (args == 0):
 				wc2_error(m, tail.first_token, c"wc2: only calls are supported as postfix expressions")
 				return 0

@@ -60,7 +60,7 @@ void wc2_collect(wc2_lowering* c):
 			event.condition = wc2_part(syntax, c"paren_expression_opt")
 			if (wc2_rule(syntax, c"function_decl")):
 				event.body = wc2_part(wc2_part(syntax, c"function_body"), c"block")
-			else if ((wc2_rule(syntax, c"if_stmt") || wc2_rule(syntax, c"elif_stmt") || wc2_rule(syntax, c"while_stmt") || wc2_rule(syntax, c"else_stmt")) == 0):
+			else if ((wc2_rule(syntax, c"if_stmt") || wc2_rule(syntax, c"elif_stmt") || wc2_rule(syntax, c"while_stmt") || wc2_rule(syntax, c"else_stmt") || wc2_rule(syntax, c"struct_decl")) == 0):
 				# An unsupported declaration/statement is one diagnostic;
 				# do not reinterpret its body as surrounding-scope siblings.
 				event.body = 0
@@ -83,8 +83,16 @@ int wc2_declared_type(wc2_module* m, pg_ast_node* syntax):
 		if (strcmp(token.text, c"int") == 0): return wc2_int_type
 		if (strcmp(token.text, c"bool") == 0): return wc2_bool_type
 		if (strcmp(token.text, c"void") == 0): return wc2_void_type
-	wc2_error(m, token, c"wc2: only int, bool and void types are supported yet")
+		if (token.kind == wlang_token_IDENT): return wc2_named_type
+	wc2_error(m, token, c"wc2: only int, bool, void and named struct types are supported yet")
 	return wc2_unresolved_type
+
+
+void wc2_lower_type(wc2_module* m, wc2_node* node, pg_ast_node* syntax):
+	node.type_id = wc2_declared_type(m, syntax)
+	if (node.type_id == wc2_named_type):
+		free(node.type_name)
+		node.type_name = strclone(syntax.first_token.text)
 
 
 wc2_node* wc2_lower_declaration(wc2_module* m, pg_ast_node* syntax, int scope, int kind):
@@ -98,7 +106,7 @@ wc2_node* wc2_lower_declaration(wc2_module* m, pg_ast_node* syntax, int scope, i
 		return 0
 	wc2_node* node = wc2_node_new(m, kind, scope, syntax.first_token, syntax.last_token, name.first_token.text)
 	pg_ast_node* type = wc2_part(syntax, c"type_ref")
-	if (type != 0): node.type_id = wc2_declared_type(m, type)
+	if (type != 0): wc2_lower_type(m, node, type)
 	m.scopes[scope].declarations.push(node.id)
 	pg_ast_node* initializer = wc2_part(syntax, c"expression")
 	pg_ast_node* local_suffix = wc2_part(syntax, c"local_suffix")
@@ -215,7 +223,7 @@ wc2_node* wc2_lower_function(wc2_lowering* c, wc2_event* event):
 	pg_ast_node* syntax = event.syntax
 	pg_ast_node* name = wc2_part(syntax, c"name_token")
 	wc2_node* fn_node = wc2_node_new(m, wc2_function_kind, 0, event.first, name.last_token, name.first_token.text)
-	fn_node.type_id = wc2_declared_type(m, wc2_part(syntax, c"type_ref"))
+	wc2_lower_type(m, fn_node, wc2_part(syntax, c"type_ref"))
 	m.scopes[0].declarations.push(fn_node.id)
 	pg_ast_node* generic = wc2_part(syntax, c"generic_opt")
 	if (generic.children.length != 0):
@@ -224,6 +232,29 @@ wc2_node* wc2_lower_function(wc2_lowering* c, wc2_event* event):
 	wc2_lower_parameters(m, wc2_part(syntax, c"param_list"), fn_node, scope)
 	wc2_add(fn_node, wc2_lower_block(c, event, scope, 0, 0))
 	return fn_node
+
+
+wc2_node* wc2_lower_struct(wc2_lowering* c, wc2_event* event):
+	wc2_module* m = c.module
+	pg_ast_node* syntax = event.syntax
+	pg_ast_node* name = wc2_part(syntax, c"IDENT")
+	wc2_node* node = wc2_node_new(m, wc2_struct_kind, 0, event.first, name.last_token, name.first_token.text)
+	m.scopes[0].declarations.push(node.id)
+	if (wc2_part(syntax, c"generic_opt").children.length): wc2_error(m, event.first, c"wc2: generic structs are not supported yet")
+	wc2_add(node, wc2_lower_block(c, event, 0, 0, 0))
+	return node
+
+
+wc2_node* wc2_lower_import(wc2_module* m, wc2_event* event):
+	pg_ast_node* syntax = event.syntax
+	if (wc2_part(syntax, c"import_alias_opt").children.length): wc2_error(m, event.first, c"wc2: import aliases are not supported yet")
+	pg_ast_node* path = wc2_part(syntax, c"dotted_name")
+	string_builder* name = string_new()
+	for pg_token* token in m.tokens.tokens:
+		if ((token.channel == pg_token_default_channel) && (token.offset >= path.first_token.offset) && (token.offset <= path.last_token.offset)): string_append(name, token.text)
+	wc2_node* node = wc2_node_new(m, wc2_import_kind, 0, event.first, syntax.last_token, name.data)
+	string_free(name)
+	return node
 
 
 wc2_module* wc2_parse(char* source, char* filename):
@@ -261,6 +292,8 @@ wc2_module* wc2_parse(char* source, char* filename):
 				wc2_add(root, wc2_lower_function(c, event))
 			else if (wc2_rule(event.syntax, c"global_decl")):
 				wc2_add(root, wc2_lower_declaration(m, event.syntax, 0, wc2_declaration_kind))
+			else if (wc2_rule(event.syntax, c"struct_decl")): wc2_add(root, wc2_lower_struct(c, event))
+			else if (wc2_rule(event.syntax, c"import_decl")): wc2_add(root, wc2_lower_import(m, event))
 			else: wc2_error(m, event.first, c"wc2: unsupported top-level declaration")
 	for wc2_event* event in c.events: free(event)
 	__w_list_free(cast(__w_list*, c.events))

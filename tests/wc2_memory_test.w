@@ -5,6 +5,7 @@ import lib.assert
 import tools.wc2.lower
 import tools.wc2.dump
 import tools.wc2.emit
+import tools.wc2.load
 
 
 int main():
@@ -29,6 +30,11 @@ int main():
 		wc2_module_free(m)
 		asm_buffer_free(image)
 		asm_buffer_free(again)
+		m = wc2_parse(c"struct Pair:\n\tint x\n\tbool ready\nint read(Pair p):\n\tif p.ready: return p.x\n\telse: return 0\nint main():\n\tPair p\n\tp.x = 7\n\tp.ready = 1\n\tint i = 0\n\twhile i < 3:\n\t\ti += 1\n\t\tif i == 2: continue\n\t\tp.x += read(p)\n\treturn p.x\n", c"program.w")
+		image = wc2_emit(m)
+		assert1(image != 0)
+		asm_buffer_free(image)
+		wc2_module_free(m)
 		m = wc2_parse(c"int main(): return 4294967296\n", c"overflow.w")
 		assert1(wc2_emit(m) == 0)
 		wc2_module_free(m)
@@ -46,6 +52,38 @@ int main():
 		wc2_module_free(m)
 	assert1(wc2_module_ok(retained))
 	wc2_module_free(retained)
+	# Import merge, duplicate suppression and dependency ownership must
+	# also release everything (including discarded module-root tables).
+	string_builder* module_name = string_new()
+	string_append(module_name, c"bin.wc2_memory_import_")
+	string_append_int(module_name, getpid())
+	char* path = strclone(module_name.data)
+	for i in range(strlen(path)):
+		if (path[i] == '.'): path[i] = '/'
+	char* filename = strjoin(path, c".w")
+	assert1(file_write_text(filename, c"int twice(int x): return x * 2\n"))
+	string_builder* source = string_new()
+	string_append(source, c"import ")
+	string_append(source, module_name.data)
+	string_append(source, c"\nimport ")
+	string_append(source, module_name.data)
+	string_append(source, c"\nint main(): return twice(7)\n")
+	wc2_module* imported = wc2_parse(source.data, c"importer.w")
+	wc2_load_imports(imported)
+	asm_buffer* image = wc2_emit(imported)
+	assert1(image != 0)
+	asm_buffer_free(image)
+	wc2_module_free(imported)
+	assert1(file_write_text(filename, c"int broken(\n"))
+	imported = wc2_parse(source.data, c"importer.w")
+	wc2_load_imports(imported)
+	assert_equal(0, wc2_module_ok(imported))
+	wc2_module_free(imported)
+	unlink(filename)
+	free(filename)
+	free(path)
+	string_free(module_name)
+	string_free(source)
 	assert_equal(0, debug_alloc_report_leaks())
 	println(c"wc2_memory_test: OK")
 	return 0
