@@ -9,14 +9,74 @@ status. Source files are authoritative where this text and they differ.
 
 | Stage | Deliverable | Status |
 |---|---|---|
-| W0 | Checked I/O and stream repair | in progress |
-| W1 | File durability primitives | in progress |
-| W1a | WAL / LSM / persistence hardening | in progress |
-| W2 | Bounded binary codecs | in progress |
-| W3 | Bounded blocking executor | in progress |
-| W4 | Clock and I/O simulation interfaces | in progress |
-| W5 | Budgets and transport adapters | not started |
-| W6 | Import roots and compiler hardening | not started |
+| W0 | Checked I/O and stream repair | done: `lib/io.w`, `lib/stream.w`, `lib/file.w`, `lib/task_io.w` |
+| W1 | File durability primitives | done on Linux x86/x64: `lib/fs.w`; other targets report `IO_UNSUPPORTED` |
+| W1a | WAL / LSM / persistence hardening | done: `wal.w`, `raft_wal.w`, `lsm.w`, `sstable.w`, `kv_state.w`, `durable_gate.w` |
+| W2 | Bounded binary codecs | done: `lib/bytes.w`, `lib/byte_buf.w`, `lib/checked.w`, `lib/byte_map.w`, `compress/crc32c.w` |
+| W3 | Bounded blocking executor | done: `lib/executor.w` (+ `task_remote_call`) |
+| W4 | Clock and I/O simulation interfaces | done: `lib/wclock.w`, `lib/event_loop.w` injection + dispatch limits, `lib/event_sim.w`, `lib/file_ops.w`, `lib/fake_fs.w`, `sim_env.w` |
+| W5 | Budgets and transport adapters | done (no TLS adapter): `lib/arena.w`, `lib/metrics.w`, `lib/transport.w` |
+| W6 | Import roots and compiler hardening | not started (separately reviewed compiler feature) |
+
+- **W0.** `lib/io.w` defines `io_result` and the `IO_*` categories with
+  the platform errno preserved. Stream writers keep the unwritten suffix
+  and latch a sticky error until `stream_clear_error` or close; readers
+  report read errors apart from EOF; checked flush/sync/close sit beside
+  the legacy void calls, which delegate to them. `file_write_text`
+  reports write/close failure; `task_write_all_result` /
+  `task_read_exact_result` retry EINTR after a cancellation check and
+  treat zero progress as an error.
+- **W1.** `lib/fs.w`: `pread`/`pwrite` (64-bit offsets on x86-64, 31-bit
+  on i386), `ftruncate`, `openat` / exclusive create, directory fsync
+  (`IO_UNSUPPORTED` when refused), `flock` process locks, and
+  `fs_replace_durable` reporting the failing stage and whether the rename
+  happened. arm64, Darwin, win64 and wasm get explicit ENOSYS stubs.
+- **W1a.** WAL recovery policies (permissive / strict / strict-truncate)
+  with a report naming the first bad offset and classifying clean end,
+  torn tail or interior corruption; a failed fsync poisons the handle.
+  Raft log compaction, LSM compaction, the recovery manifest rewrite, the
+  data-wal reset and snapshot install all publish through a synced
+  `<path>.next` sibling, rename, then directory fsync. `lsm_flush` makes
+  the table and its directory entry durable, then the manifest record,
+  before resetting the data wal. Snapshot install builds an epoch-tagged
+  generation before switching. `durable_gate.w` and
+  `raft_wal_persist_release` hold replies until their writes are durable
+  and drop them on a failed sync. `lsm_scan` (bounded, resumable) and
+  `lsm_apply_batch` (one all-or-nothing WAL record) extend the ordered
+  store.
+- **W2.** 64-bit codecs as portable hi/lo halves, checked-word and native
+  forms, never silently truncating; overflow-checked add/sub/mul,
+  narrowing and allocation sizes on both word sizes; borrowed views,
+  capped owned buffers and sticky-error reader/writer cursors with strict
+  LEB128; CRC-32C with explicit table init (and the same rule documented
+  for CRC-32); a binary-key map with copied keys, seeded HalfSipHash,
+  limits and seed-independent sorted iteration, plus stable FNV-1a for
+  persisted formats.
+- **W3.** Reused workers with limits on workers, admitted jobs and
+  admitted bytes; try-only or FIFO admission waits bounded by a timeout
+  and the task deadline; join-before-return completion (a queued job is
+  removed on cancellation, a dispatched one is waited out shielded and
+  flagged); close / drain-or-cancel / join shutdown; counters. The
+  memory-order contract of the existing atomics is in `threads.md`.
+- **W4.** Instance-owned real and virtual clocks returning status apart
+  from value; `event_loop_new_with(clock, poller)` with monotonic-only
+  timers and per-pass dispatch limits with rotation; deterministic
+  `event_sim` readiness; an injectable `file_ops` interface with a real
+  adapter and a fake filesystem modeling write- vs sync-completion,
+  ordered metadata journaling, seeded crashes with torn writes, lost
+  unsynced renames and fsync-EIO data loss. Details:
+  `docs/projects/simulation.md`.
+- **W5.** Budgeted arenas with checked arithmetic and an explicit borrow
+  count, bounded metrics (counters, log2 latency histogram, event ring,
+  open-fd sampler), and a checked byte-transport interface with TCP/Unix
+  adapters. The native TLS library has no client certificates and is not
+  wired in; the audit is in `docs/projects/budgets_transport.md`.
+
+Known follow-ups found during the work: `task_xchan`'s cross-thread wake
+can race a timeout/cancel resume (move it to `task_remote_call`, see
+`async.md`); arm64 Linux could get real `lib/fs.w` syscalls once qemu
+testing is available; `tls_connect` crashes on a null `server_name`;
+`uint` comparisons compile as signed; chunked snapshot transfer for Raft.
 
 ## Goal
 
@@ -166,14 +226,27 @@ for compile/check/deps/symbols, cache keys) are follow-ups. W0-W4 do not
 depend on new async syntax, garbage collection, borrow checking,
 io_uring, or a compiler IR.
 
-## Open questions
+## Open questions (with what the implementation found)
 
 - Which legacy stream callers migrate first; should unchecked helpers be
-  deprecated?
+  deprecated? The legacy calls now delegate to the checked ones and keep
+  a queryable sticky error, so migration can be gradual; storage and
+  protocol writers should move first.
 - Can `?` propagation support allocation-free values without complicating
-  the bootstrap ABI?
+  the bootstrap ABI? Not attempted; `io_result` is caller-owned instead.
 - Which filesystem/platform combinations satisfy durable replacement, and
-  how is capability discovery exposed?
+  how is capability discovery exposed? Linux x86/x64 on a local POSIX
+  filesystem; elsewhere the primitives return `IO_UNSUPPORTED` and
+  directory fsync maps EINVAL to `IO_UNSUPPORTED`.
 - What executor defaults keep throughput predictable under slow storage?
+  No implicit defaults. A sync class of 1-2 workers per device or log
+  with a queue of about 4x workers, a byte cap equal to the dirty memory
+  you will pin, and an admission timeout equal to the request budget; a
+  maintenance class of 1 worker, queue 1, submitted try-only. Watch
+  `rejected` / `wait_expired` and `queued_bytes`.
 - Does a binary-key map need hash/equality hooks in built-in maps, or is a
-  leaf library enough?
+  leaf library enough? A leaf library (`lib/byte_map.w`) is enough: the
+  built-in `map[string, V]` is already length-aware but lacks a seeded
+  hash, limits and sorted iteration. A per-table seed in
+  `structures/hash_table.w` is the cheap built-in change if it is ever
+  needed (it needs a seed bump).
