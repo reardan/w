@@ -191,10 +191,14 @@ no adapter is advertised as authenticated or mutual TLS.
   keys only.
 - **Hostname verification**: SAN dNSName only (RFC 6125 wildcards, no CN
   fallback); IPv4 literals never match and there is no iPAddress SAN
-  support, so connecting by IP cannot verify. `x509_verify_chain` skips
-  the hostname check when given a null hostname; `tls_connect` happens
-  to require one (a null `server_name` faults in the ClientHello builder
-  rather than failing cleanly). An adapter must require a non-empty
+  support, so connecting by IP cannot verify. **Fixed:** a null or empty
+  hostname no longer skips the check silently: `x509_verify_chain` fails
+  closed ("x509: no hostname to verify"), and chain-only callers must use
+  the explicit `x509_verify_chain_no_hostname`. A null or empty
+  `server_name` no longer faults in the ClientHello builder: `tls_connect`
+  fails before any I/O ("tls: no server name to verify") unless
+  `insecure_skip_verify` is set, in which case the ClientHello omits SNI.
+  An adapter that wants an authenticated peer must still pass a non-empty
   server name.
 - **Nonblocking progress**: record I/O loops until a whole record moves.
   On `EAGAIN` it calls `io_wait`: inside a task the task parks (bounded

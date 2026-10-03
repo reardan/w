@@ -18,6 +18,10 @@
 #   int x509_verify_chain(x509_cert* leaf, list[x509_cert*] extra,
 #                         x509_trust_store* store, char* hostname,
 #                         int now_unix, char** err_out)           1/0
+#                         (null/empty hostname fails closed)
+#   int x509_verify_chain_no_hostname(x509_cert* leaf, list[x509_cert*] extra,
+#                         x509_trust_store* store, int now_unix,
+#                         char** err_out)       chain only, explicit opt-out
 #   int x509_match_hostname(x509_cert* c, char* hostname)         1/0
 #   int x509_hostname_matches_pattern(char* pattern, char* hostname)
 #   int x509_load_ec_private_key(char* pem_text, int len, char* out_d32)
@@ -1324,14 +1328,10 @@ char* x509_issuer_check(x509_cert* issuer, int below, int now_day, int now_sec, 
 	return 0
 
 
-# Verify leaf against the trust store at time now_unix (seconds since epoch;
-# the library never reads the clock — pass lib/time.w's current time or a
-# fixed test instant). extra holds unordered candidate intermediates (may
-# be 0). hostname of 0 skips hostname verification (for non-server-identity
-# uses); otherwise the leaf's SAN dNSNames must cover it. On failure
-# returns 0 and points *err_out (if non-0) at a static message that never
-# echoes certificate contents.
-int x509_verify_chain(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store* store, char* hostname, int now_unix, char** err_out):
+# Shared body of x509_verify_chain / x509_verify_chain_no_hostname:
+# check_host 1 requires a non-empty hostname covered by the leaf's SAN
+# dNSNames; check_host 0 verifies the chain only (hostname ignored).
+int x509_verify_chain_impl(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store* store, char* hostname, int check_host, int now_unix, char** err_out):
 	x509_set_err(err_out, 0)
 	if (leaf == 0):
 		x509_set_err(err_out, c"x509: no certificate")
@@ -1345,6 +1345,13 @@ int x509_verify_chain(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store*
 	if (now_unix < 0):
 		x509_set_err(err_out, c"x509: invalid verification time")
 		return 0
+	if (check_host != 0):
+		int no_name = 0
+		if (hostname == 0): no_name = 1
+		else if (hostname[0] == 0): no_name = 1
+		if (no_name != 0):
+			x509_set_err(err_out, c"x509: no hostname to verify")
+			return 0
 	int now_day = 0
 	int now_sec = 0
 	x509_unix_to_day_sec(now_unix, &now_day, &now_sec)
@@ -1365,7 +1372,7 @@ int x509_verify_chain(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store*
 		if (leaf.eku_server_auth == 0):
 			x509_set_err(err_out, c"x509: certificate not valid for server authentication")
 			return 0
-	if (hostname != 0):
+	if (check_host != 0):
 		if (x509_match_hostname(leaf, hostname) == 0):
 			x509_set_err(err_out, c"x509: hostname mismatch")
 			return 0
@@ -1430,6 +1437,28 @@ int x509_verify_chain(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store*
 	if (reason == 0): reason = c"x509: no trusted issuer found"
 	x509_set_err(err_out, reason)
 	return 0
+
+
+# Verify leaf against the trust store at time now_unix (seconds since epoch;
+# the library never reads the clock — pass lib/time.w's current time or a
+# fixed test instant). extra holds unordered candidate intermediates (may
+# be 0). The leaf's SAN dNSNames must cover hostname. A null or empty
+# hostname FAILS CLOSED ("x509: no hostname to verify"): it used to skip
+# the identity check silently, which turned a caller's missing server
+# name into an unauthenticated peer. Callers that deliberately verify a
+# chain without a server identity (e.g. checking a CA link) must say so
+# with x509_verify_chain_no_hostname. On failure returns 0 and points
+# *err_out (if non-0) at a static message that never echoes certificate
+# contents.
+int x509_verify_chain(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store* store, char* hostname, int now_unix, char** err_out):
+	return x509_verify_chain_impl(leaf, extra, store, hostname, 1, now_unix, err_out)
+
+
+# Explicit opt-out: verify the chain, validity, key usage and EKU exactly
+# as x509_verify_chain does, but check no hostname. Never use this for a
+# TLS server identity.
+int x509_verify_chain_no_hostname(x509_cert* leaf, list[x509_cert*] extra, x509_trust_store* store, int now_unix, char** err_out):
+	return x509_verify_chain_impl(leaf, extra, store, 0, 0, now_unix, err_out)
 
 
 # ---- EC private key loading (TLS server role) -------------------------------------------

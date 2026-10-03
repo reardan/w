@@ -61,7 +61,9 @@ match it sends no_application_protocol (120). Without ALPN configured on
 either side nothing changes on the wire.
 
 tls_connect returns 0 on failure; the reason is retrievable via
-tls_last_error(cfg). On success it returns an owned tls_conn* that
+tls_last_error(cfg). server_name is required (SNI + hostname verification):
+a null or empty one fails cleanly before any I/O with "tls: no server name
+to verify", unless insecure_skip_verify is set (then no SNI is sent). On success it returns an owned tls_conn* that
 tls_close frees (wiping keys).
 
 Reusable internals for #203 (server role) -- do NOT duplicate these:
@@ -864,6 +866,7 @@ int tls_next_hs_msg(tls_conn* c, int* out_type, char** out_msg, int* out_len):
 
 # Build a ClientHello handshake message (type + 3-byte length + body).
 # random and session_id are 32 bytes each; pubkey is the 32-byte X25519 share.
+# A null or empty server_name omits the SNI extension.
 # Returns a malloc'd buffer; *out_len gets its length. Reusable shape for the
 # construction test.
 char* tls_build_client_hello_alpn(char* server_name, char* random, char* session_id, char* pubkey, char* alpn, int alpn_len, int* out_len);
@@ -895,14 +898,16 @@ char* tls_build_client_hello_alpn(char* server_name, char* random, char* session
 	string_append_be16(b, 0)                       # extensions length placeholder
 	int ext_start = b.length
 
-	# server_name (SNI)
-	int nlen = strlen(server_name)
-	string_append_be16(b, TLS_EXT_SERVER_NAME)
-	string_append_be16(b, nlen + 5)                # ext_data length
-	string_append_be16(b, nlen + 3)                # ServerNameList length
-	string_append_char(b, 0)                        # name_type = host_name
-	string_append_be16(b, nlen)                    # HostName length
-	string_append_bytes(b, server_name, nlen)
+	# server_name (SNI); omitted when there is no name (null or empty).
+	int nlen = 0
+	if (server_name != 0): nlen = strlen(server_name)
+	if (nlen > 0):
+		string_append_be16(b, TLS_EXT_SERVER_NAME)
+		string_append_be16(b, nlen + 5)            # ext_data length
+		string_append_be16(b, nlen + 3)            # ServerNameList length
+		string_append_char(b, 0)                    # name_type = host_name
+		string_append_be16(b, nlen)                # HostName length
+		string_append_bytes(b, server_name, nlen)
 
 	# supported_versions = TLS 1.3
 	string_append_be16(b, TLS_EXT_SUPPORTED_VERSIONS)
@@ -1426,11 +1431,25 @@ int tls_gen_priv(tls_conn* c, char* priv):
 
 
 # Drive the full client handshake on connection c. server_name is the SNI /
-# hostname to verify. Returns 1 on success (keys switched to application), 0
+# hostname to verify; a null or empty one fails ("tls: no server name to
+# verify") before anything is sent, unless cfg.insecure_skip_verify is set,
+# in which case the ClientHello carries no SNI. Returns 1 on success (keys switched to application), 0
 # on any failure (connection marked broken, alert already sent).
 int tls_do_handshake(tls_conn* c, char* server_name):
 	tls_config* cfg = c.cfg
 	int ds = c.digest_size
+
+	# No server name means no identity to verify: fail before any I/O
+	# unless verification was explicitly skipped (then SNI is omitted).
+	int has_name = 0
+	if (server_name != 0):
+		if (server_name[0] != 0): has_name = 1
+	if (has_name == 0):
+		int skip_verify = 0
+		if (cfg != 0): skip_verify = cfg.insecure_skip_verify
+		if (skip_verify == 0):
+			tls_fail(c, c"tls: no server name to verify")
+			return 0
 
 	char* priv = malloc(32)
 	if (tls_gen_priv(c, priv) == 0):
