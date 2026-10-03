@@ -78,6 +78,46 @@ void warn_bool_bitwise_at(char* message, int op_line_number, int op_diag_token_l
 	token = cur_token
 
 
+# Usual arithmetic conversions for the word-sized integer operators
+# (docs/projects/type_system_p0.md, "Unsigned operations"): an operation
+# is unsigned when either operand is an unsigned word type
+# (type_is_unsigned_word: uint, plus uint64/uint32 where that is the
+# word). Returns that operand's unqualified type, left first, or -1 for
+# a signed operation. Narrower unsigned operands are zero-extended words
+# that promote to signed int, as in C.
+int unsigned_word_operand(int left_type, int right_type):
+	if (type_is_unsigned_word(left_type)): return type_unqualified(left_type)
+	if (type_is_unsigned_word(right_type)): return type_unqualified(right_type)
+	return 0 - 1
+
+
+# Expression type of an integer operator's result: the unsigned word
+# operand's type as a value, so unsignedness flows into a later compare,
+# divide or right shift (`(a + b) / 2`, `a * 3 > b`), else the untyped
+# constant (3) every integer operator returned before.
+int integer_result_type(int left_type, int right_type):
+	# A pointer operand (pointer arithmetic, 'p += n') keeps its own
+	# result typing at the call site: the untyped word stays assignable
+	# back to the pointer.
+	if (type_get_pointer_level(type_unqualified(left_type)) > 0): return 3
+	if (type_get_pointer_level(type_unqualified(right_type)) > 0): return 3
+	int u = unsigned_word_operand(left_type, right_type)
+	if (u < 0): return 3
+	return type_value(u)
+
+
+# A signed ordered comparison's setCC byte -> its unsigned twin (setl ->
+# setb, setge -> setae, setle -> setbe, setg -> seta); every backend's
+# alu_cmp_set maps both families (x86 jCC via -0x10, arm64 lo/hs/ls/hi,
+# wasm i32.*_u, PTX .u64).
+int setcc_unsigned(int cc):
+	if (cc == 0x9c): return 0x92
+	if (cc == 0x9d): return 0x93
+	if (cc == 0x9e): return 0x96
+	if (cc == 0x9f): return 0x97
+	return cc
+
+
 int binary1(int type):
 	type = promote(type)
 	push_slot()

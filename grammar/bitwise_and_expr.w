@@ -37,7 +37,8 @@ int bitwise_and_expr():
 			# joins this excludes.
 			if ((left_is_pure && right_is_pure) || check_bool_ops_mode):
 				warn_bool_bitwise_at(c"warning: bitwise '&' on bool operands in a condition does not short-circuit; did you mean '&&'?", op_line_number, op_diag_token_line, op_diag_token_column, c"&")
-		type = binary2_finish_pop(right_type)
+		binary2_finish_pop(right_type)
+		type = integer_result_type(left_type, right_type)
 		chain_is_bool = left_is_bool && right_is_bool
 		chain_is_pure = left_is_pure && right_is_pure
 		alu_and()

@@ -9,10 +9,12 @@
  * Chains left-associatively, so a < b < c means (a < b) < c.
  */
 
-# Shared lowering for one ordered comparison: cc doubles as the setcc byte
-# for the var layer's __w_var_cmp result and for the integer ALU fallback;
-# the float layer takes its own setcc plus an operand swap (< and <= are
-# emitted as the swapped > and >= so unordered compares stay false).
+# Shared lowering for one ordered comparison: cc (the signed setcc byte)
+# doubles as the setcc byte for the var layer's __w_var_cmp result and
+# for the integer ALU fallback, which switches to the unsigned twin for
+# unsigned word operands; the float layer takes its own setcc plus an
+# operand swap (< and <= are emitted as the swapped > and >= so unordered
+# compares stay false).
 int relational_op(int type, int cc, int float_cc, int float_swap):
 	int left_type = binary1(type)
 	int right_type = binary2_promote_pop(shift_expr())
@@ -21,6 +23,9 @@ int relational_op(int type, int cc, int float_cc, int float_swap):
 		result_type = float_binary_compare(left_type, right_type, float_cc, float_swap)
 	if (result_type):
 		return result_type
+	# Integer compare: unsigned when either operand is an unsigned word
+	# type (grammar/binary_op.w, unsigned_word_operand)
+	if (unsigned_word_operand(left_type, right_type) >= 0): cc = setcc_unsigned(cc)
 	alu_cmp_set(cc)
 	return type_value(bool_type)
 

@@ -22,13 +22,21 @@ int multiplicative_op(int type, int op):
 		if (op == '%'): error(c"float operands do not support %")
 		pop_ebx_slot()
 		return float_binary_arithmetic(left_type, right_type, op)
+	# Unsigned word operands divide unsigned (grammar/binary_op.w,
+	# unsigned_word_operand); the low word of a product is the same
+	# either way.
+	int is_unsigned = unsigned_word_operand(left_type, right_type) >= 0
 	if (op == '*'):
 		pop_ebx()
 		alu_imul()
-	else if (op == '/'): alu_idiv()
-	else: alu_imod()
+	else if (op == '/'):
+		if (is_unsigned): alu_udiv()
+		else: alu_idiv()
+	else:
+		if (is_unsigned): alu_umod()
+		else: alu_imod()
 	stack_pos = stack_pos - 1
-	return 3
+	return integer_result_type(left_type, right_type)
 
 
 int multiplicative_expr():

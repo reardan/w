@@ -680,9 +680,7 @@ streams, `lib/executor.w`, the W2 codecs and W5 transports.
 - **`mem_fill(&b.data[i], cast(char, 0), n)` fails type inference**
   ("got 'constant'") and needs an explicit `[char]`.
 - **Language sharp edges hit along the way** (recorded here until each
-  gets its own issue): `uint` comparisons are signed (`cast(uint, -1) > 1`
-  is false on x86 and x64, so `lib/checked.w` ships `unsigned_lt`/
-  `unsigned_cmp`); narrow integer stores truncate silently (`uint16 x =
+  gets its own issue): narrow integer stores truncate silently (`uint16 x =
   70000` is 4464, no warning); decimal literals wrap to 32 bits even on x64
   (`4294967295` is -1); `free()` warns on a `T**` argument while `T*` is
   accepted; `new T()` leaves fields uninitialized and a partial positional
