@@ -607,7 +607,7 @@ void help_shared_options():
 	println(c"  --bounds=on|off|trap  array bounds checks: on (default), off, or trap")
 	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (default: ret)")
 	println(c"  --strict              treat warnings as errors and write no output")
-	println(c"  --ast-expressions     experimental AST for grouped integer arithmetic")
+	println(c"  --ast-expressions     experimental AST for grouped scalar expressions")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")

@@ -202,8 +202,9 @@ int primary_expr():
 		# for every operand-position recursion. No separate counter here:
 		# a second increment would double-count each paren level and halve
 		# the effective limit.
-		if (ast_expressions_mode && ast_expression_try(group_offset)): type = 3
-		else: type = expression()
+		type = -1
+		if (ast_expressions_mode): type = ast_expression_try(group_offset)
+		if (type == -1): type = expression()
 		if (peek(c")") == 0): error(c"No closing parenthesis")
 	}
 	# char literal e.g. 'c', '\n', '\x41' or 'é' (value = Unicode codepoint);

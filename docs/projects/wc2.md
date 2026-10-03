@@ -352,6 +352,7 @@ The production compiler now has an experimental `--ast-expressions` option.
 It builds a temporary semantic tree for **parenthesized, single-line integer
 arithmetic**: decimal/hex/binary literals, unary `+`/`-`, nested parentheses,
 and binary `+`, `-`, `*`, `/`, `%` with the existing precedence and associativity.
+Task 6 extends this same path to the typed scalar operands described below.
 It is off by default. Like `--strict`, the compiler option applies to inputs
 that follow it; place it before the source path.
 
@@ -366,7 +367,7 @@ bin/wdbg program.w --ast-expressions
 path was actually used. The REPL option applies to startup compilation and
 subsequent entries; wdbg uses it for the debuggee, expression evaluation and
 attach-mode source reconstruction. Other syntax continues through the streaming
-grammar, including identifiers, calls, floats, bitwise/logical operations,
+grammar, including calls, floats, binary bitwise/logical operations,
 comments and multiline groups. An unsupported outer group may still contain
 supported inner groups. Pending lvalue/call/statement state also forces fallback.
 
@@ -404,9 +405,42 @@ Cross-target image comparisons do not claim runtime testing on those target
 systems. This first island also makes no performance claim: it reparses its
 accepted tokens, and production parsing is not cached or incremental.
 
-The next migration step is to represent resolved identifiers and typed unary/
-binary operands, then widen expression coverage while retaining these
-differential gates. Source ownership across modules, declarations/statements,
+## Task 6: resolved scalar operands
+
+`--ast-expressions` now also accepts ASCII identifiers resolving to integer
+locals, parameters, globals, thread-local globals and enum constants. The
+tree records each resolved symbol and its declared type, preserving aliases,
+const qualification, signed/unsigned load widths, and the distinction between
+an address and a value. `(x)` remains an lvalue for grouped assignment or
+`&(x)`; arithmetic promotes it through the existing backend helpers. This
+stage also accepts `true`, `false`, `__word_size__`, `__target_isa__`, and
+unary `!`, `!!`, `~` alongside `+` and `-`. Boolean expressions retain their
+boolean result type. Storage must fit in the target word.
+
+`sym_probe` resolves names without changing the symbol index, use tracking,
+lookup counters or diagnostics, including immediately after a scope has
+been truncated. Unknown names and unsupported operand types decline the
+whole candidate. Once accepted, the token replay performs the usual import
+warnings and marks the identifier uses at their original locations. The
+walker passes resolved symbol records to `sym_emit_value`, also used by the
+streaming parser, so stack-relative addresses are calculated at emission
+time with the current operand stack depth. The tree's symbol/name offsets
+are valid only during this operation; they are not persistent bindings.
+
+Pointers, calls, member/index access, floating-point and aggregate operands,
+dynamic `var` values and PTX device bodies still use the streaming grammar.
+The same bounded single-line probe and default-off option remain in place.
+The differential fixture now checks mixed-width parameters, unsigned loads,
+shadowing, grouped lvalues, aliases/enums, generics instantiated with scalar
+types, TLS, overload fallback, and REPL/debugger evaluation of local names.
+`ast_symbol_probe_test` and its x64 twin additionally assert that speculative
+binding leaves unused-local tracking and stale scope heads untouched, and
+respects retired debugger bindings. Both host widths still pass byte-identical
+AST-enabled self-host fixpoints.
+
+Next is broader typed expression coverage (pointer arithmetic, floating-point
+operands and calls), retaining the same differential gates. Source ownership
+across modules, declarations/statements,
 multi-error production analysis, REPL checkpoints and incremental emission
 remain later work. wc2's resident caches are still confined to the leaf tool.
 This experiment does not itself authorize a wholesale replacement or change

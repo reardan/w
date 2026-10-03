@@ -276,6 +276,20 @@ int sym_index_scan(char *s):
 int sym_index_selfcheck
 
 
+# Speculative AST binding must not mark a local as used, synchronize the
+# index, issue diagnostics, or change lookup counters. Follow any stale
+# scope heads without popping them; the committed lookup does that work.
+int sym_probe(char* name):
+	if (sym_name_index == 0): return -1
+	if ((name in sym_name_index) == 0): return -1
+	int p = sym_name_index[name]
+	while (p >= 0):
+		int off = sym_index_offset(p)
+		if (off < table_pos): return off
+		p = load_int(sym_index_prev + p * 4)
+	return -1
+
+
 int sym_lookup(char *s):
 	sym_index_sync()
 	sym_lookup_calls = sym_lookup_calls + 1
@@ -731,12 +745,10 @@ void sym_not_found_error(char* s):
 # Emits code leaving the symbol's ADDRESS in eax and returns its type index.
 # Functions are the exception: their address is their value, so they return
 # the "function" type (4), which promote() leaves untouched.
-int sym_get_value(char *s):
-	int t
-	# Device (PTX) bodies resolve symbols against the GPU-side stack and
-	# reject everything host-only (globals, function calls).
-	if (target_isa == 3): return gpu_sym_get_value(s)
-	if ((t = sym_lookup(s)) < 0): sym_not_found_error(s)
+# The resolved-symbol emitter is shared with the AST walker. Name binding
+# and its diagnostics happen before this call; stack-relative addresses
+# are computed here, when the actual operand stack position is known.
+int sym_emit_value(int t, char* s):
 	# A kernel's body lives in the PTX module, not at a host address:
 	# referencing its name as a value can only be a miscall.
 	if (sym_is_kernel(t)): error(c"kernels cannot be called; use 'launch'")
@@ -834,6 +846,14 @@ int sym_get_value(char *s):
 			return 4 /* function */
 
 	return type
+
+
+int sym_get_value(char* s):
+	# Device bodies use a separate symbol/stack model.
+	if (target_isa == 3): return gpu_sym_get_value(s)
+	int t = sym_lookup(s)
+	if (t < 0): sym_not_found_error(s)
+	return sym_emit_value(t, s)
 
 
 void sym_define_declare_global_function(char* name):
@@ -1073,4 +1093,3 @@ void emit_debugging_symbols(int word_size):
 	section_set_range(debug_line_section_header, debug_line_addr, codepos - debug_line_addr)
 
 	emit_int8(0) /* placeholder so reader doesn't read beyond the end of the file */
-
