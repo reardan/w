@@ -19,9 +19,13 @@ UNSIGNED WORD BIT PATTERNS (a 32-bit target's -1 is 0xffffffff, a 64-bit
 target's -1 is 2^64-1): the masked-word convention of lib/sha256.w,
 widened to the full word.
 
-Note: the built-in `uint` type does not make `<`/`>` unsigned today
-(`uint a = cast(uint, -1); a > 1` is false on x86 and x64), so code that
-needs an unsigned ordering must call unsigned_lt/unsigned_cmp below.
+Note: native unsigned word operations are unsigned now: with a `uint`
+operand (or uint32 on 32-bit words, uint64 on 64-bit words), `<`, `<=`,
+`>`, `>=`, `/`, `%` and `>>` use the unsigned forms, so
+`uint a = cast(uint, -1); a > 1` is true on every target
+(docs/projects/type_system_p0.md, "Unsigned operations"). The int-typed
+helpers below remain for code that keeps unsigned bit patterns in plain
+ints, and agree with the native operators (tests/unsigned_compare_test.w).
 */
 
 

@@ -60,6 +60,7 @@ int float32_value_type
 int float64_value_type
 int bool_type
 int int64_type
+int uint_type
 int uint64_type
 int uint8_type
 int uint16_type
@@ -888,6 +889,24 @@ int type_is_unsigned_fixed(int type_index):
 	return 0
 
 
+# 1 when an operand of type t (a source type or a promote()d value)
+# makes a word-sized integer operation unsigned: the unsigned integer
+# types whose values fill the whole machine word -- uint everywhere,
+# uint64 on 8-byte-word targets, uint32 on 4-byte-word targets. The
+# narrower unsigned types (and uint32 on a 64-bit word) zero-extend into
+# the word (type_is_unsigned_fixed), so the signed word operations are
+# already exact for them, just as C's integer promotions turn them into
+# a (word-sized) int. Pointers are separate type indices and never
+# match. See docs/projects/type_system_p0.md, "Unsigned operations".
+int type_is_unsigned_word(int t):
+	t = type_unqualified(t)
+	if (t < 0): return 0
+	if (t == uint_type): return 1
+	if (t == uint64_type): return word_size == 8
+	if (t == uint32_type): return word_size == 4
+	return 0
+
+
 # Return 1 when a value of type 'got' can be stored where 'want' is expected.
 # "constant" (3) results (integer/char/string literals, addresses from '&',
 # untyped call results) carry no type information yet, so they remain
@@ -1252,7 +1271,7 @@ void push_basic_types():
 	type_push_size(c"pointer", word_size)
 	type_push_size(c"int8", 1)
 
-	type_push_size(c"uint", word_size)
+	uint_type = type_push_size(c"uint", word_size)
 	uint32_type = type_push_size(c"uint32", 4)
 	uint16_type = type_push_size(c"uint16", 2)
 	uint8_type = type_push_size(c"uint8", 1)

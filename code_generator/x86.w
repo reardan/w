@@ -1056,13 +1056,46 @@ void alu_imod():
 		emit(2, c"\x89\xd0")
 
 
+/* mov %eax,%ebx ; pop %eax ; xor %edx,%edx ; div %ebx: the unsigned
+   twin of alu_idiv, for an unsigned word operand
+   (grammar/binary_op.w, unsigned_word_operand) */
+void alu_udiv():
+	if (target_isa == 3): ptx_alu_pop(c"div.u64")
+	elif (target_isa == 2): wasm_pop_op_ax(0x6e)   # i32.div_u
+	elif (target_isa == 1):
+		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8   (pop left operand)
+		a64(op(0x9a, 0xc00920))   # udiv x0,x9,x0
+	else:
+		emit_x64_opcode()
+		emit(2, c"\x89\xc3")
+		emit(1, c"\x58")
+		# xor %edx,%edx: a 32-bit write zero-extends into rdx on x64
+		emit(2, c"\x31\xd2")
+		emit_x64_opcode()
+		emit(2, c"\xf7\xf3")
+
+
+/* div, then mov %edx,%eax to keep the unsigned remainder */
+void alu_umod():
+	if (target_isa == 3): ptx_alu_pop(c"rem.u64")
+	elif (target_isa == 2): wasm_pop_op_ax(0x70)   # i32.rem_u
+	elif (target_isa == 1):
+		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8   (pop left operand)
+		a64(op(0x9a, 0xc0092a))   # udiv x10,x9,x0
+		a64(op(0x9b, 0x00a540))   # msub x0,x10,x0,x9  (x0 = x9 - x10*x0)
+	else:
+		alu_udiv()
+		emit_x64_opcode()
+		emit(2, c"\x89\xd0")
+
+
 # Shift by a constant: 'push eax; mov eax,imm; mov ecx,eax; pop eax;
 # shX eax,cl' becomes 'shX eax,imm8' when the count's mov directly
 # follows the push. The count is masked by the hardware exactly as cl
 # would be (5 bits, 6 with REX.W), so the low byte is all that matters.
 # A count of 1 uses the two-byte 0xd1 form.
 # modrm_ext is the ModRM byte selecting the operation on eax (0xe0 shl,
-# 0xf8 sar).
+# 0xe8 shr, 0xf8 sar).
 int shift_imm_fold(int modrm_ext):
 	if ((imm_note_end == 0) || (imm_note_end != codepos)): return 0
 	if ((push_note_end == 0) || (push_note_end != imm_note_start)): return 0
@@ -1111,6 +1144,22 @@ void alu_sar():
 		emit(2, c"\xd3\xf8")
 
 
+/* mov %eax,%ecx ; pop %eax ; shr %cl,%eax: the logical (unsigned) twin
+   of alu_sar, for an unsigned word left operand */
+void alu_shr():
+	if (target_isa == 3): ptx_alu_shift(c"shr.u64")
+	elif (target_isa == 2): wasm_pop_op_ax(0x76)   # i32.shr_u
+	elif (target_isa == 1):
+		a64(op(0xf8, 0x408789))   # ldr x9,[x28],#8
+		a64(op(0x9a, 0xc02520))   # lsrv x0,x9,x0
+	else:
+		if (shift_imm_fold(0xe8)): return
+		emit(2, c"\x89\xc1")
+		emit(1, c"\x58")
+		emit_x64_opcode()
+		emit(2, c"\xd3\xe8")
+
+
 /* and %ebx,%eax */
 void alu_and():
 	if (target_isa == 3): ptx_alu_ax_bx(c"and.b64")
@@ -1152,7 +1201,8 @@ void alu_xor():
 
 /* cmp %eax,%ebx ; setCC %al ; movzbl %al,%eax
    setcc_opcode is the second setCC byte: 0x9c setl, 0x9d setge, 0x9e setle,
-   0x9f setg, 0x94 sete, 0x95 setne */
+   0x9f setg, 0x94 sete, 0x95 setne, and the unsigned 0x92 setb, 0x93 setae,
+   0x96 setbe, 0x97 seta (grammar/binary_op.w, setcc_unsigned) */
 void alu_cmp_set(int setcc_opcode):
 	if (target_isa == 3): ptx_alu_cmp_set(setcc_opcode)
 	elif (target_isa == 2): wasm_alu_cmp_set(setcc_opcode)
