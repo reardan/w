@@ -426,7 +426,8 @@ int raft_wal_rewrite_checked(raft_wal* rw, raft* r, int* wrote_out, fs_replace_r
 int raft_wal_rewrite(raft_wal* rw, raft* r):
 	int wrote = 0
 	fs_replace_report rep
-	asserts(c"raft_wal_rewrite: compacted log could not be published durably", raft_wal_rewrite_checked(rw, r, &wrote, &rep) == IO_OK)
+	int status = raft_wal_rewrite_checked(rw, r, &wrote, &rep)
+	asserts(c"raft_wal_rewrite: compacted log could not be published durably", status == IO_OK)
 	return wrote
 
 

@@ -1082,9 +1082,9 @@ char* lsm_export(lsm* l, int* len_out):
 # strictly ascending, already validated) — header: "Generations". The
 # new table is built and the new manifest published before anything
 # live changes; a failure before that switch leaves l untouched.
-int lsm_install_generation(lsm* l, char* blob, list[int] key_off, list[int] key_len, list[int] val_off, list[int] val_len):
+int lsm_install_generation(lsm* l, char* blob, list[int] koff, list[int] klen, list[int] voff, list[int] vlen):
 	if (l.failed): return 0
-	int count = key_off.length
+	int count = koff.length
 	list[int] seqs = new list[int]
 	char* path = 0
 	sstable* t = 0
@@ -1098,8 +1098,8 @@ int lsm_install_generation(lsm* l, char* blob, list[int] key_off, list[int] key_
 			return 0
 		int i = 0
 		while (i < count):
-			char* key = mem_dup(blob + key_off[i], key_len[i])
-			sstable_writer_add(w, key, blob + val_off[i], val_len[i], 0)
+			char* key = mem_dup(blob + koff[i], klen[i])
+			sstable_writer_add(w, key, blob + voff[i], vlen[i], 0)
 			free(key)
 			i = i + 1
 		if (sstable_writer_finish(w) == 0):
