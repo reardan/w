@@ -42,6 +42,14 @@ int deps_mode
 char* deps_paths
 int deps_count
 
+# 'w deps --json' shadow report (--import-root): while deps_mode is set
+# and roots are in use, compile_relative_path probes every candidate for
+# an import before compiling the first and parks the others here
+# (newline-separated absolute paths, or 0); deps_record moves them onto
+# that file's record, parallel to deps_paths.
+char* deps_pending_shadows
+char* deps_shadow_lists
+
 # 'w defhash' scoping flags, declared here (rather than down with the
 # rest of the defhash machinery, next to deps_dump/deps_main below) so
 # compile_save can reference defhash_depth -- compile_save is defined
@@ -53,9 +61,13 @@ int defhash_depth
 
 void deps_record(char* path):
 	int max_deps = 4000
-	if (deps_paths == 0): deps_paths = malloc(max_deps * __word_size__)
+	if (deps_paths == 0):
+		deps_paths = malloc(max_deps * __word_size__)
+		deps_shadow_lists = malloc(max_deps * __word_size__)
 	assert1(deps_count < max_deps)
 	save_ptr(deps_paths + deps_count * __word_size__, cast(int, strclone(path)))
+	save_ptr(deps_shadow_lists + deps_count * __word_size__, cast(int, deps_pending_shadows))
+	deps_pending_shadows = 0
 	deps_count = deps_count + 1
 
 
@@ -255,9 +267,247 @@ int compile_search_upward(char* dir, char* fn):
 	return 0
 
 
+/*
+--import-root <dir> (repeatable; also spelled --import-root=<dir>):
+explicit, ordered module search roots (docs/projects/compilation_model.md
+§7). An import's resolved module path (dots to slashes,
+__arch__ already substituted by grammar/import_statement.w) is tried as
+exactly <root>/<path>.w in each root in command-line order -- no upward
+walk inside a root -- and the first root holding the file wins. Only when
+no root does, the default search below runs unchanged (the working
+directory and every parent, then the compiler binary's directory and
+every parent), so with no roots every import resolves exactly as before.
+
+import_roots_scan (called by link_impl before the auto-imported container
+runtime compiles) collects the roots from the whole argument list, makes
+each absolute against the invocation's working directory, cleans it
+lexically ('.', '..', repeated and trailing separators) and rejects one
+that is not a directory. The roots then apply to every import: user
+imports, the auto-imported runtime and the on-demand runtimes alike.
+Command-line input files are never searched for (compile_input_file).
+Module dedupe stays on the module path ("lib/foo"), so a module name is
+compiled once whichever root supplied it.
+*/
+char* import_roots
+int import_root_count
+
+
+char* import_root_at(int index):
+	return cast(char*, load_ptr(import_roots + index * __word_size__))
+
+
+# Lexically clean an absolute path: drop empty and '.' segments, let '..'
+# remove the previous segment (never past the '/' or 'C:' prefix), and
+# drop a trailing separator. Returns a fresh allocation.
+char* import_root_clean(char* path):
+	int n = strlen(path)
+	char* out = malloc(n + 2)
+	int len = 0
+	int i = 0
+	if (path[0] == '/'):
+		out[0] = '/'
+		len = 1
+		i = 1
+	else:
+		# Windows drive prefix ('C:'), kept as the floor '..' cannot pop
+		while ((path[i] != 0) && (path[i] != '/')):
+			out[len] = path[i]
+			len = len + 1
+			i = i + 1
+	int floor = len
+	while (path[i] != 0):
+		if (path[i] == '/'): i = i + 1
+		else:
+			int j = i
+			while ((path[j] != 0) && (path[j] != '/')): j = j + 1
+			int seg = j - i
+			int is_dot = (seg == 1) && (path[i] == '.')
+			int is_dotdot = (seg == 2) && (path[i] == '.') && (path[i + 1] == '.')
+			if (is_dotdot):
+				while ((len > floor) && (out[len - 1] != '/')): len = len - 1
+				if (len > floor): len = len - 1
+			else if (is_dot == 0):
+				if ((len > 0) && (out[len - 1] != '/')):
+					out[len] = '/'
+					len = len + 1
+				while (i < j):
+					out[len] = path[i]
+					len = len + 1
+					i = i + 1
+			i = j
+	out[len] = 0
+	return out
+
+
+# A directory opens as '<dir>/.'; a regular file there fails with
+# ENOTDIR. (On Windows the open helper passes FILE_FLAG_BACKUP_SEMANTICS,
+# so a directory opens too.)
+int import_root_is_dir(char* dir):
+	char* probe = strjoin(dir, c"/.")
+	int fd = open(probe, 0, 0)
+	free(probe)
+	if (fd < 0): return 0
+	close(fd)
+	return 1
+
+
+# A bad --import-root fails before anything compiles, with the option
+# text; under --json as one NDJSON record at the "<command-line>" marker
+# (the unrecognized_option_error shape below).
+void import_root_error(char* message, char* arg):
+	diag_part(message)
+	diag_part(c"'")
+	diag_part(arg)
+	diag_part(c"'")
+	if (diag_json): diag_emit(c"error", c"<command-line>", 0, 0, arg)
+	else:
+		print_error(c"error: ")
+		print_error(str_from_cstr(diag_buffer))
+		print_error(c"\x0a")
+	exit(1)
+
+
+void import_root_add(char* spelled):
+	if (spelled[0] == 0): import_root_error(c"missing directory after ", c"--import-root")
+	char* path = strclone(spelled)
+	path_normalize_sep(path)
+	char* absolute = path
+	if (path_is_absolute(path) == 0):
+		int max_path_size = 4096
+		char* cwd = malloc(max_path_size)
+		getcwd(cwd, max_path_size)
+		path_normalize_sep(cwd)
+		char* joined = strjoin(cwd, c"/")
+		absolute = strjoin(joined, path)
+		free(joined)
+		free(cwd)
+	char* cleaned = import_root_clean(absolute)
+	if (import_root_is_dir(cleaned) == 0): import_root_error(c"import root is not a directory: ", spelled)
+	int max_roots = 64
+	if (import_roots == 0): import_roots = malloc(max_roots * __word_size__)
+	if (import_root_count >= max_roots): import_root_error(c"too many import roots at ", spelled)
+	save_ptr(import_roots + import_root_count * __word_size__, cast(int, cleaned))
+	import_root_count = import_root_count + 1
+
+
+# How many arguments an --import-root option occupies at arg: 2 for the
+# separate-value spelling, 1 for '--import-root=<dir>', 0 when arg is
+# not one. The subcommands' leading-flag loops skip over them, and
+# link_impl's scans treat the separate value like -o's.
+int import_root_arg_width(char* arg):
+	if (strcmp(arg, c"--import-root") == 0): return 2
+	if (starts_with(arg, c"--import-root=")): return 1
+	return 0
+
+
+# Collect every --import-root in argv[1..argc), in order. The whole
+# argument list is scanned (not just from link_impl's start index), so
+# the option works wherever it appears after the subcommand word.
+void import_roots_scan(int argc, int argv):
+	import_root_count = 0
+	int k = 1
+	while (k < argc):
+		char** arg = argv + k * __word_size__
+		if (strcmp(*arg, c"-o") == 0): k = k + 1
+		else if (import_root_arg_width(*arg) == 2):
+			if (k + 1 >= argc): import_root_error(c"missing directory after ", *arg)
+			char** value = argv + (k + 1) * __word_size__
+			import_root_add(*value)
+			k = k + 1
+		else if (import_root_arg_width(*arg) == 1): import_root_add(*arg + 14)
+		k = k + 1
+
+
+# Probe-only twin of compile_search_upward: the first dir/fn that opens,
+# walking dir (mutated) toward the root; a fresh allocation, or 0.
+char* import_probe_upward(char* dir, char* fn):
+	while (dir[0]):
+		char* joined = strjoin(dir, c"/")
+		char* candidate = strjoin(joined, fn)
+		free(joined)
+		int fd = open(candidate, 0, 0)
+		if (fd >= 0):
+			close(fd)
+			return candidate
+		free(candidate)
+		int index = strlen(dir) - 1
+		while ((index >= 0) && (dir[index] != 47)): index = index - 1
+		if (index < 0): dir[0] = 0
+		else: dir[index] = 0
+	return 0
+
+
+# text + "\n" + path (or a copy of path when text is 0); frees text.
+char* import_shadow_append(char* text, char* path):
+	if (text == 0): return strclone(path)
+	char* with_sep = strjoin(text, c"\x0a")
+	free(text)
+	char* result = strjoin(with_sep, path)
+	free(with_sep)
+	return result
+
+
+# The probe path <root>/fn for root index r; a fresh allocation.
+char* import_root_candidate(int r, char* fn):
+	char* joined = strjoin(import_root_at(r), c"/")
+	char* candidate = strjoin(joined, fn)
+	free(joined)
+	return candidate
+
+
+int import_path_opens(char* path):
+	int fd = open(path, 0, 0)
+	if (fd < 0): return 0
+	close(fd)
+	return 1
+
+
+# deps --json with roots: every file this import could resolve to -- each
+# root's <root>/fn, then the default search's first hit -- minus the
+# first (the one the compile takes) goes to deps_pending_shadows. A
+# default hit that is the very same path as a root candidate (a root
+# naming the working directory) is not a second file.
+void import_root_note_shadows(char* fn):
+	char* found = 0
+	int found_count = 0
+	for r in range(import_root_count):
+		char* candidate = import_root_candidate(r, fn)
+		if (import_path_opens(candidate)):
+			if (found_count > 0): found = import_shadow_append(found, candidate)
+			found_count = found_count + 1
+		free(candidate)
+	int max_path_size = 4096
+	char* cwd = malloc(max_path_size)
+	getcwd(cwd, max_path_size)
+	path_normalize_sep(cwd)
+	char* fallback = import_probe_upward(cwd, fn)
+	free(cwd)
+	if (fallback == 0):
+		char* bin_dir = compiler_binary_dir()
+		if (bin_dir != 0):
+			fallback = import_probe_upward(bin_dir, fn)
+			free(bin_dir)
+	if ((fallback != 0) && (found_count > 0)):
+		int same = 0
+		for r2 in range(import_root_count):
+			char* again = import_root_candidate(r2, fn)
+			if (strcmp(again, fallback) == 0): same = 1
+			free(again)
+		if (same == 0): found = import_shadow_append(found, fallback)
+	if (fallback != 0): free(fallback)
+	deps_pending_shadows = found
+
+
 # fn must not shadow the global filename: the search-exhausted branch
 # below reads and repoints the global.
 int compile_relative_path(char* fn):
+	# Explicit --import-root roots first, in order (block comment above)
+	if (import_root_count > 0):
+		if (deps_mode): import_root_note_shadows(fn)
+		for r in range(import_root_count):
+			if (compile_joined(import_root_at(r), fn)): return 1
+		deps_pending_shadows = 0
+
 	# Get current directory
 	int max_path_size = 4096
 	char* cwd = malloc(max_path_size)
@@ -299,7 +549,8 @@ int compile_relative_path(char* fn):
 	diag_part(fn)
 	# error() instead of exit() so a REPL entry importing a missing
 	# module recovers to the prompt instead of killing the session
-	error(c"' (searched the current directory and every parent)")
+	if (import_root_count > 0): error(c"' (searched the import roots, the current directory and every parent)")
+	else: error(c"' (searched the current directory and every parent)")
 	return 0
 
 
@@ -590,6 +841,8 @@ int link_option(char* arg, int apply):
 		return 1
 	if ((strcmp(arg, c"--wasm-acc=globals") == 0) || (strcmp(arg, c"--wasm-acc=locals") == 0)):
 		return 1
+	# --import-root=<dir> is whole-program too (import_roots_scan)
+	if (import_root_arg_width(arg) == 1): return 1
 	return (strcmp(arg, c"-v") == 0) || (strcmp(arg, c"--verbose") == 0)
 
 
@@ -610,6 +863,8 @@ void help_shared_options():
 	println(c"  --wasm-acc=globals|locals  wasm accumulator representation (default: locals)")
 	println(c"  --ptx=<path>          dump the embedded PTX module to <path> (gpu kernels)")
 	println(c"  --cubin-file=<path>   embed a ptxas-built cubin of that PTX; loaded before the PTX")
+	println(c"  --import-root <dir>   search <dir> for imports before the default search;")
+	println(c"                        repeatable, earlier roots win (also --import-root=<dir>)")
 	println(c"  -v, --verbose         raise verbosity (repeat for compiler debug traces)")
 	println(c"  -h, --help            print this help and exit")
 
@@ -812,6 +1067,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	while (sel_scanning && (sel_scan < argc)):
 		char** sel_arg = argv + sel_scan * __word_size__
 		if (strcmp(*sel_arg, c"-o") == 0): sel_scan = sel_scan + 2
+		else if (import_root_arg_width(*sel_arg) == 2): sel_scan = sel_scan + 2
 		else if (starts_with(*sel_arg, c"-")): sel_scan = sel_scan + 1
 		else:
 			sel_scanning = 0
@@ -849,6 +1105,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# -o consumes the next argument: an output path may start
 			# with '-' without being an option
 			flag_scan = flag_scan + 1
+		else if (import_root_arg_width(*flag_arg) == 2):
+			# so does the separate-value --import-root spelling
+			flag_scan = flag_scan + 1
 		else if ((strcmp(*flag_arg, c"-v") == 0) || (strcmp(*flag_arg, c"--verbose") == 0)):
 			verbosity_raise()
 		else if (arg_is_help(*flag_arg)):
@@ -857,6 +1116,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		else if (starts_with(*flag_arg, c"-")):
 			if (link_option(*flag_arg, 0) == 0): unrecognized_option_error(*flag_arg)
 		flag_scan = flag_scan + 1
+	# --import-root is whole-program: the roots must be known before the
+	# auto-imported container runtime below resolves its first import
+	import_roots_scan(argc, argv)
 	push_basic_types()
 	pointer_indirection = 0
 	# No function body is being compiled yet: the '?' operator checks
@@ -909,6 +1171,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			asserts(c"-o requires an output path", i < argc)
 			arg = argv + i * __word_size__
 			output_path = *arg
+		else if (import_root_arg_width(*arg) == 2):
+			# Applied by import_roots_scan; skip the directory argument
+			i = i + 1
 		else if (starts_with(*arg, c"-")):
 			# Options apply positionally (link_option). A dash-prefixed
 			# argument that is not one is a typo or an unsupported
@@ -1108,6 +1373,9 @@ int check_main(int argc, int argv):
 		else if (starts_with(*arg, c"--line-length=")):
 			lint_line_limit = atoi(*arg + 14)
 			i = i + 1
+		else if (import_root_arg_width(*arg) > 0):
+			# Applied by link_impl's import_roots_scan over all of argv
+			i = i + import_root_arg_width(*arg)
 		else if ((strcmp(*arg, c"-v") == 0) || (strcmp(*arg, c"--verbose") == 0)):
 			# Consumed here (link_impl's own pre-scan would also apply a
 			# trailing -v) so 'w check -v --json f.w' keeps scanning the
@@ -1142,10 +1410,42 @@ target, so per-arch closures come out right.
 */
 
 
-void deps_emit(int json, char* path):
+# A recorded absolute path as deps prints it: relative to the invocation
+# directory when under it, else unchanged. Points into path.
+char* deps_display_path(char* path, char* cwd):
+	int cwd_len = strlen(cwd)
+	if (starts_with(path, cwd)):
+		if (path[cwd_len] == '/'): return path + cwd_len + 1
+	return path
+
+
+# shadows (newline-separated absolute paths, or 0): the --import-root
+# candidates this file hid, as a "shadows" array in the --json record
+# only -- never present without roots, so the default output is
+# unchanged.
+void deps_emit(int json, char* path, char* shadows, char* cwd):
 	if (json):
 		diag_write_cstr(c"{")
 		diag_write_json_field(c"file", path)
+		if (shadows != 0):
+			diag_write_cstr(c", ")
+			diag_write_json_string(c"shadows")
+			diag_write_cstr(c": [")
+			char* rest = strclone(shadows)
+			char* item = rest
+			int first = 1
+			int done = 0
+			while (done == 0):
+				int k = 0
+				while ((item[k] != 0) && (item[k] != 10)): k = k + 1
+				if (item[k] == 0): done = 1
+				item[k] = 0
+				if (first == 0): diag_write_cstr(c", ")
+				diag_write_json_string(deps_display_path(item, cwd))
+				first = 0
+				item = item + k + 1
+			free(rest)
+			diag_write_cstr(c"]")
 		diag_write_cstr(c"}\x0a")
 	else:
 		diag_write_cstr(path)
@@ -1157,7 +1457,6 @@ void deps_dump(int json):
 	int max_path_size = 4096
 	char* cwd = malloc(max_path_size)
 	getcwd(cwd, max_path_size)
-	int cwd_len = strlen(cwd)
 	int i = 0
 	while (i < deps_count):
 		char* path = cast(char*, load_ptr(deps_paths + i * __word_size__))
@@ -1167,10 +1466,8 @@ void deps_dump(int json):
 			char* seen = cast(char*, load_ptr(deps_paths + j * __word_size__))
 			if (strcmp(seen, path) == 0): duplicate = 1
 		if (duplicate == 0):
-			char* shown = path
-			if (starts_with(path, cwd)):
-				if (path[cwd_len] == '/'): shown = path + cwd_len + 1
-			deps_emit(json, shown)
+			char* shadows = cast(char*, load_ptr(deps_shadow_lists + i * __word_size__))
+			deps_emit(json, deps_display_path(path, cwd), shadows, cwd)
 		i = i + 1
 	free(cwd)
 
@@ -1179,15 +1476,20 @@ int deps_main(int argc, int argv):
 	int i = 2
 	int json = 0
 	diag_json = 0
-	if (i < argc):
+	int scanning = 1
+	while (scanning & (i < argc)):
 		char** arg = argv + i * __word_size__
 		if (strcmp(*arg, c"--json") == 0):
 			json = 1
 			diag_json = 1
 			i = i + 1
+		else if (import_root_arg_width(*arg) > 0):
+			# Applied by link_impl's import_roots_scan over all of argv
+			i = i + import_root_arg_width(*arg)
 		else if (arg_is_help(*arg)):
 			help_deps()
 			exit(0)
+		else: scanning = 0
 	if (argc <= i):
 		println2(c"usage: w deps [--json] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		println2(c"run 'w deps --help' for details")
@@ -1549,6 +1851,8 @@ int defhash_main(int argc, int argv):
 		if (strcmp(*arg, c"--closure") == 0):
 			defhash_closure_mode = 1
 			i = i + 1
+		else if (import_root_arg_width(*arg) > 0):
+			i = i + import_root_arg_width(*arg)
 		else if (arg_is_help(*arg)):
 			help_defhash()
 			exit(0)
@@ -1822,6 +2126,8 @@ int symbols_main(int argc, int argv):
 		else if (strcmp(*arg, c"--layout") == 0):
 			layout = 1
 			i = i + 1
+		else if (import_root_arg_width(*arg) > 0):
+			i = i + import_root_arg_width(*arg)
 		else if (arg_is_help(*arg)):
 			help_symbols()
 			exit(0)
