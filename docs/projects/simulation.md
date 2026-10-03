@@ -1,0 +1,161 @@
+# Clocks, injectable I/O and crash simulation
+
+Stage W4 of the reliable-services design (issue #514,
+`docs/projects/reliable_services.md`, "P1 clocks and reproducible
+execution"), plus the event-loop dispatch bound from W3. Source files
+are authoritative; this page is the map.
+
+| Module | Role |
+|---|---|
+| `lib/wclock.w` | Clock interface: status-checked readings, monotonic vs wall, real and virtual clocks |
+| `lib/event_loop.w` | `event_loop_new_with(clock, poller)`, `event_loop_set_dispatch_limits` |
+| `lib/event_sim.w` | Scripted poll provider that advances a virtual clock instead of sleeping |
+| `lib/file_ops.w` | Injectable file operations table + the real (syscall) adapter |
+| `lib/fake_fs.w` | In-memory filesystem: volatile/durable state, seeded crashes, fault injection |
+| `libs/standard/distributed/sim_env.w` | Per-node clock + fake filesystem for `sim.w` scenarios |
+
+## Clocks (`lib/wclock.w`)
+
+A `wclock` is a read function plus a self pointer. A reading returns an
+`IO_*` status (`lib/io.w`) and writes the value through an out pointer:
+
+```text
+wclock_monotonic(c, &wtime) / wclock_wall(c, &wtime)     -> status
+wclock_monotonic_ms(c, &int)                             -> status (wrapping)
+wclock_monotonic_ns / wclock_wall_ms / wclock_wall_ns    -> status (IO_UNSUPPORTED if it does not fit)
+```
+
+- **Monotonic vs wall.** Monotonic time never goes backwards and is the
+  only line deadlines may use. Wall time (epoch seconds) can step either
+  way at any moment, independently.
+- **Units.** `wtime {sec, nsec}` is the portable full-range value. On
+  x64 `int` is 64 bits, so nanosecond and epoch-millisecond scalars fit;
+  on 32-bit x86 they mostly do not, and the scalar readers return
+  `IO_UNSUPPORTED` rather than a truncated number. Real wall seconds on
+  x86 overflow in 2038 (i386 `clock_gettime` has a 32-bit `time_t`).
+- **Millisecond contract.** `wclock_monotonic_ms` is exactly
+  `time_monotonic_ms` (`lib/time.w`), read from a clock: word arithmetic
+  that wraps a 32-bit int after ~24.8 days on x86. Compare such values
+  only by difference (`libs/standard/distributed/monotime.w`).
+- **Real clock** (`wclock_real_new`): `clock_gettime` with
+  `CLOCK_MONOTONIC` / `CLOCK_REALTIME`.
+- **Virtual clock** (`wclock_virtual_new`): moves only through
+  `wclock_virtual_advance_ms/_ns/_to`; `wclock_virtual_jump_wall_ms` /
+  `_set_wall` step wall time alone; `wclock_virtual_fail` makes readings
+  fail with a chosen status.
+- **Custom clocks** (`wclock_custom_new`): any read function, e.g.
+  `sim_env.w`'s clock that follows `sim_now`.
+
+Clocks are ordinary heap objects handed to their users. There is no
+process-global hook, so two workers never race on shared clock state.
+A virtual clock is not synchronized; one owner advances it.
+
+Hybrid logical clocks (`libs/standard/distributed/clock.w`) encode
+causality on top of a wall reading. They do not bound physical clock
+uncertainty, and nothing in this stage does either. Lease and leader
+logic still needs an explicit bound on clock drift.
+
+## Event loop injection and fairness
+
+`event_loop_new_with(clock, poller)` builds a loop that reads time from
+`clock` and waits through `poller`. Pass 0 for either to get the default
+(`time_monotonic_ms`, epoll or poll), so `event_loop_new` behaves as
+before. A poller (`event_poller {wait, self}`, the `poll(2)` contract)
+selects the poll backend. Timers read only the monotonic line, so a
+wall-clock jump never extends or shortens a deadline. If an injected
+clock fails to read, the loop holds time at the last good reading and
+counts `clock_errors`.
+
+`lib/event_sim.w` is the test provider. It delivers scripted one-shot
+readiness (`event_sim_at`, `event_sim_after`) and level readiness
+(`event_sim_set_ready`) on plain fd numbers, and never sleeps. When
+nothing is ready, it advances the virtual clock to the earlier of the
+loop's next timer deadline and the next deliverable scripted event. A
+wait that nothing can ever wake returns `-EDEADLK`, which ends
+`event_loop_run`.
+
+`event_loop_set_dispatch_limits(loop, max_timers, max_fd_callbacks)`
+bounds one pass. Both limits default to 0, which means unbounded and
+keeps the current behaviour. Due timers left over fire next pass
+without a sleep. Readiness left over is level-triggered, so it is
+reported again:
+
+- The poll backend starts the next pass at the first watch it did not
+  reach.
+- The epoll backend asks the kernel for at most `fd_limit` events. The
+  kernel re-queues reported descriptors behind unreported ones.
+- Always-ready synthetic slots (regular files) alternate with epoll
+  events.
+
+So a pass that hits the limit never starves later descriptors.
+
+## File operations (`lib/file_ops.w`)
+
+`file_ops` is a table of `open`, `close`, `read`, `write`, `sync`
+(fsync), `datasync`, `rename`, `unlink`, `mkdir` and `sync_dir`. Each
+fills an `io_result` and returns its status. `file_ops_write_all`,
+`_read_exact` and `_read_to_end` loop over short transfers and retry
+`IO_INTERRUPTED`. Write-completed (visible) and sync-completed (durable)
+are separate steps. A name becomes durable only after its directory is
+synced. The real adapter (`file_ops_real_new`) sits on the existing
+syscalls; `sync_dir` opens the directory, fsyncs it and closes it.
+Positional I/O and truncate come later, with the W1 primitives.
+
+## Fake filesystem (`lib/fake_fs.w`)
+
+Each file has volatile contents (what reads see), durable contents (as
+of the last successful sync) and an ordered list of unsynced changes.
+The namespace has a volatile view, a durable view and an ordered list of
+unsynced directory operations.
+
+- **Sync.** A file sync applies that file's changes to its durable
+  copy. A directory sync commits metadata operations in order, up to the
+  last one touching that directory (an ordered journal, like ext4 and
+  xfs). Syncing a file does not make its name durable.
+- **Failed sync.** An injected EIO on sync drops the unsynced changes:
+  reads still see them, a crash loses them, and a later successful sync
+  does not bring them back. This matches Linux after a writeback error.
+- **`fake_fs_crash(fs, rng)`.** All descriptors become invalid. The
+  crash keeps a seeded prefix of the unsynced directory operations.
+  Then, per file, it keeps a seeded prefix of the unsynced changes. If
+  that prefix stops before a write, a torn piece of that write may
+  survive: the bytes up to a sector boundary. Files without a durable
+  name are gone. `rng = 0` keeps nothing unsynced.
+- **Faults.** Per-mille rates of short transfers, EINTR, EAGAIN, ENOSPC
+  and EIO, for a chosen set of operations (`fake_fs_set_faults`). The
+  nth following operation can be made to fail (`fake_fs_fail_nth`). A
+  byte capacity cuts writes short and then fails them with ENOSPC.
+- **Determinism.** Every decision comes from
+  `libs/standard/distributed/prng.w`, so equal seeds and scripts give
+  equal trace and state hashes on every target. `lib/fake_fs_test.w`
+  freezes x86-observed values that the x64 twin must match.
+- **Limits.** The prefix model never reorders unsynced writes, and
+  delayed completion is not modelled.
+
+`lib/file_ops_test.w` runs one scenario against the real adapter
+(files under `bin/`) and the fake. It covers create, write, sync,
+rename, directory sync, read-back, append, unlink and the common errors
+(ENOENT, EEXIST, EBADF, EOF), and requires every status, errno, count
+and byte to match.
+
+## Simulator hook (`libs/standard/distributed/sim_env.w`)
+
+`sim_env_new(net, node, seed, wall_base_sec)` gives one `sim.w` node:
+
+- a clock whose monotonic time is `sim_now`, and whose wall time adds a
+  per-node offset (`sim_env_jump_wall_ms`);
+- a fake filesystem, which `sim_env_crash` power-cycles from a per-node
+  seeded prng.
+
+`sim.w` and the raft harness are unchanged.
+
+## Deferred
+
+- Delayed or reordered write completion in the fake filesystem.
+- A positional-I/O and truncate entry in `file_ops`, once W1's syscalls
+  land.
+- Moving `raft_sim_harness.w`'s real-file WAL onto `file_ops`, so raft
+  crash tests get torn and lost writes. That needs `raft_wal.w` to take
+  a `file_ops`.
+- Event-loop support for real descriptors and a virtual clock together;
+  `event_sim` serves scripted descriptors only.
