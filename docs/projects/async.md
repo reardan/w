@@ -371,9 +371,12 @@ real running on it. Six stages followed, each shipped with tests.
    `thread_local` once the runtime is installed (lib/task.w reaches it
    through hooks, so it still compiles for every target).
    `task_xchan` is a mutex-protected channel whose parked peers are
-   woken through their own worker's inbox; a wake carries the park
-   sequence number it was meant for, so a wake that lost a race with a
-   timeout is ignored. `task_spawn_blocking` runs a function on a
+   woken through their own worker's inbox by a `task_remote_call` on a
+   reference-counted wait record: the callback runs on the waiter's
+   thread and wakes it only while it is still in the park that
+   registered the record, so a wake that lost a race with a timeout or
+   cancellation -- even one arriving after the task finished and was
+   reclaimed -- is a no-op. `task_spawn_blocking` runs a function on a
    helper thread while only the calling task waits.
    `http_server_threads.w` serves plain HTTP on N workers; HTTPS stays
    on one thread for now because the handshake's bignum/P-256 scratch
@@ -388,11 +391,15 @@ Follow-ups: per-call crypto scratch (then multi-threaded HTTPS);
 work-stealing, if per-worker imbalance shows up in practice (tasks that
 read `thread_local`s would need a rule before they may migrate);
 kqueue for darwin; `task_runtime` on arm64 once threads and TLS land
-there; the `task` declaration marker (phase 5); `task_xchan`'s
-cross-thread `task_remote_wake(task, seq)` can still reach a waiter
-that a timeout or cancellation already resumed (and, for a detached
-task, reclaimed) -- it should move to a `task_remote_call`-style
-completion like the executor's.
+there; the `task` declaration marker (phase 5). (Fixed, October 2026:
+`task_xchan`'s cross-thread `task_remote_wake(task, seq)` could reach a
+waiter that a timeout or cancellation had already resumed and, for a
+detached task, reclaimed -- a read of freed memory, or a spurious wake
+of whatever task reused the address. Its wake is now a
+`task_remote_call` on a reference-counted `task_xwaiter`, like the
+executor's job completions; `lib/task_xchan_race_test.w` reproduces the
+race under the guard-page debug allocator. `task_remote_free` now runs
+calls still pending at teardown so they release their references.)
 
 ## Bounded executor (October 2026)
 
