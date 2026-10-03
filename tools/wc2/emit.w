@@ -6,11 +6,10 @@ import code_generator.integer
 import lib.framing
 
 
-asm_buffer* wc2_emit(wc2_module* m):
-	wc2_semantics* semantic = wc2_analyze(m)
-	if (wc2_module_ok(m) == 0):
-		wc2_semantics_free(semantic)
-		return 0
+# Borrow a checked semantic snapshot. Resident clients keep it for queries
+# and repeated emission; the ordinary entry point below owns a temporary one.
+asm_buffer* wc2_emit_checked(wc2_semantics* semantic):
+	if (wc2_module_ok(semantic.module) == 0): return 0
 	asm_buffer* out = asm_buffer_new()
 	# ELF header (52 bytes), PT_LOAD and PT_GNU_STACK (32 bytes each).
 	for i in range(116): asm_buffer_byte(out, 0)
@@ -33,11 +32,17 @@ asm_buffer* wc2_emit(wc2_module* m):
 	save_int32(header + 108, 6)     # PF_R | PF_W
 	save_int32(header + 112, 16)
 	wc2_emit_functions(semantic, out)
-	wc2_semantics_free(semantic)
 	# Buffer growth invalidates 'header'; patch through the current buffer.
 	asm_buffer_patch_int32(out, 68, out.length)
 	asm_buffer_patch_int32(out, 72, out.length)
 	return out
+
+
+asm_buffer* wc2_emit(wc2_module* m):
+	wc2_semantics* semantic = wc2_analyze(m)
+	asm_buffer* image = wc2_emit_checked(semantic)
+	wc2_semantics_free(semantic)
+	return image
 
 
 # Complete the image before touching the destination. An exclusive sibling

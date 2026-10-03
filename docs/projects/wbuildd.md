@@ -23,13 +23,15 @@ the `build` RPC, client auto-start and the `verify_warm` gate
 (`tests/wbuildd_build_test.w`), described at the end of §8. The REPL
 server and the darwin dirent fix remain unimplemented.
 
-AST follow-up #488 now has its first three implementation tasks: the leaf
-`wc2` semantic AST and module context, JSON inspection, explicit parse ownership,
-and Linux x86 emission with local values, function calls, control flow, plain
-imports and basic structs. Its semantic pass checks names, types and definite
-initialization. See [wc2.md](wc2.md) for the supported subset and tests. Resident
-module reuse and the spike's measurements remain subsequent tasks; the option
-(c) migration in #489 has not started.
+AST follow-up #488 now has four implementation tasks in the leaf `wc2`:
+semantic AST inspection, Linux x86 emission, program semantics/imports/basic
+structs, and a resident JSON-lines service with module reuse, invalidation,
+multi-error checking and symbol/dependency queries. See [wc2.md](wc2.md) for
+the subset, protocol, measurements and conditional migration recommendation.
+Warm queries reuse parsing and analysis, but changed programs still reanalyze
+and emit as a whole; the measured larger fixture remains slower than wv2.
+This service is separate from wbuildd. The option (c) migration in #489 has
+not started.
 
 ## 0. Summary
 

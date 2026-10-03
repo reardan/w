@@ -10,14 +10,21 @@ import tools.wc2.lower
 import tools.wc2.dump
 import tools.wc2.emit
 import tools.wc2.load
+import tools.wc2.service
 
 
 int main(int argc, char** argv):
+	if ((argc == 2) && (strcmp(argv[1], c"serve") == 0)): return wc2_serve()
+	if (((argc == 3) || ((argc == 4) && (strcmp(argv[2], c"--json") == 0))) && (argv[argc - 1][0] != '-')):
+		if ((strcmp(argv[1], c"check") == 0) || (strcmp(argv[1], c"symbols") == 0) || (strcmp(argv[1], c"deps") == 0)):
+			return wc2_query_once(argv[1], argv[argc - 1])
 	int dump_mode = (argc == 3) && (strcmp(argv[1], c"--dump-ast") == 0)
 	int compile_mode = (argc == 4) && (strcmp(argv[2], c"-o") == 0) && (argv[1][0] != '-') && (argv[3][0] != 0)
 	if ((dump_mode || compile_mode) == 0):
 		println2(c"usage: wc2 --dump-ast file.w")
 		println2(c"       wc2 file.w -o output  (Linux x86 ELF)")
+		println2(c"       wc2 check|symbols|deps [--json] file.w")
+		println2(c"       wc2 serve  (JSON lines on stdin/stdout)")
 		return 2
 	char* path = argv[1]
 	if (dump_mode): path = argv[2]
