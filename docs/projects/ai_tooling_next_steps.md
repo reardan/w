@@ -638,3 +638,37 @@ bootstrap works on such hosts.
   calls `substring`, which runs `strlen` over the whole remaining
   text), which made a 600 KB cache parse take 20 s; the cache module
   scans lines by hand instead.
+
+## Reliable-services libraries (2026-10-03, #514)
+
+Observed by parallel agents building `lib/io.w`, `lib/fs.w`, the checked
+streams, `lib/executor.w`, the W2 codecs and W5 transports.
+
+- **`git diff --name-only HEAD | bin/wtest changed` misses untracked new
+  files.** Every agent adding a new module had to append the paths by
+  hand. Direction: a `--untracked` flag (or `git ls-files --others
+  --exclude-standard` folded in), or document `git add -N` in AGENTS.md.
+- **`bin/wtest changed` is useless for files in the compiler's closure.**
+  A `lib/stream.w` edit selects 802 of 817 targets (collapsed into the
+  umbrellas); `lib/bytes.w` alone pulls in `wexec`. Direction: report the
+  closure-driven fan-out separately from direct users, so a caller can
+  run the direct users plus `verify` first.
+- **`bin/wtest archs <file> --check` cannot filter by arch.** For
+  `lib/stream.w` it lists 245 pairs, 212 of them x86/x64; an agent wanting
+  only the non-default arches had to script around it. Direction:
+  `--arch <name>` / `--exclude-default`.
+- **`check --lint` with several files compiles them as one batch**, giving
+  false `duplicate-import` warnings and "symbol redefined" errors; lint
+  one file per invocation (same root cause as the multi-file `w check`
+  entry above).
+- **`in` is a keyword, but `in = ...` at statement position reports
+  "Could not find a valid primary expression, token: ="** without naming
+  the cause. Direction: a keyword-as-identifier hint.
+- **Language sharp edges hit along the way** (recorded here until each
+  gets its own issue): `uint` comparisons are signed (`cast(uint, -1) > 1`
+  is false on x86 and x64, so `lib/checked.w` ships `unsigned_lt`/
+  `unsigned_cmp`); narrow integer stores truncate silently (`uint16 x =
+  70000` is 4464, no warning); decimal literals wrap to 32 bits even on x64
+  (`4294967295` is -1); `free()` warns on a `T**` argument while `T*` is
+  accepted; `new T()` leaves fields uninitialized and a partial positional
+  `new T(a, b)` only warns.
