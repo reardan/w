@@ -4,6 +4,7 @@
 import lib.assert
 import tools.wc2.lower
 import tools.wc2.dump
+import tools.wc2.emit
 
 
 int main():
@@ -17,6 +18,19 @@ int main():
 		assert1(wc2_module_ok(m))
 		char* dump = wc2_dump(m)
 		free(dump)
+		wc2_module_free(m)
+		m = wc2_parse(c"int main(): return (0 && (1 / 0)) + ((~3 ^ 5) * 7 >> 2)\n", c"emit.w")
+		asm_buffer* image = wc2_emit(m)
+		assert1(image != 0)
+		asm_buffer* again = wc2_emit(m)
+		assert1(again != 0)
+		assert_equal(image.length, again.length)
+		assert1(mem_eq(image.data, again.data, image.length))
+		wc2_module_free(m)
+		asm_buffer_free(image)
+		asm_buffer_free(again)
+		m = wc2_parse(c"int main(): return 4294967296\n", c"overflow.w")
+		assert1(wc2_emit(m) == 0)
 		wc2_module_free(m)
 		m = wc2_parse(c"int f(\nint good(): return 1\n", c"syntax.w")
 		assert_equal(0, wc2_module_ok(m))

@@ -2,31 +2,45 @@
 # wbuild: step="bin/parser_generator tests/parser_generator/w.pg -o bin/wc2_parser.w"
 # wbuild: binary=wc2 dep=wc2_parser
 /*
-Leaf AST compiler experiment (#488), task 1: lower a documented subset of
-the parser-generator tree into a semantic AST. See docs/projects/wc2.md.
+Leaf AST compiler experiment (#488): semantic AST inspection and the first
+integer-expression executable slice. See docs/projects/wc2.md.
 */
 import lib.file
 import tools.wc2.lower
 import tools.wc2.dump
+import tools.wc2.emit
 
 
 int main(int argc, char** argv):
-	if ((argc != 3) || (strcmp(argv[1], c"--dump-ast") != 0)):
+	int dump_mode = (argc == 3) && (strcmp(argv[1], c"--dump-ast") == 0)
+	int compile_mode = (argc == 4) && (strcmp(argv[2], c"-o") == 0) && (argv[1][0] != '-') && (argv[3][0] != 0)
+	if ((dump_mode || compile_mode) == 0):
 		println2(c"usage: wc2 --dump-ast file.w")
+		println2(c"       wc2 file.w -o output  (Linux x86 ELF)")
 		return 2
-	char* source = file_read_text(argv[2])
+	char* path = argv[1]
+	if (dump_mode): path = argv[2]
+	char* source = file_read_text(path)
 	if (source == 0):
 		print2(c"wc2: cannot read ")
-		println2(argv[2])
+		println2(path)
 		return 1
-	wc2_module* m = wc2_parse(source, argv[2])
+	wc2_module* m = wc2_parse(source, path)
 	free(source)
 	int status = 1
-	if (wc2_module_ok(m)):
+	if (wc2_module_ok(m) && dump_mode):
 		char* dump = wc2_dump(m)
 		print(dump)
 		free(dump)
 		status = 0
-	else: pg_diagnostics_print(m.diagnostics)
+	elif (wc2_module_ok(m)):
+		asm_buffer* image = wc2_emit(m)
+		if (image != 0):
+			if (wc2_write_executable(argv[3], image)): status = 0
+			else:
+				print2(c"wc2: cannot write executable ")
+				println2(argv[3])
+			asm_buffer_free(image)
+	if (wc2_module_ok(m) == 0): pg_diagnostics_print(m.diagnostics)
 	wc2_module_free(m)
 	return status
