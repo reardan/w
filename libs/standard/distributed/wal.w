@@ -1,29 +1,76 @@
 /*
 Checksummed append-only write-ahead log
-(docs/projects/distributed.md, phase 4).
+(docs/projects/distributed.md, phase 4; durability contracts:
+docs/projects/reliable_services.md, stage W1a).
 
-The durability primitive under raft_wal.w (and, later, the LSM
-memtable): callers append opaque payload records; on reopen the log
-replays exactly the prefix of records that were fully and correctly
-written, silently discarding a torn tail from a crash mid-append.
+The durability primitive under raft_wal.w and lsm.w: callers append
+opaque payload records; on reopen the log replays the prefix of
+records that were fully and correctly written.
 
 File layout, all little-endian:
   offset 0: 4-byte magic "WLOG", 4-byte format version (1)
   then records: 4-byte payload length, 4-byte checksum, payload bytes
 The checksum is the first 4 bytes of sha256 over (length bytes ||
 payload), so a bit-flip in either the length field or the payload
-fails validation. Recovery scans from the header: the first record
-that is short, oversized, or checksum-mismatched ends the valid
-prefix; appends then resume at that offset, overwriting torn bytes.
-(A 2^-32 accidental-checksum-match on garbage is accepted as
-negligible.)
+fails validation. (A 2^-32 accidental-checksum-match on garbage is
+accepted as negligible.)
 
-Durability boundary: a successful wal_append has issued full
-write(2) calls, so the record survives a process crash but sits in
-the kernel page cache until wal_sync (fsync(2); F_FULLFSYNC on
-Darwin) pushes it to stable storage. Callers with real durability
-needs (raft_wal_sync) call wal_sync once per record burst rather
-than per append.
+Recovery policy (wal_open_policy). The scan from the header stops at
+the first record that is short, has an impossible length, or fails its
+checksum; that offset is the end of the valid prefix, and the scan
+classifies what it found there (wal_recovery):
+  WAL_TAIL_CLEAN    the prefix ends exactly at end of file.
+  WAL_TAIL_TORN     incomplete trailing data: a short header or short
+                    payload running into end of file, a bad-checksum
+                    record that ends exactly at end of file, an
+                    impossible length with nothing after its header,
+                    or a bad record followed only by zero bytes (an
+                    extent the filesystem grew but never filled). A
+                    crash mid-append (before wal_sync returned) leaves
+                    exactly this.
+  WAL_TAIL_CORRUPT  corruption inside the prefix: a checksum mismatch
+                    or impossible length with further non-zero bytes
+                    after the bad record. Bytes past a bad record mean
+                    a later write landed beyond it, so this is damage
+                    to data that was once complete, not a torn append.
+The file library cannot know which records an application has
+acknowledged, so what happens next is the caller's policy:
+  WAL_RECOVER_PERMISSIVE (the historical behaviour, kept only as an
+    explicit choice; plain wal_open uses it): any bad record ends the
+    prefix, everything after it is ignored, and appends overwrite it.
+  WAL_RECOVER_STRICT: WAL_TAIL_CORRUPT fails the open (status
+    WAL_ERR_CORRUPT, bad_offset = the first bad record). A torn tail
+    is reported and left on disk untouched; the handle is then
+    read-only (appends return 0) so nothing silently overwrites it.
+  WAL_RECOVER_STRICT_TRUNCATE: as strict, but a torn tail is cut off
+    (ftruncate + fsync) and the handle accepts appends. lsm.w and
+    raft_wal.w open their logs this way: every record they ever
+    acknowledged was wal_synced first, so only an unacknowledged tail
+    can be torn, and dropping it is the documented contract.
+
+Durability boundary: a successful wal_append has issued full write(2)
+calls, so the record survives a process crash but sits in the kernel
+page cache until wal_sync (fsync(2)) pushes it to stable storage.
+A failed wal_sync POISONS the handle (wal_failed): Linux may already
+have dropped the dirty pages, so a later fsync returning success would
+prove nothing. Every later append and sync fails; reopen to recover.
+
+Replacement (wal_rewrite_begin / wal_rewrite_commit): a compacted or
+reset log is built in the sibling file "<path>.next" (fresh header,
+then the caller's records), fsynced, renamed over path, and then the
+parent directory is fsynced. A crash at any point leaves either the
+complete old log or the complete new one at path; a leftover sibling
+is an uncommitted rewrite and is deleted by the next open. wal_reset
+is a zero-record rewrite. On commit the live handle switches to the
+new file. The fs_replace_report (lib/fs.w) says which stage failed
+and whether the rename already happened (renamed == 1: path names the
+new log but its directory entry may not be durable yet).
+
+Platform: the replacement path uses lib/fs.w's exclusive create and
+directory sync, which are real on Linux x86/x86-64 only (the targets
+these libraries are built and tested for); elsewhere they report
+IO_UNSUPPORTED, so wal_reset and every rewrite fail loudly there
+instead of claiming durability they cannot provide.
 
 Record payloads are opaque bytes; wal_read_next returns malloc'd
 copies the caller frees.
@@ -35,28 +82,92 @@ import lib.framing
 import lib.sha256
 import lib.bytes
 import lib.mem
+import lib.io
+import lib.fs
 
 
 const int wal_version = 1
 
 
+# Recovery policies (header).
+const int WAL_RECOVER_PERMISSIVE = 0
+const int WAL_RECOVER_STRICT = 1
+const int WAL_RECOVER_STRICT_TRUNCATE = 3
+
+# Policy bit: cut a torn tail (only meaningful together with STRICT).
+const int WAL_RECOVER_TRUNCATE_BIT = 2
+
+# wal_recovery.status
+const int WAL_OK = 0
+const int WAL_ERR_OPEN = 1      # path could not be opened or created
+const int WAL_ERR_HEADER = 2    # foreign or corrupt file header
+const int WAL_ERR_CORRUPT = 3   # strict: corruption inside the prefix
+const int WAL_ERR_IO = 4        # header write, truncate or sync failed
+
+# wal_recovery.tail
+const int WAL_TAIL_CLEAN = 0
+const int WAL_TAIL_TORN = 1
+const int WAL_TAIL_CORRUPT = 2
+
+# wal_recovery.reason: what was wrong with the first bad record.
+const int WAL_BAD_NONE = 0
+const int WAL_BAD_SHORT_HEADER = 1
+const int WAL_BAD_SHORT_PAYLOAD = 2
+const int WAL_BAD_LENGTH = 3
+const int WAL_BAD_CHECKSUM = 4
+
+
 # Records larger than this are treated as corruption on scan and
-# rejected (assert) on append.
+# refused (return 0) on append.
 int wal_max_record():
 	return 1 << 24
 
 
 struct wal:
 	int fd
-	char* path         # caller-owned; must outlive the wal (wal_reset reopens it)
+	char* path         # caller-owned unless owned_path; must outlive the wal
 	int append_off     # end of the valid prefix; next record goes here
 	int record_count   # valid records in the prefix
+	int readonly       # a strict open left a torn tail in place: no appends
+	int failed         # sticky: a write or sync failed (header)
+	char* owned_path   # freed by wal_close (rewrite siblings), else 0
+	int inject_sync_failures   # test hook: fail this many upcoming syncs
 
 
 struct wal_reader:
 	int fd
 	int off
 	int done
+
+
+struct wal_recovery:
+	int status         # WAL_OK or WAL_ERR_*
+	int policy         # the policy the open ran with
+	int records        # records in the accepted prefix
+	int valid_end      # end of the accepted prefix (header included)
+	int bad_offset     # offset of the first bad record; -1 when clean
+	int file_size      # size found at open
+	int tail           # WAL_TAIL_*
+	int reason         # WAL_BAD_*
+	int truncated      # 1 when a torn tail was cut off
+	int stale_sibling  # 1 when a leftover "<path>.next" was removed
+	int native_error   # errno of a failing WAL_ERR_IO step, when known
+
+
+# Test hooks for the replacement path (wal_rewrite_commit): when
+# wal_test_crash_stage is an FS_STAGE_* value, the commit after
+# wal_test_crash_skip further commits stops right BEFORE that stage as
+# a crash would -- nothing cleaned up, nothing more written -- and
+# returns IO_INTERRUPTED. FS_STAGE_SYNC_DIR stops after the rename (the
+# live handle has switched). The hook disarms itself when it fires.
+int wal_test_crash_stage
+int wal_test_crash_skip
+
+
+char* wal_tail_name(int tail):
+	if (tail == WAL_TAIL_CLEAN): return c"clean"
+	if (tail == WAL_TAIL_TORN): return c"torn"
+	return c"corrupt"
 
 
 # ---- record encoding --------------------------------------------------------
@@ -78,21 +189,27 @@ void wal_checksum(char* len_bytes, char* payload, int len, char* out4):
 
 # Reads and validates the record at off. Returns the malloc'd payload
 # (len in len_out) or 0 when the bytes at off are not a complete valid
-# record — the end of the valid prefix.
-char* wal_scan_record(int fd, int off, int* len_out):
+# record, with reason_out[0] set to the WAL_BAD_* kind and len_out[0]
+# to the declared length (meaningful for WAL_BAD_CHECKSUM).
+char* wal_scan_record_reason(int fd, int off, int* len_out, int* reason_out):
+	reason_out[0] = WAL_BAD_NONE
 	char* hdr = malloc(8)
 	seek(fd, off, 0)
 	if (read_exact(fd, hdr, 8) != 8):
 		free(hdr)
+		reason_out[0] = WAL_BAD_SHORT_HEADER
 		return 0
 	int len = load_le32(hdr)
 	if (len < 0 || len > wal_max_record()):
 		free(hdr)
+		reason_out[0] = WAL_BAD_LENGTH
 		return 0
+	len_out[0] = len
 	char* payload = malloc(len + 1)
 	if (read_exact(fd, payload, len) != len):
 		free(payload)
 		free(hdr)
+		reason_out[0] = WAL_BAD_SHORT_PAYLOAD
 		return 0
 	char* sum = malloc(4)
 	wal_checksum(hdr, payload, len, sum)
@@ -103,10 +220,44 @@ char* wal_scan_record(int fd, int off, int* len_out):
 	free(hdr)
 	if (ok == 0):
 		free(payload)
+		reason_out[0] = WAL_BAD_CHECKSUM
 		return 0
 	payload[len] = 0   # convenience NUL for text payloads; not counted
-	len_out[0] = len
 	return payload
+
+
+char* wal_scan_record(int fd, int off, int* len_out):
+	int reason = 0
+	return wal_scan_record_reason(fd, off, len_out, &reason)
+
+
+# 1 when every byte of [off, end) reads as zero.
+int wal_all_zero(int fd, int off, int end):
+	char* buf = malloc(4096)
+	int pos = off
+	int zero = 1
+	while (pos < end && zero == 1):
+		int want = end - pos
+		if (want > 4096): want = 4096
+		seek(fd, pos, 0)
+		int got = read_exact(fd, buf, want)
+		if (got != want): zero = 0
+		else:
+			for i in range(want):
+				if (buf[i] != 0): zero = 0
+		pos = pos + want
+	free(buf)
+	return zero
+
+
+# WAL_TAIL_TORN or WAL_TAIL_CORRUPT for a bad record at off (header).
+int wal_classify_bad(int fd, int off, int size, int reason, int declared_len):
+	if (reason == WAL_BAD_SHORT_HEADER || reason == WAL_BAD_SHORT_PAYLOAD): return WAL_TAIL_TORN
+	int extent_end = off + 8
+	if (reason == WAL_BAD_CHECKSUM): extent_end = off + 8 + declared_len
+	if (extent_end >= size): return WAL_TAIL_TORN
+	if (wal_all_zero(fd, off, size)): return WAL_TAIL_TORN
+	return WAL_TAIL_CORRUPT
 
 
 # ---- log lifecycle ----------------------------------------------------------
@@ -125,18 +276,64 @@ int wal_write_header(int fd):
 	return 1
 
 
-# Opens (creating if missing) and recovers the log at path: validates
-# the header, scans the valid record prefix, and positions appends to
-# overwrite any torn tail. Returns 0 on open failure or a foreign /
-# corrupt header.
-wal* wal_open(char* path):
+wal* wal_new_handle(int fd, char* path):
+	wal* w = new wal()
+	w.fd = fd
+	w.path = path
+	w.append_off = 8
+	w.record_count = 0
+	w.readonly = 0
+	w.failed = 0
+	w.owned_path = 0
+	w.inject_sync_failures = 0
+	return w
+
+
+# The rewrite sibling "<path>.next", malloc'd.
+char* wal_sibling_path(char* path):
+	return strjoin(path, c".next")
+
+
+void wal_recovery_init(wal_recovery* rep, int policy):
+	rep.status = WAL_OK
+	rep.policy = policy
+	rep.records = 0
+	rep.valid_end = 0
+	rep.bad_offset = 0 - 1
+	rep.file_size = 0
+	rep.tail = WAL_TAIL_CLEAN
+	rep.reason = WAL_BAD_NONE
+	rep.truncated = 0
+	rep.stale_sibling = 0
+	rep.native_error = 0
+
+
+wal* wal_open_fail(wal_recovery* rep, int fd, int status):
+	if (fd >= 0): close(fd)
+	rep.status = status
+	return 0
+
+
+# Opens (creating if missing) and recovers the log at path under
+# policy (header), filling rep (which may be 0). A leftover rewrite
+# sibling is deleted first. Returns the handle, or 0 with rep.status
+# saying why: unopenable path, foreign/corrupt header, strict-mode
+# corruption inside the prefix (rep.bad_offset), or a failed torn-tail
+# truncate.
+wal* wal_open_policy(char* path, int policy, wal_recovery* rep):
+	wal_recovery local
+	if (cast(int, rep) == 0): rep = &local
+	wal_recovery_init(rep, policy)
+	char* sibling = wal_sibling_path(path)
+	if (unlink(sibling) == 0): rep.stale_sibling = 1
+	free(sibling)
 	int fd = open_or_create(path, 2, 420)
-	if (fd < 0): return 0
+	if (fd < 0): return wal_open_fail(rep, 0 - 1, WAL_ERR_OPEN)
 	int size = file_size(fd)
+	rep.file_size = size
 	if (size == 0):
-		if (wal_write_header(fd) == 0):
-			close(fd)
-			return 0
+		if (wal_write_header(fd) == 0): return wal_open_fail(rep, fd, WAL_ERR_IO)
+		size = 8
 	else:
 		char* hdr = malloc(8)
 		seek(fd, 0, 0)
@@ -145,25 +342,53 @@ wal* wal_open(char* path):
 		if (got == 8 && (hdr[0] & 255) == 87 && (hdr[1] & 255) == 76 && (hdr[2] & 255) == 79 && (hdr[3] & 255) == 71):
 			if (load_le32(hdr + 4) == wal_version): ok = 1
 		free(hdr)
-		if (ok == 0):
-			close(fd)
-			return 0
-	wal* w = new wal(fd, path, 8, 0)
-	int* len_out = cast(int*, malloc(__word_size__))
+		if (ok == 0): return wal_open_fail(rep, fd, WAL_ERR_HEADER)
+	wal* w = wal_new_handle(fd, path)
+	int len = 0
+	int reason = 0
 	int scanning = 1
 	while (scanning):
-		char* payload = wal_scan_record(fd, w.append_off, len_out)
+		char* payload = wal_scan_record_reason(fd, w.append_off, &len, &reason)
 		if (payload == 0): scanning = 0
 		else:
 			free(payload)
-			w.append_off = w.append_off + 8 + len_out[0]
+			w.append_off = w.append_off + 8 + len
 			w.record_count = w.record_count + 1
-	free(len_out)
+	rep.records = w.record_count
+	rep.valid_end = w.append_off
+	if (w.append_off < size):
+		rep.bad_offset = w.append_off
+		rep.reason = reason
+		rep.tail = wal_classify_bad(fd, w.append_off, size, reason, len)
+	if ((policy & WAL_RECOVER_STRICT) == 0): return w
+	if (rep.tail == WAL_TAIL_CORRUPT):
+		free(w)
+		return wal_open_fail(rep, fd, WAL_ERR_CORRUPT)
+	if (rep.tail == WAL_TAIL_TORN):
+		if ((policy & WAL_RECOVER_TRUNCATE_BIT) == 0):
+			w.readonly = 1
+			return w
+		io_result r
+		int status = fs_ftruncate(fd, w.append_off, &r)
+		if (status == IO_OK): status = fs_fsync(fd, &r)
+		if (status != IO_OK):
+			rep.native_error = r.native_error
+			free(w)
+			return wal_open_fail(rep, fd, WAL_ERR_IO)
+		rep.truncated = 1
 	return w
+
+
+# Permissive open (WAL_RECOVER_PERMISSIVE; the historical contract):
+# any bad record silently ends the prefix and appends overwrite it.
+# Returns 0 on open failure or a foreign / corrupt header.
+wal* wal_open(char* path):
+	return wal_open_policy(path, WAL_RECOVER_PERMISSIVE, cast(wal_recovery*, 0))
 
 
 void wal_close(wal* w):
 	close(w.fd)
+	if (w.owned_path != 0): free(w.owned_path)
 	free(w)
 
 
@@ -176,11 +401,23 @@ int wal_size(wal* w):
 	return w.append_off
 
 
-# Appends one record. Returns 1 on success, 0 on a short write (the
-# log object is then unusable for further appends; reopen to recover).
+# 1 once a write or sync failed (the handle refuses further work).
+int wal_failed(wal* w):
+	return w.failed
+
+
+# Test hook: the next n wal_sync calls on w fail as a failed fsync
+# would (and so poison w).
+void wal_inject_sync_failures(wal* w, int n):
+	w.inject_sync_failures = n
+
+
+# Appends one record. Returns 1 on success, 0 when refused (a negative
+# or oversized length, a read-only or failed handle) or on a short
+# write (which poisons the handle; reopen to recover).
 int wal_append(wal* w, char* payload, int len):
-	assert1(len >= 0)
-	assert1(len <= wal_max_record())
+	if (len < 0 || len > wal_max_record()): return 0
+	if (w.readonly || w.failed): return 0
 	char* rec = malloc(8 + len)
 	store_le32(rec, len)
 	wal_checksum(rec, payload, len, rec + 4)
@@ -188,41 +425,148 @@ int wal_append(wal* w, char* payload, int len):
 	seek(w.fd, w.append_off, 0)
 	int n = write_all(w.fd, rec, 8 + len)
 	free(rec)
-	if (n != 8 + len): return 0
+	if (n != 8 + len):
+		w.failed = 1
+		return 0
 	w.append_off = w.append_off + 8 + len
 	w.record_count = w.record_count + 1
 	return 1
 
 
 # Flushes every appended record to stable storage (the header's
-# durability boundary): fsync(2), which the Darwin wrapper upgrades
-# to fcntl F_FULLFSYNC. Returns 1 on success, 0 when the kernel
-# reports the flush failed.
+# durability boundary): fsync(2). Returns 1 on success, 0 when the
+# kernel reports the flush failed -- which poisons the handle (header).
 int wal_sync(wal* w):
-	if (fsync(w.fd) < 0): return 0
+	if (w.failed): return 0
+	if (w.inject_sync_failures > 0):
+		w.inject_sync_failures = w.inject_sync_failures - 1
+		w.failed = 1
+		return 0
+	if (fsync(w.fd) < 0):
+		w.failed = 1
+		return 0
 	return 1
 
 
-# Truncates the log to empty (fresh header). For snapshot support:
-# callers rewrite compacted state after a reset.
+# ---- replacement (header) ---------------------------------------------------
+
+# Starts a replacement for live: a fresh, empty log at the sibling
+# "<live.path>.next" (a stale sibling is removed first; the create is
+# exclusive). Append the new contents to the returned handle, then
+# wal_rewrite_commit or wal_rewrite_abort it. Returns 0 when the
+# sibling cannot be created or its header written.
+wal* wal_rewrite_begin(wal* live):
+	char* npath = wal_sibling_path(live.path)
+	unlink(npath)
+	io_result r
+	int fd = fs_create_exclusive(npath, 420, &r)
+	if (fd < 0):
+		free(npath)
+		return 0
+	if (wal_write_header(fd) == 0):
+		close(fd)
+		unlink(npath)
+		free(npath)
+		return 0
+	wal* n = wal_new_handle(fd, npath)
+	n.owned_path = npath
+	return n
+
+
+# Discards an uncommitted replacement: closes and deletes the sibling.
+void wal_rewrite_abort(wal* next):
+	close(next.fd)
+	unlink(next.path)
+	free(next.owned_path)
+	free(next)
+
+
+int wal_rewrite_fail(fs_replace_report* rep, int stage, int status, int native_error):
+	rep.stage = stage
+	rep.status = status
+	rep.native_error = native_error
+	return status
+
+
+# Consumes the test crash hook for this commit: the FS_STAGE_* to stop
+# before, or FS_STAGE_NONE.
+int wal_rewrite_crash_point():
+	if (wal_test_crash_stage == FS_STAGE_NONE): return FS_STAGE_NONE
+	if (wal_test_crash_skip > 0):
+		wal_test_crash_skip = wal_test_crash_skip - 1
+		return FS_STAGE_NONE
+	int stage = wal_test_crash_stage
+	wal_test_crash_stage = FS_STAGE_NONE
+	return stage
+
+
+# Simulated crash before stage: the sibling stays on disk as written.
+int wal_rewrite_crash(wal* next, fs_replace_report* rep, int stage):
+	close(next.fd)
+	free(next.owned_path)
+	free(next)
+	return wal_rewrite_fail(rep, stage, IO_INTERRUPTED, 0)
+
+
+# Publishes next as live's contents: fsync the sibling, rename it over
+# live.path, switch live's handle to it, fsync the parent directory.
+# Consumes next either way. Returns IO_OK once the new log is durable
+# at live.path; otherwise the failing status with rep filled
+# (lib/fs.w's fs_replace_report). rep.renamed == 0: live and its file
+# are untouched and the sibling is gone. rep.renamed == 1: live
+# already reads and appends the new log, but the rename's durability
+# is unknown -- treat it as a failure to make the new contents durable.
+int wal_rewrite_commit(wal* live, wal* next, fs_replace_report* rep):
+	rep.status = IO_OK
+	rep.native_error = 0
+	rep.stage = FS_STAGE_NONE
+	rep.renamed = 0
+	rep.transferred = next.append_off
+	int crash = wal_rewrite_crash_point()
+	if (next.failed):
+		wal_rewrite_abort(next)
+		return wal_rewrite_fail(rep, FS_STAGE_WRITE, IO_IO_ERROR, 0)
+	if (crash == FS_STAGE_SYNC_FILE): return wal_rewrite_crash(next, rep, crash)
+	if (wal_sync(next) == 0):
+		wal_rewrite_abort(next)
+		return wal_rewrite_fail(rep, FS_STAGE_SYNC_FILE, IO_IO_ERROR, 0)
+	if (crash == FS_STAGE_RENAME): return wal_rewrite_crash(next, rep, crash)
+	io_result r
+	if (io_result_from_syscall(&r, rename(next.path, live.path)) != IO_OK):
+		wal_rewrite_abort(next)
+		return wal_rewrite_fail(rep, FS_STAGE_RENAME, r.status, r.native_error)
+	rep.renamed = 1
+	close(live.fd)
+	live.fd = next.fd
+	live.append_off = next.append_off
+	live.record_count = next.record_count
+	live.readonly = 0
+	live.failed = 0
+	free(next.owned_path)
+	free(next)
+	if (crash == FS_STAGE_SYNC_DIR): return wal_rewrite_fail(rep, FS_STAGE_SYNC_DIR, IO_INTERRUPTED, 0)
+	int status = fs_sync_parent_dir(live.path, &r)
+	if (status != IO_OK): return wal_rewrite_fail(rep, FS_STAGE_SYNC_DIR, status, r.native_error)
+	return IO_OK
+
+
+# Atomically and durably replaces the log with an empty one (a
+# zero-record wal_rewrite_commit). Returns 1 on success, 0 on failure
+# (rep semantics as wal_rewrite_commit: the log is either still the
+# old one or already the empty one).
 int wal_reset(wal* w):
-	close(w.fd)
-	int fd = create_file(w.path, 420)   # creat(2): truncates, write-only
-	if (fd < 0): return 0
-	int ok = wal_write_header(fd)
-	close(fd)
-	if (ok == 0): return 0
-	w.fd = open(w.path, 2, 0)
-	if (w.fd < 0): return 0
-	w.append_off = 8
-	w.record_count = 0
+	wal* next = wal_rewrite_begin(w)
+	if (cast(int, next) == 0): return 0
+	fs_replace_report rep
+	if (wal_rewrite_commit(w, next, &rep) != IO_OK): return 0
 	return 1
 
 
 # ---- replay -----------------------------------------------------------------
 
 # Independent read cursor over the valid prefix of the log at path.
-# Iteration ends at the first invalid record, mirroring recovery.
+# Iteration ends at the first invalid record, mirroring recovery (a
+# strict open has already refused or reported anything past it).
 wal_reader* wal_reader_open(char* path):
 	int fd = open(path, 0, 0)
 	if (fd < 0): return 0

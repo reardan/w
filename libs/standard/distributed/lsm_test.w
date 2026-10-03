@@ -444,6 +444,28 @@ void test_recovery_reclaims_dangling_table():
 	free(prefix)
 
 
+# Appends raw bytes to the end of path (simulated crash debris).
+void lt_append_raw(char* path, char* bytes, int n):
+	int fd = open(path, 2, 0)
+	assert1(fd >= 0)
+	int size = file_size(fd)
+	seek(fd, size, 0)
+	assert_equal(n, write_all(fd, bytes, n))
+	close(fd)
+
+
+int lt_file_size(char* path):
+	int fd = open(path, 0, 0)
+	assert1(fd >= 0)
+	int size = file_size(fd)
+	close(fd)
+	return size
+
+
+# A crash mid-append leaves a PREFIX of a real record: a header
+# promising more payload than reached the disk. lsm_open's default
+# policy (WAL_RECOVER_STRICT_TRUNCATE) classifies it as a torn tail,
+# cuts it off, and the tree carries on.
 void test_torn_data_wal_tail():
 	char* prefix = lt_prefix(c"torn")
 	lt_clean(prefix)
@@ -452,22 +474,25 @@ void test_torn_data_wal_tail():
 	assert_equal(1, lsm_put(l, c"k1", c"v1", 2))
 	assert_equal(1, lsm_put(l, c"k2", c"v2", 2))
 	lsm_close(l)
-	# hand-append garbage to the data wal: a crash mid-append
 	char* wpath = strjoin(prefix, c".wal")
-	int fd = open(wpath, 2, 0)
-	assert1(fd >= 0)
-	int size = file_size(fd)
-	seek(fd, size, 0)
-	assert_equal(17, write_all(fd, c"garbage-torn-tail", 17))
-	close(fd)
-	free(wpath)
-	# the two valid records replay; the torn tail is ignored
-	l = lsm_open(prefix, 1 << 20)
+	int good = lt_file_size(wpath)
+	char* partial = malloc(13)
+	mem_fill(partial, 7, 13)
+	store_le32(partial, 30)   # promises 30 payload bytes; only 5 follow
+	lt_append_raw(wpath, partial, 13)
+	free(partial)
+	wal_recovery rep
+	l = lsm_open_policy(prefix, 1 << 20, WAL_RECOVER_STRICT_TRUNCATE, &rep)
 	assert1(cast(int, l) != 0)
+	assert_equal(WAL_OK, rep.status)
+	assert_equal(WAL_TAIL_TORN, rep.tail)
+	assert_equal(WAL_BAD_SHORT_PAYLOAD, rep.reason)
+	assert_equal(good, rep.bad_offset)
+	assert_equal(1, rep.truncated)
+	assert_equal(good, lt_file_size(wpath))
 	assert_equal(2, lsm_memtable_count(l))
 	lt_expect(l, c"k1", c"v1")
 	lt_expect(l, c"k2", c"v2")
-	# appends after recovery overwrite the torn bytes
 	assert_equal(1, lsm_put(l, c"k3", c"v3", 2))
 	lsm_close(l)
 	l = lsm_open(prefix, 1 << 20)
@@ -475,6 +500,51 @@ void test_torn_data_wal_tail():
 	assert_equal(3, lsm_memtable_count(l))
 	lt_expect(l, c"k3", c"v3")
 	lsm_close(l)
+	free(wpath)
+	free(prefix)
+
+
+# Garbage whose length field is impossible, with bytes after its
+# header, is NOT a torn append: the strict default refuses the open and
+# reports where the damage starts; the permissive policy (explicit
+# opt-in) keeps the historical behaviour of replaying the valid prefix
+# and overwriting the rest.
+void test_data_wal_garbage_strict_vs_permissive():
+	char* prefix = lt_prefix(c"garbage")
+	lt_clean(prefix)
+	lsm* l = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, l) != 0)
+	assert_equal(1, lsm_put(l, c"k1", c"v1", 2))
+	assert_equal(1, lsm_put(l, c"k2", c"v2", 2))
+	lsm_close(l)
+	char* wpath = strjoin(prefix, c".wal")
+	int good = lt_file_size(wpath)
+	lt_append_raw(wpath, c"garbage-torn-tail", 17)
+	wal_recovery rep
+	assert_equal(0, cast(int, lsm_open_policy(prefix, 1 << 20, WAL_RECOVER_STRICT_TRUNCATE, &rep)))
+	assert_equal(WAL_ERR_CORRUPT, rep.status)
+	assert_equal(WAL_TAIL_CORRUPT, rep.tail)
+	assert_equal(WAL_BAD_LENGTH, rep.reason)
+	assert_equal(good, rep.bad_offset)
+	assert_equal(2, rep.records)
+	assert_equal(0, cast(int, lsm_open(prefix, 1 << 20)))
+	# nothing was modified by the refused opens
+	assert_equal(good + 17, lt_file_size(wpath))
+	l = lsm_open_policy(prefix, 1 << 20, WAL_RECOVER_PERMISSIVE, &rep)
+	assert1(cast(int, l) != 0)
+	assert_equal(WAL_TAIL_CORRUPT, rep.tail)
+	assert_equal(2, lsm_memtable_count(l))
+	lt_expect(l, c"k1", c"v1")
+	lt_expect(l, c"k2", c"v2")
+	# the next append (21 bytes) overwrites all 17 garbage bytes
+	assert_equal(1, lsm_put(l, c"k3", c"v3", 2))
+	lsm_close(l)
+	l = lsm_open(prefix, 1 << 20)
+	assert1(cast(int, l) != 0)
+	assert_equal(3, lsm_memtable_count(l))
+	lt_expect(l, c"k3", c"v3")
+	lsm_close(l)
+	free(wpath)
 	free(prefix)
 
 
@@ -823,7 +893,7 @@ void test_export_import_roundtrip():
 
 # A malformed blob (too short, wrong magic, or a record count/length
 # that overruns the buffer) is rejected WITHOUT touching the tree —
-# lsm_import validates the whole buffer before ever calling lsm_clear,
+# lsm_import validates the whole buffer before building any new generation,
 # so a bad inbound snapshot can never corrupt a good one.
 void test_import_rejects_malformed_blob():
 	char* prefix = lt_prefix(c"expmal")
