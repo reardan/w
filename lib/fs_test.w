@@ -9,6 +9,13 @@ import lib.fs
 import lib.file
 
 
+# Per-word-size scratch paths: the 32- and 64-bit twins run in
+# parallel and must not share files. malloc'd (leaked; tests are short).
+char* fs_test_path(char* name):
+	if (__word_size__ == 8): return strjoin(c"bin/fs_test_64_", name)
+	return strjoin(c"bin/fs_test_32_", name)
+
+
 int fs_test_open_rw(char* path):
 	io_result r
 	int fd = fs_open(path, FS_O_RDWR | FS_O_CREAT | FS_O_TRUNC | FS_O_CLOEXEC, FS_DEFAULT_MODE, &r)
@@ -24,7 +31,7 @@ int fs_test_word_max():
 
 
 void test_fs_positional_io_keeps_file_position():
-	int fd = fs_test_open_rw(c"bin/fs_test_positional.bin")
+	int fd = fs_test_open_rw(fs_test_path(c"positional.bin"))
 	assert_equal(5, write(fd, c"hello", 5))
 	io_result r
 	assert_equal(IO_OK, fs_pwrite_all(fd, c"J", 1, 0, &r))
@@ -53,7 +60,7 @@ void test_fs_positional_io_keeps_file_position():
 
 
 void test_fs_positional_rejects_bad_ranges():
-	int fd = fs_test_open_rw(c"bin/fs_test_ranges.bin")
+	int fd = fs_test_open_rw(fs_test_path(c"ranges.bin"))
 	io_result r
 	char* buf = malloc(8)
 	assert_equal(IO_IO_ERROR, fs_pwrite_all(fd, c"x", 1, -1, &r))
@@ -78,7 +85,7 @@ void test_fs_positional_rejects_bad_ranges():
 
 
 void test_fs_sparse_positional_write_at_large_offset():
-	char* path = c"bin/fs_test_sparse.bin"
+	char* path = fs_test_path(c"sparse.bin")
 	int fd = fs_test_open_rw(path)
 	io_result r
 	int offset = 0
@@ -111,7 +118,7 @@ void test_fs_sparse_positional_write_at_large_offset():
 
 
 void test_fs_ftruncate_extends_and_reports_errors():
-	int fd = fs_test_open_rw(c"bin/fs_test_truncate.bin")
+	int fd = fs_test_open_rw(fs_test_path(c"truncate.bin"))
 	io_result r
 	assert_equal(IO_OK, fs_ftruncate(fd, 100, &r))
 	assert_equal(100, seek(fd, 0, 2))
@@ -121,7 +128,7 @@ void test_fs_ftruncate_extends_and_reports_errors():
 
 
 void test_fs_create_exclusive_conflicts():
-	char* path = c"bin/fs_test_exclusive.bin"
+	char* path = fs_test_path(c"exclusive.bin")
 	unlink(path)
 	io_result r
 	int fd = fs_create_exclusive(path, FS_DEFAULT_MODE, &r)
@@ -141,29 +148,29 @@ void test_fs_create_exclusive_conflicts():
 
 
 void test_fs_openat_relative_to_directory():
-	mkdir(c"bin/fs_test_dir", 493)
+	mkdir(fs_test_path(c"dir"), 493)
 	io_result r
-	int dirfd = fs_open(c"bin/fs_test_dir", FS_O_RDONLY | FS_O_DIRECTORY | FS_O_CLOEXEC, 0, &r)
+	int dirfd = fs_open(fs_test_path(c"dir"), FS_O_RDONLY | FS_O_DIRECTORY | FS_O_CLOEXEC, 0, &r)
 	asserts(c"open dir failed", dirfd >= 0)
 	int fd = fs_openat(dirfd, c"inner.txt", FS_O_WRONLY | FS_O_CREAT | FS_O_TRUNC | FS_O_CLOEXEC, FS_DEFAULT_MODE, &r)
 	asserts(c"openat failed", fd >= 0)
 	assert_equal(IO_OK, io_write_all(fd, c"inside", 6, &r))
 	close(fd)
 	close(dirfd)
-	char* text = file_read_text(c"bin/fs_test_dir/inner.txt")
+	char* text = file_read_text(fs_test_path(c"dir/inner.txt"))
 	assert_strings_equal(c"inside", text)
 	free(text)
 	# O_DIRECTORY on a regular file fails (ENOTDIR).
-	assert_equal(-1, fs_open(c"bin/fs_test_dir/inner.txt", FS_O_RDONLY | FS_O_DIRECTORY, 0, &r))
+	assert_equal(-1, fs_open(fs_test_path(c"dir/inner.txt"), FS_O_RDONLY | FS_O_DIRECTORY, 0, &r))
 	assert_equal(20, r.native_error)
 
 
 void test_fs_sync_dir_reports_status():
 	io_result r
 	assert_equal(IO_OK, fs_sync_dir(c"bin", &r))
-	assert_equal(IO_OK, fs_sync_parent_dir(c"bin/fs_test_anything", &r))
+	assert_equal(IO_OK, fs_sync_parent_dir(fs_test_path(c"anything"), &r))
 	assert_equal(IO_OK, fs_sync_parent_dir(c"relative_name", &r))
-	asserts(c"missing dir must fail", fs_sync_dir(c"bin/fs_test_no_such_dir", &r) != IO_OK)
+	asserts(c"missing dir must fail", fs_sync_dir(fs_test_path(c"no_such_dir"), &r) != IO_OK)
 	assert_equal(2, r.native_error)  # ENOENT
 	# fsync of something that cannot be synced is unsupported, not ok.
 	int* fds = malloc(8)
@@ -178,7 +185,7 @@ void test_fs_sync_dir_reports_status():
 
 
 void test_fs_lock_contention():
-	char* path = c"bin/fs_test.lock"
+	char* path = fs_test_path(c"lock")
 	io_result r
 	int first = fs_lock_acquire(path, &r)
 	asserts(c"first lock failed", first >= 0)
@@ -193,12 +200,12 @@ void test_fs_lock_contention():
 	asserts(c"lock after release failed", again >= 0)
 	fs_lock_release(again, &r)
 	# A lock file in a missing directory cannot be opened.
-	assert_equal(-1, fs_lock_acquire(c"bin/fs_test_no_such_dir/x.lock", &r))
+	assert_equal(-1, fs_lock_acquire(fs_test_path(c"no_such_dir/x.lock"), &r))
 	assert_equal(2, r.native_error)
 
 
 void test_fs_replace_durable_happy_path():
-	char* path = c"bin/fs_test_replace.txt"
+	char* path = fs_test_path(c"replace.txt")
 	assert_equal(1, file_write_text(path, c"old contents"))
 	fs_replace_report rep
 	assert_equal(IO_OK, fs_replace_durable(path, c"new contents", 12, &rep))
@@ -213,18 +220,18 @@ void test_fs_replace_durable_happy_path():
 	assert_equal(0, path_exists(temp))
 	free(temp)
 	# Creating a file that did not exist works too.
-	unlink(c"bin/fs_test_replace_new.txt")
+	unlink(fs_test_path(c"replace_new.txt"))
 	io_result r
-	assert_equal(IO_OK, file_write_durable(c"bin/fs_test_replace_new.txt", c"abc", 3, &r))
+	assert_equal(IO_OK, file_write_durable(fs_test_path(c"replace_new.txt"), c"abc", 3, &r))
 	assert_equal(3, r.transferred)
-	text = file_read_text(c"bin/fs_test_replace_new.txt")
+	text = file_read_text(fs_test_path(c"replace_new.txt"))
 	assert_strings_equal(c"abc", text)
 	free(text)
 
 
 void test_fs_replace_durable_open_temp_failure():
 	fs_replace_report rep
-	int status = fs_replace_durable(c"bin/fs_test_no_such_dir/target.txt", c"x", 1, &rep)
+	int status = fs_replace_durable(fs_test_path(c"no_such_dir/target.txt"), c"x", 1, &rep)
 	assert_equal(IO_IO_ERROR, status)
 	assert_equal(FS_STAGE_OPEN_TEMP, rep.stage)
 	assert_equal(2, rep.native_error)  # ENOENT
@@ -236,7 +243,7 @@ void test_fs_replace_durable_rename_failure_cleans_up():
 	# Renaming a file over a directory fails (EISDIR) after the temp file
 	# was written, synced and closed: the target is untouched and the
 	# temp file is removed.
-	char* path = c"bin/fs_test_replace_dir"
+	char* path = fs_test_path(c"replace_dir")
 	mkdir(path, 493)
 	fs_replace_report rep
 	int status = fs_replace_durable(path, c"payload", 7, &rep)
@@ -254,7 +261,7 @@ void test_fs_replace_durable_rename_failure_cleans_up():
 void test_fs_replace_durable_retries_stale_temp_name():
 	# A leftover temp file with the next name (e.g. from a crashed process
 	# that had the same pid) is skipped via O_EXCL, never overwritten.
-	char* path = c"bin/fs_test_replace_stale.txt"
+	char* path = fs_test_path(c"replace_stale.txt")
 	char* stale = fs_replace_temp_path(path, getpid(), fs_replace_sequence)
 	assert_equal(1, file_write_text(stale, c"stale"))
 	fs_replace_report rep

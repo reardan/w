@@ -10,6 +10,13 @@ import lib.file
 import lib.process
 
 
+# Per-word-size scratch paths: the 32- and 64-bit twins run in
+# parallel and must not share files. malloc'd (leaked; tests are short).
+char* stream_checked_path(char* name):
+	if (__word_size__ == 8): return strjoin(c"bin/stream_checked_64_", name)
+	return strjoin(c"bin/stream_checked_32_", name)
+
+
 int stream_checked_open_full():
 	int fd = open(c"/dev/full", 1, 0)
 	asserts(c"/dev/full unavailable", fd >= 0)
@@ -41,7 +48,7 @@ void test_stream_flush_failure_retains_bytes_and_latches():
 
 	# Recovery: point the stream at a working descriptor, clear, and the
 	# retained bytes arrive in order.
-	int good = open(c"bin/stream_checked_recover.txt", 577, 420)
+	int good = open(stream_checked_path(c"recover.txt"), 577, 420)
 	asserts(c"open failed", good >= 0)
 	s.fd = good
 	stream_clear_error(s)
@@ -51,7 +58,7 @@ void test_stream_flush_failure_retains_bytes_and_latches():
 	assert_equal(9, r.transferred)
 	assert_equal(IO_OK, stream_close_checked(s, &r))
 	close(full)
-	char* text = file_read_text(c"bin/stream_checked_recover.txt")
+	char* text = file_read_text(stream_checked_path(c"recover.txt"))
 	assert_strings_equal(c"abcdefghi", text)
 	free(text)
 
@@ -95,7 +102,7 @@ void test_stream_close_checked_reports_flush_failure():
 void test_stream_close_checked_reports_close_failure():
 	# The descriptor is already gone: the flush succeeds trivially (nothing
 	# pending) and close reports EBADF.
-	int fd = open(c"bin/stream_checked_close.txt", 577, 420)
+	int fd = open(stream_checked_path(c"close.txt"), 577, 420)
 	asserts(c"open failed", fd >= 0)
 	close(fd)
 	wstream* s = stream_writer(fd)
@@ -211,8 +218,8 @@ void test_stream_read_write_only_fd_is_error():
 
 
 void test_stream_real_eof_is_not_an_error():
-	assert_equal(1, file_write_text(c"bin/stream_checked_eof.txt", c"ab"))
-	wstream* in = stream_open_read(c"bin/stream_checked_eof.txt")
+	assert_equal(1, file_write_text(stream_checked_path(c"eof.txt"), c"ab"))
+	wstream* in = stream_open_read(stream_checked_path(c"eof.txt"))
 	char* buf = malloc(8)
 	io_result r
 	assert_equal(IO_EOF, stream_read_checked(in, buf, 8, &r))
@@ -224,7 +231,7 @@ void test_stream_real_eof_is_not_an_error():
 	free(buf)
 	stream_close(in)
 
-	wstream* again = stream_open_read(c"bin/stream_checked_eof.txt")
+	wstream* again = stream_open_read(stream_checked_path(c"eof.txt"))
 	string_builder* all = string_new()
 	assert_equal(IO_OK, stream_read_all_checked(again, all, &r))
 	assert_equal(2, r.transferred)
@@ -234,7 +241,7 @@ void test_stream_real_eof_is_not_an_error():
 
 
 void test_stream_sync_is_flush_plus_fsync():
-	int fd = open(c"bin/stream_checked_sync.txt", 577, 420)
+	int fd = open(stream_checked_path(c"sync.txt"), 577, 420)
 	asserts(c"open failed", fd >= 0)
 	wstream* s = stream_writer_sized(fd, 64)
 	stream_write_cstr(s, c"durable")
@@ -243,7 +250,7 @@ void test_stream_sync_is_flush_plus_fsync():
 	assert_equal(7, r.transferred)
 	assert_equal(0, stream_pending(s))
 	assert_equal(IO_OK, stream_close_checked(s, &r))
-	char* text = file_read_text(c"bin/stream_checked_sync.txt")
+	char* text = file_read_text(stream_checked_path(c"sync.txt"))
 	assert_strings_equal(c"durable", text)
 	free(text)
 
