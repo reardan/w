@@ -92,7 +92,8 @@ plumbing, `libs/standard/crypto/` hashing.
   merges the memtable and every sstable (newest wins, tombstones
   dropped) into a length-prefixed "LSMX" blob; `lsm_import` validates
   a whole blob before `lsm_clear`-ing the tree and replaying it
-  through `lsm_put`. `kv_state.w` wraps that as `kv_take_snapshot` /
+  through `lsm_put` (since W1a it installs the blob as a new
+  generation instead; see "Storage hardening" below). `kv_state.w` wraps that as `kv_take_snapshot` /
   `kv_install_snapshot` and wires the receiver side into
   `kv_apply_pending`, which now installs any pending snapshot
   (network InstallSnapshot or a wal-replayed one) before draining
@@ -141,6 +142,30 @@ plumbing, `libs/standard/crypto/` hashing.
   a snapshot+restart; `kv_cluster_test.w` covers a genuinely fresh node
   joining a live 3-node cluster over real TCP past a compacted log,
   catching up via InstallSnapshot and serving reads.
+- Storage hardening (landed, issue #514 stage W1a; contracts in
+  reliable_services.md): `wal_open_policy` adds strict recovery with a
+  `wal_recovery` report (records accepted, first bad offset, clean /
+  torn tail / interior corruption); strict mode fails the open on
+  interior corruption and cuts or reports a torn tail, while plain
+  `wal_open` stays the explicit permissive policy. `lsm_open` and
+  `raft_wal_open` now open strict + truncate-tail. A failed fsync
+  poisons a wal handle. `wal_rewrite_begin`/`wal_rewrite_commit`
+  build a replacement log in "<path>.next", fsync it, rename it over
+  the live file and fsync the directory; `wal_reset`,
+  `raft_wal_rewrite`, `lsm_compact`, recovery's manifest rewrite and
+  snapshot install all go through it, so a crash leaves the complete
+  old or new file. `lsm_flush` orders table fsync + directory fsync,
+  manifest append + fsync, then the data-wal reset. `lsm_import` /
+  `lsm_clear` build a new generation (table + manifest with an EPOCH
+  record) before switching; recovery discards a data wal from a
+  superseded epoch. Storage-path asserts became checked statuses
+  (`raft_wal_persist`, `lsm_get_status`, `lsm_failed`, `kv_apply_
+  pending` returning -1). `durable_gate.w` holds replies until their
+  writes are durable and drops them on a failed sync;
+  `raft_wal_persist_release` uses it. `lsm_scan` (bounded, resumable)
+  and `lsm_apply_batch` (one all-or-nothing BATCH record) extend the
+  ordered-store interface. Tests: `wal_test`, `raft_wal_test`,
+  `durable_gate_test`, `lsm_durability_test`, `lsm_test`.
 - Next candidates: an arena/size-class allocator for long-lived
   processes (see ai_tooling_next_steps.md), joint-consensus membership
   changes, chunked InstallSnapshot for snapshots too large for one

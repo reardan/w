@@ -239,6 +239,62 @@ cycles, and allocating `parallel_for` callbacks. Threads created
 through `pthread_create` or the raw `thread_create` builtin have no
 heap and must not allocate.
 
+## Memory-order contract (what x86/x64 code may rely on today)
+
+W has no memory model in the language yet; what holds is the product
+of how the compiler emits code and what x86-TSO guarantees. Stated
+precisely so library code knows where the floor is:
+
+- **Compiler.** The single-pass code generator emits one real load for
+  every read of a variable or field and one real store for every
+  write, in source order, and caches nothing in registers across
+  statements, so it never reorders, merges or elides memory accesses.
+  This is a property of today's implementation, not a language
+  promise: an optimizing backend may change it, which is one more
+  reason synchronization goes through the primitives below.
+- **Plain word loads/stores** of naturally aligned words do not tear.
+  On x86/x64 (TSO) loads are not reordered with loads, stores not with
+  stores, and stores not with earlier loads, so a plain store acts as
+  a release and a plain load as an acquire. A later load **may**
+  complete before an earlier store to a different address is visible
+  (the store buffer), so store-then-load handshakes (Dekker, Peterson,
+  "set my flag, then read yours") are broken without a full barrier.
+- **`atomic_add` / `atomic_cas`** are `lock xadd` / `lock cmpxchg` at
+  full word width: atomic read-modify-writes that are full barriers
+  (sequentially consistent), returning the old value. There is no
+  separate fence intrinsic; an `atomic_add(&x, 0)` on a private word is
+  today's full fence.
+- **`wmutex` / `wcond`** give the usual guarantee: everything written
+  before `mutex_unlock` is visible to the next `mutex_lock` holder
+  (lock is a `lock cmpxchg`, unlock a `lock xadd` plus, on the
+  contended path, a plain store after it). Futex waits re-check their
+  word in the kernel, so wakes are never lost. Prefer a mutex (never
+  held across a task await) or a channel/executor to hand-rolled
+  flags.
+- **One-writer/one-waiter flags** (`wthread.done`, the pool mailboxes,
+  lib/thread_heap.w's remote-free stack, which pushes with
+  `atomic_cas`) rely on TSO's plain-store-is-release. They are correct
+  on x86/x64 only.
+
+Not provided yet, and follow-up compiler work: portable acquire loads,
+release stores, relaxed atomics and fences (`ldar`/`stlr`/`dmb` on
+arm64, plain moves plus `mfence` on x86). arm64 rejects host atomics at
+compile time and has no threads, but its plain loads and stores are
+weakly ordered, so **lock-free code must not assume x86 ordering on
+arm64**: when threads land there, every flag-publication idiom above
+needs explicit acquire/release, while code that synchronizes only
+through `wmutex`, `wcond`, `task_xchan` and `lib/executor.w` keeps
+working once those are ported.
+
+Cross-thread messages should transfer ownership: send an owned buffer
+(the sender never touches it again and the receiver frees it, which
+the per-thread heaps allow from any thread), or share an immutable
+object with an explicit release (an `atomic_add` reference count, last
+release frees). The mutex inside the channel or executor provides the
+happens-before edge for the buffer's contents. Pointers into a task's
+stack may cross only under a join-before-return wait
+(`executor_run`, `task_spawn_blocking`); see docs/projects/async.md.
+
 ## Per-target support
 
 | target       | state |

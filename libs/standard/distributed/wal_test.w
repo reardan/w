@@ -207,3 +207,291 @@ void test_reset_empties_log():
 	wal_reader_close(rd)
 	free(n)
 	free(path)
+
+
+# ---- recovery policy (strict / permissive) ------------------------------------
+
+int wal_test_file_size(char* path):
+	int fd = open(path, 0, 0)
+	assert1(fd >= 0)
+	int size = file_size(fd)
+	close(fd)
+	return size
+
+
+int wal_test_exists(char* path):
+	int fd = open(path, 0, 0)
+	if (fd < 0): return 0
+	close(fd)
+	return 1
+
+
+# Overwrites one byte of path at off.
+void wal_test_poke(char* path, int off, int value):
+	int fd = open(path, 2, 0)
+	assert1(fd >= 0)
+	char* b = malloc(1)
+	b[0] = value
+	seek(fd, off, 0)
+	assert_equal(1, write_all(fd, b, 1))
+	free(b)
+	close(fd)
+
+
+# Rewrites path keeping only its first keep bytes.
+void wal_test_cut(char* path, int keep):
+	int fd = open(path, 0, 0)
+	char* buf = malloc(keep + 1)
+	assert_equal(keep, read_exact(fd, buf, keep))
+	close(fd)
+	fd = create_file(path, 420)
+	assert_equal(keep, write_all(fd, buf, keep))
+	close(fd)
+	free(buf)
+
+
+# Three 4-byte records: header 8, then 12-byte records at 8, 20, 32.
+char* wal_test_three(char* name):
+	char* path = wal_test_path(name)
+	create_file(path, 420)
+	wal* w = wal_open(path)
+	assert_equal(1, wal_append(w, c"aaaa", 4))
+	assert_equal(1, wal_append(w, c"bbbb", 4))
+	assert_equal(1, wal_append(w, c"cccc", 4))
+	assert_equal(1, wal_sync(w))
+	wal_close(w)
+	return path
+
+
+# A flipped byte in a record that has more records after it is
+# corruption inside the durable prefix: strict mode refuses the open and
+# reports the bad record's offset; permissive mode keeps the historical
+# behaviour (replay the prefix before it, silently).
+void test_strict_reports_interior_corruption():
+	char* path = wal_test_three(c"interior.log")
+	wal_test_poke(path, 20 + 8 + 1, 88)   # rec2 payload byte
+	wal_recovery rep
+	assert_equal(0, cast(int, wal_open_policy(path, WAL_RECOVER_STRICT, &rep)))
+	assert_equal(WAL_ERR_CORRUPT, rep.status)
+	assert_equal(WAL_TAIL_CORRUPT, rep.tail)
+	assert_equal(WAL_BAD_CHECKSUM, rep.reason)
+	assert_equal(20, rep.bad_offset)
+	assert_equal(1, rep.records)
+	assert_equal(44, rep.file_size)
+	assert_equal(0, cast(int, wal_open_policy(path, WAL_RECOVER_STRICT_TRUNCATE, &rep)))
+	assert_equal(WAL_ERR_CORRUPT, rep.status)
+	assert_equal(44, wal_test_file_size(path))   # never truncated
+	wal* w = wal_open_policy(path, WAL_RECOVER_PERMISSIVE, &rep)
+	assert1(cast(int, w) != 0)
+	assert_equal(WAL_OK, rep.status)
+	assert_equal(WAL_TAIL_CORRUPT, rep.tail)
+	assert_equal(1, wal_record_count(w))
+	wal_close(w)
+	free(path)
+	# an impossible length field mid-file is corruption too
+	path = wal_test_three(c"interior_len.log")
+	wal_test_poke(path, 20 + 3, 127)      # rec2 length -> huge
+	assert_equal(0, cast(int, wal_open_policy(path, WAL_RECOVER_STRICT, &rep)))
+	assert_equal(WAL_BAD_LENGTH, rep.reason)
+	assert_equal(20, rep.bad_offset)
+	free(path)
+
+
+# Incomplete trailing data is a torn tail, never corruption: a short
+# payload or short header at EOF, a bad checksum on a final record
+# that ends exactly at EOF, or a bad record followed only by zeros.
+void test_torn_tail_classification():
+	wal_recovery rep
+	# short payload: cut 2 bytes off the last record
+	char* path = wal_test_three(c"tail_payload.log")
+	wal_test_cut(path, 42)
+	wal* w = wal_open_policy(path, WAL_RECOVER_STRICT, &rep)
+	assert1(cast(int, w) != 0)
+	assert_equal(WAL_OK, rep.status)
+	assert_equal(WAL_TAIL_TORN, rep.tail)
+	assert_equal(WAL_BAD_SHORT_PAYLOAD, rep.reason)
+	assert_equal(32, rep.bad_offset)
+	assert_equal(2, rep.records)
+	assert_equal(0, rep.truncated)
+	# strict without truncate leaves the tail and refuses appends
+	assert_equal(0, wal_append(w, c"x", 1))
+	wal_close(w)
+	assert_equal(42, wal_test_file_size(path))
+	# strict + truncate cuts it and the log carries on
+	w = wal_open_policy(path, WAL_RECOVER_STRICT_TRUNCATE, &rep)
+	assert1(cast(int, w) != 0)
+	assert_equal(1, rep.truncated)
+	assert_equal(32, wal_test_file_size(path))
+	assert_equal(1, wal_append(w, c"dd", 2))
+	wal_close(w)
+	w = wal_open_policy(path, WAL_RECOVER_STRICT, &rep)
+	assert1(cast(int, w) != 0)
+	assert_equal(WAL_TAIL_CLEAN, rep.tail)
+	assert_equal(3, rep.records)
+	assert_equal(0 - 1, rep.bad_offset)
+	wal_close(w)
+	free(path)
+	# short header: 3 bytes of a fourth record's header
+	path = wal_test_three(c"tail_header.log")
+	int fd = open(path, 2, 0)
+	seek(fd, 44, 0)
+	assert_equal(3, write_all(fd, c"abc", 3))
+	close(fd)
+	w = wal_open_policy(path, WAL_RECOVER_STRICT, &rep)
+	assert1(cast(int, w) != 0)
+	assert_equal(WAL_TAIL_TORN, rep.tail)
+	assert_equal(WAL_BAD_SHORT_HEADER, rep.reason)
+	assert_equal(44, rep.bad_offset)
+	wal_close(w)
+	free(path)
+	# bad checksum on the final record, ending exactly at EOF
+	path = wal_test_three(c"tail_sum.log")
+	wal_test_poke(path, 32 + 8, 88)
+	w = wal_open_policy(path, WAL_RECOVER_STRICT, &rep)
+	assert1(cast(int, w) != 0)
+	assert_equal(WAL_TAIL_TORN, rep.tail)
+	assert_equal(WAL_BAD_CHECKSUM, rep.reason)
+	assert_equal(32, rep.bad_offset)
+	wal_close(w)
+	free(path)
+	# a zero-filled extent after the last good record
+	path = wal_test_three(c"tail_zero.log")
+	char* zeros = malloc(40)
+	mem_fill(zeros, 0, 40)
+	fd = open(path, 2, 0)
+	seek(fd, 44, 0)
+	assert_equal(40, write_all(fd, zeros, 40))
+	close(fd)
+	free(zeros)
+	w = wal_open_policy(path, WAL_RECOVER_STRICT_TRUNCATE, &rep)
+	assert1(cast(int, w) != 0)
+	assert_equal(WAL_TAIL_TORN, rep.tail)
+	assert_equal(1, rep.truncated)
+	assert_equal(3, wal_record_count(w))
+	wal_close(w)
+	assert_equal(44, wal_test_file_size(path))
+	free(path)
+
+
+# ---- durable replacement ------------------------------------------------------
+
+void wal_test_expect_records(char* path, char* first, int count):
+	wal_recovery rep
+	wal* w = wal_open_policy(path, WAL_RECOVER_STRICT, &rep)
+	assert1(cast(int, w) != 0)
+	assert_equal(WAL_TAIL_CLEAN, rep.tail)
+	assert_equal(count, wal_record_count(w))
+	wal_close(w)
+	wal_reader* rd = wal_reader_open(path)
+	int n = 0
+	char* p = wal_read_next(rd, &n)
+	assert_strings_equal(first, p)
+	free(p)
+	wal_reader_close(rd)
+
+
+# A rewrite interrupted at every stage leaves the complete old log
+# (before the rename) or the complete new log (after it); a leftover
+# sibling is an uncommitted rewrite and the next open deletes it.
+void test_rewrite_crash_stages():
+	char* path = wal_test_three(c"rewrite.log")
+	char* sibling = strjoin(path, c".next")
+	fs_replace_report rep
+	wal_recovery orep
+	# crash before the sibling's fsync, then before the rename
+	int stage = FS_STAGE_SYNC_FILE
+	while (stage <= FS_STAGE_RENAME):
+		wal* live = wal_open(path)
+		wal* next = wal_rewrite_begin(live)
+		assert1(cast(int, next) != 0)
+		assert_equal(1, wal_append(next, c"new", 3))
+		wal_test_crash_stage = stage
+		assert_equal(IO_INTERRUPTED, wal_rewrite_commit(live, next, &rep))
+		assert_equal(stage, rep.stage)
+		assert_equal(0, rep.renamed)
+		assert_equal(3, wal_record_count(live))
+		wal_close(live)
+		assert_equal(1, wal_test_exists(sibling))
+		wal* w = wal_open_policy(path, WAL_RECOVER_STRICT, &orep)
+		assert1(cast(int, w) != 0)
+		assert_equal(1, orep.stale_sibling)
+		wal_close(w)
+		assert_equal(0, wal_test_exists(sibling))
+		wal_test_expect_records(path, c"aaaa", 3)
+		stage = stage + 2
+	# crash after the rename, before the directory fsync: the new log
+	wal* live2 = wal_open(path)
+	wal* next2 = wal_rewrite_begin(live2)
+	assert_equal(1, wal_append(next2, c"new", 3))
+	wal_test_crash_stage = FS_STAGE_SYNC_DIR
+	assert_equal(IO_INTERRUPTED, wal_rewrite_commit(live2, next2, &rep))
+	assert_equal(1, rep.renamed)
+	assert_equal(1, wal_record_count(live2))
+	wal_close(live2)
+	assert_equal(0, wal_test_exists(sibling))
+	wal_test_expect_records(path, c"new", 1)
+	# a full commit: the live handle switches and keeps appending
+	wal* live3 = wal_open(path)
+	wal* next3 = wal_rewrite_begin(live3)
+	assert_equal(1, wal_append(next3, c"newer", 5))
+	assert_equal(IO_OK, wal_rewrite_commit(live3, next3, &rep))
+	assert_equal(FS_STAGE_NONE, rep.stage)
+	assert_equal(1, rep.renamed)
+	assert_equal(1, wal_append(live3, c"tail", 4))
+	assert_equal(1, wal_sync(live3))
+	wal_close(live3)
+	wal_test_expect_records(path, c"newer", 2)
+	# an aborted rewrite removes its sibling and changes nothing
+	wal* live4 = wal_open(path)
+	wal* next4 = wal_rewrite_begin(live4)
+	assert_equal(1, wal_test_exists(sibling))
+	wal_rewrite_abort(next4)
+	assert_equal(0, wal_test_exists(sibling))
+	wal_close(live4)
+	wal_test_expect_records(path, c"newer", 2)
+	# a sync failure on the sibling aborts before the rename
+	wal* live5 = wal_open(path)
+	wal* next5 = wal_rewrite_begin(live5)
+	wal_inject_sync_failures(next5, 1)
+	assert1(wal_rewrite_commit(live5, next5, &rep) != IO_OK)
+	assert_equal(FS_STAGE_SYNC_FILE, rep.stage)
+	assert_equal(0, rep.renamed)
+	assert_equal(0, wal_test_exists(sibling))
+	wal_close(live5)
+	wal_test_expect_records(path, c"newer", 2)
+	free(sibling)
+	free(path)
+
+
+# A failed fsync poisons the handle: no later sync may report success
+# (the kernel may have dropped the dirty pages), and appends stop.
+void test_failed_sync_poisons_handle():
+	char* path = wal_test_path(c"poison.log")
+	create_file(path, 420)
+	wal* w = wal_open(path)
+	assert_equal(1, wal_append(w, c"one", 3))
+	wal_inject_sync_failures(w, 1)
+	assert_equal(0, wal_sync(w))
+	assert_equal(1, wal_failed(w))
+	assert_equal(0, wal_sync(w))
+	assert_equal(0, wal_append(w, c"two", 3))
+	wal_close(w)
+	# reopening recovers whatever reached the file
+	w = wal_open(path)
+	assert_equal(0, wal_failed(w))
+	assert_equal(1, wal_record_count(w))
+	wal_close(w)
+	free(path)
+
+
+# Oversized and negative appends are refused with 0, not asserted.
+void test_append_refuses_bad_lengths():
+	char* path = wal_test_path(c"badlen.log")
+	create_file(path, 420)
+	wal* w = wal_open(path)
+	assert_equal(0, wal_append(w, c"x", 0 - 1))
+	assert_equal(0, wal_append(w, c"x", wal_max_record() + 1))
+	assert_equal(0, wal_failed(w))
+	assert_equal(1, wal_append(w, c"ok", 2))
+	wal_close(w)
+	free(path)

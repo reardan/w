@@ -72,11 +72,23 @@ enum linux_syscall:
 	SYS_EPOLL_CTL = 255
 	SYS_EPOLL_WAIT = 256
 	SYS_EVENTFD2 = 328
+	SYS_PREAD64 = 180
+	SYS_PWRITE64 = 181
+	SYS_FTRUNCATE = 93   # 32-bit length, matching the 32-bit W word
+	SYS_FLOCK = 143
+	SYS_OPENAT = 295
 
 
 # accept4 with flags 0: i386 gained no plain accept syscall.
 int sys_accept(int sockfd, int addr, int addrlen):
 	return syscall7(SYS_ACCEPT, sockfd, addr, addrlen, 0, 0, 0)
+
+
+# openat: flags use the x86 numbering (lib/fs.w's FS_O_* names), plus
+# O_LARGEFILE (0x8000) so positional writes up to the 2^31 - 1 word
+# limit do not fail with EFBIG at the legacy 2 GiB file-size cap.
+int sys_openat(int dirfd, char* path, int flags, int mode):
+	return syscall7(SYS_OPENAT, dirfd, path, flags | 32768, mode, 0, 0)
 
 
 import lib.syscalls_linux_x86
