@@ -9,6 +9,7 @@ formatters can reproduce the input losslessly.
 import lib.lib
 import structures.string
 import libs.extras.parser_generator.token
+import libs.extras.parser_generator.ast_node
 
 
 struct pg_token_stream:
@@ -16,6 +17,7 @@ struct pg_token_stream:
 	list[pg_token*] all_tokens
 	int index
 	int max_index
+	list[pg_ast_node*] ast_nodes
 
 
 pg_token_stream* pg_token_stream_new():
@@ -24,7 +26,22 @@ pg_token_stream* pg_token_stream_new():
 	stream.all_tokens = new list[pg_token*]
 	stream.index = 0
 	stream.max_index = 0
+	stream.ast_nodes = 0
 	return stream
+
+
+# Opt in BEFORE parsing with a newly generated parser. The stream then
+# owns all parse nodes, including abandoned alternatives and recovery
+# nodes. Free only the stream, never pg_ast_free(root), in this mode.
+# Default callers retain the original independently owned tree API.
+void pg_token_stream_own_ast(pg_token_stream* stream):
+	if (stream.ast_nodes == 0): stream.ast_nodes = new list[pg_ast_node*]
+
+
+pg_ast_node* pg_token_stream_ast_new(pg_token_stream* stream, int kind, pg_token* token, char* name):
+	pg_ast_node* node = pg_ast_new(kind, token, name)
+	if (stream.ast_nodes != 0): stream.ast_nodes.push(node)
+	return node
 
 
 void pg_token_stream_add(pg_token_stream* stream, pg_token* token):
@@ -94,6 +111,14 @@ char* pg_token_stream_source(pg_token_stream* stream):
 
 void pg_token_stream_free(pg_token_stream* stream):
 	if (stream == 0): return
+	if (stream.ast_nodes != 0):
+		int n = 0
+		while (n < stream.ast_nodes.length):
+			# Shared factored prefixes can occur under several abandoned
+			# parents. Each allocation is registered once; do not recurse.
+			pg_ast_free_shallow(stream.ast_nodes[n])
+			n = n + 1
+		__w_list_free(cast(__w_list*, stream.ast_nodes))
 	int i = 0
 	while (i < stream.all_tokens.length):
 		pg_token_free(stream.all_tokens[i])

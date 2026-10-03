@@ -23,6 +23,12 @@ the `build` RPC, client auto-start and the `verify_warm` gate
 (`tests/wbuildd_build_test.w`), described at the end of §8. The REPL
 server and the darwin dirent fix remain unimplemented.
 
+AST follow-up #488 now has its first implementation task: the leaf `wc2`
+semantic AST and module context, with a JSON dump, expression/block lowering
+and explicit parse ownership. See [wc2.md](wc2.md) for the supported subset and
+tests. Code emission and the spike's measurements remain subsequent tasks;
+the option (c) migration in #489 has not started.
+
 ## 0. Summary
 
 wbuild/wexec are deliberately one-shot (`docs/projects/wexec.md`): every

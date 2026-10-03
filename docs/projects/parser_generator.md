@@ -113,6 +113,15 @@ AST nodes carry spans: `pg_ast_first_token()` / `pg_ast_last_token()` give the
 first and last token a rule node covers (0 for nodes that matched only
 optional terms), maintained as children are attached.
 
+For a long-lived consumer, call `pg_token_stream_own_ast(stream)` after lexing
+and before invoking the generated start-rule parser. Newly generated parsers
+then register every allocated node with that stream, including abandoned
+alternatives and recovery nodes. `pg_token_stream_free(stream)` releases them
+all without following child links; **do not also call `pg_ast_free(root)`** in
+this mode. The default remains independently owned trees. Filename storage and
+diagnostics remain caller-owned and must outlive their borrowers. The `wc2`
+module API ([wc2.md](wc2.md)) demonstrates the complete ownership lifecycle.
+
 ## Error recovery
 
 `recover <rule> <sync-token> [<skip-token>...]` enables multi-error parsing
