@@ -88,6 +88,7 @@ void ast_test_image_at(char* compiler, char* arch, char* source, int run):
 void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_typed_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_scalar_expression_fixture.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -161,6 +162,20 @@ void test_ast_typed_expression_diagnostics():
 	ast_test_diagnostics(c"import tests.ast_typed_expression_fixture as typed\nint other(): return (ast_named_global + 0xffffffff)\n")
 
 
+void test_ast_scalar_expression_diagnostics():
+	ast_test_diagnostics(c"float main(): return (1e+ + 0xffffffff)\n")
+	ast_test_diagnostics(c"float main(): return (0xffffffff + 1.2bad)\n")
+	ast_test_diagnostics(c"float main(): return (1.5 % 2)\n")
+	ast_test_diagnostics(c"float main(): return (~1.5)\n")
+	ast_test_diagnostics(c"int f(int* p): return 0\nint main(): return (f(7 + 1) + 0xffffffff)\n")
+	ast_test_diagnostics(c"int f(int* p): return 0\nint main():\n\tint n = 1\n\treturn (f(n) + 0xffffffff)\n")
+	ast_test_diagnostics(c"int f(int a): return a\nint main(): return (f(0xffffffff, 2))\n")
+	ast_test_diagnostics(c"int f(int a): return a\nint main(): return (f())\n")
+	ast_test_diagnostics(c"int f(int a): return a\nint main(): return (f(1,))\n")
+	ast_test_diagnostics(c"int f(int a): return a\nint main(): return (f(missing))\n")
+	ast_test_diagnostics(c"import tests.ast_scalar_expression_fixture as scalar\nint other(): return (ast_zero() + 0xffffffff)\n")
+
+
 void test_ast_typed_expression_tls_and_fallback_images():
 	char* path = ast_test_path(c"_tls.w")
 	assert1(file_write_text(path, c"thread_local int tls_value\nint main():\n\ttls_value = 17\n\treturn (tls_value + 25) != 42\n"))
@@ -171,6 +186,18 @@ void test_ast_typed_expression_tls_and_fallback_images():
 	ast_test_image_at(c"bin/wv2_64", c"x64", path, 1)
 	ast_test_image_at(c"bin/wv2", c"x86", c"tests/operator_overload_test.w", 1)
 	ast_test_image_at(c"bin/wv2_64", c"x64", c"tests/operator_overload_test.w", 1)
+	unlink(path)
+	free(path)
+
+
+void test_ast_scalar_expression_float_widths():
+	char* path = ast_test_path(c"_float.w")
+	assert1(file_write_text(path, c"float32 half_sum(float16 a, float16 b): return (a + b)\nint main():\n\tfloat16 half = 1.5\n\tif ((half_sum(half, 2.5) * 2) != 8.0): return 1\n\treturn 0\n"))
+	ast_test_image_at(c"bin/wv2", c"x86", path, 1)
+	ast_test_image_at(c"bin/wv2_64", c"x64", path, 1)
+	assert1(file_write_text(path, c"float64 wide(float64 a, float32 b): return (a + b)\nint main():\n\tfloat64 a = (1.0000000000000002)\n\tif ((wide(a, 2.5) * 2) != 7.0): return 1\n\tfloat64 z = (-0.0)\n\tint* bits = &z\n\tif *bits != (1 << 63): return 2\n\treturn 0\n"))
+	ast_test_image_at(c"bin/wv2", c"x64", path, 1)
+	ast_test_image_at(c"bin/wv2_64", c"x64", path, 1)
 	unlink(path)
 	free(path)
 
@@ -187,9 +214,15 @@ void test_ast_expression_path_is_exercised():
 	assert_equal(0, ast.status)
 	assert_contains(ast.stderr_text, c"AST expressions: 1\n")
 	process_result_free(ast)
-	assert1(file_write_text(path, c"int main(): return (1.5 + 2.5)\n"))
+	assert1(file_write_text(path, c"float main(): return (1.5 + 2.5)\n"))
 	ast = ast_test_compile(c"bin/wv2", c"x86", path, 0, 1, 1, 1)
-	assert_contains(ast.stderr_text, c"AST expressions: 0\n")
+	assert_equal(0, ast.status)
+	assert_contains(ast.stderr_text, c"AST expressions: 1\n")
+	process_result_free(ast)
+	assert1(file_write_text(path, c"int f(int x): return x\nint g(int16* p): return (f(2) + f(3))\nint16* h(int16* p): return (p + 2)\nint main(): return 0\n"))
+	ast = ast_test_compile(c"bin/wv2", c"x86", path, 0, 1, 1, 1)
+	assert_equal(0, ast.status)
+	assert_contains(ast.stderr_text, c"AST expressions: 2\n")
 	process_result_free(ast)
 	# Start the group across the 8 KiB tokenizer window boundary. The
 	# preflight must decline without reading/repositioning the stream.
@@ -245,7 +278,7 @@ process_result* ast_test_repl(char* repl, int enabled, char* script):
 
 
 void test_ast_expression_repl_recovery():
-	char* script = c"(6 * 7)\n(4294967296 + 1)\n(1 + )\nint keep = (5 * 9)\nkeep + (2 * 3)\n(keep) = 23\n(keep + 7)\nint keep = 60\n(keep + 3)\nint old(): return (keep + 4)\n(keep + missing)\n(old())\nbool yes = true\n(yes)\n(!yes)\n:reset\n(8 * 9)\n:quit\n"
+	char* script = c"(6 * 7)\n(4294967296 + 1)\n(1 + )\nint keep = (5 * 9)\nkeep + (2 * 3)\n(keep) = 23\n(keep + 7)\nint keep = 60\n(keep + 3)\nint old(): return (keep + 4)\n(keep + missing)\n(old())\nint callee(int n): return n + 1\nint caller(int n): return (callee(n) * 2)\n(caller(20))\nint callee(int n): return n + 3\n(caller(20))\n(1.5 + 2.5)\n(1e+ + 2)\n(caller(20))\nbool yes = true\n(yes)\n(!yes)\n:reset\n(8 * 9)\n:quit\n"
 	for host in range(2):
 		char* repl = c"bin/ast_repl"
 		if (host): repl = c"bin/ast_repl64"
@@ -260,6 +293,7 @@ void test_ast_expression_repl_recovery():
 		assert_contains(ast.stdout_text, c"30")
 		assert_contains(ast.stdout_text, c"63")
 		assert_contains(ast.stdout_text, c"64")
+		assert_contains(ast.stdout_text, c"46")
 		assert_contains(ast.stderr_text, c"integer literal has more than 32 significant bits")
 		process_result_free(old)
 		process_result_free(ast)
@@ -267,7 +301,7 @@ void test_ast_expression_repl_recovery():
 
 void test_ast_expression_debugger_eval():
 	char* path = ast_test_path(c".w")
-	assert1(file_write_text(path, c"int main():\n\tint answer = (6 * 7)\n\tdebugger\n\treturn answer != 42\n"))
+	assert1(file_write_text(path, c"int main():\n\tint answer = (6 * 7)\n\tdebugger\n\treturn answer != 42\nint dbg_twice(int n): return n * 2\n"))
 	for host in range(2):
 		for enabled in range(2):
 			char** args = strv_new(3)
@@ -276,10 +310,11 @@ void test_ast_expression_debugger_eval():
 			strv_set(args, 0, dbg_path)
 			strv_set(args, 1, path)
 			if (enabled): strv_set(args, 2, c"--ast-expressions")
-			process_result* result = ast_test_run(args, c"p answer\np (answer + 5)\np (answer + missing)\np (5 + 6 * 7)\np (4294967296 + 1)\np (6 * 7)\nc\n")
+			process_result* result = ast_test_run(args, c"p answer\np (answer + 5)\np (dbg_twice(answer) + 1)\np (1.5 + 2.5)\np (answer + missing)\np (5 + 6 * 7)\np (4294967296 + 1)\np (6 * 7)\nc\n")
 			assert_equal(0, result.status)
 			assert_contains(result.stdout_text, c"answer = 42")
 			assert_contains(result.stdout_text, c"wdbg> = 47")
+			assert_contains(result.stdout_text, c"wdbg> = 85")
 			assert_contains(result.stdout_text, c"wdbg> = 42")
 			assert_contains(result.stdout_text, c".w:3)")
 			assert_contains(result.stderr_text, c"integer literal has more than 32 significant bits")
@@ -288,7 +323,7 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
-# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/operator_overload_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/operator_overload_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"

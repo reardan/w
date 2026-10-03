@@ -5,6 +5,21 @@
  *         additive-expr - multiplicative-expr
  */
 
+# Pure result typing shared with the production expression AST.
+int additive_scalar_result_type(int left_type, int right_type, int op):
+	# Pointer arithmetic keeps the pointer's type (as a value: eax holds
+	# the computed pointer itself), so a later dereference or index knows
+	# the element width instead of falling back to a word-sized deref /
+	# byte-sized index. The offset stays a raw byte offset either way.
+	# Pointer minus pointer is a plain integer difference.
+	int left_level = type_get_pointer_level(type_unqualified(left_type))
+	int right_level = type_get_pointer_level(type_unqualified(right_type))
+	if ((left_level > 0) && (right_level == 0)): return type_value(type_unqualified(left_type))
+	if ((op == '+') && (right_level > 0) && (left_level == 0)):
+		return type_value(type_unqualified(right_type))
+	return 3
+
+
 # Shared lowering for + and -: try the operator-overload layer, then
 # the var layer, then the float layer, then fall back to the integer
 # ALU.
@@ -25,17 +40,7 @@ int additive_op(int type, int op):
 		return result_type
 	if (op == '+'): alu_add()
 	else: alu_sub()
-	# Pointer arithmetic keeps the pointer's type (as a value: eax holds
-	# the computed pointer itself), so a later dereference or index knows
-	# the element width instead of falling back to a word-sized deref /
-	# byte-sized index. The offset stays a raw byte offset either way.
-	# Pointer minus pointer is a plain integer difference.
-	int left_level = type_get_pointer_level(type_unqualified(left_type))
-	int right_level = type_get_pointer_level(type_unqualified(right_type))
-	if ((left_level > 0) && (right_level == 0)): return type_value(type_unqualified(left_type))
-	if ((op == '+') && (right_level > 0) && (left_level == 0)):
-		return type_value(type_unqualified(right_type))
-	return 3
+	return additive_scalar_result_type(left_type, right_type, op)
 
 
 int additive_expr():

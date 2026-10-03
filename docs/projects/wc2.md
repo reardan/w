@@ -438,9 +438,41 @@ binding leaves unused-local tracking and stale scope heads untouched, and
 respects retired debugger bindings. Both host widths still pass byte-identical
 AST-enabled self-host fixpoints.
 
-Next is broader typed expression coverage (pointer arithmetic, floating-point
-operands and calls), retaining the same differential gates. Source ownership
-across modules, declarations/statements,
+## Task 7: pointers, floating-point expressions and scalar calls
+
+The opt-in production AST now accepts host pointers and word-fitting float
+storage, decimal/exponent literals, float unary signs and arithmetic, and
+direct fixed-arity calls with compatible scalar arguments and scalar results.
+Pointer addition/subtraction shares result typing with the streaming grammar:
+offsets remain byte offsets and the result preserves the pointer's element
+width. Float literals are decoded only during committed token replay; float64
+bits are stored as two halves so a 32-bit compiler host loses no precision.
+Float loads, arithmetic and conversions use the existing backend helpers.
+
+Call nodes bind the callee before parsing arguments and retain an ordered
+argument list. Emission materializes the function address, evaluates/coerces
+arguments left to right and uses the ordinary call/stack-cleanup helpers.
+This preserves forward-reference patches, target call conventions, and REPL
+callsite tracking when functions are redefined. No imports or declarations
+can occur inside an accepted candidate. Argument mismatches and incorrect
+arity decline the candidate so diagnostics retain their original positions
+and order. Defaults that need insertion, variadics, indirect/foreign calls,
+generics, builtins, constructors, generators, aggregate/void results and GPU
+objects remain with the streaming parser. Unsupported float16 backends also
+fall back before replay. Member/index/dereference syntax can surround an
+accepted group but is still parsed by the streaming grammar.
+
+The differential tests cover nested calls and argument side effects, scalar
+coercion, forward references, pointer results and sub-word dereferences,
+float32/float64 and native float16 operands, signed zero, decimal rounding,
+subnormals, malformed literals/calls, fallback diagnostics and REPL redefinition
+and recovery. The common scalar fixture joins the six-target image comparison
+matrix; float16 executes only on x86/x64 and float64-only cases on x64.
+Both compiler host widths retain AST-enabled byte-identical self-host gates.
+
+Next is broader expression syntax (comparisons, short-circuit logic and
+postfix access), retaining differential gates. Source ownership across modules,
+declarations/statements,
 multi-error production analysis, REPL checkpoints and incremental emission
 remain later work. wc2's resident caches are still confined to the leaf tool.
 This experiment does not itself authorize a wholesale replacement or change
