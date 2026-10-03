@@ -664,6 +664,21 @@ streams, `lib/executor.w`, the W2 codecs and W5 transports.
 - **`in` is a keyword, but `in = ...` at statement position reports
   "Could not find a valid primary expression, token: ="** without naming
   the cause. Direction: a keyword-as-identifier hint.
+- **`tests/parser_generator/w.pg` rejects `for pass in range(3): stmt`**
+  (single-line body) while the compiler accepts it, and the block form
+  `for pass in range(4):` parses in both. Only `parser_generator_w_test`
+  in the full suite caught it, as "expected top_item, found
+  assert_equal" on the line after. Direction: make the grammar treat
+  `pass` as an identifier wherever the compiler does, or warn in
+  `w check`.
+- **The worktree-isolation guard refuses ordinary shell loops** that run
+  `bin/wv2` with a variable argument, and `$(cat targets)` inside a
+  `./wbuild` command; agents had to write scratch scripts.
+- **Test-name collisions** (`lib/clock_test.w` vs the existing
+  distributed `clock_test`) surface only at manifest generation; `w
+  check` or `bin/wtest` could warn when a new `*_test.w` name collides.
+- **`mem_fill(&b.data[i], cast(char, 0), n)` fails type inference**
+  ("got 'constant'") and needs an explicit `[char]`.
 - **Language sharp edges hit along the way** (recorded here until each
   gets its own issue): `uint` comparisons are signed (`cast(uint, -1) > 1`
   is false on x86 and x64, so `lib/checked.w` ships `unsigned_lt`/

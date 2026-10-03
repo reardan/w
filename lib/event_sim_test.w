@@ -322,7 +322,7 @@ void fair_test_real_backend(int use_epoll):
 		peers.push(fds[0])
 		ends.push(fds[1])
 		event_loop_add_fd(loop, fds[1], poll_in, fair_test_on_fd, cast(void*, f))
-	for pass in range(3): assert_equal(2, event_loop_run_once(loop, 1000))
+	for round in range(3): assert_equal(2, event_loop_run_once(loop, 1000))
 	assert_equal(6, f.order.length)
 	for i in range(6): assert_equal(1, f.served[ends[i]])
 	for i in range(6):
