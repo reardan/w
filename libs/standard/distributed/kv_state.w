@@ -43,7 +43,7 @@ whole committed prefix from zero.
 Snapshot integration (issue #314): kv_take_snapshot wraps lsm.w's
 full-scan lsm_export as the blob raft_take_snapshot compacts the log
 around; kv_install_snapshot is the receiver-side rebuild (lsm_import,
-which clears the store first) for a blob raft handed the state
+which switches the store to a new generation) for a blob raft handed the state
 machine, whether over the wire (InstallSnapshot) or replayed from a
 node's own wal-rewritten snapshot record (raft_wal.w). kv_apply_pending
 is the single place both raft.w and raft_wal.w document as "the
@@ -51,6 +51,15 @@ application's apply loop" (raft.w's header), so that is where the
 pending-snapshot check and install now live: every existing caller
 (raft never has a pending snapshot until raft_take_snapshot or an
 InstallSnapshot/wal-replay puts one there) is unaffected.
+
+Snapshot install is non-destructive (docs/projects/reliable_services.md,
+stage W1a): lsm_import builds the replacement generation (a new table
+and manifest) completely before switching the live reference, so a
+failed install leaves the store's old generation intact. A failed
+install is reported, not asserted: kv_apply_pending returns -1 and
+applies nothing further -- raft has already advanced past the
+snapshot, so the node must stop applying and recover (reopen + replay)
+rather than apply later entries on top of the old state.
 
 Frame cap: an encoded InstallSnapshot must fit raft_tcp's 1 MiB
 rt_max_frame (raft_tcp.w) to ride that transport at all — kv_take_
@@ -210,19 +219,24 @@ int kv_snapshot_max_bytes():
 # blob for raft_take_snapshot to compact the log around. Asserts the
 # result fits raft_tcp's InstallSnapshot frame cap (kv_snapshot_max_
 # bytes) — fails loudly here rather than producing a blob raft_tcp
-# would silently refuse to send later.
+# would silently refuse to send later. Returns 0 (len_out 0) when the
+# export could not read the store back.
 char* kv_take_snapshot(lsm* store, int* len_out):
 	char* blob = lsm_export(store, len_out)
+	if (blob == 0): return 0
 	asserts(c"kv_take_snapshot: snapshot blob exceeds raft_tcp's InstallSnapshot frame cap (rt_max_frame); chunked InstallSnapshot is the documented follow-up, not yet implemented", len_out[0] <= kv_snapshot_max_bytes())
 	return blob
 
 
 # Rebuild store from an installed snapshot blob (raft_take_pending_
 # snapshot's buffer, or one replayed from a node's own wal-rewritten
-# snapshot record): lsm_clear + lsm_import. Returns 1 on success, 0 on
-# a malformed blob (lsm_import's contract) — should never happen from
-# a well-behaved peer or a node's own wal, but the state machine never
-# trusts wire/wal bytes blindly.
+# snapshot record): lsm_import, which builds the new generation before
+# switching to it. Returns 1 on success, 0 on a malformed blob or an
+# I/O failure (lsm_import's contract: the old generation stays intact
+# unless lsm_failed(store) says the switch already happened) — a
+# malformed blob should never come from a well-behaved peer or a
+# node's own wal, but the state machine never trusts wire/wal bytes
+# blindly.
 int kv_install_snapshot(lsm* store, char* blob, int len):
 	return lsm_import(store, blob, len)
 
@@ -235,16 +249,18 @@ int kv_install_snapshot(lsm* store, char* blob, int len):
 # snapshot index only make sense on top of its state. Returns the
 # number of ordinary entries actually applied; the snapshot install
 # itself is not counted, and a malformed entry is drained but not
-# counted either (see kv_apply_command).
+# counted either (see kv_apply_command). Returns -1, applying nothing,
+# when the snapshot install failed (header): the caller must stop
+# applying and recover the node.
 int kv_apply_pending(raft* r, lsm* store):
 	if (raft_has_pending_snapshot(r)):
-		int* blen = cast(int*, malloc(__word_size__))
+		int blen = 0
 		u64* bidx = u64_new()
-		char* blob = raft_take_pending_snapshot(r, blen, bidx)
-		assert1(kv_install_snapshot(store, blob, blen[0]))
+		char* blob = raft_take_pending_snapshot(r, &blen, bidx)
+		int installed = kv_install_snapshot(store, blob, blen)
 		free(blob)
 		u64_free(bidx)
-		free(cast(char*, blen))
+		if (installed == 0): return 0 - 1
 	int applied = 0
 	while (raft_pending_apply(r)):
 		raft_entry* e = raft_pop_apply(r)

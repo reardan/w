@@ -705,7 +705,7 @@ void test_cluster_binary_value_roundtrip():
 # below the leader's snapshot base, so raft_make_peer_msg must route
 # it an InstallSnapshot (raft.w's §7 path) before the post-snapshot
 # suffix can replicate; kv_state.w's kv_apply_pending installs that
-# blob into the rejoiner's lsm (lsm_clear + lsm_import) the moment
+# blob into the rejoiner's lsm (lsm_import, a generation switch) the moment
 # raft hands it a pending snapshot. Covers a binary value (issue #315)
 # riding through the snapshot blob unchanged.
 void test_cluster_snapshot_laggard_catchup():
@@ -791,7 +791,7 @@ void test_cluster_snapshot_laggard_catchup():
 # and rebuilds must replay a SNAPSHOT record from its own raft_wal
 # (raft_wal.w's wal-rewrite compaction), not an InstallSnapshot over
 # the wire — proving kv_apply_pending's pending-snapshot install
-# (lsm_clear + lsm_import) also covers the restart path, and that
+# (lsm_import's generation switch) also covers the restart path, and that
 # reinstalling a node's own prior snapshot over its already-durable lsm
 # converges cleanly rather than corrupting it.
 void test_cluster_restart_from_compacted_wal():

@@ -15,6 +15,8 @@ as the memtable above it:
   1  found — *value_out is a malloc'd NUL-terminated copy read from
      disk (length via len_out); the caller frees it
   2  tombstone — the key is definitively deleted; do NOT fall through
+ -1  the value bytes could not be read back (I/O failure; a checked
+     error, never an assert)
 
 File layout, format v1, all little-endian:
   offset 0: 4-byte magic "WSST", 4-byte format version (1)
@@ -42,6 +44,16 @@ every record's lengths against the remaining file bytes (a file
 truncated mid-record is rejected). Values are NOT held in memory: the
 index keeps their file offsets and lengths, and reads fetch bytes on
 demand from the still-open descriptor.
+
+Durability (docs/projects/reliable_services.md, stage W1a):
+sstable_writer_finish writes the whole file, fsyncs it, closes it, and
+fsyncs its parent directory before returning 1, so a table that lsm.w
+goes on to name in its manifest is durable together with its directory
+entry. Table paths are never reused while referenced (lsm.w's next_seq
+rule), so the file is written in place rather than through a temp
+sibling; a torn or orphaned table is handled by lsm.w's recovery.
+Directory sync is real on Linux x86/x86-64 (lib/fs.w); elsewhere it
+reports IO_UNSUPPORTED and finish returns 0.
 */
 import lib.lib
 import lib.memory
@@ -50,6 +62,8 @@ import lib.framing
 import libs.standard.distributed.bloom
 import lib.bytes
 import lib.mem
+import lib.io
+import lib.fs
 
 
 const int sstable_version = 1
@@ -127,9 +141,16 @@ int sstable_writer_add(sstable_writer* w, char* key, char* value, int value_len,
 	return 1
 
 
+# Discards an unfinished writer: frees it and deletes its file.
+void sstable_writer_abort(sstable_writer* w):
+	unlink(w.path)
+	sstable_writer_release(w)
+
+
 # Builds the bloom filter over all buffered keys, writes the complete
-# file, and frees the writer (on failure too — the writer is consumed
-# either way). Returns 1 on success, 0 on an I/O failure.
+# file, fsyncs it and its parent directory (header), and frees the
+# writer (on failure too — the writer is consumed either way). Returns
+# 1 once the table is durable, 0 on an I/O failure.
 int sstable_writer_finish(sstable_writer* w):
 	int count = w.keys.length
 	bloom_filter* b = bloom_new(sstable_bloom_bits(count), sstable_bloom_probes)
@@ -176,9 +197,12 @@ int sstable_writer_finish(sstable_writer* w):
 	int ok = 0
 	int fd = create_file(w.path, 420)
 	if (fd >= 0):
-		if (write_all(fd, buf, total) == total): ok = 1
-		close(fd)
+		if (write_all(fd, buf, total) == total && fsync(fd) == 0): ok = 1
+		if (close(fd) < 0): ok = 0
 	free(buf)
+	if (ok == 1):
+		io_result r
+		if (fs_sync_parent_dir(w.path, &r) != IO_OK): ok = 0
 	sstable_writer_release(w)
 	return ok
 
@@ -328,25 +352,29 @@ int sstable_find(sstable* s, char* key):
 
 
 # Reads record idx's value bytes from disk: malloc'd, NUL-terminated,
-# length s.value_lens[idx].
+# length s.value_lens[idx]; 0 when the read fails or comes up short.
 char* sstable_read_value(sstable* s, int idx):
 	int len = s.value_lens[idx]
 	char* buf = malloc(len + 1)
 	seek(s.fd, s.value_offs[idx], 0)
-	assert1(read_exact(s.fd, buf, len) == len)
+	if (read_exact(s.fd, buf, len) != len):
+		free(buf)
+		return 0
 	buf[len] = 0
 	return buf
 
 
 # Three-way lookup; see the header comment. On return 1 the value is a
-# malloc'd NUL-terminated copy read from disk (caller frees); on 0 and
-# 2 the out-params are untouched.
+# malloc'd NUL-terminated copy read from disk (caller frees); on 0, 2
+# and -1 (read failure) the out-params are untouched.
 int sstable_get(sstable* s, char* key, char** value_out, int* len_out):
 	if (bloom_maybe_contains(s.bloom, key) == 0): return 0
 	int idx = sstable_find(s, key)
 	if (idx < 0): return 0
 	if (s.flags[idx]): return 2
-	value_out[0] = sstable_read_value(s, idx)
+	char* value = sstable_read_value(s, idx)
+	if (value == 0): return 0 - 1
+	value_out[0] = value
 	len_out[0] = s.value_lens[idx]
 	return 1
 
@@ -371,11 +399,16 @@ int sstable_is_tombstone_at(sstable* s, int i):
 
 
 # Malloc'd NUL-terminated copy read from disk (caller frees); length
-# via len_out. Tombstones return 0 with len 0.
+# via len_out. Tombstones return 0 with len 0; a failed read returns 0
+# with len -1.
 char* sstable_value_at(sstable* s, int i, int* len_out):
 	assert1(i >= 0 && i < s.count)
 	if (s.flags[i]):
 		len_out[0] = 0
 		return 0
+	char* value = sstable_read_value(s, i)
+	if (value == 0):
+		len_out[0] = 0 - 1
+		return 0
 	len_out[0] = s.value_lens[i]
-	return sstable_read_value(s, i)
+	return value

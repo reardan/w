@@ -507,3 +507,154 @@ void test_snapshot_torn_tail():
 	raft_free(r2)
 	raft_wal_close(rw2)
 	free(path)
+
+
+# ---- durable rewrite: crash at every stage (W1a) ------------------------------
+
+int rwal_exists(char* path):
+	int fd = open(path, 0, 0)
+	if (fd < 0): return 0
+	close(fd)
+	return 1
+
+
+# STATE + APPEND a + APPEND b synced, both applied, then a snapshot at
+# index 2 the next persist must publish by rewriting the wal.
+raft* rwal_snapshot_ready(raft_wal* rw):
+	raft* r = rwal_single_node(42)
+	raft_start(r, 0)
+	list[raft_msg*] out = new list[raft_msg*]
+	raft_tick(r, 100, out)
+	assert_equal(1, raft_propose(r, c"a", 1, 100, out))
+	assert_equal(1, raft_propose(r, c"b", 1, 101, out))
+	assert_equal(3, raft_wal_sync(rw, r))
+	raft_pop_apply(r)
+	raft_pop_apply(r)
+	assert_equal(1, raft_take_snapshot(r, c"S2", 2))
+	return r
+
+
+# The compacted log is built in a synchronized sibling and published by
+# rename + directory sync. A crash before the rename leaves the complete
+# OLD log (the stray sibling is removed on reopen); a crash after it
+# leaves the complete NEW log. Either way the failure is a checked
+# status, and the adapter refuses further writes until reopened.
+void test_rewrite_crash_keeps_one_complete_log():
+	char* path = rwal_path(c"rewrite_crash.log")
+	char* sibling = strjoin(path, c".next")
+	list[int] peers = new list[int]
+	int stage = FS_STAGE_SYNC_FILE
+	while (stage <= FS_STAGE_SYNC_DIR):
+		create_file(path, 420)
+		raft_wal* rw = raft_wal_open(path)
+		raft* r = rwal_snapshot_ready(rw)
+		wal_test_crash_stage = stage
+		int wrote = 0
+		assert_equal(IO_INTERRUPTED, raft_wal_persist(rw, r, &wrote))
+		assert_equal(0, wrote)
+		assert_equal(1, raft_wal_failed(rw))
+		assert1(raft_wal_persist(rw, r, &wrote) != IO_OK)
+		raft_free(r)
+		raft_wal_close(rw)
+		wal_recovery rep
+		raft_wal* rw2 = raft_wal_open_policy(path, WAL_RECOVER_STRICT, &rep)
+		assert1(cast(int, rw2) != 0)
+		assert_equal(WAL_TAIL_CLEAN, rep.tail)
+		assert_equal(0, rwal_exists(sibling))
+		raft* r2 = raft_wal_recover(rw2, 1, peers, 50, 100, 10, 45)
+		if (stage == FS_STAGE_SYNC_DIR):
+			# renamed: the new log, compacted around the snapshot
+			assert_equal(0, rep.stale_sibling)
+			assert_equal(2, wal_record_count(rw2.wlog))
+			assert_equal(2, raft_snap_base(r2))
+			assert_equal(0, raft_log_length(r2))
+			assert_equal(1, raft_has_pending_snapshot(r2))
+		else:
+			# not renamed: the old log, every entry intact
+			assert_equal(1, rep.stale_sibling)
+			assert_equal(3, wal_record_count(rw2.wlog))
+			assert_equal(0, raft_snap_base(r2))
+			assert_equal(2, raft_log_length(r2))
+			raft_entry* e2 = raft_log_at(r2, 2)
+			assert_strings_equal(c"b", e2.command)
+		assert_equal(1, raft_term_int(r2))
+		raft_free(r2)
+		raft_wal_close(rw2)
+		stage = stage + 1
+		if (stage == FS_STAGE_CLOSE): stage = FS_STAGE_RENAME
+	free(sibling)
+	free(path)
+
+
+# ---- replies wait for durability (W1a) -----------------------------------------
+
+raft* rwal_three_node(int self_id, int seed):
+	list[int] peers = new list[int]
+	int id = 1
+	while (id <= 3):
+		if (id != self_id): peers.push(id)
+		id = id + 1
+	return raft_new(self_id, peers, 50, 100, 10, seed)
+
+
+# An election burst changes term + vote (must be durable) and emits two
+# RequestVotes. raft_wal_persist_release hands them to the wire only
+# after the STATE record is fsynced; when that fsync fails they are
+# dropped -- a failed sync never releases a buffered message -- and the
+# adapter stays failed for every later burst.
+void test_persist_release_gates_replies_on_sync():
+	char* path = rwal_path(c"gate_ok.log")
+	create_file(path, 420)
+	raft_wal* rw = raft_wal_open(path)
+	raft* r = rwal_three_node(1, 42)
+	raft_start(r, 0)
+	list[raft_msg*] staged = new list[raft_msg*]
+	list[raft_msg*] wire = new list[raft_msg*]
+	raft_tick(r, 100, staged)
+	assert_equal(2, staged.length)
+	assert_equal(IO_OK, raft_wal_persist_release(rw, r, staged, wire))
+	assert_equal(0, staged.length)
+	assert_equal(2, wire.length)
+	assert_equal(0, raft_wal_pending(rw, r))
+	while (wire.length > 0):
+		raft_msg* sent = wire.pop()
+		raft_msg_free(sent)
+	raft_free(r)
+	raft_wal_close(rw)
+	free(path)
+
+	path = rwal_path(c"gate_fail.log")
+	create_file(path, 420)
+	rw = raft_wal_open(path)
+	r = rwal_three_node(1, 42)
+	raft_start(r, 0)
+	raft_tick(r, 100, staged)
+	assert_equal(2, staged.length)
+	wal_inject_sync_failures(rw.wlog, 1)
+	assert1(raft_wal_persist_release(rw, r, staged, wire) != IO_OK)
+	assert_equal(0, staged.length)
+	assert_equal(0, wire.length)
+	assert_equal(1, raft_wal_failed(rw))
+	# the next burst (a retried election) is refused too: nothing leaks
+	raft_tick(r, 300, staged)
+	assert1(staged.length > 0)
+	assert1(raft_wal_persist_release(rw, r, staged, wire) != IO_OK)
+	assert_equal(0, wire.length)
+	raft_free(r)
+	raft_wal_close(rw)
+	free(path)
+
+
+# A malformed payload behind a valid checksum (a foreign writer) fails
+# the open instead of asserting.
+void test_open_rejects_foreign_record():
+	char* path = rwal_path(c"foreign.log")
+	create_file(path, 420)
+	wal* w = wal_open(path)
+	char* junk = malloc(5)
+	mem_fill(junk, 9, 5)   # tag 9: no such record kind
+	assert_equal(1, wal_append(w, junk, 5))
+	free(junk)
+	wal_close(w)
+	assert_equal(0, cast(int, raft_wal_open(path)))
+	free(path)
