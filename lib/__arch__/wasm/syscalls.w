@@ -422,3 +422,32 @@ int epoll_wait(int epfd, int events, int maxevents, int timeout_ms):
 
 int eventfd2(int initval, int flags):
 	return -38
+
+
+# Positional I/O, truncate, openat and flock (lib/fs.w) are wired up on
+# Linux x86/x86-64 only. These explicit ENOSYS stubs make lib/fs.w report
+# IO_UNSUPPORTED here -- never an emulation through seek + write.
+int sys_pread(int fd, char* buf, int count, int offset):
+	return -38
+
+
+int sys_pwrite(int fd, char* buf, int count, int offset):
+	return -38
+
+
+int sys_ftruncate(int fd, int length):
+	return -38
+
+
+int sys_flock(int fd, int operation):
+	return -38
+
+
+int sys_openat(int dirfd, char* path, int flags, int mode):
+	return -38
+
+
+# WASI's path_rename is not in the compiler's fixed import set either;
+# lib/fs.w's durable replace reports IO_UNSUPPORTED before reaching it.
+int rename(char* oldpath, char* newpath):
+	return -38

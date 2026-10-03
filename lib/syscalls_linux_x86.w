@@ -43,6 +43,31 @@ int fsync(int file):
 int fdatasync(int file):
 	return syscall(SYS_FDATASYNC, file, 0, 0)
 
+# Positional I/O (pread64/pwrite64): offset is a word-sized byte offset
+# that neither reads nor moves the shared file position; the transfer
+# may be partial. The kernel takes a 64-bit offset -- one register on
+# x86-64, two 32-bit halves (low, high) on i386. A W word is 32 bits on
+# i386, so the high half is always 0 there and offsets stop at 2^31 - 1.
+# A negative offset is rejected here (-EINVAL, 22) rather than passed
+# on, so i386 never reinterprets it as an unsigned low half.
+int sys_pread(int fd, char* buf, int count, int offset):
+	if (offset < 0): return 0 - 22
+	return syscall7(SYS_PREAD64, fd, buf, count, offset, 0, 0)
+
+int sys_pwrite(int fd, char* buf, int count, int offset):
+	if (offset < 0): return 0 - 22
+	return syscall7(SYS_PWRITE64, fd, buf, count, offset, 0, 0)
+
+# ftruncate: sets the file's size (no durability implied).
+int sys_ftruncate(int fd, int length):
+	return syscall(SYS_FTRUNCATE, fd, length, 0)
+
+# flock: operation is LOCK_SH (1) / LOCK_EX (2) / LOCK_UN (8), optionally
+# | LOCK_NB (4). Locks belong to the open file description and are
+# released when its last descriptor closes (or the process exits).
+int sys_flock(int fd, int operation):
+	return syscall(SYS_FLOCK, fd, operation, 0)
+
 # Directory syscalls:
 int mkdir(char* path, int mode):
 	return syscall(SYS_MKDIR, path, mode, 0)
