@@ -16,7 +16,7 @@ status. Source files are authoritative where this text and they differ.
 | W3 | Bounded blocking executor | done: `lib/executor.w` (+ `task_remote_call`) |
 | W4 | Clock and I/O simulation interfaces | done: `lib/wclock.w`, `lib/event_loop.w` injection + dispatch limits, `lib/event_sim.w`, `lib/file_ops.w`, `lib/fake_fs.w`, `sim_env.w` |
 | W5 | Budgets and transport adapters | done (no TLS adapter): `lib/arena.w`, `lib/metrics.w`, `lib/transport.w` |
-| W6 | Import roots and compiler hardening | not started (separately reviewed compiler feature) |
+| W6 | Import roots and compiler hardening | done: `--import-root` (compiler/compiler.w), cache keys in `tools/deps_cache.w` / `wexec` / `wtest` / `wbuildd` |
 
 - **W0.** `lib/io.w` defines `io_result` and the `IO_*` categories with
   the platform errno preserved. Stream writers keep the unwritten suffix
@@ -71,6 +71,29 @@ status. Source files are authoritative where this text and they differ.
   open-fd sampler), and a checked byte-transport interface with TCP/Unix
   adapters. The native TLS library has no client certificates and is not
   wired in; the audit is in `docs/projects/budgets_transport.md`.
+- **W6.** `--import-root <dir>` (repeatable; `--import-root=<dir>` too)
+  adds ordered import roots. Each import's module path is tried as
+  `<root>/<path>.w` in each root in order, first root wins. After the
+  roots, the unchanged default search runs: the working directory and
+  its parents, then the compiler binary's directory and its parents.
+  With no roots, resolution and every output are unchanged. Relative
+  roots resolve against the working directory. `__arch__` resolves
+  inside each root, and the auto-imported runtime resolves through the
+  roots too.
+  - Compile, `check`, `deps`, `symbols` and `defhash` take the option
+    the same way, with either selector spelling.
+  - `deps` prints the resolved files, and `deps --json` lists shadowed
+    duplicates in a `"shadows"` array. This is never a warning, so
+    `--strict` builds are unaffected.
+  - Diagnostics name the resolved file. A bad root fails up front, and
+    the cannot-locate message names the roots.
+  - wexec and wtest closure ids carry a step's roots, so closures resolve
+    the same files the compile does. Their digests also probe for new
+    higher-priority files, so adding a shadowing file invalidates the
+    cache key. wbuildd does not memoize root-carrying queries.
+  - Details: `docs/projects/compilation_model.md` §7. Tests:
+    `import_root_test`, `import_root_order_test` (plus their x64 twins)
+    and `import_root_cli_test`.
 
 Known follow-ups found during the work: `task_xchan`'s cross-thread wake
 can race a timeout/cancel resume (move it to `task_remote_call`, see
@@ -222,9 +245,31 @@ seeded PRNG and monotime helpers rather than competing with them.
 
 W5 (allocator budgets, arenas, counters, a checked byte-transport
 interface over TCP/Unix/TLS) and W6 (ordered `--import-root` resolution
-for compile/check/deps/symbols, cache keys) are follow-ups. W0-W4 do not
-depend on new async syntax, garbage collection, borrow checking,
-io_uring, or a compiler IR.
+for compile/check/deps/symbols, cache keys) were planned as follow-ups,
+and both have landed (status table above). W0-W4 do not depend on new
+async syntax, garbage collection, borrow checking, io_uring, or a
+compiler IR.
+
+### W6 import roots (design text)
+
+The existing resolution searches from the compiler's working directory
+and has fallback behavior. Explicit ordered import roots are added as a
+separately reviewed compiler feature, and they preserve the current
+defaults. `--import-root` works the same way for compile, check, deps
+and symbols, reports the resolved source, and enters build-cache keys.
+Tests cover duplicate module names, root order and invocation from
+different working directories. The feature needs no object files or
+linker. Acceptance: reproducible imports, cache invalidation,
+diagnostics, architecture checks and bootstrap fixpoints.
+
+Decisions taken in the implementation:
+
+- The roots come first, then the old search unchanged, rather than
+  replacing it, so an empty root list is the old compiler exactly.
+- A root is an exact location with no upward walk inside it.
+- The roots also govern the auto-imported runtime: one rule for every
+  import, and the runtime can be overridden.
+- A shadowed duplicate is reported by `deps --json`, not warned about.
 
 ## Open questions (with what the implementation found)
 

@@ -782,6 +782,10 @@ list[char*] wbd_closure_for(list[char*] args, char* request_key, process_result*
 	char* root = 0
 	int roots = 0
 	for char* a in args:
+		# --import-root changes what the root's imports resolve to, and a
+		# root may sit outside the watched tree: never memoize such a
+		# request (it is answered fresh every time)
+		if (deps_import_root_width(a) > 0): return 0
 		if (wbd_is_arch_word(a)): arch = a
 		else if ((a[0] != '-') && ends_with(a, c".w")):
 			root = a

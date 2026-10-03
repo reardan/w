@@ -685,3 +685,22 @@ streams, `lib/executor.w`, the W2 codecs and W5 transports.
   (`4294967295` is -1); `free()` warns on a `T**` argument while `T*` is
   accepted; `new T()` leaves fields uninitialized and a partial positional
   `new T(a, b)` only warns.
+
+## Import roots and the build caches (2026-10-03, #514 W6)
+
+- **Closure scans read the target selector only at `cmd[1]`.**
+  `wexec_deps_collect_roots` and wtest's `wtest_collect_own_roots` take
+  the arch from the word right after `bin/wv2`. A hand-written step
+  spelled `bin/wv2 --strict x64 f.w -o out` is keyed and selected on the
+  x86 closure, which the compiler accepts but does not use. The generated
+  steps and the `flags=` directive put the selector first, so nothing in
+  the tree hits this today. Direction: share the compiler's selector scan,
+  which skips flags and their values. Adding `--import-root` support
+  already touched both loops.
+- **A target's directory `data=`/`inputs` prefix drops its `.w` files once
+  closures key the target.** A target that compiles a driver and then
+  spawns `bin/wv2` over fixture modules (the e2e drivers) gets no cache
+  invalidation from fixture edits unless each module is listed as an
+  explicit file. Such drivers stay FORCE targets today, with no `input=`,
+  so nothing goes stale yet. Direction: a directive marking a prefix as
+  "run-time .w data, hash every file".
