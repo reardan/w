@@ -1650,3 +1650,16 @@ and runtime results. Both near-limit fixtures pass required-mode checks on
 x86/x64; over-limit diagnostics and required-mode capacity rejection remain
 covered. The broader 90-command positive query/fixture audit now has zero
 expression fallbacks.
+
+## Task 89: AST enforcement in diagnostic fixtures
+
+`bin/wfixture --ast-expressions <compiler> <fixtures...>` requires AST
+expressions for successful fixtures, including warning-bearing sources.
+Expected-error fixtures use permissive AST mode so their asserted diagnostics
+retain the streaming fallback where necessary. Architecture selectors keep
+their original position before the fixture source.
+
+All 35 existing fixture-runner groups pass in this mode. Dedicated tests cover
+warning diagnostics, nesting errors, x64 selection and a valid source beyond
+the arena capacity: ordinary compilation succeeds while AST-required fixture
+compilation fails, proving the runner enforces positive coverage.
