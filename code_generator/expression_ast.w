@@ -153,6 +153,43 @@ void emit_expression_ast(expression_ast* tree, int id):
 			emit_ast_map_call(helper, map_slot, key_slot, 0)
 		pop_to(base_stack)
 		return
+	if (op == 'O'):
+		int type = tree.value[id]
+		int list = type_is_list(type)
+		int map = type_is_map(type)
+		if (list): list_emit_new_container(type)
+		else: hash_emit_new_container(type)
+		int container_slot = push_slot()
+		int entry = tree.left[id]
+		while (entry >= 0):
+			int base_stack = stack_pos
+			int first = tree.left[entry]
+			emit_expression_ast(tree, first)
+			int got = promote(tree.result_type[first])
+			int want = type_set_key_type(type)
+			if (list): want = type_list_element_type(type)
+			if (map): want = type_map_key_type(type)
+			coerce(want, got)
+			int first_slot = push_slot()
+			if (map):
+				int second = tree.right[entry]
+				emit_expression_ast(tree, second)
+				got = promote(tree.result_type[second])
+				coerce(type_map_value_type(type), got)
+				int second_slot = push_slot()
+				hash_literal_call_map_set(container_slot, first_slot, second_slot, tree.value[entry])
+			else if (list):
+				char* helper = c"__w_list_push"
+				if (tree.value[entry]): helper = c"__w_list_push_bytes"
+				int s = rt_call_begin(helper)
+				push_slot_copy(container_slot)
+				push_slot_copy(first_slot)
+				rt_call_end(s)
+			else: hash_literal_call_set_add(container_slot, first_slot)
+			pop_to(base_stack)
+			entry = tree.next_arg[entry]
+		pop_eax_slot()
+		return
 	if (op == 'V'):
 		int type = tree.value[id]
 		if (type_is_list(type)): list_emit_new_container(type)

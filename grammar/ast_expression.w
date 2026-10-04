@@ -121,7 +121,7 @@ int ast_expression_end(int start):
 		if ((ch == '!') || (ch == '~') || (ch == '.') || (ch == ',')): allowed = 1
 		if ((ch == '+') || (ch == '-') || (ch == '*') || (ch == '/') || (ch == '%')): allowed = 1
 		if ((ch == '<') || (ch == '>') || (ch == '=') || (ch == '&') || (ch == '|')): allowed = 1
-		if ((ch == '[') || (ch == ']') || (ch == '^') || (ch == '?') || (ch == ':')): allowed = 1
+		if ((ch == '[') || (ch == ']') || (ch == '^') || (ch == '?') || (ch == ':') || (ch == '{') || (ch == '}')): allowed = 1
 		if (ch == '('):
 			allowed = 1
 			depth = depth + 1
@@ -193,6 +193,8 @@ int ast_expression_root_end(int eof, int statement):
 	char* bytes = cast(char*, getchar_buf_addr[file])
 	int parens = 0
 	int brackets = 0
+	int braces = 0
+	int significant = 0
 	int ternaries = 0
 	int previous = 0
 	int i = 0
@@ -210,10 +212,11 @@ int ast_expression_root_end(int eof, int statement):
 			if (quoted < 0): return quoted
 			if (quoted - index >= 2048): return -1
 			i = quoted - index + 1
+			significant = 34
 			previous = 0
 			continue
-		if ((parens == 0) && (brackets == 0)):
-			if ((ch == ')') || (ch == ']') || ((ch == ',') && (statement == 0)) || (ch == ';') || (ch == '}') || (ch == '{')):
+		if ((parens == 0) && (brackets == 0) && (braces == 0)):
+			if ((ch == ')') || (ch == ']') || ((ch == ',') && (statement == 0)) || (ch == ';') || (ch == '}') || ((ch == '{') && (significant != ']'))):
 				if (ternaries): return -1
 				return window_start + index + i
 			if ((ch == '#') || (ch == 10)):
@@ -255,8 +258,15 @@ int ast_expression_root_end(int eof, int statement):
 		if (ch == ']'):
 			brackets = brackets - 1
 			allowed = 1
+		if (ch == '{'):
+			braces = braces + 1
+			allowed = 1
+		if (ch == '}'):
+			braces = braces - 1
+			allowed = 1
 		if (allowed == 0): return -1
 		if ((previous == '/') && ((ch == '/') || (ch == '*'))): return -1
+		if ((ch != ' ') && (ch != 9)): significant = ch
 		previous = ch
 		i = i + 1
 	if ((i < 2048) && (eof == 0)): return -2
@@ -750,11 +760,66 @@ void ast_expression_commit_generic(expression_ast* tree, int id):
 	tree.generic_instance[id] = inst
 
 
+int ast_expression_container_literal(expression_ast* tree, int depth):
+	int type = ast_expression_named_type(tree, 0, depth + 1)
+	if (type < 0): return -1
+	if (ast_expression_accept(tree, c"{") == 0): return -1
+	int map = type_is_map(type)
+	int list = type_is_list(type)
+	if ((map || list || type_is_set(type)) == 0): return -1
+	char* create = c"__w_set_new"
+	if (map): create = c"__w_map_new"
+	if (list): create = c"__w_list_new"
+	if (sym_probe(create) < 0): return -1
+	int id = expression_ast_add(tree, 'O', -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = type
+	tree.result_type[id] = type_value(type)
+	int tail = -1
+	while (peek(c"}") == 0):
+		int first_type = type_set_key_type(type)
+		if (map): first_type = type_map_key_type(type)
+		if (list): first_type = type_list_element_type(type)
+		int first = ast_expression_assignment(tree, depth + 1)
+		if (first < 0): return -1
+		if (ast_expression_data_value(tree.result_type[first]) == 0): return -1
+		if (ast_expression_argument_compatible(tree, first_type, first) == 0): return -1
+		int second = -1
+		int bytes = 0
+		char* helper = c"__w_set_add"
+		if (list):
+			helper = c"__w_list_push"
+			if (ast_expression_record_value(first_type) && ast_expression_record_value(tree.result_type[first])):
+				helper = c"__w_list_push_bytes"
+				bytes = 1
+		if (map):
+			if (ast_expression_accept(tree, c":") == 0): return -1
+			second = ast_expression_assignment(tree, depth + 1)
+			if (second < 0): return -1
+			if (ast_expression_data_value(tree.result_type[second]) == 0): return -1
+			int second_type = type_map_value_type(type)
+			if (ast_expression_argument_compatible(tree, second_type, second) == 0): return -1
+			helper = c"__w_map_set"
+			if (ast_expression_record_value(second_type) && ast_expression_record_value(tree.result_type[second])):
+				helper = c"__w_map_set_bytes"
+				bytes = 1
+		if (sym_probe(helper) < 0): return -1
+		int entry = expression_ast_add(tree, 'e', first, second)
+		if (entry < 0): return -1
+		tree.value[entry] = bytes
+		if (tail < 0): tree.left[id] = entry
+		else: tree.next_arg[tail] = entry
+		tail = entry
+		if (ast_expression_accept(tree, c",") == 0): break
+	if (ast_expression_accept(tree, c"}") == 0): return -1
+	return id
+
+
 int ast_expression_name(expression_ast* tree, int depth):
 	# Keywords, unshadowable builtins, generics and constructors take
 	# precedence over identifier() in the streaming grammar.
 	if (peek(c"cast") || peek(c"sizeof") || peek(c"new")): return -1
-	if ((nextc == '[') && (peek(c"map") || peek(c"set") || peek(c"list"))): return -1
+	if ((nextc == '[') && (peek(c"map") || peek(c"set") || peek(c"list"))): return ast_expression_container_literal(tree, depth)
 	if ((nextc == '(') && (peek(c"print") || peek(c"println"))): return ast_expression_print(tree, depth)
 	if (peek(c"to_json") || peek(c"from_json")): return -1
 	if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1

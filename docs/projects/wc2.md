@@ -1013,3 +1013,18 @@ Tests cover all bound forms, empty/nested slices, mutation through a view,
 cast decay and malformed bounds. A failed start expression is distinguished
 from an omitted start. Required-mode rejection now uses a template format
 specification rather than a supported slice.
+
+## Task 42: typed container literals
+
+List, map and set literals now retain ordered entry nodes. Emission reuses
+container allocation and insertion helpers, including record-copy helpers,
+and releases each entry's temporary return buffers before the next entry.
+Preflight tracks literal braces separately from statement block delimiters,
+including nested and multiline entries.
+
+Differential tests cover empty literals, trailing commas, nesting, key/value
+evaluation order, duplicate set keys, record values and invalid-entry
+diagnostics. The parser-generator grammar now accepts multiline container
+literals already accepted by the compiler, with focused grammar tests.
+First-use composite type registration remains a separate step: literals
+whose container type is not yet registered still use the streaming path.

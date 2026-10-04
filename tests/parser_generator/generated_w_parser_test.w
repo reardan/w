@@ -174,6 +174,12 @@ void test_parse_w_multiline_expressions_braces_and_inline_blocks():
 	assert_w_parse_text(c"int sample(int a, int b) {\x0a\x09if (a == b) {\x0a\x09}\x0a\x09else if ((a > 0) &&\x0a\x09\x09\x09(b > 0)): a = b\x0a\x09return a\x0a}\x0a", c"braces.w")
 
 
+void test_parse_w_multiline_container_literals():
+	assert_w_parse_text(c"int main():\n\tlist[int] a = list[int]{\n\t\t1,\n\t\t2,\n\t}\n\treturn a.length\n", c"multiline_list.w")
+	assert_w_parse_text(c"int main():\n\tmap[int, int] a = map[int, int]{\n\t\t1:\n\t\t2,\n\t}\n\treturn a.length\n", c"multiline_map.w")
+	assert_w_parse_text(c"int main():\n\tset[int] a = set[int]{\n\t\t# empty\n\t}\n\treturn a.length\n", c"multiline_set.w")
+
+
 void test_parse_w_legacy_range_forms():
 	assert_w_parse_text(c"void ranges():\x0a\x09for int i in range 10:\x0a\x09\x09pass\x0a\x09for int j in range 1, 10:\x0a\x09\x09continue\x0a\x09for int k in range(0, 10, 2):\x0a\x09\x09break\x0a", c"ranges.w")
 
