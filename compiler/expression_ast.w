@@ -49,6 +49,7 @@ int ast_required_mode
 # the aggregate-copy helper after the argument's type is known.
 char* ast_expression_list_helper(int method):
 	if (method == 129): return c"__w_list_push_bytes"
+	if (method == 130): return c"__w_list_pop_addr"
 	if (method == 131): return c"__w_list_insert_bytes"
 	if (method == 1): return c"__w_list_push"
 	if (method == 2): return c"__w_list_pop"

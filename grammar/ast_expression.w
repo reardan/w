@@ -345,14 +345,22 @@ int ast_expression_scalar_value(int type):
 	return ast_expression_scalar_type(type)
 
 
-# Aggregates enter only as addresses on the way to a field or element.
-# Whole-aggregate operators, arguments and roots still fall back.
+# Record lvalues can expose fields; record values can also flow through
+# copies and calls without a load. Keep those two predicates separate.
 int ast_expression_record_type(int type):
 	if (type_is_value(type) || type_is_gpu_object(type)): return 0
 	int base = type_unqualified(type)
 	int kind = type_get_kind(base)
 	if ((kind != 0) && (kind != type_kind_union)): return 0
 	return type_num_args(base) > 0
+
+
+int ast_expression_record_value(int type):
+	return ast_expression_record_type(type_real(type))
+
+
+int ast_expression_data_value(int type):
+	return ast_expression_scalar_value(type) || ast_expression_record_value(type)
 
 
 int ast_expression_storage_type(int type):
@@ -395,10 +403,10 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	while (peek(c")") == 0):
 		if ((count >= 10) || ((arity >= 0) && (count >= arity))): return -1
 		int param = sym_param_type(sym, count)
-		if ((param >= 0) && (ast_expression_scalar_type(param) == 0)): return -1
+		if ((param >= 0) && (ast_expression_data_value(param) == 0)): return -1
 		int arg = ast_expression_assignment(tree, depth + 1)
 		if (arg < 0): return -1
-		if (ast_expression_scalar_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
 		int got = ast_expression_promoted_type(tree.result_type[arg])
 		if ((param >= 0) && type_is_string(param) && type_is_char_pointer(got)):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
@@ -462,10 +470,10 @@ int ast_expression_indirect_call(expression_ast* tree, int callee, int depth):
 		if ((arity >= 0) && (count >= arity)): return -1
 		int arg = ast_expression_assignment(tree, depth + 1)
 		if (arg < 0): return -1
-		if (ast_expression_scalar_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
 		if (signature >= 0):
 			int param = type_function_param_type(signature, count)
-			if (ast_expression_scalar_type(param) == 0): return -1
+			if (ast_expression_data_value(param) == 0): return -1
 			if (ast_expression_argument_compatible(tree, param, arg) == 0): return -1
 			if (type_is_string(param) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[arg]))):
 				if (sym_probe(c"str_from_cstr") < 0): return -1
@@ -739,7 +747,7 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 	if (peek(c"free")): method = 6
 	if (method == 0): return -1
 	int element = type_list_element_type(type_unqualified(tree.result_type[receiver]))
-	if ((method == 2) && (ast_expression_scalar_type(element) == 0)): return -1
+	if ((method == 2) && (ast_expression_data_value(element) == 0)): return -1
 	int count = 0
 	if ((method == 1) || (method == 4)): count = 1
 	if (method == 3): count = 2
@@ -758,7 +766,7 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 		int type = tree.result_type[arg]
 		int typed = (method == 1) || ((method == 3) && (i == 1))
 		if (typed):
-			if ((ast_expression_scalar_value(type) || ast_expression_record_type(type)) == 0): return -1
+			if (ast_expression_data_value(type) == 0): return -1
 			if (ast_expression_argument_compatible(tree, element, arg) == 0): return -1
 			int got = ast_expression_promoted_type(type)
 			if (type_is_string(element) && type_is_char_pointer(got)):
@@ -769,6 +777,7 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 		else: tree.next_arg[previous] = arg
 		previous = arg
 	if (ast_expression_accept(tree, c")") == 0): return -1
+	if ((method == 2) && ast_expression_record_value(element)): method = method + 128
 	if (sym_probe(ast_expression_list_helper(method)) < 0): return -1
 	tree.value[id] = method
 	return id
@@ -1064,13 +1073,15 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	if (tree.readonly): return -1
 	int lt = tree.result_type[left]
 	if (type_is_value(lt) || (lt == 3) || type_is_const(lt)): return -1
-	if (ast_expression_scalar_type(lt) == 0): return -1
+	if (ast_expression_data_value(lt) == 0): return -1
+	if (op && ast_expression_record_type(lt)): return -1
 	if (op && type_is_buffer(type_canonical(lt))): return -1
 	ast_expression_advance(tree)
 	int right = ast_expression_assignment(tree, depth + 1)
 	if (right < 0): return -1
-	if (ast_expression_scalar_value(tree.result_type[right]) == 0): return -1
+	if (ast_expression_data_value(tree.result_type[right]) == 0): return -1
 	int rt = ast_expression_promoted_type(tree.result_type[right])
+	if (ast_expression_record_type(lt) != ast_expression_record_value(rt)): return -1
 	int result = rt
 	if (op):
 		int kind = binary_float_kind(ast_expression_promoted_type(lt), rt)
@@ -1123,7 +1134,7 @@ int ast_expression_try_at(int group_offset, int whole):
 	int root = ast_expression_assignment(&tree, 1)
 	int accepted = (root >= 0) && (token_start_offset == end)
 	if (whole == 0): accepted = accepted && peek(c")")
-	if (accepted): accepted = ast_expression_scalar_value(tree.result_type[root]) || (tree.result_type[root] == type_value(0))
+	if (accepted): accepted = ast_expression_data_value(tree.result_type[root]) || (tree.result_type[root] == type_value(0))
 	ast_expression_restore_types(&tree)
 	getchar_seek(file, load_ptr(saved + 7 * __word_size__))
 	generic_reparse_restore(saved)

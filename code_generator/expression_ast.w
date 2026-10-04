@@ -130,7 +130,8 @@ void emit_expression_ast(expression_ast* tree, int id):
 		coerce(left_type, rt)
 		if (subop): pop_ebx_slot()
 		else: pop_ebx()
-		assign_store(left_type)
+		if (type_num_args(left_type) > 0): assign_store_struct(left_type)
+		else: assign_store(left_type)
 		if (subop == 0): stack_pos = stack_pos - 1
 		return
 	if ((op == 'a') || (op == 'o')):

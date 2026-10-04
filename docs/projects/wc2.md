@@ -824,3 +824,18 @@ as well as normal/lint diagnostic parity. Brace blocks now terminate whole
 expression preflight, with container-literal keywords protected from being
 mistaken for ordinary indexed names. The required-mode rejection fixture
 now uses an unsupported interpolated string.
+
+## Task 29: record values, copies and arguments
+
+Ordinary struct and union values can now be whole AST roots, compatible
+assignment sources and by-value arguments to direct or indirect calls with
+scalar returns. Record copies use the existing aggregate-copy lowering,
+including rebuilding inline array descriptors. Basic list pop selects the
+record-address helper for aggregate elements, and record values can feed
+list pushes and inserts.
+
+The differential fixture checks small records, unions, nested fields, inline
+array independence, by-value mutation isolation, indirect calls and record
+list operations across the image-comparison matrix. Record-returning calls
+and constructors still decline while their return-buffer stack handling is
+migrated separately. Value-record field access also remains conservative.
