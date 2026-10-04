@@ -23,6 +23,8 @@ const int ast_nd_store = 129
 const int ast_nd_read = 130
 const int ast_template_format = 131
 const int ast_device_builtin = 132
+const int ast_list_it = 133
+const int ast_list_it_value = 134
 
 
 struct expression_ast:
@@ -37,6 +39,7 @@ struct expression_ast:
 	int type_names_used
 	int pending_buffer_types
 	int readonly
+	int it_binding
 	type_rec[16] pointer_types
 	int[16] pointer_offsets
 	int[16] pointer_bases
@@ -53,6 +56,7 @@ struct expression_ast:
 	int[128] in_cast
 	int[128] symbol
 	int[128] qualified
+	int[128] it_slot
 	int[128] generic_parameters
 	int[128] generic_signature
 	int[128] generic_offset

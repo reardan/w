@@ -1549,6 +1549,13 @@ int ast_expression_qualified_member(expression_ast* tree):
 
 
 int ast_expression_symbol(expression_ast* tree, int depth, int qualified):
+	if ((qualified == 0) && peek(c"it") && (tree.it_binding >= 0)):
+		int id = expression_ast_add(tree, ast_list_it_value, -1, -1)
+		if (id < 0): return -1
+		tree.symbol[id] = tree.it_binding
+		tree.result_type[id] = tree.high[tree.it_binding]
+		ast_expression_advance(tree)
+		return id
 	int sym = sym_probe(token)
 	if (sym < 0): return -1
 	int is_call = load_int(table + sym + 10) == 2
@@ -2107,7 +2114,102 @@ int ast_expression_inferred_type(expression_ast* tree, int got, int offset):
 	return type
 
 
+# It bindings are local to the AST arena. No temporary symbol records
+# or stack slots are installed while parsing an inline list expression.
+int ast_expression_it_argument(expression_ast* tree):
+	if ((nextc != '(') || (list_it_mode(token) < 0)): return 0
+	int sym = sym_probe(c"it")
+	if ((sym >= 0) && (sym != list_it_active)): return 0
+	int serial = token_serial
+	char* save = generic_reparse_save()
+	char[64] open
+	int final_offset = tree.final_token_offset
+	int depth = 0
+	int found = 0
+	int after_dot = 0
+	ast_expression_advance(tree)
+	while ((found == 0) && (token[0] != 0) && (depth < 64) && (token_start_offset < tree.end_offset)):
+		ast_expression_advance(tree)
+		int n = strlen(token)
+		if (peek(c")") | peek(c"]") | peek(c"}")):
+			if (depth == 0): break
+			depth = depth - 1
+			if (open[depth] == 'T'):
+				get_token_template_chunk()
+				n = strlen(token)
+				if ((n > 0) && (token[n - 1] == '{')):
+					open[depth] = 'T'
+					depth = depth + 1
+		else if (peek(c"(") | peek(c"[") | peek(c"{")):
+			open[depth] = token[0]
+			depth = depth + 1
+		else if (peek(c"it") && (after_dot == 0)): found = 1
+		else if ((token[0] == 'f') && (token[1] == '"') && (token[n - 1] == '{')):
+			open[depth] = 'T'
+			depth = depth + 1
+		after_dot = peek(c".")
+	getchar_seek(file, load_ptr(save + 7 * __word_size__))
+	generic_reparse_restore(save)
+	tree.final_token_offset = final_offset
+	token_serial = serial
+	return found
+
+
+
+int ast_expression_list_it(expression_ast* tree, int receiver, int depth):
+	int mode = list_it_mode(token)
+	int id = expression_ast_add(tree, ast_list_it, receiver, -1)
+	if (id < 0): return -1
+	tree.value[id] = mode
+	int element = type_list_element_type(type_unqualified(tree.result_type[receiver]))
+	int it_type = element
+	ast_expression_advance(tree)
+	if (type_num_args(type_unqualified(element)) > 0):
+		it_type = ast_expression_pointer_type(tree, element, token_start_offset)
+		if (it_type < 0): return -1
+	tree.high[id] = it_type
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int outer = tree.it_binding
+	tree.it_binding = id
+	int body = ast_expression_assignment(tree, depth + 1)
+	tree.it_binding = outer
+	if ((body < 0) || (peek(c")") == 0)): return -1
+	if (ast_expression_data_value(tree.result_type[body]) == 0): return -1
+	if (ast_expression_prepare_value(tree, tree.result_type[body], token_start_offset) == 0): return -1
+	int got = ast_expression_promoted_type(tree.result_type[body])
+	int key_type = ast_expression_inferred_type(tree, got, token_start_offset)
+	if (key_type < 0): return -1
+	if ((type_num_args(key_type) > 0) || type_is_array(key_type) || type_is_slice(key_type)): return -1
+	int kind = 0
+	if ((mode >= 1) && (mode <= 5)):
+		if (type_float_kind(key_type) || type_is_string(key_type) || type_is_map(key_type) || type_is_set(key_type) || type_is_list(key_type)): return -1
+	if (mode >= 6):
+		kind = ast_expression_list_scalar_kind(key_type)
+		if (kind == 0): return -1
+		if ((mode <= 8) && (kind != 1)): return -1
+	ast_expression_advance(tree)
+	int keys = ast_expression_composite_type(tree, type_kind_list, key_type, -1, token_start_offset)
+	if (keys < 0): return -1
+	int result = type_value(keys)
+	if ((mode == 1) || (mode == 10)):
+		int list = ast_expression_composite_type(tree, type_kind_list, element, -1, token_start_offset)
+		if (list < 0): return -1
+		result = type_value(list)
+	else if ((mode >= 2) && (mode <= 6)):
+		result = type_value(type_lookup(c"int"))
+		if ((mode == 3) || (mode == 4)): result = type_value(bool_type)
+	else if ((mode == 7) || (mode == 8)): result = type_value(key_type)
+	else if (mode == 9): result = type_value(type_lookup(c"void"))
+	else if (mode >= 11): result = element
+	tree.right[id] = body
+	tree.symbol[id] = key_type
+	tree.generic_arity[id] = kind
+	tree.result_type[id] = result
+	return id
+
+
 int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
+	if (ast_expression_it_argument(tree)): return ast_expression_list_it(tree, receiver, depth)
 	int method = 0
 	if (peek(c"push")): method = 1
 	if (peek(c"pop")): method = 2
@@ -2139,7 +2241,6 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 		if ((method >= 22) && (method <= 24) && (kind != 1)): return -1
 	if ((method >= 32) && (ast_expression_list_callback_element(element) == 0)): return -1
 	int it_lookup = (nextc == '(') && (list_it_mode(token) >= 0)
-	if (it_lookup && list_it_active): return -1
 	int count = 0
 	if ((method == 1) || (method == 4) || (method == 27) || (method == 28)): count = 1
 	if (method >= 30): count = 1
@@ -2617,6 +2718,7 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
 		int op = tree.op[i]
+		if (op == ast_list_it): return 1
 		if ((op == ast_nd_index) || (op == ast_nd_store) || (op == ast_nd_read)): return 1
 		if ((op == 'y') && ((tree.value[i] != 21) || tree.high[i])): return 1
 		if ((op == '+') || (op == '-') || (op == '*') || (op == '/') || (op >= 0x90)):
@@ -2876,6 +2978,7 @@ int ast_expression_try_at(int group_offset, int whole):
 	tree.type_names_used = 0
 	tree.pending_buffer_types = 0
 	tree.readonly = 0
+	tree.it_binding = -1
 	tree.whole_expression = whole
 	tree.end_offset = end
 	tree.cast_depth = cast_context

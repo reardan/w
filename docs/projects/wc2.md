@@ -1497,3 +1497,17 @@ identical host images and PTX. Fixtures cover nested pointers, first-use
 casts, struct fields, compound stores, increments and assignment results.
 Host dereferences and implicit host/device pointer conversions retain their
 existing diagnostics through differential tests.
+
+## Task 78: inline list expressions
+
+List-expression nodes bind `it` within the arena, including nested bindings
+and record elements exposed as pointers. Pure lookahead distinguishes inline
+expressions from ordinary callback/value arguments and respects a user's
+local named `it`. Key types and result lists participate in the type replay
+transaction; emission recreates the existing inline loop, runtime helpers
+and hidden-local debugger metadata.
+
+Required-mode fixtures cover every list-expression operation, nested and
+chained uses, captured locals, generic calls, temporary binding mutation,
+record keys and empty lists. The existing list battery and stdin-driven
+word/transpose examples produce identical native images and output.

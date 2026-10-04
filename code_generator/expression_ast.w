@@ -54,6 +54,72 @@ int emit_ast_direct_arguments(expression_ast* tree, int id, int s, int passed):
 # peepholes, target word size and runtime division behavior still apply.
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
+	if (op == ast_list_it_value):
+		strcpy(last_identifier, c"it")
+		be_lea_acc_wstack((stack_pos - tree.it_slot[tree.symbol[id]]) << word_size_log2)
+		return
+	if (op == ast_list_it):
+		int receiver = tree.left[id]
+		emit_expression_ast(tree, receiver)
+		int element = type_list_element_type(type_unqualified(tree.result_type[receiver]))
+		char* value_fn = c"__w_list_iter_value"
+		if (type_num_args(type_unqualified(element)) > 0): value_fn = c"__w_list_addr"
+		promote(tree.result_type[receiver])
+		int base_stack = stack_pos
+		int list_slot = push_slot()
+		mov_eax_int(0)
+		int cursor_slot = push_slot()
+		int keys_slot = push_slot()
+		int it_slot = push_slot()
+		tree.it_slot[id] = it_slot
+		# Reproduce the hidden local's instruction boundary and debugger
+		# metadata; its references have already been bound to this node.
+		pointer_indirection = 0
+		be_notes_reset()
+		debug_local_note(c"it", it_slot - 1, 'L', tree.high[id])
+		int exit = be_ctrl_block()
+		int top = be_ctrl_loop()
+		push_slot_copy(cursor_slot)
+		load_slot(list_slot)
+		add_eax_int32(word_size)
+		promote_eax()
+		pop_ebx_slot()
+		alu_cmp_set(0x9c)
+		be_br_zero_discard(exit)
+		for_iter_call(value_fn, list_slot, cursor_slot)
+		store_stack_var((stack_pos - it_slot) << word_size_log2)
+		int body = tree.right[id]
+		emit_expression_ast(tree, body)
+		promote(tree.result_type[body])
+		int key_type = tree.symbol[id]
+		int key_size = list_element_slot_size(key_type)
+		push_slot()
+		list_it_call(c"__w_list_push_lazy", keys_slot, stack_pos, key_size)
+		store_stack_var((stack_pos - keys_slot) << word_size_log2)
+		drop_slots(1)
+		inc_dword_esp_plus((stack_pos - cursor_slot) << word_size_log2)
+		be_br(top)
+		be_ctrl_end(top)
+		be_ctrl_end(exit)
+		list_it_call(c"__w_list_or_new", keys_slot, 0, key_size)
+		store_stack_var((stack_pos - keys_slot) << word_size_log2)
+		int mode = tree.value[id]
+		int kind = tree.generic_arity[id]
+		if (mode == 1): list_it_call(c"__w_list_filter_keys", list_slot, keys_slot, -1)
+		else if ((mode >= 2) && (mode <= 5)): list_it_call(c"__w_list_truth", keys_slot, 0, mode - 2)
+		else if ((mode >= 6) && (mode <= 8)):
+			char* helper = c"__w_list_sum"
+			if (mode == 7): helper = c"__w_list_min"
+			if (mode == 8): helper = c"__w_list_max"
+			list_it_call(helper, keys_slot, 0, -1)
+		else if (mode == 9): list_it_call(c"__w_list_sort_keys", list_slot, keys_slot, kind)
+		else if (mode == 10): list_it_call(c"__w_list_sorted_keys", list_slot, keys_slot, kind)
+		else if (mode >= 11):
+			list_it_call(c"__w_list_best_key", keys_slot, 0, kind | ((mode - 11) << 2))
+			push_slot()
+			list_it_call(c"__w_list_addr", list_slot, stack_pos, -1)
+		pop_to(base_stack)
+		return
 	if (op == 'E'):
 		int base_stack = stack_pos
 		template_emit_helper_address(0)
