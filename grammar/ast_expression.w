@@ -887,6 +887,40 @@ int ast_expression_constructor(expression_ast* tree, int base, int heap, int dep
 	return id
 
 
+# Limb and bit intrinsics retain ordered operands and their coercion types.
+# A third output-pointer operand registers its pointer before parsing it,
+# matching the streaming intrinsic's type-registration order.
+int ast_expression_integer_intrinsic(expression_ast* tree, int kind, int depth):
+	int id = expression_ast_add(tree, 'Q', -1, -1)
+	if (id < 0): return -1
+	int integer = type_lookup(c"int")
+	tree.value[id] = kind
+	tree.high[id] = integer
+	tree.result_type[id] = type_value(integer)
+	int count = 2
+	if ((kind == 2) || (kind == 3)): count = 3
+	if (kind >= 7): count = 1
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int tail = -1
+	for i in range(count):
+		if (i && (ast_expression_accept(tree, c",") == 0)): return -1
+		int want = integer
+		if (i == 2):
+			want = ast_expression_pointer_type(tree, integer, token_start_offset)
+			if (want < 0): return -1
+			tree.symbol[id] = want
+		int argument = ast_expression_assignment(tree, depth + 1)
+		if (argument < 0): return -1
+		if (ast_expression_data_value(tree.result_type[argument]) == 0): return -1
+		if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
+		if (tail < 0): tree.left[id] = argument
+		else: tree.next_arg[tail] = argument
+		tail = argument
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	return id
+
+
 int ast_expression_name(expression_ast* tree, int depth):
 	# Keywords, unshadowable builtins, generics and constructors take
 	# precedence over identifier() in the streaming grammar.
@@ -895,6 +929,11 @@ int ast_expression_name(expression_ast* tree, int depth):
 	if ((nextc == '(') && (peek(c"print") || peek(c"println"))): return ast_expression_print(tree, depth)
 	if (peek(c"to_json") || peek(c"from_json")): return -1
 	if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
+	if ((nextc == '(') && (sym_probe(token) < 0)):
+		int kind = limb_builtin_kind()
+		if (kind): return ast_expression_integer_intrinsic(tree, kind, depth)
+		kind = bit_builtin_kind()
+		if (kind): return ast_expression_integer_intrinsic(tree, kind + 3, depth)
 	if (generic_call_ready()): return ast_expression_generic_call(tree, depth)
 	if ((nextc == '(') && struct_value_ctor_ready()):
 		int base = type_lookup(token)

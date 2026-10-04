@@ -1131,3 +1131,15 @@ commit and name lifetime after arena reuse. Required-mode and differential
 fixtures cover nested literals, allocations, pointer casts, sizeof and generic
 slice/list parameters. Generic struct instantiation and fixed-array type
 syntax remain separate work.
+
+## Task 51: limb and bit intrinsics
+
+Integer intrinsic nodes now retain operands for mul_hi, mul_wide, add_carry,
+shr, rotl, rotr, popcount, clz and ctz. Emission reuses the production backend
+operations, preserving low-32-bit behavior, coercions, evaluation order and
+output-pointer stores. User symbols still shadow the intrinsic names.
+
+Required-mode and differential fixtures cover carry/product boundaries,
+zero inputs, masked shift counts, nested operations, floating-point operand
+coercion, side effects and shadowing. Invalid types and argument counts retain
+their existing diagnostics.

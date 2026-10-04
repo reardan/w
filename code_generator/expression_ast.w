@@ -50,6 +50,38 @@ void emit_expression_ast(expression_ast* tree, int id):
 		rt_call_end(s)
 		pop_to(base_stack)
 		return
+	if (op == 'Q'):
+		int kind = tree.value[id]
+		int argument = tree.left[id]
+		emit_expression_ast(tree, argument)
+		coerce(tree.high[id], promote(tree.result_type[argument]))
+		if (kind >= 7):
+			if (kind == 7): alu_popcount32()
+			else if (kind == 8): alu_clz32()
+			else: alu_ctz32()
+			return
+		push_slot()
+		argument = tree.next_arg[argument]
+		emit_expression_ast(tree, argument)
+		coerce(tree.high[id], promote(tree.result_type[argument]))
+		if ((kind == 2) || (kind == 3)):
+			push_slot()
+			argument = tree.next_arg[argument]
+			emit_expression_ast(tree, argument)
+			coerce(tree.symbol[id], promote(tree.result_type[argument]))
+			mov_ecx_eax()
+			pop_eax()
+			pop_ebx()
+			stack_pos = stack_pos - 2
+			if (kind == 2): alu_mul_wide()
+			else: alu_add_carry()
+		else:
+			pop_ebx_slot()
+			if (kind == 1): alu_mul_hi()
+			else if (kind == 4): alu_shr32()
+			else if (kind == 5): alu_rotl32()
+			else: alu_rotr32()
+		return
 	if (op == 'G'):
 		int sym = tree.symbol[id]
 		int signature = tree.generic_signature[id]
