@@ -731,3 +731,14 @@ Tests cover partial and fully defaulted calls, parenthesized callees,
 prototype defaults, integer, character, boolean, float and null-pointer
 parameters, explicit argument order, and missing/extra/type-mismatched
 argument diagnostics.
+
+## Task 23: tokens spanning an input refill
+
+Whole-expression preflight can recover the current token's discarded prefix
+when the tokenizer has already crossed a buffer boundary. It copies the raw
+token prefix and every retained input byte into a larger owned buffer,
+without changing the logical position or seeking. A bounded spelling/span
+check rejects inputs whose source bytes cannot be reconstructed exactly.
+
+Tests cover a long identifier across the 8 KiB boundary, audit coverage,
+image and diagnostic parity, and replay of recovered bytes from a pipe.

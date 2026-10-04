@@ -505,6 +505,35 @@ void test_ast_expression_crosses_input_buffer_boundary():
 	free(path)
 
 
+void test_ast_expression_token_crosses_input_buffer_boundary():
+	char* path = ast_test_path(c"_token_boundary.w")
+	char* prefix = c"\nint f(int cross_window_name): return "
+	string_builder* source = string_from(c"#")
+	for i in range(8188 - 1 - strlen(prefix)): string_append_char(source, 'x')
+	string_append(source, prefix)
+	string_append(source, c"cross_window_name + 1\nint main(): return f(41) - 42\n")
+	assert1(file_write_text(path, source.data))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		char** args = strv_new(6)
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--quiet")
+		strv_set(args, 3, c"x64")
+		strv_set(args, 4, c"--ast-audit")
+		strv_set(args, 5, path)
+		process_result* audit = ast_test_run(args, 0)
+		assert_equal(0, audit.status)
+		assert_substring(audit.stderr_text, path, 0)
+		process_result_free(audit)
+		ast_test_image_at(compiler, c"x64", path, 1)
+	ast_test_diagnostics(source.data)
+	string_free(source)
+	unlink(path)
+	free(path)
+
+
 void test_ast_pointer_type_expression_hits_and_diagnostics():
 	char* path = ast_test_path(c"_pointer_type.w")
 	assert1(file_write_text(path, c"struct R:\n\tint x\nint f(int p): return ((*cast(R*, p)).x)\nint main(): return 0\n"))

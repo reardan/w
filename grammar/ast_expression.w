@@ -216,7 +216,32 @@ int ast_expression_refill(int start):
 	return 1
 
 
+# A token may itself have crossed getchar's refill before expression()
+# starts. Recover its discarded prefix from the still-raw token spelling.
+# Keep every already-read byte (including pipe input) in a larger owned
+# buffer; the ordinary reader can reuse it for its usual 8 KiB refills.
+void ast_expression_retain_token():
+	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return
+	int missing = getchar_kernel_pos[file] - getchar_limit[file] - token_start_offset
+	if (missing <= 0): return
+	if ((token_i > 2048) || (missing > token_i) || (nextc < 0)): return
+	if (byte_offset - 1 - token_start_offset != token_i): return
+	int length = getchar_limit[file]
+	# A recovered token is bounded by the AST source limit. Decline an
+	# unusual pre-existing window rather than assume its allocation size.
+	if (length > GETCHAR_BUF_CAPACITY): return
+	char* old = cast(char*, getchar_buf_addr[file])
+	char* bytes = malloc(2 * GETCHAR_BUF_CAPACITY)
+	for i in range(missing): bytes[i] = token[i]
+	for i in range(length): bytes[missing + i] = old[i]
+	getchar_buf_addr[file] = cast(int, bytes)
+	getchar_limit[file] = missing + length
+	getchar_pos[file] = missing + getchar_pos[file]
+	free(old)
+
+
 int ast_expression_boundary(int start, int whole):
+	if (whole): ast_expression_retain_token()
 	while (1):
 		int end
 		if (whole): end = ast_expression_root_end(0)

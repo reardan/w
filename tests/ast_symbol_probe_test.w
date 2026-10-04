@@ -30,6 +30,47 @@ void test_ast_buffer_read_ahead_preserves_short_reads():
 	file = saved_file
 
 
+void test_ast_buffer_recovers_token_prefix_without_seeking():
+	int reader
+	int writer
+	assert_equal(0, process_make_pipe(&reader, &writer))
+	getchar_reset(reader)
+	assert_equal(4, write(writer, c"abcd", 4))
+	for i in range(4): assert_equal('a' + i, getchar(reader))
+	assert_equal(6, write(writer, c"efghij", 6))
+	close(writer)
+	for i in range(3): assert_equal('e' + i, getchar(reader))
+	int saved_file = file
+	char* saved_token = token
+	int saved_i = token_i
+	int saved_start = token_start_offset
+	int saved_offset = byte_offset
+	int saved_next = nextc
+	file = reader
+	token = c"cdef"
+	token_i = 4
+	token_start_offset = 2
+	byte_offset = 7
+	nextc = 'g'
+	ast_expression_retain_token()
+	assert_equal(10, getchar_kernel_pos[reader])
+	assert_equal(8, getchar_limit[reader])
+	assert_equal(5, getchar_pos[reader])
+	# The logical next byte is unchanged, and the recovered prefix can
+	# be replayed entirely inside the retained window on a nonseekable fd.
+	assert_equal('h', getchar(reader))
+	getchar_seek(reader, 2)
+	for i in range(8): assert_equal('c' + i, getchar(reader))
+	assert_equal(-1, getchar(reader))
+	close(reader)
+	file = saved_file
+	token = saved_token
+	token_i = saved_i
+	token_start_offset = saved_start
+	byte_offset = saved_offset
+	nextc = saved_next
+
+
 void test_ast_pointer_probe_records_are_transactional():
 	word_size = __word_size__
 	push_basic_types()
