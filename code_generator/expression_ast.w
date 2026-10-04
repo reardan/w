@@ -115,6 +115,20 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (tree.high[id]): promote(left_type)
 		add_eax_int32(tree.value[id])
 		return
+	if (op == 'j'):
+		promote(left_type)
+		int base_stack = stack_pos
+		int list_slot = push_slot()
+		emit_expression_ast(tree, tree.right[id])
+		promote(tree.result_type[tree.right[id]])
+		int index_slot = push_slot()
+		int s = rt_call_begin(c"__w_list_addr")
+		push_slot_copy(list_slot)
+		push_slot_copy(index_slot)
+		rt_call_end(s)
+		pop_to(base_stack)
+		expression_lhs_readonly = 0
+		return
 	if (op == 'I'):
 		promote(left_type)
 		push_slot()

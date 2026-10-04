@@ -634,3 +634,13 @@ ambiguous `/*/` shape still decline the speculative path.
 Tests cover operator-like comment contents, adjacent comments, trailing
 comments, malformed input, literal warnings and next-statement diagnostics.
 Both full-expression self-host images remain byte-identical.
+
+## Task 16: list element access
+
+Typed list indexing now has an AST node that evaluates the list and index
+once, calls the ordinary `__w_list_addr` helper and returns the element's
+lvalue address. Nested lists, scalar assignment, compound assignment, string
+elements and fields of stored records compose with existing nodes. List
+methods, slices and whole-list values remain separate work. Tests compare
+images across both host widths and all six targets and assert direct AST
+coverage, evaluation order and diagnostic parity.

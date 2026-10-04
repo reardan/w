@@ -249,7 +249,7 @@ int ast_expression_record_type(int type):
 
 int ast_expression_storage_type(int type):
 	if (type_is_gpu_object(type) || type_is_gpu_pointer(type)): return 0
-	if (type_is_buffer(type)): return 1
+	if (type_is_buffer(type) || type_is_list(type)): return 1
 	return ast_expression_scalar_type(type) || ast_expression_record_type(type)
 
 
@@ -500,6 +500,10 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			if (type_is_buffer(type)):
 				op = 'I'
 				element = buffer_element_type(type)
+			else if (type_is_list(type)):
+				if (sym_probe(c"__w_list_addr") < 0): return -1
+				op = 'j'
+				element = type_list_element_type(type_unqualified(type))
 			else:
 				# Containers retain their pending-element machinery until
 				# it has explicit AST nodes of its own.
