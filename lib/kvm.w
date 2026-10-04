@@ -18,6 +18,8 @@ struct kvm_machine:
 	char* run
 	int run_size
 	int error
+	int cpuid_set
+	char* reset_state # pristine vCPU state, only allocated for retained cells
 
 
 # Avoid sign-extending ioctl constants with bit 31 set on x64.
@@ -26,6 +28,8 @@ int kvm_request(int direction, int size, int number):
 
 
 void kvm_destroy(kvm_machine* vm):
+	free(vm.reset_state)
+	vm.reset_state = 0
 	if (vm.run != 0): munmap(cast(int, vm.run), vm.run_size)
 	if (vm.cpu_fd >= 0): close(vm.cpu_fd)
 	if (vm.vm_fd >= 0): close(vm.vm_fd)
@@ -75,6 +79,8 @@ int kvm_create(kvm_machine* vm):
 	vm.run = 0
 	vm.run_size = 0
 	vm.error = 0
+	vm.cpuid_set = 0
+	vm.reset_state = 0
 	vm.system_fd = kvm_open_system()
 	if (vm.system_fd < 0):
 		vm.error = vm.system_fd
@@ -110,6 +116,9 @@ int kvm_create(kvm_machine* vm):
 
 # Ask KVM for the supported CPUID instead of inventing a CPU model.
 int kvm_set_supported_cpuid(kvm_machine* vm):
+	# CPUID is immutable once this vCPU has run. Host-dependent leaves may
+	# differ when fetched on another physical CPU; never reinstall on reset.
+	if (vm.cpuid_set): return 0
 	int capacity = 256
 	char* cpuid = malloc(8 + capacity * 40)
 	mem_fill[char](cpuid, 0, 8 + capacity * 40)
@@ -117,6 +126,7 @@ int kvm_set_supported_cpuid(kvm_machine* vm):
 	int status = sys_ioctl(vm.system_fd, kvm_request(3, 8, 5), cast(int, cpuid))
 	if (status == 0): status = sys_ioctl(vm.cpu_fd, kvm_request(1, 8, 144), cast(int, cpuid))
 	free(cpuid)
+	if (status == 0): vm.cpuid_set = 1
 	return status
 
 
@@ -167,3 +177,48 @@ int kvm_copy_xsave(kvm_machine* destination, kvm_machine* source):
 	if (result == 0): result = sys_ioctl(destination.cpu_fd, kvm_request(1, 4096, 165), cast(int, state))
 	free(state)
 	return result
+
+
+# Cell-only reset image: ring 3 cannot alter privileged MSRs/debug state.
+# Restore all userspace-modifiable extended state, segments, pending events,
+# and MP state. STAR/LSTAR/FMASK are reinstalled by the cell gate setup.
+int kvm_cell_checkpoint(kvm_machine* vm):
+	if (vm.reset_state != 0): return 1
+	int size = sys_ioctl(vm.vm_fd, kvm_request(0, 0, 3), 208)
+	int request = 207
+	if (size <= 0):
+		size = 4096
+		request = 164
+	if (size > 1048576): return 0
+	char* state = malloc(4096 + size)
+	mem_fill[char](state, 0, 4096 + size)
+	int ok = kvm_get_regs(vm, state) == 0
+	if (ok): ok = kvm_get_sregs(vm, state + 144) == 0
+	if (ok): ok = sys_ioctl(vm.cpu_fd, kvm_request(2, 64, 159), cast(int, state + 456)) == 0
+	if (ok): ok = sys_ioctl(vm.cpu_fd, kvm_request(2, 128, 161), cast(int, state + 520)) == 0
+	if (ok): ok = sys_ioctl(vm.cpu_fd, kvm_request(2, 392, 166), cast(int, state + 648)) == 0
+	if (ok): ok = sys_ioctl(vm.cpu_fd, kvm_request(2, 4, 152), cast(int, state + 1040)) == 0
+	if (ok): ok = sys_ioctl(vm.cpu_fd, kvm_request(2, 4096, request), cast(int, state + 4096)) == 0
+	if (ok == 0):
+		free(state)
+		return 0
+	vm.reset_state = state
+	return 1
+
+
+int kvm_cell_restore(kvm_machine* vm):
+	char* state = vm.reset_state
+	if (state == 0): return 0
+	# Complete any pending OUT without executing another instruction. KVM
+	# requires this before overwriting state after an I/O exit.
+	vm.run[1] = 1
+	int completed = kvm_run(vm)
+	vm.run[1] = 0
+	if (completed != -4): return 0
+	if (kvm_set_sregs(vm, state + 144) < 0): return 0
+	if (sys_ioctl(vm.cpu_fd, kvm_request(1, 392, 167), cast(int, state + 648)) < 0): return 0
+	if (sys_ioctl(vm.cpu_fd, kvm_request(1, 4096, 165), cast(int, state + 4096)) < 0): return 0
+	if (sys_ioctl(vm.cpu_fd, kvm_request(1, 128, 162), cast(int, state + 520)) < 0): return 0
+	if (sys_ioctl(vm.cpu_fd, kvm_request(1, 64, 160), cast(int, state + 456)) < 0): return 0
+	if (sys_ioctl(vm.cpu_fd, kvm_request(1, 4, 153), cast(int, state + 1040)) < 0): return 0
+	return kvm_set_regs(vm, state) == 0

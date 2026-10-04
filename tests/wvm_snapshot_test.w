@@ -171,7 +171,7 @@ int snapshot_test_fd_count():
 	return count
 
 
-void test_snapshot_execution_after_reset():
+void snapshot_execution_after_reset(int retained):
 	int fd = kvm_open_system()
 	if (fd < 0):
 		println(c"SKIP: /dev/kvm unavailable (snapshot isolation/reset tests still ran)")
@@ -183,10 +183,13 @@ void test_snapshot_execution_after_reset():
 	source.input_length = 3
 	cell_snapshot* snapshot = cell_snapshot_create(source)
 	asserts(c"execution snapshot", snapshot != 0)
-	cell_pool* pool = cell_pool_new(snapshot, 2)
+	cell_pool* pool = 0
+	if (retained): pool = cell_pool_new_retained(snapshot, 2)
+	else: pool = cell_pool_new(snapshot, 2)
 	asserts(c"execution pool", pool != 0)
 	cell_free(source)
 	cell_snapshot_free(snapshot)
+	kvm_machine* original = pool.cells[0].machine
 	for iteration in range(3):
 		vm_cell* cell = cell_pool_acquire(pool)
 		asserts(c"per-lease filesystem", cell_fs_configure(cell, c"bin", 0))
@@ -198,8 +201,19 @@ void test_snapshot_execution_after_reset():
 		assert_equal(97, cell.output.data[0])
 		assert_equal(0, cell.output.data[1])
 		assert_equal(98, cell.output.data[2])
+		if (retained):
+			char[416] fpu
+			mem_fill[char](&fpu[0], 0, 416)
+			assert_equal(0, sys_ioctl(cell.machine.cpu_fd, kvm_request(2, 416, 140), cast(int, &fpu[0])))
+			fpu[160] = 77 # poison XMM0 before returning the lease
+			assert_equal(0, sys_ioctl(cell.machine.cpu_fd, kvm_request(1, 416, 141), cast(int, &fpu[0])))
 		asserts(c"reset executed clone", cell_pool_release(pool, cell))
-		asserts(c"vCPU resources reclaimed", cell.machine == 0 && cell.thread_state == 0)
+		if (retained):
+			char[416] fpu
+			assert_equal(0, sys_ioctl(cell.machine.cpu_fd, kvm_request(2, 416, 140), cast(int, &fpu[0])))
+			assert_equal(0, cast(int, fpu[160]))
+		if (retained): asserts(c"vCPU retained", cell.machine == original && cell.thread_state != 0)
+		else: asserts(c"vCPU resources reclaimed", cell.machine == 0 && cell.thread_state == 0)
 		asserts(c"lease capabilities revoked", cell.fs_state == 0 && cell.net_state == 0)
 		assert_equal(-13, cell_net_socket(cell, 2, 1, 6))
 	assert_equal(3, pool.resets)
@@ -207,7 +221,7 @@ void test_snapshot_execution_after_reset():
 	assert_equal(fd_count, snapshot_test_fd_count())
 
 
-void test_snapshot_restores_fault_timeout_and_thread_state():
+void snapshot_restores_fault_timeout_and_thread_state(int retained):
 	int fd = kvm_open_system()
 	if (fd < 0): return
 	close(fd)
@@ -231,6 +245,7 @@ void test_snapshot_restores_fault_timeout_and_thread_state():
 		asserts(c"capture fault/thread fixture", snapshot != 0)
 		vm_cell* clone = cell_snapshot_clone(snapshot)
 		asserts(c"clone fault/thread fixture", clone != 0)
+		clone.retain_cpus = retained
 		cell_snapshot_free(snapshot)
 		cell_free(source)
 		for iteration in range(2):
@@ -238,7 +253,18 @@ void test_snapshot_restores_fault_timeout_and_thread_state():
 			assert_equal(expected, clone.status)
 			asserts(c"never capture executed VM", cell_snapshot_create(clone) == 0)
 			asserts(c"reset fault/thread fixture", cell_snapshot_reset(clone))
-			asserts(c"clear all vCPU references", clone.machine == 0 && clone.thread_state == 0)
+			if (retained): asserts(c"retain vCPU references", clone.machine != 0 && clone.thread_state != 0)
+			else: asserts(c"clear all vCPU references", clone.machine == 0 && clone.thread_state == 0)
 		cell_free(clone)
 	__w_list_free(cast(__w_list*, modes))
 	assert_equal(baseline_fds, snapshot_test_fd_count())
+
+
+void test_snapshot_execution_after_reset():
+	snapshot_execution_after_reset(0)
+	snapshot_execution_after_reset(1)
+
+
+void test_snapshot_restores_fault_timeout_and_thread_state():
+	snapshot_restores_fault_timeout_and_thread_state(0)
+	snapshot_restores_fault_timeout_and_thread_state(1)

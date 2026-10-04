@@ -101,15 +101,40 @@ cell_snapshot* cell_snapshot_create(vm_cell* cell):
 	return snapshot
 
 
-# Reset destroys all vCPUs and per-run host resources before discarding
-# private pages. This restores page tables, heap/stack, FDs, I/O cursors,
-# CPU buffers, watchdog metadata, fault and exit state together.
+# Reset revokes per-run resources and discards private pages. Ordinary
+# clones destroy CPUs; retained pools restore pristine CPU state instead.
+# Page tables, heap/stack, I/O, watchdog and fault state reset together.
 int cell_snapshot_reset(vm_cell* cell):
 	if (cell == 0): return 0
 	if (cell_timer_run != 0): return cell_fail(cell, c"cannot reset during cell execution")
 	cell_snapshot* snapshot = cast(cell_snapshot*, cell.snapshot_state)
 	if (snapshot == 0): return cell_fail(cell, c"cell has no snapshot")
+	cell_threads* retained = 0
+	if (cell.retain_cpus && cell.thread_state != 0):
+		retained = cast(cell_threads*, cell.thread_state)
+		# Detach CPU ownership while revoking all per-lease host resources.
+		cell.machine = 0
+		cell.thread_state = 0
+		cell.thread_cleanup = 0
 	cell_runtime_free(cell)
+	if (retained != 0):
+		cell.thread_state = cast(void*, retained)
+		cell.thread_cleanup = cast(void*, cell_threads_free)
+		cell.thread_io_wait = cast(void*, cell_thread_io_wait)
+		cell.machine = retained.slots[0].cpu
+		retained.current = 0
+		retained.rotate = 0
+		retained.next_tid = 2
+		for i in range(retained.capacity):
+			kvm_machine* cpu = retained.slots[i].cpu
+			if (cpu != 0 && kvm_cell_restore(cpu) == 0):
+				cell_runtime_free(cell)
+				return cell_fail(cell, c"retained vCPU reset failed")
+			mem_fill[char](cast(char*, &retained.slots[i]), 0, sizeof(cell_thread))
+			retained.slots[i].cpu = cpu
+		retained.slots[0].tid = 1
+		retained.slots[0].state = 1
+		retained.slots[0].gate = CELL_TRAMPOLINE
 	if (madvise(cast(int, cell.ram), CELL_RAM_SIZE, MADV_DONTNEED) < 0):
 		return cell_fail(cell, c"snapshot reset failed")
 	free(cell.owned_input)
@@ -145,6 +170,7 @@ int cell_snapshot_reset(vm_cell* cell):
 	string_free(cell.errors)
 	cell.output = string_new()
 	cell.errors = string_new()
+	if (retained != 0): return cell_cpu_setup(cell)
 	return 1
 
 

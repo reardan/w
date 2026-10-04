@@ -1,7 +1,7 @@
 # wbuild: binary=wvmd arch=x64
 # Foreground persistent Linux-box scheduler; no host-execution fallback.
 import lib.vmm.control
-import lib.vmm.box
+import lib.vmm.box_snapshot
 import lib.wvm_client
 
 
@@ -36,10 +36,35 @@ void wvmd_worker(json_value* config):
 	jsonrpc_write_value(1, ready)
 	json_free(ready)
 	if (box == 0): return
+	box_snapshot* snapshot = 0
 	frame_reader* reader = frame_reader_new(0)
 	while (1):
 		json_value* request = jsonrpc_read_message(reader)
 		if (request == 0): break
+		char* operation = vms_text(request, c"operation")
+		if (operation != 0):
+			status = 125
+			if (strcmp(operation, c"snapshot") == 0):
+				box_snapshot* captured = box_snapshot_create(box, 30000)
+				if (captured != 0):
+					box_snapshot_free(snapshot)
+					snapshot = captured
+					status = 0
+			else if (strcmp(operation, c"restore") == 0 && snapshot != 0):
+				vm_box_session* restored = box_snapshot_restore_in(snapshot, 30000, vms_text(config, c"channel_directory"))
+				if (restored != 0):
+					box_session_close(box)
+					box = restored
+					status = 0
+			json_value* answer = json_object()
+			if (box.alive == 0): status = box_status_transport
+			json_object_set(answer, c"status", json_int(status))
+			json_object_set(answer, c"channel_directory", json_string(box.directory))
+			int sent = jsonrpc_write_value(1, answer)
+			json_free(answer)
+			json_free(request)
+			if (sent < 0 || status < 0): break
+			continue
 		json_value* input_args = vms_field(request, c"argv")
 		int count = json_array_length(input_args)
 		char** args = strv_new(count)
@@ -63,6 +88,7 @@ void wvmd_worker(json_value* config):
 		json_free(answer)
 		if (sent < 0 || status < 0): break
 	frame_reader_free(reader)
+	box_snapshot_free(snapshot)
 	box_session_close(box)
 
 
@@ -93,7 +119,7 @@ int main(int argc, int argv):
 		json_free(response)
 		return 0
 	if (argc < 2 || strcmp(args[1], c"serve") != 0):
-		print_string(c"usage: wvmd serve [--socket PATH] [--max-active N] [--max-pending N] [--cpus N] [--memory-mb N] [--workspace-mb N]", c"\n")
+		print_string(c"usage: wvmd serve [--socket PATH] [--max-active N] [--max-pending N] [--cpus N] [--memory-mb N] [--workspace-mb N] [--cgroup PARENT --host-cpu-percent N --host-memory-mb N --host-pids N]", c"\n")
 		print_string(c"       wvmd call SOCKET METHOD [JSON_PARAMS]", c"\n")
 		return 2
 	char* path = c"bin/wvmd.sock"
@@ -101,6 +127,11 @@ int main(int argc, int argv):
 	int pending = 16
 	int cpus = 8
 	int memory_mb = 2048
+	char* cgroup_parent = 0
+	int host_cpu = 800
+	int host_memory = 4096
+	int host_pids = 512
+	int host_options = 0
 	int disk_mb = 1024
 	int at = 2
 	while (at + 1 < argc):
@@ -113,10 +144,27 @@ int main(int argc, int argv):
 		else if (strcmp(option, c"--cpus") == 0): cpus = wvmd_positive(value)
 		else if (strcmp(option, c"--memory-mb") == 0): memory_mb = wvmd_positive(value)
 		else if (strcmp(option, c"--workspace-mb") == 0): disk_mb = wvmd_positive(value)
+		else if (strcmp(option, c"--cgroup") == 0): cgroup_parent = value
+		else if (strcmp(option, c"--host-cpu-percent") == 0):
+			host_cpu = wvmd_positive(value)
+			host_options = 1
+		else if (strcmp(option, c"--host-memory-mb") == 0):
+			host_memory = wvmd_positive(value)
+			host_options = 1
+		else if (strcmp(option, c"--host-pids") == 0):
+			host_pids = wvmd_positive(value)
+			host_options = 1
 		else: return 2
+	if (host_options && cgroup_parent == 0): return 2
 	if (at != argc || disk_mb < 1 || disk_mb > 1048576): return 2
 	vm_scheduler* scheduler = vms_new(active, pending, cpus, memory_mb, wvmd_worker)
 	if (scheduler == 0): return 2
+	if (cgroup_parent != 0):
+		scheduler.cgroup = vm_cgroup_new(cgroup_parent, host_cpu, host_memory, host_pids)
+		if (scheduler.cgroup == 0):
+			println(c"wvmd: cannot install delegated cgroup v2 quotas")
+			vms_free(scheduler)
+			return 125
 	scheduler.max_disk_mb = disk_mb
 	int status = vms_serve(scheduler, path)
 	vms_free(scheduler)

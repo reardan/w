@@ -14,6 +14,17 @@ void box_worker(void* arg):
 int main(int argc, int argv):
 	char** args = cast(char**, argv)
 	if (argc > 1):
+		if (strcmp(args[1], c"snapshot-write") == 0):
+			if (file_write_text(c"/snapshot-state", c"captured RAM filesystem") == 0): return 40
+			return 0
+		if (strcmp(args[1], c"snapshot-read") == 0):
+			char* state = file_read_text(c"/snapshot-state")
+			if (state == 0): return 41
+			int same = strcmp(state, c"captured RAM filesystem") == 0
+			free(state)
+			if (same == 0): return 42
+			if (unlink(c"/snapshot-state") != 0): return 43
+			return 0
 		if (strcmp(args[1], c"caps") == 0):
 			if (syscall7(157, 23, 21, 0, 0, 0, 0) != 0): return 20
 			if (syscall7(157, 39, 0, 0, 0, 0, 0) != 1): return 21

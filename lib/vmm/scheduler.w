@@ -1,9 +1,10 @@
 # Linux x64 session scheduler. Every session owns a separate process group.
-# CPU/RAM are admission reservations, not cgroup host-resource quotas.
+# CPU/RAM admission is independent of optional aggregate cgroup quotas.
 import lib.process
 import lib.json_rpc
 import lib.time
 import lib.vmm.registry
+import lib.vmm.cgroup
 
 const int vms_queued = 0
 const int vms_booting = 1
@@ -37,6 +38,7 @@ struct vm_scheduler:
 	list[vms_session*] sessions
 	int next_id
 	vm_registry* registry
+	vm_cgroup* cgroup
 	int max_active
 	int max_pending
 	int max_cpus
@@ -282,6 +284,9 @@ void vms_launch(vm_scheduler* scheduler, vms_session* session):
 		if (registry_record(scheduler.registry, session.id, workspace_path, pid) == 0):
 			vms_fail(scheduler, session, 125)
 			return
+	if (scheduler.cgroup != 0 && vm_cgroup_attach(scheduler.cgroup, pid) == 0):
+		vms_fail(scheduler, session, 125)
+		return
 	if (write(session.input_fd, c"!", 1) != 1): vms_fail(scheduler, session, 125)
 
 
@@ -305,9 +310,8 @@ int vms_exec_valid(json_value* params):
 	return timeout > 0 && timeout <= 600000 && limit >= 1 && limit <= 1048576
 
 
-json_value* vms_exec(vm_scheduler* scheduler, vms_session* session, json_value* params):
+json_value* vms_operation(vm_scheduler* scheduler, vms_session* session, json_value* params):
 	if (session.state != vms_ready): return vms_error(c"session is not ready")
-	if (vms_exec_valid(params) == 0): return vms_error(c"invalid argv, cwd, timeout or output limit")
 	char* wire = json_stringify(params)
 	int length = strlen(wire)
 	if (length > 4000):
@@ -327,6 +331,21 @@ json_value* vms_exec(vm_scheduler* scheduler, vms_session* session, json_value* 
 	json_value* answer = json_object()
 	json_object_set(answer, c"command", json_int(session.commands))
 	return answer
+
+
+json_value* vms_exec(vm_scheduler* scheduler, vms_session* session, json_value* params):
+	if (vms_field(params, c"operation") != 0 || vms_exec_valid(params) == 0): return vms_error(c"invalid argv, cwd, timeout or output limit")
+	return vms_operation(scheduler, session, params)
+
+
+json_value* vms_snapshot_operation(vm_scheduler* scheduler, vms_session* session, char* operation):
+	if (vms_text(session.config, c"fs_root") != 0 || vms_text(session.config, c"workspace") != 0): return vms_error(c"snapshots do not support external filesystem devices")
+	json_value* params = json_object()
+	json_object_set(params, c"operation", json_string(operation))
+	json_object_set(params, c"timeout_ms", json_int(30000))
+	json_value* result = vms_operation(scheduler, session, params)
+	json_free(params)
+	return result
 
 
 char* vms_state_name(int state):
@@ -381,6 +400,7 @@ json_value* vms_result(vms_session* session, json_value* params):
 
 json_value* vms_stats(vm_scheduler* scheduler):
 	json_value* answer = json_object()
+	json_object_set(answer, c"host_quotas", json_bool(scheduler.cgroup != 0))
 	json_object_set(answer, c"active", json_int(scheduler.active))
 	json_object_set(answer, c"queued", json_int(scheduler.queued))
 	json_object_set(answer, c"cpus", json_int(scheduler.cpus))
@@ -424,6 +444,10 @@ void vms_receive(vm_scheduler* scheduler, vms_session* session):
 				return
 			session.ready_ms = time_monotonic_ms()
 		else:
+			char* channel = vms_text(result, c"channel_directory")
+			if (channel != 0):
+				free(session.channel_directory)
+				session.channel_directory = strclone(channel)
 			json_free(session.result)
 			session.result = result
 			scheduler.completed = scheduler.completed + 1
@@ -464,4 +488,5 @@ void vms_free(vm_scheduler* scheduler):
 		if (scheduler.sessions[i] != 0): vms_destroy(scheduler, scheduler.sessions[i])
 	list_free[vms_session*](scheduler.sessions)
 	registry_close(scheduler.registry)
+	vm_cgroup_free(scheduler.cgroup)
 	free(scheduler)

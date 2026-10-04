@@ -85,7 +85,9 @@ The [VM runner](docs/projects/vms.md) executes static x64 W cells with
 checked syscall access, explicit filesystem/TCP capabilities, guest threads,
 and timeouts. Ready-cell snapshots support CoW clones and RAM pools.
 Linux boxes use QEMU/KVM and W PID 1 for repeated commands, separate output,
-private workspaces and guest exit status. `wvmd` provides bounded concurrent
+private workspaces, live RAM/device snapshots and guest exit status. Cell pools
+can retain vCPUs across leases. `wvmd` provides optional delegated cgroup-v2
+host quotas and bounded concurrent
 sessions over local JSON-RPC. Source compilation happens on the host;
 execution requires `/dev/kvm` and never falls back to host execution.
 

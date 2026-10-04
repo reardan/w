@@ -31,18 +31,26 @@ void cell_record_fault(vm_cell* cell):
 	cell_fail(cell, c"guest exception")
 
 
+# Prepare once for retained pools, or lazily for ordinary one-shot cells.
+int cell_prepare(vm_cell* cell):
+	if (cell.thread_state != 0): return 1
+	if (cell.machine != 0): return cell_fail(cell, c"incomplete CPU setup")
+	cell.machine = malloc(sizeof(kvm_machine))
+	if (kvm_create(cell.machine) == 0): return cell_fail(cell, c"KVM unavailable or VM creation failed")
+	if (kvm_set_memory(cell.machine, 0, 0, cell.ram, CELL_RAM_SIZE) < 0): return cell_fail(cell, c"KVM memory registration failed")
+	if (cell.retain_cpus && kvm_cell_checkpoint(cell.machine) == 0): return cell_fail(cell, c"vCPU checkpoint failed")
+	if (cell_cpu_setup(cell) == 0): return 0
+	return cell_threads_init(cell)
+
+
 int cell_run(vm_cell* cell, int timeout_ms):
 	if (cell.loaded == 0 || cell.stack == 0): return cell_fail(cell, c"cell is not loaded")
 	if (cell.started): return cell_fail(cell, c"cell execution is one-shot")
 	if (timeout_ms < 1 || timeout_ms > 600000): return cell_fail(cell, c"timeout must be 1..600000 ms")
 	if (cell_timer_run != 0): return cell_fail(cell, c"concurrent cell runs are unsupported")
 	cell.started = 1
-	cell.machine = malloc(sizeof(kvm_machine))
-	if (kvm_create(cell.machine) == 0): return cell_fail(cell, c"KVM unavailable or VM creation failed")
+	if (cell_prepare(cell) == 0): return 0
 	kvm_machine* vm = cell.machine
-	if (kvm_set_memory(vm, 0, 0, cell.ram, CELL_RAM_SIZE) < 0): return cell_fail(cell, c"KVM memory registration failed")
-	if (cell_cpu_setup(cell) == 0): return 0
-	if (cell_threads_init(cell) == 0): return 0
 	char[32] old_timer
 	mem_fill[char](&old_timer[0], 0, 32)
 	if (syscall(36, 0, cast(int, &old_timer[0]), 0) < 0): return cell_fail(cell, c"getitimer failed")

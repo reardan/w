@@ -179,6 +179,7 @@ int cell_thread_clone(vm_cell* cell, int flags, int stack, int parent_tid, int c
 			free(t.cpu)
 			t.cpu = 0
 			return -11
+		if (cell.retain_cpus && kvm_cell_checkpoint(t.cpu) == 0): return -5
 		if (kvm_set_supported_cpuid(t.cpu) < 0): return -5
 	t.gate = 1048576 + slot * 512
 	cell_cpu_trampoline(cell, t.gate)

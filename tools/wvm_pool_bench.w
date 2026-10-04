@@ -131,7 +131,11 @@ int main(int argc, char** args):
 		if (cell == 0): return 1
 		cell_free(cell)
 	start = pool_bench_ns()
-	cell_pool* pool = cell_pool_new(snapshot, capacity)
+	int retained = env_get(c"WVM_RETAIN_CPUS") != 0
+	cell_pool* pool = 0
+	if (retained): pool = cell_pool_new_retained(snapshot, capacity)
+	else: pool = cell_pool_new(snapshot, capacity)
+	pool_bench_metric(json, c"retained_cpus", retained)
 	if (pool == 0): return 1
 	pool_bench_metric(json, c"pool_create_ns", pool_bench_ns() - start)
 	cell_snapshot_free(snapshot)

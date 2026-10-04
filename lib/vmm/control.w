@@ -72,6 +72,8 @@ json_value* vms_dispatch(vms_control* control, char* method, json_value* params)
 	if (session == 0): return vms_error(c"unknown session")
 	if (strcmp(method, c"vm_status") == 0): return vms_status(session)
 	if (strcmp(method, c"vm_result") == 0): return vms_result(session, params)
+	if (strcmp(method, c"vm_snapshot") == 0): return vms_snapshot_operation(scheduler, session, c"snapshot")
+	if (strcmp(method, c"vm_restore") == 0): return vms_snapshot_operation(scheduler, session, c"restore")
 	if (strcmp(method, c"vm_exec") == 0): return vms_exec(scheduler, session, params)
 	if (strcmp(method, c"vm_destroy") == 0 || strcmp(method, c"vm_cancel") == 0):
 		vms_destroy(scheduler, session)

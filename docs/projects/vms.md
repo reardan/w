@@ -4,8 +4,10 @@ Status: memory primitives, KVM cells, confined filesystem/TCP access,
 guest threads, ready-cell snapshots/CoW clones, RAM pools, persistent Linux
 box command sessions, and an initial bounded `wvmd` scheduler are implemented
 (issue [#519](https://github.com/reardan/w/issues/519)). Private workspaces and
-pinned image assembly are available. Live Linux snapshots, retained-vCPU
-warm pools, cgroup fleet quotas, and external harness wiring remain open.
+pinned image assembly, live Linux RAM/device snapshots, retained-vCPU cell
+pools, delegated cgroup-v2 fleet quotas, and an external wharness adapter
+are available. Overlay boot validation passes with the built-in-driver
+kernel configuration in `tools/wvm_kernel.config`.
 The usage sections below distinguish these implementations from the target
 architecture.
 
@@ -21,8 +23,8 @@ guest page permissions, checked syscall buffers, bounded output, and a
 wall-clock timeout. Filesystem and network capabilities are explicit options;
 threads use per-thread vCPUs. `bin/wvm box` boots a full Linux guest;
 `--exec` uses the persistent command protocol. `wvmd` exposes bounded box
-sessions to `lib.wvm_client`. Agent tool calls in the separate w-private
-repository still need to be wired to that client.
+sessions to `lib.wvm_client`. The separate w-private
+harness routes all tool calls through that client when VM mode is selected.
 
 The recommendation is a two-tier design on one W-native VMM core:
 
@@ -35,7 +37,7 @@ The recommendation is a two-tier design on one W-native VMM core:
 - **Tier 2, "boxes"**: a minimal Linux guest for arbitrary agent work
   (bash, git, python, foreign compilers), restored from a snapshot.
 
-Both tiers share the memory design that answers the "sharing RAM pages"
+The target memory design for both tiers answers the "sharing RAM pages"
 ask: guest RAM is a `MAP_PRIVATE` mapping of a sealed snapshot memfd, so
 every clone shares every page until it writes one, spawn cost does not
 grow with RAM size, and decommission is `close` + `munmap`.
@@ -51,7 +53,7 @@ The usage sections in §9 describe the implemented surface and its limits.
 
 | Area | State | Where |
 |---|---|---|
-| Agent execution | Unconfined host processes; no isolation beyond a permission prompt | w-private `wharness/wharness_tools.w` (`wh_run_shell`, `wh_tool_bash`) |
+| Agent execution | Optional persistent guest tool routing; host execution remains the default | w-private `wharness/wharness_tools.w` (`wh_run_shell`, `wh_tool_bash`) |
 | Process control | fork/execve/wait4, pipes, poll-driven timeouts, `process_wait_any` | `lib/process.w`, `docs/projects/process.md` |
 | Raw syscalls | Generic `syscall` / `syscall7`, `sys_ioctl`, clone, ptrace, mmap, eventfd, epoll, AF_UNIX | `lib/syscalls_linux_x86.w`, `lib/__arch__/*/syscalls.w` |
 | File-backed mmap | `mmap_fd(addr, len, prot, flags, fd, offset)` with byte offsets on Linux x86/x64/ARM64; anonymous `mmap` retained | `lib/__arch__/*/syscalls.w` |
@@ -59,7 +61,9 @@ The usage sections in §9 describe the implemented surface and its limits.
 | userfaultfd | **Missing** (later milestone) | |
 | KVM / cells | Per-thread x64 vCPUs, ELF validation, syscall gates, confined filesystem/TCP capabilities, fault vectors/RIP, timeout | `lib/kvm.w`, `lib/vmm/`, `tools/wvm.w` |
 | Linux boxes | Persistent command channel, bounded separate output/status, private workspace overlay, optional 9p/network devices | `lib/vmm/box.w`, `lib/vmm/guest_agent.w`, `tools/wvm_init.w` |
-| Cell snapshots | Sealed memfd ready templates, private clones, RAM reset and bounded pools | `lib/vmm/snapshot.w`, `lib/vmm/pool.w` |
+| Cell snapshots | Sealed memfd ready templates, private clones, RAM reset and optional retained vCPUs | `lib/vmm/snapshot.w`, `lib/vmm/pool.w` |
+| Linux snapshots | Idle-session RAM/device capture and independent restores, without external devices | `lib/vmm/box_snapshot.w`, `lib/vmm/qmp.w` |
+| Host quotas | Delegated cgroup v2 CPU, memory, swap and process enforcement | `lib/vmm/cgroup.w` |
 | Session scheduler | Process-isolated Linux box workers, queue/admission/lease/cancellation, JSON-RPC client | `tools/wvmd.w`, `lib/wvm_client.w` |
 | Signal handlers on x64 | Working, including the SA_RESTORER thunk (needed to kick a vCPU out of `KVM_RUN`) | `lib/signal.w` |
 | Where `syscall` instructions come from | Runtime stubs the compiler emits: `syscall`, `syscall7`, `thread_create` (clone), `stack_create` (mmap), `__w_tls_set` (arch_prctl), plus the ELF exit stub | `code_generator/x64_asm.w:68-118`, `code_generator/elf_64.w:49` |
@@ -295,11 +299,11 @@ Each milestone lands green on its own.
 | M0 | **Implemented:** syscall primitives `mmap_fd`, `memfd_create`, `madvise`, seals | `tests/memfd_test.w` (x86/x64): shared initialization, seal enforcement, isolated private clones, byte offsets, errors, partial/full reset, fd/mapping lifetime |
 | M1 | **Implemented:** `lib/kvm.w` and a guest that writes to a port | `tests/kvm_hello_test.w`: ABI layouts, real port write and halt (execution skips with no `/dev/kvm`) |
 | M2 | **Implemented:** ELF loader, ring-3 long mode, LSTAR gate, syscall subset; `wvm run tests/hello.w` | `tests/wvm_test.w`: existing x64 map/set, compound-assignment and float64 suites; TLS, syscall boundary, faults, timeout, malformed ELF |
-| M3 | **Partial:** ready-cell snapshots, CoW clones and RAM reset; vCPUs recreated | `wvm_snapshot_test`; `wvm_pool_bench` reports timings and memory, no universal latency claim |
+| M3 | **Implemented for ready cells:** CoW clones, RAM reset and optional retained-vCPU pools | `wvm_snapshot_test`; `wvm_pool_bench` reports timings and memory, no universal latency claim |
 | M4 | Policy, overlay fs, deterministic clock/random, symbolized faults | Policy-denial tests; replay test |
-| M5 | **Partial:** bounded box scheduler, client, independent cell RAM pools; shared regions/harness wiring pending | `wvmd_test`; external wharness gate pending |
+| M5 | **Partial:** bounded box scheduler, cgroup quotas, client and external harness routing; shared regions pending | `wvmd_test`, `wvm_cgroup_test`; external wharness VM roundtrip gate |
 | M6 | `--syscall-abi=vmcall` in the compiler | `verify_x64`; measured syscall round-trip win |
-| M7 | **Partial:** persistent QEMU/KVM boxes, daemon integration, pinned image builder; Linux snapshots pending | `wvm_box_test`, `wvm_channel_test`, `wvm_image_test`; Linux snapshot gate pending |
+| M7 | **Implemented for RAM-only boxes:** persistent QEMU/KVM sessions, daemon integration, pinned image builder and live Linux snapshots | `wvm_box_test`, `wvmd_box_test`, `wvm_qmp_test`, `wvm_channel_test`, `wvm_image_test` |
 | M8 | **Threads implemented:** per-thread vCPUs, futexes, TLS, preemption. wdbg attach, layered snapshots, and other host ports pending | `wvm_thread_test`; per-port gates pending |
 
 A ptrace backend (`PTRACE_SYSEMU`) for the cell syscall handler is
@@ -452,8 +456,8 @@ acceleration and the host CPU. They require Linux x64, accessible
 an executable `/init`. There is no runtime download or emulation fallback.
 QEMU provides Linux boot and virtio devices; the cell backend remains W's
 native KVM implementation. Persistent sessions use a dedicated virtio-serial
-channel rather than vsock. Linux snapshots and disk-image management remain
-open.
+channel rather than vsock. RAM/device snapshots are described below;
+disk-image management remains open.
 
 The default is 2 vCPUs, 256 MiB RAM, a 30-second deadline, no network
 device, and no host filesystem export. Limits are 1–64 vCPUs, 64–32768 MiB,
@@ -556,9 +560,54 @@ credential broker and destination-allowlisted box egress are still open.
 `WVM_TEST_KERNEL=bin/wvm_linux_kernel ./wbuild wvm_box_test wvmd_box_test`
 adds real Linux command and concurrent-daemon tests. The workspace overlay
 boot test additionally requires `WVM_TEST_WORKSPACE_KERNEL` pointing to a
-kernel with built-in 9p/virtio and overlayfs. The available minimal Alpine
-kernel passed channel tests but lacks those built-in filesystem drivers;
-real overlay behavior remains unverified on this checkout's fixture kernel.
+kernel with built-in 9p/virtio and overlayfs. The minimal Alpine kernel
+supports channel/snapshot tests but lacks those built-in filesystem drivers.
+Build a compatible kernel from a supplied Linux source tree:
+
+```sh
+./tools/wvm_kernel.sh /sources/linux /build/wvm-kernel 16
+WVM_TEST_KERNEL=/build/wvm-kernel/arch/x86/boot/bzImage \
+WVM_TEST_WORKSPACE_KERNEL=/build/wvm-kernel/arch/x86/boot/bzImage \
+  ./wbuild wvm_box_test wvmd_box_test
+```
+
+The script merges `tools/wvm_kernel.config` over `x86_64_defconfig`, rejects
+missing built-ins after dependency resolution, and records kernel/config
+SHA256 values. It requires the normal Linux build dependencies (C toolchain,
+make, flex, bison, bc and libelf headers); it does no downloads or installs.
+Pin the source and resulting kernel in deployment configuration. Validation
+used Linux 6.12.1 (source tar.xz SHA256
+`0193b1d86dd372ec891bae799f6da20deef16fc199f30080a4ea9de8cef0c619`):
+private edits, unchanged host lower files, persistent edits and tmpfs ENOSPC
+all passed in real KVM boots.
+
+### Live Linux snapshots
+
+`box_snapshot_create(session, timeout_ms)` pauses an idle Linux command
+session, captures RAM and device/vCPU state into a sealed memfd, then resumes
+the source. `box_snapshot_restore(snapshot, timeout_ms)` creates an independent
+session without rebooting Linux. `box_snapshot_free` releases the template;
+restored sessions remain valid. Calls must be serialized with command execution.
+Each restore opens an independent migration-stream file description.
+
+The backend uses QMP `stop`, `getfd`, `migrate`/`migrate-incoming` and `cont`.
+SCM_RIGHTS transfers descriptors; there are no shell migration commands or
+writable snapshot paths. Control reads, events and migration waits are bounded.
+Uncertain capture failures destroy the source session. Failed restores destroy
+only the new VM. Successful captures survive source-session destruction.
+
+Snapshots require the same host CPU/QEMU version and unchanged kernel/initrd
+artifacts. They support initramfs/tmpfs state only: filesystem exports (including
+private 9p overlays) and network devices are rejected. Restores materialize
+RAM through QEMU migration; they do **not** provide the cell backend's CoW RAM
+sharing, disk rollback, cross-host portability, or sub-millisecond launch.
+
+The daemon owns one replaceable snapshot per session. `vm_snapshot` captures
+it; `vm_restore` rolls the session back to it. Both require a ready session,
+return a command number, and complete through `vm_result` like `vm_exec`.
+Snapshot storage disappears with its worker/session. Library callers can
+restore multiple independent clones; cross-session daemon template sharing
+is not implemented.
 
 ### Reproducible Linux image assembly
 
@@ -614,14 +663,54 @@ groups fail closed. This recovers abandoned storage; it does not resume
 commands or reconstruct running agent sessions. Keep this state directory
 with the socket between restarts.
 
-`lib.wvm_client` provides the reusable control interface for external
-harnesses. The w-private harness is outside this checkout, so its tool-routing
-integration is not part of this change. Automatic daemon startup, session
-recovery, multi-host scheduling and Linux snapshot pools remain future work.
-CPU/RAM admission limits constrain guest configurations; they are not host
-cgroup quotas and do not include all QEMU overhead. Per-process, CPU-time,
-network-rate and aggregate host-RSS enforcement need a delegated cgroup
-policy before treating this as a multi-tenant fleet manager.
+`lib.wvm_client` provides synchronous `wvm_client_open`,
+`wvm_client_exec_wait` and `wvm_client_destroy` helpers as well as the raw RPC
+interface. The command helper polls command identities, decodes bounded
+binary-safe output chunks, and destroys uncertain sessions on transport or
+deadline failure. There is no automatic daemon launch or local execution
+fallback.
+
+The external `w-private/wharness` adapter accepts `--vm-socket`, `--vm-kernel`,
+`--vm-initrd` and optional `--vm-harness` (default `/usr/bin/wharness`). It lazily
+opens one private-workspace session, renews its lease, dispatches **all** tool
+calls to the guest harness at `/work`, and destroys the session on orderly
+exit. The supplied image must contain a matching harness and its tool/runtime
+dependencies. Host API traffic and prompts remain host-side; API credentials
+are not sent to the guest. Session failure is sticky, and no tool falls back
+to host execution. Control/argv size limits also apply to serialized tool
+inputs. The adapter changes live in the separate repository and need to ship
+with this client API; no gitlink is updated here.
+
+Host quotas are opt-in and independent of guest admission reservations:
+
+```sh
+./bin/wvmd serve --socket bin/wvmd.sock \
+  --cgroup /sys/fs/cgroup/my-delegated-parent \
+  --host-cpu-percent 400 --host-memory-mb 4096 --host-pids 512
+```
+
+The caller must delegate a cgroup-v2 parent with `cpu`, `memory` and `pids`
+enabled in `cgroup.subtree_control`. The daemon creates an exclusive
+`wvmd-<pid>` leaf, configures `cpu.max` (100000 µs period), `memory.max`,
+`memory.swap.max=0` and `pids.max`, and moves each gated worker into it
+**before** releasing the worker. QEMU and worker-created snapshot memory are
+charged to that leaf. The daemon remains outside to handle OOM/failure cleanup.
+CPU percentages allow multiple cores (400 means four cores); memory includes
+worker/QEMU overhead and snapshot pages, not just guest RAM. Defaults with
+`--cgroup` are 800%, 4096 MiB and 512 tasks. Host-limit flags without a cgroup,
+missing controllers, or failed quota writes/attachment fail closed. `stats`
+reports `host_quotas`. With no cgroup option only admission limits apply.
+
+Normal shutdown removes the empty leaf. After a daemon crash its empty quota
+leaf may need removal by the delegating supervisor; durable session recovery
+still reclaims workers and workspaces. These are aggregate limits, not
+per-tenant guarantees, CPU-time budgets or network-rate limits. Automatic daemon
+startup, running-session recovery, multi-host scheduling and Linux warm pools
+remain future work.
+
+`WVM_TEST_CGROUP=<delegated-parent> ./wbuild wvm_cgroup_test` verifies real
+process-limit rejection and OOM enforcement without moving the test process
+into the bounded leaf.
 
 A real fleet benchmark uses that same daemon API:
 
@@ -647,19 +736,25 @@ nonzero pages into a sparse memfd, and seals it. Clones use `MAP_PRIVATE` and
 retain backing independently of the template owner's lifetime. Input is
 owned per clone. Configure filesystem/network capabilities separately after
 cloning. `cell_snapshot_reset` drops private pages and clears all per-run
-resources, descriptors, output, fault and watchdog state; it recreates KVM
-VM/vCPUs on the next run. It does not capture a running process or roll back
+resources, descriptors, output, fault and watchdog state. Ordinary clones
+recreate KVM VM/vCPUs on the next run. It does not capture a running process or roll back
 external filesystem writes.
 
 `cell_pool_new(snapshot, capacity)`, `cell_pool_acquire` and
 `cell_pool_release` provide bounded RAM-ready leases. A pool owns its cells;
 release them to the pool instead of freeing them. Exhaustion returns null.
 The API remains serialized within a host process, including snapshot
-reference counts. Pools do not retain initialized vCPUs or serve Linux boxes.
+reference counts. `cell_pool_new_retained(snapshot, capacity)` eagerly creates
+main vCPUs and retains all subsequently created thread vCPUs. Release completes
+pending I/O exits, restores registers, segments, XSAVE/XCRS, events/debug/MP
+state and syscall gates, revokes host capabilities, and drops private RAM.
+CPUID stays fixed for the lifetime of each vCPU. There is no silent cold
+fallback if preparation/reset fails. Pools serve cells, not Linux boxes.
 
 ```sh
 ./wbuild wvm_snapshot_test wvm_pool_bench
 ./bin/wvm_pool_bench bin/wvm_fixture 100 100 smoke payload
+WVM_RETAIN_CPUS=1 ./bin/wvm_pool_bench bin/wvm_fixture 100 4 smoke payload
 ```
 
 The benchmark emits JSON with clone/reset/run latency percentiles,
@@ -671,8 +766,11 @@ there is no unconditional sub-millisecond startup/reset gate. On this host,
 100 RAM clones plus 400 deliberately dirty pages added 1604 KiB private
 dirty memory; reset returned near baseline and descriptor counts stayed
 4 → 4. Clone p50/p95 were 4.35/7.83 µs; real-KVM reset p50/p95 were
-17.38/23.38 ms. These results include KVM teardown and explain why retained
-vCPU pools remain a separate performance milestone.
+17.38/23.38 ms for the original cold-reset path. A later 100-run comparison
+with capacity four measured retained reset p50/p95 at 35.8/39.7 µs versus
+18.25/24.03 ms for cold reset; both had zero failures and descriptor counts
+4 → 4 after cleanup. These are local serialized measurements, not fleet
+latency guarantees.
 
 ## 10. Open decisions
 

@@ -55,6 +55,7 @@ struct vm_cell:
 	char* owned_input
 	void* snapshot_state
 	void* snapshot_cleanup
+	int retain_cpus
 
 
 int cell_fail(vm_cell* cell, char* error):

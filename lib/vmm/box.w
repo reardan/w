@@ -4,6 +4,7 @@
 import lib.process
 import lib.kvm
 import lib.vmm.channel
+import lib.vmm.qmp
 import lib.file
 
 struct vm_box_options:
@@ -19,11 +20,14 @@ struct vm_box_options:
 	char* channel_path # private host socket; set by box_session_open
 	int workspace_mb # guest tmpfs upper bound, 0 uses the supplied share policy
 	char* channel_directory # borrowed private parent; null uses /tmp
+	char* qmp_path # internal private control socket
+	int snapshot_fd # borrowed migration image, -1 for cold boot
 
 
 vm_box_options* box_options_new():
 	vm_box_options* options = malloc(sizeof(vm_box_options))
 	mem_fill[char](cast(char*, options), 0, sizeof(vm_box_options))
+	options.snapshot_fd = -1
 	options.cpus = 2
 	options.memory_mb = 256
 	options.timeout_ms = 30000
@@ -102,6 +106,16 @@ char** box_command(vm_box_options* options, char* qemu):
 		box_arg(args, &count, value.data)
 		box_arg(args, &count, c"-device")
 		box_arg(args, &count, c"virtserialport,chardev=agent,name=wvm.agent")
+	if (options.qmp_path != 0):
+		string_clear(value)
+		string_append(value, c"unix:")
+		box_append_path(value, options.qmp_path)
+		string_append(value, c",server=on,wait=off")
+		box_arg(args, &count, c"-qmp")
+		box_arg(args, &count, value.data)
+	if (options.snapshot_fd >= 0):
+		box_arg(args, &count, c"-incoming")
+		box_arg(args, &count, c"defer")
 	box_arg(args, &count, c"-no-reboot")
 	box_arg(args, &count, c"-kernel")
 	box_arg(args, &count, options.kernel)
@@ -175,10 +189,20 @@ struct vm_box_session:
 	char* transport_path
 	int directory_fd
 	int alive
+	int qmp_fd
+	char* qmp_path
+	char* kernel
+	char* initrd
+	int cpus
+	int memory_mb
+	int snapshot_allowed
 
 
 void box_session_cancel(vm_box_session* session):
 	if (session == 0): return
+	if (session.qmp_fd >= 0):
+		close(session.qmp_fd)
+		session.qmp_fd = -1
 	if (session.fd >= 0):
 		close(session.fd)
 		session.fd = -1
@@ -192,6 +216,11 @@ void box_session_close(vm_box_session* session):
 	if (session == 0): return
 	box_session_cancel(session)
 	if (session.child != 0): process_free(session.child)
+	free(session.kernel)
+	free(session.initrd)
+	if (session.qmp_path != 0):
+		unlink(session.qmp_path)
+		free(session.qmp_path)
 	if (session.socket_path != 0):
 		unlink(session.socket_path)
 		free(session.socket_path)
@@ -242,7 +271,13 @@ vm_box_session* box_session_open(vm_box_options* options):
 	vm_box_session* session = new vm_box_session()
 	mem_fill[char](cast(char*, session), 0, sizeof(vm_box_session))
 	session.fd = -1
+	session.qmp_fd = -1
 	session.directory_fd = -1
+	session.kernel = strclone(options.kernel)
+	session.initrd = strclone(options.initrd)
+	session.cpus = options.cpus
+	session.memory_mb = options.memory_mb
+	session.snapshot_allowed = options.fs_root == 0 && options.network == 0
 	char[16] random
 	if (sys_getrandom(&random[0], 16, 0) != 16):
 		free(qemu)
@@ -281,18 +316,32 @@ vm_box_session* box_session_open(vm_box_options* options):
 	string_append_int(path, session.directory_fd)
 	string_append(path, c"/agent.sock")
 	session.transport_path = strclone(path.data)
+	string_clear(path)
+	string_append(path, session.directory)
+	string_append(path, c"/qmp.sock")
+	session.qmp_path = strclone(path.data)
 	string_free(path)
 	vm_box_options copied
 	mem_copy[char](cast(char*, &copied), cast(char*, options), sizeof(vm_box_options))
 	copied.channel_path = session.transport_path
+	char* qmp_transport = strclone(session.transport_path)
+	# Replace the ten-byte agent.sock basename with qmp.sock.
+	mem_copy[char](qmp_transport + strlen(qmp_transport) - 10, c"qmp.sock", 9)
+	copied.qmp_path = qmp_transport
 	char** args = box_command(&copied, qemu)
 	session.child = box_session_spawn(qemu, args)
 	box_command_free(args)
 	free(qemu)
 	if (session.child == 0):
+		free(qmp_transport)
 		box_session_close(session)
 		return 0
 	int deadline = process_monotonic_ms() + options.timeout_ms
+	session.qmp_fd = box_qmp_open(qmp_transport, deadline)
+	free(qmp_transport)
+	if (session.qmp_fd < 0):
+		box_session_close(session)
+		return 0
 	while (deadline - process_monotonic_ms() > 0):
 		if (process_try_wait(session.child) != process_status_running): break
 		session.fd = socket_connect_unix_path(session.transport_path)
@@ -301,6 +350,12 @@ vm_box_session* box_session_open(vm_box_options* options):
 	if (session.fd >= 0):
 		sys_fcntl(session.fd, 2, 1) # FD_CLOEXEC
 		socket_set_nonblocking(session.fd)
+		if (options.snapshot_fd >= 0):
+			if (box_qmp_migrate(session.qmp_fd, options.snapshot_fd, 1, deadline) && box_qmp_simple(session.qmp_fd, c"cont", deadline)):
+				session.alive = 1
+				return session
+			box_session_close(session)
+			return 0
 		char[4] greeting
 		if (box_channel_io(session.fd, &greeting[0], 4, 0, 1, deadline)):
 			if (load_int32(&greeting[0]) == box_channel_magic):

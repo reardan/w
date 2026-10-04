@@ -1,6 +1,6 @@
 # Bounded, serialized pool of RAM-ready cell clones. Leases count toward
 # capacity; exhaustion returns null instead of silently creating more.
-# KVM CPUs are created by cell_run and destroyed when leases are returned.
+# Ordinary pools create CPUs on run; retained pools prepare and reset CPUs.
 import lib.vmm.snapshot
 
 struct cell_pool:
@@ -65,3 +65,16 @@ int cell_pool_release(cell_pool* pool, vm_cell* cell):
 			pool.resets = pool.resets + 1
 			return 1
 	return 0
+
+
+# Opt-in KVM-ready pool. Main vCPUs are initialized eagerly; guest thread
+# vCPUs are retained after their first use. There is no cold fallback.
+cell_pool* cell_pool_new_retained(cell_snapshot* snapshot, int capacity):
+	cell_pool* pool = cell_pool_new(snapshot, capacity)
+	if (pool == 0): return 0
+	for i in range(capacity):
+		pool.cells[i].retain_cpus = 1
+		if (cell_prepare(pool.cells[i]) == 0):
+			cell_pool_free(pool)
+			return 0
+	return pool

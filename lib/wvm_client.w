@@ -95,3 +95,151 @@ json_value* wvm_client_exec_params(int session, char** argv, char* cwd, int time
 	json_object_set(params, c"timeout_ms", json_int(timeout_ms))
 	json_object_set(params, c"output_limit", json_int(output_limit))
 	return params
+
+
+# Owned result or null, including daemon-level errors inside the envelope.
+json_value* wvm_client_result(char* socket_path, char* method, json_value* params, int timeout_ms):
+	json_value* envelope = wvm_client_call(socket_path, method, params, timeout_ms)
+	if (envelope == 0): return 0
+	json_value* result = json_object_get(envelope, c"result")
+	json_value* copy = 0
+	if (result != 0 && result.type == json_type_object()):
+		if (json_object_get(result, c"error") == 0): copy = json_clone(result)
+	json_free(envelope)
+	return copy
+
+
+void wvm_client_destroy(char* socket_path, int session):
+	json_value* params = wvm_client_session_params(session)
+	json_value* result = wvm_client_result(socket_path, c"vm_destroy", params, 2000)
+	json_free(params)
+	json_free(result)
+
+
+int wvm_client_ready(json_value* result):
+	if (result == 0): return 0
+	json_value* state = json_object_get(result, c"state")
+	return state != 0 && state.type == json_type_string() && strcmp(state.string_value, c"ready") == 0
+
+
+int wvm_client_open(char* socket_path, json_value* config, int timeout_ms):
+	if (timeout_ms < 1 || timeout_ms > 600000): return 0
+	int deadline = process_monotonic_ms() + timeout_ms
+	json_value* result = wvm_client_result(socket_path, c"vm_spawn", config, timeout_ms)
+	if (result == 0): return 0
+	json_value* id = json_object_get(result, c"session")
+	int session = 0
+	if (id != 0 && id.type == json_type_int()): session = id.int_value
+	json_free(result)
+	if (session < 1): return 0
+	json_value* params = wvm_client_session_params(session)
+	int ready = 0
+	while (deadline > process_monotonic_ms()):
+		result = wvm_client_result(socket_path, c"vm_status", params, deadline - process_monotonic_ms())
+		if (result == 0): break
+		ready = wvm_client_ready(result)
+		json_value* state = json_object_get(result, c"state")
+		int failed = state != 0 && state.type == json_type_string() && strcmp(state.string_value, c"failed") == 0
+		json_free(result)
+		if (ready || failed): break
+		process_sleep_ms(10)
+	json_free(params)
+	if (ready): return session
+	wvm_client_destroy(socket_path, session)
+	return 0
+
+
+int wvm_client_unhex(char* output, char* hex, int length):
+	for i in range(length):
+		int value = 0
+		for j in range(2):
+			int ch = cast(int, hex[i * 2 + j])
+			int digit = -1
+			if (ch >= '0' && ch <= '9'): digit = ch - '0'
+			if (ch >= 'a' && ch <= 'f'): digit = ch - 'a' + 10
+			if (digit < 0): return 0
+			value = value * 16 + digit
+		output[i] = cast(char, value)
+	return 1
+
+
+# Synchronous harness bridge. One command owner per session. Any uncertain
+# transport, deadline or output destroys the session; never execute locally.
+process_result* wvm_client_exec_wait(char* socket_path, int session, char** argv, char* cwd, int timeout_ms, int output_limit):
+	if (timeout_ms < 1 || timeout_ms > 600000 || output_limit < 1 || output_limit > 1048576): return 0
+	int deadline = process_monotonic_ms() + timeout_ms + 5000
+	json_value* params = wvm_client_exec_params(session, argv, cwd, timeout_ms, output_limit)
+	json_value* result = wvm_client_result(socket_path, c"vm_exec", params, 2000)
+	json_free(params)
+	int ok = result != 0
+	int command = -1
+	if (ok):
+		json_value* id = json_object_get(result, c"command")
+		if (id != 0 && id.type == json_type_int()): command = id.int_value
+	json_free(result)
+	if (command < 1): ok = 0
+	process_result* output = new process_result()
+	mem_fill[char](cast(char*, output), 0, sizeof(process_result))
+	output.status = -3
+	output.stdout_text = malloc(output_limit + 1)
+	output.stderr_text = malloc(output_limit + 1)
+	output.stdout_text[0] = 0
+	output.stderr_text[0] = 0
+	int offset = 0
+	int complete = 0
+	params = wvm_client_session_params(session)
+	json_object_set(params, c"length", json_int(2048))
+	while (ok && complete == 0 && deadline > process_monotonic_ms()):
+		json_object_set(params, c"offset", json_int(offset))
+		int remaining = deadline - process_monotonic_ms()
+		if (remaining > 2000): remaining = 2000
+		result = wvm_client_result(socket_path, c"vm_result", params, remaining)
+		if (result == 0):
+			ok = 0
+			break
+		if (wvm_client_ready(result)):
+			json_value* id = json_object_get(result, c"command")
+			json_value* status = json_object_get(result, c"status")
+			if (id == 0 || id.type != json_type_int() || id.int_value != command || status == 0 || status.type != json_type_int()): ok = 0
+			if (ok): output.status = status.int_value
+			int maximum = 0
+			for i in range(2):
+				char* key = c"stdout_hex"
+				char* size_key = c"stdout_hex_bytes"
+				char* data = output.stdout_text
+				if (i == 1):
+					key = c"stderr_hex"
+					size_key = c"stderr_hex_bytes"
+					data = output.stderr_text
+				json_value* hex = json_object_get(result, key)
+				json_value* size = json_object_get(result, size_key)
+				if (hex == 0 || hex.type != json_type_string() || size == 0 || size.type != json_type_int()):
+					ok = 0
+					break
+				int total = size.int_value
+				if (total < 0 || total > output_limit):
+					ok = 0
+					break
+				int count = total - offset
+				if (count < 0): count = 0
+				if (count > 2048): count = 2048
+				if (strlen(hex.string_value) != count * 2): ok = 0
+				else if (count > 0):
+					if (wvm_client_unhex(data + offset, hex.string_value, count) == 0): ok = 0
+				data[total] = 0
+				if (i == 0): output.stdout_length = total
+				else: output.stderr_length = total
+				if (total > maximum): maximum = total
+			offset = offset + 2048
+			if (offset >= maximum): complete = 1
+		else:
+			json_value* state = json_object_get(result, c"state")
+			if (state == 0 || state.type != json_type_string() || strcmp(state.string_value, c"busy") != 0): ok = 0
+			process_sleep_ms(10)
+		json_free(result)
+	json_free(params)
+	if (ok == 0 || complete == 0):
+		wvm_client_destroy(socket_path, session)
+		process_result_free(output)
+		return 0
+	return output

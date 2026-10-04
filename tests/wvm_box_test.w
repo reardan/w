@@ -2,7 +2,7 @@
 # wbuild: step="bin/wv2 x64 tests/wvm_box_test.w -o bin/wvm_box_test"
 # wbuild: step="bin/wvm_box_test" timeout=60000
 import lib.testing
-import lib.vmm.box
+import lib.vmm.box_snapshot
 import lib.file
 import lib.str
 
@@ -159,6 +159,32 @@ void test_box_linux_boot():
 		assert_equal(0, cast(int, reply.stdout_text[1]))
 		assert_strings_equal(c"guest stderr", reply.stderr_text)
 		process_result_free(reply)
+	strv_set(guest_args, 1, c"snapshot-write")
+	process_result* saved = box_session_exec(session, guest_args, c"/", 1000, 128)
+	assert_equal(0, saved.status)
+	process_result_free(saved)
+	session.snapshot_allowed = 0
+	asserts(c"external device snapshot rejected without stopping source", box_snapshot_create(session, 10000) == 0 && session.alive)
+	session.snapshot_allowed = 1
+	box_snapshot* snapshot = box_snapshot_create(session, 10000)
+	asserts(c"capture live Linux RAM and devices", snapshot != 0)
+	assert_equal(15, sys_fcntl(snapshot.fd, F_GET_SEALS, 0))
+	box_session_close(session)
+	session = box_snapshot_restore_in(snapshot, 10000, channel_parent.data)
+	asserts(c"snapshot survives source destruction", session != 0)
+	strv_set(guest_args, 1, c"snapshot-read")
+	saved = box_session_exec(session, guest_args, c"/", 1000, 128)
+	assert_equal(0, saved.status)
+	process_result_free(saved)
+	for i in range(2):
+		vm_box_session* restored = box_snapshot_restore(snapshot, 10000)
+		asserts(c"restore independent Linux clone", restored != 0)
+		saved = box_session_exec(restored, guest_args, c"/", 2000, 128)
+		asserts(c"restored channel responds", saved != 0)
+		assert_equal(0, saved.status)
+		process_result_free(saved)
+		box_session_close(restored)
+	box_snapshot_free(snapshot)
 	strv_set(guest_args, 1, c"caps")
 	process_result* caps = box_session_exec(session, guest_args, 0, 1000, 128)
 	assert_equal(0, caps.status)
