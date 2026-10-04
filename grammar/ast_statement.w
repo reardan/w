@@ -43,6 +43,14 @@ int ast_statement_simple(int* jumps):
 
 
 int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole);
+void ast_expression_finish_prepared(expression_ast* tree);
+
+
+void ast_statement_finish_expression(statement_ast* node):
+	if (node.expression_root < 0): return
+	ast_expression_finish_prepared(node.expression_tree)
+	ast_roots_emitted = ast_roots_emitted + 1
+
 
 
 int ast_statement_value(int* jumps):
@@ -85,6 +93,8 @@ int ast_statement_value(int* jumps):
 		node.end_offset = tree.end_offset
 	node.declared_type = 0
 	if (has_value): node.declared_type = load_int(table + current_function_symbol + 6)
+	emit_statement_ast_expression(&node)
+	ast_statement_finish_expression(&node)
 	emit_statement_ast_value(&node)
 	expect_or_newline(c";")
 	emit_statement_ast_exit(&node)
@@ -111,6 +121,8 @@ int ast_statement_expression(int prefix_only):
 	node.expression_tree = &tree
 	node.expression_root = root
 	node.end_offset = tree.end_offset
-	emit_expression_statement_ast(&node)
+	emit_statement_ast_expression(&node)
+	ast_statement_finish_expression(&node)
+	ast_expression_statements_emitted = ast_expression_statements_emitted + 1
 	expect_or_newline(c";")
 	return 1

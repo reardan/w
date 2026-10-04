@@ -1793,3 +1793,18 @@ comparisons on both host widths cover record copies with array fields, fixed
 arrays, scalar conversions, inference and shadowing. Statistics count local
 declaration nodes. Global declarations and compound statement bodies still
 use their streaming dispatchers.
+
+## Task 99: grammar-owned expression completion
+
+Prepared expression lowering and source completion now have separate entry
+points. Statement visitors emit expression children and record their resulting
+types; the grammar advances the virtual terminator and replays trailing warning
+events before backend coercion or statement termination. Ordinary expression
+grammar callers retain a wrapper over the same two phases.
+
+Direct tests on both host widths verify that preparation emits nothing,
+lowering emits code without changing the token or token serial, and source
+completion advances to the following token. The existing differential suite
+checks diagnostic and byte ordering across return, yield, declaration and
+expression statements. Prepared trees still require their original semantic
+scope; this split does not yet make them persistent module trees.

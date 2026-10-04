@@ -1067,3 +1067,11 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (op == '/'): alu_idiv()
 		else: alu_imod()
 		stack_pos = stack_pos - 1
+
+
+# Emit an already prepared expression without advancing its source lexer.
+# The grammar completes its virtual terminator and trailing diagnostics.
+int emit_prepared_expression_ast(expression_ast* tree, int root):
+	emit_expression_ast(tree, root)
+	expression_lhs_readonly = tree.readonly
+	return tree.result_type[root]

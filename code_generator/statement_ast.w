@@ -15,17 +15,20 @@ void emit_simple_statement_ast(statement_ast* node):
 	be_br(node.target)
 
 
-int ast_expression_emit_prepared(expression_ast* tree, int root);
+int emit_prepared_expression_ast(expression_ast* tree, int root);
 
 
 # Value-bearing statements own an expression child. Source terminators
 # are checked between value lowering and the final control transfer,
 # retaining the established coercion/diagnostic order.
+void emit_statement_ast_expression(statement_ast* node):
+	if (node.expression_root < 0): return
+	node.expression_type = emit_prepared_expression_ast(node.expression_tree, node.expression_root)
+
+
 void emit_statement_ast_value(statement_ast* node):
 	if (node.expression_root < 0): return
-	int type = ast_expression_emit_prepared(node.expression_tree, node.expression_root)
-	ast_roots_emitted = ast_roots_emitted + 1
-	type = promote(type)
+	int type = promote(node.expression_type)
 	if (node.kind == ast_stmt_yield):
 		coerce_checked(node.declared_type, type, c"yield")
 	else if ((type_num_args(node.declared_type) > 0) && (type_num_args(type) > 0)):
@@ -48,12 +51,6 @@ void emit_statement_ast_exit(statement_ast* node):
 		for_cleanup_emit_returning()
 		defer_emit_returning()
 		be_return(stack_pos)
-
-
-void emit_expression_statement_ast(statement_ast* node):
-	ast_expression_emit_prepared(node.expression_tree, node.expression_root)
-	ast_roots_emitted = ast_roots_emitted + 1
-	ast_expression_statements_emitted = ast_expression_statements_emitted + 1
 
 
 void emit_goto_target(int label, int source_stack):
@@ -162,9 +159,7 @@ void emit_typed_local_storage(int type, int has_initializer):
 
 
 int emit_declaration_ast_initializer(statement_ast* node):
-	int got = ast_expression_emit_prepared(node.expression_tree, node.expression_root)
-	ast_roots_emitted = ast_roots_emitted + 1
-	got = promote(got)
+	int got = promote(node.expression_type)
 	if (node.inferred == 0): coerce_checked(node.declared_type, got, c"initialization")
 	return got
 

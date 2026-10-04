@@ -3336,10 +3336,9 @@ int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole)
 
 
 # A prepared tree keeps the final token virtual until emission finishes.
-# Emit it in the same scope, before consuming any other source token.
-int ast_expression_emit_prepared(expression_ast* tree, int root):
-	emit_expression_ast(tree, root)
-	expression_lhs_readonly = tree.readonly
+# The grammar completes that token before coercion or statement termination;
+# backend visitors do not advance it while lowering the prepared tree.
+void ast_expression_finish_prepared(expression_ast* tree):
 	if (tree.whole_expression):
 		token_start_offset = tree.final_token_offset
 		get_token()
@@ -3348,7 +3347,14 @@ int ast_expression_emit_prepared(expression_ast* tree, int root):
 	for id in range(tree.count):
 		if ((tree.op[id] == ast_warning) && (tree.offset[id] == tree.end_offset)): ast_expression_replay_warning(tree, id)
 	ast_expressions_emitted = ast_expressions_emitted + 1
-	return tree.result_type[root]
+
+
+# Compatibility entry for expression grammar callers. Statement grammar
+# invokes the same two phases explicitly around its backend visitors.
+int ast_expression_emit_prepared(expression_ast* tree, int root):
+	int type = emit_prepared_expression_ast(tree, root)
+	ast_expression_finish_prepared(tree)
+	return type
 
 
 int ast_expression_try_at(int group_offset, int whole):

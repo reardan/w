@@ -24,6 +24,8 @@ int ast_local_declaration(statement_ast* node, char* name):
 			node.expression_tree = &tree
 			node.expression_root = root
 			node.end_offset = tree.end_offset
+			emit_statement_ast_expression(node)
+			ast_statement_finish_expression(node)
 			got = emit_declaration_ast_initializer(node)
 		if ((node.inferred == 0) && (verbosity >= 1)):
 			print2(c"variable declaration = expression() right side type: ")

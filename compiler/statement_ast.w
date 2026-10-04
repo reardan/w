@@ -27,6 +27,7 @@ struct statement_ast:
 	int valid_jump
 	expression_ast* expression_tree
 	int expression_root
+	int expression_type
 	int declared_type
 	int generator
 	char* literal_bytes

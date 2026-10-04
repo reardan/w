@@ -427,6 +427,23 @@ void ast_test_prepared_expression(char* source, int accepted):
 		assert_equal(6, tree.value[tree.left[root]])
 		assert_equal(7, tree.value[tree.right[root]])
 		assert_equal(tree.end_offset, token_start_offset)
+		# Backend lowering must leave the virtual source boundary alone.
+		int end_serial = token_serial
+		char* end_token = strclone(token)
+		be_notes_reset()
+		assert_equal(3, emit_prepared_expression_ast(&tree, root))
+		assert1(codepos > before_code)
+		assert_equal(end_serial, token_serial)
+		assert_equal(tree.end_offset, token_start_offset)
+		assert_strings_equal(end_token, token)
+		assert_equal(before_emitted, ast_expressions_emitted)
+		free(end_token)
+		ast_expression_finish_prepared(&tree)
+		assert_strings_equal(c"next", token)
+		assert_equal(before_emitted + 1, ast_expressions_emitted)
+		codepos = before_code
+		ast_expressions_emitted = before_emitted
+		be_notes_reset()
 	else:
 		assert_equal(-1, root)
 		assert_equal(0, token_start_offset)
@@ -437,7 +454,7 @@ void ast_test_prepared_expression(char* source, int accepted):
 	ast_expressions_mode = mode
 
 
-void test_ast_preparation_builds_nodes_without_emission():
+void test_ast_preparation_emission_and_source_completion():
 	ast_test_prepared_expression(c"6 * 7\nnext\n", 1)
 	ast_test_prepared_expression(c"6 + ast_preparation_missing_name\n", 0)
 
