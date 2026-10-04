@@ -1752,3 +1752,14 @@ host widths, covering jumps into/out of local scopes and independent function
 label namespaces. Differential cases preserve malformed, missing and duplicate
 label diagnostics and unreachable-code linting. Statistics report goto/label
 node counts.
+
+## Task 96: raw assembly statement payloads
+
+Raw assembly statements now carry decoded byte payloads and explicit lengths
+in AST nodes in full-expression mode. The backend visitor emits those bytes;
+the parser retains literal validation and target restrictions. Payloads borrow
+the token buffer only for the visitor call, before advancing the lexer.
+
+Native-image and runtime comparisons cover empty payloads and embedded zero
+bytes on both host widths. Differential cases cover malformed literals,
+invalid escapes and GPU rejection. Statistics report raw-assembly node counts.

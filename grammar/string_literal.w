@@ -177,10 +177,19 @@ void validate_utf8_literal(int n):
 		i = i + utf8_decoded_length
 
 
-# like a char_pointer_literal()
-# except it emits the code directly to be executed
+void emit_raw_statement_ast(statement_ast* node);
+
+
+# Like a string literal, but the bytes are executable code.
 int raw_asm_literal():
-	if (accept(c"raw_asm") == 0): return 0
+	if (peek(c"raw_asm") == 0): return 0
+	statement_ast node
+	node.kind = ast_stmt_raw_asm
+	node.source_file = file
+	node.line = diag_token_line
+	node.column = diag_token_column
+	node.start_offset = token_start_offset
+	get_token()
 	if (target_isa == 3): error(c"raw_asm is not supported in gpu code")
 	expect(c"(")
 	if ((token[0] != '"') && (((token[0] != 'c') || (token[1] != '"')))):
@@ -189,7 +198,14 @@ int raw_asm_literal():
 	int i
 	if (token[0] == 'c'): i = process_prefixed_string_literal()
 	else: i = process_string_literal()
-	emit(i, token)
+	if (ast_expressions_mode >= 2):
+		node.end_offset = token_start_offset + token_i
+		# The decoded token is borrowed only until the visitor returns;
+		# advancing the lexer afterwards may overwrite its bytes.
+		node.literal_bytes = token
+		node.literal_length = i
+		emit_raw_statement_ast(&node)
+	else: emit(i, token)
 	get_token()
 	expect(c")")
 	return 1

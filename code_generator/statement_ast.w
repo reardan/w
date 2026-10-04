@@ -107,3 +107,8 @@ void emit_goto_statement_ast(statement_ast* node):
 	if (node.kind == ast_stmt_goto): emit_goto_target(node.target, node.stack_depth)
 	else: emit_label_target(node.target, node.stack_depth)
 	ast_goto_statements_emitted = ast_goto_statements_emitted + 1
+
+
+void emit_raw_statement_ast(statement_ast* node):
+	emit(node.literal_length, node.literal_bytes)
+	ast_raw_statements_emitted = ast_raw_statements_emitted + 1
