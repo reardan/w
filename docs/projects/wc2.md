@@ -1319,3 +1319,17 @@ long loops and method suffixes. A cross-architecture fixture adds slice operands
 scalar-left overloads and evaluation-order checks. Scalar classification now
 recognizes value-wrapped floating fields read from temporary records; call
 detection also includes overload, generic and method nodes for bool diagnostics.
+
+## Task 65: dynamic var expressions
+
+The expression AST accepts boxed var values, validates boxing and unboxing
+before committing, and emits the shared dynamic arithmetic and comparison
+helpers. Printing and template strings render boxed values through the lazy
+runtime. Generic inference maps promoted var values back to their declared
+type, and bool-bitwise diagnostics recognize implicit conversion calls.
+
+Required-mode fixtures cover lazy imports, mixed arithmetic, comparisons,
+casts, ternary coercion, generic calls, rendering and evaluation order. The
+existing dynamic-var regression suite produces identical native x86/x64
+images with required AST expressions. Unsupported operators and conversions
+retain the streaming diagnostics.

@@ -421,7 +421,8 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int arg = tree.left[id]
 		if (arg >= 0):
 			emit_expression_ast(tree, arg)
-			promote(tree.result_type[arg])
+			int got = promote(tree.result_type[arg])
+			if (type_is_var(type_unqualified(got))): var_emit_to_cstr()
 			int value_slot = push_slot()
 			print_emit_call1(tree.high[id], value_slot)
 		if (tree.value[id]): print_emit_nl()
@@ -809,9 +810,15 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if ((op == 0x9c) || (op == 0x9f)): cc = 0x97
 		if ((op == 0x9e) || (op == 0x9d)): cc = 0x93
 		int result = 0
-		if ((op == 0x94) || (op == 0x95)): result = string_binary_compare_eq(left_type, right_type, op == 0x95)
+		if ((op == 0x94) || (op == 0x95)): result = var_binary_compare_eq(left_type, right_type, op == 0x95)
+		else: result = var_binary_compare_order(left_type, right_type, op)
+		if ((result == 0) && ((op == 0x94) || (op == 0x95))): result = string_binary_compare_eq(left_type, right_type, op == 0x95)
 		if (result == 0): result = float_binary_compare(left_type, right_type, cc, swap)
 		if (result == 0): alu_cmp_set(op)
+		return
+	if (var_binary_operands(left_type, right_type)):
+		pop_ebx_slot()
+		var_binary_arithmetic(left_type, right_type, op)
 		return
 	if (binary_float_kind(left_type, right_type)):
 		pop_ebx_slot()

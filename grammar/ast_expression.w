@@ -384,7 +384,7 @@ int ast_expression_scalar_type(int type):
 	if (type_is_gpu_object(type) || type_is_gpu_pointer(type)): return 0
 	int base = type_unqualified(type)
 	if (type_get_pointer_level(base) > 0): return 1
-	if (type_is_string(base)): return 1
+	if (type_is_string(base) || type_is_var(base)): return 1
 	if (type_is_map(base) || type_is_set(base) || type_is_list(base)): return 1
 	# Half loads/conversions can diagnose unsupported backends during
 	# emission. Keep their diagnostic order with the streaming parser.
@@ -434,6 +434,7 @@ int ast_expression_storage_type(int type):
 # types. Value-encoded call results differ from loaded float lvalues.
 int ast_expression_promoted_type(int type):
 	if (type == string_type): return string_value_type
+	if (type == var_type): return var_value_type
 	if (type_is_value(type)): return type_strip_gpu(type_real(type))
 	if (type_is_array(type) || (type_get_kind(type) == type_kind_slice)):
 		int promoted = type_lookup_slice_value(type_get_element_type(type))
@@ -441,6 +442,33 @@ int ast_expression_promoted_type(int type):
 	int kind = type_float_kind(type)
 	if (kind): return float_binary_result_type(kind)
 	return type
+
+
+# Validate conversions before committed emission can invoke the lazy var
+# runtime. Explicit casts preserve the same supported boxing/unboxing set.
+int ast_expression_var_coercion(int want, int got):
+	want = type_unqualified(type_canonical(want))
+	got = type_unqualified(type_canonical(got))
+	if ((type_is_var(want) && type_is_var(got)) || (want == 3) || (want == 4)): return 1
+	if (type_is_var(want)): return var_box_helper_for_type(got) >= 0
+	if (type_is_var(got)):
+		if (type_is_string(want) || type_is_char_pointer(want) || type_is_void_pointer(want)): return 1
+		return var_box_helper_for_type(want) == 0
+	return 1
+
+
+int ast_expression_var_coercion_calls(int want, int got):
+	want = type_unqualified(want)
+	got = type_unqualified(got)
+	if ((want == 3) || (want == 4)): return 0
+	if (type_is_var(want)): return type_is_var(got) == 0
+	return type_is_var(got) && (type_is_void_pointer(want) == 0)
+
+
+int ast_expression_var_pair(int left, int right):
+	if ((type_is_var(type_unqualified(left)) == 0) && (var_box_helper_for_type(left) < 0)): return 0
+	if ((type_is_var(type_unqualified(right)) == 0) && (var_box_helper_for_type(right) < 0)): return 0
+	return 1
 
 
 int ast_expression_argument_compatible(expression_ast* tree, int want, int id):
@@ -649,7 +677,7 @@ int ast_expression_print(expression_ast* tree, int depth):
 		int vc = value_class(ast_expression_promoted_type(tree.result_type[arg]))
 		int helper = -1
 		if (vc == VC_INT): helper = 0
-		if (vc == VC_CSTR): helper = 1
+		if ((vc == VC_CSTR) || (vc == VC_VAR)): helper = 1
 		if (vc == VC_STRING): helper = 2
 		if (vc == VC_F32): helper = 3
 		if (vc == VC_CHAR): helper = 13
@@ -905,6 +933,7 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 				if (got == 4): return -1
 				int inferred = got
 				if ((got == string_value_type) || (got == string_literal_type)): inferred = string_type
+				else if (got == var_value_type): inferred = var_type
 				else if (got == float32_value_type): inferred = float32_type
 				else if (got == float64_value_type): inferred = float64_type
 				else if (type_get_kind(got) == type_kind_slice_value):
@@ -1380,6 +1409,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		if ((ast_expression_scalar_value(child_type) || type_is_array(child_type) || type_is_slice(child_type)) == 0): return -1
 		if (ast_expression_prepare_value(tree, child_type, token_start_offset) == 0): return -1
 		int got = ast_expression_promoted_type(child_type)
+		if (ast_expression_var_coercion(want, got) == 0): return -1
 		int buffer_value = type_get_kind(type_unqualified(got)) == type_kind_slice_value
 		if (buffer_value && (type_get_pointer_level(type_unqualified(want)) > 0)):
 			if (type_decays_to_pointer(want, got) == 0): return -1
@@ -1419,7 +1449,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 			if (id >= 0): tree.result_type[id] = element
 			return id
 		int kind = type_float_kind(ast_expression_promoted_type(tree.result_type[child]))
-		if ((op == '~') && kind): return -1
+		if ((op == '~') && (kind || type_is_var(type_unqualified(child_type)))): return -1
 		int id = expression_ast_add(tree, op, child, -1)
 		if (id < 0): return -1
 		if ((op == '!') || (op == 'b')): tree.result_type[id] = type_value(bool_type)
@@ -1452,7 +1482,7 @@ int ast_expression_template(expression_ast* tree, int depth):
 		int value = ast_expression_assignment(tree, depth + 1)
 		if ((value < 0) || (peek(c"}") == 0)): return -1
 		int vc = value_class(ast_expression_promoted_type(tree.result_type[value]))
-		if ((vc != VC_INT) && (vc != VC_CSTR) && (vc != VC_STRING) && (vc != VC_CHAR) && (vc != VC_F32) && (vc != VC_F64)): return -1
+		if ((vc != VC_INT) && (vc != VC_CSTR) && (vc != VC_STRING) && (vc != VC_CHAR) && (vc != VC_F32) && (vc != VC_F64) && (vc != VC_VAR)): return -1
 		tree.next_arg[chunk] = value
 		previous = value
 		get_token_template_chunk()
@@ -1534,6 +1564,7 @@ int ast_expression_inferred_type(expression_ast* tree, int got, int offset):
 	if (got == 3): return type_lookup(c"int")
 	if (got == 4): return -1
 	if ((got == string_value_type) || (got == string_literal_type)): return string_type
+	if (got == var_value_type): return var_type
 	if (got == float32_value_type): return float32_type
 	if (got == float64_value_type): return float64_type
 	if (type_get_kind(got) == type_kind_slice_value):
@@ -1916,6 +1947,11 @@ int ast_expression_binary(expression_ast* tree, int op, int left, int right):
 	if ((ast_expression_scalar_value(tree.result_type[left]) && ast_expression_scalar_value(tree.result_type[right])) == 0): return -1
 	int lt = ast_expression_promoted_type(tree.result_type[left])
 	int rt = ast_expression_promoted_type(tree.result_type[right])
+	if (var_binary_operands(lt, rt)):
+		if ((op == '%') || (ast_expression_var_pair(lt, rt) == 0)): return -1
+		int id = expression_ast_add(tree, op, left, right)
+		if (id >= 0): tree.result_type[id] = type_value(var_type)
+		return id
 	int kind = binary_float_kind(lt, rt)
 	int lp = type_get_pointer_level(type_unqualified(lt))
 	int rp = type_get_pointer_level(type_unqualified(rt))
@@ -1968,6 +2004,7 @@ int ast_expression_shift(expression_ast* tree, int depth):
 		int right = ast_expression_sum(tree, depth)
 		if (right < 0): return -1
 		if ((ast_expression_scalar_value(tree.result_type[left]) && ast_expression_scalar_value(tree.result_type[right])) == 0): return -1
+		if (var_binary_operands(tree.result_type[left], tree.result_type[right])): return -1
 		left = expression_ast_add(tree, op, left, right)
 	return -1
 
@@ -1996,6 +2033,8 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 		else: right = ast_expression_shift(tree, depth)
 		if (right < 0): return -1
 		if ((ast_expression_scalar_value(tree.result_type[left]) && ast_expression_scalar_value(tree.result_type[right])) == 0): return -1
+		if ((op != 'H') && var_binary_operands(tree.result_type[left], tree.result_type[right])):
+			if (ast_expression_var_pair(ast_expression_promoted_type(tree.result_type[left]), ast_expression_promoted_type(tree.result_type[right])) == 0): return -1
 		int kind = 0
 		if (op == 'H'):
 			int container = type_unqualified(tree.result_type[right])
@@ -2028,6 +2067,15 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 # just as operand_is_pure does for a short-circuited operand.
 int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
+		int op = tree.op[i]
+		if ((op == '+') || (op == '-') || (op == '*') || (op == '/') || (op >= 0x90)):
+			if (var_binary_operands(tree.result_type[tree.left[i]], tree.result_type[tree.right[i]])): return 1
+		if (op == 'K'):
+			if (ast_expression_var_coercion_calls(tree.value[i], ast_expression_promoted_type(tree.result_type[tree.left[i]]))): return 1
+		if (op == '='):
+			if (ast_expression_var_coercion_calls(tree.result_type[tree.left[i]], ast_expression_promoted_type(tree.result_type[tree.right[i]]))): return 1
+		if (op == '?'):
+			if (ast_expression_var_coercion_calls(ast_expression_promoted_type(tree.result_type[tree.right[i]]), ast_expression_promoted_type(tree.result_type[tree.high[i]]))): return 1
 		if ((tree.op[i] == 'l') || (tree.op[i] == 'z') || (tree.op[i] == 'G') || (tree.op[i] == 'W') || (tree.op[i] == 'X') || (tree.op[i] == 'Y') || (tree.op[i] == 'J') || (tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H') || (tree.op[i] == 'E')): return 1
 	return 0
 
@@ -2057,6 +2105,7 @@ int ast_expression_bitwise(expression_ast* tree, int depth, int level):
 		int lt = tree.result_type[left]
 		int rt = tree.result_type[right]
 		if ((ast_expression_scalar_value(lt) && ast_expression_scalar_value(rt)) == 0): return -1
+		if (var_binary_operands(lt, rt)): return -1
 		int right_is_bool = operand_is_bool_condition(rt)
 		int right_has_call = ast_expression_has_call(tree, right_first, tree.count)
 		if (condition_context && (op != '^') && chain_is_bool && right_is_bool):
@@ -2152,6 +2201,7 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	if (op && (type_is_array(tree.result_type[right]) || type_is_slice(tree.result_type[right]))): return -1
 	if (ast_expression_prepare_value(tree, tree.result_type[right], token_start_offset) == 0): return -1
 	int rt = ast_expression_promoted_type(tree.result_type[right])
+	if (op && var_binary_operands(lt, rt)): return -1
 	if (ast_expression_record_type(lt) != ast_expression_record_value(rt)): return -1
 	int result = rt
 	if (op):
@@ -2179,7 +2229,7 @@ int ast_expression_increment(expression_ast* tree, int child, int op):
 	if (tree.readonly || type_is_value(type) || (type == 3) || (type == 4) || type_is_const(type)): return -1
 	if (tree.op[child] == 'm'): return -1
 	if (ast_expression_scalar_type(type) == 0): return -1
-	if (type_is_buffer(type_canonical(type))): return -1
+	if (type_is_buffer(type_canonical(type)) || type_is_var(type_unqualified(type))): return -1
 	int id = expression_ast_add(tree, 'U', child, -1)
 	if (id < 0): return -1
 	tree.value[id] = op
