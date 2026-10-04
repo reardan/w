@@ -1346,3 +1346,17 @@ The existing i386 compile fixture and x64 runtime battery now require AST
 expressions on both compiler hosts and produce identical images. Coverage
 includes packed neighbors, signed fields, unions, sub-word load windows,
 wide x64 fields, compound stores and increments.
+
+## Task 67: prelude calls and list printing
+
+Prelude AST nodes represent input/read_all/ints/lines/words, max/min/abs,
+len, any/all, split/join and enum_name. They preserve argument order,
+helper selection, list result-type registration and symbol/generic shadowing.
+Enum reflection shares its descriptor emitter with the streaming path;
+list printing retains its validated element formatter in the print node.
+
+Differential fixtures cover nested calls, buffers and containers, optional
+split separators, mixed string representations, enum aliases and unknown
+values. Native input tests exercise line, word and integer readers with
+piped stdin. Existing prelude and constant-initializer tests compile with
+required AST expressions and produce identical native images.

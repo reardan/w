@@ -416,6 +416,35 @@ void emit_expression_ast(expression_ast* tree, int id):
 			zero_runtime_object(type_get_size(base))
 			init_array_field_descriptors(base)
 		return
+	if (op == 'y'):
+		int base_stack = stack_pos
+		int helper = tree.value[id]
+		int arg = tree.left[id]
+		if ((helper == 20) || (helper == 21)):
+			emit_expression_ast(tree, arg)
+			promote(tree.result_type[arg])
+			if (helper == 20): prelude_emit_enum_name(tree.high[id], base_stack)
+			else if (tree.high[id]):
+				push_slot()
+				print_emit_call1(12, stack_pos)
+				pop_to(base_stack)
+			else:
+				add_eax_int32(word_size)
+				promote_eax()
+			return
+		print_emit_helper_address(helper)
+		push_slot()
+		while (arg >= 0):
+			emit_expression_ast(tree, arg)
+			promote(tree.result_type[arg])
+			push_slot()
+			if ((helper == 18) && (arg == tree.left[id])):
+				push_slot_int(tree.high[id])
+				if (tree.next_arg[arg] < 0): push_slot_int(0)
+			arg = tree.next_arg[arg]
+		if (helper == 19): push_slot_int(tree.high[id])
+		rt_call_end(base_stack)
+		return
 	if (op == 'P'):
 		int base_stack = stack_pos
 		int arg = tree.left[id]
@@ -424,7 +453,8 @@ void emit_expression_ast(expression_ast* tree, int id):
 			int got = promote(tree.result_type[arg])
 			if (type_is_var(type_unqualified(got))): var_emit_to_cstr()
 			int value_slot = push_slot()
-			print_emit_call1(tree.high[id], value_slot)
+			if (tree.high[id] == 4): print_emit_call_list(value_slot, tree.symbol[id])
+			else: print_emit_call1(tree.high[id], value_slot)
 		if (tree.value[id]): print_emit_nl()
 		if (arg >= 0): pop_to(base_stack)
 		return

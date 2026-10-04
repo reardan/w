@@ -683,10 +683,81 @@ int ast_expression_print(expression_ast* tree, int depth):
 		if (vc == VC_STRING): helper = 2
 		if (vc == VC_F32): helper = 3
 		if (vc == VC_CHAR): helper = 13
+		if (vc == VC_LIST):
+			int element = type_unqualified(type_list_element_type(type_unqualified(ast_expression_promoted_type(tree.result_type[arg]))))
+			int kind = 3
+			if (type_is_string(element)): kind = 4
+			else if (type_is_char_pointer(element)): kind = 2
+			else if (type_num_args(element) || type_float_kind(element) || type_is_map(element) || type_is_set(element) || type_is_list(element) || type_get_pointer_level(element)): return -1
+			helper = 4
+			tree.symbol[id] = kind
 		if (helper < 0): return -1
 		tree.left[id] = arg
 		tree.high[id] = helper
 	if ((peek(c")") == 0) || (token_start_offset >= tree.end_offset)): return -1
+	ast_expression_advance(tree)
+	return id
+
+
+# Prelude calls keep argument order and runtime helper selection in the
+# tree. Helper 21 is the polymorphic len operation (12 is strlen).
+int ast_expression_prelude(expression_ast* tree, int helper, int depth):
+	int id = expression_ast_add(tree, 'y', -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = helper
+	tree.high[id] = 0
+	tree.result_type[id] = type_value(type_lookup(c"int"))
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int count = 1
+	if ((helper == 6) || (helper == 7) || (helper == 8) || (helper == 16) || (helper == 17)): count = 0
+	if ((helper == 9) || (helper == 10) || (helper == 19)): count = 2
+	int previous = -1
+	int i = 0
+	while (i < count):
+		if (i && (ast_expression_accept(tree, c",") == 0)): return -1
+		int arg = ast_expression_assignment(tree, depth + 1)
+		if (arg < 0): return -1
+		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
+		int got = ast_expression_promoted_type(tree.result_type[arg])
+		int t = type_unqualified(got)
+		if ((helper == 9) || (helper == 10) || (helper == 11) || ((helper == 18) && i)):
+			if (value_class_is_int_like(value_class(got)) == 0): return -1
+		else if ((helper == 14) || (helper == 15)):
+			if (type_is_list(t) == 0): return -1
+			if (value_class_is_int_like(value_class(type_list_element_type(t))) == 0): return -1
+		else if (helper == 21):
+			if (type_is_char_pointer(t)): tree.high[id] = 12
+			else if ((type_is_list(t) || type_is_map(t) || type_is_set(t) || type_is_buffer(t)) == 0): return -1
+		else if (helper == 20):
+			if ((got == 3) || (got == 4) || (type_get_kind(type_canonical(t)) != type_kind_enum)): return -1
+			tree.high[id] = type_canonical(t)
+		else if (helper == 18):
+			int kind = prelude_text_kind(got)
+			if (kind == 0): return -1
+			tree.high[id] = kind == 3
+			if (peek(c",")): count = 2
+		else if (helper == 19):
+			int kind = 0
+			if (i): kind = prelude_text_kind(got)
+			else if (type_is_list(t)): kind = prelude_text_kind(type_list_element_type(t))
+			if (kind == 0): return -1
+			tree.high[id] = tree.high[id] | ((kind == 3) << i)
+		if (previous < 0): tree.left[id] = arg
+		else: tree.next_arg[previous] = arg
+		previous = arg
+		i = i + 1
+	if ((peek(c")") == 0) || (token_start_offset >= tree.end_offset)): return -1
+	int result = type_lookup(c"int")
+	if (helper == 6): result = string_type
+	if ((helper == 7) || (helper == 16) || (helper == 17) || (helper == 18) || (helper == 19) || (helper == 20)):
+		result = type_lookup_pointer(c"char", 1)
+		if (result < 0): return -1
+	if ((helper == 8) || (helper == 16) || (helper == 17) || (helper == 18)):
+		result = ast_expression_composite_type(tree, type_kind_list, result, -1, token_start_offset)
+		if (result < 0): return -1
+	tree.result_type[id] = type_value(result)
 	ast_expression_advance(tree)
 	return id
 
@@ -1189,6 +1260,15 @@ int ast_expression_name(expression_ast* tree, int depth):
 	if (peek(c"to_json") || peek(c"from_json")): return -1
 	if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
 	if ((nextc == '(') && (sym_probe(token) < 0)):
+		int helper = prelude_input_helper()
+		if (helper >= 0): return ast_expression_prelude(tree, helper, depth)
+		if (generic_def_lookup(token, 0) < 0):
+			helper = prelude_math_helper()
+			if (helper < 0): helper = prelude_seq_helper()
+			if (helper < 0): helper = prelude_str_helper()
+			if (peek(c"enum_name")): helper = 20
+			if (peek(c"len")): helper = 21
+			if (helper >= 0): return ast_expression_prelude(tree, helper, depth)
 		int kind = limb_builtin_kind()
 		if (kind): return ast_expression_integer_intrinsic(tree, kind, depth)
 		kind = bit_builtin_kind()
@@ -2073,6 +2153,7 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
 		int op = tree.op[i]
+		if ((op == 'y') && ((tree.value[i] != 21) || tree.high[i])): return 1
 		if ((op == '+') || (op == '-') || (op == '*') || (op == '/') || (op >= 0x90)):
 			if (var_binary_operands(tree.result_type[tree.left[i]], tree.result_type[tree.right[i]])): return 1
 		if (op == 'K'):
