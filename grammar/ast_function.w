@@ -9,6 +9,7 @@ void ast_function_body(int binding, int code_start, int kind):
 	node.code_start = code_start
 	node.argument_words = number_of_args
 	node.name = strclone(last_global_declaration)
+	int retained = retained_enter(retained_function, filename, node.start_offset, diag_token_line, diag_token_column, node.name)
 	emit_function_begin_ast(&node)
 	current_function_symbol = binding
 	if (kind == ast_function_generator): in_generator_body = 1
@@ -25,6 +26,7 @@ void ast_function_body(int binding, int code_start, int kind):
 	goto_scope_end(node.outer_label_base, node.outer_pending_base)
 	if (kind == ast_function_native): defer_reset()
 	emit_function_end_ast(&node)
+	retained_leave(retained, node.end_offset)
 	free(node.name)
 
 
@@ -43,6 +45,7 @@ void ast_script_main():
 	node.name = c"main"
 	save_int(table + binding + 22, 0)
 	sym_set_w_variadic(binding, -1)
+	int retained = retained_enter(retained_function, filename, node.start_offset, diag_token_line, diag_token_column, node.name)
 	emit_function_begin_ast(&node)
 	current_function_symbol = binding
 	enclosing_tab_level = 0
@@ -62,6 +65,7 @@ void ast_script_main():
 	defer_emit_all()
 	defer_reset()
 	emit_function_end_ast(&node)
+	retained_leave(retained, node.end_offset)
 	table_pos = symbol_base
 
 
@@ -77,6 +81,7 @@ void ast_kernel_function_definition(int binding, char* name):
 	node.start_offset = token_start_offset
 	node.name = name
 	node.parameter_count = 0
+	int retained = retained_enter(retained_function, filename, node.start_offset, diag_token_line, diag_token_column, node.name)
 	emit_function_begin_ast(&node)
 	while (accept(c")") == 0):
 		function_parameter_ast parameter
@@ -107,4 +112,5 @@ void ast_kernel_function_definition(int binding, char* name):
 	statement()
 	node.end_offset = token_start_offset
 	emit_function_end_ast(&node)
+	retained_leave(retained, node.end_offset)
 	table_pos = symbol_base

@@ -1,5 +1,6 @@
 import lib.lib
 import compiler.tokenizer
+import compiler.analysis
 import codegen
 import lib.assert
 import compiler.type_table
@@ -32,6 +33,10 @@ int quiet_mode
 # given input, so it is the figure to compare when changing lookup, and
 # the one a test can assert; wall time is too noisy to gate on.
 int stats_mode
+
+# The tree query retains the entire implicit runtime and explicit input closure.
+int retained_query_mode
+int analysis_requested
 
 
 # 'w deps' recording: while deps_mode is set, every file the compiler
@@ -97,6 +102,7 @@ int compile_attempt(char* fn):
 		if (verbosity >= 1): file_not_found_error()
 		filename = old_filename
 		return 0
+	if (ast_retain_mode): retained_source_begin(filename)
 	if (deps_mode): deps_record(filename)
 	lint_note_open(filename)
 	getchar_reset(file)
@@ -141,7 +147,10 @@ int compile_attempt(char* fn):
 		if (getc() == 187):
 			if (getc() == 191): nextc = getc()
 	get_token()
+	int outer_retained_parent = retained_parent
+	retained_parent = -1
 	program()
+	retained_parent = outer_retained_parent
 	return 1
 
 
@@ -823,6 +832,11 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--ast-full-expressions") == 0):
 		if (apply): ast_expressions_mode = 2
 		return 1
+	if (strcmp(arg, c"--ast-retain") == 0):
+		if (apply):
+			ast_expressions_mode = 2
+			ast_retain_mode = 1
+		return 1
 	if (strcmp(arg, c"--ast-audit") == 0):
 		if (apply):
 			ast_expressions_mode = 2
@@ -876,6 +890,7 @@ void help_shared_options():
 	println(c"  --ast-expressions     experimental AST for grouped scalar expressions")
 	println(c"  --ast-full-expressions try AST at every expression, including runtime imports")
 	println(c"  --ast-audit           full-expression mode plus JSON fallback records on stderr")
+	println(c"  --ast-retain          retain owned traversal trees (experimental, full AST mode)")
 	println(c"  --ast-required        reject any expression fallback (migration coverage gate)")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
@@ -910,6 +925,7 @@ void help_link():
 	println(c"  deps          print the transitive import closure")
 	println(c"  symbols       dump global symbols and user-declared types")
 	println(c"  defhash       per-definition content hashes and refs (NDJSON)")
+	println(c"  tree          inspect owned module trees and semantic identities (NDJSON)")
 	println(c"")
 	help_selectors()
 	println(c"")
@@ -922,7 +938,7 @@ void help_link():
 
 
 void help_check():
-	println(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+	println(c"usage: w check [--json] [--quiet] [--all-errors] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 	println(c"")
 	println(c"Compile without writing an executable. Diagnostics go to stderr; with")
 	println(c"--json each becomes one NDJSON record on stdout. Empty output with")
@@ -930,6 +946,7 @@ void help_check():
 	println(c"")
 	println(c"options:")
 	println(c"  --json                emit NDJSON diagnostic records on stdout")
+	println(c"  --all-errors          isolate failures and continue checking (POSIX hosts)")
 	println(c"  --imports             warn when an identifier resolves through a")
 	println(c"                        transitive import the file does not import directly")
 	println(c"  --bool-ops            also warn on '&'/'|' operands containing calls,")
@@ -1062,7 +1079,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	bounds_mode = 1
 	strict_mode = 0
 	warning_count = 0
-	ast_expressions_mode = 0
+	analysis_mode = 0
+	analysis_errors = 0
+	retained_clear()
+	ast_retain_mode = retained_query_mode
+	ast_expressions_mode = retained_query_mode * 2
 	ast_expressions_emitted = 0
 	ast_simple_statements_emitted = 0
 	ast_debugger_statements_emitted = 0
@@ -1178,7 +1199,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			if (link_option(*flag_arg, 0) == 0): unrecognized_option_error(*flag_arg)
 			# Full-expression migration flags cover the implicit runtime
 			# closure as well as explicit inputs. Never hide that gap.
-			if ((strcmp(*flag_arg, c"--ast-full-expressions") == 0) || (strcmp(*flag_arg, c"--ast-audit") == 0) || (strcmp(*flag_arg, c"--ast-required") == 0)):
+			if ((strcmp(*flag_arg, c"--ast-full-expressions") == 0) || (strcmp(*flag_arg, c"--ast-audit") == 0) || (strcmp(*flag_arg, c"--ast-required") == 0) || (strcmp(*flag_arg, c"--ast-retain") == 0)):
 				link_option(*flag_arg, 1)
 		flag_scan = flag_scan + 1
 	# --import-root is whole-program: the roots must be known before the
@@ -1221,6 +1242,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# auto-imported container-runtime closure that --imports treats like
 	# a direct import for every file (grammar/import_statement.w).
 	auto_import_closure_count = imported_count
+	analysis_mode = analysis_requested
 
 	output_fd = 1 /* default: write the ELF to stdout */
 	char* output_path = 0
@@ -1300,12 +1322,14 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# synthetic [int] instantiation for every generic definition nothing
 	# instantiated, so the drain below type-checks its body too
 	# (grammar/generic.w, generic_check_instantiate_all).
+	if (analysis_errors > 0): return 1
 	generic_check_instantiate_all()
 
 	# User generic instantiations drain first, outside the --bool-ops
 	# suppression below (finish_on_demand_imports' own first drain then
 	# finds the queue empty).
 	generic_finish_instantiations()
+	if (analysis_errors > 0): return 1
 
 	# The on-demand runtimes (finish_on_demand_imports). Like the
 	# auto-import closure above, these are compiler-injected modules, so
@@ -1318,6 +1342,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	check_bool_ops_mode = 0
 	finish_on_demand_imports()
 	check_bool_ops_mode = bool_ops_finish_saved
+	if (analysis_errors > 0): return 1
 
 	# Synthesize __w_test_main for lib/testing.w consumers now that every
 	# test_* function is compiled (compiler/test_registry.w, issue #147)
@@ -1378,6 +1403,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# deps_main, symbols_main, defhash_main), so one call here covers
 	# them all.
 	if (stats_mode): sym_stats_dump()
+	if (stats_mode && ast_retain_mode):
+		print_int0(c"Retained AST nodes: ", retained_nodes.length)
+		print_error(c"\n")
 	if (stats_mode && ast_expressions_mode):
 		print_error(c"AST expressions: ")
 		print_error(itoa(ast_expressions_emitted))
@@ -1494,6 +1522,7 @@ int link(int argc, int argv):
 
 int check_main(int argc, int argv):
 	int i = 2
+	analysis_requested = 0
 	diag_json = 0
 	check_imports_mode = 0
 	check_bool_ops_mode = 0
@@ -1511,6 +1540,12 @@ int check_main(int argc, int argv):
 		char** arg = argv + i * __word_size__
 		if (strcmp(*arg, c"--json") == 0):
 			diag_json = 1
+			i = i + 1
+		else if (strcmp(*arg, c"--all-errors") == 0):
+			if (os_windows()):
+				println2(c"--all-errors requires a POSIX host with fork support")
+				return 1
+			analysis_requested = 1
 			i = i + 1
 		else if (strcmp(*arg, c"--quiet") == 0):
 			quiet_mode = 1
@@ -1558,7 +1593,7 @@ int check_main(int argc, int argv):
 			exit(0)
 		else: scanning = 0
 	if (argc <= i):
-		println2(c"usage: w check [--json] [--quiet] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
+		println2(c"usage: w check [--json] [--quiet] [--all-errors] [--imports] [--bool-ops] [--lint] [--fix] [--line-length=N] [-v|--verbose] [x64|arm64|arm64_darwin|win64|wasm] <file.w>... [--bounds=on|off|trap] [--pac=off|ret|full] [--strict]")
 		println2(c"run 'w check --help' for details")
 		exit(1)
 	return link_impl(argc, argv, i, 1)
@@ -1768,6 +1803,7 @@ map[char*, int] defhash_name_index
 # sites does, since 'kind' is only known at the very end of a successful
 # parse anyway.
 void defhash_note(char* name, char* kind, int file_index, int line, int column, int start_offset, int end_offset):
+	retained_declaration_note(name, kind, start_offset, end_offset, line, column)
 	if (defhash_mode == 0): return
 	if ((defhash_closure_mode == 0) && (defhash_depth != 0)): return
 	int max_defs = 8000
@@ -2311,3 +2347,6 @@ int symbols_main(int argc, int argv):
 	if (layout): symbols_dump_layout(json)
 	else: symbols_dump(json)
 	return 0
+
+
+import compiler.retained_query

@@ -917,6 +917,9 @@ int main(int argc, int argv):
 	args_init(argc, argv)
 	ast_expressions_mode = args_has_bool_flag(c"ast-expressions")
 	if (args_has_bool_flag(c"ast-full-expressions")): ast_expressions_mode = 2
+	if (args_has_bool_flag(c"ast-retain")):
+		ast_expressions_mode = 2
+		ast_retain_mode = 1
 	repl_init()
 
 	# 'debugger' statements trap into wdbg's command loop instead of

@@ -26,7 +26,7 @@ int ast_test_arg(char** args, int i, char* value):
 
 
 process_result* ast_test_compile(char* compiler, char* arch, char* input, char* output, int enabled, int checking, int stats):
-	char** args = strv_new(12)
+	char** args = strv_new(16)
 	int i = 0
 	i = ast_test_arg(args, i, compiler)
 	if (checking):
@@ -39,6 +39,9 @@ process_result* ast_test_compile(char* compiler, char* arch, char* input, char* 
 	if (enabled == 1): i = ast_test_arg(args, i, c"--ast-expressions")
 	if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
 	if (enabled == 3): i = ast_test_arg(args, i, c"--ast-required")
+	if (enabled == 4):
+		i = ast_test_arg(args, i, c"--ast-retain")
+		i = ast_test_arg(args, i, c"--ast-required")
 	if (stats): i = ast_test_arg(args, i, c"--stats")
 	i = ast_test_arg(args, i, input)
 	if (output != 0):
@@ -167,6 +170,42 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_return_statement_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/unsigned_compare_test.w", run)
 	if (strcmp(arch, c"x64") == 0): ast_test_image_at(compiler, arch, c"tests/x64_unsigned_compare_test.w", run)
+
+
+void ast_test_retained_at(char* compiler, char* arch, int run):
+	char* before = ast_test_path(c".legacy")
+	char* after = ast_test_path(c".retained")
+	process_result* legacy = ast_test_compile(compiler, arch, c"tests/ast_control_header_fixture.w", before, 0, 0, 0)
+	process_result* retained = ast_test_compile(compiler, arch, c"tests/ast_control_header_fixture.w", after, 4, 0, 0)
+	assert_equal(0, legacy.status)
+	assert_equal(0, retained.status)
+	assert_strings_equal(legacy.stdout_text, retained.stdout_text)
+	assert_strings_equal(legacy.stderr_text, retained.stderr_text)
+	ast_test_same_file(before, after)
+	process_result_free(legacy)
+	process_result_free(retained)
+	if (run):
+		char** args = strv_new(1)
+		strv_set(args, 0, after)
+		retained = ast_test_run(args, 0)
+		assert_equal(0, retained.status)
+		process_result_free(retained)
+	unlink(before)
+	unlink(after)
+	free(before)
+	free(after)
+
+
+void test_ast_retained_image_parity():
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		ast_test_retained_at(compiler, c"x86", 1)
+		ast_test_retained_at(compiler, c"x64", 1)
+		ast_test_retained_at(compiler, c"arm64", 0)
+		ast_test_retained_at(compiler, c"arm64_darwin", 0)
+		ast_test_retained_at(compiler, c"win64", 0)
+		ast_test_retained_at(compiler, c"wasm", 0)
 
 
 void test_ast_expression_images_and_host_widths():

@@ -24,6 +24,7 @@
 int ast_statement_simple(int* jumps);
 int ast_statement_value(int* jumps);
 int ast_statement_expression(int prefix_only);
+void statement();
 void ast_if_statement_tail();
 int ast_statement_block();
 
@@ -192,7 +193,8 @@ void yield_statement_tail():
 	emit_generator_yield_call()
 
 
-void statement():
+void statement_impl():
+	int retained = retained_enter(retained_statement, filename, token_start_offset, diag_token_line, diag_token_column, token)
 	# Recursion-depth guard (compiler/tokenizer.w): every nested block body
 	# ('{...}', a tab-scoped ':' block, or an if/while/for/switch body)
 	# recurses back through this same function, so wrapping its one entry
@@ -375,3 +377,8 @@ void statement():
 	# this single decrement is reached on every normal exit.
 	stmt_nesting_depth = stmt_nesting_depth - 1
 	lint_last_stmt_jumps = jumps
+	retained_leave(retained, token_start_offset)
+
+
+void statement():
+	analysis_run(cast(int, statement_impl), 0)

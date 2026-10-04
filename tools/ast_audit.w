@@ -79,7 +79,7 @@ int ast_audit_command_kind(json_value* cmd):
 			continue
 		if (text[0] != '-' && ast_audit_source(text)): source = 1
 		if (ast_audit_prefix(text, c"--ast-")): explicit_mode = 1
-		if (strcmp(text, c"deps") == 0 || strcmp(text, c"symbols") == 0 || strcmp(text, c"defhash") == 0 || strcmp(text, c"--help") == 0 || strcmp(text, c"-h") == 0 || strcmp(text, c"--version") == 0): query = 1
+		if (strcmp(text, c"deps") == 0 || strcmp(text, c"symbols") == 0 || strcmp(text, c"defhash") == 0 || strcmp(text, c"tree") == 0 || strcmp(text, c"--help") == 0 || strcmp(text, c"-h") == 0 || strcmp(text, c"--version") == 0): query = 1
 	if (explicit_mode): return 2
 	if (query || source == 0): return 3
 	return 1

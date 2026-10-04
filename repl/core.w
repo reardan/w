@@ -436,6 +436,7 @@ void repl_entry_item(int entry_symbol):
 # discards the faulted entry's definitions exactly like a compile error.
 
 struct repl_state:
+	retained_checkpoint retained
 	int codepos
 	int table_pos
 	int stack_pos
@@ -467,6 +468,7 @@ repl_state* repl_genesis
 
 
 void repl_state_capture(repl_state* st):
+	retained_capture(&st.retained)
 	st.codepos = codepos
 	st.table_pos = table_pos
 	st.stack_pos = stack_pos
@@ -494,6 +496,7 @@ void repl_state_capture(repl_state* st):
 # Everything but current_function_symbol, which only the per-entry
 # rollback restores.
 void repl_state_restore(repl_state* st):
+	retained_rollback(&st.retained)
 	codepos = st.codepos
 	be_cmp_note_reset()
 	be_imm_note_reset()
@@ -594,6 +597,7 @@ int repl_compile_entry(char* path):
 	filename = path
 	file = open(path, 0, 511)
 	asserts(c"could not reopen entry buffer", file >= 0)
+	if (ast_retain_mode): retained_source_begin(filename)
 	getchar_reset(file)
 	repl_entry_file = file
 	line_number = 0
