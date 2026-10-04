@@ -74,6 +74,9 @@ void test_ast_audit_reports_malformed_records():
 
 
 void test_ast_audit_command_option_operands():
+	json_value* tree_query = json_parse(c"[\"bin/wv2\",\"tree\",\"--json\",\"program.w\"]")
+	assert_equal(3, ast_audit_command_kind(tree_query))
+	json_free(tree_query)
 	json_value* cmd = json_parse(c"[\"bin/wv2\",\"-v\",\"program.w\"]")
 	assert_equal(1, ast_audit_command_kind(cmd))
 	json_free(cmd)

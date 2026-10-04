@@ -31,8 +31,12 @@ pinned seeds and other nested compiler drivers retain their existing modes.
 The positive full-AST image comparison leg also rejects fallback. These gates
 prove the tested corpus, not unrestricted source-language coverage.
 
-Bodies are still visited incrementally. Nodes do not survive as persistent
-function or module trees; some symbol bindings remain borrowed. Deferred
+Bodies are still visited incrementally. `--ast-retain` now preserves owned
+production traversal trees (described below), including function/statement
+nesting, expression payloads, owned semantic type graphs and session-local binding
+identities. `w tree --json` exposes this graph. It is not yet an independently
+executable module IR; lowering still uses temporary nodes and some borrowed
+symbol bindings. Deferred
 expressions, generics and helper bodies can be reparsed, while type/import
 declarations still update semantic tables during parsing. Bounded arenas still
 fall back on oversized expressions (or reject them in required mode). The
@@ -43,9 +47,11 @@ retired `wc2` resident cache is not part of this implementation.
 1. Retain complete function and module trees with owned source locations and
    stable bindings. Remove body reparsing and parse-time semantic side effects;
    replace bounded temporary arenas with appropriate lifetime management.
-2. Establish multi-error semantic analysis, REPL/debugger rollback and incremental
-   emission on those retained trees, then add a resident cache using the retired
-   experiment's ownership and invalidation findings.
+2. Move the opt-in production multi-error checker and native incremental function
+   sessions onto independent retained-tree analysis/emission. `check --all-errors`
+   now recovers at statement/declaration boundaries on POSIX hosts, and
+   `repl/incremental.w` reuses emitted scalar-function prefixes. General module
+   invalidation, arbitrary-definition reuse and a resident module cache remain.
 3. Make and validate the production-default migration decision separately from
    opt-in corpus coverage. Issue #489 remains open for this architectural work.
 
@@ -1012,3 +1018,125 @@ steps. Selection counts cover the manifest, not just the `tests` closure.
 `env -u NO_COLOR ./wbuild ast_expression_suite` also passes all 837 inner
 `tests` targets. The AST path remains opt-in, and #489 remains open for the
 retained-tree, semantic-analysis and incremental-compilation milestones above.
+
+
+## Retained production traversal ownership
+
+`--ast-retain` enables full-expression mode and retains a session-owned forest
+alongside the existing production parser. `--ast-required` can be combined with
+it to reject expression fallback. `--stats` reports the retained node count.
+The flag is also accepted by the REPL and debugger.
+
+```sh
+bin/wv2 check --quiet --ast-retain --ast-required --stats program.w
+bin/repl --ast-retain
+bin/wdbg program.w --ast-retain
+```
+
+`compiler/retained_ast.w` owns growable source buffers and individually allocated
+nodes. A source version copies the bytes the tokenizer consumes, rather than
+reopening a pathname after compilation. Each fresh file compilation gets a new
+version; replays cannot overwrite previously captured bytes. Module roots own
+function and statement nesting from the production traversal. Existing definition
+hooks adopt the corresponding function/initializer children into declarations.
+Expression groups retain their opcode/operand topology, decoded scalar and text
+literals, type descriptions, and copied ordinary variable/direct-call bindings.
+Operand indices retain their opcode-specific meaning inside the expression group.
+No retained names, literal bytes, source paths or binding descriptions borrow
+storage from expression arenas or the symbol/type tables.
+
+The REPL checkpoint, reset and debugger-evaluation rollback path retracts the
+failed entry's retained suffix, including partially built nodes and imported
+sources. Node IDs remain stable until that suffix is retracted or the session
+is cleared. Sources and nodes are released by `retained_clear`; there is no
+fixed retained-node capacity. The parser's temporary expression limits remain.
+
+At this ownership-only stage, this was **not completion of the remaining
+milestones**; the following section records its semantic and tooling extensions.
+The forest records the traversal, including repeated deferred/generic visits;
+it is not a replacement for those reparses. Binding/type descriptions are not
+stable semantic identities, and opcode-specific lowering payloads are not yet
+fully retained. Parsing still changes semantic tables and emits code. Multi-error
+semantic analysis, analysis/emission separation, incremental emission and a
+resident cache remain outstanding. #489 stays open; the retired experiment's
+#488 stays closed.
+
+`ast_retained_test` and its x64 twin exercise real compilation, nested statement
+membership, scope-slot reuse, source ownership after file deletion, expression
+execution, failed-entry rollback and reset. `ast_retained_memory_test` and its
+x64 twin force the guard allocator and verify growth, independent source versions,
+source-change rejection, suffix rollback, repeated clear and zero retained leaks.
+
+Validation: pinned-seed bootstrap, x86/x64 self-host fixpoints and the full
+`./wbuild tests` suite pass (841 targets). The permanent AST differential test
+compares retained and streaming images on all six backends from both compiler
+host widths and executes the native x86/x64 images. Manual retained-mode debugger
+checks on both host widths recover from a failed watch expression. The compiler
+also checks itself with `--ast-retain --ast-required` without expression fallback.
+
+
+## Semantic ownership, isolated analysis and incremental function sessions
+
+The retained forest now owns semantic type records, including recursive field
+shapes, aliases, pointer targets, function signatures, enum members and source
+locations. Explicit import nodes own their spelling, normalized module path and
+alias, including declarations whose compilation the import registry deduplicates.
+Bindings receive session-local IDs keyed by source version, declaration location
+and lexical function owner. Their names, types and signatures survive temporary
+symbol-table reuse; rollback retracts the matching semantic suffix. These are
+declaration identities: prototype and definition records are not yet unified
+into one linker identity. Unused locals are not yet separately inventoried. Expression
+records copy scalar lowering payloads, text/name arenas and diagnostic text.
+Backend table indices remain explicitly raw metadata where a semantic replacement
+has not yet been introduced.
+
+```sh
+bin/wv2 tree --json --quiet program.w
+bin/wv2 x64 tree --json --quiet program.w
+bin/wv2 check --json --quiet --all-errors program.w
+```
+
+`tree` emits versioned NDJSON source, node, type and binding records. IDs refer to
+one query/session, not a persistent cross-build identity. Parent links can point
+forward because completed declarations adopt their bodies. Expression operands
+retain their opcode-specific, group-local meaning. Length-delimited literal and
+arena bytes use hex fields, preserving NUL and non-UTF8 bytes. Failed compilation
+returns diagnostics without a partial tree dump.
+
+`check --all-errors` uses the production semantic checks in isolated copy-on-write
+processes at statement and declaration boundaries. A failed probe cannot mutate
+its parent's symbols, types, emission buffers or retained graph. Successful
+probes replay with nested probing disabled; kernel source-file offsets are
+restored before replay. This reports independent errors inside the same function
+and across declarations/imports in deterministic source order, and returns a
+failure status before final output. It is opt-in, requires a POSIX host with
+`fork` and seekable source files, and stops after 100 errors. It is recovery around
+the production parser, not an emission-free semantic pass: broken lexing or
+imports can still prevent further analysis, and uses of discarded declarations
+can produce follow-on diagnostics.
+
+`repl/incremental.w` supplies a native x86/x64 incremental compilation API over
+the production REPL checkpoints. An ordered set of admitted scalar function
+sources stays resident. An unchanged update emits nothing; an edit, insertion or
+deletion preserves the identical prefix and recompiles only the affected suffix.
+The API owns source copies, validates admission before mutation, rejects changes
+to compiler options/environment, and removes failed/stale suffix definitions.
+Tests check actual code bytes, addresses, retained-node ownership and execution
+after edits and recovery. See [incremental compilation](incremental_compilation.md)
+for the API and its intentionally restricted admission rules.
+
+These changes do not complete the independent module-IR migration. Parsing still
+updates semantic tables and emits code; generic/deferred bodies still reparse;
+some expression operands are raw backend IDs; temporary expression arenas remain
+bounded. Incremental sessions do not yet handle arbitrary imports, types, globals,
+generics or relocation of independently compiled definitions. A persistent
+module cache and a production-default decision remain separate work.
+**#489 remains open; #488 remains closed.**
+
+Validation: `env -u NO_COLOR ./wbuild tests` passed all 849 targets, including
+x86/x64 self-host fixpoints and the existing AST cross-backend comparisons.
+The final incremental admission changes additionally passed both focused native
+targets. Both compiler host widths checked `w.w` with
+`--ast-retain --ast-required`; win64 and arm64_darwin compiler checks passed.
+The parser-generator grammar also parsed every newly added W file explicitly
+(the ordinary corpus gate selects tracked files).

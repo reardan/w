@@ -602,9 +602,11 @@ either way; nothing here proposes a second protocol.
 5. **AST option (c) — underway in the production compiler**:
    continue the [production migration](ast_migration.md), retaining
    self-host fixpoints, cross-backend differential checks, and REPL/debugger
-   recovery gates. Retained module trees, multi-error semantic analysis
-   and incremental emission are still future work. The prototype's cache
-   is not integrated into wbuildd.
+   recovery gates. Owned semantic traversal trees, opt-in isolated multi-error
+   checking and native scalar-function incremental sessions now exist. Complete
+   emission-independent module trees and general incremental compilation remain
+   open in #489; the retired experiment's #488 remains closed. Neither its
+   prototype cache nor the new incremental session API is integrated into wbuildd.
 
 ## 6. Decisions
 

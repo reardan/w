@@ -1089,6 +1089,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 # Emit an already prepared expression without advancing its source lexer.
 # The grammar completes its virtual terminator and trailing diagnostics.
 int emit_prepared_expression_ast(expression_ast* tree, int root):
+	retained_expression_note(tree, root)
 	emit_expression_ast(tree, root)
 	expression_lhs_readonly = tree.readonly
 	return tree.result_type[root]

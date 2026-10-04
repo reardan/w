@@ -543,6 +543,9 @@ void import_lint_duplicate(char* resolved, char* spelling):
 
 
 int import_statement():
+	int retained_start = token_start_offset
+	int retained_line = diag_token_line
+	int retained_column = diag_token_column
 	if(accept(c"import")):
 		# The rest of the line is the module path plus an optional alias
 		# and an optional trailing comment
@@ -563,6 +566,7 @@ int import_statement():
 			error3(c"import wildcard '.*' is not supported (an import already makes the whole module visible); use 'import ", token, c"'")
 
 		char* resolved = import_resolve(token)
+		retained_import_note(token, resolved, alias, retained_start, byte_offset - 1, retained_line, retained_column)
 		if (alias == 0): import_lint_duplicate(resolved, token)
 
 		# compile_save clobbers nextc, so only re-read it after a compile

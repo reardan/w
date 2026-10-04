@@ -1064,6 +1064,7 @@ void wdbg_attach_compile(char* target):
 	if (ast_expressions_mode):
 		char* ast_flag = c"--ast-expressions"
 		if (ast_expressions_mode >= 2): ast_flag = c"--ast-full-expressions"
+		if (ast_retain_mode): ast_flag = c"--ast-retain"
 		save_word(cast(char*, argv + idx * __word_size__), cast(int, ast_flag))
 		idx = idx + 1
 	save_word(cast(char*, argv + idx * __word_size__), cast(int, target))
@@ -1078,6 +1079,9 @@ int wdbg_main(int argc, int argv):
 	args_init(argc, argv)
 	ast_expressions_mode = args_has_bool_flag(c"ast-expressions")
 	if (args_has_bool_flag(c"ast-full-expressions")): ast_expressions_mode = 2
+	if (args_has_bool_flag(c"ast-retain")):
+		ast_expressions_mode = 2
+		ast_retain_mode = 1
 	# Quiet the compiler driver: wdbg is entered through its own main (not
 	# w.w's, which sets this), so without it the attach-mode recompile and
 	# the in-process compile would print progress noise to stdout.

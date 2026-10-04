@@ -743,167 +743,155 @@ void global_variable_declaration(int binding, int type, char* init_name):
 		if (init_name): global_initializer(init_name, binding, type)
 
 
-void program():
+void program_item():
 	int current_symbol
-	while (token[0]):
-		# First handle imports
-		while (import_statement() ) {}
-		while (c_import_statement()) {}
+	if (analysis_mode && peek(c"}")): error(c"unmatched '}' at module scope")
+	if (import_statement()): return
+	if (c_import_statement()): return
+	if (type_alias_declaration()): return
+	if (struct_declaration()): return
+	if (union_declaration()): return
+	if (enum_declaration()): return
+	if (message_declaration()): return
+	if (extern_statement()): return
 
-		# Type aliases must be available before structs and declarations.
-		# Aliases and aggregates may appear in any order (e.g. a type alias
-		# right after a struct), so keep dispatching until none make progress.
-		int parsed_declaration = 1
-		while (parsed_declaration):
-			parsed_declaration = 0
-			while(type_alias_declaration()): parsed_declaration = 1
-			while(struct_declaration()):
-				parsed_declaration = 1
-				print_int_v1(c"struct_declaration=1", 1)
-			while(union_declaration()):
-				parsed_declaration = 1
-				print_int_v1(c"union_declaration=1", 1)
-			while(enum_declaration()):
-				parsed_declaration = 1
-				print_int_v1(c"enum_declaration=1", 1)
-			while(message_declaration()): parsed_declaration = 1
+	# Imports/structs may have consumed the rest of the file
+	if (token[0] == 0): return;
 
-		# Shared-library declarations (c_lib / extern). Anything may follow
-		# an extern block, so go around again: a type alias or struct right
-		# after the last extern would otherwise reach the function/global
-		# declaration parser below ("unknown type name: 'type'").
-		int parsed_extern = 0
-		while (extern_statement()): parsed_extern = 1
-		if (parsed_extern): continue
+	# 'export' marks the next function definition as a host-callable
+	# module export with its real typed signature on the wasm target
+	# (export_function_note above); the native targets accept and
+	# ignore the marker, so one source compiles everywhere. Contextual
+	# like 'kernel': a type or symbol named 'export' keeps the
+	# identifier meaning.
+	int export_pending = 0
+	if (peek(c"export")):
+		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
+			get_token()
+			export_pending = 1
+			if ((peek(c"const") | (type_lookup(token) >= 0)) == 0):
+				error(c"'export' must be followed by a function definition")
 
-		# Imports/structs may have consumed the rest of the file
-		if (token[0] == 0): return;
+	# Script mode: a token that cannot start a declaration begins
+	# the implicit main; it consumes the rest of the file
+	if (script_statement_starts_here()):
+		script_main()
+		return;
 
-		# 'export' marks the next function definition as a host-callable
-		# module export with its real typed signature on the wasm target
-		# (export_function_note above); the native targets accept and
-		# ignore the marker, so one source compiles everywhere. Contextual
-		# like 'kernel': a type or symbol named 'export' keeps the
-		# identifier meaning.
-		int export_pending = 0
-		if (peek(c"export")):
-			if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
-				get_token()
-				export_pending = 1
-				if ((peek(c"const") | (type_lookup(token) >= 0)) == 0):
-					error(c"'export' must be followed by a function definition")
+	# 'defer' is only meaningful inside a function body
+	if (peek(c"defer")): error(c"'defer' outside of a function")
 
-		# Script mode: a token that cannot start a declaration begins
-		# the implicit main; it consumes the rest of the file
-		if (script_statement_starts_here()):
-			script_main()
+	# 'thread_local type name': contextual like 'kernel', so a type
+	# or symbol named thread_local keeps the identifier meaning.
+	if (peek(c"thread_local")):
+		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
+			get_token()
+			thread_local_declaration()
 			return;
 
-		# 'defer' is only meaningful inside a function body
-		if (peek(c"defer")): error(c"'defer' outside of a function")
+	# generator declarations: "generator type-name identifier (".
+	# "generator*" is the struct type in a variable declaration, so
+	# only a bare 'generator' token marks a declaration.
+	if (peek(c"generator")):
+		if (nextc != '*'):
+			generator_declaration()
+			return;
 
-		# 'thread_local type name': contextual like 'kernel', so a type
-		# or symbol named thread_local keeps the identifier meaning.
-		if (peek(c"thread_local")):
-			if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
-				get_token()
-				thread_local_declaration()
-				continue;
+	# Captured here, before the generic scan-ahead, so it is the true
+	# start of the declaration in both of generic_declaration_scan's
+	# outcomes: a real generic (which 'continue's below, never
+	# reaching defhash_note) or a plain declaration whose return type
+	# it already scanned into generic_scanned_type (in which case
+	# token itself has moved on to the declared name, so capturing
+	# this any later would miss the return-type tokens).
+	int defhash_start = token_start_offset
+	# kernel declarations: "kernel identifier (" (implicit void
+	# return). A user type or symbol named 'kernel' shadows the
+	# marker, like the limb-intrinsic shadowing rule. Like generics,
+	# kernel declarations 'continue' without reaching defhash_note.
+	if (peek(c"kernel")):
+		if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
+			kernel_declaration()
+			return;
 
-		# generator declarations: "generator type-name identifier (".
-		# "generator*" is the struct type in a variable declaration, so
-		# only a bare 'generator' token marks a declaration.
-		if (peek(c"generator")):
-			if (nextc != '*'):
-				generator_declaration()
-				continue;
+	# Generic function definitions ('T max[T](T a, T b):'): the scan
+	# looks ahead past the return type for 'name[', capturing and
+	# skipping the definition when it matches. When it does not, the
+	# scanned tokens are rebuilt into generic_scanned_type and the
+	# declared name is the current token (see grammar/generic.w).
+	if (generic_declaration_scan()):
+		if (export_pending): error(c"'export' is not supported on generic functions")
+		return;
 
-		# Captured here, before the generic scan-ahead, so it is the true
-		# start of the declaration in both of generic_declaration_scan's
-		# outcomes: a real generic (which 'continue's below, never
-		# reaching defhash_note) or a plain declaration whose return type
-		# it already scanned into generic_scanned_type (in which case
-		# token itself has moved on to the declared name, so capturing
-		# this any later would miss the return-type tokens).
-		int defhash_start = token_start_offset
-		# kernel declarations: "kernel identifier (" (implicit void
-		# return). A user type or symbol named 'kernel' shadows the
-		# marker, like the limb-intrinsic shadowing rule. Like generics,
-		# kernel declarations 'continue' without reaching defhash_note.
-		if (peek(c"kernel")):
-			if ((type_lookup(token) < 0) & (sym_lookup(token) < 0)):
-				kernel_declaration()
-				continue;
+	# Now global variables + functions
+	# TODO: variables THEN functions, not both
+	int decl_type = generic_scanned_type
+	if (decl_type < 0): decl_type = type_name()
+	# defhash (docs/projects/build_system_next.md 4a): name/line/column
+	# of the plain declaration below; the 'operator' overload branch
+	# sets its own (wave plan C task 4f) since the real declared
+	# symbol name, "operator", is shared by every overload in the
+	# file and cannot be the recorded defhash name -- see
+	# operator_definition's synthetic name (grammar/operator_overload.w).
+	char* defhash_name = 0
+	int defhash_line = 0
+	int defhash_column = 0
+	# 'operator' is a contextual keyword: followed by an operator
+	# token it defines an overload (grammar/operator_overload.w);
+	# otherwise it stays an ordinary declared name.
+	if (peek(c"operator")):
+		defhash_line = diag_token_line
+		defhash_column = diag_token_column
+		get_token()
+		if (operator_definition_starts_here()):
+			if (export_pending): error(c"'export' is not supported on operator overloads")
+			char* defhash_op_name = operator_definition(decl_type)
+			defhash_note(defhash_op_name, c"operator", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
+			return;
+		current_symbol = sym_declare_global(c"operator", decl_type, 1)
+	else:
+		defhash_name = strclone(token)
+		defhash_line = diag_token_line
+		defhash_column = diag_token_column
+		current_symbol = sym_declare_global(token, decl_type, 1)
+		get_token()
+	if (accept(c";")):
+		if (export_pending): error(c"only functions can be exported")
+		global_variable_declaration(current_symbol, decl_type, 0)
+		if (defhash_name != 0):
+			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
-		# Generic function definitions ('T max[T](T a, T b):'): the scan
-		# looks ahead past the return type for 'name[', capturing and
-		# skipping the definition when it matches. When it does not, the
-		# scanned tokens are rebuilt into generic_scanned_type and the
-		# declared name is the current token (see grammar/generic.w).
-		if (generic_declaration_scan()):
-			if (export_pending): error(c"'export' is not supported on generic functions")
-			continue;
+	else if (accept(c"(")):
+		function_definition(current_symbol)
+		if (export_pending):
+			char* export_name = defhash_name
+			if (export_name == 0): export_name = c"operator"
+			export_function_note(current_symbol, export_name, decl_type)
+		if (defhash_name != 0):
+			defhash_note(defhash_name, c"function", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
-		# Now global variables + functions
-		# TODO: variables THEN functions, not both
-		int decl_type = generic_scanned_type
-		if (decl_type < 0): decl_type = type_name()
-		# defhash (docs/projects/build_system_next.md 4a): name/line/column
-		# of the plain declaration below; the 'operator' overload branch
-		# sets its own (wave plan C task 4f) since the real declared
-		# symbol name, "operator", is shared by every overload in the
-		# file and cannot be the recorded defhash name -- see
-		# operator_definition's synthetic name (grammar/operator_overload.w).
-		char* defhash_name = 0
-		int defhash_line = 0
-		int defhash_column = 0
-		# 'operator' is a contextual keyword: followed by an operator
-		# token it defines an overload (grammar/operator_overload.w);
-		# otherwise it stays an ordinary declared name.
-		if (peek(c"operator")):
-			defhash_line = diag_token_line
-			defhash_column = diag_token_column
-			get_token()
-			if (operator_definition_starts_here()):
-				if (export_pending): error(c"'export' is not supported on operator overloads")
-				char* defhash_op_name = operator_definition(decl_type)
-				defhash_note(defhash_op_name, c"operator", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
-				continue;
-			current_symbol = sym_declare_global(c"operator", decl_type, 1)
-		else:
-			defhash_name = strclone(token)
-			defhash_line = diag_token_line
-			defhash_column = diag_token_column
-			current_symbol = sym_declare_global(token, decl_type, 1)
-			get_token()
-		if (accept(c";")):
-			if (export_pending): error(c"only functions can be exported")
-			global_variable_declaration(current_symbol, decl_type, 0)
-			if (defhash_name != 0):
-				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
+	else if (accept(c"=")):
+		if (export_pending): error(c"only functions can be exported")
+		# defhash_name is 0 only on the 'operator' branch above,
+		# which declared that literal name
+		char* init_name = defhash_name
+		if (init_name == 0): init_name = c"operator"
+		global_variable_declaration(current_symbol, decl_type, init_name)
+		if (defhash_name != 0):
+			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
-		else if (accept(c"(")):
-			function_definition(current_symbol)
-			if (export_pending):
-				char* export_name = defhash_name
-				if (export_name == 0): export_name = c"operator"
-				export_function_note(current_symbol, export_name, decl_type)
-			if (defhash_name != 0):
-				defhash_note(defhash_name, c"function", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
+	else:
+		/*error(8)*/
+		if (export_pending): error(c"only functions can be exported")
+		global_variable_declaration(current_symbol, decl_type, 0)
+		if (defhash_name != 0):
+			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
-		else if (accept(c"=")):
-			if (export_pending): error(c"only functions can be exported")
-			# defhash_name is 0 only on the 'operator' branch above,
-			# which declared that literal name
-			char* init_name = defhash_name
-			if (init_name == 0): init_name = c"operator"
-			global_variable_declaration(current_symbol, decl_type, init_name)
-			if (defhash_name != 0):
-				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
-		else:
-			/*error(8)*/
-			if (export_pending): error(c"only functions can be exported")
-			global_variable_declaration(current_symbol, decl_type, 0)
-			if (defhash_name != 0):
-				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
+void program():
+	while (token[0]):
+		# Imported modules establish their own declaration boundaries. Keep
+		# their successful declarations available even if a sibling failed.
+		# An unreadable import is structural and still stops analysis.
+		if (analysis_mode && peek(c"import")): program_item()
+		else: analysis_run(cast(int, program_item), 1)

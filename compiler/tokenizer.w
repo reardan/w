@@ -1,4 +1,5 @@
 import compiler.diagnostics
+import compiler.retained_ast
 import lib.env
 import lib.termios
 
@@ -361,7 +362,15 @@ void diag_human(char* severity, char* s):
 	diag_clear_help()
 
 
+int analysis_probe_depth
+int analysis_probe_error_status
+
+
 void warning(char *s):
+	if (analysis_probe_depth):
+		diag_clear()
+		diag_clear_help()
+		return
 	if (defhash_rehash_mode):
 		diag_clear()
 		diag_clear_help()
@@ -390,6 +399,7 @@ void error(char *s):
 	if (repl_recovery):
 		diag_clear()
 		repl_error_jump(repl_jump_buffer, 1)
+	if (analysis_probe_error_status): exit(analysis_probe_error_status())
 	exit(1)
 
 
@@ -422,6 +432,8 @@ int getc():
 		char* getc_buffer = cast(char*, getchar_buf_addr[file])
 		c = getc_buffer[getchar_pos[file]] & 255
 		getchar_pos[file] = getchar_pos[file] + 1
+		if (ast_retain_mode):
+			if (retained_source_byte(filename, byte_offset, c) == 0): error(c"source changed during retained AST traversal")
 		byte_offset = byte_offset + 1
 		return c
 	c = getchar_checked(file)
@@ -444,7 +456,10 @@ int getc():
 		if (token == 0): token = filename
 		error3(c"read error while reading '", filename, c"'")
 	# EOF consumes nothing, so the offset only advances for real bytes
-	if (c != -1): byte_offset = byte_offset + 1
+	if (c != -1):
+		if (ast_retain_mode):
+			if (retained_source_byte(filename, byte_offset, c) == 0): error(c"source changed during retained AST traversal")
+		byte_offset = byte_offset + 1
 	return c
 
 

@@ -24,6 +24,7 @@ import grammar.int_literal
 import compiler.bignum
 import grammar.float_literal
 import compiler.expression_ast
+import grammar.retained_ast
 import compiler.statement_ast
 import compiler.loop_ast
 import compiler.gpu_ast

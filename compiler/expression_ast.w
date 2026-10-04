@@ -277,6 +277,18 @@ int expression_ast_add(expression_ast* tree, int op, int left, int right):
 	tree.binding_name[id] = -1
 	tree.qualified[id] = 0
 	tree.next_arg[id] = -1
+	tree.value[id] = 0
+	tree.high[id] = 0
+	tree.binding_offset[id] = 0
+	tree.it_slot[id] = 0
+	tree.generic_offset[id] = 0
+	tree.generic_arity[id] = 0
+	tree.infer_coercion[id] = 0
+	tree.generic_parameters[id] = -1
+	tree.generic_signature[id] = -1
+	tree.generic_instance[id] = -1
+	tree.call_receiver_type[id] = -1
+	tree.infer_want[id] = -1
 	return id
 
 
