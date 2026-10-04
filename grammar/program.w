@@ -394,6 +394,8 @@ void function_definition(int current_symbol):
 	table_pos = n
 
 
+void ast_global_declaration(int binding, int type, char* init_name);
+void ast_thread_local_declaration(int binding, int type);
 void emit_global_type_storage(int type);
 void emit_global_storage(int type);
 void emit_data_global_storage(int type, int base_vaddr);
@@ -713,13 +715,23 @@ void thread_local_declaration():
 	if (peek(c"(")): error(c"thread_local applies to variables, not functions")
 	if (peek(c"=")): error(c"thread_local variables cannot have an initializer; they start zeroed")
 	accept(c";")
-	if (tls_size == 0):
-		tls_size = word_size  /* word 0: the block's self pointer */
-	int offset = tls_size
-	tls_size = tls_size + global_storage_size(decl_type)
-	sym_define_global_at(current_symbol, offset)
-	sym_set_thread_local(current_symbol)
+	if (ast_expressions_mode >= 2): ast_thread_local_declaration(current_symbol, decl_type)
+	else:
+		if (tls_size == 0):
+			tls_size = word_size  /* word 0: the block's self pointer */
+		int offset = tls_size
+		tls_size = tls_size + global_storage_size(decl_type)
+		sym_define_global_at(current_symbol, offset)
+		sym_set_thread_local(current_symbol)
 	defhash_note(name, c"global", decl_file_index(), line, column, start, token_start_offset)
+
+
+void global_variable_declaration(int binding, int type, char* init_name):
+	if (ast_expressions_mode >= 2):
+		ast_global_declaration(binding, type, init_name)
+	else:
+		define_global_variable(binding, type)
+		if (init_name): global_initializer(init_name, binding, type)
 
 
 void program():
@@ -857,7 +869,7 @@ void program():
 			get_token()
 		if (accept(c";")):
 			if (export_pending): error(c"only functions can be exported")
-			define_global_variable(current_symbol, decl_type)
+			global_variable_declaration(current_symbol, decl_type, 0)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
@@ -872,18 +884,17 @@ void program():
 
 		else if (accept(c"=")):
 			if (export_pending): error(c"only functions can be exported")
-			define_global_variable(current_symbol, decl_type)
 			# defhash_name is 0 only on the 'operator' branch above,
 			# which declared that literal name
 			char* init_name = defhash_name
 			if (init_name == 0): init_name = c"operator"
-			global_initializer(init_name, current_symbol, decl_type)
+			global_variable_declaration(current_symbol, decl_type, init_name)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 		else:
 			/*error(8)*/
 			if (export_pending): error(c"only functions can be exported")
-			define_global_variable(current_symbol, decl_type)
+			global_variable_declaration(current_symbol, decl_type, 0)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)

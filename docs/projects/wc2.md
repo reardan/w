@@ -1890,3 +1890,20 @@ matching diagnostics for invalid arguments, ranges and device returns.
 Statistics count launches, outlined loops, header values and captures. Device
 bodies still use incremental statement visits; these nodes do not retain a
 whole module or its body lists.
+
+## Task 105: owned global storage layouts
+
+Global declarations now build owned layout trees containing scalar byte sizes,
+array lengths, field offsets and child layouts. Backend visitors reserve and
+initialize either writable data-segment storage or the inline REPL/debugger
+image. A declaration node retains its resolved address and scalar width while
+its constant initializer is parsed and folded, then writes the value without
+looking the symbol address up again. Thread-local declarations carry resolved
+sizes into a separate storage visitor.
+
+Native-image and runtime comparisons cover nested array-bearing records,
+zero initialization, const references, narrow integer stores and TLS offsets.
+Direct tests overwrite the original record and array type information after
+building a layout and verify unchanged emitted bytes on both host widths.
+Invalid initializer and TLS diagnostics retain their reference ordering.
+These are declaration-local trees; the module dispatcher remains incremental.

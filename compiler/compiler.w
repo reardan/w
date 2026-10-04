@@ -829,6 +829,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_blocks_emitted = 0
 	ast_while_loops_emitted = 0
 	ast_deferred_expressions_emitted = 0
+	ast_globals_emitted = 0
+	ast_global_initializers_emitted = 0
+	ast_thread_locals_emitted = 0
 	ast_gpu_launches_emitted = 0
 	ast_gpu_fors_emitted = 0
 	ast_gpu_values_emitted = 0
@@ -1123,6 +1126,13 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(c"\n")
 		print_error(c"AST goto/label statements: ")
 		print_error(itoa(ast_goto_statements_emitted))
+		print_error(c"\n")
+		print_error(c"AST globals: ")
+		print_error(itoa(ast_globals_emitted))
+		print_error(c"\nAST global initializers: ")
+		print_error(itoa(ast_global_initializers_emitted))
+		print_error(c"\nAST thread locals: ")
+		print_error(itoa(ast_thread_locals_emitted))
 		print_error(c"\n")
 		print_error(c"AST GPU launches: ")
 		print_error(itoa(ast_gpu_launches_emitted))

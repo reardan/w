@@ -581,3 +581,41 @@ void ast_test_stack_binding_snapshot(int scope, int expected_words):
 void test_ast_stack_operands_own_their_bindings():
 	ast_test_stack_binding_snapshot('L', 6)
 	ast_test_stack_binding_snapshot('A', 13)
+
+
+void test_ast_global_layout_survives_type_changes():
+	word_size = __word_size__
+	word_size_log2 = 2
+	if (word_size == 8): word_size_log2 = 3
+	push_basic_types()
+	int array = type_push_array(type_lookup(c"char"), 3)
+	int record = type_push_size(c"ast_owned_global_layout", word_size + type_get_size(array))
+	type_rec* original = type_record(record)
+	original.num_fields = 2
+	original.field_names[0] = c"tag"
+	original.field_types[0] = type_lookup(c"int")
+	original.field_names[1] = c"values"
+	original.field_types[1] = array
+	int bytes = global_storage_size(record)
+	global_storage_ast* tree = global_storage_ast_build(record, 0)
+	int before = codepos
+	emit_global_storage(record)
+	assert_equal(bytes, codepos - before)
+	char* expected = malloc(bytes)
+	for i in range(bytes): expected[i] = code[before + i]
+	codepos = before
+	# Reuse both the parent and array records. The emitter must only
+	# inspect the owned layout tree, including the original array length.
+	original.field_types[1] = type_lookup(c"int")
+	type_rec* original_array = type_record(array)
+	int old_length = original_array.fn_param_count
+	original_array.fn_param_count = 99
+	emit_global_storage_tree_ast(tree)
+	emit_zeros(bytes - (codepos - before))
+	assert_equal(bytes, codepos - before)
+	assert_bytes_equal(expected, code + before, bytes)
+	original.field_types[1] = array
+	original_array.fn_param_count = old_length
+	codepos = before
+	free(expected)
+	global_storage_ast_free(tree)
