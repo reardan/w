@@ -3217,9 +3217,10 @@ int ast_expression_parallel(expression_ast* tree, int first):
 # code. Restore *all* changed state before either falling back or replaying
 # the accepted tokens once for the existing literal diagnostics. The tokenizer
 # snapshot is freed before any diagnostic can longjmp; the arena unwinds
-# with the caller's stack on recovery. Return the expression's real type
-# (possibly an lvalue or a negative value type), or -1 for fallback.
-int ast_expression_try_at(int group_offset, int whole):
+# with the caller's stack on recovery. Preparation returns a decoded root
+# in the caller-owned arena, or -1 for fallback; it emits no expression code.
+# Symbols/types and source diagnostics commit only after the probe succeeds.
+int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole):
 	if (ast_expressions_mode == 0): return -1
 	# Keep the streaming parser's pending lvalue/call/statement machinery
 	# out of this first island. Expanding that boundary needs its own
@@ -3228,7 +3229,6 @@ int ast_expression_try_at(int group_offset, int whole):
 	if (increment_statement_context || generic_pending_call_signature || generic_pending_call_name): return -1
 	int end = ast_expression_boundary(group_offset, whole)
 	if (end < 0): return -1
-	expression_ast tree
 	tree.count = 0
 	tree.text_used = 0
 	tree.types_base = type_count()
@@ -3248,17 +3248,17 @@ int ast_expression_try_at(int group_offset, int whole):
 	int prefix = 0
 	if (whole > 1): prefix = increment_op()
 	if (prefix):
-		ast_expression_advance(&tree)
-		int child = ast_expression_unary(&tree, 1)
-		root = ast_expression_increment(&tree, child, prefix)
+		ast_expression_advance(tree)
+		int child = ast_expression_unary(tree, 1)
+		root = ast_expression_increment(tree, child, prefix)
 	else:
-		root = ast_expression_assignment(&tree, 1)
+		root = ast_expression_assignment(tree, 1)
 		if ((root >= 0) && (whole > 1) && (token_newline == 0)):
 			int postfix = increment_op()
 			if (postfix):
-				ast_expression_advance(&tree)
-				root = ast_expression_increment(&tree, root, postfix)
-	if ((root >= 0) && (whole > 1) && peek(c",")): root = ast_expression_parallel(&tree, root)
+				ast_expression_advance(tree)
+				root = ast_expression_increment(tree, root, postfix)
+	if ((root >= 0) && (whole > 1) && peek(c",")): root = ast_expression_parallel(tree, root)
 	# Preflight cannot distinguish postfix '?' from a ternary opener.
 	# A typed parse may finish at a statement colon before that bound.
 	if ((root >= 0) && whole && (token_start_offset < end) && peek(c":")):
@@ -3267,23 +3267,23 @@ int ast_expression_try_at(int group_offset, int whole):
 	int accepted = (root >= 0) && (token_start_offset == end)
 	if (whole == 0): accepted = accepted && peek(c")")
 	if (accepted): accepted = ast_expression_data_value(tree.result_type[root]) || (tree.result_type[root] == type_value(0))
-	ast_expression_restore_types(&tree)
+	ast_expression_restore_types(tree)
 	getchar_seek(file, load_ptr(saved + 7 * __word_size__))
 	generic_reparse_restore(saved)
 	token_serial = serial
 	if (accepted == 0): return -1
 	while (token_start_offset < end):
 		for i in range(tree.types_count):
-			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(&tree, i)
+			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(tree, i)
 		for id in range(tree.count):
-			if ((tree.op[id] == ast_warning) && (tree.offset[id] == token_start_offset)): ast_expression_replay_warning(&tree, id)
+			if ((tree.op[id] == ast_warning) && (tree.offset[id] == token_start_offset)): ast_expression_replay_warning(tree, id)
 			if ((tree.op[id] == 'z') && (tree.offset[id] == token_start_offset)): sym_lookup(table + tree.value[id])
 			if ((tree.op[id] == 'M') && (tree.value[id] & 256) && (tree.offset[id] == token_start_offset)): sym_lookup(c"it")
 			if ((tree.op[id] == 'W') && (tree.offset[id] == token_start_offset)):
 				int before = type_count()
 				generic_infer_shapes(tree.value[id])
 				assert1(before == type_count())
-			if (((tree.op[id] == 'G') || (tree.op[id] == 'W')) && (tree.generic_offset[id] == token_start_offset)): ast_expression_commit_generic(&tree, id)
+			if (((tree.op[id] == 'G') || (tree.op[id] == 'W')) && (tree.generic_offset[id] == token_start_offset)): ast_expression_commit_generic(tree, id)
 			if ((tree.op[id] == ast_template_format) && (tree.offset[id] == token_start_offset)): template_take_spec()
 			if ((tree.op[id] == 't') && (tree.offset[id] == token_start_offset)):
 				if (tree.high[id]): get_token_template_chunk()
@@ -3329,20 +3329,33 @@ int ast_expression_try_at(int group_offset, int whole):
 				# This is the committed use: update unused-local tracking
 				# only now, at the same source token as identifier().
 				sym_lookup(token)
-		ast_expression_advance(&tree)
+		ast_expression_advance(tree)
 	for i in range(tree.types_count):
-		if (tree.pointer_offsets[i] == end): ast_expression_commit_pointer(&tree, i)
-	emit_expression_ast(&tree, root)
+		if (tree.pointer_offsets[i] == end): ast_expression_commit_pointer(tree, i)
+	return root
+
+
+# A prepared tree keeps the final token virtual until emission finishes.
+# Emit it in the same scope, before consuming any other source token.
+int ast_expression_emit_prepared(expression_ast* tree, int root):
+	emit_expression_ast(tree, root)
 	expression_lhs_readonly = tree.readonly
-	if (whole):
+	if (tree.whole_expression):
 		token_start_offset = tree.final_token_offset
 		get_token()
 	# A virtual root terminator is lexed only after emission. Warnings
 	# on the completed root use that real following token's location.
 	for id in range(tree.count):
-		if ((tree.op[id] == ast_warning) && (tree.offset[id] == end)): ast_expression_replay_warning(&tree, id)
+		if ((tree.op[id] == ast_warning) && (tree.offset[id] == tree.end_offset)): ast_expression_replay_warning(tree, id)
 	ast_expressions_emitted = ast_expressions_emitted + 1
 	return tree.result_type[root]
+
+
+int ast_expression_try_at(int group_offset, int whole):
+	expression_ast tree
+	int root = ast_expression_prepare_at(&tree, group_offset, whole)
+	if (root < 0): return -1
+	return ast_expression_emit_prepared(&tree, root)
 
 
 int ast_expression_try(int group_offset):

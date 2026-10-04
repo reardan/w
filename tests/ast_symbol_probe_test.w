@@ -384,3 +384,59 @@ void test_ast_generic_inference_shapes_without_placeholders():
 	assert_equal(before, type_count())
 	generic_signature_ast_free(generic_defs[def].signature_ast)
 	generic_defs[def].signature_ast = signature
+
+
+void ast_test_prepared_expression(char* source, int accepted):
+	word_size = __word_size__
+	push_basic_types()
+	if (token == 0):
+		token_size = 20
+		token = malloc(token_size)
+		token[0] = 0
+	char* saved = generic_reparse_save()
+	int serial = token_serial
+	int mode = ast_expressions_mode
+	int reader
+	int writer
+	assert_equal(0, process_make_pipe(&reader, &writer))
+	getchar_reset(reader)
+	assert_equal(strlen(source), write(writer, source, strlen(source)))
+	close(writer)
+	file = reader
+	filename = c"AST preparation test"
+	byte_offset = 0
+	line_number = 0
+	column_number = 0
+	tab_level = 0
+	token_newline = 0
+	nextc = 0
+	nextc = get_character()
+	get_token()
+	ast_expressions_mode = 2
+	int before_code = codepos
+	int before_types = type_count()
+	int before_emitted = ast_expressions_emitted
+	expression_ast tree
+	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
+	assert_equal(before_code, codepos)
+	assert_equal(before_emitted, ast_expressions_emitted)
+	assert_equal(before_types, type_count())
+	if (accepted):
+		assert1(root >= 0)
+		assert_equal('*', tree.op[root])
+		assert_equal(6, tree.value[tree.left[root]])
+		assert_equal(7, tree.value[tree.right[root]])
+		assert_equal(tree.end_offset, token_start_offset)
+	else:
+		assert_equal(-1, root)
+		assert_equal(0, token_start_offset)
+		assert_strings_equal(c"6", token)
+	close(reader)
+	generic_reparse_restore(saved)
+	token_serial = serial
+	ast_expressions_mode = mode
+
+
+void test_ast_preparation_builds_nodes_without_emission():
+	ast_test_prepared_expression(c"6 * 7\nnext\n", 1)
+	ast_test_prepared_expression(c"6 + ast_preparation_missing_name\n", 0)

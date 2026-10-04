@@ -1697,3 +1697,17 @@ and locals on both host widths. Diagnostic comparisons cover invalid jump
 contexts, malformed terminators, unreachable statements and declaration
 precedence. Debugger markers preserve their emission order; AST statistics
 report simple-statement and debugger-node counts.
+
+## Task 92: caller-owned expression preparation
+
+Expression preparation and emission now have separate entry points.
+`ast_expression_prepare_at` builds and decodes a root in a caller-owned arena,
+committing accepted source diagnostics and bindings without emitting the
+expression's code. `ast_expression_emit_prepared` walks the tree, completes
+the virtual token boundary and replays final warning events. The existing
+expression entry points compose these operations with unchanged behavior.
+
+A prepared tree must be emitted in its original scope before consuming more
+source tokens; this is a statement-building foundation, not a persistent
+module AST. Direct tests on both host widths inspect the prepared tree,
+assert no code emission and verify token/type rollback after a failed probe.
