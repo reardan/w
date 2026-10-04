@@ -446,7 +446,7 @@ int ast_expression_assignment(expression_ast* tree, int depth);
 # Type predicates also see the arena's temporary pointer records. No heap
 # type records, imports, symbol uses or diagnostics are committed by a probe.
 int ast_expression_scalar_type(int type):
-	if (type_is_gpu_object(type) || type_is_gpu_pointer(type)): return 0
+	if (type_is_gpu_object(type) && (target_isa != 3)): return 0
 	int base = type_unqualified(type)
 	if (type_get_pointer_level(base) > 0): return 1
 	if (type_is_string(base) || type_is_var(base)): return 1
@@ -472,7 +472,8 @@ int ast_expression_scalar_value(int type):
 # Record lvalues can expose fields; record values can also flow through
 # copies and calls without a load. Keep those two predicates separate.
 int ast_expression_record_type(int type):
-	if (type_is_value(type) || type_is_gpu_object(type)): return 0
+	if (type_is_value(type)): return 0
+	if (type_is_gpu_object(type) && (target_isa != 3)): return 0
 	int base = type_unqualified(type)
 	int kind = type_get_kind(base)
 	if ((kind != 0) && (kind != type_kind_union)): return 0
@@ -491,7 +492,7 @@ int ast_expression_data_value(int type):
 
 
 int ast_expression_storage_type(int type):
-	if (type_is_gpu_object(type) || type_is_gpu_pointer(type)): return 0
+	if (type_is_gpu_object(type) && (target_isa != 3)): return 0
 	if (type_is_buffer(type) || type_is_list(type)): return 1
 	return ast_expression_scalar_type(type) || ast_expression_record_type(type)
 
@@ -502,6 +503,7 @@ int ast_expression_promoted_type(int type):
 	if (type == string_type): return string_value_type
 	if (type == var_type): return var_value_type
 	if (type_is_value(type)): return type_strip_gpu(type_real(type))
+	if (type_is_gpu_object(type)): return ast_expression_promoted_type(type_strip_gpu(type))
 	if (ci_is_bit_field_access(type)): return type_lookup(c"int")
 	if (type_is_array(type) || (type_get_kind(type) == type_kind_slice)):
 		int promoted = type_lookup_slice_value(type_get_element_type(type))
@@ -1733,6 +1735,12 @@ int ast_expression_postfix(expression_ast* tree, int depth);
 int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	if (depth > 96): return -1
 	int is_const = ast_expression_accept(tree, c"const")
+	int is_gpu = 0
+	if (peek(c"gpu") && (type_lookup(c"gpu") < 0) && (sym_probe(c"gpu") < 0)):
+		ast_expression_advance(tree)
+		is_gpu = 1
+		if (ast_expression_accept(tree, c"const")): is_const = 1
+		if ((type_lookup(token) < 0) && (generic_subst_lookup(token) < 0)): return -1
 	int type = -1
 	if ((nextc == '[') && (peek(c"map") || peek(c"set") || peek(c"list"))):
 		int kind = type_kind_list
@@ -1783,6 +1791,10 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	if ((word_size != 8) && ((base == float64_type) || (base == int64_type) || (base == uint64_type))): return -1
 	if (is_const):
 		type = type_lookup_const(type)
+		if (type < 0): return -1
+	if (is_gpu):
+		if ((type_get_pointer_level(type) > 0) || (peek(c"*") == 0)): return -1
+		type = ast_expression_gpu_type(tree, type, token_start_offset)
 		if (type < 0): return -1
 	while (peek(c"*") && (token_start_offset < tree.end_offset)):
 		int offset = token_start_offset
@@ -2408,6 +2420,10 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			# layout slot. Preserve the access type for loads and stores.
 			if (ci_is_bit_field_access(field)): offset = ci_bit_field_unit_offset(field)
 			ast_expression_advance(tree)
+			if (type_is_gpu_object(record) && (ci_is_bit_field_access(field) == 0)):
+				if ((type_get_pointer_level(field) == 0) && (type_num_args(field) == 0) && (type_is_buffer(field) == 0)):
+					field = ast_expression_gpu_type(tree, field, token_start_offset)
+					if (field < 0): return -1
 			left = expression_ast_add(tree, '.', left, -1)
 			if (left < 0): return -1
 			tree.result_type[left] = field
@@ -2776,6 +2792,7 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	if (id < 0): return -1
 	tree.value[id] = op
 	tree.result_type[id] = type_value(lt)
+	if ((op == 0) && (map_store == 0)): tree.result_type[id] = type_value(type_strip_gpu(lt))
 	return id
 
 

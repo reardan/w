@@ -1483,3 +1483,17 @@ barriers; atomic nodes retain int and float32 device operands. Required-mode
 compilation produces identical host images and PTX for the emitter battery,
 CUDA kernels and local-promotion regression. Differential tests cover
 invalid intrinsics, host-only references, capture writes and probe rollback.
+
+## Task 77: GPU-qualified expression types
+
+AST operands now preserve GPU pointer types and device-memory lvalues.
+Type probes stage first-use GPU wrappers and pointers, retaining raw names
+for pointer lookup and following canonical records for field metadata.
+Field access stages scalar GPU wrappers at the original member boundary;
+ordinary assignments yield the unqualified stored value.
+
+The qualified-pointer suites compile with required AST expressions and
+identical host images and PTX. Fixtures cover nested pointers, first-use
+casts, struct fields, compound stores, increments and assignment results.
+Host dereferences and implicit host/device pointer conversions retain their
+existing diagnostics through differential tests.

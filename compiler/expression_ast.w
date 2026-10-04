@@ -127,6 +127,7 @@ char* ast_expression_contains_helper(int kind):
 # committed literal diagnostic can unwind this stack frame.
 int ast_expression_pointer_type(expression_ast* tree, int base, int offset):
 	int existing = type_lookup_next_pointer(base)
+	if (type_is_gpu_object(base)): existing = type_lookup_pointer(type_get_name(base), 1)
 	if (existing >= 0): return existing
 	# Array promotion can intern a slice-value type during emission.
 	# Preserve type registration order until it too has a replay event.
@@ -134,6 +135,7 @@ int ast_expression_pointer_type(expression_ast* tree, int base, int offset):
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.name = type_get_name(type_canonical(base))
+	if (type_is_gpu_object(base)): rec.name = type_get_name(base)
 	rec.num_fields = 0
 	rec.total_size = word_size
 	rec.pointer_level = type_get_pointer_level(base) + 1
@@ -184,6 +186,41 @@ int ast_expression_const_type(expression_ast* tree, int base, int offset):
 	return result
 
 
+# GPU-object wrappers preserve the raw memory-domain type while the
+# ordinary type queries follow the canonical element, including its
+# fields. The arena record needs no field-array descriptors.
+int ast_expression_gpu_type(expression_ast* tree, int base, int offset):
+	base = type_canonical(base)
+	for index in range(type_count()):
+		type_rec* existing = type_record(index)
+		if ((existing.kind == type_kind_gpu) && (existing.alias_target == base)): return index
+	if (tree.pending_buffer_types || (tree.types_count == 16)): return -1
+	int length = strlen(type_get_name(base)) + 5
+	if (tree.type_names_used + length > 2048): return -1
+	int i = tree.types_count
+	type_rec* rec = &tree.pointer_types[i]
+	type_rec* source = type_record(base)
+	rec.name = &tree.type_names[tree.type_names_used]
+	strcpy(rec.name, c"gpu ")
+	strcpy(rec.name + 4, type_get_name(base))
+	tree.type_names_used = tree.type_names_used + length
+	rec.num_fields = source.num_fields
+	rec.total_size = source.total_size
+	rec.pointer_level = source.pointer_level
+	rec.alias_target = base
+	rec.kind = type_kind_gpu
+	rec.fn_return_type = -1
+	rec.fn_param_count = -1
+	rec.decl_file_index = -1
+	rec.decl_line = 0
+	rec.decl_column = 0
+	tree.pointer_offsets[i] = offset
+	tree.types_count = i + 1
+	int result = type_count()
+	type_records.push(cast(int, rec))
+	return result
+
+
 void ast_expression_restore_types(expression_ast* tree):
 	if (tree.types_count == 0): return
 	type_table_truncate(tree.types_base)
@@ -198,7 +235,8 @@ void ast_expression_commit_pointer(expression_ast* tree, int i):
 	type_rec* rec = &tree.pointer_types[i]
 	if (rec.kind == type_kind_function): return
 	int actual
-	if (rec.kind == type_kind_const): actual = type_push_const(rec.alias_target)
+	if (rec.kind == type_kind_gpu): actual = type_get_gpu(rec.alias_target)
+	else if (rec.kind == type_kind_const): actual = type_push_const(rec.alias_target)
 	else if (rec.kind == type_kind_slice_value): actual = type_push_slice_value(rec.alias_target)
 	else if (rec.kind == type_kind_slice): actual = type_push_slice(rec.alias_target)
 	else if (rec.kind == type_kind_map): actual = type_push_map(rec.alias_target, rec.fn_return_type)
@@ -207,7 +245,9 @@ void ast_expression_commit_pointer(expression_ast* tree, int i):
 	else:
 		# A newly staged composite's name belongs to this arena. Reuse the
 		# committed base record's persistent name for its pointer record.
-		char* name = type_get_name(type_canonical(tree.pointer_bases[i]))
+		int base = tree.pointer_bases[i]
+		char* name = type_get_name(type_canonical(base))
+		if (type_is_gpu_object(base)): name = type_get_name(base)
 		actual = type_push_pointer(name, rec.total_size, rec.pointer_level)
 	assert1(actual == tree.types_base + i)
 
