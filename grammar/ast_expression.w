@@ -778,7 +778,7 @@ int ast_expression_generic_call(expression_ast* tree, int depth):
 	return id
 
 
-# Inference over simple captured signatures is transactional. Each value
+# Inference over captured signatures is transactional. Each value
 # argument records the coercion performed at its own binding point, rather
 # than re-coercing it against the final signature after all arguments.
 int ast_expression_generic_infer(expression_ast* tree, int depth):
@@ -847,7 +847,7 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 				inferred = type_unqualified(inferred)
 				if ((bound >= 0) && (bound != inferred)): return -1
 				types[kind] = inferred
-		else:
+		else if (kind == -1):
 			int want = shapes[count]
 			if (ast_expression_data_value(want) == 0): return -1
 			if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
@@ -874,6 +874,12 @@ int ast_expression_generic_infer(expression_ast* tree, int depth):
 	tree.generic_offset[id] = token_start_offset
 	if (ast_expression_generic_resolve(tree, id, cast(int, &types[0]), arity) != count): return -1
 	if (type_num_args(tree.high[id]) > 0): return -1
+	int argument = tree.left[id]
+	for i in range(count):
+		if (kinds[i] == -2):
+			int want = ast_expression_generic_parameter(tree, id, i)
+			if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
+		argument = tree.next_arg[argument]
 	ast_expression_advance(tree)
 	return id
 

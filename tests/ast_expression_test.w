@@ -591,6 +591,10 @@ void test_ast_inferred_generic_calls_are_required():
 	ast_test_store_diagnostics(c"T f[T](T value): return value\nstruct R:\n\tint x\nint main():\n\tR r = R(1)\n\tf(r)\n\treturn 0\n")
 	ast_test_store_diagnostics(c"T f[T](T value): return value\nint g(): return 1\nint main(): return f(g)\n")
 
+	ast_test_store_diagnostics(c"T f[T](T value, list[T] items): return value\nint main(): return f(1, list[char]{'a'})\n")
+	ast_test_store_diagnostics(c"int f[T](list[T] items): return items.length\nint main(): return f(list[int]{1})\n")
+	ast_test_store_diagnostics(c"T f[T](T value, map[T, list[void]] items): return value\nint main(): return f(1, 0)\n")
+
 
 void test_ast_void_calls_are_required():
 	for host in range(2):

@@ -785,16 +785,49 @@ void generic_infer_store_shape(char* block, int slot, int param_type, int def):
 	save_ptr(e + __word_size__, param_type)
 
 
-# A simple captured type needs no placeholder records: a bare type
-# parameter carries its own pointer depth, and concrete named types use
-# already-registered records. -3 means the header reparse is still needed.
+# Classify captured syntax without placeholder records or type interning.
+# Composite types containing a parameter are opaque: another argument must
+# bind that parameter before the instantiated signature can check them.
+# -3 means unsupported syntax or a concrete derived type not yet registered.
 int generic_infer_ast_shape(int def, generic_type_ast* node, int* data):
-	if ((node == 0) || (node.application != 0) || (node.first != 0)): return -3
-	for i in range(generic_def_param_count(def)):
-		if (strcmp(node.name, generic_def_param_name(def, i)) == 0):
-			*data = node.stars
-			return i
-	int type = type_lookup(node.name)
+	if ((node == 0) || (node.application == 1)): return -3
+	int type = -1
+	if (node.first != 0):
+		int first = 0
+		int second = 0
+		int first_kind = generic_infer_ast_shape(def, node.first, &first)
+		if (first_kind == -3): return -3
+		int second_kind = -1
+		int kind = type_kind_list
+		if (node.application == 2): kind = type_kind_slice
+		else if (strcmp(node.name, c"set") == 0): kind = type_kind_set
+		else if (strcmp(node.name, c"map") == 0):
+			kind = type_kind_map
+			second_kind = generic_infer_ast_shape(def, node.second, &second)
+			if (second_kind == -3): return -3
+		else if (strcmp(node.name, c"list") != 0): return -3
+		# Concrete children retain the declaration's storage checks even
+		# when a different child makes the complete shape opaque.
+		int checked = -1
+		if ((kind == type_kind_list) && (first_kind == -1)): checked = type_unqualified(first)
+		if ((kind == type_kind_map) && (second_kind == -1)): checked = type_unqualified(second)
+		if (checked >= 0):
+			if (type_is_array(checked) || type_has_array_field(checked)): return -3
+			if ((kind == type_kind_list) && (type_get_size(checked) <= 0)): return -3
+			if ((type_num_args(checked) == 0) && (type_stack_words(checked) != 1)): return -3
+		if ((first_kind != -1) || (second_kind != -1)):
+			*data = 0
+			return -2
+		if (kind == type_kind_slice): type = type_lookup_slice(first)
+		else if (kind == type_kind_map): type = type_lookup_map(first, second)
+		else if (kind == type_kind_set): type = type_lookup_set(first)
+		else: type = type_lookup_list(first)
+	else:
+		for i in range(generic_def_param_count(def)):
+			if (strcmp(node.name, generic_def_param_name(def, i)) == 0):
+				*data = node.stars
+				return i
+		type = type_lookup(node.name)
 	if (type < 0): return -3
 	int base = type_unqualified(type)
 	if ((word_size != 8) && ((base == float64_type) || (base == int64_type) || (base == uint64_type))): return -3

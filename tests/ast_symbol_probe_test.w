@@ -367,9 +367,17 @@ void test_ast_generic_inference_shapes_without_placeholders():
 	assert1(block == generic_infer_shapes(def))
 	assert_equal(before, type_count())
 	assert1(placeholders == generic_infer_placeholders)
-	# Unsupported and unresolved shapes decline without creating types.
-	generic_defs[def].signature_ast = ast_test_capture_signature(c"(list[T] values):\n")
-	assert1(generic_infer_ast_shapes(def) == 0)
+	# Composite parameter references are opaque and need no placeholders.
+	generic_defs[def].signature_ast = ast_test_capture_signature(c"(list[T] a, map[int, list[T*]] b, T[] c, set[T]* d):\n")
+	char* opaque = generic_infer_ast_shapes(def)
+	assert1(opaque != 0)
+	assert_equal(4, load_ptr(opaque))
+	for i in range(4):
+		assert_equal(-2, load_ptr(opaque + __word_size__ + i * 2 * __word_size__))
+		assert_equal(0, load_ptr(opaque + 2 * __word_size__ + i * 2 * __word_size__))
+	free(opaque)
+	assert_equal(before, type_count())
+	assert1(placeholders == generic_infer_placeholders)
 	generic_signature_ast_free(generic_defs[def].signature_ast)
 	generic_defs[def].signature_ast = ast_test_capture_signature(c"(AstMissingType value):\n")
 	assert1(generic_infer_ast_shapes(def) == 0)

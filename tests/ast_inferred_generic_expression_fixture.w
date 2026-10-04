@@ -26,6 +26,15 @@ int ast_infer_mark(int value):
 	ast_infer_order = ast_infer_order * 10 + value
 	return value
 
+T ast_infer_list[T](list[T] values, T witness): return values[1]
+T ast_infer_slice[T](T[] values, T witness): return values[1]
+T ast_infer_map[T](T key, map[T, int] values):
+	if (values[key] == 9): return key
+	return 0
+int ast_infer_set[T](set[T] values, T witness): return values.length
+T ast_infer_nested[T](T witness, list[list[T]] values): return values[0][1]
+int ast_infer_concrete_list[T](T witness, list[int16] values): return values[0]
+
 int main():
 	if (ast_infer_add(2, 3) != 5): return 1
 	if (ast_infer_add(1.5, 2) != 3.5): return 2
@@ -58,5 +67,19 @@ int main():
 	if (ast_infer_concrete(3, 2) != 6): return 16
 	ast_infer_callback* callback = ast_infer_increment
 	if (ast_infer_apply(2, callback) != 3 || ast_infer_apply(3, ast_infer_increment) != 4): return 17
+	int16 narrow = 3
+	if (ast_infer_list(values, narrow) != 4): return 18
+	if (ast_infer_slice(source, 1) != 8): return 19
+	map[int, int] table = map[int, int]{7: 9}
+	if (ast_infer_map(7, table) != 7): return 20
+	set[int] keys = set[int]{1, 2}
+	if (ast_infer_set(keys, 1) != 2): return 21
+	list[list[int16]] nested = list[list[int16]]{values}
+	if (ast_infer_nested(narrow, nested) != 4): return 22
+	if (ast_infer_concrete_list(1, values) != 3): return 23
+	if (ast_infer_list(values, ast_infer_list(values, narrow)) != 4): return 24
+	nested.free()
+	keys.free()
+	table.free()
 	values.free()
 	return 0

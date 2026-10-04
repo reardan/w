@@ -1223,3 +1223,18 @@ pointers, strings, slices, containers, record parameters, callback pointers,
 constant coercions and evaluation order. Invalid bindings and unsupported record
 returns preserve diagnostics. Composite signature shapes and unresolved concrete
 derived types still use the streaming fallback.
+
+## Task 58: composite inference parameter shapes
+
+Captured list, map, set and slice syntax now classifies parameter-dependent
+shapes as opaque without instantiating placeholder types. Concrete children
+retain storage validation; fully concrete composites resolve existing types.
+Inferred call nodes check opaque arguments against the final bound signature,
+after the other arguments have supplied all type parameters.
+
+Tests cover opaque arguments before their binding argument, nested containers,
+slices promoted from arrays, concrete container parameters and nested inferred
+calls. Shape extraction tests assert unchanged type and placeholder state.
+Mismatched containers, unbound parameters and invalid element types retain
+diagnostics. Generic-struct shapes and new concrete derived types still fall
+back to the existing extraction path.
