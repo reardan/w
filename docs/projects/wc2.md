@@ -884,3 +884,15 @@ record fields across the image matrix. The complete parallel-assignment
 fixture must also pass required mode on both compiler host widths. Arity,
 map-target, read-only and type-mismatch diagnostics retain the streaming
 fallback for exact parity.
+
+## Task 33: increment and decrement statements
+
+Prefix and postfix increment/decrement now lower through explicit AST
+mutation nodes at statement position. Prefix dispatch enters the same
+whole-statement probe, so required mode also covers that earlier grammar
+path. Emission reuses the established implicit-one compound-store lowering.
+
+The differential and required-mode fixture exercises narrow integers,
+floats, record fields, side-effecting indexes, pointers, list elements,
+brace blocks and newline boundaries. Value-position increments, const or
+read-only targets, map elements and non-lvalues retain their diagnostics.

@@ -1164,6 +1164,20 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	return id
 
 
+int ast_expression_increment(expression_ast* tree, int child, int op):
+	if (child < 0): return -1
+	int type = tree.result_type[child]
+	if (tree.readonly || type_is_value(type) || (type == 3) || (type == 4) || type_is_const(type)): return -1
+	if (tree.op[child] == 'm'): return -1
+	if (ast_expression_scalar_type(type) == 0): return -1
+	if (type_is_buffer(type_canonical(type))): return -1
+	int id = expression_ast_add(tree, 'U', child, -1)
+	if (id < 0): return -1
+	tree.value[id] = op
+	tree.result_type[id] = type_value(type)
+	return id
+
+
 # Parallel assignment is admitted only by the whole statement entry.
 # Pair nodes separate sibling links from any nested call's argument list.
 int ast_expression_parallel(expression_ast* tree, int first):
@@ -1235,7 +1249,20 @@ int ast_expression_try_at(int group_offset, int whole):
 	tree.cast_depth = cast_context
 	char* saved = generic_reparse_save()
 	int serial = token_serial
-	int root = ast_expression_assignment(&tree, 1)
+	int root = -1
+	int prefix = 0
+	if (whole > 1): prefix = increment_op()
+	if (prefix):
+		ast_expression_advance(&tree)
+		int child = ast_expression_unary(&tree, 1)
+		root = ast_expression_increment(&tree, child, prefix)
+	else:
+		root = ast_expression_assignment(&tree, 1)
+		if ((root >= 0) && (whole > 1) && (token_newline == 0)):
+			int postfix = increment_op()
+			if (postfix):
+				ast_expression_advance(&tree)
+				root = ast_expression_increment(&tree, root, postfix)
 	if ((root >= 0) && (whole > 1) && peek(c",")): root = ast_expression_parallel(&tree, root)
 	int accepted = (root >= 0) && (token_start_offset == end)
 	if (whole == 0): accepted = accepted && peek(c")")

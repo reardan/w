@@ -130,9 +130,14 @@ int increment_apply(int op, int type):
 # operand is a unary_expression, so postfix chains ('p.x', 'arr[i]'),
 # '*p' and parenthesized lvalues all work; a non-lvalue operand fails
 # increment_apply's assignability checks.
+int ast_expression_try_root(int statement_context);
+
+
 int increment_prefix_statement():
 	int op = increment_op()
 	if (op == 0): return 0
+	if (ast_expressions_mode >= 2):
+		if (ast_expression_try_root(1) != -1): return 1
 	get_token()
 	expression_lhs_readonly = 0
 	int type = unary_expression()

@@ -161,6 +161,10 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
+	if (op == 'U'):
+		expression_is_assignment = 1
+		compound_assign_scalar(tree.value[id], left_type, 1)
+		return
 	if (op == 'H'):
 		int key_type = binary1(left_type)
 		int key_slot = stack_pos
