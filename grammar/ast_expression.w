@@ -563,6 +563,187 @@ int ast_expression_print(expression_ast* tree, int depth):
 	return id
 
 
+int ast_expression_named_type(expression_ast* tree, int scalar, int depth);
+
+
+# Bind captured signature syntax against explicit type arguments. Only
+# existing composite records are admitted; pointer records are staged in
+# the expression transaction at the closing type-argument bracket.
+int ast_expression_bind_generic_type(expression_ast* tree, int id, generic_type_ast* node):
+	int type = -1
+	int def = tree.value[id]
+	int argument = tree.right[id]
+	int i = 0
+	while (argument >= 0):
+		if (strcmp(node.name, generic_def_param_name(def, i)) == 0): type = tree.value[argument]
+		argument = tree.next_arg[argument]
+		i = i + 1
+	if (node.first != 0):
+		int first = ast_expression_bind_generic_type(tree, id, node.first)
+		if (first < 0): return -1
+		if (strcmp(node.name, c"map") == 0):
+			int second = ast_expression_bind_generic_type(tree, id, node.second)
+			if (second < 0): return -1
+			type = type_lookup_map(first, second)
+		else if (strcmp(node.name, c"set") == 0): type = type_lookup_set(first)
+		else: type = type_lookup_list(first)
+	else if (type < 0): type = type_lookup(node.name)
+	if (type < 0): return -1
+	int base = type_unqualified(type)
+	if ((word_size != 8) && ((base == float64_type) || (base == int64_type) || (base == uint64_type))): return -1
+	for j in range(node.stars):
+		type = ast_expression_pointer_type(tree, type, tree.generic_offset[id])
+		if (type < 0): return -1
+	return type
+
+
+int ast_expression_generic_same(expression_ast* tree, int first, int second):
+	if (tree.value[first] != tree.value[second]): return 0
+	int a = tree.right[first]
+	int b = tree.right[second]
+	while ((a >= 0) && (b >= 0)):
+		if (type_canonical(tree.value[a]) != type_canonical(tree.value[b])): return 0
+		a = tree.next_arg[a]
+		b = tree.next_arg[b]
+	return a == b
+
+
+int ast_expression_generic_parameter(expression_ast* tree, int id, int index):
+	if (tree.symbol[id] >= 0): return sym_param_type(tree.symbol[id], index)
+	int parameter = tree.generic_parameters[id]
+	if (parameter < 0): return type_function_param_type(tree.generic_signature[id], index)
+	for i in range(index): parameter = tree.next_arg[parameter]
+	return tree.value[parameter]
+
+
+int ast_expression_generic_call(expression_ast* tree, int depth):
+	if (nextc != '['): return -1
+	int def = generic_def_lookup(token, 0)
+	int id = expression_ast_add(tree, 'G', -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = def
+	tree.generic_parameters[id] = -1
+	tree.generic_signature[id] = -1
+	tree.generic_instance[id] = -1
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"[") == 0): return -1
+	int[8] types
+	int count = 0
+	int tail = -1
+	while (1):
+		if (count == generic_max_params): return -1
+		int type = ast_expression_named_type(tree, 0, depth + 1)
+		if (type < 0): return -1
+		int argument = expression_ast_add(tree, 'g', -1, -1)
+		if (argument < 0): return -1
+		tree.value[argument] = type
+		if (tail < 0): tree.right[id] = argument
+		else: tree.next_arg[tail] = argument
+		tail = argument
+		types[count] = type
+		count = count + 1
+		if (ast_expression_accept(tree, c",") == 0): break
+	if ((peek(c"]") == 0) || (count != generic_def_param_count(def))): return -1
+	tree.generic_offset[id] = token_start_offset
+	char* mangled = generic_mangle(generic_def_name(def), cast(int, &types[0]), count)
+	int sym = sym_probe(mangled)
+	int inst = generic_inst_lookup(mangled)
+	free(mangled)
+	tree.symbol[id] = sym
+	int arity = -1
+	int result = -1
+	if (sym >= 0):
+		arity = sym_num_args(sym)
+		result = load_int(table + sym + 6)
+	else:
+		int signature = -1
+		if (inst >= 0): signature = generic_insts[inst].signature
+		if (signature >= 0):
+			tree.generic_signature[id] = signature
+			arity = type_function_param_count(signature)
+			result = type_function_return(signature)
+		else:
+			# Repeated calls in one tree share the same reserved signature.
+			for previous in range(id):
+				if ((tree.op[previous] == 'G') && ast_expression_generic_same(tree, previous, id)):
+					tree.generic_signature[id] = tree.generic_signature[previous]
+					tree.generic_parameters[id] = tree.generic_parameters[previous]
+					arity = tree.generic_arity[previous]
+					result = tree.high[previous]
+			if (tree.generic_signature[id] < 0):
+				generic_signature_ast* syntax = generic_defs[def].signature_ast
+				if ((syntax == 0) || tree.pending_buffer_types): return -1
+				arity = syntax.count
+				if (arity > 10): return -1
+				result = ast_expression_bind_generic_type(tree, id, syntax.result)
+				if (result < 0): return -1
+				generic_type_ast* parameter = syntax.parameters
+				tail = -1
+				while (parameter != 0):
+					int type = ast_expression_bind_generic_type(tree, id, parameter)
+					if (type < 0): return -1
+					int bound = expression_ast_add(tree, 'g', -1, -1)
+					if (bound < 0): return -1
+					tree.value[bound] = type
+					if (tail < 0): tree.generic_parameters[id] = bound
+					else: tree.next_arg[tail] = bound
+					tail = bound
+					parameter = parameter.next
+				tree.generic_signature[id] = ast_expression_reserve_signature(tree, id, result, arity)
+				if (tree.generic_signature[id] < 0): return -1
+	if ((arity < 0) || (arity > 10)): return -1
+	if ((result != 0) && (ast_expression_data_value(result) == 0)): return -1
+	tree.high[id] = result
+	tree.generic_arity[id] = arity
+	tree.result_type[id] = type_value(result)
+	ast_expression_advance(tree)
+	if (token_newline || (ast_expression_accept(tree, c"(") == 0)): return -1
+	count = 0
+	tail = -1
+	while (peek(c")") == 0):
+		if (count >= arity): return -1
+		int want = ast_expression_generic_parameter(tree, id, count)
+		if (ast_expression_data_value(want) == 0): return -1
+		int argument = ast_expression_assignment(tree, depth + 1)
+		if (argument < 0): return -1
+		if (ast_expression_data_value(tree.result_type[argument]) == 0): return -1
+		if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
+		if (type_is_string(want) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[argument]))):
+			if (sym_probe(c"str_from_cstr") < 0): return -1
+		if (tail < 0): tree.left[id] = argument
+		else: tree.next_arg[tail] = argument
+		tail = argument
+		count = count + 1
+		if (ast_expression_accept(tree, c",") == 0): break
+		if (peek(c")")): return -1
+	if ((count != arity) || (ast_expression_accept(tree, c")") == 0)): return -1
+	return id
+
+
+# All speculative records have been removed before this runs. Ordinary
+# instantiation commits its signature at the original closing bracket;
+# the reserved slot verifies that no hidden registration reordered it.
+void ast_expression_commit_generic(expression_ast* tree, int id):
+	int count = generic_def_param_count(tree.value[id])
+	int args = cast(int, malloc(count * __word_size__))
+	int argument = tree.right[id]
+	for i in range(count):
+		save_ptr(args + i * __word_size__, tree.value[argument])
+		argument = tree.next_arg[argument]
+	char* mangled = generic_mangle(generic_def_name(tree.value[id]), args, count)
+	int sym = sym_lookup(mangled)
+	if (sym >= 0):
+		assert1(sym == tree.symbol[id])
+		strcpy(last_identifier, mangled)
+		free(mangled)
+		free(cast(char*, args))
+		return
+	int inst = generic_inst_intern(tree.value[id], args, count, mangled)
+	int signature = generic_inst_signature(inst)
+	assert1(signature == tree.generic_signature[id])
+	tree.generic_instance[id] = inst
+
+
 int ast_expression_name(expression_ast* tree, int depth):
 	# Keywords, unshadowable builtins, generics and constructors take
 	# precedence over identifier() in the streaming grammar.
@@ -571,7 +752,7 @@ int ast_expression_name(expression_ast* tree, int depth):
 	if ((nextc == '(') && (peek(c"print") || peek(c"println"))): return ast_expression_print(tree, depth)
 	if (peek(c"to_json") || peek(c"from_json")): return -1
 	if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
-	if (generic_call_ready()): return -1
+	if (generic_call_ready()): return ast_expression_generic_call(tree, depth)
 	if ((nextc == '(') && struct_value_ctor_ready()): return -1
 	if (peek(c"true") || peek(c"false") || peek(c"__word_size__") || peek(c"__target_isa__")):
 		int id = expression_ast_add(tree, 'c', -1, -1)
@@ -1012,7 +1193,7 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			if (type_is_value(type) && ast_expression_record_value(type)):
 				# Only call results own the return buffer consumed by a
 				# scalar field access. Other value-record forms still decline.
-				if ((tree.op[left] != 'C') && (tree.op[left] != 'F')): return -1
+				if ((tree.op[left] != 'C') && (tree.op[left] != 'F') && (tree.op[left] != 'G')): return -1
 				record = type_real(type)
 				return_words = (type_get_size(record) + word_size - 1) >> word_size_log2
 			if (type_get_pointer_level(type) > 0):
@@ -1406,6 +1587,7 @@ int ast_expression_try_at(int group_offset, int whole):
 		for i in range(tree.types_count):
 			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(&tree, i)
 		for id in range(tree.count):
+			if ((tree.op[id] == 'G') && (tree.generic_offset[id] == token_start_offset)): ast_expression_commit_generic(&tree, id)
 			if ((tree.op[id] == 't') && (tree.offset[id] == token_start_offset)):
 				if (tree.high[id]): get_token_template_chunk()
 				int length = template_process_chunk(tree.value[id])

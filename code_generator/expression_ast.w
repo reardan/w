@@ -50,6 +50,45 @@ void emit_expression_ast(expression_ast* tree, int id):
 		rt_call_end(s)
 		pop_to(base_stack)
 		return
+	if (op == 'G'):
+		int sym = tree.symbol[id]
+		int signature = tree.generic_signature[id]
+		if (sym >= 0):
+			# The symbol table has a stable name immediately before its
+			# record, but queued instances already retain their mangling.
+			int count = generic_def_param_count(tree.value[id])
+			int[8] types
+			int argument = tree.right[id]
+			for i in range(count):
+				types[i] = tree.value[argument]
+				argument = tree.next_arg[argument]
+			char* name = generic_mangle(generic_def_name(tree.value[id]), cast(int, &types[0]), count)
+			strcpy(last_identifier, name)
+			sym_emit_value(sym, name)
+			free(name)
+		else: generic_inst_emit_callee(tree.generic_instance[id])
+		int result = tree.high[id]
+		int has_return_buffer = emit_ast_return_buffer(result)
+		int s = stack_pos
+		push_slot()
+		if (has_return_buffer):
+			lea_eax_esp_plus(word_size)
+			push_slot()
+		int arg = tree.left[id]
+		int count = 0
+		while (arg >= 0):
+			int arg_stack = stack_pos
+			emit_expression_ast(tree, arg)
+			int got = promote(tree.result_type[arg])
+			int want = -1
+			if (sym >= 0): want = sym_param_type(sym, count)
+			else: want = type_function_param_type(signature, count)
+			if (want >= 0): coerce_call_argument(want, got)
+			push_call_argument_compact(got, stack_pos - arg_stack)
+			count = count + 1
+			arg = tree.next_arg[arg]
+		finish_call(4, s, count, sym, 0, result, count, has_return_buffer, -1)
+		return
 	if (op == 'A'):
 		expression_is_assignment = 1
 		int[128] lhs_slots

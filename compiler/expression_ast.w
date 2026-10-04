@@ -35,6 +35,11 @@ struct expression_ast:
 	int[128] next_arg
 	int[128] in_cast
 	int[128] symbol
+	int[128] generic_parameters
+	int[128] generic_signature
+	int[128] generic_offset
+	int[128] generic_instance
+	int[128] generic_arity
 
 
 int ast_expressions_mode
@@ -114,6 +119,7 @@ void ast_expression_restore_types(expression_ast* tree):
 
 void ast_expression_commit_pointer(expression_ast* tree, int i):
 	type_rec* rec = &tree.pointer_types[i]
+	if (rec.kind == type_kind_function): return
 	int actual = type_push_pointer(rec.name, rec.total_size, rec.pointer_level)
 	assert1(actual == tree.types_base + i)
 
@@ -131,3 +137,28 @@ int expression_ast_add(expression_ast* tree, int op, int left, int right):
 	tree.symbol[id] = -1
 	tree.next_arg[id] = -1
 	return id
+
+
+# Signature slots participate in the same rollback as pointer records.
+# Parameter types live in AST nodes, so no nested array descriptor of
+# these borrowed records is read during the probe.
+int ast_expression_reserve_signature(expression_ast* tree, int id, int result, int arity):
+	if (tree.pending_buffer_types || (tree.types_count == 16)): return -1
+	int i = tree.types_count
+	type_rec* rec = &tree.pointer_types[i]
+	rec.name = c""
+	rec.num_fields = 0
+	rec.total_size = word_size
+	rec.pointer_level = 0
+	rec.alias_target = -1
+	rec.kind = type_kind_function
+	rec.fn_return_type = result
+	rec.fn_param_count = arity
+	rec.decl_file_index = -1
+	rec.decl_line = 0
+	rec.decl_column = 0
+	tree.pointer_offsets[i] = tree.generic_offset[id]
+	tree.types_count = i + 1
+	int signature = type_count()
+	type_records.push(cast(int, rec))
+	return signature

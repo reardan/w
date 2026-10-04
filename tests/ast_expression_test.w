@@ -111,6 +111,7 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_increment_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_wide_call_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_template_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_generic_expression_fixture.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -443,6 +444,28 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
 	strv_set(args, i, source)
 	return ast_test_run(args, 0)
+
+
+void test_ast_generic_calls_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_generic_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"T id[T](T value): return value\nint main(): return (id[int](1, 2))\n")
+	ast_test_store_diagnostics(c"T id[T](T value): return value\nint main(): return (id[int]())\n")
+	ast_test_store_diagnostics(c"T id[T](T value): return value\nint main(): return (id[int, char](1))\n")
+	ast_test_store_diagnostics(c"T id[T](T value): return value\nint main(): return (id[int](c\"text\"))\n")
+	ast_test_store_diagnostics(c"T id[T](T value): return value\nint main(): return (id[int](4294967296))\n")
+	# Failed outer probes must roll back queued signatures and pointers.
+	ast_test_store_diagnostics(c"T* id[T](int value): return cast(T*, value)\nstruct Fresh:\n\tint value\nint main(): return (id[Fresh](0) + missing)\n")
 
 
 void test_ast_templates_are_required():
@@ -1045,7 +1068,7 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
-# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/ast_metadata_expression_fixture.w data=tests/ast_record_expression_fixture.w data=tests/ast_map_expression_fixture.w data=tests/ast_parallel_expression_fixture.w data=tests/ast_increment_expression_fixture.w data=tests/ast_wide_call_expression_fixture.w data=tests/ast_template_expression_fixture.w data=tests/operator_overload_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/ast_metadata_expression_fixture.w data=tests/ast_record_expression_fixture.w data=tests/ast_map_expression_fixture.w data=tests/ast_parallel_expression_fixture.w data=tests/ast_increment_expression_fixture.w data=tests/ast_wide_call_expression_fixture.w data=tests/ast_template_expression_fixture.w data=tests/ast_generic_expression_fixture.w data=tests/operator_overload_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"
@@ -1058,11 +1081,11 @@ void test_ast_expression_debugger_eval():
 # wbuild: step="cmp bin/wv3_64 bin/ast_wv3_64"
 # wbuild: step="bin/ast_wv3_64 x64 --ast-expressions --strict w.w -o bin/ast_wv4_64"
 # wbuild: step="cmp bin/ast_wv3_64 bin/ast_wv4_64"
-# wbuild: step="bin/wv2 --ast-full-expressions --strict w.w -o bin/ast_full_wv3"
+# wbuild: step="bin/wv2 --ast-required --strict w.w -o bin/ast_full_wv3"
 # wbuild: step="cmp bin/wv3 bin/ast_full_wv3"
-# wbuild: step="bin/ast_full_wv3 --ast-full-expressions --strict w.w -o bin/ast_full_wv4"
+# wbuild: step="bin/ast_full_wv3 --ast-required --strict w.w -o bin/ast_full_wv4"
 # wbuild: step="cmp bin/ast_full_wv3 bin/ast_full_wv4"
-# wbuild: step="bin/wv2_64 x64 --ast-full-expressions --strict w.w -o bin/ast_full_wv3_64"
+# wbuild: step="bin/wv2_64 x64 --ast-required --strict w.w -o bin/ast_full_wv3_64"
 # wbuild: step="cmp bin/wv3_64 bin/ast_full_wv3_64"
-# wbuild: step="bin/ast_full_wv3_64 x64 --ast-full-expressions --strict w.w -o bin/ast_full_wv4_64"
+# wbuild: step="bin/ast_full_wv3_64 x64 --ast-required --strict w.w -o bin/ast_full_wv4_64"
 # wbuild: step="cmp bin/ast_full_wv3_64 bin/ast_full_wv4_64"

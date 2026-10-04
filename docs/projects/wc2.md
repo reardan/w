@@ -963,3 +963,22 @@ Lexer-isolated tests cover nested shapes, unnamed parameters, empty and
 trailing-comma parameter lists, cleanup on unsupported forms, and an
 unchanged type-table count. Signature binding and generic call emission are
 the next stage; this metadata alone does not remove expression fallbacks.
+
+## Task 39: explicit generic call expressions
+
+Explicit generic calls now bind captured signature syntax into AST argument
+and return types. Pointer and signature records share the expression's
+transaction: failed probes remove all staged records, while committed
+replay registers signatures at the original closing type-argument bracket.
+Repeated calls share the reserved signature, including canonical aliases.
+Emission handles queued instantiations and already compiled functions,
+record return buffers, argument coercion and evaluation order.
+
+The compiler itself now builds with zero expression fallbacks on x86 and
+x64, producing the same images as the streaming compiler. The full-expression
+self-host target now uses `--ast-required` to enforce this. Differential
+fixtures cover containers, records, aliases, nested calls, pointer registration
+and invalid-call diagnostics. Inferred generics, uncaptured signature shapes,
+new composite types and calls with more than ten parameters still fall back.
+Statements and declarations remain a separate migration; this milestone is
+complete expression coverage of the compiler, not a completed AST frontend.
