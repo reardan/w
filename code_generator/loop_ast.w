@@ -129,7 +129,7 @@ void emit_cursor_loop_ast_end(loop_ast* node):
 
 void emit_loop_ast_cleanup(loop_ast* node):
 	if (node.kind == ast_loop_range): drop_slots(node.argument_count)
-	else: drop_slots(2)
+	else if (node.kind == ast_loop_cursor): drop_slots(2)
 
 
 int emit_iteration_value_ast(statement_ast* node):
@@ -137,3 +137,19 @@ int emit_iteration_value_ast(statement_ast* node):
 	if (node.kind == ast_stmt_range_argument): push_slot()
 	ast_iteration_values_emitted = ast_iteration_values_emitted + 1
 	return type
+
+
+int* emit_while_loop_ast_begin(loop_ast* node):
+	int* outer = loop_enter()
+	node.break_target = loop_break_chain
+	node.top_target = be_ctrl_loop()
+	node.continue_target = node.top_target
+	loop_continue_chain = node.continue_target
+	return outer
+
+
+void emit_while_loop_ast_end(loop_ast* node):
+	be_br(node.top_target)
+	be_ctrl_end(node.top_target)
+	be_ctrl_end(node.break_target)
+	ast_while_loops_emitted = ast_while_loops_emitted + 1

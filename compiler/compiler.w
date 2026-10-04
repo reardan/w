@@ -824,6 +824,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_range_loops_emitted = 0
 	ast_cursor_loops_emitted = 0
 	ast_iteration_values_emitted = 0
+	ast_if_regions_emitted = 0
+	ast_switch_regions_emitted = 0
+	ast_blocks_emitted = 0
+	ast_while_loops_emitted = 0
+	ast_deferred_expressions_emitted = 0
 	ast_roots_emitted = 0
 	ast_roots_fallback = 0
 	ast_audit_mode = 0
@@ -1114,6 +1119,21 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(c"\n")
 		print_error(c"AST goto/label statements: ")
 		print_error(itoa(ast_goto_statements_emitted))
+		print_error(c"\n")
+		print_error(c"AST deferred expressions: ")
+		print_error(itoa(ast_deferred_expressions_emitted))
+		print_error(c"\n")
+		print_error(c"AST if regions: ")
+		print_error(itoa(ast_if_regions_emitted))
+		print_error(c"\n")
+		print_error(c"AST switch regions: ")
+		print_error(itoa(ast_switch_regions_emitted))
+		print_error(c"\n")
+		print_error(c"AST blocks: ")
+		print_error(itoa(ast_blocks_emitted))
+		print_error(c"\n")
+		print_error(c"AST while loops: ")
+		print_error(itoa(ast_while_loops_emitted))
 		print_error(c"\n")
 		print_error(c"AST range loops: ")
 		print_error(itoa(ast_range_loops_emitted))

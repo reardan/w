@@ -83,3 +83,25 @@ void ast_for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 	emit_cursor_loop_ast_end(&node)
 	loop_leave(outer)
 	emit_loop_ast_cleanup(&node)
+
+
+int ast_while_statement():
+	if (peek(c"while") == 0): return 0
+	loop_ast node
+	node.kind = ast_loop_while
+	node.source_file = file
+	node.line = diag_token_line
+	node.column = diag_token_column
+	node.start_offset = token_start_offset
+	get_token()
+	int while_tab_level = tab_level
+	int* outer = emit_while_loop_ast_begin(&node)
+	int outer_condition = condition_context
+	condition_context = 1
+	statement_guard(node.break_target, outer_condition)
+	enclosing_tab_level = while_tab_level
+	statement()
+	node.end_offset = token_start_offset
+	emit_while_loop_ast_end(&node)
+	loop_leave(outer)
+	return 1

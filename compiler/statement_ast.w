@@ -17,6 +17,11 @@ const int ast_stmt_switch_value = 13
 const int ast_stmt_switch_case = 14
 const int ast_stmt_range_argument = 15
 const int ast_stmt_iterable = 16
+const int ast_stmt_if = 17
+const int ast_stmt_switch = 18
+const int ast_stmt_brace_block = 19
+const int ast_stmt_indent_block = 20
+const int ast_stmt_deferred_expression = 21
 
 
 struct statement_ast:
@@ -41,6 +46,9 @@ struct statement_ast:
 	int inferred
 	int has_initializer
 	int branch_nonzero
+	int alternate_target
+	int body_target
+	int function_body
 
 
 int ast_simple_statements_emitted
@@ -61,3 +69,9 @@ int ast_guards_emitted
 
 int ast_switch_values_emitted
 int ast_switch_cases_emitted
+
+int ast_if_regions_emitted
+int ast_switch_regions_emitted
+int ast_blocks_emitted
+
+int ast_deferred_expressions_emitted

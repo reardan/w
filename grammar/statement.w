@@ -24,6 +24,8 @@
 int ast_statement_simple(int* jumps);
 int ast_statement_value(int* jumps);
 int ast_statement_expression(int prefix_only);
+void ast_if_statement_tail();
+int ast_statement_block();
 
 
 # Table offset of the function whose body is being parsed; return
@@ -115,6 +117,9 @@ int result_propagate_suffix(int type):
 # pure sugar for 'else if cond:' (issue #360): each elif recurses here,
 # so the chain compiles exactly like the spelled-out nesting.
 void if_statement_tail():
+	if (ast_expressions_mode >= 2):
+		ast_if_statement_tail()
+		return
 	int if_tab_level = tab_level
 	int outer_condition = condition_context
 	condition_context = 1
@@ -226,7 +231,8 @@ void statement():
 	debug_line_note(stack_pos)
 
 	# { statement-list-opt }
-	if (accept(c"{")) {
+	if (ast_statement_block()) {}
+	else if (accept(c"{")) {
 		int n = table_pos
 		int s = stack_pos
 		int is_function_body = defer_function_body_pending

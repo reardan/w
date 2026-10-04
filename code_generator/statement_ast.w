@@ -230,3 +230,57 @@ void emit_switch_case_ast_branch(statement_ast* node):
 	if (node.branch_nonzero): be_br_nonzero_discard(node.target)
 	else: be_br_zero_discard(node.target)
 	ast_switch_cases_emitted = ast_switch_cases_emitted + 1
+
+
+void emit_if_ast_begin(statement_ast* node):
+	node.target = be_ctrl_block()
+	node.alternate_target = be_ctrl_block()
+
+
+void emit_if_ast_then_end(statement_ast* node):
+	be_br(node.target)
+	be_ctrl_end(node.alternate_target)
+
+
+void emit_if_ast_end(statement_ast* node):
+	be_ctrl_end(node.target)
+	ast_if_regions_emitted = ast_if_regions_emitted + 1
+
+
+void emit_block_ast_deferred(statement_ast* node):
+	if (node.function_body): defer_emit_all()
+
+
+void emit_block_ast_end(statement_ast* node):
+	pop_to(node.stack_depth)
+	ast_blocks_emitted = ast_blocks_emitted + 1
+
+
+void emit_switch_region_ast_begin(statement_ast* node):
+	node.target = be_ctrl_block()
+
+
+void emit_switch_case_region_ast_begin(statement_ast* node):
+	node.alternate_target = be_ctrl_block()
+
+
+void emit_switch_match_region_ast_begin(statement_ast* node):
+	node.body_target = be_ctrl_block()
+
+
+void emit_switch_match_region_ast_end(statement_ast* node):
+	be_ctrl_end(node.body_target)
+
+
+void emit_switch_case_region_ast_end(statement_ast* node):
+	be_br(node.target)
+	be_ctrl_end(node.alternate_target)
+
+
+void emit_switch_region_ast_end(statement_ast* node):
+	be_ctrl_end(node.target)
+	ast_switch_regions_emitted = ast_switch_regions_emitted + 1
+
+
+void emit_switch_region_ast_cleanup(statement_ast* node):
+	drop_slots(node.unwind_slots)

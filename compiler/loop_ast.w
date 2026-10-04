@@ -3,6 +3,7 @@
 # Helper names are borrowed until the enclosing for rule returns.
 const int ast_loop_range = 1
 const int ast_loop_cursor = 2
+const int ast_loop_while = 3
 
 
 struct loop_ast:
@@ -37,3 +38,5 @@ struct loop_ast:
 int ast_range_loops_emitted
 int ast_cursor_loops_emitted
 int ast_iteration_values_emitted
+
+int ast_while_loops_emitted

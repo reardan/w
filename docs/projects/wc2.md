@@ -1853,3 +1853,23 @@ cases retain empty/overlong range, missing value, non-iterable, enumerate and
 type-warning diagnostics. Statistics count range loops, cursor loops and header
 values. Helper names remain borrowed through the enclosing for rule, and body
 traversal still uses the existing scope dispatcher rather than retained trees.
+
+## Task 103: control regions, scopes and deferred children
+
+If/elif, while and switch regions now carry their control targets in nodes;
+backend visitors open, branch and close those regions. Brace and indentation
+blocks carry scope boundaries and the function-body defer flag, with cleanup
+phases preserving deferred calls, lint checks, symbol removal and stack unwind
+order. Reference modes retain the original dispatch/lowering paths.
+
+Deferred statements still register source spans to preserve exit-time binding.
+Each exit now prepares a fresh deferred-expression child before AST emission;
+this supports later declarations and shadowing without capturing values or
+bindings at registration. Statement-only increments and parallel stores remain
+invalid in deferred expressions. The source spans are still reparsed, and
+compound bodies are visited incrementally rather than retained as child lists.
+
+Both host widths retain native images, runtime behavior and diagnostics for
+nested scopes, control regions, function fallthrough defers, late binding,
+LIFO execution and saved return values. Existing nesting-limit tests also pass.
+Statistics report regions, blocks, while loops and deferred expression nodes.

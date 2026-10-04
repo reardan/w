@@ -7,10 +7,11 @@ registers a deferred statement; every registered statement runs in LIFO
 order at each function exit: before each 'return' and at the function's
 fall-through end. Defers are function-scoped (not block-scoped).
 
-The compiler is single-pass with no AST, so a deferred statement is
-stored as a SOURCE SPAN (file path + byte offset, like generic
-definitions in grammar/generic.w) and re-parsed with the ordinary
-expression machinery at every exit point, which emits its code inline.
+A deferred statement keeps a SOURCE SPAN (file path + byte offset,
+like generic definitions in grammar/generic.w) so names bind at each
+exit point. In AST mode each replay builds a fresh expression child
+for a deferred-statement node before lowering it inline. Reference
+modes use the ordinary expression entry instead.
 Because of the re-parse, the deferred expression is evaluated AT EXIT
 TIME: arguments are not captured where the defer appears (unlike Go).
 
@@ -30,6 +31,7 @@ syntax here.
 # Defined later in the grammar; the single-pass compiler needs the
 # declaration up front.
 int expression();
+int ast_deferred_expression();
 
 
 /*
@@ -144,7 +146,7 @@ void defer_emit_all():
 		i = i - 1
 		char* save = generic_reparse_save()
 		defer_reparse_start(i)
-		expression()
+		if (ast_deferred_expression() == 0): expression()
 		expect_or_newline(c";")
 		close(file)
 		generic_reparse_restore(save)

@@ -68,7 +68,11 @@ void statement_guard(int target, int outer_condition):
 
 
 # while ( expression ) statement — parentheses are optional before ':'
+int ast_while_statement();
+
+
 int while_statement():
+	if (ast_expressions_mode >= 2): return ast_while_statement()
 	if (accept(c"while") == 0): return 0
 
 	int while_tab_level = tab_level

@@ -49,7 +49,11 @@ int switch_case_value(int type, int slot, int body_target, int next_target):
 	return more
 
 
+int ast_switch_statement();
+
+
 int switch_statement():
+	if (ast_expressions_mode >= 2): return ast_switch_statement()
 	if (accept(c"switch") == 0): return 0
 
 	int switch_tab_level = tab_level
