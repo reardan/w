@@ -1,6 +1,31 @@
 int ast_expression_quoted_end_nested(char* bytes, int start, int limit, int depth);
 
 
+# Validate one identifier codepoint without entering the tokenizer. A
+# malformed or prohibited codepoint must diagnose only after rollback.
+# -2 requests more buffered input; -1 declines the speculative parse.
+int ast_expression_identifier_end(char* bytes, int start, int limit):
+	int lead = bytes[start] & 255
+	if (is_utf8_lead_byte(lead) == 0): return -1
+	int need = 1
+	int cp = lead & 31
+	if (lead >= 240):
+		need = 3
+		cp = lead & 7
+	else if (lead >= 224):
+		need = 2
+		cp = lead & 15
+	if (start + need >= limit): return -2
+	for i in range(1, need + 1):
+		int part = bytes[start + i] & 255
+		if ((part < 128) || (part > 191)): return -1
+		cp = (cp << 6) | (part & 63)
+	if (((need == 2) && (cp < 2048)) || ((need == 3) && (cp < 65536))): return -1
+	if (((cp >= 55296) && (cp <= 57343)) || (cp > 1114111)): return -1
+	if (ident_codepoint_rejection(cp) != 0): return -1
+	return start + need + 1
+
+
 # Preflight all literal chunks and embedded expressions before entering
 # the template tokenizer, whose malformed-brace errors must not escape a
 # speculative parse. Formatting specs are left to the streaming path.
@@ -12,6 +37,11 @@ int ast_expression_template_end(char* bytes, int start, int limit, int depth):
 		int ch = bytes[i] & 255
 		if (ch == 10): return -1
 		if (braces):
+			if (ch >= 128):
+				int after = ast_expression_identifier_end(bytes, i, limit)
+				if (after < 0): return after
+				i = after
+				continue
 			if ((ch == 34) || (ch == 39)):
 				int end = ast_expression_quoted_end_nested(bytes, i, limit, depth + 1)
 				if (end < 0): return end
@@ -112,6 +142,12 @@ int ast_expression_end(int start):
 			if (quoted < 0): return quoted
 			if (quoted - index >= 2048): return -1
 			i = quoted - index + 1
+			previous = 0
+			continue
+		if (ch >= 128):
+			int after = ast_expression_identifier_end(bytes, index + i, getchar_limit[file])
+			if (after < 0): return after
+			i = after - index
 			previous = 0
 			continue
 		int allowed = (ch >= '0') && (ch <= '9')
@@ -237,6 +273,13 @@ int ast_expression_root_end(int eof, int statement):
 			if (bytes[index + i + 1] == ' '): return -1
 			previous = 0
 			i = i + 1
+			continue
+		if (ch >= 128):
+			int after = ast_expression_identifier_end(bytes, index + i, getchar_limit[file])
+			if (after < 0): return after
+			i = after - index
+			previous = 0
+			significant = 128
 			continue
 		int allowed = (ch >= '0') && (ch <= '9')
 		if ((ch >= 'a') && (ch <= 'z')): allowed = 1

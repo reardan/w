@@ -1388,3 +1388,17 @@ The existing protobuf message battery compiles with required AST expressions
 and identical native images, including recursive messages and golden wire
 vectors. A cross-architecture fixture adds record-valued arguments, aliases,
 nested encode/decode, operand side effects and user-symbol shadowing.
+
+## Task 70: UTF-8 expression preflight
+
+Grouped and whole-expression preflight now validates UTF-8 identifier
+codepoints without advancing the tokenizer. Valid non-ASCII names reach the
+AST; malformed sequences and codepoints rejected by the tokenizer's
+identifier policy decline before speculative lexing. The same validation
+covers names inside template interpolation.
+
+Required-mode fixtures cover two-, three- and four-byte names in variables,
+fields, calls, generics, enums and containers. Differential diagnostics pin
+malformed and prohibited names, and a generated fixture splits an emoji
+identifier across the tokenizer's 8 KiB input boundary. The existing UTF-8
+identifier regression file produces identical native AST images.
