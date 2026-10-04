@@ -191,6 +191,19 @@ int mmap(int addr, int length, int prot, int flags):
 		darwin_flags = darwin_flags | 4096 /* MAP_ANON */
 	return syscall7(197, addr, length, prot, darwin_flags, -1, 0)
 
+# Linux snapshot-memory primitives are unsupported on this target.
+# Keep anonymous mmap above available to the allocator; never emulate a
+# file-backed clone with anonymous memory or issue Linux seal commands.
+int mmap_fd(int addr, int length, int prot, int flags, int fd, int offset):
+	return -1
+
+int memfd_create(char* name, int flags):
+	return -1
+
+int madvise(int addr, int length, int advice):
+	return -1
+
+
 # munmap (73): releases a mapping created by mmap. addr must be page-aligned.
 int munmap(int addr, int length):
 	return syscall(73, addr, length, 0)

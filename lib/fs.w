@@ -11,6 +11,8 @@ Platform support: Linux x86-64 and i386. Every other target (arm64,
 arm64_darwin, win64, wasm) reports IO_UNSUPPORTED from the syscall
 layer's explicit ENOSYS stubs -- nothing here is emulated (positional
 I/O is never seek + write, and O_APPEND is never used for it).
+ARM64 additionally supports truncate for the memfd snapshot lifecycle;
+the remaining durability primitives there are still unsupported.
 
 Offsets are word-sized signed byte offsets. On x86-64 that is the full
 63-bit range; on i386 a W word is 32 bits, so positional offsets stop at

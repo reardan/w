@@ -69,6 +69,7 @@ Other useful targets:
 ```sh
 ./wbuild wdbg        # build the in-process debugger (bin/wdbg)
 ./wbuild wdbg_web    # browser debugger: bin/wdbg_web file.w prints an https URL
+./wbuild wvm         # Linux x64 KVM cell runner: bin/wvm run tests/hello.w
 ./wbuild verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
                      # the first cmp also proves output is host-word-size independent
 ./wbuild warning_test  # asserts the compiler's type/style warnings
@@ -76,6 +77,11 @@ Other useful targets:
 ./wbuild cuda_smoke  # GPU-only: hand-written PTX vector add through libcuda (not part of 'tests')
 ./wbuild cuda_test   # GPU-only: W kernels + 'gpu for' end to end (not part of 'tests')
 ```
+
+The [VM cell runner](docs/projects/vms.md#running-a-cell-m1m2) executes
+static x64 W programs with checked syscall access and a timeout. It
+requires `/dev/kvm`; filesystem, network, threads, and Linux guests are
+not supported yet. Source compilation happens on the host.
 
 There is no separate linter binary. The compiler's own warnings (type
 mismatches, spaces-instead-of-tabs, missing trailing newline) are always

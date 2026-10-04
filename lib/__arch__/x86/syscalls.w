@@ -29,6 +29,8 @@ enum linux_syscall:
 	SYS_TIME = 13   # 32-bit time_t: overflows 2038-01-19; clock_gettime64 (403) is the fix
 	SYS_BRK = 45
 	SYS_MMAP = 192   # mmap2: offset in 4096-byte pages (old_mmap, 90, wants an arg struct)
+	SYS_MEMFD_CREATE = 356
+	SYS_MADVISE = 219
 	SYS_MUNMAP = 91
 	SYS_MPROTECT = 125
 	SYS_CLONE = 56   # unchanged from the old wrapper, though i386 clone is 120 (only tests/threading.w calls sys_clone)
@@ -89,6 +91,13 @@ int sys_accept(int sockfd, int addr, int addrlen):
 # limit do not fail with EFBIG at the legacy 2 GiB file-size cap.
 int sys_openat(int dirfd, char* path, int flags, int mode):
 	return syscall7(SYS_OPENAT, dirfd, path, flags | 32768, mode, 0, 0)
+
+
+# Public offsets are signed, word-sized BYTES, even though mmap2 takes
+# 4096-byte units. Reject partial pages before division can round down.
+int mmap_fd(int addr, int length, int prot, int flags, int fd, int offset):
+	if (offset < 0 || offset % 4096 != 0): return -22
+	return syscall7(SYS_MMAP, addr, length, prot, flags, fd, offset / 4096)
 
 
 import lib.syscalls_linux_x86

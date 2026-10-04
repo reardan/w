@@ -5,8 +5,8 @@
 # declare before importing it (arch/x86/entry/syscalls/syscall_32.tbl /
 # syscall_64.tbl); arguments pass in registers via the syscall/syscall7
 # stubs (int 0x80 on i386, the syscall instruction on x86-64). Imported
-# only through those two modules, which also keep the one wrapper whose
-# shape differs (sys_accept). Everything here is compiled by the seed
+# only through those two modules, which keep ABI-specific wrappers
+# such as sys_accept and mmap_fd. Everything here is compiled by the seed
 # (lib/__arch__/x86 is in w.w's import graph): seed-era syntax only.
 
 /* File IO: */
@@ -156,11 +156,19 @@ int linux_time(int* out):
 int brk(char* addr):
 	return syscall(SYS_BRK, addr, 0, 0)
 
-# All six arguments pass in registers (i386 uses mmap2, whose offset is
-# in 4096-byte pages; x86-64's mmap takes bytes). fd must be -1 for
-# MAP_ANONYMOUS mappings; the offset is 0 here either way.
+# Anonymous shorthand; mmap_fd exposes file-backed mappings and byte offsets.
 int mmap(int addr, int length, int prot, int flags):
-	return syscall7(SYS_MMAP, addr, length, prot, flags, -1, 0)
+	return mmap_fd(addr, length, prot, flags, -1, 0)
+
+# Returns a read-write memory-backed fd, or a negative errno. Size it
+# with sys_ftruncate; flags and seal commands live in lib/memfd.w.
+int memfd_create(char* name, int flags):
+	return syscall(SYS_MEMFD_CREATE, name, flags, 0)
+
+# MADV_DONTNEED drops private dirty pages, restoring file-backed bytes
+# on next access. addr must be page-aligned. Returns 0 or -errno.
+int madvise(int addr, int length, int advice):
+	return syscall(SYS_MADVISE, addr, length, advice)
 
 # munmap: releases a mapping created by mmap. addr must be page-aligned.
 int munmap(int addr, int length):

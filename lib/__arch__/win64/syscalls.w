@@ -259,6 +259,19 @@ int mmap(int addr, int length, int prot, int flags):
 	if (base == 0): return -12
 	return base
 
+# Linux snapshot-memory primitives are unsupported on this target.
+# Keep anonymous mmap above available to the allocator; never emulate a
+# file-backed clone with anonymous memory or issue Linux seal commands.
+int mmap_fd(int addr, int length, int prot, int flags, int fd, int offset):
+	return -1
+
+int memfd_create(char* name, int flags):
+	return -1
+
+int madvise(int addr, int length, int advice):
+	return -1
+
+
 
 int munmap(int addr, int length):
 	if (VirtualFree(addr, 0, 32768) == 0): /* MEM_RELEASE frees the whole allocation */

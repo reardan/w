@@ -1,6 +1,9 @@
 # Agent VMs: instant microVMs with shared memory (`wvm`)
 
-Status: design 2026-10-04. Nothing below is implemented yet.
+Status: M0 memory primitives and M1–M2 KVM cell execution implemented
+(issue [#519](https://github.com/reardan/w/issues/519)). M3–M8 remain design.
+The current runner executes static x64 W binaries on a Linux x64 KVM
+host; it does not yet run Linux guests, shells, or agent sessions.
 
 Goal: let agents (wharness, wexec steps, anything driving the toolchain)
 run work inside virtual machines that start and stop in well under a
@@ -9,10 +12,10 @@ paying for its own copy of the same image.
 
 ## 0. Summary
 
-There is no VM or sandbox support in either repo today. Agent tool
-calls (`bash`, `w_run`, `w_test` in w-private's `wharness/wharness_tools.w`)
-run as plain host processes through `lib/process.w`'s `process_run`,
-gated only by `--ask` / `--no-bash`.
+`bin/wvm run` now executes a static x64 W program in a KVM cell, with
+guest page permissions, checked syscall buffers, bounded output, and a
+wall-clock timeout. Agent tool calls in w-private still run as host
+processes; the daemon and harness integration remain M5 work.
 
 The recommendation is a two-tier design on one W-native VMM core:
 
@@ -34,6 +37,9 @@ Build order: syscall primitives, then a KVM hello-world, then Tier 1
 cells with snapshots, then the `wvmd` daemon and wharness integration,
 then Tier 2. Each milestone lands on its own (§9).
 
+Sections 3–8 describe the target architecture, including later work.
+The M0 and M1–M2 usage sections in §9 describe the implemented surface.
+
 ## 1. What exists today
 
 | Area | State | Where |
@@ -41,9 +47,10 @@ then Tier 2. Each milestone lands on its own (§9).
 | Agent execution | Unconfined host processes; no isolation beyond a permission prompt | w-private `wharness/wharness_tools.w` (`wh_run_shell`, `wh_tool_bash`) |
 | Process control | fork/execve/wait4, pipes, poll-driven timeouts, `process_wait_any` | `lib/process.w`, `docs/projects/process.md` |
 | Raw syscalls | Generic `syscall` / `syscall7`, `sys_ioctl`, clone, ptrace, mmap, eventfd, epoll, AF_UNIX | `lib/syscalls_linux_x86.w`, `lib/__arch__/*/syscalls.w` |
-| File-backed mmap | **Missing.** `mmap(addr, len, prot, flags)` hardwires `fd = -1, offset = 0` | `lib/syscalls_linux_x86.w:162` |
-| memfd, seals, madvise, userfaultfd | **Missing** (no wrappers, no syscall numbers) | |
-| KVM | **Missing** entirely | |
+| File-backed mmap | `mmap_fd(addr, len, prot, flags, fd, offset)` with byte offsets on Linux x86/x64/ARM64; anonymous `mmap` retained | `lib/__arch__/*/syscalls.w` |
+| memfd, seals, madvise | Implemented on Linux x86/x64/ARM64; named constants and lifecycle contract in `lib/memfd.w`; other targets return `-1` for the new primitives | `lib/memfd.w`, `tests/memfd_test.w` |
+| userfaultfd | **Missing** (later milestone) | |
+| KVM / cells | Single-vCPU x64 execution, ELF validation, ring-3 syscall gates, fault vectors/RIP, timeout | `lib/kvm.w`, `lib/vmm/`, `tools/wvm.w` |
 | Signal handlers on x64 | Working, including the SA_RESTORER thunk (needed to kick a vCPU out of `KVM_RUN`) | `lib/signal.w` |
 | Where `syscall` instructions come from | Runtime stubs the compiler emits: `syscall`, `syscall7`, `thread_create` (clone), `stack_create` (mmap), `__w_tls_set` (arch_prctl), plus the ELF exit stub | `code_generator/x64_asm.w:68-118`, `code_generator/elf_64.w:49` |
 | Daemon pattern | AF_UNIX server with client auto-start | `tools/wbuildd.w`, `docs/projects/wbuildd.md`, `lib/json_rpc.w` |
@@ -51,10 +58,12 @@ then Tier 2. Each milestone lands on its own (§9).
 | Software sandbox | wasm32/WASI backend, run under wasmtime/node | `docs/projects/wasm_backend.md` |
 | Out-of-process debugging | ptrace attach, core files | `docs/projects/debugger_attach.md`, `lib/core_file.w` |
 
-Hosts: the Claude cloud container this doc was written in has no
-`/dev/kvm` and no `vmx` CPU flag (nested virtualization off), so KVM
-tests cannot run there. Whether ssh host `w` exposes `/dev/kvm` is
-unchecked and decides where the KVM gates run (§10).
+Hosts: execution was tested on a Linux x64 host with accessible
+`/dev/kvm`. KVM tests skip the execution leg if opening the device is
+unavailable; layout and ELF validation tests still run. A failure after
+opening KVM fails the tests. `bin/wvm available` checks VM creation
+(exit 0 on success, 77 when unavailable); execution never falls back to
+running the guest as a host process.
 
 ## 2. Goals and non-goals
 
@@ -103,7 +112,9 @@ This is the core of the request and is shared by both tiers.
    up (loads the image, runs to a "ready" point).
 2. **Snapshot.** Pause the vCPUs, save registers (`KVM_GET_REGS`,
    `KVM_GET_SREGS`, MSRs, LAPIC for Tier 2) into a small header, and
-   seal the memfd with `F_SEAL_WRITE | F_SEAL_SHRINK | F_SEAL_GROW`. A
+   unmap all shared writable RAM mappings before sealing the memfd
+   with `F_SEAL_WRITE | F_SEAL_SHRINK | F_SEAL_GROW` (otherwise Linux
+   returns `-EBUSY`; `mprotect` alone is insufficient). A
    snapshot is now an immutable (memfd, register blob) pair, persisted
    to disk only when asked.
 3. **Clone = spawn.** `mmap(snapshot_fd, MAP_PRIVATE)`, then
@@ -151,9 +162,11 @@ A cell runs one static x64 W executable.
   argv's NULL), and set `rip` to the entry. Snapshot here: this is the
   "ready" point, so every spawn skips loading too.
 - **Syscalls, unmodified binaries.** The program runs at CPL 3. The host
-  sets `EFER.SCE` and points `LSTAR` at a three-instruction ring-0
-  trampoline that does `out` to a syscall port (a VM exit carrying the
-  registers) and `sysretq`. Any existing x64 W binary runs as is.
+  sets `EFER.SCE` and points `LSTAR` at a ring-0 trampoline that does
+  `out` to a syscall port (a VM exit carrying the registers), reloads
+  CR3 to flush changed guest page permissions, and returns with
+  `sysretq`. Existing static x64 W binaries using the implemented
+  syscall subset run without recompilation.
 - **Syscalls, compiled for cells** (the compiler piece, §7). A
   `--syscall-abi=vmcall` option makes the runtime stubs in
   `code_generator/x64_asm.w` and the exit stub in
@@ -269,9 +282,9 @@ Each milestone lands green on its own.
 
 | # | Milestone | Gate |
 |---|---|---|
-| M0 | Syscall primitives: `mmap_fd`, `memfd_create`, `madvise`, seals | `tests/memfd_test.w`: a `MAP_PRIVATE` clone sees the parent's bytes, its writes stay private, `MADV_DONTNEED` resets it |
-| M1 | `lib/kvm.w` and a guest that writes to a port | `tests/kvm_hello_test.w` (skips cleanly with no `/dev/kvm`) |
-| M2 | Cells: ELF loader, long-mode setup, LSTAR trampoline, syscall subset; `wvm run tests/hello.w` | Selected existing x64 tests pass inside a cell |
+| M0 | **Implemented:** syscall primitives `mmap_fd`, `memfd_create`, `madvise`, seals | `tests/memfd_test.w` (x86/x64): shared initialization, seal enforcement, isolated private clones, byte offsets, errors, partial/full reset, fd/mapping lifetime |
+| M1 | **Implemented:** `lib/kvm.w` and a guest that writes to a port | `tests/kvm_hello_test.w`: ABI layouts, real port write and halt (execution skips with no `/dev/kvm`) |
+| M2 | **Implemented:** ELF loader, ring-3 long mode, LSTAR gate, syscall subset; `wvm run tests/hello.w` | `tests/wvm_test.w`: existing x64 map/set, compound-assignment and float64 suites; TLS, syscall boundary, faults, timeout, malformed ELF |
 | M3 | Snapshots, clones, reset in place | Latency gate (spawn < 1 ms) and sharing gate (100 clones of a 64 MB snapshot add only their dirty pages to RSS) |
 | M4 | Policy, overlay fs, deterministic clock/random, symbolized faults | Policy-denial tests; replay test |
 | M5 | `wvmd`, warm pools, shared regions; wharness `--sandbox=cell` | wharness mock-mode run inside cells |
@@ -284,11 +297,98 @@ worth adding alongside M2: the same policy code runs on hosts without
 KVM (including the Claude cloud container), slower but testable
 everywhere, with `fork` from a zygote giving the same page sharing.
 
+### M0 usage and limits
+
+Import `lib.memfd` for the Linux constants and syscall surface. Create
+with `memfd_create(name, MFD_CLOEXEC | MFD_ALLOW_SEALING)`, size with
+`sys_ftruncate`, then initialize with `mmap_fd(..., MAP_SHARED, fd, 0)`.
+Unmap shared writable mappings before adding seals with
+`sys_fcntl(fd, F_ADD_SEALS, F_SEAL_WRITE | F_SEAL_SHRINK | F_SEAL_GROW)`.
+Writable `MAP_PRIVATE` clones can then be reset with
+`madvise(addr, length, MADV_DONTNEED)`. Close descriptors and unmap each
+mapping separately; mappings remain valid after closing their fd.
+
+Offsets are signed, word-sized **bytes**, aligned to host pages. On
+i386 the wrapper converts to `mmap2`'s 4096-byte units and rejects
+unaligned offsets, with a maximum offset of `2^31 - 1`; x64/ARM64 use
+64-bit words. Linux errors are raw negative errno values. A successful
+x86 mapping can look negative, so check the range `[-4095, -1]`, not
+merely `< 0`. Darwin, win64 and wasm return `-1` for `mmap_fd`,
+`memfd_create` and `madvise`; their anonymous `mmap` is unchanged.
+Linux seal command numbers must not be sent to non-Linux `sys_fcntl`.
+
+The M0 gate needs no KVM: `./wbuild memfd_test memfd_64_test`.
+It establishes memory semantics, not VM spawn latency or RSS gates
+(M3). The [Linux memfd documentation](https://man7.org/linux/man-pages/man2/memfd_create.2.html)
+describes the required unmap-before-seal lifecycle.
+
+### Running a cell (M1–M2)
+
+From the repository root, on Linux x64 with access to `/dev/kvm`:
+
+```sh
+./wbuild wvm
+./bin/wvm available
+./bin/wvm run tests/hello.w
+./bin/wvm run --timeout-ms 1000 bin/map_set_builtin_64_test
+./wbuild kvm_hello_test wvm_test
+```
+
+`.w` input is compiled **on the host** with `bin/wv2 x64` into a private
+temporary directory under `bin/`, then the ELF executes in KVM. The
+temporary image is removed after loading. An existing ELF is loaded
+directly. Source compilation is not sandboxed. Guest arguments follow
+the input filename. The host environment is not inherited; the only
+guest environment entry is `W_CRASH_TRACE=0`, because faults are reported
+by the VMM. The CLI supplies EOF on stdin; the library API accepts a
+borrowed binary input buffer through `input` / `input_length`.
+
+The runner returns the guest's exit code. Timeout returns 124; loader,
+KVM, or output-budget errors return 125. Guest page/protection faults
+return 139, invalid instructions 132, and divide faults 136, with the
+exception vector and guest RIP on stderr. Fault symbolization is M4.
+Output is captured while running, then emitted to stdout/stderr.
+
+Current syscall support:
+
+- `read` from the supplied input, `write` to captured stdout/stderr,
+  `close` of those three virtual descriptors, `exit` / `exit_group`.
+- `brk`, private anonymous `mmap`, `mprotect`, and `munmap` of mmap
+  allocations. Mappings are bounded and allocated monotonically; unmap
+  releases backing pages but does not recycle virtual addresses yet.
+- `arch_prctl` setting FS/GS (W TLS), realtime/monotonic `clock_gettime`,
+  nonblocking `getrandom`, virtual `getpid`/`gettid`, and `sched_yield`.
+- File opens return `-EACCES`. Other unsupported calls, including
+  sockets, fork/exec, clone/threads, and signal registration, return
+  `-ENOSYS`; the CLI reports the last unsupported syscall number.
+
+No guest path or descriptor is passed to a host file operation. Every
+syscall copy checks overflow, mapped pages, and read/write permissions.
+Low 2 MiB guest memory holds supervisor-only tables and traps. The
+256 MiB guest address space reserves 2–128 MiB for anonymous mappings,
+128–224 MiB for static ELF load segments, heap growth up to 240 MiB,
+and a stack at 248–256 MiB. Only touched pages consume physical RAM.
+The ELF loader rejects dynamic/interpreter images, overlapping load
+pages, invalid offsets/alignment, and non-executable entry points.
+
+Execution has a default 5-second timeout (configurable 1–600000 ms), a
+combined 4 MiB stdout/stderr budget, and a million syscall-exit limit.
+The watchdog interrupts even a guest that never makes a syscall. The
+`lib.vmm.cell` API is one-shot and must be serialized in a single-threaded
+host process: it temporarily owns SIGALRM, restores the previous handler
+and signal mask, and refuses an already active/pending real-time alarm.
+`cell_free` releases the vCPU, VM, run mapping, guest RAM, and buffers.
+
+This is the M2 cell substrate. VM snapshots/reset, filesystem overlays,
+deterministic services, the daemon, Linux boxes, and instruction-count
+budgets remain later milestones. The threat model in §2 still applies.
+
 ## 10. Open decisions
 
-1. **Where KVM runs.** The cloud container has no `/dev/kvm`. If host
-   `w` has it, the KVM gates run there; otherwise a GitHub runner with
-   KVM enabled, or the ptrace backend carries CI.
+1. **Where KVM runs.** The implementation host runs the KVM gates.
+   Hosts without `/dev/kvm` run loader/layout tests and skip execution;
+   a required KVM CI runner or the proposed ptrace backend remains to
+   be configured.
 2. **Tier 2 build vs adopt.** Recommended: build Tier 1 natively (it is
    small and plays to W's strengths), and start Tier 2 as a Firecracker
    backend behind the same `wvmd` API, replacing it with a W-native box
