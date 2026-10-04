@@ -21,6 +21,33 @@ void emit_ast_map_call(char* helper, int map_slot, int key_slot, int value_slot)
 # peepholes, target word size and runtime division behavior still apply.
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
+	if (op == 'A'):
+		expression_is_assignment = 1
+		int[128] lhs_slots
+		int[128] rhs_slots
+		int entry_stack = stack_pos
+		int pair = tree.left[id]
+		while (pair >= 0):
+			emit_expression_ast(tree, tree.left[pair])
+			if (pair == tree.left[id]): entry_stack = stack_pos
+			lhs_slots[pair] = push_slot()
+			pair = tree.next_arg[pair]
+		pair = tree.left[id]
+		while (pair >= 0):
+			int rhs = tree.right[pair]
+			emit_expression_ast(tree, rhs)
+			int got = promote(tree.result_type[rhs])
+			coerce(tree.result_type[tree.left[pair]], got)
+			rhs_slots[pair] = push_slot()
+			pair = tree.next_arg[pair]
+		pair = tree.left[id]
+		while (pair >= 0):
+			mov_eax_esp_plus((stack_pos - rhs_slots[pair]) << word_size_log2)
+			mov_ebx_esp_plus((stack_pos - lhs_slots[pair]) << word_size_log2)
+			assign_store(tree.result_type[tree.left[pair]])
+			pair = tree.next_arg[pair]
+		pop_to(entry_stack)
+		return
 	if ((op == 'm') || (op == 'q') || (op == 'w')):
 		int index = id
 		if (op == 'w'): index = tree.left[id]

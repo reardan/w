@@ -869,3 +869,18 @@ Differential tests cover nested receivers and keys, chained stores, record
 values and fields, signed and floating-point values, string conversions,
 collection membership and diagnostic parity. Container methods and map
 default constructors remain separate work.
+
+## Task 32: parallel assignment statements
+
+Whole-statement AST parsing now admits parallel assignment as linked
+left/right pairs. Destinations are evaluated and parked first, followed by
+all coerced right-hand values; stores run left to right and release the
+parked span. Nested calls keep their own argument links. Expression contexts
+still treat a comma as their enclosing construct's delimiter.
+
+Tests compare swaps, repeated destinations, pointer and field targets,
+indexed side effects, mixed scalar widths, strings, floats and returned
+record fields across the image matrix. The complete parallel-assignment
+fixture must also pass required mode on both compiler host widths. Arity,
+map-target, read-only and type-mismatch diagnostics retain the streaming
+fallback for exact parity.

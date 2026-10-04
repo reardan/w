@@ -144,7 +144,7 @@ int ast_expression_line_boundary(char* bytes, int index, int limit, int eof):
 # A complete scalar expression in the buffered window. The terminator is
 # left for the enclosing grammar. Unsupported characters
 # decline the whole root. No lexing or I/O happens in this preflight.
-int ast_expression_root_end(int eof):
+int ast_expression_root_end(int eof, int statement):
 	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return -1
 	int window_start = getchar_kernel_pos[file] - getchar_limit[file]
 	int index = token_start_offset - window_start
@@ -172,7 +172,7 @@ int ast_expression_root_end(int eof):
 			previous = 0
 			continue
 		if ((parens == 0) && (brackets == 0)):
-			if ((ch == ')') || (ch == ']') || (ch == ',') || (ch == ';') || (ch == '}') || (ch == '{')):
+			if ((ch == ')') || (ch == ']') || ((ch == ',') && (statement == 0)) || (ch == ';') || (ch == '}') || (ch == '{')):
 				if (ternaries): return -1
 				return window_start + index + i
 			if ((ch == '#') || (ch == 10)):
@@ -272,13 +272,13 @@ int ast_expression_boundary(int start, int whole):
 	if (whole): ast_expression_retain_token()
 	while (1):
 		int end
-		if (whole): end = ast_expression_root_end(0)
+		if (whole): end = ast_expression_root_end(0, whole > 1)
 		else: end = ast_expression_end(start)
 		if (end != -2): return end
 		int more = ast_expression_refill(start)
 		if (more < 0): return -1
 		if (more == 0):
-			if (whole): end = ast_expression_root_end(1)
+			if (whole): end = ast_expression_root_end(1, whole > 1)
 			if (end < 0): return -1
 			return end
 	return -1
@@ -1164,6 +1164,48 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	return id
 
 
+# Parallel assignment is admitted only by the whole statement entry.
+# Pair nodes separate sibling links from any nested call's argument list.
+int ast_expression_parallel(expression_ast* tree, int first):
+	if (token_newline): return -1
+	int head = -1
+	int tail = -1
+	int lhs = first
+	while (1):
+		int type = tree.result_type[lhs]
+		if (tree.readonly || type_is_value(type) || (type == 3) || (type == 4) || type_is_const(type)): return -1
+		if (tree.op[lhs] == 'm'): return -1
+		if (ast_expression_scalar_type(type) == 0): return -1
+		int pair = expression_ast_add(tree, 'T', lhs, -1)
+		if (pair < 0): return -1
+		if (head < 0): head = pair
+		else: tree.next_arg[tail] = pair
+		tail = pair
+		if (ast_expression_accept(tree, c",") == 0): break
+		tree.readonly = 0
+		lhs = ast_expression_conditional(tree, 2)
+		if (lhs < 0): return -1
+	if (ast_expression_accept(tree, c"=") == 0): return -1
+	int pair = head
+	while (pair >= 0):
+		int rhs = ast_expression_assignment(tree, 2)
+		if (rhs < 0): return -1
+		if (ast_expression_scalar_value(tree.result_type[rhs]) == 0): return -1
+		int want = tree.result_type[tree.left[pair]]
+		if (ast_expression_argument_compatible(tree, want, rhs) == 0): return -1
+		if (type_is_string(want) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[rhs]))):
+			if (sym_probe(c"str_from_cstr") < 0): return -1
+		tree.right[pair] = rhs
+		pair = tree.next_arg[pair]
+		if (pair >= 0):
+			if (ast_expression_accept(tree, c",") == 0): return -1
+		else if (peek(c",")): return -1
+	int id = expression_ast_add(tree, 'A', head, -1)
+	if (id < 0): return -1
+	tree.result_type[id] = type_value(tree.result_type[lhs])
+	return id
+
+
 # Called immediately after primary_expr consumes an opening '('. The
 # speculative pass builds the tree without decoding literals or emitting
 # code. Restore *all* changed state before either falling back or replaying
@@ -1181,10 +1223,6 @@ int ast_expression_try_at(int group_offset, int whole):
 	if (increment_statement_context || generic_pending_call_signature || generic_pending_call_name): return -1
 	int end = ast_expression_boundary(group_offset, whole)
 	if (end < 0): return -1
-	if (whole > 1):
-		int window_start = getchar_kernel_pos[file] - getchar_limit[file]
-		char* bytes = cast(char*, getchar_buf_addr[file])
-		if (bytes[end - window_start] == ','): return -1
 	expression_ast tree
 	tree.count = 0
 	tree.text_used = 0
@@ -1198,6 +1236,7 @@ int ast_expression_try_at(int group_offset, int whole):
 	char* saved = generic_reparse_save()
 	int serial = token_serial
 	int root = ast_expression_assignment(&tree, 1)
+	if ((root >= 0) && (whole > 1) && peek(c",")): root = ast_expression_parallel(&tree, root)
 	int accepted = (root >= 0) && (token_start_offset == end)
 	if (whole == 0): accepted = accepted && peek(c")")
 	if (accepted): accepted = ast_expression_data_value(tree.result_type[root]) || (tree.result_type[root] == type_value(0))
