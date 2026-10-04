@@ -1,4 +1,4 @@
-# Simple statement nodes are built before backend emission. Source spans
+# Statement nodes are built before backend emission. Source spans
 # and resolved control targets belong to the node; the emitter does not
 # parse tokens or consult the current loop/switch binding.
 const int ast_stmt_pass = 1
@@ -7,6 +7,7 @@ const int ast_stmt_break = 3
 const int ast_stmt_continue = 4
 const int ast_stmt_return = 5
 const int ast_stmt_yield = 6
+const int ast_stmt_expression = 7
 
 
 struct statement_ast:
@@ -30,3 +31,5 @@ int ast_debugger_statements_emitted
 
 int ast_return_statements_emitted
 int ast_yield_statements_emitted
+
+int ast_expression_statements_emitted

@@ -48,3 +48,9 @@ void emit_statement_ast_exit(statement_ast* node):
 		for_cleanup_emit_returning()
 		defer_emit_returning()
 		be_return(stack_pos)
+
+
+void emit_expression_statement_ast(statement_ast* node):
+	ast_expression_emit_prepared(node.expression_tree, node.expression_root)
+	ast_roots_emitted = ast_roots_emitted + 1
+	ast_expression_statements_emitted = ast_expression_statements_emitted + 1

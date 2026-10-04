@@ -23,6 +23,7 @@
  */
 int ast_statement_simple(int* jumps);
 int ast_statement_value(int* jumps);
+int ast_statement_expression(int prefix_only);
 
 
 # Table offset of the function whose body is being parsed; return
@@ -337,6 +338,7 @@ void statement():
 
 	# '++x' / '--x' — prefix increment/decrement statement
 	# (grammar/increment.w, docs/projects/increment_decrement.md)
+	else if (ast_statement_expression(1)) {}
 	else if (increment_prefix_statement()): expect_or_newline(c";")
 
 	# defer <simple-statement>: record the span; it re-parses and runs
@@ -356,6 +358,7 @@ void statement():
 
 	# name: -- a goto target (grammar/goto_statement.w)
 	else if (labeled_statement()) {}
+	else if (ast_statement_expression(0)) {}
 
 	else:
 		# Postfix 'x++'/'x--' are only recognized at true statement

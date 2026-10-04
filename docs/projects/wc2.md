@@ -1726,3 +1726,16 @@ results and diagnostics on both host widths, covering record/bare returns,
 early generator returns, yields, malformed input and coercion warnings.
 AST statistics now report return and yield statement counts. Compound
 statements and declarations remain on the streaming path.
+
+## Task 94: expression statement roots
+
+Full-expression mode now builds expression-statement nodes for ordinary
+calls, assignments, parallel assignments and prefix/postfix increments. Each
+node owns its prepared expression root, which the statement visitor emits
+without promoting an otherwise unused result. Declaration, label and special
+statement precedence is preserved; failed probes retain the existing path.
+
+Tests compare native images and runtime behavior for mixed scalar/container
+stores, parallel assignment and both increment forms on both host widths.
+Malformed increments, const stores, failed parallel RHSs and argument warnings
+retain their diagnostics. Statistics report expression-statement nodes.

@@ -89,3 +89,28 @@ int ast_statement_value(int* jumps):
 	expect_or_newline(c";")
 	emit_statement_ast_exit(&node)
 	return 1
+
+
+# Prefix increment has its earlier dispatch position. All other expression
+# statements arrive here only after declarations, labels and special forms
+# have had their normal precedence in the statement dispatcher.
+int ast_statement_expression(int prefix_only):
+	if (ast_expressions_mode < 2): return 0
+	if (prefix_only && (increment_op() == 0)): return 0
+	statement_ast node
+	node.kind = ast_stmt_expression
+	node.source_file = file
+	node.line = diag_token_line
+	node.column = diag_token_column
+	node.start_offset = token_start_offset
+	increment_statement_context = 0
+	expression_lhs_readonly = 0
+	expression_ast tree
+	int root = ast_expression_prepare_at(&tree, token_start_offset, 2)
+	if (root < 0): return 0
+	node.expression_tree = &tree
+	node.expression_root = root
+	node.end_offset = tree.end_offset
+	emit_expression_statement_ast(&node)
+	expect_or_newline(c";")
+	return 1
