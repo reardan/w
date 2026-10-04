@@ -218,8 +218,7 @@ void warn_type_mismatch(char* context, int want, int got):
 	warning(c"'")
 
 
-int function_signature_matches_symbol(int signature_type, char* function_name):
-	int symbol = sym_lookup(function_name)
+int function_signature_matches_record(int signature_type, int symbol):
 	if (symbol < 0): return 0
 	if (load_int(table + symbol + 10) != 2): return 0
 	if (type_unqualified(type_function_return(signature_type)) != type_unqualified(load_int(table + symbol + 6))):
@@ -230,6 +229,10 @@ int function_signature_matches_symbol(int signature_type, char* function_name):
 		if (type_unqualified(type_function_param_type(signature_type, i)) != type_unqualified(sym_param_type(symbol, i))):
 			return 0
 	return 1
+
+
+int function_signature_matches_symbol(int signature_type, char* function_name):
+	return function_signature_matches_record(signature_type, sym_lookup(function_name))
 
 
 int types_compatible_with_expression(int want, int got):

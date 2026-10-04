@@ -17,6 +17,40 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **Color diagnostic test inherits `NO_COLOR` (2026-10-03).** Running
+  `./wbuild tests` from an agent shell with `NO_COLOR=1` fails
+  `did_you_mean_test`'s forced-color assertion: the inherited variable
+  correctly overrides `FORCE_COLOR=1`. The target passes with `NO_COLOR`
+  unset. Isolate the forced-color step's environment while retaining the
+  separate assertion that `NO_COLOR` wins.
+
+- **Missing implicit string-coercion helper (2026-10-03).** A standalone
+  `list[string]` consumer pushing a C string without importing `lib.lib`
+  fails with `Cannot find symbol: ')'`: coercion needs `str_from_cstr`,
+  but the diagnostic names the current closing token. Name the missing
+  helper and its supplying import, or load that helper lazily. Observed
+  in the streaming baseline while adding AST list-method coverage.
+
+- **Checks can race a compiler rebuild (2026-10-03).** A concurrent
+  `bin/wv2 check` or `wtest` dependency query keeps `bin/wv2` open, so
+  `wbuild` rebuilding it in place fails with `ETXTBSY`. This surfaced
+  when switching between the ordinary and AST audit manifests. Run these
+  operations sequentially for now; publishing the bootstrap output by
+  atomic rename, as the executor already does for itself, would remove
+  the race. The parallel AST audit suite also hit this entirely inside
+  the suite: `wexec_test`'s nested `bin/wexec hello` rebuilt the default
+  manifest's `wv2` while sibling targets were compiling with it. A serial
+  suite run avoids that internal race too.
+
+- **Nested array descriptors in arrays of structs (2026-10-03).** During
+  AST differential testing, `struct R: int[3] items` followed by local
+  `R[2] records; records[1].items[2] = 64` (on separate W lines) checked
+  cleanly but trapped with length zero in both compiler paths. Initialize
+  embedded descriptors recursively or diagnose unsupported layouts. While
+  inspecting that failure with `wdbg`, `p values[0]` for another local array
+  failed with `type parameter name expected, found '0'`; cover fixed-array
+  local evaluation in debugger regression tests.
+
 - **Multi-file `w check` shares one compilation unit, so two root
   programs cannot be checked in one invocation.** Observed 2026-08-07
   (shell-mode stage 4): `bin/wv2 x64 check --json
@@ -103,6 +137,11 @@ is a queue, not an archive.
   measurements that silently reported prelude-only timings. Either
   accept global flags before the subcommand, or special-case a
   known-subcommand word appearing after a flag and say so.
+  The AST suite audit (2026-10-03) also hit
+  `check --ast-full-expressions --json f.w`: the AST flag ends the
+  leading check-option scan, so `--json` becomes unrecognized. Appending
+  the whole-program AST flag after the file list works; shared option
+  parsing should allow global and subcommand flags to interleave.
 
 - **`symbol redefined: 'X'` does not say where the first definition
   is.** Writing a new test with a plain `int main()` — the shape every
@@ -496,6 +535,13 @@ and `docs/projects/parser_generator.md` for the record.
   sensitive and never joins those lines, so the mismatch only
   surfaces as a `parser_generator_w_test` failure on the new test
   file, one gate late.
+- **Parenthesized arithmetic followed by a comparison in an `if` can
+  fail the PG gate.** Observed 2026-10-03 in the new AST differential
+  fixture: `if (120 / 6 / 2) != 10: return 3` compiles with `wv2` but
+  `parser_generator_w_test` rejects the fixture as `expected top_item,
+  found if`. Wrapping the whole condition, `if ((120 / 6 / 2) != 10):`,
+  passes both. Review `paren_expression_opt`'s early parenthesized
+  alternative and add a regression for binary tails after that group.
 
 ## Skills / rules upkeep
 
@@ -534,6 +580,13 @@ diff's worth of files is exactly the ergonomic win `check --json`
 exists for.
 
 ## Display-dependent gates are runnable headlessly (2026-08-09, #441 round 1)
+
+2026-10-03: a default-parallel `wbuild tests` run intermittently failed
+`graphics_ui_smoke_test` with both button/background red channels reading
+zero; the isolated retry passed without source changes. Investigate window
+readiness or interference between concurrent display tests, and consider
+serializing their execution. This was observed during the AST expression
+work with the experimental compiler option off.
 
 `graphics_ui_smoke_test` and `graphics_gl_smoke_test` SKIP with exit 0
 when no display is reachable, which is the right default but means a

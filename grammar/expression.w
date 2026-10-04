@@ -1,5 +1,8 @@
 # Set whenever an expression performs an assignment. Only the REPL reads
 # it (to suppress echoing "x = 5"); it clears the flag before each entry.
+int ast_expression_try_root(int statement_context);
+
+
 int expression_is_assignment
 
 
@@ -123,6 +126,9 @@ int expression():
 	int stmt_context = increment_statement_context
 	increment_statement_context = 0
 	expression_lhs_readonly = 0
+	if (ast_expressions_mode >= 2):
+		int ast_type = ast_expression_try_root(stmt_context)
+		if (ast_type != -1): return ast_type
 	# 'w check --lint' (compiler/lint.w): a single-token left side and
 	# where its '=' sits, for self-assign and assign-in-condition
 	int lhs_serial = token_serial

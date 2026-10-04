@@ -108,12 +108,8 @@ void pg_ast_walk_listener(pg_ast_node* node, pg_ast_visitor* enter, pg_ast_visit
 	leave(node)
 
 
-void pg_ast_free(pg_ast_node* node):
+void pg_ast_free_shallow(pg_ast_node* node):
 	if (node == 0): return
-	int i = 0
-	while (i < node.children.length):
-		pg_ast_free(node.children[i])
-		i = i + 1
 	if (node.text != 0): free(node.text)
 	free(node.name)
 	# list[T]/map[K, V] have no free() pseudo-method yet; this file is
@@ -125,3 +121,12 @@ void pg_ast_free(pg_ast_node* node):
 	__w_list_free(cast(__w_list*, node.children))
 	if (node.metadata != 0): __w_map_free(cast(__w_hash_table*, node.metadata))
 	free(node)
+
+
+void pg_ast_free(pg_ast_node* node):
+	if (node == 0): return
+	int i = 0
+	while (i < node.children.length):
+		pg_ast_free(node.children[i])
+		i = i + 1
+	pg_ast_free_shallow(node)

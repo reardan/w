@@ -77,14 +77,11 @@ int int_literal_wrap32(int n):
 	return (n << spare) >> spare
 
 
-# Attempt to decode an int literal
-int int_literal():
-	int negative = 0
+# Decode the current numeric token without emitting code or consuming it.
+# Shared by the streaming primary rule and the committed AST literal pass.
+int int_literal_value(int negative):
 	int n = 0
 	int i = 0
-
-	# Check to see if theres a negative sign
-	if (accept(c"-")): negative = 1
 
 	# Hex literal e.g. 0x1f or 0x1F
 	if ((token[0] == '0') && (token[1] == 'x')):
@@ -92,8 +89,7 @@ int int_literal():
 		n = from_hex(token + 2)
 		int_literal_bit31_check(n)
 		if (negative): n = 0-n
-		mov_eax_int(int_literal_wrap32(n))
-		return 1
+		return int_literal_wrap32(n)
 
 	# Binary literal e.g. 0b1010, mirroring the hex path ('_' digit
 	# separators are a possible follow-up)
@@ -105,11 +101,7 @@ int int_literal():
 			i = i + 1
 		int_literal_bit31_check(n)
 		if (negative): n = 0-n
-		mov_eax_int(int_literal_wrap32(n))
-		return 1
-
-	# Check for digits 0-9
-	if ((token[i]) < '0' || (token[i] > '9')): return 0
+		return int_literal_wrap32(n)
 
 	int_literal_decimal_check()
 
@@ -120,6 +112,12 @@ int int_literal():
 
 	# Handle negative
 	if (negative): n = 0-n
-	# Put int literal into eax
-	mov_eax_int(int_literal_wrap32(n))
+	return int_literal_wrap32(n)
+
+
+int int_literal():
+	int negative = 0
+	if (accept(c"-")): negative = 1
+	if ((token[0] < '0') || (token[0] > '9')): return 0
+	mov_eax_int(int_literal_value(negative))
 	return 1

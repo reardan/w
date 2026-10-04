@@ -811,7 +811,9 @@ void pg_emit_lexer(pg_source_writer* writer, pg_grammar* grammar):
 	pg_source_line(writer, c"pg_token_stream_add(stream, pg_token_hide(pg_token_make(pg_token_whitespace_kind(), input, ws_start, index - ws_start, filename, ws_line, ws_column)))")
 	pg_source_dedent(writer)
 	pg_open_c(writer, c"else:")
-	pg_source_line(writer, c"pg_diagnostics_add(diagnostics, filename, line, column, c\"invalid character\", c\"known token\", pg_substr(input, index, 1))")
+	pg_source_line(writer, c"char* invalid_text = pg_substr(input, index, 1)")
+	pg_source_line(writer, c"pg_diagnostics_add(diagnostics, filename, line, column, c\"invalid character\", c\"known token\", invalid_text)")
+	pg_source_line(writer, c"free(invalid_text)")
 	pg_source_line(writer, c"pg_token_stream_add(stream, pg_token_hide(pg_token_make(pg_token_invalid_kind(), input, index, 1, filename, line, column)))")
 	pg_source_line(writer, c"index = index + 1")
 	pg_source_line(writer, c"column = column + 1")
@@ -828,7 +830,7 @@ void pg_emit_match_token(pg_source_writer* writer, pg_grammar* grammar):
 	pg_source_line(writer, c"pg_token* token = pg_token_stream_peek(stream)")
 	pg_open_c(writer, c"if (token.kind == kind):")
 	pg_source_line(writer, c"pg_token_stream_consume(stream)")
-	pg_source_line(writer, c"return pg_ast_token(kind, token, name)")
+	pg_source_line(writer, c"return pg_token_stream_ast_new(stream, kind, token, name)")
 	pg_source_dedent(writer)
 	pg_source_line(writer, c"return 0")
 	pg_source_dedent(writer)
@@ -908,10 +910,10 @@ void pg_emit_recovery(pg_source_writer* writer, pg_grammar* grammar, pg_recover_
 	char* sync = pg_take(f"{g}_token_{recover.sync_token}")
 	pg_line(writer, f"if (pg_token_stream_peek(stream).kind == {g}_token_EOF): break")
 	pg_line(writer, f"pg_syntax_error(diagnostics, pg_token_stream_furthest(stream), c\"{rule_name}\")")
-	pg_line(writer, f"pg_ast_node* recover_node_{at} = pg_ast_new(pg_ast_error_kind(), 0, c\"error\")")
+	pg_line(writer, f"pg_ast_node* recover_node_{at} = pg_token_stream_ast_new(stream, pg_ast_error_kind(), 0, c\"error\")")
 	pg_open(writer, f"while (pg_token_stream_peek(stream).kind != {g}_token_EOF):")
 	pg_line(writer, f"pg_token* recover_token_{at} = pg_token_stream_consume(stream)")
-	pg_line(writer, f"pg_ast_add(recover_node_{at}, pg_ast_token(recover_token_{at}.kind, recover_token_{at}, c\"error_token\"))")
+	pg_line(writer, f"pg_ast_add(recover_node_{at}, pg_token_stream_ast_new(stream, recover_token_{at}.kind, recover_token_{at}, c\"error_token\"))")
 	pg_open(writer, f"if (recover_token_{at}.kind == {sync}):")
 	pg_line(writer, f"int recover_next_{at} = pg_token_stream_peek(stream).kind")
 	pg_source_tabs(writer)
@@ -1031,10 +1033,10 @@ void pg_emit_term(pg_source_writer* writer, pg_grammar* grammar, pg_analysis* an
 		pg_source_dedent(writer)
 
 
-# "node = pg_ast_new(<rule ast kind>, 0, "<rule>")" plus reattaching any
+# Allocate a stream-tracked rule node, then reattach any
 # already-parsed left-factored prefix children in order.
 void pg_emit_node_alloc(pg_source_writer* writer, pg_grammar* grammar, pg_rule* rule, list[char*] prefix_children):
-	pg_line(writer, f"node = pg_ast_new({grammar.name}_ast_{rule.name}, 0, c\"{rule.name}\")")
+	pg_line(writer, f"node = pg_token_stream_ast_new(stream, {grammar.name}_ast_{rule.name}, 0, c\"{rule.name}\")")
 	for char* child in prefix_children: pg_line(writer, f"pg_ast_add(node, {child})")
 
 

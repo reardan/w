@@ -332,7 +332,7 @@ rule slice_tail = COLON expression_opt |
 # call_arg's 'name: value' form is the named-field constructor
 # argument ('new T(x: 1)', 'T(y: 2)'; golf ergonomics wave 5). PG is
 # syntax-only: the compiler only accepts it in constructor position.
-rule arg_list = call_arg arg_tail* |
+rule arg_list = gap_many call_arg arg_tail* gap_many | gap_many
 rule arg_tail = COMMA gap_many call_arg
 rule call_arg = name_token COLON gap_many expression | expression
 rule primary_expr = NUMBER | STRING | CHAR_LITERAL | cast_expr | sizeof_expr | new_expr | grouped_expr | range_expr | hash_literal | name_token

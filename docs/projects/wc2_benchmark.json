@@ -1,0 +1,154 @@
+{
+  "date_utc": "2026-10-03T22:40:25.702872+00:00",
+  "platform": "Linux-7.0.0-34-generic-x86_64-with-glibc2.39",
+  "cpu": "Intel(R) Core(TM) i7-14700K",
+  "compiler_sha256": {
+    "wc2": "25beae86c667eddb893b30d7f368da6192da41cf0df3312079f0d9b2a533b1eb",
+    "wv2": "e7510d899e0801baf621e94aec6d179667d453b9e499bc63acf5c2f8de03849f"
+  },
+  "note": "Wall time, warm OS filesystem cache, process startup included only in cold_process; wv2 also compiles its implicit runtime. Resident memory is process RSS, not AST-only.",
+  "workloads": [
+    {
+      "modules": 3,
+      "functions_per_part": 2,
+      "source_bytes": 403,
+      "source_lines": 20,
+      "repeats": 7,
+      "wv2_cold_process": {
+        "median_ms": 25.619,
+        "min_ms": 22.294,
+        "max_ms": 26.798
+      },
+      "wc2_cold_process": {
+        "median_ms": 1.358,
+        "min_ms": 1.152,
+        "max_ms": 1.549
+      },
+      "wv2_image_bytes": 86236,
+      "wc2_image_bytes": 534,
+      "resident_cold_build": {
+        "median_ms": 0.737,
+        "min_ms": 0.591,
+        "max_ms": 1.032
+      },
+      "resident_warm_check": {
+        "median_ms": 0.052,
+        "min_ms": 0.05,
+        "max_ms": 0.054
+      },
+      "resident_warm_symbols": {
+        "median_ms": 0.116,
+        "min_ms": 0.111,
+        "max_ms": 0.14
+      },
+      "resident_warm_deps": {
+        "median_ms": 0.063,
+        "min_ms": 0.062,
+        "max_ms": 0.065
+      },
+      "resident_warm_build": {
+        "median_ms": 0.077,
+        "min_ms": 0.074,
+        "max_ms": 0.084
+      },
+      "warm_work": {
+        "reads": 84,
+        "parses": 0,
+        "analyses": 0,
+        "emissions": 0
+      },
+      "resident_changed_leaf_build": {
+        "median_ms": 0.36,
+        "min_ms": 0.326,
+        "max_ms": 0.409
+      },
+      "resident_memory_kib": {
+        "VmRSS": 824,
+        "VmHWM": 824
+      },
+      "retained": {
+        "files": 3,
+        "programs": 1,
+        "reads": 126,
+        "parses": 28,
+        "parse_hits": 98,
+        "analyses": 14,
+        "emissions": 14,
+        "program_hits": 28,
+        "source_bytes": 403,
+        "ast_nodes": 86
+      }
+    },
+    {
+      "modules": 6,
+      "functions_per_part": 25,
+      "source_bytes": 13526,
+      "source_lines": 810,
+      "repeats": 7,
+      "wv2_cold_process": {
+        "median_ms": 30.564,
+        "min_ms": 29.51,
+        "max_ms": 33.981
+      },
+      "wc2_cold_process": {
+        "median_ms": 61.072,
+        "min_ms": 57.818,
+        "max_ms": 65.101
+      },
+      "wv2_image_bytes": 106716,
+      "wc2_image_bytes": 16571,
+      "resident_cold_build": {
+        "median_ms": 53.426,
+        "min_ms": 52.639,
+        "max_ms": 59.898
+      },
+      "resident_warm_check": {
+        "median_ms": 0.2,
+        "min_ms": 0.151,
+        "max_ms": 0.247
+      },
+      "resident_warm_symbols": {
+        "median_ms": 2.469,
+        "min_ms": 2.292,
+        "max_ms": 3.704
+      },
+      "resident_warm_deps": {
+        "median_ms": 0.187,
+        "min_ms": 0.183,
+        "max_ms": 0.3
+      },
+      "resident_warm_build": {
+        "median_ms": 0.17,
+        "min_ms": 0.165,
+        "max_ms": 0.369
+      },
+      "warm_work": {
+        "reads": 168,
+        "parses": 0,
+        "analyses": 0,
+        "emissions": 0
+      },
+      "resident_changed_leaf_build": {
+        "median_ms": 42.927,
+        "min_ms": 42.175,
+        "max_ms": 43.756
+      },
+      "resident_memory_kib": {
+        "VmRSS": 10164,
+        "VmHWM": 10164
+      },
+      "retained": {
+        "files": 6,
+        "programs": 1,
+        "reads": 252,
+        "parses": 49,
+        "parse_hits": 203,
+        "analyses": 14,
+        "emissions": 14,
+        "program_hits": 28,
+        "source_bytes": 13526,
+        "ast_nodes": 3341
+      }
+    }
+  ]
+}
