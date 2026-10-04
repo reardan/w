@@ -1606,3 +1606,18 @@ Differential cases exercise intentional parentheses, nested assignments,
 container stores, self-assignment, later literal warnings and rollback.
 Normal and strict checks retain matching diagnostics; the broader query and
 fixture audit no longer reports lint-driven expression fallbacks.
+
+## Task 86: remaining warning-bearing expressions
+
+Committed AST events now retain intrinsic operand warnings, multidimensional
+array index/store warnings, array-header cast warnings and calls whose
+arguments start on the next line. Compatible warning paths also admit
+record mismatches and bare function references assigned to scalar storage.
+GPU-domain errors and conversions requiring unsupported semantics still
+decline before emission.
+
+The existing warning fixtures compile with required AST expressions and
+identical native images on both host widths. Tests compare normal/strict
+and plain/JSON diagnostics, warning ordering, indirect calls and rollback
+after a later parse failure. The broader positive query/fixture audit now
+finds only GPU address expressions and the near-limit nesting fixtures.

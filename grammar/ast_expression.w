@@ -574,10 +574,12 @@ int ast_expression_argument_compatible(expression_ast* tree, int want, int id):
 # Compatibility warnings are committed source events, never probe effects.
 # Keep conversions with their own semantic errors on the fallback path.
 int ast_expression_warning_safe(int want, int got):
-	if ((want == 4) || (got == 4)): return 0
+	if (want == 4): return 0
 	if (type_is_gpu_pointer(want) || type_is_gpu_pointer(got)): return 0
 	if (type_is_gpu_object(want) || type_is_gpu_object(got)): return 0
 	if (type_is_var(want) || type_is_var(got)): return 0
+	if (ast_expression_record_type(want) && ast_expression_record_type(got)): return 1
+	if (got == 4): return ast_expression_scalar_type(want)
 	if (ast_expression_scalar_type(want) == 0): return 0
 	if (ast_expression_scalar_type(got) == 0): return 0
 	return 1
@@ -595,7 +597,31 @@ int ast_expression_warning(expression_ast* tree, char* context, int want, int go
 int ast_expression_checked_argument(expression_ast* tree, char* context, int want, int id):
 	if (ast_expression_prepare_value(tree, tree.result_type[id], token_start_offset) == 0): return 0
 	if (ast_expression_argument_compatible(tree, want, id)): return 1
-	return ast_expression_warning(tree, context, want, ast_expression_promoted_type(tree.result_type[id]))
+	int got = ast_expression_promoted_type(tree.result_type[id])
+	if ((got == 4) && (tree.op[id] != 'v')): return 0
+	return ast_expression_warning(tree, context, want, got)
+
+
+int ast_expression_intrinsic_argument(expression_ast* tree, char* name, int index, int want, int id):
+	if (ast_expression_prepare_value(tree, tree.result_type[id], token_start_offset) == 0): return 0
+	if (ast_expression_argument_compatible(tree, want, id)): return 1
+	int got = ast_expression_promoted_type(tree.result_type[id])
+	if ((got == 4) && (tree.op[id] != 'v')): return 0
+	if (ast_expression_warning_safe(want, got) == 0): return 0
+	int event = expression_ast_add(tree, ast_warning, want, got)
+	if (event < 0): return 0
+	tree.high[event] = 6
+	tree.value[event] = cast(int, name)
+	tree.symbol[event] = index
+	return 1
+
+
+int ast_expression_warning_message(expression_ast* tree, char* message):
+	int event = expression_ast_add(tree, ast_warning, -1, -1)
+	if (event < 0): return 0
+	tree.high[event] = 7
+	tree.value[event] = cast(int, message)
+	return 1
 
 
 void ast_expression_replay_warning(expression_ast* tree, int id):
@@ -628,11 +654,14 @@ void ast_expression_replay_warning(expression_ast* tree, int id):
 			char* name = c"it"
 			if (tree.symbol[id] == 0): name = table + tree.value[id]
 			lint_self_assign_end(strclone(name), 1, tree.left[id], tree.right[id])
+	else if (tree.high[id] == 6): limb_builtin_check_argument(cast(char*, tree.value[id]), tree.symbol[id], tree.left[id], tree.right[id])
+	else if (tree.high[id] == 7): warning(cast(char*, tree.value[id]))
 	else: warn_type_mismatch(cast(char*, tree.value[id]), tree.left[id], tree.right[id])
 
 
 int ast_expression_call(expression_ast* tree, int id, int depth):
-	if (token_newline): return -1
+	if (token_newline):
+		if (ast_expression_warning_message(tree, c"warning: call arguments continue from the previous line") == 0): return -1
 	int method = tree.op[id] == 'z'
 	int sym = tree.symbol[id]
 	int arity = sym_num_args(sym)
@@ -673,6 +702,7 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
 		if ((param >= 0) && (ast_expression_argument_compatible(tree, param, arg) == 0)):
 			if (generator || (variadic >= 0) || (c_variadic >= 0)): return -1
+			if ((got == 4) && (tree.op[arg] != 'v')): return -1
 			if (ast_expression_warning_safe(param, got) == 0): return -1
 			int event = expression_ast_add(tree, ast_warning, param, got)
 			if (event < 0): return -1
@@ -729,9 +759,10 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 
 
 int ast_expression_indirect_call(expression_ast* tree, int callee, int depth):
-	if (token_newline): return -1
 	int type = tree.result_type[callee]
 	if ((type == 4) && (tree.op[callee] == 'v')): return ast_expression_call(tree, callee, depth)
+	if (token_newline):
+		if (ast_expression_warning_message(tree, c"warning: call arguments continue from the previous line") == 0): return -1
 	if (ast_expression_scalar_value(type) == 0): return -1
 	if (type_float_kind(type) || type_is_string(type)): return -1
 	int signature = type_function_pointer_signature(type)
@@ -1529,7 +1560,9 @@ int ast_expression_integer_intrinsic(expression_ast* tree, int kind, int depth):
 		int argument = ast_expression_assignment(tree, depth + 1)
 		if (argument < 0): return -1
 		if (ast_expression_data_value(tree.result_type[argument]) == 0): return -1
-		if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
+		char* name = limb_builtin_name(kind)
+		if (kind > 3): name = bit_builtin_name(kind - 3)
+		if (ast_expression_intrinsic_argument(tree, name, i, want, argument) == 0): return -1
 		if (tail < 0): tree.left[id] = argument
 		else: tree.next_arg[tail] = argument
 		tail = argument
@@ -1632,7 +1665,7 @@ int ast_expression_atomic(expression_ast* tree, int kind, int depth):
 			want = ast_expression_pointer_type(tree, integer, token_start_offset)
 			if (want < 0): return -1
 			tree.symbol[id] = want
-		if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
+		if (ast_expression_intrinsic_argument(tree, atomic_builtin_name(kind), i, want, argument) == 0): return -1
 		if (tail < 0): tree.left[id] = argument
 		else: tree.next_arg[tail] = argument
 		tail = argument
@@ -1812,14 +1845,14 @@ int ast_expression_ndarray_index(expression_ast* tree, int receiver, int record,
 		tree.readonly = 0
 		return id
 	int integer = type_lookup(c"int")
-	if (ast_expression_argument_compatible(tree, integer, first) == 0): return -1
+	if (ast_expression_checked_argument(tree, c"ndarray index", integer, first) == 0): return -1
 	int count = 1
 	int previous = first
 	while (ast_expression_accept(tree, c",")):
 		if (count == 4): return -1
 		int arg = ast_expression_assignment(tree, depth + 1)
 		if (arg < 0): return -1
-		if (ast_expression_argument_compatible(tree, integer, arg) == 0): return -1
+		if (ast_expression_checked_argument(tree, c"ndarray index", integer, arg) == 0): return -1
 		tree.next_arg[previous] = arg
 		previous = arg
 		count = count + 1
@@ -1864,7 +1897,7 @@ int ast_expression_ndarray_store(expression_ast* tree, int index, int op, int de
 		int result = 3
 		if (kind): result = float_binary_result_type(kind)
 		if (types_compatible_with_expression(want, result) == 0): return -1
-	else if (ast_expression_argument_compatible(tree, want, right) == 0): return -1
+	else if (ast_expression_checked_argument(tree, c"ndarray assignment", want, right) == 0): return -1
 	int id = expression_ast_add(tree, ast_nd_store, index, right)
 	if (id < 0): return -1
 	tree.value[id] = op
@@ -2078,7 +2111,8 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		if (ast_expression_var_coercion(want, got) == 0): return -1
 		int buffer_value = type_get_kind(type_unqualified(got)) == type_kind_slice_value
 		if (buffer_value && (type_get_pointer_level(type_unqualified(want)) > 0)):
-			if (type_decays_to_pointer(want, got) == 0): return -1
+			if (type_decays_to_pointer(want, got) == 0):
+				if (ast_expression_warning_message(tree, c"warning: cast of array to pointer addresses the array header, not its data; index or let it decay instead") == 0): return -1
 		# coerce_explicit diagnoses truncating an address. Leave that at
 		# the streaming parser's source location and diagnostic order.
 		if (((got == 4) || (type_get_pointer_level(got) > 0) || buffer_value) && (type_get_pointer_level(want) == 0)):
