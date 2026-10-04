@@ -440,7 +440,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 			emit_expression_ast(tree, arg)
 			int got = promote(tree.result_type[arg])
 			if ((method == 1) || ((method == 3) && (count == 1))): coerce(tree.high[id], got)
-			if ((method >= 11) && (count == 0)): coerce(tree.high[id], got)
+			if ((((method >= 11) && (method <= 18)) || (method == 27) || (method == 28)) && (count == 0)): coerce(tree.high[id], got)
 			if (((method == 15) || (method == 18)) && (count == 1)): coerce(tree.symbol[id], got)
 			int slot = push_slot()
 			if (count == 0): first_slot = slot
@@ -472,7 +472,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (first_slot): push_slot_copy(first_slot)
 		if (second_slot): push_slot_copy(second_slot)
 		if ((method == 16) || (method == 17)): push_slot_int(tree.high[id])
-		if ((method == 20) || (method == 21) || (method == 27) || (method == 28)): push_slot_int(tree.symbol[id])
+		if ((method == 20) || (method == 21) || (method == 27) || (method == 28) || (method == 32)): push_slot_int(tree.symbol[id])
 		rt_call_end(s)
 		pop_to(base_stack)
 		return

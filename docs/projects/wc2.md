@@ -1168,3 +1168,16 @@ Required-mode and differential fixtures cover argument side effects, default
 parameters, float coercion, empty generators and nested generators. Invalid
 arity and record arguments retain their existing diagnostics. Generator
 declarations and yield statements still use the statement parser.
+
+## Task 54: list callback methods
+
+AST method nodes now cover sort_by, sorted_by, map, filter and reduce with
+ordinary callback arguments. Named-function and function-pointer return
+types determine map's result list; reduce retains the initial value's inferred
+storage type. New result types are staged at the same argument boundary as
+the streaming parser. Record comparators use the address-based helpers.
+
+Tests cover changed mapped element types, typed callback pointers, receiver/
+callback/initial-value evaluation order, record sorting, empty reductions and
+invalid callbacks/results. Implicit `it` iteration expressions still use their
+existing path.

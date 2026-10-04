@@ -1227,6 +1227,38 @@ int ast_expression_list_scalar_kind(int element):
 	return hash_key_kind_for_type(type)
 
 
+int ast_expression_callback_return(expression_ast* tree, int argument):
+	int got = ast_expression_promoted_type(tree.result_type[argument])
+	if (got == 4):
+		if (tree.op[argument] != 'v'): return -1
+		int result = load_int(table + tree.symbol[argument] + 6)
+		if ((result >= 0) && (result != 4)): return type_unqualified(result)
+	else:
+		int signature = type_function_pointer_signature(type_real(got))
+		if (signature >= 0): return type_unqualified(type_function_return(signature))
+	return type_lookup(c"int")
+
+
+int ast_expression_list_callback_element(int type):
+	type = type_unqualified(type)
+	return (type_num_args(type) == 0) && (type_is_string(type) == 0) && (type_is_array(type) == 0) && (type_is_slice(type) == 0)
+
+
+# The type-only part of inferred_storage_type, with slice interning kept
+# in the expression transaction. Bare function and void values decline.
+int ast_expression_inferred_type(expression_ast* tree, int got, int offset):
+	if (got == 3): return type_lookup(c"int")
+	if (got == 4): return -1
+	if ((got == string_value_type) || (got == string_literal_type)): return string_type
+	if (got == float32_value_type): return float32_type
+	if (got == float64_value_type): return float64_type
+	if (type_get_kind(got) == type_kind_slice_value):
+		return ast_expression_composite_type(tree, type_kind_slice, type_get_element_type(got), -1, offset)
+	int type = type_unqualified(type_real(got))
+	if ((type_get_size(type) == 0) && (type_num_args(type) == 0)): return -1
+	return type
+
+
 int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 	int method = 0
 	if (peek(c"push")): method = 1
@@ -1244,26 +1276,33 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 	if (peek(c"reversed")): method = 26
 	if (peek(c"count")): method = 27
 	if (peek(c"index")): method = 28
+	if (peek(c"sort_by")): method = 30
+	if (peek(c"sorted_by")): method = 31
+	if (peek(c"map")): method = 32
+	if (peek(c"filter")): method = 33
+	if (peek(c"reduce")): method = 34
 	if (method == 0): return -1
 	int element = type_list_element_type(type_unqualified(tree.result_type[receiver]))
 	if ((method == 2) && (ast_expression_data_value(element) == 0)): return -1
 	int kind = 0
-	if (((method >= 20) && (method <= 24)) || (method >= 27)):
+	if (((method >= 20) && (method <= 24)) || (method == 27) || (method == 28)):
 		kind = ast_expression_list_scalar_kind(element)
 		if (kind == 0): return -1
 		if ((method >= 22) && (method <= 24) && (kind != 1)): return -1
+	if ((method >= 32) && (ast_expression_list_callback_element(element) == 0)): return -1
 	int it_lookup = (nextc == '(') && (list_it_mode(token) >= 0)
 	if (it_lookup && list_it_active): return -1
 	int count = 0
-	if ((method == 1) || (method == 4) || (method >= 27)): count = 1
-	if (method == 3): count = 2
+	if ((method == 1) || (method == 4) || (method == 27) || (method == 28)): count = 1
+	if (method >= 30): count = 1
+	if ((method == 3) || (method == 34)): count = 2
 	int id = expression_ast_add(tree, 'M', receiver, -1)
 	if (id < 0): return -1
 	tree.high[id] = element
 	tree.result_type[id] = type_value(0)
 	if ((method == 2) || (method == 23) || (method == 24)): tree.result_type[id] = type_value(element)
-	if ((method == 21) || (method == 26)): tree.result_type[id] = type_value(type_lookup_list(type_canonical(element)))
-	if ((method == 22) || (method >= 27)): tree.result_type[id] = type_value(type_lookup(c"int"))
+	if ((method == 21) || (method == 26) || (method == 31) || (method == 33)): tree.result_type[id] = type_value(type_lookup_list(type_canonical(element)))
+	if ((method == 22) || (method == 27) || (method == 28)): tree.result_type[id] = type_value(type_lookup(c"int"))
 	tree.symbol[id] = kind
 	ast_expression_advance(tree)
 	if (ast_expression_accept(tree, c"(") == 0): return -1
@@ -1273,8 +1312,27 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 		int arg = ast_expression_assignment(tree, depth + 1)
 		if (arg < 0): return -1
 		int type = tree.result_type[arg]
-		int typed = (method == 1) || ((method == 3) && (i == 1)) || (method >= 27)
-		if (typed):
+		int typed = (method == 1) || ((method == 3) && (i == 1)) || (method == 27) || (method == 28)
+		if (method >= 30):
+			if (ast_expression_data_value(type) == 0): return -1
+			if (ast_expression_prepare_value(tree, type, token_start_offset) == 0): return -1
+			int got = ast_expression_promoted_type(type)
+			if (i == 0):
+				if ((got != 4) && (type_get_pointer_level(type_real(got)) == 0)): return -1
+				if (method == 32):
+					int result = ast_expression_callback_return(tree, arg)
+					if (result < 0): return -1
+					if (ast_expression_list_callback_element(result) == 0): return -1
+					if (type_get_size(result) == 0): return -1
+					int list = ast_expression_composite_type(tree, type_kind_list, result, -1, token_start_offset)
+					if (list < 0): return -1
+					tree.symbol[id] = list_element_slot_size(result)
+					tree.result_type[id] = type_value(list)
+			else:
+				int result = ast_expression_inferred_type(tree, got, token_start_offset)
+				if ((result < 0) || (type_num_args(result) > 0)): return -1
+				tree.result_type[id] = type_value(result)
+		else if (typed):
 			if (ast_expression_data_value(type) == 0): return -1
 			if (ast_expression_argument_compatible(tree, element, arg) == 0): return -1
 			int got = ast_expression_promoted_type(type)
@@ -1286,7 +1344,7 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 		else: tree.next_arg[previous] = arg
 		previous = arg
 	if (ast_expression_accept(tree, c")") == 0): return -1
-	if ((method == 2) && ast_expression_record_value(element)): method = method + 128
+	if (((method == 2) || (method == 30) || (method == 31)) && ast_expression_record_value(element)): method = method + 128
 	if (sym_probe(ast_expression_method_helper(method)) < 0): return -1
 	tree.value[id] = method
 	if (it_lookup): tree.value[id] = method | 256

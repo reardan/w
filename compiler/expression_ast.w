@@ -85,6 +85,13 @@ char* ast_expression_method_helper(int method):
 	if (method == 26): return c"__w_list_reversed"
 	if (method == 27): return c"__w_list_count"
 	if (method == 28): return c"__w_list_index"
+	if (method == 30): return c"__w_list_sort_by"
+	if (method == 31): return c"__w_list_sorted_by"
+	if (method == 32): return c"__w_list_map"
+	if (method == 33): return c"__w_list_filter"
+	if (method == 34): return c"__w_list_reduce"
+	if (method == 158): return c"__w_list_sort_by_addr"
+	if (method == 159): return c"__w_list_sorted_by_addr"
 	return 0
 
 
