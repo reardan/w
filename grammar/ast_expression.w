@@ -328,6 +328,7 @@ int ast_expression_scalar_type(int type):
 	int base = type_unqualified(type)
 	if (type_get_pointer_level(base) > 0): return 1
 	if (type_is_string(base)): return 1
+	if (type_is_map(base) || type_is_set(base) || type_is_list(base)): return 1
 	# Half loads/conversions can diagnose unsupported backends during
 	# emission. Keep their diagnostic order with the streaming parser.
 	if ((base == float16_type) && (target_isa != 0)): return 0
@@ -639,8 +640,8 @@ int ast_expression_unary(expression_ast* tree, int depth):
 			return expression_ast_add(tree, op, child, -1)
 		if (ast_expression_scalar_value(child_type) == 0): return -1
 		if (op == 'd'):
-			if (type_get_pointer_level(child_type) <= 0): return -1
-			int element = type_lookup_previous_pointer(child_type)
+			int element = 1
+			if (type_get_pointer_level(child_type) > 0): element = type_lookup_previous_pointer(child_type)
 			if ((element < 0) || (ast_expression_storage_type(element) == 0)): return -1
 			int id = expression_ast_add(tree, op, child, -1)
 			if (id >= 0): tree.result_type[id] = element
@@ -703,6 +704,8 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 		if (peek(c"(") && (token_start_offset < tree.end_offset)):
 			left = ast_expression_indirect_call(tree, left, depth)
 		else if (ast_expression_accept(tree, c"[")):
+			tree.readonly = 0
+			if (type_is_map(type) || type_is_set(type)): return -1
 			int op = 'i'
 			int element
 			if (type_is_buffer(type)):
@@ -728,11 +731,35 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			if ((index < 0) || (peek(c"]") == 0)): return -1
 			if (ast_expression_scalar_value(tree.result_type[index]) == 0): return -1
 			ast_expression_advance(tree)
+			# The streaming list helper retains the index expression's
+			# readonly state; raw and buffer indexes explicitly clear it.
+			if (op != 'j'): tree.readonly = 0
 			left = expression_ast_add(tree, op, left, index)
 			if (left < 0): return -1
 			tree.result_type[left] = element
 			tree.value[left] = type_get_size(element)
 		else if (ast_expression_accept(tree, c".")):
+			tree.readonly = 0
+			int metadata = 0
+			int field_type = 1
+			int field_offset = word_size
+			if ((type_is_buffer(type) || type_is_map(type) || type_is_set(type) || type_is_list(type)) && peek(c"length")): metadata = 1
+			if (type_is_buffer(type) && peek(c"data")):
+				metadata = 1
+				field_offset = 0
+			if (metadata):
+				if ((type_is_value(type) == 0) && (type_is_array(type) || (type_get_kind(type) == type_kind_slice))):
+					if (type_lookup_slice_value(buffer_element_type(type)) < 0): tree.pending_buffer_types = 1
+				if (field_offset == 0):
+					field_type = ast_expression_pointer_type(tree, buffer_element_type(type), token_start_offset)
+					if (field_type < 0): return -1
+				ast_expression_advance(tree)
+				left = expression_ast_add(tree, 'B', left, -1)
+				if (left < 0): return -1
+				tree.result_type[left] = field_type
+				tree.value[left] = field_offset
+				tree.readonly = 1
+				continue
 			int record = type
 			int load_pointer = 0
 			if (type_get_pointer_level(type) > 0):
@@ -946,11 +973,15 @@ int ast_expression_conditional(expression_ast* tree, int depth):
 # assignments fall back before binding uses, emitting code or diagnostics.
 int ast_expression_assignment(expression_ast* tree, int depth):
 	if ((depth > 96) || (expr_nesting_depth + depth >= 1000)): return -1
+	# Each entry corresponds to expression(), including groups, arguments,
+	# indexes and assignment RHSs. The ternary else arm does not reset it.
+	tree.readonly = 0
 	int left = ast_expression_conditional(tree, depth)
 	if (left < 0): return -1
 	int op = compound_assign_op()
 	if ((op == 0) && (peek(c"=") == 0)): return left
 	if (lint_mode): return -1
+	if (tree.readonly): return -1
 	int lt = tree.result_type[left]
 	if (type_is_value(lt) || (lt == 3) || type_is_const(lt)): return -1
 	if (ast_expression_scalar_type(lt) == 0): return -1
@@ -1003,6 +1034,7 @@ int ast_expression_try_at(int group_offset, int whole):
 	tree.types_base = type_count()
 	tree.types_count = 0
 	tree.pending_buffer_types = 0
+	tree.readonly = 0
 	tree.whole_expression = whole
 	tree.end_offset = end
 	tree.cast_depth = cast_context
@@ -1054,6 +1086,7 @@ int ast_expression_try_at(int group_offset, int whole):
 				sym_lookup(token)
 		ast_expression_advance(&tree)
 	emit_expression_ast(&tree, root)
+	expression_lhs_readonly = tree.readonly
 	if (whole):
 		token_start_offset = tree.final_token_offset
 		get_token()

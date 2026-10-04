@@ -104,6 +104,7 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_default_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_allocation_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_multiline_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_metadata_expression_fixture.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -117,15 +118,17 @@ void test_ast_expression_images_and_host_widths():
 	ast_test_image(c"bin/wv2", c"wasm", 0)
 
 
-void ast_test_diagnostics(char* source):
+void ast_test_diagnostics_mode(char* source, int checking):
 	char* path = ast_test_path(c".w")
+	char* output = 0
+	if (checking == 0): output = ast_test_path(c".diagnostic")
 	assert1(file_write_text(path, source))
 	for host in range(2):
 		char* compiler = c"bin/wv2"
 		if (host): compiler = c"bin/wv2_64"
-		process_result* old = ast_test_compile(compiler, c"x64", path, 0, 0, 1, 0)
+		process_result* old = ast_test_compile(compiler, c"x64", path, output, 0, checking, 0)
 		for enabled in range(1, 3):
-			process_result* ast = ast_test_compile(compiler, c"x64", path, 0, enabled, 1, 0)
+			process_result* ast = ast_test_compile(compiler, c"x64", path, output, enabled, checking, 0)
 			assert_equal(old.status, ast.status)
 			assert_strings_equal(old.stdout_text, ast.stdout_text)
 			assert_strings_equal(old.stderr_text, ast.stderr_text)
@@ -133,6 +136,20 @@ void ast_test_diagnostics(char* source):
 		process_result_free(old)
 	unlink(path)
 	free(path)
+	if (output != 0):
+		unlink(output)
+		free(output)
+
+
+void ast_test_diagnostics(char* source):
+	ast_test_diagnostics_mode(source, 1)
+
+
+void ast_test_store_diagnostics(char* source):
+	ast_test_diagnostics_mode(source, 1)
+	# Lint-bearing stores deliberately use streaming diagnostics. Also
+	# compile normally to exercise AST store validation itself.
+	ast_test_diagnostics_mode(source, 0)
 
 
 void test_ast_expression_diagnostics_and_fallback():
@@ -420,6 +437,27 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
 	strv_set(args, i, source)
 	return ast_test_run(args, 0)
+
+
+void test_ast_metadata_expression_hits_and_diagnostics():
+	char* path = ast_test_path(c"_metadata.w")
+	assert1(file_write_text(path, c"int f(string s): return (s.length + s.data[0])\nint g(list[int] xs): return (xs.length)\nint h(int p): return (*p)\nint main(): return 0\n"))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
+		assert_equal(0, ast.status)
+		assert_contains(ast.stderr_text, c"AST expressions: 3\n")
+		process_result_free(ast)
+	unlink(path)
+	free(path)
+	ast_test_store_diagnostics(c"int main():\n\tstring s = s\"ab\"\n\t(s.length) = 7\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tstring s = s\"ab\"\n\tif 1: (s.length = 7)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tstring s = s\"ab\"\n\tif 1: (s.data = 0)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tstring s = s\"ab\"\n\t(s.length) += 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tlist[int] xs = new list[int]\n\tstring s = s\"\"\n\tif 1: (xs[s.length] = 7)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tint[2] xs\n\tstring s = s\"\"\n\tif 1: (xs[s.length] = 7)\n\treturn xs[0]\n")
+	ast_test_store_diagnostics(c"int main():\n\tmap[int, int] xs = new map[int, int]\n\t(xs.length)++\n\treturn 0\n")
 
 
 void test_ast_multiline_expression_hits_and_diagnostics():
@@ -815,7 +853,7 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
-# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/operator_overload_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/ast_metadata_expression_fixture.w data=tests/operator_overload_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"

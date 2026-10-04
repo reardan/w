@@ -144,6 +144,10 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (tree.high[id]): promote(left_type)
 		add_eax_int32(tree.value[id])
 		return
+	if (op == 'B'):
+		promote(left_type)
+		if (tree.value[id]): add_eax_int32(tree.value[id])
+		return
 	if (op == 'j'):
 		promote(left_type)
 		int base_stack = stack_pos

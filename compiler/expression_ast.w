@@ -21,6 +21,7 @@ struct expression_ast:
 	int types_base
 	int types_count
 	int pending_buffer_types
+	int readonly
 	type_rec[16] pointer_types
 	int[16] pointer_offsets
 	char[4096] text

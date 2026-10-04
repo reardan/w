@@ -793,3 +793,18 @@ The multiline fixture also passes `--ast-required` on both compiler host
 widths, ensuring its expressions do not fall back to streaming compilation.
 The parser-generator grammar now also accepts the existing multiline call
 argument syntax, including newlines immediately inside the parentheses.
+
+## Task 27: container values and read-only metadata
+
+Map, set and list handles can flow through ordinary AST values, calls,
+returns and compatible assignments. Buffer/container `.length` and buffer
+`.data` accesses use explicit descriptor-field nodes. The parser tracks
+the streaming grammar's read-only state through nested expression entries,
+arguments, indexing and conditionals, and commits it after emission. This
+preserves both rejected metadata stores and assignable payload elements.
+Map indexing still declines until it has dedicated read/store nodes.
+
+Untyped word-address dereference now uses the legacy word-sized lvalue
+default, complementing byte-wide untyped indexing. Tests cover container
+identity calls, metadata reads, data-pointer indexing, raw dereference,
+payload stores and exact read-only diagnostics for nested lvalues.
