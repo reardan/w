@@ -778,8 +778,12 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (op == 'b'): alu_test_set(0x95)
 		return
 	left_type = binary1(left_type)
+	int left_slot = stack_pos
 	emit_expression_ast(tree, tree.right[id])
 	int right_type = promote(tree.result_type[tree.right[id]])
+	if (op == 'l'):
+		operator_emit_binary(left_type, right_type, left_slot, tree.symbol[id], strclone(table + tree.value[id]))
+		return
 	if ((op == 'L') || (op == 'R')):
 		stack_pos = stack_pos - 1
 		if (op == 'L'): alu_shl()

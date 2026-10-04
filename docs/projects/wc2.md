@@ -1304,3 +1304,18 @@ and method calls share fixed/default/variadic argument emission. Tests cover
 pointer and temporary-record receivers, chaining, defaults, variadic record
 results, temporary record arguments, function-pointer fields and side effects.
 Missing methods, receiver mismatches and missing arguments retain diagnostics.
+
+## Task 64: overloaded arithmetic expressions
+
+Arithmetic AST nodes now resolve record overloads, including the existing
+float64-to-float overload fallback, and retain the resolved symbol. Streaming
+and AST paths share the overload call emitter and its operand/return-buffer
+compaction. Buffer operands stage their promoted types before subsequent
+operands are parsed.
+
+The full operator regression fixture now compiles with required AST expressions
+on x86/x64 and produces identical images, including deferred uses, generators,
+long loops and method suffixes. A cross-architecture fixture adds slice operands,
+scalar-left overloads and evaluation-order checks. Scalar classification now
+recognizes value-wrapped floating fields read from temporary records; call
+detection also includes overload, generic and method nodes for bool diagnostics.

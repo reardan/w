@@ -398,6 +398,7 @@ int ast_expression_scalar_type(int type):
 
 
 int ast_expression_scalar_value(int type):
+	if (type_is_value(type)): type = type_real(type)
 	if ((type == 3) || (type == 4) || (type == float32_value_type) || (type == float64_value_type) || (type == string_value_type) || (type == string_literal_type)): return 1
 	return ast_expression_scalar_type(type)
 
@@ -1843,7 +1844,7 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			if (type_get_arg(record, token) < 0):
 				left = ast_expression_method_call(tree, left, record, depth)
 				continue
-			if (return_words && (tree.op[left] != 'C') && (tree.op[left] != 'F') && (tree.op[left] != 'G') && (tree.op[left] != 'D') && (tree.op[left] != 'z')): return -1
+			if (return_words && (tree.op[left] != 'C') && (tree.op[left] != 'F') && (tree.op[left] != 'G') && (tree.op[left] != 'D') && (tree.op[left] != 'z') && (tree.op[left] != 'l')): return -1
 			int field = type_get_field_type(record, token)
 			if (ast_expression_storage_type(field) == 0): return -1
 			int offset = type_get_field_offset(record, token)
@@ -1862,7 +1863,56 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 	return -1
 
 
+# Resolve an arithmetic overload without marking symbols or emitting code.
+# Slice mangling may use its storage type only when it already exists.
+int ast_expression_overload(expression_ast* tree, int op, int left, int right):
+	if ((ast_expression_data_value(tree.result_type[left]) && ast_expression_data_value(tree.result_type[right])) == 0): return -1
+	if (ast_expression_prepare_value(tree, tree.result_type[right], token_start_offset) == 0): return -1
+	int lt = ast_expression_promoted_type(tree.result_type[left])
+	int rt = ast_expression_promoted_type(tree.result_type[right])
+	if (type_get_kind(type_unqualified(lt)) == type_kind_slice_value):
+		if (type_lookup_slice(type_get_element_type(lt)) < 0): return -1
+	if (type_get_kind(type_unqualified(rt)) == type_kind_slice_value):
+		if (type_lookup_slice(type_get_element_type(rt)) < 0): return -1
+	char* left_name = operator_mangle_type_name(lt)
+	char* right_name = operator_mangle_type_name(rt)
+	char* name = operator_build_name(op, left_name, right_name)
+	int callee = sym_probe(name)
+	if ((callee < 0) && (strcmp(right_name, c"float64") == 0)):
+		char* folded = operator_build_name(op, left_name, c"float")
+		callee = sym_probe(folded)
+		if (callee >= 0):
+			free(name)
+			name = folded
+		else: free(folded)
+	if ((callee < 0) && (strcmp(left_name, c"float64") == 0)):
+		char* folded = operator_build_name(op, c"float", right_name)
+		callee = sym_probe(folded)
+		if (callee >= 0):
+			free(name)
+			name = folded
+		else: free(folded)
+	free(left_name)
+	free(right_name)
+	int name_offset = callee - strlen(name)
+	free(name)
+	if (callee < 0): return -1
+	if (sym_num_args(callee) != 2): return -1
+	int result = load_int(table + callee + 6)
+	if ((result == 4) || ((result != 0) && (ast_expression_data_value(result) == 0))): return -1
+	if (ast_expression_argument_compatible(tree, sym_param_type(callee, 0), left) == 0): return -1
+	if (ast_expression_argument_compatible(tree, sym_param_type(callee, 1), right) == 0): return -1
+	int id = expression_ast_add(tree, 'l', left, right)
+	if (id < 0): return -1
+	tree.value[id] = name_offset
+	tree.symbol[id] = callee
+	tree.result_type[id] = type_value(result)
+	return id
+
+
 int ast_expression_binary(expression_ast* tree, int op, int left, int right):
+	if (ast_expression_record_value(tree.result_type[left]) || ast_expression_record_value(tree.result_type[right])):
+		return ast_expression_overload(tree, op, left, right)
 	if ((ast_expression_scalar_value(tree.result_type[left]) && ast_expression_scalar_value(tree.result_type[right])) == 0): return -1
 	int lt = ast_expression_promoted_type(tree.result_type[left])
 	int rt = ast_expression_promoted_type(tree.result_type[right])
@@ -1887,6 +1937,7 @@ int ast_expression_product(expression_ast* tree, int depth):
 		if (peek(c"*") && token_newline): return left
 		int op = token[0]
 		ast_expression_advance(tree)
+		if (ast_expression_prepare_value(tree, tree.result_type[left], token_start_offset) == 0): return -1
 		int right = ast_expression_unary(tree, depth)
 		if (right < 0): return -1
 		left = ast_expression_binary(tree, op, left, right)
@@ -1899,6 +1950,7 @@ int ast_expression_sum(expression_ast* tree, int depth):
 		if ((peek(c"+") || peek(c"-")) == 0): return left
 		int op = token[0]
 		ast_expression_advance(tree)
+		if (ast_expression_prepare_value(tree, tree.result_type[left], token_start_offset) == 0): return -1
 		int right = ast_expression_product(tree, depth)
 		if (right < 0): return -1
 		left = ast_expression_binary(tree, op, left, right)
@@ -1976,7 +2028,7 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 # just as operand_is_pure does for a short-circuited operand.
 int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
-		if ((tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H') || (tree.op[i] == 'E')): return 1
+		if ((tree.op[i] == 'l') || (tree.op[i] == 'z') || (tree.op[i] == 'G') || (tree.op[i] == 'W') || (tree.op[i] == 'X') || (tree.op[i] == 'Y') || (tree.op[i] == 'J') || (tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H') || (tree.op[i] == 'E')): return 1
 	return 0
 
 
