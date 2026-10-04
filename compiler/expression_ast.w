@@ -53,6 +53,7 @@ int ast_required_mode
 # Container methods share the streaming helper-call lowering. Bit 7
 # chooses the aggregate-copy/address helper after types are known.
 char* ast_expression_method_helper(int method):
+	method = method & 255
 	if (method == 11): return c"__w_map_remove"
 	if (method == 12): return c"__w_set_add"
 	if (method == 13): return c"__w_map_free"
@@ -69,6 +70,15 @@ char* ast_expression_method_helper(int method):
 	if (method == 4): return c"__w_list_remove"
 	if (method == 5): return c"__w_list_clear"
 	if (method == 6): return c"__w_list_free"
+	if (method == 20): return c"__w_list_sort"
+	if (method == 21): return c"__w_list_sorted"
+	if (method == 22): return c"__w_list_sum"
+	if (method == 23): return c"__w_list_min"
+	if (method == 24): return c"__w_list_max"
+	if (method == 25): return c"__w_list_reverse"
+	if (method == 26): return c"__w_list_reversed"
+	if (method == 27): return c"__w_list_count"
+	if (method == 28): return c"__w_list_index"
 	return 0
 
 

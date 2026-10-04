@@ -1094,3 +1094,15 @@ range checks and record element copies retain their existing behavior.
 
 Differential and required-mode tests cover all bound forms, nested slices,
 independent backing storage, record copies and malformed bounds.
+
+## Task 48: list ordering, aggregation and search methods
+
+The AST method node now covers sort/sorted, reverse/reversed, sum/min/max
+and count/index. It retains scalar comparison kinds and result types while
+reusing the existing runtime helpers and argument evaluation order.
+
+Required-mode and differential tests cover signed elements, text comparison,
+record copies, receiver/argument side effects and invalid element types.
+Committed symbol replay preserves the streaming parser's lookup of an outer
+`it` variable, including unused-variable diagnostics. Implicit iteration
+expressions and callback methods remain separate work.
