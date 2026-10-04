@@ -1683,3 +1683,17 @@ of explicit modes, idempotence and acyclic dependency ordering.
 
 This enforces the expression migration. Statements and declarations still
 use the streaming parser and remain a separate migration.
+
+## Task 91: simple statement AST nodes
+
+Full-expression mode now also builds statement nodes for `pass`, `debugger`,
+`break` and `continue`. Nodes retain source spans and resolved branch targets
+and stack-unwind counts. Their backend visitor consumes those fields without
+parsing tokens or consulting mutable loop/switch bindings. The streaming
+dispatcher still owns compound statements, scopes and declarations.
+
+Tests compare native images and runtime behavior for nested loops, switches
+and locals on both host widths. Diagnostic comparisons cover invalid jump
+contexts, malformed terminators, unreachable statements and declaration
+precedence. Debugger markers preserve their emission order; AST statistics
+report simple-statement and debugger-node counts.

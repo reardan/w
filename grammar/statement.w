@@ -21,6 +21,9 @@
  *     pass ;
  *     expression ;
  */
+int ast_statement_simple(int* jumps);
+
+
 # Table offset of the function whose body is being parsed; return
 # statements check their expression against its declared return type.
 int current_function_symbol
@@ -242,6 +245,7 @@ void statement():
 	else if (gpu_for_statement()) {}
 	else if (for_statement()) {}
 	else if (switch_statement()) {}
+	else if (ast_statement_simple(&jumps)) {}
 
 	# 'break' targets the innermost breakable construct: a switch when
 	# break_in_switch is set (grammar/while_statement.w), a loop otherwise
