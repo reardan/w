@@ -1402,3 +1402,15 @@ fields, calls, generics, enums and containers. Differential diagnostics pin
 malformed and prohibited names, and a generated fixture splits an emoji
 identifier across the tokenizer's 8 KiB input boundary. The existing UTF-8
 identifier regression file produces identical native AST images.
+
+## Task 71: asset-sized expression literals
+
+The bounded source window now admits 8 KiB expressions, with 16 KiB of
+arena text storage for decoded chunks and terminators. Retaining an already
+lexed token across an input refill allocates space for the actual recovered
+prefix and buffered suffix, plus the reader's normal refill capacity.
+
+The embedded font data now checks without expression fallback. Differential
+fixtures exercise 4 KiB C strings, W strings and template chunks on every
+backend, plus a generated long token crossing the 8 KiB input boundary.
+Native images match the streaming compiler and the fixtures run successfully.

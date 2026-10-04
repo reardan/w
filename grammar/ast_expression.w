@@ -119,7 +119,7 @@ int ast_expression_end(int start):
 	int previous = 0
 	int end = -1
 	int i = 0
-	while ((i < 2048) && (index + i + 1 < getchar_limit[file])):
+	while ((i < ast_expression_source_limit) && (index + i + 1 < getchar_limit[file])):
 		int ch = bytes[index + i] & 255
 		if (ch == '#'):
 			while ((index + i < getchar_limit[file]) && (bytes[index + i] != 10)): i = i + 1
@@ -133,14 +133,14 @@ int ast_expression_end(int start):
 		if ((ch == '/') && (bytes[index + i + 1] == '*')):
 			int after = ast_expression_comment_end(bytes, index + i, getchar_limit[file] - 1, 1)
 			if (after < 0): return after
-			if (after - index >= 2048): return -1
+			if (after - index >= ast_expression_source_limit): return -1
 			i = after - index
 			previous = 0
 			continue
 		if ((ch == 39) || (ch == '"')):
 			int quoted = ast_expression_quoted_end(bytes, index + i, getchar_limit[file] - 1)
 			if (quoted < 0): return quoted
-			if (quoted - index >= 2048): return -1
+			if (quoted - index >= ast_expression_source_limit): return -1
 			i = quoted - index + 1
 			previous = 0
 			continue
@@ -173,7 +173,7 @@ int ast_expression_end(int start):
 		if ((previous == '/') && ((ch == '*') || (ch == '/'))): break
 		previous = ch
 		i = i + 1
-	if ((end < 0) && (i < 2048) && (index + i + 1 >= getchar_limit[file])): return -2
+	if ((end < 0) && (i < ast_expression_source_limit) && (index + i + 1 >= getchar_limit[file])): return -2
 	return end
 
 
@@ -234,19 +234,19 @@ int ast_expression_root_end(int eof, int statement):
 	int ternaries = 0
 	int previous = 0
 	int i = 0
-	while ((i < 2048) && (index + i < getchar_limit[file])):
+	while ((i < ast_expression_source_limit) && (index + i < getchar_limit[file])):
 		int ch = bytes[index + i] & 255
 		if ((ch == '/') && (index + i + 1 < getchar_limit[file]) && (bytes[index + i + 1] == '*')):
 			int after = ast_expression_comment_end(bytes, index + i, getchar_limit[file] - 1, 1)
 			if (after < 0): return after
-			if (after - index >= 2048): return -1
+			if (after - index >= ast_expression_source_limit): return -1
 			i = after - index
 			previous = 0
 			continue
 		if ((ch == 39) || (ch == '"')):
 			int quoted = ast_expression_quoted_end(bytes, index + i, getchar_limit[file] - 1)
 			if (quoted < 0): return quoted
-			if (quoted - index >= 2048): return -1
+			if (quoted - index >= ast_expression_source_limit): return -1
 			i = quoted - index + 1
 			significant = 34
 			previous = 0
@@ -312,7 +312,7 @@ int ast_expression_root_end(int eof, int statement):
 		if ((ch != ' ') && (ch != 9)): significant = ch
 		previous = ch
 		i = i + 1
-	if ((i < 2048) && (eof == 0)): return -2
+	if ((i < ast_expression_source_limit) && (eof == 0)): return -2
 	return -1
 
 
@@ -346,14 +346,14 @@ void ast_expression_retain_token():
 	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return
 	int missing = getchar_kernel_pos[file] - getchar_limit[file] - token_start_offset
 	if (missing <= 0): return
-	if ((token_i > 2048) || (missing > token_i + 1) || (nextc < 0)): return
+	if ((token_i > ast_expression_source_limit) || (missing > token_i + 1) || (nextc < 0)): return
 	if (byte_offset - 1 - token_start_offset != token_i): return
 	int length = getchar_limit[file]
 	# A recovered token is bounded by the AST source limit. Decline an
 	# unusual pre-existing window rather than assume its allocation size.
 	if (length > GETCHAR_BUF_CAPACITY): return
 	char* old = cast(char*, getchar_buf_addr[file])
-	char* bytes = malloc(2 * GETCHAR_BUF_CAPACITY)
+	char* bytes = malloc(missing + length + GETCHAR_BUF_CAPACITY)
 	# A speculative declaration lookahead can seek back to the byte
 	# after nextc, leaving both the raw token and nextc outside the new
 	# window. The tokenizer still owns that one lookahead byte.
@@ -2636,7 +2636,7 @@ int ast_expression_try_at(int group_offset, int whole):
 				if (length):
 					validate_utf8_literal(length)
 					token[length] = 0
-				assert1(tree.text_used + length + 1 <= 4096)
+				assert1(tree.text_used + length + 1 <= 16384)
 				for j in range(length): tree.text[tree.text_used + j] = token[j]
 				tree.text[tree.text_used + length] = 0
 				tree.value[id] = tree.text_used
@@ -2653,9 +2653,9 @@ int ast_expression_try_at(int group_offset, int whole):
 				int length = process_string_literal_from(tree.value[id])
 				if (tree.op[id] == 'S'): validate_utf8_literal(length)
 				token[length] = 0
-				# The 2048-byte source bound leaves ample space for all
+				# The source bound leaves ample space for all
 				# decoded bytes and one terminator per arena node.
-				assert1(tree.text_used + length + 1 <= 4096)
+				assert1(tree.text_used + length + 1 <= 16384)
 				tree.value[id] = tree.text_used
 				tree.high[id] = length
 				for j in range(length + 1): tree.text[tree.text_used + j] = token[j]

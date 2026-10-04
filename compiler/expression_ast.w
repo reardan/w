@@ -11,6 +11,11 @@
 # roots; those links do not change a nested call's own argument list.
 # Logical chains use the same sibling links, with a separate node for
 # each source-level chain (parenthesized subchains keep their boundary).
+# The source window admits embedded asset chunks as well as ordinary
+# expressions. Decoded text has extra room for per-chunk terminators.
+const int ast_expression_source_limit = 8192
+
+
 struct expression_ast:
 	int count
 	int end_offset
@@ -27,7 +32,7 @@ struct expression_ast:
 	int[16] pointer_offsets
 	int[16] pointer_bases
 	char[2048] type_names
-	char[4096] text
+	char[16384] text
 	int[128] op
 	int[128] left
 	int[128] right

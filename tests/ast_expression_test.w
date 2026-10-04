@@ -136,6 +136,7 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_json_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_protobuf_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_utf8_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_large_literal_expression_fixture.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -825,6 +826,25 @@ void test_ast_utf8_expressions_are_required():
 	ast_test_store_diagnostics(c"int main():\n\treturn (1 + caf\xc3x)\n")
 
 
+
+void test_ast_large_literal_expressions_are_required():
+	for fixture in range(2):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_large_literal_expression_fixture.w"
+			if (fixture): source = c"graphics/ui/font_data.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+
+
 void test_ast_prelude_input_images_and_runtime():
 	for host in range(2):
 		char* compiler = c"bin/wv2"
@@ -1506,6 +1526,36 @@ void test_ast_utf8_token_crosses_input_buffer_boundary():
 	free(path)
 
 
+void test_ast_large_literal_crosses_input_buffer_boundary():
+	char* path = ast_test_path(c"_large_literal_boundary.w")
+	char* prefix = c"\nchar* f(): return c\""
+	string_builder* source = string_from(c"#")
+	for i in range(4098 - 1 - strlen(prefix)): string_append_char(source, 'x')
+	string_append(source, prefix)
+	for i in range(4096): string_append_char(source, 'a')
+	string_append(source, c"\"\nint main(): return f()[4095] - 'a'\n")
+	assert1(file_write_text(path, source.data))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		char** args = strv_new(6)
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--quiet")
+		strv_set(args, 3, c"x64")
+		strv_set(args, 4, c"--ast-audit")
+		strv_set(args, 5, path)
+		process_result* audit = ast_test_run(args, 0)
+		assert_equal(0, audit.status)
+		assert_substring(audit.stderr_text, path, 0)
+		process_result_free(audit)
+		ast_test_image_at(compiler, c"x64", path, 1)
+	ast_test_diagnostics(source.data)
+	string_free(source)
+	unlink(path)
+	free(path)
+
+
 void test_ast_pointer_type_expression_hits_and_diagnostics():
 	char* path = ast_test_path(c"_pointer_type.w")
 	assert1(file_write_text(path, c"struct R:\n\tint x\nint f(int p): return ((*cast(R*, p)).x)\nint main(): return 0\n"))
@@ -1707,7 +1757,7 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
-# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/ast_metadata_expression_fixture.w data=tests/ast_record_expression_fixture.w data=tests/ast_map_expression_fixture.w data=tests/ast_parallel_expression_fixture.w data=tests/ast_increment_expression_fixture.w data=tests/ast_wide_call_expression_fixture.w data=tests/ast_template_expression_fixture.w data=tests/ast_generic_expression_fixture.w data=tests/ast_buffer_value_expression_fixture.w data=tests/ast_slice_expression_fixture.w data=tests/ast_container_literal_expression_fixture.w data=tests/ast_constructor_expression_fixture.w data=tests/ast_new_array_expression_fixture.w data=tests/ast_list_slice_expression_fixture.w data=tests/ast_list_method_expression_fixture.w data=tests/ast_void_call_expression_fixture.w data=tests/ast_composite_type_expression_fixture.w data=tests/ast_integer_intrinsic_expression_fixture.w data=tests/ast_map_method_expression_fixture.w data=tests/ast_generator_call_expression_fixture.w data=tests/ast_list_callback_expression_fixture.w data=tests/ast_map_default_expression_fixture.w data=tests/ast_inferred_generic_expression_fixture.w data=tests/ast_variadic_expression_fixture.w data=tests/varargs_test.w data=tests/ast_atomic_expression_fixture.w data=tests/atomic_host_test.w data=tests/ast_generic_type_expression_fixture.w data=tests/ast_method_expression_fixture.w data=tests/ast_operator_expression_fixture.w data=tests/operator_overload_test.w data=tests/ast_var_expression_fixture.w data=tests/dynamic_var_test.w data=tests/c_import_bitfield_fixture.w data=tests/x64_c_import_bitfield_test.w data=tests/c_import_bitfield_fixture.h data=tests/ast_prelude_expression_fixture.w data=tests/ast_prelude_input_fixture.w data=tests/prelude_test.w data=tests/ast_json_expression_fixture.w data=tests/json_codec_test.w data=tests/ast_protobuf_expression_fixture.w data=tests/protobuf_message_test.w data=tests/ast_utf8_expression_fixture.w data=tests/utf8_identifier_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/ast_metadata_expression_fixture.w data=tests/ast_record_expression_fixture.w data=tests/ast_map_expression_fixture.w data=tests/ast_parallel_expression_fixture.w data=tests/ast_increment_expression_fixture.w data=tests/ast_wide_call_expression_fixture.w data=tests/ast_template_expression_fixture.w data=tests/ast_generic_expression_fixture.w data=tests/ast_buffer_value_expression_fixture.w data=tests/ast_slice_expression_fixture.w data=tests/ast_container_literal_expression_fixture.w data=tests/ast_constructor_expression_fixture.w data=tests/ast_new_array_expression_fixture.w data=tests/ast_list_slice_expression_fixture.w data=tests/ast_list_method_expression_fixture.w data=tests/ast_void_call_expression_fixture.w data=tests/ast_composite_type_expression_fixture.w data=tests/ast_integer_intrinsic_expression_fixture.w data=tests/ast_map_method_expression_fixture.w data=tests/ast_generator_call_expression_fixture.w data=tests/ast_list_callback_expression_fixture.w data=tests/ast_map_default_expression_fixture.w data=tests/ast_inferred_generic_expression_fixture.w data=tests/ast_variadic_expression_fixture.w data=tests/varargs_test.w data=tests/ast_atomic_expression_fixture.w data=tests/atomic_host_test.w data=tests/ast_generic_type_expression_fixture.w data=tests/ast_method_expression_fixture.w data=tests/ast_operator_expression_fixture.w data=tests/operator_overload_test.w data=tests/ast_var_expression_fixture.w data=tests/dynamic_var_test.w data=tests/c_import_bitfield_fixture.w data=tests/x64_c_import_bitfield_test.w data=tests/c_import_bitfield_fixture.h data=tests/ast_prelude_expression_fixture.w data=tests/ast_prelude_input_fixture.w data=tests/prelude_test.w data=tests/ast_json_expression_fixture.w data=tests/json_codec_test.w data=tests/ast_protobuf_expression_fixture.w data=tests/protobuf_message_test.w data=tests/ast_utf8_expression_fixture.w data=tests/utf8_identifier_test.w data=tests/ast_large_literal_expression_fixture.w data=graphics/ui/font_data.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"
