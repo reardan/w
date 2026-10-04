@@ -1059,6 +1059,40 @@ int ast_expression_integer_intrinsic(expression_ast* tree, int kind, int depth):
 	return id
 
 
+# Host atomics retain operands in source order. Their pointer type is
+# registered after parsing the first operand, matching the streaming path.
+int ast_expression_atomic(expression_ast* tree, int kind, int depth):
+	if ((target_isa != 0) || ((kind != 1) && (kind != 4))): return -1
+	int id = expression_ast_add(tree, 'k', -1, -1)
+	if (id < 0): return -1
+	int integer = type_lookup(c"int")
+	tree.value[id] = kind
+	tree.high[id] = integer
+	tree.result_type[id] = type_value(integer)
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int count = 2
+	if (kind == 4): count = 3
+	int tail = -1
+	for i in range(count):
+		if (i && (ast_expression_accept(tree, c",") == 0)): return -1
+		int argument = ast_expression_assignment(tree, depth + 1)
+		if (argument < 0): return -1
+		if (ast_expression_data_value(tree.result_type[argument]) == 0): return -1
+		if (ast_expression_prepare_value(tree, tree.result_type[argument], token_start_offset) == 0): return -1
+		int want = integer
+		if (i == 0):
+			want = ast_expression_pointer_type(tree, integer, token_start_offset)
+			if (want < 0): return -1
+			tree.symbol[id] = want
+		if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
+		if (tail < 0): tree.left[id] = argument
+		else: tree.next_arg[tail] = argument
+		tail = argument
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	return id
+
+
 int ast_expression_name(expression_ast* tree, int depth):
 	# Keywords, unshadowable builtins, generics and constructors take
 	# precedence over identifier() in the streaming grammar.
@@ -1072,6 +1106,8 @@ int ast_expression_name(expression_ast* tree, int depth):
 		if (kind): return ast_expression_integer_intrinsic(tree, kind, depth)
 		kind = bit_builtin_kind()
 		if (kind): return ast_expression_integer_intrinsic(tree, kind + 3, depth)
+		kind = atomic_builtin_kind()
+		if (kind): return ast_expression_atomic(tree, kind, depth)
 	if (generic_call_ready()):
 		if (nextc == '('): return ast_expression_generic_infer(tree, depth)
 		return ast_expression_generic_call(tree, depth)

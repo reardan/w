@@ -50,6 +50,28 @@ void emit_expression_ast(expression_ast* tree, int id):
 		rt_call_end(s)
 		pop_to(base_stack)
 		return
+	if (op == 'k'):
+		int argument = tree.left[id]
+		emit_expression_ast(tree, argument)
+		coerce(tree.symbol[id], promote(tree.result_type[argument]))
+		push_slot()
+		argument = tree.next_arg[argument]
+		emit_expression_ast(tree, argument)
+		coerce(tree.high[id], promote(tree.result_type[argument]))
+		if (tree.value[id] == 4):
+			push_slot()
+			argument = tree.next_arg[argument]
+			emit_expression_ast(tree, argument)
+			coerce(tree.high[id], promote(tree.result_type[argument]))
+			mov_ecx_eax()
+			pop_eax()
+			pop_ebx()
+			stack_pos = stack_pos - 2
+			alu_atomic_cas()
+		else:
+			pop_ebx_slot()
+			alu_atomic_add()
+		return
 	if (op == 'Q'):
 		int kind = tree.value[id]
 		int argument = tree.left[id]

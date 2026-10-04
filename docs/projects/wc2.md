@@ -1264,3 +1264,15 @@ The existing libc variadic fixture now has required-AST checks and native
 x86/x64 image comparisons from both compiler host widths. It exercises mixed
 integer/float arguments, register spills, array/slice decay and empty tails.
 Too few fixed arguments and unsupported record arguments retain diagnostics.
+
+## Task 61: host atomic expressions
+
+Host atomic_add and atomic_cas now retain their ordered operands in AST
+nodes and emit the existing full-word atomic instructions. Pointer-type
+registration occurs after the first operand, preserving the streaming type
+order. Unsupported targets and operand diagnostics retain their old path.
+
+Required-mode fixtures and native x86/x64 image comparisons cover operand
+side effects, nested operations, floating coercion, pointer operands, 64-bit
+values and symbol shadowing. The existing multithreaded contention fixture
+also compiles without expression fallback and preserves exact update counts.
