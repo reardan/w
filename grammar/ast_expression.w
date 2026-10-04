@@ -594,7 +594,28 @@ int ast_expression_bind_generic_type(expression_ast* tree, int id, generic_type_
 		if (strcmp(node.name, generic_def_param_name(def, i)) == 0): type = tree.value[argument]
 		argument = tree.next_arg[argument]
 		i = i + 1
-	if (node.first != 0):
+	if (node.application == 2):
+		int element = ast_expression_bind_generic_type(tree, id, node.first)
+		if (element < 0): return -1
+		type = type_lookup_slice(element)
+	else if (node.application == 1):
+		int shape_def = generic_def_lookup(node.name, 1)
+		if (shape_def < 0): return -1
+		int[8] arguments
+		int count = 0
+		generic_type_ast* argument = node.first
+		while (argument != 0):
+			if (count == generic_max_params): return -1
+			int bound = ast_expression_bind_generic_type(tree, id, argument)
+			if (bound < 0): return -1
+			arguments[count] = bound
+			count = count + 1
+			argument = argument.next
+		if (count != generic_def_param_count(shape_def)): return -1
+		char* name = generic_mangle(node.name, cast(int, &arguments[0]), count)
+		type = type_lookup(name)
+		free(name)
+	else if (node.first != 0):
 		int first = ast_expression_bind_generic_type(tree, id, node.first)
 		if (first < 0): return -1
 		if (strcmp(node.name, c"map") == 0):

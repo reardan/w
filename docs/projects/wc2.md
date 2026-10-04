@@ -1057,3 +1057,16 @@ order.
 Tests cover scalar/record elements, zero lengths, calls, casts, indexing and
 invalid allocation diagnostics. Native x86/x64 checks also verify negative
 count traps and byte-identical execution with bounds checks disabled.
+
+## Task 45: generic struct and slice parameter shapes
+
+Unbound signature syntax now represents generic struct applications and
+slice wrappers, including nested applications and pointer element types.
+Binding resolves existing instantiated structs and slice types without
+instantiating either during a speculative call parse. Pointer and function
+signature registration retain their existing transaction.
+
+Shape tests verify nested argument lists and unchanged compiler type counts.
+The differential/required fixture now covers generic struct parameters,
+generic slice reads/stores and `lib.array`'s `array_free` wrapper. Complex
+return signatures and first-use composite instantiation remain separate work.
