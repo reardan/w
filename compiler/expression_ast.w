@@ -14,6 +14,7 @@
 struct expression_ast:
 	int count
 	int end_offset
+	int cast_depth
 	int[128] op
 	int[128] left
 	int[128] right
@@ -22,6 +23,7 @@ struct expression_ast:
 	int[128] result_type
 	int[128] high
 	int[128] next_arg
+	int[128] in_cast
 	int[128] symbol
 
 
@@ -37,6 +39,7 @@ int expression_ast_add(expression_ast* tree, int op, int left, int right):
 	tree.left[id] = left
 	tree.right[id] = right
 	tree.offset[id] = token_start_offset
+	tree.in_cast[id] = tree.cast_depth
 	tree.result_type[id] = 3
 	tree.symbol[id] = -1
 	tree.next_arg[id] = -1

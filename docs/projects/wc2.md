@@ -505,10 +505,25 @@ also check malformed and unreachable operands, bool-bitwise hints, REPL
 recovery and debugger evaluation. All six target image comparisons and both
 AST-enabled self-host fixpoint gates remain in place.
 
-Next is the remaining scalar expression syntax (bitwise operators, shifts,
-casts and conditional expressions), retaining the same diagnostic and image
-comparisons. Source ownership across modules, declarations/statements,
+## Task 9: remaining scalar operators
+
+The opt-in AST now handles bitwise operators, shifts, casts to existing scalar
+types, and scalar conditional expressions. Precedence and right-associative
+conditional arms match the streaming grammar. Cast nodes retain literal cast
+context for bit-31 diagnostics; incompatible ternary arms and address-truncating
+casts fall back before emitting diagnostics. Ternary nodes use the existing
+three-region branch layout and branch-local coercion, preserving image parity.
+Bool-bitwise conditions that may issue the existing hint still fall back.
+
+The differential matrix includes mixed precedence, signed shifts, nested casts,
+bit-31 suppression, selected-arm side effects, nested ternaries and float/pointer
+results. Dedicated hit tests prove these constructs enter the AST together.
+
+The next stage measures and expands coverage beyond parenthesized islands;
+AST-required compilation must reject a fallback rather than report a successful
+hybrid compile as full AST coverage. Source ownership across modules,
+declarations/statements,
 multi-error production analysis, REPL checkpoints and incremental emission
 remain later work. wc2's resident caches are still confined to the leaf tool.
-This experiment does not itself authorize a wholesale replacement or change
-GitHub issue state.
+The production migration remains opt-in while coverage is incomplete.
+GitHub issue state is unchanged.

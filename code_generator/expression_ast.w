@@ -44,6 +44,26 @@ void emit_expression_ast(expression_ast* tree, int id):
 		be_ctrl_end(h)
 		alu_test_set(0x95)
 		return
+	if (op == 'K'):
+		int got = promote(left_type)
+		coerce_explicit(tree.value[id], got)
+		return
+	if (op == '?'):
+		promote(left_type)
+		int h_join = be_ctrl_block()
+		int h_stub = be_ctrl_block()
+		int h_else = be_ctrl_block()
+		be_br_zero_discard(h_else)
+		emit_expression_ast(tree, tree.right[id])
+		int yt = promote(tree.result_type[tree.right[id]])
+		be_br(h_stub)
+		be_ctrl_end(h_else)
+		emit_expression_ast(tree, tree.high[id])
+		int nt = promote(tree.result_type[tree.high[id]])
+		if (yt != 3): coerce(yt, nt)
+		be_ctrl_end(h_stub)
+		be_ctrl_end(h_join)
+		return
 	if (op == 'r'): return
 	if (op == 'd'):
 		promote(left_type)
@@ -65,6 +85,17 @@ void emit_expression_ast(expression_ast* tree, int id):
 	left_type = binary1(left_type)
 	emit_expression_ast(tree, tree.right[id])
 	int right_type = promote(tree.result_type[tree.right[id]])
+	if ((op == 'L') || (op == 'R')):
+		stack_pos = stack_pos - 1
+		if (op == 'L'): alu_shl()
+		else: alu_sar()
+		return
+	if ((op == '&') || (op == '|') || (op == '^')):
+		pop_ebx_slot()
+		if (op == '&'): alu_and()
+		else if (op == '|'): alu_or()
+		else: alu_xor()
+		return
 	if (op == 'i'):
 		if (tree.value[id] > 1): imul_eax_int32(tree.value[id])
 		pop_ebx()
