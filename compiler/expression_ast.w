@@ -9,6 +9,8 @@
 # Float literals store two 32-bit halves for host-independent decoding.
 # Call nodes use left for the first argument and next_arg links on argument
 # roots; those links do not change a nested call's own argument list.
+# Logical chains use the same sibling links, with a separate node for
+# each source-level chain (parenthesized subchains keep their boundary).
 struct expression_ast:
 	int count
 	int end_offset

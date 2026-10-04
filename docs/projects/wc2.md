@@ -470,9 +470,44 @@ and recovery. The common scalar fixture joins the six-target image comparison
 matrix; float16 executes only on x86/x64 and float64-only cases on x64.
 Both compiler host widths retain AST-enabled byte-identical self-host gates.
 
-Next is broader expression syntax (comparisons, short-circuit logic and
-postfix access), retaining differential gates. Source ownership across modules,
-declarations/statements,
+## Task 8: comparisons, short-circuit logic and postfix access
+
+The production AST now handles scalar `<`, `<=`, `>`, `>=`, `==`, `!=`,
+`&&` and `||`, typed pointer indexing, ordinary struct/union fields, typed
+pointer dereference and address-of. Precedence matches the streaming grammar;
+comparisons remain left-associative and retain boolean result types. Float
+comparisons reuse its existing operand-swap and unordered-result conventions.
+
+Each same-precedence logical chain is a single node with ordered operands,
+one branch target, and one final booleanization. Parenthesized subchains
+remain separate nodes. The walker emits the same conditional branches as the
+streaming parser, so skipped calls and memory reads remain skipped and flat
+chains retain byte-identical output rather than adding a booleanization per
+binary pair. Compilation still diagnoses every operand, including unreachable
+ones; replay does not short-circuit diagnostic checks.
+
+Postfix nodes retain lvalue types, element sizes and resolved field offsets.
+Structs enter as intermediate addresses for field/element access and
+address-taking; whole-aggregate operations still fall back. Pointer indexes scale by element
+size, while pointer arithmetic continues to use byte offsets. Member and
+index results support grouped assignment and address-taking. Qualified import
+names, methods, container/buffer access, imported C bit-fields and GPU objects
+continue through the streaming parser, preserving their diagnostics, bounds
+checks and pending-element state. Bitwise operators, shifts, ternaries,
+assignment expressions and casts are also still outside this island.
+
+The differential fixture checks mixed precedence, grouped and flat chains,
+side-effect order, null-pointer guards, comparisons passed to calls, nested
+fields, pointer-returning calls followed by member access, indexed/field
+assignment, float comparisons and NaN parity. Hit counters prove an entire
+mixed logical/call/index/member expression enters the AST. Both host widths
+also check malformed and unreachable operands, bool-bitwise hints, REPL
+recovery and debugger evaluation. All six target image comparisons and both
+AST-enabled self-host fixpoint gates remain in place.
+
+Next is the remaining scalar expression syntax (bitwise operators, shifts,
+casts and conditional expressions), retaining the same diagnostic and image
+comparisons. Source ownership across modules, declarations/statements,
 multi-error production analysis, REPL checkpoints and incremental emission
 remain later work. wc2's resident caches are still confined to the leaf tool.
 This experiment does not itself authorize a wholesale replacement or change

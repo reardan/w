@@ -31,6 +31,27 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
+	if ((op == 'a') || (op == 'o')):
+		promote(left_type)
+		int h = be_ctrl_block()
+		int child = tree.next_arg[tree.left[id]]
+		while (child >= 0):
+			if (op == 'a'): be_br_zero(h)
+			else: be_br_nonzero(h)
+			emit_expression_ast(tree, child)
+			promote(tree.result_type[child])
+			child = tree.next_arg[child]
+		be_ctrl_end(h)
+		alu_test_set(0x95)
+		return
+	if (op == 'r'): return
+	if (op == 'd'):
+		promote(left_type)
+		return
+	if (op == '.'):
+		if (tree.high[id]): promote(left_type)
+		add_eax_int32(tree.value[id])
+		return
 	if ((op == 'n') || (op == 'p') || (op == '~') || (op == '!') || (op == 'b')):
 		int kind = type_float_kind(promote(left_type))
 		if (op == 'n'):
@@ -44,6 +65,21 @@ void emit_expression_ast(expression_ast* tree, int id):
 	left_type = binary1(left_type)
 	emit_expression_ast(tree, tree.right[id])
 	int right_type = promote(tree.result_type[tree.right[id]])
+	if (op == 'i'):
+		if (tree.value[id] > 1): imul_eax_int32(tree.value[id])
+		pop_ebx()
+		alu_add()
+		stack_pos = stack_pos - 1
+		return
+	if (op >= 0x90):
+		pop_ebx_slot()
+		int cc = op
+		int swap = 0
+		if ((op == 0x9c) || (op == 0x9e)): swap = 1
+		if ((op == 0x9c) || (op == 0x9f)): cc = 0x97
+		if ((op == 0x9e) || (op == 0x9d)): cc = 0x93
+		if (float_binary_compare(left_type, right_type, cc, swap) == 0): alu_cmp_set(op)
+		return
 	if (binary_float_kind(left_type, right_type)):
 		pop_ebx_slot()
 		float_binary_arithmetic(left_type, right_type, op)

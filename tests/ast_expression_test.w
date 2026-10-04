@@ -89,6 +89,7 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_typed_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_scalar_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_logic_expression_fixture.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -176,6 +177,20 @@ void test_ast_scalar_expression_diagnostics():
 	ast_test_diagnostics(c"import tests.ast_scalar_expression_fixture as scalar\nint other(): return (ast_zero() + 0xffffffff)\n")
 
 
+void test_ast_logic_expression_diagnostics():
+	ast_test_diagnostics(c"int main(): return (false && missing)\n")
+	ast_test_diagnostics(c"int f(int a): return a\nint main(): return (true || f())\n")
+	ast_test_diagnostics(c"int main(): return (false && 4294967296)\n")
+	ast_test_diagnostics(c"int main(): return (true || 1e+)\n")
+	ast_test_diagnostics(c"int main():\n\tint n = 1\n\treturn (n.missing + 0xffffffff)\n")
+	ast_test_diagnostics(c"struct R:\n\tint field\nint main():\n\tR r\n\treturn (r.missing + 0xffffffff)\n")
+	ast_test_diagnostics(c"int main():\n\tint* p = 0\n\treturn (p[missing] > 2)\n")
+	ast_test_diagnostics(c"int main():\n\tint* p = 0\n\treturn (p[1 + 0xffffffff)\n")
+	ast_test_diagnostics(c"int main():\n\tint n = 1\n\tif (n < 2) & (n != 3): return 1\n\treturn 0\n")
+	ast_test_diagnostics(c"int main():\n\tconst int n = 1\n\tif 1: (n) = 2\n\treturn 0\n")
+	ast_test_diagnostics(c"int main():\n\tint n = 1\n\treturn (n = 2)\n")
+
+
 void test_ast_typed_expression_tls_and_fallback_images():
 	char* path = ast_test_path(c"_tls.w")
 	assert1(file_write_text(path, c"thread_local int tls_value\nint main():\n\ttls_value = 17\n\treturn (tls_value + 25) != 42\n"))
@@ -242,7 +257,21 @@ void test_ast_expression_path_is_exercised():
 	free(path)
 
 
-process_result* ast_test_query(char* command, int enabled):
+void test_ast_logic_expression_path_is_exercised():
+	char* path = ast_test_path(c"_logic.w")
+	assert1(file_write_text(path, c"struct R:\n\tint x\nint f(int a): return a\nbool g(int a, int b, int* p, R* r): return (a < b && f(a) != b || p[0] == r.x)\nint main(): return 0\n"))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
+		assert_equal(0, ast.status)
+		assert_contains(ast.stderr_text, c"AST expressions: 1\n")
+		process_result_free(ast)
+	unlink(path)
+	free(path)
+
+
+process_result* ast_test_query(char* command, int enabled, char* source):
 	char** args = strv_new(6)
 	int i = 0
 	i = ast_test_arg(args, i, c"bin/wv2")
@@ -250,7 +279,7 @@ process_result* ast_test_query(char* command, int enabled):
 	if (strcmp(command, c"defhash") != 0): i = ast_test_arg(args, i, c"--json")
 	i = ast_test_arg(args, i, c"--quiet")
 	if (enabled): i = ast_test_arg(args, i, c"--ast-expressions")
-	strv_set(args, i, c"tests/ast_expression_fixture.w")
+	strv_set(args, i, source)
 	return ast_test_run(args, 0)
 
 
@@ -259,15 +288,18 @@ void test_ast_expression_analysis_queries():
 	commands[0] = c"symbols"
 	commands[1] = c"deps"
 	commands[2] = c"defhash"
-	for i in range(3):
-		process_result* old = ast_test_query(commands[i], 0)
-		process_result* ast = ast_test_query(commands[i], 1)
-		assert_equal(0, old.status)
-		assert_equal(0, ast.status)
-		assert_strings_equal(old.stdout_text, ast.stdout_text)
-		assert_strings_equal(old.stderr_text, ast.stderr_text)
-		process_result_free(old)
-		process_result_free(ast)
+	for fixture in range(2):
+		char* source = c"tests/ast_expression_fixture.w"
+		if (fixture): source = c"tests/ast_logic_expression_fixture.w"
+		for i in range(3):
+			process_result* old = ast_test_query(commands[i], 0, source)
+			process_result* ast = ast_test_query(commands[i], 1, source)
+			assert_equal(0, old.status)
+			assert_equal(0, ast.status)
+			assert_strings_equal(old.stdout_text, ast.stdout_text)
+			assert_strings_equal(old.stderr_text, ast.stderr_text)
+			process_result_free(old)
+			process_result_free(ast)
 
 
 process_result* ast_test_repl(char* repl, int enabled, char* script):
@@ -278,7 +310,7 @@ process_result* ast_test_repl(char* repl, int enabled, char* script):
 
 
 void test_ast_expression_repl_recovery():
-	char* script = c"(6 * 7)\n(4294967296 + 1)\n(1 + )\nint keep = (5 * 9)\nkeep + (2 * 3)\n(keep) = 23\n(keep + 7)\nint keep = 60\n(keep + 3)\nint old(): return (keep + 4)\n(keep + missing)\n(old())\nint callee(int n): return n + 1\nint caller(int n): return (callee(n) * 2)\n(caller(20))\nint callee(int n): return n + 3\n(caller(20))\n(1.5 + 2.5)\n(1e+ + 2)\n(caller(20))\nbool yes = true\n(yes)\n(!yes)\n:reset\n(8 * 9)\n:quit\n"
+	char* script = c"(6 * 7)\n(4294967296 + 1)\n(1 + )\nint keep = (5 * 9)\nkeep + (2 * 3)\n(keep) = 23\n(keep + 7)\nint keep = 60\n(keep + 3)\nint old(): return (keep + 4)\n(keep + missing)\n(old())\nint callee(int n): return n + 1\nint caller(int n): return (callee(n) * 2)\n(caller(20))\nint callee(int n): return n + 3\n(caller(20))\n(1.5 + 2.5)\n(1e+ + 2)\n(caller(20))\nint* nil = 0\n(nil && nil[0])\n(!nil || *nil)\n(2 < 3 && caller(20) == 46)\n(false && missing)\n(caller(20) >= 46)\nbool yes = true\n(yes)\n(!yes)\n:reset\n(8 * 9)\n:quit\n"
 	for host in range(2):
 		char* repl = c"bin/ast_repl"
 		if (host): repl = c"bin/ast_repl64"
@@ -310,7 +342,7 @@ void test_ast_expression_debugger_eval():
 			strv_set(args, 0, dbg_path)
 			strv_set(args, 1, path)
 			if (enabled): strv_set(args, 2, c"--ast-expressions")
-			process_result* result = ast_test_run(args, c"p answer\np (answer + 5)\np (dbg_twice(answer) + 1)\np (1.5 + 2.5)\np (answer + missing)\np (5 + 6 * 7)\np (4294967296 + 1)\np (6 * 7)\nc\n")
+			process_result* result = ast_test_run(args, c"p answer\np (answer + 5)\np (dbg_twice(answer) + 1)\np (1.5 + 2.5)\np (answer > 40 && dbg_twice(answer) == 84)\np (answer + missing)\np (5 + 6 * 7)\np (4294967296 + 1)\np (6 * 7)\nc\n")
 			assert_equal(0, result.status)
 			assert_contains(result.stdout_text, c"answer = 42")
 			assert_contains(result.stdout_text, c"wdbg> = 47")
@@ -323,7 +355,7 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
-# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/operator_overload_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/operator_overload_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"
