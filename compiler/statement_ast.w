@@ -15,6 +15,8 @@ const int ast_stmt_declaration = 11
 const int ast_stmt_guard = 12
 const int ast_stmt_switch_value = 13
 const int ast_stmt_switch_case = 14
+const int ast_stmt_range_argument = 15
+const int ast_stmt_iterable = 16
 
 
 struct statement_ast:

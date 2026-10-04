@@ -1838,3 +1838,18 @@ ordered multi-value cases, text comparisons, nesting and loop/switch break
 interactions. Source completion, condition linting and case coercion keep their
 existing order. Statistics count guards, selectors and case values. Compound
 body dispatch and control-region lifetimes remain streaming at this stage.
+
+## Task 102: range and cursor-loop lowering
+
+Range and container headers now own prepared expression children. Resolved
+loop nodes carry variable/temporary slots, iterator helpers, coercion types
+and control targets. Backend visitors emit initialization, exit checks,
+value extraction, stepping, back edges and final cleanup around the grammar's
+body visit. The original lowering remains available in reference modes.
+
+Both host widths produce identical native images and runtime results for
+range loops, container iteration and generator cleanup on return. Differential
+cases retain empty/overlong range, missing value, non-iterable, enumerate and
+type-warning diagnostics. Statistics count range loops, cursor loops and header
+values. Helper names remain borrowed through the enclosing for rule, and body
+traversal still uses the existing scope dispatcher rather than retained trees.

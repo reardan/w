@@ -821,6 +821,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_guards_emitted = 0
 	ast_switch_values_emitted = 0
 	ast_switch_cases_emitted = 0
+	ast_range_loops_emitted = 0
+	ast_cursor_loops_emitted = 0
+	ast_iteration_values_emitted = 0
 	ast_roots_emitted = 0
 	ast_roots_fallback = 0
 	ast_audit_mode = 0
@@ -1111,6 +1114,15 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(c"\n")
 		print_error(c"AST goto/label statements: ")
 		print_error(itoa(ast_goto_statements_emitted))
+		print_error(c"\n")
+		print_error(c"AST range loops: ")
+		print_error(itoa(ast_range_loops_emitted))
+		print_error(c"\n")
+		print_error(c"AST cursor loops: ")
+		print_error(itoa(ast_cursor_loops_emitted))
+		print_error(c"\n")
+		print_error(c"AST iteration values: ")
+		print_error(itoa(ast_iteration_values_emitted))
 		print_error(c"\n")
 		print_error(c"AST switch selectors: ")
 		print_error(itoa(ast_switch_values_emitted))
