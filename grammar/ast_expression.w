@@ -407,7 +407,7 @@ int ast_expression_record_value(int type):
 
 
 int ast_expression_data_value(int type):
-	return ast_expression_scalar_value(type) || ast_expression_record_value(type)
+	return ast_expression_scalar_value(type) || ast_expression_record_value(type) || ((type_is_array(type) || type_is_slice(type)) && (type_is_gpu_object(type) == 0))
 
 
 int ast_expression_storage_type(int type):
@@ -421,12 +421,16 @@ int ast_expression_storage_type(int type):
 int ast_expression_promoted_type(int type):
 	if (type == string_type): return string_value_type
 	if (type_is_value(type)): return type_strip_gpu(type_real(type))
+	if (type_is_array(type) || (type_get_kind(type) == type_kind_slice)):
+		int promoted = type_lookup_slice_value(type_get_element_type(type))
+		if (promoted >= 0): return promoted
 	int kind = type_float_kind(type)
 	if (kind): return float_binary_result_type(kind)
 	return type
 
 
 int ast_expression_argument_compatible(expression_ast* tree, int want, int id):
+	if (ast_expression_prepare_value(tree, tree.result_type[id], token_start_offset) == 0): return 0
 	int got = ast_expression_promoted_type(tree.result_type[id])
 	if (got == 4):
 		int signature = type_function_pointer_signature(want)
@@ -453,6 +457,7 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 		int arg = ast_expression_assignment(tree, depth + 1)
 		if (arg < 0): return -1
 		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
 		int got = ast_expression_promoted_type(tree.result_type[arg])
 		if ((param >= 0) && type_is_string(param) && type_is_char_pointer(got)):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
@@ -517,6 +522,7 @@ int ast_expression_indirect_call(expression_ast* tree, int callee, int depth):
 		int arg = ast_expression_assignment(tree, depth + 1)
 		if (arg < 0): return -1
 		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
 		if (signature >= 0):
 			int param = type_function_param_type(signature, count)
 			if (ast_expression_data_value(param) == 0): return -1
@@ -1073,6 +1079,7 @@ int ast_expression_hash_call(expression_ast* tree, int receiver, int depth):
 		int arg = ast_expression_assignment(tree, depth + 1)
 		if (arg < 0): return -1
 		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
 		if (ast_expression_argument_compatible(tree, key_type, arg) == 0): return -1
 		if (type_is_string(key_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[arg]))):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
@@ -1132,8 +1139,7 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			if (type_is_buffer(type)):
 				op = 'I'
 				element = buffer_element_type(type)
-				if ((type_is_value(type) == 0) && (type_is_array(type) || (type_get_kind(type) == type_kind_slice))):
-					if (type_lookup_slice_value(element) < 0): tree.pending_buffer_types = 1
+				if (ast_expression_prepare_value(tree, type, token_start_offset) == 0): return -1
 			else if (type_is_list(type)):
 				if (sym_probe(c"__w_list_addr") < 0): return -1
 				op = 'j'
@@ -1169,8 +1175,7 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 				metadata = 1
 				field_offset = 0
 			if (metadata):
-				if ((type_is_value(type) == 0) && (type_is_array(type) || (type_get_kind(type) == type_kind_slice))):
-					if (type_lookup_slice_value(buffer_element_type(type)) < 0): tree.pending_buffer_types = 1
+				if (ast_expression_prepare_value(tree, type, token_start_offset) == 0): return -1
 				if (field_offset == 0):
 					field_type = ast_expression_pointer_type(tree, buffer_element_type(type), token_start_offset)
 					if (field_type < 0): return -1
@@ -1447,12 +1452,15 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	if (map_store): lt = type_map_value_type(tree.value[left])
 	if (type_is_value(lt) || (lt == 3) || type_is_const(lt)): return -1
 	if (ast_expression_data_value(lt) == 0): return -1
+	if (type_is_array(lt)): return -1
 	if (op && ast_expression_record_type(lt)): return -1
 	if (op && type_is_buffer(type_canonical(lt))): return -1
 	ast_expression_advance(tree)
 	int right = ast_expression_assignment(tree, depth + 1)
 	if (right < 0): return -1
 	if (ast_expression_data_value(tree.result_type[right]) == 0): return -1
+	if (op && (type_is_array(tree.result_type[right]) || type_is_slice(tree.result_type[right]))): return -1
+	if (ast_expression_prepare_value(tree, tree.result_type[right], token_start_offset) == 0): return -1
 	int rt = ast_expression_promoted_type(tree.result_type[right])
 	if (ast_expression_record_type(lt) != ast_expression_record_value(rt)): return -1
 	int result = rt
@@ -1632,6 +1640,8 @@ int ast_expression_try_at(int group_offset, int whole):
 				# only now, at the same source token as identifier().
 				sym_lookup(token)
 		ast_expression_advance(&tree)
+	for i in range(tree.types_count):
+		if (tree.pointer_offsets[i] == end): ast_expression_commit_pointer(&tree, i)
 	emit_expression_ast(&tree, root)
 	expression_lhs_readonly = tree.readonly
 	if (whole):

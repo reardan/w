@@ -982,3 +982,19 @@ and invalid-call diagnostics. Inferred generics, uncaptured signature shapes,
 new composite types and calls with more than ten parameters still fall back.
 Statements and declarations remain a separate migration; this milestone is
 complete expression coverage of the compiler, not a completed AST frontend.
+
+## Task 40: array and slice values
+
+AST roots, call arguments and assignment operands now accept array and
+slice values. Promotion stages a slice-value record at the original source
+event, preserving registration order before later pointer types and generic
+signatures. End-of-root promotion events are committed before emission.
+Buffer indexing and metadata access use the same transaction instead of
+blocking subsequent pointer registration.
+
+Tests cover typed pointer decay, slice parameters and returns, pointer and
+slice stores, typed and raw indirect calls, first-use promotion followed by
+a new pointer type, and diagnostic recovery. Raw indirect calls preserve
+the descriptor argument because they have no typed parameter requesting
+decay. Buffer slicing, explicit buffer casts and array assignment remain
+separate work.

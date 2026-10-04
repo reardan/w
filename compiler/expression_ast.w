@@ -120,7 +120,9 @@ void ast_expression_restore_types(expression_ast* tree):
 void ast_expression_commit_pointer(expression_ast* tree, int i):
 	type_rec* rec = &tree.pointer_types[i]
 	if (rec.kind == type_kind_function): return
-	int actual = type_push_pointer(rec.name, rec.total_size, rec.pointer_level)
+	int actual
+	if (rec.kind == type_kind_slice_value): actual = type_push_slice_value(rec.alias_target)
+	else: actual = type_push_pointer(rec.name, rec.total_size, rec.pointer_level)
 	assert1(actual == tree.types_base + i)
 
 
@@ -162,3 +164,31 @@ int ast_expression_reserve_signature(expression_ast* tree, int id, int result, i
 	int signature = type_count()
 	type_records.push(cast(int, rec))
 	return signature
+
+
+# Array/slice promotion creates a descriptor-value type before a later
+# argument can register its own types. Stage that event just like a
+# pointer; borrowed records need no diagnostic name or field storage.
+int ast_expression_prepare_value(expression_ast* tree, int type, int offset):
+	if (type_is_value(type)): return 1
+	if ((type_is_array(type) == 0) && (type_get_kind(type) != type_kind_slice)): return 1
+	int element = type_canonical(type_get_element_type(type))
+	if (type_lookup_slice_value(element) >= 0): return 1
+	if (tree.types_count == 16): return 0
+	int i = tree.types_count
+	type_rec* rec = &tree.pointer_types[i]
+	rec.name = c""
+	rec.num_fields = 0
+	rec.total_size = 0
+	rec.pointer_level = 0
+	rec.alias_target = element
+	rec.kind = type_kind_slice_value
+	rec.fn_return_type = -1
+	rec.fn_param_count = -1
+	rec.decl_file_index = -1
+	rec.decl_line = 0
+	rec.decl_column = 0
+	tree.pointer_offsets[i] = offset
+	tree.types_count = i + 1
+	type_records.push(cast(int, rec))
+	return 1
