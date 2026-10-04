@@ -112,6 +112,11 @@ is a queue, not an archive.
   measurements that silently reported prelude-only timings. Either
   accept global flags before the subcommand, or special-case a
   known-subcommand word appearing after a flag and say so.
+  The AST suite audit (2026-10-03) also hit
+  `check --ast-full-expressions --json f.w`: the AST flag ends the
+  leading check-option scan, so `--json` becomes unrecognized. Appending
+  the whole-program AST flag after the file list works; shared option
+  parsing should allow global and subcommand flags to interleave.
 
 - **`symbol redefined: 'X'` does not say where the first definition
   is.** Writing a new test with a plain `int main()` — the shape every

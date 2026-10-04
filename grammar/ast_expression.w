@@ -464,7 +464,7 @@ int ast_expression_atom(expression_ast* tree, int depth):
 		int op = 'S'
 		int type = string_literal_type
 		int start = 1
-		if (token[1] == '"'):
+		if ((token[0] != '"') && (token[1] == '"')):
 			start = 2
 			if (token[0] == 'c'):
 				op = 's'

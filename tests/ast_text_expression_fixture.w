@@ -23,4 +23,8 @@ int main():
 	if ((ast_text_equal(c"\\\"", c"\\\"")) != 1): return 13
 	if ((ast_text_equal(c"\q", c"q")) != 1): return 14
 	if ((strlen(c"operators ( ) [ ] && || ; : ? # /* */")) != 37): return 15
+	if (("" == s"") != true): return 16
+	if ((ast_text_identity(s"") == "") != true): return 17
+	if ((strlen(c"")) != 0): return 18
+	if ((str_from_cstr(c"") == "") != true): return 19
 	return 0

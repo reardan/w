@@ -644,3 +644,18 @@ elements and fields of stored records compose with existing nodes. List
 methods, slices and whole-list values remain separate work. Tests compare
 images across both host widths and all six targets and assert direct AST
 coverage, evaluation order and diagnostic parity.
+
+## Task 17: empty-string regression from suite-wide AST compilation
+
+A generated-manifest audit enabled `--ast-full-expressions` on 1,084 compiler
+steps (leaving the pinned seed and explicit AST-mode regression commands
+alone). Its first full-suite run exposed an empty-literal bug: the AST parser
+treated the second quote in `""` as evidence of a prefixed literal, so decoding
+started after the closing quote. Prefix detection now also checks the first
+character. Differential tests cover empty plain, prefixed and C strings,
+including comparisons against returned string values.
+
+This audit covers compiler steps represented directly in the manifest. Test
+drivers that launch the compiler themselves retain their own mode choices,
+and full-expression mode still permits streaming fallback. It supplements
+the required-mode coverage gate; it does not establish a complete migration.
