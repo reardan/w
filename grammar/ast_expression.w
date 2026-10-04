@@ -457,7 +457,7 @@ int ast_expression_scalar_type(int type):
 	if ((base == float16_type) && (target_isa != 0)): return 0
 	if (type_num_args(base) > 0): return 0
 	int kind = type_get_kind(base)
-	if ((kind != 0) && (kind != type_kind_enum)): return 0
+	if ((kind != 0) && (kind != type_kind_enum) && (kind != type_kind_function)): return 0
 	int size = type_get_size(base)
 	if (size > word_size): return 0
 	return (size == 1) || (size == 2) || (size == 4) || (size == 8)
@@ -1587,6 +1587,40 @@ int ast_expression_symbol(expression_ast* tree, int depth, int qualified):
 	return id
 
 
+# Forward generic references have no signature until their declaration
+# is drained. Retain type arguments and source identity without emitting
+# a backpatch slot or appending to the forward queue during the probe.
+int ast_expression_forward_generic(expression_ast* tree, int depth):
+	int id = expression_ast_add(tree, ast_forward_generic, -1, -1)
+	if (id < 0): return -1
+	int length = strlen(token) + 1
+	if (tree.type_names_used + length > 2048): return -1
+	tree.value[id] = tree.type_names_used
+	strcpy(&tree.type_names[tree.type_names_used], token)
+	tree.type_names_used = tree.type_names_used + length
+	tree.symbol[id] = diag_token_line
+	tree.result_type[id] = 4
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"[") == 0): return -1
+	int count = 0
+	int previous = -1
+	while (1):
+		if (count == generic_max_params): return -1
+		int type = ast_expression_named_type(tree, 0, depth + 1)
+		if (type < 0): return -1
+		int argument = expression_ast_add(tree, 'g', -1, -1)
+		if (argument < 0): return -1
+		tree.value[argument] = type
+		if (previous < 0): tree.left[id] = argument
+		else: tree.next_arg[previous] = argument
+		previous = argument
+		count = count + 1
+		if (ast_expression_accept(tree, c",") == 0): break
+	if (ast_expression_accept(tree, c"]") == 0): return -1
+	tree.high[id] = count
+	return id
+
+
 int ast_expression_name(expression_ast* tree, int depth):
 	# Keywords, unshadowable builtins, generics and constructors take
 	# precedence over identifier() in the streaming grammar.
@@ -1635,6 +1669,8 @@ int ast_expression_name(expression_ast* tree, int depth):
 		if (kind): return ast_expression_integer_intrinsic(tree, kind + 3, depth)
 		kind = atomic_builtin_kind()
 		if (kind): return ast_expression_atomic(tree, kind, depth)
+	if ((nextc == '[') && (sym_probe(token) < 0) && (type_lookup(token) < 0) && (import_alias_lookup(token) < 0) && (generic_def_lookup(token, 0) < 0)):
+		return ast_expression_forward_generic(tree, depth)
 	if (generic_call_ready()):
 		if (nextc == '('): return ast_expression_generic_infer(tree, depth)
 		return ast_expression_generic_call(tree, depth)

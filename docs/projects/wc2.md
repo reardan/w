@@ -1511,3 +1511,17 @@ Required-mode fixtures cover every list-expression operation, nested and
 chained uses, captured locals, generic calls, temporary binding mutation,
 record keys and empty lists. The existing list battery and stdin-driven
 word/transpose examples produce identical native images and output.
+
+## Task 79: remaining function-reference forms
+
+Bare function-signature aliases now retain the streaming word-value
+semantics in scalar AST operands, including fields, casts and indirect
+calls. Forward generic references retain their name, type arguments and
+source location without mutating the forward queue during parsing; emission
+creates the existing backpatch record and leaves resolution to the normal
+generic drain.
+
+The generic and Raft sweep suites compile with required AST expressions
+and identical native images. Fixtures cover nullable callback fields,
+callback copies, forward generic calls, unresolved declarations, argument
+count errors and failed enclosing probes.

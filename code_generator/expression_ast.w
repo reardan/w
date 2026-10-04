@@ -54,6 +54,22 @@ int emit_ast_direct_arguments(expression_ast* tree, int id, int s, int passed):
 # peepholes, target word size and runtime division behavior still apply.
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
+	if (op == ast_forward_generic):
+		if (cast(int, generic_forwards) == 0): generic_forwards = new list[generic_forward_record]
+		generic_forward_record rec
+		rec.name = strclone(&tree.type_names[tree.value[id]])
+		rec.args = cast(int, malloc(generic_max_params * __word_size__))
+		rec.arg_count = tree.high[id]
+		int argument = tree.left[id]
+		for i in range(rec.arg_count):
+			save_ptr(rec.args + i * __word_size__, tree.value[argument])
+			argument = tree.next_arg[argument]
+		rec.chain = addr_chain_link(0)
+		rec.call_file = strclone(filename)
+		rec.call_line = tree.symbol[id]
+		generic_forwards.push(rec)
+		strcpy(last_identifier, c"$forward generic call$")
+		return
 	if (op == ast_list_it_value):
 		strcpy(last_identifier, c"it")
 		be_lea_acc_wstack((stack_pos - tree.it_slot[tree.symbol[id]]) << word_size_log2)
