@@ -1,0 +1,150 @@
+# wbuild: target=wvm_registry_test tag=tests dep=wv2
+# wbuild: step="bin/wv2 x64 tests/wvm_registry_test.w -o bin/wvm_registry_test"
+# wbuild: step="bin/wvm_registry_test" timeout=30000
+import lib.testing
+import lib.vmm.registry
+import lib.process
+
+
+char* registry_test_path(char* suffix):
+	string_builder* path = string_from(c"bin/wvm-registry-")
+	string_append_int(path, getpid())
+	string_append(path, suffix)
+	char* result = strjoin(path.data, c"")
+	string_free(path)
+	return result
+
+
+void test_registry_exclusive_and_crash_recovery():
+	char* socket = registry_test_path(c".sock")
+	char* source = registry_test_path(c"-source")
+	assert_equal(0, mkdir(source, 448))
+	char* sentinel = path_join(source, c"sentinel")
+	asserts(c"source sentinel", file_write_text(sentinel, c"original"))
+	vm_registry* registry = registry_open(socket)
+	asserts(c"open private state", registry != 0)
+	asserts(c"exclusive daemon ownership", registry_open(socket) == 0)
+	vm_workspace* workspace = workspace_create_in(source, registry.path, 4096, 10, 1000)
+	asserts(c"registered private copy", workspace != 0)
+	asserts(c"durable workspace record", registry_record(registry, 1, workspace.path, 0))
+	assert_equal(0, registry_record(registry, 2, source, 0))
+	vm_workspace* orphan = workspace_create_in(source, registry.path, 4096, 10, 1000)
+	asserts(c"pre-record crash workspace", orphan != 0)
+	char* recorded_path = strjoin(workspace.path, c"")
+	char* orphan_path = strjoin(orphan.path, c"")
+	char* state_path = strjoin(registry.path, c"")
+	# Simulate lost in-memory ownership at daemon death.
+	free(workspace.path)
+	free(workspace)
+	free(orphan.path)
+	free(orphan)
+	registry_close(registry)
+	registry = registry_open(socket)
+	asserts(c"restart recovers", registry != 0)
+	assert_equal(2, registry.recovered)
+	assert_equal(0, path_exists(recorded_path))
+	assert_equal(0, path_exists(orphan_path))
+	char* original = file_read_text(sentinel)
+	assert_strings_equal(c"original", original)
+	free(original)
+	# Worker-only sessions are journaled as well, with an empty path.
+	asserts(c"record worker without workspace", registry_record(registry, 3, 0, 0))
+	asserts(c"remove durable record", registry_remove(registry, 3))
+	asserts(c"idempotent record removal", registry_remove(registry, 3))
+	registry_close(registry)
+	assert_equal(0, dir_remove_all(state_path))
+	assert_equal(0, dir_remove_all(source))
+	free(state_path)
+	free(recorded_path)
+	free(orphan_path)
+	free(sentinel)
+	free(source)
+	free(socket)
+
+
+void test_registry_refuses_live_group_and_bad_record():
+	char* socket = registry_test_path(c"-live.sock")
+	char* source = registry_test_path(c"-live-source")
+	assert_equal(0, mkdir(source, 448))
+	vm_registry* registry = registry_open(socket)
+	asserts(c"live group registry", registry != 0)
+	vm_workspace* workspace = workspace_create_in(source, registry.path, 4096, 10, 1000)
+	asserts(c"live group workspace", workspace != 0)
+	int group = syscall(111, 0, 0, 0)
+	asserts(c"record reused or live group", registry_record(registry, 1, workspace.path, group))
+	assert_equal(0, registry_recover(registry))
+	asserts(c"live group prevents deletion", path_exists(workspace.path))
+	asserts(c"remove fake live identity", registry_record(registry, 1, workspace.path, 0))
+	char* bad_record = path_join(registry.path, c"session-2.record")
+	asserts(c"corrupt record fixture", file_write_text(bad_record, c"invalid"))
+	assert_equal(0, registry_recover(registry))
+	# Recovery may already remove valid records but leaves corrupt state
+	# for inspection; it never treats malformed bytes as deletion paths.
+	asserts(c"corrupt record retained", path_exists(bad_record))
+	assert_equal(0, unlink(bad_record))
+	asserts(c"recover after removing corrupt record", registry_recover(registry))
+	free(workspace.path)
+	free(workspace)
+	free(bad_record)
+	char* state_path = strjoin(registry.path, c"")
+	registry_close(registry)
+	assert_equal(0, dir_remove_all(state_path))
+	assert_equal(0, dir_remove_all(source))
+	free(state_path)
+	free(source)
+	free(socket)
+
+
+void test_registry_rejects_symlinks_and_insecure_root():
+	char* socket = registry_test_path(c"-unsafe.sock")
+	char* root = strjoin(socket, c".state")
+	char* outside = registry_test_path(c"-outside")
+	assert_equal(0, mkdir(outside, 448))
+	char[4096] cwd
+	asserts(c"cwd", getcwd(&cwd[0], 4096) >= 0)
+	char* absolute = path_join(&cwd[0], outside)
+	assert_equal(0, syscall(88, cast(int, absolute), cast(int, root), 0))
+	asserts(c"refuse symlink state root", registry_open(socket) == 0)
+	assert_equal(0, unlink(root))
+	assert_equal(0, mkdir(root, 493))
+	asserts(c"refuse public state root", registry_open(socket) == 0)
+	assert_equal(0, rmdir(root))
+	vm_registry* registry = registry_open(socket)
+	asserts(c"safe root", registry != 0)
+	char* link = path_join(registry.path, c"wvm-work-1-1")
+	assert_equal(0, syscall(88, cast(int, absolute), cast(int, link), 0))
+	assert_equal(0, registry_recover(registry))
+	asserts(c"never follow orphan symlink", path_exists(outside))
+	assert_equal(0, unlink(link))
+	char* channel = path_join(registry.path, c"wvm-channel-0123456789abcdef0123456789abcdef")
+	assert_equal(0, mkdir(channel, 448))
+	char* marker = path_join(channel, c"agent.sock")
+	asserts(c"channel cleanup fixture", file_write_text(marker, c"stale"))
+	asserts(c"recover channel orphan", registry_recover(registry))
+	assert_equal(0, path_exists(channel))
+	registry_close(registry)
+	assert_equal(0, dir_remove_all(root))
+	assert_equal(0, rmdir(outside))
+	free(marker)
+	free(channel)
+	free(link)
+	free(absolute)
+	free(outside)
+	free(root)
+	free(socket)
+
+
+void test_registry_quiescence_accepts_only_dead_groups():
+	int pid = fork()
+	asserts(c"fork quiescence fixture", pid >= 0)
+	if (pid == 0):
+		if (syscall(109, 0, 0, 0) < 0): exit(125)
+		sleep_ms(100)
+		exit(0)
+	assert_equal(0, syscall(109, pid, pid, 0))
+	assert_equal(0, registry_group_quiet(pid, 0))
+	asserts(c"unreaped zombie group is quiescent", registry_group_quiet(pid, 2000))
+	int status = 0
+	assert_equal(pid, wait4(pid, &status, 0, 0))
+	assert_equal(0, status)
+	asserts(c"reaped group is quiescent", registry_group_quiet(pid, 0))

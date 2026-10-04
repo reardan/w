@@ -51,6 +51,10 @@ struct vm_cell:
 	void* thread_io_wait
 	int deadline_ms
 	int max_threads
+	# Snapshot clones own their copied input and retain immutable backing.
+	char* owned_input
+	void* snapshot_state
+	void* snapshot_cleanup
 
 
 int cell_fail(vm_cell* cell, char* error):
@@ -82,8 +86,7 @@ vm_cell* cell_new():
 type cell_cleanup_fn = fn(vm_cell*) -> void
 
 
-void cell_free(vm_cell* cell):
-	if (cell == 0): return
+void cell_runtime_free(vm_cell* cell):
 	if (cell.thread_cleanup != 0):
 		cell_cleanup_fn* cleanup = cast(cell_cleanup_fn*, cell.thread_cleanup)
 		cleanup(cell)
@@ -96,6 +99,23 @@ void cell_free(vm_cell* cell):
 	if (cell.machine != 0):
 		kvm_destroy(cell.machine)
 		free(cell.machine)
+	cell.machine = 0
+	cell.thread_state = 0
+	cell.thread_cleanup = 0
+	cell.thread_io_wait = 0
+	cell.fs_state = 0
+	cell.fs_cleanup = 0
+	cell.net_state = 0
+	cell.net_cleanup = 0
+
+
+void cell_free(vm_cell* cell):
+	if (cell == 0): return
+	cell_runtime_free(cell)
+	if (cell.snapshot_cleanup != 0):
+		cell_cleanup_fn* cleanup = cast(cell_cleanup_fn*, cell.snapshot_cleanup)
+		cleanup(cell)
+	free(cell.owned_input)
 	munmap(cast(int, cell.ram), CELL_RAM_SIZE)
 	free(cell.regs)
 	free(cell.sregs)

@@ -71,6 +71,8 @@ Other useful targets:
 ./wbuild wdbg_web    # browser debugger: bin/wdbg_web file.w prints an https URL
 ./wbuild wvm         # Linux x64 KVM cells: bin/wvm run tests/hello.w
 ./wbuild wvm_init    # Linux guest PID 1; wvm box --kernel FILE --initrd FILE
+./wbuild wvmd        # persistent Linux-box session scheduler
+./wbuild wvm_pool_bench # cell CoW sharing and reset benchmark
 ./wbuild verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
                      # the first cmp also proves output is host-word-size independent
 ./wbuild warning_test  # asserts the compiler's type/style warnings
@@ -79,10 +81,22 @@ Other useful targets:
 ./wbuild cuda_test   # GPU-only: W kernels + 'gpu for' end to end (not part of 'tests')
 ```
 
-The [VM cell runner](docs/projects/vms.md#running-a-cell-m1m2) executes
-static x64 W programs with checked syscall access and a timeout. It
-requires `/dev/kvm`; filesystem, network, threads, and Linux guests are
-not supported yet. Source compilation happens on the host.
+The [VM runner](docs/projects/vms.md) executes static x64 W cells with
+checked syscall access, explicit filesystem/TCP capabilities, guest threads,
+and timeouts. Ready-cell snapshots support CoW clones and RAM pools.
+Linux boxes use QEMU/KVM and W PID 1 for repeated commands, separate output,
+private workspaces and guest exit status. `wvmd` provides bounded concurrent
+sessions over local JSON-RPC. Source compilation happens on the host;
+execution requires `/dev/kvm` and never falls back to host execution.
+
+Run the foreground daemon directly (not inside a captured build step):
+
+```sh
+./bin/wvmd serve --socket bin/wvmd.sock --max-active 4 --max-pending 16
+```
+
+See [agent VM usage and limits](docs/projects/vms.md#persistent-commands-and-private-workspaces)
+for image assembly, session commands, resource policies and benchmarks.
 
 There is no separate linter binary. The compiler's own warnings (type
 mismatches, spaces-instead-of-tabs, missing trailing newline) are always

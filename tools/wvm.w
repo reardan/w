@@ -3,6 +3,7 @@
 # resulting static x64 program executes in KVM. No host-exec fallback.
 import lib.vmm.cell
 import lib.vmm.box
+import lib.vmm.workspace
 import lib.process
 import lib.file
 import lib.str
@@ -52,10 +53,19 @@ int wvm_box(int argc, char** args):
 	vm_box_options* options = box_options_new()
 	int at = 2
 	int valid = 1
+	char* workspace_source = 0
+	int workspace_mb = 64
+	char* cwd = 0
+	char** command = 0
 	while (at < argc && valid):
 		char* option = args[at]
 		at = at + 1
-		if (strcmp(option, c"--network") == 0): options.network = 1
+		if (strcmp(option, c"--exec") == 0):
+			if (at >= argc): valid = 0
+			else: command = args + at * __word_size__
+			break
+		if (strcmp(option, c"--network-restricted") == 0): options.network = 2
+		else if (strcmp(option, c"--network") == 0): options.network = 1
 		else if (strcmp(option, c"--fs-write") == 0): options.fs_write = 1
 		else if (at >= argc): valid = 0
 		else:
@@ -65,18 +75,53 @@ int wvm_box(int argc, char** args):
 			else if (strcmp(option, c"--initrd") == 0): options.initrd = value
 			else if (strcmp(option, c"--append") == 0): options.command_line = value
 			else if (strcmp(option, c"--fs-root") == 0): options.fs_root = value
+			else if (strcmp(option, c"--workspace") == 0): workspace_source = value
+			else if (strcmp(option, c"--workspace-mb") == 0): workspace_mb = wvm_timeout(value)
+			else if (strcmp(option, c"--cwd") == 0): cwd = value
 			else if (strcmp(option, c"--cpus") == 0): options.cpus = wvm_timeout(value)
 			else if (strcmp(option, c"--memory-mb") == 0): options.memory_mb = wvm_timeout(value)
 			else if (strcmp(option, c"--timeout-ms") == 0): options.timeout_ms = wvm_timeout(value)
 			else: valid = 0
+	if (workspace_source != 0 && (options.fs_root != 0 || options.fs_write)): valid = 0
+	if (cwd != 0 && command == 0): valid = 0
+	if (workspace_source != 0 && command == 0): valid = 0
+	if (workspace_mb < 1 || workspace_mb > 1024): valid = 0
 	if (valid == 0 || box_options_valid(options) == 0):
-		wvm_error(c"usage: wvm box --kernel FILE --initrd FILE [--append TEXT] [--cpus 1..64] [--memory-mb 64..32768] [--timeout-ms N] [--fs-root DIR [--fs-write]] [--network]")
+		wvm_error(c"usage: wvm box --kernel FILE --initrd FILE [--append TEXT] [--cpus 1..64] [--memory-mb 64..32768] [--timeout-ms N] [--fs-root DIR [--fs-write] | --workspace DIR [--workspace-mb N]] [--network | --network-restricted] [--cwd DIR] [--exec /COMMAND args...]")
 		free(options)
 		return 2
-	int status = box_run(options)
+	vm_workspace* workspace = 0
+	if (workspace_source != 0):
+		workspace = workspace_create(workspace_source, 1073741824, 100000, 60000)
+		if (workspace == 0):
+			wvm_error(c"workspace preparation failed (1 GiB, 100000 entries, 60s; regular files/directories only)")
+			free(options)
+			return 125
+		options.fs_root = workspace.path
+		options.workspace_mb = workspace_mb
+	int status = 125
+	if (command == 0): status = box_run(options)
+	else:
+		vm_box_session* session = box_session_open(options)
+		if (session != 0):
+			process_result* result = box_session_exec(session, command, cwd, options.timeout_ms, box_channel_max_output)
+			if (result != 0):
+				status = result.status
+				io_result written
+				if (io_write_all(1, result.stdout_text, result.stdout_length, &written) != IO_OK): status = 125
+				if (io_write_all(2, result.stderr_text, result.stderr_length, &written) != IO_OK): status = 125
+				if (status == process_status_timeout): status = 124
+				if (status == box_status_output_limit): wvm_error(c"guest output limit exceeded")
+				if (status < 0): status = 125
+				process_result_free(result)
+			box_session_close(session)
+	if (workspace != 0):
+		if (workspace_destroy(workspace) != 0):
+			wvm_error(c"workspace cleanup failed")
+			status = 125
 	free(options)
 	if (status == 124): wvm_error(c"Linux guest deadline exceeded")
-	if (status == 125): wvm_error(c"Linux guests require accessible /dev/kvm and qemu-system-x86_64 in PATH")
+	if (status == 125): wvm_error(c"Linux guest setup, command channel, or execution failed; requires /dev/kvm, QEMU and compatible image")
 	return status
 
 

@@ -19,6 +19,13 @@
 		],
 		"tool_targets": [
 			{
+				"name": "wvm_image_test",
+				"tags": ["tests"],
+				"steps": [
+					{"cmd": ["python3", "tests/wvm_image_test.py"]}
+				]
+			},
+			{
 				"name": "manifest",
 				"steps": [
 					{"cmd": ["bin/wbuildgen"]}

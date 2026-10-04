@@ -1,10 +1,13 @@
 # Agent VMs: instant microVMs with shared memory (`wvm`)
 
-Status: M0 memory primitives, M1–M2 KVM cells, confined filesystem access,
-TCP allowlists, and guest threads are implemented (issue
-[#519](https://github.com/reardan/w/issues/519)). An initial Linux box backend
-uses QEMU microvm/KVM with a supplied kernel and initramfs. Snapshots,
-overlays, daemon/harness integration, and the other M3–M8 items remain design.
+Status: memory primitives, KVM cells, confined filesystem/TCP access,
+guest threads, ready-cell snapshots/CoW clones, RAM pools, persistent Linux
+box command sessions, and an initial bounded `wvmd` scheduler are implemented
+(issue [#519](https://github.com/reardan/w/issues/519)). Private workspaces and
+pinned image assembly are available. Live Linux snapshots, retained-vCPU
+warm pools, cgroup fleet quotas, and external harness wiring remain open.
+The usage sections below distinguish these implementations from the target
+architecture.
 
 Goal: let agents (wharness, wexec steps, anything driving the toolchain)
 run work inside virtual machines that start and stop in well under a
@@ -16,8 +19,10 @@ paying for its own copy of the same image.
 `bin/wvm run` now executes a static x64 W program in a KVM cell, with
 guest page permissions, checked syscall buffers, bounded output, and a
 wall-clock timeout. Filesystem and network capabilities are explicit options;
-threads use per-thread vCPUs. `bin/wvm box` boots a full Linux guest. Agent tool calls in w-private still run as host
-processes; the daemon and harness integration remain M5 work.
+threads use per-thread vCPUs. `bin/wvm box` boots a full Linux guest;
+`--exec` uses the persistent command protocol. `wvmd` exposes bounded box
+sessions to `lib.wvm_client`. Agent tool calls in the separate w-private
+repository still need to be wired to that client.
 
 The recommendation is a two-tier design on one W-native VMM core:
 
@@ -53,7 +58,9 @@ The usage sections in §9 describe the implemented surface and its limits.
 | memfd, seals, madvise | Implemented on Linux x86/x64/ARM64; named constants and lifecycle contract in `lib/memfd.w`; other targets return `-1` for the new primitives | `lib/memfd.w`, `tests/memfd_test.w` |
 | userfaultfd | **Missing** (later milestone) | |
 | KVM / cells | Per-thread x64 vCPUs, ELF validation, syscall gates, confined filesystem/TCP capabilities, fault vectors/RIP, timeout | `lib/kvm.w`, `lib/vmm/`, `tools/wvm.w` |
-| Linux boxes | QEMU microvm/KVM backend, supplied kernel/initramfs, W PID 1, optional 9p/user-mode network devices | `lib/vmm/box.w`, `tools/wvm_init.w` |
+| Linux boxes | Persistent command channel, bounded separate output/status, private workspace overlay, optional 9p/network devices | `lib/vmm/box.w`, `lib/vmm/guest_agent.w`, `tools/wvm_init.w` |
+| Cell snapshots | Sealed memfd ready templates, private clones, RAM reset and bounded pools | `lib/vmm/snapshot.w`, `lib/vmm/pool.w` |
+| Session scheduler | Process-isolated Linux box workers, queue/admission/lease/cancellation, JSON-RPC client | `tools/wvmd.w`, `lib/wvm_client.w` |
 | Signal handlers on x64 | Working, including the SA_RESTORER thunk (needed to kick a vCPU out of `KVM_RUN`) | `lib/signal.w` |
 | Where `syscall` instructions come from | Runtime stubs the compiler emits: `syscall`, `syscall7`, `thread_create` (clone), `stack_create` (mmap), `__w_tls_set` (arch_prctl), plus the ELF exit stub | `code_generator/x64_asm.w:68-118`, `code_generator/elf_64.w:49` |
 | Daemon pattern | AF_UNIX server with client auto-start | `tools/wbuildd.w`, `docs/projects/wbuildd.md`, `lib/json_rpc.w` |
@@ -288,11 +295,11 @@ Each milestone lands green on its own.
 | M0 | **Implemented:** syscall primitives `mmap_fd`, `memfd_create`, `madvise`, seals | `tests/memfd_test.w` (x86/x64): shared initialization, seal enforcement, isolated private clones, byte offsets, errors, partial/full reset, fd/mapping lifetime |
 | M1 | **Implemented:** `lib/kvm.w` and a guest that writes to a port | `tests/kvm_hello_test.w`: ABI layouts, real port write and halt (execution skips with no `/dev/kvm`) |
 | M2 | **Implemented:** ELF loader, ring-3 long mode, LSTAR gate, syscall subset; `wvm run tests/hello.w` | `tests/wvm_test.w`: existing x64 map/set, compound-assignment and float64 suites; TLS, syscall boundary, faults, timeout, malformed ELF |
-| M3 | Snapshots, clones, reset in place | Latency gate (spawn < 1 ms) and sharing gate (100 clones of a 64 MB snapshot add only their dirty pages to RSS) |
+| M3 | **Partial:** ready-cell snapshots, CoW clones and RAM reset; vCPUs recreated | `wvm_snapshot_test`; `wvm_pool_bench` reports timings and memory, no universal latency claim |
 | M4 | Policy, overlay fs, deterministic clock/random, symbolized faults | Policy-denial tests; replay test |
-| M5 | `wvmd`, warm pools, shared regions; wharness `--sandbox=cell` | wharness mock-mode run inside cells |
+| M5 | **Partial:** bounded box scheduler, client, independent cell RAM pools; shared regions/harness wiring pending | `wvmd_test`; external wharness gate pending |
 | M6 | `--syscall-abi=vmcall` in the compiler | `verify_x64`; measured syscall round-trip win |
-| M7 | **Partial:** QEMU/KVM microvm boxes and `wvm_init`; daemon integration and snapshots pending | Real Linux boot, filesystem I/O, guest threads; bash + git snapshot gate pending |
+| M7 | **Partial:** persistent QEMU/KVM boxes, daemon integration, pinned image builder; Linux snapshots pending | `wvm_box_test`, `wvm_channel_test`, `wvm_image_test`; Linux snapshot gate pending |
 | M8 | **Threads implemented:** per-thread vCPUs, futexes, TLS, preemption. wdbg attach, layered snapshots, and other host ports pending | `wvm_thread_test`; per-port gates pending |
 
 A ptrace backend (`PTRACE_SYSEMU`) for the cell syscall handler is
@@ -390,9 +397,9 @@ and signal mask, and refuses an already active/pending real-time alarm.
 `cell_free` releases every vCPU, VM, run mapping, guest RAM, buffer,
 filesystem descriptor, and socket.
 
-VM snapshots/reset, filesystem overlays, deterministic services, the daemon,
-and instruction-count budgets remain later milestones. The threat model
-in §2 still applies.
+Ready-cell snapshots and reset are available through `lib.vmm.snapshot`;
+live snapshots, deterministic services and instruction-count budgets remain
+later work. The threat model in §2 still applies.
 
 ### Filesystem and networking capabilities
 
@@ -444,14 +451,15 @@ acceleration and the host CPU. They require Linux x64, accessible
 `/dev/kvm`, a compatible x64 Linux kernel, and a supplied initramfs with
 an executable `/init`. There is no runtime download or emulation fallback.
 QEMU provides Linux boot and virtio devices; the cell backend remains W's
-native KVM implementation. This is an initial box backend, not the daemon,
-vsock job protocol, disk-image manager, or snapshot milestone.
+native KVM implementation. Persistent sessions use a dedicated virtio-serial
+channel rather than vsock. Linux snapshots and disk-image management remain
+open.
 
 The default is 2 vCPUs, 256 MiB RAM, a 30-second deadline, no network
 device, and no host filesystem export. Limits are 1–64 vCPUs, 64–32768 MiB,
-and 1–600000 ms. The console streams to inherited stdio. Deadline expiry
+and 1–600000 ms. Without `--exec`, the console streams to inherited stdio. Deadline expiry
 kills and reaps QEMU, restores terminal settings, and returns 124;
-launch/configuration errors return nonzero. Otherwise the CLI returns
+launch/configuration errors return nonzero. Without `--exec`, the CLI returns
 **QEMU's exit status**, not a command's exit status; a kernel panic followed
 by reboot can also produce QEMU status 0. Inspect the guest console/job
 protocol for workload success.
@@ -490,6 +498,181 @@ box export and network device selection have construction tests, while
 cell filesystem and TCP paths have real KVM integration coverage.
 Backend references: [QEMU microvm](https://www.qemu.org/docs/master/system/i386/microvm.html)
 and [QEMU invocation](https://www.qemu.org/docs/master/system/invocation.html).
+
+### Persistent commands and private workspaces
+
+```sh
+./wbuild wvm wvm_init wvmd
+./bin/wvm box --kernel /path/to/bzImage --initrd /path/to/root.cpio \
+  --workspace ./project --cwd /work --exec /bin/sh -c 'git status --short'
+```
+
+`--exec` returns the guest command status, keeps stdout/stderr separate,
+and caps each stream at 1 MiB. Timeout returns 124; setup/transport/output
+limit errors return 125. The direct CLI closes the box after that command.
+Library callers retain `box_session_open(options)` and call
+`box_session_exec(session, argv, cwd, timeout_ms, output_limit)` repeatedly;
+`box_session_close` destroys it. Argv must start with an absolute executable
+path. Stdin is `/dev/null`; interactive stdin and incremental output streaming
+are not implemented. The guest kills command descendants before replying,
+so filesystem changes persist but background services do not.
+
+The host requires a readiness greeting on a dedicated UNIX-socket-backed
+virtio-serial channel, independent of console text. PID 1 opens
+`/dev/vport0p1`; the guest kernel must have `CONFIG_VIRTIO_CONSOLE` built in
+(or the image must load it before starting the agent). Malformed replies,
+disconnects and host deadlines invalidate the session. Cancellation destroys
+the entire box. QEMU receives a parent-death signal so a crashed worker does
+not leave it running. The persistent backend requires Linux 5.9+ for
+`close_range` descriptor isolation; filesystem confinement also requires
+`openat2`.
+
+`--workspace` prepares a private host copy using Linux `openat2` confinement.
+Files use `FICLONE` when supported, otherwise bounded copying; host inodes
+are never shared. Symlinks, special files and mount crossings are rejected.
+Preparation limits are 1 GiB, 100000 entries, 64 directory levels and 60 s
+for the CLI. With `--exec`, the copy is exported read-only and mounted beneath
+a guest overlay at `/work`. Its tmpfs upper layer defaults to 64 MiB;
+`--workspace-mb 1..1024` sets its byte cap. The guest kernel must supply
+9p/virtio, tmpfs and overlayfs. Requested mount failures prevent readiness.
+Guest commands retain filesystem capabilities only and cannot regain admin
+capabilities through exec; this prevents remounting the capped tmpfs. The
+remaining root filesystem still consumes the VM's fixed RAM budget.
+The source tree must remain stable while copying and contain its own Git
+metadata: external `.git` worktree pointers are not materialized.
+`--workspace` requires
+`--exec`; use the daemon for several commands in one workspace. Cleanup runs
+after the VM stops. Explicit `--fs-write` retains the older direct host-write
+semantics and must not be used for independent agent workspaces.
+
+Networking remains absent by default. `--network-restricted` selects QEMU
+user networking with `restrict=on`; `--network` deliberately allows broad
+outbound access, including host services. Daemon sessions deny networking.
+Host environment variables and credentials are not injected into the guest;
+only the supplied image and explicit filesystem export are visible. A
+credential broker and destination-allowlisted box egress are still open.
+
+`wvm_channel_test` exercises framing and command lifecycles without KVM.
+`WVM_TEST_KERNEL=bin/wvm_linux_kernel ./wbuild wvm_box_test wvmd_box_test`
+adds real Linux command and concurrent-daemon tests. The workspace overlay
+boot test additionally requires `WVM_TEST_WORKSPACE_KERNEL` pointing to a
+kernel with built-in 9p/virtio and overlayfs. The available minimal Alpine
+kernel passed channel tests but lacks those built-in filesystem drivers;
+real overlay behavior remains unverified on this checkout's fixture kernel.
+
+### Reproducible Linux image assembly
+
+```sh
+python3 tools/wvm_image.py --rootfs /images/agent-rootfs.tar.gz \
+  --sha256 <pinned-rootfs-sha256> --init bin/wvm_init --output bin/agent.cpio
+```
+
+The rootfs archive must already contain the chosen shell, Git, language
+runtimes, shared libraries and CA certificates. Assembly does no networking
+or host extraction. It verifies the required rootfs digest, normalizes entry
+ordering, ownership and timestamps, strips setuid/setgid, installs W PID 1,
+and creates the early console device and mountpoints. It rejects duplicate,
+traversing and special-file entries, and paths beneath symlinks. Output is
+atomically replaced only after successful assembly. `agent.cpio.json` records
+rootfs, init and output SHA256 values; keep the rootfs digest and kernel pin
+in deployment configuration. Python is a build-time dependency only. This
+provides reproducible assembly, not a maintained distribution/package lock.
+
+### Session daemon and harness client
+
+```sh
+./bin/wvmd serve --socket bin/wvmd.sock --max-active 4 --max-pending 16 \
+  --cpus 8 --memory-mb 2048 --workspace-mb 1024
+# From another terminal:
+./bin/wvmd call bin/wvmd.sock vm_spawn \
+  '{"kernel":"/images/bzImage","initrd":"/images/agent.cpio","workspace":"/src/project","workspace_mb":64,"lease_ms":60000}'
+./bin/wvmd call bin/wvmd.sock vm_status '{"session":1}'
+# Once ready:
+./bin/wvmd call bin/wvmd.sock vm_exec \
+  '{"session":1,"argv":["/bin/sh","-c","git status --short"],"cwd":"/work","timeout_ms":10000}'
+./bin/wvmd call bin/wvmd.sock vm_result '{"session":1,"offset":0,"length":1024}'
+./bin/wvmd call bin/wvmd.sock vm_destroy '{"session":1}'
+./bin/wvmd call bin/wvmd.sock stats
+./bin/wvmd call bin/wvmd.sock stop
+```
+
+The foreground daemon uses mode-0600 local JSON-RPC with Content-Length
+framing. It admits a bounded FIFO queue into process-isolated workers, with
+aggregate vCPU/guest-RAM/workspace reservations. Completed sessions occupy
+bounded table slots until destroyed or expired. `vm_exec` submits work;
+`vm_result` polls status and bounded chunks of binary-safe hex stdout/stderr.
+`vm_cancel` destroys a session; `vm_renew` extends its lease. Boot/command
+failure, lease expiry, cancellation and orderly shutdown reclaim workers.
+No shell command is ever executed on the host as a fallback.
+
+The daemon owns a private `<socket>.state` directory and holds an exclusive
+lock. Before releasing a new worker, it durably records its process group
+and workspace identity. On restart it waits for old groups to disappear
+without signaling recycled PIDs, then reclaims only owned workspaces and
+channel directories. Unexpected ownership, malformed records or surviving
+groups fail closed. This recovers abandoned storage; it does not resume
+commands or reconstruct running agent sessions. Keep this state directory
+with the socket between restarts.
+
+`lib.wvm_client` provides the reusable control interface for external
+harnesses. The w-private harness is outside this checkout, so its tool-routing
+integration is not part of this change. Automatic daemon startup, session
+recovery, multi-host scheduling and Linux snapshot pools remain future work.
+CPU/RAM admission limits constrain guest configurations; they are not host
+cgroup quotas and do not include all QEMU overhead. Per-process, CPU-time,
+network-rate and aggregate host-RSS enforcement need a delegated cgroup
+policy before treating this as a multi-tenant fleet manager.
+
+A real fleet benchmark uses that same daemon API:
+
+```sh
+python3 tools/wvm_fleet_bench.py --socket bin/wvmd.sock \
+  --kernel /images/bzImage --initrd /images/agent.cpio --count 16 -- /bin/true
+```
+
+It submits concurrent sessions and reports launch latency including queueing,
+command latency including polling, throughput, failures and daemon counters
+before/after cleanup. All benchmark-owned sessions are destroyed, including
+on failure. A local eight-session run with two active boxes completed all
+eight commands in 5.85 seconds and returned active/queued/reserved CPU/RAM
+counters to zero. This is a small smoke measurement, not a capacity guarantee. Size the daemon's active/pending limits for the requested count;
+admission rejection is reported as a benchmark failure. This operational
+helper uses only Python's standard library.
+
+### Cell templates, RAM pools and measurement
+
+`cell_snapshot_create(cell)` captures a loaded, stacked, never-run cell with
+pristine I/O and no external resources. Capture scans RAM once, writes
+nonzero pages into a sparse memfd, and seals it. Clones use `MAP_PRIVATE` and
+retain backing independently of the template owner's lifetime. Input is
+owned per clone. Configure filesystem/network capabilities separately after
+cloning. `cell_snapshot_reset` drops private pages and clears all per-run
+resources, descriptors, output, fault and watchdog state; it recreates KVM
+VM/vCPUs on the next run. It does not capture a running process or roll back
+external filesystem writes.
+
+`cell_pool_new(snapshot, capacity)`, `cell_pool_acquire` and
+`cell_pool_release` provide bounded RAM-ready leases. A pool owns its cells;
+release them to the pool instead of freeing them. Exhaustion returns null.
+The API remains serialized within a host process, including snapshot
+reference counts. Pools do not retain initialized vCPUs or serve Linux boxes.
+
+```sh
+./wbuild wvm_snapshot_test wvm_pool_bench
+./bin/wvm_pool_bench bin/wvm_fixture 100 100 smoke payload
+```
+
+The benchmark emits JSON with clone/reset/run latency percentiles,
+whole-process `/proc/self/smaps_rollup` RSS/PSS/private/shared memory at
+baseline/shared/dirty/reset/cleanup, dirty-page workload, pool counters,
+failures and file-descriptor counts. It measures serial cell runs and RAM
+sharing, not concurrent Linux-agent throughput. Results depend on the host;
+there is no unconditional sub-millisecond startup/reset gate. On this host,
+100 RAM clones plus 400 deliberately dirty pages added 1604 KiB private
+dirty memory; reset returned near baseline and descriptor counts stayed
+4 → 4. Clone p50/p95 were 4.35/7.83 µs; real-KVM reset p50/p95 were
+17.38/23.38 ms. These results include KVM teardown and explain why retained
+vCPU pools remain a separate performance milestone.
 
 ## 10. Open decisions
 

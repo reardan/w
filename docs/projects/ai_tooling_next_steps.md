@@ -141,6 +141,13 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
+- **Color diagnostic fixtures inherit `NO_COLOR`.** Observed 2026-10-03
+  while running the VM changes through `./wbuild tests`: the
+  `did_you_mean_test` step sets `FORCE_COLOR=1` but fails when an agent
+  environment already exports `NO_COLOR=1`. The compiler correctly gives
+  `NO_COLOR` precedence. Have the force-color fixture explicitly unset
+  `NO_COLOR`; workaround: `env -u NO_COLOR ./wbuild tests`.
+
 - **Shipped (2026-08-04): cold deps-cache cost is now visible and
   payable up front.** (Logged 2026-07-29, crash-trace unit: a cold
   `bin/wtest changed` build exceeded 20 minutes wall on a loaded
