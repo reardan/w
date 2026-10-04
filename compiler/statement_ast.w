@@ -11,6 +11,7 @@ const int ast_stmt_expression = 7
 const int ast_stmt_goto = 8
 const int ast_stmt_label = 9
 const int ast_stmt_raw_asm = 10
+const int ast_stmt_declaration = 11
 
 
 struct statement_ast:
@@ -30,6 +31,9 @@ struct statement_ast:
 	int generator
 	char* literal_bytes
 	int literal_length
+	int binding
+	int inferred
+	int has_initializer
 
 
 int ast_simple_statements_emitted
@@ -43,3 +47,5 @@ int ast_expression_statements_emitted
 int ast_goto_statements_emitted
 
 int ast_raw_statements_emitted
+
+int ast_declarations_emitted

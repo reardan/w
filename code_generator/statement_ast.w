@@ -112,3 +112,64 @@ void emit_goto_statement_ast(statement_ast* node):
 void emit_raw_statement_ast(statement_ast* node):
 	emit(node.literal_length, node.literal_bytes)
 	ast_raw_statements_emitted = ast_raw_statements_emitted + 1
+
+
+void emit_inferred_local_storage(int type):
+	int size = type_stack_words(type)
+	if ((type_num_args(type) > 0) & (type_is_array(type) == 0)):
+		# Struct value: eax holds its address; copy the words
+		int j = size - 1
+		while (j >= 0):
+			push_eax_plus(j << word_size_log2)
+			j = j - 1
+		stack_pos = stack_pos + size
+		if (type_has_array_field(type)):
+			lea_eax_esp_plus(0)
+			init_array_field_descriptors(type)
+		return
+	for i in range(size): push_eax()
+	stack_pos = stack_pos + size
+	return
+
+
+void emit_typed_local_storage(int type, int has_initializer):
+	# Reserve enough words for aggregate storage, else 1 word.
+	int size = type_stack_words(type)
+	int num_args = type_num_args(type)
+	if ((num_args > 0) & (type_is_array(type) == 0)):
+		if (has_initializer):
+			int j = size - 1
+			while (j >= 0):
+				push_eax_plus(j << word_size_log2)
+				j = j - 1
+			stack_pos = stack_pos + size
+			if (type_has_array_field(type)):
+				lea_eax_esp_plus(0)
+				init_array_field_descriptors(type)
+			return
+	if (type_is_array(type) | type_has_array_field(type)): mov_eax_int(0)
+	for i in range(size): push_eax()
+	stack_pos = stack_pos + size
+	if (type_is_array(type)):
+		lea_eax_esp_plus(2 * word_size)
+		store_stack_var(0)
+		mov_eax_int(type_get_array_length(type))
+		store_stack_var(word_size)
+	else if (type_has_array_field(type)):
+		lea_eax_esp_plus(0)
+		init_array_field_descriptors(type)
+	return
+
+
+int emit_declaration_ast_initializer(statement_ast* node):
+	int got = ast_expression_emit_prepared(node.expression_tree, node.expression_root)
+	ast_roots_emitted = ast_roots_emitted + 1
+	got = promote(got)
+	if (node.inferred == 0): coerce_checked(node.declared_type, got, c"initialization")
+	return got
+
+
+void emit_declaration_ast_storage(statement_ast* node):
+	ast_declarations_emitted = ast_declarations_emitted + 1
+	if (node.inferred): emit_inferred_local_storage(node.declared_type)
+	else: emit_typed_local_storage(node.declared_type, node.has_initializer)

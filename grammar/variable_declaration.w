@@ -1,3 +1,8 @@
+int ast_local_declaration(statement_ast* node, char* name);
+void emit_inferred_local_storage(int type);
+void emit_typed_local_storage(int type, int has_initializer);
+
+
 # Import-alias support lives in grammar/import_statement.w, which is
 # compiled after this file; see the definition there.
 int import_alias_type_ahead(int require_call);
@@ -50,6 +55,12 @@ int inferred_declaration():
 	if (is_ident == 0): return 0
 	# ':=' can only follow directly (nextc is its ':') or after blanks
 	if ((nextc != ':') && (nextc != ' ') && (nextc != 9)): return 0
+	statement_ast node
+	node.kind = ast_stmt_declaration
+	node.source_file = file
+	node.line = diag_token_line
+	node.column = diag_token_column
+	node.start_offset = token_start_offset
 	char* name = strclone(token)
 	char* save = generic_reparse_save()
 	get_token()
@@ -62,6 +73,12 @@ int inferred_declaration():
 	free(save)
 	get_token() /* consume ':=' */
 	inferred_redeclaration_check(name)
+	if (ast_expressions_mode >= 2):
+		node.inferred = 1
+		node.declared_type = -1
+		ast_local_declaration(&node, name)
+		free(name)
+		return 1
 	int got = expression()
 	got = promote(got)
 	int type = inferred_storage_type(name, got)
@@ -72,20 +89,7 @@ int inferred_declaration():
 	lint_track_local(table_pos - symbol_data_size)
 	free(name)
 	pointer_indirection = 0
-	int size = type_stack_words(type)
-	if ((type_num_args(type) > 0) & (type_is_array(type) == 0)):
-		# Struct value: eax holds its address; copy the words
-		int j = size - 1
-		while (j >= 0):
-			push_eax_plus(j << word_size_log2)
-			j = j - 1
-		stack_pos = stack_pos + size
-		if (type_has_array_field(type)):
-			lea_eax_esp_plus(0)
-			init_array_field_descriptors(type)
-		return 1
-	for i in range(size): push_eax()
-	stack_pos = stack_pos + size
+	emit_inferred_local_storage(type)
 	return 1
 
 
@@ -96,9 +100,19 @@ int variable_declaration():
 	# expression statement)
 	if (peek(c"const") | (peek(c"map") & (nextc == '[')) | (peek(c"set") & (nextc == '[')) | (peek(c"list") & (nextc == '[')) | (type_lookup(token) >= 0) | generic_type_starts_here() | (import_alias_type_ahead(0) >= 0) | gpu_qualifier_ahead()):
 		# println2("variable_declaration()")
+		statement_ast node
+		node.kind = ast_stmt_declaration
+		node.source_file = file
+		node.line = diag_token_line
+		node.column = diag_token_column
+		node.start_offset = token_start_offset
 		int type = typed_identifier()
 		lint_track_local(last_declared_symbol)
 		lint_check_shadow()
+		if (ast_expressions_mode >= 2):
+			node.inferred = 0
+			node.declared_type = type
+			return ast_local_declaration(&node, 0)
 		int has_initializer = 0
 		int type2 = -1
 		# = expression
@@ -117,31 +131,7 @@ int variable_declaration():
 		save_int(table + last_declared_symbol + 2, stack_pos)
 		pointer_indirection = 0
 
-		# Reserve enough words for aggregate storage, else 1 word.
-		int size = type_stack_words(type)
-		int num_args = type_num_args(type)
-		if ((num_args > 0) & (type_is_array(type) == 0)):
-			if (has_initializer):
-				int j = size - 1
-				while (j >= 0):
-					push_eax_plus(j << word_size_log2)
-					j = j - 1
-				stack_pos = stack_pos + size
-				if (type_has_array_field(type)):
-					lea_eax_esp_plus(0)
-					init_array_field_descriptors(type)
-				return type
-		if (type_is_array(type) | type_has_array_field(type)): mov_eax_int(0)
-		for i in range(size): push_eax()
-		stack_pos = stack_pos + size
-		if (type_is_array(type)):
-			lea_eax_esp_plus(2 * word_size)
-			store_stack_var(0)
-			mov_eax_int(type_get_array_length(type))
-			store_stack_var(word_size)
-		else if (type_has_array_field(type)):
-			lea_eax_esp_plus(0)
-			init_array_field_descriptors(type)
+		emit_typed_local_storage(type, has_initializer)
 		return type
 	return -1
 

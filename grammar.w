@@ -67,6 +67,7 @@ import grammar.gpu_for
 import grammar.program
 import code_generator.statement_ast
 import grammar.ast_statement
+import grammar.ast_declaration
 import code_generator.expression_ast
 import grammar.ast_expression
 

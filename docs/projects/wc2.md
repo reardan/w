@@ -1778,3 +1778,18 @@ host widths produce identical native images and runtime results for constant
 initializers and a 3,000-term expression. Differential cases cover arithmetic
 overflow, division/modulo by zero, invalid shifts, literal warnings, missing
 names and malformed groups. Statistics count parsed constant expressions.
+
+## Task 98: local declaration initializer children
+
+Typed and inferred local declarations now build nodes with prepared initializer
+children, declared storage types and resolved symbol bindings. Backend visitors
+lower and coerce initializers, then allocate scalar/aggregate storage and rebuild
+array descriptors. The legacy path shares the extracted storage helpers.
+
+Typed declarations still bind before their initializer; inferred declarations
+bind after it. Lint tracking, shadow checks, expression temporary slots and
+initializer diagnostics retain their existing order. Native-image and runtime
+comparisons on both host widths cover record copies with array fields, fixed
+arrays, scalar conversions, inference and shadowing. Statistics count local
+declaration nodes. Global declarations and compound statement bodies still
+use their streaming dispatchers.
