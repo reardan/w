@@ -111,11 +111,13 @@ int ui_textbox(ui_context* ctx, float32 w, ui_textbox_state* st):
 		else if (ctx.focus == id): ctx.focus = 0
 
 	int submitted = 0
-	if (ctx.focus == id):
+	# A focused field behind an open popup keeps its focus but not the
+	# keyboard: the popup (a menu, a dropdown) is what the keys are for.
+	if ((ctx.focus == id) && (ui_scope_blocked(ctx) == 0)):
 		int i = 0
 		while (i < ctx.char_count):
 			int ch = ctx.chars[i]
-			if (ui_utf8_is_text(ch)):
+			if (ui_utf8_is_text(ch) && ui_char_is_typing(ctx.char_mods[i])):
 				ui_textbox_insert(st, ch)
 				ui_textbox_mark_edited(st)
 			else if (ch == 8):

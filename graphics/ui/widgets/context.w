@@ -150,6 +150,15 @@ int ui_scope_blocked(ui_context* ctx):
 	return 1
 
 
+# 1 when a CHAR arriving with these gfx_mod bits is typing rather than
+# a command chord. Ctrl or Super held makes it a shortcut (Ctrl+S is
+# not an 's'), unless Alt is held too: AltGr arrives as Ctrl+Alt on
+# Windows and types real characters.
+int ui_char_is_typing(int mods):
+	if (mods & GFX_MOD_ALT): return 1
+	return (mods & (GFX_MOD_CTRL | GFX_MOD_SUPER)) == 0
+
+
 # Shared press/release logic: claims hot when the pointer is over the
 # rect, active when this frame's press landed inside it; returns 1 on
 # the frame the release lands while still over it. Inert inside a

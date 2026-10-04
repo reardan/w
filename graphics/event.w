@@ -34,7 +34,11 @@ enum gfx_event_kind:
 	# code = a Unicode codepoint of typed text, or 8 (backspace),
 	# 9 (tab), 13 (return), 27 (escape). How much of Unicode arrives
 	# depends on the backend: Cocoa any codepoint, X11 Latin-1, the web
-	# ASCII (#459).
+	# ASCII (#459). With Ctrl held, a letter arrives as its control code
+	# 1..26 from the native backends (Ctrl+S is 19) and as the letter
+	# itself from the web host; Cocoa also queues Command chords' letter
+	# with GFX_MOD_SUPER. Widgets that insert text skip CHARs carrying
+	# Ctrl or Super (ui_char_is_typing); menus match them as shortcuts.
 	GFX_EVENT_CHAR = 3
 	# code = button 1 (left), 2 (middle), 3 (right); x,y = pointer
 	# position at event time

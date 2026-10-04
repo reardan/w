@@ -184,8 +184,12 @@ int gfx_win32_wndproc(int hwnd, int msg, int wparam, int lparam):
 		return 0
 	if (m == 258):                        /* WM_CHAR */
 		int ch = wparam & 255
-		if (((ch >= 32) && (ch != 127)) || (ch == 8) || (ch == 9) || (ch == 13) || (ch == 27)):
-			gfx_win32_push(win, GFX_EVENT_CHAR, ch, gfx_win32_mods())
+		int mods = gfx_win32_mods()
+		# Ctrl+letter arrives as its control code (Ctrl+S is 19),
+		# forwarded for shortcuts (graphics.event).
+		int ctrl_code = (ch >= 1) && (ch <= 26) && ((mods & GFX_MOD_CTRL) != 0)
+		if (((ch >= 32) && (ch != 127)) || (ch == 8) || (ch == 9) || (ch == 13) || (ch == 27) || ctrl_code):
+			gfx_win32_push(win, GFX_EVENT_CHAR, ch, mods)
 		return 0
 	if (m == 512):                        /* WM_MOUSEMOVE */
 		win.mouse_x = gfx_win32_lo16(lparam)
