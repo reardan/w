@@ -1374,3 +1374,17 @@ and identical x86/x64 images. A cross-architecture fixture covers nested
 encode/decode, aliases, record-returning operands, lists of records and
 maps. Missing imports, unsupported field types and argument mismatches
 retain diagnostics.
+
+## Task 69: protobuf codec expressions
+
+Codec AST nodes now also represent to_proto, both from_proto forms and
+proto_descriptor. Pure validation walks a local visited set of message
+types, accepting cycles while declining undefined forward declarations.
+Descriptor blobs and runtime calls retain their original ordering, stack
+layout and cache reuse; descriptor-only nodes do not count as calls for
+bool-bitwise diagnostics.
+
+The existing protobuf message battery compiles with required AST expressions
+and identical native images, including recursive messages and golden wire
+vectors. A cross-architecture fixture adds record-valued arguments, aliases,
+nested encode/decode, operand side effects and user-symbol shadowing.

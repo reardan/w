@@ -416,6 +416,34 @@ void emit_expression_ast(expression_ast* tree, int id):
 			zero_runtime_object(type_get_size(base))
 			init_array_field_descriptors(base)
 		return
+	if ((op == 'x') && (tree.value[id] >= 2)):
+		int kind = tree.value[id]
+		int descriptor = 0
+		if (kind != 2): descriptor = protobuf_descriptor(tree.high[id])
+		if (kind == 5):
+			mov_eax_int(descriptor)
+			return
+		int base_stack = stack_pos
+		int arg = tree.left[id]
+		emit_expression_ast(tree, arg)
+		promote(tree.result_type[arg])
+		if (kind == 2): base_stack = stack_pos
+		int arg_slot = push_slot()
+		char* helper = c"pb_from_bytes"
+		int count = 1
+		if (kind == 2):
+			descriptor = protobuf_descriptor(tree.high[id])
+			helper = c"pb_to_bytes"
+		if (kind == 4):
+			int length = tree.right[id]
+			emit_expression_ast(tree, length)
+			promote(tree.result_type[length])
+			push_slot()
+			helper = c"pb_from_data"
+			count = 2
+		protobuf_emit_call(helper, descriptor, arg_slot, count)
+		pop_to(base_stack)
+		return
 	if (op == 'x'):
 		int descriptor = 0
 		if (tree.value[id]): descriptor = json_codec_descriptor(tree.high[id])

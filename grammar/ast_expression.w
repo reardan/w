@@ -830,6 +830,95 @@ int ast_expression_json(expression_ast* tree, int depth):
 	return id
 
 
+# Walk message definitions without filling the descriptor cache. A local
+# visited set accepts cycles and catches undefined forward declarations.
+int ast_expression_protobuf_type(int t):
+	int[400] pending
+	pending[0] = type_canonical(type_unqualified(t))
+	int count = 1
+	int at = 0
+	while (at < count):
+		int current = pending[at]
+		char* info = protobuf_message_info(current)
+		if ((info == 0) || (load_int(info) < 0)): return 0
+		int fields = load_int(info)
+		for i in range(fields):
+			int kind = load_int(info + 8 + i * 12)
+			int element = load_int(info + 12 + i * 12)
+			if ((kind == protobuf_kind_message) || (element == protobuf_kind_message)):
+				int nested = protobuf_field_message_type(type_get_field_type_at(current, i), kind)
+				if (nested < 0): return 0
+				nested = type_canonical(type_unqualified(nested))
+				int found = 0
+				for j in range(count):
+					if (pending[j] == nested): found = 1
+				if (found == 0):
+					if (count == 400): return 0
+					pending[count] = nested
+					count = count + 1
+		at = at + 1
+	return 1
+
+
+# Codec node kinds 2/3/4/5 are protobuf encode, decode-bytes, decode-data
+# and descriptor address; 0/1 remain JSON encode/decode.
+int ast_expression_protobuf(expression_ast* tree, int kind, int depth):
+	int bytes = type_lookup(c"pb_bytes")
+	int descriptor = type_lookup(c"pb_message_desc")
+	if ((bytes < 0) || (descriptor < 0)): return -1
+	int id = expression_ast_add(tree, 'x', -1, -1)
+	if (id < 0): return -1
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int t = -1
+	if (kind != 2):
+		t = ast_expression_named_type(tree, 0, depth + 1)
+		if ((t < 0) || (protobuf_is_message(t) == 0)): return -1
+		t = type_unqualified(t)
+		if ((kind != 5) && (ast_expression_accept(tree, c",") == 0)): return -1
+	if (kind != 5):
+		int arg = ast_expression_assignment(tree, depth + 1)
+		if (arg < 0): return -1
+		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
+		int got = ast_expression_promoted_type(tree.result_type[arg])
+		tree.left[id] = arg
+		if (kind == 2):
+			t = type_unqualified(got)
+			if (type_get_pointer_level(t) == 1):
+				int base = type_lookup_previous_pointer(t)
+				if ((base >= 0) && protobuf_is_message(base)): t = base
+			if (protobuf_is_message(t) == 0): return -1
+		else:
+			int want = -1
+			if (ast_expression_accept(tree, c",")):
+				kind = 4
+				want = ast_expression_pointer_type(tree, type_lookup(c"char"), token_start_offset)
+				if ((want < 0) || (types_compatible_with_expression(want, got) == 0)): return -1
+				int length = ast_expression_assignment(tree, depth + 1)
+				if (length < 0): return -1
+				if (ast_expression_data_value(tree.result_type[length]) == 0): return -1
+				if (ast_expression_prepare_value(tree, tree.result_type[length], token_start_offset) == 0): return -1
+				tree.right[id] = length
+			else:
+				want = ast_expression_pointer_type(tree, bytes, token_start_offset)
+				if ((want < 0) || (types_compatible_with_expression(want, got) == 0)): return -1
+	if ((peek(c")") == 0) || (ast_expression_protobuf_type(t) == 0)): return -1
+	if ((kind == 2) && (sym_probe(c"pb_to_bytes") < 0)): return -1
+	if ((kind == 3) && (sym_probe(c"pb_from_bytes") < 0)): return -1
+	if ((kind == 4) && (sym_probe(c"pb_from_data") < 0)): return -1
+	int result = t
+	if (kind == 2): result = bytes
+	if (kind == 5): result = descriptor
+	result = ast_expression_pointer_type(tree, result, token_start_offset)
+	if (result < 0): return -1
+	tree.value[id] = kind
+	tree.high[id] = t
+	tree.result_type[id] = type_value(result)
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	return id
+
+
 # Bind captured signature syntax against explicit type arguments. Derived
 # container/slice and pointer records are staged at the closing bracket;
 # generic struct applications still require an existing instantiation.
@@ -1325,6 +1414,9 @@ int ast_expression_name(expression_ast* tree, int depth):
 	if ((nextc == '(') && (peek(c"to_json") || peek(c"from_json"))): return ast_expression_json(tree, depth)
 	if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
 	if ((nextc == '(') && (sym_probe(token) < 0)):
+		if (peek(c"to_proto")): return ast_expression_protobuf(tree, 2, depth)
+		if (peek(c"from_proto")): return ast_expression_protobuf(tree, 3, depth)
+		if (peek(c"proto_descriptor")): return ast_expression_protobuf(tree, 5, depth)
 		int helper = prelude_input_helper()
 		if (helper >= 0): return ast_expression_prelude(tree, helper, depth)
 		if (generic_def_lookup(token, 0) < 0):
@@ -2227,7 +2319,8 @@ int ast_expression_has_call(expression_ast* tree, int first, int end):
 			if (ast_expression_var_coercion_calls(tree.result_type[tree.left[i]], ast_expression_promoted_type(tree.result_type[tree.right[i]]))): return 1
 		if (op == '?'):
 			if (ast_expression_var_coercion_calls(ast_expression_promoted_type(tree.result_type[tree.right[i]]), ast_expression_promoted_type(tree.result_type[tree.high[i]]))): return 1
-		if ((tree.op[i] == 'x') || (tree.op[i] == 'l') || (tree.op[i] == 'z') || (tree.op[i] == 'G') || (tree.op[i] == 'W') || (tree.op[i] == 'X') || (tree.op[i] == 'Y') || (tree.op[i] == 'J') || (tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H') || (tree.op[i] == 'E')): return 1
+		if ((op == 'x') && (tree.value[i] != 5)): return 1
+		if ((tree.op[i] == 'l') || (tree.op[i] == 'z') || (tree.op[i] == 'G') || (tree.op[i] == 'W') || (tree.op[i] == 'X') || (tree.op[i] == 'Y') || (tree.op[i] == 'J') || (tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H') || (tree.op[i] == 'E')): return 1
 	return 0
 
 
