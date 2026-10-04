@@ -480,3 +480,104 @@ void test_ast_constant_folder_walks_children():
 	assert_equal(0, folded.start_offset)
 	assert_equal(9, folded.end_offset)
 	assert_equal(before_code, codepos)
+
+
+void ast_test_stack_binding_snapshot(int scope, int expected_words):
+	word_size = __word_size__
+	word_size_log2 = 2
+	if (word_size == 8): word_size_log2 = 3
+	push_basic_types()
+	int type = type_lookup(c"int")
+	int saved_table = table_pos
+	int saved_stack = stack_pos
+	int saved_args = number_of_args
+	int saved_mode = ast_expressions_mode
+	int saved_emitted = ast_expressions_emitted
+	int saved_verbosity = verbosity
+	char* saved_identifier = last_identifier
+	char[128] identifier
+	identifier[0] = 0
+	last_identifier = &identifier[0]
+	verbosity = -1
+	stack_pos = 7
+	number_of_args = 5
+	sym_declare(c"ast_bound_operand", type, scope, 2, 1)
+	int sym = table_pos - symbol_data_size
+	if (token == 0):
+		token_size = 20
+		token = malloc(token_size)
+		token[0] = 0
+	char* saved = generic_reparse_save()
+	int serial = token_serial
+	int reader
+	int writer
+	assert_equal(0, process_make_pipe(&reader, &writer))
+	getchar_reset(reader)
+	char* source = c"ast_bound_operand\nnext\n"
+	assert_equal(strlen(source), write(writer, source, strlen(source)))
+	close(writer)
+	file = reader
+	filename = c"AST stack binding test"
+	byte_offset = 0
+	line_number = 0
+	column_number = 0
+	tab_level = 0
+	token_newline = 0
+	nextc = 0
+	nextc = get_character()
+	get_token()
+	ast_expressions_mode = 2
+	expression_ast tree
+	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
+	assert1(root >= 0)
+	assert1(tree.binding_name[root] >= 0)
+	assert_strings_equal(c"ast_bound_operand", &tree.text[tree.binding_name[root]])
+	# Simulate reuse of the symbol's storage and a different frame context.
+	# The operand keeps its original binding, but follows the current
+	# temporary stack depth when computing the runtime address.
+	char* original_name = strclone(table + tree.value[root])
+	for i in range(strlen(original_name)): table[tree.value[root] + i] = 'x'
+	table[sym + 1] = 'D'
+	save_int(table + sym + 2, 1000)
+	save_int(table + sym + 6, 0)
+	number_of_args = 99
+	stack_pos = 9
+	int before = codepos
+	be_notes_reset()
+	assert_equal(type, emit_prepared_expression_ast(&tree, root))
+	assert_strings_equal(c"ast_bound_operand", last_identifier)
+	int length = codepos - before
+	assert1(length > 0)
+	char* actual = malloc(length)
+	for i in range(length): actual[i] = code[before + i]
+	codepos = before
+	be_notes_reset()
+	be_lea_acc_wstack(expected_words * __word_size__)
+	assert_equal(length, codepos - before)
+	assert_bytes_equal(actual, code + before, length)
+	free(actual)
+	ast_expression_finish_prepared(&tree)
+	assert_strings_equal(c"next", token)
+	strcpy(table + tree.value[root], original_name)
+	free(original_name)
+	table[sym + 1] = scope
+	save_int(table + sym + 2, 2)
+	save_int(table + sym + 6, type)
+	table_pos = saved_table
+	sym_index_sync()
+	codepos = before
+	be_notes_reset()
+	stack_pos = saved_stack
+	number_of_args = saved_args
+	ast_expressions_mode = saved_mode
+	ast_expressions_emitted = saved_emitted
+	verbosity = saved_verbosity
+	close(reader)
+	generic_reparse_restore(saved)
+	token_serial = serial
+	last_identifier = saved_identifier
+
+
+void test_ast_stack_operands_own_their_bindings():
+	ast_test_stack_binding_snapshot('L', 6)
+	ast_test_stack_binding_snapshot('A', 13)

@@ -1808,3 +1808,18 @@ completion advances to the following token. The existing differential suite
 checks diagnostic and byte ordering across return, yield, declaration and
 expression statements. Prepared trees still require their original semantic
 scope; this split does not yet make them persistent module trees.
+
+## Task 100: owned native stack bindings
+
+Prepared native local and parameter operands now own their identifier spelling
+and frame-relative word offset. That offset captures the declaration slot,
+argument-frame size and aggregate width; emission adds the current temporary
+stack depth. Ordinary address lowering no longer reads the original symbol
+record. Verbose symbol-table tracing still uses the live record, and global,
+call and device-capture operands retain their existing binding paths.
+
+Direct tests on both host widths overwrite the original name, storage class,
+type and slot, change the argument-frame size, then compare emitted local and
+parameter addresses with the expected backend instructions. The copied name
+also survives in last-identifier tracking. This removes one scope-lifetime
+dependency without claiming persistence for every expression operand.

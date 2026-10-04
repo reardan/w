@@ -4,8 +4,9 @@
 # Node IDs are arena indices, -1 is failure. Literal nodes carry their
 # source byte offset until the committed diagnostic/decoding pass fills value.
 # result_type retains the streaming type convention (lvalue, value or
-# untyped constant); symbol records and their name offsets remain valid
-# only for this parse/emit operation, never across declarations/REPL entries.
+# untyped constant). Native stack operands snapshot their names and frame
+# offsets. Other symbol records (calls, globals and device captures) remain
+# borrowed for this parse/emit operation, not across declarations/REPL entries.
 # Float literals store two 32-bit halves for host-independent decoding.
 # Call nodes use left for the first argument and next_arg links on argument
 # roots; those links do not change a nested call's own argument list.
@@ -61,6 +62,8 @@ struct expression_ast:
 	int[4096] high
 	int[4096] next_arg
 	int[4096] in_cast
+	int[4096] binding_name
+	int[4096] binding_offset
 	int[4096] symbol
 	int[4096] qualified
 	int[4096] it_slot
@@ -274,6 +277,7 @@ int expression_ast_add(expression_ast* tree, int op, int left, int right):
 	tree.in_cast[id] = tree.cast_depth
 	tree.result_type[id] = 3
 	tree.symbol[id] = -1
+	tree.binding_name[id] = -1
 	tree.qualified[id] = 0
 	tree.next_arg[id] = -1
 	return id

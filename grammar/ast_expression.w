@@ -3212,6 +3212,30 @@ int ast_expression_parallel(expression_ast* tree, int first):
 	return id
 
 
+# Snapshot native stack bindings after semantic replay. Their address is
+# relative to the operand stack at emission, but the declaration slot,
+# argument-frame size and aggregate width belong to the resolved operand.
+# Names share the decoded-text arena: source spelling plus its terminators
+# stays within the same source-window allowance as decoded literals.
+void ast_expression_capture_stack_bindings(expression_ast* tree):
+	if (target_isa == 3): return
+	for id in range(tree.count):
+		if (tree.op[id] == 'v'):
+			int sym = tree.symbol[id]
+			int scope = table[sym + 1]
+			if ((scope == 'L') || (scope == 'A')):
+				int words = type_stack_words(tree.result_type[id])
+				int offset = 0 - load_int(table + sym + 2) - words
+				if (scope == 'A'): offset = offset + number_of_args + 2
+				tree.binding_offset[id] = offset
+				char* name = table + tree.value[id]
+				int length = strlen(name) + 1
+				assert1(tree.text_used + length <= 32768)
+				tree.binding_name[id] = tree.text_used
+				for i in range(length): tree.text[tree.text_used + i] = name[i]
+				tree.text_used = tree.text_used + length
+
+
 # Called immediately after primary_expr consumes an opening '('. The
 # speculative pass builds the tree without decoding literals or emitting
 # code. Restore *all* changed state before either falling back or replaying
@@ -3332,6 +3356,7 @@ int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole)
 		ast_expression_advance(tree)
 	for i in range(tree.types_count):
 		if (tree.pointer_offsets[i] == end): ast_expression_commit_pointer(tree, i)
+	ast_expression_capture_stack_bindings(tree)
 	return root
 
 

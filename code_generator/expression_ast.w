@@ -700,9 +700,18 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	if ((op == 'v') || (op == 'C') || (op == 'X')):
 		char* name = table + tree.value[id]
+		if (tree.binding_name[id] >= 0): name = &tree.text[tree.binding_name[id]]
 		strcpy(last_identifier, name)
 		int sym = tree.symbol[id]
-		if (target_isa == 3): gpu_sym_get_value(name)
+		if (tree.binding_name[id] >= 0):
+			# Verbose table inspection remains a live compiler trace;
+			# actual address lowering uses the operand's owned binding.
+			if (verbosity >= 2):
+				print_error(name)
+				print_error(c": ")
+				sym_info(sym)
+			be_lea_acc_wstack((stack_pos + tree.binding_offset[id]) << word_size_log2)
+		else if (target_isa == 3): gpu_sym_get_value(name)
 		else: sym_emit_value(sym, name)
 		if (op == 'X'):
 			int s = stack_pos
