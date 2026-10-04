@@ -1070,3 +1070,17 @@ Shape tests verify nested argument lists and unchanged compiler type counts.
 The differential/required fixture now covers generic struct parameters,
 generic slice reads/stores and `lib.array`'s `array_free` wrapper. Complex
 return signatures and first-use composite instantiation remain separate work.
+
+## Task 46: generic return shapes
+
+The generic declaration lookahead now retains the return type's syntax
+instead of only skipping its brackets. Capture tracks bracket depth through
+nested types; unsupported shapes finish the original balanced scan without
+rewinding or duplicating lexer diagnostics. Accepted return graphs transfer
+directly into the signature AST.
+
+Tests cover generic pointer and by-value record returns, nested return
+shapes, and recovery past unsupported qualifiers, fixed-array arguments and
+oversized type-argument lists. Ordinary non-generic declarations still rewind
+to their original type parser. Binding continues to require existing
+instantiated struct and slice records.

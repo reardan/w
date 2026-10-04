@@ -520,7 +520,7 @@ int generic_scanned_type
 # A generic function definition 'T name[params](...) ...' whose type
 # started at first_offset (line/column first_line/first_column), with
 # the name as the current token: register it and skip its body.
-void generic_register_definition(int first_offset, int first_line, int first_column, char* result_name, int stars):
+void generic_register_definition(int first_offset, int first_line, int first_column, generic_type_ast* result):
 	char* fname = strclone(token)
 	get_token()
 	int params = cast(int, malloc(generic_max_params * __word_size__))
@@ -528,7 +528,7 @@ void generic_register_definition(int first_offset, int first_line, int first_col
 	if (peek(c"(") == 0):
 		error3(c"'(' expected after the type parameter list of generic '", fname, c"'")
 	int def = generic_def_add(fname, 0, strclone(filename), first_offset, first_line - 1, first_column - 1, n, params)
-	generic_defs[def].signature_ast = generic_signature_ast_capture(result_name, stars)
+	generic_defs[def].signature_ast = generic_signature_ast_capture_result(result)
 	generic_skip_definition()
 	# defhash coverage (wave plan C task 4f): same span the definition
 	# registry just recorded (first_offset..the skip's end).
@@ -550,26 +550,17 @@ int generic_declaration_scan_generic_return():
 	int first_line = diag_token_line
 	int first_column = diag_token_column
 	char* save = generic_reparse_save()
-	get_token()
-	# Skip the balanced '[...]' type-argument list; the arguments may
-	# reference not-yet-bound type parameters, so only brackets matter.
-	if (peek(c"[")):
-		int depth = 1
-		get_token()
-		while ((depth > 0) && (token[0] != 0)):
-			if (peek(c"[")): depth = depth + 1
-			if (peek(c"]")): depth = depth - 1
-			get_token()
-	while (accept(c"*")) {}
+	generic_type_ast* result = generic_type_ast_capture_return()
 	int c1 = token[0]
 	int name_is_ident = is_ident_start_byte(c1)
 	if (name_is_ident & (nextc == '[')):
 		free(cast(char*, load_ptr(save + 11 * __word_size__)))
 		free(save)
-		generic_register_definition(first_offset, first_line, first_column, 0, 0)
+		generic_register_definition(first_offset, first_line, first_column, result)
 		return 1
 	# Not a definition (e.g. 'wresult[int]* f(...)'): rewind, so the
 	# normal type_name() path parses the generic struct return type.
+	generic_type_ast_free(result)
 	getchar_seek(file, load_ptr(save + 7 * __word_size__))
 	generic_reparse_restore(save)
 	return 0
@@ -601,7 +592,7 @@ int generic_declaration_scan():
 	int c1 = token[0]
 	int name_is_ident = is_ident_start_byte(c1)
 	if (name_is_ident & (nextc == '[')):
-		generic_register_definition(first_offset, first_line, first_column, first, stars)
+		generic_register_definition(first_offset, first_line, first_column, generic_type_ast_new(first, stars))
 		free(first)
 		return 1
 

@@ -38,6 +38,11 @@ T ast_generic_first[T](T[] values): return values[0]
 void ast_generic_zero[T](T[] values): values[0] = 0
 
 
+ast_generic_box[T]* ast_generic_box_address[T](ast_generic_box[T]* box): return box
+
+ast_generic_box[T] ast_generic_box_copy[T](ast_generic_box[T] box): return box
+
+
 int main():
 	if ((ast_generic_identity[int](3) + ast_generic_identity[int](4)) != 7): return 1
 	if ((ast_generic_identity[ast_generic_alias](5) + ast_generic_identity[int](6)) != 11): return 2
@@ -74,4 +79,6 @@ int main():
 	ast_generic_zero[int](array)
 	if (array[0] != 0): return 18
 	array_free[int](array)
+	if ((ast_generic_box_address[int](&box).value) != 31): return 19
+	if ((ast_generic_box_copy[int](box).value) != 31): return 20
 	return 0
