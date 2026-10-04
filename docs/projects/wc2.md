@@ -950,3 +950,16 @@ required-mode fixture verifies coverage. Explicit format specifications,
 comments/newlines inside interpolation, and unsupported value classes
 remain on the streaming path. A buffer slice now exercises required-mode
 rejection instead of a supported simple template.
+
+## Task 38: unbound generic signature syntax
+
+Generic definitions now retain a signature AST alongside their source span.
+Capture records named types, pointer depth and nested map/set/list types
+without binding names, interning compiler types or emitting code. Unsupported
+headers keep their existing instantiation parser; complex generic return
+syntax, arrays, qualifiers, defaults and variadics are not captured yet.
+
+Lexer-isolated tests cover nested shapes, unnamed parameters, empty and
+trailing-comma parameter lists, cleanup on unsupported forms, and an
+unchanged type-table count. Signature binding and generic call emission are
+the next stage; this metadata alone does not remove expression fallbacks.

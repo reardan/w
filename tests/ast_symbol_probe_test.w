@@ -191,3 +191,72 @@ void test_ast_symbol_probe_preserves_usage_and_scope_state():
 	assert_equal(1, sym_index_unbind(start))
 	table[start] = '_'
 	assert_equal(outer, sym_probe(c"ast_probe_local"))
+
+
+# Isolated lexer input keeps signature capture tests independent of
+# instantiation and proves that parsing unbound names creates no types.
+generic_signature_ast* ast_test_capture_signature(char* source):
+	if (token == 0):
+		token_size = 20
+		token = malloc(token_size)
+		token[0] = 0
+	char* saved = generic_reparse_save()
+	int serial = token_serial
+	int reader
+	int writer
+	assert_equal(0, process_make_pipe(&reader, &writer))
+	getchar_reset(reader)
+	assert_equal(strlen(source), write(writer, source, strlen(source)))
+	close(writer)
+	file = reader
+	filename = c"signature capture test"
+	byte_offset = 0
+	line_number = 0
+	column_number = 0
+	tab_level = 0
+	token_newline = 0
+	nextc = 0
+	nextc = get_character()
+	get_token()
+	int before = type_count()
+	generic_signature_ast* signature = generic_signature_ast_capture(c"T", 2)
+	assert_equal(before, type_count())
+	close(reader)
+	generic_reparse_restore(saved)
+	token_serial = serial
+	return signature
+
+
+void test_ast_generic_signature_capture():
+	generic_signature_ast* signature = ast_test_capture_signature(c"(map[char*, list[T*]] values, T** other, FutureType):\n")
+	assert1(signature != 0)
+	assert_equal(3, signature.count)
+	assert_equal(0, strcmp(c"T", signature.result.name))
+	assert_equal(2, signature.result.stars)
+	generic_type_ast* parameter = signature.parameters
+	assert_equal(0, strcmp(c"map", parameter.name))
+	assert_equal(0, strcmp(c"char", parameter.first.name))
+	assert_equal(1, parameter.first.stars)
+	assert_equal(0, strcmp(c"list", parameter.second.name))
+	assert_equal(0, strcmp(c"T", parameter.second.first.name))
+	assert_equal(1, parameter.second.first.stars)
+	parameter = parameter.next
+	assert_equal(2, parameter.stars)
+	assert_equal(0, strcmp(c"FutureType", parameter.next.name))
+	assert1(parameter.next.next == 0)
+	generic_signature_ast_free(signature)
+	signature = ast_test_capture_signature(c"():\n")
+	assert1(signature != 0)
+	assert_equal(0, signature.count)
+	assert1(signature.parameters == 0)
+	generic_signature_ast_free(signature)
+	signature = ast_test_capture_signature(c"(T,):\n")
+	assert1(signature != 0)
+	assert_equal(1, signature.count)
+	generic_signature_ast_free(signature)
+	assert1(ast_test_capture_signature(c"(T value = 3):\n") == 0)
+	assert1(ast_test_capture_signature(c"(T[] values):\n") == 0)
+	assert1(ast_test_capture_signature(c"(pair[T]* value):\n") == 0)
+	assert1(ast_test_capture_signature(c"(const T* value):\n") == 0)
+	assert1(ast_test_capture_signature(c"(T... values):\n") == 0)
+	assert1(ast_test_capture_signature(c"(map[T, ] values):\n") == 0)

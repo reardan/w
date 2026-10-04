@@ -73,6 +73,7 @@ struct generic_def_record:
 	int column        # 0-based
 	int param_count
 	int param_names   # char** vector of param_count names
+	generic_signature_ast* signature_ast
 
 
 list[generic_def_record] generic_defs
@@ -144,6 +145,7 @@ int generic_def_add(char* name, int kind, char* file_path, int offset, int line,
 	rec.column = column
 	rec.param_count = param_count
 	rec.param_names = param_names
+	rec.signature_ast = 0
 	generic_defs.push(rec)
 	return generic_defs.length - 1
 
@@ -518,14 +520,15 @@ int generic_scanned_type
 # A generic function definition 'T name[params](...) ...' whose type
 # started at first_offset (line/column first_line/first_column), with
 # the name as the current token: register it and skip its body.
-void generic_register_definition(int first_offset, int first_line, int first_column):
+void generic_register_definition(int first_offset, int first_line, int first_column, char* result_name, int stars):
 	char* fname = strclone(token)
 	get_token()
 	int params = cast(int, malloc(generic_max_params * __word_size__))
 	int n = generic_parse_param_names(params)
 	if (peek(c"(") == 0):
 		error3(c"'(' expected after the type parameter list of generic '", fname, c"'")
-	generic_def_add(fname, 0, strclone(filename), first_offset, first_line - 1, first_column - 1, n, params)
+	int def = generic_def_add(fname, 0, strclone(filename), first_offset, first_line - 1, first_column - 1, n, params)
+	generic_defs[def].signature_ast = generic_signature_ast_capture(result_name, stars)
 	generic_skip_definition()
 	# defhash coverage (wave plan C task 4f): same span the definition
 	# registry just recorded (first_offset..the skip's end).
@@ -563,7 +566,7 @@ int generic_declaration_scan_generic_return():
 	if (name_is_ident & (nextc == '[')):
 		free(cast(char*, load_ptr(save + 11 * __word_size__)))
 		free(save)
-		generic_register_definition(first_offset, first_line, first_column)
+		generic_register_definition(first_offset, first_line, first_column, 0, 0)
 		return 1
 	# Not a definition (e.g. 'wresult[int]* f(...)'): rewind, so the
 	# normal type_name() path parses the generic struct return type.
@@ -598,8 +601,8 @@ int generic_declaration_scan():
 	int c1 = token[0]
 	int name_is_ident = is_ident_start_byte(c1)
 	if (name_is_ident & (nextc == '[')):
+		generic_register_definition(first_offset, first_line, first_column, first, stars)
 		free(first)
-		generic_register_definition(first_offset, first_line, first_column)
 		return 1
 
 	# Not generic: rebuild the type from the scanned parts, mirroring

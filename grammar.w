@@ -3,6 +3,7 @@ import grammar.pending_element
 import grammar.hash_builtin
 import grammar.ndarray_index
 import grammar.promote
+import grammar.generic_signature_ast
 import grammar.generic
 import grammar.defer
 import grammar.type_name
