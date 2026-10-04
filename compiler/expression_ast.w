@@ -1,6 +1,6 @@
-# Production AST island: parenthesized scalar expressions. Each
-# attempt owns this bounded arena on its stack; unsupported syntax and
-# REPL error recovery cannot leave allocated nodes or compiler state behind.
+# Ephemeral production expression AST. Each parse or owning statement
+# keeps this bounded arena on its stack through preparation and emission.
+# Unsupported syntax and REPL recovery discard the speculative arena.
 # Node IDs are arena indices, -1 is failure. Literal nodes carry their
 # source byte offset until the committed diagnostic/decoding pass fills value.
 # result_type retains the streaming type convention (lvalue, value or
@@ -11,6 +11,15 @@
 # roots; those links do not change a nested call's own argument list.
 # Logical chains use the same sibling links, with a separate node for
 # each source-level chain (parenthesized subchains keep their boundary).
+struct expression_ast_format:
+	int present
+	int fill
+	int align
+	int width
+	int precision
+	int kind
+
+
 struct expression_ast:
 	int count
 	int end_offset
@@ -35,6 +44,12 @@ struct expression_ast:
 	int[128] next_arg
 	int[128] in_cast
 	int[128] symbol
+	expression_ast_format[128] format
+	int[128] generic_parameters
+	int[128] generic_signature
+	int[128] generic_offset
+	int[128] generic_instance
+	int[128] generic_arity
 
 
 int ast_expressions_mode
@@ -45,10 +60,20 @@ int ast_audit_mode
 int ast_required_mode
 
 
-# Basic list methods share the streaming cm_call lowering. Bit 7 chooses
-# the aggregate-copy helper after the argument's type is known.
-char* ast_expression_list_helper(int method):
+# Container methods share the streaming helper-call lowering. Bit 7
+# chooses the aggregate-copy/address helper after types are known.
+char* ast_expression_method_helper(int method):
+	if (method == 11): return c"__w_map_remove"
+	if (method == 12): return c"__w_set_add"
+	if (method == 13): return c"__w_map_free"
+	if (method == 14): return c"__w_map_get"
+	if (method == 15): return c"__w_map_get_or"
+	if (method == 16): return c"__w_map_keys"
+	if (method == 17): return c"__w_map_values"
+	if (method == 142): return c"__w_map_get_addr"
+	if (method == 143): return c"__w_map_get_or_addr"
 	if (method == 129): return c"__w_list_push_bytes"
+	if (method == 130): return c"__w_list_pop_addr"
 	if (method == 131): return c"__w_list_insert_bytes"
 	if (method == 1): return c"__w_list_push"
 	if (method == 2): return c"__w_list_pop"
@@ -57,6 +82,13 @@ char* ast_expression_list_helper(int method):
 	if (method == 5): return c"__w_list_clear"
 	if (method == 6): return c"__w_list_free"
 	return 0
+
+
+char* ast_expression_contains_helper(int kind):
+	if (kind == 1): return c"__w_map_contains"
+	if (kind == 2): return c"__w_set_contains"
+	if (kind == 3): return c"__w_list_contains_cstr"
+	return c"__w_list_contains"
 
 
 # Speculative pointer records borrow their names and live in the arena.
@@ -99,7 +131,10 @@ void ast_expression_restore_types(expression_ast* tree):
 
 void ast_expression_commit_pointer(expression_ast* tree, int i):
 	type_rec* rec = &tree.pointer_types[i]
-	int actual = type_push_pointer(rec.name, rec.total_size, rec.pointer_level)
+	if (rec.kind == type_kind_function): return
+	int actual
+	if (rec.kind == type_kind_slice_value): actual = type_push_slice_value(rec.alias_target)
+	else: actual = type_push_pointer(rec.name, rec.total_size, rec.pointer_level)
 	assert1(actual == tree.types_base + i)
 
 
@@ -116,3 +151,62 @@ int expression_ast_add(expression_ast* tree, int op, int left, int right):
 	tree.symbol[id] = -1
 	tree.next_arg[id] = -1
 	return id
+
+
+# Signature slots participate in the same rollback as pointer records.
+# Parameter types live in AST nodes, so no nested array descriptor of
+# these borrowed records is read during the probe.
+int ast_expression_reserve_signature(expression_ast* tree, int id, int result, int arity):
+	if (tree.pending_buffer_types || (tree.types_count == 16)): return -1
+	int i = tree.types_count
+	type_rec* rec = &tree.pointer_types[i]
+	rec.name = c""
+	rec.num_fields = 0
+	rec.total_size = word_size
+	rec.pointer_level = 0
+	rec.alias_target = -1
+	rec.kind = type_kind_function
+	rec.fn_return_type = result
+	rec.fn_param_count = arity
+	rec.decl_file_index = -1
+	rec.decl_line = 0
+	rec.decl_column = 0
+	tree.pointer_offsets[i] = tree.generic_offset[id]
+	tree.types_count = i + 1
+	int signature = type_count()
+	type_records.push(cast(int, rec))
+	return signature
+
+
+# Array/slice promotion creates a descriptor-value type before a later
+# argument can register its own types. Stage that event just like a
+# pointer; borrowed records need no diagnostic name or field storage.
+int ast_expression_slice_value_type(expression_ast* tree, int element, int offset):
+	element = type_canonical(element)
+	int existing = type_lookup_slice_value(element)
+	if (existing >= 0): return existing
+	if (tree.types_count == 16): return -1
+	int i = tree.types_count
+	type_rec* rec = &tree.pointer_types[i]
+	rec.name = c""
+	rec.num_fields = 0
+	rec.total_size = 0
+	rec.pointer_level = 0
+	rec.alias_target = element
+	rec.kind = type_kind_slice_value
+	rec.fn_return_type = -1
+	rec.fn_param_count = -1
+	rec.decl_file_index = -1
+	rec.decl_line = 0
+	rec.decl_column = 0
+	tree.pointer_offsets[i] = offset
+	tree.types_count = i + 1
+	int result = type_count()
+	type_records.push(cast(int, rec))
+	return result
+
+
+int ast_expression_prepare_value(expression_ast* tree, int type, int offset):
+	if (type_is_value(type)): return 1
+	if ((type_is_array(type) == 0) && (type_get_kind(type) != type_kind_slice)): return 1
+	return ast_expression_slice_value_type(tree, type_get_element_type(type), offset) >= 0

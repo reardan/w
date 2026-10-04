@@ -21,6 +21,32 @@ Successful `--dump-ast` output is deterministic JSON (schema 1). Invalid or unsu
 input produces location-bearing diagnostics on stderr, no stdout, and exit
 status 1. Incorrect command-line arguments return 2.
 
+## Current production migration status
+
+The numbered tasks below record successive stages; their fallback lists describe
+that stage, and later tasks supersede them. The production compiler remains
+streaming by default. `--ast-full-expressions` enables the hybrid AST path;
+`--ast-required` rejects any runtime expression that still needs streaming.
+Compiler self-host coverage is a narrower gate than full language coverage.
+
+The integrated path combines record values and calls, map elements and defaults,
+collection membership, accumulation and snapshots, parallel assignment and
+increments, formatted interpolation, explicit generic calls, buffers and slices,
+typed container literals, list slices, constructors and dynamic arrays. Generic
+signatures retain unbound syntax and bind supported parameter and return shapes
+transactionally.
+Ordinary return/expression statements and if/while condition headers own prepared
+expression nodes through immediate lowering.
+
+These nodes do not survive as persistent function or module trees. Other
+statement/declaration forms, declaration-time constant expressions, inferred
+and unsupported generic forms, first-use composite types, qualified/method
+calls, special ABI/GPU paths, remaining builtins and diagnostic-bearing paths
+still need migration. The bounded expression arena still falls back for large
+expressions. Persistent source/binding ownership, multi-error semantic analysis,
+REPL/debugger rollback and incremental emission remain subsequent architecture
+work. Production ASTs do not use the leaf `wc2` resident cache described below.
+
 ## Supported foundation
 
 The parsed subset covers `int`, `bool`, `void` and named struct types; function
@@ -831,3 +857,417 @@ Integration with the unsigned-word arithmetic changes keeps AST result types,
 comparisons, division, remainder and right shifts aligned with the streaming
 compiler. The unsigned-word and x64 uint64 regression programs also run through
 the AST differential image matrix.
+
+## Task 29: record values, copies and arguments
+
+Ordinary struct and union values can now be whole AST roots, compatible
+assignment sources and by-value arguments to direct or indirect calls with
+scalar returns. Record copies use the existing aggregate-copy lowering,
+including rebuilding inline array descriptors. Basic list pop selects the
+record-address helper for aggregate elements, and record values can feed
+list pushes and inserts.
+
+The differential fixture checks small records, unions, nested fields, inline
+array independence, by-value mutation isolation, indirect calls and record
+list operations across the image-comparison matrix. Record-returning calls
+and constructors still decline while their return-buffer stack handling is
+migrated separately. Value-record field access also remains conservative.
+
+## Task 30: record-returning calls
+
+Direct and typed indirect AST calls now allocate the ordinary caller-owned
+record return buffer and pass its hidden address. Arguments measure and
+compact any temporary words left by nested calls; plain assignment reloads
+its destination from beneath a returned record before copying. Returned
+record fields preserve the streaming backend's load and buffer cleanup.
+
+Tests exercise nested return calls, indirect factories, assignment inside
+arguments, small and large records, inline arrays and returned fields. A
+required-mode test covers return, initialization, assignment and nested
+by-value consumption without expression fallback. Constructors and other
+value-record field receivers remain separate migration work.
+
+## Task 31: map elements and membership
+
+Map indexing now has explicit read and store nodes. The emitter parks the
+receiver and coerced key once, then chooses a scalar read, record-address
+read, plain store or compound read/modify/write. Nested map accesses no
+longer rely on the streaming parser's global pending-element state. A
+parenthesized map element is finalized as a read before any outer operator,
+preserving the distinction between `m[k] = x` and `(m[k]) = x`.
+
+Membership nodes cover maps, sets and supported scalar/C-string lists,
+including descriptor-to-pointer key decay and left-to-right evaluation.
+Differential tests cover nested receivers and keys, chained stores, record
+values and fields, signed and floating-point values, string conversions,
+collection membership and diagnostic parity. Container methods and map
+default constructors remain separate work.
+
+## Task 32: parallel assignment statements
+
+Whole-statement AST parsing now admits parallel assignment as linked
+left/right pairs. Destinations are evaluated and parked first, followed by
+all coerced right-hand values; stores run left to right and release the
+parked span. Nested calls keep their own argument links. Expression contexts
+still treat a comma as their enclosing construct's delimiter.
+
+Tests compare swaps, repeated destinations, pointer and field targets,
+indexed side effects, mixed scalar widths, strings, floats and returned
+record fields across the image matrix. The complete parallel-assignment
+fixture must also pass required mode on both compiler host widths. Arity,
+map-target, read-only and type-mismatch diagnostics retain the streaming
+fallback for exact parity.
+
+## Task 33: increment and decrement statements
+
+Prefix and postfix increment/decrement now lower through explicit AST
+mutation nodes at statement position. Prefix dispatch enters the same
+whole-statement probe, so required mode also covers that earlier grammar
+path. Emission reuses the established implicit-one compound-store lowering.
+
+The differential and required-mode fixture exercises narrow integers,
+floats, record fields, side-effecting indexes, pointers, list elements,
+brace blocks and newline boundaries. Value-position increments, const or
+read-only targets, map elements and non-lvalues retain their diagnostics.
+
+## Task 34: direct calls beyond ten arguments
+
+Direct AST calls now use the declared arity and the expression arena's
+capacity instead of imposing a separate ten-argument limit. Parameters
+beyond the symbol table's recorded type slots follow the existing unchecked
+calling convention. Tests cover twelve arguments, evaluation order, raw
+indirect calls, missing-argument diagnostics and required-mode compilation.
+
+Typed function-pointer signatures retain their current ten-parameter bound.
+The existing alias parser's unchecked fixed allocation crashes on longer
+signatures; that independent bug is already tracked in the tooling backlog.
+
+## Task 35: retain the tokenizer's lookahead across refills
+
+A failed inferred-declaration probe can refill the input buffer and seek
+back to just after the current token's lookahead character. That leaves
+both the raw token and one lookahead byte outside the retained window.
+AST prefix recovery now reconstructs that byte from `nextc` as well as the
+raw token, without changing the logical read position or adding a seek.
+
+A nonseekable-pipe regression checks replay and unread-byte preservation.
+End-to-end required-mode and image tests cover neighboring positions around
+the original 8 KiB boundary and a window shifted by earlier AST read-ahead.
+
+## Task 36: basic map and set methods
+
+Map `get(key[, default])`, map/set `remove` and `free`, and set `add` now
+use AST method nodes. Keys and defaults use their respective coercion
+types, defaults are evaluated even when a key exists, and record getters
+select the address-returning runtime helpers. Record results can feed
+copies, fields and by-value calls.
+
+Tests cover default evaluation order, record and string defaults, removal
+results, cleanup, required-mode compilation and invalid-argument diagnostic
+parity. Map accumulation and collection snapshots remain separate work.
+
+## Task 37: interpolated string expressions
+
+AST template nodes retain a chain of literal chunks and embedded values.
+Preflight validates chunk/brace boundaries without changing lexer state;
+committed replay resumes the template tokenizer and decodes each chunk at
+its original source event. Emission reuses the existing builder, append
+and finish helpers, including lazy formatter imports. Results preserve
+the string-literal pseudo-type so `char*` arguments, stores and returns
+decay to the data pointer.
+
+The image matrix covers empty and plain templates, adjacent values,
+evaluation order, nested templates and quoted literals, escaped braces,
+embedded NUL, Unicode, scalar values, floats and metadata access. A
+required-mode fixture verifies coverage. Explicit format specifications,
+comments/newlines inside interpolation, and unsupported value classes
+remain on the streaming path. A buffer slice now exercises required-mode
+rejection instead of a supported simple template.
+
+## Task 38: unbound generic signature syntax
+
+Generic definitions now retain a signature AST alongside their source span.
+Capture records named types, pointer depth and nested map/set/list types
+without binding names, interning compiler types or emitting code. Unsupported
+headers keep their existing instantiation parser; complex generic return
+syntax, arrays, qualifiers, defaults and variadics are not captured yet.
+
+Lexer-isolated tests cover nested shapes, unnamed parameters, empty and
+trailing-comma parameter lists, cleanup on unsupported forms, and an
+unchanged type-table count. Signature binding and generic call emission are
+the next stage; this metadata alone does not remove expression fallbacks.
+
+## Task 39: explicit generic call expressions
+
+Explicit generic calls now bind captured signature syntax into AST argument
+and return types. Pointer and signature records share the expression's
+transaction: failed probes remove all staged records, while committed
+replay registers signatures at the original closing type-argument bracket.
+Repeated calls share the reserved signature, including canonical aliases.
+Emission handles queued instantiations and already compiled functions,
+record return buffers, argument coercion and evaluation order.
+
+The compiler itself now builds with zero expression fallbacks on x86 and
+x64, producing the same images as the streaming compiler. The full-expression
+self-host target now uses `--ast-required` to enforce this. Differential
+fixtures cover containers, records, aliases, nested calls, pointer registration
+and invalid-call diagnostics. Inferred generics, uncaptured signature shapes,
+new composite types and calls with more than ten parameters still fall back.
+Statements and declarations remain a separate migration; this milestone is
+complete expression coverage of the compiler, not a completed AST frontend.
+
+## Task 40: array and slice values
+
+AST roots, call arguments and assignment operands now accept array and
+slice values. Promotion stages a slice-value record at the original source
+event, preserving registration order before later pointer types and generic
+signatures. End-of-root promotion events are committed before emission.
+Buffer indexing and metadata access use the same transaction instead of
+blocking subsequent pointer registration.
+
+Tests cover typed pointer decay, slice parameters and returns, pointer and
+slice stores, typed and raw indirect calls, first-use promotion followed by
+a new pointer type, and diagnostic recovery. Raw indirect calls preserve
+the descriptor argument because they have no typed parameter requesting
+decay. Buffer slicing, explicit buffer casts and array assignment remain
+separate work.
+
+## Task 41: buffer slices and explicit casts
+
+Slice nodes retain the receiver and optional start/end expressions. Emission
+preserves left-to-right evaluation, omitted-bound defaults, range checks and
+shared backing storage through the existing descriptor helper. Nested array
+and string slices can feed indexing, calls and metadata access.
+
+Explicit array/slice casts stage value promotion before coercion. Matching
+pointer and word-sized integer casts decay to element data; mismatched-pointer
+warnings and sub-word-address errors retain the streaming diagnostic path.
+Tests cover all bound forms, empty/nested slices, mutation through a view,
+cast decay and malformed bounds. A failed start expression is distinguished
+from an omitted start. Required-mode rejection now uses a template format
+specification rather than a supported slice.
+
+## Task 42: typed container literals
+
+List, map and set literals now retain ordered entry nodes. Emission reuses
+container allocation and insertion helpers, including record-copy helpers,
+and releases each entry's temporary return buffers before the next entry.
+Preflight tracks literal braces separately from statement block delimiters,
+including nested and multiline entries.
+
+Differential tests cover empty literals, trailing commas, nesting, key/value
+evaluation order, duplicate set keys, record values and invalid-entry
+diagnostics. The parser-generator grammar now accepts multiline container
+literals already accepted by the compiler, with focused grammar tests.
+First-use composite type registration remains a separate step: literals
+whose container type is not yet registered still use the streaming path.
+
+## Task 43: record constructors
+
+Record value constructors and heap constructors retain ordered field nodes,
+including named fields and partial named initialization. The visitor reuses
+field stores and aggregate copies, preserving temporary-buffer cleanup,
+array-descriptor initialization, zeroing order and by-value argument layout.
+A heap constructor registers its result pointer after its arguments, matching
+the streaming type-registration order. Scalar field access can consume a
+value constructor's temporary buffer.
+
+Tests cover positional/named/nested constructors, record arguments, union
+fields, heap allocation, empty constructors with array descriptors, and
+constructors inside container literals. Wrong field names, mixed argument
+forms, arity warnings, fixed-array field initialization and incompatible
+arguments retain their existing diagnostics. Qualified constructors and
+dynamic array allocation remain separate work.
+
+## Task 44: dynamic array allocation
+
+`new T[count]` now has an AST allocation node. The count is evaluated once;
+emission preserves the existing count limits, two-word descriptor, payload
+zeroing and element-width arithmetic. The result's slice-value type is staged
+after the count expression, so later type registration keeps its original
+order.
+
+Tests cover scalar/record elements, zero lengths, calls, casts, indexing and
+invalid allocation diagnostics. Native x86/x64 checks also verify negative
+count traps and byte-identical execution with bounds checks disabled.
+
+## Task 45: generic struct and slice parameter shapes
+
+Unbound signature syntax now represents generic struct applications and
+slice wrappers, including nested applications and pointer element types.
+Binding resolves existing instantiated structs and slice types without
+instantiating either during a speculative call parse. Pointer and function
+signature registration retain their existing transaction.
+
+Shape tests verify nested argument lists and unchanged compiler type counts.
+The differential/required fixture now covers generic struct parameters,
+generic slice reads/stores and `lib.array`'s `array_free` wrapper. Complex
+return signatures and first-use composite instantiation remain separate work.
+
+## Integrated map defaults and formatted interpolation
+
+This integration reconciles compiler-completion through `db157ce8`, migration
+through `435b4b50`, and the unsigned arithmetic baseline in `7ccc2a01`. Later
+work on those development branches is not implicitly included.
+
+Map default constructors retain scalar defaults, factories and automatic nested
+container defaults as explicit AST operands. Lowering preserves allocation and
+argument evaluation order through the existing runtime helpers. Format nodes
+capture fill/alignment, padding, width, precision and format kind without
+emitting speculative diagnostics, then replay the existing template tokenizer
+and formatter at their source positions. Invalid forms keep streaming diagnostic
+parity.
+
+These paths are combined with the newer generic signature binding, buffer type
+registration, constructors and allocation nodes. The differential matrix retains
+the fixtures from both development branches, including cross-feature cases.
+
+## Owned production statements
+
+Expression preparation now returns a root into a caller-owned arena before
+machine-code emission. Ordinary return nodes own that arena or represent a bare
+return. The shared return lowering retains coercion, aggregate copies, deferred
+cleanup and frame unwinding. Generator/GPU return forms retain their existing
+handling.
+
+Statement ownership is currently bounded by immediate lowering; symbol and type
+references are not stable across later declarations or REPL rollback. This is a
+step toward statement trees, not a persistent module representation.
+
+Ordinary expression statements now also own a prepared expression arena after
+statement dispatch has ruled out declarations and labels. Lowering retains the
+streaming expression's assignment flag, stack temporaries and read-only state;
+emission precedes the final lexer advance to preserve source-sensitive
+warnings. Prefix increments keep their existing dedicated statement dispatch.
+Stats distinguish AST/streaming expression statements from expression roots.
+
+The integrated compiler's required-mode check on 2026-10-03 reports 39,361
+expression roots, 5,681 return statements and 18,232 ordinary expression
+statements on x86; x64 reports 39,604, 5,698 and 18,348 respectively. Each category
+has zero streaming fallbacks for this corpus. These are parser-entry counts,
+not percentages of source coverage or an all-language AST guarantee.
+
+## Reproducible production AST audit
+
+The W-native `wast_audit` tool generates an AST-enabled manifest from the current
+`build.base.json` and source directives. It adds `--ast-full-expressions` to
+direct production compiler compile/check commands, preserving pinned-seed steps
+and commands that already select an AST mode. It writes a JSON selection report
+listing the changed target/step pairs. Generation does not execute the manifest.
+
+```sh
+./wbuild wast_audit
+bin/wast_audit manifest bin/ast_suite_manifest.json > bin/ast_suite_selection.json
+env -u NO_COLOR bin/wexec -f bin/ast_suite_manifest.json -j 1 tests
+```
+
+Run the audit suite separately from ordinary builds. Serial execution avoids the
+known nested-build race in which a driver rebuilds a compiler still being used
+by another target. The flag covers implicit runtime imports, but compiler
+launches inside test drivers retain their own mode selection. A hybrid-suite
+pass permits fallbacks and does not prove complete language coverage.
+
+A fallback census summarizes one or more compiler audit logs deterministically
+by file and starting token, along with the emitted/streaming parser counters:
+
+```sh
+bin/wv2 check --quiet --ast-audit --stats w.w 2> bin/compiler_ast_audit.jsonl
+bin/wast_audit census bin/compiler_ast_audit.jsonl
+```
+
+Check the compiler exit status separately. A census is a description of its
+input log; it cannot certify that the log is complete or that compilation
+succeeded. Malformed audit records, invalid or overflowing counters, and a
+mismatch between fallback records and summed streaming-root counters make the
+census command fail. `records_match_streaming_roots` is null when streaming-root
+stats are absent or any counter is invalid. Counts aggregate across invocations;
+even matching totals cannot detect truncation after an earlier complete
+invocation. Counts include nested parser entries after an outer fallback, so
+they are not source-coverage percentages. Required-mode self-host checks remain
+in `ast_required_expression_verify`, and the differential fixture matrix remains
+in `ast_expression_test`.
+
+## Integration validation
+
+The first integrated wave passed the pinned-seed bootstrap, x86/x64 self-host
+fixpoints and strict AST-required image/fixpoint gates. Differential fixtures
+compare both compiler host widths across x86, x64, ARM64 ELF, ARM64 Darwin,
+win64 and wasm images, with native x86/x64 execution and REPL/debugger recovery.
+Cross-target image parity is distinct from executing every image on its target.
+
+`env -u NO_COLOR ./wbuild tests` passed all 846 targets. The generated AST
+manifest selected 1,137 direct compile/check steps, preserved six explicit AST
+mode steps, and its serial `tests` run also passed all 846 targets. Selection
+counts describe the complete manifest, not how many selected steps the `tests`
+target executes. No compiler fallback records appeared in the x86/x64 compiler
+census. The production mode remains opt-in; the scope and remaining architecture
+work are listed in the current-status section above.
+
+## Task 46: generic return shapes
+
+The generic declaration lookahead now retains the return type's syntax
+instead of only skipping its brackets. Capture tracks bracket depth through
+nested types; unsupported shapes finish the original balanced scan without
+rewinding or duplicating lexer diagnostics. Accepted return graphs transfer
+directly into the signature AST.
+
+Tests cover generic pointer and by-value record returns, nested return
+shapes, and recovery past unsupported qualifiers, fixed-array arguments and
+oversized type-argument lists. Ordinary non-generic declarations still rewind
+to their original type parser. Binding continues to require existing
+instantiated struct and slice records.
+
+## Task 47: list slices
+
+List slicing now retains the receiver and optional bound expressions in a
+dedicated AST node. Emission preserves left-to-right evaluation and passes
+omitted-end information to the existing copy helper. Negative indexes,
+range checks and record element copies retain their existing behavior.
+
+Differential and required-mode tests cover all bound forms, nested slices,
+independent backing storage, record copies and malformed bounds.
+
+## Second integration wave
+
+This wave incorporates generic return-shape capture from `5096465a` and list
+slices from `d22ae415`. These are fixed source snapshots; later development
+branch changes are not automatically included.
+
+Numeric `map.add(key[, delta])` uses dedicated accumulation nodes. The receiver,
+key and optional delta are evaluated once in streaming order; floating-point
+values retain the existing read/add/store lowering. Unsupported value classes
+and invalid calls retain streaming diagnostics. Map/set `keys()` and map
+`values()` retain snapshot method nodes, using the same element-width helpers as
+the streaming path. Their result list type must already be registered; creating
+new composite types remains separate work. List slicing copies through the
+existing runtime helper and retains omitted-bound and negative-index behavior.
+
+`if`/`elif` and `while` headers now own their prepared condition arenas through
+expression and branch lowering. The shared condition tail preserves promotion,
+lint completion, enclosing condition state and the false branch. Separate
+AST/streaming header counters identify the migrated scope. Header arenas are
+released before parsing the bodies: block membership, body statements and loop
+regions still use the streaming parser, so these are not retained control-flow
+trees.
+
+The second-wave compiler census reports 39,570 expression roots, 5,723 return
+statements, 18,316 expression statements, 8,972 if/elif headers and 945 while
+headers on x86. On x64 these counts are 39,813, 5,740, 18,432, 9,014 and 958.
+All corresponding streaming counters and fallback-record counts are zero;
+the census confirms record/counter consistency on both hosts. These figures
+describe the compiler corpus, not complete language coverage.
+
+Independent comparisons compile the four new collection, composition,
+list-slice and control-header fixtures plus `w.w` with legacy, full-AST and
+required-AST modes. All 120 compilations produce identical images within each
+host/target case across the six backends. All 48 native fixture executions pass;
+the nonnative images are compared without execution.
+
+The pinned-seed bootstrap, default and strict AST-required x86/x64 self-host
+fixpoint gates, and audit-tool tests on both word sizes pass. Both
+`env -u NO_COLOR ./wbuild tests` and the serial AST-enabled manifest run pass all
+846 targets. The latter selects 1,137 direct compile/check steps across the
+complete manifest and preserves six explicitly selected AST-mode steps; nested
+driver launches retain their own mode selection. REPL recovery compares exact
+output and diagnostics after normalizing only the process ID in its temporary
+source directory, preserving entry names, source coordinates and caret text.

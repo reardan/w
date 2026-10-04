@@ -1,9 +1,46 @@
-# Locate a complete quoted token without running the lexer. Quotes and
-# escapes may contain operator characters; raw newlines still fall back.
-# f-strings are deliberately excluded because their lexer has semantic
-# chunk boundaries and can diagnose a stray brace while tokenizing.
-int ast_expression_quoted_end(char* bytes, int start, int limit):
-	if ((bytes[start] == '"') && (start > 0) && (bytes[start - 1] == 'f')): return -1
+int ast_expression_quoted_end_nested(char* bytes, int start, int limit, int depth);
+
+
+# Preflight all literal chunks and embedded expressions before entering
+# the template tokenizer, whose malformed-brace errors must not escape a
+# speculative parse. Multiline templates retain the streaming path.
+int ast_expression_template_end(char* bytes, int start, int limit, int depth):
+	if (depth > 96): return -1
+	int i = start + 1
+	int braces = 0
+	while (i < limit):
+		int ch = bytes[i] & 255
+		if (ch == 10): return -1
+		if (braces):
+			if ((ch == 34) || (ch == 39)):
+				int end = ast_expression_quoted_end_nested(bytes, i, limit, depth + 1)
+				if (end < 0): return end
+				i = end + 1
+				continue
+			if (ch == '#'): return -1
+			if ((ch == '/') && (i + 1 < limit) && (bytes[i + 1] == '*')): return -1
+			if (ch == '{'): braces = braces + 1
+			if (ch == '}'): braces = braces - 1
+		else:
+			if (ch == 34): return i
+			if (ch == 92):
+				i = i + 1
+				if (i >= limit): return -2
+				if (bytes[i] == 10): return -1
+			else if ((ch == '{') || (ch == '}')):
+				if (i + 1 >= limit): return -2
+				if (bytes[i + 1] == ch): i = i + 1
+				else if (ch == '{'): braces = 1
+				else: return -1
+		i = i + 1
+	return -2
+
+
+# Return a closing quote without decoding escapes or changing lexer state.
+int ast_expression_quoted_end_nested(char* bytes, int start, int limit, int depth):
+	if (depth > 96): return -1
+	if ((bytes[start] == 34) && (start > 0) && (bytes[start - 1] == 'f')):
+		return ast_expression_template_end(bytes, start, limit, depth + 1)
 	int quote = bytes[start]
 	int i = start + 1
 	while (i < limit):
@@ -15,6 +52,10 @@ int ast_expression_quoted_end(char* bytes, int start, int limit):
 			if (bytes[i] == 10): return -1
 		i = i + 1
 	return -2
+
+
+int ast_expression_quoted_end(char* bytes, int start, int limit):
+	return ast_expression_quoted_end_nested(bytes, start, limit, 0)
 
 
 # Return the byte after a closed block comment. Expression preflight and
@@ -80,7 +121,7 @@ int ast_expression_end(int start):
 		if ((ch == '!') || (ch == '~') || (ch == '.') || (ch == ',')): allowed = 1
 		if ((ch == '+') || (ch == '-') || (ch == '*') || (ch == '/') || (ch == '%')): allowed = 1
 		if ((ch == '<') || (ch == '>') || (ch == '=') || (ch == '&') || (ch == '|')): allowed = 1
-		if ((ch == '[') || (ch == ']') || (ch == '^') || (ch == '?') || (ch == ':')): allowed = 1
+		if ((ch == '[') || (ch == ']') || (ch == '^') || (ch == '?') || (ch == ':') || (ch == '{') || (ch == '}')): allowed = 1
 		if (ch == '('):
 			allowed = 1
 			depth = depth + 1
@@ -144,7 +185,7 @@ int ast_expression_line_boundary(char* bytes, int index, int limit, int eof):
 # A complete scalar expression in the buffered window. The terminator is
 # left for the enclosing grammar. Unsupported characters
 # decline the whole root. No lexing or I/O happens in this preflight.
-int ast_expression_root_end(int eof):
+int ast_expression_root_end(int eof, int statement):
 	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return -1
 	int window_start = getchar_kernel_pos[file] - getchar_limit[file]
 	int index = token_start_offset - window_start
@@ -152,6 +193,8 @@ int ast_expression_root_end(int eof):
 	char* bytes = cast(char*, getchar_buf_addr[file])
 	int parens = 0
 	int brackets = 0
+	int braces = 0
+	int significant = 0
 	int ternaries = 0
 	int previous = 0
 	int i = 0
@@ -169,10 +212,11 @@ int ast_expression_root_end(int eof):
 			if (quoted < 0): return quoted
 			if (quoted - index >= 2048): return -1
 			i = quoted - index + 1
+			significant = 34
 			previous = 0
 			continue
-		if ((parens == 0) && (brackets == 0)):
-			if ((ch == ')') || (ch == ']') || (ch == ',') || (ch == ';') || (ch == '}') || (ch == '{')):
+		if ((parens == 0) && (brackets == 0) && (braces == 0)):
+			if ((ch == ')') || (ch == ']') || ((ch == ',') && (statement == 0)) || (ch == ';') || (ch == '}') || ((ch == '{') && (significant != ']'))):
 				if (ternaries): return -1
 				return window_start + index + i
 			if ((ch == '#') || (ch == 10)):
@@ -214,8 +258,15 @@ int ast_expression_root_end(int eof):
 		if (ch == ']'):
 			brackets = brackets - 1
 			allowed = 1
+		if (ch == '{'):
+			braces = braces + 1
+			allowed = 1
+		if (ch == '}'):
+			braces = braces - 1
+			allowed = 1
 		if (allowed == 0): return -1
 		if ((previous == '/') && ((ch == '/') || (ch == '*'))): return -1
+		if ((ch != ' ') && (ch != 9)): significant = ch
 		previous = ch
 		i = i + 1
 	if ((i < 2048) && (eof == 0)): return -2
@@ -252,7 +303,7 @@ void ast_expression_retain_token():
 	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return
 	int missing = getchar_kernel_pos[file] - getchar_limit[file] - token_start_offset
 	if (missing <= 0): return
-	if ((token_i > 2048) || (missing > token_i) || (nextc < 0)): return
+	if ((token_i > 2048) || (missing > token_i + 1) || (nextc < 0)): return
 	if (byte_offset - 1 - token_start_offset != token_i): return
 	int length = getchar_limit[file]
 	# A recovered token is bounded by the AST source limit. Decline an
@@ -260,7 +311,13 @@ void ast_expression_retain_token():
 	if (length > GETCHAR_BUF_CAPACITY): return
 	char* old = cast(char*, getchar_buf_addr[file])
 	char* bytes = malloc(2 * GETCHAR_BUF_CAPACITY)
-	for i in range(missing): bytes[i] = token[i]
+	# A speculative declaration lookahead can seek back to the byte
+	# after nextc, leaving both the raw token and nextc outside the new
+	# window. The tokenizer still owns that one lookahead byte.
+	int prefix = missing
+	if (prefix > token_i): prefix = token_i
+	for i in range(prefix): bytes[i] = token[i]
+	if (missing > token_i): bytes[token_i] = cast(char, nextc)
 	for i in range(length): bytes[missing + i] = old[i]
 	getchar_buf_addr[file] = cast(int, bytes)
 	getchar_limit[file] = missing + length
@@ -272,13 +329,13 @@ int ast_expression_boundary(int start, int whole):
 	if (whole): ast_expression_retain_token()
 	while (1):
 		int end
-		if (whole): end = ast_expression_root_end(0)
+		if (whole): end = ast_expression_root_end(0, whole > 1)
 		else: end = ast_expression_end(start)
 		if (end != -2): return end
 		int more = ast_expression_refill(start)
 		if (more < 0): return -1
 		if (more == 0):
-			if (whole): end = ast_expression_root_end(1)
+			if (whole): end = ast_expression_root_end(1, whole > 1)
 			if (end < 0): return -1
 			return end
 	return -1
@@ -345,14 +402,22 @@ int ast_expression_scalar_value(int type):
 	return ast_expression_scalar_type(type)
 
 
-# Aggregates enter only as addresses on the way to a field or element.
-# Whole-aggregate operators, arguments and roots still fall back.
+# Record lvalues can expose fields; record values can also flow through
+# copies and calls without a load. Keep those two predicates separate.
 int ast_expression_record_type(int type):
 	if (type_is_value(type) || type_is_gpu_object(type)): return 0
 	int base = type_unqualified(type)
 	int kind = type_get_kind(base)
 	if ((kind != 0) && (kind != type_kind_union)): return 0
 	return type_num_args(base) > 0
+
+
+int ast_expression_record_value(int type):
+	return ast_expression_record_type(type_real(type))
+
+
+int ast_expression_data_value(int type):
+	return ast_expression_scalar_value(type) || ast_expression_record_value(type) || ((type_is_array(type) || type_is_slice(type)) && (type_is_gpu_object(type) == 0))
 
 
 int ast_expression_storage_type(int type):
@@ -366,12 +431,16 @@ int ast_expression_storage_type(int type):
 int ast_expression_promoted_type(int type):
 	if (type == string_type): return string_value_type
 	if (type_is_value(type)): return type_strip_gpu(type_real(type))
+	if (type_is_array(type) || (type_get_kind(type) == type_kind_slice)):
+		int promoted = type_lookup_slice_value(type_get_element_type(type))
+		if (promoted >= 0): return promoted
 	int kind = type_float_kind(type)
 	if (kind): return float_binary_result_type(kind)
 	return type
 
 
 int ast_expression_argument_compatible(expression_ast* tree, int want, int id):
+	if (ast_expression_prepare_value(tree, tree.result_type[id], token_start_offset) == 0): return 0
 	int got = ast_expression_promoted_type(tree.result_type[id])
 	if (got == 4):
 		int signature = type_function_pointer_signature(want)
@@ -384,21 +453,21 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	if (token_newline): return -1
 	int sym = tree.symbol[id]
 	int arity = sym_num_args(sym)
-	if (arity > 10): return -1
 	if ((sym_variadic_fixed_args(sym) >= 0) || (sym_w_variadic_fixed_args(sym) >= 0)): return -1
 	if (sym_is_generator(sym) || sym_is_kernel(sym)): return -1
 	int result = load_int(table + sym + 6)
-	if ((result != 0) && (result != 4) && (ast_expression_scalar_type(result) == 0)): return -1
+	if ((result != 0) && (result != 4) && (ast_expression_data_value(result) == 0)): return -1
 	if (ast_expression_accept(tree, c"(") == 0): return -1
 	int count = 0
 	int previous = -1
 	while (peek(c")") == 0):
-		if ((count >= 10) || ((arity >= 0) && (count >= arity))): return -1
+		if ((arity >= 0) && (count >= arity)): return -1
 		int param = sym_param_type(sym, count)
-		if ((param >= 0) && (ast_expression_scalar_type(param) == 0)): return -1
+		if ((param >= 0) && (ast_expression_data_value(param) == 0)): return -1
 		int arg = ast_expression_assignment(tree, depth + 1)
 		if (arg < 0): return -1
-		if (ast_expression_scalar_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
 		int got = ast_expression_promoted_type(tree.result_type[arg])
 		if ((param >= 0) && type_is_string(param) && type_is_char_pointer(got)):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
@@ -448,7 +517,7 @@ int ast_expression_indirect_call(expression_ast* tree, int callee, int depth):
 		arity = type_function_param_count(signature)
 		result = type_function_return(signature)
 		if ((arity < 0) || (arity > 10)): return -1
-		if ((result != 0) && (ast_expression_scalar_type(result) == 0)): return -1
+		if ((result != 0) && (ast_expression_data_value(result) == 0)): return -1
 	int id = expression_ast_add(tree, 'F', callee, -1)
 	if (id < 0): return -1
 	tree.value[id] = signature
@@ -462,10 +531,11 @@ int ast_expression_indirect_call(expression_ast* tree, int callee, int depth):
 		if ((arity >= 0) && (count >= arity)): return -1
 		int arg = ast_expression_assignment(tree, depth + 1)
 		if (arg < 0): return -1
-		if (ast_expression_scalar_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
 		if (signature >= 0):
 			int param = type_function_param_type(signature, count)
-			if (ast_expression_scalar_type(param) == 0): return -1
+			if (ast_expression_data_value(param) == 0): return -1
 			if (ast_expression_argument_compatible(tree, param, arg) == 0): return -1
 			if (type_is_string(param) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[arg]))):
 				if (sym_probe(c"str_from_cstr") < 0): return -1
@@ -509,16 +579,325 @@ int ast_expression_print(expression_ast* tree, int depth):
 	return id
 
 
+int ast_expression_named_type(expression_ast* tree, int scalar, int depth);
+
+
+# Bind captured signature syntax against explicit type arguments. Only
+# existing composite records are admitted; pointer records are staged in
+# the expression transaction at the closing type-argument bracket.
+int ast_expression_bind_generic_type(expression_ast* tree, int id, generic_type_ast* node):
+	int type = -1
+	int def = tree.value[id]
+	int argument = tree.right[id]
+	int i = 0
+	while (argument >= 0):
+		if (strcmp(node.name, generic_def_param_name(def, i)) == 0): type = tree.value[argument]
+		argument = tree.next_arg[argument]
+		i = i + 1
+	if (node.application == 2):
+		int element = ast_expression_bind_generic_type(tree, id, node.first)
+		if (element < 0): return -1
+		type = type_lookup_slice(element)
+	else if (node.application == 1):
+		int shape_def = generic_def_lookup(node.name, 1)
+		if (shape_def < 0): return -1
+		int[8] arguments
+		int count = 0
+		generic_type_ast* argument = node.first
+		while (argument != 0):
+			if (count == generic_max_params): return -1
+			int bound = ast_expression_bind_generic_type(tree, id, argument)
+			if (bound < 0): return -1
+			arguments[count] = bound
+			count = count + 1
+			argument = argument.next
+		if (count != generic_def_param_count(shape_def)): return -1
+		char* name = generic_mangle(node.name, cast(int, &arguments[0]), count)
+		type = type_lookup(name)
+		free(name)
+	else if (node.first != 0):
+		int first = ast_expression_bind_generic_type(tree, id, node.first)
+		if (first < 0): return -1
+		if (strcmp(node.name, c"map") == 0):
+			int second = ast_expression_bind_generic_type(tree, id, node.second)
+			if (second < 0): return -1
+			type = type_lookup_map(first, second)
+		else if (strcmp(node.name, c"set") == 0): type = type_lookup_set(first)
+		else: type = type_lookup_list(first)
+	else if (type < 0): type = type_lookup(node.name)
+	if (type < 0): return -1
+	int base = type_unqualified(type)
+	if ((word_size != 8) && ((base == float64_type) || (base == int64_type) || (base == uint64_type))): return -1
+	for j in range(node.stars):
+		type = ast_expression_pointer_type(tree, type, tree.generic_offset[id])
+		if (type < 0): return -1
+	return type
+
+
+int ast_expression_generic_same(expression_ast* tree, int first, int second):
+	if (tree.value[first] != tree.value[second]): return 0
+	int a = tree.right[first]
+	int b = tree.right[second]
+	while ((a >= 0) && (b >= 0)):
+		if (type_canonical(tree.value[a]) != type_canonical(tree.value[b])): return 0
+		a = tree.next_arg[a]
+		b = tree.next_arg[b]
+	return a == b
+
+
+int ast_expression_generic_parameter(expression_ast* tree, int id, int index):
+	if (tree.symbol[id] >= 0): return sym_param_type(tree.symbol[id], index)
+	int parameter = tree.generic_parameters[id]
+	if (parameter < 0): return type_function_param_type(tree.generic_signature[id], index)
+	for i in range(index): parameter = tree.next_arg[parameter]
+	return tree.value[parameter]
+
+
+int ast_expression_generic_call(expression_ast* tree, int depth):
+	if (nextc != '['): return -1
+	int def = generic_def_lookup(token, 0)
+	int id = expression_ast_add(tree, 'G', -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = def
+	tree.generic_parameters[id] = -1
+	tree.generic_signature[id] = -1
+	tree.generic_instance[id] = -1
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"[") == 0): return -1
+	int[8] types
+	int count = 0
+	int tail = -1
+	while (1):
+		if (count == generic_max_params): return -1
+		int type = ast_expression_named_type(tree, 0, depth + 1)
+		if (type < 0): return -1
+		int argument = expression_ast_add(tree, 'g', -1, -1)
+		if (argument < 0): return -1
+		tree.value[argument] = type
+		if (tail < 0): tree.right[id] = argument
+		else: tree.next_arg[tail] = argument
+		tail = argument
+		types[count] = type
+		count = count + 1
+		if (ast_expression_accept(tree, c",") == 0): break
+	if ((peek(c"]") == 0) || (count != generic_def_param_count(def))): return -1
+	tree.generic_offset[id] = token_start_offset
+	char* mangled = generic_mangle(generic_def_name(def), cast(int, &types[0]), count)
+	int sym = sym_probe(mangled)
+	int inst = generic_inst_lookup(mangled)
+	free(mangled)
+	tree.symbol[id] = sym
+	int arity = -1
+	int result = -1
+	if (sym >= 0):
+		arity = sym_num_args(sym)
+		result = load_int(table + sym + 6)
+	else:
+		int signature = -1
+		if (inst >= 0): signature = generic_insts[inst].signature
+		if (signature >= 0):
+			tree.generic_signature[id] = signature
+			arity = type_function_param_count(signature)
+			result = type_function_return(signature)
+		else:
+			# Repeated calls in one tree share the same reserved signature.
+			for previous in range(id):
+				if ((tree.op[previous] == 'G') && ast_expression_generic_same(tree, previous, id)):
+					tree.generic_signature[id] = tree.generic_signature[previous]
+					tree.generic_parameters[id] = tree.generic_parameters[previous]
+					arity = tree.generic_arity[previous]
+					result = tree.high[previous]
+			if (tree.generic_signature[id] < 0):
+				generic_signature_ast* syntax = generic_defs[def].signature_ast
+				if ((syntax == 0) || tree.pending_buffer_types): return -1
+				arity = syntax.count
+				if (arity > 10): return -1
+				result = ast_expression_bind_generic_type(tree, id, syntax.result)
+				if (result < 0): return -1
+				generic_type_ast* parameter = syntax.parameters
+				tail = -1
+				while (parameter != 0):
+					int type = ast_expression_bind_generic_type(tree, id, parameter)
+					if (type < 0): return -1
+					int bound = expression_ast_add(tree, 'g', -1, -1)
+					if (bound < 0): return -1
+					tree.value[bound] = type
+					if (tail < 0): tree.generic_parameters[id] = bound
+					else: tree.next_arg[tail] = bound
+					tail = bound
+					parameter = parameter.next
+				tree.generic_signature[id] = ast_expression_reserve_signature(tree, id, result, arity)
+				if (tree.generic_signature[id] < 0): return -1
+	if ((arity < 0) || (arity > 10)): return -1
+	if ((result != 0) && (ast_expression_data_value(result) == 0)): return -1
+	tree.high[id] = result
+	tree.generic_arity[id] = arity
+	tree.result_type[id] = type_value(result)
+	ast_expression_advance(tree)
+	if (token_newline || (ast_expression_accept(tree, c"(") == 0)): return -1
+	count = 0
+	tail = -1
+	while (peek(c")") == 0):
+		if (count >= arity): return -1
+		int want = ast_expression_generic_parameter(tree, id, count)
+		if (ast_expression_data_value(want) == 0): return -1
+		int argument = ast_expression_assignment(tree, depth + 1)
+		if (argument < 0): return -1
+		if (ast_expression_data_value(tree.result_type[argument]) == 0): return -1
+		if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
+		if (type_is_string(want) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[argument]))):
+			if (sym_probe(c"str_from_cstr") < 0): return -1
+		if (tail < 0): tree.left[id] = argument
+		else: tree.next_arg[tail] = argument
+		tail = argument
+		count = count + 1
+		if (ast_expression_accept(tree, c",") == 0): break
+		if (peek(c")")): return -1
+	if ((count != arity) || (ast_expression_accept(tree, c")") == 0)): return -1
+	return id
+
+
+# All speculative records have been removed before this runs. Ordinary
+# instantiation commits its signature at the original closing bracket;
+# the reserved slot verifies that no hidden registration reordered it.
+void ast_expression_commit_generic(expression_ast* tree, int id):
+	int count = generic_def_param_count(tree.value[id])
+	int args = cast(int, malloc(count * __word_size__))
+	int argument = tree.right[id]
+	for i in range(count):
+		save_ptr(args + i * __word_size__, tree.value[argument])
+		argument = tree.next_arg[argument]
+	char* mangled = generic_mangle(generic_def_name(tree.value[id]), args, count)
+	int sym = sym_lookup(mangled)
+	if (sym >= 0):
+		assert1(sym == tree.symbol[id])
+		strcpy(last_identifier, mangled)
+		free(mangled)
+		free(cast(char*, args))
+		return
+	int inst = generic_inst_intern(tree.value[id], args, count, mangled)
+	int signature = generic_inst_signature(inst)
+	assert1(signature == tree.generic_signature[id])
+	tree.generic_instance[id] = inst
+
+
+int ast_expression_container_literal(expression_ast* tree, int depth):
+	int type = ast_expression_named_type(tree, 0, depth + 1)
+	if (type < 0): return -1
+	if (ast_expression_accept(tree, c"{") == 0): return -1
+	int map = type_is_map(type)
+	int list = type_is_list(type)
+	if ((map || list || type_is_set(type)) == 0): return -1
+	char* create = c"__w_set_new"
+	if (map): create = c"__w_map_new"
+	if (list): create = c"__w_list_new"
+	if (sym_probe(create) < 0): return -1
+	int id = expression_ast_add(tree, 'O', -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = type
+	tree.result_type[id] = type_value(type)
+	int tail = -1
+	while (peek(c"}") == 0):
+		int first_type = type_set_key_type(type)
+		if (map): first_type = type_map_key_type(type)
+		if (list): first_type = type_list_element_type(type)
+		int first = ast_expression_assignment(tree, depth + 1)
+		if (first < 0): return -1
+		if (ast_expression_data_value(tree.result_type[first]) == 0): return -1
+		if (ast_expression_argument_compatible(tree, first_type, first) == 0): return -1
+		int second = -1
+		int bytes = 0
+		char* helper = c"__w_set_add"
+		if (list):
+			helper = c"__w_list_push"
+			if (ast_expression_record_value(first_type) && ast_expression_record_value(tree.result_type[first])):
+				helper = c"__w_list_push_bytes"
+				bytes = 1
+		if (map):
+			if (ast_expression_accept(tree, c":") == 0): return -1
+			second = ast_expression_assignment(tree, depth + 1)
+			if (second < 0): return -1
+			if (ast_expression_data_value(tree.result_type[second]) == 0): return -1
+			int second_type = type_map_value_type(type)
+			if (ast_expression_argument_compatible(tree, second_type, second) == 0): return -1
+			helper = c"__w_map_set"
+			if (ast_expression_record_value(second_type) && ast_expression_record_value(tree.result_type[second])):
+				helper = c"__w_map_set_bytes"
+				bytes = 1
+		if (sym_probe(helper) < 0): return -1
+		int entry = expression_ast_add(tree, 'e', first, second)
+		if (entry < 0): return -1
+		tree.value[entry] = bytes
+		if (tail < 0): tree.left[id] = entry
+		else: tree.next_arg[tail] = entry
+		tail = entry
+		if (ast_expression_accept(tree, c",") == 0): break
+	if (ast_expression_accept(tree, c"}") == 0): return -1
+	return id
+
+
+# Current token is '(' after a resolved ordinary type name. Field nodes
+# retain source order even when named arguments select different fields.
+int ast_expression_constructor(expression_ast* tree, int base, int heap, int depth):
+	if (heap && (sym_probe(c"malloc") < 0)): return -1
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int id = expression_ast_add(tree, 'D', -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = base
+	tree.high[id] = heap
+	int named = is_ident_start_byte(token[0]) && (nextc == ':')
+	tree.symbol[id] = named
+	int count = 0
+	int tail = -1
+	while (peek(c")") == 0):
+		int field = count
+		int has_name = is_ident_start_byte(token[0]) && (nextc == ':')
+		if (has_name != named): return -1
+		if (named):
+			field = type_get_arg(base, token)
+			if (field < 0): return -1
+			ast_expression_advance(tree)
+			if (ast_expression_accept(tree, c":") == 0): return -1
+		if (field >= type_num_args(base)): return -1
+		int want = type_get_field_type_at(base, field)
+		if (type_has_array_field(want)): return -1
+		int argument = ast_expression_assignment(tree, depth + 1)
+		if (argument < 0): return -1
+		if (ast_expression_data_value(tree.result_type[argument]) == 0): return -1
+		if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
+		int entry = expression_ast_add(tree, 'u', argument, -1)
+		if (entry < 0): return -1
+		tree.value[entry] = field
+		if (tail < 0): tree.left[id] = entry
+		else: tree.next_arg[tail] = entry
+		tail = entry
+		count = count + 1
+		if (ast_expression_accept(tree, c",") == 0): break
+		if (peek(c")")): return -1
+	if (peek(c")") == 0): return -1
+	if ((count > 0) && (named == 0) && (count != type_num_args(base))): return -1
+	int result = base
+	if (heap): result = ast_expression_pointer_type(tree, base, token_start_offset)
+	if (result < 0): return -1
+	tree.result_type[id] = type_value(result)
+	ast_expression_advance(tree)
+	return id
+
+
 int ast_expression_name(expression_ast* tree, int depth):
 	# Keywords, unshadowable builtins, generics and constructors take
 	# precedence over identifier() in the streaming grammar.
 	if (peek(c"cast") || peek(c"sizeof") || peek(c"new")): return -1
-	if ((nextc == '[') && (peek(c"map") || peek(c"set") || peek(c"list"))): return -1
+	if ((nextc == '[') && (peek(c"map") || peek(c"set") || peek(c"list"))): return ast_expression_container_literal(tree, depth)
 	if ((nextc == '(') && (peek(c"print") || peek(c"println"))): return ast_expression_print(tree, depth)
 	if (peek(c"to_json") || peek(c"from_json")): return -1
 	if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
-	if (generic_call_ready()): return -1
-	if ((nextc == '(') && struct_value_ctor_ready()): return -1
+	if (generic_call_ready()): return ast_expression_generic_call(tree, depth)
+	if ((nextc == '(') && struct_value_ctor_ready()):
+		int base = type_lookup(token)
+		if (ast_expression_record_type(base) == 0): return -1
+		ast_expression_advance(tree)
+		return ast_expression_constructor(tree, base, 0, depth)
 	if (peek(c"true") || peek(c"false") || peek(c"__word_size__") || peek(c"__target_isa__")):
 		int id = expression_ast_add(tree, 'c', -1, -1)
 		if (id < 0): return -1
@@ -593,6 +972,60 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	return type
 
 
+int ast_expression_map_default(expression_ast* tree, int id, int depth):
+	int container = tree.value[id]
+	int value_type = type_map_value_type(container)
+	if (type_num_args(value_type) > 0): return -1
+	int value = type_unqualified(value_type)
+	int composite = type_is_map(value) || type_is_set(value) || type_is_list(value)
+	if (sym_probe(c"__w_map_set_default") < 0): return -1
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	if (peek(c")")):
+		if (composite == 0): return -1
+		tree.high[id] = 3
+		tree.right[id] = hash_default_container_descriptor(value_type)
+	else:
+		int arg = ast_expression_assignment(tree, depth + 1)
+		if (arg < 0): return -1
+		int got = ast_expression_promoted_type(tree.result_type[arg])
+		if (hash_default_is_factory(got)):
+			int result
+			if (got == 4):
+				if ((tree.op[arg] != 'v') || (tree.symbol[arg] < 0)): return -1
+				result = load_int(table + tree.symbol[arg] + 6)
+				if ((result < 0) || (result == 4)): result = 1
+			else: result = type_function_return(type_function_pointer_signature(got))
+			if (types_compatible_with_expression(value_type, type_unqualified(result)) == 0): return -1
+			tree.high[id] = 2
+		else:
+			if (composite || (type_get_pointer_level(value) > 0)): return -1
+			if (ast_expression_argument_compatible(tree, value_type, arg) == 0): return -1
+			if (type_is_string(value_type) && type_is_char_pointer(got)):
+				if (sym_probe(c"str_from_cstr") < 0): return -1
+			tree.high[id] = 1
+		tree.left[id] = arg
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	return id
+
+
+int ast_expression_new_array(expression_ast* tree, int base, int depth):
+	if (type_get_size(base) <= 0): return -1
+	if (sym_probe(c"malloc") < 0): return -1
+	if (ast_expression_accept(tree, c"[") == 0): return -1
+	int length = ast_expression_assignment(tree, depth + 1)
+	if (length < 0): return -1
+	if (ast_expression_scalar_value(tree.result_type[length]) == 0): return -1
+	if (peek(c"]") == 0): return -1
+	int type = ast_expression_slice_value_type(tree, base, token_start_offset)
+	if (type < 0): return -1
+	ast_expression_advance(tree)
+	int id = expression_ast_add(tree, 'Y', length, -1)
+	if (id < 0): return -1
+	tree.value[id] = base
+	tree.result_type[id] = type
+	return id
+
+
 int ast_expression_unary(expression_ast* tree, int depth):
 	if ((depth > 96) || (expr_nesting_depth + depth >= 1000)): return -1
 	if (token_start_offset >= tree.end_offset): return -1
@@ -606,7 +1039,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 	if (ast_expression_accept(tree, c"new")):
 		if ((nextc == '[') && (peek(c"map") || peek(c"set") || peek(c"list"))):
 			int container = ast_expression_named_type(tree, 0, depth + 1)
-			if ((container < 0) || peek(c"(")): return -1
+			if (container < 0): return -1
 			if ((type_is_list(container) || type_is_map(container) || type_is_set(container)) == 0): return -1
 			char* helper = c"__w_list_new"
 			if (type_is_map(container)): helper = c"__w_map_new"
@@ -615,7 +1048,11 @@ int ast_expression_unary(expression_ast* tree, int depth):
 			int id = expression_ast_add(tree, 'V', -1, -1)
 			if (id < 0): return -1
 			tree.value[id] = container
+			tree.high[id] = 0
 			tree.result_type[id] = type_value(container)
+			if (peek(c"(")):
+				if (type_is_map(container) == 0): return -1
+				return ast_expression_map_default(tree, id, depth)
 			return id
 		# Bare ordinary types and empty constructor parentheses.
 		if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
@@ -623,9 +1060,8 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		if (base < 0): return -1
 		int offset = token_start_offset
 		ast_expression_advance(tree)
-		if (peek(c"[")): return -1
-		if (ast_expression_accept(tree, c"(")):
-			if (ast_expression_accept(tree, c")") == 0): return -1
+		if (peek(c"[")): return ast_expression_new_array(tree, base, depth)
+		if (peek(c"(")): return ast_expression_constructor(tree, base, 1, depth)
 		if (sym_probe(c"malloc") < 0): return -1
 		int pointer = ast_expression_pointer_type(tree, base, offset)
 		if (pointer < 0): return -1
@@ -642,11 +1078,16 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		int child = ast_expression_assignment(tree, depth + 1)
 		tree.cast_depth = tree.cast_depth - 1
 		if ((child < 0) || (peek(c")") == 0)): return -1
-		if (ast_expression_scalar_value(tree.result_type[child]) == 0): return -1
-		int got = ast_expression_promoted_type(tree.result_type[child])
+		int child_type = tree.result_type[child]
+		if ((ast_expression_scalar_value(child_type) || type_is_array(child_type) || type_is_slice(child_type)) == 0): return -1
+		if (ast_expression_prepare_value(tree, child_type, token_start_offset) == 0): return -1
+		int got = ast_expression_promoted_type(child_type)
+		int buffer_value = type_get_kind(type_unqualified(got)) == type_kind_slice_value
+		if (buffer_value && (type_get_pointer_level(type_unqualified(want)) > 0)):
+			if (type_decays_to_pointer(want, got) == 0): return -1
 		# coerce_explicit diagnoses truncating an address. Leave that at
 		# the streaming parser's source location and diagnostic order.
-		if (((got == 4) || (type_get_pointer_level(got) > 0)) && (type_get_pointer_level(want) == 0)):
+		if (((got == 4) || (type_get_pointer_level(got) > 0) || buffer_value) && (type_get_pointer_level(want) == 0)):
 			if ((type_float_kind(want) == 0) && (type_get_size(want) < word_size)): return -1
 		if (token_start_offset >= tree.end_offset): return -1
 		ast_expression_advance(tree)
@@ -668,6 +1109,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		if (child < 0): return -1
 		int child_type = tree.result_type[child]
 		if (op == 'r'):
+			if (tree.op[child] == 'm'): return -1
 			if (type_is_value(child_type) || (child_type == 3)): return -1
 			return expression_ast_add(tree, op, child, -1)
 		if (ast_expression_scalar_value(child_type) == 0): return -1
@@ -689,12 +1131,117 @@ int ast_expression_unary(expression_ast* tree, int depth):
 	return ast_expression_postfix(tree, depth)
 
 
+# Validate and capture a format spec without invoking the diagnostic parser
+# during speculation. Invalid combinations leave their exact error to streaming.
+int ast_expression_template_spec(expression_ast* tree, int chunk, int vc):
+	# template_take_spec diagnoses missing braces; prove it safe before calling.
+	int window_start = getchar_kernel_pos[file] - getchar_limit[file]
+	char* bytes = cast(char*, getchar_buf_addr[file])
+	int at = byte_offset - 1 - window_start
+	int closed = 0
+	while (at < getchar_limit[file]):
+		int ch = bytes[at]
+		if (ch == '}'):
+			closed = 1
+			break
+		if ((ch == 10) || (ch == '"')): return 0
+		at = at + 1
+	if (closed == 0): return 0
+	template_take_spec()
+	expression_ast_format* spec = &tree.format[chunk]
+	spec.present = token[0] != 0
+	spec.fill = ' '
+	spec.align = 0
+	spec.width = 0
+	spec.precision = -1
+	spec.kind = 0
+	int i = 0
+	if ((token[0] != 0) && template_spec_is_align(token[1])):
+		if (token[0] < 32): return 0
+		spec.fill = token[0]
+		spec.align = token[1]
+		i = 2
+	else if (template_spec_is_align(token[0])):
+		spec.align = token[0]
+		i = 1
+	if (token[i] == '0'):
+		if (i < 2): spec.fill = '0'
+		if (spec.align == 0): spec.align = '='
+		i = i + 1
+	while (('0' <= token[i]) && (token[i] <= '9')):
+		spec.width = spec.width * 10 + token[i] - '0'
+		if (spec.width > 4096): return 0
+		i = i + 1
+	if (token[i] == '.'):
+		i = i + 1
+		if ((token[i] < '0') || (token[i] > '9')): return 0
+		spec.precision = 0
+		while (('0' <= token[i]) && (token[i] <= '9')):
+			spec.precision = spec.precision * 10 + token[i] - '0'
+			if (spec.precision > 60): return 0
+			i = i + 1
+	int c = token[i]
+	if ((c == 'd') || (c == 'x') || (c == 'X') || (c == 'o') || (c == 'b') || (c == 'c') || (c == 's') || (c == 'f')):
+		spec.kind = c
+		i = i + 1
+	if (token[i] != 0): return 0
+	int numeric = value_class_is_int_like(vc) || (vc == VC_F32) || (vc == VC_F64)
+	if ((spec.align == '=') && (numeric == 0)): return 0
+	if ((spec.precision >= 0) && (vc != VC_F32) && (vc != VC_F64)): return 0
+	c = spec.kind
+	if (value_class_is_int_like(vc)):
+		return (c == 0) || (c == 'd') || (c == 'x') || (c == 'X') || (c == 'o') || (c == 'b') || (c == 'c')
+	if ((vc == VC_CSTR) || (vc == VC_STRING)): return (c == 0) || (c == 's')
+	return (c == 0) || (c == 'f')
+
+
+# A template owns a sibling chain of raw chunks and value expressions.
+# Resumed chunks retain the closing brace's source offset; replay uses
+# that event to resume the template tokenizer at exactly the same byte.
+int ast_expression_template(expression_ast* tree, int depth):
+	int root = expression_ast_add(tree, 'E', -1, -1)
+	if (root < 0): return -1
+	tree.result_type[root] = string_literal_type
+	int previous = -1
+	int start = 2
+	int resume = 0
+	while (1):
+		if (token_i == 0): return -1
+		int final = token[token_i - 1] == 34
+		if ((final == 0) && (token[token_i - 1] != '{')): return -1
+		int chunk = expression_ast_add(tree, 't', -1, -1)
+		if (chunk < 0): return -1
+		tree.value[chunk] = start
+		tree.high[chunk] = resume
+		if (previous < 0): tree.left[root] = chunk
+		else: tree.next_arg[previous] = chunk
+		ast_expression_advance(tree)
+		if (final): return root
+		int value = ast_expression_assignment(tree, depth + 1)
+		if (value < 0): return -1
+		int vc = value_class(ast_expression_promoted_type(tree.result_type[value]))
+		if ((vc != VC_INT) && (vc != VC_CSTR) && (vc != VC_STRING) && (vc != VC_CHAR) && (vc != VC_F32) && (vc != VC_F64)): return -1
+		tree.format[value].present = 0
+		resume = 1
+		if (peek(c":")):
+			if (ast_expression_template_spec(tree, value, vc) == 0): return -1
+			resume = 2
+		else if (peek(c"}") == 0): return -1
+		tree.next_arg[chunk] = value
+		previous = value
+		get_token_template_chunk()
+		start = 0
+	return -1
+
+
 int ast_expression_atom(expression_ast* tree, int depth):
+	if ((token[0] == 'f') && (token[1] == 34)): return ast_expression_template(tree, depth)
 	if (ast_expression_accept(tree, c"(")):
 		int child = ast_expression_assignment(tree, depth + 1)
 		if ((child < 0) || (peek(c")") == 0)): return -1
 		if (token_start_offset >= tree.end_offset): return -1
 		ast_expression_advance(tree)
+		if (tree.op[child] == 'm'): tree.op[child] = 'q'
 		return child
 	if (token[0] == 39):
 		int id = expression_ast_add(tree, 'h', -1, -1)
@@ -740,7 +1287,7 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 	if (peek(c"free")): method = 6
 	if (method == 0): return -1
 	int element = type_list_element_type(type_unqualified(tree.result_type[receiver]))
-	if ((method == 2) && (ast_expression_scalar_type(element) == 0)): return -1
+	if ((method == 2) && (ast_expression_data_value(element) == 0)): return -1
 	int count = 0
 	if ((method == 1) || (method == 4)): count = 1
 	if (method == 3): count = 2
@@ -759,7 +1306,7 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 		int type = tree.result_type[arg]
 		int typed = (method == 1) || ((method == 3) && (i == 1))
 		if (typed):
-			if ((ast_expression_scalar_value(type) || ast_expression_record_type(type)) == 0): return -1
+			if (ast_expression_data_value(type) == 0): return -1
 			if (ast_expression_argument_compatible(tree, element, arg) == 0): return -1
 			int got = ast_expression_promoted_type(type)
 			if (type_is_string(element) && type_is_char_pointer(got)):
@@ -770,8 +1317,172 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 		else: tree.next_arg[previous] = arg
 		previous = arg
 	if (ast_expression_accept(tree, c")") == 0): return -1
-	if (sym_probe(ast_expression_list_helper(method)) < 0): return -1
+	if ((method == 2) && ast_expression_record_value(element)): method = method + 128
+	if (sym_probe(ast_expression_method_helper(method)) < 0): return -1
 	tree.value[id] = method
+	return id
+
+
+# Accumulation owns its key and optional delta separately. Speculation
+# only validates types; the emitter retains the streaming helper order.
+int ast_expression_map_add(expression_ast* tree, int receiver, int depth):
+	int container = type_unqualified(tree.result_type[receiver])
+	int value_type = type_map_value_type(container)
+	int key_type = type_map_key_type(container)
+	if (ast_expression_scalar_type(value_type) == 0): return -1
+	if (type_canonical(value_type) == float16_type): return -1
+	if (type_is_string(value_type) || (type_get_pointer_level(value_type) > 0)): return -1
+	if ((type_float_kind(value_type) == 0) && (type_var_boxable(value_type) == 0)): return -1
+	if (type_float_kind(value_type)):
+		if ((sym_probe(c"__w_map_get_or") < 0) || (sym_probe(c"__w_map_set") < 0)): return -1
+	else if (sym_probe(c"__w_map_add") < 0): return -1
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int key = ast_expression_assignment(tree, depth + 1)
+	if (key < 0): return -1
+	if (ast_expression_data_value(tree.result_type[key]) == 0): return -1
+	if (ast_expression_prepare_value(tree, tree.result_type[key], token_start_offset) == 0): return -1
+	if (ast_expression_argument_compatible(tree, key_type, key) == 0): return -1
+	if (type_is_string(key_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[key]))):
+		if (sym_probe(c"str_from_cstr") < 0): return -1
+	int delta = -1
+	if (ast_expression_accept(tree, c",")):
+		delta = ast_expression_assignment(tree, depth + 1)
+		if (delta < 0): return -1
+		if (ast_expression_scalar_value(tree.result_type[delta]) == 0): return -1
+		if (ast_expression_argument_compatible(tree, value_type, delta) == 0): return -1
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	int id = expression_ast_add(tree, 'Q', receiver, key)
+	if (id < 0): return -1
+	tree.high[id] = delta
+	tree.value[id] = value_type
+	tree.symbol[id] = key_type
+	tree.result_type[id] = type_value(value_type)
+	return id
+
+
+# Snapshot helpers receive the element slot width and return an existing
+# list type. First-use composite registration remains a streaming event.
+int ast_expression_hash_snapshot(expression_ast* tree, int receiver, int method):
+	int container = type_unqualified(tree.result_type[receiver])
+	int element = hash_container_key_type(container)
+	if (method == 17): element = type_map_value_type(container)
+	element = type_canonical(element)
+	int result = type_lookup_list(element)
+	if (result < 0): return -1
+	if (sym_probe(ast_expression_method_helper(method)) < 0): return -1
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	int id = expression_ast_add(tree, 'M', receiver, -1)
+	if (id < 0): return -1
+	tree.value[id] = method
+	tree.symbol[id] = list_element_slot_size(element)
+	tree.result_type[id] = type_value(result)
+	return id
+
+
+int ast_expression_hash_call(expression_ast* tree, int receiver, int depth):
+	int container = type_unqualified(tree.result_type[receiver])
+	if (peek(c"add") && type_is_map(container)): return ast_expression_map_add(tree, receiver, depth)
+	if (peek(c"keys")): return ast_expression_hash_snapshot(tree, receiver, 16)
+	if (peek(c"values") && type_is_map(container)): return ast_expression_hash_snapshot(tree, receiver, 17)
+	int method = 0
+	if (peek(c"remove")): method = 11
+	if (peek(c"add") && type_is_set(container)): method = 12
+	if (peek(c"free")): method = 13
+	if (peek(c"get") && type_is_map(container)): method = 14
+	if (method == 0): return -1
+	int key_type = hash_container_key_type(container)
+	int value_type = 0
+	if (method == 14):
+		value_type = type_map_value_type(container)
+		if (ast_expression_data_value(value_type) == 0): return -1
+	int id = expression_ast_add(tree, 'M', receiver, -1)
+	if (id < 0): return -1
+	tree.high[id] = key_type
+	tree.symbol[id] = value_type
+	tree.result_type[id] = type_value(0)
+	if (method == 11): tree.result_type[id] = type_value(bool_type)
+	if (method == 14):
+		tree.result_type[id] = type_value(value_type)
+		if (ast_expression_record_value(value_type)): tree.result_type[id] = type_canonical(value_type)
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	if (method != 13):
+		int arg = ast_expression_assignment(tree, depth + 1)
+		if (arg < 0): return -1
+		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
+		if (ast_expression_argument_compatible(tree, key_type, arg) == 0): return -1
+		if (type_is_string(key_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[arg]))):
+			if (sym_probe(c"str_from_cstr") < 0): return -1
+		tree.right[id] = arg
+		if ((method == 14) && ast_expression_accept(tree, c",")):
+			int fallback = ast_expression_assignment(tree, depth + 1)
+			if (fallback < 0): return -1
+			if (ast_expression_data_value(tree.result_type[fallback]) == 0): return -1
+			if (ast_expression_argument_compatible(tree, value_type, fallback) == 0): return -1
+			if (type_is_string(value_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[fallback]))):
+				if (sym_probe(c"str_from_cstr") < 0): return -1
+			tree.next_arg[arg] = fallback
+			method = 15
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	if ((method >= 14) && ast_expression_record_value(value_type)): method = method + 128
+	if (sym_probe(ast_expression_method_helper(method)) < 0): return -1
+	tree.value[id] = method
+	return id
+
+
+# Keep an indexed map as its own node until assignment chooses a store.
+# Parentheses finalize it to a read, just as expression() does in a group.
+int ast_expression_map_index(expression_ast* tree, int receiver, int depth):
+	int type = type_unqualified(tree.result_type[receiver])
+	int element = type_map_value_type(type)
+	int key_type = type_map_key_type(type)
+	if (ast_expression_data_value(element) == 0): return -1
+	int key = ast_expression_assignment(tree, depth + 1)
+	if ((key < 0) || (peek(c"]") == 0)): return -1
+	if (ast_expression_data_value(tree.result_type[key]) == 0): return -1
+	if (ast_expression_argument_compatible(tree, key_type, key) == 0): return -1
+	if (type_is_string(key_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[key]))):
+		if (sym_probe(c"str_from_cstr") < 0): return -1
+	ast_expression_advance(tree)
+	int id = expression_ast_add(tree, 'm', receiver, key)
+	if (id < 0): return -1
+	tree.value[id] = type
+	tree.result_type[id] = type_value(element)
+	if (ast_expression_record_value(element)): tree.result_type[id] = type_canonical(element)
+	return id
+
+
+# The receiver and optional start have been parsed; ':' is consumed.
+int ast_expression_slice(expression_ast* tree, int receiver, int start, int depth):
+	if ((start >= 0) && (ast_expression_scalar_value(tree.result_type[start]) == 0)): return -1
+	int end = -1
+	if (peek(c"]") == 0):
+		end = ast_expression_assignment(tree, depth + 1)
+		if (end < 0): return -1
+		if (ast_expression_scalar_value(tree.result_type[end]) == 0): return -1
+	if (peek(c"]") == 0): return -1
+	int type = tree.result_type[receiver]
+	int result = string_value_type
+	int op = 'Z'
+	if (type_is_list(type)):
+		if (sym_probe(c"__w_list_slice") < 0): return -1
+		op = 'J'
+		result = type_value(type_lookup_list(type_list_element_type(type)))
+	else if (sym_probe(c"malloc") < 0): return -1
+	else if (type_is_string(type) == 0):
+		if (ast_expression_prepare_value(tree, type_real(type), token_start_offset) == 0): return -1
+		result = type_lookup_slice_value(buffer_element_type(type))
+		if (result < 0): return -1
+	ast_expression_advance(tree)
+	int id = expression_ast_add(tree, op, receiver, start)
+	if (id < 0): return -1
+	tree.high[id] = end
+	tree.result_type[id] = result
+	if (op == 'Z'): tree.readonly = 1
 	return id
 
 
@@ -783,14 +1494,16 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			left = ast_expression_indirect_call(tree, left, depth)
 		else if (ast_expression_accept(tree, c"[")):
 			tree.readonly = 0
-			if (type_is_map(type) || type_is_set(type)): return -1
+			if (type_is_map(type)):
+				left = ast_expression_map_index(tree, left, depth)
+				continue
+			if (type_is_set(type)): return -1
 			int op = 'i'
 			int element
 			if (type_is_buffer(type)):
 				op = 'I'
 				element = buffer_element_type(type)
-				if ((type_is_value(type) == 0) && (type_is_array(type) || (type_get_kind(type) == type_kind_slice))):
-					if (type_lookup_slice_value(element) < 0): tree.pending_buffer_types = 1
+				if (ast_expression_prepare_value(tree, type, token_start_offset) == 0): return -1
 			else if (type_is_list(type)):
 				if (sym_probe(c"__w_list_addr") < 0): return -1
 				op = 'j'
@@ -805,7 +1518,13 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 				element = 2
 				if (type_get_pointer_level(type) > 0): element = type_lookup_previous_pointer(type)
 			if ((element < 0) || (ast_expression_storage_type(element) == 0)): return -1
-			int index = ast_expression_assignment(tree, depth + 1)
+			int index = -1
+			if (((op != 'I') && (op != 'j')) || (peek(c":") == 0)):
+				index = ast_expression_assignment(tree, depth + 1)
+				if (index < 0): return -1
+			if (((op == 'I') || (op == 'j')) && ast_expression_accept(tree, c":")):
+				left = ast_expression_slice(tree, left, index, depth)
+				continue
 			if ((index < 0) || (peek(c"]") == 0)): return -1
 			if (ast_expression_scalar_value(tree.result_type[index]) == 0): return -1
 			ast_expression_advance(tree)
@@ -826,8 +1545,7 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 				metadata = 1
 				field_offset = 0
 			if (metadata):
-				if ((type_is_value(type) == 0) && (type_is_array(type) || (type_get_kind(type) == type_kind_slice))):
-					if (type_lookup_slice_value(buffer_element_type(type)) < 0): tree.pending_buffer_types = 1
+				if (ast_expression_prepare_value(tree, type, token_start_offset) == 0): return -1
 				if (field_offset == 0):
 					field_type = ast_expression_pointer_type(tree, buffer_element_type(type), token_start_offset)
 					if (field_type < 0): return -1
@@ -841,8 +1559,18 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			if (type_is_list(type)):
 				left = ast_expression_list_call(tree, left, depth)
 				continue
+			if (type_is_map(type) || type_is_set(type)):
+				left = ast_expression_hash_call(tree, left, depth)
+				continue
 			int record = type
 			int load_pointer = 0
+			int return_words = 0
+			if (type_is_value(type) && ast_expression_record_value(type)):
+				# Only call results own the return buffer consumed by a
+				# scalar field access. Other value-record forms still decline.
+				if ((tree.op[left] != 'C') && (tree.op[left] != 'F') && (tree.op[left] != 'G') && (tree.op[left] != 'D')): return -1
+				record = type_real(type)
+				return_words = (type_get_size(record) + word_size - 1) >> word_size_log2
 			if (type_get_pointer_level(type) > 0):
 				record = type_lookup_previous_pointer(type)
 				load_pointer = type_is_value(type) == 0
@@ -857,6 +1585,11 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			tree.result_type[left] = field
 			tree.value[left] = offset
 			tree.high[left] = load_pointer
+			if (return_words && (type_num_args(field) == 0)):
+				if (ast_expression_scalar_type(field) == 0): return -1
+				tree.high[left] = 0 - return_words
+				tree.symbol[left] = field
+				tree.result_type[left] = type_value(ast_expression_promoted_type(field))
 		else: return left
 	return -1
 
@@ -939,6 +1672,7 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 			if (peek(c"<=")): op = 0x9e
 			if (peek(c">")): op = 0x9f
 			if (peek(c">=")): op = 0x9d
+			if (peek(c"in")): op = 'H'
 		if (op == 0): return left
 		ast_expression_advance(tree)
 		int right
@@ -946,8 +1680,28 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 		else: right = ast_expression_shift(tree, depth)
 		if (right < 0): return -1
 		if ((ast_expression_scalar_value(tree.result_type[left]) && ast_expression_scalar_value(tree.result_type[right])) == 0): return -1
+		int kind = 0
+		if (op == 'H'):
+			int container = type_unqualified(tree.result_type[right])
+			int want = -1
+			if (type_is_map(container)):
+				want = type_map_key_type(container)
+				kind = 1
+			else if (type_is_set(container)):
+				want = type_set_key_type(container)
+				kind = 2
+			else if (type_is_list(container)):
+				want = type_list_element_type(container)
+				if (ast_expression_scalar_type(want) == 0): return -1
+				if (type_is_string(want)): return -1
+				kind = 4
+				if (hash_key_kind_for_type(want) == 2): kind = 3
+			else: return -1
+			if (ast_expression_argument_compatible(tree, want, left) == 0): return -1
+			if (sym_probe(ast_expression_contains_helper(kind)) < 0): return -1
 		left = expression_ast_add(tree, op, left, right)
 		if (left < 0): return -1
+		tree.value[left] = kind
 		tree.result_type[left] = type_value(bool_type)
 	return -1
 
@@ -958,7 +1712,7 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 # just as operand_is_pure does for a short-circuited operand.
 int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
-		if ((tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M')): return 1
+		if ((tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H') || (tree.op[i] == 'E') || (tree.op[i] == 'Q') || (tree.op[i] == 'J')): return 1
 	return 0
 
 
@@ -1070,14 +1824,21 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	if (lint_mode): return -1
 	if (tree.readonly): return -1
 	int lt = tree.result_type[left]
+	int map_store = tree.op[left] == 'm'
+	if (map_store): lt = type_map_value_type(tree.value[left])
 	if (type_is_value(lt) || (lt == 3) || type_is_const(lt)): return -1
-	if (ast_expression_scalar_type(lt) == 0): return -1
+	if (ast_expression_data_value(lt) == 0): return -1
+	if (type_is_array(lt)): return -1
+	if (op && ast_expression_record_type(lt)): return -1
 	if (op && type_is_buffer(type_canonical(lt))): return -1
 	ast_expression_advance(tree)
 	int right = ast_expression_assignment(tree, depth + 1)
 	if (right < 0): return -1
-	if (ast_expression_scalar_value(tree.result_type[right]) == 0): return -1
+	if (ast_expression_data_value(tree.result_type[right]) == 0): return -1
+	if (op && (type_is_array(tree.result_type[right]) || type_is_slice(tree.result_type[right]))): return -1
+	if (ast_expression_prepare_value(tree, tree.result_type[right], token_start_offset) == 0): return -1
 	int rt = ast_expression_promoted_type(tree.result_type[right])
+	if (ast_expression_record_type(lt) != ast_expression_record_value(rt)): return -1
 	int result = rt
 	if (op):
 		int kind = binary_float_kind(ast_expression_promoted_type(lt), rt)
@@ -1088,10 +1849,70 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	if (op):
 		if (types_compatible_with_expression(lt, result) == 0): return -1
 	else if (ast_expression_argument_compatible(tree, lt, right) == 0): return -1
-	int id = expression_ast_add(tree, '=', left, right)
+	if (map_store && type_is_string(lt) && type_is_char_pointer(rt)):
+		if (sym_probe(c"str_from_cstr") < 0): return -1
+	int node_op = '='
+	if (map_store): node_op = 'w'
+	int id = expression_ast_add(tree, node_op, left, right)
 	if (id < 0): return -1
 	tree.value[id] = op
 	tree.result_type[id] = type_value(lt)
+	return id
+
+
+int ast_expression_increment(expression_ast* tree, int child, int op):
+	if (child < 0): return -1
+	int type = tree.result_type[child]
+	if (tree.readonly || type_is_value(type) || (type == 3) || (type == 4) || type_is_const(type)): return -1
+	if (tree.op[child] == 'm'): return -1
+	if (ast_expression_scalar_type(type) == 0): return -1
+	if (type_is_buffer(type_canonical(type))): return -1
+	int id = expression_ast_add(tree, 'U', child, -1)
+	if (id < 0): return -1
+	tree.value[id] = op
+	tree.result_type[id] = type_value(type)
+	return id
+
+
+# Parallel assignment is admitted only by the whole statement entry.
+# Pair nodes separate sibling links from any nested call's argument list.
+int ast_expression_parallel(expression_ast* tree, int first):
+	if (token_newline): return -1
+	int head = -1
+	int tail = -1
+	int lhs = first
+	while (1):
+		int type = tree.result_type[lhs]
+		if (tree.readonly || type_is_value(type) || (type == 3) || (type == 4) || type_is_const(type)): return -1
+		if (tree.op[lhs] == 'm'): return -1
+		if (ast_expression_scalar_type(type) == 0): return -1
+		int pair = expression_ast_add(tree, 'T', lhs, -1)
+		if (pair < 0): return -1
+		if (head < 0): head = pair
+		else: tree.next_arg[tail] = pair
+		tail = pair
+		if (ast_expression_accept(tree, c",") == 0): break
+		tree.readonly = 0
+		lhs = ast_expression_conditional(tree, 2)
+		if (lhs < 0): return -1
+	if (ast_expression_accept(tree, c"=") == 0): return -1
+	int pair = head
+	while (pair >= 0):
+		int rhs = ast_expression_assignment(tree, 2)
+		if (rhs < 0): return -1
+		if (ast_expression_scalar_value(tree.result_type[rhs]) == 0): return -1
+		int want = tree.result_type[tree.left[pair]]
+		if (ast_expression_argument_compatible(tree, want, rhs) == 0): return -1
+		if (type_is_string(want) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[rhs]))):
+			if (sym_probe(c"str_from_cstr") < 0): return -1
+		tree.right[pair] = rhs
+		pair = tree.next_arg[pair]
+		if (pair >= 0):
+			if (ast_expression_accept(tree, c",") == 0): return -1
+		else if (peek(c",")): return -1
+	int id = expression_ast_add(tree, 'A', head, -1)
+	if (id < 0): return -1
+	tree.result_type[id] = type_value(tree.result_type[lhs])
 	return id
 
 
@@ -1100,9 +1921,9 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 # code. Restore *all* changed state before either falling back or replaying
 # the accepted tokens once for the existing literal diagnostics. The tokenizer
 # snapshot is freed before any diagnostic can longjmp; the arena unwinds
-# with the caller's stack on recovery. Return the expression's real type
-# (possibly an lvalue or a negative value type), or -1 for fallback.
-int ast_expression_try_at(int group_offset, int whole):
+# with the caller's stack on recovery. Return the prepared root node, or
+# -1 for fallback. Preparation commits no machine code.
+int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole):
 	if (ast_expressions_mode == 0): return -1
 	if (target_isa == 3): return -1
 	# Keep the streaming parser's pending lvalue/call/statement machinery
@@ -1112,11 +1933,6 @@ int ast_expression_try_at(int group_offset, int whole):
 	if (increment_statement_context || generic_pending_call_signature || generic_pending_call_name): return -1
 	int end = ast_expression_boundary(group_offset, whole)
 	if (end < 0): return -1
-	if (whole > 1):
-		int window_start = getchar_kernel_pos[file] - getchar_limit[file]
-		char* bytes = cast(char*, getchar_buf_addr[file])
-		if (bytes[end - window_start] == ','): return -1
-	expression_ast tree
 	tree.count = 0
 	tree.text_used = 0
 	tree.types_base = type_count()
@@ -1128,19 +1944,63 @@ int ast_expression_try_at(int group_offset, int whole):
 	tree.cast_depth = cast_context
 	char* saved = generic_reparse_save()
 	int serial = token_serial
-	int root = ast_expression_assignment(&tree, 1)
+	int root = -1
+	int prefix = 0
+	if (whole == 2): prefix = increment_op()
+	if (whole == 3):
+		root = expression_ast_add(tree, 'R', -1, -1)
+		ast_expression_advance(tree)
+		if (token_start_offset < end):
+			int child = ast_expression_assignment(tree, 1)
+			if (child < 0): root = -1
+			else:
+				tree.left[root] = child
+				tree.result_type[root] = tree.result_type[child]
+		else:
+			int window_start = getchar_kernel_pos[file] - getchar_limit[file]
+			char* bytes = cast(char*, getchar_buf_addr[file])
+			int ch = -1
+			if (end - window_start < getchar_limit[file]): ch = bytes[end - window_start]
+			if ((ch != -1) && (ch != 10) && (ch != '#') && (ch != ';')): root = -1
+			else: tree.result_type[root] = type_value(0)
+	else if (prefix):
+		ast_expression_advance(tree)
+		int child = ast_expression_unary(tree, 1)
+		root = ast_expression_increment(tree, child, prefix)
+	else:
+		root = ast_expression_assignment(tree, 1)
+		if ((root >= 0) && (whole == 2) && (token_newline == 0)):
+			int postfix = increment_op()
+			if (postfix):
+				ast_expression_advance(tree)
+				root = ast_expression_increment(tree, root, postfix)
+	if ((root >= 0) && (whole == 2) && peek(c",")): root = ast_expression_parallel(tree, root)
 	int accepted = (root >= 0) && (token_start_offset == end)
 	if (whole == 0): accepted = accepted && peek(c")")
-	if (accepted): accepted = ast_expression_scalar_value(tree.result_type[root]) || (tree.result_type[root] == type_value(0))
-	ast_expression_restore_types(&tree)
+	if (accepted): accepted = ast_expression_data_value(tree.result_type[root]) || (tree.result_type[root] == type_value(0))
+	ast_expression_restore_types(tree)
 	getchar_seek(file, load_ptr(saved + 7 * __word_size__))
 	generic_reparse_restore(saved)
 	token_serial = serial
 	if (accepted == 0): return -1
 	while (token_start_offset < end):
 		for i in range(tree.types_count):
-			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(&tree, i)
+			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(tree, i)
 		for id in range(tree.count):
+			if ((tree.op[id] == 'G') && (tree.generic_offset[id] == token_start_offset)): ast_expression_commit_generic(tree, id)
+			if ((tree.op[id] == 't') && (tree.offset[id] == token_start_offset)):
+				if (tree.high[id] == 2): template_take_spec()
+				if (tree.high[id]): get_token_template_chunk()
+				int length = template_process_chunk(tree.value[id])
+				if (length):
+					validate_utf8_literal(length)
+					token[length] = 0
+				assert1(tree.text_used + length + 1 <= 4096)
+				for j in range(length): tree.text[tree.text_used + j] = token[j]
+				tree.text[tree.text_used + length] = 0
+				tree.value[id] = tree.text_used
+				tree.high[id] = length
+				tree.text_used = tree.text_used + length + 1
 			if ((tree.op[id] == 0) && (tree.offset[id] == token_start_offset)):
 				int outer_cast = cast_context
 				cast_context = tree.in_cast[id]
@@ -1172,7 +2032,18 @@ int ast_expression_try_at(int group_offset, int whole):
 				# This is the committed use: update unused-local tracking
 				# only now, at the same source token as identifier().
 				sym_lookup(token)
-		ast_expression_advance(&tree)
+		ast_expression_advance(tree)
+	for i in range(tree.types_count):
+		if (tree.pointer_offsets[i] == end): ast_expression_commit_pointer(tree, i)
+	return root
+
+
+# Immediate expression consumers prepare and emit in one call. Statements
+# can own the arena through their separate parse and emit operations.
+int ast_expression_try_at(int group_offset, int whole):
+	expression_ast tree
+	int root = ast_expression_prepare_at(&tree, group_offset, whole)
+	if (root < 0): return -1
 	emit_expression_ast(&tree, root)
 	expression_lhs_readonly = tree.readonly
 	if (whole):

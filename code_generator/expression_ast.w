@@ -1,12 +1,344 @@
-# Walk the completed, decoded scalar tree in source evaluation order.
+# A record-returning call owns a caller-provided buffer above its saved
+# callee slot. Keep the same allocation order as postfix_expr().
+int emit_ast_return_buffer(int type):
+	if ((type < 0) || (type_num_args(type) == 0)): return 0
+	int words = (type_get_size(type) + word_size - 1) >> word_size_log2
+	for j in range(words): push_eax()
+	stack_pos = stack_pos + words
+	return 1
+
+
+void emit_ast_map_call(char* helper, int map_slot, int key_slot, int value_slot):
+	int s = rt_call_begin(helper)
+	push_slot_copy(map_slot)
+	push_slot_copy(key_slot)
+	if (value_slot): push_slot_copy(value_slot)
+	rt_call_end(s)
+
+
+void emit_expression_ast(expression_ast* tree, int id);
+
+
+# The receiver is already in eax. Keep the same parked operands and
+# float read/add/store sequence as hash_map_add_suffix().
+void emit_ast_map_add(expression_ast* tree, int id, int receiver_type):
+	promote(receiver_type)
+	int base_stack = stack_pos
+	int container_slot = push_slot()
+	int key = tree.right[id]
+	emit_expression_ast(tree, key)
+	int got = promote(tree.result_type[key])
+	coerce(tree.symbol[id], got)
+	int key_slot = push_slot()
+	int value_type = tree.value[id]
+	int value_kind = type_float_kind(type_value(value_type))
+	int delta = tree.high[id]
+	if (delta >= 0):
+		emit_expression_ast(tree, delta)
+		got = promote(tree.result_type[delta])
+		coerce(value_type, got)
+	else:
+		mov_eax_int(1)
+		if (value_kind): coerce(value_type, 3)
+	int delta_slot = push_slot()
+	if (value_kind):
+		int s = rt_call_begin(c"__w_map_get_or")
+		push_slot_copy(container_slot)
+		push_slot_copy(key_slot)
+		push_slot_int(0)
+		rt_call_end(s)
+		push_slot()
+		load_slot(delta_slot)
+		pop_ebx_slot()
+		float_binary_arithmetic(type_value(value_type), type_value(value_type), '+')
+		int sum_slot = push_slot()
+		emit_ast_map_call(c"__w_map_set", container_slot, key_slot, sum_slot)
+		load_slot(sum_slot)
+	else: emit_ast_map_call(c"__w_map_add", container_slot, key_slot, delta_slot)
+	pop_to(base_stack)
+
+
+# Walk the completed, decoded expression tree in source evaluation order.
 # Reuse the production backend dispatch and stack accounting; the same
 # peepholes, target word size and runtime division behavior still apply.
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
+	if (op == 'E'):
+		int base_stack = stack_pos
+		template_emit_helper_address(0)
+		int s = stack_pos
+		push_slot()
+		rt_call_end(s)
+		int builder_slot = push_slot()
+		int part = tree.left[id]
+		while (part >= 0):
+			if (tree.op[part] == 't'):
+				if (tree.high[part] > 0):
+					char* saved_token = token
+					token = &tree.text[0]
+					token = token + tree.value[part]
+					template_emit_chunk_append(tree.high[part], builder_slot)
+					token = saved_token
+			else:
+				emit_expression_ast(tree, part)
+				int got = promote(tree.result_type[part])
+				expression_ast_format* spec = &tree.format[part]
+				template_spec_present = spec.present
+				if (spec.present):
+					template_spec_fill = spec.fill
+					template_spec_align = spec.align
+					template_spec_width = spec.width
+					template_spec_precision = spec.precision
+					template_spec_type = spec.kind
+				template_emit_value_append(got, builder_slot)
+			part = tree.next_arg[part]
+		template_emit_helper_address(5)
+		s = stack_pos
+		push_slot()
+		push_slot_copy(builder_slot)
+		rt_call_end(s)
+		pop_to(base_stack)
+		return
+	if (op == 'G'):
+		int sym = tree.symbol[id]
+		int signature = tree.generic_signature[id]
+		if (sym >= 0):
+			# The symbol table has a stable name immediately before its
+			# record, but queued instances already retain their mangling.
+			int count = generic_def_param_count(tree.value[id])
+			int[8] types
+			int argument = tree.right[id]
+			for i in range(count):
+				types[i] = tree.value[argument]
+				argument = tree.next_arg[argument]
+			char* name = generic_mangle(generic_def_name(tree.value[id]), cast(int, &types[0]), count)
+			strcpy(last_identifier, name)
+			sym_emit_value(sym, name)
+			free(name)
+		else: generic_inst_emit_callee(tree.generic_instance[id])
+		int result = tree.high[id]
+		int has_return_buffer = emit_ast_return_buffer(result)
+		int s = stack_pos
+		push_slot()
+		if (has_return_buffer):
+			lea_eax_esp_plus(word_size)
+			push_slot()
+		int arg = tree.left[id]
+		int count = 0
+		while (arg >= 0):
+			int arg_stack = stack_pos
+			emit_expression_ast(tree, arg)
+			int got = promote(tree.result_type[arg])
+			int want = -1
+			if (sym >= 0): want = sym_param_type(sym, count)
+			else: want = type_function_param_type(signature, count)
+			if (want >= 0): coerce_call_argument(want, got)
+			push_call_argument_compact(got, stack_pos - arg_stack)
+			count = count + 1
+			arg = tree.next_arg[arg]
+		finish_call(4, s, count, sym, 0, result, count, has_return_buffer, -1)
+		return
+	if (op == 'A'):
+		expression_is_assignment = 1
+		int[128] lhs_slots
+		int[128] rhs_slots
+		int entry_stack = stack_pos
+		int pair = tree.left[id]
+		while (pair >= 0):
+			emit_expression_ast(tree, tree.left[pair])
+			if (pair == tree.left[id]): entry_stack = stack_pos
+			lhs_slots[pair] = push_slot()
+			pair = tree.next_arg[pair]
+		pair = tree.left[id]
+		while (pair >= 0):
+			int rhs = tree.right[pair]
+			emit_expression_ast(tree, rhs)
+			int got = promote(tree.result_type[rhs])
+			coerce(tree.result_type[tree.left[pair]], got)
+			rhs_slots[pair] = push_slot()
+			pair = tree.next_arg[pair]
+		pair = tree.left[id]
+		while (pair >= 0):
+			mov_eax_esp_plus((stack_pos - rhs_slots[pair]) << word_size_log2)
+			mov_ebx_esp_plus((stack_pos - lhs_slots[pair]) << word_size_log2)
+			assign_store(tree.result_type[tree.left[pair]])
+			pair = tree.next_arg[pair]
+		pop_to(entry_stack)
+		return
+	if ((op == 'm') || (op == 'q') || (op == 'w')):
+		int index = id
+		if (op == 'w'): index = tree.left[id]
+		int receiver = tree.left[index]
+		emit_expression_ast(tree, receiver)
+		promote(tree.result_type[receiver])
+		int base_stack = stack_pos
+		int map_slot = push_slot()
+		int key = tree.right[index]
+		emit_expression_ast(tree, key)
+		int key_type = promote(tree.result_type[key])
+		int map_type = tree.value[index]
+		coerce(type_map_key_type(map_type), key_type)
+		int key_slot = push_slot()
+		int element = type_map_value_type(map_type)
+		if (op == 'w'):
+			expression_is_assignment = 1
+			int subop = tree.value[id]
+			if (subop):
+				emit_ast_map_call(c"__w_map_get", map_slot, key_slot, 0)
+				push_slot()
+			int right = tree.right[id]
+			emit_expression_ast(tree, right)
+			int got = promote(tree.result_type[right])
+			if (subop): got = compound_assign_apply(subop, type_value(element), got)
+			coerce(element, got)
+			int value_slot = push_slot()
+			char* helper = c"__w_map_set"
+			if ((type_num_args(element) > 0) && (type_num_args(got) > 0)): helper = c"__w_map_set_bytes"
+			emit_ast_map_call(helper, map_slot, key_slot, value_slot)
+			load_slot(value_slot)
+		else:
+			char* helper = c"__w_map_get"
+			if (type_num_args(element) > 0): helper = c"__w_map_get_addr"
+			emit_ast_map_call(helper, map_slot, key_slot, 0)
+		pop_to(base_stack)
+		return
+	if (op == 'O'):
+		int type = tree.value[id]
+		int list = type_is_list(type)
+		int map = type_is_map(type)
+		if (list): list_emit_new_container(type)
+		else: hash_emit_new_container(type)
+		int container_slot = push_slot()
+		int entry = tree.left[id]
+		while (entry >= 0):
+			int base_stack = stack_pos
+			int first = tree.left[entry]
+			emit_expression_ast(tree, first)
+			int got = promote(tree.result_type[first])
+			int want = type_set_key_type(type)
+			if (list): want = type_list_element_type(type)
+			if (map): want = type_map_key_type(type)
+			coerce(want, got)
+			int first_slot = push_slot()
+			if (map):
+				int second = tree.right[entry]
+				emit_expression_ast(tree, second)
+				got = promote(tree.result_type[second])
+				coerce(type_map_value_type(type), got)
+				int second_slot = push_slot()
+				hash_literal_call_map_set(container_slot, first_slot, second_slot, tree.value[entry])
+			else if (list):
+				char* helper = c"__w_list_push"
+				if (tree.value[entry]): helper = c"__w_list_push_bytes"
+				int s = rt_call_begin(helper)
+				push_slot_copy(container_slot)
+				push_slot_copy(first_slot)
+				rt_call_end(s)
+			else: hash_literal_call_set_add(container_slot, first_slot)
+			pop_to(base_stack)
+			entry = tree.next_arg[entry]
+		pop_eax_slot()
+		return
 	if (op == 'V'):
 		int type = tree.value[id]
 		if (type_is_list(type)): list_emit_new_container(type)
 		else: hash_emit_new_container(type)
+		int kind = tree.high[id]
+		if (kind):
+			int base_stack = stack_pos
+			int map_slot = push_slot()
+			if (kind == 3): mov_eax_int(tree.right[id])
+			else:
+				int arg = tree.left[id]
+				emit_expression_ast(tree, arg)
+				int got = promote(tree.result_type[arg])
+				if (kind == 1): coerce_checked(type_map_value_type(type), got, c"map default")
+			int value_slot = push_slot()
+			int s = rt_call_begin(c"__w_map_set_default")
+			push_slot_copy(map_slot)
+			push_slot_int(kind)
+			push_slot_copy(value_slot)
+			rt_call_end(s)
+			load_slot(map_slot)
+			pop_to(base_stack)
+		return
+	if (op == 'Y'):
+		int length = tree.left[id]
+		emit_expression_ast(tree, length)
+		promote(tree.result_type[length])
+		int element_size = type_get_size(tree.value[id])
+		if (bounds_mode != 0):
+			int alloc_limit = 1073741823 / element_size
+			int h_in_bounds = be_ctrl_block()
+			int h_trap = be_ctrl_block()
+			be_bounds_branch(BOUNDS_EAX_NEG, 0, h_trap)
+			be_bounds_branch(BOUNDS_EAX_LE_LIMIT, alloc_limit, h_in_bounds)
+			be_ctrl_end(h_trap)
+			push_eax()
+			mov_eax_int(alloc_limit)
+			pop_ebx()
+			bounds_trap_call(c"__w_alloc_trap")
+			be_ctrl_end(h_in_bounds)
+		push_slot()
+		sym_get_value(c"malloc")
+		push_slot()
+		mov_eax_esp_plus(word_size)
+		if (element_size > 1): imul_eax_int32(element_size)
+		add_eax_int32(2 * word_size)
+		push_slot()
+		mov_eax_esp_plus(word_size)
+		call_eax()
+		drop_slots(2)
+		push_slot()
+		add_eax_int32(2 * word_size)
+		mov_ebx_esp()
+		store_ebx_word()
+		mov_eax_esp_plus(word_size)
+		mov_ebx_esp()
+		add_ebx_int32(word_size)
+		store_ebx_word()
+		mov_eax_esp_plus(word_size)
+		if (element_size > 1): imul_eax_int32(element_size)
+		push_slot()
+		mov_eax_esp_plus(word_size)
+		add_eax_int32(2 * word_size)
+		push_slot()
+		zero_stack_count_bytes()
+		drop_slots(2)
+		pop_eax_slot()
+		drop_slots(1)
+		return
+	if (op == 'D'):
+		int base = tree.value[id]
+		int heap = tree.high[id]
+		if (heap):
+			sym_get_value(c"malloc")
+			push_slot()
+			push_slot_int(type_get_size(base))
+			mov_eax_esp_plus(word_size)
+			call_eax()
+			drop_slots(2)
+		else:
+			int words = (type_get_size(base) + word_size - 1) >> word_size_log2
+			for j in range(words): push_eax()
+			stack_pos = stack_pos + words
+			lea_eax_esp_plus(0)
+		if (type_has_array_field(base)):
+			zero_runtime_object(type_get_size(base))
+			init_array_field_descriptors(base)
+		if ((heap == 0) || (tree.left[id] >= 0)):
+			push_slot()
+			int entry_stack = stack_pos
+			if (tree.symbol[id]): zero_runtime_object(type_get_size(base))
+			int entry = tree.left[id]
+			while (entry >= 0):
+				int argument = tree.left[entry]
+				emit_expression_ast(tree, argument)
+				int got = promote(tree.result_type[argument])
+				new_store_field(base, tree.value[entry], got, stack_pos - entry_stack)
+				if (stack_pos > entry_stack): pop_to(entry_stack)
+				entry = tree.next_arg[entry]
+			pop_eax_slot()
 		return
 	if (op == 'N'):
 		int base = tree.value[id]
@@ -56,24 +388,56 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int sym = tree.symbol[id]
 		sym_emit_value(sym, name)
 		if (op == 'C'):
+			int declared_return = load_int(table + sym + 6)
+			if (declared_return == 4): declared_return = -1
+			int has_return_buffer = emit_ast_return_buffer(declared_return)
 			int s = stack_pos
 			push_slot()
+			if (has_return_buffer):
+				lea_eax_esp_plus(word_size)
+				push_slot()
 			int arg = tree.left[id]
 			int count = 0
 			while (arg >= 0):
+				int arg_stack = stack_pos
 				emit_expression_ast(tree, arg)
 				int got = promote(tree.result_type[arg])
 				int param_type = sym_param_type(sym, count)
 				if (param_type >= 0): coerce_call_argument(param_type, got)
-				push_call_argument_compact(got, 0)
+				push_call_argument_compact(got, stack_pos - arg_stack)
 				count = count + 1
 				arg = tree.next_arg[arg]
-			int declared_return = load_int(table + sym + 6)
-			if (declared_return == 4): declared_return = -1
-			finish_call(4, s, count, sym, 0, declared_return, count, 0, -1)
+			finish_call(4, s, count, sym, 0, declared_return, count, has_return_buffer, -1)
 		return
 	emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
+	if (op == 'Q'):
+		emit_ast_map_add(tree, id, left_type)
+		return
+	if (op == 'U'):
+		expression_is_assignment = 1
+		compound_assign_scalar(tree.value[id], left_type, 1)
+		return
+	if (op == 'H'):
+		int key_type = binary1(left_type)
+		int key_slot = stack_pos
+		int base_stack = key_slot - 1
+		int right = tree.right[id]
+		emit_expression_ast(tree, right)
+		int container = type_unqualified(promote(tree.result_type[right]))
+		int want = type_list_element_type(container)
+		if (type_is_map(container)): want = type_map_key_type(container)
+		else if (type_is_set(container)): want = type_set_key_type(container)
+		if (type_decays_to_pointer(want, key_type)):
+			push_slot()
+			load_slot(key_slot)
+			promote_eax()
+			store_stack_var((stack_pos - key_slot) << word_size_log2)
+			pop_eax_slot()
+		int container_slot = push_slot()
+		emit_ast_map_call(ast_expression_contains_helper(tree.value[id]), container_slot, key_slot, 0)
+		pop_to(base_stack)
+		return
 	if (op == 'M'):
 		promote(left_type)
 		int base_stack = stack_pos
@@ -87,38 +451,46 @@ void emit_expression_ast(expression_ast* tree, int id):
 			emit_expression_ast(tree, arg)
 			int got = promote(tree.result_type[arg])
 			if ((method == 1) || ((method == 3) && (count == 1))): coerce(tree.high[id], got)
+			if ((method >= 11) && (count == 0)): coerce(tree.high[id], got)
+			if ((method == 15) && (count == 1)): coerce(tree.symbol[id], got)
 			int slot = push_slot()
 			if (count == 0): first_slot = slot
 			else: second_slot = slot
 			count = count + 1
 			arg = tree.next_arg[arg]
-		int s = rt_call_begin(ast_expression_list_helper(tree.value[id]))
+		int s = rt_call_begin(ast_expression_method_helper(tree.value[id]))
 		push_slot_copy(receiver_slot)
 		if (first_slot): push_slot_copy(first_slot)
 		if (second_slot): push_slot_copy(second_slot)
+		if ((method == 16) || (method == 17)): push_slot_int(tree.symbol[id])
 		rt_call_end(s)
 		pop_to(base_stack)
 		return
 	if (op == 'F'):
+		int has_return_buffer = emit_ast_return_buffer(tree.high[id])
 		int s = stack_pos
 		push_slot()
+		if (has_return_buffer):
+			lea_eax_esp_plus(word_size)
+			push_slot()
 		int signature = tree.value[id]
 		int arg = tree.right[id]
 		int count = 0
 		while (arg >= 0):
+			int arg_stack = stack_pos
 			emit_expression_ast(tree, arg)
 			int got = promote(tree.result_type[arg])
 			if (signature >= 0): coerce_call_argument(type_function_param_type(signature, count), got)
-			push_call_argument_compact(got, 0)
+			push_call_argument_compact(got, stack_pos - arg_stack)
 			count = count + 1
 			arg = tree.next_arg[arg]
 		int arity = -1
 		if (signature >= 0): arity = type_function_param_count(signature)
-		finish_call(left_type, s, arity, -1, 0, tree.high[id], count, 0, -1)
+		finish_call(left_type, s, arity, -1, 0, tree.high[id], count, has_return_buffer, -1)
 		return
 	if (op == '='):
 		expression_is_assignment = 1
-		push_slot()
+		int lhs_slot = push_slot()
 		int subop = tree.value[id]
 		int loaded = left_type
 		if (subop):
@@ -128,10 +500,13 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int rt = promote(tree.result_type[tree.right[id]])
 		if (subop): rt = compound_assign_apply(subop, loaded, rt)
 		coerce(left_type, rt)
+		int lhs_buried = stack_pos - lhs_slot
 		if (subop): pop_ebx_slot()
+		else if (lhs_buried > 0): mov_ebx_esp_plus(lhs_buried << word_size_log2)
 		else: pop_ebx()
-		assign_store(left_type)
-		if (subop == 0): stack_pos = stack_pos - 1
+		if (type_num_args(left_type) > 0): assign_store_struct(left_type)
+		else: assign_store(left_type)
+		if ((subop == 0) && (lhs_buried == 0)): stack_pos = stack_pos - 1
 		return
 	if ((op == 'a') || (op == 'o')):
 		promote(left_type)
@@ -171,12 +546,60 @@ void emit_expression_ast(expression_ast* tree, int id):
 		promote(left_type)
 		return
 	if (op == '.'):
-		if (tree.high[id]): promote(left_type)
+		if (tree.high[id] > 0): promote(left_type)
 		add_eax_int32(tree.value[id])
+		if (tree.high[id] < 0):
+			promote(tree.symbol[id])
+			drop_slots(0 - tree.high[id])
 		return
 	if (op == 'B'):
 		promote(left_type)
 		if (tree.value[id]): add_eax_int32(tree.value[id])
+		return
+	if (op == 'J'):
+		promote(left_type)
+		int base_stack = stack_pos
+		int list_slot = push_slot()
+		int start = tree.right[id]
+		if (start < 0): mov_eax_int(0)
+		else:
+			emit_expression_ast(tree, start)
+			promote(tree.result_type[start])
+		int start_slot = push_slot()
+		int end = tree.high[id]
+		if (end < 0): mov_eax_int(0)
+		else:
+			emit_expression_ast(tree, end)
+			promote(tree.result_type[end])
+		int end_slot = push_slot()
+		int s = rt_call_begin(c"__w_list_slice")
+		push_slot_copy(list_slot)
+		push_slot_copy(start_slot)
+		push_slot_copy(end_slot)
+		push_slot_int(end >= 0)
+		rt_call_end(s)
+		pop_to(base_stack)
+		return
+	if (op == 'Z'):
+		promote(left_type)
+		push_slot()
+		int start = tree.right[id]
+		if (start < 0): mov_eax_int(0)
+		else:
+			emit_expression_ast(tree, start)
+			promote(tree.result_type[start])
+		push_slot()
+		int end = tree.high[id]
+		if (end < 0):
+			mov_eax_esp_plus(word_size)
+			add_eax_int32(word_size)
+			promote_eax()
+		else:
+			emit_expression_ast(tree, end)
+			promote(tree.result_type[end])
+		push_slot()
+		buffer_range_bounds_check()
+		buffer_push_range_descriptor(left_type, start < 0)
 		return
 	if (op == 'j'):
 		promote(left_type)

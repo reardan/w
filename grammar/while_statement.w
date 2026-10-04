@@ -1,4 +1,5 @@
 void statement();
+int ast_statement_condition_try(int kind, int false_target, int outer_condition);
 
 # Innermost loop context for break/continue: control-region handles
 # (be_ctrl_block/be_ctrl_loop in code_generator/x86.w) that break and
@@ -23,6 +24,15 @@ int break_in_switch
 # Indent level of the statement owning the next ':' block; used to detect
 # empty blocks and terminate them correctly.
 int enclosing_tab_level
+
+
+# Shared header lowering after the condition expression and final lexer
+# advance. Preserve promotion and diagnostic order before emitting the branch.
+void finish_statement_condition(int type, int outer_condition, int false_target):
+	promote(type)
+	lint_condition_end()
+	condition_context = outer_condition
+	be_br_zero_discard(false_target)
 
 
 # Enter a loop context for break/continue: saves the outer context
@@ -64,10 +74,8 @@ int while_statement():
 	int outer_condition = condition_context
 	condition_context = 1
 	lint_condition_begin()
-	promote(expression())
-	lint_condition_end()
-	condition_context = outer_condition
-	be_br_zero_discard(loop_break_chain)
+	if (ast_statement_condition_try(statement_ast_while_header, loop_break_chain, outer_condition) == 0):
+		finish_statement_condition(expression(), outer_condition, loop_break_chain)
 
 	enclosing_tab_level = while_tab_level
 	statement()

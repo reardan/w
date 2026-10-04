@@ -105,6 +105,30 @@ int result_propagate_suffix(int type):
 	return payload_type
 
 
+int ast_statement_return_try();
+int ast_statement_expression_try();
+
+
+# Both parsers hand this helper an already evaluated optional return value.
+# Keep coercion, generator cleanup, deferred calls and frame unwinding shared.
+void finish_return_statement(int has_value, int return_type):
+	if (has_value):
+		int declared_type = load_int(table + current_function_symbol + 6)
+		if ((type_num_args(declared_type) > 0) & (type_num_args(return_type) > 0)):
+			if (types_compatible_with_expression(declared_type, return_type) == 0):
+				warn_type_mismatch(c"return", declared_type, return_type)
+			copy_struct_return_value(declared_type)
+		else: coerce_checked(declared_type, return_type, c"return")
+	expect_or_newline(c";")
+	if (in_generator_body):
+		for_cleanup_emit_all()
+		emit_generator_finish_call()
+	else:
+		for_cleanup_emit_returning()
+		defer_emit_returning()
+		be_return(stack_pos)
+
+
 # 'if' has been consumed; parse the condition, the branch body and any
 # 'elif'/'else' continuation at the same indent level. 'elif cond:' is
 # pure sugar for 'else if cond:' (issue #360): each elif recurses here,
@@ -116,10 +140,8 @@ void if_statement_tail():
 	int p1 = be_ctrl_block() /* ends after the whole if/elif/else */
 	int p2 = be_ctrl_block() /* ends at the elif/else branch */
 	lint_condition_begin()
-	promote(expression())
-	lint_condition_end()
-	condition_context = outer_condition
-	be_br_zero_discard(p2)
+	if (ast_statement_condition_try(statement_ast_if_header, p2, outer_condition) == 0):
+		finish_statement_condition(expression(), outer_condition, p2)
 	enclosing_tab_level = if_tab_level
 	statement()
 	be_br(p1)
@@ -267,39 +289,17 @@ void statement():
 		if (stack_pos > loop_stack_pos): be_pop(stack_pos - loop_stack_pos)
 		be_br(loop_continue_chain)
 
+	else if (ast_statement_return_try()): jumps = 1
+
 	else if (accept(c"return")):
 		jumps = 1
-		# Each 'gpu for' iteration is one GPU thread: there is no host
-		# frame to return from inside the outlined body.
 		if (in_gpu_for_body): error(c"'return' is not supported in 'gpu for'")
-		# A newline (or end of file) after 'return' means no return value.
-		if ((peek(c";") == 0) & (token_newline == 0) & (token[0] != 0)):
+		int has_value = (peek(c";") == 0) & (token_newline == 0) & (token[0] != 0)
+		int return_type = 0
+		if (has_value):
 			if (in_generator_body): error(c"generators cannot return a value; use yield")
-			int return_type = expression()
-			return_type = promote(return_type)
-			int declared_type = load_int(table + current_function_symbol + 6)
-			if ((type_num_args(declared_type) > 0) & (type_num_args(return_type) > 0)):
-				if (types_compatible_with_expression(declared_type, return_type) == 0):
-					warn_type_mismatch(c"return", declared_type, return_type)
-				copy_struct_return_value(declared_type)
-			else: coerce_checked(declared_type, return_type, c"return")
-		expect_or_newline(c";")
-		if (in_generator_body):
-			# Free the suspended generators of enclosing for-in loops
-			# (eax is dead: generators return bare), then finish:
-			# __w_gen_return switches back to the consumer permanently,
-			# so no ret / stack unwinding is needed
-			for_cleanup_emit_all()
-			emit_generator_finish_call()
-		else:
-			# Enclosing for-in loops over generators free their suspended
-			# generator first — 'return' bypasses the loop exit edges that
-			# normally do it — then deferred statements run before the
-			# frame unwinds, both with the already-evaluated return value
-			# saved around them
-			for_cleanup_emit_returning()
-			defer_emit_returning()
-			be_return(stack_pos)
+			return_type = promote(expression())
+		finish_return_statement(has_value, return_type)
 
 	# yield expression: store the value into the generator object and
 	# switch back to the consumer until the next gen_next
@@ -348,8 +348,9 @@ void statement():
 		# Postfix 'x++'/'x--' are only recognized at true statement
 		# position: expression() consumes this flag on entry, so nested
 		# expression parses never see it (grammar/increment.w)
-		increment_statement_context = 1
-		expression()
+		if (ast_statement_expression_try() == 0):
+			increment_statement_context = 1
+			expression()
 		expect_or_newline(c";")
 
 	# Matches the increment at the top: every path through the if/else-if

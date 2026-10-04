@@ -48,6 +48,11 @@ int main():
 	if ((values.pop()) != 30): return 13
 	if (values.length != 2): return 14
 	if ((small.pop()) != 300): return 15
+	if 1: (small.push(-123))
+	if ((small.pop()) != -123): return 32
+	list[float32] reals = (new list[float32])
+	if 1: (reals.push(1.5))
+	if ((reals.pop()) != 1.5): return 33
 	if 1: (words.push(c"world"))
 	if ((words[1] == s"world") != true): return 16
 	if ((sizeof(list[int])) != __word_size__): return 17
@@ -62,6 +67,7 @@ int main():
 	if 1: (small.free())
 	if 1: (records.free())
 	if 1: (words.free())
+	if 1: (reals.free())
 	ast_list_order = 0
 	list[int] ordered = (new list[int])
 	if 1: (ast_list_receiver(ordered).insert(ast_list_index(0), ast_list_index(7)))

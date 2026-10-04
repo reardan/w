@@ -18,10 +18,11 @@ project quickly and make correct changes.
 - **Language style**: C-like semantics with Python-like surface syntax.
   Whitespace-significant, **tabs** for indentation (spaces produce a compiler
   warning), blocks open with `:`, no semicolons, `#` line comments.
-- **Compiler architecture**: single-pass, syntax-directed code generation
-  (cc500 heritage). There is **no AST and no IR** — grammar rules in
-  `grammar/*.w` emit machine-code bytes immediately through
-  `code_generator/x86.w` (x64 reuses the same module via REX-prefix helpers).
+- **Compiler architecture**: the default path uses single-pass, syntax-directed
+  code generation (cc500 heritage). An opt-in production AST path prepares
+  expressions and selected statements before lowering through the same backend
+  helpers. It has no persistent module AST or IR yet. See
+  [AST migration progress](docs/projects/wc2.md) for coverage and migration gates.
 - **Bootstrap seed**: `./w` at the repo root is a statically linked
   **32-bit x86** ELF binary of the compiler. It is not committed: `./wbuild`
   downloads it from the GitHub release pinned in `SEEDS` (sha256-verified)

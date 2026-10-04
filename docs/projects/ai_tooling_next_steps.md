@@ -17,6 +17,13 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **Bool return coerces an already promoted integer twice (2026-10-03).**
+  `bool truth(int n): return n` emits a second load through the integer
+  value and crashes for `truth(7)`. Reproduced with both streaming emission
+  and the saved compiler preceding AST return-node work. `coerce`'s bool
+  branch calls `promote(got)` after the return parser already promoted the
+  value; audit other coercion callers when fixing the value-type convention.
+
 - **Color diagnostic test inherits `NO_COLOR` (2026-10-03).** Running
   `./wbuild tests` from an agent shell with `NO_COLOR=1` fails
   `did_you_mean_test`'s forced-color assertion: the inherited variable
