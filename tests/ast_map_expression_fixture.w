@@ -67,4 +67,27 @@ int main():
 	numbers.push(4)
 	if ((4 in numbers) != true): return 22
 	if ((5 in numbers) != false): return 23
+	if ((values.get(2)) != 21): return 24
+	if ((values.get(99, 8)) != 8): return 25
+	ast_map_order = 0
+	if ((values.get(ast_map_key(2), ast_map_key(5))) != 21): return 26
+	if (ast_map_order != 25): return 27
+	if ((records.get(1).number) != 20): return 28
+	if ((ast_map_sum(records.get(2, first))) != 13): return 29
+	if ((words.get(c"absent", c"fallback") == s"fallback") != true): return 30
+	if ((values.remove(3)) != true): return 31
+	if ((values.remove(3)) != false): return 32
+	if 1: (keys.add(9))
+	if ((keys.remove(9)) != true): return 33
+	if ((9 in keys) != false): return 34
+	if 1: (values.free())
+	if 1: (nested.free())
+	if 1: (names.free())
+	if 1: (words.free())
+	if 1: (reals.free())
+	if 1: (small.free())
+	if 1: (records.free())
+	if 1: (keys.free())
+	strings.free()
+	numbers.free()
 	return 0

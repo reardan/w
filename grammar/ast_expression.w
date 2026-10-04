@@ -785,7 +785,55 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 		previous = arg
 	if (ast_expression_accept(tree, c")") == 0): return -1
 	if ((method == 2) && ast_expression_record_value(element)): method = method + 128
-	if (sym_probe(ast_expression_list_helper(method)) < 0): return -1
+	if (sym_probe(ast_expression_method_helper(method)) < 0): return -1
+	tree.value[id] = method
+	return id
+
+
+int ast_expression_hash_call(expression_ast* tree, int receiver, int depth):
+	int container = type_unqualified(tree.result_type[receiver])
+	int method = 0
+	if (peek(c"remove")): method = 11
+	if (peek(c"add") && type_is_set(container)): method = 12
+	if (peek(c"free")): method = 13
+	if (peek(c"get") && type_is_map(container)): method = 14
+	if (method == 0): return -1
+	int key_type = hash_container_key_type(container)
+	int value_type = 0
+	if (method == 14):
+		value_type = type_map_value_type(container)
+		if (ast_expression_data_value(value_type) == 0): return -1
+	int id = expression_ast_add(tree, 'M', receiver, -1)
+	if (id < 0): return -1
+	tree.high[id] = key_type
+	tree.symbol[id] = value_type
+	tree.result_type[id] = type_value(0)
+	if (method == 11): tree.result_type[id] = type_value(bool_type)
+	if (method == 14):
+		tree.result_type[id] = type_value(value_type)
+		if (ast_expression_record_value(value_type)): tree.result_type[id] = type_canonical(value_type)
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	if (method != 13):
+		int arg = ast_expression_assignment(tree, depth + 1)
+		if (arg < 0): return -1
+		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
+		if (ast_expression_argument_compatible(tree, key_type, arg) == 0): return -1
+		if (type_is_string(key_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[arg]))):
+			if (sym_probe(c"str_from_cstr") < 0): return -1
+		tree.right[id] = arg
+		if ((method == 14) && ast_expression_accept(tree, c",")):
+			int fallback = ast_expression_assignment(tree, depth + 1)
+			if (fallback < 0): return -1
+			if (ast_expression_data_value(tree.result_type[fallback]) == 0): return -1
+			if (ast_expression_argument_compatible(tree, value_type, fallback) == 0): return -1
+			if (type_is_string(value_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[fallback]))):
+				if (sym_probe(c"str_from_cstr") < 0): return -1
+			tree.next_arg[arg] = fallback
+			method = 15
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	if ((method >= 14) && ast_expression_record_value(value_type)): method = method + 128
+	if (sym_probe(ast_expression_method_helper(method)) < 0): return -1
 	tree.value[id] = method
 	return id
 
@@ -880,6 +928,9 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 				continue
 			if (type_is_list(type)):
 				left = ast_expression_list_call(tree, left, depth)
+				continue
+			if (type_is_map(type) || type_is_set(type)):
+				left = ast_expression_hash_call(tree, left, depth)
 				continue
 			int record = type
 			int load_pointer = 0

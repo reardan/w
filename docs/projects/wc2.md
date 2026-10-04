@@ -920,3 +920,15 @@ raw token, without changing the logical read position or adding a seek.
 A nonseekable-pipe regression checks replay and unread-byte preservation.
 End-to-end required-mode and image tests cover neighboring positions around
 the original 8 KiB boundary and a window shifted by earlier AST read-ahead.
+
+## Task 36: basic map and set methods
+
+Map `get(key[, default])`, map/set `remove` and `free`, and set `add` now
+use AST method nodes. Keys and defaults use their respective coercion
+types, defaults are evaluated even when a key exists, and record getters
+select the address-returning runtime helpers. Record results can feed
+copies, fields and by-value calls.
+
+Tests cover default evaluation order, record and string defaults, removal
+results, cleanup, required-mode compilation and invalid-argument diagnostic
+parity. Map accumulation and collection snapshots remain separate work.

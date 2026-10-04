@@ -198,12 +198,14 @@ void emit_expression_ast(expression_ast* tree, int id):
 			emit_expression_ast(tree, arg)
 			int got = promote(tree.result_type[arg])
 			if ((method == 1) || ((method == 3) && (count == 1))): coerce(tree.high[id], got)
+			if ((method >= 11) && (count == 0)): coerce(tree.high[id], got)
+			if ((method == 15) && (count == 1)): coerce(tree.symbol[id], got)
 			int slot = push_slot()
 			if (count == 0): first_slot = slot
 			else: second_slot = slot
 			count = count + 1
 			arg = tree.next_arg[arg]
-		int s = rt_call_begin(ast_expression_list_helper(tree.value[id]))
+		int s = rt_call_begin(ast_expression_method_helper(tree.value[id]))
 		push_slot_copy(receiver_slot)
 		if (first_slot): push_slot_copy(first_slot)
 		if (second_slot): push_slot_copy(second_slot)

@@ -444,6 +444,29 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	return ast_test_run(args, 0)
 
 
+void test_ast_hash_methods_are_required():
+	char* path = ast_test_path(c"_hash_methods.w")
+	assert1(file_write_text(path, c"int main():\n\tmap[int, int] m = new map[int, int]\n\tm[1] = 2\n\tint n = m.get(1) + m.get(9, 3)\n\tm.remove(1)\n\tm.free()\n\tset[int] s = new set[int]\n\ts.add(2)\n\ts.remove(2)\n\ts.free()\n\treturn n - 5\n"))
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, path)
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	unlink(path)
+	free(path)
+	ast_test_store_diagnostics(c"int f(map[int, int] m): return (m.get(c\"bad\", 0))\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"int f(map[int, int] m): return (m.get(1, c\"bad\"))\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"int f(map[int, int] m): return (m.get())\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tset[int] s = new set[int]\n\tif 1: (s.add(c\"bad\"))\n\treturn 0\n")
+
+
 void test_ast_wide_calls_are_required():
 	for host in range(2):
 		char** args = strv_new(5)

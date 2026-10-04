@@ -45,9 +45,16 @@ int ast_audit_mode
 int ast_required_mode
 
 
-# Basic list methods share the streaming cm_call lowering. Bit 7 chooses
-# the aggregate-copy helper after the argument's type is known.
-char* ast_expression_list_helper(int method):
+# Container methods share the streaming helper-call lowering. Bit 7
+# chooses the aggregate-copy/address helper after types are known.
+char* ast_expression_method_helper(int method):
+	if (method == 11): return c"__w_map_remove"
+	if (method == 12): return c"__w_set_add"
+	if (method == 13): return c"__w_map_free"
+	if (method == 14): return c"__w_map_get"
+	if (method == 15): return c"__w_map_get_or"
+	if (method == 142): return c"__w_map_get_addr"
+	if (method == 143): return c"__w_map_get_or_addr"
 	if (method == 129): return c"__w_list_push_bytes"
 	if (method == 130): return c"__w_list_pop_addr"
 	if (method == 131): return c"__w_list_insert_bytes"
