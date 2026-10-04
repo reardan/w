@@ -785,16 +785,68 @@ void generic_infer_store_shape(char* block, int slot, int param_type, int def):
 	save_ptr(e + __word_size__, param_type)
 
 
-# The parameter shapes of a definition, extracted once and cached: a
-# header-only nested re-parse (exactly generic_inst_signature's walk)
-# with the type parameters bound to placeholders instead of concrete
-# types. Safe mid-parse: headers emit no code.
+# A simple captured type needs no placeholder records: a bare type
+# parameter carries its own pointer depth, and concrete named types use
+# already-registered records. -3 means the header reparse is still needed.
+int generic_infer_ast_shape(int def, generic_type_ast* node, int* data):
+	if ((node == 0) || (node.application != 0) || (node.first != 0)): return -3
+	for i in range(generic_def_param_count(def)):
+		if (strcmp(node.name, generic_def_param_name(def, i)) == 0):
+			*data = node.stars
+			return i
+	int type = type_lookup(node.name)
+	if (type < 0): return -3
+	int base = type_unqualified(type)
+	if ((word_size != 8) && ((base == float64_type) || (base == int64_type) || (base == uint64_type))): return -3
+	for i in range(node.stars):
+		type = type_lookup_next_pointer(type)
+		if (type < 0): return -3
+	*data = type
+	return -1
+
+
+# Return an ordinary shape block without re-opening the declaration or
+# adding placeholder types. Validate the entire captured header first so
+# unsupported signatures keep their original diagnostics and fallback.
+char* generic_infer_ast_shapes(int def):
+	generic_signature_ast* signature = generic_defs[def].signature_ast
+	if (signature == 0): return 0
+	int data = 0
+	if (generic_infer_ast_shape(def, signature.result, &data) == -3): return 0
+	int[16] kinds
+	int[16] types
+	int count = 0
+	generic_type_ast* parameter = signature.parameters
+	while (parameter != 0):
+		int kind = generic_infer_ast_shape(def, parameter, &data)
+		if (kind == -3): return 0
+		if (count < generic_infer_max_args):
+			kinds[count] = kind
+			types[count] = data
+		count = count + 1
+		parameter = parameter.next
+	char* block = malloc(__word_size__ + generic_infer_max_args * 2 * __word_size__)
+	save_ptr(block, count)
+	for i in range(count):
+		if (i == generic_infer_max_args): break
+		save_ptr(block + __word_size__ + i * 2 * __word_size__, kinds[i])
+		save_ptr(block + 2 * __word_size__ + i * 2 * __word_size__, types[i])
+	return block
+
+
+# Parameter shapes are extracted once and cached. Simple captured
+# signatures use the syntax AST; other headers retain the nested reparse
+# with placeholder types. Safe mid-parse: neither path emits code.
 char* generic_infer_shapes(int def):
 	if (cast(int, generic_infer_shapes_cache) == 0): generic_infer_shapes_cache = new list[int]
 	while (generic_infer_shapes_cache.length <= def): generic_infer_shapes_cache.push(0)
 	char* cached = cast(char*, generic_infer_shapes_cache[def])
 	if (cached != 0):
 		return cached
+	char* captured = generic_infer_ast_shapes(def)
+	if (captured != 0):
+		generic_infer_shapes_cache[def] = cast(int, captured)
+		return captured
 	int n = generic_def_param_count(def)
 	int placeholder_args = cast(int, malloc(generic_max_params * __word_size__))
 	for i in range(n): save_ptr(placeholder_args + i * __word_size__, generic_infer_placeholder(i))

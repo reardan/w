@@ -1195,3 +1195,17 @@ named and typed-pointer factories, per-key materialization and independent
 automatically created lists, sets and nested maps. Missing scalar defaults,
 pointer defaults without factories, record defaults and mismatched factory
 returns keep their existing diagnostics.
+
+## Task 56: inference shapes from captured signatures
+
+Simple generic signatures now derive parameter shapes directly from their
+captured type syntax. Bare type parameters retain pointer depth; concrete
+named types resolve existing records. The complete signature is checked
+before publishing a shape block, so unsupported or unresolved forms retain
+the existing header-reparse path and diagnostics.
+
+This path creates no placeholder types and does not reopen the declaration.
+Transaction tests use a definition with no source file, verify shape contents
+and cache reuse, and assert unchanged type/placeholder state. Composite
+signatures and new concrete derived types remain on the older extraction
+path. Inferred call expression nodes are the next step.

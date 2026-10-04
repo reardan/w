@@ -339,3 +339,40 @@ void test_ast_generic_signature_capture():
 	assert1(ast_test_capture_signature(c"(const T* value):\n") == 0)
 	assert1(ast_test_capture_signature(c"(T... values):\n") == 0)
 	assert1(ast_test_capture_signature(c"(map[T, ] values):\n") == 0)
+
+
+void test_ast_generic_inference_shapes_without_placeholders():
+	word_size = __word_size__
+	push_basic_types()
+	int record = type_push_size(c"ast_inference_record", word_size)
+	int ptr = type_get_next_pointer(record)
+	char* names = malloc(__word_size__)
+	save_ptr(names, cast(int, c"T"))
+	int def = generic_def_add(c"ast_inference_shapes", 0, c"no source file needed", 0, 1, 1, 1, cast(int, names))
+	generic_signature_ast* signature = ast_test_capture_signature(c"(T a, T** b, int c, ast_inference_record* d):\n")
+	assert1(signature != 0)
+	generic_defs[def].signature_ast = signature
+	int before = type_count()
+	char* placeholders = generic_infer_placeholders
+	char* block = generic_infer_shapes(def)
+	assert_equal(4, load_ptr(block))
+	assert_equal(0, load_ptr(block + __word_size__))
+	assert_equal(0, load_ptr(block + 2 * __word_size__))
+	assert_equal(0, load_ptr(block + 3 * __word_size__))
+	assert_equal(2, load_ptr(block + 4 * __word_size__))
+	assert_equal(-1, load_ptr(block + 5 * __word_size__))
+	assert_equal(type_lookup(c"int"), load_ptr(block + 6 * __word_size__))
+	assert_equal(-1, load_ptr(block + 7 * __word_size__))
+	assert_equal(ptr, load_ptr(block + 8 * __word_size__))
+	assert1(block == generic_infer_shapes(def))
+	assert_equal(before, type_count())
+	assert1(placeholders == generic_infer_placeholders)
+	# Unsupported and unresolved shapes decline without creating types.
+	generic_defs[def].signature_ast = ast_test_capture_signature(c"(list[T] values):\n")
+	assert1(generic_infer_ast_shapes(def) == 0)
+	generic_signature_ast_free(generic_defs[def].signature_ast)
+	generic_defs[def].signature_ast = ast_test_capture_signature(c"(AstMissingType value):\n")
+	assert1(generic_infer_ast_shapes(def) == 0)
+	assert_equal(before, type_count())
+	generic_signature_ast_free(generic_defs[def].signature_ast)
+	generic_defs[def].signature_ast = signature
