@@ -1567,3 +1567,15 @@ The existing hash-table, missing-argument, list-warning and map-default
 fixtures compile in required mode with identical native images. Tests compare
 plain and JSON diagnostics, normal and strict mode, both compiler host widths,
 nested warnings, later literal warnings and failed enclosing probes.
+
+## Task 83: indexed virtual list bindings
+
+The arena's local `it` binding now resolves before generic-reference and
+constructor lookahead, just as the streaming loop's temporary local does.
+Consequently `it[index]` inside an inline list expression is parsed as
+indexing instead of being mistaken for a forward generic reference.
+
+A nested list-of-strings regression and the stdin-driven transpose example
+compile with required AST expressions, matching native images and runtime
+output on x86 and x64. The existing list-expression diagnostic and binding
+checks remain covered.

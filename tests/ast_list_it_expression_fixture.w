@@ -32,6 +32,10 @@ int main():
 	if (empty.map(it + bias).length != 0): return 9
 	if (values.map(ast_it_identity(it)).sum() != 6): return 10
 	if (values.map(it += 1).sum() != 9 || values[0] != 1): return 11
+	list[list[string]] matrix = list[list[string]]{list[string]{s"a", s"b"}, list[string]{s"c", s"d"}}
+	int column = 1
+	list[string] transposed = matrix.map(it[column])
+	if (transposed[0] != s"b" || transposed[1] != s"d"): return 13
 	int it = 2
 	if (values.count(it) != 1): return 12
 	return 0

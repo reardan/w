@@ -1701,6 +1701,9 @@ int ast_expression_forward_generic(expression_ast* tree, int depth):
 
 
 int ast_expression_name(expression_ast* tree, int depth):
+	# A virtual local shadows names just as the streaming loop's real
+	# local does. In particular it[index] is not a forward generic call.
+	if ((tree.it_binding >= 0) && peek(c"it")): return ast_expression_symbol(tree, depth, 0)
 	# Keywords, unshadowable builtins, generics and constructors take
 	# precedence over identifier() in the streaming grammar.
 	if (peek(c"cast") || peek(c"sizeof") || peek(c"new")): return -1
