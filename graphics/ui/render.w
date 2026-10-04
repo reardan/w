@@ -141,6 +141,7 @@ void ui_render_init_headless(ui_renderer* r):
 
 
 void ui_render_upload_atlas(ui_renderer* r);
+void ui_render_destroy(ui_renderer* r);
 
 
 # Bring UVs and the texture up to date with the glyph atlas. Glyphs are
@@ -188,7 +189,10 @@ int ui_render_init(ui_renderer* r):
 	char* vertex_source = strjoin(gfx_shader_header(), c"in vec2 a_pos;\nin vec2 a_uv;\nin vec4 a_color;\nout vec2 v_uv;\nout vec4 v_color;\nuniform mat4 u_proj;\nvoid main() {\n\tv_uv = a_uv;\n\tv_color = a_color;\n\tgl_Position = u_proj * vec4(a_pos, 0.0, 1.0);\n}\n")
 	char* fragment_source = strjoin(gfx_shader_header(), c"in vec2 v_uv;\nin vec4 v_color;\nout vec4 frag_color;\nuniform sampler2D u_tex;\nvoid main() {\n\tfrag_color = vec4(v_color.rgb, v_color.a * texture(u_tex, v_uv).r);\n}\n")
 	r.program = gl_create_program(vertex_source, fragment_source)
+	free(vertex_source)
+	free(fragment_source)
 	if (r.program == 0):
+		ui_render_destroy(r)
 		print_error(c"graphics.ui: renderer shader build failed\n")
 		return 0
 	glUseProgram(r.program)

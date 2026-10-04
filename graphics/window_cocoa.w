@@ -270,21 +270,30 @@ void gfx_cocoa_push(gfx_window* win, int kind, int code, int mods):
 int gfx_cocoa_key_down(gfx_window* win, int event, int mods):
 	win.last_keycode = objc_msg0(event, win.sel_key_code) & 0xffff
 	gfx_cocoa_push(win, GFX_EVENT_KEY_DOWN, win.last_keycode, mods)
-	if (mods & GFX_MOD_SUPER): return 1
+	# Command chords still go to AppKit, but their character is queued
+	# too (with the Super bit) so a W menu can bind Cmd+S; text fields
+	# do not type a character that arrives with Super held.
+	int forward = (mods & GFX_MOD_SUPER) != 0
 	int text = objc_msg0(event, win.sel_characters)
-	if (text == 0): return 0
+	if (text == 0): return forward
 	char* s = cast(char*, objc_msg0(text, win.sel_utf8_string))
-	if (s == 0): return 0
+	if (s == 0): return forward
 	int i = 0
 	while (s[i] != 0):
 		int cp = 0
 		i = gfx_cocoa_utf8_next(s, i, &cp)
 		int nav = gfx_cocoa_nav(cp)
-		if (nav != 0): gfx_cocoa_push(win, GFX_EVENT_NAV, nav, mods)
+		if (nav != 0):
+			if (forward == 0): gfx_cocoa_push(win, GFX_EVENT_NAV, nav, mods)
 		else:
 			int ch = gfx_cocoa_char(cp)
-			if (ch != 0): gfx_cocoa_push(win, GFX_EVENT_CHAR, ch, mods)
-	return 0
+			# Ctrl+letter is its control code (Ctrl+S is 19), forwarded
+			# as is for shortcuts rather than as the key it collides
+			# with (Ctrl+C is ETX, which is also keypad Enter).
+			if ((mods & GFX_MOD_CTRL) && (cp >= 1) && (cp <= 26)): ch = cp
+			if ((forward == 0) || (ch >= 32)):
+				if (ch != 0): gfx_cocoa_push(win, GFX_EVENT_CHAR, ch, mods)
+	return forward
 
 
 # Queue the ring events for one NSEvent. Returns 1 when the event should

@@ -57,6 +57,7 @@ import graphics.ui.widgets.dropdown_search
 import graphics.ui.widgets.tree
 import graphics.ui.widgets.popover
 import graphics.ui.widgets.menu
+import graphics.ui.widgets.menubar
 import graphics.ui.widgets.toast
 import graphics.ui.widgets.calendar
 import graphics.ui.widgets.date_picker

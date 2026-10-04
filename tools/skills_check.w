@@ -159,7 +159,7 @@ void skills_scan_doc(char* doc):
 # doc line happens to mention the flag. Grow this list with the flag
 # surface (compiler/compiler.w's help_* functions).
 void skills_check_core():
-	char* core = c"-o -v -h --help --version --strict --quiet --stats --stats-selfcheck --verbose --bounds --pac --ptx --json --imports --bool-ops --closure --debug x64 arm64 arm64_darwin win64 wasm check deps symbols defhash"
+	char* core = c"-o -v -h --help --version --strict --quiet --stats --stats-selfcheck --verbose --bounds --pac --ptx --json --imports --bool-ops --closure --import-root --debug x64 arm64 arm64_darwin win64 wasm check deps symbols defhash"
 	int i = 0
 	while (core[i] != 0):
 		int start = i

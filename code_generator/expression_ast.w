@@ -16,7 +16,7 @@ void emit_ast_map_call(char* helper, int map_slot, int key_slot, int value_slot)
 	rt_call_end(s)
 
 
-# Walk the completed, decoded scalar tree in source evaluation order.
+# Walk the completed, decoded expression tree in source evaluation order.
 # Reuse the production backend dispatch and stack accounting; the same
 # peepholes, target word size and runtime division behavior still apply.
 void emit_expression_ast(expression_ast* tree, int id):
@@ -40,7 +40,14 @@ void emit_expression_ast(expression_ast* tree, int id):
 			else:
 				emit_expression_ast(tree, part)
 				int got = promote(tree.result_type[part])
-				template_spec_present = 0
+				expression_ast_format* spec = &tree.format[part]
+				template_spec_present = spec.present
+				if (spec.present):
+					template_spec_fill = spec.fill
+					template_spec_align = spec.align
+					template_spec_width = spec.width
+					template_spec_precision = spec.precision
+					template_spec_type = spec.kind
 				template_emit_value_append(got, builder_slot)
 			part = tree.next_arg[part]
 		template_emit_helper_address(5)
@@ -194,6 +201,24 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int type = tree.value[id]
 		if (type_is_list(type)): list_emit_new_container(type)
 		else: hash_emit_new_container(type)
+		int kind = tree.high[id]
+		if (kind):
+			int base_stack = stack_pos
+			int map_slot = push_slot()
+			if (kind == 3): mov_eax_int(tree.right[id])
+			else:
+				int arg = tree.left[id]
+				emit_expression_ast(tree, arg)
+				int got = promote(tree.result_type[arg])
+				if (kind == 1): coerce_checked(type_map_value_type(type), got, c"map default")
+			int value_slot = push_slot()
+			int s = rt_call_begin(c"__w_map_set_default")
+			push_slot_copy(map_slot)
+			push_slot_int(kind)
+			push_slot_copy(value_slot)
+			rt_call_end(s)
+			load_slot(map_slot)
+			pop_to(base_stack)
 		return
 	if (op == 'Y'):
 		int length = tree.left[id]
@@ -549,6 +574,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 	if ((op == 'L') || (op == 'R')):
 		stack_pos = stack_pos - 1
 		if (op == 'L'): alu_shl()
+		else if (type_is_unsigned_word(left_type)): alu_shr()
 		else: alu_sar()
 		return
 	if ((op == '&') || (op == '|') || (op == '^')):
@@ -573,7 +599,9 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int result = 0
 		if ((op == 0x94) || (op == 0x95)): result = string_binary_compare_eq(left_type, right_type, op == 0x95)
 		if (result == 0): result = float_binary_compare(left_type, right_type, cc, swap)
-		if (result == 0): alu_cmp_set(op)
+		if (result == 0):
+			if (unsigned_word_operand(left_type, right_type) >= 0): op = setcc_unsigned(op)
+			alu_cmp_set(op)
 		return
 	if (binary_float_kind(left_type, right_type)):
 		pop_ebx_slot()
@@ -585,6 +613,11 @@ void emit_expression_ast(expression_ast* tree, int id):
 		else if (op == '-'): alu_sub()
 		else: alu_imul()
 	else:
-		if (op == '/'): alu_idiv()
-		else: alu_imod()
+		int is_unsigned = unsigned_word_operand(left_type, right_type) >= 0
+		if (op == '/'):
+			if (is_unsigned): alu_udiv()
+			else: alu_idiv()
+		else:
+			if (is_unsigned): alu_umod()
+			else: alu_imod()
 		stack_pos = stack_pos - 1

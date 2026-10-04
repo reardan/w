@@ -585,3 +585,49 @@ void test_server_loopback_fork():
 	asserts(c"server child exited cleanly", status == 0)
 	close(fds[0])
 	free(fds)
+
+
+# A client with no server name (null) and insecure_skip_verify completes a
+# real handshake with our server: the ClientHello omits SNI instead of
+# faulting in strlen. Without insecure_skip_verify the same call first
+# fails before sending anything, leaving the socket untouched for the
+# opt-out attempt that follows.
+void test_server_loopback_no_server_name():
+	int* fds = malloc(__word_size__ * 2)
+	asserts(c"socketpair", socket_pair(fds) >= 0)
+	int pid = fork()
+	asserts(c"fork", pid >= 0)
+	if (pid == 0):
+		close(fds[0])
+		tls_server_config* scfg = tls_server_config_new()
+		scfg.cert_chain_path = tlss_cert_path()
+		scfg.key_path = tlss_key_path()
+		tls_conn* s = tls_accept(fds[1], scfg)
+		if (s == 0): exit(11)
+		if (tls_write(s, c"ok", 2) != 2): exit(13)
+		char* buf = malloc(64)
+		if (tls_read(s, buf, 64) != 0): exit(14)
+		tls_close(s)
+		exit(0)
+	close(fds[1])
+	# Verification on + no name: clean error, nothing sent.
+	tls_config* strict = tls_config_new()
+	asserts(c"no name, verifying: must fail", tls_connect(fds[0], 0, strict) == 0)
+	assert_strings_equal(c"tls: no server name to verify", tls_last_error(strict))
+	tls_config_free(strict)
+	# Explicit opt-out: the handshake completes over the same socket.
+	tls_config* cfg = tls_config_new()
+	cfg.insecure_skip_verify = 1
+	tls_conn* c = tls_connect(fds[0], 0, cfg)
+	asserts(c"no name, insecure: client connects", c != 0)
+	char* buf = malloc(64)
+	assert_equal(2, tls_read(c, buf, 64))
+	asserts(c"server payload", tlss_bytes_equal(c"ok", buf, 2) != 0)
+	tls_close(c)
+	free(buf)
+	tls_config_free(cfg)
+	int status = 0
+	wait4(pid, &status, 0, 0)
+	asserts(c"server child exited cleanly", status == 0)
+	close(fds[0])
+	free(fds)

@@ -443,7 +443,10 @@ deps_entry* wexec_deps_lookup(char* arch, char* root):
 # W compile roots of the target's own steps: 'bin/wv2 [selector] [flags]
 # <root>.w ... -o out' (or seed './w' compiles), as parallel (arch, root)
 # lists. Dependency targets' roots are not collected — their closures are
-# already chained in through the dependency cache keys.
+# already chained in through the dependency cache keys. A step's
+# --import-root directories ride in its arch column, in order
+# (tools/deps_cache.w, deps_arch_with_roots), so the closure is computed
+# with the same roots and resolves the same files the compile does.
 void wexec_deps_collect_roots(json_value* target, list[char*] archs, list[char*] roots):
 	json_value* steps = jfield_array(target, c"steps")
 	if (steps == 0): return
@@ -472,12 +475,25 @@ void wexec_deps_collect_roots(json_value* target, list[char*] archs, list[char*]
 		json_value* first = json_array_get(cmd, 1)
 		if (first.type == json_type_string()):
 			if (wexec_selector_word(first.string_value)): arch = first.string_value
+		list[char*] import_roots = new list[char*]
+		i = 1
+		while (i < n):
+			json_value* root_piece = json_array_get(cmd, i)
+			i = i + 1
+			if (root_piece.type != json_type_string()): continue
+			int width = deps_import_root_width(root_piece.string_value)
+			if ((width == 2) && (i < n)):
+				json_value* dir_piece = json_array_get(cmd, i)
+				if (dir_piece.type == json_type_string()): import_roots.push(dir_piece.string_value)
+				i = i + 1
+			else if (width == 1): import_roots.push(root_piece.string_value + 14)
+		if (import_roots.length > 0): arch = deps_arch_with_roots(arch, import_roots)
 		i = 1
 		while (i < n):
 			json_value* piece = json_array_get(cmd, i)
 			if (piece.type == json_type_string()):
 				char* element = piece.string_value
-				if (strcmp(element, c"-o") == 0):
+				if ((strcmp(element, c"-o") == 0) || (deps_import_root_width(element) == 2)):
 					i = i + 2
 					continue
 				if (ends_with(element, c".w")):
@@ -514,7 +530,9 @@ char* wexec_find_target_for_root(char* arch, char* path):
 		wexec_deps_collect_roots(target, archs, roots)
 		int i = 0
 		while (i < roots.length):
-			if ((strcmp(archs[i], arch) == 0) && (strcmp(roots[i], path) == 0)):
+			# Compare arch words: a step's --import-root roots ride in
+			# its arch column (wexec_deps_collect_roots)
+			if ((strcmp(deps_arch_word(archs[i]), arch) == 0) && (strcmp(roots[i], path) == 0)):
 				return name
 			i = i + 1
 	return 0

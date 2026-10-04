@@ -26,6 +26,7 @@ import grammar.float_literal
 import grammar.string_literal
 import grammar.template_string
 import compiler.expression_ast
+import compiler.statement_ast
 import grammar.primary_expr
 import grammar.binary_op
 import grammar.postfix_expr
@@ -66,6 +67,8 @@ import grammar.gpu_for
 import grammar.program
 import code_generator.expression_ast
 import grammar.ast_expression
+import code_generator.statement_ast
+import grammar.ast_statement
 
 # no idea why this is necessary:
 int grammar_no_reason_temp_var

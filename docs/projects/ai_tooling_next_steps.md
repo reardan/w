@@ -17,6 +17,20 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **Bool return coerces an already promoted integer twice (2026-10-03).**
+  `bool truth(int n): return n` emits a second load through the integer
+  value and crashes for `truth(7)`. Reproduced with both streaming emission
+  and the saved compiler preceding AST return-node work. `coerce`'s bool
+  branch calls `promote(got)` after the return parser already promoted the
+  value; audit other coercion callers when fixing the value-type convention.
+
+- **Color diagnostic test inherits `NO_COLOR` (2026-10-03).** Running
+  `./wbuild tests` from an agent shell with `NO_COLOR=1` fails
+  `did_you_mean_test`'s forced-color assertion: the inherited variable
+  correctly overrides `FORCE_COLOR=1`. The target passes with `NO_COLOR`
+  unset. Isolate the forced-color step's environment while retaining the
+  separate assertion that `NO_COLOR` wins.
+
 - **Missing implicit string-coercion helper (2026-10-03).** A standalone
   `list[string]` consumer pushing a C string without importing `lib.lib`
   fails with `Cannot find symbol: ')'`: coercion needs `str_from_cstr`,
@@ -172,6 +186,13 @@ is a queue, not an archive.
   (`dl_trampoline_argv` + `dl_call`), one `int*` parameter.
 
 ## Test selection (`bin/wtest`)
+
+- **Color diagnostic fixtures inherit `NO_COLOR`.** Observed 2026-10-03
+  while running the VM changes through `./wbuild tests`: the
+  `did_you_mean_test` step sets `FORCE_COLOR=1` but fails when an agent
+  environment already exports `NO_COLOR=1`. The compiler correctly gives
+  `NO_COLOR` precedence. Have the force-color fixture explicitly unset
+  `NO_COLOR`; workaround: `env -u NO_COLOR ./wbuild tests`.
 
 - **Shipped (2026-08-04): cold deps-cache cost is now visible and
   payable up front.** (Logged 2026-07-29, crash-trace unit: a cold
@@ -684,3 +705,69 @@ bootstrap works on such hosts.
   calls `substring`, which runs `strlen` over the whole remaining
   text), which made a 600 KB cache parse take 20 s; the cache module
   scans lines by hand instead.
+
+## Reliable-services libraries (2026-10-03, #514)
+
+Observed by parallel agents building `lib/io.w`, `lib/fs.w`, the checked
+streams, `lib/executor.w`, the W2 codecs and W5 transports.
+
+- **`git diff --name-only HEAD | bin/wtest changed` misses untracked new
+  files.** Every agent adding a new module had to append the paths by
+  hand. Direction: a `--untracked` flag (or `git ls-files --others
+  --exclude-standard` folded in), or document `git add -N` in AGENTS.md.
+- **`bin/wtest changed` is useless for files in the compiler's closure.**
+  A `lib/stream.w` edit selects 802 of 817 targets (collapsed into the
+  umbrellas); `lib/bytes.w` alone pulls in `wexec`. Direction: report the
+  closure-driven fan-out separately from direct users, so a caller can
+  run the direct users plus `verify` first.
+- **`bin/wtest archs <file> --check` cannot filter by arch.** For
+  `lib/stream.w` it lists 245 pairs, 212 of them x86/x64; an agent wanting
+  only the non-default arches had to script around it. Direction:
+  `--arch <name>` / `--exclude-default`.
+- **`check --lint` with several files compiles them as one batch**, giving
+  false `duplicate-import` warnings and "symbol redefined" errors; lint
+  one file per invocation (same root cause as the multi-file `w check`
+  entry above).
+- **`in` is a keyword, but `in = ...` at statement position reports
+  "Could not find a valid primary expression, token: ="** without naming
+  the cause. Direction: a keyword-as-identifier hint.
+- **`tests/parser_generator/w.pg` rejects `for pass in range(3): stmt`**
+  (single-line body) while the compiler accepts it, and the block form
+  `for pass in range(4):` parses in both. Only `parser_generator_w_test`
+  in the full suite caught it, as "expected top_item, found
+  assert_equal" on the line after. Direction: make the grammar treat
+  `pass` as an identifier wherever the compiler does, or warn in
+  `w check`.
+- **The worktree-isolation guard refuses ordinary shell loops** that run
+  `bin/wv2` with a variable argument, and `$(cat targets)` inside a
+  `./wbuild` command; agents had to write scratch scripts.
+- **Test-name collisions** (`lib/clock_test.w` vs the existing
+  distributed `clock_test`) surface only at manifest generation; `w
+  check` or `bin/wtest` could warn when a new `*_test.w` name collides.
+- **`mem_fill(&b.data[i], cast(char, 0), n)` fails type inference**
+  ("got 'constant'") and needs an explicit `[char]`.
+- **Language sharp edges hit along the way** (recorded here until each
+  gets its own issue): narrow integer stores truncate silently (`uint16 x =
+  70000` is 4464, no warning); decimal literals wrap to 32 bits even on x64
+  (`4294967295` is -1); `free()` warns on a `T**` argument while `T*` is
+  accepted; `new T()` leaves fields uninitialized and a partial positional
+  `new T(a, b)` only warns.
+
+## Import roots and the build caches (2026-10-03, #514 W6)
+
+- **Closure scans read the target selector only at `cmd[1]`.**
+  `wexec_deps_collect_roots` and wtest's `wtest_collect_own_roots` take
+  the arch from the word right after `bin/wv2`. A hand-written step
+  spelled `bin/wv2 --strict x64 f.w -o out` is keyed and selected on the
+  x86 closure, which the compiler accepts but does not use. The generated
+  steps and the `flags=` directive put the selector first, so nothing in
+  the tree hits this today. Direction: share the compiler's selector scan,
+  which skips flags and their values. Adding `--import-root` support
+  already touched both loops.
+- **A target's directory `data=`/`inputs` prefix drops its `.w` files once
+  closures key the target.** A target that compiles a driver and then
+  spawns `bin/wv2` over fixture modules (the e2e drivers) gets no cache
+  invalidation from fixture edits unless each module is listed as an
+  explicit file. Such drivers stay FORCE targets today, with no `input=`,
+  so nothing goes stale yet. Direction: a directive marking a prefix as
+  "run-time .w data, hash every file".

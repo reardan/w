@@ -1,6 +1,6 @@
-# Production AST island: parenthesized scalar expressions. Each
-# attempt owns this bounded arena on its stack; unsupported syntax and
-# REPL error recovery cannot leave allocated nodes or compiler state behind.
+# Ephemeral production expression AST. Each parse or owning statement
+# keeps this bounded arena on its stack through preparation and emission.
+# Unsupported syntax and REPL recovery discard the speculative arena.
 # Node IDs are arena indices, -1 is failure. Literal nodes carry their
 # source byte offset until the committed diagnostic/decoding pass fills value.
 # result_type retains the streaming type convention (lvalue, value or
@@ -11,6 +11,15 @@
 # roots; those links do not change a nested call's own argument list.
 # Logical chains use the same sibling links, with a separate node for
 # each source-level chain (parenthesized subchains keep their boundary).
+struct expression_ast_format:
+	int present
+	int fill
+	int align
+	int width
+	int precision
+	int kind
+
+
 struct expression_ast:
 	int count
 	int end_offset
@@ -35,6 +44,7 @@ struct expression_ast:
 	int[128] next_arg
 	int[128] in_cast
 	int[128] symbol
+	expression_ast_format[128] format
 	int[128] generic_parameters
 	int[128] generic_signature
 	int[128] generic_offset

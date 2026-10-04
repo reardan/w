@@ -20,13 +20,16 @@ threads:
 - task_runtime_spawn / task_runtime_spawn_on post a new task into a
   worker's inbox (an eventfd its event loop watches).
 - task_xchan is a mutex-protected channel whose parked senders and
-  receivers are woken through their own worker's inbox, so tasks on
-  different workers can exchange words. Same-scheduler peers are woken
-  directly.
+  receivers are woken through their own worker's inbox (a
+  task_remote_call that rechecks the waiter on its own thread), so tasks
+  on different workers can exchange words. Same-scheduler peers are
+  woken directly.
 - task_spawn_blocking runs a plain function on a fresh thread and parks
   only the calling task until it returns: the answer for blocking
   syscalls and CPU-heavy work (it also works on a lone scheduler,
   without a task_runtime).
+- task_remote_call runs a function on a scheduler's own thread; the
+  bounded executor (lib/executor.w) delivers completions through it.
 
 Allocation from any thread is safe (per-thread heaps,
 lib/thread_heap.w), including freeing memory another thread allocated.
@@ -75,6 +78,11 @@ void task_runtime_install():
 const int task_remote_msg_spawn = 1
 const int task_remote_msg_wake = 2
 const int task_remote_msg_nop = 3
+const int task_remote_msg_call = 4
+
+
+# A function run on the scheduler's own thread (task_remote_call).
+type task_remote_call_fn = fn(void*) -> void
 
 
 struct task_remote_msg:
@@ -83,6 +91,8 @@ struct task_remote_msg:
 	task* target        # wake
 	int seq             #   the park it was meant for
 	int value           #   wake value
+	task_remote_call_fn* call   # call
+	void* context               #   its argument
 
 
 struct task_remote:
@@ -137,6 +147,8 @@ void task_remote_on_readable(int fd, int revents, void* context):
 		else if (m.kind == task_remote_msg_wake):
 			task* t = m.target
 			if ((t.park_seq == m.seq) && task_is_parked(t)): task_wake(t, m.value)
+		else if (m.kind == task_remote_msg_call):
+			m.call(m.context)
 		free(cast(void*, m))
 		i = i + 1
 	list_free[task_remote_msg*](batch)
@@ -169,10 +181,16 @@ task_remote* task_remote_attach(task_scheduler* s):
 	return r
 
 
+# Free the inbox once its scheduler no longer runs. Calls still pending
+# run here, on the freeing thread, so their callbacks can drop what they
+# hold (a reference to the record they were posted for); undelivered
+# spawns and wakes are discarded.
 void task_remote_free(task_remote* r):
 	int i = 0
 	while (i < r.pending.length):
-		free(cast(void*, r.pending[i]))
+		task_remote_msg* m = r.pending[i]
+		if (m.kind == task_remote_msg_call): m.call(m.context)
+		free(cast(void*, m))
 		i = i + 1
 	list_free[task_remote_msg*](r.pending)
 	close(r.read_fd)
@@ -182,14 +200,27 @@ void task_remote_free(task_remote* r):
 
 # Wake target (parked in park number seq) from any thread.
 void task_remote_wake(task_remote* r, task* target, int seq, int value):
-	task_remote_msg* m = new task_remote_msg(task_remote_msg_wake, 0, target, seq, value)
+	task_remote_msg* m = new task_remote_msg(task_remote_msg_wake, 0, target, seq, value, 0, 0)
 	task_remote_post(r, m)
 
 
 # Spawn g on r's scheduler from any thread.
 void task_remote_spawn(task_remote* r, generator* g):
-	task_remote_msg* m = new task_remote_msg(task_remote_msg_spawn, g, 0, 0, 0)
+	task_remote_msg* m = new task_remote_msg(task_remote_msg_spawn, g, 0, 0, 0, 0, 0)
 	if (cast(int, r.counter) != 0): atomic_add(r.counter, 1)
+	task_remote_post(r, m)
+
+
+# Run func(context) on r's scheduler thread, from any thread. A bare
+# task_remote_wake names its target by (task, park sequence), which is
+# only safe while that task is certain to stay parked until the message
+# arrives (task_spawn_blocking's shielded wait). A waiter that another
+# event can also wake (a cancellation, a deadline) may have resumed and
+# even finished by then; a call lets the poster hand over an object it
+# keeps alive instead, whose callback inspects the waiter on the owning
+# thread (task_xchan below, lib/executor.w).
+void task_remote_call(task_remote* r, task_remote_call_fn* func, void* context):
+	task_remote_msg* m = new task_remote_msg(task_remote_msg_call, 0, 0, 0, 0, func, context)
 	task_remote_post(r, m)
 
 
@@ -241,14 +272,33 @@ int task_spawn_blocking(task_blocking_fn* func, void* arg):
 	return result
 
 
-/* Cross-thread channel. */
+/* Cross-thread channel.
+
+   A parked sender or receiver is a heap task_xwaiter queued on the
+   channel. The peer that completes it (any thread, channel lock held)
+   records the outcome in it and wakes the owner: directly when the peer
+   runs on the owner's own scheduler, otherwise by a task_remote_call to
+   the owner's inbox. That call can arrive late -- after a cancellation
+   or timeout already resumed the owner (which then sees the completion
+   under the lock and returns it), after the owner parked again, or
+   after the task finished and, detached, was reclaimed. So the call
+   never names the task: task_xwaiter_on_wake, on the owner's thread,
+   wakes w.parked, which the owner clears as soon as its park returns,
+   and only while it is still in the park that registered w.
+
+   Lifetime: w is reference counted. The waiting task holds one
+   reference until it has left the channel; each posted call holds one
+   until its callback ran (task_remote_free runs undelivered calls).
+   Whoever drops the last one frees w. */
 
 struct task_xwaiter:
 	task* owner
 	task_remote* remote
-	int seq
+	int seq             # the owner's park that waits on this
 	int value
 	int status          # task_waiter_* values, written under the channel lock
+	task* parked        # owner while in that park, else 0 (owner's thread only)
+	int refs            # owner + posted calls
 
 
 struct task_xchan:
@@ -279,15 +329,36 @@ void task_xchan_free(task_xchan* ch):
 	free(cast(void*, ch))
 
 
-# Complete a parked peer (channel lock held). A peer on the calling
+void task_xwaiter_unref(task_xwaiter* w):
+	if (atomic_add(&w.refs, -1) == 1): free(cast(void*, w))
+
+
+# On the owner's thread: wake it if it is still in the park that
+# registered w (not resumed by a timeout or cancellation meanwhile).
+void task_xwaiter_wake_owner(task_xwaiter* w):
+	task* t = w.parked
+	if (cast(int, t) == 0): return
+	if ((t.park_seq == w.seq) && task_is_parked(t)): task_wake(t, 0)
+
+
+# task_remote_call callback: runs on the owner's scheduler thread.
+void task_xwaiter_on_wake(void* p):
+	task_xwaiter* w = cast(task_xwaiter*, p)
+	task_xwaiter_wake_owner(w)
+	task_xwaiter_unref(w)
+
+
+# Complete a parked peer (channel lock held; w was just taken off its
+# queue, so its owner still holds a reference). A peer on the calling
 # thread's own scheduler is woken directly; others through their inbox.
 void task_xwaiter_fire(task_xwaiter* w, int status):
 	w.status = status
 	task* me = task_active_get()
 	if ((cast(int, me) != 0) && (task_sched(me) == task_sched(w.owner))):
-		if ((w.owner.park_seq == w.seq) && task_is_parked(w.owner)): task_wake(w.owner, 0)
+		task_xwaiter_wake_owner(w)
 		return
-	task_remote_wake(w.remote, w.owner, w.seq, 0)
+	atomic_add(&w.refs, 1)
+	task_remote_call(w.remote, task_xwaiter_on_wake, cast(void*, w))
 
 
 task_xwaiter* task_xchan_take_first(list[task_xwaiter*] waiters):
@@ -362,25 +433,40 @@ int task_xchan_try_recv(task_xchan* ch, int* out):
 	return r
 
 
-void task_xwaiter_init(task_xwaiter* w, task* t):
+# A waiter for the current task's next park, holding the task's
+# reference (task_xchan_park drops it).
+task_xwaiter* task_xwaiter_new(task* t, int value):
+	task_xwaiter* w = new task_xwaiter()
 	w.owner = t
 	w.remote = task_remote_attach(task_sched(t))
+	# task_park bumps park_seq before suspending.
 	w.seq = t.park_seq + 1
-	w.value = 0
+	w.value = value
 	w.status = task_waiter_pending
+	w.parked = 0
+	w.refs = 1
+	return w
 
 
 # Park after registering w (lock held on entry, released here). Returns
-# the park result; on a timeout or cancellation that raced a peer
-# completing w, the peer's completion wins.
-int task_xchan_park(task_xchan* ch, list[task_xwaiter*] queue, task_xwaiter* w, int timeout_ms):
+# the park result and stores w's final status and value in *status and
+# *value, then drops the task's reference to w. On a timeout or
+# cancellation that raced a peer completing w, the peer's completion
+# wins.
+int task_xchan_park(task_xchan* ch, list[task_xwaiter*] queue, task_xwaiter* w, int timeout_ms, int* status, int* value):
 	task* t = w.owner
 	queue.push(w)
+	w.parked = t
 	mutex_unlock(&ch.lock)
 	int r = task_park(t, task_state_waiting_external, timeout_ms, task_err_timed_out())
+	# From here on a late wake call for w must leave this task alone.
+	w.parked = 0
 	mutex_lock(&ch.lock)
 	if (w.status == task_waiter_pending): task_xchan_forget(queue, w)
+	*status = w.status
+	*value = w.value
 	mutex_unlock(&ch.lock)
+	task_xwaiter_unref(w)
 	return r
 
 
@@ -398,12 +484,11 @@ int task_xchan_send_timeout(task_xchan* ch, int value, int timeout_ms):
 	if (err < 0):
 		mutex_unlock(&ch.lock)
 		return err
-	task_xwaiter w
-	task_xwaiter_init(&w, t)
-	w.value = value
-	r = task_xchan_park(ch, ch.senders, &w, timeout_ms)
-	if (w.status == task_waiter_completed): return 0
-	if (w.status == task_waiter_closed): return task_err_closed()
+	int status = 0
+	int ignored = 0
+	r = task_xchan_park(ch, ch.senders, task_xwaiter_new(t, value), timeout_ms, &status, &ignored)
+	if (status == task_waiter_completed): return 0
+	if (status == task_waiter_closed): return task_err_closed()
 	return r
 
 
@@ -424,13 +509,13 @@ int task_xchan_recv_timeout(task_xchan* ch, int* out, int timeout_ms):
 	if (err < 0):
 		mutex_unlock(&ch.lock)
 		return err
-	task_xwaiter w
-	task_xwaiter_init(&w, t)
-	r = task_xchan_park(ch, ch.receivers, &w, timeout_ms)
-	if (w.status == task_waiter_completed):
-		*out = w.value
+	int status = 0
+	int value = 0
+	r = task_xchan_park(ch, ch.receivers, task_xwaiter_new(t, 0), timeout_ms, &status, &value)
+	if (status == task_waiter_completed):
+		*out = value
 		return 1
-	if (w.status == task_waiter_closed): return 0
+	if (status == task_waiter_closed): return 0
 	return r
 
 
@@ -528,7 +613,7 @@ int task_runtime_stop(task_runtime* rt):
 	if (atomic_cas(&rt.stopping, 0, 1) != 0): return 0
 	int i = 0
 	while (i < rt.nthreads):
-		task_remote_msg* m = new task_remote_msg(task_remote_msg_nop, 0, 0, 0, 0)
+		task_remote_msg* m = new task_remote_msg(task_remote_msg_nop, 0, 0, 0, 0, 0, 0)
 		task_remote_post(rt.workers[i].remote, m)
 		i = i + 1
 	return 1

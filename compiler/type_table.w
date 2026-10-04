@@ -4,12 +4,11 @@
 # and never moved -- type_records holds their addresses as untyped words,
 # which is the one word -> pointer boundary in this file.
 #
-# The array fields carry W's 2-word {data, length} descriptors, which
-# point into the record itself. That is why type_alloc uses 'new' rather
-# than malloc (only 'new' initializes them) and why a record must never
-# be byte-copied or stored in a list[type_rec] -- the copy's descriptors
-# would still address the original. Copying happens field by field, in
-# type_alias_record and type_const_record.
+# Field lists grow with the declaration rather than imposing an aggregate
+# field limit. Alias, const and gpu records own independent copies of the
+# lists, so REPL redefinition cannot mutate their existing field entries.
+# The fixed function-parameter array still has an inline descriptor; records
+# must therefore be allocated with 'new' and never byte-copied.
 #
 # Named 'type_rec' rather than 'type_record' because type_record() below
 # is the accessor function external callers use.
@@ -25,8 +24,8 @@ struct type_rec:
 	int decl_file_index     # -1 when unrecorded (dwarf.w debug_files)
 	int decl_line           # 1-based
 	int decl_column         # 1-based
-	char*[100] field_names
-	int[100] field_types
+	list[char*] field_names
+	list[int] field_types
 	int[10] fn_param_types
 
 
@@ -61,6 +60,7 @@ int float32_value_type
 int float64_value_type
 int bool_type
 int int64_type
+int uint_type
 int uint64_type
 int uint8_type
 int uint16_type
@@ -129,6 +129,8 @@ type_rec* type_alloc():
 	# 'new' (not malloc) because the record's array fields carry
 	# descriptors that only 'new' initializes; it also zeroes the record.
 	type_rec* new_type = new type_rec
+	new_type.field_names = new list[char*]
+	new_type.field_types = new list[int]
 	new_type.decl_file_index = -1
 	return new_type
 
@@ -395,9 +397,9 @@ int type_push_alias(char* name, int target):
 	new_type.num_fields = target_record.num_fields
 	new_type.total_size = target_record.total_size
 	new_type.pointer_level = target_record.pointer_level
-	for i in range(100):
-		new_type.field_names[i] = target_record.field_names[i]
-		new_type.field_types[i] = target_record.field_types[i]
+	for i in range(target_record.num_fields):
+		new_type.field_names.push(target_record.field_names[i])
+		new_type.field_types.push(target_record.field_types[i])
 	new_type.alias_target = real_target
 	new_type.kind = type_kind_alias
 	new_type.fn_return_type = -1
@@ -416,9 +418,9 @@ int type_push_const(int target):
 	new_type.num_fields = target_record.num_fields
 	new_type.total_size = target_record.total_size
 	new_type.pointer_level = target_record.pointer_level
-	for i in range(100):
-		new_type.field_names[i] = target_record.field_names[i]
-		new_type.field_types[i] = target_record.field_types[i]
+	for i in range(target_record.num_fields):
+		new_type.field_names.push(target_record.field_names[i])
+		new_type.field_types.push(target_record.field_types[i])
 	new_type.alias_target = real_target
 	new_type.kind = type_kind_const
 	new_type.fn_return_type = -1
@@ -494,9 +496,9 @@ int type_get_gpu(int target):
 	new_type.total_size = target_record.total_size
 	new_type.pointer_level = target_record.pointer_level
 	i = 0
-	while (i < 100):
-		new_type.field_names[i] = target_record.field_names[i]
-		new_type.field_types[i] = target_record.field_types[i]
+	while (i < target_record.num_fields):
+		new_type.field_names.push(target_record.field_names[i])
+		new_type.field_types.push(target_record.field_types[i])
 		i = i + 1
 	new_type.alias_target = real_target
 	new_type.kind = 20
@@ -887,6 +889,24 @@ int type_is_unsigned_fixed(int type_index):
 	return 0
 
 
+# 1 when an operand of type t (a source type or a promote()d value)
+# makes a word-sized integer operation unsigned: the unsigned integer
+# types whose values fill the whole machine word -- uint everywhere,
+# uint64 on 8-byte-word targets, uint32 on 4-byte-word targets. The
+# narrower unsigned types (and uint32 on a 64-bit word) zero-extend into
+# the word (type_is_unsigned_fixed), so the signed word operations are
+# already exact for them, just as C's integer promotions turn them into
+# a (word-sized) int. Pointers are separate type indices and never
+# match. See docs/projects/type_system_p0.md, "Unsigned operations".
+int type_is_unsigned_word(int t):
+	t = type_unqualified(t)
+	if (t < 0): return 0
+	if (t == uint_type): return 1
+	if (t == uint64_type): return word_size == 8
+	if (t == uint32_type): return word_size == 4
+	return 0
+
+
 # Return 1 when a value of type 'got' can be stored where 'want' is expected.
 # "constant" (3) results (integer/char/string literals, addresses from '&',
 # untyped call results) carry no type information yet, so they remain
@@ -1036,6 +1056,8 @@ int type_lookup_previous_pointer(int type_index):
 void type_reset_for_redefinition(int type_index, int size):
 	type_rec* t = cast(type_rec*, type_records[type_index])
 	t.num_fields = 0
+	t.field_names.clear()
+	t.field_types.clear()
 	t.total_size = size
 	t.pointer_level = 0
 
@@ -1044,8 +1066,6 @@ int type_add_arg(int type_index, char* field, int field_type):
 	type_index = type_canonical(type_index)
 	type_rec* t = cast(type_rec*, type_records[type_index])
 	int num_fields = t.num_fields
-	int max_fields = 100
-	assert1(num_fields < max_fields)
 	if (verbosity > 0):
 		print_int(c"num_fields: ", num_fields)
 		print2(c"adding field: ")
@@ -1053,8 +1073,8 @@ int type_add_arg(int type_index, char* field, int field_type):
 		print2(c"(")
 		print2(itoa(field_type))
 		println2(c")")
-	t.field_names[num_fields] = field
-	t.field_types[num_fields] = field_type
+	t.field_names.push(field)
+	t.field_types.push(field_type)
 	t.num_fields = num_fields + 1
 	# Update total size. Structs sum fields; unions take the largest field.
 	int field_size = type_get_size(field_type)
@@ -1251,7 +1271,7 @@ void push_basic_types():
 	type_push_size(c"pointer", word_size)
 	type_push_size(c"int8", 1)
 
-	type_push_size(c"uint", word_size)
+	uint_type = type_push_size(c"uint", word_size)
 	uint32_type = type_push_size(c"uint32", 4)
 	uint16_type = type_push_size(c"uint16", 2)
 	uint8_type = type_push_size(c"uint8", 1)

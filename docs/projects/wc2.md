@@ -21,6 +21,30 @@ Successful `--dump-ast` output is deterministic JSON (schema 1). Invalid or unsu
 input produces location-bearing diagnostics on stderr, no stdout, and exit
 status 1. Incorrect command-line arguments return 2.
 
+## Current production migration status
+
+The numbered tasks below record successive stages; their fallback lists describe
+that stage, and later tasks supersede them. The production compiler remains
+streaming by default. `--ast-full-expressions` enables the hybrid AST path;
+`--ast-required` rejects any runtime expression that still needs streaming.
+Compiler self-host coverage is a narrower gate than full language coverage.
+
+The integrated path combines record values and calls, map elements and defaults,
+collection membership and basic methods, parallel assignment and increments,
+formatted interpolation, explicit generic calls, buffers and slices, typed
+container literals, constructors and dynamic arrays. Generic signatures retain
+unbound syntax and bind supported shapes transactionally. Ordinary return and expression
+statements own prepared expression nodes through immediate lowering.
+
+These nodes do not survive as persistent function or module trees. Other
+statement/declaration forms, declaration-time constant expressions, inferred
+and unsupported generic forms, first-use composite types, qualified/method
+calls, special ABI/GPU paths, remaining builtins and diagnostic-bearing paths
+still need migration. The bounded expression arena still falls back for large
+expressions. Persistent source/binding ownership, multi-error semantic analysis,
+REPL/debugger rollback and incremental emission remain subsequent architecture
+work. Production ASTs do not use the leaf `wc2` resident cache described below.
+
 ## Supported foundation
 
 The parsed subset covers `int`, `bool`, `void` and named struct types; function
@@ -818,12 +842,19 @@ default constructors still decline. Basic list push, scalar pop, insert,
 remove, clear and free operations have explicit nodes; record pushes and
 inserts select the byte-copy helpers after validating the argument type.
 
-Tests cover allocation, nested container types, struct element copies,
-argument order, C-string conversion, scalar pops, mutation and cleanup,
-as well as normal/lint diagnostic parity. Brace blocks now terminate whole
+Tests assert twelve direct AST paths on both compiler host widths and cover
+allocation, nested container types, struct element copies, receiver/argument
+order, nested list calls, C-string conversion, scalar and float pops,
+short-circuit versus bitwise side effects, mutation and cleanup, as well as
+normal/lint diagnostic parity. Brace blocks now terminate whole
 expression preflight, with container-literal keywords protected from being
 mistaken for ordinary indexed names. The required-mode rejection fixture
 now uses an unsupported interpolated string.
+
+Integration with the unsigned-word arithmetic changes keeps AST result types,
+comparisons, division, remainder and right shifts aligned with the streaming
+compiler. The unsigned-word and x64 uint64 regression programs also run through
+the AST differential image matrix.
 
 ## Task 29: record values, copies and arguments
 
@@ -1057,3 +1088,111 @@ order.
 Tests cover scalar/record elements, zero lengths, calls, casts, indexing and
 invalid allocation diagnostics. Native x86/x64 checks also verify negative
 count traps and byte-identical execution with bounds checks disabled.
+
+## Task 45: generic struct and slice parameter shapes
+
+Unbound signature syntax now represents generic struct applications and
+slice wrappers, including nested applications and pointer element types.
+Binding resolves existing instantiated structs and slice types without
+instantiating either during a speculative call parse. Pointer and function
+signature registration retain their existing transaction.
+
+Shape tests verify nested argument lists and unchanged compiler type counts.
+The differential/required fixture now covers generic struct parameters,
+generic slice reads/stores and `lib.array`'s `array_free` wrapper. Complex
+return signatures and first-use composite instantiation remain separate work.
+
+## Integrated map defaults and formatted interpolation
+
+This integration reconciles compiler-completion through `db157ce8`, migration
+through `435b4b50`, and the unsigned arithmetic baseline in `7ccc2a01`. Later
+work on those development branches is not implicitly included.
+
+Map default constructors retain scalar defaults, factories and automatic nested
+container defaults as explicit AST operands. Lowering preserves allocation and
+argument evaluation order through the existing runtime helpers. Format nodes
+capture fill/alignment, padding, width, precision and format kind without
+emitting speculative diagnostics, then replay the existing template tokenizer
+and formatter at their source positions. Invalid forms keep streaming diagnostic
+parity.
+
+These paths are combined with the newer generic signature binding, buffer type
+registration, constructors and allocation nodes. The differential matrix retains
+the fixtures from both development branches, including cross-feature cases.
+
+## Owned production statements
+
+Expression preparation now returns a root into a caller-owned arena before
+machine-code emission. Ordinary return nodes own that arena or represent a bare
+return. The shared return lowering retains coercion, aggregate copies, deferred
+cleanup and frame unwinding. Generator/GPU return forms retain their existing
+handling.
+
+Statement ownership is currently bounded by immediate lowering; symbol and type
+references are not stable across later declarations or REPL rollback. This is a
+step toward statement trees, not a persistent module representation.
+
+Ordinary expression statements now also own a prepared expression arena after
+statement dispatch has ruled out declarations and labels. Lowering retains the
+streaming expression's assignment flag, stack temporaries and read-only state;
+emission precedes the final lexer advance to preserve source-sensitive
+warnings. Prefix increments keep their existing dedicated statement dispatch.
+Stats distinguish AST/streaming expression statements from expression roots.
+
+The integrated compiler's required-mode check on 2026-10-03 reports 39,361
+expression roots, 5,681 return statements and 18,232 ordinary expression
+statements on x86; x64 reports 39,604, 5,698 and 18,348 respectively. Each category
+has zero streaming fallbacks for this corpus. These are parser-entry counts,
+not percentages of source coverage or an all-language AST guarantee.
+
+## Reproducible production AST audit
+
+The W-native `wast_audit` tool generates an AST-enabled manifest from the current
+`build.base.json` and source directives. It adds `--ast-full-expressions` to
+direct production compiler compile/check commands, preserving pinned-seed steps
+and commands that already select an AST mode. It writes a JSON selection report
+listing the changed target/step pairs. Generation does not execute the manifest.
+
+```sh
+./wbuild wast_audit
+bin/wast_audit manifest bin/ast_suite_manifest.json > bin/ast_suite_selection.json
+env -u NO_COLOR bin/wexec -f bin/ast_suite_manifest.json -j 1 tests
+```
+
+Run the audit suite separately from ordinary builds. Serial execution avoids the
+known nested-build race in which a driver rebuilds a compiler still being used
+by another target. The flag covers implicit runtime imports, but compiler
+launches inside test drivers retain their own mode selection. A hybrid-suite
+pass permits fallbacks and does not prove complete language coverage.
+
+A fallback census summarizes one or more compiler audit logs deterministically
+by file and starting token, along with the emitted/streaming parser counters:
+
+```sh
+bin/wv2 check --quiet --ast-audit --stats w.w 2> bin/compiler_ast_audit.jsonl
+bin/wast_audit census bin/compiler_ast_audit.jsonl
+```
+
+Check the compiler exit status separately. A census is a description of its
+input log; it cannot certify that the log is complete or that compilation
+succeeded. Malformed audit records make the census command fail. Counts include
+nested parser entries after an outer fallback, so they are not source-coverage
+percentages. Required-mode self-host checks remain in
+`ast_required_expression_verify`, and the differential fixture matrix remains in
+`ast_expression_test`.
+
+## Integration validation
+
+The first integrated wave passed the pinned-seed bootstrap, x86/x64 self-host
+fixpoints and strict AST-required image/fixpoint gates. Differential fixtures
+compare both compiler host widths across x86, x64, ARM64 ELF, ARM64 Darwin,
+win64 and wasm images, with native x86/x64 execution and REPL/debugger recovery.
+Cross-target image parity is distinct from executing every image on its target.
+
+`env -u NO_COLOR ./wbuild tests` passed all 846 targets. The generated AST
+manifest selected 1,137 direct compile/check steps, preserved six explicit AST
+mode steps, and its serial `tests` run also passed all 846 targets. Selection
+counts describe the complete manifest, not how many selected steps the `tests`
+target executes. No compiler fallback records appeared in the x86/x64 compiler
+census. The production mode remains opt-in; the scope and remaining architecture
+work are listed in the current-status section above.

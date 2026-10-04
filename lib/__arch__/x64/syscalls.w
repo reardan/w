@@ -29,6 +29,8 @@ enum linux_syscall:
 	SYS_TIME = 201
 	SYS_BRK = 12
 	SYS_MMAP = 9
+	SYS_MEMFD_CREATE = 319
+	SYS_MADVISE = 28
 	SYS_MUNMAP = 11
 	SYS_MPROTECT = 10
 	SYS_CLONE = 56
@@ -72,10 +74,27 @@ enum linux_syscall:
 	SYS_EPOLL_CTL = 233
 	SYS_EPOLL_WAIT = 232
 	SYS_EVENTFD2 = 290
+	SYS_PREAD64 = 17
+	SYS_PWRITE64 = 18
+	SYS_FTRUNCATE = 77
+	SYS_FLOCK = 73
+	SYS_OPENAT = 257
 
 
 int sys_accept(int sockfd, int addr, int addrlen):
 	return syscall(SYS_ACCEPT, sockfd, addr, addrlen)
+
+
+# openat: flags use the x86 numbering (lib/fs.w's FS_O_* names). The
+# kernel forces O_LARGEFILE on 64-bit processes, so nothing is added.
+int sys_openat(int dirfd, char* path, int flags, int mode):
+	return syscall7(SYS_OPENAT, dirfd, path, flags, mode, 0, 0)
+
+
+# Public offsets are signed, word-sized bytes; the kernel checks alignment.
+int mmap_fd(int addr, int length, int prot, int flags, int fd, int offset):
+	if (offset < 0): return -22
+	return syscall7(SYS_MMAP, addr, length, prot, flags, fd, offset)
 
 
 import lib.syscalls_linux_x86

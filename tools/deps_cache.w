@@ -8,7 +8,13 @@ failure must still match -- is each tool's policy (wexec_deps_lookup,
 wtest_closure_compute); this module only offers the pieces.
 
 One record per root id "<arch> <root>" (arch "x86" for the default
-target):
+target). A compile step that passes --import-root roots carries them,
+in command-line order, in the arch column: "<arch>|<dir>|<dir> <root>"
+(deps_arch_with_roots), so the same root compiled with different roots
+is a different closure, and deps_run / deps_wv2_argv pass them back to
+'bin/wv2 deps'. A root directory containing ' ' or '|' cannot be
+spelled in an id; such a step's closure fails to compute and the tool
+falls back to its no-closure behavior.
 
   R <arch> <root>        a closure
   X <arch> <root>        a root that did not compile
@@ -258,6 +264,90 @@ char* deps_id_root(char* id):
 	return 0
 
 
+/* Import-root shadow probes. Re-hashing a closure's files catches an
+edit or deletion, but not a NEW file that an earlier --import-root root
+would now supply in place of a closure file, or that any root would now
+supply in place of a file the default search found. For an id with
+import roots the digest therefore also covers, for every closure file,
+whether each such higher-priority candidate exists: '<root>/<rel>' for
+every root before the one holding the file (its path relative to that
+root), or for every root when no root holds it (its working-directory-
+relative path; an absolute path outside every root is not probed).
+Ids without roots keep the plain deps_digest, so their records are
+unchanged. Roots are matched as spelled in the id (a leading "./" and
+trailing '/' dropped); a spelling that differs from the printed closure
+paths ('a/../b', an absolute root inside the checkout) only loses the
+probes, never correctness of the file hashes. */
+
+# The ordered import roots in an id's arch column; empty without roots.
+list[char*] deps_id_import_roots(char* id):
+	list[char*] out = new list[char*]
+	char* root = deps_id_root(id)
+	if (root == 0): return out
+	int end = strlen(id) - strlen(root) - 1
+	int i = 0
+	while ((i < end) && (id[i] != '|')): i = i + 1
+	while (i < end):
+		int j = i + 1
+		while ((j < end) && (id[j] != '|')): j = j + 1
+		char* dir = substring(id, i + 1, j)
+		while (starts_with(dir, c"./")): dir = dir + 2
+		int n = strlen(dir)
+		while ((n > 1) && (dir[n - 1] == '/')):
+			n = n - 1
+			dir[n] = 0
+		out.push(dir)
+		i = j
+	return out
+
+
+void deps_hash_probe_path(deps_hash* h, list[char*] roots, char* path):
+	int owner = roots.length
+	char* rel = path
+	int k = 0
+	while (k < roots.length):
+		char* dir = roots[k]
+		int n = strlen(dir)
+		if (starts_with(path, dir) && (path[n] == '/')):
+			owner = k
+			rel = path + n + 1
+			break
+		k = k + 1
+	if ((owner == roots.length) && (path[0] == '/')): return
+	k = 0
+	while (k < owner):
+		char* joined = strjoin(roots[k], c"/")
+		char* candidate = strjoin(joined, rel)
+		free(joined)
+		deps_hash_cstr(h, candidate)
+		if (path_exists(candidate)): deps_hash_cstr(h, c"present")
+		else: deps_hash_cstr(h, c"absent")
+		free(candidate)
+		k = k + 1
+
+
+# The digest a record for id stores: deps_digest(blob), plus the shadow
+# probes when id carries import roots.
+char* deps_entry_digest(char* id, char* blob):
+	list[char*] roots = deps_id_import_roots(id)
+	if (roots.length == 0): return deps_digest(blob)
+	deps_hash h
+	deps_hash_init(&h, deps_cache_sha)
+	deps_hash_cstr(&h, deps_digest(blob))
+	string_builder* line = string_new()
+	int i = 0
+	while (1):
+		if ((blob[i] == 10) || (blob[i] == 0)):
+			if (line.length > 0):
+				deps_hash_probe_path(&h, roots, line.data)
+				string_clear(line)
+			if (blob[i] == 0): break
+		else: string_append_char(line, blob[i])
+		i = i + 1
+	string_free(line)
+	return deps_hash_hex(&h)
+
+
 # A blank entry for id (every field set: 'new' does not zero memory).
 deps_entry* deps_entry_new(char* id, int failed):
 	deps_entry* e = new deps_entry
@@ -362,7 +452,7 @@ int deps_entry_valid(deps_entry* e, int check_compiler):
 	if (e.checked): return 1
 	if (e.failed == 0):
 		if (e.blob == 0): return 0
-		if (strcmp(deps_digest(e.blob), e.digest) != 0): return 0
+		if (strcmp(deps_entry_digest(e.id, e.blob), e.digest) != 0): return 0
 	else:
 		if (strcmp(deps_file_hash(e.root), e.digest) != 0): return 0
 		if (check_compiler):
@@ -403,26 +493,76 @@ deps_entry* deps_cache_record(char* id, char* blob):
 	e.detail = 0
 	e.chunk = 0
 	if (blob == 0): e.digest = deps_file_hash(e.root)
-	else: e.digest = deps_digest(blob)
+	else: e.digest = deps_entry_digest(e.id, blob)
 	deps_dirty = 1
 	return e
 
 
-# Runs 'bin/wv2 deps [arch] <root>' for id; 0 when it could not spawn.
-process_result* deps_run(char* id, int timeout_ms):
+# How many compile-command words an --import-root option occupies at
+# piece: 2 for '--import-root <dir>', 1 for '--import-root=<dir>', else 0
+# (the compiler's own import_root_arg_width).
+int deps_import_root_width(char* piece):
+	if (strcmp(piece, c"--import-root") == 0): return 2
+	if (starts_with(piece, c"--import-root=")): return 1
+	return 0
+
+
+# The arch column for a compile with these ordered import roots:
+# "<arch>|<dir>|<dir>", or a copy of arch when there are none.
+char* deps_arch_with_roots(char* arch, list[char*] roots):
+	string_builder* s = string_new()
+	string_append(s, arch)
+	for char* dir in roots:
+		string_append_char(s, '|')
+		string_append(s, dir)
+	char* column = s.data
+	free(s)
+	return column
+
+
+# The arch word of an id or arch column ("x64|a|b lib/x.w" -> "x64"); a
+# fresh allocation.
+char* deps_arch_word(char* column):
+	int i = 0
+	while ((column[i] != 0) && (column[i] != '|') && (column[i] != ' ')): i = i + 1
+	return substring(column, 0, i)
+
+
+# argv for 'bin/wv2 [arch] <sub> [--import-root <dir>]... <root>' for a
+# root id (see the header for the arch column's import roots); 0 for an
+# id without an arch column. The words point into id.
+char** deps_wv2_argv(char* id, char* sub):
 	char* root = deps_id_root(id)
 	if (root == 0): return 0
-	char* arch = substring(id, 0, strlen(id) - strlen(root) - 1)
-	char** argv = strv_new(4)
-	strv_set(argv, 0, c"bin/wv2")
-	strv_set(argv, 1, c"deps")
-	if (strcmp(arch, c"x86") == 0): strv_set(argv, 2, root)
-	else:
-		strv_set(argv, 2, arch)
-		strv_set(argv, 3, root)
+	char* column = substring(id, 0, strlen(id) - strlen(root) - 1)
+	char* arch = deps_arch_word(column)
+	list[char*] words = new list[char*]
+	words.push(c"bin/wv2")
+	if (strcmp(arch, c"x86") != 0): words.push(arch)
+	words.push(sub)
+	int i = strlen(arch)
+	while (column[i] == '|'):
+		int j = i + 1
+		while ((column[j] != 0) && (column[j] != '|')): j = j + 1
+		words.push(c"--import-root")
+		words.push(substring(column, i + 1, j))
+		i = j
+	words.push(root)
+	char** argv = strv_new(words.length)
+	int k = 0
+	while (k < words.length):
+		strv_set(argv, k, words[k])
+		k = k + 1
+	return argv
+
+
+# Runs 'bin/wv2 deps [arch] [--import-root <dir>]... <root>' for id; 0
+# when it could not spawn.
+process_result* deps_run(char* id, int timeout_ms):
+	char** argv = deps_wv2_argv(id, c"deps")
+	if (argv == 0): return 0
 	process_result* r = process_run(c"bin/wv2", argv, 0, 0, timeout_ms)
 	free(cast(char*, argv))
-	free(arch)
 	return r
 
 

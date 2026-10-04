@@ -198,18 +198,19 @@ void test_verify_google_chain():
 
 void test_verify_letsencrypt_intermediate():
 	# Real RSA-4096/SHA-256 link: Let's Encrypt R11 signed by ISRG Root X1.
-	# R11 stands in as the "leaf" (hostname 0 skips identity checks).
+	# R11 stands in as the "leaf" (chain-only: the explicit no-hostname
+	# entry point skips identity checks).
 	x509_cert* r11 = xt_load_cert(c"le_r11.pem")
 	x509_cert* root = xt_load_cert(c"isrg_root_x1.pem")
 	xt_assert_serial(r11, c"008a7d3e13d62f30ef2386bd29076b34f8")
 	x509_trust_store* store = x509_store_new()
 	x509_store_add(store, root)
 	char* err = 0
-	assert_equal(1, x509_verify_chain(r11, 0, store, 0, XT_NOW_SYNTH(), &err))
+	assert_equal(1, x509_verify_chain_no_hostname(r11, 0, store, XT_NOW_SYNTH(), &err))
 	# The wrong root does not vouch for it.
 	x509_trust_store* wrong = x509_store_new()
 	x509_store_add(wrong, xt_load_cert(c"gts_root_r1.pem"))
-	assert_equal(0, x509_verify_chain(r11, 0, wrong, 0, XT_NOW_SYNTH(), &err))
+	assert_equal(0, x509_verify_chain_no_hostname(r11, 0, wrong, XT_NOW_SYNTH(), &err))
 	assert_strings_equal(c"x509: no trusted issuer found", err)
 	x509_cert_free(r11)
 	x509_store_free(store)
@@ -224,7 +225,7 @@ void test_verify_digicert_sha384_link():
 	x509_trust_store* store = x509_store_new()
 	x509_store_add(store, root)
 	char* err = 0
-	assert_equal(1, x509_verify_chain(ta, 0, store, 0, XT_NOW_TRUSTASIA(), &err))
+	assert_equal(1, x509_verify_chain_no_hostname(ta, 0, store, XT_NOW_TRUSTASIA(), &err))
 	# The TrustAsia leaf cannot be verified: its issuer key is P-384,
 	# which this stack does not support -> fail closed.
 	x509_cert* leaf = xt_load_cert(c"trustasia_leaf.pem")
@@ -268,8 +269,26 @@ void test_verify_synthetic_rsa_chain():
 	xt_check_rsa_chain_leaf(c"leaf_ec.pem", c"wild.w.example", 0, c"x509: hostname mismatch")
 	xt_check_rsa_chain_leaf(c"leaf_ec.pem", c"b.a.wild.w.example", 0, c"x509: hostname mismatch")
 	xt_check_rsa_chain_leaf(c"leaf_ec.pem", c"other.w.example", 0, c"x509: hostname mismatch")
-	# hostname 0 skips identity checks (for the non-TLS-server uses).
-	xt_check_rsa_chain_leaf(c"leaf_ec.pem", 0, 1, 0)
+	# A null or empty hostname fails closed; skipping the identity check
+	# takes the explicit x509_verify_chain_no_hostname entry point.
+	xt_check_rsa_chain_leaf(c"leaf_ec.pem", 0, 0, c"x509: no hostname to verify")
+	xt_check_rsa_chain_leaf(c"leaf_ec.pem", c"", 0, c"x509: no hostname to verify")
+	x509_cert* leaf = xt_load_cert(c"leaf_ec.pem")
+	x509_cert* inter = xt_load_cert(c"int_rsa.pem")
+	x509_trust_store* store = x509_store_new()
+	x509_store_add(store, xt_load_cert(c"ca_rsa.pem"))
+	list[x509_cert*] extra = new list[x509_cert*]
+	extra.push(inter)
+	char* err = 0
+	assert_equal(1, x509_verify_chain_no_hostname(leaf, extra, store, XT_NOW_SYNTH(), &err))
+	asserts(c"no error on success", err == 0)
+	# The opt-out still checks everything else (validity here).
+	assert_equal(0, x509_verify_chain_no_hostname(leaf, extra, store, XT_NOW_PAST(), &err))
+	asserts(c"opt-out still reports a reason", err != 0)
+	list_free[x509_cert*](extra)
+	x509_cert_free(leaf)
+	x509_cert_free(inter)
+	x509_store_free(store)
 
 
 void test_verify_synthetic_leaf_fields():

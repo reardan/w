@@ -9,9 +9,9 @@ import lib.testing
 # modulo, right shift and widening misevaluated, while store-side
 # arithmetic (which truncates to the declared width) already wrapped
 # correctly. uint32 is only narrower than the word on 64-bit targets;
-# on 32-bit targets it is word-sized and shares word-sized uint's
-# signed-compare behavior, so its high-bit read assertions are gated on
-# __word_size__.
+# on 32-bit targets it is the unsigned word, whose compares, divides and
+# right shifts are unsigned (tests/unsigned_compare_test.w), so the same
+# high-bit assertions hold at both word sizes.
 
 struct unsigned_fields:
 	uint8 u8
@@ -44,10 +44,6 @@ void test_uint16_high_bit_reads_unsigned():
 
 
 void test_uint32_high_bit_reads_unsigned():
-	if (__word_size__ != 8):
-		# Word-sized on 32-bit targets: high-bit values read back at
-		# word width, like uint. Only the store-wrap tests apply there.
-		return;
 	uint32 u = 0 - 1
 	# 4294967295, spelled at runtime: a decimal literal this large
 	# overflows the 32-bit literal parser on the x86 host.

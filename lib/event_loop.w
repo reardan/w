@@ -19,9 +19,29 @@
 # watches were removed (or in the same callback that removes them). A
 # registration whose descriptor was dup'd elsewhere outlives close(2) in
 # the kernel.
+#
+# Injection (docs/projects/simulation.md): event_loop_new_with takes an
+# instance-owned clock (lib/wclock.w) and poll provider. Timers read
+# only the clock's MONOTONIC time line, so a wall-clock jump can never
+# move a deadline. A provider replaces the poll(2) call of the poll
+# backend with any function of the same contract - lib/event_sim.w's
+# scripted provider advances a virtual clock to the next deadline
+# instead of sleeping. Passing 0 for either keeps the defaults
+# (time_monotonic_ms, epoll/poll), which is exactly event_loop_new.
+#
+# Dispatch fairness: event_loop_set_dispatch_limits bounds the timer
+# callbacks and the fd callbacks run by one pass (0 = unbounded, the
+# default). Due timers left over fire on the next pass, which then does
+# not sleep. Readiness left over is level-triggered and is reported
+# again: the poll backend starts the next pass at the first watch it did
+# not reach, and the epoll backend asks the kernel for at most fd_limit
+# events, which re-queues reported descriptors behind the others, so a
+# pass that hits the limit never starves later descriptors.
 import lib.lib
 import lib.poll
 import lib.time
+import lib.io
+import lib.wclock
 import lib.math
 import lib.container
 import structures.heap
@@ -33,6 +53,16 @@ type event_fd_cb = fn(int, int, void*) -> void
 
 # timer id, context
 type event_timer_cb = fn(int, void*) -> void
+
+# self, pollfd array, count, timeout_ms -> ready count, 0 on timeout, or
+# a negative errno: the poll(2) contract (lib/poll.w's poll_wait).
+type event_poll_fn = fn(void*, pollfd*, int, int) -> int
+
+
+# A poll provider: wait plus the self pointer passed to it.
+struct event_poller:
+	event_poll_fn* wait
+	void* self
 
 
 # Watches and timers both start with the active flag so bookkeeping that
@@ -87,6 +117,15 @@ struct event_loop:
 	list[event_fd_slot*] synthetic
 	char* events                    # epoll_wait output buffer
 	int event_capacity
+	# injection and fairness
+	wclock* clock                   # 0: time_monotonic_ms
+	event_poller* poller            # 0: poll(2)/epoll; set: poll backend calls it
+	int last_now_ms                 # last good reading of an injected clock
+	int clock_errors                # failed clock readings (time held still)
+	int timer_limit                 # timer callbacks per pass, 0 = unbounded
+	int fd_limit                    # fd callbacks per pass, 0 = unbounded
+	int rotate                      # poll backend: first watch index to try
+	int synthetic_rotate            # epoll backend: first synthetic slot to try
 
 
 # Deadline order; equal deadlines fire in arming (id) order. Signed
@@ -117,6 +156,14 @@ event_loop* event_loop_new_poll():
 	loop.synthetic = new list[event_fd_slot*]
 	loop.events = 0
 	loop.event_capacity = 0
+	loop.clock = 0
+	loop.poller = 0
+	loop.last_now_ms = 0
+	loop.clock_errors = 0
+	loop.timer_limit = 0
+	loop.fd_limit = 0
+	loop.rotate = 0
+	loop.synthetic_rotate = 0
 	return loop
 
 
@@ -124,14 +171,54 @@ event_loop* event_loop_new_poll():
 const int event_loop_epoll_cloexec = 524288
 
 
-event_loop* event_loop_new():
-	event_loop* loop = event_loop_new_poll()
+void event_loop_try_epoll(event_loop* loop):
 	int epfd = epoll_create1(event_loop_epoll_cloexec)
 	if (epfd >= 0):
 		loop.epfd = epfd
 		loop.event_capacity = 256
 		loop.events = malloc(loop.event_capacity * epoll_event_bytes())
+
+
+event_loop* event_loop_new():
+	event_loop* loop = event_loop_new_poll()
+	event_loop_try_epoll(loop)
 	return loop
+
+
+# Monotonic milliseconds from the loop's clock, wrapping like
+# time_monotonic_ms (compare by difference only). A failed reading of
+# an injected clock holds time at the last good value (counted in
+# clock_errors), so timers wait rather than fire against garbage.
+int event_loop_now_ms(event_loop* loop):
+	if (cast(int, loop.clock) == 0): return time_monotonic_ms()
+	int now = 0
+	if (wclock_monotonic_ms(loop.clock, &now) != IO_OK):
+		loop.clock_errors = loop.clock_errors + 1
+		return loop.last_now_ms
+	loop.last_now_ms = now
+	return now
+
+
+# A loop reading time from clock and waiting through poller; either may
+# be 0 for the default (time_monotonic_ms; epoll where available). A
+# poller selects the poll backend. Both stay owned by the caller and
+# must outlive the loop.
+event_loop* event_loop_new_with(wclock* clock, event_poller* poller):
+	event_loop* loop = event_loop_new_poll()
+	loop.clock = clock
+	loop.poller = poller
+	if (cast(int, clock) != 0): event_loop_now_ms(loop)
+	if (cast(int, poller) == 0): event_loop_try_epoll(loop)
+	return loop
+
+
+# Bounds the callbacks one pass runs: at most max_timers timer callbacks
+# and max_fd_callbacks fd callbacks (0 = unbounded, the default). See
+# the header for how leftovers are carried to later passes.
+void event_loop_set_dispatch_limits(event_loop* loop, int max_timers, int max_fd_callbacks):
+	asserts(c"event_loop_set_dispatch_limits: limits are >= 0", (max_timers >= 0) && (max_fd_callbacks >= 0))
+	loop.timer_limit = max_timers
+	loop.fd_limit = max_fd_callbacks
 
 
 # 1 when the loop uses epoll, 0 for poll.
@@ -358,7 +445,7 @@ int event_loop_add_timer_full(event_loop* loop, int delay_ms, int interval_ms, e
 	event_timer* timer = new event_timer()
 	timer.id = loop.next_timer_id
 	loop.next_timer_id = loop.next_timer_id + 1
-	timer.fire_at_ms = time_monotonic_ms() + delay_ms
+	timer.fire_at_ms = event_loop_now_ms(loop) + delay_ms
 	timer.interval_ms = interval_ms
 	timer.callback = callback
 	timer.context = context
@@ -442,21 +529,22 @@ event_timer* event_loop_first_timer(event_loop* loop):
 int event_loop_next_timer_delay(event_loop* loop):
 	event_timer* timer = event_loop_first_timer(loop)
 	if (cast(int, timer) == 0): return -1
-	int delay = timer.fire_at_ms - time_monotonic_ms()
+	int delay = timer.fire_at_ms - event_loop_now_ms(loop)
 	if (delay < 0): return 0
 	return delay
 
 
 # Fires timers whose deadline has passed, earliest first. One-shot
 # timers deactivate before their callback runs; intervals reschedule.
-# Timers armed by these callbacks wait for the next pass. Returns fired
-# count.
+# Timers armed by these callbacks wait for the next pass, and so do due
+# timers beyond the loop's timer_limit. Returns fired count.
 int event_loop_fire_due_timers(event_loop* loop):
 	int fired = 0
-	int now = time_monotonic_ms()
+	int now = event_loop_now_ms(loop)
 	int newest = loop.next_timer_id
 	list[event_timer*] rearm = new list[event_timer*]
 	while (1):
+		if ((loop.timer_limit > 0) && (fired >= loop.timer_limit)): break
 		event_timer* timer = event_loop_first_timer(loop)
 		if (cast(int, timer) == 0): break
 		if ((timer.fire_at_ms - now) > 0): break
@@ -504,7 +592,11 @@ int event_loop_run_once_poll(event_loop* loop, int max_wait_ms):
 			event_watch* watch = loop.watches[i]
 			pollfd_set(fds, i, watch.fd, watch.events)
 
-	int ready = poll_wait(fds, watch_count, timeout)
+	int ready = 0
+	if (cast(int, loop.poller) != 0):
+		event_poller* poller = loop.poller
+		ready = poller.wait(poller.self, fds, watch_count, timeout)
+	else: ready = poll_wait(fds, watch_count, timeout)
 	if (ready < 0):
 		if (cast(int, fds) != 0): free(cast(char*, fds))
 		# EINTR is not an error for the loop; report zero work instead.
@@ -513,31 +605,63 @@ int event_loop_run_once_poll(event_loop* loop, int max_wait_ms):
 
 	int fired = event_loop_fire_due_timers(loop)
 
-	for i in range(watch_count):
+	# Start where the last limited pass stopped (always 0 when unbounded).
+	int start = 0
+	if (watch_count > 0): start = loop.rotate % watch_count
+	int fd_fired = 0
+	for k in range(watch_count):
+		int i = (start + k) % watch_count
 		event_watch* watch = loop.watches[i]
 		pollfd* entry = pollfd_at(fds, i)
 		int revents = entry.revents
 		if (watch.active & (revents != 0)):
+			if ((loop.fd_limit > 0) && (fd_fired >= loop.fd_limit)):
+				loop.rotate = i
+				break
 			watch.callback(watch.fd, revents, watch.context)
-			fired = fired + 1
+			fd_fired = fd_fired + 1
+	fired = fired + fd_fired
 
 	if (cast(int, fds) != 0): free(cast(char*, fds))
 	return fired
 
 
 # Deliver revents for one fd to its watches that were armed before this
-# pass began, each seeing its own interest bits plus ERR/HUP/NVAL.
-int event_loop_dispatch_slot(event_loop* loop, event_fd_slot* slot, int revents):
+# pass began, each seeing its own interest bits plus ERR/HUP/NVAL. Runs
+# at most budget callbacks (budget < 0: unbounded).
+int event_loop_dispatch_slot(event_loop* loop, event_fd_slot* slot, int revents, int budget):
 	int fired = 0
 	int always = poll_err | poll_hup | poll_nval
 	int count = slot.watches.length
 	for j in range(count):
+		if ((budget >= 0) && (fired >= budget)): break
 		event_watch* w = slot.watches[j]
 		if (w.active && (w.pass != loop.pass)):
 			int mine = revents & (w.events | always)
 			if (mine != 0):
 				w.callback(slot.fd, mine, w.context)
 				fired = fired + 1
+	return fired
+
+
+# Dispatches the always-ready synthetic slots, starting at the rotation
+# point, running at most budget callbacks (< 0: unbounded). Returns the
+# callbacks run.
+int event_loop_dispatch_synthetic(event_loop* loop, int budget):
+	int fired = 0
+	int count = loop.synthetic.length
+	int start = 0
+	if (count > 0): start = loop.synthetic_rotate % count
+	for k in range(count):
+		int s = (start + k) % count
+		if ((budget >= 0) && (fired >= budget)):
+			loop.synthetic_rotate = s
+			break
+		event_fd_slot* slot = loop.synthetic[s]
+		if (slot.synthetic != 0):
+			int left = -1
+			if (budget >= 0): left = budget - fired
+			fired = fired + event_loop_dispatch_slot(loop, slot, slot.synthetic, left)
 	return fired
 
 
@@ -556,16 +680,31 @@ int event_loop_run_once_epoll(event_loop* loop, int max_wait_ms):
 	if (loop.synthetic.length > 0): timeout = 0
 	loop.pass = loop.pass + 1
 
-	int ready = epoll_wait(loop.epfd, cast(int, loop.events), loop.event_capacity, timeout)
+	# With an fd limit, ask for no more events than may be dispatched:
+	# the kernel re-queues reported level-triggered descriptors behind
+	# the unreported ones, which rotates service across passes.
+	int max_events = loop.event_capacity
+	if ((loop.fd_limit > 0) && (loop.fd_limit < max_events)): max_events = loop.fd_limit
+	int ready = epoll_wait(loop.epfd, cast(int, loop.events), max_events, timeout)
 	if (ready < 0):
 		if (ready == -4): return 0
 		return ready
 
 	int fired = event_loop_fire_due_timers(loop)
 
+	# budget < 0: unbounded. With a limit, odd passes serve the synthetic
+	# (always-ready) slots first so neither group can starve the other.
+	int budget = -1
+	if (loop.fd_limit > 0): budget = loop.fd_limit
+	int synthetic_first = (loop.fd_limit > 0) && ((loop.pass & 1) != 0)
+	if (synthetic_first):
+		int n = event_loop_dispatch_synthetic(loop, budget)
+		fired = fired + n
+		budget = budget - n
 	int size = epoll_event_bytes()
 	int offset = epoll_event_data_offset()
 	for i in range(ready):
+		if (budget == 0): break
 		char* ev = loop.events + i * size
 		int* mask = cast(int*, ev)
 		int* data = cast(int*, ev + offset)
@@ -574,15 +713,11 @@ int event_loop_run_once_epoll(event_loop* loop, int max_wait_ms):
 		# targets; only the low poll bits matter.
 		int revents = mask[0] & 65535
 		event_fd_slot* slot = event_loop_find_slot(loop, fd)
-		if (cast(int, slot) != 0): fired = fired + event_loop_dispatch_slot(loop, slot, revents)
-
-	s = 0
-	int synthetic_count = loop.synthetic.length
-	while (s < synthetic_count):
-		event_fd_slot* slot = loop.synthetic[s]
-		if (slot.synthetic != 0):
-			fired = fired + event_loop_dispatch_slot(loop, slot, slot.synthetic)
-		s = s + 1
+		if (cast(int, slot) != 0):
+			int n = event_loop_dispatch_slot(loop, slot, revents, budget)
+			fired = fired + n
+			if (budget > 0): budget = budget - n
+	if (synthetic_first == 0): fired = fired + event_loop_dispatch_synthetic(loop, budget)
 
 	# A full buffer means more events may be pending: grow for next time.
 	if (ready == loop.event_capacity):

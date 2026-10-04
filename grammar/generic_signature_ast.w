@@ -4,6 +4,7 @@
 struct generic_type_ast:
 	char* name
 	int stars
+	int application  # 0 named/builtin, 1 generic struct, 2 slice
 	generic_type_ast* first
 	generic_type_ast* second
 	generic_type_ast* next
@@ -19,6 +20,7 @@ generic_type_ast* generic_type_ast_new(char* name, int stars):
 	generic_type_ast* node = new generic_type_ast
 	node.name = strclone(name)
 	node.stars = stars
+	node.application = 0
 	node.first = 0
 	node.second = 0
 	node.next = 0
@@ -41,37 +43,67 @@ void generic_signature_ast_free(generic_signature_ast* signature):
 	free(cast(char*, signature))
 
 
+generic_type_ast* generic_type_ast_slice(generic_type_ast* element):
+	generic_type_ast* node = generic_type_ast_new(c"", 0)
+	node.application = 2
+	node.first = element
+	return node
+
+
 generic_type_ast* generic_type_ast_capture(int depth):
 	if (depth > 32): return 0
 	if (is_ident_start_byte(token[0]) == 0): return 0
 	if (peek(c"const") || peek(c"gpu")): return 0
 	int container = 0
 	if (nextc == '['):
+		container = 3
 		if (peek(c"map")): container = 2
 		if (peek(c"set") || peek(c"list")): container = 1
-		if (container == 0): return 0
 	generic_type_ast* node = generic_type_ast_new(token, 0)
 	get_token()
 	if (container):
 		if (accept(c"[") == 0):
 			generic_type_ast_free(node)
 			return 0
-		node.first = generic_type_ast_capture(depth + 1)
-		if (node.first == 0):
-			generic_type_ast_free(node)
-			return 0
-		if (container == 2):
-			if (accept(c",") == 0):
+		if ((container == 3) && accept(c"]")):
+			node = generic_type_ast_slice(node)
+		else:
+			node.first = generic_type_ast_capture(depth + 1)
+			if (node.first == 0):
 				generic_type_ast_free(node)
 				return 0
-			node.second = generic_type_ast_capture(depth + 1)
-			if (node.second == 0):
+			if (container == 2):
+				if (accept(c",") == 0):
+					generic_type_ast_free(node)
+					return 0
+				node.second = generic_type_ast_capture(depth + 1)
+				if (node.second == 0):
+					generic_type_ast_free(node)
+					return 0
+			if (container == 3):
+				node.application = 1
+				generic_type_ast* tail = node.first
+				int count = 1
+				while (accept(c",")):
+					if (count == 8):
+						generic_type_ast_free(node)
+						return 0
+					tail.next = generic_type_ast_capture(depth + 1)
+					if (tail.next == 0):
+						generic_type_ast_free(node)
+						return 0
+					tail = tail.next
+					count = count + 1
+			if (accept(c"]") == 0):
 				generic_type_ast_free(node)
 				return 0
+	if (node.application != 2):
+		while (accept(c"*")): node.stars = node.stars + 1
+	while (accept(c"[")):
 		if (accept(c"]") == 0):
 			generic_type_ast_free(node)
 			return 0
-	while (accept(c"*")): node.stars = node.stars + 1
+		node = generic_type_ast_slice(node)
 	return node
 
 

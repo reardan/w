@@ -24,6 +24,14 @@ once and cached (lib/x/unsafe/sha1.w's sha1_k_cache is the precedent for
 this lazy-global-cache shape), never freed -- a process-lifetime table,
 like every other cached constant table in this tree.
 
+Concurrency rule for that lazy table (docs/projects/reliable_services.md,
+W2): the first-use build in crc32_table() is NOT synchronized. A program
+that checksums from more than one thread must make one crc32 call (for
+example crc32_of(c"", 0)) before starting its workers; after that every
+call only reads the table. libs/extras/compress/crc32c.w (Castagnoli,
+a different polynomial and different values) follows the same rule with
+an explicit crc32c_init_tables().
+
 Every right shift goes through the shr() intrinsic (grammar/bit_builtin.w)
 rather than W's native (arithmetic) >>, so no host sign bit smears into
 the result on the 32-bit target.

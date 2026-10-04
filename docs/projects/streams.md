@@ -20,8 +20,10 @@ struct wstream:
 	int capacity
 	int position   # next unread byte (readers only)
 	int limit      # end of buffered data (readers) / pending bytes (writers)
-	int eof
+	int eof        # the descriptor reported end of input (readers)
 	int writable
+	int error_status   # sticky lib/io.w IO_* status of the first failure
+	int error_errno    # its positive errno
 ```
 
 The name follows the `wresult` precedent: short, unlikely to collide with
@@ -46,6 +48,18 @@ to force refill/flush boundaries every few bytes.
   large as the buffer flush and bypass it.
 - **Lifecycle**: `stream_close` (flush + close fd + free) and
   `stream_free` (flush + free, keeps the fd — for the std descriptors).
+- **Checked variants** (issue #514, stage W0; each fills a caller-owned
+  `io_result` from `lib/io.w` and returns its status):
+  `stream_write_checked(s, data, n, r)` (transferred = bytes of `data`
+  accepted), `stream_flush_checked(s, r)` (transferred = bytes written),
+  `stream_sync(s, r)` (flush + `fsync`: the durability barrier),
+  `stream_close_checked(s, r)` (flush + close + free; reports the first
+  failure; **not** a sync; close is never retried),
+  `stream_read_checked(s, out, n, r)` (`IO_OK` / `IO_EOF` with the short
+  count / the error), `stream_read_all_checked(s, sb, r)` (`IO_OK` at
+  real end of input). Sticky-error helpers: `stream_error`,
+  `stream_error_errno`, `stream_clear_error`, `stream_pending`,
+  `stream_discard_pending`.
 - **Std handles**: `stdin_reader()` / `stdout_writer()` /
   `stderr_writer()` are lazily-created singletons. Writers buffer:
   callers must `stream_flush()` before exiting, because `_main` exits via
@@ -95,9 +109,27 @@ non-seekable inputs like `/proc` files.
   24 bytes) and corrupted the heap when `stream_read_all` grew buffers in
   `stream_64_test`; it now uses `new string_builder()`, which sizes per
   architecture.
-- Error model matches the existing lib style: constructors return 0,
-  reads treat a failed `read(2)` as EOF. Recoverable errno plumbing
-  (`lib/result.w`) can layer on later without changing the struct.
+- Error model (reworked for issue #514, W0): constructors still return
+  0. Every descriptor call goes through `lib/io.w`'s loops (EINTR
+  retried, partial writes continued, zero progress an error). The first
+  failure latches a sticky error on the stream. A failed flush keeps the
+  unwritten suffix at the buffer front and the writer refuses new bytes
+  until `stream_clear_error` (the retained bytes are retried by the next
+  flush; `stream_discard_pending` drops them) or close — including
+  `IO_WOULD_BLOCK` on a non-blocking fd. A failed direct (larger than the
+  buffer) write reports the prefix that reached the fd; the rest stays
+  the caller's. Readers record a failed `read(2)` as an error, never as
+  EOF: `s.eof` means real end of input, and the legacy reads return
+  -1 / 0 / short counts on either, so callers check `stream_error`. The
+  legacy void calls delegate to the checked ones and success behavior is
+  unchanged.
+- `lib/file.w`: `file_read_text` / `file_read_lines` return 0 on a read
+  error (no more truncated text); `file_write_text` returns 0 when the
+  write or the close fails; `file_write_text_checked(path, text, length,
+  r)` reports which. None of them sync; `file_write_durable` and
+  `fs_replace_durable` in `lib/fs.w` do (temp sibling + fsync + rename +
+  directory fsync). `lib/fs.w` stays out of the compiler's import
+  closure, so it is not seed-constrained.
 
 ## Follow-ups
 
@@ -116,7 +148,14 @@ reads spanning refills with 3–8 byte buffers, line-reader edge cases
 (empty lines, missing trailing newline), `stream_read_all` across
 buffers, write-helper output, flush visibility, framing round trips
 (including empty and truncated bodies) over files and `socket_pair`.
-`file_test` (`lib/file_test.w`): round trips, truncation, missing files,
-empty files, `file_read_lines`. `wtest_map_test` pins the wtest CLI
+`stream_checked_test` / `stream_checked_64_test`
+(`lib/stream_checked_test.w`): `/dev/full` flush failure retaining bytes
+and latching, refusal on every write path, recovery onto a working fd,
+direct-write and close failures, partial writes through a one-page
+non-blocking pipe resuming in order, read errors (directory, write-only
+fd) distinct from real EOF, `stream_sync`.
+`file_test` / `file_64_test` (`lib/file_test.w`): round trips, truncation,
+missing files, empty files, `file_read_lines`, write/open failure
+reporting via `/dev/full`, read errors returning 0. `wtest_map_test` pins the wtest CLI
 behavior, including the new `lib/stream.w` → `stream_test stream_64_test
 file_test` mapping.

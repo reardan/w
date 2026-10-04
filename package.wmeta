@@ -63,10 +63,12 @@ modules:
 	lib.grapheme
 	lib.http
 	lib.json_rpc
+	lib.kvm
 	lib.lib
 	lib.linux
 	lib.logging
 	lib.math
+	lib.memfd
 	lib.memory
 	lib.net
 	lib.passwd
@@ -82,6 +84,8 @@ modules:
 	lib.time
 	lib.ttf
 	lib.utf8
+	lib.vmm.box
+	lib.vmm.cell
 	lib.window
 	lib.wmeta
 	lib.__arch__.context

@@ -243,6 +243,126 @@ void test_process_wait_does_not_block_other_tasks():
 	task_scheduler_free(s)
 	list_free[int](log.entries)
 	free(cast(void*, log))
+
+
+/* io_result variants: transferred counts on success, cancellation and
+   errors; EOF versus a full read. */
+
+struct write_report:
+	int status
+	int transferred
+	int native_error
+
+
+generator int result_writer(int fd, char* data, int total, write_report* out):
+	io_result r
+	task_write_all_result(fd, data, total, &r)
+	out.status = r.status
+	out.transferred = r.transferred
+	out.native_error = r.native_error
+
+
+# Runs s until the writer has reported, closes write_fd so the reader
+# sees EOF, then runs s to completion.
+int task_run_until_reported(task_scheduler* s, write_report* out, int write_fd):
+	while (out.status == -1): task_run_once(s, 10)
+	close(write_fd)
+	return task_run(s)
+
+
+void test_write_all_result_counts_under_backpressure():
+	int* fds = malloc(__word_size__ * 2)
+	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
+	socket_set_nonblocking(fds[0])
+	socket_set_nonblocking(fds[1])
+	int total = 262144
+	char* data = malloc(total)
+	for i in range(total): data[i] = i & 255
+	write_report* out = new write_report()
+	out.status = -1
+
+	task_scheduler* s = task_scheduler_new()
+	task_spawn(s, result_writer(fds[0], data, total, out))
+	task* reader = task_spawn(s, bulk_reader(fds[1]))
+	# The writer does not close its end; close it once it reports.
+	assert_equal(0, task_run_until_reported(s, out, fds[0]))
+	assert_equal(IO_OK, out.status)
+	assert_equal(total, out.transferred)
+	# 64 chunks of 0..255 repeated 16 times per 4 KiB.
+	assert_equal(total + (total / 4096) * 522240, task_result(reader))
+	task_scheduler_free(s)
+	close(fds[1])
+	free(data)
+	free(fds)
+	free(cast(void*, out))
+
+
+generator int cancel_after_5ms(task* victim):
+	assert_equal(0, task_sleep_ms(5))
+	task_cancel(victim)
+
+
+void test_write_all_result_cancelled_reports_progress():
+	# Nobody reads: the writer fills the socket buffer, suspends, and is
+	# cancelled. The result says how much the peer's buffer accepted.
+	int* fds = malloc(__word_size__ * 2)
+	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
+	socket_set_nonblocking(fds[0])
+	int total = 4194304
+	char* data = malloc(total)
+	write_report* out = new write_report()
+	out.status = -1
+
+	task_scheduler* s = task_scheduler_new()
+	task* writer = task_spawn(s, result_writer(fds[0], data, total, out))
+	task_spawn(s, cancel_after_5ms(writer))
+	assert_equal(0, task_run(s))
+	assert_equal(IO_CANCELLED, out.status)
+	assert_equal(125, out.native_error)
+	asserts(c"some bytes should have been accepted", out.transferred > 0)
+	asserts(c"not everything fits the socket buffer", out.transferred < total)
+	task_scheduler_free(s)
+	close(fds[0])
+	close(fds[1])
+	free(data)
+	free(fds)
+	free(cast(void*, out))
+
+
+void test_write_all_result_reports_errors():
+	io_result r
+	assert_equal(IO_IO_ERROR, task_write_all_result(-1, c"abc", 3, &r))
+	assert_equal(9, r.native_error)  # EBADF
+	assert_equal(0, r.transferred)
+	assert_equal(-9, task_write_all(-1, c"abc", 3))
+	# An empty write succeeds without touching the descriptor.
+	assert_equal(IO_OK, task_write_all_result(-1, c"", 0, &r))
+	assert_equal(0, task_write_all(-1, c"", 0))
+
+
+void test_read_exact_result_eof_versus_full():
+	int* fds = malloc(__word_size__ * 2)
+	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
+	assert_equal(5, write(fds[0], c"abcde", 5))
+	close(fds[0])
+	char* buf = malloc(8)
+	io_result r
+	assert_equal(IO_OK, task_read_exact_result(fds[1], buf, 2, &r))
+	assert_equal(2, r.transferred)
+	# Three bytes remain: EOF with the short count, not success.
+	assert_equal(IO_EOF, task_read_exact_result(fds[1], buf, 8, &r))
+	assert_equal(3, r.transferred)
+	assert_equal('c', buf[0])
+	assert_equal(0, task_read_exact(fds[1], buf, 4))
+	close(fds[1])
+	assert_equal(IO_IO_ERROR, task_read_exact_result(fds[1], buf, 4, &r))
+	assert_equal(9, r.native_error)
+	assert_equal(-9, task_read_exact(fds[1], buf, 4))
+	free(buf)
+	free(fds)
+
+
+
 # wbuild: target=task_io_64_test tag=tests_x64 dep=wv2
 # wbuild: step="bin/wv2 x64 lib/task_io_test.w -o bin/task_io_64_test"
 # wbuild: step="bin/task_io_64_test"
