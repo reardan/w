@@ -195,6 +195,38 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (type_is_list(type)): list_emit_new_container(type)
 		else: hash_emit_new_container(type)
 		return
+	if (op == 'D'):
+		int base = tree.value[id]
+		int heap = tree.high[id]
+		if (heap):
+			sym_get_value(c"malloc")
+			push_slot()
+			push_slot_int(type_get_size(base))
+			mov_eax_esp_plus(word_size)
+			call_eax()
+			drop_slots(2)
+		else:
+			int words = (type_get_size(base) + word_size - 1) >> word_size_log2
+			for j in range(words): push_eax()
+			stack_pos = stack_pos + words
+			lea_eax_esp_plus(0)
+		if (type_has_array_field(base)):
+			zero_runtime_object(type_get_size(base))
+			init_array_field_descriptors(base)
+		if ((heap == 0) || (tree.left[id] >= 0)):
+			push_slot()
+			int entry_stack = stack_pos
+			if (tree.symbol[id]): zero_runtime_object(type_get_size(base))
+			int entry = tree.left[id]
+			while (entry >= 0):
+				int argument = tree.left[entry]
+				emit_expression_ast(tree, argument)
+				int got = promote(tree.result_type[argument])
+				new_store_field(base, tree.value[entry], got, stack_pos - entry_stack)
+				if (stack_pos > entry_stack): pop_to(entry_stack)
+				entry = tree.next_arg[entry]
+			pop_eax_slot()
+		return
 	if (op == 'N'):
 		int base = tree.value[id]
 		sym_get_value(c"malloc")

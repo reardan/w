@@ -815,6 +815,54 @@ int ast_expression_container_literal(expression_ast* tree, int depth):
 	return id
 
 
+# Current token is '(' after a resolved ordinary type name. Field nodes
+# retain source order even when named arguments select different fields.
+int ast_expression_constructor(expression_ast* tree, int base, int heap, int depth):
+	if (heap && (sym_probe(c"malloc") < 0)): return -1
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int id = expression_ast_add(tree, 'D', -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = base
+	tree.high[id] = heap
+	int named = is_ident_start_byte(token[0]) && (nextc == ':')
+	tree.symbol[id] = named
+	int count = 0
+	int tail = -1
+	while (peek(c")") == 0):
+		int field = count
+		int has_name = is_ident_start_byte(token[0]) && (nextc == ':')
+		if (has_name != named): return -1
+		if (named):
+			field = type_get_arg(base, token)
+			if (field < 0): return -1
+			ast_expression_advance(tree)
+			if (ast_expression_accept(tree, c":") == 0): return -1
+		if (field >= type_num_args(base)): return -1
+		int want = type_get_field_type_at(base, field)
+		if (type_has_array_field(want)): return -1
+		int argument = ast_expression_assignment(tree, depth + 1)
+		if (argument < 0): return -1
+		if (ast_expression_data_value(tree.result_type[argument]) == 0): return -1
+		if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
+		int entry = expression_ast_add(tree, 'u', argument, -1)
+		if (entry < 0): return -1
+		tree.value[entry] = field
+		if (tail < 0): tree.left[id] = entry
+		else: tree.next_arg[tail] = entry
+		tail = entry
+		count = count + 1
+		if (ast_expression_accept(tree, c",") == 0): break
+		if (peek(c")")): return -1
+	if (peek(c")") == 0): return -1
+	if ((count > 0) && (named == 0) && (count != type_num_args(base))): return -1
+	int result = base
+	if (heap): result = ast_expression_pointer_type(tree, base, token_start_offset)
+	if (result < 0): return -1
+	tree.result_type[id] = type_value(result)
+	ast_expression_advance(tree)
+	return id
+
+
 int ast_expression_name(expression_ast* tree, int depth):
 	# Keywords, unshadowable builtins, generics and constructors take
 	# precedence over identifier() in the streaming grammar.
@@ -824,7 +872,11 @@ int ast_expression_name(expression_ast* tree, int depth):
 	if (peek(c"to_json") || peek(c"from_json")): return -1
 	if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
 	if (generic_call_ready()): return ast_expression_generic_call(tree, depth)
-	if ((nextc == '(') && struct_value_ctor_ready()): return -1
+	if ((nextc == '(') && struct_value_ctor_ready()):
+		int base = type_lookup(token)
+		if (ast_expression_record_type(base) == 0): return -1
+		ast_expression_advance(tree)
+		return ast_expression_constructor(tree, base, 0, depth)
 	if (peek(c"true") || peek(c"false") || peek(c"__word_size__") || peek(c"__target_isa__")):
 		int id = expression_ast_add(tree, 'c', -1, -1)
 		if (id < 0): return -1
@@ -930,8 +982,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		int offset = token_start_offset
 		ast_expression_advance(tree)
 		if (peek(c"[")): return -1
-		if (ast_expression_accept(tree, c"(")):
-			if (ast_expression_accept(tree, c")") == 0): return -1
+		if (peek(c"(")): return ast_expression_constructor(tree, base, 1, depth)
 		if (sym_probe(c"malloc") < 0): return -1
 		int pointer = ast_expression_pointer_type(tree, base, offset)
 		if (pointer < 0): return -1
@@ -1298,7 +1349,7 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			if (type_is_value(type) && ast_expression_record_value(type)):
 				# Only call results own the return buffer consumed by a
 				# scalar field access. Other value-record forms still decline.
-				if ((tree.op[left] != 'C') && (tree.op[left] != 'F') && (tree.op[left] != 'G')): return -1
+				if ((tree.op[left] != 'C') && (tree.op[left] != 'F') && (tree.op[left] != 'G') && (tree.op[left] != 'D')): return -1
 				record = type_real(type)
 				return_words = (type_get_size(record) + word_size - 1) >> word_size_log2
 			if (type_get_pointer_level(type) > 0):

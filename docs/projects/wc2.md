@@ -1028,3 +1028,20 @@ diagnostics. The parser-generator grammar now accepts multiline container
 literals already accepted by the compiler, with focused grammar tests.
 First-use composite type registration remains a separate step: literals
 whose container type is not yet registered still use the streaming path.
+
+## Task 43: record constructors
+
+Record value constructors and heap constructors retain ordered field nodes,
+including named fields and partial named initialization. The visitor reuses
+field stores and aggregate copies, preserving temporary-buffer cleanup,
+array-descriptor initialization, zeroing order and by-value argument layout.
+A heap constructor registers its result pointer after its arguments, matching
+the streaming type-registration order. Scalar field access can consume a
+value constructor's temporary buffer.
+
+Tests cover positional/named/nested constructors, record arguments, union
+fields, heap allocation, empty constructors with array descriptors, and
+constructors inside container literals. Wrong field names, mixed argument
+forms, arity warnings, fixed-array field initialization and incompatible
+arguments retain their existing diagnostics. Qualified constructors and
+dynamic array allocation remain separate work.
