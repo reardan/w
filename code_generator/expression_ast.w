@@ -230,6 +230,44 @@ void emit_expression_ast(expression_ast* tree, int id):
 			pair = tree.next_arg[pair]
 		pop_to(entry_stack)
 		return
+	if ((op == ast_nd_index) || (op == ast_nd_store) || (op == ast_nd_read)):
+		int index = id
+		if (op == ast_nd_store): index = tree.left[id]
+		int receiver = tree.left[index]
+		emit_expression_ast(tree, receiver)
+		binary1(tree.result_type[receiver])
+		int* park = park_new(stack_pos - 1, tree.high[index] + 1)
+		park[2] = stack_pos
+		int arg = tree.right[index]
+		int i = 3
+		while (arg >= 0):
+			emit_expression_ast(tree, arg)
+			int got = promote(tree.result_type[arg])
+			coerce(type_lookup(c"int"), got)
+			park[i] = push_slot()
+			i = i + 1
+			arg = tree.next_arg[arg]
+		char* get_name = ndarray_accessor_name_for(tree.value[index], tree.high[index], c"_at")
+		sym_lookup(get_name)
+		if (op == ast_nd_store):
+			expression_is_assignment = 1
+			char* set_name = ndarray_accessor_name_for(tree.value[index], tree.high[index], c"_set")
+			sym_lookup(set_name)
+			int subop = tree.value[id]
+			if (subop):
+				park_call(park, get_name, 0)
+				push_slot()
+			int right = tree.right[id]
+			emit_expression_ast(tree, right)
+			int got = promote(tree.result_type[right])
+			if (subop): got = compound_assign_apply(subop, tree.result_type[index], got)
+			coerce(tree.high[id], got)
+			int value_slot = push_slot()
+			park_store(park, set_name, value_slot, tree.high[id])
+			free(set_name)
+		else: park_load(park, get_name)
+		free(get_name)
+		return
 	if ((op == 'm') || (op == 'q') || (op == 'w')):
 		int index = id
 		if (op == 'w'): index = tree.left[id]

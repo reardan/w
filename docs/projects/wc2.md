@@ -1414,3 +1414,18 @@ The embedded font data now checks without expression fallback. Differential
 fixtures exercise 4 KiB C strings, W strings and template chunks on every
 backend, plus a generated long token crossing the 8 KiB input boundary.
 Native images match the streaming compiler and the fixtures run successfully.
+
+## Task 72: ndarray and matrix indexing
+
+Dedicated index/read/store nodes retain ndarray receivers and two to four
+indices. Emission parks those operands once and reuses the existing accessor
+call and store helpers. Compound stores evaluate the right-hand side after
+the read; grouping finalizes a read, and single-index pointer access keeps
+its original meaning. Pure probes resolve getter/setter types and reject
+unsupported operands before emission.
+
+Required-mode fixtures and native image comparisons cover float, integer and
+float64 arrays, matrices, nested indices, record-valued view receivers,
+assignment results, coercion and operand order. The existing ndarray and
+matrix tests produce identical images. The linear-algebra suite still has
+a separate fallback for buffer fields read from returned records.

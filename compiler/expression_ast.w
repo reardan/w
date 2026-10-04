@@ -16,6 +16,13 @@
 const int ast_expression_source_limit = 8192
 
 
+# Comma-index pseudo-lvalues retain their operands until the parent
+# chooses a read or store. Grouping finalizes a read, as with map nodes.
+const int ast_nd_index = 128
+const int ast_nd_store = 129
+const int ast_nd_read = 130
+
+
 struct expression_ast:
 	int count
 	int end_offset

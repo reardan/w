@@ -104,11 +104,15 @@ int ndarray_index_struct(int type):
 
 # Accessor symbol name for the pending element: ndf_at2, ndi_set3, ...
 # op is c"_at" or c"_set"; the caller frees the result.
-char* ndarray_accessor_name(char* op):
-	char* prefix = strjoin(type_get_name(nd_index_struct), op)
-	char* name = strjoin(prefix, itoa(nd_index_count))
+char* ndarray_accessor_name_for(int type, int count, char* op):
+	char* prefix = strjoin(type_get_name(type), op)
+	char* name = strjoin(prefix, itoa(count))
 	free(prefix)
 	return name
+
+
+char* ndarray_accessor_name(char* op):
+	return ndarray_accessor_name_for(nd_index_struct, nd_index_count, op)
 
 
 # Look up the accessor the pending element lowers to; a missing symbol

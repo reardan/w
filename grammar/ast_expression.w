@@ -1513,6 +1513,83 @@ int ast_expression_name(expression_ast* tree, int depth):
 	return id
 
 
+int ast_expression_ndarray_index(expression_ast* tree, int receiver, int record, int depth):
+	int first = ast_expression_assignment(tree, depth + 1)
+	if (first < 0): return -1
+	if (peek(c",") == 0):
+		# One index keeps the ordinary raw-pointer meaning.
+		int type = tree.result_type[receiver]
+		int element = 2
+		if (type_get_pointer_level(type) > 0): element = type_lookup_previous_pointer(type)
+		if ((element < 0) || (ast_expression_storage_type(element) == 0)): return -1
+		if (ast_expression_scalar_value(tree.result_type[first]) == 0): return -1
+		if (ast_expression_accept(tree, c"]") == 0): return -1
+		int id = expression_ast_add(tree, 'i', receiver, first)
+		if (id < 0): return -1
+		tree.result_type[id] = element
+		tree.value[id] = type_get_size(element)
+		tree.readonly = 0
+		return id
+	int integer = type_lookup(c"int")
+	if (ast_expression_argument_compatible(tree, integer, first) == 0): return -1
+	int count = 1
+	int previous = first
+	while (ast_expression_accept(tree, c",")):
+		if (count == 4): return -1
+		int arg = ast_expression_assignment(tree, depth + 1)
+		if (arg < 0): return -1
+		if (ast_expression_argument_compatible(tree, integer, arg) == 0): return -1
+		tree.next_arg[previous] = arg
+		previous = arg
+		count = count + 1
+	if (peek(c"]") == 0): return -1
+	char* name = ndarray_accessor_name_for(record, count, c"_at")
+	int symbol = sym_probe(name)
+	free(name)
+	if (symbol < 0): return -1
+	int element = load_int(table + symbol + 6)
+	if (ast_expression_scalar_type(element) == 0): return -1
+	int id = expression_ast_add(tree, ast_nd_index, receiver, first)
+	if (id < 0): return -1
+	tree.value[id] = record
+	tree.high[id] = count
+	tree.symbol[id] = symbol
+	tree.result_type[id] = type_value(element)
+	ast_expression_advance(tree)
+	return id
+
+
+int ast_expression_ndarray_store(expression_ast* tree, int index, int op, int depth):
+	char* name = ndarray_accessor_name_for(tree.value[index], tree.high[index], c"_set")
+	int symbol = sym_probe(name)
+	free(name)
+	if (symbol < 0): return -1
+	int want = sym_param_type(symbol, tree.high[index] + 1)
+	if (op): want = type_real(tree.result_type[index])
+	if (ast_expression_scalar_type(want) == 0): return -1
+	ast_expression_advance(tree)
+	int right = ast_expression_assignment(tree, depth + 1)
+	if (right < 0): return -1
+	if (ast_expression_data_value(tree.result_type[right]) == 0): return -1
+	if (ast_expression_prepare_value(tree, tree.result_type[right], token_start_offset) == 0): return -1
+	int got = ast_expression_promoted_type(tree.result_type[right])
+	if (op):
+		if (var_binary_operands(want, got)): return -1
+		int kind = binary_float_kind(want, got)
+		if (kind && (op != '+') && (op != '-') && (op != '*') && (op != '/')): return -1
+		int result = 3
+		if (kind): result = float_binary_result_type(kind)
+		if (types_compatible_with_expression(want, result) == 0): return -1
+	else if (ast_expression_argument_compatible(tree, want, right) == 0): return -1
+	int id = expression_ast_add(tree, ast_nd_store, index, right)
+	if (id < 0): return -1
+	tree.value[id] = op
+	tree.high[id] = want
+	tree.symbol[id] = symbol
+	tree.result_type[id] = type_value(want)
+	return id
+
+
 int ast_expression_postfix(expression_ast* tree, int depth);
 
 
@@ -1780,6 +1857,7 @@ int ast_expression_atom(expression_ast* tree, int depth):
 		if (token_start_offset >= tree.end_offset): return -1
 		ast_expression_advance(tree)
 		if (tree.op[child] == 'm'): tree.op[child] = 'q'
+		if (tree.op[child] == ast_nd_index): tree.op[child] = ast_nd_read
 		return child
 	if (token[0] == 39):
 		int id = expression_ast_add(tree, 'h', -1, -1)
@@ -2076,6 +2154,10 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 				left = ast_expression_map_index(tree, left, depth)
 				continue
 			if (type_is_set(type)): return -1
+			int nd_record = ndarray_index_struct(type)
+			if (nd_record >= 0):
+				left = ast_expression_ndarray_index(tree, left, nd_record, depth)
+				continue
 			int op = 'i'
 			int element
 			if (type_is_buffer(type)):
@@ -2353,6 +2435,7 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
 		int op = tree.op[i]
+		if ((op == ast_nd_index) || (op == ast_nd_store) || (op == ast_nd_read)): return 1
 		if ((op == 'y') && ((tree.value[i] != 21) || tree.high[i])): return 1
 		if ((op == '+') || (op == '-') || (op == '*') || (op == '/') || (op >= 0x90)):
 			if (var_binary_operands(tree.result_type[tree.left[i]], tree.result_type[tree.right[i]])): return 1
@@ -2472,6 +2555,7 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	int op = compound_assign_op()
 	if ((op == 0) && (peek(c"=") == 0)): return left
 	if (lint_mode): return -1
+	if (tree.op[left] == ast_nd_index): return ast_expression_ndarray_store(tree, left, op, depth)
 	if (tree.readonly): return -1
 	int lt = tree.result_type[left]
 	int map_store = tree.op[left] == 'm'
