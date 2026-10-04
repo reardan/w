@@ -36,7 +36,8 @@ process_result* ast_test_compile(char* compiler, char* arch, char* input, char* 
 		i = ast_test_arg(args, i, c"--imports")
 	if (strcmp(arch, c"x86") != 0): i = ast_test_arg(args, i, arch)
 	i = ast_test_arg(args, i, c"--quiet")
-	if (enabled): i = ast_test_arg(args, i, c"--ast-expressions")
+	if (enabled == 1): i = ast_test_arg(args, i, c"--ast-expressions")
+	if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
 	if (stats): i = ast_test_arg(args, i, c"--stats")
 	i = ast_test_arg(args, i, input)
 	if (output != 0):
@@ -65,20 +66,21 @@ void ast_test_image_at(char* compiler, char* arch, char* source, int run):
 	char* a = ast_test_path(c".legacy")
 	char* b = ast_test_path(c".ast")
 	process_result* old = ast_test_compile(compiler, arch, source, a, 0, 0, 0)
-	process_result* ast = ast_test_compile(compiler, arch, source, b, 1, 0, 0)
-	assert_equal(0, old.status)
-	assert_equal(0, ast.status)
-	assert_strings_equal(old.stdout_text, ast.stdout_text)
-	assert_strings_equal(old.stderr_text, ast.stderr_text)
-	ast_test_same_file(a, b)
-	process_result_free(old)
-	process_result_free(ast)
-	if (run):
-		char** args = strv_new(1)
-		strv_set(args, 0, b)
-		ast = ast_test_run(args, 0)
+	for enabled in range(1, 3):
+		process_result* ast = ast_test_compile(compiler, arch, source, b, enabled, 0, 0)
+		assert_equal(0, old.status)
 		assert_equal(0, ast.status)
+		assert_strings_equal(old.stdout_text, ast.stdout_text)
+		assert_strings_equal(old.stderr_text, ast.stderr_text)
+		ast_test_same_file(a, b)
 		process_result_free(ast)
+		if (run):
+			char** args = strv_new(1)
+			strv_set(args, 0, b)
+			ast = ast_test_run(args, 0)
+			assert_equal(0, ast.status)
+			process_result_free(ast)
+	process_result_free(old)
 	unlink(a)
 	unlink(b)
 	free(a)
@@ -111,12 +113,13 @@ void ast_test_diagnostics(char* source):
 		char* compiler = c"bin/wv2"
 		if (host): compiler = c"bin/wv2_64"
 		process_result* old = ast_test_compile(compiler, c"x64", path, 0, 0, 1, 0)
-		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 0)
-		assert_equal(old.status, ast.status)
-		assert_strings_equal(old.stdout_text, ast.stdout_text)
-		assert_strings_equal(old.stderr_text, ast.stderr_text)
+		for enabled in range(1, 3):
+			process_result* ast = ast_test_compile(compiler, c"x64", path, 0, enabled, 1, 0)
+			assert_equal(old.status, ast.status)
+			assert_strings_equal(old.stdout_text, ast.stdout_text)
+			assert_strings_equal(old.stderr_text, ast.stderr_text)
+			process_result_free(ast)
 		process_result_free(old)
-		process_result_free(ast)
 	unlink(path)
 	free(path)
 
@@ -190,6 +193,48 @@ void test_ast_logic_expression_diagnostics():
 	ast_test_diagnostics(c"int main():\n\tint n = 1\n\tif (n < 2) & (n != 3): return 1\n\treturn 0\n")
 	ast_test_diagnostics(c"int main():\n\tconst int n = 1\n\tif 1: (n) = 2\n\treturn 0\n")
 	ast_test_diagnostics(c"int main():\n\tint n = 1\n\treturn (n = 2)\n")
+
+
+void test_ast_full_expression_boundaries():
+	ast_test_diagnostics(c"int main():\n\tint a = 1\n\tint b = 2\n\ta, b = b, a\n\treturn a + b\n")
+	ast_test_diagnostics(c"int main():\n\tint x = 6 * 7\n    return x\n")
+	ast_test_diagnostics(c"int main():\n\treturn 6 * 7 # no final newline")
+	ast_test_diagnostics(c"int main(): return 6 * 7")
+	ast_test_diagnostics(c"int main():\n\tint x = 0xffffffff\n\treturn 4294967296\n")
+	ast_test_diagnostics(c"int main():\n\tint n = 1\n\tn++\n\treturn n\n")
+
+
+void test_ast_full_expression_coverage_gate():
+	char* path = ast_test_path(c"_gate.w")
+	assert1(file_write_text(path, c"int main(): return 6 * 7\n"))
+	char** args = strv_new(6)
+	strv_set(args, 0, c"bin/wv2")
+	strv_set(args, 1, c"check")
+	strv_set(args, 2, c"--quiet")
+	strv_set(args, 3, c"--ast-audit")
+	strv_set(args, 4, c"--stats")
+	strv_set(args, 5, path)
+	process_result* audit = ast_test_run(args, 0)
+	assert_equal(0, audit.status)
+	assert_contains(audit.stderr_text, c"\"ast_fallback\": true")
+	assert_contains(audit.stderr_text, c"AST expression roots: ")
+	assert_contains(audit.stderr_text, c"Streaming expression roots: ")
+	process_result_free(audit)
+	args = strv_new(5)
+	strv_set(args, 0, c"bin/wv2")
+	strv_set(args, 1, c"check")
+	strv_set(args, 2, c"--quiet")
+	strv_set(args, 3, c"--ast-required")
+	strv_set(args, 4, path)
+	process_result* required = ast_test_run(args, 0)
+	assert_equal(1, required.status)
+	assert_contains(required.stderr_text, c"AST-required compilation encountered an unsupported expression")
+	# Even this trivial root includes the implicit runtime. Requiring
+	# AST must reject its unsupported code, not silently skip imports.
+	assert_contains(required.stderr_text, c"code_generator/integer.w")
+	process_result_free(required)
+	unlink(path)
+	free(path)
 
 
 void test_ast_remaining_expression_diagnostics():
@@ -301,7 +346,8 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	i = ast_test_arg(args, i, command)
 	if (strcmp(command, c"defhash") != 0): i = ast_test_arg(args, i, c"--json")
 	i = ast_test_arg(args, i, c"--quiet")
-	if (enabled): i = ast_test_arg(args, i, c"--ast-expressions")
+	if (enabled == 1): i = ast_test_arg(args, i, c"--ast-expressions")
+	if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
 	strv_set(args, i, source)
 	return ast_test_run(args, 0)
 
@@ -328,7 +374,8 @@ void test_ast_expression_analysis_queries():
 process_result* ast_test_repl(char* repl, int enabled, char* script):
 	char** args = strv_new(2)
 	strv_set(args, 0, repl)
-	if (enabled): strv_set(args, 1, c"--ast-expressions")
+	if (enabled == 1): strv_set(args, 1, c"--ast-expressions")
+	if (enabled == 2): strv_set(args, 1, c"--ast-full-expressions")
 	return ast_test_run(args, script)
 
 
@@ -338,33 +385,35 @@ void test_ast_expression_repl_recovery():
 		char* repl = c"bin/ast_repl"
 		if (host): repl = c"bin/ast_repl64"
 		process_result* old = ast_test_repl(repl, 0, script)
-		process_result* ast = ast_test_repl(repl, 1, script)
-		assert_equal(0, ast.status)
-		assert_equal(old.status, ast.status)
-		assert_strings_equal(old.stdout_text, ast.stdout_text)
-		assert_contains(ast.stdout_text, c"42")
-		assert_contains(ast.stdout_text, c"51")
-		assert_contains(ast.stdout_text, c"72")
-		assert_contains(ast.stdout_text, c"30")
-		assert_contains(ast.stdout_text, c"63")
-		assert_contains(ast.stdout_text, c"64")
-		assert_contains(ast.stdout_text, c"46")
-		assert_contains(ast.stderr_text, c"integer literal has more than 32 significant bits")
+		for enabled in range(1, 3):
+			process_result* ast = ast_test_repl(repl, enabled, script)
+			assert_equal(0, ast.status)
+			assert_equal(old.status, ast.status)
+			assert_strings_equal(old.stdout_text, ast.stdout_text)
+			assert_contains(ast.stdout_text, c"42")
+			assert_contains(ast.stdout_text, c"51")
+			assert_contains(ast.stdout_text, c"72")
+			assert_contains(ast.stdout_text, c"30")
+			assert_contains(ast.stdout_text, c"63")
+			assert_contains(ast.stdout_text, c"64")
+			assert_contains(ast.stdout_text, c"46")
+			assert_contains(ast.stderr_text, c"integer literal has more than 32 significant bits")
+			process_result_free(ast)
 		process_result_free(old)
-		process_result_free(ast)
 
 
 void test_ast_expression_debugger_eval():
 	char* path = ast_test_path(c".w")
 	assert1(file_write_text(path, c"int main():\n\tint answer = (6 * 7)\n\tdebugger\n\treturn answer != 42\nint dbg_twice(int n): return n * 2\n"))
 	for host in range(2):
-		for enabled in range(2):
+		for enabled in range(3):
 			char** args = strv_new(3)
 			char* dbg_path = c"bin/wdbg"
 			if (host): dbg_path = c"bin/wdbg64"
 			strv_set(args, 0, dbg_path)
 			strv_set(args, 1, path)
-			if (enabled): strv_set(args, 2, c"--ast-expressions")
+			if (enabled == 1): strv_set(args, 2, c"--ast-expressions")
+			if (enabled == 2): strv_set(args, 2, c"--ast-full-expressions")
 			process_result* result = ast_test_run(args, c"p answer\np (answer + 5)\np (dbg_twice(answer) + 1)\np (1.5 + 2.5)\np (answer > 40 && dbg_twice(answer) == 84)\np (answer + missing)\np (5 + 6 * 7)\np (4294967296 + 1)\np (6 * 7)\nc\n")
 			assert_equal(0, result.status)
 			assert_contains(result.stdout_text, c"answer = 42")
@@ -391,3 +440,11 @@ void test_ast_expression_debugger_eval():
 # wbuild: step="cmp bin/wv3_64 bin/ast_wv3_64"
 # wbuild: step="bin/ast_wv3_64 x64 --ast-expressions --strict w.w -o bin/ast_wv4_64"
 # wbuild: step="cmp bin/ast_wv3_64 bin/ast_wv4_64"
+# wbuild: step="bin/wv2 --ast-full-expressions --strict w.w -o bin/ast_full_wv3"
+# wbuild: step="cmp bin/wv3 bin/ast_full_wv3"
+# wbuild: step="bin/ast_full_wv3 --ast-full-expressions --strict w.w -o bin/ast_full_wv4"
+# wbuild: step="cmp bin/ast_full_wv3 bin/ast_full_wv4"
+# wbuild: step="bin/wv2_64 x64 --ast-full-expressions --strict w.w -o bin/ast_full_wv3_64"
+# wbuild: step="cmp bin/wv3_64 bin/ast_full_wv3_64"
+# wbuild: step="bin/ast_full_wv3_64 x64 --ast-full-expressions --strict w.w -o bin/ast_full_wv4_64"
+# wbuild: step="cmp bin/ast_full_wv3_64 bin/ast_full_wv4_64"

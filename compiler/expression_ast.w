@@ -15,6 +15,8 @@ struct expression_ast:
 	int count
 	int end_offset
 	int cast_depth
+	int whole_expression
+	int final_token_offset
 	int[128] op
 	int[128] left
 	int[128] right
@@ -29,6 +31,10 @@ struct expression_ast:
 
 int ast_expressions_mode
 int ast_expressions_emitted
+int ast_roots_emitted
+int ast_roots_fallback
+int ast_audit_mode
+int ast_required_mode
 
 
 int expression_ast_add(expression_ast* tree, int op, int left, int right):

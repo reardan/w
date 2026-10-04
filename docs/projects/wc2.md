@@ -527,3 +527,30 @@ multi-error production analysis, REPL checkpoints and incremental emission
 remain later work. wc2's resident caches are still confined to the leaf tool.
 The production migration remains opt-in while coverage is incomplete.
 GitHub issue state is unchanged.
+
+## Task 10: full-expression entry and coverage gates
+
+`--ast-full-expressions` tries the AST at every `expression()` entry, including
+unparenthesized expressions and the implicit container-runtime imports. It
+remains a hybrid mode: unsupported roots use the streaming parser. A buffered,
+single-line preflight identifies the expression boundary, and a virtual end
+offset prevents speculative lexing of the following statement. Committed
+emission precedes the final real tokenizer advance, retaining the previous
+token spelling for indentation and EOF diagnostics. Statement-position commas
+remain with the parallel-assignment parser.
+
+`--ast-audit` adds one JSON fallback record per streaming expression entry on
+stderr, naming file, line, column and starting token. With `--stats`, the
+compiler prints separate AST-root and streaming-root counts. These are parser
+entry counts, including nested entries when a parent falls back; they are not
+percentages of source coverage. `--ast-required` rejects the first unsupported
+expression, including one in implicit runtime code. It is a migration gate,
+not yet a usable general compilation mode, and does not claim that declaration
+or statement parsing has moved to ASTs.
+
+The initial whole-compiler audit produced roughly 37,500 AST roots and 28,900
+streaming roots. Assignment, string, void-call and composite-type paths remain
+substantial gaps. Both full-expression compiler host widths produce the same
+images as the streaming compiler and are covered by repeated self-host checks.
+The expression test matrix compares both AST modes against the default path,
+including malformed input and statement-boundary diagnostics.
