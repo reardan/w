@@ -485,6 +485,30 @@ void emit_expression_ast(expression_ast* tree, int id):
 		promote(left_type)
 		if (tree.value[id]): add_eax_int32(tree.value[id])
 		return
+	if (op == 'J'):
+		promote(left_type)
+		int base_stack = stack_pos
+		int list_slot = push_slot()
+		int start = tree.right[id]
+		if (start < 0): mov_eax_int(0)
+		else:
+			emit_expression_ast(tree, start)
+			promote(tree.result_type[start])
+		int start_slot = push_slot()
+		int end = tree.high[id]
+		if (end < 0): mov_eax_int(0)
+		else:
+			emit_expression_ast(tree, end)
+			promote(tree.result_type[end])
+		int end_slot = push_slot()
+		int s = rt_call_begin(c"__w_list_slice")
+		push_slot_copy(list_slot)
+		push_slot_copy(start_slot)
+		push_slot_copy(end_slot)
+		push_slot_int(end >= 0)
+		rt_call_end(s)
+		pop_to(base_stack)
+		return
 	if (op == 'Z'):
 		promote(left_type)
 		push_slot()

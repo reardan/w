@@ -1290,19 +1290,25 @@ int ast_expression_slice(expression_ast* tree, int receiver, int start, int dept
 		end = ast_expression_assignment(tree, depth + 1)
 		if (end < 0): return -1
 		if (ast_expression_scalar_value(tree.result_type[end]) == 0): return -1
-	if ((peek(c"]") == 0) || (sym_probe(c"malloc") < 0)): return -1
+	if (peek(c"]") == 0): return -1
 	int type = tree.result_type[receiver]
 	int result = string_value_type
-	if (type_is_string(type) == 0):
+	int op = 'Z'
+	if (type_is_list(type)):
+		if (sym_probe(c"__w_list_slice") < 0): return -1
+		op = 'J'
+		result = type_value(type_lookup_list(type_list_element_type(type)))
+	else if (sym_probe(c"malloc") < 0): return -1
+	else if (type_is_string(type) == 0):
 		if (ast_expression_prepare_value(tree, type_real(type), token_start_offset) == 0): return -1
 		result = type_lookup_slice_value(buffer_element_type(type))
 		if (result < 0): return -1
 	ast_expression_advance(tree)
-	int id = expression_ast_add(tree, 'Z', receiver, start)
+	int id = expression_ast_add(tree, op, receiver, start)
 	if (id < 0): return -1
 	tree.high[id] = end
 	tree.result_type[id] = result
-	tree.readonly = 1
+	if (op == 'Z'): tree.readonly = 1
 	return id
 
 
@@ -1339,10 +1345,10 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 				if (type_get_pointer_level(type) > 0): element = type_lookup_previous_pointer(type)
 			if ((element < 0) || (ast_expression_storage_type(element) == 0)): return -1
 			int index = -1
-			if ((op != 'I') || (peek(c":") == 0)):
+			if (((op != 'I') && (op != 'j')) || (peek(c":") == 0)):
 				index = ast_expression_assignment(tree, depth + 1)
 				if (index < 0): return -1
-			if ((op == 'I') && ast_expression_accept(tree, c":")):
+			if (((op == 'I') || (op == 'j')) && ast_expression_accept(tree, c":")):
 				left = ast_expression_slice(tree, left, index, depth)
 				continue
 			if ((index < 0) || (peek(c"]") == 0)): return -1

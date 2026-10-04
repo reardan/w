@@ -1084,3 +1084,13 @@ shapes, and recovery past unsupported qualifiers, fixed-array arguments and
 oversized type-argument lists. Ordinary non-generic declarations still rewind
 to their original type parser. Binding continues to require existing
 instantiated struct and slice records.
+
+## Task 47: list slices
+
+List slicing now retains the receiver and optional bound expressions in a
+dedicated AST node. Emission preserves left-to-right evaluation and passes
+omitted-end information to the existing copy helper. Negative indexes,
+range checks and record element copies retain their existing behavior.
+
+Differential and required-mode tests cover all bound forms, nested slices,
+independent backing storage, record copies and malformed bounds.
