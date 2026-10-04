@@ -785,8 +785,12 @@ void emit_expression_ast(expression_ast* tree, int id):
 		be_ctrl_end(h_else)
 		emit_expression_ast(tree, tree.high[id])
 		int nt = promote(tree.result_type[tree.high[id]])
-		if (yt != 3): coerce(yt, nt)
+		int decay = tree.value[id]
+		if (decay == 1): promote_eax()
+		else if (decay == 2): be_br(h_join)
+		else if (yt != 3): coerce(yt, nt)
 		be_ctrl_end(h_stub)
+		if (decay == 2): promote_eax()
 		be_ctrl_end(h_join)
 		return
 	if (op == 'r'): return

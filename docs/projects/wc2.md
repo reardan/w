@@ -1429,3 +1429,16 @@ float64 arrays, matrices, nested indices, record-valued view receivers,
 assignment results, coercion and operand order. The existing ndarray and
 matrix tests produce identical images. The linear-algebra suite still has
 a separate fallback for buffer fields read from returned records.
+
+## Task 73: buffer values across expression boundaries
+
+Returned record fields can retain promoted array/slice descriptor types in
+the AST. Ternary nodes record which arm needs pointer decay and reproduce
+the streaming branch stub when only the then arm decays; null arms remain
+raw pointers. Membership nodes promote buffer keys before parsing their
+container operand, preserving type-registration order.
+
+The array-decay and complete matrix linear-algebra regressions now compile
+with required AST expressions and identical native images. A cross-target
+fixture covers returned slice fields, both pointer/array branch orders,
+null joins, slice joins and buffer membership keys.

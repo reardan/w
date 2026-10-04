@@ -2253,7 +2253,8 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			tree.value[left] = offset
 			tree.high[left] = load_pointer
 			if (return_words && (type_num_args(field) == 0)):
-				if (ast_expression_scalar_type(field) == 0): return -1
+				if ((ast_expression_scalar_type(field) || type_is_buffer(field)) == 0): return -1
+				if (ast_expression_prepare_value(tree, field, token_start_offset) == 0): return -1
 				tree.high[left] = 0 - return_words
 				tree.symbol[left] = field
 				tree.result_type[left] = type_value(ast_expression_promoted_type(field))
@@ -2395,11 +2396,15 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 			if (peek(c"in")): op = 'H'
 		if (op == 0): return left
 		ast_expression_advance(tree)
+		if (op == 'H'):
+			if (ast_expression_prepare_value(tree, tree.result_type[left], token_start_offset) == 0): return -1
 		int right
 		if (equality): right = ast_expression_compare(tree, depth, 0)
 		else: right = ast_expression_shift(tree, depth)
 		if (right < 0): return -1
-		if ((ast_expression_scalar_value(tree.result_type[left]) && ast_expression_scalar_value(tree.result_type[right])) == 0): return -1
+		int valid_left = ast_expression_scalar_value(tree.result_type[left])
+		if ((op == 'H') && type_is_buffer(tree.result_type[left])): valid_left = 1
+		if ((valid_left && ast_expression_scalar_value(tree.result_type[right])) == 0): return -1
 		if ((op != 'H') && var_binary_operands(tree.result_type[left], tree.result_type[right])):
 			if (ast_expression_var_pair(ast_expression_promoted_type(tree.result_type[left]), ast_expression_promoted_type(tree.result_type[right])) == 0): return -1
 		int kind = 0
@@ -2521,23 +2526,42 @@ int ast_expression_conditional(expression_ast* tree, int depth):
 	int condition = ast_expression_logic(tree, depth, 1)
 	if ((condition < 0) || (peek(c"?") == 0)): return condition
 	int ct = tree.result_type[condition]
-	if (ast_expression_scalar_value(ct) == 0): return -1
+	if ((ast_expression_scalar_value(ct) || type_is_buffer(ct)) == 0): return -1
 	# A wresult pointer's '?' belongs to postfix error propagation.
 	if (result_propagate_struct(type_real(ct)) >= 0): return -1
 	ast_expression_advance(tree)
+	if (ast_expression_prepare_value(tree, ct, token_start_offset) == 0): return -1
 	int yes = ast_expression_assignment(tree, depth + 1)
-	if ((yes < 0) || (ast_expression_accept(tree, c":") == 0)): return -1
+	if ((yes < 0) || (peek(c":") == 0)): return -1
+	if (ast_expression_prepare_value(tree, tree.result_type[yes], token_start_offset) == 0): return -1
+	ast_expression_advance(tree)
 	int no = ast_expression_conditional(tree, depth + 1)
 	if (no < 0): return -1
-	if ((ast_expression_scalar_value(tree.result_type[yes]) && ast_expression_scalar_value(tree.result_type[no])) == 0): return -1
+	if ((ast_expression_scalar_value(tree.result_type[yes]) || type_is_buffer(tree.result_type[yes])) == 0): return -1
+	if ((ast_expression_scalar_value(tree.result_type[no]) || type_is_buffer(tree.result_type[no])) == 0): return -1
+	if (ast_expression_prepare_value(tree, tree.result_type[no], token_start_offset) == 0): return -1
 	int yt = ast_expression_promoted_type(tree.result_type[yes])
 	int nt = ast_expression_promoted_type(tree.result_type[no])
 	int result = yt
-	if (yt == 3): result = nt
-	if (types_compatible(type_real(result), type_real(nt)) == 0): return -1
+	int decay = 0
+	int yslice = type_get_kind(type_unqualified(yt)) == type_kind_slice_value
+	int nslice = type_get_kind(type_unqualified(nt)) == type_kind_slice_value
+	if (yt == 3):
+		result = nt
+		if (nslice):
+			decay = 1
+			result = ast_expression_pointer_type(tree, type_unqualified(type_get_element_type(type_unqualified(nt))), token_start_offset)
+	else if (type_decays_to_pointer(nt, yt) || (yslice && (nt == 3))):
+		decay = 2
+		result = nt
+		if (nt == 3): result = ast_expression_pointer_type(tree, type_unqualified(type_get_element_type(type_unqualified(yt))), token_start_offset)
+	if (result < 0): return -1
+	if ((types_compatible(type_real(result), type_real(nt)) || type_decays_to_pointer(type_real(result), type_real(nt))) == 0): return -1
+	if ((result == string_literal_type) && (nt != string_literal_type)): result = string_value_type
 	int id = expression_ast_add(tree, '?', condition, yes)
 	if (id < 0): return -1
 	tree.high[id] = no
+	tree.value[id] = decay
 	if ((conditional_arm_is_value(result) || type_is_value(result)) == 0): result = type_value(type_real(result))
 	tree.result_type[id] = result
 	return id
