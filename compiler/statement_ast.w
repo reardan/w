@@ -8,6 +8,8 @@ const int ast_stmt_continue = 4
 const int ast_stmt_return = 5
 const int ast_stmt_yield = 6
 const int ast_stmt_expression = 7
+const int ast_stmt_goto = 8
+const int ast_stmt_label = 9
 
 
 struct statement_ast:
@@ -19,6 +21,7 @@ struct statement_ast:
 	int end_offset
 	int target
 	int unwind_slots
+	int stack_depth
 	int valid_jump
 	expression_ast* expression_tree
 	int expression_root
@@ -33,3 +36,5 @@ int ast_return_statements_emitted
 int ast_yield_statements_emitted
 
 int ast_expression_statements_emitted
+
+int ast_goto_statements_emitted

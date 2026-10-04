@@ -54,3 +54,56 @@ void emit_expression_statement_ast(statement_ast* node):
 	ast_expression_emit_prepared(node.expression_tree, node.expression_root)
 	ast_roots_emitted = ast_roots_emitted + 1
 	ast_expression_statements_emitted = ast_expression_statements_emitted + 1
+
+
+void emit_goto_target(int label, int source_stack):
+	if (goto_label_pos[label] >= 0):
+		# Backward: the label's depth is known
+		goto_adjust_stack(source_stack, goto_label_stack[label])
+		jmp_int32(0)
+		be_branch_patch(codepos, goto_label_pos[label])
+		return
+	jmp_int32(0)
+	goto_reserve()
+	goto_pending_label[goto_pending_count] = label
+	goto_pending_site[goto_pending_count] = codepos
+	goto_pending_stack[goto_pending_count] = source_stack
+	goto_pending_count = goto_pending_count + 1
+
+
+void emit_label_target(int label, int target_stack):
+	# A jump lands here: no constant/compare fold may reach back across it
+	be_cmp_note_reset()
+	be_imm_note_reset()
+	# Forward gotos at another depth get an adjust-and-jump stub, placed
+	# before the label behind a jump that skips them on fall-through
+	int skip = 0
+	int i = goto_pending_base
+	while (i < goto_pending_count):
+		if ((goto_pending_label[i] == label) && (goto_pending_stack[i] != target_stack)):
+			if (skip == 0):
+				jmp_int32(0)
+				skip = codepos
+			be_branch_patch(goto_pending_site[i], codepos)
+			goto_adjust_stack(goto_pending_stack[i], target_stack)
+			jmp_int32(0)
+			# The stub's own jump is resolved to the label below
+			goto_pending_site[i] = codepos
+		i = i + 1
+	if (skip): be_branch_patch(skip, codepos)
+	# ...nor across the label itself, past any stub emitted above
+	be_notes_reset()
+	goto_label_pos[label] = codepos
+	goto_label_stack[label] = target_stack
+	i = goto_pending_base
+	while (i < goto_pending_count):
+		if (goto_pending_label[i] == label):
+			be_branch_patch(goto_pending_site[i], codepos)
+			goto_pending_label[i] = -1
+		i = i + 1
+
+
+void emit_goto_statement_ast(statement_ast* node):
+	if (node.kind == ast_stmt_goto): emit_goto_target(node.target, node.stack_depth)
+	else: emit_label_target(node.target, node.stack_depth)
+	ast_goto_statements_emitted = ast_goto_statements_emitted + 1

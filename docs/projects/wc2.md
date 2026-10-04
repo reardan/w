@@ -1739,3 +1739,16 @@ Tests compare native images and runtime behavior for mixed scalar/container
 stores, parallel assignment and both increment forms on both host widths.
 Malformed increments, const stores, failed parallel RHSs and argument warnings
 retain their diagnostics. Statistics report expression-statement nodes.
+
+## Task 95: goto and label nodes
+
+Goto and label parsing now builds nodes carrying source spans, resolved label
+IDs and statement stack depths in full-expression mode. Shared backend
+lowering handles backward branches, forward fixups and stack-adjustment
+stubs; the grammar retains name validation and duplicate-label checks.
+
+The existing goto suite produces identical native images and runs on both
+host widths, covering jumps into/out of local scopes and independent function
+label namespaces. Differential cases preserve malformed, missing and duplicate
+label diagnostics and unreachable-code linting. Statistics report goto/label
+node counts.
