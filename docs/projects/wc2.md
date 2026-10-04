@@ -1663,3 +1663,23 @@ All 35 existing fixture-runner groups pass in this mode. Dedicated tests cover
 warning diagnostics, nesting errors, x64 selection and a valid source beyond
 the arena capacity: ordinary compilation succeeds while AST-required fixture
 compilation fails, proving the runner enforces positive coverage.
+
+## Task 90: reusable required-expression suite gate
+
+`./wbuild ast_expression_suite` generates a private manifest and runs the full
+`tests` target with required AST expressions for successful direct compiler
+steps and positive diagnostic fixtures. Expected compile failures use full
+AST mode with diagnostic fallback; seed bootstrap commands and explicit
+differential modes retain their original behavior. Environment-prefixed
+compiler commands are covered too. Other nested test-driver subprocesses
+retain their own modes.
+
+The gate runs build-tool mutation tests after other compiler consumers.
+`python3 tools/ast_suite.py --prepare-only` writes the manifest for inspection;
+`-j N` sets the gate's parallelism (default 4). It requires Python 3 and built
+`wbuildgen`/`wfixture` tools, supplied by the wbuild target's dependencies.
+Regression tests check mode selection, fixture child coverage, preservation
+of explicit modes, idempotence and acyclic dependency ordering.
+
+This enforces the expression migration. Statements and declarations still
+use the streaming parser and remain a separate migration.

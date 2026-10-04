@@ -2268,3 +2268,8 @@ void test_ast_expression_debugger_eval():
 # wbuild: step="cmp bin/wv3_64 bin/ast_full_wv3_64"
 # wbuild: step="bin/ast_full_wv3_64 x64 --ast-required --strict w.w -o bin/ast_full_wv4_64"
 # wbuild: step="cmp bin/ast_full_wv3_64 bin/ast_full_wv4_64"
+
+# wbuild: target=ast_expression_suite_manifest_test tag=tests data=tools/ast_suite.py data=tests/ast_suite_test.py
+# wbuild: step="python3 tests/ast_suite_test.py"
+# wbuild: target=ast_expression_suite dep=build dep=wbuildgen dep=wfixture data=tools/ast_suite.py
+# wbuild: step="python3 tools/ast_suite.py"

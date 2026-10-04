@@ -28,3 +28,6 @@ log/*.core
 /libs/extras/protobuf/generated_proto_parser.w
 /tests/protobuf/common_pb.w
 /tests/protobuf/sample_pb.w
+
+# Python tooling import caches.
+__pycache__/
