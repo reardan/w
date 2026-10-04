@@ -226,6 +226,23 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int type = tree.value[id]
 		if (type_is_list(type)): list_emit_new_container(type)
 		else: hash_emit_new_container(type)
+		if (tree.high[id]):
+			int base_stack = stack_pos
+			int map_slot = push_slot()
+			if (tree.high[id] == 3): mov_eax_int(tree.symbol[id])
+			else:
+				int argument = tree.left[id]
+				emit_expression_ast(tree, argument)
+				int got = promote(tree.result_type[argument])
+				if (tree.high[id] == 1): coerce(type_map_value_type(type), got)
+			int value_slot = push_slot()
+			int s = rt_call_begin(c"__w_map_set_default")
+			push_slot_copy(map_slot)
+			push_slot_int(tree.high[id])
+			push_slot_copy(value_slot)
+			rt_call_end(s)
+			load_slot(map_slot)
+			pop_to(base_stack)
 		return
 	if (op == 'Y'):
 		int length = tree.left[id]

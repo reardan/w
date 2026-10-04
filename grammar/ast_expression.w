@@ -1044,6 +1044,44 @@ int ast_expression_new_array(expression_ast* tree, int base, int depth):
 	return id
 
 
+int ast_expression_callback_return(expression_ast* tree, int argument);
+
+
+int ast_expression_map_default(expression_ast* tree, int id, int depth):
+	int type = tree.value[id]
+	int value = type_map_value_type(type)
+	if (type_num_args(value) > 0): return -1
+	if (sym_probe(c"__w_map_set_default") < 0): return -1
+	int canonical = type_unqualified(value)
+	int container = type_is_map(canonical) || type_is_set(canonical) || type_is_list(canonical)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	if (peek(c")")):
+		if (container == 0): return -1
+		tree.high[id] = 3
+		tree.symbol[id] = hash_default_container_descriptor(value)
+	else:
+		int argument = ast_expression_assignment(tree, depth + 1)
+		if (argument < 0): return -1
+		int type = tree.result_type[argument]
+		if (ast_expression_data_value(type) == 0): return -1
+		if (ast_expression_prepare_value(tree, type, token_start_offset) == 0): return -1
+		int got = ast_expression_promoted_type(type)
+		if (hash_default_is_factory(got)):
+			int result = ast_expression_callback_return(tree, argument)
+			if (result < 0): return -1
+			if (types_compatible_with_expression(value, result) == 0): return -1
+			tree.high[id] = 2
+		else:
+			if (container || (type_get_pointer_level(canonical) > 0)): return -1
+			if (ast_expression_argument_compatible(tree, value, argument) == 0): return -1
+			if (type_is_string(value) && type_is_char_pointer(got)):
+				if (sym_probe(c"str_from_cstr") < 0): return -1
+			tree.high[id] = 1
+		tree.left[id] = argument
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	return id
+
+
 int ast_expression_unary(expression_ast* tree, int depth):
 	if ((depth > 96) || (expr_nesting_depth + depth >= 1000)): return -1
 	if (token_start_offset >= tree.end_offset): return -1
@@ -1057,7 +1095,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 	if (ast_expression_accept(tree, c"new")):
 		if ((nextc == '[') && (peek(c"map") || peek(c"set") || peek(c"list"))):
 			int container = ast_expression_named_type(tree, 0, depth + 1)
-			if ((container < 0) || peek(c"(")): return -1
+			if (container < 0): return -1
 			if ((type_is_list(container) || type_is_map(container) || type_is_set(container)) == 0): return -1
 			char* helper = c"__w_list_new"
 			if (type_is_map(container)): helper = c"__w_map_new"
@@ -1066,7 +1104,11 @@ int ast_expression_unary(expression_ast* tree, int depth):
 			int id = expression_ast_add(tree, 'V', -1, -1)
 			if (id < 0): return -1
 			tree.value[id] = container
+			tree.high[id] = 0
 			tree.result_type[id] = type_value(container)
+			if (peek(c"(")):
+				if (type_is_map(container) == 0): return -1
+				return ast_expression_map_default(tree, id, depth)
 			return id
 		# Bare ordinary types and empty constructor parentheses.
 		if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1

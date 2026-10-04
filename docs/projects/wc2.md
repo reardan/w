@@ -1181,3 +1181,17 @@ Tests cover changed mapped element types, typed callback pointers, receiver/
 callback/initial-value evaluation order, record sorting, empty reductions and
 invalid callbacks/results. Implicit `it` iteration expressions still use their
 existing path.
+
+## Task 55: map default construction
+
+Container allocation nodes now retain map defaults: stored values, explicit
+factories and synthesized empty-container factories. Probe-time validation
+checks factory return compatibility without marking symbols or emitting code;
+emission preserves allocation/default evaluation order and the existing
+set-default helper call.
+
+Required-mode and differential fixtures cover scalar/string/float defaults,
+named and typed-pointer factories, per-key materialization and independent
+automatically created lists, sets and nested maps. Missing scalar defaults,
+pointer defaults without factories, record defaults and mismatched factory
+returns keep their existing diagnostics.

@@ -55,6 +55,7 @@ int ast_required_mode
 
 # Container methods share the streaming helper-call lowering. Bit 7
 # chooses the aggregate-copy/address helper after types are known.
+# Bit 8 records the method-token lookup of an outer it variable.
 char* ast_expression_method_helper(int method):
 	method = method & 255
 	if (method == 11): return c"__w_map_remove"
