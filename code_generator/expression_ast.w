@@ -115,6 +115,19 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (tree.high[id]): promote(left_type)
 		add_eax_int32(tree.value[id])
 		return
+	if (op == 'I'):
+		promote(left_type)
+		push_slot()
+		emit_expression_ast(tree, tree.right[id])
+		promote(tree.result_type[tree.right[id]])
+		buffer_bounds_check()
+		if (tree.value[id] > 1): imul_eax_int32(tree.value[id])
+		pop_ebx()
+		promote_ebx()
+		alu_add()
+		stack_pos = stack_pos - 1
+		expression_lhs_readonly = 0
+		return
 	if ((op == 'n') || (op == 'p') || (op == '~') || (op == '!') || (op == 'b')):
 		int kind = type_float_kind(promote(left_type))
 		if (op == 'n'):

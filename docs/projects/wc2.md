@@ -604,3 +604,18 @@ too early. The byte preflight now declines these roots, preserving both the
 streaming interpretation and its cross-line call warning. Multi-line trees
 remain a later stage. Tests compare target images, diagnostics and explicit
 AST-hit counts without assuming the lazy runtime contributes no AST nodes.
+
+## Task 14: buffer element access
+
+Fixed arrays, slices and strings now have AST indexing nodes. Their visitor
+loads the descriptor, evaluates the index once, emits the existing bounds
+trap, and computes the element address at the declared width. Array fields
+and arrays of ordinary records compose with field access; indexed elements
+can participate in assignment and compound assignment. Whole-array values,
+range slices and read-only descriptor fields remain separate work.
+
+The differential matrix covers nested field/index access, side effects,
+integer widths, strings and slice parameters. Explicit AST-hit and upper/
+negative bounds-trap tests supplement byte comparisons; the bounds-off path
+also produces the same image. Cross-line membership (`in`) now declines the
+single-line probe just like other expression continuations.

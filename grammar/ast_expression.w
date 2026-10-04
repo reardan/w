@@ -82,6 +82,8 @@ int ast_expression_line_boundary(char* bytes, int index, int limit):
 		char* tails = c"([.+-*/%<>=&|^?"
 		for j in range(15):
 			if (tails[j] == ch): return 0
+		if ((ch == 'i') && (index + 2 < limit) && (bytes[index + 1] == 'n')):
+			if (is_ident_part_byte(bytes[index + 2]) == 0): return 0
 		return 1
 	return 0
 
@@ -211,6 +213,8 @@ int ast_expression_record_type(int type):
 
 
 int ast_expression_storage_type(int type):
+	if (type_is_gpu_object(type) || type_is_gpu_pointer(type)): return 0
+	if (type_is_buffer(type)): return 1
 	return ast_expression_scalar_type(type) || ast_expression_record_type(type)
 
 
@@ -456,16 +460,22 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 	while (left >= 0):
 		int type = tree.result_type[left]
 		if (ast_expression_accept(tree, c"[")):
-			# Raw typed pointers only: buffers/containers have bounds and
-			# pending-element machinery owned by the streaming parser.
-			if (type_get_pointer_level(type) <= 0): return -1
-			int element = type_lookup_previous_pointer(type)
+			int op = 'i'
+			int element
+			if (type_is_buffer(type)):
+				op = 'I'
+				element = buffer_element_type(type)
+			else:
+				# Containers retain their pending-element machinery until
+				# it has explicit AST nodes of its own.
+				if (type_get_pointer_level(type) <= 0): return -1
+				element = type_lookup_previous_pointer(type)
 			if ((element < 0) || (ast_expression_storage_type(element) == 0)): return -1
 			int index = ast_expression_assignment(tree, depth + 1)
 			if ((index < 0) || (peek(c"]") == 0)): return -1
 			if (ast_expression_scalar_value(tree.result_type[index]) == 0): return -1
 			ast_expression_advance(tree)
-			left = expression_ast_add(tree, 'i', left, index)
+			left = expression_ast_add(tree, op, left, index)
 			if (left < 0): return -1
 			tree.result_type[left] = element
 			tree.value[left] = type_get_size(element)

@@ -96,6 +96,7 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_mutation_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_text_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_print_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_buffer_expression_fixture.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -128,6 +129,7 @@ void ast_test_diagnostics(char* source):
 
 
 void test_ast_expression_diagnostics_and_fallback():
+	ast_test_diagnostics(c"int main():\n\tint x = 1\n\t\tin 2\n\treturn x\n")
 	ast_test_diagnostics(c"int main(): return (0xffffffff + 0x80000000)\n")
 	ast_test_diagnostics(c"int main(): return (0x100000000 + 2)\n")
 	ast_test_diagnostics(c"int main(): return (4294967296 + 2)\n")
@@ -401,6 +403,41 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	return ast_test_run(args, 0)
 
 
+void test_ast_buffer_expression_hits_and_bounds():
+	char* path = ast_test_path(c"_buffer.w")
+	char* output = ast_test_path(c"_buffer")
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		assert1(file_write_text(path, c"int main():\n\tint[2] a\n\ta[0] = 20\n\ta[1] = 22\n\treturn (a[0] + a[1])\n"))
+		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
+		assert_equal(0, ast.status)
+		assert_contains(ast.stderr_text, c"AST expressions: 1\n")
+		process_result_free(ast)
+		for index in range(2):
+			char* source = c"int main():\n\tint[2] a\n\treturn (a[2])\n"
+			if (index): source = c"int main():\n\tint[2] a\n\treturn (a[-1])\n"
+			assert1(file_write_text(path, source))
+			for enabled in range(1, 3):
+				ast = ast_test_compile(compiler, c"x64", path, output, enabled, 0, 0)
+				assert_equal(0, ast.status)
+				process_result_free(ast)
+				char** args = strv_new(1)
+				strv_set(args, 0, output)
+				ast = ast_test_run(args, 0)
+				assert1(ast.status != 0)
+				if (index): assert_contains(ast.stderr_text, c"index out of range: index -1, length 2")
+				else: assert_contains(ast.stderr_text, c"index out of range: index 2, length 2")
+				process_result_free(ast)
+	unlink(path)
+	unlink(output)
+	free(path)
+	free(output)
+	ast_test_diagnostics(c"int main():\n\tint[2] a\n\t(a.length) = 3\n\treturn 0\n")
+	ast_test_diagnostics(c"int main():\n\tint[2] a\n\treturn (a[missing])\n")
+	ast_test_diagnostics(c"int main():\n\tint[2] a\n\treturn (a[1 + ])\n")
+
+
 int ast_test_emitted_count(char* stats):
 	char* prefix = c"AST expressions: "
 	int i = 0
@@ -512,7 +549,7 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
-# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/operator_overload_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/operator_overload_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"

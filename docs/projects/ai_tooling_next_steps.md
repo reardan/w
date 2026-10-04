@@ -17,6 +17,15 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **Nested array descriptors in arrays of structs (2026-10-03).** During
+  AST differential testing, `struct R: int[3] items` followed by local
+  `R[2] records; records[1].items[2] = 64` (on separate W lines) checked
+  cleanly but trapped with length zero in both compiler paths. Initialize
+  embedded descriptors recursively or diagnose unsupported layouts. While
+  inspecting that failure with `wdbg`, `p values[0]` for another local array
+  failed with `type parameter name expected, found '0'`; cover fixed-array
+  local evaluation in debugger regression tests.
+
 - **Multi-file `w check` shares one compilation unit, so two root
   programs cannot be checked in one invocation.** Observed 2026-08-07
   (shell-mode stage 4): `bin/wv2 x64 check --json
