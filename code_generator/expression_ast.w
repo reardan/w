@@ -195,6 +195,52 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (type_is_list(type)): list_emit_new_container(type)
 		else: hash_emit_new_container(type)
 		return
+	if (op == 'Y'):
+		int length = tree.left[id]
+		emit_expression_ast(tree, length)
+		promote(tree.result_type[length])
+		int element_size = type_get_size(tree.value[id])
+		if (bounds_mode != 0):
+			int alloc_limit = 1073741823 / element_size
+			int h_in_bounds = be_ctrl_block()
+			int h_trap = be_ctrl_block()
+			be_bounds_branch(BOUNDS_EAX_NEG, 0, h_trap)
+			be_bounds_branch(BOUNDS_EAX_LE_LIMIT, alloc_limit, h_in_bounds)
+			be_ctrl_end(h_trap)
+			push_eax()
+			mov_eax_int(alloc_limit)
+			pop_ebx()
+			bounds_trap_call(c"__w_alloc_trap")
+			be_ctrl_end(h_in_bounds)
+		push_slot()
+		sym_get_value(c"malloc")
+		push_slot()
+		mov_eax_esp_plus(word_size)
+		if (element_size > 1): imul_eax_int32(element_size)
+		add_eax_int32(2 * word_size)
+		push_slot()
+		mov_eax_esp_plus(word_size)
+		call_eax()
+		drop_slots(2)
+		push_slot()
+		add_eax_int32(2 * word_size)
+		mov_ebx_esp()
+		store_ebx_word()
+		mov_eax_esp_plus(word_size)
+		mov_ebx_esp()
+		add_ebx_int32(word_size)
+		store_ebx_word()
+		mov_eax_esp_plus(word_size)
+		if (element_size > 1): imul_eax_int32(element_size)
+		push_slot()
+		mov_eax_esp_plus(word_size)
+		add_eax_int32(2 * word_size)
+		push_slot()
+		zero_stack_count_bytes()
+		drop_slots(2)
+		pop_eax_slot()
+		drop_slots(1)
+		return
 	if (op == 'D'):
 		int base = tree.value[id]
 		int heap = tree.high[id]

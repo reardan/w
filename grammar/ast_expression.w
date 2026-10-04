@@ -951,6 +951,24 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	return type
 
 
+int ast_expression_new_array(expression_ast* tree, int base, int depth):
+	if (type_get_size(base) <= 0): return -1
+	if (sym_probe(c"malloc") < 0): return -1
+	if (ast_expression_accept(tree, c"[") == 0): return -1
+	int length = ast_expression_assignment(tree, depth + 1)
+	if (length < 0): return -1
+	if (ast_expression_scalar_value(tree.result_type[length]) == 0): return -1
+	if (peek(c"]") == 0): return -1
+	int type = ast_expression_slice_value_type(tree, base, token_start_offset)
+	if (type < 0): return -1
+	ast_expression_advance(tree)
+	int id = expression_ast_add(tree, 'Y', length, -1)
+	if (id < 0): return -1
+	tree.value[id] = base
+	tree.result_type[id] = type
+	return id
+
+
 int ast_expression_unary(expression_ast* tree, int depth):
 	if ((depth > 96) || (expr_nesting_depth + depth >= 1000)): return -1
 	if (token_start_offset >= tree.end_offset): return -1
@@ -981,7 +999,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		if (base < 0): return -1
 		int offset = token_start_offset
 		ast_expression_advance(tree)
-		if (peek(c"[")): return -1
+		if (peek(c"[")): return ast_expression_new_array(tree, base, depth)
 		if (peek(c"(")): return ast_expression_constructor(tree, base, 1, depth)
 		if (sym_probe(c"malloc") < 0): return -1
 		int pointer = ast_expression_pointer_type(tree, base, offset)

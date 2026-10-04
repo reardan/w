@@ -169,12 +169,11 @@ int ast_expression_reserve_signature(expression_ast* tree, int id, int result, i
 # Array/slice promotion creates a descriptor-value type before a later
 # argument can register its own types. Stage that event just like a
 # pointer; borrowed records need no diagnostic name or field storage.
-int ast_expression_prepare_value(expression_ast* tree, int type, int offset):
-	if (type_is_value(type)): return 1
-	if ((type_is_array(type) == 0) && (type_get_kind(type) != type_kind_slice)): return 1
-	int element = type_canonical(type_get_element_type(type))
-	if (type_lookup_slice_value(element) >= 0): return 1
-	if (tree.types_count == 16): return 0
+int ast_expression_slice_value_type(expression_ast* tree, int element, int offset):
+	element = type_canonical(element)
+	int existing = type_lookup_slice_value(element)
+	if (existing >= 0): return existing
+	if (tree.types_count == 16): return -1
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.name = c""
@@ -190,5 +189,12 @@ int ast_expression_prepare_value(expression_ast* tree, int type, int offset):
 	rec.decl_column = 0
 	tree.pointer_offsets[i] = offset
 	tree.types_count = i + 1
+	int result = type_count()
 	type_records.push(cast(int, rec))
-	return 1
+	return result
+
+
+int ast_expression_prepare_value(expression_ast* tree, int type, int offset):
+	if (type_is_value(type)): return 1
+	if ((type_is_array(type) == 0) && (type_get_kind(type) != type_kind_slice)): return 1
+	return ast_expression_slice_value_type(tree, type_get_element_type(type), offset) >= 0

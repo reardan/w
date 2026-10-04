@@ -1045,3 +1045,15 @@ constructors inside container literals. Wrong field names, mixed argument
 forms, arity warnings, fixed-array field initialization and incompatible
 arguments retain their existing diagnostics. Qualified constructors and
 dynamic array allocation remain separate work.
+
+## Task 44: dynamic array allocation
+
+`new T[count]` now has an AST allocation node. The count is evaluated once;
+emission preserves the existing count limits, two-word descriptor, payload
+zeroing and element-width arithmetic. The result's slice-value type is staged
+after the count expression, so later type registration keeps its original
+order.
+
+Tests cover scalar/record elements, zero lengths, calls, casts, indexing and
+invalid allocation diagnostics. Native x86/x64 checks also verify negative
+count traps and byte-identical execution with bounds checks disabled.
