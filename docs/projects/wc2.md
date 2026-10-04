@@ -1923,3 +1923,19 @@ cover record returns, defers, generators, script fallthrough, default and
 variadic arguments, kernel parameters and their diagnostics. Native images and
 embedded PTX remain identical. Statistics report each function category and
 kernel parameter nodes; this is not yet a retained module/body tree.
+
+## Task 107: enum and extern declaration lowering
+
+Enum values now carry their resolved value, binding and storage segment into
+a declaration visitor. Extern object nodes carry COPY-storage size and segment;
+extern function nodes own their names and ABI class vector, plus the resolved
+WebAssembly module and return signature where applicable. Backend visitors
+emit constant bytes, aligned object storage, relocations, GOT/shim entries or
+WebAssembly import stubs. Syntax, type validation and enum reflection registry
+updates remain in the grammar.
+
+Both host widths retain identical native images and runtime results for
+imported libc data, float ABI calls, variadic externs, symbol aliases and enums.
+WebAssembly extern images are also identical. Differential diagnostics retain
+invalid object types, aliases, aggregate signatures and constant-folding errors.
+The full suite exercises the existing target-specific import/runtime checks.

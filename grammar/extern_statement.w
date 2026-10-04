@@ -37,6 +37,10 @@ import code_generator.dynamic_registry
 import code_generator.ffi
 
 
+void ast_extern_object(int binding, int size, char* name);
+void ast_extern_function(int binding, int return_type, char* name, char* import_name, int count, char* classes, int return_class, int variadic);
+
+
 int extern_statement():
 	if (accept(c"c_lib")):
 		if ((token[0] != '"') && (((token[0] != 'c') || (token[1] != '"')))):
@@ -77,7 +81,8 @@ int extern_statement():
 			# the library's initial value into this space, so it must live
 			# in the RW data segment — in the code stream it would target
 			# a read-execute page and fault (docs/projects/wx_split.md).
-			if (data_split):
+			if (ast_expressions_mode >= 2): ast_extern_object(sym, size, name)
+			else if (data_split):
 				int pad = datapos & (word_size - 1)
 				if (pad != 0): emit_data_zeros(word_size - pad)
 				int copy_vaddr = emit_data_zeros(size)
@@ -145,7 +150,9 @@ int extern_statement():
 		# by a W-callable stub (wasm_extern_stub). The enclosing c_lib
 		# string names the import module, "env" when none was declared;
 		# the host (tools/web/) supplies the functions at instantiation.
-		if (target_isa == 2):
+		if (ast_expressions_mode >= 2):
+			ast_extern_function(sym, ret_type, name, import_name, param_count, param_classes, ret_class, is_variadic)
+		else if (target_isa == 2):
 			if (is_variadic):
 				error(c"variadic extern functions are not supported on the wasm target")
 			int ret_kind = 1
