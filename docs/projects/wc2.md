@@ -908,3 +908,15 @@ indirect calls, missing-argument diagnostics and required-mode compilation.
 Typed function-pointer signatures retain their current ten-parameter bound.
 The existing alias parser's unchecked fixed allocation crashes on longer
 signatures; that independent bug is already tracked in the tooling backlog.
+
+## Task 35: retain the tokenizer's lookahead across refills
+
+A failed inferred-declaration probe can refill the input buffer and seek
+back to just after the current token's lookahead character. That leaves
+both the raw token and one lookahead byte outside the retained window.
+AST prefix recovery now reconstructs that byte from `nextc` as well as the
+raw token, without changing the logical read position or adding a seek.
+
+A nonseekable-pipe regression checks replay and unread-byte preservation.
+End-to-end required-mode and image tests cover neighboring positions around
+the original 8 KiB boundary and a window shifted by earlier AST read-ahead.

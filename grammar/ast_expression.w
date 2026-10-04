@@ -252,7 +252,7 @@ void ast_expression_retain_token():
 	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return
 	int missing = getchar_kernel_pos[file] - getchar_limit[file] - token_start_offset
 	if (missing <= 0): return
-	if ((token_i > 2048) || (missing > token_i) || (nextc < 0)): return
+	if ((token_i > 2048) || (missing > token_i + 1) || (nextc < 0)): return
 	if (byte_offset - 1 - token_start_offset != token_i): return
 	int length = getchar_limit[file]
 	# A recovered token is bounded by the AST source limit. Decline an
@@ -260,7 +260,13 @@ void ast_expression_retain_token():
 	if (length > GETCHAR_BUF_CAPACITY): return
 	char* old = cast(char*, getchar_buf_addr[file])
 	char* bytes = malloc(2 * GETCHAR_BUF_CAPACITY)
-	for i in range(missing): bytes[i] = token[i]
+	# A speculative declaration lookahead can seek back to the byte
+	# after nextc, leaving both the raw token and nextc outside the new
+	# window. The tokenizer still owns that one lookahead byte.
+	int prefix = missing
+	if (prefix > token_i): prefix = token_i
+	for i in range(prefix): bytes[i] = token[i]
+	if (missing > token_i): bytes[token_i] = cast(char, nextc)
 	for i in range(length): bytes[missing + i] = old[i]
 	getchar_buf_addr[file] = cast(int, bytes)
 	getchar_limit[file] = missing + length

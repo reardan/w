@@ -71,6 +71,46 @@ void test_ast_buffer_recovers_token_prefix_without_seeking():
 	nextc = saved_next
 
 
+void test_ast_buffer_recovers_token_and_lookahead_without_seeking():
+	int reader
+	int writer
+	assert_equal(0, process_make_pipe(&reader, &writer))
+	getchar_reset(reader)
+	assert_equal(4, write(writer, c"abcd", 4))
+	for i in range(4): assert_equal('a' + i, getchar(reader))
+	assert_equal(6, write(writer, c"efghij", 6))
+	close(writer)
+	assert_equal('e', getchar(reader))
+	getchar_seek(reader, 4)
+	int saved_file = file
+	char* saved_token = token
+	int saved_i = token_i
+	int saved_start = token_start_offset
+	int saved_offset = byte_offset
+	int saved_next = nextc
+	file = reader
+	token = c"abc"
+	token_i = 3
+	token_start_offset = 0
+	byte_offset = 4
+	nextc = 'd'
+	ast_expression_retain_token()
+	assert_equal(10, getchar_kernel_pos[reader])
+	assert_equal(10, getchar_limit[reader])
+	assert_equal(4, getchar_pos[reader])
+	assert_equal('e', getchar(reader))
+	getchar_seek(reader, 0)
+	for i in range(10): assert_equal('a' + i, getchar(reader))
+	assert_equal(-1, getchar(reader))
+	close(reader)
+	file = saved_file
+	token = saved_token
+	token_i = saved_i
+	token_start_offset = saved_start
+	byte_offset = saved_offset
+	nextc = saved_next
+
+
 void test_ast_pointer_probe_records_are_transactional():
 	word_size = __word_size__
 	push_basic_types()

@@ -741,6 +741,33 @@ void test_ast_expression_crosses_input_buffer_boundary():
 	free(path)
 
 
+void test_ast_statement_lookahead_crosses_input_buffer_boundary():
+	char* path = ast_test_path(c"_lookahead_boundary.w")
+	for position in range(7):
+		int offset = 8182 + position
+		if (position >= 4): offset = 8205 + position
+		string_builder* source = string_from(c"int main():\n\tint allowed = 0\n\t#")
+		while (source.length < offset - 2): string_append_char(source, 'x')
+		string_append(source, c"\n\tallowed = 1\n\treturn allowed - 1\n")
+		assert1(file_write_text(path, source.data))
+		for host in range(2):
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			char** args = strv_new(5)
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			strv_set(args, 4, path)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+			ast_test_image_at(compiler, c"x64", path, 1)
+		string_free(source)
+	unlink(path)
+	free(path)
+
+
 void test_ast_expression_token_crosses_input_buffer_boundary():
 	char* path = ast_test_path(c"_token_boundary.w")
 	char* prefix = c"\nint f(int cross_window_name): return "
