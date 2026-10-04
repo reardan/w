@@ -816,6 +816,7 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_expression_statements_emitted = 0
 	ast_goto_statements_emitted = 0
 	ast_raw_statements_emitted = 0
+	ast_constants_folded = 0
 	ast_roots_emitted = 0
 	ast_roots_fallback = 0
 	ast_audit_mode = 0
@@ -1106,6 +1107,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(c"\n")
 		print_error(c"AST goto/label statements: ")
 		print_error(itoa(ast_goto_statements_emitted))
+		print_error(c"\n")
+		print_error(c"AST constant expressions: ")
+		print_error(itoa(ast_constants_folded))
 		print_error(c"\n")
 		print_error(c"AST raw-asm statements: ")
 		print_error(itoa(ast_raw_statements_emitted))

@@ -440,3 +440,26 @@ void ast_test_prepared_expression(char* source, int accepted):
 void test_ast_preparation_builds_nodes_without_emission():
 	ast_test_prepared_expression(c"6 * 7\nnext\n", 1)
 	ast_test_prepared_expression(c"6 + ast_preparation_missing_name\n", 0)
+
+
+void test_ast_constant_folder_walks_children():
+	constant_ast six = constant_ast_literal(6, 0, 1)
+	constant_ast seven = constant_ast_literal(7, 4, 5)
+	constant_ast product = constant_ast_literal(0, 0, 5)
+	product.op = '*'
+	product.left = &six
+	product.right = &seven
+	constant_ast two = constant_ast_literal(2, 8, 9)
+	constant_ast sum = constant_ast_literal(0, 0, 9)
+	sum.op = '+'
+	sum.left = &product
+	sum.right = &two
+	int before_code = codepos
+	assert_equal(44, constant_ast_fold(&sum))
+	constant_ast folded = constant_ast_operator('+', 0, &product, &two)
+	assert_equal(44, folded.value)
+	assert_equal(0, folded.op)
+	assert1(folded.left == 0 && folded.right == 0)
+	assert_equal(0, folded.start_offset)
+	assert_equal(9, folded.end_offset)
+	assert_equal(before_code, codepos)

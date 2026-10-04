@@ -1763,3 +1763,18 @@ the token buffer only for the visitor call, before advancing the lexer.
 Native-image and runtime comparisons cover empty payloads and embedded zero
 bytes on both host widths. Differential cases cover malformed literals,
 invalid escapes and GPU rejection. Statistics report raw-assembly node counts.
+
+## Task 97: compile-time constant AST folding
+
+Full-expression mode now parses global initializers, enum values and parameter
+defaults into constant nodes. A separate visitor folds their unary and binary
+operators with the existing 32-bit arithmetic rules. Each completed operator
+normalizes to a literal before parsing the next operator, preserving diagnostic
+order. Stack-owned child nodes avoid a fixed arena limit or allocations; the
+normalized root does not retain the original unfurled syntax tree.
+
+Direct tests walk nested operator nodes without emitting code. Both compiler
+host widths produce identical native images and runtime results for constant
+initializers and a 3,000-term expression. Differential cases cover arithmetic
+overflow, division/modulo by zero, invalid shifts, literal warnings, missing
+names and malformed groups. Statistics count parsed constant expressions.

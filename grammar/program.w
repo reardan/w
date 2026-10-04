@@ -238,6 +238,10 @@ int const_or():
 	return a
 
 
+import compiler.constant_ast
+import grammar.ast_constant
+
+
 # Parse and fold the constant expression at the current token; `what`
 # (and `name`, when nonzero) name the construct in diagnostics. Leaves
 # the token after the expression current.
@@ -248,7 +252,12 @@ int parse_constant_literal(char* what, char* name):
 	const_what = what
 	const_name = name
 	const_paren_depth = 0
-	int value = const_or()
+	int value
+	if (ast_expressions_mode >= 2):
+		constant_ast root = ast_const_or()
+		value = root.value
+		ast_constants_folded = ast_constants_folded + 1
+	else: value = const_or()
 	const_what = outer_what
 	const_name = outer_name
 	const_paren_depth = outer_depth
