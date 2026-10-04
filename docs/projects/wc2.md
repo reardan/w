@@ -1552,3 +1552,18 @@ Required-mode checks cover the shell-command suite and clean-warning
 fixture. A focused fixture exercises continued arithmetic, bitwise
 expressions and postfix statements; a generated 18 KiB comment tests buffer
 extension and subsequent tokenization. Native images match on x86 and x64.
+
+## Task 82: committed AST warning events
+
+Type mismatches in ordinary call arguments, assignments, container literals,
+list methods and map defaults can now remain on the AST path. Arena events
+retain the diagnostic context and operand types, replaying warnings only
+after the whole probe succeeds. Events at a virtual root boundary wait for
+the real following token, preserving source locations and lexical warning
+order. Ordinary missing arguments retain their arity warning; asm-stub
+arity errors still use the existing diagnostic path.
+
+The existing hash-table, missing-argument, list-warning and map-default
+fixtures compile in required mode with identical native images. Tests compare
+plain and JSON diagnostics, normal and strict mode, both compiler host widths,
+nested warnings, later literal warnings and failed enclosing probes.

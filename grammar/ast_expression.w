@@ -571,6 +571,46 @@ int ast_expression_argument_compatible(expression_ast* tree, int want, int id):
 	return types_compatible_with_expression(want, got)
 
 
+# Compatibility warnings are committed source events, never probe effects.
+# Keep conversions with their own semantic errors on the fallback path.
+int ast_expression_warning_safe(int want, int got):
+	if ((want == 4) || (got == 4)): return 0
+	if (type_is_gpu_pointer(want) || type_is_gpu_pointer(got)): return 0
+	if (type_is_gpu_object(want) || type_is_gpu_object(got)): return 0
+	if (type_is_var(want) || type_is_var(got)): return 0
+	if (ast_expression_scalar_type(want) == 0): return 0
+	if (ast_expression_scalar_type(got) == 0): return 0
+	return 1
+
+
+int ast_expression_warning(expression_ast* tree, char* context, int want, int got):
+	if (ast_expression_warning_safe(want, got) == 0): return 0
+	int event = expression_ast_add(tree, ast_warning, want, got)
+	if (event < 0): return 0
+	tree.value[event] = cast(int, context)
+	tree.high[event] = 0
+	return 1
+
+
+int ast_expression_checked_argument(expression_ast* tree, char* context, int want, int id):
+	if (ast_expression_prepare_value(tree, tree.result_type[id], token_start_offset) == 0): return 0
+	if (ast_expression_argument_compatible(tree, want, id)): return 1
+	return ast_expression_warning(tree, context, want, ast_expression_promoted_type(tree.result_type[id]))
+
+
+void ast_expression_replay_warning(expression_ast* tree, int id):
+	if (tree.high[id] == 1):
+		check_call_argument(tree.symbol[id], -1, table + tree.value[id], tree.generic_arity[id], tree.right[id])
+	else if (tree.high[id] == 2):
+		diag_part(c"warning: function '")
+		diag_part(table + tree.value[id])
+		diag_part(c"' expects ")
+		diag_part(itoa(tree.left[id]))
+		diag_part(c" arguments, got ")
+		warning(itoa(tree.right[id]))
+	else: warn_type_mismatch(cast(char*, tree.value[id]), tree.left[id], tree.right[id])
+
+
 int ast_expression_call(expression_ast* tree, int id, int depth):
 	if (token_newline): return -1
 	int method = tree.op[id] == 'z'
@@ -611,9 +651,15 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 		if ((generator || (c_variadic >= 0)) && (type_num_args(type_real(got)) > 0)): return -1
 		if ((param >= 0) && type_is_string(param) && type_is_char_pointer(got)):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
-		# Let the streaming parser issue argument diagnostics at its exact
-		# source position, including warnings promoted by --strict.
-		if ((param >= 0) && (ast_expression_argument_compatible(tree, param, arg) == 0)): return -1
+		if ((param >= 0) && (ast_expression_argument_compatible(tree, param, arg) == 0)):
+			if (generator || (variadic >= 0) || (c_variadic >= 0)): return -1
+			if (ast_expression_warning_safe(param, got) == 0): return -1
+			int event = expression_ast_add(tree, ast_warning, param, got)
+			if (event < 0): return -1
+			tree.high[event] = 1
+			tree.symbol[event] = sym
+			tree.value[event] = tree.value[id]
+			tree.generic_arity[event] = count
 		if (previous < 0): tree.left[id] = arg
 		else: tree.next_arg[previous] = arg
 		previous = arg
@@ -630,11 +676,15 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 		arity = count
 	# Defaults are declaration-time constants, with no source-token replay.
 	# Check the entire missing suffix before adding synthetic arguments.
+	int defaulted = 1
 	for i in range(count, arity):
-		if (sym_param_has_default(sym, i) == 0): return -1
-		int param = sym_param_type(sym, i)
-		if ((param >= 0) && (ast_expression_scalar_type(param) == 0)): return -1
-	while (count < arity):
+		if (sym_param_has_default(sym, i) == 0): defaulted = 0
+	if ((defaulted == 0) && (generator || sym_is_asm_stub(sym))): return -1
+	if (defaulted):
+		for i in range(count, arity):
+			int param = sym_param_type(sym, i)
+			if ((param >= 0) && (ast_expression_scalar_type(param) == 0)): return -1
+	while (defaulted && (count < arity)):
 		int arg = expression_ast_add(tree, 'c', -1, -1)
 		if (arg < 0): return -1
 		tree.value[arg] = sym_param_default(sym, count)
@@ -644,6 +694,11 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 		count = count + 1
 
 	ast_expression_advance(tree)
+	if (defaulted == 0):
+		int event = expression_ast_add(tree, ast_warning, arity, count)
+		if (event < 0): return -1
+		tree.high[event] = 2
+		tree.value[event] = tree.value[id]
 	tree.op[id] = 'C'
 	if (method): tree.op[id] = 'z'
 	if (generator): tree.op[id] = 'X'
@@ -1345,7 +1400,10 @@ int ast_expression_container_literal(expression_ast* tree, int depth):
 		int first = ast_expression_assignment(tree, depth + 1)
 		if (first < 0): return -1
 		if (ast_expression_data_value(tree.result_type[first]) == 0): return -1
-		if (ast_expression_argument_compatible(tree, first_type, first) == 0): return -1
+		char* context = c"set literal key"
+		if (map): context = c"map literal key"
+		if (list): context = c"list literal element"
+		if (ast_expression_checked_argument(tree, context, first_type, first) == 0): return -1
 		int second = -1
 		int bytes = 0
 		char* helper = c"__w_set_add"
@@ -1360,7 +1418,7 @@ int ast_expression_container_literal(expression_ast* tree, int depth):
 			if (second < 0): return -1
 			if (ast_expression_data_value(tree.result_type[second]) == 0): return -1
 			int second_type = type_map_value_type(type)
-			if (ast_expression_argument_compatible(tree, second_type, second) == 0): return -1
+			if (ast_expression_checked_argument(tree, c"map literal value", second_type, second) == 0): return -1
 			helper = c"__w_map_set"
 			if (ast_expression_record_value(second_type) && ast_expression_record_value(tree.result_type[second])):
 				helper = c"__w_map_set_bytes"
@@ -1916,11 +1974,12 @@ int ast_expression_map_default(expression_ast* tree, int id, int depth):
 		if (hash_default_is_factory(got)):
 			int result = ast_expression_callback_return(tree, argument)
 			if (result < 0): return -1
-			if (types_compatible_with_expression(value, result) == 0): return -1
+			if (types_compatible_with_expression(value, result) == 0):
+				if (ast_expression_warning(tree, c"map default factory", value, result) == 0): return -1
 			tree.high[id] = 2
 		else:
 			if (container || (type_get_pointer_level(canonical) > 0)): return -1
-			if (ast_expression_argument_compatible(tree, value, argument) == 0): return -1
+			if (ast_expression_checked_argument(tree, c"map default", value, argument) == 0): return -1
 			if (type_is_string(value) && type_is_char_pointer(got)):
 				if (sym_probe(c"str_from_cstr") < 0): return -1
 			tree.high[id] = 1
@@ -2340,7 +2399,11 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 				tree.result_type[id] = type_value(result)
 		else if (typed):
 			if (ast_expression_data_value(type) == 0): return -1
-			if (ast_expression_argument_compatible(tree, element, arg) == 0): return -1
+			char* context = c"list push"
+			if (method == 3): context = c"list insert"
+			if (method == 27): context = c"list count"
+			if (method == 28): context = c"list index"
+			if (ast_expression_checked_argument(tree, context, element, arg) == 0): return -1
 			int got = ast_expression_promoted_type(type)
 			if (type_is_string(element) && type_is_char_pointer(got)):
 				if (sym_probe(c"str_from_cstr") < 0): return -1
@@ -2958,7 +3021,10 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 		if (kind): result = float_binary_result_type(kind)
 	if (op):
 		if (types_compatible_with_expression(lt, result) == 0): return -1
-	else if (ast_expression_argument_compatible(tree, lt, right) == 0): return -1
+	else:
+		char* context = c"assignment"
+		if (map_store): context = c"map assignment"
+		if (ast_expression_checked_argument(tree, context, lt, right) == 0): return -1
 	if (map_store && type_is_string(lt) && type_is_char_pointer(rt)):
 		if (sym_probe(c"str_from_cstr") < 0): return -1
 	int node_op = '='
@@ -3089,6 +3155,7 @@ int ast_expression_try_at(int group_offset, int whole):
 		for i in range(tree.types_count):
 			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(&tree, i)
 		for id in range(tree.count):
+			if ((tree.op[id] == ast_warning) && (tree.offset[id] == token_start_offset)): ast_expression_replay_warning(&tree, id)
 			if ((tree.op[id] == 'z') && (tree.offset[id] == token_start_offset)): sym_lookup(table + tree.value[id])
 			if ((tree.op[id] == 'M') && (tree.value[id] & 256) && (tree.offset[id] == token_start_offset)): sym_lookup(c"it")
 			if ((tree.op[id] == 'W') && (tree.offset[id] == token_start_offset)):
@@ -3149,6 +3216,10 @@ int ast_expression_try_at(int group_offset, int whole):
 	if (whole):
 		token_start_offset = tree.final_token_offset
 		get_token()
+	# A virtual root terminator is lexed only after emission. Warnings
+	# on the completed root use that real following token's location.
+	for id in range(tree.count):
+		if ((tree.op[id] == ast_warning) && (tree.offset[id] == end)): ast_expression_replay_warning(&tree, id)
 	ast_expressions_emitted = ast_expressions_emitted + 1
 	return tree.result_type[root]
 

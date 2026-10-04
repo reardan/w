@@ -27,6 +27,7 @@ const int ast_list_it = 133
 const int ast_list_it_value = 134
 const int ast_forward_generic = 135
 const int ast_propagate = 136
+const int ast_warning = 137
 
 
 struct expression_ast:
