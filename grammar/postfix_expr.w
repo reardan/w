@@ -272,6 +272,35 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 	return type
 
 
+# Complete the W variadic argument buffer after values have been emitted.
+# Both streaming calls and AST calls use this exact stack layout.
+void finish_w_variadic_arguments(int s, int fixed_words_end, int variadic_values):
+	if (fixed_words_end < 0): fixed_words_end = stack_pos
+	# The variadic values were pushed left to right, so they sit in
+	# reverse order in memory; reverse them in place so the first
+	# value lands at the lowest address (ordinary slice layout).
+	int i = 0
+	while ((i << 1) < (variadic_values - 1)):
+		mov_eax_esp_plus(i << word_size_log2)
+		mov_ebx_esp_plus((variadic_values - 1 - i) << word_size_log2)
+		store_stack_var((variadic_values - 1 - i) << word_size_log2)
+		store_ebx_stack_var(i << word_size_log2)
+		i = i + 1
+	# Push the {data, length} slice descriptor just below the values
+	push_slot_int(variadic_values)
+	lea_eax_esp_plus(word_size)
+	int descriptor_slot = push_slot()
+	# The values and descriptor sit between the fixed arguments and
+	# the slice argument, but the callee addresses its parameters as
+	# one contiguous block above the return address: re-push copies
+	# of the fixed argument words so the block it sees is contiguous.
+	int fixed_words = fixed_words_end - s - 1
+	for j in range(1, fixed_words + 1): push_slot_copy(s + 1 + j)
+	# The variadic slice parameter: a pointer to the descriptor
+	lea_eax_esp_plus((stack_pos - descriptor_slot) << word_size_log2)
+	push_slot()
+
+
 # Parse arguments for a call whose callee address has already been pushed.
 # passed_args lets callers account for hidden arguments, such as a method
 # receiver. callee_type is 4 for direct functions, and a pointer type for
@@ -303,30 +332,7 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 			diag_part(callee_name)
 			diag_part(c"' expects at least ")
 			warning3(itoa(w_variadic_fixed), c" arguments, got ", itoa(passed_args - variadic_values))
-		if (fixed_words_end < 0): fixed_words_end = stack_pos
-		# The variadic values were pushed left to right, so they sit in
-		# reverse order in memory; reverse them in place so the first
-		# value lands at the lowest address (ordinary slice layout).
-		int i = 0
-		while ((i << 1) < (variadic_values - 1)):
-			mov_eax_esp_plus(i << word_size_log2)
-			mov_ebx_esp_plus((variadic_values - 1 - i) << word_size_log2)
-			store_stack_var((variadic_values - 1 - i) << word_size_log2)
-			store_ebx_stack_var(i << word_size_log2)
-			i = i + 1
-		# Push the {data, length} slice descriptor just below the values
-		push_slot_int(variadic_values)
-		lea_eax_esp_plus(word_size)
-		int descriptor_slot = push_slot()
-		# The values and descriptor sit between the fixed arguments and
-		# the slice argument, but the callee addresses its parameters as
-		# one contiguous block above the return address: re-push copies
-		# of the fixed argument words so the block it sees is contiguous.
-		int fixed_words = fixed_words_end - s - 1
-		for j in range(1, fixed_words + 1): push_slot_copy(s + 1 + j)
-		# The variadic slice parameter: a pointer to the descriptor
-		lea_eax_esp_plus((stack_pos - descriptor_slot) << word_size_log2)
-		push_slot()
+		finish_w_variadic_arguments(s, fixed_words_end, variadic_values)
 
 	# Missing trailing arguments whose parameters all carry defaults are
 	# filled in with the recorded constants (direct calls only: indirect

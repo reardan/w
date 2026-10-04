@@ -1238,3 +1238,16 @@ calls. Shape extraction tests assert unchanged type and placeholder state.
 Mismatched containers, unbound parameters and invalid element types retain
 diagnostics. Generic-struct shapes and new concrete derived types still fall
 back to the existing extraction path.
+
+## Task 59: W variadic call expressions
+
+Direct AST call nodes now accept W variadic tails, validate each argument
+against the element type and retain evaluation order. The streaming parser
+and AST emitter share the stack-layout routine that reverses tail values,
+constructs the slice descriptor and copies fixed argument words into the
+callee's contiguous parameter block.
+
+Required-mode and differential fixtures cover empty and long tails, nested
+calls, scalar/string coercions, array decay, callback pointers, side effects,
+record arguments and record results. Missing fixed arguments and incompatible
+tail values retain diagnostics. Variadic C imports remain a separate ABI path.
