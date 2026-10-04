@@ -853,3 +853,19 @@ arguments, small and large records, inline arrays and returned fields. A
 required-mode test covers return, initialization, assignment and nested
 by-value consumption without expression fallback. Constructors and other
 value-record field receivers remain separate migration work.
+
+## Task 31: map elements and membership
+
+Map indexing now has explicit read and store nodes. The emitter parks the
+receiver and coerced key once, then chooses a scalar read, record-address
+read, plain store or compound read/modify/write. Nested map accesses no
+longer rely on the streaming parser's global pending-element state. A
+parenthesized map element is finalized as a read before any outer operator,
+preserving the distinction between `m[k] = x` and `(m[k]) = x`.
+
+Membership nodes cover maps, sets and supported scalar/C-string lists,
+including descriptor-to-pointer key decay and left-to-right evaluation.
+Differential tests cover nested receivers and keys, chained stores, record
+values and fields, signed and floating-point values, string conversions,
+collection membership and diagnostic parity. Container methods and map
+default constructors remain separate work.

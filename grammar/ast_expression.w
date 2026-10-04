@@ -676,6 +676,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		if (child < 0): return -1
 		int child_type = tree.result_type[child]
 		if (op == 'r'):
+			if (tree.op[child] == 'm'): return -1
 			if (type_is_value(child_type) || (child_type == 3)): return -1
 			return expression_ast_add(tree, op, child, -1)
 		if (ast_expression_scalar_value(child_type) == 0): return -1
@@ -702,6 +703,7 @@ int ast_expression_atom(expression_ast* tree, int depth):
 		if ((child < 0) || (peek(c")") == 0)): return -1
 		if (token_start_offset >= tree.end_offset): return -1
 		ast_expression_advance(tree)
+		if (tree.op[child] == 'm'): tree.op[child] = 'q'
 		return child
 	if (token[0] == 39):
 		int id = expression_ast_add(tree, 'h', -1, -1)
@@ -783,6 +785,28 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 	return id
 
 
+# Keep an indexed map as its own node until assignment chooses a store.
+# Parentheses finalize it to a read, just as expression() does in a group.
+int ast_expression_map_index(expression_ast* tree, int receiver, int depth):
+	int type = type_unqualified(tree.result_type[receiver])
+	int element = type_map_value_type(type)
+	int key_type = type_map_key_type(type)
+	if (ast_expression_data_value(element) == 0): return -1
+	int key = ast_expression_assignment(tree, depth + 1)
+	if ((key < 0) || (peek(c"]") == 0)): return -1
+	if (ast_expression_data_value(tree.result_type[key]) == 0): return -1
+	if (ast_expression_argument_compatible(tree, key_type, key) == 0): return -1
+	if (type_is_string(key_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[key]))):
+		if (sym_probe(c"str_from_cstr") < 0): return -1
+	ast_expression_advance(tree)
+	int id = expression_ast_add(tree, 'm', receiver, key)
+	if (id < 0): return -1
+	tree.value[id] = type
+	tree.result_type[id] = type_value(element)
+	if (ast_expression_record_value(element)): tree.result_type[id] = type_canonical(element)
+	return id
+
+
 int ast_expression_postfix(expression_ast* tree, int depth):
 	int left = ast_expression_atom(tree, depth)
 	while (left >= 0):
@@ -791,7 +815,10 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			left = ast_expression_indirect_call(tree, left, depth)
 		else if (ast_expression_accept(tree, c"[")):
 			tree.readonly = 0
-			if (type_is_map(type) || type_is_set(type)): return -1
+			if (type_is_map(type)):
+				left = ast_expression_map_index(tree, left, depth)
+				continue
+			if (type_is_set(type)): return -1
 			int op = 'i'
 			int element
 			if (type_is_buffer(type)):
@@ -955,6 +982,7 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 			if (peek(c"<=")): op = 0x9e
 			if (peek(c">")): op = 0x9f
 			if (peek(c">=")): op = 0x9d
+			if (peek(c"in")): op = 'H'
 		if (op == 0): return left
 		ast_expression_advance(tree)
 		int right
@@ -962,8 +990,28 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 		else: right = ast_expression_shift(tree, depth)
 		if (right < 0): return -1
 		if ((ast_expression_scalar_value(tree.result_type[left]) && ast_expression_scalar_value(tree.result_type[right])) == 0): return -1
+		int kind = 0
+		if (op == 'H'):
+			int container = type_unqualified(tree.result_type[right])
+			int want = -1
+			if (type_is_map(container)):
+				want = type_map_key_type(container)
+				kind = 1
+			else if (type_is_set(container)):
+				want = type_set_key_type(container)
+				kind = 2
+			else if (type_is_list(container)):
+				want = type_list_element_type(container)
+				if (ast_expression_scalar_type(want) == 0): return -1
+				if (type_is_string(want)): return -1
+				kind = 4
+				if (hash_key_kind_for_type(want) == 2): kind = 3
+			else: return -1
+			if (ast_expression_argument_compatible(tree, want, left) == 0): return -1
+			if (sym_probe(ast_expression_contains_helper(kind)) < 0): return -1
 		left = expression_ast_add(tree, op, left, right)
 		if (left < 0): return -1
+		tree.value[left] = kind
 		tree.result_type[left] = type_value(bool_type)
 	return -1
 
@@ -974,7 +1022,7 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 # just as operand_is_pure does for a short-circuited operand.
 int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
-		if ((tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M')): return 1
+		if ((tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H')): return 1
 	return 0
 
 
@@ -1084,6 +1132,8 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	if (lint_mode): return -1
 	if (tree.readonly): return -1
 	int lt = tree.result_type[left]
+	int map_store = tree.op[left] == 'm'
+	if (map_store): lt = type_map_value_type(tree.value[left])
 	if (type_is_value(lt) || (lt == 3) || type_is_const(lt)): return -1
 	if (ast_expression_data_value(lt) == 0): return -1
 	if (op && ast_expression_record_type(lt)): return -1
@@ -1103,7 +1153,11 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	if (op):
 		if (types_compatible_with_expression(lt, result) == 0): return -1
 	else if (ast_expression_argument_compatible(tree, lt, right) == 0): return -1
-	int id = expression_ast_add(tree, '=', left, right)
+	if (map_store && type_is_string(lt) && type_is_char_pointer(rt)):
+		if (sym_probe(c"str_from_cstr") < 0): return -1
+	int node_op = '='
+	if (map_store): node_op = 'w'
+	int id = expression_ast_add(tree, node_op, left, right)
 	if (id < 0): return -1
 	tree.value[id] = op
 	tree.result_type[id] = type_value(lt)

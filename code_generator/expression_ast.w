@@ -8,11 +8,56 @@ int emit_ast_return_buffer(int type):
 	return 1
 
 
+void emit_ast_map_call(char* helper, int map_slot, int key_slot, int value_slot):
+	int s = rt_call_begin(helper)
+	push_slot_copy(map_slot)
+	push_slot_copy(key_slot)
+	if (value_slot): push_slot_copy(value_slot)
+	rt_call_end(s)
+
+
 # Walk the completed, decoded scalar tree in source evaluation order.
 # Reuse the production backend dispatch and stack accounting; the same
 # peepholes, target word size and runtime division behavior still apply.
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
+	if ((op == 'm') || (op == 'q') || (op == 'w')):
+		int index = id
+		if (op == 'w'): index = tree.left[id]
+		int receiver = tree.left[index]
+		emit_expression_ast(tree, receiver)
+		promote(tree.result_type[receiver])
+		int base_stack = stack_pos
+		int map_slot = push_slot()
+		int key = tree.right[index]
+		emit_expression_ast(tree, key)
+		int key_type = promote(tree.result_type[key])
+		int map_type = tree.value[index]
+		coerce(type_map_key_type(map_type), key_type)
+		int key_slot = push_slot()
+		int element = type_map_value_type(map_type)
+		if (op == 'w'):
+			expression_is_assignment = 1
+			int subop = tree.value[id]
+			if (subop):
+				emit_ast_map_call(c"__w_map_get", map_slot, key_slot, 0)
+				push_slot()
+			int right = tree.right[id]
+			emit_expression_ast(tree, right)
+			int got = promote(tree.result_type[right])
+			if (subop): got = compound_assign_apply(subop, type_value(element), got)
+			coerce(element, got)
+			int value_slot = push_slot()
+			char* helper = c"__w_map_set"
+			if ((type_num_args(element) > 0) && (type_num_args(got) > 0)): helper = c"__w_map_set_bytes"
+			emit_ast_map_call(helper, map_slot, key_slot, value_slot)
+			load_slot(value_slot)
+		else:
+			char* helper = c"__w_map_get"
+			if (type_num_args(element) > 0): helper = c"__w_map_get_addr"
+			emit_ast_map_call(helper, map_slot, key_slot, 0)
+		pop_to(base_stack)
+		return
 	if (op == 'V'):
 		int type = tree.value[id]
 		if (type_is_list(type)): list_emit_new_container(type)
@@ -89,6 +134,26 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
+	if (op == 'H'):
+		int key_type = binary1(left_type)
+		int key_slot = stack_pos
+		int base_stack = key_slot - 1
+		int right = tree.right[id]
+		emit_expression_ast(tree, right)
+		int container = type_unqualified(promote(tree.result_type[right]))
+		int want = type_list_element_type(container)
+		if (type_is_map(container)): want = type_map_key_type(container)
+		else if (type_is_set(container)): want = type_set_key_type(container)
+		if (type_decays_to_pointer(want, key_type)):
+			push_slot()
+			load_slot(key_slot)
+			promote_eax()
+			store_stack_var((stack_pos - key_slot) << word_size_log2)
+			pop_eax_slot()
+		int container_slot = push_slot()
+		emit_ast_map_call(ast_expression_contains_helper(tree.value[id]), container_slot, key_slot, 0)
+		pop_to(base_stack)
+		return
 	if (op == 'M'):
 		promote(left_type)
 		int base_stack = stack_pos

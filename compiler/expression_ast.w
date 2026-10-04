@@ -60,6 +60,13 @@ char* ast_expression_list_helper(int method):
 	return 0
 
 
+char* ast_expression_contains_helper(int kind):
+	if (kind == 1): return c"__w_map_contains"
+	if (kind == 2): return c"__w_set_contains"
+	if (kind == 3): return c"__w_list_contains_cstr"
+	return c"__w_list_contains"
+
+
 # Speculative pointer records borrow their names and live in the arena.
 # They have no fields or parameter arrays, so their nested descriptors
 # are never accessed. Remove every temporary table entry before any
