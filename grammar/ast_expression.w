@@ -16,8 +16,22 @@ int ast_expression_quoted_end(char* bytes, int start, int limit):
 	return -1
 
 
+# Return the byte after a closed block comment. Expressions currently
+# require single-line comments; boundary lookahead may skip whole comment
+# lines because it never tokenizes them speculatively. Decline the legacy
+# lexer's special '/*/' shape instead of guessing its continuation.
+int ast_expression_comment_end(char* bytes, int start, int limit, int multiline):
+	int i = start + 2
+	if ((i >= limit) || (bytes[i] == '/')): return -1
+	while (i + 1 < limit):
+		if ((bytes[i] == 10) && (multiline == 0)): return -1
+		if ((bytes[i] == '*') && (bytes[i + 1] == '/')): return i + 2
+		i = i + 1
+	return -1
+
+
 # Only probe closed, single-line groups with a small alphabet. In
-# particular comments, newlines and unterminated quoted tokens cannot
+# particular newlines and unterminated comments or quoted tokens cannot
 # reach the speculative tokenizer, so it cannot diagnose or run past the
 # closing ')'. Inspect only bytes already in the tokenizer's buffered
 # window: no I/O, seek, diagnostic or compiler-state changes. Crossing a
@@ -35,6 +49,12 @@ int ast_expression_end(int start):
 	int i = 0
 	while ((i < 2048) && (index + i + 1 < getchar_limit[file])):
 		int ch = bytes[index + i] & 255
+		if ((ch == '/') && (bytes[index + i + 1] == '*')):
+			int after = ast_expression_comment_end(bytes, index + i, getchar_limit[file] - 1, 0)
+			if ((after < 0) || (after - index >= 2048)): return -1
+			i = after - index
+			previous = 0
+			continue
 		if ((ch == 39) || (ch == '"')):
 			int quoted = ast_expression_quoted_end(bytes, index + i, getchar_limit[file] - 1)
 			if ((quoted < 0) || (quoted - index >= 2048)): return -1
@@ -73,6 +93,10 @@ int ast_expression_end(int start):
 int ast_expression_line_boundary(char* bytes, int index, int limit):
 	while (index < limit):
 		int ch = bytes[index] & 255
+		if ((ch == '/') && (index + 1 < limit) && (bytes[index + 1] == '*')):
+			index = ast_expression_comment_end(bytes, index, limit, 1)
+			if (index < 0): return 0
+			continue
 		if (ch == '#'):
 			while ((index < limit) && (bytes[index] != 10)): index = index + 1
 			continue
@@ -89,7 +113,7 @@ int ast_expression_line_boundary(char* bytes, int index, int limit):
 
 
 # A complete scalar expression on one buffered line. The terminator is
-# left for the enclosing grammar. Assignment and unsupported characters
+# left for the enclosing grammar. Unsupported characters
 # decline the whole root. No lexing or I/O happens in this preflight.
 int ast_expression_root_end():
 	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return -1
@@ -104,6 +128,12 @@ int ast_expression_root_end():
 	int i = 0
 	while ((i < 2048) && (index + i + 1 < getchar_limit[file])):
 		int ch = bytes[index + i] & 255
+		if ((ch == '/') && (bytes[index + i + 1] == '*')):
+			int after = ast_expression_comment_end(bytes, index + i, getchar_limit[file] - 1, 0)
+			if ((after < 0) || (after - index >= 2048)): return -1
+			i = after - index
+			previous = 0
+			continue
 		if ((ch == 39) || (ch == '"')):
 			int quoted = ast_expression_quoted_end(bytes, index + i, getchar_limit[file] - 1)
 			if ((quoted < 0) || (quoted - index >= 2048)): return -1
@@ -157,6 +187,11 @@ void ast_expression_advance(expression_ast* tree):
 		char* bytes = cast(char*, getchar_buf_addr[file])
 		while (pos < tree.end_offset):
 			int ch = bytes[pos - window_start] & 255
+			if ((ch == '/') && (bytes[pos - window_start + 1] == '*')):
+				int after = ast_expression_comment_end(bytes, pos - window_start, getchar_limit[file], 0)
+				if (after < 0): break
+				pos = window_start + after
+				continue
 			if ((ch != ' ') && (ch != 9)): break
 			pos = pos + 1
 		if (pos >= tree.end_offset):

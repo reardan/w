@@ -619,3 +619,18 @@ integer widths, strings and slice parameters. Explicit AST-hit and upper/
 negative bounds-trap tests supplement byte comparisons; the bounds-off path
 also produces the same image. Cross-line membership (`in`) now declines the
 single-line probe just like other expression continuations.
+
+## Task 15: inline comments
+
+Closed, single-line block comments now participate in expression preflight
+and token replay. Comments may separate operands, arguments and operators,
+or follow the final token. The virtual-end guard skips trailing comments
+before deciding whether a real tokenizer advance is safe. Boundary lookahead
+also skips standalone block comments, including multi-line ones, when checking
+whether the following token continues the expression. Unterminated comments,
+comments containing expression-spanning newlines and the legacy lexer's
+ambiguous `/*/` shape still decline the speculative path.
+
+Tests cover operator-like comment contents, adjacent comments, trailing
+comments, malformed input, literal warnings and next-statement diagnostics.
+Both full-expression self-host images remain byte-identical.
