@@ -36,7 +36,56 @@ int ast_statement_simple(int* jumps):
 	get_token()
 	# The debugger marker historically precedes terminator diagnostics;
 	# branch validation historically follows them. Preserve both orders.
-	if (kind == ast_stmt_debugger): emit_statement_ast(&node)
+	if (kind == ast_stmt_debugger): emit_simple_statement_ast(&node)
 	expect_or_newline(c";")
-	if (kind != ast_stmt_debugger): emit_statement_ast(&node)
+	if (kind != ast_stmt_debugger): emit_simple_statement_ast(&node)
+	return 1
+
+
+int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole);
+
+
+int ast_statement_value(int* jumps):
+	if (ast_expressions_mode < 2): return 0
+	int kind = 0
+	if (peek(c"return")): kind = ast_stmt_return
+	else if (peek(c"yield")): kind = ast_stmt_yield
+	if (kind == 0): return 0
+	statement_ast node
+	node.kind = kind
+	node.source_file = file
+	node.line = diag_token_line
+	node.column = diag_token_column
+	node.start_offset = token_start_offset
+	node.end_offset = token_start_offset + token_i
+	node.generator = in_generator_body
+	node.expression_tree = 0
+	node.expression_root = -1
+	get_token()
+	int has_value = 1
+	if (kind == ast_stmt_return):
+		*jumps = 1
+		if (in_gpu_for_body): error(c"'return' is not supported in 'gpu for'")
+		has_value = (peek(c";") == 0) && (token_newline == 0) && (token[0] != 0)
+		if (has_value && in_generator_body): error(c"generators cannot return a value; use yield")
+	else if (in_generator_body == 0): error(c"'yield' outside of a generator body")
+	expression_ast tree
+	if (has_value):
+		increment_statement_context = 0
+		expression_lhs_readonly = 0
+		int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
+		if (root < 0):
+			# The expression probe restored its entry state. Existing
+			# tails retain diagnostic fallback and required-mode errors.
+			if (kind == ast_stmt_return): return_statement_tail()
+			else: yield_statement_tail()
+			return 1
+		node.expression_tree = &tree
+		node.expression_root = root
+		node.end_offset = tree.end_offset
+	node.declared_type = 0
+	if (has_value): node.declared_type = load_int(table + current_function_symbol + 6)
+	emit_statement_ast_value(&node)
+	expect_or_newline(c";")
+	emit_statement_ast_exit(&node)
 	return 1

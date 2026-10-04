@@ -1711,3 +1711,18 @@ A prepared tree must be emitted in its original scope before consuming more
 source tokens; this is a statement-building foundation, not a persistent
 module AST. Direct tests on both host widths inspect the prepared tree,
 assert no code emission and verify token/type rollback after a failed probe.
+
+## Task 93: return and yield statement children
+
+Full-expression mode now builds `return` and `yield` nodes with prepared
+expression children, declared result types and generator context. Backend
+visitors lower the child and coerce its value, then perform the statement's
+control transfer after terminator validation. Bare returns also use nodes.
+Existing diagnostic tails remain available when an expression probe declines.
+
+Record returns, implicit conversions, deferred calls and suspended-generator
+cleanup retain their existing order. Tests compare native images, runtime
+results and diagnostics on both host widths, covering record/bare returns,
+early generator returns, yields, malformed input and coercion warnings.
+AST statistics now report return and yield statement counts. Compound
+statements and declarations remain on the streaming path.

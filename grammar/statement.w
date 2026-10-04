@@ -22,6 +22,7 @@
  *     expression ;
  */
 int ast_statement_simple(int* jumps);
+int ast_statement_value(int* jumps);
 
 
 # Table offset of the function whose body is being parsed; return
@@ -145,6 +146,50 @@ void if_statement_tail():
 	be_ctrl_end(p1)
 
 
+void return_statement_tail():
+	# Each 'gpu for' iteration is one GPU thread: there is no host
+	# frame to return from inside the outlined body.
+	if (in_gpu_for_body): error(c"'return' is not supported in 'gpu for'")
+	# A newline (or end of file) after 'return' means no return value.
+	if ((peek(c";") == 0) & (token_newline == 0) & (token[0] != 0)):
+		if (in_generator_body): error(c"generators cannot return a value; use yield")
+		int return_type = expression()
+		return_type = promote(return_type)
+		int declared_type = load_int(table + current_function_symbol + 6)
+		if ((type_num_args(declared_type) > 0) & (type_num_args(return_type) > 0)):
+			if (types_compatible_with_expression(declared_type, return_type) == 0):
+				warn_type_mismatch(c"return", declared_type, return_type)
+			copy_struct_return_value(declared_type)
+		else: coerce_checked(declared_type, return_type, c"return")
+	expect_or_newline(c";")
+	if (in_generator_body):
+		# Free the suspended generators of enclosing for-in loops
+		# (eax is dead: generators return bare), then finish:
+		# __w_gen_return switches back to the consumer permanently,
+		# so no ret / stack unwinding is needed
+		for_cleanup_emit_all()
+		emit_generator_finish_call()
+	else:
+		# Enclosing for-in loops over generators free their suspended
+		# generator first — 'return' bypasses the loop exit edges that
+		# normally do it — then deferred statements run before the
+		# frame unwinds, both with the already-evaluated return value
+		# saved around them
+		for_cleanup_emit_returning()
+		defer_emit_returning()
+		be_return(stack_pos)
+
+
+void yield_statement_tail():
+	if (in_generator_body == 0): error(c"'yield' outside of a generator body")
+	int yield_type = expression()
+	yield_type = promote(yield_type)
+	int declared_yield_type = load_int(table + current_function_symbol + 6)
+	coerce_checked(declared_yield_type, yield_type, c"yield")
+	expect_or_newline(c";")
+	emit_generator_yield_call()
+
+
 void statement():
 	# Recursion-depth guard (compiler/tokenizer.w): every nested block body
 	# ('{...}', a tab-scoped ':' block, or an if/while/for/switch body)
@@ -246,6 +291,7 @@ void statement():
 	else if (for_statement()) {}
 	else if (switch_statement()) {}
 	else if (ast_statement_simple(&jumps)) {}
+	else if (ast_statement_value(&jumps)) {}
 
 	# 'break' targets the innermost breakable construct: a switch when
 	# break_in_switch is set (grammar/while_statement.w), a loop otherwise
@@ -273,48 +319,11 @@ void statement():
 
 	else if (accept(c"return")):
 		jumps = 1
-		# Each 'gpu for' iteration is one GPU thread: there is no host
-		# frame to return from inside the outlined body.
-		if (in_gpu_for_body): error(c"'return' is not supported in 'gpu for'")
-		# A newline (or end of file) after 'return' means no return value.
-		if ((peek(c";") == 0) & (token_newline == 0) & (token[0] != 0)):
-			if (in_generator_body): error(c"generators cannot return a value; use yield")
-			int return_type = expression()
-			return_type = promote(return_type)
-			int declared_type = load_int(table + current_function_symbol + 6)
-			if ((type_num_args(declared_type) > 0) & (type_num_args(return_type) > 0)):
-				if (types_compatible_with_expression(declared_type, return_type) == 0):
-					warn_type_mismatch(c"return", declared_type, return_type)
-				copy_struct_return_value(declared_type)
-			else: coerce_checked(declared_type, return_type, c"return")
-		expect_or_newline(c";")
-		if (in_generator_body):
-			# Free the suspended generators of enclosing for-in loops
-			# (eax is dead: generators return bare), then finish:
-			# __w_gen_return switches back to the consumer permanently,
-			# so no ret / stack unwinding is needed
-			for_cleanup_emit_all()
-			emit_generator_finish_call()
-		else:
-			# Enclosing for-in loops over generators free their suspended
-			# generator first — 'return' bypasses the loop exit edges that
-			# normally do it — then deferred statements run before the
-			# frame unwinds, both with the already-evaluated return value
-			# saved around them
-			for_cleanup_emit_returning()
-			defer_emit_returning()
-			be_return(stack_pos)
+		return_statement_tail()
 
 	# yield expression: store the value into the generator object and
 	# switch back to the consumer until the next gen_next
-	else if (accept(c"yield")):
-		if (in_generator_body == 0): error(c"'yield' outside of a generator body")
-		int yield_type = expression()
-		yield_type = promote(yield_type)
-		int declared_yield_type = load_int(table + current_function_symbol + 6)
-		coerce_checked(declared_yield_type, yield_type, c"yield")
-		expect_or_newline(c";")
-		emit_generator_yield_call()
+	else if (accept(c"yield")): yield_statement_tail()
 
 	else if (accept(c"debugger")):
 		# wdbg reads this to know whether the program can pause itself

@@ -5,6 +5,8 @@ const int ast_stmt_pass = 1
 const int ast_stmt_debugger = 2
 const int ast_stmt_break = 3
 const int ast_stmt_continue = 4
+const int ast_stmt_return = 5
+const int ast_stmt_yield = 6
 
 
 struct statement_ast:
@@ -17,7 +19,14 @@ struct statement_ast:
 	int target
 	int unwind_slots
 	int valid_jump
+	expression_ast* expression_tree
+	int expression_root
+	int declared_type
+	int generator
 
 
 int ast_simple_statements_emitted
 int ast_debugger_statements_emitted
+
+int ast_return_statements_emitted
+int ast_yield_statements_emitted

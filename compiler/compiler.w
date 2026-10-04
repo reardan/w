@@ -811,6 +811,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_expressions_emitted = 0
 	ast_simple_statements_emitted = 0
 	ast_debugger_statements_emitted = 0
+	ast_return_statements_emitted = 0
+	ast_yield_statements_emitted = 0
 	ast_roots_emitted = 0
 	ast_roots_fallback = 0
 	ast_audit_mode = 0
@@ -1090,6 +1092,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(itoa(ast_simple_statements_emitted))
 		print_error(c"\nAST debugger statements: ")
 		print_error(itoa(ast_debugger_statements_emitted))
+		print_error(c"\n")
+		print_error(c"AST return statements: ")
+		print_error(itoa(ast_return_statements_emitted))
+		print_error(c"\nAST yield statements: ")
+		print_error(itoa(ast_yield_statements_emitted))
 		print_error(c"\n")
 		print_error(c"AST expression roots: ")
 		print_error(itoa(ast_roots_emitted))
