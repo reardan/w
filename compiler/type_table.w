@@ -42,8 +42,8 @@ list[int] type_records
 # lookup time, rather than at each of the eleven push sites: the table is
 # append-only during a compile, so one watermark covers all of them.
 # type_table_truncate (wdbg/REPL rollback) and a re-run of
-# push_basic_types both leave the watermark above the live length, which
-# is the rebuild signal.
+# push_basic_types mark the index invalid with -1. A length watermark
+# alone is insufficient if records are appended again before a lookup.
 map[char*, int] type_name_index
 int type_index_indexed
 
@@ -120,6 +120,7 @@ int type_count():
 void type_table_truncate(int n):
 	__w_list* raw = cast(__w_list*, type_records)
 	raw.length = n
+	type_index_indexed = -1
 
 
 # Allocate a record with the declaration-location fields cleared; the
@@ -303,7 +304,7 @@ int type_push(char* name):
 
 int type_lookup(char* name):
 	if (type_name_index == 0): type_name_index = new map[char*, int]
-	if (type_index_indexed > type_records.length):
+	if ((type_index_indexed < 0) || (type_index_indexed > type_records.length)):
 		# Records were discarded (type_table_truncate) or the whole list
 		# replaced (push_basic_types re-run). Indices below the new
 		# length keep their meaning, but entries above it are stale and
@@ -1251,6 +1252,7 @@ void push_basic_types():
 		word_size_log2 = 2
 
 	type_records = new list[int]
+	type_index_indexed = -1
 	type_kind_alias = 1
 	type_kind_function = 2
 	type_kind_union = 3

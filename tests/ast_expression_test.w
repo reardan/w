@@ -88,6 +88,7 @@ void ast_test_image_at(char* compiler, char* arch, char* source, int run):
 
 
 void ast_test_image(char* compiler, char* arch, int run):
+	ast_test_image_at(compiler, arch, c"tests/ast_first_use_container_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_map_integration_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_collection_snapshot_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_control_header_fixture.w", run)
@@ -541,6 +542,20 @@ void test_ast_container_literals_are_required():
 	ast_test_store_diagnostics(c"int main():\n\tmap[int, int] values = map[int, int]{1: missing}\n\treturn values.length\n")
 	ast_test_store_diagnostics(c"int main():\n\tmap[int, int] values = map[int, int]{1, 2}\n\treturn values.length\n")
 	ast_test_store_diagnostics(c"int main():\n\tlist[int] values = list[int]{1 + , 2}\n\treturn values.length\n")
+
+
+void test_ast_first_use_container_diagnostics():
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (list[R]{R(1)}.length + missing)\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (sizeof(list[R]**) + missing)\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (list[R]{R(4294967296)}.length)\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (list[R]{c\"bad\"}.length)\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint[2] x\nint main(): return (sizeof(list[R]))\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint[2] x\nint main(): return (sizeof(map[int, R]))\n")
+	ast_test_store_diagnostics(c"int main(): return (sizeof(list[void]))\n")
+	ast_test_store_diagnostics(c"int main(): return (sizeof(map[int, void]))\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (new map[int, R]).values(1).length\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return ((new map[int, R]).values().length + missing)\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nT id[T](T v): return v\nint main(): return (id[list[R]](list[R]{R(1)}).length + missing)\n")
 
 
 void test_ast_slices_are_required():
@@ -1484,13 +1499,14 @@ void test_ast_control_headers_and_collections_are_required():
 		char* compiler = c"bin/wv2"
 		if (host): compiler = c"bin/wv2_64"
 		for width in range(2):
-			for source in range(5):
+			for source in range(6):
 				if (source == 3 && width == 0): continue
 				char* path = c"tests/ast_control_header_fixture.w"
 				if (source == 1): path = c"tests/ast_collection_snapshot_fixture.w"
 				if (source == 2): path = c"tests/ast_list_slice_expression_fixture.w"
 				if (source == 3): path = c"tests/ast_collection_snapshot_x64_fixture.w"
 				if (source == 4): path = c"tests/ast_map_integration_expression_fixture.w"
+				if (source == 5): path = c"tests/ast_first_use_container_fixture.w"
 				char** args = strv_new(8)
 				int i = 0
 				i = ast_test_arg(args, i, compiler)
@@ -1572,7 +1588,30 @@ void test_ast_control_header_repl_recovery():
 		process_result_free(old)
 
 
-# wbuild: binary=ast_expression_test tag=tests data=tests/ast_map_integration_expression_fixture.w data=tests/ast_collection_snapshot_fixture.w data=tests/ast_control_header_fixture.w data=tests/ast_collection_snapshot_x64_fixture.w data=tests/ast_list_slice_expression_fixture.w data=tests/ast_statement_expression_fixture.w data=tests/ast_integration_expression_fixture.w dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/ast_metadata_expression_fixture.w data=tests/ast_record_expression_fixture.w data=tests/ast_map_expression_fixture.w data=tests/ast_parallel_expression_fixture.w data=tests/ast_increment_expression_fixture.w data=tests/ast_wide_call_expression_fixture.w data=tests/ast_template_expression_fixture.w data=tests/ast_generic_expression_fixture.w data=tests/ast_buffer_value_expression_fixture.w data=tests/ast_slice_expression_fixture.w data=tests/ast_container_literal_expression_fixture.w data=tests/ast_constructor_expression_fixture.w data=tests/ast_new_array_expression_fixture.w data=tests/operator_overload_test.w data=tests/ast_scalar_map_expression_fixture.w data=tests/ast_array_allocation_fixture.w data=tests/ast_migration_constructor_fixture.w data=tests/ast_map_default_fixture.w data=tests/ast_map_get_fixture.w data=tests/ast_formatted_template_fixture.w data=tests/ast_migration_generic_fixture.w data=tests/ast_return_statement_fixture.w data=tests/unsigned_compare_test.w data=tests/x64_unsigned_compare_test.w
+void test_ast_first_use_container_repl_recovery():
+	char* script = c"struct AstFresh:\n\tint value\n\n(list[AstFresh]{AstFresh(21)}.length + missing)\nitems := list[AstFresh]{AstFresh(42)}\nitems[0].value\n(list[list[AstFresh]]{list[AstFresh]{AstFresh(18446744073709551616)}}.length)\nnested := list[list[AstFresh]]{items}\nnested[0][0].value\nsizeof(list[AstFresh]**)\n7427\n:quit\n"
+	for host in range(2):
+		char* repl = c"bin/ast_repl"
+		if (host): repl = c"bin/ast_repl64"
+		process_result* old = ast_test_repl(repl, 0, script)
+		char* old_diagnostics = ast_test_repl_diagnostic_text(old.stderr_text)
+		if (host): assert_strings_equal(c"42\n42\n8\n7427\n", old.stdout_text)
+		else: assert_strings_equal(c"42\n42\n4\n7427\n", old.stdout_text)
+		assert_contains(old_diagnostics, c"Cannot find symbol: 'missing'")
+		for enabled in range(1, 3):
+			process_result* ast = ast_test_repl(repl, enabled, script)
+			assert_equal(0, ast.status)
+			assert_equal(old.status, ast.status)
+			assert_strings_equal(old.stdout_text, ast.stdout_text)
+			char* ast_diagnostics = ast_test_repl_diagnostic_text(ast.stderr_text)
+			assert_strings_equal(old_diagnostics, ast_diagnostics)
+			free(ast_diagnostics)
+			process_result_free(ast)
+		free(old_diagnostics)
+		process_result_free(old)
+
+
+# wbuild: binary=ast_expression_test tag=tests data=tests/ast_first_use_container_fixture.w data=tests/ast_map_integration_expression_fixture.w data=tests/ast_collection_snapshot_fixture.w data=tests/ast_control_header_fixture.w data=tests/ast_collection_snapshot_x64_fixture.w data=tests/ast_list_slice_expression_fixture.w data=tests/ast_statement_expression_fixture.w data=tests/ast_integration_expression_fixture.w dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/ast_metadata_expression_fixture.w data=tests/ast_record_expression_fixture.w data=tests/ast_map_expression_fixture.w data=tests/ast_parallel_expression_fixture.w data=tests/ast_increment_expression_fixture.w data=tests/ast_wide_call_expression_fixture.w data=tests/ast_template_expression_fixture.w data=tests/ast_generic_expression_fixture.w data=tests/ast_buffer_value_expression_fixture.w data=tests/ast_slice_expression_fixture.w data=tests/ast_container_literal_expression_fixture.w data=tests/ast_constructor_expression_fixture.w data=tests/ast_new_array_expression_fixture.w data=tests/operator_overload_test.w data=tests/ast_scalar_map_expression_fixture.w data=tests/ast_array_allocation_fixture.w data=tests/ast_migration_constructor_fixture.w data=tests/ast_map_default_fixture.w data=tests/ast_map_get_fixture.w data=tests/ast_formatted_template_fixture.w data=tests/ast_migration_generic_fixture.w data=tests/ast_return_statement_fixture.w data=tests/unsigned_compare_test.w data=tests/x64_unsigned_compare_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"

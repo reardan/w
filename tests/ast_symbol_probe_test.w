@@ -155,6 +155,56 @@ void test_ast_pointer_probe_records_are_transactional():
 	assert_equal(-1, type_lookup_next_pointer(second))
 
 
+void test_ast_container_probe_records_are_transactional():
+	word_size = __word_size__
+	push_basic_types()
+	int base = type_push_size(c"ast_container_probe_base", word_size)
+	expression_ast tree
+	tree.types_base = type_count()
+	tree.types_count = 0
+	tree.type_names_used = 0
+	tree.pending_buffer_types = 0
+	int first = ast_expression_container_type(&tree, type_kind_list, base, -1, 10)
+	int second = ast_expression_container_type(&tree, type_kind_map, 1, first, 11)
+	int third = ast_expression_container_type(&tree, type_kind_set, second, -1, 12)
+	int pointer = ast_expression_pointer_type(&tree, third, 12)
+	assert_equal(tree.types_base, first)
+	assert_equal(first + 3, pointer)
+	assert_equal(first, ast_expression_container_type(&tree, type_kind_list, base, -1, 13))
+	assert_equal(4, tree.types_count)
+	assert_equal(first, type_lookup(c"list[ast_container_probe_base]"))
+	assert_equal(first, type_map_value_type(second))
+	assert_equal(second, type_set_key_type(third))
+	ast_expression_restore_types(&tree)
+	assert_equal(tree.types_base, type_count())
+	assert_equal(-1, type_lookup_list(base))
+	for i in range(tree.types_count): ast_expression_commit_pointer(&tree, i)
+	assert_equal(first, type_lookup_list(base))
+	assert_equal(second, type_lookup_map(1, first))
+	assert_equal(third, type_lookup_set(second))
+	assert_equal(pointer, type_lookup_next_pointer(third))
+	assert_equal(third, type_lookup_previous_pointer(pointer))
+	# Reusing the arena cannot damage committed container or pointer names.
+	for i in range(tree.type_names_used): tree.type_names[i] = 'x'
+	assert_strings_equal(c"list[ast_container_probe_base]", type_get_name(first))
+	assert_strings_equal(c"set[map[int, list[ast_container_probe_base]]]", type_get_name(pointer))
+	assert_equal(first, type_lookup(c"list[ast_container_probe_base]"))
+	tree.types_base = type_count()
+	tree.types_count = 0
+	tree.type_names_used = 4096
+	assert_equal(-1, ast_expression_container_type(&tree, type_kind_list, third, -1, 14))
+	assert_equal(tree.types_base, type_count())
+	tree.type_names_used = 0
+	int current = third
+	for i in range(16):
+		current = ast_expression_container_type(&tree, type_kind_list, current, -1, 20 + i)
+		assert1(current >= 0)
+	assert_equal(-1, ast_expression_container_type(&tree, type_kind_list, current, -1, 40))
+	ast_expression_restore_types(&tree)
+	assert_equal(tree.types_base, type_count())
+	assert_equal(-1, type_lookup_list(third))
+
+
 void test_ast_symbol_probe_preserves_usage_and_scope_state():
 	verbosity = -1
 	filename = 0

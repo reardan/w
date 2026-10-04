@@ -21,13 +21,16 @@ increments, formatted interpolation, explicit generic calls, buffers and slices,
 typed container literals, list slices, constructors and dynamic arrays. Generic
 signatures retain unbound syntax and bind supported parameter and return shapes
 transactionally.
+First-use list/map/set types in expression type syntax and collection snapshot
+results also participate in that transaction.
 Ordinary return/expression statements and if/while condition headers own prepared
 expression nodes through immediate lowering.
 
 These nodes do not survive as persistent function or module trees. Other
 statement/declaration forms, declaration-time constant expressions, inferred
-and unsupported generic forms, first-use composite types, qualified/method
-calls, special ABI/GPU paths, remaining builtins and diagnostic-bearing paths
+and unsupported generic forms, generic struct instantiation, new composite
+types in generic signatures, qualified/method calls, special ABI/GPU paths,
+remaining builtins and diagnostic-bearing paths
 still need migration. The bounded expression arena still falls back for large
 expressions. Persistent source/binding ownership, multi-error semantic analysis,
 REPL/debugger rollback and incremental emission remain subsequent architecture
@@ -947,3 +950,39 @@ complete manifest and preserves six explicitly selected AST-mode steps; nested
 driver launches retain their own mode selection. REPL recovery compares exact
 output and diagnostics after normalizing only the process ID in its temporary
 source directory, preserving entry names, source coordinates and caret text.
+
+## Task 48: first-use container types
+
+Expression type syntax now stages first-use `list[T]`, `map[K, V]` and `set[K]`
+records, including nested containers, aliases and pointers to containers.
+Literals, `new`, casts, `sizeof` and explicit generic type arguments share the
+transaction. Map/set `keys()` and map `values()` also stage their result list
+type, so snapshots no longer require an earlier list declaration.
+
+Replay registers containers after their closing type bracket and snapshots
+after their closing call parenthesis, preserving type order alongside pointer,
+slice-value and generic signature events. Speculative names live in a bounded
+arena; committed container names are independently owned, and pointer records
+borrow the committed base name. Invalid element/value types retain the streaming
+diagnostics. Exhausting either staging capacity leaves the ordinary fallback.
+
+Type-table truncation and reset now explicitly invalidate the name index.
+The previous length watermark could miss invalidation when replay appended
+multiple records before the next lookup, retaining speculative names or stale
+indices. Transaction tests cover rollback, replay, arena reuse and capacity
+failure on both host widths.
+
+The differential fixture covers nested literals, evaluation order, automatic
+map defaults, snapshots, aliases and generic calls across the existing six
+backends, with native x86/x64 execution and required-mode checks on both compiler
+hosts. Diagnostic and REPL comparisons exercise failed probes and recovery
+after literal decoding fails during committed replay. Generic struct
+instantiation, new composite shapes introduced only while binding generic
+signatures, and persistent statement/block ownership remain subsequent work.
+
+Validation passed the pinned-seed bootstrap, x86/x64 fixpoints, focused AST
+gates, and both ordinary and serial AST-enabled suites (836 targets each).
+The generated audit selected 1,129 direct compile/check steps and preserved
+eight explicit AST-mode steps. Its first run stopped on a VCS sync pull failure;
+the tool and test images were byte-identical to their streaming builds, and
+both the isolated retry and the complete audit rerun passed.

@@ -29,10 +29,13 @@ struct expression_ast:
 	int text_used
 	int types_base
 	int types_count
+	int type_names_used
 	int pending_buffer_types
 	int readonly
 	type_rec[16] pointer_types
 	int[16] pointer_offsets
+	int[16] pointer_bases
+	char[4096] type_names
 	char[4096] text
 	int[128] op
 	int[128] left
@@ -115,6 +118,7 @@ int ast_expression_pointer_type(expression_ast* tree, int base, int offset):
 	rec.decl_line = 0
 	rec.decl_column = 0
 	tree.pointer_offsets[i] = offset
+	tree.pointer_bases[i] = base
 	tree.types_count = i + 1
 	int result = type_count()
 	type_records.push(cast(int, rec))
@@ -123,10 +127,9 @@ int ast_expression_pointer_type(expression_ast* tree, int base, int offset):
 
 void ast_expression_restore_types(expression_ast* tree):
 	if (tree.types_count == 0): return
+	# Truncation invalidates the name index, including names borrowed
+	# from this arena. Replay may append several types before a lookup.
 	type_table_truncate(tree.types_base)
-	# A nested type-name lookup may have indexed temporary records.
-	# Force the normal lazy index rebuild before the next lookup.
-	type_index_indexed = tree.types_base + 1
 
 
 void ast_expression_commit_pointer(expression_ast* tree, int i):
@@ -134,8 +137,55 @@ void ast_expression_commit_pointer(expression_ast* tree, int i):
 	if (rec.kind == type_kind_function): return
 	int actual
 	if (rec.kind == type_kind_slice_value): actual = type_push_slice_value(rec.alias_target)
-	else: actual = type_push_pointer(rec.name, rec.total_size, rec.pointer_level)
+	else if (rec.kind == type_kind_map): actual = type_push_map(rec.alias_target, rec.fn_return_type)
+	else if (rec.kind == type_kind_set): actual = type_push_set(rec.alias_target)
+	else if (rec.kind == type_kind_list): actual = type_push_list(rec.alias_target)
+	else:
+		# A pointer to a newly staged container must borrow the committed
+		# name, never the temporary name stored in this expression arena.
+		char* name = type_get_name(type_canonical(tree.pointer_bases[i]))
+		actual = type_push_pointer(name, rec.total_size, rec.pointer_level)
 	assert1(actual == tree.types_base + i)
+
+
+# Container records use the same source-ordered transaction as pointers.
+# Their diagnostic names live in the arena during speculation; replay
+# recreates owned names only after all temporary records are removed.
+int ast_expression_container_type(expression_ast* tree, int kind, int first, int second, int offset):
+	first = type_canonical(first)
+	if (kind == type_kind_map): second = type_canonical(second)
+	int existing = type_lookup_composite(kind, first, second)
+	if (existing >= 0): return existing
+	if (tree.pending_buffer_types || (tree.types_count == 16)): return -1
+	char* name
+	if (kind == type_kind_map): name = type_make_map_name(first, second)
+	else if (kind == type_kind_set): name = type_make_set_name(first)
+	else: name = type_make_list_name(first)
+	int length = strlen(name) + 1
+	if (tree.type_names_used + length > 4096):
+		free(name)
+		return -1
+	int i = tree.types_count
+	type_rec* rec = &tree.pointer_types[i]
+	rec.name = &tree.type_names[tree.type_names_used]
+	strcpy(rec.name, name)
+	free(name)
+	tree.type_names_used = tree.type_names_used + length
+	rec.num_fields = 0
+	rec.total_size = word_size
+	rec.pointer_level = 0
+	rec.alias_target = first
+	rec.kind = kind
+	rec.fn_return_type = second
+	rec.fn_param_count = -1
+	rec.decl_file_index = -1
+	rec.decl_line = 0
+	rec.decl_column = 0
+	tree.pointer_offsets[i] = offset
+	tree.types_count = i + 1
+	int result = type_count()
+	type_records.push(cast(int, rec))
+	return result
 
 
 int expression_ast_add(expression_ast* tree, int op, int left, int right):

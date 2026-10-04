@@ -931,8 +931,8 @@ int ast_expression_name(expression_ast* tree, int depth):
 int ast_expression_postfix(expression_ast* tree, int depth);
 
 
-# Resolve existing named/container types, staging new pointer records.
-# New composite records and generic/qualified syntax still fall back.
+# Resolve named/container types, staging first-use containers and pointers.
+# Generic struct instantiation and qualified syntax still fall back.
 int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	if (depth > 96): return -1
 	int is_const = ast_expression_accept(tree, c"const")
@@ -945,14 +945,20 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 		if (ast_expression_accept(tree, c"[") == 0): return -1
 		int first = ast_expression_named_type(tree, 0, depth + 1)
 		if (first < 0): return -1
+		int second = -1
 		if (kind == type_kind_map):
 			if (ast_expression_accept(tree, c",") == 0): return -1
-			int second = ast_expression_named_type(tree, 0, depth + 1)
+			second = ast_expression_named_type(tree, 0, depth + 1)
 			if (second < 0): return -1
-			type = type_lookup_map(first, second)
-		else if (kind == type_kind_set): type = type_lookup_set(first)
-		else: type = type_lookup_list(first)
 		if (ast_expression_accept(tree, c"]") == 0): return -1
+		# Preserve type_name's list/map storage diagnostics on fallback.
+		int checked = type_unqualified(first)
+		if (kind == type_kind_map): checked = type_unqualified(second)
+		if (kind != type_kind_set):
+			if (type_is_array(checked) || type_has_array_field(checked)): return -1
+			if ((kind == type_kind_list) && (type_get_size(checked) <= 0)): return -1
+			if ((type_num_args(checked) == 0) && (type_stack_words(checked) != 1)): return -1
+		type = ast_expression_container_type(tree, kind, first, second, token_start_offset)
 	else:
 		type = generic_subst_lookup(token)
 		if (type < 0): type = type_lookup(token)
@@ -1361,19 +1367,19 @@ int ast_expression_map_add(expression_ast* tree, int receiver, int depth):
 	return id
 
 
-# Snapshot helpers receive the element slot width and return an existing
-# list type. First-use composite registration remains a streaming event.
+# Snapshot result types are registered after the closing parenthesis,
+# matching cm_call's result conversion before subsequent postfix syntax.
 int ast_expression_hash_snapshot(expression_ast* tree, int receiver, int method):
 	int container = type_unqualified(tree.result_type[receiver])
 	int element = hash_container_key_type(container)
 	if (method == 17): element = type_map_value_type(container)
 	element = type_canonical(element)
-	int result = type_lookup_list(element)
-	if (result < 0): return -1
 	if (sym_probe(ast_expression_method_helper(method)) < 0): return -1
 	ast_expression_advance(tree)
 	if (ast_expression_accept(tree, c"(") == 0): return -1
 	if (ast_expression_accept(tree, c")") == 0): return -1
+	int result = ast_expression_container_type(tree, type_kind_list, element, -1, token_start_offset)
+	if (result < 0): return -1
 	int id = expression_ast_add(tree, 'M', receiver, -1)
 	if (id < 0): return -1
 	tree.value[id] = method
@@ -1937,6 +1943,7 @@ int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole)
 	tree.text_used = 0
 	tree.types_base = type_count()
 	tree.types_count = 0
+	tree.type_names_used = 0
 	tree.pending_buffer_types = 0
 	tree.readonly = 0
 	tree.whole_expression = whole
