@@ -214,8 +214,8 @@ int ast_expression_conditional(expression_ast* tree, int depth);
 int ast_expression_assignment(expression_ast* tree, int depth);
 
 
-# These predicates inspect existing types only. No inferred types, imports,
-# symbol uses or diagnostics may be created until the candidate is accepted.
+# Type predicates also see the arena's temporary pointer records. No heap
+# type records, imports, symbol uses or diagnostics are committed by a probe.
 int ast_expression_scalar_type(int type):
 	if (type_is_gpu_object(type) || type_is_gpu_pointer(type)): return 0
 	int base = type_unqualified(type)
@@ -372,7 +372,7 @@ int ast_expression_name(expression_ast* tree, int depth):
 int ast_expression_postfix(expression_ast* tree, int depth);
 
 
-# Resolve already-existing simple cast types without creating records.
+# Resolve simple cast types, staging new pointer records in the arena.
 # Composite/generic/qualified type syntax remains a streaming fallback.
 int ast_expression_cast_type(expression_ast* tree):
 	int is_const = ast_expression_accept(tree, c"const")
@@ -385,8 +385,10 @@ int ast_expression_cast_type(expression_ast* tree):
 	if (is_const):
 		type = type_lookup_const(type)
 		if (type < 0): return -1
-	while (ast_expression_accept(tree, c"*")):
-		type = type_lookup_next_pointer(type)
+	while (peek(c"*") && (token_start_offset < tree.end_offset)):
+		int offset = token_start_offset
+		ast_expression_advance(tree)
+		type = ast_expression_pointer_type(tree, type, offset)
 		if (type < 0): return -1
 	if (ast_expression_scalar_type(type) == 0): return -1
 	return type
@@ -500,6 +502,8 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			if (type_is_buffer(type)):
 				op = 'I'
 				element = buffer_element_type(type)
+				if ((type_is_value(type) == 0) && (type_is_array(type) || (type_get_kind(type) == type_kind_slice))):
+					if (type_lookup_slice_value(element) < 0): tree.pending_buffer_types = 1
 			else if (type_is_list(type)):
 				if (sym_probe(c"__w_list_addr") < 0): return -1
 				op = 'j'
@@ -767,6 +771,9 @@ int ast_expression_try_at(int group_offset, int whole):
 	expression_ast tree
 	tree.count = 0
 	tree.text_used = 0
+	tree.types_base = type_count()
+	tree.types_count = 0
+	tree.pending_buffer_types = 0
 	tree.whole_expression = whole
 	tree.end_offset = end
 	tree.cast_depth = cast_context
@@ -776,11 +783,14 @@ int ast_expression_try_at(int group_offset, int whole):
 	int accepted = (root >= 0) && (token_start_offset == end)
 	if (whole == 0): accepted = accepted && peek(c")")
 	if (accepted): accepted = ast_expression_scalar_value(tree.result_type[root]) || (tree.result_type[root] == type_value(0))
+	ast_expression_restore_types(&tree)
 	getchar_seek(file, load_ptr(saved + 7 * __word_size__))
 	generic_reparse_restore(saved)
 	token_serial = serial
 	if (accepted == 0): return -1
 	while (token_start_offset < end):
+		for i in range(tree.types_count):
+			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(&tree, i)
 		for id in range(tree.count):
 			if ((tree.op[id] == 0) && (tree.offset[id] == token_start_offset)):
 				int outer_cast = cast_context

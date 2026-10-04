@@ -659,3 +659,20 @@ This audit covers compiler steps represented directly in the manifest. Test
 drivers that launch the compiler themselves retain their own mode choices,
 and full-expression mode still permits streaming fallback. It supplements
 the required-mode coverage gate; it does not establish a complete migration.
+
+## Task 18: first-use pointer types
+
+Simple casts can now introduce pointer types during AST parsing. Temporary
+records live in the arena and borrow an existing type name; the probe appends
+their addresses to the type table for ordinary semantic queries. Before
+restoring the tokenizer, it truncates those entries and invalidates the lazy
+type-name index. Accepted token replay creates persistent pointer records at
+their source stars, before emission. Literal diagnostics therefore cannot
+leave pointers into an unwound arena in the type table.
+
+The bounded type plan declines on exhaustion, and conservatively declines
+new pointer types after an array promotion that would itself intern a type,
+preserving registration order. Const and composite type construction remain
+later work. Tests cover rollback, index rebuilding, committed ownership,
+capacity exhaustion, nested pointer levels, malformed casts, literal warnings
+and REPL recovery, in addition to the cross-target image matrix.

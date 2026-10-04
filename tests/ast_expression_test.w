@@ -99,6 +99,7 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_buffer_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_comment_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_list_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_pointer_type_expression_fixture.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -405,6 +406,24 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	return ast_test_run(args, 0)
 
 
+void test_ast_pointer_type_expression_hits_and_diagnostics():
+	char* path = ast_test_path(c"_pointer_type.w")
+	assert1(file_write_text(path, c"struct R:\n\tint x\nint f(int p): return ((*cast(R*, p)).x)\nint main(): return 0\n"))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
+		assert_equal(0, ast.status)
+		assert_contains(ast.stderr_text, c"AST expressions: 1\n")
+		process_result_free(ast)
+	unlink(path)
+	free(path)
+	ast_test_diagnostics(c"struct R:\n\tint x\nint f(int p): return (cast(R**, p) + missing)\nint main(): return 0\n")
+	ast_test_diagnostics(c"struct R:\n\tint x\nint f(int p): return (0xffffffff + cast(R*, p))\nint main(): return 0\n")
+	ast_test_diagnostics(c"struct R:\n\tint x\nint f(int p): return (cast(R*, p) + 0xffffffff)\nint main(): return 0\n")
+	ast_test_diagnostics(c"struct R:\n\tint x\nint f(int p): return (cast(R**, p) + )\nint main(): return 0\n")
+
+
 void test_ast_list_expression_hits_and_diagnostics():
 	char* path = ast_test_path(c"_list.w")
 	assert1(file_write_text(path, c"int f(list[int] a): return (a[0] + a[1])\nint main(): return 0\n"))
@@ -541,7 +560,7 @@ process_result* ast_test_repl(char* repl, int enabled, char* script):
 
 
 void test_ast_expression_repl_recovery():
-	char* script = c"(6 * 7)\n(4294967296 + 1)\n(1 + )\nint keep = (5 * 9)\nkeep + (2 * 3)\n(keep) = 23\n(keep + 7)\nint keep = 60\n(keep + 3)\nint old(): return (keep + 4)\n(keep + missing)\n(old())\nint callee(int n): return n + 1\nint caller(int n): return (callee(n) * 2)\n(caller(20))\nint callee(int n): return n + 3\n(caller(20))\n(1.5 + 2.5)\n(1e+ + 2)\n(caller(20))\nint* nil = 0\n(nil && nil[0])\n(!nil || *nil)\n(2 < 3 && caller(20) == 46)\n(false && missing)\n(caller(20) >= 46)\nbool yes = true\n(yes)\n(!yes)\n:reset\n(8 * 9)\n:quit\n"
+	char* script = c"(6 * 7)\n(4294967296 + 1)\n(1 + )\nint keep = (5 * 9)\nkeep + (2 * 3)\n(keep) = 23\n(keep + 7)\nint keep = 60\n(keep + 3)\nint old(): return (keep + 4)\n(keep + missing)\n(old())\nint callee(int n): return n + 1\nint caller(int n): return (callee(n) * 2)\n(caller(20))\nint callee(int n): return n + 3\n(caller(20))\n(1.5 + 2.5)\n(1e+ + 2)\n(caller(20))\nint* nil = 0\n(nil && nil[0])\n(!nil || *nil)\n(2 < 3 && caller(20) == 46)\n(false && missing)\n(caller(20) >= 46)\nbool yes = true\n(yes)\n(!yes)\nstruct AstPointer: int x\n(cast(AstPointer**, 0) + missing)\n(cast(AstPointer**, 0) == 0)\n(cast(AstPointer***, 0) + )\n(cast(AstPointer***, 0) == 0)\n:reset\n(8 * 9)\n:quit\n"
 	for host in range(2):
 		char* repl = c"bin/ast_repl"
 		if (host): repl = c"bin/ast_repl64"
@@ -588,7 +607,7 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
-# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/operator_overload_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/operator_overload_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"

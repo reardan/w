@@ -18,6 +18,11 @@ struct expression_ast:
 	int whole_expression
 	int final_token_offset
 	int text_used
+	int types_base
+	int types_count
+	int pending_buffer_types
+	type_rec[16] pointer_types
+	int[16] pointer_offsets
 	char[4096] text
 	int[128] op
 	int[128] left
@@ -37,6 +42,50 @@ int ast_roots_emitted
 int ast_roots_fallback
 int ast_audit_mode
 int ast_required_mode
+
+
+# Speculative pointer records borrow their names and live in the arena.
+# They have no fields or parameter arrays, so their nested descriptors
+# are never accessed. Remove every temporary table entry before any
+# committed literal diagnostic can unwind this stack frame.
+int ast_expression_pointer_type(expression_ast* tree, int base, int offset):
+	int existing = type_lookup_next_pointer(base)
+	if (existing >= 0): return existing
+	# Array promotion can intern a slice-value type during emission.
+	# Preserve type registration order until it too has a replay event.
+	if (tree.pending_buffer_types || (tree.types_count == 16)): return -1
+	int i = tree.types_count
+	type_rec* rec = &tree.pointer_types[i]
+	rec.name = type_get_name(type_canonical(base))
+	rec.num_fields = 0
+	rec.total_size = word_size
+	rec.pointer_level = type_get_pointer_level(base) + 1
+	rec.alias_target = -1
+	rec.kind = 0
+	rec.fn_return_type = -1
+	rec.fn_param_count = -1
+	rec.decl_file_index = -1
+	rec.decl_line = 0
+	rec.decl_column = 0
+	tree.pointer_offsets[i] = offset
+	tree.types_count = i + 1
+	int result = type_count()
+	type_records.push(cast(int, rec))
+	return result
+
+
+void ast_expression_restore_types(expression_ast* tree):
+	if (tree.types_count == 0): return
+	type_table_truncate(tree.types_base)
+	# A nested type-name lookup may have indexed temporary records.
+	# Force the normal lazy index rebuild before the next lookup.
+	type_index_indexed = tree.types_base + 1
+
+
+void ast_expression_commit_pointer(expression_ast* tree, int i):
+	type_rec* rec = &tree.pointer_types[i]
+	int actual = type_push_pointer(rec.name, rec.total_size, rec.pointer_level)
+	assert1(actual == tree.types_base + i)
 
 
 int expression_ast_add(expression_ast* tree, int op, int left, int right):
