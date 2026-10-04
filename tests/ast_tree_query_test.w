@@ -41,6 +41,8 @@ void test_owned_tree_query():
 	int function_binding = -1
 	int found_signature = 0
 	int nodes = 0
+	int dependencies = 0
+	int locals = 0
 	while (line[0]):
 		int length = 0
 		while ((line[length] != 0) && (line[length] != 10)): length = length + 1
@@ -55,7 +57,7 @@ void test_owned_tree_query():
 			source_count = jfield_int(row, c"sources", -1)
 			type_count = jfield_int(row, c"types", -1)
 			binding_count = jfield_int(row, c"bindings", -1)
-			assert_equal(1, jfield_int(row, c"version", -1))
+			assert_equal(2, jfield_int(row, c"version", -1))
 		if (strcmp(record, c"node") == 0):
 			assert_equal(nodes, jfield_int(row, c"id", -1))
 			nodes = nodes + 1
@@ -74,7 +76,20 @@ void test_owned_tree_query():
 					function_binding = binding
 					assert1(binding >= 0)
 			if (strcmp(kind, c"expression") == 0): expressions = expressions + 1
+			if (strcmp(kind, c"local") == 0):
+				assert1(binding >= 0)
+				locals = locals + 1
+		if (strcmp(record, c"dependency") == 0):
+			int source = jfield_int(row, c"source", -1)
+			int target = jfield_int(row, c"target", -1)
+			int reasons = jfield_int(row, c"reasons", 0)
+			assert1(source >= 0 && source < source_count)
+			assert1(target >= 0 && target < source_count && source != target)
+			assert1(reasons > 0 && reasons <= 7)
+			dependencies = dependencies + 1
 		if (strcmp(record, c"binding") == 0):
+			int linkage = jfield_int(row, c"linkage", -1)
+			assert1(linkage >= 0 && linkage < binding_count)
 			if (strcmp(jfield_string(row, c"name"), c"tree_answer") == 0):
 				assert_equal(function_binding, jfield_int(row, c"id", -1))
 				assert1(jfield_int(row, c"return_type", -1) >= 0)
@@ -85,6 +100,8 @@ void test_owned_tree_query():
 		line = line + length + 1
 	assert_equal(1, declarations)
 	assert1(expressions > 0)
+	assert1(locals > 0)
+	assert1(dependencies > 0)
 	assert_equal(node_count, nodes)
 	assert_equal(1, found_signature)
 	process_result_free(result)

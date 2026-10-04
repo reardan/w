@@ -1,3 +1,5 @@
+import compiler.module_dependencies
+
 # Public read-only serialization of the session-owned module forest. All IDs
 # refer to this dump; rollback or a new compiler invocation starts a new session.
 # Expression operands remain opcode-specific and local to their group.
@@ -34,6 +36,7 @@ char* retained_query_kind(int kind):
 	if (kind == retained_declaration): return c"declaration"
 	if (kind == retained_expression_group): return c"expression_group"
 	if (kind == retained_import): return c"import"
+	if (kind == retained_local): return c"local"
 	return c"unknown"
 
 
@@ -55,6 +58,7 @@ void retained_query_semantics():
 			retained_query_int(c"id", i)
 			retained_query_string(c"name", type.name)
 			retained_query_string(c"file", type.file)
+			retained_query_int(c"source", type.source)
 			retained_query_int(c"line", type.line)
 			retained_query_int(c"column", type.column)
 			retained_query_int(c"kind", type.kind)
@@ -94,14 +98,28 @@ void retained_query_semantics():
 			retained_query_int(c"scope", binding.scope)
 			retained_query_int(c"source", binding.source)
 			retained_query_int(c"owner", binding.owner)
+			retained_query_int(c"linkage", binding.linkage)
 			retained_query_int(c"type", binding.type)
 			retained_query_int(c"return_type", binding.return_type)
 			retained_query_parameters(binding.parameters)
 			diag_write_cstr(c"}\n")
 
 
+void retained_query_dependencies():
+	module_dependency_graph* graph = module_dependencies_build()
+	for i in range(graph.modules.length):
+		module_dependencies* module = graph.modules[i]
+		for j in range(module.targets.length):
+			diag_write_cstr(c"{\"record\": \"dependency\"")
+			retained_query_int(c"source", i)
+			retained_query_int(c"target", module.targets[j])
+			retained_query_int(c"reasons", module.reasons[j])
+			diag_write_cstr(c"}\n")
+	module_dependencies_free(graph)
+
+
 void retained_query_dump():
-	diag_write_cstr(c"{\"record\": \"tree\", \"version\": 1")
+	diag_write_cstr(c"{\"record\": \"tree\", \"version\": 2")
 	retained_query_int(c"sources", retained_sources.length)
 	retained_query_int(c"nodes", retained_nodes.length)
 	if (retained_types != 0): retained_query_int(c"types", retained_types.length)
@@ -123,6 +141,7 @@ void retained_query_dump():
 		retained_query_string(c"name", node.name)
 		retained_query_string(c"import_path", node.import_path)
 		retained_query_string(c"import_alias", node.import_alias)
+		if (node.kind == retained_import): retained_query_int(c"import_source", node.import_source)
 		retained_query_int(c"parent", node.parent)
 		retained_query_int(c"source", node.source)
 		retained_query_int(c"start", node.start)
@@ -167,6 +186,7 @@ void retained_query_dump():
 		retained_query_string(c"binding_file", node.binding_file)
 		diag_write_cstr(c"}\n")
 	retained_query_semantics()
+	retained_query_dependencies()
 	diag_flush()
 
 

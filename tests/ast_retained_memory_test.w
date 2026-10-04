@@ -1,5 +1,5 @@
 # wbuild: x64
-import compiler.retained_ast
+import compiler.module_dependencies
 import lib.assert
 
 
@@ -32,7 +32,9 @@ int main():
 	assert_equal(10000, retained_sources[source].length)
 	for i in range(10000): assert_equal('a' + i % 26, retained_sources[source].bytes[i])
 	retained_leave(outer, 10000)
+	module_dependency_graph* graph = module_dependencies_build()
 	retained_clear()
+	module_dependencies_free(graph)
 	retained_clear()
 	ast_retain_mode = 0
 	assert_equal(0, debug_alloc_report_leaks())

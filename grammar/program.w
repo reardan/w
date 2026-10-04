@@ -294,6 +294,9 @@ void ast_script_main();
 
 
 void function_definition(int current_symbol):
+	int retained_start = token_start_offset
+	int retained_line = diag_token_line
+	int retained_column = diag_token_column
 	table[current_symbol + 10] = 2 /* store function type */
 	int n = table_pos
 	# number_of_args counts stack WORDS (struct values span several);
@@ -362,7 +365,12 @@ void function_definition(int current_symbol):
 	if (is_w_variadic): sym_set_w_variadic(current_symbol, param_count - 1)
 	else: sym_set_w_variadic(current_symbol, -1)
 
-	if (accept(c";") == 0):
+	if (accept(c";")):
+		if (ast_retain_mode):
+			int prototype = retained_enter(retained_function, filename, retained_start, retained_line, retained_column, last_global_declaration)
+			retained_function_parameters(current_symbol)
+			retained_leave(prototype, token_start_offset)
+	else:
 		if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native)
 		else:
 			be_function_define(current_symbol, last_global_declaration)

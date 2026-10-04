@@ -1140,3 +1140,60 @@ targets. Both compiler host widths checked `w.w` with
 `--ast-retain --ast-required`; win64 and arm64_darwin compiler checks passed.
 The parser-generator grammar also parsed every newly added W file explicitly
 (the ordinary corpus gate selects tracked files).
+
+
+## Declaration inventory and independent module dependency analysis
+
+The next increment adds declaration inventory and a consumer of the owned
+records that does not invoke the parser or backend. Native function bodies and
+prototypes retain named parameters even when unused; local declarations made
+inside retained functions have explicit `local` nodes. Their parents preserve
+the production traversal's lexical membership, and their binding IDs distinguish
+shadowed names after symbol slots have been recycled. Inferred locals retain
+the name's location rather than the token following their initializer.
+
+Global binding occurrences now carry a `linkage` ID. An unresolved prototype,
+its uses, and its definition share this identity while keeping their individual
+declaration records. A REPL redefinition starts a new identity. Existing records
+remain immutable, so rollback removes a suffix without rewriting the prefix.
+These IDs still belong to one retained session, not to a persistent cache.
+
+Types record their source version. Imports record `import_source`, the source
+ID selected by the actual resolver, including aliases, duplicate imports and
+cycles. The import spelling alone is not used to guess which file was opened.
+Resolver context is included in retained checkpoints so a failed nested import
+cannot label later input with the abandoned import's identity.
+
+`compiler/module_dependencies.w` builds an independently owned graph from these
+records. Edges cover explicit imports, resolved bindings (including both the
+prototype and defining module), and recursive semantic type shapes. The graph
+owns its paths and adjacency lists and remains usable after `retained_clear()`.
+`module_dependencies_invalidate` computes the changed source IDs and their
+transitive users in deterministic source-ID order, handling cycles and duplicate
+seeds. Building and querying it neither reads source files nor changes compiler
+symbols, types or code. `module_dependencies_free` releases it.
+
+`w tree --json` now emits schema **version 2**, adding `local` nodes, binding
+`linkage`, type `source`, import `import_source`, and `dependency` records.
+Each dependency has `source`, `target`, and a `reasons` bitmask: import = 1,
+binding = 2, type = 4. Multiple reasons for an edge are combined.
+
+This is an analysis and invalidation-planning API, **not an incremental emission
+cache**. It describes dependencies present in retained records. It does not yet
+inventory every parse-time dependency, such as all constant evaluation and
+uninstantiated generic bodies, or record negative import lookups. Changed import
+resolution requires rebuilding the snapshot. It must not be used on its own to
+authorize machine-code reuse. Complete module IR, parse/analysis/emission
+separation, independent multi-error semantic checking, relocation and persistent
+caching remain outstanding. **#489 remains open; #488 remains closed.**
+
+`module_dependencies_test` and its x64 twin cover unused declarations, shadowing,
+prototype resolution across separate inputs, global/type/generic import users,
+failed-import rollback, redefinition, graph ownership, and cyclic invalidation.
+The retained-memory tests include graph teardown under the guard allocator.
+
+Validation: `env -u NO_COLOR ./wbuild tests` passes all 861 targets, including
+x86/x64 fixpoints, strict self-host checks and AST differential comparisons.
+Both native targets check `w.w` with `--ast-retain --ast-required`; compiler
+checks for win64 and arm64 Darwin also pass. The reference parser additionally
+parses the two new W files explicitly, beyond its tracked-file corpus gate.

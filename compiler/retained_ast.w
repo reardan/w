@@ -13,9 +13,11 @@ const int retained_expression = 4
 const int retained_declaration = 5
 const int retained_expression_group = 6
 const int retained_import = 7
+const int retained_local = 8
 
 struct retained_source:
 	char* path
+	char* import_key
 	char* bytes
 	int length
 	int capacity
@@ -71,6 +73,7 @@ struct retained_node:
 	int call_receiver_type
 	int infer_want
 	int result_is_value
+	int import_source
 	char* import_path
 	char* import_alias
 	char* payload_text
@@ -80,6 +83,7 @@ struct retained_node:
 	int arena_type_names_length
 
 struct retained_checkpoint:
+	char* pending_import
 	int nodes
 	int sources
 	int parent
@@ -87,6 +91,8 @@ struct retained_checkpoint:
 	int bindings
 
 int ast_retain_mode
+# Borrowed resolver context, restored by both normal return and rollback.
+char* retained_pending_import
 list[retained_source*] retained_sources
 list[retained_node*] retained_nodes
 int retained_parent = -1
@@ -102,6 +108,7 @@ void retained_init():
 int retained_add(int kind, int parent, int source, int start, int line, int column, char* name):
 	retained_init()
 	retained_node* node = new retained_node
+	node.import_source = -1
 	node.import_path = 0
 	node.import_alias = 0
 	node.payload_text = 0
@@ -184,6 +191,7 @@ int retained_source_begin(char* path):
 	source.capacity = 0
 	source.declaration_cursor = 0
 	source.path = strclone(path)
+	source.import_key = 0
 	int id = retained_sources.length
 	retained_sources.push(source)
 	retained_last_path = path
@@ -246,6 +254,7 @@ void retained_leave(int id, int end):
 
 
 void retained_capture(retained_checkpoint* checkpoint):
+	checkpoint.pending_import = retained_pending_import
 	checkpoint.nodes = 0
 	checkpoint.sources = 0
 	checkpoint.types = 0
@@ -258,6 +267,7 @@ void retained_capture(retained_checkpoint* checkpoint):
 
 
 void retained_rollback(retained_checkpoint* checkpoint):
+	retained_pending_import = checkpoint.pending_import
 	retained_last_path = 0
 	retained_semantic_rollback(checkpoint.types, checkpoint.bindings)
 	if (retained_nodes != 0):
@@ -279,6 +289,7 @@ void retained_rollback(retained_checkpoint* checkpoint):
 			retained_source* source = retained_sources.pop()
 			source.lines.free()
 			free(source.path)
+			if (source.import_key != 0): free(source.import_key)
 			if (source.bytes != 0): free(source.bytes)
 			free(source)
 	if (retained_sources != 0):
@@ -289,6 +300,7 @@ void retained_rollback(retained_checkpoint* checkpoint):
 
 void retained_clear():
 	retained_checkpoint checkpoint
+	checkpoint.pending_import = 0
 	checkpoint.nodes = 0
 	checkpoint.sources = 0
 	checkpoint.parent = -1

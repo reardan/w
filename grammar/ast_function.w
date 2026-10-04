@@ -11,6 +11,7 @@ void ast_function_body(int binding, int code_start, int kind):
 	node.name = strclone(last_global_declaration)
 	int retained = retained_enter(retained_function, filename, node.start_offset, diag_token_line, diag_token_column, node.name)
 	emit_function_begin_ast(&node)
+	retained_function_parameters(binding)
 	current_function_symbol = binding
 	if (kind == ast_function_generator): in_generator_body = 1
 	enclosing_tab_level = 0

@@ -72,6 +72,14 @@ the prelude or target, start a fresh compiler process. General module dependency
 invalidation, changed import resolution and per-definition relocation remain
 future work, as do replay directly from semantic trees and cross-target output.
 
+The separate `compiler/module_dependencies.w` API now analyzes retained import,
+binding and type edges and computes transitive invalidation plans. It is not
+wired into these incremental sessions and does not expand their admission rules.
+Its graph owns its data, but covers only dependencies represented by the current
+retained traversal; it is not sufficient to authorize general code reuse. See
+[the module dependency increment](ast_migration.md#declaration-inventory-and-independent-module-dependency-analysis)
+for ownership, schema and remaining gaps.
+
 ## Regression gates
 
 `./wbuild incremental_compilation_test incremental_compilation_64_test` runs

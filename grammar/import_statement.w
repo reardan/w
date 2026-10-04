@@ -474,7 +474,10 @@ int import_module(char* dotted):
 	# and restore their own spelling around their own compiles.
 	char* old_spelling = import_current_spelling
 	import_current_spelling = dotted
+	char* old_retained_import = retained_pending_import
+	retained_pending_import = resolved
 	compile_save(with_path)
+	retained_pending_import = old_retained_import
 	import_current_spelling = old_spelling
 	free(with_path)
 	return 1
@@ -566,11 +569,17 @@ int import_statement():
 			error3(c"import wildcard '.*' is not supported (an import already makes the whole module visible); use 'import ", token, c"'")
 
 		char* resolved = import_resolve(token)
+		int retained_id = -1
+		if (ast_retain_mode): retained_id = retained_nodes.length
 		retained_import_note(token, resolved, alias, retained_start, byte_offset - 1, retained_line, retained_column)
 		if (alias == 0): import_lint_duplicate(resolved, token)
 
 		# compile_save clobbers nextc, so only re-read it after a compile
 		if (import_module(token)): nextc = get_character()
+		if (retained_id >= 0):
+			for i in range(retained_sources.length):
+				char* key = retained_sources[i].import_key
+				if ((key != 0) && (strcmp(key, resolved) == 0)): retained_nodes[retained_id].import_source = i
 		if (alias != 0): import_alias_register(alias, resolved)
 		else: import_plain_register(resolved)
 		get_token()

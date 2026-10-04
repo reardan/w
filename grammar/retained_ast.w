@@ -41,6 +41,9 @@ int retained_type_note(int index):
 	retained_type* type = new retained_type
 	type.name = strclone(original.name)
 	type.file = strclone(debug_file_name(original.decl_file_index))
+	type.source = -1
+	for i in range(retained_sources.length):
+		if (strcmp(retained_sources[i].path, type.file) == 0): type.source = i
 	type.line = original.decl_line
 	type.column = original.decl_column
 	type.kind = original.kind
@@ -113,6 +116,7 @@ int retained_binding_note(int sym, int owner):
 	int source = -1
 	for i in range(retained_sources.length):
 		if (strcmp(retained_sources[i].path, path) == 0): source = i
+	int declaration = owner
 	if ((scope == 'L') || (scope == 'A')):
 		while ((owner >= 0) && (retained_nodes[owner].kind != retained_function)): owner = retained_nodes[owner].parent
 	else: owner = -1
@@ -138,11 +142,34 @@ int retained_binding_note(int sym, int owner):
 	binding.file = strclone(path)
 	binding.line = line
 	binding.column = column
+	# Inferred declarations bind after parsing the initializer. Their raw
+	# symbol location can therefore point at the next token. Keep that
+	# location in the lookup key so later uses find this same record, but
+	# give the owned declaration its original name location. Do not change
+	# production diagnostics as a side effect of retaining a tree.
+	if ((scope == 'L') && (declaration >= 0)):
+		retained_node* node = retained_nodes[declaration]
+		if ((node.kind == retained_statement) && (strcmp(node.name, name) == 0)):
+			binding.line = node.line
+			binding.column = node.column
 	binding.scope = scope
 	binding.slot = load_int(table + sym + 2)
 	binding.source = source
 	binding.owner = owner
 	binding.type = retained_type_note(load_int(table + sym + 6))
+	binding.origin = sym
+	binding.linkage = retained_bindings.length
+	# Forward declarations and their eventual definition share a linkage
+	# identity. A later REPL definition starts a new identity; no surviving
+	# record is mutated, so suffix rollback needs no semantic undo log.
+	if ((scope == 'U') || (scope == 'D')):
+		int previous = retained_bindings.length
+		while (previous > 0):
+			previous = previous - 1
+			retained_binding* candidate = retained_bindings[previous]
+			if ((candidate.origin == sym) && (strcmp(candidate.name, name) == 0)):
+				if (candidate.scope == 'U'): binding.linkage = candidate.linkage
+				break
 	binding.return_type = -1
 	binding.parameters = new list[int]
 	if (load_int(table + sym + 10) == 2):
@@ -281,3 +308,43 @@ void retained_import_note(char* spelling, char* path, char* alias, int start, in
 	node.end = end
 	node.import_path = strclone(path)
 	if (alias != 0): node.import_alias = strclone(alias)
+
+
+# Inventory declarations even when no expression refers to them. The parent
+# preserves lexical block membership; binding.owner identifies the function.
+void retained_local_note(int sym):
+	if ((ast_retain_mode == 0) || (retained_parent < 0)): return
+	int owner = retained_parent
+	while ((owner >= 0) && (retained_nodes[owner].kind != retained_function)): owner = retained_nodes[owner].parent
+	if (owner < 0): return
+	int binding = retained_binding_note(sym, retained_parent)
+	if (binding < 0): return
+	retained_binding* record = retained_bindings[binding]
+	int source = record.source
+	if (source < 0): return
+	int offset = 0
+	retained_source* input = retained_sources[source]
+	if ((record.line > 0) && (record.line <= input.lines.length)):
+		offset = input.lines[record.line - 1] + record.column - 1
+	int id = retained_add(retained_local, retained_parent, source, offset, record.line, record.column, record.name)
+	retained_nodes[id].binding = binding
+	retained_nodes[id].semantic_type = record.type
+	retained_nodes[id].end = offset + strlen(record.name)
+	# Native parameters are inventoried after their header was parsed. The
+	# function originally entered at its body delimiter; include parameters
+	# in that retained span without moving the production tokenizer.
+	retained_node* parent = retained_nodes[retained_parent]
+	if ((record.scope == 'A') && (parent.kind == retained_function) && (parent.source == source) && (offset < parent.start)):
+		parent.start = offset
+		parent.line = record.line
+		parent.column = record.column
+
+
+void retained_function_parameters(int binding):
+	if (ast_retain_mode == 0): return
+	if (retained_parent >= 0):
+		retained_nodes[retained_parent].binding = retained_binding_note(binding, retained_parent)
+	sym_index_sync()
+	for i in range(sym_index_count):
+		int sym = sym_index_offset(i)
+		if ((sym > binding) && (table[sym + 1] == 'A')): retained_local_note(sym)

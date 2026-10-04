@@ -371,6 +371,8 @@ visibility: 'DUAL' Defined global, Undefined global, Argument, Local
 value: memory address
 symtype: 0:notype, 1:object, 2:func
 */
+void retained_local_note(int sym);
+
 int pointer_indirection
 void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	if (verbosity >= 1):
@@ -440,6 +442,7 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 		# The record's codepos must stay an instruction boundary
 		be_notes_reset()
 		debug_local_note(s, value, visibility, type)
+		if (visibility == 'L'): retained_local_note(t)
 
 
 char *last_global_declaration

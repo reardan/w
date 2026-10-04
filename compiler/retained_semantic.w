@@ -12,6 +12,7 @@ struct retained_constant:
 	int value
 
 struct retained_type:
+	int source
 	char* name
 	char* file
 	int line
@@ -43,6 +44,8 @@ struct retained_binding:
 	int owner
 	int type
 	int return_type
+	int origin
+	int linkage
 	list[int] parameters
 
 list[retained_type*] retained_types

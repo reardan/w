@@ -102,7 +102,9 @@ int compile_attempt(char* fn):
 		if (verbosity >= 1): file_not_found_error()
 		filename = old_filename
 		return 0
-	if (ast_retain_mode): retained_source_begin(filename)
+	if (ast_retain_mode):
+		int source = retained_source_begin(filename)
+		if (retained_pending_import != 0): retained_sources[source].import_key = strclone(retained_pending_import)
 	if (deps_mode): deps_record(filename)
 	lint_note_open(filename)
 	getchar_reset(file)
