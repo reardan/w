@@ -66,6 +66,11 @@ struct-copy and int-to-bool defects and every other finding are unchanged; the
 cited lines in grammar/expression.w and grammar/promote.w now sit three lines
 lower.
 
+The wc2 experiment mentioned in that historical snapshot was retired on
+2026-10-04. Ongoing AST work lives in the
+[production compiler](projects/ast_migration.md); the
+[retirement record](projects/wc2.md) preserves its findings.
+
 ## What is already strong
 
 W has more fundamentals in place than most self-hosted language projects, and

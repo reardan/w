@@ -119,8 +119,9 @@ then register every allocated node with that stream, including abandoned
 alternatives and recovery nodes. `pg_token_stream_free(stream)` releases them
 all without following child links; **do not also call `pg_ast_free(root)`** in
 this mode. The default remains independently owned trees. Filename storage and
-diagnostics remain caller-owned and must outlive their borrowers. The `wc2`
-module API ([wc2.md](wc2.md)) demonstrates the complete ownership lifecycle.
+diagnostics remain caller-owned and must outlive their borrowers. The dedicated
+`tests/parser_generator/owned_ast_memory_test.w` exercises this lifecycle
+under the guard allocator on both host widths, including failed parses.
 
 ## Error recovery
 
