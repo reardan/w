@@ -43,6 +43,8 @@ struct expression_ast:
 	int pending_buffer_types
 	int readonly
 	int it_binding
+	int lint_group_depth
+	int lint_depth_bias
 	type_rec[16] pointer_types
 	int[16] pointer_offsets
 	int[16] pointer_bases

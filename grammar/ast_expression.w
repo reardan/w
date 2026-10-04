@@ -615,6 +615,19 @@ void ast_expression_replay_warning(expression_ast* tree, int id):
 			message = c"warning: bitwise '|' on bool operands in a condition does not short-circuit; did you mean '||'?"
 			spelling = c"|"
 		warn_bool_bitwise_at(message, tree.symbol[id], tree.right[id], tree.generic_arity[id], spelling)
+	else if (tree.high[id] == 4):
+		int saved_depth = expr_nesting_depth
+		int saved_group = lint_cond_paren_depth
+		expr_nesting_depth = tree.value[id]
+		lint_cond_paren_depth = tree.symbol[id]
+		lint_check_condition_assign(tree.left[id], tree.right[id])
+		expr_nesting_depth = saved_depth
+		lint_cond_paren_depth = saved_group
+	else if (tree.high[id] == 5):
+		if (lint_file_active()):
+			char* name = c"it"
+			if (tree.symbol[id] == 0): name = table + tree.value[id]
+			lint_self_assign_end(strclone(name), 1, tree.left[id], tree.right[id])
 	else: warn_type_mismatch(cast(char*, tree.value[id]), tree.left[id], tree.right[id])
 
 
@@ -1836,7 +1849,10 @@ int ast_expression_ndarray_store(expression_ast* tree, int index, int op, int de
 	if (op): want = type_real(tree.result_type[index])
 	if (ast_expression_scalar_type(want) == 0): return -1
 	ast_expression_advance(tree)
+	int rhs_bias = tree.lint_depth_bias
+	tree.lint_depth_bias = rhs_bias - 1
 	int right = ast_expression_assignment(tree, depth + 1)
+	tree.lint_depth_bias = rhs_bias
 	if (right < 0): return -1
 	if (ast_expression_data_value(tree.result_type[right]) == 0): return -1
 	if (ast_expression_prepare_value(tree, tree.result_type[right], token_start_offset) == 0): return -1
@@ -2157,7 +2173,10 @@ int ast_expression_template(expression_ast* tree, int depth):
 
 int ast_expression_atom(expression_ast* tree, int depth):
 	if ((token[0] == 'f') && (token[1] == 34)): return ast_expression_template(tree, depth)
+	int group_offset = token_start_offset
 	if (ast_expression_accept(tree, c"(")):
+		if (lint_mode && (group_offset + 1 == lint_cond_start)):
+			tree.lint_group_depth = expr_nesting_depth + depth + 1 + tree.lint_depth_bias
 		int child = ast_expression_assignment(tree, depth + 1)
 		if ((child < 0) || (peek(c")") == 0)): return -1
 		if (token_start_offset >= tree.end_offset): return -1
@@ -3018,18 +3037,18 @@ int ast_expression_conditional(expression_ast* tree, int depth):
 	return id
 
 
-# Scalar stores are AST nodes as well as values. Unsupported/lint-bearing
-# assignments fall back before binding uses, emitting code or diagnostics.
+# Stores retain their lint events without reporting them during probing.
+# Unsupported assignments still roll back before binding uses or emission.
 int ast_expression_assignment(expression_ast* tree, int depth):
 	if ((depth > 96) || (expr_nesting_depth + depth >= 1000)): return -1
 	# Each entry corresponds to expression(), including groups, arguments,
 	# indexes and assignment RHSs. The ternary else arm does not reset it.
 	tree.readonly = 0
+	int lhs_serial = token_serial
 	int left = ast_expression_conditional(tree, depth)
 	if (left < 0): return -1
 	int op = compound_assign_op()
 	if ((op == 0) && (peek(c"=") == 0)): return left
-	if (lint_mode): return -1
 	if (tree.op[left] == ast_nd_index): return ast_expression_ndarray_store(tree, left, op, depth)
 	if (tree.readonly): return -1
 	int lt = tree.result_type[left]
@@ -3040,9 +3059,37 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	if (type_is_array(lt)): return -1
 	if (op && ast_expression_record_type(lt)): return -1
 	if (op && type_is_buffer(type_canonical(lt))): return -1
+	int lhs_tokens = token_serial - lhs_serial
+	int eq_line = diag_token_line
+	int eq_column = diag_token_column
 	ast_expression_advance(tree)
+	int self_assign = 0
+	if (lint_mode && (op == 0) && (map_store == 0) && lint_file_active()):
+		if (lint_cond_start):
+			int event = expression_ast_add(tree, ast_warning, eq_line, eq_column)
+			if (event < 0): return -1
+			tree.high[event] = 4
+			tree.value[event] = expr_nesting_depth + depth - 1 + tree.lint_depth_bias
+			tree.symbol[event] = tree.lint_group_depth
+		if (lhs_tokens == 1):
+			if ((tree.op[left] == 'v') && peek(table + tree.value[left])): self_assign = 1
+			if ((tree.op[left] == ast_list_it_value) && peek(c"it")): self_assign = 2
+	int rhs_serial = token_serial
+	# Pending container stores do not add the scalar store's nesting
+	# frame around their RHS in the streaming lint model.
+	int rhs_bias = tree.lint_depth_bias
+	if (map_store): tree.lint_depth_bias = rhs_bias - 1
 	int right = ast_expression_assignment(tree, depth + 1)
+	tree.lint_depth_bias = rhs_bias
 	if (right < 0): return -1
+	int rhs_tokens = token_serial - rhs_serial
+	if (tree.whole_expression && (token_start_offset == tree.end_offset)): rhs_tokens = rhs_tokens + 1
+	if (self_assign && (rhs_tokens == 1)):
+		int event = expression_ast_add(tree, ast_warning, eq_line, eq_column)
+		if (event < 0): return -1
+		tree.high[event] = 5
+		tree.symbol[event] = self_assign == 2
+		if (self_assign == 1): tree.value[event] = tree.value[left]
 	if (ast_expression_data_value(tree.result_type[right]) == 0): return -1
 	if (op && (type_is_array(tree.result_type[right]) || type_is_slice(tree.result_type[right]))): return -1
 	if (ast_expression_prepare_value(tree, tree.result_type[right], token_start_offset) == 0): return -1
@@ -3154,6 +3201,8 @@ int ast_expression_try_at(int group_offset, int whole):
 	tree.pending_buffer_types = 0
 	tree.readonly = 0
 	tree.it_binding = -1
+	tree.lint_group_depth = lint_cond_paren_depth
+	tree.lint_depth_bias = 0
 	tree.whole_expression = whole
 	tree.end_offset = end
 	tree.cast_depth = cast_context

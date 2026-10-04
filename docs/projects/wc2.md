@@ -1592,3 +1592,17 @@ and conversions, bounds traps, constructors, container literals and slices.
 Tests compare normal/strict, plain/JSON diagnostics on both host widths,
 including warning chains, later literal warnings, failed probes and implicit
 calls which suppress the default hint.
+
+## Task 85: lint-aware AST assignments
+
+AST assignments now retain assignment-in-condition and self-assignment
+lint events instead of declining every store whenever lint is enabled.
+Events preserve the original token counts, operator location and condition
+group depth, while imported files retain normal lint filtering. Map and
+multidimensional-array stores account for their distinct RHS nesting rules.
+
+Required-mode checks cover the existing clean and warning lint fixtures.
+Differential cases exercise intentional parentheses, nested assignments,
+container stores, self-assignment, later literal warnings and rollback.
+Normal and strict checks retain matching diagnostics; the broader query and
+fixture audit no longer reports lint-driven expression fallbacks.
