@@ -35,7 +35,7 @@ int additive_op(int type, int op):
 	if ((left_level > 0) && (right_level == 0)): return type_value(type_unqualified(left_type))
 	if ((op == '+') && (right_level > 0) && (left_level == 0)):
 		return type_value(type_unqualified(right_type))
-	return 3
+	return integer_result_type(left_type, right_type)
 
 
 int additive_expr():

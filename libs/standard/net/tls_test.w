@@ -656,3 +656,73 @@ void test_client_hello_build():
 	free(rnd)
 	free(sid)
 	free(pub)
+
+
+# Build a ClientHello for name (0 or "") and check it carries no SNI: it is
+# exactly the SNI extension (4-byte header + 5 bytes of list framing + the
+# name) shorter than named_len, and its first extension is
+# supported_versions instead.
+void tlst_check_no_sni(char* name, char* rnd, char* sid, char* pub, int named_len):
+	int len = 0
+	char* ch = tls_build_client_hello(name, rnd, sid, pub, &len)
+	assert_equal(named_len - (9 + strlen(c"example.com")), len)
+	int body = ((ch[1] & 255) << 16) | ((ch[2] & 255) << 8) | (ch[3] & 255)
+	assert_equal(len - 4, body)
+	# Extensions length at 77..78, first extension type at 79..80.
+	int ext_len = ((ch[77] & 255) << 8) | (ch[78] & 255)
+	assert_equal(len - 79, ext_len)
+	assert_equal(TLS_EXT_SUPPORTED_VERSIONS, ((ch[79] & 255) << 8) | (ch[80] & 255))
+	char* want = hex_encode(pub, 32)
+	tlst_assert_hex(want, ch + len - 32, 32)
+	free(want)
+	free(ch)
+
+
+# A null or empty server_name omits the SNI extension (it used to fault in
+# strlen).
+void test_client_hello_without_sni():
+	char* rnd = malloc(32)
+	char* sid = malloc(32)
+	char* pub = malloc(32)
+	for i in range(32):
+		rnd[i] = i
+		sid[i] = 0x40 + i
+		pub[i] = 0x80 + i
+	int named_len = 0
+	char* named = tls_build_client_hello(c"example.com", rnd, sid, pub, &named_len)
+	assert_equal(TLS_EXT_SERVER_NAME, ((named[79] & 255) << 8) | (named[80] & 255))
+	tlst_check_no_sni(0, rnd, sid, pub, named_len)
+	tlst_check_no_sni(c"", rnd, sid, pub, named_len)
+	free(named)
+	free(rnd)
+	free(sid)
+	free(pub)
+
+
+# tls_connect with no server name used to fault in the ClientHello builder.
+# With verification on it must now fail cleanly BEFORE any I/O: fd -1 would
+# otherwise surface as "send ClientHello failed", so the reason proves
+# nothing was sent.
+void test_connect_without_server_name_fails_closed():
+	tls_config* cfg = tls_config_new()
+	tls_conn* c = tls_connect(0 - 1, 0, cfg)
+	asserts(c"null server_name must fail", c == 0)
+	assert_strings_equal(c"tls: no server name to verify", tls_last_error(cfg))
+	cfg.last_error = 0
+	c = tls_connect(0 - 1, c"", cfg)
+	asserts(c"empty server_name must fail", c == 0)
+	assert_strings_equal(c"tls: no server name to verify", tls_last_error(cfg))
+	tls_config_free(cfg)
+	# No config at all (verification on by default): still no crash.
+	asserts(c"null server_name, null cfg must fail", tls_connect(0 - 1, 0, 0) == 0)
+
+
+# With insecure_skip_verify the missing name is allowed: the handshake gets
+# past the (SNI-less) ClientHello and fails only at the dead socket.
+void test_connect_without_server_name_insecure_proceeds():
+	tls_config* cfg = tls_config_new()
+	cfg.insecure_skip_verify = 1
+	tls_conn* c = tls_connect(0 - 1, 0, cfg)
+	asserts(c"dead socket still fails", c == 0)
+	assert_strings_equal(c"tls: send ClientHello failed", tls_last_error(cfg))
+	tls_config_free(cfg)

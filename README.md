@@ -475,6 +475,12 @@ seeds — is `docs/release.md`.
   subcommand (`deps x64 file.w`) or before it (`./bin/wv2 x64 deps
   file.w`; `check` and `symbols` accept both spellings too) — resolving
   `lib/__arch__/` imports for the selected target.
+- Imports resolve from the working directory and its parents, then from
+  the compiler binary's directory. `--import-root <dir>` (repeatable,
+  earlier roots win; accepted the same way by compile, `check`, `deps`
+  and `symbols`) searches explicit roots first. With roots,
+  `deps --json` reports shadowed duplicates as `"shadows"`.
+  `docs/projects/compilation_model.md` §7 has the details.
 - Use `./wbuild test_changed` to run focused tests for files changed from
   `HEAD`, or call `./bin/wtest changed file...` to list the selected build
   targets without running them. Selection is manifest-driven: `bin/wtest`

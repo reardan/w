@@ -235,7 +235,7 @@ int unary_expression_operand():
 		if (type_is_var(type_unqualified(type))): error(c"var operands do not support ~")
 		if (type_float_kind(type)): error(c"float operands do not support ~")
 		not_eax()
-		return 3
+		return integer_result_type(type, 3)
 	else if (op && accept(c"-")):
 		type = unary_expression()
 		type = promote(type)
@@ -250,7 +250,7 @@ int unary_expression_operand():
 			return float64_value_type
 		else:
 			neg_eax()
-			return 3
+			return integer_result_type(type, 3)
 	else if (op && accept(c"+")):
 		# unary plus: load the operand's value, no code beyond the promote
 		type = unary_expression()

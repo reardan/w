@@ -757,12 +757,28 @@ void wtest_collect_own_roots(char* name, list[char*] out):
 		json_value* selector_piece = json_array_get(cmd, 1)
 		if (selector_piece.type == json_type_string()):
 			if (wtest_selector(selector_piece.string_value)): arch = selector_piece.string_value
+		# --import-root directories ride in the root id's arch column, in
+		# order, so the closure resolves what the compile resolves
+		# (tools/deps_cache.w, deps_arch_with_roots)
+		list[char*] import_roots = new list[char*]
+		i = 1
+		while (i < n):
+			json_value* root_piece = json_array_get(cmd, i)
+			i = i + 1
+			if (root_piece.type != json_type_string()): continue
+			int width = deps_import_root_width(root_piece.string_value)
+			if ((width == 2) && (i < n)):
+				json_value* dir_piece = json_array_get(cmd, i)
+				if (dir_piece.type == json_type_string()): import_roots.push(dir_piece.string_value)
+				i = i + 1
+			else if (width == 1): import_roots.push(root_piece.string_value + 14)
+		if (import_roots.length > 0): arch = deps_arch_with_roots(arch, import_roots)
 		i = 1
 		while (i < n):
 			json_value* piece = json_array_get(cmd, i)
 			if (piece.type == json_type_string()):
 				char* element = piece.string_value
-				if (strcmp(element, c"-o") == 0):
+				if ((strcmp(element, c"-o") == 0) || (deps_import_root_width(element) == 2)):
 					i = i + 2
 					continue
 				if (ends_with(element, c".w") && (wtest_excluded_root(element) == 0)):
@@ -2878,18 +2894,8 @@ int wtest_archs_check(char* path):
 	for char* root in matches:
 		char* arch = wtest_archs_split_arch(root)
 		char* rootfile = wtest_root_id_path(root)
-		int is_default = strcmp(arch, c"x86") == 0
-		int count = 3
-		if (is_default == 0): count = 4
-		char** argv = strv_new(count)
-		strv_set(argv, 0, c"bin/wv2")
-		if (is_default):
-			strv_set(argv, 1, c"check")
-			strv_set(argv, 2, rootfile)
-		else:
-			strv_set(argv, 1, arch)
-			strv_set(argv, 2, c"check")
-			strv_set(argv, 3, rootfile)
+		# 'bin/wv2 [arch] check [--import-root <dir>]... <root>'
+		char** argv = deps_wv2_argv(root, c"check")
 		process_result* result = process_run(c"bin/wv2", argv, 0, 0, 120000)
 		free(cast(char*, argv))
 		stream_write_cstr(out, arch)
@@ -3025,7 +3031,7 @@ void wtest_why_cache_section(char* id, wstream* out):
 			string_free(v)
 		int valid = 0
 		if (expected != 0):
-			if (strcmp(deps_digest(e.blob), expected) == 0): valid = 1
+			if (strcmp(deps_entry_digest(e.id, e.blob), expected) == 0): valid = 1
 		if (valid):
 			stream_write_line(out, c"  status: valid -- rule (b) closure selection is live for this root")
 		else:
