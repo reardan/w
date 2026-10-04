@@ -1106,3 +1106,12 @@ record copies, receiver/argument side effects and invalid element types.
 Committed symbol replay preserves the streaming parser's lookup of an outer
 `it` variable, including unused-variable diagnostics. Implicit iteration
 expressions and callback methods remain separate work.
+
+## Task 49: void call results as arguments
+
+Void calls retain the return register in the existing compiler ABI. The AST
+argument predicate now permits that result wherever ordinary compatibility
+checks accept it, including the runtime's `exit(main(...))` entry point for
+void main functions. Direct, indirect and generic call fixtures produce
+identical images; original list-slice range-trap fixtures now compile with
+`--ast-required` on x86 and x64 as well.

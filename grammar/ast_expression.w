@@ -417,6 +417,9 @@ int ast_expression_record_value(int type):
 
 
 int ast_expression_data_value(int type):
+	# Void calls still carry the return register; legacy code may pass it
+	# onward (notably the runtime entry point for void main).
+	if (type == type_value(0)): return 1
 	return ast_expression_scalar_value(type) || ast_expression_record_value(type) || ((type_is_array(type) || type_is_slice(type)) && (type_is_gpu_object(type) == 0))
 
 
