@@ -1469,3 +1469,17 @@ and identical native images. A cross-target fixture adds qualified function
 values, named constructors, array allocation, sizeof, global mutation and
 an alias sharing its spelling with a local. Differential diagnostics retain
 wrong-module and wrong-kind errors, including failed enclosing probes.
+
+## Task 76: PTX expressions and device intrinsics
+
+The AST path now operates inside device bodies. Symbol probes validate
+kernel scope and capture eligibility, staging const scalar capture types
+without changing capture slots. Emission uses the device symbol resolver,
+so capture order, local addressing and subsequent PTX promotion are shared
+with streaming compilation.
+
+Device nodes cover thread/block indices, exp/log, shared arrays and
+barriers; atomic nodes retain int and float32 device operands. Required-mode
+compilation produces identical host images and PTX for the emitter battery,
+CUDA kernels and local-promotion regression. Differential tests cover
+invalid intrinsics, host-only references, capture writes and probe rollback.

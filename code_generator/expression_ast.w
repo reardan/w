@@ -93,10 +93,25 @@ void emit_expression_ast(expression_ast* tree, int id):
 		rt_call_end(s)
 		pop_to(base_stack)
 		return
+	if (op == ast_device_builtin):
+		int kind = tree.value[id]
+		if (kind <= 4): ptx_special_reg(kind)
+		else if (kind <= 6):
+			int child = tree.left[id]
+			emit_expression_ast(tree, child)
+			coerce(float32_type, promote(tree.result_type[child]))
+			if (kind == 5): ptx_gpu_exp()
+			else: ptx_gpu_log()
+		else if (kind == 7): ptx_shared_f32(tree.high[id])
+		else:
+			ptx_barrier()
+			mov_eax_int(0)
+		return
 	if (op == 'k'):
 		int argument = tree.left[id]
 		emit_expression_ast(tree, argument)
-		coerce(tree.symbol[id], promote(tree.result_type[argument]))
+		int pointer = promote(tree.result_type[argument])
+		if (target_isa != 3): coerce(tree.symbol[id], pointer)
 		push_slot()
 		argument = tree.next_arg[argument]
 		emit_expression_ast(tree, argument)
@@ -113,7 +128,10 @@ void emit_expression_ast(expression_ast* tree, int id):
 			alu_atomic_cas()
 		else:
 			pop_ebx_slot()
-			alu_atomic_add()
+			if (target_isa == 3):
+				if (tree.high[id] == float32_type): ptx_atomic_add_f32()
+				else: ptx_atomic_int(tree.value[id])
+			else: alu_atomic_add()
 		return
 	if (op == 'Q'):
 		int kind = tree.value[id]
@@ -591,7 +609,8 @@ void emit_expression_ast(expression_ast* tree, int id):
 		char* name = table + tree.value[id]
 		strcpy(last_identifier, name)
 		int sym = tree.symbol[id]
-		sym_emit_value(sym, name)
+		if (target_isa == 3): gpu_sym_get_value(name)
+		else: sym_emit_value(sym, name)
 		if (op == 'X'):
 			int s = stack_pos
 			push_slot()

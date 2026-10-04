@@ -22,6 +22,7 @@ const int ast_nd_index = 128
 const int ast_nd_store = 129
 const int ast_nd_read = 130
 const int ast_template_format = 131
+const int ast_device_builtin = 132
 
 
 struct expression_ast:
@@ -151,6 +152,38 @@ int ast_expression_pointer_type(expression_ast* tree, int base, int offset):
 	return result
 
 
+# Device captures make scalar lvalues const. Stage the wrapper at the
+# symbol token, just as the streaming device-symbol resolver does.
+int ast_expression_const_type(expression_ast* tree, int base, int offset):
+	int existing = type_lookup_const(base)
+	if (existing >= 0): return existing
+	base = type_canonical(base)
+	if ((type_num_args(base) > 0) || tree.pending_buffer_types || (tree.types_count == 16)): return -1
+	int length = strlen(type_get_name(base)) + 7
+	if (tree.type_names_used + length > 2048): return -1
+	int i = tree.types_count
+	type_rec* rec = &tree.pointer_types[i]
+	rec.name = &tree.type_names[tree.type_names_used]
+	strcpy(rec.name, c"const ")
+	strcpy(rec.name + 6, type_get_name(base))
+	tree.type_names_used = tree.type_names_used + length
+	rec.num_fields = 0
+	rec.total_size = type_get_size(base)
+	rec.pointer_level = type_get_pointer_level(base)
+	rec.alias_target = base
+	rec.kind = type_kind_const
+	rec.fn_return_type = -1
+	rec.fn_param_count = -1
+	rec.decl_file_index = -1
+	rec.decl_line = 0
+	rec.decl_column = 0
+	tree.pointer_offsets[i] = offset
+	tree.types_count = i + 1
+	int result = type_count()
+	type_records.push(cast(int, rec))
+	return result
+
+
 void ast_expression_restore_types(expression_ast* tree):
 	if (tree.types_count == 0): return
 	type_table_truncate(tree.types_base)
@@ -165,7 +198,8 @@ void ast_expression_commit_pointer(expression_ast* tree, int i):
 	type_rec* rec = &tree.pointer_types[i]
 	if (rec.kind == type_kind_function): return
 	int actual
-	if (rec.kind == type_kind_slice_value): actual = type_push_slice_value(rec.alias_target)
+	if (rec.kind == type_kind_const): actual = type_push_const(rec.alias_target)
+	else if (rec.kind == type_kind_slice_value): actual = type_push_slice_value(rec.alias_target)
 	else if (rec.kind == type_kind_slice): actual = type_push_slice(rec.alias_target)
 	else if (rec.kind == type_kind_map): actual = type_push_map(rec.alias_target, rec.fn_return_type)
 	else if (rec.kind == type_kind_set): actual = type_push_set(rec.alias_target)

@@ -1436,9 +1436,78 @@ int ast_expression_integer_intrinsic(expression_ast* tree, int kind, int depth):
 	return id
 
 
+# Device-only intrinsics retain their operands and static shared size.
+# Kinds 1..4 read indices, 5/6 are exp/log, 7/8 shared memory/barrier.
+int ast_expression_device_builtin(expression_ast* tree, int kind, int depth):
+	int id = expression_ast_add(tree, ast_device_builtin, -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = kind
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	if ((kind == 5) || (kind == 6)):
+		int child = ast_expression_assignment(tree, depth + 1)
+		if (child < 0): return -1
+		if (ast_expression_scalar_value(tree.result_type[child]) == 0): return -1
+		if (ast_expression_argument_compatible(tree, float32_type, child) == 0): return -1
+		tree.left[id] = child
+		tree.result_type[id] = float32_value_type
+	if (kind == 7):
+		int n = 0
+		int i = 0
+		if ((token[0] < '0') || (token[0] > '9')): return -1
+		while (token[i]):
+			if ((token[i] < '0') || (token[i] > '9')): return -1
+			n = n * 10 + token[i] - '0'
+			if (n > 12288): return -1
+			i = i + 1
+		if (n == 0): return -1
+		tree.high[id] = n
+		ast_expression_advance(tree)
+		int pointer = ast_expression_pointer_type(tree, float_type, token_start_offset)
+		if (pointer < 0): return -1
+		tree.result_type[id] = type_value(pointer)
+	if (kind == 8): tree.result_type[id] = type_value(type_lookup(c"int"))
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	return id
+
+
+int ast_expression_device_atomic(expression_ast* tree, int kind, int depth):
+	if (kind == 4): return -1
+	int id = expression_ast_add(tree, 'k', -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = kind
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int pointer = ast_expression_assignment(tree, depth + 1)
+	if (pointer < 0): return -1
+	int got = ast_expression_promoted_type(tree.result_type[pointer])
+	int t = type_unqualified(got)
+	if (type_get_pointer_level(t) != 1): return -1
+	int pointee = type_lookup_previous_pointer(t)
+	if (pointee < 0): return -1
+	pointee = type_unqualified(pointee)
+	int integer = type_lookup(c"int")
+	if ((pointee != integer) && (pointee != float32_type)): return -1
+	if ((pointee == float32_type) && (kind != 1)): return -1
+	tree.left[id] = pointer
+	tree.symbol[id] = got
+	tree.high[id] = pointee
+	tree.result_type[id] = type_value(integer)
+	if (pointee == float32_type): tree.result_type[id] = float32_value_type
+	if (ast_expression_accept(tree, c",") == 0): return -1
+	int value = ast_expression_assignment(tree, depth + 1)
+	if (value < 0): return -1
+	if (ast_expression_scalar_value(tree.result_type[value]) == 0): return -1
+	if (ast_expression_argument_compatible(tree, pointee, value) == 0): return -1
+	tree.next_arg[pointer] = value
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	return id
+
+
 # Host atomics retain operands in source order. Their pointer type is
 # registered after parsing the first operand, matching the streaming path.
 int ast_expression_atomic(expression_ast* tree, int kind, int depth):
+	if (target_isa == 3): return ast_expression_device_atomic(tree, kind, depth)
 	if ((target_isa != 0) || ((kind != 1) && (kind != 4))): return -1
 	int id = expression_ast_add(tree, 'k', -1, -1)
 	if (id < 0): return -1
@@ -1485,6 +1554,16 @@ int ast_expression_symbol(expression_ast* tree, int depth, int qualified):
 	if ((is_call == 0) && (ast_expression_storage_type(type) == 0)): return -1
 	int visibility = sym_decl_visibility(sym)
 	if ((visibility != 'D') && (visibility != 'U') && (visibility != 'L') && (visibility != 'A')): return -1
+	if (target_isa == 3):
+		if (is_call || (visibility == 'D') || (visibility == 'U')): return -1
+		if (sym < device_symbol_base):
+			if ((in_gpu_for_body == 0) || (type_stack_words(type) != 1)): return -1
+			int real = type_unqualified(type)
+			if (type_is_map(real) || type_is_set(real) || type_is_list(real) || type_is_string(real)): return -1
+			if ((type_get_pointer_level(real) == 0) && (real != bool_type) && (type_is_var(real) == 0)):
+				if (type_is_const(type) == 0):
+					type = ast_expression_const_type(tree, real, token_start_offset)
+					if (type < 0): return -1
 	int id = expression_ast_add(tree, 'v', -1, -1)
 	if (id < 0): return -1
 	tree.qualified[id] = qualified
@@ -1522,6 +1601,13 @@ int ast_expression_name(expression_ast* tree, int depth):
 			if (import_path_matches_file(import_alias_path(alias), debug_file_name(source)) == 0): return -1
 			return ast_expression_symbol(tree, depth, 1)
 	if ((nextc == '(') && (sym_probe(token) < 0)):
+		if (target_isa == 3):
+			int device = gpu_builtin_kind()
+			if (device): return ast_expression_device_builtin(tree, device, depth)
+			device = gpu_math_builtin_kind()
+			if (device): return ast_expression_device_builtin(tree, device + 4, depth)
+			device = gpu_shared_builtin_kind()
+			if (device): return ast_expression_device_builtin(tree, device + 6, depth)
 		if (peek(c"to_proto")): return ast_expression_protobuf(tree, 2, depth)
 		if (peek(c"from_proto")): return ast_expression_protobuf(tree, 3, depth)
 		if (peek(c"proto_descriptor")): return ast_expression_protobuf(tree, 5, depth)
@@ -2758,7 +2844,6 @@ int ast_expression_parallel(expression_ast* tree, int first):
 # (possibly an lvalue or a negative value type), or -1 for fallback.
 int ast_expression_try_at(int group_offset, int whole):
 	if (ast_expressions_mode == 0): return -1
-	if (target_isa == 3): return -1
 	# Keep the streaming parser's pending lvalue/call/statement machinery
 	# out of this first island. Expanding that boundary needs its own
 	# semantic nodes and tests, rather than discarding parser state.
