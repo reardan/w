@@ -1579,3 +1579,16 @@ A nested list-of-strings regression and the stdin-driven transpose example
 compile with required AST expressions, matching native images and runtime
 output on x86 and x64. The existing list-expression diagnostic and binding
 checks remain covered.
+
+## Task 84: boolean-condition warning events
+
+Boolean bitwise hints now use committed AST events at the same evaluation
+point as streaming parsing, retaining the operator's own line, column and
+spelling. Both the default call-free hint and the `--bool-ops` superset
+preserve diagnostic ordering and strict-mode behavior.
+
+Purity analysis also accounts for implicit calls from string comparisons
+and conversions, bounds traps, constructors, container literals and slices.
+Tests compare normal/strict, plain/JSON diagnostics on both host widths,
+including warning chains, later literal warnings, failed probes and implicit
+calls which suppress the default hint.

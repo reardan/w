@@ -608,6 +608,13 @@ void ast_expression_replay_warning(expression_ast* tree, int id):
 		diag_part(itoa(tree.left[id]))
 		diag_part(c" arguments, got ")
 		warning(itoa(tree.right[id]))
+	else if (tree.high[id] == 3):
+		char* message = c"warning: bitwise '&' on bool operands in a condition does not short-circuit; did you mean '&&'?"
+		char* spelling = c"&"
+		if (tree.left[id] == '|'):
+			message = c"warning: bitwise '|' on bool operands in a condition does not short-circuit; did you mean '||'?"
+			spelling = c"|"
+		warn_bool_bitwise_at(message, tree.symbol[id], tree.right[id], tree.generic_arity[id], spelling)
 	else: warn_type_mismatch(cast(char*, tree.value[id]), tree.left[id], tree.right[id])
 
 
@@ -2847,14 +2854,31 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 	return -1
 
 
+int ast_expression_coercion_calls(int want, int got):
+	if (type_is_string(want) && type_is_char_pointer(got)): return 1
+	return ast_expression_var_coercion_calls(want, got)
+
+
 # A definite call is enough to suppress the default bool-bitwise hint.
-# Unknown implicit calls stay conservative; --bool-ops always uses the
-# streaming diagnostic path. Count emitted calls, not runtime reachability,
+# Unknown implicit calls stay conservative. Count emitted calls, not
+# runtime reachability,
 # just as operand_is_pure does for a short-circuited operand.
 int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
 		int op = tree.op[i]
 		if (op == ast_list_it): return 1
+		if ((op == 'O') || (op == 'Z')): return 1
+		if ((op == 'I') && bounds_mode): return 1
+		if ((op == 0x94) || (op == 0x95)):
+			if (type_is_string(type_unqualified(tree.result_type[tree.left[i]])) && type_is_string(type_unqualified(tree.result_type[tree.right[i]]))): return 1
+		if (op == 'D'):
+			if (tree.high[i]): return 1
+			int entry = tree.left[i]
+			while (entry >= 0):
+				int want = type_get_field_type_at(tree.value[i], tree.value[entry])
+				int got = ast_expression_promoted_type(tree.result_type[tree.left[entry]])
+				if (ast_expression_coercion_calls(want, got)): return 1
+				entry = tree.next_arg[entry]
 		if ((op == ast_propagate) && (for_cleanup_count() > 0)): return 1
 		if ((op == ast_propagate) && (defer_count() > 0)): return -1
 		if ((op == ast_nd_index) || (op == ast_nd_store) || (op == ast_nd_read)): return 1
@@ -2862,11 +2886,11 @@ int ast_expression_has_call(expression_ast* tree, int first, int end):
 		if ((op == '+') || (op == '-') || (op == '*') || (op == '/') || (op >= 0x90)):
 			if (var_binary_operands(tree.result_type[tree.left[i]], tree.result_type[tree.right[i]])): return 1
 		if (op == 'K'):
-			if (ast_expression_var_coercion_calls(tree.value[i], ast_expression_promoted_type(tree.result_type[tree.left[i]]))): return 1
+			if (ast_expression_coercion_calls(tree.value[i], ast_expression_promoted_type(tree.result_type[tree.left[i]]))): return 1
 		if (op == '='):
-			if (ast_expression_var_coercion_calls(tree.result_type[tree.left[i]], ast_expression_promoted_type(tree.result_type[tree.right[i]]))): return 1
+			if (ast_expression_coercion_calls(tree.result_type[tree.left[i]], ast_expression_promoted_type(tree.result_type[tree.right[i]]))): return 1
 		if (op == '?'):
-			if (ast_expression_var_coercion_calls(ast_expression_promoted_type(tree.result_type[tree.right[i]]), ast_expression_promoted_type(tree.result_type[tree.high[i]]))): return 1
+			if (ast_expression_coercion_calls(ast_expression_promoted_type(tree.result_type[tree.right[i]]), ast_expression_promoted_type(tree.result_type[tree.high[i]]))): return 1
 		if ((op == 'x') && (tree.value[i] != 5)): return 1
 		if ((tree.op[i] == 'l') || (tree.op[i] == 'z') || (tree.op[i] == 'G') || (tree.op[i] == 'W') || (tree.op[i] == 'X') || (tree.op[i] == 'Y') || (tree.op[i] == 'J') || (tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H') || (tree.op[i] == 'E')): return 1
 	return 0
@@ -2888,7 +2912,11 @@ int ast_expression_bitwise(expression_ast* tree, int depth, int level):
 	if (left < 0): return -1
 	int chain_is_bool = operand_is_bool_condition(tree.result_type[left])
 	int chain_has_call = ast_expression_has_call(tree, first_node, tree.count)
-	while ((left >= 0) && ast_expression_accept(tree, spelling)):
+	while ((left >= 0) && (token_start_offset < tree.end_offset) && peek(spelling)):
+		int op_line = line_number
+		int op_diag_line = diag_token_line
+		int op_column = diag_token_column
+		ast_expression_advance(tree)
 		int right_first = tree.count
 		int right
 		if (level): right = ast_expression_bitwise(tree, depth, level - 1)
@@ -2901,8 +2929,13 @@ int ast_expression_bitwise(expression_ast* tree, int depth, int level):
 		int right_is_bool = operand_is_bool_condition(rt)
 		int right_has_call = ast_expression_has_call(tree, right_first, tree.count)
 		if (condition_context && (op != '^') && chain_is_bool && right_is_bool):
-			if ((chain_has_call < 0) || (right_has_call < 0)): return -1
-			if (check_bool_ops_mode || ((chain_has_call || right_has_call) == 0)): return -1
+			if ((check_bool_ops_mode == 0) && ((chain_has_call < 0) || (right_has_call < 0))): return -1
+			if (check_bool_ops_mode || ((chain_has_call || right_has_call) == 0)):
+				int event = expression_ast_add(tree, ast_warning, op, op_diag_line)
+				if (event < 0): return -1
+				tree.high[event] = 3
+				tree.symbol[event] = op_line
+				tree.generic_arity[event] = op_column
 		chain_is_bool = chain_is_bool && right_is_bool
 		chain_has_call = chain_has_call || right_has_call
 		left = expression_ast_add(tree, op, left, right)
