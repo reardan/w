@@ -1,9 +1,46 @@
-# Locate a complete quoted token without running the lexer. Quotes and
-# escapes may contain operator characters; raw newlines still fall back.
-# f-strings are deliberately excluded because their lexer has semantic
-# chunk boundaries and can diagnose a stray brace while tokenizing.
-int ast_expression_quoted_end(char* bytes, int start, int limit):
-	if ((bytes[start] == '"') && (start > 0) && (bytes[start - 1] == 'f')): return -1
+int ast_expression_quoted_end_nested(char* bytes, int start, int limit, int depth);
+
+
+# Preflight all literal chunks and embedded expressions before entering
+# the template tokenizer, whose malformed-brace errors must not escape a
+# speculative parse. Formatting specs are left to the streaming path.
+int ast_expression_template_end(char* bytes, int start, int limit, int depth):
+	if (depth > 96): return -1
+	int i = start + 1
+	int braces = 0
+	while (i < limit):
+		int ch = bytes[i] & 255
+		if (ch == 10): return -1
+		if (braces):
+			if ((ch == 34) || (ch == 39)):
+				int end = ast_expression_quoted_end_nested(bytes, i, limit, depth + 1)
+				if (end < 0): return end
+				i = end + 1
+				continue
+			if ((ch == '#') || (ch == ':')): return -1
+			if ((ch == '/') && (i + 1 < limit) && (bytes[i + 1] == '*')): return -1
+			if (ch == '{'): braces = braces + 1
+			if (ch == '}'): braces = braces - 1
+		else:
+			if (ch == 34): return i
+			if (ch == 92):
+				i = i + 1
+				if (i >= limit): return -2
+				if (bytes[i] == 10): return -1
+			else if ((ch == '{') || (ch == '}')):
+				if (i + 1 >= limit): return -2
+				if (bytes[i + 1] == ch): i = i + 1
+				else if (ch == '{'): braces = 1
+				else: return -1
+		i = i + 1
+	return -2
+
+
+# Return a closing quote without decoding escapes or changing lexer state.
+int ast_expression_quoted_end_nested(char* bytes, int start, int limit, int depth):
+	if (depth > 96): return -1
+	if ((bytes[start] == 34) && (start > 0) && (bytes[start - 1] == 'f')):
+		return ast_expression_template_end(bytes, start, limit, depth + 1)
 	int quote = bytes[start]
 	int i = start + 1
 	while (i < limit):
@@ -15,6 +52,10 @@ int ast_expression_quoted_end(char* bytes, int start, int limit):
 			if (bytes[i] == 10): return -1
 		i = i + 1
 	return -2
+
+
+int ast_expression_quoted_end(char* bytes, int start, int limit):
+	return ast_expression_quoted_end_nested(bytes, start, limit, 0)
 
 
 # Return the byte after a closed block comment. Expression preflight and
@@ -702,7 +743,40 @@ int ast_expression_unary(expression_ast* tree, int depth):
 	return ast_expression_postfix(tree, depth)
 
 
+# A template owns a sibling chain of raw chunks and value expressions.
+# Resumed chunks retain the closing brace's source offset; replay uses
+# that event to resume the template tokenizer at exactly the same byte.
+int ast_expression_template(expression_ast* tree, int depth):
+	int root = expression_ast_add(tree, 'E', -1, -1)
+	if (root < 0): return -1
+	tree.result_type[root] = string_literal_type
+	int previous = -1
+	int start = 2
+	while (1):
+		if (token_i == 0): return -1
+		int final = token[token_i - 1] == 34
+		if ((final == 0) && (token[token_i - 1] != '{')): return -1
+		int chunk = expression_ast_add(tree, 't', -1, -1)
+		if (chunk < 0): return -1
+		tree.value[chunk] = start
+		tree.high[chunk] = start == 0
+		if (previous < 0): tree.left[root] = chunk
+		else: tree.next_arg[previous] = chunk
+		ast_expression_advance(tree)
+		if (final): return root
+		int value = ast_expression_assignment(tree, depth + 1)
+		if ((value < 0) || (peek(c"}") == 0)): return -1
+		int vc = value_class(ast_expression_promoted_type(tree.result_type[value]))
+		if ((vc != VC_INT) && (vc != VC_CSTR) && (vc != VC_STRING) && (vc != VC_CHAR) && (vc != VC_F32) && (vc != VC_F64)): return -1
+		tree.next_arg[chunk] = value
+		previous = value
+		get_token_template_chunk()
+		start = 0
+	return -1
+
+
 int ast_expression_atom(expression_ast* tree, int depth):
+	if ((token[0] == 'f') && (token[1] == 34)): return ast_expression_template(tree, depth)
 	if (ast_expression_accept(tree, c"(")):
 		int child = ast_expression_assignment(tree, depth + 1)
 		if ((child < 0) || (peek(c")") == 0)): return -1
@@ -1078,7 +1152,7 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 # just as operand_is_pure does for a short-circuited operand.
 int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
-		if ((tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H')): return 1
+		if ((tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H') || (tree.op[i] == 'E')): return 1
 	return 0
 
 
@@ -1332,6 +1406,18 @@ int ast_expression_try_at(int group_offset, int whole):
 		for i in range(tree.types_count):
 			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(&tree, i)
 		for id in range(tree.count):
+			if ((tree.op[id] == 't') && (tree.offset[id] == token_start_offset)):
+				if (tree.high[id]): get_token_template_chunk()
+				int length = template_process_chunk(tree.value[id])
+				if (length):
+					validate_utf8_literal(length)
+					token[length] = 0
+				assert1(tree.text_used + length + 1 <= 4096)
+				for j in range(length): tree.text[tree.text_used + j] = token[j]
+				tree.text[tree.text_used + length] = 0
+				tree.value[id] = tree.text_used
+				tree.high[id] = length
+				tree.text_used = tree.text_used + length + 1
 			if ((tree.op[id] == 0) && (tree.offset[id] == token_start_offset)):
 				int outer_cast = cast_context
 				cast_context = tree.in_cast[id]

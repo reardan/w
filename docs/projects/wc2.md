@@ -932,3 +932,21 @@ copies, fields and by-value calls.
 Tests cover default evaluation order, record and string defaults, removal
 results, cleanup, required-mode compilation and invalid-argument diagnostic
 parity. Map accumulation and collection snapshots remain separate work.
+
+## Task 37: interpolated string expressions
+
+AST template nodes retain a chain of literal chunks and embedded values.
+Preflight validates chunk/brace boundaries without changing lexer state;
+committed replay resumes the template tokenizer and decodes each chunk at
+its original source event. Emission reuses the existing builder, append
+and finish helpers, including lazy formatter imports. Results preserve
+the string-literal pseudo-type so `char*` arguments, stores and returns
+decay to the data pointer.
+
+The image matrix covers empty and plain templates, adjacent values,
+evaluation order, nested templates and quoted literals, escaped braces,
+embedded NUL, Unicode, scalar values, floats and metadata access. A
+required-mode fixture verifies coverage. Explicit format specifications,
+comments/newlines inside interpolation, and unsupported value classes
+remain on the streaming path. A buffer slice now exercises required-mode
+rejection instead of a supported simple template.

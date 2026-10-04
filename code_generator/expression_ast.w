@@ -21,6 +21,35 @@ void emit_ast_map_call(char* helper, int map_slot, int key_slot, int value_slot)
 # peepholes, target word size and runtime division behavior still apply.
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
+	if (op == 'E'):
+		int base_stack = stack_pos
+		template_emit_helper_address(0)
+		int s = stack_pos
+		push_slot()
+		rt_call_end(s)
+		int builder_slot = push_slot()
+		int part = tree.left[id]
+		while (part >= 0):
+			if (tree.op[part] == 't'):
+				if (tree.high[part] > 0):
+					char* saved_token = token
+					token = &tree.text[0]
+					token = token + tree.value[part]
+					template_emit_chunk_append(tree.high[part], builder_slot)
+					token = saved_token
+			else:
+				emit_expression_ast(tree, part)
+				int got = promote(tree.result_type[part])
+				template_spec_present = 0
+				template_emit_value_append(got, builder_slot)
+			part = tree.next_arg[part]
+		template_emit_helper_address(5)
+		s = stack_pos
+		push_slot()
+		push_slot_copy(builder_slot)
+		rt_call_end(s)
+		pop_to(base_stack)
+		return
 	if (op == 'A'):
 		expression_is_assignment = 1
 		int[128] lhs_slots
