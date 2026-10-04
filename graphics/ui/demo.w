@@ -79,6 +79,9 @@ int main(int argc, int argv):
 	# default screen are capturable without clicking — the same reason
 	# --dialog exists for the modal.
 	int menu = args_has_flag(c"menu")
+	# --menubar opens the shell's View menu with its Theme submenu, for
+	# the same reason.
+	int menubar = args_has_flag(c"menubar")
 	int theme_choice = 0
 	char* theme_value = args_value(c"theme")
 	if (theme_value != 0):
@@ -100,8 +103,8 @@ int main(int argc, int argv):
 	ui_shell_state shell_state
 	ui_shell_init(&shell_state)
 	if (shell):
-		if (theme_choice == 0): ui_theme_light(&shell_state.theme)
-		else if (theme_choice == 2): ui_theme_ocean(&shell_state.theme)
+		# The View > Theme radio group starts on the same choice.
+		ui_shell_set_theme(&shell_state, theme_choice)
 		# The shell opens with one document already up, so the editor
 		# pane is not empty in a screenshot.
 		ui_shell_open_doc(&shell_state, 0)
@@ -110,6 +113,7 @@ int main(int argc, int argv):
 			# Started from the same clock the loop feeds ui_shell_body,
 			# or it would already have expired by the first frame.
 			ui_toast_show(&shell_state.toast, c"Collapsed every folder", time_monotonic_ms(), 1000000)
+		if (menubar): ui_shell_pin_menubar(&shell_state)
 	ui_demo_state state
 	ui_demo_init(&state)
 	# Same single source of truth the checkbox and dropdown drive.

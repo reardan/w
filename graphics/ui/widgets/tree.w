@@ -149,7 +149,7 @@ void ui_tree_begin(ui_context* ctx, ui_rect area, ui_tree_state* st):
 			ctx.focus = id
 		else if (ctx.focus == id): ctx.focus = 0
 
-	if ((ctx.focus == id) && (ctx.disabled == 0)):
+	if ((ctx.focus == id) && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)):
 		int i = 0
 		while (i < ctx.char_count):
 			# Return arrives as a CHAR, not a NAV — there is no

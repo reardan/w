@@ -35,6 +35,11 @@ reproducible via `graphics/ui/demo.w --shell [--menu]`).
 Chips, Email, Dropdown multi-select and search, and the date/time
 family. Every item in §2's table now ships.
 
+**Round 5 is menus** (§12, 2026-10-04): a menu bar, nested submenus,
+check and radio items, keyboard navigation, mnemonics and shortcuts,
+on top of the round-2 context menu (`docs/images/ui_demo_shell_menubar.png`,
+reproducible via `graphics/ui/demo.w --shell --menubar`).
+
 ## 0. The finding, up front
 
 Almost none of the eighteen items in the issue are blocked on widget
@@ -825,3 +830,56 @@ opening a picker never shifts the ids — and focus — of what follows.
 
 Still open, and not in the issue's list: keyboard navigation inside
 the two new dropdowns, and scrolling for long option lists.
+
+## 12. Round 5: menus
+
+Implemented 2026-10-04. Round 2's context menu (§9) was one flat list
+with a mouse-only interface. An editor needs the rest of what a
+desktop menu does, so this round adds it: `menubar.w` (new) and
+`menu.w` (extended, API-compatible). Usage is in both headers; the
+editor shell demo now has a File/Edit/View/Help bar exercising all of
+it, including a View > Theme radio submenu that restyles the shell.
+
+- **One popup per chain, not per level.** A submenu and its parent
+  both take input — the pointer moves back from the submenu to the
+  parent — so the whole chain registers one popup id. One id per level
+  would make each parent inert the moment its child opened.
+- **Each level draws in its own bracket.** The clip stack intersects,
+  and a submenu sits beside its parent, so `ui_menu_begin_sub` leaves
+  the parent's popup bracket and `ui_menu_end_sub` re-enters it.
+  Submenus open right of their parent, flipping left at the viewport
+  edge, so levels do not overlap (they would paint in walk order).
+- **Previous-frame measurement**, as before, now per level: width
+  (labels, shortcut text, chevrons), height, and the bitmask of
+  selectable items the keyboard steps through (first 32 per level).
+- **Ids are reserved, not counted.** A chain takes a fixed block of
+  `ui_menu_id_block` ids every frame, open or closed, and the bar
+  reserves its titles' ids too. Before this, opening the context menu
+  changed how many ids it took, which would shift every later widget's
+  id and cost a focused field its focus (the §9.1 scroll bug again).
+- **Shortcuts are CHAR events plus modifier bits.** The native
+  backends dropped Ctrl+letter entirely (X11 and Win32 deliver it as a
+  control code, Cocoa took Command chords before W saw them). X11,
+  Win32 and Cocoa now forward control codes 1..26 with the Ctrl bit,
+  and Cocoa also queues a Command chord's letter with the Super bit;
+  the web host already sent the letter with the Ctrl bit.
+  `ui_shortcut_matches` accepts both forms. To keep Ctrl+S from typing
+  an `s` (which the web host already did), text fields skip CHARs with
+  Ctrl or Super held unless Alt is too (AltGr is Ctrl+Alt on Windows):
+  `ui_char_is_typing`. The Cocoa change is compile-checked here, not
+  run.
+- **Closed bar menus are walked for shortcuts.** `ui_menubar_menu`
+  returns 1 on a frame whose input holds a chord candidate, and items
+  then match their chord without drawing. So a shortcut is declared
+  once, on its item, and works with the menu closed. Context menus are
+  not walked closed; their shortcuts work only while open.
+- **An open menu owns the keyboard.** It drains the frame's keys, and
+  textbox, textarea and tree no longer take keys while a popup above
+  them is open (they keep their focus). That fixes typing into the
+  editor behind an open context menu.
+
+Not done: an access-key mode where a lone Alt or F10 focuses the bar
+(neither arrives as an event), a hover delay before a submenu opens
+(the widget layer has no clock, §9.3), scrolling for menus taller than
+the window, and Mac-style rendering of shortcut labels (they read
+"Super+S", not "⌘S").

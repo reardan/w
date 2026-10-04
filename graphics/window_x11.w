@@ -140,7 +140,10 @@ void gfx_window_handle_event(gfx_window* win, x_event* event):
 		if (XLookupString(event, &text[0], 4, &keysym, 0) == 1):
 			int ch = text[0] & 255
 			# Latin-1 keysyms come back as their codepoint byte.
-			if (((ch >= 32) && (ch <= 126)) || (ch >= 160) || (ch == 8) || (ch == 9) || (ch == 13) || (ch == 27)):
+			# Ctrl+letter comes back as its control code (Ctrl+S is 19),
+			# forwarded for shortcuts (graphics.event).
+			int ctrl_code = (ch >= 1) && (ch <= 26) && ((mods & GFX_MOD_CTRL) != 0)
+			if (((ch >= 32) && (ch <= 126)) || (ch >= 160) || (ch == 8) || (ch == 9) || (ch == 13) || (ch == 27) || ctrl_code):
 				gfx_event_ring_push(&win.event_ring[0], &win.event_head, &win.event_tail, GFX_EVENT_CHAR, ch, event.input.x, event.input.y, mods)
 		# Navigation keysyms have no character; translate the portable
 		# set (XK_Home 0xff50, XK_Left 0xff51, XK_Up 0xff52,

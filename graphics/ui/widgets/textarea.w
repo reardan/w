@@ -247,11 +247,12 @@ int ui_textarea(ui_context* ctx, ui_rect area, ui_textarea_state* st):
 		else if (ctx.focus == id): ctx.focus = 0
 
 	int changed = 0
-	if ((ctx.focus == id) && (ctx.disabled == 0)):
+	# Behind an open popup the keys are the popup's (see ui_textbox).
+	if ((ctx.focus == id) && (ctx.disabled == 0) && (ui_scope_blocked(ctx) == 0)):
 		int i = 0
 		while (i < ctx.char_count):
 			int ch = ctx.chars[i]
-			if (ui_utf8_is_text(ch)):
+			if (ui_utf8_is_text(ch) && ui_char_is_typing(ctx.char_mods[i])):
 				ui_textarea_type(st, ch)
 				changed = 1
 			else if (ch == 9):
