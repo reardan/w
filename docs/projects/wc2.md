@@ -1156,3 +1156,15 @@ new list types after the closing call. Explicit type syntax continues checking
 element storage rules, while implicit snapshots follow the existing result
 type interning behavior. Tests cover scalar and record copies, narrow keys,
 string keys, floating-point/default updates and diagnostic parity.
+
+## Task 53: generator call expressions
+
+Direct generator calls now retain their callee and ordered arguments in a
+dedicated AST node. Emission creates the runtime generator object using the
+existing argument-copy layout, leaving execution of the body to gen_next.
+Defaults, coercions and call-result metadata preserve the streaming ABI.
+
+Required-mode and differential fixtures cover argument side effects, default
+parameters, float coercion, empty generators and nested generators. Invalid
+arity and record arguments retain their existing diagnostics. Generator
+declarations and yield statements still use the statement parser.

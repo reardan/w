@@ -347,11 +347,38 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (word_size == 8): mov_rax_int64_halves(tree.value[id], tree.high[id])
 		else: mov_eax_int32(tree.value[id])
 		return
-	if ((op == 'v') || (op == 'C')):
+	if ((op == 'v') || (op == 'C') || (op == 'X')):
 		char* name = table + tree.value[id]
 		strcpy(last_identifier, name)
 		int sym = tree.symbol[id]
 		sym_emit_value(sym, name)
+		if (op == 'X'):
+			int s = stack_pos
+			push_slot()
+			int arg = tree.left[id]
+			int count = 0
+			while (arg >= 0):
+				emit_expression_ast(tree, arg)
+				int got = promote(tree.result_type[arg])
+				int want = sym_param_type(sym, count)
+				if (want >= 0): coerce_call_argument(want, got)
+				push_slot()
+				count = count + 1
+				arg = tree.next_arg[arg]
+			sym_get_value(c"__w_gen_create")
+			push_slot()
+			mov_eax_esp_plus((count + 1) << word_size_log2)
+			push_slot()
+			lea_eax_esp_plus(2 << word_size_log2)
+			push_slot()
+			mov_eax_int(count)
+			push_slot()
+			mov_eax_esp_plus(3 << word_size_log2)
+			call_eax()
+			pop_to(s)
+			last_call_return_type = tree.high[id]
+			last_call_end = codepos
+			return
 		if (op == 'C'):
 			int declared_return = load_int(table + sym + 6)
 			if (declared_return == 4): declared_return = -1

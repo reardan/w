@@ -457,10 +457,16 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	int sym = tree.symbol[id]
 	int arity = sym_num_args(sym)
 	if ((sym_variadic_fixed_args(sym) >= 0) || (sym_w_variadic_fixed_args(sym) >= 0)): return -1
-	if (sym_is_generator(sym) || sym_is_kernel(sym)): return -1
+	int generator = sym_is_generator(sym)
+	if (sym_is_kernel(sym)): return -1
 	int result = load_int(table + sym + 6)
 	if ((result != 0) && (result != 4) && (ast_expression_data_value(result) == 0)): return -1
 	if (ast_expression_accept(tree, c"(") == 0): return -1
+	if (generator):
+		int base = type_lookup(c"generator")
+		if ((base < 0) || (sym_probe(c"__w_gen_create") < 0)): return -1
+		result = ast_expression_pointer_type(tree, base, token_start_offset)
+		if (result < 0): return -1
 	int count = 0
 	int previous = -1
 	while (peek(c")") == 0):
@@ -472,6 +478,7 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
 		if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
 		int got = ast_expression_promoted_type(tree.result_type[arg])
+		if (generator && (type_num_args(type_real(got)) > 0)): return -1
 		if ((param >= 0) && type_is_string(param) && type_is_char_pointer(got)):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
 		# Let the streaming parser issue argument diagnostics at its exact
@@ -502,6 +509,8 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 
 	ast_expression_advance(tree)
 	tree.op[id] = 'C'
+	if (generator): tree.op[id] = 'X'
+	tree.high[id] = result
 	tree.result_type[id] = type_value(result)
 	if (result == 4): tree.result_type[id] = 3
 	return id
@@ -1918,7 +1927,7 @@ int ast_expression_try_at(int group_offset, int whole):
 					tree.value[id] = float64_literal_lo
 					tree.high[id] = float64_literal_hi
 				else: tree.value[id] = float32_bits_from_token()
-			if (((tree.op[id] == 'v') || (tree.op[id] == 'C')) && (tree.offset[id] == token_start_offset)):
+			if (((tree.op[id] == 'v') || (tree.op[id] == 'C') || (tree.op[id] == 'X')) && (tree.offset[id] == token_start_offset)):
 				import_warn_unqualified(token)
 				import_warn_transitive(token)
 				strcpy(last_identifier, token)
