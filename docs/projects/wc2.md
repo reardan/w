@@ -1539,3 +1539,16 @@ payloads, inline conditions, ternaries and cleanup ordering. The result,
 generator-cleanup and feature-combination suites produce identical native
 images. Differential diagnostics retain invalid operand/return types and
 boolean side-effect checks.
+
+## Task 81: multiline root boundaries and comment lookahead
+
+A trailing infix operator now keeps an unparenthesized expression open
+across a newline or line comment. Statement postfix increments still end
+at their newline. Boundary lookahead can extend the input window past long
+comments; refills stop once retained input reaches 64 KiB, independently
+of the existing 8 KiB expression limit.
+
+Required-mode checks cover the shell-command suite and clean-warning
+fixture. A focused fixture exercises continued arithmetic, bitwise
+expressions and postfix statements; a generated 18 KiB comment tests buffer
+extension and subsequent tokenization. Native images match on x86 and x64.

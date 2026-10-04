@@ -277,7 +277,19 @@ int ast_expression_root_end(int eof, int statement):
 			if ((ch == ')') || (ch == ']') || ((ch == ',') && (statement == 0)) || (ch == ';') || (ch == '}') || ((ch == '{') && (significant != ']'))):
 				return window_start + index + i
 			if ((ch == '#') || (ch == 10)):
-				int boundary = ast_expression_line_boundary(bytes, index + i, getchar_limit[file], eof)
+				# An infix operator still needs its right operand, even
+				# when that operand begins on the following line.
+				int can_end = 1
+				char* unfinished = c"+-*/%&|^!=<>.,:"
+				for j in range(15):
+					if (significant == unfinished[j]): can_end = 0
+				# Statement-only postfix ++/-- are complete expressions.
+				if (statement && ((significant == '+') || (significant == '-'))):
+					int last = index + i - 1
+					while ((last >= index) && ((bytes[last] == ' ') || (bytes[last] == 9))): last = last - 1
+					if ((last > index) && (bytes[last] == significant) && (bytes[last - 1] == significant)): can_end = 1
+				int boundary = 0
+				if (can_end): boundary = ast_expression_line_boundary(bytes, index + i, getchar_limit[file], eof)
 				if (boundary == -2): return -2
 				if (boundary):
 					return window_start + index + i
@@ -346,12 +358,23 @@ int ast_expression_refill(int start):
 	int index = start - (getchar_kernel_pos[file] - getchar_limit[file])
 	if ((index < 0) || (index > getchar_pos[file])): return -1
 	int kept = getchar_limit[file] - index
-	if ((kept < 0) || (kept >= GETCHAR_BUF_CAPACITY)): return -1
+	# The expression remains limited to 8 KiB, but deciding whether a
+	# newline ends it can require looking past a long following comment.
+	if ((kept < 0) || (kept >= 65536)): return -1
 	char* bytes = cast(char*, getchar_buf_addr[file])
-	for i in range(kept): bytes[i] = bytes[index + i]
+	int room = GETCHAR_BUF_CAPACITY - kept
+	if (room <= 0):
+		char* old = bytes
+		bytes = malloc(kept + GETCHAR_BUF_CAPACITY)
+		for i in range(kept): bytes[i] = old[index + i]
+		getchar_buf_addr[file] = cast(int, bytes)
+		free(old)
+		room = GETCHAR_BUF_CAPACITY
+	else:
+		for i in range(kept): bytes[i] = bytes[index + i]
 	getchar_pos[file] = getchar_pos[file] - index
 	getchar_limit[file] = kept
-	int count = read(file, bytes + kept, GETCHAR_BUF_CAPACITY - kept)
+	int count = read(file, bytes + kept, room)
 	if (count <= 0): return count
 	getchar_limit[file] = kept + count
 	getchar_kernel_pos[file] = getchar_kernel_pos[file] + count
