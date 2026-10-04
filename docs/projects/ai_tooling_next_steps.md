@@ -17,6 +17,13 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **Missing implicit string-coercion helper (2026-10-03).** A standalone
+  `list[string]` consumer pushing a C string without importing `lib.lib`
+  fails with `Cannot find symbol: ')'`: coercion needs `str_from_cstr`,
+  but the diagnostic names the current closing token. Name the missing
+  helper and its supplying import, or load that helper lazily. Observed
+  in the streaming baseline while adding AST list-method coverage.
+
 - **Checks can race a compiler rebuild (2026-10-03).** A concurrent
   `bin/wv2 check` or `wtest` dependency query keeps `bin/wv2` open, so
   `wbuild` rebuilding it in place fails with `ETXTBSY`. This surfaced

@@ -261,8 +261,8 @@ void test_ast_full_expression_coverage_gate():
 	assert_equal(0, required.status)
 	process_result_free(required)
 	# The implicit runtime now fits the AST subset. An explicit unsupported
-	# container allocation still proves that required mode cannot fall back.
-	assert1(file_write_text(path, c"int main():\n\tmap[int, int] values = new map[int, int]\n\treturn values.length\n"))
+	# interpolated string still proves that required mode cannot fall back.
+	assert1(file_write_text(path, c"int main():\n\tstring text = f\"{1}\"\n\treturn text.length\n"))
 	args = strv_new(5)
 	strv_set(args, 0, c"bin/wv2")
 	strv_set(args, 1, c"check")

@@ -808,3 +808,19 @@ Untyped word-address dereference now uses the legacy word-sized lvalue
 default, complementing byte-wide untyped indexing. Tests cover container
 identity calls, metadata reads, data-pointer indexing, raw dereference,
 payload stores and exact read-only diagnostics for nested lvalues.
+
+## Task 28: existing container types and basic list operations
+
+The AST type reader resolves already-registered nested map/set/list types
+in casts, sizes and bare container allocations. Allocations reuse the
+normal runtime helpers. First-use composite type registration and map
+default constructors still decline. Basic list push, scalar pop, insert,
+remove, clear and free operations have explicit nodes; record pushes and
+inserts select the byte-copy helpers after validating the argument type.
+
+Tests cover allocation, nested container types, struct element copies,
+argument order, C-string conversion, scalar pops, mutation and cleanup,
+as well as normal/lint diagnostic parity. Brace blocks now terminate whole
+expression preflight, with container-literal keywords protected from being
+mistaken for ordinary indexed names. The required-mode rejection fixture
+now uses an unsupported interpolated string.

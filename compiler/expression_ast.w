@@ -45,6 +45,20 @@ int ast_audit_mode
 int ast_required_mode
 
 
+# Basic list methods share the streaming cm_call lowering. Bit 7 chooses
+# the aggregate-copy helper after the argument's type is known.
+char* ast_expression_list_helper(int method):
+	if (method == 129): return c"__w_list_push_bytes"
+	if (method == 131): return c"__w_list_insert_bytes"
+	if (method == 1): return c"__w_list_push"
+	if (method == 2): return c"__w_list_pop"
+	if (method == 3): return c"__w_list_insert"
+	if (method == 4): return c"__w_list_remove"
+	if (method == 5): return c"__w_list_clear"
+	if (method == 6): return c"__w_list_free"
+	return 0
+
+
 # Speculative pointer records borrow their names and live in the arena.
 # They have no fields or parameter arrays, so their nested descriptors
 # are never accessed. Remove every temporary table entry before any
