@@ -1289,3 +1289,18 @@ Required-mode and differential fixtures cover nested and multi-parameter
 records, alias canonicalization, new pointer levels, containers of records
 and the casts in the result/deque helpers. Invalid type arguments retain
 diagnostics.
+
+## Task 63: method and UFCS call expressions
+
+Method AST nodes retain the receiver separately from explicit arguments.
+Record-prefixed functions take precedence over ordinary UFCS functions, and
+real fields retain precedence over method lookup. Scalars, buffers and
+built-in containers can use ordinary UFCS functions. Committed lookup marks
+method symbols without introducing unqualified-import diagnostics.
+
+Emission preserves receiver evaluation before callee lookup, the saved
+receiver slot, record return buffers and the hidden first argument. Direct
+and method calls share fixed/default/variadic argument emission. Tests cover
+pointer and temporary-record receivers, chaining, defaults, variadic record
+results, temporary record arguments, function-pointer fields and side effects.
+Missing methods, receiver mismatches and missing arguments retain diagnostics.

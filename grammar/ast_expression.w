@@ -454,6 +454,7 @@ int ast_expression_argument_compatible(expression_ast* tree, int want, int id):
 
 int ast_expression_call(expression_ast* tree, int id, int depth):
 	if (token_newline): return -1
+	int method = tree.op[id] == 'z'
 	int sym = tree.symbol[id]
 	int arity = sym_num_args(sym)
 	int c_variadic = sym_variadic_fixed_args(sym)
@@ -463,7 +464,9 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	int generator = sym_is_generator(sym)
 	if (generator && ((variadic >= 0) || (c_variadic >= 0))): return -1
 	if (sym_is_kernel(sym)): return -1
+	if (method && (generator || (c_variadic >= 0))): return -1
 	int result = load_int(table + sym + 6)
+	if (method && (result == 4)): return -1
 	if ((result != 0) && (result != 4) && (ast_expression_data_value(result) == 0)): return -1
 	if ((c_variadic >= 0) && (type_num_args(result) > 0)): return -1
 	if (ast_expression_accept(tree, c"(") == 0): return -1
@@ -472,7 +475,7 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 		if ((base < 0) || (sym_probe(c"__w_gen_create") < 0)): return -1
 		result = ast_expression_pointer_type(tree, base, token_start_offset)
 		if (result < 0): return -1
-	int count = 0
+	int count = method
 	int previous = -1
 	while (peek(c")") == 0):
 		if ((variadic < 0) && (c_variadic < 0) && (arity >= 0) && (count >= arity)): return -1
@@ -523,6 +526,7 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 
 	ast_expression_advance(tree)
 	tree.op[id] = 'C'
+	if (method): tree.op[id] = 'z'
 	if (generator): tree.op[id] = 'X'
 	tree.high[id] = result
 	tree.result_type[id] = type_value(result)
@@ -575,6 +579,57 @@ int ast_expression_indirect_call(expression_ast* tree, int callee, int depth):
 	if ((peek(c")") == 0) || (token_start_offset >= tree.end_offset)): return -1
 	ast_expression_advance(tree)
 	return id
+
+
+# Pure UFCS lookup: local values, generators and C variadic imports do
+# not participate. A record's prefixed method takes precedence over UFCS.
+int ast_expression_ufcs_probe(char* name):
+	int callee = sym_probe(name)
+	if (callee < 0): return -1
+	if ((table[callee + 1] == 'L') || (table[callee + 1] == 'A')): return -1
+	if ((sym_num_args(callee) < 1) || sym_is_generator(callee) || (sym_variadic_fixed_args(callee) >= 0)): return -1
+	return callee
+
+
+int ast_expression_method_call(expression_ast* tree, int receiver, int record, int depth):
+	if (nextc != '('): return -1
+	int callee = -1
+	int name_offset = -1
+	if (record >= 0):
+		char* prefix = strjoin(type_get_name(record), c"_")
+		char* name = strjoin(prefix, token)
+		free(prefix)
+		callee = sym_probe(name)
+		if (callee >= 0): name_offset = callee - strlen(name)
+		free(name)
+	if (callee < 0):
+		callee = ast_expression_ufcs_probe(token)
+		if (callee < 0): return -1
+		if (record >= 0):
+			int param = sym_param_type(callee, 0)
+			if ((param < 0) || (type_get_pointer_level(param) != 1)): return -1
+			if (type_canonical(type_lookup_previous_pointer(param)) != type_canonical(record)): return -1
+		name_offset = callee - strlen(token)
+	if (load_int(table + callee + 10) != 2): return -1
+	int want = sym_param_type(callee, 0)
+	if ((want < 0) || (ast_expression_data_value(want) == 0)): return -1
+	int got = -1
+	if (record >= 0):
+		got = type_lookup_next_pointer(record)
+		if ((got < 0) || (types_compatible_with_expression(want, got) == 0)): return -1
+	else:
+		if (ast_expression_data_value(tree.result_type[receiver]) == 0): return -1
+		if (ast_expression_argument_compatible(tree, want, receiver) == 0): return -1
+		got = ast_expression_promoted_type(tree.result_type[receiver])
+	if (type_is_string(want) && type_is_char_pointer(got)):
+		if (sym_probe(c"str_from_cstr") < 0): return -1
+	int id = expression_ast_add(tree, 'z', -1, receiver)
+	if (id < 0): return -1
+	tree.symbol[id] = callee
+	tree.value[id] = name_offset
+	tree.call_receiver_type[id] = got
+	ast_expression_advance(tree)
+	return ast_expression_call(tree, id, depth)
 
 
 int ast_expression_print(expression_ast* tree, int depth):
@@ -1509,7 +1564,7 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 	if (peek(c"map")): method = 32
 	if (peek(c"filter")): method = 33
 	if (peek(c"reduce")): method = 34
-	if (method == 0): return -1
+	if (method == 0): return ast_expression_method_call(tree, receiver, -1, depth)
 	int element = type_list_element_type(type_unqualified(tree.result_type[receiver]))
 	if ((method == 2) && (ast_expression_data_value(element) == 0)): return -1
 	int kind = 0
@@ -1590,7 +1645,7 @@ int ast_expression_hash_call(expression_ast* tree, int receiver, int depth):
 	if (peek(c"get") && type_is_map(container)): method = 14
 	if (peek(c"keys")): method = 16
 	if (peek(c"values") && type_is_map(container)): method = 17
-	if (method == 0): return -1
+	if (method == 0): return ast_expression_method_call(tree, receiver, -1, depth)
 	int key_type = hash_container_key_type(container)
 	int value_type = 0
 	if ((method == 14) || (method == 17) || (method == 18)):
@@ -1777,14 +1832,18 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			if (type_is_value(type) && ast_expression_record_value(type)):
 				# Only call results own the return buffer consumed by a
 				# scalar field access. Other value-record forms still decline.
-				if ((tree.op[left] != 'C') && (tree.op[left] != 'F') && (tree.op[left] != 'G') && (tree.op[left] != 'D')): return -1
 				record = type_real(type)
 				return_words = (type_get_size(record) + word_size - 1) >> word_size_log2
 			if (type_get_pointer_level(type) > 0):
 				record = type_lookup_previous_pointer(type)
 				load_pointer = type_is_value(type) == 0
-			if ((record < 0) || (ast_expression_record_type(record) == 0)): return -1
-			if (type_get_arg(record, token) < 0): return -1
+			if ((record < 0) || (ast_expression_record_type(record) == 0)):
+				left = ast_expression_method_call(tree, left, -1, depth)
+				continue
+			if (type_get_arg(record, token) < 0):
+				left = ast_expression_method_call(tree, left, record, depth)
+				continue
+			if (return_words && (tree.op[left] != 'C') && (tree.op[left] != 'F') && (tree.op[left] != 'G') && (tree.op[left] != 'D') && (tree.op[left] != 'z')): return -1
 			int field = type_get_field_type(record, token)
 			if (ast_expression_storage_type(field) == 0): return -1
 			int offset = type_get_field_offset(record, token)
@@ -2175,6 +2234,7 @@ int ast_expression_try_at(int group_offset, int whole):
 		for i in range(tree.types_count):
 			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(&tree, i)
 		for id in range(tree.count):
+			if ((tree.op[id] == 'z') && (tree.offset[id] == token_start_offset)): sym_lookup(table + tree.value[id])
 			if ((tree.op[id] == 'M') && (tree.value[id] & 256) && (tree.offset[id] == token_start_offset)): sym_lookup(c"it")
 			if ((tree.op[id] == 'W') && (tree.offset[id] == token_start_offset)):
 				int before = type_count()

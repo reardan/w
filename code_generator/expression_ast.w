@@ -16,6 +16,39 @@ void emit_ast_map_call(char* helper, int map_slot, int key_slot, int value_slot)
 	rt_call_end(s)
 
 
+void emit_expression_ast(expression_ast* tree, int id);
+
+
+# Emit fixed/default arguments and W variadic tails for a saved callee.
+# Method calls have already pushed their receiver and start at argument 1.
+int emit_ast_direct_arguments(expression_ast* tree, int id, int s, int passed):
+	int sym = tree.symbol[id]
+	int variadic = sym_w_variadic_fixed_args(sym)
+	int element = -1
+	if (variadic >= 0): element = type_get_element_type(type_unqualified(sym_param_type(sym, variadic)))
+	int variadic_values = 0
+	int fixed_words_end = -1
+	int arg = tree.left[id]
+	int count = passed
+	while (arg >= 0):
+		int is_tail = (variadic >= 0) && (count >= variadic)
+		if (is_tail && (variadic_values == 0)): fixed_words_end = stack_pos
+		int arg_stack = stack_pos
+		emit_expression_ast(tree, arg)
+		int got = promote(tree.result_type[arg])
+		int param_type = sym_param_type(sym, count)
+		if (is_tail): param_type = element
+		if (param_type >= 0): coerce_call_argument(param_type, got)
+		if (is_tail):
+			push_slot()
+			variadic_values = variadic_values + 1
+		else: push_call_argument_compact(got, stack_pos - arg_stack)
+		count = count + 1
+		arg = tree.next_arg[arg]
+	if (variadic >= 0): finish_w_variadic_arguments(s, fixed_words_end, variadic_values)
+	return count
+
+
 # Walk the completed, decoded scalar tree in source evaluation order.
 # Reuse the production backend dispatch and stack accounting; the same
 # peepholes, target word size and runtime division behavior still apply.
@@ -413,6 +446,28 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (word_size == 8): mov_rax_int64_halves(tree.value[id], tree.high[id])
 		else: mov_eax_int32(tree.value[id])
 		return
+	if (op == 'z'):
+		int receiver = tree.right[id]
+		emit_expression_ast(tree, receiver)
+		if (type_num_args(type_real(tree.result_type[receiver])) == 0): promote(tree.result_type[receiver])
+		int result = tree.high[id]
+		int has_return_buffer = emit_ast_return_buffer(result)
+		push_slot()
+		int sym = tree.symbol[id]
+		int s = rt_call_begin(table + tree.value[id])
+		if (has_return_buffer):
+			lea_eax_esp_plus(2 << word_size_log2)
+			push_slot()
+			mov_eax_esp_plus(2 << word_size_log2)
+		else: mov_eax_esp_plus(1 << word_size_log2)
+		int got = tree.call_receiver_type[id]
+		coerce(sym_param_type(sym, 0), got)
+		push_call_argument(got)
+		int count = emit_ast_direct_arguments(tree, id, s, 1)
+		finish_call(4, s, count, sym, 0, result, count, has_return_buffer, sym_w_variadic_fixed_args(sym))
+		drop_slots(1)
+		if (has_return_buffer): lea_eax_esp_plus(0)
+		return
 	if ((op == 'v') || (op == 'C') || (op == 'X')):
 		char* name = table + tree.value[id]
 		strcpy(last_identifier, name)
@@ -457,7 +512,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 				while (arg >= 0):
 					emit_expression_ast(tree, arg)
 					int got = promote(tree.result_type[arg])
-					classes[count] = push_c_variadic_argument(sym, name, count, c_variadic, got)
+					classes[count] = push_c_variadic_argument(sym, table + tree.value[id], count, c_variadic, got)
 					count = count + 1
 					arg = tree.next_arg[arg]
 				emit_ffi_call_inline(count, classes, ffi_type_class(declared_return), sym_got_vaddr(sym))
@@ -472,30 +527,8 @@ void emit_expression_ast(expression_ast* tree, int id):
 			if (has_return_buffer):
 				lea_eax_esp_plus(word_size)
 				push_slot()
-			int variadic = sym_w_variadic_fixed_args(sym)
-			int element = -1
-			if (variadic >= 0): element = type_get_element_type(type_unqualified(sym_param_type(sym, variadic)))
-			int variadic_values = 0
-			int fixed_words_end = -1
-			int arg = tree.left[id]
-			int count = 0
-			while (arg >= 0):
-				int is_tail = (variadic >= 0) && (count >= variadic)
-				if (is_tail && (variadic_values == 0)): fixed_words_end = stack_pos
-				int arg_stack = stack_pos
-				emit_expression_ast(tree, arg)
-				int got = promote(tree.result_type[arg])
-				int param_type = sym_param_type(sym, count)
-				if (is_tail): param_type = element
-				if (param_type >= 0): coerce_call_argument(param_type, got)
-				if (is_tail):
-					push_slot()
-					variadic_values = variadic_values + 1
-				else: push_call_argument_compact(got, stack_pos - arg_stack)
-				count = count + 1
-				arg = tree.next_arg[arg]
-			if (variadic >= 0): finish_w_variadic_arguments(s, fixed_words_end, variadic_values)
-			finish_call(4, s, count, sym, 0, declared_return, count, has_return_buffer, variadic)
+			int count = emit_ast_direct_arguments(tree, id, s, 0)
+			finish_call(4, s, count, sym, 0, declared_return, count, has_return_buffer, sym_w_variadic_fixed_args(sym))
 		return
 	emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
