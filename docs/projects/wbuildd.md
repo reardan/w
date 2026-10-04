@@ -23,15 +23,13 @@ the `build` RPC, client auto-start and the `verify_warm` gate
 (`tests/wbuildd_build_test.w`), described at the end of §8. The REPL
 server and the darwin dirent fix remain unimplemented.
 
-AST follow-up #488 now has four implementation tasks in the leaf `wc2`:
-semantic AST inspection, Linux x86 emission, program semantics/imports/basic
-structs, and a resident JSON-lines service with module reuse, invalidation,
-multi-error checking and symbol/dependency queries. See [wc2.md](wc2.md) for
-the subset, protocol, measurements and conditional migration recommendation.
-Warm queries reuse parsing and analysis, but changed programs still reanalyze
-and emit as a whole; the measured larger fixture remains slower than wv2.
-This service is separate from wbuildd. The option (c) migration in #489 has
-not started.
+The #488 `wc2` experiment is complete and retired. Its
+[ownership, cache and benchmark findings](wc2.md) remain available; ongoing
+AST work is exclusively in the [production compiler migration](ast_migration.md).
+That migration is opt-in and self-hosts with zero expression fallbacks, but
+has no retained module trees or resident AST cache yet. It remains separate
+from wbuildd's existing cache. The option (b)/stage-4 discussion below records
+the original experiment proposal; it is not a recommendation to revive wc2.
 
 ## 0. Summary
 
@@ -596,19 +594,17 @@ either way; nothing here proposes a second protocol.
    separate one, since both are "expose live in-process compiler state
    over a socket" problems. *(Decided in §6, item 3: the REPL server
    will be a separate process.)*
-4. **Stage 4, optional and separable — AST option (b) experiment**:
-   `bin/wc2` as a leaf tool over the PG's existing `w.pg` AST (§3.2),
-   explicitly scoped as a research spike answering "is AST-based
-   codegen viable for W's semantics at all," not as a path to replacing
-   `w.w`. No seed exposure, no dependency on stages 1–3. This can run
-   in parallel with stages 1–3 or after; it does not block the daemon
-   and the daemon does not block it.
-5. **Not recommended for scheduling yet — AST option (c)**: the
-   self-hosting/REPL blast radius (§3.3) needs a maintainer decision
-   up front (how much `verify`/REPL risk is acceptable, over what
-   timeline) before any implementation slot is worth allocating; stage
-   4's experiment is the natural input to that decision, not a
-   replacement for making it explicitly.
+4. **Stage 4 — completed and retired AST option (b) experiment**:
+   `wc2` tested AST code generation and resident queries without entering
+   the seed graph. Its [findings](wc2.md) are preserved; its compiler,
+   service and build targets have been removed. Do not schedule more work
+   on this separate implementation.
+5. **AST option (c) — underway in the production compiler**:
+   continue the [production migration](ast_migration.md), retaining
+   self-host fixpoints, cross-backend differential checks, and REPL/debugger
+   recovery gates. Retained module trees, multi-error semantic analysis
+   and incremental emission are still future work. The prototype's cache
+   is not integrated into wbuildd.
 
 ## 6. Decisions
 

@@ -187,6 +187,14 @@ is a queue, not an archive.
 
 ## Test selection (`bin/wtest`)
 
+- **Expected-failure import fixtures cause repeated closure warnings (2026-10-04).**
+  During wc2 retirement, `wtest changed` and `wtest archs` retried
+  `bin/import_path_shaped_fixture.w`, whose invalid `import lib/assert.w` is
+  intentional. `wtest why` treats `lib/assert.w` as a missing import that is
+  now present, making the failure entry immediately stale. Distinguish malformed
+  import diagnostics from missing files, and account for expected-failure compile
+  steps when reporting closure failures; retain conservative test selection.
+
 - **Color diagnostic fixtures inherit `NO_COLOR`.** Observed 2026-10-03
   while running the VM changes through `./wbuild tests`: the
   `did_you_mean_test` step sets `FORCE_COLOR=1` but fails when an agent

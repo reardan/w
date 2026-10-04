@@ -469,11 +469,11 @@ reasons (#231, #337) and not yet answered.
 4. **Do not schedule v2** until the maintainer answers `wbuildd.md`
    §6/`compilation_model.md`'s open #231/#338 questions — there's no
    substrate for an "AST optimization pass" until one lands.
-5. **Optional, non-blocking**: if a future wave runs `wbuildd.md` §5
-   stage 4's already-recommended `bin/wc2` PG spike anyway, extending
-   its scope to count §1.1-shaped patterns over arbitrary W source
-   (not just `bin/wv2`) would show how universal these redundancies are
-   outside the compiler's own source. Not required for (1)-(3).
+5. **Future AST measurements**: once the
+   [production AST migration](ast_migration.md) retains the necessary trees,
+   count §1.1-shaped patterns over arbitrary W source there. The separate wc2
+   spike is retired; do not extend or restore it for optimization research.
+   Not required for (1)-(3).
 
 ### Open questions for the maintainer
 

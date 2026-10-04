@@ -22,7 +22,7 @@ project quickly and make correct changes.
   code generation (cc500 heritage). An opt-in production AST path prepares
   expressions and selected statements before lowering through the same backend
   helpers. It has no persistent module AST or IR yet. See
-  [AST migration progress](docs/projects/wc2.md) for coverage and migration gates.
+  [AST migration progress](docs/projects/ast_migration.md) for coverage and migration gates.
 - **Bootstrap seed**: `./w` at the repo root is a statically linked
   **32-bit x86** ELF binary of the compiler. It is not committed: `./wbuild`
   downloads it from the GitHub release pinned in `SEEDS` (sha256-verified)

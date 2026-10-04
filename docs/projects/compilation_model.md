@@ -393,6 +393,12 @@ win than "LLVM offload" sounds like at first read.
 
 ### 3.6 Minimal experiment proposal
 
+Historical proposal: the separate `wc2` compiler has since been retired.
+[Production AST migration](ast_migration.md) is the sole ongoing frontend
+work. Any future LLVM experiment should consume that representation when it
+is ready, rather than introduce another W parser/type checker. The original
+proposal below is retained as design history, not an active implementation plan.
+
 A leaf tool, structurally identical to `wbuildd.md` §3.2's `bin/wc2`
 spike: parse a small, fixed W subset (integer arithmetic, `if`/`while`,
 plain function calls — no structs, generics, or containers initially)
