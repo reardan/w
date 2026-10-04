@@ -776,3 +776,20 @@ with zero expression fallbacks and passes `--ast-required`. A separate
 unsupported container allocation verifies required-mode rejection. This
 does not yet cover the full compiler or move statement/declaration parsing
 into ASTs.
+
+## Task 26: multiline expressions and statement boundaries
+
+Preflight accepts newlines and line/block comments inside expressions,
+while declining space-indentation diagnostics before speculative lexing.
+Lookahead distinguishes a new dereference or prefix-increment statement
+from an operator that continues the preceding expression. The AST parser
+also preserves the streaming grammar's fresh-line multiplication boundary
+and its warning for a call opening on a later line.
+
+Tests cover multiline arithmetic, calls and conditions, comments, continued
+operators, following dereference/increment statements, malformed input,
+literal warnings and call-continuation diagnostics.
+The multiline fixture also passes `--ast-required` on both compiler host
+widths, ensuring its expressions do not fall back to streaming compilation.
+The parser-generator grammar now also accepts the existing multiline call
+argument syntax, including newlines immediately inside the parentheses.

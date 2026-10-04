@@ -103,6 +103,7 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_callback_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_default_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_allocation_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_multiline_expression_fixture.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -419,6 +420,38 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
 	strv_set(args, i, source)
 	return ast_test_run(args, 0)
+
+
+void test_ast_multiline_expression_hits_and_diagnostics():
+	char* path = ast_test_path(c"_multiline.w")
+	assert1(file_write_text(path, c"int f(int a): return (a +\n\t2 # comment\n\t+ 3)\nint main(): return 0\n"))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
+		assert_equal(0, ast.status)
+		assert_contains(ast.stderr_text, c"AST expressions: 1\n")
+		process_result_free(ast)
+		char** args = strv_new(6)
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--quiet")
+		strv_set(args, 3, c"x64")
+		strv_set(args, 4, c"--ast-required")
+		strv_set(args, 5, c"tests/ast_multiline_expression_fixture.w")
+		ast = ast_test_run(args, 0)
+		assert_equal(0, ast.status)
+		process_result_free(ast)
+	unlink(path)
+	free(path)
+	ast_test_diagnostics(c"int main(): return (1 +\n 2)\n")
+	ast_test_diagnostics(c"int main(): return (1 +\n\t0xffffffff)\n")
+	ast_test_diagnostics(c"int main(): return (1 + # comment\n\t4294967296)\n")
+	ast_test_diagnostics(c"int f(int n): return n\nint main(): return (f\n\t(1))\n")
+	ast_test_diagnostics(c"int main(): return (2\n\t* 3)\n")
+	ast_test_diagnostics(c"int main(): return (2 +\n\t3")
+	ast_test_diagnostics(c"int main(): return (2 + # no final newline")
+	ast_test_diagnostics(c"int main(): return (2 /* newline\n unclosed")
 
 
 void test_ast_allocation_expression_hits_and_diagnostics():
@@ -782,7 +815,7 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
-# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/operator_overload_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/operator_overload_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"

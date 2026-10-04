@@ -169,6 +169,8 @@ void test_parse_w_inline_asm_and_raw_asm_forms():
 
 
 void test_parse_w_multiline_expressions_braces_and_inline_blocks():
+	assert_w_parse_text(c"int main():\n\treturn f(\n\t\t1,\n\t\t2\n\t)\n", c"multiline_call.w")
+	assert_w_parse_text(c"int main():\n\treturn f(\n\t)\n", c"multiline_empty_call.w")
 	assert_w_parse_text(c"int sample(int a, int b) {\x0a\x09if (a == b) {\x0a\x09}\x0a\x09else if ((a > 0) &&\x0a\x09\x09\x09(b > 0)): a = b\x0a\x09return a\x0a}\x0a", c"braces.w")
 
 

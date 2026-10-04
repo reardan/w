@@ -23,7 +23,10 @@ is a queue, not an archive.
   when switching between the ordinary and AST audit manifests. Run these
   operations sequentially for now; publishing the bootstrap output by
   atomic rename, as the executor already does for itself, would remove
-  the race.
+  the race. The parallel AST audit suite also hit this entirely inside
+  the suite: `wexec_test`'s nested `bin/wexec hello` rebuilt the default
+  manifest's `wv2` while sibling targets were compiling with it. A serial
+  suite run avoids that internal race too.
 
 - **Nested array descriptors in arrays of structs (2026-10-03).** During
   AST differential testing, `struct R: int[3] items` followed by local
