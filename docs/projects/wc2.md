@@ -1525,3 +1525,17 @@ The generic and Raft sweep suites compile with required AST expressions
 and identical native images. Fixtures cover nullable callback fields,
 callback copies, forward generic calls, unresolved declarations, argument
 count errors and failed enclosing probes.
+
+## Task 80: result propagation expressions
+
+Postfix `?` nodes preserve the result payload as an lvalue and invoke the
+existing propagation emitter, including deferred actions and generator
+cleanup on early returns. Typed parsing distinguishes propagation from
+ternary conditions and statement colons without changing speculative
+compiler state.
+
+Required-mode fixtures cover successful and failed results, mutable
+payloads, inline conditions, ternaries and cleanup ordering. The result,
+generator-cleanup and feature-combination suites produce identical native
+images. Differential diagnostics retain invalid operand/return types and
+boolean side-effect checks.

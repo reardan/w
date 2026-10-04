@@ -26,6 +26,7 @@ const int ast_device_builtin = 132
 const int ast_list_it = 133
 const int ast_list_it_value = 134
 const int ast_forward_generic = 135
+const int ast_propagate = 136
 
 
 struct expression_ast:

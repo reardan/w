@@ -275,13 +275,11 @@ int ast_expression_root_end(int eof, int statement):
 			continue
 		if ((parens == 0) && (brackets == 0) && (braces == 0)):
 			if ((ch == ')') || (ch == ']') || ((ch == ',') && (statement == 0)) || (ch == ';') || (ch == '}') || ((ch == '{') && (significant != ']'))):
-				if (ternaries): return -1
 				return window_start + index + i
 			if ((ch == '#') || (ch == 10)):
 				int boundary = ast_expression_line_boundary(bytes, index + i, getchar_limit[file], eof)
 				if (boundary == -2): return -2
 				if (boundary):
-					if (ternaries): return -1
 					return window_start + index + i
 			if ((ch == ':') && (ternaries == 0)): return window_start + index + i
 			if (ch == '?'): ternaries = ternaries + 1
@@ -2455,6 +2453,7 @@ int ast_expression_slice(expression_ast* tree, int receiver, int start, int dept
 int ast_expression_postfix(expression_ast* tree, int depth):
 	int left = ast_expression_atom(tree, depth)
 	while (left >= 0):
+		if (token_start_offset >= tree.end_offset): return left
 		int type = tree.result_type[left]
 		if (peek(c"(") && (token_start_offset < tree.end_offset)):
 			left = ast_expression_indirect_call(tree, left, depth)
@@ -2572,6 +2571,18 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 				tree.high[left] = 0 - return_words
 				tree.symbol[left] = field
 				tree.result_type[left] = type_value(ast_expression_promoted_type(field))
+		else if (peek(c"?") && (result_propagate_struct(type_real(type)) >= 0)):
+			if ((target_isa == 3) || in_generator_body || (current_function_symbol < 0)): return -1
+			int declared = load_int(table + current_function_symbol + 6)
+			if (result_propagate_struct(declared) < 0): return -1
+			int base = result_propagate_struct(ast_expression_promoted_type(type))
+			int payload = type_get_field_type(base, c"value")
+			if ((payload < 0) || (ast_expression_storage_type(payload) == 0)): return -1
+			ast_expression_advance(tree)
+			tree.readonly = 0
+			left = expression_ast_add(tree, ast_propagate, left, -1)
+			if (left < 0): return -1
+			tree.result_type[left] = payload
 		else: return left
 	return -1
 
@@ -2755,6 +2766,8 @@ int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
 		int op = tree.op[i]
 		if (op == ast_list_it): return 1
+		if ((op == ast_propagate) && (for_cleanup_count() > 0)): return 1
+		if ((op == ast_propagate) && (defer_count() > 0)): return -1
 		if ((op == ast_nd_index) || (op == ast_nd_store) || (op == ast_nd_read)): return 1
 		if ((op == 'y') && ((tree.value[i] != 21) || tree.high[i])): return 1
 		if ((op == '+') || (op == '-') || (op == '*') || (op == '/') || (op >= 0x90)):
@@ -2799,6 +2812,7 @@ int ast_expression_bitwise(expression_ast* tree, int depth, int level):
 		int right_is_bool = operand_is_bool_condition(rt)
 		int right_has_call = ast_expression_has_call(tree, right_first, tree.count)
 		if (condition_context && (op != '^') && chain_is_bool && right_is_bool):
+			if ((chain_has_call < 0) || (right_has_call < 0)): return -1
 			if (check_bool_ops_mode || ((chain_has_call || right_has_call) == 0)): return -1
 		chain_is_bool = chain_is_bool && right_is_bool
 		chain_has_call = chain_has_call || right_has_call
@@ -2839,7 +2853,7 @@ int ast_expression_logic(expression_ast* tree, int depth, int is_or):
 int ast_expression_conditional(expression_ast* tree, int depth):
 	if ((depth > 96) || (expr_nesting_depth + depth >= 1000)): return -1
 	int condition = ast_expression_logic(tree, depth, 1)
-	if ((condition < 0) || (peek(c"?") == 0)): return condition
+	if ((condition < 0) || (token_start_offset >= tree.end_offset) || (peek(c"?") == 0)): return condition
 	int ct = tree.result_type[condition]
 	if ((ast_expression_scalar_value(ct) || type_is_buffer(ct)) == 0): return -1
 	# A wresult pointer's '?' belongs to postfix error propagation.
@@ -3035,6 +3049,11 @@ int ast_expression_try_at(int group_offset, int whole):
 				ast_expression_advance(&tree)
 				root = ast_expression_increment(&tree, root, postfix)
 	if ((root >= 0) && (whole > 1) && peek(c",")): root = ast_expression_parallel(&tree, root)
+	# Preflight cannot distinguish postfix '?' from a ternary opener.
+	# A typed parse may finish at a statement colon before that bound.
+	if ((root >= 0) && whole && (token_start_offset < end) && peek(c":")):
+		end = token_start_offset
+		tree.end_offset = end
 	int accepted = (root >= 0) && (token_start_offset == end)
 	if (whole == 0): accepted = accepted && peek(c")")
 	if (accepted): accepted = ast_expression_data_value(tree.result_type[root]) || (tree.result_type[root] == type_value(0))

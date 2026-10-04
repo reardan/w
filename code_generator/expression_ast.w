@@ -54,6 +54,11 @@ int emit_ast_direct_arguments(expression_ast* tree, int id, int s, int passed):
 # peepholes, target word size and runtime division behavior still apply.
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
+	if (op == ast_propagate):
+		int child = tree.left[id]
+		emit_expression_ast(tree, child)
+		result_propagate_suffix(tree.result_type[child])
+		return
 	if (op == ast_forward_generic):
 		if (cast(int, generic_forwards) == 0): generic_forwards = new list[generic_forward_record]
 		generic_forward_record rec
