@@ -21,6 +21,7 @@ const int ast_expression_source_limit = 8192
 const int ast_nd_index = 128
 const int ast_nd_store = 129
 const int ast_nd_read = 130
+const int ast_template_format = 131
 
 
 struct expression_ast:

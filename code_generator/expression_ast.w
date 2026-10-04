@@ -62,8 +62,10 @@ void emit_expression_ast(expression_ast* tree, int id):
 		rt_call_end(s)
 		int builder_slot = push_slot()
 		int part = tree.left[id]
+		int spec = -1
 		while (part >= 0):
 			if (tree.op[part] == 't'):
+				spec = tree.right[part]
 				if (tree.high[part] > 0):
 					char* saved_token = token
 					token = &tree.text[0]
@@ -74,6 +76,14 @@ void emit_expression_ast(expression_ast* tree, int id):
 				emit_expression_ast(tree, part)
 				int got = promote(tree.result_type[part])
 				template_spec_present = 0
+				if (spec >= 0):
+					template_spec_present = tree.result_type[spec]
+					if (template_spec_present):
+						template_spec_width = tree.left[spec]
+						template_spec_precision = tree.right[spec]
+						template_spec_fill = tree.value[spec]
+						template_spec_align = tree.high[spec]
+						template_spec_type = tree.symbol[spec]
 				template_emit_value_append(got, builder_slot)
 			part = tree.next_arg[part]
 		template_emit_helper_address(5)

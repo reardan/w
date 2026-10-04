@@ -139,73 +139,126 @@ void template_take_spec():
 	token[token_i] = 0
 
 
-void template_parse_spec():
-	template_spec_fill = ' '
-	template_spec_align = 0
-	template_spec_width = 0
-	template_spec_precision = -1
-	template_spec_type = 0
+# Pure format validation is shared by streaming and AST parsing.
+struct template_format:
+	int fill
+	int align
+	int width
+	int precision
+	int type
+	int kind
+
+
+char* template_format_parse(template_format* format, char* spelling):
+	format.fill = ' '
+	format.align = 0
+	format.width = 0
+	format.precision = -1
+	format.type = 0
 	int i = 0
-	if ((token[0] != 0) && template_spec_is_align(token[1])):
-		if (token[0] < 32): template_spec_error(c"the fill must be a printable ASCII character")
-		template_spec_fill = token[0]
-		template_spec_align = token[1]
+	if ((spelling[0] != 0) && template_spec_is_align(spelling[1])):
+		if (spelling[0] < 32): return c"the fill must be a printable ASCII character"
+		format.fill = spelling[0]
+		format.align = spelling[1]
 		i = 2
-	else if (template_spec_is_align(token[0])):
-		template_spec_align = token[0]
+	else if (template_spec_is_align(spelling[0])):
+		format.align = spelling[0]
 		i = 1
-	if (token[i] == '0'):
+	if (spelling[i] == '0'):
 		# zero padding: '0' fill (unless one was given), sign-aware
-		if (i < 2): template_spec_fill = '0'
-		if (template_spec_align == 0): template_spec_align = '='
+		if (i < 2): format.fill = '0'
+		if (format.align == 0): format.align = '='
 		i = i + 1
-	while (('0' <= token[i]) && (token[i] <= '9')):
-		template_spec_width = template_spec_width * 10 + token[i] - '0'
-		if (template_spec_width > 4096): template_spec_error(c"width is limited to 4096")
+	while (('0' <= spelling[i]) && (spelling[i] <= '9')):
+		format.width = format.width * 10 + spelling[i] - '0'
+		if (format.width > 4096): return c"width is limited to 4096"
 		i = i + 1
-	if (token[i] == '.'):
+	if (spelling[i] == '.'):
 		i = i + 1
-		if ((token[i] < '0') || (token[i] > '9')):
-			template_spec_error(c"'.' must be followed by a precision")
-		template_spec_precision = 0
-		while (('0' <= token[i]) && (token[i] <= '9')):
-			template_spec_precision = template_spec_precision * 10 + token[i] - '0'
-			if (template_spec_precision > 60): template_spec_error(c"precision is limited to 60")
+		if ((spelling[i] < '0') || (spelling[i] > '9')):
+			return c"'.' must be followed by a precision"
+		format.precision = 0
+		while (('0' <= spelling[i]) && (spelling[i] <= '9')):
+			format.precision = format.precision * 10 + spelling[i] - '0'
+			if (format.precision > 60): return c"precision is limited to 60"
 			i = i + 1
-	int c = token[i]
+	int c = spelling[i]
 	if ((c == 'd') || (c == 'x') || (c == 'X') || (c == 'o') || (c == 'b') || (c == 'c') || (c == 's') || (c == 'f')):
-		template_spec_type = c
+		format.type = c
 		i = i + 1
-	if (token[i] != 0):
-		template_spec_error(c"expected [[fill]align][0][width][.precision][type] with type one of d x X o b c s f")
+	if (spelling[i] != 0):
+		return c"expected [[fill]align][0][width][.precision][type] with type one of d x X o b c s f"
+
+	return 0
 
 
 # Runtime kind for __w_template_fmt (structures/string.w) of a value of
 # class vc under the parsed spec: 0 decimal, 1 hex, 2 HEX, 3 octal,
 # 4 binary, 5 char, 6 char*, 7 string; 8 float32 and 9 float64 go to
 # their own helpers. Rejects spec/type combinations that do not apply.
-int template_spec_kind(int vc):
-	int c = template_spec_type
+char* template_format_class(template_format* format, int vc):
+	int c = format.type
 	int numeric = value_class_is_int_like(vc) || (vc == VC_F32) || (vc == VC_F64)
-	if ((template_spec_align == '=') && (numeric == 0)):
-		template_spec_error(c"zero padding and '=' alignment need a numeric value")
-	if ((template_spec_precision >= 0) && (vc != VC_F32) && (vc != VC_F64)):
-		template_spec_error(c"precision needs a float value")
+	if ((format.align == '=') && (numeric == 0)):
+		return c"zero padding and '=' alignment need a numeric value"
+	if ((format.precision >= 0) && (vc != VC_F32) && (vc != VC_F64)):
+		return c"precision needs a float value"
 	if (value_class_is_int_like(vc)):
-		if ((c == 0) || (c == 'd')): return 0
-		if (c == 'x'): return 1
-		if (c == 'X'): return 2
-		if (c == 'o'): return 3
-		if (c == 'b'): return 4
-		if (c == 'c'): return 5
-		template_spec_error(c"an int-like value takes type d, x, X, o, b or c")
+		if ((c == 0) || (c == 'd')):
+			format.kind = 0
+			return 0
+		if (c == 'x'):
+			format.kind = 1
+			return 0
+		if (c == 'X'):
+			format.kind = 2
+			return 0
+		if (c == 'o'):
+			format.kind = 3
+			return 0
+		if (c == 'b'):
+			format.kind = 4
+			return 0
+		if (c == 'c'):
+			format.kind = 5
+			return 0
+		return c"an int-like value takes type d, x, X, o, b or c"
 	if ((vc == VC_CSTR) || (vc == VC_VAR) || (vc == VC_STRING)):
-		if ((c != 0) && (c != 's')): template_spec_error(c"a text value takes type s")
-		if (vc == VC_STRING): return 7
-		return 6
-	if ((c != 0) && (c != 'f')): template_spec_error(c"a float value takes type f")
-	if (vc == VC_F64): return 9
-	return 8
+		if ((c != 0) && (c != 's')): return c"a text value takes type s"
+		if (vc == VC_STRING):
+			format.kind = 7
+			return 0
+		format.kind = 6
+		return 0
+	if ((c != 0) && (c != 'f')): return c"a float value takes type f"
+	if (vc == VC_F64):
+		format.kind = 9
+		return 0
+	format.kind = 8
+	return 0
+
+
+void template_parse_spec():
+	template_format format
+	char* why = template_format_parse(&format, token)
+	if (why != 0): template_spec_error(why)
+	template_spec_fill = format.fill
+	template_spec_align = format.align
+	template_spec_width = format.width
+	template_spec_precision = format.precision
+	template_spec_type = format.type
+
+
+int template_spec_kind(int vc):
+	template_format format
+	format.fill = template_spec_fill
+	format.align = template_spec_align
+	format.width = template_spec_width
+	format.precision = template_spec_precision
+	format.type = template_spec_type
+	char* why = template_format_class(&format, vc)
+	if (why != 0): template_spec_error(why)
+	return format.kind
 
 
 # Emit the decoded chunk bytes into the code stream (jumped over by a

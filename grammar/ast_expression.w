@@ -28,11 +28,14 @@ int ast_expression_identifier_end(char* bytes, int start, int limit):
 
 # Preflight all literal chunks and embedded expressions before entering
 # the template tokenizer, whose malformed-brace errors must not escape a
-# speculative parse. Formatting specs are left to the streaming path.
+# speculative parse. Raw formatting specs are skipped to their closing brace.
 int ast_expression_template_end(char* bytes, int start, int limit, int depth):
 	if (depth > 96): return -1
 	int i = start + 1
 	int braces = 0
+	int parens = 0
+	int brackets = 0
+	int ternaries = 0
 	while (i < limit):
 		int ch = bytes[i] & 255
 		if (ch == 10): return -1
@@ -47,7 +50,26 @@ int ast_expression_template_end(char* bytes, int start, int limit, int depth):
 				if (end < 0): return end
 				i = end + 1
 				continue
-			if ((ch == '#') || (ch == ':')): return -1
+			if ((braces == 1) && (parens == 0) && (brackets == 0)):
+				if (ch == '?'): ternaries = ternaries + 1
+				if (ch == ':'):
+					if (ternaries): ternaries = ternaries - 1
+					else:
+						# A raw spec is not tokenized as an expression. Its
+						# fill may itself be punctuation, including '#'.
+						i = i + 1
+						while ((i < limit) && (bytes[i] != '}')):
+							if ((bytes[i] == 10) || (bytes[i] == 34)): return -1
+							i = i + 1
+						if (i >= limit): return -2
+						braces = 0
+						i = i + 1
+						continue
+			if (ch == '('): parens = parens + 1
+			if (ch == ')'): parens = parens - 1
+			if (ch == '['): brackets = brackets + 1
+			if (ch == ']'): brackets = brackets - 1
+			if (ch == '#'): return -1
 			if ((ch == '/') && (i + 1 < limit) && (bytes[i + 1] == '*')): return -1
 			if (ch == '{'): braces = braces + 1
 			if (ch == '}'): braces = braces - 1
@@ -1839,9 +1861,24 @@ int ast_expression_template(expression_ast* tree, int depth):
 		ast_expression_advance(tree)
 		if (final): return root
 		int value = ast_expression_assignment(tree, depth + 1)
-		if ((value < 0) || (peek(c"}") == 0)): return -1
+		if ((value < 0) || ((peek(c"}") || peek(c":")) == 0)): return -1
 		int vc = value_class(ast_expression_promoted_type(tree.result_type[value]))
 		if ((vc != VC_INT) && (vc != VC_CSTR) && (vc != VC_STRING) && (vc != VC_CHAR) && (vc != VC_F32) && (vc != VC_F64) && (vc != VC_VAR)): return -1
+		if (peek(c":")):
+			int spec = expression_ast_add(tree, ast_template_format, -1, -1)
+			if (spec < 0): return -1
+			template_take_spec()
+			tree.result_type[spec] = token[0] != 0
+			if (tree.result_type[spec]):
+				template_format format
+				if (template_format_parse(&format, token) != 0): return -1
+				if (template_format_class(&format, vc) != 0): return -1
+				tree.left[spec] = format.width
+				tree.right[spec] = format.precision
+				tree.value[spec] = format.fill
+				tree.high[spec] = format.align
+				tree.symbol[spec] = format.type
+			tree.right[chunk] = spec
 		tree.next_arg[chunk] = value
 		previous = value
 		get_token_template_chunk()
@@ -2738,6 +2775,7 @@ int ast_expression_try_at(int group_offset, int whole):
 				generic_infer_shapes(tree.value[id])
 				assert1(before == type_count())
 			if (((tree.op[id] == 'G') || (tree.op[id] == 'W')) && (tree.generic_offset[id] == token_start_offset)): ast_expression_commit_generic(&tree, id)
+			if ((tree.op[id] == ast_template_format) && (tree.offset[id] == token_start_offset)): template_take_spec()
 			if ((tree.op[id] == 't') && (tree.offset[id] == token_start_offset)):
 				if (tree.high[id]): get_token_template_chunk()
 				int length = template_process_chunk(tree.value[id])

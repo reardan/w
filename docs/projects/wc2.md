@@ -1442,3 +1442,16 @@ The array-decay and complete matrix linear-algebra regressions now compile
 with required AST expressions and identical native images. A cross-target
 fixture covers returned slice fields, both pointer/array branch orders,
 null joins, slice joins and buffer membership keys.
+
+## Task 74: formatted template expressions
+
+Template nodes retain raw format specifications as validated metadata. The
+streaming and AST parsers share pure specification/type validation, while
+committed token replay consumes each spec before resuming the next literal
+chunk. Emission restores the outer spec after nested interpolation, preserving
+formatting helper selection and operand order.
+
+Required-mode fixtures cover nested formatting, punctuation fill, empty
+specs, ternary expressions, slices, dynamic values and float32/float64. The
+existing format regressions produce identical native images; differential
+diagnostics cover malformed specs and failed outer probes.
