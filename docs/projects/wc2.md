@@ -1621,3 +1621,16 @@ identical native images on both host widths. Tests compare normal/strict
 and plain/JSON diagnostics, warning ordering, indirect calls and rollback
 after a later parse failure. The broader positive query/fixture audit now
 finds only GPU address expressions and the near-limit nesting fixtures.
+
+## Task 87: host-side device address expressions
+
+AST storage validation now permits forming device-memory lvalues without
+loading them. Index and record-field nodes preserve their GPU-qualified
+types; value validation continues to reject host reads. This admits
+`&p[i]`, `&*p` and device record-field addresses on the host.
+
+Required-mode checks include the existing GPU qualifier fixture, byte-for-byte
+native image comparisons and runtime address offsets. Differential tests
+retain host read/store errors, invalid nested indexes and rollback after
+a later missing name. The broader positive query/fixture audit now reports
+fallback only for the two near-limit nesting fixtures.

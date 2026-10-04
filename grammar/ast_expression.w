@@ -513,7 +513,9 @@ int ast_expression_data_value(int type):
 
 
 int ast_expression_storage_type(int type):
-	if (type_is_gpu_object(type) && (target_isa != 3)): return 0
+	# Building an lvalue computes its address. Host reads are still
+	# rejected by the value predicates when that lvalue is consumed.
+	if (type_is_gpu_object(type)): type = type_strip_gpu(type)
 	if (type_is_buffer(type) || type_is_list(type)): return 1
 	return ast_expression_scalar_type(type) || ast_expression_record_type(type)
 
@@ -2691,7 +2693,7 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			if (type_get_pointer_level(type) > 0):
 				record = type_lookup_previous_pointer(type)
 				load_pointer = type_is_value(type) == 0
-			if ((record < 0) || (ast_expression_record_type(record) == 0)):
+			if ((record < 0) || (ast_expression_record_type(type_strip_gpu(record)) == 0)):
 				left = ast_expression_method_call(tree, left, -1, depth)
 				continue
 			if (type_get_arg(record, token) < 0):

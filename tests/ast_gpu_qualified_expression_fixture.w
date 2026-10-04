@@ -22,4 +22,10 @@ int main():
 	gpu ast_gpu_cell* q = true ? p : 0
 	if (q != 0): return 2
 	if (sizeof(gpu uint16*) != __word_size__): return 3
+	gpu int* words = cast(gpu int*, 4096)
+	if (cast(int, &words[3]) != 4096 + 3 * __word_size__): return 4
+	if (cast(int, &*(words + 8)) != 4104): return 5
+	gpu ast_gpu_cell* cells = cast(gpu ast_gpu_cell*, 8192)
+	if (cast(int, &cells.weight) != 8196): return 6
+	if (cast(int, &cells[2].count) != 8192 + 2 * sizeof(ast_gpu_cell)): return 7
 	return 0
