@@ -1333,3 +1333,16 @@ casts, ternary coercion, generic calls, rendering and evaluation order. The
 existing dynamic-var regression suite produces identical native x86/x64
 images with required AST expressions. Unsupported operators and conversions
 retain the streaming diagnostics.
+
+## Task 66: imported C bit-field expressions
+
+Field AST nodes retain the imported C access type and its storage-unit
+offset. Promoted reads use the existing signed extraction and masking;
+assignments and increments use the shared read-modify-write emitter. A
+field wider than a target word still declines before committed emission
+and preserves its dedicated diagnostic.
+
+The existing i386 compile fixture and x64 runtime battery now require AST
+expressions on both compiler hosts and produce identical images. Coverage
+includes packed neighbors, signed fields, unions, sub-word load windows,
+wide x64 fields, compound stores and increments.

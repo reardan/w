@@ -385,6 +385,7 @@ int ast_expression_scalar_type(int type):
 	int base = type_unqualified(type)
 	if (type_get_pointer_level(base) > 0): return 1
 	if (type_is_string(base) || type_is_var(base)): return 1
+	if (ci_is_bit_field_access(base)): return ci_bit_field_unit_size(base) > 0
 	if (type_is_map(base) || type_is_set(base) || type_is_list(base)): return 1
 	# Half loads/conversions can diagnose unsupported backends during
 	# emission. Keep their diagnostic order with the streaming parser.
@@ -436,6 +437,7 @@ int ast_expression_promoted_type(int type):
 	if (type == string_type): return string_value_type
 	if (type == var_type): return var_value_type
 	if (type_is_value(type)): return type_strip_gpu(type_real(type))
+	if (ci_is_bit_field_access(type)): return type_lookup(c"int")
 	if (type_is_array(type) || (type_get_kind(type) == type_kind_slice)):
 		int promoted = type_lookup_slice_value(type_get_element_type(type))
 		if (promoted >= 0): return promoted
@@ -1879,6 +1881,9 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			int field = type_get_field_type(record, token)
 			if (ast_expression_storage_type(field) == 0): return -1
 			int offset = type_get_field_offset(record, token)
+			# Imported bit-fields name a storage unit, not their zero-size
+			# layout slot. Preserve the access type for loads and stores.
+			if (ci_is_bit_field_access(field)): offset = ci_bit_field_unit_offset(field)
 			ast_expression_advance(tree)
 			left = expression_ast_add(tree, '.', left, -1)
 			if (left < 0): return -1
