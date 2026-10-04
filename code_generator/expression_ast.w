@@ -3,6 +3,18 @@
 # peepholes, target word size and runtime division behavior still apply.
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
+	if (op == 'N'):
+		int base = tree.value[id]
+		sym_get_value(c"malloc")
+		push_slot()
+		push_slot_int(type_get_size(base))
+		mov_eax_esp_plus(word_size)
+		call_eax()
+		drop_slots(2)
+		if (type_has_array_field(base)):
+			zero_runtime_object(type_get_size(base))
+			init_array_field_descriptors(base)
+		return
 	if (op == 'P'):
 		int base_stack = stack_pos
 		int arg = tree.left[id]

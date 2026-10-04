@@ -755,3 +755,24 @@ Integer-address indexing also preserves W's legacy byte element default;
 typed pointers continue to use their pointee's size. Tests cover reads,
 stores and compound stores through raw addresses, callback signature
 diagnostics, and cross-target image parity.
+
+## Task 25: runtime stubs, sizeof and ordinary allocation
+
+Direct AST calls accept runtime assembly symbols whose parameter count is
+unknown, keeping their existing unchecked word-argument convention. `sizeof`
+uses the transactional simple-type reader and emits the target type's size.
+Ordinary `new T` and `new T()` allocate through the production malloc call
+sequence, including zeroing and descriptor setup for embedded fixed arrays.
+First-use pointer types participate in the existing replay plan.
+
+Tests cover primitive/record/union/pointer sizes, raw runtime-stub calls,
+heap records and primitive values, fixed-array initialization, first-use
+pointer registration, diagnostic parity and cross-target image equality.
+Container allocation syntax, sized array allocation and nonempty
+constructors remain later work.
+
+The trivial-program coverage gate now compiles its entire implicit runtime
+with zero expression fallbacks and passes `--ast-required`. A separate
+unsupported container allocation verifies required-mode rejection. This
+does not yet cover the full compiler or move statement/declaration parsing
+into ASTs.

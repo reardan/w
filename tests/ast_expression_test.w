@@ -102,6 +102,7 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_pointer_type_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_callback_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_default_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_allocation_expression_fixture.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -226,9 +227,9 @@ void test_ast_full_expression_coverage_gate():
 	strv_set(args, 5, path)
 	process_result* audit = ast_test_run(args, 0)
 	assert_equal(0, audit.status)
-	assert_contains(audit.stderr_text, c"\"ast_fallback\": true")
+	assert_substring(audit.stderr_text, c"\"ast_fallback\": true", 0)
 	assert_contains(audit.stderr_text, c"AST expression roots: ")
-	assert_contains(audit.stderr_text, c"Streaming expression roots: ")
+	assert_contains(audit.stderr_text, c"Streaming expression roots: 0\n")
 	# The final newline is a supported boundary even at physical EOF.
 	assert_substring(audit.stderr_text, path, 0)
 	process_result_free(audit)
@@ -239,11 +240,21 @@ void test_ast_full_expression_coverage_gate():
 	strv_set(args, 3, c"--ast-required")
 	strv_set(args, 4, path)
 	process_result* required = ast_test_run(args, 0)
+	assert_equal(0, required.status)
+	process_result_free(required)
+	# The implicit runtime now fits the AST subset. An explicit unsupported
+	# container allocation still proves that required mode cannot fall back.
+	assert1(file_write_text(path, c"int main():\n\tmap[int, int] values = new map[int, int]\n\treturn values.length\n"))
+	args = strv_new(5)
+	strv_set(args, 0, c"bin/wv2")
+	strv_set(args, 1, c"check")
+	strv_set(args, 2, c"--quiet")
+	strv_set(args, 3, c"--ast-required")
+	strv_set(args, 4, path)
+	required = ast_test_run(args, 0)
 	assert_equal(1, required.status)
 	assert_contains(required.stderr_text, c"AST-required compilation encountered an unsupported expression")
-	# Even this trivial root includes the implicit runtime. Requiring
-	# AST must reject its unsupported code, not silently skip imports.
-	assert_substring(required.stderr_text, path, 0)
+	assert_contains(required.stderr_text, path)
 	process_result_free(required)
 	unlink(path)
 	free(path)
@@ -408,6 +419,26 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
 	strv_set(args, i, source)
 	return ast_test_run(args, 0)
+
+
+void test_ast_allocation_expression_hits_and_diagnostics():
+	char* path = ast_test_path(c"_allocation.w")
+	assert1(file_write_text(path, c"import lib.memory\nstruct R:\n\tint x\nint f(): return (cast(int, new R))\nint size(): return (sizeof(R**))\nint stub(int p): return (repl_setjmp(p))\nint main(): return 0\n"))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
+		assert_equal(0, ast.status)
+		assert_contains(ast.stderr_text, c"AST expressions: 3\n")
+		process_result_free(ast)
+	unlink(path)
+	free(path)
+	ast_test_diagnostics(c"int main(): return (sizeof(missing))\n")
+	ast_test_diagnostics(c"int main(): return (sizeof(int** + 0xffffffff))\n")
+	ast_test_diagnostics(c"int main(): return (sizeof(float64))\n")
+	ast_test_diagnostics(c"import lib.memory\nstruct R:\n\tint x\nint main(): return (cast(int, new R) + 0xffffffff)\n")
+	ast_test_diagnostics(c"import lib.memory\nint main(): return (cast(int, new missing))\n")
+	ast_test_diagnostics(c"import lib.memory\nstruct R:\n\tint x\nint main(): return (cast(int, new R(1, missing)))\n")
 
 
 void test_ast_default_expression_hits_and_diagnostics():
@@ -751,7 +782,7 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
-# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/operator_overload_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/operator_overload_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"
