@@ -456,15 +456,16 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	if (token_newline): return -1
 	int sym = tree.symbol[id]
 	int arity = sym_num_args(sym)
-	if (sym_variadic_fixed_args(sym) >= 0): return -1
+	int c_variadic = sym_variadic_fixed_args(sym)
 	int variadic = sym_w_variadic_fixed_args(sym)
 	int element = -1
 	if (variadic >= 0): element = type_get_element_type(type_unqualified(sym_param_type(sym, variadic)))
 	int generator = sym_is_generator(sym)
-	if (generator && (variadic >= 0)): return -1
+	if (generator && ((variadic >= 0) || (c_variadic >= 0))): return -1
 	if (sym_is_kernel(sym)): return -1
 	int result = load_int(table + sym + 6)
 	if ((result != 0) && (result != 4) && (ast_expression_data_value(result) == 0)): return -1
+	if ((c_variadic >= 0) && (type_num_args(result) > 0)): return -1
 	if (ast_expression_accept(tree, c"(") == 0): return -1
 	if (generator):
 		int base = type_lookup(c"generator")
@@ -474,8 +475,10 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	int count = 0
 	int previous = -1
 	while (peek(c")") == 0):
-		if ((variadic < 0) && (arity >= 0) && (count >= arity)): return -1
+		if ((variadic < 0) && (c_variadic < 0) && (arity >= 0) && (count >= arity)): return -1
+		if ((c_variadic >= 0) && (count >= extern_max_params)): return -1
 		int param = sym_param_type(sym, count)
+		if ((c_variadic >= 0) && (count >= c_variadic)): param = -1
 		if ((variadic >= 0) && (count >= variadic)): param = element
 		if ((param >= 0) && (ast_expression_data_value(param) == 0)): return -1
 		int arg = ast_expression_assignment(tree, depth + 1)
@@ -483,7 +486,7 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
 		if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
 		int got = ast_expression_promoted_type(tree.result_type[arg])
-		if (generator && (type_num_args(type_real(got)) > 0)): return -1
+		if ((generator || (c_variadic >= 0)) && (type_num_args(type_real(got)) > 0)): return -1
 		if ((param >= 0) && type_is_string(param) && type_is_char_pointer(got)):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
 		# Let the streaming parser issue argument diagnostics at its exact
@@ -499,6 +502,9 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	if (token_start_offset >= tree.end_offset): return -1
 	if (variadic >= 0):
 		if (count < variadic): return -1
+		arity = count
+	if (c_variadic >= 0):
+		if (count < c_variadic): return -1
 		arity = count
 	# Defaults are declaration-time constants, with no source-token replay.
 	# Check the entire missing suffix before adding synthetic arguments.

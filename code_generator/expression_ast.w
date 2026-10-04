@@ -426,6 +426,24 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if (op == 'C'):
 			int declared_return = load_int(table + sym + 6)
 			if (declared_return == 4): declared_return = -1
+			int c_variadic = sym_variadic_fixed_args(sym)
+			if (c_variadic >= 0):
+				int s = stack_pos
+				char* classes = malloc(extern_max_params)
+				int arg = tree.left[id]
+				int count = 0
+				while (arg >= 0):
+					emit_expression_ast(tree, arg)
+					int got = promote(tree.result_type[arg])
+					classes[count] = push_c_variadic_argument(sym, name, count, c_variadic, got)
+					count = count + 1
+					arg = tree.next_arg[arg]
+				emit_ffi_call_inline(count, classes, ffi_type_class(declared_return), sym_got_vaddr(sym))
+				free(classes)
+				pop_to(s)
+				last_call_return_type = declared_return
+				last_call_end = codepos
+				return
 			int has_return_buffer = emit_ast_return_buffer(declared_return)
 			int s = stack_pos
 			push_slot()

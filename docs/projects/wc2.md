@@ -1251,3 +1251,16 @@ Required-mode and differential fixtures cover empty and long tails, nested
 calls, scalar/string coercions, array decay, callback pointers, side effects,
 record arguments and record results. Missing fixed arguments and incompatible
 tail values retain diagnostics. Variadic C imports remain a separate ABI path.
+
+## Task 60: C variadic call expressions
+
+Direct AST calls now retain C variadic arguments and emit the existing inline
+C ABI conversion. Streaming and AST calls share promoted-argument emission:
+fixed arguments use their declared types, floating tails widen as required,
+and array/slice tails decay to data pointers. Per-call ABI classes continue
+to control floating registers and stack spills.
+
+The existing libc variadic fixture now has required-AST checks and native
+x86/x64 image comparisons from both compiler host widths. It exercises mixed
+integer/float arguments, register spills, array/slice decay and empty tails.
+Too few fixed arguments and unsupported record arguments retain diagnostics.

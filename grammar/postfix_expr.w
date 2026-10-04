@@ -352,13 +352,11 @@ int parse_call_suffix(int callee_type, int s, int expected_args, int callee_sym,
 	return finish_call(callee_type, s, expected_args, callee_sym, callee_name, declared_return, passed_args, has_return_buffer, w_variadic_fixed)
 
 
-# One argument of a direct call to a variadic C import. Fixed arguments
+# Emit one already-promoted argument of a variadic C import. Fixed arguments
 # follow the declared parameter types; the variadic tail gets the C
 # default argument promotions (float32 widens to float64). Returns the
 # argument's ABI class (see ffi_type_class).
-int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_args, int fixed_args):
-	int arg_type = expression()
-	arg_type = promote(arg_type)
+int push_c_variadic_argument(int callee_sym, char* callee_name, int passed_args, int fixed_args, int arg_type):
 	if (type_num_args(type_real(arg_type)) > 0):
 		error(c"struct arguments are not supported in variadic C calls")
 	if (passed_args < fixed_args):
@@ -386,6 +384,11 @@ int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_a
 	push_slot()
 	if (kind == 2): return 2
 	return 0
+
+
+int parse_variadic_call_argument(int callee_sym, char* callee_name, int passed_args, int fixed_args):
+	int arg_type = expression()
+	return push_c_variadic_argument(callee_sym, callee_name, passed_args, fixed_args, promote(arg_type))
 
 
 # Direct call of a variadic C import: parse the arguments, then emit the
