@@ -839,3 +839,17 @@ array independence, by-value mutation isolation, indirect calls and record
 list operations across the image-comparison matrix. Record-returning calls
 and constructors still decline while their return-buffer stack handling is
 migrated separately. Value-record field access also remains conservative.
+
+## Task 30: record-returning calls
+
+Direct and typed indirect AST calls now allocate the ordinary caller-owned
+record return buffer and pass its hidden address. Arguments measure and
+compact any temporary words left by nested calls; plain assignment reloads
+its destination from beneath a returned record before copying. Returned
+record fields preserve the streaming backend's load and buffer cleanup.
+
+Tests exercise nested return calls, indirect factories, assignment inside
+arguments, small and large records, inline arrays and returned fields. A
+required-mode test covers return, initialization, assignment and nested
+by-value consumption without expression fallback. Constructors and other
+value-record field receivers remain separate migration work.

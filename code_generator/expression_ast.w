@@ -1,3 +1,13 @@
+# A record-returning call owns a caller-provided buffer above its saved
+# callee slot. Keep the same allocation order as postfix_expr().
+int emit_ast_return_buffer(int type):
+	if ((type < 0) || (type_num_args(type) == 0)): return 0
+	int words = (type_get_size(type) + word_size - 1) >> word_size_log2
+	for j in range(words): push_eax()
+	stack_pos = stack_pos + words
+	return 1
+
+
 # Walk the completed, decoded scalar tree in source evaluation order.
 # Reuse the production backend dispatch and stack accounting; the same
 # peepholes, target word size and runtime division behavior still apply.
@@ -56,21 +66,26 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int sym = tree.symbol[id]
 		sym_emit_value(sym, name)
 		if (op == 'C'):
+			int declared_return = load_int(table + sym + 6)
+			if (declared_return == 4): declared_return = -1
+			int has_return_buffer = emit_ast_return_buffer(declared_return)
 			int s = stack_pos
 			push_slot()
+			if (has_return_buffer):
+				lea_eax_esp_plus(word_size)
+				push_slot()
 			int arg = tree.left[id]
 			int count = 0
 			while (arg >= 0):
+				int arg_stack = stack_pos
 				emit_expression_ast(tree, arg)
 				int got = promote(tree.result_type[arg])
 				int param_type = sym_param_type(sym, count)
 				if (param_type >= 0): coerce_call_argument(param_type, got)
-				push_call_argument_compact(got, 0)
+				push_call_argument_compact(got, stack_pos - arg_stack)
 				count = count + 1
 				arg = tree.next_arg[arg]
-			int declared_return = load_int(table + sym + 6)
-			if (declared_return == 4): declared_return = -1
-			finish_call(4, s, count, sym, 0, declared_return, count, 0, -1)
+			finish_call(4, s, count, sym, 0, declared_return, count, has_return_buffer, -1)
 		return
 	emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
@@ -100,25 +115,30 @@ void emit_expression_ast(expression_ast* tree, int id):
 		pop_to(base_stack)
 		return
 	if (op == 'F'):
+		int has_return_buffer = emit_ast_return_buffer(tree.high[id])
 		int s = stack_pos
 		push_slot()
+		if (has_return_buffer):
+			lea_eax_esp_plus(word_size)
+			push_slot()
 		int signature = tree.value[id]
 		int arg = tree.right[id]
 		int count = 0
 		while (arg >= 0):
+			int arg_stack = stack_pos
 			emit_expression_ast(tree, arg)
 			int got = promote(tree.result_type[arg])
 			if (signature >= 0): coerce_call_argument(type_function_param_type(signature, count), got)
-			push_call_argument_compact(got, 0)
+			push_call_argument_compact(got, stack_pos - arg_stack)
 			count = count + 1
 			arg = tree.next_arg[arg]
 		int arity = -1
 		if (signature >= 0): arity = type_function_param_count(signature)
-		finish_call(left_type, s, arity, -1, 0, tree.high[id], count, 0, -1)
+		finish_call(left_type, s, arity, -1, 0, tree.high[id], count, has_return_buffer, -1)
 		return
 	if (op == '='):
 		expression_is_assignment = 1
-		push_slot()
+		int lhs_slot = push_slot()
 		int subop = tree.value[id]
 		int loaded = left_type
 		if (subop):
@@ -128,11 +148,13 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int rt = promote(tree.result_type[tree.right[id]])
 		if (subop): rt = compound_assign_apply(subop, loaded, rt)
 		coerce(left_type, rt)
+		int lhs_buried = stack_pos - lhs_slot
 		if (subop): pop_ebx_slot()
+		else if (lhs_buried > 0): mov_ebx_esp_plus(lhs_buried << word_size_log2)
 		else: pop_ebx()
 		if (type_num_args(left_type) > 0): assign_store_struct(left_type)
 		else: assign_store(left_type)
-		if (subop == 0): stack_pos = stack_pos - 1
+		if ((subop == 0) && (lhs_buried == 0)): stack_pos = stack_pos - 1
 		return
 	if ((op == 'a') || (op == 'o')):
 		promote(left_type)
@@ -172,8 +194,11 @@ void emit_expression_ast(expression_ast* tree, int id):
 		promote(left_type)
 		return
 	if (op == '.'):
-		if (tree.high[id]): promote(left_type)
+		if (tree.high[id] > 0): promote(left_type)
 		add_eax_int32(tree.value[id])
+		if (tree.high[id] < 0):
+			promote(tree.symbol[id])
+			drop_slots(0 - tree.high[id])
 		return
 	if (op == 'B'):
 		promote(left_type)

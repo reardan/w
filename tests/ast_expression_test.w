@@ -440,6 +440,25 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	return ast_test_run(args, 0)
 
 
+void test_ast_record_return_roots_are_required():
+	char* path = ast_test_path(c"_record_return.w")
+	assert1(file_write_text(path, c"struct R:\n\tint x\nR make(int n):\n\tR r\n\tr.x = n\n\treturn r\nint get(R r): return r.x\nint main():\n\tR r = make(1)\n\tr = make(2)\n\treturn get(make(3)) + make(4).x\n"))
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, path)
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	unlink(path)
+	free(path)
+
+
 void test_ast_record_expression_hits_and_diagnostics():
 	char* path = ast_test_path(c"_record.w")
 	assert1(file_write_text(path, c"struct R:\n\tint x\nint f(R r): return r.x\nint main():\n\tR a\n\ta.x = 7\n\tR b = (a)\n\tif 1: (b = a)\n\treturn (f(b))\n"))

@@ -396,7 +396,7 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	if ((sym_variadic_fixed_args(sym) >= 0) || (sym_w_variadic_fixed_args(sym) >= 0)): return -1
 	if (sym_is_generator(sym) || sym_is_kernel(sym)): return -1
 	int result = load_int(table + sym + 6)
-	if ((result != 0) && (result != 4) && (ast_expression_scalar_type(result) == 0)): return -1
+	if ((result != 0) && (result != 4) && (ast_expression_data_value(result) == 0)): return -1
 	if (ast_expression_accept(tree, c"(") == 0): return -1
 	int count = 0
 	int previous = -1
@@ -456,7 +456,7 @@ int ast_expression_indirect_call(expression_ast* tree, int callee, int depth):
 		arity = type_function_param_count(signature)
 		result = type_function_return(signature)
 		if ((arity < 0) || (arity > 10)): return -1
-		if ((result != 0) && (ast_expression_scalar_type(result) == 0)): return -1
+		if ((result != 0) && (ast_expression_data_value(result) == 0)): return -1
 	int id = expression_ast_add(tree, 'F', callee, -1)
 	if (id < 0): return -1
 	tree.value[id] = signature
@@ -851,6 +851,13 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 				continue
 			int record = type
 			int load_pointer = 0
+			int return_words = 0
+			if (type_is_value(type) && ast_expression_record_value(type)):
+				# Only call results own the return buffer consumed by a
+				# scalar field access. Other value-record forms still decline.
+				if ((tree.op[left] != 'C') && (tree.op[left] != 'F')): return -1
+				record = type_real(type)
+				return_words = (type_get_size(record) + word_size - 1) >> word_size_log2
 			if (type_get_pointer_level(type) > 0):
 				record = type_lookup_previous_pointer(type)
 				load_pointer = type_is_value(type) == 0
@@ -865,6 +872,11 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			tree.result_type[left] = field
 			tree.value[left] = offset
 			tree.high[left] = load_pointer
+			if (return_words && (type_num_args(field) == 0)):
+				if (ast_expression_scalar_type(field) == 0): return -1
+				tree.high[left] = 0 - return_words
+				tree.symbol[left] = field
+				tree.result_type[left] = type_value(ast_expression_promoted_type(field))
 		else: return left
 	return -1
 
