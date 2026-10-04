@@ -17,6 +17,20 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **Color diagnostic test inherits `NO_COLOR` (2026-10-03).** Running
+  `./wbuild tests` from an agent shell with `NO_COLOR=1` fails
+  `did_you_mean_test`'s forced-color assertion: the inherited variable
+  correctly overrides `FORCE_COLOR=1`. The target passes with `NO_COLOR`
+  unset. Isolate the forced-color step's environment while retaining the
+  separate assertion that `NO_COLOR` wins.
+
+- **Missing implicit string-coercion helper (2026-10-03).** A standalone
+  `list[string]` consumer pushing a C string without importing `lib.lib`
+  fails with `Cannot find symbol: ')'`: coercion needs `str_from_cstr`,
+  but the diagnostic names the current closing token. Name the missing
+  helper and its supplying import, or load that helper lazily. Observed
+  in the streaming baseline while adding AST list-method coverage.
+
 - **Checks can race a compiler rebuild (2026-10-03).** A concurrent
   `bin/wv2 check` or `wtest` dependency query keeps `bin/wv2` open, so
   `wbuild` rebuilding it in place fails with `ETXTBSY`. This surfaced

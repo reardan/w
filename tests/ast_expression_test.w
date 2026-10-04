@@ -261,8 +261,8 @@ void test_ast_full_expression_coverage_gate():
 	assert_equal(0, required.status)
 	process_result_free(required)
 	# The implicit runtime now fits the AST subset. An explicit unsupported
-	# container allocation still proves that required mode cannot fall back.
-	assert1(file_write_text(path, c"int main():\n\tmap[int, int] values = new map[int, int]\n\treturn values.length\n"))
+	# interpolated string still proves that required mode cannot fall back.
+	assert1(file_write_text(path, c"int main():\n\tstring text = f\"{1}\"\n\treturn text.length\n"))
 	args = strv_new(5)
 	strv_set(args, 0, c"bin/wv2")
 	strv_set(args, 1, c"check")
@@ -685,6 +685,39 @@ void test_ast_list_expression_hits_and_diagnostics():
 	ast_test_diagnostics(c"int f(list[int] a): return (a[missing])\nint main(): return 0\n")
 	ast_test_diagnostics(c"int f(list[int] a): return (a[0xffffffff])\nint main(): return 0\n")
 	ast_test_diagnostics(c"int f(list[int] a): return (a[1 + ])\nint main(): return 0\n")
+
+
+void test_ast_container_operations_hits_and_diagnostics():
+	char* path = ast_test_path(c"_container_operations.w")
+	assert1(file_write_text(path, c"int f(list[int] a):\n\tif 1: (a.push(7))\n\tif 1: (a.insert(0, 8))\n\tif 1: (a.remove(0))\n\tint n = (a.pop())\n\tif 1: (a.clear())\n\tif 1: (a.free())\n\treturn n\nlist[int] g(): return (new list[int])\nint h(list[list[int]] xs): return (sizeof(list[list[int]]) + (cast(list[list[int]], xs)).length)\nmap[int, int] m(): return (new map[int, int])\nset[int] s(): return (new set[int])\nstruct R:\n\tint x\nvoid r(list[R] xs, R v):\n\tif 1: (xs.push(v))\n\tif 1: (xs.insert(0, v))\nint main(): return 0\n"))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
+		assert_equal(0, ast.status)
+		assert_contains(ast.stderr_text, c"AST expressions: 12\n")
+		process_result_free(ast)
+	unlink(path)
+	free(path)
+	# Invalid arguments and unsupported type/method shapes must preserve
+	# the streaming diagnostics, including during ordinary emission.
+	ast_test_store_diagnostics(c"void f(list[int] a):\n\tif 1: (a.push(c\"bad\"))\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"void f(list[int] a):\n\tif 1: (a.insert(0, c\"bad\"))\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"void f(list[int] a):\n\tif 1: (a.push())\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"void f(list[int] a):\n\tif 1: (a.pop(1))\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"void f(list[int] a):\n\tif 1: (a.insert(0, ))\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"void f(list[int] a):\n\tif 1: (a.remove(missing))\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"void f(list[int] a):\n\tif 1: (a.clear(0xffffffff))\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"void f(list[int] a):\n\tif 1: (a.free(1))\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"void f(list[string] a):\n\tif 1: (a.push(c\"text\"))\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nstruct S:\n\tint y\nvoid f(list[R] a, S v):\n\tif 1: (a.push(v))\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"int main(): return (sizeof(list[missing]))\n")
+	ast_test_store_diagnostics(c"int main(): return (sizeof(map[int]))\n")
+	ast_test_store_diagnostics(c"int main(): return (sizeof(list[int*]) + missing)\n")
+	ast_test_store_diagnostics(c"int main(): return (sizeof(list[int*]) + sizeof(int*))\n")
+	ast_test_store_diagnostics(c"int main():\n\tmap[int, int] a = (new map[int, int](7))\n\treturn a.length\n")
+	ast_test_store_diagnostics(c"int main():\n\tint list = 0\n\tlist[int] a = list[int]{1, 2}\n\treturn a.length + list\n")
+	ast_test_store_diagnostics(c"int main():\n\tint x = 1\n\tif x + 1 { return 0 }\n\treturn 1\n")
 
 
 void test_ast_comment_expression_hits_and_diagnostics():

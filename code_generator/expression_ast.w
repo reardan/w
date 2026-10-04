@@ -3,6 +3,11 @@
 # peepholes, target word size and runtime division behavior still apply.
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
+	if (op == 'V'):
+		int type = tree.value[id]
+		if (type_is_list(type)): list_emit_new_container(type)
+		else: hash_emit_new_container(type)
+		return
 	if (op == 'N'):
 		int base = tree.value[id]
 		sym_get_value(c"malloc")
@@ -69,6 +74,31 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
+	if (op == 'M'):
+		promote(left_type)
+		int base_stack = stack_pos
+		int receiver_slot = push_slot()
+		int first_slot = 0
+		int second_slot = 0
+		int arg = tree.right[id]
+		int method = tree.value[id] & 127
+		int count = 0
+		while (arg >= 0):
+			emit_expression_ast(tree, arg)
+			int got = promote(tree.result_type[arg])
+			if ((method == 1) || ((method == 3) && (count == 1))): coerce(tree.high[id], got)
+			int slot = push_slot()
+			if (count == 0): first_slot = slot
+			else: second_slot = slot
+			count = count + 1
+			arg = tree.next_arg[arg]
+		int s = rt_call_begin(ast_expression_list_helper(tree.value[id]))
+		push_slot_copy(receiver_slot)
+		if (first_slot): push_slot_copy(first_slot)
+		if (second_slot): push_slot_copy(second_slot)
+		rt_call_end(s)
+		pop_to(base_stack)
+		return
 	if (op == 'F'):
 		int s = stack_pos
 		push_slot()

@@ -172,7 +172,7 @@ int ast_expression_root_end(int eof):
 			previous = 0
 			continue
 		if ((parens == 0) && (brackets == 0)):
-			if ((ch == ')') || (ch == ']') || (ch == ',') || (ch == ';') || (ch == '}')):
+			if ((ch == ')') || (ch == ']') || (ch == ',') || (ch == ';') || (ch == '}') || (ch == '{')):
 				if (ternaries): return -1
 				return window_start + index + i
 			if ((ch == '#') || (ch == 10)):
@@ -513,6 +513,7 @@ int ast_expression_name(expression_ast* tree, int depth):
 	# Keywords, unshadowable builtins, generics and constructors take
 	# precedence over identifier() in the streaming grammar.
 	if (peek(c"cast") || peek(c"sizeof") || peek(c"new")): return -1
+	if ((nextc == '[') && (peek(c"map") || peek(c"set") || peek(c"list"))): return -1
 	if ((nextc == '(') && (peek(c"print") || peek(c"println"))): return ast_expression_print(tree, depth)
 	if (peek(c"to_json") || peek(c"from_json")): return -1
 	if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
@@ -551,14 +552,33 @@ int ast_expression_name(expression_ast* tree, int depth):
 int ast_expression_postfix(expression_ast* tree, int depth);
 
 
-# Resolve simple cast types, staging new pointer records in the arena.
-# Composite/generic/qualified type syntax remains a streaming fallback.
-int ast_expression_named_type(expression_ast* tree, int scalar):
+# Resolve existing named/container types, staging new pointer records.
+# New composite records and generic/qualified syntax still fall back.
+int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
+	if (depth > 96): return -1
 	int is_const = ast_expression_accept(tree, c"const")
-	int type = generic_subst_lookup(token)
-	if (type < 0): type = type_lookup(token)
+	int type = -1
+	if ((nextc == '[') && (peek(c"map") || peek(c"set") || peek(c"list"))):
+		int kind = type_kind_list
+		if (peek(c"map")): kind = type_kind_map
+		if (peek(c"set")): kind = type_kind_set
+		ast_expression_advance(tree)
+		if (ast_expression_accept(tree, c"[") == 0): return -1
+		int first = ast_expression_named_type(tree, 0, depth + 1)
+		if (first < 0): return -1
+		if (kind == type_kind_map):
+			if (ast_expression_accept(tree, c",") == 0): return -1
+			int second = ast_expression_named_type(tree, 0, depth + 1)
+			if (second < 0): return -1
+			type = type_lookup_map(first, second)
+		else if (kind == type_kind_set): type = type_lookup_set(first)
+		else: type = type_lookup_list(first)
+		if (ast_expression_accept(tree, c"]") == 0): return -1
+	else:
+		type = generic_subst_lookup(token)
+		if (type < 0): type = type_lookup(token)
+		ast_expression_advance(tree)
 	if (type < 0): return -1
-	ast_expression_advance(tree)
 	int base = type_unqualified(type)
 	if ((word_size != 8) && ((base == float64_type) || (base == int64_type) || (base == uint64_type))): return -1
 	if (is_const):
@@ -578,14 +598,26 @@ int ast_expression_unary(expression_ast* tree, int depth):
 	if (token_start_offset >= tree.end_offset): return -1
 	if (ast_expression_accept(tree, c"sizeof")):
 		if (ast_expression_accept(tree, c"(") == 0): return -1
-		int sized = ast_expression_named_type(tree, 0)
+		int sized = ast_expression_named_type(tree, 0, depth + 1)
 		if ((sized < 0) || (ast_expression_accept(tree, c")") == 0)): return -1
 		int id = expression_ast_add(tree, 'c', -1, -1)
 		if (id >= 0): tree.value[id] = type_get_size(sized)
 		return id
 	if (ast_expression_accept(tree, c"new")):
-		# Bare ordinary types and empty constructor parentheses. Container
-		# type syntax, array allocation and field initializers follow later.
+		if ((nextc == '[') && (peek(c"map") || peek(c"set") || peek(c"list"))):
+			int container = ast_expression_named_type(tree, 0, depth + 1)
+			if ((container < 0) || peek(c"(")): return -1
+			if ((type_is_list(container) || type_is_map(container) || type_is_set(container)) == 0): return -1
+			char* helper = c"__w_list_new"
+			if (type_is_map(container)): helper = c"__w_map_new"
+			if (type_is_set(container)): helper = c"__w_set_new"
+			if (sym_probe(helper) < 0): return -1
+			int id = expression_ast_add(tree, 'V', -1, -1)
+			if (id < 0): return -1
+			tree.value[id] = container
+			tree.result_type[id] = type_value(container)
+			return id
+		# Bare ordinary types and empty constructor parentheses.
 		if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
 		int base = type_lookup(token)
 		if (base < 0): return -1
@@ -604,7 +636,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		return id
 	if (ast_expression_accept(tree, c"cast")):
 		if (ast_expression_accept(tree, c"(") == 0): return -1
-		int want = ast_expression_named_type(tree, 1)
+		int want = ast_expression_named_type(tree, 1, depth + 1)
 		if ((want < 0) || (ast_expression_accept(tree, c",") == 0)): return -1
 		tree.cast_depth = tree.cast_depth + 1
 		int child = ast_expression_assignment(tree, depth + 1)
@@ -697,6 +729,51 @@ int ast_expression_atom(expression_ast* tree, int depth):
 	return id
 
 
+int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
+	int method = 0
+	if (peek(c"push")): method = 1
+	if (peek(c"pop")): method = 2
+	if (peek(c"insert")): method = 3
+	if (peek(c"remove")): method = 4
+	if (peek(c"clear")): method = 5
+	if (peek(c"free")): method = 6
+	if (method == 0): return -1
+	int element = type_list_element_type(type_unqualified(tree.result_type[receiver]))
+	if ((method == 2) && (ast_expression_scalar_type(element) == 0)): return -1
+	int count = 0
+	if ((method == 1) || (method == 4)): count = 1
+	if (method == 3): count = 2
+	int id = expression_ast_add(tree, 'M', receiver, -1)
+	if (id < 0): return -1
+	tree.high[id] = element
+	tree.result_type[id] = type_value(0)
+	if (method == 2): tree.result_type[id] = type_value(element)
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int previous = -1
+	for i in range(count):
+		if (i && (ast_expression_accept(tree, c",") == 0)): return -1
+		int arg = ast_expression_assignment(tree, depth + 1)
+		if (arg < 0): return -1
+		int type = tree.result_type[arg]
+		int typed = (method == 1) || ((method == 3) && (i == 1))
+		if (typed):
+			if ((ast_expression_scalar_value(type) || ast_expression_record_type(type)) == 0): return -1
+			if (ast_expression_argument_compatible(tree, element, arg) == 0): return -1
+			int got = ast_expression_promoted_type(type)
+			if (type_is_string(element) && type_is_char_pointer(got)):
+				if (sym_probe(c"str_from_cstr") < 0): return -1
+			if ((type_num_args(element) > 0) && (type_num_args(got) > 0)): method = method + 128
+		else if (ast_expression_scalar_value(type) == 0): return -1
+		if (previous < 0): tree.right[id] = arg
+		else: tree.next_arg[previous] = arg
+		previous = arg
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	if (sym_probe(ast_expression_list_helper(method)) < 0): return -1
+	tree.value[id] = method
+	return id
+
+
 int ast_expression_postfix(expression_ast* tree, int depth):
 	int left = ast_expression_atom(tree, depth)
 	while (left >= 0):
@@ -759,6 +836,9 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 				tree.result_type[left] = field_type
 				tree.value[left] = field_offset
 				tree.readonly = 1
+				continue
+			if (type_is_list(type)):
+				left = ast_expression_list_call(tree, left, depth)
 				continue
 			int record = type
 			int load_pointer = 0
@@ -873,7 +953,7 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 # just as operand_is_pure does for a short-circuited operand.
 int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
-		if ((tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N')): return 1
+		if ((tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M')): return 1
 	return 0
 
 
