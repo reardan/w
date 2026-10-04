@@ -51,6 +51,7 @@ struct expression_ast:
 	int[128] next_arg
 	int[128] in_cast
 	int[128] symbol
+	int[128] qualified
 	int[128] generic_parameters
 	int[128] generic_signature
 	int[128] generic_offset
@@ -188,6 +189,7 @@ int expression_ast_add(expression_ast* tree, int op, int left, int right):
 	tree.in_cast[id] = tree.cast_depth
 	tree.result_type[id] = 3
 	tree.symbol[id] = -1
+	tree.qualified[id] = 0
 	tree.next_arg[id] = -1
 	return id
 

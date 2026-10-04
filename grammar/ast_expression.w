@@ -1470,6 +1470,35 @@ int ast_expression_atomic(expression_ast* tree, int kind, int depth):
 	return id
 
 
+# Preserve the member token for committed use tracking and diagnostics.
+int ast_expression_qualified_member(expression_ast* tree):
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c".") == 0): return 0
+	return is_ident_start_byte(token[0])
+
+
+int ast_expression_symbol(expression_ast* tree, int depth, int qualified):
+	int sym = sym_probe(token)
+	if (sym < 0): return -1
+	int is_call = load_int(table + sym + 10) == 2
+	int type = load_int(table + sym + 6)
+	if ((is_call == 0) && (ast_expression_storage_type(type) == 0)): return -1
+	int visibility = sym_decl_visibility(sym)
+	if ((visibility != 'D') && (visibility != 'U') && (visibility != 'L') && (visibility != 'A')): return -1
+	int id = expression_ast_add(tree, 'v', -1, -1)
+	if (id < 0): return -1
+	tree.qualified[id] = qualified
+	tree.symbol[id] = sym
+	tree.result_type[id] = type
+	if (is_call): tree.result_type[id] = 4
+	# Keep a stable name offset across append-only lazy helper registration
+	# during emission, with no allocation needing error cleanup.
+	tree.value[id] = sym - strlen(token)
+	ast_expression_advance(tree)
+	if (is_call && peek(c"(")): return ast_expression_call(tree, id, depth)
+	return id
+
+
 int ast_expression_name(expression_ast* tree, int depth):
 	# Keywords, unshadowable builtins, generics and constructors take
 	# precedence over identifier() in the streaming grammar.
@@ -1477,7 +1506,21 @@ int ast_expression_name(expression_ast* tree, int depth):
 	if ((nextc == '[') && (peek(c"map") || peek(c"set") || peek(c"list"))): return ast_expression_container_literal(tree, depth)
 	if ((nextc == '(') && (peek(c"print") || peek(c"println"))): return ast_expression_print(tree, depth)
 	if ((nextc == '(') && (peek(c"to_json") || peek(c"from_json"))): return ast_expression_json(tree, depth)
-	if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
+	if (nextc == '.'):
+		int alias = import_alias_lookup(token)
+		if (alias >= 0):
+			if (ast_expression_qualified_member(tree) == 0): return -1
+			if (nextc == '('):
+				int base = import_alias_module_type(alias, token)
+				if ((base >= 0) && ast_expression_record_type(base)):
+					ast_expression_advance(tree)
+					return ast_expression_constructor(tree, base, 0, depth)
+			int sym = sym_probe(token)
+			if (sym < 0): return -1
+			int source = sym_decl_file_index(sym)
+			if (source < 0): return -1
+			if (import_path_matches_file(import_alias_path(alias), debug_file_name(source)) == 0): return -1
+			return ast_expression_symbol(tree, depth, 1)
 	if ((nextc == '(') && (sym_probe(token) < 0)):
 		if (peek(c"to_proto")): return ast_expression_protobuf(tree, 2, depth)
 		if (peek(c"from_proto")): return ast_expression_protobuf(tree, 3, depth)
@@ -1515,24 +1558,7 @@ int ast_expression_name(expression_ast* tree, int depth):
 		else: tree.value[id] = target_isa
 		ast_expression_advance(tree)
 		return id
-	int sym = sym_probe(token)
-	if (sym < 0): return -1
-	int is_call = load_int(table + sym + 10) == 2
-	int type = load_int(table + sym + 6)
-	if ((is_call == 0) && (ast_expression_storage_type(type) == 0)): return -1
-	int visibility = sym_decl_visibility(sym)
-	if ((visibility != 'D') && (visibility != 'U') && (visibility != 'L') && (visibility != 'A')): return -1
-	int id = expression_ast_add(tree, 'v', -1, -1)
-	if (id < 0): return -1
-	tree.symbol[id] = sym
-	tree.result_type[id] = type
-	if (is_call): tree.result_type[id] = 4
-	# Keep a stable name offset across append-only lazy helper registration
-	# during emission, with no allocation needing error cleanup.
-	tree.value[id] = sym - strlen(token)
-	ast_expression_advance(tree)
-	if (is_call && peek(c"(")): return ast_expression_call(tree, id, depth)
-	return id
+	return ast_expression_symbol(tree, depth, 0)
 
 
 int ast_expression_ndarray_index(expression_ast* tree, int receiver, int record, int depth):
@@ -1616,7 +1642,8 @@ int ast_expression_postfix(expression_ast* tree, int depth);
 
 
 # Resolve named/container types and stage new derived records.
-# Generic records must already be instantiated; qualified syntax still falls back.
+# Generic records must already be instantiated. Alias membership is checked
+# without marking symbol uses or producing diagnostics.
 int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	if (depth > 96): return -1
 	int is_const = ast_expression_accept(tree, c"const")
@@ -1657,7 +1684,13 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 		ast_expression_advance(tree)
 	else:
 		type = generic_subst_lookup(token)
-		if (type < 0): type = type_lookup(token)
+		if (type < 0):
+			int alias = -1
+			if (nextc == '.'): alias = import_alias_lookup(token)
+			if (alias >= 0):
+				if (ast_expression_qualified_member(tree) == 0): return -1
+				type = import_alias_module_type(alias, token)
+			else: type = type_lookup(token)
 		ast_expression_advance(tree)
 	if (type < 0): return -1
 	int base = type_unqualified(type)
@@ -1762,9 +1795,14 @@ int ast_expression_unary(expression_ast* tree, int depth):
 				if (type_is_map(container) == 0): return -1
 				return ast_expression_map_default(tree, id, depth)
 			return id
-		# Bare ordinary types and empty constructor parentheses.
-		if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
-		int base = type_lookup(token)
+		# Bare ordinary types and constructor parentheses.
+		int alias = -1
+		if (nextc == '.'): alias = import_alias_lookup(token)
+		int base = -1
+		if (alias >= 0):
+			if (ast_expression_qualified_member(tree) == 0): return -1
+			base = import_alias_module_type(alias, token)
+		else: base = type_lookup(token)
 		if (base < 0): return -1
 		int offset = token_start_offset
 		ast_expression_advance(tree)
@@ -2813,8 +2851,9 @@ int ast_expression_try_at(int group_offset, int whole):
 					tree.high[id] = float64_literal_hi
 				else: tree.value[id] = float32_bits_from_token()
 			if (((tree.op[id] == 'v') || (tree.op[id] == 'C') || (tree.op[id] == 'X')) && (tree.offset[id] == token_start_offset)):
-				import_warn_unqualified(token)
-				import_warn_transitive(token)
+				if (tree.qualified[id] == 0):
+					import_warn_unqualified(token)
+					import_warn_transitive(token)
 				strcpy(last_identifier, token)
 				# This is the committed use: update unused-local tracking
 				# only now, at the same source token as identifier().

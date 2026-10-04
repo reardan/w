@@ -1455,3 +1455,17 @@ Required-mode fixtures cover nested formatting, punctuation fill, empty
 specs, ternary expressions, slices, dynamic values and float32/float64. The
 existing format regressions produce identical native images; differential
 diagnostics cover malformed specs and failed outer probes.
+
+## Task 75: qualified import names
+
+AST probes now resolve qualified module members for values, calls,
+constructors, allocation and type operands. Membership validation uses
+module declaration locations without marking uses. Nodes retain whether a
+reference was qualified so committed replay preserves import warnings and
+unused-symbol tracking.
+
+The import and qualified-type suites compile with required AST expressions
+and identical native images. A cross-target fixture adds qualified function
+values, named constructors, array allocation, sizeof, global mutation and
+an alias sharing its spelling with a local. Differential diagnostics retain
+wrong-module and wrong-kind errors, including failed enclosing probes.
