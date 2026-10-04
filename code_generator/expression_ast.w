@@ -3,8 +3,20 @@
 # peepholes, target word size and runtime division behavior still apply.
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
-	if ((op == 0) || (op == 'c')):
+	if ((op == 0) || (op == 'c') || (op == 'h')):
 		mov_eax_int(tree.value[id])
+		return
+	if ((op == 's') || (op == 'S')):
+		char* bytes = &tree.text[0]
+		bytes = bytes + tree.value[id]
+		if (op == 's'): be_emit_inline_cstr(tree.high[id], bytes)
+		else:
+			# The shared descriptor encoder still takes its bytes via
+			# token. Decoding/validation already ran at the source token.
+			char* saved_token = token
+			token = bytes
+			emit_utf8_string_descriptor(tree.high[id])
+			token = saved_token
 		return
 	if (op == 'f'):
 		if (word_size == 8): mov_rax_int64_halves(tree.value[id], tree.high[id])
@@ -129,7 +141,10 @@ void emit_expression_ast(expression_ast* tree, int id):
 		if ((op == 0x9c) || (op == 0x9e)): swap = 1
 		if ((op == 0x9c) || (op == 0x9f)): cc = 0x97
 		if ((op == 0x9e) || (op == 0x9d)): cc = 0x93
-		if (float_binary_compare(left_type, right_type, cc, swap) == 0): alu_cmp_set(op)
+		int result = 0
+		if ((op == 0x94) || (op == 0x95)): result = string_binary_compare_eq(left_type, right_type, op == 0x95)
+		if (result == 0): result = float_binary_compare(left_type, right_type, cc, swap)
+		if (result == 0): alu_cmp_set(op)
 		return
 	if (binary_float_kind(left_type, right_type)):
 		pop_ebx_slot()

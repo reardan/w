@@ -17,6 +17,8 @@ struct expression_ast:
 	int cast_depth
 	int whole_expression
 	int final_token_offset
+	int text_used
+	char[4096] text
 	int[128] op
 	int[128] left
 	int[128] right

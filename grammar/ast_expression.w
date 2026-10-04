@@ -1,6 +1,24 @@
+# Locate a complete quoted token without running the lexer. Quotes and
+# escapes may contain operator characters; raw newlines still fall back.
+# f-strings are deliberately excluded because their lexer has semantic
+# chunk boundaries and can diagnose a stray brace while tokenizing.
+int ast_expression_quoted_end(char* bytes, int start, int limit):
+	if ((bytes[start] == '"') && (start > 0) && (bytes[start - 1] == 'f')): return -1
+	int quote = bytes[start]
+	int i = start + 1
+	while (i < limit):
+		if (bytes[i] == 10): return -1
+		if (bytes[i] == quote): return i
+		if (bytes[i] == 92):
+			i = i + 1
+			if ((i >= limit) || (bytes[i] == 10)): return -1
+		i = i + 1
+	return -1
+
+
 # Only probe closed, single-line groups with a small alphabet. In
-# particular no comments, strings, newlines or UTF-8 can reach the
-# speculative tokenizer, so it cannot issue diagnostics or run past the
+# particular comments, newlines and unterminated quoted tokens cannot
+# reach the speculative tokenizer, so it cannot diagnose or run past the
 # closing ')'. Inspect only bytes already in the tokenizer's buffered
 # window: no I/O, seek, diagnostic or compiler-state changes. Crossing a
 # buffer boundary falls back too (including on non-seekable inputs).
@@ -17,6 +35,12 @@ int ast_expression_end(int start):
 	int i = 0
 	while ((i < 2048) && (index + i + 1 < getchar_limit[file])):
 		int ch = bytes[index + i] & 255
+		if ((ch == 39) || (ch == '"')):
+			int quoted = ast_expression_quoted_end(bytes, index + i, getchar_limit[file] - 1)
+			if ((quoted < 0) || (quoted - index >= 2048)): return -1
+			i = quoted - index + 1
+			previous = 0
+			continue
 		int allowed = (ch >= '0') && (ch <= '9')
 		if ((ch >= 'a') && (ch <= 'z')): allowed = 1
 		if ((ch >= 'A') && (ch <= 'Z')): allowed = 1
@@ -59,6 +83,12 @@ int ast_expression_root_end():
 	int i = 0
 	while ((i < 2048) && (index + i + 1 < getchar_limit[file])):
 		int ch = bytes[index + i] & 255
+		if ((ch == 39) || (ch == '"')):
+			int quoted = ast_expression_quoted_end(bytes, index + i, getchar_limit[file] - 1)
+			if ((quoted < 0) || (quoted - index >= 2048)): return -1
+			i = quoted - index + 1
+			previous = 0
+			continue
 		if ((parens == 0) && (brackets == 0)):
 			if ((ch == ')') || (ch == ']') || (ch == ',') || (ch == ';') || (ch == '}') || (ch == '#') || (ch == 10)):
 				if (ternaries): return -1
@@ -132,6 +162,7 @@ int ast_expression_scalar_type(int type):
 	if (type_is_gpu_object(type) || type_is_gpu_pointer(type)): return 0
 	int base = type_unqualified(type)
 	if (type_get_pointer_level(base) > 0): return 1
+	if (type_is_string(base)): return 1
 	# Half loads/conversions can diagnose unsupported backends during
 	# emission. Keep their diagnostic order with the streaming parser.
 	if ((base == float16_type) && (target_isa != 0)): return 0
@@ -144,7 +175,7 @@ int ast_expression_scalar_type(int type):
 
 
 int ast_expression_scalar_value(int type):
-	if ((type == 3) || (type == float32_value_type) || (type == float64_value_type)): return 1
+	if ((type == 3) || (type == float32_value_type) || (type == float64_value_type) || (type == string_value_type) || (type == string_literal_type)): return 1
 	return ast_expression_scalar_type(type)
 
 
@@ -165,6 +196,7 @@ int ast_expression_storage_type(int type):
 # The type-only half of promote(), restricted to this arena's scalar
 # types. Value-encoded call results differ from loaded float lvalues.
 int ast_expression_promoted_type(int type):
+	if (type == string_type): return string_value_type
 	if (type_is_value(type)): return type_strip_gpu(type_real(type))
 	int kind = type_float_kind(type)
 	if (kind): return float_binary_result_type(kind)
@@ -190,6 +222,8 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 		if (arg < 0): return -1
 		if (ast_expression_scalar_value(tree.result_type[arg]) == 0): return -1
 		int got = ast_expression_promoted_type(tree.result_type[arg])
+		if ((param >= 0) && type_is_string(param) && type_is_char_pointer(got)):
+			if (sym_probe(c"str_from_cstr") < 0): return -1
 		# Let the streaming parser issue argument diagnostics at its exact
 		# source position, including warnings promoted by --strict.
 		if ((param >= 0) && (types_compatible_with_expression(param, got) == 0)): return -1
@@ -333,6 +367,28 @@ int ast_expression_atom(expression_ast* tree, int depth):
 		if (token_start_offset >= tree.end_offset): return -1
 		ast_expression_advance(tree)
 		return child
+	if (token[0] == 39):
+		int id = expression_ast_add(tree, 'h', -1, -1)
+		if (id >= 0): ast_expression_advance(tree)
+		return id
+	if ((token[0] == '"') || (((token[0] == 'c') || (token[0] == 's')) && (token[1] == '"'))):
+		int op = 'S'
+		int type = string_literal_type
+		int start = 1
+		if (token[1] == '"'):
+			start = 2
+			if (token[0] == 'c'):
+				op = 's'
+				type = type_lookup_pointer(c"char", 1)
+				if (type < 0): return -1
+				type = type_value(type)
+			else: type = string_value_type
+		int id = expression_ast_add(tree, op, -1, -1)
+		if (id < 0): return -1
+		tree.result_type[id] = type
+		tree.value[id] = start
+		ast_expression_advance(tree)
+		return id
 	if (is_ident_start_byte(token[0])): return ast_expression_name(tree, depth)
 	if ((token[0] < '0') || (token[0] > '9')): return -1
 	int op = 0
@@ -566,6 +622,7 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	int lt = tree.result_type[left]
 	if (type_is_value(lt) || (lt == 3) || type_is_const(lt)): return -1
 	if (ast_expression_scalar_type(lt) == 0): return -1
+	if (op && type_is_buffer(type_canonical(lt))): return -1
 	ast_expression_advance(tree)
 	int right = ast_expression_assignment(tree, depth + 1)
 	if (right < 0): return -1
@@ -610,6 +667,7 @@ int ast_expression_try_at(int group_offset, int whole):
 		if (bytes[end - window_start] == ','): return -1
 	expression_ast tree
 	tree.count = 0
+	tree.text_used = 0
 	tree.whole_expression = whole
 	tree.end_offset = end
 	tree.cast_depth = cast_context
@@ -630,6 +688,19 @@ int ast_expression_try_at(int group_offset, int whole):
 				cast_context = tree.in_cast[id]
 				tree.value[id] = int_literal_value(0)
 				cast_context = outer_cast
+			if ((tree.op[id] == 'h') && (tree.offset[id] == token_start_offset)):
+				tree.value[id] = char_literal_value()
+			if (((tree.op[id] == 's') || (tree.op[id] == 'S')) && (tree.offset[id] == token_start_offset)):
+				int length = process_string_literal_from(tree.value[id])
+				if (tree.op[id] == 'S'): validate_utf8_literal(length)
+				token[length] = 0
+				# The 2048-byte source bound leaves ample space for all
+				# decoded bytes and one terminator per arena node.
+				assert1(tree.text_used + length + 1 <= 4096)
+				tree.value[id] = tree.text_used
+				tree.high[id] = length
+				for j in range(length + 1): tree.text[tree.text_used + j] = token[j]
+				tree.text_used = tree.text_used + length + 1
 			if ((tree.op[id] == 'f') && (tree.offset[id] == token_start_offset)):
 				if (word_size == 8):
 					float64_bits_from_token()

@@ -571,3 +571,21 @@ coercion. Variadic, generator, kernel and indirect calls remain separate work.
 Tests cover nested stores in calls and conditionals, skipped stores, pointer
 stores, float compound assignment, boolean stores and void calls on all six
 image targets, plus diagnostic parity and explicit AST-hit assertions.
+
+## Task 12: character and string literals
+
+Character, C-string, plain string and UTF-8 string literals now have AST nodes.
+The byte preflight recognizes complete quoted tokens and escaped quotes without
+interpreting their contents. Literal decoding and UTF-8 checks run during the
+committed source replay, so diagnostics retain their original token and order.
+Decoded string bytes live in a bounded stack-owned arena; the visitor emits
+them with the ordinary C-string and descriptor encoders in evaluation order.
+No literal allocation survives REPL error recovery.
+
+String values and variables retain the streaming type conventions and string
+content equality helper. Templates remain a fallback because their tokenizer
+has expression-bearing chunks and different diagnostic behavior. Tests cover
+Unicode characters, malformed escapes/UTF-8, embedded NULs, literal delimiters,
+string equality, calls and assignments across both compiler host widths and
+all six image targets. The whole-compiler audit falls to about 3,500 streaming
+expression roots; full-expression self-host images remain byte-identical.

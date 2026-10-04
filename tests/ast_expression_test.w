@@ -94,6 +94,7 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_logic_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_remaining_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_mutation_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_text_expression_fixture.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -257,6 +258,30 @@ void test_ast_mutation_expression_path_is_exercised():
 	unlink(output)
 	unlink(path)
 	free(output)
+	free(path)
+
+
+void test_ast_text_expression_diagnostics():
+	ast_test_diagnostics(c"int main(): return ('ab')\n")
+	ast_test_diagnostics(c"int main(): return ('\\q')\n")
+	ast_test_diagnostics(c"int main(): return ('\\uD800')\n")
+	ast_test_diagnostics(c"import lib.lib\nint main(): return (strlen(c\"\\xGG\"))\n")
+	ast_test_diagnostics(c"int main(): return (s\"\\xff\" == s\"x\")\n")
+	ast_test_diagnostics(c"int main(): return (s\"\\uD800\" == s\"x\")\n")
+	ast_test_diagnostics(c"int main(): return (f\"bad}\" == s\"x\")\n")
+	ast_test_diagnostics(c"int main():\n\tstring text = s\"x\"\n\ttext += 1\n\treturn 0\n")
+	ast_test_diagnostics(c"int main(): return ('x' + 0xffffffff)\n")
+	ast_test_diagnostics(c"int main():\n\tchar* text = c\"decoded\\n\"\n    return 0\n")
+
+
+void test_ast_text_expression_path_is_exercised():
+	char* path = ast_test_path(c"_text.w")
+	assert1(file_write_text(path, c"int f(char* a, char* b): return a == b\nint main(): return (f(c\"hello\", c\"hello\") + 'a')\n"))
+	process_result* ast = ast_test_compile(c"bin/wv2", c"x86", path, 0, 1, 1, 1)
+	assert_equal(0, ast.status)
+	assert_contains(ast.stderr_text, c"AST expressions: 1\n")
+	process_result_free(ast)
+	unlink(path)
 	free(path)
 
 
@@ -450,7 +475,7 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
-# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/operator_overload_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/operator_overload_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"
