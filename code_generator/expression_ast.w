@@ -3,6 +3,17 @@
 # peepholes, target word size and runtime division behavior still apply.
 void emit_expression_ast(expression_ast* tree, int id):
 	int op = tree.op[id]
+	if (op == 'P'):
+		int base_stack = stack_pos
+		int arg = tree.left[id]
+		if (arg >= 0):
+			emit_expression_ast(tree, arg)
+			promote(tree.result_type[arg])
+			int value_slot = push_slot()
+			print_emit_call1(tree.high[id], value_slot)
+		if (tree.value[id]): print_emit_nl()
+		if (arg >= 0): pop_to(base_stack)
+		return
 	if ((op == 0) || (op == 'c') || (op == 'h')):
 		mov_eax_int(tree.value[id])
 		return

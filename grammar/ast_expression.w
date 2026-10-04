@@ -67,6 +67,25 @@ int ast_expression_end(int start):
 	return end
 
 
+# A newline is not necessarily an expression boundary: postfix tails and
+# infix operators on the next line still belong to the streaming expression.
+# Until multi-line trees are supported, decline such roots before emission.
+int ast_expression_line_boundary(char* bytes, int index, int limit):
+	while (index < limit):
+		int ch = bytes[index] & 255
+		if (ch == '#'):
+			while ((index < limit) && (bytes[index] != 10)): index = index + 1
+			continue
+		if ((ch == ' ') || (ch == 9) || (ch == 10) || (ch == 13)):
+			index = index + 1
+			continue
+		char* tails = c"([.+-*/%<>=&|^?"
+		for j in range(15):
+			if (tails[j] == ch): return 0
+		return 1
+	return 0
+
+
 # A complete scalar expression on one buffered line. The terminator is
 # left for the enclosing grammar. Assignment and unsupported characters
 # decline the whole root. No lexing or I/O happens in this preflight.
@@ -92,6 +111,8 @@ int ast_expression_root_end():
 		if ((parens == 0) && (brackets == 0)):
 			if ((ch == ')') || (ch == ']') || (ch == ',') || (ch == ';') || (ch == '}') || (ch == '#') || (ch == 10)):
 				if (ternaries): return -1
+				if ((ch == '#') || (ch == 10)):
+					if (ast_expression_line_boundary(bytes, index + i, getchar_limit[file]) == 0): return -1
 				return window_start + index + i
 			if ((ch == ':') && (ternaries == 0)): return window_start + index + i
 			if (ch == '?'): ternaries = ternaries + 1
@@ -243,11 +264,40 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	return id
 
 
+int ast_expression_print(expression_ast* tree, int depth):
+	int newline = peek(c"println")
+	int id = expression_ast_add(tree, 'P', -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = newline
+	tree.result_type[id] = type_value(0)
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	if (peek(c")")):
+		if (newline == 0): return -1
+	else:
+		int arg = ast_expression_assignment(tree, depth + 1)
+		if (arg < 0): return -1
+		int vc = value_class(ast_expression_promoted_type(tree.result_type[arg]))
+		int helper = -1
+		if (vc == VC_INT): helper = 0
+		if (vc == VC_CSTR): helper = 1
+		if (vc == VC_STRING): helper = 2
+		if (vc == VC_F32): helper = 3
+		if (vc == VC_CHAR): helper = 13
+		if (helper < 0): return -1
+		tree.left[id] = arg
+		tree.high[id] = helper
+	if ((peek(c")") == 0) || (token_start_offset >= tree.end_offset)): return -1
+	ast_expression_advance(tree)
+	return id
+
+
 int ast_expression_name(expression_ast* tree, int depth):
 	# Keywords, unshadowable builtins, generics and constructors take
 	# precedence over identifier() in the streaming grammar.
 	if (peek(c"cast") || peek(c"sizeof") || peek(c"new")): return -1
-	if (peek(c"print") || peek(c"println") || peek(c"to_json") || peek(c"from_json")): return -1
+	if ((nextc == '(') && (peek(c"print") || peek(c"println"))): return ast_expression_print(tree, depth)
+	if (peek(c"to_json") || peek(c"from_json")): return -1
 	if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
 	if (generic_call_ready()): return -1
 	if ((nextc == '(') && struct_value_ctor_ready()): return -1
@@ -272,8 +322,8 @@ int ast_expression_name(expression_ast* tree, int depth):
 	if (id < 0): return -1
 	tree.symbol[id] = sym
 	tree.result_type[id] = type
-	# Scalar calls cannot declare symbols or lazily import runtime code.
-	# Keep a stable name offset, with no allocation needing error cleanup.
+	# Keep a stable name offset across append-only lazy helper registration
+	# during emission, with no allocation needing error cleanup.
 	tree.value[id] = sym - strlen(token)
 	ast_expression_advance(tree)
 	if (is_call): return ast_expression_call(tree, id, depth)

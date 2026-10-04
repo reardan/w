@@ -95,6 +95,7 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_remaining_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_mutation_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_text_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_print_expression_fixture.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -400,6 +401,42 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	return ast_test_run(args, 0)
 
 
+int ast_test_emitted_count(char* stats):
+	char* prefix = c"AST expressions: "
+	int i = 0
+	while (stats[i]):
+		int j = 0
+		while (prefix[j] && (stats[i + j] == prefix[j])): j = j + 1
+		if (prefix[j] == 0): return atoi(stats + i + j)
+		i = i + 1
+	return -1
+
+
+void test_ast_print_expression_diagnostics_and_hits():
+	ast_test_diagnostics(c"int main():\n\t(print())\n\treturn 0\n")
+	ast_test_diagnostics(c"int main():\n\t(println(1, 2))\n\treturn 0\n")
+	ast_test_diagnostics(c"int main():\n\tfloat64 x = 1.5\n\t(println(x))\n\treturn 0\n")
+	ast_test_diagnostics(c"int main():\n\tint* p = 0\n\t(println(p))\n\treturn 0\n")
+	ast_test_diagnostics(c"int main():\n\t(println(0xffffffff))\n\treturn 0\n")
+	char* path = ast_test_path(c"_print.w")
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		assert1(file_write_text(path, c"int main():\n\tif 1: println(42)\n\tif 1: println()\n\treturn 0\n"))
+		process_result* baseline = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
+		assert_equal(0, baseline.status)
+		int base_count = ast_test_emitted_count(baseline.stderr_text)
+		assert1(base_count >= 0)
+		assert1(file_write_text(path, c"int main():\n\tif 1: (println(42))\n\tif 1: (println())\n\treturn 0\n"))
+		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
+		assert_equal(0, ast.status)
+		assert_equal(base_count + 2, ast_test_emitted_count(ast.stderr_text))
+		process_result_free(baseline)
+		process_result_free(ast)
+	unlink(path)
+	free(path)
+
+
 void test_ast_expression_analysis_queries():
 	char*[3] commands
 	commands[0] = c"symbols"
@@ -475,7 +512,7 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
-# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/operator_overload_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/operator_overload_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"

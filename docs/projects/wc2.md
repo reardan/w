@@ -589,3 +589,18 @@ Unicode characters, malformed escapes/UTF-8, embedded NULs, literal delimiters,
 string equality, calls and assignments across both compiler host widths and
 all six image targets. The whole-compiler audit falls to about 3,500 streaming
 expression roots; full-expression self-host images remain byte-identical.
+
+## Task 13: scalar print builtins and continuation boundaries
+
+`print` and `println` now lower through dedicated AST nodes for integer,
+character, enum, boolean, C-string, string and float32 values, including the
+zero-argument newline form. The visitor preserves argument evaluation order,
+stack cleanup and the existing lazy prelude helper registration. Unsupported
+types and malformed argument lists retain their existing diagnostics.
+
+Differential tests also exposed a pre-existing full-expression boundary bug:
+a newline followed by a postfix or infix continuation could end an AST root
+too early. The byte preflight now declines these roots, preserving both the
+streaming interpretation and its cross-line call warning. Multi-line trees
+remain a later stage. Tests compare target images, diagnostics and explicit
+AST-hit counts without assuming the lazy runtime contributes no AST nodes.
