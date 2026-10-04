@@ -1072,6 +1072,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_return_statements_fallback = 0
 	ast_expression_statements_emitted = 0
 	ast_expression_statements_fallback = 0
+	ast_if_headers_emitted = 0
+	ast_if_headers_fallback = 0
+	ast_while_headers_emitted = 0
+	ast_while_headers_fallback = 0
 	# check/deps/symbols discard the output, so a library module without
 	# a _main is fine to analyze: the backend finishers skip the
 	# entry-call patch instead of erroring (code_generator/code_emitter.w)
@@ -1367,6 +1371,15 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(itoa(ast_expression_statements_emitted))
 		print_error(c"\nStreaming expression statements: ")
 		print_error(itoa(ast_expression_statements_fallback))
+		print_error(c"\n")
+		print_error(c"AST if headers: ")
+		print_error(itoa(ast_if_headers_emitted))
+		print_error(c"\nStreaming if headers: ")
+		print_error(itoa(ast_if_headers_fallback))
+		print_error(c"\nAST while headers: ")
+		print_error(itoa(ast_while_headers_emitted))
+		print_error(c"\nStreaming while headers: ")
+		print_error(itoa(ast_while_headers_fallback))
 		print_error(c"\n")
 
 	return 0

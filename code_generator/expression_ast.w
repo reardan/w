@@ -16,6 +16,48 @@ void emit_ast_map_call(char* helper, int map_slot, int key_slot, int value_slot)
 	rt_call_end(s)
 
 
+void emit_expression_ast(expression_ast* tree, int id);
+
+
+# The receiver is already in eax. Keep the same parked operands and
+# float read/add/store sequence as hash_map_add_suffix().
+void emit_ast_map_add(expression_ast* tree, int id, int receiver_type):
+	promote(receiver_type)
+	int base_stack = stack_pos
+	int container_slot = push_slot()
+	int key = tree.right[id]
+	emit_expression_ast(tree, key)
+	int got = promote(tree.result_type[key])
+	coerce(tree.symbol[id], got)
+	int key_slot = push_slot()
+	int value_type = tree.value[id]
+	int value_kind = type_float_kind(type_value(value_type))
+	int delta = tree.high[id]
+	if (delta >= 0):
+		emit_expression_ast(tree, delta)
+		got = promote(tree.result_type[delta])
+		coerce(value_type, got)
+	else:
+		mov_eax_int(1)
+		if (value_kind): coerce(value_type, 3)
+	int delta_slot = push_slot()
+	if (value_kind):
+		int s = rt_call_begin(c"__w_map_get_or")
+		push_slot_copy(container_slot)
+		push_slot_copy(key_slot)
+		push_slot_int(0)
+		rt_call_end(s)
+		push_slot()
+		load_slot(delta_slot)
+		pop_ebx_slot()
+		float_binary_arithmetic(type_value(value_type), type_value(value_type), '+')
+		int sum_slot = push_slot()
+		emit_ast_map_call(c"__w_map_set", container_slot, key_slot, sum_slot)
+		load_slot(sum_slot)
+	else: emit_ast_map_call(c"__w_map_add", container_slot, key_slot, delta_slot)
+	pop_to(base_stack)
+
+
 # Walk the completed, decoded expression tree in source evaluation order.
 # Reuse the production backend dispatch and stack accounting; the same
 # peepholes, target word size and runtime division behavior still apply.
@@ -369,6 +411,9 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
+	if (op == 'Q'):
+		emit_ast_map_add(tree, id, left_type)
+		return
 	if (op == 'U'):
 		expression_is_assignment = 1
 		compound_assign_scalar(tree.value[id], left_type, 1)
@@ -417,6 +462,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 		push_slot_copy(receiver_slot)
 		if (first_slot): push_slot_copy(first_slot)
 		if (second_slot): push_slot_copy(second_slot)
+		if ((method == 16) || (method == 17)): push_slot_int(tree.symbol[id])
 		rt_call_end(s)
 		pop_to(base_stack)
 		return
@@ -509,6 +555,30 @@ void emit_expression_ast(expression_ast* tree, int id):
 	if (op == 'B'):
 		promote(left_type)
 		if (tree.value[id]): add_eax_int32(tree.value[id])
+		return
+	if (op == 'J'):
+		promote(left_type)
+		int base_stack = stack_pos
+		int list_slot = push_slot()
+		int start = tree.right[id]
+		if (start < 0): mov_eax_int(0)
+		else:
+			emit_expression_ast(tree, start)
+			promote(tree.result_type[start])
+		int start_slot = push_slot()
+		int end = tree.high[id]
+		if (end < 0): mov_eax_int(0)
+		else:
+			emit_expression_ast(tree, end)
+			promote(tree.result_type[end])
+		int end_slot = push_slot()
+		int s = rt_call_begin(c"__w_list_slice")
+		push_slot_copy(list_slot)
+		push_slot_copy(start_slot)
+		push_slot_copy(end_slot)
+		push_slot_int(end >= 0)
+		rt_call_end(s)
+		pop_to(base_stack)
 		return
 	if (op == 'Z'):
 		promote(left_type)

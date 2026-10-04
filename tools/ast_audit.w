@@ -123,6 +123,27 @@ json_value* ast_audit_sorted_counts(json_value* counts, char* field):
 	return result
 
 
+int ast_audit_known_counter(char* label):
+	return strcmp(label, c"AST expressions") == 0 || strcmp(label, c"AST expression roots") == 0 || strcmp(label, c"Streaming expression roots") == 0 || strcmp(label, c"AST return statements") == 0 || strcmp(label, c"Streaming return statements") == 0 || strcmp(label, c"AST expression statements") == 0 || strcmp(label, c"Streaming expression statements") == 0 || strcmp(label, c"AST if headers") == 0 || strcmp(label, c"Streaming if headers") == 0 || strcmp(label, c"AST while headers") == 0 || strcmp(label, c"Streaming while headers") == 0
+
+
+# Parse and add without signed wrap on either compiler host width. Return
+# -1 for malformed input or either a single-value or accumulated overflow.
+int ast_audit_counter_sum(char* text, int previous):
+	if (text[0] == 0): return -1
+	int value = 0
+	int i = 0
+	int limit = json_int_max()
+	while (text[i] != 0):
+		int digit = cast(int, text[i]) - '0'
+		if (digit < 0 || digit > 9): return -1
+		if (value > (limit - digit) / 10): return -1
+		value = value * 10 + digit
+		i = i + 1
+	if (value > limit - previous): return -1
+	return previous + value
+
+
 # One log may contain several compiler invocations; counters are summed.
 # Missing stats stay absent, and absence of fallbacks is not labeled success.
 json_value* ast_audit_census(char* text):
@@ -131,6 +152,7 @@ json_value* ast_audit_census(char* text):
 	json_value* counters = json_object()
 	int records = 0
 	int invalid = 0
+	int invalid_counters = 0
 	int ignored = 0
 	int start = 0
 	int length = strlen(text)
@@ -139,7 +161,9 @@ json_value* ast_audit_census(char* text):
 		if (end == start):
 			start = end + 1
 			continue
-		char* line = substring(text, start, end)
+		int stop = end
+		if (stop > start && text[stop - 1] == '\r'): stop = stop - 1
+		char* line = substring(text, start, stop)
 		start = end + 1
 		int recognized = 0
 		if (line[0] == '{'):
@@ -160,30 +184,37 @@ json_value* ast_audit_census(char* text):
 				invalid = invalid + 1
 			json_free(record)
 		if (ast_audit_prefix(line, c"AST ") || ast_audit_prefix(line, c"Streaming ")):
+			recognized = 1
 			char* separator = ast_audit_find(line, c": ")
+			int valid = 0
 			if (separator != 0):
 				char* label = substring(line, 0, separator - line)
-				char* number = separator + 2
-				int valid = number[0] != 0
-				for i in range(strlen(number)):
-					if (number[i] < '0' || number[i] > '9'): valid = 0
-				if (valid):
-					json_object_set(counters, label, json_int(jfield_int(counters, label, 0) + atoi(number)))
-					# Counters are parser entry counts, not source percentages.
-				else: invalid = invalid + 1
-				recognized = 1
+				if (ast_audit_known_counter(label)):
+					int total = ast_audit_counter_sum(separator + 2, jfield_int(counters, label, 0))
+					if (total >= 0):
+						json_object_set(counters, label, json_int(total))
+						valid = 1
 				free(label)
+			if (valid == 0):
+				invalid = invalid + 1
+				invalid_counters = invalid_counters + 1
 		if (recognized == 0): ignored = ignored + 1
 		free(line)
 	json_value* report = json_object()
 	json_object_set(report, c"schema", json_int(1))
 	json_object_set(report, c"fallback_records", json_int(records))
 	json_object_set(report, c"invalid_records", json_int(invalid))
+	json_object_set(report, c"invalid_counters", json_int(invalid_counters))
 	json_object_set(report, c"ignored_lines", json_int(ignored))
+	json_value* matching = json_null()
+	if (invalid_counters == 0 && json_object_has(counters, c"Streaming expression roots")):
+		json_free(matching)
+		matching = json_bool(records == jfield_int(counters, c"Streaming expression roots", 0))
+	json_object_set(report, c"records_match_streaming_roots", matching)
 	json_object_set(report, c"counters", ast_audit_sorted_counts(counters, c"counter"))
 	json_object_set(report, c"by_file", ast_audit_sorted_counts(files, c"file"))
 	json_object_set(report, c"by_token", ast_audit_sorted_counts(tokens, c"token"))
-	json_object_set(report, c"scope", json_string(c"Parser-entry counts, including nested entries after fallback; not source coverage percentages. Log completeness and compiler exit status must be checked separately."))
+	json_object_set(report, c"scope", json_string(c"Counters and fallback records are aggregated across invocations. Consistency is unknown without valid streaming-root stats and does not establish log completeness or compiler success. Counts are parser entries, including nested fallback entries, not source coverage percentages."))
 	json_free(files)
 	json_free(tokens)
 	json_free(counters)

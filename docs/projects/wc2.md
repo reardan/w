@@ -30,11 +30,13 @@ streaming by default. `--ast-full-expressions` enables the hybrid AST path;
 Compiler self-host coverage is a narrower gate than full language coverage.
 
 The integrated path combines record values and calls, map elements and defaults,
-collection membership and basic methods, parallel assignment and increments,
-formatted interpolation, explicit generic calls, buffers and slices, typed
-container literals, constructors and dynamic arrays. Generic signatures retain
-unbound syntax and bind supported shapes transactionally. Ordinary return and expression
-statements own prepared expression nodes through immediate lowering.
+collection membership, accumulation and snapshots, parallel assignment and
+increments, formatted interpolation, explicit generic calls, buffers and slices,
+typed container literals, list slices, constructors and dynamic arrays. Generic
+signatures retain unbound syntax and bind supported parameter and return shapes
+transactionally.
+Ordinary return/expression statements and if/while condition headers own prepared
+expression nodes through immediate lowering.
 
 These nodes do not survive as persistent function or module trees. Other
 statement/declaration forms, declaration-time constant expressions, inferred
@@ -1175,11 +1177,15 @@ bin/wast_audit census bin/compiler_ast_audit.jsonl
 
 Check the compiler exit status separately. A census is a description of its
 input log; it cannot certify that the log is complete or that compilation
-succeeded. Malformed audit records make the census command fail. Counts include
-nested parser entries after an outer fallback, so they are not source-coverage
-percentages. Required-mode self-host checks remain in
-`ast_required_expression_verify`, and the differential fixture matrix remains in
-`ast_expression_test`.
+succeeded. Malformed audit records, invalid or overflowing counters, and a
+mismatch between fallback records and summed streaming-root counters make the
+census command fail. `records_match_streaming_roots` is null when streaming-root
+stats are absent or any counter is invalid. Counts aggregate across invocations;
+even matching totals cannot detect truncation after an earlier complete
+invocation. Counts include nested parser entries after an outer fallback, so
+they are not source-coverage percentages. Required-mode self-host checks remain
+in `ast_required_expression_verify`, and the differential fixture matrix remains
+in `ast_expression_test`.
 
 ## Integration validation
 
@@ -1196,3 +1202,72 @@ counts describe the complete manifest, not how many selected steps the `tests`
 target executes. No compiler fallback records appeared in the x86/x64 compiler
 census. The production mode remains opt-in; the scope and remaining architecture
 work are listed in the current-status section above.
+
+## Task 46: generic return shapes
+
+The generic declaration lookahead now retains the return type's syntax
+instead of only skipping its brackets. Capture tracks bracket depth through
+nested types; unsupported shapes finish the original balanced scan without
+rewinding or duplicating lexer diagnostics. Accepted return graphs transfer
+directly into the signature AST.
+
+Tests cover generic pointer and by-value record returns, nested return
+shapes, and recovery past unsupported qualifiers, fixed-array arguments and
+oversized type-argument lists. Ordinary non-generic declarations still rewind
+to their original type parser. Binding continues to require existing
+instantiated struct and slice records.
+
+## Task 47: list slices
+
+List slicing now retains the receiver and optional bound expressions in a
+dedicated AST node. Emission preserves left-to-right evaluation and passes
+omitted-end information to the existing copy helper. Negative indexes,
+range checks and record element copies retain their existing behavior.
+
+Differential and required-mode tests cover all bound forms, nested slices,
+independent backing storage, record copies and malformed bounds.
+
+## Second integration wave
+
+This wave incorporates generic return-shape capture from `5096465a` and list
+slices from `d22ae415`. These are fixed source snapshots; later development
+branch changes are not automatically included.
+
+Numeric `map.add(key[, delta])` uses dedicated accumulation nodes. The receiver,
+key and optional delta are evaluated once in streaming order; floating-point
+values retain the existing read/add/store lowering. Unsupported value classes
+and invalid calls retain streaming diagnostics. Map/set `keys()` and map
+`values()` retain snapshot method nodes, using the same element-width helpers as
+the streaming path. Their result list type must already be registered; creating
+new composite types remains separate work. List slicing copies through the
+existing runtime helper and retains omitted-bound and negative-index behavior.
+
+`if`/`elif` and `while` headers now own their prepared condition arenas through
+expression and branch lowering. The shared condition tail preserves promotion,
+lint completion, enclosing condition state and the false branch. Separate
+AST/streaming header counters identify the migrated scope. Header arenas are
+released before parsing the bodies: block membership, body statements and loop
+regions still use the streaming parser, so these are not retained control-flow
+trees.
+
+The second-wave compiler census reports 39,570 expression roots, 5,723 return
+statements, 18,316 expression statements, 8,972 if/elif headers and 945 while
+headers on x86. On x64 these counts are 39,813, 5,740, 18,432, 9,014 and 958.
+All corresponding streaming counters and fallback-record counts are zero;
+the census confirms record/counter consistency on both hosts. These figures
+describe the compiler corpus, not complete language coverage.
+
+Independent comparisons compile the four new collection, composition,
+list-slice and control-header fixtures plus `w.w` with legacy, full-AST and
+required-AST modes. All 120 compilations produce identical images within each
+host/target case across the six backends. All 48 native fixture executions pass;
+the nonnative images are compared without execution.
+
+The pinned-seed bootstrap, default and strict AST-required x86/x64 self-host
+fixpoint gates, and audit-tool tests on both word sizes pass. Both
+`env -u NO_COLOR ./wbuild tests` and the serial AST-enabled manifest run pass all
+846 targets. The latter selects 1,137 direct compile/check steps across the
+complete manifest and preserves six explicitly selected AST-mode steps; nested
+driver launches retain their own mode selection. REPL recovery compares exact
+output and diagnostics after normalizing only the process ID in its temporary
+source directory, preserving entry names, source coordinates and caret text.

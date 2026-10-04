@@ -50,7 +50,21 @@ generic_type_ast* generic_type_ast_slice(generic_type_ast* element):
 	return node
 
 
-generic_type_ast* generic_type_ast_capture(int depth):
+# Track consumed brackets so a failed shape capture can finish the
+# original balanced header scan without rewinding or lexing twice.
+void generic_type_ast_advance(int* brackets):
+	if (peek(c"[")): *brackets = *brackets + 1
+	if (peek(c"]")): *brackets = *brackets - 1
+	get_token()
+
+
+int generic_type_ast_accept(int* brackets, char* spelling):
+	if (peek(spelling) == 0): return 0
+	generic_type_ast_advance(brackets)
+	return 1
+
+
+generic_type_ast* generic_type_ast_capture_at(int depth, int* brackets, int with_suffix):
 	if (depth > 32): return 0
 	if (is_ident_start_byte(token[0]) == 0): return 0
 	if (peek(c"const") || peek(c"gpu")): return 0
@@ -60,23 +74,23 @@ generic_type_ast* generic_type_ast_capture(int depth):
 		if (peek(c"map")): container = 2
 		if (peek(c"set") || peek(c"list")): container = 1
 	generic_type_ast* node = generic_type_ast_new(token, 0)
-	get_token()
+	generic_type_ast_advance(brackets)
 	if (container):
-		if (accept(c"[") == 0):
+		if (generic_type_ast_accept(brackets, c"[") == 0):
 			generic_type_ast_free(node)
 			return 0
-		if ((container == 3) && accept(c"]")):
+		if ((container == 3) && generic_type_ast_accept(brackets, c"]")):
 			node = generic_type_ast_slice(node)
 		else:
-			node.first = generic_type_ast_capture(depth + 1)
+			node.first = generic_type_ast_capture_at(depth + 1, brackets, 1)
 			if (node.first == 0):
 				generic_type_ast_free(node)
 				return 0
 			if (container == 2):
-				if (accept(c",") == 0):
+				if (generic_type_ast_accept(brackets, c",") == 0):
 					generic_type_ast_free(node)
 					return 0
-				node.second = generic_type_ast_capture(depth + 1)
+				node.second = generic_type_ast_capture_at(depth + 1, brackets, 1)
 				if (node.second == 0):
 					generic_type_ast_free(node)
 					return 0
@@ -84,36 +98,57 @@ generic_type_ast* generic_type_ast_capture(int depth):
 				node.application = 1
 				generic_type_ast* tail = node.first
 				int count = 1
-				while (accept(c",")):
+				while (generic_type_ast_accept(brackets, c",")):
 					if (count == 8):
 						generic_type_ast_free(node)
 						return 0
-					tail.next = generic_type_ast_capture(depth + 1)
+					tail.next = generic_type_ast_capture_at(depth + 1, brackets, 1)
 					if (tail.next == 0):
 						generic_type_ast_free(node)
 						return 0
 					tail = tail.next
 					count = count + 1
-			if (accept(c"]") == 0):
+			if (generic_type_ast_accept(brackets, c"]") == 0):
 				generic_type_ast_free(node)
 				return 0
 	if (node.application != 2):
-		while (accept(c"*")): node.stars = node.stars + 1
-	while (accept(c"[")):
-		if (accept(c"]") == 0):
+		while (generic_type_ast_accept(brackets, c"*")): node.stars = node.stars + 1
+	while (with_suffix && generic_type_ast_accept(brackets, c"[")):
+		if (generic_type_ast_accept(brackets, c"]") == 0):
 			generic_type_ast_free(node)
 			return 0
 		node = generic_type_ast_slice(node)
 	return node
 
 
-# Current token is '('. Return spelling was consumed by the declaration
-# scan; null means a complex return type which it only skipped.
-generic_signature_ast* generic_signature_ast_capture(char* result_name, int stars):
-	if (result_name == 0): return 0
-	if (accept(c"(") == 0): return 0
+generic_type_ast* generic_type_ast_capture(int depth):
+	int brackets = 0
+	return generic_type_ast_capture_at(depth, &brackets, 1)
+
+
+# The declaration lookahead only skips the first balanced application
+# and trailing stars; keep that boundary even for unsupported shapes.
+generic_type_ast* generic_type_ast_capture_return():
+	int brackets = 0
+	generic_type_ast* result = generic_type_ast_capture_at(0, &brackets, 0)
+	if (result == 0):
+		while ((brackets > 0) && (token[0] != 0)): generic_type_ast_advance(&brackets)
+	while (peek(c"*")):
+		generic_type_ast_free(result)
+		result = 0
+		get_token()
+	return result
+
+
+# Current token is '('. Takes ownership of the captured return shape;
+# a null shape leaves the ordinary instantiation parser in charge.
+generic_signature_ast* generic_signature_ast_capture_result(generic_type_ast* result):
+	if (result == 0): return 0
+	if (accept(c"(") == 0):
+		generic_type_ast_free(result)
+		return 0
 	generic_signature_ast* signature = new generic_signature_ast
-	signature.result = generic_type_ast_new(result_name, stars)
+	signature.result = result
 	signature.parameters = 0
 	signature.count = 0
 	generic_type_ast* tail = 0
@@ -136,3 +171,8 @@ generic_signature_ast* generic_signature_ast_capture(char* result_name, int star
 			return 0
 	get_token()
 	return signature
+
+
+generic_signature_ast* generic_signature_ast_capture(char* result_name, int stars):
+	if (result_name == 0): return 0
+	return generic_signature_ast_capture_result(generic_type_ast_new(result_name, stars))

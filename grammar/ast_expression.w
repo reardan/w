@@ -1323,8 +1323,70 @@ int ast_expression_list_call(expression_ast* tree, int receiver, int depth):
 	return id
 
 
+# Accumulation owns its key and optional delta separately. Speculation
+# only validates types; the emitter retains the streaming helper order.
+int ast_expression_map_add(expression_ast* tree, int receiver, int depth):
+	int container = type_unqualified(tree.result_type[receiver])
+	int value_type = type_map_value_type(container)
+	int key_type = type_map_key_type(container)
+	if (ast_expression_scalar_type(value_type) == 0): return -1
+	if (type_canonical(value_type) == float16_type): return -1
+	if (type_is_string(value_type) || (type_get_pointer_level(value_type) > 0)): return -1
+	if ((type_float_kind(value_type) == 0) && (type_var_boxable(value_type) == 0)): return -1
+	if (type_float_kind(value_type)):
+		if ((sym_probe(c"__w_map_get_or") < 0) || (sym_probe(c"__w_map_set") < 0)): return -1
+	else if (sym_probe(c"__w_map_add") < 0): return -1
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int key = ast_expression_assignment(tree, depth + 1)
+	if (key < 0): return -1
+	if (ast_expression_data_value(tree.result_type[key]) == 0): return -1
+	if (ast_expression_prepare_value(tree, tree.result_type[key], token_start_offset) == 0): return -1
+	if (ast_expression_argument_compatible(tree, key_type, key) == 0): return -1
+	if (type_is_string(key_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[key]))):
+		if (sym_probe(c"str_from_cstr") < 0): return -1
+	int delta = -1
+	if (ast_expression_accept(tree, c",")):
+		delta = ast_expression_assignment(tree, depth + 1)
+		if (delta < 0): return -1
+		if (ast_expression_scalar_value(tree.result_type[delta]) == 0): return -1
+		if (ast_expression_argument_compatible(tree, value_type, delta) == 0): return -1
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	int id = expression_ast_add(tree, 'Q', receiver, key)
+	if (id < 0): return -1
+	tree.high[id] = delta
+	tree.value[id] = value_type
+	tree.symbol[id] = key_type
+	tree.result_type[id] = type_value(value_type)
+	return id
+
+
+# Snapshot helpers receive the element slot width and return an existing
+# list type. First-use composite registration remains a streaming event.
+int ast_expression_hash_snapshot(expression_ast* tree, int receiver, int method):
+	int container = type_unqualified(tree.result_type[receiver])
+	int element = hash_container_key_type(container)
+	if (method == 17): element = type_map_value_type(container)
+	element = type_canonical(element)
+	int result = type_lookup_list(element)
+	if (result < 0): return -1
+	if (sym_probe(ast_expression_method_helper(method)) < 0): return -1
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	int id = expression_ast_add(tree, 'M', receiver, -1)
+	if (id < 0): return -1
+	tree.value[id] = method
+	tree.symbol[id] = list_element_slot_size(element)
+	tree.result_type[id] = type_value(result)
+	return id
+
+
 int ast_expression_hash_call(expression_ast* tree, int receiver, int depth):
 	int container = type_unqualified(tree.result_type[receiver])
+	if (peek(c"add") && type_is_map(container)): return ast_expression_map_add(tree, receiver, depth)
+	if (peek(c"keys")): return ast_expression_hash_snapshot(tree, receiver, 16)
+	if (peek(c"values") && type_is_map(container)): return ast_expression_hash_snapshot(tree, receiver, 17)
 	int method = 0
 	if (peek(c"remove")): method = 11
 	if (peek(c"add") && type_is_set(container)): method = 12
@@ -1402,19 +1464,25 @@ int ast_expression_slice(expression_ast* tree, int receiver, int start, int dept
 		end = ast_expression_assignment(tree, depth + 1)
 		if (end < 0): return -1
 		if (ast_expression_scalar_value(tree.result_type[end]) == 0): return -1
-	if ((peek(c"]") == 0) || (sym_probe(c"malloc") < 0)): return -1
+	if (peek(c"]") == 0): return -1
 	int type = tree.result_type[receiver]
 	int result = string_value_type
-	if (type_is_string(type) == 0):
+	int op = 'Z'
+	if (type_is_list(type)):
+		if (sym_probe(c"__w_list_slice") < 0): return -1
+		op = 'J'
+		result = type_value(type_lookup_list(type_list_element_type(type)))
+	else if (sym_probe(c"malloc") < 0): return -1
+	else if (type_is_string(type) == 0):
 		if (ast_expression_prepare_value(tree, type_real(type), token_start_offset) == 0): return -1
 		result = type_lookup_slice_value(buffer_element_type(type))
 		if (result < 0): return -1
 	ast_expression_advance(tree)
-	int id = expression_ast_add(tree, 'Z', receiver, start)
+	int id = expression_ast_add(tree, op, receiver, start)
 	if (id < 0): return -1
 	tree.high[id] = end
 	tree.result_type[id] = result
-	tree.readonly = 1
+	if (op == 'Z'): tree.readonly = 1
 	return id
 
 
@@ -1451,10 +1519,10 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 				if (type_get_pointer_level(type) > 0): element = type_lookup_previous_pointer(type)
 			if ((element < 0) || (ast_expression_storage_type(element) == 0)): return -1
 			int index = -1
-			if ((op != 'I') || (peek(c":") == 0)):
+			if (((op != 'I') && (op != 'j')) || (peek(c":") == 0)):
 				index = ast_expression_assignment(tree, depth + 1)
 				if (index < 0): return -1
-			if ((op == 'I') && ast_expression_accept(tree, c":")):
+			if (((op == 'I') || (op == 'j')) && ast_expression_accept(tree, c":")):
 				left = ast_expression_slice(tree, left, index, depth)
 				continue
 			if ((index < 0) || (peek(c"]") == 0)): return -1
@@ -1644,7 +1712,7 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 # just as operand_is_pure does for a short-circuited operand.
 int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
-		if ((tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H') || (tree.op[i] == 'E')): return 1
+		if ((tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H') || (tree.op[i] == 'E') || (tree.op[i] == 'Q') || (tree.op[i] == 'J')): return 1
 	return 0
 
 

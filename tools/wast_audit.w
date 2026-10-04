@@ -14,7 +14,10 @@ intact. Compile flags also apply to each compilation's implicit imports.
 
 census prints deterministic file/token fallback counts and accumulated AST /
 streaming counters from --ast-audit --stats stderr. It returns 1 for malformed
-audit records; compiler exit status and log completeness are separate checks.
+audit records, counter overflow, or inconsistent record/streaming-root totals.
+Counts aggregate across invocations; absent or malformed streaming-root stats
+leave consistency unknown. Consistency cannot establish log completeness or
+compiler success: truncation after an earlier complete invocation is invisible.
 Example input: bin/wv2 check --quiet --ast-audit --stats w.w 2>bin/audit.jsonl
 Neither a hybrid-suite pass nor compiler-only required mode means complete
 language coverage. Both commands emit JSON on stdout and diagnostics on stderr.
@@ -76,6 +79,8 @@ int main(int argc, int argv):
 		report = ast_audit_census(input)
 		free(input)
 		if (jfield_int(report, c"invalid_records", 0) != 0): status = 1
+		json_value* matching = json_object_get(report, c"records_match_streaming_roots")
+		if (matching.type == json_type_bool() && matching.int_value == 0): status = 1
 	else: return wast_audit_error(c"unknown command; use manifest or census")
 	char* rendered = json_stringify(report)
 	wstream* out = stdout_writer()

@@ -195,7 +195,7 @@ void test_ast_symbol_probe_preserves_usage_and_scope_state():
 
 # Isolated lexer input keeps signature capture tests independent of
 # instantiation and proves that parsing unbound names creates no types.
-generic_signature_ast* ast_test_capture_signature(char* source):
+generic_signature_ast* ast_test_capture_signature_kind(char* source, int return_shape):
 	if (token == 0):
 		token_size = 20
 		token = malloc(token_size)
@@ -219,12 +219,41 @@ generic_signature_ast* ast_test_capture_signature(char* source):
 	nextc = get_character()
 	get_token()
 	int before = type_count()
-	generic_signature_ast* signature = generic_signature_ast_capture(c"T", 2)
+	generic_signature_ast* signature = 0
+	if (return_shape):
+		generic_type_ast* result = generic_type_ast_capture_return()
+		assert_equal(0, strcmp(c"next", token))
+		if (result != 0):
+			signature = new generic_signature_ast
+			signature.result = result
+			signature.parameters = 0
+			signature.count = 0
+	else: signature = generic_signature_ast_capture(c"T", 2)
 	assert_equal(before, type_count())
 	close(reader)
 	generic_reparse_restore(saved)
 	token_serial = serial
 	return signature
+
+
+generic_signature_ast* ast_test_capture_signature(char* source):
+	return ast_test_capture_signature_kind(source, 0)
+
+
+void test_ast_generic_return_capture_and_recovery():
+	generic_signature_ast* signature = ast_test_capture_signature_kind(c"Box[list[T*], U]** next\n", 1)
+	assert1(signature != 0)
+	generic_type_ast* result = signature.result
+	assert_equal(1, result.application)
+	assert_equal(2, result.stars)
+	assert_equal(0, strcmp(c"Box", result.name))
+	assert_equal(0, strcmp(c"list", result.first.name))
+	assert_equal(1, result.first.first.stars)
+	assert_equal(0, strcmp(c"U", result.first.next.name))
+	generic_signature_ast_free(signature)
+	assert1(ast_test_capture_signature_kind(c"Box[const T]* next\n", 1) == 0)
+	assert1(ast_test_capture_signature_kind(c"Box[Pair[T[2]]]* next\n", 1) == 0)
+	assert1(ast_test_capture_signature_kind(c"Box[T, U, V, A, B, C, D, E, F]* next\n", 1) == 0)
 
 
 void test_ast_generic_signature_capture():

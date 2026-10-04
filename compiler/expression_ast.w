@@ -68,6 +68,8 @@ char* ast_expression_method_helper(int method):
 	if (method == 13): return c"__w_map_free"
 	if (method == 14): return c"__w_map_get"
 	if (method == 15): return c"__w_map_get_or"
+	if (method == 16): return c"__w_map_keys"
+	if (method == 17): return c"__w_map_values"
 	if (method == 142): return c"__w_map_get_addr"
 	if (method == 143): return c"__w_map_get_or_addr"
 	if (method == 129): return c"__w_list_push_bytes"
