@@ -585,9 +585,9 @@ int ast_expression_print(expression_ast* tree, int depth):
 int ast_expression_named_type(expression_ast* tree, int scalar, int depth);
 
 
-# Bind captured signature syntax against explicit type arguments. Only
-# existing composite records are admitted; pointer records are staged in
-# the expression transaction at the closing type-argument bracket.
+# Bind captured signature syntax against explicit type arguments. Derived
+# container/slice and pointer records are staged at the closing bracket;
+# generic struct applications still require an existing instantiation.
 int ast_expression_bind_generic_type(expression_ast* tree, int id, generic_type_ast* node):
 	int type = -1
 	int def = tree.value[id]
@@ -600,7 +600,7 @@ int ast_expression_bind_generic_type(expression_ast* tree, int id, generic_type_
 	if (node.application == 2):
 		int element = ast_expression_bind_generic_type(tree, id, node.first)
 		if (element < 0): return -1
-		type = type_lookup_slice(element)
+		type = ast_expression_composite_type(tree, type_kind_slice, element, -1, tree.generic_offset[id])
 	else if (node.application == 1):
 		int shape_def = generic_def_lookup(node.name, 1)
 		if (shape_def < 0): return -1
@@ -624,9 +624,9 @@ int ast_expression_bind_generic_type(expression_ast* tree, int id, generic_type_
 		if (strcmp(node.name, c"map") == 0):
 			int second = ast_expression_bind_generic_type(tree, id, node.second)
 			if (second < 0): return -1
-			type = type_lookup_map(first, second)
-		else if (strcmp(node.name, c"set") == 0): type = type_lookup_set(first)
-		else: type = type_lookup_list(first)
+			type = ast_expression_composite_type(tree, type_kind_map, first, second, tree.generic_offset[id])
+		else if (strcmp(node.name, c"set") == 0): type = ast_expression_composite_type(tree, type_kind_set, first, -1, tree.generic_offset[id])
+		else: type = ast_expression_composite_type(tree, type_kind_list, first, -1, tree.generic_offset[id])
 	else if (type < 0): type = type_lookup(node.name)
 	if (type < 0): return -1
 	int base = type_unqualified(type)
@@ -934,8 +934,8 @@ int ast_expression_name(expression_ast* tree, int depth):
 int ast_expression_postfix(expression_ast* tree, int depth);
 
 
-# Resolve existing named/container types, staging new pointer records.
-# New composite records and generic/qualified syntax still fall back.
+# Resolve named/container types and stage new derived records.
+# Generic struct applications and qualified syntax still fall back.
 int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	if (depth > 96): return -1
 	int is_const = ast_expression_accept(tree, c"const")
@@ -948,14 +948,13 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 		if (ast_expression_accept(tree, c"[") == 0): return -1
 		int first = ast_expression_named_type(tree, 0, depth + 1)
 		if (first < 0): return -1
+		int second = -1
 		if (kind == type_kind_map):
 			if (ast_expression_accept(tree, c",") == 0): return -1
-			int second = ast_expression_named_type(tree, 0, depth + 1)
+			second = ast_expression_named_type(tree, 0, depth + 1)
 			if (second < 0): return -1
-			type = type_lookup_map(first, second)
-		else if (kind == type_kind_set): type = type_lookup_set(first)
-		else: type = type_lookup_list(first)
 		if (ast_expression_accept(tree, c"]") == 0): return -1
+		type = ast_expression_composite_type(tree, kind, first, second, token_start_offset)
 	else:
 		type = generic_subst_lookup(token)
 		if (type < 0): type = type_lookup(token)
@@ -970,6 +969,10 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 		int offset = token_start_offset
 		ast_expression_advance(tree)
 		type = ast_expression_pointer_type(tree, type, offset)
+		if (type < 0): return -1
+	while (ast_expression_accept(tree, c"[")):
+		if (ast_expression_accept(tree, c"]") == 0): return -1
+		type = ast_expression_composite_type(tree, type_kind_slice, type, -1, token_start_offset)
 		if (type < 0): return -1
 	if (scalar && (ast_expression_scalar_type(type) == 0)): return -1
 	return type
@@ -1788,6 +1791,7 @@ int ast_expression_try_at(int group_offset, int whole):
 	tree.text_used = 0
 	tree.types_base = type_count()
 	tree.types_count = 0
+	tree.type_names_used = 0
 	tree.pending_buffer_types = 0
 	tree.readonly = 0
 	tree.whole_expression = whole

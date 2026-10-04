@@ -155,6 +155,41 @@ void test_ast_pointer_probe_records_are_transactional():
 	assert_equal(-1, type_lookup_next_pointer(second))
 
 
+void test_ast_composite_probe_records_are_transactional():
+	word_size = __word_size__
+	push_basic_types()
+	int base = type_push_size(c"ast_composite_probe_base", word_size)
+	expression_ast tree
+	tree.types_base = type_count()
+	tree.types_count = 0
+	tree.type_names_used = 0
+	tree.pending_buffer_types = 0
+	int list = ast_expression_composite_type(&tree, type_kind_list, base, -1, 10)
+	int ptr = ast_expression_pointer_type(&tree, list, 11)
+	int map = ast_expression_composite_type(&tree, type_kind_map, base, list, 12)
+	int slice = ast_expression_composite_type(&tree, type_kind_slice, base, -1, 13)
+	assert_equal(tree.types_base, list)
+	assert_equal(list + 1, ptr)
+	assert_equal(list + 2, map)
+	assert_equal(list + 3, slice)
+	assert_equal(list, ast_expression_composite_type(&tree, type_kind_list, base, -1, 14))
+	assert_equal(list, type_lookup(c"list[ast_composite_probe_base]"))
+	assert_equal(list, type_lookup_previous_pointer(ptr))
+	ast_expression_restore_types(&tree)
+	assert_equal(tree.types_base, type_count())
+	assert_equal(-1, type_lookup_list(base))
+	assert_equal(-1, type_lookup(c"list[ast_composite_probe_base]"))
+	for i in range(tree.types_count): ast_expression_commit_pointer(&tree, i)
+	# Committed names must survive arena reuse, including pointer names.
+	for i in range(tree.type_names_used): tree.type_names[i] = 'x'
+	assert_equal(list, type_lookup_list(base))
+	assert_equal(map, type_lookup_map(base, list))
+	assert_equal(slice, type_lookup_slice(base))
+	assert_equal(ptr, type_lookup_next_pointer(list))
+	assert_strings_equal(c"list[ast_composite_probe_base]", type_get_name(ptr))
+	assert_equal(list, type_lookup(c"list[ast_composite_probe_base]"))
+
+
 void test_ast_symbol_probe_preserves_usage_and_scope_state():
 	verbosity = -1
 	filename = 0

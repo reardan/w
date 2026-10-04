@@ -1115,3 +1115,19 @@ checks accept it, including the runtime's `exit(main(...))` entry point for
 void main functions. Direct, indirect and generic call fixtures produce
 identical images; original list-slice range-trap fixtures now compile with
 `--ast-required` on x86 and x64 as well.
+
+## Task 50: first-use container and slice types
+
+Derived-type staging now includes list, map, set and slice records, including
+container types introduced by generic signature binding. Arena-owned names
+support nested type lookups during speculation; committed pointers borrow
+the committed base record's persistent name. Element-storage validation
+retains the existing diagnostic path for unsupported types.
+
+Rollback now discards the name index immediately. A length-based rebuild
+marker could be overtaken by later appends before a lookup, leaving stale
+entries that referred to temporary records. Transaction tests cover rollback,
+commit and name lifetime after arena reuse. Required-mode and differential
+fixtures cover nested literals, allocations, pointer casts, sizeof and generic
+slice/list parameters. Generic struct instantiation and fixed-array type
+syntax remain separate work.
