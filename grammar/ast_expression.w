@@ -1150,7 +1150,7 @@ int ast_expression_postfix(expression_ast* tree, int depth);
 
 
 # Resolve named/container types and stage new derived records.
-# Generic struct applications and qualified syntax still fall back.
+# Generic records must already be instantiated; qualified syntax still falls back.
 int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 	if (depth > 96): return -1
 	int is_const = ast_expression_accept(tree, c"const")
@@ -1170,6 +1170,25 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 			if (second < 0): return -1
 		if (ast_expression_accept(tree, c"]") == 0): return -1
 		type = ast_expression_checked_composite_type(tree, kind, first, second, token_start_offset)
+	else if ((nextc == '[') && (generic_subst_lookup(token) < 0) && (generic_def_lookup(token, 1) >= 0)):
+		int def = generic_def_lookup(token, 1)
+		ast_expression_advance(tree)
+		if (ast_expression_accept(tree, c"[") == 0): return -1
+		int[8] arguments
+		int count = 0
+		while (1):
+			if (count == generic_max_params): return -1
+			int argument = ast_expression_named_type(tree, 0, depth + 1)
+			if (argument < 0): return -1
+			arguments[count] = argument
+			count = count + 1
+			if (ast_expression_accept(tree, c",") == 0): break
+		if ((peek(c"]") == 0) || (count != generic_def_param_count(def))): return -1
+		char* name = generic_mangle(generic_def_name(def), cast(int, &arguments[0]), count)
+		type = type_lookup(name)
+		free(name)
+		if (type < 0): return -1
+		ast_expression_advance(tree)
 	else:
 		type = generic_subst_lookup(token)
 		if (type < 0): type = type_lookup(token)

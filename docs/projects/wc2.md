@@ -1276,3 +1276,16 @@ Required-mode fixtures and native x86/x64 image comparisons cover operand
 side effects, nested operations, floating coercion, pointer operands, 64-bit
 values and symbol shadowing. The existing multithreaded contention fixture
 also compiles without expression fallback and preserves exact update counts.
+
+## Task 62: existing generic record types in expressions
+
+AST type syntax now resolves existing generic record instantiations by their
+canonical type arguments. Casts, sizeof, container element types and explicit
+generic-call type arguments can use nested record applications and pointer
+suffixes without reparsing the declaration. A missing instantiation still
+falls back; speculative lookup never creates a record definition.
+
+Required-mode and differential fixtures cover nested and multi-parameter
+records, alias canonicalization, new pointer levels, containers of records
+and the casts in the result/deque helpers. Invalid type arguments retain
+diagnostics.
