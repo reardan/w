@@ -691,3 +691,15 @@ Tests cover an expression crossing the 8 KiB buffer boundary, short reads
 from a pipe, replay within a compacted buffer, final-newline coverage and
 diagnostic parity. The whole-compiler audit drops to about 1,600 streaming
 entries; self-host images remain identical.
+
+## Task 20: call-containing boolean bitwise chains
+
+The AST parser tracks boolean type and definite emitted calls across each
+same-precedence `&`/`|` chain. A call-containing join can now use AST emission
+when the default bool-bitwise warning would be suppressed. A pure prefix
+still declines before a later call can hide its warning, and `--bool-ops`
+retains the streaming warning path. Runtime short-circuit reachability does
+not affect this count, matching the existing emitted-call purity rule.
+
+Tests cover eager side effects, three-term chains, nested chains, explicit
+AST hits and exact default/opt-in warning parity.

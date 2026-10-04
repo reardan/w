@@ -683,7 +683,18 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 	return -1
 
 
+# A definite call is enough to suppress the default bool-bitwise hint.
+# Unknown implicit calls stay conservative; --bool-ops always uses the
+# streaming diagnostic path. Count emitted calls, not runtime reachability,
+# just as operand_is_pure does for a short-circuited operand.
+int ast_expression_has_call(expression_ast* tree, int first, int end):
+	for i in range(first, end):
+		if ((tree.op[i] == 'C') || (tree.op[i] == 'P') || (tree.op[i] == 'j')): return 1
+	return 0
+
+
 int ast_expression_bitwise(expression_ast* tree, int depth, int level):
+	int first_node = tree.count
 	int left
 	if (level): left = ast_expression_bitwise(tree, depth, level - 1)
 	else: left = ast_expression_compare(tree, depth, 1)
@@ -695,7 +706,11 @@ int ast_expression_bitwise(expression_ast* tree, int depth, int level):
 	if (level == 2):
 		op = '|'
 		spelling = c"|"
+	if (left < 0): return -1
+	int chain_is_bool = operand_is_bool_condition(tree.result_type[left])
+	int chain_has_call = ast_expression_has_call(tree, first_node, tree.count)
 	while ((left >= 0) && ast_expression_accept(tree, spelling)):
+		int right_first = tree.count
 		int right
 		if (level): right = ast_expression_bitwise(tree, depth, level - 1)
 		else: right = ast_expression_compare(tree, depth, 1)
@@ -703,9 +718,12 @@ int ast_expression_bitwise(expression_ast* tree, int depth, int level):
 		int lt = tree.result_type[left]
 		int rt = tree.result_type[right]
 		if ((ast_expression_scalar_value(lt) && ast_expression_scalar_value(rt)) == 0): return -1
-		# Preserve the streaming bool-bitwise hint's purity and chain
-		# tracking until those diagnostics have their own AST records.
-		if (condition_context && (op != '^') && operand_is_bool_condition(lt) && operand_is_bool_condition(rt)): return -1
+		int right_is_bool = operand_is_bool_condition(rt)
+		int right_has_call = ast_expression_has_call(tree, right_first, tree.count)
+		if (condition_context && (op != '^') && chain_is_bool && right_is_bool):
+			if (check_bool_ops_mode || ((chain_has_call || right_has_call) == 0)): return -1
+		chain_is_bool = chain_is_bool && right_is_bool
+		chain_has_call = chain_has_call || right_has_call
 		left = expression_ast_add(tree, op, left, right)
 	return left
 

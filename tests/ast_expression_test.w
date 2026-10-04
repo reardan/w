@@ -408,6 +408,44 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	return ast_test_run(args, 0)
 
 
+void test_ast_call_containing_bool_chains():
+	char* path = ast_test_path(c"_bool_chain.w")
+	assert1(file_write_text(path, c"bool f(bool b): return b\nint main():\n\tif (f(true) & true & false): return 1\n\treturn 0\n"))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		process_result* hit = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
+		assert_equal(0, hit.status)
+		assert_contains(hit.stderr_text, c"AST expressions: 1\n")
+		process_result_free(hit)
+		process_result* old = 0
+		for enabled in range(3):
+			char** args = strv_new(8)
+			int i = 0
+			i = ast_test_arg(args, i, compiler)
+			i = ast_test_arg(args, i, c"check")
+			i = ast_test_arg(args, i, c"--json")
+			i = ast_test_arg(args, i, c"--quiet")
+			i = ast_test_arg(args, i, c"--bool-ops")
+			if (enabled == 1): i = ast_test_arg(args, i, c"--ast-expressions")
+			if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
+			strv_set(args, i, path)
+			process_result* result = ast_test_run(args, 0)
+			if (enabled == 0): old = result
+			else:
+				assert_equal(old.status, result.status)
+				assert_strings_equal(old.stdout_text, result.stdout_text)
+				assert_strings_equal(old.stderr_text, result.stderr_text)
+				process_result_free(result)
+		assert_contains(old.stdout_text, c"does not short-circuit")
+		process_result_free(old)
+	unlink(path)
+	free(path)
+	# A later call must not suppress the warning on a pure prefix.
+	ast_test_diagnostics(c"bool f(bool b): return b\nint main():\n\tif (true & false & f(true)): return 1\n\treturn 0\n")
+	ast_test_diagnostics(c"bool f(bool b): return b\nint main():\n\tif (true | false | f(true)): return 1\n\treturn 0\n")
+
+
 void test_ast_expression_crosses_input_buffer_boundary():
 	char* path = ast_test_path(c"_boundary.w")
 	char* prefix = c"\nint f(int a): return "

@@ -20,6 +20,7 @@ int ast_mark(int n):
 	return n
 
 int ast_logic_pair(int a, int b): return a * 10 + b
+bool ast_logic_bool(int n): return ast_mark(n) > 1
 ast_record* ast_record_identity(ast_record* p): return p
 
 
@@ -102,4 +103,13 @@ int main():
 	ast_logic_order = 0
 	if ((p[ast_mark(1)] == 201 && ast_mark(2) > 0) != true): return 42
 	if ast_logic_order != 12: return 43
+	ast_logic_order = 0
+	if ((ast_logic_bool(1) & ast_logic_bool(2) & true) != false): return 44
+	if ast_logic_order != 12: return 45
+	ast_logic_order = 0
+	if ((ast_logic_bool(2) | ast_logic_bool(3) | false) != true): return 46
+	if ast_logic_order != 23: return 47
+	ast_logic_order = 0
+	if (((ast_logic_bool(1) & true) | (ast_logic_bool(2) & false)) != false): return 48
+	if ast_logic_order != 12: return 49
 	return 0

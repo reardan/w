@@ -17,6 +17,14 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **Checks can race a compiler rebuild (2026-10-03).** A concurrent
+  `bin/wv2 check` or `wtest` dependency query keeps `bin/wv2` open, so
+  `wbuild` rebuilding it in place fails with `ETXTBSY`. This surfaced
+  when switching between the ordinary and AST audit manifests. Run these
+  operations sequentially for now; publishing the bootstrap output by
+  atomic rename, as the executor already does for itself, would remove
+  the race.
+
 - **Nested array descriptors in arrays of structs (2026-10-03).** During
   AST differential testing, `struct R: int[3] items` followed by local
   `R[2] records; records[1].items[2] = 64` (on separate W lines) checked
