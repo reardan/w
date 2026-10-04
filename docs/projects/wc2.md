@@ -1360,3 +1360,17 @@ split separators, mixed string representations, enum aliases and unknown
 values. Native input tests exercise line, word and integer readers with
 piped stdin. Existing prelude and constant-initializer tests compile with
 required AST expressions and produce identical native images.
+
+## Task 68: JSON codec expressions
+
+Codec AST nodes represent to_json/from_json with their record type and
+operand. A pure recursive validation pass rejects unsupported fields before
+emission. The emitter preserves descriptor caching and the distinct encode
+and decode ordering around argument evaluation; result pointer types use
+the existing staged type transaction.
+
+The full JSON codec regression file compiles with required AST expressions
+and identical x86/x64 images. A cross-architecture fixture covers nested
+encode/decode, aliases, record-returning operands, lists of records and
+maps. Missing imports, unsupported field types and argument mismatches
+retain diagnostics.

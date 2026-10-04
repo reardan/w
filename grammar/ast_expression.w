@@ -765,6 +765,71 @@ int ast_expression_prelude(expression_ast* tree, int helper, int depth):
 int ast_expression_named_type(expression_ast* tree, int scalar, int depth);
 
 
+# Descriptor validation is pure: unsupported fields decline before the
+# committed emitter writes a blob or initializes the lazy codec runtime.
+int ast_expression_json_type(int t, int depth):
+	if (depth > 96): return 0
+	t = type_unqualified(t)
+	if (type_is_string(t) || type_is_char_pointer(t)): return 1
+	if (type_is_list(t)): return ast_expression_json_type(type_list_element_type(t), depth + 1)
+	if (type_is_map(t)):
+		if (hash_key_kind_for_type(type_map_key_type(t)) == 1): return 0
+		return ast_expression_json_type(type_map_value_type(t), depth + 1)
+	if (type_is_set(t) || type_is_array(t) || type_is_slice(t) || type_get_pointer_level(t)): return 0
+	int kind = type_float_kind(t)
+	if (kind): return ((kind == 1) && (type_get_size(t) == 4)) || ((kind == 2) && (word_size == 8))
+	if (type_get_kind(t) == type_kind_union): return 0
+	int fields = type_num_args(t)
+	if (fields):
+		for i in range(fields):
+			if (ast_expression_json_type(type_get_field_type_at(t, i), depth + 1) == 0): return 0
+		return 1
+	if (t == type_unqualified(bool_type)): return 1
+	int size = type_get_size(t)
+	return (size == 1) || (size == 2) || (size == 4) || (size == 8)
+
+
+int ast_expression_json(expression_ast* tree, int depth):
+	int decode = peek(c"from_json")
+	int json = type_lookup(c"json_value")
+	if (json < 0): return -1
+	int id = expression_ast_add(tree, 'x', -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = decode
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int t = -1
+	if (decode):
+		t = ast_expression_named_type(tree, 0, depth + 1)
+		if (t < 0): return -1
+		t = type_unqualified(t)
+		if ((type_num_args(t) == 0) || type_get_pointer_level(t) || (type_get_kind(t) == type_kind_union)): return -1
+		if (ast_expression_accept(tree, c",") == 0): return -1
+	int arg = ast_expression_assignment(tree, depth + 1)
+	if ((arg < 0) || (peek(c")") == 0)): return -1
+	if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
+	if (ast_expression_prepare_value(tree, tree.result_type[arg], token_start_offset) == 0): return -1
+	int got = ast_expression_promoted_type(tree.result_type[arg])
+	if (decode == 0):
+		t = type_unqualified(got)
+		if (type_get_pointer_level(t) == 1):
+			int base = type_lookup_previous_pointer(t)
+			if ((base >= 0) && (type_num_args(base) > 0)): t = type_unqualified(base)
+		if ((type_num_args(t) == 0) || (type_get_kind(t) == type_kind_union)): return -1
+	if (ast_expression_json_type(t, 0) == 0): return -1
+	int result = ast_expression_pointer_type(tree, json, token_start_offset)
+	if (result < 0): return -1
+	if (decode):
+		if (types_compatible_with_expression(result, got) == 0): return -1
+		result = ast_expression_pointer_type(tree, t, token_start_offset)
+		if (result < 0): return -1
+	tree.left[id] = arg
+	tree.high[id] = t
+	tree.result_type[id] = type_value(result)
+	if (ast_expression_accept(tree, c")") == 0): return -1
+	return id
+
+
 # Bind captured signature syntax against explicit type arguments. Derived
 # container/slice and pointer records are staged at the closing bracket;
 # generic struct applications still require an existing instantiation.
@@ -1257,7 +1322,7 @@ int ast_expression_name(expression_ast* tree, int depth):
 	if (peek(c"cast") || peek(c"sizeof") || peek(c"new")): return -1
 	if ((nextc == '[') && (peek(c"map") || peek(c"set") || peek(c"list"))): return ast_expression_container_literal(tree, depth)
 	if ((nextc == '(') && (peek(c"print") || peek(c"println"))): return ast_expression_print(tree, depth)
-	if (peek(c"to_json") || peek(c"from_json")): return -1
+	if ((nextc == '(') && (peek(c"to_json") || peek(c"from_json"))): return ast_expression_json(tree, depth)
 	if ((nextc == '.') && (import_alias_lookup(token) >= 0)): return -1
 	if ((nextc == '(') && (sym_probe(token) < 0)):
 		int helper = prelude_input_helper()
@@ -2162,7 +2227,7 @@ int ast_expression_has_call(expression_ast* tree, int first, int end):
 			if (ast_expression_var_coercion_calls(tree.result_type[tree.left[i]], ast_expression_promoted_type(tree.result_type[tree.right[i]]))): return 1
 		if (op == '?'):
 			if (ast_expression_var_coercion_calls(ast_expression_promoted_type(tree.result_type[tree.right[i]]), ast_expression_promoted_type(tree.result_type[tree.high[i]]))): return 1
-		if ((tree.op[i] == 'l') || (tree.op[i] == 'z') || (tree.op[i] == 'G') || (tree.op[i] == 'W') || (tree.op[i] == 'X') || (tree.op[i] == 'Y') || (tree.op[i] == 'J') || (tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H') || (tree.op[i] == 'E')): return 1
+		if ((tree.op[i] == 'x') || (tree.op[i] == 'l') || (tree.op[i] == 'z') || (tree.op[i] == 'G') || (tree.op[i] == 'W') || (tree.op[i] == 'X') || (tree.op[i] == 'Y') || (tree.op[i] == 'J') || (tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j') || (tree.op[i] == 'N') || (tree.op[i] == 'V') || (tree.op[i] == 'M') || (tree.op[i] == 'm') || (tree.op[i] == 'q') || (tree.op[i] == 'w') || (tree.op[i] == 'H') || (tree.op[i] == 'E')): return 1
 	return 0
 
 

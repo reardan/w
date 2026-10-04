@@ -416,6 +416,18 @@ void emit_expression_ast(expression_ast* tree, int id):
 			zero_runtime_object(type_get_size(base))
 			init_array_field_descriptors(base)
 		return
+	if (op == 'x'):
+		int descriptor = 0
+		if (tree.value[id]): descriptor = json_codec_descriptor(tree.high[id])
+		int arg = tree.left[id]
+		emit_expression_ast(tree, arg)
+		promote(tree.result_type[arg])
+		int base_stack = stack_pos
+		int arg_slot = push_slot()
+		if (tree.value[id] == 0): descriptor = json_codec_descriptor(tree.high[id])
+		json_codec_emit_call(tree.value[id], descriptor, arg_slot)
+		pop_to(base_stack)
+		return
 	if (op == 'y'):
 		int base_stack = stack_pos
 		int helper = tree.value[id]
