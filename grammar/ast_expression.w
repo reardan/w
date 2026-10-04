@@ -317,6 +317,15 @@ int ast_expression_promoted_type(int type):
 	return type
 
 
+int ast_expression_argument_compatible(expression_ast* tree, int want, int id):
+	int got = ast_expression_promoted_type(tree.result_type[id])
+	if (got == 4):
+		int signature = type_function_pointer_signature(want)
+		if ((signature < 0) || (tree.op[id] != 'v')): return 0
+		return function_signature_matches_record(signature, tree.symbol[id])
+	return types_compatible_with_expression(want, got)
+
+
 int ast_expression_call(expression_ast* tree, int id, int depth):
 	int sym = tree.symbol[id]
 	int arity = sym_num_args(sym)
@@ -340,7 +349,7 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
 		# Let the streaming parser issue argument diagnostics at its exact
 		# source position, including warnings promoted by --strict.
-		if ((param >= 0) && (types_compatible_with_expression(param, got) == 0)): return -1
+		if ((param >= 0) && (ast_expression_argument_compatible(tree, param, arg) == 0)): return -1
 		if (previous < 0): tree.left[id] = arg
 		else: tree.next_arg[previous] = arg
 		previous = arg
@@ -354,6 +363,51 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	tree.op[id] = 'C'
 	tree.result_type[id] = type_value(result)
 	if (result == 4): tree.result_type[id] = 3
+	return id
+
+
+int ast_expression_indirect_call(expression_ast* tree, int callee, int depth):
+	int type = tree.result_type[callee]
+	if ((type == 4) && (tree.op[callee] == 'v')): return ast_expression_call(tree, callee, depth)
+	if (ast_expression_scalar_value(type) == 0): return -1
+	if (type_float_kind(type) || type_is_string(type)): return -1
+	int signature = type_function_pointer_signature(type)
+	int arity = -1
+	int result = -1
+	if (signature >= 0):
+		arity = type_function_param_count(signature)
+		result = type_function_return(signature)
+		if ((arity < 0) || (arity > 10)): return -1
+		if ((result != 0) && (ast_expression_scalar_type(result) == 0)): return -1
+	int id = expression_ast_add(tree, 'F', callee, -1)
+	if (id < 0): return -1
+	tree.value[id] = signature
+	tree.high[id] = result
+	tree.result_type[id] = 3
+	if (result >= 0): tree.result_type[id] = type_value(result)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	int count = 0
+	int previous = -1
+	while (peek(c")") == 0):
+		if ((arity >= 0) && (count >= arity)): return -1
+		int arg = ast_expression_assignment(tree, depth + 1)
+		if (arg < 0): return -1
+		if (ast_expression_scalar_value(tree.result_type[arg]) == 0): return -1
+		if (signature >= 0):
+			int param = type_function_param_type(signature, count)
+			if (ast_expression_scalar_type(param) == 0): return -1
+			if (ast_expression_argument_compatible(tree, param, arg) == 0): return -1
+			if (type_is_string(param) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[arg]))):
+				if (sym_probe(c"str_from_cstr") < 0): return -1
+		if (previous < 0): tree.right[id] = arg
+		else: tree.next_arg[previous] = arg
+		previous = arg
+		count = count + 1
+		if (ast_expression_accept(tree, c",") == 0): break
+		if (peek(c")")): return -1
+	if ((arity >= 0) && (count != arity)): return -1
+	if ((peek(c")") == 0) || (token_start_offset >= tree.end_offset)): return -1
+	ast_expression_advance(tree)
 	return id
 
 
@@ -415,11 +469,12 @@ int ast_expression_name(expression_ast* tree, int depth):
 	if (id < 0): return -1
 	tree.symbol[id] = sym
 	tree.result_type[id] = type
+	if (is_call): tree.result_type[id] = 4
 	# Keep a stable name offset across append-only lazy helper registration
 	# during emission, with no allocation needing error cleanup.
 	tree.value[id] = sym - strlen(token)
 	ast_expression_advance(tree)
-	if (is_call): return ast_expression_call(tree, id, depth)
+	if (is_call && peek(c"(")): return ast_expression_call(tree, id, depth)
 	return id
 
 
@@ -463,7 +518,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		int got = ast_expression_promoted_type(tree.result_type[child])
 		# coerce_explicit diagnoses truncating an address. Leave that at
 		# the streaming parser's source location and diagnostic order.
-		if ((type_get_pointer_level(got) > 0) && (type_get_pointer_level(want) == 0)):
+		if (((got == 4) || (type_get_pointer_level(got) > 0)) && (type_get_pointer_level(want) == 0)):
 			if ((type_float_kind(want) == 0) && (type_get_size(want) < word_size)): return -1
 		if (token_start_offset >= tree.end_offset): return -1
 		ast_expression_advance(tree)
@@ -550,7 +605,9 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 	int left = ast_expression_atom(tree, depth)
 	while (left >= 0):
 		int type = tree.result_type[left]
-		if (ast_expression_accept(tree, c"[")):
+		if (peek(c"(") && (token_start_offset < tree.end_offset)):
+			left = ast_expression_indirect_call(tree, left, depth)
+		else if (ast_expression_accept(tree, c"[")):
 			int op = 'i'
 			int element
 			if (type_is_buffer(type)):
@@ -689,7 +746,7 @@ int ast_expression_compare(expression_ast* tree, int depth, int equality):
 # just as operand_is_pure does for a short-circuited operand.
 int ast_expression_has_call(expression_ast* tree, int first, int end):
 	for i in range(first, end):
-		if ((tree.op[i] == 'C') || (tree.op[i] == 'P') || (tree.op[i] == 'j')): return 1
+		if ((tree.op[i] == 'C') || (tree.op[i] == 'F') || (tree.op[i] == 'P') || (tree.op[i] == 'j')): return 1
 	return 0
 
 
@@ -809,7 +866,9 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 		if (kind && ((op != '+') && (op != '-') && (op != '*') && (op != '/'))): return -1
 		result = 3
 		if (kind): result = float_binary_result_type(kind)
-	if (types_compatible_with_expression(lt, result) == 0): return -1
+	if (op):
+		if (types_compatible_with_expression(lt, result) == 0): return -1
+	else if (ast_expression_argument_compatible(tree, lt, right) == 0): return -1
 	int id = expression_ast_add(tree, '=', left, right)
 	if (id < 0): return -1
 	tree.value[id] = op

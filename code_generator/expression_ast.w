@@ -57,6 +57,23 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
+	if (op == 'F'):
+		int s = stack_pos
+		push_slot()
+		int signature = tree.value[id]
+		int arg = tree.right[id]
+		int count = 0
+		while (arg >= 0):
+			emit_expression_ast(tree, arg)
+			int got = promote(tree.result_type[arg])
+			if (signature >= 0): coerce_call_argument(type_function_param_type(signature, count), got)
+			push_call_argument_compact(got, 0)
+			count = count + 1
+			arg = tree.next_arg[arg]
+		int arity = -1
+		if (signature >= 0): arity = type_function_param_count(signature)
+		finish_call(left_type, s, arity, -1, 0, tree.high[id], count, 0, -1)
+		return
 	if (op == '='):
 		expression_is_assignment = 1
 		push_slot()

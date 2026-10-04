@@ -703,3 +703,18 @@ not affect this count, matching the existing emitted-call purity rule.
 
 Tests cover eager side effects, three-term chains, nested chains, explicit
 AST hits and exact default/opt-in warning parity.
+
+## Task 21: function values and indirect calls
+
+Function references retain their symbol binding in AST nodes. A pure
+signature-to-record predicate validates callback arguments and assignments
+without consulting the streaming parser's mutable `last_identifier`.
+Indirect calls support typed function pointers and untyped word/pointer
+callees, scalar arguments and returns, and void results. They reuse
+`finish_call`, preserving ABI lowering and the legacy delayed load of an
+lvalue callee after argument evaluation.
+
+Tests cover callbacks in locals and fields, returned function pointers,
+function addresses cast to words, callback arguments and stores, float and
+void calls, signature mismatches, narrowing diagnostics, and an argument
+that changes the callee before the call executes.
