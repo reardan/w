@@ -1634,3 +1634,19 @@ native image comparisons and runtime address offsets. Differential tests
 retain host read/store errors, invalid nested indexes and rollback after
 a later missing name. The broader positive query/fixture audit now reports
 fallback only for the two near-limit nesting fixtures.
+
+## Task 88: near-limit expression nesting
+
+The stack-owned expression arena now holds 4096 nodes and a 16 KiB source
+window, with 32 KiB for decoded text. Expression parsing follows the existing
+1000-level nesting guard. This covers the existing 900-group and 900-ternary
+fixtures without streaming fallback while retaining bounded storage and
+REPL recovery.
+
+Parallel-assignment slot arrays live in a dedicated emitter helper, keeping
+large arrays off ordinary recursive emission frames. Tests cover parallel
+assignments with node indices above the old capacity, matching native images
+and runtime results. Both near-limit fixtures pass required-mode checks on
+x86/x64; over-limit diagnostics and required-mode capacity rejection remain
+covered. The broader 90-command positive query/fixture audit now has zero
+expression fallbacks.

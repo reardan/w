@@ -1,5 +1,5 @@
-# Production AST island: parenthesized scalar expressions. Each
-# attempt owns this bounded arena on its stack; unsupported syntax and
+# Production expression AST. Each parse/emit attempt owns this bounded
+# arena on its stack; unsupported syntax and
 # REPL error recovery cannot leave allocated nodes or compiler state behind.
 # Node IDs are arena indices, -1 is failure. Literal nodes carry their
 # source byte offset until the committed diagnostic/decoding pass fills value.
@@ -13,7 +13,9 @@
 # each source-level chain (parenthesized subchains keep their boundary).
 # The source window admits embedded asset chunks as well as ordinary
 # expressions. Decoded text has extra room for per-chunk terminators.
-const int ast_expression_source_limit = 8192
+# 4096 nodes cover the existing 900-level ternary fixture (3601 nodes);
+# parsing retains the streaming expression nesting guard of 1000.
+const int ast_expression_source_limit = 16384
 
 
 # Comma-index pseudo-lvalues retain their operands until the parent
@@ -49,27 +51,27 @@ struct expression_ast:
 	int[16] pointer_offsets
 	int[16] pointer_bases
 	char[2048] type_names
-	char[16384] text
-	int[128] op
-	int[128] left
-	int[128] right
-	int[128] offset
-	int[128] value
-	int[128] result_type
-	int[128] high
-	int[128] next_arg
-	int[128] in_cast
-	int[128] symbol
-	int[128] qualified
-	int[128] it_slot
-	int[128] generic_parameters
-	int[128] generic_signature
-	int[128] generic_offset
-	int[128] generic_instance
-	int[128] generic_arity
-	int[128] infer_coercion
-	int[128] call_receiver_type
-	int[128] infer_want
+	char[32768] text
+	int[4096] op
+	int[4096] left
+	int[4096] right
+	int[4096] offset
+	int[4096] value
+	int[4096] result_type
+	int[4096] high
+	int[4096] next_arg
+	int[4096] in_cast
+	int[4096] symbol
+	int[4096] qualified
+	int[4096] it_slot
+	int[4096] generic_parameters
+	int[4096] generic_signature
+	int[4096] generic_offset
+	int[4096] generic_instance
+	int[4096] generic_arity
+	int[4096] infer_coercion
+	int[4096] call_receiver_type
+	int[4096] infer_want
 
 
 int ast_expressions_mode
@@ -262,7 +264,7 @@ void ast_expression_commit_pointer(expression_ast* tree, int i):
 
 
 int expression_ast_add(expression_ast* tree, int op, int left, int right):
-	if (tree.count == 128): return -1
+	if (tree.count == 4096): return -1
 	int id = tree.count
 	tree.count = id + 1
 	tree.op[id] = op

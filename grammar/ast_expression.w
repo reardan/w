@@ -1916,7 +1916,7 @@ int ast_expression_postfix(expression_ast* tree, int depth);
 # Generic records must already be instantiated. Alias membership is checked
 # without marking symbol uses or producing diagnostics.
 int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
-	if (depth > 96): return -1
+	if (depth > 1000): return -1
 	int is_const = ast_expression_accept(tree, c"const")
 	int is_gpu = 0
 	if (peek(c"gpu") && (type_lookup(c"gpu") < 0) && (sym_probe(c"gpu") < 0)):
@@ -2050,7 +2050,7 @@ int ast_expression_map_default(expression_ast* tree, int id, int depth):
 
 
 int ast_expression_unary(expression_ast* tree, int depth):
-	if ((depth > 96) || (expr_nesting_depth + depth >= 1000)): return -1
+	if ((depth > 1000) || (expr_nesting_depth + depth >= 1000)): return -1
 	if (token_start_offset >= tree.end_offset): return -1
 	if (ast_expression_accept(tree, c"sizeof")):
 		if (ast_expression_accept(tree, c"(") == 0): return -1
@@ -3028,7 +3028,7 @@ int ast_expression_logic(expression_ast* tree, int depth, int is_or):
 
 
 int ast_expression_conditional(expression_ast* tree, int depth):
-	if ((depth > 96) || (expr_nesting_depth + depth >= 1000)): return -1
+	if ((depth > 1000) || (expr_nesting_depth + depth >= 1000)): return -1
 	int condition = ast_expression_logic(tree, depth, 1)
 	if ((condition < 0) || (token_start_offset >= tree.end_offset) || (peek(c"?") == 0)): return condition
 	int ct = tree.result_type[condition]
@@ -3076,7 +3076,7 @@ int ast_expression_conditional(expression_ast* tree, int depth):
 # Stores retain their lint events without reporting them during probing.
 # Unsupported assignments still roll back before binding uses or emission.
 int ast_expression_assignment(expression_ast* tree, int depth):
-	if ((depth > 96) || (expr_nesting_depth + depth >= 1000)): return -1
+	if ((depth > 1000) || (expr_nesting_depth + depth >= 1000)): return -1
 	# Each entry corresponds to expression(), including groups, arguments,
 	# indexes and assignment RHSs. The ternary else arm does not reset it.
 	tree.readonly = 0
@@ -3291,7 +3291,7 @@ int ast_expression_try_at(int group_offset, int whole):
 				if (length):
 					validate_utf8_literal(length)
 					token[length] = 0
-				assert1(tree.text_used + length + 1 <= 16384)
+				assert1(tree.text_used + length + 1 <= 32768)
 				for j in range(length): tree.text[tree.text_used + j] = token[j]
 				tree.text[tree.text_used + length] = 0
 				tree.value[id] = tree.text_used
@@ -3310,7 +3310,7 @@ int ast_expression_try_at(int group_offset, int whole):
 				token[length] = 0
 				# The source bound leaves ample space for all
 				# decoded bytes and one terminator per arena node.
-				assert1(tree.text_used + length + 1 <= 16384)
+				assert1(tree.text_used + length + 1 <= 32768)
 				tree.value[id] = tree.text_used
 				tree.high[id] = length
 				for j in range(length + 1): tree.text[tree.text_used + j] = token[j]
