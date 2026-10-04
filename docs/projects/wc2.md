@@ -742,3 +742,16 @@ check rejects inputs whose source bytes cannot be reconstructed exactly.
 
 Tests cover a long identifier across the 8 KiB boundary, audit coverage,
 image and diagnostic parity, and replay of recovered bytes from a pipe.
+
+## Task 24: function addresses and untyped byte indexing
+
+The scalar-value predicate now explicitly includes the compiler's function
+pseudo-type. Task 21's indirect calls already emitted through ASTs, but bare
+function references in casts, callback arguments and comparisons had still
+fallen back because that pseudo-type has size zero. Coverage assertions now
+exercise those forms directly as well as comparing their images.
+
+Integer-address indexing also preserves W's legacy byte element default;
+typed pointers continue to use their pointee's size. Tests cover reads,
+stores and compound stores through raw addresses, callback signature
+diagnostics, and cross-target image parity.

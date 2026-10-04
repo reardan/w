@@ -312,7 +312,7 @@ int ast_expression_scalar_type(int type):
 
 
 int ast_expression_scalar_value(int type):
-	if ((type == 3) || (type == float32_value_type) || (type == float64_value_type) || (type == string_value_type) || (type == string_literal_type)): return 1
+	if ((type == 3) || (type == 4) || (type == float32_value_type) || (type == float64_value_type) || (type == string_value_type) || (type == string_literal_type)): return 1
 	return ast_expression_scalar_type(type)
 
 
@@ -661,8 +661,12 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			else:
 				# Containers retain their pending-element machinery until
 				# it has explicit AST nodes of its own.
-				if (type_get_pointer_level(type) <= 0): return -1
-				element = type_lookup_previous_pointer(type)
+				if (ast_expression_scalar_value(type) == 0): return -1
+				if (type_float_kind(type)): return -1
+				# Legacy untyped word addresses index bytes. Typed pointers
+				# replace that default with their pointee's width and type.
+				element = 2
+				if (type_get_pointer_level(type) > 0): element = type_lookup_previous_pointer(type)
 			if ((element < 0) || (ast_expression_storage_type(element) == 0)): return -1
 			int index = ast_expression_assignment(tree, depth + 1)
 			if ((index < 0) || (peek(c"]") == 0)): return -1

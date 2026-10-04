@@ -36,4 +36,13 @@ int main():
 	if 1: (sink(2))
 	if (ast_callback_order != 12): return 9
 	if ((op == ast_callback_sub) != true): return 10
+	# Word-address indexing deliberately keeps the old byte-wide behavior.
+	char value = 'A'
+	int raw = cast(int, &value)
+	if ((raw[0]) != 'A'): return 11
+	if 1: (raw[0] = 'B')
+	if (value != 'B'): return 12
+	if 1: (raw[0] += 1)
+	if (value != 'C'): return 13
+	if (((raw + 0)[0]) != 'C'): return 14
 	return 0

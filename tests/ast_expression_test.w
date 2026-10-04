@@ -429,7 +429,27 @@ void test_ast_default_expression_hits_and_diagnostics():
 
 void test_ast_callback_expression_hits_and_diagnostics():
 	char* path = ast_test_path(c"_callback.w")
-	assert1(file_write_text(path, c"type F = fn(int) -> int\nint f(int n): return n + 1\nint call(F* p): return (p(41))\nint main(): return 0\n"))
+	assert1(file_write_text(path, c"type F = fn(int) -> int\nint f(int n): return n + 1\nint call(F* p): return (p(41))\nint main():\n\tF* p = (f)\n\tint raw = (cast(int, f))\n\tif ((p == f)): raw = raw + 0\n\tif 1: (p = f)\n\treturn (call(f)) - 42\n"))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
+		assert_equal(0, ast.status)
+		assert_contains(ast.stderr_text, c"AST expressions: 5\n")
+		process_result_free(ast)
+	unlink(path)
+	free(path)
+	ast_test_diagnostics(c"int f(int n): return n\nint main(): return (cast(uint8, f))\n")
+	ast_test_diagnostics(c"type F = fn(int) -> int\nint f(int a, int b): return a + b\nint main():\n\tF* p = 0\n\tif 1: (p = f)\n\treturn 0\n")
+	ast_test_diagnostics(c"type F = fn(int) -> int\nint main():\n\tF* p = 0\n\treturn (p(1, 2))\n")
+	ast_test_diagnostics(c"type F = fn(int) -> int\nint main():\n\tF* p = 0\n\treturn (p(c\"wrong\"))\n")
+	ast_test_diagnostics(c"type F = fn(int) -> int\nint f(int n): return n\nint g(F* p, int b): return p(b)\nint main(): return (g(f, 0xffffffff))\n")
+	ast_test_diagnostics(c"int f(int n): return n\nint main(): return (f(f))\n")
+
+
+void test_ast_word_address_index_hits():
+	char* path = ast_test_path(c"_word_address.w")
+	assert1(file_write_text(path, c"int f(int p, int i): return (p[i])\nint main(): return 0\n"))
 	for host in range(2):
 		char* compiler = c"bin/wv2"
 		if (host): compiler = c"bin/wv2_64"
@@ -439,10 +459,6 @@ void test_ast_callback_expression_hits_and_diagnostics():
 		process_result_free(ast)
 	unlink(path)
 	free(path)
-	ast_test_diagnostics(c"int f(int n): return n\nint main(): return (cast(uint8, f))\n")
-	ast_test_diagnostics(c"type F = fn(int) -> int\nint f(int a, int b): return a + b\nint main():\n\tF* p = 0\n\tif 1: (p = f)\n\treturn 0\n")
-	ast_test_diagnostics(c"type F = fn(int) -> int\nint main():\n\tF* p = 0\n\treturn (p(1, 2))\n")
-	ast_test_diagnostics(c"type F = fn(int) -> int\nint main():\n\tF* p = 0\n\treturn (p(c\"wrong\"))\n")
 
 
 void test_ast_call_containing_bool_chains():
