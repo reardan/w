@@ -1,6 +1,33 @@
 # wbuild: x64
 import lib.testing
 import compiler.compiler
+import lib.process
+
+
+void test_ast_buffer_read_ahead_preserves_short_reads():
+	int reader
+	int writer
+	assert_equal(0, process_make_pipe(&reader, &writer))
+	getchar_reset(reader)
+	assert_equal(4, write(writer, c"abcd", 4))
+	assert_equal('a', getchar(reader))
+	assert_equal(4, getchar_limit[reader])
+	assert_equal(4, write(writer, c"efgh", 4))
+	close(writer)
+	int saved_file = file
+	file = reader
+	assert_equal(1, ast_expression_refill(0))
+	assert_equal(8, getchar_limit[reader])
+	for i in range(1, 8): assert_equal('a' + i, getchar(reader))
+	assert_equal(0, ast_expression_refill(3))
+	assert_equal(5, getchar_pos[reader])
+	assert_equal(5, getchar_limit[reader])
+	assert_equal(8, getchar_kernel_pos[reader])
+	getchar_seek(reader, 3)
+	for i in range(3, 8): assert_equal('a' + i, getchar(reader))
+	assert_equal(-1, getchar(reader))
+	close(reader)
+	file = saved_file
 
 
 void test_ast_pointer_probe_records_are_transactional():

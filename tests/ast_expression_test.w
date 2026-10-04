@@ -227,6 +227,8 @@ void test_ast_full_expression_coverage_gate():
 	assert_contains(audit.stderr_text, c"\"ast_fallback\": true")
 	assert_contains(audit.stderr_text, c"AST expression roots: ")
 	assert_contains(audit.stderr_text, c"Streaming expression roots: ")
+	# The final newline is a supported boundary even at physical EOF.
+	assert_substring(audit.stderr_text, path, 0)
 	process_result_free(audit)
 	args = strv_new(5)
 	strv_set(args, 0, c"bin/wv2")
@@ -239,7 +241,7 @@ void test_ast_full_expression_coverage_gate():
 	assert_contains(required.stderr_text, c"AST-required compilation encountered an unsupported expression")
 	# Even this trivial root includes the implicit runtime. Requiring
 	# AST must reject its unsupported code, not silently skip imports.
-	assert_contains(required.stderr_text, c"code_generator/integer.w")
+	assert_substring(required.stderr_text, path, 0)
 	process_result_free(required)
 	unlink(path)
 	free(path)
@@ -404,6 +406,28 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
 	strv_set(args, i, source)
 	return ast_test_run(args, 0)
+
+
+void test_ast_expression_crosses_input_buffer_boundary():
+	char* path = ast_test_path(c"_boundary.w")
+	char* prefix = c"\nint f(int a): return "
+	string_builder* source = string_from(c"#")
+	for i in range(8180 - 1 - strlen(prefix)): string_append_char(source, 'x')
+	string_append(source, prefix)
+	string_append(source, c"(a + 2 /* crosses the input window */)\nint main(): return 0\n")
+	assert1(file_write_text(path, source.data))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
+		assert_equal(0, ast.status)
+		assert_contains(ast.stderr_text, c"AST expressions: 1\n")
+		process_result_free(ast)
+		ast_test_image_at(compiler, c"x64", path, 1)
+	ast_test_diagnostics(source.data)
+	string_free(source)
+	unlink(path)
+	free(path)
 
 
 void test_ast_pointer_type_expression_hits_and_diagnostics():

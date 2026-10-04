@@ -676,3 +676,18 @@ preserving registration order. Const and composite type construction remain
 later work. Tests cover rollback, index rebuilding, committed ownership,
 capacity exhaustion, nested pointer levels, malformed casts, literal warnings
 and REPL recovery, in addition to the cross-target image matrix.
+
+## Task 19: buffered boundaries and EOF
+
+Preflight now distinguishes unsupported syntax from an incomplete buffered
+window. It can compact the candidate's retained bytes and read ahead before
+taking the tokenizer snapshot, preserving the logical read position without
+seeking. EOF is established by a zero-length read, not by assuming a short
+read is final. This also lets a final newline terminate an AST expression at
+physical EOF. Missing-final-newline diagnostics and unavailable source
+prefixes still use the conservative path.
+
+Tests cover an expression crossing the 8 KiB buffer boundary, short reads
+from a pipe, replay within a compacted buffer, final-newline coverage and
+diagnostic parity. The whole-compiler audit drops to about 1,600 streaming
+entries; self-host images remain identical.
