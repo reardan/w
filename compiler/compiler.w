@@ -829,6 +829,10 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_blocks_emitted = 0
 	ast_while_loops_emitted = 0
 	ast_deferred_expressions_emitted = 0
+	ast_gpu_launches_emitted = 0
+	ast_gpu_fors_emitted = 0
+	ast_gpu_values_emitted = 0
+	ast_gpu_captures_emitted = 0
 	ast_roots_emitted = 0
 	ast_roots_fallback = 0
 	ast_audit_mode = 0
@@ -1119,6 +1123,18 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(c"\n")
 		print_error(c"AST goto/label statements: ")
 		print_error(itoa(ast_goto_statements_emitted))
+		print_error(c"\n")
+		print_error(c"AST GPU launches: ")
+		print_error(itoa(ast_gpu_launches_emitted))
+		print_error(c"\n")
+		print_error(c"AST GPU loops: ")
+		print_error(itoa(ast_gpu_fors_emitted))
+		print_error(c"\n")
+		print_error(c"AST GPU header values: ")
+		print_error(itoa(ast_gpu_values_emitted))
+		print_error(c"\n")
+		print_error(c"AST GPU captures: ")
+		print_error(itoa(ast_gpu_captures_emitted))
 		print_error(c"\n")
 		print_error(c"AST deferred expressions: ")
 		print_error(itoa(ast_deferred_expressions_emitted))

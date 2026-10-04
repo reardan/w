@@ -1873,3 +1873,20 @@ Both host widths retain native images, runtime behavior and diagnostics for
 nested scopes, control regions, function fallthrough defers, late binding,
 LIFO execution and saved return values. Existing nesting-limit tests also pass.
 Statistics report regions, blocks, while loops and deferred expression nodes.
+
+## Task 104: GPU launch and outlined-loop nodes
+
+GPU launches now prepare AST children for grid, block and kernel arguments.
+Resolved launch nodes carry kernel bindings, stack boundaries and argument
+counts; backend visitors coerce and marshal values into the runtime call.
+Outlined GPU loops likewise carry range, variable, guard and capture state
+through device lowering and the subsequent host launch. Captured host values
+use resolved operand nodes. Reference modes retain the original paths.
+
+A GPU-free runtime fixture checks argument order, capture cells, start/end
+bounds and single evaluation through stand-in launch functions. Both compiler
+host widths produce identical native images, including embedded PTX, and
+matching diagnostics for invalid arguments, ranges and device returns.
+Statistics count launches, outlined loops, header values and captures. Device
+bodies still use incremental statement visits; these nodes do not retain a
+whole module or its body lists.

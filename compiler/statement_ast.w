@@ -22,6 +22,9 @@ const int ast_stmt_switch = 18
 const int ast_stmt_brace_block = 19
 const int ast_stmt_indent_block = 20
 const int ast_stmt_deferred_expression = 21
+const int ast_stmt_gpu_dimension = 22
+const int ast_stmt_gpu_argument = 23
+const int ast_stmt_gpu_capture = 24
 
 
 struct statement_ast:
@@ -49,6 +52,8 @@ struct statement_ast:
 	int alternate_target
 	int body_target
 	int function_body
+	char* callee_name
+	int argument_index
 
 
 int ast_simple_statements_emitted

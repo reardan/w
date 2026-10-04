@@ -26,6 +26,7 @@ import grammar.float_literal
 import compiler.expression_ast
 import compiler.statement_ast
 import compiler.loop_ast
+import compiler.gpu_ast
 import grammar.string_literal
 import grammar.template_string
 import grammar.primary_expr
@@ -68,9 +69,11 @@ import grammar.gpu_for
 import grammar.program
 import code_generator.statement_ast
 import code_generator.loop_ast
+import code_generator.gpu_ast
 import grammar.ast_statement
 import grammar.ast_declaration
 import grammar.ast_loop
+import grammar.ast_gpu
 import code_generator.expression_ast
 import grammar.ast_expression
 
