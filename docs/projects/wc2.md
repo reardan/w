@@ -718,3 +718,16 @@ Tests cover callbacks in locals and fields, returned function pointers,
 function addresses cast to words, callback arguments and stores, float and
 void calls, signature mismatches, narrowing diagnostics, and an argument
 that changes the callee before the call executes.
+
+## Task 22: default call arguments
+
+Direct AST calls append declaration-time constants for omitted trailing
+parameters. The parser validates the whole missing suffix and parameter
+types before accepting the call; each default then uses the existing
+argument coercion and stack layout. Indirect calls still require their
+declared arguments because defaults belong to a function symbol.
+
+Tests cover partial and fully defaulted calls, parenthesized callees,
+prototype defaults, integer, character, boolean, float and null-pointer
+parameters, explicit argument order, and missing/extra/type-mismatched
+argument diagnostics.

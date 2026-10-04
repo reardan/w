@@ -356,8 +356,22 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 		count = count + 1
 		if (ast_expression_accept(tree, c",") == 0): break
 		if (peek(c")")): return -1
-	if ((count != arity) || (peek(c")") == 0)): return -1
+	if (peek(c")") == 0): return -1
 	if (token_start_offset >= tree.end_offset): return -1
+	# Defaults are declaration-time constants, with no source-token replay.
+	# Check the entire missing suffix before adding synthetic arguments.
+	for i in range(count, arity):
+		if (sym_param_has_default(sym, i) == 0): return -1
+		int param = sym_param_type(sym, i)
+		if ((param >= 0) && (ast_expression_scalar_type(param) == 0)): return -1
+	while (count < arity):
+		int arg = expression_ast_add(tree, 'c', -1, -1)
+		if (arg < 0): return -1
+		tree.value[arg] = sym_param_default(sym, count)
+		if (previous < 0): tree.left[id] = arg
+		else: tree.next_arg[previous] = arg
+		previous = arg
+		count = count + 1
 
 	ast_expression_advance(tree)
 	tree.op[id] = 'C'
