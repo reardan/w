@@ -826,3 +826,8 @@ normal/lint diagnostic parity. Brace blocks now terminate whole
 expression preflight, with container-literal keywords protected from being
 mistaken for ordinary indexed names. The required-mode rejection fixture
 now uses an unsupported interpolated string.
+
+Integration with the unsigned-word arithmetic changes keeps AST result types,
+comparisons, division, remainder and right shifts aligned with the streaming
+compiler. The unsigned-word and x64 uint64 regression programs also run through
+the AST differential image matrix.

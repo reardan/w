@@ -259,6 +259,19 @@ int mmap(int addr, int length, int prot, int flags):
 	if (base == 0): return -12
 	return base
 
+# Linux snapshot-memory primitives are unsupported on this target.
+# Keep anonymous mmap above available to the allocator; never emulate a
+# file-backed clone with anonymous memory or issue Linux seal commands.
+int mmap_fd(int addr, int length, int prot, int flags, int fd, int offset):
+	return -1
+
+int memfd_create(char* name, int flags):
+	return -1
+
+int madvise(int addr, int length, int advice):
+	return -1
+
+
 
 int munmap(int addr, int length):
 	if (VirtualFree(addr, 0, 32768) == 0): /* MEM_RELEASE frees the whole allocation */
@@ -804,4 +817,27 @@ int epoll_wait(int epfd, int events, int maxevents, int timeout_ms):
 
 
 int eventfd2(int initval, int flags):
+	return -38
+
+
+# Positional I/O, truncate, openat and flock (lib/fs.w) are wired up on
+# Linux x86/x86-64 only. These explicit ENOSYS stubs make lib/fs.w report
+# IO_UNSUPPORTED here -- never an emulation through seek + write.
+int sys_pread(int fd, char* buf, int count, int offset):
+	return -38
+
+
+int sys_pwrite(int fd, char* buf, int count, int offset):
+	return -38
+
+
+int sys_ftruncate(int fd, int length):
+	return -38
+
+
+int sys_flock(int fd, int operation):
+	return -38
+
+
+int sys_openat(int dirfd, char* path, int flags, int mode):
 	return -38

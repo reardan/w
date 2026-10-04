@@ -221,6 +221,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 	if ((op == 'L') || (op == 'R')):
 		stack_pos = stack_pos - 1
 		if (op == 'L'): alu_shl()
+		else if (type_is_unsigned_word(left_type)): alu_shr()
 		else: alu_sar()
 		return
 	if ((op == '&') || (op == '|') || (op == '^')):
@@ -245,7 +246,9 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int result = 0
 		if ((op == 0x94) || (op == 0x95)): result = string_binary_compare_eq(left_type, right_type, op == 0x95)
 		if (result == 0): result = float_binary_compare(left_type, right_type, cc, swap)
-		if (result == 0): alu_cmp_set(op)
+		if (result == 0):
+			if (unsigned_word_operand(left_type, right_type) >= 0): op = setcc_unsigned(op)
+			alu_cmp_set(op)
 		return
 	if (binary_float_kind(left_type, right_type)):
 		pop_ebx_slot()
@@ -257,6 +260,11 @@ void emit_expression_ast(expression_ast* tree, int id):
 		else if (op == '-'): alu_sub()
 		else: alu_imul()
 	else:
-		if (op == '/'): alu_idiv()
-		else: alu_imod()
+		int is_unsigned = unsigned_word_operand(left_type, right_type) >= 0
+		if (op == '/'):
+			if (is_unsigned): alu_udiv()
+			else: alu_idiv()
+		else:
+			if (is_unsigned): alu_umod()
+			else: alu_imod()
 		stack_pos = stack_pos - 1

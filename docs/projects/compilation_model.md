@@ -10,6 +10,8 @@ directly informs #337's AST-availability question), and
 `docs/projects/parser_generator.md` (the PG's AST/streaming modes,
 milestone 3 of which just landed). Also carries short scoping notes for
 two "Future:" issues, #332 (streaming types) and #333 (type operators).
+§7, added 2026-10 with its implementation, documents import resolution
+and the explicit `--import-root` search roots (#514, stage W6).
 
 ## 0. Why one doc for two issues
 
@@ -544,3 +546,128 @@ should compile to. No design is attempted here pending that answer.
 | #337 | AST exists (PG, syntax-only) but the new streaming mode is the wrong half of it; a real backend needs an external LLVM toolchain, in tension with the project's zero-dependency identity | Run the bounded, seed-safe `bin/wllvm`-style experiment (§3.6); do not commit to a full backend before it reports back |
 | #332 | Real primitives exist (`lib/stream.w`, PG listener mode, `lib/task.w`) but nothing composes them into a pipeline today | Scope a dedicated design doc once the push-vs-pull and #338/#333 dependencies are answered |
 | #333 | Generics and typed containers already cover much of the underlying capability; the operator spelling and the `*` examples are unresolved | Get worked examples from the maintainer before any design work starts |
+
+## 7. Import roots (`--import-root`)
+
+Stage W6 of `docs/projects/reliable_services.md` (issue #514): explicit,
+ordered source roots for imports. It is a source-module feature only — no
+object files, no linker, nothing in §2's library-format discussion. It is
+the compiler-side search path that `docs/package_metadata.txt` deliberately
+left out of the package design; package metadata still does not add one.
+
+### 7.1 Resolution order
+
+`import a.b` becomes the module path `a/b` (dots to slashes, then the
+`__arch__` segment substituted for the target: `x86`, `x64`, `arm64`,
+`arm64_darwin`, `win64` or `wasm`; `grammar/import_statement.w`). A module
+path compiles at most once per program, whichever file supplied it. The
+file is then looked up (`compiler/compiler.w`, `compile_relative_path`):
+
+1. **New:** each `--import-root` directory, in command-line order, as
+   exactly `<root>/a/b.w` (no upward walk inside a root). The first root
+   holding the file wins.
+2. **Unchanged default:** the working directory, then each parent up to
+   `/`, as `<dir>/a/b.w`.
+3. **Unchanged fallback:** the compiler binary's own directory (from
+   `argv[0]`), then each parent.
+
+With no roots, steps 2-3 are the whole search, so every existing build
+resolves exactly as before. The roots apply to every import: user
+imports, the auto-imported container runtime (`structures/hash_table.w`,
+`structures/w_list.w` and their imports) and the on-demand runtimes
+(JSON, template strings, prelude, `var`). A root that holds e.g.
+`structures/hash_table.w` therefore replaces the runtime, the same way a
+root replaces any other module. Command-line input files are never
+searched for; they are opened as given, relative to the working directory.
+
+### 7.2 Command line
+
+```sh
+bin/wv2 [selector] [--import-root <dir>]... file.w -o out
+bin/wv2 [selector] check|deps|symbols|defhash [flags] [--import-root <dir>]... file.w
+```
+
+- `--import-root <dir>` and `--import-root=<dir>` mean the same thing. The
+  option repeats, and earlier roots win.
+- Compile, `check`, `deps`, `symbols` and `defhash` all accept it, after
+  the subcommand word and anywhere among the flags and files. It composes
+  with the target selectors in both spellings (`bin/wv2 x64 deps
+  --import-root r f.w`, `bin/wv2 deps x64 --import-root r f.w`), and
+  `__arch__` resolves inside each root.
+- A relative root resolves against the invocation's working directory.
+  Every root is made absolute and cleaned lexically (`.` and `..`
+  segments, repeated and trailing separators are removed) once, before
+  anything compiles.
+- Errors come before any compile. They go to stderr, or are one NDJSON
+  record at `"file": "<command-line>"` under `--json`:
+  `import root is not a directory: '<dir>'` (also for a regular file) and
+  `missing directory after '--import-root'`.
+- An import found nowhere reports `cannot locate 'x.w' (searched the
+  import roots, the current directory and every parent)` when roots are
+  in use. Without roots the message is unchanged.
+
+### 7.3 Reporting the resolved source
+
+- `deps` prints each resolved file. A path under the working directory
+  prints relative to it, and any other path (a root outside the
+  checkout, or a run from `bin/`) prints absolute. Output without roots
+  is byte-identical to before.
+- `deps --json` adds `"shadows": [...]` to a file's record when roots are
+  in use and the same module path also exists in a later root, or on the
+  default search path. The array lists the hidden candidates. Shadowing is
+  never a warning: warnings fail `--strict` builds, and a root that
+  deliberately overrides a module is the point of the feature.
+- Diagnostics and `symbols` name the resolved file, using the absolute
+  path the compiler opened, as for every import.
+
+### 7.4 Build caches
+
+- **`bin/wexec`** (deps-driven cache keys, `tools/wexec.w`). The step
+  command line is already part of the target definition hash, so adding,
+  removing or reordering a root changes the key. A compile step's roots
+  also ride in its closure id's arch column, in order:
+  `x86|tests/import_roots/a|tests/import_roots/b tests/import_root_test.w`
+  (`tools/deps_cache.w`, `deps_arch_with_roots`). The closure is computed
+  by `bin/wv2 deps --import-root ...` with the same roots, so it lists
+  the files the compile really opened. Re-hashing a closure catches edits
+  and deletions but not a new file that would now win. For ids with roots
+  the record digest therefore also covers the existence of every
+  higher-priority candidate: `<earlier root>/<rel>` for files found in a
+  root, and `<every root>/<path>` for files found by the default search
+  (`deps_entry_digest`). Adding a shadowing file invalidates the key.
+  Records for ids without roots keep their old digests.
+- **`bin/wtest`** shares the same id spelling and digest, so closure
+  selection follows the roots. `wtest archs --check` re-runs `check` with
+  them.
+- **`bin/wbuildd`** answers a `check`/`deps`/`symbols` request that
+  carries `--import-root` fresh every time and never memoizes it. A root
+  may sit outside the watched tree, so inotify could not invalidate it.
+- Limits: a root path containing a space or `|` cannot be spelled in a
+  closure id, so that step falls back to the pre-closure key (its declared
+  inputs). The existence probes match roots as spelled, and closure paths
+  as printed. A root spelled through `..`, or an absolute root inside the
+  checkout, keeps exact file hashes but loses the probes.
+
+No manifest field or `# wbuild:` directive is needed. A generated test
+passes roots with the existing `flags=` directive:
+`# wbuild: x64 flags="--import-root tests/import_roots/a --import-root tests/import_roots/b"`.
+
+### 7.5 Tests
+
+- `import_root_test`, `import_root_64_test`, `import_root_order_test` and
+  `import_root_order_64_test` are generated compile+run targets over
+  `tests/import_roots/`:
+  - a module present in both roots, where root order decides and the two
+    sources swap the order;
+  - a module only in the second root;
+  - a per-arch module inside a root, on x86 and x64.
+
+  They run through wexec's deps-driven keys.
+- `import_root_cli_test` (`tools/import_root_e2e.w`) covers:
+  - compile from the checkout, from `bin/` with relative roots, and from
+    outside the checkout with absolute roots;
+  - that `check`, `deps`, `deps --json` (including `shadows`), `x64 deps`,
+    `deps x64` and `symbols --json` agree with the compile;
+  - a warning inside a root naming the resolved file;
+  - the unchanged no-roots diagnostic;
+  - the cannot-locate, not-a-directory and missing-value errors.

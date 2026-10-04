@@ -25,6 +25,10 @@ Completed so far:
   compile warning-free on both targets.
 - The committed seed was promoted to a post-P0 compiler so the bootstrap
   core can use `cast()` itself.
+- Unsigned word operations: `<`/`<=`/`>`/`>=`, `/`, `%` and `>>` (and
+  `/=`, `%=`, `>>=`) on an unsigned word operand use the unsigned machine
+  forms on every backend; see "Unsigned operations" below and
+  `tests/unsigned_compare_test.w`.
 
 This plan turns W's current permissive, word-centric type checks into an
 explicit type system that remains compatible with the compiler's single-pass
@@ -118,6 +122,53 @@ Add new fields behind helper accessors instead of open-coding offsets:
 
 The first implementation can keep the fixed-size record strategy, but all
 callers should move through `type_*` helpers before layout changes land.
+
+## Unsigned operations
+
+W's `int` and `uint` are both word-sized, so the C "usual arithmetic
+conversions" reduce to one rule, applied by
+`unsigned_word_operand()` (`grammar/binary_op.w`):
+
+- An **unsigned word type** is `uint` on every target, `uint32` where the
+  word is 4 bytes (x86, wasm32) and `uint64` where it is 8 (x64, arm64,
+  win64, arm64_darwin) -- `type_is_unsigned_word()` in
+  `compiler/type_table.w`, which sees through aliases (`type size_t =
+  uint`) and `const`.
+- A binary integer operation is **unsigned when either operand is an
+  unsigned word type**; the other operand, whatever its signedness, is
+  read as the same word bit pattern. So `cast(uint, -1) > 1` is true, and
+  `uint one = 1; one > -1` is false, exactly as in C (the int `-1`
+  converts to the maximum unsigned word).
+- **Narrower unsigned types** (`uint8`, `uint16`, and `uint32` on a
+  64-bit word) do not make an operation unsigned. Their loads already
+  zero-extend into the word (`type_is_unsigned_fixed()`, `promote()`), so
+  the signed word operations are exact for them -- C's integer promotions
+  turn them into `int` the same way. `uint8 b = 200; b > -1` is true.
+- Affected operators: the ordered comparisons use the unsigned condition
+  codes (x86/x64 `setb/setae/setbe/seta` and the fused `jb/jae/jbe/ja`;
+  arm64 `lo/hs/ls/hi`; wasm `i32.lt_u/ge_u/le_u/gt_u`; PTX `setp.*.u64`),
+  `/` and `%` use `div` (x86, after `xor edx,edx`) / `udiv` (arm64) /
+  `i32.div_u`/`rem_u` (wasm), and `>>` uses the logical shift (`shr`,
+  `lsrv`, `i32.shr_u`). For `>>` and `<<` only the left operand decides,
+  as in C. `==`/`!=`, `+`, `-`, `*`, `&`, `|`, `^`, `<<` emit the same
+  bits either way. The compound forms `/=`, `%=`, `>>=` follow the same
+  rule.
+- Results keep unsignedness: an integer operator with an unsigned word
+  operand yields a value of that unsigned type instead of the untyped
+  constant, so `(a + b) / 2`, `-u > 1` and `(x & mask) >> 3` stay
+  unsigned. Pointer arithmetic keeps its existing result typing.
+- **Pointer comparisons are unchanged (signed word compares).** C orders
+  pointers unsigned, and on a 32-bit process near the top of the address
+  space signed pointer ordering is a latent hazard, but the compiler and
+  library compare pointers in many places (`p < end` loops, `p > 0`
+  null-ish checks) and switching them is a separate, auditable change.
+  The compiler's own source has no unsigned word operations, so this
+  change left the self-host output byte-identical on x86, x64, arm64,
+  win64 and arm64_darwin.
+- Still signed: integer-to-float conversion of a `uint` value
+  (`cvtsi2sd`/`scvtf`), and `print`/f-string formatting of `uint` values
+  (`VC_INT`). `lib/checked.w`'s `unsigned_lt`/`unsigned_cmp`/
+  `unsigned_shr` remain for unsigned bit patterns held in plain `int`s.
 
 ## Milestones
 

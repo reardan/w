@@ -85,12 +85,22 @@ int compound_assign_apply(int op, int left_type, int right_type):
 				pop_ebx_slot()
 				return float_binary_arithmetic(left_type, right_type, '/')
 			error(c"float operands only support += -= *= /=")
-		if (op == '/'): alu_idiv()
-		else if (op == '%'): alu_imod()
+		# Unsigned word operands divide and right-shift unsigned, like
+		# the binary operators (grammar/binary_op.w)
+		int is_unsigned = unsigned_word_operand(left_type, right_type) >= 0
+		if ((op == 'l') || (op == 'r')): is_unsigned = type_is_unsigned_word(left_type)
+		if (op == '/'):
+			if (is_unsigned): alu_udiv()
+			else: alu_idiv()
+		else if (op == '%'):
+			if (is_unsigned): alu_umod()
+			else: alu_imod()
 		else if (op == 'l'): alu_shl()
+		else if (is_unsigned): alu_shr()
 		else: alu_sar()
 		stack_pos = stack_pos - 1
-		return 3
+		if ((op == 'l') || (op == 'r')): return integer_result_type(left_type, 3)
+		return integer_result_type(left_type, right_type)
 	pop_ebx_slot()
 	if ((op == '+') || (op == '-') || (op == '*')):
 		int result_type = float_binary_arithmetic(left_type, right_type, op)
@@ -103,7 +113,7 @@ int compound_assign_apply(int op, int left_type, int right_type):
 	else if (op == '&'): alu_and()
 	else if (op == '|'): alu_or()
 	else: alu_xor()
-	return 3
+	return integer_result_type(left_type, right_type)
 
 
 /*

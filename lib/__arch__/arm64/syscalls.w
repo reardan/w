@@ -144,10 +144,20 @@ int linux_time(int* out):
 int brk(char* addr):
 	return syscall(214, addr, 0, 0)
 
-# mmap (222): all six arguments in registers; fd must be -1 for
-# MAP_ANONYMOUS mappings and the offset is in bytes.
+# mmap (222): signed word-sized byte offsets, aligned to host pages.
+int mmap_fd(int addr, int length, int prot, int flags, int fd, int offset):
+	if (offset < 0): return -22
+	return syscall7(222, addr, length, prot, flags, fd, offset)
+
+# Anonymous shorthand.
 int mmap(int addr, int length, int prot, int flags):
-	return syscall7(222, addr, length, prot, flags, -1, 0)
+	return mmap_fd(addr, length, prot, flags, -1, 0)
+
+int memfd_create(char* name, int flags):
+	return syscall(279, name, flags, 0)
+
+int madvise(int addr, int length, int advice):
+	return syscall(233, addr, length, advice)
 
 # munmap (215): releases a mapping created by mmap. addr must be page-aligned.
 int munmap(int addr, int length):
@@ -369,6 +379,29 @@ int epoll_wait(int epfd, int events, int maxevents, int timeout_ms):
 
 int eventfd2(int initval, int flags):
 	return syscall(19, initval, flags, 0)
+
+
+# Positional I/O, openat and flock (lib/fs.w) are wired up on
+# Linux x86/x86-64 only. These explicit ENOSYS stubs make lib/fs.w report
+# IO_UNSUPPORTED here -- never an emulation through seek + write.
+int sys_pread(int fd, char* buf, int count, int offset):
+	return -38
+
+
+int sys_pwrite(int fd, char* buf, int count, int offset):
+	return -38
+
+
+int sys_ftruncate(int fd, int length):
+	return syscall(46, fd, length, 0)
+
+
+int sys_flock(int fd, int operation):
+	return -38
+
+
+int sys_openat(int dirfd, char* path, int flags, int mode):
+	return -38
 
 
 import lib.win32_stubs

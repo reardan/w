@@ -93,6 +93,10 @@ path per line; `--json` emits `{"file": "..."}` NDJSON. Like `check`, it
 composes with the arch selectors (`./bin/wv2 x64 deps file.w` or
 `deps x64 file.w`) and resolves `lib/__arch__/` imports per target.
 
+**Import roots**: `--import-root <dir>` (repeatable, earlier roots win)
+makes compile/`check`/`deps`/`symbols` search explicit roots before the
+default working-directory-upward search (docs/projects/compilation_model.md §7).
+
 Gotcha: `bin/` is gitignored; `./wbuild` creates it, but hand-run compiles
 (`./bin/wv2 ...`) need `mkdir -p bin` (or `./wbuild build`) first if you see
 `bin/...: No such file or directory`. Likewise `lib/grapheme_data.w`,

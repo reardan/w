@@ -69,6 +69,10 @@ Other useful targets:
 ```sh
 ./wbuild wdbg        # build the in-process debugger (bin/wdbg)
 ./wbuild wdbg_web    # browser debugger: bin/wdbg_web file.w prints an https URL
+./wbuild wvm         # Linux x64 KVM cells: bin/wvm run tests/hello.w
+./wbuild wvm_init    # Linux guest PID 1; wvm box --kernel FILE --initrd FILE
+./wbuild wvmd        # persistent Linux-box session scheduler
+./wbuild wvm_pool_bench # cell CoW sharing and reset benchmark
 ./wbuild verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
                      # the first cmp also proves output is host-word-size independent
 ./wbuild warning_test  # asserts the compiler's type/style warnings
@@ -76,6 +80,23 @@ Other useful targets:
 ./wbuild cuda_smoke  # GPU-only: hand-written PTX vector add through libcuda (not part of 'tests')
 ./wbuild cuda_test   # GPU-only: W kernels + 'gpu for' end to end (not part of 'tests')
 ```
+
+The [VM runner](docs/projects/vms.md) executes static x64 W cells with
+checked syscall access, explicit filesystem/TCP capabilities, guest threads,
+and timeouts. Ready-cell snapshots support CoW clones and RAM pools.
+Linux boxes use QEMU/KVM and W PID 1 for repeated commands, separate output,
+private workspaces and guest exit status. `wvmd` provides bounded concurrent
+sessions over local JSON-RPC. Source compilation happens on the host;
+execution requires `/dev/kvm` and never falls back to host execution.
+
+Run the foreground daemon directly (not inside a captured build step):
+
+```sh
+./bin/wvmd serve --socket bin/wvmd.sock --max-active 4 --max-pending 16
+```
+
+See [agent VM usage and limits](docs/projects/vms.md#persistent-commands-and-private-workspaces)
+for image assembly, session commands, resource policies and benchmarks.
 
 There is no separate linter binary. The compiler's own warnings (type
 mismatches, spaces-instead-of-tabs, missing trailing newline) are always
@@ -475,6 +496,12 @@ seeds — is `docs/release.md`.
   subcommand (`deps x64 file.w`) or before it (`./bin/wv2 x64 deps
   file.w`; `check` and `symbols` accept both spellings too) — resolving
   `lib/__arch__/` imports for the selected target.
+- Imports resolve from the working directory and its parents, then from
+  the compiler binary's directory. `--import-root <dir>` (repeatable,
+  earlier roots win; accepted the same way by compile, `check`, `deps`
+  and `symbols`) searches explicit roots first. With roots,
+  `deps --json` reports shadowed duplicates as `"shadows"`.
+  `docs/projects/compilation_model.md` §7 has the details.
 - Use `./wbuild test_changed` to run focused tests for files changed from
   `HEAD`, or call `./bin/wtest changed file...` to list the selected build
   targets without running them. Selection is manifest-driven: `bin/wtest`

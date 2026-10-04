@@ -684,6 +684,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		if (id < 0): return -1
 		if ((op == '!') || (op == 'b')): tree.result_type[id] = type_value(bool_type)
 		else if (kind): tree.result_type[id] = float_binary_result_type(kind)
+		else if (op != 'p'): tree.result_type[id] = integer_result_type(ast_expression_promoted_type(child_type), 3)
 		return id
 	return ast_expression_postfix(tree, depth)
 
@@ -875,6 +876,7 @@ int ast_expression_binary(expression_ast* tree, int op, int left, int right):
 	if (kind): tree.result_type[id] = float_binary_result_type(kind)
 	else if ((op == '+') || (op == '-')):
 		tree.result_type[id] = additive_scalar_result_type(lt, rt, op)
+	else: tree.result_type[id] = integer_result_type(lt, rt)
 	return id
 
 
@@ -914,7 +916,10 @@ int ast_expression_shift(expression_ast* tree, int depth):
 		int right = ast_expression_sum(tree, depth)
 		if (right < 0): return -1
 		if ((ast_expression_scalar_value(tree.result_type[left]) && ast_expression_scalar_value(tree.result_type[right])) == 0): return -1
+		int result = shift_result_type(ast_expression_promoted_type(tree.result_type[left]))
 		left = expression_ast_add(tree, op, left, right)
+		if (left < 0): return -1
+		tree.result_type[left] = result
 	return -1
 
 
@@ -989,6 +994,8 @@ int ast_expression_bitwise(expression_ast* tree, int depth, int level):
 		chain_is_bool = chain_is_bool && right_is_bool
 		chain_has_call = chain_has_call || right_has_call
 		left = expression_ast_add(tree, op, left, right)
+		if (left < 0): return -1
+		tree.result_type[left] = integer_result_type(ast_expression_promoted_type(lt), ast_expression_promoted_type(rt))
 	return left
 
 
@@ -1075,7 +1082,8 @@ int ast_expression_assignment(expression_ast* tree, int depth):
 	if (op):
 		int kind = binary_float_kind(ast_expression_promoted_type(lt), rt)
 		if (kind && ((op != '+') && (op != '-') && (op != '*') && (op != '/'))): return -1
-		result = 3
+		result = integer_result_type(ast_expression_promoted_type(lt), rt)
+		if ((op == 'l') || (op == 'r')): result = integer_result_type(ast_expression_promoted_type(lt), 3)
 		if (kind): result = float_binary_result_type(kind)
 	if (op):
 		if (types_compatible_with_expression(lt, result) == 0): return -1

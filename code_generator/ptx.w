@@ -480,7 +480,8 @@ char* ptx_cc_name(int setcc_opcode):
 	if (setcc_opcode == 0x9f): return c"gt"
 	if (setcc_opcode == 0x94): return c"eq"
 	if (setcc_opcode == 0x95): return c"ne"
-	# Unsigned forms, used after float compares: seta/setae/setb/setbe
+	# Unsigned forms (seta/setae/setb/setbe): unsigned integer compares,
+	# which ptx_alu_cmp_set types .u64, and float compares
 	if (setcc_opcode == 0x97): return c"gt"
 	if (setcc_opcode == 0x93): return c"ge"
 	if (setcc_opcode == 0x92): return c"lt"
@@ -493,7 +494,9 @@ char* ptx_cc_name(int setcc_opcode):
 void ptx_alu_cmp_set(int setcc_opcode):
 	ptx_emit(c"setp.")
 	ptx_emit(ptx_cc_name(setcc_opcode))
-	ptx_line(c".s64 %p, %bx, %ax;")
+	if ((setcc_opcode == 0x92) || (setcc_opcode == 0x93) || (setcc_opcode == 0x96) || (setcc_opcode == 0x97)):
+		ptx_line(c".u64 %p, %bx, %ax;")
+	else: ptx_line(c".s64 %p, %bx, %ax;")
 	ptx_line(c"selp.b64 %ax, 1, 0, %p;")
 
 
