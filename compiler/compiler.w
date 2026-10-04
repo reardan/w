@@ -829,6 +829,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_blocks_emitted = 0
 	ast_while_loops_emitted = 0
 	ast_deferred_expressions_emitted = 0
+	ast_functions_emitted = 0
+	ast_scripts_emitted = 0
+	ast_generators_emitted = 0
+	ast_kernels_emitted = 0
+	ast_kernel_parameters_emitted = 0
 	ast_globals_emitted = 0
 	ast_global_initializers_emitted = 0
 	ast_thread_locals_emitted = 0
@@ -1126,6 +1131,17 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(c"\n")
 		print_error(c"AST goto/label statements: ")
 		print_error(itoa(ast_goto_statements_emitted))
+		print_error(c"\n")
+		print_error(c"AST functions: ")
+		print_error(itoa(ast_functions_emitted))
+		print_error(c"\nAST scripts: ")
+		print_error(itoa(ast_scripts_emitted))
+		print_error(c"\nAST generators: ")
+		print_error(itoa(ast_generators_emitted))
+		print_error(c"\nAST kernels: ")
+		print_error(itoa(ast_kernels_emitted))
+		print_error(c"\nAST kernel parameters: ")
+		print_error(itoa(ast_kernel_parameters_emitted))
 		print_error(c"\n")
 		print_error(c"AST globals: ")
 		print_error(itoa(ast_globals_emitted))

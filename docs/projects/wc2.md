@@ -1907,3 +1907,19 @@ Direct tests overwrite the original record and array type information after
 building a layout and verify unchanged emitted bytes on both host widths.
 Invalid initializer and TLS diagnostics retain their reference ordering.
 These are declaration-local trees; the module dispatcher remains incremental.
+
+## Task 106: resolved function boundaries
+
+Ordinary functions, implicit script mains, generators and explicit kernels now
+carry entry/exit state in function nodes. Backend visitors define entry points,
+maintain frame words and debugger argument metadata, emit target prologues and
+fallthrough exits, and record code lengths. Kernel parameter nodes preserve the
+load/declaration/default-validation/push sequence. Function and kernel names
+retain their existing ownership conventions through emission.
+
+The grammar still declares signatures, controls lexical scopes and visits
+statement bodies incrementally. Differential tests on both compiler host widths
+cover record returns, defers, generators, script fallthrough, default and
+variadic arguments, kernel parameters and their diagnostics. Native images and
+embedded PTX remain identical. Statistics report each function category and
+kernel parameter nodes; this is not yet a retained module/body tree.

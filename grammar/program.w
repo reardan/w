@@ -289,6 +289,10 @@ int param_default_record(int current_symbol, int param_count, int saw_default):
 # Parses "parameter-list ) [; | body]" for the function symbol at table
 # offset current_symbol; the opening "(" has already been consumed.
 # Shared by program() and the REPL's entry dispatcher.
+void ast_function_body(int binding, int code_start, int kind);
+void ast_script_main();
+
+
 void function_definition(int current_symbol):
 	table[current_symbol + 10] = 2 /* store function type */
 	int n = table_pos
@@ -359,37 +363,39 @@ void function_definition(int current_symbol):
 	else: sym_set_w_variadic(current_symbol, -1)
 
 	if (accept(c";") == 0):
-		be_function_define(current_symbol, last_global_declaration)
-		# On arm64 sign and push the return address (x30) onto the W stack
-		# so the callee has the same [return-slot | args] layout the x86
-		# backend relies on. On x86/x64 push ebp ; mov ebp,esp to keep the
-		# frame-pointer chain lib/stack_trace.w walks. On wasm this opens
-		# the function's size-prefixed code-section unit.
-		be_function_prologue()
-		# x86/x64: the saved frame pointer is one more word on the W stack
-		int frame_words = be_frame_words()
-		stack_pos = stack_pos + frame_words
-		current_function_symbol = current_symbol
-		enclosing_tab_level = 0
-		# Record the argument word count for the debugger's
-		# runtime argument addressing
-		debug_func_note(function_start, number_of_args)
-		# Fall-through defers are emitted when the body block closes,
-		# while its locals are still in scope: arm the flag statement()
-		# consumes when it opens the body block.
-		defer_reset()
-		defer_function_body_pending = 1
-		int outer_label_base = goto_label_base
-		int outer_pending_base = goto_pending_base
-		goto_scope_begin()
-		statement()
-		goto_scope_end(outer_label_base, outer_pending_base)
-		defer_reset()
-		be_return_bare()
-		be_function_epilogue()
-		stack_pos = stack_pos - frame_words
-		# Store length to symbol table:
-		save_int(table + current_symbol + 14, codepos - function_start)
+		if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native)
+		else:
+			be_function_define(current_symbol, last_global_declaration)
+			# On arm64 sign and push the return address (x30) onto the W stack
+			# so the callee has the same [return-slot | args] layout the x86
+			# backend relies on. On x86/x64 push ebp ; mov ebp,esp to keep the
+			# frame-pointer chain lib/stack_trace.w walks. On wasm this opens
+			# the function's size-prefixed code-section unit.
+			be_function_prologue()
+			# x86/x64: the saved frame pointer is one more word on the W stack
+			int frame_words = be_frame_words()
+			stack_pos = stack_pos + frame_words
+			current_function_symbol = current_symbol
+			enclosing_tab_level = 0
+			# Record the argument word count for the debugger's
+			# runtime argument addressing
+			debug_func_note(function_start, number_of_args)
+			# Fall-through defers are emitted when the body block closes,
+			# while its locals are still in scope: arm the flag statement()
+			# consumes when it opens the body block.
+			defer_reset()
+			defer_function_body_pending = 1
+			int outer_label_base = goto_label_base
+			int outer_pending_base = goto_pending_base
+			goto_scope_begin()
+			statement()
+			goto_scope_end(outer_label_base, outer_pending_base)
+			defer_reset()
+			be_return_bare()
+			be_function_epilogue()
+			stack_pos = stack_pos - frame_words
+			# Store length to symbol table:
+			save_int(table + current_symbol + 14, codepos - function_start)
 
 	table_pos = n
 
@@ -638,6 +644,9 @@ lib.lib in, and the ELF entry's direct 'main' fallback covers programs
 that never imported anything.
 */
 void script_main():
+	if (ast_expressions_mode >= 2):
+		ast_script_main()
+		return
 	int int_type = type_lookup(c"int")
 	int current_symbol = sym_declare_global(c"main", int_type, 2)
 	int n = table_pos

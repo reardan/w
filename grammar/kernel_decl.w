@@ -194,7 +194,13 @@ int gpu_sym_get_value(char* s):
 # current_symbol; 'kernel', the name and the opening "(" have already
 # been consumed. Mirrors generator_function_definition, except the body
 # compiles in device mode and parameters become device locals.
+void ast_kernel_function_definition(int binding, char* name);
+
+
 void kernel_function_definition(int current_symbol, char* kernel_name):
+	if (ast_expressions_mode >= 2):
+		ast_kernel_function_definition(current_symbol, kernel_name)
+		return
 	table[current_symbol + 10] = 2 /* store function type */
 	sym_set_kernel(current_symbol)
 	sym_define_global_at(current_symbol, 0)
