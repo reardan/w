@@ -435,17 +435,9 @@ void enum_forget_constants(int type_index):
 # as an inline table of NUL-separated "value" / "name" pairs next to
 # the call, and __w_enum_name scans it at runtime; a value no constant
 # carries renders as its decimal digits. The first of several names
-# sharing a value wins. Leaves ')' current for primary_expr's trailing
-# get_token().
-int prelude_enum_name_expr():
-	get_token()
-	expect(c"(")
-	int base_stack = stack_pos
-	int got = promote(expression())
-	int t = type_canonical(type_unqualified(got))
-	if ((got == 3) || (got == 4) || (type_get_kind(t) != type_kind_enum)):
-		value_type_error(c"enum_name argument must be an enum value, got", got)
-	if (peek(c")") == 0): error(c"')' expected in enum_name")
+# sharing a value wins. The promoted value is in eax; both parsers use
+# this emitter after validating the enum type.
+void prelude_emit_enum_name(int t, int base_stack):
 	int value_slot = push_slot()
 	int capacity = 16
 	char* table_text = malloc(capacity)
@@ -478,6 +470,18 @@ int prelude_enum_name_expr():
 	push_slot_copy(value_slot)
 	rt_call_end(s)
 	pop_to(base_stack)
+
+
+int prelude_enum_name_expr():
+	get_token()
+	expect(c"(")
+	int base_stack = stack_pos
+	int got = promote(expression())
+	int t = type_canonical(type_unqualified(got))
+	if ((got == 3) || (got == 4) || (type_get_kind(t) != type_kind_enum)):
+		value_type_error(c"enum_name argument must be an enum value, got", got)
+	if (peek(c")") == 0): error(c"')' expected in enum_name")
+	prelude_emit_enum_name(t, base_stack)
 	return type_value(type_lookup_pointer(c"char", 1))
 
 

@@ -1,23 +1,36 @@
-# Ephemeral production expression AST. Each parse or owning statement
-# keeps this bounded arena on its stack through preparation and emission.
-# Unsupported syntax and REPL recovery discard the speculative arena.
+# Production expression AST. Each parse/emit attempt owns this bounded
+# arena on its stack; unsupported syntax and
+# REPL error recovery cannot leave allocated nodes or compiler state behind.
 # Node IDs are arena indices, -1 is failure. Literal nodes carry their
 # source byte offset until the committed diagnostic/decoding pass fills value.
 # result_type retains the streaming type convention (lvalue, value or
-# untyped constant); symbol records and their name offsets remain valid
-# only for this parse/emit operation, never across declarations/REPL entries.
+# untyped constant). Native stack operands snapshot their names and frame
+# offsets. Other symbol records (calls, globals and device captures) remain
+# borrowed for this parse/emit operation, not across declarations/REPL entries.
 # Float literals store two 32-bit halves for host-independent decoding.
 # Call nodes use left for the first argument and next_arg links on argument
 # roots; those links do not change a nested call's own argument list.
 # Logical chains use the same sibling links, with a separate node for
 # each source-level chain (parenthesized subchains keep their boundary).
-struct expression_ast_format:
-	int present
-	int fill
-	int align
-	int width
-	int precision
-	int kind
+# The source window admits embedded asset chunks as well as ordinary
+# expressions. Decoded text has extra room for per-chunk terminators.
+# 4096 nodes cover the existing 900-level ternary fixture (3601 nodes);
+# parsing retains the streaming expression nesting guard of 1000.
+const int ast_expression_source_limit = 16384
+
+
+# Comma-index pseudo-lvalues retain their operands until the parent
+# chooses a read or store. Grouping finalizes a read, as with map nodes.
+const int ast_nd_index = 128
+const int ast_nd_store = 129
+const int ast_nd_read = 130
+const int ast_template_format = 131
+const int ast_device_builtin = 132
+const int ast_list_it = 133
+const int ast_list_it_value = 134
+const int ast_forward_generic = 135
+const int ast_propagate = 136
+const int ast_warning = 137
 
 
 struct expression_ast:
@@ -32,27 +45,36 @@ struct expression_ast:
 	int type_names_used
 	int pending_buffer_types
 	int readonly
+	int it_binding
+	int lint_group_depth
+	int lint_depth_bias
 	type_rec[16] pointer_types
 	int[16] pointer_offsets
 	int[16] pointer_bases
 	char[4096] type_names
-	char[4096] text
-	int[128] op
-	int[128] left
-	int[128] right
-	int[128] offset
-	int[128] value
-	int[128] result_type
-	int[128] high
-	int[128] next_arg
-	int[128] in_cast
-	int[128] symbol
-	expression_ast_format[128] format
-	int[128] generic_parameters
-	int[128] generic_signature
-	int[128] generic_offset
-	int[128] generic_instance
-	int[128] generic_arity
+	char[32768] text
+	int[4096] op
+	int[4096] left
+	int[4096] right
+	int[4096] offset
+	int[4096] value
+	int[4096] result_type
+	int[4096] high
+	int[4096] next_arg
+	int[4096] in_cast
+	int[4096] binding_name
+	int[4096] binding_offset
+	int[4096] symbol
+	int[4096] qualified
+	int[4096] it_slot
+	int[4096] generic_parameters
+	int[4096] generic_signature
+	int[4096] generic_offset
+	int[4096] generic_instance
+	int[4096] generic_arity
+	int[4096] infer_coercion
+	int[4096] call_receiver_type
+	int[4096] infer_want
 
 
 int ast_expressions_mode
@@ -65,7 +87,9 @@ int ast_required_mode
 
 # Container methods share the streaming helper-call lowering. Bit 7
 # chooses the aggregate-copy/address helper after types are known.
+# Bit 8 records the method-token lookup of an outer it variable.
 char* ast_expression_method_helper(int method):
+	method = method & 255
 	if (method == 11): return c"__w_map_remove"
 	if (method == 12): return c"__w_set_add"
 	if (method == 13): return c"__w_map_free"
@@ -73,6 +97,7 @@ char* ast_expression_method_helper(int method):
 	if (method == 15): return c"__w_map_get_or"
 	if (method == 16): return c"__w_map_keys"
 	if (method == 17): return c"__w_map_values"
+	if (method == 18): return c"__w_map_add"
 	if (method == 142): return c"__w_map_get_addr"
 	if (method == 143): return c"__w_map_get_or_addr"
 	if (method == 129): return c"__w_list_push_bytes"
@@ -84,6 +109,22 @@ char* ast_expression_method_helper(int method):
 	if (method == 4): return c"__w_list_remove"
 	if (method == 5): return c"__w_list_clear"
 	if (method == 6): return c"__w_list_free"
+	if (method == 20): return c"__w_list_sort"
+	if (method == 21): return c"__w_list_sorted"
+	if (method == 22): return c"__w_list_sum"
+	if (method == 23): return c"__w_list_min"
+	if (method == 24): return c"__w_list_max"
+	if (method == 25): return c"__w_list_reverse"
+	if (method == 26): return c"__w_list_reversed"
+	if (method == 27): return c"__w_list_count"
+	if (method == 28): return c"__w_list_index"
+	if (method == 30): return c"__w_list_sort_by"
+	if (method == 31): return c"__w_list_sorted_by"
+	if (method == 32): return c"__w_list_map"
+	if (method == 33): return c"__w_list_filter"
+	if (method == 34): return c"__w_list_reduce"
+	if (method == 158): return c"__w_list_sort_by_addr"
+	if (method == 159): return c"__w_list_sorted_by_addr"
 	return 0
 
 
@@ -100,6 +141,7 @@ char* ast_expression_contains_helper(int kind):
 # committed literal diagnostic can unwind this stack frame.
 int ast_expression_pointer_type(expression_ast* tree, int base, int offset):
 	int existing = type_lookup_next_pointer(base)
+	if (type_is_gpu_object(base)): existing = type_lookup_pointer(type_get_name(base), 1)
 	if (existing >= 0): return existing
 	# Array promotion can intern a slice-value type during emission.
 	# Preserve type registration order until it too has a replay event.
@@ -107,6 +149,7 @@ int ast_expression_pointer_type(expression_ast* tree, int base, int offset):
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.name = type_get_name(type_canonical(base))
+	if (type_is_gpu_object(base)): rec.name = type_get_name(base)
 	rec.num_fields = 0
 	rec.total_size = word_size
 	rec.pointer_level = type_get_pointer_level(base) + 1
@@ -125,58 +168,27 @@ int ast_expression_pointer_type(expression_ast* tree, int base, int offset):
 	return result
 
 
-void ast_expression_restore_types(expression_ast* tree):
-	if (tree.types_count == 0): return
-	# Truncation invalidates the name index, including names borrowed
-	# from this arena. Replay may append several types before a lookup.
-	type_table_truncate(tree.types_base)
-
-
-void ast_expression_commit_pointer(expression_ast* tree, int i):
-	type_rec* rec = &tree.pointer_types[i]
-	if (rec.kind == type_kind_function): return
-	int actual
-	if (rec.kind == type_kind_slice_value): actual = type_push_slice_value(rec.alias_target)
-	else if (rec.kind == type_kind_map): actual = type_push_map(rec.alias_target, rec.fn_return_type)
-	else if (rec.kind == type_kind_set): actual = type_push_set(rec.alias_target)
-	else if (rec.kind == type_kind_list): actual = type_push_list(rec.alias_target)
-	else:
-		# A pointer to a newly staged container must borrow the committed
-		# name, never the temporary name stored in this expression arena.
-		char* name = type_get_name(type_canonical(tree.pointer_bases[i]))
-		actual = type_push_pointer(name, rec.total_size, rec.pointer_level)
-	assert1(actual == tree.types_base + i)
-
-
-# Container records use the same source-ordered transaction as pointers.
-# Their diagnostic names live in the arena during speculation; replay
-# recreates owned names only after all temporary records are removed.
-int ast_expression_container_type(expression_ast* tree, int kind, int first, int second, int offset):
-	first = type_canonical(first)
-	if (kind == type_kind_map): second = type_canonical(second)
-	int existing = type_lookup_composite(kind, first, second)
+# Device captures make scalar lvalues const. Stage the wrapper at the
+# symbol token, just as the streaming device-symbol resolver does.
+int ast_expression_const_type(expression_ast* tree, int base, int offset):
+	int existing = type_lookup_const(base)
 	if (existing >= 0): return existing
-	if (tree.pending_buffer_types || (tree.types_count == 16)): return -1
-	char* name
-	if (kind == type_kind_map): name = type_make_map_name(first, second)
-	else if (kind == type_kind_set): name = type_make_set_name(first)
-	else: name = type_make_list_name(first)
-	int length = strlen(name) + 1
-	if (tree.type_names_used + length > 4096):
-		free(name)
-		return -1
+	base = type_canonical(base)
+	if ((type_num_args(base) > 0) || tree.pending_buffer_types || (tree.types_count == 16)): return -1
+	int length = strlen(type_get_name(base)) + 7
+	if (tree.type_names_used + length > 4096): return -1
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
 	rec.name = &tree.type_names[tree.type_names_used]
-	strcpy(rec.name, name)
-	free(name)
+	strcpy(rec.name, c"const ")
+	strcpy(rec.name + 6, type_get_name(base))
 	tree.type_names_used = tree.type_names_used + length
 	rec.num_fields = 0
-	rec.total_size = word_size
-	rec.pointer_level = 0
-	rec.alias_target = first
-	rec.kind = kind
-	rec.fn_return_type = second
+	rec.total_size = type_get_size(base)
+	rec.pointer_level = type_get_pointer_level(base)
+	rec.alias_target = base
+	rec.kind = type_kind_const
+	rec.fn_return_type = -1
 	rec.fn_param_count = -1
 	rec.decl_file_index = -1
 	rec.decl_line = 0
@@ -188,8 +200,71 @@ int ast_expression_container_type(expression_ast* tree, int kind, int first, int
 	return result
 
 
+# GPU-object wrappers preserve the raw memory-domain type while the
+# ordinary type queries follow the canonical element, including its
+# fields. The arena record needs no field-array descriptors.
+int ast_expression_gpu_type(expression_ast* tree, int base, int offset):
+	base = type_canonical(base)
+	for index in range(type_count()):
+		type_rec* existing = type_record(index)
+		if ((existing.kind == type_kind_gpu) && (existing.alias_target == base)): return index
+	if (tree.pending_buffer_types || (tree.types_count == 16)): return -1
+	int length = strlen(type_get_name(base)) + 5
+	if (tree.type_names_used + length > 4096): return -1
+	int i = tree.types_count
+	type_rec* rec = &tree.pointer_types[i]
+	type_rec* source = type_record(base)
+	rec.name = &tree.type_names[tree.type_names_used]
+	strcpy(rec.name, c"gpu ")
+	strcpy(rec.name + 4, type_get_name(base))
+	tree.type_names_used = tree.type_names_used + length
+	rec.num_fields = source.num_fields
+	rec.total_size = source.total_size
+	rec.pointer_level = source.pointer_level
+	rec.alias_target = base
+	rec.kind = type_kind_gpu
+	rec.fn_return_type = -1
+	rec.fn_param_count = -1
+	rec.decl_file_index = -1
+	rec.decl_line = 0
+	rec.decl_column = 0
+	tree.pointer_offsets[i] = offset
+	tree.types_count = i + 1
+	int result = type_count()
+	type_records.push(cast(int, rec))
+	return result
+
+
+void ast_expression_restore_types(expression_ast* tree):
+	if (tree.types_count == 0): return
+	type_table_truncate(tree.types_base)
+	# type_table_truncate invalidates the name index even if later inserts
+	# overtake its previous length before the next lookup.
+
+
+void ast_expression_commit_pointer(expression_ast* tree, int i):
+	type_rec* rec = &tree.pointer_types[i]
+	if (rec.kind == type_kind_function): return
+	int actual
+	if (rec.kind == type_kind_gpu): actual = type_get_gpu(rec.alias_target)
+	else if (rec.kind == type_kind_const): actual = type_push_const(rec.alias_target)
+	else if (rec.kind == type_kind_slice_value): actual = type_push_slice_value(rec.alias_target)
+	else if (rec.kind == type_kind_slice): actual = type_push_slice(rec.alias_target)
+	else if (rec.kind == type_kind_map): actual = type_push_map(rec.alias_target, rec.fn_return_type)
+	else if (rec.kind == type_kind_set): actual = type_push_set(rec.alias_target)
+	else if (rec.kind == type_kind_list): actual = type_push_list(rec.alias_target)
+	else:
+		# A newly staged composite's name belongs to this arena. Reuse the
+		# committed base record's persistent name for its pointer record.
+		int base = tree.pointer_bases[i]
+		char* name = type_get_name(type_canonical(base))
+		if (type_is_gpu_object(base)): name = type_get_name(base)
+		actual = type_push_pointer(name, rec.total_size, rec.pointer_level)
+	assert1(actual == tree.types_base + i)
+
+
 int expression_ast_add(expression_ast* tree, int op, int left, int right):
-	if (tree.count == 128): return -1
+	if (tree.count == 4096): return -1
 	int id = tree.count
 	tree.count = id + 1
 	tree.op[id] = op
@@ -199,6 +274,8 @@ int expression_ast_add(expression_ast* tree, int op, int left, int right):
 	tree.in_cast[id] = tree.cast_depth
 	tree.result_type[id] = 3
 	tree.symbol[id] = -1
+	tree.binding_name[id] = -1
+	tree.qualified[id] = 0
 	tree.next_arg[id] = -1
 	return id
 
@@ -228,23 +305,41 @@ int ast_expression_reserve_signature(expression_ast* tree, int id, int result, i
 	return signature
 
 
-# Array/slice promotion creates a descriptor-value type before a later
-# argument can register its own types. Stage that event just like a
-# pointer; borrowed records need no diagnostic name or field storage.
-int ast_expression_slice_value_type(expression_ast* tree, int element, int offset):
+# Composite probes use arena-owned names as well as records: nested type
+# lookups and pointer names must see the same spelling as committed types.
+int ast_expression_composite_type(expression_ast* tree, int kind, int element, int extra, int offset):
 	element = type_canonical(element)
-	int existing = type_lookup_slice_value(element)
+	if (kind == type_kind_map): extra = type_canonical(extra)
+	int existing = type_lookup_composite(kind, element, extra)
 	if (existing >= 0): return existing
 	if (tree.types_count == 16): return -1
+	char* name = 0
+	if (kind == type_kind_map): name = type_make_map_name(element, extra)
+	else if (kind == type_kind_set): name = type_make_set_name(element)
+	else if (kind == type_kind_list): name = type_make_list_name(element)
+	else:
+		name = type_make_slice_name(element)
+		if (kind == type_kind_slice_value):
+			char* storage = name
+			name = strjoin(storage, c" value")
+			free(storage)
+	int length = strlen(name) + 1
+	if (tree.type_names_used + length > 4096):
+		free(name)
+		return -1
 	int i = tree.types_count
 	type_rec* rec = &tree.pointer_types[i]
-	rec.name = c""
+	rec.name = &tree.type_names[tree.type_names_used]
+	strcpy(rec.name, name)
+	free(name)
+	tree.type_names_used = tree.type_names_used + length
 	rec.num_fields = 0
-	rec.total_size = 0
+	rec.total_size = word_size
+	if (kind == type_kind_slice_value): rec.total_size = 0
 	rec.pointer_level = 0
 	rec.alias_target = element
-	rec.kind = type_kind_slice_value
-	rec.fn_return_type = -1
+	rec.kind = kind
+	rec.fn_return_type = extra
 	rec.fn_param_count = -1
 	rec.decl_file_index = -1
 	rec.decl_line = 0
@@ -254,6 +349,22 @@ int ast_expression_slice_value_type(expression_ast* tree, int element, int offse
 	int result = type_count()
 	type_records.push(cast(int, rec))
 	return result
+
+
+# Explicit container type syntax checks storage rules. Implicit snapshot
+# results follow cm_result_type, which interns the list without those checks.
+int ast_expression_checked_composite_type(expression_ast* tree, int kind, int element, int extra, int offset):
+	if ((kind == type_kind_list) || (kind == type_kind_map)):
+		int checked = element
+		if (kind == type_kind_map): checked = extra
+		if (type_is_array(checked) || type_has_array_field(checked)): return -1
+		if ((kind == type_kind_list) && (type_get_size(checked) <= 0)): return -1
+		if ((type_num_args(checked) == 0) && (type_stack_words(checked) != 1)): return -1
+	return ast_expression_composite_type(tree, kind, element, extra, offset)
+
+
+int ast_expression_slice_value_type(expression_ast* tree, int element, int offset):
+	return ast_expression_composite_type(tree, type_kind_slice_value, element, -1, offset)
 
 
 int ast_expression_prepare_value(expression_ast* tree, int type, int offset):

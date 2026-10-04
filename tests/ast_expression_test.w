@@ -38,6 +38,7 @@ process_result* ast_test_compile(char* compiler, char* arch, char* input, char* 
 	i = ast_test_arg(args, i, c"--quiet")
 	if (enabled == 1): i = ast_test_arg(args, i, c"--ast-expressions")
 	if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
+	if (enabled == 3): i = ast_test_arg(args, i, c"--ast-required")
 	if (stats): i = ast_test_arg(args, i, c"--stats")
 	i = ast_test_arg(args, i, input)
 	if (output != 0):
@@ -67,7 +68,11 @@ void ast_test_image_at(char* compiler, char* arch, char* source, int run):
 	char* b = ast_test_path(c".ast")
 	process_result* old = ast_test_compile(compiler, arch, source, a, 0, 0, 0)
 	for enabled in range(1, 3):
-		process_result* ast = ast_test_compile(compiler, arch, source, b, enabled, 0, 0)
+		# Every image in this helper is expected to compile. Reject any
+		# full-mode expression fallback, including in driver-only fixtures.
+		int mode = enabled
+		if (mode == 2): mode = 3
+		process_result* ast = ast_test_compile(compiler, arch, source, b, mode, 0, 0)
 		assert_equal(0, old.status)
 		assert_equal(0, ast.status)
 		assert_strings_equal(old.stdout_text, ast.stdout_text)
@@ -88,14 +93,6 @@ void ast_test_image_at(char* compiler, char* arch, char* source, int run):
 
 
 void ast_test_image(char* compiler, char* arch, int run):
-	ast_test_image_at(compiler, arch, c"tests/ast_first_use_container_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_map_integration_expression_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_collection_snapshot_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_control_header_fixture.w", run)
-	if (strcmp(arch, c"x64") == 0): ast_test_image_at(compiler, arch, c"tests/ast_collection_snapshot_x64_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_list_slice_expression_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_statement_expression_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_integration_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_typed_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_scalar_expression_fixture.w", run)
@@ -113,16 +110,6 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_allocation_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_multiline_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_metadata_expression_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_scalar_map_expression_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_array_allocation_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_migration_constructor_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_map_default_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_map_get_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_formatted_template_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_migration_generic_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/ast_return_statement_fixture.w", run)
-	ast_test_image_at(compiler, arch, c"tests/unsigned_compare_test.w", run)
-	if (strcmp(arch, c"x64") == 0): ast_test_image_at(compiler, arch, c"tests/x64_unsigned_compare_test.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_record_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_map_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_parallel_expression_fixture.w", run)
@@ -135,6 +122,51 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_container_literal_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_constructor_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_new_array_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_list_slice_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_list_method_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_void_call_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_composite_type_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_integer_intrinsic_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_map_method_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_generator_call_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_list_callback_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_map_default_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_inferred_generic_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_variadic_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_generic_type_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_method_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_operator_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_var_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_prelude_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_json_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_protobuf_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_utf8_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_large_literal_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_ndarray_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_buffer_flow_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_template_format_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_qualified_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_list_it_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_bare_callback_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_propagation_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_continuation_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_first_use_container_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_map_integration_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_collection_snapshot_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_control_header_fixture.w", run)
+	if (strcmp(arch, c"x64") == 0): ast_test_image_at(compiler, arch, c"tests/ast_collection_snapshot_x64_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_statement_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_integration_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_scalar_map_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_array_allocation_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_migration_constructor_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_map_default_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_map_get_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_formatted_template_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_migration_generic_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_return_statement_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/unsigned_compare_test.w", run)
+	if (strcmp(arch, c"x64") == 0): ast_test_image_at(compiler, arch, c"tests/x64_unsigned_compare_test.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -146,6 +178,22 @@ void test_ast_expression_images_and_host_widths():
 	ast_test_image(c"bin/wv2", c"arm64_darwin", 0)
 	ast_test_image(c"bin/wv2", c"win64", 0)
 	ast_test_image(c"bin/wv2", c"wasm", 0)
+
+
+void test_ast_c_variadic_images_and_host_widths():
+	ast_test_image_at(c"bin/wv2", c"x86", c"tests/varargs_test.w", 1)
+	ast_test_image_at(c"bin/wv2", c"x64", c"tests/varargs_test.w", 1)
+	ast_test_image_at(c"bin/wv2_64", c"x86", c"tests/varargs_test.w", 1)
+	ast_test_image_at(c"bin/wv2_64", c"x64", c"tests/varargs_test.w", 1)
+
+
+void test_ast_atomic_images_and_host_widths():
+	ast_test_image_at(c"bin/wv2", c"x86", c"tests/ast_atomic_expression_fixture.w", 1)
+	ast_test_image_at(c"bin/wv2", c"x64", c"tests/ast_atomic_expression_fixture.w", 1)
+	ast_test_image_at(c"bin/wv2_64", c"x86", c"tests/ast_atomic_expression_fixture.w", 1)
+	ast_test_image_at(c"bin/wv2_64", c"x64", c"tests/ast_atomic_expression_fixture.w", 1)
+	ast_test_image_at(c"bin/wv2", c"x86", c"tests/atomic_host_test.w", 1)
+	ast_test_image_at(c"bin/wv2", c"x64", c"tests/atomic_host_test.w", 1)
 
 
 void ast_test_diagnostics_mode(char* source, int checking):
@@ -177,8 +225,7 @@ void ast_test_diagnostics(char* source):
 
 void ast_test_store_diagnostics(char* source):
 	ast_test_diagnostics_mode(source, 1)
-	# Lint-bearing stores deliberately use streaming diagnostics. Also
-	# compile normally to exercise AST store validation itself.
+	# Exercise both lint diagnostics and ordinary compilation.
 	ast_test_diagnostics_mode(source, 0)
 
 
@@ -200,7 +247,7 @@ void test_ast_expression_diagnostics_and_fallback():
 	# Limits must fall back, and deep expressions must still reach the
 	# existing nesting diagnostic instead of overflowing the AST arena.
 	string_builder* source = string_from(c"int main(): return (")
-	for i in range(150): string_append(source, c"1 + ")
+	for i in range(2200): string_append(source, c"1+")
 	string_append(source, c"1)\n")
 	ast_test_diagnostics(source.data)
 	string_free(source)
@@ -290,9 +337,13 @@ void test_ast_full_expression_coverage_gate():
 	process_result* required = ast_test_run(args, 0)
 	assert_equal(0, required.status)
 	process_result_free(required)
-	# The implicit runtime now fits the AST subset. An explicit unsupported
-	# JSON builtin still proves that required mode cannot fall back.
-	assert1(file_write_text(path, c"int main():\n\tstring text = to_json(1)\n\treturn text.length\n"))
+	# An expression exceeding the bounded arena still proves required
+	# mode cannot silently use the streaming fallback.
+	string_builder* large = string_from(c"int main(): return ")
+	for i in range(2200): string_append(large, c"1+")
+	string_append(large, c"1\n")
+	assert1(file_write_text(path, large.data))
+	string_free(large)
 	args = strv_new(5)
 	strv_set(args, 0, c"bin/wv2")
 	strv_set(args, 1, c"check")
@@ -469,6 +520,529 @@ process_result* ast_test_query(char* command, int enabled, char* source):
 	return ast_test_run(args, 0)
 
 
+void test_ast_composite_types_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_composite_type_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\treturn (new list[void]).length\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint[2] values\nint main():\n\treturn (new list[R]).length\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint[2] values\nint main():\n\treturn (new map[int, R]).length\n")
+	ast_test_store_diagnostics(c"int main():\n\treturn (list[uint16]{1} + missing)\n")
+
+
+void test_ast_integer_intrinsics_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_integer_intrinsic_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main(): return mul_hi(c\"bad\", 1)\n")
+	ast_test_store_diagnostics(c"int main(): return mul_wide(1, 2, c\"bad\")\n")
+	ast_test_store_diagnostics(c"int main(): return add_carry(1, 2)\n")
+	ast_test_store_diagnostics(c"int main(): return rotl(1, 2, 3)\n")
+	ast_test_store_diagnostics(c"int main(): return clz(c\"bad\")\n")
+
+
+void test_ast_map_methods_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_map_method_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main():\n\tmap[int, R] m = new map[int, R]\n\tm.add(1)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tmap[int, int] m = new map[int, int]\n\tm.add(1, c\"bad\")\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tmap[int, int] m = new map[int, int]\n\treturn m.keys(1).length\n")
+
+
+void test_ast_generator_calls_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_generator_call_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"import lib.generator\ngenerator int g(int n): yield n\nint main():\n\tgenerator* value = g()\n\tgen_free(value)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import lib.generator\ngenerator int g(int n): yield n\nstruct R:\n\tint x\nint main():\n\tR r = R(1)\n\tgenerator* value = g(r)\n\tgen_free(value)\n\treturn 0\n")
+
+
+void test_ast_list_callbacks_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_list_callback_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tlist[int] values = list[int]{1}\n\tvalues.map(3)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"void f(int value): return\nint main():\n\tlist[int] values = list[int]{1}\n\tvalues.map(f)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint f(int a, int b): return a + b\nint main():\n\tlist[int] values = list[int]{1}\n\tvalues.reduce(f, R(2))\n\treturn 0\n")
+
+
+void test_ast_map_defaults_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_map_default_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tmap[int, int] values = new map[int, int]()\n\treturn values.length\n")
+	ast_test_store_diagnostics(c"int main():\n\tmap[int, int*] values = new map[int, int*](0)\n\treturn values.length\n")
+	ast_test_store_diagnostics(c"char* factory(): return c\"bad\"\nint main():\n\tmap[int, int] values = new map[int, int](factory)\n\treturn values.length\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main():\n\tmap[int, R] values = new map[int, R](R(1))\n\treturn values.length\n")
+
+
+void test_ast_inferred_generic_calls_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_inferred_generic_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"T f[T](T a, T b): return a\nint main(): return f(1, 1.5)\n")
+	ast_test_store_diagnostics(c"T* f[T](T* value): return value\nint main(): return f(1)\n")
+	ast_test_store_diagnostics(c"int f[T](int value): return value\nint main(): return f(1)\n")
+	ast_test_store_diagnostics(c"T f[T](T value): return value\nstruct R:\n\tint x\nint main():\n\tR r = R(1)\n\tf(r)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"T f[T](T value): return value\nint g(): return 1\nint main(): return f(g)\n")
+
+	ast_test_store_diagnostics(c"T f[T](T value, list[T] items): return value\nint main(): return f(1, list[char]{'a'})\n")
+	ast_test_store_diagnostics(c"int f[T](list[T] items): return items.length\nint main(): return f(list[int]{1})\n")
+	ast_test_store_diagnostics(c"T f[T](T value, map[T, list[void]] items): return value\nint main(): return f(1, 0)\n")
+
+
+void test_ast_variadic_calls_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_variadic_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int f(int fixed, int... values): return fixed\nint main(): return f()\n")
+	ast_test_store_diagnostics(c"int f(int... values): return values.length\nint main(): return f(1, c\"bad\")\n")
+
+
+void test_ast_c_variadic_calls_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/varargs_test.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"c_lib \"libc.so.6\"\nextern int printf(char* format, ...)\nint main(): return printf()\n")
+	ast_test_store_diagnostics(c"c_lib \"libc.so.6\"\nextern int printf(char* format, ...)\nstruct R:\n\tint x\nint main(): return printf(c\"%d\", R(1))\n")
+
+
+void test_ast_atomic_calls_are_required():
+	for fixture in range(2):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_atomic_expression_fixture.w"
+			if (fixture): source = c"tests/atomic_host_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tchar value = 1\n\tchar* p = &value\n\treturn atomic_add(p, 1)\n")
+	ast_test_store_diagnostics(c"int main():\n\tint value = 1\n\treturn atomic_cas(&value, 1)\n")
+	ast_test_store_diagnostics(c"int main():\n\tint value = 1\n\treturn atomic_min(&value, 1)\n")
+
+
+void test_ast_generic_types_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_generic_type_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"struct Box[T]:\n\tT value\nint main(): return cast(Box[int, int]*, 0)\n")
+	ast_test_store_diagnostics(c"struct Box[T]:\n\tT value\nint main(): return sizeof(Box[Missing])\n")
+
+
+void test_ast_method_calls_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_method_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main():\n\tR value\n\treturn value.missing()\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint take(R value): return value.x\nint main():\n\tR value\n\treturn value.take()\n")
+	ast_test_store_diagnostics(c"int take(int value, int other): return value + other\nint main():\n\tint value = 1\n\treturn value.take()\n")
+
+
+void test_ast_operator_calls_are_required():
+	for fixture in range(2):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_operator_expression_fixture.w"
+			if (fixture): source = c"tests/operator_overload_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main():\n\tR a = R(1)\n\tR b = R(2)\n\treturn a + b\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nR operator+(R a, R b): return a\nint main():\n\tR a = R(1)\n\treturn a + 2\n")
+
+
+void test_ast_var_expressions_are_required():
+	for fixture in range(2):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_var_expression_fixture.w"
+			if (fixture): source = c"tests/dynamic_var_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tvar a = 1\n\treturn a % 2\n")
+	ast_test_store_diagnostics(c"int main():\n\tvar a = 1\n\treturn a << 1\n")
+	ast_test_store_diagnostics(c"int main():\n\tvar a = 1\n\treturn a & 1\n")
+	ast_test_store_diagnostics(c"int main():\n\tvar a = 1\n\treturn ~a\n")
+	ast_test_store_diagnostics(c"int main():\n\tvar a = 1\n\treturn cast(float, a)\n")
+	ast_test_store_diagnostics(c"int main():\n\tvar a = 1\n\treturn cast(var, 1.5)\n")
+
+
+
+void test_ast_json_expressions_are_required():
+	for fixture in range(2):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_json_expression_fixture.w"
+			if (fixture): source = c"tests/json_codec_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"struct R:\n\tint n\nint main():\n\tR value\n\tto_json(value)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import structures.json\nstruct R:\n\tset[int] values\nint main():\n\tR value\n\tto_json(value)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import structures.json\nstruct R:\n\tint n\nint main():\n\tfrom_json(R, c\"bad\")\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import structures.json\nstruct R:\n\tmap[int, int] values\nint main():\n\tfrom_json(R, 0)\n\treturn 0\n")
+
+
+
+void test_ast_protobuf_expressions_are_required():
+	for fixture in range(2):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_protobuf_expression_fixture.w"
+			if (fixture): source = c"tests/protobuf_message_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tto_proto(1)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import libs.extras.protobuf.message\nmessage R:\n\tint32 n = 1\nint main():\n\tfrom_proto(R, c\"bad\")\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import libs.extras.protobuf.message\nmessage Later\nmessage R:\n\tLater n = 1\nint main():\n\tproto_descriptor(R)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import libs.extras.protobuf.message\nstruct R:\n\tint n\nint main():\n\tR value\n\tto_proto(value)\n\treturn 0\n")
+
+
+
+void test_ast_ndarray_expressions_are_required():
+	for fixture in range(2):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_ndarray_expression_fixture.w"
+			if (fixture): source = c"tests/ndarray_index_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"import lib.ndarray\nint main():\n\tndi value = ndi_new2(2, 2)\n\tvalue[0, 0]++\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import lib.ndarray\nint main():\n\tndi value = ndi_new2(2, 2)\n\t(value[0, 0]) = 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import lib.ndarray\nint main():\n\tndi value = ndi_new2(2, 2)\n\tvalue[0, 0, 0, 0, 0]\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import lib.ndarray\nint main():\n\tndi value = ndi_new2(2, 2)\n\tvalue[c\"bad\", 0]\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import lib.ndarray\nint main():\n\tndi value = ndi_new2(2, 2)\n\tvalue[0, 0] = c\"bad\"\n\treturn 0\n")
+
+
+
+void test_ast_buffer_flow_expressions_are_required():
+	for fixture in range(3):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_buffer_flow_expression_fixture.w"
+			if (fixture == 1): source = c"tests/array_decay_test.w"
+			if (fixture == 2): source = c"tests/matrix_linalg_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tint[2] a\n\tchar* p = true ? a : c\"bad\"\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tint[2] a\n\tint[2] b\n\t(true ? a : b) = a\n\treturn 0\n")
+
+
+
+void test_ast_utf8_expressions_are_required():
+	for fixture in range(2):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_utf8_expression_fixture.w"
+			if (fixture): source = c"tests/utf8_identifier_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\treturn (1 + café_missing)\n")
+	ast_test_store_diagnostics(c"int main():\n\treturn (1 + caf́)\n")
+	ast_test_store_diagnostics(c"int main():\n\treturn (1 + caf‮)\n")
+	ast_test_store_diagnostics(c"int main():\n\treturn (1 + caf​)\n")
+	ast_test_store_diagnostics(c"int main():\n\treturn (1 + caf\xc3x)\n")
+
+
+
+void test_ast_large_literal_expressions_are_required():
+	for fixture in range(2):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_large_literal_expression_fixture.w"
+			if (fixture): source = c"graphics/ui/font_data.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+
+
+void test_ast_prelude_input_images_and_runtime():
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		for target in range(2):
+			char* arch = c"x86"
+			if (target): arch = c"x64"
+			ast_test_image_at(compiler, arch, c"tests/ast_prelude_input_fixture.w", 0)
+			char* output = ast_test_path(c".prelude")
+			process_result* compiled = ast_test_compile(compiler, arch, c"tests/ast_prelude_input_fixture.w", output, 2, 0, 0)
+			assert_equal(0, compiled.status)
+			process_result_free(compiled)
+			for variant in range(3):
+				char* mode = c"i"
+				char* input = c"header\n1 -2 3\n"
+				char* expected = c"[1, -2, 3]\n"
+				if (variant == 1):
+					mode = c"l"
+					input = c"one two\nthree four\n"
+					expected = c"[one two, three four]\n"
+				if (variant == 2):
+					mode = c"w"
+					input = c"one two\nthree four\n"
+					expected = c"[one, two, three, four]\n"
+				char** args = strv_new(2)
+				strv_set(args, 0, output)
+				strv_set(args, 1, mode)
+				process_result* result = ast_test_run(args, input)
+				assert_equal(0, result.status)
+				assert_strings_equal(expected, result.stdout_text)
+				process_result_free(result)
+			unlink(output)
+			free(output)
+
+
+void test_ast_prelude_expressions_are_required():
+	for fixture in range(3):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_prelude_expression_fixture.w"
+			if (fixture == 1): source = c"tests/ast_prelude_input_fixture.w"
+			if (fixture == 2): source = c"tests/prelude_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tmax(1.5, 2)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tlen(1)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tany(list[float]{1.5})\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tsplit(1)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tjoin(list[int]{1}, c\",\")\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tenum_name(2)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tinput(1)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tprint(list[float]{1.5})\n\treturn 0\n")
+
+void test_ast_bit_field_expressions_are_required():
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		for fixture in range(2):
+			char** args = strv_new(5 + fixture)
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/c_import_bitfield_fixture.w"
+			char* arch = c"x86"
+			if (fixture):
+				source = c"tests/x64_c_import_bitfield_test.w"
+				arch = c"x64"
+			if (fixture): strv_set(args, 4, arch)
+			strv_set(args, 4 + fixture, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+			ast_test_image_at(compiler, arch, source, fixture)
+	ast_test_store_diagnostics(c"c_import \"libc.so.6\" c\"tests/c_import_bitfield_fixture.h\"\nint main():\n\tci_bf_wide* value = 0\n\treturn value.a\n")
+
+
+void test_ast_void_calls_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_void_call_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+
+
+void test_ast_list_methods_are_required():
+	for host in range(2):
+		char** args = strv_new(5)
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--json")
+		strv_set(args, 3, c"--ast-required")
+		strv_set(args, 4, c"tests/ast_list_method_expression_fixture.w")
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tlist[float32] values = list[float32]{1.5}\n\tvalues.sort()\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tlist[char*] values = list[char*]{c\"a\"}\n\treturn values.sum()\n")
+	ast_test_store_diagnostics(c"int main():\n\tlist[int] values = list[int]{1}\n\treturn values.count(c\"bad\")\n")
+	ast_test_store_diagnostics(c"int main():\n\tlist[int] values = list[int]{1}\n\tint it = 3\n\treturn values.sum()\n")
+
+
 void test_ast_list_slices_are_required():
 	for host in range(2):
 		char** args = strv_new(5)
@@ -544,20 +1118,6 @@ void test_ast_container_literals_are_required():
 	ast_test_store_diagnostics(c"int main():\n\tlist[int] values = list[int]{1 + , 2}\n\treturn values.length\n")
 
 
-void test_ast_first_use_container_diagnostics():
-	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (list[R]{R(1)}.length + missing)\n")
-	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (sizeof(list[R]**) + missing)\n")
-	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (list[R]{R(4294967296)}.length)\n")
-	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (list[R]{c\"bad\"}.length)\n")
-	ast_test_store_diagnostics(c"struct R:\n\tint[2] x\nint main(): return (sizeof(list[R]))\n")
-	ast_test_store_diagnostics(c"struct R:\n\tint[2] x\nint main(): return (sizeof(map[int, R]))\n")
-	ast_test_store_diagnostics(c"int main(): return (sizeof(list[void]))\n")
-	ast_test_store_diagnostics(c"int main(): return (sizeof(map[int, void]))\n")
-	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (new map[int, R]).values(1).length\n")
-	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return ((new map[int, R]).values().length + missing)\n")
-	ast_test_store_diagnostics(c"struct R:\n\tint x\nT id[T](T v): return v\nint main(): return (id[list[R]](list[R]{R(1)}).length + missing)\n")
-
-
 void test_ast_slices_are_required():
 	for host in range(2):
 		char** args = strv_new(5)
@@ -615,6 +1175,864 @@ void test_ast_generic_calls_are_required():
 	ast_test_store_diagnostics(c"T id[T](T value): return value\nint main(): return (id[int](4294967296))\n")
 	# Failed outer probes must roll back queued signatures and pointers.
 	ast_test_store_diagnostics(c"T* id[T](int value): return cast(T*, value)\nstruct Fresh:\n\tint value\nint main(): return (id[Fresh](0) + missing)\n")
+
+
+void test_ast_lint_events_are_required():
+	for fixture in range(2):
+		char* source = c"tests/lint_warn_fixture.w"
+		if (fixture): source = c"tests/lint_clean_fixture.w"
+		for host in range(2):
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			for json in range(2):
+				process_result* old = 0
+				for enabled in range(2):
+					char** args = strv_new(9)
+					int i = 0
+					i = ast_test_arg(args, i, compiler)
+					i = ast_test_arg(args, i, c"check")
+					i = ast_test_arg(args, i, c"--quiet")
+					i = ast_test_arg(args, i, c"--lint")
+					if (json): i = ast_test_arg(args, i, c"--json")
+					if (enabled): i = ast_test_arg(args, i, c"--ast-required")
+					if (host): i = ast_test_arg(args, i, c"x64")
+					i = ast_test_arg(args, i, source)
+					process_result* result = ast_test_run(args, 0)
+					if (enabled == 0): old = result
+					else:
+						assert_equal(0, result.status)
+						assert_equal(old.status, result.status)
+						assert_strings_equal(old.stdout_text, result.stdout_text)
+						assert_strings_equal(old.stderr_text, result.stderr_text)
+						process_result_free(result)
+				process_result_free(old)
+	ast_test_diagnostics(c"int main():\n\tint a = 1\n\ta = a\n\ta = (a)\n\tif (a = a): return 1\n\tif ((a = a)): return 2\n\tif a = a: return 3\n\treturn a\n")
+	ast_test_diagnostics(c"int main():\n\tint a = 1\n\tif a = 0xffffffff: return 1\n\tif a = missing: return 2\n\treturn a\n")
+	ast_test_diagnostics(c"int main():\n\tint a = 1\n\tif (a = (a = 2)): return 1\n\treturn a\n")
+
+	ast_test_diagnostics(c"int main():\n\tint a = 0\n\tmap[int,int] m = new map[int,int]\n\tif (m[0] = a = 1): return 1\n\treturn a\n")
+	ast_test_diagnostics(c"int main():\n\tint a = 0\n\tmap[int,int] m = new map[int,int]\n\tif m[0] += a = 1: return 1\n\treturn a\n")
+
+	ast_test_diagnostics(c"import lib.ndarray\nint main():\n\tint a = 0\n\tndi m = ndi_new2(1, 1)\n\tif (m[0, 0] = a = 1): return 1\n\treturn a\n")
+
+
+void test_ast_bool_warning_events_are_required():
+	for fixture in range(3):
+		char* source = c"tests/bool_bitwise_warning_fixture.w"
+		if (fixture == 1): source = c"tests/bool_bitwise_chain_fixture.w"
+		if (fixture == 2): source = c"tests/bool_ops_warn_fixture.w"
+		for host in range(2):
+			char* compiler = c"bin/wv2"
+			char* arch = c"x86"
+			if (host):
+				compiler = c"bin/wv2_64"
+				arch = c"x64"
+			ast_test_image_at(compiler, arch, source, 0)
+			for strict in range(2):
+				for json in range(2):
+					process_result* old = 0
+					for enabled in range(2):
+						char** args = strv_new(10)
+						int i = 0
+						i = ast_test_arg(args, i, compiler)
+						i = ast_test_arg(args, i, c"check")
+						i = ast_test_arg(args, i, c"--quiet")
+						i = ast_test_arg(args, i, c"--bool-ops")
+						if (json): i = ast_test_arg(args, i, c"--json")
+						if (strict): i = ast_test_arg(args, i, c"--strict")
+						if (enabled): i = ast_test_arg(args, i, c"--ast-required")
+						if (host): i = ast_test_arg(args, i, arch)
+						i = ast_test_arg(args, i, source)
+						process_result* result = ast_test_run(args, 0)
+						if (enabled == 0): old = result
+						else:
+							assert_equal(strict, result.status)
+							assert_equal(old.status, result.status)
+							assert_strings_equal(old.stdout_text, result.stdout_text)
+							assert_strings_equal(old.stderr_text, result.stderr_text)
+							process_result_free(result)
+					process_result_free(old)
+	ast_test_store_diagnostics(c"int main():\n\tbool yes = true\n\tif yes & (0xffffffff == 1): return 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tbool yes = true\n\tif yes & false | missing: return 1\n\treturn 0\n")
+
+
+void test_ast_bool_warning_implicit_calls():
+	ast_test_store_diagnostics(c"int main():\n\tstring text = s\"x\"\n\tif (text == s\"x\") & true: return 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tbool[2] values\n\tif values[0] & true: return 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tif (list[int]{1}.length == 1) & true: return 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"struct R: bool yes\nint main():\n\tif (new R(true)).yes & true: return 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"struct R: bool yes\nint main():\n\tif R(true).yes & true: return 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import lib.str\nstruct R:\n\tstring text\n\tbool yes\nint main():\n\tif R(c\"x\", true).yes & true: return 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import lib.str\nint main():\n\tif (cast(string, c\"x\") == s\"x\") & true: return 1\n\treturn 0\n")
+
+
+void test_ast_warning_events_are_required():
+	for fixture in range(11):
+		char* source = c"structures/hash_table_test.w"
+		if (fixture == 1): source = c"tests/default_args_missing_warning_fixture.w"
+		if (fixture == 2): source = c"tests/list_builtin_warning_fixture.w"
+		if (fixture == 3): source = c"tests/map_default_warning_fixture.w"
+		if (fixture == 4): source = c"tests/warning_fixture.w"
+		if (fixture == 5): source = c"tests/type_system_warning_fixture.w"
+		if (fixture == 6): source = c"tests/ndarray_index_warning_fixture.w"
+		if (fixture == 7): source = c"tests/atomic_host_operand_error_fixture.w"
+		if (fixture == 8): source = c"tests/limb_builtin_warning_fixture.w"
+		if (fixture == 9): source = c"tests/array_cast_warning_fixture.w"
+		if (fixture == 10): source = c"tests/cross_line_call_warning_fixture.w"
+		for host in range(2):
+			char* compiler = c"bin/wv2"
+			char* arch = c"x86"
+			if (host):
+				compiler = c"bin/wv2_64"
+				arch = c"x64"
+			ast_test_image_at(compiler, arch, source, 0)
+			for strict in range(2):
+				for json in range(2):
+					process_result* old = 0
+					for enabled in range(2):
+						char** args = strv_new(9)
+						int i = 0
+						i = ast_test_arg(args, i, compiler)
+						i = ast_test_arg(args, i, c"check")
+						i = ast_test_arg(args, i, c"--quiet")
+						if (json): i = ast_test_arg(args, i, c"--json")
+						if (strict): i = ast_test_arg(args, i, c"--strict")
+						if (enabled): i = ast_test_arg(args, i, c"--ast-required")
+						if (host): i = ast_test_arg(args, i, arch)
+						i = ast_test_arg(args, i, source)
+						process_result* result = ast_test_run(args, 0)
+						if (enabled == 0): old = result
+						else:
+							assert_equal(strict, result.status)
+							assert_equal(old.status, result.status)
+							assert_strings_equal(old.stdout_text, result.stdout_text)
+							assert_strings_equal(old.stderr_text, result.stderr_text)
+							process_result_free(result)
+					process_result_free(old)
+	ast_test_store_diagnostics(c"int f(int a, int b): return a + b\nint main(): return f(c\"bad\", 0xffffffff)\n")
+	ast_test_store_diagnostics(c"int f(int a, int b): return a + b\nint main(): return f(1) + f(c\"bad\", 0xffffffff)\n")
+	ast_test_store_diagnostics(c"int main():\n\tint a = 0\n\tint b = 0\n\ta = b = c\"bad\"\n\treturn a\n")
+	ast_test_store_diagnostics(c"int f(int a): return a\nint main(): return f(c\"bad\") + missing\n")
+	ast_test_store_diagnostics(c"int main():\n\tlist[int] a = new list[int]\n\ta.push(c\"bad\") + missing\n\treturn 0\n")
+
+	ast_test_store_diagnostics(c"int main(): return mul_hi(c\"bad\", 0xffffffff)\n")
+	ast_test_store_diagnostics(c"int main(): return mul_hi(c\"bad\", 1) + missing\n")
+	ast_test_store_diagnostics(c"type F = fn(int) -> int\nint f(int x): return x\nint main():\n\tF* p = f\n\treturn p\n\t\t(0xffffffff)\n")
+	ast_test_store_diagnostics(c"int main():\n\tint[] a = new int[2]\n\treturn cast(int, cast(char*, a)) + 0xffffffff\n")
+	ast_test_store_diagnostics(c"import lib.ndarray\nint main():\n\tndi a = ndi_new2(1, 1)\n\treturn a[c\"bad\", 0xffffffff]\n")
+
+void test_ast_continuation_expressions_are_required():
+	char* path = ast_test_path(c"_long_comment.w")
+	string_builder* source = string_new()
+	string_append(source, c"int answer(): return 42\n# ")
+	for i in range(18000): string_append_char(source, 'x')
+	string_append(source, c"\nint main(): return answer() != 42\n")
+	assert1(file_write_text(path, source.data))
+	string_free(source)
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		for fixture in range(4):
+			char** args = strv_new(7)
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--quiet")
+			strv_set(args, 4, c"--ast-required")
+			char* input = c"tests/ast_continuation_expression_fixture.w"
+			if (fixture == 1): input = c"tests/shell_commands_test.w"
+			if (fixture == 2): input = c"tests/warning_clean_fixture.w"
+			if (fixture == 3): input = path
+			if (host): strv_set(args, 5, c"x64")
+			strv_set(args, 5 + host, input)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			assert_strings_equal(c"", result.stderr_text)
+			process_result_free(result)
+		char* arch = c"x86"
+		if (host): arch = c"x64"
+		ast_test_image_at(compiler, arch, path, 1)
+	unlink(path)
+	free(path)
+
+
+void test_ast_propagation_expressions_are_required():
+	for fixture in range(4):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_propagation_expression_fixture.w"
+			if (fixture == 1): source = c"tests/result_propagate_test.w"
+			if (fixture == 2): source = c"tests/generator_return_free_test.w"
+			if (fixture == 3): source = c"tests/feature_combo_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"import lib.result\nint main(): return result_new_ok[int](1)?\n")
+	ast_test_store_diagnostics(c"int main(): return 1?\n")
+	ast_test_store_diagnostics(c"import lib.result\nwresult[int]* f(): return result_new_ok[int](result_new_ok[int](1)? + missing)\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"import lib.result\nwresult[int]* f(wresult[int]* r):\n\tif r?: return result_new_ok[int](missing)\n\treturn r\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"import lib.result\nwresult[int]* f(wresult[bool]* r):\n\tint touched = 0\n\tdefer touched = 1\n\tif r? & true: return result_new_ok[int](touched)\n\treturn result_new_ok[int](0)\nint main(): return 0\n")
+
+
+void test_ast_bare_callbacks_are_required():
+	for fixture in range(3):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_bare_callback_expression_fixture.w"
+			if (fixture == 1): source = c"libs/standard/distributed/raft_sweep_test.w"
+			if (fixture == 2): source = c"tests/generics_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"type hook = fn(int) -> void\nint main():\n\thook value = cast(hook, missing)\n\tvalue(0)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main(): return never_defined[int](1)\n")
+	ast_test_store_diagnostics(c"int main(): return future[int](1) + missing\nT future[T](T n): return n\n")
+	ast_test_store_diagnostics(c"int main(): return future[int, int](1)\nT future[T](T n): return n\n")
+
+
+void test_ast_list_it_expressions_are_required():
+	for fixture in range(4):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_list_it_expression_fixture.w"
+			if (fixture == 1): source = c"tests/list_it_test.w"
+			if (fixture == 2): source = c"tests/golf_it_ints_test.w"
+			if (fixture == 3): source = c"tests/golf_transpose_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tlist[int] values = list[int]{1, 2}\n\tvalues.map(it + missing)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tlist[int] values = list[int]{1, 2}\n\tvalues.filter(it * 1.5)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tlist[int] values = list[int]{1, 2}\n\tvalues.sum(f\"{it}\")\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tlist[int] values = list[int]{1, 2}\n\tvalues.map(it, 2)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tlist[int] values = list[int]{1, 2}\n\tvalues.sorted_by(f\"{it}\")\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tlist[int] values = list[int]{1, 2}\n\tvalues.map(it + values.map(it + missing).sum())\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tlist[int] values = list[int]{1, 2}\n\tvalues.map(it + 2) + missing\n\treturn 0\n")
+
+
+void test_ast_linkage_declarations_preserve_images():
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, c"tests/extern_data_test.w", 1)
+		ast_test_image_at(compiler, arch, c"tests/float_abi_test.w", 1)
+		ast_test_image_at(compiler, arch, c"tests/varargs_test.w", 1)
+		ast_test_image_at(compiler, c"x64", c"tests/extern_alias_test.w", 1)
+		ast_test_image_at(compiler, arch, c"tests/const_initializer_test.w", 1)
+		ast_test_image_at(compiler, c"wasm", c"tests/wasm_extern_test.w", 0)
+		for fixture in range(2):
+			char* source = c"tests/extern_data_test.w"
+			if (fixture): source = c"tests/const_initializer_test.w"
+			process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+			assert_equal(0, result.status)
+			if (fixture):
+				assert_contains(result.stderr_text, c"AST enum values: ")
+				assert_substring(result.stderr_text, c"AST enum values: 0\n", 0)
+			else:
+				assert_contains(result.stderr_text, c"AST extern objects: ")
+				assert_substring(result.stderr_text, c"AST extern objects: 0\n", 0)
+				assert_contains(result.stderr_text, c"AST extern functions: ")
+				assert_substring(result.stderr_text, c"AST extern functions: 0\n", 0)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"extern void object\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"extern int f(int x) = 3\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"struct R: int x\nextern R f()\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"enum E:\n	a = 1\n	b = a / 0\nint main(): return 0\n")
+
+
+void test_ast_function_boundaries_preserve_frames():
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		for fixture in range(3):
+			char* source = c"tests/ast_value_statement_fixture.w"
+			char* counter = c"AST generators: "
+			char* zero = c"AST generators: 0\n"
+			char* target = arch
+			if (fixture == 1):
+				source = c"tests/script_fixture.w"
+				counter = c"AST scripts: "
+				zero = c"AST scripts: 0\n"
+			if (fixture == 2):
+				source = c"tests/ast_gpu_statement_fixture.w"
+				target = c"x64"
+				counter = c"AST kernels: "
+				zero = c"AST kernels: 0\n"
+			ast_test_image_at(compiler, target, source, 1)
+			process_result* result = ast_test_compile(compiler, target, source, 0, 2, 1, 1)
+			assert_equal(0, result.status)
+			assert_contains(result.stderr_text, c"AST functions: ")
+			assert_substring(result.stderr_text, c"AST functions: 0\n", 0)
+			assert_contains(result.stderr_text, counter)
+			assert_substring(result.stderr_text, zero, 0)
+			if (fixture == 2):
+				assert_contains(result.stderr_text, c"AST kernel parameters: ")
+				assert_substring(result.stderr_text, c"AST kernel parameters: 0\n", 0)
+			process_result_free(result)
+		ast_test_image_at(compiler, arch, c"tests/ast_default_expression_fixture.w", 1)
+		ast_test_image_at(compiler, arch, c"tests/ast_variadic_expression_fixture.w", 1)
+	ast_test_store_diagnostics(c"int f(int x = 1, int y): return x + y\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"int f():\n	goto missing\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"import lib.cuda\nkernel K(int x = 2): pass\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"import lib.cuda\nkernel K(int x);\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"import lib.generator\ngenerator int g(int x = 2): yield x\nint main():\n	for int n in g(): return n - 2\n	return 1\n")
+	ast_test_store_diagnostics(c"int value\nvalue = 1\nint f(): return 2\n")
+
+
+void test_ast_global_declarations_own_layouts():
+	char* source = c"tests/ast_global_fixture.w"
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, source, 1)
+		process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST globals: ")
+		assert_substring(result.stderr_text, c"AST globals: 0\n", 0)
+		assert_contains(result.stderr_text, c"AST global initializers: ")
+		assert_substring(result.stderr_text, c"AST global initializers: 0\n", 0)
+		assert_contains(result.stderr_text, c"AST thread locals: ")
+		assert_substring(result.stderr_text, c"AST thread locals: 0\n", 0)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int[2] a = 1\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"struct R: int x\nR r = 1\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"float32 f = 1\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"int mutable = 1\nint x = mutable\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"thread_local int x = 2\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"thread_local int[2] a\nint main(): return 0\n")
+
+
+void test_ast_gpu_statements_preserve_marshalling():
+	char* source = c"tests/ast_gpu_statement_fixture.w"
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		ast_test_image_at(compiler, c"x64", source, 1)
+		process_result* result = ast_test_compile(compiler, c"x64", source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST GPU launches: ")
+		assert_substring(result.stderr_text, c"AST GPU launches: 0\n", 0)
+		assert_contains(result.stderr_text, c"AST GPU loops: ")
+		assert_substring(result.stderr_text, c"AST GPU loops: 0\n", 0)
+		assert_contains(result.stderr_text, c"AST GPU header values: ")
+		assert_substring(result.stderr_text, c"AST GPU header values: 0\n", 0)
+		assert_contains(result.stderr_text, c"AST GPU captures: ")
+		assert_substring(result.stderr_text, c"AST GPU captures: 0\n", 0)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"import lib.cuda\nkernel K(int* p): p[0] = 1\nint main():\n	launch K[1, 16]()\n	return 0\n")
+	ast_test_store_diagnostics(c"import lib.cuda\nkernel K(int* p): p[0] = 1\nint main():\n	launch K[1, 16](c\"bad\")\n	return 0\n")
+	ast_test_store_diagnostics(c"import lib.cuda\nstruct R: int x\nkernel K(int* p): p[0] = 1\nint main():\n	launch K[1, 16](R(1))\n	return 0\n")
+	ast_test_store_diagnostics(c"import lib.cuda\nkernel K(int* p): p[0] = 1\nint main():\n	launch K[1, missing](0)\n	return 0\n")
+	ast_test_store_diagnostics(c"import lib.cuda\nint main():\n	gpu for int i in range(1, 4, 2): pass\n	return 0\n")
+	ast_test_store_diagnostics(c"import lib.cuda\nvoid f(int* p):\n	gpu for int i in range(2):\n		return\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"int launch = 1\nint gpu = 2\nint main(): return launch + gpu - 3\n")
+
+
+void test_ast_deferred_expressions_bind_at_exit():
+	char* source = c"tests/ast_deferred_fixture.w"
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, source, 1)
+		process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST deferred expressions: ")
+		assert_substring(result.stderr_text, c"AST deferred expressions: 0\n", 0)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n	int x = 1\n	defer x++\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	int x = 1\n	defer ++x\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	int x = 1\n	int y = 2\n	defer x, y = y, x\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	defer missing()\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	int x = 1\n	defer x = c\"bad\"\n	return x\n")
+
+
+void test_ast_control_regions_and_scopes():
+	char* source = c"tests/ast_scope_fixture.w"
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, source, 1)
+		process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST if regions: ")
+		assert_substring(result.stderr_text, c"AST if regions: 0\n", 0)
+		assert_contains(result.stderr_text, c"AST switch regions: ")
+		assert_substring(result.stderr_text, c"AST switch regions: 0\n", 0)
+		assert_contains(result.stderr_text, c"AST blocks: ")
+		assert_substring(result.stderr_text, c"AST blocks: 0\n", 0)
+		assert_contains(result.stderr_text, c"AST while loops: ")
+		assert_substring(result.stderr_text, c"AST while loops: 0\n", 0)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n	if true:\n		int x = 1\n	return x\n")
+	ast_test_store_diagnostics(c"int main():\n	{\n		int unused = 1\n	}\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	{\n		pass\n")
+	ast_test_store_diagnostics(c"int main():\n	if true:\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	if true:\n		return 1\n		pass\n	else:\n		return 0\n")
+
+
+void test_ast_loop_nodes_preserve_iteration():
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, c"tests/for_test.w", 1)
+		ast_test_image_at(compiler, arch, c"tests/for_container_test.w", 1)
+		ast_test_image_at(compiler, arch, c"tests/generator_return_free_test.w", 1)
+		process_result* result = ast_test_compile(compiler, arch, c"tests/for_container_test.w", 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST range loops: ")
+		assert_substring(result.stderr_text, c"AST range loops: 0\n", 0)
+		assert_contains(result.stderr_text, c"AST cursor loops: ")
+		assert_substring(result.stderr_text, c"AST cursor loops: 0\n", 0)
+		assert_contains(result.stderr_text, c"AST iteration values: ")
+		assert_substring(result.stderr_text, c"AST iteration values: 0\n", 0)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n	for i in range(): pass\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	for i in range(1, 2, 3, 4): pass\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	for i in range(missing): pass\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	for i in 1: pass\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	for i, x in range(3): pass\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	for i in enumerate(list[int]{1, 2}): pass\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	for int i in list[char*]{c\"bad\"}: pass\n	return 0\n")
+
+
+void test_ast_switch_values_own_expression_roots():
+	char* source = c"tests/switch_test.w"
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, source, 1)
+		process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST switch selectors: ")
+		assert_substring(result.stderr_text, c"AST switch selectors: 0\n", 0)
+		assert_contains(result.stderr_text, c"AST switch case values: ")
+		assert_substring(result.stderr_text, c"AST switch case values: 0\n", 0)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n	switch 1.5:\n		default: pass\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	switch 1:\n		case c\"bad\": pass\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	switch 1:\n		case 1,: pass\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	switch 1:\n		default: pass\n		case 2: pass\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	switch 1: pass\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	switch missing:\n		default: pass\n	return 0\n")
+
+
+void test_ast_guards_own_condition_roots():
+	char* source = c"tests/ast_guard_fixture.w"
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, source, 1)
+		process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST conditional branches: ")
+		assert_substring(result.stderr_text, c"AST conditional branches: 0\n", 0)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n	int x = 0\n	if (x = 1): return x\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	bool a = true\n	bool b = false\n	while (a & b): break\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	if missing: return 0\n	return 1\n")
+	ast_test_store_diagnostics(c"int main():\n	while : pass\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	const int x = 1\n	if (x = 2): return x\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	if true:\n		pass\n	elif (1 + ): return 1\n	return 0\n")
+
+
+void test_ast_local_declarations_own_initializers():
+	char* source = c"tests/ast_declaration_fixture.w"
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, source, 1)
+		ast_test_image_at(compiler, arch, c"tests/infer_test.w", 1)
+		process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST local declarations: ")
+		assert_substring(result.stderr_text, c"AST local declarations: 0\n", 0)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n	int x = missing\n	return x\n")
+	ast_test_store_diagnostics(c"int main():\n	x := missing\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	int x = c\"bad\"\n	return x\n")
+	ast_test_store_diagnostics(c"void f(): return\nint main():\n	x := f()\n	return 0\n")
+	ast_test_store_diagnostics(c"int f(): return 0\nint main():\n	x := f\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	x := 1\n	x := 2\n	return x\n")
+	ast_test_store_diagnostics(c"int main():\n	int[3] x = 1\n	return 0\n")
+	ast_test_store_diagnostics(c"int main():\n	const int x = 1\n	x = 2\n	return x\n")
+
+
+void test_ast_constant_expressions_are_folded():
+	char* source = c"tests/const_initializer_test.w"
+	char* path = ast_test_path(c"_constants.w")
+	string_builder* long_source = string_new()
+	string_append(long_source, c"const int value = 0")
+	for i in range(3000): string_append(long_source, c"+1")
+	string_append(long_source, c"\nint main(): return value - 3000\n")
+	assert1(file_write_text(path, long_source.data))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, source, 1)
+		ast_test_image_at(compiler, arch, path, 1)
+		process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST constant expressions: ")
+		assert_substring(result.stderr_text, c"AST constant expressions: 0\n", 0)
+		process_result_free(result)
+	unlink(path)
+	free(path)
+	string_free(long_source)
+	ast_test_store_diagnostics(c"const int broken = 2147483647 + 1\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = -2147483647 - 2\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = -(-2147483647 - 1)\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = 65536 * 65536\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = 1 / 0\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = 1 % 0\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = 1 << 31\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = 1 << -1\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = 1 >> 32\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = (1 + 2\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = sizeof(int\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = missing\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = 0x100000000 + 1\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = 4294967296 + 1\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = 1 / 0 + missing\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = 1 / 0 + 4294967296\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"const int broken = 1\n+2\nint main(): return 0\n")
+
+
+void test_ast_raw_statements_preserve_bytes():
+	char* source = c"tests/ast_raw_statement_fixture.w"
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, source, 1)
+		process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST raw-asm statements: ")
+		assert_substring(result.stderr_text, c"AST raw-asm statements: 0\n", 0)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\traw_asm(1)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\traw_asm(c\"\\x90\" 1)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\traw_asm(c\"\\q\")\n\treturn 0\n")
+	ast_test_store_diagnostics(c"kernel bad(int* p):\n\traw_asm(c\"\\x90\")\nint main(): return 0\n")
+
+
+void test_ast_goto_statements_resolve_labels():
+	char* source = c"tests/goto_test.w"
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, source, 1)
+		process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST goto/label statements: ")
+		assert_substring(result.stderr_text, c"AST goto/label statements: 0\n", 0)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tgoto missing\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\there:\n\there:\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tgoto 42\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tgoto target 42\n\ttarget:\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tgoto target\n\tpass\n\ttarget:\n\treturn 0\n")
+
+
+void test_ast_expression_statements_own_roots():
+	char* source = c"tests/ast_expression_statement_fixture.w"
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, source, 1)
+		process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST expression statements: ")
+		assert_substring(result.stderr_text, c"AST expression statements: 0\n", 0)
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tint a = 1\n\t++a + 2\n\treturn a\n")
+	ast_test_store_diagnostics(c"int main():\n\tconst int a = 1\n\ta++\n\treturn a\n")
+	ast_test_store_diagnostics(c"int main():\n\tint a = 1\n\ta, a = 0xffffffff, missing\n\treturn a\n")
+	ast_test_store_diagnostics(c"void f(int n): pass\nint main():\n\tf(c\"bad\")\n\treturn 0\n")
+
+
+void test_ast_value_statements_own_expressions():
+	char* source = c"tests/ast_value_statement_fixture.w"
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, source, 1)
+		process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST return statements: ")
+		assert_contains(result.stderr_text, c"AST yield statements: 1\n")
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int f(): return c\"bad\"\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"struct A: int a\nstruct B: int b\nA f(): return B(1)\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"import lib.generator\ngenerator int g():\n\tyield c\"bad\"\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"import lib.generator\ngenerator int g(): return 0xffffffff\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tyield 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main(): return 1 2\n")
+	ast_test_store_diagnostics(c"int main(): return 1 + missing\n")
+
+
+void test_ast_simple_statements_are_emitted():
+	char* source = c"tests/ast_simple_statement_fixture.w"
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, source, 1)
+		process_result* result = ast_test_compile(compiler, arch, source, 0, 2, 1, 1)
+		assert_equal(0, result.status)
+		assert_contains(result.stderr_text, c"AST simple statements: ")
+		assert_contains(result.stderr_text, c"AST debugger statements: 1\n")
+		process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tbreak\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tcontinue\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tbreak 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tcontinue 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tpass 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tdebugger 1\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\twhile 1:\n\t\tbreak\n\t\tpass\n\treturn 0\n")
+	ast_test_store_diagnostics(c"type pass = int\nint main():\n\tpass value = 0\n\treturn value\n")
+
+
+void test_ast_near_limit_expressions_are_required():
+	for fixture in range(2):
+		char* source = c"tests/expression_nesting_clean_fixture.w"
+		if (fixture): source = c"tests/ternary_nesting_clean_fixture.w"
+		for host in range(2):
+			char* compiler = c"bin/wv2"
+			char* arch = c"x86"
+			if (host):
+				compiler = c"bin/wv2_64"
+				arch = c"x64"
+			ast_test_image_at(compiler, arch, source, 0)
+			char** args = strv_new(7)
+			int i = 0
+			i = ast_test_arg(args, i, compiler)
+			i = ast_test_arg(args, i, c"check")
+			i = ast_test_arg(args, i, c"--json")
+			i = ast_test_arg(args, i, c"--quiet")
+			i = ast_test_arg(args, i, c"--ast-required")
+			if (host): i = ast_test_arg(args, i, arch)
+			i = ast_test_arg(args, i, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+
+	char* path = ast_test_path(c"_wide_parallel.w")
+	string_builder* source = string_from(c"int main():\n\tint[2] a\n\ta[0")
+	for i in range(100): string_append(source, c"+0")
+	string_append(source, c"], a[1")
+	for i in range(100): string_append(source, c"+0")
+	string_append(source, c"] = 12, 30\n\treturn a[0] + a[1] - 42\n")
+	assert1(file_write_text(path, source.data))
+	string_free(source)
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		char* arch = c"x86"
+		if (host):
+			compiler = c"bin/wv2_64"
+			arch = c"x64"
+		ast_test_image_at(compiler, arch, path, 1)
+		char** args = strv_new(5)
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--ast-required")
+		if (host):
+			strv_set(args, 3, arch)
+			strv_set(args, 4, path)
+		else: strv_set(args, 3, path)
+		process_result* result = ast_test_run(args, 0)
+		assert_equal(0, result.status)
+		process_result_free(result)
+	unlink(path)
+	free(path)
+
+
+void test_ast_gpu_qualified_expressions_are_required():
+	for fixture in range(4):
+		for host in range(2):
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			char* source = c"tests/ast_gpu_qualified_expression_fixture.w"
+			if (fixture == 1): source = c"tests/gpu_qualifier_ptx.w"
+			if (fixture == 2): source = c"tests/gpu_qualifier_gpu.w"
+			if (fixture == 3): source = c"tests/gpu_qualifier_ok_fixture.w"
+			ast_test_image_at(compiler, c"x64", source, fixture != 2)
+			char** args = strv_new(6)
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			strv_set(args, 4, c"x64")
+			strv_set(args, 5, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tgpu int* p = cast(gpu int*, 0)\n\treturn p[0]\n")
+	ast_test_store_diagnostics(c"int main():\n\tgpu int* p = cast(gpu int*, 0)\n\tp[0] = 7\n\treturn 0\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint n\nint main():\n\tgpu R* p = cast(gpu R*, 0)\n\treturn p.n\n")
+	ast_test_store_diagnostics(c"void f(int* p): pass\nint main():\n\tgpu int* p = cast(gpu int*, 0)\n\tf(p)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tgpu int* p = cast(gpu int*, 0)\n\tint* q = p\n\treturn q == 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tcast(gpu uint16**, 0) + missing\n\treturn 0\n")
+	ast_test_store_diagnostics(c"int main():\n\tcast(gpu int, 0)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"kernel bad(gpu int* p):\n\tp[0] = missing\nint main(): return 0\n")
+
+	ast_test_store_diagnostics(c"int main():\n\tgpu int* p = cast(gpu int*, 0)\n\treturn cast(int, &p[p[0]])\n")
+	ast_test_store_diagnostics(c"int main():\n\tgpu int* p = cast(gpu int*, 0)\n\treturn cast(int, &p[0]) + missing\n")
+	ast_test_store_diagnostics(c"struct R: int n\nint main():\n\tgpu R* p = cast(gpu R*, 0)\n\treturn cast(int, &p.n) + missing\n")
+
+void test_ast_device_expressions_are_required():
+	for fixture in range(3):
+		for host in range(2):
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			char* source = c"tests/ast_device_expression_fixture.w"
+			if (fixture == 1): source = c"tests/gpu_ptx_emit.w"
+			if (fixture == 2): source = c"tests/cuda_gpu.w"
+			ast_test_image_at(compiler, c"x64", source, fixture == 1)
+			char** args = strv_new(6)
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			strv_set(args, 4, c"x64")
+			strv_set(args, 5, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"kernel bad(int* p):\n\tp[0] = thread_idx(1)\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"kernel bad(int* p):\n\tatomic_cas(p, 1, 2)\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"kernel bad(int* p):\n\tatomic_add(1, 2)\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"kernel bad(float32* p):\n\tatomic_min(p, 1.0)\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"kernel bad(int* p):\n\tp[0] = gpu_shared_f32(0)\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"kernel bad(int* p):\n\tp[0] = gpu_shared_f32(12289)\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"kernel bad(int* p):\n\tp[0] = gpu_shared_f32(2 + 3)\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"int global\nkernel bad(int* p):\n\tp[0] = global\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"int f(): return 0\nkernel bad(int* p):\n\tp[0] = f()\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"import lib.cuda\nvoid bad(int* p, int n):\n\tgpu for i in range(4):\n\t\tn = i\nint main(): return 0\n")
+	ast_test_store_diagnostics(c"import lib.cuda\nvoid bad(int* p, int n):\n\tgpu for i in range(4):\n\t\tp[i] = n + missing\nint main(): return 0\n")
+
+
+void test_ast_qualified_expressions_are_required():
+	for fixture in range(3):
+		for host in range(2):
+			char** args = strv_new(5)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_qualified_expression_fixture.w"
+			if (fixture == 1): source = c"tests/import_alias_type_test.w"
+			if (fixture == 2): source = c"tests/import_test.w"
+			strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"import tests.import_alias_type_helper as types\nint local(): return 0\nint main():\n\ttypes.missing()\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import tests.import_alias_type_helper as types\nint local(): return 0\nint main():\n\ttypes.local()\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import tests.import_alias_type_helper as types\nint local(): return 0\nint main():\n\tcast(types.alias_type_helper_value, 1)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import tests.import_alias_type_helper as types\nint local(): return 0\nint main():\n\tnew types.missing\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import tests.import_alias_type_helper as types\nint local(): return 0\nint main():\n\tsizeof(types.local)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import tests.import_alias_type_helper as types\nint local(): return 0\nint main():\n\ttypes.alias_point(1, missing)\n\treturn 0\n")
+	ast_test_store_diagnostics(c"import tests.import_alias_type_helper as types\nint local(): return 0\nint main():\n\ttypes.alias_type_helper_value() + missing\n\treturn 0\n")
+
+
+void test_ast_template_formats_are_required():
+	for fixture in range(3):
+		for host in range(2):
+			int count = 5
+			if (fixture == 2): count = 6
+			char** args = strv_new(count)
+			char* compiler = c"bin/wv2"
+			if (host): compiler = c"bin/wv2_64"
+			strv_set(args, 0, compiler)
+			strv_set(args, 1, c"check")
+			strv_set(args, 2, c"--json")
+			strv_set(args, 3, c"--ast-required")
+			char* source = c"tests/ast_template_format_expression_fixture.w"
+			if (fixture == 1): source = c"tests/template_format_test.w"
+			if (fixture == 2):
+				source = c"tests/template_format_float64_test.w"
+				strv_set(args, 4, c"x64")
+				strv_set(args, 5, source)
+			else: strv_set(args, 4, source)
+			process_result* result = ast_test_run(args, 0)
+			assert_equal(0, result.status)
+			process_result_free(result)
+	ast_test_store_diagnostics(c"int main():\n\tstring text = f\"{1:q}\"\n\treturn text.length\n")
+	ast_test_store_diagnostics(c"int main():\n\tstring text = f\"{1:.2}\"\n\treturn text.length\n")
+	ast_test_store_diagnostics(c"int main():\n\tstring text = f\"{c\"text\":05}\"\n\treturn text.length\n")
+	ast_test_store_diagnostics(c"int main():\n\tstring text = f\"{c\"text\":x}\"\n\treturn text.length\n")
+	ast_test_store_diagnostics(c"int main():\n\tstring text = f\"{1:4097}\"\n\treturn text.length\n")
+	ast_test_store_diagnostics(c"int main():\n\tstring text = f\"{1:.61}\"\n\treturn text.length\n")
+	ast_test_store_diagnostics(c"int main():\n\tstring text = f\"{1:.}\"\n\treturn text.length\n")
+	ast_test_store_diagnostics(c"int main():\n\tstring text = f\"{1:04d}\" + missing\n\treturn text.length\n")
+	ast_test_store_diagnostics(c"int main():\n\tstring text = f\"{1:03\"\n\treturn text.length\n")
+	ast_test_store_diagnostics(c"int main():\n\tstring text = f\"{(1 + 2):03}\"\n\treturn text.length\n")
 
 
 void test_ast_templates_are_required():
@@ -874,7 +2292,7 @@ void test_ast_callback_expression_hits_and_diagnostics():
 		if (host): compiler = c"bin/wv2_64"
 		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
 		assert_equal(0, ast.status)
-		assert_contains(ast.stderr_text, c"AST expressions: 5\n")
+		assert_contains(ast.stderr_text, c"AST expressions: 6\n")
 		process_result_free(ast)
 	unlink(path)
 	free(path)
@@ -994,6 +2412,65 @@ void test_ast_expression_token_crosses_input_buffer_boundary():
 	for i in range(8188 - 1 - strlen(prefix)): string_append_char(source, 'x')
 	string_append(source, prefix)
 	string_append(source, c"cross_window_name + 1\nint main(): return f(41) - 42\n")
+	assert1(file_write_text(path, source.data))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		char** args = strv_new(6)
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--quiet")
+		strv_set(args, 3, c"x64")
+		strv_set(args, 4, c"--ast-audit")
+		strv_set(args, 5, path)
+		process_result* audit = ast_test_run(args, 0)
+		assert_equal(0, audit.status)
+		assert_substring(audit.stderr_text, path, 0)
+		process_result_free(audit)
+		ast_test_image_at(compiler, c"x64", path, 1)
+	ast_test_diagnostics(source.data)
+	string_free(source)
+	unlink(path)
+	free(path)
+
+
+void test_ast_utf8_token_crosses_input_buffer_boundary():
+	char* path = ast_test_path(c"_utf8_boundary.w")
+	char* prefix = c"\nint f(int 🎉): return "
+	string_builder* source = string_from(c"#")
+	for i in range(8191 - 1 - strlen(prefix)): string_append_char(source, 'x')
+	string_append(source, prefix)
+	string_append(source, c"🎉 + 1\nint main(): return f(41) - 42\n")
+	assert1(file_write_text(path, source.data))
+	for host in range(2):
+		char* compiler = c"bin/wv2"
+		if (host): compiler = c"bin/wv2_64"
+		char** args = strv_new(6)
+		strv_set(args, 0, compiler)
+		strv_set(args, 1, c"check")
+		strv_set(args, 2, c"--quiet")
+		strv_set(args, 3, c"x64")
+		strv_set(args, 4, c"--ast-audit")
+		strv_set(args, 5, path)
+		process_result* audit = ast_test_run(args, 0)
+		assert_equal(0, audit.status)
+		assert_substring(audit.stderr_text, path, 0)
+		process_result_free(audit)
+		ast_test_image_at(compiler, c"x64", path, 1)
+	ast_test_diagnostics(source.data)
+	string_free(source)
+	unlink(path)
+	free(path)
+
+
+void test_ast_large_literal_crosses_input_buffer_boundary():
+	char* path = ast_test_path(c"_large_literal_boundary.w")
+	char* prefix = c"\nchar* f(): return c\""
+	string_builder* source = string_from(c"#")
+	for i in range(4098 - 1 - strlen(prefix)): string_append_char(source, 'x')
+	string_append(source, prefix)
+	for i in range(4096): string_append_char(source, 'a')
+	string_append(source, c"\"\nint main(): return f()[4095] - 'a'\n")
 	assert1(file_write_text(path, source.data))
 	for host in range(2):
 		char* compiler = c"bin/wv2"
@@ -1217,6 +2694,20 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
+void test_ast_first_use_container_diagnostics():
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (list[R]{R(1)}.length + missing)\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (sizeof(list[R]**) + missing)\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (list[R]{R(4294967296)}.length)\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (list[R]{c\"bad\"}.length)\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint[2] x\nint main(): return (sizeof(list[R]))\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint[2] x\nint main(): return (sizeof(map[int, R]))\n")
+	ast_test_store_diagnostics(c"int main(): return (sizeof(list[void]))\n")
+	ast_test_store_diagnostics(c"int main(): return (sizeof(map[int, void]))\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return (new map[int, R]).values(1).length\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nint main(): return ((new map[int, R]).values().length + missing)\n")
+	ast_test_store_diagnostics(c"struct R:\n\tint x\nT id[T](T v): return v\nint main(): return (id[list[R]](list[R]{R(1)}).length + missing)\n")
+
+
 void test_ast_map_default_hits_and_diagnostics():
 	char* path = ast_test_path(c"_map_default.w")
 	assert1(file_write_text(path, c"int factory(): return 42\nmap[int, int] f(): return (new map[int, int](factory))\nmap[int, list[int]] g(): return (new map[int, list[int]]())\nint main(): return 0\n"))
@@ -1350,8 +2841,8 @@ void test_ast_scalar_map_expression_hits_and_diagnostics():
 		if (host): compiler = c"bin/wv2_64"
 		process_result* ast = ast_test_compile(compiler, c"x64", path, 0, 1, 1, 1)
 		assert_equal(0, ast.status)
-		# Lint stores fall back; the map read itself must use the AST.
-		assert_contains(ast.stderr_text, c"AST expressions: 1\n")
+		# Lint events are retained: both stores and the read use the AST.
+		assert_contains(ast.stderr_text, c"AST expressions: 3\n")
 		process_result_free(ast)
 		char** args = strv_new(6)
 		strv_set(args, 0, compiler)
@@ -1389,7 +2880,6 @@ void test_ast_return_statement_coverage_and_diagnostics():
 			strv_set(args, 6, path)
 			process_result* result = ast_test_run(args, 0)
 			assert_equal(0, result.status)
-			assert_contains(result.stderr_text, c"Streaming return statements: 0\n")
 			assert_contains(result.stderr_text, c"Streaming expression roots: 0\n")
 			process_result_free(result)
 	ast_test_diagnostics(c"int main(): return c\"bad\"\n")
@@ -1487,8 +2977,6 @@ void test_ast_integrated_statement_and_expression_coverage():
 				process_result* result = ast_test_run(args, 0)
 				assert_equal(0, result.status)
 				assert_contains(result.stderr_text, c"Streaming expression roots: 0\n")
-				assert_contains(result.stderr_text, c"Streaming return statements: 0\n")
-				assert_contains(result.stderr_text, c"Streaming expression statements: 0\n")
 				assert_contains(result.stderr_text, c"AST expression statements: ")
 				assert_substring(result.stderr_text, c"AST expression statements: 0\n", 0)
 				process_result_free(result)
@@ -1519,13 +3007,11 @@ void test_ast_control_headers_and_collections_are_required():
 				process_result* result = ast_test_run(args, 0)
 				assert_equal(0, result.status)
 				assert_contains(result.stderr_text, c"Streaming expression roots: 0\n")
-				assert_contains(result.stderr_text, c"Streaming if headers: 0\n")
-				assert_contains(result.stderr_text, c"Streaming while headers: 0\n")
 				if (source == 0):
-					assert_contains(result.stderr_text, c"AST if headers: ")
-					assert_substring(result.stderr_text, c"AST if headers: 0\n", 0)
-					assert_contains(result.stderr_text, c"AST while headers: ")
-					assert_substring(result.stderr_text, c"AST while headers: 0\n", 0)
+					assert_contains(result.stderr_text, c"AST if regions: ")
+					assert_substring(result.stderr_text, c"AST if regions: 0\n", 0)
+					assert_contains(result.stderr_text, c"AST while loops: ")
+					assert_substring(result.stderr_text, c"AST while loops: 0\n", 0)
 				process_result_free(result)
 	ast_test_store_diagnostics(c"int main():\n\tint n = 0\n\tif (n = 2): return n\n\treturn 0\n")
 	ast_test_store_diagnostics(c"int main():\n\tint n = 0\n\twhile (n = 2): return n\n\treturn 0\n")
@@ -1611,7 +3097,7 @@ void test_ast_first_use_container_repl_recovery():
 		process_result_free(old)
 
 
-# wbuild: binary=ast_expression_test tag=tests data=tests/ast_first_use_container_fixture.w data=tests/ast_map_integration_expression_fixture.w data=tests/ast_collection_snapshot_fixture.w data=tests/ast_control_header_fixture.w data=tests/ast_collection_snapshot_x64_fixture.w data=tests/ast_list_slice_expression_fixture.w data=tests/ast_statement_expression_fixture.w data=tests/ast_integration_expression_fixture.w dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/ast_metadata_expression_fixture.w data=tests/ast_record_expression_fixture.w data=tests/ast_map_expression_fixture.w data=tests/ast_parallel_expression_fixture.w data=tests/ast_increment_expression_fixture.w data=tests/ast_wide_call_expression_fixture.w data=tests/ast_template_expression_fixture.w data=tests/ast_generic_expression_fixture.w data=tests/ast_buffer_value_expression_fixture.w data=tests/ast_slice_expression_fixture.w data=tests/ast_container_literal_expression_fixture.w data=tests/ast_constructor_expression_fixture.w data=tests/ast_new_array_expression_fixture.w data=tests/operator_overload_test.w data=tests/ast_scalar_map_expression_fixture.w data=tests/ast_array_allocation_fixture.w data=tests/ast_migration_constructor_fixture.w data=tests/ast_map_default_fixture.w data=tests/ast_map_get_fixture.w data=tests/ast_formatted_template_fixture.w data=tests/ast_migration_generic_fixture.w data=tests/ast_return_statement_fixture.w data=tests/unsigned_compare_test.w data=tests/x64_unsigned_compare_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/extern_data_test.w data=tests/float_abi_test.w data=tests/extern_alias_test.w data=tests/wasm_extern_test.w data=tests/script_fixture.w data=tests/ast_global_fixture.w data=tests/ast_gpu_statement_fixture.w data=tests/ast_deferred_fixture.w data=tests/ast_scope_fixture.w data=tests/for_test.w data=tests/for_container_test.w data=tests/switch_test.w data=tests/ast_guard_fixture.w data=tests/ast_declaration_fixture.w data=tests/infer_test.w data=tests/const_initializer_test.w data=tests/ast_raw_statement_fixture.w data=tests/goto_test.w data=tests/ast_expression_statement_fixture.w data=tests/ast_value_statement_fixture.w data=tests/ast_simple_statement_fixture.w data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/ast_text_expression_fixture.w data=tests/ast_print_expression_fixture.w data=tests/ast_buffer_expression_fixture.w data=tests/ast_comment_expression_fixture.w data=tests/ast_list_expression_fixture.w data=tests/ast_pointer_type_expression_fixture.w data=tests/ast_callback_expression_fixture.w data=tests/ast_default_expression_fixture.w data=tests/ast_allocation_expression_fixture.w data=tests/ast_multiline_expression_fixture.w data=tests/ast_metadata_expression_fixture.w data=tests/ast_record_expression_fixture.w data=tests/ast_map_expression_fixture.w data=tests/ast_parallel_expression_fixture.w data=tests/ast_increment_expression_fixture.w data=tests/ast_wide_call_expression_fixture.w data=tests/ast_template_expression_fixture.w data=tests/ast_generic_expression_fixture.w data=tests/ast_buffer_value_expression_fixture.w data=tests/ast_slice_expression_fixture.w data=tests/ast_container_literal_expression_fixture.w data=tests/ast_constructor_expression_fixture.w data=tests/ast_new_array_expression_fixture.w data=tests/ast_list_slice_expression_fixture.w data=tests/ast_list_method_expression_fixture.w data=tests/ast_void_call_expression_fixture.w data=tests/ast_composite_type_expression_fixture.w data=tests/ast_integer_intrinsic_expression_fixture.w data=tests/ast_map_method_expression_fixture.w data=tests/ast_generator_call_expression_fixture.w data=tests/ast_list_callback_expression_fixture.w data=tests/ast_map_default_expression_fixture.w data=tests/ast_inferred_generic_expression_fixture.w data=tests/ast_variadic_expression_fixture.w data=tests/varargs_test.w data=tests/ast_atomic_expression_fixture.w data=tests/atomic_host_test.w data=tests/ast_generic_type_expression_fixture.w data=tests/ast_method_expression_fixture.w data=tests/ast_operator_expression_fixture.w data=tests/operator_overload_test.w data=tests/ast_var_expression_fixture.w data=tests/dynamic_var_test.w data=tests/c_import_bitfield_fixture.w data=tests/x64_c_import_bitfield_test.w data=tests/c_import_bitfield_fixture.h data=tests/ast_prelude_expression_fixture.w data=tests/ast_prelude_input_fixture.w data=tests/prelude_test.w data=tests/ast_json_expression_fixture.w data=tests/json_codec_test.w data=tests/ast_protobuf_expression_fixture.w data=tests/protobuf_message_test.w data=tests/ast_utf8_expression_fixture.w data=tests/utf8_identifier_test.w data=tests/ast_large_literal_expression_fixture.w data=graphics/ui/font_data.w data=tests/ast_ndarray_expression_fixture.w data=tests/ndarray_index_test.w data=tests/ast_buffer_flow_expression_fixture.w data=tests/array_decay_test.w data=tests/matrix_linalg_test.w data=tests/ast_template_format_expression_fixture.w data=tests/template_format_test.w data=tests/template_format_float64_test.w data=tests/ast_qualified_expression_fixture.w data=tests/import_alias_type_test.w data=tests/import_test.w data=tests/ast_device_expression_fixture.w data=tests/gpu_ptx_emit.w data=tests/cuda_gpu.w data=tests/ast_gpu_qualified_expression_fixture.w data=tests/gpu_qualifier_ptx.w data=tests/gpu_qualifier_gpu.w data=tests/expression_nesting_clean_fixture.w data=tests/ternary_nesting_clean_fixture.w data=tests/gpu_qualifier_ok_fixture.w data=tests/ast_list_it_expression_fixture.w data=tests/list_it_test.w data=tests/golf_it_ints_test.w data=tests/golf_transpose_test.w data=tests/ast_bare_callback_expression_fixture.w data=libs/standard/distributed/raft_sweep_test.w data=tests/generics_test.w data=tests/ast_propagation_expression_fixture.w data=tests/ast_continuation_expression_fixture.w data=tests/lint_warn_fixture.w data=tests/lint_clean_fixture.w data=tests/bool_bitwise_warning_fixture.w data=tests/bool_bitwise_chain_fixture.w data=tests/bool_ops_warn_fixture.w data=structures/hash_table_test.w data=tests/default_args_missing_warning_fixture.w data=tests/list_builtin_warning_fixture.w data=tests/map_default_warning_fixture.w data=tests/warning_fixture.w data=tests/type_system_warning_fixture.w data=tests/ndarray_index_warning_fixture.w data=tests/atomic_host_operand_error_fixture.w data=tests/limb_builtin_warning_fixture.w data=tests/array_cast_warning_fixture.w data=tests/cross_line_call_warning_fixture.w data=tests/shell_commands_test.w data=tests/warning_clean_fixture.w data=tests/result_propagate_test.w data=tests/generator_return_free_test.w data=tests/feature_combo_test.w data=tests/ast_first_use_container_fixture.w data=tests/ast_map_integration_expression_fixture.w data=tests/ast_collection_snapshot_fixture.w data=tests/ast_control_header_fixture.w data=tests/ast_collection_snapshot_x64_fixture.w data=tests/ast_statement_expression_fixture.w data=tests/ast_integration_expression_fixture.w data=tests/ast_scalar_map_expression_fixture.w data=tests/ast_array_allocation_fixture.w data=tests/ast_migration_constructor_fixture.w data=tests/ast_map_default_fixture.w data=tests/ast_map_get_fixture.w data=tests/ast_formatted_template_fixture.w data=tests/ast_migration_generic_fixture.w data=tests/ast_return_statement_fixture.w data=tests/unsigned_compare_test.w data=tests/x64_unsigned_compare_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"
@@ -1624,13 +3110,13 @@ void test_ast_first_use_container_repl_recovery():
 # wbuild: step="cmp bin/wv3_64 bin/ast_wv3_64"
 # wbuild: step="bin/ast_wv3_64 x64 --ast-expressions --strict w.w -o bin/ast_wv4_64"
 # wbuild: step="cmp bin/ast_wv3_64 bin/ast_wv4_64"
-# wbuild: step="bin/wv2 --ast-required --strict w.w -o bin/ast_full_wv3"
+# wbuild: step="bin/wv2 --ast-full-expressions --strict w.w -o bin/ast_full_wv3"
 # wbuild: step="cmp bin/wv3 bin/ast_full_wv3"
-# wbuild: step="bin/ast_full_wv3 --ast-required --strict w.w -o bin/ast_full_wv4"
+# wbuild: step="bin/ast_full_wv3 --ast-full-expressions --strict w.w -o bin/ast_full_wv4"
 # wbuild: step="cmp bin/ast_full_wv3 bin/ast_full_wv4"
-# wbuild: step="bin/wv2_64 x64 --ast-required --strict w.w -o bin/ast_full_wv3_64"
+# wbuild: step="bin/wv2_64 x64 --ast-full-expressions --strict w.w -o bin/ast_full_wv3_64"
 # wbuild: step="cmp bin/wv3_64 bin/ast_full_wv3_64"
-# wbuild: step="bin/ast_full_wv3_64 x64 --ast-required --strict w.w -o bin/ast_full_wv4_64"
+# wbuild: step="bin/ast_full_wv3_64 x64 --ast-full-expressions --strict w.w -o bin/ast_full_wv4_64"
 # wbuild: step="cmp bin/ast_full_wv3_64 bin/ast_full_wv4_64"
 
 # wbuild: target=ast_required_expression_verify tag=tests dep=build dep=build_x64

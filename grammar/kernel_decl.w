@@ -194,7 +194,13 @@ int gpu_sym_get_value(char* s):
 # current_symbol; 'kernel', the name and the opening "(" have already
 # been consumed. Mirrors generator_function_definition, except the body
 # compiles in device mode and parameters become device locals.
+void ast_kernel_function_definition(int binding, char* name);
+
+
 void kernel_function_definition(int current_symbol, char* kernel_name):
+	if (ast_expressions_mode >= 2):
+		ast_kernel_function_definition(current_symbol, kernel_name)
+		return
 	table[current_symbol + 10] = 2 /* store function type */
 	sym_set_kernel(current_symbol)
 	sym_define_global_at(current_symbol, 0)
@@ -285,7 +291,11 @@ void launch_emit_runtime_call(char* kernel_name, int base, int passed):
 # 'launch <identifier>[' opens the statement; any other continuation is
 # an ordinary expression using a symbol named 'launch' (the statement
 # rewinds with the reparse save/seek/restore trick and reports 0).
+int ast_launch_statement();
+
+
 int launch_statement():
+	if (ast_expressions_mode >= 2): return ast_launch_statement()
 	if (peek(c"launch") == 0): return 0
 	char* save = generic_reparse_save()
 	get_token()

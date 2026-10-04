@@ -2,6 +2,7 @@
 /*
 Usage:
   bin/wast_audit manifest bin/ast_suite_manifest.json
+  bin/wast_audit required-manifest bin/ast_required_suite_manifest.json
   bin/wast_audit census bin/compiler_ast_audit.jsonl
 
 manifest generates today's manifest from build.base.json and source directives,
@@ -11,6 +12,10 @@ Run it with: bin/wexec -f bin/ast_suite_manifest.json -j 1 tests
 Serial execution avoids nested default-manifest rebuild races. Driver-owned
 compiler launches are not rewritten. Explicit AST modes and pinned seeds stay
 intact. Compile flags also apply to each compilation's implicit imports.
+
+required-manifest rejects expression fallback in positive compile/check steps
+and diagnostic fixtures. Expected failures use permissive AST mode to preserve
+diagnostics. Explicit modes, seeds and other nested drivers remain unchanged.
 
 census prints deterministic file/token fallback counts and accumulated AST /
 streaming counters from --ast-audit --stats stderr. It returns 1 for malformed
@@ -39,21 +44,22 @@ int main(int argc, int argv):
 	if (argc == 2 && strcmp(args[1], c"--help") == 0):
 		wstream* help = stdout_writer()
 		stream_write_line(help, c"wast_audit manifest <output.json>  Generate an AST suite manifest; print selection JSON.")
+		stream_write_line(help, c"wast_audit required-manifest <output.json>  Gate positive compiler steps and fixtures.")
 		stream_write_line(help, c"wast_audit census <audit.jsonl>    Summarize --ast-audit --stats stderr as JSON.")
 		stream_write_line(help, c"Direct compile/check steps include implicit imports. Nested compiler launches remain driver-controlled.")
 		stream_write_line(help, c"Run manifests serially: bin/wexec -f <output.json> -j 1 tests")
 		stream_flush(help)
 		return 0
 	if (argc != 3):
-		return wast_audit_error(c"usage: wast_audit manifest <output.json> | census <audit.jsonl>; direct manifest steps only, nested compiler launches stay driver-controlled")
+		return wast_audit_error(c"usage: wast_audit manifest|required-manifest <output.json> | census <audit.jsonl>; direct manifest steps only, nested compiler launches stay driver-controlled")
 	json_value* report = 0
 	int status = 0
-	if (strcmp(args[1], c"manifest") == 0):
+	if (strcmp(args[1], c"manifest") == 0 || strcmp(args[1], c"required-manifest") == 0):
 		char* generated = wbg_generate(c"build.base.json", 1)
 		if (generated == 0): return 1
 		json_value* root = json_parse(generated)
 		free(generated)
-		report = ast_audit_manifest(root)
+		report = ast_audit_manifest_mode(root, strcmp(args[1], c"required-manifest") == 0)
 		if (report == 0):
 			json_free(root)
 			return wast_audit_error(c"invalid generated manifest")
@@ -81,7 +87,7 @@ int main(int argc, int argv):
 		if (jfield_int(report, c"invalid_records", 0) != 0): status = 1
 		json_value* matching = json_object_get(report, c"records_match_streaming_roots")
 		if (matching.type == json_type_bool() && matching.int_value == 0): status = 1
-	else: return wast_audit_error(c"unknown command; use manifest or census")
+	else: return wast_audit_error(c"unknown command; use manifest, required-manifest or census")
 	char* rendered = json_stringify(report)
 	wstream* out = stdout_writer()
 	stream_write_line(out, rendered)
@@ -89,3 +95,7 @@ int main(int argc, int argv):
 	free(rendered)
 	json_free(report)
 	return status
+
+# wbuild: target=ast_expression_suite dep=build dep=wast_audit dep=wfixture
+# wbuild: step="bin/wast_audit required-manifest bin/ast_required_suite_manifest.json"
+# wbuild: step="bin/wexec -f bin/ast_required_suite_manifest.json -j 1 tests"

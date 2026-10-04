@@ -23,10 +23,15 @@ import grammar.identifier
 import grammar.int_literal
 import compiler.bignum
 import grammar.float_literal
-import grammar.string_literal
-import grammar.template_string
 import compiler.expression_ast
 import compiler.statement_ast
+import compiler.loop_ast
+import compiler.gpu_ast
+import compiler.global_ast
+import compiler.function_ast
+import compiler.linkage_ast
+import grammar.string_literal
+import grammar.template_string
 import grammar.primary_expr
 import grammar.binary_op
 import grammar.postfix_expr
@@ -65,10 +70,21 @@ import grammar.kernel_decl
 import grammar.protobuf_builtin
 import grammar.gpu_for
 import grammar.program
+import code_generator.statement_ast
+import code_generator.loop_ast
+import code_generator.gpu_ast
+import code_generator.global_ast
+import code_generator.function_ast
+import code_generator.linkage_ast
+import grammar.ast_statement
+import grammar.ast_declaration
+import grammar.ast_loop
+import grammar.ast_gpu
+import grammar.ast_global
+import grammar.ast_function
+import grammar.ast_linkage
 import code_generator.expression_ast
 import grammar.ast_expression
-import code_generator.statement_ast
-import grammar.ast_statement
 
 # no idea why this is necessary:
 int grammar_no_reason_temp_var

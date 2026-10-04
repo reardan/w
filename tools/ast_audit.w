@@ -27,7 +27,34 @@ char* ast_audit_find(char* text, char* needle):
 # Deliberately recognize exact production bootstrap names, never a seed,
 # wrapper, shell command or user executable that merely contains "wv2".
 int ast_audit_compiler(char* path):
+	if (ast_audit_prefix(path, c"./")): path = path + 2
 	return strcmp(path, c"bin/wv2") == 0 || strcmp(path, c"bin/wv3") == 0 || strcmp(path, c"bin/wv4") == 0 || strcmp(path, c"bin/wv5") == 0 || strcmp(path, c"bin/wv2_64") == 0 || strcmp(path, c"bin/wv3_64") == 0 || strcmp(path, c"bin/wv4_64") == 0 || strcmp(path, c"bin/wv5_64") == 0 || strcmp(path, c"bin/wv2_darwin") == 0 || strcmp(path, c"bin/wv3_darwin") == 0 || strcmp(path, c"bin/wv4_darwin") == 0 || strcmp(path, c"bin/wv5_darwin") == 0
+
+
+# Recognize env without interpreting shell text or unknown env options.
+char* ast_audit_arg(json_value* cmd, int index):
+	if (cmd == 0 || cmd.type != json_type_array()): return c""
+	if (index < 0 || index >= json_array_length(cmd)): return c""
+	json_value* arg = json_array_get(cmd, index)
+	if (arg.type != json_type_string()): return c""
+	return arg.string_value
+
+
+int ast_audit_program_index(json_value* cmd):
+	char* first = ast_audit_arg(cmd, 0)
+	if (strcmp(first, c"env") != 0 && strcmp(first, c"/usr/bin/env") != 0 && strcmp(first, c"/bin/env") != 0): return 0
+	int index = 1
+	while (index < json_array_length(cmd)):
+		char* arg = ast_audit_arg(cmd, index)
+		if (strcmp(arg, c"--") == 0): return index + 1
+		if (strcmp(arg, c"-u") == 0 || strcmp(arg, c"--unset") == 0): index = index + 2
+		else if (strcmp(arg, c"-i") == 0 || strcmp(arg, c"--ignore-environment") == 0 || ast_audit_prefix(arg, c"--unset=")): index = index + 1
+		else:
+			int n = 0
+			while ((arg[n] >= 'A' && arg[n] <= 'Z') || (arg[n] >= 'a' && arg[n] <= 'z') || arg[n] == '_' || (n > 0 && arg[n] >= '0' && arg[n] <= '9')): n = n + 1
+			if (n == 0 || arg[n] != '='): return index
+			index = index + 1
+	return index
 
 
 # 0: other command; 1: eligible; 2: explicit AST mode; 3: query/help or
@@ -35,13 +62,15 @@ int ast_audit_compiler(char* path):
 int ast_audit_command_kind(json_value* cmd):
 	if (cmd == 0 || cmd.type != json_type_array()): return 0
 	if (json_array_length(cmd) == 0): return 0
-	json_value* first = json_array_get(cmd, 0)
+	int program = ast_audit_program_index(cmd)
+	if (program >= json_array_length(cmd)): return 0
+	json_value* first = json_array_get(cmd, program)
 	if (first.type != json_type_string()): return 0
 	if (ast_audit_compiler(first.string_value) == 0): return 0
 	int source = 0
 	int query = 0
 	int explicit_mode = 0
-	for i in range(1, json_array_length(cmd)):
+	for i in range(program + 1, json_array_length(cmd)):
 		json_value* arg = json_array_get(cmd, i)
 		if (arg.type != json_type_string()): return 3
 		char* text = arg.string_value
@@ -58,10 +87,13 @@ int ast_audit_command_kind(json_value* cmd):
 
 # Mutates only selected cmd arrays. Report counts are about direct manifest
 # steps, not targets, executed steps, expressions or nested driver launches.
-json_value* ast_audit_manifest(json_value* root):
+json_value* ast_audit_manifest_mode(json_value* root, int required):
 	if (root == 0 || root.type != json_type_object()): return 0
 	json_value* targets = jfield_array(root, c"targets")
 	if (targets == 0): return 0
+	int required_steps = 0
+	int expected_failures = 0
+	int fixture_groups = 0
 	int changed = 0
 	int explicit_mode = 0
 	int queries = 0
@@ -81,8 +113,28 @@ json_value* ast_audit_manifest(json_value* root):
 				return 0
 			json_value* cmd = jfield_array(step, c"cmd")
 			int kind = ast_audit_command_kind(cmd)
-			if (kind == 1):
-				json_array_push(cmd, json_string(c"--ast-full-expressions"))
+			int fixture = 0
+			if (required && cmd != 0):
+				int program = ast_audit_program_index(cmd)
+				char* executable = ast_audit_arg(cmd, program)
+				if ((strcmp(executable, c"bin/wfixture") == 0 || strcmp(executable, c"./bin/wfixture") == 0) && ast_audit_compiler(ast_audit_arg(cmd, program + 1))):
+					json_value* rewritten = json_array()
+					for k in range(json_array_length(cmd)):
+						json_array_push(rewritten, json_clone(json_array_get(cmd, k)))
+						if (k == program): json_array_push(rewritten, json_string(c"--ast-expressions"))
+					json_object_set(step, c"cmd", rewritten)
+					cmd = rewritten
+					fixture = 1
+					fixture_groups = fixture_groups + 1
+			if (kind == 1 || fixture):
+				if (fixture == 0):
+					char* flag = c"--ast-full-expressions"
+					if (required):
+						if (jfield_flag(step, c"expect_fail") || jfield_int(step, c"expect_status", 0) != 0): expected_failures = expected_failures + 1
+						else:
+							flag = c"--ast-required"
+							required_steps = required_steps + 1
+					json_array_push(cmd, json_string(flag))
 				changed = changed + 1
 				json_value* entry = json_object()
 				char* name = jfield_string(target, c"name")
@@ -94,14 +146,21 @@ json_value* ast_audit_manifest(json_value* root):
 			else if (kind == 3): queries = queries + 1
 			else: other = other + 1
 	json_value* report = json_object()
+	json_object_set(report, c"required_steps", json_int(required_steps))
+	json_object_set(report, c"expected_failure_steps", json_int(expected_failures))
+	json_object_set(report, c"fixture_groups", json_int(fixture_groups))
 	json_object_set(report, c"schema", json_int(1))
 	json_object_set(report, c"changed_steps", json_int(changed))
 	json_object_set(report, c"explicit_ast_steps", json_int(explicit_mode))
 	json_object_set(report, c"query_or_sourceless_steps", json_int(queries))
 	json_object_set(report, c"other_steps", json_int(other))
 	json_object_set(report, c"selected", selected)
-	json_object_set(report, c"scope", json_string(c"Direct production-compiler compile/check steps only; implicit imports inherit the flag. Nested compiler launches remain controlled by their test drivers. Seeds and explicit AST modes are unchanged."))
+	json_object_set(report, c"scope", json_string(c"Production-compiler compile/check steps, including recognized env prefixes; required mode also gates diagnostic fixture groups; implicit imports inherit the flag. Nested compiler launches remain controlled by their test drivers. Seeds and explicit AST modes are unchanged."))
 	return report
+
+
+json_value* ast_audit_manifest(json_value* root):
+	return ast_audit_manifest_mode(root, 0)
 
 
 void ast_audit_count(json_value* counts, char* key):
@@ -124,7 +183,7 @@ json_value* ast_audit_sorted_counts(json_value* counts, char* field):
 
 
 int ast_audit_known_counter(char* label):
-	return strcmp(label, c"AST expressions") == 0 || strcmp(label, c"AST expression roots") == 0 || strcmp(label, c"Streaming expression roots") == 0 || strcmp(label, c"AST return statements") == 0 || strcmp(label, c"Streaming return statements") == 0 || strcmp(label, c"AST expression statements") == 0 || strcmp(label, c"Streaming expression statements") == 0 || strcmp(label, c"AST if headers") == 0 || strcmp(label, c"Streaming if headers") == 0 || strcmp(label, c"AST while headers") == 0 || strcmp(label, c"Streaming while headers") == 0
+	return strcmp(label, c"AST expressions") == 0 || strcmp(label, c"AST expression roots") == 0 || strcmp(label, c"Streaming expression roots") == 0 || strcmp(label, c"AST return statements") == 0 || strcmp(label, c"Streaming return statements") == 0 || strcmp(label, c"AST expression statements") == 0 || strcmp(label, c"Streaming expression statements") == 0 || strcmp(label, c"AST if headers") == 0 || strcmp(label, c"Streaming if headers") == 0 || strcmp(label, c"AST while headers") == 0 || strcmp(label, c"Streaming while headers") == 0 || strcmp(label, c"AST GPU captures") == 0 || strcmp(label, c"AST GPU header values") == 0 || strcmp(label, c"AST GPU launches") == 0 || strcmp(label, c"AST GPU loops") == 0 || strcmp(label, c"AST blocks") == 0 || strcmp(label, c"AST conditional branches") == 0 || strcmp(label, c"AST constant expressions") == 0 || strcmp(label, c"AST cursor loops") == 0 || strcmp(label, c"AST debugger statements") == 0 || strcmp(label, c"AST deferred expressions") == 0 || strcmp(label, c"AST enum values") == 0 || strcmp(label, c"AST extern functions") == 0 || strcmp(label, c"AST extern objects") == 0 || strcmp(label, c"AST functions") == 0 || strcmp(label, c"AST generators") == 0 || strcmp(label, c"AST global initializers") == 0 || strcmp(label, c"AST globals") == 0 || strcmp(label, c"AST goto/label statements") == 0 || strcmp(label, c"AST if regions") == 0 || strcmp(label, c"AST iteration values") == 0 || strcmp(label, c"AST kernel parameters") == 0 || strcmp(label, c"AST kernels") == 0 || strcmp(label, c"AST local declarations") == 0 || strcmp(label, c"AST range loops") == 0 || strcmp(label, c"AST raw-asm statements") == 0 || strcmp(label, c"AST scripts") == 0 || strcmp(label, c"AST simple statements") == 0 || strcmp(label, c"AST switch case values") == 0 || strcmp(label, c"AST switch regions") == 0 || strcmp(label, c"AST switch selectors") == 0 || strcmp(label, c"AST thread locals") == 0 || strcmp(label, c"AST while loops") == 0 || strcmp(label, c"AST yield statements") == 0
 
 
 # Parse and add without signed wrap on either compiler host width. Return

@@ -59,7 +59,11 @@ against the captured stderr, and prints one PASS/FAIL line per fixture
 with expected-vs-actual detail on failure. The exit status is nonzero
 when any fixture fails.
 
-Usage: wfixture <compiler> <fixture.w>...
+With --ast-expressions, successful fixtures require AST expression compilation;
+expected failures use permissive AST expression mode to retain their existing
+diagnostics. This applies to the compiler child process for every fixture.
+
+Usage: wfixture [--ast-expressions] <compiler> <fixture.w>...
 */
 import lib.lib
 import lib.env
@@ -72,6 +76,7 @@ import lib.str
 
 list[char*] wfixture_expects   # expect_stderr needles, in directive order
 list[char*] wfixture_rejects   # reject_stderr needles, in directive order
+int wfixture_ast_mode          # enforce AST expressions for successful fixtures
 int wfixture_expect_fail       # 1 when the compile must exit nonzero
 int wfixture_directives        # total directives parsed for this fixture
 char* wfixture_selector        # '# wfixture: <selector>' argv token, 0 = none
@@ -79,7 +84,7 @@ char* wfixture_selector        # '# wfixture: <selector>' argv token, 0 = none
 
 void wfixture_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wfixture <compiler> <fixture.w>...")
+	stream_write_line(err, c"usage: wfixture [--ast-expressions] <compiler> <fixture.w>...")
 	stream_flush(err)
 
 
@@ -221,11 +226,21 @@ char* wfixture_resolve_program(char* name):
 	return found
 
 
+char* wfixture_compiler_mode():
+	if (wfixture_ast_mode == 0): return 0
+	if (wfixture_expect_fail): return c"--ast-full-expressions"
+	return c"--ast-required"
+
+
 void wfixture_echo_command(char* compiler, char* fixture, char* out_path):
 	string_builder* line = string_new()
 	string_append(line, c"$ ")
 	string_append(line, compiler)
 	string_append(line, c" ")
+	char* mode = wfixture_compiler_mode()
+	if (mode != 0):
+		string_append(line, mode)
+		string_append(line, c" ")
 	if (wfixture_selector != 0):
 		string_append(line, wfixture_selector)
 		string_append(line, c" ")
@@ -296,10 +311,14 @@ int wfixture_run(char* compiler, char* fixture):
 	char* out_path = wfixture_output_path(fixture)
 	wfixture_echo_command(compiler, fixture, out_path)
 	int has_selector = wfixture_selector != 0
-	char** argv = strv_new(4 + has_selector)
+	char** argv = strv_new(4 + has_selector + wfixture_ast_mode)
 	int a = 0
 	strv_set(argv, a, compiler)
 	a = a + 1
+	char* mode = wfixture_compiler_mode()
+	if (mode != 0):
+		strv_set(argv, a, mode)
+		a = a + 1
 	if (has_selector):
 		strv_set(argv, a, wfixture_selector)
 		a = a + 1
@@ -341,11 +360,19 @@ int main(int argc, int argv):
 	if (argc < 3):
 		wfixture_usage()
 		return 1
+	int first = 1
 	char** compiler_arg = argv + __word_size__
+	if (strcmp(*compiler_arg, c"--ast-expressions") == 0):
+		wfixture_ast_mode = 1
+		first = 2
+		if (argc < 4):
+			wfixture_usage()
+			return 1
+		compiler_arg = argv + first * __word_size__
 	char* compiler = *compiler_arg
 	int total = 0
 	int failed = 0
-	int i = 2
+	int i = first + 1
 	while (i < argc):
 		char** arg = argv + i * __word_size__
 		failed = failed + wfixture_run(compiler, *arg)

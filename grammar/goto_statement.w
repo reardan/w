@@ -146,26 +146,32 @@ int goto_name_is_ident(char* s):
 	return is_ident_start_byte(s[0])
 
 
+void emit_goto_target(int label, int source_stack);
+void emit_label_target(int label, int target_stack);
+void emit_goto_statement_ast(statement_ast* node);
+
+
 # goto identifier ;
 int goto_statement():
-	if (accept(c"goto") == 0): return 0
+	if (peek(c"goto") == 0): return 0
+	statement_ast node
+	node.kind = ast_stmt_goto
+	node.source_file = file
+	node.line = diag_token_line
+	node.column = diag_token_column
+	node.start_offset = token_start_offset
+	get_token()
 	goto_check_target()
 	if (goto_name_is_ident(token) == 0): error(c"label name expected after 'goto'")
 	int label = goto_label_intern(token)
+	node.end_offset = token_start_offset + token_i
 	get_token()
 	expect_or_newline(c";")
-	if (goto_label_pos[label] >= 0):
-		# Backward: the label's depth is known
-		goto_adjust_stack(stack_pos, goto_label_stack[label])
-		jmp_int32(0)
-		be_branch_patch(codepos, goto_label_pos[label])
-		return 1
-	jmp_int32(0)
-	goto_reserve()
-	goto_pending_label[goto_pending_count] = label
-	goto_pending_site[goto_pending_count] = codepos
-	goto_pending_stack[goto_pending_count] = stack_pos
-	goto_pending_count = goto_pending_count + 1
+	if (ast_expressions_mode >= 2):
+		node.target = label
+		node.stack_depth = stack_pos
+		emit_goto_statement_ast(&node)
+	else: emit_goto_target(label, stack_pos)
 	return 1
 
 
@@ -175,6 +181,12 @@ int goto_statement():
 int labeled_statement():
 	if (goto_name_is_ident(token) == 0): return 0
 	if (nextc != ':'): return 0
+	statement_ast node
+	node.kind = ast_stmt_label
+	node.source_file = file
+	node.line = diag_token_line
+	node.column = diag_token_column
+	node.start_offset = token_start_offset
 	char* name = strclone(token)
 	char* save = generic_reparse_save()
 	get_token()
@@ -185,38 +197,15 @@ int labeled_statement():
 		return 0
 	free(cast(char*, load_ptr(save + 11 * __word_size__)))
 	free(save)
+	node.end_offset = token_start_offset + token_i
 	get_token() /* consume ':' */
 	goto_check_target()
 	int label = goto_label_intern(name)
 	if (goto_label_pos[label] >= 0): error3(c"duplicate label '", name, c"'")
 	free(name)
-	# A jump lands here: no constant/compare fold may reach back across it
-	be_cmp_note_reset()
-	be_imm_note_reset()
-	# Forward gotos at another depth get an adjust-and-jump stub, placed
-	# before the label behind a jump that skips them on fall-through
-	int skip = 0
-	int i = goto_pending_base
-	while (i < goto_pending_count):
-		if ((goto_pending_label[i] == label) && (goto_pending_stack[i] != stack_pos)):
-			if (skip == 0):
-				jmp_int32(0)
-				skip = codepos
-			be_branch_patch(goto_pending_site[i], codepos)
-			goto_adjust_stack(goto_pending_stack[i], stack_pos)
-			jmp_int32(0)
-			# The stub's own jump is resolved to the label below
-			goto_pending_site[i] = codepos
-		i = i + 1
-	if (skip): be_branch_patch(skip, codepos)
-	# ...nor across the label itself, past any stub emitted above
-	be_notes_reset()
-	goto_label_pos[label] = codepos
-	goto_label_stack[label] = stack_pos
-	i = goto_pending_base
-	while (i < goto_pending_count):
-		if (goto_pending_label[i] == label):
-			be_branch_patch(goto_pending_site[i], codepos)
-			goto_pending_label[i] = -1
-		i = i + 1
+	if (ast_expressions_mode >= 2):
+		node.target = label
+		node.stack_depth = stack_pos
+		emit_goto_statement_ast(&node)
+	else: emit_label_target(label, stack_pos)
 	return 1

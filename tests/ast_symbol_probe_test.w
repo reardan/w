@@ -155,54 +155,39 @@ void test_ast_pointer_probe_records_are_transactional():
 	assert_equal(-1, type_lookup_next_pointer(second))
 
 
-void test_ast_container_probe_records_are_transactional():
+void test_ast_composite_probe_records_are_transactional():
 	word_size = __word_size__
 	push_basic_types()
-	int base = type_push_size(c"ast_container_probe_base", word_size)
+	int base = type_push_size(c"ast_composite_probe_base", word_size)
 	expression_ast tree
 	tree.types_base = type_count()
 	tree.types_count = 0
 	tree.type_names_used = 0
 	tree.pending_buffer_types = 0
-	int first = ast_expression_container_type(&tree, type_kind_list, base, -1, 10)
-	int second = ast_expression_container_type(&tree, type_kind_map, 1, first, 11)
-	int third = ast_expression_container_type(&tree, type_kind_set, second, -1, 12)
-	int pointer = ast_expression_pointer_type(&tree, third, 12)
-	assert_equal(tree.types_base, first)
-	assert_equal(first + 3, pointer)
-	assert_equal(first, ast_expression_container_type(&tree, type_kind_list, base, -1, 13))
-	assert_equal(4, tree.types_count)
-	assert_equal(first, type_lookup(c"list[ast_container_probe_base]"))
-	assert_equal(first, type_map_value_type(second))
-	assert_equal(second, type_set_key_type(third))
+	int list = ast_expression_composite_type(&tree, type_kind_list, base, -1, 10)
+	int ptr = ast_expression_pointer_type(&tree, list, 11)
+	int map = ast_expression_composite_type(&tree, type_kind_map, base, list, 12)
+	int slice = ast_expression_composite_type(&tree, type_kind_slice, base, -1, 13)
+	assert_equal(tree.types_base, list)
+	assert_equal(list + 1, ptr)
+	assert_equal(list + 2, map)
+	assert_equal(list + 3, slice)
+	assert_equal(list, ast_expression_composite_type(&tree, type_kind_list, base, -1, 14))
+	assert_equal(list, type_lookup(c"list[ast_composite_probe_base]"))
+	assert_equal(list, type_lookup_previous_pointer(ptr))
 	ast_expression_restore_types(&tree)
 	assert_equal(tree.types_base, type_count())
 	assert_equal(-1, type_lookup_list(base))
+	assert_equal(-1, type_lookup(c"list[ast_composite_probe_base]"))
 	for i in range(tree.types_count): ast_expression_commit_pointer(&tree, i)
-	assert_equal(first, type_lookup_list(base))
-	assert_equal(second, type_lookup_map(1, first))
-	assert_equal(third, type_lookup_set(second))
-	assert_equal(pointer, type_lookup_next_pointer(third))
-	assert_equal(third, type_lookup_previous_pointer(pointer))
-	# Reusing the arena cannot damage committed container or pointer names.
+	# Committed names must survive arena reuse, including pointer names.
 	for i in range(tree.type_names_used): tree.type_names[i] = 'x'
-	assert_strings_equal(c"list[ast_container_probe_base]", type_get_name(first))
-	assert_strings_equal(c"set[map[int, list[ast_container_probe_base]]]", type_get_name(pointer))
-	assert_equal(first, type_lookup(c"list[ast_container_probe_base]"))
-	tree.types_base = type_count()
-	tree.types_count = 0
-	tree.type_names_used = 4096
-	assert_equal(-1, ast_expression_container_type(&tree, type_kind_list, third, -1, 14))
-	assert_equal(tree.types_base, type_count())
-	tree.type_names_used = 0
-	int current = third
-	for i in range(16):
-		current = ast_expression_container_type(&tree, type_kind_list, current, -1, 20 + i)
-		assert1(current >= 0)
-	assert_equal(-1, ast_expression_container_type(&tree, type_kind_list, current, -1, 40))
-	ast_expression_restore_types(&tree)
-	assert_equal(tree.types_base, type_count())
-	assert_equal(-1, type_lookup_list(third))
+	assert_equal(list, type_lookup_list(base))
+	assert_equal(map, type_lookup_map(base, list))
+	assert_equal(slice, type_lookup_slice(base))
+	assert_equal(ptr, type_lookup_next_pointer(list))
+	assert_strings_equal(c"list[ast_composite_probe_base]", type_get_name(ptr))
+	assert_equal(list, type_lookup(c"list[ast_composite_probe_base]"))
 
 
 void test_ast_symbol_probe_preserves_usage_and_scope_state():
@@ -354,3 +339,330 @@ void test_ast_generic_signature_capture():
 	assert1(ast_test_capture_signature(c"(const T* value):\n") == 0)
 	assert1(ast_test_capture_signature(c"(T... values):\n") == 0)
 	assert1(ast_test_capture_signature(c"(map[T, ] values):\n") == 0)
+
+
+void test_ast_generic_inference_shapes_without_placeholders():
+	word_size = __word_size__
+	push_basic_types()
+	int record = type_push_size(c"ast_inference_record", word_size)
+	int ptr = type_get_next_pointer(record)
+	char* names = malloc(__word_size__)
+	save_ptr(names, cast(int, c"T"))
+	int def = generic_def_add(c"ast_inference_shapes", 0, c"no source file needed", 0, 1, 1, 1, cast(int, names))
+	generic_signature_ast* signature = ast_test_capture_signature(c"(T a, T** b, int c, ast_inference_record* d):\n")
+	assert1(signature != 0)
+	generic_defs[def].signature_ast = signature
+	int before = type_count()
+	char* placeholders = generic_infer_placeholders
+	char* block = generic_infer_shapes(def)
+	assert_equal(4, load_ptr(block))
+	assert_equal(0, load_ptr(block + __word_size__))
+	assert_equal(0, load_ptr(block + 2 * __word_size__))
+	assert_equal(0, load_ptr(block + 3 * __word_size__))
+	assert_equal(2, load_ptr(block + 4 * __word_size__))
+	assert_equal(-1, load_ptr(block + 5 * __word_size__))
+	assert_equal(type_lookup(c"int"), load_ptr(block + 6 * __word_size__))
+	assert_equal(-1, load_ptr(block + 7 * __word_size__))
+	assert_equal(ptr, load_ptr(block + 8 * __word_size__))
+	assert1(block == generic_infer_shapes(def))
+	assert_equal(before, type_count())
+	assert1(placeholders == generic_infer_placeholders)
+	# Composite parameter references are opaque and need no placeholders.
+	generic_defs[def].signature_ast = ast_test_capture_signature(c"(list[T] a, map[int, list[T*]] b, T[] c, set[T]* d):\n")
+	char* opaque = generic_infer_ast_shapes(def)
+	assert1(opaque != 0)
+	assert_equal(4, load_ptr(opaque))
+	for i in range(4):
+		assert_equal(-2, load_ptr(opaque + __word_size__ + i * 2 * __word_size__))
+		assert_equal(0, load_ptr(opaque + 2 * __word_size__ + i * 2 * __word_size__))
+	free(opaque)
+	assert_equal(before, type_count())
+	assert1(placeholders == generic_infer_placeholders)
+	generic_signature_ast_free(generic_defs[def].signature_ast)
+	generic_defs[def].signature_ast = ast_test_capture_signature(c"(AstMissingType value):\n")
+	assert1(generic_infer_ast_shapes(def) == 0)
+	assert_equal(before, type_count())
+	generic_signature_ast_free(generic_defs[def].signature_ast)
+	generic_defs[def].signature_ast = signature
+
+
+void ast_test_prepared_expression(char* source, int accepted):
+	word_size = __word_size__
+	push_basic_types()
+	if (token == 0):
+		token_size = 20
+		token = malloc(token_size)
+		token[0] = 0
+	char* saved = generic_reparse_save()
+	int serial = token_serial
+	int mode = ast_expressions_mode
+	int reader
+	int writer
+	assert_equal(0, process_make_pipe(&reader, &writer))
+	getchar_reset(reader)
+	assert_equal(strlen(source), write(writer, source, strlen(source)))
+	close(writer)
+	file = reader
+	filename = c"AST preparation test"
+	byte_offset = 0
+	line_number = 0
+	column_number = 0
+	tab_level = 0
+	token_newline = 0
+	nextc = 0
+	nextc = get_character()
+	get_token()
+	ast_expressions_mode = 2
+	int before_code = codepos
+	int before_types = type_count()
+	int before_emitted = ast_expressions_emitted
+	expression_ast tree
+	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
+	assert_equal(before_code, codepos)
+	assert_equal(before_emitted, ast_expressions_emitted)
+	assert_equal(before_types, type_count())
+	if (accepted):
+		assert1(root >= 0)
+		assert_equal('*', tree.op[root])
+		assert_equal(6, tree.value[tree.left[root]])
+		assert_equal(7, tree.value[tree.right[root]])
+		assert_equal(tree.end_offset, token_start_offset)
+		# Backend lowering must leave the virtual source boundary alone.
+		int end_serial = token_serial
+		char* end_token = strclone(token)
+		be_notes_reset()
+		assert_equal(3, emit_prepared_expression_ast(&tree, root))
+		assert1(codepos > before_code)
+		assert_equal(end_serial, token_serial)
+		assert_equal(tree.end_offset, token_start_offset)
+		assert_strings_equal(end_token, token)
+		assert_equal(before_emitted, ast_expressions_emitted)
+		free(end_token)
+		ast_expression_finish_prepared(&tree)
+		assert_strings_equal(c"next", token)
+		assert_equal(before_emitted + 1, ast_expressions_emitted)
+		codepos = before_code
+		ast_expressions_emitted = before_emitted
+		be_notes_reset()
+	else:
+		assert_equal(-1, root)
+		assert_equal(0, token_start_offset)
+		assert_strings_equal(c"6", token)
+	close(reader)
+	generic_reparse_restore(saved)
+	token_serial = serial
+	ast_expressions_mode = mode
+
+
+void test_ast_preparation_emission_and_source_completion():
+	ast_test_prepared_expression(c"6 * 7\nnext\n", 1)
+	ast_test_prepared_expression(c"6 + ast_preparation_missing_name\n", 0)
+
+
+void test_ast_constant_folder_walks_children():
+	constant_ast six = constant_ast_literal(6, 0, 1)
+	constant_ast seven = constant_ast_literal(7, 4, 5)
+	constant_ast product = constant_ast_literal(0, 0, 5)
+	product.op = '*'
+	product.left = &six
+	product.right = &seven
+	constant_ast two = constant_ast_literal(2, 8, 9)
+	constant_ast sum = constant_ast_literal(0, 0, 9)
+	sum.op = '+'
+	sum.left = &product
+	sum.right = &two
+	int before_code = codepos
+	assert_equal(44, constant_ast_fold(&sum))
+	constant_ast folded = constant_ast_operator('+', 0, &product, &two)
+	assert_equal(44, folded.value)
+	assert_equal(0, folded.op)
+	assert1(folded.left == 0 && folded.right == 0)
+	assert_equal(0, folded.start_offset)
+	assert_equal(9, folded.end_offset)
+	assert_equal(before_code, codepos)
+
+
+void ast_test_stack_binding_snapshot(int scope, int expected_words):
+	word_size = __word_size__
+	word_size_log2 = 2
+	if (word_size == 8): word_size_log2 = 3
+	push_basic_types()
+	int type = type_lookup(c"int")
+	int saved_table = table_pos
+	int saved_stack = stack_pos
+	int saved_args = number_of_args
+	int saved_mode = ast_expressions_mode
+	int saved_emitted = ast_expressions_emitted
+	int saved_verbosity = verbosity
+	char* saved_identifier = last_identifier
+	char[128] identifier
+	identifier[0] = 0
+	last_identifier = &identifier[0]
+	verbosity = -1
+	stack_pos = 7
+	number_of_args = 5
+	sym_declare(c"ast_bound_operand", type, scope, 2, 1)
+	int sym = table_pos - symbol_data_size
+	if (token == 0):
+		token_size = 20
+		token = malloc(token_size)
+		token[0] = 0
+	char* saved = generic_reparse_save()
+	int serial = token_serial
+	int reader
+	int writer
+	assert_equal(0, process_make_pipe(&reader, &writer))
+	getchar_reset(reader)
+	char* source = c"ast_bound_operand\nnext\n"
+	assert_equal(strlen(source), write(writer, source, strlen(source)))
+	close(writer)
+	file = reader
+	filename = c"AST stack binding test"
+	byte_offset = 0
+	line_number = 0
+	column_number = 0
+	tab_level = 0
+	token_newline = 0
+	nextc = 0
+	nextc = get_character()
+	get_token()
+	ast_expressions_mode = 2
+	expression_ast tree
+	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
+	assert1(root >= 0)
+	assert1(tree.binding_name[root] >= 0)
+	assert_strings_equal(c"ast_bound_operand", &tree.text[tree.binding_name[root]])
+	# Simulate reuse of the symbol's storage and a different frame context.
+	# The operand keeps its original binding, but follows the current
+	# temporary stack depth when computing the runtime address.
+	char* original_name = strclone(table + tree.value[root])
+	for i in range(strlen(original_name)): table[tree.value[root] + i] = 'x'
+	table[sym + 1] = 'D'
+	save_int(table + sym + 2, 1000)
+	save_int(table + sym + 6, 0)
+	number_of_args = 99
+	stack_pos = 9
+	int before = codepos
+	be_notes_reset()
+	assert_equal(type, emit_prepared_expression_ast(&tree, root))
+	assert_strings_equal(c"ast_bound_operand", last_identifier)
+	int length = codepos - before
+	assert1(length > 0)
+	char* actual = malloc(length)
+	for i in range(length): actual[i] = code[before + i]
+	codepos = before
+	be_notes_reset()
+	be_lea_acc_wstack(expected_words * __word_size__)
+	assert_equal(length, codepos - before)
+	assert_bytes_equal(actual, code + before, length)
+	free(actual)
+	ast_expression_finish_prepared(&tree)
+	assert_strings_equal(c"next", token)
+	strcpy(table + tree.value[root], original_name)
+	free(original_name)
+	table[sym + 1] = scope
+	save_int(table + sym + 2, 2)
+	save_int(table + sym + 6, type)
+	table_pos = saved_table
+	sym_index_sync()
+	codepos = before
+	be_notes_reset()
+	stack_pos = saved_stack
+	number_of_args = saved_args
+	ast_expressions_mode = saved_mode
+	ast_expressions_emitted = saved_emitted
+	verbosity = saved_verbosity
+	close(reader)
+	generic_reparse_restore(saved)
+	token_serial = serial
+	last_identifier = saved_identifier
+
+
+void test_ast_stack_operands_own_their_bindings():
+	ast_test_stack_binding_snapshot('L', 6)
+	ast_test_stack_binding_snapshot('A', 13)
+
+
+void test_ast_global_layout_survives_type_changes():
+	word_size = __word_size__
+	word_size_log2 = 2
+	if (word_size == 8): word_size_log2 = 3
+	push_basic_types()
+	int array = type_push_array(type_lookup(c"char"), 3)
+	int record = type_push_size(c"ast_owned_global_layout", 0)
+	type_add_arg(record, c"tag", type_lookup(c"int"))
+	type_add_arg(record, c"values", array)
+	type_rec* original = type_record(record)
+	int bytes = global_storage_size(record)
+	global_storage_ast* tree = global_storage_ast_build(record, 0)
+	int before = codepos
+	emit_global_storage(record)
+	assert_equal(bytes, codepos - before)
+	char* expected = malloc(bytes)
+	for i in range(bytes): expected[i] = code[before + i]
+	codepos = before
+	# Reuse both the parent and array records. The emitter must only
+	# inspect the owned layout tree, including the original array length.
+	original.field_types[1] = type_lookup(c"int")
+	type_rec* original_array = type_record(array)
+	int old_length = original_array.fn_param_count
+	original_array.fn_param_count = 99
+	emit_global_storage_tree_ast(tree)
+	emit_zeros(bytes - (codepos - before))
+	assert_equal(bytes, codepos - before)
+	assert_bytes_equal(expected, code + before, bytes)
+	original.field_types[1] = array
+	original_array.fn_param_count = old_length
+	codepos = before
+	free(expected)
+	global_storage_ast_free(tree)
+
+
+void test_ast_container_probe_records_are_transactional():
+	word_size = __word_size__
+	push_basic_types()
+	int base = type_push_size(c"ast_container_probe_base", word_size)
+	expression_ast tree
+	tree.types_base = type_count()
+	tree.types_count = 0
+	tree.type_names_used = 0
+	tree.pending_buffer_types = 0
+	int first = ast_expression_composite_type(&tree, type_kind_list, base, -1, 10)
+	int second = ast_expression_composite_type(&tree, type_kind_map, 1, first, 11)
+	int third = ast_expression_composite_type(&tree, type_kind_set, second, -1, 12)
+	int pointer = ast_expression_pointer_type(&tree, third, 12)
+	assert_equal(tree.types_base, first)
+	assert_equal(first + 3, pointer)
+	assert_equal(first, ast_expression_composite_type(&tree, type_kind_list, base, -1, 13))
+	assert_equal(4, tree.types_count)
+	assert_equal(first, type_lookup(c"list[ast_container_probe_base]"))
+	assert_equal(first, type_map_value_type(second))
+	assert_equal(second, type_set_key_type(third))
+	ast_expression_restore_types(&tree)
+	assert_equal(tree.types_base, type_count())
+	assert_equal(-1, type_lookup_list(base))
+	for i in range(tree.types_count): ast_expression_commit_pointer(&tree, i)
+	assert_equal(first, type_lookup_list(base))
+	assert_equal(second, type_lookup_map(1, first))
+	assert_equal(third, type_lookup_set(second))
+	assert_equal(pointer, type_lookup_next_pointer(third))
+	assert_equal(third, type_lookup_previous_pointer(pointer))
+	# Reusing the arena cannot damage committed container or pointer names.
+	for i in range(tree.type_names_used): tree.type_names[i] = 'x'
+	assert_strings_equal(c"list[ast_container_probe_base]", type_get_name(first))
+	assert_strings_equal(c"set[map[int, list[ast_container_probe_base]]]", type_get_name(pointer))
+	assert_equal(first, type_lookup(c"list[ast_container_probe_base]"))
+	tree.types_base = type_count()
+	tree.types_count = 0
+	tree.type_names_used = 4096
+	assert_equal(-1, ast_expression_composite_type(&tree, type_kind_list, third, -1, 14))
+	assert_equal(tree.types_base, type_count())
+	tree.type_names_used = 0
+	int current = third
+	for i in range(16):
+		current = ast_expression_composite_type(&tree, type_kind_list, current, -1, 20 + i)
+		assert1(current >= 0)
+	assert_equal(-1, ast_expression_composite_type(&tree, type_kind_list, current, -1, 40))
+	ast_expression_restore_types(&tree)
+	assert_equal(tree.types_base, type_count())
+	assert_equal(-1, type_lookup_list(third))

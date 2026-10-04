@@ -208,59 +208,9 @@ char* operator_definition(int decl_type):
 	return defhash_name
 
 
-# Dispatch + call emission for 'left <op> right' (op one of + - * / %).
-# Entry state (additive_expr.w / multiplicative_expr.w): the promoted
-# left operand's word was pushed at left_slot by binary1, the promoted
-# right operand's word is in eax, and stack_pos includes any
-# temporaries the right side leaked (struct-returning calls park their
-# return buffers on the stack). Declines with 0 -- emitting nothing --
-# unless at least one operand is a struct value; a struct-value
-# operand with no matching overload is a compile error. On a hit the
-# emission mirrors the struct-method branch in grammar/postfix_expr.w:
-# save the right word, park a return buffer for a struct-returning
-# operator, push the callee, the hidden return-buffer argument and
-# both operands, then run the shared call tail and compact the stack.
-# A scalar result pops the operand saves and the right side's leaked
-# temporaries, so the expression is stack-neutral like every other
-# scalar expression; a struct result slides its return buffer down
-# over them, so the expression leaks exactly the buffer words --
-# identical to a plain struct-returning call, which every consumer
-# already handles.
-int operator_overload_binary(int left_type, int right_type, int op, int left_slot):
-	if ((operand_is_struct_value(left_type) == 0) & (operand_is_struct_value(right_type) == 0)):
-		return 0
-	char* left_name = operator_mangle_type_name(left_type)
-	char* right_name = operator_mangle_type_name(right_type)
-	char* name = operator_build_name(op, left_name, right_name)
-	int callee = sym_lookup(name)
-	# A float64 operand (x64 float literals are float64) also matches
-	# a 'float' parameter when no exact float64 definition exists; the
-	# per-argument coerce below narrows the value.
-	if ((callee < 0) & (strcmp(right_name, c"float64") == 0)):
-		char* right_folded = operator_build_name(op, left_name, c"float")
-		callee = sym_lookup(right_folded)
-		if (callee >= 0):
-			free(name)
-			name = right_folded
-		else: free(right_folded)
-	if ((callee < 0) & (strcmp(left_name, c"float64") == 0)):
-		char* left_folded = operator_build_name(op, c"float", right_name)
-		callee = sym_lookup(left_folded)
-		if (callee >= 0):
-			free(name)
-			name = left_folded
-		else: free(left_folded)
-	if (callee < 0):
-		diag_part(c"no operator '")
-		char* spelling = malloc(2)
-		spelling[0] = op
-		spelling[1] = 0
-		diag_part(spelling)
-		diag_part(c"' for operands '")
-		diag_part(left_name)
-		error3(c"', '", right_name, c"'")
-	free(left_name)
-	free(right_name)
+# Emit an already-resolved overload. Takes ownership of the mangled name;
+# operands and return buffers follow the shared call/compaction ABI below.
+int operator_emit_binary(int left_type, int right_type, int left_slot, int callee, char* name):
 	int declared_return = load_int(table + callee + 6)
 	int has_return_buffer = 0
 	int buf_words = 0
@@ -318,3 +268,59 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 	lea_eax_esp_plus(0)
 	result = type_value(declared_return)
 	return result
+
+
+# Dispatch + call emission for 'left <op> right' (op one of + - * / %).
+# Entry state (additive_expr.w / multiplicative_expr.w): the promoted
+# left operand's word was pushed at left_slot by binary1, the promoted
+# right operand's word is in eax, and stack_pos includes any
+# temporaries the right side leaked (struct-returning calls park their
+# return buffers on the stack). Declines with 0 -- emitting nothing --
+# unless at least one operand is a struct value; a struct-value
+# operand with no matching overload is a compile error. On a hit the
+# emission mirrors the struct-method branch in grammar/postfix_expr.w:
+# save the right word, park a return buffer for a struct-returning
+# operator, push the callee, the hidden return-buffer argument and
+# both operands, then run the shared call tail and compact the stack.
+# A scalar result pops the operand saves and the right side's leaked
+# temporaries, so the expression is stack-neutral like every other
+# scalar expression; a struct result slides its return buffer down
+# over them, so the expression leaks exactly the buffer words --
+# identical to a plain struct-returning call, which every consumer
+# already handles.
+int operator_overload_binary(int left_type, int right_type, int op, int left_slot):
+	if ((operand_is_struct_value(left_type) == 0) & (operand_is_struct_value(right_type) == 0)):
+		return 0
+	char* left_name = operator_mangle_type_name(left_type)
+	char* right_name = operator_mangle_type_name(right_type)
+	char* name = operator_build_name(op, left_name, right_name)
+	int callee = sym_lookup(name)
+	# A float64 operand (x64 float literals are float64) also matches
+	# a 'float' parameter when no exact float64 definition exists; the
+	# per-argument coerce below narrows the value.
+	if ((callee < 0) & (strcmp(right_name, c"float64") == 0)):
+		char* right_folded = operator_build_name(op, left_name, c"float")
+		callee = sym_lookup(right_folded)
+		if (callee >= 0):
+			free(name)
+			name = right_folded
+		else: free(right_folded)
+	if ((callee < 0) & (strcmp(left_name, c"float64") == 0)):
+		char* left_folded = operator_build_name(op, c"float", right_name)
+		callee = sym_lookup(left_folded)
+		if (callee >= 0):
+			free(name)
+			name = left_folded
+		else: free(left_folded)
+	if (callee < 0):
+		diag_part(c"no operator '")
+		char* spelling = malloc(2)
+		spelling[0] = op
+		spelling[1] = 0
+		diag_part(spelling)
+		diag_part(c"' for operands '")
+		diag_part(left_name)
+		error3(c"', '", right_name, c"'")
+	free(left_name)
+	free(right_name)
+	return operator_emit_binary(left_type, right_type, left_slot, callee, name)

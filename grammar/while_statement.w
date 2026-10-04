@@ -1,5 +1,4 @@
 void statement();
-int ast_statement_condition_try(int kind, int false_target, int outer_condition);
 
 # Innermost loop context for break/continue: control-region handles
 # (be_ctrl_block/be_ctrl_loop in code_generator/x86.w) that break and
@@ -24,15 +23,6 @@ int break_in_switch
 # Indent level of the statement owning the next ':' block; used to detect
 # empty blocks and terminate them correctly.
 int enclosing_tab_level
-
-
-# Shared header lowering after the condition expression and final lexer
-# advance. Preserve promotion and diagnostic order before emitting the branch.
-void finish_statement_condition(int type, int outer_condition, int false_target):
-	promote(type)
-	lint_condition_end()
-	condition_context = outer_condition
-	be_br_zero_discard(false_target)
 
 
 # Enter a loop context for break/continue: saves the outer context
@@ -61,8 +51,28 @@ void loop_leave(int* outer):
 	free(outer)
 
 
+void ast_statement_guard(int target, int outer_condition);
+
+
+# The caller opens control regions and installs the condition context.
+# Source/lint completion precedes the branch in both compilation modes.
+void statement_guard(int target, int outer_condition):
+	if (ast_expressions_mode >= 2):
+		ast_statement_guard(target, outer_condition)
+		return
+	lint_condition_begin()
+	promote(expression())
+	lint_condition_end()
+	condition_context = outer_condition
+	be_br_zero_discard(target)
+
+
 # while ( expression ) statement — parentheses are optional before ':'
+int ast_while_statement();
+
+
 int while_statement():
+	if (ast_expressions_mode >= 2): return ast_while_statement()
 	if (accept(c"while") == 0): return 0
 
 	int while_tab_level = tab_level
@@ -73,9 +83,7 @@ int while_statement():
 	# if not expression: leave the loop
 	int outer_condition = condition_context
 	condition_context = 1
-	lint_condition_begin()
-	if (ast_statement_condition_try(statement_ast_while_header, loop_break_chain, outer_condition) == 0):
-		finish_statement_condition(expression(), outer_condition, loop_break_chain)
+	statement_guard(loop_break_chain, outer_condition)
 
 	enclosing_tab_level = while_tab_level
 	statement()

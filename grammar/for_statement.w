@@ -247,7 +247,14 @@ void for_iter_require_struct_pointer(int container_type):
 # The "in range" body of for_statement; "for", the loop variable and
 # "in range" have already been consumed. for_var anchors the loop
 # variable's stack slot.
+void ast_for_range_loop(int for_var, int for_tab_level);
+int ast_iteration_value(int store_slot);
+
+
 void for_range_loop(int for_var, int for_tab_level):
+	if (ast_expressions_mode >= 2):
+		ast_for_range_loop(for_var, for_tab_level)
+		return
 	int has_parens = accept(c"(")
 	int num_range_args = 1
 	promote(expression())
@@ -391,10 +398,21 @@ void for_cleanup_emit_returning():
 #              second loop variable ("for K k, V v in map"): stack-slot
 #              anchor, declared type, accessor, and coercion source.
 #              value_var == 0 = no second variable.
+void ast_for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
+		char* begin_fn, char* done_fn, char* value_fn, char* next_fn, char* free_fn,
+		int element_type, int value_coerce_type,
+		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type);
+
+
 void for_cursor_loop(int for_var, int for_tab_level, int loop_var_type,
 		char* begin_fn, char* done_fn, char* value_fn, char* next_fn, char* free_fn,
 		int element_type, int value_coerce_type,
 		int value_var, int value_var_type, char* value2_fn, int value2_coerce_type):
+	if (ast_expressions_mode >= 2):
+		ast_for_cursor_loop(for_var, for_tab_level, loop_var_type,
+			begin_fn, done_fn, value_fn, next_fn, free_fn,
+			element_type, value_coerce_type, value_var, value_var_type, value2_fn, value2_coerce_type)
+		return
 	# hidden slot: the container pointer
 	int container_slot = push_slot()
 
@@ -652,7 +670,9 @@ void for_container_loop(int for_var, int for_tab_level, int loop_var_type, int v
 			get_token()
 			expect(c"(")
 	# The iterable is evaluated exactly once, before the body
-	int container_type = promote(expression())
+	int container_type
+	if (ast_expressions_mode >= 2): container_type = ast_iteration_value(0)
+	else: container_type = promote(expression())
 	container_type = type_unqualified(container_type)
 	if (is_enumerate):
 		expect(c")")

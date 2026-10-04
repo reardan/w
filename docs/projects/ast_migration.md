@@ -15,40 +15,39 @@ streaming by default. `--ast-full-expressions` enables the hybrid AST path;
 `--ast-required` rejects any runtime expression that still needs streaming.
 Compiler self-host coverage is a narrower gate than full language coverage.
 
-The integrated path combines record values and calls, map elements and defaults,
-collection membership, accumulation and snapshots, parallel assignment and
-increments, formatted interpolation, explicit generic calls, buffers and slices,
-typed container literals, list slices, constructors and dynamic arrays. Generic
-signatures retain unbound syntax and bind supported parameter and return shapes
-transactionally.
-First-use list/map/set types in expression type syntax and collection snapshot
-results also participate in that transaction.
-Ordinary return/expression statements and if/while condition headers own prepared
-expression nodes through immediate lowering.
+The integrated path prepares and lowers runtime expressions, statements,
+control-flow regions, function boundaries, global layouts, enum constants and
+extern bindings through the existing backends. It includes inferred generics,
+qualified and method calls, operator overloads, C/W varargs, dynamic values,
+JSON/protobuf/ndarray builtins, GPU/device operations and diagnostic events.
+First-use composite types remain transactional, and unsigned operations retain
+`main`'s target-word-size semantics.
 
-These nodes do not survive as persistent function or module trees. Other
-statement/declaration forms, declaration-time constant expressions, inferred
-and unsupported generic forms, generic struct instantiation, new composite
-types in generic signatures, qualified/method calls, special ABI/GPU paths,
-remaining builtins and diagnostic-bearing paths
-still need migration. The bounded expression arena still falls back for large
-expressions. Persistent source/binding ownership, multi-error semantic analysis,
-REPL/debugger rollback and incremental emission remain subsequent architecture
-work. The retired `wc2` resident cache is not part of this implementation.
+`./wbuild ast_expression_suite` generates a required-mode manifest with the
+W-native `wast_audit` tool and runs it serially. Positive direct compiler steps
+and diagnostic fixture children reject expression fallback; expected failures
+use permissive AST mode to preserve diagnostics. Explicit comparison modes,
+pinned seeds and other nested compiler drivers retain their existing modes.
+The positive full-AST image comparison leg also rejects fallback. These gates
+prove the tested corpus, not unrestricted source-language coverage.
+
+Bodies are still visited incrementally. Nodes do not survive as persistent
+function or module trees; some symbol bindings remain borrowed. Deferred
+expressions, generics and helper bodies can be reparsed, while type/import
+declarations still update semantic tables during parsing. Bounded arenas still
+fall back on oversized expressions (or reject them in required mode). The
+retired `wc2` resident cache is not part of this implementation.
 
 ## Remaining milestones
 
-1. Close runtime-expression fallbacks across the language corpus, including
-   remaining builtins, generic/type introduction, qualified calls and special
-   ABI/GPU paths. Keep the suite-wide hybrid audit distinct from required-mode
-   coverage; the compiler's own zero-fallback census is only one corpus.
-2. Migrate complete statements, blocks and declarations, including constant
-   expressions, to owned trees. Replace bounded temporary expression arenas
-   with lifetime and binding rules suitable for retained functions/modules.
-3. Establish multi-error semantic analysis, REPL/debugger rollback, and
-   incremental emission on that representation before adding a resident AST
-   cache. Reuse the retired experiment's ownership and invalidation findings;
-   do not restore a second parser/type checker/emitter.
+1. Retain complete function and module trees with owned source locations and
+   stable bindings. Remove body reparsing and parse-time semantic side effects;
+   replace bounded temporary arenas with appropriate lifetime management.
+2. Establish multi-error semantic analysis, REPL/debugger rollback and incremental
+   emission on those retained trees, then add a resident cache using the retired
+   experiment's ownership and invalidation findings.
+3. Make and validate the production-default migration decision separately from
+   opt-in corpus coverage. Issue #489 remains open for this architectural work.
 
 ## Task 5: first production AST expression path
 
@@ -986,3 +985,30 @@ The generated audit selected 1,129 direct compile/check steps and preserved
 eight explicit AST-mode steps. Its first run stopped on a VCS sync pull failure;
 the tool and test images were byte-identical to their streaming builds, and
 both the isolated retry and the complete audit rerun passed.
+
+## Completion-branch integration
+
+The local `ast-compiler-completion` history through `b31fec3f` (its tasks 46–108)
+is integrated after main's task 48 above. Its expression, statement and
+executable-declaration visitors replace the earlier partial visitors. Existing
+main integration fixtures, unsigned arithmetic fixes, type-index invalidation
+and `wc2` retirement are retained. Historical task numbers on the two branches
+overlap; this section records their convergence rather than renumbering them.
+
+The branch's Python suite transformation is implemented in `tools/ast_audit.w`
+and exposed as `bin/wast_audit required-manifest <output.json>`. It recognizes
+standard `env` prefixes, skips queries and compiler option operands, preserves
+explicit modes and seeds, and activates required positive diagnostic fixtures.
+The census accepts the new statement/declaration counters and historical logs.
+
+`env -u NO_COLOR ./wbuild tests` passes all 837 targets, including strict
+self-host warning checks and x86/x64 ordinary, permissive-AST and required-AST
+image/fixpoint comparisons. The integrated compiler's required-mode census has
+43,299 AST expression roots and zero streaming roots. The required suite
+manifest selects 1,028 positive direct compiler steps, 104 expected-failure
+steps and 35 diagnostic fixture groups, preserving eight explicit AST-mode
+steps. Selection counts cover the manifest, not just the `tests` closure.
+
+`env -u NO_COLOR ./wbuild ast_expression_suite` also passes all 837 inner
+`tests` targets. The AST path remains opt-in, and #489 remains open for the
+retained-tree, semantic-analysis and incremental-compilation milestones above.

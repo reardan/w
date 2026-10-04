@@ -1064,18 +1064,45 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	warning_count = 0
 	ast_expressions_mode = 0
 	ast_expressions_emitted = 0
+	ast_simple_statements_emitted = 0
+	ast_debugger_statements_emitted = 0
+	ast_return_statements_emitted = 0
+	ast_yield_statements_emitted = 0
+	ast_expression_statements_emitted = 0
+	ast_goto_statements_emitted = 0
+	ast_raw_statements_emitted = 0
+	ast_constants_folded = 0
+	ast_declarations_emitted = 0
+	ast_guards_emitted = 0
+	ast_switch_values_emitted = 0
+	ast_switch_cases_emitted = 0
+	ast_range_loops_emitted = 0
+	ast_cursor_loops_emitted = 0
+	ast_iteration_values_emitted = 0
+	ast_if_regions_emitted = 0
+	ast_switch_regions_emitted = 0
+	ast_blocks_emitted = 0
+	ast_while_loops_emitted = 0
+	ast_deferred_expressions_emitted = 0
+	ast_extern_objects_emitted = 0
+	ast_extern_functions_emitted = 0
+	ast_enum_values_emitted = 0
+	ast_functions_emitted = 0
+	ast_scripts_emitted = 0
+	ast_generators_emitted = 0
+	ast_kernels_emitted = 0
+	ast_kernel_parameters_emitted = 0
+	ast_globals_emitted = 0
+	ast_global_initializers_emitted = 0
+	ast_thread_locals_emitted = 0
+	ast_gpu_launches_emitted = 0
+	ast_gpu_fors_emitted = 0
+	ast_gpu_values_emitted = 0
+	ast_gpu_captures_emitted = 0
 	ast_roots_emitted = 0
 	ast_roots_fallback = 0
 	ast_audit_mode = 0
 	ast_required_mode = 0
-	ast_return_statements_emitted = 0
-	ast_return_statements_fallback = 0
-	ast_expression_statements_emitted = 0
-	ast_expression_statements_fallback = 0
-	ast_if_headers_emitted = 0
-	ast_if_headers_fallback = 0
-	ast_while_headers_emitted = 0
-	ast_while_headers_fallback = 0
 	# check/deps/symbols discard the output, so a library module without
 	# a _main is fine to analyze: the backend finishers skip the
 	# entry-call patch instead of erroring (code_generator/code_emitter.w)
@@ -1357,30 +1384,106 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(c"\n")
 
 	if (stats_mode && (ast_expressions_mode >= 2)):
+		print_error(c"AST simple statements: ")
+		print_error(itoa(ast_simple_statements_emitted))
+		print_error(c"\nAST debugger statements: ")
+		print_error(itoa(ast_debugger_statements_emitted))
+		print_error(c"\n")
+		print_error(c"AST return statements: ")
+		print_error(itoa(ast_return_statements_emitted))
+		print_error(c"\nAST yield statements: ")
+		print_error(itoa(ast_yield_statements_emitted))
+		print_error(c"\n")
+		print_error(c"AST expression statements: ")
+		print_error(itoa(ast_expression_statements_emitted))
+		print_error(c"\n")
+		print_error(c"AST goto/label statements: ")
+		print_error(itoa(ast_goto_statements_emitted))
+		print_error(c"\n")
+		print_error(c"AST extern objects: ")
+		print_error(itoa(ast_extern_objects_emitted))
+		print_error(c"\nAST extern functions: ")
+		print_error(itoa(ast_extern_functions_emitted))
+		print_error(c"\nAST enum values: ")
+		print_error(itoa(ast_enum_values_emitted))
+		print_error(c"\n")
+		print_error(c"AST functions: ")
+		print_error(itoa(ast_functions_emitted))
+		print_error(c"\nAST scripts: ")
+		print_error(itoa(ast_scripts_emitted))
+		print_error(c"\nAST generators: ")
+		print_error(itoa(ast_generators_emitted))
+		print_error(c"\nAST kernels: ")
+		print_error(itoa(ast_kernels_emitted))
+		print_error(c"\nAST kernel parameters: ")
+		print_error(itoa(ast_kernel_parameters_emitted))
+		print_error(c"\n")
+		print_error(c"AST globals: ")
+		print_error(itoa(ast_globals_emitted))
+		print_error(c"\nAST global initializers: ")
+		print_error(itoa(ast_global_initializers_emitted))
+		print_error(c"\nAST thread locals: ")
+		print_error(itoa(ast_thread_locals_emitted))
+		print_error(c"\n")
+		print_error(c"AST GPU launches: ")
+		print_error(itoa(ast_gpu_launches_emitted))
+		print_error(c"\n")
+		print_error(c"AST GPU loops: ")
+		print_error(itoa(ast_gpu_fors_emitted))
+		print_error(c"\n")
+		print_error(c"AST GPU header values: ")
+		print_error(itoa(ast_gpu_values_emitted))
+		print_error(c"\n")
+		print_error(c"AST GPU captures: ")
+		print_error(itoa(ast_gpu_captures_emitted))
+		print_error(c"\n")
+		print_error(c"AST deferred expressions: ")
+		print_error(itoa(ast_deferred_expressions_emitted))
+		print_error(c"\n")
+		print_error(c"AST if regions: ")
+		print_error(itoa(ast_if_regions_emitted))
+		print_error(c"\n")
+		print_error(c"AST switch regions: ")
+		print_error(itoa(ast_switch_regions_emitted))
+		print_error(c"\n")
+		print_error(c"AST blocks: ")
+		print_error(itoa(ast_blocks_emitted))
+		print_error(c"\n")
+		print_error(c"AST while loops: ")
+		print_error(itoa(ast_while_loops_emitted))
+		print_error(c"\n")
+		print_error(c"AST range loops: ")
+		print_error(itoa(ast_range_loops_emitted))
+		print_error(c"\n")
+		print_error(c"AST cursor loops: ")
+		print_error(itoa(ast_cursor_loops_emitted))
+		print_error(c"\n")
+		print_error(c"AST iteration values: ")
+		print_error(itoa(ast_iteration_values_emitted))
+		print_error(c"\n")
+		print_error(c"AST switch selectors: ")
+		print_error(itoa(ast_switch_values_emitted))
+		print_error(c"\nAST switch case values: ")
+		print_error(itoa(ast_switch_cases_emitted))
+		print_error(c"\n")
+		print_error(c"AST conditional branches: ")
+		print_error(itoa(ast_guards_emitted))
+		print_error(c"\n")
+		print_error(c"AST local declarations: ")
+		print_error(itoa(ast_declarations_emitted))
+		print_error(c"\n")
+		print_error(c"AST constant expressions: ")
+		print_error(itoa(ast_constants_folded))
+		print_error(c"\n")
+		print_error(c"AST raw-asm statements: ")
+		print_error(itoa(ast_raw_statements_emitted))
+		print_error(c"\n")
 		print_error(c"AST expression roots: ")
 		print_error(itoa(ast_roots_emitted))
 		print_error(c"\nStreaming expression roots: ")
 		print_error(itoa(ast_roots_fallback))
 		print_error(c"\n")
-		print_error(c"AST return statements: ")
-		print_error(itoa(ast_return_statements_emitted))
-		print_error(c"\nStreaming return statements: ")
-		print_error(itoa(ast_return_statements_fallback))
-		print_error(c"\n")
-		print_error(c"AST expression statements: ")
-		print_error(itoa(ast_expression_statements_emitted))
-		print_error(c"\nStreaming expression statements: ")
-		print_error(itoa(ast_expression_statements_fallback))
-		print_error(c"\n")
-		print_error(c"AST if headers: ")
-		print_error(itoa(ast_if_headers_emitted))
-		print_error(c"\nStreaming if headers: ")
-		print_error(itoa(ast_if_headers_fallback))
-		print_error(c"\nAST while headers: ")
-		print_error(itoa(ast_while_headers_emitted))
-		print_error(c"\nStreaming while headers: ")
-		print_error(itoa(ast_while_headers_fallback))
-		print_error(c"\n")
+
 
 	return 0
 

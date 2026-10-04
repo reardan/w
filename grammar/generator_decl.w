@@ -75,6 +75,9 @@ void emit_generator_yield_call():
 # must be word-sized (the call trampoline copies them by the word),
 # the body gets the hidden __w_gen_self parameter, and the epilogue
 # finishes the generator instead of returning.
+void ast_function_body(int binding, int code_start, int kind);
+
+
 void generator_function_definition(int current_symbol):
 	int self_type = generator_object_pointer_type()
 	table[current_symbol + 10] = 2 /* store function type */
@@ -117,21 +120,23 @@ void generator_function_definition(int current_symbol):
 		pointer_indirection = 1
 		sym_declare(c"__w_gen_self", self_type, 'A', number_of_args, 1)
 		pointer_indirection = 0
-		sym_define_global(current_symbol)
-		current_function_symbol = current_symbol
-		in_generator_body = 1
-		enclosing_tab_level = 0
-		debug_func_note(function_start, number_of_args)
-		int outer_label_base = goto_label_base
-		int outer_pending_base = goto_pending_base
-		goto_scope_begin()
-		statement()
-		goto_scope_end(outer_label_base, outer_pending_base)
-		# Falling off the end finishes the generator; __w_gen_return
-		# switches back to the consumer and never returns
-		emit_generator_finish_call()
-		in_generator_body = 0
-		save_int(table + current_symbol + 14, codepos - function_start)
+		if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_generator)
+		else:
+			sym_define_global(current_symbol)
+			current_function_symbol = current_symbol
+			in_generator_body = 1
+			enclosing_tab_level = 0
+			debug_func_note(function_start, number_of_args)
+			int outer_label_base = goto_label_base
+			int outer_pending_base = goto_pending_base
+			goto_scope_begin()
+			statement()
+			goto_scope_end(outer_label_base, outer_pending_base)
+			# Falling off the end finishes the generator; __w_gen_return
+			# switches back to the consumer and never returns
+			emit_generator_finish_call()
+			in_generator_body = 0
+			save_int(table + current_symbol + 14, codepos - function_start)
 
 	table_pos = n
 

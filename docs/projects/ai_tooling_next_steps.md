@@ -56,7 +56,10 @@ is a queue, not an archive.
   embedded descriptors recursively or diagnose unsupported layouts. While
   inspecting that failure with `wdbg`, `p values[0]` for another local array
   failed with `type parameter name expected, found '0'`; cover fixed-array
-  local evaluation in debugger regression tests.
+  local evaluation in debugger regression tests. The same failure occurs
+  for `p counts[8]` on a local map in
+  `tests/ast_map_default_expression_fixture.w` (`counts.length` evaluates
+  correctly); include container indexing in that coverage.
 
 - **Multi-file `w check` shares one compilation unit, so two root
   programs cannot be checked in one invocation.** Observed 2026-08-07

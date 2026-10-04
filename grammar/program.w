@@ -238,6 +238,10 @@ int const_or():
 	return a
 
 
+import compiler.constant_ast
+import grammar.ast_constant
+
+
 # Parse and fold the constant expression at the current token; `what`
 # (and `name`, when nonzero) name the construct in diagnostics. Leaves
 # the token after the expression current.
@@ -248,7 +252,12 @@ int parse_constant_literal(char* what, char* name):
 	const_what = what
 	const_name = name
 	const_paren_depth = 0
-	int value = const_or()
+	int value
+	if (ast_expressions_mode >= 2):
+		constant_ast root = ast_const_or()
+		value = root.value
+		ast_constants_folded = ast_constants_folded + 1
+	else: value = const_or()
 	const_what = outer_what
 	const_name = outer_name
 	const_paren_depth = outer_depth
@@ -280,6 +289,10 @@ int param_default_record(int current_symbol, int param_count, int saw_default):
 # Parses "parameter-list ) [; | body]" for the function symbol at table
 # offset current_symbol; the opening "(" has already been consumed.
 # Shared by program() and the REPL's entry dispatcher.
+void ast_function_body(int binding, int code_start, int kind);
+void ast_script_main();
+
+
 void function_definition(int current_symbol):
 	table[current_symbol + 10] = 2 /* store function type */
 	int n = table_pos
@@ -350,41 +363,45 @@ void function_definition(int current_symbol):
 	else: sym_set_w_variadic(current_symbol, -1)
 
 	if (accept(c";") == 0):
-		be_function_define(current_symbol, last_global_declaration)
-		# On arm64 sign and push the return address (x30) onto the W stack
-		# so the callee has the same [return-slot | args] layout the x86
-		# backend relies on. On x86/x64 push ebp ; mov ebp,esp to keep the
-		# frame-pointer chain lib/stack_trace.w walks. On wasm this opens
-		# the function's size-prefixed code-section unit.
-		be_function_prologue()
-		# x86/x64: the saved frame pointer is one more word on the W stack
-		int frame_words = be_frame_words()
-		stack_pos = stack_pos + frame_words
-		current_function_symbol = current_symbol
-		enclosing_tab_level = 0
-		# Record the argument word count for the debugger's
-		# runtime argument addressing
-		debug_func_note(function_start, number_of_args)
-		# Fall-through defers are emitted when the body block closes,
-		# while its locals are still in scope: arm the flag statement()
-		# consumes when it opens the body block.
-		defer_reset()
-		defer_function_body_pending = 1
-		int outer_label_base = goto_label_base
-		int outer_pending_base = goto_pending_base
-		goto_scope_begin()
-		statement()
-		goto_scope_end(outer_label_base, outer_pending_base)
-		defer_reset()
-		be_return_bare()
-		be_function_epilogue()
-		stack_pos = stack_pos - frame_words
-		# Store length to symbol table:
-		save_int(table + current_symbol + 14, codepos - function_start)
+		if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native)
+		else:
+			be_function_define(current_symbol, last_global_declaration)
+			# On arm64 sign and push the return address (x30) onto the W stack
+			# so the callee has the same [return-slot | args] layout the x86
+			# backend relies on. On x86/x64 push ebp ; mov ebp,esp to keep the
+			# frame-pointer chain lib/stack_trace.w walks. On wasm this opens
+			# the function's size-prefixed code-section unit.
+			be_function_prologue()
+			# x86/x64: the saved frame pointer is one more word on the W stack
+			int frame_words = be_frame_words()
+			stack_pos = stack_pos + frame_words
+			current_function_symbol = current_symbol
+			enclosing_tab_level = 0
+			# Record the argument word count for the debugger's
+			# runtime argument addressing
+			debug_func_note(function_start, number_of_args)
+			# Fall-through defers are emitted when the body block closes,
+			# while its locals are still in scope: arm the flag statement()
+			# consumes when it opens the body block.
+			defer_reset()
+			defer_function_body_pending = 1
+			int outer_label_base = goto_label_base
+			int outer_pending_base = goto_pending_base
+			goto_scope_begin()
+			statement()
+			goto_scope_end(outer_label_base, outer_pending_base)
+			defer_reset()
+			be_return_bare()
+			be_function_epilogue()
+			stack_pos = stack_pos - frame_words
+			# Store length to symbol table:
+			save_int(table + current_symbol + 14, codepos - function_start)
 
 	table_pos = n
 
 
+void ast_global_declaration(int binding, int type, char* init_name);
+void ast_thread_local_declaration(int binding, int type);
 void emit_global_type_storage(int type);
 void emit_global_storage(int type);
 void emit_data_global_storage(int type, int base_vaddr);
@@ -627,6 +644,9 @@ lib.lib in, and the ELF entry's direct 'main' fallback covers programs
 that never imported anything.
 */
 void script_main():
+	if (ast_expressions_mode >= 2):
+		ast_script_main()
+		return
 	int int_type = type_lookup(c"int")
 	int current_symbol = sym_declare_global(c"main", int_type, 2)
 	int n = table_pos
@@ -704,13 +724,23 @@ void thread_local_declaration():
 	if (peek(c"(")): error(c"thread_local applies to variables, not functions")
 	if (peek(c"=")): error(c"thread_local variables cannot have an initializer; they start zeroed")
 	accept(c";")
-	if (tls_size == 0):
-		tls_size = word_size  /* word 0: the block's self pointer */
-	int offset = tls_size
-	tls_size = tls_size + global_storage_size(decl_type)
-	sym_define_global_at(current_symbol, offset)
-	sym_set_thread_local(current_symbol)
+	if (ast_expressions_mode >= 2): ast_thread_local_declaration(current_symbol, decl_type)
+	else:
+		if (tls_size == 0):
+			tls_size = word_size  /* word 0: the block's self pointer */
+		int offset = tls_size
+		tls_size = tls_size + global_storage_size(decl_type)
+		sym_define_global_at(current_symbol, offset)
+		sym_set_thread_local(current_symbol)
 	defhash_note(name, c"global", decl_file_index(), line, column, start, token_start_offset)
+
+
+void global_variable_declaration(int binding, int type, char* init_name):
+	if (ast_expressions_mode >= 2):
+		ast_global_declaration(binding, type, init_name)
+	else:
+		define_global_variable(binding, type)
+		if (init_name): global_initializer(init_name, binding, type)
 
 
 void program():
@@ -848,7 +878,7 @@ void program():
 			get_token()
 		if (accept(c";")):
 			if (export_pending): error(c"only functions can be exported")
-			define_global_variable(current_symbol, decl_type)
+			global_variable_declaration(current_symbol, decl_type, 0)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
@@ -863,18 +893,17 @@ void program():
 
 		else if (accept(c"=")):
 			if (export_pending): error(c"only functions can be exported")
-			define_global_variable(current_symbol, decl_type)
 			# defhash_name is 0 only on the 'operator' branch above,
 			# which declared that literal name
 			char* init_name = defhash_name
 			if (init_name == 0): init_name = c"operator"
-			global_initializer(init_name, current_symbol, decl_type)
+			global_variable_declaration(current_symbol, decl_type, init_name)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 		else:
 			/*error(8)*/
 			if (export_pending): error(c"only functions can be exported")
-			define_global_variable(current_symbol, decl_type)
+			global_variable_declaration(current_symbol, decl_type, 0)
 			if (defhash_name != 0):
 				defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
