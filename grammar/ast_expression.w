@@ -392,7 +392,6 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	if (token_newline): return -1
 	int sym = tree.symbol[id]
 	int arity = sym_num_args(sym)
-	if (arity > 10): return -1
 	if ((sym_variadic_fixed_args(sym) >= 0) || (sym_w_variadic_fixed_args(sym) >= 0)): return -1
 	if (sym_is_generator(sym) || sym_is_kernel(sym)): return -1
 	int result = load_int(table + sym + 6)
@@ -401,7 +400,7 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	int count = 0
 	int previous = -1
 	while (peek(c")") == 0):
-		if ((count >= 10) || ((arity >= 0) && (count >= arity))): return -1
+		if ((arity >= 0) && (count >= arity)): return -1
 		int param = sym_param_type(sym, count)
 		if ((param >= 0) && (ast_expression_data_value(param) == 0)): return -1
 		int arg = ast_expression_assignment(tree, depth + 1)

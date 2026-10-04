@@ -896,3 +896,15 @@ The differential and required-mode fixture exercises narrow integers,
 floats, record fields, side-effecting indexes, pointers, list elements,
 brace blocks and newline boundaries. Value-position increments, const or
 read-only targets, map elements and non-lvalues retain their diagnostics.
+
+## Task 34: direct calls beyond ten arguments
+
+Direct AST calls now use the declared arity and the expression arena's
+capacity instead of imposing a separate ten-argument limit. Parameters
+beyond the symbol table's recorded type slots follow the existing unchecked
+calling convention. Tests cover twelve arguments, evaluation order, raw
+indirect calls, missing-argument diagnostics and required-mode compilation.
+
+Typed function-pointer signatures retain their current ten-parameter bound.
+The existing alias parser's unchecked fixed allocation crashes on longer
+signatures; that independent bug is already tracked in the tooling backlog.
