@@ -62,6 +62,9 @@ char* ast_expression_method_helper(int method):
 	if (method == 13): return c"__w_map_free"
 	if (method == 14): return c"__w_map_get"
 	if (method == 15): return c"__w_map_get_or"
+	if (method == 16): return c"__w_map_keys"
+	if (method == 17): return c"__w_map_values"
+	if (method == 18): return c"__w_map_add"
 	if (method == 142): return c"__w_map_get_addr"
 	if (method == 143): return c"__w_map_get_or_addr"
 	if (method == 129): return c"__w_list_push_bytes"
@@ -195,12 +198,6 @@ int ast_expression_reserve_signature(expression_ast* tree, int id, int result, i
 int ast_expression_composite_type(expression_ast* tree, int kind, int element, int extra, int offset):
 	element = type_canonical(element)
 	if (kind == type_kind_map): extra = type_canonical(extra)
-	if ((kind == type_kind_list) || (kind == type_kind_map)):
-		int checked = element
-		if (kind == type_kind_map): checked = extra
-		if (type_is_array(checked) || type_has_array_field(checked)): return -1
-		if ((kind == type_kind_list) && (type_get_size(checked) <= 0)): return -1
-		if ((type_num_args(checked) == 0) && (type_stack_words(checked) != 1)): return -1
 	int existing = type_lookup_composite(kind, element, extra)
 	if (existing >= 0): return existing
 	if (tree.types_count == 16): return -1
@@ -240,6 +237,18 @@ int ast_expression_composite_type(expression_ast* tree, int kind, int element, i
 	int result = type_count()
 	type_records.push(cast(int, rec))
 	return result
+
+
+# Explicit container type syntax checks storage rules. Implicit snapshot
+# results follow cm_result_type, which interns the list without those checks.
+int ast_expression_checked_composite_type(expression_ast* tree, int kind, int element, int extra, int offset):
+	if ((kind == type_kind_list) || (kind == type_kind_map)):
+		int checked = element
+		if (kind == type_kind_map): checked = extra
+		if (type_is_array(checked) || type_has_array_field(checked)): return -1
+		if ((kind == type_kind_list) && (type_get_size(checked) <= 0)): return -1
+		if ((type_num_args(checked) == 0) && (type_stack_words(checked) != 1)): return -1
+	return ast_expression_composite_type(tree, kind, element, extra, offset)
 
 
 int ast_expression_slice_value_type(expression_ast* tree, int element, int offset):

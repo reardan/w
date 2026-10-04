@@ -414,16 +414,37 @@ void emit_expression_ast(expression_ast* tree, int id):
 			int got = promote(tree.result_type[arg])
 			if ((method == 1) || ((method == 3) && (count == 1))): coerce(tree.high[id], got)
 			if ((method >= 11) && (count == 0)): coerce(tree.high[id], got)
-			if ((method == 15) && (count == 1)): coerce(tree.symbol[id], got)
+			if (((method == 15) || (method == 18)) && (count == 1)): coerce(tree.symbol[id], got)
 			int slot = push_slot()
 			if (count == 0): first_slot = slot
 			else: second_slot = slot
 			count = count + 1
 			arg = tree.next_arg[arg]
+		if ((method == 18) && (second_slot == 0)):
+			mov_eax_int(1)
+			if (type_float_kind(tree.symbol[id])): coerce(tree.symbol[id], 3)
+			second_slot = push_slot()
+		if ((method == 18) && type_float_kind(tree.symbol[id])):
+			int s = rt_call_begin(c"__w_map_get_or")
+			push_slot_copy(receiver_slot)
+			push_slot_copy(first_slot)
+			push_slot_int(0)
+			rt_call_end(s)
+			push_slot()
+			load_slot(second_slot)
+			pop_ebx_slot()
+			int value_type = type_value(tree.symbol[id])
+			float_binary_arithmetic(value_type, value_type, '+')
+			int sum_slot = push_slot()
+			emit_ast_map_call(c"__w_map_set", receiver_slot, first_slot, sum_slot)
+			load_slot(sum_slot)
+			pop_to(base_stack)
+			return
 		int s = rt_call_begin(ast_expression_method_helper(tree.value[id]))
 		push_slot_copy(receiver_slot)
 		if (first_slot): push_slot_copy(first_slot)
 		if (second_slot): push_slot_copy(second_slot)
+		if ((method == 16) || (method == 17)): push_slot_int(tree.high[id])
 		if ((method == 20) || (method == 21) || (method == 27) || (method == 28)): push_slot_int(tree.symbol[id])
 		rt_call_end(s)
 		pop_to(base_stack)

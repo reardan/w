@@ -624,9 +624,9 @@ int ast_expression_bind_generic_type(expression_ast* tree, int id, generic_type_
 		if (strcmp(node.name, c"map") == 0):
 			int second = ast_expression_bind_generic_type(tree, id, node.second)
 			if (second < 0): return -1
-			type = ast_expression_composite_type(tree, type_kind_map, first, second, tree.generic_offset[id])
-		else if (strcmp(node.name, c"set") == 0): type = ast_expression_composite_type(tree, type_kind_set, first, -1, tree.generic_offset[id])
-		else: type = ast_expression_composite_type(tree, type_kind_list, first, -1, tree.generic_offset[id])
+			type = ast_expression_checked_composite_type(tree, type_kind_map, first, second, tree.generic_offset[id])
+		else if (strcmp(node.name, c"set") == 0): type = ast_expression_checked_composite_type(tree, type_kind_set, first, -1, tree.generic_offset[id])
+		else: type = ast_expression_checked_composite_type(tree, type_kind_list, first, -1, tree.generic_offset[id])
 	else if (type < 0): type = type_lookup(node.name)
 	if (type < 0): return -1
 	int base = type_unqualified(type)
@@ -993,7 +993,7 @@ int ast_expression_named_type(expression_ast* tree, int scalar, int depth):
 			second = ast_expression_named_type(tree, 0, depth + 1)
 			if (second < 0): return -1
 		if (ast_expression_accept(tree, c"]") == 0): return -1
-		type = ast_expression_composite_type(tree, kind, first, second, token_start_offset)
+		type = ast_expression_checked_composite_type(tree, kind, first, second, token_start_offset)
 	else:
 		type = generic_subst_lookup(token)
 		if (type < 0): type = type_lookup(token)
@@ -1288,27 +1288,33 @@ int ast_expression_hash_call(expression_ast* tree, int receiver, int depth):
 	int container = type_unqualified(tree.result_type[receiver])
 	int method = 0
 	if (peek(c"remove")): method = 11
-	if (peek(c"add") && type_is_set(container)): method = 12
+	if (peek(c"add")):
+		method = 12
+		if (type_is_map(container)): method = 18
 	if (peek(c"free")): method = 13
 	if (peek(c"get") && type_is_map(container)): method = 14
+	if (peek(c"keys")): method = 16
+	if (peek(c"values") && type_is_map(container)): method = 17
 	if (method == 0): return -1
 	int key_type = hash_container_key_type(container)
 	int value_type = 0
-	if (method == 14):
+	if ((method == 14) || (method == 17) || (method == 18)):
 		value_type = type_map_value_type(container)
-		if (ast_expression_data_value(value_type) == 0): return -1
+		if ((method != 17) && (ast_expression_data_value(value_type) == 0)): return -1
+	if (method == 18):
+		if ((type_num_args(value_type) > 0) || (type_canonical(value_type) == float16_type)): return -1
 	int id = expression_ast_add(tree, 'M', receiver, -1)
 	if (id < 0): return -1
 	tree.high[id] = key_type
 	tree.symbol[id] = value_type
 	tree.result_type[id] = type_value(0)
 	if (method == 11): tree.result_type[id] = type_value(bool_type)
-	if (method == 14):
+	if ((method == 14) || (method == 18)):
 		tree.result_type[id] = type_value(value_type)
 		if (ast_expression_record_value(value_type)): tree.result_type[id] = type_canonical(value_type)
 	ast_expression_advance(tree)
 	if (ast_expression_accept(tree, c"(") == 0): return -1
-	if (method != 13):
+	if ((method != 13) && (method != 16) && (method != 17)):
 		int arg = ast_expression_assignment(tree, depth + 1)
 		if (arg < 0): return -1
 		if (ast_expression_data_value(tree.result_type[arg]) == 0): return -1
@@ -1317,7 +1323,7 @@ int ast_expression_hash_call(expression_ast* tree, int receiver, int depth):
 		if (type_is_string(key_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[arg]))):
 			if (sym_probe(c"str_from_cstr") < 0): return -1
 		tree.right[id] = arg
-		if ((method == 14) && ast_expression_accept(tree, c",")):
+		if (((method == 14) || (method == 18)) && ast_expression_accept(tree, c",")):
 			int fallback = ast_expression_assignment(tree, depth + 1)
 			if (fallback < 0): return -1
 			if (ast_expression_data_value(tree.result_type[fallback]) == 0): return -1
@@ -1325,10 +1331,19 @@ int ast_expression_hash_call(expression_ast* tree, int receiver, int depth):
 			if (type_is_string(value_type) && type_is_char_pointer(ast_expression_promoted_type(tree.result_type[fallback]))):
 				if (sym_probe(c"str_from_cstr") < 0): return -1
 			tree.next_arg[arg] = fallback
-			method = 15
+			if (method == 14): method = 15
 	if (ast_expression_accept(tree, c")") == 0): return -1
-	if ((method >= 14) && ast_expression_record_value(value_type)): method = method + 128
+	if ((method == 16) || (method == 17)):
+		int element = key_type
+		if (method == 17): element = value_type
+		int list = ast_expression_composite_type(tree, type_kind_list, element, -1, token_start_offset)
+		if (list < 0): return -1
+		tree.high[id] = list_element_slot_size(type_canonical(element))
+		tree.result_type[id] = type_value(list)
+	if (((method == 14) || (method == 15)) && ast_expression_record_value(value_type)): method = method + 128
 	if (sym_probe(ast_expression_method_helper(method)) < 0): return -1
+	if ((method == 18) && type_float_kind(value_type)):
+		if ((sym_probe(c"__w_map_get_or") < 0) || (sym_probe(c"__w_map_set") < 0)): return -1
 	tree.value[id] = method
 	return id
 

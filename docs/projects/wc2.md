@@ -1143,3 +1143,16 @@ Required-mode and differential fixtures cover carry/product boundaries,
 zero inputs, masked shift counts, nested operations, floating-point operand
 coercion, side effects and shadowing. Invalid types and argument counts retain
 their existing diagnostics.
+
+## Task 52: map updates and snapshots
+
+Map add nodes preserve optional deltas, key coercion and receiver/key/delta
+evaluation order. Integer updates use the existing add helper; floating-point
+updates reuse get-or-zero, typed addition and store. Default deltas retain the
+streaming path's conversion behavior.
+
+Map/set keys and map values create insertion-order snapshot lists, staging
+new list types after the closing call. Explicit type syntax continues checking
+element storage rules, while implicit snapshots follow the existing result
+type interning behavior. Tests cover scalar and record copies, narrow keys,
+string keys, floating-point/default updates and diagnostic parity.
