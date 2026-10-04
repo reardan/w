@@ -883,11 +883,16 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		int child = ast_expression_assignment(tree, depth + 1)
 		tree.cast_depth = tree.cast_depth - 1
 		if ((child < 0) || (peek(c")") == 0)): return -1
-		if (ast_expression_scalar_value(tree.result_type[child]) == 0): return -1
-		int got = ast_expression_promoted_type(tree.result_type[child])
+		int child_type = tree.result_type[child]
+		if ((ast_expression_scalar_value(child_type) || type_is_array(child_type) || type_is_slice(child_type)) == 0): return -1
+		if (ast_expression_prepare_value(tree, child_type, token_start_offset) == 0): return -1
+		int got = ast_expression_promoted_type(child_type)
+		int buffer_value = type_get_kind(type_unqualified(got)) == type_kind_slice_value
+		if (buffer_value && (type_get_pointer_level(type_unqualified(want)) > 0)):
+			if (type_decays_to_pointer(want, got) == 0): return -1
 		# coerce_explicit diagnoses truncating an address. Leave that at
 		# the streaming parser's source location and diagnostic order.
-		if (((got == 4) || (type_get_pointer_level(got) > 0)) && (type_get_pointer_level(want) == 0)):
+		if (((got == 4) || (type_get_pointer_level(got) > 0) || buffer_value) && (type_get_pointer_level(want) == 0)):
 			if ((type_float_kind(want) == 0) && (type_get_size(want) < word_size)): return -1
 		if (token_start_offset >= tree.end_offset): return -1
 		ast_expression_advance(tree)
@@ -1122,6 +1127,30 @@ int ast_expression_map_index(expression_ast* tree, int receiver, int depth):
 	return id
 
 
+# The receiver and optional start have been parsed; ':' is consumed.
+int ast_expression_slice(expression_ast* tree, int receiver, int start, int depth):
+	if ((start >= 0) && (ast_expression_scalar_value(tree.result_type[start]) == 0)): return -1
+	int end = -1
+	if (peek(c"]") == 0):
+		end = ast_expression_assignment(tree, depth + 1)
+		if (end < 0): return -1
+		if (ast_expression_scalar_value(tree.result_type[end]) == 0): return -1
+	if ((peek(c"]") == 0) || (sym_probe(c"malloc") < 0)): return -1
+	int type = tree.result_type[receiver]
+	int result = string_value_type
+	if (type_is_string(type) == 0):
+		if (ast_expression_prepare_value(tree, type_real(type), token_start_offset) == 0): return -1
+		result = type_lookup_slice_value(buffer_element_type(type))
+		if (result < 0): return -1
+	ast_expression_advance(tree)
+	int id = expression_ast_add(tree, 'Z', receiver, start)
+	if (id < 0): return -1
+	tree.high[id] = end
+	tree.result_type[id] = result
+	tree.readonly = 1
+	return id
+
+
 int ast_expression_postfix(expression_ast* tree, int depth):
 	int left = ast_expression_atom(tree, depth)
 	while (left >= 0):
@@ -1154,7 +1183,13 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 				element = 2
 				if (type_get_pointer_level(type) > 0): element = type_lookup_previous_pointer(type)
 			if ((element < 0) || (ast_expression_storage_type(element) == 0)): return -1
-			int index = ast_expression_assignment(tree, depth + 1)
+			int index = -1
+			if ((op != 'I') || (peek(c":") == 0)):
+				index = ast_expression_assignment(tree, depth + 1)
+				if (index < 0): return -1
+			if ((op == 'I') && ast_expression_accept(tree, c":")):
+				left = ast_expression_slice(tree, left, index, depth)
+				continue
 			if ((index < 0) || (peek(c"]") == 0)): return -1
 			if (ast_expression_scalar_value(tree.result_type[index]) == 0): return -1
 			ast_expression_advance(tree)

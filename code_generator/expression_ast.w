@@ -370,6 +370,27 @@ void emit_expression_ast(expression_ast* tree, int id):
 		promote(left_type)
 		if (tree.value[id]): add_eax_int32(tree.value[id])
 		return
+	if (op == 'Z'):
+		promote(left_type)
+		push_slot()
+		int start = tree.right[id]
+		if (start < 0): mov_eax_int(0)
+		else:
+			emit_expression_ast(tree, start)
+			promote(tree.result_type[start])
+		push_slot()
+		int end = tree.high[id]
+		if (end < 0):
+			mov_eax_esp_plus(word_size)
+			add_eax_int32(word_size)
+			promote_eax()
+		else:
+			emit_expression_ast(tree, end)
+			promote(tree.result_type[end])
+		push_slot()
+		buffer_range_bounds_check()
+		buffer_push_range_descriptor(left_type, start < 0)
+		return
 	if (op == 'j'):
 		promote(left_type)
 		int base_stack = stack_pos

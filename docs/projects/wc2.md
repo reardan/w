@@ -998,3 +998,18 @@ a new pointer type, and diagnostic recovery. Raw indirect calls preserve
 the descriptor argument because they have no typed parameter requesting
 decay. Buffer slicing, explicit buffer casts and array assignment remain
 separate work.
+
+## Task 41: buffer slices and explicit casts
+
+Slice nodes retain the receiver and optional start/end expressions. Emission
+preserves left-to-right evaluation, omitted-bound defaults, range checks and
+shared backing storage through the existing descriptor helper. Nested array
+and string slices can feed indexing, calls and metadata access.
+
+Explicit array/slice casts stage value promotion before coercion. Matching
+pointer and word-sized integer casts decay to element data; mismatched-pointer
+warnings and sub-word-address errors retain the streaming diagnostic path.
+Tests cover all bound forms, empty/nested slices, mutation through a view,
+cast decay and malformed bounds. A failed start expression is distinguished
+from an omitted start. Required-mode rejection now uses a template format
+specification rather than a supported slice.
