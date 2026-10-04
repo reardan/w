@@ -18,10 +18,14 @@ project quickly and make correct changes.
 - **Language style**: C-like semantics with Python-like surface syntax.
   Whitespace-significant, **tabs** for indentation (spaces produce a compiler
   warning), blocks open with `:`, no semicolons, `#` line comments.
-- **Compiler architecture**: single-pass, syntax-directed code generation
-  (cc500 heritage). There is **no AST and no IR** — grammar rules in
-  `grammar/*.w` emit machine-code bytes immediately through
-  `code_generator/x86.w` (x64 reuses the same module via REX-prefix helpers).
+- **Compiler architecture**: the default path retains single-pass,
+  syntax-directed code generation (cc500 heritage). The opt-in production
+  AST path lowers expressions, statements and executable declarations through
+  backend visitors and passes compiler self-hosting and the full test suite.
+  Use `bin/wv2 --ast-required file.w -o bin/program` or
+  `./wbuild ast_expression_suite`. Bodies are still visited incrementally;
+  there is no retained whole-module AST or IR yet. See the
+  [production AST status](docs/projects/wc2.md#production-compiler-status).
 - **Bootstrap seed**: `./w` at the repo root is a statically linked
   **32-bit x86** ELF binary of the compiler. It is not committed: `./wbuild`
   downloads it from the GitHub release pinned in `SEEDS` (sha256-verified)
@@ -71,7 +75,7 @@ Other useful targets:
 ./wbuild wdbg_web    # browser debugger: bin/wdbg_web file.w prints an https URL
 ./wbuild verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
                      # the first cmp also proves output is host-word-size independent
-./wbuild ast_expression_suite  # full suite with required AST expressions (Python 3)
+./wbuild ast_expression_suite  # full suite with AST lowering and no expression fallback (Python 3)
 ./wbuild warning_test  # asserts the compiler's type/style warnings
 ./wbuild lint_test   # asserts 'w check --lint' / '--fix' (docs/projects/lint.md)
 ./wbuild cuda_smoke  # GPU-only: hand-written PTX vector add through libcuda (not part of 'tests')

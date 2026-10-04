@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Run the production suite with required AST expression compilation.
+"""Run the production suite with AST lowering and required expression coverage.
 
 The pinned seed and explicit AST differential modes retain their original
 commands. Expected compile failures use permissive AST mode so diagnostics

@@ -346,6 +346,39 @@ compilation. The maintainer risk decision required by #489 remains separate
 from this experimental result. The opt-in production experiment below does
 not replace the streaming compiler.
 
+## Production compiler status
+
+The opt-in production path for [#489](https://github.com/reardan/w/issues/489)
+now builds and lowers expression and statement nodes, function boundaries,
+global storage layouts, enum constants and extern bindings. It compiles the
+whole compiler with byte-identical repeated x86/x64 self-hosts and passes the
+full 770-target test suite. This is the production compiler, separate from
+the smaller `wc2` experiment described above.
+
+```sh
+./wbuild ast_expression_verify
+./wbuild ast_expression_suite
+bin/wv2 --ast-required path/to/program.w -o bin/program
+```
+
+The suite runs the normal `tests` manifest with AST lowering and rejects
+expression fallback in positive direct compiler invocations and diagnostic
+fixture children. The full-AST leg of positive image comparisons also rejects
+expression fallback, including fixtures compiled inside the differential test
+driver.
+The pinned seed and explicit reference comparisons retain their original
+modes; expected compilation failures use permissive AST mode to preserve
+legacy diagnostics. Other nested test drivers keep their own compiler modes.
+
+This reaches the compiler-and-tests compilation milestone, while preserving
+the default reference path. It does not complete a persistent, separately
+parsed module frontend: bodies are visited incrementally, some symbol records
+remain borrowed, deferred expressions and generic/helper bodies can be
+reparsed, and type/import declarations still update semantic tables during
+parsing. Module caching and independently retained body trees remain later
+architectural work. Historical task entries below describe each transition
+at the time it landed.
+
 ## Task 5: first production AST expression path
 
 The production compiler now has an experimental `--ast-expressions` option.
@@ -1939,3 +1972,12 @@ imported libc data, float ABI calls, variadic externs, symbol aliases and enums.
 WebAssembly extern images are also identical. Differential diagnostics retain
 invalid object types, aliases, aggregate signatures and constant-folding errors.
 The full suite exercises the existing target-specific import/runtime checks.
+
+## Task 108: enforce the compiler-and-suite milestone
+
+Positive image comparisons now use `--ast-required` for their full-AST leg,
+so a driver-only fixture cannot silently succeed through expression fallback.
+Negative diagnostic comparisons retain permissive full mode. The reusable
+suite gate still applies to the complete normal test manifest, and the
+production status above documents both the reproducible commands and the
+remaining frontend lifetime/phase limitations.

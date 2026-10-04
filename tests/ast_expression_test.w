@@ -38,6 +38,7 @@ process_result* ast_test_compile(char* compiler, char* arch, char* input, char* 
 	i = ast_test_arg(args, i, c"--quiet")
 	if (enabled == 1): i = ast_test_arg(args, i, c"--ast-expressions")
 	if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
+	if (enabled == 3): i = ast_test_arg(args, i, c"--ast-required")
 	if (stats): i = ast_test_arg(args, i, c"--stats")
 	i = ast_test_arg(args, i, input)
 	if (output != 0):
@@ -67,7 +68,11 @@ void ast_test_image_at(char* compiler, char* arch, char* source, int run):
 	char* b = ast_test_path(c".ast")
 	process_result* old = ast_test_compile(compiler, arch, source, a, 0, 0, 0)
 	for enabled in range(1, 3):
-		process_result* ast = ast_test_compile(compiler, arch, source, b, enabled, 0, 0)
+		# Every image in this helper is expected to compile. Reject any
+		# full-mode expression fallback, including in driver-only fixtures.
+		int mode = enabled
+		if (mode == 2): mode = 3
+		process_result* ast = ast_test_compile(compiler, arch, source, b, mode, 0, 0)
 		assert_equal(0, old.status)
 		assert_equal(0, ast.status)
 		assert_strings_equal(old.stdout_text, ast.stdout_text)
