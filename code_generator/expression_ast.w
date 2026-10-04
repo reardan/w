@@ -82,6 +82,33 @@ void emit_expression_ast(expression_ast* tree, int id):
 			else if (kind == 5): alu_rotl32()
 			else: alu_rotr32()
 		return
+	if (op == 'W'):
+		int s = stack_pos
+		int argument = tree.left[id]
+		while (argument >= 0):
+			emit_expression_ast(tree, argument)
+			int got = promote(tree.result_type[argument])
+			if (tree.infer_coercion[argument] == 1): coerce(tree.infer_want[argument], got)
+			if (tree.infer_coercion[argument] == 2): coerce_call_argument(tree.infer_want[argument], got)
+			push_call_argument(got)
+			argument = tree.next_arg[argument]
+		int sym = tree.symbol[id]
+		if (sym >= 0):
+			int[8] types
+			int count = generic_def_param_count(tree.value[id])
+			argument = tree.right[id]
+			for i in range(count):
+				types[i] = tree.value[argument]
+				argument = tree.next_arg[argument]
+			char* name = generic_mangle(generic_def_name(tree.value[id]), cast(int, &types[0]), count)
+			sym_emit_value(sym, name)
+			free(name)
+		else: generic_inst_emit_callee(tree.generic_instance[id])
+		call_eax()
+		pop_to(s)
+		last_call_return_type = tree.high[id]
+		last_call_end = codepos
+		return
 	if (op == 'G'):
 		int sym = tree.symbol[id]
 		int signature = tree.generic_signature[id]

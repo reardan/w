@@ -665,6 +665,64 @@ int ast_expression_generic_parameter(expression_ast* tree, int id, int index):
 	return tree.value[parameter]
 
 
+# Explicit and inferred calls share signature binding and reservation;
+# their argument evaluation and callee placement remain distinct.
+int ast_expression_generic_resolve(expression_ast* tree, int id, int args, int count):
+	int def = tree.value[id]
+	char* mangled = generic_mangle(generic_def_name(def), args, count)
+	int sym = sym_probe(mangled)
+	int inst = generic_inst_lookup(mangled)
+	free(mangled)
+	tree.symbol[id] = sym
+	int arity = -1
+	int result = -1
+	if (sym >= 0):
+		arity = sym_num_args(sym)
+		result = load_int(table + sym + 6)
+	else:
+		int signature = -1
+		if (inst >= 0): signature = generic_insts[inst].signature
+		if (signature >= 0):
+			tree.generic_signature[id] = signature
+			arity = type_function_param_count(signature)
+			result = type_function_return(signature)
+		else:
+			# Repeated calls in one tree share the same reserved signature.
+			for previous in range(id):
+				if (((tree.op[previous] == 'G') || (tree.op[previous] == 'W')) && (tree.generic_signature[previous] >= 0) && ast_expression_generic_same(tree, previous, id)):
+					tree.generic_signature[id] = tree.generic_signature[previous]
+					tree.generic_parameters[id] = tree.generic_parameters[previous]
+					arity = tree.generic_arity[previous]
+					result = tree.high[previous]
+			if (tree.generic_signature[id] < 0):
+				generic_signature_ast* syntax = generic_defs[def].signature_ast
+				if ((syntax == 0) || tree.pending_buffer_types): return -1
+				arity = syntax.count
+				if (arity > 10): return -1
+				result = ast_expression_bind_generic_type(tree, id, syntax.result)
+				if (result < 0): return -1
+				generic_type_ast* parameter = syntax.parameters
+				int tail = -1
+				while (parameter != 0):
+					int type = ast_expression_bind_generic_type(tree, id, parameter)
+					if (type < 0): return -1
+					int bound = expression_ast_add(tree, 'g', -1, -1)
+					if (bound < 0): return -1
+					tree.value[bound] = type
+					if (tail < 0): tree.generic_parameters[id] = bound
+					else: tree.next_arg[tail] = bound
+					tail = bound
+					parameter = parameter.next
+				tree.generic_signature[id] = ast_expression_reserve_signature(tree, id, result, arity)
+				if (tree.generic_signature[id] < 0): return -1
+	if ((arity < 0) || (arity > 10)): return -1
+	if ((result != 0) && (ast_expression_data_value(result) == 0)): return -1
+	tree.high[id] = result
+	tree.generic_arity[id] = arity
+	tree.result_type[id] = type_value(result)
+	return arity
+
+
 int ast_expression_generic_call(expression_ast* tree, int depth):
 	if (nextc != '['): return -1
 	int def = generic_def_lookup(token, 0)
@@ -694,57 +752,8 @@ int ast_expression_generic_call(expression_ast* tree, int depth):
 		if (ast_expression_accept(tree, c",") == 0): break
 	if ((peek(c"]") == 0) || (count != generic_def_param_count(def))): return -1
 	tree.generic_offset[id] = token_start_offset
-	char* mangled = generic_mangle(generic_def_name(def), cast(int, &types[0]), count)
-	int sym = sym_probe(mangled)
-	int inst = generic_inst_lookup(mangled)
-	free(mangled)
-	tree.symbol[id] = sym
-	int arity = -1
-	int result = -1
-	if (sym >= 0):
-		arity = sym_num_args(sym)
-		result = load_int(table + sym + 6)
-	else:
-		int signature = -1
-		if (inst >= 0): signature = generic_insts[inst].signature
-		if (signature >= 0):
-			tree.generic_signature[id] = signature
-			arity = type_function_param_count(signature)
-			result = type_function_return(signature)
-		else:
-			# Repeated calls in one tree share the same reserved signature.
-			for previous in range(id):
-				if ((tree.op[previous] == 'G') && ast_expression_generic_same(tree, previous, id)):
-					tree.generic_signature[id] = tree.generic_signature[previous]
-					tree.generic_parameters[id] = tree.generic_parameters[previous]
-					arity = tree.generic_arity[previous]
-					result = tree.high[previous]
-			if (tree.generic_signature[id] < 0):
-				generic_signature_ast* syntax = generic_defs[def].signature_ast
-				if ((syntax == 0) || tree.pending_buffer_types): return -1
-				arity = syntax.count
-				if (arity > 10): return -1
-				result = ast_expression_bind_generic_type(tree, id, syntax.result)
-				if (result < 0): return -1
-				generic_type_ast* parameter = syntax.parameters
-				tail = -1
-				while (parameter != 0):
-					int type = ast_expression_bind_generic_type(tree, id, parameter)
-					if (type < 0): return -1
-					int bound = expression_ast_add(tree, 'g', -1, -1)
-					if (bound < 0): return -1
-					tree.value[bound] = type
-					if (tail < 0): tree.generic_parameters[id] = bound
-					else: tree.next_arg[tail] = bound
-					tail = bound
-					parameter = parameter.next
-				tree.generic_signature[id] = ast_expression_reserve_signature(tree, id, result, arity)
-				if (tree.generic_signature[id] < 0): return -1
-	if ((arity < 0) || (arity > 10)): return -1
-	if ((result != 0) && (ast_expression_data_value(result) == 0)): return -1
-	tree.high[id] = result
-	tree.generic_arity[id] = arity
-	tree.result_type[id] = type_value(result)
+	int arity = ast_expression_generic_resolve(tree, id, cast(int, &types[0]), count)
+	if (arity < 0): return -1
 	ast_expression_advance(tree)
 	if (token_newline || (ast_expression_accept(tree, c"(") == 0)): return -1
 	count = 0
@@ -766,6 +775,106 @@ int ast_expression_generic_call(expression_ast* tree, int depth):
 		if (ast_expression_accept(tree, c",") == 0): break
 		if (peek(c")")): return -1
 	if ((count != arity) || (ast_expression_accept(tree, c")") == 0)): return -1
+	return id
+
+
+# Inference over simple captured signatures is transactional. Each value
+# argument records the coercion performed at its own binding point, rather
+# than re-coercing it against the final signature after all arguments.
+int ast_expression_generic_infer(expression_ast* tree, int depth):
+	if (nextc != '('): return -1
+	int def = generic_def_lookup(token, 0)
+	generic_signature_ast* syntax = generic_defs[def].signature_ast
+	if ((syntax == 0) || (syntax.count > 10)): return -1
+	int data = 0
+	if (generic_infer_ast_shape(def, syntax.result, &data) == -3): return -1
+	int[10] kinds
+	int[10] shapes
+	generic_type_ast* parameter = syntax.parameters
+	int count = 0
+	while (parameter != 0):
+		int kind = generic_infer_ast_shape(def, parameter, &data)
+		if ((kind == -3) || (count == 10)): return -1
+		kinds[count] = kind
+		shapes[count] = data
+		count = count + 1
+		parameter = parameter.next
+	int id = expression_ast_add(tree, 'W', -1, -1)
+	if (id < 0): return -1
+	tree.value[id] = def
+	tree.generic_parameters[id] = -1
+	tree.generic_signature[id] = -1
+	tree.generic_instance[id] = -1
+	tree.generic_arity[id] = -1
+	int[8] types
+	int arity = generic_def_param_count(def)
+	for i in range(arity): types[i] = -1
+	ast_expression_advance(tree)
+	if (ast_expression_accept(tree, c"(") == 0): return -1
+	count = 0
+	int tail = -1
+	while (peek(c")") == 0):
+		if (count >= syntax.count): return -1
+		int argument = ast_expression_assignment(tree, depth + 1)
+		if (argument < 0): return -1
+		int type = tree.result_type[argument]
+		if (ast_expression_data_value(type) == 0): return -1
+		if (ast_expression_prepare_value(tree, type, token_start_offset) == 0): return -1
+		int got = ast_expression_promoted_type(type)
+		tree.infer_coercion[argument] = 0
+		tree.infer_want[argument] = -1
+		int kind = kinds[count]
+		if (kind >= 0):
+			int bound = types[kind]
+			if ((got == 3) && (shapes[count] == 0)):
+				if (bound < 0): types[kind] = type_lookup(c"int")
+				else:
+					tree.infer_coercion[argument] = 1
+					tree.infer_want[argument] = bound
+			else:
+				if (got == 4): return -1
+				int inferred = got
+				if ((got == string_value_type) || (got == string_literal_type)): inferred = string_type
+				else if (got == float32_value_type): inferred = float32_type
+				else if (got == float64_value_type): inferred = float64_type
+				else if (type_get_kind(got) == type_kind_slice_value):
+					inferred = ast_expression_composite_type(tree, type_kind_slice, type_get_element_type(got), -1, token_start_offset)
+					if (inferred < 0): return -1
+				for level in range(shapes[count]):
+					if (type_get_pointer_level(inferred) == 0): return -1
+					inferred = type_lookup_previous_pointer(inferred)
+					if (inferred < 0): return -1
+				inferred = type_unqualified(inferred)
+				if ((bound >= 0) && (bound != inferred)): return -1
+				types[kind] = inferred
+		else:
+			int want = shapes[count]
+			if (ast_expression_data_value(want) == 0): return -1
+			if (ast_expression_argument_compatible(tree, want, argument) == 0): return -1
+			if (type_is_string(want) && type_is_char_pointer(got)):
+				if (sym_probe(c"str_from_cstr") < 0): return -1
+			tree.infer_coercion[argument] = 2
+			tree.infer_want[argument] = want
+		if (tail < 0): tree.left[id] = argument
+		else: tree.next_arg[tail] = argument
+		tail = argument
+		count = count + 1
+		if (ast_expression_accept(tree, c",") == 0): break
+		if (peek(c")")): return -1
+	if ((count != syntax.count) || (peek(c")") == 0)): return -1
+	tail = -1
+	for i in range(arity):
+		if (types[i] < 0): return -1
+		int argument = expression_ast_add(tree, 'g', -1, -1)
+		if (argument < 0): return -1
+		tree.value[argument] = types[i]
+		if (tail < 0): tree.right[id] = argument
+		else: tree.next_arg[tail] = argument
+		tail = argument
+	tree.generic_offset[id] = token_start_offset
+	if (ast_expression_generic_resolve(tree, id, cast(int, &types[0]), arity) != count): return -1
+	if (type_num_args(tree.high[id]) > 0): return -1
+	ast_expression_advance(tree)
 	return id
 
 
@@ -943,7 +1052,9 @@ int ast_expression_name(expression_ast* tree, int depth):
 		if (kind): return ast_expression_integer_intrinsic(tree, kind, depth)
 		kind = bit_builtin_kind()
 		if (kind): return ast_expression_integer_intrinsic(tree, kind + 3, depth)
-	if (generic_call_ready()): return ast_expression_generic_call(tree, depth)
+	if (generic_call_ready()):
+		if (nextc == '('): return ast_expression_generic_infer(tree, depth)
+		return ast_expression_generic_call(tree, depth)
 	if ((nextc == '(') && struct_value_ctor_ready()):
 		int base = type_lookup(token)
 		if (ast_expression_record_type(base) == 0): return -1
@@ -1990,7 +2101,11 @@ int ast_expression_try_at(int group_offset, int whole):
 			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(&tree, i)
 		for id in range(tree.count):
 			if ((tree.op[id] == 'M') && (tree.value[id] & 256) && (tree.offset[id] == token_start_offset)): sym_lookup(c"it")
-			if ((tree.op[id] == 'G') && (tree.generic_offset[id] == token_start_offset)): ast_expression_commit_generic(&tree, id)
+			if ((tree.op[id] == 'W') && (tree.offset[id] == token_start_offset)):
+				int before = type_count()
+				generic_infer_shapes(tree.value[id])
+				assert1(before == type_count())
+			if (((tree.op[id] == 'G') || (tree.op[id] == 'W')) && (tree.generic_offset[id] == token_start_offset)): ast_expression_commit_generic(&tree, id)
 			if ((tree.op[id] == 't') && (tree.offset[id] == token_start_offset)):
 				if (tree.high[id]): get_token_template_chunk()
 				int length = template_process_chunk(tree.value[id])

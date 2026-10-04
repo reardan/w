@@ -1209,3 +1209,17 @@ Transaction tests use a definition with no source file, verify shape contents
 and cache reuse, and assert unchanged type/placeholder state. Composite
 signatures and new concrete derived types remain on the older extraction
 path. Inferred call expression nodes are the next step.
+
+## Task 57: inferred generic call expressions
+
+Calls with simple captured generic signatures now retain inferred type arguments
+and value arguments in an AST node. Binding proceeds left to right, recording
+constant and concrete-parameter coercions at each argument. Signature reservation
+is shared with explicit generic calls, including nested calls; emission preserves
+the inferred-call ABI where arguments precede loading the callee.
+
+Required-mode and differential fixtures cover recursive and nested calls,
+pointers, strings, slices, containers, record parameters, callback pointers,
+constant coercions and evaluation order. Invalid bindings and unsupported record
+returns preserve diagnostics. Composite signature shapes and unresolved concrete
+derived types still use the streaming fallback.

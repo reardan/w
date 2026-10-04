@@ -43,6 +43,8 @@ struct expression_ast:
 	int[128] generic_offset
 	int[128] generic_instance
 	int[128] generic_arity
+	int[128] infer_coercion
+	int[128] infer_want
 
 
 int ast_expressions_mode
