@@ -97,10 +97,21 @@ process_result* wvm_net_cli(char* endpoint, char* port, char* mode):
 
 
 void test_wvm_net_cli_invalid():
-	process_result* result = wvm_net_cli(c"127.0.0.256:80", c"1", c"denied")
-	assert_equal(125, result.status)
-	asserts(c"CLI diagnoses invalid endpoint", contains(result.stderr_text, c"invalid --net-allow endpoint"))
-	process_result_free(result)
+	list[char*] endpoints = new list[char*]
+	endpoints.push(c"127.0.0.256:80")
+	endpoints.push(c"127.0.0.1x:80")
+	endpoints.push(c"127.0.0.1")
+	endpoints.push(c":80")
+	endpoints.push(c"127.0.0.1:")
+	endpoints.push(c"127.0.0.1:0")
+	endpoints.push(c"127.0.0.1:65536")
+	endpoints.push(c"127.0.0.1:80x")
+	for char* endpoint in endpoints:
+		process_result* result = wvm_net_cli(endpoint, c"1", c"denied")
+		assert_equal(125, result.status)
+		asserts(c"CLI diagnoses invalid endpoint", contains(result.stderr_text, c"invalid --net-allow endpoint"))
+		process_result_free(result)
+	__w_list_free(cast(__w_list*, endpoints))
 
 
 void test_wvm_net_execution():

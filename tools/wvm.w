@@ -125,6 +125,7 @@ int wvm_box(int argc, char** args):
 	return status
 
 
+# A null cell validates the endpoint before checking host KVM access.
 int wvm_net_option(vm_cell* cell, char* endpoint):
 	int split = 0
 	while (endpoint[split] != 0 && endpoint[split] != ':'): split = split + 1
@@ -134,6 +135,8 @@ int wvm_net_option(vm_cell* cell, char* endpoint):
 	address[split] = 0
 	int port = wvm_timeout(endpoint + split + 1)
 	if (port < 1 || port > 65535): return 0
+	if (cell_net_ipv4(&address[0]) < 0): return 0
+	if (cell == 0): return 1
 	return cell_net_allow(cell, &address[0], port)
 
 
@@ -171,7 +174,11 @@ int main(int argc, int argv):
 		if (strcmp(option, c"--timeout-ms") == 0): timeout = wvm_timeout(value)
 		else if (strcmp(option, c"--fs-root") == 0): fs_root = value
 		else if (strcmp(option, c"--max-threads") == 0): max_threads = wvm_timeout(value)
-		else if (strcmp(option, c"--net-allow") != 0):
+		else if (strcmp(option, c"--net-allow") == 0):
+			if (wvm_net_option(0, value) == 0):
+				wvm_error(c"invalid --net-allow endpoint; expected IPV4:PORT")
+				return 125
+		else:
 			wvm_error(c"unknown run option")
 			return 2
 	policy_end = at
