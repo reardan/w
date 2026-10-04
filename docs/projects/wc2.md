@@ -1823,3 +1823,18 @@ type and slot, change the argument-frame size, then compare emitted local and
 parameter addresses with the expected backend instructions. The copied name
 also survives in last-identifier tracking. This removes one scope-lifetime
 dependency without claiming persistence for every expression operand.
+
+## Task 101: control-flow expression children
+
+If/while guards now build conditional-branch nodes owning their expression
+root and resolved false target. Switch selectors and individual case values
+likewise own expression children; backend visitors handle selector validation,
+hidden-slot storage, word/text comparisons and the matching branch. The
+reference path shares the extracted switch lowering helpers.
+
+Native-image, runtime and diagnostic comparisons on both host widths cover
+short-circuit calls, elif chains, loop exits, selector evaluation exactly once,
+ordered multi-value cases, text comparisons, nesting and loop/switch break
+interactions. Source completion, condition linting and case coercion keep their
+existing order. Statistics count guards, selectors and case values. Compound
+body dispatch and control-region lifetimes remain streaming at this stage.

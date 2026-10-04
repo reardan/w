@@ -126,3 +126,95 @@ int ast_statement_expression(int prefix_only):
 	ast_expression_statements_emitted = ast_expression_statements_emitted + 1
 	expect_or_newline(c";")
 	return 1
+
+
+# A conditional branch owns its expression and resolved failure target.
+# Enclosing if/while bodies still use their streaming scope dispatcher.
+void ast_statement_guard(int target, int outer_condition):
+	statement_ast node
+	node.kind = ast_stmt_guard
+	node.source_file = file
+	node.line = diag_token_line
+	node.column = diag_token_column
+	node.start_offset = token_start_offset
+	node.target = target
+	node.expression_tree = 0
+	node.expression_root = -1
+	lint_condition_begin()
+	increment_statement_context = 0
+	expression_lhs_readonly = 0
+	expression_ast tree
+	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
+	if (root < 0):
+		promote(expression())
+		node.end_offset = token_start_offset
+	else:
+		node.expression_tree = &tree
+		node.expression_root = root
+		node.end_offset = tree.end_offset
+		emit_statement_ast_expression(&node)
+		ast_statement_finish_expression(&node)
+		emit_guard_ast_value(&node)
+	lint_condition_end()
+	condition_context = outer_condition
+	emit_guard_ast_branch(&node)
+
+
+# Expression children remain live until their switch value has been lowered.
+# Case bodies and enclosing break-region lifetimes stay in the dispatcher.
+int ast_statement_switch_value():
+	statement_ast node
+	node.kind = ast_stmt_switch_value
+	node.source_file = file
+	node.line = diag_token_line
+	node.column = diag_token_column
+	node.start_offset = token_start_offset
+	node.expression_tree = 0
+	node.expression_root = -1
+	increment_statement_context = 0
+	expression_lhs_readonly = 0
+	expression_ast tree
+	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
+	if (root < 0):
+		node.expression_type = expression()
+		node.end_offset = token_start_offset
+	else:
+		node.expression_tree = &tree
+		node.expression_root = root
+		node.end_offset = tree.end_offset
+		emit_statement_ast_expression(&node)
+		ast_statement_finish_expression(&node)
+	return emit_switch_value_ast(&node)
+
+
+int ast_statement_switch_case(int type, int slot, int body_target, int next_target):
+	statement_ast node
+	node.kind = ast_stmt_switch_case
+	node.source_file = file
+	node.line = diag_token_line
+	node.column = diag_token_column
+	node.start_offset = token_start_offset
+	node.declared_type = type
+	node.stack_depth = slot
+	node.expression_tree = 0
+	node.expression_root = -1
+	emit_switch_case_ast_begin(&node)
+	increment_statement_context = 0
+	expression_lhs_readonly = 0
+	expression_ast tree
+	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
+	if (root < 0):
+		node.expression_type = expression()
+		node.end_offset = token_start_offset
+	else:
+		node.expression_tree = &tree
+		node.expression_root = root
+		node.end_offset = tree.end_offset
+		emit_statement_ast_expression(&node)
+		ast_statement_finish_expression(&node)
+	emit_switch_case_ast_compare(&node)
+	node.branch_nonzero = accept(c",")
+	node.target = next_target
+	if (node.branch_nonzero): node.target = body_target
+	emit_switch_case_ast_branch(&node)
+	return node.branch_nonzero

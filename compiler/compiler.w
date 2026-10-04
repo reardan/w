@@ -818,6 +818,9 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_raw_statements_emitted = 0
 	ast_constants_folded = 0
 	ast_declarations_emitted = 0
+	ast_guards_emitted = 0
+	ast_switch_values_emitted = 0
+	ast_switch_cases_emitted = 0
 	ast_roots_emitted = 0
 	ast_roots_fallback = 0
 	ast_audit_mode = 0
@@ -1108,6 +1111,14 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(c"\n")
 		print_error(c"AST goto/label statements: ")
 		print_error(itoa(ast_goto_statements_emitted))
+		print_error(c"\n")
+		print_error(c"AST switch selectors: ")
+		print_error(itoa(ast_switch_values_emitted))
+		print_error(c"\nAST switch case values: ")
+		print_error(itoa(ast_switch_cases_emitted))
+		print_error(c"\n")
+		print_error(c"AST conditional branches: ")
+		print_error(itoa(ast_guards_emitted))
 		print_error(c"\n")
 		print_error(c"AST local declarations: ")
 		print_error(itoa(ast_declarations_emitted))

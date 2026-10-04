@@ -25,24 +25,38 @@ stay usable as ordinary identifiers everywhere else.
 void statement();
 
 
+int ast_statement_switch_value();
+int ast_statement_switch_case(int type, int slot, int body_target, int next_target);
+void emit_switch_value(int scrutinee_type);
+void emit_switch_case_compare(int scrutinee_type, int value_type);
+
+
+int switch_value():
+	if (ast_expressions_mode >= 2): return ast_statement_switch_value()
+	int type = promote(expression())
+	emit_switch_value(type)
+	return type
+
+
+int switch_case_value(int type, int slot, int body_target, int next_target):
+	if (ast_expressions_mode >= 2): return ast_statement_switch_case(type, slot, body_target, next_target)
+	push_slot_copy(slot)
+	int value_type = promote(expression())
+	emit_switch_case_compare(type, value_type)
+	int more = accept(c",")
+	if (more): be_br_nonzero_discard(body_target)
+	else: be_br_zero_discard(next_target)
+	return more
+
+
 int switch_statement():
 	if (accept(c"switch") == 0): return 0
 
 	int switch_tab_level = tab_level
 
 	# The scrutinee is evaluated exactly once, into a hidden stack slot
-	int scrutinee_type = promote(expression())
-	if (type_float_kind(scrutinee_type)): error(c"switch on a float value is not supported")
-	if (type_is_var(scrutinee_type)): error(c"switch on a var value is not supported")
-	if (type_stack_words(scrutinee_type) != 1):
-		error(c"switch expression must be a word-sized value")
-	# int-likes compare as words; string and char* scrutinees compare
-	# case values by contents. Anything else (pointers, structs,
-	# containers, functions) could only ever match by identity.
-	int scrutinee_class = value_class(scrutinee_type)
-	if ((value_class_is_int_like(scrutinee_class) == 0) && (scrutinee_class != VC_STRING) && (scrutinee_class != VC_CSTR)):
-		value_type_error(c"switch expression must be an int-like value, a string or a char*, got", scrutinee_type)
-	int scrutinee_slot = push_slot()
+	int scrutinee_type = switch_value()
+	int scrutinee_slot = stack_pos
 
 	expect(c":")
 	if ((token_newline == 0) && (token[0] != 0)): error(c"switch body must start on a new line")
@@ -71,24 +85,7 @@ int switch_statement():
 			int h_body = be_ctrl_block()
 			int more = 1
 			while (more):
-				push_slot_copy(scrutinee_slot)
-				int value_type = promote(expression())
-				if (types_compatible_with_expression(scrutinee_type, value_type) == 0):
-					warn_type_mismatch(c"case", scrutinee_type, value_type)
-				if (type_decays_to_pointer(scrutinee_type, value_type)): promote_eax()
-				pop_ebx_slot()
-				# text scrutinees compare contents against text values;
-				# a constant case (a null check) stays a word compare
-				int value_class_got = value_class(value_type)
-				if ((scrutinee_class == VC_STRING) && (value_class_got == VC_STRING)):
-					emit_runtime_call_ebx_eax(c"__w_string_equal")
-				else if ((scrutinee_class == VC_CSTR) && ((value_class_got == VC_CSTR) || (value_type == string_literal_type))):
-					emit_runtime_call_ebx_eax(c"__w_cstr_equal")
-				else:
-					alu_cmp_set(0x94) /* sete: scrutinee == value */
-				more = accept(c",")
-				if (more): be_br_nonzero_discard(h_body)
-				else: be_br_zero_discard(h_next_case)
+				more = switch_case_value(scrutinee_type, scrutinee_slot, h_body, h_next_case)
 			be_ctrl_end(h_body)
 		else if (accept(c"default")): seen_default = 1
 		else: error(c"'case' or 'default' expected in switch body")

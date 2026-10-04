@@ -168,3 +168,65 @@ void emit_declaration_ast_storage(statement_ast* node):
 	ast_declarations_emitted = ast_declarations_emitted + 1
 	if (node.inferred): emit_inferred_local_storage(node.declared_type)
 	else: emit_typed_local_storage(node.declared_type, node.has_initializer)
+
+
+void emit_guard_ast_value(statement_ast* node):
+	promote(node.expression_type)
+
+
+void emit_guard_ast_branch(statement_ast* node):
+	be_br_zero_discard(node.target)
+	ast_guards_emitted = ast_guards_emitted + 1
+
+
+void emit_switch_value(int scrutinee_type):
+	if (type_float_kind(scrutinee_type)): error(c"switch on a float value is not supported")
+	if (type_is_var(scrutinee_type)): error(c"switch on a var value is not supported")
+	if (type_stack_words(scrutinee_type) != 1):
+		error(c"switch expression must be a word-sized value")
+	# int-likes compare as words; string and char* scrutinees compare
+	# case values by contents. Anything else (pointers, structs,
+	# containers, functions) could only ever match by identity.
+	int scrutinee_class = value_class(scrutinee_type)
+	if ((value_class_is_int_like(scrutinee_class) == 0) && (scrutinee_class != VC_STRING) && (scrutinee_class != VC_CSTR)):
+		value_type_error(c"switch expression must be an int-like value, a string or a char*, got", scrutinee_type)
+	push_slot()
+
+
+void emit_switch_case_compare(int scrutinee_type, int value_type):
+	int scrutinee_class = value_class(scrutinee_type)
+	if (types_compatible_with_expression(scrutinee_type, value_type) == 0):
+		warn_type_mismatch(c"case", scrutinee_type, value_type)
+	if (type_decays_to_pointer(scrutinee_type, value_type)): promote_eax()
+	pop_ebx_slot()
+	# text scrutinees compare contents against text values;
+	# a constant case (a null check) stays a word compare
+	int value_class_got = value_class(value_type)
+	if ((scrutinee_class == VC_STRING) && (value_class_got == VC_STRING)):
+		emit_runtime_call_ebx_eax(c"__w_string_equal")
+	else if ((scrutinee_class == VC_CSTR) && ((value_class_got == VC_CSTR) || (value_type == string_literal_type))):
+		emit_runtime_call_ebx_eax(c"__w_cstr_equal")
+	else:
+		alu_cmp_set(0x94) /* sete: scrutinee == value */
+
+
+int emit_switch_value_ast(statement_ast* node):
+	int type = promote(node.expression_type)
+	emit_switch_value(type)
+	ast_switch_values_emitted = ast_switch_values_emitted + 1
+	return type
+
+
+void emit_switch_case_ast_begin(statement_ast* node):
+	push_slot_copy(node.stack_depth)
+
+
+void emit_switch_case_ast_compare(statement_ast* node):
+	int type = promote(node.expression_type)
+	emit_switch_case_compare(node.declared_type, type)
+
+
+void emit_switch_case_ast_branch(statement_ast* node):
+	if (node.branch_nonzero): be_br_nonzero_discard(node.target)
+	else: be_br_zero_discard(node.target)
+	ast_switch_cases_emitted = ast_switch_cases_emitted + 1

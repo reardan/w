@@ -120,11 +120,7 @@ void if_statement_tail():
 	condition_context = 1
 	int p1 = be_ctrl_block() /* ends after the whole if/elif/else */
 	int p2 = be_ctrl_block() /* ends at the elif/else branch */
-	lint_condition_begin()
-	promote(expression())
-	lint_condition_end()
-	condition_context = outer_condition
-	be_br_zero_discard(p2)
+	statement_guard(p2, outer_condition)
 	enclosing_tab_level = if_tab_level
 	statement()
 	be_br(p1)

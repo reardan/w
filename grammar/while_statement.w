@@ -51,6 +51,22 @@ void loop_leave(int* outer):
 	free(outer)
 
 
+void ast_statement_guard(int target, int outer_condition);
+
+
+# The caller opens control regions and installs the condition context.
+# Source/lint completion precedes the branch in both compilation modes.
+void statement_guard(int target, int outer_condition):
+	if (ast_expressions_mode >= 2):
+		ast_statement_guard(target, outer_condition)
+		return
+	lint_condition_begin()
+	promote(expression())
+	lint_condition_end()
+	condition_context = outer_condition
+	be_br_zero_discard(target)
+
+
 # while ( expression ) statement — parentheses are optional before ':'
 int while_statement():
 	if (accept(c"while") == 0): return 0
@@ -63,11 +79,7 @@ int while_statement():
 	# if not expression: leave the loop
 	int outer_condition = condition_context
 	condition_context = 1
-	lint_condition_begin()
-	promote(expression())
-	lint_condition_end()
-	condition_context = outer_condition
-	be_br_zero_discard(loop_break_chain)
+	statement_guard(loop_break_chain, outer_condition)
 
 	enclosing_tab_level = while_tab_level
 	statement()

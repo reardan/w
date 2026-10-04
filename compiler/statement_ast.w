@@ -12,6 +12,9 @@ const int ast_stmt_goto = 8
 const int ast_stmt_label = 9
 const int ast_stmt_raw_asm = 10
 const int ast_stmt_declaration = 11
+const int ast_stmt_guard = 12
+const int ast_stmt_switch_value = 13
+const int ast_stmt_switch_case = 14
 
 
 struct statement_ast:
@@ -35,6 +38,7 @@ struct statement_ast:
 	int binding
 	int inferred
 	int has_initializer
+	int branch_nonzero
 
 
 int ast_simple_statements_emitted
@@ -50,3 +54,8 @@ int ast_goto_statements_emitted
 int ast_raw_statements_emitted
 
 int ast_declarations_emitted
+
+int ast_guards_emitted
+
+int ast_switch_values_emitted
+int ast_switch_cases_emitted
