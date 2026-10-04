@@ -1,6 +1,9 @@
-# Cell syscall boundary: no guest descriptor or pathname is ever passed
-# through to the host. Only explicitly listed services are available.
+# Cell syscall boundary: descriptors are virtual and paths are confined
+# by explicit capabilities. Only listed services are available.
 import lib.vmm.x64
+import lib.vmm.filesystem
+import lib.vmm.network
+import lib.vmm.threads
 
 
 int cell_mmap(vm_cell* cell, int address, int length, int prot, int flags, int fd, int offset):
@@ -77,6 +80,12 @@ int cell_read(vm_cell* cell, int fd, int address, int length):
 
 
 int cell_syscall(vm_cell* cell):
+	int result = cell_thread_syscall(cell)
+	if (result != -4096): return result
+	result = cell_net_syscall(cell)
+	if (result != -4096): return result
+	result = cell_fs_syscall(cell)
+	if (result != -4096): return result
 	char* regs = cell.regs
 	int nr = load_int64(regs)
 	int a = load_int64(regs + 40) # rdi

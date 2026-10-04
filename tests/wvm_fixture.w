@@ -30,7 +30,7 @@ int main(int argc, int argv):
 	if (strcmp(mode, c"deny") == 0):
 		assert_equal(-13, open(c"/etc/passwd", 0, 0))
 		assert_equal(-38, unlink(c"bin/wvm_host_sentinel"))
-		assert_equal(-38, syscall(41, 2, 1, 0))
+		assert_equal(-13, syscall(41, 2, 1, 0))
 		assert_equal(-38, syscall(57, 0, 0, 0))
 		assert_equal(-9, write(7, c"no", 2))
 		assert_equal(-14, write(1, cast(char*, 4096), 1))

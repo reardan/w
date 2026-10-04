@@ -23,6 +23,15 @@ void cell_descriptor(char* destination, int access, int flags):
 	destination[6] = flags
 
 
+void cell_cpu_trampoline(vm_cell* cell, int address):
+	char* trampoline = cell.ram + address
+	mem_copy[char](trampoline, c"\xe6\xe9\x48\xa3", 4)
+	save_int64(trampoline + 4, address + 256)
+	mem_copy[char](trampoline + 12, c"\x0f\x20\xd8\x0f\x22\xd8\x48\xa1", 8)
+	save_int64(trampoline + 20, address + 256)
+	mem_copy[char](trampoline + 28, c"\x48\x0f\x07", 3)
+
+
 int cell_cpu_setup(vm_cell* cell):
 	kvm_machine* vm = cell.machine
 	if (kvm_set_supported_cpuid(vm) < 0): return cell_fail(cell, c"KVM CPUID setup failed")
@@ -71,12 +80,10 @@ int cell_cpu_setup(vm_cell* cell):
 	# OUT preserves syscall arguments. Flush the guest TLB before every
 	# SYSRET so host edits to page permissions take effect immediately.
 	# RAX is saved in supervisor scratch, never on an untrusted stack.
-	char* trampoline = cell.ram + CELL_TRAMPOLINE
-	mem_copy[char](trampoline, c"\xe6\xe9\x48\xa3", 4)
-	save_int64(trampoline + 4, CELL_TRAMPOLINE + 256)
-	mem_copy[char](trampoline + 12, c"\x0f\x20\xd8\x0f\x22\xd8\x48\xa1", 8)
-	save_int64(trampoline + 20, CELL_TRAMPOLINE + 256)
-	mem_copy[char](trampoline + 28, c"\x48\x0f\x07", 3)
+	cell_cpu_trampoline(cell, CELL_TRAMPOLINE)
+	# Second equivalent PML4 forces a TLB flush when switching vCPUs.
+	# Siblings may have changed shared page permissions while parked.
+	save_int64(cell.ram + 61440, 8192 | 7)
 	int pg = 1
 	save_int64(s + 224, (pg << 31) | 65587) # PG|WP|NE|ET|MP|PE
 	save_int64(s + 240, 4096) # CR3

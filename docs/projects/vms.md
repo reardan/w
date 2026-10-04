@@ -1,9 +1,10 @@
 # Agent VMs: instant microVMs with shared memory (`wvm`)
 
-Status: M0 memory primitives and M1–M2 KVM cell execution implemented
-(issue [#519](https://github.com/reardan/w/issues/519)). M3–M8 remain design.
-The current runner executes static x64 W binaries on a Linux x64 KVM
-host; it does not yet run Linux guests, shells, or agent sessions.
+Status: M0 memory primitives, M1–M2 KVM cells, confined filesystem access,
+TCP allowlists, and guest threads are implemented (issue
+[#519](https://github.com/reardan/w/issues/519)). An initial Linux box backend
+uses QEMU microvm/KVM with a supplied kernel and initramfs. Snapshots,
+overlays, daemon/harness integration, and the other M3–M8 items remain design.
 
 Goal: let agents (wharness, wexec steps, anything driving the toolchain)
 run work inside virtual machines that start and stop in well under a
@@ -14,7 +15,8 @@ paying for its own copy of the same image.
 
 `bin/wvm run` now executes a static x64 W program in a KVM cell, with
 guest page permissions, checked syscall buffers, bounded output, and a
-wall-clock timeout. Agent tool calls in w-private still run as host
+wall-clock timeout. Filesystem and network capabilities are explicit options;
+threads use per-thread vCPUs. `bin/wvm box` boots a full Linux guest. Agent tool calls in w-private still run as host
 processes; the daemon and harness integration remain M5 work.
 
 The recommendation is a two-tier design on one W-native VMM core:
@@ -38,7 +40,7 @@ cells with snapshots, then the `wvmd` daemon and wharness integration,
 then Tier 2. Each milestone lands on its own (§9).
 
 Sections 3–8 describe the target architecture, including later work.
-The M0 and M1–M2 usage sections in §9 describe the implemented surface.
+The usage sections in §9 describe the implemented surface and its limits.
 
 ## 1. What exists today
 
@@ -50,7 +52,8 @@ The M0 and M1–M2 usage sections in §9 describe the implemented surface.
 | File-backed mmap | `mmap_fd(addr, len, prot, flags, fd, offset)` with byte offsets on Linux x86/x64/ARM64; anonymous `mmap` retained | `lib/__arch__/*/syscalls.w` |
 | memfd, seals, madvise | Implemented on Linux x86/x64/ARM64; named constants and lifecycle contract in `lib/memfd.w`; other targets return `-1` for the new primitives | `lib/memfd.w`, `tests/memfd_test.w` |
 | userfaultfd | **Missing** (later milestone) | |
-| KVM / cells | Single-vCPU x64 execution, ELF validation, ring-3 syscall gates, fault vectors/RIP, timeout | `lib/kvm.w`, `lib/vmm/`, `tools/wvm.w` |
+| KVM / cells | Per-thread x64 vCPUs, ELF validation, syscall gates, confined filesystem/TCP capabilities, fault vectors/RIP, timeout | `lib/kvm.w`, `lib/vmm/`, `tools/wvm.w` |
+| Linux boxes | QEMU microvm/KVM backend, supplied kernel/initramfs, W PID 1, optional 9p/user-mode network devices | `lib/vmm/box.w`, `tools/wvm_init.w` |
 | Signal handlers on x64 | Working, including the SA_RESTORER thunk (needed to kick a vCPU out of `KVM_RUN`) | `lib/signal.w` |
 | Where `syscall` instructions come from | Runtime stubs the compiler emits: `syscall`, `syscall7`, `thread_create` (clone), `stack_create` (mmap), `__w_tls_set` (arch_prctl), plus the ELF exit stub | `code_generator/x64_asm.w:68-118`, `code_generator/elf_64.w:49` |
 | Daemon pattern | AF_UNIX server with client auto-start | `tools/wbuildd.w`, `docs/projects/wbuildd.md`, `lib/json_rpc.w` |
@@ -289,8 +292,8 @@ Each milestone lands green on its own.
 | M4 | Policy, overlay fs, deterministic clock/random, symbolized faults | Policy-denial tests; replay test |
 | M5 | `wvmd`, warm pools, shared regions; wharness `--sandbox=cell` | wharness mock-mode run inside cells |
 | M6 | `--syscall-abi=vmcall` in the compiler | `verify_x64`; measured syscall round-trip win |
-| M7 | Boxes (or the Firecracker backend, §10); `wvm_init`; `--sandbox=box` | bash + git inside a box from a snapshot |
-| M8 | Threads as vCPUs, wdbg attach to cells, userfaultfd layered snapshots, arm64 KVM and macOS Hypervisor.framework ports | per-port gates |
+| M7 | **Partial:** QEMU/KVM microvm boxes and `wvm_init`; daemon integration and snapshots pending | Real Linux boot, filesystem I/O, guest threads; bash + git snapshot gate pending |
+| M8 | **Threads implemented:** per-thread vCPUs, futexes, TLS, preemption. wdbg attach, layered snapshots, and other host ports pending | `wvm_thread_test`; per-port gates pending |
 
 A ptrace backend (`PTRACE_SYSEMU`) for the cell syscall handler is
 worth adding alongside M2: the same policy code runs on hosts without
@@ -322,7 +325,7 @@ It establishes memory semantics, not VM spawn latency or RSS gates
 (M3). The [Linux memfd documentation](https://man7.org/linux/man-pages/man2/memfd_create.2.html)
 describes the required unmap-before-seal lifecycle.
 
-### Running a cell (M1–M2)
+### Running a cell (M1–M2 and capability extensions)
 
 From the repository root, on Linux x64 with access to `/dev/kvm`:
 
@@ -358,12 +361,19 @@ Current syscall support:
   releases backing pages but does not recycle virtual addresses yet.
 - `arch_prctl` setting FS/GS (W TLS), realtime/monotonic `clock_gettime`,
   nonblocking `getrandom`, virtual `getpid`/`gettid`, and `sched_yield`.
-- File opens return `-EACCES`. Other unsupported calls, including
-  sockets, fork/exec, clone/threads, and signal registration, return
-  `-ENOSYS`; the CLI reports the last unsupported syscall number.
+- Shared-address-space `clone`, per-thread FS/GS and register state,
+  `set_tid_address`, private/shared futex wait/wake with relative timeouts,
+  per-thread `exit`, and group `exit_group`. Threads use separate KVM vCPUs
+  scheduled on one host thread with a 5 ms preemption quantum. Default
+  limit: 16 threads, configurable with `--max-threads 1..64`.
+- Optional confined filesystem and IPv4 TCP capabilities (below).
+  File opens and sockets are denied by default. Fork/exec and guest signal
+  registration remain unsupported (`-ENOSYS`); the CLI reports the last
+  unsupported syscall number.
 
-No guest path or descriptor is passed to a host file operation. Every
-syscall copy checks overflow, mapped pages, and read/write permissions.
+Guest descriptors are translated through bounded private tables; guest paths
+are resolved beneath an explicitly granted root. Every syscall copy checks
+overflow, mapped pages, and read/write permissions.
 Low 2 MiB guest memory holds supervisor-only tables and traps. The
 256 MiB guest address space reserves 2–128 MiB for anonymous mappings,
 128–224 MiB for static ELF load segments, heap growth up to 240 MiB,
@@ -377,11 +387,109 @@ The watchdog interrupts even a guest that never makes a syscall. The
 `lib.vmm.cell` API is one-shot and must be serialized in a single-threaded
 host process: it temporarily owns SIGALRM, restores the previous handler
 and signal mask, and refuses an already active/pending real-time alarm.
-`cell_free` releases the vCPU, VM, run mapping, guest RAM, and buffers.
+`cell_free` releases every vCPU, VM, run mapping, guest RAM, buffer,
+filesystem descriptor, and socket.
 
-This is the M2 cell substrate. VM snapshots/reset, filesystem overlays,
-deterministic services, the daemon, Linux boxes, and instruction-count
-budgets remain later milestones. The threat model in §2 still applies.
+VM snapshots/reset, filesystem overlays, deterministic services, the daemon,
+and instruction-count budgets remain later milestones. The threat model
+in §2 still applies.
+
+### Filesystem and networking capabilities
+
+```sh
+./bin/wvm run --fs-root ./workspace program.w
+./bin/wvm run --fs-root ./workspace --fs-write program.w
+./bin/wvm run --net-allow 127.0.0.1:8080 --max-threads 8 program.w
+./wbuild wvm_fs_test wvm_net_test wvm_thread_test
+```
+
+`--fs-root` pins a host directory before execution. Guest absolute paths
+are relative to that root; directory descriptors remain confined
+capabilities. `openat2` enforces BENEATH, NO_SYMLINKS, NO_MAGICLINKS, and
+NO_XDEV. All symlinks, devices, FIFOs, and mount crossings are denied.
+Linux `openat2` and host `/proc/self/fd` are required; unsupported hosts
+fail closed. Regular-file I/O, seeking, stat/statx, directory enumeration,
+and confined mkdir/unlink/rename/truncate/sync operations are supported.
+The default is read-only; `--fs-write` permits **actual writes to the
+exported host directory**, not a copy-on-write overlay. File descriptors
+occupy guest slots 3–63. Library: `cell_fs_configure(cell, root, writable)`.
+
+Repeat `--net-allow IPV4:PORT` to allow up to 64 exact TCP destinations.
+There is no DNS resolution, UDP, raw socket, listener, Unix-domain socket,
+or arbitrary-destination send support. Socket descriptors occupy guest
+slots 64–127. Host sockets always remain nonblocking; guest blocking I/O
+and `poll` park the calling vCPU so other guest threads can progress,
+while the cell deadline remains active. Closing a socket cancels parked
+operations on it with `EBADF`, so descriptor reuse cannot redirect them.
+Guest nonblocking sockets return
+Linux `EAGAIN`/`EINPROGRESS` as appropriate. Library:
+`cell_net_allow(cell, ipv4, port)` before `cell_run`.
+
+Thread support targets W's static runtime and Linux's shared-thread clone
+subset, not general process cloning or complete pthread/glibc compatibility.
+The fixed anonymous-mapping arena still limits repeated stack allocation.
+
+### Running a Linux box
+
+```sh
+./wbuild wvm wvm_init
+./bin/wvm box --kernel /path/to/bzImage --initrd /path/to/root.cpio.gz
+./bin/wvm box --kernel /path/to/bzImage --initrd /path/to/root.cpio.gz \
+  --cpus 4 --memory-mb 512 --timeout-ms 60000 \
+  --fs-root ./workspace --network --append 'quiet -- /bin/sh /job.sh'
+```
+
+Boxes use the installed `qemu-system-x86_64` microvm machine with KVM
+acceleration and the host CPU. They require Linux x64, accessible
+`/dev/kvm`, a compatible x64 Linux kernel, and a supplied initramfs with
+an executable `/init`. There is no runtime download or emulation fallback.
+QEMU provides Linux boot and virtio devices; the cell backend remains W's
+native KVM implementation. This is an initial box backend, not the daemon,
+vsock job protocol, disk-image manager, or snapshot milestone.
+
+The default is 2 vCPUs, 256 MiB RAM, a 30-second deadline, no network
+device, and no host filesystem export. Limits are 1–64 vCPUs, 64–32768 MiB,
+and 1–600000 ms. The console streams to inherited stdio. Deadline expiry
+kills and reaps QEMU, restores terminal settings, and returns 124;
+launch/configuration errors return nonzero. Otherwise the CLI returns
+**QEMU's exit status**, not a command's exit status; a kernel panic followed
+by reboot can also produce QEMU status 0. Inspect the guest console/job
+protocol for workload success.
+
+Place `bin/wvm_init` at `/init` in an initramfs to use the supplied small W
+PID 1. It mounts proc/sys/dev, executes the arguments after the kernel
+command line's `--` (default `/bin/sh`), prints `wvm-init: exit N`, syncs,
+and reboots. Include the command and its required binaries/libraries in
+the initramfs; this tool does not assemble a distribution. An initramfs
+should include `/dev/console` (character device 5:1) for early output.
+The exit line is guest-controlled console output, not an authenticated
+host status channel.
+
+`--fs-root` adds a read-only virtio-9p export tagged `work`; mount inside
+Linux with `mount -t 9p -o trans=virtio,version=9p2000.L work /workspace`.
+`--fs-write` explicitly permits host writes using QEMU's mapped-xattr
+security model. `--network` adds QEMU user-mode networking with outbound
+connectivity (including host services), DHCP/DNS, and no inbound forwarding.
+This is broader than the cell's destination allowlist. The guest kernel
+must provide virtio-mmio, 9p/virtio filesystem, and virtio-net support
+(built in or included modules), and the guest must configure its network.
+No tap device, elevated host privileges, or host network reconfiguration
+is needed.
+
+`wvm_box_test` always checks device policy/argument construction. Set
+`WVM_TEST_KERNEL=/path/to/bzImage` to also generate a minimal initramfs and
+boot a real Linux guest that exercises filesystem I/O and thread creation:
+
+```sh
+WVM_TEST_KERNEL=/path/to/bzImage ./wbuild --no-cache wvm_box_test
+```
+
+The implementation was boot-tested with Alpine's 6.12 virt kernel.
+The minimal boot fixture does not contain 9p/network driver modules;
+box export and network device selection have construction tests, while
+cell filesystem and TCP paths have real KVM integration coverage.
+Backend references: [QEMU microvm](https://www.qemu.org/docs/master/system/i386/microvm.html)
+and [QEMU invocation](https://www.qemu.org/docs/master/system/invocation.html).
 
 ## 10. Open decisions
 
@@ -389,10 +497,9 @@ budgets remain later milestones. The threat model in §2 still applies.
    Hosts without `/dev/kvm` run loader/layout tests and skip execution;
    a required KVM CI runner or the proposed ptrace backend remains to
    be configured.
-2. **Tier 2 build vs adopt.** Recommended: build Tier 1 natively (it is
-   small and plays to W's strengths), and start Tier 2 as a Firecracker
-   backend behind the same `wvmd` API, replacing it with a W-native box
-   runtime later if it earns its keep.
+2. **Tier 2 build vs adopt.** The initial implementation adopts QEMU
+   microvm with KVM. A W-native runtime or Firecracker backend can replace
+   it behind a future `wvmd` API if measured deployment needs justify it.
 3. **Repo split.** VMM core, cells, `wvmd` and the compiler flag in
    `w`; the wharness integration in `w-private`.
 4. **macOS.** Hypervisor.framework allows one VM per process, so on the

@@ -84,6 +84,7 @@ modules:
 	lib.time
 	lib.ttf
 	lib.utf8
+	lib.vmm.box
 	lib.vmm.cell
 	lib.window
 	lib.wmeta

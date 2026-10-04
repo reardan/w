@@ -130,3 +130,40 @@ int kvm_set_msr(kvm_machine* vm, int index, int value):
 	if (count == 1): return 0
 	if (count < 0): return count
 	return -22
+
+
+# Additional vCPU in an existing VM. Dup the shared descriptors so
+# ordinary kvm_destroy owns and releases every descriptor it sees.
+int kvm_create_cpu(kvm_machine* child, kvm_machine* parent, int id):
+	mem_fill[char](cast(char*, child), 0, sizeof(kvm_machine))
+	child.system_fd = -1
+	child.vm_fd = -1
+	child.cpu_fd = -1
+	child.system_fd = syscall(32, parent.system_fd, 0, 0)
+	if (child.system_fd < 0): return 0
+	child.vm_fd = syscall(32, parent.vm_fd, 0, 0)
+	if (child.vm_fd < 0): return 0
+	child.cpu_fd = sys_ioctl(parent.vm_fd, kvm_request(0, 0, 65), id)
+	if (child.cpu_fd < 0): return 0
+	child.run_size = parent.run_size
+	int address = mmap_fd(0, child.run_size, 3, MAP_SHARED, child.cpu_fd, 0)
+	if (address < 0 && address > -4096): return 0
+	child.run = cast(char*, address)
+	return 1
+
+
+# XSAVE preserves SSE/AVX and all enabled extended state when cloning.
+# XSAVE2 reports the host-dependent size (AMX can exceed 4096 bytes).
+int kvm_copy_xsave(kvm_machine* destination, kvm_machine* source):
+	int size = sys_ioctl(source.system_fd, kvm_request(0, 0, 3), 208)
+	int request = 207
+	if (size <= 0):
+		size = 4096
+		request = 164
+	if (size > 1048576): return -22
+	char* state = malloc(size)
+	mem_fill[char](state, 0, size)
+	int result = sys_ioctl(source.cpu_fd, kvm_request(2, 4096, request), cast(int, state))
+	if (result == 0): result = sys_ioctl(destination.cpu_fd, kvm_request(1, 4096, 165), cast(int, state))
+	free(state)
+	return result

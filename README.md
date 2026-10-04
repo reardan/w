@@ -69,7 +69,8 @@ Other useful targets:
 ```sh
 ./wbuild wdbg        # build the in-process debugger (bin/wdbg)
 ./wbuild wdbg_web    # browser debugger: bin/wdbg_web file.w prints an https URL
-./wbuild wvm         # Linux x64 KVM cell runner: bin/wvm run tests/hello.w
+./wbuild wvm         # Linux x64 KVM cells: bin/wvm run tests/hello.w
+./wbuild wvm_init    # Linux guest PID 1; wvm box --kernel FILE --initrd FILE
 ./wbuild verify_x64  # x64 self-host fixpoint (wv2_64 == wv3_64 == wv4_64);
                      # the first cmp also proves output is host-word-size independent
 ./wbuild warning_test  # asserts the compiler's type/style warnings

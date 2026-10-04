@@ -1,7 +1,7 @@
-# One-shot cell execution. Linux x64, one vCPU, one execution per cell.
+# One-shot cell execution. Linux x64, bounded guest threads per cell.
 # Owns SIGALRM during execution: callers must serialize runs and not use
 # an active ITIMER_REAL. The previous signal disposition is restored.
-# A timer interrupts KVM_RUN even when guest code never makes syscalls.
+# A periodic timer preempts KVM_RUN; a monotonic deadline bounds the run.
 import lib.vmm.syscalls
 import lib.signal
 
@@ -42,6 +42,7 @@ int cell_run(vm_cell* cell, int timeout_ms):
 	kvm_machine* vm = cell.machine
 	if (kvm_set_memory(vm, 0, 0, cell.ram, CELL_RAM_SIZE) < 0): return cell_fail(cell, c"KVM memory registration failed")
 	if (cell_cpu_setup(cell) == 0): return 0
+	if (cell_threads_init(cell) == 0): return 0
 	char[32] old_timer
 	mem_fill[char](&old_timer[0], 0, 32)
 	if (syscall(36, 0, cast(int, &old_timer[0]), 0) < 0): return cell_fail(cell, c"getitimer failed")
@@ -76,8 +77,9 @@ int cell_run(vm_cell* cell, int timeout_ms):
 		return cell_fail(cell, c"cannot install SIGALRM watchdog")
 	char[32] timer
 	mem_fill[char](&timer[0], 0, 32)
-	save_int64(&timer[16], timeout_ms / 1000)
-	save_int64(&timer[24], (timeout_ms % 1000) * 1000)
+	save_int64(&timer[8], 5000) # periodic five millisecond timeslice
+	save_int64(&timer[24], 5000)
+	cell.deadline_ms = time_monotonic_ms() + timeout_ms
 	cell_timer_expired = 0
 	cell_timer_run = vm.run
 	int armed = syscall(38, 0, cast(int, &timer[0]), 0)
@@ -86,7 +88,36 @@ int cell_run(vm_cell* cell, int timeout_ms):
 		armed = -1
 		cell_fail(cell, c"cannot unblock SIGALRM")
 	int exits = 0
-	while (armed == 0 && cell.exited == 0 && cell_timer_expired == 0):
+	int timed_out = 0
+	while (armed == 0 && cell.exited == 0):
+		if (time_monotonic_ms() >= cell.deadline_ms):
+			timed_out = 1
+			break
+		if (cell_timer_expired):
+			cell_threads* threads = cast(cell_threads*, cell.thread_state)
+			threads.rotate = 1
+			cell_timer_expired = 0
+		int runnable = cell_threads_choose(cell)
+		if (runnable < 0):
+			cell_fail(cell, c"cannot resume guest thread")
+			break
+		if (runnable == 0):
+			sleep_ms(1)
+			continue
+		vm = cell.machine
+		cell_timer_run = vm.run
+		vm.run[1] = 0
+		int retry = cell_thread_retry(cell)
+		if (retry < 0):
+			cell_fail(cell, c"cannot retry guest I/O")
+			break
+		if (retry):
+			int retried = cell_syscall(cell)
+			save_int64(cell.regs, retried)
+			if (kvm_set_regs(vm, cell.regs) < 0):
+				cell_fail(cell, c"cannot resume guest I/O")
+				break
+			if (retried == -4097): continue
 		int status = kvm_run(vm)
 		if (status == -4): continue # EINTR, including the wall timer
 		if (status < 0):
@@ -108,7 +139,7 @@ int cell_run(vm_cell* cell, int timeout_ms):
 		if (port == 234 && rip >= 32773 && rip < 36864 && (rip - 32773) % 16 == 0):
 			cell_record_fault(cell)
 			break
-		if (port != 233 || rip != CELL_TRAMPOLINE):
+		if (port != 233 || rip != cell_thread_gate(cell)):
 			cell_fail(cell, c"I/O outside syscall gate")
 			break
 		int result = cell_syscall(cell)
@@ -125,11 +156,11 @@ int cell_run(vm_cell* cell, int timeout_ms):
 	syscall7(14, 0, cast(int, &alarm_mask), 0, 8, 0, 0)
 	mem_fill[char](&timer[0], 0, 32)
 	syscall(38, 0, cast(int, &timer[0]), 0)
-	if (syscall7(128, cast(int, &alarm_mask), 0, cast(int, &timer[0]), 8, 0, 0) == 14): cell_timer_expired = 1
+	syscall7(128, cast(int, &alarm_mask), 0, cast(int, &timer[0]), 8, 0, 0)
 	cell_timer_run = 0
 	rt_sigaction(14, cast(int*, &old_action[0]), 0)
 	syscall7(14, 2, cast(int, &old_mask), 0, 8, 0, 0)
-	if (cell_timer_expired):
+	if (timed_out):
 		cell.status = 124
 		cell.exited = 1
 		cell_fail(cell, c"guest timed out")

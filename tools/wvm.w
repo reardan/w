@@ -2,6 +2,7 @@
 # Local cell runner. Source compilation happens on the host; only the
 # resulting static x64 program executes in KVM. No host-exec fallback.
 import lib.vmm.cell
+import lib.vmm.box
 import lib.process
 import lib.file
 import lib.str
@@ -47,8 +48,53 @@ char* wvm_read_image(char* path, int* length):
 	return image
 
 
+int wvm_box(int argc, char** args):
+	vm_box_options* options = box_options_new()
+	int at = 2
+	int valid = 1
+	while (at < argc && valid):
+		char* option = args[at]
+		at = at + 1
+		if (strcmp(option, c"--network") == 0): options.network = 1
+		else if (strcmp(option, c"--fs-write") == 0): options.fs_write = 1
+		else if (at >= argc): valid = 0
+		else:
+			char* value = args[at]
+			at = at + 1
+			if (strcmp(option, c"--kernel") == 0): options.kernel = value
+			else if (strcmp(option, c"--initrd") == 0): options.initrd = value
+			else if (strcmp(option, c"--append") == 0): options.command_line = value
+			else if (strcmp(option, c"--fs-root") == 0): options.fs_root = value
+			else if (strcmp(option, c"--cpus") == 0): options.cpus = wvm_timeout(value)
+			else if (strcmp(option, c"--memory-mb") == 0): options.memory_mb = wvm_timeout(value)
+			else if (strcmp(option, c"--timeout-ms") == 0): options.timeout_ms = wvm_timeout(value)
+			else: valid = 0
+	if (valid == 0 || box_options_valid(options) == 0):
+		wvm_error(c"usage: wvm box --kernel FILE --initrd FILE [--append TEXT] [--cpus 1..64] [--memory-mb 64..32768] [--timeout-ms N] [--fs-root DIR [--fs-write]] [--network]")
+		free(options)
+		return 2
+	int status = box_run(options)
+	free(options)
+	if (status == 124): wvm_error(c"Linux guest deadline exceeded")
+	if (status == 125): wvm_error(c"Linux guests require accessible /dev/kvm and qemu-system-x86_64 in PATH")
+	return status
+
+
+int wvm_net_option(vm_cell* cell, char* endpoint):
+	int split = 0
+	while (endpoint[split] != 0 && endpoint[split] != ':'): split = split + 1
+	if (split == 0 || split > 15 || endpoint[split] != ':'): return 0
+	char[16] address
+	mem_copy[char](&address[0], endpoint, split)
+	address[split] = 0
+	int port = wvm_timeout(endpoint + split + 1)
+	if (port < 1 || port > 65535): return 0
+	return cell_net_allow(cell, &address[0], port)
+
+
 int main(int argc, int argv):
 	char** args = cast(char**, argv)
+	if (argc >= 2 && strcmp(args[1], c"box") == 0): return wvm_box(argc, args)
 	if (argc == 2 && strcmp(args[1], c"available") == 0):
 		kvm_machine machine
 		int available = kvm_create(&machine)
@@ -57,19 +103,36 @@ int main(int argc, int argv):
 		wvm_error(c"Linux x64 KVM is unavailable")
 		return 77
 	if (argc < 3 || strcmp(args[1], c"run") != 0):
-		wvm_error(c"usage: wvm run [--timeout-ms N] <file.w|static-x64-elf> [guest args...]")
+		wvm_error(c"usage: wvm run [--timeout-ms N] [--fs-root DIR [--fs-write]] [--net-allow IPV4:PORT] [--max-threads N] <file.w|static-x64-elf> [guest args...]")
 		return 2
 	int at = 2
 	int timeout = 5000
-	if (strcmp(args[at], c"--timeout-ms") == 0):
-		if (argc < 5):
-			wvm_error(c"--timeout-ms needs a value and an image")
+	char* fs_root = 0
+	int fs_write = 0
+	int max_threads = 16
+	int policy_end = 2
+	while (at < argc && args[at][0] == '-'):
+		char* option = args[at]
+		at = at + 1
+		if (strcmp(option, c"--") == 0): break
+		if (strcmp(option, c"--fs-write") == 0):
+			fs_write = 1
+			continue
+		if (at >= argc):
+			wvm_error(c"missing option value")
 			return 2
-		timeout = wvm_timeout(args[at + 1])
-		at = at + 2
-		if (timeout < 0):
-			wvm_error(c"timeout must be 1..600000 ms")
+		char* value = args[at]
+		at = at + 1
+		if (strcmp(option, c"--timeout-ms") == 0): timeout = wvm_timeout(value)
+		else if (strcmp(option, c"--fs-root") == 0): fs_root = value
+		else if (strcmp(option, c"--max-threads") == 0): max_threads = wvm_timeout(value)
+		else if (strcmp(option, c"--net-allow") != 0):
+			wvm_error(c"unknown run option")
 			return 2
+	policy_end = at
+	if (at >= argc || timeout < 1 || max_threads < 1 || max_threads > 64 || (fs_write && fs_root == 0)):
+		wvm_error(c"missing image or invalid policy: timeout 1..600000, threads 1..64; --fs-write requires --fs-root")
+		return 2
 	int probe = kvm_open_system()
 	if (probe < 0):
 		wvm_error(c"cannot open /dev/kvm; Linux x64 KVM access is required")
@@ -124,7 +187,21 @@ int main(int argc, int argv):
 		free(image)
 		wvm_error(c"cannot allocate guest RAM")
 		return 125
-	int loaded = cell_elf_load(cell, image, length)
+	cell.max_threads = max_threads
+	int configured = 1
+	if (fs_root != 0): configured = cell_fs_configure(cell, fs_root, fs_write)
+	int option_at = 2
+	while (option_at < policy_end && configured):
+		char* option = args[option_at]
+		option_at = option_at + 1
+		if (strcmp(option, c"--") == 0): break
+		if (strcmp(option, c"--fs-write") == 0): continue
+		if (strcmp(option, c"--net-allow") == 0):
+			configured = wvm_net_option(cell, args[option_at])
+			if (configured == 0): cell_fail(cell, c"invalid --net-allow endpoint; expected IPV4:PORT")
+		option_at = option_at + 1
+	int loaded = 0
+	if (configured): loaded = cell_elf_load(cell, image, length)
 	free(image)
 	if (loaded): loaded = cell_stack(cell, argc - at, args + at * __word_size__)
 	if (loaded): cell_run(cell, timeout)

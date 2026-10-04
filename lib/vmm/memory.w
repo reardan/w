@@ -42,6 +42,15 @@ struct vm_cell:
 	string_builder* output
 	string_builder* errors
 	char* error
+	void* fs_state
+	void* fs_cleanup
+	void* net_state
+	void* net_cleanup
+	void* thread_state
+	void* thread_cleanup
+	void* thread_io_wait
+	int deadline_ms
+	int max_threads
 
 
 int cell_fail(vm_cell* cell, char* error):
@@ -66,11 +75,24 @@ vm_cell* cell_new():
 	cell.fault_vector = -1
 	cell.unsupported_syscall = -1
 	cell.status = 125
+	cell.max_threads = 16
 	return cell
+
+
+type cell_cleanup_fn = fn(vm_cell*) -> void
 
 
 void cell_free(vm_cell* cell):
 	if (cell == 0): return
+	if (cell.thread_cleanup != 0):
+		cell_cleanup_fn* cleanup = cast(cell_cleanup_fn*, cell.thread_cleanup)
+		cleanup(cell)
+	if (cell.fs_cleanup != 0):
+		cell_cleanup_fn* cleanup = cast(cell_cleanup_fn*, cell.fs_cleanup)
+		cleanup(cell)
+	if (cell.net_cleanup != 0):
+		cell_cleanup_fn* cleanup = cast(cell_cleanup_fn*, cell.net_cleanup)
+		cleanup(cell)
 	if (cell.machine != 0):
 		kvm_destroy(cell.machine)
 		free(cell.machine)
