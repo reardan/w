@@ -93,6 +93,7 @@ void ast_test_image(char* compiler, char* arch, int run):
 	ast_test_image_at(compiler, arch, c"tests/ast_scalar_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_logic_expression_fixture.w", run)
 	ast_test_image_at(compiler, arch, c"tests/ast_remaining_expression_fixture.w", run)
+	ast_test_image_at(compiler, arch, c"tests/ast_mutation_expression_fixture.w", run)
 
 
 void test_ast_expression_images_and_host_widths():
@@ -234,6 +235,28 @@ void test_ast_full_expression_coverage_gate():
 	assert_contains(required.stderr_text, c"code_generator/integer.w")
 	process_result_free(required)
 	unlink(path)
+	free(path)
+
+
+void test_ast_mutation_expression_diagnostics():
+	ast_test_diagnostics(c"int main():\n\tint x = 1\n\tx = x\n\tif (x = 2): return x\n\treturn x\n")
+	ast_test_diagnostics(c"int main():\n\tconst int x = 1\n\treturn (x += 2)\n")
+	ast_test_diagnostics(c"int main(): return (1 = 2)\n")
+	ast_test_diagnostics(c"int main():\n\tfloat32 x = 1.5\n\treturn (x %= 2)\n")
+	ast_test_diagnostics(c"int main():\n\tint* p = 0\n\tint x = 1\n\treturn (p = x)\n")
+
+
+void test_ast_mutation_expression_path_is_exercised():
+	char* path = ast_test_path(c"_mutation.w")
+	char* output = ast_test_path(c"_mutation")
+	assert1(file_write_text(path, c"int main():\n\tint x = 1\n\treturn (x += 2)\n"))
+	process_result* ast = ast_test_compile(c"bin/wv2", c"x86", path, output, 1, 0, 1)
+	assert_equal(0, ast.status)
+	assert_contains(ast.stderr_text, c"AST expressions: 1\n")
+	process_result_free(ast)
+	unlink(output)
+	unlink(path)
+	free(output)
 	free(path)
 
 
@@ -427,7 +450,7 @@ void test_ast_expression_debugger_eval():
 	free(path)
 
 
-# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/operator_overload_test.w
+# wbuild: binary=ast_expression_test tag=tests dep=build_x64 dep=wdbg dep=wdbg_x64 data=tests/ast_expression_fixture.w data=tests/ast_typed_expression_fixture.w data=tests/ast_scalar_expression_fixture.w data=tests/ast_logic_expression_fixture.w data=tests/ast_remaining_expression_fixture.w data=tests/ast_mutation_expression_fixture.w data=tests/operator_overload_test.w
 # wbuild: step="bin/wv2 repl.w -o bin/ast_repl"
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"

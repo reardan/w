@@ -59,7 +59,6 @@ int ast_expression_root_end():
 	int i = 0
 	while ((i < 2048) && (index + i + 1 < getchar_limit[file])):
 		int ch = bytes[index + i] & 255
-		int following = bytes[index + i + 1] & 255
 		if ((parens == 0) && (brackets == 0)):
 			if ((ch == ')') || (ch == ']') || (ch == ',') || (ch == ';') || (ch == '}') || (ch == '#') || (ch == 10)):
 				if (ternaries): return -1
@@ -68,7 +67,6 @@ int ast_expression_root_end():
 			if (ch == '?'): ternaries = ternaries + 1
 			if (ch == ':'): ternaries = ternaries - 1
 		if ((ch == 10) || (ch == '#')): return -1
-		if ((ch == '=') && (following != '=') && (previous != '=') && (previous != '!') && (previous != '<') && (previous != '>')): return -1
 		int allowed = (ch >= '0') && (ch <= '9')
 		if ((ch >= 'a') && (ch <= 'z')): allowed = 1
 		if ((ch >= 'A') && (ch <= 'Z')): allowed = 1
@@ -125,6 +123,7 @@ int ast_expression_accept(expression_ast* tree, char* spelling):
 
 
 int ast_expression_conditional(expression_ast* tree, int depth);
+int ast_expression_assignment(expression_ast* tree, int depth);
 
 
 # These predicates inspect existing types only. No inferred types, imports,
@@ -177,24 +176,23 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	int arity = sym_num_args(sym)
 	if ((arity < 0) || (arity > 10)): return -1
 	if ((sym_variadic_fixed_args(sym) >= 0) || (sym_w_variadic_fixed_args(sym) >= 0)): return -1
-	if (sym_is_generator(sym) || sym_is_kernel(sym) || sym_is_asm_stub(sym)): return -1
-	if (sym_got_vaddr(sym)): return -1
+	if (sym_is_generator(sym) || sym_is_kernel(sym)): return -1
 	int result = load_int(table + sym + 6)
-	if (ast_expression_scalar_type(result) == 0): return -1
+	if ((result != 0) && (result != 4) && (ast_expression_scalar_type(result) == 0)): return -1
 	if (ast_expression_accept(tree, c"(") == 0): return -1
 	int count = 0
 	int previous = -1
 	while (peek(c")") == 0):
 		if (count >= arity): return -1
 		int param = sym_param_type(sym, count)
-		if (ast_expression_scalar_type(param) == 0): return -1
-		int arg = ast_expression_conditional(tree, depth + 1)
+		if ((param >= 0) && (ast_expression_scalar_type(param) == 0)): return -1
+		int arg = ast_expression_assignment(tree, depth + 1)
 		if (arg < 0): return -1
 		if (ast_expression_scalar_value(tree.result_type[arg]) == 0): return -1
 		int got = ast_expression_promoted_type(tree.result_type[arg])
 		# Let the streaming parser issue argument diagnostics at its exact
 		# source position, including warnings promoted by --strict.
-		if (types_compatible_with_expression(param, got) == 0): return -1
+		if ((param >= 0) && (types_compatible_with_expression(param, got) == 0)): return -1
 		if (previous < 0): tree.left[id] = arg
 		else: tree.next_arg[previous] = arg
 		previous = arg
@@ -207,6 +205,7 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	ast_expression_advance(tree)
 	tree.op[id] = 'C'
 	tree.result_type[id] = type_value(result)
+	if (result == 4): tree.result_type[id] = 3
 	return id
 
 
@@ -278,7 +277,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 		int want = ast_expression_cast_type(tree)
 		if ((want < 0) || (ast_expression_accept(tree, c",") == 0)): return -1
 		tree.cast_depth = tree.cast_depth + 1
-		int child = ast_expression_conditional(tree, depth + 1)
+		int child = ast_expression_assignment(tree, depth + 1)
 		tree.cast_depth = tree.cast_depth - 1
 		if ((child < 0) || (peek(c")") == 0)): return -1
 		if (ast_expression_scalar_value(tree.result_type[child]) == 0): return -1
@@ -329,7 +328,7 @@ int ast_expression_unary(expression_ast* tree, int depth):
 
 int ast_expression_atom(expression_ast* tree, int depth):
 	if (ast_expression_accept(tree, c"(")):
-		int child = ast_expression_conditional(tree, depth + 1)
+		int child = ast_expression_assignment(tree, depth + 1)
 		if ((child < 0) || (peek(c")") == 0)): return -1
 		if (token_start_offset >= tree.end_offset): return -1
 		ast_expression_advance(tree)
@@ -356,7 +355,7 @@ int ast_expression_postfix(expression_ast* tree, int depth):
 			if (type_get_pointer_level(type) <= 0): return -1
 			int element = type_lookup_previous_pointer(type)
 			if ((element < 0) || (ast_expression_storage_type(element) == 0)): return -1
-			int index = ast_expression_conditional(tree, depth + 1)
+			int index = ast_expression_assignment(tree, depth + 1)
 			if ((index < 0) || (peek(c"]") == 0)): return -1
 			if (ast_expression_scalar_value(tree.result_type[index]) == 0): return -1
 			ast_expression_advance(tree)
@@ -537,7 +536,7 @@ int ast_expression_conditional(expression_ast* tree, int depth):
 	# A wresult pointer's '?' belongs to postfix error propagation.
 	if (result_propagate_struct(type_real(ct)) >= 0): return -1
 	ast_expression_advance(tree)
-	int yes = ast_expression_conditional(tree, depth + 1)
+	int yes = ast_expression_assignment(tree, depth + 1)
 	if ((yes < 0) || (ast_expression_accept(tree, c":") == 0)): return -1
 	int no = ast_expression_conditional(tree, depth + 1)
 	if (no < 0): return -1
@@ -552,6 +551,37 @@ int ast_expression_conditional(expression_ast* tree, int depth):
 	tree.high[id] = no
 	if ((conditional_arm_is_value(result) || type_is_value(result)) == 0): result = type_value(type_real(result))
 	tree.result_type[id] = result
+	return id
+
+
+# Scalar stores are AST nodes as well as values. Unsupported/lint-bearing
+# assignments fall back before binding uses, emitting code or diagnostics.
+int ast_expression_assignment(expression_ast* tree, int depth):
+	if ((depth > 96) || (expr_nesting_depth + depth >= 1000)): return -1
+	int left = ast_expression_conditional(tree, depth)
+	if (left < 0): return -1
+	int op = compound_assign_op()
+	if ((op == 0) && (peek(c"=") == 0)): return left
+	if (lint_mode): return -1
+	int lt = tree.result_type[left]
+	if (type_is_value(lt) || (lt == 3) || type_is_const(lt)): return -1
+	if (ast_expression_scalar_type(lt) == 0): return -1
+	ast_expression_advance(tree)
+	int right = ast_expression_assignment(tree, depth + 1)
+	if (right < 0): return -1
+	if (ast_expression_scalar_value(tree.result_type[right]) == 0): return -1
+	int rt = ast_expression_promoted_type(tree.result_type[right])
+	int result = rt
+	if (op):
+		int kind = binary_float_kind(ast_expression_promoted_type(lt), rt)
+		if (kind && ((op != '+') && (op != '-') && (op != '*') && (op != '/'))): return -1
+		result = 3
+		if (kind): result = float_binary_result_type(kind)
+	if (types_compatible_with_expression(lt, result) == 0): return -1
+	int id = expression_ast_add(tree, '=', left, right)
+	if (id < 0): return -1
+	tree.value[id] = op
+	tree.result_type[id] = type_value(lt)
 	return id
 
 
@@ -585,10 +615,10 @@ int ast_expression_try_at(int group_offset, int whole):
 	tree.cast_depth = cast_context
 	char* saved = generic_reparse_save()
 	int serial = token_serial
-	int root = ast_expression_conditional(&tree, 1)
+	int root = ast_expression_assignment(&tree, 1)
 	int accepted = (root >= 0) && (token_start_offset == end)
 	if (whole == 0): accepted = accepted && peek(c")")
-	if (accepted): accepted = ast_expression_scalar_value(tree.result_type[root])
+	if (accepted): accepted = ast_expression_scalar_value(tree.result_type[root]) || (tree.result_type[root] == type_value(0))
 	getchar_seek(file, load_ptr(saved + 7 * __word_size__))
 	generic_reparse_restore(saved)
 	token_serial = serial

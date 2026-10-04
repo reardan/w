@@ -23,14 +23,34 @@ void emit_expression_ast(expression_ast* tree, int id):
 			while (arg >= 0):
 				emit_expression_ast(tree, arg)
 				int got = promote(tree.result_type[arg])
-				coerce_call_argument(sym_param_type(sym, count), got)
+				int param_type = sym_param_type(sym, count)
+				if (param_type >= 0): coerce_call_argument(param_type, got)
 				push_call_argument_compact(got, 0)
 				count = count + 1
 				arg = tree.next_arg[arg]
-			finish_call(4, s, count, sym, 0, load_int(table + sym + 6), count, 0, -1)
+			int declared_return = load_int(table + sym + 6)
+			if (declared_return == 4): declared_return = -1
+			finish_call(4, s, count, sym, 0, declared_return, count, 0, -1)
 		return
 	emit_expression_ast(tree, tree.left[id])
 	int left_type = tree.result_type[tree.left[id]]
+	if (op == '='):
+		expression_is_assignment = 1
+		push_slot()
+		int subop = tree.value[id]
+		int loaded = left_type
+		if (subop):
+			loaded = promote(left_type)
+			push_slot()
+		emit_expression_ast(tree, tree.right[id])
+		int rt = promote(tree.result_type[tree.right[id]])
+		if (subop): rt = compound_assign_apply(subop, loaded, rt)
+		coerce(left_type, rt)
+		if (subop): pop_ebx_slot()
+		else: pop_ebx()
+		assign_store(left_type)
+		if (subop == 0): stack_pos = stack_pos - 1
+		return
 	if ((op == 'a') || (op == 'o')):
 		promote(left_type)
 		int h = be_ctrl_block()

@@ -554,3 +554,20 @@ substantial gaps. Both full-expression compiler host widths produce the same
 images as the streaming compiler and are covered by repeated self-host checks.
 The expression test matrix compares both AST modes against the default path,
 including malformed input and statement-boundary diagnostics.
+
+## Task 11: scalar mutations and direct calls
+
+Scalar assignment and compound assignment now have AST nodes. They retain the
+lvalue's declared width, evaluate its address once, preserve right-associative
+chains, and return the stored value. The visitor reuses `assign_store` and
+`compound_assign_apply`; REPL assignment suppression remains intact. Const,
+non-lvalue, incompatible and aggregate stores still fall back, as do stores
+when lint mode requires source-sensitive assignment diagnostics.
+
+Direct calls now also accept void results, fixed imported-function wrappers,
+and fixed-arity assembly stubs. Unknown parameter metadata skips coercion just
+as the streaming call path does; known parameters retain the same checks and
+coercion. Variadic, generator, kernel and indirect calls remain separate work.
+Tests cover nested stores in calls and conditionals, skipped stores, pointer
+stores, float compound assignment, boolean stores and void calls on all six
+image targets, plus diagnostic parity and explicit AST-hit assertions.
