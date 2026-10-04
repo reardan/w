@@ -5,6 +5,9 @@ Design: [issue #514](https://github.com/reardan/w/issues/514), proposed
 This file is the in-tree copy of that design plus the implementation
 status. Source files are authoritative where this text and they differ.
 
+The follow-up implementation and qualification for issue #522 are documented in
+[Distributed storage qualification](distributed_followup.md).
+
 ## Implementation status
 
 | Stage | Deliverable | Status |
@@ -99,7 +102,8 @@ Known follow-ups found during the work: `task_xchan`'s cross-thread wake
 can race a timeout/cancel resume (move it to `task_remote_call`, see
 `async.md`); arm64 Linux could get real `lib/fs.w` syscalls once qemu
 testing is available; `tls_connect` crashes on a null `server_name`;
-`uint` comparisons compile as signed; chunked snapshot transfer for Raft.
+`uint` comparisons compile as signed. Chunked snapshot transfer is now covered
+by the #522 follow-up linked above.
 
 ## Goal
 

@@ -173,3 +173,11 @@ plumbing, `libs/standard/crypto/` hashing.
   and thesis §4.2.3's leader-lease/check-quorum refinement to fully
   close the disruptive-removed-server gap without relying on pre-vote
   alone.
+
+
+## Storage follow-up (#522)
+
+Faultable storage integration, chunked snapshots, durable application batches,
+ReadIndex, bounded maintenance, and benchmarks are implemented in
+[Distributed storage qualification](distributed_followup.md). That document
+supersedes the earlier single-frame snapshot follow-up notes above.

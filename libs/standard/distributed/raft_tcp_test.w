@@ -449,14 +449,19 @@ void test_partial_head_accounting_with_slow_peer():
 	# strictly increasing up to the very last send), proving the byte
 	# stream never desynced.
 	int expect = total - raft_tcp_dropped_frames(a)
-	rt_pump_until(a, b, 0, expect, 200000)
-	assert_equal(expect, raft_tcp_inbox_count(b))
-	assert_equal(0, raft_tcp_pending_bytes(a, 2))
-	assert_equal(0, raft_tcp_pending_frames(a, 2))
+	# Receive incrementally: the inbox is bounded, so a slow consumer
+	# applies backpressure instead of accumulating thousands of messages.
 	int last = 0
-	for k in range(expect):
+	int received = 0
+	for pump in range(200000):
+		if (received == expect): break
+		raft_tcp_pump(a)
+		raft_tcp_pump(b)
+		assert1(b.inbox.length <= b.max_inbox_messages)
+		assert1(b.inbox_bytes <= b.max_inbox_bytes)
 		raft_msg* got = raft_tcp_recv(b)
-		assert1(cast(int, got) != 0)
+		if (cast(int, got) == 0): continue
+		received = received + 1
 		assert_equal(raft_msg_append, got.type)
 		assert_equal(1, got.from)
 		assert_equal(2, got.to)
@@ -464,6 +469,9 @@ void test_partial_head_accounting_with_slow_peer():
 		asserts(c"terms strictly increasing", term_v > last)
 		last = term_v
 		raft_msg_free(got)
+	assert_equal(expect, received)
+	assert_equal(0, raft_tcp_pending_bytes(a, 2))
+	assert_equal(0, raft_tcp_pending_frames(a, 2))
 	asserts(c"newest frame survived", last == total)
 	raft_tcp_free(a)
 	raft_tcp_free(b)

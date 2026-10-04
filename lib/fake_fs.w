@@ -81,6 +81,10 @@ const int FAKE_FS_OP_RENAME = 6
 const int FAKE_FS_OP_UNLINK = 7
 const int FAKE_FS_OP_MKDIR = 8
 const int FAKE_FS_OP_SYNC_DIR = 9   # sync_dir, and sync on a directory fd
+const int FAKE_FS_OP_SEEK = 11
+const int FAKE_FS_OP_TRUNCATE = 12
+const int FAKE_FS_ZERO = -2
+
 const int FAKE_FS_OP_CRASH = 10     # trace only
 
 const int FAKE_FS_FD_BASE = 1000
@@ -533,6 +537,7 @@ int fake_fs_op_read(void* self, int fd, char* buffer, int length, io_result* r):
 	if (length <= 0): return fake_fs_finish(fs, FAKE_FS_OP_READ, length, r, 0, 0)
 	int err = fake_fs_fault(fs, FAKE_FS_OP_READ)
 	int n = length
+	if (err == FAKE_FS_ZERO): return fake_fs_finish(fs, FAKE_FS_OP_READ, length, r, 0, 0)
 	if (err == FAKE_FS_SHORT):
 		n = fake_fs_short(fs, length)
 		err = 0
@@ -554,6 +559,7 @@ int fake_fs_op_write(void* self, int fd, char* buffer, int length, io_result* r)
 	fake_fs_inode* node = fake_fs_inode_at(fs, f.inode)
 	int err = fake_fs_fault(fs, FAKE_FS_OP_WRITE)
 	int n = length
+	if (err == FAKE_FS_ZERO): return fake_fs_finish(fs, FAKE_FS_OP_WRITE, length, r, 0, 0)
 	if (err == FAKE_FS_SHORT):
 		n = fake_fs_short(fs, length)
 		err = 0
@@ -650,6 +656,33 @@ int fake_fs_op_mkdir(void* self, char* path, int mode, io_result* r):
 /* Lifecycle and configuration. */
 
 # An empty filesystem whose fault decisions come from seed.
+int fake_fs_op_seek(void* self, int fd, int offset, int whence, io_result* r):
+	fake_fs* fs = cast(fake_fs*, self)
+	fake_fs_fd* f = fake_fs_fd_at(fs, fd)
+	if (cast(int, f) == 0): return fake_fs_finish(fs, FAKE_FS_OP_SEEK, offset, r, 0, FAKE_FS_EBADF)
+	int err = fake_fs_fault(fs, FAKE_FS_OP_SEEK)
+	if (err == FAKE_FS_SHORT): err = 0
+	int pos = offset
+	if (whence == 1): pos = f.offset + offset
+	if (whence == 2): pos = fake_fs_inode_at(fs, f.inode).live.size + offset
+	if (pos < 0 || whence < 0 || whence > 2): err = FAKE_FS_EINVAL
+	if (err == 0): f.offset = pos
+	return fake_fs_finish(fs, FAKE_FS_OP_SEEK, offset, r, pos, err)
+
+
+int fake_fs_op_truncate(void* self, int fd, int length, io_result* r):
+	fake_fs* fs = cast(fake_fs*, self)
+	fake_fs_fd* f = fake_fs_fd_at(fs, fd)
+	if (cast(int, f) == 0 || fake_fs_writable(f.flags) == 0): return fake_fs_finish(fs, FAKE_FS_OP_TRUNCATE, length, r, 0, FAKE_FS_EBADF)
+	int err = fake_fs_fault(fs, FAKE_FS_OP_TRUNCATE)
+	if (err == FAKE_FS_SHORT): err = 0
+	if (length < 0): err = FAKE_FS_EINVAL
+	fake_fs_inode* node = fake_fs_inode_at(fs, f.inode)
+	if (fs.capacity > 0 && length - node.live.size > fs.capacity - fs.used): err = FAKE_FS_ENOSPC
+	if (err == 0): fake_fs_change_live(fs, node, length, 0, 0, 1)
+	return fake_fs_finish(fs, FAKE_FS_OP_TRUNCATE, length, r, 0, err)
+
+
 fake_fs* fake_fs_new(int seed):
 	fake_fs* fs = new fake_fs()
 	fs.rng = prng_new(seed)
@@ -683,6 +716,8 @@ fake_fs* fake_fs_new(int seed):
 	ops.unlink = fake_fs_op_unlink
 	ops.mkdir = fake_fs_op_mkdir
 	ops.sync_dir = fake_fs_op_sync_dir
+	ops.seek = fake_fs_op_seek
+	ops.truncate = fake_fs_op_truncate
 	fs.ops = ops
 	return fs
 

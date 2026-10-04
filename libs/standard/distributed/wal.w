@@ -84,6 +84,7 @@ import lib.bytes
 import lib.mem
 import lib.io
 import lib.fs
+import libs.standard.distributed.storage_io
 
 
 const int wal_version = 1
@@ -110,6 +111,7 @@ const int WAL_TAIL_TORN = 1
 const int WAL_TAIL_CORRUPT = 2
 
 # wal_recovery.reason: what was wrong with the first bad record.
+const int WAL_BAD_IO = 5
 const int WAL_BAD_NONE = 0
 const int WAL_BAD_SHORT_HEADER = 1
 const int WAL_BAD_SHORT_PAYLOAD = 2
@@ -124,6 +126,7 @@ int wal_max_record():
 
 
 struct wal:
+	file_ops* ops
 	int fd
 	char* path         # caller-owned unless owned_path; must outlive the wal
 	int append_off     # end of the valid prefix; next record goes here
@@ -135,6 +138,8 @@ struct wal:
 
 
 struct wal_reader:
+	file_ops* ops
+	int failed
 	int fd
 	int off
 	int done
@@ -191,13 +196,15 @@ void wal_checksum(char* len_bytes, char* payload, int len, char* out4):
 # (len in len_out) or 0 when the bytes at off are not a complete valid
 # record, with reason_out[0] set to the WAL_BAD_* kind and len_out[0]
 # to the declared length (meaningful for WAL_BAD_CHECKSUM).
-char* wal_scan_record_reason(int fd, int off, int* len_out, int* reason_out):
+char* wal_scan_record_reason_with_ops(file_ops* ops, int fd, int off, int* len_out, int* reason_out):
 	reason_out[0] = WAL_BAD_NONE
 	char* hdr = malloc(8)
-	seek(fd, off, 0)
-	if (read_exact(fd, hdr, 8) != 8):
+	int got = -1
+	if (storage_seek(ops, fd, off, 0) >= 0): got = storage_read(ops, fd, hdr, 8)
+	if (got != 8):
 		free(hdr)
 		reason_out[0] = WAL_BAD_SHORT_HEADER
+		if (got < 0): reason_out[0] = WAL_BAD_IO
 		return 0
 	int len = load_le32(hdr)
 	if (len < 0 || len > wal_max_record()):
@@ -206,10 +213,12 @@ char* wal_scan_record_reason(int fd, int off, int* len_out, int* reason_out):
 		return 0
 	len_out[0] = len
 	char* payload = malloc(len + 1)
-	if (read_exact(fd, payload, len) != len):
+	got = storage_read(ops, fd, payload, len)
+	if (got != len):
 		free(payload)
 		free(hdr)
 		reason_out[0] = WAL_BAD_SHORT_PAYLOAD
+		if (got < 0): reason_out[0] = WAL_BAD_IO
 		return 0
 	char* sum = malloc(4)
 	wal_checksum(hdr, payload, len, sum)
@@ -226,21 +235,21 @@ char* wal_scan_record_reason(int fd, int off, int* len_out, int* reason_out):
 	return payload
 
 
-char* wal_scan_record(int fd, int off, int* len_out):
+char* wal_scan_record_with_ops(file_ops* ops, int fd, int off, int* len_out):
 	int reason = 0
-	return wal_scan_record_reason(fd, off, len_out, &reason)
+	return wal_scan_record_reason_with_ops(ops, fd, off, len_out, &reason)
 
 
 # 1 when every byte of [off, end) reads as zero.
-int wal_all_zero(int fd, int off, int end):
+int wal_all_zero_with_ops(file_ops* ops, int fd, int off, int end):
 	char* buf = malloc(4096)
 	int pos = off
 	int zero = 1
 	while (pos < end && zero == 1):
 		int want = end - pos
 		if (want > 4096): want = 4096
-		seek(fd, pos, 0)
-		int got = read_exact(fd, buf, want)
+		int got = -1
+		if (storage_seek(ops, fd, pos, 0) >= 0): got = storage_read(ops, fd, buf, want)
 		if (got != want): zero = 0
 		else:
 			for i in range(want):
@@ -251,33 +260,36 @@ int wal_all_zero(int fd, int off, int end):
 
 
 # WAL_TAIL_TORN or WAL_TAIL_CORRUPT for a bad record at off (header).
-int wal_classify_bad(int fd, int off, int size, int reason, int declared_len):
+int wal_classify_bad_with_ops(file_ops* ops, int fd, int off, int size, int reason, int declared_len):
 	if (reason == WAL_BAD_SHORT_HEADER || reason == WAL_BAD_SHORT_PAYLOAD): return WAL_TAIL_TORN
 	int extent_end = off + 8
 	if (reason == WAL_BAD_CHECKSUM): extent_end = off + 8 + declared_len
 	if (extent_end >= size): return WAL_TAIL_TORN
-	if (wal_all_zero(fd, off, size)): return WAL_TAIL_TORN
+	if (wal_all_zero_with_ops(ops, fd, off, size)): return WAL_TAIL_TORN
 	return WAL_TAIL_CORRUPT
 
 
 # ---- log lifecycle ----------------------------------------------------------
 
-int wal_write_header(int fd):
+int wal_write_header_with_ops(file_ops* ops, int fd):
 	char* hdr = malloc(8)
 	hdr[0] = 87    # W
 	hdr[1] = 76    # L
 	hdr[2] = 79    # O
 	hdr[3] = 71    # G
 	store_le32(hdr + 4, wal_version)
-	seek(fd, 0, 0)
-	int n = write_all(fd, hdr, 8)
+	if (storage_seek(ops, fd, 0, 0) < 0):
+		free(hdr)
+		return 0
+	int n = storage_write(ops, fd, hdr, 8)
 	free(hdr)
 	if (n != 8): return 0
 	return 1
 
 
-wal* wal_new_handle(int fd, char* path):
+wal* wal_new_handle_with_ops(file_ops* ops, int fd, char* path):
 	wal* w = new wal()
+	w.ops = ops
 	w.fd = fd
 	w.path = path
 	w.append_off = 8
@@ -308,8 +320,8 @@ void wal_recovery_init(wal_recovery* rep, int policy):
 	rep.native_error = 0
 
 
-wal* wal_open_fail(wal_recovery* rep, int fd, int status):
-	if (fd >= 0): close(fd)
+wal* wal_open_fail_with_ops(file_ops* ops, wal_recovery* rep, int fd, int status):
+	if (fd >= 0): storage_close(ops, fd)
 	rep.status = status
 	return 0
 
@@ -320,61 +332,65 @@ wal* wal_open_fail(wal_recovery* rep, int fd, int status):
 # saying why: unopenable path, foreign/corrupt header, strict-mode
 # corruption inside the prefix (rep.bad_offset), or a failed torn-tail
 # truncate.
-wal* wal_open_policy(char* path, int policy, wal_recovery* rep):
+wal* wal_open_policy_with_ops(file_ops* ops, char* path, int policy, wal_recovery* rep):
 	wal_recovery local
 	if (cast(int, rep) == 0): rep = &local
 	wal_recovery_init(rep, policy)
 	char* sibling = wal_sibling_path(path)
-	if (unlink(sibling) == 0): rep.stale_sibling = 1
+	if (storage_unlink(ops, sibling) == 0): rep.stale_sibling = 1
 	free(sibling)
-	int fd = open_or_create(path, 2, 420)
-	if (fd < 0): return wal_open_fail(rep, 0 - 1, WAL_ERR_OPEN)
-	int size = file_size(fd)
+	int fd = storage_open(ops, path, FILE_OPS_READ_WRITE | FILE_OPS_CREATE, 420)
+	if (fd < 0): return wal_open_fail_with_ops(ops, rep, 0 - 1, WAL_ERR_OPEN)
+	int size = storage_size(ops, fd)
+	if (size < 0): return wal_open_fail_with_ops(ops, rep, fd, WAL_ERR_IO)
 	rep.file_size = size
 	if (size == 0):
-		if (wal_write_header(fd) == 0): return wal_open_fail(rep, fd, WAL_ERR_IO)
+		if (wal_write_header_with_ops(ops, fd) == 0): return wal_open_fail_with_ops(ops, rep, fd, WAL_ERR_IO)
 		size = 8
 	else:
 		char* hdr = malloc(8)
-		seek(fd, 0, 0)
-		int got = read_exact(fd, hdr, 8)
+		int got = -1
+		if (storage_seek(ops, fd, 0, 0) >= 0): got = storage_read(ops, fd, hdr, 8)
 		int ok = 0
 		if (got == 8 && (hdr[0] & 255) == 87 && (hdr[1] & 255) == 76 && (hdr[2] & 255) == 79 && (hdr[3] & 255) == 71):
 			if (load_le32(hdr + 4) == wal_version): ok = 1
 		free(hdr)
-		if (ok == 0): return wal_open_fail(rep, fd, WAL_ERR_HEADER)
-	wal* w = wal_new_handle(fd, path)
+		if (ok == 0): return wal_open_fail_with_ops(ops, rep, fd, WAL_ERR_HEADER)
+	wal* w = wal_new_handle_with_ops(ops, fd, path)
 	int len = 0
 	int reason = 0
 	int scanning = 1
 	while (scanning):
-		char* payload = wal_scan_record_reason(fd, w.append_off, &len, &reason)
+		char* payload = wal_scan_record_reason_with_ops(ops, fd, w.append_off, &len, &reason)
 		if (payload == 0): scanning = 0
 		else:
 			free(payload)
 			w.append_off = w.append_off + 8 + len
 			w.record_count = w.record_count + 1
+	if (reason == WAL_BAD_IO):
+		free(w)
+		return wal_open_fail_with_ops(ops, rep, fd, WAL_ERR_IO)
 	rep.records = w.record_count
 	rep.valid_end = w.append_off
 	if (w.append_off < size):
 		rep.bad_offset = w.append_off
 		rep.reason = reason
-		rep.tail = wal_classify_bad(fd, w.append_off, size, reason, len)
+		rep.tail = wal_classify_bad_with_ops(ops, fd, w.append_off, size, reason, len)
 	if ((policy & WAL_RECOVER_STRICT) == 0): return w
 	if (rep.tail == WAL_TAIL_CORRUPT):
 		free(w)
-		return wal_open_fail(rep, fd, WAL_ERR_CORRUPT)
+		return wal_open_fail_with_ops(ops, rep, fd, WAL_ERR_CORRUPT)
 	if (rep.tail == WAL_TAIL_TORN):
 		if ((policy & WAL_RECOVER_TRUNCATE_BIT) == 0):
 			w.readonly = 1
 			return w
 		io_result r
-		int status = fs_ftruncate(fd, w.append_off, &r)
-		if (status == IO_OK): status = fs_fsync(fd, &r)
+		int status = storage_truncate(ops, fd, w.append_off, &r)
+		if (status == IO_OK): status = storage_sync(ops, fd, &r)
 		if (status != IO_OK):
 			rep.native_error = r.native_error
 			free(w)
-			return wal_open_fail(rep, fd, WAL_ERR_IO)
+			return wal_open_fail_with_ops(ops, rep, fd, WAL_ERR_IO)
 		rep.truncated = 1
 	return w
 
@@ -382,12 +398,16 @@ wal* wal_open_policy(char* path, int policy, wal_recovery* rep):
 # Permissive open (WAL_RECOVER_PERMISSIVE; the historical contract):
 # any bad record silently ends the prefix and appends overwrite it.
 # Returns 0 on open failure or a foreign / corrupt header.
+wal* wal_open_policy(char* path, int policy, wal_recovery* rep):
+	return wal_open_policy_with_ops(cast(file_ops*, 0), path, policy, rep)
+
+
 wal* wal_open(char* path):
-	return wal_open_policy(path, WAL_RECOVER_PERMISSIVE, cast(wal_recovery*, 0))
+	return wal_open_policy_with_ops(cast(file_ops*, 0), path, WAL_RECOVER_PERMISSIVE, cast(wal_recovery*, 0))
 
 
 void wal_close(wal* w):
-	close(w.fd)
+	storage_close(w.ops, w.fd)
 	if (w.owned_path != 0): free(w.owned_path)
 	free(w)
 
@@ -422,8 +442,11 @@ int wal_append(wal* w, char* payload, int len):
 	store_le32(rec, len)
 	wal_checksum(rec, payload, len, rec + 4)
 	for i in range(len): rec[8 + i] = payload[i]
-	seek(w.fd, w.append_off, 0)
-	int n = write_all(w.fd, rec, 8 + len)
+	if (storage_seek(w.ops, w.fd, w.append_off, 0) < 0):
+		free(rec)
+		w.failed = 1
+		return 0
+	int n = storage_write(w.ops, w.fd, rec, 8 + len)
 	free(rec)
 	if (n != 8 + len):
 		w.failed = 1
@@ -442,7 +465,8 @@ int wal_sync(wal* w):
 		w.inject_sync_failures = w.inject_sync_failures - 1
 		w.failed = 1
 		return 0
-	if (fsync(w.fd) < 0):
+	io_result r
+	if (storage_sync(w.ops, w.fd, &r) != IO_OK || storage_sync_parent(w.ops, w.path, &r) != IO_OK):
 		w.failed = 1
 		return 0
 	return 1
@@ -457,26 +481,25 @@ int wal_sync(wal* w):
 # sibling cannot be created or its header written.
 wal* wal_rewrite_begin(wal* live):
 	char* npath = wal_sibling_path(live.path)
-	unlink(npath)
-	io_result r
-	int fd = fs_create_exclusive(npath, 420, &r)
+	storage_unlink(live.ops, npath)
+	int fd = storage_open(live.ops, npath, FILE_OPS_READ_WRITE | FILE_OPS_CREATE | FILE_OPS_EXCLUSIVE, 420)
 	if (fd < 0):
 		free(npath)
 		return 0
-	if (wal_write_header(fd) == 0):
-		close(fd)
-		unlink(npath)
+	if (wal_write_header_with_ops(live.ops, fd) == 0):
+		storage_close(live.ops, fd)
+		storage_unlink(live.ops, npath)
 		free(npath)
 		return 0
-	wal* n = wal_new_handle(fd, npath)
+	wal* n = wal_new_handle_with_ops(live.ops, fd, npath)
 	n.owned_path = npath
 	return n
 
 
 # Discards an uncommitted replacement: closes and deletes the sibling.
 void wal_rewrite_abort(wal* next):
-	close(next.fd)
-	unlink(next.path)
+	storage_close(next.ops, next.fd)
+	storage_unlink(next.ops, next.path)
 	free(next.owned_path)
 	free(next)
 
@@ -502,7 +525,7 @@ int wal_rewrite_crash_point():
 
 # Simulated crash before stage: the sibling stays on disk as written.
 int wal_rewrite_crash(wal* next, fs_replace_report* rep, int stage):
-	close(next.fd)
+	storage_close(next.ops, next.fd)
 	free(next.owned_path)
 	free(next)
 	return wal_rewrite_fail(rep, stage, IO_INTERRUPTED, 0)
@@ -527,16 +550,18 @@ int wal_rewrite_commit(wal* live, wal* next, fs_replace_report* rep):
 		wal_rewrite_abort(next)
 		return wal_rewrite_fail(rep, FS_STAGE_WRITE, IO_IO_ERROR, 0)
 	if (crash == FS_STAGE_SYNC_FILE): return wal_rewrite_crash(next, rep, crash)
-	if (wal_sync(next) == 0):
+	io_result synced
+	io_result_set(&synced, 0, IO_IO_ERROR, 0)
+	if (next.inject_sync_failures > 0 || storage_sync(next.ops, next.fd, &synced) != IO_OK):
 		wal_rewrite_abort(next)
-		return wal_rewrite_fail(rep, FS_STAGE_SYNC_FILE, IO_IO_ERROR, 0)
+		return wal_rewrite_fail(rep, FS_STAGE_SYNC_FILE, synced.status, synced.native_error)
 	if (crash == FS_STAGE_RENAME): return wal_rewrite_crash(next, rep, crash)
 	io_result r
-	if (io_result_from_syscall(&r, rename(next.path, live.path)) != IO_OK):
+	if (storage_rename(live.ops, next.path, live.path, &r) != IO_OK):
 		wal_rewrite_abort(next)
 		return wal_rewrite_fail(rep, FS_STAGE_RENAME, r.status, r.native_error)
 	rep.renamed = 1
-	close(live.fd)
+	storage_close(live.ops, live.fd)
 	live.fd = next.fd
 	live.append_off = next.append_off
 	live.record_count = next.record_count
@@ -545,8 +570,10 @@ int wal_rewrite_commit(wal* live, wal* next, fs_replace_report* rep):
 	free(next.owned_path)
 	free(next)
 	if (crash == FS_STAGE_SYNC_DIR): return wal_rewrite_fail(rep, FS_STAGE_SYNC_DIR, IO_INTERRUPTED, 0)
-	int status = fs_sync_parent_dir(live.path, &r)
-	if (status != IO_OK): return wal_rewrite_fail(rep, FS_STAGE_SYNC_DIR, status, r.native_error)
+	int status = storage_sync_parent(live.ops, live.path, &r)
+	if (status != IO_OK):
+		live.failed = 1
+		return wal_rewrite_fail(rep, FS_STAGE_SYNC_DIR, status, r.native_error)
 	return IO_OK
 
 
@@ -567,14 +594,15 @@ int wal_reset(wal* w):
 # Independent read cursor over the valid prefix of the log at path.
 # Iteration ends at the first invalid record, mirroring recovery (a
 # strict open has already refused or reported anything past it).
-wal_reader* wal_reader_open(char* path):
-	int fd = open(path, 0, 0)
+wal_reader* wal_reader_open_with_ops(file_ops* ops, char* path):
+	int fd = storage_open(ops, path, 0, 0)
 	if (fd < 0): return 0
-	wal_reader* rd = new wal_reader(fd, 8, 0)
+	wal_reader* rd = new wal_reader(ops, 0, fd, 8, 0)
 	char* hdr = malloc(8)
-	int got = read_exact(fd, hdr, 8)
+	int got = storage_read(ops, fd, hdr, 8)
 	if (got != 8 || (hdr[0] & 255) != 87 || (hdr[1] & 255) != 76 || (hdr[2] & 255) != 79 || (hdr[3] & 255) != 71):
 		rd.done = 1
+		rd.failed = 1
 	free(hdr)
 	return rd
 
@@ -583,7 +611,9 @@ wal_reader* wal_reader_open(char* path):
 # length via len_out), or 0 at the end of the valid prefix.
 char* wal_read_next(wal_reader* rd, int* len_out):
 	if (rd.done): return 0
-	char* payload = wal_scan_record(rd.fd, rd.off, len_out)
+	int reason = 0
+	char* payload = wal_scan_record_reason_with_ops(rd.ops, rd.fd, rd.off, len_out, &reason)
+	if (reason == WAL_BAD_IO): rd.failed = 1
 	if (payload == 0):
 		rd.done = 1
 		return 0
@@ -592,5 +622,38 @@ char* wal_read_next(wal_reader* rd, int* len_out):
 
 
 void wal_reader_close(wal_reader* rd):
-	close(rd.fd)
+	storage_close(rd.ops, rd.fd)
 	free(rd)
+
+
+char* wal_scan_record_reason(int fd, int off, int* len_out, int* reason_out):
+	return wal_scan_record_reason_with_ops(cast(file_ops*, 0), fd, off, len_out, reason_out)
+
+
+char* wal_scan_record(int fd, int off, int* len_out):
+	return wal_scan_record_with_ops(cast(file_ops*, 0), fd, off, len_out)
+
+
+int wal_all_zero(int fd, int off, int end):
+	return wal_all_zero_with_ops(cast(file_ops*, 0), fd, off, end)
+
+
+int wal_classify_bad(int fd, int off, int size, int reason, int declared_len):
+	return wal_classify_bad_with_ops(cast(file_ops*, 0), fd, off, size, reason, declared_len)
+
+
+int wal_write_header(int fd):
+	return wal_write_header_with_ops(cast(file_ops*, 0), fd)
+
+
+wal* wal_new_handle(int fd, char* path):
+	return wal_new_handle_with_ops(cast(file_ops*, 0), fd, path)
+
+
+wal* wal_open_fail(wal_recovery* rep, int fd, int status):
+	return wal_open_fail_with_ops(cast(file_ops*, 0), rep, fd, status)
+
+
+
+wal_reader* wal_reader_open(char* path):
+	return wal_reader_open_with_ops(cast(file_ops*, 0), path)

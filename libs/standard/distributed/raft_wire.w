@@ -36,10 +36,9 @@ snapshot's last included index and term. The blob is opaque binary
 config-ids section (issue #319) is new since phase 6: a snapshot may
 cover a compacted prefix a fresh node never saw as individual config
 entries, so its recorded config rides the InstallSnapshot envelope
-itself rather than relying on log replay. An encoded install_snapshot
-must fit raft_tcp.w's 1 MiB frame cap (rt_max_frame) to ride that
-transport — nothing here enforces it; the transport refuses oversize
-frames at send.
+itself rather than relying on log replay. Small snapshots retain this encoding. Larger snapshots use types 7/8
+(chunk/progress ACK); types 5/6 implement the read barrier. The bounded
+layouts, upgrade and retry contracts are in distributed_followup.md.
 
 raft_wire_decode allocates the returned raft_msg (free with
 raft_msg_free). Entry commands are opaque, length-carrying byte
@@ -75,7 +74,9 @@ int raft_wire_size(raft_msg* m):
 			raft_entry* e = m.entries[i]
 			n = n + 1 + 8 + 4 + e.command_len
 		return n
-	if (m.type == raft_msg_append_reply): return n + 1 + 8
+	if (m.type == raft_msg_append_reply || m.type == raft_msg_read_probe || m.type == raft_msg_read_reply): return n + 1 + 8
+	if (m.type == raft_msg_snapshot_chunk || m.type == raft_msg_snapshot_ack):
+		return n + 32 + 4 + 4 * m.snap_config.length + 4 + m.snap_len
 	if (m.type == raft_msg_install_snapshot):
 		return n + 8 + 8 + 8 + 4 + 4 * m.snap_config.length + 4 + m.snap_len
 	assert1(0)
@@ -114,9 +115,24 @@ void raft_wire_encode(raft_msg* m, char* buf):
 			for j in range(cmd_len): buf[off + 13 + j] = e.command[j]
 			off = off + 13 + cmd_len
 		return
-	if (m.type == raft_msg_append_reply):
+	if (m.type == raft_msg_append_reply || m.type == raft_msg_read_probe || m.type == raft_msg_read_reply):
 		buf[off] = m.success
 		u64_save_le(buf + off + 1, m.match_index)
+		return
+	if (m.type == raft_msg_snapshot_chunk || m.type == raft_msg_snapshot_ack):
+		u64_save_le(buf + off, m.prev_log_index)
+		u64_save_le(buf + off + 8, m.prev_log_term)
+		store_le32(buf + off + 16, m.chunk_offset)
+		store_le32(buf + off + 20, m.chunk_total)
+		store_le32(buf + off + 24, m.chunk_hash)
+		store_le32(buf + off + 28, m.chunk_crc)
+		store_le32(buf + off + 32, m.snap_config.length)
+		int pos = off + 36
+		for i in range(m.snap_config.length):
+			store_le32(buf + pos, m.snap_config[i])
+			pos = pos + 4
+		store_le32(buf + pos, m.snap_len)
+		mem_copy(buf + pos + 4, m.snap_data, m.snap_len)
 		return
 	if (m.type == raft_msg_install_snapshot):
 		u64_save_le(buf + off, m.prev_log_index)
@@ -141,7 +157,7 @@ void raft_wire_encode(raft_msg* m, char* buf):
 raft_msg* raft_wire_decode(char* buf, int len):
 	if (len < 17): return 0
 	int type = buf[0] & 255
-	if (type != raft_msg_vote_req && type != raft_msg_vote_reply && type != raft_msg_append && type != raft_msg_append_reply && type != raft_msg_install_snapshot):
+	if (type != raft_msg_vote_req && type != raft_msg_vote_reply && type != raft_msg_append && type != raft_msg_append_reply && type != raft_msg_install_snapshot && type != raft_msg_read_probe && type != raft_msg_read_reply && type != raft_msg_snapshot_chunk && type != raft_msg_snapshot_ack):
 		return 0
 	int from = load_le32(buf + 1)
 	int to = load_le32(buf + 5)
@@ -151,6 +167,37 @@ raft_msg* raft_wire_decode(char* buf, int len):
 	raft_msg* m = raft_msg_new(type, from, to, term)
 	u64_free(term)
 	int off = 17
+	if (type == raft_msg_snapshot_chunk || type == raft_msg_snapshot_ack):
+		if (len < 57):
+			raft_msg_free(m)
+			return 0
+		u64_load_le(m.prev_log_index, buf + off)
+		u64_load_le(m.prev_log_term, buf + off + 8)
+		m.chunk_offset = load_le32(buf + off + 16)
+		m.chunk_total = load_le32(buf + off + 20)
+		m.chunk_hash = load_le32(buf + off + 24)
+		m.chunk_crc = load_le32(buf + off + 28)
+		int count = load_le32(buf + off + 32)
+		if (count < 0 || count > RAFT_SNAPSHOT_MEMBERS || count > (len - 57) / 4 || m.chunk_total <= 0 || m.chunk_total > RAFT_SNAPSHOT_LIMIT || m.chunk_offset < 0 || m.chunk_offset > m.chunk_total):
+			raft_msg_free(m)
+			return 0
+		int pos = off + 36
+		for i in range(count):
+			int id = load_le32(buf + pos)
+			if (id < 0):
+				raft_msg_free(m)
+				return 0
+			m.snap_config.push(id)
+			pos = pos + 4
+		m.snap_len = load_le32(buf + pos)
+		if (m.snap_len < 0 || m.snap_len > RAFT_SNAPSHOT_CHUNK || m.snap_len != len - pos - 4 || m.snap_len > m.chunk_total - m.chunk_offset):
+			raft_msg_free(m)
+			return 0
+		if ((type == raft_msg_snapshot_chunk && m.snap_len == 0) || (type == raft_msg_snapshot_ack && (m.snap_len != 0 || count != 0))):
+			raft_msg_free(m)
+			return 0
+		m.snap_data = mem_dup(buf + pos + 4, m.snap_len)
+		return m
 	if (type == raft_msg_vote_req):
 		if (len != off + 17):
 			raft_msg_free(m)
@@ -166,7 +213,7 @@ raft_msg* raft_wire_decode(char* buf, int len):
 		m.vote_granted = buf[off] & 255
 		m.prevote = buf[off + 1] & 255
 		return m
-	if (type == raft_msg_append_reply):
+	if (type == raft_msg_append_reply || type == raft_msg_read_probe || type == raft_msg_read_reply):
 		if (len != off + 9):
 			raft_msg_free(m)
 			return 0

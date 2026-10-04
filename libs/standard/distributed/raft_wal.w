@@ -244,9 +244,9 @@ void raft_wal_close(raft_wal* rw):
 # when wal_open_policy fails (unopenable path, foreign or corrupt
 # header, strict-mode corruption inside the prefix) or a record
 # payload is malformed.
-raft_wal* raft_wal_open_policy(char* path, int policy, wal_recovery* rep):
+raft_wal* raft_wal_open_policy_with_ops(file_ops* ops, char* path, int policy, wal_recovery* rep):
 	char* own = strclone(path)
-	wal* w = wal_open_policy(own, policy, rep)
+	wal* w = wal_open_policy_with_ops(ops, own, policy, rep)
 	if (cast(int, w) == 0):
 		free(own)
 		return 0
@@ -261,7 +261,7 @@ raft_wal* raft_wal_open_policy(char* path, int policy, wal_recovery* rep):
 	rw.failed = 0
 	rw.gate = durable_gate_new()
 	rw.persist_seq = 0
-	wal_reader* rd = wal_reader_open(own)
+	wal_reader* rd = wal_reader_open_with_ops(ops, own)
 	if (cast(int, rd) == 0):
 		raft_wal_close(rw)
 		return 0
@@ -272,6 +272,7 @@ raft_wal* raft_wal_open_policy(char* path, int policy, wal_recovery* rep):
 		if (ok == 1 && raft_wal_shadow_apply(rw, p, len) == 0): ok = 0
 		free(p)
 		p = wal_read_next(rd, &len)
+	if (rd.failed): ok = 0
 	wal_reader_close(rd)
 	if (ok == 0):
 		raft_wal_close(rw)
@@ -279,7 +280,11 @@ raft_wal* raft_wal_open_policy(char* path, int policy, wal_recovery* rep):
 	return rw
 
 
-# raft_wal_open_policy with WAL_RECOVER_STRICT_TRUNCATE (header).
+# Native convenience wrapper; injected constructors borrow their ops.
+raft_wal* raft_wal_open_policy(char* path, int policy, wal_recovery* rep):
+	return raft_wal_open_policy_with_ops(cast(file_ops*, 0), path, policy, rep)
+
+
 raft_wal* raft_wal_open(char* path):
 	return raft_wal_open_policy(path, WAL_RECOVER_STRICT_TRUNCATE, cast(wal_recovery*, 0))
 
@@ -603,6 +608,7 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 		if (r.snap_data != 0): free(r.snap_data)
 		r.snap_data = mem_dup(p + coff + 4, blob_len)
 		r.snap_len = blob_len
+		r.snap_hash = raft_snapshot_checksum(r.snap_data, blob_len)
 		if (r.pending_snap_data != 0): free(r.pending_snap_data)
 		r.pending_snap_data = mem_dup(p + coff + 4, blob_len)
 		r.pending_snap_len = blob_len
@@ -623,7 +629,7 @@ void raft_wal_replay_into(raft* r, char* p, int len):
 # record prefix.
 raft* raft_wal_recover(raft_wal* rw, int self_id, list[int] peers, int election_min_ms, int election_max_ms, int heartbeat_ms, int seed):
 	raft* r = raft_new(self_id, peers, election_min_ms, election_max_ms, heartbeat_ms, seed)
-	wal_reader* rd = wal_reader_open(rw.path)
+	wal_reader* rd = wal_reader_open_with_ops(rw.wlog.ops, rw.path)
 	assert1(cast(int, rd) != 0)
 	int* len_out = cast(int*, malloc(__word_size__))
 	char* p = wal_read_next(rd, len_out)
@@ -632,7 +638,11 @@ raft* raft_wal_recover(raft_wal* rw, int self_id, list[int] peers, int election_
 		free(p)
 		p = wal_read_next(rd, len_out)
 	free(len_out)
+	int read_failed = rd.failed
 	wal_reader_close(rd)
+	if (read_failed):
+		raft_free(r)
+		return 0
 	assert1(u64_eq(rw.term, r.current_term))
 	assert1(rw.voted_for == r.voted_for)
 	assert1(u64_eq(rw.snap_index, r.snap_last_index))

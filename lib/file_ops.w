@@ -35,11 +35,12 @@ of "a/b" is "a", of "b" it is ".".
 
 The real adapter needs no state and allocates nothing per call except
 for sync_dir, which opens the directory read-only, fsyncs and closes
-it. Positional reads and writes and truncation are not part of this
-table yet (they arrive with the W1 durability primitives).
+it. Seek and truncate support single-owner storage cursors. Concurrent
+positional I/O remains in lib/fs.w.
 */
 import lib.lib
 import lib.io
+import lib.fs
 
 
 const int FILE_OPS_READ = 0          # O_RDONLY
@@ -66,6 +67,10 @@ type file_ops_path2_fn = fn(void*, char*, char*, io_result*) -> int
 type file_ops_mkdir_fn = fn(void*, char*, int, io_result*) -> int
 
 
+type file_ops_seek_fn = fn(void*, int, int, int, io_result*) -> int
+type file_ops_truncate_fn = fn(void*, int, int, io_result*) -> int
+
+
 struct file_ops:
 	void* self
 	file_ops_open_fn* open
@@ -78,6 +83,8 @@ struct file_ops:
 	file_ops_path_fn* unlink
 	file_ops_mkdir_fn* mkdir
 	file_ops_path_fn* sync_dir
+	file_ops_seek_fn* seek
+	file_ops_truncate_fn* truncate
 
 
 /* Dispatch. */
@@ -127,19 +134,32 @@ int file_ops_sync_dir(file_ops* ops, char* path, io_result* r):
 	return ops.sync_dir(ops.self, path, r)
 
 
+# On success transferred is the resulting cursor position.
+int file_ops_seek(file_ops* ops, int fd, int offset, int whence, io_result* r):
+	if (cast(int, ops.seek) == 0): return io_result_set(r, 0, IO_UNSUPPORTED, 0)
+	return ops.seek(ops.self, fd, offset, whence, r)
+
+
+int file_ops_truncate(file_ops* ops, int fd, int length, io_result* r):
+	if (length < 0): return io_result_set(r, 0, IO_IO_ERROR, FS_EINVAL)
+	if (cast(int, ops.truncate) == 0): return io_result_set(r, 0, IO_UNSUPPORTED, 0)
+	return ops.truncate(ops.self, fd, length, r)
+
+
 /* Loops over short transfers. */
 
 # Writes all length bytes: short writes continue, IO_INTERRUPTED is
 # retried, a zero-byte write is IO_IO_ERROR. transferred is the
 # confirmed prefix whatever the status.
 int file_ops_write_all(file_ops* ops, int fd, char* source, int length, io_result* r):
+	if (length < 0): return io_result_set(r, 0, IO_IO_ERROR, FS_EINVAL)
 	int total = 0
 	io_result step
 	while (total < length):
 		int status = file_ops_write(ops, fd, source + total, length - total, &step)
 		if (status == IO_INTERRUPTED): continue
 		if (status != IO_OK): return io_result_set(r, total + step.transferred, status, step.native_error)
-		if (step.transferred <= 0): return io_result_set(r, total, IO_IO_ERROR, 0)
+		if (step.transferred <= 0 || step.transferred > length - total): return io_result_set(r, total, IO_IO_ERROR, 0)
 		total = total + step.transferred
 	return io_result_set(r, total, IO_OK, 0)
 
@@ -147,12 +167,14 @@ int file_ops_write_all(file_ops* ops, int fd, char* source, int length, io_resul
 # Reads exactly length bytes; IO_EOF with the short count when the file
 # ends first. IO_INTERRUPTED is retried.
 int file_ops_read_exact(file_ops* ops, int fd, char* destination, int length, io_result* r):
+	if (length < 0): return io_result_set(r, 0, IO_IO_ERROR, FS_EINVAL)
 	int total = 0
 	io_result step
 	while (total < length):
 		int status = file_ops_read(ops, fd, destination + total, length - total, &step)
 		if (status == IO_INTERRUPTED): continue
 		if (status != IO_OK): return io_result_set(r, total + step.transferred, status, step.native_error)
+		if (step.transferred <= 0 || step.transferred > length - total): return io_result_set(r, total, IO_IO_ERROR, 0)
 		total = total + step.transferred
 	return io_result_set(r, total, IO_OK, 0)
 
@@ -161,6 +183,7 @@ int file_ops_read_exact(file_ops* ops, int fd, char* destination, int length, io
 # (reaching EOF is success here; capacity full is too, without probing
 # further). IO_INTERRUPTED is retried.
 int file_ops_read_to_end(file_ops* ops, int fd, char* destination, int capacity, io_result* r):
+	if (capacity < 0): return io_result_set(r, 0, IO_IO_ERROR, FS_EINVAL)
 	int total = 0
 	io_result step
 	while (total < capacity):
@@ -168,6 +191,7 @@ int file_ops_read_to_end(file_ops* ops, int fd, char* destination, int capacity,
 		if (status == IO_INTERRUPTED): continue
 		if (status == IO_EOF): break
 		if (status != IO_OK): return io_result_set(r, total + step.transferred, status, step.native_error)
+		if (step.transferred <= 0 || step.transferred > capacity - total): return io_result_set(r, total, IO_IO_ERROR, 0)
 		total = total + step.transferred
 	return io_result_set(r, total, IO_OK, 0)
 
@@ -259,6 +283,15 @@ int file_ops_real_sync_dir(void* self, char* path, io_result* r):
 	return io_result_set(r, 0, closed.status, closed.native_error)
 
 
+# Seek is for single-owner storage cursors, not concurrent positional I/O.
+int file_ops_real_seek(void* self, int fd, int offset, int whence, io_result* r):
+	return io_result_from_syscall(r, seek(fd, offset, whence))
+
+
+int file_ops_real_truncate(void* self, int fd, int length, io_result* r):
+	return fs_ftruncate(fd, length, r)
+
+
 file_ops* file_ops_new(void* self):
 	file_ops* ops = new file_ops()
 	ops.self = self
@@ -278,4 +311,6 @@ file_ops* file_ops_real_new():
 	ops.unlink = file_ops_real_unlink
 	ops.mkdir = file_ops_real_mkdir
 	ops.sync_dir = file_ops_real_sync_dir
+	ops.seek = file_ops_real_seek
+	ops.truncate = file_ops_real_truncate
 	return ops

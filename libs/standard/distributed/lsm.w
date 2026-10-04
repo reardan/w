@@ -166,6 +166,7 @@ import lib.fs
 
 
 struct lsm:
+	file_ops* ops
 	char* prefix              # owned copy of the caller's path stem
 	char* wal_path            # owned "<prefix>.wal" (wal.path borrows it)
 	char* manifest_path       # owned "<prefix>.manifest"
@@ -354,6 +355,8 @@ void lsm_free_tables(list[sstable*] tables, list[char*] table_paths):
 	while (i < table_paths.length):
 		free(table_paths[i])
 		i = i + 1
+	tables.free()
+	table_paths.free()
 
 
 # Opens (creating if missing) the tree at prefix and recovers it under
@@ -365,11 +368,11 @@ void lsm_free_tables(list[sstable*] tables, list[char*] table_paths):
 # data record, a missing/corrupt table that is not the last manifest
 # entry, a data wal from a NEWER epoch than the manifest), with
 # everything that was opened closed again.
-lsm* lsm_open_policy(char* prefix, int memtable_limit_bytes, int policy, wal_recovery* rep):
+lsm* lsm_open_policy_with_ops(file_ops* ops, char* prefix, int memtable_limit_bytes, int policy, wal_recovery* rep):
 	char* own_prefix = mem_dup(prefix, strlen(prefix))
 	char* wpath = strjoin(own_prefix, c".wal")
 	char* mpath = strjoin(own_prefix, c".manifest")
-	wal* mlog = wal_open_policy(mpath, policy, rep)
+	wal* mlog = wal_open_policy_with_ops(ops, mpath, policy, rep)
 	if (cast(int, mlog) == 0):
 		free(mpath)
 		free(wpath)
@@ -382,7 +385,7 @@ lsm* lsm_open_policy(char* prefix, int memtable_limit_bytes, int policy, wal_rec
 	int epoch = 0
 	int index = 0
 	list[int] seqs = new list[int]
-	wal_reader* mrd = wal_reader_open(mpath)
+	wal_reader* mrd = wal_reader_open_with_ops(ops, mpath)
 	if (cast(int, mrd) == 0): fail = 1
 	else:
 		char* mp = wal_read_next(mrd, &len)
@@ -394,6 +397,7 @@ lsm* lsm_open_policy(char* prefix, int memtable_limit_bytes, int policy, wal_rec
 			free(mp)
 			index = index + 1
 			mp = wal_read_next(mrd, &len)
+		if (mrd.failed): fail = 1
 		wal_reader_close(mrd)
 	# 2. open every referenced table; only the LAST entry may dangle
 	list[sstable*] tables = new list[sstable*]
@@ -402,10 +406,11 @@ lsm* lsm_open_policy(char* prefix, int memtable_limit_bytes, int policy, wal_rec
 	int i = 0
 	while (i < seqs.length && fail == 0):
 		char* tpath = lsm_table_path(own_prefix, seqs[i])
-		sstable* t = sstable_open(tpath)
+		int io_failed = 0
+		sstable* t = sstable_open_report(ops, tpath, &io_failed)
 		if (cast(int, t) == 0):
 			free(tpath)
-			if (i == seqs.length - 1): dropped = 1
+			if (i == seqs.length - 1 && io_failed == 0): dropped = 1
 			else: fail = 1
 		else:
 			tables.push(t)
@@ -427,7 +432,7 @@ lsm* lsm_open_policy(char* prefix, int memtable_limit_bytes, int policy, wal_rec
 		if (lsm_publish_manifest(mlog, epoch, kept, &prep) != IO_OK): fail = 1
 		else:
 			char* dangling = lsm_table_path(own_prefix, seqs[seqs.length - 1])
-			unlink(dangling)
+			storage_unlink(ops, dangling)
 			free(dangling)
 	# 4. next_seq: one past every seq ever referenced (the dangling
 	# one included, so its file path is never reused)
@@ -440,12 +445,12 @@ lsm* lsm_open_policy(char* prefix, int memtable_limit_bytes, int policy, wal_rec
 	# a superseded generation (header: "Generations")
 	wal* dlog = 0
 	if (fail == 0):
-		dlog = wal_open_policy(wpath, policy, rep)
+		dlog = wal_open_policy_with_ops(ops, wpath, policy, rep)
 		if (cast(int, dlog) == 0): fail = 1
 	memtable* mem = memtable_new()
 	int stale = 0
 	if (fail == 0):
-		wal_reader* drd = wal_reader_open(wpath)
+		wal_reader* drd = wal_reader_open_with_ops(ops, wpath)
 		if (cast(int, drd) == 0): fail = 1
 		else:
 			index = 0
@@ -463,6 +468,7 @@ lsm* lsm_open_policy(char* prefix, int memtable_limit_bytes, int policy, wal_rec
 				free(dp)
 				index = index + 1
 				dp = wal_read_next(drd, &len)
+			if (drd.failed): fail = 1
 			wal_reader_close(drd)
 		if (index == 0 && epoch > 0): stale = 1
 	if (fail == 0 && stale == 1):
@@ -478,6 +484,7 @@ lsm* lsm_open_policy(char* prefix, int memtable_limit_bytes, int policy, wal_rec
 		free(own_prefix)
 		return 0
 	lsm* l = new lsm()
+	l.ops = ops
 	l.prefix = own_prefix
 	l.wal_path = wpath
 	l.manifest_path = mpath
@@ -493,7 +500,11 @@ lsm* lsm_open_policy(char* prefix, int memtable_limit_bytes, int policy, wal_rec
 	return l
 
 
-# lsm_open_policy with WAL_RECOVER_STRICT_TRUNCATE (header).
+# Native convenience wrapper; injected constructors borrow their ops.
+lsm* lsm_open_policy(char* prefix, int memtable_limit_bytes, int policy, wal_recovery* rep):
+	return lsm_open_policy_with_ops(cast(file_ops*, 0), prefix, memtable_limit_bytes, policy, rep)
+
+
 lsm* lsm_open(char* prefix, int memtable_limit_bytes):
 	return lsm_open_policy(prefix, memtable_limit_bytes, WAL_RECOVER_STRICT_TRUNCATE, cast(wal_recovery*, 0))
 
@@ -545,7 +556,7 @@ int lsm_flush(lsm* l):
 	int count = memtable_count(l.mem)
 	if (count == 0): return 1
 	char* path = lsm_table_path(l.prefix, l.next_seq)
-	sstable_writer* w = sstable_writer_new(path)
+	sstable_writer* w = sstable_writer_new_with_ops(l.ops, path)
 	if (cast(int, w) == 0):
 		free(path)
 		return 0
@@ -559,12 +570,12 @@ int lsm_flush(lsm* l):
 	# 1. the table, durable with its directory entry; until the
 	# manifest names it, a failure here changed nothing
 	if (sstable_writer_finish(w) == 0):
-		unlink(path)
+		storage_unlink(l.ops, path)
 		free(path)
 		return 0
-	sstable* t = sstable_open(path)
+	sstable* t = sstable_open_with_ops(l.ops, path)
 	if (cast(int, t) == 0):
-		unlink(path)
+		storage_unlink(l.ops, path)
 		free(path)
 		return 0
 	# 2. the manifest record, synced. On failure the record may or may
@@ -665,6 +676,10 @@ void lsm_batch_free(lsm_batch* b):
 		free(b.keys[i])
 		if (cast(int, b.values[i]) != 0): free(b.values[i])
 		i = i + 1
+	b.keys.free()
+	b.values.free()
+	b.value_lens.free()
+	b.ops.free()
 	free(b)
 
 
@@ -873,7 +888,7 @@ int lsm_compact(lsm* l):
 	int n = l.tables.length
 	if (n == 0): return 1
 	char* path = lsm_table_path(l.prefix, l.next_seq)
-	sstable_writer* w = sstable_writer_new(path)
+	sstable_writer* w = sstable_writer_new_with_ops(l.ops, path)
 	if (cast(int, w) == 0):
 		free(path)
 		return 0
@@ -891,18 +906,19 @@ int lsm_compact(lsm* l):
 				free(val)
 		lsm_merge_advance(m, best_key)
 		best = lsm_merge_best(m)
+	m.cursors.free()
 	free(m)
 	if (read_ok == 0):
 		sstable_writer_abort(w)
 		free(path)
 		return 0
 	if (sstable_writer_finish(w) == 0):
-		unlink(path)
+		storage_unlink(l.ops, path)
 		free(path)
 		return 0
-	sstable* merged = sstable_open(path)
+	sstable* merged = sstable_open_with_ops(l.ops, path)
 	if (cast(int, merged) == 0):
-		unlink(path)
+		storage_unlink(l.ops, path)
 		free(path)
 		return 0
 	int seq = l.next_seq
@@ -914,7 +930,7 @@ int lsm_compact(lsm* l):
 	if (status != IO_OK && rep.renamed == 0):
 		# the old manifest is still live: nothing changed
 		sstable_close(merged)
-		unlink(path)
+		storage_unlink(l.ops, path)
 		free(path)
 		return 0
 	# the manifest names only the merged table: swap it in. The old
@@ -927,7 +943,7 @@ int lsm_compact(lsm* l):
 	l.table_paths.push(path)
 	int i = 0
 	while (i < old_paths.length):
-		if (status == IO_OK): unlink(old_paths[i])
+		if (status == IO_OK): storage_unlink(l.ops, old_paths[i])
 		i = i + 1
 	lsm_free_tables(old_tables, old_paths)
 	if (status != IO_OK): return lsm_fail(l)
@@ -954,6 +970,9 @@ void lsm_page_free(lsm_page* p):
 		free(p.values[i])
 		i = i + 1
 	if (p.resume != 0): free(p.resume)
+	p.keys.free()
+	p.values.free()
+	p.value_lens.free()
 	free(p)
 
 
@@ -1004,6 +1023,7 @@ lsm_page* lsm_scan(lsm* l, char* start, int max_entries, int max_bytes):
 		if (best >= 0):
 			lsm_merge_advance(m, key)
 			best = lsm_merge_best(m)
+	m.cursors.free()
 	free(m)
 	return page
 
@@ -1038,6 +1058,7 @@ char* lsm_export(lsm* l, int* len_out):
 				vlens.push(vl)
 		lsm_merge_advance(m, best_key)
 		best = lsm_merge_best(m)
+	m.cursors.free()
 	free(m)
 	int total = 12
 	int i = 0
@@ -1092,7 +1113,7 @@ int lsm_install_generation(lsm* l, char* blob, list[int] koff, list[int] klen, l
 		int seq = l.next_seq
 		l.next_seq = l.next_seq + 1
 		path = lsm_table_path(l.prefix, seq)
-		sstable_writer* w = sstable_writer_new(path)
+		sstable_writer* w = sstable_writer_new_with_ops(l.ops, path)
 		if (cast(int, w) == 0):
 			free(path)
 			return 0
@@ -1103,12 +1124,12 @@ int lsm_install_generation(lsm* l, char* blob, list[int] koff, list[int] klen, l
 			free(key)
 			i = i + 1
 		if (sstable_writer_finish(w) == 0):
-			unlink(path)
+			storage_unlink(l.ops, path)
 			free(path)
 			return 0
-		t = sstable_open(path)
+		t = sstable_open_with_ops(l.ops, path)
 		if (cast(int, t) == 0):
-			unlink(path)
+			storage_unlink(l.ops, path)
 			free(path)
 			return 0
 		seqs.push(seq)
@@ -1119,7 +1140,7 @@ int lsm_install_generation(lsm* l, char* blob, list[int] koff, list[int] klen, l
 		# the old generation is still the live one
 		if (count > 0):
 			sstable_close(t)
-			unlink(path)
+			storage_unlink(l.ops, path)
 			free(path)
 		return 0
 	# the manifest names the new generation: switch everything to it
@@ -1132,11 +1153,16 @@ int lsm_install_generation(lsm* l, char* blob, list[int] koff, list[int] klen, l
 		l.table_paths.push(path)
 	memtable_clear(l.mem)
 	l.epoch = new_epoch
+	if (status != IO_OK):
+		# The rename is visible but its durability is unknown. Preserve
+		# the old data WAL and files; recovery may still select them.
+		lsm_free_tables(old_tables, old_paths)
+		return lsm_fail(l)
 	fs_replace_report drep
 	int dstatus = lsm_publish_data_wal(l.log, new_epoch, &drep)
 	int i = 0
 	while (i < old_paths.length):
-		if (status == IO_OK): unlink(old_paths[i])
+		if (status == IO_OK): storage_unlink(l.ops, old_paths[i])
 		i = i + 1
 	lsm_free_tables(old_tables, old_paths)
 	if (status != IO_OK || dstatus != IO_OK): return lsm_fail(l)

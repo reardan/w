@@ -203,6 +203,7 @@ only -- no joint consensus, matching how etcd ships this):
 */
 import lib.lib
 import lib.memory
+import lib.sha256
 import lib.assert
 import libs.standard.distributed.u64
 import libs.standard.distributed.monotime
@@ -225,6 +226,13 @@ const int raft_msg_vote_reply = 1
 const int raft_msg_append = 2
 const int raft_msg_append_reply = 3
 const int raft_msg_install_snapshot = 4
+const int raft_msg_read_probe = 5
+const int raft_msg_read_reply = 6
+const int raft_msg_snapshot_chunk = 7
+const int raft_msg_snapshot_ack = 8
+const int RAFT_SNAPSHOT_CHUNK = 32768
+const int RAFT_SNAPSHOT_LIMIT = 8388608
+const int RAFT_SNAPSHOT_MEMBERS = 1024
 
 
 # ---- log entries -------------------------------------------------------------
@@ -285,6 +293,10 @@ void raft_entry_free(raft_entry* e):
 # prev_log_term for the snapshot's last included index and term, and
 # leader_commit as usual (see header).
 struct raft_msg:
+	int chunk_offset
+	int chunk_total
+	int chunk_hash
+	int chunk_crc
 	int type              # raft_msg_vote_req/vote_reply/append/append_reply/install_snapshot
 	int from
 	int to
@@ -308,6 +320,10 @@ struct raft_msg:
 # raft_msg_free is uniform.
 raft_msg* raft_msg_new(int type, int from, int to, u64* term):
 	raft_msg* m = new raft_msg()
+	m.chunk_offset = 0
+	m.chunk_total = 0
+	m.chunk_hash = 0
+	m.chunk_crc = 0
 	m.type = type
 	m.from = from
 	m.to = to
@@ -328,9 +344,7 @@ raft_msg* raft_msg_new(int type, int from, int to, u64* term):
 	return m
 
 
-# Deep free: all u64 fields, every owned entry and the snapshot blob.
-# The entries list storage itself is runtime-managed (matching
-# swim_free in swim.w).
+# Deep free: all u64 fields, owned entries, list storage and snapshot blob.
 void raft_msg_free(raft_msg* m):
 	u64_free(m.term)
 	u64_free(m.last_log_index)
@@ -344,12 +358,27 @@ void raft_msg_free(raft_msg* m):
 		i = i + 1
 	u64_free(m.match_index)
 	if (m.snap_data != 0): free(m.snap_data)
+	m.entries.free()
+	m.snap_config.free()
 	free(m)
 
 
 # ---- node state ---------------------------------------------------------------
 
 struct raft:
+	raft_msg* incoming_snapshot
+	int incoming_offset
+	int incoming_deadline
+	int snap_hash
+	map[int, int] snap_offsets
+	int read_seq
+	int read_active
+	int read_deadline
+	int read_index
+	u64* read_term
+	set[int] read_acks
+	int config_version
+	int read_config_version
 	int self_id
 	list[int] peers            # other node ids, never including self
 	# persistent state (Figure 2)
@@ -484,6 +513,7 @@ void raft_clear_prevote_granters(raft* r):
 # election deadline (stale-message rule: only vote grants, valid
 # appends and election starts reset it).
 void raft_step_down(raft* r, u64* term):
+	r.read_active = 0
 	u64_copy(r.current_term, term)
 	r.state = raft_follower
 	r.voted_for = 0 - 1
@@ -501,6 +531,15 @@ raft* raft_new(int self_id, list[int] peers, int election_min_ms, int election_m
 	assert1(heartbeat_ms < election_min_ms)
 	assert1(election_min_ms <= election_max_ms)
 	raft* r = new raft()
+	r.incoming_snapshot = 0
+	r.incoming_offset = 0
+	r.snap_hash = 0
+	r.snap_offsets = new map[int, int]
+	r.read_seq = 0
+	r.read_active = 0
+	r.read_term = u64_new()
+	r.read_acks = new set[int]
+	r.config_version = 0
 	r.self_id = self_id
 	r.peers = new list[int]
 	int i = 0
@@ -553,6 +592,10 @@ raft* raft_new(int self_id, list[int] peers, int election_min_ms, int election_m
 # Frees every owned u64, log entry and the prng; the list/map storage
 # is runtime-managed (matching swim_free in swim.w).
 void raft_free(raft* r):
+	if (cast(int, r.incoming_snapshot) != 0): raft_msg_free(r.incoming_snapshot)
+	r.read_acks.free()
+	r.snap_offsets.free()
+	u64_free(r.read_term)
 	u64_free(r.current_term)
 	u64_free(r.commit_index)
 	u64_free(r.last_applied)
@@ -656,6 +699,7 @@ void raft_sync_index_maps(raft* r):
 # no list (see raft_propose_remove_server) but is remembered via
 # config_pending_removes_self for raft_note_commit_advanced.
 void raft_note_entry_appended(raft* r, int idx, raft_entry* e):
+	if (e.kind == raft_entry_kind_config()): r.config_version = r.config_version + 1
 	if (e.kind != raft_entry_kind_config()): return
 	int op = 0
 	int id = 0
@@ -687,6 +731,7 @@ void raft_note_entry_appended(raft* r, int idx, raft_entry* e):
 # always enough — there is never a stack of in-flight changes to
 # unwind.
 void raft_note_truncated_to(raft* r, int keep):
+	r.config_version = r.config_version + 1
 	if (r.config_pending_index > 0 && r.config_pending_index > keep):
 		r.peers = r.config_prev_peers
 		r.config_prev_peers = new list[int]
@@ -750,6 +795,7 @@ list[int] raft_config_exclude_self(raft* r, list[int] cfg):
 # config change is discarded, not rolled back to — the snapshot
 # supersedes it outright.
 void raft_adopt_snapshot_config(raft* r, list[int] cfg):
+	r.config_version = r.config_version + 1
 	r.snap_config = raft_clone_int_list(cfg)
 	r.peers = raft_config_exclude_self(r, cfg)
 	raft_sync_index_maps(r)
@@ -784,6 +830,35 @@ raft_msg* raft_make_append(raft* r, int peer):
 	return m
 
 
+# Format-compatible checksum primitive already used by the WAL. Chunk
+# CRC here is a truncated SHA-256 checksum, not authentication.
+int raft_snapshot_checksum(char* data, int len):
+	char[32] digest
+	sha256(data, len, digest)
+	return load_le32(digest)
+
+
+# Integrity covers the transfer identity and framing as well as payload.
+int raft_snapshot_chunk_checksum(raft_msg* m):
+	int size = 52 + 4 * m.snap_config.length + m.snap_len
+	char* data = malloc(size)
+	u64_save_le(data, m.term)
+	u64_save_le(data + 8, m.prev_log_index)
+	u64_save_le(data + 16, m.prev_log_term)
+	store_le32(data + 24, m.from)
+	store_le32(data + 28, m.to)
+	store_le32(data + 32, m.chunk_offset)
+	store_le32(data + 36, m.chunk_total)
+	store_le32(data + 40, m.chunk_hash)
+	store_le32(data + 44, m.snap_config.length)
+	store_le32(data + 48, m.snap_len)
+	for i in range(m.snap_config.length): store_le32(data + 52 + 4 * i, m.snap_config[i])
+	mem_copy(data + 52 + 4 * m.snap_config.length, m.snap_data, m.snap_len)
+	int checksum = raft_snapshot_checksum(data, size)
+	free(data)
+	return checksum
+
+
 # InstallSnapshot to peer: prev_log_index/prev_log_term are REUSED to
 # carry the snapshot's last included index and term (header), the
 # blob rides as an owned deep copy and leader_commit as usual. The
@@ -793,9 +868,21 @@ raft_msg* raft_make_install_snapshot(raft* r, int peer):
 	u64_copy(m.prev_log_index, r.snap_last_index)
 	u64_copy(m.prev_log_term, r.snap_last_term)
 	u64_copy(m.leader_commit, r.commit_index)
-	m.snap_data = mem_dup(r.snap_data, r.snap_len)
 	m.snap_len = r.snap_len
+	int offset = 0
+	if (r.snap_len > RAFT_SNAPSHOT_CHUNK):
+		m.type = raft_msg_snapshot_chunk
+		if (peer in r.snap_offsets): offset = r.snap_offsets[peer]
+		if (offset < 0 || offset >= r.snap_len): offset = 0
+		m.chunk_offset = offset
+		m.chunk_total = r.snap_len
+		m.chunk_hash = r.snap_hash
+		m.snap_len = r.snap_len - offset
+		if (m.snap_len > RAFT_SNAPSHOT_CHUNK): m.snap_len = RAFT_SNAPSHOT_CHUNK
+	m.snap_data = mem_dup(r.snap_data + offset, m.snap_len)
+	m.snap_config.free()
 	m.snap_config = raft_clone_int_list(r.snap_config)
+	if (m.type == raft_msg_snapshot_chunk): m.chunk_crc = raft_snapshot_chunk_checksum(m)
 	return m
 
 
@@ -927,6 +1014,10 @@ void raft_start_prevote(raft* r, int now_ms, list[raft_msg*] out):
 # ---- timers --------------------------------------------------------------------
 
 void raft_tick(raft* r, int now_ms, list[raft_msg*] out):
+	if (cast(int, r.incoming_snapshot) != 0 && mono_expired(now_ms, r.incoming_deadline)):
+		raft_msg_free(r.incoming_snapshot)
+		r.incoming_snapshot = 0
+		r.incoming_offset = 0
 	if (r.state == raft_leader):
 		if (mono_expired(now_ms, r.heartbeat_deadline)):
 			int i = 0
@@ -1177,6 +1268,7 @@ void raft_handle_append_reply(raft* r, raft_msg* m, int now_ms, list[raft_msg*] 
 # as our own latest snapshot (snap_data) and in the pending slot for
 # the state-machine owner (raft_take_pending_snapshot).
 void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
+	if (m.snap_len < 0 || m.snap_len > RAFT_SNAPSHOT_LIMIT || m.snap_config.length > RAFT_SNAPSHOT_MEMBERS): return
 	raft_msg* reply = raft_msg_new(raft_msg_append_reply, r.self_id, m.from, r.current_term)
 	reply.success = 0
 	if (u64_cmp(m.term, r.current_term) < 0):
@@ -1207,6 +1299,9 @@ void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_ms
 	if (r.snap_data != 0): free(r.snap_data)
 	r.snap_data = mem_dup(m.snap_data, m.snap_len)
 	r.snap_len = m.snap_len
+	r.snap_hash = raft_snapshot_checksum(r.snap_data, r.snap_len)
+	r.snap_offsets.free()
+	r.snap_offsets = new map[int, int]
 	if (r.pending_snap_data != 0): free(r.pending_snap_data)
 	r.pending_snap_data = mem_dup(m.snap_data, m.snap_len)
 	r.pending_snap_len = m.snap_len
@@ -1216,6 +1311,109 @@ void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_ms
 	out.push(reply)
 
 
+# Partial staging is volatile and bounded to one snapshot per receiver.
+# Receiver restart loses progress and requests offset zero. Reconnection
+# retransmits one chunk; duplicate chunks return the contiguous offset.
+# Only the final, validated install emits the normal durable append ACK.
+void raft_handle_snapshot_chunk(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
+	if (m.to != r.self_id || raft_is_peer(r, m.from) == 0 || u64_eq(m.term, r.current_term) == 0): return
+	if (m.chunk_total <= 0 || m.chunk_total > RAFT_SNAPSHOT_LIMIT || m.chunk_offset < 0 || m.chunk_offset > m.chunk_total): return
+	if (u64_fits_int(m.prev_log_index) == 0 || m.snap_config.length > RAFT_SNAPSHOT_MEMBERS || m.snap_len <= 0 || m.snap_len > RAFT_SNAPSHOT_CHUNK || m.snap_len > m.chunk_total - m.chunk_offset): return
+	if (raft_snapshot_chunk_checksum(m) != m.chunk_crc): return
+	if (u64_cmp(m.prev_log_index, r.commit_index) <= 0):
+		raft_msg* done = raft_msg_new(raft_msg_append_reply, r.self_id, m.from, r.current_term)
+		done.success = 1
+		u64_copy(done.match_index, r.commit_index)
+		out.push(done)
+		return
+	raft_msg* pending = r.incoming_snapshot
+	int same = 0
+	if (cast(int, pending) != 0):
+		same = pending.from == m.from && u64_eq(pending.term, m.term) && u64_eq(pending.prev_log_index, m.prev_log_index) && u64_eq(pending.prev_log_term, m.prev_log_term) && pending.chunk_total == m.chunk_total && pending.chunk_hash == m.chunk_hash
+		if (same && pending.snap_config.length != m.snap_config.length): return
+		if (same):
+			for i in range(m.snap_config.length):
+				if (pending.snap_config[i] != m.snap_config[i]): return
+		# Same index/term with a different checksum/size is a conflict.
+		if (same == 0 && u64_eq(pending.term, m.term) && u64_cmp(m.prev_log_index, pending.prev_log_index) <= 0): return
+	if (same == 0 && m.chunk_offset == 0):
+		if (cast(int, pending) != 0): raft_msg_free(pending)
+		pending = raft_msg_new(raft_msg_install_snapshot, m.from, m.to, m.term)
+		u64_copy(pending.prev_log_index, m.prev_log_index)
+		u64_copy(pending.prev_log_term, m.prev_log_term)
+		pending.snap_config.free()
+		pending.snap_config = raft_clone_int_list(m.snap_config)
+		pending.chunk_total = m.chunk_total
+		pending.chunk_hash = m.chunk_hash
+		pending.snap_len = m.chunk_total
+		pending.snap_data = malloc(m.chunk_total)
+		r.incoming_snapshot = pending
+		r.incoming_offset = 0
+		same = 1
+	int offset = 0
+	if (same):
+		r.incoming_deadline = mono_deadline(now_ms, 30000)
+		r.state = raft_follower
+		r.read_active = 0
+		r.leader_hint = m.from
+		r.last_leader_contact = now_ms
+		r.has_leader_contact = 1
+		raft_reset_election_deadline(r, now_ms)
+		if (m.chunk_offset == r.incoming_offset):
+			mem_copy(pending.snap_data + r.incoming_offset, m.snap_data, m.snap_len)
+			r.incoming_offset = r.incoming_offset + m.snap_len
+		offset = r.incoming_offset
+		if (offset == pending.snap_len):
+			if (raft_snapshot_checksum(pending.snap_data, pending.snap_len) == pending.chunk_hash): raft_handle_install_snapshot(r, pending, now_ms, out)
+			raft_msg_free(pending)
+			r.incoming_snapshot = 0
+			r.incoming_offset = 0
+			return
+	raft_msg* ack = raft_msg_new(raft_msg_snapshot_ack, r.self_id, m.from, r.current_term)
+	u64_copy(ack.prev_log_index, m.prev_log_index)
+	u64_copy(ack.prev_log_term, m.prev_log_term)
+	ack.chunk_total = m.chunk_total
+	ack.chunk_hash = m.chunk_hash
+	ack.chunk_offset = offset
+	ack.chunk_crc = m.chunk_offset # echo request offset to reject delayed ACKs
+	out.push(ack)
+
+
+void raft_handle_snapshot_ack(raft* r, raft_msg* m, list[raft_msg*] out):
+	if (r.state != raft_leader || m.to != r.self_id || raft_is_peer(r, m.from) == 0 || u64_eq(m.term, r.current_term) == 0): return
+	if (u64_eq(m.prev_log_index, r.snap_last_index) == 0 || u64_eq(m.prev_log_term, r.snap_last_term) == 0 || m.chunk_hash != r.snap_hash || m.chunk_total != r.snap_len): return
+	if (m.chunk_offset < 0 || m.chunk_offset >= r.snap_len): return
+	if (raft_u64_as_int(r.next_index[m.from]) > raft_snap_base(r)): return
+	int expected = 0
+	if (m.from in r.snap_offsets): expected = r.snap_offsets[m.from]
+	if (m.chunk_crc != expected): return
+	r.snap_offsets[m.from] = m.chunk_offset
+	out.push(raft_make_install_snapshot(r, m.from))
+
+
+# A probe is a term-scoped heartbeat carrying a unique read sequence in
+# match_index. Replies MUST pass raft_wal_persist_release like all RPCs.
+void raft_handle_read(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
+	if (m.to != r.self_id || raft_is_peer(r, m.from) == 0): return
+	if (m.type == raft_msg_read_probe):
+		raft_msg* reply = raft_msg_new(raft_msg_read_reply, r.self_id, m.from, r.current_term)
+		u64_copy(reply.match_index, m.match_index)
+		if (u64_eq(m.term, r.current_term)):
+			r.state = raft_follower
+			r.read_active = 0
+			r.leader_hint = m.from
+			r.last_leader_contact = now_ms
+			r.has_leader_contact = 1
+			raft_reset_election_deadline(r, now_ms)
+			reply.success = 1
+		out.push(reply)
+		return
+	if (r.state != raft_leader || r.read_active == 0 || m.success != 1): return
+	if (u64_eq(m.term, r.read_term) == 0 || u64_fits_int(m.match_index) == 0): return
+	if (u64_to_int(m.match_index) != r.read_seq): return
+	r.read_acks.add(m.from)
+
+
 # Dispatch one inbound message. Does NOT free m; the caller keeps
 # ownership. Any message carrying a term above ours forces a step-down
 # before type dispatch (Figure 2 "all servers" rule) — EXCEPT pre-vote
@@ -1223,6 +1421,17 @@ void raft_handle_install_snapshot(raft* r, raft_msg* m, int now_ms, list[raft_ms
 # short-circuits before the step-down check (§9.6). A prevote flag on
 # an append/append_reply is malformed and the message is dropped.
 void raft_on_msg(raft* r, raft_msg* m, int now_ms, list[raft_msg*] out):
+	if (m.type == raft_msg_snapshot_chunk || m.type == raft_msg_snapshot_ack):
+		if (m.to != r.self_id || raft_is_peer(r, m.from) == 0): return
+		if (u64_cmp(m.term, r.current_term) > 0): raft_step_down(r, m.term)
+		if (m.type == raft_msg_snapshot_chunk): raft_handle_snapshot_chunk(r, m, now_ms, out)
+		else: raft_handle_snapshot_ack(r, m, out)
+		return
+	if (m.type == raft_msg_read_probe || m.type == raft_msg_read_reply):
+		if (m.to != r.self_id || raft_is_peer(r, m.from) == 0): return
+		if (u64_cmp(m.term, r.current_term) > 0): raft_step_down(r, m.term)
+		raft_handle_read(r, m, now_ms, out)
+		return
 	if (m.prevote == 1):
 		if (m.type == raft_msg_vote_req): raft_handle_prevote_req(r, m, now_ms, out)
 		if (m.type == raft_msg_vote_reply): raft_handle_prevote_reply(r, m, now_ms, out)
@@ -1357,6 +1566,7 @@ int raft_peer_at(raft* r, int i):
 # returned. Peers whose next_index is at or below the new base are
 # brought up by InstallSnapshot from the usual send paths.
 int raft_take_snapshot(raft* r, char* data, int len):
+	if (len < 0 || len > RAFT_SNAPSHOT_LIMIT || r.peers.length >= RAFT_SNAPSHOT_MEMBERS): return 0
 	int base = raft_snap_base(r)
 	int applied = raft_u64_as_int(r.last_applied)
 	if (applied <= base): return 0
@@ -1367,6 +1577,9 @@ int raft_take_snapshot(raft* r, char* data, int len):
 	if (r.snap_data != 0): free(r.snap_data)
 	r.snap_data = mem_dup(data, len)
 	r.snap_len = len
+	r.snap_hash = raft_snapshot_checksum(data, len)
+	r.snap_offsets.free()
+	r.snap_offsets = new map[int, int]
 	int drop = applied - base
 	list[raft_entry*] kept = new list[raft_entry*]
 	int i = 0
@@ -1485,3 +1698,45 @@ void raft_snapshot_index(raft* r, u64* out):
 # The snapshot's last included term into out (zero = no snapshot).
 void raft_snapshot_term(raft* r, u64* out):
 	u64_copy(out, r.snap_last_term)
+
+
+# One bounded in-flight barrier per node. 0 = unavailable/busy, positive
+# token = admitted. Callers enable no-op-on-win or log a command first:
+# a committed entry in THIS term is required before taking the index.
+int raft_read_begin(raft* r, int now_ms, int timeout_ms, list[raft_msg*] out):
+	if (r.state != raft_leader || r.read_active || r.config_pending_index != 0): return 0
+	if (timeout_ms <= 0 || timeout_ms > 1000000000 || r.read_seq == 2147483647): return 0
+	int committed = raft_u64_as_int(r.commit_index)
+	if (committed == 0): return 0
+	u64* term = r.snap_last_term
+	if (committed > raft_snap_base(r)): term = r.log[committed - raft_snap_base(r) - 1].term
+	if (u64_eq(term, r.current_term) == 0): return 0
+	r.read_seq = r.read_seq + 1
+	r.read_active = 1
+	r.read_index = committed
+	r.read_deadline = mono_deadline(now_ms, timeout_ms)
+	u64_copy(r.read_term, r.current_term)
+	r.read_config_version = r.config_version
+	r.read_acks.free()
+	r.read_acks = new set[int]
+	for i in range(r.peers.length):
+		raft_msg* m = raft_msg_new(raft_msg_read_probe, r.self_id, r.peers[i], r.current_term)
+		u64_set_int(m.match_index, r.read_seq)
+		out.push(m)
+	return r.read_seq
+
+
+# -1 = invalidated/timed out, 0 = wait, 1 = quorum confirmed AND locally
+# applied through index_out. durable_applied is the application's durable
+# position, never merely raft.last_applied (pop_apply is only delivery).
+# A success consumes the token. Read state on the same serialized owner.
+int raft_read_poll(raft* r, int token, int now_ms, int durable_applied, int* index_out):
+	if (token != r.read_seq || r.read_active == 0): return -1
+	if (r.state != raft_leader || u64_eq(r.read_term, r.current_term) == 0 || r.read_config_version != r.config_version || mono_expired(now_ms, r.read_deadline)):
+		r.read_active = 0
+		return -1
+	if (r.read_acks.length + 1 < raft_majority(r)): return 0
+	if (durable_applied < r.read_index || raft_has_pending_snapshot(r)): return 0
+	index_out[0] = r.read_index
+	r.read_active = 0
+	return 1

@@ -61,14 +61,10 @@ applies nothing further -- raft has already advanced past the
 snapshot, so the node must stop applying and recover (reopen + replay)
 rather than apply later entries on top of the old state.
 
-Frame cap: an encoded InstallSnapshot must fit raft_tcp's 1 MiB
-rt_max_frame (raft_tcp.w) to ride that transport at all — kv_take_
-snapshot asserts the blob leaves room for the wire envelope
-(kv_snapshot_max_bytes) and fails loudly instead of producing a
-snapshot raft_tcp would silently refuse to send later. Splitting one
-logical snapshot across several InstallSnapshot frames (chunking) is
-the documented follow-up (docs/projects/distributed.md); not
-implemented here.
+Snapshot bound: Raft chunks blobs above 32 KiB, so the transport frame
+cap no longer limits the whole export. kv_snapshot_max_bytes reports
+Raft's bounded 8 MiB blob limit. See distributed_followup.md for staging,
+retry, durability and application metadata contracts.
 */
 import lib.lib
 import lib.memory
@@ -203,28 +199,17 @@ int kv_apply_command(lsm* store, char* command, int command_len):
 
 # ---- snapshotting (issue #314) ---------------------------------------------------
 
-# Largest snapshot blob kv_take_snapshot may hand to raft_take_snapshot
-# and still have it ride raft_tcp: the InstallSnapshot wire envelope
-# around the blob is type(1) + from(4) + to(4) + term(8) +
-# prev_log_index(8) + prev_log_term(8) + leader_commit(8) + snap_len(4)
-# = 45 bytes (raft_wire.w's raft_wire_size for raft_msg_install_
-# snapshot()), so the blob itself must leave that much headroom inside
-# rt_max_frame()'s 1 MiB cap. A bigger tree cannot snapshot until
-# chunked InstallSnapshot lands (documented follow-up, not this PR).
+# Maximum admitted blob, independent of the transport frame cap.
 int kv_snapshot_max_bytes():
-	return rt_max_frame() - 45
+	return RAFT_SNAPSHOT_LIMIT
 
 
-# Malloc'd full-scan export of store (lsm_export) — the KV snapshot
-# blob for raft_take_snapshot to compact the log around. Asserts the
-# result fits raft_tcp's InstallSnapshot frame cap (kv_snapshot_max_
-# bytes) — fails loudly here rather than producing a blob raft_tcp
-# would silently refuse to send later. Returns 0 (len_out 0) when the
-# export could not read the store back.
+# Full store export (owned), bounded by the receiver's snapshot budget.
+# Returns 0 when export fails; an oversized export is a caller error.
 char* kv_take_snapshot(lsm* store, int* len_out):
 	char* blob = lsm_export(store, len_out)
 	if (blob == 0): return 0
-	asserts(c"kv_take_snapshot: snapshot blob exceeds raft_tcp's InstallSnapshot frame cap (rt_max_frame); chunked InstallSnapshot is the documented follow-up, not yet implemented", len_out[0] <= kv_snapshot_max_bytes())
+	asserts(c"kv_take_snapshot: snapshot exceeds the bounded Raft snapshot limit", len_out[0] <= kv_snapshot_max_bytes())
 	return blob
 
 

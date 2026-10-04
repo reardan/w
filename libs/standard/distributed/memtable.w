@@ -50,10 +50,10 @@ void memtable_clear(memtable* m):
 		free(m.keys[i])
 		if (cast(int, m.values[i]) != 0): free(m.values[i])
 		i = i + 1
-	m.keys = new list[char*]
-	m.values = new list[char*]
-	m.value_lens = new list[int]
-	m.tombstones = new list[int]
+	m.keys.clear()
+	m.values.clear()
+	m.value_lens.clear()
+	m.tombstones.clear()
 	m.bytes = 0
 
 
@@ -63,6 +63,10 @@ void memtable_free(memtable* m):
 		free(m.keys[i])
 		if (cast(int, m.values[i]) != 0): free(m.values[i])
 		i = i + 1
+	m.keys.free()
+	m.values.free()
+	m.value_lens.free()
+	m.tombstones.free()
 	free(m)
 
 

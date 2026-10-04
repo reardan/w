@@ -64,6 +64,8 @@ import lib.bytes
 import lib.mem
 import lib.io
 import lib.fs
+import libs.standard.distributed.storage_io
+
 
 
 const int sstable_version = 1
@@ -88,6 +90,7 @@ const int sstable_bloom_probes = 5
 # Buffers records in memory (sorted order enforced on add) and writes
 # the whole file once in sstable_writer_finish.
 struct sstable_writer:
+	file_ops* ops
 	char* path              # owned copy of the destination path
 	list[char*] keys        # owned copies, strictly ascending
 	list[char*] values      # owned copies (0 for tombstones)
@@ -98,11 +101,12 @@ struct sstable_writer:
 # Creates (truncating) the file at path so open failures surface here,
 # then buffers records until finish rewrites the whole file. Returns 0
 # when the path cannot be created.
-sstable_writer* sstable_writer_new(char* path):
-	int fd = create_file(path, 420)
+sstable_writer* sstable_writer_new_with_ops(file_ops* ops, char* path):
+	int fd = storage_open(ops, path, FILE_OPS_WRITE | FILE_OPS_CREATE | FILE_OPS_TRUNCATE, 420)
 	if (fd < 0): return 0
-	close(fd)
+	storage_close(ops, fd)
 	sstable_writer* w = new sstable_writer()
+	w.ops = ops
 	w.path = mem_dup(path, strlen(path))
 	w.keys = new list[char*]
 	w.values = new list[char*]
@@ -118,6 +122,10 @@ void sstable_writer_release(sstable_writer* w):
 		free(w.keys[i])
 		if (cast(int, w.values[i]) != 0): free(w.values[i])
 		i = i + 1
+	w.keys.free()
+	w.values.free()
+	w.value_lens.free()
+	w.flags.free()
 	free(w.path)
 	free(w)
 
@@ -143,7 +151,7 @@ int sstable_writer_add(sstable_writer* w, char* key, char* value, int value_len,
 
 # Discards an unfinished writer: frees it and deletes its file.
 void sstable_writer_abort(sstable_writer* w):
-	unlink(w.path)
+	storage_unlink(w.ops, w.path)
 	sstable_writer_release(w)
 
 
@@ -194,15 +202,16 @@ int sstable_writer_finish(sstable_writer* w):
 			j = j + 1
 		off = off + 9 + key_len + val_len
 		i = i + 1
+	io_result synced
 	int ok = 0
-	int fd = create_file(w.path, 420)
+	int fd = storage_open(w.ops, w.path, FILE_OPS_WRITE | FILE_OPS_CREATE | FILE_OPS_TRUNCATE, 420)
 	if (fd >= 0):
-		if (write_all(fd, buf, total) == total && fsync(fd) == 0): ok = 1
-		if (close(fd) < 0): ok = 0
+		if (storage_write(w.ops, fd, buf, total) == total && storage_sync(w.ops, fd, &synced) == IO_OK): ok = 1
+		if (storage_close(w.ops, fd) < 0): ok = 0
 	free(buf)
 	if (ok == 1):
 		io_result r
-		if (fs_sync_parent_dir(w.path, &r) != IO_OK): ok = 0
+		if (storage_sync_parent(w.ops, w.path, &r) != IO_OK): ok = 0
 	sstable_writer_release(w)
 	return ok
 
@@ -210,6 +219,7 @@ int sstable_writer_finish(sstable_writer* w):
 # ---- reader ------------------------------------------------------------------
 
 struct sstable:
+	file_ops* ops
 	int fd                  # stays open for on-demand value reads
 	int count
 	list[char*] keys        # owned copies, sorted ascending
@@ -226,7 +236,11 @@ void sstable_close(sstable* s):
 		free(s.keys[i])
 		i = i + 1
 	bloom_free(s.bloom)
-	close(s.fd)
+	storage_close(s.ops, s.fd)
+	s.keys.free()
+	s.value_offs.free()
+	s.value_lens.free()
+	s.flags.free()
 	free(s)
 
 
@@ -234,20 +248,31 @@ void sstable_close(sstable* s):
 # sequential scan. Returns 0 on open failure, bad magic/version, or a
 # malformed structure (bad bloom geometry, out-of-order keys, or a
 # file truncated mid-record).
-sstable* sstable_open(char* path):
-	int fd = open(path, 0, 0)
-	if (fd < 0): return 0
-	int size = file_size(fd)
+sstable* sstable_open_report(file_ops* ops, char* path, int* io_failed):
+	io_failed[0] = 0
+	io_result opened
+	int fd = -1
+	if (cast(int, ops) == 0): file_ops_real_open(0, path, 0, 0, &fd, &opened)
+	else: file_ops_open(ops, path, 0, 0, &fd, &opened)
+	if (fd < 0):
+		if (opened.native_error != 2): io_failed[0] = 1
+		return 0
+	int size = storage_size(ops, fd)
+	if (size < 0):
+		io_failed[0] = 1
+		storage_close(ops, fd)
+		return 0
 	char* hdr = malloc(12)
-	seek(fd, 0, 0)
-	int got = read_exact(fd, hdr, 12)
+	int got = -1
+	if (storage_seek(ops, fd, 0, 0) >= 0): got = storage_read(ops, fd, hdr, 12)
+	if (got < 0): io_failed[0] = 1
 	int ok = 0
 	if (got == 12 && (hdr[0] & 255) == 87 && (hdr[1] & 255) == 83 && (hdr[2] & 255) == 83 && (hdr[3] & 255) == 84):
 		if (load_le32(hdr + 4) == sstable_version): ok = 1
 	int bloom_len = load_le32(hdr + 8)
 	free(hdr)
 	if (ok == 0):
-		close(fd)
+		storage_close(ops, fd)
 		return 0
 	# The bloom region must fit (with the count word after it) and
 	# carry m/k the bloom module itself would accept, and bloom_len
@@ -255,12 +280,14 @@ sstable* sstable_open(char* path):
 	# bloom_deserialize's asserts could kill the process on a corrupt
 	# file instead of this returning 0.
 	if (bloom_len < 16 || bloom_len > size - 16):
-		close(fd)
+		storage_close(ops, fd)
 		return 0
 	char* bbuf = malloc(bloom_len)
-	if (read_exact(fd, bbuf, bloom_len) != bloom_len):
+	got = storage_read(ops, fd, bbuf, bloom_len)
+	if (got < 0): io_failed[0] = 1
+	if (got != bloom_len):
 		free(bbuf)
-		close(fd)
+		storage_close(ops, fd)
 		return 0
 	int bm = load_le32(bbuf)
 	int bk = load_le32(bbuf + 4)
@@ -270,19 +297,21 @@ sstable* sstable_open(char* path):
 		if (bloom_len != 12 + ((bm + 31) >> 5) * 4 || load_le32(bbuf + 8) != bm): ok = 0
 	if (ok == 0):
 		free(bbuf)
-		close(fd)
+		storage_close(ops, fd)
 		return 0
 	bloom_filter* bl = bloom_deserialize(bbuf)
 	free(bbuf)
 	char* cbuf = malloc(4)
-	got = read_exact(fd, cbuf, 4)
+	got = storage_read(ops, fd, cbuf, 4)
+	if (got < 0): io_failed[0] = 1
 	int count = load_le32(cbuf)
 	free(cbuf)
 	if (got != 4 || count < 0):
 		bloom_free(bl)
-		close(fd)
+		storage_close(ops, fd)
 		return 0
 	sstable* s = new sstable()
+	s.ops = ops
 	s.fd = fd
 	s.count = count
 	s.keys = new list[char*]
@@ -299,8 +328,9 @@ sstable* sstable_open(char* path):
 			sstable_close(s)
 			return 0
 		char* rhdr = malloc(9)
-		seek(fd, off, 0)
-		got = read_exact(fd, rhdr, 9)
+		got = -1
+		if (storage_seek(ops, fd, off, 0) >= 0): got = storage_read(ops, fd, rhdr, 9)
+		if (got < 0): io_failed[0] = 1
 		int flag = rhdr[0] & 255
 		int key_len = load_le32(rhdr + 1)
 		int val_len = load_le32(rhdr + 5)
@@ -316,7 +346,9 @@ sstable* sstable_open(char* path):
 			sstable_close(s)
 			return 0
 		char* key = malloc(key_len + 1)
-		if (read_exact(fd, key, key_len) != key_len):
+		got = storage_read(ops, fd, key, key_len)
+		if (got < 0): io_failed[0] = 1
+		if (got != key_len):
 			free(key)
 			sstable_close(s)
 			return 0
@@ -330,6 +362,11 @@ sstable* sstable_open(char* path):
 			return 0
 		off = off + 9 + key_len + val_len
 	return s
+
+
+sstable* sstable_open_with_ops(file_ops* ops, char* path):
+	int io_failed = 0
+	return sstable_open_report(ops, path, &io_failed)
 
 
 int sstable_count(sstable* s):
@@ -356,8 +393,7 @@ int sstable_find(sstable* s, char* key):
 char* sstable_read_value(sstable* s, int idx):
 	int len = s.value_lens[idx]
 	char* buf = malloc(len + 1)
-	seek(s.fd, s.value_offs[idx], 0)
-	if (read_exact(s.fd, buf, len) != len):
+	if (storage_seek(s.ops, s.fd, s.value_offs[idx], 0) < 0 || storage_read(s.ops, s.fd, buf, len) != len):
 		free(buf)
 		return 0
 	buf[len] = 0
@@ -412,3 +448,11 @@ char* sstable_value_at(sstable* s, int i, int* len_out):
 		return 0
 	len_out[0] = s.value_lens[i]
 	return value
+
+
+sstable* sstable_open(char* path):
+	return sstable_open_with_ops(cast(file_ops*, 0), path)
+
+
+sstable_writer* sstable_writer_new(char* path):
+	return sstable_writer_new_with_ops(cast(file_ops*, 0), path)

@@ -121,6 +121,9 @@ struct raft_tcp:
 	char* scratch
 	int max_pending
 	int dropped
+	int inbox_bytes
+	int max_inbox_bytes
+	int max_inbox_messages
 
 
 # ---- lifecycle -----------------------------------------------------------------
@@ -147,6 +150,9 @@ raft_tcp* raft_tcp_new(int self_id, int port):
 	t.scratch = malloc(rt_scratch_size)
 	t.max_pending = rt_default_max_pending()
 	t.dropped = 0
+	t.inbox_bytes = 0
+	t.max_inbox_bytes = 2 * rt_max_frame()
+	t.max_inbox_messages = 256
 	return t
 
 
@@ -220,6 +226,12 @@ void rt_peer_dial(rt_peer* p):
 # Drops the peer's connection but keeps its buffered frames, so the
 # next pump re-dials and retries delivery.
 void rt_peer_disconnect(rt_peer* p):
+	# A new TCP stream cannot resume in the middle of an old frame.
+	# Discard that suffix; protocol retries supply a complete frame.
+	if (p.head_sent > 0 && p.frame_lens.length > 0):
+		rt_buf_consume(p.out, p.frame_lens[0] - p.head_sent)
+		list_remove_at[int](p.frame_lens, 0)
+		p.head_sent = 0
 	close(p.fd)
 	p.fd = 0 - 1
 
@@ -302,10 +314,10 @@ int raft_tcp_send(raft_tcp* t, raft_msg* m):
 
 # Accepts every connection currently pending on the listen socket.
 void rt_pump_accept(raft_tcp* t):
-	while (1):
+	for accepted in range(16):
 		int fd = socket_accept_connection(t.listen_fd)
 		if (fd < 0): return
-		if (socket_set_nonblocking(fd) < 0):
+		if (t.conns.length >= 64 || socket_set_nonblocking(fd) < 0):
 			close(fd)
 			return
 		rt_conn* c = new rt_conn(fd, string_new_sized(256))
@@ -319,9 +331,14 @@ int rt_conn_extract(raft_tcp* t, rt_conn* c):
 		int plen = load_le32(c.acc.data)
 		if (plen < 0 || plen > rt_max_frame()): return 1
 		if (c.acc.length < plen + 4): return 0
+		if (t.inbox.length >= t.max_inbox_messages || plen > t.max_inbox_bytes - t.inbox_bytes): return 0
 		raft_msg* m = raft_wire_decode(c.acc.data + 4, plen)
 		if (cast(int, m) == 0): return 1
+		if (m.to != t.self_id):
+			raft_msg_free(m)
+			return 1
 		t.inbox.push(m)
+		t.inbox_bytes = t.inbox_bytes + plen
 		rt_buf_consume(c.acc, plen + 4)
 	return 0
 
@@ -329,16 +346,16 @@ int rt_conn_extract(raft_tcp* t, rt_conn* c):
 # Drains whatever bytes are available and extracts frames. Returns 1
 # when the connection should be closed (EOF, error, protocol error).
 int rt_conn_read(raft_tcp* t, rt_conn* c):
-	while (1):
-		int n = socket_recv(c.fd, t.scratch, rt_scratch_size, 0)
-		if (n > 0): string_append_bytes(c.acc, t.scratch, n)
-		else:
-			if (n == 0):
-				# EOF: partial data, if any, is dropped.
-				return 1
-			if (n == 0 - net_eagain() || n == 0 - 4): break
-			return 1
-	return rt_conn_extract(t, c)
+	if (rt_conn_extract(t, c)): return 1
+	if (t.inbox.length >= t.max_inbox_messages || t.inbox_bytes >= t.max_inbox_bytes): return 0
+	# Do not read beyond a complete frame waiting for inbox capacity.
+	if (c.acc.length >= 4 && c.acc.length >= load_le32(c.acc.data) + 4): return 0
+	int n = socket_recv(c.fd, t.scratch, rt_scratch_size, 0)
+	if (n > 0):
+		string_append_bytes(c.acc, t.scratch, n)
+		return rt_conn_extract(t, c)
+	if (n == 0 - net_eagain() || n == 0 - 4): return 0
+	return 1
 
 
 void rt_pump_inbound(raft_tcp* t):
@@ -377,6 +394,7 @@ void raft_tcp_pump(raft_tcp* t):
 raft_msg* raft_tcp_recv(raft_tcp* t):
 	if (t.inbox.length == 0): return 0
 	raft_msg* m = t.inbox[0]
+	t.inbox_bytes = t.inbox_bytes - raft_wire_size(m)
 	list_remove_at[raft_msg*](t.inbox, 0)
 	return m
 
