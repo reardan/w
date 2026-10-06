@@ -11,6 +11,7 @@ Like the other __w_ runtimes this file must stay compatible with the
 oldest compiler that may compile it: plain W only.
 */
 import structures.string
+import structures.template_float
 
 
 void __w_template_float64(string_builder* s, float64 f, int width, int precision, int flags):

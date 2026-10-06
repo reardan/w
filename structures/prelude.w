@@ -12,7 +12,6 @@ Like the other __w_ runtimes this file must stay compatible with the
 oldest compiler that may compile it: plain W only.
 */
 import lib.lib
-import lib.float_text
 import structures.w_list
 
 
@@ -37,17 +36,6 @@ void __w_print_int(int value):
 
 void __w_print_str(string s):
 	write_string(1, s)
-
-
-# The shortest text that parses back to the same float32, spelled like
-# lib/format.w's ftoa (lib/float_text.w; this module does not import
-# lib.format so the prelude never collides with programs that c_import
-# libc's printf, since lib/format.w defines a W printf).
-void __w_print_float32(float f):
-	int32* p = cast(int32*, &f)
-	char* s = float_text_shortest(*p, 32)
-	write(1, s, strlen(s))
-	free(s)
 
 
 # '[a, b, c]' for scalar element lists; kind selects the element
