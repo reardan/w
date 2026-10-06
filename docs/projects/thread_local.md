@@ -88,7 +88,10 @@ stubs.
 bottom `__w_tls_size()` bytes of the thread's own 4MB stack mapping as
 its block before running anything else. mmap has already zeroed it, it
 needs no allocation, and `thread_join`'s munmap reclaims it with the
-stack. The 1MB cap keeps at least 3MB for the stack. Pool workers keep
+stack. Above the block sit the thread's 64KB alternate signal stack and
+a PROT_NONE guard page, so a stack overflow faults on the guard instead
+of overwriting the block (issue #526). The 1MB cap keeps close to 3MB
+for the stack. Pool workers keep
 their block across jobs, so a worker's `thread_local` state persists
 from one `parallel_for` to the next until `thread_pool_shutdown`.
 Threads made directly with the raw `thread_create` builtin (not through

@@ -11,6 +11,16 @@ chain through the occupied slots records the order keys were first
 inserted. Updating an existing key keeps its position; removing and
 re-inserting moves it to the end. Rehashing re-inserts in chain order, so
 growth preserves it.
+
+Hashing is keyed (issue #528): every key, string or word, goes through
+HalfSipHash-1-3 under a per-process random 64-bit seed drawn from
+getrandom(2) when the first table is created, so keys cannot be chosen
+in advance to collide (hash flooding). Each table copies the seed at
+creation, so __w_hash_set_seed only affects tables created after it.
+Nothing observable depends on the seed: iteration walks the insertion
+chain, never slot order, and __w_map_free releases keys in chain order,
+so allocation patterns (and therefore the compiler's own output) stay
+deterministic run to run.
 */
 import lib.memory
 import structures.w_list
@@ -60,6 +70,8 @@ struct __w_hash_table:
 	int default_kind  # missing-key policy: __w_hash_default_* (0 = trap)
 	int default_value # stored word / factory address / container descriptor
 	int deleted       # tombstone slots (state 2); they count toward the load
+	int seed0         # HalfSipHash key words, copied from the process seed
+	int seed1
 
 
 # Bytes per value slot. Scalar values (value_size <= word) keep the
@@ -126,17 +138,102 @@ void __w_map_missing_key(__w_hash_table* table, int key):
 	exit(1)
 
 
-int __w_hash_bytes(int data, int length):
-	int h = 5381
-	for i in range(length): h = h * 33 + data[i]
-	return h
+# Process hash seed (see the header). __w_hash_seed_state is 0 until the
+# first table is created (or __w_hash_set_seed is called), then 1.
+int __w_hash_seed_state
+int __w_hash_seed0
+int __w_hash_seed1
 
 
-int __w_hash_key_hash(int kind, int key):
-	if (kind == __w_hash_key_cstr): return __w_hash_bytes(key, __w_strlen(cast(char*, key)))
+# Override the process seed for tables created from now on (tests, or
+# a program that wants reproducible probe sequences). Existing tables
+# keep the seed they were created with.
+void __w_hash_set_seed(int k0, int k1):
+	__w_hash_seed0 = k0
+	__w_hash_seed1 = k1
+	__w_hash_seed_state = 1
+
+
+# Draws the process seed from getrandom(2) (GRND_NONBLOCK, so early boot
+# never blocks). Targets without the syscall (arm64_darwin, wasm, win64
+# stubs) or a failing call fall back to mixing ASLR-dependent addresses,
+# which is weaker but still unknown to an attacker who cannot read the
+# process's memory layout.
+void __w_hash_seed_init(int salt):
+	int k0 = 0
+	int k1 = 0
+	int got0 = sys_getrandom(cast(char*, &k0), 4, 1)
+	int got1 = sys_getrandom(cast(char*, &k1), 4, 1)
+	if ((got0 != 4) || (got1 != 4)):
+		k0 = rotl(cast(int, &k0), 13) ^ salt
+		k1 = rotl(salt, 7) ^ rotl(cast(int, &k1), 21) ^ 0x2545f491
+	__w_hash_set_seed(k0, k1)
+
+
+# HalfSipHash-1-3 (Aumasson & Bernstein's 32-bit SipHash, one compression
+# and three finalization rounds) keyed by the table's seed, over the
+# masked-32-bit-word convention so x86, x64 and arm64 compute the same
+# value. lib/byte_map.w's bytes_hash_seeded is the 2-4 variant of the
+# same construction. The result is a masked 32-bit word.
+int __w_hash_sip(__w_hash_table* table, int data, int length):
+	int mask = ((1 << 16) << 16) - 1
+	char* p = cast(char*, data)
+	int v0 = table.seed0 & mask
+	int v1 = table.seed1 & mask
+	int v2 = 0x6c796765 ^ v0
+	int v3 = 0x74656462 ^ v1
+	int i = 0
+	int done = 0
+	while (done == 0):
+		int m = 0
+		if (length - i >= 4):
+			int32* word = cast(int32*, p + i)
+			m = word[0] & mask
+			i = i + 4
+		else:
+			m = (length << 24) & mask
+			int shift = 0
+			while (i < length):
+				m = m | ((p[i] & 255) << shift)
+				shift = shift + 8
+				i = i + 1
+			done = 1
+		v3 = v3 ^ m
+		v0 = (v0 + v1) & mask
+		v1 = rotl(v1, 5) ^ v0
+		v0 = rotl(v0, 16)
+		v2 = (v2 + v3) & mask
+		v3 = rotl(v3, 8) ^ v2
+		v0 = (v0 + v3) & mask
+		v3 = rotl(v3, 7) ^ v0
+		v2 = (v2 + v1) & mask
+		v1 = rotl(v1, 13) ^ v2
+		v2 = rotl(v2, 16)
+		v0 = v0 ^ m
+	v2 = v2 ^ 255
+	int r = 0
+	while (r < 3):
+		v0 = (v0 + v1) & mask
+		v1 = rotl(v1, 5) ^ v0
+		v0 = rotl(v0, 16)
+		v2 = (v2 + v3) & mask
+		v3 = rotl(v3, 8) ^ v2
+		v0 = (v0 + v3) & mask
+		v3 = rotl(v3, 7) ^ v0
+		v2 = (v2 + v1) & mask
+		v1 = rotl(v1, 13) ^ v2
+		v2 = rotl(v2, 16)
+		r = r + 1
+	return (v1 ^ v3) & mask
+
+
+int __w_hash_key_hash(__w_hash_table* table, int key):
+	int kind = table.key_kind
+	if (kind == __w_hash_key_cstr): return __w_hash_sip(table, key, __w_strlen(cast(char*, key)))
 	if (kind == __w_hash_key_string):
-		return __w_hash_bytes(load_ptr(cast(char*, key)), load_ptr(key + __word_size__))
-	return key * 33
+		return __w_hash_sip(table, load_ptr(cast(char*, key)), load_ptr(key + __word_size__))
+	int word = key
+	return __w_hash_sip(table, cast(int, &word), __word_size__)
 
 
 int __w_hash_string_equal(int left, int right):
@@ -214,7 +311,10 @@ void __w_hash_order_unlink(__w_hash_table* table, int i):
 
 __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 	if (capacity < 16): capacity = 16
-	__w_hash_table* table = malloc(14 * __word_size__)
+	__w_hash_table* table = malloc(16 * __word_size__)
+	if (__w_hash_seed_state == 0): __w_hash_seed_init(cast(int, table))
+	table.seed0 = __w_hash_seed0
+	table.seed1 = __w_hash_seed1
 	table.capacity = capacity
 	table.count = 0
 	table.deleted = 0
@@ -247,7 +347,7 @@ __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 
 int __w_hash_table_slot(__w_hash_table* table, int key):
 	int mask = table.capacity - 1
-	int i = __w_hash_key_hash(table.key_kind, key) & mask
+	int i = __w_hash_key_hash(table, key) & mask
 	int first_deleted = -1
 	int probes = 0
 	while ((table.states[i] != 0) && (probes < table.capacity)):
@@ -544,10 +644,13 @@ char* __w_map_iter_value_addr(__w_hash_table* table, int cursor):
 # garbage (the debug backend unmaps the page, so any stale use faults
 # outright).
 void __w_map_free(__w_hash_table* table):
-	int i = 0
-	while (i < table.capacity):
-		if (table.states[i] == 1): __w_hash_key_free(table.key_kind, table.keys[i])
-		i = i + 1
+	# Chain order, not slot order: slot positions depend on the seed, and
+	# a seed-dependent free order would make later allocations differ
+	# from run to run.
+	int i = table.order_head
+	while (i >= 0):
+		__w_hash_key_free(table.key_kind, table.keys[i])
+		i = table.order_next[i]
 	free(table.keys)
 	free(table.values)
 	free(table.states)

@@ -120,6 +120,9 @@ int debug_local_count
 int debug_local_capacity
 
 
+void dwarf_variable_note(int local_index, int kind);  /* below */
+
+
 void debug_local_note(char* name, int slot, int kind, int type):
 	# Device (PTX) locals live on the GPU-side stack; the wdbg runtime
 	# records are host-only.
@@ -153,7 +156,151 @@ void debug_local_note(char* name, int slot, int kind, int type):
 	save_int(debug_local_kinds + debug_local_count * 4, kind)
 	save_int(debug_local_types + debug_local_count * 4, type)
 	save_int(debug_local_addresses + debug_local_count * 4, codepos)
+	dwarf_variable_note(debug_local_count, kind)
 	debug_local_count = debug_local_count + 1
+
+
+########################## DWARF scope notes (#536) ###########################
+# Side tables for .debug_info subprograms, lexical blocks and variables,
+# and for the .debug_frame FDEs (code_generator/dwarf_info.w emits them
+# at ELF finalisation). The compiler is single pass with no tree, so the
+# grammar and backend report each fact once, at the point it is known:
+#
+#   be_function_define     -> dwarf_function_define (the symbol)
+#   be_function_prologue   -> dwarf_function_open   (push fp ; mov fp,sp)
+#   be_return*             -> dwarf_leave_note      (each 'leave' on x86/x64)
+#   be_function_epilogue   -> dwarf_function_close  (end of the body)
+#   statement() blocks     -> dwarf_block_begin / dwarf_block_end
+#   function_definition    -> dwarf_params_begin    (parameters come first)
+#   debug_local_note       -> dwarf_variable_note   (locals and arguments)
+#
+# Only functions with a frame-pointer prologue on the native targets are
+# described: their frame base is the frame pointer, which every
+# variable's slot is addressed from (dwarf_info.w). Functions nested in
+# another's prologue/epilogue pair are not described.
+
+# Per function (dwarf_func_stride words): symbol table offset, start
+# codepos (the push), body codepos (after mov fp,sp), end codepos,
+# argument words, first event, end of events (event numbers), cloned name.
+list[int] dwarf_funcs
+const int dwarf_func_stride = 8
+# Events in compile order, 2 words each: kind ('B' block begin, 'b'
+# block end, 'V' variable), and the block or debug_local index.
+list[int] dwarf_events
+# Per block (3 words): start codepos, end codepos, 1 when the block or a
+# nested one declares a variable (empty blocks are not emitted).
+list[int] dwarf_blocks
+list[int] dwarf_block_stack
+# 'leave' positions (2 words): function index, codepos.
+list[int] dwarf_leaves
+# Parameters are declared before the prologue opens the function, so
+# they wait here (debug_local indexes) for the function whose
+# definition started at dwarf_params_symbol.
+list[int] dwarf_pending_params
+int dwarf_params_symbol
+int dwarf_define_symbol
+char* dwarf_define_name
+int dwarf_open_func    /* 1-based index of the open function, 0 = none */
+int dwarf_open_depth   /* prologues opened and not yet closed */
+
+
+void dwarf_notes_ensure():
+	if (dwarf_funcs == 0):
+		dwarf_funcs = new list[int]
+		dwarf_events = new list[int]
+		dwarf_blocks = new list[int]
+		dwarf_block_stack = new list[int]
+		dwarf_leaves = new list[int]
+		dwarf_pending_params = new list[int]
+
+
+# The parser is about to read the parameter list of the function whose
+# symbol table offset is symbol.
+void dwarf_params_begin(int symbol):
+	dwarf_notes_ensure()
+	dwarf_pending_params.clear()
+	dwarf_params_symbol = symbol
+
+
+void dwarf_function_define(int symbol, char* name):
+	dwarf_define_symbol = symbol
+	dwarf_define_name = name
+
+
+void dwarf_block_begin():
+	if ((dwarf_open_func == 0) || (dwarf_open_depth != 1)): return;
+	int block = dwarf_blocks.length / 3
+	dwarf_blocks.push(codepos)
+	dwarf_blocks.push(codepos)
+	dwarf_blocks.push(0)
+	dwarf_block_stack.push(block)
+	dwarf_events.push('B')
+	dwarf_events.push(block)
+
+
+void dwarf_block_end():
+	if ((dwarf_open_func == 0) || (dwarf_open_depth != 1)): return;
+	if (dwarf_block_stack.length == 0): return;
+	int block = dwarf_block_stack.pop()
+	dwarf_blocks[block * 3 + 1] = codepos
+	dwarf_events.push('b')
+	dwarf_events.push(block)
+
+
+# The prologue starting at start has just been emitted (codepos is the
+# body's first instruction).
+void dwarf_function_open(int start):
+	if ((target_isa != 0) && (target_isa != 1)): return;
+	dwarf_notes_ensure()
+	dwarf_open_depth = dwarf_open_depth + 1
+	if (dwarf_open_depth > 1): return;
+	dwarf_funcs.push(dwarf_define_symbol)
+	dwarf_funcs.push(start)
+	dwarf_funcs.push(codepos)
+	dwarf_funcs.push(codepos)
+	dwarf_funcs.push(0)
+	dwarf_funcs.push(dwarf_events.length / 2)
+	dwarf_funcs.push(dwarf_events.length / 2)
+	dwarf_funcs.push(cast(int, strclone(dwarf_define_name)))
+	dwarf_open_func = dwarf_funcs.length / dwarf_func_stride
+	dwarf_block_stack.clear()
+	if (dwarf_params_symbol == dwarf_define_symbol):
+		for i in range(dwarf_pending_params.length):
+			dwarf_events.push('V')
+			dwarf_events.push(dwarf_pending_params[i])
+	dwarf_pending_params.clear()
+	dwarf_params_symbol = -1
+
+
+void dwarf_function_close():
+	if (dwarf_open_depth == 0): return;
+	dwarf_open_depth = dwarf_open_depth - 1
+	if (dwarf_open_depth > 0): return;
+	int record = (dwarf_open_func - 1) * dwarf_func_stride
+	dwarf_funcs[record + 3] = codepos
+	# Blocks left open (an error path unwound past them) end here
+	while (dwarf_block_stack.length > 0): dwarf_block_end()
+	dwarf_funcs[record + 6] = dwarf_events.length / 2
+	dwarf_open_func = 0
+
+
+# A framed x86/x64 return: 'leave' is emitted at codepos, 'ret' right
+# after it.
+void dwarf_leave_note():
+	if ((dwarf_open_func == 0) || (dwarf_open_depth != 1)): return;
+	dwarf_leaves.push(dwarf_open_func - 1)
+	dwarf_leaves.push(codepos)
+
+
+void dwarf_variable_note(int local_index, int kind):
+	dwarf_notes_ensure()
+	if ((dwarf_open_func == 0) || (dwarf_open_depth != 1)):
+		if (kind == 'A'): dwarf_pending_params.push(local_index)
+		return;
+	dwarf_events.push('V')
+	dwarf_events.push(local_index)
+	for i in range(dwarf_block_stack.length):
+		dwarf_blocks[dwarf_block_stack[i] * 3 + 2] = 1
 
 
 # Functions: start codepos and the number of argument words the body was
@@ -179,6 +326,9 @@ void debug_func_note(int start, int arg_words):
 	save_int(debug_func_starts + debug_func_count * 4, start)
 	save_int(debug_func_arg_words + debug_func_count * 4, arg_words)
 	debug_func_count = debug_func_count + 1
+	if (dwarf_open_func > 0):
+		int record = (dwarf_open_func - 1) * dwarf_func_stride
+		if (dwarf_funcs[record + 1] == start): dwarf_funcs[record + 4] = arg_words
 
 
 # Argument words for the function whose body starts at codepos 'start',

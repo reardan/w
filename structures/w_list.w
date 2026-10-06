@@ -318,55 +318,100 @@ int __w_list_compare_values(int a, int b, int kind):
 	return 0
 
 
-# In-place stable insertion sort over scalar slots. The lists these
-# methods serve are small; no allocation, no recursion.
+# Sort comparison modes for __w_list_merge_sort: compare the keys
+# list's scalar words with __w_list_compare_values (arg is the kind; keys
+# may be the list itself), call a comparator on element values, or call
+# a comparator on element addresses.
+const int __w_sort_by_kind = 0
+const int __w_sort_by_value = 1
+const int __w_sort_by_addr = 2
+
+
+int __w_list_sort_compare(__w_list* list, __w_list* keys, int mode, int arg, int a, int b):
+	if (mode == __w_sort_by_kind):
+		int ka = __w_list_load_word(keys.items + a * keys.element_size, keys.element_size)
+		int kb = __w_list_load_word(keys.items + b * keys.element_size, keys.element_size)
+		return __w_list_compare_values(ka, kb, arg)
+	if (mode == __w_sort_by_value):
+		int va = __w_list_load_word(list.items + a * list.element_size, list.element_size)
+		int vb = __w_list_load_word(list.items + b * list.element_size, list.element_size)
+		return arg(va, vb)
+	return arg(cast(int, list.items + a * list.element_size), cast(int, list.items + b * list.element_size))
+
+
+# Moves list (and keys, when it is a separate list) into the order given
+# by perm: slot k receives the element that was at perm[k].
+void __w_list_apply_permutation(__w_list* list, int* perm):
+	int size = list.element_size
+	char* staged = malloc(list.length * size)
+	int k = 0
+	while (k < list.length):
+		__w_list_copy_bytes(staged + k * size, list.items + perm[k] * size, size)
+		k = k + 1
+	__w_list_copy_bytes(list.items, staged, list.length * size)
+	free(staged)
+
+
+# Stable bottom-up merge sort (issue #528; the lib/byte_map.w
+# byte_map_sorted scheme): O(n log n) comparisons for every sort flavour.
+# It sorts a permutation of indices, so elements never move while the
+# comparator runs (aggregate comparators see addresses inside the list),
+# then permutes list and keys once. Ties keep their original order: the
+# left run wins whenever compare(left, right) <= 0.
+void __w_list_merge_sort(__w_list* list, __w_list* keys, int mode, int arg):
+	int n = list.length
+	if (n < 2): return
+	int* perm = malloc(n * __word_size__)
+	int* tmp = malloc(n * __word_size__)
+	int k = 0
+	while (k < n):
+		perm[k] = k
+		k = k + 1
+	int width = 1
+	while (width < n):
+		int lo = 0
+		while (lo < n):
+			int mid = lo + width
+			if (mid > n): mid = n
+			int hi = mid + width
+			if (hi > n): hi = n
+			int i = lo
+			int j = mid
+			int out = lo
+			while (out < hi):
+				if ((i < mid) && ((j >= hi) || (__w_list_sort_compare(list, keys, mode, arg, perm[i], perm[j]) <= 0))):
+					tmp[out] = perm[i]
+					i = i + 1
+				else:
+					tmp[out] = perm[j]
+					j = j + 1
+				out = out + 1
+			lo = hi
+		int* swap = perm
+		perm = tmp
+		tmp = swap
+		width = width * 2
+	__w_list_apply_permutation(list, perm)
+	if (keys != list): __w_list_apply_permutation(keys, perm)
+	free(perm)
+	free(tmp)
+
+
+# Stable in-place sort over scalar slots (kind as in
+# __w_list_compare_values).
 void __w_list_sort(__w_list* list, int kind):
-	int i = 1
-	while (i < list.length):
-		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
-		int j = i - 1
-		while (j >= 0):
-			int other = __w_list_load_word(list.items + j * list.element_size, list.element_size)
-			if (__w_list_compare_values(other, value, kind) <= 0): break
-			__w_list_store_word(list.items + (j + 1) * list.element_size, list.element_size, other)
-			j = j - 1
-		__w_list_store_word(list.items + (j + 1) * list.element_size, list.element_size, value)
-		i = i + 1
+	__w_list_merge_sort(list, list, __w_sort_by_kind, kind)
 
 
-# Insertion sort with a caller-provided comparator (negative/zero/
-# positive like strcmp). Scalar elements: the comparator receives
-# element values.
+# Stable sort with a caller-provided comparator (negative/zero/positive
+# like strcmp). Scalar elements: the comparator receives element values.
 void __w_list_sort_by(__w_list* list, int comparator):
-	int i = 1
-	while (i < list.length):
-		int value = __w_list_load_word(list.items + i * list.element_size, list.element_size)
-		int j = i - 1
-		while (j >= 0):
-			int other = __w_list_load_word(list.items + j * list.element_size, list.element_size)
-			if (comparator(other, value) <= 0): break
-			__w_list_store_word(list.items + (j + 1) * list.element_size, list.element_size, other)
-			j = j - 1
-		__w_list_store_word(list.items + (j + 1) * list.element_size, list.element_size, value)
-		i = i + 1
+	__w_list_merge_sort(list, list, __w_sort_by_value, comparator)
 
 
-# Aggregate variant: the comparator receives element ADDRESSES and the
-# moved element is staged in a temp buffer while the tail shifts.
+# Aggregate variant: the comparator receives element ADDRESSES.
 void __w_list_sort_by_addr(__w_list* list, int comparator):
-	char* temp = malloc(list.element_size)
-	int i = 1
-	while (i < list.length):
-		__w_list_copy_bytes(temp, list.items + i * list.element_size, list.element_size)
-		int j = i - 1
-		while (j >= 0):
-			char* other = list.items + j * list.element_size
-			if (comparator(cast(int, other), cast(int, temp)) <= 0): break
-			__w_list_copy_bytes(other + list.element_size, other, list.element_size)
-			j = j - 1
-		__w_list_copy_bytes(list.items + (j + 1) * list.element_size, temp, list.element_size)
-		i = i + 1
-	free(temp)
+	__w_list_merge_sort(list, list, __w_sort_by_addr, comparator)
 
 
 # Fresh list holding the same element bytes; staging for the
@@ -548,25 +593,10 @@ int __w_list_truth(__w_list* keys, int mode):
 	return total
 
 
-# Stable in-place insertion sort of list by its parallel keys (kind as
-# in __w_list_compare_values); keys are reordered alongside.
+# Stable in-place sort of list by its parallel keys (kind as in
+# __w_list_compare_values); keys are reordered alongside.
 void __w_list_sort_keys(__w_list* list, __w_list* keys, int kind):
-	char* temp = malloc(list.element_size)
-	int i = 1
-	while (i < list.length):
-		int key = __w_list_load_word(keys.items + i * keys.element_size, keys.element_size)
-		__w_list_copy_bytes(temp, list.items + i * list.element_size, list.element_size)
-		int j = i - 1
-		while (j >= 0):
-			int other = __w_list_load_word(keys.items + j * keys.element_size, keys.element_size)
-			if (__w_list_compare_values(other, key, kind) <= 0): break
-			__w_list_store_word(keys.items + (j + 1) * keys.element_size, keys.element_size, other)
-			__w_list_copy_bytes(list.items + (j + 1) * list.element_size, list.items + j * list.element_size, list.element_size)
-			j = j - 1
-		__w_list_store_word(keys.items + (j + 1) * keys.element_size, keys.element_size, key)
-		__w_list_copy_bytes(list.items + (j + 1) * list.element_size, temp, list.element_size)
-		i = i + 1
-	free(temp)
+	__w_list_merge_sort(list, keys, __w_sort_by_kind, kind)
 
 
 __w_list* __w_list_sorted_keys(__w_list* list, __w_list* keys, int kind):

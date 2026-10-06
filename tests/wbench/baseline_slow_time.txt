@@ -1,0 +1,4 @@
+# wbench_compare_test fixture: generous counters, but a negative best
+# time so --time-factor 1 flags the wall time on any machine (the 50 ms
+# slack cannot absorb it).
+prelude 1000000000 1000000000 1000000000 -100000

@@ -10,8 +10,36 @@ import lib.assert
 import lib.float_text
 
 
+# Reinterpret a float32 as its bit pattern (a private copy of
+# lib/fmath.w's float_bits, so importing lib.format does not pull the
+# fmath names into every consumer).
+int format_float32_bits(float f):
+	int32* p = cast(int32*, &f)
+	return *p
+
+
+# Shortest text that parses back to the same float32, spelled like
+# Python's repr: 3.25 -> "3.25", 0.1 -> "0.1", 1e20 -> "1e+20",
+# 1e-7 -> "1e-07", whole values keep ".0", plus inf / -inf / nan
+# (lib/float_text.w). Returns a malloc'd string.
 char* ftoa(float f):
-	return float_text[float](f)
+	return float_text_shortest(format_float32_bits(f), 32)
+
+
+# Exactly precision fraction digits, correctly rounded ("%.Nf"):
+# ftoa_fixed(2.5, 6) -> "2.500000". Returns a malloc'd string.
+char* ftoa_fixed(float f, int precision):
+	return float_text_fixed(format_float32_bits(f), 32, precision)
+
+
+# The float32 nearest the decimal number at the start of s (strtod
+# rules; see float_text_parse): *consumed (if consumed is nonzero) gets
+# the number of chars used, 0 when s does not start with a number.
+float parse_float(char* s, int* consumed):
+	float f
+	int32* p = cast(int32*, &f)
+	*p = float_text_parse(s, 32, consumed)
+	return f
 
 
 # Print fmt to fd, pulling one word from args for each verb.

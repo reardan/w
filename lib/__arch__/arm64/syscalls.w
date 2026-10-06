@@ -233,6 +233,19 @@ int dup2(int oldfd, int newfd):
 int kill(int pid, int sig):
 	return syscall(129, pid, sig, 0)
 
+# pipe2 (59) with flags (o_cloexec, lib/linux.w).
+int pipe2(int* fds, int flags):
+	return syscall(59, fds, flags, 0)
+
+# setpgid (154): pid 0 means the caller, pgid 0 means "pgid = pid".
+int setpgid(int pid, int pgid):
+	return syscall(154, pid, pgid, 0)
+
+# close_range (436, Linux 5.9+): close every fd in [first, last]; -1 as
+# last means "to the end". Older kernels return -ENOSYS.
+int close_range(int first, int last, int flags):
+	return syscall(436, first, last, flags)
+
 
 # sigaltstack is only wired up where lib/crash.w uses it (arm64_darwin).
 int sys_sigaltstack(int ss, int old_ss):

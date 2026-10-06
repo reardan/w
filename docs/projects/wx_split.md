@@ -1,7 +1,9 @@
 # W^X Everywhere: Extending the Text/Data Split to x86, x64 and win64
 
 **Status: all three stages landed — Stage A July 2026, Stages B and C
-August 2026. Every W file target is now W^X.** win64 emits a two-section
+August 2026. Every W file target now *lays out* its image W^X;** see
+"Correction: headers vs. run-time mappings" below for what that did and
+did not guarantee at run time before issue #526. win64 emits a two-section
 image (R+X `.text`, R+W `.data` at ImageBase + 16MB); x64 and x86 Linux
 emit two `PT_LOAD` segments (R+X text, R+W data at base + 16MB),
 including the extern-data/COPY-relocation move Stage B introduced.
@@ -12,6 +14,41 @@ layout gates are `win64_header_test` (PE) and `elf_wx_segment_test`
 than a hypothetical hardening exercise. Remaining loose ends: the
 manual real-Windows HVCI smoke test (below) and the optional arm64
 extern-data lift.
+
+### Correction: headers vs. run-time mappings (issue #526, October 2026)
+
+The claim above originally read "every W file target is now W^X", and
+`elf_wx_segment_test` checked only the program headers. That was true of
+the file layout but not of the running process on 32-bit x86: no ELF
+writer emitted a `PT_GNU_STACK` header, and for an i386 binary without
+one the kernel sets `READ_IMPLIES_EXEC`, so every readable mapping is
+also executable. A 32-bit W program's `/proc/self/maps` showed the
+`[stack]`, the `[heap]` and the R+W data load all `rwxp`, despite the
+R+W `p_flags`. (x64 processes came up `rw-p` only because Linux 5.8+
+no longer applies `READ_IMPLIES_EXEC` to 64-bit binaries that lack the
+header; older kernels did. Native arm64 never applied it.) Separately, the
+x64 signal-handler thunk page in `lib/signal.w` was mapped RWX, so any
+x64 program that installed the crash reporter (every test binary, via
+`lib/testing.w`) carried one writable+executable anonymous page.
+
+Fixed in #526:
+
+- `code_generator/elf_all.w` emits `PT_GNU_STACK` with flags R+W in
+  program header slot 4 (formerly an unused `PT_NULL`, so the header
+  count and entry offset are unchanged) for every ELF writer: x86, x64,
+  arm64, static and dynamic.
+- `lib/signal.w` maps the thunk page R+W, writes, then `mprotect`s it
+  R+X; it is never both.
+- `elf_wx_segment_test` asserts the `PT_GNU_STACK` header and, at run
+  time, reads its own `/proc/self/maps` as a 32-bit and a 64-bit
+  process and fails on any mapping that is writable and executable (in
+  particular `[stack]`, `[heap]` and the data load must be `rw-p`).
+
+What W^X still does not cover: the in-process REPL and wdbg (single RWX
+JIT buffer, below), `lib/dlcall.w`'s call trampolines (written R+W, then
+flipped R+X, which is fine), and address-space randomization: images
+are still `ET_EXEC` at the fixed base 0x08048000 with the data load at
++16MB (PIE/ASLR and RELRO are tracked in #537).
 
 Stage B/C implementation notes (choices made where the plan left room):
 

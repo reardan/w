@@ -1,4 +1,5 @@
 # wbuild: x64
+# wbuild: step="bin/string_test" env="W_TEST_LEAKS=1" expect_stdout="0 failed, 0 skipped [leak check]"
 import lib.testing
 import structures.string
 

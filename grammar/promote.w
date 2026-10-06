@@ -358,7 +358,8 @@ void coerce(int want, int got):
 		var_coerce(type_unqualified(want), type_unqualified(got))
 		return;
 	if ((want == bool_type) && (got != bool_type)):
-		promote(got)
+		# eax already holds the promoted value (callers promote before
+		# coercing); loading it again would dereference the value (#525).
 		alu_test_set(0x95) /* setne */
 		return;
 	int want_kind = type_float_kind(want)
