@@ -218,7 +218,7 @@ Implemented and covered by tests:
   int-conversion overflow, a literal-width cross-target gotcha, and where
   arm64/wasm differ from x86).
 - Expressions: full C-style operator set — arithmetic, shifts, relational
-  (with chaining), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
+  (C-style, not chained: `3 > 2 > 1` is 0), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
   address/deref, compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`, `&=`,
   `|=`, `^=`, `<<=`, `>>=`; integer, float and pointer scalar targets,
   including map index targets `m[k] += v` with the key evaluated once —
@@ -471,8 +471,8 @@ seeds — is `docs/release.md`.
   named files' whitespace issues (indentation, trailing space, blank lines,
   CRLF, final newline) in place before checking them.
 - `w check` reports all warnings reached before the first error, then stops at
-  that first error. Multi-error recovery remains out of scope for the
-  single-pass compiler.
+  that first error by default; `w check --all-errors` (#523) recovers and
+  reports every error it can reach.
 - Use `./bin/wv2 symbols --json file.w` to dump declaration metadata for
   go-to-definition and indexing: one NDJSON record per user-declared symbol
   (functions, globals, enum values) and type (structs, unions, enums, aliases)
