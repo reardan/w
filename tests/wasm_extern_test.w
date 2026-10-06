@@ -59,7 +59,7 @@ int main(int argc, int argv):
 
 	println(c"wasm extern test OK")
 	return 0
-# wbuild: target=wasm_extern_test dep=wv2 dep=wrun
+# wbuild: target=wasm_extern_test tag=tests_wasm dep=wv2 dep=wrun
 # wbuild: step="bin/wv2 wasm tests/wasm_extern_test.w -o bin/wasm_extern_test"
 # wbuild: step="bin/wrun node tools/web/run_env_test.mjs bin/wasm_extern_test"
 # wbuild: step="bin/wv2 wasm tests/wasm_extern_variadic_fixture.w -o bin/wasm_extern_variadic_fixture" expect_fail expect_stderr="variadic extern functions are not supported on the wasm target"

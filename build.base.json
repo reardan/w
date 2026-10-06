@@ -17,6 +17,26 @@
 			"tests/wasm_extern_test.w",
 			"tests/wexec/direct_file/sample_test.w"
 		],
+		"no_umbrella": {
+			"update": "promotes bin/wv3 to the local ./w seed; mutates the checkout",
+			"update_win": "promotes the win64 fixpoint to w.exe; mutates the checkout",
+			"update_darwin": "promotes the darwin fixpoint to ./w_darwin; mutates the checkout",
+			"wexec_win": "Windows-host executor bootstrap used by wbuild.cmd",
+			"wexec_darwin": "macOS-host executor bootstrap used by ./wbuild on a Mac",
+			"manifest": "writes bin/build.json for reading",
+			"wtest_cache": "warms bin/wtest's deps cache",
+			"elf": "hand-run scratch program (tests/elf.w)",
+			"net": "hand-run network demo; needs outbound network",
+			"simple": "hand-run scratch program (tests/simple.w)",
+			"testing_ground": "hand-run argv demo (tests/testing_ground.w)",
+			"rewrite_c_strings": "one-off source rewriting tool",
+			"storage_probe": "storage benchmark driver binary",
+			"storage_native_test": "storage benchmark run (tools/storage/native_test.py)",
+			"wast_audit": "AST audit tool binary",
+			"ast_expression_suite": "AST migration audit; reruns the whole tests umbrella",
+			"wbench": "benchmark driver",
+			"wvm_pool_bench": "benchmark driver"
+		},
 		"tool_targets": [
 			{
 				"name": "wvm_image_test",
@@ -35,7 +55,7 @@
 				"name": "manifest_check",
 				"tags": ["tests"],
 				"steps": [
-					{"cmd": ["bin/wbuildgen", "--check"], "expect_stdout": "wbuildgen: OK"}
+					{"cmd": ["bin/wbuildgen", "--check", "--check-umbrellas"], "expect_stdout": "wbuildgen: OK"}
 				]
 			},
 			{
@@ -191,6 +211,7 @@
 		},
 		{
 			"name": "verify_win",
+			"tags": ["tests_win64"],
 			"deps": ["build_win"],
 			"inputs": [],
 			"steps": [
@@ -234,6 +255,7 @@
 		},
 		{
 			"name": "verify_darwin",
+			"tags": ["tests_darwin"],
 			"deps": ["build_darwin"],
 			"steps": [
 				{"cmd": ["cmp", "bin/wv3_darwin_raw", "bin/wv4_darwin_raw"]},
@@ -279,6 +301,7 @@
 		},
 		{
 			"name": "verify_arm64",
+			"tags": ["tests_arm64"],
 			"deps": ["build_arm64"],
 			"inputs": [],
 			"steps": [
@@ -297,6 +320,7 @@
 		},
 		{
 			"name": "verify_wasm",
+			"tags": ["tests_wasm"],
 			"deps": ["build_wasm"],
 			"inputs": [],
 			"steps": [
@@ -306,6 +330,32 @@
 		},
 		{
 			"name": "generated",
+			"deps": []
+		},
+		{
+			"name": "tests_arm64",
+			"deps": []
+		},
+		{
+			"name": "tests_arm64_native",
+			"deps": [
+				"memfd_test_arm64"
+			]
+		},
+		{
+			"name": "tests_wasm",
+			"deps": []
+		},
+		{
+			"name": "tests_darwin",
+			"deps": []
+		},
+		{
+			"name": "tests_interop",
+			"deps": []
+		},
+		{
+			"name": "tests_gpu",
 			"deps": []
 		},
 		{

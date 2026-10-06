@@ -70,7 +70,7 @@ Generation rules:
   than adding twins, so combining it with `x64`/`arch=` (or with
   name=/argv= variant pairs and `extra_compile=`, both defined as
   default-arch shapes) is an error. Umbrella membership follows the
-  compiled arch (arch_only=x64 joins "tests_x64", arm64 none, ...).
+  compiled arch (arch_only=x64 joins "tests_x64", arm64 "tests_arm64", ...).
 - `# wbuild: flags=<args>` injects extra compiler arguments into every
   compile command generated from the source — the primary target, each
   twin, name=/argv= variants, and group memberships alike — between
@@ -145,10 +145,20 @@ Generation rules:
   wbg_collect_tags), so the umbrellas' "deps" in build.base.json list
   only other umbrellas (tests includes tests_x64): a hand-maintained
   member list is how suites silently drop out of "tests". Generated
-  arm64 and wasm twins join no umbrella:
-  like the hand-written arm64/wasm run targets they mirror
-  (build_arm64, dynamic_test_arm64, build_wasm, ...), they need qemu
-  or a wasm runtime and stay individually invoked.
+  arm64 and wasm twins (and arm64/wasm groups) join "tests_arm64" /
+  "tests_wasm": they need qemu or a wasm runtime, so they stay out of
+  "tests" and run in their own CI legs, like the hand-written
+  verify_arm64 / verify_wasm targets tagged into the same umbrellas.
+- Every target must be reachable from some umbrella (a step-less
+  target) through deps, or be listed with a reason in build.base.json's
+  "generate": {"no_umbrella": {"<target>": "<reason>"}} allowlist
+  (seed promotion, executor bootstraps, benchmarks, hand-run demos).
+  `wbuildgen --check-umbrellas` (part of `./wbuild manifest_check`)
+  fails on an unlisted orphan and on a stale allowlist entry (a name
+  that no longer exists or that an umbrella now reaches), so a new
+  target cannot silently fall out of every suite (issue #531). It is a
+  check-mode gate, not a generation error: an orphan never stops
+  ./wbuild from running other targets.
 - Output is deterministic: base targets keep their order and field
   order, generated targets are appended sorted by name, and the same
   tree always serializes to byte-identical build.json.
@@ -287,6 +297,7 @@ list[char*] wbg_base_names               # base manifest order
 map[char*, int] wbg_exclude              # source path -> 1
 map[char*, int] wbg_pinned               # names listed in step-less base deps
 json_value* wbg_tool_targets_json        # "generate".."tool_targets" array; 0 = absent
+json_value* wbg_no_umbrella_json         # "generate".."no_umbrella" object; 0 = absent
 list[json_value*] wbg_generated          # generated targets, sorted by name
 map[char*, int] wbg_gen_seen             # generated names, for collisions
 list[char*] wbg_gen32_names
@@ -339,7 +350,7 @@ void wbg_error2(char* message, char* detail):
 
 void wbg_usage():
 	wstream* err = stderr_writer()
-	stream_write_line(err, c"usage: wbuildgen [--check] [--base build.base.json] [--out build.json]")
+	stream_write_line(err, c"usage: wbuildgen [--check] [--check-umbrellas] [--base build.base.json] [--out build.json]")
 	stream_flush(err)
 
 
@@ -1529,6 +1540,7 @@ int wbg_load_base(char* path):
 
 	wbg_exclude = new map[char*, int]
 	wbg_tool_targets_json = 0
+	wbg_no_umbrella_json = 0
 	json_value* generate = json_object_get(wbg_base, c"generate")
 	if (generate != 0):
 		if (generate.type != json_type_object()):
@@ -1540,6 +1552,16 @@ int wbg_load_base(char* path):
 				wbg_error(c"\"generate\".\"tool_targets\" must be an array")
 				return 1
 			wbg_tool_targets_json = tool_targets
+		json_value* no_umbrella = json_object_get(generate, c"no_umbrella")
+		if (no_umbrella != 0):
+			if (no_umbrella.type != json_type_object()):
+				wbg_error(c"\"generate\".\"no_umbrella\" must be an object of target name -> reason")
+				return 1
+			for char* key, json_value* reason in no_umbrella.object_values:
+				if ((reason.type != json_type_string()) || (strlen(reason.string_value) == 0)):
+					wbg_error2(c"\"generate\".\"no_umbrella\" entries need a nonempty reason string: ", key)
+					return 1
+			wbg_no_umbrella_json = no_umbrella
 		json_value* exclude = json_object_get(generate, c"exclude")
 		if (exclude != 0):
 			if (exclude.type != json_type_array()):
@@ -2067,7 +2089,8 @@ int wbg_add_group_target(wbg_group* g):
 	wbg_generated.push(wbg_make_group_target(g))
 	# Umbrella membership follows the group's arch, like arch_only=:
 	# x64 joins "tests_x64", win64 "tests_win64", compile-only darwin
-	# "tests"; arm64 and wasm join none (qemu / wasm-runtime hosts).
+	# "tests", arm64 "tests_arm64" and wasm "tests_wasm" (qemu /
+	# wasm-runtime CI legs).
 	if (g.arch == wbg_arch_x64()): wbg_gen64_names.push(g.name)
 	else if (g.arch == wbg_arch_arm64()): wbg_gen_arm64_names.push(g.name)
 	else if (g.arch == wbg_arch_win64()): wbg_gen_win64_names.push(g.name)
@@ -2650,6 +2673,57 @@ int wbg_extend_umbrella(char* umbrella, list[char*] names):
 	return 0
 
 
+/* Umbrella coverage (--check-umbrellas, see the module doc comment).
+Run after wbg_generate: walks deps from every step-less target and
+reports each target nothing reaches that the "no_umbrella" allowlist
+does not name, plus stale allowlist entries. Returns the number of
+problems (0 = OK), each printed as one wbuildgen error line. */
+int wbg_check_umbrellas():
+	json_value* targets = json_object_get(wbg_base, c"targets")
+	map[char*, json_value*] by_name = new map[char*, json_value*]
+	list[char*] order = new list[char*]
+	list[char*] work = new list[char*]
+	map[char*, int] reached = new map[char*, int]
+	int i = 0
+	while (i < json_array_length(targets)):
+		json_value* target = json_array_get(targets, i)
+		char* name = jfield_string(target, c"name")
+		if (name != 0):
+			by_name[name] = target
+			order.push(name)
+			if (json_object_has(target, c"steps") == 0): work.push(name)
+		i = i + 1
+	while (work.length > 0):
+		char* name = work.pop()
+		json_value* deps = jfield_array(by_name.get(name, 0), c"deps")
+		if (deps != 0):
+			int d = 0
+			while (d < json_array_length(deps)):
+				json_value* dep = json_array_get(deps, d)
+				if ((dep.type == json_type_string()) && ((dep.string_value in reached) == 0)):
+					reached[dep.string_value] = 1
+					if (dep.string_value in by_name): work.push(dep.string_value)
+				d = d + 1
+	map[char*, int] allowed = new map[char*, int]
+	int problems = 0
+	if (wbg_no_umbrella_json != 0):
+		for char* key, json_value* reason in wbg_no_umbrella_json.object_values:
+			allowed[key] = 1
+			if ((key in by_name) == 0):
+				wbg_error2(c"stale \"no_umbrella\" entry (no such target): ", key)
+				problems = problems + 1
+			else if (key in reached):
+				wbg_error2(c"stale \"no_umbrella\" entry (an umbrella already runs it): ", key)
+				problems = problems + 1
+	for char* name in order:
+		json_value* target = by_name[name]
+		int is_umbrella = json_object_has(target, c"steps") == 0
+		if ((is_umbrella == 0) && ((name in reached) == 0) && ((name in allowed) == 0)):
+			wbg_error2(c"target belongs to no umbrella (tag it, or list it with a reason in build.base.json generate.no_umbrella): ", name)
+			problems = problems + 1
+	return problems
+
+
 /* Serialization.
 
 The manifest layout is fixed so regeneration is reproducible:
@@ -2822,12 +2896,15 @@ char* wbg_generate(char* base_path, int scan_tree):
 	if (wbg_extend_umbrella(c"tests", wbg_gen32_names)): return 0
 	# Compile-only darwin twins are cheap to verify on Linux (no qemu,
 	# no wine), so they join "tests" the way graphics_darwin/pac_darwin
-	# already do. Generated arm64 and wasm twins join no umbrella (see
-	# the module doc comment); win64 twins join "tests_win64" like
-	# their hand-written counterparts.
+	# already do. Generated arm64 and wasm twins need qemu or a wasm
+	# runtime, so they join their own "tests_arm64" / "tests_wasm"
+	# umbrellas (each run by its own CI leg); win64 twins join
+	# "tests_win64" like their hand-written counterparts.
 	if (wbg_extend_umbrella(c"tests", wbg_gen_darwin_names)): return 0
 	if (wbg_extend_umbrella(c"tests_x64", wbg_gen64_names)): return 0
 	if (wbg_extend_umbrella(c"tests_win64", wbg_gen_win64_names)): return 0
+	if (wbg_extend_umbrella(c"tests_arm64", wbg_gen_arm64_names)): return 0
+	if (wbg_extend_umbrella(c"tests_wasm", wbg_gen_wasm_names)): return 0
 
 	json_value* targets = json_object_get(wbg_base, c"targets")
 	for json_value* target in wbg_generated: json_array_push(targets, target)

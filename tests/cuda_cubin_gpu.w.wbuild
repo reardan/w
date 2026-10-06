@@ -1,4 +1,4 @@
-# wbuild: target=cuda_cubin_test dep=wv2 dep=cubin_tool
+# wbuild: target=cuda_cubin_test tag=tests_gpu dep=wv2 dep=cubin_tool
 # wbuild: step="bin/cubin_tool build native tests/cuda_cubin_gpu.w bin/cuda_cubin_native"
 # wbuild: step="bin/cuda_cubin_native" expect_stdout="cuda cubin OK source=cubin"
 # wbuild: step="bin/cubin_tool build wrong tests/cuda_cubin_gpu.w bin/cuda_cubin_wrong"

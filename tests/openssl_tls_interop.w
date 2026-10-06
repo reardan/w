@@ -48,6 +48,7 @@ import lib.process
 import structures.string
 import libs.standard.net.tls
 import lib.dir
+import lib.ci_skip
 
 
 int osl_io_timeout_ms():
@@ -302,7 +303,7 @@ int osl_generate_cert(char* openssl_bin, char* cert, char* key):
 int main():
 	char* openssl_bin = process_which(c"openssl")
 	if (openssl_bin == 0):
-		println(c"openssl interop OK (skipped: no openssl on PATH)")
+		test_skip(c"openssl interop OK (SKIP: no openssl on PATH)")
 		return 0
 
 	string_builder* dirb = string_new()

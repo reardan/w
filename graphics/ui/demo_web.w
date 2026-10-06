@@ -62,6 +62,6 @@ int main(int argc, int argv):
 
 	gfx_window_run(ui_demo_win, ui_demo_frame)
 	return 0
-# wbuild: target=wasm_ui_test dep=wv2 dep=wrun
+# wbuild: target=wasm_ui_test tag=tests_wasm dep=wv2 dep=wrun
 # wbuild: step="bin/wv2 wasm graphics/ui/demo_web.w -o bin/graphics_ui_demo.wasm"
 # wbuild: step="bin/wrun node tools/web/run_ui_stub.mjs bin/graphics_ui_demo.wasm --frames 4" expect_stdout="ui demo clicks: 1"

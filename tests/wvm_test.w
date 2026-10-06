@@ -7,12 +7,13 @@ import lib.file
 import lib.process
 import lib.env
 import lib.str
+import lib.ci_skip
 
 
 int wvm_test_available():
 	int fd = kvm_open_system()
 	if (fd < 0):
-		println(c"SKIP: /dev/kvm unavailable (loader tests still ran)")
+		test_skip(c"SKIP: /dev/kvm unavailable (loader tests still ran)")
 		return 0
 	close(fd)
 	return 1

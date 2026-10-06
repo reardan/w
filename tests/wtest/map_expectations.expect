@@ -400,13 +400,15 @@ forbid custom_widget_needs_mac
 # collapsed to the step-less umbrella targets that cover the selected
 # members (tests, tests_x64, ...) plus the uncovered leftovers, with a
 # one-line stderr summary (asserted by wtest_map_test's build.base.json
-# steps) — never hundreds of individual leaf tests. Targets no
-# umbrella covers (the arm64/wasm gates) survive individually.
+# steps) — never hundreds of individual leaf tests. The arm64/wasm
+# gates collapse into their own umbrellas (tests_arm64, tests_wasm).
 case structures/w_list.w
 expect tests
 expect tests_x64
-expect arm64_smoke_test
-expect wasm_smoke_test
+expect tests_arm64
+expect tests_wasm
+forbid arm64_smoke_test
+forbid wasm_smoke_test
 forbid math_test
 forbid lib_test
 forbid stream_test

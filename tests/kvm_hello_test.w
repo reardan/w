@@ -1,6 +1,7 @@
 # wbuild: arch_only=x64 timeout=10000
 import lib.testing
 import lib.kvm
+import lib.ci_skip
 
 
 void test_kvm_layout():
@@ -21,7 +22,7 @@ void test_kvm_port_exit():
 	# Only an unavailable device is a skip; failures after open are bugs.
 	int probe = kvm_open_system()
 	if (probe < 0):
-		println(c"SKIP: /dev/kvm unavailable")
+		test_skip(c"SKIP: /dev/kvm unavailable")
 		return
 	close(probe)
 	kvm_machine vm

@@ -16,6 +16,7 @@ import lib.lib
 import graphics.math
 import graphics.gl
 import graphics.window
+import lib.ci_skip
 
 
 int smoke_failures
@@ -48,7 +49,7 @@ void check_channel(char* label, int x, int y, int channel, int want, int toleran
 int main(int argc, int argv):
 	gfx_window* win = gfx_window_open(c"w graphics smoke", 320, 240)
 	if (win == 0):
-		println(c"graphics gl smoke SKIP (no display)")
+		test_skip(c"graphics gl smoke SKIP (no display)")
 		return 0
 
 	char* version = glGetString(GL_VERSION)
