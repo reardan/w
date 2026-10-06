@@ -7,6 +7,14 @@
 #
 # frame_reader buffers a descriptor so it tolerates short reads, messages
 # split across reads, and several messages arriving in a single read.
+#
+# Limits (fail closed): a header block longer than r.max_header_bytes
+# (frame_default_max_header_bytes) without its blank terminator line, or
+# a Content-Length above r.max_body_bytes (frame_default_max_body_bytes,
+# change it with frame_reader_set_max_body), sets r.error to
+# frame_error_too_large instead of buffering without bound; any other
+# malformed header sets frame_error_malformed. Both are non-zero, so
+# callers that only test r.error keep working.
 import lib.lib
 import lib.memory
 import lib.mem
@@ -40,6 +48,16 @@ int read_exact(int fd, char* buf, int n):
 	return total
 
 
+const int frame_error_malformed = 1
+const int frame_error_too_large = 2
+
+# Default cap on one message body (Content-Length), 64 MiB.
+const int frame_default_max_body_bytes = 67108864
+
+# Default cap on one header block, terminator included.
+const int frame_default_max_header_bytes = 8192
+
+
 struct frame_reader:
 	int fd
 	char* buffer
@@ -47,6 +65,8 @@ struct frame_reader:
 	int length
 	int offset
 	int error
+	int max_body_bytes
+	int max_header_bytes
 
 
 frame_reader* frame_reader_new(int fd):
@@ -57,7 +77,15 @@ frame_reader* frame_reader_new(int fd):
 	r.length = 0
 	r.offset = 0
 	r.error = 0
+	r.max_body_bytes = frame_default_max_body_bytes
+	r.max_header_bytes = frame_default_max_header_bytes
 	return r
+
+
+# Sets the largest Content-Length r accepts; a bigger one fails the
+# message with frame_error_too_large before any body byte is buffered.
+void frame_reader_set_max_body(frame_reader* r, int max_body_bytes):
+	r.max_body_bytes = max_body_bytes
 
 
 void frame_reader_free(frame_reader* r):
@@ -113,8 +141,14 @@ int frame_match_header_name(frame_reader* r, int i, int limit, char* name):
 
 
 # Parses the Content-Length value out of the buffered header block that
-# ends at header_end. Returns the length, or -1 when absent or malformed.
-int frame_parse_content_length(frame_reader* r, int header_end):
+# ends at header_end. Returns the length, or -1 when absent, malformed,
+# or above r.max_body_bytes; in that last case *too_large is set to 1.
+# The digit accumulation is checked against the cap before every
+# multiply, so a long run of digits can never wrap around.
+int frame_parse_content_length_checked(frame_reader* r, int header_end, int* too_large):
+	*too_large = 0
+	int limit = r.max_body_bytes
+	if (limit <= 0): limit = frame_default_max_body_bytes
 	int i = r.offset
 	while (i < header_end):
 		int after_name = frame_match_header_name(r, i, header_end, c"content-length:")
@@ -124,7 +158,11 @@ int frame_parse_content_length(frame_reader* r, int header_end):
 			int value = 0
 			int digits = 0
 			while ((after_name < header_end) && (r.buffer[after_name] >= '0') && (r.buffer[after_name] <= '9')):
-				value = value * 10 + r.buffer[after_name] - '0'
+				int d = r.buffer[after_name] - '0'
+				if (value > (limit - d) / 10):
+					*too_large = 1
+					return 0 - 1
+				value = value * 10 + d
 				digits = digits + 1
 				after_name = after_name + 1
 			if (digits == 0): return 0 - 1
@@ -138,6 +176,12 @@ int frame_parse_content_length(frame_reader* r, int header_end):
 	return 0 - 1
 
 
+# frame_parse_content_length_checked without the too-large flag.
+int frame_parse_content_length(frame_reader* r, int header_end):
+	int too_large = 0
+	return frame_parse_content_length_checked(r, header_end, &too_large)
+
+
 # Extracts one message if it is already fully buffered, without reading
 # from the descriptor (useful with non-blocking descriptors and event
 # loops). Returns a malloc'd null-terminated body and stores its length
@@ -146,11 +190,22 @@ int frame_parse_content_length(frame_reader* r, int header_end):
 char* frame_take_buffered_message(frame_reader* r, int* length_out):
 	*length_out = 0
 	int header_end = frame_find_header_end(r)
-	if (header_end < 0): return 0
+	int header_cap = r.max_header_bytes
+	if (header_cap <= 0): header_cap = frame_default_max_header_bytes
+	if (header_end < 0):
+		# Still waiting for the blank line: stop buffering a header
+		# block that has already outgrown the cap.
+		if (r.length - r.offset > header_cap): r.error = frame_error_too_large
+		return 0
+	if (header_end - r.offset > header_cap):
+		r.error = frame_error_too_large
+		return 0
 
-	int body_length = frame_parse_content_length(r, header_end)
+	int too_large = 0
+	int body_length = frame_parse_content_length_checked(r, header_end, &too_large)
 	if (body_length < 0):
-		r.error = 1
+		if (too_large): r.error = frame_error_too_large
+		else: r.error = frame_error_malformed
 		return 0
 
 	if (r.length - header_end < body_length): return 0
@@ -164,18 +219,18 @@ char* frame_take_buffered_message(frame_reader* r, int* length_out):
 # Reads one framed message, blocking until it is complete. Returns a
 # malloc'd null-terminated body and stores its length in length_out.
 # Returns 0 on clean EOF or on error; a malformed header or truncated
-# stream also sets r.error to 1.
+# stream also sets r.error (frame_error_*).
 char* frame_read_message(frame_reader* r, int* length_out):
 	char* body = frame_take_buffered_message(r, length_out)
 	while (body == 0):
 		if (r.error): return 0
 		int count = frame_reader_fill(r)
 		if (count < 0):
-			r.error = 1
+			r.error = frame_error_malformed
 			return 0
 		if (count == 0):
 			# EOF: clean if nothing was buffered, truncated otherwise.
-			if (r.offset < r.length): r.error = 1
+			if (r.offset < r.length): r.error = frame_error_malformed
 			return 0
 		body = frame_take_buffered_message(r, length_out)
 	return body

@@ -1,5 +1,5 @@
 # Package metadata for the W toolchain (design: docs/package_metadata.txt).
-# Validated by 'make metadata_check' (tools/wmeta.w); the compiler does not
+# Validated by './wbuild metadata_check' (tools/wmeta.w); the compiler does not
 # read this file, and import resolution is unchanged.
 
 package w

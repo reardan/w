@@ -71,6 +71,28 @@ The wc2 experiment mentioned in that historical snapshot was retired on
 [production compiler](projects/ast_migration.md); the
 [retirement record](projects/wc2.md) preserves its findings.
 
+Updates since the audit (2026-10-06, against main at 5bbce83). The findings
+below are left as audited; these notes record what has changed since.
+
+- AST and IR: the AST spike (#488) is closed as completed, and the
+  production AST migration has landed on main (merged 2026-10-04). The
+  compiler still generates code in one streaming pass by default.
+  `--ast-full-expressions` turns on the hybrid AST path, `--ast-required`
+  rejects any expression that would fall back to streaming, and
+  `./wbuild ast_expression_suite` runs the test suite that way.
+  `--ast-retain` keeps the traversal trees, but they are not yet an
+  executable module IR. #489 (an AST in the compiler proper) stays open,
+  with a completion plan in
+  [ast_completion_plan.md](projects/ast_completion_plan.md); the status is
+  in [ast_migration.md](projects/ast_migration.md).
+- Multi-error diagnostics: `w check --all-errors` (#523, POSIX hosts)
+  isolates each failure and keeps checking, so a file with four unknown
+  symbols reports all four, where the default check stops at the first.
+  Plain compiles still stop at the first error. JSON diagnostics still
+  carry no error code, end column or related-location notes.
+- Closures: lambdas (#107) were closed as not planned in July 2026;
+  `it`-expressions remain the substitute.
+
 ## What is already strong
 
 W has more fundamentals in place than most self-hosted language projects, and
@@ -145,7 +167,7 @@ auto-imported prelude.
 | Portable integer semantics | Weak. Literals are 32-bit and sign-extended on every target: `-2147483648` is positive on x64, `1 << 40` is 256 on x86 and 2^40 on x64, `int64 big = 10000000000` is a compile error, `uint32 1 > int -1` differs by target. Signed overflow, shifts past the width and `INT_MIN / -1` follow the hardware with no stated policy. | grammar/int_literal.w:55-80; CLAUDE.md gotcha list is the only collection point |
 | Module privacy and namespaces | Missing. Two imported modules defining the same helper is "symbol redefined"; a user function named `input`, `ints` or `read_all` collides with the auto-imported prelude; a module's helpers leak to importers of its importers; aliases only add a warning. | structures/prelude.w:134,155,174; docs/todo.txt:534-535 |
 | Sum types and pattern matching | Missing by stated design: unions are untagged, pattern matching is a non-goal. | docs/projects/type_system_p0.md:418,470 |
-| Closures | Missing: `it`-expressions compile to inline loops; lambdas are issue #107. | docs/projects/golf_ergonomics.md:126-129 |
+| Closures | Missing: `it`-expressions compile to inline loops; lambdas (#107) were closed as not planned. | docs/projects/golf_ergonomics.md:126-129 |
 | Interfaces, traits or bounded generics | Missing: polymorphism is duck-typed protocols plus function pointers; generic bodies are checked per instantiation; inference does not bind through `list[T]`, `pair[T]*` or forward calls. | docs/projects/generics.md, iteration.md |
 | Option or nullable type | Missing: `wresult[T]` is a heap-allocated three-word record and null pointers remain the idiom (`input()` returns 0 at end of input). | docs/error_results.txt |
 | Destructors or RAII | Missing: function-scoped `defer` only; container `.free()` is shallow. | docs/projects/defer.md |
@@ -171,9 +193,9 @@ one of them undoes the documented W^X split at load time.
 | --- | --- | --- |
 | Non-executable stack and data (PT_GNU_STACK) | Missing. No ELF target emits the header, so 32-bit programs run with an executable stack, heap and data segment (the kernel applies READ_IMPLIES_EXEC). 64-bit programs are protected only because kernels since 5.8 ignore the omission. | code_generator/elf_all.w:104,160-165; a fresh 32-bit program printing /proc/self/maps shows `[stack] rwxp`, `[heap] rwxp` and the data segment `rwxp` (run during the audit, kernel 6.18); docs/projects/wx_split.md claims every target is W^X and elf_wx_segment_test checks only file headers |
 | Address-space randomisation (PIE) | Missing on every Linux target. Binaries are fixed-address ET_EXEC at 0x08048000, x64 included. The x64 backend materialises absolute 32-bit addresses (`mov eax, imm32; call eax`), so PIE is blocked by the code model, not just unimplemented. | elf_all.w:127,170; repl/core.w:993-996 ("must sit in the low 2GB"); no RELRO, canaries, CFI or .eh_frame anywhere (grep) |
-| Intermediate representation | Missing by design (cc500 heritage). Grammar rules parse and emit machine code in one pass; generics are re-parsed by seeking the source file per instantiation. | grammar/binary_op.w:121-147; grammar/generic.w:283-340; issue #489 tracks adding an AST |
+| Intermediate representation | Missing by design (cc500 heritage). Grammar rules parse and emit machine code in one pass; generics are re-parsed by seeking the source file per instantiation. | grammar/binary_op.w:121-147; grammar/generic.w:283-340; issue #489 tracks adding an AST. Update: an opt-in production AST path has since landed and #488 is closed; see the updates above |
 | Optimisation and register allocation | Only byte-adjacent peepholes, x86 family only. Every local lives in memory, no CSE, dead-code or dead-function elimination, inlining, tail calls, or -O flag. | A pointer-sum loop compiles to 42 instructions (30 per iteration) against gcc -O0 23 and -O2 15; bin/wv2 carries 10,458 dead `add esp,0` (2.5% of its instructions) and 80% of its calls are indirect through a materialised constant; hello world links 328 functions and 86 KB |
-| Multi-error diagnostics and stable error codes | Missing. The first error calls exit(1). The JSON diagnostics carry no code, end column or related-location notes. | compiler/tokenizer.w:385-393; compiler/diagnostics.w:318-343; README states recovery is out of scope |
+| Multi-error diagnostics and stable error codes | Missing. The first error calls exit(1). The JSON diagnostics carry no code, end column or related-location notes. | compiler/tokenizer.w:385-393; compiler/diagnostics.w:318-343; README states recovery is out of scope. Update: `w check --all-errors` (#523) now reports multiple errors; error codes are still missing |
 | Symbolic debug information | Line tables only. DWARF has a single childless compile unit: no subprograms, variables, types or CFI, so gdb shows "No symbol table info available" for locals and arguments. Variable locations exist only in the in-process debugger's memory. | code_generator/dwarf.w:103-108,293-308; gdb session on a two-function program |
 | Backend abstraction | None. Four instruction sets and five container formats are selected by if/elif chains on a global `target_isa` inside about 110 emitter helpers; roughly 6,100 lines implement the same helper surface four times. | code_generator/x86.w (231 target_isa mentions), docs/projects/arm64.md decision D3 |
 | Separate or incremental compilation | Missing. Every build is whole-program with no object files or linker; mitigated by speed (the compiler compiles its own 58,000 lines in about 0.5 s). | docs/projects/compilation_model.md §1; timed during the audit |
@@ -302,8 +324,8 @@ are absent, while design documentation is unusually rich.
 | Supply-chain pinning and release signing | Partial. Seeds are pinned by sha256 (good). GitHub Actions are pinned by tag (`checkout@v7`) rather than commit SHA; releases carry a SHA256SUMS produced by the same job that built the binaries and no signature. | SEEDS; release.yml |
 | Bootstrap trust | Single root. The only seed path is a CI-built binary of the previous release; there is no second implementation, reproducible-bootstrap plan or diverse-double-compilation discussion, and the darwin seed segfault was worked around by cross-compiling from the Linux seed. | release.yml comments; grep over docs/ |
 | Versioning and compatibility policy | Asserted, not defined. docs/release.md says SemVer but nothing defines a breaking change; `w_language >=0.1.0` in package.wmeta is advisory and the compiler does not read it. | docs/release.md:3; package.wmeta:3 |
-| Language and library reference | Missing. No specification; README's "Language snapshot" is the closest. No standard-library reference (docs/library.txt is a 191-byte wish list); `w symbols` is the substitute. | grep over docs/ |
-| Documentation drift | Minor. README says structures/ holds a linked list (actual: bitset, deque, hash_table, heap, json, json_codec, string, w_list, w_dynamic); package.wmeta still cites the removed Makefile; docs/folder_structure.txt, compiler.txt and library.txt are stale plans. Of 148 back-ticked paths in README, AGENTS and CLAUDE, all resolve. | README.md:154; package.wmeta:2 |
+| Language and library reference | Missing. No specification; README's "Language snapshot" is the closest. No standard-library reference (docs/library.txt is a 191-byte wish list); `w symbols` is the substitute. Update: `./wbuild library_reference` now generates a library reference from `w symbols --json` (#539), and docs/library.txt is retired. | grep over docs/ |
+| Documentation drift | Minor. README says structures/ holds a linked list (actual: bitset, deque, hash_table, heap, json, json_codec, string, w_list, w_dynamic); package.wmeta still cites the removed Makefile; docs/folder_structure.txt, compiler.txt and library.txt are stale plans. Of 148 back-ticked paths in README, AGENTS and CLAUDE, all resolve. Update (#539): the README structures list and package.wmeta are fixed, the stale docs/*.txt plans are retired, and mvp.txt and ui.txt are refreshed. | README.md:154; package.wmeta:2 |
 | One planning surface | Split across docs/todo.txt (665 lines), docs/done.txt, README's open areas, libs/standard/plans/01-11 and GitHub issues (25 open, mostly default labels, no milestones); no roadmap. | docs/, GitHub issues |
 | Hermetic and incremental builds | Partial. wexec hashes content rather than mtimes (verified), but cache keys omit undeclared compile-time inputs: editing a `c_import` header leaves c_import_test cached, the seed binary is absent from wv2's key, host tools and the environment are unkeyed, and outputs are checked for existence only. 134 members of `tests` are FORCE targets, so a no-op `./wbuild tests` is never incremental. | tools/wexec.w:666-760,1424; `./bin/wexec --trace c_import_test` reported four undeclared headers |
 | Test selection coverage | Blind spot. `wtest changed` selects nothing for `*.txt` data (an edit to tools/unicode/UnicodeData.txt selects 0 targets); undeclared headers and fonts fall back to the whole suite. | tools/test_map.w:1630-1638,1924 |
@@ -372,6 +394,6 @@ semantics, the integer model and undefined behaviour (the type_system_p0
 contradictions are a starting list); fuzzing in CI now that tools/fuzz exists,
 together with the `--trace --hermetic` gate from issue #486; correct float
 parsing and shortest-round-trip formatting shared by ftoa, f-strings and JSON;
-the AST spike from issues #488 and #489 as the one path to an optimizer,
+the production AST (#489; the #488 spike is done) as the one path to an optimizer,
 multi-error diagnostics and DWARF variable information; and PIE, which needs a
 RIP-relative code model on x64 and is the longest item on the list.

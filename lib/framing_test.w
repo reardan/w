@@ -120,7 +120,7 @@ void test_missing_content_length_sets_error():
 	int length = 0
 	char* got = frame_read_message(r, &length)
 	assert_equal(0, cast(int, got))
-	assert_equal(1, r.error)
+	assert_equal(frame_error_malformed, r.error)
 
 	frame_reader_free(r)
 	close(fds[1])
@@ -139,7 +139,7 @@ void test_truncated_body_sets_error():
 	int length = 0
 	char* got = frame_read_message(r, &length)
 	assert_equal(0, cast(int, got))
-	assert_equal(1, r.error)
+	assert_equal(frame_error_malformed, r.error)
 
 	frame_reader_free(r)
 	close(fds[1])
@@ -171,6 +171,87 @@ void test_large_message_grows_buffer():
 	frame_reader_free(r)
 	close(fds[1])
 	free(fds)
+
+
+# Writes wire to a fresh socket pair, closes the writer, and reads one
+# message with r configured by max_body (0 = default). Returns r.error.
+int framing_test_read_error(char* wire, int wire_len, int max_body):
+	int* fds = malloc(__word_size__ * 2)
+	framing_test_pair(fds)
+	assert_equal(wire_len, write_all(fds[0], wire, wire_len))
+	close(fds[0])
+
+	frame_reader* r = frame_reader_new(fds[1])
+	if (max_body > 0): frame_reader_set_max_body(r, max_body)
+	int length = 0
+	char* got = frame_read_message(r, &length)
+	assert_equal(0, cast(int, got))
+	int error = r.error
+	frame_reader_free(r)
+	close(fds[1])
+	free(fds)
+	return error
+
+
+void test_content_length_over_cap_is_rejected():
+	char* wire = c"Content-Length: 101\x0d\x0a\x0d\x0a"
+	assert_equal(frame_error_too_large, framing_test_read_error(wire, strlen(wire), 100))
+
+	# Exactly the cap is fine.
+	int* fds = malloc(__word_size__ * 2)
+	framing_test_pair(fds)
+	char* ok = c"Content-Length: 5\x0d\x0a\x0d\x0ahello"
+	assert_equal(strlen(ok), write_all(fds[0], ok, strlen(ok)))
+	close(fds[0])
+	frame_reader* r = frame_reader_new(fds[1])
+	frame_reader_set_max_body(r, 5)
+	int length = 0
+	char* got = frame_read_message(r, &length)
+	assert_strings_equal(c"hello", got)
+	assert_equal(0, r.error)
+	free(got)
+	frame_reader_free(r)
+	close(fds[1])
+	free(fds)
+
+	# The default cap rejects an absurd length before buffering a byte.
+	char* huge = c"Content-Length: 1000000000\x0d\x0a\x0d\x0a"
+	assert_equal(frame_error_too_large, framing_test_read_error(huge, strlen(huge), 0))
+
+
+void test_content_length_digit_overflow_is_rejected():
+	# 2^32 + 5 and 2^64 + 5 would wrap to 5 with an unchecked value*10.
+	char* wire32 = c"Content-Length: 4294967301\x0d\x0a\x0d\x0ahello"
+	assert_equal(frame_error_too_large, framing_test_read_error(wire32, strlen(wire32), 0))
+	char* wire64 = c"Content-Length: 18446744073709551621\x0d\x0a\x0d\x0ahello"
+	assert_equal(frame_error_too_large, framing_test_read_error(wire64, strlen(wire64), 0))
+	char* zeros = c"Content-Length: 0000000000000000000000000000005\x0d\x0a\x0d\x0ahello"
+	int* fds = malloc(__word_size__ * 2)
+	framing_test_pair(fds)
+	assert_equal(strlen(zeros), write_all(fds[0], zeros, strlen(zeros)))
+	close(fds[0])
+	frame_reader* r = frame_reader_new(fds[1])
+	int length = 0
+	char* got = frame_read_message(r, &length)
+	assert_strings_equal(c"hello", got)
+	free(got)
+	frame_reader_free(r)
+	close(fds[1])
+	free(fds)
+
+
+void test_unterminated_header_flood_is_rejected():
+	# 20 KB of header lines with no blank terminator line: the reader
+	# must give up at max_header_bytes rather than buffer forever.
+	int n = 20000
+	char* wire = malloc(n)
+	for i in range(n): wire[i] = 'a'
+	int i = 0
+	while (i + 11 < n):
+		mem_copy(wire + i, c"X-Pad: aaa\x0d\x0a", 12)
+		i = i + 12
+	assert_equal(frame_error_too_large, framing_test_read_error(wire, n, 0))
+	free(wire)
 
 
 void test_read_exact_and_write_all():

@@ -5,8 +5,8 @@ Status:
 	package.wmeta files, tools/wmeta.w is the CLI (wmeta check [file]),
 	the repository root carries a package.wmeta, fixtures live in
 	tests/metadata/, and ./wbuild metadata_check / ./wbuild metadata_test run as
-	part of ./wbuild tests (metadata_check is also a wexec target in
-	build.json). The checker validates fields, three-component versions,
+	part of ./wbuild tests (metadata_check is a hand-written target in
+	build.base.json). The checker validates fields, three-component versions,
 	the =, >= and ^ constraints, module existence under root (expanding
 	__arch__ to both x86 and x64), vendored path dependencies
 	(recursively: name match, version constraint, cycle-safe), and
