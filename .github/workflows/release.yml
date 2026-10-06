@@ -61,7 +61,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Enable i386 packages
         if: matrix.i386
@@ -92,7 +92,7 @@ jobs:
           cp ${{ matrix.artifact_src }} dist/${{ matrix.artifact }}
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: ${{ matrix.artifact }}
           path: dist/
@@ -110,7 +110,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Build the Linux-hosted compiler
         run: ./wbuild wv2
@@ -121,7 +121,7 @@ jobs:
           ./bin/wv2 arm64_darwin w.w -o dist/wv2_darwin_bootstrap
 
       - name: Upload bootstrap
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: wv2_darwin_bootstrap
           path: dist/wv2_darwin_bootstrap
@@ -134,10 +134,10 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Download Linux-cross-compiled darwin bootstrap
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           name: wv2_darwin_bootstrap
           path: dist
@@ -160,7 +160,7 @@ jobs:
           cp bin/wv3_darwin release_dist/w-arm64-macos
 
       - name: Upload artifact
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: w-arm64-macos
           path: release_dist/
@@ -176,7 +176,7 @@ jobs:
 
     steps:
       - name: Check out repository
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: Check tag matches package.wmeta
         run: |
@@ -184,7 +184,7 @@ jobs:
           test "v$ver" = "$GITHUB_REF_NAME"
 
       - name: Download artifacts
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
         with:
           path: dist
           merge-multiple: true
@@ -192,8 +192,15 @@ jobs:
           # wv2_darwin_bootstrap handoff artifact used by the macOS job.
           pattern: w-*
 
+      # SHA256SUMS is published with the binaries (dist/* below). It is
+      # not signed yet; signing it (e.g. a detached signature or a
+      # Sigstore attestation) is a follow-up of #527.
       - name: Generate SHA256SUMS
-        run: cd dist && sha256sum * > SHA256SUMS
+        run: |
+          cd dist
+          sha256sum w-* > SHA256SUMS
+          sha256sum --check --strict SHA256SUMS
+          cat SHA256SUMS
 
       - name: Create release
         env:
