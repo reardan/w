@@ -1,0 +1,44 @@
+# https://editorconfig.org
+#
+# Deliberately conservative: no blanket trim_trailing_whitespace or
+# end-of-line rewriting, because diagnostic fixtures and their .expect
+# sidecars (tests/diagnostic_inputs/, *.expect) assert exact bytes,
+# including trailing whitespace, CRLF and missing final newlines.
+root = true
+
+[*]
+charset = utf-8
+
+# W source is tab-indented (spaces are a compiler warning, and warnings
+# fail the --strict self-host build) and needs a trailing newline.
+[*.w]
+indent_style = tab
+tab_width = 8
+end_of_line = lf
+insert_final_newline = true
+
+# The build manifest, wexec fixtures and shell scripts use tabs too.
+[{*.json,*.sh,wbuild}]
+indent_style = tab
+tab_width = 8
+end_of_line = lf
+insert_final_newline = true
+
+[*.{yml,yaml}]
+indent_style = space
+indent_size = 2
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+
+[*.md]
+end_of_line = lf
+insert_final_newline = true
+# Two trailing spaces are a hard line break in Markdown.
+trim_trailing_whitespace = false
+
+# Fixtures: leave every byte alone.
+[{tests/diagnostic_inputs/**,**.expect}]
+insert_final_newline = unset
+end_of_line = unset
+indent_style = unset

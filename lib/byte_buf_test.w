@@ -1,4 +1,5 @@
 # wbuild: x64
+# wbuild: step="bin/byte_buf_test" env="W_TEST_LEAKS=1" expect_stdout="0 failed, 0 skipped [leak check]"
 # lib/byte_buf.w: borrowed views, owned buffers (limits, take/release),
 # and the checked reader/writer cursors (fixed width, 64-bit, spans,
 # length prefixes, varints, sticky errors, malformed input).

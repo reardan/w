@@ -42,6 +42,9 @@ void lea_eax_esp_plus(int v);   /* from x86.w (the x86 path of be_lea_acc_wstack
 void sym_define_global(int current_symbol);          /* symbol_table.w */
 void sym_define_global_at(int current_symbol, int v);
 int sym_declare_global(char *s, int type, int symtype);
+void dwarf_function_define(int symbol, char* name);     /* dwarf.w */
+void dwarf_function_open(int start);
+void dwarf_function_close();
 
 
 void a64(int w):
@@ -468,6 +471,7 @@ void be_code_ptr_sign():
 # wasm_function_begin assigns the next one). Nothing may emit between
 # this call and the prologue.
 void be_function_define(int current_symbol, char* name):
+	dwarf_function_define(current_symbol, name)
 	if (target_isa == 2):
 		sym_define_global_at(current_symbol, wasm_func_count + 1)
 		wasm_func_name_note(wasm_func_count + 1, name)
@@ -505,12 +509,14 @@ int be_frame_words():
 # size patch; nothing on the native targets. Called right after the
 # body's final ret().
 void be_function_epilogue():
+	if (be_frame_active): dwarf_function_close()
 	be_frame_active = 0
 	if (target_isa == 2): wasm_function_end()
 
 
 void be_function_prologue():
 	be_frame_active = 0
+	int prologue_start = codepos
 	if (target_isa == 2): wasm_function_begin()
 	elif (target_isa == 1):
 		# Sign x30 with the W stack pointer at entry; the framed return
@@ -526,3 +532,5 @@ void be_function_prologue():
 		emit_x64_opcode()
 		emit(2, c"\x89\xe5")   # mov ebp,esp / mov rbp,rsp
 		be_frame_active = 1
+	# DWARF subprogram + CFI notes (code_generator/dwarf.w)
+	if (be_frame_active): dwarf_function_open(prologue_start)

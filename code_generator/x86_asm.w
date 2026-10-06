@@ -116,6 +116,9 @@ void define_asm_functions():
 	# The call targets stack_create, which is emitted immediately after.
 	# The child zeroes ebp so its frame-pointer chain ends at the thread
 	# function instead of running into the parent's frames.
+	# The mapping has no guard page of its own: lib/thread.w's
+	# thread_entry mprotects one above the thread_local block and the
+	# signal stack at the bottom (issue #526).
 	sym_define_declare_global_function(c"thread_create")
 	x86_asm(c"call .+0x24")   # stack_create, emitted immediately after this stub
 	x86_asm(c"lea ecx,[eax+0x3ffff0]; mov edx,[esp+4]; mov [ecx],edx")

@@ -134,7 +134,17 @@ int generic_def_lookup(char* name, int kind):
 
 
 int generic_def_add(char* name, int kind, char* file_path, int offset, int line, int column, int param_count, int param_names):
-	if (generic_def_lookup(name, kind) >= 0): error3(c"generic '", name, c"' redefined")
+	int previous = generic_def_lookup(name, kind)
+	if (previous >= 0):
+		# --json related note (C3.2): the first definition; the record's
+		# line/column are 0-based
+		if (diag_json):
+			char* lead = strjoin(c"previous definition of generic '", name)
+			char* note = strjoin(lead, c"' is here")
+			diag_related_add(generic_defs[previous].file, generic_defs[previous].line + 1, generic_defs[previous].column + 1, note)
+			free(lead)
+			free(note)
+		error3(c"generic '", name, c"' redefined")
 	if (cast(int, generic_defs) == 0): generic_defs = new list[generic_def_record]
 	generic_def_record rec
 	rec.name = name

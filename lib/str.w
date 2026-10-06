@@ -4,13 +4,10 @@
 import lib.lib
 
 
-# Bytes [start, end) as a new C string. Out-of-range bounds clamp, so
-# substring(s, 0, 999) is a safe "rest of the string".
-char* substring(char* s, int start, int end):
-	int length = strlen(s)
-	if (start < 0): start = 0
-	if (end > length): end = length
-	if (end < start): end = start
+# Bytes [start, end) as a new C string, for callers that already know
+# 0 <= start <= end <= strlen(s): no strlen, so a caller cutting many
+# pieces out of one string (split) stays linear (issue #528).
+char* str_copy_range(char* s, int start, int end):
 	char* result = malloc(end - start + 1)
 	int i = 0
 	while (start + i < end):
@@ -18,6 +15,16 @@ char* substring(char* s, int start, int end):
 		i = i + 1
 	result[i] = 0
 	return result
+
+
+# Bytes [start, end) as a new C string. Out-of-range bounds clamp, so
+# substring(s, 0, 999) is a safe "rest of the string".
+char* substring(char* s, int start, int end):
+	int length = strlen(s)
+	if (start < 0): start = 0
+	if (end > length): end = length
+	if (end < start): end = start
+	return str_copy_range(s, start, end)
 
 
 # First index where needle appears in s, or -1. An empty needle
@@ -73,7 +80,7 @@ list[char*] split(char* s, char delimiter = 0):
 		if (delimiter == 0):
 			is_break = (s[i] == 0) || (s[i] == ' ') || ((s[i] >= 9) && (s[i] <= 13))
 		if (is_break):
-			if ((delimiter != 0) || (i > start)): pieces.push(substring(s, start, i))
+			if ((delimiter != 0) || (i > start)): pieces.push(str_copy_range(s, start, i))
 			start = i + 1
 		if (s[i] == 0):
 			return pieces

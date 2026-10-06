@@ -337,6 +337,56 @@ int sym_decl_column(int t):
 	return load_int(table + t + 74)
 
 
+# A ':=' local is declared after its initializer, so its record carries
+# the position of the token after the initializer (which is also where
+# 'w check --lint' reports it unused). Under --json only, the name's own
+# position is kept here for related notes (C3.2), keyed by record
+# offset; sym_declare zeroes a reused offset's entry.
+map[int, int] sym_inferred_lines
+map[int, int] sym_inferred_columns
+
+
+void sym_note_inferred_location(int t, int line, int column):
+	if (diag_json == 0): return
+	if (sym_inferred_lines == 0):
+		sym_inferred_lines = new map[int, int]
+		sym_inferred_columns = new map[int, int]
+	sym_inferred_lines[t] = line
+	sym_inferred_columns[t] = column
+
+
+# Attach symbol t's declaration as a related note (lead + name + tail)
+# to the next --json diagnostic (compiler/diagnostics.w, C3.2). Symbols
+# with no source location (runtime stubs, c_import) attach nothing.
+void sym_note_related(int t, char* lead, char* name, char* tail):
+	if ((diag_json == 0) || (t < 0)): return
+	int file_index = sym_decl_file_index(t)
+	if ((file_index < 0) || (sym_decl_line(t) < 1)): return
+	int line = sym_decl_line(t)
+	int column = sym_decl_column(t)
+	if (sym_inferred_lines != 0):
+		if (t in sym_inferred_lines):
+			if (sym_inferred_lines[t] > 0):
+				line = sym_inferred_lines[t]
+				column = sym_inferred_columns[t]
+	char* head = strjoin(lead, name)
+	char* message = strjoin(head, tail)
+	diag_related_add(debug_file_name(file_index), line, column, message)
+	free(head)
+	free(message)
+
+
+# The name of the live record whose NUL is at table offset t, or 0.
+# Records are packed forward, so the name is found through the index.
+char* sym_record_name(int t):
+	sym_index_sync()
+	int i = sym_index_count
+	while (i > 0):
+		i = i - 1
+		if (sym_index_offset(i) == t): return &table[sym_index_name_start(i)]
+	return 0
+
+
 # Raw scope-type byte: 'D' defined global, 'U' undefined global, 'A'
 # argument, 'L' local (see sym_get_value). import_warn_transitive
 # (grammar/import_statement.w, --imports) uses this to skip locals and
@@ -420,6 +470,7 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	save_int(table + t + 66, decl_file_index())
 	save_int(table + t + 70, diag_token_line)
 	save_int(table + t + 74, diag_token_column)
+	if (sym_inferred_lines != 0): sym_inferred_lines[t] = 0
 	# t is the record's NUL offset -- exactly what sym_lookup returns for
 	# it. Index and table_pos move together.
 	int p = sym_index_count
@@ -496,7 +547,9 @@ void addr_chain_patch(int head, int value):
 
 void sym_define_global_at(int current_symbol, int v):
 	int t = current_symbol
-	if (table[t + 1] != 'U'): error3(c"symbol redefined: '", last_global_declaration, c"'")
+	if (table[t + 1] != 'U'):
+		sym_note_related(t, c"previous definition of '", last_global_declaration, c"' is here")
+		error3(c"symbol redefined: '", last_global_declaration, c"'")
 	# A defining occurrence is more useful than a bare forward declaration
 	# for navigation (w symbols --json / windex/wlsp go-to-definition): a
 	# prototype like lib.w's 'int main(int argc, int argv);' would
@@ -666,6 +719,10 @@ int sym_is_name_char(int c):
 	return (c >= 128) & (c <= 191)
 
 
+int sym_later_line
+int sym_later_column
+
+
 # Forward-call hint support: consume the rest of the current input file
 # looking for what can only be a top-level definition (or prototype) of
 # name -- the name as a whole word followed by '(' (spaces allowed
@@ -675,7 +732,9 @@ int sym_is_name_char(int c):
 # Text behind a '#' on the line is ignored so a trailing comment cannot
 # fake a definition. The scan eats the remaining input, which is fine on
 # its only path: sym_not_found_error below, right before error() exits
-# the process.
+# the process. On a match, sym_later_line/sym_later_column hold where
+# the definition's name starts (1-based, codepoint columns like
+# diag_token_column) for the --json related note (C3.2).
 int sym_defined_later_in_file(char* name):
 	int c = nextc
 	int at_line_start = 1
@@ -683,6 +742,10 @@ int sym_defined_later_in_file(char* name):
 	int line_commented = 0
 	int prev_is_name = 0
 	int match_i = 0
+	int scan_line = line_number + 1
+	int scan_column = column_number + 1
+	int match_line = 0
+	int match_column = 0
 	while (c != -1):
 		if (at_line_start):
 			# The scan starts mid-line (right after the failed name), so
@@ -702,13 +765,24 @@ int sym_defined_later_in_file(char* name):
 				# the '(' of a parameter list. Anything else (another
 				# name character, '[' of a generic definition, ...)
 				# resets the search.
-				if (c == '('): return 1
+				if (c == '('):
+					sym_later_line = match_line
+					sym_later_column = match_column
+					return 1
 				if (c != ' '): match_i = 0
 			else if ((c == name[match_i]) && ((match_i > 0) || (prev_is_name == 0))):
+				if (match_i == 0):
+					match_line = scan_line
+					match_column = scan_column
 				match_i = match_i + 1
 			else: match_i = 0
 			prev_is_name = sym_is_name_char(c)
+		int previous = c
 		c = getchar(file)
+		if (previous == 10):
+			scan_line = scan_line + 1
+			scan_column = 1
+		else if ((c & 192) != 128): scan_column = scan_column + 1
 	return 0
 
 
@@ -725,14 +799,21 @@ int sym_defined_later_in_file(char* name):
 # prompt) the plain message is kept.
 # Offer every live symbol -- newest (innermost scope) first -- to the
 # did-you-mean suggester (compiler/diagnostics.w, #377).
+# The suggested symbol's declaration also becomes the --json record's
+# related note (C3.2).
 void sym_suggest_similar(char* s):
 	sym_index_sync()
 	diag_suggest_begin(s)
 	int i = sym_index_count
+	int best = -1
 	while (i > 0):
 		i = i - 1
+		char* before = diag_suggest_best
 		diag_suggest_consider(&table[sym_index_name_start(i)])
-	diag_suggest_finish()
+		if (diag_suggest_best != before): best = i
+	char* suggested = diag_suggest_best
+	if (diag_suggest_finish() && (best >= 0)):
+		sym_note_related(sym_index_offset(best), c"'", suggested, c"' is declared here")
 
 
 void sym_not_found_error(char* s):
@@ -741,6 +822,12 @@ void sym_not_found_error(char* s):
 	diag_part(token)
 	if (repl_recovery == 0):
 		if (sym_defined_later_in_file(s)):
+			if (diag_json):
+				char* later = strjoin(c"'", s)
+				char* note = strjoin(later, c"' is defined here")
+				diag_related_add(filename, sym_later_line, sym_later_column, note)
+				free(later)
+				free(note)
 			error3(c"': declared later in this file -- forward-declare it with a prototype ('type ", s, c"(params);') before this point")
 	error(c"'")
 
@@ -995,6 +1082,11 @@ void section_set_range(int header, int addr, int length):
 	elf_section_set_entsize(header, 0)
 
 
+void dwarf_info_emit(int text_end);  /* code_generator/dwarf_info.w */
+void dwarf_abbrev_emit();
+void dwarf_frame_emit();
+
+
 void emit_debugging_symbols(int word_size):
 	int text_end = codepos
 
@@ -1003,9 +1095,10 @@ void emit_debugging_symbols(int word_size):
 
 	# Save section header address + number of sections
 	# Section order: null, text, debug_info, debug_abbrev, debug_line, strings,
-	# symtab, and .note.gnu.build-id when the writer emitted the note
-	int num_sections = 7
-	if (build_id_note_pos != 0): num_sections = 8
+	# symtab, .note.gnu.build-id when the writer emitted the note, then
+	# debug_frame (last, so the indexes above stay put)
+	int num_sections = 8
+	if (build_id_note_pos != 0): num_sections = 9
 	elf_save_section_info(word_size, header_addr, num_sections, 5)
 
 	# Mandatory null section 0
@@ -1049,6 +1142,9 @@ void emit_debugging_symbols(int word_size):
 		elf_section_set_addr(build_id_section_header, code_offset + build_id_note_pos)
 		section_set_range(build_id_section_header, build_id_note_pos, elf_build_id_note_size())
 
+	int debug_frame_section_header = codepos
+	elf_emit_section_header(1)
+
 	# Emit strings
 	int strings_addr = codepos
 	int string_count = emit_string_table()
@@ -1060,6 +1156,7 @@ void emit_debugging_symbols(int word_size):
 	emit_section_name(c".debug_info", debug_info_section_header, strings_addr)
 	emit_section_name(c".debug_abbrev", debug_abbrev_section_header, strings_addr)
 	emit_section_name(c".debug_line", debug_line_section_header, strings_addr)
+	emit_section_name(c".debug_frame", debug_frame_section_header, strings_addr)
 	if (build_id_section_header != 0):
 		emit_section_name(c".note.gnu.build-id", build_id_section_header, strings_addr)
 
@@ -1084,15 +1181,24 @@ void emit_debugging_symbols(int word_size):
 
 	# Emit the DWARF payloads
 	int debug_info_addr = codepos
-	debug_info_emit(text_end)
+	dwarf_info_emit(text_end)
 	section_set_range(debug_info_section_header, debug_info_addr, codepos - debug_info_addr)
 
 	int debug_abbrev_addr = codepos
-	debug_abbrev_emit()
+	dwarf_abbrev_emit()
 	section_set_range(debug_abbrev_section_header, debug_abbrev_addr, codepos - debug_abbrev_addr)
 
 	int debug_line_addr = codepos
 	debug_line_emit()
 	section_set_range(debug_line_section_header, debug_line_addr, codepos - debug_line_addr)
 
+	int debug_frame_addr = codepos
+	dwarf_frame_emit()
+	section_set_range(debug_frame_section_header, debug_frame_addr, codepos - debug_frame_addr)
+
 	emit_int8(0) /* placeholder so reader doesn't read beyond the end of the file */
+
+
+# DWARF .debug_info/.debug_abbrev/.debug_frame writers: imported last
+# because they read the symbol and type tables (issue #536).
+import code_generator.dwarf_info

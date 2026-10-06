@@ -865,6 +865,77 @@ void get_token():
 	# print_string("token: ", token)
 
 
+# P1.1 tokenizer snapshots for the AST expression probe. The same lexer
+# globals as grammar/generic.w's generic_reparse_save block (except the
+# grammar-level pointer_indirection), plus token_serial, held in caller
+# storage: no allocation and no token clone. The token text is supplied
+# separately so callers can keep it in an arena they already own.
+struct tokenizer_snapshot:
+	char* filename
+	int file
+	int nextc
+	int line_number
+	int column_number
+	int tab_level
+	int token_newline
+	int byte_offset
+	int diag_token_line
+	int diag_token_column
+	int token_start_offset
+	int token_i
+	int token_serial
+
+
+void tokenizer_snapshot_save(tokenizer_snapshot* s):
+	s.filename = filename
+	s.file = file
+	s.nextc = nextc
+	s.line_number = line_number
+	s.column_number = column_number
+	s.tab_level = tab_level
+	s.token_newline = token_newline
+	s.byte_offset = byte_offset
+	s.diag_token_line = diag_token_line
+	s.diag_token_column = diag_token_column
+	s.token_start_offset = token_start_offset
+	s.token_i = token_i
+	s.token_serial = token_serial
+
+
+# Replace the token buffer's contents with length bytes and a terminator.
+void tokenizer_set_token_text(char* text, int length):
+	if (token_size <= length + 1):
+		int x = (length + 10) << 1
+		token = realloc(token, token_size, x)
+		token_size = x
+	for i in range(length): token[i] = text[i]
+	token[length] = 0
+
+
+# Restore every lexer global except the token buffer's contents.
+void tokenizer_snapshot_restore_fields(tokenizer_snapshot* s):
+	filename = s.filename
+	file = s.file
+	nextc = s.nextc
+	line_number = s.line_number
+	column_number = s.column_number
+	tab_level = s.tab_level
+	token_newline = s.token_newline
+	byte_offset = s.byte_offset
+	diag_token_line = s.diag_token_line
+	diag_token_column = s.diag_token_column
+	token_start_offset = s.token_start_offset
+	token_i = s.token_i
+	token_serial = s.token_serial
+
+
+# Restore every lexer global. The token text is copied like
+# generic_reparse_restore's strcpy: up to its first NUL byte.
+void tokenizer_snapshot_restore(tokenizer_snapshot* s, char* text):
+	tokenizer_set_token_text(text, strlen(text))
+	tokenizer_snapshot_restore_fields(s)
+
+
 # The grammar tries alternatives in sequence (accept("&"), accept("*"),
 # ...), so almost every call mismatches on the first byte: reject that
 # case before entering the compare loop.

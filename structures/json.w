@@ -13,19 +13,21 @@ Numbers: a plain integer parses as a signed int and saturates to
 json_int_max()/json_int_min() on overflow — the native int range, so
 int32 on the 32-bit target and int64 on x64. A number with a fraction
 or exponent part parses as a float. float_value always holds its
-float32 reading (about 7 significant digits; overflow saturates to the
-largest finite float32 and underflow flushes to zero), and on
-8-byte-word targets the value additionally carries the full float64
-reading as raw bits in float64_bits (has_float64 == 1), kept to 17
-significant digits with the same saturate/flush behavior — float64 is
-a compile error on 4-byte words, so this file never spells the type
-and the float64 arithmetic lives in the per-target
+float32 reading, correctly rounded from the full decimal text
+(lib/float_text.w; overflow saturates to the largest finite float32
+instead of an infinity, and tiny values round through the subnormals
+to zero), and on 8-byte-word targets the value additionally carries
+the correctly rounded float64 reading as raw bits in float64_bits
+(has_float64 == 1), with the same saturating overflow. float64 is a
+compile error on 4-byte words, so this file never spells the type:
+the bit-level conversions run in lib/float_text.w and the few
+float64-typed helpers live in the per-target
 structures/__arch__/<arch>/json_float64.w twins. Serialization writes
-float64-carrying values from those bits (up to 17 significant digits,
-bit-exact through a stringify -> parse round trip) and everything else
-from float_value with up to 9 significant digits; either way whole
-values keep a trailing .0 so they re-parse as floats, and non-finite
-values have no JSON spelling and serialize as null (like JavaScript's
+the shortest decimal that parses back to the same bits -- from
+float64_bits for float64-carrying values, else from float_value -- so
+a stringify -> parse round trip is bit-exact; whole values keep a
+trailing .0 so they re-parse as floats, and non-finite values have no
+JSON spelling and serialize as null (like JavaScript's
 JSON.stringify).
 
 Parsed trees own their children; call json_free() on the root. Objects are backed by the
@@ -37,6 +39,7 @@ import lib.lib
 import lib.assert
 import lib.container
 import structures.string
+import lib.float_text
 import structures.__arch__.json_float64
 
 
@@ -430,53 +433,24 @@ int json_float_bits(float f):
 	return *p
 
 
-# m * 10^t in float32, one decade at a time: overflow saturates to the
-# largest finite float32 instead of reaching inf, underflow flushes to
-# zero through the denormals.
-float json_scale_pow10(float m, int t):
-	if (m == 0.0): return 0.0
-	if (t > 60):
-		# the smallest mantissa (1) times 10^61 already overflows
-		return 3.40282346e38
-	if (t < -60):
-		# the largest mantissa (<1e9) times 10^-61 is below the
-		# smallest denormal
-		return 0.0
-	float limit = 3.40282346e38 / 10.0
-	while (t > 0):
-		if (m > limit): return 3.40282346e38
-		m = m * 10.0
-		t = t - 1
-	while (t < 0):
-		if (m == 0.0): return 0.0
-		m = m / 10.0
-		t = t + 1
-	return m
-
-
-# 10^16 on 8-byte-word targets: the float64 mantissa accumulation
-# keeps digits below this, so it caps at 17 significant digits (enough
-# to identify any float64), mirroring the float32 path's 9-digit cap.
-# Built by multiplication because the tokenizer runs as a 32-bit
-# process and truncates wider literals (lib/fmath64.w's header). On
-# 4-byte-word targets — where the wide path is never consumed — this
-# stays the float32 cap so the accumulation cannot overflow the word.
-int json_float64_mant_limit():
-	if (__word_size__ != 8): return 100000000
-	int limit = 100000000
-	for i in range(8): limit = limit * 10
-	return limit
+# The correctly rounded float of the given width (32 or 64) for the
+# number text at s, as bits, with JSON's saturating overflow: an
+# infinity becomes the largest finite value of that sign.
+int json_parse_float_bits(char* s, int width):
+	int bits = float_text_parse(s, width, 0)
+	if (float_text_is_special(bits, width)):
+		# finite decimal text only overflows: keep the sign, drop to
+		# the largest finite pattern (one below the infinity's)
+		bits = bits - 1
+	return bits
 
 
 # Numbers follow the JSON grammar: -? int frac? exp?. A plain integer
 # parses as a signed int; a number with a fraction or exponent part
-# parses as a float, built from the first 9 significant digits (exact in
-# an int) scaled by the remaining decimal exponent — float32 keeps ~7 of
-# those digits anyway. On 8-byte-word targets a second accumulation
-# keeps the first 17 significant digits and hands them to the
-# per-target float64 helper, so the value also carries full float64
-# precision (see the header).
+# parses as a float, correctly rounded from its full text to float32
+# (and, on 8-byte-word targets, to float64 as well; see the header).
 json_value* json_parse_number(json_parser* p):
+	int start = p.index
 	int negative = 0
 	if (p.input[p.index] == '-'):
 		negative = 1
@@ -489,11 +463,6 @@ json_value* json_parse_number(json_parser* p):
 	int int_max = json_int_max()
 	int value = 0      # exact integer value while it fits the int range
 	int overflow = 0
-	int mant = 0       # first 9 significant digits for the float path
-	int mant_exp = 0   # decimal exponent owed by dropped/fraction digits
-	int mant64 = 0     # first 17 significant digits (float64, 8-byte words)
-	int mant64_exp = 0
-	int mant64_limit = json_float64_mant_limit()
 	int is_float = 0
 
 	if (p.input[p.index] == '0'):
@@ -506,10 +475,6 @@ json_value* json_parse_number(json_parser* p):
 			int digit = p.input[p.index] - '0'
 			if (overflow | (value > (int_max - digit) / 10)): overflow = 1
 			else: value = value * 10 + digit
-			if (mant < 100000000): mant = mant * 10 + digit
-			else: mant_exp = mant_exp + 1
-			if (mant64 < mant64_limit): mant64 = mant64 * 10 + digit
-			else: mant64_exp = mant64_exp + 1
 			p.index = p.index + 1
 
 	if (p.input[p.index] == '.'):
@@ -518,42 +483,26 @@ json_value* json_parse_number(json_parser* p):
 		if (json_is_digit(p.input[p.index]) == 0):
 			json_fail(p)
 			return 0
-		while (json_is_digit(p.input[p.index])):
-			if (mant < 100000000):
-				mant = mant * 10 + p.input[p.index] - '0'
-				mant_exp = mant_exp - 1
-			if (mant64 < mant64_limit):
-				mant64 = mant64 * 10 + p.input[p.index] - '0'
-				mant64_exp = mant64_exp - 1
-			p.index = p.index + 1
+		while (json_is_digit(p.input[p.index])): p.index = p.index + 1
 
 	if ((p.input[p.index] == 'e') || (p.input[p.index] == 'E')):
 		is_float = 1
 		p.index = p.index + 1
-		int exp_negative = 0
-		if (p.input[p.index] == '+'): p.index = p.index + 1
-		else if (p.input[p.index] == '-'):
-			exp_negative = 1
-			p.index = p.index + 1
+		if ((p.input[p.index] == '+') || (p.input[p.index] == '-')): p.index = p.index + 1
 		if (json_is_digit(p.input[p.index]) == 0):
 			json_fail(p)
 			return 0
-		int exp = 0
-		while (json_is_digit(p.input[p.index])):
-			# clamped: anything past ±60 saturates in the scaler anyway
-			if (exp < 10000): exp = exp * 10 + p.input[p.index] - '0'
-			p.index = p.index + 1
-		if (exp_negative): exp = 0 - exp
-		mant_exp = mant_exp + exp
-		mant64_exp = mant64_exp + exp
+		while (json_is_digit(p.input[p.index])): p.index = p.index + 1
 
 	if (is_float):
-		float m = mant
-		m = json_scale_pow10(m, mant_exp)
-		if (negative): m = -m
+		# The JSON number grammar is a subset of float_text_parse's,
+		# which therefore stops exactly at p.index.
+		float m
+		int32* m_bits = cast(int32*, &m)
+		*m_bits = json_parse_float_bits(p.input + start, 32)
 		json_value* result = json_float(m)
 		if (__word_size__ == 8):
-			result.float64_bits = json_f64_from_decimal(mant64, mant64_exp, negative)
+			result.float64_bits = json_parse_float_bits(p.input + start, 64)
 			result.has_float64 = 1
 		return result
 
@@ -705,17 +654,10 @@ void json_append_escaped_string(string_builder* out, char* text):
 	string_append_char(out, '"')
 
 
-# Serialize a float32 with up to 9 significant digits (enough to
-# identify any float32): plain decimal for moderate exponents — whole
-# values get a trailing .0 so they re-parse as floats — and scientific
-# notation outside that range. Non-finite values have no JSON spelling
-# and serialize as null. Values carrying float64 bits never reach this:
-# json_append_value routes them to the per-target json_f64_append.
 # Spell the significant digits digits[0 .. n) (trailing zeros already
 # trimmed), leading digit at decimal exponent e: scientific when e is
 # below -4 or above sci_above, otherwise plain, keeping a trailing .0 on
-# whole values so they re-parse as floats. Shared with the float64
-# formatter (structures/json_float64_impl.w).
+# whole values so they re-parse as floats.
 void json_append_digits(string_builder* out, char* digits, int n, int e, int sci_above):
 	int i = 0
 	if ((e < -4) || (e > sci_above)):
@@ -761,44 +703,32 @@ void json_append_digits(string_builder* out, char* digits, int n, int e, int sci
 			i = i + 1
 
 
-void json_append_float(string_builder* out, float f):
-	int bits = json_float_bits(f)
-	if ((bits & 0x7f800000) == 0x7f800000):
+# Serialize the float of the given width (32 or 64) held as bits: the
+# shortest decimal that parses back to the same bits (at most 9
+# significant digits for float32, 17 for float64), plain for moderate
+# exponents (whole values get a trailing .0 so they re-parse as
+# floats), scientific beyond 10^14 (float32) / 10^16 (float64) or below
+# 10^-4. Non-finite values have no JSON spelling and serialize as null.
+# A float32 zero prints unsigned "0.0"; a float64 zero keeps its sign.
+void json_append_float_bits(string_builder* out, int bits, int width):
+	if (float_text_is_special(bits, width)):
 		string_append(out, c"null")
 		return
-	if ((bits & 0x7fffffff) == 0):
-		string_append(out, c"0.0")
-		return
-	if (bits < 0):
-		string_append_char(out, '-')
-		f = -f
-
-	# Scale so the 9 significant digits sit in the integer d, tracking
-	# the decimal exponent e of the leading digit
-	int e = 8
-	while (f >= 1000000000.0):
-		f = f / 10.0
-		e = e + 1
-	while (f < 100000000.0):
-		f = f * 10.0
-		e = e - 1
-	int d = f + 0.5
-	if (d >= 1000000000):
-		d = d / 10
-		e = e + 1
-
-	char* digits = malloc(10)
-	int i = 8
-	while (i >= 0):
-		digits[i] = '0' + d % 10
-		d = d / 10
-		i = i - 1
-	digits[9] = 0
-	int n = 9
-	while ((n > 1) && (digits[n - 1] == '0')): n = n - 1
-
-	json_append_digits(out, digits, n, e, 14)
+	char* digits = malloc(24)
+	int e = 0
+	int n = float_text_shortest_digits(bits, width, digits, &e)
+	int negative = 0
+	if (width == 64): negative = bits < 0
+	else: negative = (bits >> 31) & 1
+	if (negative && ((digits[0] != '0') || (width == 64))): string_append_char(out, '-')
+	if (digits[0] == '0'): string_append(out, c"0.0")
+	else if (width == 64): json_append_digits(out, digits, n, e, 16)
+	else: json_append_digits(out, digits, n, e, 14)
 	free(digits)
+
+
+void json_append_float(string_builder* out, float f):
+	json_append_float_bits(out, json_float_bits(f), 32)
 
 
 void json_append_object(string_builder* out, json_value* value):
@@ -828,7 +758,7 @@ void json_append_value(string_builder* out, json_value* value):
 	else if (value.type == json_type_null()): string_append(out, c"null")
 	else if (value.type == json_type_int()): string_append_int(out, value.int_value)
 	else if (value.type == json_type_float()):
-		if (value.has_float64): json_f64_append(out, value.float64_bits)
+		if (value.has_float64): json_append_float_bits(out, value.float64_bits, 64)
 		else: json_append_float(out, value.float_value)
 	else if (value.type == json_type_string()): json_append_escaped_string(out, value.string_value)
 	else if (value.type == json_type_bool()):

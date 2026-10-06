@@ -1,5 +1,5 @@
 # wbuild: expect_stdout="greeting str via f"
-# wbuild: expect_stdout="1.250000"
+# wbuild: expect_stdout="1.25"
 # wbuild: expect_stdout="[5, -1, 12]"
 # wbuild: expect_stdout="[one, two]"
 # wbuild: expect_stdout="[]"

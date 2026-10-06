@@ -1068,6 +1068,12 @@ is complete and parseable, no closing bracket needed.
 - `token`: the tokenizer's current `token` text — the issue's
   "token/context" field, free to include.
 - `arch`: `"x86"` or `"x64"` from `word_size`.
+- `code`, `end_line`, `end_column`, `related` (AST completion plan unit
+  C3.2, 2026-10-06): a stable `W0001`-style code per message shape, the
+  exclusive end of the reported token's span, and the declarations the
+  diagnostic refers to. Specified in `docs/projects/lint.md` "JSON
+  output"; the code table lives in `compiler/diagnostics.w`. The
+  optional `help` field now sits between `end_column` and `related`.
 - The issue also asks for a `phase` field; dropped. The compiler is
   single-pass with no AST or IR — tokenizing, parsing, type checking, and
   emission are one interleaved pass, so there is no meaningful phase to

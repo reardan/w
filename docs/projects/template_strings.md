@@ -78,8 +78,10 @@ same lowering (`./wbuild template_string_test` / `template_string_64_test`).
 - **`char*`** — appended as a NUL-terminated C string (`var` values render
   through `__w_var_to_cstr` and append the same way).
 - **`string`** — appended by descriptor length (embedded NUL bytes survive).
-- **`float32`** — six fraction digits by default (`{f}`), rounded half up;
-  `float64` on the 64-bit-word targets through its own on-demand module
+- **`float32`** — the shortest text that parses back to the same value
+  by default (`{f}`: `0.1`, `3.0`, `1e+20`, Python's repr spelling), or
+  exactly `.N` fraction digits correctly rounded (ties to even) with a
+  precision; both through `lib/float_text.w`. `float64` on the 64-bit-word targets through its own on-demand module
   (`structures/template_float64.w`: `structures/string.w` is compiled on
   every target, including by the seed, so it cannot mention `float64`).
 

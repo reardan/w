@@ -308,6 +308,7 @@ void function_definition(int current_symbol):
 	int saw_default = 0
 	int is_w_variadic = 0
 	int function_start = codepos /* keep track of start for length comp */
+	dwarf_params_begin(current_symbol) /* DWARF: parameters precede the prologue */
 	while (accept(c")") == 0):
 		if (is_w_variadic): error(c"variadic parameter must be the last parameter")
 		param_count = param_count + 1
