@@ -829,3 +829,62 @@ streams, `lib/executor.w`, the W2 codecs and W5 transports.
   nearest preceding symbol gives usable self/inclusive tables. A small
   `tools/` script (or emitting ELF symbol sizes/types so valgrind names
   functions itself) would make "profile first" a one-liner.
+
+## Parallel agents on one machine (2026-10-06, fundamentals audit #524–#539)
+
+About eleven agents, each in its own worktree, implemented the audit
+issues at once on a 4-CPU machine. Friction they reported:
+
+- **`ast_expression_test` and `ast_expression_suite` exceed their 900 s
+  step timeouts under load.** Each needs about 9 minutes of CPU and ran
+  for 19 to 30 minutes of wall time with other builds running. Both
+  pass when run alone and in CI. Sometimes the timeout showed up only as
+  a silent exit 1. Direction: scale the timeout with the load, split the
+  test into parallel shards, or print "timed out" whenever the step is
+  killed.
+- **`ast_expression_suite` rebuilds `bin/wv2` while other targets in the
+  same batch are running it,** which fails with ETXTBSY. Also,
+  `bin/.wexec_lock` makes every other `./wbuild` call in that checkout
+  wait behind one slow target.
+- **`./wbuild --help` is rejected** as "unknown target --help", and
+  `--keep-going` is mentioned only in `tools/wexec.w` and in the
+  comments of `wbuild`, never in CLAUDE.md or AGENTS.md. Without it,
+  agents running the full suite lost every result after the first
+  timeout. `./wbuild --list` writes to stderr, and it doesn't list
+  `test_changed`, because that is a wrapper command rather than a
+  manifest target. One agent concluded from this that `test_changed`
+  doesn't exist.
+- **`bin/wtest changed` is either too broad or misses targets:**
+  - A change in the compiler tree, or in any non-`.w` file at the root,
+    selects close to the whole manifest.
+  - Editing a `tag=` directive selects `ast_expression_test`.
+  - Changes to block hooks don't select the `ast_*_verify` parity
+    targets.
+- **`symbols --json` gaps:**
+  - It reports no parameters and no doc comments.
+  - It leaves out generics that are never instantiated.
+  - On failure it writes its diagnostics to stdout.
+- **Running `check` over the whole tree takes about 25 minutes,** since
+  each compiler root rebuilds `w.w`.
+- **`wfixture` matches `expect_stderr` lines in order,** so a fixture
+  breaks when diagnostics are reordered even though the set of messages
+  is unchanged.
+- **Editing compiler source while tests run** makes `verify_x64` fail
+  spuriously, because a later stage picks up the new source.
+- **wexec steps can't set `ulimit`/rlimits,** so a real out-of-memory
+  test can't be expressed. `tests/alloc_safety_test.w` simulates OOM
+  with a malloc hook instead.
+- **Library gaps that tests kept working around:** there is no
+  `strncmp` or `trim`, `print_int0` writes to stderr, and
+  `file_write_text` creates files with mode 0755.
+- **Language sharp edges, recorded here until each gets its own
+  issue:**
+  - `pass` can't be used as a variable name.
+  - `cast(char*, p)[0]` doesn't parse.
+  - With `lib/str.w` imported, `s.contains(x)` on a `set[int]` resolves
+    to the free function `contains(char*, char*)`. It produces only a
+    type-mismatch warning, then segfaults at run time.
+  - 32-bit addresses at or above 0x80000000 compare as negative.
+  - `hex_word` includes the `0x` prefix.
+  - A crash-report frame at a function's first instruction is
+    attributed to the last line of the previous file.
