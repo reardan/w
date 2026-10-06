@@ -1401,3 +1401,25 @@ need tree-then-emit. Related notes cover the listed diagnostics only;
 arity warnings have none because the AST-mode replay event carries no
 callee symbol and both front ends must emit identical records. `ast_diagnostic_codes_test` pins the codes, spans
 and notes. **#489 remains open.**
+
+## Required-mode suite in CI and the retained canary
+
+CI now runs `./wbuild ast_expression_suite` as its own job, beside the ordinary
+`./wbuild tests` job and bootstrapped the same way (the pinned seed, the
+32-bit runtime and ptrace attach). The suite stays out of `tests`: it
+regenerates a required-mode manifest and reruns the whole `tests` umbrella
+serially, so it is a slower separate leg.
+
+`./wbuild tests` gains a cheap canary owned by `tests/ast_canary_test.w`.
+`ast_canary_test` runs `bin/wv2 check --quiet --ast-retain --ast-required w.w`
+on the 32-bit host, and `ast_canary_64_test` (in `tests_x64`) runs the same
+check with `bin/wv2_64` for the x64 target. Each run retains the compiler's
+own forest and fails on any expression fallback. `ast_audit_test` pins that
+the required-mode rewrite leaves both explicit-mode steps untouched.
+
+The serial suite is a workaround. `tools/wast_audit.w` now records why: a
+nested default-manifest `bin/wexec` (for example `wexec_test`'s
+`bin/wexec hello`) can rebuild `bin/wv2` in place, because wexec's
+`WEXEC_LOCK_HELD` exemption assumes its parent is blocked on that one step,
+which holds only at `-j 1`. The canary covers only `w.w`'s closure on two
+hosts, not the language corpus, and the CI leg does not remove that race.

@@ -169,3 +169,18 @@ void test_ast_audit_census_recognizes_statement_and_declaration_stats():
 	assert_equal(6, json_array_length(jfield_array(report, c"counters")))
 	assert1(jfield_flag(report, c"records_match_streaming_roots"))
 	json_free(report)
+
+
+# The ast_canary_test / ast_canary_64_test steps (tests/ast_canary_test.w)
+# already select required mode, so the required suite must leave them alone.
+void test_ast_audit_required_manifest_keeps_canary_steps():
+	json_value* root = json_parse(c"{\"targets\":[{\"name\":\"ast_canary_test\",\"steps\":[{\"cmd\":[\"bin/wv2\",\"check\",\"--quiet\",\"--ast-retain\",\"--ast-required\",\"w.w\"]}]},{\"name\":\"ast_canary_64_test\",\"steps\":[{\"cmd\":[\"bin/wv2_64\",\"x64\",\"check\",\"--quiet\",\"--ast-retain\",\"--ast-required\",\"w.w\"]}]}]}")
+	json_value* report = ast_audit_manifest_mode(root, 1)
+	assert_equal(0, jfield_int(report, c"changed_steps", -1))
+	assert_equal(2, jfield_int(report, c"explicit_ast_steps", -1))
+	json_value* target = json_array_get(jfield_array(root, c"targets"), 1)
+	json_value* cmd = jfield_array(json_array_get(jfield_array(target, c"steps"), 0), c"cmd")
+	assert_equal(7, json_array_length(cmd))
+	assert_strings_equal(c"w.w", ast_audit_arg(cmd, 6))
+	json_free(report)
+	json_free(root)
