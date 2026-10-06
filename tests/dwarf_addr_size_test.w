@@ -9,8 +9,8 @@ runs both, then runs this program, which parses each ELF from disk and
 asserts:
  - .debug_info's compile-unit header declares address_size equal to
    the target word size (4 / 8), and the DW_FORM_addr attribute pair
-   really is that wide (checked through the unit_length arithmetic and
-   DW_AT_low_pc matching .text's load address);
+   really is that wide (DW_AT_low_pc matching .text's load address and
+   DW_AT_high_pc above it);
  - .debug_line's line program opens with a DW_LNE_set_address whose
    length byte covers the opcode plus one target-word-wide address
    (5 / 9) pointing into .text.
@@ -84,13 +84,13 @@ void check_binary(char* path, int word_size):
 	assert_equal(2, asm_read_u16(data, info + 4)) /* DWARF version */
 	assert_equal(word_size, asm_read_u8(data, info + 10)) /* address_size */
 
-	# The single childless CU (debug_info_emit) is version(2) +
-	# abbrev_offset(4) + address_size(1) + abbrev-code uleb(1) +
-	# name(n+1) + stmt_list(4) + low_pc/high_pc (word size each) +
-	# end-of-children uleb(1): unit_length = 14 + n + 2 * word_size.
+	# The single compile unit (dwarf_info_emit) fills the section, and
+	# opens with abbrev-code uleb(1) + name(n+1) + stmt_list(4) ahead
+	# of DW_AT_low_pc/high_pc (word size each); its children (#536)
+	# are covered by dwarf_variables_test.
+	assert_equal(info_size, asm_read_u32(data, info) + 4)
 	int name_at = info + 12
 	int name_length = strlen(data + name_at)
-	assert_equal(14 + name_length + 2 * word_size, asm_read_u32(data, info))
 
 	# DW_AT_low_pc (the first DW_FORM_addr) is .text's load address.
 	int low_pc_at = name_at + name_length + 1 + 4

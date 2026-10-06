@@ -250,6 +250,7 @@ void statement_impl():
 	else if (accept(c"{")) {
 		int n = table_pos
 		int s = stack_pos
+		dwarf_block_begin()
 		int is_function_body = defer_function_body_pending
 		defer_function_body_pending = 0
 		int brace_after_jump = 0
@@ -262,6 +263,7 @@ void statement_impl():
 		# still in scope
 		if (is_function_body): defer_emit_all()
 		lint_scope_exit(n)
+		dwarf_block_end()
 		table_pos = n
 		pop_to(s)
 	}
@@ -272,6 +274,7 @@ void statement_impl():
 		get_token()
 		int n = table_pos
 		int s = stack_pos
+		dwarf_block_begin()
 		int start_tab_level = tab_level
 		print_int_v1(c"starting stack_pos: ", stack_pos)
 		int is_function_body = defer_function_body_pending
@@ -294,6 +297,7 @@ void statement_impl():
 		# still in scope
 		if (is_function_body): defer_emit_all()
 		lint_scope_exit(n)
+		dwarf_block_end()
 		table_pos = n
 		print_int_v1(c"ending stack_pos: ", stack_pos)
 		pop_to(s)

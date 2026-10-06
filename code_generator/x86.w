@@ -1536,6 +1536,9 @@ void be_arm64_frame_return():
 	a64(op(0xd6, 0x5f03c0))   # ret
 
 
+void dwarf_leave_note();   /* dwarf.w: CFI for the framed return */
+
+
 # Function return from a body holding stack_words W stack words above
 # the return-address slot: a framed function unwinds through its frame
 # pointer ('leave' on x86/x64, be_arm64_frame_return on arm64), exact
@@ -1546,6 +1549,7 @@ void be_return(int stack_words):
 		be_arm64_frame_return()
 		return
 	if ((target_isa == 0) && be_frame_active):
+		dwarf_leave_note()
 		emit(1, c"\xc9") /* leave */
 	else: be_pop(stack_words)
 	ret()
@@ -1560,6 +1564,7 @@ void be_return_bare():
 		be_arm64_frame_return()
 		return
 	if ((target_isa == 0) && be_frame_active):
+		dwarf_leave_note()
 		emit(1, c"\xc9") /* leave */
 	ret()
 
