@@ -1312,6 +1312,7 @@ savings. Its own allocation cost is P1.2. The streaming front end is
 still the default (P1.4). Template roots still lex twice. The slab stack
 assumes AST trees are compiler stack locals, which every caller is today;
 a heap-allocated tree would need an explicit release. **#489 remains open.**
+
 ## Retained-forest cost and query ergonomics (P1.2)
 
 Retaining the forest no longer dominates an AST compile. Before this change
