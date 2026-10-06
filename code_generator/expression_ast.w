@@ -503,7 +503,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 			bounds_trap_call(c"__w_alloc_trap")
 			be_ctrl_end(h_in_bounds)
 		push_slot()
-		sym_get_value(c"malloc")
+		new_object_helper()
 		push_slot()
 		mov_eax_esp_plus(word_size)
 		if (element_size > 1): imul_eax_int32(element_size)
@@ -520,14 +520,6 @@ void emit_expression_ast(expression_ast* tree, int id):
 		mov_ebx_esp()
 		add_ebx_int32(word_size)
 		store_ebx_word()
-		mov_eax_esp_plus(word_size)
-		if (element_size > 1): imul_eax_int32(element_size)
-		push_slot()
-		mov_eax_esp_plus(word_size)
-		add_eax_int32(2 * word_size)
-		push_slot()
-		zero_stack_count_bytes()
-		drop_slots(2)
 		pop_eax_slot()
 		drop_slots(1)
 		return
@@ -535,7 +527,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 		int base = tree.value[id]
 		int heap = tree.high[id]
 		if (heap):
-			sym_get_value(c"malloc")
+			new_object_helper()
 			push_slot()
 			push_slot_int(type_get_size(base))
 			mov_eax_esp_plus(word_size)
@@ -547,7 +539,8 @@ void emit_expression_ast(expression_ast* tree, int id):
 			stack_pos = stack_pos + words
 			lea_eax_esp_plus(0)
 		if (type_has_array_field(base)):
-			zero_runtime_object(type_get_size(base))
+			# __w_new_object already zeroed heap storage
+			if (heap == 0): zero_runtime_object(type_get_size(base))
 			init_array_field_descriptors(base)
 		if ((heap == 0) || (tree.left[id] >= 0)):
 			push_slot()
@@ -565,15 +558,13 @@ void emit_expression_ast(expression_ast* tree, int id):
 		return
 	if (op == 'N'):
 		int base = tree.value[id]
-		sym_get_value(c"malloc")
+		new_object_helper()
 		push_slot()
 		push_slot_int(type_get_size(base))
 		mov_eax_esp_plus(word_size)
 		call_eax()
 		drop_slots(2)
-		if (type_has_array_field(base)):
-			zero_runtime_object(type_get_size(base))
-			init_array_field_descriptors(base)
+		if (type_has_array_field(base)): init_array_field_descriptors(base)
 		return
 	if ((op == 'x') && (tree.value[id] >= 2)):
 		int kind = tree.value[id]

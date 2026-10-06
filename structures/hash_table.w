@@ -50,7 +50,7 @@ int __w_strcmp(char* s1, char* s2):
 
 
 char* __w_strclone(char *c):
-	char *clone = malloc(__w_strlen(c) + 1)
+	char *clone = __w_alloc(__w_strlen(c) + 1)
 	__w_strcpy(clone, c)
 	return clone
 
@@ -270,7 +270,7 @@ int __w_hash_key_equal(int kind, int left, int right):
 
 int __w_hash_clone_string(int key):
 	int length = load_ptr(key + __word_size__)
-	char* clone = malloc(2 * __word_size__ + length + 1)
+	char* clone = __w_alloc(__w_size_add(2 * __word_size__ + 1, length))
 	int data = cast(int, clone) + 2 * __word_size__
 	save_ptr(clone, data)
 	save_ptr(clone + __word_size__, length)
@@ -311,7 +311,7 @@ void __w_hash_order_unlink(__w_hash_table* table, int i):
 
 __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 	if (capacity < 16): capacity = 16
-	__w_hash_table* table = malloc(16 * __word_size__)
+	__w_hash_table* table = __w_alloc(16 * __word_size__)
 	if (__w_hash_seed_state == 0): __w_hash_seed_init(cast(int, table))
 	table.seed0 = __w_hash_seed0
 	table.seed1 = __w_hash_seed1
@@ -323,13 +323,13 @@ __w_hash_table* __w_hash_table_new(int key_kind, int value_size, int capacity):
 	table.default_kind = __w_hash_default_none
 	table.default_value = 0
 	int slot_size = __w_hash_slot_size(table)
-	table.keys = malloc(capacity * __word_size__)
-	table.values = malloc(capacity * slot_size)
-	table.states = malloc(capacity)
+	table.keys = __w_alloc(__w_size_mul(capacity, __word_size__))
+	table.values = __w_alloc(__w_size_mul(capacity, slot_size))
+	table.states = __w_alloc(capacity)
 	# Only chain-linked slots are ever read, so the order arrays need no
 	# initialization beyond the empty head/tail sentinels.
-	table.order_next = malloc(capacity * __word_size__)
-	table.order_prev = malloc(capacity * __word_size__)
+	table.order_next = __w_alloc(__w_size_mul(capacity, __word_size__))
+	table.order_prev = __w_alloc(__w_size_mul(capacity, __word_size__))
 	table.order_head = -1
 	table.order_tail = -1
 	int i = 0
@@ -388,11 +388,11 @@ void __w_hash_table_rehash(__w_hash_table* table, int new_capacity):
 	table.capacity = new_capacity
 	table.count = 0
 	table.deleted = 0
-	table.keys = malloc(table.capacity * __word_size__)
-	table.values = malloc(table.capacity * slot_size)
-	table.states = malloc(table.capacity)
-	table.order_next = malloc(table.capacity * __word_size__)
-	table.order_prev = malloc(table.capacity * __word_size__)
+	table.keys = __w_alloc(__w_size_mul(table.capacity, __word_size__))
+	table.values = __w_alloc(__w_size_mul(table.capacity, slot_size))
+	table.states = __w_alloc(table.capacity)
+	table.order_next = __w_alloc(__w_size_mul(table.capacity, __word_size__))
+	table.order_prev = __w_alloc(__w_size_mul(table.capacity, __word_size__))
 	table.order_head = -1
 	table.order_tail = -1
 	int i = 0
@@ -424,7 +424,7 @@ void __w_hash_table_rehash(__w_hash_table* table, int new_capacity):
 void __w_hash_table_reserve_one(__w_hash_table* table):
 	if ((table.count + table.deleted) * 4 < table.capacity * 3): return
 	if (table.deleted > table.count): __w_hash_table_rehash(table, table.capacity)
-	else: __w_hash_table_rehash(table, table.capacity * 2)
+	else: __w_hash_table_rehash(table, __w_size_mul(table.capacity, 2))
 
 
 __w_hash_table* __w_map_new(int key_kind, int value_size):

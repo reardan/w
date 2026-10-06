@@ -11,6 +11,14 @@ int import_alias_type_ahead(int require_call);
 int import_alias_type_member(int alias_index);
 
 
+# eax = address of the runtime's 'new' allocator (structures/w_list.w
+# __w_new_object: zeroed, traps on out of memory). Declared on first use
+# like the bounds-trap helpers, in case it has not been parsed yet.
+void new_object_helper():
+	if (sym_lookup(c"__w_new_object") < 0): sym_declare_global(c"__w_new_object", 4, 2)
+	sym_get_value(c"__w_new_object")
+
+
 # Store the constructor argument in eax into field field_index of the
 # object whose address is saved on the stack. leaked_words counts stack
 # words the argument's own expression left parked above that saved
@@ -360,8 +368,10 @@ int unary_expression_operand():
 			expect(c"]")
 			push_slot()
 
-			# malloc(2 * word_size + length * sizeof(base))
-			sym_get_value(c"malloc")
+			# __w_new_object(2 * word_size + length * sizeof(base)):
+			# zeroed, and an out-of-memory trap instead of a null
+			# (structures/w_list.w, issue #530)
+			new_object_helper()
 			push_slot()
 			mov_eax_esp_plus(word_size)
 			if (element_size > 1): imul_eax_int32(element_size)
@@ -383,32 +393,21 @@ int unary_expression_operand():
 			add_ebx_int32(word_size)
 			store_ebx_word()
 
-			# Zero the payload so new arrays have deterministic contents.
-			mov_eax_esp_plus(word_size)
-			if (element_size > 1): imul_eax_int32(element_size)
-			push_slot()
-			mov_eax_esp_plus(word_size)
-			add_eax_int32(2 * word_size)
-			push_slot()
-			zero_stack_count_bytes()
-			drop_slots(2)
-
 			pop_eax_slot()
 			drop_slots(1)
 			return type_get_slice_value(base)
 
 		int has_parens = accept(c"(")
 
-		# malloc(size), using the same callee-first stack layout as postfix calls
-		sym_get_value(c"malloc")
+		# __w_new_object(size): zeroed memory, never null (issue #530),
+		# using the same callee-first stack layout as postfix calls
+		new_object_helper()
 		push_slot()
 		push_slot_int(type_get_size(base))
 		mov_eax_esp_plus(1 << word_size_log2)
 		call_eax()
 		drop_slots(2)
-		if (type_has_array_field(base)):
-			zero_runtime_object(type_get_size(base))
-			init_array_field_descriptors(base)
+		if (type_has_array_field(base)): init_array_field_descriptors(base)
 
 		if (has_parens):
 			if (accept(c")") == 0):
