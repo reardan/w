@@ -995,6 +995,11 @@ void section_set_range(int header, int addr, int length):
 	elf_section_set_entsize(header, 0)
 
 
+void dwarf_info_emit(int text_end);  /* code_generator/dwarf_info.w */
+void dwarf_abbrev_emit();
+void dwarf_frame_emit();
+
+
 void emit_debugging_symbols(int word_size):
 	int text_end = codepos
 
@@ -1003,9 +1008,10 @@ void emit_debugging_symbols(int word_size):
 
 	# Save section header address + number of sections
 	# Section order: null, text, debug_info, debug_abbrev, debug_line, strings,
-	# symtab, and .note.gnu.build-id when the writer emitted the note
-	int num_sections = 7
-	if (build_id_note_pos != 0): num_sections = 8
+	# symtab, .note.gnu.build-id when the writer emitted the note, then
+	# debug_frame (last, so the indexes above stay put)
+	int num_sections = 8
+	if (build_id_note_pos != 0): num_sections = 9
 	elf_save_section_info(word_size, header_addr, num_sections, 5)
 
 	# Mandatory null section 0
@@ -1049,6 +1055,9 @@ void emit_debugging_symbols(int word_size):
 		elf_section_set_addr(build_id_section_header, code_offset + build_id_note_pos)
 		section_set_range(build_id_section_header, build_id_note_pos, elf_build_id_note_size())
 
+	int debug_frame_section_header = codepos
+	elf_emit_section_header(1)
+
 	# Emit strings
 	int strings_addr = codepos
 	int string_count = emit_string_table()
@@ -1060,6 +1069,7 @@ void emit_debugging_symbols(int word_size):
 	emit_section_name(c".debug_info", debug_info_section_header, strings_addr)
 	emit_section_name(c".debug_abbrev", debug_abbrev_section_header, strings_addr)
 	emit_section_name(c".debug_line", debug_line_section_header, strings_addr)
+	emit_section_name(c".debug_frame", debug_frame_section_header, strings_addr)
 	if (build_id_section_header != 0):
 		emit_section_name(c".note.gnu.build-id", build_id_section_header, strings_addr)
 
@@ -1084,15 +1094,24 @@ void emit_debugging_symbols(int word_size):
 
 	# Emit the DWARF payloads
 	int debug_info_addr = codepos
-	debug_info_emit(text_end)
+	dwarf_info_emit(text_end)
 	section_set_range(debug_info_section_header, debug_info_addr, codepos - debug_info_addr)
 
 	int debug_abbrev_addr = codepos
-	debug_abbrev_emit()
+	dwarf_abbrev_emit()
 	section_set_range(debug_abbrev_section_header, debug_abbrev_addr, codepos - debug_abbrev_addr)
 
 	int debug_line_addr = codepos
 	debug_line_emit()
 	section_set_range(debug_line_section_header, debug_line_addr, codepos - debug_line_addr)
 
+	int debug_frame_addr = codepos
+	dwarf_frame_emit()
+	section_set_range(debug_frame_section_header, debug_frame_addr, codepos - debug_frame_addr)
+
 	emit_int8(0) /* placeholder so reader doesn't read beyond the end of the file */
+
+
+# DWARF .debug_info/.debug_abbrev/.debug_frame writers: imported last
+# because they read the symbol and type tables (issue #536).
+import code_generator.dwarf_info
