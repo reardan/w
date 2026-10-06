@@ -782,3 +782,22 @@ streams, `lib/executor.w`, the W2 codecs and W5 transports.
   explicit file. Such drivers stay FORCE targets today, with no `input=`,
   so nothing goes stale yet. Direction: a directive marking a prefix as
   "run-time .w data, hash every file".
+
+## `ast_expression_suite` is one wexec step (2026-10-06, AST plan P1.1)
+
+- **The serial suite trips the default 15-minute step timeout on a busy
+  host.** `ast_expression_suite` runs the whole required-mode manifest as
+  a single `bin/wexec -f ... -j 1 tests` step, so the default
+  `WEXEC_STEP_TIMEOUT_MS` (900000) bounds the entire suite, not one test.
+  On a 4-core container shared by four agents (load average around 12)
+  it was killed after 509 targets with nothing failing. Workaround:
+  `WEXEC_STEP_TIMEOUT_MS=10800000 ./wbuild ast_expression_suite` (the
+  variable is inherited by the nested wexec). Direction: give that step
+  its own `timeout_ms` (or `0`), so only the nested per-target steps keep
+  the default bound.
+- **Profiling the compiler needs a symbol bridge.** `valgrind
+  --tool=callgrind` runs `bin/wv2` fine, but `callgrind_annotate` reports
+  bare `file:0xADDR` entries; mapping them through `nm -n bin/wv2` to the
+  nearest preceding symbol gives usable self/inclusive tables. A small
+  `tools/` script (or emitting ELF symbol sizes/types so valgrind names
+  functions itself) would make "profile first" a one-liner.

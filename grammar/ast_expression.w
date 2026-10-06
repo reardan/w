@@ -1,6 +1,14 @@
 int ast_expression_quoted_end_nested(char* bytes, int start, int limit, int depth);
 
 
+# P1.1 preflight byte classes: 1 for ASCII word bytes and the operator
+# bytes that can neither end a root nor start a comment or quoted token
+# (".+-*=<>&|!~^%"), 2 for blanks. A run of either only advances the
+# scans' previous/significant bytes. A '*' never follows a '/' here: the
+# '/' already took the block-comment branch.
+int[256] ast_preflight_class
+
+
 # Validate one identifier codepoint without entering the tokenizer. A
 # malformed or prohibited codepoint must diagnose only after rollback.
 # -2 requests more buffered input; -1 declines the speculative parse.
@@ -141,8 +149,16 @@ int ast_expression_end(int start):
 	int previous = 0
 	int end = -1
 	int i = 0
-	while ((i < ast_expression_source_limit) && (index + i + 1 < getchar_limit[file])):
+	int limit = getchar_limit[file]
+	while ((i < ast_expression_source_limit) && (index + i + 1 < limit)):
 		int ch = bytes[index + i] & 255
+		# P1.1 fast path: a run of word bytes (or blanks) has no effect
+		# but advancing previous; the general cases below are unchanged.
+		if (ast_preflight_class[ch]):
+			while ((i + 1 < ast_expression_source_limit) && (index + i + 2 < limit) && ast_preflight_class[bytes[index + i + 1] & 255]): i = i + 1
+			previous = bytes[index + i] & 255
+			i = i + 1
+			continue
 		if (ch == '#'):
 			while ((index + i < getchar_limit[file]) && (bytes[index + i] != 10)): i = i + 1
 			previous = 0
@@ -256,8 +272,18 @@ int ast_expression_root_end(int eof, int statement):
 	int ternaries = 0
 	int previous = 0
 	int i = 0
-	while ((i < ast_expression_source_limit) && (index + i < getchar_limit[file])):
+	int limit = getchar_limit[file]
+	while ((i < ast_expression_source_limit) && (index + i < limit)):
 		int ch = bytes[index + i] & 255
+		# P1.1 fast path: word bytes only update significant/previous and
+		# blanks only previous; none of them can end or decline a root.
+		int run = ast_preflight_class[ch]
+		if (run):
+			while ((i + 1 < ast_expression_source_limit) && (index + i + 1 < limit) && (ast_preflight_class[bytes[index + i + 1] & 255] == run)): i = i + 1
+			previous = bytes[index + i] & 255
+			if (run == 1): significant = previous
+			i = i + 1
+			continue
 		if ((ch == '/') && (index + i + 1 < getchar_limit[file]) && (bytes[index + i + 1] == '*')):
 			int after = ast_expression_comment_end(bytes, index + i, getchar_limit[file] - 1, 1)
 			if (after < 0): return after
@@ -412,11 +438,20 @@ void ast_expression_retain_token():
 
 
 int ast_expression_boundary(int start, int whole):
+	if (ast_preflight_class[' '] == 0):
+		char* operators = c".+-*=<>&|!~^%"
+		for c in range(256):
+			int word = ((c >= '0') && (c <= '9')) || ((c >= 'a') && (c <= 'z')) || ((c >= 'A') && (c <= 'Z')) || (c == '_')
+			for j in range(13):
+				if (operators[j] == c): word = 1
+			if (word): ast_preflight_class[c] = 1
+			else if ((c == ' ') || (c == 9)): ast_preflight_class[c] = 2
 	if (whole): ast_expression_retain_token()
 	while (1):
 		int end
 		if (whole): end = ast_expression_root_end(0, whole > 1)
 		else: end = ast_expression_end(start)
+		if (end >= 0): ast_preflight_bytes = ast_preflight_bytes + end - start
 		if (end != -2): return end
 		int more = ast_expression_refill(start)
 		if (more < 0): return -1
@@ -451,6 +486,10 @@ void ast_expression_advance(expression_ast* tree):
 			token_start_offset = tree.end_offset
 			return
 	get_token()
+	# P1.1: record each new probe token once (a lookahead that rewinds
+	# lexes the same tokens from the same state again).
+	if (tree.recording && (token_start_offset < tree.end_offset)):
+		if (token_start_offset > tree.tokens[(tree.token_count - 1) * expression_ast_token_fields]): expression_ast_record_token(tree)
 
 
 int ast_expression_accept(expression_ast* tree, char* spelling):
@@ -470,14 +509,15 @@ int ast_expression_scalar_type(int type):
 	if (type_is_gpu_object(type) && (target_isa != 3)): return 0
 	int base = type_unqualified(type)
 	if (type_get_pointer_level(base) > 0): return 1
-	if (type_is_string(base) || type_is_var(base)): return 1
+	# P1.1: one kind lookup serves every type_is_<kind> predicate.
+	int kind = type_get_kind(base)
+	if ((kind == type_kind_string) || (kind == type_kind_var)): return 1
 	if (ci_is_bit_field_access(base)): return ci_bit_field_unit_size(base) > 0
-	if (type_is_map(base) || type_is_set(base) || type_is_list(base)): return 1
+	if ((kind == type_kind_map) || (kind == type_kind_set) || (kind == type_kind_list)): return 1
 	# Half loads/conversions can diagnose unsupported backends during
 	# emission. Keep their diagnostic order with the streaming parser.
 	if ((base == float16_type) && (target_isa != 0)): return 0
 	if (type_num_args(base) > 0): return 0
-	int kind = type_get_kind(base)
 	if ((kind != 0) && (kind != type_kind_enum) && (kind != type_kind_function)): return 0
 	int size = type_get_size(base)
 	if (size > word_size): return 0
@@ -2304,6 +2344,7 @@ int ast_expression_it_argument(expression_ast* tree):
 	if ((sym >= 0) && (sym != list_it_active)): return 0
 	int serial = token_serial
 	char* save = generic_reparse_save()
+	ast_tokenizer_snapshots = ast_tokenizer_snapshots + 1
 	char[64] open
 	int final_offset = tree.final_token_offset
 	int depth = 0
@@ -2973,9 +3014,16 @@ int ast_expression_bitwise(expression_ast* tree, int depth, int level):
 		op = '|'
 		spelling = c"|"
 	if (left < 0): return -1
-	int chain_is_bool = operand_is_bool_condition(tree.result_type[left])
-	int chain_has_call = ast_expression_has_call(tree, first_node, tree.count)
+	# P1.1: the chain facts are pure queries of the first operand; only a
+	# following operator needs them, so most operands skip the node scan.
+	int chain_is_bool = 0
+	int chain_has_call = 0
+	int chain_known = 0
 	while ((left >= 0) && (token_start_offset < tree.end_offset) && peek(spelling)):
+		if (chain_known == 0):
+			chain_is_bool = operand_is_bool_condition(tree.result_type[left])
+			chain_has_call = ast_expression_has_call(tree, first_node, tree.count)
+			chain_known = 1
 		int op_line = line_number
 		int op_diag_line = diag_token_line
 		int op_column = diag_token_column
@@ -3247,14 +3295,183 @@ void ast_expression_capture_stack_bindings(expression_ast* tree):
 				tree.text_used = tree.text_used + length
 
 
+# Commit one node's source-ordered events at token offset at: literal
+# decoding, committed symbol uses, generic commits and replayed
+# diagnostics. The current token is the source token at that offset.
+void ast_expression_replay_event(expression_ast* tree, int id, int at):
+	if ((tree.op[id] == ast_warning) && (tree.offset[id] == at)): ast_expression_replay_warning(tree, id)
+	if ((tree.op[id] == 'z') && (tree.offset[id] == at)): sym_lookup(table + tree.value[id])
+	if ((tree.op[id] == 'M') && (tree.value[id] & 256) && (tree.offset[id] == at)): sym_lookup(c"it")
+	if ((tree.op[id] == 'W') && (tree.offset[id] == at)):
+		int before = type_count()
+		generic_infer_shapes(tree.value[id])
+		assert1(before == type_count())
+	if (((tree.op[id] == 'G') || (tree.op[id] == 'W')) && (tree.generic_offset[id] == at)): ast_expression_commit_generic(tree, id)
+	if ((tree.op[id] == ast_template_format) && (tree.offset[id] == at)): template_take_spec()
+	if ((tree.op[id] == 't') && (tree.offset[id] == at)):
+		if (tree.high[id]): get_token_template_chunk()
+		int length = template_process_chunk(tree.value[id])
+		if (length):
+			validate_utf8_literal(length)
+			token[length] = 0
+		assert1(tree.text_used + length + 1 <= 32768)
+		for j in range(length): tree.text[tree.text_used + j] = token[j]
+		tree.text[tree.text_used + length] = 0
+		tree.value[id] = tree.text_used
+		tree.high[id] = length
+		tree.text_used = tree.text_used + length + 1
+	if ((tree.op[id] == 0) && (tree.offset[id] == at)):
+		int outer_cast = cast_context
+		cast_context = tree.in_cast[id]
+		tree.value[id] = int_literal_value(0)
+		cast_context = outer_cast
+	if ((tree.op[id] == 'h') && (tree.offset[id] == at)):
+		tree.value[id] = char_literal_value()
+	if (((tree.op[id] == 's') || (tree.op[id] == 'S')) && (tree.offset[id] == at)):
+		int length = process_string_literal_from(tree.value[id])
+		if (tree.op[id] == 'S'): validate_utf8_literal(length)
+		token[length] = 0
+		# The source bound leaves ample space for all
+		# decoded bytes and one terminator per arena node.
+		assert1(tree.text_used + length + 1 <= 32768)
+		tree.value[id] = tree.text_used
+		tree.high[id] = length
+		for j in range(length + 1): tree.text[tree.text_used + j] = token[j]
+		tree.text_used = tree.text_used + length + 1
+	if ((tree.op[id] == 'f') && (tree.offset[id] == at)):
+		if (word_size == 8):
+			float64_bits_from_token()
+			tree.value[id] = float64_literal_lo
+			tree.high[id] = float64_literal_hi
+		else: tree.value[id] = float32_bits_from_token()
+	if (((tree.op[id] == 'v') || (tree.op[id] == 'C') || (tree.op[id] == 'X')) && (tree.offset[id] == at)):
+		if (tree.qualified[id] == 0):
+			import_warn_unqualified(token)
+			import_warn_transitive(token)
+		strcpy(last_identifier, token)
+		# This is the committed use: update unused-local tracking
+		# only now, at the same source token as identifier().
+		sym_lookup(token)
+
+
+# Nodes whose events need the source token at their offset.
+int ast_expression_offset_event(expression_ast* tree, int id):
+	int op = tree.op[id]
+	if ((op == ast_warning) || (op == 'z') || (op == 'W') || (op == 0) || (op == 'h')): return 1
+	if ((op == 's') || (op == 'S') || (op == 'f') || (op == 'v') || (op == 'C') || (op == 'X')): return 1
+	if ((op == 't') || (op == ast_template_format)): return 1
+	return (op == 'M') && (tree.value[id] & 256)
+
+
+# Template chunks and specs are lexed again by their events, and a typed
+# parse that shortened the root at a statement colon lexed past the
+# replay's virtual end. Those roots replay by lexing their tokens again.
+int ast_expression_needs_relex(expression_ast* tree, int end, int bound):
+	if (end != bound): return 1
+	for id in range(tree.count):
+		if ((tree.op[id] == 't') || (tree.op[id] == ast_template_format)): return 1
+	return 0
+
+
+# Replay a root by lexing it again from its first token: the original
+# source-ordered visit, kept for the roots whose events lex.
+void ast_expression_replay_by_lexing(expression_ast* tree, int end):
+	ast_relex_replays = ast_relex_replays + 1
+	while (token_start_offset < end):
+		ast_tokens_replayed = ast_tokens_replayed + 1
+		for i in range(tree.types_count):
+			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(tree, i)
+		for id in range(tree.count): ast_expression_replay_event(tree, id, token_start_offset)
+		ast_expression_advance(tree)
+
+
+# Replay a root from its token records: the parse already left the lexer
+# exactly where lexing the root again would, so only tokens that carry
+# events are re-established, in source order, and then that end state is
+# restored. Events at one token keep the original visit order: staged
+# pointer records first, then nodes by arena index (a node's offset event
+# before its generic commit). Events at offsets that are not token
+# starts before the end never fire, as in the lexing visit.
+void ast_expression_replay_recorded(expression_ast* tree, int end):
+	tokenizer_snapshot finish
+	int finish_text = -1
+	int tokens = tree.token_count
+	while ((tokens > 0) && (tree.tokens[(tokens - 1) * expression_ast_token_fields] >= end)): tokens = tokens - 1
+	# Entries are (token, value) pairs; a negative value is a pointer
+	# record, otherwise a node id. Insertion order is the visit order, so
+	# a stable sort by token gives the lexing visit's sequence.
+	int* entries = malloc((tree.count * 2 + tree.types_count + 1) * 2 * __word_size__)
+	int used = 0
+	for i in range(tree.types_count):
+		int k = expression_ast_token_at(tree, tree.pointer_offsets[i])
+		if ((k >= 0) && (k < tokens)):
+			entries[used * 2] = k
+			entries[used * 2 + 1] = -1 - i
+			used = used + 1
+	for id in range(tree.count):
+		int k = -1
+		if (ast_expression_offset_event(tree, id)):
+			k = expression_ast_token_at(tree, tree.offset[id])
+			if (k >= tokens): k = -1
+		if (k >= 0):
+			entries[used * 2] = k
+			entries[used * 2 + 1] = id
+			used = used + 1
+		if ((tree.op[id] == 'G') || (tree.op[id] == 'W')):
+			int g = expression_ast_token_at(tree, tree.generic_offset[id])
+			if ((g >= 0) && (g < tokens) && (g != k)):
+				entries[used * 2] = g
+				entries[used * 2 + 1] = id
+				used = used + 1
+	for i in range(1, used):
+		int key = entries[i * 2]
+		int value = entries[i * 2 + 1]
+		int j = i
+		while ((j > 0) && (entries[(j - 1) * 2] > key)):
+			entries[j * 2] = entries[(j - 1) * 2]
+			entries[j * 2 + 1] = entries[(j - 1) * 2 + 1]
+			j = j - 1
+		entries[j * 2] = key
+		entries[j * 2 + 1] = value
+	int current = -1
+	for e in range(used):
+		int k = entries[e * 2]
+		int value = entries[e * 2 + 1]
+		if (value < 0): ast_expression_commit_pointer(tree, -1 - value)
+		else:
+			if (k != current):
+				if (finish_text < 0):
+					tokenizer_snapshot_save(&finish)
+					finish_text = expression_ast_save_token_text(tree)
+				expression_ast_enter_token(tree, k)
+				ast_tokens_replayed = ast_tokens_replayed + 1
+				current = k
+			ast_expression_replay_event(tree, value, tree.tokens[k * expression_ast_token_fields])
+	free(entries)
+	if (finish_text >= 0):
+		# Lexing the root again would leave the token buffer holding the
+		# last token as its own events decoded it in place, when the root
+		# ends virtually right after that token; any later token would
+		# have overwritten it with the probe's final spelling.
+		int keep = (current == tokens - 1) && (finish.byte_offset == tree.tokens[current * expression_ast_token_fields + 7])
+		# A replayed diagnostic may have re-read its source line through
+		# the fd; return getchar to the probe's end position as well.
+		getchar_seek(finish.file, finish.byte_offset)
+		tokenizer_snapshot_restore_fields(&finish)
+		if (keep == 0): tokenizer_set_token_text(tree.token_text + finish_text, finish.token_i)
+
+
 # Called immediately after primary_expr consumes an opening '('. The
 # speculative pass builds the tree without decoding literals or emitting
-# code. Restore *all* changed state before either falling back or replaying
-# the accepted tokens once for the existing literal diagnostics. The tokenizer
-# snapshot is freed before any diagnostic can longjmp; the arena unwinds
-# with the caller's stack on recovery. Preparation returns a decoded root
-# in the caller-owned arena, or -1 for fallback; it emits no expression code.
-# Symbols/types and source diagnostics commit only after the probe succeeds.
+# code, recording each token's lexer state as it goes. A declined probe
+# restores *all* changed state before falling back. An accepted probe
+# keeps the lexer where its parse left it (exactly where lexing the root
+# again would) and replays the literal/diagnostic events in source order
+# from the token records; template roots still restore and lex again.
+# The arena unwinds with the caller's stack on recovery. Preparation
+# returns a decoded root in the caller-owned arena, or -1 for fallback;
+# it emits no expression code. Symbols/types and source diagnostics
+# commit only after the probe succeeds.
 int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole):
 	if (ast_expressions_mode == 0): return -1
 	# Keep the streaming parser's pending lvalue/call/statement machinery
@@ -3264,6 +3481,7 @@ int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole)
 	if (increment_statement_context || generic_pending_call_signature || generic_pending_call_name): return -1
 	int end = ast_expression_boundary(group_offset, whole)
 	if (end < 0): return -1
+	expression_ast_bind(tree)
 	tree.count = 0
 	tree.text_used = 0
 	tree.types_base = type_count()
@@ -3277,8 +3495,14 @@ int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole)
 	tree.whole_expression = whole
 	tree.end_offset = end
 	tree.cast_depth = cast_context
-	char* saved = generic_reparse_save()
-	int serial = token_serial
+	int bound = end
+	tokenizer_snapshot entry
+	tokenizer_snapshot_save(&entry)
+	ast_tokenizer_snapshots = ast_tokenizer_snapshots + 1
+	int entry_indirection = pointer_indirection
+	# Record 0 is the entry token; its text also restores a decline.
+	expression_ast_record_token(tree)
+	tree.recording = 1
 	int root = -1
 	int prefix = 0
 	if (whole > 1): prefix = increment_op()
@@ -3294,6 +3518,7 @@ int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole)
 				ast_expression_advance(tree)
 				root = ast_expression_increment(tree, root, postfix)
 	if ((root >= 0) && (whole > 1) && peek(c",")): root = ast_expression_parallel(tree, root)
+	tree.recording = 0
 	# Preflight cannot distinguish postfix '?' from a ternary opener.
 	# A typed parse may finish at a statement colon before that bound.
 	if ((root >= 0) && whole && (token_start_offset < end) && peek(c":")):
@@ -3303,68 +3528,15 @@ int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole)
 	if (whole == 0): accepted = accepted && peek(c")")
 	if (accepted): accepted = ast_expression_data_value(tree.result_type[root]) || (tree.result_type[root] == type_value(0))
 	ast_expression_restore_types(tree)
-	getchar_seek(file, load_ptr(saved + 7 * __word_size__))
-	generic_reparse_restore(saved)
-	token_serial = serial
+	pointer_indirection = entry_indirection
+	int relex = 1
+	if (accepted): relex = ast_expression_needs_relex(tree, end, bound)
+	if (relex):
+		getchar_seek(file, entry.byte_offset)
+		tokenizer_snapshot_restore(&entry, tree.token_text + tree.tokens[10])
 	if (accepted == 0): return -1
-	while (token_start_offset < end):
-		for i in range(tree.types_count):
-			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(tree, i)
-		for id in range(tree.count):
-			if ((tree.op[id] == ast_warning) && (tree.offset[id] == token_start_offset)): ast_expression_replay_warning(tree, id)
-			if ((tree.op[id] == 'z') && (tree.offset[id] == token_start_offset)): sym_lookup(table + tree.value[id])
-			if ((tree.op[id] == 'M') && (tree.value[id] & 256) && (tree.offset[id] == token_start_offset)): sym_lookup(c"it")
-			if ((tree.op[id] == 'W') && (tree.offset[id] == token_start_offset)):
-				int before = type_count()
-				generic_infer_shapes(tree.value[id])
-				assert1(before == type_count())
-			if (((tree.op[id] == 'G') || (tree.op[id] == 'W')) && (tree.generic_offset[id] == token_start_offset)): ast_expression_commit_generic(tree, id)
-			if ((tree.op[id] == ast_template_format) && (tree.offset[id] == token_start_offset)): template_take_spec()
-			if ((tree.op[id] == 't') && (tree.offset[id] == token_start_offset)):
-				if (tree.high[id]): get_token_template_chunk()
-				int length = template_process_chunk(tree.value[id])
-				if (length):
-					validate_utf8_literal(length)
-					token[length] = 0
-				assert1(tree.text_used + length + 1 <= 32768)
-				for j in range(length): tree.text[tree.text_used + j] = token[j]
-				tree.text[tree.text_used + length] = 0
-				tree.value[id] = tree.text_used
-				tree.high[id] = length
-				tree.text_used = tree.text_used + length + 1
-			if ((tree.op[id] == 0) && (tree.offset[id] == token_start_offset)):
-				int outer_cast = cast_context
-				cast_context = tree.in_cast[id]
-				tree.value[id] = int_literal_value(0)
-				cast_context = outer_cast
-			if ((tree.op[id] == 'h') && (tree.offset[id] == token_start_offset)):
-				tree.value[id] = char_literal_value()
-			if (((tree.op[id] == 's') || (tree.op[id] == 'S')) && (tree.offset[id] == token_start_offset)):
-				int length = process_string_literal_from(tree.value[id])
-				if (tree.op[id] == 'S'): validate_utf8_literal(length)
-				token[length] = 0
-				# The source bound leaves ample space for all
-				# decoded bytes and one terminator per arena node.
-				assert1(tree.text_used + length + 1 <= 32768)
-				tree.value[id] = tree.text_used
-				tree.high[id] = length
-				for j in range(length + 1): tree.text[tree.text_used + j] = token[j]
-				tree.text_used = tree.text_used + length + 1
-			if ((tree.op[id] == 'f') && (tree.offset[id] == token_start_offset)):
-				if (word_size == 8):
-					float64_bits_from_token()
-					tree.value[id] = float64_literal_lo
-					tree.high[id] = float64_literal_hi
-				else: tree.value[id] = float32_bits_from_token()
-			if (((tree.op[id] == 'v') || (tree.op[id] == 'C') || (tree.op[id] == 'X')) && (tree.offset[id] == token_start_offset)):
-				if (tree.qualified[id] == 0):
-					import_warn_unqualified(token)
-					import_warn_transitive(token)
-				strcpy(last_identifier, token)
-				# This is the committed use: update unused-local tracking
-				# only now, at the same source token as identifier().
-				sym_lookup(token)
-		ast_expression_advance(tree)
+	if (relex): ast_expression_replay_by_lexing(tree, end)
+	else: ast_expression_replay_recorded(tree, end)
 	for i in range(tree.types_count):
 		if (tree.pointer_offsets[i] == end): ast_expression_commit_pointer(tree, i)
 	ast_expression_capture_stack_bindings(tree)

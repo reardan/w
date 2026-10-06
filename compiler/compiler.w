@@ -1124,6 +1124,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	ast_gpu_captures_emitted = 0
 	ast_roots_emitted = 0
 	ast_roots_fallback = 0
+	# P1.1: AST probe parse-cost counters (slabs persist across compiles).
+	ast_preflight_bytes = 0
+	ast_tokenizer_snapshots = 0
+	ast_tokens_replayed = 0
+	ast_relex_replays = 0
 	ast_audit_mode = 0
 	ast_required_mode = 0
 	# check/deps/symbols discard the output, so a library module without
@@ -1512,6 +1517,18 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 		print_error(itoa(ast_roots_emitted))
 		print_error(c"\nStreaming expression roots: ")
 		print_error(itoa(ast_roots_fallback))
+		print_error(c"\n")
+		# P1.1: AST probe parse-cost counters.
+		print_error(c"AST preflight bytes: ")
+		print_error(itoa(ast_preflight_bytes))
+		print_error(c"\nAST tokenizer snapshots: ")
+		print_error(itoa(ast_tokenizer_snapshots))
+		print_error(c"\nAST tokens replayed: ")
+		print_error(itoa(ast_tokens_replayed))
+		print_error(c"\nAST relexed roots: ")
+		print_error(itoa(ast_relex_replays))
+		print_error(c"\nAST node slabs: ")
+		print_error(itoa(ast_slabs_allocated))
 		print_error(c"\n")
 
 
