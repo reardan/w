@@ -1,5 +1,6 @@
 import code_generator.code_emitter
 import code_generator.image
+import code_generator.dynamic_registry
 import lib.sha256
 
 
@@ -40,9 +41,11 @@ int debug_elf_origin
 
 # Index of the PT_NOTE program header; slots 0-1 are the text and data
 # loads, 2-3 are reserved for the dynamic-linking headers (1-2 in a
-# single-segment image) and 4 is PT_GNU_STACK.
-const int elf_build_id_phdr_index = 5
+# single-segment image), 4 is PT_GNU_STACK and 5 PT_GNU_RELRO (PT_NULL
+# when nothing is imported).
+const int elf_build_id_phdr_index = 6
 const int elf_gnu_stack_phdr_index = 4
+const int elf_relro_phdr_index = 5
 const int elf_build_id_size = 20
 
 
@@ -102,9 +105,9 @@ void elf_write_image():
 # Number of program headers: a read-execute text load, a read-write data
 # load (W^X, docs/projects/wx_split.md), two slots reserved for
 # PT_INTERP / PT_DYNAMIC when the program imports shared libraries (they
-# stay PT_NULL, ignored, otherwise), PT_GNU_STACK, and the build-id
-# PT_NOTE.
-const int elf_phdr_count = 6
+# stay PT_NULL, ignored, otherwise), PT_GNU_STACK, PT_GNU_RELRO over the
+# GOT (PT_NULL without imports), and the build-id PT_NOTE.
+const int elf_phdr_count = 7
 
 
 void elf_emit_word(int is64, int v):
@@ -178,13 +181,15 @@ void elf_emit_gnu_stack(int is64):
 
 # phdr[0] text (R+X), phdr[1] data (R+W, patched in
 # elf_patch_load_segments); phdr[2-3] start as PT_NULL and are filled in
-# by elf_emit_dynamic() when there are imports; phdr[4] is PT_GNU_STACK
-# and the last is the build-id PT_NOTE, whose note follows the table.
+# by elf_emit_dynamic() when there are imports; phdr[4] is PT_GNU_STACK,
+# phdr[5] PT_GNU_RELRO (patched in elf_patch_load_segments when there is
+# a GOT) and the last is the build-id PT_NOTE, whose note follows the
+# table.
 void elf_phdr_table(int is64):
 	phdr_table_pos = codepos
 	elf_phdr(is64, 1, 5)
 	elf_phdr(is64, 0, 6)
-	for i in range(4): elf_phdr(is64, 0, 0)
+	for i in range(5): elf_phdr(is64, 0, 0)
 	elf_emit_gnu_stack(is64)
 	elf_emit_build_id_note()
 
@@ -197,12 +202,41 @@ void elf_image_headers(int machine, int is64):
 	elf_phdr_table(is64)
 
 
+# PT_GNU_RELRO (0x6474e552, R): the GOT pages at the bottom of the data
+# load. ld.so rounds the range's end down to a page, so it must cover
+# whole pages -- dyn_relro_size() rounds up, and nothing else lives
+# there. Field layout as in elf_emit_gnu_stack.
+void elf_patch_relro(int is64, int file_off, int vaddr, int size):
+	int w = 4
+	int phdr_size = 32
+	if (is64):
+		w = 8
+		phdr_size = 56
+	int p = phdr_table_pos + elf_relro_phdr_index * phdr_size
+	save_int32(code + p, 1685382482) /* p_type = PT_GNU_RELRO */
+	if (is64): save_int32(code + p + 4, 4) /* p_flags (ELF64): R */
+	else: save_int32(code + p + 24, 4) /* p_flags (ELF32): R */
+	elf_save_word(is64, p + w, file_off)
+	elf_save_word(is64, p + 2 * w, vaddr)
+	elf_save_word(is64, p + 3 * w, vaddr)
+	elf_save_word(is64, p + 4 * w, size)
+	elf_save_word(is64, p + 5 * w, size)
+	if (is64): elf_save_word(is64, p + 48, 1) /* p_align */
+	else: elf_save_word(is64, p + 28, 1)
+
+
 # Patch the load segments' sizes and write the image. The text segment
 # (phdr[0], R+X) is offset 0 at the base, codepos bytes. The data segment
 # gets its own file page after the code; its vaddr (data_offset) is
 # already page-aligned and 16 MB above base, so (vaddr - file_offset)
 # stays page-congruent as the loader requires. Program header field k
 # (1 offset, 2 vaddr, 3 paddr, 4 filesz, 5 memsz) sits k words in.
+#
+# A dynamically linked image's GOT (dyn_emit_import_slot) sits in whole
+# pages just below data_offset: the R+W load then starts that many pages
+# lower, the file carries their (zero) bytes ahead of the data, and
+# PT_GNU_RELRO names exactly those pages, so ld.so makes them read-only
+# once it has written every GOT slot (issue #537).
 void elf_patch_load_segments(int is64):
 	int w = 4
 	int phdr_size = 32
@@ -211,16 +245,20 @@ void elf_patch_load_segments(int is64):
 		phdr_size = 56
 	elf_save_word(is64, phdr_table_pos + 4 * w, codepos)
 	elf_save_word(is64, phdr_table_pos + 5 * w, codepos)
-	if (datapos > 0):
+	int relro = dyn_relro_size()
+	if ((datapos > 0) || (relro > 0)):
+		int seg_vaddr = data_offset - relro
 		int data_file_off = (codepos + 4095) & (0 - 4096)
 		int p = phdr_table_pos + phdr_size /* phdr[1] */
 		save_int32(code + p, 1) /* p_type = PT_LOAD */
 		elf_save_word(is64, p + w, data_file_off)
-		elf_save_word(is64, p + 2 * w, data_offset)
-		elf_save_word(is64, p + 3 * w, data_offset)
-		elf_save_word(is64, p + 4 * w, datapos)
-		elf_save_word(is64, p + 5 * w, datapos)
-		# Pad the file to the data segment's page offset, then write code
-		# and data as two segments in one file.
-		while (codepos < data_file_off): emit_int8(0)
+		elf_save_word(is64, p + 2 * w, seg_vaddr)
+		elf_save_word(is64, p + 3 * w, seg_vaddr)
+		elf_save_word(is64, p + 4 * w, relro + datapos)
+		elf_save_word(is64, p + 5 * w, relro + datapos)
+		if (relro > 0): elf_patch_relro(is64, data_file_off, seg_vaddr, relro)
+		# Pad the file to the data segment's page offset, then the GOT
+		# pages' zeros, then write code and data as two segments in one
+		# file.
+		while (codepos < data_file_off + relro): emit_int8(0)
 	elf_write_image()

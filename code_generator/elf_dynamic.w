@@ -8,7 +8,10 @@ are patched to point at it.
 Binding is eager: one GOT slot per import (in the RW data segment under
 the W^X split, inline next to its shim otherwise) plus one GLOB_DAT
 relocation, so the loader writes the resolved address before the entry
-point runs -- no PLT, no lazy resolver.
+point runs -- no PLT, no lazy resolver. On Linux the GOT slots get whole
+pages of their own below the data base, covered by PT_GNU_RELRO, so the
+loader makes them read-only once relocation is done (elf_all.w's
+elf_patch_load_segments, docs/projects/pie_aslr.md).
 
 All emitted values fit in 32 bits (vaddrs live below 0x08048000+filesz and
 tags/sizes are small), so emit_int64 produces identical bytes whether the

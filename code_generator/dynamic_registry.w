@@ -61,7 +61,30 @@ int dyn_has_imports():
 # import's one-entry IAT (FirstThunk array): the extra zero word keeps the
 # array null-terminated for loaders that walk it, and pe_64.w points one
 # import descriptor at each slot at finish time.
+# Number of GOT words allocated below data_offset on the Linux ELF
+# targets (dyn_emit_import_slot); the ELF writer covers them with
+# PT_GNU_RELRO.
+int dyn_relro_slots
+
+
+# Bytes the RELRO GOT occupies below data_offset, rounded up to whole
+# pages: the loader can only mprotect page ranges, and nothing else
+# shares those pages. 0 when nothing was imported.
+int dyn_relro_size():
+	return (dyn_relro_slots * word_size + 4095) & (0 - 4096)
+
+
 int dyn_emit_import_slot():
+	# Linux ELF (issue #537): the GOT grows down from data_offset, one
+	# word per slot, into pages of its own at the bottom of the R+W data
+	# load. Every slot is written by the loader's GLOB_DAT relocations
+	# before the entry point and never again, so the ELF writer marks
+	# those pages PT_GNU_RELRO and ld.so mprotects them read-only once
+	# relocation is done. Growing down keeps every slot's vaddr final the
+	# moment it is allocated, without knowing the import count up front.
+	if (data_split && (target_os == 0)):
+		dyn_relro_slots = dyn_relro_slots + 1
+		return data_offset - dyn_relro_slots * word_size
 	# W^X targets (data_split) map the code stream read-execute, so the
 	# loader-written slot must live in the RW data segment instead. The
 	# win64 target still gets its zero terminator word after the slot,
