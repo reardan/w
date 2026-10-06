@@ -2,33 +2,10 @@
 # no source files, compiler tables or machine code. Its result survives release
 # of the retained forest. This is dependency planning, not reusable code or a
 # claim that the production traversal is already a complete executable IR.
+# The graph type, module_dependencies_invalidate and module_dependencies_free
+# live in compiler/module_graph.w, which tools import without the compiler.
 import compiler.retained_ast
-import lib.assert
-
-const int module_dependency_import = 1
-const int module_dependency_binding = 2
-const int module_dependency_type = 4
-
-struct module_dependencies:
-	char* path
-	list[int] targets
-	list[int] reasons
-	list[int] users
-
-struct module_dependency_graph:
-	list[module_dependencies*] modules
-
-
-void module_dependency_add(module_dependency_graph* graph, int source, int target, int reason):
-	if ((source < 0) || (target < 0) || (source == target)): return
-	module_dependencies* module = graph.modules[source]
-	for i in range(module.targets.length):
-		if (module.targets[i] == target):
-			module.reasons[i] = module.reasons[i] | reason
-			return
-	module.targets.push(target)
-	module.reasons.push(reason)
-	graph.modules[target].users.push(source)
+import compiler.module_graph
 
 
 # A per-source visited generation handles recursive types and avoids walking
@@ -53,16 +30,9 @@ void module_dependency_type_note(module_dependency_graph* graph, int source, int
 
 
 module_dependency_graph* module_dependencies_build():
-	module_dependency_graph* graph = new module_dependency_graph
-	graph.modules = new list[module_dependencies*]
+	module_dependency_graph* graph = module_graph_new()
 	if (retained_sources == 0): return graph
-	for i in range(retained_sources.length):
-		module_dependencies* module = new module_dependencies
-		module.path = strclone(retained_sources[i].path)
-		module.targets = new list[int]
-		module.reasons = new list[int]
-		module.users = new list[int]
-		graph.modules.push(module)
+	for i in range(retained_sources.length): module_graph_add_module(graph, retained_sources[i].path)
 	list[int] visited = new list[int]
 	if (retained_types != 0):
 		for i in range(retained_types.length): visited.push(0)
@@ -93,44 +63,3 @@ module_dependency_graph* module_dependencies_build():
 	visited.free()
 	definitions.free()
 	return graph
-
-
-# Return the changed modules and every transitive user in source-ID order.
-# The worklist is iterative, cycle-safe and insensitive to seed ordering.
-# A caller changing import resolution must rebuild the graph; IDs belong to
-# this snapshot and are not persistent cache keys.
-list[int] module_dependencies_invalidate(module_dependency_graph* graph, list[int] changed):
-	list[int] marked = new list[int]
-	list[int] pending = new list[int]
-	list[int] result = new list[int]
-	for i in range(graph.modules.length): marked.push(0)
-	for i in range(changed.length):
-		int source = changed[i]
-		assert1((source >= 0) && (source < graph.modules.length))
-		if (marked[source] == 0):
-			marked[source] = 1
-			pending.push(source)
-	while (pending.length):
-		module_dependencies* module = graph.modules[pending.pop()]
-		for i in range(module.users.length):
-			int user = module.users[i]
-			if (marked[user] == 0):
-				marked[user] = 1
-				pending.push(user)
-	for i in range(marked.length):
-		if (marked[i]): result.push(i)
-	marked.free()
-	pending.free()
-	return result
-
-
-void module_dependencies_free(module_dependency_graph* graph):
-	for i in range(graph.modules.length):
-		module_dependencies* module = graph.modules[i]
-		free(module.path)
-		module.targets.free()
-		module.reasons.free()
-		module.users.free()
-		free(module)
-	graph.modules.free()
-	free(graph)

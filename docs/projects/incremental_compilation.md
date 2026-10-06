@@ -73,12 +73,134 @@ invalidation, changed import resolution and per-definition relocation remain
 future work, as do replay directly from semantic trees and cross-target output.
 
 The separate `compiler/module_dependencies.w` API now analyzes retained import,
-binding and type edges and computes transitive invalidation plans. It is not
-wired into these incremental sessions and does not expand their admission rules.
+binding and type edges and computes transitive invalidation plans. Its graph
+type and invalidation walk live in `compiler/module_graph.w`, which
+`tools/wbuildd.w` uses to decide which memoized `check`/`deps`/`symbols`
+answers an edit affects and to re-check only those
+([wbuildd.md](wbuildd.md) §8). That decides which *answers* to recompute; it
+emits no code. It is not wired into these incremental sessions and does not
+expand their admission rules.
 Its graph owns its data, but covers only dependencies represented by the current
 retained traversal; it is not sufficient to authorize general code reuse. See
 [the module dependency increment](ast_migration.md#declaration-inventory-and-independent-module-dependency-analysis)
 for ownership, schema and remaining gaps.
+
+## Per-definition relocation (design; not implemented)
+
+Everything above reuses a *prefix*: an edit to one definition throws away
+every definition after it, because their machine code was emitted at
+addresses that assumed the old layout. Reusing an unchanged definition
+whatever its position means relocating it: copying its bytes to a new
+address and fixing every place where those bytes encode an address. This
+section records what such a definition record must hold. It is a design
+only: nothing below exists yet, and `wbuildd`'s module-graph invalidation
+(above) does not depend on it.
+
+### Why the bytes are not relocatable today
+
+The single-pass emitter writes directly into one code buffer at
+`code_offset + codepos`, and it bakes absolute virtual addresses into the
+instruction stream as it goes:
+
+- **Address slots.** Every reference to a global function or variable
+  goes through `be_addr_slot_emit` (`code_generator/arm64.w`): a
+  `mov $imm32,%eax` on x86/x64, an `adrp`+`add` pair on arm64, a wasm
+  constant. A defined symbol's slot is written with its final address
+  (`sym_emit_value`). An undefined one stores the previous slot's address,
+  forming a backpatch chain threaded through the slots themselves
+  (`addr_chain_link`/`addr_chain_patch`, `compiler/symbol_table.w`), and is
+  patched when the definition appears. Generic instantiations and lazy
+  runtime helpers use the same chains.
+- **PC-relative pairs.** arm64's `adrp` immediate is a page delta from
+  the instruction's own address. Moving a definition therefore changes
+  slot bytes even when the target did not move.
+- **Data addresses.** Under the W^X split, mutable globals and enum
+  tables live in the data segment at `data_offset + datapos`, so their
+  addresses depend on every earlier data allocation.
+- **Inline data.** String literals and descriptor blobs are inline in
+  the text, jumped over with a call (x86) or a branch (arm64). They move
+  with the function and need no patch. Intra-function branches are
+  rel32/imm19 displacements and also move unchanged.
+- **Side tables keyed by address**: DWARF line rows, subprogram records
+  and `.debug_frame` CFI (#555), wdbg's line table, the REPL's
+  `repl_call_site_hook` call-site list, wasm funcref indices, and
+  dynamic import stubs (GOT/IAT cells).
+
+### What a relocatable definition record needs
+
+1. **Code bytes.** The definition's emitted bytes, starting at its first
+   instruction (prologue) and ending before the next definition. Inline
+   string and blob data is included. The bytes are stored as emitted at
+   some base address; the patch list says which bytes depend on it.
+2. **A patch list of absolute references.** One entry per byte position
+   whose value depends on where something lives:
+   `{offset within the record, kind, target, addend}`.
+   - `kind` is the slot encoding: `addr_slot` (rewritten with the
+     existing `be_addr_slot_write(pos, value)`, which already
+     re-encodes for x86 imm32, arm64 `adrp`+`add` and wasm), `data_addr`
+     (the same slot, targeting the data segment), `tls_offset`,
+     `import_cell` (GOT/IAT/stub), and `funcref` on wasm.
+   - `target` is a stable identity, never an address: the retained
+     binding `linkage` ID for a global symbol (prototype, uses and
+     definition share it), a data-object identity for globals and
+     literal pools in the data segment, or the generic-instance or
+     lazy-helper key that its backpatch chain uses today.
+   - Recording it costs one append at each place that writes a slot
+     today: `sym_emit_value`'s `D`/`U` branches, `addr_chain_link` and
+     the data-segment definers. Every slot is then in the list, not
+     only the ones still undefined when the definition ends. Once the
+     list exists, the chains become one way to fill it rather than the
+     only record of the slots.
+   - Relocating means copying the bytes, then writing each entry's
+     resolved target plus addend at its new position. No byte outside
+     the list may depend on the record's own address. A debug build
+     can check this by emitting the same definition at two bases and
+     diffing: the bytes may differ only at listed offsets.
+3. **A symbol/type snapshot id.** The bytes are only valid against the
+   declarations they were compiled with. Examples: struct layouts and
+   field offsets folded into immediates, a callee's arity and return
+   type, and `const` and enum values emitted as immediates. The id is a hash over what the definition's emission
+   *read*:
+   - the signatures and layouts of every type and symbol the definition
+     bound to (the retained binding and type edges
+     `compiler/module_dependencies.w` already collects, per definition
+     rather than per module);
+   - the target, word size and ABI;
+   - codegen options (AST mode, `--debug`, pac);
+   - the compiler binary's own hash.
+
+   A record whose id no longer matches is recompiled, never patched.
+   This is why the module graph alone cannot authorize reuse: it records
+   which modules depend on which, not the values the emitter folded in.
+   It also records no negative lookups, such as an import that resolved
+   past a missing file.
+4. **Side-table fragments**, each relative to the record start: DWARF
+   line rows and the subprogram/variable entries for the definition,
+   its CFI, and the wdbg line-table rows. With relocated code these are
+   shifted, not regenerated. A record without them can still be used
+   for a non-debug link.
+5. **Data contributions.** Mutable globals, enum tables and literal
+   pools that the definition defines (not just references) are separate
+   data records with their own identity, size, alignment and initial
+   bytes. These could be patch lists of their own for address-valued
+   initializers. Code refers to them only through `data_addr` patches.
+
+### What it would take, in order
+
+1. Record patch lists alongside today's emission (no behavior change).
+   Gate: a "two bases, diff only at listed offsets" check over the
+   compiler.
+2. Compute snapshot ids from the per-definition binding/type edges.
+   Gate: an edit to a struct layout invalidates exactly the definitions
+   that read it.
+3. A linker step that lays out records and applies patches. Gate:
+   byte-identical images against a fresh compile when nothing is reused.
+   Generic instances, lazy runtime helpers and data-segment layout are
+   the hard parts here.
+4. Only then reuse records across compiles (`wbuildd` or a cache keyed
+   by snapshot id). This is the step that makes *builds* incremental;
+   the module-graph invalidation in `wbuildd` today only makes
+   *re-checking* incremental.
 
 ## Regression gates
 
