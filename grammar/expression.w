@@ -32,19 +32,33 @@ void assign_store(int type):
 	else: store_ebx_word()
 
 
-# Copy the struct at eax into the struct at ebx, word by word, then
-# rebuild any inline array-field descriptors in the destination.
+# Copy the struct at eax into the struct at ebx, then rebuild any inline
+# array-field descriptors in the destination. Whole words first, then the
+# tail with the narrowest moves that fit (4, 2, 1 bytes), so a struct whose
+# size is not a word multiple never writes past its last byte (#524).
 void struct_copy_eax_to_ebx(int type):
-	int words = (type_get_size(type) + word_size - 1) >> word_size_log2
+	int size = type_get_size(type)
 	push_ebx()
 	stack_pos = stack_pos + 1
 	push_slot()
-	for i in range(words):
+	int offset = 0
+	int dest_offset = 0
+	while (offset < size):
+		int chunk = word_size
+		while (chunk > size - offset): chunk = chunk >> 1
 		mov_eax_esp_plus(0)
-		if (i > 0): add_eax_int32(i << word_size_log2)
-		promote_eax()
-		if (i > 0): add_ebx_int32(word_size)
-		store_ebx_word()
+		if (offset > 0): add_eax_int32(offset)
+		if (chunk == word_size): promote_eax()
+		else if (chunk == 4): promote_uint32_eax()
+		else if (chunk == 2): promote_uint16_eax()
+		else: promote_uint8_eax()
+		if (offset > dest_offset): add_ebx_int32(offset - dest_offset)
+		dest_offset = offset
+		if (chunk == word_size): store_ebx_word()
+		else if (chunk == 4): store_ebx_int32()
+		else if (chunk == 2): store_ebx_int16()
+		else: store_ebx_int8()
+		offset = offset + chunk
 	pop_eax_slot()
 	pop_ebx_slot()
 	if (type_has_array_field(type)):

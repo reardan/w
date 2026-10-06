@@ -134,6 +134,7 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 		if (sym_is_kernel(callee) && (type_is_gpu_pointer(param_type) == 0)):
 			arg_type = type_gpu_pointer_host_twin(arg_type)
 	if (types_compatible_with_expression(param_type, arg_type) == 0):
+		sym_note_related(callee, c"function '", callee_name, c"' is declared here")
 		gpu_domain_check_argument(callee_name, arg_index, param_type, arg_type)
 		diag_part(c"warning: function '")
 		diag_part(callee_name)

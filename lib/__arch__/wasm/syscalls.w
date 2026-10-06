@@ -336,6 +336,20 @@ int kill(int pid, int sig):
 	return -1
 
 
+# No Unix fd inheritance or process groups here: pipe2 ignores its flags,
+# the other two report failure (lib/process.w treats both as optional).
+int pipe2(int* fds, int flags):
+	return pipe(fds)
+
+
+int setpgid(int pid, int pgid):
+	return -1
+
+
+int close_range(int first, int last, int flags):
+	return -1
+
+
 int os_windows():
 	return 0
 
@@ -463,4 +477,11 @@ int sys_openat(int dirfd, char* path, int flags, int mode):
 # WASI's path_rename is not in the compiler's fixed import set either;
 # lib/fs.w's durable replace reports IO_UNSUPPORTED before reaching it.
 int rename(char* oldpath, char* newpath):
+	return -38
+
+
+# No getrandom here (WASI random_get / BCryptGenRandom are not wired
+# up): ENOSYS, so the built-in map seed (structures/hash_table.w) falls
+# back to address mixing and crypto/random.w to /dev/urandom.
+int sys_getrandom(char* buf, int buflen, int flags):
 	return -38

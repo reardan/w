@@ -1,0 +1,3 @@
+# wbench_compare_test fixture: limits far above any real run, so the
+# comparison must pass.
+prelude 1000000000 1000000000 1000000000 1000000000

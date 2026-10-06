@@ -54,10 +54,15 @@ void test_text_values():
 
 void test_float_values():
 	float f = 3.14159
-	check(c"3.141590 3.142 3 3.1", f"{f} {f:.3} {f:.0} {f:.1f}")
+	check(c"3.14159 3.142 3 3.1", f"{f} {f:.3} {f:.0} {f:.1f}")
 	check(c"[    3.14] [3.1     ] [-0003.14]", f"[{f:8.2}] [{f:<8.1}] [{-f:08.2}]")
 	float half = 2.5
 	check(c"2.50 0.1", f"{half:.2} {0.05 + 0.05:.1}")
+	# issue #529: shortest round-trip text, exact at any magnitude
+	float big = 1e20
+	float tiny = 1e-7
+	check(c"1e+20 1e-07 100000002004087734272 0.00000010", f"{big} {tiny} {big:.0} {tiny:.8}")
+	check(c"[   1e+20] 0.1 -0.0", f"[{big:8}] {0.1} {-0.0}")
 
 
 enum fmt_color:

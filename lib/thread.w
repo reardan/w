@@ -43,6 +43,14 @@ userspace again, making the munmap race-free. thread_create does not
 expose its mmap either, so the worker recovers the stack base itself
 from its own stack pointer (see thread_entry).
 
+Stack layout (issue #526): the bottom of each 4MB mapping holds the
+thread's thread_local block and its alternate signal stack, fenced off
+from the stack proper by a PROT_NONE guard page (thread_stack_guard), so
+a runaway recursion faults on the guard -- reported by lib/crash.w on
+the signal stack when the crash handler is installed -- instead of
+silently overwriting the thread_local block (the per-thread heap
+pointer) and whatever is mapped below.
+
 Worker pool: parallel_for dispatches its chunks to a persistent pool
 of workers (threads.md staging item 2) instead of cloning one thread
 per chunk per call, so parallel_for in a loop pays the clone(2) + 4MB
@@ -124,6 +132,7 @@ thread; a pool that cannot be created at all falls back to the
 spawn-per-chunk path, whose own clone-failure fallback is inline.
 */
 import lib.lib
+import lib.signal
 import lib.thread_heap
 
 
@@ -198,6 +207,27 @@ void thread_wait_word_clear(int* word):
 const int thread_stack_size = 4194304
 
 
+# Size of each worker's alternate signal stack, carved from its stack
+# mapping (see thread_stack_guard).
+const int thread_altstack_size = 65536
+
+
+# Layout of a worker's 4MB stack mapping, bottom up (issue #526):
+#
+#	stack_base:  thread_local block (__w_tls_size(), rounded to pages)
+#	             alternate signal stack (thread_altstack_size)
+#	guard:       one PROT_NONE page
+#	             the stack proper, growing down from the top
+#
+# A runaway recursion runs into the guard page and faults there, before
+# it can overwrite the thread_local block (which holds this thread's
+# heap pointer) or the signal stack the crash handler reports it on.
+# Returns the guard page's address for a mapping based at stack_base.
+int thread_stack_guard(int stack_base):
+	int tls_bytes = (__w_tls_size() + 4095) & ~4095
+	return stack_base + tls_bytes + thread_altstack_size
+
+
 # The zero-argument clone entry. Runs on the fresh 4MB stack; it must
 # never return (there is no return address above it), so it exits the
 # thread when the worker function comes back.
@@ -217,6 +247,15 @@ void thread_entry():
 	# it needs no allocation and thread_join's munmap reclaims it. Done
 	# before anything that could touch a thread_local.
 	if (__w_tls_size() > 0): __w_tls_set(t.stack_base)
+	# Fence the TLS block and the signal stack off from the stack proper
+	# with a PROT_NONE guard page (thread_stack_guard), then make the
+	# signal stack this thread's own: a CLONE_VM child starts without
+	# one, and handlers installed with SA_ONSTACK (lib/crash.w) then
+	# report a worker's stack overflow too. Both are best effort: a
+	# failure leaves the thread running exactly as before.
+	int guard = thread_stack_guard(t.stack_base)
+	mprotect(guard, 4096, 0)
+	signal_altstack_install(guard - thread_altstack_size, thread_altstack_size)
 	# This thread's own heap (lib/thread_heap.w): its mallocs never
 	# touch another thread's allocator state.
 	thread_heap_attach()

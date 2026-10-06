@@ -10,7 +10,16 @@ and asserts the properties the split exists for:
 - the R+W load sits at the fixed data base (image base + 16MB), with a
   page-congruent file offset,
 - every dynamic relocation's target (GOT slots the loader binds, COPY
-  space it fills) lies inside the R+W load, never in the R+X one.
+  space it fills) lies inside the R+W load, never in the R+X one,
+- a PT_GNU_STACK header marks the stack R+W, not executable (issue
+  #526): without it the i386 kernel applies READ_IMPLIES_EXEC and maps
+  the stack, the heap and the data load rwx regardless of the headers.
+
+The headers are only half the story, so test_runtime_maps_not_wx also
+reads this process's own /proc/self/maps and asserts that no mapping
+is writable and executable at once -- in particular the [stack], the
+[heap] and the R+W data load come up rw-p. The target runs this binary
+as both a 32-bit and a 64-bit image.
 
 The mutable-global compile-and-run half of the story is covered by this
 test binary itself (wx_check_global below runs as a split image) and by
@@ -19,6 +28,7 @@ binaries for real.
 */
 import lib.testing
 import lib.assert
+import lib.str
 
 
 # The image under inspection, read once per wx_load_image call.
@@ -216,6 +226,11 @@ void wx_check_image(char* path, int expected_class):
 		checked = checked + 1
 	asserts(c"at least three relocations checked", checked >= 3)
 
+	# PT_GNU_STACK (0x6474e551): present, R+W, not executable.
+	int gnu_stack = wx_ph_find(1685382481, 0)
+	asserts(c"a PT_GNU_STACK header exists", gnu_stack >= 0)
+	assert_equal(6, wx_ph_flags(gnu_stack)) /* R+W, no X */
+
 
 # This test binary is itself a split image: a mutable global write + read
 # proves the RW data segment is mapped and writable at run time.
@@ -238,3 +253,52 @@ void test_x64_image():
 
 void test_x86_image():
 	wx_check_image(c"bin/elf_wx_segment_input32", 1)
+
+
+# --- Run time: this process's own mappings ---------------------------------
+
+# The mapping's start address, parsed from a /proc/self/maps line.
+int wx_maps_start(char* line):
+	int v = 0
+	int i = 0
+	int c = line[0]
+	while (((c >= '0') && (c <= '9')) || ((c >= 'a') && (c <= 'f'))):
+		if (c <= '9'): v = (v << 4) + c - '0'
+		else: v = (v << 4) + c - 'a' + 10
+		i = i + 1
+		c = line[i]
+	return v
+
+
+# The four permission characters ("rw-p", ...) follow the first space.
+char* wx_maps_perms(char* line):
+	int i = 0
+	while (line[i] != ' '): i = i + 1
+	return &line[i + 1]
+
+
+void test_runtime_maps_not_wx():
+	wx_load_image(c"/proc/self/maps")
+	char* maps = wx_bytes
+	maps[wx_length - 1] = 0   /* the file ends in a newline */
+	int seen_stack = 0
+	int seen_data = 0
+	int line = 0
+	while (line < wx_length - 1):
+		char* text = &maps[line]
+		int end = line
+		while ((maps[end] != 10) && (maps[end] != 0)): end = end + 1
+		maps[end] = 0
+		char* perms = wx_maps_perms(text)
+		if ((perms[1] == 'w') && (perms[2] == 'x')):
+			println(text)
+			asserts(c"no mapping is writable and executable", 0)
+		if (contains(text, c"[stack]") || contains(text, c"[heap]")):
+			assert_strings_equal(c"rw-p", substring(perms, 0, 4))
+			if (contains(text, c"[stack]")): seen_stack = 1
+		if (wx_maps_start(text) == 134512640 + 16777216): /* the R+W data load */
+			assert_strings_equal(c"rw-p", substring(perms, 0, 4))
+			seen_data = 1
+		line = end + 1
+	asserts(c"the [stack] mapping was checked", seen_stack)
+	asserts(c"the R+W data load was checked", seen_data)

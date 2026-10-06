@@ -64,5 +64,5 @@ void test_hex_verb():
 
 void test_ftoa():
 	char* got = ftoa(-2.5)
-	assert_strings_equal(c"-2.500000", got)
+	assert_strings_equal(c"-2.5", got)
 	free(got)

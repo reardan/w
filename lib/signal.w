@@ -35,19 +35,30 @@ void signal_thunk_emit(int n, char* bytes):
 	signal_thunk_pos = signal_thunk_pos + n
 
 
+# The thunk page is never writable and executable at once (W^X, issue
+# #526): it is mapped read-write, and each emission flips it back to
+# read-execute once the bytes are in place.
+void signal_thunk_writable(int writable):
+	int prot = 5 /* R+X */
+	if (writable): prot = 3 /* R+W */
+	asserts(c"mprotect of signal thunk page failed", mprotect(signal_thunk_page, 4096, prot) == 0)
+
+
 void signal_thunk_init():
 	if (signal_thunk_page != 0): return;
-	signal_thunk_page = mmap(0, 4096, 7, 34) /* RWX, PRIVATE|ANONYMOUS */
+	signal_thunk_page = mmap(0, 4096, 3, 34) /* RW, PRIVATE|ANONYMOUS */
 	asserts(c"mmap of signal thunk page failed", (signal_thunk_page > 0) | (signal_thunk_page < -4095))
 	signal_restorer = signal_thunk_page
 	/* mov eax,15 ; syscall  (rt_sigreturn) */
 	signal_thunk_emit(7, c"\xb8\x0f\x00\x00\x00\x0f\x05")
+	signal_thunk_writable(0)
 
 
 # Emit an x64 thunk calling handler(sig, &uc_mcontext) with the W stack
 # convention (first argument at the highest address). The handler
 # address fits an imm32: the image loads in the low 2GB.
 int signal_emit_handler_thunk(int handler):
+	signal_thunk_writable(1)
 	int addr = signal_thunk_page + signal_thunk_pos
 	/* push rdi ; lea rax,[rdx+40] ; push rax ; mov eax,imm32 */
 	signal_thunk_emit(7, c"\x57\x48\x8d\x42\x28\x50\xb8")
@@ -55,7 +66,27 @@ int signal_emit_handler_thunk(int handler):
 	signal_thunk_pos = signal_thunk_pos + 4
 	/* call rax ; add rsp,16 ; ret  (returns into the restorer) */
 	signal_thunk_emit(7, c"\xff\xd0\x48\x83\xc4\x10\xc3")
+	signal_thunk_writable(0)
 	return addr
+
+
+# SA_ONSTACK: deliver on the thread's alternate signal stack, when it
+# has one (signal_altstack_install); without one the flag is ignored.
+const int signal_sa_onstack = 0x08000000
+
+
+# Make [base, base + size) the calling thread's alternate signal stack
+# (Linux stack_t {ss_sp, ss_flags, ss_size}, one word per field), so a
+# handler installed with signal_sa_onstack still runs when the thread's
+# own stack is exhausted -- a stack-overflow SIGSEGV is reported instead
+# of killing the process outright. Per thread: a CLONE_VM child starts
+# without one. Returns 0 or -errno.
+int signal_altstack_install(int base, int size):
+	int[3] ss
+	ss[0] = base
+	ss[1] = 0
+	ss[2] = size
+	return sys_sigaltstack(cast(int, &ss[0]), 0)
 
 
 # struct sigaction: on i386 {handler, flags, restorer, mask[2]} with

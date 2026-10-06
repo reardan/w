@@ -1,0 +1,276 @@
+# Testing
+
+How W's tests are written and run, and the tools around them: the
+`lib/testing.w` runner (summary, filter, leak checks), module coverage,
+compiler performance tracking, and the flaky-test policy. Issue #538
+introduced the runner features, `bin/wcoverage`, the `wbench` baseline
+and this policy.
+
+Writing a test is covered in `AGENTS.md` and `CLAUDE.md`: create
+`tests/foo_test.w` (or `lib/foo_test.w` next to the module), import
+`lib.testing`, write zero-argument `test_*` functions, and add
+`# wbuild:` directives for expectations and extra steps
+(`tools/wbuildgen_lib.w` documents the vocabulary).
+
+## The runner (`lib/testing.w`)
+
+Importing `lib.testing` provides `main()`. The compiler registers every
+zero-argument `test_*` function, and the runner calls them in
+definition order. Each test prints `Run: 'test_x()'` and then
+`Test 'test_x()' passed!`. The run ends with a summary line and
+`All tests passed!`:
+
+```
+Summary: 12 passed, 0 failed, 0 skipped
+All tests passed!
+```
+
+A failing assertion (`lib/assert.w`) prints its message and a stack
+trace and exits 1 straight away. The last `Run:` line names the
+failing test, and no summary is printed because the run never reaches
+it. The `failed` count only counts leak-check failures (see below),
+which let the remaining tests run.
+
+### Running a subset
+
+```sh
+bin/foo_test --filter parse            # tests whose name contains "parse"
+bin/foo_test --filter=parse,lexer      # either substring
+W_TEST_FILTER=parse bin/foo_test       # same, from the environment
+bin/foo_test --list --filter parse     # print the selected names, run nothing
+```
+
+Tests that do not match are counted as `skipped`, and the summary
+names the filter. If the argv form and `W_TEST_FILTER` are both set,
+argv wins. A filter that matches no test fails the run with
+`Tests FAILED: the filter matched no test.`, so a typo cannot pass
+silently. The runner ignores every other argument, so a test that
+reads its own argv keeps working.
+
+### Leak checks
+
+With `W_TEST_LEAKS=1`, the runner switches to the guard-page debug
+allocator (`lib/memory_debug.w`, the same backend `W_DEBUG_ALLOC=1`
+selects) and checks each test. A test that returns while heap blocks
+it allocated are still live fails:
+
+```
+LEAK: 'test_leaks_one_block()' returned with 1 heap block(s), 40 byte(s) still allocated:
+  40 byte(s) at 0xf7f2afd8
+...
+Summary: 2 passed, 1 failed, 0 skipped [leak check]
+Leaked: test_leaks_one_block
+Tests FAILED: leak check.
+```
+
+The remaining tests still run, and the exit status is 1. A test's
+blocks are the ones it allocated between its start and its return.
+Blocks allocated earlier and freed during the test do not count, and
+neither does anything the runner prints. `W_DEBUG_ALLOC=1` on its own
+keeps its old meaning: it traps overflows and use-after-free, with no
+leak verdict.
+
+To check a test on every run, add a step to its source:
+
+```
+# wbuild: step="bin/hash_table_test" env="W_TEST_LEAKS=1" expect_stdout="0 failed, 0 skipped [leak check]"
+```
+
+This step runs the binary a second time under the leak check, after
+the normal run. The following tests currently have this step:
+`structures/hash_table_test.w`, `structures/json_test.w`,
+`structures/string_test.w`, `lib/event_loop_test.w`,
+`lib/byte_buf_test.w`, `lib/result_test.w` and `lib/path_test.w`.
+Enable the check only for a test that passes it. Most tests don't pass
+yet, mostly because they never free their own results. Fix the test
+first, then add the step.
+
+Limits:
+
+- Only `malloc`'d blocks are tracked. Memory that is `mmap`'d directly
+  is invisible to the check, for example a generator's 64 KB stack.
+- A module that allocates a global cache on first use reports that
+  cache as a leak in whichever test touches it first.
+- A test that asserts free-list block reuse cannot run under the debug
+  allocator, because it never reuses a block. `lib/lib_test.w`,
+  `lib/arena_test.w` and `lib/ndarray_test.w` fail for this reason.
+- The debug allocator returns some blocks unaligned, and a shrinking
+  `realloc` can fault (#530). Until that is fixed, a test that
+  depends on either cannot use the check.
+
+#### Known leaks (reproduced for #538, not yet fixed)
+
+These were reproduced with `W_TEST_LEAKS=1` on a scratch program. They
+are not wired into `tests`.
+
+1. **Generators driven by hand.** `generator* g = counter(5);
+   gen_next(g)` with no `gen_free(g)` leaks the 24-byte generator
+   object and its 64 KB + 16 KB stack mapping. The leak check sees only
+   the object. Draining the generator (`while (gen_next(g)): ...`)
+   releases the stack but still leaks the object. A
+   `for x in gen(...)` loop frees correctly on normal exit, `break`,
+   `continue`, `return` and `?` (all checked clean). The leak exists
+   only when the API is driven by hand, and the language has no
+   destructor that could catch it.
+2. **`defer` in a loop.** `defer` is function-scoped and evaluated at
+   exit (docs/projects/defer.md), so the following code frees only the
+   last block and leaks the first `n - 1`:
+
+   ```
+   char* p = 0
+   for i in range(n):
+   	p = malloc(16)
+   	defer free(p)
+   ```
+
+   This is documented semantics, but nothing warns about it. A lint
+   rule for `defer` inside a loop body would catch it.
+3. **`return` before `defer`.** In
+   `char* p = malloc(16); if (early): return 1; defer free(p)`, the
+   early return leaks `p`, because a `return` placed textually before
+   the `defer` does not run it (documented caveat). `defer` together
+   with `?` was checked and is clean.
+4. **Cancelled timers.** `event_loop_cancel_timer` only marks the timer
+   inactive. The timer stays in the heap until its deadline, so adding
+   and cancelling 100 one-hour timers leaves 100 live timer blocks
+   (lib/event_loop.w:470-477). `event_loop_free` releases them, so the
+   leak check passes. A long-running loop that keeps cancelling
+   long-deadline timers grows without bound. Fix: compact the heap
+   when the number of cancelled timers passes half its length.
+
+## Coverage
+
+`./wbuild wcoverage_report` (or `bin/wcoverage` after
+`./wbuild wcoverage`) lists the `lib/` and `structures/` modules that
+no test program imports, directly or through other modules:
+
+```
+roots: 907 (203 did not compile, skipped)
+uncovered modules (4 of 141):
+  lib/context_aarch64.w
+  lib/logging.w
+  lib/pty.w
+  lib/wmeta.w
+reached only through the test harness (4 of 141):
+  lib/crash_dump.w
+  lib/float_text.w
+  lib/signal.w
+  structures/prelude.w
+module coverage: 133/141 (94%)
+```
+
+That is the report at the time of #538.
+
+The roots are every `.w` file under `tests/`, plus every `*_test.w` and
+`*_e2e.w` under `lib/`, `structures/`, `graphics/`, `libs/` and
+`tools/`. Each root's import closure comes from `bin/wv2 deps`. A root
+that does not compile for the default target is retried as `x64`. The
+measured modules leave out `*_test.w` files and the per-target
+`__arch__/` trees. Use `--roots <dir>` and `--modules <dir>` to measure
+something else, `--covered` to list the covered modules as well, and
+`-j N` to change parallelism (default 4). A full run takes about two
+minutes. It is a tool target, not part of `tests`. `wcoverage_test`
+(in `tests`) checks the tool on the fixture tree in `tests/wcoverage/`.
+
+Every test imports `lib/testing.w`, so without a special rule the
+modules the runner itself imports (`lib/format.w`,
+`lib/float_text.w`, `lib/crash_dump.w`, ...) would count as covered by
+every test. A module in the harness's closure therefore counts as
+covered only when some root names it in its own `import` line.
+Otherwise it is listed under "reached only through the test harness"
+and does not count. The rule does not apply to modules that an empty
+program already pulls in (the auto-imported runtime). `--harness
+<file>` changes the harness (default `lib/testing.w`) and `--harness
+none` turns the rule off. The audit's earlier figure, 31 of 120
+modules imported by no test, counted only `*_test.w` roots. This report
+also counts the fixtures and helper programs that test steps run, plus
+a root's x64 closure when it is x64-only.
+
+This is static reachability, not execution coverage. A "covered" module
+can still contain functions that no test calls.
+
+Line-level coverage is deferred. It needs the compiler to emit a
+counter increment for each statement, plus a (file, line) table and a
+dump at exit. The natural place for the counter is the statement
+emitter in `grammar/`, and the dump could go in `lib/testing.w`'s
+`main` after the run, since W has no exit hooks. That work touches
+`grammar/` and `code_generator/` while the AST completion (#489) is
+reshaping them, so it should be built on the AST lowering once that
+lands, not on the single-pass emitter.
+
+## Performance
+
+`tools/wbench.w` benchmarks the compiler on four workloads: `prelude`
+(an empty program, which still compiles the auto-imported container
+runtime), `sym1000` and `sym4000` (generated programs with many
+symbols) and `self` (`w.w`). For each workload it reports
+`sym_lookup` calls, records visited, the output size in bytes and the
+best wall time.
+
+```sh
+./wbuild wbench_compare                          # compare against tools/wbench_baseline.txt
+bin/wbench --compare tools/wbench_baseline.txt   # same, by hand
+bin/wbench --write-baseline tools/wbench_baseline.txt   # refresh the baseline
+```
+
+`--compare` fails (exit 1) when a workload's calls, records visited or
+output bytes are more than `--tolerance` percent (default 10) above the
+baseline. These three numbers are deterministic, so the check gives
+the same result on any machine and under any load. Wall time is only
+reported. Pass `--time-factor <x>` to also fail when the best time is
+more than x times the baseline's (with 50 ms of slack). Use it only
+when comparing against a baseline recorded on the same machine.
+`--only <workload>` runs a single workload.
+
+`wbench_compare` is runnable locally and is not part of `tests`: a
+deliberate compiler change shifts the counters. After an intended
+change, re-run `--write-baseline` (default `-n 3` on an idle machine,
+so the recorded times are meaningful) and commit the new
+`tools/wbench_baseline.txt` with the change. The commit message should
+say why the numbers moved. `wbench_compare_test` (in `tests`) checks
+the compare logic itself against fixture baselines in `tests/wbench/`.
+
+## Flaky tests
+
+A **flake** is a test target that fails and then passes on an
+unchanged tree: same commit, same inputs, same machine class. Some
+failures are not flakes:
+
+- A failure that reproduces on rerun is a real failure.
+- A failure that only happens on one platform or under one
+  configuration is a platform bug. It needs its own issue, not the
+  flake label.
+- A failure caused by a missing tool or environment (no display, no
+  `qemu-user-static`, no `libc6:i386`) is a setup problem. The target
+  should skip or say so clearly.
+
+**One retry, at most.** When a target fails, it may be rerun once,
+locally or in CI, without changing anything (`./wbuild <target>`; the
+failing target is named in `wexec: failed: <target>`). If the retry
+fails too, it is a real failure: fix it before merging. Never rerun
+until green. A second retry hides exactly the intermittent bugs these
+tests exist to catch.
+
+**Every flake becomes an issue.** If the retry passes, open a GitHub
+issue the same day with the `flaky-test` label. Include the target
+name, the first failure's log (the full `wexec` output for that
+target), the commit, the platform, and how often it has been seen. If
+an issue already exists, add a comment to it instead. Mention the
+issue in the PR that hit the flake.
+
+**No quarantine.** A flaky test is not disabled, skipped, removed from
+its umbrella, wrapped in a retry loop or given a looser expectation
+just to get it green. Its issue is fixed: by fixing the test, fixing
+the code it exposed, or making the test deterministic (fake clocks via
+`lib/wclock.w`, `lib/event_sim.w`, fixed seeds, explicit
+synchronization). Until then, the one-retry rule keeps merges moving
+and the issue keeps the flake visible.
+
+## Not done yet
+
+- Line-level and function-level execution coverage (see "Coverage").
+- Leak checks that also catch `mmap`-backed resources (generator
+  stacks, thread stacks).
+- Running `wbench_compare` in CI with a baseline per runner class.
+- Property-based testing and mutation testing for the stdlib
+  containers and parsers.

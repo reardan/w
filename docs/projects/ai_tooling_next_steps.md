@@ -17,6 +17,34 @@ is a queue, not an archive.
 
 ## Diagnostics (`w check`)
 
+- **`--json` codes, spans and related notes: what C3.2 left (2026-10-06).**
+  Records now carry `code`, `end_line`, `end_column` and `related`
+  (`docs/projects/lint.md` "JSON output"). Open: (a) related notes
+  cover only "Cannot find symbol", the redefinitions, `:=` and the
+  argument/return type mismatches. An unknown struct field could point
+  at the struct, a duplicate label or import alias at the first one, and
+  arity warnings at the callee, but the AST-mode arity replay
+  (`ast_expression_replay_warning`) carries no callee symbol and
+  `ast_expression_test` requires identical records from both front
+  ends, so arity notes wait for that event to carry it. (b) The
+  span is the reported token's. The plan also asked for a retained
+  node's end "where one is live", but no closed node covers a
+  diagnostic when it fires: expressions are retained after emission and
+  an error exits during it. That needs tree-then-emit (checkpoint B).
+  (c) Many diagnostics fire at the token after their construct (a
+  `return` mismatch at the next line's first token, a redefinition at
+  the `:`), so the span is accurate to the location but not the
+  construct.
+
+- **A `:=` local is reported unused at the following token (2026-10-06).**
+  `int main():\n\tx := 1\n\treturn 0` under `w check --lint` reports
+  `unused-local` at 3:2 (`return`), not 2:2. `:=` declares the symbol
+  after parsing the initializer, so `sym_declare` records the token
+  after it; the retained forest already keeps the name's position, and
+  C3.2's related notes use a `--json`-only side table
+  (`sym_note_inferred_location`). Fixing the record moves the human
+  lint location, so it needs its own change with fixture updates.
+
 - **Bool return coerces an already promoted integer twice (2026-10-03).**
   `bool truth(int n): return n` emits a second load through the integer
   value and crashes for `truth(7)`. Reproduced with both streaming emission

@@ -75,6 +75,80 @@ The existing `--imports` and `--bool-ops` checks compose with `--lint`
 but are not part of it: both audit the whole import closure, and the
 tree relies on transitive imports by design.
 
+## JSON output
+
+`--json` writes one NDJSON record per diagnostic on stdout, lint
+findings and ordinary compiler diagnostics alike
+(`docs/projects/ai_tooling.md` "Output format" has the original seven
+fields). AST completion plan unit C3.2 appended four more; the
+human-readable output is byte-identical with or without them.
+
+```json
+{"file": "/src/a.w", "line": 5, "column": 9, "severity": "error", "message": "Cannot find symbol: 'countr'", "token": "countr", "arch": "x86", "code": "W0001", "end_line": 5, "end_column": 15, "help": "did you mean 'counter'?", "related": [{"file": "/src/a.w", "line": 1, "column": 5, "message": "'counter' is declared here"}]}
+```
+
+- `code`: a stable identifier for the message's shape, `W` plus four
+  digits. The table is `diag_code_table()` at the end of
+  `compiler/diagnostics.w`: one row per distinct message, written as the
+  frozen message text (without the `warning: ` label) with `@` for each
+  variable part. A message takes the code of the matching row with the
+  most literal characters, so a specific row beats a general one
+  regardless of table order; a message no row matches gets `W0000`.
+  The table is append-only. A new diagnostic takes the next free number
+  at the end; a removed one keeps its row; a reworded one keeps its code
+  and updates its pattern. Codes are computed from the final message
+  text inside the `--json` emitter, so call sites carry no code and the
+  human output never sees one.
+- `end_line`, `end_column`: the end of the reported token's span,
+  exclusive (just past its last character), 1-based and counted in
+  codepoints like `column`. The token's text is the raw source bytes
+  the tokenizer consumed, so the end is the start advanced over it (a
+  multi-line string literal moves `end_line`). When the source can be
+  read back (a regular file) the token is first checked against the
+  bytes at the start position, and a diagnostic whose token is not there
+  gets a zero-width span, `end == start`: lint findings (which report a
+  position, not a token), end-of-file warnings, `<command-line>`
+  records (`0, 0`). Hosts without `statx` (darwin, win64, wasm compilers)
+  trust the token text.
+- `related`: always present, usually `[]`. Each entry is
+  `{file, line, column, message}` for a declaration the diagnostic is
+  about. Today:
+
+  | Diagnostic | Code | Related note |
+  |---|---|---|
+  | `Cannot find symbol: '...'` with a did-you-mean | W0001 | `'name' is declared here` (the suggestion) |
+  | `Cannot find symbol: '...': declared later in this file ...` | W0001 | `'name' is defined here` |
+  | `symbol redefined: '...'` | W0002 | `previous definition of 'name' is here` |
+  | `return type mismatch: ...` | W0003 | `function 'name' is declared here` |
+  | `function '...' argument N type mismatch: ...` | W0004 | `function 'name' is declared here` |
+  | `':=' redeclares '...'` | W0008 | `'name' is declared here` |
+  | `generic '...' redefined` | W0009 | `previous definition of generic 'name' is here` |
+
+  Other type mismatches (assignment, initialization, ...) have no
+  single declaration to point at and keep `[]`. Arity warnings (W0005,
+  W0006) keep `[]` too: the AST front end replays them without the
+  callee's symbol, and both front ends must emit identical records
+  (`ast_expression_test` compares them).
+
+The lint rules' codes:
+
+| Rule | Code | Rule | Code |
+|---|---|---|---|
+| `unused-local` | W0091 | `crlf` | W0098 |
+| `unreachable` | W0092 | `blank-lines` | W0099 |
+| `shadow` | W0093 | `leading-blank-lines` | W0100 |
+| `assign-in-condition` | W0094 | `trailing-blank-lines` | W0101 |
+| `self-assign` | W0095 | `line-too-long` | W0102 |
+| `duplicate-import` | W0096 | `bidi-control` | W0103 |
+| `trailing-whitespace` | W0097 | `mixed-script` | W0104 |
+| | | `confusable` | W0105 |
+
+`ast_diagnostic_codes_test` pins the code, span and note of each row of
+the first table. The redefinition, `:=` and mismatch cases also run
+with `--ast-required`, and "Cannot find symbol" with
+`--ast-full-expressions` (`--ast-required` reports an unknown name as
+its own unsupported-expression error, W0395).
+
 ## How the semantic rules hook in
 
 The compiler is single-pass with no AST, so each rule rides an existing

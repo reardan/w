@@ -245,6 +245,7 @@ current state:
 		debugging information:
 			debugger statement emits int3
 			DWARF line-number data is emitted for gdb source-line mapping
+			DWARF subprograms, parameters/locals (lexical blocks), base/pointer/struct/union/array types and x86/x64 .debug_frame CFI (#536; arm64 ELF: entries without CFI)
 			wdbg in-process debugger (./wbuild wdbg, ./wbuild debug_test, w --debug)
 				x64 build too (./wbuild wdbg_x64, ./wbuild debug_test_x64): 64-bit
 					sigcontext offsets and runtime signal thunks
