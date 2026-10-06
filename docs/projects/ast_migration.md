@@ -1470,3 +1470,58 @@ What it does not claim:
   ("Per-definition relocation") and is not implemented.
 - `wbuildd_test` and `module_dependencies_test` (plus its x64 twin)
   are the gates. **#489 remains open.**
+
+## Emitting expressions from the retained forest (S2.1)
+
+`--ast-emit-retained` (implies `--ast-retain` and full-expression mode)
+lowers every AST expression from its retained `expression_group` instead
+of from the temporary parse arena. `retained_expression_note` copies the
+prepared arena into the forest as before; in this mode
+`code_generator/retained_emit.w` then rebuilds every arena column and the
+text/type-name arenas from that group alone, and the unchanged backend
+visitor lowers the rebuilt arena. The temporary arena stays the default
+emitter.
+
+Compiling with the mode found the fields the retained copy lacked, and each
+became a retained field or a resolved reference:
+
+- types in the result, generic-signature, call-receiver and inference
+  columns come from retained semantic types, with a per-node flag
+  (`type_value_flags`) for the arena's value-type encoding of the last
+  three (`result_is_value` already covered the first);
+- symbol-table operands (`v`, `C`, `X`, `z`, `l`, `G`, `W`) resolve
+  through their retained binding, and the name operand is rebuilt as the
+  spelling just before the binding's record;
+- argument-count, argument-type and self-assignment warnings name a symbol
+  by spelling and the argument warning also borrows its record; the node
+  keeps a binding for it (`name_binding`);
+- message-bearing warnings use their interned message text;
+- generic calls name their definition and resolve it by name, not by
+  `generic_defs` index.
+
+The adapter also compares each rebuilt field with the arena it replaces
+and stops with an internal error on any difference, so a lost field cannot
+hide behind an image that happens to match. `--stats` prints
+`Retained-emitted expressions:` (46,866 groups for `w.w`).
+
+Verification: `ast_retained_emit_test` compiles every source fixture of
+`ast_expression_test` in both modes and compares exit status, stdout,
+stderr and image bytes (x86 on the 32-bit host, x64 on the 64-bit host, one
+of arm64/arm64_darwin/win64/wasm32 per fixture on alternating hosts, and a
+`check --json --lint` leg), plus a REPL session with error rollback and
+redefinition on both hosts. `ast_required_expression_verify` gains an
+`--ast-required --ast-emit-retained` self-host fixpoint on both widths, and
+it equals `bin/wv3` / `bin/wv3_64`. Outside the suite, the full matrix
+(150 fixtures x six targets x both hosts, and `check --json --lint` for
+x86/x64/arm64/wasm32 on both hosts) was byte-identical. Cost on `w.w` is
+that of `--ast-retain --ast-required`: about 1.4 s against 0.8 s for the
+default on either host under load, with the same peak RSS.
+
+What this does not claim: the expression is still parsed and type-checked
+into the temporary arena first, so every parse-time side effect (symbol
+lookup, type registration, generic reservation) still happens in the
+parse; the forest is only the emitter's input. Columns that overload
+`value`/`symbol` with type-table indices, helper and descriptor numbers or
+group-local node ids are held verbatim, as is `generic_instance` (an index
+into the generic-instance queue). No `tree --json` field was added, so the
+schema stays **version 2**. **#489 remains open.**

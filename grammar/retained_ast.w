@@ -1,3 +1,6 @@
+import code_generator.retained_emit
+
+
 # A debug file index names one path for the whole process; every index
 # outside the table names the empty path and shares the key -1.
 int retained_file_key(int index):
@@ -296,6 +299,12 @@ void retained_expression_note(expression_ast* tree, int root):
 				if ((node.high == 5) && tree.symbol[i]): message = c"it"
 				node.payload_text = retained_intern(message)
 				node.value = 0
+		# Name-bearing warnings spell a symbol whose record ends their name.
+		if ((op == ast_warning) && ((node.high == 1) || (node.high == 2) || ((node.high == 5) && (tree.symbol[i] == 0)))):
+			node.name_binding = retained_binding_note(tree.value[i] + strlen(table + tree.value[i]), group)
+		if (tree.generic_signature[i] < -1): node.type_value_flags = node.type_value_flags | 1
+		if (tree.call_receiver_type[i] < -1): node.type_value_flags = node.type_value_flags | 2
+		if (tree.infer_want[i] < -1): node.type_value_flags = node.type_value_flags | 4
 		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l')):
 			char* name = table + tree.value[i]
 			if (tree.binding_name[i] >= 0): name = &tree.text[tree.binding_name[i]]
@@ -319,6 +328,10 @@ void retained_expression_note(expression_ast* tree, int root):
 				node.binding_slot = binding.slot
 
 	retained_leave(group, tree.end_offset)
+	# S2.1: lower the retained group, not the temporary parse.
+	if (ast_emit_retained_mode):
+		int retained_root = retained_emit_expression_group(tree, group)
+		assert1(retained_root == root)
 
 
 # Definition hooks run after the declaration. Adopt its already retained

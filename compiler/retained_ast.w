@@ -93,6 +93,11 @@ struct retained_node:
 	int arena_text_length
 	char* arena_type_names
 	int arena_type_names_length
+	# S2.1: the symbol a name-bearing warning spells (argument-count and
+	# self-assignment diagnostics), and the arena's value-type encoding of
+	# generic_signature (1), call_receiver_type (2) and infer_want (4).
+	int name_binding
+	int type_value_flags
 
 struct retained_checkpoint:
 	char* pending_import
@@ -234,6 +239,8 @@ int retained_add(int kind, int parent, int source, int start, int line, int colu
 	node.left = -1
 	node.right = -1
 	node.next_arg = -1
+	node.name_binding = -1
+	node.type_value_flags = 0
 	retained_nodes.push(node)
 	if ((source >= 0) && (parent >= 0)):
 		retained_source* owner = retained_sources[source]
