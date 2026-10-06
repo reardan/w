@@ -1200,3 +1200,169 @@ x86/x64 fixpoints, strict self-host checks and AST differential comparisons.
 Both native targets check `w.w` with `--ast-retain --ast-required`; compiler
 checks for win64 and arm64 Darwin also pass. The reference parser additionally
 parses the two new W files explicitly, beyond its tracked-file corpus gate.
+
+
+
+## AST parse cost (completion plan P1.1)
+
+Profiling `bin/wv2 --ast-required --strict w.w` under callgrind (symbols
+mapped through `nm`) showed that the speculative parse itself was not the
+main cost. Three overheads dominated the AST path's 2.5x wall-clock ratio:
+
+1. **Arena initialisation.** `expression_ast` held 22 `int[4096]` node
+   columns and 32 KiB of decoded text inline. Every grammar frame that
+   declares one zero-filled about 400 KiB (x86) or 750 KiB (x64) of stack,
+   whether or not the probe accepted. Expression statements, guards,
+   returns and declarations each paid this once per root, about a third of
+   all instructions retired for `w.w`.
+2. **Lexing every accepted root twice, with a quadratic replay.** The
+   tokenizer was snapshotted (malloc and token clone), the root parsed,
+   the tokenizer restored, and every token lexed again. At each replayed
+   token the whole arena was scanned for events.
+3. **Per-byte preflight and eager chain facts.** The root and group
+   preflights ran a long comparison chain on every byte. Every `&`/`^`/`|`
+   level scanned its operand's nodes for calls, even when no operator
+   followed.
+
+What changed:
+
+- The node columns, decoded text and token records live in reusable heap
+  **node slabs** (`compiler/expression_ast.w`), bound by
+  `expression_ast_bind` when a probe starts. The stack header keeps only
+  the small staged-type tables. Slabs form a stack ordered by owner
+  address. A bind releases every slab whose owner is at or below the new
+  tree, because that owner's frame has returned. Enclosing live roots, such
+  as a generic body compiled while an outer root emits, keep theirs.
+  Columns start at 64 nodes and grow to the unchanged 4096-node limit.
+  For `w.w`, 136 slabs exist at the deepest point, set by the 132-branch
+  `else if` chain in `lib/lib.w`.
+- **One lexing pass per accepted root.** While parsing, the probe records
+  each token's complete lexer state: offset, both diagnostic positions,
+  line/column/tab, `nextc`, `byte_offset`, newline flag, length, raw bytes
+  and serial. An accepted root leaves the lexer where its parse ended,
+  which is exactly where lexing the root again would have left it.
+  `ast_expression_replay_recorded` then commits the source-ordered events
+  in the original visit order: staged pointer records, then nodes by arena
+  index, with a node's generic commit after its offset event. Those events
+  are literal decoding, committed symbol uses, generic commits and replayed
+  diagnostics, including bit-31 cast notes and `--lint` checks. Before
+  each event token, the recorded state is restored, so `token`,
+  `diag_token_*`, `line_number` (source-context lines) and `byte_offset`
+  match what the second lexing pass produced.
+  Afterwards the parse's end state is restored, with one exception. The
+  old visit left an in-place decoded final token in the buffer whenever
+  the root ended virtually right after it. That buffer is visible to the
+  next real token's whitespace diagnostic, so it is preserved.
+  Template roots, whose events lex chunks again, and roots shortened at a
+  statement colon keep the old restore-and-lex replay
+  (`ast_expression_replay_by_lexing`). A declined probe restores from an
+  allocation-free `tokenizer_snapshot` (`compiler/tokenizer.w`).
+- The preflights skip runs of word bytes and blanks with a byte-class
+  table. A bitwise chain computes its bool and call facts only when an
+  operator actually follows; both are pure queries of the same node range.
+  `ast_expression_scalar_type` looks the type kind up once instead of once
+  per `type_is_<kind>` predicate.
+
+`--stats` in AST modes now also prints `AST preflight bytes`,
+`AST tokenizer snapshots`, `AST tokens replayed` (tokens whose state was
+re-established for an event), `AST relexed roots` and `AST node slabs`.
+For `w.w` on x86 these are 1,161,210 / 44,808 / 115,566 / 3 / 136. Before
+this change every accepted root replayed all of its tokens by lexing.
+
+During development an environment-gated self-check lexed every
+fast-replayed root again and compared each recorded token row and the end
+state field by field. It found one difference, the in-place decoded final
+token, which was then fixed. With the check enabled, the whole serial
+`ast_expression_suite` and `ast_expression_test` passed with no
+mismatches. The check is not part of the landed code.
+`tests/ast_parse_cost_test.w` covers 300-deep root nesting, roots of
+about 2,400 nodes (column growth), final-token events followed by a
+whitespace diagnostic, bit-31 notes, template roots and the new counters.
+Each case is compared against the streaming compiler on both hosts and
+both widths.
+
+Measured for `bin/wv2 … --strict w.w`, median of five runs on the shared
+4-core container (load from other agents present):
+
+| mode | x86 before | x86 after | x64 before | x64 after |
+| --- | ---: | ---: | ---: | ---: |
+| default (streaming) | 0.790 s | 0.800 s | 0.703 s | 0.690 s |
+| `--ast-full-expressions` | 2.100 s | 0.960 s | 2.170 s | 0.893 s |
+| `--ast-required` | 2.056 s | 0.921 s | 2.191 s | 0.914 s |
+| `--ast-retain --ast-required` | 7.70 s | 6.12 s | 8.30 s | 6.43 s |
+| **`--ast-required` / default** | **2.60x** | **1.15x** | **3.12x** | **1.32x** |
+
+"x86"/"x64" are the host compiler (`bin/wv2` vs `bin/wv2_64`) compiling
+`w.w` for its own width. Every output image was byte-identical to
+`bin/wv3`/`bin/wv3_64` in every mode. On the x86 host the plan's 1.25x
+target is met. On the x64 host it is just missed. An interleaved run of
+nine default/`--ast-required` pairs measured 0.696 s vs 0.880 s (1.26x),
+and earlier runs ranged from 1.22x to 1.32x with load. Instructions retired
+(callgrind) are 6.41G vs 5.63G on x86 (1.14x) and 6.60G vs 5.90G on x64
+(1.12x). The remaining x64 wall gap is front-end bound: I1 misses are 82M
+vs 57M, spread thinly over the probe, emitter and replay functions with no
+single hotspot. D1 misses (7.4M) match the streaming compile. Padding the
+slab column stride to avoid L1 set aliasing was tried and measured. It
+made no difference and was not kept.
+
+What this does not claim. Emission still happens per root during
+parsing; nothing here moves toward tree-then-emit (checkpoint B). The
+retained forest (`--ast-retain`) is only faster by the same parse
+savings. Its own allocation cost is P1.2. The streaming front end is
+still the default (P1.4). Template roots still lex twice. The slab stack
+assumes AST trees are compiler stack locals, which every caller is today;
+a heap-allocated tree would need an explicit release. **#489 remains open.**
+
+## Retained-forest cost and query ergonomics (P1.2)
+
+Retaining the forest no longer dominates an AST compile. Before this change
+`--ast-retain --ast-required` compiled `w.w` in 7.9 s against 2.1 s for
+`--ast-required` (3.8x on this container); it now takes 2.8 s (x86 host) and
+3.0 s (x64 host), about 1.3x, with identical images. Under callgrind the
+retained compile of a fixed corpus went from 77.3 G to 17.4 G instructions,
+against 13.8 G for `--ast-required` alone.
+
+Most of the old cost was quadratic lookup, not allocation. Every source byte
+compared the file name against the cached path with `strcmp`; every binding and
+type note scanned every source version by path; a definition scanned all
+earlier bindings for the prototype it completes; parameters were found by
+walking the whole symbol index per function; and each declaration walked every
+node created since the previous declaration, imported modules included. These
+are now a pointer-identity cache on the per-byte path (every new source version
+and every rollback resets it), a path index plus a debug-file-index cache,
+an `origin_previous` chain per raw symbol offset, a binary search into the
+sorted symbol index, and a per-source list of top-level children. Binding
+lookup keys use the debug file index instead of the path and are built in a
+reused buffer.
+
+Storage changed as planned. Nodes live in 1024-node chunks owned by the
+session; `retained_nodes[i]` still points at node `i`, so consumers are
+unchanged. Names, files, type spellings, payload text and import paths are
+interned once per session. Each expression group's text and type-name arenas are
+copied once into a chunked session text arena, and string-literal operands are
+slices of that copy instead of separate allocations. Rollback is therefore a
+high-water mark: it truncates the node list and the text arena and frees no
+per-node strings; chunks above the mark are reused. `retained_clear` frees
+chunks, arena and interned text, and `ast_retained_memory_test` now also runs
+under `W_DEBUG_ALLOC=1` and covers chunk reuse, record placement at chunk
+boundaries and the path index across rollback.
+
+`w tree --json` streams. It flushes at record boundaries once 64 KiB are
+buffered instead of building the whole dump (185 MB for `w.w`) in one buffer,
+and writes integers and plain strings without per-field allocation. The `w.w`
+dump takes 4.1 s instead of 12 s and peaks at 90 MB instead of 302 MB (x86
+host); its bytes are unchanged. Two filters avoid the full dump:
+`--file <path>` (repeatable; a recorded path or a suffix at a directory
+boundary) keeps the source, node, type, binding and dependency records of the
+named sources, and `--no-expressions` drops `expression` and
+`expression_group` nodes. Filters never renumber: the leading `tree` record
+still carries the session totals and references may name omitted records. A
+`--file` that matches no compiled source is an error. No field was added, so
+the schema stays **version 2**.
+
+What this does not claim: the per-byte pointer cache relies on every new
+source version entering through `retained_source_begin`; the forest is still a
+record of the traversal and is not read back to emit; interned text survives
+rollback until `retained_clear` (it is bounded by distinct spellings). The
+remaining retained cost is mostly the per-operand binding and type notes.
+**#489 remains open.**
