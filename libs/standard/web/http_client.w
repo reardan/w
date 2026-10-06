@@ -101,6 +101,10 @@ struct http_req:
 	int tls_has_now_unix
 	int tls_now_unix
 	int tls_handshake_timeout_ms
+	# Cap on the body http_request buffers (0 = the
+	# http_default_max_response_bytes default); a longer body fails
+	# with http_error_body_too_large. Streaming reads ignore it.
+	int max_body_bytes
 
 
 # One response. headers maps lowercased header names to values
@@ -150,9 +154,20 @@ const int http_max_header_bytes = 65536
 const int http_max_chunk_size = 8388608
 
 
-# Cap on Content-Length values and on bodies buffered by http_request
-# (streaming reads are unbounded in total, bounded per chunk).
+# Hard cap on Content-Length values and on request bodies the server
+# buffers (streaming reads are unbounded in total, bounded per chunk).
 const int http_max_body_bytes = 1073741824
+
+
+# Default cap on a response body buffered by http_request (64 MiB);
+# raise or lower it per request with req.max_body_bytes.
+const int http_default_max_response_bytes = 67108864
+
+
+# Cap on the number of header (or trailer) lines in one block, on top
+# of the http_max_header_bytes size cap: many tiny headers would
+# otherwise cost one map insert each.
+const int http_max_header_count = 100
 
 
 # Redirect bodies are drained up to this many bytes so the connection
@@ -318,6 +333,7 @@ http_req* http_req_new(char* method, char* url):
 	req.tls_has_now_unix = 0
 	req.tls_now_unix = 0
 	req.tls_handshake_timeout_ms = 0
+	req.max_body_bytes = http_default_max_response_bytes
 	return req
 
 
@@ -669,6 +685,7 @@ int http_read_head(ConnectionContext* c, http_response* resp, int* out_minor):
 		int interim = 0
 		if ((status >= 100) && (status <= 199)): interim = 1
 		int total = 0
+		int count = 0
 		int in_block = 1
 		while (in_block != 0):
 			got = connection_context_read_line(c, line, http_error_headers_too_large)
@@ -680,7 +697,8 @@ int http_read_head(ConnectionContext* c, http_response* resp, int* out_minor):
 			if (line.length == 0): in_block = 0
 			else:
 				total = total + line.length + 2
-				if (total > http_max_header_bytes):
+				count = count + 1
+				if ((total > http_max_header_bytes) || (count > http_max_header_count)):
 					http_response_set_error(resp, http_error_headers_too_large)
 					string_free(line)
 					return 0
@@ -1218,11 +1236,18 @@ http_stream* http_open(http_req* req):
 
 # Performs the request and buffers the whole body. Never returns 0;
 # check resp.error. On a mid-body failure resp.error is set and
-# resp.body holds the bytes received so far. resp.body is always
-# non-null and NUL-terminated.
+# resp.body holds the bytes received so far. A body longer than
+# req.max_body_bytes (http_default_max_response_bytes when 0) fails
+# with http_error_body_too_large -- before any body byte is read when
+# Content-Length already announces it. resp.body is always non-null
+# and NUL-terminated.
 http_response* http_request(http_req* req):
 	http_stream* s = http_open(req)
 	http_response* resp = s.resp
+	int limit = http_default_max_response_bytes
+	if ((req != 0) && (req.max_body_bytes > 0)): limit = req.max_body_bytes
+	if ((s.error == 0) && (s.body_mode == http_body_length) && (s.body_remaining > limit)):
+		http_stream_fail(s, http_error_body_too_large)
 	if (s.error == 0):
 		string_builder* body = string_new()
 		char* scratch = malloc(8192)
@@ -1230,7 +1255,7 @@ http_response* http_request(http_req* req):
 		while (more != 0):
 			int got = http_stream_read(s, scratch, 8192)
 			if (got <= 0): more = 0
-			else if (body.length + got > http_max_body_bytes):
+			else if (got > limit - body.length):
 				http_stream_fail(s, http_error_body_too_large)
 				more = 0
 			else: string_append_bytes(body, scratch, got)

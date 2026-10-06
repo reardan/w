@@ -8,17 +8,26 @@
 # both http and https depending only on whether ServerContext was given
 # a cert/key.
 #
-# Concurrency: server_context_accept_loop is single-threaded sequential
-# accept -- one connection is fully served (including every keep-alive
-# request on it) before the next is accepted. server_context_serve_tasks
-# serves connections concurrently on the task runtime (lib/task.w,
+# Concurrency: server_context_accept_loop and server_context_serve_tasks
+# serve connections concurrently on the task runtime (lib/task.w,
 # docs/projects/async.md): one task per connection, non-blocking
 # sockets, and the same straight-line parser and handlers -- the
 # connection and TLS layers park the connection's task through
-# lib/io_wait.w instead of blocking the thread. Handlers then interleave
-# at I/O points (and may use task awaits themselves), so a handler that
-# blocks the thread or burns CPU stalls every connection; hand such work
-# to task_spawn_blocking (lib/task_runtime.w) or a worker process.
+# lib/io_wait.w instead of blocking the thread, so a slow client never
+# holds up another connection. Handlers then interleave at I/O points
+# (and may use task awaits themselves), so a handler that blocks the
+# thread or burns CPU stalls every connection; hand such work to
+# task_spawn_blocking (lib/task_runtime.w) or a worker process.
+#
+# Resource bounds: at most s.max_open_connections connections are served
+# at once (server_default_max_open_connections; further ones wait in the
+# listen backlog until a slot frees), every read/write wait is bounded by
+# s.timeout_ms, and each request -- request line, headers and body --
+# must arrive within s.request_timeout_ms (server_default_request_timeout_ms)
+# or the connection gets a 408 and is closed, so a client dribbling one
+# byte per wait cannot hold a slot forever. Header blocks are capped at
+# http_max_header_bytes, http_max_header_count lines and
+# connection_max_line_bytes per line (431).
 #
 # Request parsing mirrors http_client.w's response parser (issue #200)
 # wherever the shapes line up: header lines share http_store_header_into,
@@ -85,7 +94,7 @@
 #   void server_context_set_tls(ServerContext* s, char* cert_path, char* key_path)
 #   int server_context_bind(ServerContext* s)          0 on failure (s.error set)
 #   int server_context_port(ServerContext* s)           the bound port (for port 0 binds)
-#   int server_context_accept_loop(ServerContext* s, int max_connections)  connections served
+#   int server_context_accept_loop(ServerContext* s, int max_connections)  connections served (concurrently)
 #   int server_context_serve_tasks(ServerContext* s, int max_connections)  same, concurrently
 #   generator int server_accept_task(ServerContext* s, int max_connections)  the task behind it
 #   void server_context_close(ServerContext* s)
@@ -117,6 +126,7 @@
 #   void request_context_json(RequestContext* rc, int status, char* json_text)
 #
 #   int server_error_*()  /  char* server_error_string(int code)  /  int server_error_to_status(int code)
+#   char* server_static_path(char* root, char* request_path)   malloc'd file path under root, or 0
 import lib.lib
 import lib.str
 import lib.net
@@ -129,6 +139,7 @@ import libs.standard.web.http_client
 import libs.standard.web.urlparse
 import libs.standard.net.tls
 import lib.mem
+import lib.path
 
 
 # One parsed request. target is the raw request-target off the request
@@ -232,9 +243,18 @@ struct ServerContext:
 	int listener_fd
 	tls_server_config* tls_cfg
 	int error
+	# Resource bounds (see the module doc); set after server_context_new.
+	# max_open_connections <= 0 and request_timeout_ms <= 0 disable
+	# the respective bound.
+	int max_open_connections
+	int request_timeout_ms
+	# Connections currently being served by server_accept_task.
+	int open_connections
 
 
 const int server_default_timeout_ms = 30000
+const int server_default_request_timeout_ms = 60000
+const int server_default_max_open_connections = 256
 const int server_default_backlog = 16
 
 
@@ -501,11 +521,15 @@ void server_note_read_failure(ConnectionContext* c, ServerRequest* req):
 
 
 # Reads header lines up to the blank terminator line into req.headers,
-# bounded by http_max_header_bytes() total (mirrors http_client.w's
-# http_read_head inner loop). Returns 1, or 0 with req.error set.
+# bounded by http_max_header_bytes total and http_max_header_count lines
+# (mirrors http_client.w's http_read_head inner loop; one line is capped
+# at connection_max_line_bytes by the reader). Any of the three fails
+# with server_error_headers_too_large (431). Returns 1, or 0 with
+# req.error set.
 int server_read_headers(ConnectionContext* c, ServerRequest* req):
 	string_builder* line = string_new()
 	int total = 0
+	int count = 0
 	int in_block = 1
 	int ok = 1
 	while (in_block != 0):
@@ -517,7 +541,8 @@ int server_read_headers(ConnectionContext* c, ServerRequest* req):
 		else if (line.length == 0): in_block = 0
 		else:
 			total = total + line.length + 2
-			if (total > http_max_header_bytes):
+			count = count + 1
+			if ((total > http_max_header_bytes) || (count > http_max_header_count)):
 				req.error = server_error_headers_too_large
 				ok = 0
 				in_block = 0
@@ -1013,6 +1038,26 @@ void server_default_not_found_handler(RequestContext* rc, void* user_data):
 	request_context_text(rc, 404, c"Not Found")
 
 
+/* Static files */
+
+# Maps a request path (req.path / request_context_path: origin-form,
+# query already split off) to a file path under root for a handler that
+# serves static files. The path is percent-decoded first (so "%2e%2e"
+# is ".." and an invalid escape or "%00" is refused), then resolved
+# with lib/path.w's path_join_within, which normalises "." and ".."
+# and refuses any result outside root. Returns a malloc'd path the
+# caller frees, or 0 when the request must not be served (answer 404
+# or 403). The check is lexical: a symlink inside root that points
+# outside it is still followed.
+char* server_static_path(char* root, char* request_path):
+	if ((root == 0) || (request_path == 0)): return 0
+	char* decoded = url_unquote(request_path)
+	if (decoded == 0): return 0
+	char* full = path_join_within(root, decoded)
+	free(decoded)
+	return full
+
+
 /* ServerContext */
 
 ServerContext* server_context_new(char* bind_ip, int port, server_handler_fn* handler, void* handler_context):
@@ -1030,6 +1075,9 @@ ServerContext* server_context_new(char* bind_ip, int port, server_handler_fn* ha
 	s.listener_fd = (-1)
 	s.tls_cfg = 0
 	s.error = 0
+	s.max_open_connections = server_default_max_open_connections
+	s.request_timeout_ms = server_default_request_timeout_ms
+	s.open_connections = 0
 	return s
 
 
@@ -1096,7 +1144,16 @@ void server_context_free(ServerContext* s):
 void server_serve_connection(ServerContext* s, ConnectionContext* c):
 	int done = 0
 	while (done == 0):
-		ServerRequest* req = server_read_request(c)
+		ServerRequest* req = 0
+		if ((s.request_timeout_ms > 0) && task_in_task()):
+			# Whole-request deadline on top of the per-wait timeout: every
+			# read of this request fails with -ETIMEDOUT (-> 408) once it
+			# passes.
+			task_deadline_scope request_deadline
+			task_deadline_enter(&request_deadline, s.request_timeout_ms)
+			req = server_read_request(c)
+			task_deadline_exit(&request_deadline)
+		else: req = server_read_request(c)
 		if (req == 0): done = 1
 		else if (req.error != 0):
 			server_write_error(c, req.error)
@@ -1131,45 +1188,15 @@ void server_serve_connection(ServerContext* s, ConnectionContext* c):
 	connection_context_destroy(c)
 
 
-# Accepts and serves connections sequentially (see the module doc's
-# concurrency note). max_connections <= 0 runs forever; a positive count
-# stops after that many ACCEPTED connections (each may carry more than
-# one request under keep-alive) -- how the loopback tests bound the
-# server child without a second control channel. Returns the number of
-# connections accepted.
-int server_context_accept_loop(ServerContext* s, int max_connections):
-	int served = 0
-	while ((max_connections <= 0) || (served < max_connections)):
-		sockaddr_in peer
-		int conn = socket_accept_connection_from(s.listener_fd, &peer)
-		if (conn < 0):
-			return served
-		socket_set_recv_timeout(conn, s.timeout_ms)
-		socket_set_send_timeout(conn, s.timeout_ms)
-		tls_conn* tls = 0
-		if (s.is_tls != 0):
-			tls = tls_accept(conn, s.tls_cfg)
-			if (tls == 0):
-				close(conn)
-				served = served + 1
-				continue
-		ConnectionContext* c = connection_context_new(conn, s.timeout_ms, tls)
-		connection_context_set_peer(c, net_htonl(peer.ip_address), net_htons(peer.port))
-		server_serve_connection(s, c)
-		served = served + 1
-	return served
-
-
 # Usable stack for a connection task. The TLS handshake (X.509 parsing,
 # signature checks) runs inside it, far deeper than the 64KB default.
 int server_task_stack_bytes():
 	return 512 * 1024
 
 
-# One accepted connection served inside its own task. fd is already
-# non-blocking; the TLS handshake gets the same per-wait timeout as
-# every later read and write.
-generator int server_connection_task(ServerContext* s, int fd, int peer_ip, int peer_port):
+# Serves one accepted connection from inside a task. fd is already
+# non-blocking; the whole TLS handshake must finish within s.timeout_ms.
+void server_handle_connection(ServerContext* s, int fd, int peer_ip, int peer_port):
 	tls_conn* tls = 0
 	if (s.is_tls != 0):
 		task_deadline_scope handshake
@@ -1184,28 +1211,48 @@ generator int server_connection_task(ServerContext* s, int fd, int peer_ip, int 
 	server_serve_connection(s, c)
 
 
+# One accepted connection served inside its own task.
+generator int server_connection_task(ServerContext* s, int fd, int peer_ip, int peer_port):
+	server_handle_connection(s, fd, peer_ip, peer_port)
+
+
+# server_connection_task that also releases its s.open_connections slot
+# (server_accept_task's single-scheduler cap) when the connection ends.
+generator int server_counted_connection_task(ServerContext* s, int fd, int peer_ip, int peer_port):
+	server_handle_connection(s, fd, peer_ip, peer_port)
+	s.open_connections = s.open_connections - 1
+
+
 # The accept loop as a task: accepts connections (max_connections <= 0:
 # forever) and serves each in its own task, all owned by one task
-# group, so returning means every connection finished. Spawn it on
-# your own scheduler to run the server beside other tasks; cancelling
-# it closes the accept loop and cancels every open connection. Finishes
-# with the number of connections accepted.
+# group, so returning means every connection finished. At most
+# s.max_open_connections are open at once; past that the loop stops
+# accepting (the kernel backlog holds new clients) until one finishes.
+# Spawn it on your own scheduler to run the server beside other tasks;
+# cancelling it closes the accept loop and cancels every open
+# connection. Finishes with the number of connections accepted.
 generator int server_accept_task(ServerContext* s, int max_connections):
 	socket_set_nonblocking(s.listener_fd)
 	task_group* g = task_group_here()
+	s.open_connections = 0
 	int served = 0
-	while ((max_connections <= 0) || (served < max_connections)):
+	int stopped = 0
+	while ((stopped == 0) && ((max_connections <= 0) || (served < max_connections))):
+		if ((s.max_open_connections > 0) && (s.open_connections >= s.max_open_connections)):
+			if (task_sleep_ms(5) < 0): stopped = 1
+			continue
 		sockaddr_in peer
 		int conn = task_accept_from(s.listener_fd, &peer)
 		if (conn < 0):
-			if ((conn == task_err_cancelled()) || (conn == task_err_timed_out())): break
-			if ((conn == -4) || (conn == -103) || (conn == -24) || (conn == -23)):
+			if ((conn == task_err_cancelled()) || (conn == task_err_timed_out())): stopped = 1
+			else if ((conn == -4) || (conn == -103) || (conn == -24) || (conn == -23)):
 				# EINTR, ECONNABORTED, EMFILE/ENFILE: keep serving (the
 				# fd-exhaustion cases recover as connections close).
 				task_sleep_ms(1)
-				continue
-			break
-		task_group_spawn_sized(g, server_connection_task(s, conn, net_htonl(peer.ip_address), net_htons(peer.port)), server_task_stack_bytes())
+			else: stopped = 1
+			continue
+		s.open_connections = s.open_connections + 1
+		task_group_spawn_sized(g, server_counted_connection_task(s, conn, net_htonl(peer.ip_address), net_htons(peer.port)), server_task_stack_bytes())
 		served = served + 1
 	task_group_wait(g)
 	task_group_free(g)
@@ -1222,3 +1269,15 @@ int server_context_serve_tasks(ServerContext* s, int max_connections):
 	int served = task_result(acceptor)
 	task_scheduler_free(sched)
 	return served
+
+
+# Accepts and serves connections concurrently on a fresh task scheduler
+# (see the module doc's concurrency note; the same as
+# server_context_serve_tasks). max_connections <= 0 runs forever; a
+# positive count stops after that many ACCEPTED connections (each may
+# carry more than one request under keep-alive) and returns once all of
+# them were served -- how the loopback tests bound the server child
+# without a second control channel. Returns the number of connections
+# accepted.
+int server_context_accept_loop(ServerContext* s, int max_connections):
+	return server_context_serve_tasks(s, max_connections)
