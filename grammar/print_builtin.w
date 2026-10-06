@@ -32,18 +32,28 @@ void var_emit_to_cstr();
 
 # The prelude runtime (structures/prelude.w), imported on demand by
 # prelude_finish_import(). Helper indexes: 0 __w_print_int, 1
-# __w_print_cstr, 2 __w_print_str, 3 __w_print_float32, 4
+# __w_print_cstr, 2 __w_print_str, 3 __w_print_float32 (routed to
+# print_float_rt below), 4
 # __w_print_list, 5 __w_print_nl, 6-8 the input helpers, 9-11
 # max/min/abs, 12 strlen (len(char*) borrows lib/lib.w's: the prelude
 # import pulls lib.lib in, so the chain always resolves at patch time),
 # 13 __w_print_char, 14/15 any/all, 16-19 lines/words/split/join,
 # 20 __w_enum_name.
 lazy_runtime* print_rt
+# float32 printing lives in its own on-demand module
+# (structures/print_float.w), so only programs that print a float pull
+# in its formatter (lib/float_text.w); helper index 3 routes there.
+lazy_runtime* print_float_rt
 
 
 void print_emit_helper_address(int i):
+	if (i == 3):
+		if (cast(int, print_float_rt) == 0):
+			print_float_rt = lazy_runtime_new(c"structures.print_float", c"__w_print_float32")
+		lazy_emit_helper(print_float_rt, 0)
+		return
 	if (cast(int, print_rt) == 0):
-		print_rt = lazy_runtime_new(c"structures.prelude", c"__w_print_int __w_print_cstr __w_print_str __w_print_float32 __w_print_list __w_print_nl input read_all ints __w_max __w_min __w_abs strlen __w_print_char __w_any __w_all __w_lines __w_words __w_split __w_join __w_enum_name")
+		print_rt = lazy_runtime_new(c"structures.prelude", c"__w_print_int __w_print_cstr __w_print_str __w_print_float32_unused __w_print_list __w_print_nl input read_all ints __w_max __w_min __w_abs strlen __w_print_char __w_any __w_all __w_lines __w_words __w_split __w_join __w_enum_name")
 	lazy_emit_helper(print_rt, i)
 
 
@@ -561,3 +571,4 @@ int prelude_math_expr():
 # is done (grammar/lazy_runtime.w).
 void prelude_finish_import():
 	lazy_finish_import(print_rt)
+	lazy_finish_import(print_float_rt)

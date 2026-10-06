@@ -32,14 +32,22 @@ void var_emit_to_cstr();
 # The f-string runtime (structures/string.w), imported on demand by
 # template_string_finish_import(). Helper indexes: 0 __w_template_new,
 # 1 __w_template_bytes, 2 __w_template_cstr, 3 __w_template_int, 4
-# __w_template_str, 5 __w_template_finish, 6 __w_template_fmt, 7
-# __w_template_float.
+# __w_template_str, 5 __w_template_finish, 6 __w_template_fmt; 7
+# __w_template_float routes to its own on-demand module
+# (structures/template_float.w) so only programs that interpolate a
+# float import the float formatter (lib/float_text.w).
 lazy_runtime* template_rt
+lazy_runtime* template_f32_rt
 
 
 void template_emit_helper_address(int i):
+	if (i == 7):
+		if (cast(int, template_f32_rt) == 0):
+			template_f32_rt = lazy_runtime_new(c"structures.template_float", c"__w_template_float")
+		lazy_emit_helper(template_f32_rt, 0)
+		return
 	if (cast(int, template_rt) == 0):
-		template_rt = lazy_runtime_new(c"structures.string", c"__w_template_new __w_template_bytes __w_template_cstr __w_template_int __w_template_str __w_template_finish __w_template_fmt __w_template_float")
+		template_rt = lazy_runtime_new(c"structures.string", c"__w_template_new __w_template_bytes __w_template_cstr __w_template_int __w_template_str __w_template_finish __w_template_fmt")
 	lazy_emit_helper(template_rt, i)
 
 
@@ -393,4 +401,5 @@ int template_string_literal():
 # compilation of the user's files is done (grammar/lazy_runtime.w).
 void template_string_finish_import():
 	lazy_finish_import(template_rt)
+	lazy_finish_import(template_f32_rt)
 	lazy_finish_import(template_f64_rt)

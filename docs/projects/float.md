@@ -38,8 +38,14 @@ What works on the supported targets:
   xmm argument/return registers on x64, x87 `st(0)` returns on x86, the
   AAPCS64 s/d registers on arm64, and float32->float64 promotion for
   variadic calls (`printf("%f", x)`). See `code_generator/ffi.w`.
-- Libraries: `ftoa` (`lib/format.w`) and `f64toa` (`lib/float64_format.w`);
-  `lib/fmath.w` (float32) and `lib/fmath64.w` (float64) provide bit casts,
+- Text conversion: `lib/float_text.w` parses decimal text correctly
+  rounded (`parse_float` in `lib/format.w`, `parse_float64` in
+  `lib/float64_format.w`; strtod rules, subnormals, overflow to inf) and
+  formats the shortest round-trip spelling (`ftoa`, `f64toa`, bare
+  f-string `{x}`, `print`, JSON) or a correctly rounded fixed precision
+  (`ftoa_fixed`, `f64toa_fixed`, `{x:.N}`), working on bit patterns so
+  float32 conversion runs on every target (`float_text_test`).
+- Libraries: `lib/fmath.w` (float32) and `lib/fmath64.w` (float64) provide bit casts,
   `fabs`, `ffloor`, `fsqrt`, and the exp/log/pow/trig family with measured
   ulp bounds against glibc goldens.
 - float16 on the x86 family (gated on `target_isa == 0`): variable,

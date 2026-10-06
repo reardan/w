@@ -17,10 +17,6 @@ import lib.lib
 import structures.string
 
 
-int json_f64_from_decimal(int mant, int exp10, int negative):
-	return 0
-
-
 int json_f64_from_float32(float f):
 	return 0
 
@@ -32,6 +28,3 @@ int json_f64_from_int(int v):
 float json_f64_to_float32(int bits):
 	return 0.0
 
-
-void json_f64_append(string_builder* out, int bits):
-	string_append(out, c"0.0")
