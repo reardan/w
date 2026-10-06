@@ -11,7 +11,8 @@ int sym_address(char *s);  /* compiler/symbol_table.w */
 # base, and the read-write data segment 16 MB above it, clear of the code
 # and section tables (~1.5 MB). Mutable globals, GOT/IAT slots and
 # extern-data copy space are emitted there (data_split) at
-# data_offset + datapos.
+# data_offset + datapos -- except the Linux ELF GOT, which grows down
+# from data_offset into RELRO pages (dyn_emit_import_slot).
 void image_begin(int base):
 	base_code_offset = base
 	code_offset = base

@@ -7,13 +7,18 @@ and asserts the properties the split exists for:
 - exactly two PT_LOAD segments, one R+X and one R+W -- no segment is
   writable and executable at once,
 - the entry point lies inside the R+X load,
-- the R+W load sits at the fixed data base (image base + 16MB), with a
-  page-congruent file offset,
+- the R+W load ends its GOT pages at the fixed data base (image base +
+  16MB), with a page-congruent file offset,
 - every dynamic relocation's target (GOT slots the loader binds, COPY
   space it fills) lies inside the R+W load, never in the R+X one,
 - a PT_GNU_STACK header marks the stack R+W, not executable (issue
   #526): without it the i386 kernel applies READ_IMPLIES_EXEC and maps
-  the stack, the heap and the data load rwx regardless of the headers.
+  the stack, the heap and the data load rwx regardless of the headers,
+- a PT_GNU_RELRO header (issue #537) covers whole pages at the bottom of
+  the R+W load, ending exactly at the data base, and holds every GOT
+  slot (GLOB_DAT target) but no COPY space, so ld.so can make the GOT
+  read-only after relocation while copied data stays writable
+  (tests/elf_relro_test.w checks the resulting run-time mapping).
 
 The headers are only half the story, so test_runtime_maps_not_wx also
 reads this process's own /proc/self/maps and asserts that no mapping
@@ -194,17 +199,32 @@ void wx_check_image(char* path, int expected_class):
 	assert_equal(0, wx_ph_offset(text))
 	assert_equal(134512640, wx_ph_vaddr(text)) /* 0x08048000 */
 
-	# Data load: fixed base 16MB above the image, page-congruent file
-	# offset (the loader requirement), and real contents.
-	assert_equal(134512640 + 16777216, wx_ph_vaddr(data_seg)) /* 0x09048000 */
+	# Data load: mutable data at the fixed base 16MB above the image,
+	# preceded by the whole GOT pages PT_GNU_RELRO covers;
+	# page-congruent file offset (the loader requirement), and real
+	# contents.
+	int data_base = 134512640 + 16777216 /* 0x09048000 */
+	int relro = wx_ph_find(1685382482, 0) /* PT_GNU_RELRO */
+	asserts(c"a PT_GNU_RELRO header exists", relro >= 0)
+	assert_equal(4, wx_ph_flags(relro)) /* R */
+	assert_equal(wx_ph_vaddr(data_seg), wx_ph_vaddr(relro))
+	assert_equal(wx_ph_offset(data_seg), wx_ph_offset(relro))
+	assert_equal(data_base, wx_ph_vaddr(relro) + wx_ph_memsz(relro))
+	assert_equal(0, wx_ph_memsz(relro) & 4095)
+	asserts(c"RELRO covers at least one page", wx_ph_memsz(relro) >= 4096)
+	assert_equal(wx_ph_memsz(relro), wx_ph_filesz(relro))
 	assert_equal(0, (wx_ph_vaddr(data_seg) - wx_ph_offset(data_seg)) & 4095)
 	asserts(c"data load is not empty", wx_ph_memsz(data_seg) > 0)
 	asserts(c"data load is fully backed", wx_ph_filesz(data_seg) == wx_ph_memsz(data_seg))
 	asserts(c"data bytes inside the file", wx_ph_offset(data_seg) + wx_ph_filesz(data_seg) <= wx_length)
+	asserts(c"mutable data above the RELRO pages", wx_ph_memsz(data_seg) > wx_ph_memsz(relro))
 
 	# Every loader-written relocation target (GOT slot, COPY space) lies
-	# inside the R+W load. DT_RELA (tag 7) on 64-bit, DT_REL (17) on
-	# 32-bit; entry sizes 24 and 8, r_offset is the leading word of each.
+	# inside the R+W load: GOT slots (GLOB_DAT, type 6) in the RELRO
+	# pages, COPY space (type 5) above them in the writable data. DT_RELA
+	# (tag 7) on 64-bit, DT_REL (17) on 32-bit; entry sizes 24 and 8,
+	# r_offset is the leading word of each, the type the low byte of
+	# r_info after it.
 	int rel_vaddr = wx_dyn_value(7)
 	int rel_size = wx_dyn_value(8)
 	int rel_ent = 24
@@ -222,6 +242,12 @@ void wx_check_image(char* path, int expected_class):
 		int target = wx_u32(off)
 		if (wx_class == 2): target = wx_word(off)
 		asserts(c"relocation targets the R+W load", target >= lo && target < hi)
+		int rel_type = wx_u8(off + 4)          /* Elf32_Rel r_info */
+		if (wx_class == 2): rel_type = wx_u8(off + 8)  /* Elf64_Rela r_info */
+		if (rel_type == 6): asserts(c"GOT slot inside RELRO", target < data_base)
+		else:
+			assert_equal(5, rel_type)
+			asserts(c"COPY space outside RELRO", target >= data_base)
 		off = off + rel_ent
 		checked = checked + 1
 	asserts(c"at least three relocations checked", checked >= 3)
@@ -296,7 +322,7 @@ void test_runtime_maps_not_wx():
 		if (contains(text, c"[stack]") || contains(text, c"[heap]")):
 			assert_strings_equal(c"rw-p", substring(perms, 0, 4))
 			if (contains(text, c"[stack]")): seen_stack = 1
-		if (wx_maps_start(text) == 134512640 + 16777216): /* the R+W data load */
+		if (wx_maps_start(text) == 134512640 + 16777216): /* the R+W data (no GOT here: static) */
 			assert_strings_equal(c"rw-p", substring(perms, 0, 4))
 			seen_data = 1
 		line = end + 1
