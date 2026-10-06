@@ -171,9 +171,9 @@ stock x86-64 system.
 | `grammar/` | One module per grammar rule; parsing and code emission are fused |
 | `grammar.w`, `codegen.w` | Umbrella modules that import the grammar/ and code_generator/ trees |
 | `code_generator/` | Byte emitter, x86/x64 encoders, ELF32/ELF64 writers, dynamic linking, DWARF |
-| `lib/` | Standard library: syscalls, memory, strings, math, format, args, env, process (spawn/pipes/wait/timeouts), the generic `wresult[T]` result type, assert/testing |
+| `lib/` | Standard library: syscalls, memory, strings, math, format, args, env, process (spawn/pipes/wait/timeouts), the generic `wresult[T]` result type, assert/testing. `./wbuild library_reference` generates an API reference for `lib/` and `structures/` in `bin/library_reference.md` (`tools/libref.w`) |
 | `lib/__arch__/{x86,x64}/` | Per-architecture modules (syscalls, register context, ELF introspection) selected by the reserved `__arch__` import segment |
-| `structures/` | hash map, array list, linked list, string builder (+ their tests) |
+| `structures/` | Runtimes for the built-in containers and builtins: `hash_table.w` (`map`/`set`), `w_list.w` (`list[T]`), `string.w` (string builder, f-strings), `prelude.w` (`print`, `input`, ...), `w_dynamic.w` (`var`), `json_codec.w` (`to_json`/`from_json`); plus `json.w` (JSON parser/serializer), `bitset.w`, `deque.w`, `heap.w` and their tests |
 | `repl.w` | Interactive REPL: compiles each entry into an mmap buffer and calls it; definitions persist |
 | `debugger/` | `wdbg`, an in-process SIGTRAP debugger driven by `debugger` statements |
 | `tests/` | End-to-end test programs and compile-only warning fixtures |
