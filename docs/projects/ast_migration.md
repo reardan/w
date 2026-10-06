@@ -55,6 +55,9 @@ retired `wc2` resident cache is not part of this implementation.
 3. Make and validate the production-default migration decision separately from
    opt-in corpus coverage. Issue #489 remains open for this architectural work.
 
+The forward plan for these milestones, split into parallelizable units
+with file ownership and gates, is [ast_completion_plan.md](ast_completion_plan.md).
+
 ## Task 5: first production AST expression path
 
 The production compiler now has an experimental `--ast-expressions` option.
