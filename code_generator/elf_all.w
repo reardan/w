@@ -39,8 +39,10 @@ int debug_elf_origin
 
 
 # Index of the PT_NOTE program header; slots 0-1 are the text and data
-# loads and 2-4 are reserved for the dynamic-linking headers.
+# loads, 2-3 are reserved for the dynamic-linking headers (1-2 in a
+# single-segment image) and 4 is PT_GNU_STACK.
 const int elf_build_id_phdr_index = 5
+const int elf_gnu_stack_phdr_index = 4
 const int elf_build_id_size = 20
 
 
@@ -98,9 +100,10 @@ void elf_write_image():
 # entry stub right after the program header table and the build-id note.
 
 # Number of program headers: a read-execute text load, a read-write data
-# load (W^X, docs/projects/wx_split.md), three slots reserved for
+# load (W^X, docs/projects/wx_split.md), two slots reserved for
 # PT_INTERP / PT_DYNAMIC when the program imports shared libraries (they
-# stay PT_NULL, ignored, otherwise), and the build-id PT_NOTE.
+# stay PT_NULL, ignored, otherwise), PT_GNU_STACK, and the build-id
+# PT_NOTE.
 const int elf_phdr_count = 6
 
 
@@ -153,15 +156,36 @@ void elf_phdr(int is64, int type, int flags):
 	elf_emit_word(is64, 4096) /* align */
 
 
+# PT_GNU_STACK (0x6474e551) with flags R+W and no X: the kernel maps the
+# initial stack non-executable. Without it the i386 loader applies
+# READ_IMPLIES_EXEC to the whole process, so the stack, the heap and the
+# R+W data load all come up rwx (issue #526). Only the type and flags
+# matter; every address and size stays 0, as GNU ld emits it.
+void elf_emit_gnu_stack(int is64):
+	int w = 4
+	int phdr_size = 32
+	if (is64):
+		w = 8
+		phdr_size = 56
+	int p = phdr_table_pos + elf_gnu_stack_phdr_index * phdr_size
+	save_int32(code + p, 1685382481) /* p_type = PT_GNU_STACK */
+	if (is64): save_int32(code + p + 4, 6) /* p_flags (ELF64) */
+	else: save_int32(code + p + 24, 6) /* p_flags (ELF32) */
+	# offset, vaddr, paddr, filesz, memsz: the first five words after
+	# the type (ELF32) or type+flags (ELF64) pair.
+	for k in range(5): elf_save_word(is64, p + (k + 1) * w, 0)
+
+
 # phdr[0] text (R+X), phdr[1] data (R+W, patched in
-# elf_patch_load_segments); the next three start as PT_NULL and are
-# filled in by elf_emit_dynamic() when there are imports; the last is the
-# build-id PT_NOTE, whose note follows the table.
+# elf_patch_load_segments); phdr[2-3] start as PT_NULL and are filled in
+# by elf_emit_dynamic() when there are imports; phdr[4] is PT_GNU_STACK
+# and the last is the build-id PT_NOTE, whose note follows the table.
 void elf_phdr_table(int is64):
 	phdr_table_pos = codepos
 	elf_phdr(is64, 1, 5)
 	elf_phdr(is64, 0, 6)
 	for i in range(4): elf_phdr(is64, 0, 0)
+	elf_emit_gnu_stack(is64)
 	elf_emit_build_id_note()
 
 

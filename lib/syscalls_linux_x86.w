@@ -268,9 +268,12 @@ int kill(int pid, int sig):
 	return syscall(SYS_KILL, pid, sig, 0)
 
 
-# sigaltstack is only wired up where lib/crash.w uses it (arm64_darwin).
+# sigaltstack: ss/old_ss point at a Linux stack_t {ss_sp, ss_flags,
+# ss_size} (word-sized slots; on x86-64 the 4-byte ss_flags is padded to
+# 8). Returns 0 or -errno. The alternate stack is per thread: a CLONE_VM
+# child starts without one (lib/thread.w arms its own).
 int sys_sigaltstack(int ss, int old_ss):
-	return -1
+	return syscall(SYS_SIGALTSTACK, ss, old_ss, 0)
 
 
 # ptrace: request/pid/addr/data follow the classic ptrace(2) ABI.

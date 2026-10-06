@@ -198,7 +198,10 @@ atomics.
 
 **Thread-local storage.** `thread_entry` installs each spawned
 thread's `thread_local` block, which is the bottom of its own stack
-mapping, before the worker function runs. Pool workers keep theirs
+mapping, before the worker function runs. A PROT_NONE guard page sits
+between that block (plus the thread's alternate signal stack) and the
+stack proper, so overflowing a worker stack faults on the guard
+(`thread_stack_guard`, issue #526). Pool workers keep theirs
 across jobs. See docs/projects/thread_local.md.
 
 **Allocator** (issue #498, `lib/thread_heap.w`). Workers used to be
