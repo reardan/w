@@ -7,7 +7,8 @@ The build manifest is not committed (issue #323): bin/wexec and bin/wtest
 generate it in memory from build.base.json plus the source tree on every
 run. This tool exists to look at it and to gate it:
 
-Usage: wbuildgen [--check] [--base build.base.json] [--out bin/build.json]
+Usage: wbuildgen [--check] [--check-umbrellas] [--base build.base.json]
+                 [--out bin/build.json]
 
 Without --check the manifest is written to --out (default
 bin/build.json, `./wbuild manifest`) for reading or diffing. It is a
@@ -20,6 +21,12 @@ bin/ path fails it. With an explicit --out, --check also byte-compares
 the generated manifest with that file, writes the fresh one to
 bin/build.json.gen, and exits 1 with a per-target drift summary when
 they differ.
+
+--check-umbrellas additionally fails (exit 1, one error line per
+problem) when a target is reachable from no umbrella and is not listed
+with a reason in build.base.json's "generate": {"no_umbrella": {...}},
+or when that allowlist names a target that is gone or already covered.
+`./wbuild manifest_check` passes both flags.
 */
 import tools.wbuildgen_lib
 
@@ -29,10 +36,12 @@ int main(int argc, int argv):
 	char* out_path = c"bin/build.json"
 	int explicit_out = 0
 	int check_only = 0
+	int check_umbrellas = 0
 	int i = 1
 	while (i < argc):
 		char** arg = argv + i * __word_size__
 		if (strcmp(*arg, c"--check") == 0): check_only = 1
+		else if (strcmp(*arg, c"--check-umbrellas") == 0): check_umbrellas = 1
 		else if (strcmp(*arg, c"--base") == 0):
 			i = i + 1
 			if (i >= argc):
@@ -55,6 +64,8 @@ int main(int argc, int argv):
 
 	char* rendered = wbg_generate(base_path, 1)
 	if (rendered == 0): return 1
+	if (check_umbrellas):
+		if (wbg_check_umbrellas() > 0): return 1
 
 	wstream* out = stdout_writer()
 	if (check_only & (explicit_out == 0)):

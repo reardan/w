@@ -37,6 +37,7 @@ import lib.str
 import lib.shell_commands
 import lib.dir
 import structures.string
+import lib.ci_skip
 
 
 char* WCORE
@@ -58,6 +59,11 @@ void skip(char* reason):
 	err_out(c"wcore test SKIP: ")
 	err_out(reason)
 	err_out(c"\n")
+	# W_CI_NO_SKIP (lib/ci_skip.w): CI sets a plain core_pattern, so a
+	# skip there means the leg is misconfigured.
+	if (test_skip_strict()):
+		err_out(c"W_CI_NO_SKIP is set: this skip is a failure\n")
+		exit(1)
 	out(c"wcore test OK\n")
 	exit(0)
 

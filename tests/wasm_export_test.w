@@ -46,7 +46,7 @@ int main(int argc, int argv):
 	assert_equal(1, y == 6.0)
 	println(c"wasm export test: main OK")
 	return 0
-# wbuild: target=wasm_export_test dep=wv2 dep=wrun
+# wbuild: target=wasm_export_test tag=tests_wasm dep=wv2 dep=wrun
 # wbuild: step="bin/wv2 wasm tests/wasm_export_test.w -o bin/wasm_export_test"
 # wbuild: step="bin/wrun node tools/web/run_export_test.mjs bin/wasm_export_test"
 # wbuild: step="bin/wv2 wasm --wasm-acc=globals tests/wasm_export_test.w -o bin/wasm_export_test_globals"

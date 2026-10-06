@@ -7,6 +7,7 @@ import lib.vmm.filesystem
 import lib.file
 import lib.process
 import lib.str
+import lib.ci_skip
 
 
 void wvm_fs_cli(char* root, int writable):
@@ -62,7 +63,7 @@ void wvm_fs_run(char* root, char* mode, int writable):
 void test_wvm_fs_confinement():
 	int kvm = kvm_open_system()
 	if (kvm < 0):
-		println(c"SKIP: /dev/kvm unavailable")
+		test_skip(c"SKIP: /dev/kvm unavailable")
 		return
 	close(kvm)
 	assert_equal(0, syscall(83, cast(int, c"bin/wvm_fs_test_root"), 448, 0))

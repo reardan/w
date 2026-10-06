@@ -17,6 +17,7 @@ convention).
 import lib.lib
 import graphics.gl
 import graphics.window
+import lib.ci_skip
 
 
 int texture_failures
@@ -49,7 +50,7 @@ void texture_check(char* label, int x, int y, int want, int tolerance):
 int main(int argc, int argv):
 	gfx_window* win = gfx_window_open(c"w graphics texture", 320, 240)
 	if (win == 0):
-		println(c"graphics gl texture SKIP (no display)")
+		test_skip(c"graphics gl texture SKIP (no display)")
 		return 0
 
 	# Textured-quad shaders; bodies compile as GLSL 130 (GLX), 150 (Mac

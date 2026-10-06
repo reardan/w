@@ -20,6 +20,7 @@ import graphics.ui.render
 import graphics.ui.text
 import graphics.ui.widgets
 import graphics.ui.demo_shared
+import lib.ci_skip
 
 
 int ui_smoke_failures
@@ -53,7 +54,7 @@ void ui_smoke_check(char* label, int x, int y, int want, int tolerance):
 int main(int argc, int argv):
 	gfx_window* win = gfx_window_open(c"w ui smoke", 320, 240)
 	if (win == 0):
-		println(c"graphics ui smoke SKIP (no display)")
+		test_skip(c"graphics ui smoke SKIP (no display)")
 		return 0
 	ui_renderer rndr
 	if (ui_render_init(&rndr) == 0):

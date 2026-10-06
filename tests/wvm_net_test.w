@@ -7,6 +7,7 @@ import lib.vmm.network
 import lib.file
 import lib.str
 import lib.process
+import lib.ci_skip
 
 int wvm_net_call(vm_cell* cell, int nr, int a, int b, int c):
 	save_int64(cell.regs, nr)
@@ -117,7 +118,7 @@ void test_wvm_net_cli_invalid():
 void test_wvm_net_execution():
 	int kvm = kvm_open_system()
 	if (kvm < 0):
-		println(c"SKIP: /dev/kvm unavailable (network boundary tests still ran)")
+		test_skip(c"SKIP: /dev/kvm unavailable (network boundary tests still ran)")
 		return
 	close(kvm)
 	vm_cell* denied = wvm_net_load(1, c"denied")

@@ -48,7 +48,11 @@ directive-gap closures:
   optionally staged), their step= lines keep quoted words whole and
   stay out of the source's own test target, and a name clash with
   build.base.json, a step-less target, 'staged' on target=, or a
-  target= that does not start its line are hard errors.
+  target= that does not start its line are hard errors;
+- --check-umbrellas fails on a target no umbrella reaches unless the
+  "no_umbrella" allowlist names it with a reason, and on stale
+  allowlist entries; generated arm64/wasm targets join "tests_arm64" /
+  "tests_wasm".
 */
 # wbuild: tool=tools/wbuildgen.w
 import lib.testing
@@ -75,7 +79,7 @@ char* wdet_case_dir(char* case_name):
 	mkdir(tests_dir, 493)
 	free(tests_dir)
 	char* base_path = path_join(dir, c"base.json")
-	assert_equal(1, file_write_text(base_path, c"{\n\t\"targets\": [\n\t\t{\n\t\t\t\"name\": \"tests\",\n\t\t\t\"deps\": []\n\t\t},\n\t\t{\n\t\t\t\"name\": \"tests_x64\",\n\t\t\t\"deps\": []\n\t\t}\n\t]\n}\n"))
+	assert_equal(1, file_write_text(base_path, c"{\n\t\"targets\": [\n\t\t{\n\t\t\t\"name\": \"tests\",\n\t\t\t\"deps\": []\n\t\t},\n\t\t{\n\t\t\t\"name\": \"tests_x64\",\n\t\t\t\"deps\": []\n\t\t},\n\t\t{\n\t\t\t\"name\": \"tests_arm64\",\n\t\t\t\"deps\": []\n\t\t},\n\t\t{\n\t\t\t\"name\": \"tests_wasm\",\n\t\t\t\"deps\": []\n\t\t}\n\t]\n}\n"))
 	free(base_path)
 	return dir
 
@@ -164,6 +168,8 @@ void test_wasm_arch_shape():
 	assert_contains(out, c"\"cmd\": [\"bin/wrun\", \"wasm\", \"bin/wasmy_test\"]")
 	assert_contains(out, c"\"deps\": [\"wv2\", \"wrun\"]")
 	assert_lacks(out, c"[\"bin/wv2\", \"tests/wasmy_test.w\"")
+	# It joins the wasm umbrella (run by the wasm CI leg), not "tests".
+	assert_contains(out, c"\"name\": \"tests_wasm\",\n\t\t\t\"deps\": [\n\t\t\t\t\"wasmy_test\"\n\t\t\t]")
 	free(out)
 	free(out_path)
 
@@ -180,6 +186,8 @@ void test_flags_in_compile_command():
 	# flags= lands between the arch selector and the source path.
 	assert_contains(out, c"\"cmd\": [\"bin/wv2\", \"arm64\", \"--pac=full\", \"tests/flagy_test.w\", \"-o\", \"bin/flagy_test\"]")
 	assert_contains(out, c"\"cmd\": [\"bin/wrun\", \"arm64\", \"bin/flagy_test\"]")
+	# Generated arm64 targets join the arm64 umbrella.
+	assert_contains(out, c"\"name\": \"tests_arm64\",\n\t\t\t\"deps\": [\n\t\t\t\t\"flagy_test\"\n\t\t\t]")
 	free(out)
 	free(out_path)
 
@@ -444,6 +452,65 @@ void test_target_rejects_misplaced_fields():
 	dir = wdet_case_dir(c"target_midline")
 	wdet_write(dir, c"tests/midline.w", c"# wbuild: tag=tests target=late\n# wbuild: step=\"true\"\n")
 	wdet_expect_error(dir, c"'target='/'binary=' must start its own '# wbuild:' line: 'late' in tests/midline.w")
+
+
+char* wdet_cat3(char* a, char* b, char* c):
+	string_builder* s = string_new()
+	string_append(s, a)
+	string_append(s, b)
+	string_append(s, c)
+	return s.data
+
+
+# Runs bin/wbuildgen --check --check-umbrellas --base base.json in dir.
+process_result* wdet_run_umbrella_check(char* dir):
+	spawn_options* opts = spawn_options_new()
+	opts.cwd = dir
+	char** argv = strv_new(5)
+	strv_set(argv, 0, c"wbuildgen")
+	strv_set(argv, 1, c"--check")
+	strv_set(argv, 2, c"--check-umbrellas")
+	strv_set(argv, 3, c"--base")
+	strv_set(argv, 4, c"base.json")
+	process_result* r = process_run(tool_bin(c"wbuildgen"), argv, opts, 0, 20000)
+	assert1(r != 0)
+	free(opts)
+	free(cast(void*, argv))
+	return r
+
+
+# --check-umbrellas (issue #531): a target no umbrella reaches fails the
+# check unless "generate"."no_umbrella" lists it with a reason; a target
+# reached only through another member's deps counts as covered; stale
+# allowlist entries (gone, or already covered) fail too. Plain --check
+# ignores coverage.
+void test_check_umbrellas():
+	char* dir = wdet_case_dir(c"umbrella_check")
+	char* head = c"{\n\t\"generate\": {\"no_umbrella\": {"
+	char* tail = c"}},\n\t\"targets\": [\n\t\t{\"name\": \"helper\", \"steps\": [{\"cmd\": [\"true\"]}]},\n\t\t{\"name\": \"member\", \"tags\": [\"tests\"], \"deps\": [\"helper\"], \"steps\": [{\"cmd\": [\"true\"]}]},\n\t\t{\"name\": \"lonely\", \"steps\": [{\"cmd\": [\"true\"]}]},\n\t\t{\"name\": \"tests\", \"deps\": []}\n\t]\n}\n"
+	wdet_write(dir, c"base.json", wdet_cat3(head, c"", tail))
+	process_result* r = wdet_run_umbrella_check(dir)
+	assert1(r.status != 0)
+	assert_contains(r.stderr_text, c"target belongs to no umbrella (tag it, or list it with a reason in build.base.json generate.no_umbrella): lonely")
+	assert_lacks(r.stderr_text, c": helper")
+	assert_lacks(r.stderr_text, c": member")
+	process_result_free(r)
+
+	wdet_write(dir, c"base.json", wdet_cat3(head, c"\"lonely\": \"hand-run demo\"", tail))
+	r = wdet_run_umbrella_check(dir)
+	assert_equal(0, r.status)
+	assert_contains(r.stdout_text, c"wbuildgen: OK")
+	process_result_free(r)
+
+	wdet_write(dir, c"base.json", wdet_cat3(head, c"\"lonely\": \"demo\", \"helper\": \"x\", \"gone\": \"x\"", tail))
+	r = wdet_run_umbrella_check(dir)
+	assert1(r.status != 0)
+	assert_contains(r.stderr_text, c"stale \"no_umbrella\" entry (an umbrella already runs it): helper")
+	assert_contains(r.stderr_text, c"stale \"no_umbrella\" entry (no such target): gone")
+	process_result_free(r)
+
+	wdet_write(dir, c"base.json", wdet_cat3(head, c"\"lonely\": \"\"", tail))
+	wdet_expect_error(dir, c"\"generate\".\"no_umbrella\" entries need a nonempty reason string: lonely")
 
 
 void test_cleanup():

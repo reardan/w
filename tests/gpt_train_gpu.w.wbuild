@@ -1,4 +1,4 @@
-# wbuild: target=gpt_train_gpu_test dep=wv2
+# wbuild: target=gpt_train_gpu_test tag=tests_gpu dep=wv2
 # wbuild: step="sh tools/fetch_shakespeare.sh"
 # wbuild: step="bin/wv2 x64 tests/gpt_train_gpu.w -o bin/gpt_train_gpu"
 # wbuild: step="bin/gpt_train_gpu" expect_stdout="gpt: gpu path" expect_stdout="gpt train OK"

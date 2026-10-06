@@ -7,12 +7,13 @@ import lib.file
 import lib.process
 import lib.time
 import lib.str
+import lib.ci_skip
 
 
 int thread_vm_available():
 	int fd = kvm_open_system()
 	if (fd < 0):
-		println(c"SKIP: /dev/kvm unavailable")
+		test_skip(c"SKIP: /dev/kvm unavailable")
 		return 0
 	close(fd)
 	return 1

@@ -45,6 +45,7 @@ import libs.extras.compress.deflate
 import libs.extras.compress.zlib
 import libs.extras.compress.gzip
 import lib.dir
+import lib.ci_skip
 
 
 char* compress_zlib_interop_payload():
@@ -304,7 +305,7 @@ char* czi_python_script():
 int main():
 	char* python3 = process_which(c"python3")
 	if (python3 == 0):
-		println(c"zlib interop OK (skipped: no python3 on PATH)")
+		test_skip(c"zlib interop OK (SKIP: no python3 on PATH)")
 		return 0
 
 	string_builder* dirb = string_new()

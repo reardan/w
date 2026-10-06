@@ -157,14 +157,22 @@ assertEq(2, calls.shaderSources.length, 'shaders compiled');
 if (!calls.shaderSources[0].startsWith('#version 300 es'))
   fail(`vertex shader missing the GLSL ES header: ${calls.shaderSources[0].slice(0, 40)}`);
 assertEq(1, calls.linkCount, 'programs linked');
-assertEq(1, calls.texImages.length, 'glyph-atlas uploads');
-// GL_R8 = 0x8229; a single-channel atlas whose byte length matches its
-// dimensions (the exact height is font-bake-derived — see
-// tools/generate_ui_atlas.w — so only the shape is pinned).
-const [atlasFormat, atlasW, atlasH, atlasBytes] = calls.texImages[0];
-assertEq(33321, atlasFormat, 'atlas internalformat');
-if (atlasW < 128 || atlasH < 64 || atlasBytes !== atlasW * atlasH)
-  fail(`implausible atlas upload: ${atlasW}x${atlasH}, ${atlasBytes} bytes`);
+// The atlas uploads once at init and again whenever runtime glyph rows
+// grow it (graphics/ui/render.w ui_render_sync_atlas), so pin the count
+// loosely and the shape of every upload: GL_R8 = 0x8229, a
+// single-channel atlas whose byte length matches its dimensions, never
+// shrinking (the exact height is font-bake-derived — see
+// tools/generate_ui_atlas.w).
+if (calls.texImages.length < 1 || calls.texImages.length > maxFrames + 1)
+  fail(`glyph-atlas uploads: want 1..${maxFrames + 1}, got ${calls.texImages.length}`);
+let prevAtlasH = 0;
+for (const [atlasFormat, atlasW, atlasH, atlasBytes] of calls.texImages) {
+  assertEq(33321, atlasFormat, 'atlas internalformat');
+  if (atlasW < 128 || atlasH < 64 || atlasBytes !== atlasW * atlasH)
+    fail(`implausible atlas upload: ${atlasW}x${atlasH}, ${atlasBytes} bytes`);
+  if (atlasH < prevAtlasH) fail(`atlas shrank: ${prevAtlasH} -> ${atlasH} rows`);
+  prevAtlasH = atlasH;
+}
 if (calls.texParameters < 4) fail(`expected 4 texture parameters, got ${calls.texParameters}`);
 assertEq(maxFrames, calls.drawArrays.length, 'drawArrays calls (one batch per frame)');
 for (const [mode, first, count] of calls.drawArrays) {

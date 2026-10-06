@@ -21,6 +21,7 @@ import lib.assert
 import graphics.cocoa
 import graphics.window
 import graphics.event
+import lib.ci_skip
 
 c_lib "/System/Library/Frameworks/ApplicationServices.framework/Versions/A/ApplicationServices"
 extern int CGEventCreate(int source)
@@ -237,7 +238,7 @@ int main(int argc, int argv):
 	test_utf8_next()
 	test_scroll_notches()
 	if (test_window_events() == 0):
-		println(c"graphics cocoa input SKIP: no window (no GUI session)")
+		test_skip(c"graphics cocoa input SKIP: no window (no GUI session)")
 		return 0
 	println(c"graphics cocoa input OK")
 	return 0

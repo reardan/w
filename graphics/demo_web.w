@@ -106,6 +106,6 @@ int main(int argc, int argv):
 
 	gfx_window_run(demo_win, demo_frame)
 	return 0
-# wbuild: target=wasm_webgl_test dep=wv2 dep=wrun
+# wbuild: target=wasm_webgl_test tag=tests_wasm dep=wv2 dep=wrun
 # wbuild: step="bin/wv2 wasm graphics/demo_web.w -o bin/graphics_demo.wasm"
 # wbuild: step="bin/wrun node tools/web/run_webgl_stub.mjs bin/graphics_demo.wasm --frames 3"
