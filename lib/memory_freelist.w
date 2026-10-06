@@ -302,13 +302,37 @@ void* freelist_malloc(int size):
 	return block + header
 
 
-# Push the block back onto its size bin.
+# lib/stack_trace.w is imported later in lib/memory.w's closure.
+void print_stack_trace();
+
+
+# Heap misuse caught by freelist_free (issue #530). Never returns.
+void malloc_free_fatal(char* message):
+	int n = 0
+	while (message[n] != 0): n = n + 1
+	write(2, message, n)
+	print_stack_trace()
+	exit(1)
+
+
+# Push the block back onto its size bin. Two O(1) sanity checks catch
+# the common misuse before it corrupts a bin: a header size that no
+# freelist_malloc block can have (every payload size is a positive
+# multiple of 8) means the pointer did not come from malloc, and a block
+# already at the head of its bin is the free(p); free(p) double free.
+# Deeper double frees and lucky-looking bad pointers still go
+# undetected; W_DEBUG_ALLOC catches those (lib/memory_debug.w).
 int freelist_free(void* mem_address):
 	if (mem_address == 0): return 0
 	if (malloc_bins == 0): return 0
 	int block = cast(int, mem_address) - 2 * __word_size__
 	int* bw = cast(int*, block)
-	malloc_bin_push(block, bw[0])
+	int size = bw[0]
+	if ((size <= 0) || ((size & 7) != 0)):
+		malloc_free_fatal(c"free(): invalid pointer (not a heap block)\x0a")
+	int* heads = cast(int*, malloc_bins)
+	if (heads[malloc_size_bin(size)] == block): malloc_free_fatal(c"free(): double free detected\x0a")
+	malloc_bin_push(block, size)
 	return 1
 
 

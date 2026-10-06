@@ -20,7 +20,7 @@ string_builder* string_new_sized(int capacity):
 	string_builder* s = new string_builder()
 	s.capacity = capacity
 	s.length = 0
-	s.data = malloc(capacity)
+	s.data = __w_alloc(capacity)
 	s.data[0] = 0
 	return s
 
@@ -31,15 +31,18 @@ string_builder* string_new():
 
 # Make sure extra more bytes (plus the terminator) fit.
 void string_reserve(string_builder* s, int extra):
-	int needed = s.length + extra + 1
+	# Overflow-checked (issue #530): a wrapped size would realloc a tiny
+	# block and the append would write far past it. extra <= 0 asks for
+	# nothing (callers pass size hints that may have wrapped themselves).
+	if (extra <= 0): return
+	int needed = __w_size_add(__w_size_add(s.length, extra), 1)
 	if (needed > s.capacity):
-		int new_capacity = s.capacity * 2
-		if (new_capacity < needed): new_capacity = needed
+		int new_capacity = __w_grow_capacity(s.capacity, needed)
 		# oldlen must be the allocation size (capacity), not the used
 		# length: freelist_realloc only copies oldlen bytes so a short
 		# oldlen "works" by accident, but the debug allocator checks
 		# oldlen against the tracked malloc size and rejects a mismatch.
-		s.data = realloc(s.data, s.capacity, new_capacity)
+		s.data = __w_realloc(s.data, s.capacity, new_capacity)
 		s.capacity = new_capacity
 
 

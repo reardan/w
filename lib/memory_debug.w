@@ -5,7 +5,8 @@ debug_realloc.
 Selected instead of the free-list backend (lib/memory_freelist.w) when
 lib/memory.w's dispatcher is in debug mode. Every allocation gets its
 own private mmap region sized in whole pages, with the payload
-right-aligned against the end of the last resident page and the page
+right-aligned (to its size rounded up to 8, so pointers stay 8-byte
+aligned) against the end of the last resident page and the page
 immediately after unmapped: writing even one byte past the requested
 size lands in the hole and faults immediately, instead of silently
 corrupting the free-list allocator's next block header.
@@ -46,6 +47,10 @@ import lib.stack_trace
 
 
 const int debug_page_size = 4096
+
+
+# Fill byte for the alignment slack after each payload (0x5a, 'Z').
+const int debug_canary = 90
 
 
 # Freed-but-still-mapped quarantine budget. ~32 MiB keeps recent UAFs
@@ -191,9 +196,15 @@ int debug_pages_for(int size):
 
 
 void* debug_malloc(int size):
+	if (size < 0): return cast(void*, 0)
 	if (size < 1): size = 1
+	# The payload ends on an 8-byte boundary below the guard, so the
+	# pointer is 8-byte aligned like the free-list backend's (issue #530).
+	# An overflow into the up-to-7-byte rounding slack cannot fault; the
+	# slack holds a canary that free()/realloc() check instead.
+	int placed = ((size + 7) >> 3) << 3
 	int page = debug_page_size
-	int payload_pages = debug_pages_for(size)
+	int payload_pages = debug_pages_for(placed)
 	int payload_size = payload_pages * page
 	int region_size = payload_size + page
 	int flags = 34 /* MAP_PRIVATE|MAP_ANONYMOUS */
@@ -214,9 +225,26 @@ void* debug_malloc(int size):
 		if (debug_guard_warned == 0):
 			debug_guard_warned = 1
 			st_write_cstr(c"memory_debug: munmap guard page failed; overflow may not fault\x0a")
-	int ptr = guard_addr - size
+	int ptr = guard_addr - placed
+	char* slack = cast(char*, ptr)
+	int i = size
+	while (i < placed):
+		slack[i] = debug_canary
+		i = i + 1
 	debug_tbl_append(ptr, region, payload_size, size)
 	return cast(void*, ptr)
+
+
+# A write into the rounding slack between the requested size and the
+# guard page (see debug_malloc) surfaces at free()/realloc().
+void debug_check_canary(int idx):
+	int size = debug_tbl_size[idx]
+	int placed = ((size + 7) >> 3) << 3
+	char* p = cast(char*, debug_tbl_ptr[idx])
+	int i = size
+	while (i < placed):
+		if (p[i] != debug_canary): debug_fatal(c"heap buffer overflow: bytes past the end of a block were overwritten", debug_tbl_ptr[idx])
+		i = i + 1
 
 
 # Quarantine: PROT_NONE the payload so a near-term UAF faults, keep the
@@ -229,6 +257,7 @@ int debug_free(void* mem_address):
 	int idx = debug_tbl_find(ptr)
 	if (idx < 0): debug_fatal(c"free() called on a pointer the debug allocator never returned", ptr)
 	if (debug_tbl_freed[idx]): debug_fatal(c"double free() detected", ptr)
+	debug_check_canary(idx)
 	mprotect(debug_tbl_region[idx], debug_tbl_region_size[idx], 0)
 	debug_tbl_freed[idx] = 1
 	debug_quarantine_bytes = debug_quarantine_bytes + debug_tbl_region_size[idx]
@@ -236,10 +265,10 @@ int debug_free(void* mem_address):
 	return 1
 
 
-# Same contract as freelist_realloc (copies exactly oldlen bytes, even
-# when newlen < oldlen), plus a sanity check that oldlen matches what
-# was actually tracked at malloc time -- a mismatch is itself a real bug
-# this allocator is well placed to catch.
+# Same contract as freelist_realloc (copies min(oldlen, newlen) bytes),
+# plus a sanity check that oldlen matches what was actually tracked at
+# malloc time -- a mismatch is itself a real bug this allocator is well
+# placed to catch. A null result (mmap failure) leaves old allocated.
 char* debug_realloc(void* old, int oldlen, int newlen):
 	if (old != 0):
 		int idx = debug_tbl_find(cast(int, old))
@@ -249,9 +278,13 @@ char* debug_realloc(void* old, int oldlen, int newlen):
 			debug_fatal(c"realloc() called on an already-freed pointer", cast(int, old))
 		if (debug_tbl_size[idx] != oldlen):
 			debug_fatal(c"realloc() oldlen does not match the tracked allocation size", cast(int, old))
+		debug_check_canary(idx)
 	char* grown = debug_malloc(newlen)
+	if (grown == 0): return grown
+	int n = oldlen
+	if (n > newlen): n = newlen
 	char* src = old
-	for i in range(oldlen): grown[i] = src[i]
+	for i in range(n): grown[i] = src[i]
 	debug_free(old)
 	return grown
 

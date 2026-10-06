@@ -29,24 +29,21 @@ void __w_trap_cstr(char* s):
 	write(2, s, length)
 
 
+# Digits of v <= 0 (non-positive so the minimum word needs no negation),
+# most significant first. No allocation: the out-of-memory trap prints
+# through here.
+void __w_trap_digits(int v):
+	int q = v / 10
+	if (q != 0): __w_trap_digits(q)
+	int digit = '0' - (v - q * 10)
+	write(2, cast(char*, &digit), 1)
+
+
 void __w_trap_int(int value):
-	char* buf = malloc(24)
-	int end = 24
-	int i = end
-	# Work with non-positive magnitudes so the minimum word needs no negation
-	int v = value
-	if (v > 0): v = 0 - v
-	while (1):
-		i = i - 1
-		int q = v / 10
-		buf[i] = '0' - (v - q * 10)
-		v = q
-		if (v == 0): break
 	if (value < 0):
-		i = i - 1
-		buf[i] = '-'
-	write(2, buf + i, end - i)
-	free(buf)
+		__w_trap_cstr(c"-")
+		__w_trap_digits(value)
+	else: __w_trap_digits(0 - value)
 
 
 void __w_trap(char* message):
@@ -89,25 +86,109 @@ void __w_alloc_trap(int length, int limit):
 	exit(1)
 
 
+# Allocation safety (issue #530) for compiler-emitted 'new' and the
+# container runtime: a null allocation dies with a one-line diagnostic
+# instead of a segfault at address 0, and size arithmetic that would
+# overflow the word dies before it can wrap into a tiny block. Never
+# returns. The out-of-memory trap prints no stack trace: the
+# symbolizer allocates, and the heap is exactly what just ran out.
+void __w_oom_trap(int size):
+	__w_trap_cstr(c"out of memory: allocation of ")
+	__w_trap_int(size)
+	__w_trap_cstr(c" bytes failed\n")
+	exit(1)
+
+
+void __w_size_overflow_trap(int a, char* op, int b):
+	__w_trap_cstr(c"allocation size overflow: ")
+	__w_trap_int(a)
+	__w_trap_cstr(op)
+	__w_trap_int(b)
+	__w_trap_cstr(c"\n")
+	print_stack_trace()
+	exit(1)
+
+
+# Largest positive word (2^31 - 1 or 2^63 - 1), built at run time.
+int __w_word_max():
+	int top = 1 << (__word_size__ * 8 - 1)
+	return top - 1
+
+
+# a * b for non-negative sizes; traps on a negative operand or overflow.
+int __w_size_mul(int a, int b):
+	if ((a < 0) || (b < 0)): __w_size_overflow_trap(a, c" * ", b)
+	if (a == 0): return 0
+	if (b > __w_word_max() / a): __w_size_overflow_trap(a, c" * ", b)
+	return a * b
+
+
+# a + b for non-negative sizes; traps on a negative operand or overflow.
+int __w_size_add(int a, int b):
+	if ((a < 0) || (b < 0)): __w_size_overflow_trap(a, c" + ", b)
+	if (a > __w_word_max() - b): __w_size_overflow_trap(a, c" + ", b)
+	return a + b
+
+
+# Growth target for a container holding capacity slots that needs at
+# least needed: double, unless doubling would overflow or fall short.
+int __w_grow_capacity(int capacity, int needed):
+	if (capacity > __w_word_max() / 2): return needed
+	int doubled = capacity * 2
+	if (doubled < needed): return needed
+	return doubled
+
+
+# malloc that never returns null.
+void* __w_alloc(int size):
+	void* p = malloc(size)
+	if (p == 0): __w_oom_trap(size)
+	return p
+
+
+# realloc that never returns null.
+char* __w_realloc(void* old, int oldlen, int newlen):
+	char* p = realloc(old, oldlen, newlen)
+	if (p == 0): __w_oom_trap(newlen)
+	return p
+
+
+# 'new T' and 'new T[n]' (grammar/unary_expression.w,
+# code_generator/expression_ast.w): size bytes, zeroed, never null.
+void* __w_new_object(int size):
+	char* p = __w_alloc(size)
+	int words = size / __word_size__
+	int* w = cast(int*, p)
+	int i = 0
+	while (i < words):
+		w[i] = 0
+		i = i + 1
+	i = words * __word_size__
+	while (i < size):
+		p[i] = 0
+		i = i + 1
+	return p
+
+
 __w_list* __w_list_new(int element_size):
 	if (element_size <= 0): __w_trap(c"list element size must be positive")
 	int capacity = 8
-	__w_list* list = malloc(4 * __word_size__)
+	__w_list* list = __w_alloc(4 * __word_size__)
 	list.capacity = capacity
 	list.length = 0
 	list.element_size = element_size
-	list.items = malloc(capacity * element_size)
+	list.items = __w_alloc(__w_size_mul(capacity, element_size))
 	return list
 
 
 void __w_list_ensure(__w_list* list, int extra):
-	int needed = list.length + extra
+	int needed = __w_size_add(list.length, extra)
 	if (needed > list.capacity):
-		int new_capacity = list.capacity * 2
-		if (new_capacity < needed): new_capacity = needed
+		int new_capacity = __w_grow_capacity(list.capacity, needed)
+		int new_bytes = __w_size_mul(new_capacity, list.element_size)
 		# oldlen is the allocation size (capacity * element_size), not
 		# the populated prefix — see structures/string.w string_reserve.
-		list.items = realloc(list.items, list.capacity * list.element_size, new_capacity * list.element_size)
+		list.items = __w_realloc(list.items, list.capacity * list.element_size, new_bytes)
 		list.capacity = new_capacity
 
 
@@ -354,7 +435,7 @@ void __w_list_sort_by(__w_list* list, int comparator):
 # Aggregate variant: the comparator receives element ADDRESSES and the
 # moved element is staged in a temp buffer while the tail shifts.
 void __w_list_sort_by_addr(__w_list* list, int comparator):
-	char* temp = malloc(list.element_size)
+	char* temp = __w_alloc(list.element_size)
 	int i = 1
 	while (i < list.length):
 		__w_list_copy_bytes(temp, list.items + i * list.element_size, list.element_size)
@@ -466,7 +547,7 @@ int __w_list_max(__w_list* list):
 # In-place reversal, any element size (structs included).
 void __w_list_reverse(__w_list* list):
 	if (list.length < 2): return;
-	char* temp = malloc(list.element_size)
+	char* temp = __w_alloc(list.element_size)
 	int i = 0
 	int j = list.length - 1
 	while (i < j):
@@ -551,7 +632,7 @@ int __w_list_truth(__w_list* keys, int mode):
 # Stable in-place insertion sort of list by its parallel keys (kind as
 # in __w_list_compare_values); keys are reordered alongside.
 void __w_list_sort_keys(__w_list* list, __w_list* keys, int kind):
-	char* temp = malloc(list.element_size)
+	char* temp = __w_alloc(list.element_size)
 	int i = 1
 	while (i < list.length):
 		int key = __w_list_load_word(keys.items + i * keys.element_size, keys.element_size)

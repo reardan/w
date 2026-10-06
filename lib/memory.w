@@ -133,7 +133,30 @@ char* malloc_backend_realloc(void* old, int oldlen, int newlen):
 	return freelist_realloc(old, oldlen, newlen)
 
 
+# Sizes no allocation can satisfy (issue #530): negative, or so close to
+# the word's maximum that rounding up and adding a block header would
+# wrap. malloc(0) stays a valid 1-byte request.
+int malloc_size_invalid(int size):
+	return (size < 0) || (size + 131072 < 0)
+
+
+# Reported like heap exhaustion (lib/memory_freelist.w
+# malloc_oom_notice): a one-line notice on stderr, then null, which
+# 'new' and the container runtime turn into an out-of-memory trap
+# (structures/w_list.w __w_oom_trap).
+void* malloc_reject_size(int size):
+	st_write_cstr(c"malloc: invalid allocation size ")
+	if (size >= 0): st_write_dec(size)
+	else if (0 - size > 0):
+		st_write_cstr(c"-")
+		st_write_dec(0 - size)
+	else: st_write_hex(size)
+	st_write_cstr(c"\x0a")
+	return cast(void*, 0)
+
+
 void* malloc(int size):
+	if (malloc_size_invalid(size)): return malloc_reject_size(size)
 	if (malloc_hook_malloc != 0): return cast(void*, malloc_hook_malloc(size))
 	return malloc_backend(size)
 
@@ -143,6 +166,9 @@ int free(void* mem_address):
 	return malloc_backend_free(mem_address)
 
 
+# An invalid newlen returns null and leaves old allocated, like a
+# failed growth.
 char *realloc(void* old, int oldlen, int newlen):
+	if (malloc_size_invalid(newlen)): return cast(char*, malloc_reject_size(newlen))
 	if (malloc_hook_realloc != 0): return cast(char*, malloc_hook_realloc(old, oldlen, newlen))
 	return malloc_backend_realloc(old, oldlen, newlen)
