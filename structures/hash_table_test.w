@@ -1,4 +1,5 @@
 # wbuild: x64 group=arm64_smoke_test@arm64 group=wasm_smoke_test@wasm
+# wbuild: step="bin/hash_table_test" env="W_TEST_LEAKS=1" expect_stdout="0 failed, 0 skipped [leak check]"
 import lib.testing
 import structures.hash_table
 
