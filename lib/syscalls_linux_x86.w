@@ -267,6 +267,21 @@ int dup2(int oldfd, int newfd):
 int kill(int pid, int sig):
 	return syscall(SYS_KILL, pid, sig, 0)
 
+# pipe2: pipe with flags (o_cloexec, lib/linux.w), so the two ends are
+# created close-on-exec atomically -- no window in which a concurrent
+# fork+exec can inherit them.
+int pipe2(int* fds, int flags):
+	return syscall(SYS_PIPE2, fds, flags, 0)
+
+# setpgid: pid 0 means the caller, pgid 0 means "pgid = pid".
+int setpgid(int pid, int pgid):
+	return syscall(SYS_SETPGID, pid, pgid, 0)
+
+# close_range (Linux 5.9+): close every fd in [first, last]; last is an
+# unsigned int, so -1 means "to the end". Older kernels return -ENOSYS.
+int close_range(int first, int last, int flags):
+	return syscall(SYS_CLOSE_RANGE, first, last, flags)
+
 
 # sigaltstack is only wired up where lib/crash.w uses it (arm64_darwin).
 int sys_sigaltstack(int ss, int old_ss):

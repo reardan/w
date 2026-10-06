@@ -205,3 +205,182 @@ void test_wait_any_nonblocking_while_running():
 	assert_equal(128 + sigkill, process_wait(p))
 	process_free(p)
 	free(cast(void*, kids))
+
+
+/* fd hygiene, reaping and process groups (issue #534) */
+
+# 1 when needle occurs in haystack.
+int text_contains(char* haystack, char* needle):
+	int i = 0
+	while (haystack[i] != 0):
+		int j = 0
+		while ((needle[j] != 0) && (haystack[i + j] == needle[j])): j = j + 1
+		if (needle[j] == 0): return 1
+		i = i + 1
+	return 0
+
+
+# /proc/<pid>/stat into a fresh string, or 0 once the pid is gone.
+char* proc_stat_text(int pid):
+	char* path = strjoin(c"/proc/", strjoin(itoa(pid), c"/stat"))
+	int fd = open(path, 0, 0)
+	free(path)
+	if (fd < 0): return 0
+	char* buffer = malloc(1024)
+	int count = read(fd, buffer, 1023)
+	close(fd)
+	if (count < 0): count = 0
+	buffer[count] = 0
+	return buffer
+
+
+# The fields after "(comm) ": state is field 0, ppid 1, pgrp 2.
+char* proc_stat_after_comm(char* stat):
+	int i = strlen(stat) - 1
+	while ((i > 0) && (stat[i] != ')')): i = i - 1
+	return stat + i + 2
+
+
+int proc_stat_pgrp(int pid):
+	char* stat = proc_stat_text(pid)
+	if (stat == 0): return -1
+	char* rest = proc_stat_after_comm(stat)
+	int field = 0
+	while (field < 2):
+		while (rest[0] != ' '): rest = rest + 1
+		rest = rest + 1
+		field = field + 1
+	int pgrp = atoi(rest)
+	free(stat)
+	return pgrp
+
+
+# 1 while pid is a live (non-zombie) process. A SIGKILLed grandchild is
+# reparented and may sit as a zombie until its new parent reaps it,
+# which is dead enough for this test.
+int proc_alive(int pid):
+	char* stat = proc_stat_text(pid)
+	if (stat == 0): return 0
+	char state = proc_stat_after_comm(stat)[0]
+	free(stat)
+	return (state != 'Z') && (state != 'X')
+
+
+char* fd_probe_path():
+	return strjoin(c"/tmp/w_process_fd_probe_", itoa(getpid()))
+
+
+# The child lists its own descriptors: a file the parent opened without
+# close-on-exec must not show up there unless keep_fds asks for it.
+process_result* list_child_fds(int keep_fds):
+	spawn_options* opts = spawn_options_new()
+	opts.keep_fds = keep_fds
+	char** argv = strv_new(3)
+	strv_set(argv, 0, c"/bin/ls")
+	strv_set(argv, 1, c"-l")
+	strv_set(argv, 2, c"/proc/self/fd/")
+	process_result* result = process_run(c"/bin/ls", argv, opts, 0, 5000)
+	free(opts)
+	return result
+
+
+void test_child_does_not_inherit_parent_fds():
+	char* path = fd_probe_path()
+	int fd = open(path, 64 | 2, 420)  # O_CREAT | O_RDWR, no O_CLOEXEC
+	assert1(fd > 2)
+	assert_equal(0, sys_fcntl(fd, f_getfd, 0) & fd_cloexec)
+	process_result* result = list_child_fds(0)
+	assert1(result != 0)
+	assert_equal(0, result.status)
+	assert_equal(0, text_contains(result.stdout_text, path))
+	process_result_free(result)
+	# Control: with keep_fds the same listing does see it, so the
+	# check above can tell a leak from a broken probe.
+	result = list_child_fds(1)
+	assert1(result != 0)
+	assert_equal(0, result.status)
+	assert_equal(1, text_contains(result.stdout_text, path))
+	process_result_free(result)
+	close(fd)
+	unlink(path)
+	free(path)
+
+
+void test_make_pipe_ends_are_close_on_exec():
+	int read_end = -1
+	int write_end = -1
+	assert_equal(0, process_make_pipe(&read_end, &write_end))
+	assert_equal(fd_cloexec, sys_fcntl(read_end, f_getfd, 0) & fd_cloexec)
+	assert_equal(fd_cloexec, sys_fcntl(write_end, f_getfd, 0) & fd_cloexec)
+	close(read_end)
+	close(write_end)
+
+
+void test_free_reaps_an_exited_child():
+	process* p = process_spawn(c"/bin/true", argv_1(c"/bin/true"), 0)
+	assert1(p != 0)
+	int pid = p.pid
+	# Let it exit without being waited for: a zombie until reaped.
+	int deadline = process_monotonic_ms() + 5000
+	char state = 'R'
+	while ((state != 'Z') && (process_monotonic_ms() < deadline)):
+		char* stat = proc_stat_text(pid)
+		assert1(stat != 0)
+		state = proc_stat_after_comm(stat)[0]
+		free(stat)
+		if (state != 'Z'): process_sleep_ms(5)
+	assert_equal('Z', state)
+	process_free(p)
+	# Reaped: the pid is no longer our child at all (ECHILD).
+	int status = 0
+	assert_equal(-10, wait4(pid, &status, 1, 0))
+
+
+void test_free_kills_and_reaps_a_running_child():
+	char** argv = strv_new(2)
+	strv_set(argv, 0, c"/bin/sleep")
+	strv_set(argv, 1, c"30")
+	process* p = process_spawn(c"/bin/sleep", argv, 0)
+	assert1(p != 0)
+	int pid = p.pid
+	int start = process_monotonic_ms()
+	process_free(p)
+	assert1((process_monotonic_ms() - start) < 3000)
+	int status = 0
+	assert_equal(-10, wait4(pid, &status, 1, 0))
+
+
+void test_new_group_child_leads_its_own_group():
+	spawn_options* opts = spawn_options_new()
+	opts.new_group = 1
+	char** argv = strv_new(2)
+	strv_set(argv, 0, c"/bin/sleep")
+	strv_set(argv, 1, c"30")
+	process* p = process_spawn(c"/bin/sleep", argv, opts)
+	free(opts)
+	assert1(p != 0)
+	# The parent-side setpgid means this holds as soon as spawn returns.
+	assert_equal(p.pid, proc_stat_pgrp(p.pid))
+	process_free(p)
+	# The default stays in the caller's group (terminal Ctrl-C reaches it).
+	p = process_spawn(c"/bin/sleep", argv, 0)
+	assert1(p != 0)
+	assert_equal(proc_stat_pgrp(getpid()), proc_stat_pgrp(p.pid))
+	process_free(p)
+
+
+void test_timeout_kills_the_whole_group():
+	spawn_options* opts = spawn_options_new()
+	opts.new_group = 1
+	# The shell backgrounds a grandchild sleep, reports its pid, then
+	# waits on it: only a group kill takes the grandchild down too.
+	process_result* result = process_run(c"/bin/sh", argv_sh(c"/bin/sleep 30 & echo $!; wait"), opts, 0, 500)
+	free(opts)
+	assert1(result != 0)
+	assert_equal(process_status_timeout, result.status)
+	int grandchild = atoi(result.stdout_text)
+	assert1(grandchild > 0)
+	process_result_free(result)
+	int deadline = process_monotonic_ms() + 5000
+	while (proc_alive(grandchild) && (process_monotonic_ms() < deadline)): process_sleep_ms(10)
+	assert_equal(0, proc_alive(grandchild))
