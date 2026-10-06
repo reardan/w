@@ -183,6 +183,8 @@ stock x86-64 system.
 
 ## Language snapshot
 
+The [language reference](docs/language_reference.md) covers types, the integer model, undefined behaviour and reserved names in detail.
+
 Implemented and covered by tests:
 
 - Types: `int`, `char`, explicit-width integers through `int32`/`uint32`

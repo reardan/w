@@ -1,6 +1,28 @@
 # P0 explicit type system
 
-Status: in progress.
+Status: in progress. The milestones below are the **plan**; what the
+compiler does today is pinned down in the
+[language reference](../language_reference.md), which was checked
+against the compiler by probe programs. Where the plan and the compiler
+disagree, the reference describes the compiler, and the disagreement is
+listed under its
+[Known divergences](../language_reference.md#known-divergences).
+
+| Milestone | Status |
+|---|---|
+| 0 Baseline fixtures | Done (`type_system_p0_test` and the `type_system_*` fixture targets). |
+| 1 Metadata helpers, typed literals | Partly done. The `int` wildcard is gone. **Not implemented:** typed literals, and the overflow and narrowing warnings. Literals are still the untyped 32-bit `constant` pseudo-type, and `char c = 300` is silent. |
+| 2 `cast(T, x)` | Done, with two gaps: an integer cast does not truncate or extend a value in a register (`cast(uint8, -1)` is still -1 until it is stored), and a cast can remove `const`. |
+| 3 `bool` | Done. A non-constant `int` to `bool` conversion crashes (#525). |
+| 4 Precise call return types | Done. |
+| 5 Struct return by value | Done. |
+| 6 `const` | Done, with one gap: `T*` to `const T*` **warns** instead of being implicit. |
+| 7 Type aliases | Done (transparent). |
+| 8 Typed function pointers | Done, as `type f = fn(A, B) -> R` used as `f*`. |
+| 9 64-bit integers | Done on the 64-bit targets (x64, arm64, ...). x86 rejects `int64`/`uint64` with an error. There are no literal suffixes, and literals above 32 bits are rejected. |
+| 10 Enums | Done, with two gaps: enumerator names are global (no `color.red`), and `int` to `enum` is **silent** instead of needing a cast (#532). |
+| 11 Unions | Done (untagged). |
+| 12 Cleanup | Open: `constant` is still a wildcard. |
 
 Completed so far:
 
@@ -48,9 +70,10 @@ parser/code-generator architecture.
 
 ## Current constraints
 
-- The compiler has no AST or IR. Grammar rules parse and emit code immediately,
-  so type changes must fit the current "expression emits code and returns type"
-  model.
+- When this plan was written the compiler had no AST or IR, and grammar rules
+  parsed and emitted code immediately, so type changes had to fit the
+  "expression emits code and returns type" model. The opt-in production AST
+  path ([ast_migration.md](ast_migration.md)) has changed this since.
 - `compiler/type_table.w` currently stores name, field count, size, pointer
   level, and struct-field metadata. It does not encode kind, signedness,
   alias identity, qualifiers, enum tags, union variants, function signatures,
@@ -220,11 +243,13 @@ Semantics:
   path.
 - Explicit casts silence compatibility warnings but still reject impossible
   conversions, such as casting a struct value to an unrelated struct value.
-- Numeric casts define truncation/sign-extension behavior.
+- Numeric casts define truncation/sign-extension behavior. *(Not yet: today a
+  cast only retypes the value, and truncation happens when it is stored.)*
 - Pointer casts are allowed between pointer types; pointer-to-integer and
   integer-to-pointer are allowed only for word-sized integer destinations.
 - `const` may be added by cast but not removed unless a later unsafe-cast
-  spelling is deliberately introduced.
+  spelling is deliberately introduced. *(Not yet: `cast(int*, cq)` removes
+  const silently.)*
 
 Exit criteria: every previously required "int as untyped word" use in the
 compiler and library is either a safe implicit conversion or an explicit cast.
@@ -286,9 +311,12 @@ Start with shallow const qualification:
   the parser to one internal representation.
 - Const on an object forbids assignment to that object.
 - Const on a pointed-to type forbids writes through dereference or field access.
-- Non-const to const conversion is implicit.
+- Non-const to const conversion is implicit. *(Planned. Today `const int* p = q`
+  with `int* q` warns; see the
+  [language reference](../language_reference.md#type-checking).)*
 - Const to non-const conversion warns or errors unless an unsafe cast spelling
-  is intentionally accepted.
+  is intentionally accepted. *(Today it warns, and `cast()` removes const
+  silently.)*
 
 Defer deep transitive immutability, readonly function effects, and const
 methods until the shallow rules are stable.
@@ -393,7 +421,8 @@ Semantics:
   names are easier initially, reserve a migration path to scoped names.
 - Enum values implicitly convert to their backing integer only in comparison,
   switch-like future constructs, and explicit casts. Integer to enum requires a
-  cast.
+  cast. *(Planned. Today `color c = 5` compiles silently (#532), enum values
+  convert to `int` everywhere, and enumerators are global names.)*
 - Debug/type printing should display enum names when metadata is available.
 
 Exit criteria: enum variables, fields, parameters, returns, comparisons, casts,
