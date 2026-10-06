@@ -6,4 +6,4 @@
 # stub exists only so repl.w's "import lib.__arch__.repl_echo_float64"
 # resolves on both targets; see the x64 twin for the real implementation.
 char* repl_float64_to_string(int bits):
-	return c"0.000000"
+	return c"0.0"

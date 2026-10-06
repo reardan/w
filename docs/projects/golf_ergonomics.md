@@ -61,9 +61,9 @@ assignment target.
 
 `print(` / `println(` intercept in primary_expr (the to_json pattern)
 and dispatch on the argument's static type, compile time only: int-likes
-as decimals, `char*`/`string` bytes, float32 through a private ftoa
-clone, `var` through `__w_var_to_cstr`, and `list[T]` of scalars as
-`[a, b, c]`. `println()` with no argument emits just the newline.
+as decimals, `char*`/`string` bytes, float32 through lib/float_text.w's
+shortest round-trip formatter (ftoa's spelling), `var` through
+`__w_var_to_cstr`, and `list[T]` of scalars as `[a, b, c]`. `println()` with no argument emits just the newline.
 Unsupported types (maps, sets, structs, non-char pointers, float64) are
 compile errors. lib/lib.w keeps its `print(string)` / `println(string)`
 functions and call sites behave identically for those types, so existing

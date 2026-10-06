@@ -12,7 +12,14 @@ void check(char* want, string got):
 
 void test_float64_values():
 	float64 d = 2.718281828
-	check(c"2.718282 2.71828183 [   2.72] [-02.718]", f"{d} {d:.8} [{d:7.2}] [{-d:07.3}]")
+	check(c"2.718281828 2.71828183 [   2.72] [-02.718]", f"{d} {d:.8} [{d:7.2}] [{-d:07.3}]")
+
+	# issue #529: shortest round-trip text, exact at any magnitude
+	float64 big = 1e20
+	float64 tiny = 1e-7
+	check(c"1e+20 1e-07 100000000000000000000 0.00000010", f"{big} {tiny} {big:.0} {tiny:.8}")
+	float64 third = 1.0 / 3.0
+	check(c"0.3333333333333333 1.7976931348623157e+308", f"{third} {1.7976931348623157e308}")
 
 
 void test_float64_next_to_float32():
