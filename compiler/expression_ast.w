@@ -1,5 +1,6 @@
 # Production expression AST. Each parse/emit attempt owns this bounded
-# arena on its stack; unsupported syntax and
+# arena: a small header on its stack bound to a reusable node slab (see
+# expression_ast_bind); unsupported syntax and
 # REPL error recovery cannot leave allocated nodes or compiler state behind.
 # Node IDs are arena indices, -1 is failure. Literal nodes carry their
 # source byte offset until the committed diagnostic/decoding pass fills value.
@@ -48,33 +49,45 @@ struct expression_ast:
 	int it_binding
 	int lint_group_depth
 	int lint_depth_bias
+	int slab
+	int capacity
+	int recording
+	int token_count
+	int token_capacity
+	int token_text_used
+	int token_text_capacity
+	int* tokens
+	char* token_text
 	type_rec[16] pointer_types
 	int[16] pointer_offsets
 	int[16] pointer_bases
 	char[4096] type_names
-	char[32768] text
-	int[4096] op
-	int[4096] left
-	int[4096] right
-	int[4096] offset
-	int[4096] value
-	int[4096] result_type
-	int[4096] high
-	int[4096] next_arg
-	int[4096] in_cast
-	int[4096] binding_name
-	int[4096] binding_offset
-	int[4096] symbol
-	int[4096] qualified
-	int[4096] it_slot
-	int[4096] generic_parameters
-	int[4096] generic_signature
-	int[4096] generic_offset
-	int[4096] generic_instance
-	int[4096] generic_arity
-	int[4096] infer_coercion
-	int[4096] call_receiver_type
-	int[4096] infer_want
+	# P1.1: the node columns and decoded text live in a reusable heap slab
+	# bound by expression_ast_bind, so declaring a tree does not zero-fill
+	# half a megabyte of stack per expression root.
+	char* text
+	int* op
+	int* left
+	int* right
+	int* offset
+	int* value
+	int* result_type
+	int* high
+	int* next_arg
+	int* in_cast
+	int* binding_name
+	int* binding_offset
+	int* symbol
+	int* qualified
+	int* it_slot
+	int* generic_parameters
+	int* generic_signature
+	int* generic_offset
+	int* generic_instance
+	int* generic_arity
+	int* infer_coercion
+	int* call_receiver_type
+	int* infer_want
 
 
 int ast_expressions_mode
@@ -83,6 +96,243 @@ int ast_roots_emitted
 int ast_roots_fallback
 int ast_audit_mode
 int ast_required_mode
+
+
+# P1.1 node slabs. A tree is bound to a slab when its parse starts and
+# keeps it while its stack frame lives. Trees are compiler stack locals
+# (one per grammar frame), so the bound slabs form a stack ordered by
+# owner address: an owner at or below the tree being bound belongs to a
+# frame that has already returned (or to this very tree) and its slab is
+# released. Owners above it may still be live enclosing roots (a generic
+# body compiled while emitting an outer root) and keep their slabs. REPL
+# error recovery only unwinds frames, so a stale owner is released by the
+# next bind at or above its address. Node columns and token records start
+# small and grow (nodes up to the 4096-node arena limit); decoded text
+# keeps its fixed allowance.
+struct expression_ast_slab:
+	int owner
+	char* text
+	char* columns
+	int capacity
+	int* tokens
+	int token_capacity
+	char* token_text
+	int token_text_capacity
+
+
+const int expression_ast_columns = 22
+const int expression_ast_initial_capacity = 64
+const int expression_ast_token_fields = 12
+int expression_ast_slab_depth
+int expression_ast_slab_total
+int expression_ast_slab_room
+int* expression_ast_slabs
+
+
+# P1.1 --stats counters: bytes in preflighted roots and groups, tokenizer
+# snapshots taken by the probe, tokens whose lexer state was
+# re-established for a committed literal/diagnostic event (from a
+# recorded token or, on the relex path, by lexing it again), roots that
+# replayed by lexing their tokens again, and node slabs allocated.
+int ast_preflight_bytes
+int ast_tokenizer_snapshots
+int ast_tokens_replayed
+int ast_relex_replays
+int ast_slabs_allocated
+
+
+expression_ast_slab* expression_ast_slab_at(int index):
+	return cast(expression_ast_slab*, expression_ast_slabs[index])
+
+
+# Unsigned address order: flip the sign bit so 32-bit stack addresses
+# above 2 GiB compare in memory order.
+int expression_ast_address_below_or_at(int a, int b):
+	int bias = 1 << (__word_size__ * 8 - 1)
+	return (a ^ bias) <= (b ^ bias)
+
+
+void expression_ast_point_columns(expression_ast* tree):
+	expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
+	char* memory = slab.columns
+	int column = slab.capacity * __word_size__
+	tree.capacity = slab.capacity
+	tree.text = slab.text
+	tree.op = cast(int*, memory)
+	tree.left = cast(int*, memory + column)
+	tree.right = cast(int*, memory + 2 * column)
+	tree.offset = cast(int*, memory + 3 * column)
+	tree.value = cast(int*, memory + 4 * column)
+	tree.result_type = cast(int*, memory + 5 * column)
+	tree.high = cast(int*, memory + 6 * column)
+	tree.next_arg = cast(int*, memory + 7 * column)
+	tree.in_cast = cast(int*, memory + 8 * column)
+	tree.binding_name = cast(int*, memory + 9 * column)
+	tree.binding_offset = cast(int*, memory + 10 * column)
+	tree.symbol = cast(int*, memory + 11 * column)
+	tree.qualified = cast(int*, memory + 12 * column)
+	tree.it_slot = cast(int*, memory + 13 * column)
+	tree.generic_parameters = cast(int*, memory + 14 * column)
+	tree.generic_signature = cast(int*, memory + 15 * column)
+	tree.generic_offset = cast(int*, memory + 16 * column)
+	tree.generic_instance = cast(int*, memory + 17 * column)
+	tree.generic_arity = cast(int*, memory + 18 * column)
+	tree.infer_coercion = cast(int*, memory + 19 * column)
+	tree.call_receiver_type = cast(int*, memory + 20 * column)
+	tree.infer_want = cast(int*, memory + 21 * column)
+	tree.tokens = slab.tokens
+	tree.token_capacity = slab.token_capacity
+	tree.token_text = slab.token_text
+	tree.token_text_capacity = slab.token_text_capacity
+
+
+# A copy of the first used words of old in a new room-word array.
+int* expression_ast_grow_array(int* old, int used, int room):
+	int* grown = malloc(room * __word_size__)
+	for i in range(used): grown[i] = old[i]
+	if (old): free(old)
+	return grown
+
+
+expression_ast_slab* expression_ast_new_slab():
+	expression_ast_slab* slab = cast(expression_ast_slab*, malloc(sizeof(expression_ast_slab)))
+	slab.owner = 0
+	slab.text = malloc(32768)
+	slab.capacity = expression_ast_initial_capacity
+	slab.columns = malloc(expression_ast_columns * slab.capacity * __word_size__)
+	slab.token_capacity = expression_ast_initial_capacity
+	slab.tokens = malloc(expression_ast_token_fields * slab.token_capacity * __word_size__)
+	slab.token_text_capacity = 1024
+	slab.token_text = malloc(slab.token_text_capacity)
+	ast_slabs_allocated = ast_slabs_allocated + 1
+	return slab
+
+
+void expression_ast_bind(expression_ast* tree):
+	int self = cast(int, tree)
+	while (expression_ast_slab_depth > 0):
+		expression_ast_slab* top = expression_ast_slab_at(expression_ast_slab_depth - 1)
+		if (expression_ast_address_below_or_at(top.owner, self) == 0): break
+		expression_ast_slab_depth = expression_ast_slab_depth - 1
+	int index = expression_ast_slab_depth
+	if (index == expression_ast_slab_total):
+		if (index == expression_ast_slab_room):
+			expression_ast_slab_room = expression_ast_slab_room * 2 + 8
+			expression_ast_slabs = expression_ast_grow_array(expression_ast_slabs, index, expression_ast_slab_room)
+		expression_ast_slabs[index] = cast(int, expression_ast_new_slab())
+		expression_ast_slab_total = index + 1
+	expression_ast_slab* bound = expression_ast_slab_at(index)
+	bound.owner = self
+	expression_ast_slab_depth = index + 1
+	tree.slab = index
+	tree.recording = 0
+	tree.token_count = 0
+	tree.token_text_used = 0
+	expression_ast_point_columns(tree)
+
+
+# Double the bound slab's node columns, keeping the first count nodes.
+void expression_ast_grow(expression_ast* tree):
+	expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
+	int old_capacity = slab.capacity
+	int capacity = old_capacity * 2
+	if (capacity > 4096): capacity = 4096
+	char* old = slab.columns
+	char* memory = malloc(expression_ast_columns * capacity * __word_size__)
+	int used = tree.count * __word_size__
+	for c in range(expression_ast_columns):
+		char* from = old + c * old_capacity * __word_size__
+		char* to = memory + c * capacity * __word_size__
+		for i in range(used): to[i] = from[i]
+	free(old)
+	slab.columns = memory
+	slab.capacity = capacity
+	expression_ast_point_columns(tree)
+
+
+# Keep length more bytes of token text (plus a terminator) in the slab.
+int expression_ast_token_text_reserve(expression_ast* tree, int length):
+	int need = tree.token_text_used + length + 1
+	if (need > tree.token_text_capacity):
+		expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
+		int room = slab.token_text_capacity * 2
+		while (room < need): room = room * 2
+		char* grown = malloc(room)
+		for i in range(tree.token_text_used): grown[i] = slab.token_text[i]
+		free(slab.token_text)
+		slab.token_text = grown
+		slab.token_text_capacity = room
+		tree.token_text = grown
+		tree.token_text_capacity = room
+	int start = tree.token_text_used
+	tree.token_text_used = need
+	return start
+
+
+# Copy the current token's bytes (embedded NULs included) and terminator.
+int expression_ast_save_token_text(expression_ast* tree):
+	int start = expression_ast_token_text_reserve(tree, token_i)
+	char* to = tree.token_text + start
+	for i in range(token_i): to[i] = token[i]
+	to[token_i] = 0
+	return start
+
+
+# Record the lexer state get_token left for the current token. The
+# probe lexes every token of an accepted root exactly as the committed
+# replay would, so these records replace lexing the root a second time.
+void expression_ast_record_token(expression_ast* tree):
+	if (tree.token_count == tree.token_capacity):
+		expression_ast_slab* slab = expression_ast_slab_at(tree.slab)
+		int words = tree.token_count * expression_ast_token_fields
+		slab.token_capacity = slab.token_capacity * 2
+		slab.tokens = expression_ast_grow_array(slab.tokens, words, slab.token_capacity * expression_ast_token_fields)
+		tree.tokens = slab.tokens
+		tree.token_capacity = slab.token_capacity
+	int* row = &tree.tokens[tree.token_count * expression_ast_token_fields]
+	row[0] = token_start_offset
+	row[1] = diag_token_line
+	row[2] = diag_token_column
+	row[3] = line_number
+	row[4] = column_number
+	row[5] = tab_level
+	row[6] = nextc
+	row[7] = byte_offset
+	row[8] = token_newline
+	row[9] = token_i
+	row[10] = expression_ast_save_token_text(tree)
+	row[11] = token_serial
+	tree.token_count = tree.token_count + 1
+
+
+# Re-establish recorded token k as the current token.
+void expression_ast_enter_token(expression_ast* tree, int k):
+	int* row = &tree.tokens[k * expression_ast_token_fields]
+	token_start_offset = row[0]
+	diag_token_line = row[1]
+	diag_token_column = row[2]
+	line_number = row[3]
+	column_number = row[4]
+	tab_level = row[5]
+	nextc = row[6]
+	byte_offset = row[7]
+	token_newline = row[8]
+	tokenizer_set_token_text(tree.token_text + row[10], row[9])
+	token_i = row[9]
+	token_serial = row[11]
+
+
+# Index of the recorded token starting at offset, or -1.
+int expression_ast_token_at(expression_ast* tree, int offset):
+	int low = 0
+	int high = tree.token_count - 1
+	while (low <= high):
+		int middle = (low + high) >> 1
+		int start = tree.tokens[middle * expression_ast_token_fields]
+		if (start == offset): return middle
+		if (start < offset): low = middle + 1
+		else: high = middle - 1
+	return -1
 
 
 # Container methods share the streaming helper-call lowering. Bit 7
@@ -265,6 +515,7 @@ void ast_expression_commit_pointer(expression_ast* tree, int i):
 
 int expression_ast_add(expression_ast* tree, int op, int left, int right):
 	if (tree.count == 4096): return -1
+	if (tree.count == tree.capacity): expression_ast_grow(tree)
 	int id = tree.count
 	tree.count = id + 1
 	tree.op[id] = op
