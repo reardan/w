@@ -3,7 +3,7 @@
 Compiler
 	Done
 		Self-hosted x86 bootstrap
-		Fixpoint verification with make verify
+		Fixpoint verification with ./wbuild verify (x86, x64, arm64, win64, wasm, arm64_darwin)
 		-o output path
 		Usage message for missing input
 		Type table with size, pointer level, and struct fields
@@ -16,7 +16,7 @@ Compiler
 		struct values passed by value
 		range loops with optional start/end/step
 		break and continue
-		C-style unary precedence and relational chaining
+		C-style operator precedence (comparisons do not chain: 3 > 2 > 1 is 0)
 		Basic REPL
 		REPL compile-error recovery
 		REPL multi-line entries, persistent definitions, expression echo
@@ -35,40 +35,39 @@ Compiler
 		C preprocessor for macro expansion, conditionals and include resolution
 		Broad libc/system-header import on x86 and x64
 		Built-in debugger
-		AI tooling MVP: w check --json, changed-file target mapper and w-toolchain MCP
-		LSP MVP: wlsp with check-driven diagnostics and symbols-driven go-to-definition
-		Semantic index (windex) and w-index-mcp: cross-file references, callers/callees, struct fields, imports
-		LSP hover, find-references and rename (windex-backed)
-		w-debug-mcp: interactive wdbg session over MCP (debug_start/debug_send/debug_stop)
+		AI tooling MVP: w check --json, w symbols --json, w deps and the bin/wtest
+		changed-file target mapper (the LSP, MCP servers and semantic index built
+		on them moved out of this repository in July 2026)
+		Browser debugger (wdbg_web) and multi-error checking (w check --all-errors)
 
 		True generics/templates with explicit instantiation (monomorphizing re-parse)
 		Generic type-argument inference at call sites (max(3, 5) infers T = int)
 		Generators / yield (stackful coroutines)
 		Template strings, default parameter values, W variadics, dynamic var
 
+		Map get/remove/defaults and list insert/remove
+		Float16 storage type (x86 family)
+		C import bit-field layout
+
 	Remaining
 		Generic inference for forward calls, struct constructors and container shapes
-		Richer map/list ergonomics (delete/get/defaults, list insert/remove)
-		Float16 / bfloat16
-		C import bit-field layout fidelity
-		Formatter; LSP locals/parameters coverage and completion (need symbols --json to record them)
+		bfloat16
+		Formatter (w check --fix only rewrites whitespace)
 
 Net
 	Done
 		Basic sockets
 		Client connect path
 		Server bind/listen/accept path
-
-	Remaining
-		UDP helpers
-		HTTP client
-		Socketcall cleanup
+		UDP socket helper (lib/net.w socket_udp_ipv4)
+		Direct socket syscalls on x86 (socketcall(2) no longer used)
+		HTTP/1.1 and HTTP/2 client and server, TLS, gRPC, websockets
+		(libs/standard/web, libs/standard/net)
 
 Platform
 	Done
 		Linux
 		x86
-		x64 (lib_test + self-compiling fixpoint, make tests_x64)
-
-	Remaining
-		WebAssembly
+		x64 (lib_test + self-compiling fixpoint, ./wbuild tests_x64)
+		arm64 Linux, arm64 macOS (Mach-O), win64 (PE)
+		WebAssembly (wasm32/WASI, plus a browser WebGL path)

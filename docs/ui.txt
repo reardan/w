@@ -12,7 +12,9 @@ current state:
 		compile errors return to the prompt
 	debugging:
 		DWARF line information is emitted for gdb
-		no built-in debugger server or web debugger yet
+		wdbg is the built-in in-process debugger (docs/debugging.txt)
+		wdbg_web serves a browser debugger UI over https
+		(docs/projects/wdbg_web.md)
 	whttp:
 		basic server experiments exist under tests/
 

@@ -333,8 +333,8 @@ lowerings.
 ### it-expressions (grammar/list_builtin.w, structures/w_list.w)
 
 Decision: an expression argument, not a closure. W has no lambdas
-(issue #107), and a closure would need captured-environment machinery
-the single-pass compiler does not have. Instead a list method argument
+(issue #107 was closed as not planned), and a closure would need
+captured-environment machinery the single-pass compiler does not have. Instead a list method argument
 that mentions the identifier `it` is compiled as an INLINE loop in the
 current function, so the enclosing function's locals are visible for
 free:
@@ -422,7 +422,8 @@ boundary (the generic-instantiation deferral: record the span, emit the
 address through a backpatch chain, re-parse later), which needs an
 expression-bodied variant of `function_definition` and the drivers'
 top-level hook. it-expressions cover the single-element cases inline,
-so this stays open (issue #107).
+so lambdas are not planned: issue #107 was closed as not planned in July
+2026, and the compiler has no lambda syntax.
 
 ### String comparison and switch (grammar/equality_expr.w, grammar/switch_statement.w)
 

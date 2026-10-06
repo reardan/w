@@ -171,9 +171,9 @@ stock x86-64 system.
 | `grammar/` | One module per grammar rule; parsing and code emission are fused |
 | `grammar.w`, `codegen.w` | Umbrella modules that import the grammar/ and code_generator/ trees |
 | `code_generator/` | Byte emitter, x86/x64 encoders, ELF32/ELF64 writers, dynamic linking, DWARF |
-| `lib/` | Standard library: syscalls, memory, strings, math, format, args, env, process (spawn/pipes/wait/timeouts), the generic `wresult[T]` result type, assert/testing |
+| `lib/` | Standard library: syscalls, memory, strings, math, format, args, env, process (spawn/pipes/wait/timeouts), the generic `wresult[T]` result type, assert/testing. `./wbuild library_reference` generates an API reference for `lib/` and `structures/` in `bin/library_reference.md` (`tools/libref.w`) |
 | `lib/__arch__/{x86,x64}/` | Per-architecture modules (syscalls, register context, ELF introspection) selected by the reserved `__arch__` import segment |
-| `structures/` | hash map, array list, linked list, string builder (+ their tests) |
+| `structures/` | Runtimes for the built-in containers and builtins: `hash_table.w` (`map`/`set`), `w_list.w` (`list[T]`), `string.w` (string builder, f-strings), `prelude.w` (`print`, `input`, ...), `w_dynamic.w` (`var`), `json_codec.w` (`to_json`/`from_json`); plus `json.w` (JSON parser/serializer), `bitset.w`, `deque.w`, `heap.w` and their tests |
 | `repl.w` | Interactive REPL: compiles each entry into an mmap buffer and calls it; definitions persist |
 | `debugger/` | `wdbg`, an in-process SIGTRAP debugger driven by `debugger` statements |
 | `tests/` | End-to-end test programs and compile-only warning fixtures |
@@ -220,7 +220,7 @@ Implemented and covered by tests:
   int-conversion overflow, a literal-width cross-target gotcha, and where
   arm64/wasm differ from x86).
 - Expressions: full C-style operator set — arithmetic, shifts, relational
-  (with chaining), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
+  (C-style, not chained: `3 > 2 > 1` is 0), equality, bitwise, `&&`/`||`/`!`, unary `+`/`-`, `&`/`*`
   address/deref, compound assignment (`+=`, `-=`, `*=`, `/=`, `%=`, `&=`,
   `|=`, `^=`, `<<=`, `>>=`; integer, float and pointer scalar targets,
   including map index targets `m[k] += v` with the key evaluated once —
@@ -473,8 +473,8 @@ seeds — is `docs/release.md`.
   named files' whitespace issues (indentation, trailing space, blank lines,
   CRLF, final newline) in place before checking them.
 - `w check` reports all warnings reached before the first error, then stops at
-  that first error. Multi-error recovery remains out of scope for the
-  single-pass compiler.
+  that first error by default; `w check --all-errors` (#523) recovers and
+  reports every error it can reach.
 - Use `./bin/wv2 symbols --json file.w` to dump declaration metadata for
   go-to-definition and indexing: one NDJSON record per user-declared symbol
   (functions, globals, enum values) and type (structs, unions, enums, aliases)

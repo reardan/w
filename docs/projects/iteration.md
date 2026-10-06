@@ -41,7 +41,7 @@ word-sized. Tests: `tests/generator_test.w` (`./wbuild generator_test`,
 generators half is kept here because the two features share their
 consumption syntax, their cleanup problems, and one loop lowering.
 
-Supersedes the iteration notes at the bottom of `docs/for_notes.txt`
+Supersedes the iteration notes at the bottom of `docs/archive/for_notes.txt`
 (manual range struct, "generator functions", "store generator stack in
 parent function"); those ideas are folded into designs 4 and 5 and the
 generators part below.
