@@ -39,6 +39,10 @@ process_result* parse_cost_compile(char* compiler, char* arch, char* input, char
 	if (required):
 		strv_set(args, i, c"--ast-required")
 		i = i + 1
+	else:
+		# The AST front end is the default (P1.4); the baseline is streaming.
+		strv_set(args, i, c"--streaming")
+		i = i + 1
 	if (stats):
 		strv_set(args, i, c"--stats")
 		i = i + 1

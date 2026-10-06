@@ -184,3 +184,29 @@ void test_ast_audit_required_manifest_keeps_canary_steps():
 	assert_strings_equal(c"w.w", ast_audit_arg(cmd, 6))
 	json_free(report)
 	json_free(root)
+
+
+# P1.4: the AST front end is the default. --streaming steps are an explicit
+# mode the required suite leaves alone, and a direct compiler step that still
+# opts in with --ast-full-expressions (or --ast-expressions without
+# --streaming) is reported as stale; behaviour-changing AST flags are not.
+void test_ast_audit_streaming_is_explicit_and_stale_flags_are_listed():
+	json_value* root = json_parse(c"{\"targets\":[{\"name\":\"a\",\"steps\":[{\"cmd\":[\"bin/wv2\",\"--streaming\",\"--strict\",\"w.w\"]},{\"cmd\":[\"bin/wv2\",\"--ast-full-expressions\",\"w.w\"]},{\"cmd\":[\"env\",\"K=V\",\"bin/wv2_64\",\"x64\",\"--ast-expressions\",\"w.w\"]},{\"cmd\":[\"bin/wv2\",\"--streaming\",\"--ast-expressions\",\"w.w\"]},{\"cmd\":[\"bin/wv2\",\"--ast-required\",\"--ast-retain\",\"--ast-audit\",\"w.w\"]},{\"cmd\":[\"./w\",\"--ast-full-expressions\",\"w.w\"]},{\"cmd\":[\"bin/wfixture\",\"--ast-expressions\",\"bin/wv2\",\"f.w\"]}]}]}")
+	json_value* stale = ast_audit_stale_flags(root)
+	assert_equal(2, json_array_length(stale))
+	json_value* row = json_array_get(stale, 0)
+	assert_strings_equal(c"a", jfield_string(row, c"target"))
+	assert_equal(1, jfield_int(row, c"step", -1))
+	assert_strings_equal(c"--ast-full-expressions", jfield_string(row, c"flag"))
+	row = json_array_get(stale, 1)
+	assert_equal(2, jfield_int(row, c"step", -1))
+	assert_strings_equal(c"--ast-expressions", jfield_string(row, c"flag"))
+	json_free(stale)
+	json_value* cmd = json_parse(c"[\"bin/wv2\",\"--streaming\",\"program.w\"]")
+	assert_equal(2, ast_audit_command_kind(cmd))
+	json_free(cmd)
+	json_value* report = ast_audit_manifest_mode(root, 1)
+	json_value* steps = jfield_array(json_array_get(jfield_array(root, c"targets"), 0), c"steps")
+	assert_equal(4, json_array_length(jfield_array(json_array_get(steps, 0), c"cmd")))
+	json_free(report)
+	json_free(root)

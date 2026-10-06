@@ -856,6 +856,10 @@ int link_option(char* arg, int apply):
 			ast_retain_mode = 1
 			ast_emit_retained_mode = 1
 		return 1
+	# P1.4: the AST front end is the default (link_reset). --streaming opts
+	# out for the whole program, implicit runtime imports included, so
+	# link_impl's flag pre-scan applies it and this only recognizes it.
+	if (strcmp(arg, c"--streaming") == 0): return 1
 	if (strcmp(arg, c"--quiet") == 0):
 		if (apply): quiet_mode = 1
 		return 1
@@ -896,11 +900,12 @@ void help_shared_options():
 	println(c"  --bounds=on|off|trap  array bounds checks: on (default), off, or trap")
 	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (default: ret)")
 	println(c"  --strict              treat warnings as errors and write no output")
-	println(c"  --ast-expressions     experimental AST for grouped scalar expressions")
-	println(c"  --ast-full-expressions try AST at every expression, including runtime imports")
-	println(c"  --ast-audit           full-expression mode plus JSON fallback records on stderr")
-	println(c"  --ast-retain          retain owned traversal trees (experimental, full AST mode)")
-	println(c"  --ast-required        reject any expression fallback (migration coverage gate)")
+	println(c"  --streaming           use the streaming front end instead of the default AST one")
+	println(c"  --ast-expressions     with --streaming: AST for grouped scalar expressions only")
+	println(c"  --ast-full-expressions AST at every expression (the default; kept for scripts)")
+	println(c"  --ast-audit           JSON fallback records on stderr for each streaming fallback")
+	println(c"  --ast-retain          retain owned traversal trees (experimental)")
+	println(c"  --ast-required        reject any expression fallback (coverage gate)")
 	# S2.1
 	println(c"  --ast-emit-retained   emit expressions from the retained AST (implies --ast-retain)")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
@@ -1042,6 +1047,20 @@ int arg_is_help(char* arg):
 # parsing the stream sees it instead of bare stderr; the option is not
 # in any source file, so file is the fixed "<command-line>" marker and
 # line/column are 0.
+# P1.4: --streaming named together with an option that only exists on the
+# AST front end (or a retaining query, reported as --ast-retain).
+void streaming_conflict_error(char* arg):
+	diag_part(c"'--streaming' cannot be combined with '")
+	diag_part(arg)
+	diag_part(c"'")
+	if (diag_json): diag_emit(c"error", c"<command-line>", 0, 0, arg)
+	else:
+		print_error(c"error: ")
+		print_error(str_from_cstr(diag_buffer))
+		print_error(c"\x0a")
+	exit(1)
+
+
 void unrecognized_option_error(char* arg):
 	diag_part(c"unrecognized option: '")
 	diag_part(arg)
@@ -1094,7 +1113,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	analysis_errors = 0
 	retained_clear()
 	ast_retain_mode = retained_query_mode
-	ast_expressions_mode = retained_query_mode * 2
+	# P1.4: every compile takes the AST front end unless --streaming.
+	ast_expressions_mode = 2
 	ast_expressions_emitted = 0
 	ast_simple_statements_emitted = 0
 	ast_debugger_statements_emitted = 0
@@ -1205,6 +1225,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# here too, so the flag covers the whole compile wherever it appears
 	# on the line.
 	int flag_scan = i
+	int streaming_flag = 0
+	char* ast_only_flag = 0
 	while (flag_scan < argc):
 		char** flag_arg = argv + flag_scan * __word_size__
 		if (strcmp(*flag_arg, c"-o") == 0):
@@ -1225,9 +1247,20 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# closure as well as explicit inputs. Never hide that gap.
 			if ((strcmp(*flag_arg, c"--ast-full-expressions") == 0) || (strcmp(*flag_arg, c"--ast-audit") == 0) || (strcmp(*flag_arg, c"--ast-required") == 0) || (strcmp(*flag_arg, c"--ast-retain") == 0)):
 				link_option(*flag_arg, 1)
+				ast_only_flag = *flag_arg
 			# S2.1: so does emission from the retained forest.
-			if (strcmp(*flag_arg, c"--ast-emit-retained") == 0): link_option(*flag_arg, 1)
+			if (strcmp(*flag_arg, c"--ast-emit-retained") == 0):
+				link_option(*flag_arg, 1)
+				ast_only_flag = *flag_arg
+			if (strcmp(*flag_arg, c"--streaming") == 0): streaming_flag = 1
 		flag_scan = flag_scan + 1
+	# P1.4: --streaming selects the streaming front end for every root and
+	# the implicit runtime closure. The AST-only modes (and the retaining
+	# tree / check --all-errors queries) have no streaming meaning.
+	if (streaming_flag):
+		if (ast_retain_mode && (ast_only_flag == 0)): ast_only_flag = c"--ast-retain"
+		if (ast_only_flag != 0): streaming_conflict_error(ast_only_flag)
+		ast_expressions_mode = 0
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
 	import_roots_scan(argc, argv)

@@ -1053,7 +1053,11 @@ void wdbg_fatal_entry(int sig):
 void wdbg_attach_compile(char* target):
 	int n = 4
 	if (__word_size__ == 8): n = 5
-	if (ast_expressions_mode): n = n + 1
+	# The AST front end is link_impl's default; only a streaming or retaining
+	# session needs a flag (two for --streaming --ast-expressions).
+	if (ast_expressions_mode < 2): n = n + 1
+	if (ast_expressions_mode == 1): n = n + 1
+	if (ast_retain_mode): n = n + 1
 	int argv = cast(int, malloc(n * __word_size__))
 	int idx = 0
 	save_word(cast(char*, argv + idx * __word_size__), cast(int, c"wdbg"))
@@ -1061,11 +1065,14 @@ void wdbg_attach_compile(char* target):
 	if (__word_size__ == 8):
 		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"x64"))
 		idx = idx + 1
-	if (ast_expressions_mode):
-		char* ast_flag = c"--ast-expressions"
-		if (ast_expressions_mode >= 2): ast_flag = c"--ast-full-expressions"
-		if (ast_retain_mode): ast_flag = c"--ast-retain"
-		save_word(cast(char*, argv + idx * __word_size__), cast(int, ast_flag))
+	if (ast_expressions_mode < 2):
+		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--streaming"))
+		idx = idx + 1
+	if (ast_expressions_mode == 1):
+		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--ast-expressions"))
+		idx = idx + 1
+	if (ast_retain_mode):
+		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--ast-retain"))
 		idx = idx + 1
 	save_word(cast(char*, argv + idx * __word_size__), cast(int, target))
 	idx = idx + 1
@@ -1077,8 +1084,11 @@ void wdbg_attach_compile(char* target):
 
 int wdbg_main(int argc, int argv):
 	args_init(argc, argv)
-	ast_expressions_mode = args_has_bool_flag(c"ast-expressions")
-	if (args_has_bool_flag(c"ast-full-expressions")): ast_expressions_mode = 2
+	# The AST front end is the default, as in link_impl; --streaming opts
+	# out, and --streaming --ast-expressions is the grouped scalar mode.
+	ast_expressions_mode = 2
+	if (args_has_bool_flag(c"streaming")):
+		ast_expressions_mode = args_has_bool_flag(c"ast-expressions")
 	if (args_has_bool_flag(c"ast-retain")):
 		ast_expressions_mode = 2
 		ast_retain_mode = 1
@@ -1114,7 +1124,7 @@ int wdbg_main(int argc, int argv):
 		exit(wdbg_attach_run(attach_pid, 0))
 
 	if (target == 0):
-		println2(c"usage: wdbg <file.w> [--break_start] [--break_end] [--ast-expressions]")
+		println2(c"usage: wdbg <file.w> [--break_start] [--break_end] [--streaming]")
 		println2(c"   or: wdbg --attach <pid> [file.w]")
 		exit(1)
 

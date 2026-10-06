@@ -75,11 +75,12 @@ Updates since the audit (2026-10-06, against main at 5bbce83). The findings
 below are left as audited; these notes record what has changed since.
 
 - AST and IR: the AST spike (#488) is closed as completed, and the
-  production AST migration has landed on main (merged 2026-10-04). The
-  compiler still generates code in one streaming pass by default.
-  `--ast-full-expressions` turns on the hybrid AST path, `--ast-required`
-  rejects any expression that would fall back to streaming, and
-  `./wbuild ast_expression_suite` runs the test suite that way.
+  production AST migration has landed on main (merged 2026-10-04). Since
+  completion-plan unit P1.4 the AST front end is the default (still one
+  pass: each root is lowered as soon as it is parsed); `--streaming` selects
+  the old streaming front end, `--ast-required` rejects any expression that
+  would fall back to streaming, and `./wbuild ast_expression_suite` runs the
+  test suite that way.
   `--ast-retain` keeps the traversal trees, but they are not yet an
   executable module IR. #489 (an AST in the compiler proper) stays open,
   with a completion plan in

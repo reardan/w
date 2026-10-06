@@ -888,3 +888,20 @@ issues at once on a 4-CPU machine. Friction they reported:
   - `hex_word` includes the `0x` prefix.
   - A crash-report frame at a function's first instruction is
     attributed to the last line of the previous file.
+
+## `bin/wrun wasm` under Node 22 (2026-10-06, AST plan P1.4)
+
+- **Node's WASI runner can crash the wasm self-host.** `verify_wasm` runs
+  `bin/wv2_wasm` through `bin/wrun wasm`, which falls back to
+  `node tools/run_wasm.mjs` when `wasmtime` is not on PATH. With the AST
+  front end as the default, Node 22.22 segfaulted mid-compile of `w.w`:
+  gdb shows a V8 garbage collection triggered by `uvwasi_fd_read`'s
+  external-memory accounting inside a fast API call, crashing while it
+  walks the wasm frames (`InnerPointerToCodeCache::GetCacheEntry`). The
+  same module reaches the fixpoint under wasmtime 25 and under
+  `node --no-turbo-fast-api-calls`, and the streaming front end happens
+  not to hit it. It still crashes after the #569 heap fix, so it is
+  Node's bug, not heap corruption. `tools/run_wasm.mjs` now sets
+  `--no-turbo-fast-api-calls` with `v8.setFlagsFromString` before
+  compiling the module. Still open: say in the `verify_wasm` output which
+  runner was used.

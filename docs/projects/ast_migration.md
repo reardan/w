@@ -10,10 +10,23 @@ history, beginning with task 5, the first production change.
 ## Current production migration status
 
 The numbered tasks below record successive stages; their fallback lists describe
-that stage, and later tasks supersede them. The production compiler remains
-streaming by default. `--ast-full-expressions` enables the hybrid AST path;
-`--ast-required` rejects any runtime expression that still needs streaming.
-Compiler self-host coverage is a narrower gate than full language coverage.
+that stage, and later tasks supersede them. Since completion-plan unit P1.4 the
+production compiler compiles **through the AST front end by default**: every
+root is tried as an AST and falls back to the streaming grammar only where the
+AST declines (an expression too large for the bounded arena;
+`ast_expression_suite` finds no other fallback in the tested corpus, and none
+at all in the compiler). `--streaming` selects the
+streaming front end for the whole program, implicit runtime imports included;
+it cannot be combined with `--ast-full-expressions`, `--ast-audit`,
+`--ast-retain`, `--ast-required` or a retaining query (`tree`,
+`check --all-errors`). `--ast-full-expressions` is now a no-op kept for
+scripts, `--ast-expressions` selects grouped scalar AST only together with
+`--streaming`, and `--ast-required` still rejects any runtime expression that
+would fall back to streaming. The REPL and wdbg follow the same default and
+accept `--streaming`. The pinned seed predates the flip, so the bootstrap
+`./w w.w -o bin/wv2` stage still compiles streaming; `bin/wv2` and every later
+stage compile AST, and images are byte-identical either way. Compiler
+self-host coverage is a narrower gate than full language coverage.
 
 The integrated path prepares and lowers runtime expressions, statements,
 control-flow regions, function boundaries, global layouts, enum constants and
@@ -23,13 +36,18 @@ JSON/protobuf/ndarray builtins, GPU/device operations and diagnostic events.
 First-use composite types remain transactional, and unsigned operations retain
 `main`'s target-word-size semantics.
 
+`verify` now exercises the AST path, and `ast_expression_verify` is the
+streaming oracle: `bin/wv2 --streaming` (and `--streaming --ast-expressions`)
+must reproduce `bin/wv3` on both hosts and reach their own fixpoints.
 `./wbuild ast_expression_suite` generates a required-mode manifest with the
 W-native `wast_audit` tool and runs it serially. Positive direct compiler steps
 and diagnostic fixture children reject expression fallback; expected failures
-use permissive AST mode to preserve diagnostics. Explicit comparison modes,
-pinned seeds and other nested compiler drivers retain their existing modes.
-The positive full-AST image comparison leg also rejects fallback. These gates
-prove the tested corpus, not unrestricted source-language coverage.
+use permissive AST mode to preserve diagnostics. Explicit comparison modes
+(`--ast-*`, `--streaming`), pinned seeds and other nested compiler drivers
+retain their existing modes. Before rewriting, `wast_audit required-manifest`
+fails if a direct compiler step still opts in with a flag the default made
+redundant. These gates prove the tested corpus, not unrestricted
+source-language coverage.
 
 Bodies are still visited incrementally. `--ast-retain` now preserves owned
 production traversal trees (described below), including function/statement
@@ -53,7 +71,10 @@ retired `wc2` resident cache is not part of this implementation.
    `repl/incremental.w` reuses emitted scalar-function prefixes. General module
    invalidation, arbitrary-definition reuse and a resident module cache remain.
 3. Make and validate the production-default migration decision separately from
-   opt-in corpus coverage. Issue #489 remains open for this architectural work.
+   opt-in corpus coverage. P1.4 flips the default; the measurements behind the
+   decision are in "AST front end by default (P1.4)" below. Retiring the
+   streaming grammar (P1.5) waits for a release that carries the flip. Issue
+   #489 remains open for this architectural work.
 
 The forward plan for these milestones, split into parallelizable units
 with file ownership and gates, is [ast_completion_plan.md](ast_completion_plan.md).
@@ -1957,3 +1978,118 @@ emission; the gpu for kernel's prologue and epilogue are walked phases
 that are drained immediately, not deferred; the coverage counter does
 not count function, global or linkage boundaries at all. The tree
 schema is unchanged (**version 2**).
+
+## AST front end by default (P1.4)
+
+`bin/wv2` now compiles through the AST front end unless told otherwise. The
+reset in `compiler/compiler.w` sets `ast_expressions_mode = 2` for every
+compile. `--streaming` is the opt-out; link_impl's flag pre-scan applies it so
+the implicit runtime closure compiles streaming too, and it is an error next
+to `--ast-full-expressions`, `--ast-audit`, `--ast-retain`, `--ast-required`
+or a retaining query (the message names the conflicting flag). `--ast-required`
+keeps its check and changes nothing else. `--ast-full-expressions` is
+accepted and does nothing. `--ast-expressions` means grouped scalar AST only
+after `--streaming`. The REPL and wdbg default to the AST path the same way
+and accept `--streaming`; wdbg's attach recompile forwards `--streaming`,
+`--ast-expressions` and `--ast-retain` as needed.
+
+The gates were inverted. `verify` exercises the AST path because `bin/wv2`
+and every later stage compile AST. Only the bootstrap step differs: the pinned
+v0.3.0 seed still defaults to streaming, so `./w w.w -o bin/wv2` is a
+streaming compile, and `bin/wv2 → wv3 → wv4 → wv5` are AST compiles. The
+fixpoint holds because the two front ends emit the same bytes.
+`ast_expression_verify` now compiles `w.w` with `--streaming` and with
+`--streaming --ast-expressions` on both hosts, compares each against
+`bin/wv3`/`bin/wv3_64` and takes each to its own fixpoint. Before rewriting,
+`wast_audit required-manifest` fails if a direct compiler step still passes
+`--ast-full-expressions`, or `--ast-expressions` without `--streaming`. It
+treats `--streaming` steps as an explicit mode and leaves them alone. The
+baselines in `ast_expression_test` (compile, query, check, REPL and wdbg
+comparisons) now pass `--streaming`, so that test still compares against the
+streaming front end.
+
+Measured on the shared 4-core container, `bin/wv2 … --strict w.w`, median of
+five runs, back to back on a quiet box (load average under 1). "Before" is
+`origin/main` at `2f8b2e1`, compiling its own tree; "after" is this change.
+
+| mode | x86 before | x86 after | x64 before | x64 after |
+| --- | ---: | ---: | ---: | ---: |
+| streaming (default before, `--streaming` after) | 0.813 s | 0.790 s | 0.692 s | 0.675 s |
+| AST (`--ast-full-expressions` before, default after) | 0.902 s | 0.856 s | 0.804 s | 0.796 s |
+| `--ast-required` | 0.862 s | 0.785 s | 0.832 s | 0.777 s |
+| `--ast-retain --ast-required` | 1.49 s | 1.41 s | 1.48 s | 1.35 s |
+| **AST default / streaming** | — | **1.08x** | — | **1.18x** |
+
+Wall-clock noise on this box is about ±8% (the `--ast-required` and default
+rows do the same work). Two earlier runs under load gave 1.12x/1.23x (before)
+and 1.15x/1.25x (after) for x86/x64. Instructions retired (callgrind, one run
+each) are stable: 7.55G vs 6.79G on x86 (1.11x) and 7.71G vs 6.92G on x64
+(1.11x). A small program, `tests/hello.w`, takes 344M vs 294M (1.17x), which
+is mostly the auto-imported runtime. Every image was byte-identical to
+`bin/wv3`/`bin/wv3_64` in every mode. `w.w` compiled for x86, x64, arm64,
+arm64_darwin, win64 and wasm is byte-identical between the default and
+`--streaming`.
+
+On `2f8b2e1`, `./wbuild ast_expression_suite` passed with this change: 888
+targets serially, with 1,080 required-mode steps, 104 expected-failure steps
+and 35 fixture groups, in 12 m 49 s. `./wbuild tests` also passed (888
+targets); one `wbuildd_test` run failed under heavy load and passed on every
+rerun. `verify`, `verify_x64`, `verify_arm64` (qemu) and `verify_win` (wine
+9.0) passed. `verify_wasm` reaches its fixpoint under wasmtime 25 and under
+`node --no-turbo-fast-api-calls`. The plain `bin/wrun wasm` fallback to Node
+22.22 segfaults mid-compile. The crash is a V8 garbage collection inside WASI
+`fd_read`'s fast API call (docs/projects/ai_tooling_next_steps.md); the
+streaming front end does not trigger it. `verify_darwin` needs the arm64
+macOS runner and was not run.
+
+**Rebased onto `4f0efd0` (after #569, #570, #571 and #573-#576).** The two
+blockers found on `df680d1` are fixed on `main`: #571 ports #558's
+conversion warnings and lint rules to the AST front end, so `warning_test`
+and `type_check_lint_test` pass in the default mode, and #569 fixes the
+malloc growth misalignment that corrupted heap block headers. 300
+`bin/wdbg64 tests/debug_fixture.w` sessions in the default mode now all
+pass (it failed about 1-2% before). The Node crash in `verify_wasm` was not
+the heap bug: it still happened after #569, with the same V8 stack (a
+garbage collection from `uvwasi_fd_read`'s external-memory accounting
+inside a fast API call). `tools/run_wasm.mjs` now turns Node's fast API
+calls off with `v8.setFlagsFromString('--no-turbo-fast-api-calls')` before
+it compiles the module, and `verify_wasm` reaches its fixpoint under the
+Node fallback. `ast_parse_cost_test`, `ast_diagnostic_codes_test` and
+`ast_integer32_test` measure a streaming baseline, so they now pass
+`--streaming` for it. `--ast-emit-retained` (S2.1) is rejected next to
+`--streaming` like the other AST-only flags.
+
+On `4f0efd0` with this change, `./wbuild tests` passed (896 targets) and
+`./wbuild ast_expression_suite` passed serially: 896 targets, 1,090
+required-mode steps, 105 expected-failure steps and 35 fixture groups, in
+17 m 56 s on a loaded box. `verify`, `verify_x64`, `verify_arm64` (qemu),
+`verify_win` (wine) and `verify_wasm` (Node 22.22) passed. `w.w` compiled
+for x86, x64, arm64, arm64_darwin, win64 and wasm is byte-identical between
+the default and `--streaming`. `verify_darwin` needs the arm64 macOS runner
+and was not run.
+
+Timings on `49f167c` (the S2.2a base; #573-#576 change only
+`--ast-emit-retained`), `bin/wv2 … --strict w.w`, eleven interleaved runs
+on the shared box under load (load average 6-10); CPU is user plus system
+time. Instructions are from callgrind, one run each.
+
+| mode | x86 wall | x86 CPU | x64 wall | x64 CPU |
+| --- | ---: | ---: | ---: | ---: |
+| `--streaming` | 0.816 s | 0.744 s | 0.688 s | 0.654 s |
+| default (AST) | 0.943 s | 0.879 s | 0.841 s | 0.807 s |
+| `--ast-required` | 0.912 s | 0.861 s | 0.843 s | 0.827 s |
+| `--ast-retain --ast-required` | 1.49 s | 1.37 s | 1.54 s | 1.54 s |
+| **default / streaming** | **1.16x** | **1.18x** | **1.22x** | **1.23x** |
+
+Instructions retired: 7.86G vs 7.16G on x86 (1.10x) and 7.80G vs 7.05G on
+x64 (1.11x). Both hosts stay inside the plan's 1.25x checkpoint, x64 with
+less margin in wall-clock time than in instructions.
+
+What this does not claim. Emission still happens per root during parsing.
+The streaming grammar is still compiled in and maintained; retiring it is
+P1.5, after a release carries this change. Roots too large for the bounded
+arena still fall back to streaming silently unless `--ast-required` is given.
+The `--streaming` conflict error has no diagnostic code row yet (`check
+--json` reports W0000). The Node workaround covers `tools/run_wasm.mjs`
+only; the host-import runners under `tools/web/` keep fast API calls on.
+**#489 remains open.**
