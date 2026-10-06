@@ -34,7 +34,8 @@
 			"storage_native_test": "storage benchmark run (tools/storage/native_test.py)",
 			"wast_audit": "AST audit tool binary",
 			"ast_expression_suite": "AST migration audit; reruns the whole tests umbrella",
-			"wbench": "benchmark driver",
+			"wbench_compare": "hand-run benchmark comparison; wbench_compare_test covers it",
+			"wcoverage_report": "writes a coverage report on demand",
 			"wvm_pool_bench": "benchmark driver",
 			"library_reference": "writes bin/library_reference.md on demand; library_reference_test covers it"
 		},
