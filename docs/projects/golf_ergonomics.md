@@ -105,9 +105,9 @@ error.
 
 New pseudo-methods, lowered like push/pop with the runtime split:
 
-- `l.sort()` — in-place stable insertion sort; int-likes compare as
-  signed words, `char*` by contents (the map/set key rule). Structs,
-  strings and floats are rejected.
+- `l.sort()` — in-place stable merge sort (O(n log n), issue #528);
+  int-likes compare as signed words, `char*` by contents (the map/set
+  key rule). Structs, strings and floats are rejected.
 - `l.sort_by(f)` — comparator returns negative/zero/positive like
   strcmp. Scalar elements pass values; struct elements pass element
   addresses (`__w_list_sort_by_addr` stages the moved element).

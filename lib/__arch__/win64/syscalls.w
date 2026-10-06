@@ -841,3 +841,10 @@ int sys_flock(int fd, int operation):
 
 int sys_openat(int dirfd, char* path, int flags, int mode):
 	return -38
+
+
+# No getrandom here (WASI random_get / BCryptGenRandom are not wired
+# up): ENOSYS, so the built-in map seed (structures/hash_table.w) falls
+# back to address mixing and crypto/random.w to /dev/urandom.
+int sys_getrandom(char* buf, int buflen, int flags):
+	return -38
