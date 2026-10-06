@@ -1,6 +1,11 @@
 compiler/grammar/	the c programming language 2nd edition
 compiler/grammar/	python
 compiler/*	cc500	Edmund GRIMLEY EVANS	edmundo@rano.org
+	cc500 licence: GPL-2.0-or-later (GNU General Public License, version 2 or,
+	at your option, any later version)
+	cc500 copyright: Copyright (C) 2006 Edmund GRIMLEY EVANS <edmundo@rano.org>
+	cc500 source: https://github.com/8l/cc500/blob/master/cc500.c (licence header
+	at the top of the file)
 net/	https://cocomelonc.github.io/tutorial/2021/10/17/linux-shellcoding-2.html
 
 C Interfaces and Implementations https://github.com/drh/cii/tree/master/src
