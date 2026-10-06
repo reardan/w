@@ -34,6 +34,7 @@ int ast_local_declaration(statement_ast* node, char* name):
 		node.declared_type = inferred_storage_type(name, got)
 		sym_declare(name, node.declared_type, 'L', stack_pos, 1)
 		node.binding = table_pos - symbol_data_size
+		sym_note_inferred_location(node.binding, node.line, node.column)
 		lint_track_local(node.binding)
 	else:
 		node.binding = last_declared_symbol
