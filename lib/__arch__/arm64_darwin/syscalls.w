@@ -23,7 +23,8 @@ struct darwin_timeval:
 
 
 # Linux open flag values -> Darwin. Read/write bits (0x3) match; O_CREAT,
-# O_EXCL, O_TRUNC, O_APPEND, O_NONBLOCK and O_DIRECTORY are renumbered.
+# O_EXCL, O_TRUNC, O_APPEND, O_NONBLOCK, O_DIRECTORY and O_CLOEXEC are
+# renumbered.
 int darwin_open_flags(int mode):
 	int flags = mode & 3
 	if (mode & 64):
@@ -38,6 +39,8 @@ int darwin_open_flags(int mode):
 		flags = flags | 4        /* O_NONBLOCK: 0x800 -> 0x4 */
 	if (mode & 65536):
 		flags = flags | 1048576  /* O_DIRECTORY: 0x10000 -> 0x100000 */
+	if (mode & 524288):
+		flags = flags | 16777216 /* O_CLOEXEC: 0x80000 -> 0x1000000 */
 	return flags
 
 
@@ -325,6 +328,26 @@ int dup2(int oldfd, int newfd):
 # POSIX-conformant semantics.
 int kill(int pid, int sig):
 	return syscall(37, pid, sig, 1)
+
+# Darwin has no pipe2: pipe, then mark both ends close-on-exec with
+# fcntl(F_SETFD = 2, FD_CLOEXEC = 1) when flags carries o_cloexec (the
+# Linux value; lib/linux.w). Not atomic against a concurrent fork.
+int pipe2(int* fds, int flags):
+	int err = pipe(fds)
+	if (err < 0): return err
+	if (flags & 524288):
+		sys_fcntl(load_int32(cast(char*, fds)), 2, 1)
+		sys_fcntl(load_int32(cast(char*, fds) + 4), 2, 1)
+	return 0
+
+# setpgid (82): pid 0 means the caller, pgid 0 means "pgid = pid".
+int setpgid(int pid, int pgid):
+	return syscall(82, pid, pgid, 0)
+
+# Darwin has no close_range: -ENOSYS (78), so callers fall back to a
+# close loop.
+int close_range(int first, int last, int flags):
+	return -78
 
 
 # sigaltstack (53): ss/old_ss point at a stack_t {ss_sp, ss_size,

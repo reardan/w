@@ -19,6 +19,35 @@ process_status_running (-1000) and process_status_timeout (-1001);
 both are outside the errno range (-4095..-1), so the three failure kinds
 cannot collide.
 
+Descriptors: process_make_pipe creates its pipes close-on-exec
+(pipe2 + o_cloexec), and a spawned child closes every descriptor above
+2 before execve (close_range, or a close loop up to
+process_close_fd_limit where the kernel lacks it), so a child sees only
+the stdin/stdout/stderr it was given -- never another child's pipe ends
+(which would hold that child's EOF open) or the parent's files and
+sockets. spawn_options.keep_fds = 1 restores plain fork+exec inheritance
+of non-close-on-exec descriptors.
+
+Process groups: spawn_options.new_group = 1 makes the child the leader
+of its own process group (setpgid on both sides of the fork, so the
+group exists whichever side runs first), and every timeout kill in this
+module -- process_wait_or_kill, process_run's deadline, process_free of
+a still-running child -- signals the whole group via process_kill_group,
+so grandchildren (a test's `sleep`, a shell pipeline) die with the
+child. It is opt-in because a child outside the caller's group no longer
+receives the terminal's Ctrl-C (the parent must forward or clean up), a
+background-group child that reads an inherited tty stops on SIGTTIN, and
+callers such as tools/wexec.w sweep their own worker groups and need
+step children to stay inside them. Without new_group, process_kill_group
+still kills the direct child (its kill(-pid) finds no group: only the
+child itself could have created one with its pid as the id).
+
+Reaping: process_free reaps the child. A child that already exited is
+collected with WNOHANG; one still running is SIGKILLed (its group too)
+and then reaped with a blocking wait -- freeing the handle is the last
+chance to collect it, so the alternative would be a guaranteed zombie.
+Callers that want a child to outlive its handle must not free it.
+
 Timeouts poll with WNOHANG + nanosleep against a CLOCK_MONOTONIC deadline
 rather than signal-based timers: x86-64 signal handlers would need an
 SA_RESTORER trampoline the runtime does not provide (see the
@@ -134,6 +163,8 @@ struct spawn_options:
 	int stdin_mode   # process_inherit / process_pipe / process_null
 	int stdout_mode
 	int stderr_mode
+	int new_group    # 1 = child leads its own process group (see the header)
+	int keep_fds     # 1 = child inherits non-close-on-exec fds above 2
 
 
 spawn_options* spawn_options_new():
@@ -143,6 +174,8 @@ spawn_options* spawn_options_new():
 	opts.stdin_mode = process_inherit
 	opts.stdout_mode = process_inherit
 	opts.stderr_mode = process_inherit
+	opts.new_group = 0
+	opts.keep_fds = 0
 	return opts
 
 
@@ -156,10 +189,17 @@ struct process:
 	int win_handle   # Windows: HANDLE from CreateProcessA; 0 on Unix
 
 
-# The kernel writes two 32-bit fds regardless of architecture.
+# Upper bound for the child's close loop when close_range is missing
+# (Linux before 5.9, Darwin): descriptors above it stay open there.
+const int process_close_fd_limit = 1024
+
+
+# The kernel writes two 32-bit fds regardless of architecture. Both ends
+# are close-on-exec: process_redirect's dup2 onto 0/1/2 clears the flag
+# on the copy a child keeps, and no unrelated exec inherits them.
 int process_make_pipe(int* read_end, int* write_end):
 	char* kernel_fds = malloc(8)
-	int err = pipe(cast(int*, kernel_fds))
+	int err = pipe2(cast(int*, kernel_fds), o_cloexec)
 	if (err < 0):
 		free(kernel_fds)
 		return err
@@ -170,10 +210,26 @@ int process_make_pipe(int* read_end, int* write_end):
 
 
 # Child-side helper: point target_fd (0, 1 or 2) at fd and drop the
-# original descriptor.
+# original descriptor. When fd already is target_fd (the parent had that
+# slot closed) there is nothing to dup -- dup2 would be a no-op that
+# leaves close-on-exec set, and arm64's dup3 rejects it -- so just clear
+# the flag.
 void process_redirect(int fd, int target_fd):
+	if (fd == target_fd):
+		sys_fcntl(fd, f_setfd, 0)
+		return
 	dup2(fd, target_fd)
 	if (fd > 2): close(fd)
+
+
+# Child-side helper: close every descriptor from first up, so execve
+# hands the new image only what the caller arranged on 0, 1 and 2.
+void process_close_from(int first):
+	if (close_range(first, -1, 0) == 0): return
+	int fd = first
+	while (fd < process_close_fd_limit):
+		close(fd)
+		fd = fd + 1
 
 
 # Child-side helper: open /dev/null onto target_fd. Mode 0 reads (stdin),
@@ -434,7 +490,10 @@ process* process_spawn(char* path, char** argv, spawn_options* opts):
 		return 0
 
 	if (pid == 0):
-		# Child. Drop the parent's pipe ends first so EOF propagates
+		# Child. Join the new group before anything else, so a
+		# timeout's group kill cannot miss a grandchild forked early.
+		if (opts.new_group): setpgid(0, 0)
+		# Drop the parent's pipe ends first so EOF propagates
 		# (a retained stdin write end would keep the child's stdin
 		# open forever).
 		process_close_fd_if_open(stdin_write)
@@ -450,10 +509,16 @@ process* process_spawn(char* path, char** argv, spawn_options* opts):
 			if (chdir(opts.cwd) < 0): exit(127)
 		char** envp = opts.env
 		if (envp == 0): envp = env_current()
+		if (opts.keep_fds == 0): process_close_from(3)
 		execve(path, argv, envp)
 		exit(127)
 
-	# Parent: drop the child's pipe ends.
+	# Parent: the same setpgid from this side (the shell job-control
+	# idiom), so the group exists before process_spawn returns. Losing
+	# the race to the child's own call (EACCES once it has exec'd) leaves
+	# exactly the intended group, so failure is ignored.
+	if (opts.new_group): setpgid(pid, pid)
+	# Drop the child's pipe ends.
 	process_close_fd_if_open(stdin_read)
 	process_close_fd_if_open(stdout_write)
 	process_close_fd_if_open(stderr_write)
@@ -540,6 +605,18 @@ int process_kill(process* p, int sig):
 	if (p.win_handle != 0):
 		if (TerminateProcess(p.win_handle, 1) == 0): return -1
 		return 0
+	return kill(p.pid, sig)
+
+
+# Like process_kill, but when the child leads its own process group
+# (spawn_options.new_group) every member of that group is signaled too.
+# Safe for any unreaped child: a group whose id is the child's pid can
+# only have been created by the child itself, so kill(-pid) otherwise
+# fails with ESRCH and only the direct child is signaled.
+int process_kill_group(process* p, int sig):
+	if (p.reaped): return 0
+	if (p.win_handle != 0): return process_kill(p, sig)
+	kill(0 - p.pid, sig)
 	return kill(p.pid, sig)
 
 
@@ -634,22 +711,33 @@ int process_wait_timeout(process* p, int timeout_ms):
 	return decoded
 
 
-# Like process_wait_timeout, but on expiry SIGKILLs and reaps the child.
-# Still returns process_status_timeout() in that case; the post-kill raw
-# status is in p.status.
+# Like process_wait_timeout, but on expiry SIGKILLs (with its process
+# group, see process_kill_group) and reaps the child. Still returns
+# process_status_timeout() in that case; the post-kill raw status is in
+# p.status.
 int process_wait_or_kill(process* p, int timeout_ms):
 	int decoded = process_wait_timeout(p, timeout_ms)
 	if (decoded != process_status_timeout):
 		return decoded
-	process_kill(p, sigkill)
+	process_kill_group(p, sigkill)
 	process_wait(p)
 	return process_status_timeout
 
 
+# Close the parent's pipe ends, reap the child, and free the handle. A
+# child still running is SIGKILLed (with its group) first: see "Reaping"
+# in the header. A wait failure (say ECHILD, because the caller reaped
+# the pid with a raw wait4) is not retried.
 void process_free(process* p):
 	process_close_stdin(p)
 	process_close_fd_if_open(p.stdout_fd)
 	process_close_fd_if_open(p.stderr_fd)
+	p.stdout_fd = -1
+	p.stderr_fd = -1
+	if ((p.reaped == 0) && ((p.pid > 0) || (p.win_handle != 0))):
+		if (process_try_wait(p) == process_status_running):
+			process_kill_group(p, sigkill)
+			process_wait(p)
 	free(p)
 
 
@@ -719,8 +807,9 @@ void process_result_free(process_result* result):
 # filling one stream cannot deadlock against the other), and enforce
 # timeout_ms (<= 0 for no timeout; on expiry the child is SIGKILLed and
 # the partial output is returned with status process_status_timeout()).
-# opts may be 0; only its env and cwd fields apply, the stdio modes are
-# forced to pipes. Returns 0 when the spawn itself failed.
+# opts may be 0; only its env, cwd, new_group and keep_fds fields apply,
+# the stdio modes are forced to pipes. With new_group the timeout kill
+# takes the child's whole process group. Returns 0 when the spawn itself failed.
 #
 # The _bytes variants take stdin's length explicitly, so the input may
 # contain embedded NUL bytes; process_run/process_run_windows measure
@@ -736,6 +825,8 @@ process_result* process_run_windows_bytes(char* path, char** argv, spawn_options
 	if (opts != 0):
 		run_opts.env = opts.env
 		run_opts.cwd = opts.cwd
+		run_opts.new_group = opts.new_group
+		run_opts.keep_fds = opts.keep_fds
 	run_opts.stdin_mode = process_pipe
 	run_opts.stdout_mode = process_pipe
 	run_opts.stderr_mode = process_pipe
@@ -822,6 +913,8 @@ process_result* process_run_bytes(char* path, char** argv, spawn_options* opts, 
 	if (opts != 0):
 		run_opts.env = opts.env
 		run_opts.cwd = opts.cwd
+		run_opts.new_group = opts.new_group
+		run_opts.keep_fds = opts.keep_fds
 	run_opts.stdin_mode = process_pipe
 	run_opts.stdout_mode = process_pipe
 	run_opts.stderr_mode = process_pipe
@@ -871,7 +964,7 @@ process_result* process_run_bytes(char* path, char** argv, spawn_options* opts, 
 			if (ready < 0): timed_out = 1
 			if (ready == 0): timed_out = 1
 		if (timed_out):
-			process_kill(p, sigkill)
+			process_kill_group(p, sigkill)
 			process_close_stdin(p)
 			stdout_open = 0
 			stderr_open = 0
