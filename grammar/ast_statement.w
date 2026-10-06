@@ -266,6 +266,7 @@ int ast_statement_block():
 	get_token()
 	node.binding = table_pos
 	node.stack_depth = stack_pos
+	dwarf_block_begin()
 	int start_tab_level = tab_level
 	if (kind == ast_stmt_indent_block): print_int_v1(c"starting stack_pos: ", stack_pos)
 	node.function_body = defer_function_body_pending
@@ -290,6 +291,7 @@ int ast_statement_block():
 	node.end_offset = token_start_offset
 	emit_block_ast_deferred(&node)
 	lint_scope_exit(node.binding)
+	dwarf_block_end()
 	table_pos = node.binding
 	if (kind == ast_stmt_indent_block): print_int_v1(c"ending stack_pos: ", stack_pos)
 	emit_block_ast_end(&node)

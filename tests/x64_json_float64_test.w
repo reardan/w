@@ -296,3 +296,51 @@ void test_non_finite_bits_stringify_as_null():
 	assert_strings_equal(c"null", text)
 	free(text)
 	json_free(v)
+
+
+# Issue #529: parsing is correctly rounded from the full text (the old
+# 17-digit double-double path read this subnormal boundary one ulp
+# high), and DBL_MAX prints as its shortest spelling instead of 2e308.
+void test_issue_529_edges():
+	json_value* v = json_parse(c"2.2250738585072011e-308")
+	assert1(v != 0)
+	assert_f64_bits(cast(int, 0xffffffff), 0x000fffff, f64_from_halves(v.float64_bits & ((1 << 32) - 1), v.float64_bits >> 32))
+	json_free(v)
+
+	jf_reading r
+	r.name = c"m"
+	r.a = 1.7976931348623157e308
+	r.b = 4.9406564584124654e-324
+	json_value* tree = to_json(r)
+	char* text = json_stringify(tree)
+	assert_strings_equal(c"{\x22name\x22:\x22m\x22,\x22a\x22:1.7976931348623157e308,\x22b\x22:5e-324}", text)
+	free(text)
+	json_free(tree)
+
+	# overflow saturates to the largest finite value instead of inf
+	v = json_parse(c"-1e400")
+	assert1(v != 0)
+	assert_f64_bits(cast(int, 0xffffffff), cast(int, 0xffefffff), f64_from_halves(v.float64_bits & ((1 << 32) - 1), v.float64_bits >> 32))
+	json_free(v)
+
+
+# stringify -> parse is bit-exact over pseudo-random finite patterns.
+void test_random_bits_round_trip():
+	int state = 529
+	int i = 0
+	while (i < 2000):
+		# xorshift64 (wide multiplier literals cannot be spelled)
+		state = state ^ (state << 13)
+		state = state ^ shr(state, 7)
+		state = state ^ (state << 17)
+		int bits = state
+		if (((bits >> 52) & 0x7ff) != 0x7ff):
+			json_value* v = json_float64_from_bits(bits)
+			char* text = json_stringify(v)
+			json_value* back = json_parse(text)
+			assert1(back != 0)
+			assert_equal_hex(bits, back.float64_bits)
+			json_free(v)
+			json_free(back)
+			free(text)
+		i = i + 1

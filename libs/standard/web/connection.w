@@ -9,10 +9,10 @@
 # #204: socket_set_recv_timeout/socket_set_send_timeout bound every wait
 # so a stalled peer can never wedge the server), plus an optional TLS
 # transport wired by libs/standard/net/tls.w's server role (tls_accept).
-# A server ConnectionContext is always blocking:
-# server_context_accept_loop() completes accept()/tls_accept() before a
-# ConnectionContext exists, so there is no connect step to interleave,
-# and one blocking-with-timeout code path serves both http and https
+# A blocking server ConnectionContext (a caller running its own accept
+# loop, such as tools/wdbg_web.w) is built after accept()/tls_accept()
+# complete, so there is no connect step to interleave, and one
+# blocking-with-timeout code path serves both http and https
 # identically (the caller passes tls == 0 for plain, or the tls_conn*
 # from tls_accept).
 #
@@ -23,7 +23,7 @@
 # codes instead of connection_error_*.
 #
 # Task mode (docs/projects/async.md): http_server.w's
-# server_context_serve_tasks hands in NON-blocking sockets and runs each
+# server_context_accept_loop/serve_tasks hand in NON-blocking sockets and runs each
 # connection in its own task. The same code paths then see EAGAIN and
 # park the task through lib/io_wait.w (up to timeout_ms per wait)
 # instead of blocking the thread; outside a task io_wait fails at once,
@@ -115,9 +115,9 @@ char* connection_error_string(int code):
 const int connection_max_line_bytes = 8192
 
 
-# fd must already be a connected/accepted socket with SO_RCVTIMEO/
-# SO_SNDTIMEO armed to timeout_ms (server_context_accept_loop does this
-# before constructing a ConnectionContext); tls is the completed
+# fd must already be a connected/accepted socket, either blocking with
+# SO_RCVTIMEO/SO_SNDTIMEO armed to timeout_ms or non-blocking inside a
+# task (http_server.w's connection tasks); tls is the completed
 # tls_accept() connection for https, or 0 for plain http. Ownership of
 # both fd and tls transfers to the ConnectionContext.
 ConnectionContext* connection_context_new(int fd, int timeout_ms, tls_conn* tls):

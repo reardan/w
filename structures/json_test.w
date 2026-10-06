@@ -1,4 +1,5 @@
 # wbuild: x64 group=wasm_json_test@wasm
+# wbuild: step="bin/json_test" env="W_TEST_LEAKS=1" expect_stdout="0 failed, 0 skipped [leak check]"
 import lib.testing
 import structures.json
 import structures.string
@@ -273,6 +274,21 @@ void test_float_stringify():
 	free(text)
 	json_free(first)
 	json_free(second)
+
+
+# float32 values print their shortest round-trip spelling (issue #529)
+void test_float_shortest_stringify():
+	json_value* value = json_float(0.1)
+	char* text = json_stringify(value)
+	assert_strings_equal(c"0.1", text)
+	free(text)
+	json_free(value)
+	value = json_float(3.40282346e38)
+	text = json_stringify(value)
+	assert_strings_equal(c"3.4028235e38", text)
+	free(text)
+	json_free(value)
+	assert_json_parses_float(c"3.4028235e38", 3.40282346e38)
 
 
 void test_float_nonfinite_stringify():

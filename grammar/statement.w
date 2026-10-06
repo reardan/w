@@ -149,6 +149,18 @@ void if_statement_tail():
 	be_ctrl_end(p1)
 
 
+# A 'return' value about to draw a type-mismatch warning: point the
+# --json record's related note at the enclosing function's declaration
+# (C3.2). Only when the warning is certain to follow, so the note can
+# never attach to some later diagnostic instead.
+void return_mismatch_note(int declared_type, int return_type):
+	if ((diag_json == 0) || (current_function_symbol < 0)): return
+	if (types_compatible_with_expression(declared_type, return_type)): return
+	char* name = sym_record_name(current_function_symbol)
+	if (name == 0): return
+	sym_note_related(current_function_symbol, c"function '", name, c"' is declared here")
+
+
 void return_statement_tail():
 	# Each 'gpu for' iteration is one GPU thread: there is no host
 	# frame to return from inside the outlined body.
@@ -159,6 +171,7 @@ void return_statement_tail():
 		int return_type = expression()
 		return_type = promote(return_type)
 		int declared_type = load_int(table + current_function_symbol + 6)
+		return_mismatch_note(declared_type, return_type)
 		if ((type_num_args(declared_type) > 0) & (type_num_args(return_type) > 0)):
 			if (types_compatible_with_expression(declared_type, return_type) == 0):
 				warn_type_mismatch(c"return", declared_type, return_type)
@@ -237,6 +250,7 @@ void statement_impl():
 	else if (accept(c"{")) {
 		int n = table_pos
 		int s = stack_pos
+		dwarf_block_begin()
 		int is_function_body = defer_function_body_pending
 		defer_function_body_pending = 0
 		int brace_after_jump = 0
@@ -249,6 +263,7 @@ void statement_impl():
 		# still in scope
 		if (is_function_body): defer_emit_all()
 		lint_scope_exit(n)
+		dwarf_block_end()
 		table_pos = n
 		pop_to(s)
 	}
@@ -259,6 +274,7 @@ void statement_impl():
 		get_token()
 		int n = table_pos
 		int s = stack_pos
+		dwarf_block_begin()
 		int start_tab_level = tab_level
 		print_int_v1(c"starting stack_pos: ", stack_pos)
 		int is_function_body = defer_function_body_pending
@@ -281,6 +297,7 @@ void statement_impl():
 		# still in scope
 		if (is_function_body): defer_emit_all()
 		lint_scope_exit(n)
+		dwarf_block_end()
 		table_pos = n
 		print_int_v1(c"ending stack_pos: ", stack_pos)
 		pop_to(s)

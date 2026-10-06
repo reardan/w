@@ -1,5 +1,6 @@
 import examples.web.common
 import lib.http
+import lib.path
 
 
 void web_file_server_usage():
@@ -44,10 +45,12 @@ int web_file_path_is_safe(char* path):
 	return 1
 
 
+# The file to serve, resolved under the current directory (the served
+# root); 0 when the path would leave it (lib/path.w's path_join_within).
 char* web_file_local_path(char* request_path):
 	while (request_path[0] == '/'): request_path = request_path + 1
-	if (request_path[0] == 0): return c"index.html"
-	return request_path
+	if (request_path[0] == 0): return strclone(c"index.html")
+	return path_join_within(c".", request_path)
 
 
 void web_file_stream_file(int client, char* path):
@@ -108,8 +111,12 @@ int main(int argc, int argv):
 		web_file_write_text_response(client, 403, c"Forbidden", c"parent directories are not allowed\n")
 	else:
 		char* local_path = web_file_local_path(request_path)
-		print_string(c"serving ", local_path)
-		web_file_stream_file(client, local_path)
+		if (local_path == 0):
+			web_file_write_text_response(client, 403, c"Forbidden", c"path leaves the served directory\n")
+		else:
+			print_string(c"serving ", local_path)
+			web_file_stream_file(client, local_path)
+			free(local_path)
 
 	free(request)
 	close(client)

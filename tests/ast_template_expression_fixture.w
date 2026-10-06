@@ -36,7 +36,7 @@ int main():
 	if (scalar != s"65/1/-7"): return 11
 	float32 real = 1.5
 	string decimal = (f"{real}")
-	if (decimal != s"1.500000"): return 12
+	if (decimal != s"1.5"): return 12
 	if ((f"{n}".length) != 2): return 13
 	char* raw = (f"n={n}")
 	if (ast_template_c_length(raw) != 4): return 14

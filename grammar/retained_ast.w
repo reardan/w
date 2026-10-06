@@ -1,10 +1,29 @@
+# A debug file index names one path for the whole process; every index
+# outside the table names the empty path and shares the key -1.
+int retained_file_key(int index):
+	if ((index < 0) || (index >= debug_file_count)): return -1
+	return index
+
+
+# Newest source version recorded for a debug file index, or -1.
+int retained_file_source(int index):
+	retained_init()
+	if ((index < 0) || (index >= debug_file_count)): return retained_source_find(debug_file_name(index))
+	while (retained_file_sources.length <= index): retained_file_sources.push(-2)
+	int source = retained_file_sources[index]
+	if (source == -2):
+		source = retained_source_find(debug_file_name(index))
+		retained_file_sources[index] = source
+	return source
+
+
 # Copy the semantic type graph before temporary compiler tables are reused.
 # Cache entries are invalidated at source-version boundaries and rollback.
 # Exact record comparison also detects forward records completed in the same source.
 int retained_type_matches(retained_type* type, type_rec* original):
 	if (type.building): return 1
 	if (strcmp(type.name, original.name) != 0): return 0
-	if (strcmp(type.file, debug_file_name(original.decl_file_index)) != 0): return 0
+	if (type.file_index != retained_file_key(original.decl_file_index)): return 0
 	if ((type.line != original.decl_line) || (type.column != original.decl_column)): return 0
 	if ((type.kind != original.kind) || (type.size != original.total_size) || (type.pointer_level != original.pointer_level)): return 0
 	if ((type.origin_target != original.alias_target) || (type.origin_return != original.fn_return_type) || (type.origin_parameters != original.fn_param_count)): return 0
@@ -39,11 +58,10 @@ int retained_type_note(int index):
 		if (retained_type_matches(retained_types[existing], original)): return existing
 	if (retained_types == 0): retained_types = new list[retained_type*]
 	retained_type* type = new retained_type
-	type.name = strclone(original.name)
-	type.file = strclone(debug_file_name(original.decl_file_index))
-	type.source = -1
-	for i in range(retained_sources.length):
-		if (strcmp(retained_sources[i].path, type.file) == 0): type.source = i
+	type.name = retained_intern(original.name)
+	type.file = retained_intern(debug_file_name(original.decl_file_index))
+	type.file_index = retained_file_key(original.decl_file_index)
+	type.source = retained_file_source(original.decl_file_index)
 	type.line = original.decl_line
 	type.column = original.decl_column
 	type.kind = original.kind
@@ -75,7 +93,7 @@ int retained_type_note(int index):
 		for i in range(original.fn_param_count): type.parameters.push(retained_type_note(original.fn_param_types[i]))
 	for i in range(original.num_fields):
 		retained_field* field = new retained_field
-		field.name = strclone(original.field_names[i])
+		field.name = retained_intern(original.field_names[i])
 		field.type = retained_type_note(original.field_types[i])
 		field.offset = type_get_field_offset_at(index, i)
 		type.fields.push(field)
@@ -83,18 +101,39 @@ int retained_type_note(int index):
 		for i in range(enum_constants.length):
 			if (enum_constants[i].type == index):
 				retained_constant* member = new retained_constant
-				member.name = strclone(enum_constants[i].name)
+				member.name = retained_intern(enum_constants[i].name)
 				member.value = enum_constants[i].value
 				type.constants.push(member)
 	type.building = 0
 	return id
 
 
-void retained_key_int(char* key, int value):
-	char* text = itoa(value)
-	strappend(key, text)
-	strappend(key, c":")
-	free(text)
+# Append value and a ':' separator at key[at]; returns the new length.
+int retained_key_int(char* key, int at, int value):
+	if (value < 0):
+		key[at] = '-'
+		at = at + 1
+		value = 0 - value
+	int begin = at
+	while (1):
+		key[at] = '0' + value % 10
+		at = at + 1
+		value = value / 10
+		if (value == 0): break
+	int last = at - 1
+	while (begin < last):
+		int swap = key[begin]
+		key[begin] = key[last]
+		key[last] = swap
+		begin = begin + 1
+		last = last - 1
+	key[at] = ':'
+	return at + 1
+
+
+int retained_key_text(char* key, int at, char* text, int length):
+	for i in range(length): key[at + i] = text[i]
+	return at + length
 
 
 int retained_binding_note(int sym, int owner):
@@ -110,36 +149,42 @@ int retained_binding_note(int sym, int owner):
 	if (sym_index_offset(low) != sym): return -1
 	char* name = table + sym_index_name_start(low)
 	int scope = table[sym + 1]
-	char* path = debug_file_name(load_int(table + sym + 66))
+	int file_index = load_int(table + sym + 66)
+	char* path = debug_file_name(file_index)
 	int line = load_int(table + sym + 70)
 	int column = load_int(table + sym + 74)
-	int source = -1
-	for i in range(retained_sources.length):
-		if (strcmp(retained_sources[i].path, path) == 0): source = i
+	int source = retained_file_source(file_index)
 	int declaration = owner
 	if ((scope == 'L') || (scope == 'A')):
 		while ((owner >= 0) && (retained_nodes[owner].kind != retained_function)): owner = retained_nodes[owner].parent
 	else: owner = -1
-	char* key = malloc(strlen(path) + strlen(name) + 160)
-	key[0] = 0
-	retained_key_int(key, source)
-	retained_key_int(key, owner)
-	retained_key_int(key, scope)
-	retained_key_int(key, line)
-	retained_key_int(key, column)
-	retained_key_int(key, strlen(path))
-	strappend(key, path)
-	strappend(key, name)
-	if (retained_binding_cache == 0): retained_binding_cache = new map[char*, int]
-	if (key in retained_binding_cache):
-		int existing = retained_binding_cache[key]
-		free(key)
-		return existing
+	# A debug file index names exactly one path for the whole process, so
+	# it identifies the declaring file as the path itself would.
+	int name_length = strlen(name)
+	if (retained_key_capacity < name_length + 160):
+		if (retained_key_buffer != 0): free(retained_key_buffer)
+		retained_key_capacity = name_length + 256
+		retained_key_buffer = malloc(retained_key_capacity)
+	char* key = retained_key_buffer
+	int at = retained_key_int(key, 0, source)
+	at = retained_key_int(key, at, owner)
+	at = retained_key_int(key, at, scope)
+	at = retained_key_int(key, at, line)
+	at = retained_key_int(key, at, column)
+	at = retained_key_int(key, at, file_index)
+	at = retained_key_text(key, at, name, name_length)
+	key[at] = 0
+	if (retained_binding_cache == 0):
+		retained_binding_cache = new map[char*, int]
+		retained_binding_origins = new map[int, int]
+	int existing = retained_binding_cache.get(key, -1)
+	if (existing >= 0): return existing
+	key = strclone(key)
 	if (retained_bindings == 0): retained_bindings = new list[retained_binding*]
 	retained_binding* binding = new retained_binding
 	binding.key = key
-	binding.name = strclone(name)
-	binding.file = strclone(path)
+	binding.name = retained_intern(name)
+	binding.file = retained_intern(path)
 	binding.line = line
 	binding.column = column
 	# Inferred declarations bind after parsing the initializer. Their raw
@@ -162,14 +207,17 @@ int retained_binding_note(int sym, int owner):
 	# Forward declarations and their eventual definition share a linkage
 	# identity. A later REPL definition starts a new identity; no surviving
 	# record is mutated, so suffix rollback needs no semantic undo log.
+	# The origin chain visits exactly the earlier bindings with this raw
+	# symbol offset, newest first, as a backwards scan of all bindings would.
+	binding.origin_previous = retained_binding_origins.get(sym, -1)
 	if ((scope == 'U') || (scope == 'D')):
-		int previous = retained_bindings.length
-		while (previous > 0):
-			previous = previous - 1
+		int previous = binding.origin_previous
+		while (previous >= 0):
 			retained_binding* candidate = retained_bindings[previous]
-			if ((candidate.origin == sym) && (strcmp(candidate.name, name) == 0)):
+			if (strcmp(candidate.name, name) == 0):
 				if (candidate.scope == 'U'): binding.linkage = candidate.linkage
 				break
+			previous = candidate.origin_previous
 	binding.return_type = -1
 	binding.parameters = new list[int]
 	if (load_int(table + sym + 10) == 2):
@@ -179,6 +227,7 @@ int retained_binding_note(int sym, int owner):
 	int id = retained_bindings.length
 	retained_bindings.push(binding)
 	retained_binding_cache[key] = id
+	retained_binding_origins[sym] = id
 	return id
 
 
@@ -196,14 +245,13 @@ void retained_expression_note(expression_ast* tree, int root):
 	owner.readonly = tree.readonly
 	owner.whole_expression = tree.whole_expression
 	owner.final_token_offset = tree.final_token_offset
+	# One copy of each temporary arena into the session text arena; string
+	# literal operands below are slices of this copy, not separate copies.
 	owner.arena_text_length = tree.text_used
-	owner.arena_text = malloc(tree.text_used + 1)
-	for i in range(tree.text_used): owner.arena_text[i] = tree.text[i]
-	owner.arena_text[tree.text_used] = 0
+	owner.arena_text = retained_text_copy(tree.text, tree.text_used)
 	owner.arena_type_names_length = tree.type_names_used
-	owner.arena_type_names = malloc(tree.type_names_used + 1)
-	for i in range(tree.type_names_used): owner.arena_type_names[i] = tree.type_names[i]
-	owner.arena_type_names[tree.type_names_used] = 0
+	owner.arena_type_names = retained_text_copy(tree.type_names, tree.type_names_used)
+	char* arena_text = owner.arena_text
 	for i in range(tree.count):
 		int id = retained_add(retained_expression, group, owner.source, tree.offset[i], 0, 0, c"")
 		retained_node* node = retained_nodes[id]
@@ -232,41 +280,39 @@ void retained_expression_note(expression_ast* tree, int root):
 		node.infer_want = retained_type_note(tree.infer_want[i])
 		int type = type_real(tree.result_type[i])
 		if ((type >= 0) && (type < type_count())):
-			node.result_type = strclone(type_get_name(type))
+			node.result_type = retained_intern(type_get_name(type))
 			node.type_size = type_get_size(type)
 			node.type_pointer_level = type_get_pointer_level(type)
 		# These opcodes always carry a symbol-table binding. Other opcodes
 		# overload the same slot with type/format/diagnostic information.
 		int op = tree.op[i]
-		if ((op == 'G') || (op == 'W')): node.payload_text = strclone(generic_def_name(tree.value[i]))
+		if ((op == 'G') || (op == 'W')): node.payload_text = retained_intern(generic_def_name(tree.value[i]))
 		if (op == ast_warning):
 			if ((node.high == 0) || (node.high == 6) || (node.high == 7)):
-				node.payload_text = strclone(cast(char*, tree.value[i]))
+				node.payload_text = retained_intern(cast(char*, tree.value[i]))
 				node.value = 0
 			if ((node.high == 1) || (node.high == 2) || (node.high == 5)):
 				char* message = table + tree.value[i]
 				if ((node.high == 5) && tree.symbol[i]): message = c"it"
-				node.payload_text = strclone(message)
+				node.payload_text = retained_intern(message)
 				node.value = 0
 		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l')):
 			char* name = table + tree.value[i]
 			if (tree.binding_name[i] >= 0): name = &tree.text[tree.binding_name[i]]
-			node.payload_text = strclone(name)
+			node.payload_text = retained_intern(name)
 			node.value = 0
 		if ((op == 0) || (op == 'c') || (op == 'h') || (op == 'f')):
 			node.literal_value = tree.value[i]
 			if ((op == 'f') && (word_size == 8)): node.literal_high = tree.high[i]
 		if ((op == 's') || (op == 'S') || (op == 't')):
 			node.literal_length = tree.high[i]
-			node.literal_text = malloc(node.literal_length + 1)
-			for j in range(node.literal_length): node.literal_text[j] = tree.text[tree.value[i] + j]
-			node.literal_text[node.literal_length] = 0
+			node.literal_text = &arena_text[tree.value[i]]
 		if ((op == 'v') || (op == 'C') || (op == 'X') || (op == 'z') || (op == 'l') || (op == 'G') || (op == 'W')):
 			node.binding = retained_binding_note(tree.symbol[i], group)
 			if (node.binding >= 0):
 				retained_binding* binding = retained_bindings[node.binding]
-				node.binding_name = strclone(binding.name)
-				node.binding_file = strclone(binding.file)
+				node.binding_name = binding.name
+				node.binding_file = binding.file
 				node.binding_line = binding.line
 				node.binding_column = binding.column
 				node.binding_scope = binding.scope
@@ -283,18 +329,23 @@ void retained_declaration_note(char* name, char* kind, int start, int end, int l
 	int module = retained_sources[source].root
 	int id = retained_add(retained_declaration, module, source, start, line, column, name)
 	retained_nodes[id].end = end
-	retained_nodes[id].result_type = strclone(kind)
+	retained_nodes[id].result_type = retained_intern(kind)
 	retained_semantic_invalidate()
 	if ((strcmp(kind, c"function") == 0) || (strcmp(kind, c"global") == 0) || (strcmp(kind, c"const") == 0)):
 		retained_nodes[id].binding = retained_binding_note(sym_probe(name), id)
 		if (retained_nodes[id].binding >= 0): retained_nodes[id].semantic_type = retained_bindings[retained_nodes[id].binding].type
 	else: retained_nodes[id].semantic_type = retained_type_note(type_lookup(name))
-	int cursor = retained_sources[source].declaration_cursor
-	retained_sources[source].declaration_cursor = id + 1
-	for i in range(cursor, id):
+	retained_source* input = retained_sources[source]
+	input.declaration_cursor = id + 1
+	# Only this module's own top-level children since the previous
+	# declaration can be adopted; the declaration itself is the last entry.
+	list[int] top = input.top_level
+	for k in range(input.top_cursor, top.length):
+		int i = top[k]
+		if (i >= id): continue
 		retained_node* child = retained_nodes[i]
-		if ((child.parent == module) && (child.source == source) && (child.start >= start) && (child.end <= end)):
-			child.parent = id
+		if ((child.parent == module) && (child.start >= start) && (child.end <= end)): child.parent = id
+	input.top_cursor = top.length
 
 
 # Imports remain explicit module children even when their target has already
@@ -306,8 +357,8 @@ void retained_import_note(char* spelling, char* path, char* alias, int start, in
 	int id = retained_add(retained_import, retained_sources[source].root, source, start, line, column, spelling)
 	retained_node* node = retained_nodes[id]
 	node.end = end
-	node.import_path = strclone(path)
-	if (alias != 0): node.import_alias = strclone(alias)
+	node.import_path = retained_intern(path)
+	if (alias != 0): node.import_alias = retained_intern(alias)
 
 
 # Inventory declarations even when no expression refers to them. The parent
@@ -345,6 +396,13 @@ void retained_function_parameters(int binding):
 	if (retained_parent >= 0):
 		retained_nodes[retained_parent].binding = retained_binding_note(binding, retained_parent)
 	sym_index_sync()
-	for i in range(sym_index_count):
+	# The index is sorted by offset: start at the first symbol after binding.
+	int low = 0
+	int high = sym_index_count
+	while (low < high):
+		int mid = (low + high) / 2
+		if (sym_index_offset(mid) <= binding): low = mid + 1
+		else: high = mid
+	for i in range(low, sym_index_count):
 		int sym = sym_index_offset(i)
-		if ((sym > binding) && (table[sym + 1] == 'A')): retained_local_note(sym)
+		if (table[sym + 1] == 'A'): retained_local_note(sym)

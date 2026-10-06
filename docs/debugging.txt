@@ -1,6 +1,17 @@
 Current state:
 
 	the compiler emits DWARF line-number information for gdb
+	ELF outputs also carry DWARF debugging information entries (#536,
+	code_generator/dwarf_info.w): a DW_TAG_subprogram per framed
+	function (pc range, declaration line, return type), its parameters
+	and locals with frame-base locations inside nested lexical blocks,
+	and the base/pointer/struct/union/T[N] types they use, so gdb's
+	'info args', 'info locals', 'print p.x' and 'ptype' work. x86/x64
+	also get .debug_frame CFI (push fp ; mov fp,sp ... leave ; ret) for
+	exact backtraces at every instruction of a framed function. arm64 ELF has the entries
+	(frame base x29) but no CFI yet. Mach-O keeps the line table only;
+	PE images carry the ELF-format sections in their embedded stand-in
+	ELF table, which Windows debuggers do not read.
 	the debugger statement emits int3
 	repl.w provides an in-process interactive prompt
 	repl compile errors return to the prompt

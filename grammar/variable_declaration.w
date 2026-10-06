@@ -36,6 +36,7 @@ void inferred_redeclaration_check(char* name):
 	if (existing < 0): return;
 	int visibility = table[existing + 1]
 	if ((visibility == 'L') || (visibility == 'A')):
+		sym_note_related(existing, c"'", name, c"' is declared here")
 		error3(c"':=' redeclares '", name, c"'; use '=' to assign, or a typed declaration to shadow")
 
 
@@ -86,6 +87,7 @@ int inferred_declaration():
 	# initializer, so the initializer cannot reference the new name and
 	# the recorded slot index needs no post-expression fixup.
 	sym_declare(name, type, 'L', stack_pos, 1)
+	sym_note_inferred_location(table_pos - symbol_data_size, node.line, node.column)
 	lint_track_local(table_pos - symbol_data_size)
 	free(name)
 	pointer_indirection = 0

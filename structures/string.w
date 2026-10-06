@@ -237,43 +237,6 @@ void __w_template_fmt(string_builder* s, int value, int kind, int width, int pre
 	free(buffer)
 
 
-# '{value}' / '{value:spec}' of a float32: precision digits (6 when the
-# spec gives none), rounded half up.
-void __w_template_float(string_builder* s, float f, int width, int precision, int flags):
-	if (precision < 0): precision = 6
-	char* buffer = malloc(precision + 48)
-	int pos = 0
-	if (f < 0.0):
-		buffer[pos] = '-'
-		pos = pos + 1
-		f = -f
-	float half = 0.5
-	int i = 0
-	while (i < precision):
-		half = half / 10.0
-		i = i + 1
-	f = f + half
-	int whole = f
-	char* digits = itoa(whole)
-	__w_template_copy(buffer + pos, digits, strlen(digits))
-	pos = pos + strlen(digits)
-	free(digits)
-	if (precision > 0):
-		buffer[pos] = '.'
-		pos = pos + 1
-		float frac = f - whole
-		i = 0
-		while (i < precision):
-			frac = frac * 10.0
-			int digit = frac
-			buffer[pos] = digit + '0'
-			pos = pos + 1
-			frac = frac - digit
-			i = i + 1
-	__w_template_pad(s, buffer, pos, width, flags)
-	free(buffer)
-
-
 void string_clear(string_builder* s):
 	s.length = 0
 	s.data[0] = 0

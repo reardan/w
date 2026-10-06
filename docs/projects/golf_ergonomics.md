@@ -61,9 +61,9 @@ assignment target.
 
 `print(` / `println(` intercept in primary_expr (the to_json pattern)
 and dispatch on the argument's static type, compile time only: int-likes
-as decimals, `char*`/`string` bytes, float32 through a private ftoa
-clone, `var` through `__w_var_to_cstr`, and `list[T]` of scalars as
-`[a, b, c]`. `println()` with no argument emits just the newline.
+as decimals, `char*`/`string` bytes, float32 through lib/float_text.w's
+shortest round-trip formatter (ftoa's spelling), `var` through
+`__w_var_to_cstr`, and `list[T]` of scalars as `[a, b, c]`. `println()` with no argument emits just the newline.
 Unsupported types (maps, sets, structs, non-char pointers, float64) are
 compile errors. lib/lib.w keeps its `print(string)` / `println(string)`
 functions and call sites behave identically for those types, so existing
@@ -105,9 +105,9 @@ error.
 
 New pseudo-methods, lowered like push/pop with the runtime split:
 
-- `l.sort()` — in-place stable insertion sort; int-likes compare as
-  signed words, `char*` by contents (the map/set key rule). Structs,
-  strings and floats are rejected.
+- `l.sort()` — in-place stable merge sort (O(n log n), issue #528);
+  int-likes compare as signed words, `char*` by contents (the map/set
+  key rule). Structs, strings and floats are rejected.
 - `l.sort_by(f)` — comparator returns negative/zero/positive like
   strcmp. Scalar elements pass values; struct elements pass element
   addresses (`__w_list_sort_by_addr` stages the moved element).
@@ -333,8 +333,8 @@ lowerings.
 ### it-expressions (grammar/list_builtin.w, structures/w_list.w)
 
 Decision: an expression argument, not a closure. W has no lambdas
-(issue #107), and a closure would need captured-environment machinery
-the single-pass compiler does not have. Instead a list method argument
+(issue #107 was closed as not planned), and a closure would need
+captured-environment machinery the single-pass compiler does not have. Instead a list method argument
 that mentions the identifier `it` is compiled as an INLINE loop in the
 current function, so the enclosing function's locals are visible for
 free:
@@ -422,7 +422,8 @@ boundary (the generic-instantiation deferral: record the span, emit the
 address through a backpatch chain, re-parse later), which needs an
 expression-bodied variant of `function_definition` and the drivers'
 top-level hook. it-expressions cover the single-element cases inline,
-so this stays open (issue #107).
+so lambdas are not planned: issue #107 was closed as not planned in July
+2026, and the compiler has no lambda syntax.
 
 ### String comparison and switch (grammar/equality_expr.w, grammar/switch_statement.w)
 

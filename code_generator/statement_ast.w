@@ -29,6 +29,7 @@ void emit_statement_ast_expression(statement_ast* node):
 void emit_statement_ast_value(statement_ast* node):
 	if (node.expression_root < 0): return
 	int type = promote(node.expression_type)
+	if (node.kind != ast_stmt_yield): return_mismatch_note(node.declared_type, type)
 	if (node.kind == ast_stmt_yield):
 		coerce_checked(node.declared_type, type, c"yield")
 	else if ((type_num_args(node.declared_type) > 0) && (type_num_args(type) > 0)):

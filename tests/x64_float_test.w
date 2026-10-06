@@ -48,8 +48,29 @@ int main(int argc, int argv):
 	assert_float32_bits(0x3fa00000, narrowed)
 
 	char* s = f64toa(3.25)
-	assert_strings_equal(c"3.250000", s)
+	assert_strings_equal(c"3.25", s)
 	free(s)
+	# issue #529: the integer part no longer goes through a word-sized
+	# int, and tiny values keep their digits
+	s = f64toa(1e20)
+	assert_strings_equal(c"1e+20", s)
+	free(s)
+	s = f64toa(1e-7)
+	assert_strings_equal(c"1e-07", s)
+	free(s)
+	s = f64toa(1.7976931348623157e308)
+	assert_strings_equal(c"1.7976931348623157e+308", s)
+	free(s)
+	s = f64toa_fixed(1e20, 2)
+	assert_strings_equal(c"100000000000000000000.00", s)
+	free(s)
+	s = f64toa_fixed(2.675, 2)   # 2.67499999999999982236431605997495353221893310546875
+	assert_strings_equal(c"2.67", s)
+	free(s)
+	int used = 0
+	assert_float64_bits(cast(int, 0xffffffff), 0x000fffff, parse_float64(c"2.2250738585072011e-308 rest", &used))
+	assert_equal(23, used)
+	assert_float64_bits(0x00000001, 0x00000000, parse_float64(c"4.9e-324", 0))
 
 	println(c"x64 float OK")
 	return 0

@@ -24,7 +24,7 @@ int main():
 	map[char*, int] counts = new map[char*, int]
 	counts[c"key"] = 9
 	if (f"k={counts[c"key"]}" != s"k=9"): return 12
-	if (f"{1.5}" != s"1.500000"): return 13
+	if (f"{1.5}" != s"1.5"): return 13
 	string escaped = f"a\0b\n\t\r\x41\u00e9\"\\"
 	if (escaped.length != 11): return 14
 	if (escaped.data[0] != 'a' || escaped.data[1] != 0 || escaped.data[2] != 'b'): return 15
