@@ -1,4 +1,5 @@
 # wbuild: x64 group=wasm_json_test@wasm
+# wbuild: step="bin/json_test" env="W_TEST_LEAKS=1" expect_stdout="0 failed, 0 skipped [leak check]"
 import lib.testing
 import structures.json
 import structures.string

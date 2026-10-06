@@ -1,0 +1,64 @@
+# wbuild: x64
+# lib/testing.w's runner: filter matching (unit tests below), plus the
+# end-to-end behavior of --filter/W_TEST_FILTER, --list, the summary line
+# and the W_TEST_LEAKS per-test leak check, driven on a fixture program.
+# wbuild: step="bin/wv2 tests/testing_runner_fixture.w -o bin/testing_runner_fixture"
+# wbuild: step="bin/testing_runner_fixture" expect_stdout="Summary: 3 passed, 0 failed, 0 skipped" expect_stdout="All tests passed!"
+# wbuild: step="bin/testing_runner_fixture" env="W_TEST_FILTER=beta" expect_stdout="Summary: 1 passed, 0 failed, 2 skipped (filter 'beta')" reject_stdout="Run: 'test_clean_alpha()'"
+# wbuild: step="bin/testing_runner_fixture --filter=alpha,beta" expect_stdout="Summary: 2 passed, 0 failed, 1 skipped" reject_stdout="test_leaks_one_block"
+# wbuild: step="bin/testing_runner_fixture --filter clean" env="W_TEST_FILTER=leaks" expect_stdout="Summary: 2 passed, 0 failed, 1 skipped (filter 'clean')"
+# wbuild: step="bin/testing_runner_fixture --filter nomatch" expect_fail expect_stdout="Tests FAILED: the filter matched no test." reject_stdout="All tests passed!"
+# wbuild: step="bin/testing_runner_fixture --list --filter=clean" expect_stdout="test_clean_alpha" expect_stdout="test_clean_beta" reject_stdout="Run:" reject_stdout="test_leaks_one_block"
+# wbuild: step="bin/testing_runner_fixture" env="W_TEST_LEAKS=1" expect_fail expect_stdout="LEAK: 'test_leaks_one_block()' returned with 1 heap block(s), 40 byte(s) still allocated" expect_stdout="Summary: 2 passed, 1 failed, 0 skipped [leak check]" expect_stdout="Leaked: test_leaks_one_block" reject_stdout="All tests passed!"
+# wbuild: step="bin/testing_runner_fixture --filter=clean" env="W_TEST_LEAKS=1" expect_stdout="Summary: 2 passed, 0 failed, 1 skipped (filter 'clean') [leak check]" expect_stdout="All tests passed!"
+# wbuild: step="bin/testing_runner_fixture" env="W_TEST_LEAKS=0" expect_stdout="All tests passed!"
+import lib.testing
+
+
+# Each test restores the runner's filter: the runner itself consults it
+# for the tests that follow.
+void test_no_filter_selects_everything():
+	char* saved = testing_filter
+	testing_filter = 0
+	assert1(testing_selected(c"test_anything"))
+	testing_filter = saved
+
+
+void test_filter_is_a_substring_match():
+	char* saved = testing_filter
+	testing_filter = c"pars"
+	assert1(testing_selected(c"test_parser_basics"))
+	assert1(testing_selected(c"test_json_parse"))
+	assert_equal(0, testing_selected(c"test_lexer"))
+	testing_filter = saved
+
+
+void test_filter_pieces_are_alternatives():
+	char* saved = testing_filter
+	testing_filter = c"lex,json"
+	assert1(testing_selected(c"test_lexer"))
+	assert1(testing_selected(c"test_json_parse"))
+	assert_equal(0, testing_selected(c"test_parser_basics"))
+	testing_filter = saved
+
+
+void test_empty_filter_pieces_are_ignored():
+	char* saved = testing_filter
+	testing_filter = c",lex,,"
+	assert1(testing_selected(c"test_lexer"))
+	assert_equal(0, testing_selected(c"test_parser"))
+	testing_filter = c",,"
+	assert1(testing_selected(c"test_parser"))
+	testing_filter = saved
+
+
+void test_contains_respects_the_length():
+	assert1(testing_contains(c"test_abc", c"abX", 2))
+	assert_equal(0, testing_contains(c"test_abc", c"abX", 3))
+	assert1(testing_contains(c"ab", c"", 0))
+	assert_equal(0, testing_contains(c"a", c"ab", 2))
+
+
+void test_has_prefix():
+	assert1(testing_has_prefix(c"--filter=x", c"--filter="))
+	assert_equal(0, testing_has_prefix(c"--filte", c"--filter="))
