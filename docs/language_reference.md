@@ -13,8 +13,9 @@ It is a reference, not a tutorial. Where a feature has its own design
 document, this page states the rule and links to that document.
 Behaviour that is surprising or arguably a bug is documented as it is,
 and collected under [Known divergences](#known-divergences). Rules
-marked **(#532)** are type-checking holes that issue #532 plans to
-turn into diagnostics, so they may become warnings or errors.
+marked **(#532)** are type-checking holes from issue #532. Its first
+stage turned most of them into warnings (errors under `--strict`); the
+rows say which, and the rest stay silent or opt-in lint rules.
 
 The syntax itself is also written down as a grammar in
 [`tests/parser_generator/w.pg`](../tests/parser_generator/w.pg), which
@@ -131,7 +132,7 @@ at runtime.
 
 | Conversion | Rule |
 |---|---|
-| Store into a narrower integer (assignment, initialisation, argument, field) | Truncates to the destination width, silently: `char c = 300` holds 44. **(#532)** |
+| Store into a narrower integer (assignment, initialisation, argument, field) | Truncates to the destination width: `char c = 300` holds 44. A bare literal outside the 1- or 2-byte type's signed and unsigned range warns; a computed value truncates silently. **(#532)** |
 | Load of a narrower integer | Sign-extends signed types (`char`, `byte`, `intN`) and zero-extends unsigned ones. |
 | `cast(T, e)` to an integer type, used as a value | **Changes only the static type; no truncation or extension.** `cast(uint8, -1) + 0 == -1` and `cast(char, 255) + 0 == 255`. The value is narrowed only when it is stored. See [Known divergences](#known-divergences). |
 | Integer to `bool` | A constant is normalised to 0/1 (`bool b = 5` holds 1). A non-constant `int` (`bool b = n`) currently crashes the produced program (#525); write `n != 0`. |
@@ -194,7 +195,7 @@ looks like Python.
 | 4 | `+` `-` | `+` on two `string`s concatenates. |
 | 5 | `<<` `>>` | |
 | 6 | `<` `<=` `>` `>=` `in` | **No chaining**: `3 > 2 > 1` parses as `(3 > 2) > 1`, which is `1 > 1`, so 0. Write `a > b && b > c`. |
-| 7 | `==` `!=` | Contents comparison for two `string`s; identity for `char*`, pointers and **structs** (which compare addresses). **(#532)** |
+| 7 | `==` `!=` | Contents comparison for two `string`s; identity for `char*`, pointers and **structs** (which compare addresses, with a warning). **(#532)** |
 | 8 | `&` | Bitwise; binds looser than `==`, so `x & 1 == 0` means `x & (1 == 0)`. |
 | 9 | `^` | |
 | 10 | `\|` | |
@@ -231,7 +232,7 @@ the function exits, not where the `defer` is written
 | Indexing `p[i]`, `&p[i]` | Scales by `sizeof(T)`. This is the form to use in new code; `lib/ptr.w`'s `ptr_add(p, n)` is `&p[n]` written as a call. |
 | `p - q` | A plain integer byte distance. |
 | `int` ↔ pointer | Warns unless written with `cast()`. The literal `0` and `&x` are untyped constants and convert silently. |
-| `void*` → `T*` | Implicit and silent. **(#532)** |
+| `void*` → `T*` | Implicit; only `check --lint` reports it (`[void-pointer-conversion]`). **(#532)** |
 | Bounds checks | `--bounds=on` (the default) checks indexing of fixed arrays `T[N]` and slices `T[]` (including `int[] s = new int[n]`), and traps with a stack trace. Indexing a raw `T*` is never checked, even when it holds a `new T[n]` result. `--bounds=off` removes the checks ([arrays_slices_strings.md](projects/arrays_slices_strings.md)). |
 | Null | There is no null keyword; `0` is the null pointer. Dereferencing it is not checked (Linux delivers SIGSEGV). |
 
@@ -244,7 +245,7 @@ the function exits, not where the `defer` is written
 | `for int i in range(end)` / `range(start, end[, step])` | The range arguments are evaluated once. |
 | `for T x in container` | Built-in lists, maps and sets; any `T*` whose module provides `T_iter_begin/done/next/value`; generators ([iteration.md](projects/iteration.md)). |
 | `for int cp in s` (`string`) | Iterates over code points. Needs `import lib.utf8`. |
-| `switch e:` / `case a, b:` / `default:` | No fallthrough. `break` leaves the switch and `continue` goes to the enclosing loop. Case values are integers, `string` or `char*` (compared by contents). Duplicate labels are accepted silently. **(#532)** |
+| `switch e:` / `case a, b:` / `default:` | No fallthrough. `break` leaves the switch and `continue` goes to the enclosing loop. Case values are integers, `string` or `char*` (compared by contents). A literal or enum-constant label that repeats an earlier one warns. **(#532)** |
 | `break`, `continue`, `return [e]`, `pass` | |
 | `defer call(...)` | Function-scoped, runs LIFO at every exit ([defer.md](projects/defer.md)). |
 | `goto name` / `name:` | Function-scoped labels written at the indentation of the statements around them. Native targets only. |
@@ -278,8 +279,10 @@ the function exits, not where the `defer` is written
 ## Type checking
 
 The checker reports some errors, some warnings (which are errors only
-under `--strict`), and lets other mismatches through silently. Every
-silent row is a candidate diagnostic under #532.
+under `--strict`), and lets other mismatches through silently. The #532
+rows are the first stage of issue #532
+([type_system_p0.md](projects/type_system_p0.md#unsafe-conversion-checks)
+lists their limits).
 
 | Construct | Today |
 |---|---|
@@ -290,14 +293,14 @@ silent row is a candidate diagnostic under #532.
 | `T*` → `const T*`, and `const T*` → `T*` | warning (both directions) |
 | Function value to a typed function pointer that does not match | warning |
 | `cast(T*, const_ptr)` (removes const) | silent |
-| Narrowing an integer store (`char c = 300`) | silent **(#532)** |
-| `int` → `enum` (`color c = 5`) | silent **(#532)** |
-| `void*` → any `T*` | silent **(#532)** |
-| Struct `==` | silent; compares addresses **(#532)** |
-| Falling off the end of a non-void function | silent; the return value is garbage **(#532)** |
-| `return 5` in a `void` function | silent **(#532)** |
-| Calling an `int` variable (`k(1)`) | silent; jumps to that address **(#532)** |
-| Duplicate `case` labels | silent **(#532)** |
+| Narrowing a literal store (`char c = 300`) | warning; a computed value still truncates silently **(#532)** |
+| `int` → `enum` (`color c = 5`, `c = i`) | warning **(#532)** |
+| `void*` → any `T*` | silent; `check --lint` warns (`[void-pointer-conversion]`) **(#532)** |
+| Struct `==` | warning; compares addresses **(#532)** |
+| Falling off the end of a non-void function | warning; the return value is garbage **(#532)** |
+| `return 5` in a `void` function | warning **(#532)** |
+| Calling an `int` variable (`k(1)`) | silent, jumps to that address; `check --lint` warns (`[call-int]`) **(#532)** |
+| Duplicate `case` labels | warning for literal and enum-constant labels **(#532)** |
 | Mixed signed/unsigned, bool ↔ int, float → int | silent (defined conversions) |
 
 `w check --all-errors` reports several errors from one run.
@@ -412,7 +415,7 @@ records what happens today.
 | 4 | `cast(T, e)` to a narrower integer type does not truncate or extend the value in a register (`cast(uint8, -1) + 0 == -1`). type_system_p0 milestone 2 says numeric casts define truncation and sign extension. | |
 | 5 | `cast(T*, p)` removes `const` silently; type_system_p0 milestone 2 says it must not. | |
 | 6 | `T*` → `const T*` warns; type_system_p0 milestone 6 says it is implicit. | |
-| 7 | `int` → `enum` is silent; type_system_p0 milestone 10 says it needs a cast. Enumerators are global names, not `color.red`. | #532 |
+| 7 | `int` → `enum` only warns; type_system_p0 milestone 10 says it needs a cast. Enumerators are global names, not `color.red`. | #532 |
 | 8 | `bool b = n` for a non-constant `int` crashes the program. | #525 |
 | 9 | A struct store whose size is not a multiple of the word overwrites the bytes after it (`s[0] = v` for a 5-byte struct corrupts `s[1]`). | #524 |
 | 10 | `true`, `false`, `__word_size__` and `__target_isa__` can be declared as names, but every use still reads the built-in, and a function of that name crashes. | |

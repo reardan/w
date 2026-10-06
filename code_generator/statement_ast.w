@@ -35,7 +35,9 @@ void emit_statement_ast_value(statement_ast* node):
 		if (types_compatible_with_expression(node.declared_type, type) == 0):
 			warn_type_mismatch(c"return", node.declared_type, type)
 		copy_struct_return_value(node.declared_type)
-	else: coerce_checked(node.declared_type, type, c"return")
+	else:
+		check_void_return(node.declared_type, type, node.line - 1, node.line, node.column)
+		coerce_checked(node.declared_type, type, c"return")
 
 
 void emit_statement_ast_exit(statement_ast* node):

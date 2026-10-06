@@ -37,7 +37,7 @@ int string_binary_compare_eq(int left_type, int right_type, int negate):
 # Shared lowering for == and !=: cc is the sete/setne byte used by the
 # float and integer layers; negate tells the var layer to invert the
 # __w_var_eq result for !=.
-int equality_op(int type, int negate, int cc):
+int equality_op(int type, int negate, int cc, int op_line_number, int op_diag_line, int op_diag_column):
 	int left_type = binary1(type)
 	int right_type = binary2_promote_pop(relational_expr())
 	int result_type = var_binary_compare_eq(left_type, right_type, negate)
@@ -45,6 +45,12 @@ int equality_op(int type, int negate, int cc):
 	if (result_type == 0): result_type = float_binary_compare(left_type, right_type, cc, 0)
 	if (result_type):
 		return result_type
+	# Struct values are used by address, so the word comparison below
+	# compares where the two structs live, not their fields (#532)
+	if (operand_is_struct_value(left_type) || operand_is_struct_value(right_type)):
+		char* op_text = c"=="
+		if (negate): op_text = c"!="
+		warn_bool_bitwise_at(c"warning: '==' and '!=' on struct values compare their addresses, not their fields; compare the fields, or take '&' of both sides to compare addresses", op_line_number, op_diag_line, op_diag_column, op_text)
 	alu_cmp_set(cc)
 	return type_value(bool_type)
 
@@ -52,11 +58,14 @@ int equality_op(int type, int negate, int cc):
 int equality_expr():
 	int type = relational_expr()
 	while (1):
+		int op_line_number = line_number
+		int op_diag_line = diag_token_line
+		int op_diag_column = diag_token_column
 		if (accept(c"==")):
-			type = equality_op(type, 0, 0x94) /* sete */
+			type = equality_op(type, 0, 0x94, op_line_number, op_diag_line, op_diag_column) /* sete */
 
 		else if (accept(c"!=")):
-			type = equality_op(type, 1, 0x95) /* setne */
+			type = equality_op(type, 1, 0x95, op_line_number, op_diag_line, op_diag_column) /* setne */
 
 		else:
 			return type

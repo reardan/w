@@ -22,6 +22,8 @@ int ast_statement_simple(int* jumps):
 	if (kind == ast_stmt_break):
 		*jumps = 1
 		node.valid_jump = (loop_depth != 0) || (switch_depth != 0)
+		if (break_in_switch): flow_switch_break = 1
+		else: flow_loop_break = 1
 		if (break_in_switch):
 			node.target = switch_break_chain
 			node.unwind_slots = stack_pos - switch_stack_pos
@@ -73,6 +75,7 @@ int ast_statement_value(int* jumps):
 	int has_value = 1
 	if (kind == ast_stmt_return):
 		*jumps = 1
+		flow_saw_return = 1
 		if (in_gpu_for_body): error(c"'return' is not supported in 'gpu for'")
 		has_value = (peek(c";") == 0) && (token_newline == 0) && (token[0] != 0)
 		if (has_value && in_generator_body): error(c"generators cannot return a value; use yield")
@@ -85,7 +88,7 @@ int ast_statement_value(int* jumps):
 		if (root < 0):
 			# The expression probe restored its entry state. Existing
 			# tails retain diagnostic fallback and required-mode errors.
-			if (kind == ast_stmt_return): return_statement_tail()
+			if (kind == ast_stmt_return): return_statement_tail(node.line - 1, node.line, node.column)
 			else: yield_statement_tail()
 			return 1
 		node.expression_tree = &tree
@@ -201,6 +204,8 @@ int ast_statement_switch_case(int type, int slot, int body_target, int next_targ
 	emit_switch_case_ast_begin(&node)
 	increment_statement_context = 0
 	expression_lhs_readonly = 0
+	int start_state = switch_case_start()
+	int value_line = line_number
 	expression_ast tree
 	int root = ast_expression_prepare_at(&tree, token_start_offset, 1)
 	if (root < 0):
@@ -212,6 +217,7 @@ int ast_statement_switch_case(int type, int slot, int body_target, int next_targ
 		node.end_offset = tree.end_offset
 		emit_statement_ast_expression(&node)
 		ast_statement_finish_expression(&node)
+	switch_note_case_value(start_state, node.expression_type, value_line, node.line, node.column)
 	emit_switch_case_ast_compare(&node)
 	node.branch_nonzero = accept(c",")
 	node.target = next_target
@@ -234,6 +240,10 @@ void ast_if_statement_tail():
 	statement_guard(node.alternate_target, outer_condition)
 	enclosing_tab_level = if_tab_level
 	statement()
+	# Fall-through bookkeeping mirrors if_statement_tail
+	# (grammar/statement.w, grammar/type_check.w)
+	int arms_terminate = flow_terminates
+	int has_else = 0
 	emit_if_ast_then_end(&node)
 	if (peek(c"elif") && (tab_level == if_tab_level)):
 		get_token()
@@ -241,13 +251,18 @@ void ast_if_statement_tail():
 		if (stmt_nesting_depth > 200): error(c"statement nesting too deep")
 		ast_if_statement_tail()
 		stmt_nesting_depth = stmt_nesting_depth - 1
+		has_else = 1
+		arms_terminate = arms_terminate && flow_terminates
 	else if (peek(c"else")):
 		if (tab_level == if_tab_level):
 			get_token()
 			enclosing_tab_level = if_tab_level
 			statement()
+			has_else = 1
+			arms_terminate = arms_terminate && flow_terminates
 	node.end_offset = token_start_offset
 	emit_if_ast_end(&node)
+	flow_terminates = has_else && arms_terminate
 
 
 int ast_statement_block():
@@ -270,29 +285,39 @@ int ast_statement_block():
 	if (kind == ast_stmt_indent_block): print_int_v1(c"starting stack_pos: ", stack_pos)
 	node.function_body = defer_function_body_pending
 	defer_function_body_pending = 0
+	# Fall-through bookkeeping mirrors statement_impl's block loops
+	# (grammar/statement.w, grammar/type_check.w)
+	int terminates = 0
 	if (kind == ast_stmt_brace_block):
 		int after_jump = 0
 		while (accept(c"}") == 0):
 			lint_unreachable_check(after_jump)
+			if ((nextc == ':') && is_ident_start_byte(token[0])): terminates = 0
 			statement()
 			after_jump = lint_last_stmt_jumps
+			if (flow_terminates): terminates = 1
 	else:
 		int same_line = 0
 		if (token_newline == 0):
 			same_line = 1
-			if (token[0] != 0): statement()
+			if (token[0] != 0):
+				statement()
+				terminates = flow_terminates
 		if ((same_line == 0) && (start_tab_level > block_tab_level)):
 			int after_jump = 0
 			while (start_tab_level <= tab_level):
 				lint_unreachable_check(after_jump)
+				if ((nextc == ':') && is_ident_start_byte(token[0])): terminates = 0
 				statement()
 				after_jump = lint_last_stmt_jumps
+				if (flow_terminates): terminates = 1
 	node.end_offset = token_start_offset
 	emit_block_ast_deferred(&node)
 	lint_scope_exit(node.binding)
 	table_pos = node.binding
 	if (kind == ast_stmt_indent_block): print_int_v1(c"ending stack_pos: ", stack_pos)
 	emit_block_ast_end(&node)
+	flow_terminates = terminates
 	return 1
 
 
@@ -329,6 +354,13 @@ int ast_switch_statement():
 	switch_depth = switch_depth + 1
 
 	int seen_default = 0
+	# Fall-through bookkeeping and duplicate-case values mirror
+	# switch_statement (grammar/switch_statement.w)
+	int outer_seen_base = switch_seen_base
+	switch_seen_base = switch_seen_count
+	int outer_switch_break = flow_switch_break
+	flow_switch_break = 0
+	int every_case_terminates = 1
 
 	while ((tab_level > switch_tab_level) && (token[0] != 0)):
 		int label_tab_level = tab_level
@@ -349,6 +381,7 @@ int ast_switch_statement():
 		# The body is an ordinary ':' block scoped to the label's line
 		enclosing_tab_level = label_tab_level
 		statement()
+		if (flow_terminates == 0): every_case_terminates = 0
 
 		# Implicit break: leave the switch after the body (no fallthrough)
 		emit_switch_case_region_ast_end(&node)
@@ -362,9 +395,14 @@ int ast_switch_statement():
 	switch_stack_pos = outer_stack
 	break_in_switch = outer_in_switch
 	switch_depth = switch_depth - 1
+	switch_seen_count = switch_seen_base
+	switch_seen_base = outer_seen_base
+	int switch_terminates = seen_default && every_case_terminates && (flow_switch_break == 0)
+	flow_switch_break = outer_switch_break
 
 	# Discard the hidden scrutinee slot
 	emit_switch_region_ast_cleanup(&node)
+	flow_terminates = switch_terminates
 
 	return 1
 

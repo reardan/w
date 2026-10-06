@@ -419,6 +419,7 @@ void coerce(int want, int got):
 
 # coerce(), then the usual mismatch warning naming the construct.
 void coerce_checked(int want, int got, char* context):
+	check_value_conversion(context, 0, 0, want, got)
 	coerce(want, got)
 	if (types_compatible_with_expression(want, got) == 0): warn_type_mismatch(context, want, got)
 

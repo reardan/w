@@ -30,3 +30,4 @@ int _main():
 	int32 exit = 1
 	syscall(write, 1, s, 15) /* write */
 	syscall(exit, 0, 0, 0) /* exit */
+	return 0

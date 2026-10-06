@@ -3308,6 +3308,8 @@ int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole)
 	token_serial = serial
 	if (accepted == 0): return -1
 	while (token_start_offset < end):
+		# grammar/type_check.w's constant-true conditions
+		if ((token[0] == 't') && (strcmp(token, c"true") == 0)): flow_true_serial = token_serial
 		for i in range(tree.types_count):
 			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(tree, i)
 		for id in range(tree.count):
@@ -3336,9 +3338,11 @@ int ast_expression_prepare_at(expression_ast* tree, int group_offset, int whole)
 				int outer_cast = cast_context
 				cast_context = tree.in_cast[id]
 				tree.value[id] = int_literal_value(0)
+				lit_note(tree.value[id], 0)
 				cast_context = outer_cast
 			if ((tree.op[id] == 'h') && (tree.offset[id] == token_start_offset)):
 				tree.value[id] = char_literal_value()
+				lit_note(tree.value[id], 0)
 			if (((tree.op[id] == 's') || (tree.op[id] == 'S')) && (tree.offset[id] == token_start_offset)):
 				int length = process_string_literal_from(tree.value[id])
 				if (tree.op[id] == 'S'): validate_utf8_literal(length)

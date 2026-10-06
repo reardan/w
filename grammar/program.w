@@ -289,7 +289,7 @@ int param_default_record(int current_symbol, int param_count, int saw_default):
 # Parses "parameter-list ) [; | body]" for the function symbol at table
 # offset current_symbol; the opening "(" has already been consumed.
 # Shared by program() and the REPL's entry dispatcher.
-void ast_function_body(int binding, int code_start, int kind);
+void ast_function_body(int binding, int code_start, int kind, int written_return_type, int retained_line, int retained_column);
 void ast_script_main();
 
 
@@ -303,6 +303,7 @@ void function_definition(int current_symbol):
 	# param_count counts declared parameters for arity checks.
 	number_of_args = 0
 	int declared_return_type = load_int(table + current_symbol + 6)
+	int written_return_type = flow_written_return_type(current_symbol)
 	if (type_num_args(declared_return_type) > 0): number_of_args = 1
 	int param_count = 0
 	int saw_default = 0
@@ -371,7 +372,7 @@ void function_definition(int current_symbol):
 			retained_function_parameters(current_symbol)
 			retained_leave(prototype, token_start_offset)
 	else:
-		if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native)
+		if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_native, written_return_type, retained_line, retained_column)
 		else:
 			be_function_define(current_symbol, last_global_declaration)
 			# On arm64 sign and push the return address (x30) onto the W stack
@@ -396,7 +397,14 @@ void function_definition(int current_symbol):
 			int outer_label_base = goto_label_base
 			int outer_pending_base = goto_pending_base
 			goto_scope_begin()
+			char* function_name = strclone(last_global_declaration)
+			int outer_saw_return = flow_saw_return
+			flow_saw_return = 0
 			statement()
+			check_missing_return(written_return_type, function_name, retained_line, retained_column)
+			flow_function_finished(function_name)
+			flow_saw_return = outer_saw_return
+			free(function_name)
 			goto_scope_end(outer_label_base, outer_pending_base)
 			defer_reset()
 			be_return_bare()
@@ -870,6 +878,8 @@ void program_item():
 			defhash_note(defhash_name, c"global", decl_file_index(), defhash_line, defhash_column, defhash_start, token_start_offset)
 
 	else if (accept(c"(")):
+		flow_definition_type = decl_type
+		flow_definition_type_set = 1
 		function_definition(current_symbol)
 		if (export_pending):
 			char* export_name = defhash_name

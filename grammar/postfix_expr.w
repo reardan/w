@@ -125,6 +125,7 @@ void check_call_argument(int callee, int signature_type, char* callee_name, int 
 	if (signature_type >= 0): param_type = type_function_param_type(signature_type, arg_index)
 	else if (callee >= 0): param_type = sym_param_type(callee, arg_index)
 	if (param_type < 0): return;
+	check_value_conversion(c"call argument", callee_name, arg_index, param_type, arg_type)
 	# A kernel's plain pointer parameter means "any device-accessible
 	# pointer" (managed or gpu_device_alloc memory), so launching with a
 	# 'gpu T*' checks against its host twin; the reverse direction (a
@@ -588,6 +589,7 @@ int postfix_expr():
 					declared_return = type_function_return(base_type)
 					expected_args = type_function_param_count(base_type)
 					callee_name = strclone(c"function pointer")
+			check_untyped_callee(type)
 
 			int callee_is_generator = 0
 			if (callee_sym >= 0): callee_is_generator = sym_is_generator(callee_sym)

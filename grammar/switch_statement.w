@@ -38,10 +38,80 @@ int switch_value():
 	return type
 
 
+# Constant case values of the switches being parsed, innermost last:
+# switch_seen_base is where the innermost switch's values start.
+int* switch_seen_values
+int switch_seen_count
+int switch_seen_capacity
+int switch_seen_base
+
+
+# Classify the first token of a case value (the current token) for
+# switch_case_constant: the start serial, plus whether it is a '-' (1)
+# or a '(' (2). Token-based, so the streaming and AST case paths agree.
+int switch_case_start():
+	int shape = 0
+	if ((token[0] == '-') && (token[1] == 0)): shape = 1
+	if ((token[0] == '(') && (token[1] == 0)): shape = 2
+	return (token_serial << 2) | shape
+
+
+# The value of the case expression that began with start_state and just
+# finished parsing, when it is a literal ('3', '-1', 'c', '(3)') or a
+# single enum constant; found_out[0] says whether one was recognized.
+int switch_case_constant(int start_state, int value_type, int* found_out):
+	found_out[0] = 0
+	int shape = start_state & 3
+	int start_serial = start_state >> 2
+	if ((shape == 0) && (lit_note_serial == start_serial) && (token_serial == start_serial + 1)):
+		found_out[0] = 1
+		return lit_note_value
+	if ((shape == 1) && (lit_note_serial == start_serial + 1) && (token_serial == start_serial + 2)):
+		found_out[0] = 1
+		if (lit_note_negative): return lit_note_value
+		return 0 - lit_note_value
+	if ((shape == 2) && (lit_note_serial == start_serial + 1) && (token_serial == start_serial + 3)):
+		found_out[0] = 1
+		return lit_note_value
+	if ((shape != 0) || (token_serial != start_serial + 1)): return 0
+	int t = type_unqualified(value_type)
+	if ((t < 0) || (type_get_kind(t) != type_kind_enum)): return 0
+	if (cast(int, enum_constants) == 0): return 0
+	for i in range(enum_constants.length):
+		if ((enum_constants[i].type == t) && (strcmp(enum_constants[i].name, last_identifier) == 0)):
+			found_out[0] = 1
+			return enum_constants[i].value
+	return 0
+
+
+# Warn when a case value repeats an earlier constant of the same switch:
+# the first match wins, so the later body is dead (#532).
+void switch_note_case_value(int start_state, int value_type, int line, int diag_line, int diag_column):
+	int found = 0
+	int value = switch_case_constant(start_state, value_type, &found)
+	if (found == 0): return
+	for i in range(switch_seen_base, switch_seen_count):
+		if (switch_seen_values[i] == value):
+			diag_part(c"warning: duplicate case value ")
+			diag_part(itoa(value))
+			warn_bool_bitwise_at(c" in switch; only the first matching case runs", line, diag_line, diag_column, c"case")
+			return
+	if (switch_seen_count >= switch_seen_capacity):
+		switch_seen_capacity = switch_seen_capacity * 2 + 16
+		switch_seen_values = cast(int*, realloc(switch_seen_values, switch_seen_count * __word_size__, switch_seen_capacity * __word_size__))
+	switch_seen_values[switch_seen_count] = value
+	switch_seen_count = switch_seen_count + 1
+
+
 int switch_case_value(int type, int slot, int body_target, int next_target):
 	if (ast_expressions_mode >= 2): return ast_statement_switch_case(type, slot, body_target, next_target)
 	push_slot_copy(slot)
+	int start_state = switch_case_start()
+	int value_line = line_number
+	int value_diag_line = diag_token_line
+	int value_diag_column = diag_token_column
 	int value_type = promote(expression())
+	switch_note_case_value(start_state, value_type, value_line, value_diag_line, value_diag_column)
 	emit_switch_case_compare(type, value_type)
 	int more = accept(c",")
 	if (more): be_br_nonzero_discard(body_target)
@@ -77,6 +147,13 @@ int switch_statement():
 	switch_depth = switch_depth + 1
 
 	int seen_default = 0
+	int outer_seen_base = switch_seen_base
+	switch_seen_base = switch_seen_count
+	# The switch cannot complete normally when a default exists and no
+	# body falls out of it or breaks (grammar/type_check.w)
+	int outer_switch_break = flow_switch_break
+	flow_switch_break = 0
+	int every_case_terminates = 1
 
 	while ((tab_level > switch_tab_level) && (token[0] != 0)):
 		int label_tab_level = tab_level
@@ -97,6 +174,7 @@ int switch_statement():
 		# The body is an ordinary ':' block scoped to the label's line
 		enclosing_tab_level = label_tab_level
 		statement()
+		if (flow_terminates == 0): every_case_terminates = 0
 
 		# Implicit break: leave the switch after the body (no fallthrough)
 		be_br(switch_break_chain)
@@ -110,8 +188,13 @@ int switch_statement():
 	switch_stack_pos = outer_stack
 	break_in_switch = outer_in_switch
 	switch_depth = switch_depth - 1
+	switch_seen_count = switch_seen_base
+	switch_seen_base = outer_seen_base
+	int switch_terminates = seen_default && every_case_terminates && (flow_switch_break == 0)
+	flow_switch_break = outer_switch_break
 
 	# Discard the hidden scrutinee slot
 	drop_slots(1)
+	flow_terminates = switch_terminates
 
 	return 1

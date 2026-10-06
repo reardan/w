@@ -2,6 +2,7 @@ import grammar.stack_slot
 import grammar.pending_element
 import grammar.hash_builtin
 import grammar.ndarray_index
+import grammar.type_check
 import grammar.promote
 import grammar.generic_signature_ast
 import grammar.generic

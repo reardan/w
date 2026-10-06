@@ -30,11 +30,13 @@ int enclosing_tab_level
 # condition and 'break' land after. The caller opens the loop region and
 # sets loop_continue_chain.
 int* loop_enter():
-	int* outer = cast(int*, malloc(4 * __word_size__))
+	int* outer = cast(int*, malloc(5 * __word_size__))
 	outer[0] = loop_break_chain
 	outer[1] = loop_continue_chain
 	outer[2] = loop_stack_pos
 	outer[3] = break_in_switch
+	outer[4] = flow_loop_break
+	flow_loop_break = 0
 	loop_break_chain = be_ctrl_block()
 	loop_stack_pos = stack_pos
 	break_in_switch = 0
@@ -47,6 +49,7 @@ void loop_leave(int* outer):
 	loop_continue_chain = outer[1]
 	loop_stack_pos = outer[2]
 	break_in_switch = outer[3]
+	flow_loop_break = outer[4]
 	loop_depth = loop_depth - 1
 	free(outer)
 
@@ -57,11 +60,14 @@ void ast_statement_guard(int target, int outer_condition);
 # The caller opens control regions and installs the condition context.
 # Source/lint completion precedes the branch in both compilation modes.
 void statement_guard(int target, int outer_condition):
+	int flow_state = flow_condition_begin()
 	if (ast_expressions_mode >= 2):
 		ast_statement_guard(target, outer_condition)
+		flow_condition_end(flow_state)
 		return
 	lint_condition_begin()
 	promote(expression())
+	flow_condition_end(flow_state)
 	lint_condition_end()
 	condition_context = outer_condition
 	be_br_zero_discard(target)
@@ -84,9 +90,12 @@ int while_statement():
 	int outer_condition = condition_context
 	condition_context = 1
 	statement_guard(loop_break_chain, outer_condition)
+	# 'while (1)' with no break never completes (grammar/type_check.w)
+	int forever = flow_guard_true
 
 	enclosing_tab_level = while_tab_level
 	statement()
+	forever = forever && (flow_loop_break == 0)
 
 	# loop
 	be_br(loop_continue_chain)
@@ -94,5 +103,6 @@ int while_statement():
 	be_ctrl_end(loop_break_chain)
 
 	loop_leave(outer)
+	flow_terminates = forever
 
 	return 1

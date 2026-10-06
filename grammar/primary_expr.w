@@ -88,6 +88,7 @@ int primary_expr():
 
 	# Bool literals
 	else if (peek(c"true")):
+		flow_true_serial = token_serial
 		mov_eax_int(1)
 		type = type_value(bool_type)
 
@@ -210,7 +211,10 @@ int primary_expr():
 	# char literal e.g. 'c', '\n', '\x41' or 'é' (value = Unicode codepoint);
 	# grammar/string_literal.w decodes and validates the token
 	else if (token[0] == 39):
-		mov_eax_int(char_literal_value())
+		int char_value = char_literal_value()
+		mov_eax_int(char_value)
+		const_note(char_value)
+		lit_note(char_value, 0)
 		type = 3 /* constant */
 
 	else if (char_pointer_literal()): type = string_literal_type

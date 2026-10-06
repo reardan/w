@@ -75,7 +75,7 @@ void emit_generator_yield_call():
 # must be word-sized (the call trampoline copies them by the word),
 # the body gets the hidden __w_gen_self parameter, and the epilogue
 # finishes the generator instead of returning.
-void ast_function_body(int binding, int code_start, int kind);
+void ast_function_body(int binding, int code_start, int kind, int written_return_type, int retained_line, int retained_column);
 
 
 void generator_function_definition(int current_symbol):
@@ -120,7 +120,7 @@ void generator_function_definition(int current_symbol):
 		pointer_indirection = 1
 		sym_declare(c"__w_gen_self", self_type, 'A', number_of_args, 1)
 		pointer_indirection = 0
-		if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_generator)
+		if (ast_expressions_mode >= 2): ast_function_body(current_symbol, function_start, ast_function_generator, 0, 0, 0)
 		else:
 			sym_define_global(current_symbol)
 			current_function_symbol = current_symbol
