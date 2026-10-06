@@ -129,6 +129,10 @@ void if_statement_tail():
 	statement_guard(p2, outer_condition)
 	enclosing_tab_level = if_tab_level
 	statement()
+	# Whether the whole if/elif/else cannot complete normally: every arm
+	# terminates and an else arm exists (grammar/type_check.w)
+	int arms_terminate = flow_terminates
+	int has_else = 0
 	be_br(p1)
 	be_ctrl_end(p2)
 	# An 'elif'/'else' only binds to an 'if' at the same indent level
@@ -141,12 +145,17 @@ void if_statement_tail():
 		if (stmt_nesting_depth > 200): error(c"statement nesting too deep")
 		if_statement_tail()
 		stmt_nesting_depth = stmt_nesting_depth - 1
+		has_else = 1
+		arms_terminate = arms_terminate && flow_terminates
 	else if (peek(c"else")):
 		if (tab_level == if_tab_level):
 			get_token()
 			enclosing_tab_level = if_tab_level
 			statement()
+			has_else = 1
+			arms_terminate = arms_terminate && flow_terminates
 	be_ctrl_end(p1)
+	flow_terminates = has_else && arms_terminate
 
 
 # A 'return' value about to draw a type-mismatch warning: point the
@@ -161,7 +170,7 @@ void return_mismatch_note(int declared_type, int return_type):
 	sym_note_related(current_function_symbol, c"function '", name, c"' is declared here")
 
 
-void return_statement_tail():
+void return_statement_tail(int return_line_number, int return_diag_line, int return_diag_column):
 	# Each 'gpu for' iteration is one GPU thread: there is no host
 	# frame to return from inside the outlined body.
 	if (in_gpu_for_body): error(c"'return' is not supported in 'gpu for'")
@@ -176,7 +185,9 @@ void return_statement_tail():
 			if (types_compatible_with_expression(declared_type, return_type) == 0):
 				warn_type_mismatch(c"return", declared_type, return_type)
 			copy_struct_return_value(declared_type)
-		else: coerce_checked(declared_type, return_type, c"return")
+		else:
+			check_void_return(declared_type, return_type, return_line_number, return_diag_line, return_diag_column)
+			coerce_checked(declared_type, return_type, c"return")
 	expect_or_newline(c";")
 	if (in_generator_body):
 		# Free the suspended generators of enclosing for-in loops
@@ -238,6 +249,12 @@ void statement_impl():
 	# Set by the return/break/continue/goto arms below; published through
 	# lint_last_stmt_jumps at the bottom (compiler/lint.w, unreachable)
 	int jumps = 0
+	# Whether this statement cannot complete normally; published through
+	# flow_terminates at the bottom (grammar/type_check.w)
+	int terminates = 0
+	# An expression statement starting with a call to exit(), error()
+	# or another noreturn function never completes (grammar/type_check.w)
+	int starts_noreturn = flow_statement_starts_noreturn()
 
 	# DWARF line info: the code emitted next belongs to this source line.
 	# The line table and wdbg breakpoints address the statement's first
@@ -246,7 +263,7 @@ void statement_impl():
 	debug_line_note(stack_pos)
 
 	# { statement-list-opt }
-	if (ast_statement_block()) {}
+	if (ast_statement_block()): terminates = flow_terminates
 	else if (accept(c"{")) {
 		int n = table_pos
 		int s = stack_pos
@@ -256,8 +273,10 @@ void statement_impl():
 		int brace_after_jump = 0
 		while (accept(c"}") == 0):
 			lint_unreachable_check(brace_after_jump)
+			if ((nextc == ':') && is_ident_start_byte(token[0])): terminates = 0
 			statement()
 			brace_after_jump = lint_last_stmt_jumps
+			if (flow_terminates): terminates = 1
 		# The function body block closing is the fall-through exit: run
 		# the deferred statements (LIFO) while the body's locals are
 		# still in scope
@@ -283,15 +302,20 @@ void statement_impl():
 		if (token_newline == 0):
 			# Same-line body: exactly one statement, e.g. "if (x): return"
 			same_line = 1
-			if (token[0] != 0): statement()
+			if (token[0] != 0):
+				statement()
+				terminates = flow_terminates
 		if (same_line == 0):
 			# An un-indented next line means the block is empty (like 'pass')
 			if (start_tab_level > block_tab_level):
 				int after_jump = 0
 				while(start_tab_level <= tab_level):
 					lint_unreachable_check(after_jump)
+					# a 'name:' goto label makes what follows reachable
+					if ((nextc == ':') && is_ident_start_byte(token[0])): terminates = 0
 					statement()
 					after_jump = lint_last_stmt_jumps
+					if (flow_terminates): terminates = 1
 		# The function body block closing is the fall-through exit: run
 		# the deferred statements (LIFO) while the body's locals are
 		# still in scope
@@ -306,12 +330,14 @@ void statement_impl():
 	else if (variable_declaration() >= 0): expect_or_newline(c";")
 
 	# if expression statement [elif/else ...] (parentheses optional)
-	else if (accept(c"if")): if_statement_tail()
+	else if (accept(c"if")):
+		if_statement_tail()
+		terminates = flow_terminates
 
-	else if (while_statement()) {}
+	else if (while_statement()): terminates = flow_terminates
 	else if (gpu_for_statement()) {}
 	else if (for_statement()) {}
-	else if (switch_statement()) {}
+	else if (switch_statement()): terminates = flow_terminates
 	else if (ast_statement_simple(&jumps)) {}
 	else if (ast_statement_value(&jumps)) {}
 
@@ -321,6 +347,8 @@ void statement_impl():
 		jumps = 1
 		expect_or_newline(c";")
 		if ((loop_depth == 0) && (switch_depth == 0)): error(c"'break' outside of a loop or switch")
+		if (break_in_switch): flow_switch_break = 1
+		else: flow_loop_break = 1
 		if (break_in_switch):
 			# Unwind block locals pushed since the switch started
 			if (stack_pos > switch_stack_pos): be_pop(stack_pos - switch_stack_pos)
@@ -339,9 +367,14 @@ void statement_impl():
 		if (stack_pos > loop_stack_pos): be_pop(stack_pos - loop_stack_pos)
 		be_br(loop_continue_chain)
 
-	else if (accept(c"return")):
+	else if (peek(c"return")):
+		int return_line_number = line_number
+		int return_diag_line = diag_token_line
+		int return_diag_column = diag_token_column
+		get_token()
 		jumps = 1
-		return_statement_tail()
+		flow_saw_return = 1
+		return_statement_tail(return_line_number, return_diag_line, return_diag_column)
 
 	# yield expression: store the value into the generator object and
 	# switch back to the consumer until the next gen_next
@@ -359,7 +392,7 @@ void statement_impl():
 
 	# '++x' / '--x' — prefix increment/decrement statement
 	# (grammar/increment.w, docs/projects/increment_decrement.md)
-	else if (ast_statement_expression(1)) {}
+	else if (ast_statement_expression(1)): terminates = starts_noreturn
 	else if (increment_prefix_statement()): expect_or_newline(c";")
 
 	# defer <simple-statement>: record the span; it re-parses and runs
@@ -379,7 +412,7 @@ void statement_impl():
 
 	# name: -- a goto target (grammar/goto_statement.w)
 	else if (labeled_statement()) {}
-	else if (ast_statement_expression(0)) {}
+	else if (ast_statement_expression(0)): terminates = starts_noreturn
 
 	else:
 		# Postfix 'x++'/'x--' are only recognized at true statement
@@ -387,6 +420,7 @@ void statement_impl():
 		# expression parses never see it (grammar/increment.w)
 		increment_statement_context = 1
 		expression()
+		terminates = starts_noreturn
 		expect_or_newline(c";")
 
 	# Matches the increment at the top: every path through the if/else-if
@@ -394,6 +428,7 @@ void statement_impl():
 	# this single decrement is reached on every normal exit.
 	stmt_nesting_depth = stmt_nesting_depth - 1
 	lint_last_stmt_jumps = jumps
+	flow_terminates = terminates || jumps
 	retained_leave(retained, token_start_offset)
 
 

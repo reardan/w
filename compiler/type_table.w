@@ -1063,7 +1063,7 @@ void type_reset_for_redefinition(int type_index, int size):
 	t.pointer_level = 0
 
 
-int type_add_arg(int type_index, char* field, int field_type):
+void type_add_arg(int type_index, char* field, int field_type):
 	type_index = type_canonical(type_index)
 	type_rec* t = cast(type_rec*, type_records[type_index])
 	int num_fields = t.num_fields

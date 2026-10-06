@@ -99,9 +99,14 @@ int ast_while_statement():
 	int outer_condition = condition_context
 	condition_context = 1
 	statement_guard(node.break_target, outer_condition)
+	# Fall-through bookkeeping mirrors while_statement
+	# (grammar/while_statement.w, grammar/type_check.w)
+	int forever = flow_guard_true
 	enclosing_tab_level = while_tab_level
 	statement()
+	forever = forever && (flow_loop_break == 0)
 	node.end_offset = token_start_offset
 	emit_while_loop_ast_end(&node)
 	loop_leave(outer)
+	flow_terminates = forever
 	return 1

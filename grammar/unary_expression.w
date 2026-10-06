@@ -257,7 +257,13 @@ int unary_expression_operand():
 			btc_rax_63()
 			return float64_value_type
 		else:
+			# '-300' stays a known constant for the conversion checks
+			# (grammar/type_check.w) when the operand was a bare literal
+			int negated_literal = (type == 3) && const_note_current()
 			neg_eax()
+			if (negated_literal):
+				const_note_value = 0 - const_note_value
+				const_note_codepos = codepos
 			return integer_result_type(type, 3)
 	else if (op && accept(c"+")):
 		# unary plus: load the operand's value, no code beyond the promote

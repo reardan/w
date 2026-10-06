@@ -227,6 +227,7 @@ int expression():
 			print_int(c"expression() type2: ", type2)
 		
 		type2 = promote(type2)
+		check_value_conversion(c"assignment", 0, 0, type, type2)
 		coerce(type, type2)
 		# A struct-returning call on the right side parks its return
 		# buffer on the stack (eax points into it), burying the saved

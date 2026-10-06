@@ -3324,9 +3324,11 @@ void ast_expression_replay_event(expression_ast* tree, int id, int at):
 		int outer_cast = cast_context
 		cast_context = tree.in_cast[id]
 		tree.value[id] = int_literal_value(0)
+		lit_note(tree.value[id], 0)
 		cast_context = outer_cast
 	if ((tree.op[id] == 'h') && (tree.offset[id] == at)):
 		tree.value[id] = char_literal_value()
+		lit_note(tree.value[id], 0)
 	if (((tree.op[id] == 's') || (tree.op[id] == 'S')) && (tree.offset[id] == at)):
 		int length = process_string_literal_from(tree.value[id])
 		if (tree.op[id] == 'S'): validate_utf8_literal(length)
@@ -3379,6 +3381,8 @@ void ast_expression_replay_by_lexing(expression_ast* tree, int end):
 	ast_relex_replays = ast_relex_replays + 1
 	while (token_start_offset < end):
 		ast_tokens_replayed = ast_tokens_replayed + 1
+		# grammar/type_check.w's constant-true conditions
+		if ((token[0] == 't') && (strcmp(token, c"true") == 0)): flow_true_serial = token_serial
 		for i in range(tree.types_count):
 			if (tree.pointer_offsets[i] == token_start_offset): ast_expression_commit_pointer(tree, i)
 		for id in range(tree.count): ast_expression_replay_event(tree, id, token_start_offset)
@@ -3448,6 +3452,14 @@ void ast_expression_replay_recorded(expression_ast* tree, int end):
 				current = k
 			ast_expression_replay_event(tree, value, tree.tokens[k * expression_ast_token_fields])
 	free(entries)
+	# grammar/type_check.w's constant-true conditions: the last 'true'
+	# token the lexing visit would have passed.
+	for id in range(tree.count):
+		if ((tree.op[id] == 'c') && (tree.value[id] == 1) && (tree.result_type[id] == type_value(bool_type))):
+			int t = expression_ast_token_at(tree, tree.offset[id])
+			if ((t >= 0) && (t < tokens)):
+				int serial = tree.tokens[t * expression_ast_token_fields + 11]
+				if (serial > flow_true_serial): flow_true_serial = serial
 	if (finish_text >= 0):
 		# Lexing the root again would leave the token buffer holding the
 		# last token as its own events decoded it in place, when the root

@@ -119,5 +119,8 @@ int int_literal():
 	int negative = 0
 	if (accept(c"-")): negative = 1
 	if ((token[0] < '0') || (token[0] > '9')): return 0
-	mov_eax_int(int_literal_value(negative))
+	int value = int_literal_value(negative)
+	mov_eax_int(value)
+	const_note(value)
+	lit_note(value, negative)
 	return 1

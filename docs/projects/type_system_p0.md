@@ -193,6 +193,59 @@ conversions" reduce to one rule, applied by
   (`VC_INT`). `lib/checked.w`'s `unsigned_lt`/`unsigned_cmp`/
   `unsigned_shr` remain for unsigned bit patterns held in plain `int`s.
 
+## Unsafe conversion checks
+
+Issue #532, stage 1 (`grammar/type_check.w`). Each check is an ordinary
+warning, so `--strict` (and every strict self-host stage) turns it into a
+failed build; making them errors without `--strict` is stage 2.
+
+| Construct | Diagnostic |
+|---|---|
+| a literal out of a 1- or 2-byte integer type's signed *and* unsigned range (`char c = 300`, `uint8 b = 256`, `int16 s = 70000`) in an initialization, assignment, argument or return | `... narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended` |
+| an integer stored into an enum (`color c = 5`, `c = some_int`, an int argument for an enum parameter) | `... converts '5' to enum 'color' implicitly; use cast(color, ...)` |
+| `==`/`!=` with a struct-value operand | `'==' and '!=' on struct values compare their addresses, not their fields; ...` |
+| a non-void function whose body can complete normally | `function 'f' can reach the end of its body without returning a value` |
+| a `case` value equal to an earlier literal or enum constant of the same switch | `duplicate case value 2 in switch; only the first matching case runs` |
+| `return <value>` in a void function (`return f()` of a void call is fine) | `return with a value in a void function` |
+
+The older warnings for a call with the wrong number of arguments and an
+int stored into a pointer were already counted by `--strict`.
+
+Two #532 conversions stay opt-in `check --lint` rules, because the tree
+relies on them as idioms: calling an integer-typed value (`[call-int]`;
+int-held callbacks whose signature varies) and storing a `void*` into a
+typed pointer without `cast()` (`[void-pointer-conversion]`; `T* p =
+malloc(n)`). See docs/projects/lint.md.
+
+Limits of the single-pass design (no AST, so each check sees only what
+the streaming parser knows when it emits code):
+
+- A constant's value is known only while a bare literal (or `-literal`)
+  is the whole expression just parsed; `(300)`, `200 + 100` and enum
+  constants are not range-checked. Literals that fit the type's signed or
+  unsigned reading are accepted (`char c = 200`, `uint8 b = -1`), like C
+  compilers' constant-overflow warning.
+- Fall-through analysis treats `return`/`break`/`continue`/`goto`, an
+  `if` whose every arm (including an `else`) terminates, a switch with a
+  `default` whose every case terminates and nothing breaks, and a
+  `while 1`/`while true`/`while (1)`/`while (true)` loop with no `break`
+  as terminating. An expression statement terminates when it starts with
+  a call to `exit`/`_exit`/`thread_exit`/`abort` or to a function defined
+  *earlier* whose body could never complete and held no `return` (so
+  `error()` and a local `die()` count, but a helper defined later in the
+  file does not). `for` loops never terminate. A definition keeps the
+  return type it was written with, even after a prototype that said
+  otherwise (`void main()` below `lib/lib.w`'s `int main(int, int);`).
+- Duplicate-case detection covers integer and char literals (optionally
+  negated or parenthesized) and single enum constants, not string cases
+  or constant expressions.
+- The fall-through and duplicate-case checks read only tokens, so they
+  report identically in the opt-in AST modes (`--ast-expressions`,
+  `--ast-full-expressions`); `ast_expression_test` compares the modes'
+  diagnostics. The narrowing and enum checks rely on the streaming
+  grammar's literal note, so under `--ast-full-expressions` they cover
+  only expressions that fall back to the streaming grammar.
+
 ## Milestones
 
 ### Milestone 0 - Baseline and guardrails

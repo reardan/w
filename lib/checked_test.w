@@ -214,12 +214,16 @@ void test_checked_narrow():
 		assert_equal(1, checked_narrow_u32(checked_int_max(), &r))
 
 
-# The silent truncation checked_narrow_* exists to replace.
+# The silent truncation checked_narrow_* exists to replace. The values
+# come through int variables: a literal out of a narrow type's range is
+# a compile-time warning since issue #532.
 void test_builtin_narrow_types_truncate():
-	uint16 u16 = 70000
+	int wide16 = 70000
+	uint16 u16 = wide16
 	int w16 = u16
 	assert_equal(70000 - 65536, w16)
-	uint8 u8 = 300
+	int wide8 = 300
+	uint8 u8 = wide8
 	int w8 = u8
 	assert_equal(44, w8)
 

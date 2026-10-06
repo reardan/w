@@ -1,6 +1,6 @@
 # Parameter declarations remain semantic input to the ordinary function
 # rule. Its completed signature feeds these resolved body-boundary nodes.
-void ast_function_body(int binding, int code_start, int kind):
+void ast_function_body(int binding, int code_start, int kind, int written_return_type, int retained_line, int retained_column):
 	function_ast node
 	node.kind = kind
 	node.binding = binding
@@ -22,8 +22,15 @@ void ast_function_body(int binding, int code_start, int kind):
 	node.outer_label_base = goto_label_base
 	node.outer_pending_base = goto_pending_base
 	goto_scope_begin()
+	int outer_saw_return = flow_saw_return
+	flow_saw_return = 0
 	statement()
 	node.end_offset = token_start_offset
+	# Mirrors function_definition (grammar/program.w)
+	if (kind == ast_function_native):
+		check_missing_return(written_return_type, node.name, retained_line, retained_column)
+		flow_function_finished(node.name)
+	flow_saw_return = outer_saw_return
 	goto_scope_end(node.outer_label_base, node.outer_pending_base)
 	if (kind == ast_function_native): defer_reset()
 	emit_function_end_ast(&node)
