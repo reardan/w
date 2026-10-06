@@ -85,10 +85,16 @@ lib/stack_trace.w's scratch buffers), and every stack probe goes
 through mincore(), so the handler allocates nothing and cannot fault
 on a wild stack pointer even when the fault came from a corrupted
 heap. A fault inside the handler itself re-raises with the default
-disposition already restored, so it cannot loop. Known limitation: a
-stack-overflow SIGSEGV cannot be reported (there is no sigaltstack,
-so the kernel cannot push the handler frame and kills the process
-directly with the unchanged default semantics).
+disposition already restored, so it cannot loop.
+
+Stack overflow (issue #526): the handlers run on an alternate signal
+stack (sigaltstack, SA_ONSTACK) that crash_handler_install maps for the
+main thread, and lib/thread.w arms one inside every worker's stack
+mapping, so a runaway recursion that exhausts its stack is reported like
+any other fault instead of dying as a bare "Segmentation fault". When
+the faulting address lies next to the stack pointer the report adds
+
+	note: the faulting address is next to the stack pointer: likely a stack overflow
 
 This file is in the seed's import graph (w.w imports it): seed-era
 syntax only.
@@ -172,6 +178,19 @@ void crash_write_registers(int context):
 	st_write_cstr(c"\n")
 
 
+# A fault within 64KB of the stack pointer is (almost always) a push,
+# call or frame setup that ran off the end of the stack. Compared as a
+# difference so it holds on either side of the sign bit.
+int crash_near_stack_pointer(int addr, int sp):
+	int d = addr - sp
+	return (d > -65536) && (d < 65536)
+
+
+# Size of the alternate signal stack the handlers run on: room for the
+# kernel's signal frame (with the x86-64 xsave area) and the unwinder.
+const int crash_altstack_size = 131072
+
+
 # The fatal-signal handler. On x86-64 the lib/signal.w thunk calls this
 # directly with &uc_mcontext; on i386 crash_entry below converts the
 # classic frame first.
@@ -191,6 +210,8 @@ void crash_report(int sig, int context):
 		st_write_cstr(c", faulting address ")
 		st_write_hex(ctx_reg(context, sigcontext_cr2()))
 	st_write_cstr(c"\n")
+	if ((sig == 11) && crash_near_stack_pointer(ctx_reg(context, sigcontext_cr2()), ctx_esp(context))):
+		st_write_cstr(c"note: the faulting address is next to the stack pointer: likely a stack overflow\n")
 	crash_write_registers(context)
 	if (cd_id_size > 0):
 		st_write_cstr(c"build-id: ")
@@ -507,10 +528,16 @@ void crash_handler_install():
 	crash_build_id()
 	crash_dump_prepare(env_get(c"W_CRASH_DUMP"))
 	crash_dfl_act_ensure()
+	# Run on an alternate stack so a stack overflow is reported too: on
+	# the exhausted stack the kernel could not push the handler frame
+	# and would kill the process silently. Without one (mmap or
+	# sigaltstack failed) SA_ONSTACK is simply ignored.
+	int alt = mmap(0, crash_altstack_size, 3, 34) /* RW, PRIVATE|ANONYMOUS */
+	if ((alt > 0) || (alt < -4095)): signal_altstack_install(alt, crash_altstack_size)
 	int handler = cast(int, crash_entry)
 	if (__word_size__ == 8): handler = cast(int, crash_report)
-	signal_install_handler(4, handler, 0) /* SIGILL */
-	signal_install_handler(7, handler, 0) /* SIGBUS */
-	signal_install_handler(8, handler, 0) /* SIGFPE */
-	signal_install_handler(11, handler, 0) /* SIGSEGV */
+	signal_install_handler(4, handler, signal_sa_onstack) /* SIGILL */
+	signal_install_handler(7, handler, signal_sa_onstack) /* SIGBUS */
+	signal_install_handler(8, handler, signal_sa_onstack) /* SIGFPE */
+	signal_install_handler(11, handler, signal_sa_onstack) /* SIGSEGV */
 	crash_installed = 1
