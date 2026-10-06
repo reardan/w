@@ -1366,3 +1366,61 @@ record of the traversal and is not read back to emit; interned text survives
 rollback until `retained_clear` (it is bounded by distinct spellings). The
 remaining retained cost is mostly the per-operand binding and type notes.
 **#489 remains open.**
+
+## DWARF subprograms, variables and types (C3.3, #536)
+
+`-g` now gives debuggers functions, arguments, locals and their types. It
+retains the AST forest (as `--ast-retain`) and, at link time,
+`code_generator/dwarf_types.w` turns that forest into DIEs under the
+compile unit: one `DW_TAG_subprogram` per retained function definition,
+`DW_TAG_formal_parameter`/`DW_TAG_variable` for its retained parameters and
+locals, and base, pointer, structure, union, typedef, const, enumeration,
+fixed-array and subroutine types for every retained type those reach.
+gdb on an x86 or x64 `-g` binary shows `info args`, `info locals`, struct
+values and pointer targets in every frame, including outer frames after
+`up`. arm64 shows the same for the innermost frame; outer frames need CFI.
+
+How the pieces map:
+
+- A function's pc range is its symbol's address and the size the emitter
+  recorded when the body closed. A prototype and its body share a symbol;
+  the body is the function node that owns statements, not only the
+  parameter inventory.
+- The frame base is the frame pointer the prologue sets up (`DW_OP_breg5`
+  ebp, `breg6` rbp, `breg29` x29). Variables are `DW_OP_fbreg` offsets from
+  the same slot arithmetic `sym_emit_value` compiles. `debug_func_note` now
+  also records `be_frame_words()`. Frameless bodies (generators) get a
+  subprogram with no frame base and no variables.
+- A local's scope is a `DW_TAG_lexical_block` that runs from its
+  declaration (the runtime variable note's codepos) to the first statement
+  whose recorded stack depth no longer covers its slot. That is the rule
+  wdbg already uses at a stop. Stack discipline makes these ranges nest,
+  so the blocks form a proper tree.
+- A W fixed array value is a `{data, length}` header followed by its
+  elements, so `int[4]` is described as a structure with `data`, `length`
+  and `items` members.
+- One compiler type can be retained more than once, for example a struct
+  noted before its fields were complete. Each compiler type gets one DIE,
+  taken from its newest retained record.
+
+The forest is not retained implicitly in every compile. Retaining costs
+about as much as `--ast-retain` (`w.w`: 0.76 s by default, 1.5 s with
+`-g`). Paying that on every build would break the 1.25x budget of
+checkpoint A, so the rich unit is opt-in. Without `-g` the compiler
+installs no hooks and images are byte-identical to before; `verify`,
+`verify_x64` and `verify_arm64` hold. The code is identical with and
+without `-g`: only the debug sections, the segment sizes and the build id
+differ. `dwarf_variables_test` asserts that, and also walks the
+`.debug_abbrev`/`.debug_info` of x86, x64 and arm64 `-g` images with its
+own DIE reader. On x86 and x64 it runs the fixture and checks the
+described argument and local slots against the running frame.
+
+What this does not claim: no `.debug_frame` (CFI is #536's follow-up), so
+outer-frame unwinding on arm64 (W stack in x28, PAC-signed return
+addresses) fails in gdb. There are no location lists: a variable is shown
+from its declaration, before its initializer has run. The compile unit
+keeps the name of the first registered debug file. `string`, `list`,
+`map`, `set` and `var` are described as opaque word-sized base types.
+Generic struct instances and GPU kernels get no special treatment
+(kernels are skipped). `-g` should become the default once retention is
+the production path (S2.5).

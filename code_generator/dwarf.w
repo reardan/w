@@ -5,6 +5,10 @@ While the grammar parses statements it calls debug_line_note(), which records
 (codepos, source line, source file). emit_debugging_symbols() later calls the
 debug_*_emit() functions to write .debug_line, .debug_abbrev and .debug_info
 section payloads, so gdb can map addresses back to source lines.
+
+By default .debug_info is one childless compile unit. Under -g the unit also
+carries subprogram, variable and type DIEs built from the retained AST forest
+by code_generator/dwarf_types.w, through debug_abbrev_hook/debug_info_hook.
 */
 import code_generator.code_emitter
 import lib.lib
@@ -158,9 +162,14 @@ void debug_local_note(char* name, int slot, int kind, int type):
 
 # Functions: start codepos and the number of argument words the body was
 # compiled with (structs passed by value span several words, so this can
-# differ from the declared parameter count in the symbol table).
+# differ from the declared parameter count in the symbol table), plus the
+# frame-pointer words the prologue pushed (be_frame_words: 1 when the
+# body addresses its frame through ebp/rbp/x29, 0 for generator bodies
+# and other frameless entries). Every caller notes the function right
+# after its prologue, so be_frame_words() is the body's own value.
 char* debug_func_starts
 char* debug_func_arg_words
+char* debug_func_frame_words
 int debug_func_count
 int debug_func_capacity
 
@@ -170,26 +179,35 @@ void debug_func_note(int start, int arg_words):
 		debug_func_capacity = 1024
 		debug_func_starts = malloc(debug_func_capacity * 4)
 		debug_func_arg_words = malloc(debug_func_capacity * 4)
+		debug_func_frame_words = malloc(debug_func_capacity * 4)
 	if (debug_func_count >= debug_func_capacity):
 		int old = debug_func_capacity * 4
 		debug_func_capacity = debug_func_capacity * 2
 		int x = debug_func_capacity * 4
 		debug_func_starts = realloc(debug_func_starts, old, x)
 		debug_func_arg_words = realloc(debug_func_arg_words, old, x)
+		debug_func_frame_words = realloc(debug_func_frame_words, old, x)
 	save_int(debug_func_starts + debug_func_count * 4, start)
 	save_int(debug_func_arg_words + debug_func_count * 4, arg_words)
+	save_int(debug_func_frame_words + debug_func_count * 4, be_frame_words())
 	debug_func_count = debug_func_count + 1
+
+
+# Note index of the function whose body starts at codepos 'start', or -1.
+int debug_func_find(int start):
+	int i = 0
+	while (i < debug_func_count):
+		if (load_int(debug_func_starts + i * 4) == start): return i
+		i = i + 1
+	return -1
 
 
 # Argument words for the function whose body starts at codepos 'start',
 # or -1 when unknown (e.g. asm stubs).
 int debug_func_args_at(int start):
-	int i = 0
-	while (i < debug_func_count):
-		if (load_int(debug_func_starts + i * 4) == start):
-			return load_int(debug_func_arg_words + i * 4)
-		i = i + 1
-	return -1
+	int i = debug_func_find(start)
+	if (i < 0): return -1
+	return load_int(debug_func_arg_words + i * 4)
 
 
 void emit_uleb(int v):
@@ -290,8 +308,22 @@ void debug_line_emit():
 	save_int(code + unit_start, codepos - unit_start - 4)
 
 
+# Rich debug info (-g, issue #536): code_generator/dwarf_types.w builds
+# subprogram, variable and type DIEs from the retained AST forest. It is
+# compiled after this file, so the driver installs its emitters here as
+# function values (compiler/compiler.w): debug_abbrev_hook() writes the
+# whole abbreviation table, debug_info_hook(unit_start, text_start)
+# writes the compile unit's trailing attributes and its children. Both
+# stay 0 by default, which keeps the childless unit below byte for byte.
+int debug_abbrev_hook
+int debug_info_hook
+
+
 # .debug_abbrev: one abbreviation - a childless compile unit.
 void debug_abbrev_emit():
+	if (debug_abbrev_hook != 0):
+		debug_abbrev_hook()
+		return;
 	emit_uleb(1) /* abbrev code */
 	emit_uleb(17) /* DW_TAG_compile_unit */
 	emit_int8(0) /* no children */
@@ -333,6 +365,7 @@ void debug_info_emit_at(int text_start, int text_end):
 	else:
 		emit_target_word(code_offset) /* DW_AT_low_pc */
 		emit_target_word(text_end + code_offset) /* DW_AT_high_pc */
+	if (debug_info_hook != 0): debug_info_hook(unit_start, text_start)
 	emit_uleb(0) /* end of children */
 	save_int(code + unit_start, codepos - unit_start - 4)
 

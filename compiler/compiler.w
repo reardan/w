@@ -9,6 +9,8 @@ import compiler.lint
 import grammar
 import compiler.test_registry
 import lib.sha256
+# C3.3 (#536): -g's subprogram, variable and type DIEs (dwarf.w hooks).
+import code_generator.dwarf_types
 
 
 void file_not_found_error():
@@ -849,6 +851,15 @@ int link_option(char* arg, int apply):
 			ast_expressions_mode = 2
 			ast_required_mode = 1
 		return 1
+	# C3.3 (#536): -g retains the AST forest (as --ast-retain) and emits
+	# DWARF subprograms, variables and types from it
+	# (code_generator/dwarf_types.w). Without it the image is unchanged.
+	if (strcmp(arg, c"-g") == 0):
+		if (apply):
+			ast_expressions_mode = 2
+			ast_retain_mode = 1
+			dwarf_types_enable()
+		return 1
 	if (strcmp(arg, c"--quiet") == 0):
 		if (apply): quiet_mode = 1
 		return 1
@@ -894,6 +905,7 @@ void help_shared_options():
 	println(c"  --ast-audit           full-expression mode plus JSON fallback records on stderr")
 	println(c"  --ast-retain          retain owned traversal trees (experimental, full AST mode)")
 	println(c"  --ast-required        reject any expression fallback (migration coverage gate)")
+	println(c"  -g                    DWARF subprograms, variables and types (retains the AST)")
 	println(c"  --quiet               suppress the non-diagnostic stderr banners")
 	println(c"  --stats               print symbol-lookup counters to stderr when done")
 	println(c"  --stats-selfcheck     cross-check every symbol lookup against a linear scan")
@@ -1086,6 +1098,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	retained_clear()
 	ast_retain_mode = retained_query_mode
 	ast_expressions_mode = retained_query_mode * 2
+	# C3.3 (#536): -g is per compile; default to the childless unit.
+	dwarf_types_reset()
 	ast_expressions_emitted = 0
 	ast_simple_statements_emitted = 0
 	ast_debugger_statements_emitted = 0
@@ -1208,6 +1222,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 			# closure as well as explicit inputs. Never hide that gap.
 			if ((strcmp(*flag_arg, c"--ast-full-expressions") == 0) || (strcmp(*flag_arg, c"--ast-audit") == 0) || (strcmp(*flag_arg, c"--ast-required") == 0) || (strcmp(*flag_arg, c"--ast-retain") == 0)):
 				link_option(*flag_arg, 1)
+			# C3.3 (#536): -g retains the runtime closure's functions too.
+			if (strcmp(*flag_arg, c"-g") == 0): link_option(*flag_arg, 1)
 		flag_scan = flag_scan + 1
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import
