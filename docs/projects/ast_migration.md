@@ -1312,3 +1312,56 @@ savings. Its own allocation cost is P1.2. The streaming front end is
 still the default (P1.4). Template roots still lex twice. The slab stack
 assumes AST trees are compiler stack locals, which every caller is today;
 a heap-allocated tree would need an explicit release. **#489 remains open.**
+## Retained-forest cost and query ergonomics (P1.2)
+
+Retaining the forest no longer dominates an AST compile. Before this change
+`--ast-retain --ast-required` compiled `w.w` in 7.9 s against 2.1 s for
+`--ast-required` (3.8x on this container); it now takes 2.8 s (x86 host) and
+3.0 s (x64 host), about 1.3x, with identical images. Under callgrind the
+retained compile of a fixed corpus went from 77.3 G to 17.4 G instructions,
+against 13.8 G for `--ast-required` alone.
+
+Most of the old cost was quadratic lookup, not allocation. Every source byte
+compared the file name against the cached path with `strcmp`; every binding and
+type note scanned every source version by path; a definition scanned all
+earlier bindings for the prototype it completes; parameters were found by
+walking the whole symbol index per function; and each declaration walked every
+node created since the previous declaration, imported modules included. These
+are now a pointer-identity cache on the per-byte path (every new source version
+and every rollback resets it), a path index plus a debug-file-index cache,
+an `origin_previous` chain per raw symbol offset, a binary search into the
+sorted symbol index, and a per-source list of top-level children. Binding
+lookup keys use the debug file index instead of the path and are built in a
+reused buffer.
+
+Storage changed as planned. Nodes live in 1024-node chunks owned by the
+session; `retained_nodes[i]` still points at node `i`, so consumers are
+unchanged. Names, files, type spellings, payload text and import paths are
+interned once per session. Each expression group's text and type-name arenas are
+copied once into a chunked session text arena, and string-literal operands are
+slices of that copy instead of separate allocations. Rollback is therefore a
+high-water mark: it truncates the node list and the text arena and frees no
+per-node strings; chunks above the mark are reused. `retained_clear` frees
+chunks, arena and interned text, and `ast_retained_memory_test` now also runs
+under `W_DEBUG_ALLOC=1` and covers chunk reuse, record placement at chunk
+boundaries and the path index across rollback.
+
+`w tree --json` streams. It flushes at record boundaries once 64 KiB are
+buffered instead of building the whole dump (185 MB for `w.w`) in one buffer,
+and writes integers and plain strings without per-field allocation. The `w.w`
+dump takes 4.1 s instead of 12 s and peaks at 90 MB instead of 302 MB (x86
+host); its bytes are unchanged. Two filters avoid the full dump:
+`--file <path>` (repeatable; a recorded path or a suffix at a directory
+boundary) keeps the source, node, type, binding and dependency records of the
+named sources, and `--no-expressions` drops `expression` and
+`expression_group` nodes. Filters never renumber: the leading `tree` record
+still carries the session totals and references may name omitted records. A
+`--file` that matches no compiled source is an error. No field was added, so
+the schema stays **version 2**.
+
+What this does not claim: the per-byte pointer cache relies on every new
+source version entering through `retained_source_begin`; the forest is still a
+record of the traversal and is not read back to emit; interned text survives
+rollback until `retained_clear` (it is bounded by distinct spellings). The
+remaining retained cost is mostly the per-operand binding and type notes.
+**#489 remains open.**
