@@ -1,4 +1,4 @@
-# wbuild: x64
+# wbuild: x64 arch=arm64
 # lib/float_text.w: correctly rounded decimal -> float parsing, shortest
 # round-trip float -> decimal formatting and fixed-precision formatting
 # (issue #529). float32 runs on every target; the float64 cases work
