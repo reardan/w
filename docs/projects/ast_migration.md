@@ -1366,3 +1366,38 @@ record of the traversal and is not read back to emit; interned text survives
 rollback until `retained_clear` (it is bounded by distinct spellings). The
 remaining retained cost is mostly the per-operand binding and type notes.
 **#489 remains open.**
+
+## Diagnostic codes, end columns and related notes (C3.2)
+
+`w check --json` records gain four fields, appended after `arch`:
+`code`, `end_line`, `end_column` and `related` (the optional `help`
+sits between `end_column` and `related`). `docs/projects/lint.md`
+"JSON output" specifies them.
+
+Codes come from one append-only table in `compiler/diagnostics.w`
+(W0001-W0399): each row is a frozen message with `@` for its variable
+parts, and the most specific matching row wins. The emitter computes
+the code from the final message text, so no call site changed for it.
+Every message in the 382-file fixture corpus (1,729 records across
+default, `--lint` and `--ast-required` on both widths) maps to a
+specific row; none falls back to W0000.
+
+The end position is the exclusive end of the reported token, checked
+against the source bytes when the file can be read back. Related notes
+are attached by the call sites that know the declaration: the
+did-you-mean suggestion and the later definition for "Cannot find
+symbol", the earlier definition for `symbol redefined`, generic
+redefinition and `:=` redeclaration, and the callee or enclosing
+function for argument and return mismatches. They are recorded
+only under `--json` and dropped by `diag_clear()`, so a suppressed
+probe warning cannot pass its note on. Human-readable output, exit
+statuses and the existing seven fields are byte-identical over the
+same corpus.
+
+What it does not claim: the span is the current token's, not a
+retained node's. No closed retained node covers a diagnostic when it
+fires, because expressions are retained after emission. Node-span ends
+need tree-then-emit. Related notes cover the listed diagnostics only;
+arity warnings have none because the AST-mode replay event carries no
+callee symbol and both front ends must emit identical records. `ast_diagnostic_codes_test` pins the codes, spans
+and notes. **#489 remains open.**
