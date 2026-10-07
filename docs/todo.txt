@@ -602,10 +602,12 @@ current state:
 		dynamic typing / var (docs/projects/dynamic_var.md)
 		generics/templates with explicit instantiation (docs/projects/generics.md)
 		generic type-argument inference at call sites (docs/projects/generics.md)
+		asm function bodies: `asm x86:`/`x64:`/`arm64:` string-line blocks with a portable W body (docs/projects/asm_functions.md)
 
 	future language features:
 		generic inference for forward calls, struct constructors and container shapes (pair[T]*, list[T])
-		inline asm functions
+		asm function bodies, stage 2: stdlib bodies (strlen/strcpy/strcmp, SipHash, list addr, sha256) once SEEDS carries the syntax
+		asm blocks naming W symbols (calls, globals); A64 immediate shifts/rotates for an arm64 sha256 body
 		bfloat16; float16 on arm64/wasm (design: docs/projects/float.md)
 		type <=> protobuf
 		global default values

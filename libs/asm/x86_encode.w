@@ -523,6 +523,16 @@ int asm_x86_encode_alu(asm_buffer* b, asm_insn* insn):
 	if (insn.op2.kind == ASM_OP_IMM):
 		int size = insn.op1.size
 		if (insn.op1.kind == ASM_OP_MEM): size = insn.op1.size
+		# byte operand: al, imm8 short form (base + 4) or 80 /ext ib
+		if (size == 1):
+			if (insn.op1.kind == ASM_OP_REG && insn.op1.reg == 0):
+				asm_buffer_byte(b, base + 4)
+			else:
+				asm_enc_rex(b, is64, 0, ext, &insn.op1)
+				asm_buffer_byte(b, 0x80)
+				asm_enc_modrm(b, ext, &insn.op1, is64)
+			asm_buffer_byte(b, insn.op2.imm & 255)
+			return 1
 		# eax, imm32 short form
 		if (insn.op1.kind == ASM_OP_REG && insn.op1.reg == 0 && insn.op2.size != 1):
 			asm_enc_opsize_prefix(b, insn.op1.size)

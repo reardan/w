@@ -55,9 +55,12 @@ char* asm_parse_token(asm_parse* p):
 
 # High 32 bits of a hex immediate token wider than 32 bits (for movabs
 # r64, imm64). asm_parse_number keeps the low 32 bits; this returns the
-# high word (0 for decimal, negative, or <= 32-bit values).
+# high word (0 for decimal or <= 32-bit values; a negative value
+# sign-extends, so `mov rax,-1` loads -1 rather than 0xffffffff).
 int asm_parse_number_hi(char* s):
-	if (s[0] == '-'): return 0
+	if (s[0] == '-'):
+		if (asm_parse_number(s) == 0): return 0
+		return 0 - 1
 	if (s[0] != '0' || s[1] != 'x'): return 0
 	int i = 2
 	int hi = 0
