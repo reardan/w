@@ -22,7 +22,7 @@ void test_kvm_port_exit():
 	# Only an unavailable device is a skip; failures after open are bugs.
 	int probe = kvm_open_system()
 	if (probe < 0):
-		test_skip(c"SKIP: /dev/kvm unavailable")
+		test_skip_kvm(c"SKIP: /dev/kvm unavailable")
 		return
 	close(probe)
 	kvm_machine vm

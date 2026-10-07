@@ -124,6 +124,17 @@ int cell_syscall(vm_cell* cell):
 		if (cell_range(cell, a, b, 1) == 0): return -14
 		if (b > 1048576): b = 1048576
 		return sys_getrandom(cell.ram + a, b, 1)
+	if (nr == 131): # sigaltstack
+		# The cell never delivers a signal, so an alternate stack is
+		# accepted and never used (lib/thread.w arms one per thread).
+		# The previous stack always reads back disabled (SS_DISABLE).
+		if (a != 0 && cell_range(cell, a, 24, 0) == 0): return -14
+		if (b != 0):
+			if (cell_range(cell, b, 24, 1) == 0): return -14
+			save_int64(cell.ram + b, 0)
+			save_int64(cell.ram + b + 8, 2)
+			save_int64(cell.ram + b + 16, 0)
+		return 0
 	if (nr == 39 || nr == 186): return 1 # virtual pid/tid
 	if (nr == 24): return 0 # sched_yield: one vCPU
 	# Path-based access is denied. None of these dereference a guest
