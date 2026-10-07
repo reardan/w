@@ -13,7 +13,7 @@ import lib.ci_skip
 int wvm_test_available():
 	int fd = kvm_open_system()
 	if (fd < 0):
-		test_skip(c"SKIP: /dev/kvm unavailable (loader tests still ran)")
+		test_skip_kvm(c"SKIP: /dev/kvm unavailable (loader tests still ran)")
 		return 0
 	close(fd)
 	return 1

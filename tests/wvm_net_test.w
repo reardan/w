@@ -118,7 +118,7 @@ void test_wvm_net_cli_invalid():
 void test_wvm_net_execution():
 	int kvm = kvm_open_system()
 	if (kvm < 0):
-		test_skip(c"SKIP: /dev/kvm unavailable (network boundary tests still ran)")
+		test_skip_kvm(c"SKIP: /dev/kvm unavailable (network boundary tests still ran)")
 		return
 	close(kvm)
 	vm_cell* denied = wvm_net_load(1, c"denied")

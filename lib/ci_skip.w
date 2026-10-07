@@ -10,6 +10,11 @@ message, a note on stderr, and exits 1 instead, so a CI leg that is
 meant to provide the capability fails loudly when it does not, rather
 than passing on a SKIP line.
 
+A runner that cannot provide /dev/kvm (GitHub's hosted runners expose it
+on most machines, not all) sets W_CI_NO_KVM; test_skip_kvm then prints
+its SKIP line and returns even under W_CI_NO_SKIP, so a KVM-less runner
+skips the guest-execution tests instead of failing the whole leg.
+
 Opt-in suites that need explicit configuration (WVM_TEST_KERNEL,
 WVM_TEST_CGROUP, ...) keep plain SKIP lines: they are not missing host
 capabilities, and CI only counts them.
@@ -29,3 +34,12 @@ void test_skip(char* message):
 	if (test_skip_strict()):
 		print_error(c"W_CI_NO_SKIP is set: this skip is a failure\n")
 		exit(1)
+
+
+# test_skip for a missing /dev/kvm: a plain SKIP line when the runner
+# declared it has none (W_CI_NO_KVM), otherwise test_skip.
+void test_skip_kvm(char* message):
+	if (env_get(c"W_CI_NO_KVM") != 0):
+		println(message)
+		return
+	test_skip(message)
