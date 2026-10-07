@@ -28,6 +28,7 @@
 # arena it replaces. A difference means the retained copy lost information,
 # so it is a compiler bug and stops the compilation, rather than letting
 # the image silently differ from the default emitter's.
+import compiler.statement_ast
 
 int ast_emit_retained_mode
 # --stats: expression groups lowered from the retained forest.
@@ -164,3 +165,256 @@ int retained_emit_expression_group(expression_ast* tree, int group):
 		tree.infer_want[i] = want
 	ast_retained_emitted = ast_retained_emitted + 1
 	return owner.op
+
+
+# ---------------------------------------------------------------------------
+# S2.2: parse a statement completely, then emit it by walking its record.
+#
+# A statement family that supports the walk records, while it parses, the
+# facts its emitter needs (its statement_ast node and the retained group of
+# its expression child) and an ordered list of phases. A phase is one of the
+# family's emission steps, tagged with an emission point: the lexer state the
+# streaming emitter ran that step in. Diagnostics, DWARF notes and constant
+# checks read the current token and line, so the walk switches the lexer to
+# each phase's point around the step, and back to the parse's position after.
+# The family's parse ends with retained_emit_statement(node), the entry point
+# of the walk: it emits every remaining phase in recorded order.
+#
+# Families plug in without a shared switch: retained_walk_begin stores the
+# family's own emitter in the record, void emitter(retained_statement_walk*
+# walk, int phase), and phase codes are private to that emitter (family (a)'s
+# are in compiler/statement_ast.w).
+#
+# Order-sensitive parse steps. Moving emission after the rest of the parse
+# keeps images identical but would move the emitter's diagnostics after any
+# diagnostic printed by a parse step in between (a lexer warning on the next
+# line, a missing terminator). A family therefore drains the phases recorded
+# so far (retained_walk_drain) before any such step that may print, which
+# emits them at their original place in the output; the rest of the walk
+# still runs after the parse.
+#
+# Lifetime: a record borrows its statement_ast node and expression arena from
+# the parsing frame. That is sound while a family walks before its hook
+# returns; a walk that outlives the frame must own copies. Records, phases
+# and points are pooled and released, last in first out, once walked.
+
+void retained_expression_note(expression_ast* tree, int root);
+void emit_expression_ast(expression_ast* tree, int id);
+
+struct retained_statement_walk:
+	int node
+	int emitter
+	statement_ast* statement
+	expression_ast* tree
+	int group
+	int root
+	int phase_base
+	int phase_count
+	int point_base
+	int point_count
+	int done
+	int walked
+
+list[retained_statement_walk*] retained_walks
+int retained_walks_used
+list[int] retained_walk_phase_codes
+list[int] retained_walk_phase_points
+int retained_walk_phases_used
+list[tokenizer_snapshot*] retained_emit_points
+list[char*] retained_emit_point_texts
+list[int] retained_emit_point_sizes
+int retained_emit_points_used
+# --stats: statements emitted by the walk rather than during their parse.
+int ast_retained_statements_emitted
+
+
+# A record that was walked, or whose statement node was retracted (an error
+# rolled a REPL entry back mid-statement), no longer holds pool entries.
+int retained_walk_stale(int id):
+	retained_statement_walk* walk = retained_walks[id]
+	if (walk.walked): return 1
+	if (walk.node >= retained_nodes.length): return 1
+	return retained_nodes[walk.node].statement_walk != id
+
+
+void retained_walk_release():
+	while ((retained_walks_used > 0) && retained_walk_stale(retained_walks_used - 1)):
+		retained_statement_walk* top = retained_walks[retained_walks_used - 1]
+		retained_walk_phases_used = top.phase_base
+		retained_emit_points_used = top.point_base
+		retained_walks_used = retained_walks_used - 1
+
+
+# Start a walk record for the statement being parsed, attached to its
+# retained statement node. Returns -1 when the statement must be emitted
+# during its parse: the mode is off, or there is no retained statement node
+# (a hook called outside the statement dispatcher) or it already has one.
+int retained_walk_begin(int emitter, statement_ast* statement):
+	if ((ast_emit_retained_mode == 0) || (retained_parent < 0)): return -1
+	retained_node* node = retained_nodes[retained_parent]
+	if ((node.kind != retained_statement) || (node.statement_walk >= 0)): return -1
+	if (retained_walks == 0):
+		retained_walks = new list[retained_statement_walk*]
+		retained_walk_phase_codes = new list[int]
+		retained_walk_phase_points = new list[int]
+		retained_emit_points = new list[tokenizer_snapshot*]
+		retained_emit_point_texts = new list[char*]
+		retained_emit_point_sizes = new list[int]
+	retained_walk_release()
+	int id = retained_walks_used
+	if (id == retained_walks.length): retained_walks.push(new retained_statement_walk)
+	retained_walks_used = id + 1
+	retained_statement_walk* walk = retained_walks[id]
+	walk.node = retained_parent
+	walk.emitter = emitter
+	walk.statement = statement
+	walk.tree = 0
+	walk.group = -1
+	walk.root = -1
+	walk.phase_base = retained_walk_phases_used
+	walk.phase_count = 0
+	walk.point_base = retained_emit_points_used
+	walk.point_count = 0
+	walk.done = 0
+	walk.walked = 0
+	node.statement_walk = id
+	return id
+
+
+# 1 when the lexer is exactly at the recorded point.
+int retained_emit_point_current(int point):
+	tokenizer_snapshot* s = retained_emit_points[point]
+	if ((s.token_serial != token_serial) || (s.byte_offset != byte_offset)): return 0
+	if ((s.token_start_offset != token_start_offset) || (s.token_i != token_i)): return 0
+	if ((s.file != file) || (s.filename != filename) || (s.nextc != nextc)): return 0
+	if ((s.line_number != line_number) || (s.column_number != column_number)): return 0
+	if ((s.diag_token_line != diag_token_line) || (s.diag_token_column != diag_token_column)): return 0
+	if ((s.tab_level != tab_level) || (s.token_newline != token_newline)): return 0
+	return strcmp(retained_emit_point_texts[point], token) == 0
+
+
+int retained_emit_point_save():
+	int id = retained_emit_points_used
+	if (id == retained_emit_points.length):
+		retained_emit_points.push(new tokenizer_snapshot)
+		retained_emit_point_texts.push(0)
+		retained_emit_point_sizes.push(0)
+	retained_emit_points_used = id + 1
+	tokenizer_snapshot_save(retained_emit_points[id])
+	int length = strlen(token)
+	if (retained_emit_point_sizes[id] <= length):
+		int size = (length + 16) << 1
+		if (retained_emit_point_texts[id] != 0): free(retained_emit_point_texts[id])
+		retained_emit_point_texts[id] = cast(char*, malloc(size))
+		retained_emit_point_sizes[id] = size
+	char* text = retained_emit_point_texts[id]
+	for i in range(length): text[i] = token[i]
+	text[length] = 0
+	return id
+
+
+# Record the next emission step of a walk at the current lexer state.
+void retained_walk_phase(int id, int code):
+	retained_statement_walk* walk = retained_walks[id]
+	# A nested walk runs to completion inside a drain, so a record's
+	# phases and points stay contiguous.
+	assert1(retained_walk_phases_used == walk.phase_base + walk.phase_count)
+	int point = walk.point_base + walk.point_count - 1
+	if ((walk.point_count == 0) || (retained_emit_point_current(point) == 0)):
+		assert1(retained_emit_points_used == walk.point_base + walk.point_count)
+		point = retained_emit_point_save()
+		walk.point_count = walk.point_count + 1
+	int k = retained_walk_phases_used
+	if (k == retained_walk_phase_codes.length):
+		retained_walk_phase_codes.push(code)
+		retained_walk_phase_points.push(point)
+	else:
+		retained_walk_phase_codes[k] = code
+		retained_walk_phase_points[k] = point
+	retained_walk_phases_used = k + 1
+	walk.phase_count = walk.phase_count + 1
+
+
+# The expression child: record its retained group now, without lowering it
+# (that is the walk's job, retained_walk_lower_expression). The note runs
+# exactly where the streaming emitter's would, right after preparation.
+void retained_walk_expression(int id, expression_ast* tree, int root):
+	retained_statement_walk* walk = retained_walks[id]
+	retained_init()
+	int group = retained_nodes.length
+	int lowering = ast_emit_retained_mode
+	ast_emit_retained_mode = 0
+	retained_expression_note(tree, root)
+	ast_emit_retained_mode = lowering
+	assert1(retained_nodes[group].kind == retained_expression_group)
+	walk.tree = tree
+	walk.group = group
+	walk.root = root
+
+
+# Lower the walk's expression child from its retained group (S2.1's
+# adapter rebuilds the arena and checks it against the parse); returns
+# the root node ID.
+int retained_walk_lower_expression(retained_statement_walk* walk):
+	int root = retained_emit_expression_group(walk.tree, walk.group)
+	assert1(root == walk.root)
+	emit_expression_ast(walk.tree, root)
+	return root
+
+
+# The source descriptor's logical read position (getchar's buffered view).
+int retained_emit_source_position():
+	if ((file < 0) || (file >= GETCHAR_MAX_FD)): return -1
+	return getchar_kernel_pos[file] - getchar_limit[file] + getchar_pos[file]
+
+
+# Emit the recorded phases not yet emitted, each at its emission point,
+# then return the lexer to where the parse stands. The source descriptor
+# is not moved to a point: a phase that reads source (a diagnostic's
+# context line, a deferred-statement reparse) seeks absolutely, and the
+# parse's read position is restored afterwards if a phase moved it.
+void retained_walk_drain(int id):
+	retained_statement_walk* walk = retained_walks[id]
+	if (walk.done >= walk.phase_count): return
+	tokenizer_snapshot resume
+	tokenizer_snapshot_save(&resume)
+	char* resume_text = 0
+	int resume_file = file
+	int resume_position = retained_emit_source_position()
+	while (walk.done < walk.phase_count):
+		int k = walk.phase_base + walk.done
+		int point = retained_walk_phase_points[k]
+		if (retained_emit_point_current(point) == 0):
+			if (resume_text == 0): resume_text = strclone(token)
+			tokenizer_snapshot_restore(retained_emit_points[point], retained_emit_point_texts[point])
+		walk.done = walk.done + 1
+		# The family's emitter, held as an address like analysis_run's
+		# operation (compiler/analysis.w).
+		int emitter = walk.emitter
+		emitter(walk, retained_walk_phase_codes[k])
+	if (resume_text != 0):
+		tokenizer_snapshot_restore(&resume, resume_text)
+		free(resume_text)
+	if ((resume_position >= 0) && (file == resume_file) && (retained_emit_source_position() != resume_position)):
+		getchar_seek(file, resume_position)
+
+
+# The walk's entry point: emit the retained statement node's remaining
+# phases and release its record (and any walked records above it).
+void retained_emit_statement(int node):
+	int id = retained_nodes[node].statement_walk
+	assert1(id >= 0)
+	retained_walk_drain(id)
+	retained_walks[id].walked = 1
+	retained_nodes[node].statement_walk = -1
+	ast_retained_statements_emitted = ast_retained_statements_emitted + 1
+	retained_walk_release()
+
+
+# --stats: statements the dispatcher entered, from the retained forest.
+int retained_statement_count():
+	if (retained_nodes == 0): return 0
+	int count = 0
+	for i in range(retained_nodes.length):
+		if (retained_nodes[i].kind == retained_statement): count = count + 1
+	return count

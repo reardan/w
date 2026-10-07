@@ -1525,3 +1525,94 @@ parse; the forest is only the emitter's input. Columns that overload
 group-local node ids are held verbatim, as is `generic_instance` (an index
 into the generic-instance queue). No `tree --json` field was added, so the
 schema stays **version 2**. **#489 remains open.**
+
+## Parse a statement, then emit it from its record (S2.2a)
+
+Under `--ast-emit-retained`, simple statements (`pass`, `debugger`,
+`break`, `continue`), expression statements and `return`/`yield` are now
+parsed completely, terminator included, before any of their code is
+emitted; a walk then emits them from what the parse recorded. This is the
+first construct family of S2.2 and it defines the walk that the other
+families extend (`code_generator/retained_emit.w`, S2.2 section).
+
+- **The record.** `retained_walk_begin` attaches a walk record to the
+  dispatcher's retained statement node (new field
+  `retained_node.statement_walk`). It holds the statement's resolved
+  `statement_ast` node, the retained group of its expression child
+  (recorded by `retained_expression_note` at the same moment as before,
+  but not lowered) and an ordered list of *phases*: the emission steps the
+  streaming hooks ran during the parse (lower the expression, replay the
+  root's end-of-expression warnings, coerce the value, transfer control),
+  each tagged with an *emission point*, the lexer state that step ran in.
+- **The walk.** `retained_emit_statement(node)` is the entry point. It runs
+  the remaining phases in recorded order, switching the lexer to each
+  phase's point and back to the parse's position afterwards, so
+  diagnostics, constant-narrowing checks and anything else that reads the
+  current token see what they saw before. The expression is lowered from
+  its retained group through S2.1's adapter. A family plugs in by passing
+  its own emitter to `retained_walk_begin`
+  (`void emitter(retained_statement_walk*, int phase)`); phase codes are
+  private to the family (family (a)'s are `ast_walk_*` in
+  `compiler/statement_ast.w`, its emitter is `emit_statement_ast_walk`), so
+  no shared switch has to be edited by the next families.
+- **Order-sensitive parse steps.** Moving emission after the rest of the
+  parse cannot change the image, but it can change the order of
+  diagnostics: lexing the token after the expression can print an
+  indentation or end-of-file warning (or an unterminated-literal error),
+  and accepting `;` lexes the next line. The parse therefore drains the
+  phases recorded so far (`retained_walk_drain`) before such a step:
+  always before an explicit `;` or a missing terminator, and before the
+  post-expression lex unless the raw bytes up to the next newline show it
+  cannot print (`ast_statement_lex_may_print`). The second guard is
+  defensive: the AST probe already declines the expressions whose lowering
+  could print, so no fixture reaches it; the first one is exercised by
+  `ast_retained_emit_test`.
+- **Fallback.** A statement without a walk is emitted during its parse
+  exactly as before: the mode is off, the expression probe declined (the
+  streaming tails), or the hook was reached outside the statement
+  dispatcher.
+
+`--stats` prints `Retained-emitted statements:` and `Immediate
+statements:` (every other retained statement node). For `w.w`: 29,423
+walked and 35,759 immediate on the x86 host, 29,439 and 35,778 on x64;
+the immediate ones are the blocks, `if`/`while`/`for`/`switch`,
+declarations, `defer`, labels and the other families' statements (each
+block and each control statement is itself a statement node).
+
+The unit of deferral is one statement, not a body. Deferring a run of
+statements needs two things this family does not own. The dispatcher
+(`grammar/statement.w` `statement_impl`) emits a peephole barrier and a
+DWARF line row (`be_notes_reset`, `debug_line_note`) at the start of every
+statement, so those must become recorded phases of the enclosing body's
+walk; and a statement of a family that still emits while parsing has no
+hook before it at which the pending run could be drained. Both arrive with
+the block walk (family b) and the dispatcher's owner (P1.5). Beyond that,
+whole-body deferral moves every emitter diagnostic (the return-type
+mismatch and void-return warnings in the value phase, for example) after
+all of the body's parse diagnostics, which the streaming order does not
+allow; those checks depend only on types and should move into the parse
+before bodies are deferred.
+
+Verification: `ast_retained_emit_test` now also compiles a tracked fixture
+(`tests/ast_statement_walk_fixture.w`: `;`-separated statements, return
+and yield warnings, defers, a generator, a generic body, loop and switch
+branches) and twelve generated sources that are not valid W (space
+indentation after a statement, `;` before a space-indented line, a missing
+terminator after a value warning, no final newline, an unterminated
+literal, `break`/`continue`/`yield` errors) on the same legs, and checks
+the new counters. Removing the terminator drain makes it fail. `verify`,
+`verify_x64`, `ast_expression_test`, `ast_required_expression_verify`
+(whose `--ast-emit-retained` fixpoint equals `bin/wv3`/`bin/wv3_64`) and
+`tests` pass. Cost on `w.w` is unchanged within noise: about 1.6 s with
+`--ast-required --ast-emit-retained` on either host, against 0.9 s for
+`--ast-required`.
+
+What this does not claim: no function body is parsed whole before
+emission yet; the walk record borrows the hook's `statement_ast` node and
+expression arena, which is sound only because the family walks before its
+hook returns (a cross-statement walk must own copies); exit phases still
+read the live `defer`/`for`-cleanup lists and `stack_pos` (families (c)
+and (d) must record those as facts once runs span statements); and the
+parse-time side effects of the expression itself are unchanged from
+S2.1. No `tree --json` field was added; the schema stays **version 2**.
+**#489 remains open.**

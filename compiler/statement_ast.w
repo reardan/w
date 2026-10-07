@@ -26,6 +26,15 @@ const int ast_stmt_gpu_dimension = 22
 const int ast_stmt_gpu_argument = 23
 const int ast_stmt_gpu_capture = 24
 
+# S2.2a: phases of a simple, expression or return/yield statement's walk
+# (emit_statement_ast_walk, code_generator/statement_ast.w), in the order
+# the streaming emitter ran them.
+const int ast_walk_simple = 1
+const int ast_walk_expression = 2
+const int ast_walk_expression_end = 3
+const int ast_walk_value = 4
+const int ast_walk_exit = 5
+
 
 struct statement_ast:
 	int kind

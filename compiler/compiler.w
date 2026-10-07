@@ -1143,6 +1143,11 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	# S2.1: retained-forest expression emission and its --stats counter.
 	ast_emit_retained_mode = 0
 	ast_retained_emitted = 0
+	# S2.2a: retained statement walks and their --stats counter.
+	ast_retained_statements_emitted = 0
+	retained_walks_used = 0
+	retained_walk_phases_used = 0
+	retained_emit_points_used = 0
 	# check/deps/symbols discard the output, so a library module without
 	# a _main is fine to analyze: the backend finishers skip the
 	# entry-call patch instead of erroring (code_generator/code_emitter.w)
@@ -1548,6 +1553,14 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 	if (stats_mode && ast_emit_retained_mode):
 		print_error(c"Retained-emitted expressions: ")
 		print_error(itoa(ast_retained_emitted))
+		print_error(c"\n")
+	# S2.2a: statements emitted by the retained walk, and the rest, which
+	# were emitted during their parse.
+	if (stats_mode && ast_emit_retained_mode):
+		print_error(c"Retained-emitted statements: ")
+		print_error(itoa(ast_retained_statements_emitted))
+		print_error(c"\nImmediate statements: ")
+		print_error(itoa(retained_statement_count() - ast_retained_statements_emitted))
 		print_error(c"\n")
 
 

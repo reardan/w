@@ -98,6 +98,9 @@ struct retained_node:
 	# generic_signature (1), call_receiver_type (2) and infer_want (4).
 	int name_binding
 	int type_value_flags
+	# S2.2a: a retained statement node's pending walk record
+	# (code_generator/retained_emit.w), or -1 once walked or never deferred.
+	int statement_walk
 
 struct retained_checkpoint:
 	char* pending_import
@@ -241,6 +244,7 @@ int retained_add(int kind, int parent, int source, int start, int line, int colu
 	node.next_arg = -1
 	node.name_binding = -1
 	node.type_value_flags = 0
+	node.statement_walk = -1
 	retained_nodes.push(node)
 	if ((source >= 0) && (parent >= 0)):
 		retained_source* owner = retained_sources[source]

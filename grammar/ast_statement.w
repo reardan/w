@@ -1,6 +1,65 @@
 # Statement grammar builds resolved nodes and visits child statements
 # in source order. Backend phases consume their payloads and control
 # targets; body traversal remains incremental, without retained child lists.
+
+# S2.2a: under --ast-emit-retained, a simple, expression or return/yield
+# statement is parsed completely before any of its code is emitted: the
+# parse records the statement's walk (its node, its expression's retained
+# group and each emission step at the lexer state it ran in, see
+# code_generator/retained_emit.w), and retained_emit_statement emits it
+# once the terminator is consumed. A statement that cannot start a walk
+# (the mode is off, or no retained statement node owns it) is emitted
+# during its parse as before.
+
+# The statement terminator. Accepting ';' lexes the next token, and a
+# missing terminator is an error; both print, so the steps recorded so far
+# are emitted first, where the streaming emitter had emitted them.
+void ast_statement_walk_terminator(int walk):
+	if ((peek(c";") == 0) && (token_newline || (token[0] == 0))): return
+	retained_walk_drain(walk)
+	expect_or_newline(c";")
+
+
+# Lexing the token after a prepared root prints an indentation warning when
+# a line between them starts with a space, an end-of-file warning when the
+# source ends without a newline, and an error for an unterminated literal.
+# Returns 0 only when the raw bytes up to the newline after that token show
+# none of these can happen; anything not visible in the read window is
+# reported as possible.
+int ast_statement_lex_may_print(expression_ast* tree):
+	if (tree.whole_expression == 0): return 0
+	if ((file < 0) || (file >= GETCHAR_MAX_FD) || (nextc < 0)): return 1
+	int window_start = getchar_kernel_pos[file] - getchar_limit[file]
+	int window_end = getchar_kernel_pos[file]
+	int start = byte_offset - 1
+	int end = tree.end_offset
+	if ((start < window_start) || (start > end) || (end + 1 >= window_end)): return 1
+	char* bytes = cast(char*, getchar_buf_addr[file] - window_start)
+	for at in range(start, end):
+		if ((bytes[at] == 10) && (bytes[at + 1] == ' ')): return 1
+	for at in range(end, end + 2):
+		int c = bytes[at]
+		if ((c == '"') || (c == 39) || (c == '`')): return 1
+	for at in range(end, window_end):
+		if (bytes[at] == 10): return 0
+	return 1
+
+
+# Record a prepared expression child and lex the token after it, as
+# ast_statement_finish_expression does, without lowering it: the walk lowers
+# it at the point recorded here, then replays the root's end warnings at the
+# token after it.
+void ast_statement_walk_expression(int walk, statement_ast* node):
+	expression_ast* tree = node.expression_tree
+	retained_walk_expression(walk, tree, node.expression_root)
+	retained_walk_phase(walk, ast_walk_expression)
+	if (ast_statement_lex_may_print(tree)): retained_walk_drain(walk)
+	if (tree.whole_expression):
+		token_start_offset = tree.final_token_offset
+		get_token()
+	retained_walk_phase(walk, ast_walk_expression_end)
+
+
 int ast_statement_simple(int* jumps):
 	if (ast_expressions_mode < 2): return 0
 	int kind = 0
@@ -38,6 +97,13 @@ int ast_statement_simple(int* jumps):
 	get_token()
 	# The debugger marker historically precedes terminator diagnostics;
 	# branch validation historically follows them. Preserve both orders.
+	int walk = retained_walk_begin(cast(int, emit_statement_ast_walk), &node)
+	if (walk >= 0):
+		if (kind == ast_stmt_debugger): retained_walk_phase(walk, ast_walk_simple)
+		ast_statement_walk_terminator(walk)
+		if (kind != ast_stmt_debugger): retained_walk_phase(walk, ast_walk_simple)
+		retained_emit_statement(retained_walks[walk].node)
+		return 1
 	if (kind == ast_stmt_debugger): emit_simple_statement_ast(&node)
 	expect_or_newline(c";")
 	if (kind != ast_stmt_debugger): emit_simple_statement_ast(&node)
@@ -96,6 +162,15 @@ int ast_statement_value(int* jumps):
 		node.end_offset = tree.end_offset
 	node.declared_type = 0
 	if (has_value): node.declared_type = load_int(table + current_function_symbol + 6)
+	int walk = retained_walk_begin(cast(int, emit_statement_ast_walk), &node)
+	if (walk >= 0):
+		if (has_value):
+			ast_statement_walk_expression(walk, &node)
+			retained_walk_phase(walk, ast_walk_value)
+		ast_statement_walk_terminator(walk)
+		retained_walk_phase(walk, ast_walk_exit)
+		retained_emit_statement(retained_walks[walk].node)
+		return 1
 	emit_statement_ast_expression(&node)
 	ast_statement_finish_expression(&node)
 	emit_statement_ast_value(&node)
@@ -124,6 +199,13 @@ int ast_statement_expression(int prefix_only):
 	node.expression_tree = &tree
 	node.expression_root = root
 	node.end_offset = tree.end_offset
+	int walk = retained_walk_begin(cast(int, emit_statement_ast_walk), &node)
+	if (walk >= 0):
+		ast_statement_walk_expression(walk, &node)
+		ast_expression_statements_emitted = ast_expression_statements_emitted + 1
+		ast_statement_walk_terminator(walk)
+		retained_emit_statement(retained_walks[walk].node)
+		return 1
 	emit_statement_ast_expression(&node)
 	ast_statement_finish_expression(&node)
 	ast_expression_statements_emitted = ast_expression_statements_emitted + 1
