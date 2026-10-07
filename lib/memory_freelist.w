@@ -112,8 +112,18 @@ void malloc_oom_notice():
 # instead of two per 64 KB. malloc_heap_ptr moves only when growth has to
 # start a fresh mmap chunk (the old chunk's tail is filed as a free block
 # first). Returns 0 when the OS refuses more memory.
+#
+# Every chunk is a whole number of 64 KB units. A raw quarter of the
+# total stops being a multiple of 8 once the heap passes ~1.25 MB
+# (a 312500-byte step), which left malloc_heap_end misaligned against
+# the 8-aligned bump pointer: harmless while brk keeps the heap
+# contiguous, but in mmap mode (wasm, arm64_darwin, and the repl/wdbg
+# fallback described below) the abandoned tail was then filed as a
+# free block whose size was not a multiple of 8, and whoever was later
+# handed that block (or its split remainder) died in free() with
+# "invalid pointer (not a heap block)".
 int malloc_heap_extend(int needed):
-	int chunk = malloc_heap_total >> 2
+	int chunk = (malloc_heap_total >> 18) << 16
 	if (chunk > 4194304): chunk = 4194304
 	if (chunk < 65536): chunk = 65536
 	if (needed > chunk): chunk = ((needed + 65535) >> 16) << 16
