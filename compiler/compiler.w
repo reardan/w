@@ -828,6 +828,11 @@ int link_option(char* arg, int apply):
 	if (strcmp(arg, c"--strict") == 0):
 		if (apply): strict_mode = 1
 		return 1
+	# Compile every function's portable W body, ignoring asm blocks
+	# (grammar/asm_function.w).
+	if (strcmp(arg, c"--no-asm") == 0):
+		if (apply): asm_bodies_disabled = 1
+		return 1
 	if (strcmp(arg, c"--ast-expressions") == 0):
 		if (apply && (ast_expressions_mode < 2)): ast_expressions_mode = 1
 		return 1
@@ -896,6 +901,7 @@ void help_shared_options():
 	println(c"  --bounds=on|off|trap  array bounds checks: on (default), off, or trap")
 	println(c"  --pac=off|ret|full    arm64 pointer-authentication level (default: ret)")
 	println(c"  --strict              treat warnings as errors and write no output")
+	println(c"  --no-asm              compile portable W bodies, ignoring 'asm <isa>:' blocks")
 	println(c"  --ast-expressions     experimental AST for grouped scalar expressions")
 	println(c"  --ast-full-expressions try AST at every expression, including runtime imports")
 	println(c"  --ast-audit           full-expression mode plus JSON fallback records on stderr")
@@ -1227,6 +1233,8 @@ int link_impl(int argc, int argv, int start_index, int check_mode):
 				link_option(*flag_arg, 1)
 			# S2.1: so does emission from the retained forest.
 			if (strcmp(*flag_arg, c"--ast-emit-retained") == 0): link_option(*flag_arg, 1)
+			# --no-asm covers the runtime and every input, whatever its position
+			if (strcmp(*flag_arg, c"--no-asm") == 0): link_option(*flag_arg, 1)
 		flag_scan = flag_scan + 1
 	# --import-root is whole-program: the roots must be known before the
 	# auto-imported container runtime below resolves its first import

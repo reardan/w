@@ -470,7 +470,17 @@ void be_code_ptr_sign():
 # position; on wasm it is its table index (the prologue's
 # wasm_function_begin assigns the next one). Nothing may emit between
 # this call and the prologue.
+# An asm-bodied function whose block branches to its portable body
+# (grammar/asm_function.w) has already defined its symbol at the asm
+# entry; the portable body's own be_function_define must keep it there.
+int asm_entry_symbol
+int asm_entry_pending
+
+
 void be_function_define(int current_symbol, char* name):
+	if (asm_entry_pending && (asm_entry_symbol == current_symbol)):
+		asm_entry_pending = 0
+		return
 	dwarf_function_define(current_symbol, name)
 	if (target_isa == 2):
 		sym_define_global_at(current_symbol, wasm_func_count + 1)

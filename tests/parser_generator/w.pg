@@ -257,7 +257,10 @@ rule statement = base_statement statement_suffix
 # ('i = i + 1; if (i == 2): continue', 'if (x): break; pass').
 rule statement_suffix = SEMI statement_after_semi |
 rule statement_after_semi = statement |
-rule base_statement = if_stmt | elif_stmt | else_stmt | while_stmt | switch_stmt | case_stmt | gpu_for_stmt | for_stmt | launch_stmt | return_stmt | yield_stmt | defer_stmt | break_stmt | continue_stmt | goto_stmt | pass_stmt | debugger_stmt | local_decl | infer_decl | label_stmt | expression_stmt | block
+rule base_statement = if_stmt | elif_stmt | else_stmt | while_stmt | switch_stmt | case_stmt | gpu_for_stmt | for_stmt | launch_stmt | return_stmt | yield_stmt | defer_stmt | break_stmt | continue_stmt | goto_stmt | pass_stmt | debugger_stmt | asm_block_stmt | local_decl | infer_decl | label_stmt | expression_stmt | block
+# 'asm x86:' + indented string lines opening a function body
+# (grammar/asm_function.w); the lines parse as string statements.
+rule asm_block_stmt = KW_ASM name_token block
 rule if_stmt = KW_IF paren_expression_opt block
 rule switch_stmt = KW_SWITCH paren_expression_opt block
 rule case_stmt = KW_CASE expression case_value_tail* block | KW_DEFAULT block

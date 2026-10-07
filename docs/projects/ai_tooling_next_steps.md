@@ -888,3 +888,25 @@ issues at once on a 4-CPU machine. Friction they reported:
   - `hex_word` includes the `0x` prefix.
   - A crash-report frame at a function's first instruction is
     attributed to the last line of the previous file.
+
+## Asm function bodies (2026-10-07, docs/projects/asm_functions.md)
+
+- **The text assembler accepted lines it could not encode.** `cmp byte
+  [eax],0` came out as the dword `83 /7` form, an x86 block's `r8d`
+  parsed as a label word, `mov rax,-1` loaded `0xffffffff`, an arm64
+  mnemonic without an encoder (`ror x0,x0,#3`) became a zero word and
+  `b.lo` an undefined condition, both faulting only at run time. The first three are fixed here and the
+  asm-block front end now rejects unknown operand words and arm64 lines
+  the encoder did not build. Direction: make `libs/asm` itself return an
+  error for every form it does not encode, so the runtime stubs get the
+  same protection.
+- **Twin target names differ by architecture.** A source with `# wbuild:
+  x64 arch=arm64` yields `foo_test`, `foo_64_test` and `foo_test_arm64`;
+  guessing `foo_arm64_test` from the x64 pattern fails with `unknown
+  target`. `./wbuild --list | grep foo` is the reliable lookup.
+- **Diagnostics raised after the tokenizer has moved on point at the
+  wrong line.** The human form prints the tokenizer's current line, not
+  `diag_token_line`, so a check that runs after a whole block is read
+  must move `line_number` back as well (as `compiler/lint.w` does and
+  `asm_body_error` now does). A shared "report at line/column" helper
+  would remove the trap.

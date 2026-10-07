@@ -27,6 +27,7 @@ int ast_statement_expression(int prefix_only);
 void statement();
 void ast_if_statement_tail();
 int ast_statement_block();
+int asm_block_misplaced();   /* grammar/asm_function.w */
 
 
 # Table offset of the function whose body is being parsed; return
@@ -403,6 +404,7 @@ void statement_impl():
 		defer_register()
 
 	else if (raw_asm_literal()): expect_or_newline(c";")
+	else if (asm_block_misplaced()) {}
 
 	# launch kernel[grid, block](args...) (grammar/kernel_decl.w)
 	else if (launch_statement()): expect_or_newline(c";")

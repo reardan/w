@@ -456,6 +456,13 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 			asm_x86_modrm_gp(d, &insn.op1, &insn.op2)
 			insn.length = d.pos - start
 			return insn.length
+		if (col == 4):
+			# al, imm8
+			insn.mnemonic = mnemonic
+			asm_x86_set_reg(&insn.op1, ASM_RCLASS_GP, 0, 1)
+			asm_x86_set_imm(&insn.op2, asm_x86_s8(d), 1)
+			insn.length = d.pos - start
+			return insn.length
 		if (col == 5):
 			# eax, imm(16/32)
 			insn.mnemonic = mnemonic
@@ -535,6 +542,15 @@ int asm_x86_decode(char* bytes, int length, int address, int mode, asm_insn* ins
 	if (op >= 0x70 && op <= 0x7f):
 		insn.mnemonic = asm_x86_concat(c"j", asm_x86_cc(op - 0x70))
 		asm_x86_rel_target(insn, d, asm_x86_s8(d))
+		insn.length = d.pos - start
+		return insn.length
+
+	# grp1 r/m8, imm8 (0x80)
+	if (op == 0x80):
+		int modrm = asm_x86_u8(d)
+		insn.mnemonic = asm_x86_group_name(1, (modrm >> 3) & 7)
+		asm_x86_decode_rm(d, modrm, &insn.op1, ASM_RCLASS_GP, 1)
+		asm_x86_set_imm(&insn.op2, asm_x86_s8(d), 1)
 		insn.length = d.pos - start
 		return insn.length
 

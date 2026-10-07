@@ -450,3 +450,16 @@ b800000000|mov eax,0
 488936|mov [rsi],rsi
 bf01100000|mov edi,0x1001
 b89e000000|mov eax,0x9e
+
+##################################################################
+# asm function bodies (grammar/asm_function.w): byte-operand ALU forms
+# and the r8d-r15d 32-bit registers
+##################################################################
+803800|cmp byte [rax],0
+3c00|cmp al,0
+4189c0|mov r8d,eax
+4501d1|add r9d,r10d
+41c1c30d|rol r11d,0xd
+4431c0|xor eax,r8d
+448b7e04|mov r15d,[rsi+4]
+448927|mov [rdi],r12d

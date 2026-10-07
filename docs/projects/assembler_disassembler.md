@@ -212,7 +212,10 @@ were planned:
 
 Inline `asm` blocks in the language, and REPL/JIT uses, are explicitly
 **out of scope** for this epic — natural follow-ups once the encoder
-exists.
+exists. The first of those has since landed as whole-function asm
+bodies (`asm x86:` / `x64:` / `arm64:` blocks with a portable W body,
+assembled by this library through `code_generator/asm_body.w`; see
+`docs/projects/asm_functions.md`).
 
 ## Maintaining the runtime stubs (issues #170, #207)
 

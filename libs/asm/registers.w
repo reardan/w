@@ -162,6 +162,22 @@ char* asm_x86_sse_table(int rep):
 
 ################################## lookup #####################################
 
+# r8d..r15d / r8w..r15w / r8b..r15b: the extended x64 registers at a
+# sub-qword width (asm_reg_name_x64_ext's spellings), or -1.
+int asm_reg_lookup_x64_ext(char* name):
+	if (name[0] != 'r'): return -1
+	int i = 1
+	int number = 0
+	while (name[i] >= '0' && name[i] <= '9'):
+		number = number * 10 + (name[i] - '0')
+		i = i + 1
+	if (i == 1 || number < 8 || number > 15 || name[i] == 0 || name[i + 1] != 0): return -1
+	if (name[i] == 'd'): return asm_reg_encode(4, number)
+	if (name[i] == 'w'): return asm_reg_encode(2, number)
+	if (name[i] == 'b'): return asm_reg_encode(1, number)
+	return -1
+
+
 # Look up an x86/x64 register name in any width. Returns the encoded
 # (size << 8) | number word, or -1.
 int asm_reg_lookup_x86(char* name):
@@ -173,7 +189,7 @@ int asm_reg_lookup_x86(char* name):
 	if (number >= 0): return asm_reg_encode(2, number)
 	number = asm_name_slot_find(asm_reg_table(1), 4, 8, name)
 	if (number >= 0): return asm_reg_encode(1, number)
-	return -1
+	return asm_reg_lookup_x64_ext(name)
 
 
 # Look up an arm64 register name (xN, wN, sp, wsp, xzr, wzr).

@@ -659,3 +659,11 @@ b8ffffffff|mov eax,-1
 b8f3000000|mov eax,0xf3
 0d03000000|or eax,3
 83c410|add esp,0x10
+
+##################################################################
+# asm function bodies (grammar/asm_function.w): byte-operand ALU forms
+##################################################################
+803800|cmp byte [eax],0
+3c00|cmp al,0
+80f961|cmp cl,0x61
+80217f|and byte [ecx],0x7f
