@@ -1284,6 +1284,222 @@ fixtures, not by the unit's own test, and are now pinned in it: a
 parenthesised parked element read as the whole operand (`(m[k]) != 13`
 loaded the value twice) and `(!!x) == 1` (the booleanise was dropped).
 
+### A7 — loop rotation, bottom-tested `while`/`for` (2026-10-07)
+
+**What landed.** `grammar/loop_rotate.w` (new, imported by `grammar.w`
+right before `grammar/while_statement.w`: the predicate, the lexer
+mark/return pair and the condition skip), `grammar/while_statement.w`
+(`while_statement` rotated; `statement_guard` takes the branch
+polarity), `grammar/for_statement.w` (`for_range_loop` and
+`for_cursor_loop` rotated; `for_range_test` / `for_cursor_test` hold
+the synthesized condition both shapes share), the retained-tree twins
+`grammar/ast_loop.w` (`ast_while_statement`), `grammar/ast_statement.w`
+(the guard node records its polarity in `branch_nonzero`),
+`code_generator/loop_ast.w` (`emit_while_loop_ast_begin/bottom/end`,
+the range and cursor emitters) and `code_generator/statement_ast.w`
+(`emit_guard_ast_branch`, `emit_guard_ast_walk_branch` picking the
+back-edge target of a rotated loop), `compiler/loop_ast.w` (`rotated`,
+`entry_site`); `code_generator/x86.w` (`be_loop_entry` /
+`be_loop_entry_land`, the forward jump a rotated loop enters by, and
+`be_br_const_discard`, the constant-condition fold both discard
+branches now try), `code_generator/dwarf.w` (`debug_line_note_at`, a
+line row for an explicit line), `code_generator/code_emitter.w` and
+`compiler/compiler.w` (`--no-loop-rotate` / `--loop-rotate`, `-O0`
+implies the former, the `--stats` line);
+`tests/loop_rotate_test.w` (new: x86, x64 and an arm64 twin) and
+`tests/regalloc_diff_test.w` (the sweep now also builds every test
+program with `--no-loop-rotate`, with a compiler built that way, and
+with all four opt-outs at once).
+
+Mechanism. §2.5 asked for the condition at the bottom and an entry
+jump to it. For a `for` loop the condition is synthesized from hidden
+slots, so the grammar simply emits it after the body:
+
+```
+	[init]                       [init]
+	head:  cmp i, end            jmp cond
+	       jge exit              [P2 pad]
+	       body                  head: body
+	       continue: inc i             continue: inc i
+	       jmp head              cond: cmp i, end
+	exit:                              jl head
+	                             exit:
+```
+
+A `while` loop's condition is source text that precedes the body, and
+the single-pass emitter cannot hold its code back. The loop therefore
+marks the lexer at the condition's first token (`tokenizer_snapshot`
+plus the token text; the source position is `byte_offset`, which
+every path that repositions the descriptor re-derives), walks the
+condition's tokens to the block opener without parsing them
+(`loop_rotate_skip_condition`: a bracket-depth walk that knows what
+can end a condition — the `:` outside brackets and ternaries, or a
+`{` block opener after an operand — and treats the `{` after
+`map[..]`/`set[..]`/`list[..]` as the typed literal it is), emits the
+entry jump, the P2 pad, the loop region at the body's head and a block
+region for `continue`, parses the body, then returns the lexer to the
+mark (`getchar_seek` to `byte_offset`, free inside the descriptor's
+8 KiB window, one seek and read outside it) and parses the condition
+as the bottom test: `statement_guard(h_top, outer, 1)` consumes the
+condition with `on_true`, so unit A6's chain consumer branches back to
+the body on the last operand's flags and merges the chain's true
+regions into the loop region (`be_ctrl_merge` to a loop target patches
+them to the head at once) while its false regions land on the exit.
+The lexer then returns to the end of the body, keeping `token_serial`
+monotonic. The walk declines anything it does not understand (a
+template string, whose chunks the template grammar lexes; a brace that
+cannot be a block opener; a newline outside brackets) and a declined
+loop is emitted top-tested, the pre-unit bytes, so the walk can never
+misplace a body, only miss a rotation; over the compiler's own source
+every `while` rotates (`--stats`: `Loop rotation: while loops rotated 1201, declined 0, source seeks 36` for `w.w`, both widths).
+
+The retained tree mirrors the shape phase for phase: the `while`
+walk's begin phase (drained before the body, as before) emits the
+rotated head, the guard's phases are recorded and drained with the
+lexer at the condition after the body, and the end phase closes the
+regions; `ast_expression_verify`/`ast_retained_emit_test` and the
+`verify_pgo` retained leg pin the bytes. The constant-condition fold
+(`be_br_const_discard`) makes `while (1)`'s bottom test a single
+`jmp head` (and `while (0)`'s nothing): a discard branch whose
+accumulator was just loaded by `mov_eax_int` drops the load and
+becomes an unconditional jump or no code, which also turns `if (0)` /
+`if (1)` into their obvious forms; it is part of the unit
+(`--no-loop-rotate` keeps the test) so the opt-out is exactly the
+pre-unit emission. DWARF: the bottom test gets a line row for the
+loop's header line (`debug_line_note_at`), so a breakpoint on the
+`while`/`for` line still hits once per iteration and `step` from the
+body's last line still lands on it; the debugger fixtures
+(`debug_test`, `repl_retained_emit_test`) pass unchanged. P2 keeps
+aligning the loop head, which is now the body's first instruction
+(what the back edge targets); the pad sits between the entry jump and
+the head and is never executed. P1's counter moved with the head and
+now counts body entries (one fewer than condition evaluations per
+loop entry), which no committed profile is sensitive to
+(`profile_check`: `self` 93%, `self_x64` 94%, bench corpus 100% of counters still match, the same figures the base tree reports, so no profile refresh).
+
+Static effect on the loop §2.5 named, `sum_to`'s `for i in range(n)`
+(x64, `objdump -d -Mintel`; the function is 23 instructions either
+way, the loop goes from 5 instructions and 2 taken branches per
+iteration to 4 and 1):
+
+```
+before                                   after
+mov    rsi,QWORD PTR [rbp+0x10]          mov    rsi,QWORD PTR [rbp+0x10]
+head:                                    jmp    cond
+cmp    r12,rsi                           head:
+jge    exit                              add    r13,r12
+add    r13,r12                           add    r12,0x1
+add    r12,0x1                           cond:
+jmp    head                              cmp    r12,rsi
+exit:                                    jl     head
+                                         exit:
+```
+
+Over the whole `--strict` self-image the static counts barely move,
+as they must (a rotated loop trades its `jcc exit; ...; jmp head` for
+`jmp cond; ...; jcc head`): instructions 473,179 → 473,025 (x64) and
+482,162 → 482,066 (x86), bytes 2,849,184 → 2,853,280 and 2,499,792 →
+2,503,888 (+0.1%, the entry jumps of the loops whose constant
+condition folded away). The effect is dynamic: one taken branch and
+one instruction fewer per iteration of every loop.
+
+Measurements (`./wbuild bench`, callgrind Ir deterministic, wall time
+best of 3 on the shared 4-core container with two other agents'
+builds running — the ms columns are noise-level evidence only; before
+= lane/shape at 121d23b (main 1335f06 + A4 + A1 + A6), after = this
+unit):
+
+| program | x64 Ir, G | x64 ms | x86 Ir, G | x86 ms |
+| --- | --- | --- | --- | --- |
+| sum | 3.000 → 2.400 (-20.0%) | 188 → 188 | 3.000 → 2.400 (-20.0%) | 203 → 183 |
+| sieve | 1.647 → 1.472 (-10.6%) | 333 → 327 | 1.667 → 1.492 (-10.5%) | 321 → 327 |
+| sha256_1m | 5.065 → 5.015 (-1.0%) | 304 → 308 | 5.466 → 5.417 (-0.9%) | 351 → 344 |
+| siphash_keys | 4.529 → 4.450 (-1.7%) | 892 → 770 | 4.323 → 4.260 (-1.4%) | 673 → 631 |
+| inflate_corpus | 4.527 → 4.488 (-0.9%) | 332 → 319 | 4.704 → 4.664 (-0.9%) | 345 → 304 |
+| regex_backtrack | 4.800 → 4.643 (-3.3%) | 280 → 288 | 4.718 → 4.560 (-3.3%) | 328 → 284 |
+| matmul_256 | 4.055 → 3.887 (-4.1%) | 426 → 377 | 5.068 → 4.900 (-3.3%) | 397 → 339 |
+| strcmp_sort | 3.047 → 3.013 (-1.1%) | 512 → 484 | 3.050 → 3.020 (-1.0%) | 458 → 415 |
+| self | 6.038 → 6.014 (-0.4%) | 689 → 647 | 8.289 → 8.296 (+0.1%) | 1228 → 934 |
+
+The dynamic effect follows the loop shape of each program. `sum` is
+the §2.5 loop and nothing else: 5 → 4 instructions per iteration is
+the 20%. `sieve` (−10.6% / −10.5%) and `matmul_256` (−4.1% / −3.3%)
+are inner `for ... in range` loops with short bodies (callgrind per
+function: `sieve` 1.596 → 1.421 G, `matmul` 4.042 → 3.874 G Ir on
+x64). `regex_backtrack` (−3.3%) is `while` loops in the matcher
+(`rx_here` 2.146 → 2.122 G, `regex_match_length` 0.989 → 0.879 G).
+The hashing, inflate and string programs (−0.9% to −1.7%) spend their
+iterations on bodies of tens of instructions, so one branch per
+iteration is proportionally small, and the self-compile (−0.4% on
+x64) is dominated by straight-line emitter code; its x86 figure
+(+0.1%) is noise — that stage is built by the pinned seed, so its
+code is the same bytes before and after, and the Ir difference is the
+different source it compiles (this unit's new files). Against the C
+reference (`tools/bench_vs_c.sh -n 3`, x64 Ir, W / gcc -O2): sum 2.40
+vs 1.20 G (gcc keeps `i` and the sum in registers and unrolls; the
+remaining 2× is the `push`/`pop` operand shape, G3), sieve 1.47 vs
+0.59, sha256 5.01 vs 1.29, siphash 4.45 vs 1.18, inflate 4.49 vs
+0.99, regex 4.64 vs 2.54, matmul 3.89 vs 1.18, strcmp 3.01 vs 0.57 —
+the loop-overhead term is gone from every gap that remains;
+what is left is operand traffic and the missing inlining/hoisting
+of the later units.
+
+Gates: `verify`, `verify_x64`, `verify_pgo` (x86 + x64 PGO fixpoints
+and the retained leg), `verify_arm64`, `verify_wasm`,
+`verify_profile_generate`, `regalloc_diff_test` (412 programs
+compared across the 16-way opt-out sweep, 0 mismatches),
+`loop_rotate_test` / `loop_rotate_64_test` / `loop_rotate_arm64_test`,
+`cond_branch_test` (+64), `regalloc_test` (+64), `profile_use_test`,
+`profile_generate_test`, `ast_expression_test` (123 passed),
+`ast_retained_emit_test`, `debug_test`, `debug_test_x64`,
+`check_roots`, `self_host_warning_test`, `parser_generator_w_test`,
+`manifest_check`, `wasm_smoke_test`, `tests_arm64` (29 targets; the
+dynamically linked arm64 tests need `QEMU_LD_PREFIX=/usr/aarch64-linux-gnu`
+in this container), `bench_compare` (no regression; `tests/bench/baseline.txt`
+refreshed from this run) and `wbench_compare` (no regression:
+self visits 200,433 vs 199,737, bytes 2,503,900 vs 2,491,596 —
+within its tolerance, baseline not refreshed). The full `./wbuild tests`
+runs once after the lane merges.
+
+What the unit does not claim. Rotation is on for x86/x64 (win64
+shares the emitter; `verify_win` needs wine, which this container
+lacks) and arm64 (`verify_arm64` and `tests_arm64` under qemu pass;
+on arm64 the bottom test is `cmp; cset; cbnz` since the ISA has no
+comparison-branch fusion yet, still one taken branch per iteration).
+wasm and PTX never rotate: both have structured control flow, where a
+`loop` block cannot be entered in the middle and `br_if` back to the
+loop label already costs what a bottom test does, so their output is
+byte-identical to before by construction (`verify_wasm` /
+`wasm_smoke_test` pass). A `while` whose condition holds a template
+string stays top-tested (declined, see above). No invariant hoisting,
+no strength reduction (wave B); the condition's operands keep their
+`push`/`pop` shape (G3). The compile-time cost is one extra
+tokenization of each `while` condition and two cursor moves, a seek
+and an 8 KiB read each only when the body crosses the descriptor's
+read window (`--stats` counts them; 36 of the 2,402 returns in the self-compile, on 1,201 `while` loops).
+
+Deviations from the plan, with reasons. (1) The plan called this "a
+note-level change in `grammar/while_statement.w`"; a `while`
+condition cannot be emitted after its body by a note, because the
+emitter has already written it, so the unit re-parses it from the
+source at the bottom, the way `defer` and generic instantiation
+already re-parse spans (`generic_reparse_save`, `defer_reparse_start`),
+with a token walk to find the body instead of a parse. (2) arm64
+rotates too, because the `be_*` protocol (a forward branch placeholder
+and `be_branch_patch`) already covers it and gating would have left
+the arm64 output a different shape for no reason; wasm and PTX are
+gated, as explained above. (3) `--no-loop-rotate` exists although the
+plan allowed skipping it: the differential sweep is the only net that
+compares every test program's behaviour across the two shapes, and
+the flag also names the declined path, so the fallback is exercised
+by the sweep rather than only by the template-string case. (4) The
+constant-condition fold was added because without it a rotated
+`while (1)` would have cost `mov; test; jne` per iteration against
+the top-tested `jmp` — a regression on the commonest W loop shape.
+(5) A `for` loop's bottom test gets a DWARF line row for the header
+line; the plan left the attribution open, and this is what keeps the
+debugger's per-iteration stop on the loop line.
+
 ## 9. Reproducing
 
 ```sh
