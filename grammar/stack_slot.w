@@ -93,7 +93,8 @@ void lea_slot(int slot):
 # pushed (an indirect call, or direct calls off); 1: a function symbol
 # (id = table offset); 2: a generic instantiation (id = instance index);
 # 3: a lazy runtime helper (id = the lazy_runtime record, aux = helper
-# index).
+# index); 4: a function symbol whose body finish_call emits in place of
+# the call (id = the compiler/inline_table.w record, unit A5).
 
 int direct_call_count
 int direct_call_capacity

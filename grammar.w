@@ -60,6 +60,7 @@ import grammar.for_statement
 import grammar.switch_statement
 import grammar.goto_statement
 import grammar.statement
+import grammar.inline_call
 import grammar.type_alias_declaration
 import grammar.struct_declaration
 import grammar.union_declaration

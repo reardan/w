@@ -55,6 +55,25 @@ int defhash_mode
 # tells warning() below to stay silent while the replay is in progress.
 int defhash_rehash_mode
 
+# Inlining of small leaf callees (compiler/inline_table.w,
+# grammar/inline_call.w; docs/projects/codegen_gap_plan.md §2.4, unit
+# A5). Whole-compile state declared here, next to the other mode flags,
+# because the tokenizer, the symbol table, the backend and the grammar
+# all read it and this is the first module every one of them imports:
+# --no-inline; the nesting depth of bodies being emitted in place (0 =
+# an ordinary parse); whether sym_lookup reports its results to a body
+# capture (inline_note_lookup); and the facts the capture takes deltas
+# of -- call instructions emitted (code_generator/x86.w), loops opened
+# (compiler/regalloc_scan.w's regalloc_loop_enter) and constructs a
+# re-parse in place cannot reproduce (the grammar's hazard sites).
+int inline_disabled
+int inline_depth
+int inline_capture_active
+int inline_real_calls
+int inline_noreturn_calls
+int inline_loop_count
+int inline_hazard_count
+
 # Recursive-descent nesting guards (docs/projects/ai_tooling_next_steps.md,
 # "No recursion-depth guard in the recursive-descent parser"): thousands
 # of nested parens, calls, subscripts, ternaries or statement blocks

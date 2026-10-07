@@ -353,6 +353,7 @@ void template_emit_value_append(int got, int builder_slot):
 # get_token().
 int template_string_literal():
 	if ((token[0] != 'f') || (token[1] != '"')): return 0
+	inline_hazard_count = inline_hazard_count + 1   # re-enters the lexer (unit A5)
 	int base_stack = stack_pos
 
 	# builder = __w_template_new()

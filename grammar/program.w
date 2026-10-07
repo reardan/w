@@ -310,6 +310,9 @@ void function_definition(int current_symbol):
 	int is_w_variadic = 0
 	int function_start = codepos /* keep track of start for length comp */
 	dwarf_params_begin(current_symbol) /* DWARF: parameters precede the prologue */
+	# Inlining (unit A5, compiler/inline_table.w): a record of this
+	# definition, filled by the parameters and the body below
+	inline_definition_begin(current_symbol, last_global_declaration, declared_return_type)
 	while (accept(c")") == 0):
 		if (is_w_variadic): error(c"variadic parameter must be the last parameter")
 		param_count = param_count + 1
@@ -340,8 +343,10 @@ void function_definition(int current_symbol):
 		/* this seems stupid, you could just have (typename) with no identifier */
 		if (peek(c")") == 0):
 			sym_declare(token, type, 'A', number_of_args, 1)
+			inline_note_parameter(token, type)
 			pointer_indirection = 0
 			get_token()
+		else: inline_note_parameter(0, type)
 
 		# A by-value aggregate occupies several stack words; later
 		# parameters address past all of them
@@ -368,6 +373,7 @@ void function_definition(int current_symbol):
 	else: sym_set_w_variadic(current_symbol, -1)
 
 	if (accept(c";")):
+		inline_definition_abandon()
 		if (ast_retain_mode):
 			int prototype = retained_enter(retained_function, filename, retained_start, retained_line, retained_column, last_global_declaration)
 			retained_function_parameters(current_symbol)
@@ -377,6 +383,9 @@ void function_definition(int current_symbol):
 		# when the target's block is the whole function, else the token is
 		# the ':' of the portable body, compiled below as usual.
 		int asm_body = asm_function_body(current_symbol, last_global_declaration)
+		# The body's span and the counters its inlining facts are deltas
+		# of (compiler/inline_table.w), before anything of it is read
+		inline_body_begin(is_w_variadic, generic_subst_block != 0, asm_body != 0, 0)
 		# Register promotion (compiler/regalloc_scan.w): look ahead over
 		# the body for the locals worth a callee-saved register, so the
 		# prologue below (either path) can push them. A whole-asm function
@@ -425,6 +434,7 @@ void function_definition(int current_symbol):
 			stack_pos = stack_pos - frame_words
 			# Store length to symbol table:
 			save_int(table + current_symbol + 14, codepos - function_start)
+		inline_body_end()
 
 	table_pos = n
 

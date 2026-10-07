@@ -46,6 +46,7 @@ void emit_generator_yield_call(); /* defined in generator_decl */
 void emit_generator_finish_call(); /* defined in generator_decl */
 int launch_statement(); /* defined in kernel_decl */
 int gpu_for_statement(); /* defined in gpu_for */
+void inline_return(); /* grammar/inline_call.w (unit A5) */
 
 
 void copy_struct_return_value(int declared_type):
@@ -80,6 +81,7 @@ int result_propagate_struct(int type):
 # reinterpretation is layout-safe.
 int result_propagate_suffix(int type):
 	if (target_isa == 3): error(c"'?' is not supported in gpu code")
+	inline_hazard_count = inline_hazard_count + 1   # a function exit of its own (unit A5)
 	if (in_generator_body): error(c"'?' is not supported in generator bodies")
 	if (current_function_symbol < 0): error(c"'?' outside of a function")
 	type = promote(type)
@@ -190,7 +192,11 @@ void return_statement_tail(int return_line_number, int return_diag_line, int ret
 			check_void_return(declared_type, return_type, return_line_number, return_diag_line, return_diag_column)
 			coerce_checked(declared_type, return_type, c"return")
 	expect_or_newline(c";")
-	if (in_generator_body):
+	# A body emitted in place of a call (unit A5, grammar/inline_call.w)
+	# leaves the value in eax and jumps to its end: the caller's
+	# deferred statements and generator cleanups are not its to run
+	if (inline_depth > 0): inline_return()
+	elif (in_generator_body):
 		# Free the suspended generators of enclosing for-in loops
 		# (eax is dead: generators return bare), then finish:
 		# __w_gen_return switches back to the consumer permanently,
@@ -210,6 +216,7 @@ void return_statement_tail(int return_line_number, int return_diag_line, int ret
 
 void yield_statement_tail():
 	if (in_generator_body == 0): error(c"'yield' outside of a generator body")
+	inline_hazard_count = inline_hazard_count + 1
 	int yield_type = expression()
 	yield_type = promote(yield_type)
 	int declared_yield_type = load_int(table + current_function_symbol + 6)
@@ -339,7 +346,7 @@ void statement_impl():
 		terminates = flow_terminates
 
 	else if (while_statement()): terminates = flow_terminates
-	else if (gpu_for_statement()) {}
+	else if (gpu_for_statement()): inline_hazard_count = inline_hazard_count + 1
 	else if (for_statement()) {}
 	else if (switch_statement()): terminates = flow_terminates
 	else if (ast_statement_simple(&jumps)) {}
@@ -362,7 +369,9 @@ void statement_impl():
 			if (stack_pos > loop_stack_pos): be_pop(stack_pos - loop_stack_pos)
 			be_br(loop_break_chain)
 
-	else if (goto_statement()): jumps = 1
+	else if (goto_statement()):
+		jumps = 1
+		inline_hazard_count = inline_hazard_count + 1
 
 	else if (accept(c"continue")):
 		jumps = 1
@@ -404,19 +413,24 @@ void statement_impl():
 	else if (accept(c"defer")):
 		if (target_isa == 3): error(c"'defer' is not supported in gpu code")
 		if (in_generator_body): error(c"'defer' is not supported in generator bodies")
+		inline_hazard_count = inline_hazard_count + 1
 		defer_register()
 
-	else if (raw_asm_literal()): expect_or_newline(c";")
+	else if (raw_asm_literal()):
+		inline_hazard_count = inline_hazard_count + 1
+		expect_or_newline(c";")
 	else if (asm_block_misplaced()) {}
 
 	# launch kernel[grid, block](args...) (grammar/kernel_decl.w)
-	else if (launch_statement()): expect_or_newline(c";")
+	else if (launch_statement()):
+		inline_hazard_count = inline_hazard_count + 1
+		expect_or_newline(c";")
 
 	# name := expression (type-inferred local declaration)
 	else if (inferred_declaration()): expect_or_newline(c";")
 
 	# name: -- a goto target (grammar/goto_statement.w)
-	else if (labeled_statement()) {}
+	else if (labeled_statement()): inline_hazard_count = inline_hazard_count + 1
 	else if (ast_statement_expression(0)): terminates = starts_noreturn
 
 	else:

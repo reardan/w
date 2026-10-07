@@ -294,6 +294,8 @@ int sym_probe(char* name):
 	return -1
 
 
+void inline_note_lookup(char* s, int found);   /* compiler/inline_table.w */
+
 int sym_lookup(char *s):
 	sym_index_sync()
 	sym_lookup_calls = sym_lookup_calls + 1
@@ -307,6 +309,9 @@ int sym_lookup(char *s):
 				if (sym_index_lint[p] == 1): sym_index_lint[p] = 2
 	if (sym_index_selfcheck):
 		if (found != sym_index_scan(s)): error(c"symbol index: name index and scan disagree")
+	# A function body being captured for inlining notes every name it
+	# resolves outside itself (unit A5)
+	if (inline_capture_active): inline_note_lookup(s, found)
 	return found
 
 
@@ -496,8 +501,10 @@ void sym_declare(char *s, int type, int visibility, int value, int symtype):
 	table_pos = next_token(t)
 
 	# Record where locals and arguments live so the in-process debugger
-	# (wdbg) can inspect them by name at runtime
-	if ((visibility == 'L') || (visibility == 'A')):
+	# (wdbg) can inspect them by name at runtime. The locals of a body
+	# inlined at a call site (unit A5) are not described: the inlined
+	# bytes belong to the call site's line, with the caller's variables.
+	if (((visibility == 'L') || (visibility == 'A')) && (inline_depth == 0)):
 		# The record's codepos must stay an instruction boundary
 		be_notes_reset()
 		debug_local_note(s, value, visibility, type)

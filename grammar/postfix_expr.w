@@ -9,6 +9,8 @@ void emit_ffi_call_inline(int n, char* classes, int ret_class, int got_vaddr);
 int generator_call_suffix(int callee_sym, char* callee_name, int expected_args); /* defined in generator_decl */
 int result_propagate_suffix(int type); /* defined in statement */
 int result_propagate_struct(int type); /* defined in statement */
+int inline_call_site_ok(int sym); /* grammar/inline_call.w (unit A5) */
+void inline_emit_call(int r, int s, int passed_args);
 
 
 int buffer_element_type(int type):
@@ -259,9 +261,13 @@ int finish_call(int callee_type, int s, int expected_args, int callee_sym, char*
 	if (callee_name != 0): free(callee_name)
 
 	# A known W callee (the call record for this base, unit A4) is one
-	# `call rel32`; otherwise reload the parked callee word -- a
-	# function's address is its value, other callees hold a pointer
-	if (direct_call_take(s)): direct_call_emit_taken()
+	# `call rel32` -- or, for a small leaf callee (kind 4, unit A5), its
+	# body emitted here in place of the call; otherwise reload the
+	# parked callee word -- a function's address is its value, other
+	# callees hold a pointer
+	if (direct_call_take(s)):
+		if (direct_call_taken_kind == 4): inline_emit_call(direct_call_taken_id, s, passed_args)
+		else: direct_call_emit_taken()
 	else:
 		load_slot(s + 1)
 		if (callee_type != 4): promote(callee_type)
@@ -622,10 +628,16 @@ int postfix_expr():
 						has_return_buffer = 1
 				int s = stack_pos + words
 				# A noted direct callee (unit A4): record the call for
-				# this base and push no callee word; otherwise the
-				# callee's address is in eax and is parked above the base
+				# this base and push no callee word -- as kind 4 when the
+				# callee's body is to be emitted in place (unit A5);
+				# otherwise the callee's address is in eax and is parked
+				# above the base
 				int direct = direct_callee_current()
-				if (direct): direct_callee_to_record(s)
+				if (callee_sym >= 0): inline_note_call(callee_name)
+				if (direct && (direct_callee_kind == 1) && inline_call_site_ok(direct_callee_id)):
+					direct_call_record(s, 4, inline_site_record)
+					direct_callee_kind = 0
+				elif (direct): direct_callee_to_record(s)
 				else: direct_call_record(s, 0, 0)
 				for j in range(words): push_eax()
 				stack_pos = stack_pos + words

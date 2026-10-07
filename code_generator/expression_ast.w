@@ -787,7 +787,10 @@ void emit_expression_ast(expression_ast* tree, int id):
 				return
 			int has_return_buffer = emit_ast_return_buffer(declared_return)
 			int s = stack_pos
-			if (direct): direct_call_record(s, 1, sym)
+			# The same inlining decision as grammar/postfix_expr.w (unit A5)
+			inline_note_call(table + tree.value[id])
+			if (direct && inline_call_site_ok(sym)): direct_call_record(s, 4, inline_site_record)
+			elif (direct): direct_call_record(s, 1, sym)
 			else:
 				push_slot()
 				direct_call_record(s, 0, 0)

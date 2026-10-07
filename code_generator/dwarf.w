@@ -68,6 +68,9 @@ void debug_line_note(int stmt_stack_pos):
 	# Device (PTX) bodies do not advance codepos, so address-keyed line
 	# records would pile up at the same host position: skip them.
 	if (target_isa == 3): return;
+	# The statements of a body inlined at a call site (unit A5) belong
+	# to the call site's line: the caller's note stays current.
+	if (inline_depth != 0): return;
 	debug_files_ensure()
 	if (debug_line_addresses == 0):
 		debug_line_capacity = 65536
@@ -251,6 +254,7 @@ void dwarf_function_define(int symbol, char* name):
 
 void dwarf_block_begin():
 	if ((dwarf_open_func == 0) || (dwarf_open_depth != 1)): return;
+	if (inline_depth != 0): return;   # a body inlined at a call site (unit A5)
 	int block = dwarf_blocks.length / 3
 	dwarf_blocks.push(codepos)
 	dwarf_blocks.push(codepos)
@@ -262,6 +266,7 @@ void dwarf_block_begin():
 
 void dwarf_block_end():
 	if ((dwarf_open_func == 0) || (dwarf_open_depth != 1)): return;
+	if (inline_depth != 0): return;
 	if (dwarf_block_stack.length == 0): return;
 	int block = dwarf_block_stack.pop()
 	dwarf_blocks[block * 3 + 1] = codepos

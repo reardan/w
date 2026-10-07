@@ -767,6 +767,7 @@ void call_eax():
 			return
 		# Loop-owned caller-saved registers survive the callee through
 		# their homes (R3); nothing is emitted when no loop owns any.
+		inline_real_calls = inline_real_calls + 1
 		regalloc_call_spill()
 		emit(2, c"\xff\xd0") /* call *%eax */
 		regalloc_call_reload()
@@ -793,6 +794,7 @@ void call_relative32(int v):
 # codepos on.
 int call_direct_to(int v):
 	emitted_call_count = emitted_call_count + 1
+	inline_real_calls = inline_real_calls + 1
 	regalloc_call_spill()
 	call_relative32(v - (code_offset + codepos + 5))
 	int slot = codepos - 4
@@ -803,6 +805,7 @@ int call_direct_to(int v):
 int call_direct_link(int head):
 	if (head == 0): head = code_offset
 	emitted_call_count = emitted_call_count + 1
+	inline_real_calls = inline_real_calls + 1
 	regalloc_call_spill()
 	call_relative32(head)
 	int slot = codepos + code_offset - 4
