@@ -106,9 +106,10 @@ void diag_codes_expect_no_related(json_value* row):
 	assert_equal(0, json_array_length(related))
 
 
-# Mode 0 is the default streaming front end, mode 1 the given AST flag.
+# Mode 0 is the streaming front end (--streaming since the AST default,
+# P1.4), mode 1 the given AST flag.
 char* diag_codes_mode(int m, char* ast_flag):
-	if (m == 0): return 0
+	if (m == 0): return c"--streaming"
 	return ast_flag
 
 

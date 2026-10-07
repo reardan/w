@@ -1053,7 +1053,11 @@ void wdbg_fatal_entry(int sig):
 void wdbg_attach_compile(char* target):
 	int n = 4
 	if (__word_size__ == 8): n = 5
-	if (ast_expressions_mode): n = n + 1
+	# The AST front end is link_impl's default; only a streaming, retaining
+	# or required session needs flags (two for --streaming --ast-expressions).
+	if (ast_expressions_mode < 2): n = n + 1
+	if (ast_expressions_mode == 1): n = n + 1
+	if (ast_retain_mode): n = n + 1
 	if (ast_required_mode): n = n + 1
 	if (args_has_bool_flag(c"pie")): n = n + 1
 	int argv = cast(int, malloc(n * __word_size__))
@@ -1064,12 +1068,16 @@ void wdbg_attach_compile(char* target):
 		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"x64"))
 		idx = idx + 1
 	# The recompile must lower exactly as the binary's compile did, so
-	# the AST modes wdbg runs with are forwarded (--ast-emit-retained
-	# implies the retained forest and full-expression mode).
-	if (ast_expressions_mode):
-		char* ast_flag = c"--ast-expressions"
-		if (ast_expressions_mode >= 2): ast_flag = c"--ast-full-expressions"
-		if (ast_retain_mode): ast_flag = c"--ast-retain"
+	# the AST modes wdbg runs with are forwarded. Full-expression mode is
+	# the driver's default; --ast-emit-retained implies the retained forest.
+	if (ast_expressions_mode < 2):
+		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--streaming"))
+		idx = idx + 1
+	if (ast_expressions_mode == 1):
+		save_word(cast(char*, argv + idx * __word_size__), cast(int, c"--ast-expressions"))
+		idx = idx + 1
+	if (ast_retain_mode):
+		char* ast_flag = c"--ast-retain"
 		if (ast_emit_retained_mode): ast_flag = c"--ast-emit-retained"
 		save_word(cast(char*, argv + idx * __word_size__), cast(int, ast_flag))
 		idx = idx + 1
@@ -1122,7 +1130,7 @@ int wdbg_main(int argc, int argv):
 		exit(wdbg_attach_run(attach_pid, 0))
 
 	if (target == 0):
-		println2(c"usage: wdbg <file.w> [--break_start] [--break_end] [--ast-expressions] [--ast-emit-retained]")
+		println2(c"usage: wdbg <file.w> [--break_start] [--break_end] [--streaming] [--ast-emit-retained]")
 		println2(c"   or: wdbg --attach <pid> [file.w]")
 		exit(1)
 

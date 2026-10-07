@@ -2,12 +2,12 @@
 # the production compiler on both host widths. Do not add an x64 target twin:
 # x64 arithmetic intentionally differs for overflow and hardware shift masks.
 # wbuild: target=ast_integer32_test tag=tests dep=build_x64
-# wbuild: step="bin/wv2 tests/ast_integer32_test.w -o bin/ast_integer32_test"
+# wbuild: step="bin/wv2 --streaming tests/ast_integer32_test.w -o bin/ast_integer32_test"
 # wbuild: step="bin/ast_integer32_test"
 # wbuild: step="bin/wv2 --ast-required tests/ast_integer32_test.w -o bin/ast_integer32_required"
 # wbuild: step="cmp bin/ast_integer32_test bin/ast_integer32_required"
 # wbuild: step="bin/ast_integer32_required"
-# wbuild: step="bin/wv2_64 tests/ast_integer32_test.w -o bin/ast_integer32_legacy_host64"
+# wbuild: step="bin/wv2_64 --streaming tests/ast_integer32_test.w -o bin/ast_integer32_legacy_host64"
 # wbuild: step="bin/wv2_64 --ast-required tests/ast_integer32_test.w -o bin/ast_integer32_host64"
 # wbuild: step="cmp bin/ast_integer32_legacy_host64 bin/ast_integer32_host64"
 # wbuild: step="bin/ast_integer32_host64"

@@ -78,7 +78,7 @@ int ast_audit_command_kind(json_value* cmd):
 			i = i + 1
 			continue
 		if (text[0] != '-' && ast_audit_source(text)): source = 1
-		if (ast_audit_prefix(text, c"--ast-")): explicit_mode = 1
+		if (ast_audit_prefix(text, c"--ast-") || strcmp(text, c"--streaming") == 0): explicit_mode = 1
 		if (strcmp(text, c"deps") == 0 || strcmp(text, c"symbols") == 0 || strcmp(text, c"defhash") == 0 || strcmp(text, c"tree") == 0 || strcmp(text, c"--help") == 0 || strcmp(text, c"-h") == 0 || strcmp(text, c"--version") == 0): query = 1
 	if (explicit_mode): return 2
 	if (query || source == 0): return 3
@@ -157,6 +157,42 @@ json_value* ast_audit_manifest_mode(json_value* root, int required):
 	json_object_set(report, c"selected", selected)
 	json_object_set(report, c"scope", json_string(c"Production-compiler compile/check steps, including recognized env prefixes; required mode also gates diagnostic fixture groups; implicit imports inherit the flag. Nested compiler launches remain controlled by their test drivers. Seeds and explicit AST modes are unchanged."))
 	return report
+
+
+# P1.4: direct production-compiler steps that still pass an AST opt-in flag
+# which the default makes redundant. Rows are {"target","step","flag"}.
+json_value* ast_audit_stale_flags(json_value* root):
+	json_value* stale = json_array()
+	json_value* targets = jfield_array(root, c"targets")
+	if (targets == 0): return stale
+	for i in range(json_array_length(targets)):
+		json_value* target = json_array_get(targets, i)
+		json_value* steps = 0
+		if (target.type == json_type_object()): steps = jfield_array(target, c"steps")
+		if (steps == 0): continue
+		for j in range(json_array_length(steps)):
+			json_value* step = json_array_get(steps, j)
+			json_value* cmd = 0
+			if (step.type == json_type_object()): cmd = jfield_array(step, c"cmd")
+			if (cmd == 0): continue
+			int program = ast_audit_program_index(cmd)
+			if (ast_audit_compiler(ast_audit_arg(cmd, program)) == 0): continue
+			char* flag = 0
+			int streaming = 0
+			for k in range(program + 1, json_array_length(cmd)):
+				char* arg = ast_audit_arg(cmd, k)
+				if (strcmp(arg, c"--streaming") == 0): streaming = 1
+				if (strcmp(arg, c"--ast-full-expressions") == 0 || strcmp(arg, c"--ast-expressions") == 0): flag = arg
+			if (flag == 0): continue
+			if (streaming && strcmp(flag, c"--ast-expressions") == 0): continue
+			json_value* row = json_object()
+			char* name = jfield_string(target, c"name")
+			if (name == 0): name = c""
+			json_object_set(row, c"target", json_string(name))
+			json_object_set(row, c"step", json_int(j))
+			json_object_set(row, c"flag", json_string(flag))
+			json_array_push(stale, row)
+	return stale
 
 
 json_value* ast_audit_manifest(json_value* root):

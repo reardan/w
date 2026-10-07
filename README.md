@@ -18,14 +18,15 @@ project quickly and make correct changes.
 - **Language style**: C-like semantics with Python-like surface syntax.
   Whitespace-significant, **tabs** for indentation (spaces produce a compiler
   warning), blocks open with `:`, no semicolons, `#` line comments.
-- **Compiler architecture**: the default path retains single-pass,
-  syntax-directed code generation (cc500 heritage). The opt-in production
-  AST path lowers expressions, statements and executable declarations through
-  backend visitors and passes compiler self-hosting and the full test suite.
-  Use `bin/wv2 --ast-required file.w -o bin/program` or
-  `./wbuild ast_expression_suite`. Bodies are still visited incrementally;
-  there is no retained whole-module AST or IR yet. See the
-  [production AST status](docs/projects/ast_migration.md).
+- **Compiler architecture**: single-pass, syntax-directed code generation
+  (cc500 heritage). By default each expression, statement and executable
+  declaration is parsed into a small AST and lowered at once through backend
+  visitors; images are byte-identical to the older streaming front end, which
+  `--streaming` still selects (until it is retired). `--ast-required` also
+  rejects any expression that would fall back to streaming, and
+  `./wbuild ast_expression_suite` runs the whole test suite that way. Bodies
+  are still visited incrementally; there is no retained whole-module AST or IR
+  yet. See the [production AST status](docs/projects/ast_migration.md).
 - **Bootstrap seed**: `./w` at the repo root is a statically linked
   **32-bit x86** ELF binary of the compiler. It is not committed: `./wbuild`
   downloads it from the GitHub release pinned in `SEEDS` (sha256-verified)
@@ -87,7 +88,7 @@ Other useful targets:
                      # part of 'tests' (docs/projects/register_allocation_pgo.md)
 ./wbuild profile_refresh  # regenerate profiles/*.wprof from --profile-generate runs (self-compile + tests/bench)
 ./wbuild profile_check  # staleness report for the committed profiles (bin/wprof stats); never fails
-./wbuild ast_expression_suite  # full suite with AST lowering and no expression fallback
+./wbuild ast_expression_suite  # full suite with --ast-required (no expression fallback)
 ./wbuild warning_test  # asserts the compiler's type/style warnings
 ./wbuild lint_test   # asserts 'w check --lint' / '--fix' (docs/projects/lint.md)
 ./wbuild cuda_smoke  # GPU-only: hand-written PTX vector add through libcuda (not part of 'tests')

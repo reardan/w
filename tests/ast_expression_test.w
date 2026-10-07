@@ -36,6 +36,9 @@ process_result* ast_test_compile(char* compiler, char* arch, char* input, char* 
 		i = ast_test_arg(args, i, c"--imports")
 	if (strcmp(arch, c"x86") != 0): i = ast_test_arg(args, i, arch)
 	i = ast_test_arg(args, i, c"--quiet")
+	# The AST front end is the default (P1.4): the baseline (0) and the
+	# grouped scalar mode (1) opt into the streaming front end.
+	if (enabled < 2): i = ast_test_arg(args, i, c"--streaming")
 	if (enabled == 1): i = ast_test_arg(args, i, c"--ast-expressions")
 	if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
 	if (enabled == 3): i = ast_test_arg(args, i, c"--ast-required")
@@ -547,12 +550,13 @@ void test_ast_logic_expression_path_is_exercised():
 
 
 process_result* ast_test_query(char* command, int enabled, char* source):
-	char** args = strv_new(6)
+	char** args = strv_new(7)
 	int i = 0
 	i = ast_test_arg(args, i, c"bin/wv2")
 	i = ast_test_arg(args, i, command)
 	if (strcmp(command, c"defhash") != 0): i = ast_test_arg(args, i, c"--json")
 	i = ast_test_arg(args, i, c"--quiet")
+	if (enabled < 2): i = ast_test_arg(args, i, c"--streaming")
 	if (enabled == 1): i = ast_test_arg(args, i, c"--ast-expressions")
 	if (enabled == 2): i = ast_test_arg(args, i, c"--ast-full-expressions")
 	strv_set(args, i, source)
@@ -1233,6 +1237,7 @@ void test_ast_lint_events_are_required():
 					i = ast_test_arg(args, i, c"--quiet")
 					i = ast_test_arg(args, i, c"--lint")
 					if (json): i = ast_test_arg(args, i, c"--json")
+					if (enabled == 0): i = ast_test_arg(args, i, c"--streaming")
 					if (enabled): i = ast_test_arg(args, i, c"--ast-required")
 					if (host): i = ast_test_arg(args, i, c"x64")
 					i = ast_test_arg(args, i, source)
@@ -1279,6 +1284,7 @@ void test_ast_bool_warning_events_are_required():
 						i = ast_test_arg(args, i, c"--bool-ops")
 						if (json): i = ast_test_arg(args, i, c"--json")
 						if (strict): i = ast_test_arg(args, i, c"--strict")
+						if (enabled == 0): i = ast_test_arg(args, i, c"--streaming")
 						if (enabled): i = ast_test_arg(args, i, c"--ast-required")
 						if (host): i = ast_test_arg(args, i, arch)
 						i = ast_test_arg(args, i, source)
@@ -1337,6 +1343,7 @@ void test_ast_warning_events_are_required():
 						i = ast_test_arg(args, i, c"--quiet")
 						if (json): i = ast_test_arg(args, i, c"--json")
 						if (strict): i = ast_test_arg(args, i, c"--strict")
+						if (enabled == 0): i = ast_test_arg(args, i, c"--streaming")
 						if (enabled): i = ast_test_arg(args, i, c"--ast-required")
 						if (host): i = ast_test_arg(args, i, arch)
 						i = ast_test_arg(args, i, source)
@@ -2679,9 +2686,10 @@ void test_ast_expression_analysis_queries():
 
 
 process_result* ast_test_repl(char* repl, int enabled, char* script):
-	char** args = strv_new(2)
+	char** args = strv_new(3)
 	strv_set(args, 0, repl)
-	if (enabled == 1): strv_set(args, 1, c"--ast-expressions")
+	if (enabled < 2): strv_set(args, 1, c"--streaming")
+	if (enabled == 1): strv_set(args, 2, c"--ast-expressions")
 	if (enabled == 2): strv_set(args, 1, c"--ast-full-expressions")
 	# S2.4: the REPL lowering from the retained forest.
 	if (enabled == 3): strv_set(args, 1, c"--ast-emit-retained")
@@ -2716,12 +2724,13 @@ void test_ast_expression_debugger_eval():
 	assert1(file_write_text(path, c"int main():\n\tint answer = (6 * 7)\n\tdebugger\n\treturn answer != 42\nint dbg_twice(int n): return n * 2\n"))
 	for host in range(2):
 		for enabled in range(4):
-			char** args = strv_new(3)
+			char** args = strv_new(4)
 			char* dbg_path = c"bin/wdbg"
 			if (host): dbg_path = c"bin/wdbg64"
 			strv_set(args, 0, dbg_path)
 			strv_set(args, 1, path)
-			if (enabled == 1): strv_set(args, 2, c"--ast-expressions")
+			if (enabled < 2): strv_set(args, 2, c"--streaming")
+			if (enabled == 1): strv_set(args, 3, c"--ast-expressions")
 			if (enabled == 2): strv_set(args, 2, c"--ast-full-expressions")
 			if (enabled == 3): strv_set(args, 2, c"--ast-emit-retained")
 			process_result* result = ast_test_run(args, c"p answer\np (answer + 5)\np (dbg_twice(answer) + 1)\np (1.5 + 2.5)\np (answer > 40 && dbg_twice(answer) == 84)\np (answer + missing)\np (5 + 6 * 7)\np (4294967296 + 1)\np (6 * 7)\nc\n")
@@ -3145,22 +3154,22 @@ void test_ast_first_use_container_repl_recovery():
 # wbuild: step="bin/wv2 x64 repl.w -o bin/ast_repl64"
 # wbuild: step="bin/ast_expression_test"
 # wbuild: target=ast_expression_verify tag=tests dep=build dep=build_x64
-# wbuild: step="bin/wv2 --ast-expressions --strict w.w -o bin/ast_wv3"
+# wbuild: step="bin/wv2 --streaming --ast-expressions --strict w.w -o bin/ast_wv3"
 # wbuild: step="cmp bin/wv3 bin/ast_wv3"
-# wbuild: step="bin/ast_wv3 --ast-expressions --strict w.w -o bin/ast_wv4"
+# wbuild: step="bin/ast_wv3 --streaming --ast-expressions --strict w.w -o bin/ast_wv4"
 # wbuild: step="cmp bin/ast_wv3 bin/ast_wv4"
-# wbuild: step="bin/wv2_64 x64 --ast-expressions --strict w.w -o bin/ast_wv3_64"
+# wbuild: step="bin/wv2_64 x64 --streaming --ast-expressions --strict w.w -o bin/ast_wv3_64"
 # wbuild: step="cmp bin/wv3_64 bin/ast_wv3_64"
-# wbuild: step="bin/ast_wv3_64 x64 --ast-expressions --strict w.w -o bin/ast_wv4_64"
+# wbuild: step="bin/ast_wv3_64 x64 --streaming --ast-expressions --strict w.w -o bin/ast_wv4_64"
 # wbuild: step="cmp bin/ast_wv3_64 bin/ast_wv4_64"
-# wbuild: step="bin/wv2 --ast-full-expressions --strict w.w -o bin/ast_full_wv3"
-# wbuild: step="cmp bin/wv3 bin/ast_full_wv3"
-# wbuild: step="bin/ast_full_wv3 --ast-full-expressions --strict w.w -o bin/ast_full_wv4"
-# wbuild: step="cmp bin/ast_full_wv3 bin/ast_full_wv4"
-# wbuild: step="bin/wv2_64 x64 --ast-full-expressions --strict w.w -o bin/ast_full_wv3_64"
-# wbuild: step="cmp bin/wv3_64 bin/ast_full_wv3_64"
-# wbuild: step="bin/ast_full_wv3_64 x64 --ast-full-expressions --strict w.w -o bin/ast_full_wv4_64"
-# wbuild: step="cmp bin/ast_full_wv3_64 bin/ast_full_wv4_64"
+# wbuild: step="bin/wv2 --streaming --strict w.w -o bin/streaming_wv3"
+# wbuild: step="cmp bin/wv3 bin/streaming_wv3"
+# wbuild: step="bin/streaming_wv3 --streaming --strict w.w -o bin/streaming_wv4"
+# wbuild: step="cmp bin/streaming_wv3 bin/streaming_wv4"
+# wbuild: step="bin/wv2_64 x64 --streaming --strict w.w -o bin/streaming_wv3_64"
+# wbuild: step="cmp bin/wv3_64 bin/streaming_wv3_64"
+# wbuild: step="bin/streaming_wv3_64 x64 --streaming --strict w.w -o bin/streaming_wv4_64"
+# wbuild: step="cmp bin/streaming_wv3_64 bin/streaming_wv4_64"
 
 # wbuild: target=ast_required_expression_verify tag=tests dep=build dep=build_x64
 # wbuild: step="bin/wv2 --ast-required --strict w.w -o bin/ast_required_wv3"

@@ -7,11 +7,12 @@
 # This differential test replays every stdin script of the REPL's and the
 # debugger's own suites (repl_test's tests/repl_fixture.w.wbuild and
 # debug_test's tests/debug_fixture.w.wbuild, so the scripts cannot drift)
-# through the default compile and through --ast-emit-retained, on the 32-bit
-# and the 64-bit binaries, and requires the same exit status, stdout and
-# stderr. Output that differs between two default runs of the same script
+# through the streaming front end (--streaming, the baseline since the AST
+# front end became the default in P1.4) and through --ast-emit-retained, on
+# the 32-bit and the 64-bit binaries, and requires the same exit status,
+# stdout and stderr. Output that differs between two baseline runs of the same script
 # (register dumps, stack addresses) is normalized first: staging directory
-# pids and hexadecimal numbers; a script whose default output still differs
+# pids and hexadecimal numbers; a script whose baseline output still differs
 # between two runs is not compared, and the test asserts how few those are.
 # A difference from the retained run is retried twice before it fails.
 # test_repl_retained_recovery adds the REPL recovery legs of
@@ -211,7 +212,7 @@ void retained_first_difference(char* label, char* a, char* b):
 	char* left = substring(a, i, end_a - i)
 	char* right = substring(b, i, end_b - i)
 	println(f"{label} line {line}:")
-	println(f"  default:  {left}")
+	println(f"  baseline: {left}")
 	println(f"  retained: {right}")
 	free(left)
 	free(right)
@@ -225,7 +226,7 @@ void retained_report(char* binary, retained_script* script, retained_run* plain,
 	retained_first_difference(c"stderr", plain.stderr_text, retained.stderr_text)
 
 
-# Every script of the fixture through binary, default vs --ast-emit-retained.
+# Every script of the fixture through binary, --streaming vs --ast-emit-retained.
 # A difference is retried twice: output that depends on the machine's state
 # (a shell command's, say) can change between two runs.
 void retained_differential(char* binary, list[retained_script*] scripts):
@@ -234,8 +235,8 @@ void retained_differential(char* binary, list[retained_script*] scripts):
 		int varies = 0
 		int same = 0
 		while ((attempts < 3) && (same == 0) && (varies == 0)):
-			retained_run* plain = retained_execute(binary, script, 0)
-			retained_run* again = retained_execute(binary, script, 0)
+			retained_run* plain = retained_execute(binary, script, c"--streaming")
+			retained_run* again = retained_execute(binary, script, c"--streaming")
 			if (retained_same(plain, again) == 0): varies = 1
 			else:
 				retained_run* retained = retained_execute(binary, script, c"--ast-emit-retained")
@@ -277,7 +278,7 @@ void test_wdbg_fixture_scripts_retained():
 
 # The REPL recovery legs: errors inside expressions, statements and
 # function bodies roll back mid-walk; redefinitions repatch callers; :reset.
-# Default, --ast-full-expressions and --ast-emit-retained agree.
+# --streaming, the default AST front end and --ast-emit-retained agree.
 void retained_recovery(char* text):
 	retained_script script
 	script.command = c"repl"
@@ -285,8 +286,8 @@ void retained_recovery(char* text):
 	for host in range(2):
 		char* binary = c"bin/repl_retained_emit_repl"
 		if (host): binary = c"bin/repl_retained_emit_repl64"
-		retained_run* plain = retained_execute(binary, &script, 0)
-		retained_run* full = retained_execute(binary, &script, c"--ast-full-expressions")
+		retained_run* plain = retained_execute(binary, &script, c"--streaming")
+		retained_run* full = retained_execute(binary, &script, 0)
 		retained_run* retained = retained_execute(binary, &script, c"--ast-emit-retained")
 		assert_equal(0, retained.status)
 		if (retained_same(plain, retained) == 0): retained_report(binary, &script, plain, retained)
@@ -306,6 +307,35 @@ void test_repl_retained_recovery():
 	# loop, defer and for loops in an entry, and a redefinition after both.
 	retained_recovery(c"int total(int n):\n\tint sum = 0\n\tfor i in range(n):\n\t\tsum = sum + i\n\tdefer sum = 0\n\treturn sum\n\ntotal(5)\nint total(int n):\n\tint sum = 0\n\twhile (sum < n):\n\t\tsum = sum + 1\n\treturn sum + missing\n\ntotal(5)\nint* hole = 0\nint k = 0\nwhile (k < 3):\n\tk = k + 1\n\tif (k == 2): hole[0] = k\n\nk\nfor j in range(3): k = k + j\nk\nswitch k:\n\tcase 3: k = 30\n\tdefault: k = 40\n\nk\nint total(int n): return n * 100\ntotal(5)\n:quit\n")
 
+
+
+# P1.4: --streaming is the opt-out from the default AST front end, and the
+# in-process compilers reject it next to an AST-only flag with the driver's
+# own error (repl_ast_options), before any session starts.
+void retained_streaming_conflict(char* binary, char* path, char* flag):
+	char** args = strv_new(4)
+	strv_set(args, 0, binary)
+	int at = 1
+	if (path != 0):
+		strv_set(args, at, path)
+		at = at + 1
+	strv_set(args, at, c"--streaming")
+	strv_set(args, at + 1, flag)
+	process_result* result = process_run(binary, args, 0, c":quit\n", 60000)
+	free(cast(void*, args))
+	assert1(result != 0)
+	assert_equal(1, result.status)
+	assert_contains(result.stderr_text, c"error: '--streaming' cannot be combined with '")
+	assert_contains(result.stderr_text, flag)
+	process_result_free(result)
+
+
+void test_streaming_conflicts_with_ast_only_flags():
+	retained_streaming_conflict(c"bin/repl_retained_emit_repl", 0, c"--ast-emit-retained")
+	retained_streaming_conflict(c"bin/repl_retained_emit_repl64", 0, c"--ast-retain")
+	retained_streaming_conflict(c"bin/repl_retained_emit_repl", 0, c"--ast-required")
+	retained_streaming_conflict(c"bin/wdbg", c"tests/debug_fixture.w", c"--ast-full-expressions")
+	retained_streaming_conflict(c"bin/wdbg64", c"tests/debug_fixture.w", c"--ast-emit-retained")
 
 # wbuild: binary=repl_retained_emit_test tag=tests dep=wv2 dep=wdbg dep=wdbg_x64 data=tests/repl_fixture.w.wbuild data=tests/debug_fixture.w.wbuild data=tests/debug_fixture.w data=tests/debug_fixture2.w data=tests/debug_fixture3.w data=tests/debug_fixture4.w data=tests/debug_fixture5.w data=tests/segv_fixture.w
 # wbuild: step="bin/wv2 repl.w -o bin/repl_retained_emit_repl"

@@ -6,7 +6,8 @@ Usage:
   bin/wast_audit census bin/compiler_ast_audit.jsonl
 
 manifest generates today's manifest from build.base.json and source directives,
-adds --ast-full-expressions to direct production compile/check steps, writes
+adds --ast-full-expressions to direct production compile/check steps (a no-op
+since the AST front end became the default, kept for old checkouts), writes
 the manifest, and prints a JSON selection report. It never executes steps.
 Run it with: bin/wexec -f bin/ast_suite_manifest.json tests
 Driver-owned compiler launches are not rewritten. Explicit AST modes and pinned
@@ -19,7 +20,15 @@ it. The suite uses wexec's normal parallel scheduler.
 
 required-manifest rejects expression fallback in positive compile/check steps
 and diagnostic fixtures. Expected failures use permissive AST mode to preserve
-diagnostics. Explicit modes, seeds and other nested drivers remain unchanged.
+diagnostics. Explicit modes (--ast-*, --streaming), seeds and other nested
+drivers remain unchanged.
+
+The AST front end is the default (completion plan P1.4), so required-manifest
+first checks that no direct production compile/check step still opts in with
+--ast-full-expressions, or with --ast-expressions outside --streaming: both are
+no-ops now. It lists such steps as stale_ast_flag_steps on stderr, writes no
+manifest and exits 1. --ast-required, --ast-retain and --ast-audit still
+change behaviour and remain allowed.
 
 census prints deterministic file/token fallback counts and accumulated AST /
 streaming counters from --ast-audit --stats stderr. It returns 1 for malformed
@@ -63,6 +72,19 @@ int main(int argc, int argv):
 		if (generated == 0): return 1
 		json_value* root = json_parse(generated)
 		free(generated)
+		if (strcmp(args[1], c"required-manifest") == 0):
+			json_value* stale = ast_audit_stale_flags(root)
+			if (json_array_length(stale) != 0):
+				char* listed = json_stringify(stale)
+				wstream* err = stderr_writer()
+				stream_write_cstr(err, c"wast_audit: stale_ast_flag_steps ")
+				stream_write_line(err, listed)
+				stream_flush(err)
+				free(listed)
+				json_free(stale)
+				json_free(root)
+				return wast_audit_error(c"steps still pass an AST opt-in flag the default makes redundant; drop it (or pair --ast-expressions with --streaming)")
+			json_free(stale)
 		report = ast_audit_manifest_mode(root, strcmp(args[1], c"required-manifest") == 0)
 		if (report == 0):
 			json_free(root)
