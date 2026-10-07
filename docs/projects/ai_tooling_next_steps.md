@@ -888,3 +888,27 @@ issues at once on a 4-CPU machine. Friction they reported:
   - `hex_word` includes the `0x` prefix.
   - A crash-report frame at a function's first instruction is
     attributed to the last line of the previous file.
+
+## Source-owned targets and the profile tooling (2026-10-07, PGO plan P1)
+
+Friction met while adding `--profile-generate`, `bin/wprof` and
+`./wbuild profile_refresh` (docs/projects/register_allocation_pgo.md §11):
+
+- **A `# wbuild: target=` block with no `tag=` cannot live entirely in
+  its source file**: `manifest_check` rejects a target that belongs to
+  no umbrella unless `build.base.json`'s `generate.no_umbrella` lists
+  it, so every hand-run maintenance target (`profile_refresh` joins
+  `wbench_compare`, `update`) still touches the shared base file. A
+  `# wbuild: no_umbrella="<reason>"` directive next to `target=` would
+  keep such targets fully source-owned.
+- **No `rm` in steps**: wexec runs commands without a shell and the
+  repo has `tools/touch.w`/`tools/chmod.w` but nothing that removes or
+  truncates a file, so `bin/wprof` grew a `clear` subcommand just to
+  empty the O_APPEND dump before a profiled run.
+- **`file_write_text` creates 0755 files** (already noted above):
+  `bin/wprof` chmods its output to 0644 so committed `profiles/*.wprof`
+  are not executable.
+- **A `char*` global cannot be initialised from a `c"..."` literal**
+  ("initializer for global must be a compile-time constant"); a
+  zero-argument function returning the literal is the workaround used
+  in tests/profile_generate_test.w.
