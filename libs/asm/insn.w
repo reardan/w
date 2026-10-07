@@ -119,7 +119,7 @@ void asm_insn_clear(asm_insn* insn):
 # immediate form.
 char* asm_hex_min(int v):
 	char* digits = c"0123456789abcdef"
-	char* tmp = malloc(16)
+	char* tmp = cast(char*, malloc(16))
 	int n = 0
 	if (v == 0):
 		tmp[0] = '0'
@@ -128,7 +128,7 @@ char* asm_hex_min(int v):
 		tmp[n] = digits[v & 15]
 		n = n + 1
 		v = (v >> 4) & 0x0fffffff
-	char* out = malloc(n + 3)
+	char* out = cast(char*, malloc(n + 3))
 	out[0] = '0'
 	out[1] = 'x'
 	for i in range(n): out[2 + i] = tmp[n - 1 - i]
@@ -144,7 +144,7 @@ char* asm_hex_min(int v):
 char* asm_hex_min64(int hi, int lo):
 	if (hi == 0): return asm_hex_min(lo)
 	char* digits = c"0123456789abcdef"
-	char* lopart = malloc(9)
+	char* lopart = cast(char*, malloc(9))
 	for i in range(8): lopart[i] = digits[(lo >> ((7 - i) * 4)) & 15]
 	lopart[8] = 0
 	return strjoin(asm_hex_min(hi), lopart)

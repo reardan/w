@@ -141,7 +141,7 @@ char* codec_accept_list():
 	while (e != 0):
 		n = n + strlen(e.name) + 1
 		e = e.next
-	char* out = malloc(n)
+	char* out = cast(char*, malloc(n))
 	int pos = 0
 	e = codec_registry
 	while (e != 0):

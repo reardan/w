@@ -6,7 +6,7 @@ import libs.extras.c_preprocessor.pp_token
 
 
 char* cpp_substr(char* input, int start, int end):
-	char* text = malloc(end - start + 1)
+	char* text = cast(char*, malloc(end - start + 1))
 	int i = 0
 	while (start + i < end):
 		text[i] = input[start + i]

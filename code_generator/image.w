@@ -19,7 +19,7 @@ void image_begin(int base):
 	data_offset = base + 16777216 /* +0x1000000 */
 	datapos = 0
 	data_size = 4096
-	data = malloc(data_size)
+	data = cast(char*, malloc(data_size))
 
 
 # The program's entry function: runtime_start (a target's runtime

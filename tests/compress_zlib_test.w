@@ -34,7 +34,7 @@ void test_zlib_roundtrip():
 # payload (a plain literal string is too short to exercise LZ77 matches).
 void test_zlib_roundtrip_fast_and_best():
 	int n = 4096
-	char* src = malloc(n)
+	char* src = cast(char*, malloc(n))
 	for i in range(n): src[i] = 'a' + (i % 7)
 	zlib_result* fast = zlib_compress(src, n, DEFLATE_LEVEL_FAST())
 	zlib_result* fout = result_expect[zlib_result*](zlib_decompress(fast.data, fast.length, 0))

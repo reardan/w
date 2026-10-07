@@ -34,7 +34,7 @@ char* wvm_read_image(char* path, int* length):
 	if (size < 64 || size > 67108864 || seek(fd, 0, 0) != 0):
 		close(fd)
 		return 0
-	char* image = malloc(size)
+	char* image = cast(char*, malloc(size))
 	int have = 0
 	while (have < size):
 		int n = read(fd, image + have, size - have)

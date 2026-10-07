@@ -25,7 +25,7 @@ int pair_sum(pair* p):
 # cast() is the escape hatch: every conversion the checks would reject
 # compiles silently when spelled explicitly.
 int cast_escape_hatches():
-	char* buffer = malloc(8)
+	char* buffer = cast(char*, malloc(8))
 	int word = cast(int, buffer)      /* pointer -> int */
 	char* back = cast(char*, word)    /* int -> pointer */
 	int* words = cast(int*, buffer)   /* pointer -> pointer */

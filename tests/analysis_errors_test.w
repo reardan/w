@@ -79,7 +79,7 @@ void test_analysis_source_buffer_and_success():
 	# Cross several getchar refill windows inside one function. Recovery
 	# returns the lexer to a statement's start; a clean file must not be
 	# disturbed by the boundaries it never uses.
-	char* text = malloc(30000)
+	char* text = cast(char*, malloc(30000))
 	int at = 0
 	char* header = c"int clean(int input):\n\tint value = input\n"
 	for i in range(strlen(header)): text[i] = header[i]
@@ -259,7 +259,7 @@ void test_analysis_failed_bindings_stay_visible():
 # up to its first error.
 void test_analysis_warnings_beside_errors():
 	char* path = cstr(f"bin/analysis_warnings_{getpid()}.w")
-	assert1(file_write_text(path, c"int warns(int value):\n\tchar* text = value\n\tmissing_after_warning()\n\treturn missing_in_return()\nint main():\n\treturn warns(1)\n"))
+	assert1(file_write_text(path, c"int warns(int* value):\n\tchar* text = value\n\tmissing_after_warning()\n\treturn missing_in_return()\nint main():\n\treturn warns(0)\n"))
 	process_result* result = analysis_test_run(path, 1)
 	assert_equal(1, result.status)
 	assert_contains(result.stdout_text, c"initialization type mismatch")

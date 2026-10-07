@@ -75,7 +75,7 @@ void dbg_memory_use_local():
 
 void dbg_memory_init():
 	# One residency byte per probed page; probes span at most 2 pages
-	dbg_mincore_vec = malloc(16)
+	dbg_mincore_vec = cast(char*, malloc(16))
 	dbg_memory_use_local()
 
 

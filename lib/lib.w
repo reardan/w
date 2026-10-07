@@ -124,14 +124,14 @@ char* strcpy(char *dst, char *src):
 
 
 char* strclone(char *c):
-	char *clone = malloc(strlen(c) + 1)
+	char *clone = cast(char*, malloc(strlen(c) + 1))
 	strcpy(clone, c)
 	return clone
 
 
 char* strjoin(char* s1, char* s2):
 	int size = strlen(s1) + strlen(s2) + 1
-	char* joined = malloc(size)
+	char* joined = cast(char*, malloc(size))
 	strcpy(strcpy(joined, s1), s2)
 	return joined
 
@@ -164,7 +164,7 @@ char* itoa(int n):
 	# 24 bytes covers the longest possible result on either word size: a
 	# 64-bit INT_MIN ("-9223372036854775808") is 20 characters plus the
 	# trailing NUL.
-	char *s = malloc(24)
+	char *s = cast(char*, malloc(24))
 	int i = 0
 	int negative = 0
 	if(n < 0): negative = 1
@@ -335,7 +335,7 @@ int load_word(char* p):
 
 
 string str_from_cstr(char* s):
-	char* descriptor = malloc(2 * __word_size__)
+	char* descriptor = cast(char*, malloc(2 * __word_size__))
 	save_word(descriptor, cast(int, s))
 	int length = strlen(s)
 	save_word(descriptor + __word_size__, length)

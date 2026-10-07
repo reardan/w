@@ -25,7 +25,7 @@ int promote_copy(char* from, char* to):
 	if (out < 0):
 		close(in)
 		return 1
-	char* buf = malloc(65536)
+	char* buf = cast(char*, malloc(65536))
 	int failed = 0
 	int n = read(in, buf, 65536)
 	while (n > 0):
@@ -52,7 +52,7 @@ void promote_fail(char* message, char* detail):
 char* promote_backup_name(char* seed):
 	date_time* dt = new date_time()
 	time_utc_from_unix(time_now(), dt)
-	char* stamp = malloc(18)
+	char* stamp = cast(char*, malloc(18))
 	time_write_2_digits(stamp, dt.day)
 	stamp[2] = '_'
 	time_write_2_digits(stamp + 3, dt.month)

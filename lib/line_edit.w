@@ -123,7 +123,7 @@ void le_history_add(char* line):
 		int old = le_history_capacity * __word_size__
 		if (le_history_capacity == 0):
 			le_history_capacity = 64
-			le_history_entries = malloc(le_history_capacity * __word_size__)
+			le_history_entries = cast(char*, malloc(le_history_capacity * __word_size__))
 		else:
 			le_history_capacity = le_history_capacity * 2
 			le_history_entries = realloc(le_history_entries, old, le_history_capacity * __word_size__)
@@ -147,7 +147,7 @@ void line_edit_history_load(char* path):
 	int f = open(resolved, 0, 0)
 	if (f < 0): return;
 	getchar_reset(f)
-	char* line = malloc(4096)
+	char* line = cast(char*, malloc(4096))
 	int len = 0
 	int c = getchar(f)
 	while (c != -1):
@@ -449,19 +449,22 @@ void le_list_candidates(char* out, int count):
 # already typed) and are listed in columns. A no-op (returns 0) when no
 # hook is installed, the cursor is not just after an identifier
 # character, or the hook finds nothing.
+type __le_complete_hook_callback = fn(char*, char*, int) -> int
+
+
 int le_try_complete(char* buf, int size):
 	if (le_complete_hook == 0): return 0
 	if (le_pos == 0): return 0
 	if (le_is_ident_char(buf[le_pos - 1]) == 0): return 0
 	int start = le_ident_start(buf, le_pos)
 	int prefix_len = le_pos - start
-	char* prefix = malloc(prefix_len + 1)
+	char* prefix = cast(char*, malloc(prefix_len + 1))
 	for i in range(prefix_len): prefix[i] = buf[start + i]
 	prefix[prefix_len] = 0
 
 	int capacity = le_complete_capacity
-	char* out = malloc(capacity * __word_size__)
-	int count = le_complete_hook(prefix, out, capacity)
+	char* out = cast(char*, malloc(capacity * __word_size__))
+	int count = (cast(__le_complete_hook_callback*, le_complete_hook))(prefix, out, capacity)
 	# A full buffer can mean truncation: unseen candidates would make the
 	# listing incomplete and can shrink the true common prefix, so the old
 	# fixed capacity both hid names and over-inserted bytes not actually
@@ -472,8 +475,8 @@ int le_try_complete(char* buf, int size):
 		for k in range(count): free(cast(char*, load_word(out + k * __word_size__)))
 		free(out)
 		capacity = capacity * 2
-		out = malloc(capacity * __word_size__)
-		count = le_complete_hook(prefix, out, capacity)
+		out = cast(char*, malloc(capacity * __word_size__))
+		count = (cast(__le_complete_hook_callback*, le_complete_hook))(prefix, out, capacity)
 
 	if (count <= 0):
 		free(prefix)
@@ -670,7 +673,7 @@ void le_search_cancel(char* buf, int size):
 
 
 void le_search_begin(char* buf):
-	if (le_search_query == 0): le_search_query = malloc(256)
+	if (le_search_query == 0): le_search_query = cast(char*, malloc(256))
 	le_search_qlen = 0
 	le_search_query[0] = 0
 	# The edit buffer is not NUL-terminated mid-edit; terminate before

@@ -74,7 +74,7 @@ void sc_require(char* rel):
 # <root>/bin/<prefix><pid>.
 void sc_init(char* name, char* prefix):
 	sc_name = name
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	if (getcwd(buf, 4096) <= 0): fail(c"getcwd failed")
 	sc_root = buf
 	char* rel = strjoin(c"bin/", prefix)

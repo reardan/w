@@ -353,7 +353,7 @@ st_file* st_load(char* path):
 		stream_close(in)
 		return 0
 
-	char* header_buf = malloc(header_len + 1)
+	char* header_buf = cast(char*, malloc(header_len + 1))
 	if (stream_read(in, header_buf, header_len) < header_len):
 		println2(c"safetensors: file truncated before the end of the header")
 		free(header_buf)

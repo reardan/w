@@ -18,7 +18,7 @@ import lib.mem
 
 
 void sha1t_check(char* data, int len, char* want_hex):
-	char* digest = malloc(20)
+	char* digest = cast(char*, malloc(20))
 	sha1(data, len, digest)
 	char* got = hex_encode(digest, 20)
 	assert_strings_equal(want_hex, got)
@@ -36,7 +36,7 @@ void test_sha1_fips_vectors():
 void test_sha1_block_boundaries():
 	# 55/56/63/64/65 'a's straddle the 0x80 terminator, the 8-byte length
 	# field, and the 64-byte block edge (checked against hashlib).
-	char* a65 = malloc(65)
+	char* a65 = cast(char*, malloc(65))
 	mem_fill(a65, 'a', 65)
 	sha1t_check(a65, 55, c"c1c8bbdc22796e28c0e15163d20899b65621d65a")
 	sha1t_check(a65, 56, c"c2db330f6083854c99d4b5bfb6e8f29f201be699")
@@ -51,14 +51,14 @@ void test_sha1_million_a():
 	# streaming interface in 100k slices.
 	int n = 1000000
 	int chunk = 100000
-	char* big = malloc(chunk)
+	char* big = cast(char*, malloc(chunk))
 	mem_fill(big, 'a', chunk)
 	whash* h = whash_new(WHASH_SHA1())
 	int fed = 0
 	while (fed < n):
 		whash_update(h, big, chunk)
 		fed = fed + chunk
-	char* digest = malloc(20)
+	char* digest = cast(char*, malloc(20))
 	whash_final(h, digest)
 	char* got = hex_encode(digest, 20)
 	assert_strings_equal(c"34aa973cd4c4daa4f61eeb2bdbad27316534016f", got)
@@ -83,10 +83,10 @@ void sha1t_check_streaming(char* data, int len, int step):
 		if (pos + take > len): take = len - pos
 		whash_update(h, data + pos, take)
 		pos = pos + take
-	char* digest = malloc(20)
+	char* digest = cast(char*, malloc(20))
 	whash_final(h, digest)
 	char* got = hex_encode(digest, 20)
-	char* oneshot = malloc(20)
+	char* oneshot = cast(char*, malloc(20))
 	sha1(data, len, oneshot)
 	char* want = hex_encode(oneshot, 20)
 	assert_strings_equal(want, got)
@@ -110,7 +110,7 @@ void test_sha1_reset_and_clone():
 	whash_update(h, c"ab", 2)
 	whash* c = whash_clone(h)
 	whash_update(c, c"c", 1)
-	char* digest = malloc(20)
+	char* digest = cast(char*, malloc(20))
 	whash_final(c, digest)
 	char* got = hex_encode(digest, 20)
 	assert_strings_equal(c"a9993e364706816aba3e25717850c26c9cd0d89d", got)
@@ -132,7 +132,7 @@ void test_sha1_reset_and_clone():
 
 
 void sha1t_check_hmac(char* key, int key_len, char* data, int data_len, char* want_hex):
-	char* mac = malloc(20)
+	char* mac = cast(char*, malloc(20))
 	hmac_compute(WHASH_SHA1(), key, key_len, data, data_len, mac)
 	char* got = hex_encode(mac, 20)
 	assert_strings_equal(want_hex, got)
@@ -148,12 +148,12 @@ void test_hmac_sha1_rfc2202():
 	free(key1)
 	sha1t_check_hmac(c"Jefe", 4, c"what do ya want for nothing?", 28, c"effcdf6ae5eb2fa2d27416d5f184df9c259a7c79")
 	char* key3 = hex_bytes(c"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
-	char* data3 = malloc(50)
+	char* data3 = cast(char*, malloc(50))
 	mem_fill(data3, 221, 50)
 	sha1t_check_hmac(key3, 20, data3, 50, c"125d7342b9ac11cd91a39af48aa17b4f63f175d3")
 	free(data3)
 	free(key3)
-	char* key6 = malloc(80)
+	char* key6 = cast(char*, malloc(80))
 	mem_fill(key6, 170, 80)
 	sha1t_check_hmac(key6, 80, c"Test Using Larger Than Block-Size Key - Hash Key First", 54, c"aa4ae5e15272d00e95705637ce8a3b55ed402112")
 	free(key6)

@@ -140,7 +140,7 @@ void wrun_push_words(list[char*] out, char* text):
 		if (text[i] == 0): return
 		int start = i
 		while ((text[i] != 0) && (text[i] != ' ') && (text[i] != 9) && (text[i] != 10)): i = i + 1
-		char* word = malloc(i - start + 1)
+		char* word = cast(char*, malloc(i - start + 1))
 		int k = 0
 		while (k < i - start):
 			word[k] = text[start + k]
@@ -184,7 +184,7 @@ char* wrun_wasm_host(char* self):
 		cut = cut - 1
 		if (self[cut] == '/'): slashes = slashes + 1
 	if (slashes < 2): return c"tools/run_wasm.mjs"
-	char* root = malloc(cut + 1)
+	char* root = cast(char*, malloc(cut + 1))
 	for i in range(cut): root[i] = self[i]
 	root[cut] = 0
 	if ((cut == 0) || (strcmp(root, c".") == 0)):

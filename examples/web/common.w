@@ -59,7 +59,7 @@ void web_write_get_request(int sock, char* host, char* path):
 
 
 char* web_read_all(int file, int capacity):
-	char* buf = malloc(capacity + 1)
+	char* buf = cast(char*, malloc(capacity + 1))
 	int total = 0
 	int done = 0
 	while (done == 0):
@@ -91,7 +91,7 @@ char* web_response_body(char* response):
 
 
 int web_stream_until_close(int from_file, int to_file, int capacity):
-	char* buf = malloc(capacity)
+	char* buf = cast(char*, malloc(capacity))
 	int total = 0
 	int done = 0
 	while (done == 0):

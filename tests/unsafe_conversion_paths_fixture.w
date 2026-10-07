@@ -1,3 +1,4 @@
+# expect_fail
 # Issue #532's conversion checks (grammar/type_check.w) on every
 # conversion site the streaming grammar checks: assignments, sign and
 # grouping of literals, call and method-receiver arguments, calls
@@ -6,29 +7,29 @@
 # and literals, and '=='/'!=' on struct values. The AST front end
 # (grammar/ast_expression.w) records each as an event and replays it,
 # so the required-mode suite (ast_expression_suite) asserts the same
-# warnings. The lint-only rules on the last functions are covered by
+# errors. The former lint-only rules on the last functions are covered by
 # tests/type_check_lint_fixture.w.
-# expect_stderr: warning: assignment narrows constant -300 to 'char' (stored as -44); use cast() if the truncation is intended
-# expect_stderr: warning: assignment narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended
-# expect_stderr: warning: function 'take_char' argument 1 narrows constant -1000 to 'char' (stored as 24); use cast() if the truncation is intended
-# expect_stderr: warning: map assignment narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended
-# expect_stderr: warning: map key converts '1' to enum 'color' implicitly; use cast(color, ...)
-# expect_stderr: warning: map add key converts '1' to enum 'color' implicitly; use cast(color, ...)
-# expect_stderr: warning: map get key converts '1' to enum 'color' implicitly; use cast(color, ...)
-# expect_stderr: warning: set add key converts '1' to enum 'color' implicitly; use cast(color, ...)
-# expect_stderr: warning: container remove key converts '0' to enum 'color' implicitly; use cast(color, ...)
-# expect_stderr: warning: assignment narrows constant 400 to 'char' (stored as -112); use cast() if the truncation is intended
-# expect_stderr: warning: assignment converts 'int' to enum 'color' implicitly; use cast(color, ...)
-# expect_stderr: warning: function 'first_of$char' argument 1 narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended
-# expect_stderr: warning: function 'point_tag' argument 2 narrows constant 1000 to 'char' (stored as -24); use cast() if the truncation is intended
-# expect_stderr: warning: list push narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended
-# expect_stderr: warning: list literal element converts '1' to enum 'color' implicitly; use cast(color, ...)
-# expect_stderr: warning: list literal element converts '2' to enum 'color' implicitly; use cast(color, ...)
-# expect_stderr: warning: function 'function pointer' argument 1 narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended
-# expect_stderr: warning: '==' and '!=' on struct values compare their addresses, not their fields; compare the fields, or take '&' of both sides to compare addresses
+# expect_stderr: error: assignment narrows constant -300 to 'char' (stored as -44); use cast() if the truncation is intended
+# expect_stderr: error: assignment narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended
+# expect_stderr: error: function 'take_char' argument 1 narrows constant -1000 to 'char' (stored as 24); use cast() if the truncation is intended
+# expect_stderr: error: map assignment narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended
+# expect_stderr: error: map key converts '1' to enum 'color' implicitly; use cast(color, ...)
+# expect_stderr: error: map add key converts '1' to enum 'color' implicitly; use cast(color, ...)
+# expect_stderr: error: map get key converts '1' to enum 'color' implicitly; use cast(color, ...)
+# expect_stderr: error: set add key converts '1' to enum 'color' implicitly; use cast(color, ...)
+# expect_stderr: error: container remove key converts '0' to enum 'color' implicitly; use cast(color, ...)
+# expect_stderr: error: assignment narrows constant 400 to 'char' (stored as -112); use cast() if the truncation is intended
+# expect_stderr: error: assignment converts 'int' to enum 'color' implicitly; use cast(color, ...)
+# expect_stderr: error: function 'first_of$char' argument 1 narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended
+# expect_stderr: error: function 'point_tag' argument 2 narrows constant 1000 to 'char' (stored as -24); use cast() if the truncation is intended
+# expect_stderr: error: list push narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended
+# expect_stderr: error: list literal element converts '1' to enum 'color' implicitly; use cast(color, ...)
+# expect_stderr: error: list literal element converts '2' to enum 'color' implicitly; use cast(color, ...)
+# expect_stderr: error: function 'function pointer' argument 1 narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended
+# expect_stderr: error: '==' and '!=' on struct values compare their addresses, not their fields; compare the fields, or take '&' of both sides to compare addresses
 # reject_stderr: argument 1 narrows constant 1000
 # reject_stderr: function 'pick
-# reject_stderr: void-pointer-conversion
+# expect_stderr: error: initialization converts 'void*' to 'int*' without cast() [void-pointer-conversion]
 # wbuild: fixture_group=warning_test
 import lib.lib
 

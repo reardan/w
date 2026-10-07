@@ -7,7 +7,7 @@ struct point:
 	int y
 
 int main():
-	point* p = malloc(8)
+	point* p = cast(point*, malloc(8))
 	for int v in p:
 		print_int(c"v: ", v)
 	return 0

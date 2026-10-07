@@ -40,13 +40,13 @@ void test_socket_abi_linux_values():
 
 
 void test_socketpair_round_trip():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	assert_syscall_ok(c"socket_pair", socket_pair(fds))
 
 	char* want = c"ping"
 	assert_equal(strlen(want), write_string(fds[0], want))
 
-	char* got = malloc(16)
+	char* got = cast(char*, malloc(16))
 	int read_count = read(fds[1], got, 16)
 	assert_equal(strlen(want), read_count)
 	got[read_count] = 0
@@ -88,7 +88,7 @@ void test_tcp_connect_accept_loopback():
 
 	char* client_message = c"c"
 	assert_equal(strlen(client_message), write_string(client, client_message))
-	char* server_buf = malloc(2)
+	char* server_buf = cast(char*, malloc(2))
 	int server_read_count = read(accepted, server_buf, 1)
 	assert_equal(strlen(client_message), server_read_count)
 	server_buf[server_read_count] = 0
@@ -96,7 +96,7 @@ void test_tcp_connect_accept_loopback():
 
 	char* server_message = c"s"
 	assert_equal(strlen(server_message), write_string(accepted, server_message))
-	char* client_buf = malloc(2)
+	char* client_buf = cast(char*, malloc(2))
 	int client_read_count = read(client, client_buf, 1)
 	assert_equal(strlen(server_message), client_read_count)
 	client_buf[client_read_count] = 0
@@ -119,13 +119,13 @@ void test_udp_send_loopback():
 
 
 void test_socket_recv_stream():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	assert_syscall_ok(c"socket_pair", socket_pair(fds))
 
 	char* want = c"pong"
 	assert_equal(strlen(want), write_string(fds[0], want))
 
-	char* got = malloc(16)
+	char* got = cast(char*, malloc(16))
 	int received = socket_recv(fds[1], got, 16, 0)
 	assert_equal(strlen(want), received)
 	got[received] = 0
@@ -138,13 +138,13 @@ void test_socket_recv_stream():
 
 
 void test_socket_send_stream():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	assert_syscall_ok(c"socket_pair", socket_pair(fds))
 
 	char* want = c"ping"
 	assert_equal(strlen(want), socket_send(fds[0], want, strlen(want), msg_nosignal()))
 
-	char* got = malloc(16)
+	char* got = cast(char*, malloc(16))
 	int received = socket_recv(fds[1], got, 16, 0)
 	assert_equal(strlen(want), received)
 	got[received] = 0
@@ -173,7 +173,7 @@ void test_udp_recvfrom_loopback():
 	char* message = c"ping"
 	assert_equal(strlen(message), socket_send_to_ipv4(sender, message, strlen(message), 0, loopback, port))
 
-	char* got = malloc(16)
+	char* got = cast(char*, malloc(16))
 	sockaddr_in from_addr
 	int received = socket_recv_from_ipv4(receiver, got, 16, 0, &from_addr)
 	assert_equal(strlen(message), received)
@@ -188,11 +188,11 @@ void test_udp_recvfrom_loopback():
 
 
 void test_socket_set_nonblocking():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	assert_syscall_ok(c"socket_pair", socket_pair(fds))
 	assert_syscall_ok(c"socket_set_nonblocking", socket_set_nonblocking(fds[1]))
 
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	# EAGAIN is errno 11.
 	assert_equal(0 - 11, socket_recv(fds[1], buf, 8, 0))
 
@@ -203,14 +203,14 @@ void test_socket_set_nonblocking():
 
 
 void test_http_response_headers():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	assert_syscall_ok(c"socket_pair", socket_pair(fds))
 
 	char* expected = c"HTTP/1.1 200 OK\x0d\x0aServer: whttp\x0d\x0aContent-Type: text/plain\x0d\x0aContent-Length: 5\x0d\x0aConnection: close\x0d\x0a\x0d\x0a"
 	http_write_ok_headers(fds[0], c"text/plain", 5)
 
 	int expected_length = strlen(expected)
-	char* got = malloc(expected_length + 17)
+	char* got = cast(char*, malloc(expected_length + 17))
 	int read_count = read(fds[1], got, expected_length + 16)
 	assert_equal(expected_length, read_count)
 	got[read_count] = 0

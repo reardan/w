@@ -153,7 +153,7 @@ int cf_load_file(char* path):
 	if (size <= 0):
 		close(f)
 		return 0
-	char* buf = malloc(size)
+	char* buf = cast(char*, malloc(size))
 	int got = 0
 	while (got < size):
 		int r = read(f, &buf[got], size - got)
@@ -375,7 +375,7 @@ int cf_build_ids_match():
 
 # Lowercase hex of n bytes at addr (malloc'd).
 char* cf_id_hex(int addr, int n):
-	char* s = malloc(n * 2 + 1)
+	char* s = cast(char*, malloc(n * 2 + 1))
 	for i in range(n): hex_put_byte(&s[i * 2], st_byte(addr + i))
 	s[n * 2] = 0
 	return s
@@ -778,7 +778,7 @@ void cf_text_fallback():
 # running program's).
 char* cf_hex(int v):
 	int digits = cf_wsize * 2
-	char* s = malloc(digits + 3)
+	char* s = cast(char*, malloc(digits + 3))
 	s[0] = '0'
 	s[1] = 'x'
 	for i in range(digits):

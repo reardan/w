@@ -51,7 +51,7 @@ void tlst_assert_hex(char* want_hex, char* got, int got_len):
 
 
 char* tlst_concat(char* a, int alen, char* b, int blen, int* out_len):
-	char* out = malloc(alen + blen)
+	char* out = cast(char*, malloc(alen + blen))
 	mem_copy(out, a, alen)
 	for i in range(blen): out[alen + i] = b[i]
 	*out_len = alen + blen
@@ -72,19 +72,19 @@ void tlst_keys_from_secret(char* secret_hex, char* out_key, char* out_iv):
 char* tlst_enc_record(char* key, char* iv, int seq_hi, int seq_lo, char* plain, int plain_len, int inner_ct, int* out_len):
 	int inner_len = plain_len + 1
 	int rec_len = inner_len + 16
-	char* rec = malloc(5 + rec_len)
+	char* rec = cast(char*, malloc(5 + rec_len))
 	rec[0] = 23
 	rec[1] = 3
 	rec[2] = 3
 	rec[3] = (rec_len >> 8) & 255
 	rec[4] = rec_len & 255
-	char* inner = malloc(inner_len)
+	char* inner = cast(char*, malloc(inner_len))
 	mem_copy(inner, plain, plain_len)
 	inner[plain_len] = inner_ct & 255
-	char* nonce = malloc(12)
+	char* nonce = cast(char*, malloc(12))
 	tls_nonce(iv, seq_hi, seq_lo, nonce)
-	char* ct = malloc(inner_len)
-	char* tag = malloc(16)
+	char* ct = cast(char*, malloc(inner_len))
+	char* tag = cast(char*, malloc(16))
 	chacha20poly1305_seal(key, nonce, rec, 5, inner, inner_len, ct, tag)
 	int i = 0
 	while (i < inner_len):
@@ -107,9 +107,9 @@ char* tlst_enc_record(char* key, char* iv, int seq_hi, int seq_lo, char* plain, 
 int tlst_dec_record(char* key, char* iv, int seq_hi, int seq_lo, char* rec, int rec_len, char* out_plain, int* out_len):
 	int rlen = ((rec[3] & 255) << 8) | (rec[4] & 255)
 	int ct_len = rlen - 16
-	char* nonce = malloc(12)
+	char* nonce = cast(char*, malloc(12))
 	tls_nonce(iv, seq_hi, seq_lo, nonce)
-	char* plain = malloc(ct_len)
+	char* plain = cast(char*, malloc(ct_len))
 	int ok = chacha20poly1305_open(key, nonce, rec, 5, rec + 5, ct_len, rec + 5 + ct_len, plain)
 	asserts(c"tlst_dec_record: open failed", ok != 0)
 	int p = ct_len - 1
@@ -172,7 +172,7 @@ char* rfc_app_plain_hex():
 char* tlst_build_server_bytes(int tamper_off, int tamper_val, int ct_tamper_off, int* out_len):
 	int sh_len = 0
 	char* sh = hex_decode_loose(rfc_server_hello_hex(), &sh_len)
-	char* sh_rec = malloc(5 + sh_len)
+	char* sh_rec = cast(char*, malloc(5 + sh_len))
 	sh_rec[0] = 22
 	sh_rec[1] = 3
 	sh_rec[2] = 3
@@ -184,8 +184,8 @@ char* tlst_build_server_bytes(int tamper_off, int tamper_val, int ct_tamper_off,
 	int flen = 0
 	char* flight = hex_decode_loose(rfc_flight_plain_hex(), &flen)
 	if (tamper_off >= 0): flight[tamper_off] = tamper_val & 255
-	char* key = malloc(32)
-	char* iv = malloc(12)
+	char* key = cast(char*, malloc(32))
+	char* iv = cast(char*, malloc(12))
 	tlst_keys_from_secret(rfc_shts_hex(), key, iv)
 	int frec_len = 0
 	char* frec = tlst_enc_record(key, iv, 0, 0, flight, flen, 22, &frec_len)
@@ -246,10 +246,10 @@ void test_rfc8448_full_handshake():
 	int out_len = 0
 	char* out = tls_mem_take_output(c, &out_len)
 	int ch_rec_len = 5 + (((out[3] & 255) << 8) | (out[4] & 255))
-	char* c_hs_key = malloc(32)
-	char* c_hs_iv = malloc(12)
+	char* c_hs_key = cast(char*, malloc(32))
+	char* c_hs_iv = cast(char*, malloc(12))
 	tlst_keys_from_secret(rfc_chts_hex(), c_hs_key, c_hs_iv)
-	char* fin_plain = malloc(out_len)
+	char* fin_plain = cast(char*, malloc(out_len))
 	int fin_plain_len = 0
 	int fin_type = tlst_dec_record(c_hs_key, c_hs_iv, 0, 0, out + ch_rec_len, out_len - ch_rec_len, fin_plain, &fin_plain_len)
 	# Inner record content type is handshake; the message is a Finished.
@@ -289,18 +289,18 @@ void test_rfc8448_application_data():
 
 	int app_len = 0
 	char* app_plain = hex_decode_loose(rfc_app_plain_hex(), &app_len)
-	char* s_ap_key = malloc(32)
-	char* s_ap_iv = malloc(12)
+	char* s_ap_key = cast(char*, malloc(32))
+	char* s_ap_iv = cast(char*, malloc(12))
 	tlst_keys_from_secret(rfc_s_ap_hex(), s_ap_key, s_ap_iv)
-	char* c_ap_key = malloc(32)
-	char* c_ap_iv = malloc(12)
+	char* c_ap_key = cast(char*, malloc(32))
+	char* c_ap_iv = cast(char*, malloc(12))
 	tlst_keys_from_secret(rfc_c_ap_hex(), c_ap_key, c_ap_iv)
 
 	# Read: feed a server application_data record (server app seq 0).
 	int srec_len = 0
 	char* srec = tlst_enc_record(s_ap_key, s_ap_iv, 0, 0, app_plain, app_len, 23, &srec_len)
 	tls_mem_feed(c, srec, srec_len)
-	char* rbuf = malloc(256)
+	char* rbuf = cast(char*, malloc(256))
 	int got = tls_read(c, rbuf, 256)
 	assert_equal(app_len, got)
 	tlst_assert_hex(rfc_app_plain_hex(), rbuf, got)
@@ -309,7 +309,7 @@ void test_rfc8448_application_data():
 	assert_equal(app_len, tls_write(c, app_plain, app_len))
 	int wlen = 0
 	char* wout = tls_mem_take_output(c, &wlen)
-	char* wplain = malloc(wlen)
+	char* wplain = cast(char*, malloc(wlen))
 	int wplain_len = 0
 	int wtype = tlst_dec_record(c_ap_key, c_ap_iv, 0, 0, wout, wlen, wplain, &wplain_len)
 	assert_equal(TLS_CT_APPLICATION_DATA, wtype)
@@ -322,7 +322,7 @@ void test_rfc8448_application_data():
 	tls_send_alert(c, TLS_ALERT_WARNING, TLS_ALERT_CLOSE_NOTIFY)
 	int clen = 0
 	char* cout = tls_mem_take_output(c, &clen)
-	char* cplain = malloc(clen)
+	char* cplain = cast(char*, malloc(clen))
 	int cplain_len = 0
 	int ctype = tlst_dec_record(c_ap_key, c_ap_iv, 0, 1, cout, clen, cplain, &cplain_len)
 	assert_equal(TLS_CT_ALERT, ctype)
@@ -332,7 +332,7 @@ void test_rfc8448_application_data():
 	free(cplain)
 
 	# A server close_notify (server app seq 1) is a clean EOF.
-	char* alert = malloc(2)
+	char* alert = cast(char*, malloc(2))
 	alert[0] = 1
 	alert[1] = 0
 	int carec_len = 0
@@ -361,7 +361,7 @@ void test_rfc8448_application_data():
 void test_nonce_construction():
 	int iv_len = 0
 	char* iv = hex_decode_loose(c"5d313eb2671276ee13000b30", &iv_len)
-	char* out = malloc(12)
+	char* out = cast(char*, malloc(12))
 	# seq 0 => nonce == iv.
 	tls_nonce(iv, 0, 0, out)
 	tlst_assert_hex(c"5d313eb2671276ee13000b30", out, 12)
@@ -416,7 +416,7 @@ void test_fragmented_handshake():
 	tls_config* cfg = tls_config_new()
 	tls_conn* c = tls_conn_new(0 - 1, 1, cfg)
 	# Message: EncryptedExtensions header (08 00 00 10) + 16 body bytes.
-	char* m = malloc(20)
+	char* m = cast(char*, malloc(20))
 	m[0] = 8
 	m[1] = 0
 	m[2] = 0
@@ -425,7 +425,7 @@ void test_fragmented_handshake():
 	while (i < 16):
 		m[4 + i] = i
 		i = i + 1
-	char* r1 = malloc(13)
+	char* r1 = cast(char*, malloc(13))
 	r1[0] = 22
 	r1[1] = 3
 	r1[2] = 3
@@ -435,7 +435,7 @@ void test_fragmented_handshake():
 	while (i < 8):
 		r1[5 + i] = m[i]
 		i = i + 1
-	char* r2 = malloc(17)
+	char* r2 = cast(char*, malloc(17))
 	r2[0] = 22
 	r2[1] = 3
 	r2[2] = 3
@@ -470,7 +470,7 @@ void test_max_length_enforced():
 	tls_config* cfg = tls_config_new()
 	tls_conn* c = tls_conn_new(0 - 1, 1, cfg)
 	# Header advertising 0x4200 = 16896 > 16640 bytes.
-	char* hdr = malloc(5)
+	char* hdr = cast(char*, malloc(5))
 	hdr[0] = 23
 	hdr[1] = 3
 	hdr[2] = 3
@@ -584,7 +584,7 @@ void test_fatal_alert():
 	char* priv = hex_decode_loose(rfc_client_priv_hex(), &priv_len)
 	tls_config* cfg = tlst_replay_config(ch, ch_len, priv)
 	# Plaintext alert record: level fatal (2), description handshake_failure (40).
-	char* alert = malloc(7)
+	char* alert = cast(char*, malloc(7))
 	alert[0] = 21
 	alert[1] = 3
 	alert[2] = 3
@@ -630,9 +630,9 @@ void test_non_chacha_suite_rejected():
 # TLS 1.3 version, our single cipher suite, and an x25519 key_share carrying
 # exactly the supplied public key.
 void test_client_hello_build():
-	char* rnd = malloc(32)
-	char* sid = malloc(32)
-	char* pub = malloc(32)
+	char* rnd = cast(char*, malloc(32))
+	char* sid = cast(char*, malloc(32))
+	char* pub = cast(char*, malloc(32))
 	for i in range(32):
 		rnd[i] = i
 		sid[i] = 0x40 + i
@@ -681,9 +681,9 @@ void tlst_check_no_sni(char* name, char* rnd, char* sid, char* pub, int named_le
 # A null or empty server_name omits the SNI extension (it used to fault in
 # strlen).
 void test_client_hello_without_sni():
-	char* rnd = malloc(32)
-	char* sid = malloc(32)
-	char* pub = malloc(32)
+	char* rnd = cast(char*, malloc(32))
+	char* sid = cast(char*, malloc(32))
+	char* pub = cast(char*, malloc(32))
 	for i in range(32):
 		rnd[i] = i
 		sid[i] = 0x40 + i

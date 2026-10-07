@@ -118,7 +118,7 @@ void skills_scan_line(char* doc, int line_no, char* line):
 				i = i + 1
 			if (has_letter):
 				int len = i - start
-				char* token = malloc(len + 1)
+				char* token = cast(char*, malloc(len + 1))
 				for k in range(len): token[k] = line[start + k]
 				token[len] = 0
 				if (skills_help_has_token(token) == 0): skills_missing(doc, line_no, token)
@@ -142,7 +142,7 @@ void skills_scan_doc(char* doc):
 		int ch = text[i] & 255
 		if ((ch == 10) || (ch == 0)):
 			int len = i - start
-			char* line = malloc(len + 1)
+			char* line = cast(char*, malloc(len + 1))
 			for k in range(len): line[k] = text[start + k]
 			line[len] = 0
 			skills_scan_line(doc, line_no, line)
@@ -165,7 +165,7 @@ void skills_check_core():
 		int start = i
 		while ((core[i] != 0) && (core[i] != ' ')): i = i + 1
 		int len = i - start
-		char* token = malloc(len + 1)
+		char* token = cast(char*, malloc(len + 1))
 		for k in range(len): token[k] = core[start + k]
 		token[len] = 0
 		if (skills_help_has_token(token) == 0): skills_missing(c"<core flag list>", 0, token)

@@ -33,10 +33,10 @@ whmac* hmac_new(int alg, char* key, int key_len):
 	m.alg = alg
 	m.digest_size = whash_digest_size(alg)
 	m.block_size = whash_block_size(alg)
-	m.ipad_key = malloc(m.block_size)
-	m.opad_key = malloc(m.block_size)
+	m.ipad_key = cast(char*, malloc(m.block_size))
+	m.opad_key = cast(char*, malloc(m.block_size))
 
-	char* block_key = malloc(m.block_size)
+	char* block_key = cast(char*, malloc(m.block_size))
 	mem_fill(block_key, 0, m.block_size)
 	if (key_len > m.block_size): whash_oneshot(alg, key, key_len, block_key)
 	else: mem_copy(block_key, key, key_len)
@@ -61,7 +61,7 @@ void hmac_update(whmac* m, char* data, int len):
 # Write the MAC of everything absorbed so far to out (digest_size bytes).
 # Non-destructive like whash_final: more data may follow.
 void hmac_final(whmac* m, char* out):
-	char* inner_digest = malloc(m.digest_size)
+	char* inner_digest = cast(char*, malloc(m.digest_size))
 	whash_final(m.inner, inner_digest)
 	whash* outer = whash_new(m.alg)
 	whash_update(outer, m.opad_key, m.block_size)

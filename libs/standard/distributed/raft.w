@@ -643,7 +643,7 @@ const int raft_config_op_remove = 2
 # Malloc'd; caller frees (matching mem_dup's plain-buffer
 # convention — command_len is always exactly 5 for these).
 char* raft_config_encode(int op, int id):
-	char* cmd = malloc(5)
+	char* cmd = cast(char*, malloc(5))
 	cmd[0] = op
 	cmd[1] = id
 	cmd[2] = id >> 8
@@ -841,7 +841,7 @@ int raft_snapshot_checksum(char* data, int len):
 # Integrity covers the transfer identity and framing as well as payload.
 int raft_snapshot_chunk_checksum(raft_msg* m):
 	int size = 52 + 4 * m.snap_config.length + m.snap_len
-	char* data = malloc(size)
+	char* data = cast(char*, malloc(size))
 	u64_save_le(data, m.term)
 	u64_save_le(data + 8, m.prev_log_index)
 	u64_save_le(data + 16, m.prev_log_term)
@@ -1346,7 +1346,7 @@ void raft_handle_snapshot_chunk(raft* r, raft_msg* m, int now_ms, list[raft_msg*
 		pending.chunk_total = m.chunk_total
 		pending.chunk_hash = m.chunk_hash
 		pending.snap_len = m.chunk_total
-		pending.snap_data = malloc(m.chunk_total)
+		pending.snap_data = cast(char*, malloc(m.chunk_total))
 		r.incoming_snapshot = pending
 		r.incoming_offset = 0
 		same = 1

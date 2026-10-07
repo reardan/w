@@ -1,9 +1,10 @@
+# expect_fail
 # The limb intrinsics (grammar/limb_builtin.w, #213) check their
 # arguments like ordinary function calls: int operands, and an int*
 # result pointer for mul_wide/add_carry.
 # expect_stderr: warning: function 'mul_hi' argument 1 type mismatch: expected 'int', got 'char*'
 # expect_stderr: warning: function 'mul_wide' argument 3 type mismatch: expected 'int*', got 'char*'
-# expect_stderr: warning: function 'add_carry' argument 3 type mismatch: expected 'int*', got 'int'
+# expect_stderr: error: function 'add_carry' argument 3 type mismatch: expected 'int*', got 'int'
 import lib.lib
 
 

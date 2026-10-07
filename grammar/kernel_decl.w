@@ -102,8 +102,8 @@ const int gpu_capture_limit = 32
 # Start a fresh capture set with slot 0 = the range bound.
 void gpu_capture_reset():
 	if (gpu_capture_names == 0):
-		gpu_capture_names = malloc(gpu_capture_limit * __word_size__)
-		gpu_capture_syms = malloc(gpu_capture_limit * 4)
+		gpu_capture_names = cast(char*, malloc(gpu_capture_limit * __word_size__))
+		gpu_capture_syms = cast(char*, malloc(gpu_capture_limit * 4))
 	int i = 0
 	while (i < gpu_capture_count):
 		char* name = cast(char*, load_ptr(gpu_capture_names + i * __word_size__))

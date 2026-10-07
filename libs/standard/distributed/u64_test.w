@@ -146,7 +146,7 @@ void test_wire_roundtrip():
 	int hi = (291 << 16) | 17767           # 0x01234567
 	int lo = (35243 << 16) | 52719         # 0x89abcdef
 	u64* a = u64_new_parts(hi, lo)
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	u64_save_le(buf, a)
 	assert_equal(239, buf[0] & 255)        # 0xef
 	assert_equal(205, buf[1] & 255)        # 0xcd

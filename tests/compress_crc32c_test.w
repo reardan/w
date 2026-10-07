@@ -35,7 +35,7 @@ void test_crc32_and_crc32c_are_distinct():
 
 
 void test_crc32c_iscsi_vectors():
-	char* buf = malloc(32)
+	char* buf = cast(char*, malloc(32))
 	for i in range(32): buf[i] = 0
 	assert_equal(word32(0x8a91, 0x36aa), crc32c_of(buf, 32))
 	for i in range(32): buf[i] = 255

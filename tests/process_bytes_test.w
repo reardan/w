@@ -27,7 +27,7 @@ process_result* run_cat_bytes(char* stdin_text, int stdin_length):
 
 # "ab\0cd": strlen sees 2 bytes, the buffer holds 5.
 char* nul_payload():
-	char* payload = malloc(6)
+	char* payload = cast(char*, malloc(6))
 	payload[0] = 'a'
 	payload[1] = 'b'
 	payload[2] = 0
@@ -66,7 +66,7 @@ void test_large_nul_payload_round_trips():
 	# Crosses the 4096-byte PIPE_BUF write chunk; every 96th byte is 0x00
 	# and every value stays below 128 (char loads sign-extend).
 	int length = 10000
-	char* payload = malloc(length)
+	char* payload = cast(char*, malloc(length))
 	int i = 0
 	while (i < length):
 		payload[i] = i % 96

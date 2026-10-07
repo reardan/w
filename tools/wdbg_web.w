@@ -207,7 +207,7 @@ void ww_session_reap():
 
 # Read whatever one of wdbg's pipes has. Returns the byte count, 0 at EOF.
 int ww_read_pipe(int fd):
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int n = read(fd, buf, 4096)
 	if (n > 0): ww_out_append(buf, n)
 	free(buf)
@@ -276,7 +276,7 @@ void ww_load_files():
 
 
 char* ww_dirname_of_self():
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int n = file_readlink(c"/proc/self/exe", buf, 4095)
 	if (n <= 0):
 		free(buf)
@@ -491,7 +491,7 @@ char* ww_read_file(char* path, int* out_len):
 	int fd = open(path, 0, 0)
 	if (fd < 0): return 0
 	string_builder* sb = string_new()
-	char* buf = malloc(65536)
+	char* buf = cast(char*, malloc(65536))
 	int n = read(fd, buf, 65536)
 	while (n > 0):
 		string_append_bytes(sb, buf, n)
@@ -876,7 +876,7 @@ void ww_usage():
 
 # Ignore SIGPIPE: a write to a dead wdbg's stdin must fail, not kill us.
 void ww_ignore_sigpipe():
-	int* act = malloc(5 * __word_size__)
+	int* act = cast(int*, malloc(5 * __word_size__))
 	act[0] = 1
 	act[1] = 0
 	act[2] = 0
@@ -888,7 +888,7 @@ void ww_ignore_sigpipe():
 
 char* ww_absolute(char* p):
 	if (p[0] == '/'): return strclone(p)
-	char* cwd = malloc(4096)
+	char* cwd = cast(char*, malloc(4096))
 	if (getcwd(cwd, 4096) <= 0):
 		free(cwd)
 		return strclone(p)
@@ -992,7 +992,7 @@ int main(int argc, int argv):
 		return 1
 
 	if (ww_code == 0):
-		char* raw = malloc(16)
+		char* raw = cast(char*, malloc(16))
 		random_bytes(raw, 16)
 		ww_code = hex_encode(raw, 16)
 		free(raw)

@@ -49,7 +49,7 @@ void wx_load_image(char* path):
 	int fd = open(path, 0, 0)
 	asserts(c"input ELF opened", fd >= 0)
 	int cap = 65536
-	char* buf = malloc(cap)
+	char* buf = cast(char*, malloc(cap))
 	int total = 0
 	int n = read(fd, &buf[total], cap - total)
 	while (n > 0):

@@ -111,7 +111,7 @@ void loop_test_on_readable(int fd, int revents, void* ctx):
 	io.fd = fd
 	io.revents = revents
 	io.reads = io.reads + 1
-	char* buf = malloc(16)
+	char* buf = cast(char*, malloc(16))
 	read(fd, buf, 16)
 	free(buf)
 	event_loop_remove_fd(io.loop, fd)
@@ -119,7 +119,7 @@ void loop_test_on_readable(int fd, int revents, void* ctx):
 
 
 void test_fd_callback_on_readable():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 
 	event_loop* loop = loop_test_new()
@@ -163,7 +163,7 @@ void loop_test_unexpected_read(int fd, int revents, void* ctx):
 
 
 void test_timeout_fires_when_peer_is_silent():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 
 	event_loop* loop = loop_test_new()
@@ -183,7 +183,7 @@ void test_timeout_fires_when_peer_is_silent():
 
 
 void test_run_once_returns_zero_when_idle():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 
 	event_loop* loop = loop_test_new()
@@ -241,7 +241,7 @@ void loop_test_record_out(int fd, int revents, void* ctx):
 
 # Two watches on one fd each see their own interest bits.
 void test_two_watches_share_an_fd():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	event_loop* loop = loop_test_new()
 	loop_test_pair* p = new loop_test_pair(0, 0, 0, loop)
@@ -274,7 +274,7 @@ void loop_test_count_ready(int fd, int revents, void* ctx):
 void test_file_and_closed_fd_revents():
 	int file = open(c"/proc/self/stat", 0, 0)
 	asserts(c"open /proc/self/stat", file >= 0)
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	# The loop first: its epoll fd would otherwise take the closed number.
 	event_loop* loop = loop_test_new()
@@ -323,7 +323,7 @@ void loop_test_first_readable(int fd, int revents, void* ctx):
 	loop_test_reuse* r = cast(loop_test_reuse*, ctx)
 	event_loop_remove_fd(r.loop, fd)
 	close(fd)
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	r.second_fd = fds[0]
 	r.peer = fds[1]
@@ -333,7 +333,7 @@ void loop_test_first_readable(int fd, int revents, void* ctx):
 
 
 void test_fd_number_reuse_after_close():
-	int* fds = malloc(__word_size__ * 2)
+	int* fds = cast(int*, malloc(__word_size__ * 2))
 	asserts(c"socket_pair failed", socket_pair(fds) >= 0)
 	event_loop* loop = loop_test_new()
 	loop_test_reuse* r = new loop_test_reuse()

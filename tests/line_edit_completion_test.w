@@ -51,7 +51,7 @@ void test_ident_start():
 
 
 void test_candidates_common_len():
-	char* out = malloc(4 * __word_size__)
+	char* out = cast(char*, malloc(4 * __word_size__))
 	save_word(out + 0 * __word_size__, cast(int, c"printf1"))
 	save_word(out + 1 * __word_size__, cast(int, c"printf2"))
 	assert_equal(6, le_candidates_common_len(out, 2)) /* "printf" */
@@ -112,7 +112,7 @@ char* lect_capture_stop():
 void test_render_search_climbs_wrapped_rows():
 	le_history_count = 0
 	le_history_add(c"int wrapped = 1")
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	buf[0] = 0
 	le_search_begin(buf)
 	le_prev_rows = 3
@@ -149,7 +149,7 @@ void test_reverse_search_state():
 	le_history_add(c"int beta = 2")
 	le_history_add(c"int alpha_beta = 3")
 
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	buf[0] = 0
 	le_search_begin(buf)
 	# Empty query: matches the newest entry

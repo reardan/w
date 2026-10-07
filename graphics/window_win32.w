@@ -239,7 +239,7 @@ int gfx_win32_register_class(int instance):
 	if (gfx_win32_class_registered): return 1
 	int proc = win_callback(cast(int, gfx_win32_wndproc), 4)
 	if (proc == 0): return 0
-	char* wc = malloc(80)
+	char* wc = cast(char*, malloc(80))
 	mem_fill(wc, 0, 80)
 	save_int32(wc, 80)                    /* cbSize */
 	save_int32(wc + 4, 35)                /* CS_OWNDC | CS_HREDRAW | CS_VREDRAW */
@@ -257,7 +257,7 @@ int gfx_win32_register_class(int instance):
 # PIXELFORMATDESCRIPTOR (40 bytes): double-buffered RGBA8 with a 24-bit
 # depth and 8-bit stencil buffer.
 char* gfx_win32_pixel_format():
-	char* pfd = malloc(40)
+	char* pfd = cast(char*, malloc(40))
 	mem_fill(pfd, 0, 40)
 	save_int16(pfd, 40)          /* nSize */
 	save_int16(pfd + 2, 1)       /* nVersion */
@@ -347,7 +347,7 @@ gfx_window* gfx_window_open(char* title, int width, int height):
 # Drain pending window messages. Returns 1 while the window should stay
 # open.
 int gfx_window_poll(gfx_window* win):
-	char* msg = malloc(48)            /* MSG */
+	char* msg = cast(char*, malloc(48))            /* MSG */
 	while (PeekMessageA(msg, 0, 0, 0, 1)):     /* PM_REMOVE */
 		if ((load_int32(msg + 8) & 65535) == 18):  /* WM_QUIT */
 			win.should_close = 1

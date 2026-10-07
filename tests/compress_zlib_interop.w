@@ -75,7 +75,7 @@ int czi_gen_payloads(char** names, char** datas, int* lens):
 	datas[n] = compress_zlib_interop_payload()
 	lens[n] = strlen(datas[n])
 	n = n + 1
-	char* run = malloc(8192)
+	char* run = cast(char*, malloc(8192))
 	int i = 0
 	while (i < 8192):
 		run[i] = 'r'
@@ -84,7 +84,7 @@ int czi_gen_payloads(char** names, char** datas, int* lens):
 	datas[n] = run
 	lens[n] = 8192
 	n = n + 1
-	char* rep = malloc(30000)
+	char* rep = cast(char*, malloc(30000))
 	i = 0
 	while (i < 30000):
 		rep[i] = 'a' + (i % 7)
@@ -93,7 +93,7 @@ int czi_gen_payloads(char** names, char** datas, int* lens):
 	datas[n] = rep
 	lens[n] = 30000
 	n = n + 1
-	char* rnd = malloc(16384)
+	char* rnd = cast(char*, malloc(16384))
 	rand_state rs
 	rand_init(&rs, 20260728)
 	i = 0

@@ -53,12 +53,14 @@ int limb_builtin_ready():
 void limb_builtin_check_argument(char* name, int arg_index, int param_type, int arg_type):
 	if (types_compatible_with_expression(param_type, arg_type)): return;
 	gpu_domain_check_argument(name, arg_index, param_type, arg_type)
-	diag_part(c"warning: function '")
+	if (integer_pointer_conversion(param_type, arg_type) == 0): diag_part(c"warning: ")
+	diag_part(c"function '")
 	diag_part(name)
 	diag_part(c"' argument ")
 	diag_part(itoa(arg_index + 1))
 	diag_expected_got(c" type mismatch: expected '", param_type, arg_type)
-	warning(c"'")
+	if (integer_pointer_conversion(param_type, arg_type)): type_error(c"'")
+	else: warning(c"'")
 
 
 # One int-valued operand, left in eax.

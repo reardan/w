@@ -108,7 +108,7 @@ void test_int64_kinds_roundtrip():
 	int out_len = 0
 	char* out = pb_encode(&x64pb_wide_desc, cast(char*, &m), &out_len)
 
-	char* buf = malloc(x64pb_wide_desc.struct_size)
+	char* buf = cast(char*, malloc(x64pb_wide_desc.struct_size))
 	int i = 0
 	while (i < x64pb_wide_desc.struct_size):
 		buf[i] = 0

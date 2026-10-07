@@ -93,7 +93,7 @@ int ffi_spilled_float
 
 char* ffi_assign_slots(int n, char* classes, int max_gp):
 	char* slots = 0
-	if (n > 0): slots = malloc(n * 4)
+	if (n > 0): slots = cast(char*, malloc(n * 4))
 	int gp_count = 0
 	ffi_fp_used = 0
 	ffi_stack_count = 0

@@ -77,7 +77,7 @@ char* env_get(char* name):
 # Malloc'd "name=value" string.
 char* env_make_entry(char* name, char* value):
 	int size = strlen(name) + strlen(value) + 2
-	char* entry = malloc(size)
+	char* entry = cast(char*, malloc(size))
 	char* cur = strcpy(entry, name)
 	cur[0] = '='
 	strcpy(cur + 1, value)
@@ -91,7 +91,7 @@ char* env_make_entry(char* name, char* value):
 char** env_copy_with(char** base, char* name, char* value):
 	int count = env_vector_count(base)
 	# Room for every base entry plus a possible append plus the NULL.
-	char* vector = malloc((count + 2) * __word_size__)
+	char* vector = cast(char*, malloc((count + 2) * __word_size__))
 	char* new_entry = env_make_entry(name, value)
 	int replaced = 0
 	int out = 0

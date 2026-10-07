@@ -162,10 +162,10 @@ int struct_value_ctor_expr():
 		int field_index = ctor_field_args(base)
 		if (peek(c")") == 0): error(c"')' expected in constructor")
 		if ((field_index >= 0) && (field_index != type_num_args(base))):
-			diag_part(c"warning: ")
+			diag_part(c"")
 			diag_part(type_get_name(base))
 			diag_part(c" constructor expects ")
-			warning3(itoa(type_num_args(base)), c" arguments, got ", itoa(field_index))
+			type_error3(itoa(type_num_args(base)), c" arguments, got ", itoa(field_index))
 	pop_eax_slot()
 	return type_value(base)
 
@@ -427,10 +427,10 @@ int unary_expression_operand():
 				int field_index = ctor_field_args(base)
 				expect(c")")
 				if ((field_index >= 0) && (field_index != type_num_args(base))):
-					diag_part(c"warning: new ")
+					diag_part(c"new ")
 					diag_part(type_get_name(base))
 					diag_part(c" expects ")
-					warning3(itoa(type_num_args(base)), c" arguments, got ", itoa(field_index))
+					type_error3(itoa(type_num_args(base)), c" arguments, got ", itoa(field_index))
 				pop_eax_slot()
 
 		# eax holds the allocation's address; the expression's type is the

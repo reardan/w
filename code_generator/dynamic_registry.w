@@ -42,13 +42,13 @@ char* dyn_import_lib
 
 void dyn_init():
 	if (dyn_lib_names == 0):
-		dyn_lib_names = malloc(dyn_max_libs * word_size)
-		dyn_import_names = malloc(dyn_max_imports * word_size)
-		dyn_import_got = malloc(dyn_max_imports * word_size)
-		dyn_import_binding = malloc(dyn_max_imports * 4)
-		dyn_import_symtype = malloc(dyn_max_imports * 4)
-		dyn_import_size = malloc(dyn_max_imports * 4)
-		dyn_import_lib = malloc(dyn_max_imports * 4)
+		dyn_lib_names = cast(char*, malloc(dyn_max_libs * word_size))
+		dyn_import_names = cast(char*, malloc(dyn_max_imports * word_size))
+		dyn_import_got = cast(char*, malloc(dyn_max_imports * word_size))
+		dyn_import_binding = cast(char*, malloc(dyn_max_imports * 4))
+		dyn_import_symtype = cast(char*, malloc(dyn_max_imports * 4))
+		dyn_import_size = cast(char*, malloc(dyn_max_imports * 4))
+		dyn_import_lib = cast(char*, malloc(dyn_max_imports * 4))
 
 
 int dyn_has_imports():

@@ -93,7 +93,7 @@ void od_free_lines(list[char*] lines):
 
 
 char* od_hex8(int v):
-	char* s = malloc(9)
+	char* s = cast(char*, malloc(9))
 	int i = 7
 	while (i >= 0):
 		int d = v & 15
@@ -106,7 +106,7 @@ char* od_hex8(int v):
 
 
 char* od_hex2(int v):
-	char* s = malloc(3)
+	char* s = cast(char*, malloc(3))
 	char* digits = c"0123456789ABCDEF"
 	s[0] = digits[(v >> 4) & 15]
 	s[1] = digits[v & 15]
@@ -451,7 +451,7 @@ void od_parse_disas(char* text):
 # address. Returns the malloc'd bytes (count in *out_len) and the base.
 char* od_parse_words(char* text, int* out_base, int* out_len):
 	list[char*] lines = od_split_lines(text)
-	char* bytes = malloc(lines.length * 4 + 4)
+	char* bytes = cast(char*, malloc(lines.length * 4 + 4))
 	int n = 0
 	int base = 0
 	int have_base = 0
@@ -773,7 +773,7 @@ void od_net_step():
 		int st = wdbg_http_status(od_inflight)
 		if (st == 0): return
 		int len = wdbg_http_length(od_inflight)
-		char* body = malloc(len + 1)
+		char* body = cast(char*, malloc(len + 1))
 		int got = wdbg_http_read(od_inflight, body, len)
 		body[got] = 0
 		wdbg_http_free(od_inflight)
@@ -1238,7 +1238,7 @@ void od_draw_dump(int x, int y, int w, int h):
 			char* ah = od_hex8(od_dump_addr + r * 16)
 			od_cells(c_addr, ry, ah, od_c_text())
 			free(ah)
-			char* asc = malloc(17)
+			char* asc = cast(char*, malloc(17))
 			for k in range(16):
 				int v = od_dump_bytes[r * 16 + k] & 255
 				char* hb = od_hex2(v)
@@ -1794,7 +1794,7 @@ int main(int argc, int argv):
 	od_log = new list[char*]
 	od_sources = new list[od_source*]
 	od_queue = new list[od_req*]
-	od_cmd_buf = malloc(256)
+	od_cmd_buf = cast(char*, malloc(256))
 	od_cmd_buf[0] = 0
 	od_view = 'C'
 	od_focus = od_p_disas

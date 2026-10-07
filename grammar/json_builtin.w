@@ -59,8 +59,8 @@ int json_codec_cache_lookup(int type_index):
 void json_codec_cache_store(int type_index, int address):
 	int max_types = 200
 	if (json_codec_types == 0):
-		json_codec_types = malloc(max_types * 4)
-		json_codec_addresses = malloc(max_types * 4)
+		json_codec_types = cast(char*, malloc(max_types * 4))
+		json_codec_addresses = cast(char*, malloc(max_types * 4))
 	assert1(json_codec_count < max_types)
 	save_int(json_codec_types + json_codec_count * 4, type_index)
 	save_int(json_codec_addresses + json_codec_count * 4, address)
@@ -200,7 +200,7 @@ int json_codec_descriptor(int struct_type):
 	int p = be_blob_begin()
 
 	# Field name strings
-	char* name_addresses = malloc(n * 4)
+	char* name_addresses = cast(char*, malloc(n * 4))
 	i = 0
 	while (i < n):
 		char* name = type_get_field_name_at(struct_type, i)
@@ -209,7 +209,7 @@ int json_codec_descriptor(int struct_type):
 		i = i + 1
 
 	# Value descriptors for list fields, map descriptors for map fields
-	char* aux_addresses = malloc(n * 4)
+	char* aux_addresses = cast(char*, malloc(n * 4))
 	i = 0
 	while (i < n):
 		int field_type = type_unqualified(type_get_field_type_at(struct_type, i))

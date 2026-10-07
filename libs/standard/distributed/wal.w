@@ -179,10 +179,10 @@ char* wal_tail_name(int tail):
 
 # Checksum of (length bytes || payload): first 4 bytes of sha256, raw.
 void wal_checksum(char* len_bytes, char* payload, int len, char* out4):
-	char* buf = malloc(4 + len)
+	char* buf = cast(char*, malloc(4 + len))
 	mem_copy(buf, len_bytes, 4)
 	for i in range(len): buf[4 + i] = payload[i]
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	sha256(buf, 4 + len, digest)
 	out4[0] = digest[0]
 	out4[1] = digest[1]
@@ -198,7 +198,7 @@ void wal_checksum(char* len_bytes, char* payload, int len, char* out4):
 # to the declared length (meaningful for WAL_BAD_CHECKSUM).
 char* wal_scan_record_reason_with_ops(file_ops* ops, int fd, int off, int* len_out, int* reason_out):
 	reason_out[0] = WAL_BAD_NONE
-	char* hdr = malloc(8)
+	char* hdr = cast(char*, malloc(8))
 	int got = -1
 	if (storage_seek(ops, fd, off, 0) >= 0): got = storage_read(ops, fd, hdr, 8)
 	if (got != 8):
@@ -212,7 +212,7 @@ char* wal_scan_record_reason_with_ops(file_ops* ops, int fd, int off, int* len_o
 		reason_out[0] = WAL_BAD_LENGTH
 		return 0
 	len_out[0] = len
-	char* payload = malloc(len + 1)
+	char* payload = cast(char*, malloc(len + 1))
 	got = storage_read(ops, fd, payload, len)
 	if (got != len):
 		free(payload)
@@ -220,7 +220,7 @@ char* wal_scan_record_reason_with_ops(file_ops* ops, int fd, int off, int* len_o
 		reason_out[0] = WAL_BAD_SHORT_PAYLOAD
 		if (got < 0): reason_out[0] = WAL_BAD_IO
 		return 0
-	char* sum = malloc(4)
+	char* sum = cast(char*, malloc(4))
 	wal_checksum(hdr, payload, len, sum)
 	int ok = 1
 	for i in range(4):
@@ -242,7 +242,7 @@ char* wal_scan_record_with_ops(file_ops* ops, int fd, int off, int* len_out):
 
 # 1 when every byte of [off, end) reads as zero.
 int wal_all_zero_with_ops(file_ops* ops, int fd, int off, int end):
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int pos = off
 	int zero = 1
 	while (pos < end && zero == 1):
@@ -272,7 +272,7 @@ int wal_classify_bad_with_ops(file_ops* ops, int fd, int off, int size, int reas
 # ---- log lifecycle ----------------------------------------------------------
 
 int wal_write_header_with_ops(file_ops* ops, int fd):
-	char* hdr = malloc(8)
+	char* hdr = cast(char*, malloc(8))
 	hdr[0] = 87    # W
 	hdr[1] = 76    # L
 	hdr[2] = 79    # O
@@ -348,7 +348,7 @@ wal* wal_open_policy_with_ops(file_ops* ops, char* path, int policy, wal_recover
 		if (wal_write_header_with_ops(ops, fd) == 0): return wal_open_fail_with_ops(ops, rep, fd, WAL_ERR_IO)
 		size = 8
 	else:
-		char* hdr = malloc(8)
+		char* hdr = cast(char*, malloc(8))
 		int got = -1
 		if (storage_seek(ops, fd, 0, 0) >= 0): got = storage_read(ops, fd, hdr, 8)
 		int ok = 0
@@ -438,7 +438,7 @@ void wal_inject_sync_failures(wal* w, int n):
 int wal_append(wal* w, char* payload, int len):
 	if (len < 0 || len > wal_max_record()): return 0
 	if (w.readonly || w.failed): return 0
-	char* rec = malloc(8 + len)
+	char* rec = cast(char*, malloc(8 + len))
 	store_le32(rec, len)
 	wal_checksum(rec, payload, len, rec + 4)
 	for i in range(len): rec[8 + i] = payload[i]
@@ -598,7 +598,7 @@ wal_reader* wal_reader_open_with_ops(file_ops* ops, char* path):
 	int fd = storage_open(ops, path, 0, 0)
 	if (fd < 0): return 0
 	wal_reader* rd = new wal_reader(ops, 0, fd, 8, 0)
-	char* hdr = malloc(8)
+	char* hdr = cast(char*, malloc(8))
 	int got = storage_read(ops, fd, hdr, 8)
 	if (got != 8 || (hdr[0] & 255) != 87 || (hdr[1] & 255) != 76 || (hdr[2] & 255) != 79 || (hdr[3] & 255) != 71):
 		rd.done = 1

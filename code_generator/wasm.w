@@ -78,7 +78,7 @@ void wasm_func_name_note(int table_index, char* name):
 		# (x64 host compiling wasm used to pass the wrong oldlen).
 		wasm_func_names = cast(char**, realloc(cast(char*, wasm_func_names), wasm_func_names_cap * __word_size__, new_cap * __word_size__))
 		wasm_func_names_cap = new_cap
-	char* copy = malloc(strlen(name) + 1)
+	char* copy = cast(char*, malloc(strlen(name) + 1))
 	strcpy(copy, name)
 	wasm_func_names[table_index] = copy
 

@@ -203,12 +203,12 @@ char* file_ops_parent(char* path):
 	for i in range(n):
 		if (path[i] == '/'): cut = i
 	if (cut < 0):
-		char* dot = malloc(2)
+		char* dot = cast(char*, malloc(2))
 		dot[0] = '.'
 		dot[1] = 0
 		return dot
 	if (cut == 0): cut = 1
-	char* out = malloc(cut + 1)
+	char* out = cast(char*, malloc(cut + 1))
 	for i in range(cut): out[i] = path[i]
 	out[cut] = 0
 	return out

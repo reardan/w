@@ -60,7 +60,7 @@ int http_test_content_length(char* head):
 # connection. Returns 1, or 0 on EOF/overflow.
 int http_test_read_request(int conn, http_test_request* q):
 	int cap = 16384
-	char* buf = malloc(cap + 1)
+	char* buf = cast(char*, malloc(cap + 1))
 	int total = 0
 	int head_end = (-1)
 	while (head_end < 0):
@@ -96,7 +96,7 @@ int http_test_read_request(int conn, http_test_request* q):
 		free(q.path)
 		free(buf)
 		return 0
-	q.body = malloc(content_length + 1)
+	q.body = cast(char*, malloc(content_length + 1))
 	int have = total - head_end
 	if (have > content_length): have = content_length
 	mem_copy(q.body, buf + head_end, have)
@@ -664,7 +664,7 @@ void test_http_close_mid_body():
 	http_stream* s = http_open(req)
 	assert_equal(0, s.error)
 	assert_equal(200, http_stream_headers(s).status)
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	int total = 0
 	int got = http_stream_read(s, buf, 64)
 	while (got > 0):
@@ -808,7 +808,7 @@ void test_http_streaming_matches_buffered():
 	assert_equal(200, head.status)
 	assert_strings_equal(c"text/plain", http_response_header(head, c"content-type"))
 	string_builder* collected = string_new()
-	char* buf = malloc(8)
+	char* buf = cast(char*, malloc(8))
 	int got = http_stream_read(s, buf, 7)
 	while (got > 0):
 		asserts(c"stream chunk over cap", got <= 7)

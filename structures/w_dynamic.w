@@ -75,7 +75,7 @@ void __w_var_binary_error(char* op, __w_var_box* a, __w_var_box* b):
 
 
 __w_var_box* __w_var_alloc(int tag, int payload, int payload2):
-	__w_var_box* b = malloc(3 * __word_size__)
+	__w_var_box* b = cast(__w_var_box*, malloc(3 * __word_size__))
 	b.tag = tag
 	b.payload = payload
 	b.payload2 = payload2
@@ -105,7 +105,7 @@ void __w_var_copy_bytes(char* dst, char* src, int count):
 
 # NUL-terminated copy of length bytes at data.
 char* __w_var_cstr_from_data(int data, int length):
-	char* out = malloc(length + 1)
+	char* out = cast(char*, malloc(length + 1))
 	__w_var_copy_bytes(out, cast(char*, data), length)
 	out[length] = 0
 	return out
@@ -127,7 +127,7 @@ string __w_var_unbox_str(__w_var_box* b):
 	int tag = __w_var_tag_of(b)
 	if (tag == 2): return str_from_cstr(cast(char*, b.payload))
 	if (tag != 3): __w_var_type_error(c"string", tag)
-	char* descriptor = malloc(2 * __word_size__)
+	char* descriptor = cast(char*, malloc(2 * __word_size__))
 	save_word(descriptor, b.payload)
 	save_word(descriptor + __word_size__, b.payload2)
 	return cast(string, cast(int, descriptor))
@@ -147,7 +147,7 @@ int __w_var_text_length(__w_var_box* b):
 __w_var_box* __w_var_concat(__w_var_box* a, __w_var_box* b):
 	int a_length = __w_var_text_length(a)
 	int b_length = __w_var_text_length(b)
-	char* out = malloc(a_length + b_length + 1)
+	char* out = cast(char*, malloc(a_length + b_length + 1))
 	__w_var_copy_bytes(out, cast(char*, a.payload), a_length)
 	__w_var_copy_bytes(out + a_length, cast(char*, b.payload), b_length)
 	out[a_length + b_length] = 0

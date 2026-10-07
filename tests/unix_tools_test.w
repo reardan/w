@@ -19,7 +19,7 @@ char* utt_repo_root_cache
 
 char* utt_repo_root():
 	if (utt_repo_root_cache == 0):
-		char* buf = malloc(4096)
+		char* buf = cast(char*, malloc(4096))
 		int n = getcwd(buf, 4096)
 		assert1(n > 0)
 		utt_repo_root_cache = buf

@@ -146,7 +146,7 @@ int wfixture_parse_text(char* fixture, char* text, int sidecar):
 		int length = i - start
 		if (text[i] == 10):
 			i = i + 1
-		char* line = malloc(length + 1)
+		char* line = cast(char*, malloc(length + 1))
 		strncpy(line, text + start, length)
 		line[length] = 0
 		if (length == 0):

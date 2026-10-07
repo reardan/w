@@ -210,7 +210,7 @@ char* lsm_table_path(char* prefix, int seq):
 
 # Appends one 5-byte (tag, u32) record. Returns wal_append's result.
 int lsm_append_tagged(wal* target, int tag, int value):
-	char* rec = malloc(5)
+	char* rec = cast(char*, malloc(5))
 	rec[0] = tag
 	store_le32(rec + 1, value)
 	int ok = wal_append(target, rec, 5)
@@ -611,7 +611,7 @@ int lsm_log_record(lsm* l, char* rec, int len):
 int lsm_put(lsm* l, char* key, char* value, int value_len):
 	if (value_len < 0 || l.failed): return 0
 	int key_len = strlen(key)
-	char* rec = malloc(9 + key_len + value_len)
+	char* rec = cast(char*, malloc(9 + key_len + value_len))
 	rec[0] = lsm_tag_put
 	store_le32(rec + 1, key_len)
 	store_le32(rec + 5, value_len)
@@ -636,7 +636,7 @@ int lsm_put(lsm* l, char* key, char* value, int value_len):
 int lsm_delete(lsm* l, char* key):
 	if (l.failed): return 0
 	int key_len = strlen(key)
-	char* rec = malloc(5 + key_len)
+	char* rec = cast(char*, malloc(5 + key_len))
 	rec[0] = lsm_tag_delete
 	store_le32(rec + 1, key_len)
 	for i in range(key_len): rec[5 + i] = key[i]
@@ -716,7 +716,7 @@ int lsm_apply_batch(lsm* l, lsm_batch* b):
 	if (n == 0): return 1
 	int total = b.encoded_len
 	if (total > wal_max_record()): return 0
-	char* rec = malloc(total)
+	char* rec = cast(char*, malloc(total))
 	rec[0] = lsm_tag_batch
 	store_le32(rec + 1, n)
 	int off = 5
@@ -1067,7 +1067,7 @@ char* lsm_export(lsm* l, int* len_out):
 		i = i + 1
 	char* buf = 0
 	if (read_ok == 1):
-		buf = malloc(total)
+		buf = cast(char*, malloc(total))
 		buf[0] = 76   # L
 		buf[1] = 83   # S
 		buf[2] = 77   # M

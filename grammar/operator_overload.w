@@ -79,7 +79,7 @@ char* operator_mangle_type_name(int t):
 # strings. '$' is not a valid identifier character, so no user symbol
 # can collide (the generic_mangle precedent).
 char* operator_build_name(int op, char* left_name, char* right_name):
-	char* name = malloc(strlen(left_name) + strlen(right_name) + 8)
+	char* name = cast(char*, malloc(strlen(left_name) + strlen(right_name) + 8))
 	name[0] = 'o'
 	name[1] = 'p'
 	name[2] = '$'
@@ -121,7 +121,7 @@ char* operator_mangled_name(int op, int left_type, int right_type):
 # grammar/program.w's operator branch) before mangling, so defhash needs
 # this instead of reusing that shared pre-mangling name.
 char* operator_defhash_name(int op, char* left_name, char* right_name):
-	char* spelling = malloc(2)
+	char* spelling = cast(char*, malloc(2))
 	spelling[0] = op
 	spelling[1] = 0
 	char* with_prefix = strjoin(c"operator", spelling)
@@ -314,7 +314,7 @@ int operator_overload_binary(int left_type, int right_type, int op, int left_slo
 		else: free(left_folded)
 	if (callee < 0):
 		diag_part(c"no operator '")
-		char* spelling = malloc(2)
+		char* spelling = cast(char*, malloc(2))
 		spelling[0] = op
 		spelling[1] = 0
 		diag_part(spelling)

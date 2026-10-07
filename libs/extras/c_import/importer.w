@@ -96,7 +96,7 @@ void ci_session_init():
 		ci_bit_field_widths = new map[int, int]
 		ci_bit_field_signs = new map[int, int]
 		ci_bit_field_unit_sizes = new map[int, int]
-		ci_param_classes = malloc(extern_max_params)
+		ci_param_classes = cast(char*, malloc(extern_max_params))
 
 
 int ci_type_from_specs(pg_ast_node* specs);
@@ -435,9 +435,9 @@ int ci_apply_binary_op(char* op, int left, int right):
 # are stored word-sized because they are heap pointers.
 int ci_eval_binary(pg_ast_node* node):
 	int count = pg_ast_child_count(node)
-	char* values = malloc((count + 1) << 2)
-	char* precedences = malloc((count + 1) << 2)
-	char* ops = malloc((count + 1) * word_size)
+	char* values = cast(char*, malloc((count + 1) << 2))
+	char* precedences = cast(char*, malloc((count + 1) << 2))
+	char* ops = cast(char*, malloc((count + 1) * word_size))
 	int value_top = 0
 	int op_top = 0
 	save_int(values, ci_eval_const(pg_ast_child(node, 0)))

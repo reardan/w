@@ -76,7 +76,7 @@ int dbg_disas_fetch(int addr, char* buf, int n):
 # 0 when the memory there is not readable. 16 bytes covers the longest
 # x86 instruction (15) with room for the truncated-tail case.
 int dbg_disas_decode(int addr, asm_insn* insn):
-	if (dbg_disas_buf == 0): dbg_disas_buf = malloc(16)
+	if (dbg_disas_buf == 0): dbg_disas_buf = cast(char*, malloc(16))
 	int n = dbg_disas_fetch(addr, dbg_disas_buf, 16)
 	if (n == 0): return 0
 	return asm_x86_decode(dbg_disas_buf, n, addr, __word_size__, insn)

@@ -68,7 +68,7 @@ int server():
 
 
 void read_socket(int file):
-	char* buf = malloc(41)
+	char* buf = cast(char*, malloc(41))
 	int read_result = read(file, buf, 40)
 	if (read_result < 0):
 		print_int(c"read_result: ", read_result)

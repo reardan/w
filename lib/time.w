@@ -171,7 +171,7 @@ void time_write_4_digits(char* out, int value):
 
 # Returns a malloc'd "YYYY-MM-DD HH:MM:SS" UTC string.
 char* time_format_utc(date_time* dt):
-	char* result = malloc(20)
+	char* result = cast(char*, malloc(20))
 	time_write_4_digits(result, dt.year)
 	result[4] = '-'
 	time_write_2_digits(result + 5, dt.month)

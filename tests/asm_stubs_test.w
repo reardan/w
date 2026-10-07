@@ -124,7 +124,7 @@ int stubs_check(char* path, char* call, int arch, char* corpus_path):
 			while (stop < end && line[stop] != ';'): stop = stop + 1
 			int last = stop
 			while (last > at && line[last - 1] == ' '): last = last - 1
-			char* text = malloc(last - at + 1)
+			char* text = cast(char*, malloc(last - at + 1))
 			int k = 0
 			while (at + k < last):
 				text[k] = line[at + k]

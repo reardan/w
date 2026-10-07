@@ -33,7 +33,7 @@ char* rw_previous_identifier(char* text, int quote_index):
 	int end = i + 1
 	while ((i >= 0) && rw_is_ident_char(text[i])): i = i - 1
 	int start = i + 1
-	char* result = malloc(end - start + 1)
+	char* result = cast(char*, malloc(end - start + 1))
 	int j = 0
 	while (start + j < end):
 		result[j] = text[start + j]

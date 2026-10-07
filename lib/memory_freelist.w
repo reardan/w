@@ -353,7 +353,7 @@ int freelist_free(void* mem_address):
 # else moves, copying min(oldlen, newlen) bytes a word at a time
 # (payloads are 8-aligned).
 char *freelist_realloc(void* old, int oldlen, int newlen):
-	if (old == 0): return freelist_malloc(newlen)
+	if (old == 0): return cast(char*, freelist_malloc(newlen))
 	int header = 2 * __word_size__
 	int mem = cast(int, old)
 	int* bw = cast(int*, mem - header)
@@ -362,7 +362,7 @@ char *freelist_realloc(void* old, int oldlen, int newlen):
 	if (want < 1): want = 1
 	want = ((want + 7) >> 3) << 3
 	if (want <= have):
-		return old
+		return cast(char*, old)
 	if (mem + have == malloc_heap_ptr):
 		int extra = want - have
 		int fits = 0
@@ -375,8 +375,8 @@ char *freelist_realloc(void* old, int oldlen, int newlen):
 		if (fits):
 			malloc_heap_ptr = malloc_heap_ptr + extra
 			bw[0] = want
-			return old
-	char *grown = freelist_malloc(newlen)
+			return cast(char*, old)
+	char *grown = cast(char*, freelist_malloc(newlen))
 	if (grown == 0):
 		return grown
 	int n = oldlen
@@ -388,7 +388,7 @@ char *freelist_realloc(void* old, int oldlen, int newlen):
 	while (i < words):
 		dw[i] = sw[i]
 		i = i + 1
-	char *src = old
+	char *src = cast(char*, old)
 	i = words * __word_size__
 	while (i < n):
 		grown[i] = src[i]

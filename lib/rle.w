@@ -9,7 +9,7 @@ import lib.lib
 # Zero/full runs of 3+ become 2-byte tokens; everything else joins a
 # literal run (tag 2, count, raw bytes).
 char* rle_encode(char* pixels, int total, int* out_length):
-	char* stream = malloc(total * 2 + 16)
+	char* stream = cast(char*, malloc(total * 2 + 16))
 	int pos = 0
 	int i = 0
 	while (i < total):

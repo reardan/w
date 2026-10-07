@@ -1,27 +1,28 @@
+# expect_fail
 # Issue #532: unsafe conversions and control-flow defects the type
 # checks used to accept silently (grammar/type_check.w). Each construct
-# below triggers exactly the warning listed; the warning_test target
+# below triggers exactly the error listed; the warning_test target
 # compiles this file with bin/wfixture. Under --strict every one of
-# them fails the build (unsafe_conversion_strict_fixture.w).
-# expect_stderr: warning: return narrows constant 65536 to 'uint16' (stored as 0); use cast() if the truncation is intended
-# expect_stderr: warning: initialization narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended
-# expect_stderr: warning: initialization narrows constant -200 to 'int8' (stored as 56); use cast() if the truncation is intended
-# expect_stderr: warning: initialization narrows constant 256 to 'uint8' (stored as 0); use cast() if the truncation is intended
-# expect_stderr: warning: initialization narrows constant 70000 to 'int16' (stored as 4464); use cast() if the truncation is intended
-# expect_stderr: warning: assignment narrows constant 400 to 'char' (stored as -112); use cast() if the truncation is intended
-# expect_stderr: warning: function 'take_char' argument 1 narrows constant 1000 to 'char' (stored as -24); use cast() if the truncation is intended
-# expect_stderr: warning: initialization converts '5' to enum 'color' implicitly; use cast(color, ...)
-# expect_stderr: warning: assignment converts 'int' to enum 'color' implicitly; use cast(color, ...)
-# expect_stderr: warning: function 'take_color' argument 1 converts '1' to enum 'color' implicitly; use cast(color, ...)
-# expect_stderr: warning: '==' and '!=' on struct values compare their addresses, not their fields; compare the fields, or take '&' of both sides to compare addresses
-# expect_stderr: warning: function 'falls_off' can reach the end of its body without returning a value
-# expect_stderr: warning: function 'if_without_else' can reach the end of its body without returning a value
-# expect_stderr: warning: function 'loop_with_break' can reach the end of its body without returning a value
-# expect_stderr: warning: duplicate case value 2 in switch; only the first matching case runs
-# expect_stderr: warning: duplicate case value -1 in switch; only the first matching case runs
-# expect_stderr: warning: duplicate case value 65 in switch; only the first matching case runs
-# expect_stderr: warning: duplicate case value 0 in switch; only the first matching case runs
-# expect_stderr: warning: return with a value in a void function
+# them still fails the build (unsafe_conversion_strict_fixture.w).
+# expect_stderr: error: return narrows constant 65536 to 'uint16' (stored as 0); use cast() if the truncation is intended
+# expect_stderr: error: initialization narrows constant 300 to 'char' (stored as 44); use cast() if the truncation is intended
+# expect_stderr: error: initialization narrows constant -200 to 'int8' (stored as 56); use cast() if the truncation is intended
+# expect_stderr: error: initialization narrows constant 256 to 'uint8' (stored as 0); use cast() if the truncation is intended
+# expect_stderr: error: initialization narrows constant 70000 to 'int16' (stored as 4464); use cast() if the truncation is intended
+# expect_stderr: error: assignment narrows constant 400 to 'char' (stored as -112); use cast() if the truncation is intended
+# expect_stderr: error: function 'take_char' argument 1 narrows constant 1000 to 'char' (stored as -24); use cast() if the truncation is intended
+# expect_stderr: error: initialization converts '5' to enum 'color' implicitly; use cast(color, ...)
+# expect_stderr: error: assignment converts 'int' to enum 'color' implicitly; use cast(color, ...)
+# expect_stderr: error: function 'take_color' argument 1 converts '1' to enum 'color' implicitly; use cast(color, ...)
+# expect_stderr: error: '==' and '!=' on struct values compare their addresses, not their fields; compare the fields, or take '&' of both sides to compare addresses
+# expect_stderr: error: function 'falls_off' can reach the end of its body without returning a value
+# expect_stderr: error: function 'if_without_else' can reach the end of its body without returning a value
+# expect_stderr: error: function 'loop_with_break' can reach the end of its body without returning a value
+# expect_stderr: error: duplicate case value 2 in switch; only the first matching case runs
+# expect_stderr: error: duplicate case value -1 in switch; only the first matching case runs
+# expect_stderr: error: duplicate case value 65 in switch; only the first matching case runs
+# expect_stderr: error: duplicate case value 0 in switch; only the first matching case runs
+# expect_stderr: error: return with a value in a void function
 # reject_stderr: 'all_paths_return'
 # reject_stderr: 'ends_in_loop'
 # reject_stderr: 'ends_in_switch'

@@ -390,7 +390,7 @@ void test_sse_buffer_overflow_fails_closed():
 		net_test_read_head(conn)
 		sse_child_send_head(conn)
 		# One line larger than the 1 MiB line cap, with no terminator.
-		char* chunk = malloc(65536)
+		char* chunk = cast(char*, malloc(65536))
 		mem_fill(chunk, 'x', 65536)
 		for sent in range(0, 1245184, 65536): net_test_send_all(conn, chunk, 65536)
 		free(chunk)

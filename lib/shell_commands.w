@@ -141,7 +141,7 @@ import lib.dir
 # Print the process's current working directory, like the real pwd.
 int shell_commands_pwd():
 	int size = 4096
-	char* buf = malloc(size)
+	char* buf = cast(char*, malloc(size))
 	int status = 0
 	if (getcwd(buf, size) < 0):
 		println2(c"pwd: cannot determine current directory")
@@ -192,7 +192,7 @@ int shell_commands_ls_long_entry(char* dir, char* entry_name):
 		println2(c"': No such file or directory")
 		free(full)
 		return 1
-	char* mode_str = malloc(11)
+	char* mode_str = cast(char*, malloc(11))
 	shell_commands_mode_string(st.mode, mode_str)
 	print(mode_str)
 	free(mode_str)
@@ -226,7 +226,7 @@ int shell_commands_ls_long_entry(char* dir, char* entry_name):
 	print(entry_name)
 	if (file_is_lnk(&st)):
 		int target_size = 4096
-		char* target = malloc(target_size)
+		char* target = cast(char*, malloc(target_size))
 		int n = file_readlink(full, target, target_size - 1)
 		if (n >= 0):
 			target[n] = 0
@@ -280,7 +280,7 @@ int shell_commands_cat_one(char* path):
 		return 1
 	wstream* out = stdout_writer()
 	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
+	char* buffer = cast(char*, malloc(buffer_size))
 	int n = stream_read(in, buffer, buffer_size)
 	while (n > 0):
 		stream_write(out, buffer, n)
@@ -543,7 +543,7 @@ int shell_commands_cp_file(char* src, char* dst):
 		stream_close(in)
 		return 1
 	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
+	char* buffer = cast(char*, malloc(buffer_size))
 	int n = stream_read(in, buffer, buffer_size)
 	while (n > 0):
 		stream_write(out, buffer, n)

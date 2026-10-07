@@ -450,7 +450,7 @@ wresult[char*]* index_walk(wcas* s, char* dir, char* prefix, list[char*] ignore,
 	if (fd < 0): return result_new_error[char*](fd)
 	wtree* t = tree_new()
 	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
+	char* buffer = cast(char*, malloc(buffer_size))
 	int err = 0
 	int n = getdents(fd, buffer, buffer_size)
 	while ((err == 0) && (n > 0)):

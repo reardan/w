@@ -36,14 +36,14 @@ int bp_used
 
 
 void bp_init():
-	bp_addrs = malloc(bp_max * 4)
-	bp_bytes = malloc(bp_max * 4)
-	bp_armeds = malloc(bp_max * 4)
-	bp_temps = malloc(bp_max * 4)
-	bp_hit_counts = malloc(bp_max * 4)
-	bp_ignore_counts = malloc(bp_max * 4)
-	bp_cond_exprs = malloc(bp_max * __word_size__)
-	bp_log_exprs = malloc(bp_max * __word_size__)
+	bp_addrs = cast(char*, malloc(bp_max * 4))
+	bp_bytes = cast(char*, malloc(bp_max * 4))
+	bp_armeds = cast(char*, malloc(bp_max * 4))
+	bp_temps = cast(char*, malloc(bp_max * 4))
+	bp_hit_counts = cast(char*, malloc(bp_max * 4))
+	bp_ignore_counts = cast(char*, malloc(bp_max * 4))
+	bp_cond_exprs = cast(char*, malloc(bp_max * __word_size__))
+	bp_log_exprs = cast(char*, malloc(bp_max * __word_size__))
 	int i = 0
 	while (i < bp_max):
 		save_int(bp_addrs + i * 4, 0)
@@ -91,7 +91,7 @@ void bp_set_condition(int i, char* expr):
 		save_word(bp_cond_exprs + i * __word_size__, 0)
 	if (expr == 0): return;
 	if (expr[0] == 0): return;
-	char* copy = malloc(strlen(expr) + 1)
+	char* copy = cast(char*, malloc(strlen(expr) + 1))
 	strcpy(copy, expr)
 	save_word(bp_cond_exprs + i * __word_size__, cast(int, copy))
 
@@ -106,7 +106,7 @@ int bp_is_log(int i):
 
 # Mark breakpoint i as a logpoint: eligible hits log expr and auto-continue.
 void bp_set_log(int i, char* expr):
-	char* copy = malloc(strlen(expr) + 1)
+	char* copy = cast(char*, malloc(strlen(expr) + 1))
 	strcpy(copy, expr)
 	save_word(bp_log_exprs + i * __word_size__, cast(int, copy))
 

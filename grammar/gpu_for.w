@@ -35,7 +35,7 @@ int gpu_for_kernel_count
 
 
 char* gpu_for_kernel_name():
-	char* name = malloc(32)
+	char* name = cast(char*, malloc(32))
 	strcpy(name, c"__w_gpu_kernel_")
 	strcpy(name + strlen(name), itoa(gpu_for_kernel_count))
 	gpu_for_kernel_count = gpu_for_kernel_count + 1

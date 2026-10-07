@@ -759,7 +759,7 @@ void emit_expression_ast(expression_ast* tree, int id):
 			int c_variadic = sym_variadic_fixed_args(sym)
 			if (c_variadic >= 0):
 				int s = stack_pos
-				char* classes = malloc(extern_max_params)
+				char* classes = cast(char*, malloc(extern_max_params))
 				int arg = tree.left[id]
 				int count = 0
 				while (arg >= 0):

@@ -10,7 +10,7 @@ import lib.lib
 
 # Returns a malloc'd string the caller may free.
 char* path_clone_range(char* start, int length):
-	char* result = malloc(length + 1)
+	char* result = cast(char*, malloc(length + 1))
 	for i in range(length): result[i] = start[i]
 	result[length] = 0
 	return result
@@ -29,7 +29,7 @@ char* path_normalize(char* path):
 	int absolute = (length > 0) && (path[0] == '/')
 	int trailing = (length > 0) && (path[length - 1] == '/')
 	# Output never grows: each kept component is copied left.
-	char* out = malloc(length + 2)
+	char* out = cast(char*, malloc(length + 2))
 	int out_len = 0
 	if (absolute):
 		out[0] = '/'
@@ -91,7 +91,7 @@ char* path_join(char* left, char* right):
 	if (left_length == 0): return path_normalize(right)
 
 	int needs_slash = left[left_length - 1] != '/'
-	char* joined = malloc(left_length + right_length + needs_slash + 1)
+	char* joined = cast(char*, malloc(left_length + right_length + needs_slash + 1))
 	char* cur = joined
 	cur = strcpy(cur, left)
 	if (needs_slash):

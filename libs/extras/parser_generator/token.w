@@ -42,7 +42,7 @@ const int pg_token_hidden_channel = 1
 
 
 char* pg_substr(char* input, int start, int length):
-	char* text = malloc(length + 1)
+	char* text = cast(char*, malloc(length + 1))
 	for i in range(length): text[i] = input[start + i]
 	text[length] = 0
 	return text

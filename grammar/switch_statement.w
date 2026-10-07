@@ -92,9 +92,9 @@ void switch_note_case_value(int start_state, int value_type, int line, int diag_
 	if (found == 0): return
 	for i in range(switch_seen_base, switch_seen_count):
 		if (switch_seen_values[i] == value):
-			diag_part(c"warning: duplicate case value ")
+			diag_part(c"duplicate case value ")
 			diag_part(itoa(value))
-			warn_bool_bitwise_at(c" in switch; only the first matching case runs", line, diag_line, diag_column, c"case")
+			type_error_at(c" in switch; only the first matching case runs", line, diag_line, diag_column, c"case")
 			return
 	if (switch_seen_count >= switch_seen_capacity):
 		switch_seen_capacity = switch_seen_capacity * 2 + 16

@@ -67,7 +67,7 @@ int main(int argc, int argv):
 		return 1
 	getchar_reset(f)
 	int capacity = 4096
-	char* line = malloc(capacity)
+	char* line = cast(char*, malloc(capacity))
 	int length = 0
 	int validated = 0
 	int c = getchar(f)

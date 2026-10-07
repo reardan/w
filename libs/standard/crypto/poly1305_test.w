@@ -22,7 +22,7 @@ void pt_check_mac(char* key_hex, char* msg_hex, char* want_hex):
 	char* key = hex_bytes(key_hex)
 	char* msg = hex_bytes(msg_hex)
 	int n = strlen(msg_hex) / 2
-	char* tag = malloc(16)
+	char* tag = cast(char*, malloc(16))
 	poly1305_mac(msg, n, key, tag)
 	char* got = hex_encode(tag, 16)
 	assert_strings_equal(want_hex, got)
@@ -58,7 +58,7 @@ void test_incremental_chunking():
 	char* key = hex_bytes(c"85d6be7857556d337f4452fe42d506a80103808afb0db2fd4abff6af4149f51b")
 	char* msg = hex_bytes(c"43727970746f6772617068696320466f72756d2052657365617263682047726f7570")
 	int n = strlen(c"43727970746f6772617068696320466f72756d2052657365617263682047726f7570") / 2
-	char* tag = malloc(16)
+	char* tag = cast(char*, malloc(16))
 	for chunk in range(1, 19 + 1, 6):
 		poly1305* st = poly1305_new(key)
 		int off = 0

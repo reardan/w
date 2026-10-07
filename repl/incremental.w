@@ -168,7 +168,7 @@ list[char*] incremental_tokens(char* source):
 				return 0
 			i = i + 1
 			if (c == ':'): body = 1
-		char* word = malloc(i - start + 1)
+		char* word = cast(char*, malloc(i - start + 1))
 		strncpy(word, source + start, i - start)
 		word[i - start] = 0
 		if (incremental_forbidden(word)):
@@ -318,7 +318,7 @@ struct incremental_side:
 # comment in an admitted source.
 char* incremental_layout(char* source):
 	int length = strlen(source)
-	char* out = malloc(length + 1)
+	char* out = cast(char*, malloc(length + 1))
 	int at = 0
 	int line_start = 0
 	int i = 0

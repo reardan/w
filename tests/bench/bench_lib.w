@@ -38,7 +38,7 @@ int bench_size(int argc, char** argv, int default_size):
 # Eight lowercase hex digits of the low 32 bits of v (malloc'd).
 char* bench_hex32(int v):
 	char* digits = c"0123456789abcdef"
-	char* out = malloc(9)
+	char* out = cast(char*, malloc(9))
 	int i = 7
 	while (i >= 0):
 		out[i] = digits[v & 15]

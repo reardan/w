@@ -33,8 +33,8 @@ int levenshtein(char* a, char* b):
 	if (n == 0):
 		return m
 	# prev[j] / curr[j]: distance from a[0 .. i) to b[0 .. j)
-	int* prev = malloc((n + 1) * __word_size__)
-	int* curr = malloc((n + 1) * __word_size__)
+	int* prev = cast(int*, malloc((n + 1) * __word_size__))
+	int* curr = cast(int*, malloc((n + 1) * __word_size__))
 	int j = 0
 	while (j <= n):
 		prev[j] = j

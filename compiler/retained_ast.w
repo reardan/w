@@ -162,7 +162,7 @@ char* retained_text_copy(char* text, int length):
 		retained_text_mark = retained_text_mark - offset + retained_text_chunk
 		offset = 0
 	int index = retained_text_mark >> retained_text_chunk_shift
-	while (retained_text_chunks.length <= index): retained_text_chunks.push(malloc(retained_text_chunk))
+	while (retained_text_chunks.length <= index): retained_text_chunks.push(cast(char*, malloc(retained_text_chunk)))
 	char* copy = retained_text_chunks[index] + offset
 	for i in range(length): copy[i] = text[i]
 	copy[length] = 0
@@ -174,7 +174,7 @@ int retained_add(int kind, int parent, int source, int start, int line, int colu
 	retained_init()
 	int id = retained_nodes.length
 	int chunk = id >> retained_node_chunk_shift
-	if (chunk >= retained_node_chunks.length): retained_node_chunks.push(malloc(retained_node_chunk * sizeof(retained_node)))
+	if (chunk >= retained_node_chunks.length): retained_node_chunks.push(cast(char*, malloc(retained_node_chunk * sizeof(retained_node))))
 	retained_node* node = cast(retained_node*, retained_node_chunks[chunk] + (id & (retained_node_chunk - 1)) * sizeof(retained_node))
 	node.import_source = -1
 	node.import_path = 0

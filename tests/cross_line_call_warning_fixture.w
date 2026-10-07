@@ -2,10 +2,12 @@
 # previous expression statement when the '(' sits on a different line
 # (grammar/postfix_expr.w's postfix loop has no statement-boundary
 # check of its own; a newline never ends an expression by itself here,
-# same as everywhere else in W). This stays non-breaking — the call is
-# still parsed and compiled exactly as before — but the absorption now
-# warns so it isn't silently invisible; see
+# same as everywhere else in W). The absorption still warns; calling
+# the resulting integer is now a type error (#532), so this fixture
+# fails compilation. See
 # docs/projects/ai_tooling_next_steps.md.
+# expect_fail
+# expect_stderr: error: called object of type 'constant' is not a function
 # expect_stderr: warning: call arguments continue from the previous line
 import lib.lib
 

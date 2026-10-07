@@ -93,7 +93,7 @@ int dbg_file_index_for(char* name):
 int dbg_edit_distance(char* a, char* b):
 	int la = strlen(a)
 	int lb = strlen(b)
-	char* d = malloc((la + 1) * (lb + 1) * 4)
+	char* d = cast(char*, malloc((la + 1) * (lb + 1) * 4))
 	int i = 0
 	while (i <= la):
 		save_int(d + i * (lb + 1) * 4, i)

@@ -64,7 +64,7 @@ void net_test_send_text(int fd, char* text):
 # Reads until the peer closes (or a recv timeout fires), so a child never
 # exits while the client still expects the connection to be open.
 void net_test_drain(int fd):
-	char* scratch = malloc(1024)
+	char* scratch = cast(char*, malloc(1024))
 	int got = read(fd, scratch, 1024)
 	while (got > 0): got = read(fd, scratch, 1024)
 	free(scratch)
@@ -73,7 +73,7 @@ void net_test_drain(int fd):
 # Reads until EOF into a malloc'd NUL-terminated string.
 char* net_test_read_all(int fd):
 	string_builder* out = string_new()
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int got = read(fd, buf, 4096)
 	while (got > 0):
 		string_append_bytes(out, buf, got)
@@ -110,7 +110,7 @@ int net_test_head_end(char* buf, int total):
 # Consumes one request head (through CRLFCRLF, EOF, the recv timeout or
 # 8 KiB) so a child can start responding.
 void net_test_read_head(int fd):
-	char* buf = malloc(8192)
+	char* buf = cast(char*, malloc(8192))
 	int total = 0
 	while (total < 8192):
 		int got = read(fd, buf + total, 8192 - total)

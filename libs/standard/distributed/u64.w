@@ -280,7 +280,7 @@ void u64_hex4(char* s, int off, int v):
 
 # 16 lowercase hex digits, malloc'd and NUL-terminated; caller frees.
 char* u64_to_hex(u64* a):
-	char* s = malloc(17)
+	char* s = cast(char*, malloc(17))
 	u64_hex4(s, 0, a.w3)
 	u64_hex4(s, 4, a.w2)
 	u64_hex4(s, 8, a.w1)
@@ -293,7 +293,7 @@ char* u64_to_hex(u64* a):
 # division by 10 across the limbs: the per-limb dividend is at most
 # 9 * 65536 + 65535 < 2^20, so it fits a signed int on every target.
 char* u64_to_dec(u64* a):
-	char* tmp = malloc(21)
+	char* tmp = cast(char*, malloc(21))
 	int t3 = a.w3
 	int t2 = a.w2
 	int t1 = a.w1
@@ -318,7 +318,7 @@ char* u64_to_dec(u64* a):
 	if (n == 0):
 		tmp[n] = 48
 		n = n + 1
-	char* s = malloc(n + 1)
+	char* s = cast(char*, malloc(n + 1))
 	for i in range(n): s[i] = tmp[n - 1 - i]
 	s[n] = 0
 	free(tmp)

@@ -77,11 +77,11 @@ void dbg_eval_bind_locals(int stop_addr, int esp):
 	dbg_frame_compute(stop_addr)
 	if (dbg_frame_ok == 0): return;
 	if (dbg_eval_scratch == 0):
-		dbg_eval_scratch = malloc(dbg_eval_scratch_size)
-		dbg_eval_bound_from = malloc(dbg_eval_bound_max * __word_size__)
-		dbg_eval_bound_to = malloc(dbg_eval_bound_max * __word_size__)
-		dbg_eval_bound_size = malloc(dbg_eval_bound_max * 4)
-		dbg_eval_bound_sym = malloc(dbg_eval_bound_max * 4)
+		dbg_eval_scratch = cast(char*, malloc(dbg_eval_scratch_size))
+		dbg_eval_bound_from = cast(char*, malloc(dbg_eval_bound_max * __word_size__))
+		dbg_eval_bound_to = cast(char*, malloc(dbg_eval_bound_max * __word_size__))
+		dbg_eval_bound_size = cast(char*, malloc(dbg_eval_bound_max * 4))
+		dbg_eval_bound_sym = cast(char*, malloc(dbg_eval_bound_max * 4))
 	int rel = stop_addr - code_offset
 	int saved_indirection = pointer_indirection
 	int used = 0

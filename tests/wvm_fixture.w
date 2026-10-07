@@ -17,7 +17,7 @@ int main(int argc, int argv):
 		assert_equal(0, wvm_tls_value)
 		wvm_tls_value = 81
 		assert_equal(81, wvm_tls_value)
-		char* allocated = malloc(1048576)
+		char* allocated = cast(char*, malloc(1048576))
 		allocated[1048575] = 37
 		assert_equal(37, allocated[1048575])
 		free(allocated)

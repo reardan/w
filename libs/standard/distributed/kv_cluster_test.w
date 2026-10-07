@@ -676,7 +676,7 @@ void test_cluster_binary_value_roundtrip():
 	int rounds = kvc_run_until_leader(c, 500)
 	assert1(rounds >= 0)
 	int lid = rafts_leader(c.rafts)
-	char* value = malloc(5)
+	char* value = cast(char*, malloc(5))
 	value[0] = 'x'
 	value[1] = 0
 	value[2] = 'y'
@@ -734,7 +734,7 @@ void test_cluster_snapshot_laggard_catchup():
 	raft_tcp_set_max_pending(ldr.tcp, 4096)
 	kvc_put(c, lid, c"k1", c"v1")
 	kvc_put(c, lid, c"k2", c"v2")
-	char* binval = malloc(4)
+	char* binval = cast(char*, malloc(4))
 	binval[0] = 0
 	binval[1] = 'Z'
 	binval[2] = 255

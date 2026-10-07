@@ -398,7 +398,7 @@ char* ws_guid():
 # base64(SHA-1(key + GUID)) with an explicit algorithm id.
 char* ws_accept_key_with(int alg, char* key):
 	char* joined = strjoin(key, ws_guid())
-	char* digest = malloc(20)
+	char* digest = cast(char*, malloc(20))
 	whash_oneshot(alg, joined, strlen(joined), digest)
 	char* out = base64_encode(digest, 20)
 	free(digest)
@@ -432,7 +432,7 @@ char* ws_accept_key(char* key):
 # A fresh Sec-WebSocket-Key: base64 of 16 random bytes (malloc'd), or 0
 # when the CSPRNG fails.
 char* ws_new_key():
-	char* nonce = malloc(16)
+	char* nonce = cast(char*, malloc(16))
 	if (random_bytes(nonce, 16) == 0):
 		free(nonce)
 		return 0
@@ -610,7 +610,7 @@ ws_conn* ws_conn_new():
 	c.max_message = ws_default_max_message
 	c.frag = string_new()
 	c.frag_opcode = 0
-	c.hdr = malloc(16)
+	c.hdr = cast(char*, malloc(16))
 	c.subprotocol = 0
 	c.http_status = 0
 	c.pings_received = 0
@@ -1133,7 +1133,7 @@ int ws_write_frame_rsv(ws_conn* c, int fin, int rsv, int opcode, char* data, int
 	string_builder* out = string_new_sized(len + 16)
 	char* key = 0
 	if (c.is_client != 0):
-		key = malloc(4)
+		key = cast(char*, malloc(4))
 		if (random_bytes(key, 4) == 0):
 			free(key)
 			string_free(out)
@@ -1219,7 +1219,7 @@ int ws_read_frame(ws_conn* c, ws_frame* f, int max_payload):
 	if ((c.is_client == 0) && (f.masked == 0)):
 		ws_fail(c, ws_close_protocol_error, ws_error_protocol)
 		return 0
-	char* payload = malloc(f.payload_len + 1)
+	char* payload = cast(char*, malloc(f.payload_len + 1))
 	r = ws_read_exact(c, payload, f.payload_len)
 	if (r != 1):
 		free(payload)
@@ -1279,7 +1279,7 @@ ws_message* ws_message_new(int opcode, char* data, int len):
 # (including a back-reference beyond the peer's agreed window). data is
 # always freed.
 char* ws_pmd_decompress(ws_conn* c, char* data, int len, int* out_len):
-	char* z = malloc(len + 4)
+	char* z = cast(char*, malloc(len + 4))
 	mem_copy(z, data, len)
 	z[len] = 0
 	z[len + 1] = 0

@@ -12,7 +12,7 @@ void ta_init(asn1* r, char* buf, int n):
 
 
 void test_short_form_header():
-	char* b = malloc(3)
+	char* b = cast(char*, malloc(3))
 	b[0] = 2      # INTEGER
 	b[1] = 1
 	b[2] = 5
@@ -31,7 +31,7 @@ void test_short_form_header():
 
 void test_long_form_minimal():
 	# 0x30 0x81 0x80 + 128 content bytes: minimal one-byte long form.
-	char* b = malloc(131)
+	char* b = cast(char*, malloc(131))
 	b[0] = 48
 	b[1] = 129    # 0x81
 	b[2] = 128    # length 128
@@ -50,7 +50,7 @@ void test_long_form_minimal():
 
 void test_long_form_non_minimal_rejected():
 	# 0x81 0x7f: long form used for a length below 128 -> reject.
-	char* b = malloc(130)
+	char* b = cast(char*, malloc(130))
 	b[0] = 48
 	b[1] = 129
 	b[2] = 127
@@ -65,7 +65,7 @@ void test_long_form_non_minimal_rejected():
 
 
 void test_indefinite_length_rejected():
-	char* b = malloc(4)
+	char* b = cast(char*, malloc(4))
 	b[0] = 48
 	b[1] = 128    # 0x80: indefinite
 	b[2] = 0
@@ -81,7 +81,7 @@ void test_indefinite_length_rejected():
 
 void test_truncated_content_rejected():
 	# Claims 5 content bytes, only 3 present.
-	char* b = malloc(5)
+	char* b = cast(char*, malloc(5))
 	b[0] = 4
 	b[1] = 5
 	b[2] = 1
@@ -102,7 +102,7 @@ void test_truncated_content_rejected():
 
 
 void test_multibyte_tag_rejected():
-	char* b = malloc(3)
+	char* b = cast(char*, malloc(3))
 	b[0] = 31     # 0x1f: low tag bits all set = multi-byte tag follows
 	b[1] = 1
 	b[2] = 0
@@ -117,7 +117,7 @@ void test_multibyte_tag_rejected():
 
 void test_oversized_length_rejected():
 	# 5 length bytes is beyond the 4-byte cap.
-	char* b = malloc(8)
+	char* b = cast(char*, malloc(8))
 	b[0] = 48
 	b[1] = 133    # 0x85
 	b[2] = 1
@@ -148,7 +148,7 @@ void test_oversized_length_rejected():
 
 void test_expect_and_skip():
 	# SEQUENCE { INTEGER 7, BOOLEAN true }
-	char* b = malloc(10)
+	char* b = cast(char*, malloc(10))
 	b[0] = 48
 	b[1] = 6
 	b[2] = 2
@@ -179,7 +179,7 @@ void test_expect_and_skip():
 
 
 void test_trailing_garbage_detected():
-	char* b = malloc(4)
+	char* b = cast(char*, malloc(4))
 	b[0] = 2
 	b[1] = 1
 	b[2] = 5
@@ -195,7 +195,7 @@ void test_trailing_garbage_detected():
 
 
 void test_integer_minimality():
-	char* b = malloc(8)
+	char* b = cast(char*, malloc(8))
 	# 02 02 00 01: redundant leading zero -> reject.
 	b[0] = 2
 	b[1] = 2
@@ -228,7 +228,7 @@ void test_integer_minimality():
 
 
 void test_small_int():
-	char* b = malloc(10)
+	char* b = cast(char*, malloc(10))
 	b[0] = 2
 	b[1] = 1
 	b[2] = 0
@@ -267,7 +267,7 @@ void test_small_int():
 
 
 void test_positive_integer():
-	char* b = malloc(8)
+	char* b = cast(char*, malloc(8))
 	# 00 80 strips to the single byte 0x80.
 	b[0] = 2
 	b[1] = 2
@@ -293,7 +293,7 @@ void test_positive_integer():
 
 
 void test_boolean_strictness():
-	char* b = malloc(4)
+	char* b = cast(char*, malloc(4))
 	b[0] = 1
 	b[1] = 1
 	b[2] = 1      # neither 0x00 nor 0xff
@@ -315,7 +315,7 @@ void test_boolean_strictness():
 
 
 void test_bitstring_bytes():
-	char* b = malloc(5)
+	char* b = cast(char*, malloc(5))
 	b[0] = 3
 	b[1] = 2
 	b[2] = 0      # zero unused bits
@@ -340,7 +340,7 @@ void test_bitstring_bytes():
 
 
 void test_bytes_equal():
-	char* b = malloc(4)
+	char* b = cast(char*, malloc(4))
 	b[0] = 85
 	b[1] = 29
 	b[2] = 17

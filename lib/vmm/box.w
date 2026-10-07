@@ -25,7 +25,7 @@ struct vm_box_options:
 
 
 vm_box_options* box_options_new():
-	vm_box_options* options = malloc(sizeof(vm_box_options))
+	vm_box_options* options = cast(vm_box_options*, malloc(sizeof(vm_box_options)))
 	mem_fill[char](cast(char*, options), 0, sizeof(vm_box_options))
 	options.snapshot_fd = -1
 	options.cpus = 2
@@ -390,8 +390,8 @@ process_result* box_session_exec(vm_box_session* session, char** args, char* cwd
 		if (ok):
 			free(result.stdout_text)
 			free(result.stderr_text)
-			result.stdout_text = malloc(out_length + 1)
-			result.stderr_text = malloc(err_length + 1)
+			result.stdout_text = cast(char*, malloc(out_length + 1))
+			result.stderr_text = cast(char*, malloc(err_length + 1))
 			result.stdout_text[out_length] = 0
 			result.stderr_text[err_length] = 0
 			ok = box_channel_io(session.fd, result.stdout_text, out_length, 0, 1, deadline)

@@ -35,8 +35,6 @@ behavior and the message text.
 | `assign-in-condition` | `=` as the whole condition of an `if`/`while`; `((x = f()))` and `(x = f()) != 0` stay quiet | no |
 | `self-assign` | `x = x` | no |
 | `duplicate-import` | a plain `import` of a module the same file already imported | no |
-| `call-int` | a call through an integer-typed value (`int f; f(3)`) instead of a function or a typed function pointer (`type cb = fn(int) -> int`, then `cb* f`) | no |
-| `void-pointer-conversion` | a `void*` (or `void**`, ...) stored, passed or returned as a typed pointer of the same depth without `cast()` (`int* p = malloc(n)`) | no |
 | `trailing-whitespace` | spaces or tabs at the end of a line (not inside a multi-line string) | yes |
 | `crlf` | CRLF line endings (reported once per file) | yes |
 | `blank-lines` | more than two consecutive blank lines | yes |
@@ -47,14 +45,10 @@ behavior and the message text.
 | `mixed-script` | an identifier mixing Latin, Greek and Cyrillic letters (`nаme` with a Cyrillic `а`) | no |
 | `confusable` | an identifier that differs from an earlier name in the same file only by Greek/Cyrillic letters that look Latin (`рath` vs `path`) | no |
 
-`call-int` and `void-pointer-conversion` (issue #532,
-`grammar/type_check.w`) are the two unsafe conversions from that issue
-that stay opt-in: both are the established idiom across the tree (int-held
-callbacks whose signature varies, as in `structures/w_list.w`'s
-`map`/`filter`/`reduce`; `T* p = malloc(n)`), so an always-on warning
-would fail the strict self-host. The other #532 checks are always-on
-warnings (see `docs/projects/type_system_p0.md`, "Unsafe conversion
-checks").
+`call-int` and `void-pointer-conversion` are now unconditional type
+errors (#532), not lint rules. Their bracketed names and JSON codes are
+preserved for diagnostic consumers. `--lint` is unnecessary, and
+`lint:allow` cannot suppress them. See [Unsafe conversion checks](type_system_p0.md#unsafe-conversion-checks).
 
 The three Unicode rules (issue #460) scan the raw text like the
 whitespace rules. The lookalike table in `compiler/lint.w`

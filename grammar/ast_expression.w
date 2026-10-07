@@ -391,7 +391,7 @@ int ast_expression_refill(int start):
 	int room = GETCHAR_BUF_CAPACITY - kept
 	if (room <= 0):
 		char* old = bytes
-		bytes = malloc(kept + GETCHAR_BUF_CAPACITY)
+		bytes = cast(char*, malloc(kept + GETCHAR_BUF_CAPACITY))
 		for i in range(kept): bytes[i] = old[index + i]
 		getchar_buf_addr[file] = cast(int, bytes)
 		free(old)
@@ -422,7 +422,7 @@ void ast_expression_retain_token():
 	# unusual pre-existing window rather than assume its allocation size.
 	if (length > GETCHAR_BUF_CAPACITY): return
 	char* old = cast(char*, getchar_buf_addr[file])
-	char* bytes = malloc(missing + length + GETCHAR_BUF_CAPACITY)
+	char* bytes = cast(char*, malloc(missing + length + GETCHAR_BUF_CAPACITY))
 	# A speculative declaration lookahead can seek back to the byte
 	# after nextc, leaving both the raw token and nextc outside the new
 	# window. The tokenizer still owns that one lookahead byte.
@@ -774,12 +774,12 @@ void ast_expression_replay_warning(expression_ast* tree, int id):
 		if (generic_name): free(generic_name)
 	else if (tree.high[id] == 9): check_untyped_callee(tree.left[id])
 	else if (tree.high[id] == 2):
-		diag_part(c"warning: function '")
+		diag_part(c"function '")
 		diag_part(table + tree.value[id])
 		diag_part(c"' expects ")
 		diag_part(itoa(tree.left[id]))
 		diag_part(c" arguments, got ")
-		warning(itoa(tree.right[id]))
+		type_error(itoa(tree.right[id]))
 	else if (tree.high[id] == 3):
 		char* message = c"warning: bitwise '&' on bool operands in a condition does not short-circuit; did you mean '&&'?"
 		char* spelling = c"&"
@@ -788,10 +788,12 @@ void ast_expression_replay_warning(expression_ast* tree, int id):
 			spelling = c"|"
 		# equality_op's struct-value comparison (#532)
 		if ((tree.left[id] == 0x94) || (tree.left[id] == 0x95)):
-			message = c"warning: '==' and '!=' on struct values compare their addresses, not their fields; compare the fields, or take '&' of both sides to compare addresses"
+			message = c"'==' and '!=' on struct values compare their addresses, not their fields; compare the fields, or take '&' of both sides to compare addresses"
 			spelling = c"=="
 			if (tree.left[id] == 0x95): spelling = c"!="
-		warn_bool_bitwise_at(message, tree.symbol[id], tree.right[id], tree.generic_arity[id], spelling)
+		if ((tree.left[id] == 0x94) || (tree.left[id] == 0x95)):
+			type_error_at(message, tree.symbol[id], tree.right[id], tree.generic_arity[id], spelling)
+		else: warn_bool_bitwise_at(message, tree.symbol[id], tree.right[id], tree.generic_arity[id], spelling)
 	else if (tree.high[id] == 4):
 		int saved_depth = expr_nesting_depth
 		int saved_group = lint_cond_paren_depth
@@ -837,7 +839,6 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 	int count = method
 	int previous = -1
 	while (peek(c")") == 0):
-		if ((variadic < 0) && (c_variadic < 0) && (arity >= 0) && (count >= arity)): return -1
 		if ((c_variadic >= 0) && (count >= extern_max_params)): return -1
 		int param = sym_param_type(sym, count)
 		if ((c_variadic >= 0) && (count >= c_variadic)): param = -1
@@ -899,7 +900,7 @@ int ast_expression_call(expression_ast* tree, int id, int depth):
 		count = count + 1
 
 	ast_expression_advance(tree)
-	if (defaulted == 0):
+	if ((arity >= 0) && (count != arity)):
 		int event = expression_ast_add(tree, ast_warning, arity, count)
 		if (event < 0): return -1
 		tree.high[event] = 2
@@ -935,11 +936,10 @@ int ast_expression_indirect_call(expression_ast* tree, int callee, int depth):
 	tree.result_type[id] = 3
 	if (result >= 0): tree.result_type[id] = type_value(result)
 	if (ast_expression_accept(tree, c"(") == 0): return -1
-	# postfix_expr's check_untyped_callee, an opt-in lint rule
-	if (lint_mode):
-		int event = expression_ast_add(tree, ast_warning, type, -1)
-		if (event < 0): return -1
-		tree.high[event] = 9
+	# Replay postfix_expr's callee check in every mode.
+	int event = expression_ast_add(tree, ast_warning, type, -1)
+	if (event < 0): return -1
+	tree.high[event] = 9
 	int count = 0
 	int previous = -1
 	while (peek(c")") == 0):
@@ -3561,7 +3561,7 @@ void ast_expression_replay_recorded(expression_ast* tree, int end):
 	# Entries are (token, value) pairs; a negative value is a pointer
 	# record, otherwise a node id. Insertion order is the visit order, so
 	# a stable sort by token gives the lexing visit's sequence.
-	int* entries = malloc((tree.count * 2 + tree.types_count + 1) * 2 * __word_size__)
+	int* entries = cast(int*, malloc((tree.count * 2 + tree.types_count + 1) * 2 * __word_size__))
 	int used = 0
 	for i in range(tree.types_count):
 		int k = expression_ast_token_at(tree, tree.pointer_offsets[i])

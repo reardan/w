@@ -15,7 +15,7 @@ int main():
 	# changed' maps edits of it back to this target.
 	int fd = open(c"tests/wbuild_directive_data.txt", 0, 0)
 	assert1(fd >= 0)
-	char* data = malloc(16)
+	char* data = cast(char*, malloc(16))
 	int n = read(fd, data, 15)
 	close(fd)
 	assert_equal(5, n)
@@ -23,7 +23,7 @@ int main():
 	assert_strings_equal(c"pong\n", data)
 	# stdin= pipes "ping\n"; echo the data file's word back so the
 	# expect_stdout= directive has something to assert.
-	char* line = malloc(16)
+	char* line = cast(char*, malloc(16))
 	int m = read(0, line, 15)
 	assert_equal(5, m)
 	line[m] = 0

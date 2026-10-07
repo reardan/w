@@ -82,7 +82,7 @@ void deps_hash_init(deps_hash* h, int sha):
 	h.state = cast(int*, malloc(8 * __word_size__))
 	char* h0 = sha256_h0_table()
 	for i in range(8): h.state[i] = sha256_be32(h0 + i * 4)
-	h.block = malloc(64)
+	h.block = cast(char*, malloc(64))
 	h.block_len = 0
 	h.total_len = 0
 
@@ -139,7 +139,7 @@ char* deps_hash_hex(deps_hash* h):
 		return short_text
 	# Pad the trailing partial block (0x80 terminator, zero pad, 64-bit
 	# big-endian bit length) and compress it.
-	char* tail = malloc(128)
+	char* tail = cast(char*, malloc(128))
 	int j = 0
 	while (j < 128):
 		tail[j] = 0
@@ -157,7 +157,7 @@ char* deps_hash_hex(deps_hash* h):
 	sha256_block(h.state, tail)
 	if (blocks == 2): sha256_block(h.state, tail + 64)
 	free(tail)
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	int i = 0
 	while (i < 8):
 		sha256_put_be32(digest + i * 4, h.state[i])
@@ -212,7 +212,7 @@ char* deps_file_hash(char* path):
 		deps_hash h
 		deps_hash_init(&h, deps_cache_sha)
 		int buffer_size = 65536
-		char* buffer = malloc(buffer_size)
+		char* buffer = cast(char*, malloc(buffer_size))
 		int n = read(fd, buffer, buffer_size)
 		while (n > 0):
 			deps_hash_bytes(&h, buffer, n)

@@ -57,7 +57,7 @@ json_value* diag_codes_record(char* text, int index):
 		int length = 0
 		while ((line[length] != 0) && (line[length] != 10)): length = length + 1
 		if (seen == index):
-			char* one = malloc(length + 1)
+			char* one = cast(char*, malloc(length + 1))
 			for i in range(length): one[i] = line[i]
 			one[length] = 0
 			json_value* row = json_parse(one)
@@ -236,7 +236,7 @@ void test_return_and_assignment_mismatch():
 void test_arity_codes():
 	char* path = diag_codes_write(c"int two(int a, int b):\n\treturn a + b\n\nint many(int a, int... rest):\n\treturn a\n\nint main():\n\ttwo(1)\n\tmany()\n\treturn 0\n")
 	for m in range(2):
-		char* out = diag_codes_check(path, diag_codes_mode(m, c"--ast-full-expressions"), 0)
+		char* out = diag_codes_check(path, diag_codes_mode(m, c"--ast-full-expressions"), 1)
 		assert_equal(2, diag_codes_count(out))
 		json_value* first = diag_codes_record(out, 0)
 		assert_strings_equal(c"W0005", jfield_string(first, c"code"))
@@ -257,7 +257,7 @@ void test_arity_codes():
 void test_unsafe_conversion_codes():
 	char* path = diag_codes_write(c"enum color:\n\tred\n\nstruct point:\n\tint x\n\nint falls_off(int x):\n\tif (x): return 1\n\nvoid none():\n\treturn 5\n\nint main():\n\tchar c = 300\n\tcolor k = 5\n\tpoint a\n\tpoint b\n\tint same = a == b\n\tswitch same:\n\t\tcase 1:\n\t\t\tpass\n\t\tcase 1:\n\t\t\tpass\n\treturn 0\n")
 	for m in range(2):
-		char* out = diag_codes_check(path, diag_codes_mode(m, c"--ast-required"), 0)
+		char* out = diag_codes_check(path, diag_codes_mode(m, c"--ast-required"), 1)
 		assert_equal(6, diag_codes_count(out))
 		json_value* row = diag_codes_record(out, 0)
 		diag_codes_expect_span(row, c"W0403", 7, 15, 7, 15)

@@ -8,7 +8,7 @@ int traversal_count
 
 
 void traversal_reset():
-	traversal_values = malloc(128)
+	traversal_values = cast(char*, malloc(128))
 	traversal_count = 0
 
 

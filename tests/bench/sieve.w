@@ -17,7 +17,7 @@ import tests.bench.bench_lib
 
 
 int sieve(int n):
-	char* composite = malloc(n + 1)
+	char* composite = cast(char*, malloc(n + 1))
 	int i = 0
 	while (i <= n):
 		composite[i] = 0

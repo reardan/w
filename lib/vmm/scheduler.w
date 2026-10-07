@@ -378,7 +378,7 @@ void vms_output_chunk(json_value* answer, json_value* result, char* key, int off
 	int count = bytes - offset
 	if (count < 0): count = 0
 	if (count > length): count = length
-	char* text = malloc(count * 2 + 1)
+	char* text = cast(char*, malloc(count * 2 + 1))
 	if (count > 0): mem_copy[char](text, value + offset * 2, count * 2)
 	text[count * 2] = 0
 	json_object_set(answer, key, json_string(text))

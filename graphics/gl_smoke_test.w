@@ -24,7 +24,7 @@ int smoke_failures
 
 # One RGBA pixel from the back buffer; y counts from the bottom.
 int read_pixel_channel(int x, int y, int channel):
-	char* pixel = malloc(4)
+	char* pixel = cast(char*, malloc(4))
 	glReadPixels(x, y, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel)
 	int value = pixel[channel] & 255
 	free(pixel)

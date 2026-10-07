@@ -227,7 +227,7 @@ smtp_client* smtp_client_from_fd(int fd, char* server_name):
 	c.server_name = 0
 	if (server_name != 0): c.server_name = strclone(server_name)
 	c.ehlo_domain = 0
-	c.rbuf = malloc(smtp_read_buf_cap)
+	c.rbuf = cast(char*, malloc(smtp_read_buf_cap))
 	c.rpos = 0
 	c.rlen = 0
 	c.error = 0
@@ -457,7 +457,7 @@ int smtp_send_line(smtp_client* c, char* line, int max_with_crlf):
 	if (smtp_valid_line(line, max_with_crlf) == 0):
 		return smtp_fail(c, smtp_error_invalid, c"smtp: command line contains CR/LF or is too long")
 	int n = strlen(line)
-	char* buf = malloc(n + 3)
+	char* buf = cast(char*, malloc(n + 3))
 	mem_copy(buf, line, n)
 	buf[n] = 13
 	buf[n + 1] = 10
@@ -720,7 +720,7 @@ int smtp_auth_plain(smtp_client* c, char* user, char* pass):
 	int ul = strlen(user)
 	int pl = strlen(pass)
 	int n = ul + pl + 2
-	char* raw = malloc(n + 1)
+	char* raw = cast(char*, malloc(n + 1))
 	raw[0] = 0
 	int i = 0
 	while (i < ul):
@@ -1156,7 +1156,7 @@ int smtp_random_counter = 0
 
 
 char* smtp_random_hex(int nbytes):
-	char* raw = malloc(nbytes)
+	char* raw = cast(char*, malloc(nbytes))
 	if (random_bytes(raw, nbytes) == 0):
 		smtp_random_counter = smtp_random_counter + 1
 		int seed = time_now() * 31 + time_monotonic_ms() + smtp_random_counter * 7919

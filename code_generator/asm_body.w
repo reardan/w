@@ -91,7 +91,7 @@ int asm_body_ident_char(int c):
 
 # Copy text[start, end) into a fresh NUL-terminated string.
 char* asm_body_slice(char* text, int start, int end):
-	char* out = malloc(end - start + 1)
+	char* out = cast(char*, malloc(end - start + 1))
 	int i = 0
 	while (start + i < end):
 		out[i] = text[start + i]

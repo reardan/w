@@ -311,7 +311,7 @@ void profile_map_write_int(int fd, int v):
 # Copy of name with whitespace removed, so operator overloads
 # ("operator+(vec3, vec3)") keep the map and profile whitespace-split.
 char* profile_map_name(char* name):
-	char* out = malloc(strlen(name) + 1)
+	char* out = cast(char*, malloc(strlen(name) + 1))
 	int i = 0
 	int o = 0
 	while (name[i] != 0):
@@ -332,7 +332,7 @@ void profile_map_write(char* map_path):
 		print_error(c"'\x0a")
 		exit(1)
 	int max_path_size = 4096
-	char* cwd = malloc(max_path_size)
+	char* cwd = cast(char*, malloc(max_path_size))
 	getcwd(cwd, max_path_size)
 	int cwd_len = strlen(cwd)
 	profile_map_write_cstr(fd, c"# wprofmap v1\x09")

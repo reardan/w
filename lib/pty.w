@@ -38,7 +38,7 @@ int pty_open(int* master_out, int* slave_out):
 		return master
 	# Both ioctls take a pointer to a 32-bit int; the word is pre-zeroed,
 	# so TIOCSPTLCK reads 0 (unlock).
-	char* word = malloc(8)
+	char* word = cast(char*, malloc(8))
 	save_word(word, 0)
 	# TIOCSPTLCK = _IOW('T', 0x31, int)
 	int err = sys_ioctl(master, 0x40045431, cast(int, word))

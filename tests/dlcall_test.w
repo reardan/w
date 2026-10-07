@@ -29,7 +29,7 @@ int main():
 	asserts(c"abs(INT_MIN+1) through the 32-bit result", my_abs(-2147483647) == 2147483647)
 
 	snprintf8_fn* my_snprintf = cast(snprintf8_fn*, dl_trampoline(dl_sym(libc, c"snprintf"), 8, 1))
-	char* buf = malloc(64)
+	char* buf = cast(char*, malloc(64))
 	int n = my_snprintf(buf, 64, c"%d %d %d %d %d", 1, 22, 333, 4444, -5)
 	asserts(c"snprintf length", n == 16)
 	asserts(c"snprintf text", strcmp(buf, c"1 22 333 4444 -5") == 0)

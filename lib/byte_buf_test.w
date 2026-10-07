@@ -192,7 +192,7 @@ void test_reader_copy_and_skip():
 	byte_reader r
 	byte_reader_init(&r, c"abcdef", 6)
 	assert_equal(1, byte_reader_skip(&r, 2))
-	char* dst = malloc(4)
+	char* dst = cast(char*, malloc(4))
 	assert_equal(1, byte_reader_copy(&r, dst, 4))
 	assert_bytes_equal(c"cdef", dst, 4)
 	assert_equal(0, byte_reader_copy(&r, dst, 1))

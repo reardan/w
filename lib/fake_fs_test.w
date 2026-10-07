@@ -130,7 +130,7 @@ void fs_test_workload(fake_fs* fs, int crash_seed):
 	file_ops* ops = fake_fs_ops(fs)
 	io_result r
 	assert_equal(IO_OK, file_ops_mkdir(ops, c"db", 493, &r))
-	char* block = malloc(300)
+	char* block = cast(char*, malloc(300))
 	for i in range(300): block[i] = 'a' + (i % 26)
 	for round in range(4):
 		int fd = -1
@@ -191,7 +191,7 @@ void test_short_and_interrupted_writes():
 	int fd = -1
 	assert_equal(IO_OK, file_ops_open(ops, c"f", FILE_OPS_READ_WRITE | FILE_OPS_CREATE, 420, &fd, &r))
 	fake_fs_set_faults(fs, (1 << FAKE_FS_OP_WRITE) | (1 << FAKE_FS_OP_READ), 400, 300, 0, 0, 0)
-	char* data = malloc(1000)
+	char* data = cast(char*, malloc(1000))
 	for i in range(1000): data[i] = i % 251
 	assert_equal(IO_OK, file_ops_write_all(ops, fd, data, 1000, &r))
 	assert_equal(1000, r.transferred)
@@ -199,7 +199,7 @@ void test_short_and_interrupted_writes():
 	assert1(fake_fs_file_equals(fs, c"f", data, 1000))
 	file_ops_close(ops, fd, &r)
 	assert_equal(IO_OK, file_ops_open(ops, c"f", FILE_OPS_READ, 0, &fd, &r))
-	char* back = malloc(1200)
+	char* back = cast(char*, malloc(1200))
 	assert_equal(IO_OK, file_ops_read_to_end(ops, fd, back, 1200, &r))
 	assert_equal(1000, r.transferred)
 	assert1(mem_eq[char](back, data, 1000))

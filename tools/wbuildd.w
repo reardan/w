@@ -198,7 +198,7 @@ char* wbd_join(char* dir, char* name):
 
 
 char* wbd_cwd():
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int n = getcwd(buf, 4096)
 	if (n < 0): buf[0] = 0
 	return buf
@@ -342,7 +342,7 @@ void wbd_begin_stop();
 # A statx-based identity of a file's current content: size, inode,
 # mtime and ctime (seconds and nanoseconds), or "-" when it is missing.
 char* wbd_file_sig(char* path):
-	char* buf = malloc(FILE_STATX_BUF_SIZE)
+	char* buf = cast(char*, malloc(FILE_STATX_BUF_SIZE))
 	int err = statx(path, 0, FILE_STATX_BASIC_STATS, buf)
 	if (err != 0):
 		free(buf)
@@ -757,7 +757,7 @@ void wbd_handle_event(inotify_event* ev):
 # before the answer is chosen.
 void wbd_drain_events():
 	if (wbd_inotify_fd < 0): return
-	char* buf = malloc(INOTIFY_BUF_SIZE)
+	char* buf = cast(char*, malloc(INOTIFY_BUF_SIZE))
 	inotify_event ev
 	int n = read(wbd_inotify_fd, buf, INOTIFY_BUF_SIZE)
 	while (n > 0):
@@ -1070,7 +1070,7 @@ process_result* wbd_job_take(wbd_job* job):
 void wbd_jobs_drive(list[wbd_job*] jobs, int timeout_ms):
 	for wbd_job* j in jobs:
 		if (j != 0): wbd_job_unwatch(j)
-	char* fds = malloc(jobs.length * 2 * 8 + 8)
+	char* fds = cast(char*, malloc(jobs.length * 2 * 8 + 8))
 	list[wbd_job*] slot_jobs = new list[wbd_job*]
 	list[int] slot_fds = new list[int]
 	int deadline = time_monotonic_ms() + timeout_ms
@@ -1677,7 +1677,7 @@ int wbd_conn_fill(wbd_conn* c):
 		int new_capacity = r.capacity * 2
 		r.buffer = realloc(r.buffer, r.capacity, new_capacity)
 		r.capacity = new_capacity
-	int* got = malloc(8 * __word_size__)
+	int* got = cast(int*, malloc(8 * __word_size__))
 	int count = 0
 	int n = unix_recv_fds(c.fd, r.buffer + r.length, r.capacity - r.length, got, 8, &count)
 	for i in range(count): c.fds.push(got[i])
@@ -1755,7 +1755,7 @@ void wbd_set_cloexec(int fd):
 
 
 void wbd_sigpipe_default():
-	int* act = malloc(5 * __word_size__)
+	int* act = cast(int*, malloc(5 * __word_size__))
 	act[0] = 0
 	act[1] = 0
 	act[2] = 0
@@ -1772,7 +1772,7 @@ int wbd_umask(int mask):
 
 char* wbd_read_fd_text(int fd):
 	string_builder* s = string_new()
-	char* buf = malloc(65536)
+	char* buf = cast(char*, malloc(65536))
 	int n = read(fd, buf, 65536)
 	while (n > 0):
 		string_append_bytes(s, buf, n)
@@ -1916,7 +1916,7 @@ void wbd_start_build(wbd_conn* c, json_value* message):
 	# steps exec must not hold it open past the child's exit.
 	wbd_set_cloexec(report_read)
 	wbd_set_cloexec(report_write)
-	int* fds = malloc(3 * __word_size__)
+	int* fds = cast(int*, malloc(3 * __word_size__))
 	fds[0] = c.fds[0]
 	fds[1] = c.fds[1]
 	fds[2] = c.fds[2]
@@ -1986,7 +1986,7 @@ void wbd_merge_report(wbd_build* b, json_value* report):
 
 void wbd_on_build_report(int fd, int revents, void* ctx):
 	wbd_build* b = cast(wbd_build*, ctx)
-	char* buf = malloc(65536)
+	char* buf = cast(char*, malloc(65536))
 	int n = read(fd, buf, 65536)
 	if (n > 0): string_append_bytes(b.report, buf, n)
 	free(buf)
@@ -2022,7 +2022,7 @@ void wbd_on_build_report(int fd, int revents, void* ctx):
 # EPIPE, not the daemon. struct sigaction is {handler, flags, restorer,
 # mask...}; SIG_IGN needs no restorer on either word size.
 void wbd_ignore_sigpipe():
-	int* act = malloc(5 * __word_size__)
+	int* act = cast(int*, malloc(5 * __word_size__))
 	act[0] = 1
 	act[1] = 0
 	act[2] = 0
@@ -2035,7 +2035,7 @@ void wbd_ignore_sigpipe():
 # The basename of our own executable when it lives in <root>/bin/, so
 # inotify can tell the daemon its binary was rebuilt.
 char* wbd_find_self_name():
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int n = file_readlink(c"/proc/self/exe", buf, 4095)
 	if (n <= 0): return 0
 	buf[n] = 0
@@ -2208,7 +2208,7 @@ int wbd_changed_has_paths(list[char*] args):
 
 char* wbd_read_stdin():
 	string_builder* s = string_new()
-	char* buf = malloc(65536)
+	char* buf = cast(char*, malloc(65536))
 	int n = read(0, buf, 65536)
 	while (n > 0):
 		string_append_bytes(s, buf, n)
@@ -2374,7 +2374,7 @@ int wbd_stop_main():
 
 
 char* wbd_self_path(char* argv0):
-	char* buf = malloc(4096)
+	char* buf = cast(char*, malloc(4096))
 	int n = file_readlink(c"/proc/self/exe", buf, 4095)
 	if (n <= 0):
 		return argv0
@@ -2545,7 +2545,7 @@ int wbd_build_main(list[char*] args):
 	string_append_int(frame, strlen(body))
 	string_append(frame, c"\r\n\r\n")
 	string_append(frame, body)
-	int* stdio = malloc(3 * __word_size__)
+	int* stdio = cast(int*, malloc(3 * __word_size__))
 	stdio[0] = 0
 	stdio[1] = 1
 	stdio[2] = 2

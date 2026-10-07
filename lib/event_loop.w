@@ -176,7 +176,7 @@ void event_loop_try_epoll(event_loop* loop):
 	if (epfd >= 0):
 		loop.epfd = epfd
 		loop.event_capacity = 256
-		loop.events = malloc(loop.event_capacity * epoll_event_bytes())
+		loop.events = cast(char*, malloc(loop.event_capacity * epoll_event_bytes()))
 
 
 event_loop* event_loop_new():
@@ -291,7 +291,7 @@ event_fd_slot* event_loop_find_slot(event_loop* loop, int fd):
 
 int event_loop_epoll_ctl(event_loop* loop, int op, int fd, int events):
 	int size = epoll_event_bytes()
-	char* ev = malloc(size)
+	char* ev = cast(char*, malloc(size))
 	mem_fill(ev, 0, size)
 	int* mask = cast(int*, ev)
 	mask[0] = events
@@ -723,7 +723,7 @@ int event_loop_run_once_epoll(event_loop* loop, int max_wait_ms):
 	if (ready == loop.event_capacity):
 		free(loop.events)
 		loop.event_capacity = loop.event_capacity * 2
-		loop.events = malloc(loop.event_capacity * size)
+		loop.events = cast(char*, malloc(loop.event_capacity * size))
 	return fired
 
 

@@ -81,7 +81,7 @@ int gl_compile_shader(int shader_type, char* source):
 	int32 status = 0
 	glGetShaderiv(shader, GL_COMPILE_STATUS, &status)
 	if (status == 0):
-		char* log = malloc(4096)
+		char* log = cast(char*, malloc(4096))
 		int32 log_length = 0
 		glGetShaderInfoLog(shader, 4095, &log_length, log)
 		log[log_length] = 0
@@ -107,7 +107,7 @@ int gl_link_program(int vertex_shader, int fragment_shader):
 	int32 status = 0
 	glGetProgramiv(program, GL_LINK_STATUS, &status)
 	if (status == 0):
-		char* log = malloc(4096)
+		char* log = cast(char*, malloc(4096))
 		int32 log_length = 0
 		glGetProgramInfoLog(program, 4095, &log_length, log)
 		log[log_length] = 0

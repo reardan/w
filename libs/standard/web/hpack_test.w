@@ -173,7 +173,7 @@ void test_hpack_huffman_code_table():
 
 
 void test_hpack_huffman_round_trip_all_bytes():
-	char* s = malloc(512)
+	char* s = cast(char*, malloc(512))
 	int i = 0
 	while (i < 512):
 		s[i] = (i * 7 + 3) & 255

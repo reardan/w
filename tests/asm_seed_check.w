@@ -38,14 +38,14 @@ int main():
 	assert_equal(5, asm_reg_number(asm_reg_lookup_x86(c"ebp")))
 	assert_equal(30, asm_reg_number(asm_reg_lookup_arm64(c"x30")))
 
-	char* bytes = malloc(4)
+	char* bytes = cast(char*, malloc(4))
 	assert_equal(1, asm_hex_decode(c"c3", bytes, 4))
 	assert_equal(0xc3, bytes[0] & 255)
 
 	assert_equal(0, cast(int, asm_binary_open(c"tests/asm_seed_check.w")))
 
 	# decode + format round-trip one instruction (mov eax,[esp+16]).
-	char* x86_code = malloc(4)
+	char* x86_code = cast(char*, malloc(4))
 	x86_code[0] = 0x8b
 	x86_code[1] = 0x44
 	x86_code[2] = 0x24
@@ -64,7 +64,7 @@ int main():
 
 	# arm64: decode + format one word (ldr x8,[x28,#24] = 880f40f9), then
 	# parse + encode it back to the same little-endian bytes.
-	char* a64 = malloc(4)
+	char* a64 = cast(char*, malloc(4))
 	a64[0] = 0x88
 	a64[1] = 0x0f
 	a64[2] = 0x40
@@ -82,7 +82,7 @@ int main():
 	# x64 (mode 8): decode a REX.W instruction and re-encode it, so the
 	# seed gate covers the new REX / 64-bit code paths too.
 	# 48 8b 44 24 10 = mov rax,[rsp+0x10]
-	char* code64 = malloc(5)
+	char* code64 = cast(char*, malloc(5))
 	code64[0] = 0x48
 	code64[1] = 0x8b
 	code64[2] = 0x44
@@ -100,7 +100,7 @@ int main():
 	# asm_text: the compiler's compile-time stub assembler, one line per
 	# encoder family plus a db raw-byte line, emitted at codepos.
 	code_size = 64
-	code = malloc(code_size)
+	code = cast(char*, malloc(code_size))
 	codepos = 0
 	x86_asm(c"ret")
 	x64_asm(c"mov rax,[rsp+0x10]")

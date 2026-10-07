@@ -422,7 +422,7 @@ whash* whash_new(int alg):
 	h.block_size = whash_block_size(alg)
 	h.state_words = whash_state_words(alg)
 	h.state = cast(int*, malloc(h.state_words * __word_size__))
-	h.buffer = malloc(h.block_size)
+	h.buffer = cast(char*, malloc(h.block_size))
 	h.buffered = 0
 	h.len_hi = 0
 	h.len_lo = 0
@@ -508,7 +508,7 @@ void whash_final(whash* h, char* out):
 	int bs = h.block_size
 	int length_field = 8
 	if (bs == 128): length_field = 16
-	char* tail = malloc(bs * 2)
+	char* tail = cast(char*, malloc(bs * 2))
 	mem_fill(tail, 0, bs * 2)
 	mem_copy(tail, h.buffer, h.buffered)
 	tail[h.buffered] = 128 /* 0x80 terminator */

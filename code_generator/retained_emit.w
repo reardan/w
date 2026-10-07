@@ -374,6 +374,9 @@ int retained_emit_source_position():
 # is not moved to a point: a phase that reads source (a diagnostic's
 # context line, a deferred-statement reparse) seeks absolutely, and the
 # parse's read position is restored afterwards if a phase moved it.
+type __emitter_callback = fn(retained_statement_walk*, int) -> void
+
+
 void retained_walk_drain(int id):
 	retained_statement_walk* walk = retained_walks[id]
 	if (walk.done >= walk.phase_count): return
@@ -391,7 +394,7 @@ void retained_walk_drain(int id):
 		walk.done = walk.done + 1
 		# The family's emitter, held as an address like analysis_run's
 		# operation (compiler/analysis.w).
-		int emitter = walk.emitter
+		__emitter_callback* emitter = cast(__emitter_callback*, walk.emitter)
 		emitter(walk, retained_walk_phase_codes[k])
 	if (resume_text != 0):
 		tokenizer_snapshot_restore(&resume, resume_text)
@@ -530,7 +533,7 @@ int retained_source_reparse_begin(char* path, int source, int offset, int line, 
 	retained_window_fds.push(fd)
 	retained_window_buffers.push(getchar_buf_addr[fd])
 	# Room for one more read, as ast_expression_refill expects of a window.
-	char* copy = malloc(length + GETCHAR_BUF_CAPACITY)
+	char* copy = cast(char*, malloc(length + GETCHAR_BUF_CAPACITY))
 	char* bytes = record.bytes
 	for i in range(length): copy[i] = bytes[i]
 	getchar_buf_addr[fd] = cast(int, copy)

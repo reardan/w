@@ -517,7 +517,7 @@ int pack_list_names(char* dir_path, int want_kind, list[char*] out):
 	if (fd < 0):
 		return fd
 	int buffer_size = 65536
-	char* buffer = malloc(buffer_size)
+	char* buffer = cast(char*, malloc(buffer_size))
 	int n = getdents(fd, buffer, buffer_size)
 	while (n > 0):
 		int off = 0
@@ -932,7 +932,7 @@ wresult[pack_stats*]* pack_store_loose(wcas* s, int prune):
 	string_free(index_lines)
 	string_free(body)
 
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	whash_oneshot(WHASH_SHA256, file_bytes.data, file_bytes.length, digest)
 	char* name_hex = cas_hex_encode(digest)
 	free(digest)
