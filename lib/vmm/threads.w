@@ -17,6 +17,7 @@ struct cell_thread:
 	int io_pending
 	int syscall_nr
 	int poll_deadline_ms
+	int hypercall_pending
 
 struct cell_threads:
 	cell_thread* slots
@@ -54,6 +55,7 @@ int cell_thread_cancel_io(vm_cell* cell, int fd):
 		if (t.io_pending && t.io_fd == fd):
 			if (kvm_get_regs(t.cpu, &registers[0]) < 0): return -5
 			save_int64(&registers[0], -9)
+			if (t.hypercall_pending): save_int64(t.cpu.run + 56, -9)
 			if (kvm_set_regs(t.cpu, &registers[0]) < 0): return -5
 			t.io_pending = 0
 			t.io_fd = -1
@@ -122,6 +124,7 @@ int cell_threads_choose(vm_cell* cell):
 		if (t.state == 2 && t.wake_ms != 0 && now >= t.wake_ms):
 			if (kvm_get_regs(t.cpu, cell.regs) < 0): return -1
 			save_int64(cell.regs, -110)
+			if (t.hypercall_pending): save_int64(t.cpu.run + 56, -110)
 			if (kvm_set_regs(t.cpu, cell.regs) < 0): return -1
 			t.state = 1
 	int first = state.current
@@ -199,12 +202,15 @@ int cell_thread_clone(vm_cell* cell, int flags, int stack, int parent_tid, int c
 	# The parent has a pending OUT completion. The new vCPU starts
 	# directly after OUT, then returns to userspace via its own SYSRET.
 	save_int64(&registers[128], t.gate + 2)
+	if (cell.syscall_abi): save_int64(&registers[128], load_int64(cell.regs + 128) + 3)
 	if (kvm_set_regs(t.cpu, &registers[0]) < 0): return -5
+	if (cell.debug_control != 0 && cell_cpu_debug_apply(cell, t.cpu, 0) == 0): return -5
 	t.tid = state.next_tid
 	state.next_tid = state.next_tid + 1
 	t.clear_tid = 0
 	t.io_pending = 0
 	t.poll_deadline_ms = 0
+	t.hypercall_pending = 0
 	if (flags & 2097152): t.clear_tid = child_tid
 	if (flags & 1048576): save_int32(cell.ram + parent_tid, t.tid)
 	if (flags & 16777216): save_int32(cell.ram + child_tid, t.tid)

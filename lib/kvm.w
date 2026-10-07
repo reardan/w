@@ -10,6 +10,7 @@ const int KVM_SREGS_SIZE = 312
 const int KVM_EXIT_IO = 2
 const int KVM_EXIT_HLT = 5
 const int KVM_EXIT_INTR = 10
+const int KVM_EXIT_XEN = 34
 
 struct kvm_machine:
 	int system_fd
@@ -54,6 +55,43 @@ int kvm_set_sregs(kvm_machine* vm, char* regs):
 
 int kvm_run(kvm_machine* vm):
 	return sys_ioctl(vm.cpu_fd, kvm_request(0, 0, 128), 0)
+
+
+# Xen's userspace hypercall interception accepts CPL3 and the Linux x64
+# argument registers. Ordinary KVM hypercalls reject CPL3 before userspace.
+# No Xen guest services/shared-info pages are exposed or configured here.
+int kvm_enable_vmcall(kvm_machine* vm):
+	int caps = sys_ioctl(vm.system_fd, kvm_request(0, 0, 3), 38)
+	if (caps < 0 || (caps & 2) == 0): return 0
+	char[56] config
+	mem_fill[char](&config[0], 0, 56)
+	save_int32(&config[0], 2)
+	save_int32(&config[4], 1073741824) # Xen hypercall MSR enables interception
+	return sys_ioctl(vm.vm_fd, kvm_request(1, 56, 122), cast(int, &config[0])) == 0
+
+
+# Use the native vendor instruction: KVM's wrong-vendor emulation may
+# reject CPL3 before Xen interception (notably VMCALL on AMD, Linux 6.8).
+int kvm_hypercall_vendor_opcode(int ebx, int ecx, int edx):
+	if (ebx == 0x756e6547 && ecx == 0x6c65746e && edx == 0x49656e69): return 193
+	if (ebx == 0x68747541 && ecx == 0x444d4163 && edx == 0x69746e65): return 217
+	if (ebx == 0x6f677948 && ecx == 0x656e6975 && edx == 0x6e65476e): return 217
+	return 0
+
+
+int kvm_hypercall_opcode(kvm_machine* vm):
+	char* cpuid = cast(char*, malloc(10248))
+	mem_fill[char](cpuid, 0, 10248)
+	save_int32(cpuid, 256)
+	int result = 0
+	if (sys_ioctl(vm.system_fd, kvm_request(3, 8, 5), cast(int, cpuid)) == 0):
+		int count = load_int32(cpuid)
+		if (count > 0 && count <= 256):
+			for i in range(count):
+				char* entry = cpuid + 8 + i * 40
+				if (load_int32(entry) == 0): result = kvm_hypercall_vendor_opcode(load_int32(entry + 16), load_int32(entry + 20), load_int32(entry + 24))
+	free(cpuid)
+	return result
 
 
 void kvm_memory_record(char* record, int slot, int guest, char* host, int size):

@@ -79,13 +79,18 @@ void elf_start_64():
 	entry_call_disp_pos = codepos - 4
 
 	/* exit cleanly if _main returns: mov edi,eax ; mov eax,231 (exit_group) ; syscall */
-	emit(9, c"\x89\xc7\xb8\xe7\x00\x00\x00\x0f\x05")
+	emit(7, c"\x89\xc7\xb8\xe7\x00\x00\x00")
+	x64_runtime_syscall()
 
 	define_asm_functions_x64()
 
 
 void elf_finish_64():
 	elf_finish_entry_patch()
+	if (x64_syscall_abi):
+		save_int32(code + elf_hypercall_note_pos + 20, x64_hypercall_count)
+		for i in range(x64_hypercall_count):
+			save_int64(code + elf_hypercall_note_pos + 24 + i * 8, code_offset + x64_hypercall_sites[i])
 	if (elf_pie): x64_emit_rebase_table()
 	elf_patch_load_segments(1)
 

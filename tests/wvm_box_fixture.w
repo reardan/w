@@ -56,6 +56,28 @@ int main(int argc, int argv):
 				filled = filled + count
 			close(fd)
 			return 35
+		if (strcmp(args[1], c"workspace-check") == 0):
+			char* base = file_read_text(c"/work/base.txt")
+			char* edit = file_read_text(c"/work/private.txt")
+			if (base == 0 || edit == 0): return 50
+			int same = strcmp(base, c"immutable base") == 0 && strcmp(edit, c"private edit") == 0
+			free(base)
+			free(edit)
+			if (same == 0): return 51
+			if (open(c"/wvm-import", 0, 0) >= 0): return 52
+			return 0
+		if (strcmp(args[1], c"workspace-change") == 0):
+			if (file_write_text(c"/work/private.txt", c"changed after snapshot") == 0): return 53
+			if (unlink(c"/work/base.txt") != 0): return 54
+			return 0
+		if (strcmp(args[1], c"workspace-changed-check") == 0):
+			char* edit = file_read_text(c"/work/private.txt")
+			if (edit == 0): return 55
+			int same = strcmp(edit, c"changed after snapshot") == 0
+			free(edit)
+			if (same == 0): return 56
+			if (open(c"/work/base.txt", 0, 0) != -2): return 57
+			return 0
 		if (strcmp(args[1], c"wait") == 0):
 			process_sleep_ms(5000)
 			return 0

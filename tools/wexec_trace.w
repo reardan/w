@@ -512,6 +512,9 @@ int wexec_trace_run(char* target_name, json_value* target, map[char*, int] decla
 	int undeclared = 0
 	for s in range(step_count):
 		json_value* step = json_array_get(steps, s)
+		if (json_object_get(step, c"sandbox") != 0):
+			wtr_error(c"sandbox steps cannot execute through host ptrace tracing")
+			return 1
 		json_value* cmd = json_object_get(step, c"cmd")
 		if ((cmd == 0) || (cmd.type != json_type_array()) || (json_array_length(cmd) < 1)):
 			wtr_error(cstr(f"target '{target_name}' step {s + 1}: \"cmd\" is missing or not a non-empty array"))
