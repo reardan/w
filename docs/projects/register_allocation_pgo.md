@@ -1825,3 +1825,162 @@ Not claimed / for the next unit:
 - The micro-benchmarks' layout sensitivity above is the strongest
   argument yet for aligning hot loop heads in the default build (a
   size budget per function, not only under `--profile-use`).
+
+### C1 — the x86 self-compile wall-time regression (2026-10-07)
+
+**Symptom.** With R1–R3 and P2 landed, the default x86 `bin/wv3`
+executed 11% fewer instructions than main's compiler on `w.w` (6.58 G
+vs 7.39 G Ir) yet took 15% more wall time (920 / 972 ms best / median
+of 10 interleaved runs against 798 / 855 ms, orchestrator's
+measurement on the 4-core container); the same binary with `--no-regs`
+was the fastest compiler of the three (745 / 803 ms). x64 showed no
+regression. R2's scan was known to cost ≈ 480 M Ir (≈ 7%), far less
+than the 125–175 ms gap.
+
+**Root cause, measured.** Two parts, and the smaller one in
+instructions was the larger one in time:
+
+1. *System calls.* R2's byte source saved, seeked, read and restored
+   the source fd around every scanned body: `strace -c` counted 8,262
+   `lseek` + 1,151 `read` per `w.w` compile against 0 + 695 with
+   `--no-regs`. On this box a 32-bit `int 0x80` system call costs
+   ≈ 7.5 µs where the x64 `syscall` costs ≈ 0.15 µs (a W program doing
+   8,000 `lseek`s: 62 ms as x86, 2.8 ms as x64; 8,000 seek+read pairs:
+   61 / 2.7 ms), so the scan's ≈ 8,700 extra calls were ≈ 65 ms of
+   wall on x86 and ≈ 1 ms on x64 — exactly the asymmetry in the
+   symptom. (The x86 compiler's own `read`s of the source, 695 of
+   them, are ≈ 5 ms by the same arithmetic; main pays them too.)
+2. *The lexer.* The rest of the gap was the scan's ≈ 100 Ir per source
+   byte: a function call per byte (`rs_next`), four range compares per
+   identifier byte, up to four `strcmp`s per identifier for the
+   keyword and hazard tests, and a mode-0 probe that lexed every token
+   of every body to answer "does a `while`/`for` open a line here".
+   Cachegrind put the scan's 480 M Ir at +3.3 M conditional-branch
+   mispredictions (+27%) and +0.5 M D1 misses over `--no-regs`.
+
+Hypothesis (b) of the brief — something microarchitectural in the
+promoted output — is ruled out by the `--no-regs` number: that is the
+promoted binary (R2 epilogues, pushes of `esi`/`edi`, R3 folds and all)
+with only the scan switched off, and it beats main by 7%.
+
+**What landed** (`compiler/regalloc_scan.w`, `compiler/regalloc_profile.w`,
+`lib/lib.w`, `code_generator/retained_emit.w`; no grammar or emitter
+change):
+
+- *One image per file.* The first scan of an fd binding reads the whole
+  file into a private image (`seek` to 0, `read` to the end, `seek`
+  back: four system calls per file, 637 `lseek` + 907 `read` per `w.w`
+  compile) and every scan and P2 hash pass is served from it; the
+  byte loops see one run per body with no boundary before the end of
+  the file. `lib/lib.w` gained `getchar_generation[fd]`, bumped by
+  `getchar_reset` and by `retained_emit`'s window swap, so a recycled
+  fd number is told apart from the stream the image was taken of; the
+  image is a snapshot of bytes the compiler already treats as immutable
+  (every reparse path reopens the path and seeks to a recorded offset).
+  getchar's window still serves what the image lacks (the retained
+  `/dev/null` fds), a pipe (not seekable, no image) aborts past the
+  window as before, and `rs_end_scan`/`rs_saved_offset` are gone — the
+  P2 hash pass no longer seeks either.
+- *Byte loops in locals through a class table.* `rs_take_ident`,
+  `rs_skip_blanks`, `rs_newline`, the comment and literal skips walk
+  `rs_p`/`rs_end` in locals (which the scan's own promotion puts in
+  registers — the dogfooding works) and test one bit of a 258-entry
+  class table per byte (`rs_class[-1]` is valid, so the end-of-input
+  test is gone from the loops); an identifier is measured, then copied
+  once. `rs_is_keyword`/`rs_is_hazard` became one probe of a 64-slot
+  open-addressed table on the hash `rs_take_ident` already accumulates
+  (one `strcmp` on a hash hit; `range`, which is not a keyword, lives
+  there with kind 0 — occupancy is the text pointer, which the first
+  cut got wrong and the x64 identity sweep caught through
+  `rs_lp_has_call`). The body loop reads the class once per token and
+  computes the loop-head offset R3 keys its facts by only for a
+  `while`/`for` at a line start.
+- *`rs_probe_lines`.* For a `:` body of unknown class the mode-0 probe
+  is now line-based on the image: skip the signature line's blanks and
+  comment, then per line count the leading tabs, apply the dedent rule,
+  test for `while`/`for` as the line's first identifier and skip the
+  rest of the line through the stop-byte class (newline, NUL, `#`,
+  quotes, `/`, braces). Anything the line view cannot follow — a token
+  on the signature line, a brace, `/*`, a `/` opening a line, a literal
+  running past its line, a NUL, bytes a window serves — answers 2 and
+  the full lexer decides as before, so the answer is never a guess and
+  the output cannot depend on which path decided (a probe that said
+  "loop" when there is none would run a full pass that promotes names
+  with 8+ plain uses). The image carries a NUL sentinel for it.
+  Brace bodies, hot (P2) bodies and the full pass itself are unchanged.
+
+**Decisions are unchanged.** The `w.w` image compiled by the old and
+the new compiler is byte-identical on x86 and x64 (`--stats`: 1,026
+bodies scanned, 1,530 / 2,214 locals promoted, 414 loops owning 309
+registers on x64), and so is every program of `tests/`, `tests/bench/`
+and `tools/` that compiles: 530 on x86, 568 on x64, 0 differing
+(`scratchpad/ident_sweep.py`, head compiler vs this one, same tree).
+
+**Measurements** (4-core cloud container, idle; `w.w` self-compile;
+"main" is `scratchpad/base/wv_x86` / `wv_x64`, the pre-plan compilers
+built by the seed; "before" the branch's fixpoint `bin/wv3` at R3;
+best / median of 10 interleaved runs):
+
+| `w.w` self-compile, best / median ms | main | before (R3 fixpoint) | after | after `--no-regs` | after, PGO-built (`bin/wv3_pgo`) |
+| --- | ---: | ---: | ---: | ---: | ---: |
+| x86 | 835 / 860 | 942 / 967 | **782 / 833** | 745 / 783 | 796 / 828 |
+| x64 | 851 / 870 | 791 / 843 | **777 / 824** | 711 / 757 | 747 / 791 |
+
+Earlier rounds on the same box gave the same ordering (x86 main
+803 / 850, before 907 / 988, after 766 / 826; x64 main 829 / 877, after
+770 / 807): the default x86 compiler is now 6% faster than main's
+instead of 13% slower, and the scan's whole remaining cost is the
+≈ 40 ms between the "after" and `--no-regs` columns on either width.
+
+| `bin/wv3` x86 on `w.w` | callgrind Ir | regalloc_scan.w self Ir | `lseek` / `read` |
+| --- | ---: | ---: | ---: |
+| before, default | 6.744 G | 410 M (+ ≈ 75 M in `strcmp`, list helpers) | 8,262 / 1,151 |
+| before, `--no-regs` | 6.259 G | 0 | 0 / 695 |
+| after, default | 6.617 G | 203 M | 637 / 907 |
+| after, `--profile-use=profiles/self.wprof` | | | 637 / 911 |
+
+(Ir totals move by ±1–3% between runs of the same binary through the
+hash tables' per-process seed — 76 M of one default-vs-`--no-regs`
+diff was `__w_hash_table_slot` probe chains at equal call counts — so
+the per-file self column is the one to read.) Of the 203 M: the full
+pass's token loop 40 M, `rs_probe_lines` 34 M (≈ 12 Ir per byte over
+the ≈ 2.9 MB of source), `rs_take_ident` 34 M, `rs_identifier` 16 M,
+the keyword probe 9 M, `rs_tables_clear` 8 M.
+
+Bench corpus (`bin/wbench --programs --compiler bin/wv3 --compiler64
+bin/wv3_64 -n 3 --compare tests/bench/baseline.txt`, kIr = callgrind
+Ir / 1000, best ms of 3): every program's instruction count is the
+same as R3's table to within the hash-seed noise (the programs with no
+map are bit-exact: `sum` 3,000,261 / 3,000,256, `sieve` 1,683,752 /
+1,664,278, `sha256_1m` 5,586,839 / 5,373,448, `regex_backtrack`
+6,600,525 / 6,682,833, `matmul_256` 5,068,989 / 5,065,037,
+`strcmp_sort` 3,605,686 / 3,609,403, `inflate_corpus` 5,357,386 /
+5,179,842, `siphash_keys` 4,574,735 / 4,851,498 for x86 / x64), as it
+must be when the emitted code is byte-identical; `wbench: no
+regression against tests/bench/baseline.txt` (every row 17–78% under
+the pre-plan baseline's Ir). The `self` rows of the same run: x86
+6.528 G Ir, 803 ms; x64 6.619 G, 817 ms (baseline 7.336 G / 908 ms and
+7.570 G / 805 ms).
+
+**Gates** (this tree, after `profile_refresh`): `verify`, `verify_x64`,
+`verify_arm64`, `verify_pgo` (`wv3_pgo == wv4_pgo == wv5_pgo`, x86 and
+x64), `profile_check` (100% on the three refreshed profiles), `tests`
+(916 targets, 0 failures), `tests_x64` (353 targets, 0 failures), and the identity
+sweeps above. `wtest changed` selects every umbrella for this diff
+(`lib/lib.w` is in every program's import closure).
+
+Not claimed / for the next unit:
+- The remaining scan cost is ≈ 203 M Ir ≈ 3% of the compile and ≈ 40 ms
+  of wall over `--no-regs`; the next levers are `rs_tables_clear`'s
+  256-bucket wipe after every full pass (clear the chain instead) and
+  the full pass's per-token global traffic, neither worth a unit alone.
+- The image is per fd binding, not per path: a path reopened for a
+  generic or defer reparse (4 times in a `w.w` compile) is read again.
+- `rs_probe_lines` answers 2 for a same-line body (`int f(): return x`),
+  so those still pay the full lexer for one line; a `{`-body or a
+  body with a block comment pays it whole. Both are rare in this tree.
+- The 32-bit system-call cost measured here (≈ 7.5 µs per `int 0x80`
+  on a 64-bit Firecracker kernel) is the box's property, not the
+  compiler's; `sysenter`/vDSO would not help a static seed binary, and
+  the only remaining per-compile calls (open/close/getcwd per import,
+  one read chunk per 8 KB of source, the output write) are main's too.
