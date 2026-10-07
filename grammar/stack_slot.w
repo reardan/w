@@ -109,6 +109,7 @@ int direct_call_taken_aux
 void generic_inst_emit_callee(int inst);   /* grammar/generic.w */
 void generic_inst_emit_call(int inst);     /* grammar/generic.w */
 void lazy_emit_call(int rt_address, int i);   /* grammar/lazy_runtime.w */
+int identifier_value(char* name);   /* grammar/identifier.w */
 
 
 void direct_call_record_aux(int s, int kind, int id, int aux):
@@ -206,6 +207,23 @@ void direct_callee_note(int kind, int id):
 int direct_callee_current():
 	if (direct_callee_kind == 0): return 0
 	return direct_callee_end == codepos
+
+
+# Serial (compiler/tokenizer.w token_serial) of the '(' opening the
+# innermost '( expression )' group primary_expr is parsing; 0 outside.
+# A bare callee wrapped in parentheses -- '(f)(x)' -- then stays a
+# direct call, as the AST emitter makes it (grouping leaves no node).
+int direct_callee_group
+
+
+# At primary_expr's end, with a note current: 1 when the note must stay
+# pending. A '(' consumes it as a call; a ')' closing a group this
+# primary filled (the group's '(' came right before its first token)
+# hands the note to the enclosing primary_expr, which decides again.
+int direct_callee_keep(int start_serial):
+	if (peek(c"(")): return 1
+	if (peek(c")") == 0): return 0
+	return direct_callee_group == start_serial - 1
 
 
 # Emit the noted callee's address into eax the way the primary would

@@ -119,6 +119,12 @@ T dc_twice[T](T x):
 	return x + x
 
 
+# instantiated after dc_twice$int exists, so its body's explicit call
+# meets an already-defined instantiation (a plain known function)
+T dc_relay[T](T x):
+	return dc_twice[T](x) + dc_twice[T](1)
+
+
 T dc_gpow[T](T x, int n):
 	if (n == 0): return 1
 	return x * dc_gpow[T](x, n - 1)
@@ -250,6 +256,7 @@ void test_generics():
 	assert_equal(8, dc_twice(4))
 	assert_equal(81, dc_gpow[int](3, 4))
 	assert_equal(2, dc_twice[int](dc_id(1)))
+	assert_equal(12, dc_relay[int](5))
 
 
 void test_asm_body():
@@ -262,7 +269,13 @@ void test_function_values():
 	assert_equal(7, dc_apply(dc_asm_add, 3, 4))
 	dc_binop* f = dc_mul
 	assert_equal(20, f(4, 5))
+	# a parenthesized known callee is still a direct call (the AST
+	# emitter drops the grouping, so the streaming side must agree)
 	assert_equal(20, (dc_mul)(4, 5))
+	assert_equal(30, ((dc_mul))(5, 6))
+	assert_equal(9, (dc_mul)(1, 2) + (dc_asm_add)(3, 4))
+	assert_equal(1, (dc_even)((dc_id)(4)))
+	assert_equal(7, (dc_apply)((dc_asm_add), 3, 4))
 	asserts(c"a function compared with itself", dc_mul == dc_mul)
 	asserts(c"distinct functions differ", cast(int, dc_mul) != cast(int, dc_asm_add))
 	int addr = cast(int, dc_fact)

@@ -518,6 +518,7 @@ void repl_state_restore(repl_state* st):
 	# inside (grammar/stack_slot.w)
 	direct_call_reset()
 	direct_callee_kind = 0
+	direct_callee_group = 0
 	table_pos = st.table_pos
 	stack_pos = st.stack_pos
 	loop_depth = st.loop_depth

@@ -80,6 +80,8 @@ int primary_expr():
 	int new_type
 	# Where a '(' group would start (compiler/lint.w, assign-in-condition)
 	int group_offset = token_start_offset
+	# Serial of this primary's first token (direct_callee_keep)
+	int start_serial = token_serial
 	# Float literal (must run before int_literal, which only checks the first
 	# character before decoding the whole token)
 	int literal_type = float_literal()
@@ -202,9 +204,12 @@ int primary_expr():
 		# for every operand-position recursion. No separate counter here:
 		# a second increment would double-count each paren level and halve
 		# the effective limit.
+		int outer_group = direct_callee_group
+		direct_callee_group = start_serial
 		type = -1
 		if (ast_expressions_mode): type = ast_expression_try(group_offset)
 		if (type == -1): type = expression()
+		direct_callee_group = outer_group
 		if (peek(c")") == 0): error(c"No closing parenthesis")
 	}
 	# char literal e.g. 'c', '\n', '\x41' or 'é' (value = Unicode codepoint);
@@ -224,5 +229,5 @@ int primary_expr():
 	# A noted direct callee (grammar/identifier.w, grammar/generic.w)
 	# that no call suffix will consume is an ordinary function value
 	if (direct_callee_current()):
-		if (peek(c"(") == 0): direct_callee_materialize()
+		if (direct_callee_keep(start_serial) == 0): direct_callee_materialize()
 	return type

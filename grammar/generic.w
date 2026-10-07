@@ -1532,9 +1532,11 @@ int generic_call_expr():
 	char* mangled = generic_mangle(generic_def_name(def), args, arg_count)
 	int t = sym_lookup(mangled)
 	if (t >= 0):
-		# already instantiated: an ordinary direct reference
+		# already instantiated (an earlier drain compiled its body): an
+		# ordinary function reference, noted for a direct call like any
+		# other known W function (grammar/identifier.w)
 		strcpy(last_identifier, mangled)
-		int type = sym_get_value(mangled)
+		int type = identifier_value(mangled)
 		free(mangled)
 		free(cast(char*, args))
 		return type
