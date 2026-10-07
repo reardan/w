@@ -2167,20 +2167,25 @@ window and the file image are both gone by the time a later call site
 needs them; (6) win64 is excluded rather than changed (the plan allowed
 either).
 
-Gates: `verify`, `verify_x64`, `verify_pgo`, `verify_arm64`
-(qemu-user-static), `regalloc_diff_test` (0 mismatches over 408
-compared builds), `ast_expression_test`, `ast_retained_emit_test`,
+Gates (on the merged tree, A4+A1+A6+A2+A7+A5): `verify`,
+`verify_x64`, `verify_pgo`, `verify_arm64` (qemu-user-static),
+`regalloc_diff_test` (0 mismatches over 412 compared builds, eight
+variants each), `ast_expression_test`, `ast_retained_emit_test`,
 `regalloc_test` + `_64`, `debug_test`, `debug_test_x64`, `attach_test`,
-`repl_test` + `_x64`, `direct_call_test` + `_64`, `inline_test` +
-`_64`, `crash_trace_test` + `_x64`, `wcore_test`, `crash_dump_test`,
-`crash_install_test`, `wdbg_web_test` (the crash fixtures test
+`direct_call_test` + `_64`, `inline_test` + `_64`, `loop_rotate_test`
++ `_64` + `_arm64`, `addressing_mode_test` + `_64`, `cond_branch_test`
++ `_64`, `crash_trace_test`, `wdbg_web_test` (the crash fixtures test
 frame-pointer unwinding through a chain of small leaf bodies, which
 an `--inline` build would flatten; the default build keeps them),
-`git diff --name-only 803a751 | bin/wtest
-changed` (25 targets, the `tests` umbrella deferred to the merge of the
-wave), `bench_compare`, `wbench_compare`, `profile_check` (95% of
+`profile_use_test` (a stale or header-only profile under
+`--profile-use` inlines nothing and scans as the plain build: both
+images byte-identical, which the first merged tree failed on each
+width until the hot-only rule and the scan's budget rule above), the
+full `tests` umbrella (929 targets, `QEMU_LD_PREFIX` set for the
+arm64 runs), `bench_compare`, `wbench_compare` (both clean against the
+baselines regenerated on the merged tree), `profile_check` (95% of
 `self.wprof` / `self_x64.wprof` entries still match, 100% of
-`bench.wprof`).
+`bench.wprof`; measured before the merge).
 
 ## 9. Reproducing
 
