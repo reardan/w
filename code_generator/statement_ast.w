@@ -429,12 +429,19 @@ void emit_guard_ast_walk_branch(control_ast_walk* control, statement_ast* guard)
 	emit_guard_ast_branch(guard)
 
 
+# C3.5: the optimizer pass's walk hooks (compiler/ast_opt.w, --ast-opt).
+void ast_opt_condition_start(control_ast_walk* control);
+int ast_opt_guard_phase(control_ast_walk* control, statement_ast* guard, int phase);
+
+
 # if/elif/else and while, with their conditions.
 void emit_guard_ast_walk(retained_statement_walk* walk, int phase):
 	if ((phase == ast_walk_expression) || (phase == ast_walk_expression_end)):
+		if (phase == ast_walk_expression): ast_opt_condition_start(control_ast_walk_of(walk))
 		emit_statement_ast_walk(walk, phase)
 		return
 	control_ast_walk* control = control_ast_walk_of(walk)
+	if (ast_opt_guard_phase(control, walk.statement, phase)): return
 	if (phase == ast_walk_if_begin): emit_if_ast_begin(control.statement)
 	else if (phase == ast_walk_guard_value): emit_guard_ast_value(walk.statement)
 	else if (phase == ast_walk_guard_branch): emit_guard_ast_walk_branch(control, walk.statement)

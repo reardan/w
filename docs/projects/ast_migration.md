@@ -2561,6 +2561,97 @@ unless `--ast-required` is given. The streaming grammar is still compiled
 in and is the `--streaming` oracle until P1.5. The tree schema is
 unchanged (**version 2**). **#489 remains open.**
 
+## Optimizer pass slot (C3.5)
+
+`--ast-opt` (off by default; an error next to `--streaming`) runs an
+optional tree pass, `compiler/ast_opt.w`, with two rewrites for #110:
+constant-folded if/elif/while conditions and the dead arms they leave.
+`docs/projects/optimization.md` §6 item 6 has the motivation and the
+numbers.
+
+- **Where it hooks.** Emission is deferred per statement or header
+  (S2.2, S2.5), not per body, so the slot is between a header's parse and
+  the walk phases that emit it. `ast_statement_guard`
+  (`grammar/ast_statement.w`) hands the condition's prepared tree to
+  `ast_opt_guard` before any of the arm's phases run; the pass folds it
+  when every node is a literal, `true`/`false`, `__word_size__`,
+  `__target_isa__` or an integer, comparison, logical or `?:` operator
+  over them, with every intermediate value within ±2^30 so the host and
+  target widths cannot disagree, and records the value on the arm (keyed
+  by the arm's `statement_ast` or `loop_ast`). `emit_guard_ast_walk`
+  (`code_generator/statement_ast.w`) asks `ast_opt_guard_phase` about
+  each phase of a folded arm. Both hooks are single tagged call sites.
+- **The rewrites.** A folded condition is still lowered, so its replayed
+  warnings, literal checks and lint state are the default compile's; its
+  bytes are then rolled back (`peep_rollback`) and the branch phase emits
+  nothing (true) or an unconditional jump (false). The arm the condition
+  kills is a dead region: from the false arm's jump to its then-end
+  phase, from a true arm's jump past the else arms to its if-end phase,
+  and from `while 0`'s jump to its while-end phase. It is parsed, walked
+  and emitted as usual, and when its closing phase runs its bytes are
+  taken back if they are contained (no address slot, call, rebase note
+  or data written in it, no goto label or pending goto in it, no PGO
+  loop-head alignment, stack depth and control-region stack unchanged).
+  Removing it restores the chain heads of enclosing regions (a dead
+  `break` threads its jump into the loop's exit chain) and truncates the
+  DWARF line rows, wdbg locals, lexical blocks and frame-teardown notes
+  it added. A region that is not contained stays, unreachable. The
+  address-slot test needed one counter, `be_addr_slot_writes`, in
+  `be_addr_slot_write` (`code_generator/arm64.w`).
+- **What it does not touch.** The retained forest is unchanged, so `w
+  tree --json` is too. The pass runs only on x86 and x64 Linux ELF, and
+  not under `--profile-generate`/`--coverage` (their counters record code
+  positions). `for` and `switch` headers are not folded. The default
+  compile is unchanged: `w.w` compiled by `origin/main`'s compiler and by
+  this one is byte-identical on both hosts, and `profile_check` matches
+  the same functions as on `main` (916 of 1008, 959 of 1053).
+
+`--stats` adds four counters under the flag. On `w.w`: 106 conditions
+folded on both targets; 28 dead regions removed and 19 kept on x86, 41
+and 6 on x64; 988 and 430 bytes removed from the regions alone (the
+folded tests and branches come on top).
+
+| | x86 | x64 |
+| --- | ---: | ---: |
+| `bin/wv3` text, default | 1,719,617 | 2,030,244 |
+| `bin/wv3` text, built with `--ast-opt` | 1,716,973 | 2,027,958 |
+| change | −2,644 (−0.15%) | −2,286 (−0.11%) |
+| file size, default / with `--ast-opt` | 2,769,564 / 2,765,468 | 3,249,464 / 3,245,368 |
+| compile of `w.w` by `bin/wv3`, default (wall) | 1.824 s | 1.884 s |
+| the same with `--ast-opt` | 1.796 s | 1.866 s |
+| compile of `w.w` by the `--ast-opt`-built compiler | 1.821 s | 1.882 s |
+| instructions, default | 11.46G | 11.47G |
+| instructions with `--ast-opt` | 11.43G | 11.49G |
+| instructions, `--ast-opt`-built compiler | 11.43G | 11.49G |
+
+Wall times are medians of nine interleaved runs on the shared 4-core box
+(load average 1.5 to 5, so ±2%); instructions are callgrind, one run
+each, ±3% from the per-process hash seed. Every difference in time is
+inside that noise: the pass neither costs nor saves measurable compile
+time on `w.w`, and the code it removes is not on the compiler's hot
+paths. File sizes move by one 4 KiB page.
+
+Verification: `tests/ast_opt_test.w` runs its constant-condition and
+dead-arm cases compiled without the pass, then with it on x86 and x64.
+They include arms the pass must keep (a forward call that threads a
+backpatch chain through the arm, a label reached by `goto` from outside)
+and one it must clean up after (a dead `break` before enough live code to
+overwrite the arm's bytes before the loop's exit chain is resolved):
+dropping the goto, address-slot-and-call, or chain-head step makes the
+test fail or the compiler crash. Its driver compiles the file and
+`tests/ast_control_walk_fixture.w` both ways and requires identical
+diagnostics, checks the counters, and checks the `--streaming` conflict.
+`ast_opt_verify` (in `tests`) is the self-host fixpoint with the flag on
+x86 and x64, plus a check that the `--ast-opt`-built compiler emits
+exactly `bin/wv3`/`bin/wv3_64` without it. `verify`, `verify_x64`,
+`verify_pgo`, `profile_check`, `tests` and `tests_x64` pass.
+
+What this does not claim: the pass is not on by default, and it is not
+yet a tree rewrite of whole bodies. Dead arms are still parsed, lowered
+and then discarded, so the pass cannot save compile time. Cross-statement passes (constant propagation, dead stores, CSE) need
+checkpoint B's whole-body trees. The tree schema is unchanged
+(**version 2**). **#489 remains open.**
+
 ## Compact retained storage and in-place lowering (P1.2b)
 
 S2.5 left the default (retained) compile of `w.w` at about 2.1x
