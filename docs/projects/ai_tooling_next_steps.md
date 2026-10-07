@@ -994,3 +994,22 @@ Friction met while adding `--profile-generate`, `bin/wprof` and
   wrong fold cannot hide behind an expectation computed by the same
   compiler. Values must still fit 32 bits for the x86 twin (two
   constants had to be shrunk).
+
+## Profile-driven register scan (2026-10-07, PGO plan P2 phase B)
+
+- **`check --lint`'s `void-pointer-conversion` points at the statement
+  after the offending one.** `char* p = malloc(4)` on line 5 followed
+  by `int j = 0` on line 6 is reported at `6:2` with line 6 quoted;
+  the same happens for an assignment (`buf = malloc(n)`). The rule
+  fires when the next token has already been consumed, so the
+  position should be captured before the initializer is parsed
+  (grammar/variable_declaration.w / the assignment path). Fixing the
+  seven cases in compiler/profile_use.w needed the lines before the
+  reported ones.
+- **A profile's accounting cost is not visible from `--stats`.**
+  Finding where `--profile-use`'s extra ~330 M instructions went took
+  callgrind plus the `nm -n` address mapping from B1's note above;
+  a `--stats` line with the number of bytes hashed (and the hash's
+  share of the span bytes) would have answered it directly. Added
+  nothing for it this time: the hashed byte count is the sum of the
+  matched functions' span sizes, which `w defhash` can report.

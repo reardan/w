@@ -12,9 +12,13 @@ merge), and compile it again with --profile-use --stats. Asserts:
     exactly one loop head was aligned: hot_sum's, and the image has the
     nop pad right before a 16-byte-aligned head (the bytes are read back
     from the file);
+  - the profile drives the register pre-scan (phase B): hot_sum is the
+    one hot body scanned, cold_step, never_called and main are skipped
+    as cold (--stats "regalloc: profile:" line);
   - a stale entry (hot_sum's hash edited in the profile) is "stale", not
-    matched: nothing is aligned and the image is byte-identical to the
-    plain build;
+    matched: nothing is aligned and, with promotion off on both sides
+    (--no-regs, so alignment is the profile's only effect), the image is
+    byte-identical to the plain build;
   - a header-only profile classifies nothing (no file is covered) and
     the image is byte-identical to the plain build;
   - a missing profile is an error.
@@ -71,8 +75,8 @@ char* pu_run(char* path, char** argv, char** env, int* status, char** stderr_out
 
 # bin/wv2 [x64] --quiet [flag...] fixture -o out; returns the compiler's
 # stderr (malloc'd) and asserts exit status `expected`.
-char* pu_compile(char* arch, char* flag1, char* flag2, char* out, int expected):
-	char** argv = strv_new(10)
+char* pu_compile(char* arch, char* flag1, char* flag2, char* flag3, char* out, int expected):
+	char** argv = strv_new(11)
 	int n = 0
 	strv_set(argv, n, c"bin/wv2")
 	n = n + 1
@@ -86,6 +90,9 @@ char* pu_compile(char* arch, char* flag1, char* flag2, char* out, int expected):
 		n = n + 1
 	if (flag2 != 0):
 		strv_set(argv, n, flag2)
+		n = n + 1
+	if (flag3 != 0):
+		strv_set(argv, n, flag3)
 		n = n + 1
 	strv_set(argv, n, pu_fixture())
 	n = n + 1
@@ -175,6 +182,14 @@ int pu_stat(char* err, char* field):
 	return atoi(line + f + strlen(field))
 
 
+# The integer after `field` anywhere in err (the regalloc stats lines
+# precede the Profile use summary).
+int pu_stat_any(char* err, char* field):
+	int f = index_of(err, field)
+	asserts(c"stats field missing", f >= 0)
+	return atoi(err + f + strlen(field))
+
+
 int pu_count(char* text, char* needle):
 	int count = 0
 	int at = index_of(text, needle)
@@ -221,6 +236,7 @@ void pu_write_filtered(char* profile, char* out, int make_stale):
 void pu_check_arch(char* arch):
 	char* stem = strjoin(c"bin/profile_use_fixture_", arch)
 	char* plain = strjoin(stem, c"_plain")
+	char* plain_noregs = strjoin(stem, c"_plain_noregs")
 	char* instrumented = strjoin(stem, c"_gen")
 	char* map = strjoin(instrumented, c".wprofmap")
 	char* raw = strjoin(instrumented, c".wprofraw")
@@ -232,12 +248,13 @@ void pu_check_arch(char* arch):
 	char* pgo_stale = strjoin(stem, c"_pgo_stale")
 	char* pgo_empty = strjoin(stem, c"_pgo_empty")
 
-	free(pu_compile(arch, 0, 0, plain, 0))
+	free(pu_compile(arch, 0, 0, 0, plain, 0))
+	free(pu_compile(arch, c"--no-regs", 0, 0, plain_noregs, 0))
 	char* expected = pu_run_fixture(plain, 0)
 	assert_strings_equal(c"1998005\n", expected)
 
 	# Take the profile.
-	free(pu_compile(arch, c"--profile-generate", 0, instrumented, 0))
+	free(pu_compile(arch, c"--profile-generate", 0, 0, instrumented, 0))
 	unlink(raw)
 	free(pu_run_fixture(instrumented, raw))
 	pu_merge(merged, map, raw)
@@ -245,12 +262,17 @@ void pu_check_arch(char* arch):
 
 	# Use it: same output, hot_sum hot, its loop aligned.
 	char* use_flag = strjoin(c"--profile-use=", profile)
-	char* err = pu_compile(arch, use_flag, c"--stats", pgo, 0)
+	char* err = pu_compile(arch, use_flag, c"--stats", 0, pgo, 0)
 	char* produced = pu_run_fixture(pgo, 0)
 	assert_strings_equal(expected, produced)
 	asserts(c"hot_sum is hot", pu_stat(err, c"hot ") >= 1)
 	asserts(c"cold_step, never_called and main are cold", pu_stat(err, c"cold ") >= 3)
 	assert_equal(0, pu_stat(err, c"stale "))
+	# The scan: the fixture's profile covers only its own file, so the
+	# runtime's bodies are unknown (static heuristic) and exactly the
+	# fixture's bodies are decided by the profile.
+	assert_equal(3, pu_stat_any(err, c"cold bodies skipped: "))
+	assert_equal(1, pu_stat_any(err, c"hot bodies scanned: "))
 	assert_equal(1, pu_stat(err, c"loops aligned "))
 	assert_equal(1, pu_count(err, c"Profile use: aligned loop head at file offset "))
 	asserts(c"the aligned loop is hot_sum's", index_of(err, c": hot_sum loop 1\n") >= 0)
@@ -277,13 +299,15 @@ void pu_check_arch(char* arch):
 	free(err)
 	free(produced)
 
-	# A stale entry is ignored: unknown class, nothing aligned, same bytes.
+	# A stale entry is ignored: unknown class, nothing aligned, same bytes
+	# (promotion off on both sides: the matched cold bodies would
+	# otherwise skip the scan the plain build runs).
 	pu_write_filtered(merged, stale, 1)
 	char* stale_flag = strjoin(c"--profile-use=", stale)
-	err = pu_compile(arch, stale_flag, c"--stats", pgo_stale, 0)
+	err = pu_compile(arch, stale_flag, c"--stats", c"--no-regs", pgo_stale, 0)
 	asserts(c"hot_sum is stale", pu_stat(err, c"stale ") >= 1)
 	assert_equal(0, pu_stat(err, c"loops aligned "))
-	asserts(c"stale profile: image identical", pu_same_file(plain, pgo_stale))
+	asserts(c"stale profile: image identical", pu_same_file(plain_noregs, pgo_stale))
 	produced = pu_run_fixture(pgo_stale, 0)
 	assert_strings_equal(expected, produced)
 	free(produced)
@@ -292,7 +316,7 @@ void pu_check_arch(char* arch):
 	# A header-only profile covers no file: everything unknown, same bytes.
 	asserts(c"cannot write empty profile", file_write_text(empty, c"# wprof v1 from: nothing\n"))
 	char* empty_flag = strjoin(c"--profile-use=", empty)
-	err = pu_compile(arch, empty_flag, c"--stats", pgo_empty, 0)
+	err = pu_compile(arch, empty_flag, c"--stats", 0, pgo_empty, 0)
 	assert_equal(0, pu_stat(err, c"hot "))
 	assert_equal(0, pu_stat(err, c"cold "))
 	assert_equal(0, pu_stat(err, c"stale "))
@@ -301,7 +325,7 @@ void pu_check_arch(char* arch):
 	free(err)
 
 	# A missing profile is an error, not a silent plain build.
-	err = pu_compile(arch, c"--profile-use=bin/profile_use_missing.wprof", 0, pgo_empty, 1)
+	err = pu_compile(arch, c"--profile-use=bin/profile_use_missing.wprof", 0, 0, pgo_empty, 1)
 	asserts(c"missing profile reported", index_of(err, c"--profile-use: cannot read profile") >= 0)
 	free(err)
 	free(expected)

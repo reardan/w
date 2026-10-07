@@ -429,6 +429,11 @@ void rs_next():
 	rs_c = -1
 
 
+# P2: the profile's class, span hash and loop weights read this byte
+# source (compiler/regalloc_profile.w; docs §3.4).
+import compiler.regalloc_profile
+
+
 # Leading whitespace of a new line: count its tabs (the tokenizer's
 # tab_level counts every tab before a token; leading ones are the block
 # structure).
@@ -535,6 +540,7 @@ int rs_is_hazard(char* s):
 
 
 int rs_weight():
+	if (rs_profile_weighted): return rs_profile_weight()   # P2: the profile's counts
 	int depth = rs_loop_count
 	if (depth > 8): depth = 8
 	return 1 << (3 * depth)
@@ -657,6 +663,7 @@ void rs_identifier():
 					rs_loop_count = rs_loop_count + 1
 					if (rs_mode == 1): rs_lp_open_loop()
 				elif (rs_mode == 1): rs_lp_overflow = 1
+				rs_profile_loop_note()   # P2: this head's weight from the profile
 				if (name[0] == 'f'): rs_for_header = 1
 		if (strcmp(name, c"in") == 0):
 			# the for header's 'in': 'range' or a container (hidden
@@ -900,6 +907,13 @@ int rs_assign_registers():
 void regalloc_function_scan(int symbol, int is_variadic):
 	rs_tables_ensure()
 	regalloc_function_end()
+	# P2 (compiler/regalloc_profile.w): the profile's class for this
+	# function, computed here even when nothing below runs (the loop
+	# alignment reads it). cold: the scan is skipped; hot: no probe,
+	# straight to the full pass; unknown: the heuristic below.
+	int profile_class = 0
+	if ((file >= 0) && (file < GETCHAR_MAX_FD)): profile_class = rs_profile_begin(symbol)
+	else: profile_use_function_prepare(symbol, sym_record_name(symbol))
 	if (regalloc_disabled): return;
 	if ((target_isa != 0) || (target_os != 0)): return;
 	if (is_variadic): return;
@@ -910,21 +924,27 @@ void regalloc_function_scan(int symbol, int is_variadic):
 	# The byte after the current token is the tokenizer's lookahead
 	# nextc (file offset byte_offset - 1); the scan starts from it and
 	# reads on from byte_offset, the fd's position.
+	if (profile_class == 1): return;   # P2: cold
 	int body_offset = byte_offset
 	rs_saved_offset = seek(file, 0, 1)
 	rs_begin(body_offset)
 	rs_c = nextc
 	rs_mode = 0
+	if (profile_class == 2): rs_mode = 1   # P2: hot
+	rs_profile_pass_begin()   # P2
 	rs_scan_body(brace_body)
 	int mask = 0
-	if (rs_has_loop && (rs_abort == 0)):
+	if ((rs_mode == 0) && rs_has_loop && (rs_abort == 0)):
 		rs_begin(body_offset)
 		rs_c = nextc
 		rs_mode = 1
+		rs_profile_pass_begin()   # P2
 		rs_scan_body(brace_body)
-		while (rs_lp_depth > 0): rs_lp_close_loop()
+	while (rs_lp_depth > 0): rs_lp_close_loop()
+	if ((rs_mode == 1) && (rs_abort == 0)):
 		regalloc_scanned_functions = regalloc_scanned_functions + 1
-		if (rs_abort == 0): mask = rs_assign_registers()
+		mask = rs_assign_registers()
+		if (mask == 0): rs_profile_fruitless = rs_profile_fruitless + 1   # P2: --stats
 	rs_end_scan()
 	# Loops own caller-saved registers (R3) only when no jump can leave a
 	# loop body other than through its exit region: no goto/labels, no
@@ -1245,3 +1265,4 @@ void regalloc_stats_dump():
 	print_int0(c" loops owning registers: ", regalloc_loops_owned)
 	print_int0(c" loop registers: ", regalloc_loop_regs)
 	print_error(c"\x0a")
+	rs_profile_stats_dump()   # P2
