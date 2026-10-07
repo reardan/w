@@ -263,6 +263,164 @@ void test_loops():
 	assert_equal(58, acc)
 
 
+# Scope ends that pop nothing emit no instruction (be_pop(0), unit R1 of
+# docs/projects/register_allocation_pgo.md): blocks without locals inside
+# loops, loops whose body is such a block, a comparison whose branch now
+# follows the block end directly (its flags must reach the jump), early
+# exits that pop nothing before their jump, and a function with no frame
+# words at all.
+int no_frame(int a, int b):
+	return a - b
+
+
+int count_matches(int* xs, int n, int key):
+	int found = 0
+	int i = 0
+	while (i < n):
+		if (xs[i] == key):
+			found = found + 1
+		i = i + 1
+	return found
+
+
+void test_empty_scopes():
+	int[6] xs
+	xs[0] = 3
+	xs[1] = 1
+	xs[2] = 3
+	xs[3] = 3
+	xs[4] = 2
+	xs[5] = 3
+	assert_equal(4, count_matches(xs, 6, 3))
+	assert_equal(0, count_matches(xs, 6, 9))
+	assert_equal(5, no_frame(8, 3))
+	int n = 0
+	int hits = 0
+	while (n < 20):
+		if (n % 3 == 0):
+			if (n % 2 == 0):
+				hits = hits + 1
+		n = n + 1
+	assert_equal(4, hits)
+	int acc = 0
+	for i in range(10):
+		if (i < 5):
+			if (i > 1): acc = acc + i
+		else:
+			acc = acc - 1
+	assert_equal(2 + 3 + 4 - 5, acc)
+	int k = 0
+	int odd = 0
+	while (k < 100):
+		k = k + 1
+		if (k == 7): break
+		if (k % 2):
+			odd = odd + 1
+			continue
+	assert_equal(7, k)
+	assert_equal(3, odd)
+
+
+# Address materializations at both displacement widths: &local close to
+# esp (disp8) and past 127 bytes (disp32), and a member offset folded into
+# the lea that moves the displacement across the disp8 boundary.
+struct fold_wide:
+	int8[100] low
+	int8[100] high
+	int8 tail
+
+
+void test_address_widths():
+	int far = 21
+	int[40] big
+	int near = 22
+	int* pf = &far
+	int* pn = &near
+	assert_equal(21, *pf)
+	assert_equal(22, *pn)
+	*pf = 31
+	*pn = 32
+	assert_equal(31, far)
+	assert_equal(32, near)
+	bump(&far)
+	bump(&near)
+	assert_equal(32, far)
+	assert_equal(33, near)
+	int i = 0
+	while (i < 40):
+		big[i] = i
+		i = i + 1
+	int* p0 = &big[0]
+	int* p39 = &big[39]
+	assert_equal(39 * __word_size__, cast(int, p39) - cast(int, p0))
+	assert_equal(39, *p39)
+	fold_wide w
+	w.low[0] = 1
+	w.low[99] = 2
+	w.high[0] = 3
+	w.high[27] = 4
+	w.high[28] = 5
+	w.high[99] = 6
+	w.tail = 7
+	assert_equal(1, w.low[0])
+	assert_equal(2, w.low[99])
+	assert_equal(3, w.high[0])
+	assert_equal(4, w.high[27])
+	assert_equal(5, w.high[28])
+	assert_equal(6, w.high[99])
+	assert_equal(7, w.tail)
+	assert_equal(1, cast(int, &w.high) - cast(int, &w.low) >= 100)
+	assert_equal(1, cast(int, &w.high[28]) - cast(int, &w.high[27]))
+	int8* q = &w.tail
+	*q = 8
+	assert_equal(8, w.tail)
+	assert_equal(14, w.high[99] + w.tail)
+	assert_equal(2, w.tail - w.high[99])
+
+
+# Constant materialization widths on x64: a non-negative constant below
+# 2^31 uses the zero-extending 32-bit mov, everything else the 64-bit
+# form. Every value must read back exactly, with the upper half of the
+# register zero for the short form and sign-filled for the long one.
+void test_constant_widths():
+	int zero = 0
+	int one = 1
+	int top = 0x7fffffff
+	int minus_one = -1
+	int bit31 = cast(int, 0xffffffff)
+	int min_int32 = 0 - 2147483647 - 1
+	int big = 1000000000
+	assert_equal(0, zero)
+	assert_equal(1, one)
+	assert_equal(2147483647, top)
+	assert_equal(-1, minus_one)
+	assert_equal(minus_one, bit31)
+	assert_equal(0 - top - 1, min_int32)
+	assert_equal(1000000000, big)
+	assert_equal(2147483646, top - one)
+	assert_equal(top, minus_one - min_int32)
+	assert_equal(999999999, big - 1)
+	assert_equal(0, top - 0x7fffffff)
+	assert_equal(0, bit31 - minus_one)
+	assert_equal(1, top > big)
+	assert_equal(1, min_int32 < minus_one)
+	assert_equal(1, zero > minus_one)
+	assert_equal(0, shr(top, 31))
+	assert_equal(1, shr(min_int32, 31))
+	assert_equal(1, shr(top, 30))
+	uint32 u = cast(int, 0x80000000)
+	assert_equal(1, shr(u, 31))
+	# shr is a 32-bit intrinsic; the word-wide >> shows the upper half.
+	if (__word_size__ == 8):
+		assert_equal(0, top >> 32)
+		assert_equal(0, big >> 32)
+		assert_equal(-1, minus_one >> 32)
+		assert_equal(-1, min_int32 >> 32)
+		assert_equal(0, u >> 32)
+		assert_equal(top, u - one)
+		assert_equal(top + 2, u + one)
+
+
 int main():
 	test_widths()
 	test_arguments(7, -3, -1, 65535)
@@ -273,5 +431,8 @@ int main():
 	test_merge_points(1)
 	test_merge_points(0)
 	test_loops()
+	test_empty_scopes()
+	test_address_widths()
+	test_constant_widths()
 	println2(c"local_load_fold_test OK")
 	return 0

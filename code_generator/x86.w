@@ -369,13 +369,21 @@ void promote_uint16_eax():
 		emit(3, c"\x0f\xb7\x00")
 
 
-/* mov eax, op(0x12, 0x345678) */
+/* mov eax, imm32 -- on x64 too for a value in [0, 2^31), where the 32-bit
+   write zero-extends into rax (5 bytes instead of the 10-byte movabs);
+   anything else (negative, or past 2^31 on a 64-bit host) keeps the
+   imm64 form. The test is host-independent: a 32-bit compiler cannot
+   hold a value that the 64-bit one would classify differently, and the
+   literals with bit 31 set are negative on both (CLAUDE.md). The
+   negative simm32 form (REX.W C7 /0) is deliberately not used: libs/asm
+   has no C7 /0 decoder and asm_x64_test checks the self-host image
+   decodes completely, for 96 instructions in the x64 compiler image. */
 void mov_eax_int(int v):
 	if (target_isa == 2): wasm_mov_eax_int(v)
 	elif (target_isa == 1): arm64_mov_rax_int64(v)
 	else:
 		int start = codepos
-		if (word_size == 8): mov_rax_int64(v)
+		if ((word_size == 8) && ((v >> 31) != 0)): mov_rax_int64(v)
 		else: mov_eax_int32(v)
 		# PTX also reaches here (it has no early return above) but does not
 		# advance codepos, so note it only for the x86 family. Every consumer
@@ -577,7 +585,10 @@ void mov_eax_ebx():
 		emit(2, c"\x89\xd8")
 
 
-/* lea eax,[esp+op(0x12, 0x345678)] */
+/* lea eax,[esp+disp], disp8 when it fits (the loads that fold this lea
+   already pick the short form through emit_eax_esp_disp). The note
+   records positions, not a length, so lea_load_fold and the add_eax_int32
+   re-emission are unaffected by the width. */
 void lea_eax_esp_plus(int v):
 	if (target_isa == 3): ptx_lea_ax_sp(v)
 	elif (target_isa == 2): wasm_lea_eax_esp_plus(v)
@@ -585,8 +596,8 @@ void lea_eax_esp_plus(int v):
 	else:
 		int start = codepos
 		emit_x64_opcode()
-		emit(3, c"\x8d\x84\x24")
-		emit_int(v)
+		emit(1, c"\x8d")
+		emit_eax_esp_disp(v)
 		lea_note_start = start
 		lea_note_end = codepos
 		lea_note_disp = v
@@ -667,8 +678,14 @@ void store_ebx_stack_var(int variable_offset):
 		emit_int(variable_offset)
 
 
-/* add esp, (n * word_size) */
+/* add esp, (n * word_size). Popping nothing emits nothing: the block-end
+   pop of a scope that held no locals was 'add esp,0' at 2.3% of the
+   instructions in bin/wv3 (docs/projects/register_allocation_pgo.md
+   §1.1, unit R1). The site may be a jump target, but an instruction that
+   emits nothing only moves the label; the sp-relative notes above stay
+   valid across it because the stack does not move. */
 void be_pop(int n):
+	if (n == 0): return
 	if (target_isa == 3): ptx_be_pop(n)
 	elif (target_isa == 2): wasm_be_pop(n)
 	elif (target_isa == 1): arm64_be_pop(n)
