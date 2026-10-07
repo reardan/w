@@ -500,14 +500,7 @@ void addr_form(int base, int index, int scale, int disp):
 # The loaders' consumer: replace the current address note with one load
 # of its operand into eax (w: REX.W; op the opcode bytes), noting the
 # load for the compound store and the byte compare.
-void addr_load_fold(int w, int oplen, char* op):
-	int base = addr_note_base
-	int index = addr_note_index
-	int scale = addr_note_scale
-	int disp = addr_note_disp
-	peep_rollback(addr_note_start)
-	int start = codepos
-	emit_mem_insn(w, oplen, op, 0, base, index, scale, disp)
+void memload_note(int start, int base, int index, int scale, int disp, int w, int oplen, char* op):
 	memload_start = start
 	memload_end = codepos
 	memload_base = base
@@ -517,6 +510,26 @@ void addr_load_fold(int w, int oplen, char* op):
 	memload_w = w
 	memload_oplen = oplen
 	memload_op = op
+
+void addr_load_fold(int w, int oplen, char* op):
+	int base = addr_note_base
+	int index = addr_note_index
+	int scale = addr_note_scale
+	int disp = addr_note_disp
+	peep_rollback(addr_note_start)
+	int start = codepos
+	emit_mem_insn(w, oplen, op, 0, base, index, scale, disp)
+	memload_note(start, base, index, scale, disp, w, oplen, op)
+
+# The plain '[eax]' load the loaders emit when no address note precedes
+# them (a field at offset 0, a dereference): the same bytes, noted as
+# the memload of [eax] (base 0: the address eax held before it) so a
+# compare against a constant still folds (shuttle_cmp).
+void plain_load(int w, int oplen, char* op):
+	int start = codepos
+	emit_mem_insn(w, oplen, op, 0, 0, -1, 1, 0)
+	if (addr_modes_disabled): return
+	memload_note(start, 0, -1, 1, 0, w, oplen, op)
 
 int memload_current():
 	if (memload_end == 0): return 0
@@ -964,8 +977,7 @@ void promote_eax():
 		if ((addr_note_end != 0) && (addr_note_end == codepos)):
 			addr_load_fold(word_size == 8, 1, c"\x8b")
 			return
-		emit_x64_opcode()
-		emit(2, c"\x8b\x00")
+		plain_load(word_size == 8, 1, c"\x8b")
 
 
 /* mov ebx,[ebx] */
@@ -991,8 +1003,7 @@ void promote_int8_eax():
 		if ((addr_note_end != 0) && (addr_note_end == codepos)):
 			addr_load_fold(word_size == 8, 2, c"\x0f\xbe")
 			return
-		emit_x64_opcode() /* needed ?? */
-		emit(3, c"\x0f\xbe\x00")
+		plain_load(word_size == 8, 2, c"\x0f\xbe")
 
 
 /* movsx eax, word [eax] */
@@ -1008,8 +1019,7 @@ void promote_int16_eax():
 		if ((addr_note_end != 0) && (addr_note_end == codepos)):
 			addr_load_fold(word_size == 8, 2, c"\x0f\xbf")
 			return
-		emit_x64_opcode() /* needed ?? */
-		emit(3, c"\x0f\xbf\x00")
+		plain_load(word_size == 8, 2, c"\x0f\xbf")
 
 
 /* x86: mov eax,[eax] ; x64: movsxd rax, dword [rax] (4-byte int32 load) */
@@ -1030,8 +1040,8 @@ void promote_int32_eax():
 			if (word_size == 8): addr_load_fold(1, 1, c"\x63")
 			else: addr_load_fold(0, 1, c"\x8b")
 			return
-		if (word_size == 8): emit(3, c"\x48\x63\x00")
-		else: emit(2, c"\x8b\x00")
+		if (word_size == 8): plain_load(1, 1, c"\x63")
+		else: plain_load(0, 1, c"\x8b")
 
 
 /* mov %eax,(%ebx) */
@@ -1215,7 +1225,7 @@ void promote_uint8_eax():
 		if ((addr_note_end != 0) && (addr_note_end == codepos)):
 			addr_load_fold(0, 2, c"\x0f\xb6")
 			return
-		emit(3, c"\x0f\xb6\x00")
+		plain_load(0, 2, c"\x0f\xb6")
 
 
 /* Zero-extending 32-bit load, for uint32: a plain 32-bit mov already
@@ -1235,7 +1245,7 @@ void promote_uint32_eax():
 		if ((addr_note_end != 0) && (addr_note_end == codepos)):
 			addr_load_fold(0, 1, c"\x8b")
 			return
-		emit(2, c"\x8b\x00")
+		plain_load(0, 1, c"\x8b")
 
 
 /* movzx eax, word [eax]: a zero-extending 16-bit load. The promote_int16
@@ -1251,7 +1261,7 @@ void promote_uint16_eax():
 		if ((addr_note_end != 0) && (addr_note_end == codepos)):
 			addr_load_fold(0, 2, c"\x0f\xb7")
 			return
-		emit(3, c"\x0f\xb7\x00")
+		plain_load(0, 2, c"\x0f\xb7")
 
 
 /* mov eax, imm32 -- on x64 too for a value in [0, 2^31), where the 32-bit
@@ -1755,6 +1765,7 @@ void be_blob_end(int p):
 
 int* ctrl_kind_stack    # 0 = forward merge (block), 1 = backward (loop)
 int* ctrl_val_stack     # block: patch-chain head; loop: start codepos
+int* ctrl_tag_stack     # 0 = plain; 1 / 2 = a condition chain's false / true region (grammar/cond_branch.w)
 int ctrl_stack_pos
 int ctrl_stack_capacity
 
@@ -1768,6 +1779,7 @@ void ctrl_stack_reserve():
 		ctrl_stack_capacity = 256
 		ctrl_kind_stack = cast(int*, malloc(ctrl_stack_capacity * __word_size__))
 		ctrl_val_stack = cast(int*, malloc(ctrl_stack_capacity * __word_size__))
+		ctrl_tag_stack = cast(int*, malloc(ctrl_stack_capacity * __word_size__))
 		return
 	if (ctrl_stack_pos >= ctrl_stack_capacity):
 		int old = ctrl_stack_capacity * __word_size__
@@ -1775,11 +1787,13 @@ void ctrl_stack_reserve():
 		int x = ctrl_stack_capacity * __word_size__
 		ctrl_kind_stack = cast(int*, realloc(ctrl_kind_stack, old, x))
 		ctrl_val_stack = cast(int*, realloc(ctrl_val_stack, old, x))
+		ctrl_tag_stack = cast(int*, realloc(ctrl_tag_stack, old, x))
 
 int be_ctrl_block():
 	ctrl_stack_reserve()
 	ctrl_kind_stack[ctrl_stack_pos] = 0
 	ctrl_val_stack[ctrl_stack_pos] = 0
+	ctrl_tag_stack[ctrl_stack_pos] = 0
 	ctrl_stack_pos = ctrl_stack_pos + 1
 	if (target_isa == 3):
 		# The region's value is a PTX label id; its "Ln:" line lands at
@@ -1788,11 +1802,20 @@ int be_ctrl_block():
 	if (target_isa == 2): wasm_ctrl_block()
 	return ctrl_stack_pos - 1
 
+# A block region tagged for a condition chain (grammar/cond_branch.w):
+# 1 collects the branches taken when the chain is false, 2 those taken
+# when it is true. The consumer merges or ends it by the tag.
+int be_ctrl_block_tagged(int tag):
+	int h = be_ctrl_block()
+	ctrl_tag_stack[h] = tag
+	return h
+
 int be_ctrl_loop():
 	be_notes_reset()
 	ctrl_stack_reserve()
 	ctrl_kind_stack[ctrl_stack_pos] = 1
 	ctrl_val_stack[ctrl_stack_pos] = codepos
+	ctrl_tag_stack[ctrl_stack_pos] = 0
 	ctrl_stack_pos = ctrl_stack_pos + 1
 	if (target_isa == 3):
 		# Backward region: the label is placed at the loop start, here.
@@ -1926,6 +1949,31 @@ void be_br_nonzero_discard(int h):
 		cmp_fuse_end = 0
 		return
 	be_br_nonzero(h)
+
+# Pop region h, which must be the top of the stack, and hand its
+# pending branch sites to the open region target below it instead of
+# resolving them here: a block target threads them into its own patch
+# chain (they land wherever it ends), a loop target resolves them to
+# its start now. This is how a condition chain's per-operand branches
+# reach the enclosing if/while's false target (grammar/cond_branch.w).
+# x86 family only: the chain lives in rel32 fields; the other ISAs never
+# request a merge.
+void be_ctrl_merge(int h, int target):
+	if ((target_isa != 0) || (h != ctrl_stack_pos - 1) || (target >= h) || (target < 0)):
+		error(c"internal error: be_ctrl_merge outside its protocol")
+	ctrl_stack_pos = h
+	int chain = ctrl_val_stack[h]
+	if (chain == 0): return
+	if (ctrl_kind_stack[target]):
+		while (chain):
+			int next_site = be_branch_link_get(chain)
+			be_branch_patch(chain, ctrl_val_stack[target])
+			chain = next_site
+		return
+	int tail = chain
+	while (be_branch_link_get(tail)): tail = be_branch_link_get(tail)
+	be_branch_link_set(tail, ctrl_val_stack[target])
+	ctrl_val_stack[target] = chain
 
 # Close the most recently opened region. Block regions resolve their patch
 # chain to the current position (their merge point); loop regions have

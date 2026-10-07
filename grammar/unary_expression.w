@@ -230,16 +230,24 @@ int unary_expression_operand():
 		promote(type) /* load the pointer; eax becomes the element's address */
 		if (type_get_pointer_level(type) > 0): return type_lookup_previous_pointer(type)
 		return 1 /* deref of a plain int: word-sized lvalue */
-	else if (op && accept(c"!!")):
+	else if (op && (peek(c"!!") || peek(c"!"))):
 		# The tokenizer scans "!!" as one token; it booleanizes like !(!x)
+		int toggle = peek(c"!")
+		# In condition context (grammar/cond_branch.w) the operand is
+		# in discard position too: the consumer branches on it in the
+		# inverted sense instead of this booleanizing it
+		int discard = cond_discard_match()
+		get_token()
+		if (discard):
+			cond_discard_arm()
+			int base = ctrl_stack_pos
+			type = unary_expression()
+			cond_negate_pending(base, type, toggle)
+			return type_value(bool_type)
 		type = unary_expression()
 		promote(type)
-		alu_test_set(0x95) /* setne */
-		return type_value(bool_type)
-	else if (op && accept(c"!")):
-		type = unary_expression()
-		promote(type)
-		alu_test_set(0x94) /* sete */
+		if (toggle): alu_test_set(0x94) /* sete */
+		else: alu_test_set(0x95) /* setne */
 		return type_value(bool_type)
 	else if (op && accept(c"~")):
 		type = unary_expression()

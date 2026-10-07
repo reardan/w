@@ -174,6 +174,13 @@ int expression():
 		# operator, not a postfix of this expression — a newline ends
 		# the statement here exactly like it does for expect_or_newline.
 		inc_op = 0
+	# A condition chain left pending (grammar/cond_branch.w) whose value
+	# the rest of this expression reads or assigns to: give it its value
+	# form first (an lvalue with no operators comes back untouched)
+	if (cond_pending):
+		int continues = inc_op || hash_index_pending || nd_index_pending || compound_assign_op() || peek(c"=")
+		if (stmt_context && (token_newline == 0) && peek(c",")): continues = 1
+		if (continues): cond_pending_materialize()
 	if (inc_op):
 		# Postfix '++'/'--' bind only at true statement position (the
 		# flag set by statement()'s expression fallback); anywhere else

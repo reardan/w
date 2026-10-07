@@ -1092,6 +1092,197 @@ changed definitions; not refreshed), `tools/bench_vs_c.sh -n 3` (W x64
 vs gcc -O2 Ir: matmul 3.43x, sieve 2.81x, sha256 4.01x, siphash 4.05x,
 inflate 5.26x, regex 2.63x, strcmp 6.32x, sum 2.50x).
 
+### A6 — branch-on-flags for `&&`, `||` and `!` in condition context (2026-10-07)
+
+**What landed.** `grammar/cond_branch.w` (new, imported by `grammar.w`
+right after `grammar/promote.w`) plus small hooks in
+`grammar/logical_and_expr.w`, `logical_or_expr.w`, `unary_expression.w`,
+`conditional_expr.w`, `primary_expr.w`, `expression.w`,
+`while_statement.w` (`statement_guard`, shared by `if`/`elif`/`while`),
+`ast_statement.w`, `ast_expression.w`, `promote.w`;
+`code_generator/x86.w` (`ctrl_tag_stack`, `be_ctrl_block_tagged`,
+`be_ctrl_merge`), `code_emitter.w` (the `cond_pending` globals and the
+`emit()`/`emit_i()` hook), `arm64.w` (`be_branch_link_set`, the twin of
+`be_branch_link_get`), the retained-tree twins `expression_ast.w`
+(`emit_cond_chain_ast`, `cond_ast_forwards`), `statement_ast.w`,
+`retained_emit.w`; `compiler/compiler.w` (`--no-cond-branch`,
+`--cond-branch`, `-O0` implies the former), `analysis_state.w` and
+`repl/core.w` (state reset); `tests/cond_branch_test.w` (new, both
+widths) and `tests/regalloc_diff_test.w` (the sweep now also builds
+every test program with `--no-cond-branch` and compares it against the
+`--no-regs --no-cond-branch` reference).
+
+Mechanism. §2.6 asked for condition-context `logical_and_expr` /
+`logical_or_expr` that branch per operand on the comparison's flags.
+The unit does that with a *positional* discard mark rather than the
+existing `condition_context` flag (which is too coarse: it stays set
+inside call arguments and ternary arms of a condition, where the value
+form is required). `statement_guard` arms `cond_discard_mark` with the
+offset of the condition's first token; `logical_or_expr`,
+`logical_and_expr`, `conditional_expr`, the `!`/`!!` operator and a `(`
+group entered *at that token* take the condition path and re-arm the
+mark for the operands that are again in discard position (the next
+`&&`/`||` operand, the token after `!` or `(`). Anything that starts
+later (a call argument, an index, a ternary arm, the right operand of
+`+`) can never match, so its value emission is untouched and no
+grammar path has to clear the mark. A chain in discard position opens a
+*tagged* control region per operator (tag 1: taken when the chain is
+false, tag 2: when true), branches each non-last operand to it through
+`be_br_zero_discard`/`be_br_nonzero_discard` (#427's `cmp_fuse`, so a
+comparison operand costs `cmp; jcc` and anything else `test; jcc`),
+and leaves the chain *pending*: its last operand unpromoted, its
+regions open above `cond_pending_base`, a `!` recorded in
+`cond_negate`. The consumer (`cond_branch_consume`, called where
+`statement_guard` and the ternary used to call `be_br_zero_discard`)
+promotes the last operand, branches on it in the chain's own polarity
+and resolves each region by its tag: `be_ctrl_merge` hands a region's
+patch chain to the consumer's target region when the two agree, else
+`be_ctrl_end` lands it where the consumer falls through. A value use of
+a pending chain (`(a || b) == c` inside a condition, `!x + 1`) gets
+`cond_pending_materialize`, which produces the 0/1 word the value form
+would have made (booleanise the last operand, pads loading 0/1 for the
+regions with branches); `promote()` runs it first thing and so does
+`emit()` itself, so an unlisted consumer cannot read the accumulator as
+the chain's value — the first byte it emits materialises it. The
+retained tree mirrors the shape node for node (`'a'`/`'o'` chain nodes
+open the same tagged regions; `'!'`, `'b'`, `'?'` and every postfix or
+binary node forward the discard flag to their first child, prefix
+operators, casts and assignments do not), which `ast_expression_verify`
+/ `ast_required_expression_verify` and the fixtures of
+`ast_expression_test` / `ast_retained_emit_test` assert byte for byte.
+
+Static effect on the hot loop §2.6 named, `__w_hash_table_slot`'s
+`while ((table.states[i] != 0) && (probes < table.capacity))`
+(`structures/hash_table.w:353`, x64, `objdump -d -Mintel`; the
+function goes from 131 to 122 instructions, its header from 23 to 14):
+
+```
+before                                   after
+mov    rax,QWORD PTR [rsp+0x58]          mov    rax,QWORD PTR [rsp+0x58]
+add    rax,0x30                          add    rax,0x30
+mov    rax,QWORD PTR [rax]               mov    rax,QWORD PTR [rax]
+add    rax,r12                           add    rax,r12
+movsx  rax,BYTE PTR [rax]                movsx  rax,BYTE PTR [rax]
+cmp    rax,0x0                           cmp    rax,0x0
+setne  al                                je     exit
+movzx  eax,al                            mov    rax,r13
+test   rax,rax                           push   rax
+je     join                              mov    rax,QWORD PTR [rsp+0x60]
+mov    rax,r13                           mov    rax,QWORD PTR [rax]
+push   rax                               pop    rbx
+mov    rax,QWORD PTR [rsp+0x60]          cmp    rbx,rax
+mov    rax,QWORD PTR [rax]               jge    exit
+pop    rbx
+cmp    rbx,rax
+setl   al
+movzx  eax,al
+join:
+test   rax,rax
+setne  al
+movzx  eax,al
+test   rax,rax
+je     exit
+```
+
+Other hot functions, x64 instruction counts: `rx_here` 400 → 355,
+`regex_match_length` 115 → 106, `__w_list_compare_values` 83 → 74,
+`__w_list_merge_sort` 272 → 257. Over the whole `--strict` self-image:
+`setCC al` sites 7,672 → 1,184 (x64) and 7,660 → 1,180 (x86),
+`test rax,rax` 9,601 → 3,148, instructions 581,463 → 564,411 (−2.9%)
+and 584,909 → 567,713 (−2.9%), bytes 3,130,472 → 3,073,200 and
+2,744,884 → 2,695,768 (−1.8%).
+
+Measurements (`./wbuild bench`, callgrind Ir deterministic, wall time
+best of 3 on the shared 4-core container with two other agents'
+builds running — the ms columns are noise-level evidence only; before
+= `main` at 1335f06, after = this unit):
+
+| program | x64 Ir, G | x64 ms | x86 Ir, G | x86 ms |
+| --- | --- | --- | --- | --- |
+| sum | 3.000 → 3.000 (0.0%) | 191 → 176 | 3.000 → 3.000 (0.0%) | 239 → 213 |
+| sieve | 1.664 → 1.664 (0.0%) | 349 → 293 | 1.684 → 1.684 (0.0%) | 318 → 309 |
+| sha256_1m | 5.373 → 5.373 (0.0%) | 332 → 335 | 5.587 → 5.587 (0.0%) | 394 → 375 |
+| siphash_keys | 4.849 → 4.751 (−2.0%) | 869 → 789 | 4.576 → 4.478 (−2.1%) | 684 → 683 |
+| inflate_corpus | 5.180 → 4.915 (−5.1%) | 368 → 358 | 5.357 → 5.092 (−4.9%) | 392 → 343 |
+| regex_backtrack | 6.683 → 5.030 (−24.7%) | 455 → 318 | 6.601 → 4.947 (−25.0%) | 425 → 320 |
+| matmul_256 | 5.065 → 5.065 (0.0%) | 368 → 363 | 5.069 → 5.069 (0.0%) | 333 → 325 |
+| strcmp_sort | 3.609 → 3.252 (−9.9%) | 521 → 441 | 3.606 → 3.253 (−9.8%) | 441 → 451 |
+| self | 6.501 → 6.301 (−3.1%) | 792 → 739 | 8.021 → 8.125 (+1.3%) | 938 → 991 |
+
+The `self` rows measure the compiler compiling `w.w`: the x64 row is
+`bin/wv2_64` (built by the new `bin/wv2`, so it carries the
+optimisation) and shows the whole-program effect on a branchy program;
+the x86 row is `bin/wv2` itself, built by the pinned seed, so its code
+is unchanged and the row can only show the cost of the new grammar
+work. That cost is below the row's noise: the compiler's symbol tables
+hash under a per-process random seed, so its Ir moves by about 1%
+between identical runs (7.919 G, 7.949 G and 8.125 G for three runs of
+the same `bin/wv2` on the same input). An A/B in one checkout on the
+same input, base compiler against new, gives 7.993 G → 7.949 G, and
+`bin/wbench`'s exact counters (`sym_lookup calls`, records visited)
+are identical for the two compilers.
+
+Where the Ir went (callgrind per function, x64; the per-program
+`.callgrind` files are what `./wbuild bench` writes): in
+`regex_backtrack` the bounds walk `while ((i < start) && (text[i] !=
+0)): i = i + 1` of `regex_match_length` (`lib/regex.w:295`) halves,
+1.977 G → 0.989 G, because the loop body is one increment and the
+chain's two `setCC/movzx/test` triples plus the final booleanise were
+most of the iteration; `rx_here` goes 2.809 G → 2.350 G. In
+`strcmp_sort` the three merge-sort helpers lose 13-21% each
+(`__w_list_compare_values` 0.789 G → 0.620 G). In `inflate_corpus`
+`inf_get_bit` and `wh_decode` are unchanged to the instruction (their
+conditions are bare comparisons #427 already fused) and the gain is
+`__w_size_add`'s `if ((a < 0) || (b < 0))` on every pushed byte,
+0.617 G → 0.444 G, plus the `(c.max_output > 0) && (...)` checks in
+the output path. `sum`, `sieve`, `sha256_1m` and `matmul_256` have no
+chain in a hot loop and are unchanged.
+
+Against §5.1's estimate (regex −8%, hash table −10%, strcmp −10%) the
+unit delivers −24.7%, −2.0% and −9.9% on x64, and −5.1% on
+`inflate_corpus`, which the estimate did not list. The hash-table
+shortfall is in what §2.6 counted: `__w_hash_table_slot` is 6.5% of
+`siphash_keys` and its header lost 9 of 23 instructions, but
+`__w_hash_sip` (39%) has no chain at all, and the `push`/`pop` operand
+shape around each `cmp` (G3) stays.
+
+`tools/bench_vs_c.sh -n 3` after the unit (gcc 13.3 `-O2` / clang
+`-O2`, callgrind Ir, G): `regex_backtrack` W x64 5.03 vs gcc 2.54
+(2.0x, was 2.6x), `strcmp_sort` 3.25 vs 0.57 (5.7x, was 6.3x),
+`inflate_corpus` 4.92 vs 0.99 (5.0x, was 5.3x), `siphash_keys` 4.75
+vs 1.18 (4.0x, was 4.1x); the other four ratios are unchanged. Wall
+time, best of 3 on the loaded box: `regex_backtrack` 310 ms (gcc 151),
+`strcmp_sort` 452 ms (gcc 198).
+
+What the unit does not claim. x86/x64 only (win64 shares the emitter
+and is covered; arm64 and wasm never arm the mark, so their output is
+byte-identical by construction — `verify_arm64` passes, `verify_win`
+needs wine, which this container lacks, and `verify_wasm` is unaffected
+because `cond_branch_on()` is false for `target_isa != 0`). Chains in
+value context (`bool t = a && b`, call arguments, the arms of `?:`) keep
+the existing emission; so do `for` headers, which have no user
+condition. A comparison operand still goes through the `push`/`pop`
+operand shape (G3) and a non-comparison operand costs `test; jcc`. No
+loop rotation (A7).
+
+Deviations from the plan, with reasons. (1) The condition path is
+selected by a positional mark, not by `condition_context`, because that
+flag covers the nested value expressions too (see above). (2) `!` and
+`!!` are handled as part of the unit rather than left to a later one:
+without them `!(a && b)` and `!(k in m)` would have materialised the
+inner chain and lost the fusion, and the negation is one tag flip on the
+pending regions. (3) The plan's fail-closed rule is met by *lazily
+materialising* in `emit()` rather than erroring: an emission while a
+chain is pending is always a value use, and the materialised word is
+exactly the pre-unit emission, so the closed design is a correct
+lowering rather than a compile error; the only `internal error`s are
+`be_ctrl_merge` outside its protocol and an untagged region inside a
+pending chain. (4) `-O0` now also disables this unit (as it does
+register promotion), so `-O0` output is the pre-unit form everywhere.
+(5) Two shapes the first commit got wrong were found by the AST
+fixtures, not by the unit's own test, and are now pinned in it: a
+parenthesised parked element read as the whole operand (`(m[k]) != 13`
+loaded the value twice) and `(!!x) == 1` (the booleanise was dropped).
 ### A2 — addressing modes, G2 (2026-10-07)
 
 **What landed.** `code_generator/x86.w` gains an *address note*
@@ -1190,6 +1381,28 @@ before any note is set; `verify_arm64` passes). win64 shares the x86-64
 emitter and *does* receive the folds (its image changed; `tests_win64`
 cannot run here — no `wine` — but the win64 images compile and
 `win64_header_test` passes).
+
+**Merged with A6** (the lane merge on top of 121d23b). A6's condition
+chains consume a comparison through `be_br_zero_discard`'s `cmp_fuse`
+note, which the folded `cmp [mem],imm` sets exactly as `cmp rax,imm`
+did, so a chain operand that is a folded load compares and branches in
+two instructions (`cmp byte [rsi+r12*1],0x78; jne`). The flag-clobbering
+folds (`xor eax,eax`, the `mov R,imm` and negated-constant forms) only
+ever run where a constant is materialised — a `?:` arm, a pad of
+`cond_pending_materialize`, an assignment inside a chain — and every
+such site is followed by its own `test`/`cmp` before the next branch;
+nothing emits between a comparison and the branch that fuses with it,
+since the fusion itself requires `cmp_fuse_end == codepos`.
+`tests/addressing_mode_test.w` `test_cond_chains` pins the mix (folded
+byte and word compares in `&&`/`||`/`!`/`!!` chains, a `?:` with
+constant arms as an operand, `(z = 0) == 0` inside a chain, a chain in
+value context). While merging, the plain `[eax]` load the loaders emit
+when no address note precedes them (a field at offset 0 such as
+`c.status`, a dereference) was noted as a memload too (`plain_load`),
+so `c.status != 0` is `cmp qword [rax+0x30],0` — the §2.2 example —
+rather than a load and a register compare; `regalloc_diff_test`
+sweeps `--no-addr-modes` as bit 8 of A6's opt-out mask, with its own
+reference compiler and inside `opt_out_all`.
 
 **The hot loop.** `matmul_256`'s inner loop on x64, 24 instructions
 after A1 and 20 after A2 (`a` is `rdi`, `b` `r8`, `i` `r15`, `k` `r12`,

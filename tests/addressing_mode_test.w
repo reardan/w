@@ -638,6 +638,63 @@ void test_compares():
 	assert_equal(3008, constants(4))
 
 
+# --- condition chains (A6, grammar/cond_branch.w) over folded compares ---
+# Every operand here is a load the unit folds into 'cmp [mem],imm' (the
+# chain's branch fuses with it), mixed with constants, '?:' arms and
+# assignments that materialize a zero ('xor eax,eax' clobbers the
+# flags): the chain must never read a comparison's flags across one.
+int chain_hits(char* s, uint8* u, cursor* c, int n):
+	int hits = 0
+	int i = 0
+	while (i < n):
+		int z = 0
+		if (s[i] == 'x' && s[i + 1] != 0): hits = hits + 1
+		if (s[i] == 'x' && (u[i] >= 200 ? 0 : 1) && c.status == 0): hits = hits + 10
+		if (!(s[i] == 'y') || u[i] < 3): hits = hits + 100
+		if (s[i] > 'a' && (z = 0) == 0 && c.count != -1): hits = hits + 1000
+		if ((s[i] == 'x' || u[i] == 24) && !(c.status != 0) && !!(i >= 0)): hits = hits + 10000
+		int t = (s[i] == 'x') && (z == 0)
+		int f = (u[i] >= 200 || s[i] == 0) ? 7 : 0
+		hits = hits + t * 100000 + f
+		i = i + 1
+	return hits
+
+
+void test_cond_chains():
+	char* s = cast(char*, malloc(8))
+	uint8* u = cast(uint8*, malloc(8))
+	cursor c
+	c.status = 0
+	c.count = 5
+	# s = "xxaya\0\0\0", u = 0,200,24,3,240,0,0,0
+	s[0] = 'x'
+	s[1] = 'x'
+	s[2] = 'a'
+	s[3] = 'y'
+	s[4] = 'a'
+	s[5] = 0
+	s[6] = 0
+	s[7] = 0
+	u[0] = 0
+	u[1] = 200
+	u[2] = 24
+	u[3] = 3
+	u[4] = 240
+	u[5] = 0
+	u[6] = 0
+	u[7] = 0
+	# i=0: +1 (x, next x) +10 (x, u<200 -> 1, status 0) +100 (not y)
+	#      +0 (x > a but... 'x' > 'a': +1000) +10000 (x) t=1 -> +100000 f=0
+	#      = 1 + 10 + 100 + 1000 + 10000 + 100000 = 111111
+	# i=1: +1 (x, next a) +0 (u=200 -> arm 0) +100 +1000 +10000 +100000 +7 (u>=200)
+	#      = 111108
+	# i=2: a: +0 +0 +100 (not y) +0 ('a' > 'a' false) +10000 (u == 24) +0 +0 = 10100
+	# i=3: y: +0 +0 +0 (is y, u=3 not < 3) +1000 ('y' > 'a') +0 +0 +0 = 1000
+	# i=4: a: +0 +0 +100 +0 +0 +0 +7 (u=240) = 107
+	# i=5: 0: +0 +0 +100 +0 +0 +0 +7 (s == 0) = 107
+	assert_equal(111111 + 111108 + 10100 + 1000 + 107 + 107, chain_hits(s, u, &c, 6))
+
+
 int main():
 	test_widths()
 	test_scales()
@@ -653,5 +710,6 @@ int main():
 	test_nested()
 	test_stack_locals()
 	test_compares()
+	test_cond_chains()
 	println(c"addressing_mode_test passed")
 	return 0

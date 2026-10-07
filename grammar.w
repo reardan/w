@@ -4,6 +4,7 @@ import grammar.hash_builtin
 import grammar.ndarray_index
 import grammar.type_check
 import grammar.promote
+import grammar.cond_branch
 import grammar.generic_signature_ast
 import grammar.generic
 import grammar.defer

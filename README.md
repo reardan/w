@@ -313,7 +313,11 @@ Implemented and covered by tests:
   `call rel32` on x86/x64/win64 (`docs/projects/codegen_gap_plan.md`
   §2.4; `--no-direct-calls` restores the callee-through-the-accumulator
   shape); calls through function pointers and C variadic imports stay
-  indirect.
+  indirect. On the same two targets `&&`, `||`
+  and `!` in an `if`/`elif`/`while` condition branch per operand on the
+  comparison's flags instead of materializing a boolean
+  (`grammar/cond_branch.w`, `docs/projects/codegen_gap_plan.md` §2.6;
+  `--no-cond-branch`/`-O0` keeps the value form).
 - Modules: `import dotted.path` maps to `dotted/path.w`; the reserved
   `__arch__` path segment resolves to `x86` or `x64` per target;
   `__word_size__` is a compile-time constant (4 or 8).

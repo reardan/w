@@ -3,7 +3,28 @@
  *         bitwise-or-expr
  *         logical-and-expr && bitwise-or-expr
  */
+# Condition context (grammar/cond_branch.w): every operand branches on
+# its own flags to the chain's false region, nothing is booleanized,
+# and the chain is left pending for the if/while/?:/! that consumes it.
+# The region is opened before the first operand so a parenthesized
+# sub-chain's regions nest above it.
+int logical_and_cond():
+	int base = ctrl_stack_pos
+	int h = be_ctrl_block_tagged(1)
+	int type = bitwise_or_expr()
+	int ops = 0
+	while (accept(c"&&")):
+		cond_operand_branch(type, h, 0)
+		cond_discard_arm()
+		type = bitwise_or_expr()
+		ops = 1
+	type = cond_chain_finish(base, type)
+	if (ops): return type_value(bool_type)
+	return type
+
+
 int logical_and_expr():
+	if (cond_discard_match()): return logical_and_cond()
 	int type = bitwise_or_expr()
 	if (peek(c"&&") == 0):
 		return type

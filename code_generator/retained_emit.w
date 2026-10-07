@@ -359,6 +359,9 @@ void retained_walk_expression(int id, expression_ast* tree, int root):
 int retained_walk_lower_expression(retained_statement_walk* walk):
 	int root = retained_emit_expression_group(walk.tree, walk.group)
 	assert1(root == walk.root)
+	# A guard's condition is in discard position (grammar/cond_branch.w)
+	if (walk.statement != 0):
+		if ((walk.statement.kind == ast_stmt_guard) && cond_branch_on()): ast_cond_discard = 1
 	emit_expression_ast_root(walk.tree, root)
 	return root
 
