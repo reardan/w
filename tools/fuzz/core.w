@@ -36,7 +36,7 @@ void wf_write(char* path, char* data):
 
 
 char* wf_hash(char* data, int length):
-	char* digest = malloc(32)
+	char* digest = cast(char*, malloc(32))
 	sha256(data, length, digest)
 	char* out = asm_hex_encode(digest, 32)
 	free(digest)
@@ -156,7 +156,7 @@ char* wf_generate(char* target, int seed, int case_id, char* corpus):
 
 char* wf_unhex(char* text, int* length):
 	int capacity = strlen(text) / 2 + 1
-	char* data = malloc(capacity)
+	char* data = cast(char*, malloc(capacity))
 	*length = asm_hex_decode(text, data, capacity)
 	wf_require(*length >= 0, c"invalid hex input")
 	return data
