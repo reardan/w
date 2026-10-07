@@ -26,7 +26,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install --yes --no-install-recommends \
             build-essential flex bison bc libelf-dev libssl-dev \
-            qemu-system-x86 curl xz-utils
+            qemu-system-x86 python3 curl ca-certificates xz-utils
           test -c /dev/kvm
           sudo chmod a+rw /dev/kvm
 
@@ -46,18 +46,25 @@ jobs:
           echo '+cpu +memory +pids' | sudo tee /sys/fs/cgroup/cgroup.subtree_control
           sudo mkdir "$parent"
           echo '+cpu +memory +pids' | sudo tee "$parent/cgroup.subtree_control"
+          sudo mkdir "$parent/driver"
           sudo chown -R "$(id -u):$(id -g)" "$parent"
           echo "WVM_TEST_CGROUP=$parent" >> "$GITHUB_ENV"
 
       - name: Execute all required VM gates
         run: |
           set -o pipefail
+          # Start tests inside the delegated subtree. Otherwise a non-root
+          # worker migration from the runner's cgroup fails the common-ancestor
+          # cgroup.procs permission check, despite writable destination files.
+          # Keep the driver outside the separately bounded test/daemon leaves.
+          echo "$$" | sudo tee "$WVM_TEST_CGROUP/driver/cgroup.procs"
           bash tools/wvm_ci.sh 2>&1 | tee vm-tests.log
 
       - name: Remove delegated cgroup
         if: always()
         run: |
           if [ -n "${WVM_TEST_CGROUP:-}" ] && [ -d "$WVM_TEST_CGROUP" ]; then
+            sudo rmdir "$WVM_TEST_CGROUP/driver"
             sudo rmdir "$WVM_TEST_CGROUP"
           fi
 
