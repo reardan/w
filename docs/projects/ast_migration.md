@@ -2560,3 +2560,97 @@ too large for the bounded arena still fall back to streaming silently
 unless `--ast-required` is given. The streaming grammar is still compiled
 in and is the `--streaming` oracle until P1.5. The tree schema is
 unchanged (**version 2**). **#489 remains open.**
+
+## Compact retained storage and in-place lowering (P1.2b)
+
+S2.5 left the default (retained) compile of `w.w` at about 2.1x
+`--streaming`. This unit changes only the forest's node layout, IDs and
+allocation. Images stay byte-identical to `--streaming` on every target,
+`tree --json` output is byte-identical (schema **version 2**), and REPL
+rollback, S2.3 re-parse, C3.1 recovery and `--all-errors` are unchanged.
+
+- **Records and operands.** A node was one 240-byte `retained_node` (480
+  on x64). Now expression operands are not records. A group keeps its
+  arena's 22 node columns in one column-major block, and an operand ID
+  maps to its group's record through a tagged entry in the node table
+  (`retained_node_table`). Every other node is a 16-word
+  `retained_record`. `retained_node` remains as the full view struct:
+  `retained_node_load` / `retained_node_at` derive an operand's fields
+  from its group, so the query, dependency, REPL and test readers see
+  the same fields as before. `retained_record_at` traps on an operand.
+- **One session arena.** Records, column blocks and copied text share
+  1 MB chunks. Rollback stays a high-water mark (the checkpoint records
+  the chunk and offset), and chunks above the mark are reused.
+- **Semantic records on demand.** Type and binding snapshots for operands,
+  functions, parameters and declarations are kept only in a semantic
+  session (`retained_semantic_mode`): a tree query, an explicit
+  `--ast-retain`, or an in-process API user, which is the variable's
+  default. The compile driver resets it to `retained_query_mode`, and
+  `repl_ast_options` clears it. A semantic group adds a second block for
+  its operands' types, bindings and spellings. There the adapter still
+  rebuilds and compares every field, as S2.1 did.
+- **In-place lowering.** In a plain session, `retained_emit_lower` points
+  the visitor's arena columns and decoded text at the group's block, so
+  the backend lowers the retained forest directly. It then re-binds the
+  arena to its slab and copies back the one column the visitor writes
+  (`it_slot`). Column copies are block copies.
+- **Window-granular source recording.** `getc` used to append each byte.
+  Now it records the rest of the buffered window when it reaches a byte
+  the version has not recorded (`retained_source_window`). A refill
+  records the whole window, and so does `ast_expression_refill`'s read.
+  Bytes already recorded are compared, as before. Growth no longer
+  zero-fills.
+- **Smaller costs.**
+  - The statement-walk pools (records, phases, emission points) are raw
+    arrays.
+  - Interning hashes once and keeps each slot's hash.
+  - Line lookups read the line starts directly.
+- **New `--stats` lines:** retained operands, text bytes and arena bytes.
+  For `w.w` these are 358,925 nodes, 209,565 of them operands, and a
+  31.5 MB arena.
+
+Measured on the shared 4-core box: `… --strict w.w` compiled in a fixed
+`git archive` of `origin/main`, median of nine interleaved runs.
+Instructions are from callgrind, one run each. "Before" is `origin/main`
+(0a1a03a8, S2.5's default); "after" is this change's default. Both x64
+columns use the 64-bit compiler targeting x64.
+
+| | streaming | before | after | after / streaming |
+| --- | ---: | ---: | ---: | ---: |
+| x86 wall | 0.892 s | 1.861 s | 1.358 s | 1.52x |
+| x86 user + sys | 0.889 s | 1.859 s | 1.355 s | 1.52x |
+| x64 wall | 0.875 s | 1.890 s | 1.387 s | 1.59x |
+| x64 user + sys | 0.872 s | 1.886 s | 1.385 s | 1.59x |
+| x86 instructions | 6.98G | 11.39G | 8.73G | 1.25x |
+| x64 instructions | 6.95G | 11.42G | 8.74G | 1.26x |
+| x86 peak RSS | 10.3 MB | 118.5 MB | 52.0 MB | |
+| x64 peak RSS | 15.0 MB | 216.7 MB | 86.9 MB | |
+
+REPL startup plus `:quit` (median of nine) went from 104 ms to 75 ms on
+x86 and from 107 ms to 73 ms on x64. With `--streaming` it takes 43 ms
+on both.
+
+**The 1.25x wall target is not met.** Instructions are at 1.25x, but
+wall time is not.
+
+- The non-retaining AST front end alone is already about 1.25–1.3x in
+  wall time: 7.78G instructions, with the preflight `ast_expression_root_end`,
+  replay and arena recording on top of streaming.
+- Retention adds about 0.95G instructions over that.
+- Wall time grows faster than instructions. Simulated L1 instruction
+  misses are 92M against 52M for streaming and 75M without retention,
+  and indirect-branch mispredictions are 28M against 23M.
+
+The remaining retained-only costs on x86 (self, callgrind) are:
+
+- The statement walk's emission points, about 0.25G: tokenizer snapshot
+  saves, compares and restores, the token text copies and `strcmp`, and
+  `retained_emit_source_position`.
+- Column copies, 0.1G.
+- Node-table pushes and record creation, 0.1G.
+- Source recording and verification, 0.09G.
+
+Shrinking further means changing the walk itself: fewer emission
+points, or a lexer epoch that makes point checks one comparison. It could
+also mean sparse default columns, which would need per-column pointers in
+the group. **#489 remains open.**
