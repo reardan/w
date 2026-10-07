@@ -33,12 +33,15 @@ symbol-table offset:
   cannot reproduce (inline_hazard_count: defer, goto and labels,
   raw_asm, f-strings, '?' propagation, yield, gpu constructs);
 - the names the body resolved through sym_lookup that were NOT its own
-  parameters or locals (inline_note_lookup, called by sym_lookup while
-  a body is being captured). A call site may only inline the body when
-  none of those names resolves to a local or argument of the caller:
-  the callee's parameters are bound as fresh locals in a scope that
-  must not capture the caller's names, and its globals must resolve to
-  the same records they resolved to in the callee.
+  parameters or locals, with the record each resolved to
+  (inline_note_lookup, called by sym_lookup while a body is being
+  captured). A call site may only inline the body when every one of
+  those names resolves to the same record there: the callee's
+  parameters are bound as fresh locals in a scope that must not
+  capture the caller's names, and its globals must resolve to the same
+  records they resolved to in the callee. A file-scoped import alias
+  ('import a.b as f', grammar/import_statement.w) is resolved outside
+  the symbol table, per file, so a body that uses one is a hazard.
 
 The decision (inline_site_ok) is made at the call's begin side, once
 per call, by the streaming grammar (grammar/postfix_expr.w) and the
@@ -447,17 +450,24 @@ int inline_site_ok(int sym, int current, int in_generator, int in_gpu_for, int i
 	if (rec.code_bytes > budget):
 		inline_sites_refused_budget = inline_sites_refused_budget + 1
 		return 0
-	# The capture rule: no name the body resolves outside itself may
-	# resolve to a local or argument here
+	# The capture rule: every name the body resolves outside itself
+	# must resolve here to the record it resolved to there (a global
+	# the caller shadows with a local or argument, or a record declared
+	# since, is a different one), and a name the body left unresolved
+	# must not have become a local or argument
 	list[char*] names = rec.free_names
+	list[int] syms = rec.free_syms
 	for i in range(names.length):
 		int t = sym_probe(names[i])
-		if (t >= 0):
+		int captured = 0
+		if (syms[i] >= 0): captured = t != syms[i]
+		elif (t >= 0):
 			char scope = table[t + 1]
-			if ((scope == 'L') || (scope == 'A')):
-				inline_sites_refused_capture = inline_sites_refused_capture + 1
-				rec.refused = rec.refused + 1
-				return 0
+			captured = (scope == 'L') || (scope == 'A')
+		if (captured):
+			inline_sites_refused_capture = inline_sites_refused_capture + 1
+			rec.refused = rec.refused + 1
+			return 0
 	inline_site_record = r
 	return 1
 

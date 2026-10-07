@@ -128,12 +128,16 @@ void fail_banner(int timed_out, char* desc):
 
 
 # Fixed wdbg argv: <dbg> --attach <pid> [src].
+# The fixtures are built with --no-inline (tests/attach_target_fixture.w.
+# wbuild): their two-level call stack must be real calls, which the
+# default build would emit in place; the recompile is told the same.
 char** wdbg_argv(char* dbg, int pid, char* src):
-	char** argv = strv_new(4)
+	char** argv = strv_new(5)
 	strv_set(argv, 0, dbg)
-	strv_set(argv, 1, c"--attach")
-	strv_set(argv, 2, itoa(pid))
-	if (src != 0): strv_set(argv, 3, src)
+	strv_set(argv, 1, c"--no-inline")
+	strv_set(argv, 2, c"--attach")
+	strv_set(argv, 3, itoa(pid))
+	if (src != 0): strv_set(argv, 4, src)
 	return argv
 
 
